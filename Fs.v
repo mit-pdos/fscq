@@ -11,7 +11,11 @@ correct. *)
 (* Trivial file system API, including Sync and Crash events.  XXX Each call
 should be probably split in invoke and result, to model concurrency. *)
 
-Inductive event : Set := | Read | Write | Sync | Crash.
+Inductive event : Set :=
+  | Read: nat -> event
+  | Write: nat -> event
+  | Sync: event
+  | Crash: event.
 
 (* To define what crash and sync do, file has two values: its in-memory value
 and its on-disk value. Only 1 file with a single integer has content. *)
@@ -21,21 +25,21 @@ Record file : Type := mkfile {
   Vdisk: nat
 }.
 
-Definition history := list(event * nat).
+Definition history := list event.
 
 (* A event returns whether its return value was legal and what the file's state
 is after the processing the event. Write updates the in-memory state. Sync
 flushes the in-memory state to on-disk state. Crash resets the in-memory state
 to the on-disk state. n in (Read, n) must match the in-memory state of the file. *)
 
-Definition eventDenote (e : event * nat) (f : file) : bool * file :=
+Definition eventDenote (e : event) (f : file) : bool * file :=
   match e with 
-  | (Read, n) => 
+  | Read n => 
     if beq_nat n f.(Vmem) then (true, f)
     else (false, f)
-  | (Write, n) => (true, (mkfile n f.(Vmem)))
-  | (Sync, n) => (true, (mkfile f.(Vmem) f.(Vmem)))
-  | (Crash, n) => (true, (mkfile f.(Vdisk) f.(Vdisk)))
+  | Write n => (true, (mkfile n f.(Vmem)))
+  | Sync => (true, (mkfile f.(Vmem) f.(Vmem)))
+  | Crash => (true, (mkfile f.(Vdisk) f.(Vdisk)))
   end.
 
 (* check if a history is legal, given a starting file state. *)
@@ -51,12 +55,10 @@ Fixpoint legal (h: history) (f : file) : bool  :=
   end.
 
 (* Check some histories: *)
-Eval simpl in legal ((Write, 1) :: (Read, 1) :: nil) (mkfile 0 0).
-Eval simpl in legal ((Write, 1) :: (Read, 0) :: nil) (mkfile 0 0).
-Eval simpl in legal ((Write, 1) :: (Sync, 0) :: (Read, 1) :: nil) (mkfile 0 0).
-Eval simpl in legal ((Write, 1) :: (Sync, 0) :: (Read, 0) :: nil) (mkfile 0 0).
-Eval simpl in legal ((Write, 1) :: (Read, 1) :: (Crash, 0) :: nil) (mkfile 0 0).
-Eval simpl in legal ((Write, 1) :: (Read, 1) :: (Crash, 0) :: (Read, 0) :: nil) (mkfile 0 0).
-Eval simpl in legal ((Write, 1) :: (Read, 1) :: (Crash, 0) :: (Read, 1) :: nil) (mkfile 0 0).
-  
-
+Eval simpl in legal ((Write 1) :: (Read 1) :: nil) (mkfile 0 0).
+Eval simpl in legal ((Write 1) :: (Read 0) :: nil) (mkfile 0 0).
+Eval simpl in legal ((Write 1) :: Sync :: (Read 1) :: nil) (mkfile 0 0).
+Eval simpl in legal ((Write 1) :: Sync :: (Read 0) :: nil) (mkfile 0 0).
+Eval simpl in legal ((Write 1) :: (Read 1) :: Crash :: nil) (mkfile 0 0).
+Eval simpl in legal ((Write 1) :: (Read 1) :: Crash :: (Read 0) :: nil) (mkfile 0 0).
+Eval simpl in legal ((Write 1) :: (Read 1) :: Crash :: (Read 1) :: nil) (mkfile 0 0).
