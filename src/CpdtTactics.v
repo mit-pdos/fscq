@@ -97,6 +97,9 @@ Ltac simplHyp invOne :=
 
     (** Similar logic to the cases for constructor injectivity above, but specialized to [Some], since the above cases won't deal with polymorphic constructors. *)
     | [ H : Some _ = Some _ |- _ ] => injection H; clear H
+
+    (** Invert pairs *)
+    | [ H : ( _, _ ) = ( _, _ ) |- _ ] => inversion H; clear H
   end.
 
 (** Find some hypothesis to rewrite with, ensuring that [auto] proves all of the extra subgoals added by [rewrite]. *)
