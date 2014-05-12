@@ -185,12 +185,12 @@ Definition eager_state := nat.
 
 Definition eager_init := 0.
 
-Definition eager_apply (s: eager_state) (i: invocation) : eager_state * event :=
+Definition eager_apply (s: eager_state) (i: invocation) (h: history) : eager_state * history :=
   match i with
-  | do_read => (s, Read s)
-  | do_write n => (n, Write n)
-  | do_sync => (s, Sync)
-  | do_crash => (s, Crash)
+  | do_read => (s, (Read s) :: h)
+  | do_write n => (n, (Flush n) :: (Write n) :: h)
+  | do_sync => (s, Sync :: h)
+  | do_crash => (s, Crash :: h)
   end.
 
 (* Lazy file system *)
@@ -202,93 +202,67 @@ Record lazy_state : Set := mklazy {
 
 Definition lazy_init := mklazy 0 0.
 
-Definition lazy_apply (s: lazy_state) (i: invocation) : lazy_state * event :=
+Definition lazy_apply (s: lazy_state) (i: invocation) (h: history) : lazy_state * history :=
   match i with
-  | do_read => (s, Read s.(LazyMem))
-  | do_write n => (mklazy n s.(LazyDisk), Write n)
-  | do_sync => (mklazy s.(LazyMem) s.(LazyMem), Sync)
-  | do_crash => (mklazy s.(LazyDisk) s.(LazyDisk), Crash)
+  | do_read => (s, (Read s.(LazyMem)) :: h)
+  | do_write n => (mklazy n s.(LazyDisk), (Write n) :: h)
+  | do_sync => (mklazy s.(LazyMem) s.(LazyMem), Sync :: (Flush s.(LazyMem)) :: h)
+  | do_crash => (mklazy s.(LazyDisk) s.(LazyDisk), Crash :: h)
   end.
 
 (* What does it mean for a file system to be correct? *)
 
 Fixpoint fs_apply_list (state_type: Set)
                        (fs_init: state_type)
-                       (fs_apply: state_type -> invocation -> state_type * event)
+                       (fs_apply: state_type -> invocation -> history -> state_type * history)
                        (l: list invocation)
                        : state_type * history :=
   match l with
   | i :: rest =>
     match fs_apply_list state_type fs_init fs_apply rest with
-    | (s, h) =>
-      match fs_apply s i with
-      | (s', e) => (s', e :: h)
-      end
+    | (s, h) => fs_apply s i h
     end
   | nil => (fs_init, nil)
   end.
 
 Definition fs_legal (state_type: Set)
                      (fs_init: state_type)
-                     (fs_apply: state_type -> invocation -> state_type * event) :=
+                     (fs_apply: state_type -> invocation -> history -> state_type * history) :=
   forall (l: list invocation) (h: history) (s: state_type),
   fs_apply_list state_type fs_init fs_apply l = (s, h) ->
   legal h.
 
 (* Eager FS is correct *)
 
+Hint Constructors last_flush.
+Hint Constructors could_read.
+Hint Constructors legal.
+
 Lemma eager_last_wrote:
   forall (l: list invocation) (s: eager_state) (h: history),
   fs_apply_list eager_state eager_init eager_apply l = (s, h) ->
-  last_wrote h s.
+  last_flush h s.
 Proof.
   induction l.
-  - crush; inversion H; unfold eager_init; constructor.
-  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
-    case_eq (fs_apply_list eager_state eager_init eager_apply l);
-    intros; inversion H0.
-    + constructor.  apply IHl.  crush.
-    + constructor.
-    + constructor.  apply IHl.  crush.
-    + constructor.  apply IHl.  crush.
+  - crush.
+  - destruct a; unfold fs_apply_list; fold fs_apply_list;
+    case_eq (fs_apply_list eager_state eager_init eager_apply l); crush.
 Qed.
-
-Lemma last_wrote_wrote_since_sync:
-  forall h n,
-  last_wrote h n -> wrote_since_sync h n.
-Proof.
-  induction h.
-  - crush.  inversion H.  constructor.
-  - destruct a; intros; inversion H.
-    + constructor.  apply IHh.  auto.
-    + constructor.
-    + constructor.  auto.
-    + constructor.  apply IHh.  auto.
-Qed.
-
-Lemma last_wrote_could_read:
-  forall h n,
-  last_wrote h n -> could_read h n.
-Proof.
-  induction h.
-  - crush.  inversion H.  constructor.
-  - destruct a; intros; inversion H.
-    + constructor.  apply IHh.  auto.
-    + constructor.
-    + constructor.  apply IHh.  auto.
-    + constructor.  apply last_wrote_wrote_since_sync.  auto.
-Qed. 
 
 Theorem eager_correct:
   fs_legal eager_state eager_init eager_apply.
 Proof.
   unfold fs_legal.
   induction l.
-  - crush; inversion H; constructor.
-  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
+  - crush.
+  - destruct a; unfold fs_apply_list; fold fs_apply_list;
     case_eq (fs_apply_list eager_state eager_init eager_apply l);
-    intros; inversion H0.
+    crush.
     + constructor.
+
+
+
+      * 
       * apply last_wrote_could_read.  eapply eager_last_wrote.  rewrite <- H2.  exact H.
       * apply IHl with (s:=e).  auto.
     + constructor; apply IHl with (s:=e); crush.
