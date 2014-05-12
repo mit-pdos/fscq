@@ -82,7 +82,9 @@ Inductive last_wrote: history -> nat -> Prop :=
     last_wrote h n -> last_wrote (Sync :: h) n
   | last_wrote_crash:
     forall (h:history) (n:nat),
-    last_wrote h n -> last_wrote (Crash :: h) n.
+    last_wrote h n -> last_wrote (Crash :: h) n
+  | last_wrote_nil:
+    last_wrote nil 0.
 
 (* (wrote_since_sync h n) means n was either the last thing written before
    the last sync, or was written after the last sync *)
@@ -107,7 +109,9 @@ Inductive wrote_since_sync: history -> nat -> Prop :=
        across many crashes, until it's finally Sync'ed.
      *)
     forall (h:history) (n:nat),
-    wrote_since_sync h n -> wrote_since_sync (Crash :: h) n.
+    wrote_since_sync h n -> wrote_since_sync (Crash :: h) n
+  | wrote_since_sync_nil:
+    wrote_since_sync nil 0.
 
 (* (could_read h n) means n could be the return value of a read *)
 Inductive could_read: history -> nat -> Prop :=
@@ -122,7 +126,9 @@ Inductive could_read: history -> nat -> Prop :=
     could_read h n -> could_read (Sync :: h) n
   | could_read_crash:
     forall (h:history) (n:nat),
-    wrote_since_sync h n -> could_read (Crash :: h) n.
+    wrote_since_sync h n -> could_read (Crash :: h) n
+  | could_read_nil:
+    could_read nil 0.
 
 Inductive legal2: history -> Prop :=
   | legal2_read:
@@ -158,3 +164,190 @@ Theorem test_legal2_weird:
 Proof.
   repeat constructor.
 Qed.
+
+(* Toy implementations of a file system *)
+
+Inductive invocation : Set :=
+  | do_read: invocation
+  | do_write: nat -> invocation
+  | do_sync: invocation
+  | do_crash: invocation.
+
+(* Eager file system *)
+
+Definition eager_state := nat.
+
+Definition eager_init := 0.
+
+Definition eager_apply (s: eager_state) (i: invocation) : eager_state * event :=
+  match i with
+  | do_read => (s, Read s)
+  | do_write n => (n, Write n)
+  | do_sync => (s, Sync)
+  | do_crash => (s, Crash)
+  end.
+
+(* Lazy file system *)
+
+Record lazy_state : Set := mklazy {
+  LazyMem: nat;
+  LazyDisk: nat
+}.
+
+Definition lazy_init := mklazy 0 0.
+
+Definition lazy_apply (s: lazy_state) (i: invocation) : lazy_state * event :=
+  match i with
+  | do_read => (s, Read s.(LazyMem))
+  | do_write n => (mklazy n s.(LazyDisk), Write n)
+  | do_sync => (mklazy s.(LazyMem) s.(LazyMem), Sync)
+  | do_crash => (mklazy s.(LazyDisk) s.(LazyDisk), Crash)
+  end.
+
+(* What does it mean for a file system to be correct? *)
+
+Fixpoint fs_apply_list (state_type: Set)
+                       (fs_init: state_type)
+                       (fs_apply: state_type -> invocation -> state_type * event)
+                       (l: list invocation)
+                       : state_type * history :=
+  match l with
+  | i :: rest =>
+    match fs_apply_list state_type fs_init fs_apply rest with
+    | (s, h) =>
+      match fs_apply s i with
+      | (s', e) => (s', e :: h)
+      end
+    end
+  | nil => (fs_init, nil)
+  end.
+
+Definition fs_legal2 (state_type: Set)
+                     (fs_init: state_type)
+                     (fs_apply: state_type -> invocation -> state_type * event) :=
+  forall (l: list invocation) (h: history) (s: state_type),
+  fs_apply_list state_type fs_init fs_apply l = (s, h) ->
+  legal2 h.
+
+(* Eager FS is correct *)
+
+Lemma eager_last_wrote:
+  forall (l: list invocation) (s: eager_state) (h: history),
+  fs_apply_list eager_state eager_init eager_apply l = (s, h) ->
+  last_wrote h s.
+Proof.
+  induction l.
+  - crush; inversion H; unfold eager_init; constructor.
+  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
+    case_eq (fs_apply_list eager_state eager_init eager_apply l);
+    intros; inversion H0.
+    + constructor.  apply IHl.  crush.
+    + constructor.
+    + constructor.  apply IHl.  crush.
+    + constructor.  apply IHl.  crush.
+Qed.
+
+Lemma last_wrote_wrote_since_sync:
+  forall h n,
+  last_wrote h n -> wrote_since_sync h n.
+Proof.
+  induction h.
+  - crush.  inversion H.  constructor.
+  - destruct a; intros; inversion H.
+    + constructor.  apply IHh.  auto.
+    + constructor.
+    + constructor.  auto.
+    + constructor.  apply IHh.  auto.
+Qed.
+
+Lemma last_wrote_could_read:
+  forall h n,
+  last_wrote h n -> could_read h n.
+Proof.
+  induction h.
+  - crush.  inversion H.  constructor.
+  - destruct a; intros; inversion H.
+    + constructor.  apply IHh.  auto.
+    + constructor.
+    + constructor.  apply IHh.  auto.
+    + constructor.  apply last_wrote_wrote_since_sync.  auto.
+Qed. 
+
+Theorem eager_correct:
+  fs_legal2 eager_state eager_init eager_apply.
+Proof.
+  unfold fs_legal2.
+  induction l.
+  - crush; inversion H; constructor.
+  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
+    case_eq (fs_apply_list eager_state eager_init eager_apply l);
+    intros; inversion H0.
+    + constructor.
+      * apply last_wrote_could_read.  eapply eager_last_wrote.  rewrite <- H2.  exact H.
+      * apply IHl with (s:=e).  auto.
+    + constructor; apply IHl with (s:=e); crush.
+    + constructor; apply IHl with (s:=e); crush.
+    + constructor; apply IHl with (s:=e); crush.
+Qed.
+
+(* Lazy FS correct *)
+
+Inductive wrote_before_sync: history -> nat -> Prop :=
+  | wrote_before_sync_read:
+    forall (h:history) (n:nat) (rn:nat),
+    wrote_before_sync h n -> wrote_before_sync ((Read rn) :: h) n
+  | wrote_before_sync_write:
+    forall (h:history) (n:nat) (wn:nat),
+    wrote_before_sync h n -> wrote_before_sync ((Write wn) :: h) n
+  | wrote_before_sync_sync:
+    forall (h:history) (n:nat),
+    last_wrote h n -> wrote_before_sync (Sync :: h) n
+  | wrote_before_sync_crash:
+    forall (h:history) (n:nat),
+    wrote_before_sync h n -> wrote_before_sync (Crash :: h) n
+  | wrote_before_sync_nil:
+    wrote_before_sync nil 0.
+
+Lemma lazy_could_read:
+  forall (l: list invocation) (s: lazy_state) (h: history),
+  fs_apply_list lazy_state lazy_init lazy_apply l = (s, h) ->
+  could_read h (LazyMem s) /\ wrote_before_sync h (LazyDisk s).
+Proof.
+  induction l.
+  - crush; inversion H; unfold eager_init; constructor.
+  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
+    case_eq (fs_apply_list lazy_state lazy_init lazy_apply l);
+    intros; inversion H0.
+    + split.
+      * constructor.  apply IHl.  crush.
+      * constructor.  apply IHl.  crush.
+    + split.
+      * constructor.
+      * constructor.  simpl.  apply IHl.  crush.
+    + split.
+      * constructor.  simpl.  apply IHl.  auto.
+      * simpl.  constructor.
+        (* XXX not provable due to the weirdness illustated by test_legal2_weird:
+           according to the spec, Sync forces the last write to disk, even if that
+           last write happened before a Crash!
+         *)
+Abort.
+
+(*
+Theorem lazy_correct:
+  fs_legal2 lazy_state lazy_init lazy_apply.
+Proof.
+  unfold fs_legal2.
+  induction l.
+  - crush; inversion H; constructor.
+  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
+    case_eq (fs_apply_list lazy_state lazy_init lazy_apply l);
+    intros; inversion H0.
+    + constructor.
+      * apply lazy_could_read with (l:=l).  rewrite <- H2.  auto.
+      * apply IHl with (s:=l0).  auto.
+    + constructor; apply IHl with (s:=l0); crush.
+    + constructor; apply IHl with (s:=l0); crush.
+    + constructor; apply IHl with (s:=l0); crush.
+Qed.
+*)
