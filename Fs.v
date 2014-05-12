@@ -152,3 +152,9 @@ Theorem test_legal2_0:
 Proof.
   repeat constructor.
 Qed.
+
+Theorem test_legal2_weird:
+  legal2 [ Read 1 ; Crash ; Read 0 ; Crash ; Write 1 ; Write 0 ].
+Proof.
+  repeat constructor.
+Qed.
