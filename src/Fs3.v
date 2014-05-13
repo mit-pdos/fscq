@@ -1,5 +1,4 @@
 Require Import List.
-Require Import ListSet.
 Require Import CpdtTactics.
 Import ListNotations.
 
@@ -37,21 +36,6 @@ Fixpoint trace_last_write (t:trace) : option event :=
   | Sync    :: t' => trace_last_write(t')
   end.
 
-(* Is a crash-free trace legal?  *)
-Fixpoint is_trace_legal (t:trace) (init:ppstates) : Prop :=
-  match t with
-  | nil => True
-  | Sync    :: t' => (is_trace_legal t' init)
-  | Write _ :: t' => (is_trace_legal t' init)
-  | Read x  :: t' =>
-    match (trace_last_write t') with
-    | Some (Write y) => (is_trace_legal t' init) /\ (x = y) 
-    | _              => (is_trace_legal t' init) /\ (In x init)
-    end
-    (* 'Read' shall always reveal the last written state;
-     * if no writes, it can reveal any states in 'init'.  *)
-  end.
-
 (* Get a list of possilbe persistent states after applying a trace  *)
 Fixpoint find_ppstates (t:trace) (init: ppstates) : ppstates :=
   match t with
@@ -72,6 +56,20 @@ Fixpoint find_ppstates (t:trace) (init: ppstates) : ppstates :=
     (* 'Sync' fixiates the potential state to the latest Write *)
   end.
 
+(* Is a crash-free trace legal?  *)
+Fixpoint is_trace_legal (t:trace) (init:ppstates) : Prop :=
+  match t with
+  | nil => True
+  | Sync    :: t' => (is_trace_legal t' init)
+  | Write _ :: t' => (is_trace_legal t' init)
+  | Read x  :: t' =>
+    match (trace_last_write t') with
+    | Some (Write y) => (is_trace_legal t' init) /\ (x = y) 
+    | _              => (is_trace_legal t' init) /\ (In x (find_ppstates t' init))
+    end
+    (* 'Read' shall always reveal the last written state;
+     * if no writes, it can reveal any states in ppstates of t'.  *)
+  end.
 
 Fixpoint find_ppstates_traces (tc:traces_with_crash) : ppstates :=
   match tc with
@@ -125,5 +123,6 @@ Definition test_5 := [ [ Read 1; Read 2 ] ; [ Write 1; Write 2 ] ].
 Theorem test_legal_5:
   is_legal test_5.
 Proof.
-  crush.
-Qed.
+  simpl.
+  try tauto.
+  Abort.
