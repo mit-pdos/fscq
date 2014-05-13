@@ -1,5 +1,6 @@
 Require Import List.
 Require Import ListSet.
+Require Import CpdtTactics.
 Import ListNotations.
 
 (* File system state *)
@@ -120,3 +121,9 @@ Proof.
   try tauto.
   Abort.
 
+Definition test_5 := [ [ Read 1; Read 2 ] ; [ Write 1; Write 2 ] ].
+Theorem test_legal_5:
+  is_legal test_5.
+Proof.
+  crush.
+Qed.
