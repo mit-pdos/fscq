@@ -71,7 +71,6 @@ Fixpoint find_ppstates (t:trace) (init: ppstates) : ppstates :=
     (* 'Sync' fixiates the potential state to the latest Write *)
   end.
 
-Eval simpl in find_ppstates [ Read 1 ; Write 1 ; Read 0 ; Write 0 ; Sync ; Read 1 ] [ 1 ; 2 ] .
 
 Fixpoint find_ppstates_traces (tc:traces_with_crash) : ppstates :=
   match tc with
@@ -89,12 +88,35 @@ Fixpoint is_legal (tc:traces_with_crash) : Prop :=
 (* Testing *)
 
 Definition test_1 := [ [ Read 1 ; Write 1 ; Read 0 ; Write 0 ; Sync ; Read 1 ] ;
-                       [ Read 2 ; Write 2 ; Write 1] ] .
-
+                       [ Read 2 ; Write 2 ; Write 1 ] ] .
 Theorem test_legal_1:
   is_legal test_1.
-
 Proof.
   simpl.
   tauto.
 Qed.
+
+Definition test_2 := [ [ Read 1 ] ; [ Read 3 ; Write 3 ] ; [ Write 2 ; Write 1 ] ] .
+Theorem test_legal_2:
+  is_legal test_2.
+Proof.
+  simpl.
+  tauto.
+Qed.
+
+Definition test_3 := [ [ Read 1 ] ; [ Read 3 ; Sync ; Write 3 ] ; [ Write 2 ; Write 1 ] ] .
+Theorem test_legal_3:
+  is_legal test_3.
+Proof.
+  simpl.
+  try tauto.
+  Abort.
+
+Definition test_4 := [ [ Read 2 ] ; [ Read 3 ; Write 3 ; Read 1 ] ; [ Write 2 ; Write 1 ] ] .
+Theorem test_legal_4:
+  is_legal test_4.
+Proof.
+  simpl.
+  try tauto.
+  Abort.
+
