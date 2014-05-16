@@ -24,6 +24,12 @@ Definition trace := list event.
 (* List of crash-free traces, with crashes in between *)
 Definition traces_with_crash := list trace.
 
+Definition append_to_last_trace (e : event) (h: traces_with_crash) : traces_with_crash :=
+    match h with
+    | nil => [[e]]
+    | x :: h1  => (e :: x):: h1
+    end.
+
 (* Potential persistent states for a trace *)
 Definition ppstates := list state.
 
@@ -126,3 +132,59 @@ Proof.
   simpl.
   try tauto.
   Abort.
+
+(* Toy implementations of a file system *)
+
+Inductive invocation : Set :=
+  | do_read: invocation
+  | do_write: nat -> invocation
+  | do_sync: invocation
+  | do_crash: invocation.
+
+(* Eager file system *)
+
+Definition eager_state := nat.
+
+Definition eager_init := 0.
+
+(* gen traces with crash: *)
+
+Definition eager_apply (s: eager_state) (i: invocation) (h: traces_with_crash) : eager_state * traces_with_crash :=
+  match i with
+  | do_read =>  (s, (append_to_last_trace (Read s) h))
+  | do_write n => (n, (append_to_last_trace (Write n) h))
+  | do_sync => (s, (append_to_last_trace Sync h))
+  | do_crash => (s, [] :: h)
+  end.
+
+(* What does it mean for a file system to be correct? *)
+
+Fixpoint fs_apply_list (state_type: Set)
+                       (fs_init: state_type)
+                       (fs_apply: state_type -> invocation -> traces_with_crash -> state_type * traces_with_crash)
+                       (l: list invocation)
+                       : state_type * traces_with_crash :=
+  match l with
+  | i :: rest =>
+    match fs_apply_list state_type fs_init fs_apply rest with
+    | (s, h) => fs_apply s i h
+    end
+  | nil => (fs_init, nil)
+  end.
+
+Definition fs_legal (state_type: Set)
+                     (fs_init: state_type)
+                     (fs_apply: state_type -> invocation -> traces_with_crash -> state_type * traces_with_crash) :=
+  forall (l: list invocation) (h: traces_with_crash) (s: state_type),
+  fs_apply_list state_type fs_init fs_apply l = (s, h) ->
+  is_legal h.
+
+Theorem eager_correct:
+  fs_legal eager_state eager_init eager_apply.
+Proof.
+  unfold fs_legal.
+  induction l.
+  - crush.
+  - destruct a; unfold fs_apply_list; fold fs_apply_list; case_eq (fs_apply_list eager_state eager_init eager_apply l); crush.
+  
+
