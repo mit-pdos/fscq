@@ -110,15 +110,12 @@ Inductive legal: history -> Prop :=
   | legal_flush:
     forall (h:history) (n:nat),
     wrote_since_crash_or_flush h n -> legal ((Flush n) :: h)
-  | legal_sync_nop:
-    forall (h:history),
-    no_write_since_crash h ->
-    legal h -> legal (Sync :: h)
-  | legal_sync_flushed:
+  | legal_sync:
     forall (h:history) (n:nat),
-    last_write_since_crash h n ->
+    could_read h n ->
     last_flush h n ->
-    legal h -> legal (Sync :: h)
+    legal h ->
+    legal (Sync :: h)
   | legal_crash:
     forall (h:history),
     legal h -> legal (Crash :: h)
@@ -131,7 +128,7 @@ Proof.
   constructor.
   - repeat constructor.
   - constructor.  constructor.
-    apply legal_sync_flushed with (n:=1); repeat constructor.
+    apply legal_sync with (n:=1); repeat constructor.
 Qed.
 
 Theorem test_legal_0:
@@ -236,17 +233,32 @@ Definition fs_legal (state_type: Set)
 
 Hint Constructors last_flush.
 Hint Constructors could_read.
+Hint Constructors wrote_since_crash_or_flush.
 Hint Constructors legal.
 
-Lemma eager_last_wrote:
+Lemma eager_last_flush:
   forall (l: list invocation) (s: eager_state) (h: history),
   fs_apply_list eager_state eager_init eager_apply l = (s, h) ->
   last_flush h s.
 Proof.
   induction l.
   - crush.
-  - destruct a; unfold fs_apply_list; fold fs_apply_list;
-    case_eq (fs_apply_list eager_state eager_init eager_apply l); crush.
+  - destruct a; simpl;
+    case_eq (fs_apply_list eager_state eager_init eager_apply l);
+    crush.
+Qed.
+
+Lemma eager_could_read:
+  forall (l: list invocation) (s: eager_state) (h: history),
+  fs_apply_list eager_state eager_init eager_apply l = (s, h) ->
+  could_read h s.
+Proof.
+  induction l.
+  - crush.
+  - destruct a; simpl;
+    case_eq (fs_apply_list eager_state eager_init eager_apply l);
+    crush.
+    + constructor.  apply eager_last_flush with (l:=l).  crush.
 Qed.
 
 Theorem eager_correct:
@@ -255,19 +267,17 @@ Proof.
   unfold fs_legal.
   induction l.
   - crush.
-  - destruct a; unfold fs_apply_list; fold fs_apply_list;
+  - destruct a; simpl;
     case_eq (fs_apply_list eager_state eager_init eager_apply l);
     crush.
     + constructor.
-
-
-
-      * 
-      * apply last_wrote_could_read.  eapply eager_last_wrote.  rewrite <- H2.  exact H.
-      * apply IHl with (s:=e).  auto.
-    + constructor; apply IHl with (s:=e); crush.
-    + constructor; apply IHl with (s:=e); crush.
-    + constructor; apply IHl with (s:=e); crush.
+      * apply eager_could_read with (l:=l).  crush.
+      * apply IHl with (s:=s).  crush.
+    + apply legal_sync with (n:=s).
+      * apply eager_could_read with (l:=l).  crush.
+      * apply eager_last_flush with (l:=l).  crush.
+      * apply IHl with (s:=s).  crush.
+    + constructor.  apply IHl with (s:=s).  crush.
 Qed.
 
 (* Lazy FS correct *)
