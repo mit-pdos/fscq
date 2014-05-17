@@ -57,47 +57,27 @@ Inductive could_read: history -> nat -> Prop :=
   | could_read_nil:
     could_read nil 0.
 
-Inductive wrote_since_crash_or_flush: history -> nat -> Prop :=
-  | wrote_since_crash_or_flush_read:
+Inductive could_flush: history -> nat -> Prop :=
+  | could_flush_read:
     forall (h:history) (n:nat) (rn:nat),
-    wrote_since_crash_or_flush h n -> wrote_since_crash_or_flush ((Read rn) :: h) n
-  | wrote_since_crash_or_flush_write_1:
+    could_flush h n -> could_flush ((Read rn) :: h) n
+  | could_flush_write_1:
     forall (h:history) (n:nat),
-    wrote_since_crash_or_flush ((Write n) :: h) n
-  | wrote_since_crash_or_flush_write_2:
+    could_flush ((Write n) :: h) n
+  | could_flush_write_2:
     forall (h:history) (n:nat) (wn:nat),
-    wrote_since_crash_or_flush h n -> wrote_since_crash_or_flush ((Write wn) :: h) n
-  | wrote_since_crash_or_flush_sync:
-    forall (h:history) (n:nat),
-    wrote_since_crash_or_flush h n -> wrote_since_crash_or_flush (Sync :: h) n.
-
-Inductive no_write_since_crash: history -> Prop :=
-  | no_write_since_crash_read:
-    forall (h:history) (n:nat),
-    no_write_since_crash h -> no_write_since_crash ((Read n) :: h)
-  | no_write_since_crash_sync:
-    forall (h:history),
-    no_write_since_crash h -> no_write_since_crash (Sync :: h)
-  | no_write_since_crash_flush:
-    forall (h:history) (n:nat),
-    no_write_since_crash h -> no_write_since_crash ((Flush n) :: h)
-  | no_write_since_crash_crash:
-    forall (h:history),
-    no_write_since_crash (Crash :: h).
-
-Inductive last_write_since_crash: history -> nat -> Prop :=
-  | last_write_since_crash_read:
-    forall (h:history) (n:nat) (rn:nat),
-    last_write_since_crash h n -> last_write_since_crash ((Read rn) :: h) n
-  | last_write_since_crash_sync:
-    forall (h:history) (n:nat),
-    last_write_since_crash h n -> last_write_since_crash (Sync :: h) n
-  | last_write_since_crash_flush:
+    could_flush h n -> could_flush ((Write wn) :: h) n
+  | could_flush_flush:
     forall (h:history) (n:nat) (fn:nat),
-    last_write_since_crash h n -> last_write_since_crash ((Flush fn) :: h) n
-  | last_write_since_crash_write:
+    could_flush h n -> could_flush ((Flush fn) :: h) n
+  | could_flush_sync:
     forall (h:history) (n:nat),
-    last_write_since_crash ((Write n) :: h) n.
+    could_read h n -> could_flush (Sync :: h) n
+  | could_flush_crash:
+    forall (h:history) (n:nat),
+    last_flush h n -> could_flush (Crash :: h) n
+  | could_flush_nil:
+    could_flush nil 0.
 
 Inductive legal: history -> Prop :=
   | legal_read:
@@ -109,7 +89,7 @@ Inductive legal: history -> Prop :=
     legal h -> legal ((Write n) :: h)
   | legal_flush:
     forall (h:history) (n:nat),
-    wrote_since_crash_or_flush h n -> legal ((Flush n) :: h)
+    could_flush h n -> legal ((Flush n) :: h)
   | legal_sync:
     forall (h:history) (n:nat),
     could_read h n ->
@@ -165,7 +145,7 @@ Theorem test_legal_weird_2:
 Proof.
   constructor.
   - repeat constructor.
-  - constructor.  constructor.  constructor.
+  - constructor.  constructor.  constructor.  constructor.
 Abort.
 
 (* Toy implementations of a file system *)
@@ -233,7 +213,7 @@ Definition fs_legal (state_type: Set)
 
 Hint Constructors last_flush.
 Hint Constructors could_read.
-Hint Constructors wrote_since_crash_or_flush.
+Hint Constructors could_flush.
 Hint Constructors legal.
 
 Lemma eager_last_flush:
@@ -282,62 +262,60 @@ Qed.
 
 (* Lazy FS correct *)
 
-Inductive wrote_before_sync: history -> nat -> Prop :=
-  | wrote_before_sync_read:
-    forall (h:history) (n:nat) (rn:nat),
-    wrote_before_sync h n -> wrote_before_sync ((Read rn) :: h) n
-  | wrote_before_sync_write:
-    forall (h:history) (n:nat) (wn:nat),
-    wrote_before_sync h n -> wrote_before_sync ((Write wn) :: h) n
-  | wrote_before_sync_sync:
-    forall (h:history) (n:nat),
-    last_wrote h n -> wrote_before_sync (Sync :: h) n
-  | wrote_before_sync_crash:
-    forall (h:history) (n:nat),
-    wrote_before_sync h n -> wrote_before_sync (Crash :: h) n
-  | wrote_before_sync_nil:
-    wrote_before_sync nil 0.
+Lemma lazy_last_flush:
+  forall (l: list invocation) (s: lazy_state) (h: history),
+  fs_apply_list lazy_state lazy_init lazy_apply l = (s, h) ->
+  last_flush h (LazyDisk s).
+Proof.
+  induction l.
+  - crush.
+  - destruct a; simpl;
+    case_eq (fs_apply_list lazy_state lazy_init lazy_apply l);
+    crush.
+Qed.
 
 Lemma lazy_could_read:
   forall (l: list invocation) (s: lazy_state) (h: history),
   fs_apply_list lazy_state lazy_init lazy_apply l = (s, h) ->
-  could_read h (LazyMem s) /\ wrote_before_sync h (LazyDisk s).
+  could_read h (LazyMem s).
 Proof.
   induction l.
-  - crush; inversion H; unfold eager_init; constructor.
-  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
+  - crush.
+  - destruct a; simpl;
     case_eq (fs_apply_list lazy_state lazy_init lazy_apply l);
-    intros; inversion H0.
-    + split.
-      * constructor.  apply IHl.  crush.
-      * constructor.  apply IHl.  crush.
-    + split.
-      * constructor.
-      * constructor.  simpl.  apply IHl.  crush.
-    + split.
-      * constructor.  simpl.  apply IHl.  auto.
-      * simpl.  constructor.
-        (* XXX not provable due to the weirdness illustated by test_legal_weird:
-           according to the spec, Sync forces the last write to disk, even if that
-           last write happened before a Crash!
-         *)
-Abort.
+    crush.
+    + constructor.  apply lazy_last_flush with (l:=l).  crush.
+Qed.
 
-(*
+Lemma could_read_2_could_flush:
+  forall h v,
+  could_read h v ->
+  could_flush h v.
+Proof.
+  induction h.
+  - crush.  inversion H.  crush.
+  - destruct a; intros; inversion H; crush.
+Qed.
+
 Theorem lazy_correct:
   fs_legal lazy_state lazy_init lazy_apply.
 Proof.
   unfold fs_legal.
   induction l.
-  - crush; inversion H; constructor.
-  - destruct a; unfold fs_apply_list; fold fs_apply_list; simpl;
+  - crush.
+  - destruct a; simpl;
     case_eq (fs_apply_list lazy_state lazy_init lazy_apply l);
-    intros; inversion H0.
+    crush.
     + constructor.
-      * apply lazy_could_read with (l:=l).  rewrite <- H2.  auto.
-      * apply IHl with (s:=l0).  auto.
-    + constructor; apply IHl with (s:=l0); crush.
-    + constructor; apply IHl with (s:=l0); crush.
-    + constructor; apply IHl with (s:=l0); crush.
+      * apply lazy_could_read with (l:=l).  crush.
+      * apply IHl with (s:=s).  crush.
+    + constructor.  apply IHl with (s:=l0).  crush.
+    + apply legal_sync with (n:=(LazyMem l0)).
+      * constructor.  apply lazy_could_read with (l:=l).  crush.
+      * constructor.
+      * constructor.
+        apply could_read_2_could_flush.
+        apply lazy_could_read with (l:=l).
+        crush.
+    + constructor.  apply IHl with (s:=l0).  crush.
 Qed.
-*)
