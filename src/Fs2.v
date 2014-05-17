@@ -319,3 +319,95 @@ Proof.
         crush.
     + constructor.  apply IHl with (s:=l0).  crush.
 Qed.
+
+(* Haogang-style flushless spec *)
+
+Inductive write_since_crash: history -> nat -> Prop :=
+  | write_since_crash_read:
+    forall (h:history) (n:nat) (rn:nat),
+    write_since_crash h n -> write_since_crash ((Read rn) :: h) n
+  | write_since_crash_write:
+    forall (h:history) (n:nat),
+    write_since_crash ((Write n) :: h) n
+  | write_since_crash_sync:
+    forall (h:history) (n:nat),
+    write_since_crash h n -> write_since_crash (Sync :: h) n.
+
+Inductive hpstate: history -> nat -> Prop :=
+  | hpstate_write_1:
+    forall (h:history) (n:nat),
+    hpstate ((Write n) :: h) n
+  | hpstate_write_2:
+    forall (h:history) (n:nat) (wn:nat),
+    hpstate h n -> hpstate ((Write wn) :: h) n
+  | hpstate_read_1:
+    forall (h:history) (n:nat),
+    (~ exists (wn:nat), write_since_crash h wn) ->
+    hpstate ((Read n) :: h) n
+  | hpstate_read_2:
+    forall (h:history) (n:nat) (rn:nat) (wn:nat),
+    write_since_crash h wn -> hpstate h n -> hpstate ((Read rn) :: h) n
+  | hpstate_sync_1:
+    forall (h:history) (n:nat),
+    (~ exists (wn:nat), write_since_crash h wn) ->
+    hpstate h n -> hpstate (Sync :: h) n
+  | hpstate_sync_2:
+    forall (h:history) (n:nat),
+    write_since_crash h n -> hpstate (Sync :: h) n
+  | hpstate_crash:
+    forall (h:history) (n:nat),
+    hpstate h n -> hpstate (Crash :: h) n
+  | hpstate_nil:
+    hpstate nil 0.
+
+Inductive hread: history -> nat -> Prop :=
+  | hread_write:
+    forall (h:history) (n:nat),
+    hread ((Write n) :: h) n
+  | hread_read:
+    forall (h:history) (n:nat) (rn:nat),
+    hread h n -> hread ((Read rn) :: h) n
+  | hread_sync:
+    forall (h:history) (n:nat),
+    hread h n -> hread (Sync :: h) n
+  | hread_crash:
+    forall (h:history) (n:nat),
+    hpstate h n -> hread (Crash :: h) n
+  | hread_nil:
+    hread nil 0.
+
+Inductive hlegal: history -> Prop :=
+  | hlegal_sync:
+    forall (h:history),
+    hlegal h -> hlegal (Sync :: h)
+  | hlegal_crash:
+    forall (h:history),
+    hlegal h -> hlegal (Crash :: h)
+  | hlegal_write:
+    forall (h:history) (n:nat),
+    hlegal h -> hlegal ((Write n) :: h)
+  | hlegal_read:
+    forall (h:history) (n:nat),
+    hlegal h -> hread h n -> hlegal ((Read n) :: h)
+  | hlegal_nil:
+    hlegal nil.
+
+(* Prove that every legal history with flushes
+ * is also legal in the Haogang sense.
+ *)
+
+Fixpoint drop_flush (h:history) : history :=
+  match h with
+  | nil => nil
+  | a::b =>
+    match a with
+    | Flush _ => drop_flush b
+    | _ => a :: drop_flush b
+    end
+  end.
+
+Theorem flush_irrelevant:
+  forall h,
+  legal h -> hlegal (drop_flush h).
+Proof.
+Abort.
