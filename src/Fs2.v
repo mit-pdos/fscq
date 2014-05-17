@@ -89,7 +89,9 @@ Inductive legal: history -> Prop :=
     legal h -> legal ((Write n) :: h)
   | legal_flush:
     forall (h:history) (n:nat),
-    could_flush h n -> legal ((Flush n) :: h)
+    could_flush h n ->
+    legal h ->
+    legal ((Flush n) :: h)
   | legal_sync:
     forall (h:history) (n:nat),
     could_read h n ->
@@ -116,7 +118,12 @@ Theorem test_legal_0:
 Proof.
   constructor.
   - repeat constructor.
-  - constructor.  constructor.  repeat constructor.
+  - constructor.  constructor.
+    + repeat constructor.
+    + constructor.  apply legal_sync with (n:=1).
+      * repeat constructor.
+      * constructor.
+      * repeat constructor.
 Qed.
 
 Theorem test_legal_nondeterm_0:
@@ -253,6 +260,8 @@ Proof.
     + constructor.
       * apply eager_could_read with (l:=l).  crush.
       * apply IHl with (s:=s).  crush.
+    + repeat constructor.
+      apply IHl with (s:=e).  crush.
     + apply legal_sync with (n:=s).
       * apply eager_could_read with (l:=l).  crush.
       * apply eager_last_flush with (l:=l).  crush.
@@ -315,8 +324,8 @@ Proof.
       * constructor.
       * constructor.
         apply could_read_2_could_flush.
-        apply lazy_could_read with (l:=l).
-        crush.
+        apply lazy_could_read with (l:=l).  crush.
+        apply IHl with (s:=l0).  crush.
     + constructor.  apply IHl with (s:=l0).  crush.
 Qed.
 
@@ -391,6 +400,8 @@ Inductive hlegal: history -> Prop :=
     hlegal h -> hread h n -> hlegal ((Read n) :: h)
   | hlegal_nil:
     hlegal nil.
+
+Hint Constructors hlegal.
 
 (* Prove that every legal history with flushes
  * is also legal in the Haogang sense.
