@@ -104,6 +104,28 @@ Inductive legal: history -> Prop :=
   | legal_nil:
     legal nil.
 
+(* Prove some properties about the spec, to build confidence.. *)
+
+Theorem legal_monotonic:
+  forall h e,
+  legal (e::h) -> legal h.
+Proof.
+  destruct e; intro; inversion H; crush.
+Qed.
+
+Theorem legal_repeat_reads:
+  forall h a b,
+  legal ((Read a) :: (Read b) :: h) -> a = b.
+Proof.
+  intros.
+  inversion H.
+  inversion H2.
+  inversion H3.
+  (* XXX needs more work.. *)
+Abort.
+
+(* Some explicit test cases *)
+
 Theorem test_legal_1:
   legal [ Read 1 ; Crash ; Write 0 ; Sync ; Flush 1 ; Write 1 ].
 Proof.
