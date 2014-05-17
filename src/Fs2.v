@@ -402,6 +402,8 @@ Inductive hlegal: history -> Prop :=
     hlegal nil.
 
 Hint Constructors hlegal.
+Hint Constructors hread.
+Hint Constructors hpstate.
 
 (* Prove that every legal history with flushes
  * is also legal in the Haogang sense.
@@ -417,8 +419,33 @@ Fixpoint drop_flush (h:history) : history :=
     end
   end.
 
+Theorem last_flush_hpstate:
+  forall h n,
+  last_flush h n -> hpstate (drop_flush h) n.
+Proof.
+  induction h.
+  - intros.  inversion H.  crush.
+  - destruct a; crush; inversion H; crush.
+    (* XXX not quite right, it seems.. *)
+Abort.
+
+Theorem could_read_hread:
+  forall h n,
+  could_read h n -> hread (drop_flush h) n.
+Proof.
+  induction h.
+  - intros.  inversion H.  crush.
+  - destruct a; crush; inversion H; crush.
+    + constructor.  apply last_flush_hpstate.  auto.
+Qed.
+
 Theorem flush_irrelevant:
   forall h,
   legal h -> hlegal (drop_flush h).
 Proof.
-Abort.
+  induction h.
+  - crush.
+  - destruct a; simpl; intros; inversion H; crush.
+    constructor; auto.
+    apply could_read_hread; auto.
+Qed.
