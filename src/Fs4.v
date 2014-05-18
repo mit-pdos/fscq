@@ -119,16 +119,14 @@ Lemma last_write_uniqueness :
   last_write_since_crash t a /\ last_write_since_crash t b -> a = b.
 Proof.
   intros. crush.
-  (* any one knows how to proof this simple lemma? *)
-  Abort.
-  
+  induction H0; inversion H1; crush.
+Qed.
 
-(*
 Theorem read_immutability :
   forall (t:trace) (a b: state),
   trace_legal ((Read a) :: (Read b) :: t) -> a = b.
 Proof.
   intros.
-  
-*)
+  inversion H. crush.  
+  Abort.
 
