@@ -128,5 +128,4 @@ Theorem read_immutability :
 Proof.
   intros.
   inversion H. crush.  
-  Abort.
 
