@@ -575,3 +575,49 @@ Proof.
     constructor; auto.
     apply could_read_hread; auto.
 Qed.
+
+(* Lazy file system with lazy reading *)
+
+Record lazy2_state : Set := mklazy2 {
+  Lazy2Mem: option nat;
+  Lazy2Disk: nat
+}.
+
+Definition lazy2_init := mklazy2 None 0.
+
+Definition lazy2_apply (s: lazy2_state) (i: invocation) (h: history) : lazy2_state * history :=
+  match i with
+  | do_read =>
+    match s.(Lazy2Mem) with
+    | None => (mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk), (Read s.(Lazy2Disk)) :: h)
+    | Some x => (s, (Read x) :: h)
+    end
+  | do_write n => (mklazy2 (Some n) s.(Lazy2Disk), (Write n) :: h)
+  | do_sync =>
+    match s.(Lazy2Mem) with
+    | None => (s, Sync :: h)
+    | Some x => (mklazy2 (Some x) x, Sync :: (Flush x) :: h)
+    end
+  | do_crash => (mklazy2 None s.(Lazy2Disk), Crash :: h)
+  end.
+
+(* Lazy file system with lazy reading is correct *)
+
+Lemma lazy2_could_read:
+  forall (l: list invocation) (s: lazy2_state) (h: history) (x: nat),
+  fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
+  (Lazy2Mem s) = Some x ->
+  could_read h x.
+Proof.
+  (* XXX *)
+Abort.
+
+Theorem lazy2_correct:
+  fs_legal lazy2_state lazy2_init lazy2_apply.
+Proof.
+  unfold fs_legal.
+  induction l.
+  - crush.
+  - destruct a; simpl.
+    (* XXX *)
+Abort.
