@@ -113,6 +113,25 @@ Proof.
   destruct e; intro; inversion H; crush.
 Qed.
 
+Lemma last_flush_unique:
+  forall h a b,
+  last_flush h a -> last_flush h b -> a = b.
+Proof.
+  induction h.
+  - crush.  inversion H.  inversion H0.  crush.
+  - destruct a; intros; inversion H; inversion H0; crush.
+Qed.
+
+Lemma could_read_unique:
+  forall h a b,
+  could_read h a -> could_read h b -> a = b.
+Proof.
+  induction h.
+  - crush.  inversion H.  inversion H0.  crush.
+  - destruct a; intros; inversion H; inversion H0; crush.
+    apply last_flush_unique with (h:=h); crush.
+Qed.
+
 Theorem legal_repeat_reads:
   forall h a b,
   legal ((Read a) :: (Read b) :: h) -> a = b.
@@ -121,8 +140,8 @@ Proof.
   inversion H.
   inversion H2.
   inversion H3.
-  (* XXX needs more work.. *)
-Abort.
+  apply could_read_unique with (h:=h); crush.
+Qed.
 
 (* Some explicit test cases *)
 
