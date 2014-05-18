@@ -104,4 +104,31 @@ Proof.
   constructor 6; repeat constructor.
   Abort.
 
+(* Some theorem *)
+
+Theorem leagl_subtrace :
+  forall (t:trace) (e:event),
+  trace_legal (e :: t) -> trace_legal t.
+Proof.
+  intros.
+  inversion H; crush.
+Qed.
+
+Lemma last_write_uniqueness :
+  forall (t:trace) (a b:state),
+  last_write_since_crash t a /\ last_write_since_crash t b -> a = b.
+Proof.
+  intros. crush.
+  (* any one knows how to proof this simple lemma? *)
+  Abort.
+  
+
+(*
+Theorem read_immutability :
+  forall (t:trace) (a b: state),
+  trace_legal ((Read a) :: (Read b) :: t) -> a = b.
+Proof.
+  intros.
+  
+*)
 
