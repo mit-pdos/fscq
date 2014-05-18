@@ -483,18 +483,51 @@ Proof.
       * right.  crush.  inversion H.
 Qed.
 
-Theorem last_flush_hpstate:
+Lemma last_flush_2_could_flush:
   forall h n,
-  legal h -> last_flush h n -> hpstate (drop_flush h) n.
+  legal h -> last_flush h n -> could_flush h n.
+Proof.
+  induction h.
+  - crush.  inversion H0.  crush.
+  - intros.
+    assert (legal h); [ apply legal_monotonic with (e:=a); auto | idtac ].
+    destruct a; inversion H0; crush.
+    * constructor.  inversion H.  auto.
+    * constructor.  inversion H.
+      assert (n=n0); [ apply last_flush_unique with (h:=h); crush | idtac ].
+      crush.
+Qed.
+
+Lemma could_read_write_since_crash:
+  forall h n wn,
+  could_read h n ->
+  write_since_crash (drop_flush h) wn ->
+  n = wn.
+Proof.
+  induction h.
+  - crush.  inversion H0.
+  - destruct a; simpl; intros; inversion H; inversion H0; crush.
+Qed.
+
+Theorem could_flush_hpstate:
+  forall h n,
+  legal h -> could_flush h n -> hpstate (drop_flush h) n.
 Proof.
   induction h.
   - intros.  inversion H0.  crush.
   - intros.
     assert (legal h); [ apply legal_monotonic with (e:=a); auto | idtac ].
     destruct a; crush; inversion H0; crush.
-    + eapply hpstate_read_2; [ idtac | crush ].
-    (* XXX not quite right, it seems.. *)
-Abort.
+    + destruct (write_since_crash_dec h).
+      * crush.  apply hpstate_read_2 with (wn:=x); crush.
+      * inversion H.
+        (* XXX *) admit.
+    + destruct (write_since_crash_dec h).
+      * inversion H.  apply hpstate_sync_2.  crush.
+        assert (n=x); [ apply could_read_write_since_crash with (h:=h); crush | crush ].
+      * apply hpstate_sync_1; crush.  apply IHh; crush.  apply could_read_2_could_flush.  auto.
+    + constructor.  apply IHh; crush.  apply last_flush_2_could_flush; auto.
+Qed.
 
 Theorem could_read_hread:
   forall h n,
@@ -503,7 +536,7 @@ Proof.
   induction h.
   - intros.  inversion H.  crush.
   - destruct a; crush; inversion H; crush.
-    + constructor.  apply last_flush_hpstate.  auto.
+    + constructor.  apply could_flush_hpstate.  auto.
 Qed.
 
 Theorem flush_irrelevant:
