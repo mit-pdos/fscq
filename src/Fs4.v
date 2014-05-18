@@ -104,9 +104,9 @@ Proof.
   constructor 6; repeat constructor.
   Abort.
 
-(* Some theorem *)
+(* Some theorems *)
 
-Theorem leagl_subtrace :
+Theorem leagl_subtrace:
   forall (t:trace) (e:event),
   trace_legal (e :: t) -> trace_legal t.
 Proof.
@@ -114,7 +114,7 @@ Proof.
   inversion H; crush.
 Qed.
 
-Lemma last_write_uniqueness :
+Lemma last_write_uniqueness:
   forall (t:trace) (a b:state),
   last_write_since_crash t a /\ last_write_since_crash t b -> a = b.
 Proof.
@@ -122,10 +122,29 @@ Proof.
   induction H0; inversion H1; crush.
 Qed.
 
-Theorem read_immutability :
+Lemma last_write_no_write_contradiction:
+  forall (t:trace) (a:state),
+  last_write_since_crash t a -> ~ (no_write_since_crash t).
+Proof.
+  crush.
+  induction H. inversion H0. crush.
+  inversion H0. crush.
+  inversion H0.
+Qed.
+
+Theorem read_immutability:
   forall (t:trace) (a b: state),
   trace_legal ((Read a) :: (Read b) :: t) -> a = b.
 Proof.
   intros.
-  inversion H. crush.  
+  inversion H.  inversion H3.  inversion H2.
+  apply last_write_uniqueness with (t:=t). crush.
+  inversion H2. contradict H6.
+  apply last_write_no_write_contradiction with (t:=t) (a:=a). crush.
+  inversion H3. crush.
+  inversion H2. contradict H11.
+  apply last_write_no_write_contradiction with (t:=t) (a:=b). crush.
+Qed.
+
+
 
