@@ -462,11 +462,13 @@ Fixpoint drop_flush (h:history) : history :=
 
 Theorem last_flush_hpstate:
   forall h n,
-  last_flush h n -> hpstate (drop_flush h) n.
+  legal h -> last_flush h n -> hpstate (drop_flush h) n.
 Proof.
   induction h.
-  - intros.  inversion H.  crush.
-  - destruct a; crush; inversion H; crush.
+  - intros.  inversion H0.  crush.
+  - intros.
+    assert (legal h); [ apply legal_monotonic with (e:=a); auto | idtac ].
+    destruct a; crush; inversion H0; crush.
     (* XXX not quite right, it seems.. *)
 Abort.
 
