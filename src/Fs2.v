@@ -509,6 +509,28 @@ Proof.
   - destruct a; simpl; intros; inversion H; inversion H0; crush.
 Qed.
 
+Lemma read_flush_nowrite:
+  forall h x y,
+  legal h ->
+  could_read h x ->
+  could_flush h y ->
+  (~ (exists wn, write_since_crash (drop_flush h) wn)) ->
+  x = y.
+Proof.
+  induction h.
+  - crush.  inversion H0.  inversion H1.  reflexivity.
+  - intros.
+    assert (legal h); [ apply legal_monotonic with (e:=a); auto | idtac ].
+    destruct a; simpl; inversion H0; inversion H1; crush.
+    + apply IHh; auto.
+      intros.  apply H2.  crush.  exists x0.  crush.
+    + assert False.  apply H2.  exists x.  crush.  crush.
+    + apply IHh; auto.
+      * apply could_read_2_could_flush; auto.
+      * intros.  apply H2.  crush.  exists x0.  crush.
+    + apply last_flush_unique with (h:=h); auto.
+Qed.
+
 Theorem could_flush_hpstate:
   forall h n,
   legal h -> could_flush h n -> hpstate (drop_flush h) n.
@@ -521,7 +543,8 @@ Proof.
     + destruct (write_since_crash_dec h).
       * crush.  apply hpstate_read_2 with (wn:=x); crush.
       * inversion H.
-        (* XXX *) admit.
+        cut (n0=n).  crush.
+        apply read_flush_nowrite with (h:=h); auto.
     + destruct (write_since_crash_dec h).
       * inversion H.  apply hpstate_sync_2.  crush.
         assert (n=x); [ apply could_read_write_since_crash with (h:=h); crush | crush ].
@@ -531,12 +554,15 @@ Qed.
 
 Theorem could_read_hread:
   forall h n,
-  could_read h n -> hread (drop_flush h) n.
+  legal h -> could_read h n -> hread (drop_flush h) n.
 Proof.
   induction h.
-  - intros.  inversion H.  crush.
-  - destruct a; crush; inversion H; crush.
-    + constructor.  apply could_flush_hpstate.  auto.
+  - intros.  inversion H0.  crush.
+  - intros.
+    assert (legal h); [ apply legal_monotonic with (e:=a); crush | idtac ].
+    destruct a; crush; inversion H0; crush.
+    + constructor.  apply could_flush_hpstate; crush.
+      apply last_flush_2_could_flush; crush.
 Qed.
 
 Theorem flush_irrelevant:
