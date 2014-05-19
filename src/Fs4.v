@@ -206,3 +206,66 @@ Proof.
   constructor 6; repeat trace_resolve.
   Abort.
 
+
+(* Base implementations of a file system *)
+
+Inductive invocation : Set :=
+  | do_read: invocation
+  | do_write: nat -> invocation
+  | do_sync: invocation
+  | do_crash: invocation.
+
+Fixpoint fs_apply_list (fsstate: Set)
+                       (init: fsstate)
+                       (applyfun: fsstate -> invocation -> trace -> fsstate * trace)
+                       (l: list invocation)
+                       : fsstate * trace :=
+  match l with
+  | i :: rest =>
+    match fs_apply_list fsstate init applyfun rest with
+    | (s, t) => applyfun s i t
+    end
+  | nil => (init, nil)
+  end.
+
+Definition fs_legal (fsstate: Set)
+                     (init: fsstate)
+                     (applyfun: fsstate -> invocation -> trace -> fsstate * trace) :=
+  forall (l: list invocation) (t: trace) (s: fsstate),
+  fs_apply_list fsstate init applyfun l = (s, t) ->
+  trace_legal t.
+
+
+(* Eager file system: sync after every write *)
+
+Definition eager_state := state.
+
+Definition eager_init := IS.
+
+Definition eager_apply (s: eager_state) (i: invocation) (t: trace) : eager_state * trace :=
+  match i with
+  | do_read    => (s, (Read s) :: t)
+  | do_write n => (n, Sync :: (Write n) :: t)
+  | do_sync    => (s, Sync :: t)
+  | do_crash   => (s, Crash :: t)
+  end.
+
+Hint Constructors trace_legal.
+Hint Constructors last_write_since_crash.
+Hint Constructors could_persist.
+
+Theorem eager_correct:
+  fs_legal eager_state eager_init eager_apply.
+Proof.
+  unfold fs_legal.  induction l.
+  - crush.
+  - destruct a; simpl;
+    case_eq (fs_apply_list eager_state eager_init eager_apply l); crush.
+    +  constructor.
+      * admit.
+      * apply IHl with (s:=s). assumption.
+    + repeat constructor. apply IHl with (s:=e). assumption.
+    + constructor. apply IHl with (s:=s). assumption.
+    + constructor. apply IHl with (s:=s). assumption.
+Qed.
+
