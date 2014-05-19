@@ -29,15 +29,8 @@ Inductive last_write_since_crash : trace -> state -> Prop :=
   | last_write_write: forall (t:trace) (s:state),
     last_write_since_crash ((Write s) :: t) s.
 
-Inductive no_write_since_crash : trace -> Prop :=
-  | no_write_nil:
-    no_write_since_crash nil
-  | no_write_crash: forall (t:trace),
-    no_write_since_crash (Crash :: t)
-  | no_write_read:  forall (t:trace) (rs:state),
-    no_write_since_crash t -> no_write_since_crash ((Read rs) :: t)
-  | no_write_sync:  forall (t:trace),
-    no_write_since_crash t -> no_write_since_crash (Sync :: t).
+Definition no_write_since_crash (t:trace) : Prop :=
+  ~ exists (s:state), last_write_since_crash t s.
 
 Inductive could_persist : trace -> state -> Prop :=
   | persist_nil:
@@ -73,35 +66,42 @@ Inductive trace_legal : trace -> Prop :=
 
 (* Testing *)
 
+Ltac trace_resolve :=
+  match goal with
+  | |- no_write_since_crash ?T => 
+        unfold no_write_since_crash; crush; inversion H
+  | _ => constructor
+  end.
+
 Theorem test_1 : 
   trace_legal [ Read 1; Write 1; Read 0; Write 0; Sync; Read 1; Crash; Read 2; Write 2; Write 1 ] .
 Proof.
   do 5 constructor.
-  constructor 6;  repeat constructor.
+  constructor 6;  repeat trace_resolve.
 Qed.
 
 Theorem test_2 :
   trace_legal [ Read 1; Crash; Read 3; Write 3; Crash; Write 2; Write 1 ] .
 Proof.
-  constructor 6; repeat constructor.
+  constructor 6; repeat trace_resolve.
 Qed.
 
 Theorem test_3:
   trace_legal [ Read 1; Crash; Read 3; Sync; Write 3; Crash; Write 2; Write 1 ].
 Proof.
-  constructor 6; repeat constructor.
+  constructor 6; repeat trace_resolve.
   Abort.
 
 Theorem test_4:
   trace_legal [ Read 2; Crash; Read 3; Write 3; Read 1; Crash; Write 2 ; Write 1 ] .
 Proof.
-  constructor 6; repeat constructor.
+  constructor 6; repeat trace_resolve.
   Abort.
 
 Theorem test_5:
   trace_legal [ Read 1; Read 2; Crash;  Write 1; Write 2 ].
 Proof.
-  constructor 6; repeat constructor.
+  constructor 6; repeat trace_resolve.
   Abort.
 
 (* Some theorems *)
@@ -118,33 +118,29 @@ Lemma last_write_uniqueness:
   forall (t:trace) (a b:state),
   last_write_since_crash t a /\ last_write_since_crash t b -> a = b.
 Proof.
-  intros. crush.
+  crush.
   induction H0; inversion H1; crush.
 Qed.
 
-Lemma last_write_no_write_contradiction:
-  forall (t:trace) (a:state),
-  last_write_since_crash t a -> ~ (no_write_since_crash t).
-Proof.
-  crush.
-  induction H. inversion H0. crush.
-  inversion H0. crush.
-  inversion H0.
-Qed.
+Ltac write_contradict :=
+  match goal with
+  | H1: last_write_since_crash ?T ?s, 
+    H2: no_write_since_crash ?T |- _ =>
+      unfold no_write_since_crash in H2; destruct H2; exists s; assumption
+  | H1: last_write_since_crash ?T ?a,
+    H2: last_write_since_crash ?T ?b |- _ =>
+      apply last_write_uniqueness with (t:=T); crush
+  | _ => idtac
+  end.
 
 Theorem read_immutability:
   forall (t:trace) (a b: state),
   trace_legal ((Read a) :: (Read b) :: t) -> a = b.
 Proof.
-  intros.
-  inversion H.  inversion H3.  inversion H2.
-  apply last_write_uniqueness with (t:=t). crush.
-  inversion H2. contradict H6.
-  apply last_write_no_write_contradiction with (t:=t) (a:=a). crush.
-  inversion H3. crush.
-  inversion H2. contradict H11.
-  apply last_write_no_write_contradiction with (t:=t) (a:=b). crush.
+  intros.  inversion H.
+  - inversion H3; inversion H2; write_contradict.
+  - inversion H4.
+    + apply last_write_read with (rs:=b) in H7;  write_contradict.
+    + inversion H3; crush; write_contradict.
 Qed.
-
-
 
