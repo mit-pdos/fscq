@@ -159,7 +159,19 @@ Hint Constructors trace_legal.
 Hint Constructors last_write_since_crash.
 Hint Constructors could_persist.
 
-(* Testing *)
+Inductive could_read : trace -> state -> Prop :=
+  | could_read_nil:
+    could_read nil IS
+  | could_read_write: forall (t:trace) (s:state),
+    could_read ((Write s) :: t) s
+  | could_read_crash: forall (t:trace) (s:state),
+    could_persist t s -> could_read (Crash :: t) s
+  | could_read_read:  forall (t:trace) (s:state),
+    could_read t s -> could_read ((Read s) :: t) s
+  | could_read_sync:  forall (t:trace) (s:state),
+    could_read t s -> could_read (Sync :: t) s.
+
+Hint Constructors could_read.
 
 Ltac trace_resolve :=
   match goal with
@@ -167,6 +179,53 @@ Ltac trace_resolve :=
         unfold no_write_since_crash; crush; inversion H
   | _ => constructor
   end.
+
+Theorem legal_could_read :
+  forall (t:trace) (s:state),
+  trace_legal ((Read s) :: t) -> could_read t s.
+Proof.
+  induction t; intros.
+  - inversion H. inversion H2. inversion H3. constructor.
+  - destruct a.
+    + assert (Hx:=H); apply read_immutability in Hx. crush.
+      apply legal_subtrace in H.
+      assert (Hx:=H); apply IHt in H. 
+      constructor. assumption.
+    + replace s0 with s. constructor. inversion H; crush.
+      * inversion H2. reflexivity.
+      * destruct H2. exists s0. constructor.
+    + constructor.
+      apply sync_before_read_irrelevence in H. crush.
+    + constructor.
+      inversion H. inversion H2. inversion H3. assumption.
+Qed.
+
+Theorem could_read_legal:
+  forall (t:trace) (s:state),
+  trace_legal t -> could_read t s -> trace_legal ((Read s) :: t).
+Proof.
+  intros. induction t.
+  - inversion H0. constructor 6;
+    repeat trace_resolve. inversion H1.
+  - inversion H0; destruct a; crush.
+    + constructor 6. trace_resolve. inversion H2.
+      apply persist_crash_intro. assumption.
+      inversion H0. inversion H. crush.
+    + destruct (write_complement t).
+      * constructor. apply legal_subtrace in H. crush.
+        inversion H3. crush. write_contradict. crush.
+      * constructor 6. repeat trace_resolve; write_contradict.
+        inversion H2. write_contradict. crush. crush.
+    + destruct (write_complement t).
+      * constructor. apply legal_subtrace in H. crush.
+        inversion H5. crush. write_contradict. crush.
+      * constructor 6. repeat trace_resolve; write_contradict.
+        inversion H3. write_contradict.
+        apply persist_sync_intro. crush.
+        admit. crush. (* XXX *)
+Qed.
+
+(* Testing *)
 
 Theorem test_1 : 
   trace_legal [ Read 1; Write 1; Read 0; Write 0; Sync; Read 1; Crash; Read 2; Write 2; Write 1 ] .
