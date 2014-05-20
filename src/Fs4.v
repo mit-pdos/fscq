@@ -37,8 +37,6 @@ Inductive could_persist : trace -> state -> Prop :=
     could_persist nil IS
   | persist_write:       forall (t:trace) (s:state),
     could_persist ((Write s) :: t) s
-  | persist_read:        forall (t:trace) (s:state),
-    no_write_since_crash t -> could_persist ((Read s) :: t) s
   | persist_sync:        forall (t:trace) (s:state),
     last_write_since_crash t s -> could_persist (Sync :: t) s
   | persist_crash_intro: forall (t:trace) (s:state),
@@ -47,6 +45,8 @@ Inductive could_persist : trace -> state -> Prop :=
     could_persist t s -> could_persist ((Write ws) :: t) s
   | persist_read_intro:  forall (t:trace) (s rs:state),
     last_write_since_crash t rs -> could_persist t s -> could_persist ((Read rs) :: t) s
+  | persist_read:        forall (t:trace) (s:state),
+    no_write_since_crash t -> could_persist ((Read s) :: t) s
   | persist_sync_intro:  forall (t:trace) (s:state),
     no_write_since_crash t -> could_persist t s -> could_persist (Sync :: t) s.
 
@@ -74,13 +74,11 @@ Proof.
   inversion H; crush.
 Qed.
 
-
 Lemma last_write_uniqueness:
-  forall (t:trace) (a b:state),
-  last_write_since_crash t a /\ last_write_since_crash t b -> a = b.
+  forall (t:trace), uniqueness (last_write_since_crash t).
 Proof.
-  crush.
-  induction H0; inversion H1; crush.
+  unfold uniqueness.  crush. 
+  induction H; inversion H0; crush.
 Qed.
 
 Ltac write_contradict :=
@@ -105,6 +103,16 @@ Proof.
     + inversion H3; crush; write_contradict.
 Qed.
 
+Lemma read_get_last_write :
+  forall (t:trace) (s ws:state),
+  trace_legal ((Read s) :: t) -> last_write_since_crash t ws -> s = ws.
+Proof.
+  intros.
+  inversion H.
+  - apply last_write_uniqueness with (t:=t). assumption. assumption.
+  - write_contradict.
+Qed.
+
 Lemma write_complement:
   forall (t:trace),
   (exists (s:state), last_write_since_crash t s) \/ no_write_since_crash t.
@@ -121,7 +129,7 @@ Proof.
     + right. crush. inversion H0. apply H. exists x. assumption.
     + right. crush. inversion H0.
 Qed.
- 
+
 Lemma sync_before_read_irrelevence:
   forall (t:trace) (s:state),
   trace_legal ((Read s) :: Sync :: t) -> trace_legal ((Read s) :: t).
@@ -134,37 +142,22 @@ Proof.
   - inversion H4. apply trace_legal_read_after_crash; crush.
 Qed.
 
-Inductive could_read : trace -> state -> Prop :=
-  | could_read_nil:
-    could_read nil IS
-  | could_read_write: forall (t:trace) (s:state),
-    could_read ((Write s) :: t) s
-  | could_read_crash: forall (t:trace) (s:state),
-    could_persist t s -> could_read (Crash :: t) s
-  | could_read_read:  forall (t:trace) (s rs:state),
-    could_read t s -> could_read ((Read rs) :: t) s
-  | could_read_sync:  forall (t:trace) (s:state),
-    could_read t s -> could_read (Sync :: t) s.
-
-Theorem legal_could_read :
-  forall (t:trace) (s:state),
-  trace_legal ((Read s) :: t) -> could_read t s.
+Theorem readability :
+  forall (t:trace) (s ws:state),
+  trace_legal ((Read s) :: t) ->
+  ((last_write_since_crash t ws -> s = ws) \/ could_persist t s).
 Proof.
-  induction t; intros.
-  - inversion H. inversion H2. inversion H3. constructor.
-  - destruct a.
-    + constructor. assert (Hs:=H).
-      apply read_immutability in H.
-      apply legal_subtrace in Hs. crush.
-    + replace s0 with s. constructor. inversion H; crush.
-      * inversion H2. reflexivity.
-      * destruct H2. exists s0. constructor.
-    + constructor.
-      apply sync_before_read_irrelevence in H. crush.
-    + constructor.
-      inversion H. inversion H2. inversion H3. assumption.
+  intros.
+  destruct (write_complement t).
+  - left. intro. apply read_get_last_write with (t:=t); crush.
+  - right. inversion H.
+    + write_contradict.
+    + assumption.
 Qed.
 
+Hint Constructors trace_legal.
+Hint Constructors last_write_since_crash.
+Hint Constructors could_persist.
 
 (* Testing *)
 
@@ -250,20 +243,65 @@ Definition eager_apply (s: eager_state) (i: invocation) (t: trace) : eager_state
   | do_crash   => (s, Crash :: t)
   end.
 
-Hint Constructors trace_legal.
-Hint Constructors last_write_since_crash.
-Hint Constructors could_persist.
+Ltac destruct_invocation :=
+  match goal with
+  | [ Ha : invocation, Hl : list invocation |- 
+      forall _ _, fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] =>
+      destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
+  | [ Ha : invocation, Hl : list invocation |- 
+      forall _ _ _, fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] =>
+      destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
+  | _ => fail
+  end.
+
+Lemma eager_write_persist_eq:
+  forall (l:list invocation) (s:eager_state) (t:trace) (ws:state),
+  fs_apply_list eager_state eager_init eager_apply l = (s, t) ->
+  could_persist t s -> last_write_since_crash t ws ->  s = ws.
+Proof.
+  induction l.
+  - crush. inversion H1.
+  - destruct_invocation; crush;
+    inversion H1; inversion H2; write_contradict.
+Qed.
+
+Lemma eager_persist:
+  forall (l:list invocation) (s:eager_state) (t:trace),
+  fs_apply_list eager_state eager_init eager_apply l = (s, t) ->
+  could_persist t s.
+Proof.
+  induction l.
+  - crush.
+  - destruct_invocation; crush.
+    + destruct (write_complement t).
+      * assert (Hx:=H). apply IHl in H. crush.
+        constructor. replace x with s in H0. assumption.
+        apply eager_write_persist_eq with  (l:=l) (t:=t) (s:=s) (ws:=x); crush.
+        assumption.
+      * crush.
+    + destruct (write_complement t).
+      * assert (Hx:=H). apply IHl in H. crush.
+        constructor. replace x with s in H0. assumption.
+        apply eager_write_persist_eq with (l:=l) (t:=t) (s:=s) (ws:=x); crush.
+      * crush.
+Qed.
+
 
 Theorem eager_correct:
   fs_legal eager_state eager_init eager_apply.
 Proof.
   unfold fs_legal.  induction l.
   - crush.
-  - destruct a; simpl;
-    case_eq (fs_apply_list eager_state eager_init eager_apply l); crush.
-    +  constructor.
-      * admit.
-      * apply IHl with (s:=s). assumption.
+  - destruct_invocation; crush. 
+    + destruct (write_complement t).
+      * constructor.
+        assert (Hx:=H). apply IHl in H. crush. replace x with s in H0. assumption.
+        apply eager_write_persist_eq with (l:=l) (t:=t) (s:=s) (ws:=x); crush.
+        assert (Hy:=H). apply eager_persist in Hx. crush.
+        apply IHl in H. assumption.
+      * constructor 6; crush.
+        assert (Hx:=H). apply IHl in H. crush. apply eager_persist in Hx.
+        assumption. apply IHl in H. assumption.
     + repeat constructor. apply IHl with (s:=e). assumption.
     + constructor. apply IHl with (s:=s). assumption.
     + constructor. apply IHl with (s:=s). assumption.
