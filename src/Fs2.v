@@ -179,22 +179,27 @@ Proof.
   repeat constructor.
 Qed.
 
+Ltac invert_legal_step :=
+  match goal with
+  | [ H: legal _ |- _ ] => inversion H; clear H; crush
+  | [ H: could_read _ _ |- _ ] => inversion H; clear H; crush
+  | [ H: could_flush _ _ |- _ ] => inversion H; clear H; crush
+  | [ H: last_flush _ _ |- _ ] => inversion H; clear H; crush
+  end.
+
 Theorem test_legal_weird_1:
-  legal [ Read 1 ; Crash ; Read 0 ; Crash ; Flush 1 ; Write 1 ; Write 0 ].
+  ~ legal [ Read 1 ; Crash ; Read 0 ; Crash ; Flush 1 ; Write 1 ; Write 0 ].
 Proof.
-  constructor.
-  - repeat constructor.
-  - constructor.  constructor.
-    + constructor.
-Abort.
+  crush.
+  repeat invert_legal_step.
+Qed.
 
 Theorem test_legal_weird_2:
-  legal [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ].
+  ~ legal [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ].
 Proof.
-  constructor.
-  - repeat constructor.
-  - constructor.  constructor.  constructor.  constructor.
-Abort.
+  crush.
+  repeat invert_legal_step.
+Qed.
 
 (* Toy implementations of a file system *)
 
