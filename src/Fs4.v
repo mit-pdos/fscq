@@ -233,21 +233,24 @@ Theorem could_read_legal:
   trace_legal t -> could_read t s -> trace_legal ((Read s) :: t).
 Proof.
   intros. induction t.
-  - inversion H0. constructor 6;
+  - inversion H0. apply trace_legal_read_after_crash;
     repeat trace_resolve. inversion H1.
   - inversion H0; destruct a; crush.
-    + constructor 6. trace_resolve. inversion H2.
+    + apply trace_legal_read_after_crash.
+      trace_resolve. inversion H2.
       apply persist_crash_intro. assumption.
       inversion H0. inversion H. crush.
     + destruct (write_complement t).
       * constructor. apply legal_subtrace in H. crush.
         inversion H3. crush. write_contradict. crush.
-      * constructor 6. repeat trace_resolve; write_contradict.
+      * apply trace_legal_read_after_crash.
+        repeat trace_resolve; write_contradict.
         inversion H2. write_contradict. crush. crush.
     + destruct (write_complement t).
       * constructor. apply legal_subtrace in H. crush.
         inversion H5. crush. write_contradict. crush.
-      * constructor 6. repeat trace_resolve; write_contradict.
+      * apply trace_legal_read_after_crash.
+        repeat trace_resolve; write_contradict.
         inversion H3. write_contradict.
         apply could_read_persist. assumption.
         assumption.
@@ -258,32 +261,31 @@ Qed.
 Theorem test_1 : 
   trace_legal [ Read 1; Write 1; Read 0; Write 0; Sync; Read 1; Crash; Read 2; Write 2; Write 1 ] .
 Proof.
-  do 5 constructor.
-  constructor 6;  repeat trace_resolve.
+  do 5 constructor.  apply trace_legal_read_after_crash;  repeat trace_resolve.
 Qed.
 
 Theorem test_2 :
   trace_legal [ Read 1; Crash; Read 3; Write 3; Crash; Write 2; Write 1 ] .
 Proof.
-  constructor 6; repeat trace_resolve.
+  apply trace_legal_read_after_crash; repeat trace_resolve.
 Qed.
 
 Theorem test_3:
   trace_legal [ Read 1; Crash; Read 3; Sync; Write 3; Crash; Write 2; Write 1 ].
 Proof.
-  constructor 6; repeat trace_resolve.
+  apply trace_legal_read_after_crash; repeat trace_resolve.
   Abort.
 
 Theorem test_4:
   trace_legal [ Read 2; Crash; Read 3; Write 3; Read 1; Crash; Write 2 ; Write 1 ] .
 Proof.
-  constructor 6; repeat trace_resolve.
+  apply trace_legal_read_after_crash; repeat trace_resolve.
   Abort.
 
 Theorem test_5:
   trace_legal [ Read 1; Read 2; Crash;  Write 1; Write 2 ].
 Proof.
-  constructor 6; repeat trace_resolve.
+  apply trace_legal_read_after_crash; repeat trace_resolve.
   Abort.
 
 
@@ -386,7 +388,7 @@ Proof.
         apply eager_write_persist_eq with (l:=l) (t:=t) (s:=s) (ws:=x); crush.
         assert (Hy:=H). apply eager_persist in Hx. crush.
         apply IHl in H. assumption.
-      * constructor 6; crush.
+      * apply trace_legal_read_after_crash; crush.
         assert (Hx:=H). apply IHl in H. crush. apply eager_persist in Hx.
         assumption. apply IHl in H. assumption.
     + repeat constructor. apply IHl with (s:=e). assumption.
