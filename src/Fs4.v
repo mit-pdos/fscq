@@ -394,3 +394,47 @@ Proof.
     + constructor. apply IHl with (s:=s). assumption.
 Qed.
 
+
+(* Lazy file system *)
+
+Record lazy_state : Set := mklazy {
+  LazyMem: state;
+  LazyDisk: state
+}.
+
+Definition lazy_init := mklazy IS IS.
+
+Definition lazy_apply (s: lazy_state) (i: invocation) (t: trace) : lazy_state * trace :=
+  match i with
+  | do_read => (s, (Read s.(LazyMem)) :: t)
+  | do_write n => (mklazy n s.(LazyDisk), (Write n) :: t)
+  | do_sync => (mklazy s.(LazyMem) s.(LazyMem), Sync :: t)
+  | do_crash => (mklazy s.(LazyDisk) s.(LazyDisk), Crash :: t)
+  end.
+
+
+(* Lazy file system with lazy reading *)
+
+Record lazy2_state : Set := mklazy2 {
+  Lazy2Mem: option state;
+  Lazy2Disk: state
+}.
+
+Definition lazy2_init := mklazy2 None IS.
+
+Definition lazy2_apply (s: lazy2_state) (i: invocation) (t: trace) : lazy2_state * trace :=
+  match i with
+  | do_read =>
+    match s.(Lazy2Mem) with
+    | None => (mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk), (Read s.(Lazy2Disk)) :: t)
+    | Some x => (s, (Read x) :: t)
+    end
+  | do_write n => (mklazy2 (Some n) s.(Lazy2Disk), (Write n) :: t)
+  | do_sync =>
+    match s.(Lazy2Mem) with
+    | None => (s, Sync :: t)
+    | Some x => (mklazy2 (Some x) x, Sync :: t)
+    end
+  | do_crash => (mklazy2 None s.(Lazy2Disk), Crash :: t)
+  end.
+
