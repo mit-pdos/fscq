@@ -415,28 +415,44 @@ Definition lazy_apply (s: lazy_state) (i: invocation) (t: trace) : lazy_state * 
   end.
 
 
-(* Lazy file system with lazy reading *)
+(* Buffered file system with lazy reading and writing *)
 
-Record lazy2_state : Set := mklazy2 {
-  Lazy2Mem: option state;
-  Lazy2Disk: state
+Record buf_state : Set := mkbuf {
+  BufMem: option state;
+  BufDisk: state
 }.
 
-Definition lazy2_init := mklazy2 None IS.
+Definition buf_init := mkbuf None IS.
 
-Definition lazy2_apply (s: lazy2_state) (i: invocation) (t: trace) : lazy2_state * trace :=
+Definition buf_apply (s: buf_state) (i: invocation) (t: trace) : buf_state * trace :=
   match i with
   | do_read =>
-    match s.(Lazy2Mem) with
-    | None => (mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk), (Read s.(Lazy2Disk)) :: t)
+    match s.(BufMem) with
+    | None => (mkbuf (Some s.(BufDisk)) s.(BufDisk), (Read s.(BufDisk)) :: t)
     | Some x => (s, (Read x) :: t)
     end
-  | do_write n => (mklazy2 (Some n) s.(Lazy2Disk), (Write n) :: t)
+  | do_write n => (mkbuf (Some n) s.(BufDisk), (Write n) :: t)
   | do_sync =>
-    match s.(Lazy2Mem) with
+    match s.(BufMem) with
     | None => (s, Sync :: t)
-    | Some x => (mklazy2 (Some x) x, Sync :: t)
+    | Some x => (mkbuf (Some x) x, Sync :: t)
     end
-  | do_crash => (mklazy2 None s.(Lazy2Disk), Crash :: t)
+  | do_crash => (mkbuf None s.(BufDisk), Crash :: t)
   end.
+
+
+Theorem buf_correct:
+  fs_legal buf_state buf_init buf_apply.
+Proof.
+    unfold fs_legal.  induction l.
+  - crush.
+  - destruct_invocation; crush.
+    + admit. (* XXX *)
+    + constructor. apply IHl with (s:=b). assumption.
+    + destruct BufMem.
+      * crush. constructor. apply IHl with (s:=b). assumption.
+      * crush. constructor. apply IHl with (s:=s). assumption.
+    + constructor. apply IHl with (s:=b). assumption.
+Qed.
+
 
