@@ -569,13 +569,12 @@ Proof.
   - intros.  inversion H0.  crush.
   - intros.
     assert (legal h); [ apply legal_monotonic with (e:=a); crush | idtac ].
-    destruct a; crush; inversion H0; crush.
-    Admitted.
-  (*
+    destruct a; crush; inversion H; inversion H0; crush.
+    + assert (n=n0); [ apply could_read_unique with (h:=h); crush | idtac ].
+      crush.
     + constructor.  apply could_flush_hpstate; crush.
       apply last_flush_2_could_flush; crush.
 Qed.
-  *)
 
 Theorem flush_irrelevant:
   forall h,
