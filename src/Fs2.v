@@ -79,6 +79,40 @@ Inductive could_flush: history -> nat -> Prop :=
   | could_flush_nil:
     could_flush nil 0.
 
+Theorem test_last_flush_1:
+  last_flush [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 1.
+Proof.
+  repeat constructor.
+Qed.
+
+Theorem test_last_flush_2:
+  ~ last_flush [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 0.
+Proof.
+  crush.
+  inversion H; clear H; crush.
+  inversion H3; clear H3; crush.
+  inversion H0.
+Qed.
+
+
+Theorem test_could_read_1:
+  could_read [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 1.
+Proof.
+  repeat constructor.
+Qed.
+
+Theorem test_could_read_2:
+  could_read [ Read 0; Crash ; Flush 0 ; Write 1 ; Write 0 ] 0.
+Proof.
+  repeat constructor.
+Qed.
+
+Theorem test_could_read_3:
+  could_read [ Read 0; Crash ; Write 1 ; Write 0 ] 0.
+Proof.
+  repeat constructor.
+Qed.
+
 Inductive legal: history -> Prop :=
   | legal_read:
     forall (h:history) (n:nat),
