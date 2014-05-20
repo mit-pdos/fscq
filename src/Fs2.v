@@ -442,6 +442,13 @@ Inductive hlegal: history -> Prop :=
   | hlegal_nil:
     hlegal nil.
 
+(* XXX *)
+Lemma test_hlegal:
+  hlegal [Read 1; Read 2; Crash; Write 1; Write 2].
+Proof.
+  repeat constructor.
+Qed.
+
 Hint Constructors hlegal.
 Hint Constructors hread.
 Hint Constructors hpstate.
