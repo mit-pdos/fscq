@@ -159,6 +159,8 @@ Hint Constructors trace_legal.
 Hint Constructors last_write_since_crash.
 Hint Constructors could_persist.
 
+(* Lemma for testing equivalence for inductive version. Build confidence. *)
+
 Inductive could_read : trace -> state -> Prop :=
   | could_read_nil:
     could_read nil IS
@@ -179,6 +181,32 @@ Ltac trace_resolve :=
         unfold no_write_since_crash; crush; inversion H
   | _ => constructor
   end.
+
+Lemma could_read_write_uniqueness:
+  forall (t:trace) (s ws:state),
+  could_read t s -> last_write_since_crash t ws -> ws = s.
+Proof.
+  induction t.
+  - crush. inversion H0.
+  - destruct a; crush; inversion H; inversion H0; crush.
+Qed.
+
+Lemma could_read_persist:
+  forall (t:trace) (s:state),
+  could_read t s -> could_persist t s.
+Proof.
+  induction t; intros.
+  - inversion H. crush.
+  - destruct a; inversion H; crush.
+    + destruct (write_complement t); crush.
+      apply persist_read_intro; crush.
+      replace s with x. assumption.
+      apply could_read_write_uniqueness with (t:=t) (s:=s) (ws:=x); crush.
+    + destruct (write_complement t); crush.
+      apply persist_sync; crush.
+      replace s with x. assumption.
+      apply could_read_write_uniqueness with (t:=t) (s:=s) (ws:=x); crush.
+Qed.
 
 Theorem legal_could_read :
   forall (t:trace) (s:state),
@@ -221,8 +249,8 @@ Proof.
         inversion H5. crush. write_contradict. crush.
       * constructor 6. repeat trace_resolve; write_contradict.
         inversion H3. write_contradict.
-        apply persist_sync_intro. crush.
-        admit. crush. (* XXX *)
+        apply could_read_persist. assumption.
+        assumption.
 Qed.
 
 (* Testing *)
