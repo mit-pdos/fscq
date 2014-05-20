@@ -415,8 +415,8 @@ Inductive hread: history -> nat -> Prop :=
     forall (h:history) (n:nat),
     hread ((Write n) :: h) n
   | hread_read:
-    forall (h:history) (n:nat) (rn:nat),
-    hread h n -> write_since_crash h rn -> hread ((Read rn) :: h) n
+    forall (h:history) (n:nat),
+    hread h n -> hread ((Read n) :: h) n
   | hread_sync:
     forall (h:history) (n:nat),
     hread h n -> hread (Sync :: h) n
@@ -442,12 +442,14 @@ Inductive hlegal: history -> Prop :=
   | hlegal_nil:
     hlegal nil.
 
-(* XXX *)
-Lemma test_hlegal:
-  hlegal [Read 1; Read 2; Crash; Write 1; Write 2].
+Lemma hlegal_double_read:
+  forall h x y,
+  hlegal ((Read x) :: (Read y) :: h) -> x = y.
 Proof.
-  repeat constructor.
-  Abort.
+  intros.
+  inversion H; crush.
+  inversion H3; crush.
+Qed.
 
 Hint Constructors hlegal.
 Hint Constructors hread.
