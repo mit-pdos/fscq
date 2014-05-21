@@ -596,3 +596,25 @@ Proof.
 Qed.
 
 
+(* The most robust fs in the world *)
+
+Definition nil_state := state.
+
+Definition nil_init := IS.
+
+Definition nil_apply (s: nil_state) (i: invocation) (t: trace) : nil_state * trace :=
+  match i with
+  | do_read    => (IS, t)
+  | do_write n => (IS, (Write n) :: t)
+  | do_sync    => (IS, Sync :: t)
+  | do_crash   => (IS, Crash :: t)
+  end.
+
+Theorem nil_correct:
+  fs_legal nil_state nil_init nil_apply.
+Proof.
+  unfold fs_legal. induction l.
+  - crush.
+  - destruct_invocation; crush; apply IHl in H; crush.
+Qed.
+
