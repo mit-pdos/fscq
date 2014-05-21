@@ -66,7 +66,7 @@ Inductive trace_legal : trace -> Prop :=
 
 (* Some theorems *)
 
-Theorem legal_subtrace:
+Lemma legal_subtrace:
   forall (t:trace) (e:event),
   trace_legal (e :: t) -> trace_legal t.
 Proof.
@@ -92,7 +92,7 @@ Ltac write_contradict :=
   | _ => idtac
   end.
 
-Theorem read_immutability:
+Lemma read_immutability:
   forall (t:trace) (a b: state),
   trace_legal ((Read a) :: (Read b) :: t) -> a = b.
 Proof.
@@ -142,7 +142,7 @@ Proof.
   - inversion H4. apply trace_legal_read_after_crash; crush.
 Qed.
 
-Theorem readability :
+Corollary readability :
   forall (t:trace) (s ws:state),
   trace_legal ((Read s) :: t) ->
   ((last_write_since_crash t ws -> s = ws) \/ could_persist t s).
@@ -273,31 +273,31 @@ Qed.
 
 (* Testing *)
 
-Theorem test_1 : 
+Example test_1 : 
   trace_legal [ Read 1; Write 1; Read 0; Write 0; Sync; Read 1; Crash; Read 2; Write 2; Write 1 ] .
 Proof.
   do 5 constructor.  apply trace_legal_read_after_crash;  repeat trace_resolve.
 Qed.
 
-Theorem test_2 :
+Example test_2 :
   trace_legal [ Read 1; Crash; Read 3; Write 3; Crash; Write 2; Write 1 ] .
 Proof.
   apply trace_legal_read_after_crash; repeat trace_resolve.
 Qed.
 
-Theorem test_3:
+Example test_3:
   trace_legal [ Read 1; Crash; Read 3; Sync; Write 3; Crash; Write 2; Write 1 ].
 Proof.
   apply trace_legal_read_after_crash; repeat trace_resolve.
   Abort.
 
-Theorem test_4:
+Example test_4:
   trace_legal [ Read 2; Crash; Read 3; Write 3; Read 1; Crash; Write 2 ; Write 1 ] .
 Proof.
   apply trace_legal_read_after_crash; repeat trace_resolve.
   Abort.
 
-Theorem test_5:
+Example test_5:
   trace_legal [ Read 1; Read 2; Crash;  Write 1; Write 2 ].
 Proof.
   apply trace_legal_read_after_crash; repeat trace_resolve.
@@ -458,7 +458,7 @@ Definition buf_apply (s: buf_state) (i: invocation) (t: trace) : buf_state * tra
   | do_crash => (mkbuf None s.(BufDisk), Crash :: t)
   end.
 
-Fact buf_empty_no_write:
+Lemma buf_empty_no_write:
   forall (l: list invocation) (b: buf_state) (t:trace),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
   (BufMem b) = None -> no_write_since_crash t.
