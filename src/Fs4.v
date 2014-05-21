@@ -29,7 +29,7 @@ Inductive last_write_since_crash : trace -> state -> Prop :=
   | last_write_write: forall (t:trace) (s:state),
     last_write_since_crash ((Write s) :: t) s.
 
-Definition no_write_since_crash (t:trace) : Prop :=
+Let no_write_since_crash (t:trace) : Prop :=
   ~ exists (s:state), last_write_since_crash t s.
 
 Inductive could_persist : trace -> state -> Prop :=
@@ -361,38 +361,17 @@ Ltac destruct_invocation :=
   | _ => fail
   end.
 
-Lemma eager_write_persist_eq:
-  forall (l:list invocation) (s:eager_state) (t:trace) (ws:state),
-  fs_apply_list eager_state eager_init eager_apply l = (s, t) ->
-  could_persist t s -> last_write_since_crash t ws ->  s = ws.
-Proof.
-  induction l.
-  - crush. inversion H1.
-  - destruct_invocation; crush;
-    inversion H1; inversion H2; write_contradict.
-Qed.
-
-Lemma eager_persist:
+Lemma eager_could_read:
   forall (l:list invocation) (s:eager_state) (t:trace),
   fs_apply_list eager_state eager_init eager_apply l = (s, t) ->
-  could_persist t s.
+  could_read t s.
 Proof.
   induction l.
   - crush.
-  - destruct_invocation; crush.
-    + destruct (write_complement t).
-      * assert (Hx:=H). apply IHl in H. crush.
-        constructor. replace x with s in H0. assumption.
-        apply eager_write_persist_eq with  (l:=l) (t:=t) (s:=s) (ws:=x); crush.
-        assumption.
-      * crush.
-    + destruct (write_complement t).
-      * assert (Hx:=H). apply IHl in H. crush.
-        constructor. replace x with s in H0. assumption.
-        apply eager_write_persist_eq with (l:=l) (t:=t) (s:=s) (ws:=x); crush.
-      * crush.
+  - destruct_invocation; crush. constructor.
+    + apply IHl in H.
+      apply could_read_persist. assumption.
 Qed.
-
 
 Theorem eager_correct:
   fs_legal eager_state eager_init eager_apply.
@@ -400,15 +379,9 @@ Proof.
   unfold fs_legal.  induction l.
   - crush.
   - destruct_invocation; crush. 
-    + destruct (write_complement t).
-      * constructor.
-        assert (Hx:=H). apply IHl in H. crush. replace x with s in H0. assumption.
-        apply eager_write_persist_eq with (l:=l) (t:=t) (s:=s) (ws:=x); crush.
-        assert (Hy:=H). apply eager_persist in Hx. crush.
-        apply IHl in H. assumption.
-      * apply trace_legal_read_after_crash; crush.
-        assert (Hx:=H). apply IHl in H. crush. apply eager_persist in Hx.
-        assumption. apply IHl in H. assumption.
+    + assert (Hx:=H). apply IHl in H.
+      apply could_read_legal. assumption.
+      apply eager_could_read with (l:=l). assumption.
     + repeat constructor. apply IHl with (s:=e). assumption.
     + constructor. apply IHl with (s:=s). assumption.
     + constructor. apply IHl with (s:=s). assumption.
@@ -470,6 +443,7 @@ Proof.
     apply IHl in H; crush. exists x. assumption.
 Qed.
 
+(* when there is a write, cached state always reflects the written state *)
 Lemma buf_mem_eq:
   forall (l:list invocation) (b:buf_state) (t:trace) (s ws:state),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
@@ -492,6 +466,7 @@ Proof.
       inversion H2. apply IHl with (s:=s) (ws:=ws) in H; assumption.
 Qed.
 
+(* when no write, cached state always reflects disk state *)
 Lemma buf_disk_eq:
   forall (l:list invocation) (b:buf_state) (t:trace) (s:state),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
@@ -513,6 +488,7 @@ Proof.
       destruct (BufMem b) eqn:Hb; crush.
 Qed.
 
+(* state stored in disk is always valid *)
 Lemma buf_disk_persist:
   forall (l: list invocation) (b: buf_state) (t:trace),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
@@ -546,6 +522,7 @@ Proof.
         assumption. assumption. assumption.
 Qed.
 
+(* after crash or before warm up, disk state is always valid *)
 Lemma buf_could_read_disk:
   forall (l: list invocation) (b: buf_state) (t:trace),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
@@ -559,6 +536,7 @@ Proof.
       assumption. assumption.
 Qed.
 
+(* state cached in the memory is always valid *)
 Lemma buf_could_read_mem:
   forall (l: list invocation) (b: buf_state) (t:trace) (s:state),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
