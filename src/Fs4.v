@@ -46,7 +46,7 @@ Inductive could_persist : trace -> state -> Prop :=
   | persist_read_intro:  forall (t:trace) (s rs:state),
     last_write_since_crash t rs -> could_persist t s -> could_persist ((Read rs) :: t) s
   | persist_read:        forall (t:trace) (s:state),
-    no_write_since_crash t -> could_persist ((Read s) :: t) s
+    no_write_since_crash t -> could_persist t s -> could_persist ((Read s) :: t) s
   | persist_sync_intro:  forall (t:trace) (s:state),
     no_write_since_crash t -> could_persist t s -> could_persist (Sync :: t) s.
 
@@ -208,6 +208,19 @@ Proof.
       apply could_read_write_uniqueness with (t:=t) (s:=s) (ws:=x); crush.
 Qed.
 
+Lemma could_persist_read:
+  forall (t:trace) (s:state),
+  could_persist t s -> no_write_since_crash t -> could_read t s.
+Proof.
+  induction t; intros; unfold no_write_since_crash in H0.
+  - inversion H. constructor.
+  - destruct a; inversion H; crush.
+    + contradict H0. apply last_write_read with (rs:=s0) in H3.
+      exists s0. assumption.
+    + contradict H0. exists s0. constructor.
+    + contradict H0. exists s. constructor. assumption.
+Qed.
+
 Theorem legal_could_read :
   forall (t:trace) (s:state),
   trace_legal ((Read s) :: t) -> could_read t s.
@@ -245,7 +258,9 @@ Proof.
         inversion H3. crush. write_contradict. crush.
       * apply trace_legal_read_after_crash.
         repeat trace_resolve; write_contradict.
-        inversion H2. write_contradict. crush. crush.
+        inversion H2. write_contradict.
+        apply persist_read. assumption.
+        apply could_read_persist. assumption. crush.
     + destruct (write_complement t).
       * constructor. apply legal_subtrace in H. crush.
         inversion H5. crush. write_contradict. crush.
@@ -339,6 +354,9 @@ Ltac destruct_invocation :=
       destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
   | [ Ha : invocation, Hl : list invocation |- 
       forall _ _ _, fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] =>
+      destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
+  | [ Ha : invocation, Hl : list invocation |- 
+      forall _ _ _ _, fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] =>
       destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
   | _ => fail
   end.
@@ -440,6 +458,123 @@ Definition buf_apply (s: buf_state) (i: invocation) (t: trace) : buf_state * tra
   | do_crash => (mkbuf None s.(BufDisk), Crash :: t)
   end.
 
+Fact buf_empty_no_write:
+  forall (l: list invocation) (b: buf_state) (t:trace),
+  fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
+  (BufMem b) = None -> no_write_since_crash t.
+Proof.
+  unfold no_write_since_crash. induction l.
+  - crush. inversion H1.
+  - destruct_invocation; intros; 
+    destruct (BufMem b) eqn:Hb; crush; inversion H2.
+    apply IHl in H; crush. exists x. assumption.
+Qed.
+
+Lemma buf_mem_eq:
+  forall (l:list invocation) (b:buf_state) (t:trace) (s ws:state),
+  fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
+  (BufMem b) = Some s -> last_write_since_crash t ws -> s = ws.
+Proof.
+  induction l.
+  - crush.
+  - destruct_invocation; crush.
+    + (* read *)
+      destruct (BufMem b) eqn:Hb; crush.
+      * destruct (write_complement t); inversion H2.
+        apply IHl with (s:=s) (ws:=ws) in H; assumption.
+        inversion H2. write_contradict.
+      * apply buf_empty_no_write with (l:=l) (b:=b) (t:=t) in Hb.
+        inversion H2. write_contradict. assumption.
+    + (* write *)
+      inversion H2. reflexivity.
+    + (* sync *)
+      destruct (BufMem b) eqn:Hb; crush.
+      inversion H2. apply IHl with (s:=s) (ws:=ws) in H; assumption.
+Qed.
+
+Lemma buf_disk_eq:
+  forall (l:list invocation) (b:buf_state) (t:trace) (s:state),
+  fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
+  (BufMem b) = Some s -> no_write_since_crash t -> s = (BufDisk b).
+Proof.
+  induction l.
+  - crush.
+  - destruct_invocation; crush.
+    + (* read *)
+      destruct (BufMem b) eqn:Hb; crush.
+      destruct (write_complement t).
+      * destruct H0. unfold no_write_since_crash in H2.
+        contradict H2. exists x. constructor. assumption.
+      * apply IHl with (t:=t) in H1; assumption.
+    + (* write *)
+       unfold no_write_since_crash in H2.
+      contradict H2. exists s. constructor.
+    + (* sync *)
+      destruct (BufMem b) eqn:Hb; crush.
+Qed.
+
+Lemma buf_disk_persist:
+  forall (l: list invocation) (b: buf_state) (t:trace),
+  fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
+  could_persist t (BufDisk b).
+Proof.
+  induction l. crush.
+  destruct_invocation; crush.
+    - (* read *)
+      destruct (BufMem b) eqn:Hb; crush.
+      + destruct (write_complement t).
+        * assert (Hx:=H); apply IHl in H. apply persist_read_intro.
+          destruct H0. replace x with s in H0. assumption.
+          apply buf_mem_eq with (l:=l) (b:=b0) (t:=t); assumption.
+          assumption.
+        * assert (s=(BufDisk b0)).
+          apply buf_disk_eq with (l:=l) (t:=t); assumption. crush.
+      + apply persist_read.
+        apply buf_empty_no_write with (l:=l) (b:=b); assumption. crush.
+    - (* sync *)
+      destruct (BufMem b) eqn:Hb; crush.
+      + destruct (write_complement t).
+        * inversion H0.  apply persist_sync.
+          replace x with s in H1. assumption.
+          apply buf_mem_eq with (l:=l) (b:=b) (t:=t); assumption.
+        * apply persist_sync_intro. assumption.
+          assert (Hx:=H); apply IHl in H. 
+          replace s with (BufDisk b). assumption.
+          apply eq_sym. apply buf_disk_eq with (l:=l) (t:=t); assumption.
+      + assert (Hx:=H); apply IHl in H. apply persist_sync_intro.
+        apply buf_empty_no_write with (l:=l) (b:=b0).
+        assumption. assumption. assumption.
+Qed.
+
+Lemma buf_could_read_disk:
+  forall (l: list invocation) (b: buf_state) (t:trace),
+  fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
+  (BufMem b) = None ->  could_read t (BufDisk b).
+Proof.
+  induction l.
+  - crush.
+  - destruct_invocation; intros; destruct (BufMem b) eqn:Hb; crush.
+    + constructor. apply buf_disk_persist with (l:=l). assumption.
+    + apply IHl in H. constructor. apply could_read_persist.
+      assumption. assumption.
+Qed.
+
+Lemma buf_could_read_mem:
+  forall (l: list invocation) (b: buf_state) (t:trace) (s:state),
+  fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
+  (BufMem b) = Some s ->  could_read t s.
+Proof.
+  induction l. crush.
+  destruct_invocation; crush.
+  - (* read *)
+    destruct (BufMem b) eqn:Hb; crush.
+    + assert (Hx:=H1). apply IHl with (t:=t) (s:=s) in H.
+      induction BufMem; crush. assumption.
+    + constructor. apply buf_could_read_disk with (l:=l); assumption.
+  - (* sync *)
+    destruct (BufMem b) eqn:Hb; crush.
+    + constructor. apply IHl with (s:=s) in H; assumption.
+Qed.
 
 Theorem buf_correct:
   fs_legal buf_state buf_init buf_apply.
@@ -447,7 +582,12 @@ Proof.
     unfold fs_legal.  induction l.
   - crush.
   - destruct_invocation; crush.
-    + admit. (* XXX *)
+    + destruct (BufMem b) eqn:Hb ; inversion H0; simpl; subst.
+      * apply could_read_legal with (t:=t) (s:=s0). 
+        assert (Hx:=H); apply IHl with (s:=s). assumption.
+        apply buf_could_read_mem with (l:=l) (b:=s) (s:=s0); assumption.
+      * apply could_read_legal. apply IHl in H. assumption.
+        apply buf_could_read_disk with (l:=l) (b:=b); assumption.
     + constructor. apply IHl with (s:=b). assumption.
     + destruct BufMem.
       * crush. constructor. apply IHl with (s:=b). assumption.
