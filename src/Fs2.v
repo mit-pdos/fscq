@@ -43,6 +43,19 @@ Ltac invert_last_flush :=
     crush; inversion H1; clear H1
   end.
 
+Theorem test_last_flush_1:
+  last_flush [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 1.
+Proof.
+  repeat constructor.
+Qed.
+      
+Theorem test_last_flush_2:
+  ~ last_flush [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 0.
+Proof.
+  crush.
+  repeat invert_last_flush.
+Qed.
+
 (* (could_read h n) means n could be the return value of a read *)
 Inductive could_read: history -> nat -> Prop :=
   | could_read_read:
@@ -62,41 +75,6 @@ Inductive could_read: history -> nat -> Prop :=
     last_flush h n -> could_read (Crash :: h) n
   | could_read_nil:
     could_read nil 0.
-
-Inductive could_flush: history -> nat -> Prop :=
-  | could_flush_read:
-    forall (h:history) (n:nat) (rn:nat),
-    could_flush h n -> could_flush ((Read rn) :: h) n
-  | could_flush_write_1:
-    forall (h:history) (n:nat),
-    could_flush ((Write n) :: h) n
-  | could_flush_write_2:
-    forall (h:history) (n:nat) (wn:nat),
-    could_flush h n -> could_flush ((Write wn) :: h) n
-  | could_flush_flush:
-    forall (h:history) (n:nat) (fn:nat),
-    could_flush h n -> could_flush ((Flush fn) :: h) n
-  | could_flush_sync:
-    forall (h:history) (n:nat),
-    could_read h n -> could_flush (Sync :: h) n
-  | could_flush_crash:
-    forall (h:history) (n:nat),
-    last_flush h n -> could_flush (Crash :: h) n
-  | could_flush_nil:
-    could_flush nil 0.
-
-Theorem test_last_flush_1:
-  last_flush [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 1.
-Proof.
-  repeat constructor.
-Qed.
-      
-Theorem test_last_flush_2:
-  ~ last_flush [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 0.
-Proof.
-  crush.
-  repeat invert_last_flush.
-Qed.
 
 Theorem test_could_read_1:
   could_read [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 1.
@@ -121,6 +99,69 @@ Ltac invert_could_read :=
   | [ H1: could_read ?T ?n  |- _ ] => 
     crush; inversion H1; clear H1
   end.
+
+Inductive could_flush: history -> nat -> Prop :=
+  | could_flush_read:
+    forall (h:history) (n:nat) (rn:nat),
+    could_flush h n -> could_flush ((Read rn) :: h) n
+  | could_flush_write_1:
+    forall (h:history) (n:nat),
+    could_flush ((Write n) :: h) n
+  | could_flush_write_2:
+    forall (h:history) (n:nat) (wn:nat),
+    could_flush h n -> could_flush ((Write wn) :: h) n
+  | could_flush_flush:
+    forall (h:history) (n:nat) (fn:nat),
+    could_flush h n -> could_flush ((Flush fn) :: h) n
+  | could_flush_sync:
+    forall (h:history) (n:nat),
+    could_read h n -> could_flush (Sync :: h) n
+  | could_flush_crash:
+    forall (h:history) (n:nat),
+    last_flush h n -> could_flush (Crash :: h) n
+  | could_flush_nil:
+    could_flush nil 0.
+
+
+Theorem test_could_flush_1:
+  could_flush [ Flush 1; Write 1 ; Write 0 ] 1.
+Proof.
+  repeat constructor.
+Qed.
+
+Theorem test_could_flush_2:
+  could_flush [ Flush 1; Write 1 ; Sync; Write 0 ] 1.
+Proof.
+  repeat constructor.
+Qed.
+
+Theorem test_could_flush_3:
+  could_flush [ Write 1 ;Flush 1; Write 0 ] 1.
+Proof.
+  repeat constructor.
+Qed.
+
+Ltac invert_could_flush := 
+  match goal with 
+  | [ H: could_flush ?T ?n  |- _ ] => 
+    crush; inversion H; clear H
+  | [ H1: last_flush ?T ?n  |- _ ] => 
+    crush; inversion H1; clear H1
+  end.
+
+Theorem test_could_flush_4:
+  ~could_flush [ Flush 1; Write 0 ] 1.
+Proof.
+  crush.
+  repeat invert_could_flush.
+Qed.
+
+Theorem test_could_flush_5:
+  ~could_flush [ Flush 1; Crash; Write 1 ] 1.
+Proof.
+  crush.
+  repeat invert_could_flush.
+Qed.
 
 Ltac invert_history :=
   try invert_last_flush || invert_could_read.
