@@ -37,6 +37,12 @@ Inductive last_flush: history -> nat -> Prop :=
   | last_flush_nil:
     last_flush nil 0.
 
+Ltac invert_last_flush :=
+  match goal with 
+  | [ H1: last_flush ?T ?n  |- _ ] => 
+    crush; inversion H1; clear H1
+  end.
+
 (* (could_read h n) means n could be the return value of a read *)
 Inductive could_read: history -> nat -> Prop :=
   | could_read_read:
@@ -84,16 +90,13 @@ Theorem test_last_flush_1:
 Proof.
   repeat constructor.
 Qed.
-
+      
 Theorem test_last_flush_2:
   ~ last_flush [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 0.
 Proof.
   crush.
-  inversion H; clear H; crush.
-  inversion H3; clear H3; crush.
-  inversion H0.
+  repeat invert_last_flush.
 Qed.
-
 
 Theorem test_could_read_1:
   could_read [ Read 1 ; Crash ; Flush 1 ; Read 0 ; Crash ; Flush 0 ; Write 1 ; Write 0 ] 1.
@@ -111,6 +114,22 @@ Theorem test_could_read_3:
   could_read [ Read 0; Crash ; Write 1 ; Write 0 ] 0.
 Proof.
   repeat constructor.
+Qed.
+
+Ltac invert_could_read := 
+  match goal with 
+  | [ H1: could_read ?T ?n  |- _ ] => 
+    crush; inversion H1; clear H1
+  end.
+
+Ltac invert_history :=
+  try invert_last_flush || invert_could_read.
+
+Theorem test_could_read_4:
+  ~ could_read [ Read 0; Crash ; Write 1 ; Write 0 ] 1.
+Proof.
+  crush.
+  repeat invert_history.
 Qed.
 
 Inductive legal: history -> Prop :=
@@ -221,7 +240,7 @@ Ltac invert_legal_step :=
   | [ H: last_flush _ _ |- _ ] => inversion H; clear H; crush
   end.
 
-Theorem test_legal_weird_1:
+Theorem Test_legal_weird_1:
   ~ legal [ Read 1 ; Crash ; Read 0 ; Crash ; Flush 1 ; Write 1 ; Write 0 ].
 Proof.
   crush.
