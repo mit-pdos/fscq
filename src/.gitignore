@@ -1,2 +1,7 @@
-/*.glob
-/*.vo
+*.glob
+*.vo
+*.mli
+*.native
+compcert
+/codegen/*.ml
+_build
