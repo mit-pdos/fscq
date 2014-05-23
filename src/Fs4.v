@@ -308,7 +308,7 @@ Proof.
 
 Inductive invocation : Set :=
   | do_read: invocation
-  | do_write: nat -> invocation
+  | do_write: state -> invocation
   | do_sync: invocation
   | do_crash: invocation.
 
@@ -415,18 +415,24 @@ Record buf_state : Set := mkbuf {
 
 Definition buf_init := mkbuf None IS.
 
+Definition read_disk  (b: buf_state) : state := b.(BufDisk).
+Definition write_disk (s: state) : state := s.
+Hint Unfold read_disk.
+Hint Unfold write_disk.
+
 Definition buf_apply (s: buf_state) (i: invocation) (t: trace) : buf_state * trace :=
   match i with
   | do_read =>
     match s.(BufMem) with
-    | None => (mkbuf (Some s.(BufDisk)) s.(BufDisk), (Read s.(BufDisk)) :: t)
+    | None => let d := read_disk s in
+              (mkbuf (Some d) d, (Read d) :: t)
     | Some x => (s, (Read x) :: t)
     end
   | do_write n => (mkbuf (Some n) s.(BufDisk), (Write n) :: t)
   | do_sync =>
     match s.(BufMem) with
     | None => (s, Sync :: t)
-    | Some x => (mkbuf (Some x) x, Sync :: t)
+    | Some x => (mkbuf (Some x) (write_disk x), Sync :: t)
     end
   | do_crash => (mkbuf None s.(BufDisk), Crash :: t)
   end.
@@ -483,7 +489,7 @@ Proof.
       * apply IHl with (t:=t) in H1; assumption.
     + (* write *)
        unfold no_write_since_crash in H2.
-      contradict H2. exists s. constructor.
+      contradict H2. exists s0. constructor.
     + (* sync *)
       destruct (BufMem b) eqn:Hb; crush.
 Qed.
