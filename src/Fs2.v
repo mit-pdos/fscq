@@ -719,8 +719,25 @@ Lemma lazy2_could_read:
   (Lazy2Mem s) = Some x ->
   could_read h x.
 Proof.
-  (* XXX *)
-Abort.
+  admit.
+Qed.
+
+Lemma lazy2_could_read_disk:
+  forall (l: list invocation) (s: lazy2_state) (h: history),
+  fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
+  (Lazy2Mem s) = None ->
+  could_read h (Lazy2Disk s).
+Proof.
+  admit.
+Qed.
+
+Lemma lazy2_last_flush:
+  forall (l: list invocation) (s: lazy2_state) (h: history),
+  fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
+  last_flush h (Lazy2Disk s).
+Proof.
+  admit.
+Qed.
 
 Theorem lazy2_correct:
   fs_legal lazy2_state lazy2_init lazy2_apply.
@@ -729,5 +746,46 @@ Proof.
   induction l.
   - crush.
   - destruct a; simpl.
-    (* XXX *)
-Abort.
+    + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l).
+      crush.
+      rewrite H0 in H.
+      destruct l0.  destruct Lazy2Mem0.
+      * simpl in H.  inversion H.
+        constructor.  apply lazy2_could_read with (l:=l) (s:=({| Lazy2Mem := Some n; Lazy2Disk := Lazy2Disk0 |})).
+        crush.  crush.  apply IHl with (s:=({| Lazy2Mem := Some n; Lazy2Disk := Lazy2Disk0 |})).  crush.
+      * simpl in H.  inversion H.
+        constructor.  apply lazy2_could_read_disk with (l:=l) (s:=({| Lazy2Mem := None; Lazy2Disk := Lazy2Disk0 |})).
+        crush.  crush.  crush.
+        apply IHl with (s:=({| Lazy2Mem := None; Lazy2Disk := Lazy2Disk0 |})).  crush.
+    + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l).
+      crush.
+      rewrite H0 in H.
+      inversion H.
+      constructor.
+      apply IHl with (s:=l0).  crush.
+    + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l).
+      crush.
+      rewrite H0 in H.
+      destruct l0.  destruct Lazy2Mem0.
+      * simpl in H.  inversion H.
+        apply legal_sync with (n:=n).
+        constructor.  apply lazy2_could_read with (l:=l) (s:=({| Lazy2Mem := Some n; Lazy2Disk := Lazy2Disk0 |})); crush.
+        constructor.
+        constructor.  apply could_read_2_could_flush.  apply lazy2_could_read with (l:=l) (s:=({| Lazy2Mem := Some n; Lazy2Disk := Lazy2Disk0 |})); crush.
+        apply IHl with (s:=({| Lazy2Mem := Some n; Lazy2Disk := Lazy2Disk0 |})).  crush.
+      * simpl in H.  inversion H.
+        apply legal_sync with (n:=(Lazy2Disk s)).
+        apply lazy2_could_read_disk with (l:=l) (s:=s); crush.
+        apply lazy2_last_flush with (l:=l); crush.
+        apply IHl with (s:=({| Lazy2Mem := None; Lazy2Disk := Lazy2Disk0 |})).  crush.
+    + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l).
+      crush.
+      rewrite H0 in H.
+      inversion H.
+      constructor.
+      apply IHl with (s:=l0).  crush.
+Qed.
