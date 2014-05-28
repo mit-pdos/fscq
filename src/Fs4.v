@@ -365,8 +365,8 @@ Lemma eager_could_read:
   could_read t (s 0).
 Proof.
   induction l.
-  - crush.
-  - destruct_invocation; crush. constructor.
+  - unfold eager_init. crush.
+  - destruct_invocation; try st_rewrite; crush. constructor.
     + apply IHl in H.
       apply could_read_persist. assumption.
 Qed.
