@@ -695,23 +695,41 @@ Record lazy2_state : Set := mklazy2 {
 
 Definition lazy2_init := mklazy2 None 0.
 
+Definition lazy2_read (s : lazy2_state) : nat * lazy2_state :=
+  match s.(Lazy2Mem) with 
+      | None => (s.(Lazy2Disk), mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk))
+      | Some x => (x, s)
+  end.
+
+Definition lazy2_sync (s: lazy2_state) : lazy2_state * history :=
+    match s.(Lazy2Mem) with
+    | None => (s, [Sync])
+    | Some x => (mklazy2 (Some x) x, [ Sync ; Flush x ])
+    end.
+
 Definition lazy2_apply (s: lazy2_state) (i: invocation) (h: history) : lazy2_state * history :=
   match i with
-  | do_read =>
-    match s.(Lazy2Mem) with
-    | None => (mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk), (Read s.(Lazy2Disk)) :: h)
-    | Some x => (s, (Read x) :: h)
-    end
+  | do_read => let (x, s1) := lazy2_read(s) in 
+               (s1, (Read x) :: h)
   | do_write n => (mklazy2 (Some n) s.(Lazy2Disk), (Write n) :: h)
   | do_sync =>
-    match s.(Lazy2Mem) with
-    | None => (s, Sync :: h)
-    | Some x => (mklazy2 (Some x) x, Sync :: (Flush x) :: h)
-    end
+    let (s1, h1) := lazy2_sync(s) in 
+               (s1, h1 ++ h)
   | do_crash => (mklazy2 None s.(Lazy2Disk), Crash :: h)
   end.
 
 (* Lazy file system with lazy reading is correct *)
+
+Lemma lazy2_mem_holds_last_read:
+  forall (l : list invocation) (s: lazy2_state) (h: history) (x: nat),
+    fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
+    could_read h x -> (Lazy2Mem s) = Some x.
+Proof.
+  induction l.
+  - crush.
+  - intros.
+
+Qed.
 
 Lemma lazy2_could_read:
   forall (l: list invocation) (s: lazy2_state) (h: history) (x: nat),
@@ -719,7 +737,21 @@ Lemma lazy2_could_read:
   (Lazy2Mem s) = Some x ->
   could_read h x.
 Proof.
-  admit.
+  induction l.
+  - crush.
+  - destruct a; simpl.
+    + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+      rewrite H1 in H.
+      destruct l0. destruct Lazy2Mem0.
+      * simpl in H. inversion H.
+        constructor. apply IHl with (s := s). crush. crush.
+      * simpl in H. inversion H.
+        constructor. apply IHl with (s := s). crush.
+        apply H0.
+    + intros.
+
+       
 Qed.
 
 Lemma lazy2_could_read_disk:
