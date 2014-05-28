@@ -720,17 +720,6 @@ Definition lazy2_apply (s: lazy2_state) (i: invocation) (h: history) : lazy2_sta
 
 (* Lazy file system with lazy reading is correct *)
 
-Lemma lazy2_mem_holds_last_read:
-  forall (l : list invocation) (s: lazy2_state) (h: history) (x: nat),
-    fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
-    could_read h x -> (Lazy2Mem s) = Some x.
-Proof.
-  induction l.
-  - crush.
-  - intros.
-
-Qed.
-
 Lemma lazy2_could_read:
   forall (l: list invocation) (s: lazy2_state) (h: history) (x: nat),
   fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
