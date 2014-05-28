@@ -8,12 +8,14 @@ Definition addr := nat.
 Definition state := nat.
 Definition storage := addr -> state.
 
-Definition st_write (st : storage) (a:addr) (v:state) :=
+Definition st_init (v:state) : storage :=
+  fun (_:addr) => v.
+
+Definition st_write (st:storage) (a:addr) (v:state) : storage :=
   fun (x:addr) =>
     if eq_nat_dec a x then v else st x.
 
-Definition st_read (st : storage) (a:addr) := st a.
-
+Definition st_read (st:storage) (a:addr) : state := st a.
 
 
 (* IO monad *)
@@ -34,9 +36,11 @@ Notation "a ;; b" := (IObind a (fun _ => b))
   (right associativity, at level 60).
 
 
+Definition IOinit (v:state) : IO unit :=
+  fun st => (st_init v, tt).
+
 Definition IOread (a:addr) : IO state :=
   fun st => (st, st_read st a).
 
 Definition IOwrite (a:addr) (v:state) : IO unit :=
   fun st => (st_write st a v, tt).
-

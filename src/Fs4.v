@@ -336,14 +336,14 @@ Definition fs_legal (fsstate: Set)
 
 (* Eager file system: sync after every write *)
 
-Definition eager_state := state.
+Definition eager_state := storage.
 
-Definition eager_init := IS.
+Definition eager_init := st_init IS.
 
 Definition eager_apply (s: eager_state) (i: invocation) (t: trace) : eager_state * trace :=
   match i with
-  | do_read    => (s, (Read s) :: t)
-  | do_write n => (n, Sync :: (Write n) :: t)
+  | do_read    => let io := IOread 0 s    in (fst io, (Read (snd io)) :: t)
+  | do_write n => let io := IOwrite 0 n s in (fst io, Sync :: (Write n) :: t)
   | do_sync    => (s, Sync :: t)
   | do_crash   => (s, Crash :: t)
   end.
@@ -365,7 +365,7 @@ Ltac destruct_invocation :=
 Lemma eager_could_read:
   forall (l:list invocation) (s:eager_state) (t:trace),
   fs_apply_list eager_state eager_init eager_apply l = (s, t) ->
-  could_read t s.
+  could_read t (s 0).
 Proof.
   induction l.
   - crush.
@@ -389,53 +389,31 @@ Proof.
 Qed.
 
 
-(* Lazy file system *)
-
-Record lazy_state : Set := mklazy {
-  LazyMem: state;
-  LazyDisk: state
-}.
-
-Definition lazy_init := mklazy IS IS.
-
-Definition lazy_apply (s: lazy_state) (i: invocation) (t: trace) : lazy_state * trace :=
-  match i with
-  | do_read => (s, (Read s.(LazyMem)) :: t)
-  | do_write n => (mklazy n s.(LazyDisk), (Write n) :: t)
-  | do_sync => (mklazy s.(LazyMem) s.(LazyMem), Sync :: t)
-  | do_crash => (mklazy s.(LazyDisk) s.(LazyDisk), Crash :: t)
-  end.
-
-
 (* Buffered file system with lazy reading and writing *)
 
 Record buf_state : Set := mkbuf {
   BufMem: option state;
-  BufDisk: state
+  BufDisk: storage
 }.
 
-Definition buf_init := mkbuf None IS.
-
-Definition read_disk  (b: buf_state) : state := b.(BufDisk).
-Definition write_disk (s: state) : state := s.
-Hint Unfold read_disk.
-Hint Unfold write_disk.
+Definition buf_init := mkbuf None (st_init IS).
 
 Definition buf_apply (s: buf_state) (i: invocation) (t: trace) : buf_state * trace :=
   match i with
   | do_read =>
-    match s.(BufMem) with
-    | None => let d := read_disk s in
-              (mkbuf (Some d) d, (Read d) :: t)
+    match (BufMem s) with
+    | None => let io := IOread 0 (BufDisk s) in
+              (mkbuf (Some (snd io)) (fst io), (Read (snd io)) :: t)
     | Some x => (s, (Read x) :: t)
     end
-  | do_write n => (mkbuf (Some n) s.(BufDisk), (Write n) :: t)
+  | do_write n => (mkbuf (Some n) (BufDisk s), (Write n) :: t)
   | do_sync =>
-    match s.(BufMem) with
+    match (BufMem s) with
     | None => (s, Sync :: t)
-    | Some x => (mkbuf (Some x) (write_disk x), Sync :: t)
+    | Some x => let io := IOwrite 0 x (BufDisk s) in
+                (mkbuf (Some x) (fst io), Sync :: t)
     end
-  | do_crash => (mkbuf None s.(BufDisk), Crash :: t)
+  | do_crash => (mkbuf None (BufDisk s), Crash :: t)
   end.
 
 Lemma buf_empty_no_write:
@@ -477,7 +455,7 @@ Qed.
 Lemma buf_disk_eq:
   forall (l:list invocation) (b:buf_state) (t:trace) (s:state),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
-  (BufMem b) = Some s -> no_write_since_crash t -> s = (BufDisk b).
+  (BufMem b) = Some s -> no_write_since_crash t -> s = (BufDisk b 0).
 Proof.
   induction l.
   - crush.
@@ -499,7 +477,7 @@ Qed.
 Lemma buf_disk_persist:
   forall (l: list invocation) (b: buf_state) (t:trace),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
-  could_persist t (BufDisk b).
+  could_persist t (BufDisk b 0).
 Proof.
   induction l. crush.
   destruct_invocation; crush.
@@ -510,7 +488,7 @@ Proof.
           destruct H0. replace x with s in H0. assumption.
           apply buf_mem_eq with (l:=l) (b:=b0) (t:=t); assumption.
           assumption.
-        * assert (s=(BufDisk b0)).
+        * assert (s=(BufDisk b0 0)).
           apply buf_disk_eq with (l:=l) (t:=t); assumption. crush.
       + apply persist_read.
         apply buf_empty_no_write with (l:=l) (b:=b); assumption. crush.
@@ -522,7 +500,7 @@ Proof.
           apply buf_mem_eq with (l:=l) (b:=b) (t:=t); assumption.
         * apply persist_sync_intro. assumption.
           assert (Hx:=H); apply IHl in H. 
-          replace s with (BufDisk b). assumption.
+          replace s with (BufDisk b 0). assumption.
           apply eq_sym. apply buf_disk_eq with (l:=l) (t:=t); assumption.
       + assert (Hx:=H); apply IHl in H. apply persist_sync_intro.
         apply buf_empty_no_write with (l:=l) (b:=b0).
@@ -533,7 +511,7 @@ Qed.
 Lemma buf_could_read_disk:
   forall (l: list invocation) (b: buf_state) (t:trace),
   fs_apply_list buf_state buf_init buf_apply l = (b, t) ->
-  (BufMem b) = None ->  could_read t (BufDisk b).
+  (BufMem b) = None ->  could_read t (BufDisk b 0).
 Proof.
   induction l.
   - crush.
