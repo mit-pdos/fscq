@@ -4,16 +4,16 @@ open Printf;;
 
 let file = "fs_disk";;
 
-let _read_disk b =
+let _read_disk st addr =
     let ic = open_in file in
-        let s = input_line ic in
+        let v = input_line ic in
         close_in ic;
-    s;;
+    v;;
 
-let _write_disk s =
+let _write_disk st addr v =
     let oc = open_out file in
-        fprintf oc "%s\n" s;
+        fprintf oc "%s\n" v;
         close_out oc;
-    s;;
+    st;;
 
 
