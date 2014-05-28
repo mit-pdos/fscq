@@ -8,14 +8,19 @@ Definition addr := nat.
 Definition state := nat.
 Definition storage := addr -> state.
 
+Definition read_storage (st:storage) (a:addr) : state := st a.
+Definition write_storage (st:storage) (a:addr) (v:state) : storage :=
+  fun (x:addr) =>
+    if eq_nat_dec a x then v else st x.
+
 Definition st_init (v:state) : storage :=
   fun (_:addr) => v.
 
 Definition st_write (st:storage) (a:addr) (v:state) : storage :=
-  fun (x:addr) =>
-    if eq_nat_dec a x then v else st x.
+  write_storage st a v.
 
-Definition st_read (st:storage) (a:addr) : state := st a.
+Definition st_read (st:storage) (a:addr) : state := 
+  read_storage st a.
 
 
 (* IO monad *)

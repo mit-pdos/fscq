@@ -3,9 +3,6 @@ Require Import CpdtTactics.
 Require Import Monad.
 Import ListNotations.
 
-(* File system state *)
-Definition state := nat.
-
 (* Initial state *)
 Definition IS : state := 0.
 

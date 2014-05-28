@@ -1,2 +1,3 @@
 CpdtTactics.vo CpdtTactics.glob CpdtTactics.v.beautified: CpdtTactics.v
-Fs4.vo Fs4.glob Fs4.v.beautified:  Fs3.v CpdtTactics.vo
+Monad.vo Monad.glob Monad.v.beautified:  Monad.v CpdtTactics.vo
+Fs4.vo Fs4.glob Fs4.v.beautified:  Fs4.v Monad.vo CpdtTactics.vo
