@@ -1,4 +1,5 @@
 Require Import Arith.
+Require Omega.
 
 Set Implicit Arguments.
 
@@ -8,20 +9,38 @@ Definition addr := nat.
 Definition state := nat.
 Definition storage := addr -> state.
 
-Definition read_storage (st:storage) (a:addr) : state := st a.
-Definition write_storage (st:storage) (a:addr) (v:state) : storage :=
-  fun (x:addr) =>
-    if eq_nat_dec a x then v else st x.
+Parameter st_init  : state -> storage.
+Parameter st_write : storage -> addr -> state -> storage.
+Parameter st_read  : storage -> addr -> state.
 
-Definition st_init (v:state) : storage :=
-  fun (_:addr) => v.
+Axiom st_init_eq:
+  forall a v, st_init v a = v.
 
-Definition st_write (st:storage) (a:addr) (v:state) : storage :=
-  write_storage st a v.
+Axiom st_write_eq:
+  forall s a v, st_write s a v a = v.
 
-Definition st_read (st:storage) (a:addr) : state := 
-  read_storage st a.
+Axiom st_write_ne:
+  forall s a v a', a <> a' -> st_write s a v a' = s a'.
 
+Axiom st_read_eq:
+  forall s a, st_read s a = s a.
+
+Hint Rewrite st_init_eq.
+Hint Rewrite st_write_eq.
+Hint Rewrite st_write_ne using omega.
+Hint Rewrite st_read_eq.
+
+Ltac st_rewrite :=
+  match goal with
+    | [ H : context[st_init _ _] |- _ ] =>
+      rewrite st_init_eq in H
+    | [ H : context[st_write _ ?A _ ?A] |- _ ] =>
+      rewrite st_write_eq in H
+    | [ H : context[st_write _ ?A1 _ ?A2] |- _ ] =>
+      rewrite st_write_ne in H; [idtac | omega]
+    | [ H : context[st_read _ _] |- _ ] =>
+      rewrite st_read_eq in H
+  end.
 
 (* IO monad *)
 
