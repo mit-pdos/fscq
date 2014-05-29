@@ -742,7 +742,26 @@ Proof.
     * apply lazy2_read_preserves_disk in Hb; crush.
     * constructor. 
       apply IHl with (h := h0); crush.
-    * intros.
+    * crush.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+      rewrite H0 in H; crush.
+    * crush.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+      rewrite H0 in H; crush.
+      destruct (lazy2_sync l0) eqn:Hb; crush.
+      unfold lazy2_sync in Hb.
+      destruct (Lazy2Mem l0).
+      + inversion Hb.
+      constructor.
+      constructor.
+      + intros.
+        inversion Hb.
+        constructor.
+        rewrite <- H1.
+        apply IHl with (h := h0); crush.
+    * crush.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+      rewrite H0 in H; crush.
 Qed.
 
 Lemma lazy2_could_read_disk:
