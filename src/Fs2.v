@@ -720,13 +720,46 @@ Definition lazy2_apply (s: lazy2_state) (i: invocation) (h: history) : lazy2_sta
 
 (* Lazy file system with lazy reading is correct *)
 
+Lemma lazy2_read_preserves_disk:
+  forall (s: lazy2_state) (n:nat) (s1: lazy2_state),
+    lazy2_read s = (n, s1) -> s = s1.
+Proof.
+  admit.
+Qed.
+
+Lemma lazy2_last_flush:
+  forall (l: list invocation) (s: lazy2_state) (h: history),
+  fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
+  last_flush h (Lazy2Disk s).
+Proof.
+  induction l.
+  - crush.
+  - destruct a; crush.
+    case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+    rewrite H0 in H.
+    destruct (lazy2_read l0) eqn:Hb; crush.
+    assert (s = l0).
+    * apply lazy2_read_preserves_disk in Hb; crush.
+    * constructor. 
+      apply IHl with (h := h0); crush.
+    * intros.
+Qed.
+
 Lemma lazy2_could_read_disk:
   forall (l: list invocation) (s: lazy2_state) (h: history),
   fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
   (Lazy2Mem s) = None ->
   could_read h (Lazy2Disk s).
 Proof.
-  admit.
+  induction l.
+  - crush.
+  - destruct a; crush.
+    case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+    rewrite H1 in H.
+    destruct (lazy2_read l0).
+    inversion H.
+    constructor.
+    (* XXX use lazy2_last_flush *)
 Qed.
 
 Lemma lazy2_could_read:
@@ -749,19 +782,9 @@ Proof.
         assert (x = (Lazy2Disk {| Lazy2Mem := None; Lazy2Disk := Lazy2Disk0 |})).  crush.
         rewrite H2.
         apply lazy2_could_read_disk with (l:=l); crush.
-    + intros.
-
-       
 Qed.
 
 
-Lemma lazy2_last_flush:
-  forall (l: list invocation) (s: lazy2_state) (h: history),
-  fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
-  last_flush h (Lazy2Disk s).
-Proof.
-  admit.
-Qed.
 
 Theorem lazy2_correct:
   fs_legal lazy2_state lazy2_init lazy2_apply.
