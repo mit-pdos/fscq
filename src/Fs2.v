@@ -764,6 +764,19 @@ Proof.
       rewrite H0 in H; crush.
 Qed.
 
+(* something like this:
+Lemma lazy2_read_last_flush_when_no_write:
+  forall (l: list invocation) (s: lazy2_state) (h: history),
+      (Lazy2Mem s) = None -> no-write-since-lastflush -> could_read h (Lazy2Disk s).
+Proof.
+  admit.
+Qed.
+
+is it possible to use this lemma and lazy2_list_flush to proof the following
+lemma without induction, and case by case analysis?
+
+*)
+
 Lemma lazy2_could_read_disk:
   forall (l: list invocation) (s: lazy2_state) (h: history),
   fs_apply_list lazy2_state lazy2_init lazy2_apply l = (s, h) ->
@@ -775,10 +788,36 @@ Proof.
   - destruct a; crush.
     case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
     rewrite H1 in H.
-    destruct (lazy2_read l0).
-    inversion H.
-    constructor.
-    (* XXX use lazy2_last_flush *)
+    destruct (lazy2_read l0) eqn:Hb; crush.
+    unfold lazy2_read in Hb.
+    destruct (Lazy2Mem l0).
+    + intros.
+      inversion Hb.
+      constructor.
+      rewrite <- H3.
+      apply IHl with (h := h0); crush.
+    + intros.
+      inversion Hb.
+      constructor.
+      apply IHl with (h := h0); crush.
+    + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+      rewrite H1 in H.
+      inversion H.
+      (* contradiction between H0 and H *)
+      admit.
+    + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+      rewrite H1 in H.
+      destruct (lazy2_sync l0) eqn:Hb; crush.
+      unfold lazy2_sync in Hb.
+      destruct (Lazy2Mem l0); crush.
+   + intros.
+      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
+      rewrite H1 in H.
+      assert (s = l0).
+      (* it is .... given H0 and H *)
+      admit.
 Qed.
 
 Lemma lazy2_could_read:
