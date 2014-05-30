@@ -310,16 +310,28 @@ Inductive invocation : Set :=
   | do_sync: invocation
   | do_crash: invocation.
 
+Inductive result : Set :=
+  | rs_read: state -> result
+  | rs_void: result.
+
 Fixpoint fs_apply_list (fsstate: Set)
                        (init: fsstate)
-                       (applyfun: fsstate -> invocation -> trace -> fsstate * trace)
+                       (applyfun: fsstate -> invocation -> fsstate * result)
                        (l: list invocation)
                        : fsstate * trace :=
   match l with
   | i :: rest =>
-    match fs_apply_list fsstate init applyfun rest with
-    | (s, t) => applyfun s i t
-    end
+    let (s, t) := fs_apply_list fsstate init applyfun rest in
+    let (s', r) := applyfun s i in
+      match i with
+      | do_read => match r with
+         | rs_read x => (s', Read x :: t)
+         | rs_void   => (s', t) (* invalid *)
+        end
+      | do_write x => (s', Write x :: t)
+      | do_sync => (s', Sync :: t)
+      | do_crash => (s', Crash :: t)
+      end
   | nil => (init, nil)
   end.
 
