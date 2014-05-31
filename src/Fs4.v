@@ -116,16 +116,16 @@ Lemma write_complement:
   (exists (s:state), last_write_since_crash t s) \/ no_write_since_crash t.
 Proof.
   induction t; unfold no_write_since_crash.
-  - right. crush. inversion H.
+  - right. intuition. inversion H. inversion H0.
   - unfold no_write_since_crash in IHt; destruct IHt; destruct a.
-    + left. crush. exists x. constructor. assumption.
+    + left. inversion H. exists x. constructor. assumption.
     + left. exists s. constructor.
-    + left. crush. exists x. constructor. assumption.
-    + right. crush. inversion H0.
-    + right. crush. inversion H0. apply H. exists x. assumption.
+    + left. inversion H. exists x. constructor. assumption.
+    + right. intuition. inversion H. inversion H0. inversion H2.
+    + right. intuition. inversion H0. apply H. exists x. inversion H1. assumption.
     + left. exists s. constructor.
-    + right. crush. inversion H0. apply H. exists x. assumption.
-    + right. crush. inversion H0.
+    + right. intuition. inversion H0. apply H. exists x. inversion H1. assumption.
+    + right. intuition. inversion H0. inversion H1.
 Qed.
 
 Lemma sync_before_read_irrelevence:
@@ -314,6 +314,29 @@ Inductive result : Set :=
   | rs_read: state -> result
   | rs_void: result.
 
+Inductive result_legal : invocation -> result -> Prop :=
+  | result_legal_read: 
+    forall (x:state), result_legal do_read (rs_read x)
+  | result_legal_write:
+    forall (x:state), result_legal (do_write x) rs_void
+  | result_legal_sync:
+    result_legal do_sync rs_void
+  | result_legal_crash:
+    result_legal do_crash rs_void.
+
+
+Definition result_legal_dec: forall (i:invocation) (e:result),
+  {result_legal i e} + {~ result_legal i e}.
+Proof.
+  Import Arith.Peano_dec.
+  intros. destruct i; destruct e;
+  repeat match goal with
+  | _ => left; constructor
+  | _ => right; intro; inversion H
+  end.
+Defined.
+
+
 Fixpoint fs_apply_list (fsstate: Set)
                        (init: fsstate)
                        (applyfun: fsstate -> invocation -> fsstate * result)
@@ -324,23 +347,24 @@ Fixpoint fs_apply_list (fsstate: Set)
     let (s, t) := fs_apply_list fsstate init applyfun rest in
     let (s', r) := applyfun s i in
       match i with
-      | do_read => match r with
-         | rs_read x => (s', Read x :: t)
-         | rs_void   => (s', t) (* invalid *)
+      | do_read => match r with 
+        | rs_read x => (s', (Read x) :: t)
+        | _ => (s', t)    (* invalid *)
         end
-      | do_write x => (s', Write x :: t)
+      | do_write x => (s', (Write x) :: t)
       | do_sync => (s', Sync :: t)
       | do_crash => (s', Crash :: t)
       end
   | nil => (init, nil)
   end.
 
+
 Definition fs_legal (fsstate: Set)
                      (init: fsstate)
-                     (applyfun: fsstate -> invocation -> trace -> fsstate * trace) :=
-  forall (l: list invocation) (t: trace) (s: fsstate),
-  fs_apply_list fsstate init applyfun l = (s, t) ->
-  trace_legal t.
+                     (applyfun: fsstate -> invocation -> fsstate * result) :=
+  forall (l: list invocation) (i:invocation) (t: trace) (s: fsstate),
+  result_legal i (snd (applyfun s i)) /\
+  (fs_apply_list fsstate init applyfun l = (s, t) ->trace_legal t).
 
 
 (* Eager file system: sync after every write *)
@@ -349,24 +373,18 @@ Definition eager_state := storage.
 
 Definition eager_init := st_init IS.
 
-Definition eager_apply (s: eager_state) (i: invocation) (t: trace) : eager_state * trace :=
+Definition eager_apply (s: eager_state) (i: invocation) : eager_state * result :=
   match i with
-  | do_read    => let io := IOread 0 s    in (fst io, (Read (snd io)) :: t)
-  | do_write n => let io := IOwrite 0 n s in (fst io, Sync :: (Write n) :: t)
-  | do_sync    => (s, Sync :: t)
-  | do_crash   => (s, Crash :: t)
+  | do_read    => let io := IOread 0 s    in (fst io, rs_read (snd io))
+  | do_write n => let io := IOwrite 0 n s in (fst io, rs_void)
+  | do_sync    => (s, rs_void)
+  | do_crash   => (s, rs_void)
   end.
 
 Ltac destruct_invocation :=
   match goal with
   | [ Ha : invocation, Hl : list invocation |- 
-      forall _ _, fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] =>
-      destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
-  | [ Ha : invocation, Hl : list invocation |- 
-      forall _ _ _, fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] =>
-      destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
-  | [ Ha : invocation, Hl : list invocation |- 
-      forall _ _ _ _, fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] =>
+      context [ fs_apply_list ?Ts ?Ti ?Ta _ = _ -> _ ] ] =>
       destruct Ha; simpl; case_eq (fs_apply_list Ts Ti Ta Hl)
   | _ => fail
   end.
@@ -386,13 +404,13 @@ Qed.
 Theorem eager_correct:
   fs_legal eager_state eager_init eager_apply.
 Proof.
-  unfold fs_legal.  induction l.
-  - crush.
-  - destruct_invocation; crush. 
-    + assert (Hx:=H). apply IHl in H.
-      apply could_read_legal. assumption.
+  unfold fs_legal. split.
+  - destruct i; constructor.
+  - revert s; revert t; revert l. induction l. crush.
+    destruct_invocation; crush.
+    + apply could_read_legal. apply IHl with (s:=s). assumption.
       apply eager_could_read with (l:=l). assumption.
-    + repeat constructor. apply IHl with (s:=e). assumption.
+    + constructor. apply IHl with (s:=e). assumption.
     + constructor. apply IHl with (s:=s). assumption.
     + constructor. apply IHl with (s:=s). assumption.
 Qed.
@@ -407,22 +425,22 @@ Record buf_state : Set := mkbuf {
 
 Definition buf_init := mkbuf None (st_init IS).
 
-Definition buf_apply (s: buf_state) (i: invocation) (t: trace) : buf_state * trace :=
+Definition buf_apply (s: buf_state) (i: invocation) : buf_state * result :=
   match i with
   | do_read =>
     match (BufMem s) with
     | None => let io := IOread 0 (BufDisk s) in
-              (mkbuf (Some (snd io)) (fst io), (Read (snd io)) :: t)
-    | Some x => (s, (Read x) :: t)
+              (mkbuf (Some (snd io)) (fst io), rs_read (snd io))
+    | Some x => (s, rs_read x)
     end
-  | do_write n => (mkbuf (Some n) (BufDisk s), (Write n) :: t)
+  | do_write n => (mkbuf (Some n) (BufDisk s), rs_void)
   | do_sync =>
     match (BufMem s) with
-    | None => (s, Sync :: t)
+    | None => (s, rs_void)
     | Some x => let io := IOwrite 0 x (BufDisk s) in
-                (mkbuf (Some x) (fst io), Sync :: t)
+                (mkbuf (Some x) (fst io), rs_void)
     end
-  | do_crash => (mkbuf None (BufDisk s), Crash :: t)
+  | do_crash => (mkbuf None (BufDisk s), rs_void)
   end.
 
 Lemma buf_empty_no_write:
@@ -551,9 +569,10 @@ Qed.
 Theorem buf_correct:
   fs_legal buf_state buf_init buf_apply.
 Proof.
-    unfold fs_legal.  induction l.
-  - crush.
-  - destruct_invocation; crush.
+    unfold fs_legal. split.
+  - unfold buf_apply; destruct i; destruct (BufMem s); crush; constructor.
+  - revert s; revert t; revert l; induction l. crush.
+    destruct_invocation; crush.
     + destruct (BufMem b) eqn:Hb ; inversion H0; simpl; subst.
       * apply could_read_legal with (t:=t) (s:=s0). 
         assert (Hx:=H); apply IHl with (s:=s). assumption.
@@ -574,12 +593,12 @@ Definition nil_state := state.
 
 Definition nil_init := IS.
 
-Definition nil_apply (s: nil_state) (i: invocation) (t: trace) : nil_state * trace :=
+Definition nil_apply (s: nil_state) (i: invocation) : nil_state * result :=
   match i with
-  | do_read    => (IS, t)
-  | do_write n => (IS, (Write n) :: t)
-  | do_sync    => (IS, Sync :: t)
-  | do_crash   => (IS, Crash :: t)
+  | do_read    => (IS, rs_void)
+  | do_write n => (IS, rs_void)
+  | do_sync    => (IS, rs_void)
+  | do_crash   => (IS, rs_void)
   end.
 
 Theorem nil_correct:
@@ -587,6 +606,5 @@ Theorem nil_correct:
 Proof.
   unfold fs_legal. induction l.
   - crush.
-  - destruct_invocation; crush; apply IHl in H; crush.
-Qed.
+Abort.
 
