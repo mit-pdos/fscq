@@ -100,16 +100,6 @@ Ltac invert_could_read :=
     crush; inversion H1; clear H1
   end.
 
-Theorem could_read_if_last_event_is_write:
-  forall (h:history) (n : nat), 
-    could_read (Write n :: h) n.
-Proof.
-  intros.
-  induction h.
-  constructor. (* base case *)
-  constructor.
-Qed.
-
 Inductive could_flush: history -> nat -> Prop :=
   | could_flush_read:
     forall (h:history) (n:nat) (rn:nat),
@@ -847,7 +837,7 @@ Proof.
       rewrite <- H3 in H0.
       simpl in H0.
       inversion H0.
-      apply could_read_if_last_event_is_write.
+      constructor.
    + intros.  (* sync *)
      case_eq (fs_apply_list lazy2_state lazy2_init lazy2_apply l); crush.
      rewrite H1 in H.
