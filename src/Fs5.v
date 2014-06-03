@@ -9,159 +9,195 @@ extend with ABwrite and AEwrite? *)
 (* XXX need two blocks to make it more interesting ... *)
 
 Inductive event : Set :=
-  | Read: nat -> event
-  | Write: nat -> event
-  | Flush: nat -> event
+  | Read: nat -> nat -> event
+  | Write: nat -> nat -> event
   | Sync: event
-  | Crash: event
-  | ABwrite: nat -> event
-  | AEwrite: nat -> event.
+  | Crash: event    (* XXX crash should come from somewhere else *)
+  | TBegin: event
+  | TEnd: event.
 
 Definition history := list event.
 
 (* (last_flush h n) means n was the last thing flushed in h *)
-Inductive last_flush: history -> nat -> Prop :=
+Inductive last_flush: history -> nat -> nat -> Prop :=
   | last_flush_read:
-    forall (h:history) (n:nat) (rn:nat),
-    last_flush h n -> last_flush ((Read rn) :: h) n
+    forall (h:history) (d: nat) (n:nat) (rn:nat),
+    last_flush h d n -> last_flush ((Read d rn) :: h) d n
   | last_flush_write:
-    forall (h:history) (n:nat) (wn:nat),
-    last_flush h n -> last_flush ((Write wn) :: h) n
-  | last_flush_flush:
-    forall (h:history) (n:nat),
-    last_flush ((Flush n) :: h) n
+    forall (h:history) (d: nat) (n:nat) (wn:nat),
+    last_flush h d n -> last_flush ((Write d wn) :: h) d n
   | last_flush_sync:
-    forall (h:history) (n:nat),
-    last_flush h n -> last_flush (Sync :: h) n
+    forall (h:history) (d: nat) (n:nat),
+    last_flush h d n -> last_flush (Sync :: h) d n
   | last_flush_crash:
-    forall (h:history) (n:nat),
-    last_flush h n -> last_flush (Crash :: h) n
-  | last_flush_ABwrite:
-    forall (h:history) (n:nat) (wn: nat),
-    last_flush ((ABwrite wn) :: h) n
+    forall (h:history) (d:nat) (n:nat),
+    last_flush h d n -> last_flush (Crash :: h) d n
+  | last_flush_Tbegin:
+    forall (h:history) (d:nat) (n:nat),
+    last_flush h d n -> last_flush (TBegin :: h) d n
+  | last_flush_Tend:
+    forall (h:history) (d:nat) (n:nat),
+    last_flush h d n -> last_flush (TEnd :: h) d n
   | last_flush_nil:
-    last_flush nil 0.
+    forall (d:nat),
+    last_flush nil d 0.
 
-Inductive atomic: history -> nat -> Prop :=
-  | atomic_begin_write:
-    forall (h:history) (n:nat) (rn:nat),
-      atomic ((ABwrite rn) :: h) n.
+Inductive could_begin: history -> nat -> Prop :=
+  | could_Tbegin:
+    forall (h:history) (d: nat),
+      could_begin (TBegin :: h) d
+  | could_begin_write:
+    forall (h:history) (d: nat) (d1: nat) (n1:nat),
+      could_begin h d ->
+      could_begin ((Write d1 n1) :: h) d
+  | could_begin_read:
+    forall (h:history) (d: nat) (d1: nat) (n1:nat),
+      could_begin h d ->
+      could_begin ((Read d1 n1) :: h) d.
 
 (* (could_read h n) means n could be the return value of a read *)
-Inductive could_read: history -> nat -> Prop :=
-  | could_read_read:
-    forall (h:history) (n:nat) (rn:nat),
-    could_read h n -> could_read ((Read rn) :: h) n
-  | could_read_write:
-    forall (h:history) (n:nat),
-    could_read ((Write n) :: h) n
-  | could_read_flush:
-    forall (h:history) (n:nat) (fn:nat),
-    could_read h n -> could_read ((Flush fn) :: h) n
+Inductive could_read: history -> nat -> nat -> Prop :=
+  | could_read_read1:
+    forall (h:history) (d: nat) (n:nat) (rn:nat),
+    could_read h d n -> could_read ((Read d rn) :: h) d n
+ | could_read_read2:
+    forall (h:history) (d: nat) (d1: nat) (n:nat) (rn:nat),
+    could_read h d n -> could_read ((Read d1 rn) :: h) d n
+  | could_read_write1:
+    forall (h:history) (d: nat) (n:nat),
+    could_read ((Write d n) :: h) d n
+  | could_read_write2:
+    forall (h:history) (d: nat) (d1: nat) (n:nat) (n1: nat),
+    could_read h d n ->
+    could_read ((Write d1 n1) :: h) d n
   | could_read_sync:
-    forall (h:history) (n:nat),
-    could_read h n -> could_read (Sync :: h) n
+    forall (h:history) (d: nat) (n:nat),
+    could_read h d n -> could_read (Sync :: h) d n
   | could_read_crash:
-    forall (h:history) (n:nat),
-    last_flush h n -> could_read (Crash :: h) n
-  | could_read_begin:
-    forall (h:history) (n:nat),
-    could_read ((ABwrite n) :: h) n
-  | could_read_end:
-    forall (h:history) (n:nat),
-    could_read ((AEwrite n) :: h) n
+    forall (h:history) (d: nat) (n:nat),
+    last_flush h d n -> could_read (Crash :: h) d n
+  | could_read_begin1:
+    forall (h:history) (d:nat) (n:nat),
+    could_read (TBegin :: h) d n
+  | could_read_end1:
+    forall (h:history) (d:nat) (n:nat),
+    could_read (TEnd:: h) d n
   | could_read_nil:
-    could_read nil 0.
+    forall (d: nat),
+    could_read nil d 0.
 
-Inductive could_flush: history -> nat -> Prop :=
+Inductive could_flush: history -> nat -> nat -> Prop :=
   | could_flush_read:
-    forall (h:history) (n:nat) (rn:nat),
-    could_flush h n -> could_flush ((Read rn) :: h) n
+    forall (h:history) (d: nat) (n:nat) (rn:nat),
+    could_flush h d n -> could_flush ((Read d rn) :: h) d n
   | could_flush_write_1:
-    forall (h:history) (n:nat),
-    could_flush ((Write n) :: h) n
+    forall (h:history) (d: nat) (n:nat),
+    could_flush ((Write d n) :: h) d n
   | could_flush_write_2:
-    forall (h:history) (n:nat) (wn:nat),
-    could_flush h n -> could_flush ((Write wn) :: h) n
-  | could_flush_flush:
-    forall (h:history) (n:nat) (fn:nat),
-    could_flush h n -> could_flush ((Flush fn) :: h) n
+    forall (h:history) (d : nat) (n:nat) (wn:nat),
+    could_flush h d n -> could_flush ((Write d wn) :: h) d n
   | could_flush_sync:
-    forall (h:history) (n:nat),
-    could_read h n -> could_flush (Sync :: h) n
+    forall (h:history) (d : nat) (n:nat),
+    could_read h d n -> could_flush (Sync :: h) d n
   | could_flush_crash:
-    forall (h:history) (n:nat),
-    last_flush h n -> could_flush (Crash :: h) n
+    forall (h:history) (d : nat) (n:nat),
+    last_flush h d n -> could_flush (Crash :: h) d n
   | could_flush_nil:
-    could_flush nil 0.
+    forall (d : nat),
+    could_flush nil d 0.
 
-Inductive legal: history -> Prop :=
-  | legal_read:
-    forall (h:history) (n:nat),
-    could_read h n ->
-    legal h -> legal ((Read n) :: h)
+Inductive legal: history -> nat -> Prop :=
+  | legal_read1:
+    forall (h:history) (d : nat) (n:nat),
+    could_read h d n ->
+    legal h d -> 
+    legal ((Read d n) :: h) d
+  | legal_read2:
+    forall (h:history) (d : nat) (d1: nat) (n:nat) (n1: nat),
+    legal h d ->
+    could_read h d1 n1 ->
+    legal ((Read d1 n1) :: h) d
   | legal_write:
-    forall (h:history) (n:nat),
-    legal h -> legal ((Write n) :: h)
-  | legal_flush:
-    forall (h:history) (n:nat),
-    could_flush h n ->
-    legal h ->
-    legal ((Flush n) :: h)
+    forall (h:history) (d : nat) (d1: nat) (n:nat) (n1: nat),
+    legal h d -> legal h d1 -> legal ((Write d1 n1) :: h) d
   | legal_sync:
-    forall (h:history) (n:nat),
-    could_read h n ->
-    last_flush h n ->
-    legal h ->
-    legal (Sync :: h)
-  | legal_AEwrite:
-    forall (h:history) (n:nat),
-    atomic h n ->
-    legal h ->
-    legal ((AEwrite n) :: h)
-  | legal_ABwrite:
-    forall (h:history) (n:nat),
-    legal h ->
-    legal ((ABwrite n) :: h)
+    forall (h:history) (d : nat) (n:nat),
+    could_read h d n ->
+    last_flush h d n ->
+    legal h d ->
+    legal (Sync :: h) d
+  | legal_begin:
+    forall (h:history) (d:nat),
+    legal h d ->
+    legal (TBegin :: h) d
+  | legal_end:
+    forall (h:history) (d : nat),
+    could_begin h d  ->
+    legal h d ->
+    legal (TEnd:: h) d
   | legal_crash:
-    forall (h:history),
-    legal h -> legal (Crash :: h)
+    forall (h:history) (d:nat),
+    legal h d -> legal (Crash :: h) d
   | legal_nil:
-    legal nil.
+    forall (d:nat),
+    legal nil d.
 
 Theorem test_legal_1:
-  legal [ Read 1 ;  AEwrite 1 ; ABwrite 2 ].
+  forall (d:nat),
+    legal [ Read 1 1 ;  Write 1 1 ] d.
 Proof.
+  intro.
   repeat constructor.
 Qed.
 
 Theorem test_legal_2:
-  legal [ Read 0 ; Crash; ABwrite 2 ].
+  forall (d:nat),
+  ~ legal [ Read 0 1 ;  Write 1 1 ] d. 
 Proof.
-  repeat constructor.
+  intro.
+  intuition.
+  inversion H.
+  - clear H.
+    inversion H4.
+    inversion H10.
+  - intros.
+    inversion H4.
+    inversion H5.
+    inversion H17.
 Qed.
 
 Theorem test_legal_3:
-  ~ legal [ Read 1 ;  AEwrite 1 ; Crash; ABwrite 2 ].
+  forall (d:nat),
+    legal [ Read 0 1; Read 1 1 ; Write 0 1; Write 1 1 ] d.
 Proof.
   intro.
-  inversion H.
-  inversion H2.
-  inversion H3.
-  inversion H8.
+  repeat constructor.
 Qed.
 
 Theorem test_legal_4:
-  ~ legal [ Read 2 ; Crash; ABwrite 2 ].
+  forall (d:nat),
+    legal [ Read 0 1 ; Read 1 1 ; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
 Proof.
   intro.
-  inversion H.
-  clear H.
-  inversion H2.
-  clear H2.
-  (* last_flush [ABwrite 2] 2 is false but i lose last_flush [] 2 *)
-  admit.
+  repeat constructor.
 Qed.
+
+Theorem test_legal_5: 
+  forall (d:nat),
+    legal [ Read 0 0 ;  Crash ; Write 0 1 ] d.
+Proof.
+  intro.
+  repeat constructor.
+Qed.
+
+Theorem test_legal_6:
+  forall (d: nat),
+    legal [ Read 1 0 ; Crash; Write 1 1; TBegin ] d.
+Proof.
+  intro.
+  repeat constructor.
+Qed.
+
 
 (* now can do refinement. use two lazy2 disks to implement an atomic disk, or use two lazy2 disks to implement a disk with 2 blocks (but that seems stupid, because we want 1 cache. *)
 
