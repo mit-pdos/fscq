@@ -27,6 +27,8 @@ Notation "a >>= f" := (mbind a f) (left associativity, at level 50).
 Notation "'do' x <- y ; z" := (mbind y (fun x => z))
   (left associativity, at level 200, x ident, y at level 100, z at level 200).
 
+(*
+
 Axiom read_write_ok :
   forall (n v:nat),
   forall B,
@@ -45,6 +47,7 @@ Axiom read_read_commute :
   forall B,
   forall x: nat -> nat -> crashable B,
   (do v <- read n ; do v' <- read n' ; x v v') = (do v' <- read n' ; do v <- read n ; x v v').
+*)
 
 Definition normally {R:Type} (c:crashable R) (P:R->Prop) : Prop :=
   forall (s:state),
@@ -53,6 +56,7 @@ Definition normally {R:Type} (c:crashable R) (P:R->Prop) : Prop :=
   | (_, Some v) => P v
   end.
 
+(*
 Theorem simpl :
   normally (do _ <- write 0 3; do _ <- write 1 5; do a <- read 0; do b <- read 1; mret (a+b))
     (fun sum => sum = 8).
@@ -65,26 +69,52 @@ Proof.
   unfold normally, mbind, mret; intro.
   repeat ((case (write _ _ _) || case (read _ _)) ; destruct 0; [ idtac | auto ]); auto.
 Qed.
+*)
 
 (* XXX: above axioms don't work well with crashes; perhaps instead the following read-backwards axioms *)
 
-Axiom read_write_ok2 : 
-  forall n v v' s s' s'',
-  write n v s = (s', Some tt) ->
+Axiom read_write_ok :
+  forall n v v' r s s' s'',
+  write n v s = (s', Some r) ->
   read n s' = (s'', Some v') ->
   v = v'.
 
 (* even a read that crashes does not influence any other reads: *)
-Axiom read_read_commute2 :
+Axiom read_read_commute :
   forall n n' r v' s s' s'',
   read n s = (s', r) ->
   read n' s' = (s'', Some v') ->
   exists s''', read n' s = (s''', Some v').
 
 (* even a write that crashes does not influence any other reads: *)
-Axiom read_write_diff_commute2 :
+Axiom read_write_diff_commute :
   forall n n' v v' r s s' s'',
   n <> n' ->
   write n v s = (s', r) ->
   read n' s' = (s'', Some v') ->
   exists s''', read n' s = (s''', Some v').
+
+Theorem simpl :
+  normally (do _ <- write 0 3; do _ <- write 1 5; do a <- read 0; do b <- read 1; mret (a+b))
+    (fun sum => sum = 8).
+Proof.
+  unfold normally, mbind, mret; intro.
+  case_eq (write 0 3 s); intros; destruct o; [ idtac | auto ].
+  case_eq (write 1 5 s0); intros; destruct o; [ idtac | auto ].
+  case_eq (read 0 s1); intros; destruct o; [ idtac | auto ].
+  case_eq (read 1 s2); intros; destruct o; [ idtac | auto ].
+
+  assert (exists s', read 1 s1 = (s', Some n0)).
+  apply read_read_commute with (n:=0) (r:=Some n) (s':=s2) (s'':=s3); assumption.
+  crush.
+  assert (5 = n0).
+  apply read_write_ok with (n := 1) (s := s0) (s' := s1) (s'' := x) (r := u0); assumption.
+  crush.
+
+  assert (exists s', read 0 s0 = (s', Some n)).
+  apply read_write_diff_commute with (n:=1) (v:=5) (r:=Some u0) (s':=s1) (s'':=s2); crush.
+  crush.
+  assert (3 = n).
+  apply read_write_ok with (n := 0) (s := s) (s' := s0) (s'' := x0) (r := u); assumption.
+  crush.
+Qed.
