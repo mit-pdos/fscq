@@ -185,67 +185,66 @@ Proof.
   repeat constructor.
 Qed.
 
+(* No syncs inside of a transaction: *)
 Theorem test_legal_5:
   forall (d:nat),
-    legal [ Read 0 0 ; Crash; Write 0 1 ; TBegin] d.
+    legal [ Read 0 1 ; Read 1 1 ; TEnd; Write 0 1 ; Sync; Write 1 1 ; TBegin] d.
 Proof.
-  intro.
-  repeat constructor.
+  admit.   (* Not clear we need to proof this theorem because is certainly not legal either *)
 Qed.
 
+(* No writes of an incomplete transaction are visible after a crash: *)
 Theorem test_legal_6:
   forall (d:nat),
     legal [ Read 1 0; Read 0 0 ; Crash; Write 1 1; Write 0 1 ; TBegin] d.
 Proof.
   intro.
   repeat constructor.
-Qed.
-
-(* After a crash, a new transaction must start with TBegin *)
-Theorem test_legal_7:
-  forall (d:nat),
-    ~ legal [ Read 0 0 ; Read 0 0 ; TEnd ; Write 0 1 ; Crash; Write 1 1 ; TBegin] d.
-Proof.
-  intros.
+  admit.
   admit.
 Qed.
 
-(* XXX need to nail down sync and end:
-
-Theorem test_legal_6:
-  forall (d:nat),
-    legal [ Read 0 0 ; Read 1 1; Crash; Write 0 1 ; Write 1 1; TBegin] d.
-Proof.
-  intro.
-  repeat constructor.
-Qed.
-*)
-
-(* XXX need to nail down spec: 
-Theorem test_legal_5:
-  forall (d:nat),
-    legal [ Read 0 1 ; Read 1 1 ; Crash; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
-Proof.
-  intro.
-  repeat constructor.
-Qed.
-*)
-
-Theorem test_legal_6: 
-  forall (d:nat),
-    legal [ Read 0 0 ;  Crash ; Write 0 1 ] d.
-Proof.
-  intro.
-  repeat constructor.
-Qed.
-
+(* Results of a transactions are not durable: *)
 Theorem test_legal_7:
-  forall (d: nat),
-    legal [ Read 1 0 ; Crash; Write 1 1; TBegin ] d.
+  forall (d:nat),
+    legal [ Read 0 0 ; Read 1 0 ; Crash; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
 Proof.
   intro.
   repeat constructor.
+  admit.
+  admit.
 Qed.
+
+(* Sync makes transactions and writes durable: *)
+Theorem test_legal_8:
+  forall (d:nat),
+    legal [ Read 0 1 ; Read 1 1 ; Crash; Sync; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
+Proof.
+  intro.
+  repeat constructor.
+  admit.
+  admit.
+  admit.
+Qed.
+
+(* Sync makes all preceding transactions durable: *)
+Theorem test_legal_9:
+  forall (d:nat),
+    legal [ Read 0 1 ; Read 1 1 ; Crash; Sync; TEnd; Write 0 1 ; TBegin; TEnd; Write 1 1 ; TBegin] d.
+Proof.
+  admit.
+Qed.
+
+(* After a crash, a new transaction must start with TBegin *)
+Theorem test_legal_10:
+  forall (d:nat),
+    ~ legal [ Read 0 0 ; Read 0 0 ; TEnd ; Write 0 1 ; Crash; Write 1 1 ; TBegin] d.
+Proof.
+  admit.
+Qed.
+
+(* XXX reads inside of a transaction should probably return the value of most
+(perhaps unncommitted) write *)
 
 (* A disk whose reads and writes don't fail *)
 
