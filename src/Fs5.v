@@ -309,7 +309,7 @@ Qed.
 
 Theorem TDisk_legal_2:
   forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
-    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h 0.
+    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h d.
 Proof.
   intros.
   inversion H.
