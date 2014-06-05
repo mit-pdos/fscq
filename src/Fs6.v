@@ -106,11 +106,20 @@ Qed.
 
 (* XXX: above axioms don't work well with crashes; perhaps instead the following read-backwards axioms *)
 
-Axiom read_write_ok :
+Lemma read_write_ok :
   forall n v v' r s s' s'',
   write n v s = (s', Some r) ->
   read n s' = (s'', Some v') ->
   v = v'.
+Proof.
+  unfold write.  unfold read.
+  intros.
+  destruct (should_crash (state_crash s)); [ crush | idtac ].
+  destruct (should_crash (state_crash s')); [ crush | idtac ].
+  inversion H.  inversion H0.
+  rewrite <- H2 in H5.  simpl in H5.
+  rewrite disk_read_same in H5.  crush.
+Qed.
 
 (* even a read that crashes does not influence any other reads: *)
 Axiom read_read_commute :
