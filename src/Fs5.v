@@ -10,8 +10,8 @@ nil. *)
 Inductive event : Set :=
   | Read: nat -> nat -> event
   | Write: nat -> nat -> event
-  | Sync: event
-  | Crash: event    (* XXX crash should come from somewhere else *)
+  | Sync: event     (* XXX don't apply to transactions; i.e., TEnd syncs *)
+  | Crash: event    (* what does it mean in begin and end: ignore? *)
   | TBegin: event
   | TEnd: event.
 
@@ -184,7 +184,17 @@ Proof.
   repeat constructor.
 Qed.
 
-Theorem test_legal_5: 
+(* need to nail down spec: 
+Theorem test_legal_5:
+  forall (d:nat),
+    legal [ Read 0 1 ; Read 1 1 ; Crash; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
+Proof.
+  intro.
+  repeat constructor.
+Qed.
+*)
+
+Theorem test_legal_6: 
   forall (d:nat),
     legal [ Read 0 0 ;  Crash ; Write 0 1 ] d.
 Proof.
@@ -192,7 +202,7 @@ Proof.
   repeat constructor.
 Qed.
 
-Theorem test_legal_6:
+Theorem test_legal_7:
   forall (d: nat),
     legal [ Read 1 0 ; Crash; Write 1 1; TBegin ] d.
 Proof.
@@ -200,10 +210,7 @@ Proof.
   repeat constructor.
 Qed.
 
-(* An atomic abstract disk that implements the above spec. The abstract disk has
-a storage device and a list of actions in a transactions that haven't been
-applied yet. They will be applied when the transaction ends/commits atomically.
-*)
+(* A disk whose reads and writes don't fail *)
 
 Definition addr := nat.
 Definition val := nat.
@@ -222,6 +229,8 @@ Axiom st_write_ne:
 Axiom st_read_eq:
   forall s a, st_read s a = s a.
 
+(* The interface to an atomic disk: *)
+
 Inductive invocation : Set :=
   | do_read: nat -> invocation
   | do_write: nat -> nat -> invocation
@@ -229,12 +238,17 @@ Inductive invocation : Set :=
   | do_end: invocation
   | do_crash: invocation.
 
+(* An atomic abstract disk that implements the above interface with the above
+spec. The abstract disk has a storage device and a list of actions in a
+transactions that haven't been applied yet. They will be applied when the
+transaction ends/commits atomically.  *)
+
 Record TDisk: Set := mkTDisk {
   disk : storage;
   pending : list invocation   (* list of pending invocations in a transaction *)
 }.
 
-Definition abstract_apply (s: TDisk) (i: invocation) (h: history) : TDisk * history :=
+Definition Tdisk_apply (s: TDisk) (i: invocation) (h: history) : TDisk * history :=
   match i with
       | do_read d => (s, (Read d (st_read s.(disk) d)) :: h)
       | do_write d n => let disk1 := (st_write s.(disk) d n) in
@@ -246,7 +260,7 @@ Fixpoint apply_pending (s: TDisk) (l : list invocation) (h: history) : TDisk * h
   match l with
   | i :: rest =>
     let (s1, h1) := (apply_pending s rest h) in 
-      (abstract_apply s1 i h1)
+      (Tdisk_apply s1 i h1)
   | nil => (s, h)
   end.
 
@@ -264,15 +278,32 @@ Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : (bool *
     | _ => 
       match intransaction with
       | true => (true, (mkTDisk s1.(disk) (i :: s1.(pending))), h1)
-      | _ => let (s2, h2) := (abstract_apply s1 i h1) in
+      | _ => let (s2, h2) := (Tdisk_apply s1 i h1) in
         (false, s2, h2)
       end
     end
   | nil => (false, s, h)
   end.
 
-(* Eval apply_to_TDisk in (mkTDisk st_init []) [] []. *)
+(* plan for getting some confidence (ie., fix spec and implementation): *)
+Theorem TDisk_legal_1:
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
+    apply_to_TDisk (mkTDisk st_init []) [] [] = (b, s, h) -> legal h d.
+Proof.
+  intros.
+  admit.
+Qed.
 
+Theorem TDisk_legal_2:
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
+    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h d.
+Proof.
+  intros.
+  crush.
+  admit.
+Qed.
+
+(* the main unproven theorem: *)
 Theorem TDisk_legal:
   forall (l: list invocation) (h: history) (s: TDisk) (b: bool) (d: nat),
     apply_to_TDisk (mkTDisk st_init []) l [] = (b, s, h) -> legal h d.
@@ -281,74 +312,25 @@ Proof.
   admit.
 Qed.
 
-(* a simple disk that models crashes by losing its volatile memory content, from Fs2.v *)
+(* Use two disks to implement to implement the same behavior as Tdisk but with a
+disk for which read or write to disk can crash (jelle's disk).  *)
 
-Record lazy2_state : Set := mklazy2 {
-  Lazy2Mem: option nat;
-  Lazy2Disk: nat
+Record AtomicDisk : Set := mkAtomicLazy2 {
+  LogDisk : storage_fail;
+  DataDisk : storage_fail
 }.
 
-Definition lazy2_init := mklazy2 None 0.
+Definition AtomicLazy2_init := mkAtomicLazy2 st_fail_init st_fail_init.
 
-Definition lazy2_read (s : lazy2_state) : lazy2_state :=
-  match s.(Lazy2Mem) with 
-      | None => mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk)
-      | Some x => s
-  end.
+(* An implementation of the interface using logging.  Tend writes a commit
+record, and then applies to the logged updates to the data disk.  On recovery,
+atomic disk applies any committed logdisk updates to data disk. *)
 
-Definition lazy2_sync (s: lazy2_state) : lazy2_state :=
-    match s.(Lazy2Mem) with
-    | None => s
-    | Some x => mklazy2 (Some x) x
-    end.
+(* A refinement proof that every state AtomicDisk can be in is a legal state of
+Tdisk. The mapping function is something along the line if there is a commit
+record, then the atomic disks DataDisk is Tdisk.disk with pending applied.  If
+there is no commit record, then the atomic DataDisk is Tdisk.disk (i.e., w/o
+pending applied) Maybe a la Nickolai's coqfs implementation? *)
 
-Definition lazy2_apply (s: lazy2_state) (i: invocation) : lazy2_state :=
-  match i with
-  | do_read => lazy2_read(s)
-  | do_write n => mklazy2 (Some n) s.(Lazy2Disk)
-  | do_sync => lazy2_sync(s)
-  | do_crash => mklazy2 None s.(Lazy2Disk)
-  end.
-
-(* XXX maybe we can adopt a use theories from Fs2.v. *)
-
-(* Use two lazy2 disks to implement an atomic disk. reserve 0 for commit record? *)
-Record AtomicLazy2 : Set := mkAtomicLazy2 {
-  Lazy2Log: lazy2_state;   (* needs to have some structure *)
-  Lazy2Data: lazy2_state
-}.
-
-Definition AtomicLazy2_init := mkAtomicLazy2 (mklazy2 None 0) (mklazy2 None 0).
-
-Inductive invocation : Set :=
-  | do_read: invocation
-  | do_write: nat -> invocation
-  | do_sync: invocation
-  | do_crash: invocation.
-
-Definition lazy2_read (s : lazy2_state) : nat * lazy2_state :=
-  match s.(Lazy2Mem) with 
-      | None => (s.(Lazy2Disk), mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk))
-      | Some x => (x, s)
-  end.
-
-Definition lazy2_sync (s: lazy2_state) : lazy2_state * history :=
-    match s.(Lazy2Mem) with
-    | None => (s, [Sync])
-    | Some x => (mklazy2 (Some x) x, [ Sync ; Flush x ])
-    end.
-
-
-(* All ops run from Lazy2Data, except when doing ABwrite, which applies to logging disk *)
-(* AEwrite installs logging disk into data disk. *)
-
-Definition AtomicLazy2_apply (s: lazy2_state) (i: invocation) (h: history) : lazy2_state * history :=
-  match i with
-  | do_read => let (x, s1) := lazy2_read(s) in 
-               (s1, (Read x) :: h)
-  | do_write n => (mklazy2 (Some n) s.(Lazy2Disk), (Write n) :: h)
-  | do_sync =>
-    let (s1, h1) := lazy2_sync(s) in 
-               (s1, h1 ++ h)
-  | do_crash => (mklazy2 None s.(Lazy2Disk), Crash :: h)
-  end.
+(* Standard refinement conclusion: because AtomicDisk implements TDisk and Tdisk
+is correct, then AtomicDisk is correct. *)
