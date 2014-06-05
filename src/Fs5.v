@@ -184,7 +184,26 @@ Proof.
   repeat constructor.
 Qed.
 
-(* need to nail down spec: 
+Theorem test_legal_5:
+  forall (d:nat),
+    legal [ Read 0 0 ; Crash; Write 0 1 ; TBegin] d.
+Proof.
+  intro.
+  repeat constructor.
+Qed.
+
+(* XXX need to nail down sync and end:
+
+Theorem test_legal_6:
+  forall (d:nat),
+    legal [ Read 0 0 ; Read 1 1; Crash; Write 0 1 ; Write 1 1; TBegin] d.
+Proof.
+  intro.
+  repeat constructor.
+Qed.
+*)
+
+(* XXX need to nail down spec: 
 Theorem test_legal_5:
   forall (d:nat),
     legal [ Read 0 1 ; Read 1 1 ; Crash; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
@@ -229,6 +248,9 @@ Axiom st_write_ne:
 Axiom st_read_eq:
   forall s a, st_read s a = s a.
 
+Axiom st_read_init:
+  forall a, st_read st_init a = 0.
+
 Axiom disk_read_eq:
   forall s a v,
   st_read (st_write s a v) a = v.
@@ -241,16 +263,16 @@ Axiom disk_read_other:
   forall s a a' v,
   a <> a' -> st_read (st_write s a' v) a = st_read s a.
 
-(*
-Lemma read_write_commute:
+Lemma disk_read_write_commute:
   forall a a' v v' s,
-  a <> a' -> st_read (st_write s a v) a' = st_write s a v.
+  a <> a' -> st_read (st_write (st_write s a v) a' v') a =  st_read (st_write (st_write s a' v') a v) a.
 Proof.
+  intros.
+  (*
+  apply disk_read_other with (s := (st_write s a v)).
+  apply disk_read_eq. *)
+  admit.
 Qed.
-
-(st_read (st_write (st_write st_init 0 1) 1 1) 0)
-
-*)
 
 (* The interface to an atomic disk: *)
 
@@ -335,9 +357,19 @@ Proof.
   intros.
   inversion H.
   repeat rewrite disk_read_eq.
+  rewrite disk_read_write_commute.
+  repeat rewrite disk_read_eq.
+  repeat constructor.
+  trivial.
+Qed.
 
-  crush.
-
+Theorem TDisk_legal_4:
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
+    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_crash; do_write 0 1; do_begin] [] = (b, s, h) -> legal h d.
+Proof.
+  intros.
+  inversion H.
+  rewrite st_read_init.
   repeat constructor.
 Qed.
 
