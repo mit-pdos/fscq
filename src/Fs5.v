@@ -268,10 +268,11 @@ Lemma disk_read_write_commute:
   a <> a' -> st_read (st_write (st_write s a v) a' v') a =  st_read (st_write (st_write s a' v') a v) a.
 Proof.
   intros.
-  (*
-  apply disk_read_other with (s := (st_write s a v)).
-  apply disk_read_eq. *)
-  admit.
+  rewrite disk_read_eq.
+  rewrite disk_read_other.
+  rewrite disk_read_eq.
+  trivial.
+  trivial.
 Qed.
 
 (* The interface to an atomic disk: *)
