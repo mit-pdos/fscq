@@ -328,7 +328,7 @@ Fixpoint apply_pending (s: TDisk) (l : list invocation) (h: history) : TDisk * h
   | nil => (s, h)
   end.
 
-Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : (bool * TDisk) * history := 
+Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * TDisk * history := 
   match l with
   | i :: rest =>
     let (bDisk, h1) := (apply_to_TDisk s rest h) in
@@ -397,8 +397,22 @@ Theorem TDisk_legal:
   forall (l: list invocation) (h: history) (s: TDisk) (b: bool) (d: nat),
     apply_to_TDisk (mkTDisk st_init []) l [] = (b, s, h) -> legal h d.
 Proof.
-  intros.
-  admit.
+  induction l; [crush; constructor | idtac].
+  destruct a; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
+  intros; simpl; inversion H0; rewrite H in H2; destruct p.
+  - destruct b0.
+    + inversion H2.  apply IHl with (s:=t) (b:=b).
+      rewrite <- H5. rewrite <- H3. assumption.
+    + inversion H2. 
+      constructor; [ auto | apply IHl with (s:=t) (b:=false); assumption | idtac ].
+      admit. (* need lemmas on legal -> could_read *)
+  - destruct b0.
+    + inversion H2. apply IHl with (s:=t) (b:=true). rewrite <- H5. assumption.
+    + inversion H2.
+      constructor; auto; apply IHl with (s:=t) (b:=false); assumption.
+  - crush. constructor. apply IHl with (s:=s) (b:=b0). assumption.
+  - admit. (* need lemmas on apply_pending -> legal *)
+  - crush. constructor. apply IHl with (s:=t) (b:=b0). assumption.
 Qed.
 
 (* Use two disks to implement to implement the same behavior as Tdisk but with a
