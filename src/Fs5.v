@@ -229,6 +229,18 @@ Axiom st_write_ne:
 Axiom st_read_eq:
   forall s a, st_read s a = s a.
 
+Axiom disk_read_eq:
+  forall s a v,
+  st_read (st_write s a v) a = v.
+
+Axiom disk_read_same:
+  forall s a a' v,
+  a = a' -> st_read (st_write s a' v) a = v.
+
+Axiom disk_read_other:
+  forall s a a' v,
+  a <> a' -> st_read (st_write s a' v) a = st_read s a.
+
 (* The interface to an atomic disk: *)
 
 Inductive invocation : Set :=
@@ -291,16 +303,18 @@ Theorem TDisk_legal_1:
     apply_to_TDisk (mkTDisk st_init []) [] [] = (b, s, h) -> legal h d.
 Proof.
   intros.
-  admit.
+  crush.
+  constructor.
 Qed.
 
 Theorem TDisk_legal_2:
   forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
-    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h d.
+    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h 0.
 Proof.
   intros.
-  crush.
-  admit.
+  inversion H.
+  rewrite disk_read_eq.
+  repeat constructor.
 Qed.
 
 (* the main unproven theorem: *)
