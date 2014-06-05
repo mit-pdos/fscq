@@ -241,6 +241,17 @@ Axiom disk_read_other:
   forall s a a' v,
   a <> a' -> st_read (st_write s a' v) a = st_read s a.
 
+(*
+Lemma read_write_commute:
+  forall a a' v v' s,
+  a <> a' -> st_read (st_write s a v) a' = st_write s a v.
+Proof.
+Qed.
+
+(st_read (st_write (st_write st_init 0 1) 1 1) 0)
+
+*)
+
 (* The interface to an atomic disk: *)
 
 Inductive invocation : Set :=
@@ -314,6 +325,19 @@ Proof.
   intros.
   inversion H.
   rewrite disk_read_eq.
+  repeat constructor.
+Qed.
+
+Theorem TDisk_legal_3:
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
+    apply_to_TDisk (mkTDisk st_init []) [do_read 1; do_read 0; do_end; do_write 1 1; do_write 0 1; do_begin] [] = (b, s, h) -> legal h d.
+Proof.
+  intros.
+  inversion H.
+  repeat rewrite disk_read_eq.
+
+  crush.
+
   repeat constructor.
 Qed.
 
