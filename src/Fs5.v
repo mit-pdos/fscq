@@ -108,6 +108,7 @@ Inductive could_flush: history -> nat -> nat -> Prop :=
     could_flush nil d 0.
 
 (* legal h d means that h is legal for disk block d *)
+(* XXX need to keep track if within a transaction or not *)
 Inductive legal: history -> nat -> Prop :=
   | legal_read1:
     forall (h:history) (d : nat) (n:nat),
@@ -190,6 +191,23 @@ Theorem test_legal_5:
 Proof.
   intro.
   repeat constructor.
+Qed.
+
+Theorem test_legal_6:
+  forall (d:nat),
+    legal [ Read 1 0; Read 0 0 ; Crash; Write 1 1; Write 0 1 ; TBegin] d.
+Proof.
+  intro.
+  repeat constructor.
+Qed.
+
+(* After a crash, a new transaction must start with TBegin *)
+Theorem test_legal_7:
+  forall (d:nat),
+    ~ legal [ Read 0 0 ; Read 0 0 ; TEnd ; Write 0 1 ; Crash; Write 1 1 ; TBegin] d.
+Proof.
+  intros.
+  admit.
 Qed.
 
 (* XXX need to nail down sync and end:
