@@ -5,7 +5,27 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-Parameter state : Set.
+Parameter storage : Set.
+Parameter st_write : storage -> nat -> nat -> storage.
+Parameter st_read : storage -> nat -> nat.
+
+Axiom disk_read_same:
+  forall s a v,
+  st_read (st_write s a v) a = v.
+
+Axiom disk_read_other:
+  forall s a a' v,
+  st_read (st_write s a' v) a = st_read s a.
+
+
+Parameter crashstate : Set.
+Parameter should_crash : crashstate -> bool.
+Parameter next_crash : crashstate -> crashstate.
+
+Record state : Set := mkstate {
+  state_storage : storage;
+  state_crash : crashstate
+}.
 
 Definition crashable (A:Type) := state -> (state * option A).
 
@@ -19,8 +39,21 @@ Definition mbind {A:Type} {B:Type} (a:crashable A) (f:A->crashable B) : crashabl
      | (s', Some av) => f av s'
      end.
 
-Parameter read : nat -> crashable nat.
-Parameter write : nat -> nat -> crashable unit.
+Definition read (addr: nat) : crashable nat :=
+  fun (s: state) =>
+    let ncrash := next_crash (state_crash s) in
+    match should_crash (state_crash s) with
+    | true => ((mkstate (state_storage s) ncrash), None)
+    | false => ((mkstate (state_storage s) ncrash), Some (st_read (state_storage s) addr))
+    end.
+
+Definition write (addr: nat) (data: nat) : crashable unit :=
+  fun (s: state) =>
+    let ncrash := next_crash (state_crash s) in
+    match should_crash (state_crash s) with
+    | true => ((mkstate (state_storage s) ncrash), None)
+    | false => ((mkstate (st_write (state_storage s) addr data) ncrash), Some tt)
+    end.
 
 Notation "a >>= f" := (mbind a f) (left associativity, at level 50).
 
@@ -93,6 +126,8 @@ Axiom read_write_diff_commute :
   write n v s = (s', r) ->
   read n' s' = (s'', Some v') ->
   exists s''', read n' s = (s''', Some v').
+
+(* XXX todo change Axioms to Lemmas, proved based on st_read/st_write axioms *)
 
 Theorem simpl :
   normally (do _ <- write 0 3; do _ <- write 1 5; do a <- read 0; do b <- read 1; mret (a+b))
