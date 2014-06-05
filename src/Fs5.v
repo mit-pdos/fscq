@@ -3,10 +3,9 @@ Require Import CpdtTactics.
 Require Import Arith.
 Import ListNotations.
 
-(* disk with atomicity of two writes.  can i use the spec from from Fs2.v and
-extend with ABwrite and AEwrite? *)
-
-(* XXX need two blocks to make it more interesting ... *)
+(* Disk with atomicity of n writes. Histories are "backwards": writing and then
+reading a block with value n is represented by: (Read d n) :: (Write d n) ::
+nil. *)
 
 Inductive event : Set :=
   | Read: nat -> nat -> event
@@ -42,6 +41,7 @@ Inductive last_flush: history -> nat -> nat -> Prop :=
     forall (d:nat),
     last_flush nil d 0.
 
+(* Is this a transaction? XXX don't accept recursive transactions? *)
 Inductive could_begin: history -> nat -> Prop :=
   | could_Tbegin:
     forall (h:history) (d: nat),
@@ -86,6 +86,7 @@ Inductive could_read: history -> nat -> nat -> Prop :=
     forall (d: nat),
     could_read nil d 0.
 
+(* XXX really could_sync *)
 Inductive could_flush: history -> nat -> nat -> Prop :=
   | could_flush_read:
     forall (h:history) (d: nat) (n:nat) (rn:nat),
@@ -106,6 +107,7 @@ Inductive could_flush: history -> nat -> nat -> Prop :=
     forall (d : nat),
     could_flush nil d 0.
 
+(* legal h d means that h is legal for disk block d *)
 Inductive legal: history -> nat -> Prop :=
   | legal_read1:
     forall (h:history) (d : nat) (n:nat),
@@ -198,13 +200,121 @@ Proof.
   repeat constructor.
 Qed.
 
+(* An atomic abstract disk that implements the above spec. The abstract disk has
+a storage device and a list of actions in a transactions that haven't been
+applied yet. They will be applied when the transaction ends/commits atomically.
+*)
 
-(* now can do refinement. use two lazy2 disks to implement an atomic disk, or use two lazy2 disks to implement a disk with 2 blocks (but that seems stupid, because we want 1 cache. *)
+Definition addr := nat.
+Definition val := nat.
+Definition storage := addr -> val.
 
-(* how to split in separate modules: i want to use lazy2_state *)
+Parameter st_init  : storage.
+Parameter st_write : storage -> addr -> val -> storage.
+Parameter st_read  : storage -> addr -> val.
 
+Axiom st_write_eq:
+  forall s a v, st_write s a v a = v.
+
+Axiom st_write_ne:
+  forall s a v a', a <> a' -> st_write s a v a' = s a'.
+
+Axiom st_read_eq:
+  forall s a, st_read s a = s a.
+
+Inductive invocation : Set :=
+  | do_read: nat -> invocation
+  | do_write: nat -> nat -> invocation
+  | do_begin: invocation
+  | do_end: invocation
+  | do_crash: invocation.
+
+Record TDisk: Set := mkTDisk {
+  disk : storage;
+  pending : list invocation   (* list of pending invocations in a transaction *)
+}.
+
+Definition abstract_apply (s: TDisk) (i: invocation) (h: history) : TDisk * history :=
+  match i with
+      | do_read d => (s, (Read d (st_read s.(disk) d)) :: h)
+      | do_write d n => let disk1 := (st_write s.(disk) d n) in
+                        ((mkTDisk disk1 s.(pending)),  (Write d n) :: h)
+      | _ => (s, h)
+  end.
+  
+Fixpoint apply_pending (s: TDisk) (l : list invocation) (h: history) : TDisk * history := 
+  match l with
+  | i :: rest =>
+    let (s1, h1) := (apply_pending s rest h) in 
+      (abstract_apply s1 i h1)
+  | nil => (s, h)
+  end.
+
+Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : (bool * TDisk) * history := 
+  match l with
+  | i :: rest =>
+    let (bDisk, h1) := (apply_to_TDisk s rest h) in
+    let (intransaction, s1) := bDisk in
+    match i with
+    | do_begin => (true, s1, (TBegin :: h1))
+    | do_end => (* apply pending list *)
+      let (s2, h2) := (apply_pending s1 s1.(pending) h1) in
+              (false, s2, (TEnd :: h2))
+    | do_crash => (false, (mkTDisk s1.(disk) []), (Crash :: h1))    (* reset pending list *)
+    | _ => 
+      match intransaction with
+      | true => (true, (mkTDisk s1.(disk) (i :: s1.(pending))), h1)
+      | _ => let (s2, h2) := (abstract_apply s1 i h1) in
+        (false, s2, h2)
+      end
+    end
+  | nil => (false, s, h)
+  end.
+
+(* Eval apply_to_TDisk in (mkTDisk st_init []) [] []. *)
+
+Theorem TDisk_legal:
+  forall (l: list invocation) (h: history) (s: TDisk) (b: bool) (d: nat),
+    apply_to_TDisk (mkTDisk st_init []) l [] = (b, s, h) -> legal h d.
+Proof.
+  intros.
+  admit.
+Qed.
+
+(* a simple disk that models crashes by losing its volatile memory content, from Fs2.v *)
+
+Record lazy2_state : Set := mklazy2 {
+  Lazy2Mem: option nat;
+  Lazy2Disk: nat
+}.
+
+Definition lazy2_init := mklazy2 None 0.
+
+Definition lazy2_read (s : lazy2_state) : lazy2_state :=
+  match s.(Lazy2Mem) with 
+      | None => mklazy2 (Some s.(Lazy2Disk)) s.(Lazy2Disk)
+      | Some x => s
+  end.
+
+Definition lazy2_sync (s: lazy2_state) : lazy2_state :=
+    match s.(Lazy2Mem) with
+    | None => s
+    | Some x => mklazy2 (Some x) x
+    end.
+
+Definition lazy2_apply (s: lazy2_state) (i: invocation) : lazy2_state :=
+  match i with
+  | do_read => lazy2_read(s)
+  | do_write n => mklazy2 (Some n) s.(Lazy2Disk)
+  | do_sync => lazy2_sync(s)
+  | do_crash => mklazy2 None s.(Lazy2Disk)
+  end.
+
+(* XXX maybe we can adopt a use theories from Fs2.v. *)
+
+(* Use two lazy2 disks to implement an atomic disk. reserve 0 for commit record? *)
 Record AtomicLazy2 : Set := mkAtomicLazy2 {
-  Lazy2Log: lazy2_state;
+  Lazy2Log: lazy2_state;   (* needs to have some structure *)
   Lazy2Data: lazy2_state
 }.
 
@@ -213,8 +323,6 @@ Definition AtomicLazy2_init := mkAtomicLazy2 (mklazy2 None 0) (mklazy2 None 0).
 Inductive invocation : Set :=
   | do_read: invocation
   | do_write: nat -> invocation
-  | do_ABwrite: nat -> invocation
-  | do_AEwrite: nat -> invocation
   | do_sync: invocation
   | do_crash: invocation.
 
