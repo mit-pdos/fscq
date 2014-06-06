@@ -128,6 +128,8 @@ Inductive could_ondisk: history -> block -> value -> Prop :=
   (* TSync *)
   | OD_tsync: forall h t b v,
     tx_write h t b v -> could_ondisk (TSync t :: h) b v
+  | OD_tsync_other: forall h t b v,
+    could_ondisk h b v -> could_ondisk (TSync t :: h) b v
   (* others *)
   | OD_crash: forall h b v,
     could_ondisk h b v -> could_ondisk (Crash :: h) b v
@@ -205,54 +207,67 @@ Proof.
 Qed.
 
 (* No writes of an incomplete transaction are visible after a crash: *)
-Theorem test_legal_6:
-  forall (d:nat),
-    legal [ Read 1 0; Read 0 0 ; Crash; Write 1 1; Write 0 1 ; TBegin] d.
+Example test_legal_6:
+  legal [ Read 1 0; Read 0 0 ; Crash; Write 1 1; Write 0 1 ; TBegin 0].
 Proof.
   intro.
-  repeat constructor.
-
-  admit.
-  admit.
+  repeat match goal with
+  | [ |- could_read _ _ _ ] => apply Read_crash
+  | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ H: lastw _ _ _ |- _ ] => inversion H
+  | _ => constructor
+  end.
 Qed.
 
 (* Results of a transactions are not durable: *)
-Theorem test_legal_7:
-  forall (d:nat),
-    legal [ Read 0 0 ; Read 1 0 ; Crash; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
+Example test_legal_7:
+  legal [ Read 0 0 ; Read 1 0 ; Crash; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
   intro.
-  repeat constructor.
-  admit.
-  admit.
+  repeat match goal with
+  | [ |- could_read _ _ _ ] => apply Read_crash
+  | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ H: lastw _ _ _ |- _ ] => inversion H
+  | _ => constructor
+  end.
 Qed.
 
-(* Sync makes transactions and writes durable: *)
-Theorem test_legal_8:
-  forall (d:nat),
-    legal [ Read 0 1 ; Read 1 1 ; Crash; Sync; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
+(* Sync makes transactions durable: *)
+Example test_legal_8:
+  legal [ Read 0 1 ; Read 1 1 ; Crash; TSync 0; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
   intro.
-  repeat constructor.
-  admit.
-  admit.
-  admit.
+  repeat match goal with
+  | [ |- could_read _ _ _ ] => apply Read_crash
+  | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ H: lastw _ _ _ |- _ ] => inversion H
+  | _ => constructor
+  end.
 Qed.
 
 (* Sync makes all preceding transactions durable: *)
-Theorem test_legal_9:
-  forall (d:nat),
-    legal [ Read 0 1 ; Read 1 1 ; Crash; Sync; TEnd; Write 0 1 ; TBegin; TEnd; Write 1 1 ; TBegin] d.
+Example test_legal_9:
+  legal [ Read 0 1 ; Read 1 1 ; Crash; TSync 1; TSync 0; TEnd 1; Write 0 1 ; TBegin 1; TEnd 0; Write 1 1 ; TBegin 0].
 Proof.
-  admit.
+  intro.
+  repeat match goal with
+  | [ |- could_read _ _ _ ] => apply Read_crash
+  | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ H: lastw _ _ _ |- _ ] => inversion H
+  | [ |- could_ondisk _ _ _ ] => idtac
+  | _ => constructor
+  end; constructor.
+  - apply OD_tsync_other; repeat constructor; auto.
+  - apply OD_tsync_other; repeat constructor; auto.
+  - repeat constructor; auto.
 Qed.
 
 (* After a crash, a new transaction must start with TBegin *)
-Theorem test_legal_10:
-  forall (d:nat),
-    ~ legal [ Read 0 0 ; Read 0 0 ; TEnd ; Write 0 1 ; Crash; Write 1 1 ; TBegin] d.
+Example test_legal_10:
+   illegal [ Read 0 0 ; Read 0 0 ; TEnd 0; Write 0 1 ; Crash; Write 1 1 ; TBegin 0].
 Proof.
-  admit.
+  intro. intuition.
+  inversion H. inversion H5. inversion H12. inversion H18. inversion H23.
 Qed.
 
 (* XXX reads inside of a transaction should probably return the value of most
