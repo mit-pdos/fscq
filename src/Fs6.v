@@ -128,6 +128,18 @@ Axiom read_read_commute :
   read n' s' = (s'', Some v') ->
   exists s''', read n' s = (s''', Some v').
 
+(* XXX read_read_commute is broken if there exists a crash.  suppose that n=n' and:
+
+    (read n s) = (s', None)
+    (read n s') = (s'', Some v')
+
+   then read_read_commute implies that:
+
+    (read n s) = (s''', Some v')
+
+   which is nonsense because by assumption (read n s) crashed.
+*)
+
 (* even a write that crashes does not influence any other reads: *)
 Axiom read_write_diff_commute :
   forall n n' v v' r s s' s'',
