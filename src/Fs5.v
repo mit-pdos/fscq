@@ -56,6 +56,7 @@ Proof.
   - destruct a; inversion H; inversion H0; apply IHh with (t:=t); assumption.
 Qed.
 
+(* lastw b v holds when there is a write b v in h since the last crash *)
 Inductive lastw: history -> block -> value -> Prop :=
   | LW_write: forall h b v,
     lastw (Write b v :: h) b v
@@ -81,7 +82,8 @@ Proof.
   inversion H; inversion H0; crush; apply IHh with (b:=b); assumption.
 Qed.
 
-Lemma lastw_dec:
+(* lastw for b is decidable: there is a unique last write to b or no write to b.
+Lemma lastw_dec: *)
   forall h b, (exists! v, lastw h b v) + no_write h b.
 Proof.
   induction h; unfold no_write in *.
@@ -271,6 +273,8 @@ Proof.
   intro. intuition.
   inversion H. inversion H5. inversion H12. inversion H18. inversion H23.
 Qed.
+
+(* XXX [Sync 1; TEnd Write 1 1 TBegin] should be illegal.
 
 (* XXX reads inside of a transaction should probably return the value of most
 (perhaps unncommitted) write *)
