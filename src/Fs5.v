@@ -237,7 +237,7 @@ Proof.
   end.
 Qed.
 
-(* Sync makes transactions durable: *)
+(* TSync makes transactions durable: *)
 Example test_legal_8:
   legal [ Read 0 1 ; Read 1 1 ; Crash; TSync 0; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
@@ -251,7 +251,7 @@ Proof.
   end.
 Qed.
 
-(* Sync makes all preceding transactions durable: *)
+(* TSync n makes transaction n durable: *)
 Example test_legal_9:
   legal [ Read 0 1 ; Read 1 1 ; Crash; TSync 1; TSync 0; TEnd 1; Write 0 1 ; TBegin 1; TEnd 0; Write 1 1 ; TBegin 0].
 Proof.
@@ -277,7 +277,13 @@ Proof.
   inversion H. inversion H5. inversion H12. inversion H18. inversion H23.
 Qed.
 
-(* XXX [Sync 1; TEnd Write 1 1 TBegin] should be illegal.
+Example test_legal_11:
+  illegal [ Sync 0; TEnd 0; Write 0 1; TBegin 0].
+Proof.
+  unfold illegal. intuition. exists 0. intro.
+  inversion H. unfold tx_pending in H6. intuition.  (* exists (t :=0) (v := 1) in H6. *)
+  admit.
+Qed.
 
 (* XXX reads inside of a transaction should probably return the value of most
 (perhaps unncommitted) write *)
