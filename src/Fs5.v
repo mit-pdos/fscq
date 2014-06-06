@@ -60,7 +60,7 @@ Inductive lastw: history -> block -> value -> Prop :=
   | LW_write: forall h b v,
     lastw (Write b v :: h) b v
   | LW_write_other: forall h b v wb wv,
-    lastw h b v -> lastw (Write wb wv :: h) b v
+    wb <> b -> lastw h b v -> lastw (Write wb wv :: h) b v
   | LW_read: forall h b v rb rv,
     lastw h b v -> lastw (Read rb rv :: h) b v
   | LW_sync: forall h b v sb,
@@ -77,7 +77,9 @@ Let no_write h b : Prop := ~ exists v, lastw h b v.
 Lemma lastw_unique:
   forall h b v v', lastw h b v -> lastw h b v' -> v = v'.
 Proof.
-Admitted.
+  induction h; intros; [ inversion H | destruct a ];
+  inversion H; inversion H0; crush; apply IHh with (b:=b); assumption.
+Qed.
 
 Lemma lastw_dec:
   forall h b, (exists! v, lastw h b v) + no_write h b.
@@ -91,7 +93,7 @@ Inductive tx_write: history -> trans -> block -> value -> Prop :=
   | TW_write: forall h t b v,
     in_tx h t -> tx_write (Write b v :: h) t b v
   | TW_write_other: forall h t b v wb wv,
-    tx_write h t b v -> tx_write (Write wb wv :: h) t b v
+    wb <> b -> tx_write h t b v -> tx_write (Write wb wv :: h) t b v
   | TW_read: forall h t b v rb rv,
     tx_write h t b v -> tx_write (Read rb rv :: h) t b v
   | TW_sync: forall h t b v sb,
@@ -117,7 +119,7 @@ Inductive could_ondisk: history -> block -> value -> Prop :=
   | OD_sync_nw: forall h b v,
     no_write h b -> could_ondisk h b v -> could_ondisk (Sync b :: h) b v
   | OD_sync_other: forall h b v sb,
-    could_ondisk h b v -> could_ondisk (Sync sb :: h) b v
+    sb <> b -> could_ondisk h b v -> could_ondisk (Sync sb :: h) b v
   (* read *)
   | OD_read_w: forall h b v wv,
     lastw h b wv -> could_ondisk h b v -> could_ondisk (Read b wv:: h) b v
@@ -179,7 +181,7 @@ Proof.
   intro. intuition.
   inversion H. inversion H6.
   - inversion H7.
-    inversion H16.
+    inversion H17.
   - inversion H8.
     inversion H17.
 Qed.
@@ -188,14 +190,14 @@ Example test_legal_3:
   legal [ Read 0 1; Read 1 1 ; Write 0 1; Write 1 1 ].
 Proof.
   intro.
-  repeat constructor.
+  repeat constructor; auto.
 Qed.
 
 Example test_legal_4:
   legal [ Read 0 1 ; Read 1 1 ; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
   intro.
-  repeat constructor.
+  repeat constructor; auto.
 Qed.
 
 (* No syncs inside of a transaction: *)
@@ -241,7 +243,7 @@ Proof.
   | [ |- could_read _ _ _ ] => apply Read_crash
   | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
   | [ H: lastw _ _ _ |- _ ] => inversion H
-  | _ => constructor
+  | _ => constructor; auto
   end.
 Qed.
 
