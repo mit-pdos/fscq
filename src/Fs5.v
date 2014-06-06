@@ -342,8 +342,10 @@ Qed.
 Inductive invocation : Set :=
   | do_read: nat -> invocation
   | do_write: nat -> nat -> invocation
-  | do_begin: invocation
-  | do_end: invocation
+  | do_begin: nat-> invocation
+  | do_end: nat -> invocation
+  | do_sync_trans: nat -> invocation
+  | do_sync_write: nat -> invocation
   | do_crash: invocation.
 
 (* An atomic abstract disk that implements the above interface with the above
@@ -372,16 +374,17 @@ Fixpoint apply_pending (s: TDisk) (l : list invocation) (h: history) : TDisk * h
   | nil => (s, h)
   end.
 
+(* XXX implement sync_write n and sync_trans n *)
 Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * TDisk * history := 
   match l with
   | i :: rest =>
     let (bDisk, h1) := (apply_to_TDisk s rest h) in
     let (intransaction, s1) := bDisk in
     match i with
-    | do_begin => (true, s1, (TBegin :: h1))
-    | do_end => (* apply pending list *)
+    | do_begin n => (true, s1, (TBegin n :: h1))
+    | do_end n =>
       let (s2, h2) := (apply_pending s1 s1.(pending) h1) in
-              (false, s2, (TEnd :: h2))
+              (false, s2, (TEnd n :: h2))
     | do_crash => (false, (mkTDisk s1.(disk) []), (Crash :: h1))    (* reset pending list *)
     | _ => 
       match intransaction with
@@ -394,18 +397,18 @@ Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * 
   end.
 
 (* plan for getting some confidence (ie., fix spec and implementation): *)
-Theorem TDisk_legal_1:
-  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
-    apply_to_TDisk (mkTDisk st_init []) [] [] = (b, s, h) -> legal h d.
+Example TDisk_legal_1:
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
+    apply_to_TDisk (mkTDisk st_init []) [] [] = (b, s, h) -> legal h.
 Proof.
   intros.
   crush.
   constructor.
 Qed.
 
-Theorem TDisk_legal_2:
-  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
-    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h d.
+Example TDisk_legal_2:
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
+    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h.
 Proof.
   intros.
   inversion H.
@@ -414,27 +417,26 @@ Proof.
 Qed.
 
 Theorem TDisk_legal_3:
-  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
-    apply_to_TDisk (mkTDisk st_init []) [do_read 1; do_read 0; do_end; do_write 1 1; do_write 0 1; do_begin] [] = (b, s, h) -> legal h d.
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
+    apply_to_TDisk (mkTDisk st_init []) [do_read 1; do_read 0; do_end 0; do_write 1 1; do_write 0 1; do_begin 0] [] = (b, s, h) -> legal h.
 Proof.
   intros.
-  inversion H.
+  inversion H.  
   repeat rewrite disk_read_eq.
   rewrite disk_read_write_commute.
   repeat rewrite disk_read_eq.
-  repeat constructor.
-  trivial.
-Qed.
+  repeat constructor.  (* XXX deal with no_tx [] *)
+Admitted.
 
 Theorem TDisk_legal_4:
   forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
-    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_crash; do_write 0 1; do_begin] [] = (b, s, h) -> legal h d.
+    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_crash; do_write 0 1; do_begin 0] [] = (b, s, h) -> legal h.
 Proof.
   intros.
   inversion H.
   rewrite st_read_init.
-  repeat constructor.
-Qed.
+  repeat constructor.  (* XXX deal with no_tx [] *)
+Admitted.
 
 (* the main unproven theorem: *)
 Theorem TDisk_legal:
