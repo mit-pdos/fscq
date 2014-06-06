@@ -7,193 +7,201 @@ Import ListNotations.
 reading a block with value n is represented by: (Read d n) :: (Write d n) ::
 nil. *)
 
+Definition value := nat.
+Definition block := nat.
+Definition trans := nat.
+
 Inductive event : Set :=
-  | Read: nat -> nat -> event
-  | Write: nat -> nat -> event
-  | Sync: event     (* XXX don't apply to transactions; i.e., TEnd syncs *)
-  | Crash: event    (* what does it mean in begin and end: ignore? *)
-  | TBegin: event
-  | TEnd: event.
+  | Read: block -> value -> event
+  | Write: block -> value -> event
+  | Sync: block -> event   (* XXX don't apply to transactions; i.e., TEnd syncs *)
+  | TBegin: trans -> event
+  | TEnd: trans -> event
+  | TSync: trans -> event
+  | Crash: event.    (* what does it mean in begin and end: ignore? *)
 
 Definition history := list event.
 
-(* (last_flush h d n) means n was the last thing flushed in h for disk block d *)
-Inductive last_flush: history -> nat -> nat -> Prop :=
-  | last_flush_read:
-    forall (h:history) (d: nat) (n:nat) (rn:nat),
-    last_flush h d n -> last_flush ((Read d rn) :: h) d n
-  | last_flush_write1:
-    forall (h:history) (d: nat) (n:nat) (wn:nat),
-    last_flush h d n -> last_flush ((Write d wn) :: h) d n
-  | last_flush_write2:
-    forall (h:history) (d: nat) (d1: nat) (n:nat) (wn:nat),
-    last_flush h d n -> last_flush ((Write d1 wn) :: h) d n
-  | last_flush_sync:
-    forall (h:history) (d: nat) (n:nat),
-    last_flush h d n -> last_flush (Sync :: h) d n
-  | last_flush_crash:
-    forall (h:history) (d:nat) (n:nat),
-    last_flush h d n -> last_flush (Crash :: h) d n
-  | last_flush_Tbegin:
-    forall (h:history) (d:nat) (n:nat),
-    last_flush h d n -> last_flush (TBegin :: h) d n
-  | last_flush_Tend:
-    forall (h:history) (d:nat) (n:nat),
-    last_flush h d n -> last_flush (TEnd :: h) d n
-  | last_flush_nil:
-    forall (d:nat),
-    last_flush nil d 0.
+(* could start a transation means we are now outside any transaction *)
+Inductive could_begin: history -> Prop :=
+  | TBegin_nil:
+    could_begin nil
+  | TBegin_tend: forall h t,
+    could_begin ((TEnd t) :: h)
+  | TBegin_crash: forall h,
+    could_begin (Crash :: h)
+  | TBegin_read: forall h b v,
+    could_begin h -> could_begin (Read b v :: h)
+  | TBegin_write: forall h b v,
+    could_begin h -> could_begin (Write b v :: h)
+  | TBegin_sync: forall h b,
+    could_begin h -> could_begin (Sync b :: h)
+  | TBegin_tsync: forall h t,
+    could_begin h -> could_begin (TSync t :: h).
 
-(* Is this a transaction? XXX don't accept recursive transactions? *)
-Inductive could_begin: history -> nat -> Prop :=
-  | could_Tbegin:
-    forall (h:history) (d: nat),
-      could_begin (TBegin :: h) d
-  | could_begin_write:
-    forall (h:history) (d: nat) (d1: nat) (n1:nat),
-      could_begin h d ->
-      could_begin ((Write d1 n1) :: h) d
-  | could_begin_read:
-    forall (h:history) (d: nat) (d1: nat) (n1:nat),
-      could_begin h d ->
-      could_begin ((Read d1 n1) :: h) d.
+(* we are now inside a transaction *)
+Inductive in_tx: history -> trans -> Prop :=
+  | InTX_tbegin: forall h t,
+    in_tx (TBegin t :: h) t
+  | InTX_read: forall h t b v,
+    in_tx h t -> in_tx (Read b v :: h) t
+  | InTX_write: forall h t b v,
+    in_tx h t -> in_tx (Write b v :: h) t.
 
-(* (could_read h n) means n could be the return value of a read *)
-Inductive could_read: history -> nat -> nat -> Prop :=
-  | could_read_read1:
-    forall (h:history) (d: nat) (n:nat) (rn:nat),
-    could_read h d n -> could_read ((Read d rn) :: h) d n
- | could_read_read2:
-    forall (h:history) (d: nat) (d1: nat) (n:nat) (rn:nat),
-    could_read h d n -> could_read ((Read d1 rn) :: h) d n
-  | could_read_write1:
-    forall (h:history) (d: nat) (n:nat),
-    could_read ((Write d n) :: h) d n
-  | could_read_write2:
-    forall (h:history) (d: nat) (d1: nat) (n:nat) (n1: nat),
-    could_read h d n ->
-    could_read ((Write d1 n1) :: h) d n
-  | could_read_sync:
-    forall (h:history) (d: nat) (n:nat),
-    could_read h d n -> could_read (Sync :: h) d n
-  | could_read_crash:
-    forall (h:history) (d: nat) (n:nat),
-    last_flush h d n -> could_read (Crash :: h) d n
-  | could_read_begin1:
-    forall (h:history) (d:nat) (n:nat),
-    could_read (TBegin :: h) d n
-  | could_read_end1:
-    forall (h:history) (d:nat) (n:nat),
-    could_read (TEnd:: h) d n
-  | could_read_nil:
-    forall (d: nat),
-    could_read nil d 0.
+Lemma no_nested_tx:
+  forall h t, could_begin h -> ~ in_tx h t.
+Proof.
+  induction h; intuition; intros.
+  - inversion H0.
+  - destruct a; inversion H; inversion H0; apply IHh with (t:=t); assumption.
+Qed.
 
-(* XXX really could_sync *)
-Inductive could_flush: history -> nat -> nat -> Prop :=
-  | could_flush_read:
-    forall (h:history) (d: nat) (n:nat) (rn:nat),
-    could_flush h d n -> could_flush ((Read d rn) :: h) d n
-  | could_flush_write_1:
-    forall (h:history) (d: nat) (n:nat),
-    could_flush ((Write d n) :: h) d n
-  | could_flush_write_2:
-    forall (h:history) (d : nat) (n:nat) (wn:nat),
-    could_flush h d n -> could_flush ((Write d wn) :: h) d n
-  | could_flush_sync:
-    forall (h:history) (d : nat) (n:nat),
-    could_read h d n -> could_flush (Sync :: h) d n
-  | could_flush_crash:
-    forall (h:history) (d : nat) (n:nat),
-    last_flush h d n -> could_flush (Crash :: h) d n
-  | could_flush_nil:
-    forall (d : nat),
-    could_flush nil d 0.
+Inductive lastw: history -> block -> value -> Prop :=
+  | LW_write: forall h b v,
+    lastw (Write b v :: h) b v
+  | LW_write_other: forall h b v wb wv,
+    lastw h b v -> lastw (Write wb wv :: h) b v
+  | LW_read: forall h b v rb rv,
+    lastw h b v -> lastw (Read rb rv :: h) b v
+  | LW_sync: forall h b v sb,
+    lastw h b v -> lastw (Sync sb :: h) b v
+  | LW_tbegin: forall h b v t,
+    lastw h b v -> lastw (TBegin t :: h) b v
+  | LW_tend: forall h b v t,
+    lastw h b v -> lastw (TEnd t :: h) b v
+  | LW_tsync: forall h b v t,
+    lastw h b v -> lastw (TSync t :: h) b v.
 
-(* legal h d means that h is legal for disk block d *)
-(* XXX need to keep track if within a transaction or not *)
-Inductive legal: history -> nat -> Prop :=
-  | legal_read1:
-    forall (h:history) (d : nat) (n:nat),
-    could_read h d n ->
-    legal h d -> 
-    legal ((Read d n) :: h) d
-  | legal_read2:
-    forall (h:history) (d : nat) (d1: nat) (n:nat) (n1: nat),
-    legal h d ->
-    could_read h d1 n1 ->
-    legal ((Read d1 n1) :: h) d
-  | legal_write:
-    forall (h:history) (d : nat) (d1: nat) (n:nat) (n1: nat),
-    legal h d -> legal h d1 -> legal ((Write d1 n1) :: h) d
-  | legal_sync:
-    forall (h:history) (d : nat) (n:nat),
-    could_read h d n ->
-    last_flush h d n ->
-    legal h d ->
-    legal (Sync :: h) d
-  | legal_begin:
-    forall (h:history) (d:nat),
-    legal h d ->
-    legal (TBegin :: h) d
-  | legal_end:
-    forall (h:history) (d : nat),
-    could_begin h d  ->
-    legal h d ->
-    legal (TEnd:: h) d
-  | legal_crash:
-    forall (h:history) (d:nat),
-    legal h d -> legal (Crash :: h) d
-  | legal_nil:
-    forall (d:nat),
-    legal nil d.
+Let no_write h b : Prop := ~ exists v, lastw h b v.
 
-Theorem test_legal_1:
-  forall (d:nat),
-    legal [ Read 1 1 ;  Write 1 1 ] d.
+Lemma lastw_unique:
+  forall h b v v', lastw h b v -> lastw h b v' -> v = v'.
+Proof.
+Admitted.
+
+Lemma lastw_dec:
+  forall h b, (exists! v, lastw h b v) + no_write h b.
+Proof.
+  induction h; unfold no_write in *.
+  - right; intuition; inversion H; inversion H0.
+Admitted.
+
+(* what's a block's value after a transaction? *)
+Inductive tx_write: history -> trans -> block -> value -> Prop :=
+  | TW_write: forall h t b v,
+    in_tx h t -> tx_write (Write b v :: h) t b v
+  | TW_write_other: forall h t b v wb wv,
+    tx_write h t b v -> tx_write (Write wb wv :: h) t b v
+  | TW_read: forall h t b v rb rv,
+    tx_write h t b v -> tx_write (Read rb rv :: h) t b v
+  | TW_sync: forall h t b v sb,
+    tx_write h t b v -> tx_write (Sync sb :: h) t b v
+  | TW_tbegin: forall h b v t ot,
+    ot <> t -> tx_write h t b v -> tx_write (TBegin ot :: h) t b v
+  | TW_tend: forall h b v t ot,
+    tx_write h t b v -> tx_write (TEnd ot :: h) t b v
+  | TW_tsync: forall h b v t ot,
+    ot <> t -> tx_write h t b v -> tx_write (TSync ot :: h) t b v.
+
+Inductive could_ondisk: history -> block -> value -> Prop :=
+  | OD_nil: forall b,
+    could_ondisk nil b 0
+  (* write *)
+  | OD_write: forall h b v t,
+    ~ in_tx h t -> could_ondisk (Write b v :: h) b v
+  | OD_write_other: forall h b v wb wv,
+    could_ondisk h b v -> could_ondisk (Write wb wv :: h) b v
+  (* sync *)
+  | OD_sync_w: forall h b v,
+    lastw h b v -> could_ondisk (Sync b :: h) b v
+  | OD_sync_nw: forall h b v,
+    no_write h b -> could_ondisk h b v -> could_ondisk (Sync b :: h) b v
+  | OD_sync_other: forall h b v sb,
+    could_ondisk h b v -> could_ondisk (Sync sb :: h) b v
+  (* read *)
+  | OD_read_w: forall h b v wv,
+    lastw h b wv -> could_ondisk h b v -> could_ondisk (Read b wv:: h) b v
+  | OD_read_nw: forall h b v,
+    no_write h b -> could_ondisk h b v -> could_ondisk (Read b v :: h) b v
+  | OD_read_other: forall h b v rb rv,
+    could_ondisk h b v -> could_ondisk (Read rb rv :: h) b v
+  (* TSync *)
+  | OD_tsync: forall h t b v,
+    tx_write h t b v -> could_ondisk (TSync t :: h) b v
+  (* others *)
+  | OD_crash: forall h b v,
+    could_ondisk h b v -> could_ondisk (Crash :: h) b v
+  | OD_tbegin: forall h b v t,
+    could_ondisk h b v -> could_ondisk (TBegin t :: h) b v
+  | OD_tend: forall h b v t,
+    could_ondisk h b v -> could_ondisk (TEnd t :: h) b v.
+
+Inductive could_read: history -> block -> value -> Prop :=
+  | Read_write: forall h b v,
+    lastw h b v -> could_read h b v
+  | Read_crash: forall h b v,
+    no_write h b -> could_ondisk h b v -> could_read h b v.
+
+(* blegal h b means that h is legal for disk block b *)
+Inductive blegal: history -> block -> Prop :=
+  | BL_nil : forall b,
+    blegal nil b
+  | BL_read: forall h b rb rv,
+    blegal h b -> blegal h rb -> could_read h rb rv -> blegal (Read rb rv :: h) b
+  | BL_write: forall h b wb wv,
+    blegal h b -> blegal h wb -> blegal (Write wb wv :: h) b
+  | BL_sync: forall h b sb,
+    blegal h b -> blegal h sb -> could_begin h -> blegal (Sync sb :: h) b
+  | BL_crash: forall h b,
+    blegal h b -> blegal (Crash :: h) b
+  | BL_tbegin: forall h b t,
+    blegal h b -> could_begin h -> blegal (TBegin t :: h) b
+  | BL_tend: forall h b t,
+    blegal h b -> in_tx h t -> blegal (TEnd t :: h) b
+  | BL_tsync: forall h b t,
+    blegal h b -> could_begin h -> blegal (TSync t :: h) b.
+
+Let   legal h : Prop := forall b,   blegal h b.
+Let illegal h : Prop := forall b, ~ blegal h b.
+
+Example test_legal_1:
+  legal [ Read 1 1 ;  Write 1 1 ].
 Proof.
   intro.
   repeat constructor.
 Qed.
 
-Theorem test_legal_2:
-  forall (d:nat),
-  ~ legal [ Read 0 1 ;  Write 1 1 ] d. 
+Example test_legal_2:
+  illegal [ Read 0 1 ;  Write 1 1 ].
 Proof.
-  intro.
-  intuition.
-  inversion H.
-  - clear H.
-    inversion H4.
-    inversion H10.
-  - intros.
-    inversion H4.
-    inversion H5.
+  intro. intuition.
+  inversion H. inversion H6.
+  - inversion H7.
+    inversion H16.
+  - inversion H8.
     inversion H17.
 Qed.
 
-Theorem test_legal_3:
-  forall (d:nat),
-    legal [ Read 0 1; Read 1 1 ; Write 0 1; Write 1 1 ] d.
+Example test_legal_3:
+  legal [ Read 0 1; Read 1 1 ; Write 0 1; Write 1 1 ].
 Proof.
   intro.
   repeat constructor.
 Qed.
 
-Theorem test_legal_4:
-  forall (d:nat),
-    legal [ Read 0 1 ; Read 1 1 ; TEnd; Write 0 1 ; Write 1 1 ; TBegin] d.
+Example test_legal_4:
+  legal [ Read 0 1 ; Read 1 1 ; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
   intro.
   repeat constructor.
 Qed.
 
 (* No syncs inside of a transaction: *)
-Theorem test_legal_5:
-  forall (d:nat),
-    legal [ Read 0 1 ; Read 1 1 ; TEnd; Write 0 1 ; Sync; Write 1 1 ; TBegin] d.
+Example test_legal_5:
+  illegal [ Read 0 1 ; Read 1 1 ; TEnd 0; Write 0 1 ; Sync 1; Write 1 1 ; TBegin 0].
 Proof.
-  admit.   (* Not clear we need to proof this theorem because is certainly not legal either *)
+  intro. intuition.
+  inversion H. inversion H5. inversion H12. inversion H18. inversion H23.
 Qed.
 
 (* No writes of an incomplete transaction are visible after a crash: *)
