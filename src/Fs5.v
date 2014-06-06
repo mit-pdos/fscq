@@ -281,8 +281,11 @@ Example test_legal_11:
   illegal [ Sync 0; TEnd 0; Write 0 1; TBegin 0].
 Proof.
   unfold illegal. intuition. exists 0. intro.
-  inversion H. unfold tx_pending in H6. intuition.  (* exists (t :=0) (v := 1) in H6. *)
-  admit.
+  inversion H. unfold tx_pending in H6. intuition.  
+  apply H6.
+  exists 0.
+  exists 1.
+  repeat constructor.
 Qed.
 
 (* XXX reads inside of a transaction should probably return the value of most
