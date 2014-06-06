@@ -17,14 +17,17 @@ Inductive event : Set :=
 
 Definition history := list event.
 
-(* (last_flush h n) means n was the last thing flushed in h *)
+(* (last_flush h d n) means n was the last thing flushed in h for disk block d *)
 Inductive last_flush: history -> nat -> nat -> Prop :=
   | last_flush_read:
     forall (h:history) (d: nat) (n:nat) (rn:nat),
     last_flush h d n -> last_flush ((Read d rn) :: h) d n
-  | last_flush_write:
+  | last_flush_write1:
     forall (h:history) (d: nat) (n:nat) (wn:nat),
     last_flush h d n -> last_flush ((Write d wn) :: h) d n
+  | last_flush_write2:
+    forall (h:history) (d: nat) (d1: nat) (n:nat) (wn:nat),
+    last_flush h d n -> last_flush ((Write d1 wn) :: h) d n
   | last_flush_sync:
     forall (h:history) (d: nat) (n:nat),
     last_flush h d n -> last_flush (Sync :: h) d n
@@ -200,6 +203,7 @@ Theorem test_legal_6:
 Proof.
   intro.
   repeat constructor.
+
   admit.
   admit.
 Qed.
