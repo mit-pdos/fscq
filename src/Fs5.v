@@ -82,11 +82,28 @@ Proof.
 Qed.
 
 Lemma lastw_dec:
-  forall h b, (exists! v, lastw h b v) + no_write h b.
+  forall h b, (exists v, lastw h b v) + no_write h b.
 Proof.
   induction h; unfold no_write in *.
   - right; intuition; inversion H; inversion H0.
-Admitted.
+  - intros; destruct IHh with (b:=b); destruct a eqn:DA;
+    (* trivial cases *)
+    match goal with
+    | [ DA: _ = Write _ _ |- _ ] => idtac
+    | [ DA: _ = Crash     |- _ ] => right; intuition; inversion H; inversion H0
+    | [ e: exists _, _ |- _ ] => 
+        left; inversion e; exists x; constructor; assumption
+    | [ e: ~ exists _, _ |- _ ] =>
+        right; intuition; inversion H; inversion H0; apply n; exists x; assumption
+    end.
+    (* writes *)
+    + left; destruct (eq_nat_dec b b0).
+      * rewrite e0; exists v; constructor.
+      * inversion e; exists x; constructor; auto; assumption.
+    + destruct (eq_nat_dec b b0).
+      * left; rewrite e; exists v; constructor.
+      * right; intuition; apply n; inversion H; exists x. inversion H0; crush.
+Qed.
 
 (* what's a block's value after a transaction? *)
 Inductive tx_write: history -> trans -> block -> value -> Prop :=
