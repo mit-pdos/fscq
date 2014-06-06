@@ -22,23 +22,6 @@ Inductive event : Set :=
 
 Definition history := list event.
 
-(* could start a transation means we are now outside any transaction *)
-Inductive could_begin: history -> Prop :=
-  | TBegin_nil:
-    could_begin nil
-  | TBegin_tend: forall h t,
-    could_begin ((TEnd t) :: h)
-  | TBegin_crash: forall h,
-    could_begin (Crash :: h)
-  | TBegin_read: forall h b v,
-    could_begin h -> could_begin (Read b v :: h)
-  | TBegin_write: forall h b v,
-    could_begin h -> could_begin (Write b v :: h)
-  | TBegin_sync: forall h b,
-    could_begin h -> could_begin (Sync b :: h)
-  | TBegin_tsync: forall h t,
-    could_begin h -> could_begin (TSync t :: h).
-
 (* we are now inside a transaction *)
 Inductive in_tx: history -> trans -> Prop :=
   | InTX_tbegin: forall h t,
@@ -48,13 +31,7 @@ Inductive in_tx: history -> trans -> Prop :=
   | InTX_write: forall h t b v,
     in_tx h t -> in_tx (Write b v :: h) t.
 
-Lemma no_nested_tx:
-  forall h t, could_begin h -> ~ in_tx h t.
-Proof.
-  induction h; intuition; intros.
-  - inversion H0.
-  - destruct a; inversion H; inversion H0; apply IHh with (t:=t); assumption.
-Qed.
+Let no_tx h : Prop := forall t, ~ in_tx h t.
 
 (* lastw b v holds when there is a write b v in h since the last crash *)
 Inductive lastw: history -> block -> value -> Prop :=
@@ -124,6 +101,8 @@ Inductive tx_write: history -> trans -> block -> value -> Prop :=
   | TW_tsync: forall h b v t ot,
     ot <> t -> tx_write h t b v -> tx_write (TSync ot :: h) t b v.
 
+Let tx_pending h b : Prop := exists t v, tx_write h t b v.
+
 Inductive could_ondisk: history -> block -> value -> Prop :=
   | OD_nil: forall b,
     could_ondisk nil b 0
@@ -174,18 +153,18 @@ Inductive blegal: history -> block -> Prop :=
   | BL_write: forall h b wb wv,
     blegal h b -> blegal h wb -> blegal (Write wb wv :: h) b
   | BL_sync: forall h b sb,
-    blegal h b -> blegal h sb -> could_begin h -> blegal (Sync sb :: h) b
+    blegal h b -> blegal h sb -> no_tx h -> ~ tx_pending h sb -> blegal (Sync sb :: h) b
   | BL_crash: forall h b,
     blegal h b -> blegal (Crash :: h) b
   | BL_tbegin: forall h b t,
-    blegal h b -> could_begin h -> blegal (TBegin t :: h) b
+    blegal h b -> no_tx h -> blegal (TBegin t :: h) b
   | BL_tend: forall h b t,
     blegal h b -> in_tx h t -> blegal (TEnd t :: h) b
   | BL_tsync: forall h b t,
-    blegal h b -> could_begin h -> blegal (TSync t :: h) b.
+    blegal h b -> no_tx h -> blegal (TSync t :: h) b.
 
-Let   legal h : Prop := forall b,   blegal h b.
-Let illegal h : Prop := forall b, ~ blegal h b.
+Let   legal h : Prop := forall b, blegal h b.
+Let illegal h : Prop := exists b, ~ blegal h b.
 
 Example test_legal_1:
   legal [ Read 1 1 ;  Write 1 1 ].
@@ -197,7 +176,7 @@ Qed.
 Example test_legal_2:
   illegal [ Read 0 1 ;  Write 1 1 ].
 Proof.
-  intro. intuition.
+  unfold illegal. intuition. exists 0. intro.
   inversion H. inversion H6.
   - inversion H7.
     inversion H17.
@@ -216,14 +195,17 @@ Example test_legal_4:
   legal [ Read 0 1 ; Read 1 1 ; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
   intro.
-  repeat constructor; auto.
+  repeat match goal with
+    | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H
+    | _ => constructor; auto
+  end.
 Qed.
 
 (* No syncs inside of a transaction: *)
 Example test_legal_5:
   illegal [ Read 0 1 ; Read 1 1 ; TEnd 0; Write 0 1 ; Sync 1; Write 1 1 ; TBegin 0].
 Proof.
-  intro. intuition.
+  unfold illegal. intuition. exists 0. intro.
   inversion H. inversion H5. inversion H12. inversion H18. inversion H23.
 Qed.
 
@@ -235,6 +217,7 @@ Proof.
   repeat match goal with
   | [ |- could_read _ _ _ ] => apply Read_crash
   | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H
   | [ H: lastw _ _ _ |- _ ] => inversion H
   | _ => constructor
   end.
@@ -248,6 +231,7 @@ Proof.
   repeat match goal with
   | [ |- could_read _ _ _ ] => apply Read_crash
   | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H
   | [ H: lastw _ _ _ |- _ ] => inversion H
   | _ => constructor
   end.
@@ -261,6 +245,7 @@ Proof.
   repeat match goal with
   | [ |- could_read _ _ _ ] => apply Read_crash
   | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H
   | [ H: lastw _ _ _ |- _ ] => inversion H
   | _ => constructor; auto
   end.
@@ -274,6 +259,7 @@ Proof.
   repeat match goal with
   | [ |- could_read _ _ _ ] => apply Read_crash
   | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H
   | [ H: lastw _ _ _ |- _ ] => inversion H
   | [ |- could_ondisk _ _ _ ] => idtac
   | _ => constructor
@@ -287,7 +273,7 @@ Qed.
 Example test_legal_10:
    illegal [ Read 0 0 ; Read 0 0 ; TEnd 0; Write 0 1 ; Crash; Write 1 1 ; TBegin 0].
 Proof.
-  intro. intuition.
+  unfold illegal. intuition. exists 0. intro.
   inversion H. inversion H5. inversion H12. inversion H18. inversion H23.
 Qed.
 
