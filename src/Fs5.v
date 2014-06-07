@@ -374,7 +374,6 @@ Fixpoint apply_pending (s: TDisk) (l : list invocation) (h: history) : TDisk * h
   | nil => (s, h)
   end.
 
-(* XXX implement sync_write n *)
 Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * TDisk * history := 
   match l with
   | i :: rest =>
@@ -385,8 +384,17 @@ Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * 
     | do_end n =>
       let (s2, h2) := (apply_pending s1 s1.(pending) h1) in
               (false, s2, (TEnd n :: h2))
-    | do_sync_trans n => (false, s1, (TSync n :: h1))  (* nothing to do: end applied writes *)
+    | do_sync_trans n => 
+      match intransaction with
+      | false => (false, s1, (TSync n :: h1))  (* nothing to do: end applied writes *)
+      | true => (false, s1, h)   (* ignore inside a trans?  return an error to caller? *)
+      end
     | do_crash => (false, (mkTDisk s1.(disk) []), (Crash :: h1))    (* reset pending list *)
+    | do_sync_write n =>
+      match intransaction with
+      | false => (false, s1, (Sync n :: h1))  (* nothing to do: end applied writes *)
+      | true => (false, s1, h)   (* ignore inside a trans?  return an error to caller? *)
+      end
     | _ => 
       match intransaction with
       | true => (true, (mkTDisk s1.(disk) (i :: s1.(pending))), h1)
