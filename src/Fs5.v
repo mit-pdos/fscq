@@ -211,6 +211,34 @@ Qed.
 
 (* No writes of an incomplete transaction are visible after a crash: *)
 Example test_legal_6:
+  legal [ Read 0 0; Crash;  Write 0 1; TBegin 0].
+Proof.
+  intro.
+  repeat match goal with
+  | [ |- could_read _ _ _ ] => apply Read_crash
+  | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H
+  | [ H: lastw _ _ _ |- _ ] => inversion H
+  | _ => constructor
+  end.
+Qed.
+
+(* Transaction may create before any writes: *)
+Example test_legal_6b:
+  legal [ Read 0 0; Crash; TBegin 0].
+Proof.
+  intro.
+  repeat match goal with
+  | [ |- could_read _ _ _ ] => apply Read_crash
+  | [ |- no_write _ _ ] => unfold no_write; intuition; inversion H
+  | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H
+  | [ H: lastw _ _ _ |- _ ] => inversion H
+  | _ => constructor
+  end.
+Qed.
+
+(* No writes of an incomplete transaction are visible after a crash: *)
+Example test_legal_7:
   legal [ Read 1 0; Read 0 0 ; Crash; Write 1 1; Write 0 1 ; TBegin 0].
 Proof.
   intro.
@@ -224,7 +252,7 @@ Proof.
 Qed.
 
 (* Results of a transactions are not durable: *)
-Example test_legal_7:
+Example test_legal_8:
   legal [ Read 0 0 ; Read 1 0 ; Crash; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
   intro.
@@ -238,7 +266,7 @@ Proof.
 Qed.
 
 (* TSync makes transactions durable: *)
-Example test_legal_8:
+Example test_legal_9:
   legal [ Read 0 1 ; Read 1 1 ; Crash; TSync 0; TEnd 0; Write 0 1 ; Write 1 1 ; TBegin 0].
 Proof.
   intro.
@@ -252,7 +280,7 @@ Proof.
 Qed.
 
 (* TSync n makes transaction n durable: *)
-Example test_legal_9:
+Example test_legal_10:
   legal [ Read 0 1 ; Read 1 1 ; Crash; TSync 1; TSync 0; TEnd 1; Write 0 1 ; TBegin 1; TEnd 0; Write 1 1 ; TBegin 0].
 Proof.
   intro.
@@ -270,14 +298,14 @@ Proof.
 Qed.
 
 (* After a crash, a new transaction must start with TBegin *)
-Example test_legal_10:
+Example test_legal_11:
    illegal [ Read 0 0 ; Read 0 0 ; TEnd 0; Write 0 1 ; Crash; Write 1 1 ; TBegin 0].
 Proof.
   unfold illegal. intuition. exists 0. intro.
   inversion H. inversion H5. inversion H12. inversion H18. inversion H23.
 Qed.
 
-Example test_legal_11:
+Example test_legal_12:
   illegal [ Sync 0; TEnd 0; Write 0 1; TBegin 0].
 Proof.
   unfold illegal. intuition. exists 0. intro.
@@ -434,7 +462,7 @@ Proof.
   repeat rewrite disk_read_eq.
   rewrite disk_read_write_commute.
   repeat rewrite disk_read_eq.
-  intro.   (* why cannot i write apply test_legal_4? *)
+  intro.   (* why cannot i write apply test_legal_4? because they aren't the same *)
   repeat match goal with
     | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H0
     | _ => constructor; auto
@@ -449,14 +477,9 @@ Proof.
   intros.
   inversion H.
   rewrite st_read_init.
-  intro.
-  repeat match goal with
-    | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H0
-    | _ => constructor; auto
-  end.
-  (* bug in our spec?  "lastw [Crash; TBegin 0] 0 0" is true but no way to prove? *)
-  (* add another test_legal for this case? *)
-Admitted.
+  intros.
+  apply test_legal_6b.
+Qed.
 
 (* the main unproven theorem: *)
 Theorem TDisk_legal:
