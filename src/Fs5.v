@@ -425,7 +425,7 @@ Proof.
   repeat constructor.
 Qed.
 
-Theorem TDisk_legal_3:
+Example TDisk_legal_3:
   forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
     apply_to_TDisk (mkTDisk st_init []) [do_read 1; do_read 0; do_end 0; do_write 1 1; do_write 0 1; do_begin 0] [] = (b, s, h) -> legal h.
 Proof.
@@ -434,17 +434,28 @@ Proof.
   repeat rewrite disk_read_eq.
   rewrite disk_read_write_commute.
   repeat rewrite disk_read_eq.
-  repeat constructor.  (* XXX deal with no_tx [] *)
-Admitted.
+  intro.   (* why cannot i write apply test_legal_4? *)
+  repeat match goal with
+    | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H0
+    | _ => constructor; auto
+  end.
+  trivial.
+Qed.
 
-Theorem TDisk_legal_4:
+Example TDisk_legal_4:
   forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
     apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_crash; do_write 0 1; do_begin 0] [] = (b, s, h) -> legal h.
 Proof.
   intros.
   inversion H.
   rewrite st_read_init.
-  repeat constructor.  (* XXX deal with no_tx [] *)
+  intro.
+  repeat match goal with
+    | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H0
+    | _ => constructor; auto
+  end.
+  (* bug in our spec?  "lastw [Crash; TBegin 0] 0 0" is true but no way to prove? *)
+  (* add another test_legal for this case? *)
 Admitted.
 
 (* the main unproven theorem: *)
