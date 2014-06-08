@@ -455,23 +455,19 @@ Qed.
 
 Example TDisk_legal_3:
   forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
-    apply_to_TDisk (mkTDisk st_init []) [do_read 1; do_read 0; do_end 0; do_write 1 1; do_write 0 1; do_begin 0] [] = (b, s, h) -> legal h.
+    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_read 1; do_end 0; do_write 0 1; do_write 1 1; do_begin 0] [] = (b, s, h) -> legal h.
 Proof.
   intros.
   inversion H.  
   repeat rewrite disk_read_eq.
   rewrite disk_read_write_commute.
   repeat rewrite disk_read_eq.
-  intro.   (* why cannot i write apply test_legal_4? because they aren't the same *)
-  repeat match goal with
-    | [ |- no_tx _ ] => unfold no_tx; intuition; inversion H0
-    | _ => constructor; auto
-  end.
-  trivial.
+  apply test_legal_4.
+  crush.
 Qed.
 
 Example TDisk_legal_4:
-  forall (l: list invocation) (h:history) (s: TDisk) (b: bool) (d: nat),
+  forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
     apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_crash; do_write 0 1; do_begin 0] [] = (b, s, h) -> legal h.
 Proof.
   intros.
