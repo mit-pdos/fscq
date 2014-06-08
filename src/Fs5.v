@@ -408,7 +408,10 @@ Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * 
     let (bDisk, h1) := (apply_to_TDisk s rest h) in
     let (intransaction, s1) := bDisk in
     match i with
-    | do_begin n => (true, s1, (TBegin n :: h1))
+    | do_begin n => match intransaction with
+      | false => (true, s1, (TBegin n :: h1))
+      | true => (true, s1, h)
+      end
     | do_end n =>
       let (s2, h2) := (apply_pending s1 s1.(pending) h1) in
               (false, s2, (TEnd n :: h2))
@@ -477,27 +480,56 @@ Proof.
   apply test_legal_6b.
 Qed.
 
+Lemma TDisk_in_tx:
+  forall (l: list invocation) (h: history) (s: TDisk),
+    apply_to_TDisk (mkTDisk st_init []) l [] = (true, s, h) 
+    -> exists t, in_tx h t.
+Proof.
+Admitted.
+
+Lemma TDisk_no_tx:
+  forall (l: list invocation) (h: history) (s: TDisk),
+    apply_to_TDisk (mkTDisk st_init []) l [] = (false, s, h) 
+    -> no_tx h.
+Proof.
+Admitted.
+
 (* the main unproven theorem: *)
 Theorem TDisk_legal:
-  forall (l: list invocation) (h: history) (s: TDisk) (b: bool) (d: nat),
-    apply_to_TDisk (mkTDisk st_init []) l [] = (b, s, h) -> legal h d.
+  forall (l: list invocation) (h: history) (s: TDisk) (b: bool),
+    apply_to_TDisk (mkTDisk st_init []) l [] = (b, s, h) -> legal h.
 Proof.
   induction l; [crush; constructor | idtac].
   destruct a; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
   intros; simpl; inversion H0; rewrite H in H2; destruct p.
+  (* read *)
   - destruct b0.
     + inversion H2.  apply IHl with (s:=t) (b:=b).
       rewrite <- H5. rewrite <- H3. assumption.
-    + inversion H2. 
-      constructor; [ auto | apply IHl with (s:=t) (b:=false); assumption | idtac ].
+    + inversion H2.
+      constructor; try apply IHl with (s:=t) (b:=false); try assumption.
       admit. (* need lemmas on legal -> could_read *)
+  (* write *)
   - destruct b0.
     + inversion H2. apply IHl with (s:=t) (b:=true). rewrite <- H5. assumption.
     + inversion H2.
       constructor; auto; apply IHl with (s:=t) (b:=false); assumption.
-  - crush. constructor. apply IHl with (s:=s) (b:=b0). assumption.
+  (* tbegin *)
+  - destruct b0; crush; constructor.
+    + assert (legal h). apply IHl with (s:=s) (b:=false). assumption.
+      unfold legal in H1. apply H1.
+    + apply TDisk_no_tx with (l:=l) (s:=s). assumption.
+  (* tend *)
   - admit. (* need lemmas on apply_pending -> legal *)
-  - crush. constructor. apply IHl with (s:=t) (b:=b0). assumption.
+  (* tsync *)
+  - destruct b0; crush; constructor.
+    + assert (legal h). apply IHl with (s:=s) (b:=false). assumption.
+      unfold legal in H1. apply H1.
+    + apply TDisk_no_tx with (l:=l) (s:=s). assumption.
+  (* sync *)
+  - admit. (* need to fix sync spec *)
+  (* crash *)
+  - inversion H2. constructor. apply IHl with (s:=t) (b:=b0). assumption.
 Qed.
 
 (* Use two disks to implement to implement the same behavior as Tdisk but with a
