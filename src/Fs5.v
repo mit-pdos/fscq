@@ -323,36 +323,28 @@ Qed.
 
 Definition addr := nat.
 Definition val := nat.
-Definition storage := addr -> val.
 
+Parameter storage : Set.
 Parameter st_init  : storage.
-Parameter st_write : storage -> addr -> val -> storage.
-Parameter st_read  : storage -> addr -> val.
+Parameter st_write : storage -> addr -> val -> option storage.
+Parameter st_read  : storage -> addr -> option val.
 
-Axiom st_write_eq:
-  forall s a v, st_write s a v a = v.
+Axiom st_eq:
+  forall s a wv s' v,
+  st_write s a wv = Some s' ->
+  st_read s' a = Some v ->  v = wv.
 
-Axiom st_write_ne:
-  forall s a v a', a <> a' -> st_write s a v a' = s a'.
-
-Axiom st_read_eq:
-  forall s a, st_read s a = s a.
+Axiom st_ne:
+  forall s a a' wv s' v v',
+  a <> a' ->
+  st_write s a wv = Some s' ->
+  st_read s  a' = Some v ->
+  st_read s' a' = Some v' ->  v = v'.
 
 Axiom st_read_init:
-  forall a, st_read st_init a = 0.
+  forall a v, st_read st_init a = Some v -> v = 0.
 
-Axiom disk_read_eq:
-  forall s a v,
-  st_read (st_write s a v) a = v.
-
-Axiom disk_read_same:
-  forall s a a' v,
-  a = a' -> st_read (st_write s a' v) a = v.
-
-Axiom disk_read_other:
-  forall s a a' v,
-  a <> a' -> st_read (st_write s a' v) a = st_read s a.
-
+(*
 Lemma disk_read_write_commute:
   forall a a' v v' s,
   a <> a' -> st_read (st_write (st_write s a v) a' v') a =  st_read (st_write (st_write s a' v') a v) a.
@@ -364,17 +356,75 @@ Proof.
   trivial.
   trivial.
 Qed.
+*)
 
 (* The interface to an atomic disk: *)
 
 Inductive invocation : Set :=
-  | do_read: nat -> invocation
-  | do_write: nat -> nat -> invocation
-  | do_begin: nat-> invocation
-  | do_end: nat -> invocation
-  | do_sync_trans: nat -> invocation
-  | do_sync_write: nat -> invocation
-  | do_crash: invocation.
+  | do_read: block -> invocation
+  | do_write: block -> value -> invocation
+  | do_sync: block -> invocation
+  | do_begin: trans-> invocation
+  | do_end: trans -> invocation
+  | do_sync_trans: trans -> invocation.
+
+Inductive result : Set :=
+  | rs_read: value -> result
+  | rs_bool: bool -> result
+  | rs_void: result.
+
+Inductive result_legal : invocation -> result -> Prop :=
+  | RL_read: 
+    forall b v, result_legal (do_read b) (rs_read v)
+  | RL_write:
+    forall b v, result_legal (do_write b v) rs_void
+  | RL_sync:
+    forall b x, result_legal (do_sync b) (rs_bool x)
+  | RL_begin:
+    forall t x, result_legal (do_begin t) (rs_bool x)
+  | RL_end:
+    forall t x, result_legal (do_end t) (rs_bool x)
+  | RL_tsync:
+    forall t x, result_legal (do_sync_trans t) (rs_bool x).
+
+Fixpoint fs_apply_list {fsstate: Set}
+                       (init: fsstate)
+                       (applyfun: fsstate -> invocation -> fsstate * result)
+                       (l: list invocation)
+                       : fsstate * history :=
+  match l with
+  | nil => (init, nil)
+  | i :: rest =>
+    let (s, h) := fs_apply_list init applyfun rest in
+    let (s', r) := applyfun s i in
+      match r with
+      | rs_bool false => (s', h)
+      | _ => match i with
+        | do_read b => match r with
+          | rs_read v => (s', (Read b v) :: h)
+          | _ => (s', h)    (* invalid *)
+        end
+        | do_write b v =>
+          (s', (Write b v) :: h)
+        | do_sync b =>
+          (s', (Sync b) :: h)
+        | do_begin t =>
+          (s', (TBegin t) :: h)
+        | do_end t => 
+          (s', (TEnd t) :: h)
+        | do_sync_trans t =>
+          (s', (TSync t) :: h)
+      end
+    end
+  end.
+
+Definition fs_legal {fsstate: Set}
+                     (init: fsstate)
+                     (applyfun: fsstate -> invocation -> fsstate * result) :=
+  forall (l: list invocation) (i:invocation) (h: history) (s: fsstate),
+  result_legal i (snd (applyfun s i)) /\
+  (fs_apply_list init applyfun l = (s, h) -> legal h).
+
 
 (* An atomic abstract disk that implements the above interface with the above
 spec. The abstract disk has a storage device and a list of actions in a
@@ -383,63 +433,76 @@ transaction ends/commits atomically.  *)
 
 Record TDisk: Set := mkTDisk {
   disk : storage;
-  pending : list invocation   (* list of pending invocations in a transaction *)
+  intrans : bool;
+  pending : list invocation   (* list of pending writes in a transaction *)
 }.
 
-Definition Tdisk_apply (s: TDisk) (i: invocation) (h: history) : TDisk * history :=
-  match i with
-      | do_read d => (s, (Read d (st_read s.(disk) d)) :: h)
-      | do_write d n => let disk1 := (st_write s.(disk) d n) in
-                        ((mkTDisk disk1 s.(pending)),  (Write d n) :: h)
-      | _ => (s, h)
-  end.
-  
-Fixpoint apply_pending (s: TDisk) (l : list invocation) (h: history) : TDisk * history := 
-  match l with
-  | i :: rest =>
-    let (s1, h1) := (apply_pending s rest h) in 
-      (Tdisk_apply s1 i h1)
-  | nil => (s, h)
+Definition TDisk_init := mkTDisk st_init false nil.
+
+Definition TDisk_write_disk (s:TDisk) (b:block) (v:value) : TDisk :=
+  match (st_write s.(disk) b v) with
+    | Some d => mkTDisk d s.(intrans) s.(pending)
+    | None   => s  (* TODO: recovery *)
   end.
 
-Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * TDisk * history := 
-  match l with
-  | i :: rest =>
-    let (bDisk, h1) := (apply_to_TDisk s rest h) in
-    let (intransaction, s1) := bDisk in
-    match i with
-    | do_begin n => match intransaction with
-      | false => (true, s1, (TBegin n :: h1))
-      | true => (true, s1, h1)
-      end
-    | do_end n =>
-      let (s2, h2) := (apply_pending s1 s1.(pending) h1) in
-              (false, s2, (TEnd n :: h2))
-    | do_sync_trans n => 
-      match intransaction with
-      | false => (false, s1, (TSync n :: h1))  (* nothing to do: TEnd applied writes immediately *)
-      | true => (false, s1, h)   (* ignore inside a trans?  return an error to caller? *)
-      end
-    | do_crash => (false, (mkTDisk s1.(disk) []), (Crash :: h1))    (* reset pending list *)
-    | do_sync_write n =>
-      match intransaction with
-      | false => (false, s1, (Sync n :: h1)) (* nothing to do: write updates disk immediately *)
-      | true => (false, s1, h)   (* ignore inside a trans?  return an error to caller? *)
-      end
-    | _ => 
-      match intransaction with
-      | true => (true, (mkTDisk s1.(disk) (i :: s1.(pending))), h1)
-      | _ => let (s2, h2) := (Tdisk_apply s1 i h1) in
-        (false, s2, h2)
-      end
-    end
-  | nil => (false, s, h)
+Definition TDisk_read_disk (s:TDisk) (b:block) : TDisk * result :=
+  match (st_read s.(disk) b) with
+  | Some v => (s, rs_read v)
+  | None   => (s, rs_read 0)  (* TODO: recovery *)
   end.
+
+Fixpoint TDisk_find_pending (p:list invocation) (b:block) : option value :=
+  match p with
+  | nil => None
+  | i :: rest => match i with
+    | do_write b v  =>  Some v
+    | _ => TDisk_find_pending rest b
+    end
+  end.
+
+Fixpoint TDisk_commit (s:TDisk) (p:list invocation): TDisk :=
+  match p with
+  | nil => s
+  | i :: rest => match i with
+    | do_write b v =>
+        let s' := TDisk_commit s rest in
+        TDisk_write_disk s' b v
+    | _ => (* ignore, should not happen *)
+        TDisk_commit s rest
+    end
+  end.
+
+Definition TDisk_apply (s: TDisk) (i: invocation) : TDisk * result :=
+  if (intrans s) then
+    match i with
+      | do_read b => match (TDisk_find_pending s.(pending) b) with
+          | Some v => (s, rs_read v)
+          | None => TDisk_read_disk s b
+          end
+      | do_write b v =>
+          (mkTDisk s.(disk) true ((do_write b v) :: s.(pending)), rs_void)
+      | do_sync b =>       (s, rs_bool false)
+      | do_begin t =>      (s, rs_bool false)
+      | do_end _ =>
+          let s' := TDisk_commit s s.(pending) in
+          (mkTDisk s'.(disk) false nil, rs_bool true)
+      | do_sync_trans t => (s, rs_bool false)
+    end
+  else
+    match i with
+      | do_read b =>       TDisk_read_disk s b
+      | do_write b v =>    (TDisk_write_disk s b v, rs_void)
+      | do_sync b =>       (s, rs_bool true) (* do nothing *)
+      | do_begin t =>      (mkTDisk s.(disk) true nil, rs_bool true)
+      | do_end t =>        (s, rs_bool false)
+      | do_sync_trans t => (s, rs_bool true) (* do nothing *)
+    end.
+
 
 (* plan for getting some confidence (ie., fix spec and implementation): *)
 Example TDisk_legal_1:
-  forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
-    apply_to_TDisk (mkTDisk st_init []) [] [] = (b, s, h) -> legal h.
+  forall (h:history) (s: TDisk),
+    fs_apply_list TDisk_init TDisk_apply [] = (s, h) -> legal h.
 Proof.
   intros.
   crush.
@@ -447,13 +510,11 @@ Proof.
 Qed.
 
 Example TDisk_legal_2:
-  forall (l: list invocation) (h:history) (s: TDisk) (b: bool),
-    apply_to_TDisk (mkTDisk st_init []) [do_read 0; do_write 0 1] [] = (b, s, h) -> legal h.
+  forall (h:history) (s: TDisk),
+    fs_apply_list TDisk_init TDisk_apply [do_read 0; do_write 0 1] = (s, h) -> legal h.
 Proof.
   intros.
-  inversion H.
-  rewrite disk_read_eq.
-  repeat constructor.
+  inversion H. unfold TDisk_apply in H1.
 Qed.
 
 Example TDisk_legal_3:
@@ -518,17 +579,53 @@ Proof.
   end.
 Qed.
 
+Lemma TDisk_could_read_ondisk:
+    forall (l: list invocation) (h: history) (s: TDisk) (b:block),
+    apply_to_TDisk (mkTDisk st_init []) l [] = (false, s, h) ->
+    could_read h b (st_read (disk s) b) -> could_ondisk h b (st_read (disk s) b).
+Proof.
+  induction l.
+  - intros. inversion H. simpl. rewrite st_read_init. constructor.
+  - destruct a eqn:IA; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
+    intros; simpl; inversion H0; rewrite H in H3; destruct p.
+  Admitted.
+
+
 Lemma TDisk_could_read:
   forall (l: list invocation) (h: history) (s: TDisk) (t: bool) (b:block),
     apply_to_TDisk (mkTDisk st_init []) l [] = (t, s, h) ->
-    legal h -> could_read h b (st_read (disk s) b).
+    could_read h b (st_read (disk s) b).
 Proof.
   induction l.
   - intros; inversion H; apply Read_crash.
-    unfold no_write; intuition; inversion H1; inversion H5.
+    unfold no_write; intuition; inversion H0; inversion H4.
     crush. rewrite st_read_init. constructor.
-  - destruct a; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
-    intros; simpl; inversion H0; destruct p.
+  - destruct a eqn:IA; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
+    intros; simpl; inversion H0; rewrite H in H2; destruct p;
+    destruct b0 eqn:IT; inversion H2.
+
+    rewrite <- H5; simpl; apply IHl with (t:=true); assumption.
+    admit.
+    rewrite <- H5; simpl; apply IHl with (t:=true); assumption.
+    admit.
+    rewrite <- H5, <- H4; simpl; apply IHl with (t:=true); assumption.
+    admit.
+    admit.
+    admit.
+    rewrite <- H5, <- H4; simpl; apply IHl with (t:=true); assumption.
+    admit.
+    rewrite <- H5, <- H4; simpl; apply IHl with (t:=true); assumption.
+    admit.
+    apply Read_crash. unfold no_write. intuition. inversion H1. inversion H6.
+    constructor. simpl. apply IHl with (b:=b) in H. 
+
+
+
+    match goal with
+    | [ IT: ?b = true |- _ ] =>
+      rewrite <- H5; try rewrite <- H4; simpl; apply IHl with (t:=true); assumption
+    | _ => idtac
+    end.
 
 
 (* the main unproven theorem: *)
