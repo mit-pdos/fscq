@@ -518,6 +518,19 @@ Proof.
   end.
 Qed.
 
+Lemma TDisk_could_read:
+  forall (l: list invocation) (h: history) (s: TDisk) (t: bool) (b:block),
+    apply_to_TDisk (mkTDisk st_init []) l [] = (t, s, h) ->
+    legal h -> could_read h b (st_read (disk s) b).
+Proof.
+  induction l.
+  - intros; inversion H; apply Read_crash.
+    unfold no_write; intuition; inversion H1; inversion H5.
+    crush. rewrite st_read_init. constructor.
+  - destruct a; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
+    intros; simpl; inversion H0; destruct p.
+
+
 (* the main unproven theorem: *)
 Theorem TDisk_legal:
   forall (l: list invocation) (h: history) (s: TDisk) (b: bool),
@@ -532,7 +545,8 @@ Proof.
       rewrite <- H5. rewrite <- H3. assumption.
     + inversion H2.
       constructor; try apply IHl with (s:=t) (b:=false); try assumption.
-      admit. (* need lemmas on legal -> could_read *)
+      rewrite <- H4. apply TDisk_could_read with (l:=l) (t:=false). assumption.
+      apply IHl with (b:=false) (h:=h) (s:=t). assumption.
   (* write *)
   - destruct b0.
     + inversion H2. apply IHl with (s:=t) (b:=true). rewrite <- H5. assumption.
@@ -556,6 +570,8 @@ Proof.
   (* crash *)
   - inversion H2. constructor. apply IHl with (s:=t) (b:=b0). assumption.
 Qed.
+
+  
 
 (* Use two disks to implement to implement the same behavior as Tdisk but with a
 disk for which read or write to disk can crash (jelle's disk).  *)
