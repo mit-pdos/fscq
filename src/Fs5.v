@@ -410,7 +410,7 @@ Fixpoint apply_to_TDisk (s : TDisk) (l : list invocation) (h: history) : bool * 
     match i with
     | do_begin n => match intransaction with
       | false => (true, s1, (TBegin n :: h1))
-      | true => (true, s1, h)
+      | true => (true, s1, h1)
       end
     | do_end n =>
       let (s2, h2) := (apply_pending s1 s1.(pending) h1) in
@@ -485,14 +485,38 @@ Lemma TDisk_in_tx:
     apply_to_TDisk (mkTDisk st_init []) l [] = (true, s, h) 
     -> exists t, in_tx h t.
 Proof.
-Admitted.
+  induction l. crush.
+  destruct a eqn:IA; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
+  intros; simpl; inversion H0; rewrite H in H2; destruct p;
+  destruct b; inversion H2;
+  match goal with
+  | [ IA : _ = do_end _ |- _ ] =>
+      contradict H2; generalize (apply_pending t (pending t) h);
+      intros; destruct p; discriminate
+  | [ |- exists _ : trans, in_tx (TBegin ?n :: _) _ ] =>
+      exists n; constructor
+  | _ =>
+      rewrite <- H4; apply IHl with (s:=t); assumption
+  end.
+Qed.
 
 Lemma TDisk_no_tx:
   forall (l: list invocation) (h: history) (s: TDisk),
     apply_to_TDisk (mkTDisk st_init []) l [] = (false, s, h) 
     -> no_tx h.
 Proof.
-Admitted.
+  unfold no_tx; induction l. crush; inversion H0.
+  destruct a eqn:IA; case_eq (apply_to_TDisk (mkTDisk st_init []) l []);
+  intros; simpl; inversion H0; rewrite H in H2; destruct p;
+  destruct b; inversion H2;
+  match goal with
+  | [ IA : _ = do_end _ |- _ ] =>
+      set (x:=apply_pending t0 (pending t0) h) in H2; destruct x;
+      inversion H2; intuition; inversion H1
+  | _ =>
+      intuition; inversion H1; apply IHl with (s:=t0) (h:=h) (t:=t); assumption
+  end.
+Qed.
 
 (* the main unproven theorem: *)
 Theorem TDisk_legal:
@@ -515,10 +539,11 @@ Proof.
     + inversion H2.
       constructor; auto; apply IHl with (s:=t) (b:=false); assumption.
   (* tbegin *)
-  - destruct b0; crush; constructor.
-    + assert (legal h). apply IHl with (s:=s) (b:=false). assumption.
-      unfold legal in H1. apply H1.
-    + apply TDisk_no_tx with (l:=l) (s:=s). assumption.
+  - destruct b0; inversion H2.
+    + apply IHl with (h:=h0) (b:=true) (s:=t). rewrite <- H5. assumption.
+    + assert (legal h). apply IHl with (s:=t) (b:=false); assumption.
+      constructor. unfold legal in H1. apply H1.
+      apply TDisk_no_tx with (l:=l) (s:=t). assumption.
   (* tend *)
   - admit. (* need lemmas on apply_pending -> legal *)
   (* tsync *)
