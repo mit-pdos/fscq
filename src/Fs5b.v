@@ -54,13 +54,12 @@ Inductive result : Set :=
 written) and a value disk that stores the value to be written to block b.  It
 also stores the end of the log, index, which will be recovered on reboot. *)
 Record LogDisk : Set := mkLogDisk {
-  Size : nat;
   Index : nat;
   LogIndexDisk : storage;
   LogValueDisk : storage 
 }.
 
-Definition LogDisk_init := mkLogDisk 100 100 st_init st_init.
+Definition LogDisk_init := mkLogDisk 0 st_init st_init.
 
 (* An atomic disk has two disks: a logging and data disk *)
 Record AtomicDisk : Set := mkAtomicDisk {
@@ -90,15 +89,15 @@ always a value for an index. *)
 Definition logdisk_write (s:LogDisk) (b:block) (v:value) : LogDisk :=
   let d := write_disk s.(LogValueDisk) s.(Index) v in
   let d1 := write_disk s.(LogIndexDisk) s.(Index) b in
-    mkLogDisk s.(Size) (s.(Index)-1) d1 d.
+    mkLogDisk (s.(Index)+1) d1 d.
 
-(* None means log entry wasn't for b *)
+(* None means no valid log at b on log disk *)
 Definition logdisk_read (s:LogDisk) (b:block) : option value :=
   let v := read_disk s.(LogIndexDisk) b in
   if eq_nat_dec v 0 then None
   else Some (read_disk s.(LogValueDisk) b).
 
-(* XXX lemma: there is always a value for an index on the LogDisk *)
+(* XXX lemma: there is always a value for a non-zero index on the LogDisk *)
 
 (* Scan the log for write to block b and read the last write b, if any. *)
 Fixpoint scan_reverse_uncommitted_write (index: nat) (s : LogDisk) (b:block) : option value :=
