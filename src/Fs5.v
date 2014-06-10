@@ -670,25 +670,3 @@ Qed.
 
   
 
-(* Use two disks to implement to implement the same behavior as Tdisk but with a
-disk for which read or write to disk can crash (jelle's disk).  *)
-
-Record AtomicDisk : Set := mkAtomicLazy2 {
-  LogDisk : storage_fail;
-  DataDisk : storage_fail
-}.
-
-Definition AtomicLazy2_init := mkAtomicLazy2 st_fail_init st_fail_init.
-
-(* An implementation of the interface using logging.  Tend writes a commit
-record, and then applies to the logged updates to the data disk.  On recovery,
-atomic disk applies any committed logdisk updates to data disk. *)
-
-(* A refinement proof that every state AtomicDisk can be in is a legal state of
-Tdisk. The mapping function is something along the line if there is a commit
-record, then the atomic disks DataDisk is Tdisk.disk with pending applied.  If
-there is no commit record, then the atomic DataDisk is Tdisk.disk (i.e., w/o
-pending applied) Maybe a la Nickolai's coqfs implementation? *)
-
-(* Standard refinement conclusion: because AtomicDisk implements TDisk and Tdisk
-is correct, then AtomicDisk is correct. *)
