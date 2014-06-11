@@ -1,8 +1,9 @@
 Require Import List.
 Require Import CpdtTactics.
 Require Import Arith.
-Require Import Le.
+Require Import Recdef.
 Import ListNotations.
+
 
 (* An implementation of the Fs5 interface using a logging disk.  Tend writes a
 commit record, and then applies to the logged updates to the data disk.  On
@@ -114,6 +115,19 @@ Definition logdisk_read_last_write (s:LogDisk) (b:block) : option value :=
   scan_reverse_uncommitted_write s.(Index) s b.
 
 (* XXX lemma: logdisk_read_last_write returns last uncommitted write for b, if b in log *)
+
+
+(* Find the end of the log by scanning from the beginning to the end of the disk *)
+Function scan_for_end_of_log (index: nat) (max: nat) (last: option nat) (s : LogDisk) {measure dec_index index} : option value :=
+  if eq_nat_dec index max then last
+  else
+    match logdisk_read s index with
+      | None => last
+      | Some v => scan_for_end_of_log (index + 1) max (Some v) s
+    end.
+
+Definition logdisk_find_end_of_log (s:LogDisk) : option value :=
+  scan_reverse_uncommitted_write 0 s.(Size) None s
 
 (* An implementation of the interface using logging.  Tend writes a commit
 record, and then applies to the logged updates to the data disk.  On recovery,
