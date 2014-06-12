@@ -261,8 +261,8 @@ Inductive pstep : pstate -> pprog -> pstate -> Prop :=
     pstep (PSt d l c) (rx c) s ->
     pstep (PSt d l c) (PGetTx rx) s
   | PsCrash: forall s p s',     (* we can run recovery at anytime and continue *)
-    pstep s p s' ->
-    pstep s (do_trecover p) s'.
+    pstep s (do_trecover p) s' ->
+    pstep s p s'.
 
 Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
   match p with
