@@ -7,10 +7,23 @@ Set Implicit Arguments.
 Definition value := nat.
 Definition block := nat.
 
+(* Storage *)
+
 Parameter storage : Set.
 Parameter st_init  : storage.
 Parameter st_write : storage -> block -> value -> storage.
 Parameter st_read  : storage -> block -> value.
+
+Axiom st_read_same:
+  forall s a v,
+  st_read (st_write s a v) a = v.
+
+Axiom st_read_other:
+  forall s a a' v,
+  st_read (st_write s a' v) a = st_read s a.
+
+Axiom st_read_init:
+  forall a v, st_read st_init a = v -> v = 0.
 
 (** high-level language for a transactional disk *)
 
@@ -62,16 +75,8 @@ Fixpoint texec (p:tprog) (s:tstate) : tstate :=
   end
 .
 
-Definition read_continuation (p: tprog) (v :trs)  : tprog :=
-  match v with
-  | TRValue v => p
-  | _ => THalt
-  end.
-
 Eval simpl in texec THalt (TSt st_init None).
 Eval simpl in texec (TWrite 0 1 (fun trs => THalt)) (TSt st_init None).
-Eval simpl in  let c := (fun trs => TRead 0 (read_continuation (TWrite 1 1 (fun trs => THalt)))) in
-      texec (TWrite 0 1 c) (TSt st_init None).
 
 Bind Scope tprog_scope with tprog.
 
@@ -84,23 +89,27 @@ Notation "a ;; b" := (a (fun trs =>
                            end))
                        (right associativity, at level 60) : tprog_scope.
 
-Notation "v <- a ; b" := (a (fun trs => match trs with
-                            | TRValue v => (fun v => b)
-                            | TRSucc => (fun => THalt)
-                            | TRFail => (fun => THalt)
+Notation "v <- a ; b" := (a (fun ra => 
+                           match ra with 
+                             | TRValue v => b
+                             | TRSucc => THalt
+                             | TRFail => THalt
                            end))
                              (right associativity, at level 60) : tprog_scope.
 
 
 Open Scope tprog_scope.
 
-Check  (v <- (TRead 0) ; TWrite 0 v (fun trs => THalt)).
+Hint Rewrite st_read_init.
+Hint Rewrite st_read_same.
+Hint Rewrite st_read_other.
 
 Eval simpl in texec THalt (TSt st_init None).
-Eval simpl in texec ((TWrite 0 1) ;; THalt) (TSt st_init None).
-Eval simpl in texec (v <- (TRead 0) ; (TWrite 0 v (fun trs => THalt))) (TSt st_init None).
-
-Eval simpl in texec (r <- (TWrite 0 1) ; (r1 <- (TRead 0) ; (r2 <- (TWrite 1 r1) ; THalt))) (TSt st_init None).
+Eval simpl in texec (TBegin ;; THalt) (TSt st_init None).
+Eval simpl in texec (v <- (TRead 0) ; (TWrite 0 v) ;; THalt) (TSt st_init None).
+Eval simpl in texec (TWrite 0 1 ;; (v <- (TRead 0) ; (TWrite 1 v) ;; THalt)) (TSt st_init None).
+Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; TEnd ;; THalt) (TSt st_init None).
+Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; THalt) (TSt st_init None).
 
 Close Scope tprog_scope.
 
