@@ -6,122 +6,223 @@ Set Implicit Arguments.
 
 Definition value := nat.
 Definition block := nat.
-Definition trans := nat.
 
 Parameter storage : Set.
-Parameter st_init  : storage.
 Parameter st_write : storage -> block -> value -> storage.
 Parameter st_read  : storage -> block -> value.
-Parameter st_fail  : storage -> bool.
 
-(* high-level language *)
+(** high-level language for a transactional disk *)
 
-Inductive TOp : Set :=
-  | TRead:  block -> TOp
-  | TWrite: block -> value -> TOp
-  | TBegin: trans -> TOp
-  | TEnd:   trans -> TOp
+(* return values *)
+Inductive trs :=
+  | TRValue (v:value)
+  | TRSucc
+  | TRFail
   .
 
-Inductive TResult : Set :=
-  | TRValue: value -> TResult
-  | TRNone: TResult
-  | TRSucc: TResult
-  | TRFail: TResult
-  | TRCrash: TResult
+Inductive tprog :=
+  | TRead  (b:block) (rx:trs -> tprog)
+  | TWrite (b:block) ( v:value) (rx:trs -> tprog)
+  | TBegin (rx:trs -> tprog)
+  | TEnd   (rx:trs -> tprog)
+  | THalt
   .
 
-Record TState: Set := mkTState {
-  disk : storage;
-  result : TResult;                (* result of last invocation *)
-  intrans : bool;
-  pending : list (block * value)   (* list of pending writes in a transaction *)
+Record tstate := TSt {
+  TSDisk: storage;            (* main disk *)
+  TSAltDisk: option storage   (* alternative disk for transactions *)
 }.
 
-Definition TProg := list TOp.
+(* high level interpreter *)
+Fixpoint texec (p:tprog) (s:tstate) : tstate :=
+  let (d, ad) := s in
+  match p with
+  | THalt         => s
+  | TRead b rx    =>
+    match ad with
+    | None   => texec (rx (TRValue (st_read d b))) (TSt d ad)
+    | Some x => texec (rx (TRValue (st_read x b))) (TSt d ad)
+    end
+  | TWrite b v rx =>
+    match ad with
+    | None   => texec (rx TRSucc) (TSt (st_write d b v) ad)
+    | Some x => texec (rx TRSucc) (TSt d (Some (st_write x b v)))
+    end
+  | TBegin rx     =>
+    match ad with
+    | None   => texec (rx TRSucc) (TSt d (Some d))
+    | Some _ => texec (rx TRFail) (TSt d ad)
+    end
+  | TEnd rx       =>
+    match ad with
+    | Some d => texec (rx TRSucc) (TSt d None)
+    | None   => texec (rx TRFail) (TSt d ad)
+    end
+  end
+.
 
-Fixpoint Tfind_pending (p:list (block * value)) (b:block) : option value :=
+
+(* language that manipulates a disk and an in-memory pending log *)
+
+Inductive pprog :=
+  | PRead   (b:block) (rx:value -> pprog)
+  | PWrite  (b:block) ( v:value) (rx:pprog)
+  | PAddLog (b:block) ( v:value) (rx:pprog)
+  | PClrLog (rx:pprog)
+  | PGetLog (rx:list (block * value) -> pprog)
+  | PSetTx  (v:bool) (rx:pprog)
+  | PGetTx  (rx:bool -> pprog)
+  | PHalt
+  .
+
+Record pstate := PSt {
+  PSDisk: storage;
+  PSLog: list (block * value);
+  PSTx: bool
+}.
+
+Bind Scope pprog_scope with pprog.
+
+Notation "ra <- a ; b" := (a (fun ra => b))
+  (right associativity, at level 60) : pprog_scope.
+
+Notation "a ;; b" := (a (b))
+  (right associativity, at level 60) : pprog_scope.
+
+Open Scope pprog_scope.
+
+Fixpoint pfind (p:list (block * value)) (b:block) : option value :=
   match p with
   | nil => None
   | (b', v) :: rest =>
-    if eq_nat_dec b b' then Some v else Tfind_pending rest b
+    match (pfind rest b) with
+    | None => if eq_nat_dec b b' then Some v else None
+    | x    => x
+    end
   end.
 
-Fixpoint Tcommit (s:storage) (p:list (block*value)): storage :=
+Fixpoint pflush (p:list (block*value)) rx : pprog :=
   match p with
-  | nil => s
-  | (b, v) :: rest =>
-      let s' := Tcommit s rest in st_write s' b v
+  | nil            => rx
+  | (b, v) :: rest => PWrite b v ;; pflush rest rx
   end.
 
-Inductive Tstep : TState -> TState -> Prop :=
-  | TRead_ex_tx:
-      forall d r p b, r <> TRCrash ->
-      let r' := match (Tfind_pending p b) with
-      | Some v => TRValue v
-      | None   => TRValue (st_read d b)
-      end in
-      Tstep (mkTState d r true p) (mkTState d r' true p)
-  | TRead_ex:
-      forall d r p b, r <> TRCrash ->
-      let r' := TRValue (st_read d b) in
-      Tstep (mkTState d r false p) (mkTState d r' false p)
-  | TWrite_ex_tx:
-      forall d r p b v, r <> TRCrash ->
-      Tstep (mkTState d r true p)  (mkTState d TRSucc true ((b, v) :: p))
-  | TWrite_ex:
-      forall d r p, r <> TRCrash ->
-      Tstep (mkTState d r false p) (mkTState d TRFail false p)
-  | TBegin_ex_tx:
-      forall d r p, r <> TRCrash ->
-      Tstep (mkTState d r true p)  (mkTState d TRFail true p)
-  | TBegin_ex:
-      forall d r p, r <> TRCrash ->
-      Tstep (mkTState d r false p) (mkTState d TRSucc true nil)
-  | TEnd_ex_tx:
-      forall d r p, r <> TRCrash ->
-      let d' := Tcommit d p in
-      Tstep (mkTState d r true p)  (mkTState d' TRSucc false nil)
-  | TEnd_ex:
-      forall d r p, r <> TRCrash ->
-      Tstep (mkTState d r false p) (mkTState d TRFail false p)
-  | TCrash:
-      forall d r tx p,
-      Tstep (mkTState d r tx p) (mkTState d TRCrash tx p)
+Definition do_tbegin (cc:tprog -> pprog) rx : pprog :=
+   tx <- PGetTx;
+   if tx then 
+    cc (rx TRFail)
+   else
+    PSetTx true ;; PClrLog ;; cc (rx TRSucc)
+.
+
+Definition do_tread (cc:tprog -> pprog) b rx : pprog :=
+  tx <- PGetTx;
+  if tx then
+    l <- PGetLog;
+    match (pfind l b) with
+    | Some v => cc (rx (TRValue v))
+    | None   => v <- PRead b; cc (rx (TRValue v))
+    end
+  else
+    v <- PRead b; cc (rx (TRValue v))
+.
+
+Definition do_twrite (cc:tprog -> pprog) b v rx : pprog :=
+  tx <- PGetTx;
+  if tx then
+    PAddLog b v ;; cc (rx TRSucc)
+  else
+    PWrite b v;; cc (rx TRSucc)
+.
+
+Definition do_tend (cc:tprog -> pprog) rx : pprog :=
+  tx <- PGetTx;
+  if tx then 
+    PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; cc (rx TRSucc)
+  else
+    cc (rx TRFail)
+.
+
+Definition do_trecover rx : pprog :=
+  tx <- PGetTx;
+  if tx then
+    PClrLog ;; rx
+  else
+    l <- PGetLog; pflush l ;; rx
+.
+
+Close Scope pprog_scope.
+
+Fixpoint compile_tp (p:tprog) : pprog :=
+  match p with
+  | THalt         => PHalt
+  | TBegin rx     => do_tbegin compile_tp rx
+  | TRead b rx    => do_tread  compile_tp b rx
+  | TWrite b v rx => do_twrite compile_tp b v rx
+  | TEnd rx       => do_tend   compile_tp rx
+  end.
+
+Fixpoint pexec (p:pprog) (s:pstate) : pstate :=
+  let (d, l, c) := s in
+  match p with
+  | PHalt           => s
+  | PRead b rx      => pexec (rx (st_read d b)) (PSt d l c)
+  | PWrite b v rx   => pexec rx (PSt (st_write d b v) l c)
+  | PAddLog b v rx  => pexec rx (PSt d (l ++ [(b, v)]) c)
+  | PClrLog rx      => pexec rx (PSt d nil c)
+  | PGetLog rx      => pexec (rx l) (PSt d l c)
+  | PSetTx v rx     => pexec rx (PSt d l v)
+  | PGetTx rx       => pexec (rx c) (PSt d l c)
+  end.
+
+Inductive pstep : pstate -> pprog -> pstate -> Prop :=
+  | PsHalt: forall s,
+    pstep s PHalt s
+  | PsRead: forall d l c b rx s,
+    pstep (PSt d l c) (rx (st_read d b)) s ->
+    pstep (PSt d l c) (PRead b rx) s
+  | PsWrite: forall d l c b v rx s,
+    pstep (PSt (st_write d b v) l c) rx s ->
+    pstep (PSt d l c) (PWrite b v rx) s
+  | PsAddLog: forall d l c b v rx s,
+    pstep (PSt d (l ++ [(b, v)]) c) rx s ->
+    pstep (PSt d l c) (PAddLog b v rx) s
+  | PsClrLog: forall d l c rx s,
+    pstep (PSt d nil c) rx s ->
+    pstep (PSt d l c) (PClrLog rx) s
+  | PsGetLog: forall d l c rx s,
+    pstep (PSt d l c) (rx l) s ->
+    pstep (PSt d l c) (PGetLog rx) s
+  | PsSetTx: forall d l c v rx s,
+    pstep (PSt d l v) rx s ->
+    pstep (PSt d l c) (PSetTx v rx) s
+  | PsGetTx: forall d l c rx s,
+    pstep (PSt d l c) (rx c) s ->
+    pstep (PSt d l c) (PGetTx rx) s
+  | PsCrash: forall p s,
+    pstep s p (pexec (do_trecover PHalt) s)
+    (* XXX: how to continue running after recovery ? *)
   .
 
-Definition TInit := mkTState st_init TRNone false nil.
-
-(* low-level language *)
-
-Inductive LLOp : Set :=
-  | Read: storage -> block -> value -> LLOp
-  | Write: storage -> block -> value -> storage -> LLOp.
-
-Definition LLProg := list LLOp.
-
-Record LLState: Set := mkLLState {
-  logdisk : storage;
-  datadisk : storage
-}.
-
-(*
-
-Note: Since our target language is non-deterministic, 
-      we need to show backward simulation 
-
-XXX:  "plus" rule does not work well backwards, since
-      one high level step usually maps to multiple
-      low-level steps, but not the reverse.
-
-Lemma forward_sim:
-  forall h1 h2, Tstep h1 h2 ->
-  forall l1, match_states h1 l1 ->
-  exists l2, plus LLstep l1 l2 /\ match_states h2 l2.
 
 
-Lemma backward_sim:
-  forall l1 l2, LLstep l1 l2 ->
-  forall h1, match_states h1 l1 ->
-  exists h2, Tstep h1 h2 /\ match_states h2 l2.
-*)
+Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
+  match p with
+  | nil            => d
+  | (b, v) :: rest => log_flush rest (st_write d b v)
+  end.
+
+Theorem correct' : forall d p l d' l' c',
+  pstep (PSt d l false) (compile_tp p) (PSt d' l' c')
+  -> d' = d \/ d' = TSDisk (texec p (TSt (log_flush l d) None)).
+Proof.
+  induction p; intros; auto.
+Admitted.
+
+(** Main correctness theorem *)
+Theorem correct : forall d p d' l' c',
+  pstep (PSt d nil false) (compile_tp p) (PSt d' l' c')
+  -> d' = d \/ d' = TSDisk (texec p (TSt d None)).
+Proof.
+  intros. apply correct' in H. auto.
+Qed.
