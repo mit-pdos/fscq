@@ -8,6 +8,7 @@ Definition value := nat.
 Definition block := nat.
 
 Parameter storage : Set.
+Parameter st_init  : storage.
 Parameter st_write : storage -> block -> value -> storage.
 Parameter st_read  : storage -> block -> value.
 
@@ -60,6 +61,48 @@ Fixpoint texec (p:tprog) (s:tstate) : tstate :=
     end
   end
 .
+
+Definition read_continuation (p: tprog) (v :trs)  : tprog :=
+  match v with
+  | TRValue v => p
+  | _ => THalt
+  end.
+
+Eval simpl in texec THalt (TSt st_init None).
+Eval simpl in texec (TWrite 0 1 (fun trs => THalt)) (TSt st_init None).
+Eval simpl in  let c := (fun trs => TRead 0 (read_continuation (TWrite 1 1 (fun trs => THalt)))) in
+      texec (TWrite 0 1 c) (TSt st_init None).
+
+Bind Scope tprog_scope with tprog.
+
+
+Notation "a ;; b" := (a (fun trs => 
+                           match trs with 
+                             | TRValue v => THalt
+                             | TRSucc => b
+                             | TRFail => THalt
+                           end))
+                       (right associativity, at level 60) : tprog_scope.
+
+Notation "v <- a ; b" := (a (fun trs => match trs with
+                            | TRValue v => (fun v => b)
+                            | TRSucc => (fun => THalt)
+                            | TRFail => (fun => THalt)
+                           end))
+                             (right associativity, at level 60) : tprog_scope.
+
+
+Open Scope tprog_scope.
+
+Check  (v <- (TRead 0) ; TWrite 0 v (fun trs => THalt)).
+
+Eval simpl in texec THalt (TSt st_init None).
+Eval simpl in texec ((TWrite 0 1) ;; THalt) (TSt st_init None).
+Eval simpl in texec (v <- (TRead 0) ; (TWrite 0 v (fun trs => THalt))) (TSt st_init None).
+
+Eval simpl in texec (r <- (TWrite 0 1) ; (r1 <- (TRead 0) ; (r2 <- (TWrite 1 r1) ; THalt))) (TSt st_init None).
+
+Close Scope tprog_scope.
 
 
 (* language that manipulates a disk and an in-memory pending log *)
