@@ -111,51 +111,14 @@ Eval simpl in texec (TWrite 0 1 ;; (v <- (TRead 0) ; (TWrite 1 v) ;; THalt)) (TS
 Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; TEnd ;; THalt) (TSt st_init None).
 Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; THalt) (TSt st_init None).
 
-Fixpoint find_last_committed_write (p:tprog) (s:tstate) (bw:block) (vu:nat) (vc:nat) :=
-  let (d, ad) := s in
-  match p with
-  | THalt => vc
-  | TRead b rx => find_last_committed_write (rx (TRValue (st_read d b))) (TSt d ad) bw vu vc
-  | TWrite b v rx =>
-    match ad with
-      | None   => find_last_committed_write (rx TRSucc) (TSt (st_write d b v) ad) bw v v
-      | Some x => find_last_committed_write (rx TRSucc) (TSt d (Some (st_write x b v))) bw (if eq_nat_dec bw b then v else vu) vc 
-    end
-  | TBegin rx => 
-    match ad with
-    | None   => find_last_committed_write (rx TRSucc) (TSt d (Some d)) bw vu vc
-    | Some _ => find_last_committed_write (rx TRFail) (TSt d ad) bw vu vc
-    end
-  | TEnd rx =>
-    match ad with
-    | Some d => find_last_committed_write (rx TRSucc) (TSt d None) bw vc vc
-    | None   => find_last_committed_write (rx TRFail) (TSt d ad) bw vu vc
-    end
-  end.
+(* Follow adam's suggestion of "proving" this high-level language correct by building
+a simple app for which we can state the properties independent of the high-level language.
+For example, while (1) { transfer(A, B, 10); transfer(B, A, 10). }  
 
-Theorem trans_committed_last_write:
-  forall s prog b,
-    texec prog (TSt st_init None) = s ->
-    find_last_committed_write prog s b 0 0 = st_read s.(TSDisk) b.
-Proof.
-  intro.
-  induction prog.
-  intuition.
-  (* read *)
-  - intros.
-    admit.
-  (* write *)
-  - intros.
-    admit.
-  (* begin *)
-  - intros.
-    admit.
-  (* end *)
-  - intros.
-    admit.
-  (* halt *)
-  - intros.
-Admitted.
+transfer(m,n, k) = TBegin ;; (v <- (Tread m); (Twrite m v-k); (v1 <- Tread n); Twrite n v1+k); Tend;
+
+claim : sum(m and n) is always the sum of their initial values
+*)
 
 Close Scope tprog_scope.
 
@@ -297,10 +260,9 @@ Inductive pstep : pstate -> pprog -> pstate -> Prop :=
   | PsGetTx: forall d l c rx s,
     pstep (PSt d l c) (rx c) s ->
     pstep (PSt d l c) (PGetTx rx) s
-  | PsCrash: forall p d l c l' c',
-    (* XXX need some theorem about recovery *)
-    pstep (PSt d l c) p (PSt (PSDisk (pexec (do_trecover p) (PSt d l c))) l' c')
-    (* XXX: how to continue running after recovery ? *).
+  | PsCrash: forall s p s',     (* we can run recovery at anytime and continue *)
+    pstep s p s' ->
+    pstep s (do_trecover p) s'.
 
 Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
   match p with
