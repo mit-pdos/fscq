@@ -228,7 +228,7 @@ Lemma flush_writeLog' : forall l m l' m',
 Proof.
   induction l; t.
 
-  rewrite app_comm_cons in *; eapply IHl; t.
+  rewrite app_comm_cons in *. eapply IHl; t.
   erewrite writeLog_app by eassumption; t.
 Qed.
 Lemma flush_writeLog : forall l m m',
@@ -277,7 +277,7 @@ Proof.
   generalize (readLog_correct a l m).
   destruct (readLog a l); t.
   subst; eauto.
-  rewrite H0; eauto.
+  rewrite H0. eauto.
 
   eapply IHp in H3; t.
 Qed.
