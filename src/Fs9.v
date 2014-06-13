@@ -12,21 +12,11 @@ Definition block := nat.
 
 (* Storage *)
 
-<<<<<<< HEAD
-Definition mem := addr -> value.
-Definition st_read (m : mem) (a : addr) : value := m a.
-Definition st_write (m : mem) (a : addr) (v : value) : mem :=
-  fun a' => if eq_nat_dec a' a then v else m a'.
-Definition mem0 : mem := fun _ =>  0.
-Definition storage := mem.
-=======
 Definition storage := block -> value.
 Definition st_init : storage := fun _ => 0.
 Definition st_read (s:storage) (b:block) : value := s b.
 Definition st_write (s:storage) (b:block) (v:value) : storage :=
   fun b' => if eq_nat_dec b' b then v else s b'.
-
->>>>>>> 9bbce911586080690b7256103ef600f5dba7dc9d
 
 (** high-level language for a transactional disk *)
 
@@ -491,7 +481,7 @@ Record LogDisk : Set := mkLogDisk {
   LogValueDisk : storage 
 }.
 
-Definition LogDisk_init := mkLogDisk 0 mem0 mem0.
+Definition LogDisk_init := mkLogDisk 0 st_init st_init.
 
 Record dstate := DSt {
   DSDisk: storage;
@@ -500,7 +490,7 @@ Record dstate := DSt {
   DSTx: storage  (* bool disk *)
 }.
 
-Definition log_init := DSt mem0 LogDisk_init 0 mem0.
+Definition log_init := DSt st_init LogDisk_init 0 st_init.
 
 Bind Scope dprog_scope with dprog.
 
