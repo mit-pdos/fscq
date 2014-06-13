@@ -1,29 +1,22 @@
 Require Import List.
 Require Import Arith.
 Import ListNotations.
+Require Import CpdtTactics.
 
 Set Implicit Arguments.
 
 Definition value := nat.
+Definition addr := nat.
 Definition block := nat.
 
 (* Storage *)
 
-Parameter storage : Set.
-Parameter st_init  : storage.
-Parameter st_write : storage -> block -> value -> storage.
-Parameter st_read  : storage -> block -> value.
-
-Axiom st_read_same:
-  forall s a v,
-  st_read (st_write s a v) a = v.
-
-Axiom st_read_other:
-  forall s a a' v,
-  st_read (st_write s a' v) a = st_read s a.
-
-Axiom st_read_init:
-  forall a v, st_read st_init a = v -> v = 0.
+Definition mem := addr -> value.
+Definition mem0 : mem := fun _ => 0.
+Definition st_read (m : mem) (a : addr) : value := m a.
+Definition st_write (m : mem) (a : addr) (v : value) : mem :=
+  fun a' => if eq_nat_dec a' a then v else m a'.
+Definition storage := mem.
 
 (** high-level language for a transactional disk *)
 
@@ -72,11 +65,11 @@ Fixpoint texec (p:tprog) (s:tstate) : tstate :=
     | Some d => texec (rx TRSucc) (TSt d None)
     | None   => texec (rx TRFail) (TSt d ad)
     end
-  end
-.
+  end.
 
-Eval simpl in texec THalt (TSt st_init None).
-Eval simpl in texec (TWrite 0 1 (fun trs => THalt)) (TSt st_init None).
+
+Eval simpl in texec THalt (TSt mem0 None).
+Eval simpl in texec (TWrite 0 1 (fun trs => THalt)) (TSt mem0 None).
 
 Bind Scope tprog_scope with tprog.
 
@@ -84,41 +77,56 @@ Bind Scope tprog_scope with tprog.
 Notation "a ;; b" := (a (fun trs => 
                            match trs with 
                              | TRValue v => THalt
-                             | TRSucc => b
+                             | TRSucc => (b)
                              | TRFail => THalt
                            end))
                        (right associativity, at level 60) : tprog_scope.
 
 Notation "v <- a ; b" := (a (fun ra => 
                            match ra with 
-                             | TRValue v => b
+                             | TRValue v => (b)
                              | TRSucc => THalt
                              | TRFail => THalt
                            end))
                              (right associativity, at level 60) : tprog_scope.
 
 
+
+
 Open Scope tprog_scope.
 
-Hint Rewrite st_read_init.
-Hint Rewrite st_read_same.
-Hint Rewrite st_read_other.
+Eval simpl in texec THalt (TSt mem0 None).
+Eval simpl in texec (TBegin ;; THalt) (TSt mem0 None).
+Eval simpl in texec (v <- (TRead 0) ; (TWrite 0 v) ;; THalt) (TSt mem0 None).
+Eval simpl in texec (TWrite 0 1 ;; (v <- (TRead 0) ; (TWrite 1 v) ;; THalt)) (TSt mem0 None).
+Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; TEnd ;; THalt) (TSt mem0 None).
+Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; THalt) (TSt mem0 None).
 
-Eval simpl in texec THalt (TSt st_init None).
-Eval simpl in texec (TBegin ;; THalt) (TSt st_init None).
-Eval simpl in texec (v <- (TRead 0) ; (TWrite 0 v) ;; THalt) (TSt st_init None).
-Eval simpl in texec (TWrite 0 1 ;; (v <- (TRead 0) ; (TWrite 1 v) ;; THalt)) (TSt st_init None).
-Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; TEnd ;; THalt) (TSt st_init None).
-Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; THalt) (TSt st_init None).
+(* Follow adam's suggestion of "proving" this high-level language interpreter
+correct by building a simple app for which we can state the properties
+independent of the high-level language. *)
 
-(* Follow adam's suggestion of "proving" this high-level language correct by building
-a simple app for which we can state the properties independent of the high-level language.
-For example, while (1) { transfer(A, B, 10); transfer(B, A, 10). }  
+Definition do_transfer (src:nat) (dst:nat) (k: nat) (s: tstate) : tstate :=
+ texec (TBegin ;; v <- (TRead src) ; TWrite src (v-k) ;; v1 <- (TRead dst) ; (TWrite dst (v1+k)) ;; TEnd ;; THalt) s.
 
-transfer(m,n, k) = TBegin ;; (v <- (Tread m); (Twrite m v-k); (v1 <- Tread n); Twrite n v1+k); Tend;
+Definition read (s: tstate) (b:block) : value := (st_read s.(TSDisk) b).
 
-claim : sum(m and n) is always the sum of their initial values
-*)
+Definition create_account (n : nat) (v : nat) (s: tstate): tstate :=
+  texec (TBegin;; TWrite n 100 ;; TEnd ;; THalt) s.
+
+Definition transfer (src:nat) (dst:nat) (v:nat): value * value :=
+  let s := create_account src 100 (TSt mem0 None) in 
+     let s1 := create_account dst 100 s in
+     let s2 := do_transfer src dst v s1 in
+         (read s2 src, read s2 dst).
+
+Example legal_transfer1:
+  forall k1 k2,
+    transfer 0 1 10 = (k1, k2) -> k1 = 90 /\ k2 = 110.
+Proof.
+  intros; inversion H.
+  crush.
+Qed.
 
 Close Scope tprog_scope.
 
