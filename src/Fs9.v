@@ -68,6 +68,28 @@ Fixpoint texec (p:tprog) (s:tstate) : tstate :=
     end
   end.
 
+Inductive tsmstep : tstate -> tprog -> tstate -> tprog -> Prop :=
+  | TsmRead: forall d b rx,
+    tsmstep (TSt d None) (TRead b rx)
+            (TSt d None) (rx (TRValue (st_read d b)))
+  | TsmReadTx: forall d ad b rx,
+    tsmstep (TSt d (Some ad)) (TRead b rx)
+            (TSt d (Some ad)) (rx (TRValue (st_read ad b)))
+  | TsmWrite: forall d b v rx,
+    tsmstep (TSt d None) (TWrite b v rx)
+            (TSt (st_write d b v) None) (rx TRSucc)
+  | TsmWriteTx: forall d ad b v rx,
+    tsmstep (TSt d (Some ad)) (TWrite b v rx)
+            (TSt d (Some (st_write ad b v))) (rx TRSucc)
+  | TsmBegin: forall d rx,
+    tsmstep (TSt d None) (TBegin rx) (TSt d (Some d)) (rx TRSucc)
+  | TsmBeginTx: forall d ad rx,
+    tsmstep (TSt d (Some ad)) (TBegin rx) (TSt d (Some ad)) (rx TRFail)
+  | TsmEnd: forall d rx,
+    tsmstep (TSt d None) (TEnd rx) (TSt d None) (rx TRFail)
+  | TsmEndTx: forall d ad rx,
+    tsmstep (TSt d (Some ad)) (TEnd rx) (TSt ad None) (rx TRSucc)
+  .
 
 Eval simpl in texec THalt (TSt st_init None).
 Eval simpl in texec (TWrite 0 1 (fun trs => THalt)) (TSt st_init None).
@@ -276,183 +298,52 @@ Inductive pstep : pstate -> pprog -> pstate -> Prop :=
     pstep s (do_trecover p) s' ->
     pstep s p s'. *)
 
+Inductive tpmatch : tstate -> tprog -> pstate -> pprog -> Prop :=
+  | tpmatch_state :
+    forall td tad tp pd lg (tx:bool) pp ad
+    (DD: td = pd)
+    (TX: tad = if tx then Some ad else None)
+    (PP: compile_tp tp = pp /\ pp = PHalt) ,
+    tpmatch (TSt td ad) tp (PSt pd lg tx) pp.
 
+Inductive psmstep : pstate -> pprog -> pstate -> pprog -> Prop :=
+  | PsmRead: forall d l c b rx,
+    psmstep (PSt d l c) (PRead b rx) (PSt d l c) (rx (st_read d b))
+  | PsmWrite: forall d l c b v rx,
+    psmstep (PSt d l c) (PWrite b v rx) (PSt (st_write d b v) l c) rx
+  | PsmAddLog: forall d l c b v rx,
+    psmstep (PSt d l c) (PAddLog b v rx) (PSt d (l ++ [(b, v)]) c) rx
+  | PsmClrLog: forall d l c rx,
+    psmstep (PSt d l c) (PClrLog rx) (PSt d nil c) rx
+  | PsmGetLog: forall d l c rx,
+    psmstep (PSt d l c) (PGetLog rx) (PSt d l c) (rx l)
+  | PsmSetTx: forall d l c v rx,
+    psmstep (PSt d l c) (PSetTx v rx) (PSt d l v) rx
+  | PsmGetTx: forall d l c rx,
+    psmstep (PSt d l c) (PGetTx rx) (PSt d l c) (rx c)
+  | PsmCrash: forall s p,
+    psmstep s p (pexec (do_trecover PHalt) s) PHalt
+  .
 
-Ltac t' := simpl in *;
-  repeat (match goal with
-            | [ H : ?x = _ |- _ ] => subst x
-            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
-            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
-          end; simpl).
-Ltac t := simpl in *; intros;
-  t'; try autorewrite with core in *; intuition (eauto; try congruence); t'.
+(*
+   Backward small-step simulation:
+   Each step in pprog maps to zero or a single step in tprog.
 
-Ltac step := repeat 
-  (match goal with
-   | [ H : pstep _ _ _ |- _ ] => inversion H; [|]; clear H; intros
-   end); t.
+   Note that the 0-step case requires an additional premise showing that
+   pprog actually makes progress, otherwise there would be the case that
+   pprog does not terminate while tprog does, known as the stuttering problem.
+   This is impossible because our continuation-style program has
+   an ever-increasing program counter.
+*)
 
-(** A quick useful list lemma *)
-Theorem app_comm_cons : forall A (ls1 : list A) x ls2,
-  ls1 ++ x :: ls2 = (ls1 ++ x :: nil) ++ ls2.
+Theorem tp_backsim:
+  forall ts tp ps pp ps' pp',
+  tpmatch ts tp ps pp ->
+  psmstep ps pp ps' pp' ->
+  (* 0-step *) tpmatch ts tp ps' pp' \/
+  (* 1-step *) exists ts' tp', tsmstep ts tp ts' tp' /\ tpmatch ts' tp' ps' pp'.
 Proof.
-  induction ls1; t; rewrite IHls1; t.
-Qed.
-
-(** There's no point in two consecutive writes to the same address. *)
-Lemma upd_upd_eq : forall m a v v',
-  st_write (st_write m a v) a v' = st_write m a v'.
-Proof.
-  unfold st_write; intros; extensionality a'; t.
-Qed.
-
-Hint Rewrite upd_upd_eq.
-
-(** Writes to unequal addresses commute. *)
-Lemma upd_upd_neq : forall m a a' v v',
-  a <> a'                      
-  -> st_write (st_write m a v) a' v' = st_write (st_write m a' v') a v.
-Proof.
-  unfold st_write; intros; extensionality a''; t.
-Qed.
-
-Hint Rewrite upd_upd_eq.
-
-
-Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
-  match p with
-  | nil            => d
-  | (b, v) :: rest => log_flush rest (st_write d b v)
-  end.
-
-(** When we're writing from the log, initial memory values don't matter in
-  * positions that will be overwritten later. *)
-Lemma writeLog_overwrite : forall a l m m' v,
-  (forall a', a' <> a -> m a' = m' a')
-  -> st_write (log_flush l m) a v = st_write (log_flush l m') a v.
-Proof.
-  induction l; t.
-  unfold st_write; extensionality a'; t.
-  apply IHl; t.
-  unfold st_write; t.
-Qed.
-
-(** The starting value of a memory cell is irrelevant if we are writing from
-  * a log that ends in a mapping for that cell. *)
-Lemma writeLog_last : forall a v l m v',
-  log_flush (l ++ (a, v) :: nil) (st_write m a v') = st_write (log_flush l m) a v.
-Proof.
-  induction l; t.
-  destruct (eq_nat_dec a b); subst.
-  rewrite IHl.
-  apply writeLog_overwrite; unfold st_write; t.
-  rewrite upd_upd_neq by assumption; eauto.
-Qed.
-
-Hint Rewrite writeLog_last.
-
-(** Decomposing a writing process *)
-Lemma writeLog_app : forall l2 l1 m m',
-  log_flush l1 m = m'
-  -> log_flush (l1 ++ l2) m = log_flush l2 m'.
-Proof.
-  induction l1; t.
-Qed.
-
-(** [flush] implements [writeLog] in the failure-free semantics. *)
-Lemma flush_nofail : forall l m l' c,
-  pexec (pflush l (PClrLog PHalt)) (PSt m l' c) = PSt (log_flush l m) nil c.
-Proof.
-  induction l; t.
-Qed.
-
-Hint Rewrite flush_nofail app_nil_r.
-
-(** [flush] implements [writeLog] in the failure-allowed semantics. *)
-Lemma flush_writeLog' : forall l m l' m' l1 c1,
-  pstep (PSt m (l' ++ l) false) (pflush l PHalt) (PSt m' l1 c1)
-  -> log_flush l' m = m
-  -> m' = log_flush l m.
-Proof.
-  induction l; t; step.
-  rewrite app_comm_cons in *. eapply IHl. eauto. t.
-  inversion H4.
-  erewrite writeLog_app by eassumption. t.
-Qed.
-
-Lemma flush_writeLog : forall l m m' l1 c1,
-  pstep (PSt m l false) (pflush l PHalt) (PSt m' l1 c1)
-  -> m' = log_flush l m.
-Proof.
-  intros; eapply flush_writeLog' with (l':=nil) (l1:=l1) (c1:=c1); t.
-Qed.
-
-Hint Resolve flush_writeLog.
-
-(** [readLog] interacts properly with [writeLog]. *)
-Lemma readLog_correct : forall b ls d,
-  st_read (log_flush ls d) b = match pfind ls b with
-                            | Some v => v
-                            | None => st_read d b
-                          end.
-Proof.
-  induction ls; t.
-
-  destruct (pfind ls b0); eauto.
-  rewrite IHls.
-  unfold st_read, st_write; t.
-
-  destruct (pfind ls b); eauto.
-  rewrite IHls.
-  unfold st_read, st_write; t.
-Qed.
-
-(** Pulling out the effect of the last log entry *)
-Lemma writeLast_final : forall a v l m,
-  log_flush (l ++ (a, v) :: nil) m = st_write (log_flush l m) a v.
-Proof.
-  induction l; t.
-Qed.
-
-Hint Rewrite writeLast_final.
-
-Theorem correct_tx' : forall d p l d' l' c',
-  pstep (PSt d l true) (compile_tp p) (PSt d' l' c')
-  -> d' = d \/ exists ad, (TSt d' ad) = texec p (TSt d (Some (log_flush l d))).
-Proof.
-  induction p; t; step.
-
-  (* read *)
-  generalize (readLog_correct b l d).
-  destruct (pfind l b); t.
-  subst; eauto.
-  rewrite H0; inversion H11; t.
-  (* write *) eapply H in H13. t.
-  (* end *)
-  admit.
-  admit.
-Admitted.
-
-Theorem correct_tx : forall d p d' l' c',
-  pstep (PSt d nil true) (compile_tp p) (PSt d' l' c')
-  -> d' = d \/ exists ad, (TSt d' ad) = texec p (TSt d (Some d)).
-Proof.
-  intros. apply correct_tx' in H . auto.
-Qed.
-
-
-Theorem correct_notx : forall d p d' l' c',
-  pstep (PSt d nil false) (compile_tp p) (PSt d' l' c')
-  -> d' = d \/ exists ad, (TSt d' ad) = texec p (TSt d None).
-Proof.
-  induction p; t; step.
-  (* XXX:
-     need to show that run a high-level program on a changed storage
-     will produce the same result as running the low-level program
-     on that storage ... *)
-  admit.
   
-  eapply correct_tx. eassumption.
 Qed.
 
 
