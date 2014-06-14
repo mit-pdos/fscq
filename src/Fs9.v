@@ -18,16 +18,14 @@ Definition st_read (s:storage) (b:block) : value := s b.
 Definition st_write (s:storage) (b:block) (v:value) : storage :=
   fun b' => if eq_nat_dec b' b then v else s b'.
 
-
 (** high-level language for a transactional disk *)
 
 (* return values *)
 Inductive trs :=
   | TRValue (v:value)
   | TRSucc
-  | TRFail
-  .
-
+  | TRFail.
+  
 Inductive tprog :=
   | TRead  (b:block) (rx:trs -> tprog)
   | TWrite (b:block) ( v:value) (rx:trs -> tprog)
@@ -132,20 +130,22 @@ independent of the high-level language. *)
 Definition do_transfer (src:nat) (dst:nat) (k: nat) (s: tstate) : tstate :=
  texec (TBegin ;; v <- (TRead src) ; TWrite src (v-k) ;; v1 <- (TRead dst) ; (TWrite dst (v1+k)) ;; TEnd ;; THalt) s.
 
-Definition read (s: tstate) (b:block) : value := (st_read s.(TSDisk) b).
+Definition read_account (s: tstate) (n: nat) : value := (st_read s.(TSDisk) n).
+
+Definition initial := 100.
 
 Definition create_account (n : nat) (v : nat) (s: tstate): tstate :=
-  texec (TBegin;; TWrite n 100 ;; TEnd ;; THalt) s.
+  texec (TBegin;; TWrite n initial ;; TEnd ;; THalt) s.
 
 Definition transfer (src:nat) (dst:nat) (v:nat): value * value :=
   let s := create_account src 100 (TSt st_init None) in 
      let s1 := create_account dst 100 s in
      let s2 := do_transfer src dst v s1 in
-         (read s2 src, read s2 dst).
+         (read_account s2 src, read_account s2 dst).
 
 Example legal_transfer1:
   forall k1 k2,
-    transfer 0 1 10 = (k1, k2) -> k1 = 90 /\ k2 = 110.
+    transfer 0 1 10 = (k1, k2) -> k1 = initial - 10 /\ k2 = initial + 10.
 Proof.
   intros; inversion H.
   crush.
@@ -348,3 +348,105 @@ Qed.
 
 
 (** Main correctness theorem *)
+
+(* language that implements the log as a disk *)
+
+Definition DSDataDisk := 0.
+Definition DSBlockDisk := 1.
+Definition DSValueDisk := 2.
+Definition DSTxDisk := 3.
+
+Inductive dprog :=
+  | DRead   (d:nat) (b:block) (rx:value -> dprog)
+  | DWrite  (d:nat) (b:block) ( v:value) (rx:dprog)
+  | DGetEndOfLog (rx:nat -> dprog)
+  | DHalt.
+  
+
+(* A logging disk has an index disk (which stores the block number b to be
+written) and a value disk that stores the value to be written to block b.  It
+also stores the end of the log, index, which will be recovered on reboot. *)
+Record LogDisk : Set := mkLogDisk {
+  Index : nat;
+  LogIndexDisk : storage;  (* XXX block *)
+  LogValueDisk : storage 
+}.
+
+Definition LogDisk_init := mkLogDisk 0 st_init st_init.
+
+Record dstate := DSt {
+  DSDisk: storage;
+  DSLog: LogDisk;
+  DSEoL: nat;
+  DSTx: storage  (* bool disk *)
+}.
+
+Definition log_init := DSt st_init LogDisk_init 0 st_init.
+
+Bind Scope dprog_scope with dprog.
+
+Notation "ra <- a ; b" := (a (fun ra => b))
+  (right associativity, at level 60) : dprog_scope.
+
+Notation "a ;; b" := (a (b))
+  (right associativity, at level 60) : dprog_scope.
+
+Open Scope dprog_scope.
+
+Definition do_pread (cc:pprog -> dprog) b rx : dprog :=
+  v <- DRead DSDataDisk b; cc (rx v).
+
+Definition do_pwrite (cc:pprog -> dprog) b v rx : dprog :=
+  DWrite DSDataDisk b v ;; cc rx.
+
+Definition do_paddlog (cc:pprog -> dprog) b v rx : dprog :=
+  index <- DGetEndOfLog;
+  DWrite DSValueDisk index v ;; DWrite DSBlockDisk index b ;; cc rx.
+
+(* 0 indicates end of log XXX have a log disk type with a EoL marker *)
+Definition do_pclrlog (cc:pprog -> dprog) rx : dprog :=
+  DWrite DSBlockDisk 0 0 ;; cc rx.
+
+(* Read log from block and value disk *)
+Fixpoint do_readlog (index:nat) (log: list (block*value)) (cc:pprog -> dprog) rx : dprog :=
+  match index with
+  | O => cc (rx log)
+  | S n => 
+    b <- DRead DSBlockDisk index;
+    if eq_nat_dec b 0 then cc (rx log)
+    else v <- DRead DSValueDisk index ; do_readlog n ((b, v) :: log) cc rx
+  end.
+
+Definition do_pgetlog (cc:pprog -> dprog) rx : dprog :=
+  index <- DGetEndOfLog;
+  do_readlog index nil cc rx.
+
+Definition do_psettx (cc:pprog -> dprog) v rx : dprog :=
+  DWrite DSTxDisk 0 v ;; cc rx.
+
+Definition do_pgettx (cc:pprog -> dprog) rx : dprog :=
+  v <- DRead DSTxDisk 0; cc (rx v).
+
+Close Scope dprog_scope.
+
+Fixpoint compile_pp (p:pprog) : dprog :=
+  match p with
+  | PHalt         => DHalt
+  | PRead b rx    => do_pread compile_pp b rx
+  | PWrite b v rx => do_pwrite compile_pp b v rx
+  | PAddLog b v rx  => do_paddlog compile_pp b v rx
+  | PClrLog rx      => do_pclrlog compile_pp rx
+  | PGetLog rx      => do_pgetlog compile_pp rx
+  | PSetTx v rx     => do_psettx compile_pp v rx
+  | PGetTx rx       => do_pgettx compile_pp rx
+  end.
+
+Fixpoint dexec (p:dprog) (s:dstate) : pstate :=
+  let (d, l, c) := s in
+  match p with
+  | PHalt           => s
+  | PRead b rx      => pexec (rx (st_read d b)) (PSt d l c)
+  | PWrite b v rx   => pexec rx (PSt (st_write d b v) l c)
+  | PGetEndLog rx   => pexec (rx eol) (PSt d l c)
+  end.
+
