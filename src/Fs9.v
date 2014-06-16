@@ -461,18 +461,18 @@ Proof.
             | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
           end; simpl).
 
-  Ltac t := simpl in *; intros; t';
+  Ltac t1 := simpl in *; intros; t';
     try autorewrite with core in *; intuition (eauto; try congruence); t'.
 
-  induction ls; t.
+  induction ls; t1.
 
   destruct (pfind ls b0); eauto.
   rewrite IHls.
-  unfold st_read, st_write; t.
+  unfold st_read, st_write; t1.
 
   destruct (pfind ls b); eauto.
   rewrite IHls.
-  unfold st_read, st_write; t.
+  unfold st_read, st_write; t1.
 Qed.
 
 
@@ -599,45 +599,55 @@ Definition do_pclrlog (cc:pprog -> dprog) rx : dprog :=
   DWrite DSBlockDisk 0 0 ;; cc rx.
 
 (* Read log from block and value disk *)
-Fixpoint do_readlog (index:nat) (log: list (block*value)) (cc:pprog -> dprog) rx : dprog :=
-  match index with
+Fixpoint do_readlog (logindex:nat) (log: list (block*value)) (cc:pprog -> dprog) rx : dprog :=
+  match logindex with
   | O => cc (rx log)
   | S n => 
-    b <- DRead DSBlockDisk index;
-    if eq_nat_dec b 0 then cc (rx log)
-    else v <- DRead DSValueDisk index ; do_readlog n ((b, v) :: log) cc rx
+    b <- DRead DSBlockDisk logindex;
+    (v <- DRead DSValueDisk logindex ; do_readlog n ((b, v) :: log) cc rx)
   end.
 
 Definition do_pgetlog (cc:pprog -> dprog) rx : dprog :=
-  index <- DGetEndOfLog;
-  do_readlog index nil cc rx.
+  DGetEndOfLog (fun v1 => do_readlog v1 nil cc rx).
+
+Definition bool2nat (v : bool) : nat :=
+   match v with
+   | true => 1
+   | _ => 0
+   end.
 
 Definition do_psettx (cc:pprog -> dprog) v rx : dprog :=
-  DWrite DSTxDisk 0 v ;; cc rx.
+  DWrite DSTxDisk 0 (bool2nat v) ;; cc rx.
+
+Definition nat2bool (v : nat) : bool :=
+   match v with
+   | 1 => true
+   | _ => false
+   end.
 
 Definition do_pgettx (cc:pprog -> dprog) rx : dprog :=
-  v <- DRead DSTxDisk 0; cc (rx v).
+  v <- DRead DSTxDisk 0; cc (rx (nat2bool v)).
 
 Close Scope dprog_scope.
 
-Fixpoint compile_pp (p:pprog) : dprog :=
+Fixpoint compile_pd (p:pprog) : dprog :=
   match p with
   | PHalt         => DHalt
-  | PRead b rx    => do_pread compile_pp b rx
-  | PWrite b v rx => do_pwrite compile_pp b v rx
-  | PAddLog b v rx  => do_paddlog compile_pp b v rx
-  | PClrLog rx      => do_pclrlog compile_pp rx
-  | PGetLog rx      => do_pgetlog compile_pp rx
-  | PSetTx v rx     => do_psettx compile_pp v rx
-  | PGetTx rx       => do_pgettx compile_pp rx
+  | PRead b rx    => do_pread compile_pd b rx
+  | PWrite b v rx => do_pwrite compile_pd b v rx
+  | PAddLog b v rx  => do_paddlog compile_pd b v rx
+  | PClrLog rx      => do_pclrlog compile_pd rx
+  | PSetTx v rx     => do_psettx compile_pd v rx
+  | PGetTx rx       => do_pgettx compile_pd rx
+  | PGetLog rx      => do_pgetlog compile_pd rx
   end.
 
 Fixpoint dexec (p:dprog) (s:dstate) : pstate :=
   let (d, l, c) := s in
   match p with
   | PHalt           => s
-  | PRead b rx      => pexec (rx (st_read d b)) (PSt d l c)
-  | PWrite b v rx   => pexec rx (PSt (st_write d b v) l c)
+  | PRead d b rx      => pexec (rx (st_read d b)) (PSt d l c)
+  | PWrite d b v rx   => pexec rx (PSt (st_write d b v) l c)
   | PGetEndLog rx   => pexec (rx eol) (PSt d l c)
   end.
 
