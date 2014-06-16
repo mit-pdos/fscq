@@ -175,13 +175,6 @@ Inductive pprog :=
   | PHalt
   .
 
-Record pstate := PSt {
-  PSProg: pprog;
-  PSDisk: storage;
-  PSLog: list (block * value);
-  PSTx: bool
-}.
-
 Bind Scope pprog_scope with pprog.
 
 Notation "ra <- a ; b" := (a (fun ra => b))
@@ -263,6 +256,13 @@ Fixpoint compile_tp (p:tprog) : pprog :=
   | TWrite b v rx => do_twrite compile_tp b v rx
   | TEnd rx       => do_tend   compile_tp rx
   end.
+
+Record pstate := PSt {
+  PSProg: pprog;
+  PSDisk: storage;
+  PSLog: list (block * value);
+  PSTx: bool
+}.
 
 Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   let (_, d, l, c) := s in
@@ -549,24 +549,10 @@ Inductive dprog :=
   .
 
 
-(* A logging disk has an index disk (which stores the block number b to be
-written) and a value disk that stores the value to be written to block b.  It
-also stores the end of the log, index, which will be recovered on reboot. *)
-
-Record dstate := DSt {
-  DSDataDisk: storage;
-  DSLogDisk: storage;
-  DSLog: list (block * value)
-}.
-
-
 Definition ATx := 0.
 Definition AEol := 1.
 Definition ABlk (i:nat) := i * 2 + 2.
 Definition AVal (i:nat) := i * 2 + 3.
-
-
-Definition log_init := DSt st_init st_init.
 
 Bind Scope dprog_scope with dprog.
 
@@ -645,6 +631,16 @@ Fixpoint compile_pd (p:pprog) : dprog :=
   | PGetTx rx       => do_pgettx compile_pd rx
   | PGetLog rx      => do_pgetlog compile_pd rx
   end.
+
+(* An interpreter for the language that implements a log as a disk *)
+
+Record dstate := DSt {
+  DSDataDisk: storage;
+  DSLogDisk: storage;
+  DSLog: list (block * value)
+}.
+
+Definition log_init := DSt st_init st_init.
 
 Fixpoint dexec (p:dprog) (s:dstate) : dstate :=
   let (dd, ld, lg) := s in
