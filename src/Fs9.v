@@ -534,37 +534,38 @@ Qed.
 
 (* language that implements the log as a disk *)
 
-Definition DSDataDisk := 0.
-Definition DSBlockDisk := 1.
-Definition DSValueDisk := 2.
-Definition DSTxDisk := 3.
 
 Inductive dprog :=
   | DRead   (d:nat) (b:block) (rx:value -> dprog)
   | DWrite  (d:nat) (b:block) ( v:value) (rx:dprog)
-  | DGetEndOfLog (rx:nat -> dprog)
-  | DHalt.
-  
+  | DAddLog (b:block) (v:value) (rx:dprog)
+  | DClrLog (rx:dprog)
+  | DGetLog (rx:list (block * value) -> dprog)
+  | DHalt
+  .
+
 
 (* A logging disk has an index disk (which stores the block number b to be
 written) and a value disk that stores the value to be written to block b.  It
 also stores the end of the log, index, which will be recovered on reboot. *)
-Record LogDisk : Set := mkLogDisk {
-  Index : nat;
-  LogIndexDisk : storage;  (* XXX block *)
-  LogValueDisk : storage 
-}.
-
-Definition LogDisk_init := mkLogDisk 0 st_init st_init.
 
 Record dstate := DSt {
-  DSDisk: storage;
-  DSLog: LogDisk;
-  DSEoL: nat;
-  DSTx: storage  (* bool disk *)
+  DSDataDisk: storage;
+  DSLogDisk: storage;
+  DSLog: list (block * value)
 }.
 
-Definition log_init := DSt st_init LogDisk_init 0 st_init.
+
+Definition NDataDisk := 0.
+Definition NLogDisk := 1.
+
+Definition ATx := 0.
+Definition AEol := 1.
+Definition ABlk (i:nat) := i * 2 + 2.
+Definition AVal (i:nat) := i * 2 + 3.
+
+
+Definition log_init := DSt st_init st_init.
 
 Bind Scope dprog_scope with dprog.
 
@@ -577,30 +578,25 @@ Notation "a ;; b" := (a (b))
 Open Scope dprog_scope.
 
 Definition do_pread (cc:pprog -> dprog) b rx : dprog :=
-  v <- DRead DSDataDisk b; cc (rx v).
+  v <- DRead NDataDisk b; cc (rx v).
 
 Definition do_pwrite (cc:pprog -> dprog) b v rx : dprog :=
-  DWrite DSDataDisk b v ;; cc rx.
+  DWrite NDataDisk b v ;; cc rx.
 
 Definition do_paddlog (cc:pprog -> dprog) b v rx : dprog :=
-  index <- DGetEndOfLog;
-  DWrite DSValueDisk index v ;; DWrite DSBlockDisk index b ;; cc rx.
+  idx <- DRead NLogDisk AEol;
+  DWrite NLogDisk (AVal idx) v ;;
+  DWrite NLogDisk (ABlk idx) b ;;
+  DWrite NLogDisk AEol (S idx) ;;
+  DAddLog b v ;;
+  cc rx.
 
 (* 0 indicates end of log XXX have a log disk type with a EoL marker *)
 Definition do_pclrlog (cc:pprog -> dprog) rx : dprog :=
-  DWrite DSBlockDisk 0 0 ;; cc rx.
+  DWrite NLogDisk AEol 0 ;; DClrLog ;; cc rx.
 
-(* Read log from block and value disk *)
-Fixpoint do_readlog (logindex:nat) (log: list (block*value)) (cc:pprog -> dprog) rx : dprog :=
-  match logindex with
-  | O => cc (rx log)
-  | S n => 
-    b <- DRead DSBlockDisk logindex;
-    (v <- DRead DSValueDisk logindex ; do_readlog n ((b, v) :: log) cc rx)
-  end.
-
-Definition do_pgetlog (cc:pprog -> dprog) rx : dprog :=
-  DGetEndOfLog (fun v1 => do_readlog v1 nil cc rx).
+Definition do_pgetlog (cc:pprog -> dprog) (rx: list(block*value) -> pprog) : dprog :=
+  l <- DGetLog ; cc (rx l).
 
 Definition bool2nat (v : bool) : nat :=
    match v with
@@ -608,17 +604,32 @@ Definition bool2nat (v : bool) : nat :=
    | _ => 0
    end.
 
-Definition do_psettx (cc:pprog -> dprog) v rx : dprog :=
-  DWrite DSTxDisk 0 (bool2nat v) ;; cc rx.
-
 Definition nat2bool (v : nat) : bool :=
    match v with
    | 1 => true
    | _ => false
    end.
 
+Definition do_psettx (cc:pprog -> dprog) v rx : dprog :=
+  DWrite NLogDisk ATx (bool2nat v) ;; cc rx.
+
 Definition do_pgettx (cc:pprog -> dprog) rx : dprog :=
-  v <- DRead DSTxDisk 0; cc (rx (nat2bool v)).
+  v <- DRead NLogDisk ATx; cc (rx (nat2bool v)).
+
+(* Read log from block and value disk *)
+Fixpoint dreadlog idx eol: dprog :=
+  match idx with
+  | O => DHalt
+  | S n => 
+    b <- DRead NLogDisk (ABlk (eol - n));
+    v <- DRead NLogDisk (ABlk (eol - n));
+    DAddLog b v ;;
+    dreadlog n eol
+  end.
+
+Definition do_precover : dprog :=
+  eol <- DRead NLogDisk AEol;
+  DClrLog ;; dreadlog eol eol.
 
 Close Scope dprog_scope.
 
@@ -634,12 +645,24 @@ Fixpoint compile_pd (p:pprog) : dprog :=
   | PGetLog rx      => do_pgetlog compile_pd rx
   end.
 
-Fixpoint dexec (p:dprog) (s:dstate) : pstate :=
-  let (d, l, c) := s in
+Fixpoint dexec (p:dprog) (s:dstate) : dstate :=
+  let (dd, ld, lg) := s in
   match p with
-  | PHalt           => s
-  | PRead d b rx      => pexec (rx (st_read d b)) (PSt d l c)
-  | PWrite d b v rx   => pexec rx (PSt (st_write d b v) l c)
-  | PGetEndLog rx   => pexec (rx eol) (PSt d l c)
+  | DHalt           => s
+  | DRead d b rx    =>
+    match b with
+    | 0 => dexec (rx (st_read dd b)) s
+    | 1 => dexec (rx (st_read ld b)) s
+    | _ => dexec (rx 0) s
+    end
+  | DWrite d b v rx =>
+    match b with
+    | 0 => dexec rx (DSt (st_write dd b v) ld lg)
+    | 1 => dexec rx (DSt dd (st_write ld b v) lg)
+    | _ => dexec rx s
+    end
+  | DAddLog b v rx  => dexec rx (DSt dd ld (lg ++ [(b, v)]))
+  | DClrLog rx      => dexec rx (DSt dd ld nil)
+  | DGetLog rx      => dexec (rx lg) (DSt dd ld lg)
   end.
 
