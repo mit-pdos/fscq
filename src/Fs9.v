@@ -534,10 +534,14 @@ Qed.
 
 (* language that implements the log as a disk *)
 
+Inductive ddisk :=
+  | NDataDisk
+  | NLogDisk
+  .
 
 Inductive dprog :=
-  | DRead   (d:nat) (b:block) (rx:value -> dprog)
-  | DWrite  (d:nat) (b:block) ( v:value) (rx:dprog)
+  | DRead   (d:ddisk) (b:block) (rx:value -> dprog)
+  | DWrite  (d:ddisk) (b:block) ( v:value) (rx:dprog)
   | DAddLog (b:block) (v:value) (rx:dprog)
   | DClrLog (rx:dprog)
   | DGetLog (rx:list (block * value) -> dprog)
@@ -555,9 +559,6 @@ Record dstate := DSt {
   DSLog: list (block * value)
 }.
 
-
-Definition NDataDisk := 0.
-Definition NLogDisk := 1.
 
 Definition ATx := 0.
 Definition AEol := 1.
@@ -650,16 +651,14 @@ Fixpoint dexec (p:dprog) (s:dstate) : dstate :=
   match p with
   | DHalt           => s
   | DRead d b rx    =>
-    match b with
-    | 0 => dexec (rx (st_read dd b)) s
-    | 1 => dexec (rx (st_read ld b)) s
-    | _ => dexec (rx 0) s
+    match d with
+    | NDataDisk => dexec (rx (st_read dd b)) s
+    | NLogDisk  => dexec (rx (st_read ld b)) s
     end
   | DWrite d b v rx =>
-    match b with
-    | 0 => dexec rx (DSt (st_write dd b v) ld lg)
-    | 1 => dexec rx (DSt dd (st_write ld b v) lg)
-    | _ => dexec rx s
+    match d with
+    | NDataDisk => dexec rx (DSt (st_write dd b v) ld lg)
+    | NLogDisk => dexec rx (DSt dd (st_write ld b v) lg)
     end
   | DAddLog b v rx  => dexec rx (DSt dd ld (lg ++ [(b, v)]))
   | DClrLog rx      => dexec rx (DSt dd ld nil)
