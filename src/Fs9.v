@@ -22,12 +22,11 @@ Definition st_write (s:storage) (b:block) (v:value) : storage :=
 
 (* return values *)
 Inductive trs :=
-  | TRValue (v:value)
   | TRSucc
   | TRFail.
   
 Inductive tprog :=
-  | TRead  (b:block) (rx:trs -> tprog)
+  | TRead  (b:block) (rx:value -> tprog)
   | TWrite (b:block) ( v:value) (rx:trs -> tprog)
   | TBegin (rx:trs -> tprog)
   | TEnd   (rx:trs -> tprog)
@@ -35,60 +34,68 @@ Inductive tprog :=
   .
 
 Record tstate := TSt {
+  TSProg: tprog;
   TSDisk: storage;            (* main disk *)
   TSAltDisk: option storage   (* alternative disk for transactions *)
 }.
 
+(*
 (* high level interpreter *)
-Fixpoint texec (p:tprog) (s:tstate) : tstate :=
-  let (d, ad) := s in
+Fixpoint texec (s:tstate) : tstate :=
+  let (p, d, ad) := s in
   match p with
   | THalt         => s
   | TRead b rx    =>
     match ad with
-    | None   => texec (rx (TRValue (st_read d b))) (TSt d ad)
-    | Some x => texec (rx (TRValue (st_read x b))) (TSt d ad)
+    | None   => texec (TSt (rx (st_read d b)) d ad)
+    | Some x => texec (TSt (rx (st_read x b)) d ad)
     end
   | TWrite b v rx =>
     match ad with
-    | None   => texec (rx TRSucc) (TSt (st_write d b v) ad)
-    | Some x => texec (rx TRSucc) (TSt d (Some (st_write x b v)))
+    | None   => texec (TSt (rx TRSucc) (st_write d b v) ad)
+    | Some x => texec (TSt (rx TRSucc) d (Some (st_write x b v)))
     end
   | TBegin rx     =>
     match ad with
-    | None   => texec (rx TRSucc) (TSt d (Some d))
-    | Some _ => texec (rx TRFail) (TSt d ad)
+    | None   => texec (TSt (rx TRSucc) d (Some d))
+    | Some _ => texec (TSt (rx TRFail) d ad)
     end
   | TEnd rx       =>
     match ad with
-    | Some d => texec (rx TRSucc) (TSt d None)
-    | None   => texec (rx TRFail) (TSt d ad)
+    | Some d => texec (TSt (rx TRSucc) d None)
+    | None   => texec (TSt (rx TRFail) d ad)
     end
   end.
+*)
 
-Inductive tsmstep : tstate -> tprog -> tstate -> tprog -> Prop :=
+
+Inductive tsmstep : tstate -> tstate -> Prop :=
+  | TsmHalt: forall d ad,
+    tsmstep (TSt THalt d ad) (TSt THalt d ad)
   | TsmRead: forall d b rx,
-    tsmstep (TSt d None) (TRead b rx)
-            (TSt d None) (rx (TRValue (st_read d b)))
+    tsmstep (TSt (TRead b rx) d None)
+            (TSt (rx (st_read d b)) d None)
   | TsmReadTx: forall d ad b rx,
-    tsmstep (TSt d (Some ad)) (TRead b rx)
-            (TSt d (Some ad)) (rx (TRValue (st_read ad b)))
+    tsmstep (TSt (TRead b rx) d (Some ad))
+            (TSt (rx (st_read ad b)) d (Some ad))
   | TsmWrite: forall d b v rx,
-    tsmstep (TSt d None) (TWrite b v rx)
-            (TSt (st_write d b v) None) (rx TRSucc)
+    tsmstep (TSt (TWrite b v rx) d None)
+            (TSt (rx TRSucc) (st_write d b v) None)
   | TsmWriteTx: forall d ad b v rx,
-    tsmstep (TSt d (Some ad)) (TWrite b v rx)
-            (TSt d (Some (st_write ad b v))) (rx TRSucc)
+    tsmstep (TSt (TWrite b v rx) d (Some ad))
+            (TSt (rx TRSucc) d (Some (st_write ad b v)))
   | TsmBegin: forall d rx,
-    tsmstep (TSt d None) (TBegin rx) (TSt d (Some d)) (rx TRSucc)
+    tsmstep (TSt (TBegin rx) d None) (TSt (rx TRSucc) d (Some d))
   | TsmBeginTx: forall d ad rx,
-    tsmstep (TSt d (Some ad)) (TBegin rx) (TSt d (Some ad)) (rx TRFail)
+    tsmstep (TSt (TBegin rx) d (Some ad)) (TSt (rx TRFail) d (Some ad))
   | TsmEnd: forall d rx,
-    tsmstep (TSt d None) (TEnd rx) (TSt d None) (rx TRFail)
+    tsmstep (TSt (TEnd rx) d None) (TSt (rx TRFail) d None)
   | TsmEndTx: forall d ad rx,
-    tsmstep (TSt d (Some ad)) (TEnd rx) (TSt ad None) (rx TRSucc)
+    tsmstep (TSt (TEnd rx) d (Some ad)) (TSt (rx TRSucc) ad None)
   .
 
+
+(*
 Eval simpl in texec THalt (TSt st_init None).
 Eval simpl in texec (TWrite 0 1 (fun trs => THalt)) (TSt st_init None).
 
@@ -153,6 +160,7 @@ Qed.
 
 Close Scope tprog_scope.
 
+*)
 
 (* language that manipulates a disk and an in-memory pending log *)
 
@@ -168,6 +176,7 @@ Inductive pprog :=
   .
 
 Record pstate := PSt {
+  PSProg: pprog;
   PSDisk: storage;
   PSLog: list (block * value);
   PSTx: bool
@@ -211,12 +220,13 @@ Definition do_tread (cc:tprog -> pprog) b rx : pprog :=
   tx <- PGetTx;
   if tx then
     l <- PGetLog;
+    v <- PRead b;
     match (pfind l b) with
-    | Some v => cc (rx (TRValue v))
-    | None   => v <- PRead b; cc (rx (TRValue v))
+    | Some v => cc (rx v)
+    | None   => cc (rx v)
     end
   else
-    v <- PRead b; cc (rx (TRValue v))
+    v <- PRead b; cc (rx v)
 .
 
 Definition do_twrite (cc:tprog -> pprog) b v rx : pprog :=
@@ -254,19 +264,20 @@ Fixpoint compile_tp (p:tprog) : pprog :=
   | TEnd rx       => do_tend   compile_tp rx
   end.
 
-Fixpoint pexec (p:pprog) (s:pstate) : pstate :=
-  let (d, l, c) := s in
+Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
+  let (_, d, l, c) := s in
   match p with
   | PHalt           => s
-  | PRead b rx      => pexec (rx (st_read d b)) (PSt d l c)
-  | PWrite b v rx   => pexec rx (PSt (st_write d b v) l c)
-  | PAddLog b v rx  => pexec rx (PSt d (l ++ [(b, v)]) c)
-  | PClrLog rx      => pexec rx (PSt d nil c)
-  | PGetLog rx      => pexec (rx l) (PSt d l c)
-  | PSetTx v rx     => pexec rx (PSt d l v)
-  | PGetTx rx       => pexec (rx c) (PSt d l c)
+  | PRead b rx      => pexec (rx (st_read d b)) (PSt (rx (st_read d b)) d l c)
+  | PWrite b v rx   => pexec rx (PSt rx (st_write d b v) l c)
+  | PAddLog b v rx  => pexec rx (PSt rx d (l ++ [(b, v)]) c)
+  | PClrLog rx      => pexec rx (PSt rx d nil c)
+  | PGetLog rx      => pexec (rx l) (PSt (rx l) d l c)
+  | PSetTx v rx     => pexec rx (PSt rx d l v)
+  | PGetTx rx       => pexec (rx c) (PSt (rx c) d l c)
   end.
 
+(*
 Inductive pstep : pstate -> pprog -> pstate -> Prop :=
   | PsHalt: forall s,
     pstep s PHalt s
@@ -297,57 +308,237 @@ Inductive pstep : pstate -> pprog -> pstate -> Prop :=
 (*| PsCrash: forall s p s',  (* we can run recovery at anytime and continue *)
     pstep s (do_trecover p) s' ->
     pstep s p s'. *)
+*)
 
-Inductive tpmatch : tstate -> tprog -> pstate -> pprog -> Prop :=
-  | tpmatch_state :
-    forall td tad tp pd lg (tx:bool) pp ad
-    (DD: td = pd)
-    (TX: tad = if tx then Some ad else None)
-    (PP: compile_tp tp = pp /\ pp = PHalt) ,
-    tpmatch (TSt td ad) tp (PSt pd lg tx) pp.
 
-Inductive psmstep : pstate -> pprog -> pstate -> pprog -> Prop :=
+Inductive psmstep : pstate -> pstate -> Prop :=
+  | PsmHalt: forall d l c,
+    psmstep (PSt PHalt d l c) (PSt PHalt d l c)
   | PsmRead: forall d l c b rx,
-    psmstep (PSt d l c) (PRead b rx) (PSt d l c) (rx (st_read d b))
+    psmstep (PSt (PRead b rx) d l c)
+            (PSt (rx (st_read d b)) d l c)
   | PsmWrite: forall d l c b v rx,
-    psmstep (PSt d l c) (PWrite b v rx) (PSt (st_write d b v) l c) rx
+    psmstep (PSt (PWrite b v rx) d l c)
+            (PSt rx (st_write d b v) l c)
   | PsmAddLog: forall d l c b v rx,
-    psmstep (PSt d l c) (PAddLog b v rx) (PSt d (l ++ [(b, v)]) c) rx
+    psmstep (PSt (PAddLog b v rx) d l c)
+            (PSt rx d (l ++ [(b, v)]) c)
   | PsmClrLog: forall d l c rx,
-    psmstep (PSt d l c) (PClrLog rx) (PSt d nil c) rx
+    psmstep (PSt (PClrLog rx) d l c)
+            (PSt rx d nil c)
   | PsmGetLog: forall d l c rx,
-    psmstep (PSt d l c) (PGetLog rx) (PSt d l c) (rx l)
+    psmstep (PSt (PGetLog rx) d l c)
+            (PSt (rx l) d l c)
   | PsmSetTx: forall d l c v rx,
-    psmstep (PSt d l c) (PSetTx v rx) (PSt d l v) rx
+    psmstep (PSt (PSetTx v rx) d l c)
+            (PSt rx d l v)
   | PsmGetTx: forall d l c rx,
-    psmstep (PSt d l c) (PGetTx rx) (PSt d l c) (rx c)
-  | PsmCrash: forall s p,
-    psmstep s p (pexec (do_trecover PHalt) s) PHalt
+    psmstep (PSt (PGetTx rx) d l c)
+            (PSt (rx c) d l c)
   .
 
+Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
+  match p with
+  | nil            => d
+  | (b, v) :: rest => log_flush rest (st_write d b v)
+  end.
+
+Inductive tpmatch : tstate -> pstate -> Prop :=
+  | TPMatchState :
+    forall td tp pd lg (tx:bool) pp ad
+    (DD: td = pd)
+    (AD: ad = if tx then Some (log_flush lg td) else None)
+    (TX: tx = match ad with
+         | Some _ => true
+         | None => false
+         end)
+    (PP: compile_tp tp = pp) ,
+    tpmatch (TSt tp td ad) (PSt pp pd lg tx)
+  .
+
+Inductive psmstep_fail : pstate -> pstate -> Prop :=
+  | PsmNormal: forall s s',
+    psmstep s s' -> psmstep_fail s s'
+  | PsmCrash: forall s,
+    psmstep_fail s (pexec (do_trecover PHalt) s)
+  .
+
+Inductive tpmatch_fail : tstate -> pstate -> Prop :=
+  | TPMatchNormal :
+    forall t p, tpmatch t p -> tpmatch_fail t p
+  | TPMatchFail :
+    forall td tp pd lg (tx:bool) ad,
+    tpmatch_fail (TSt tp td ad) (PSt PHalt pd lg tx)
+  .
+
+
+
+Section CLOSURES.
+
+Variable state: Type.
+Variable step: state -> state -> Prop.
+
+Inductive star: state -> state -> Prop :=
+  | star_refl: forall s,
+      star s s
+  | star_step: forall s1 s2 s3,
+      step s1 s2 -> star s2 s3 -> star s1 s3
+  .
+
+Lemma star_one:
+  forall s1 s2, step s1 s2 -> star s1 s2.
+Proof.
+  intros. eapply star_step; eauto. apply star_refl.
+Qed.
+
+Lemma star_two:
+  forall s1 s2 s3,
+  step s1 s2 -> step s2 s3 -> star s1 s3.
+Proof.
+  intros. eapply star_step; eauto. apply star_one; auto. 
+Qed.
+
+Lemma star_three:
+  forall s1 s2 s3 s4,
+  step s1 s2 -> step s2 s3 -> step s3 s4 -> star s1 s4.
+Proof.
+  intros. eapply star_step; eauto. eapply star_two; eauto.
+Qed.
+
+Lemma star_trans:
+  forall s1 s2, star s1 s2 ->
+  forall s3, star s2 s3 -> star s1 s3.
+Proof.
+  induction 1; intros.
+  simpl. auto.
+  eapply star_step; eauto.
+Qed.
+
+Lemma star_right:
+  forall s1 s2 s3,
+  star s1 s2 -> step s2 s3 -> star s1 s3.
+Proof.
+  intros. eapply star_trans. eauto. apply star_one. eauto.
+Qed.
+
+Inductive plus : state -> state -> Prop :=
+  | plus_left: forall s1 s2 s3,
+      step s1 s2 -> star s2 s3 -> plus s1 s3
+  .
+
+End CLOSURES.
+
+
+
+
+Lemma writeLog_flush : forall l tx rx m m',
+  m' = log_flush l m ->
+  psmstep (PSt (pflush l rx) m l tx) (PSt rx m' l tx).
+Proof.
+  (* XXX:  Main unproven lemma *)
+Admitted.
+
+(** Pulling out the effect of the last log entry *)
+Lemma writeLog_final : forall a v l m,
+  log_flush (l ++ [(a, v)]) m = st_write (log_flush l m) a v.
+Proof.
+  induction l; intuition; simpl; auto.
+Qed.
+
+
+(** [readLog] interacts properly with [writeLog]. *)
+Lemma readLog_correct : forall b ls d,
+  st_read (log_flush ls d) b = match pfind ls b with
+                            | Some v => v
+                            | None => st_read d b
+                          end.
+Proof.
+
+  Ltac t' := simpl in *;
+    repeat (match goal with
+            | [ H : ?x = _ |- _ ] => subst x
+            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
+            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
+          end; simpl).
+
+  Ltac t := simpl in *; intros; t';
+    try autorewrite with core in *; intuition (eauto; try congruence); t'.
+
+  induction ls; t.
+
+  destruct (pfind ls b0); eauto.
+  rewrite IHls.
+  unfold st_read, st_write; t.
+
+  destruct (pfind ls b); eauto.
+  rewrite IHls.
+  unfold st_read, st_write; t.
+Qed.
+
+
 (*
-   Backward small-step simulation:
-   Each step in pprog maps to zero or a single step in tprog.
+   Forward small-step simulation:
+   If no crash, each step in tprog maps to zero+ steps in pprog.
 
    Note that the 0-step case requires an additional premise showing that
-   pprog actually makes progress, otherwise there would be the case that
-   pprog does not terminate while tprog does, known as the stuttering problem.
+   tprog actually makes progress, otherwise there would be the case that
+   tprog does not terminate while pprog does, known as the stuttering problem.
    This is impossible because our continuation-style program has
    an ever-increasing program counter.
 *)
 
-Theorem tp_backsim:
-  forall ts tp ps pp ps' pp',
-  tpmatch ts tp ps pp ->
-  psmstep ps pp ps' pp' ->
-  (* 0-step *) tpmatch ts tp ps' pp' \/
-  (* 1-step *) exists ts' tp', tsmstep ts tp ts' tp' /\ tpmatch ts' tp' ps' pp'.
+
+Theorem tp_forward_sim:
+  forall T1 T2, tsmstep T1 T2 ->
+  forall P1, tpmatch T1 P1 ->
+  exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
 Proof.
-  
+
+  Ltac t := simpl in *; subst; try autorewrite with core in *;
+            intuition (eauto; try congruence).
+  Ltac cc := t; try constructor; t.
+
+  induction 1; intros; inversion H.
+
+  exists P1. destruct tx; cc.
+
+  econstructor; split.
+  eapply star_two; cc.
+  unfold do_tread; cc.
+
+  econstructor; split; t; inversion AD; t.
+  eapply star_right. eapply star_right. eapply star_right.
+  constructor. constructor. constructor. constructor. cc.
+  rewrite readLog_correct.
+  destruct (pfind lg b) eqn:F; t.
+
+  econstructor; split.
+  eapply star_two; cc. cc.
+
+  econstructor; split.
+  eapply star_two; cc. cc; inversion AD; t.
+  rewrite <- writeLog_final; trivial.
+
+  econstructor; split.
+  eapply star_three; cc. cc.
+
+  econstructor; split.
+  eapply star_one; cc. cc.
+
+  econstructor; split.
+  eapply star_one; cc. cc.
+
+  econstructor; split.
+  do 4 (eapply star_step; [ cc | idtac ]).
+  eapply writeLog_flush. eauto.
+  eapply star_one; cc. cc.
 Qed.
 
 
 (** Main correctness theorem *)
+
+
+
 
 (* language that implements the log as a disk *)
 

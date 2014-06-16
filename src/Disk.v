@@ -28,7 +28,6 @@ Fixpoint highInterp (p : highProc) (m : mem) : mem :=
   | HWrite a v k => highInterp k (upd m a v)
   end.
 
-
 (** * Low-level processes (with special logging data structure) *)
 
 (** The extra state available at low level: a data structure meant to hold a log *)
