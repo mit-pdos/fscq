@@ -498,37 +498,29 @@ Proof.
             intuition (eauto; try congruence).
   Ltac cc := t; try constructor; t.
 
-  induction 1; intros; inversion H.
+  induction 1; intros; inversion H; econstructor; split; try (t; inversion AD; t).
 
-  exists P1. destruct tx; cc.
+  destruct tx; cc. auto.
 
-  econstructor; split.
   eapply star_two; cc.
   unfold do_tread; cc.
 
-  econstructor; split; t; inversion AD; t.
   eapply star_right. eapply star_right. eapply star_right.
   constructor. constructor. constructor. constructor. cc.
   rewrite readLog_correct.
   destruct (pfind lg b) eqn:F; t.
 
-  econstructor; split.
   eapply star_two; cc. cc.
 
-  econstructor; split.
-  eapply star_two; cc. cc; inversion AD; t.
-  rewrite <- writeLog_final; trivial.
+  eapply star_two; cc. cc.
+  rewrite <- writeLog_final. auto.
 
-  econstructor; split.
   eapply star_three; cc. cc.
 
-  econstructor; split.
   eapply star_one; cc. cc.
 
-  econstructor; split.
   eapply star_one; cc. cc.
 
-  econstructor; split.
   do 4 (eapply star_step; [ cc | idtac ]).
   eapply writeLog_flush. eauto.
   eapply star_one; cc. cc.
