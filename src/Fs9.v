@@ -608,8 +608,8 @@ Fixpoint dreadlog idx eol: dprog :=
   match idx with
   | O => DHalt
   | S n => 
-    b <- DRead NLogDisk (ABlk (eol - n));
-    v <- DRead NLogDisk (AVal (eol - n));
+    b <- DRead NLogDisk (ABlk (eol - idx));
+    v <- DRead NLogDisk (AVal (eol - idx));
     DAddLog b v ;;
     dreadlog n eol
   end.
