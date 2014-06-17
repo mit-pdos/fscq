@@ -580,7 +580,6 @@ Definition do_psettx (cc:pprog -> dprog) v rx : dprog :=
 Definition do_pgettx (cc:pprog -> dprog) rx : dprog :=
   v <- DRead NLogDisk ATx; cc (rx (nat2bool v)).
 
-(* Read log from block and value disk *)
 Fixpoint dreadlog idx eol: dprog :=
   match idx with
   | O => DHalt
