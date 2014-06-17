@@ -447,7 +447,7 @@ Proof.
   rewrite IHls.
   unfold st_read, st_write; t1.
 
-  destruct (pfind ls b); eauto.
+ destruct (pfind ls b); eauto.
   rewrite IHls.
   unfold st_read, st_write; t1.
 Qed.
@@ -643,7 +643,16 @@ Inductive dsmstep : dstate -> dstate -> Prop :=
             (DSt (rx lm) d l lm)
   .
 
-(* Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=  *)
+Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=  
+  | NIL: forall lgd,
+           lg_lgd_match nil lgd   (* XXX check if st_read lgd AEol = 0? *)
+  | NONNIL: forall lg lgd lg' b v n,
+              lg_lgd_match lg' lgd -> 
+              lg = (b, v) :: lg' -> 
+              n = (length lg') + 1 -> 
+              (b = st_read lgd (ABlk n)) /\ (v = st_read lgd (AVal n)) ->
+              lg_lgd_match lg lgd
+  .
       
 Inductive pdmatch : pstate -> dstate -> Prop :=
   | PDMatchState :
@@ -653,7 +662,7 @@ Inductive pdmatch : pstate -> dstate -> Prop :=
          | 1 => true
          | _ => false
          end)
-    (* (LGD: lg_lgd_match lg lgd) *)
+    (LGD: lg_lgd_match lg lgd)
     (LGM: lg = lgm)   (* XXX only after drecovery *)
     (PD: compile_pd pp = pd) ,
     pdmatch (PSt pp pdisk lg tx) (DSt pd dd lgd lgm)
