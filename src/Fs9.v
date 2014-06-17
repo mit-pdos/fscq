@@ -39,34 +39,32 @@ Record tstate := TSt {
   TSAltDisk: option storage   (* alternative disk for transactions *)
 }.
 
-(*
 (* high level interpreter *)
-Fixpoint texec (s:tstate) : tstate :=
-  let (p, d, ad) := s in
+Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
+  let (_, d, ad) := s in
   match p with
   | THalt         => s
   | TRead b rx    =>
     match ad with
-    | None   => texec (TSt (rx (st_read d b)) d ad)
-    | Some x => texec (TSt (rx (st_read x b)) d ad)
+    | None   => texec (rx (st_read d b)) (TSt (rx (st_read d b)) d ad)
+    | Some x => texec (rx (st_read x b)) (TSt (rx (st_read x b)) d ad)
     end
   | TWrite b v rx =>
     match ad with
-    | None   => texec (TSt (rx TRSucc) (st_write d b v) ad)
-    | Some x => texec (TSt (rx TRSucc) d (Some (st_write x b v)))
+    | None   => texec (rx TRSucc) (TSt (rx TRSucc) (st_write d b v) ad)
+    | Some x => texec (rx TRSucc) (TSt (rx TRSucc) d (Some (st_write x b v)))
     end
   | TBegin rx     =>
     match ad with
-    | None   => texec (TSt (rx TRSucc) d (Some d))
-    | Some _ => texec (TSt (rx TRFail) d ad)
+    | None   => texec (rx TRSucc) (TSt (rx TRSucc) d (Some d))
+    | Some _ => texec (rx TRFail) (TSt (rx TRFail) d ad)
     end
   | TEnd rx       =>
     match ad with
-    | Some d => texec (TSt (rx TRSucc) d None)
-    | None   => texec (TSt (rx TRFail) d ad)
+    | Some d => texec (rx TRSucc) (TSt (rx TRSucc) d None)
+    | None   => texec (rx TRFail) (TSt (rx TRFail) d ad)
     end
   end.
-*)
 
 
 Inductive tsmstep : tstate -> tstate -> Prop :=
@@ -94,41 +92,21 @@ Inductive tsmstep : tstate -> tstate -> Prop :=
     tsmstep (TSt (TEnd rx) d (Some ad)) (TSt (rx TRSucc) ad None)
   .
 
-
-(*
-Eval simpl in texec THalt (TSt st_init None).
-Eval simpl in texec (TWrite 0 1 (fun trs => THalt)) (TSt st_init None).
-
 Bind Scope tprog_scope with tprog.
 
 
 Notation "a ;; b" := (a (fun trs => 
                            match trs with 
-                             | TRValue v => THalt
                              | TRSucc => (b)
                              | TRFail => THalt
                            end))
                        (right associativity, at level 60) : tprog_scope.
 
-Notation "v <- a ; b" := (a (fun ra => 
-                           match ra with 
-                             | TRValue v => (b)
-                             | TRSucc => THalt
-                             | TRFail => THalt
-                           end))
+Notation "ra <- a ; b" := (a (fun ra => b))
                              (right associativity, at level 60) : tprog_scope.
 
 
-
-
 Open Scope tprog_scope.
-
-Eval simpl in texec THalt (TSt st_init None).
-Eval simpl in texec (TBegin ;; THalt) (TSt st_init None).
-Eval simpl in texec (v <- (TRead 0) ; (TWrite 0 v) ;; THalt) (TSt st_init None).
-Eval simpl in texec (TWrite 0 1 ;; (v <- (TRead 0) ; (TWrite 1 v) ;; THalt)) (TSt st_init None).
-Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; TEnd ;; THalt) (TSt st_init None).
-Eval simpl in texec (TBegin ;; TWrite 0 1 ;; TWrite 1 1 ;; THalt) (TSt st_init None).
 
 (* Follow adam's suggestion of "proving" this high-level language interpreter
 correct by building a simple app for which we can state the properties
@@ -145,7 +123,7 @@ Definition create_account (n : nat) (v : nat) (s: tstate): tstate :=
   texec (TBegin;; TWrite n initial ;; TEnd ;; THalt) s.
 
 Definition transfer (src:nat) (dst:nat) (v:nat): value * value :=
-  let s := create_account src 100 (TSt st_init None) in 
+  let s := create_account src 100 (TSt THalt st_init None) in 
      let s1 := create_account dst 100 s in
      let s2 := do_transfer src dst v s1 in
          (read_account s2 src, read_account s2 dst).
