@@ -655,12 +655,6 @@ Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=
                            (st_write (st_write (st_write lgd (AVal n) v) (ABlk n) b) AEol (S n)).
    
                            
-  
-
-(*
-Lemma lg_lgd:
-  *)
-
 Inductive pdmatch : pstate -> dstate -> Prop :=
   | PDMatchState :
     forall pp pdisk lg tx pd dd lgd lgm
@@ -726,7 +720,9 @@ Qed.
 
 (* An interpreter for the language that implements a log as a disk *)
 
-Fixpoint dexec (p:dprog) (s:dstate) : dstate :=
+Fixpoint dexec (p:dprog) (s:dstate) : dstate := s.
+
+(*
   let (dd, ld, lg) := s in
   match p with
   | DHalt           => s
@@ -744,4 +740,15 @@ Fixpoint dexec (p:dprog) (s:dstate) : dstate :=
   | DClrLog rx      => dexec rx (DSt dd ld nil)
   | DGetLog rx      => dexec (rx lg) (DSt dd ld lg)
   end.
+*)
+
+Lemma correct_pd_recover_memory_log:
+  forall p p' dd ld lg lg',
+    dexec do_precover (DSt p dd ld lg) = (DSt p' dd ld lg') ->
+    lg_lgd_match lg' ld.
+Proof.
+Admitted.
+  
+
+
 
