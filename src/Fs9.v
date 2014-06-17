@@ -608,15 +608,65 @@ Fixpoint compile_pd (p:pprog) : dprog :=
   | PGetLog rx      => do_pgetlog compile_pd rx
   end.
 
-(* An interpreter for the language that implements a log as a disk *)
-
 Record dstate := DSt {
+  DSProg: dprog;
   DSDataDisk: storage;
   DSLogDisk: storage;
   DSLog: list (block * value)
 }.
 
-Definition log_init := DSt st_init st_init.
+Definition log_init := DSt DHalt st_init st_init nil.
+
+Inductive dsmstep : dstate -> dstate -> Prop :=
+  | DsmHalt: forall d l ml,
+    dsmstep (DSt DHalt d l ml) (DSt DHalt d l ml)
+  | DsmRead: forall dd d l ml b rx,
+       dsmstep (DSt (DRead dd b rx) d l ml)
+               (match dd with 
+                  | NDataDisk => (DSt (rx (st_read d b)) d l ml)
+                  | NLogDisk =>  (DSt (rx (st_read l b)) d l ml)
+               end)
+  | DsmWrite: forall dd d l ml b v rx,
+    dsmstep (DSt (DWrite dd b v rx) d l ml)
+               (match dd with 
+                  | NDataDisk => (DSt rx (st_write d b v) l ml)
+                  | NLogDisk =>  (DSt rx (st_write l b v) l ml)
+               end)
+  | DsmAddLog: forall d l lm b v rx,
+    dsmstep (DSt (DAddLog b v rx) d l lm)
+            (DSt rx d l (lm ++ [(b, v)]))
+  | DsmClrLog: forall d l lm rx,
+    dsmstep (DSt (DClrLog rx) d l lm)
+            (DSt rx d l nil)
+  | DsmGetLog: forall d l lm rx,
+    dsmstep (DSt (DGetLog rx) d l lm)
+            (DSt (rx lm) d l lm)
+  .
+
+(* Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=  *)
+      
+Inductive pdmatch : pstate -> dstate -> Prop :=
+  | PDMatchState :
+    forall pp pdisk lg tx pd dd lgd lgm
+    (DD: pdisk = dd)
+    (TX: tx = match st_read lgd ATx with
+         | 1 => true
+         | _ => false
+         end)
+    (* (LGD: lg_lgd_match lg lgd) *)
+    (LGM: lg = lgm)   (* XXX only after drecovery *)
+    (PD: compile_pd pp = pd) ,
+    pdmatch (PSt pp pdisk lg tx) (DSt pd dd lgd lgm)
+  .
+
+Theorem tp_forward_sim:
+  forall P1 P2, psmstep P1 P2 ->
+  forall D1, pdmatch P1 D1 ->
+  exists D2, star dsmstep D1 D2 /\ pdmatch P2 D2.
+Proof.
+Admitted.
+
+(* An interpreter for the language that implements a log as a disk *)
 
 Fixpoint dexec (p:dprog) (s:dstate) : dstate :=
   let (dd, ld, lg) := s in
