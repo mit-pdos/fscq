@@ -138,7 +138,6 @@ Qed.
 
 Close Scope tprog_scope.
 
-*)
 
 (* language that manipulates a disk and an in-memory pending log *)
 
