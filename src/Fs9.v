@@ -470,7 +470,6 @@ Theorem tp_forward_sim:
   forall P1, tpmatch T1 P1 ->
   exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
 Proof.
-
   Ltac t := simpl in *; subst; try autorewrite with core in *;
             intuition (eauto; try congruence).
   Ltac cc := t; try constructor; t.
@@ -630,7 +629,7 @@ Inductive dsmstep : dstate -> dstate -> Prop :=
     dsmstep (DSt (DWrite dd b v rx) d l ml)
                (match dd with 
                   | NDataDisk => (DSt rx (st_write d b v) l ml)
-                  | NLogDisk =>  (DSt rx (st_write l b v) l ml)
+                  | NLogDisk =>  (DSt rx d (st_write l b v) ml)
                end)
   | DsmAddLog: forall d l lm b v rx,
     dsmstep (DSt (DAddLog b v rx) d l lm)
@@ -645,35 +644,85 @@ Inductive dsmstep : dstate -> dstate -> Prop :=
 
 Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=  
   | NIL: forall lgd,
-           lg_lgd_match nil lgd   (* XXX check if st_read lgd AEol = 0? *)
-  | NONNIL: forall lg lgd lg' b v n,
-              lg_lgd_match lg' lgd -> 
-              lg = (b, v) :: lg' -> 
-              n = (length lg') + 1 -> 
-              (b = st_read lgd (ABlk n)) /\ (v = st_read lgd (AVal n)) ->
-              lg_lgd_match lg lgd
-  .
-      
+           st_read lgd AEol = 0 ->
+           lg_lgd_match nil lgd
+  | NONNIL: forall lg lgd b v n,
+              lg_lgd_match lg lgd -> 
+              n = st_read lgd AEol ->
+              b = st_read lgd (ABlk n) ->
+              v = st_read lgd (AVal n) ->
+              lg_lgd_match (lg ++ [(b, v)]) 
+                           (st_write (st_write (st_write lgd (AVal n) v) (ABlk n) b) AEol (S n)).
+   
+                           
+  
+
+(*
+Lemma lg_lgd:
+  *)
+
 Inductive pdmatch : pstate -> dstate -> Prop :=
   | PDMatchState :
     forall pp pdisk lg tx pd dd lgd lgm
     (DD: pdisk = dd)
-    (TX: tx = match st_read lgd ATx with
+    (TX: tx = match lgd ATx with
          | 1 => true
          | _ => false
          end)
-    (LGD: lg_lgd_match lg lgd)
     (LGM: lg = lgm)   (* XXX only after drecovery *)
     (PD: compile_pd pp = pd) ,
     pdmatch (PSt pp pdisk lg tx) (DSt pd dd lgd lgm)
   .
 
-Theorem tp_forward_sim:
+Theorem pd_forward_sim:
   forall P1 P2, psmstep P1 P2 ->
   forall D1, pdmatch P1 D1 ->
   exists D2, star dsmstep D1 D2 /\ pdmatch P2 D2.
 Proof.
-Admitted.
+  Ltac t2 := simpl in *; subst; try autorewrite with core in *;
+            intuition (eauto; try congruence).
+  Ltac cc2 := t2; try constructor; t2.
+
+  induction 1; intros; inversion H.
+
+  (* PHalt *)
+  exists D1; t2; apply star_refl.
+
+  (* PRead *)
+  eexists; split.
+  eapply star_step.
+  cc2.
+  cc2.
+  cc2.
+
+  (* Pwrite *)
+  eexists; split.
+  eapply star_step.
+  cc2.
+  cc2.
+  cc2.
+
+  (* PAddLog *)
+  eexists; split.
+  do 5 (eapply star_step; [ cc2 | idtac ]).
+  cc2.
+  t2.
+  
+  cc2.
+  admit.  (* for different addresses the state isn't effected; ATx is different address ...*)
+  
+  (* PClrLog *)
+  eexists; split.
+  eapply star_two.
+  cc2.
+  cc2.
+  cc2.
+
+  admit.
+  admit.
+  admit.
+
+Qed.
 
 (* An interpreter for the language that implements a log as a disk *)
 
