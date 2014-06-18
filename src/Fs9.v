@@ -627,7 +627,6 @@ Definition do_paddlog (cc:pprog -> dprog) b v rx : dprog :=
   DAddLog b v ;;
   cc rx.
 
-(* 0 indicates end of log XXX have a log disk type with a EoL marker *)
 Definition do_pclrlog (cc:pprog -> dprog) rx : dprog :=
   DWrite NLogDisk AEol 0 ;; DClrLog ;; cc rx.
 
@@ -715,19 +714,6 @@ Inductive dsmstep : dstate -> dstate -> Prop :=
             (DSt (rx lm) d l lm)
   .
 
-Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=  
-  | NIL: forall lgd,
-           st_read lgd AEol = 0 ->
-           lg_lgd_match nil lgd
-  | NONNIL: forall lg lgd b v n,
-              lg_lgd_match lg lgd -> 
-              n = st_read lgd AEol ->
-              b = st_read lgd (ABlk n) ->
-              v = st_read lgd (AVal n) ->
-              lg_lgd_match (lg ++ [(b, v)]) 
-                           (st_write (st_write (st_write lgd (AVal n) v) (ABlk n) b) AEol (S n)).
-   
-                           
 Inductive pdmatch : pstate -> dstate -> Prop :=
   | PDMatchState :
     forall pp pdisk lg tx pd dd lgd lgm
@@ -736,7 +722,7 @@ Inductive pdmatch : pstate -> dstate -> Prop :=
          | 1 => true
          | _ => false
          end)
-    (LGM: lg = lgm)   (* XXX only after drecovery *)
+    (LGM: lg = lgm) 
     (PD: compile_pd pp = pd) ,
     pdmatch (PSt pp pdisk lg tx) (DSt pd dd lgd lgm)
   .
@@ -812,6 +798,20 @@ Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
   | DGetLog rx      => dexec (rx lg) (DSt (rx lg) dd ld lg)
   end.
 
+(* recovery of in-memory log from log disk *)
+
+Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=  
+  | NIL: forall lgd,
+           st_read lgd AEol = 0 ->
+           lg_lgd_match nil lgd
+  | NONNIL: forall lg lgd b v n,
+              lg_lgd_match lg lgd -> 
+              n = st_read lgd AEol ->
+              b = st_read lgd (ABlk n) ->
+              v = st_read lgd (AVal n) ->
+              lg_lgd_match (lg ++ [(b, v)]) 
+                           (st_write (st_write (st_write lgd (AVal n) v) (ABlk n) b) AEol (S n)).
+   
 Lemma correct_pd_recover_memory_log:
   forall p p' dd ld lg lg',
     dexec do_precover (DSt p dd ld lg) = (DSt p' dd ld lg') ->
