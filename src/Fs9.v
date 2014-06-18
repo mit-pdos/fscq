@@ -18,6 +18,97 @@ Definition st_read (s:storage) (b:block) : value := s b.
 Definition st_write (s:storage) (b:block) (v:value) : storage :=
   fun b' => if eq_nat_dec b' b then v else s b'.
 
+
+(** small step helpers *)
+
+Section CLOSURES.
+
+Variable state: Type.
+Variable step: state -> state -> Prop.
+
+Inductive star: state -> state -> Prop :=
+  | star_refl: forall s,
+      star s s
+  | star_step: forall s1 s2 s3,
+      step s1 s2 -> star s2 s3 -> star s1 s3
+  .
+
+Lemma star_one:
+  forall s1 s2, step s1 s2 -> star s1 s2.
+Proof.
+  intros. eapply star_step; eauto. apply star_refl.
+Qed.
+
+Lemma star_two:
+  forall s1 s2 s3,
+  step s1 s2 -> step s2 s3 -> star s1 s3.
+Proof.
+  intros. eapply star_step; eauto. apply star_one; auto. 
+Qed.
+
+Lemma star_three:
+  forall s1 s2 s3 s4,
+  step s1 s2 -> step s2 s3 -> step s3 s4 -> star s1 s4.
+Proof.
+  intros. eapply star_step; eauto. eapply star_two; eauto.
+Qed.
+
+Lemma star_trans:
+  forall s1 s2, star s1 s2 ->
+  forall s3, star s2 s3 -> star s1 s3.
+Proof.
+  induction 1; intros.
+  simpl. auto.
+  eapply star_step; eauto.
+Qed.
+
+Lemma star_right:
+  forall s1 s2 s3,
+  star s1 s2 -> step s2 s3 -> star s1 s3.
+Proof.
+  intros. eapply star_trans. eauto. apply star_one. eauto.
+Qed.
+
+Hypothesis step_determ : (forall s t t', step s t -> step s t' -> t = t').
+
+Lemma star_inv:
+  forall s1 s2 s3,
+  star s1 s3 -> step s1 s2 -> s1 <> s3 -> star s2 s3.
+Proof.
+  intros; inversion H. contradiction.
+  subst; assert (s2=s4). eapply step_determ; eauto. subst; auto.
+Qed.
+
+Lemma star_stuttering:
+  forall s1 s2,
+  star s1 s2 -> step s1 s1 -> s1 = s2.
+Proof.
+  intros s1 s2.
+  induction 1; intros; auto.
+  assert (s1=s2); [ eapply step_determ; eauto | subst ].
+  apply IHstar; auto.
+Qed.
+
+Inductive plus : state -> state -> Prop :=
+  | plus_left: forall s1 s2 s3,
+      step s1 s2 -> star s2 s3 -> plus s1 s3
+  .
+
+End CLOSURES.
+
+
+
+(** File-specific automation tactic *)
+Ltac t' := simpl in *;
+  repeat (match goal with
+            | [ H : ?x = _ |- _ ] => subst x
+            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
+            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
+          end; simpl).
+Ltac t := simpl in *; intros;
+  t'; try autorewrite with core in *; intuition (eauto; try congruence); t'.
+
+
 (** high-level language for a transactional disk *)
 
 (* return values *)
@@ -314,7 +405,53 @@ Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   | PGetTx rx       => pexec (rx c) (PSt (rx c) d l c)
   end.
 
+(** If no failure, psmstep and pexec are equivalent *)
+Lemma pexec_smstep :
+  forall p d l tx s',
+  pexec p (PSt p d l tx) = s' -> star psmstep (PSt p d l tx) s'.
+Proof.
+  induction p; intros;
+  eapply star_step; t; try constructor.
+  eapply star_one; rewrite <- H; constructor.
+Qed.
 
+Lemma psmstep_determ:
+  forall s0 s s',
+  psmstep s0 s -> psmstep s0 s' -> s = s'.
+Proof.
+  intro s0; case_eq s0; intros.
+  induction PSProg0; intros;
+  repeat match goal with
+  | [ H: psmstep _ _ |- _ ] => inversion H; clear H
+  end; subst; reflexivity.
+Qed.
+
+Lemma smstep_pexec :
+  forall p d l tx d' l' tx',
+  star psmstep (PSt p d l tx) (PSt PHalt d' l' tx') ->
+  pexec p (PSt p d l tx) = (PSt PHalt d' l' tx').
+Proof.
+  induction p;  intros;
+  match goal with
+  | [ |- pexec PHalt _ = _ ] =>
+    simpl; eapply star_stuttering; [ apply psmstep_determ | eauto | constructor ]
+  | [ H: context [star psmstep _ _ -> pexec _ _ = _ ] |- _] =>
+    apply H; eapply star_inv; [ apply psmstep_determ | t | constructor | t ]
+  end.
+Qed.
+
+(* failure semantics *)
+
+Inductive psmstep_fail : pstate -> pstate -> Prop :=
+  | PsmNormal: forall s s',
+    psmstep s s' -> psmstep_fail s s'
+  | PsmCrash: forall s,
+    psmstep_fail s (pexec (do_trecover PHalt) s)
+  .
+
+
+
+(* state matching *)
 
 Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
   match p with
@@ -335,13 +472,6 @@ Inductive tpmatch : tstate -> pstate -> Prop :=
     tpmatch (TSt tp td ad) (PSt pp pd lg tx)
   .
 
-Inductive psmstep_fail : pstate -> pstate -> Prop :=
-  | PsmNormal: forall s s',
-    psmstep s s' -> psmstep_fail s s'
-  | PsmCrash: forall s,
-    psmstep_fail s (pexec (do_trecover PHalt) s)
-  .
-
 Inductive tpmatch_fail : tstate -> pstate -> Prop :=
   | TPMatchNormal :
     forall t p, tpmatch t p -> tpmatch_fail t p
@@ -349,75 +479,6 @@ Inductive tpmatch_fail : tstate -> pstate -> Prop :=
     forall td tp pd lg (tx:bool) ad,
     tpmatch_fail (TSt tp td ad) (PSt PHalt pd lg tx)
   .
-
-
-
-Section CLOSURES.
-
-Variable state: Type.
-Variable step: state -> state -> Prop.
-
-Inductive star: state -> state -> Prop :=
-  | star_refl: forall s,
-      star s s
-  | star_step: forall s1 s2 s3,
-      step s1 s2 -> star s2 s3 -> star s1 s3
-  .
-
-Lemma star_one:
-  forall s1 s2, step s1 s2 -> star s1 s2.
-Proof.
-  intros. eapply star_step; eauto. apply star_refl.
-Qed.
-
-Lemma star_two:
-  forall s1 s2 s3,
-  step s1 s2 -> step s2 s3 -> star s1 s3.
-Proof.
-  intros. eapply star_step; eauto. apply star_one; auto. 
-Qed.
-
-Lemma star_three:
-  forall s1 s2 s3 s4,
-  step s1 s2 -> step s2 s3 -> step s3 s4 -> star s1 s4.
-Proof.
-  intros. eapply star_step; eauto. eapply star_two; eauto.
-Qed.
-
-Lemma star_trans:
-  forall s1 s2, star s1 s2 ->
-  forall s3, star s2 s3 -> star s1 s3.
-Proof.
-  induction 1; intros.
-  simpl. auto.
-  eapply star_step; eauto.
-Qed.
-
-Lemma star_right:
-  forall s1 s2 s3,
-  star s1 s2 -> step s2 s3 -> star s1 s3.
-Proof.
-  intros. eapply star_trans. eauto. apply star_one. eauto.
-Qed.
-
-Inductive plus : state -> state -> Prop :=
-  | plus_left: forall s1 s2 s3,
-      step s1 s2 -> star s2 s3 -> plus s1 s3
-  .
-
-End CLOSURES.
-
-
-
-(** File-specific automation tactic *)
-Ltac t' := simpl in *;
-  repeat (match goal with
-            | [ H : ?x = _ |- _ ] => subst x
-            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
-            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
-          end; simpl).
-Ltac t := simpl in *; intros;
-  t'; try autorewrite with core in *; intuition (eauto; try congruence); t'.
 
 
 (** A quick useful list lemma *)
@@ -489,14 +550,6 @@ Proof.
   intros; apply writeLog_flush' with (l':=nil); t.
 Qed.
 
-Lemma pexec_smstep :
-  forall p d l tx s',
-  pexec p (PSt p d l tx) = s' -> star psmstep (PSt p d l tx) s'.
-Proof.
-  induction p; intros;
-  eapply star_step; t; try constructor.
-  eapply star_one; rewrite <- H; constructor.
-Qed.
 
 (** Pulling out the effect of the last log entry *)
 Lemma writeLog_final : forall b v l d,
