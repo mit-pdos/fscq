@@ -241,19 +241,6 @@ Record pstate := PSt {
   PSTx: bool
 }.
 
-Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
-  let (_, d, l, c) := s in
-  match p with
-  | PHalt           => s
-  | PRead b rx      => pexec (rx (st_read d b)) (PSt (rx (st_read d b)) d l c)
-  | PWrite b v rx   => pexec rx (PSt rx (st_write d b v) l c)
-  | PAddLog b v rx  => pexec rx (PSt rx d (l ++ [(b, v)]) c)
-  | PClrLog rx      => pexec rx (PSt rx d nil c)
-  | PGetLog rx      => pexec (rx l) (PSt (rx l) d l c)
-  | PSetTx v rx     => pexec rx (PSt rx d l v)
-  | PGetTx rx       => pexec (rx c) (PSt (rx c) d l c)
-  end.
-
 (*
 Inductive pstep : pstate -> pprog -> pstate -> Prop :=
   | PsHalt: forall s,
@@ -313,6 +300,21 @@ Inductive psmstep : pstate -> pstate -> Prop :=
     psmstep (PSt (PGetTx rx) d l c)
             (PSt (rx c) d l c)
   .
+
+Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
+  let (_, d, l, c) := s in
+  match p with
+  | PHalt           => s
+  | PRead b rx      => pexec (rx (st_read d b)) (PSt (rx (st_read d b)) d l c)
+  | PWrite b v rx   => pexec rx (PSt rx (st_write d b v) l c)
+  | PAddLog b v rx  => pexec rx (PSt rx d (l ++ [(b, v)]) c)
+  | PClrLog rx      => pexec rx (PSt rx d nil c)
+  | PGetLog rx      => pexec (rx l) (PSt (rx l) d l c)
+  | PSetTx v rx     => pexec rx (PSt rx d l v)
+  | PGetTx rx       => pexec (rx c) (PSt (rx c) d l c)
+  end.
+
+
 
 Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
   match p with
@@ -407,21 +409,101 @@ End CLOSURES.
 
 
 
+(** File-specific automation tactic *)
+Ltac t' := simpl in *;
+  repeat (match goal with
+            | [ H : ?x = _ |- _ ] => subst x
+            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
+            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
+          end; simpl).
+Ltac t := simpl in *; intros;
+  t'; try autorewrite with core in *; intuition (eauto; try congruence); t'.
 
-Lemma writeLog_flush : forall l tx rx m m',
-  m' = log_flush l m ->
-  psmstep (PSt (pflush l rx) m l tx) (PSt rx m' l tx).
+
+(** A quick useful list lemma *)
+Theorem app_comm_cons : forall A (ls1 : list A) x ls2,
+  ls1 ++ x :: ls2 = (ls1 ++ x :: nil) ++ ls2.
 Proof.
-  (* XXX:  Main unproven lemma *)
-Admitted.
+  induction ls1; t; rewrite IHls1; t.
+Qed.
+
+(** There's no point in two consecutive writes to the same address. *)
+Lemma st_write_eq : forall d b v v',
+  st_write (st_write d b v) b v' = st_write d b v'.
+Proof.
+  unfold st_write; intros; extensionality b'; t.
+Qed.
+
+Hint Rewrite st_write_eq.
+
+(** Writes to unequal addresses commute. *)
+Lemma st_write_neq : forall d b b' v v',
+  b <> b' ->
+  st_write (st_write d b v) b' v' = st_write (st_write d b' v') b v.
+Proof.
+  unfold st_write; intros; extensionality b''; t.
+Qed.
+
+(** When we're writing from the log, initial memory values don't matter in
+  * positions that will be overwritten later. *)
+Lemma writeLog_overwrite : forall b l d d' v,
+  (forall b', b' <> b -> d b' = d' b')
+  -> st_write (log_flush l d) b v = st_write (log_flush l d') b v.
+Proof.
+  induction l; t.
+  unfold st_write; extensionality b'; t.
+  apply IHl; t.
+  unfold st_write; t.
+Qed.
+
+(** The starting value of a memory cell is irrelevant if we are writing from
+  * a log that ends in a mapping for that cell. *)
+Lemma writeLog_last : forall b v l d v',
+  log_flush (l ++ (b, v) :: nil) (st_write d b v') = st_write (log_flush l d) b v.
+Proof.
+  induction l; t.
+  destruct (eq_nat_dec b b0); subst.
+  rewrite IHl.
+  apply writeLog_overwrite; unfold st_write; t.
+  rewrite st_write_neq by assumption; eauto.
+Qed.
+
+Hint Rewrite writeLog_last.
+
+(** [pflush] implements [log_flush] in the failure-free semantics. *)
+Lemma writeLog_flush' : forall l l' tx rx d d',
+  d = log_flush l' d ->
+  d' = log_flush l d ->
+  star psmstep (PSt (pflush l rx) d (l' ++ l) tx) (PSt rx d' (l' ++ l) tx).
+Proof.
+  induction l; t.
+  apply star_refl.
+  eapply star_step. econstructor.
+  rewrite app_comm_cons in *. eapply IHl; t.
+Qed.
+
+Lemma writeLog_flush : forall tx rx d d' l,
+  d' = log_flush l d ->
+  star psmstep (PSt (pflush l rx) d l tx) (PSt rx d' l tx).
+Proof.
+  intros; apply writeLog_flush' with (l':=nil); t.
+Qed.
+
+Lemma pexec_smstep :
+  forall p d l tx s',
+  pexec p (PSt p d l tx) = s' -> star psmstep (PSt p d l tx) s'.
+Proof.
+  induction p; intros;
+  eapply star_step; t; try constructor.
+  eapply star_one; rewrite <- H; constructor.
+Qed.
 
 (** Pulling out the effect of the last log entry *)
-Lemma writeLog_final : forall a v l m,
-  log_flush (l ++ [(a, v)]) m = st_write (log_flush l m) a v.
+Lemma writeLog_final : forall b v l d,
+  log_flush (l ++ [(b, v)]) d = st_write (log_flush l d) b v.
 Proof.
   induction l; intuition; simpl; auto.
 Qed.
-
 
 (** [readLog] interacts properly with [writeLog]. *)
 Lemma readLog_correct : forall b ls d,
@@ -431,25 +513,15 @@ Lemma readLog_correct : forall b ls d,
                           end.
 Proof.
 
-  Ltac t' := simpl in *;
-    repeat (match goal with
-            | [ H : ?x = _ |- _ ] => subst x
-            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
-            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
-          end; simpl).
-
-  Ltac t1 := simpl in *; intros; t';
-    try autorewrite with core in *; intuition (eauto; try congruence); t'.
-
-  induction ls; t1.
+  induction ls; t.
 
   destruct (pfind ls b0); eauto.
   rewrite IHls.
-  unfold st_read, st_write; t1.
+  unfold st_read, st_write; t.
 
- destruct (pfind ls b); eauto.
+  destruct (pfind ls b); eauto.
   rewrite IHls.
-  unfold st_read, st_write; t1.
+  unfold st_read, st_write; t.
 Qed.
 
 
@@ -464,17 +536,18 @@ Qed.
    an ever-increasing program counter.
 *)
 
+Ltac tt := simpl in *; subst; try autorewrite with core in *;
+            intuition (eauto; try congruence).
+Ltac cc := tt; try constructor; tt.
 
 Theorem tp_forward_sim:
   forall T1 T2, tsmstep T1 T2 ->
   forall P1, tpmatch T1 P1 ->
   exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
 Proof.
-  Ltac t := simpl in *; subst; try autorewrite with core in *;
-            intuition (eauto; try congruence).
-  Ltac cc := t; try constructor; t.
 
-  induction 1; intros; inversion H; econstructor; split; try (t; inversion AD; t).
+  induction 1; intros; inversion H;
+  econstructor; split; try (tt; inversion AD; tt).
 
   destruct tx; cc. auto.
 
@@ -484,7 +557,7 @@ Proof.
   eapply star_right. eapply star_right. eapply star_right.
   constructor. constructor. constructor. constructor. cc.
   rewrite readLog_correct.
-  destruct (pfind lg b) eqn:F; t.
+  destruct (pfind lg b) eqn:F; tt.
 
   eapply star_two; cc. cc.
 
@@ -497,9 +570,9 @@ Proof.
 
   eapply star_one; cc. cc.
 
-  do 4 (eapply star_step; [ cc | idtac ]).
-  eapply writeLog_flush. eauto.
-  eapply star_one; cc. cc.
+  do 3 (eapply star_step; [ cc | idtac ]); tt.
+  eapply star_right.
+  eapply writeLog_flush. cc. cc. cc.
 Qed.
 
 
