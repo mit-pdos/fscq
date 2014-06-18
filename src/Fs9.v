@@ -720,27 +720,24 @@ Qed.
 
 (* An interpreter for the language that implements a log as a disk *)
 
-Fixpoint dexec (p:dprog) (s:dstate) : dstate := s.
-
-(*
-  let (dd, ld, lg) := s in
+Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
+  let (_, dd, ld, lg) := s in
   match p with
   | DHalt           => s
   | DRead d b rx    =>
     match d with
-    | NDataDisk => dexec (rx (st_read dd b)) s
-    | NLogDisk  => dexec (rx (st_read ld b)) s
+    | NDataDisk => dexec (rx (st_read dd b)) (DSt (rx (st_read dd b)) dd ld lg)
+    | NLogDisk  => dexec (rx (st_read ld b)) (DSt (rx (st_read ld b)) dd ld lg)
     end
   | DWrite d b v rx =>
     match d with
-    | NDataDisk => dexec rx (DSt (st_write dd b v) ld lg)
-    | NLogDisk => dexec rx (DSt dd (st_write ld b v) lg)
+    | NDataDisk => dexec rx (DSt rx (st_write dd b v) ld lg)
+    | NLogDisk => dexec rx (DSt rx dd (st_write ld b v) lg)
     end
-  | DAddLog b v rx  => dexec rx (DSt dd ld (lg ++ [(b, v)]))
-  | DClrLog rx      => dexec rx (DSt dd ld nil)
-  | DGetLog rx      => dexec (rx lg) (DSt dd ld lg)
+  | DAddLog b v rx  => dexec rx (DSt rx dd ld (lg ++ [(b, v)]))
+  | DClrLog rx      => dexec rx (DSt rx dd ld nil)
+  | DGetLog rx      => dexec (rx lg) (DSt (rx lg) dd ld lg)
   end.
-*)
 
 Lemma correct_pd_recover_memory_log:
   forall p p' dd ld lg lg',
