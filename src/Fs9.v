@@ -800,23 +800,32 @@ Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
 
 (* recovery of in-memory log from log disk *)
 
-Inductive lg_lgd_match : (list (block * value)) -> storage -> Prop :=  
+Inductive lgmem_lgdisk_match : storage -> (list (block * value)) -> Prop :=  
   | NIL: forall lgd,
            st_read lgd AEol = 0 ->
-           lg_lgd_match nil lgd
-  | NONNIL: forall lg lgd b v n,
-              lg_lgd_match lg lgd -> 
+           lgmem_lgdisk_match lgd nil
+  | NONNIL: forall lgm lgd b v n,
+              lgmem_lgdisk_match lgd lgm -> 
               n = st_read lgd AEol ->
               b = st_read lgd (ABlk n) ->
               v = st_read lgd (AVal n) ->
-              lg_lgd_match (lg ++ [(b, v)]) 
-                           (st_write (st_write (st_write lgd (AVal n) v) (ABlk n) b) AEol (S n)).
+              lgmem_lgdisk_match (st_write (st_write (st_write lgd (AVal n) v) (ABlk n) b) AEol (S n)) (lgm ++ [(b, v)]). 
    
 Lemma correct_pd_recover_memory_log:
-  forall p p' dd ld lg lg',
-    dexec do_precover (DSt p dd ld lg) = (DSt p' dd ld lg') ->
-    lg_lgd_match lg' ld.
+  forall p p' dd lgd lgm lgm',
+    lgmem_lgdisk_match lgd lgm ->
+    dexec do_precover (DSt p dd lgd nil) = (DSt p' dd lgd lgm') ->
+    lgm = lgm'.
 Proof.
+  intros.
+  induction lgm.
+
+  (* lgm = nil *)
+  inversion H.
+  admit. (* must be true because H1 holds *)
+
+  (* general case *) 
+
 Admitted.
   
 
