@@ -225,10 +225,10 @@ Lemma flush_writeLog' : forall l m l' m',
   -> writeLog l' m = m
   -> m' = writeLog l m.
 Proof.
-  induction l; t.
-
+  induction l.
+  t. t. 
   rewrite app_comm_cons in *. eapply IHl; t.
-  erewrite writeLog_app by eassumption; t.
+  erewrite writeLog_app by eassumption. t.
 Qed.
 Lemma flush_writeLog : forall l m m',
   lowEval recover m {| Committed := true; Written := l |} (flush l) m'

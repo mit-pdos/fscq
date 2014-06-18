@@ -183,6 +183,40 @@ Inductive tsmstep : tstate -> tstate -> Prop :=
     tsmstep (TSt (TEnd rx) d (Some ad)) (TSt (rx TRSucc) ad None)
   .
 
+
+(** If no failure, tsmstep and texec are equivalent *)
+Lemma texec_smstep :
+  forall p d ad s',
+  texec p (TSt p d ad) = s' -> star tsmstep (TSt p d ad) s'.
+Proof.
+Admitted.
+
+Lemma tsmstep_determ:
+  forall s0 s s',
+  tsmstep s0 s -> tsmstep s0 s' -> s = s'.
+Proof.
+  intro s0; case_eq s0; intros.
+  repeat match goal with
+  | [ H: tsmstep _ _ |- _ ] => inversion H; clear H
+  end; t.
+Qed.
+
+Lemma smstep_texec :
+  forall p d ad d' ad',
+  star tsmstep (TSt p d ad) (TSt THalt d' ad') ->
+  texec p (TSt p d ad) = (TSt THalt d' ad').
+Proof.
+  induction p;  intros;  destruct ad;
+  match goal with
+  | [ |- texec THalt _ = _ ] =>
+    simpl; eapply star_stuttering; [ apply tsmstep_determ | eauto | constructor ]
+  | [ H: context [star tsmstep _ _ -> texec _ _ = _ ] |- _] =>
+    apply H; eapply star_inv; [ apply tsmstep_determ | t | constructor | t ]
+  | _ => idtac
+  end.
+Qed.
+
+
 Bind Scope tprog_scope with tprog.
 
 
@@ -395,7 +429,7 @@ Inductive psmstep : pstate -> pstate -> Prop :=
 Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   let (_, d, l, c) := s in
   match p with
-  | PHalt           => s
+  | PHalt           => (PSt p d l c)
   | PRead b rx      => pexec (rx (st_read d b)) (PSt (rx (st_read d b)) d l c)
   | PWrite b v rx   => pexec rx (PSt rx (st_write d b v) l c)
   | PAddLog b v rx  => pexec rx (PSt rx d (l ++ [(b, v)]) c)
@@ -448,8 +482,6 @@ Inductive psmstep_fail : pstate -> pstate -> Prop :=
   | PsmCrash: forall s,
     psmstep_fail s (pexec (do_trecover PHalt) s)
   .
-
-
 
 (* state matching *)
 
@@ -629,10 +661,119 @@ Proof.
 Qed.
 
 
+Lemma flush_nofail : forall l m l' tx,
+  pexec (pflush l (PClrLog PHalt)) (PSt (pflush l (PClrLog PHalt)) m l' tx) =
+                         (PSt PHalt (log_flush l m) nil tx).
+Proof.
+  induction l; t.
+Qed.
+
+Hint Rewrite flush_nofail app_nil_r.
+
+(** Decomposing a writing process *)
+Lemma writeLog_app : forall l2 l1 m m',
+  log_flush l1 m = m' -> log_flush (l1 ++ l2) m = log_flush l2 m'.
+Proof.
+  induction l1; t.
+Qed.
+
+Lemma pexec_term':
+  forall p d l tx s',
+  pexec p (PSt p d l tx) = s' -> PSProg s' = PHalt.
+Proof.
+  intro. induction p; t. destruct s'; t.
+Qed.
+
+Lemma pexec_term:
+  forall p s s',
+  pexec p s = s' -> PSProg s' = PHalt.
+Proof.
+  destruct s as [p' d l tx].
+  induction p; t; match goal with
+  | [ H: pexec _ _ = _ |- _ ] => apply pexec_term' in H; auto
+  | _ => try inversion H; auto
+  end.
+Qed.
+
+Lemma trecover_final:
+  forall p m l tx s,
+  s = pexec (do_trecover PHalt) (PSt p m l tx) ->
+  s = (PSt PHalt m nil false) \/
+  s = (PSt PHalt (log_flush l m) nil false).
+Proof.
+  destruct tx; t.
+Qed.
+
+Lemma trecover_id:
+  forall s1 s2 s3,
+  s2 = pexec (do_trecover PHalt) s1 ->
+  s3 = pexec (do_trecover PHalt) s2 -> s2 = s3.
+Proof.
+  intros. destruct s1.
+  apply trecover_final in H.
+  destruct H; destruct s2 as [p m l tx] eqn:S; inversion H; subst; clear H; t.
+Qed.
+
+Lemma pfail_dec':
+  forall s s',
+  (PSProg s) = PHalt ->
+  star psmstep_fail s s' ->
+  s' = s \/ s' = pexec (do_trecover PHalt) s.
+Proof.
+  intros. induction H0.
+  left; trivial.
+  inversion H0. subst.
+  inversion H2; try (destruct s1; inversion H3; subst; discriminate).
+  assert (PSProg s2 = PHalt); [ t | apply IHstar in H5 ; destruct H5 ].
+  left; t. right; rewrite H4; auto.
+  assert (PSProg s2 = PHalt) as T;
+  [ eapply pexec_term; eauto | apply IHstar in T ; destruct T ].
+  right; t.
+  apply eq_sym in H3; right; rewrite <- H3.
+  apply eq_sym; apply trecover_id with (s1:=s1); auto.
+Qed.
+
+
+Lemma flush_writeLog_fail' : forall l m l' m' tx l0,
+  star psmstep_fail (PSt (pflush l PHalt) m (l' ++ l) tx)
+                    (PSt PHalt m' l0 tx)
+  -> log_flush l' m = m
+  -> m' = log_flush l m.
+Proof.
+  induction l; t. admit.
+
+  inversion H; inversion H1; t.
+  inversion H5; t; rewrite <- H3 in *.
+  rewrite app_comm_cons in *.
+  eapply IHl; [ eauto | t ].
+
+  clear H H1; destruct tx; t;
+  rewrite <- H6 in *; clear H6.
+  admit.
+  
+  inversion H2; t.
+  erewrite writeLog_app by eassumption; t.
+  admit.
+Qed.
+
+Lemma flush_writeLog_fail : forall l m m' tx,
+  star psmstep_fail (PSt (pflush l PHalt) m l tx) (PSt PHalt m' l tx)
+  -> m' = log_flush l m.
+Proof.
+  intros; eapply flush_writeLog_fail' with (l':=nil); t.
+Qed.
+
+
 (** Main correctness theorem *)
 
-
-
+Theorem correct:
+  forall p d d' l' tx',
+  star psmstep_fail (PSt (compile_tp p) d nil false) (PSt PHalt d' l' tx') ->
+  exists ad, texec p (TSt p d None) = TSt THalt d' ad.
+Proof.
+  intros; eexists.
+  inversion H.
+Admitted.
 
 (* language that implements the log as a disk *)
 
