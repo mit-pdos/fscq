@@ -109,6 +109,37 @@ Ltac t := simpl in *; intros;
   t'; try autorewrite with core in *; intuition (eauto; try congruence); t'.
 
 
+(* app language *)
+
+Inductive aproc :=
+  | AHalt
+  | ASetAcct (a:nat) (v:nat) (rx: aproc)
+  | ATransfer (src:nat) (dst:nat) (v:nat) (rx: aproc)
+  .
+
+Fixpoint aexec (p:aproc) (s:storage) : storage :=
+  match p with
+    | AHalt => s
+    | ASetAcct a v rx => aexec rx (st_write s a v)
+    | ATransfer n m v rx => aexec rx (st_write (st_write s m ((st_read s m) + v)) n ((st_read s n) -v))
+  end.
+
+Definition initial := 100.
+
+Definition transfer (src:nat) (dst:nat) (v:nat): value * value :=
+  let s := aexec (ASetAcct src initial (ASetAcct dst initial (ATransfer src dst 10 (AHalt)))) st_init in
+   (st_read s src, st_read s dst).
+
+(* A simple example to argue that A language is correct *)
+Example legal_transfer1:
+  forall k1 k2,
+    transfer 0 1 10 = (k1, k2) -> k1 = initial - 10 /\ k2 = initial + 10.
+Proof.
+  intros; inversion H.
+  crush.
+Qed.
+
+
 (** high-level language for a transactional disk *)
 
 (* return values *)
@@ -123,6 +154,27 @@ Inductive tprog :=
   | TEnd   (rx:trs -> tprog)
   | THalt
   .
+
+Bind Scope aprog_scope with aproc.
+
+
+Notation "a ;; b" := (a (fun _ => b))
+                       (right associativity, at level 60) : aprog_scope.
+
+Notation "ra <- a ; b" := (a (fun ra => b))
+                             (right associativity, at level 60) : aprog_scope.
+
+
+Open Scope aprog_scope.
+
+Fixpoint compile_at (p:aproc) : tprog :=
+  match p with
+    | AHalt => THalt
+    | ASetAcct a v rx => TBegin ;; TWrite a v ;; TEnd ;; compile_at rx
+    | ATransfer src dst v rx => TBegin ;;  r <- TRead src ; TWrite src (r-v) ;; r1 <- TRead dst ; TWrite dst (r1+v) ;; TEnd ;; compile_at rx
+  end.
+
+Close Scope aprog_scope.
 
 Record tstate := TSt {
   TSProg: tprog;
@@ -158,6 +210,7 @@ Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
   end.
 
 
+
 Inductive tsmstep : tstate -> tstate -> Prop :=
   | TsmHalt: forall d ad,
     tsmstep (TSt THalt d ad) (TSt THalt d ad)
@@ -182,6 +235,62 @@ Inductive tsmstep : tstate -> tstate -> Prop :=
   | TsmEndTx: forall d ad rx,
     tsmstep (TSt (TEnd rx) d (Some ad)) (TSt (rx TRSucc) ad None)
   .
+
+
+Record astate := ASt {
+  ASProg: aproc;
+  ASDisk: storage
+}.
+
+Inductive atmatch : astate -> tstate -> Prop :=
+  | ATMatchState :
+    forall d ap tp ad dd
+    (DD: d = dd)
+    (PP: compile_at ap = tp),
+    atmatch (ASt ap d) (TSt tp dd ad).
+  
+
+
+Inductive asmstep : astate -> astate -> Prop :=
+  | AsmHalt: forall d,
+    asmstep (ASt AHalt d) (ASt AHalt d)
+  | AsmSetAcct: forall d a v rx,
+    asmstep (ASt (ASetAcct a v rx) d)
+            (ASt rx (st_write d a v))
+  | AsmTransfer: forall d m n v rx,
+    asmstep (ASt (ATransfer m n v rx) d )
+            (ASt rx (st_write (st_write d m ((st_read d m) + v)) n ((st_read d n) -v))).
+  
+Theorem at_forward_sim:
+  forall T1 T2, asmstep T1 T2 ->
+  forall P1, atmatch T1 P1 ->
+  exists P2, star tsmstep P1 P2 /\ atmatch T2 P2.
+Proof.
+  (* obvious ... *)
+Admitted.
+
+Definition do_arecover : tprog := THalt.  (* no need to throw away the ad *)
+
+Inductive tsmstep_fail : tstate -> tstate -> Prop :=
+  | TsmNormal: forall s s',
+    tsmstep s s' -> tsmstep_fail s s'
+  | TsmCrash: forall s,
+    tsmstep_fail s (texec (do_arecover) s).
+
+Definition mk_tprog (p : tprog) (ins : aprog) (rx : tprog) : tprog :=
+  let tp := compile_at ins in 
+  
+
+(* Assuming at_forward_sim: *)
+Theorem at_atomicity:
+  forall ap ap' ins d ad s s' s'' rx,
+    star tsmstep (TSt (compile_at ap) st_init None) (TSt (ins :: rx) d ad) ->
+    star tsmstep (TSt (ins :: rx) d ad) (TSt rx d' ad') ->
+    tsmstep_fail (compile_at ins) = s'' ->
+    s'' = s \/ s'' = s'.
+Proof.
+Admitted.
+
 
 
 (** If no failure, tsmstep and texec are equivalent *)
@@ -813,12 +922,13 @@ Definition do_pread (cc:pprog -> dprog) b rx : dprog :=
 Definition do_pwrite (cc:pprog -> dprog) b v rx : dprog :=
   DWrite NDataDisk b v ;; cc rx.
 
+(* XXX paddlog is atomic. *)
 Definition do_paddlog (cc:pprog -> dprog) b v rx : dprog :=
   idx <- DRead NLogDisk AEol;
   DWrite NLogDisk (AVal idx) v ;;
   DWrite NLogDisk (ABlk idx) b ;;
-  DWrite NLogDisk AEol (S idx) ;;
   DAddLog b v ;;
+  DWrite NLogDisk AEol (S idx) ;;
   cc rx.
 
 Definition do_pclrlog (cc:pprog -> dprog) rx : dprog :=
@@ -908,6 +1018,7 @@ Inductive dsmstep : dstate -> dstate -> Prop :=
             (DSt (rx lm) d l lm)
   .
 
+
 Inductive pdmatch : pstate -> dstate -> Prop :=
   | PDMatchState :
     forall pp pdisk lg tx pd dd lgd lgm
@@ -994,6 +1105,14 @@ Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
 
 (* recovery of in-memory log from log disk *)
 
+Inductive dsmstep_fail : dstate -> dstate -> Prop :=
+  | DsmNormal: forall s s',
+    dsmstep s s' -> dsmstep_fail s s'
+  | DsmCrash: forall s,
+    dsmstep_fail s (dexec do_precover s)
+  .
+
+(* XXX must show that if dsmstep is true, then also lgmem_lgdisk_match is true *)
 Inductive lgmem_lgdisk_match : storage -> (list (block * value)) -> Prop :=  
   | NIL: forall lgd,
            st_read lgd AEol = 0 ->
@@ -1016,12 +1135,21 @@ Proof.
 
   (* lgm = nil *)
   inversion H.
+  unfold dexec.
+
   admit. (* must be true because H1 holds *)
 
   (* general case *) 
 
 Admitted.
   
-
-
-
+Theorem dcorrect:
+  forall p dd dd' ld ld' lg lg' d tx s,
+  
+  star dsmstep_fail (DSt (compile_pd p) dd ld lg) (DSt DHalt dd' ld' lg') ->
+  pexec p (PSt p d nil tx) = s ->
+  pdmatch s (DSt DHalt dd' ld' lg').
+Proof.
+  intros; eexists.
+  inversion H.
+Admitted.
