@@ -277,7 +277,7 @@ Inductive tsmstep_fail : tstate -> tstate -> Prop :=
     `len` is length of the target opcode sequence for the next opcode in `ap`,
     if `tp` could reach a state `s` from the initial state, and that `s1` is
     the state follows `s` after `len` steps under no-failure assumption; 
-    `s2` is any of the possible states in `len` steps allowing failiure
+    `s2` is any of the possible states in `len` steps allowing failiures but
     followed by a successful recovery, then `s2` must equal to either `s` or `s1`.
 
     Because failure-free programs are deterministic, `s1` and `len` are unique
