@@ -277,9 +277,10 @@ Inductive tsmstep_fail : tstate -> tstate -> Prop :=
   | TsmCrash: forall s,
     tsmstep_fail s (texec (do_arecover) s).
 
-Definition mk_tprog (p : tprog) (ins : aprog) (rx : tprog) : tprog :=
+(*
+Definition mk_tprog (p : tprog) (ins : aproc) (rx : tprog) : tprog :=
   let tp := compile_at ins in 
-  
+    THalt.
 
 (* Assuming at_forward_sim: *)
 Theorem at_atomicity:
@@ -290,7 +291,7 @@ Theorem at_atomicity:
     s'' = s \/ s'' = s'.
 Proof.
 Admitted.
-
+*)
 
 
 (** If no failure, tsmstep and texec are equivalent *)
@@ -325,52 +326,6 @@ Proof.
   end.
 Qed.
 
-
-Bind Scope tprog_scope with tprog.
-
-
-Notation "a ;; b" := (a (fun trs => 
-                           match trs with 
-                             | TRSucc => (b)
-                             | TRFail => THalt
-                           end))
-                       (right associativity, at level 60) : tprog_scope.
-
-Notation "ra <- a ; b" := (a (fun ra => b))
-                             (right associativity, at level 60) : tprog_scope.
-
-
-Open Scope tprog_scope.
-
-(* Follow adam's suggestion of "proving" this high-level language interpreter
-correct by building a simple app for which we can state the properties
-independent of the high-level language. *)
-
-Definition do_transfer (src:nat) (dst:nat) (k: nat) (s: tstate) : tstate :=
- texec (TBegin ;; v <- (TRead src) ; TWrite src (v-k) ;; v1 <- (TRead dst) ; (TWrite dst (v1+k)) ;; TEnd ;; THalt) s.
-
-Definition read_account (s: tstate) (n: nat) : value := (st_read s.(TSDisk) n).
-
-Definition initial := 100.
-
-Definition create_account (n : nat) (v : nat) (s: tstate): tstate :=
-  texec (TBegin;; TWrite n initial ;; TEnd ;; THalt) s.
-
-Definition transfer (src:nat) (dst:nat) (v:nat): value * value :=
-  let s := create_account src 100 (TSt THalt st_init None) in 
-     let s1 := create_account dst 100 s in
-     let s2 := do_transfer src dst v s1 in
-         (read_account s2 src, read_account s2 dst).
-
-Example legal_transfer1:
-  forall k1 k2,
-    transfer 0 1 10 = (k1, k2) -> k1 = initial - 10 /\ k2 = initial + 10.
-Proof.
-  intros; inversion H.
-  crush.
-Qed.
-
-Close Scope tprog_scope.
 
 
 (* language that manipulates a disk and an in-memory pending log *)
@@ -823,7 +778,7 @@ Proof.
   destruct H; destruct s2 as [p m l tx] eqn:S; inversion H; subst; clear H; t.
 Qed.
 
-Lemma pfail_dec':
+Lemma pfail_dec:
   forall s s',
   (PSProg s) = PHalt ->
   star psmstep_fail s s' ->
@@ -849,7 +804,9 @@ Lemma flush_writeLog_fail' : forall l m l' m' tx l0,
   -> log_flush l' m = m
   -> m' = log_flush l m.
 Proof.
-  induction l; t. admit.
+  induction l; t.
+  apply pfail_dec in H; intuition; try congruence.
+  apply trecover_final in H1; t.
 
   inversion H; inversion H1; t.
   inversion H5; t; rewrite <- H3 in *.
@@ -858,11 +815,14 @@ Proof.
 
   clear H H1; destruct tx; t;
   rewrite <- H6 in *; clear H6.
-  admit.
-  
+  apply pfail_dec in H2; intuition; try congruence.
+  apply trecover_final in H; t.
+
   inversion H2; t.
   erewrite writeLog_app by eassumption; t.
-  admit.
+  apply pfail_dec in H2; t;
+  inversion H3; t; rewrite app_comm_cons; apply writeLog_app;
+  rewrite <- H0; rewrite <- writeLog_final; t.
 Qed.
 
 Lemma flush_writeLog_fail : forall l m m' tx,
@@ -875,12 +835,21 @@ Qed.
 
 (** Main correctness theorem *)
 
+Theorem correct':
+  forall p d l d' l' tx',
+  star psmstep_fail (PSt (compile_tp p) d l true) (PSt PHalt d' l' tx') ->
+  d = d' \/ texec p (TSt p d (Some (log_flush l d))) = TSt THalt d' None.
+Proof.
+  induction p; t.
+Admitted.
+
+
 Theorem correct:
   forall p d d' l' tx',
   star psmstep_fail (PSt (compile_tp p) d nil false) (PSt PHalt d' l' tx') ->
-  exists ad, texec p (TSt p d None) = TSt THalt d' ad.
+  d = d' \/ texec p (TSt p d None) = TSt THalt d' None.
 Proof.
-  intros; eexists.
+  intros.
   inversion H.
 Admitted.
 
