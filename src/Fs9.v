@@ -246,13 +246,6 @@ Inductive asmstep : astate -> astate -> Prop :=
             (ASt rx (st_write (st_write d m ((st_read d m) + v)) n ((st_read d n) -v))).
 
 
-Inductive asmstep_dom : astate -> Prop :=
-  | AdomInit: forall d, asmstep_dom (ASt AHalt d)
-  | AdomInd: forall s1 s2, asmstep_dom s2 -> asmstep s1 s2 -> asmstep_dom s1
-  .
-
-
-
 Theorem at_forward_sim:
   forall T1 T2, asmstep T1 T2 ->
   forall P1, atmatch T1 P1 ->
@@ -270,29 +263,39 @@ Inductive tsmstep_fail : tstate -> tstate -> Prop :=
     tsmstep_fail s (texec (do_arecover) s).
 
 
+
+(** Given a high-level opcode, return a function that gives the target opcode
+    length based on the current low-level state.
+*)
+Parameter oplen_at : aproc -> tstate -> nat.
+
+(** We assume the matching function imply the correct compilation point
+    and that the low-level state is reachable from the initial state.
+*)
+Hypothesis atmatch_soundness :
+  forall sa s,
+  atmatch sa s ->
+    (TSProg s) = compile_at (ASProg sa) /\
+    exists p, star tsmstep (TSt p st_init st_init) s.
+
 (****
     Atomicity on failure:
 
-    Given any high level program `ap` and the compiled low-level program `tp`,
-    `len` is length of the target opcode sequence for the next opcode in `ap`,
-    if `tp` could reach a state `s` from the initial state, and that `s1` is
-    the state follows `s` after `len` steps under no-failure assumption; 
+    Given any high-level state `sa` and the matching low-level state `s`,
+    `len` is length of the target opcodes sequence for the next opcode in `sa`,
+    if `s1` is the state follows `s` after `len` steps under no-failure assumption;
     `s2` is any of the possible states in `len` steps allowing failiures but
     followed by a successful recovery, then `s2` must equal to either `s` or `s1`.
 
-    Because failure-free programs are deterministic, `s1` and `len` are unique
-    and can be determined at compile time.
+    Because failure-free programs are deterministic, `s1` and `len` are unique.
  *)
 
-Parameter oplen_at : aproc -> nat.
-
 Theorem at_atomicity:
-  forall ap tp len s s1 s2,
-    tp = compile_at ap ->
-    len = oplen_at ap ->
-    star tsmstep (TSt tp st_init st_init) s ->
-    starN tsmstep len s s1 ->
-    starN tsmstep_fail len s s2 ->
+  forall sa s len s1 s2,
+    atmatch sa s ->
+    len = oplen_at (ASProg sa) s ->
+    starN tsmstep       len s s1 ->
+    starN tsmstep_fail  len s s2 ->
     s2 = s \/ s2 = s1.
 Proof.
 Admitted.
