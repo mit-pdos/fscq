@@ -290,15 +290,19 @@ Hypothesis atmatch_soundness :
     Because failure-free programs are deterministic, `s1` and `len` are unique.
  *)
 
+(* XXX maybe put a constraint on as1 that it is reacheable by some aprog from initial state *)
 Theorem at_atomicity:
-  forall sa s len s1 s2,
-    atmatch sa s ->
-    len = oplen_at (ASProg sa) s ->
-    starN tsmstep       len s s1 ->
-    starN tsmstep_fail  len s s2 ->
-    s2 = s \/ s2 = s1.
+  forall as1 as2 ts1 ts2 ts2',
+    atmatch as1 ts1 ->
+    atmatch as2 ts2 ->q
+    asmstep as1 as2 ->
+    star tsmstep ts1 ts2 ->
+    star tsmstep_fail ts1 ts2' ->
+    ts2' = ts1 \/ ts2' = ts2.
 Proof.
-Admitted.
+(* i know what the few instructions are that i need to analysis, but it is a bit of pain
+to extract them. *)
+Admitted.         
 
 
 (** If no failure, tsmstep and texec are equivalent *)
