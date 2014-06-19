@@ -142,23 +142,17 @@ Qed.
 
 (** high-level language for a transactional disk *)
 
-(* return values *)
-Inductive trs :=
-  | TRSucc
-  | TRFail.
-  
 Inductive tprog :=
   | TRead  (b:block) (rx:value -> tprog)
-  | TWrite (b:block) ( v:value) (rx:trs -> tprog)
-  | TBegin (rx:trs -> tprog)
-  | TEnd   (rx:trs -> tprog)
+  | TWrite (b:block) ( v:value) (rx:tprog)
+  | TCommit (rx:tprog)
   | THalt
   .
 
 Bind Scope aprog_scope with aproc.
 
 
-Notation "a ;; b" := (a (fun _ => b))
+Notation "a ;; b" := (a (b))
                        (right associativity, at level 60) : aprog_scope.
 
 Notation "ra <- a ; b" := (a (fun ra => b))
@@ -170,8 +164,9 @@ Open Scope aprog_scope.
 Fixpoint compile_at (p:aproc) : tprog :=
   match p with
     | AHalt => THalt
-    | ASetAcct a v rx => TBegin ;; TWrite a v ;; TEnd ;; compile_at rx
-    | ATransfer src dst v rx => TBegin ;;  r <- TRead src ; TWrite src (r-v) ;; r1 <- TRead dst ; TWrite dst (r1+v) ;; TEnd ;; compile_at rx
+    | ASetAcct a v rx => TWrite a v ;; TCommit ;; compile_at rx
+    | ATransfer src dst v rx => r <- TRead src ; TWrite src (r-v) ;;
+                   r1 <- TRead dst ; TWrite dst (r1+v) ;; TCommit ;; compile_at rx
   end.
 
 Close Scope aprog_scope.
@@ -179,7 +174,7 @@ Close Scope aprog_scope.
 Record tstate := TSt {
   TSProg: tprog;
   TSDisk: storage;            (* main disk *)
-  TSAltDisk: option storage   (* alternative disk for transactions *)
+  TSAltDisk: storage   (* alternative disk for transactions *)
 }.
 
 (* high level interpreter *)
@@ -187,53 +182,21 @@ Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
   let (_, d, ad) := s in
   match p with
   | THalt         => s
-  | TRead b rx    =>
-    match ad with
-    | None   => texec (rx (st_read d b)) (TSt (rx (st_read d b)) d ad)
-    | Some x => texec (rx (st_read x b)) (TSt (rx (st_read x b)) d ad)
-    end
-  | TWrite b v rx =>
-    match ad with
-    | None   => texec (rx TRSucc) (TSt (rx TRSucc) (st_write d b v) ad)
-    | Some x => texec (rx TRSucc) (TSt (rx TRSucc) d (Some (st_write x b v)))
-    end
-  | TBegin rx     =>
-    match ad with
-    | None   => texec (rx TRSucc) (TSt (rx TRSucc) d (Some d))
-    | Some _ => texec (rx TRFail) (TSt (rx TRFail) d ad)
-    end
-  | TEnd rx       =>
-    match ad with
-    | Some d => texec (rx TRSucc) (TSt (rx TRSucc) d None)
-    | None   => texec (rx TRFail) (TSt (rx TRFail) d ad)
-    end
+  | TRead b rx    => texec (rx (st_read ad b)) (TSt (rx (st_read ad b)) d ad)
+  | TWrite b v rx => texec rx (TSt rx d (st_write ad b v))
+  | TCommit rx    => texec rx (TSt rx ad ad)
   end.
-
 
 
 Inductive tsmstep : tstate -> tstate -> Prop :=
   | TsmHalt: forall d ad,
     tsmstep (TSt THalt d ad) (TSt THalt d ad)
-  | TsmRead: forall d b rx,
-    tsmstep (TSt (TRead b rx) d None)
-            (TSt (rx (st_read d b)) d None)
-  | TsmReadTx: forall d ad b rx,
-    tsmstep (TSt (TRead b rx) d (Some ad))
-            (TSt (rx (st_read ad b)) d (Some ad))
-  | TsmWrite: forall d b v rx,
-    tsmstep (TSt (TWrite b v rx) d None)
-            (TSt (rx TRSucc) (st_write d b v) None)
-  | TsmWriteTx: forall d ad b v rx,
-    tsmstep (TSt (TWrite b v rx) d (Some ad))
-            (TSt (rx TRSucc) d (Some (st_write ad b v)))
-  | TsmBegin: forall d rx,
-    tsmstep (TSt (TBegin rx) d None) (TSt (rx TRSucc) d (Some d))
-  | TsmBeginTx: forall d ad rx,
-    tsmstep (TSt (TBegin rx) d (Some ad)) (TSt (rx TRFail) d (Some ad))
-  | TsmEnd: forall d rx,
-    tsmstep (TSt (TEnd rx) d None) (TSt (rx TRFail) d None)
-  | TsmEndTx: forall d ad rx,
-    tsmstep (TSt (TEnd rx) d (Some ad)) (TSt (rx TRSucc) ad None)
+  | TsmRead: forall d ad b rx,
+    tsmstep (TSt (TRead b rx) d ad)    (TSt (rx (st_read ad b)) d ad)
+  | TsmWrite: forall d ad b v rx,
+    tsmstep (TSt (TWrite b v rx) d ad) (TSt rx d (st_write ad b v))
+  | TsmCommit:  forall d ad rx,
+    tsmstep (TSt (TCommit rx) d ad)    (TSt rx ad ad)
   .
 
 
@@ -260,7 +223,15 @@ Inductive asmstep : astate -> astate -> Prop :=
   | AsmTransfer: forall d m n v rx,
     asmstep (ASt (ATransfer m n v rx) d )
             (ASt rx (st_write (st_write d m ((st_read d m) + v)) n ((st_read d n) -v))).
-  
+
+
+Inductive asmstep_dom : astate -> Prop :=
+  | AdomInit: forall d, asmstep_dom (ASt AHalt d)
+  | AdomInd: forall s1 s2, asmstep_dom s2 -> asmstep s1 s2 -> asmstep_dom s1
+  .
+
+
+
 Theorem at_forward_sim:
   forall T1 T2, asmstep T1 T2 ->
   forall P1, atmatch T1 P1 ->
@@ -316,16 +287,14 @@ Lemma smstep_texec :
   star tsmstep (TSt p d ad) (TSt THalt d' ad') ->
   texec p (TSt p d ad) = (TSt THalt d' ad').
 Proof.
-  induction p;  intros;  destruct ad;
+  induction p;  intros;
   match goal with
   | [ |- texec THalt _ = _ ] =>
     simpl; eapply star_stuttering; [ apply tsmstep_determ | eauto | constructor ]
   | [ H: context [star tsmstep _ _ -> texec _ _ = _ ] |- _] =>
     apply H; eapply star_inv; [ apply tsmstep_determ | t | constructor | t ]
-  | _ => idtac
   end.
 Qed.
-
 
 
 (* language that manipulates a disk and an in-memory pending log *)
@@ -367,13 +336,6 @@ Fixpoint pflush (p:list (block*value)) rx : pprog :=
   | (b, v) :: rest => PWrite b v ;; pflush rest rx
   end.
 
-Definition do_tbegin (cc:tprog -> pprog) rx : pprog :=
-   tx <- PGetTx;
-   if tx then 
-    cc (rx TRFail)
-   else
-    PClrLog ;; PSetTx true ;; cc (rx TRSucc)
-.
 
 Definition do_tread (cc:tprog -> pprog) b rx : pprog :=
   tx <- PGetTx;
@@ -391,17 +353,14 @@ Definition do_tread (cc:tprog -> pprog) b rx : pprog :=
 Definition do_twrite (cc:tprog -> pprog) b v rx : pprog :=
   tx <- PGetTx;
   if tx then
-    PAddLog b v ;; cc (rx TRSucc)
+    PAddLog b v ;; cc rx
   else
-    PWrite b v;; cc (rx TRSucc)
+    PClrLog ;; PSetTx true ;;
+    PAddLog b v ;; cc rx
 .
 
-Definition do_tend (cc:tprog -> pprog) rx : pprog :=
-  tx <- PGetTx;
-  if tx then 
-    PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; cc (rx TRSucc)
-  else
-    cc (rx TRFail)
+Definition do_tcommit (cc:tprog -> pprog) rx : pprog :=
+  PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; cc rx
 .
 
 Definition do_trecover rx : pprog :=
@@ -417,10 +376,9 @@ Close Scope pprog_scope.
 Fixpoint compile_tp (p:tprog) : pprog :=
   match p with
   | THalt         => PHalt
-  | TBegin rx     => do_tbegin compile_tp rx
   | TRead b rx    => do_tread  compile_tp b rx
   | TWrite b v rx => do_twrite compile_tp b v rx
-  | TEnd rx       => do_tend   compile_tp rx
+  | TCommit rx    => do_tcommit   compile_tp rx
   end.
 
 Record pstate := PSt {
@@ -559,11 +517,11 @@ Inductive tpmatch : tstate -> pstate -> Prop :=
   | TPMatchState :
     forall td tp pd lg (tx:bool) pp ad
     (DD: td = pd)
-    (AD: ad = if tx then Some (log_flush lg td) else None)
-    (TX: tx = match ad with
+    (AD: ad = if tx then (log_flush lg td) else td)
+    (* TX: tx = match ad with
          | Some _ => true
          | None => false
-         end)
+         end *)
     (PP: compile_tp tp = pp) ,
     tpmatch (TSt tp td ad) (PSt pp pd lg tx)
   .
@@ -695,10 +653,11 @@ Theorem tp_forward_sim:
   exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
 Proof.
 
+(*
   induction 1; intros; inversion H;
   econstructor; split; try (tt; inversion AD; tt).
 
-  destruct tx; cc. auto.
+  destruct tx; cc.
 
   eapply star_two; cc.
   unfold do_tread; cc.
@@ -723,6 +682,8 @@ Proof.
   eapply star_right.
   eapply writeLog_flush. cc. cc. cc.
 Qed.
+*)
+Admitted.
 
 
 Lemma flush_nofail : forall l m l' tx,
@@ -835,23 +796,6 @@ Qed.
 
 (** Main correctness theorem *)
 
-Theorem correct':
-  forall p d l d' l' tx',
-  star psmstep_fail (PSt (compile_tp p) d l true) (PSt PHalt d' l' tx') ->
-  d = d' \/ texec p (TSt p d (Some (log_flush l d))) = TSt THalt d' None.
-Proof.
-  induction p; t.
-Admitted.
-
-
-Theorem correct:
-  forall p d d' l' tx',
-  star psmstep_fail (PSt (compile_tp p) d nil false) (PSt PHalt d' l' tx') ->
-  d = d' \/ texec p (TSt p d None) = TSt THalt d' None.
-Proof.
-  intros.
-  inversion H.
-Admitted.
 
 (* language that implements the log as a disk *)
 
