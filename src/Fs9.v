@@ -94,6 +94,27 @@ Inductive plus : state -> state -> Prop :=
       step s1 s2 -> star s2 s3 -> plus s1 s3
   .
 
+Inductive starN : nat -> state -> state -> Prop :=
+  | starN_refl: forall s,
+      starN O s s
+  | starN_step: forall n s s' s'',
+      step s s' -> starN n s' s'' ->
+      starN (S n) s s''.
+
+Remark starN_star:
+  forall n s s', starN n s s' -> star s s'.
+Proof.
+  induction 1; econstructor; eauto.
+Qed.
+
+Remark star_starN:
+  forall s s', star s s' -> exists n, starN n s s'.
+Proof.
+  induction 1. 
+  exists O; constructor.
+  destruct IHstar as [n P]. exists (S n); econstructor; eauto.
+Qed.
+
 End CLOSURES.
 
 
@@ -248,21 +269,33 @@ Inductive tsmstep_fail : tstate -> tstate -> Prop :=
   | TsmCrash: forall s,
     tsmstep_fail s (texec (do_arecover) s).
 
-(*
-Definition mk_tprog (p : tprog) (ins : aproc) (rx : tprog) : tprog :=
-  let tp := compile_at ins in 
-    THalt.
 
-(* Assuming at_forward_sim: *)
+(****
+    Atomicity on failure:
+
+    Given any high level program `ap` and the compiled low-level program `tp`,
+    `len` is length of the target opcode sequence for the next opcode in `ap`,
+    if `tp` could reach a state `s` from the initial state, and that `s1` is
+    the state follows `s` after `len` steps under no-failure assumption; 
+    `s2` is any of the possible states in `len` steps allowing failiure
+    followed by a successful recovery, then `s2` must equal to either `s` or `s1`.
+
+    Because failure-free programs are deterministic, `s1` and `len` are unique
+    and can be determined at compile time.
+ *)
+
+Parameter oplen_at : aproc -> nat.
+
 Theorem at_atomicity:
-  forall ap ap' ins d ad s s' s'' rx,
-    star tsmstep (TSt (compile_at ap) st_init None) (TSt (ins :: rx) d ad) ->
-    star tsmstep (TSt (ins :: rx) d ad) (TSt rx d' ad') ->
-    tsmstep_fail (compile_at ins) = s'' ->
-    s'' = s \/ s'' = s'.
+  forall ap tp len s s1 s2,
+    tp = compile_at ap ->
+    len = oplen_at ap ->
+    star tsmstep (TSt tp st_init st_init) s ->
+    starN tsmstep len s s1 ->
+    starN tsmstep_fail len s s2 ->
+    s2 = s \/ s2 = s1.
 Proof.
 Admitted.
-*)
 
 
 (** If no failure, tsmstep and texec are equivalent *)
