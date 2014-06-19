@@ -263,55 +263,6 @@ Inductive tsmstep_fail : tstate -> tstate -> Prop :=
     tsmstep_fail s (texec (do_arecover) s).
 
 
-
-(** Given a high-level opcode, return a function that gives the target opcode
-    length based on the current low-level state.
-*)
-Parameter oplen_at : aproc -> tstate -> nat.
-
-(** We assume the matching function imply the correct compilation point
-    and that the low-level state is reachable from the initial state.
-*)
-Hypothesis atmatch_soundness :
-  forall sa s,
-  atmatch sa s ->
-    (TSProg s) = compile_at (ASProg sa) /\
-    exists p, star tsmstep (TSt p st_init st_init) s.
-
-(****
-    Atomicity on failure:
-
-    Given any high-level state `sa` and the matching low-level state `s`,
-    `len` is length of the target opcodes sequence for the next opcode in `sa`,
-    if `s1` is the state follows `s` after `len` steps under no-failure assumption;
-    `s2` is any of the possible states in `len` steps allowing failiures but
-    followed by a successful recovery, then `s2` must equal to either `s` or `s1`.
-
-    Because failure-free programs are deterministic, `s1` and `len` are unique.
- *)
-
-(* XXX maybe put a constraint on as1 that it is reacheable by some aprog from initial state *)
-Theorem at_atomicity:
-  forall as1 as2 ts1 ts2 ts2',
-    atmatch as1 ts1 ->
-    atmatch as2 ts2 ->q
-    asmstep as1 as2 ->
-    star tsmstep ts1 ts2 ->
-    star tsmstep_fail ts1 ts2' ->
-    ts2' = ts1 \/ ts2' = ts2.
-Proof.
-(* i know what the few instructions are that i need to analysis, but it is a bit of pain
-to extract them. *)
-Admitted.         
-
-
-(** If no failure, tsmstep and texec are equivalent *)
-Lemma texec_smstep :
-  forall p d ad s',
-  texec p (TSt p d ad) = s' -> star tsmstep (TSt p d ad) s'.
-Proof.
-Admitted.
-
 Lemma tsmstep_determ:
   forall s0 s s',
   tsmstep s0 s -> tsmstep s0 s' -> s = s'.
@@ -321,6 +272,64 @@ Proof.
   | [ H: tsmstep _ _ |- _ ] => inversion H; clear H
   end; t.
 Qed.
+
+
+(****
+    Atomicity on failure:
+
+    Given any high-level state pair (as1 --1--> as2), and the corresponding
+    low-level state pair by n-step simulation (ts1 --n--> ts2),
+    ts2' is any of the possible states within n steps allowing failiures but
+    followed by a successful recovery, then `s2` must equal to either `s` or `s1`.
+ *)
+
+(* XXX maybe put a constraint on as1 that it is reacheable by some 
+       aprog from initial state *)
+
+Theorem at_atomicity:
+  forall n as1 as2 ts1 ts2 ts2'
+    (M1: atmatch as1 ts1)
+    (M2: atmatch as2 ts2)
+    (HS: asmstep as1 as2)
+    (NS: starN tsmstep      n ts1 ts2)
+    (FS: starN tsmstep_fail n ts1 ts2'),
+    ts2' = ts1 \/ ts2' = ts2.
+Proof.
+
+  intros.
+  (* case analysis by as1's program *)
+  destruct as1 as [ap ad] eqn: AS1.
+  destruct ap.
+  - 
+
+  (* figure out ts1, the matching state for as1 *)
+  inversion M1.
+  simpl in PP; apply eq_sym in PP. (* compile *)
+  
+  (* step the high level program to get as2 *)
+  inversion HS.
+  (* figure out ts2 *)
+  rewrite <- H4 in M2.
+  inversion M2. subst.
+  
+  (* induction on lower-level steps *)
+  induction n. inversion FS; t.
+
+  apply IHn.
+  inversion FS; subst.
+  inversion H0; t.
+  inversion H; t.
+
+Admitted.
+
+
+(** If no failure, tsmstep and texec are equivalent *)
+Lemma texec_smstep :
+  forall p d ad s',
+  texec p (TSt p d ad) = s' -> star tsmstep (TSt p d ad) s'.
+Proof.
+Admitted.
+
 
 Lemma smstep_texec :
   forall p d ad d' ad',
