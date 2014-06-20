@@ -10,6 +10,24 @@ Definition value := nat.
 Definition addr := nat.
 Definition block := nat.
 
+
+(** File-specific automation tactic *)
+Ltac t' := simpl in *;
+  repeat (match goal with
+            | [ H : ?x = _ |- _ ] => subst x
+            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
+            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
+          end; simpl).
+Ltac t := simpl in *; intros;
+  t'; try autorewrite with core in *; intuition (eauto; try congruence); t'.
+
+
+Ltac tt := simpl in *; subst; try autorewrite with core in *;
+            intuition (eauto; try congruence).
+
+Ltac cc := tt; try constructor; tt.
+
+
 (* Storage *)
 
 Definition storage := block -> value.
@@ -17,6 +35,31 @@ Definition st_init : storage := fun _ => 0.
 Definition st_read (s:storage) (b:block) : value := s b.
 Definition st_write (s:storage) (b:block) (v:value) : storage :=
   fun b' => if eq_nat_dec b' b then v else s b'.
+
+(** A quick useful list lemma *)
+Theorem app_comm_cons : forall A (ls1 : list A) x ls2,
+  ls1 ++ x :: ls2 = (ls1 ++ x :: nil) ++ ls2.
+Proof.
+  induction ls1; t; rewrite IHls1; t.
+Qed.
+
+(** There's no point in two consecutive writes to the same address. *)
+Lemma st_write_eq : forall d b v v',
+  st_write (st_write d b v) b v' = st_write d b v'.
+Proof.
+  unfold st_write; intros; extensionality b'; t.
+Qed.
+
+Hint Rewrite st_write_eq.
+
+(** Writes to unequal addresses commute. *)
+Lemma st_write_neq : forall d b b' v v',
+  b <> b' ->
+  st_write (st_write d b v) b' v' = st_write (st_write d b' v') b v.
+Proof.
+  unfold st_write; intros; extensionality b''; t.
+Qed.
+
 
 
 (** small step helpers *)
@@ -118,18 +161,6 @@ Qed.
 End CLOSURES.
 
 
-
-(** File-specific automation tactic *)
-Ltac t' := simpl in *;
-  repeat (match goal with
-            | [ H : ?x = _ |- _ ] => subst x
-            | [ |- context[match ?E with pair _ _ => _ end] ] => destruct E
-            | [ |- context[if eq_nat_dec ?X ?Y then _ else _] ] => destruct (eq_nat_dec X Y)
-          end; simpl).
-Ltac t := simpl in *; intros;
-  t'; try autorewrite with core in *; intuition (eauto; try congruence); t'.
-
-
 (* app language *)
 
 Inductive aproc :=
@@ -167,6 +198,7 @@ Inductive tprog :=
   | TRead  (b:block) (rx:value -> tprog)
   | TWrite (b:block) ( v:value) (rx:tprog)
   | TCommit (rx:tprog)
+  | TAbort  (rx:tprog)
   | THalt
   .
 
@@ -194,30 +226,35 @@ Close Scope aprog_scope.
 
 Record tstate := TSt {
   TSProg: tprog;
-  TSDisk: storage;            (* main disk *)
-  TSAltDisk: storage   (* alternative disk for transactions *)
+  TSDisk: storage;       (* main disk *)
+  TSAltDisk: storage;    (* alternative disk for transactions *)
+  TSDirty: bool
 }.
+
 
 (* high level interpreter *)
 Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
-  let (_, d, ad) := s in
+  let (_, d, ad, dt) := s in
   match p with
   | THalt         => s
-  | TRead b rx    => texec (rx (st_read ad b)) (TSt (rx (st_read ad b)) d ad)
-  | TWrite b v rx => texec rx (TSt rx d (st_write ad b v))
-  | TCommit rx    => texec rx (TSt rx ad ad)
+  | TRead b rx    => texec (rx (st_read ad b)) (TSt (rx (st_read ad b)) d ad dt)
+  | TWrite b v rx => texec rx (TSt rx d (st_write ad b v) true)
+  | TCommit rx    => texec rx (TSt rx ad ad false)
+  | TAbort rx     => texec rx (TSt rx d d false)
   end.
 
 
 Inductive tsmstep : tstate -> tstate -> Prop :=
-  | TsmHalt: forall d ad,
-    tsmstep (TSt THalt d ad) (TSt THalt d ad)
-  | TsmRead: forall d ad b rx,
-    tsmstep (TSt (TRead b rx) d ad)    (TSt (rx (st_read ad b)) d ad)
-  | TsmWrite: forall d ad b v rx,
-    tsmstep (TSt (TWrite b v rx) d ad) (TSt rx d (st_write ad b v))
-  | TsmCommit:  forall d ad rx,
-    tsmstep (TSt (TCommit rx) d ad)    (TSt rx ad ad)
+  | TsmHalt: forall d ad dt,
+    tsmstep (TSt THalt d ad dt) (TSt THalt d ad dt)
+  | TsmRead: forall d ad b dt rx,
+    tsmstep (TSt (TRead b rx) d ad dt)    (TSt (rx (st_read ad b)) d ad dt)
+  | TsmWrite: forall d ad b v dt rx,
+    tsmstep (TSt (TWrite b v rx) d ad dt) (TSt rx d (st_write ad b v) true)
+  | TsmCommit:  forall d ad dt rx,
+    tsmstep (TSt (TCommit rx) d ad dt)    (TSt rx ad ad false)
+  | TsmAbort:  forall d ad dt rx,
+    tsmstep (TSt (TAbort rx) d ad dt)     (TSt rx d d false)
   .
 
 
@@ -230,9 +267,10 @@ Inductive atmatch : astate -> tstate -> Prop :=
   | ATMatchState :
     forall d ap tp ad dd
     (DD: d = dd)
+    (AD: d = ad)
     (PP: compile_at ap = tp),
-    atmatch (ASt ap d) (TSt tp dd ad).
-  
+    atmatch (ASt ap d) (TSt tp dd ad false)
+  .
 
 
 Inductive asmstep : astate -> astate -> Prop :=
@@ -243,7 +281,12 @@ Inductive asmstep : astate -> astate -> Prop :=
             (ASt rx (st_write d a v))
   | AsmTransfer: forall d m n v rx,
     asmstep (ASt (ATransfer m n v rx) d )
-            (ASt rx (st_write (st_write d m ((st_read d m) + v)) n ((st_read d n) -v))).
+            (ASt rx (st_write (st_write d m ((st_read d m) - v)) n 
+                    (st_read (st_write d m (st_read d m - v)) n + v)))
+
+    (* must write 3 times, otherwise when m=n the value on disk will
+       depend on arguments' evaluation order *)
+  .
 
 
 Theorem at_forward_sim:
@@ -251,10 +294,19 @@ Theorem at_forward_sim:
   forall P1, atmatch T1 P1 ->
   exists P2, star tsmstep P1 P2 /\ atmatch T2 P2.
 Proof.
-  (* obvious ... *)
-Admitted.
+  induction 1; intros; inversion H; tt.
 
-Definition do_arecover : tprog := THalt.  (* no need to throw away the ad *)
+  econstructor; split; cc.
+
+  econstructor; split; tt.
+  eapply star_two; cc. cc.
+  
+  econstructor; split; tt.
+  do 5 (eapply star_step; [ cc | idtac ]).
+  cc. cc.
+Qed.
+
+Definition do_arecover : tprog := TAbort THalt.  (* throw away the ad *)
 
 Inductive tsmstep_fail : tstate -> tstate -> Prop :=
   | TsmNormal: forall s s',
@@ -300,7 +352,6 @@ Proof.
   (* case analysis by as1's program *)
   destruct as1 as [ap ad] eqn: AS1.
   destruct ap.
-  -
 
   (* Ahalt: *)
   (* figure out ts1, the matching state for as1 *)
@@ -311,8 +362,15 @@ Proof.
   inversion HS.
   (* figure out ts2 *)
   rewrite <- H4 in M2.
-  inversion M2. subst.
-  
+  inversion M2. apply eq_sym in PP0; t. left.
+
+  (* get ts2' *)
+  induction n. inversion FS; t.
+  apply IHn; [inversion NS | inversion FS]; t;
+  rewrite <- H2 in H0; inversion H0; t.
+  inversion H; t.
+
+  (*
   (* induction on lower-level steps *)
   induction n. inversion FS; t.
 
@@ -320,8 +378,8 @@ Proof.
   inversion FS; subst.
   inversion H0; t.
   inversion H; t.
+  t.
   admit.
-
   -
 
   (* ASetAcct: *)
@@ -334,10 +392,14 @@ Proof.
 
   induction n. inversion FS; t.
 
-  apply IHn.
+  apply IHn. 
+
   inversion FS; subst.
   inversion H0; t.
   inversion H; t.
+
+  inversion H1. t. rewrite <- H5.
+
   admit.
   admit.
 
@@ -345,22 +407,15 @@ Proof.
 
    (* ATransfer *)
   intros.
-
+  *)
 Admitted.
 
 
 (** If no failure, tsmstep and texec are equivalent *)
-Lemma texec_smstep :
-  forall p d ad s',
-  texec p (TSt p d ad) = s' -> star tsmstep (TSt p d ad) s'.
-Proof.
-Admitted.
-
-
 Lemma smstep_texec :
-  forall p d ad d' ad',
-  star tsmstep (TSt p d ad) (TSt THalt d' ad') ->
-  texec p (TSt p d ad) = (TSt THalt d' ad').
+  forall p d ad dt d' ad' dt',
+  star tsmstep (TSt p d ad dt) (TSt THalt d' ad' dt') ->
+  texec p (TSt p d ad dt) = (TSt THalt d' ad' dt').
 Proof.
   induction p;  intros;
   match goal with
@@ -438,12 +493,16 @@ Definition do_tcommit (cc:tprog -> pprog) rx : pprog :=
   PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; cc rx
 .
 
-Definition do_trecover rx : pprog :=
+Definition do_tabort (cc:tprog -> pprog) rx : pprog :=
+  PSetTx false ;; PClrLog ;; cc rx
+.
+
+Definition do_trecover : pprog :=
   tx <- PGetTx;
   if tx then
-    PClrLog ;; PSetTx false ;; rx
+    PClrLog ;; PSetTx false ;; PHalt
   else
-    l <- PGetLog ; pflush l ;; PClrLog ;; rx
+    l <- PGetLog ; pflush l ;; PClrLog ;; PHalt
 .
 
 Close Scope pprog_scope.
@@ -454,6 +513,7 @@ Fixpoint compile_tp (p:tprog) : pprog :=
   | TRead b rx    => do_tread  compile_tp b rx
   | TWrite b v rx => do_twrite compile_tp b v rx
   | TCommit rx    => do_tcommit   compile_tp rx
+  | TAbort rx     => do_tabort   compile_tp rx
   end.
 
 Record pstate := PSt {
@@ -577,7 +637,7 @@ Inductive psmstep_fail : pstate -> pstate -> Prop :=
   | PsmNormal: forall s s',
     psmstep s s' -> psmstep_fail s s'
   | PsmCrash: forall s,
-    psmstep_fail s (pexec (do_trecover PHalt) s)
+    psmstep_fail s (pexec do_trecover s)
   .
 
 (* state matching *)
@@ -590,49 +650,14 @@ Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
 
 Inductive tpmatch : tstate -> pstate -> Prop :=
   | TPMatchState :
-    forall td tp pd lg (tx:bool) pp ad
+    forall td tp pd lg (tx:bool) pp ad dt
     (DD: td = pd)
     (AD: ad = if tx then (log_flush lg td) else td)
-    (* TX: tx = match ad with
-         | Some _ => true
-         | None => false
-         end *)
+    (TX: tx = dt)
     (PP: compile_tp tp = pp) ,
-    tpmatch (TSt tp td ad) (PSt pp pd lg tx)
+    tpmatch (TSt tp td ad dt) (PSt pp pd lg tx)
   .
 
-Inductive tpmatch_fail : tstate -> pstate -> Prop :=
-  | TPMatchNormal :
-    forall t p, tpmatch t p -> tpmatch_fail t p
-  | TPMatchFail :
-    forall td tp pd lg (tx:bool) ad,
-    tpmatch_fail (TSt tp td ad) (PSt PHalt pd lg tx)
-  .
-
-
-(** A quick useful list lemma *)
-Theorem app_comm_cons : forall A (ls1 : list A) x ls2,
-  ls1 ++ x :: ls2 = (ls1 ++ x :: nil) ++ ls2.
-Proof.
-  induction ls1; t; rewrite IHls1; t.
-Qed.
-
-(** There's no point in two consecutive writes to the same address. *)
-Lemma st_write_eq : forall d b v v',
-  st_write (st_write d b v) b v' = st_write d b v'.
-Proof.
-  unfold st_write; intros; extensionality b'; t.
-Qed.
-
-Hint Rewrite st_write_eq.
-
-(** Writes to unequal addresses commute. *)
-Lemma st_write_neq : forall d b b' v v',
-  b <> b' ->
-  st_write (st_write d b v) b' v' = st_write (st_write d b' v') b v.
-Proof.
-  unfold st_write; intros; extensionality b''; t.
-Qed.
 
 (** When we're writing from the log, initial memory values don't matter in
   * positions that will be overwritten later. *)
@@ -718,22 +743,20 @@ Qed.
    an ever-increasing program counter.
 *)
 
-Ltac tt := simpl in *; subst; try autorewrite with core in *;
-            intuition (eauto; try congruence).
-Ltac cc := tt; try constructor; tt.
-
 Theorem tp_forward_sim:
   forall T1 T2, tsmstep T1 T2 ->
   forall P1, tpmatch T1 P1 ->
   exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
 Proof.
+  induction 1; intros; inversion H; eexists; destruct tx.
+
+  (* Halt *)
+  cc. cc.
+
+  (* Read *)
+  cc. admit. admit.
 
 (*
-  induction 1; intros; inversion H;
-  econstructor; split; try (tt; inversion AD; tt).
-
-  destruct tx; cc.
-
   eapply star_two; cc.
   unfold do_tread; cc.
 
@@ -742,9 +765,11 @@ Proof.
   rewrite readLog_correct.
   destruct (pfind lg b) eqn:F; tt.
 
-  eapply star_two; cc. cc.
+  split.
+  eapply star_two. cc. cc. tt.
+  rewrite <- writeLog_final. cc.
 
-  eapply star_two; cc. cc.
+  split. admit. eapply star_two; cc. cc.
   rewrite <- writeLog_final. auto.
 
   eapply star_three; cc. cc.
@@ -756,9 +781,9 @@ Proof.
   do 3 (eapply star_step; [ cc | idtac ]); tt.
   eapply star_right.
   eapply writeLog_flush. cc. cc. cc.
-Qed.
 *)
 Admitted.
+
 
 
 Lemma flush_nofail : forall l m l' tx,
@@ -797,7 +822,7 @@ Qed.
 
 Lemma trecover_final:
   forall p m l tx s,
-  s = pexec (do_trecover PHalt) (PSt p m l tx) ->
+  s = pexec (do_trecover) (PSt p m l tx) ->
   s = (PSt PHalt m nil false) \/
   s = (PSt PHalt (log_flush l m) nil false).
 Proof.
@@ -806,8 +831,8 @@ Qed.
 
 Lemma trecover_id:
   forall s1 s2 s3,
-  s2 = pexec (do_trecover PHalt) s1 ->
-  s3 = pexec (do_trecover PHalt) s2 -> s2 = s3.
+  s2 = pexec (do_trecover) s1 ->
+  s3 = pexec (do_trecover) s2 -> s2 = s3.
 Proof.
   intros. destruct s1.
   apply trecover_final in H.
@@ -818,7 +843,7 @@ Lemma pfail_dec:
   forall s s',
   (PSProg s) = PHalt ->
   star psmstep_fail s s' ->
-  s' = s \/ s' = pexec (do_trecover PHalt) s.
+  s' = s \/ s' = pexec (do_trecover) s.
 Proof.
   intros. induction H0.
   left; trivial.
