@@ -37,10 +37,11 @@ Definition st_write (s:storage) (b:block) (v:value) : storage :=
   fun b' => if eq_nat_dec b' b then v else s b'.
 
 (** A quick useful list lemma *)
-Theorem app_comm_cons : forall A (ls1 : list A) x ls2,
+Lemma app_comm_cons : forall A (ls1 : list A) x ls2,
   ls1 ++ x :: ls2 = (ls1 ++ x :: nil) ++ ls2.
 Proof.
-  induction ls1; t; rewrite IHls1; t.
+  intros.
+  apply (app_assoc ls1 [x] ls2).
 Qed.
 
 (** There's no point in two consecutive writes to the same address. *)
