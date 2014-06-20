@@ -300,8 +300,9 @@ Proof.
   (* case analysis by as1's program *)
   destruct as1 as [ap ad] eqn: AS1.
   destruct ap.
-  - 
+  -
 
+  (* Ahalt: *)
   (* figure out ts1, the matching state for as1 *)
   inversion M1.
   simpl in PP; apply eq_sym in PP. (* compile *)
@@ -319,6 +320,31 @@ Proof.
   inversion FS; subst.
   inversion H0; t.
   inversion H; t.
+  admit.
+
+  -
+
+  (* ASetAcct: *)
+  intros.
+  inversion M1.
+  simpl in PP.
+  inversion HS.
+  rewrite <- H7 in M2.
+  inversion M2. subst.
+
+  induction n. inversion FS; t.
+
+  apply IHn.
+  inversion FS; subst.
+  inversion H0; t.
+  inversion H; t.
+  admit.
+  admit.
+
+  - 
+
+   (* ATransfer *)
+  intros.
 
 Admitted.
 
