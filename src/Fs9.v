@@ -117,7 +117,7 @@ Hypothesis step_determ : (forall s t t', step s t -> step s t' -> t = t').
 
 Lemma star_inv:
   forall s1 s2 s3,
-  star s1 s3 -> step s1 s2 -> s1 <> s3 -> star s2 s3.
+  star s1 s3 -> s1 <> s3 -> step s1 s2 -> star s2 s3.
 Proof.
   intros; inversion H. contradiction.
   subst; assert (s2=s4). eapply step_determ; eauto. subst; auto.
@@ -259,6 +259,17 @@ Inductive tsmstep : tstate -> tstate -> Prop :=
   .
 
 
+Lemma tsmstep_determ:
+  forall s0 s s',
+  tsmstep s0 s -> tsmstep s0 s' -> s = s'.
+Proof.
+  intro s0; case_eq s0; intros.
+  repeat match goal with
+  | [ H: tsmstep _ _ |- _ ] => inversion H; clear H
+  end; t.
+Qed.
+
+
 Record astate := ASt {
   ASProg: aproc;
   ASDisk: storage
@@ -289,6 +300,15 @@ Inductive asmstep : astate -> astate -> Prop :=
        depend on arguments' evaluation order *)
   .
 
+Inductive atmatch_fail : astate -> tstate -> Prop :=
+  | ATMatchFail :
+    forall d ap tp ad dd
+    (DD: d = dd)
+    (AD: d = ad)
+    (PP: tp = THalt),
+    atmatch_fail (ASt ap d) (TSt tp dd ad false)
+  .
+
 
 Theorem at_forward_sim:
   forall T1 T2, asmstep T1 T2 ->
@@ -307,24 +327,58 @@ Proof.
   cc. cc.
 Qed.
 
+Lemma thalt_inv_eq:
+  forall s s', (TSProg s) = THalt ->
+  star tsmstep s s' ->  s = s'.
+Proof.
+  intros; destruct s as [ p d ad dt ]; t.
+  inversion H0; t. inversion H. rewrite H2 in H.
+  eapply star_stuttering; eauto; [ exact tsmstep_determ | constructor ].
+Qed.
+
 Definition do_arecover : tprog := TAbort THalt.  (* throw away the ad *)
 
-Inductive tsmstep_fail : tstate -> tstate -> Prop :=
-  | TsmNormal: forall s s',
-    tsmstep s s' -> tsmstep_fail s s'
-  | TsmCrash: forall s,
-    tsmstep_fail s (texec (do_arecover) s).
-
-
-Lemma tsmstep_determ:
-  forall s0 s s',
-  tsmstep s0 s -> tsmstep s0 s' -> s = s'.
+Theorem at_atomicity:
+  forall as1 as2 ts1 tf1 tf2 s s'
+    (HS: asmstep as1 as2)
+    (HH: (ASProg as2) = AHalt)
+    (M1: atmatch as1 ts1)
+    (MF1: atmatch_fail as1 tf1)
+    (MF2: atmatch_fail as2 tf2)
+    (NS: star tsmstep ts1 s)
+    (RC: s' = texec do_arecover s),
+    s' = tf1 \/ s' = tf2.
 Proof.
-  intro s0; case_eq s0; intros.
-  repeat match goal with
-  | [ H: tsmstep _ _ |- _ ] => inversion H; clear H
-  end; t.
+
+  (* figure out ts1, the matching state for as1 *)
+  intros; inversion M1; repeat subst.
+
+  (* step the high level program to get as2 *)
+  (* ... and figure out tf1 tf2 *)
+  inversion HS; repeat subst;
+  inversion MF1; inversion MF2; repeat subst;
+  clear M1 HS MF1 MF2.
+
+  Ltac iv := match goal with
+  | [ H: _ = ?a , HS: star tsmstep ?a _ |- _ ] => rewrite <- H in HS; clear H
+  | [ H: tsmstep _ _ |- _ ] => inversion H; t; []; clear H
+  | [ H: star tsmstep _ _ |- _ ] => inversion H; t; []; clear H
+  end.
+
+  (**** step over *)
+  (*==== halt *)
+  iv. iv.
+  right. assert (s2=s); eapply thalt_inv_eq; eauto; crush.
+
+  (*==== set account *)
+  iv. iv. iv. iv. iv.
+  right. assert (s0=s); eapply thalt_inv_eq; eauto; crush.
+
+  (*==== transfer *)
+  do 17 iv.
+  right. assert (s6=s); eapply thalt_inv_eq; eauto; crush.
 Qed.
+
 
 
 (****
@@ -339,7 +393,13 @@ Qed.
 (* XXX maybe put a constraint on as1 that it is reacheable by some 
        aprog from initial state *)
 
-Theorem at_atomicity:
+Inductive tsmstep_fail : tstate -> tstate -> Prop :=
+  | TsmNormal: forall s s',
+    tsmstep s s' -> tsmstep_fail s s'
+  | TsmCrash: forall s,
+    tsmstep_fail s (texec (do_arecover) s).
+
+Theorem at_atomicity2:
   forall n as1 as2 ts1 ts2 ts2'
     (M1: atmatch as1 ts1)
     (M2: atmatch as2 ts2)
@@ -348,67 +408,6 @@ Theorem at_atomicity:
     (FS: starN tsmstep_fail n ts1 ts2'),
     ts2' = ts1 \/ ts2' = ts2.
 Proof.
-
-  intros.
-  (* case analysis by as1's program *)
-  destruct as1 as [ap ad] eqn: AS1.
-  destruct ap.
-
-  (* Ahalt: *)
-  (* figure out ts1, the matching state for as1 *)
-  inversion M1.
-  simpl in PP; apply eq_sym in PP. (* compile *)
-  
-  (* step the high level program to get as2 *)
-  inversion HS.
-  (* figure out ts2 *)
-  rewrite <- H4 in M2.
-  inversion M2. apply eq_sym in PP0; t. left.
-
-  (* get ts2' *)
-  induction n. inversion FS; t.
-  apply IHn; [inversion NS | inversion FS]; t;
-  rewrite <- H2 in H0; inversion H0; t.
-  inversion H; t.
-
-  (*
-  (* induction on lower-level steps *)
-  induction n. inversion FS; t.
-
-  apply IHn.
-  inversion FS; subst.
-  inversion H0; t.
-  inversion H; t.
-  t.
-  admit.
-  -
-
-  (* ASetAcct: *)
-  intros.
-  inversion M1.
-  simpl in PP.
-  inversion HS.
-  rewrite <- H7 in M2.
-  inversion M2. subst.
-
-  induction n. inversion FS; t.
-
-  apply IHn. 
-
-  inversion FS; subst.
-  inversion H0; t.
-  inversion H; t.
-
-  inversion H1. t. rewrite <- H5.
-
-  admit.
-  admit.
-
-  - 
-
-   (* ATransfer *)
-  intros.
-  *)
 Admitted.
 
 
@@ -749,15 +748,30 @@ Theorem tp_forward_sim:
   forall P1, tpmatch T1 P1 ->
   exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
 Proof.
-  induction 1; intros; inversion H; eexists; destruct tx.
+  induction 1; intros; inversion H; eexists.
 
   (* Halt *)
-  cc. cc.
+  destruct tx; cc.
 
   (* Read *)
-  cc. admit. admit.
+  cc. admit.
+  
+  (* Write *)
+  cc; admit.
+
+  (* Commit *)
+  cc; admit.
+
+  (* Abort *)
+  
 
 (*
+  destruct tx; tt.
+  unfold do_tread.
+  eapply star_right. eapply star_right. eapply star_right. eapply star_right.
+  constructor. constructor. constructor. constructor. cc.
+  destruct (pfind lg b) eqn:F; tt.
+
   eapply star_two; cc.
   unfold do_tread; cc.
 
