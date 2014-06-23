@@ -8,7 +8,13 @@ OCAMLINC   = \
     -I compcert/lib -I compcert/common
 
 FILES = CpdtTactics.v \
-	Fs4.v
+	FsTactics.v \
+	Storage.v \
+	Closures.v \
+	Bank.v \
+	Trans.v \
+	Monad.v \
+	Fs4.v 
 
 PROOFFILES = 
 
