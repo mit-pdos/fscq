@@ -1,3 +1,8 @@
 CpdtTactics.vo CpdtTactics.glob CpdtTactics.v.beautified: CpdtTactics.v
-Monad.vo Monad.glob Monad.v.beautified:  Monad.v CpdtTactics.vo
-Fs4.vo Fs4.glob Fs4.v.beautified:  Fs4.v Monad.vo CpdtTactics.vo
+FsTactics.vo FsTactics.glob FsTactics.v.beautified: FsTactics.v
+Storage.vo Storage.glob Storage.v.beautified: Storage.v FsTactics.vo
+Closures.vo Closures.glob Closures.v.beautified: Closures.v
+Bank.vo Bank.glob Bank.v.beautified: Bank.v Storage.vo CpdtTactics.vo
+Trans.vo Trans.glob Trans.v.beautified: Trans.v CpdtTactics.vo FsTactics.vo Storage.vo Bank.vo Closures.v
+Monad.vo Monad.glob Monad.v.beautified: Monad.v
+Fs4.vo Fs4.glob Fs4.v.beautified: Fs4.v CpdtTactics.vo Monad.vo

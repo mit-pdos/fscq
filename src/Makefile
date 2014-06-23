@@ -1,3 +1,4 @@
+COQINC = -I .
 COQEXE = coqtop $(COQINC) -batch -load-vernac-source
 COQC = coqc $(COQINC)
 COQDEP = coqdep $(COQINC)
