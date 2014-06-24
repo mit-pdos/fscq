@@ -54,7 +54,8 @@ Hypothesis step_determ : (forall s t t', step s t -> step s t' -> t = t').
 
 Lemma star_inv:
   forall s1 s2 s3,
-  star s1 s3 -> s1 <> s3 -> step s1 s2 -> star s2 s3.
+  star s1 s3 -> step s1 s2 -> s1 <> s3 -> star s2 s3.  (* old version *)
+  (* star s1 s3 -> s1 <> s3 -> step s1 s2 -> star s2 s3.  new version *)
 Proof.
   intros; inversion H. contradiction.
   subst; assert (s2=s4). eapply step_determ; eauto. subst; auto.

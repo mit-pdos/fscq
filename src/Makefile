@@ -14,6 +14,7 @@ FILES = CpdtTactics.v \
 	Closures.v \
 	Bank.v \
 	Trans.v \
+	MemLog.v \
 	Monad.v \
 	Fs4.v 
 
