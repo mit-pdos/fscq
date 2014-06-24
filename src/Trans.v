@@ -91,10 +91,6 @@ Qed.
 
 End TransactionLanguage.
 
-Record astate := ASt {
-  ASProg: aproc;
-  ASDisk: storage
-}.
 
 Inductive atmatch : astate -> tstate -> Prop :=
   | ATMatchState :
@@ -105,21 +101,6 @@ Inductive atmatch : astate -> tstate -> Prop :=
     atmatch (ASt ap d) (TSt tp dd ad false)
   .
 
-
-Inductive asmstep : astate -> astate -> Prop :=
-  | AsmHalt: forall d,
-    asmstep (ASt AHalt d) (ASt AHalt d)
-  | AsmSetAcct: forall d a v rx,
-    asmstep (ASt (ASetAcct a v rx) d)
-            (ASt rx (st_write d a v))
-  | AsmTransfer: forall d m n v rx,
-    asmstep (ASt (ATransfer m n v rx) d )
-            (ASt rx (st_write (st_write d m ((st_read d m) - v)) n 
-                    (st_read (st_write d m (st_read d m - v)) n + v)))
-
-    (* must write 3 times, otherwise when m=n the value on disk will
-       depend on arguments' evaluation order *)
-  .
 
 Inductive atmatch_fail : astate -> tstate -> Prop :=
   | ATMatchFail :
