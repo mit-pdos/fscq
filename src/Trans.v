@@ -39,6 +39,7 @@ Fixpoint compile_at (p:aproc) : tprog :=
   match p with
     | AHalt => THalt
     | ASetAcct a v rx => TWrite a v ;; TCommit ;; compile_at rx
+    | AGetAcct a rx => v <- TRead a; compile_at (rx v)
     | ATransfer src dst v rx => r <- TRead src ; TWrite src (r-v) ;;
                    r1 <- TRead dst ; TWrite dst (r1+v) ;; TCommit ;; compile_at rx
   end.
@@ -123,6 +124,9 @@ Proof.
 
   econstructor; split; tt.
   eapply star_two; cc. cc.
+
+  econstructor; split; tt.
+  eapply star_one; cc. cc.
   
   econstructor; split; tt.
   do 5 (eapply star_step; [ cc | idtac ]).
@@ -186,7 +190,11 @@ Proof.
 
   (*==== set account *)
   iv. iv. iv. iv. iv.
-  right. assert (s0=s); eapply thalt_inv_eq; eauto; crush.
+  right; assert (s0=s); eapply thalt_inv_eq; eauto; crush.
+
+  (*==== get account *)
+  iv. iv. rewrite HH in *; clear HH; simpl in *.
+  right. assert (s2=s); eapply thalt_inv_eq; eauto; crush.
 
   (*==== transfer *)
   do 17 iv.

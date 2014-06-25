@@ -11,6 +11,7 @@ Section App.
 Inductive aproc :=
   | AHalt
   | ASetAcct (a:nat) (v:nat) (rx: aproc)
+  | AGetAcct (a:nat) (rx: nat->aproc)
   | ATransfer (src:nat) (dst:nat) (v:nat) (rx: aproc)
   .
 
@@ -18,6 +19,7 @@ Fixpoint aexec (p:aproc) (s:storage) : storage :=
   match p with
     | AHalt => s
     | ASetAcct a v rx => aexec rx (st_write s a v)
+    | AGetAcct a rx => aexec (rx (st_read s a)) s
     | ATransfer n m v rx => aexec rx (st_write (st_write s m ((st_read s m) + v)) n ((st_read s n) -v))
   end.
 
@@ -50,6 +52,9 @@ Inductive asmstep : astate -> astate -> Prop :=
   | AsmSetAcct: forall d a v rx,
     asmstep (ASt (ASetAcct a v rx) d)
             (ASt rx (st_write d a v))
+  | AsmGetAcct: forall d a rx,
+    asmstep (ASt (AGetAcct a rx) d)
+            (ASt (rx (st_read d a)) d)
   | AsmTransfer: forall d m n v rx,
     asmstep (ASt (ATransfer m n v rx) d )
             (ASt rx (st_write (st_write d m ((st_read d m) - v)) n 
