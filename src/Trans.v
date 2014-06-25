@@ -13,7 +13,7 @@ Load Closures.
 
 Section TransactionLanguage.
 
-(** high-level language for a transactional disk *)
+(** language for a transactional disk *)
 
 Inductive tprog :=
   | TRead  (b:block) (rx:value -> tprog)
@@ -139,6 +139,18 @@ Proof.
 Qed.
 
 Definition do_arecover : tprog := TAbort THalt.  (* throw away the ad *)
+
+(* a few important assumptions are built into this theorem:
+
+- at this level, failures happen only between t language instructions
+
+- failures are fail-stop
+
+- type storage maintains its content across failures
+
+XXX it would be nice to formulate this failure model more explicitly.
+
+*)
 
 Theorem at_atomicity:
   forall as1 as2 ts1 tf1 tf2 s s'

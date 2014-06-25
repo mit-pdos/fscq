@@ -36,6 +36,9 @@ Proof.
   crush.
 Qed.
 
+
+(* For small-step simulation in refinement proof of app language to trans language *)
+
 Record astate := ASt {
   ASProg: aproc;
   ASDisk: storage
