@@ -44,26 +44,26 @@ Notation "a ;; b" := (a (b))
 
 Open Scope dprog_scope.
 
-Definition do_pread (cc:pprog -> dprog) b rx : dprog :=
-  v <- DRead NDataDisk b; cc (rx v).
+Definition do_pread b rx : dprog :=
+  v <- DRead NDataDisk b; rx v.
 
-Definition do_pwrite (cc:pprog -> dprog) b v rx : dprog :=
-  DWrite NDataDisk b v ;; cc rx.
+Definition do_pwrite b v rx : dprog :=
+  DWrite NDataDisk b v ;; rx.
 
 (* XXX paddlog is atomic. *)
-Definition do_paddlog (cc:pprog -> dprog) b v rx : dprog :=
+Definition do_paddlog b v rx : dprog :=
   idx <- DRead NLogDisk AEol;
   DWrite NLogDisk (AVal idx) v ;;
   DWrite NLogDisk (ABlk idx) b ;;
   DAddLog b v ;;
   DWrite NLogDisk AEol (S idx) ;;
-  cc rx.
+  rx.
 
-Definition do_pclrlog (cc:pprog -> dprog) rx : dprog :=
-  DWrite NLogDisk AEol 0 ;; DClrLog ;; cc rx.
+Definition do_pclrlog rx : dprog :=
+  DWrite NLogDisk AEol 0 ;; DClrLog ;; rx.
 
-Definition do_pgetlog (cc:pprog -> dprog) (rx: list(block*value) -> pprog) : dprog :=
-  l <- DGetLog ; cc (rx l).
+Definition do_pgetlog rx : dprog :=
+  l <- DGetLog ; rx l.
 
 Definition bool2nat (v : bool) : nat :=
    match v with
@@ -77,11 +77,11 @@ Definition nat2bool (v : nat) : bool :=
    | _ => false
    end.
 
-Definition do_psettx (cc:pprog -> dprog) v rx : dprog :=
-  DWrite NLogDisk ATx (bool2nat v) ;; cc rx.
+Definition do_psettx v rx : dprog :=
+  DWrite NLogDisk ATx (bool2nat v) ;; rx.
 
-Definition do_pgettx (cc:pprog -> dprog) rx : dprog :=
-  v <- DRead NLogDisk ATx; cc (rx (nat2bool v)).
+Definition do_pgettx rx : dprog :=
+  v <- DRead NLogDisk ATx; rx (nat2bool v).
 
 Fixpoint dreadlog idx eol: dprog :=
   match idx with
@@ -102,13 +102,13 @@ Close Scope dprog_scope.
 Fixpoint compile_pd (p:pprog) : dprog :=
   match p with
   | PHalt         => DHalt
-  | PRead b rx    => do_pread compile_pd b rx
-  | PWrite b v rx => do_pwrite compile_pd b v rx
-  | PAddLog b v rx  => do_paddlog compile_pd b v rx
-  | PClrLog rx      => do_pclrlog compile_pd rx
-  | PSetTx v rx     => do_psettx compile_pd v rx
-  | PGetTx rx       => do_pgettx compile_pd rx
-  | PGetLog rx      => do_pgetlog compile_pd rx
+  | PRead b rx    => do_pread b (fun v => compile_pd (rx v))
+  | PWrite b v rx => do_pwrite b v (compile_pd rx)
+  | PAddLog b v rx  => do_paddlog b v (compile_pd rx)
+  | PClrLog rx      => do_pclrlog (compile_pd rx)
+  | PSetTx v rx     => do_psettx v (compile_pd rx)
+  | PGetTx rx       => do_pgettx (fun v => compile_pd (rx v))
+  | PGetLog rx      => do_pgetlog (fun v => compile_pd (rx v))
   end.
 
 Record dstate := DSt {

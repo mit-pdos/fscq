@@ -52,34 +52,34 @@ Fixpoint pflush (p:list (block*value)) rx : pprog :=
   end.
 
 
-Definition do_tread (cc:tprog -> pprog) b rx : pprog :=
+Definition do_tread b rx : pprog :=
   tx <- PGetTx;
   if tx then
     l <- PGetLog;
     v <- PRead b;
     match (pfind l b) with
-    | Some v => cc (rx v)
-    | None   => cc (rx v)
+    | Some v => rx v
+    | None   => rx v
     end
   else
-    v <- PRead b; cc (rx v)
+    v <- PRead b; rx v
 .
 
-Definition do_twrite (cc:tprog -> pprog) b v rx : pprog :=
+Definition do_twrite b v rx : pprog :=
   tx <- PGetTx;
   if tx then
-    PAddLog b v ;; cc rx
+    PAddLog b v ;; rx
   else
     PClrLog ;; PSetTx true ;;
-    PAddLog b v ;; cc rx
+    PAddLog b v ;; rx
 .
 
-Definition do_tcommit (cc:tprog -> pprog) rx : pprog :=
-  PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; cc rx
+Definition do_tcommit rx : pprog :=
+  PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; rx
 .
 
-Definition do_tabort (cc:tprog -> pprog) rx : pprog :=
-  PSetTx false ;; PClrLog ;; cc rx
+Definition do_tabort rx : pprog :=
+  PSetTx false ;; PClrLog ;; rx
 .
 
 Definition do_trecover : pprog :=
@@ -95,10 +95,10 @@ Close Scope pprog_scope.
 Fixpoint compile_tp (p:tprog) : pprog :=
   match p with
   | THalt         => PHalt
-  | TRead b rx    => do_tread  compile_tp b rx
-  | TWrite b v rx => do_twrite compile_tp b v rx
-  | TCommit rx    => do_tcommit   compile_tp rx
-  | TAbort rx     => do_tabort   compile_tp rx
+  | TRead b rx    => do_tread  b (fun v => compile_tp (rx v))
+  | TWrite b v rx => do_twrite b v (compile_tp rx)
+  | TCommit rx    => do_tcommit (compile_tp rx)
+  | TAbort rx     => do_tabort (compile_tp rx)
   end.
 
 Record pstate := PSt {
