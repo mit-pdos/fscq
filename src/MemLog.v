@@ -504,3 +504,45 @@ Qed.
 
 
 (** Main correctness theorem *)
+
+Lemma phalt_inv_eq:
+  forall s s', (PSProg s) = PHalt ->
+  star psmstep s s' ->  s = s'.
+Proof.
+  intros; destruct s as [ p d ad dt ]; t.
+  inversion H0; t. inversion H. rewrite H2 in H.
+  eapply star_stuttering; eauto; [ exact psmstep_determ | constructor ].
+Qed.
+
+
+Inductive tpmatch_fail : tstate -> pstate -> Prop :=
+  | TPMatchFail :
+    forall td tp pd lg (tx:bool) pp ad dt
+    (DD: td = pd)
+    (AD: ad = if tx then (log_flush lg td) else td)
+    (TX: tx = dt)
+    (PP: pp = PHalt) ,
+    tpmatch_fail (TSt tp td ad dt) (PSt pp pd lg tx)
+  .
+
+Theorem tp_atomicity:
+  forall ts1 ts2 ps1 pf1 pf2 s s'
+    (HS: tsmstep ts1 ts2)
+    (HH: (TSProg ts2) = THalt)
+    (M1: tpmatch ts1 ps1)
+    (MF1: tpmatch_fail ts1 pf1)
+    (MF2: tpmatch_fail ts2 pf2)
+    (NS: star psmstep ps1 s)
+    (RC: s' = pexec do_trecover s),
+    s' = pf1 \/ s' = pf2.
+Proof.
+  (* figure out ts1, the matching state for as1 *)
+  intros; inversion M1; repeat subst.
+
+  (* step the high level program to get as2 *)
+  (* ... and figure out tf1 tf2 *)
+  inversion HS; repeat subst;
+  inversion MF1; inversion MF2; repeat subst;
+  clear M1 HS MF1 MF2.
+
+Admitted.
