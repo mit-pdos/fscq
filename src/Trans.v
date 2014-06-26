@@ -90,6 +90,13 @@ Proof.
   end; t.
 Qed.
 
+Lemma tsmstep_loopfree:
+  forall a b,
+  star tsmstep a b -> star tsmstep b a -> a = b.
+Proof.
+  admit.
+Qed.
+
 End TransactionLanguage.
 
 
@@ -157,13 +164,14 @@ XXX it would be nice to formulate this failure model more explicitly.
 *)
 
 Theorem at_atomicity:
-  forall as1 as2 ts1 tf1 tf2 s s'
+  forall as1 as2 ts1 ts2 tf1 tf2 s s'
     (HS: asmstep as1 as2)
-    (HH: (ASProg as2) = AHalt)
     (M1: atmatch as1 ts1)
+    (M2: atmatch as2 ts2)
     (MF1: atmatch_fail as1 tf1)
     (MF2: atmatch_fail as2 tf2)
     (NS: star tsmstep ts1 s)
+    (NS2: star tsmstep s ts2)
     (RC: s' = texec do_arecover s),
     s' = tf1 \/ s' = tf2.
 Proof.
@@ -183,21 +191,27 @@ Proof.
   | [ H: star tsmstep _ _ |- _ ] => inversion H; t; []; clear H
   end.
 
+  Ltac tsmstep_end := inversion M2; subst;
+    try match goal with
+    | [ H0: ?a = ?b,
+        H1: star tsmstep _ {| TSProg := _; TSDisk := ?a; TSAltDisk := ?b; TSInTrans := _ |}
+        |- _ ] => rewrite <- H0 in H1
+    end; apply tsmstep_loopfree; auto.
+
   (**** step over *)
   (*==== halt *)
   iv. iv.
-  right. assert (s2=s); eapply thalt_inv_eq; eauto; crush.
+  right. assert (s2=s); [ tsmstep_end | crush ].
 
   (*==== set account *)
   iv. iv. iv. iv. iv.
-  right; assert (s0=s); eapply thalt_inv_eq; eauto; crush.
+  right. assert (s0=s); [ tsmstep_end | crush ].
 
   (*==== get account *)
-  iv. iv. rewrite HH in *; clear HH; simpl in *.
-  right. assert (s2=s); eapply thalt_inv_eq; eauto; crush.
+  iv. iv.
+  right. assert (s2=s); [ tsmstep_end | crush ].
 
   (*==== transfer *)
-  do 17 iv.
-  right. assert (s6=s); eapply thalt_inv_eq; eauto; crush.
+  do 14 iv.
+  right. assert (s5=s); [ tsmstep_end | crush ].
 Qed.
-
