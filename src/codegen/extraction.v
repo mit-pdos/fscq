@@ -1,19 +1,21 @@
 Require Import ExtrOcamlBasic.
 Require Import ExtrOcamlString.
-Require Import Monad.
-Require Import Fs4.
+Require Import ExtrOcamlNatInt.
+Require Import DiskLog.
+Require Import MemLog.
+Require Import Trans.
+Require Import Bank.
+Require Import Storage.
 
 Extraction Blacklist List String Int.
 
-Extract Constant state => "string".
-Extract Constant IS => """""".
-
-Extract Constant st_init => "Fsstub._init_disk".
-Extract Constant st_read => "Fsstub._read_disk".
-Extract Constant st_write => "Fsstub._write_disk".
-
 Cd "codegen".
-Extraction Library Monad.
-Extraction Library Fs4.
+Extraction Library DiskLog.
+Extraction Library MemLog.
+Extraction Library Trans.
+Extraction Library Bank.
+Extraction Library Storage.
 Extraction Library Datatypes.
+Extraction Library Peano.
+Extraction Library Peano_dec.
 
