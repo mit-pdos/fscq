@@ -50,7 +50,7 @@ Record tstate := TSt {
   TSProg: tprog;
   TSDisk: storage;       (* main disk *)
   TSAltDisk: storage;    (* alternative disk for transactions *)
-  TSDirty: bool
+  TSInTrans: bool        (* in transaction? the first write starts the transaction *)
 }.
 
 
