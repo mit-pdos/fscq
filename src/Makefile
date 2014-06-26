@@ -16,8 +16,7 @@ FILES = CpdtTactics.v \
 	Trans.v \
 	MemLog.v \
 	DiskLog.v \
-	Monad.v \
-	Fs4.v 
+	Monad.v 
 
 PROOFFILES = 
 
