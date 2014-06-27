@@ -85,7 +85,7 @@ Definition do_tabort rx : pprog :=
 Definition do_trecover : pprog :=
   tx <- PGetTx;
   if tx then
-    PClrLog ;; PSetTx false ;; PHalt
+    PClrLog ;; PHalt
   else
     l <- PGetLog ; pflush l ;; PClrLog ;; PHalt
 .
@@ -105,42 +105,8 @@ Record pstate := PSt {
   PSProg: pprog;
   PSDisk: storage;
   PSLog: list (block * value);
-  PSTx: bool
+  PSTInTrans: bool
 }.
-
-(*
-Inductive pstep : pstate -> pprog -> pstate -> Prop :=
-  | PsHalt: forall s,
-    pstep s PHalt s
-  | PsRead: forall d l c b rx s,
-    pstep (PSt d l c) (rx (st_read d b)) s ->
-    pstep (PSt d l c) (PRead b rx) s
-  | PsWrite: forall d l c b v rx s,
-    pstep (PSt (st_write d b v) l c) rx s ->
-    pstep (PSt d l c) (PWrite b v rx) s
-  | PsAddLog: forall d l c b v rx s,
-    pstep (PSt d (l ++ [(b, v)]) c) rx s ->
-    pstep (PSt d l c) (PAddLog b v rx) s
-  | PsClrLog: forall d l c rx s,
-    pstep (PSt d nil c) rx s ->
-    pstep (PSt d l c) (PClrLog rx) s
-  | PsGetLog: forall d l c rx s,
-    pstep (PSt d l c) (rx l) s ->
-    pstep (PSt d l c) (PGetLog rx) s
-  | PsSetTx: forall d l c v rx s,
-    pstep (PSt d l v) rx s ->
-    pstep (PSt d l c) (PSetTx v rx) s
-  | PsGetTx: forall d l c rx s,
-    pstep (PSt d l c) (rx c) s ->
-    pstep (PSt d l c) (PGetTx rx) s
-  | PsCrash: forall s p,  (* assuming the recovery process does not fail *)
-    pstep s p (pexec (do_trecover PHalt) s)
-  .
-(*| PsCrash: forall s p s',  (* we can run recovery at anytime and continue *)
-    pstep s (do_trecover p) s' ->
-    pstep s p s'. *)
-*)
-
 
 Inductive psmstep : pstate -> pstate -> Prop :=
   | PsmHalt: forall d l c,
@@ -429,6 +395,7 @@ Proof.
   end.
 Qed.
 
+(*
 Lemma trecover_final:
   forall p m l tx s,
   s = pexec (do_trecover) (PSt p m l tx) ->
@@ -501,7 +468,7 @@ Lemma flush_writeLog_fail : forall l m m' tx,
 Proof.
   intros; eapply flush_writeLog_fail' with (l':=nil); t.
 Qed.
-
+*)
 
 (** Main correctness theorem *)
 
@@ -520,10 +487,12 @@ Inductive tpmatch_fail : tstate -> pstate -> Prop :=
     forall td tp pd lg (tx:bool) pp ad dt
     (DD: td = pd)
     (AD: ad = if tx then (log_flush lg td) else td)
+    (* XXX fix the following also in tpmatch: *)
+    (* LG: lg = contains all blocks that have been changed in ad but not in td *)
     (TX: tx = dt)
     (PP: pp = PHalt) ,
-    tpmatch_fail (TSt tp td ad dt) (PSt pp pd lg tx)
-  .
+    tpmatch_fail (TSt tp td ad dt) (PSt pp pd lg tx).
+  
 
 Theorem tp_atomicity:
   forall ts1 ts2 ps1 pf1 pf2 s s'
@@ -544,5 +513,10 @@ Proof.
   inversion HS; repeat subst;
   inversion MF1; inversion MF2; repeat subst;
   clear M1 HS MF1 MF2.
+
+  (* THalt *)
+  inversion NS; t.
+  clear NS.
+  destruct dt.   (* destruct on InTrans *)
 
 Admitted.
