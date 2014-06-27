@@ -14,7 +14,6 @@ FILES = CpdtTactics.v \
 	Closures.v \
 	Bank.v \
 	Trans.v \
-	MemLog.v \
 	DiskLog.v
 
 PROOFFILES = 
