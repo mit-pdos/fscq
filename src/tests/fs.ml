@@ -39,13 +39,11 @@ let rec run_dcode_real p =
 let acode = (Bank.ASetAcct (1, Bank.initial,
             (Bank.ASetAcct (2, Bank.initial,
             (Bank.ATransfer (1, 2, 10,
-             Bank.AHalt))))));;
+             Bank.ACommit))))));;
 
 let tcode = Trans.compile_at acode;;
 
-let pcode = MemLog.compile_tp tcode;;
-
-let dcode = DiskLog.compile_pd pcode;;
+let dcode = DiskLog.compile_pd tcode;;
 
 run_dcode_coq dcode;;
 

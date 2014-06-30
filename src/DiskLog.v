@@ -8,23 +8,21 @@ Set Implicit Arguments.
 
 Require Import FsTactics.
 Require Import Storage.
-Require Import MemLog.
+Require Import Trans.
 Load Closures.
-
 
 (* language that implements the log as a disk *)
 
 Inductive ddisk :=
   | NDataDisk
-  | NLogDisk
-  .
+  | NLogDisk.
+  
 
 Inductive dprog :=
   | DRead   (d:ddisk) (b:block) (rx:value -> dprog)
   | DWrite  (d:ddisk) (b:block) ( v:value) (rx:dprog)
-  | DHalt
-  .
-
+  | DHalt.
+ 
 
 Definition ATx := 0.
 Definition AEol := 1.
@@ -41,21 +39,21 @@ Notation "a ;; b" := (a (b))
 
 Open Scope dprog_scope.
 
-Definition do_pread b rx : dprog :=
+Definition do_tread b rx : dprog :=
   v <- DRead NDataDisk b; rx v.
 
-Definition do_pwrite b v rx : dprog :=
+Definition do_twrite b v rx : dprog :=
   DWrite NDataDisk b v ;; rx.
 
-(* XXX paddlog is atomic. *)
-Definition do_paddlog b v rx : dprog :=
+(* XXX taddlog is atomic. *)
+Definition do_taddlog b v rx : dprog :=
   idx <- DRead NLogDisk AEol;
   DWrite NLogDisk (AVal idx) v ;;
   DWrite NLogDisk (ABlk idx) b ;;
   DWrite NLogDisk AEol (S idx) ;;
   rx.
 
-Definition do_pclrlog rx : dprog :=
+Definition do_tclrlog rx : dprog :=
   DWrite NLogDisk AEol 0 ;; rx.
 
 Fixpoint dreadlog idx eol log rx: dprog :=
@@ -67,7 +65,7 @@ Fixpoint dreadlog idx eol log rx: dprog :=
     dreadlog n eol (log ++ [(b, v)]) rx
   end.
 
-Definition do_pgetlog rx : dprog :=
+Definition do_tgetlog rx : dprog :=
   eol <- DRead NLogDisk AEol;
   dreadlog eol eol nil rx.
 
@@ -83,24 +81,24 @@ Definition nat2bool (v : nat) : bool :=
    | _ => false
    end.
 
-Definition do_psettx v rx : dprog :=
-  DWrite NLogDisk ATx (bool2nat v) ;; rx.
+Definition do_tcommit rx : dprog :=
+  DWrite NLogDisk ATx (bool2nat true) ;; rx.
 
-Definition do_pgettx rx : dprog :=
+Definition do_tgetcommitted rx : dprog :=
   v <- DRead NLogDisk ATx; rx (nat2bool v).
 
 Close Scope dprog_scope.
 
-Fixpoint compile_pd (p:pprog) : dprog :=
+Fixpoint compile_pd (p:tprog) : dprog :=
   match p with
-  | PHalt         => DHalt
-  | PRead b rx    => do_pread b (fun v => compile_pd (rx v))
-  | PWrite b v rx => do_pwrite b v (compile_pd rx)
-  | PAddLog b v rx  => do_paddlog b v (compile_pd rx)
-  | PClrLog rx      => do_pclrlog (compile_pd rx)
-  | PSetTx v rx     => do_psettx v (compile_pd rx)
-  | PGetTx rx       => do_pgettx (fun v => compile_pd (rx v))
-  | PGetLog rx      => do_pgetlog (fun v => compile_pd (rx v))
+  | THalt         => DHalt
+  | TRead b rx    => do_tread b (fun v => compile_pd (rx v))
+  | TWrite b v rx => do_twrite b v (compile_pd rx)
+  | TAddLog b v rx  => do_taddlog b v (compile_pd rx)
+  | TClrLog rx      => do_tclrlog (compile_pd rx)
+  | TCommit rx     => do_tcommit (compile_pd rx)
+  | TGetCommitted rx    => do_tgetcommitted (fun v => compile_pd (rx v))
+  | TGetLog rx      => do_tgetlog (fun v => compile_pd (rx v))
   end.
 
 Record dstate := DSt {
@@ -147,32 +145,29 @@ Inductive dsmstep : dstate -> dstate -> Prop :=
   .
 
 
-Inductive pdmatch : pstate -> dstate -> Prop :=
+Inductive tdmatch : tstate -> dstate -> Prop :=
   | PDMatchState :
-    forall pp pdisk lg tx pd dd lgd
-    (DD: pdisk = dd)
-    (TX: tx = match lgd ATx with
+    forall tp tdisk tlg tcommit dp dd lgd
+    (DD: tdisk = dd)
+    (TX: tcommit = match lgd ATx with
          | 1 => true
          | _ => false
          end)
     (* XXX match lg with lgd *)
-    (PD: compile_pd pp = pd) ,
-    pdmatch (PSt pp pdisk lg tx) (DSt pd dd lgd)
-  .
+    (PD: compile_pd tp = dp) ,
+    tdmatch (TSt tp tdisk tlg tcommit) (DSt dp dd lgd).
+  
 
 Theorem pd_forward_sim:
-  forall P1 P2, psmstep P1 P2 ->
-  forall D1, pdmatch P1 D1 ->
-  exists D2, star dsmstep D1 D2 /\ pdmatch P2 D2.
+  forall P1 P2, tsmstep P1 P2 ->
+  forall D1, tdmatch P1 D1 ->
+  exists D2, star dsmstep D1 D2 /\ tdmatch P2 D2.
 Proof.
   Ltac t2 := simpl in *; subst; try autorewrite with core in *;
             intuition (eauto; try congruence).
   Ltac cc2 := t2; try constructor; t2.
 
   induction 1; intros; inversion H.
-
-  (* PHalt *)
-  exists D1; t2; apply star_refl.
 
   (* PRead *)
   eexists; split.
@@ -187,6 +182,9 @@ Proof.
   cc2.
   cc2.
   cc2.
+
+  (* PHalt *)
+  (* exists D1; t2; apply star_refl. *)
 Admitted.
 
   
