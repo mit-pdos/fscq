@@ -28,6 +28,7 @@ Fixpoint highInterp (p : highProc) (m : mem) : mem :=
   | HWrite a v k => highInterp k (upd m a v)
   end.
 
+
 (** * Low-level processes (with special logging data structure) *)
 
 (** The extra state available at low level: a data structure meant to hold a log *)
@@ -225,10 +226,10 @@ Lemma flush_writeLog' : forall l m l' m',
   -> writeLog l' m = m
   -> m' = writeLog l m.
 Proof.
-  induction l.
-  t. t. 
-  rewrite app_comm_cons in *. eapply IHl; t.
-  erewrite writeLog_app by eassumption. t.
+  induction l; t.
+
+  rewrite app_comm_cons in *; eapply IHl; t.
+  erewrite writeLog_app by eassumption; t.
 Qed.
 Lemma flush_writeLog : forall l m m',
   lowEval recover m {| Committed := true; Written := l |} (flush l) m'
@@ -276,7 +277,7 @@ Proof.
   generalize (readLog_correct a l m).
   destruct (readLog a l); t.
   subst; eauto.
-  rewrite H0. eauto.
+  rewrite H0; eauto.
 
   eapply IHp in H3; t.
 Qed.
