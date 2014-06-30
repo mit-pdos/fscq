@@ -17,14 +17,14 @@ Section TransactionLanguage.
 (** language for a logging transaction *)
 
 Inductive tprog :=
+  | THalt
+  | TCommit (rx:tprog)
   | TRead  (b:block) (rx:value -> tprog)
   | TWrite (b:block) ( v:value) (rx:tprog)
   | TAddLog (b:block) (v:nat) (rx:tprog)
   | TClrLog (rx:tprog)
   | TGetLog (rx:list (block * value) -> tprog)
-  | TCommit (rx:tprog)
-  | TGetCommitted (rx:bool -> tprog)
-  | THalt.
+  | TGetCommitted (rx:bool -> tprog).
   
 
 Bind Scope tprog_scope with tprog.
@@ -39,11 +39,11 @@ Notation "ra <- a ; b" := (a (fun ra => b))
 
 Open Scope tprog_scope.
 
-Fixpoint pfind (p:list (block * value)) (b:block) : option value :=
+Fixpoint log_read (p:list (block * value)) (b:block) : option value :=
   match p with
   | nil => None
   | (b', v) :: rest =>
-    match (pfind rest b) with
+    match (log_read rest b) with
     | None => if eq_nat_dec b b' then Some v else None
     | x    => x
     end
@@ -52,32 +52,31 @@ Fixpoint pfind (p:list (block * value)) (b:block) : option value :=
 
 Definition do_tread b rx : tprog :=
   l <- TGetLog;
-  v <- TRead b;
-  match (pfind l b) with
+  match (log_read l b) with
     | Some v => rx v
     | None   => v <- TRead b; rx v
   end.
 
-Fixpoint tflush (p:list (block*value)) rx : tprog :=
+Fixpoint flush_tprog (p:list (block*value)) rx : tprog :=
   match p with
   | nil            => rx
-  | (b, v) :: rest => TWrite b v ;; tflush rest rx
+  | (b, v) :: rest => TWrite b v ;; flush_tprog rest rx
   end.
 
   
 Fixpoint compile_at (p:aproc) : tprog :=
   match p with
-    | AHalt => THalt
-    | ASetAcct a v rx => TAddLog a v ;; TCommit ;; compile_at rx
+    | ACommit => TCommit;; THalt
+    | ASetAcct a v rx => TAddLog a v ;; compile_at rx
     | AGetAcct a rx => do_tread  a (fun v => compile_at (rx v))
     | ATransfer src dst v rx => r <- TRead src ; TAddLog src (r-v) ;;
-                   r1 <- TRead dst ; TAddLog dst (r1+v) ;; TCommit ;; compile_at rx
+                   r1 <- TRead dst ; TAddLog dst (r1+v) ;; compile_at rx
   end.
 
 Definition do_trecover : tprog := 
   c <- TGetCommitted;
   if c then
-    l <- TGetLog ; tflush l ;; TClrLog ;; THalt
+    l <- TGetLog ; flush_tprog l ;; TClrLog ;; TCommit ;; THalt
   else
     TClrLog ;; THalt.   (* maybe not necessary *)
 
@@ -90,24 +89,27 @@ Record tstate := TSt {
   TSCommit: bool  (* has transaction committed? *)
 }.
 
+Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
+  match p with
+  | nil            => d
+  | (b, v) :: rest => log_flush rest (st_write d b v)
+  end.
+
 (* interpreter for logging language *)
 Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
   let (_, d, l, c) := s in
   match p with
-  | THalt         => s
+  | THalt => s
+  | TCommit rx => texec rx (TSt rx (log_flush l d) nil true)
   | TRead b rx    => texec (rx (st_read d b)) (TSt (rx (st_read d b)) d l c)
   | TWrite b v rx => texec rx (TSt rx (st_write d b v) l c)
   | TAddLog b v rx  => texec rx (TSt rx d (l ++ [(b, v)]) c)
   | TClrLog rx      => texec rx (TSt rx d nil c)
   | TGetLog rx      => texec (rx l) (TSt (rx l) d l c)
-  | TCommit rx    => texec rx (TSt rx d l true)
   | TGetCommitted rx    => texec (rx c) (TSt (rx c) d l c)
   end.
 
-
 Inductive tsmstep : tstate -> tstate -> Prop :=
-  | TsmHalt: forall d l c,
-    tsmstep (TSt THalt d l c) (TSt THalt d l c)
   | TsmRead: forall d l b c rx,
     tsmstep (TSt (TRead b rx) d l c)    (TSt (rx (st_read d b)) d l c)
   | TsmWrite: forall d l b v c rx,
@@ -122,51 +124,17 @@ Inductive tsmstep : tstate -> tstate -> Prop :=
     tsmstep (TSt (TGetLog rx) d l c)
             (TSt (rx l) d l c)
   | TsmCommit:  forall d l c rx,
-    tsmstep (TSt (TCommit rx) d l c) (TSt rx d l true)
+    tsmstep (TSt (TCommit rx) d l c) (TSt rx (log_flush l d) nil true)
   | TsmGetCommit: forall d l c rx,
     tsmstep (TSt (TGetCommitted rx) d l c)
-            (TSt (rx c) d l c).
-  
-
-Lemma tsmstep_determ:
-  forall s0 s s',
-  tsmstep s0 s -> tsmstep s0 s' -> s = s'.
-Proof.
-  intro s0; case_eq s0; intros.
-  repeat match goal with
-  | [ H: tsmstep _ _ |- _ ] => inversion H; clear H
-  end; t.
-Qed.
-
-(* XXX texec and tsmstep match *)
-
-Lemma tsmstep_loopfree:
-  forall a b,
-  star tsmstep a b -> star tsmstep b a -> a = b.
-Proof.
-  admit.
-Qed.
-
+            (TSt (rx c) d l c)
+  | TsmCrash:
+      forall d l c rx,
+        tsmstep (TSt rx d l c)  (TSt THalt d l c).
+     
 End TransactionLanguage.
 
 
-Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
-  match p with
-  | nil            => d
-  | (b, v) :: rest => log_flush rest (st_write d b v)
-  end.
-
-(** When we're writing from the log, initial memory values don't matter in
-  * positions that will be overwritten later. *)
-Lemma writeLog_overwrite : forall b l d d' v,
-  (forall b', b' <> b -> d b' = d' b')
-  -> st_write (log_flush l d) b v = st_write (log_flush l d') b v.
-Proof.
-  induction l; t.
-  unfold st_write; extensionality b'; t.
-  apply IHl; t.
-  unfold st_write; t.
-Qed.
 
 Hint Rewrite st_write_eq.
 
@@ -185,47 +153,83 @@ Proof.
   apply (app_assoc ls1 [x] ls2).
 Qed.
 
+(** [readLog] interacts properly with [writeLog]. *)
+Lemma readLog_correct : forall b ls d,
+  st_read (log_flush ls d) b = match log_read ls b with
+                            | Some v => v
+                            | None => st_read d b
+                          end.
+Proof.
+
+  induction ls; t.
+
+  destruct (log_read ls b0); eauto.
+  rewrite IHls.
+  unfold st_read, st_write; t.
+
+  destruct (log_read ls b); eauto.
+  rewrite IHls.
+  unfold st_read, st_write; t.
+Qed.
+
 Hint Rewrite writeLog_last.
+Hint Rewrite readLog_correct.
+
+(* Strengthen induction for main theorem (in main theorem: l = nil) *)
+Lemma correct : forall p d da l t t',
+  da = aexec p (log_flush l d) -> 
+  (TSProg t) = THalt ->
+  star tsmstep (TSt (compile_at p) d l false) t ->
+  t' = texec do_trecover t ->
+  (TSDisk t') = d \/ (TSDisk t') = da.
+Proof.
+  induction p.
+
+  (* ACommit *)
+  - intros.
+    admit.
+
+  (* ASetAcct *)
+  - intros.
+    admit.
+
+  (* AGetAcct *)
+  - intros.
+    admit.
+
+  (* ATransfer *)
+  - intros.
+    admit.
+  
+Admitted.
+
+
+(* XXX not used:
+
+(* recursive case *)
 
 Inductive atmatch : astate -> tstate -> Prop :=
   | ATMatchState :
-    forall ad ap tp td tl (tc:bool)
-    (DD: ad = if tc then log_flush tl td else td)
+    forall ad ap (ac:bool) tp td tl (tc:bool)
+    (DD: ad = if ac then log_flush tl td else td)
+    (TC: ac = tc)
     (PP: compile_at ap = tp),
-    atmatch (ASt ap ad) (TSt tp td tl tc).
+    atmatch (ASt ap ad ac) (TSt tp td tl tc).
   
 
 Inductive atmatch_fail : astate -> tstate -> Prop :=
   | ATMatchFail :
-    forall ad ap tp td tl (tc:bool)
+    forall ad ap ac tp td tl (tc:bool)
     (DD: ad = if tc then log_flush tl td else td)
-    (PP: tp = THalt),
-    atmatch_fail (ASt ap ad) (TSt tp td tl false).
+    (TC: ac = tc)
+    (PP: tp = TAbort),
+    atmatch_fail (ASt ap ad ac) (TSt tp td tl tc).
 
-Theorem at_forward_sim:
-  forall T1 T2, asmstep T1 T2 ->
-  forall P1, atmatch T1 P1 ->
-  exists P2, star tsmstep P1 P2 /\ atmatch T2 P2.
-Proof.
-  induction 1; intros; inversion H; tt.
 
-  (* AHalt *)
-  econstructor; split; cc.
 
-  (* ASetAccount *)
-  econstructor; split; tt.
-  eapply star_two; cc. cc.
-
-  (* AGetAccount *)
-  admit.
-
-  (* ATransfer *)
-  admit.
-  admit.
-Qed.
 
 Lemma thalt_inv_eq:
-  forall s s', (TSProg s) = THalt ->
+  forall s s', (TSProg s) = TAbort ->
   star tsmstep s s' ->  s = s'.
 Proof.
   intros; destruct s as [ p d ad dt ]; t.
@@ -284,21 +288,13 @@ Proof.
 
   (**** step over *)
   (*==== halt *)
-
   inversion NS; t.
-  left.
-
-  (* lost in subst td = log_flush tl td  and td0 = log_flush td0 tl0 *)
-  
-(*
-  inversion NS. subst. left.
-  rewrite 
-  
-
-  iv. iv.
-  right. assert (s2=s); [ tsmstep_end | crush ].
+  cc; t.
+  admit.
 
   (*==== set account *)
+  inversion NS; t.
+
   iv. iv. iv. iv. iv.
   right. assert (s0=s); [ tsmstep_end | crush ].
 
@@ -309,5 +305,7 @@ Proof.
   (*==== transfer *)
   do 14 iv.
   right. assert (s5=s); [ tsmstep_end | crush ].
-*)
+
 Admitted.
+
+*)
