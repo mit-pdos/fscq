@@ -87,6 +87,15 @@ Definition do_tcommit rx : dprog :=
 Definition do_tgetcommitted rx : dprog :=
   v <- DRead NLogDisk ATx; rx (nat2bool v).
 
+(* XXX maybe we don't have to do anything. It appears each D instruction has
+   a clear commit point, for which no clean up is necessary after crash *)
+Definition do_drecover : dprog := 
+  c <- DRead NLogDisk ATx; 
+  if c then
+    DHalt
+  else
+    DWrite NLogDisk AEol 0 ;; DHalt.
+
 Close Scope dprog_scope.
 
 Fixpoint compile_pd (p:tprog) : dprog :=
@@ -156,7 +165,18 @@ Inductive tdmatch : tstate -> dstate -> Prop :=
     (* XXX match lg with lgd *)
     (PD: compile_pd tp = dp) ,
     tdmatch (TSt tp tdisk tlg tcommit) (DSt dp dd lgd).
-  
+
+Inductive tdmatch_fail : tstate -> dstate -> Prop :=
+  | PDMatchFail :
+    forall tp tdisk tlg tcommit dp dd lgd
+    (DD: tdisk = dd)
+    (TX: tcommit = match lgd ATx with
+         | 1 => true
+         | _ => false
+         end)
+    (* XXX match lg with lgd *)
+    (PD: dp = DHalt) ,
+    tdmatch_fail (TSt tp tdisk tlg tcommit) (DSt dp dd lgd).
 
 Theorem pd_forward_sim:
   forall P1 P2, tsmstep P1 P2 ->
@@ -187,16 +207,39 @@ Proof.
   (* exists D1; t2; apply star_refl. *)
 Admitted.
 
-  
-(* XXX need to reformulate as pd_atomicity
-Theorem dcorrect:
-  forall p dd dd' ld ld' lg lg' d tx s,
-  
-  star dsmstep_fail (DSt (compile_pd p) dd ld lg) (DSt DHalt dd' ld' lg') ->
-  pexec p (PSt p d nil tx) = s ->
-  pdmatch s (DSt DHalt dd' ld' lg').
+
+Lemma dexec_smstep :
+  forall p d l s',
+  dexec p (DSt p d l) = s' -> star dsmstep (DSt p d l) s'.
 Proof.
-  intros; eexists.
-  inversion H.
+  induction p; intros;
+  eapply star_step; t; try constructor.
+  admit.  (* XXXX *)
+  admit.
+  admit.
+Qed.
+
+Lemma dsmstep_determ:
+  forall s0 s s',
+  dsmstep s0 s -> dsmstep s0 s' -> s = s'.
+Proof.
+  intro s0; case_eq s0; intros.
+  induction DSProg0; intros;
+  repeat match goal with
+  | [ H: dsmstep _ _ |- _ ] => inversion H; clear H
+  end; subst; reflexivity.
+Qed.
+
+Theorem at_atomicity:
+  forall ts1 ts2 ds1 ds2 tf1 tf2 s s'
+    (HS: tsmstep ts1 ts2)
+    (M1: tdmatch ts1 ds1)
+    (M2: tdmatch ts2 ds2)
+    (MF1: tdmatch_fail ts1 tf1)
+    (MF2: tdmatch_fail ts2 tf2)
+    (NS: star dsmstep ds1 s)
+    (NS2: star dsmstep s ds2)
+    (RC: s' = dexec do_drecover s),
+    s' = tf1 \/ s' = tf2.
+Proof.
 Admitted.
-*)
