@@ -53,16 +53,12 @@ Fixpoint pflush (p:list (block*value)) rx : pprog :=
 
 
 Definition do_tread b rx : pprog :=
-  tx <- PGetTx;
-  if tx then
-    l <- PGetLog;
-    v <- PRead b;
-    match (pfind l b) with
-    | Some v => rx v
-    | None   => rx v
-    end
-  else
-    v <- PRead b; rx v
+  l <- PGetLog;
+  v <- PRead b;
+  match (pfind l b) with
+  | Some v => rx v
+  | None   => rx v
+  end
 .
 
 Definition do_twrite b v rx : pprog :=
@@ -75,11 +71,7 @@ Definition do_twrite b v rx : pprog :=
 .
 
 Definition do_tcommit rx : pprog :=
-  tx <- PGetTx;
-  if tx then
-    PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; rx
-  else
-    rx
+  PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; rx
 .
 
 Definition do_tabort rx : pprog :=
@@ -203,16 +195,6 @@ Fixpoint log_flush (p:list (block*value)) (d:storage) : storage :=
   | (b, v) :: rest => log_flush rest (st_write d b v)
   end.
 
-Inductive tpmatch : tstate -> pstate -> Prop :=
-  | TPMatchState :
-    forall td tp pd lg (tx:bool) pp ad dt
-    (DD: td = pd)
-    (AD: ad = if tx then (log_flush lg td) else td)
-    (TX: tx = dt)
-    (PP: compile_tp tp = pp) ,
-    tpmatch (TSt tp td ad dt) (PSt pp pd lg tx)
-  .
-
 
 (** When we're writing from the log, initial memory values don't matter in
   * positions that will be overwritten later. *)
@@ -296,6 +278,18 @@ Proof.
 Qed.
 
 
+Inductive tpmatch : tstate -> pstate -> Prop :=
+  | TPMatchState :
+    forall td tp pd lg (tx:bool) pp ad dt
+    (DD: td = pd)
+    (AD: ad = log_flush lg td)
+    (LG: tx = false -> lg = nil)
+    (TX: tx = dt)
+    (PP: compile_tp tp = pp) ,
+    tpmatch (TSt tp td ad dt) (PSt pp pd lg tx)
+  .
+
+
 (*
    Forward small-step simulation:
    If no crash, each step in tprog maps to zero+ steps in pprog.
@@ -315,17 +309,14 @@ Proof.
   induction 1; intros; inversion H.
 
   (* Halt *)
-  destruct tx; eexists; cc.
+  eexists; cc.
 
   (* Read *)
-  destruct tx; tt; unfold do_tread; eexists; split.
-  (* tx = true *)
-  eapply star_right. eapply star_right. eapply star_right.
-  constructor. constructor. constructor. constructor. cc.
+  tt; unfold do_tread; eexists; split.
+  eapply star_right. eapply star_right.
+  constructor. constructor. constructor. cc.
   rewrite readLog_correct.
   destruct (pfind lg b) eqn:F; tt.
-  (* tx = false *)
-  eapply star_two; cc. cc.
 
   (* Write *)
   destruct tx; tt; eexists; split.
@@ -336,13 +327,10 @@ Proof.
   do 4 (eapply star_step; [ cc | idtac ]); cc. cc.
 
   (* Commit *)
-  (* tx = true *)
-  destruct tx; tt; eexists; split.
-  do 3 (eapply star_step; [ cc | idtac ]); tt.
+  tt; eexists; split.
+  do 2 (eapply star_step; [ cc | idtac ]); tt.
   eapply star_right.
   eapply writeLog_flush; cc. cc. cc.
-  (* tx = false *)
-  eapply star_one; cc. cc.
 
   (* Abort *)
   eexists; split.
