@@ -75,7 +75,11 @@ Definition do_twrite b v rx : pprog :=
 .
 
 Definition do_tcommit rx : pprog :=
-  PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; rx
+  tx <- PGetTx;
+  if tx then
+    PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; rx
+  else
+    rx
 .
 
 Definition do_tabort rx : pprog :=
@@ -308,57 +312,42 @@ Theorem tp_forward_sim:
   forall P1, tpmatch T1 P1 ->
   exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
 Proof.
-  induction 1; intros; inversion H; eexists.
+  induction 1; intros; inversion H.
 
   (* Halt *)
-  destruct tx; cc.
+  destruct tx; eexists; cc.
 
   (* Read *)
-  cc. admit.
-  
-  (* Write *)
-  cc; admit.
-
-  (* Commit *)
-  cc; admit.
-
-  (* Abort *)
-  
-
-(*
-  destruct tx; tt.
-  unfold do_tread.
-  eapply star_right. eapply star_right. eapply star_right. eapply star_right.
-  constructor. constructor. constructor. constructor. cc.
-  destruct (pfind lg b) eqn:F; tt.
-
-  eapply star_two; cc.
-  unfold do_tread; cc.
-
+  destruct tx; tt; unfold do_tread; eexists; split.
+  (* tx = true *)
   eapply star_right. eapply star_right. eapply star_right.
   constructor. constructor. constructor. constructor. cc.
   rewrite readLog_correct.
   destruct (pfind lg b) eqn:F; tt.
+  (* tx = false *)
+  eapply star_two; cc. cc.
 
-  split.
-  eapply star_two. cc. cc. tt.
+  (* Write *)
+  destruct tx; tt; eexists; split.
+  (* tx = true *)
+  eapply star_two; cc. cc.
   rewrite <- writeLog_final. cc.
+  (* tx = false *)
+  do 4 (eapply star_step; [ cc | idtac ]); cc. cc.
 
-  split. admit. eapply star_two; cc. cc.
-  rewrite <- writeLog_final. auto.
-
-  eapply star_three; cc. cc.
-
-  eapply star_one; cc. cc.
-
-  eapply star_one; cc. cc.
-
+  (* Commit *)
+  (* tx = true *)
+  destruct tx; tt; eexists; split.
   do 3 (eapply star_step; [ cc | idtac ]); tt.
   eapply star_right.
-  eapply writeLog_flush. cc. cc. cc.
-*)
-Admitted.
+  eapply writeLog_flush; cc. cc. cc.
+  (* tx = false *)
+  eapply star_one; cc. cc.
 
+  (* Abort *)
+  eexists; split.
+  eapply star_two; cc. cc.
+Qed.
 
 
 Lemma flush_nofail : forall l m l' tx,
