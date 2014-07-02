@@ -459,26 +459,33 @@ Proof.
 Qed.
 
 
+Lemma psmstep_loopfree:
+  forall a b,
+  star psmstep a b -> star psmstep b a -> a = b.
+Proof.
+  admit.
+Qed.
+
 Inductive tpmatch_fail : tstate -> pstate -> Prop :=
   | TPMatchFail :
     forall td tp pd lg (tx:bool) pp ad dt
     (DD: td = pd)
-    (AD: ad = if tx then (log_flush lg td) else td)
-    (* XXX fix the following also in tpmatch: *)
-    (* LG: lg = contains all blocks that have been changed in ad but not in td *)
+    (AD: ad = td)
+    (LG: lg = nil)
     (TX: tx = dt)
     (PP: pp = PHalt) ,
-    tpmatch_fail (TSt tp td ad dt) (PSt pp pd lg tx).
-  
+    tpmatch_fail (TSt tp td ad dt) (PSt pp pd lg tx)
+  .
 
 Theorem tp_atomicity:
-  forall ts1 ts2 ps1 pf1 pf2 s s'
+  forall ts1 ts2 ps1 ps2 pf1 pf2 s s'
     (HS: tsmstep ts1 ts2)
-    (HH: (TSProg ts2) = THalt)
     (M1: tpmatch ts1 ps1)
+    (M2: tpmatch ts2 ps2)
     (MF1: tpmatch_fail ts1 pf1)
     (MF2: tpmatch_fail ts2 pf2)
-    (NS: star psmstep ps1 s)
+    (NS1: star psmstep ps1 s)
+    (NS2: star psmstep s ps2)
     (RC: s' = pexec do_trecover s),
     s' = pf1 \/ s' = pf2.
 Proof.
@@ -491,9 +498,36 @@ Proof.
   inversion MF1; inversion MF2; repeat subst;
   clear M1 HS MF1 MF2.
 
+
+  Ltac iv := match goal with
+  | [ H: _ = ?a , HS: star psmstep ?a _ |- _ ] => rewrite <- H in HS; clear H
+  | [ H: psmstep _ _ |- _ ] => inversion H; t; []; clear H
+  | [ H: star psmstep _ _ , dt: bool |- _ ] => 
+              inversion H; [destruct dt|]; t; []; clear H
+  end.
+
   (* THalt *)
-  inversion NS; t.
-  clear NS.
-  destruct dt.   (* destruct on InTrans *)
+  iv. iv. right.
+  assert (s2=s). inversion M2; repeat subst.
+  assert (lg=lg0). admit. (* XXX *)
+  rewrite <- H in NS2.
+  apply psmstep_loopfree; auto.
+  t; destruct s as [p d l c]; t.
+  destruct c; t.
+
+  (* TRead *)
+  iv. iv. iv. iv. iv.
+  destruct (pfind lg b) eqn:F.
+    admit.
+    
+    assert (s0=s). inversion M2; repeat subst; clear M2.
+    assert (lg=lg0). admit. rewrite <- H in NS2.   (* XXX *)
+    rewrite AD0 in NS2.
+    apply psmstep_loopfree; auto.
+    right.   t; destruct s as [p d l c]; t.
+    destruct c; t.
+  
+  (* TWrite *)
+  
 
 Admitted.
