@@ -205,7 +205,7 @@ Proof.
 
   (*==== set account *)
   iv. iv. iv. iv. iv.
-  right. assert (s0=s). inversion M2. subst. [ tsmstep_end | crush ].
+  right. assert (s0=s); [ tsmstep_end | crush ].
 
   (*==== get account *)
   iv. iv.
