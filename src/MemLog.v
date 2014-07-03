@@ -531,3 +531,19 @@ Proof.
   
 
 Admitted.
+
+(*
+Theorem tp2_atomicity:
+  forall ts1 ts2 ps1 ps2 pf1 pf2 s s'
+    (HS: t2smstep ts1 ts2)
+    (M1: t2pmatch ts1 ps1)
+    (M2: t2pmatch ts2 ps2)
+    (MF1: t2pmatch_fail ts1 pf1)
+    (MF2: t2pmatch_fail ts2 pf2)
+    (NS1: star psmstep ps1 s)
+    (NS2: star psmstep s ps2)
+    (RC: s' = pexec do_t2recover s),
+    s' = pf1 \/ s' = pf2.
+Proof.
+
+*)
