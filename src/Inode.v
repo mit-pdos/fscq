@@ -8,45 +8,40 @@ Section Inode.
 
 (* inode language *)
 
-(* 
-   disk layout: 
-     | inodes | free block bit map | blocks  |
-   for now inodes etc. are all 1 block.
-*)
-
-Definition NInode := 5.
-Definition BMADDR := NInode+1.
-
-Definition inoden := nat.
-Definition blockn := nat.
-
-Inductive block_type : Type :=
-  | BInode
-  | BBlockMap
-  | BBlock
-  .
+Definition inodenum := nat.
+Definition blocknum := nat.
+Definition blockmapnum := nat.
 
 (* In-memory representation of inode and free block map: *)
+
+(* An inode's blocklist is a fixed-length list of blocknums *)
+Inductive BlockList : blocknum -> Set :=
+   | niln : BlockList 0
+   | consn : forall n: blocknum, nat -> BlockList n -> BlockList (S n).
+
 Record inode := Inode {
    IFree : bool;
-   INum : inoden;
-   IBlocks: list nat   (* XXX: needs some limit *)
+   IBlocks: list blocknum
 }.
+
+Definition mkinode b : inode := (Inode b nil).
 
 Record blockmap := Blockmap {
-   FreeList: list blockn
+   FreeList: list blocknum
 }.
 
-Definition mkInode := Inode false 0 nil.
+Definition istorage := inodenum -> inode.
+Definition bstorage := blocknum -> block.
+Definition bmstorage := blockmapnum -> blockmap.
 
 Inductive iproc :=
   | IHalt
-  | IRead (i:inoden) (rx: inode -> iproc)
-  | IWrite (i:inode) (rx: iproc)
+  | IRead (inum:inodenum) (rx: inode -> iproc)
+  | IWrite (inum: inodenum) (i:inode) (rx: iproc)
+  | IReadBlockMap (bn: blockmapnum) (rx: blockmap -> iproc)
+  | IWriteBlockMap (bn:blockmapnum) (bm:blockmap) (rx: iproc)
   | IReadBlock (i:inode) (o:nat) (rx:block -> iproc)
-  | IWriteBlock (i:inode) (o:nat) (b: block) (rx: iproc)
-  | IReadBlockMap (rx: blockmap -> iproc)
-  | IWriteBlockMap (bm:blockmap) (rx: iproc).
+  | IWriteBlock (i:inode) (o:nat) (b: block) (rx: iproc).
 
 Bind Scope iprog_scope with iproc.
 
@@ -66,11 +61,11 @@ Fixpoint inode_allocate (n: nat) rx: iproc :=
     i <- IRead n; 
     match IFree i with
     | false => inode_allocate m rx
-    | true => IWrite (Inode false (INum i) nil) ;; rx (Some i)
+    | true => IWrite n (mkinode false) ;; rx (Some i)
    end
  end.
 
-Fixpoint find_freeblock (bm: blockmap) : option blockn :=
+Fixpoint find_freeblock (bm: blockmap) : option blocknum :=
   match (FreeList bm) with
   | nil => None
   | b :: l' => Some b
@@ -84,68 +79,75 @@ Fixpoint remove_list (freelist : list nat) (bn:nat) : list nat :=
     else b :: remove_list l' bn
   end.
 
-Fixpoint remove_freeblock (bm: blockmap) (bn:blockn) : blockmap :=
+Fixpoint remove_freeblock (bm: blockmap) (bn:blocknum) : blockmap :=
   (Blockmap (remove_list (FreeList bm) bn)).
 
 (* Program to allocate a block and add it to inode i *)
-Fixpoint block_allocate (i: inode) rx: iproc :=
-  bm <- IReadBlockMap;
+Fixpoint block_allocate (inum: inodenum) rx: iproc :=
+  bm <- IReadBlockMap 0;
+  i <- IRead inum;
   match find_freeblock bm with
   | None => IHalt  (* crash and burn *)
-  | Some(bn) => IWriteBlockMap (remove_freeblock bm bn) ;; IWrite (Inode true (INum i) ((IBlocks i) ++ [bn])) ;; rx bn
+  | Some(bn) => IWriteBlockMap 0 (remove_freeblock bm bn) ;; IWrite inum (Inode true ((IBlocks i) ++ [bn])) ;; rx bn
   end.
 
 Close Scope iprog_scope.
 
-Definition inode_read (s: storage) (i: inoden) : inode :=
-  match st_read s i with
-  _ => mkInode    (* XXX need to convert a block of bytes into inode *)
-  end.
+Definition iread (s:istorage) (inum:inodenum) : inode := s inum.
 
-Definition inode_write (s:storage) (i: inode) : storage := 
-  st_write s (INum i) 1.   (* XXX need to convert into a block of bytes *)
- 
+Definition iwrite (s:istorage) (inum:inodenum) (i: inode) : istorage :=
+  fun inum' => if eq_nat_dec inum' inum then i else s inum'.
+
+Definition bread (s:bstorage) (b:blocknum) : block := s b.
+
+Definition bwrite (s:bstorage) (bn:blocknum) (b:block) : bstorage :=
+  fun bn' => if eq_nat_dec bn' bn then b else s bn'.
+
 Definition iblock_read s (i:inode) (o:nat) : block :=
   let bn := (nth o (IBlocks i)) 0 in 
-  st_read s bn.
+  bread s bn.
 
 Definition iblock_write s (i:inode) (o:nat) (b:block) : storage :=
   let bn := (nth o (IBlocks i)) 0 in 
-  st_write s bn b.
+  bwrite s bn b.
 
-Definition blockmap_read (s:storage) : blockmap := 
-  match st_read s BMADDR with
-  _ => (Blockmap nil)   (* XXX need to convert a block of bytes into block map*)
-  end.
+Definition blockmap_read s (bn: blockmapnum) : blockmap :=  s bn.
 
-Definition blockmap_write (s:storage) (bm: blockmap) : storage :=
-  st_write s BMADDR 1.
-  
-Fixpoint iexec (p:iproc) (s:storage) : storage :=
-  match p with
-    | IHalt => s
-    | IWrite i rx  => iexec rx (inode_write s i)
-    | IRead i rx => iexec (rx (inode_read s i)) s                            
-    | IReadBlock i o rx => iexec (rx (iblock_read s i o)) s
-    | IWriteBlock i o b rx => iexec rx (iblock_write s i o b)
-    | IWriteBlockMap bm rx => iexec rx (blockmap_write s bm)
-    | IReadBlockMap rx => iexec (rx (blockmap_read s)) s
-  end.
-
-(* XXX For small-step simulation in refinement proof of app language to trans language *)
+Definition blockmap_write (s:bmstorage) (bn: blockmapnum) (bm: blockmap) : bmstorage :=
+  fun bn' => if eq_nat_dec bn' bn then bm else s bn'.
 
 Record istate := ISt {
   ISProg: iproc;
-  ISDisk: storage
+  ISInodes: istorage;
+  ISBlockMap: bmstorage;
+  ISBlocks: bstorage
 }.
 
-Inductive ismstep : istate -> istate -> Prop :=
-  | IsmHalt: forall d,
-    ismstep (ISt IHalt d) (ISt IHalt d)
+Fixpoint iexec (p:iproc) (s:istate) : istate :=
+  match p with
+    | IHalt => s
+    | IWrite inum i rx  => iexec rx (ISt p (iwrite (ISInodes s) inum i) (ISBlockMap s) (ISBlocks s))
+    | IRead inum rx => iexec (rx (iread (ISInodes s) inum)) s                            
+    | IReadBlockMap bn rx => iexec (rx (blockmap_read (ISBlockMap s) bn)) s
+    | IWriteBlockMap bn bm rx => iexec rx (ISt p (ISInodes s) (blockmap_write (ISBlockMap s) bn bm) (ISBlocks s))
+    | IReadBlock i o rx => iexec (rx (iblock_read (ISBlocks s) i o)) s
+    | IWriteBlock i o b rx => iexec rx (ISt p (ISInodes s) (ISBlockMap s) (iblock_write (ISBlocks s) i o b))
+  end.
 
-    (* must write 3 times, otherwise when m=n the value on disk will
-       depend on arguments' evaluation order *)
-  .
+Inductive ismstep : istate -> istate -> Prop :=
+  | IsmHalt: forall i m b,
+    ismstep (ISt IHalt i m b) (ISt IHalt i m b)
+  | IsmIwrite: forall is inum i m b rx,
+    ismstep (ISt (IWrite inum i rx) is m b) (ISt rx (iwrite is inum i) m b)
+  | IsmIread: forall is inum b m rx,
+    ismstep (ISt (IRead inum rx) is m b) (ISt (rx (iread is inum)) is m b)
+  | IsmIwriteBlockMap: forall is bn bm map b rx,
+    ismstep (ISt (IWriteBlockMap bn bm rx) is map b) (ISt rx is (blockmap_write map bn bm) b)
+  | IsmIreadBlockMap: forall is bn map b rx,
+    ismstep (ISt (IReadBlockMap bn rx) is map b) (ISt (rx (blockmap_read map bn)) is map b)
+  | IsmIreadBlock: forall is inum bn b m rx,
+    ismstep (ISt (IReadBlock inum bn rx) is m b) (ISt (rx (iblock_read b inum bn)) is m b)
+  | IsmIwriteBlock: forall is inum bn b bs m rx,
+    ismstep (ISt (IWriteBlock inum bn b rx) is m bs) (ISt rx is m (iblock_write bs inum bn b)).
 
 End Inode.
-
