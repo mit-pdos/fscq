@@ -7,6 +7,7 @@ Require Import FunctionalExtensionality.
 Set Implicit Arguments.
 
 Require Import FsTactics.
+Require Import Util.
 Require Import Storage.
 Require Import MemLog.
 Load Closures.
@@ -70,18 +71,6 @@ Fixpoint dreadlog idx eol log rx: dprog :=
 Definition do_pgetlog rx : dprog :=
   eol <- DRead NLogDisk AEol;
   dreadlog eol eol nil rx.
-
-Definition bool2nat (v : bool) : nat :=
-   match v with
-   | true => 1
-   | _ => 0
-   end.
-
-Definition nat2bool (v : nat) : bool :=
-   match v with
-   | 1 => true
-   | _ => false
-   end.
 
 Definition do_psettx v rx : dprog :=
   DWrite NLogDisk ATx (bool2nat v) ;; rx.
