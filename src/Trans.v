@@ -19,6 +19,7 @@ Section TransactionLanguage.
 (** language for a transactional disk *)
 
 Inductive tprog :=
+  | TBegin (rx:tprog)
   | TRead  (b:block) (rx:value -> tprog)
   | TWrite (b:block) ( v:value) (rx:tprog)
   | TCommit (rx:tprog)
@@ -41,9 +42,9 @@ Open Scope tprog_scope.
 Fixpoint compile_at (p:aproc) : tprog :=
   match p with
     | AHalt => THalt
-    | ASetAcct a v rx => TWrite a v ;; TCommit ;; compile_at rx
-    | AGetAcct a rx => v <- TRead a; compile_at (rx v)
-    | ATransfer src dst v rx => r <- TRead src ; TWrite src (r-v) ;;
+    | ASetAcct a v rx => TBegin ;; TWrite a v ;; TCommit ;; compile_at rx
+    | AGetAcct a rx => TBegin ;; v <- TRead a; TCommit ;; compile_at (rx v)
+    | ATransfer src dst v rx => TBegin ;; r <- TRead src ; TWrite src (r-v) ;;
                    r1 <- TRead dst ; TWrite dst (r1+v) ;; TCommit ;; compile_at rx
   end.
 
@@ -57,6 +58,7 @@ Fixpoint do_t2dprog (d:dprog) (rx:tprog) : tprog :=
 Fixpoint compile_t2t (t2:t2prog) : tprog :=
   match t2 with
   | T2Halt => THalt
+  | T2Begin rx => TBegin (compile_t2t rx)
   | T2Commit rx => TCommit (compile_t2t rx)
   | T2Abort rx => TAbort (compile_t2t rx)
   | T2DProg d rx => do_t2dprog d (compile_t2t rx)
@@ -78,7 +80,8 @@ Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
   match p with
   | THalt         => s
   | TRead b rx    => texec (rx (st_read ad b)) (TSt (rx (st_read ad b)) d ad dt)
-  | TWrite b v rx => texec rx (TSt rx d (st_write ad b v) true)
+  | TWrite b v rx => texec rx (TSt rx d (st_write ad b v) dt)
+  | TBegin rx     => texec rx (TSt rx d ad true)
   | TCommit rx    => texec rx (TSt rx ad ad false)
   | TAbort rx     => texec rx (TSt rx d d false)
   end.
@@ -86,16 +89,17 @@ Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
 
 Inductive tsmstep : tstate -> tstate -> Prop :=
   | TsmHalt: forall d ad dt,
-    tsmstep (TSt THalt d ad dt) (TSt THalt d ad dt)
-  | TsmRead: forall d ad b dt rx,
-    tsmstep (TSt (TRead b rx) d ad dt)    (TSt (rx (st_read ad b)) d ad dt)
-  | TsmWrite: forall d ad b v dt rx,
-    tsmstep (TSt (TWrite b v rx) d ad dt) (TSt rx d (st_write ad b v) true)
-  | TsmCommit:  forall d ad dt rx,
-    tsmstep (TSt (TCommit rx) d ad dt)    (TSt rx ad ad false)
-  | TsmAbort:  forall d ad dt rx,
-    tsmstep (TSt (TAbort rx) d ad dt)     (TSt rx d d false)
-  .
+    tsmstep (TSt THalt d ad dt)             (TSt THalt d ad dt)
+  | TsmRead: forall d ad b rx,
+    tsmstep (TSt (TRead b rx) d ad true)    (TSt (rx (st_read ad b)) d ad true)
+  | TsmWrite: forall d ad b v rx,
+    tsmstep (TSt (TWrite b v rx) d ad true) (TSt rx d (st_write ad b v) true)
+  | TsmCommit:  forall d ad rx,
+    tsmstep (TSt (TCommit rx) d ad true)    (TSt rx ad ad false)
+  | TsmAbort:  forall d ad rx,
+    tsmstep (TSt (TAbort rx) d ad true)     (TSt rx d d false)
+  | TsmBegin: forall d ad rx,
+    tsmstep (TSt (TBegin rx) d ad false)    (TSt rx d ad true).
 
 Hint Constructors tsmstep.
 
@@ -160,17 +164,17 @@ Theorem at_forward_sim:
 Proof.
   induction 1; intros; inversion H; tt.
 
-  econstructor; split; cc.
+  - econstructor; split; cc.
 
-  econstructor; split; tt.
-  eapply star_two; cc. cc.
+  - econstructor; split; tt.
+    eapply star_three; cc. cc.
 
-  econstructor; split; tt.
-  eapply star_one; cc. cc.
+  - econstructor; split; tt.
+    eapply star_three; cc. cc.
   
-  econstructor; split; tt.
-  do 5 (eapply star_step; [ cc | idtac ]).
-  cc. cc.
+  - econstructor; split; tt.
+    do 6 (eapply star_step; [ cc | idtac ]).
+    cc. cc.
 Qed.
 
 Theorem t2t_forward_sim:
@@ -184,15 +188,29 @@ Proof.
   (* T2Halt *)
   - econstructor; split; cc.
 
+  (* T2Begin *)
+  - econstructor; split; tt.
+    eapply star_one; cc.
+
   (* T2DProg *)
-  - exists (TSt (compile_t2t rx) d (drun dp ad) dt); split.
+  - exists (TSt (compile_t2t rx) d (drun dp ad) true); split.
 
     generalize H; clear H;
     generalize ad; clear ad.
     induction dp; simpl; intros.
     + eapply star_step; [ constructor | crush ].
-    + eapply star_step.  constructor.
-Admitted.
+    + eapply star_step; [ constructor | crush ].
+    + apply star_refl.
+    + crush.
+
+  (* T2Commit *)
+  - econstructor; split; tt.
+    eapply star_one; cc.
+
+  (* T2Abort *)
+  - econstructor; split; tt.
+    eapply star_one; cc.
+Qed.
 
 
 Lemma thalt_inv_eq:
@@ -255,18 +273,18 @@ Proof.
 
   (**** step over *)
   (*==== halt *)
-  iv. iv.
-  right. assert (s2=s); [ tsmstep_end | crush ].
+  - iv. iv.
+    right. assert (s2=s); [ tsmstep_end | crush ].
 
   (*==== set account *)
-  iv. iv. iv. iv. iv.
-  right. assert (s0=s); [ tsmstep_end | crush ].
+  - iv. iv. iv. iv. iv. iv. iv. iv.
+    right. assert (s3=s); [ tsmstep_end | crush ].
 
   (*==== get account *)
-  iv. iv.
-  right. assert (s2=s); [ tsmstep_end | crush ].
+  - iv. iv. iv. iv. iv. iv. iv. iv.
+    right. assert (s3=s); [ tsmstep_end | crush ].
 
   (*==== transfer *)
-  do 14 iv.
-  right. assert (s5=s); [ tsmstep_end | crush ].
+  - do 17 iv.
+    right. assert (s6=s); [ tsmstep_end | crush ].
 Qed.
