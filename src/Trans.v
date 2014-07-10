@@ -323,4 +323,26 @@ Proof.
 
   (*==== dprog *)
   - right.
-Admitted.
+    assert (TSDisk s = dd); [ idtac | destruct s; crush ].
+    generalize M2; clear M2.
+    generalize NS; clear NS.
+    generalize ad; clear ad.
+    induction dp; intros ad NS M2.
+    + iv. iv.
+      apply H with (ad:=ad) (v:=(st_read ad b)); crush.
+    + iv. iv.
+      apply IHdp with (ad:=(st_write ad b v)); crush.
+    + assert (ts2=s); [ tsmstep_end | idtac ].
+      inversion M2; crush.
+
+  (*==== commit *)
+  - inversion NS.
+    + crush.
+    + subst. iv.
+      right. assert (s2=s); [ tsmstep_end | crush ].
+
+  (*==== abort *)
+  - right.
+    iv. iv.
+    assert (s2=s); [ tsmstep_end | crush ].
+Qed.
