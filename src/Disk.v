@@ -21,8 +21,12 @@ Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
   | DWrite b v rx => dexec rx (DSt rx (st_write dd b v))
   end.
 
-Definition drun (p:dprog) (s:storage) : storage :=
-  DSDisk (dexec p (DSt p s)).
+Fixpoint drun (p:dprog) (dd:storage) : storage :=
+  match p with
+  | DHalt         => dd
+  | DRead b rx    => drun (rx (st_read dd b)) dd
+  | DWrite b v rx => drun rx (st_write dd b v)
+  end.
 
 Inductive dsmstep : dstate -> dstate -> Prop :=
   | DsmHalt: forall d,
