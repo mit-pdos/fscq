@@ -149,9 +149,9 @@ Inductive atmatch_fail : astate -> tstate -> Prop :=
 
 Inductive t2tmatch_fail : t2state -> tstate -> Prop :=
   | T2TMatchFail:
-    forall tp t2p dd ad it
+    forall tp t2p ad dd it
     (PP: tp = THalt),
-    t2tmatch_fail (T2St t2p dd ad it) (TSt tp dd ad it).
+    t2tmatch_fail (T2St t2p dd ad it) (TSt tp dd dd false).
 
 Hint Constructors t2tmatch.
 Hint Constructors t2tmatch_fail.
@@ -222,7 +222,7 @@ Proof.
   eapply star_stuttering; eauto; [ exact tsmstep_determ | constructor ].
 Qed.
 
-Definition do_arecover : tprog := TAbort THalt.  (* throw away the ad *)
+Definition do_trecover : tprog := TAbort THalt.  (* throw away the ad *)
 
 (* a few important assumptions are built into this theorem:
 
@@ -245,7 +245,7 @@ Theorem at_atomicity:
     (MF2: atmatch_fail as2 tf2)
     (NS: star tsmstep ts1 s)
     (NS2: star tsmstep s ts2)
-    (RC: s' = texec do_arecover s),
+    (RC: s' = texec do_trecover s),
     s' = tf1 \/ s' = tf2.
 Proof.
 
@@ -277,14 +277,50 @@ Proof.
     right. assert (s2=s); [ tsmstep_end | crush ].
 
   (*==== set account *)
-  - iv. iv. iv. iv. iv. iv. iv. iv.
+  - do 8 iv.
     right. assert (s3=s); [ tsmstep_end | crush ].
 
   (*==== get account *)
-  - iv. iv. iv. iv. iv. iv. iv. iv.
+  - do 8 iv.
     right. assert (s3=s); [ tsmstep_end | crush ].
 
   (*==== transfer *)
   - do 17 iv.
     right. assert (s6=s); [ tsmstep_end | crush ].
 Qed.
+
+
+Theorem t2t_atomicity:
+  forall t2s1 t2s2 ts1 ts2 tf1 tf2 s s'
+    (HS: t2smstep t2s1 t2s2)
+    (M1: t2tmatch t2s1 ts1)
+    (M2: t2tmatch t2s2 ts2)
+    (MF1: t2tmatch_fail t2s1 tf1)
+    (MF2: t2tmatch_fail t2s2 tf2)
+    (NS: star tsmstep ts1 s)
+    (NS2: star tsmstep s ts2)
+    (RC: s' = texec do_trecover s),
+    s' = tf1 \/ s' = tf2.
+Proof.
+
+  (* figure out ts1, the matching state for t2s1 *)
+  intros; inversion M1; repeat subst.
+
+  (* step the high level program to get t2s2 *)
+  (* ... and figure out tf1 tf2 *)
+  inversion HS; repeat subst;
+  inversion MF1; inversion MF2; repeat subst;
+  clear M1 HS MF1 MF2.
+
+  (*==== halt *)
+  - iv. iv.
+    right. assert (s2=s); [ tsmstep_end | crush ].
+
+  (*==== begin *)
+  - right.
+    iv. iv.
+    assert (s2=s); [ tsmstep_end | crush ].
+
+  (*==== dprog *)
+  - right.
+Admitted.
