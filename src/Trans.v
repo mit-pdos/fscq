@@ -25,13 +25,6 @@ Inductive tprog :=
   | THalt
   .
 
-Inductive tprog2 :=
-  | T2DProg  (d:Disk.dprog) (rx:tprog2)
-  | T2Commit (rx:tprog2)
-  | T2Abort  (rx:tprog2)
-  | T2Halt
-  .
-
 Bind Scope tprog_scope with tprog.
 
 
@@ -62,13 +55,6 @@ Record tstate := TSt {
   TSInTrans: bool        (* in transaction? the first write starts the transaction *)
 }.
 
-Record t2state := T2St {
-  T2SProg: tprog2;
-  T2SDisk: storage;       (* main disk *)
-  T2SAltDisk: storage;    (* alternative disk for transactions *)
-  T2SInTrans: bool        (* in transaction? the first write starts the transaction *)
-}.
-
 
 (* high level interpreter *)
 Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
@@ -93,17 +79,6 @@ Inductive tsmstep : tstate -> tstate -> Prop :=
     tsmstep (TSt (TCommit rx) d ad dt)    (TSt rx ad ad false)
   | TsmAbort:  forall d ad dt rx,
     tsmstep (TSt (TAbort rx) d ad dt)     (TSt rx d d false)
-  .
-
-Inductive t2smstep : t2state -> t2state -> Prop :=
-  | T2smHalt: forall d ad dt,
-    t2smstep (T2St T2Halt d ad dt)          (T2St T2Halt d ad dt)
-  | T2smProg: forall d ad dt dp rx,
-    t2smstep (T2St (T2DProg dp rx) d ad dt) (T2St rx d (drun dp ad) dt)
-  | T2smCommit: forall d ad dt rx,
-    t2smstep (T2St (T2Commit rx) d ad dt)   (T2St rx ad ad false)
-  | T2smAbort: forall d ad dt rx,
-    t2smstep (T2St (T2Abort rx) d ad dt)    (T2St rx d d false)
   .
 
 

@@ -1,32 +1,10 @@
-Require Import List.
-Require Import Arith.
-Import ListNotations.
-Require Import CpdtTactics.
-Require Import FunctionalExtensionality.
-
-Set Implicit Arguments.
-
-Require Import FsTactics.
 Require Import Storage.
-Load Closures.
-
 
 Inductive dprog :=
   | DRead  (b:block) (rx:value -> dprog)
   | DWrite (b:block) ( v:value) (rx:dprog)
   | DHalt
   .
-
-
-Bind Scope dprog_scope with dprog.
-
-Notation "ra <- a ; b" := (a (fun ra => b))
-  (right associativity, at level 60) : dprog_scope.
-
-Notation "a ;; b" := (a (b))
-  (right associativity, at level 60) : dprog_scope.
-
-Open Scope dprog_scope.
 
 Record dstate := DSt {
   DSProg: dprog;
