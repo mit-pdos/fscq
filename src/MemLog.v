@@ -12,7 +12,7 @@ Require Import Trans.
 Load Closures.
 
 
-(* language that manipulates a disk and an in-memory pending log *)
+(* language that manipulates a disk and a persistent log *)
 
 Inductive pprog :=
   | PRead   (b:block) (rx:value -> pprog)
@@ -22,8 +22,7 @@ Inductive pprog :=
   | PGetLog (rx:list (block * value) -> pprog)
   | PSetTx  (v:bool) (rx:pprog)
   | PGetTx  (rx:bool -> pprog)
-  | PHalt
-  .
+  | PHalt.
 
 Bind Scope pprog_scope with pprog.
 
@@ -56,41 +55,38 @@ Definition do_tread b rx : pprog :=
   l <- PGetLog;
   v <- PRead b;
   match (pfind l b) with
-  | Some v => rx v
-  | None   => rx v
-  end
-.
+  | Some v' => rx v'
+  | None    => rx v
+  end.
 
 Definition do_twrite b v rx : pprog :=
-  tx <- PGetTx;
-  if tx then
-    PAddLog b v ;; rx
-  else
-    PClrLog ;; PSetTx true ;;
-    PAddLog b v ;; rx
-.
+  PAddLog b v ;; rx.
+
+Definition do_tbegin rx : pprog :=
+  PSetTx true ;; rx.
+
+Definition do_apply_log rx : pprog :=
+  l <- PGetLog ; pflush l ;; PClrLog ;; rx.
 
 Definition do_tcommit rx : pprog :=
-  PSetTx false ;; l <- PGetLog ; pflush l ;; PClrLog ;; rx
-.
+  PSetTx false ;; do_apply_log rx.
 
 Definition do_tabort rx : pprog :=
-  PSetTx false ;; PClrLog ;; rx
-.
+  PClrLog ;; PSetTx false ;; rx.
 
-Definition do_trecover : pprog :=
+Definition do_precover : pprog :=
   tx <- PGetTx;
   if tx then
-    PClrLog ;; PHalt
+    PClrLog ;; PSetTx false ;; PHalt
   else
-    l <- PGetLog ; pflush l ;; PClrLog ;; PHalt
-.
+    do_apply_log PHalt.
 
 Close Scope pprog_scope.
 
 Fixpoint compile_tp (p:tprog) : pprog :=
   match p with
   | THalt         => PHalt
+  | TBegin rx     => do_tbegin (compile_tp rx)
   | TRead b rx    => do_tread  b (fun v => compile_tp (rx v))
   | TWrite b v rx => do_twrite b v (compile_tp rx)
   | TCommit rx    => do_tcommit (compile_tp rx)
@@ -101,52 +97,51 @@ Record pstate := PSt {
   PSProg: pprog;
   PSDisk: storage;
   PSLog: list (block * value);
-  PSTInTrans: bool
+  PSInTrans: bool
 }.
 
 Inductive psmstep : pstate -> pstate -> Prop :=
-  | PsmHalt: forall d l c,
-    psmstep (PSt PHalt d l c) (PSt PHalt d l c)
-  | PsmRead: forall d l c b rx,
-    psmstep (PSt (PRead b rx) d l c)
-            (PSt (rx (st_read d b)) d l c)
-  | PsmWrite: forall d l c b v rx,
-    psmstep (PSt (PWrite b v rx) d l c)
-            (PSt rx (st_write d b v) l c)
-  | PsmAddLog: forall d l c b v rx,
-    psmstep (PSt (PAddLog b v rx) d l c)
-            (PSt rx d (l ++ [(b, v)]) c)
-  | PsmClrLog: forall d l c rx,
-    psmstep (PSt (PClrLog rx) d l c)
-            (PSt rx d nil c)
-  | PsmGetLog: forall d l c rx,
-    psmstep (PSt (PGetLog rx) d l c)
-            (PSt (rx l) d l c)
-  | PsmSetTx: forall d l c v rx,
-    psmstep (PSt (PSetTx v rx) d l c)
+  | PsmHalt: forall d l it,
+    psmstep (PSt PHalt d l it) (PSt PHalt d l it)
+  | PsmRead: forall d l b rx it,
+    psmstep (PSt (PRead b rx) d l it)
+            (PSt (rx (st_read d b)) d l it)
+  | PsmWrite: forall d l b v rx it,
+    psmstep (PSt (PWrite b v rx) d l it)
+            (PSt rx (st_write d b v) l it)
+  | PsmAddLog: forall d l b v rx it,
+    psmstep (PSt (PAddLog b v rx) d l it)
+            (PSt rx d (l ++ [(b, v)]) it)
+  | PsmClrLog: forall d l rx it,
+    psmstep (PSt (PClrLog rx) d l it)
+            (PSt rx d nil it)
+  | PsmGetLog: forall d l rx it,
+    psmstep (PSt (PGetLog rx) d l it)
+            (PSt (rx l) d l it)
+  | PsmSetTx: forall d l v rx it,
+    psmstep (PSt (PSetTx v rx) d l it)
             (PSt rx d l v)
-  | PsmGetTx: forall d l c rx,
-    psmstep (PSt (PGetTx rx) d l c)
-            (PSt (rx c) d l c)
-  .
+  | PsmGetTx: forall d l rx it,
+    psmstep (PSt (PGetTx rx) d l it)
+            (PSt (rx it) d l it).
 
 Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
-  let (_, d, l, c) := s in
+  let (_, d, l, it) := s in
   match p with
-  | PHalt           => (PSt p d l c)
-  | PRead b rx      => pexec (rx (st_read d b)) (PSt (rx (st_read d b)) d l c)
-  | PWrite b v rx   => pexec rx (PSt rx (st_write d b v) l c)
-  | PAddLog b v rx  => pexec rx (PSt rx d (l ++ [(b, v)]) c)
-  | PClrLog rx      => pexec rx (PSt rx d nil c)
-  | PGetLog rx      => pexec (rx l) (PSt (rx l) d l c)
+  | PHalt           => (PSt p d l it)
+  | PRead b rx      => pexec (rx (st_read d b)) (PSt (rx (st_read d b)) d l it)
+  | PWrite b v rx   => pexec rx (PSt rx (st_write d b v) l it)
+  | PAddLog b v rx  => pexec rx (PSt rx d (l ++ [(b, v)]) it)
+  | PClrLog rx      => pexec rx (PSt rx d nil it)
+  | PGetLog rx      => pexec (rx l) (PSt (rx l) d l it)
   | PSetTx v rx     => pexec rx (PSt rx d l v)
-  | PGetTx rx       => pexec (rx c) (PSt (rx c) d l c)
+  | PGetTx rx       => pexec (rx it) (PSt (rx it) d l it)
   end.
 
 (** If no failure, psmstep and pexec are equivalent *)
 Lemma pexec_smstep :
-  forall p d l tx s',
-  pexec p (PSt p d l tx) = s' -> star psmstep (PSt p d l tx) s'.
+  forall p d l it s',
+  pexec p (PSt p d l it) = s' -> star psmstep (PSt p d l it) s'.
 Proof.
   induction p; intros;
   eapply star_step; t; try constructor.
@@ -165,9 +160,9 @@ Proof.
 Qed.
 
 Lemma smstep_pexec :
-  forall p d l tx d' l' tx',
-  star psmstep (PSt p d l tx) (PSt PHalt d' l' tx') ->
-  pexec p (PSt p d l tx) = (PSt PHalt d' l' tx').
+  forall p d l it d' l' it',
+  star psmstep (PSt p d l it) (PSt PHalt d' l' it') ->
+  pexec p (PSt p d l it) = (PSt PHalt d' l' it').
 Proof.
   induction p;  intros;
   match goal with
@@ -184,8 +179,7 @@ Inductive psmstep_fail : pstate -> pstate -> Prop :=
   | PsmNormal: forall s s',
     psmstep s s' -> psmstep_fail s s'
   | PsmCrash: forall s,
-    psmstep_fail s (pexec do_trecover s)
-  .
+    psmstep_fail s (pexec do_precover s).
 
 (* state matching *)
 
@@ -232,7 +226,8 @@ Proof.
 Qed.
 
 (** [pflush] implements [log_flush] in the failure-free semantics. *)
-Lemma writeLog_flush' : forall l l' tx rx d d',
+Lemma writeLog_flush':
+  forall l l' tx rx d d',
   d = log_flush l' d ->
   d' = log_flush l d ->
   star psmstep (PSt (pflush l rx) d (l' ++ l) tx) (PSt rx d' (l' ++ l) tx).
@@ -243,7 +238,8 @@ Proof.
   rewrite app_comm_cons in *. eapply IHl; t.
 Qed.
 
-Lemma writeLog_flush : forall tx rx d d' l,
+Lemma writeLog_flush:
+  forall rx d d' l tx,
   d' = log_flush l d ->
   star psmstep (PSt (pflush l rx) d l tx) (PSt rx d' l tx).
 Proof.
@@ -252,14 +248,16 @@ Qed.
 
 
 (** Pulling out the effect of the last log entry *)
-Lemma writeLog_final : forall b v l d,
+Lemma writeLog_final:
+  forall b v l d,
   log_flush (l ++ [(b, v)]) d = st_write (log_flush l d) b v.
 Proof.
   induction l; intuition; simpl; auto.
 Qed.
 
 (** [readLog] interacts properly with [writeLog]. *)
-Lemma readLog_correct : forall b ls d,
+Lemma readLog_correct:
+  forall b ls d,
   st_read (log_flush ls d) b = match pfind ls b with
                             | Some v => v
                             | None => st_read d b
@@ -280,14 +278,12 @@ Qed.
 
 Inductive tpmatch : tstate -> pstate -> Prop :=
   | TPMatchState :
-    forall td tp pd lg (tx:bool) pp ad dt
+    forall td tp pd lg pp ad dt tx
     (DD: td = pd)
     (AD: ad = log_flush lg td)
-    (LG: tx = false -> lg = nil)
     (TX: tx = dt)
-    (PP: compile_tp tp = pp) ,
-    tpmatch (TSt tp td ad dt) (PSt pp pd lg tx)
-  .
+    (PP: compile_tp tp = pp),
+    tpmatch (TSt tp td ad dt) (PSt pp pd lg tx).
 
 
 (*
@@ -309,38 +305,41 @@ Proof.
   induction 1; intros; inversion H.
 
   (* Halt *)
-  eexists; cc.
+  - eexists; cc.
 
   (* Read *)
-  tt; unfold do_tread; eexists; split.
-  eapply star_right. eapply star_right.
-  constructor. constructor. constructor. cc.
-  rewrite readLog_correct.
-  destruct (pfind lg b) eqn:F; tt.
+  - tt; unfold do_tread; eexists; split.
+    eapply star_right. eapply star_right.
+    constructor. constructor. constructor. cc.
+    rewrite readLog_correct.
+    destruct (pfind lg b) eqn:F; tt.
 
   (* Write *)
-  destruct tx; tt; eexists; split.
-  (* tx = true *)
-  eapply star_two; cc. cc.
-  rewrite <- writeLog_final. cc.
-  (* tx = false *)
-  do 4 (eapply star_step; [ cc | idtac ]); cc. cc.
+  - tt; eexists; split.
+    eapply star_one; cc.
+    rewrite <- writeLog_final; cc.
 
   (* Commit *)
-  tt; eexists; split.
-  do 2 (eapply star_step; [ cc | idtac ]); tt.
-  eapply star_right.
-  eapply writeLog_flush; cc. cc. cc.
+  - tt; eexists; split.
+    do 2 (eapply star_step; [ cc | idtac ]); tt.
+    eapply star_right.
+    eapply writeLog_flush; cc. cc. cc.
 
   (* Abort *)
-  eexists; split.
-  eapply star_two; cc. cc.
+  - eexists; split.
+    eapply star_two; cc. cc.
+
+  (* Begin *)
+  - eexists; split.
+    eapply star_one; cc. cc.
 Qed.
 
 
-Lemma flush_nofail : forall l m l' tx,
-  pexec (pflush l (PClrLog PHalt)) (PSt (pflush l (PClrLog PHalt)) m l' tx) =
-                         (PSt PHalt (log_flush l m) nil tx).
+Lemma flush_nofail:
+  forall l m l' tx,
+  pexec (pflush l (PClrLog PHalt))
+   (PSt (pflush l (PClrLog PHalt)) m l' tx) =
+  (PSt PHalt (log_flush l m) nil tx).
 Proof.
   induction l; t.
 Qed.
@@ -365,7 +364,7 @@ Lemma pexec_term:
   forall p s s',
   pexec p s = s' -> PSProg s' = PHalt.
 Proof.
-  destruct s as [p' d l tx].
+  destruct s as [p' d l].
   induction p; t; match goal with
   | [ H: pexec _ _ = _ |- _ ] => apply pexec_term' in H; auto
   | _ => try inversion H; auto
@@ -466,47 +465,56 @@ Proof.
   admit.
 Qed.
 
+
 Inductive tpmatch_fail : tstate -> pstate -> Prop :=
   | TPMatchFail :
-    forall td tp pd lg (tx:bool) pp ad dt
+    forall td tp pd pp ad dt
     (DD: td = pd)
-    (AD: ad = td)
-    (LG: lg = nil)
-    (TX: tx = dt)
-    (PP: pp = PHalt) ,
-    tpmatch_fail (TSt tp td ad dt) (PSt pp pd lg tx)
-  .
+    (PP: pp = PHalt),
+    tpmatch_fail (TSt tp td ad dt) (PSt pp pd nil false).
+
+Lemma precover_commit:
+  forall p d l,
+  pexec do_precover (PSt p d l false) = PSt PHalt (log_flush l d) nil false.
+Proof.
+  intros; apply flush_nofail.
+Qed.
+
+Lemma precover_abort:
+  forall p d l,
+  pexec do_precover (PSt p d l true) = PSt PHalt d nil false.
+Proof.
+  crush.
+Qed.
 
 Theorem tp_atomicity:
-  forall ts1 ts2 ps1 ps2 pf1 pf2 s s'
+  forall ts1 ts2 ps1 ps2 s s'
     (HS: tsmstep ts1 ts2)
     (M1: tpmatch ts1 ps1)
     (M2: tpmatch ts2 ps2)
-    (MF1: tpmatch_fail ts1 pf1)
-    (MF2: tpmatch_fail ts2 pf2)
     (NS1: star psmstep ps1 s)
     (NS2: star psmstep s ps2)
-    (RC: s' = pexec do_trecover s),
-    s' = pf1 \/ s' = pf2.
+    (RC: s' = pexec do_precover s),
+    tpmatch_fail ts1 s' \/ tpmatch_fail ts2 s'.
 Proof.
-  (* figure out ts1, the matching state for as1 *)
+  (* figure out ps1, the matching state for ts1 *)
   intros; inversion M1; repeat subst.
 
-  (* step the high level program to get as2 *)
-  (* ... and figure out tf1 tf2 *)
-  inversion HS; repeat subst;
-  inversion MF1; inversion MF2; repeat subst;
-  clear M1 HS MF1 MF2.
-
+  (* step the high level program to get ts2 *)
+  inversion HS; repeat subst; clear M1 HS.
 
   Ltac iv := match goal with
   | [ H: _ = ?a , HS: star psmstep ?a _ |- _ ] => rewrite <- H in HS; clear H
   | [ H: psmstep _ _ |- _ ] => inversion H; t; []; clear H
-  | [ H: star psmstep _ _ , dt: bool |- _ ] => 
-              inversion H; [destruct dt|]; t; []; clear H
+  | [ H: star psmstep _ _, dt: bool |- _ ] =>
+    inversion H; [ destruct dt | ]; t; []; clear H
   end.
 
-  (* THalt *)
+  - (* THalt *)
+    (* XXX *)
+Abort.
+
+(*
   iv. iv. right.
   assert (s2=s). inversion M2; repeat subst.
   assert (lg=lg0). admit. (* XXX *)
@@ -531,19 +539,4 @@ Proof.
   
 
 Admitted.
-
-(*
-Theorem tp2_atomicity:
-  forall ts1 ts2 ps1 ps2 pf1 pf2 s s'
-    (HS: t2smstep ts1 ts2)
-    (M1: t2pmatch ts1 ps1)
-    (M2: t2pmatch ts2 ps2)
-    (MF1: t2pmatch_fail ts1 pf1)
-    (MF2: t2pmatch_fail ts2 pf2)
-    (NS1: star psmstep ps1 s)
-    (NS2: star psmstep s ps2)
-    (RC: s' = pexec do_t2recover s),
-    s' = pf1 \/ s' = pf2.
-Proof.
-
 *)
