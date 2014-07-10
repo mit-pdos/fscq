@@ -11,6 +11,7 @@ Require Import Bank.
 Load Closures.
 
 Require Import Disk.
+Require Import Trans2.
 
 
 Section TransactionLanguage.
@@ -44,6 +45,21 @@ Fixpoint compile_at (p:aproc) : tprog :=
     | AGetAcct a rx => v <- TRead a; compile_at (rx v)
     | ATransfer src dst v rx => r <- TRead src ; TWrite src (r-v) ;;
                    r1 <- TRead dst ; TWrite dst (r1+v) ;; TCommit ;; compile_at rx
+  end.
+
+Fixpoint do_t2dprog (d:dprog) (rx:tprog) : tprog :=
+  match d with
+  | DHalt => rx
+  | DWrite b v drx => TWrite b v ;; do_t2dprog drx rx
+  | DRead b drx => v <- TRead b ; do_t2dprog (drx v) rx
+  end.
+
+Fixpoint compile_t2t (t2:t2prog) : tprog :=
+  match t2 with
+  | T2Halt => THalt
+  | T2Commit rx => TCommit (compile_t2t rx)
+  | T2Abort rx => TAbort (compile_t2t rx)
+  | T2DProg d rx => do_t2dprog d (compile_t2t rx)
   end.
 
 Close Scope tprog_scope.
@@ -81,6 +97,8 @@ Inductive tsmstep : tstate -> tstate -> Prop :=
     tsmstep (TSt (TAbort rx) d ad dt)     (TSt rx d d false)
   .
 
+Hint Constructors tsmstep.
+
 
 Lemma tsmstep_determ:
   forall s0 s s',
@@ -108,8 +126,13 @@ Inductive atmatch : astate -> tstate -> Prop :=
     (DD: d = dd)
     (AD: d = ad)
     (PP: compile_at ap = tp),
-    atmatch (ASt ap d) (TSt tp dd ad false)
-  .
+    atmatch (ASt ap d) (TSt tp dd ad false).
+
+Inductive t2tmatch : t2state -> tstate -> Prop :=
+  | T2TMatchState:
+    forall tp t2p dd ad it
+    (PP: compile_t2t t2p = tp),
+    t2tmatch (T2St t2p dd ad it) (TSt tp dd ad it).
 
 
 Inductive atmatch_fail : astate -> tstate -> Prop :=
@@ -118,8 +141,16 @@ Inductive atmatch_fail : astate -> tstate -> Prop :=
     (DD: d = dd)
     (AD: d = ad)
     (PP: tp = THalt),
-    atmatch_fail (ASt ap d) (TSt tp dd ad false)
-  .
+    atmatch_fail (ASt ap d) (TSt tp dd ad false).
+
+Inductive t2tmatch_fail : t2state -> tstate -> Prop :=
+  | T2TMatchFail:
+    forall tp t2p dd ad it
+    (PP: tp = THalt),
+    t2tmatch_fail (T2St t2p dd ad it) (TSt tp dd ad it).
+
+Hint Constructors t2tmatch.
+Hint Constructors t2tmatch_fail.
 
 
 Theorem at_forward_sim:
@@ -141,6 +172,28 @@ Proof.
   do 5 (eapply star_step; [ cc | idtac ]).
   cc. cc.
 Qed.
+
+Theorem t2t_forward_sim:
+  forall T1 T2,
+  t2smstep T1 T2 ->
+  forall P1, t2tmatch T1 P1 ->
+  exists P2, star tsmstep P1 P2 /\ t2tmatch T2 P2.
+Proof.
+  induction 1; intros; inversion H; tt.
+
+  (* T2Halt *)
+  - econstructor; split; cc.
+
+  (* T2DProg *)
+  - exists (TSt (compile_t2t rx) d (drun dp ad) dt); split.
+
+    generalize H; clear H;
+    generalize ad; clear ad.
+    induction dp; simpl; intros.
+    + eapply star_step; [ constructor | crush ].
+    + eapply star_step.  constructor.
+Admitted.
+
 
 Lemma thalt_inv_eq:
   forall s s', (TSProg s) = THalt ->
