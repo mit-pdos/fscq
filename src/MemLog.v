@@ -554,6 +554,9 @@ Proof.
     apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
 
   - (* TCommit, in txn *)
+    do 2 iv.
+    right.  (* COMMIT POINT *)
+    do 3 iv.
     admit.
 
   - (* TAbort, in txn *)
@@ -578,5 +581,6 @@ Proof.
     apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
 
   - (* TBegin, no txn *)
+    do 2 iv. left.
     admit.
 Qed.
