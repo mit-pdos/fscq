@@ -63,7 +63,7 @@ Definition do_twrite b v rx : pprog :=
   PAddLog b v ;; rx.
 
 Definition do_tbegin rx : pprog :=
-  PSetTx true ;; rx.
+  PClrLog ;; PSetTx true ;; rx.
 
 Definition do_apply_log rx : pprog :=
   l <- PGetLog ; pflush l ;; PClrLog ;; rx.
@@ -277,13 +277,17 @@ Qed.
 
 
 Inductive tpmatch : tstate -> pstate -> Prop :=
-  | TPMatchState :
-    forall td tp pd lg pp ad dt tx
+  | TPMatchStateTx:
+    forall td tp pd lg pp ad
     (DD: td = pd)
     (AD: ad = log_flush lg td)
-    (TX: tx = dt)
     (PP: compile_tp tp = pp),
-    tpmatch (TSt tp td ad dt) (PSt pp pd lg tx).
+    tpmatch (TSt tp td (Some ad)) (PSt pp pd lg true)
+  | TPMatchStateNoTx:
+    forall td tp pd lg pp
+    (DD: td = pd)
+    (PP: compile_tp tp = pp),
+    tpmatch (TSt tp td None) (PSt pp pd lg false).
 
 
 (*
@@ -304,34 +308,39 @@ Theorem tp_forward_sim:
 Proof.
   induction 1; intros; inversion H.
 
-  (* Halt *)
-  - eexists; cc.
+  - (* Halt, in txn *)
+    eexists; cc.
+  - (* Halt, no txn *)
+    eexists; cc.
 
-  (* Read *)
-  - tt; unfold do_tread; eexists; split.
+  - (* Read, in txn *)
+    tt; unfold do_tread; eexists; split.
     eapply star_right. eapply star_right.
     constructor. constructor. constructor. cc.
     rewrite readLog_correct.
     destruct (pfind lg b) eqn:F; tt.
 
-  (* Write *)
-  - tt; eexists; split.
+  - (* Write, in txn *)
+    tt; eexists; split.
     eapply star_one; cc.
     rewrite <- writeLog_final; cc.
 
-  (* Commit *)
-  - tt; eexists; split.
+  - (* Commit, in txn *)
+    tt; eexists; split.
     do 2 (eapply star_step; [ cc | idtac ]); tt.
     eapply star_right.
     eapply writeLog_flush; cc. cc. cc.
 
-  (* Abort *)
-  - eexists; split.
+  - (* Abort, in txn *)
+    eexists; split.
+    eapply star_two; cc. cc.
+  - (* Abort, no txn *)
+    eexists; split.
     eapply star_two; cc. cc.
 
-  (* Begin *)
-  - eexists; split.
-    eapply star_one; cc. cc.
+  - (* Begin, no txn *)
+    eexists; split.
+    eapply star_two; cc. cc.
 Qed.
 
 
@@ -468,10 +477,10 @@ Qed.
 
 Inductive tpmatch_fail : tstate -> pstate -> Prop :=
   | TPMatchFail :
-    forall td tp pd pp ad dt
+    forall td tp pd pp oad
     (DD: td = pd)
     (PP: pp = PHalt),
-    tpmatch_fail (TSt tp td ad dt) (PSt pp pd nil false).
+    tpmatch_fail (TSt tp td oad) (PSt pp pd nil false).
 
 Lemma precover_commit:
   forall p d l,
