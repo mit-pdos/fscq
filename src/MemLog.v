@@ -523,11 +523,8 @@ Lemma flush_terminates:
   forall lg rx pd s s2,
   star psmstep (PSt (pflush lg ;; rx) pd lg false) s ->
   star psmstep s s2 ->
-  (star psmstep (PSt (pflush lg ;; rx) pd lg false)
-                (PSt rx (log_flush lg pd) lg false) /\
-   star psmstep (PSt rx (log_flush lg pd) lg false) s2 /\
-   ((star psmstep s (PSt rx (log_flush lg pd) lg false)) \/
-    (star psmstep (PSt rx (log_flush lg pd) lg false) s))).
+  ((star psmstep s (PSt rx (log_flush lg pd) lg false)) \/
+   (star psmstep (PSt rx (log_flush lg pd) lg false) s)).
 Proof.
   admit.
 Qed.
@@ -591,12 +588,10 @@ Proof.
     right.  (* COMMIT POINT *)
     do 3 iv.
     destruct flush_terminates with (lg:=lg) (rx:=PClrLog (compile_tp rx))
-                                   (pd:=pd) (s:=s) (s2:=ps2); [ crush | crush | idtac ].
-    destruct H2.  destruct H3.
+                                   (pd:=pd) (s:=s) (s2:=ps2); [ crush | crush | idtac | idtac ].
     apply flush_failures with (rx:=PClrLog (compile_tp rx)); crush.
 
-    clear H. clear H0. clear H1. clear H2.
-    do 2 iv.
+    do 3 iv.
     cut (s3=s). crush.
     destruct s; destruct s3.
     inversion M2; clear M2; repeat subst.
@@ -626,15 +621,13 @@ Proof.
   - (* TBegin, no txn *)
     do 2 iv. left.
     destruct flush_terminates with (lg:=lg) (rx:=PClrLog (PSetTx true (compile_tp rx)))
-                                   (pd:=pd) (s:=s) (s2:=ps2); [ crush | crush | idtac ].
-    destruct H2; destruct H3.
+                                   (pd:=pd) (s:=s) (s2:=ps2); [ crush | crush | idtac | idtac ].
     apply flush_failures with (rx:=PClrLog (PSetTx true (compile_tp rx))); crush.
 
-    clear H. clear H0. clear H1. clear H2.
-    do 5 iv.
+    do 6 iv.
     cut (s3=s). crush.
     destruct s; destruct s3.
     inversion M2; clear M2; repeat subst.
-    inversion H0; repeat subst.
+    inversion H2; repeat subst.
     apply psmstep_loopfree with (d3:=log_flush lg pd) (l3:=lg0) (t3:=true); crush.
 Qed.
