@@ -495,6 +495,15 @@ Inductive tpmatch_fail : tstate -> pstate -> Prop :=
 Hint Constructors tpmatch_fail.
 
 
+Lemma flush_twice:
+  forall lg pd,
+  log_flush lg (log_flush lg pd) = log_flush lg pd.
+Proof.
+  admit.
+Qed.
+
+Hint Rewrite flush_twice.
+
 Lemma flush_failures':
   forall lg l0 l1 rx pd s tp,
   lg = l0 ++ l1 ->
@@ -510,6 +519,18 @@ Proof.
   - (* XXX *)
 Abort.
 
+Lemma flush_terminates:
+  forall lg rx pd s s2,
+  star psmstep (PSt (pflush lg ;; rx) pd lg false) s ->
+  star psmstep s s2 ->
+  (star psmstep (PSt (pflush lg ;; rx) pd lg false)
+                (PSt rx (log_flush lg pd) lg false) /\
+   star psmstep (PSt rx (log_flush lg pd) lg false) s2 /\
+   ((star psmstep s (PSt rx (log_flush lg pd) lg false)) \/
+    (star psmstep (PSt rx (log_flush lg pd) lg false) s))).
+Proof.
+  admit.
+Qed.
 
 Lemma flush_failures:
   forall lg rx pd s tp,
@@ -517,8 +538,8 @@ Lemma flush_failures:
   star psmstep s (PSt rx (log_flush lg pd) lg false) ->
   tpmatch_fail (TSt tp (log_flush lg pd) None) (pexec do_precover s).
 Proof.
-  (* XXX *)
-Abort.
+  admit.
+Qed.
 
 
 Theorem tp_atomicity:
@@ -569,7 +590,17 @@ Proof.
     do 2 iv.
     right.  (* COMMIT POINT *)
     do 3 iv.
-    admit.
+    destruct flush_terminates with (lg:=lg) (rx:=PClrLog (compile_tp rx))
+                                   (pd:=pd) (s:=s) (s2:=ps2); [ crush | crush | idtac ].
+    destruct H2.  destruct H3.
+    apply flush_failures with (rx:=PClrLog (compile_tp rx)); crush.
+
+    clear H. clear H0. clear H1. clear H2.
+    do 2 iv.
+    cut (s3=s). crush.
+    destruct s; destruct s3.
+    inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
 
   - (* TAbort, in txn *)
     do 8 iv. right.
