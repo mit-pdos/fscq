@@ -495,19 +495,31 @@ Inductive tpmatch_fail : tstate -> pstate -> Prop :=
 Hint Constructors tpmatch_fail.
 
 
-Lemma precover_commit:
-  forall p d l,
-  pexec do_precover (PSt p d l false) = PSt PHalt (log_flush l d) nil false.
+Lemma flush_failures':
+  forall lg l0 l1 rx pd s tp,
+  lg = l0 ++ l1 ->
+  star psmstep (PSt (pflush l1 ;; rx) (log_flush l0 pd) lg false) s ->
+  star psmstep s (PSt rx (log_flush lg pd) lg false) ->
+  tpmatch_fail (TSt tp (log_flush lg pd) None) (pexec do_precover s).
 Proof.
-  intros; apply flush_nofail.
-Qed.
+  induction l1.
+  - intros. assert (s=(PSt rx (log_flush l0 pd) l0 false)). destruct s.
+    apply psmstep_loopfree with (d3:=PSDisk0) (l3:=PSLog0) (t3:=PSInTrans0); crush.
+    repeat subst. simpl. rewrite flush_nofail. constructor; auto.
+    admit.
+  - (* XXX *)
+Abort.
 
-Lemma precover_abort:
-  forall p d l,
-  pexec do_precover (PSt p d l true) = PSt PHalt d nil false.
+
+Lemma flush_failures:
+  forall lg rx pd s tp,
+  star psmstep (PSt (pflush lg ;; rx) pd lg false) s ->
+  star psmstep s (PSt rx (log_flush lg pd) lg false) ->
+  tpmatch_fail (TSt tp (log_flush lg pd) None) (pexec do_precover s).
 Proof.
-  crush.
-Qed.
+  (* XXX *)
+Abort.
+
 
 Theorem tp_atomicity:
   forall ts1 ts2 ps1 ps2 s s'
