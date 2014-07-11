@@ -62,17 +62,21 @@ Definition do_tread b rx : pprog :=
 Definition do_twrite b v rx : pprog :=
   PAddLog b v ;; rx.
 
-Definition do_tbegin rx : pprog :=
-  PClrLog ;; PSetTx true ;; rx.
-
 Definition do_apply_log rx : pprog :=
   l <- PGetLog ; pflush l ;; PClrLog ;; rx.
+
+Definition do_tbegin rx : pprog :=
+  do_apply_log (PSetTx true ;; rx).
 
 Definition do_tcommit rx : pprog :=
   PSetTx false ;; do_apply_log rx.
 
 Definition do_tabort rx : pprog :=
-  PClrLog ;; PSetTx false ;; rx.
+  tx <- PGetTx;
+  if tx then
+    PClrLog ;; PSetTx false ;; rx
+  else
+    rx.
 
 Definition do_precover : pprog :=
   tx <- PGetTx;
@@ -285,7 +289,7 @@ Inductive tpmatch : tstate -> pstate -> Prop :=
     tpmatch (TSt tp td (Some ad)) (PSt pp pd lg true)
   | TPMatchStateNoTx:
     forall td tp pd lg pp
-    (DD: td = pd)
+    (DD: td = log_flush lg pd)
     (PP: compile_tp tp = pp),
     tpmatch (TSt tp td None) (PSt pp pd lg false).
 
@@ -334,13 +338,16 @@ Proof.
 
   - (* Abort, in txn *)
     eexists; split.
-    eapply star_two; cc. cc.
+    eapply star_three; cc. cc.
   - (* Abort, no txn *)
     eexists; split.
-    eapply star_two; cc. cc.
+    eapply star_one; cc. cc.
 
   - (* Begin, no txn *)
     eexists; split.
+    eapply star_step; [ cc | idtac ].
+    eapply star_trans.
+    apply writeLog_flush; auto.
     eapply star_two; cc. cc.
 Qed.
 
@@ -469,8 +476,10 @@ Qed.
 
 
 Lemma psmstep_loopfree:
-  forall a b,
-  star psmstep a b -> star psmstep b a -> a = b.
+  forall pA pB d1 d2 d3 l1 l2 l3 t1 t2 t3,
+  star psmstep (PSt pA d1 l1 t1) (PSt pB d2 l2 t2) ->
+  star psmstep (PSt pB d2 l2 t2) (PSt pA d3 l3 t3) ->
+  (PSt pA d1 l1 t1) = (PSt pB d2 l2 t2).
 Proof.
   admit.
 Qed.
@@ -511,7 +520,7 @@ Theorem tp_atomicity:
     tpmatch_fail ts1 s' \/ tpmatch_fail ts2 s'.
 Proof.
   (* figure out ps1, the matching state for ts1 *)
-  intros; inversion M1; repeat subst.
+  intros; inversion M1; repeat subst;
 
   (* step the high level program to get ts2 *)
   inversion HS; repeat subst; clear M1 HS.
@@ -523,33 +532,51 @@ Proof.
   end.
 
   - (* THalt, in txn *)
-    iv. iv. right.
-    assert (s2=s). inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree; auto.
-Abort.
+    do 2 iv. right.
+    cut (s2=s).  crush.
+    destruct s; destruct s2.
+    inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
 
-(*
+  - (* TRead, in txn *)
+    do 5 iv. right.
+    cut (s0=s).  crush.
+    destruct s; destruct s0.
+    inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true);
+    [ crush | rewrite readLog_correct in *; destruct (pfind lg b); crush ].
 
-    assert (lg=lg0). admit. (* XXX *)
-    rewrite <- H in NS2.
-    apply psmstep_loopfree; auto.
-    t; destruct s as [p d l c]; t.
-    destruct c; t.
+  - (* TWrite, in txn *)
+    do 2 iv. right.
+    cut (s2=s).  crush.
+    destruct s; destruct s2.
+    inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
 
-  (* TRead *)
-  iv. iv. iv. iv. iv.
-  destruct (pfind lg b) eqn:F.
+  - (* TCommit, in txn *)
     admit.
-    
-    assert (s0=s). inversion M2; repeat subst; clear M2.
-    assert (lg=lg0). admit. rewrite <- H in NS2.   (* XXX *)
-    rewrite AD0 in NS2.
-    apply psmstep_loopfree; auto.
-    right.   t; destruct s as [p d l c]; t.
-    destruct c; t.
-  
-  (* TWrite *)
-  
 
-Admitted.
-*)
+  - (* TAbort, in txn *)
+    do 8 iv. right.
+    cut (s3=s).  crush.
+    destruct s; destruct s3.
+    inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+
+  - (* THalt, no txn *)
+    do 2 iv. right.
+    cut (s2=s). crush. rewrite flush_nofail. crush.
+    destruct s; destruct s2.
+    inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+
+  - (* TAbort, no txn *)
+    do 2 iv. right.
+    cut (s2=s). crush. rewrite flush_nofail. crush.
+    destruct s; destruct s2.
+    inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+
+  - (* TBegin, no txn *)
+    admit.
+Qed.
