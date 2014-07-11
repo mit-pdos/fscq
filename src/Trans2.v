@@ -11,19 +11,18 @@ Inductive t2prog :=
 
 Record t2state := T2St {
   T2SProg: t2prog;
-  T2SDisk: storage;       (* main disk *)
-  T2SAltDisk: storage;    (* alternative disk for transactions *)
-  T2SInTrans: bool        (* in transaction? the first write starts the transaction *)
+  T2SDisk: storage;           (* main disk *)
+  T2SAltDisk: option storage  (* alternative disk for transactions, if in txn *)
 }.
 
 Inductive t2smstep : t2state -> t2state -> Prop :=
-  | T2smHalt: forall d ad dt,
-    t2smstep (T2St T2Halt d ad dt)            (T2St T2Halt d ad dt)
-  | T2smBegin: forall d ad rx,
-    t2smstep (T2St (T2Begin rx) d ad false)   (T2St rx d ad true)
+  | T2smHalt: forall d oad,
+    t2smstep (T2St T2Halt d oad)                (T2St T2Halt d oad)
+  | T2smBegin: forall d rx,
+    t2smstep (T2St (T2Begin rx) d None)         (T2St rx d (Some d))
   | T2smProg: forall d ad dp rx,
-    t2smstep (T2St (T2DProg dp rx) d ad true) (T2St rx d (drun dp ad) true)
+    t2smstep (T2St (T2DProg dp rx) d (Some ad)) (T2St rx d (Some (drun dp ad)))
   | T2smCommit: forall d ad rx,
-    t2smstep (T2St (T2Commit rx) d ad true)   (T2St rx ad ad false)
+    t2smstep (T2St (T2Commit rx) d (Some ad))   (T2St rx ad None)
   | T2smAbort: forall d ad rx,
-    t2smstep (T2St (T2Abort rx) d ad true)    (T2St rx d d false).
+    t2smstep (T2St (T2Abort rx) d (Some ad))    (T2St rx d None).

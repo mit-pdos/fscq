@@ -68,51 +68,49 @@ Close Scope tprog_scope.
 
 Record tstate := TSt {
   TSProg: tprog;
-  TSDisk: storage;       (* main disk *)
-  TSAltDisk: storage;    (* alternative disk for transactions *)
-  TSInTrans: bool        (* in transaction? the first write starts the transaction *)
+  TSDisk: storage;           (* main disk *)
+  TSAltDisk: option storage  (* alternative disk for transactions, if active *)
 }.
 
 
 (* high level interpreter *)
 Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
-  let (_, d, ad, dt) := s in
+  let (_, d, oad) := s in
   match p with
-  | THalt         => s
-  | TRead b rx    => texec (rx (st_read ad b)) (TSt (rx (st_read ad b)) d ad dt)
-  | TWrite b v rx => texec rx (TSt rx d (st_write ad b v) dt)
-  | TBegin rx     => texec rx (TSt rx d ad true)
-  | TCommit rx    => texec rx (TSt rx ad ad false)
-  | TAbort rx     => texec rx (TSt rx d d false)
+  | THalt => s
+  | TAbort rx => texec rx (TSt rx d None)
+  | TBegin rx => texec rx (TSt rx d (Some d))
+  | TRead b rx => match oad with
+    | Some ad => texec (rx (st_read ad b)) (TSt (rx (st_read ad b)) d (Some ad))
+    | None => s
+    end
+  | TWrite b v rx => match oad with
+    | Some ad => texec rx (TSt rx d (Some (st_write ad b v)))
+    | None => s
+    end
+  | TCommit rx => match oad with
+    | Some ad => texec rx (TSt rx ad None)
+    | None => s
+    end
   end.
 
 
 Inductive tsmstep : tstate -> tstate -> Prop :=
-  | TsmHalt: forall d ad dt,
-    tsmstep (TSt THalt d ad dt)             (TSt THalt d ad dt)
+  | TsmHalt: forall d oad,
+    tsmstep (TSt THalt d oad)                 (TSt THalt d oad)
   | TsmRead: forall d ad b rx,
-    tsmstep (TSt (TRead b rx) d ad true)    (TSt (rx (st_read ad b)) d ad true)
+    tsmstep (TSt (TRead b rx) d (Some ad))    (TSt (rx (st_read ad b)) d (Some ad))
   | TsmWrite: forall d ad b v rx,
-    tsmstep (TSt (TWrite b v rx) d ad true) (TSt rx d (st_write ad b v) true)
+    tsmstep (TSt (TWrite b v rx) d (Some ad)) (TSt rx d (Some (st_write ad b v)))
   | TsmCommit:  forall d ad rx,
-    tsmstep (TSt (TCommit rx) d ad true)    (TSt rx ad ad false)
-  | TsmAbort:  forall d ad rx,
-    tsmstep (TSt (TAbort rx) d ad true)     (TSt rx d d false)
-  | TsmBegin: forall d ad rx,
-    tsmstep (TSt (TBegin rx) d ad false)    (TSt rx d ad true).
+    tsmstep (TSt (TCommit rx) d (Some ad))    (TSt rx ad None)
+  | TsmAbort:  forall d oad rx,
+    tsmstep (TSt (TAbort rx) d oad)           (TSt rx d None)
+  | TsmBegin: forall d rx,
+    tsmstep (TSt (TBegin rx) d None)          (TSt rx d (Some d)).
 
 Hint Constructors tsmstep.
 
-
-Lemma tsmstep_determ:
-  forall s0 s s',
-  tsmstep s0 s -> tsmstep s0 s' -> s = s'.
-Proof.
-  intro s0; case_eq s0; intros.
-  repeat match goal with
-  | [ H: tsmstep _ _ |- _ ] => inversion H; clear H
-  end; t.
-Qed.
 
 Lemma tsmstep_loopfree:
   forall a b,
@@ -125,33 +123,31 @@ End TransactionLanguage.
 
 
 Inductive atmatch : astate -> tstate -> Prop :=
-  | ATMatchState :
-    forall d ap tp ad dd
+  | ATMatchState:
+    forall d ap tp dd
     (DD: d = dd)
-    (AD: d = ad)
     (PP: compile_at ap = tp),
-    atmatch (ASt ap d) (TSt tp dd ad false).
+    atmatch (ASt ap d) (TSt tp dd None).
 
 Inductive t2tmatch : t2state -> tstate -> Prop :=
   | T2TMatchState:
-    forall tp t2p dd ad it
+    forall tp t2p dd oad
     (PP: compile_t2t t2p = tp),
-    t2tmatch (T2St t2p dd ad it) (TSt tp dd ad it).
+    t2tmatch (T2St t2p dd oad) (TSt tp dd oad).
 
 
 Inductive atmatch_fail : astate -> tstate -> Prop :=
-  | ATMatchFail :
-    forall d ap tp ad dd
+  | ATMatchFail:
+    forall d ap tp dd
     (DD: d = dd)
-    (AD: d = ad)
     (PP: tp = THalt),
-    atmatch_fail (ASt ap d) (TSt tp dd ad false).
+    atmatch_fail (ASt ap d) (TSt tp dd None).
 
 Inductive t2tmatch_fail : t2state -> tstate -> Prop :=
   | T2TMatchFail:
-    forall tp t2p ad dd it
+    forall tp t2p dd oad
     (PP: tp = THalt),
-    t2tmatch_fail (T2St t2p dd ad it) (TSt tp dd dd false).
+    t2tmatch_fail (T2St t2p dd oad) (TSt tp dd None).
 
 Hint Constructors t2tmatch.
 Hint Constructors t2tmatch_fail.
@@ -193,7 +189,7 @@ Proof.
     eapply star_one; cc.
 
   (* T2DProg *)
-  - exists (TSt (compile_t2t rx) d (drun dp ad) true); split.
+  - exists (TSt (compile_t2t rx) d (Some (drun dp ad))); split.
 
     generalize H; clear H;
     generalize ad; clear ad.
@@ -212,15 +208,6 @@ Proof.
     eapply star_one; cc.
 Qed.
 
-
-Lemma thalt_inv_eq:
-  forall s s', (TSProg s) = THalt ->
-  star tsmstep s s' ->  s = s'.
-Proof.
-  intros; destruct s as [ p d ad dt ]; t.
-  inversion H0; t. inversion H. rewrite H2 in H.
-  eapply star_stuttering; eauto; [ exact tsmstep_determ | constructor ].
-Qed.
 
 Definition do_trecover : tprog := TAbort THalt.  (* throw away the ad *)
 
@@ -267,7 +254,7 @@ Proof.
   Ltac tsmstep_end := inversion M2; subst;
     try match goal with
     | [ H0: ?a = ?b,
-        H1: star tsmstep _ {| TSProg := _; TSDisk := ?a; TSAltDisk := ?b; TSInTrans := _ |}
+        H1: star tsmstep _ {| TSProg := _; TSDisk := ?a; TSAltDisk := ?b |}
         |- _ ] => rewrite <- H0 in H1
     end; apply tsmstep_loopfree; auto.
 
