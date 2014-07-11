@@ -289,6 +289,7 @@ Inductive tpmatch : tstate -> pstate -> Prop :=
     (PP: compile_tp tp = pp),
     tpmatch (TSt tp td None) (PSt pp pd lg false).
 
+Hint Constructors tpmatch.
 
 (*
    Forward small-step simulation:
@@ -482,6 +483,9 @@ Inductive tpmatch_fail : tstate -> pstate -> Prop :=
     (PP: pp = PHalt),
     tpmatch_fail (TSt tp td oad) (PSt pp pd nil false).
 
+Hint Constructors tpmatch_fail.
+
+
 Lemma precover_commit:
   forall p d l,
   pexec do_precover (PSt p d l false) = PSt PHalt (log_flush l d) nil false.
@@ -515,22 +519,22 @@ Proof.
   Ltac iv := match goal with
   | [ H: _ = ?a , HS: star psmstep ?a _ |- _ ] => rewrite <- H in HS; clear H
   | [ H: psmstep _ _ |- _ ] => inversion H; t; []; clear H
-  | [ H: star psmstep _ _, dt: bool |- _ ] =>
-    inversion H; [ destruct dt | ]; t; []; clear H
+  | [ H: star psmstep _ _ |- _ ] => inversion H; t; []; clear H
   end.
 
-  - (* THalt *)
-    (* XXX *)
+  - (* THalt, in txn *)
+    iv. iv. right.
+    assert (s2=s). inversion M2; clear M2; repeat subst.
+    apply psmstep_loopfree; auto.
 Abort.
 
 (*
-  iv. iv. right.
-  assert (s2=s). inversion M2; repeat subst.
-  assert (lg=lg0). admit. (* XXX *)
-  rewrite <- H in NS2.
-  apply psmstep_loopfree; auto.
-  t; destruct s as [p d l c]; t.
-  destruct c; t.
+
+    assert (lg=lg0). admit. (* XXX *)
+    rewrite <- H in NS2.
+    apply psmstep_loopfree; auto.
+    t; destruct s as [p d l c]; t.
+    destruct c; t.
 
   (* TRead *)
   iv. iv. iv. iv. iv.
