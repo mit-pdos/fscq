@@ -625,5 +625,16 @@ Proof.
 
   - (* TBegin, no txn *)
     do 2 iv. left.
-    admit.
+    destruct flush_terminates with (lg:=lg) (rx:=PClrLog (PSetTx true (compile_tp rx)))
+                                   (pd:=pd) (s:=s) (s2:=ps2); [ crush | crush | idtac ].
+    destruct H2; destruct H3.
+    apply flush_failures with (rx:=PClrLog (PSetTx true (compile_tp rx))); crush.
+
+    clear H. clear H0. clear H1. clear H2.
+    do 5 iv.
+    cut (s3=s). crush.
+    destruct s; destruct s3.
+    inversion M2; clear M2; repeat subst.
+    inversion H0; repeat subst.
+    apply psmstep_loopfree with (d3:=log_flush lg pd) (l3:=lg0) (t3:=true); crush.
 Qed.
