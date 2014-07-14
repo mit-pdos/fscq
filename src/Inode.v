@@ -169,21 +169,21 @@ Record istate := ISt {
   ISBlocks: bstorage
 }.
 
-Inductive ismstep : istate -> istate -> Prop :=
+Inductive istep : istate -> istate -> Prop :=
   | IsmHalt: forall i m b,
-    ismstep (ISt IHalt i m b) (ISt IHalt i m b)
+    istep (ISt IHalt i m b) (ISt IHalt i m b)
   | IsmIwrite: forall is inum i m b rx,
-    ismstep (ISt (IWrite inum i rx) is m b) (ISt rx (iwrite is inum i) m b)
+    istep (ISt (IWrite inum i rx) is m b) (ISt rx (iwrite is inum i) m b)
   | IsmIread: forall is inum b m rx,
-    ismstep (ISt (IRead inum rx) is m b) (ISt (rx (iread is inum)) is m b)
+    istep (ISt (IRead inum rx) is m b) (ISt (rx (iread is inum)) is m b)
   | IsmIwriteBlockMap: forall is bn bm map b rx,
-    ismstep (ISt (IWriteBlockMap bn bm rx) is map b) (ISt rx is (blockmap_write map bn bm) b)
+    istep (ISt (IWriteBlockMap bn bm rx) is map b) (ISt rx is (blockmap_write map bn bm) b)
   | IsmIreadBlockMap: forall is bn map b rx,
-    ismstep (ISt (IReadBlockMap bn rx) is map b) (ISt (rx (blockmap_read map bn)) is map b)
+    istep (ISt (IReadBlockMap bn rx) is map b) (ISt (rx (blockmap_read map bn)) is map b)
   | IsmIreadBlock: forall is inum bn b m rx,
-    ismstep (ISt (IReadBlock inum bn rx) is m b) (ISt (rx (iblock_read is b inum bn)) is m b)
+    istep (ISt (IReadBlock inum bn rx) is m b) (ISt (rx (iblock_read is b inum bn)) is m b)
   | IsmIwriteBlock: forall is inum bn b bs m rx,
-    ismstep (ISt (IWriteBlock inum bn b rx) is m bs) (ISt rx is m (iblock_write is bs inum bn b)).
+    istep (ISt (IWriteBlock inum bn b rx) is m bs) (ISt rx is m (iblock_write is bs inum bn b)).
 
 (* XXX perhaps for showing small-step simulation does something sensible? *)
 Fixpoint iexec (p:iproc) (s:istate) : istate :=

@@ -95,26 +95,26 @@ Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
   end.
 
 
-Inductive tsmstep : tstate -> tstate -> Prop :=
+Inductive tstep : tstate -> tstate -> Prop :=
   | TsmHalt: forall d oad,
-    tsmstep (TSt THalt d oad)                 (TSt THalt d oad)
+    tstep (TSt THalt d oad)                 (TSt THalt d oad)
   | TsmRead: forall d ad b rx,
-    tsmstep (TSt (TRead b rx) d (Some ad))    (TSt (rx (st_read ad b)) d (Some ad))
+    tstep (TSt (TRead b rx) d (Some ad))    (TSt (rx (st_read ad b)) d (Some ad))
   | TsmWrite: forall d ad b v rx,
-    tsmstep (TSt (TWrite b v rx) d (Some ad)) (TSt rx d (Some (st_write ad b v)))
+    tstep (TSt (TWrite b v rx) d (Some ad)) (TSt rx d (Some (st_write ad b v)))
   | TsmCommit:  forall d ad rx,
-    tsmstep (TSt (TCommit rx) d (Some ad))    (TSt rx ad None)
+    tstep (TSt (TCommit rx) d (Some ad))    (TSt rx ad None)
   | TsmAbort:  forall d oad rx,
-    tsmstep (TSt (TAbort rx) d oad)           (TSt rx d None)
+    tstep (TSt (TAbort rx) d oad)           (TSt rx d None)
   | TsmBegin: forall d rx,
-    tsmstep (TSt (TBegin rx) d None)          (TSt rx d (Some d)).
+    tstep (TSt (TBegin rx) d None)          (TSt rx d (Some d)).
 
-Hint Constructors tsmstep.
+Hint Constructors tstep.
 
 
-Lemma tsmstep_loopfree:
+Lemma tstep_loopfree:
   forall a b,
-  star tsmstep a b -> star tsmstep b a -> a = b.
+  star tstep a b -> star tstep b a -> a = b.
 Proof.
   admit.
 Qed.
@@ -154,9 +154,9 @@ Hint Constructors t2tmatch_fail.
 
 
 Theorem at_forward_sim:
-  forall T1 T2, asmstep T1 T2 ->
+  forall T1 T2, astep T1 T2 ->
   forall P1, atmatch T1 P1 ->
-  exists P2, star tsmstep P1 P2 /\ atmatch T2 P2.
+  exists P2, star tstep P1 P2 /\ atmatch T2 P2.
 Proof.
   induction 1; intros; inversion H; tt.
 
@@ -175,9 +175,9 @@ Qed.
 
 Theorem t2t_forward_sim:
   forall T1 T2,
-  t2smstep T1 T2 ->
+  t2step T1 T2 ->
   forall P1, t2tmatch T1 P1 ->
-  exists P2, star tsmstep P1 P2 /\ t2tmatch T2 P2.
+  exists P2, star tstep P1 P2 /\ t2tmatch T2 P2.
 Proof.
   induction 1; intros; inversion H; tt.
 
@@ -225,13 +225,13 @@ XXX it would be nice to formulate this failure model more explicitly.
 
 Theorem at_atomicity:
   forall as1 as2 ts1 ts2 tf1 tf2 s s'
-    (HS: asmstep as1 as2)
+    (HS: astep as1 as2)
     (M1: atmatch as1 ts1)
     (M2: atmatch as2 ts2)
     (MF1: atmatch_fail as1 tf1)
     (MF2: atmatch_fail as2 tf2)
-    (NS: star tsmstep ts1 s)
-    (NS2: star tsmstep s ts2)
+    (NS: star tstep ts1 s)
+    (NS2: star tstep s ts2)
     (RC: s' = texec do_trecover s),
     s' = tf1 \/ s' = tf2.
 Proof.
@@ -246,46 +246,46 @@ Proof.
   clear M1 HS MF1 MF2.
 
   Ltac iv := match goal with
-  | [ H: _ = ?a , HS: star tsmstep ?a _ |- _ ] => rewrite <- H in HS; clear H
-  | [ H: tsmstep _ _ |- _ ] => inversion H; t; []; clear H
-  | [ H: star tsmstep _ _ |- _ ] => inversion H; t; []; clear H
+  | [ H: _ = ?a , HS: star tstep ?a _ |- _ ] => rewrite <- H in HS; clear H
+  | [ H: tstep _ _ |- _ ] => inversion H; t; []; clear H
+  | [ H: star tstep _ _ |- _ ] => inversion H; t; []; clear H
   end.
 
-  Ltac tsmstep_end := inversion M2; subst;
+  Ltac tstep_end := inversion M2; subst;
     try match goal with
     | [ H0: ?a = ?b,
-        H1: star tsmstep _ {| TSProg := _; TSDisk := ?a; TSAltDisk := ?b |}
+        H1: star tstep _ {| TSProg := _; TSDisk := ?a; TSAltDisk := ?b |}
         |- _ ] => rewrite <- H0 in H1
-    end; apply tsmstep_loopfree; auto.
+    end; apply tstep_loopfree; auto.
 
   (**** step over *)
   (*==== halt *)
   - iv. iv.
-    right. assert (s2=s); [ tsmstep_end | crush ].
+    right. assert (s2=s); [ tstep_end | crush ].
 
   (*==== set account *)
   - do 8 iv.
-    right. assert (s3=s); [ tsmstep_end | crush ].
+    right. assert (s3=s); [ tstep_end | crush ].
 
   (*==== get account *)
   - do 8 iv.
-    right. assert (s3=s); [ tsmstep_end | crush ].
+    right. assert (s3=s); [ tstep_end | crush ].
 
   (*==== transfer *)
   - do 17 iv.
-    right. assert (s6=s); [ tsmstep_end | crush ].
+    right. assert (s6=s); [ tstep_end | crush ].
 Qed.
 
 
 Theorem t2t_atomicity:
   forall t2s1 t2s2 ts1 ts2 tf1 tf2 s s'
-    (HS: t2smstep t2s1 t2s2)
+    (HS: t2step t2s1 t2s2)
     (M1: t2tmatch t2s1 ts1)
     (M2: t2tmatch t2s2 ts2)
     (MF1: t2tmatch_fail t2s1 tf1)
     (MF2: t2tmatch_fail t2s2 tf2)
-    (NS: star tsmstep ts1 s)
-    (NS2: star tsmstep s ts2)
+    (NS: star tstep ts1 s)
+    (NS2: star tstep s ts2)
     (RC: s' = texec do_trecover s),
     s' = tf1 \/ s' = tf2.
 Proof.
@@ -301,12 +301,12 @@ Proof.
 
   (*==== halt *)
   - iv. iv.
-    right. assert (s2=s); [ tsmstep_end | crush ].
+    right. assert (s2=s); [ tstep_end | crush ].
 
   (*==== begin *)
   - right.
     iv. iv.
-    assert (s2=s); [ tsmstep_end | crush ].
+    assert (s2=s); [ tstep_end | crush ].
 
   (*==== dprog *)
   - right.
@@ -319,17 +319,17 @@ Proof.
       apply H with (ad:=ad) (v:=(st_read ad b)); crush.
     + iv. iv.
       apply IHdp with (ad:=(st_write ad b v)); crush.
-    + assert (ts2=s); [ tsmstep_end | idtac ].
+    + assert (ts2=s); [ tstep_end | idtac ].
       inversion M2; crush.
 
   (*==== commit *)
   - inversion NS.
     + crush.
     + subst. iv.
-      right. assert (s2=s); [ tsmstep_end | crush ].
+      right. assert (s2=s); [ tstep_end | crush ].
 
   (*==== abort *)
   - right.
     iv. iv.
-    assert (s2=s); [ tsmstep_end | crush ].
+    assert (s2=s); [ tstep_end | crush ].
 Qed.

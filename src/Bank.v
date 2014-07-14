@@ -46,17 +46,17 @@ Record astate := ASt {
   ASDisk: storage
 }.
 
-Inductive asmstep : astate -> astate -> Prop :=
+Inductive astep : astate -> astate -> Prop :=
   | AsmHalt: forall d,
-    asmstep (ASt AHalt d) (ASt AHalt d)
+    astep (ASt AHalt d) (ASt AHalt d)
   | AsmSetAcct: forall d a v rx,
-    asmstep (ASt (ASetAcct a v rx) d)
+    astep (ASt (ASetAcct a v rx) d)
             (ASt rx (st_write d a v))
   | AsmGetAcct: forall d a rx,
-    asmstep (ASt (AGetAcct a rx) d)
+    astep (ASt (AGetAcct a rx) d)
             (ASt (rx (st_read d a)) d)
   | AsmTransfer: forall d m n v rx,
-    asmstep (ASt (ATransfer m n v rx) d )
+    astep (ASt (ATransfer m n v rx) d )
             (ASt rx (st_write (st_write d m ((st_read d m) - v)) n 
                     (st_read (st_write d m (st_read d m - v)) n + v)))
 

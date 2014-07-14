@@ -118,17 +118,17 @@ Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
 
 Definition log_init := DSt DHalt st_init st_init.
 
-Inductive dsmstep : dstate -> dstate -> Prop :=
+Inductive dstep : dstate -> dstate -> Prop :=
   | DsmHalt: forall d l,
-    dsmstep (DSt DHalt d l) (DSt DHalt d l)
+    dstep (DSt DHalt d l) (DSt DHalt d l)
   | DsmRead: forall dd d l b rx,
-       dsmstep (DSt (DRead dd b rx) d l)
+       dstep (DSt (DRead dd b rx) d l)
                (match dd with 
                   | NDataDisk => (DSt (rx (st_read d b)) d l)
                   | NLogDisk =>  (DSt (rx (st_read l b)) d l)
                end)
   | DsmWrite: forall dd d l b v rx,
-    dsmstep (DSt (DWrite dd b v rx) d l)
+    dstep (DSt (DWrite dd b v rx) d l)
                (match dd with 
                   | NDataDisk => (DSt rx (st_write d b v) l)
                   | NLogDisk =>  (DSt rx d (st_write l b v))
@@ -150,9 +150,9 @@ Inductive pdmatch : pstate -> dstate -> Prop :=
   .
 
 Theorem pd_forward_sim:
-  forall P1 P2, psmstep P1 P2 ->
+  forall P1 P2, pstep P1 P2 ->
   forall D1, pdmatch P1 D1 ->
-  exists D2, star dsmstep D1 D2 /\ pdmatch P2 D2.
+  exists D2, star dstep D1 D2 /\ pdmatch P2 D2.
 Proof.
   Ltac t2 := simpl in *; subst; try autorewrite with core in *;
             intuition (eauto; try congruence).
@@ -183,7 +183,7 @@ Admitted.
 Theorem dcorrect:
   forall p dd dd' ld ld' lg lg' d tx s,
   
-  star dsmstep_fail (DSt (compile_pd p) dd ld lg) (DSt DHalt dd' ld' lg') ->
+  star dstep_fail (DSt (compile_pd p) dd ld lg) (DSt DHalt dd' ld' lg') ->
   pexec p (PSt p d nil tx) = s ->
   pdmatch s (DSt DHalt dd' ld' lg').
 Proof.

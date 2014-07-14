@@ -28,13 +28,13 @@ Fixpoint drun (p:dprog) (dd:storage) : storage :=
   | DWrite b v rx => drun rx (st_write dd b v)
   end.
 
-Inductive dsmstep : dstate -> dstate -> Prop :=
+Inductive dstep : dstate -> dstate -> Prop :=
   | DsmHalt: forall d,
-    dsmstep (DSt DHalt d) (DSt DHalt d)
+    dstep (DSt DHalt d) (DSt DHalt d)
   | DsmRead: forall d b rx,
-    dsmstep (DSt (DRead b rx) d)
+    dstep (DSt (DRead b rx) d)
             (DSt (rx (st_read d b)) d)
   | DsmWrite: forall d b v rx,
-    dsmstep (DSt (DWrite b v rx) d)
+    dstep (DSt (DWrite b v rx) d)
             (DSt rx (st_write d b v))
   .

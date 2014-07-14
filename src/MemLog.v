@@ -104,29 +104,29 @@ Record pstate := PSt {
   PSInTrans: bool
 }.
 
-Inductive psmstep : pstate -> pstate -> Prop :=
+Inductive pstep : pstate -> pstate -> Prop :=
   | PsmHalt: forall d l it,
-    psmstep (PSt PHalt d l it) (PSt PHalt d l it)
+    pstep (PSt PHalt d l it) (PSt PHalt d l it)
   | PsmRead: forall d l b rx it,
-    psmstep (PSt (PRead b rx) d l it)
+    pstep (PSt (PRead b rx) d l it)
             (PSt (rx (st_read d b)) d l it)
   | PsmWrite: forall d l b v rx it,
-    psmstep (PSt (PWrite b v rx) d l it)
+    pstep (PSt (PWrite b v rx) d l it)
             (PSt rx (st_write d b v) l it)
   | PsmAddLog: forall d l b v rx it,
-    psmstep (PSt (PAddLog b v rx) d l it)
+    pstep (PSt (PAddLog b v rx) d l it)
             (PSt rx d (l ++ [(b, v)]) it)
   | PsmClrLog: forall d l rx it,
-    psmstep (PSt (PClrLog rx) d l it)
+    pstep (PSt (PClrLog rx) d l it)
             (PSt rx d nil it)
   | PsmGetLog: forall d l rx it,
-    psmstep (PSt (PGetLog rx) d l it)
+    pstep (PSt (PGetLog rx) d l it)
             (PSt (rx l) d l it)
   | PsmSetTx: forall d l v rx it,
-    psmstep (PSt (PSetTx v rx) d l it)
+    pstep (PSt (PSetTx v rx) d l it)
             (PSt rx d l v)
   | PsmGetTx: forall d l rx it,
-    psmstep (PSt (PGetTx rx) d l it)
+    pstep (PSt (PGetTx rx) d l it)
             (PSt (rx it) d l it).
 
 Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
@@ -142,48 +142,48 @@ Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   | PGetTx rx       => pexec (rx it) (PSt (rx it) d l it)
   end.
 
-(** If no failure, psmstep and pexec are equivalent *)
-Lemma pexec_smstep :
+(** If no failure, pstep and pexec are equivalent *)
+Lemma pexec_step :
   forall p d l it s',
-  pexec p (PSt p d l it) = s' -> star psmstep (PSt p d l it) s'.
+  pexec p (PSt p d l it) = s' -> star pstep (PSt p d l it) s'.
 Proof.
   induction p; intros;
   eapply star_step; t; try constructor.
   eapply star_one; rewrite <- H; constructor.
 Qed.
 
-Lemma psmstep_determ:
+Lemma pstep_determ:
   forall s0 s s',
-  psmstep s0 s -> psmstep s0 s' -> s = s'.
+  pstep s0 s -> pstep s0 s' -> s = s'.
 Proof.
   intro s0; case_eq s0; intros.
   induction PSProg0; intros;
   repeat match goal with
-  | [ H: psmstep _ _ |- _ ] => inversion H; clear H
+  | [ H: pstep _ _ |- _ ] => inversion H; clear H
   end; subst; reflexivity.
 Qed.
 
-Lemma smstep_pexec :
+Lemma step_pexec :
   forall p d l it d' l' it',
-  star psmstep (PSt p d l it) (PSt PHalt d' l' it') ->
+  star pstep (PSt p d l it) (PSt PHalt d' l' it') ->
   pexec p (PSt p d l it) = (PSt PHalt d' l' it').
 Proof.
   induction p;  intros;
   match goal with
   | [ |- pexec PHalt _ = _ ] =>
-    simpl; eapply star_stuttering; [ apply psmstep_determ | eauto | constructor ]
-  | [ H: context [star psmstep _ _ -> pexec _ _ = _ ] |- _] =>
-    apply H; eapply star_inv; [ apply psmstep_determ | t | constructor | t ]
+    simpl; eapply star_stuttering; [ apply pstep_determ | eauto | constructor ]
+  | [ H: context [star pstep _ _ -> pexec _ _ = _ ] |- _] =>
+    apply H; eapply star_inv; [ apply pstep_determ | t | constructor | t ]
   end.
 Qed.
 
 (* failure semantics *)
 
-Inductive psmstep_fail : pstate -> pstate -> Prop :=
+Inductive pstep_fail : pstate -> pstate -> Prop :=
   | PsmNormal: forall s s',
-    psmstep s s' -> psmstep_fail s s'
+    pstep s s' -> pstep_fail s s'
   | PsmCrash: forall s,
-    psmstep_fail s (pexec do_precover s).
+    pstep_fail s (pexec do_precover s).
 
 (* state matching *)
 
@@ -234,7 +234,7 @@ Lemma writeLog_flush':
   forall l l' tx rx d d',
   d = log_flush l' d ->
   d' = log_flush l d ->
-  star psmstep (PSt (pflush l rx) d (l' ++ l) tx) (PSt rx d' (l' ++ l) tx).
+  star pstep (PSt (pflush l rx) d (l' ++ l) tx) (PSt rx d' (l' ++ l) tx).
 Proof.
   induction l; t.
   apply star_refl.
@@ -245,7 +245,7 @@ Qed.
 Lemma writeLog_flush:
   forall rx d d' l tx,
   d' = log_flush l d ->
-  star psmstep (PSt (pflush l rx) d l tx) (PSt rx d' l tx).
+  star pstep (PSt (pflush l rx) d l tx) (PSt rx d' l tx).
 Proof.
   intros; apply writeLog_flush' with (l':=nil); t.
 Qed.
@@ -307,9 +307,9 @@ Hint Constructors tpmatch.
 *)
 
 Theorem tp_forward_sim:
-  forall T1 T2, tsmstep T1 T2 ->
+  forall T1 T2, tstep T1 T2 ->
   forall P1, tpmatch T1 P1 ->
-  exists P2, star psmstep P1 P2 /\ tpmatch T2 P2.
+  exists P2, star pstep P1 P2 /\ tpmatch T2 P2.
 Proof.
   induction 1; intros; inversion H.
 
@@ -411,7 +411,7 @@ Qed.
 Lemma pfail_dec:
   forall s s',
   (PSProg s) = PHalt ->
-  star psmstep_fail s s' ->
+  star pstep_fail s s' ->
   s' = s \/ s' = pexec (do_trecover) s.
 Proof.
   intros. induction H0.
@@ -429,7 +429,7 @@ Qed.
 
 
 Lemma flush_writeLog_fail' : forall l m l' m' tx l0,
-  star psmstep_fail (PSt (pflush l PHalt) m (l' ++ l) tx)
+  star pstep_fail (PSt (pflush l PHalt) m (l' ++ l) tx)
                     (PSt PHalt m' l0 tx)
   -> log_flush l' m = m
   -> m' = log_flush l m.
@@ -456,7 +456,7 @@ Proof.
 Qed.
 
 Lemma flush_writeLog_fail : forall l m m' tx,
-  star psmstep_fail (PSt (pflush l PHalt) m l tx) (PSt PHalt m' l tx)
+  star pstep_fail (PSt (pflush l PHalt) m l tx) (PSt PHalt m' l tx)
   -> m' = log_flush l m.
 Proof.
   intros; eapply flush_writeLog_fail' with (l':=nil); t.
@@ -467,18 +467,18 @@ Qed.
 
 Lemma phalt_inv_eq:
   forall s s', (PSProg s) = PHalt ->
-  star psmstep s s' ->  s = s'.
+  star pstep s s' ->  s = s'.
 Proof.
   intros; destruct s as [ p d ad dt ]; t.
   inversion H0; t. inversion H. rewrite H2 in H.
-  eapply star_stuttering; eauto; [ exact psmstep_determ | constructor ].
+  eapply star_stuttering; eauto; [ exact pstep_determ | constructor ].
 Qed.
 
 
-Lemma psmstep_loopfree:
+Lemma pstep_loopfree:
   forall pA pB d1 d2 d3 l1 l2 l3 t1 t2 t3,
-  star psmstep (PSt pA d1 l1 t1) (PSt pB d2 l2 t2) ->
-  star psmstep (PSt pB d2 l2 t2) (PSt pA d3 l3 t3) ->
+  star pstep (PSt pA d1 l1 t1) (PSt pB d2 l2 t2) ->
+  star pstep (PSt pB d2 l2 t2) (PSt pA d3 l3 t3) ->
   (PSt pA d1 l1 t1) = (PSt pB d2 l2 t2).
 Proof.
   admit.
@@ -507,13 +507,13 @@ Hint Rewrite flush_twice.
 Lemma flush_failures':
   forall lg l0 l1 rx pd s tp,
   lg = l0 ++ l1 ->
-  star psmstep (PSt (pflush l1 ;; rx) (log_flush l0 pd) lg false) s ->
-  star psmstep s (PSt rx (log_flush lg pd) lg false) ->
+  star pstep (PSt (pflush l1 ;; rx) (log_flush l0 pd) lg false) s ->
+  star pstep s (PSt rx (log_flush lg pd) lg false) ->
   tpmatch_fail (TSt tp (log_flush lg pd) None) (pexec do_precover s).
 Proof.
   induction l1.
   - intros. assert (s=(PSt rx (log_flush l0 pd) l0 false)). destruct s.
-    apply psmstep_loopfree with (d3:=PSDisk0) (l3:=PSLog0) (t3:=PSInTrans0); crush.
+    apply pstep_loopfree with (d3:=PSDisk0) (l3:=PSLog0) (t3:=PSInTrans0); crush.
     repeat subst. simpl. rewrite flush_nofail. constructor; auto.
     admit.
   - (* XXX *)
@@ -521,18 +521,18 @@ Abort.
 
 Lemma flush_terminates:
   forall lg rx pd s s2,
-  star psmstep (PSt (pflush lg ;; rx) pd lg false) s ->
-  star psmstep s s2 ->
-  ((star psmstep s (PSt rx (log_flush lg pd) lg false)) \/
-   (star psmstep (PSt rx (log_flush lg pd) lg false) s)).
+  star pstep (PSt (pflush lg ;; rx) pd lg false) s ->
+  star pstep s s2 ->
+  ((star pstep s (PSt rx (log_flush lg pd) lg false)) \/
+   (star pstep (PSt rx (log_flush lg pd) lg false) s)).
 Proof.
   admit.
 Qed.
 
 Lemma flush_failures:
   forall lg rx pd s tp,
-  star psmstep (PSt (pflush lg ;; rx) pd lg false) s ->
-  star psmstep s (PSt rx (log_flush lg pd) lg false) ->
+  star pstep (PSt (pflush lg ;; rx) pd lg false) s ->
+  star pstep s (PSt rx (log_flush lg pd) lg false) ->
   tpmatch_fail (TSt tp (log_flush lg pd) None) (pexec do_precover s).
 Proof.
   admit.
@@ -541,11 +541,11 @@ Qed.
 
 Theorem tp_atomicity:
   forall ts1 ts2 ps1 ps2 s s'
-    (HS: tsmstep ts1 ts2)
+    (HS: tstep ts1 ts2)
     (M1: tpmatch ts1 ps1)
     (M2: tpmatch ts2 ps2)
-    (NS1: star psmstep ps1 s)
-    (NS2: star psmstep s ps2)
+    (NS1: star pstep ps1 s)
+    (NS2: star pstep s ps2)
     (RC: s' = pexec do_precover s),
     tpmatch_fail ts1 s' \/ tpmatch_fail ts2 s'.
 Proof.
@@ -556,9 +556,9 @@ Proof.
   inversion HS; repeat subst; clear M1 HS.
 
   Ltac iv := match goal with
-  | [ H: _ = ?a , HS: star psmstep ?a _ |- _ ] => rewrite <- H in HS; clear H
-  | [ H: psmstep _ _ |- _ ] => inversion H; t; []; clear H
-  | [ H: star psmstep _ _ |- _ ] => inversion H; t; []; clear H
+  | [ H: _ = ?a , HS: star pstep ?a _ |- _ ] => rewrite <- H in HS; clear H
+  | [ H: pstep _ _ |- _ ] => inversion H; t; []; clear H
+  | [ H: star pstep _ _ |- _ ] => inversion H; t; []; clear H
   end.
 
   - (* THalt, in txn *)
@@ -566,14 +566,14 @@ Proof.
     cut (s2=s).  crush.
     destruct s; destruct s2.
     inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
+    apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
 
   - (* TRead, in txn *)
     do 5 iv. right.
     cut (s0=s).  crush.
     destruct s; destruct s0.
     inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true);
+    apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true);
     [ crush | rewrite readLog_correct in *; destruct (pfind lg b); crush ].
 
   - (* TWrite, in txn *)
@@ -581,7 +581,7 @@ Proof.
     cut (s2=s).  crush.
     destruct s; destruct s2.
     inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
+    apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
 
   - (* TCommit, in txn *)
     do 2 iv.
@@ -595,28 +595,28 @@ Proof.
     cut (s3=s). crush.
     destruct s; destruct s3.
     inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+    apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
 
   - (* TAbort, in txn *)
     do 8 iv. right.
     cut (s3=s).  crush.
     destruct s; destruct s3.
     inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+    apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
 
   - (* THalt, no txn *)
     do 2 iv. right.
     cut (s2=s). crush. rewrite flush_nofail. crush.
     destruct s; destruct s2.
     inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+    apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
 
   - (* TAbort, no txn *)
     do 2 iv. right.
     cut (s2=s). crush. rewrite flush_nofail. crush.
     destruct s; destruct s2.
     inversion M2; clear M2; repeat subst.
-    apply psmstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+    apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
 
   - (* TBegin, no txn *)
     do 2 iv. left.
@@ -629,5 +629,5 @@ Proof.
     destruct s; destruct s3.
     inversion M2; clear M2; repeat subst.
     inversion H2; repeat subst.
-    apply psmstep_loopfree with (d3:=log_flush lg pd) (l3:=lg0) (t3:=true); crush.
+    apply pstep_loopfree with (d3:=log_flush lg pd) (l3:=lg0) (t3:=true); crush.
 Qed.
