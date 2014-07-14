@@ -3,6 +3,10 @@ Require Import Arith.
 Import ListNotations.
 Require Import Storage.
 Require Import CpdtTactics.
+Require Import FsTactics.
+Require Import Disk.
+Set Implicit Arguments.
+Load Closures.
 
 Section App.
 
@@ -64,5 +68,47 @@ Inductive astep : astate -> astate -> Prop :=
        depend on arguments' evaluation order *)
   .
 
-End App.
 
+(* Compiling to a disk *)
+Open Scope dprog_scope.
+
+Fixpoint compile_ad (p:aproc) : dprog :=
+  match p with
+    | AHalt => DHalt
+    | ASetAcct a v rx => DWrite a v ;; compile_ad rx
+    | AGetAcct a rx => v <- DRead a; compile_ad (rx v)
+    | ATransfer src dst v rx => r <- DRead src ; DWrite src (r-v) ;;
+                   r1 <- DRead dst ; DWrite dst (r1+v) ;; compile_ad rx
+  end.
+
+
+(* prove that this compiler is correct, using forward simulation *)
+Inductive admatch : astate -> dstate -> Prop :=
+  | ATMatchState:
+    forall d ap dp dd
+    (DD: d = dd)
+    (PP: compile_ad ap = dp),
+    admatch (ASt ap d) (DSt dp dd).
+
+Theorem ad_forward_sim:
+  forall T1 T2, astep T1 T2 ->
+  forall P1, admatch T1 P1 ->
+  exists P2, star dstep P1 P2 /\ admatch T2 P2.
+Proof.
+  induction 1; intros; inversion H; tt.
+
+  - econstructor; split; cc.
+
+  - econstructor; split; tt.
+    eapply star_one; cc. cc.
+
+  - econstructor; split; tt.
+    eapply star_one; cc. cc.
+  
+  - econstructor; split; tt.
+    do 4 (eapply star_step; [ cc | idtac ]).
+    cc. cc.
+Qed.
+
+
+End App.

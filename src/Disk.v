@@ -38,3 +38,12 @@ Inductive dstep : dstate -> dstate -> Prop :=
     dstep (DSt (DWrite b v rx) d)
             (DSt rx (st_write d b v))
   .
+
+(* some helpful notation *)
+Bind Scope dprog_scope with dprog.
+
+Notation "a ;; b" := (a (b))
+  (right associativity, at level 60) : dprog_scope.
+
+Notation "ra <- a ; b" := (a (fun ra => b))
+  (right associativity, at level 60) : dprog_scope.

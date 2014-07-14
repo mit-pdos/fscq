@@ -14,8 +14,8 @@ FILES = CpdtTactics.v \
 	Util.v \
 	Storage.v \
 	Closures.v \
-	Bank.v \
 	Disk.v \
+	Bank.v \
 	Trans2.v \
 	Trans.v \
 	MemLog.v \

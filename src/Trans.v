@@ -7,7 +7,6 @@ Set Implicit Arguments.
 
 Require Import FsTactics.
 Require Import Storage.
-Require Import Bank.
 Load Closures.
 
 Require Import Disk.
@@ -39,14 +38,6 @@ Notation "ra <- a ; b" := (a (fun ra => b))
 
 Open Scope tprog_scope.
 
-Fixpoint compile_at (p:aproc) : tprog :=
-  match p with
-    | AHalt => THalt
-    | ASetAcct a v rx => TBegin ;; TWrite a v ;; TCommit ;; compile_at rx
-    | AGetAcct a rx => TBegin ;; v <- TRead a; TCommit ;; compile_at (rx v)
-    | ATransfer src dst v rx => TBegin ;; r <- TRead src ; TWrite src (r-v) ;;
-                   r1 <- TRead dst ; TWrite dst (r1+v) ;; TCommit ;; compile_at rx
-  end.
 
 Fixpoint do_t2dprog (d:dprog) (rx:tprog) : tprog :=
   match d with
@@ -122,26 +113,11 @@ Qed.
 End TransactionLanguage.
 
 
-Inductive atmatch : astate -> tstate -> Prop :=
-  | ATMatchState:
-    forall d ap tp dd
-    (DD: d = dd)
-    (PP: compile_at ap = tp),
-    atmatch (ASt ap d) (TSt tp dd None).
-
 Inductive t2tmatch : t2state -> tstate -> Prop :=
   | T2TMatchState:
     forall tp t2p dd oad
     (PP: compile_t2t t2p = tp),
     t2tmatch (T2St t2p dd oad) (TSt tp dd oad).
-
-
-Inductive atmatch_fail : astate -> tstate -> Prop :=
-  | ATMatchFail:
-    forall d ap tp dd
-    (DD: d = dd)
-    (PP: tp = THalt),
-    atmatch_fail (ASt ap d) (TSt tp dd None).
 
 Inductive t2tmatch_fail : t2state -> tstate -> Prop :=
   | T2TMatchFail:
@@ -152,26 +128,6 @@ Inductive t2tmatch_fail : t2state -> tstate -> Prop :=
 Hint Constructors t2tmatch.
 Hint Constructors t2tmatch_fail.
 
-
-Theorem at_forward_sim:
-  forall T1 T2, astep T1 T2 ->
-  forall P1, atmatch T1 P1 ->
-  exists P2, star tstep P1 P2 /\ atmatch T2 P2.
-Proof.
-  induction 1; intros; inversion H; tt.
-
-  - econstructor; split; cc.
-
-  - econstructor; split; tt.
-    eapply star_three; cc. cc.
-
-  - econstructor; split; tt.
-    eapply star_three; cc. cc.
-  
-  - econstructor; split; tt.
-    do 6 (eapply star_step; [ cc | idtac ]).
-    cc. cc.
-Qed.
 
 Theorem t2t_forward_sim:
   forall T1 T2,
@@ -223,60 +179,6 @@ XXX it would be nice to formulate this failure model more explicitly.
 
 *)
 
-Theorem at_atomicity:
-  forall as1 as2 ts1 ts2 tf1 tf2 s s'
-    (HS: astep as1 as2)
-    (M1: atmatch as1 ts1)
-    (M2: atmatch as2 ts2)
-    (MF1: atmatch_fail as1 tf1)
-    (MF2: atmatch_fail as2 tf2)
-    (NS: star tstep ts1 s)
-    (NS2: star tstep s ts2)
-    (RC: s' = texec do_trecover s),
-    s' = tf1 \/ s' = tf2.
-Proof.
-
-  (* figure out ts1, the matching state for as1 *)
-  intros; inversion M1; repeat subst.
-
-  (* step the high level program to get as2 *)
-  (* ... and figure out tf1 tf2 *)
-  inversion HS; repeat subst;
-  inversion MF1; inversion MF2; repeat subst;
-  clear M1 HS MF1 MF2.
-
-  Ltac iv := match goal with
-  | [ H: _ = ?a , HS: star tstep ?a _ |- _ ] => rewrite <- H in HS; clear H
-  | [ H: tstep _ _ |- _ ] => inversion H; t; []; clear H
-  | [ H: star tstep _ _ |- _ ] => inversion H; t; []; clear H
-  end.
-
-  Ltac tstep_end := inversion M2; subst;
-    try match goal with
-    | [ H0: ?a = ?b,
-        H1: star tstep _ {| TSProg := _; TSDisk := ?a; TSAltDisk := ?b |}
-        |- _ ] => rewrite <- H0 in H1
-    end; apply tstep_loopfree; auto.
-
-  (**** step over *)
-  (*==== halt *)
-  - iv. iv.
-    right. assert (s2=s); [ tstep_end | crush ].
-
-  (*==== set account *)
-  - do 8 iv.
-    right. assert (s3=s); [ tstep_end | crush ].
-
-  (*==== get account *)
-  - do 8 iv.
-    right. assert (s3=s); [ tstep_end | crush ].
-
-  (*==== transfer *)
-  - do 17 iv.
-    right. assert (s6=s); [ tstep_end | crush ].
-Qed.
-
-
 Theorem t2t_atomicity:
   forall t2s1 t2s2 ts1 ts2 tf1 tf2 s s'
     (HS: t2step t2s1 t2s2)
@@ -298,6 +200,19 @@ Proof.
   inversion HS; repeat subst;
   inversion MF1; inversion MF2; repeat subst;
   clear M1 HS MF1 MF2.
+
+  Ltac iv := match goal with
+  | [ H: _ = ?a , HS: star tstep ?a _ |- _ ] => rewrite <- H in HS; clear H
+  | [ H: tstep _ _ |- _ ] => inversion H; t; []; clear H
+  | [ H: star tstep _ _ |- _ ] => inversion H; t; []; clear H
+  end.
+
+  Ltac tstep_end := inversion M2; subst;
+    try match goal with
+    | [ H0: ?a = ?b,
+        H1: star tstep _ {| TSProg := _; TSDisk := ?a; TSAltDisk := ?b |}
+        |- _ ] => rewrite <- H0 in H1
+    end; apply tstep_loopfree; auto.
 
   (*==== halt *)
   - iv. iv.
