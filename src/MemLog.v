@@ -286,12 +286,12 @@ Inductive tpmatch : tstate -> pstate -> Prop :=
     (DD: td = pd)
     (AD: ad = log_flush lg td)
     (PP: compile_tp tp = pp),
-    tpmatch (TSt tp td (Some ad)) (PSt pp pd lg true)
+    tpmatch (TSt (TPSt td) (TESt tp (Some ad))) (PSt pp pd lg true)
   | TPMatchStateNoTx:
     forall td tp pd lg pp
     (DD: td = log_flush lg pd)
     (PP: compile_tp tp = pp),
-    tpmatch (TSt tp td None) (PSt pp pd lg false).
+    tpmatch (TSt (TPSt td) (TESt tp None)) (PSt pp pd lg false).
 
 Hint Constructors tpmatch.
 
@@ -490,7 +490,7 @@ Inductive tpmatch_fail : tstate -> pstate -> Prop :=
     forall td tp pd pp oad
     (DD: td = pd)
     (PP: pp = PHalt),
-    tpmatch_fail (TSt tp td oad) (PSt pp pd nil false).
+    tpmatch_fail (TSt (TPSt td) (TESt tp oad)) (PSt pp pd nil false).
 
 Hint Constructors tpmatch_fail.
 
@@ -509,7 +509,7 @@ Lemma flush_failures':
   lg = l0 ++ l1 ->
   star pstep (PSt (pflush l1 ;; rx) (log_flush l0 pd) lg false) s ->
   star pstep s (PSt rx (log_flush lg pd) lg false) ->
-  tpmatch_fail (TSt tp (log_flush lg pd) None) (pexec do_precover s).
+  tpmatch_fail (TSt (TPSt (log_flush lg pd)) (TESt tp None)) (pexec do_precover s).
 Proof.
   induction l1.
   - intros. assert (s=(PSt rx (log_flush l0 pd) l0 false)). destruct s.
@@ -533,7 +533,7 @@ Lemma flush_failures:
   forall lg rx pd s tp,
   star pstep (PSt (pflush lg ;; rx) pd lg false) s ->
   star pstep s (PSt rx (log_flush lg pd) lg false) ->
-  tpmatch_fail (TSt tp (log_flush lg pd) None) (pexec do_precover s).
+  tpmatch_fail (TSt (TPSt (log_flush lg pd)) (TESt tp None)) (pexec do_precover s).
 Proof.
   admit.
 Qed.
