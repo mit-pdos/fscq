@@ -60,18 +60,18 @@ Definition do_read (inum: inodenum) (off: blockoffset) (rx: block -> iproc): ipr
 Definition do_write (inum: inodenum) (off: blockoffset) (b: block) (rx: iproc): iproc :=
   rx.
 
-Fixpoint inode_allocate (n: nat) (rx: inodenum -> iproc): iproc :=
+Fixpoint inode_allocate (n: nat) rx: iproc :=
   match n with
-  | O => IHalt  (* crash and burn *)
+  | O => rx None
   | S m =>
     i <- IRead n; 
     match IFree i with
     | false => inode_allocate m rx
-    | true => IWrite n (mkinode false) ;; rx n
+    | true => IWrite n (mkinode false) ;; rx (Some n)
    end
  end.
 
-Definition do_alloc (rx: inodenum -> iproc): iproc :=
+Definition do_alloc (rx: (option inodenum) -> iproc): iproc :=
   inode_allocate 10 rx.  (* XXX how many inodes do we have? *)
 
 Definition do_free (inum: inodenum) (rx: iproc): iproc :=

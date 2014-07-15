@@ -20,7 +20,9 @@ FILES = CpdtTactics.v \
 	Trans.v \
 	MemLog.v \
 	DiskLog.v \
-	FileSpec.v
+	Inode.v \
+	FileSpec.v \
+	File.v
 
 PROOFFILES = 
 
