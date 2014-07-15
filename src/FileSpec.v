@@ -84,10 +84,10 @@ Inductive fstep: fstate -> fstate -> Prop :=
     (D': d' = setidx eq_nat_dec d inum f'),
     fstep (FSt (FAlloc rx) d)
           (FSt (rx inum) d')
-  | FsmFree: forall inum rx d d' f f'
+  | FsmFree: forall inum rx d d' f f' len fdata
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
-    (F': f' = File true 0 nodata)
+    (F': f' = File true len fdata)
     (D': d' = setidx eq_nat_dec d inum f'),
     fstep (FSt (FFree inum rx) d)
           (FSt rx d')
