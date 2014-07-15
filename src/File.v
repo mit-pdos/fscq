@@ -55,9 +55,13 @@ Fixpoint block_allocate (inum: inodenum) rx: iproc :=
 *)
 
 Definition do_read (inum: inodenum) (off: blockoffset) (rx: block -> iproc): iproc :=
+  v <- IRead inum;
+  (* XXX why does IReadBlock take an inodenum argument? *)
   rx 0.
 
 Definition do_write (inum: inodenum) (off: blockoffset) (b: block) (rx: iproc): iproc :=
+  v <- IRead inum;
+  (* XXX why does IWriteBlock take an inodenum argument? *)
   rx.
 
 Fixpoint inode_allocate (n: nat) rx: iproc :=
