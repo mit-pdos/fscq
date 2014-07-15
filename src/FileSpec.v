@@ -8,7 +8,7 @@ Definition blockoffset := nat.
 Inductive fprog :=
   | FRead (i:inodenum) (o:blockoffset) (rx:block -> fprog)
   | FWrite (i:inodenum) (o:blockoffset) (b:block) (rx:fprog)
-  | FAlloc (rx:inodenum -> fprog)
+  | FAlloc (rx:(option inodenum) -> fprog)
   | FFree (i:inodenum) (rx:fprog)
   | FTrunc (i:inodenum) (len:blockoffset) (rx:fprog)
   | FHalt.
@@ -77,13 +77,17 @@ Inductive fstep: fstate -> fstate -> Prop :=
     (D': d' = setidx eq_nat_dec d inum f'),
     fstep (FSt (FWrite inum off bdata rx) d)
           (FSt rx d')
-  | FsmAlloc: forall rx inum f f' d d'
+  | FsmAllocOK: forall rx inum f f' d d'
     (F: f = d inum)
     (FREE: FIsFree f = true)
     (F': f' = File false 0 nodata)
     (D': d' = setidx eq_nat_dec d inum f'),
     fstep (FSt (FAlloc rx) d)
-          (FSt (rx inum) d')
+          (FSt (rx (Some inum)) d')
+  | FsmAllocNone: forall rx d
+    (ALLUSED: forall inum, FIsFree (d inum) = false),
+    fstep (FSt (FAlloc rx) d)
+          (FSt (rx None) d)
   | FsmFree: forall inum rx d d' f f' len fdata
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
