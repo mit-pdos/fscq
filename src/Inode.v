@@ -3,10 +3,10 @@ Require Import Arith.
 Import ListNotations.
 Require Import CpdtTactics.
 Require Import Storage.
-Require Import Trans.
 Require Import Disk.
 Require Import Ilist.
 Require Import Util.
+Require Import Trans2.
 
 Set Implicit Arguments.
 
@@ -128,8 +128,8 @@ Fixpoint compile_id (p:iproc) : dprog :=
     | IWriteBlock inum o b rx => do_iwriteblock inum o b (compile_id rx)
   end.
 
-Definition compile_at (p:iproc) : tprog2 :=
-  Trans.T2DProg (compile_id p) ;; T2Commit ;; T2Halt.
+Definition compile_it2 (p:iproc) : t2prog :=
+  T2Begin ;; T2DProg (compile_id p) ;; T2Commit ;; T2Halt.
 
 Close Scope iprog_scope.
 
