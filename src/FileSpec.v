@@ -34,8 +34,15 @@ Definition setidxsig {K: Type} {V: Type} {KP: K->Prop}
                      (db: (sig KP) -> V) (k: K) (v: V) :=
   fun x: (sig KP) => if eq (proj1_sig x) k then v else db x.
 
+Ltac inv_sig :=
+  match goal with
+  | [ H: sig _ |- _ ] => inversion H
+  end.
+
+Ltac crush_inv_sig := intros; inv_sig; crush.
+
 Program Definition nodata: { o: blockoffset | o < 0 } -> block.
-  intros. inversion H. crush.
+  crush_inv_sig.
 Qed.
 
 Program Definition shrinkdata {oldlen: blockoffset}
