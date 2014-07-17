@@ -1,25 +1,50 @@
+Require Import CpdtTactics.
+Require Import FsTactics.
 Require Import Storage.
+Require Import Util.
+Require Import Recdef.
 
 Inductive dprog :=
   | DRead  (b:block) (rx:value -> dprog)
   | DWrite (b:block) ( v:value) (rx:dprog)
-  | DHalt
-  .
+  | DHalt.
 
 Record dstate := DSt {
   DSProg: dprog;
   DSDisk: storage
 }.
 
-(* An interpreter for the language that implements a log as a disk *)
+Inductive dstep : dstate -> dstate -> Prop :=
+  | DsmRead: forall d b rx,
+    dstep (DSt (DRead b rx) d)
+            (DSt (rx (st_read d b)) d)
+  | DsmWrite: forall d b v rx,
+    dstep (DSt (DWrite b v rx) d)
+            (DSt rx (st_write d b v)).
 
-Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
-  let (_, dd) := s in
+Hint Constructors dstep.
+
+
+Theorem opp_dstep_wf:
+  well_founded (opposite_rel dstep).
+Proof.
+  unfold well_founded; destruct a; generalize_all.
+  induction DSProg0; constructor; intros; invert_rel (opposite_rel dstep);
+  destruct_type dstate; crush.
+Qed.
+
+Function dexec (s:dstate) {wf (opposite_rel dstep) s} : dstate :=
+  let (p, dd) := s in
   match p with
   | DHalt         => s
-  | DRead b rx    => dexec (rx (st_read dd b)) (DSt (rx (st_read dd b)) dd)
-  | DWrite b v rx => dexec rx (DSt rx (st_write dd b v))
+  | DRead b rx    => dexec (DSt (rx (st_read dd b)) dd)
+  | DWrite b v rx => dexec (DSt rx (st_write dd b v))
   end.
+Proof.
+  - constructor.
+  - constructor.
+  - apply opp_dstep_wf.
+Qed.
 
 Fixpoint drun (p:dprog) (dd:storage) : storage :=
   match p with
@@ -28,16 +53,7 @@ Fixpoint drun (p:dprog) (dd:storage) : storage :=
   | DWrite b v rx => drun rx (st_write dd b v)
   end.
 
-Inductive dstep : dstate -> dstate -> Prop :=
-  | DsmHalt: forall d,
-    dstep (DSt DHalt d) (DSt DHalt d)
-  | DsmRead: forall d b rx,
-    dstep (DSt (DRead b rx) d)
-            (DSt (rx (st_read d b)) d)
-  | DsmWrite: forall d b v rx,
-    dstep (DSt (DWrite b v rx) d)
-            (DSt rx (st_write d b v))
-  .
+
 
 (* some helpful notation *)
 Bind Scope dprog_scope with dprog.
