@@ -261,7 +261,10 @@ Proof.
   | [ H: {| TPSDisk := _ |} = {| TPSDisk := _ |} |- _ ] => inversion H; clear H; subst
   end.
 
-  Ltac tstep_end := inversion M2; subst;
+  Ltac tstep_end :=
+    repeat match goal with
+    | [ H: t2tmatch _ _ |- _ ] => inversion H; clear H; subst
+    end;
     try match goal with
     | [ H0: ?a = ?b,
         H1: star tstep _ {| TSPersist := {| TPSDisk := ?a |};
@@ -286,16 +289,14 @@ Proof.
     generalize M2; clear M2.
     generalize NS; clear NS.
     generalize ad; clear ad.
-admit.
-(*
-    induction dp; intros ad NS M2.
+    induction dp; intros ad NS M2; inversion M2; clear M2; repeat inv_ps.
     + iv. iv.
-      apply H with (ad:=ad) (v:=(st_read ad b)); crush.
+      apply H with (ad0:=ad) (v:=(st_read ad b)); crush.
     + iv. iv.
-      apply IHdp with (ad:=(st_write ad b v)); crush.
-    + assert (ts2={| TSPersist := TSPersist0; TSEphem := TSEphem0 |}); [ tstep_end | idtac ].
-      inversion M2; crush.
-*)
+      apply IHdp with (ad0:=(st_write ad b v)); crush.
+    + match goal with
+      | [ H: star tstep ?a ?b |- _ ] => assert (a=b); [ tstep_end | crush ]
+      end.
 
   (*==== commit *)
   - inversion NS.
