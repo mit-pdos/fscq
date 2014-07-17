@@ -15,13 +15,10 @@ Record bfstate := BFSt {
 }.
 
 Inductive bfstep: bfstate -> bfstate -> Prop :=
-  | BFsmCommon: forall R op pd d d' (r:R),
-    (forall frx,
-     fstep (FSt (@FCommon R op frx) d)
-           (FSt (frx r) d')) ->
-    (forall bfrx,
-     bfstep (BFSt (BFCommon op bfrx) pd d)
-            (BFSt (bfrx r) pd d'))
+  | BFsmCommon: forall R op pd d d' (r:R) rx
+    (OS: fop_step (FileOpR op r) d d'),
+    bfstep (BFSt (BFCommon op rx) pd d)
+           (BFSt (rx r) pd d')
   | BFsmSync: forall inum rx pd d
     (P: d inum = pd inum),
     bfstep (BFSt (BFSync inum rx) pd d)

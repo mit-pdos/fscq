@@ -62,56 +62,58 @@ Program Definition growzerodata {oldlen: blockoffset}
   fun x: {o: blockoffset | o < len} =>
     if lt_dec (proj1_sig x) oldlen then olddata x else 0.
 
-Inductive fstep: fstate -> fstate -> Prop :=
-  | FsmRead: forall inum off rx d bdata f
+Inductive fileop_and_result :=
+  | FileOpR {R:Type} (o:fileop R) (r:R).
+
+Inductive fop_step: fileop_and_result -> fstatedata -> fstatedata -> Prop :=
+  | FsmRead: forall inum off d bdata f
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (OLEN: off < FLen f)
     (BD: bdata = FData f (exist _ off OLEN)),
-    fstep (FSt (FCommon (FRead inum off) rx) d)
-          (FSt (rx bdata) d)
-  | FsmWrite: forall inum off rx bdata d d' f f'
+    fop_step (FileOpR (FRead inum off) bdata) d d
+  | FsmWrite: forall inum off bdata d d' f f'
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (OLEN: off < FLen (d inum))
     (F': f' = File (FIsFree f) (FLen f) (setidxsig eq_nat_dec (FData f) off bdata))
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FCommon (FWrite inum off bdata) rx) d)
-          (FSt (rx tt) d')
-  | FsmAllocOK: forall rx inum f f' d d'
+    fop_step (FileOpR (FWrite inum off bdata) tt) d d'
+  | FsmAllocOK: forall inum f f' d d'
     (F: f = d inum)
     (FREE: FIsFree f = true)
     (F': f' = File false 0 nodata)
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FCommon FAlloc rx) d)
-          (FSt (rx (Some inum)) d')
-  | FsmAllocNone: forall rx d
+    fop_step (FileOpR FAlloc (Some inum)) d d'
+  | FsmAllocNone: forall d
     (ALLUSED: forall inum, FIsFree (d inum) = false),
-    fstep (FSt (FCommon FAlloc rx) d)
-          (FSt (rx None) d)
-  | FsmFree: forall inum rx d d' f f' len fdata
+    fop_step (FileOpR FAlloc None) d d
+  | FsmFree: forall inum d d' f f' len fdata
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (F': f' = File true len fdata)
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FCommon (FFree inum) rx) d)
-          (FSt (rx tt) d')
-  | FsmTruncShrink: forall inum len rx d d' f f'
+    fop_step (FileOpR (FFree inum) tt) d d'
+  | FsmTruncShrink: forall inum len d d' f f'
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (SHRINK: len <= FLen f)
     (F': f' = File false len (shrinkdata SHRINK (FData f)))
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FCommon (FTrunc inum len) rx) d)
-          (FSt (rx tt) d')
-  | FsmTruncGrow: forall inum len rx d d' f f'
+    fop_step (FileOpR (FTrunc inum len) tt) d d'
+  | FsmTruncGrow: forall inum len d d' f f'
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (GROW: len > FLen f)
     (F': f' = File false len (growzerodata GROW (FData f)))
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FCommon (FTrunc inum len) rx) d)
-          (FSt (rx tt) d')
+    fop_step (FileOpR (FTrunc inum len) tt) d d'.
+
+Inductive fstep: fstate -> fstate -> Prop :=
+  | FsmCommon: forall R op d d' (r:R) rx
+    (OS: fop_step (FileOpR op r) d d'),
+    fstep (FSt (FCommon op rx) d)
+          (FSt (rx r) d')
   | FsmHalt: forall d,
     fstep (FSt FHalt d)
           (FSt FHalt d).

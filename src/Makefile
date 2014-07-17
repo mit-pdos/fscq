@@ -21,6 +21,7 @@ FILES = CpdtTactics.v \
 	DiskLog.v \
 	Inode.v \
 	FileSpec.v \
+	BufferedFileSpec.v \
 	File.v
 
 PROOFFILES = 
