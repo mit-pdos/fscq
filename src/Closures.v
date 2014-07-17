@@ -2,6 +2,8 @@ Require Import List.
 Require Import Arith.
 Import ListNotations.
 
+Set Implicit Arguments.
+
 Section CLOSURES.
 
 Variable state: Type.

@@ -13,6 +13,7 @@ FILES = CpdtTactics.v \
 	Util.v \
 	Storage.v \
 	Closures.v \
+	Loopfree.v \
 	Disk.v \
 	Bank.v \
 	Trans2.v \
