@@ -10,7 +10,6 @@ OCAMLINC   = \
 
 FILES = CpdtTactics.v \
 	FsTactics.v \
-	Ilist.v \
 	Util.v \
 	Storage.v \
 	Closures.v \

@@ -2,9 +2,9 @@ Require Import List.
 Require Import Arith.
 Import ListNotations.
 Require Import CpdtTactics.
+Require Import FsTactics.
 Require Import Storage.
 Require Import Disk.
-Require Import Ilist.
 Require Import Util.
 Require Import Trans2.
 
@@ -20,10 +20,16 @@ Definition blockmapnum := nat.
 
 (* Disk layout: | NInode blocks | NBlockMap block maps | blocks |  *)
 
-Definition SizeBlock := 3.    (* number of nats in a block *)
-Definition NBlockPerInode := 2. 
+Definition SizeBlock := 4.    (* number of nats in an inode/blockmap "block" *)
+Definition NBlockPerInode := 2.
 Definition NInode := 2.
 Definition NBlockMap := 3.    (* total number of blocks is NBlockMap * SizeBlock *)
+
+Remark inode_fits_in_block:
+  NBlockPerInode + 2 <= SizeBlock.
+Proof.
+  crush.
+Qed.
 
 (* XXX NBlockMap * SizeBlock better be larger than NInode + NBlockMap *)
 
@@ -31,16 +37,20 @@ Definition NBlockMap := 3.    (* total number of blocks is NBlockMap * SizeBlock
 Record inode := Inode {
   IFree: bool;
   ILen: { l: nat | l < NBlockPerInode };  (* in blocks *)
-  IBlocks: ilist blocknum NBlockPerInode
+  IBlocks: { b: nat | b < proj1_sig ILen } -> blocknum
 }.
 
-Local Obligation Tactic := crush.
-
 Program Definition mkinode b : inode :=
-  (Inode b 0 (everywhere 0 NBlockPerInode)).
+  (Inode b 0 _).
+Next Obligation.
+  crush.
+Qed.
+Next Obligation.
+  crush.
+Qed.
 
 Record blockmap := Blockmap {
-  FreeList: ilist (nat*bool) SizeBlock
+  FreeList: { b: nat | b < SizeBlock } -> bool
 }.
 
 Definition istorage := inodenum -> inode.
@@ -53,8 +63,8 @@ Inductive iproc :=
   | IWrite (inum: inodenum) (i:inode) (rx: iproc)
   | IReadBlockMap (bn: blockmapnum) (rx: blockmap -> iproc)
   | IWriteBlockMap (bn:blockmapnum) (bm:blockmap) (rx: iproc)
-  | IReadBlock (o:nat) (rx:block -> iproc)
-  | IWriteBlock (o:nat) (b: block) (rx: iproc).
+  | IReadBlock (o:blocknum) (rx:block -> iproc)
+  | IWriteBlock (o:blocknum) (b: block) (rx: iproc).
 
 Bind Scope iprog_scope with iproc.
 
@@ -67,63 +77,76 @@ Notation "a ;; b" := (a (b))
 Open Scope iprog_scope.
 
 
-Fixpoint do_iwrite_blocklist n (ls: ilist blocknum n) inum rx :=
-  match ls with
-  | INil => rx
-  | ICons _ x ls' => DWrite (inum * SizeBlock + n) x ;; do_iwrite_blocklist ls' inum rx
+Program Fixpoint do_iwrite_blocklist inum i n rx :=
+  match n with
+  | 0 => rx
+  | S x =>
+    DWrite (inum * SizeBlock + 2 + x)
+           (if lt_dec x (proj1_sig (ILen i)) then (IBlocks i x) else 0);;
+    do_iwrite_blocklist inum i x rx
   end.
 
 Definition do_iwrite inum i rx  :=
   DWrite (inum * SizeBlock) (bool2nat (IFree i)) ;;
-  do_iwrite_blocklist (IBlocks i) inum rx.
+  DWrite (inum * SizeBlock + 1) (proj1_sig (ILen i)) ;;
+  do_iwrite_blocklist inum i NBlockPerInode rx.
 
-(*
- XXX coq cannot figure out that ls is NBlockPerInode
-Fixpoint do_iread_blocklist n (ls: ilist blocknum n) size free inum rx: dprog :=
-  match size with
-  | O => rx (Inode free ls)
-  | S m => b <- DRead (inum * SizeBlock + size) ; do_iread_blocklist (ICons b ls) m free inum rx
-  end.
-*)
 
-Program Fixpoint do_iread_blocklist free inum rx :=
-  (* number of DReads should be NBlockPerInode; maybe use module iteration? *)
-  b0 <- DRead ((inum * SizeBlock) + 1); 
-  b1 <- DRead ((inum * SizeBlock) + 2); 
-  rx (Inode free 0 (ICons b0 (ICons b1 INil))).
-
-Definition do_iread inum rx :=
-  free <- DRead (inum * SizeBlock); 
-  do_iread_blocklist (nat2bool free) inum rx.
-
-(* XXX number of DReads should be SizeBlock *)
-Fixpoint do_readblockmap bn rx :=
-  f0 <- DRead ((NInode * SizeBlock) + (bn * SizeBlock) ); 
-  f1 <- DRead ((NInode * SizeBlock) + (bn * SizeBlock) + 1); 
-  f2 <- DRead ((NInode * SizeBlock) + (bn * SizeBlock) + 2); 
-  rx (Blockmap (ICons (0, (nat2bool f0)) (ICons (1, (nat2bool f1)) (ICons (2, (nat2bool f2)) INil)))).
-
-Fixpoint do_writeblockmap n (ls: ilist (nat*bool) n) bn j rx :=
-  match ls with
-  | INil => rx
-  | (ICons _ p ls') => DWrite (((NInode * SizeBlock) + (bn*SizeBlock)) + j) (bool2nat (snd p));; do_writeblockmap ls' bn (j+1) rx
+Program Fixpoint do_iread_blocklist inum n bl rx :=
+  match n with
+  | 0 => rx bl
+  | S x =>
+    bx <- DRead (inum * SizeBlock + 2 + x);
+    do_iread_blocklist inum x
+                       (fun bn => if eq_nat_dec bn x then bx else bl bn) rx
   end.
 
-Definition do_iwriteblock (o:nat) b rx :=
+Program Definition do_iread inum rx :=
+  free <- DRead (inum * SizeBlock);
+  dlen <- DRead (inum * SizeBlock + 1);
+  let len := if lt_dec dlen NBlockPerInode then dlen else NBlockPerInode-1 in
+  bl <- do_iread_blocklist inum len (fun _ => 0);
+  rx (Inode (nat2bool free) len bl).
+Next Obligation.
+  destruct (lt_dec dlen NBlockPerInode); crush.
+Qed.
+
+
+Program Fixpoint do_readblockmap bn off fl rx :=
+  match off with
+  | O => rx (Blockmap fl)
+  | S off' =>
+    freebit <- DRead ((NInode * SizeBlock) + (bn * SizeBlock) + off');
+    do_readblockmap bn off' (fun x => if eq_nat_dec x off' then nat2bool freebit else fl x) rx
+  end.
+
+Program Fixpoint do_writeblockmap bn off (OFFOK: off <= SizeBlock) bm rx :=
+  match off with
+  | O => rx
+  | S off' =>
+    DWrite ((NInode * SizeBlock) + (bn * SizeBlock) + off')
+           (bool2nat (FreeList bm off'));;
+    @do_writeblockmap bn off' _ bm rx
+  end.
+Next Obligation.
+  crush.
+Qed.
+
+Definition do_iwriteblock (o:blocknum) b rx :=
   DWrite (NInode + NBlockMap + o) b ;; rx.
 
-Definition do_ireadblock (o:nat) rx :=
+Definition do_ireadblock (o:blocknum) rx :=
   b <- DRead (NInode + NBlockMap + o) ; rx b.
 
-Fixpoint compile_id (p:iproc) : dprog :=
+Program Fixpoint compile_id (p:iproc) : dprog :=
   match p with
-    | IHalt => DHalt
-    | IWrite inum i rx => do_iwrite inum i (compile_id rx)
-    | IRead inum rx => do_iread inum (fun v => compile_id (rx v))
-    | IWriteBlockMap bn bm rx => do_writeblockmap (FreeList bm) bn 0 (compile_id rx)
-    | IReadBlockMap bn rx => do_readblockmap bn (fun v => compile_id (rx v))
-    | IReadBlock o rx => do_ireadblock o (fun v => compile_id (rx v))
-    | IWriteBlock o b rx => do_iwriteblock o b (compile_id rx)
+  | IHalt => DHalt
+  | IWrite inum i rx => do_iwrite inum i (compile_id rx)
+  | IRead inum rx => do_iread inum (fun v => compile_id (rx v))
+  | IWriteBlockMap bn bm rx => @do_writeblockmap bn SizeBlock _ bm (compile_id rx)
+  | IReadBlockMap bn rx => do_readblockmap bn SizeBlock (fun _ => true) (fun v => compile_id (rx v))
+  | IReadBlock o rx => do_ireadblock o (fun v => compile_id (rx v))
+  | IWriteBlock o b rx => do_iwriteblock o b (compile_id rx)
   end.
 
 Definition compile_it2 (p:iproc) : t2prog :=
@@ -175,13 +198,19 @@ Inductive istep : istate -> istate -> Prop :=
 (* XXX perhaps for showing small-step simulation does something sensible? *)
 Fixpoint iexec (p:iproc) (s:istate) : istate :=
   match p with
-    | IHalt => s
-    | IWrite inum i rx  => iexec rx (ISt p (iwrite (ISInodes s) inum i) (ISBlockMap s) (ISBlocks s))
-    | IRead inum rx => iexec (rx (iread (ISInodes s) inum)) s                            
-    | IReadBlockMap bn rx => iexec (rx (blockmap_read (ISBlockMap s) bn)) s
-    | IWriteBlockMap bn bm rx => iexec rx (ISt p (ISInodes s) (blockmap_write (ISBlockMap s) bn bm) (ISBlocks s))
-    | IReadBlock o rx => iexec (rx (bread (ISBlocks s) o)) s
-    | IWriteBlock o b rx => iexec rx (ISt p (ISInodes s) (ISBlockMap s) (bwrite (ISBlocks s) o b))
+  | IHalt => s
+  | IWrite inum i rx  =>
+    iexec rx (ISt p (iwrite (ISInodes s) inum i) (ISBlockMap s) (ISBlocks s))
+  | IRead inum rx =>
+    iexec (rx (iread (ISInodes s) inum)) s                            
+  | IReadBlockMap bn rx =>
+    iexec (rx (blockmap_read (ISBlockMap s) bn)) s
+  | IWriteBlockMap bn bm rx =>
+    iexec rx (ISt p (ISInodes s) (blockmap_write (ISBlockMap s) bn bm) (ISBlocks s))
+  | IReadBlock o rx =>
+    iexec (rx (bread (ISBlocks s) o)) s
+  | IWriteBlock o b rx =>
+    iexec rx (ISt p (ISInodes s) (ISBlockMap s) (bwrite (ISBlocks s) o b))
   end.
 
 End Inode.

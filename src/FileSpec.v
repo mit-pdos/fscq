@@ -1,5 +1,6 @@
 Require Import Arith.
 Require Import CpdtTactics.
+Require Import FsTactics.
 Require Import Storage.
 
 Definition inodenum := nat.
@@ -33,11 +34,6 @@ Definition setidxsig {K: Type} {V: Type} {KP: K->Prop}
                      (eq: forall (a b:K), {a=b}+{a<>b})
                      (db: (sig KP) -> V) (k: K) (v: V) :=
   fun x: (sig KP) => if eq (proj1_sig x) k then v else db x.
-
-Ltac inv_sig :=
-  match goal with
-  | [ H: sig _ |- _ ] => inversion H
-  end.
 
 Ltac crush_inv_sig := intros; inv_sig; crush.
 

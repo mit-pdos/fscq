@@ -18,3 +18,8 @@ Ltac tt := simpl in *; subst; try autorewrite with core in *;
 
 Ltac cc := tt; try constructor; tt.
 
+Ltac inv_sig :=
+  match goal with
+  | [ H: sig _ |- _ ] => inversion H
+  end.
+

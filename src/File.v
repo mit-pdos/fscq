@@ -8,7 +8,6 @@ Require Import Disk.
 Require Import Util.
 Require Import Inode.
 Require Import FileSpec.
-Require Import Ilist.
 
 
 Bind Scope iprog_scope with iproc.
@@ -22,10 +21,12 @@ Notation "a ;; b" := (a (b))
 Open Scope iprog_scope.
 
 
-Definition do_read (inum: inodenum) (off: blockoffset) (rx: block -> iproc): iproc :=
-  v <- IRead inum;
-  (* XXX why does IReadBlock take an inodenum argument? *)
-  rx 0.
+Program Definition do_read (inum: inodenum) (off: blockoffset) (rx: block -> iproc): iproc :=
+  i <- IRead inum;
+  if lt_dec off (proj1_sig (ILen i)) then
+    IReadBlock (IBlocks i off) rx
+  else
+    rx 0.
 
 Definition do_write (inum: inodenum) (off: blockoffset) (b: block) (rx: iproc): iproc :=
   v <- IRead inum;
