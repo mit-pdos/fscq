@@ -59,10 +59,10 @@ Definition do_trunc (inum: inodenum) (len: blockoffset) (rx: iproc): iproc :=
 
 Fixpoint compile_fi (p:fprog) : iproc :=
   match p with
-  | FRead inum off rx => do_read inum off (fun v => compile_fi (rx v))
-  | FWrite inum off b rx => do_write inum off b (compile_fi rx)
-  | FAlloc rx => do_alloc (fun v => compile_fi (rx v))
-  | FFree i rx => do_free i (compile_fi rx)
-  | FTrunc inum len rx => do_trunc inum len (compile_fi rx)
+  | FCommon _ (FRead inum off) rx => do_read inum off (fun v => compile_fi (rx v))
+  | FCommon _ (FWrite inum off b) rx => do_write inum off b (compile_fi (rx tt))
+  | FCommon _ FAlloc rx => do_alloc (fun v => compile_fi (rx v))
+  | FCommon _ (FFree i) rx => do_free i (compile_fi (rx tt))
+  | FCommon _ (FTrunc inum len) rx => do_trunc inum len (compile_fi (rx tt))
   | FHalt => IHalt
   end.
