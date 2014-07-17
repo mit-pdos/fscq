@@ -29,14 +29,14 @@ Definition NBlockMap := 3.    (* total number of blocks is NBlockMap * SizeBlock
 
 (* In-memory representation of inode and free block map: *)
 Record inode := Inode {
-   IFree : bool;
-   IBlocks: ilist blocknum NBlockPerInode
+  IFree : bool;
+  IBlocks: ilist blocknum NBlockPerInode
 }.
 
 Definition mkinode b : inode := (Inode b (everywhere 0 NBlockPerInode)).
 
 Record blockmap := Blockmap {
-   FreeList: ilist (nat*bool) SizeBlock
+  FreeList: ilist (nat*bool) SizeBlock
 }.
 
 Definition istorage := inodenum -> inode.
@@ -49,8 +49,8 @@ Inductive iproc :=
   | IWrite (inum: inodenum) (i:inode) (rx: iproc)
   | IReadBlockMap (bn: blockmapnum) (rx: blockmap -> iproc)
   | IWriteBlockMap (bn:blockmapnum) (bm:blockmap) (rx: iproc)
-  | IReadBlock (i:inodenum) (o:nat) (rx:block -> iproc)
-  | IWriteBlock (i:inodenum) (o:nat) (b: block) (rx: iproc).
+  | IReadBlock (o:nat) (rx:block -> iproc)
+  | IWriteBlock (o:nat) (b: block) (rx: iproc).
 
 Bind Scope iprog_scope with iproc.
 
@@ -105,17 +105,11 @@ Fixpoint do_writeblockmap n (ls: ilist (nat*bool) n) bn j rx :=
   | (ICons _ p ls') => DWrite (((NInode * SizeBlock) + (bn*SizeBlock)) + j) (bool2nat (snd p));; do_writeblockmap ls' bn (j+1) rx
   end.
 
-(* XXX convert o into sequence of First and Next *)
-Definition do_iwriteblock inum (o:nat) b rx :=
-  i <- do_iread inum;
-  let bn := (get (IBlocks i) First) in
-      DWrite bn b;; rx.
+Definition do_iwriteblock (o:nat) b rx :=
+  DWrite (NInode + NBlockMap + o) b ;; rx.
 
-(* XXX convert o into sequence of First and Next *)
-Definition do_ireadblock inum (o:nat) rx :=
-  i <- do_iread inum;
-  let bn := (get (IBlocks i) First) in
-      b <- DRead bn; (rx b).
+Definition do_ireadblock (o:nat) rx :=
+  b <- DRead (NInode + NBlockMap + o) ; rx b.
 
 Fixpoint compile_id (p:iproc) : dprog :=
   match p with
@@ -124,8 +118,8 @@ Fixpoint compile_id (p:iproc) : dprog :=
     | IRead inum rx => do_iread inum (fun v => compile_id (rx v))
     | IWriteBlockMap bn bm rx => do_writeblockmap (FreeList bm) bn 0 (compile_id rx)
     | IReadBlockMap bn rx => do_readblockmap bn (fun v => compile_id (rx v))
-    | IReadBlock inum o rx => do_ireadblock inum o (fun v => compile_id (rx v))
-    | IWriteBlock inum o b rx => do_iwriteblock inum o b (compile_id rx)
+    | IReadBlock o rx => do_ireadblock o (fun v => compile_id (rx v))
+    | IWriteBlock o b rx => do_iwriteblock o b (compile_id rx)
   end.
 
 Definition compile_it2 (p:iproc) : t2prog :=
@@ -150,17 +144,6 @@ Definition blockmap_read s (bn: blockmapnum) : blockmap :=  s bn.
 Definition blockmap_write (s:bmstorage) (bn: blockmapnum) (bm: blockmap) : bmstorage :=
   fun bn' => if eq_nat_dec bn' bn then bm else s bn'.
 
-(* XXX express o as First Next etc. inth? *)
-Definition iblock_read is bs (inum:inodenum) (o:nat) : block :=
-  let i := iread is inum in
-  let bn := (get (IBlocks i) First) in 
-  bread bs bn.
-
-(* XXX express o as First Next etc. *)
-Definition iblock_write is bs (inum:inodenum) (o:nat) (b:block) : storage :=
-  let i := iread is inum in
-  let bn := (get (IBlocks i) First) in 
-  bwrite bs bn b.
 
 Record istate := ISt {
   ISProg: iproc;
@@ -180,10 +163,10 @@ Inductive istep : istate -> istate -> Prop :=
     istep (ISt (IWriteBlockMap bn bm rx) is map b) (ISt rx is (blockmap_write map bn bm) b)
   | IsmIreadBlockMap: forall is bn map b rx,
     istep (ISt (IReadBlockMap bn rx) is map b) (ISt (rx (blockmap_read map bn)) is map b)
-  | IsmIreadBlock: forall is inum bn b m rx,
-    istep (ISt (IReadBlock inum bn rx) is m b) (ISt (rx (iblock_read is b inum bn)) is m b)
-  | IsmIwriteBlock: forall is inum bn b bs m rx,
-    istep (ISt (IWriteBlock inum bn b rx) is m bs) (ISt rx is m (iblock_write is bs inum bn b)).
+  | IsmIreadBlock: forall is bn b m rx,
+    istep (ISt (IReadBlock bn rx) is m b) (ISt (rx (bread b bn)) is m b)
+  | IsmIwriteBlock: forall is bn b bs m rx,
+    istep (ISt (IWriteBlock bn b rx) is m bs) (ISt rx is m (bwrite bs bn b)).
 
 (* XXX perhaps for showing small-step simulation does something sensible? *)
 Fixpoint iexec (p:iproc) (s:istate) : istate :=
@@ -193,8 +176,8 @@ Fixpoint iexec (p:iproc) (s:istate) : istate :=
     | IRead inum rx => iexec (rx (iread (ISInodes s) inum)) s                            
     | IReadBlockMap bn rx => iexec (rx (blockmap_read (ISBlockMap s) bn)) s
     | IWriteBlockMap bn bm rx => iexec rx (ISt p (ISInodes s) (blockmap_write (ISBlockMap s) bn bm) (ISBlocks s))
-    | IReadBlock i o rx => iexec (rx (iblock_read (ISInodes s) (ISBlocks s) i o)) s
-    | IWriteBlock i o b rx => iexec rx (ISt p (ISInodes s) (ISBlockMap s) (iblock_write (ISInodes s) (ISBlocks s) i o b))
+    | IReadBlock o rx => iexec (rx (bread (ISBlocks s) o)) s
+    | IWriteBlock o b rx => iexec rx (ISt p (ISInodes s) (ISBlockMap s) (bwrite (ISBlocks s) o b))
   end.
 
 End Inode.
