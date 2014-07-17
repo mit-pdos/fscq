@@ -28,29 +28,33 @@ Program Definition do_read (inum: inodenum) (off: blockoffset) (rx: block -> ipr
   else
     rx 0.
 
-Definition do_write (inum: inodenum) (off: blockoffset) (b: block) (rx: iproc): iproc :=
-  v <- IRead inum;
-  (* XXX why does IWriteBlock take an inodenum argument? *)
-  rx.
+Program Definition do_write (inum: inodenum) (off: blockoffset) (b: block) (rx: iproc): iproc :=
+  i <- IRead inum;
+  if lt_dec off (proj1_sig (ILen i)) then
+    IWriteBlock (IBlocks i off) b rx
+  else
+    (* XXX out-of-bounds write *)
+    rx.
 
 Fixpoint inode_allocate (n: nat) rx: iproc :=
   match n with
   | O => rx None
   | S m =>
-    i <- IRead n; 
+    i <- IRead m; 
     match IFree i with
     | false => inode_allocate m rx
-    | true => IWrite n (mkinode false) ;; rx (Some n)
+    | true => IWrite m (mkinode false) ;; rx (Some m)
    end
  end.
 
 Definition do_alloc (rx: (option inodenum) -> iproc): iproc :=
-  inode_allocate 10 rx.  (* XXX how many inodes do we have? *)
+  inode_allocate NInode rx.
 
 Definition do_free (inum: inodenum) (rx: iproc): iproc :=
   IWrite inum (mkinode true) ;; rx.
 
 Definition do_trunc (inum: inodenum) (len: blockoffset) (rx: iproc): iproc :=
+  (* XXX manipulate block free list.. *)
   rx.
 
 Fixpoint compile_fi (p:fprog) : iproc :=
