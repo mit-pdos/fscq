@@ -34,7 +34,7 @@ Notation "a ;; b" := (a (b))
 
 Open Scope iprog_scope.
 
-Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) rx : bproc :=
+Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) rx : iproc :=
   match off with
   | O => rx None
   | S off' =>
@@ -46,11 +46,11 @@ Next Obligation.
   crush.
 Qed.
 
-Definition do_ballocate rx :=
+Program Definition do_ballocate rx :=
   bm <- IReadBlockMap 0;
-  find_block bm 0 SizeBlock rx.
+  @find_block bm 0 SizeBlock _ rx.
 
-Definition do_free bn rx :=
+Definition do_bfree (bn:nat) (rx:iproc) : iproc :=
   rx.
 
 Program Fixpoint compile_bi (p:bproc) : iproc :=
@@ -66,7 +66,7 @@ Program Fixpoint compile_bi (p:bproc) : iproc :=
 
 Close Scope iprog_scope.
 
-(* For small-step simulation and proof *)
+(* For small-step simulation and proof 
 
 Record bstate := BSt {
   BSProg: bproc;
@@ -110,4 +110,7 @@ Fixpoint iexec (p:iproc) (s:istate) : istate :=
     iexec rx (ISt p (ISInodes s) (ISBlockMap s) (bwrite (ISBlocks s) o b))
   end.
 
-End Inode.
+*)
+
+End Block.
+
