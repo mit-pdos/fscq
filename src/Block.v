@@ -34,7 +34,7 @@ Notation "a ;; b" := (a (b))
 
 Open Scope iprog_scope.
 
-Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) rx :=
+Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) rx : bproc :=
   match off with
   | O => rx None
   | S off' =>
@@ -42,6 +42,9 @@ Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) rx :=
     if isfree then rx (Some (SizeBlock * bn + off'))
     else @find_block bm bn off' _ rx
   end.
+Next Obligation.
+  crush.
+Qed.
 
 Definition do_ballocate rx :=
   bm <- IReadBlockMap 0;
