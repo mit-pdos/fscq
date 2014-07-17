@@ -6,12 +6,15 @@ Require Import Storage.
 Definition inodenum := nat.
 Definition blockoffset := nat.
 
+Inductive fileop : Type -> Type :=
+  | FRead (i:inodenum) (o:blockoffset): fileop block
+  | FWrite (i:inodenum) (o:blockoffset) (b:block): fileop unit
+  | FAlloc: fileop (option inodenum)
+  | FFree (i:inodenum): fileop unit
+  | FTrunc (i:inodenum) (len:blockoffset): fileop unit.
+
 Inductive fprog :=
-  | FRead (i:inodenum) (o:blockoffset) (rx:block -> fprog)
-  | FWrite (i:inodenum) (o:blockoffset) (b:block) (rx:fprog)
-  | FAlloc (rx:(option inodenum) -> fprog)
-  | FFree (i:inodenum) (rx:fprog)
-  | FTrunc (i:inodenum) (len:blockoffset) (rx:fprog)
+  | FCommon {R:Type} (o:fileop R) (rx:R->fprog)
   | FHalt.
 
 Record file := File {
@@ -20,9 +23,11 @@ Record file := File {
   FData: { o: blockoffset | o < FLen } -> block
 }.
 
+Definition fstatedata := inodenum -> file.
+
 Record fstate := FSt {
   FSProg: fprog;
-  FSData: inodenum -> file
+  FSData: fstatedata
 }.
 
 Definition setidx {K: Type} {V: Type}
@@ -63,7 +68,7 @@ Inductive fstep: fstate -> fstate -> Prop :=
     (NOTFREE: FIsFree f = false)
     (OLEN: off < FLen f)
     (BD: bdata = FData f (exist _ off OLEN)),
-    fstep (FSt (FRead inum off rx) d)
+    fstep (FSt (FCommon (FRead inum off) rx) d)
           (FSt (rx bdata) d)
   | FsmWrite: forall inum off rx bdata d d' f f'
     (F: f = d inum)
@@ -71,42 +76,42 @@ Inductive fstep: fstate -> fstate -> Prop :=
     (OLEN: off < FLen (d inum))
     (F': f' = File (FIsFree f) (FLen f) (setidxsig eq_nat_dec (FData f) off bdata))
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FWrite inum off bdata rx) d)
-          (FSt rx d')
+    fstep (FSt (FCommon (FWrite inum off bdata) rx) d)
+          (FSt (rx tt) d')
   | FsmAllocOK: forall rx inum f f' d d'
     (F: f = d inum)
     (FREE: FIsFree f = true)
     (F': f' = File false 0 nodata)
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FAlloc rx) d)
+    fstep (FSt (FCommon FAlloc rx) d)
           (FSt (rx (Some inum)) d')
   | FsmAllocNone: forall rx d
     (ALLUSED: forall inum, FIsFree (d inum) = false),
-    fstep (FSt (FAlloc rx) d)
+    fstep (FSt (FCommon FAlloc rx) d)
           (FSt (rx None) d)
   | FsmFree: forall inum rx d d' f f' len fdata
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (F': f' = File true len fdata)
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FFree inum rx) d)
-          (FSt rx d')
+    fstep (FSt (FCommon (FFree inum) rx) d)
+          (FSt (rx tt) d')
   | FsmTruncShrink: forall inum len rx d d' f f'
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (SHRINK: len <= FLen f)
     (F': f' = File false len (shrinkdata SHRINK (FData f)))
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FTrunc inum len rx) d)
-          (FSt rx d')
+    fstep (FSt (FCommon (FTrunc inum len) rx) d)
+          (FSt (rx tt) d')
   | FsmTruncGrow: forall inum len rx d d' f f'
     (F: f = d inum)
     (NOTFREE: FIsFree f = false)
     (GROW: len > FLen f)
     (F': f' = File false len (growzerodata GROW (FData f)))
     (D': d' = setidx eq_nat_dec d inum f'),
-    fstep (FSt (FTrunc inum len rx) d)
-          (FSt rx d')
+    fstep (FSt (FCommon (FTrunc inum len) rx) d)
+          (FSt (rx tt) d')
   | FsmHalt: forall d,
     fstep (FSt FHalt d)
           (FSt FHalt d).

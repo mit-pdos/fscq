@@ -4,11 +4,7 @@ Require Import Storage.
 Require Import FileSpec.
 
 Inductive bfprog :=
-  | BFRead (i:inodenum) (o:blockoffset) (rx:block -> bfprog)
-  | BFWrite (i:inodenum) (o:blockoffset) (b:block) (rx:bfprog)
-  | BFAlloc (rx:inodenum -> bfprog)
-  | BFFree (i:inodenum) (rx:bfprog)
-  | BFTrunc (i:inodenum) (len:blockoffset) (rx:bfprog)
+  | BFCommon {R:Type} (o:fileop R) (rx:R -> bfprog)
   | BFSync (i:inodenum) (rx:bfprog)
   | BFHalt.
 
@@ -19,41 +15,13 @@ Record bfstate := BFSt {
 }.
 
 Inductive bfstep: bfstate -> bfstate -> Prop :=
-  | BFsmRead: forall inum off pd d d' bdata,
+  | BFsmCommon: forall R op pd d d' (r:R),
     (forall frx,
-     fstep (FSt (FRead inum off frx) d)
-           (FSt (frx bdata) d')) ->
+     fstep (FSt (@FCommon R op frx) d)
+           (FSt (frx r) d')) ->
     (forall bfrx,
-     bfstep (BFSt (BFRead inum off bfrx) pd d)
-            (BFSt (bfrx bdata) pd d'))
-  | BFsmWrite: forall inum off pd d d' bdata,
-    (forall frx,
-     fstep (FSt (FWrite inum off bdata frx) d)
-           (FSt frx d')) ->
-    (forall bfrx,
-     bfstep (BFSt (BFWrite inum off bdata bfrx) pd d)
-            (BFSt bfrx pd d))
-  | BFsmAlloc: forall inum pd d d',
-    (forall frx,
-     fstep (FSt (FAlloc frx) d)
-           (FSt (frx inum) d')) ->
-    (forall bfrx,
-     bfstep (BFSt (BFAlloc bfrx) pd d)
-            (BFSt (bfrx inum) pd d'))
-  | BFsmFree: forall inum pd d d',
-    (forall frx,
-     fstep (FSt (FFree inum frx) d)
-           (FSt frx d')) ->
-    (forall bfrx,
-     bfstep (BFSt (BFFree inum bfrx) pd d)
-            (BFSt bfrx pd d'))
-  | BFsmTrunc: forall inum len pd d d',
-    (forall frx,
-     fstep (FSt (FTrunc inum len frx) d)
-           (FSt frx d')) ->
-    (forall bfrx,
-     bfstep (BFSt (BFTrunc inum len bfrx) pd d)
-            (BFSt bfrx pd d'))
+     bfstep (BFSt (BFCommon op bfrx) pd d)
+            (BFSt (bfrx r) pd d'))
   | BFsmSync: forall inum rx pd d
     (P: d inum = pd inum),
     bfstep (BFSt (BFSync inum rx) pd d)
