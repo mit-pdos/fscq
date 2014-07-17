@@ -27,8 +27,8 @@ Ltac invert_rel R := repeat match goal with
   | [ H: R _ _ |- _ ] => inversion H; clear H
   end.
 
-Ltac generalize_all := repeat match goal with
-  | [ H: _ |- _ ] => generalize H; clear H
+Ltac generalize_type T := repeat match goal with
+  | [ H: T |- _ ] => generalize H; clear H
   end.
 
 Ltac destruct_type T := repeat match goal with

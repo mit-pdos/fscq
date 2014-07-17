@@ -28,7 +28,7 @@ Hint Constructors dstep.
 Theorem opp_dstep_wf:
   well_founded (opposite_rel dstep).
 Proof.
-  unfold well_founded; destruct a; generalize_all.
+  unfold well_founded; destruct a; generalize_type storage.
   induction DSProg0; constructor; intros; invert_rel (opposite_rel dstep);
   destruct_type dstate; crush.
 Qed.
