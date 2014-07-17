@@ -97,9 +97,6 @@ Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
 
 
 Inductive tstep : tstate -> tstate -> Prop :=
-  | TsmHalt: forall d oad,
-    tstep (TSt (TPSt d) (TESt THalt oad))
-          (TSt (TPSt d) (TESt THalt oad))
   | TsmRead: forall d ad b rx,
     tstep (TSt (TPSt d) (TESt (TRead b rx) (Some ad)))
           (TSt (TPSt d) (TESt (rx (st_read ad b)) (Some ad)))
@@ -153,8 +150,10 @@ Theorem t2t_forward_sim:
 Proof.
   induction 1; intros; inversion H; inversion PM; tt.
 
+(*
   (* T2Halt *)
   - econstructor; split; cc.
+*)
 
   (* T2Begin *)
   - econstructor; split; tt.
@@ -272,9 +271,11 @@ Proof.
         |- _ ] => rewrite <- H0 in H1
     end; apply tstep_loopfree; repeat inv_ps; auto.
 
+(*
   (*==== halt *)
   - iv. iv.
     right. assert (s2=s); [ tstep_end | crush ].
+*)
 
   (*==== begin *)
   - right.

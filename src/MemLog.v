@@ -105,8 +105,6 @@ Record pstate := PSt {
 }.
 
 Inductive pstep : pstate -> pstate -> Prop :=
-  | PsmHalt: forall d l it,
-    pstep (PSt PHalt d l it) (PSt PHalt d l it)
   | PsmRead: forall d l b rx it,
     pstep (PSt (PRead b rx) d l it)
             (PSt (rx (st_read d b)) d l it)
@@ -143,6 +141,7 @@ Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   end.
 
 (** If no failure, pstep and pexec are equivalent *)
+(*
 Lemma pexec_step :
   forall p d l it s',
   pexec p (PSt p d l it) = s' -> star pstep (PSt p d l it) s'.
@@ -151,6 +150,7 @@ Proof.
   eapply star_step; t; try constructor.
   eapply star_one; rewrite <- H; constructor.
 Qed.
+*)
 
 Lemma pstep_determ:
   forall s0 s s',
@@ -163,6 +163,7 @@ Proof.
   end; subst; reflexivity.
 Qed.
 
+(*
 Lemma step_pexec :
   forall p d l it d' l' it',
   star pstep (PSt p d l it) (PSt PHalt d' l' it') ->
@@ -176,6 +177,7 @@ Proof.
     apply H; eapply star_inv; [ apply pstep_determ | t | constructor | t ]
   end.
 Qed.
+*)
 
 (* failure semantics *)
 
@@ -312,11 +314,6 @@ Theorem tp_forward_sim:
   exists P2, star pstep P1 P2 /\ tpmatch T2 P2.
 Proof.
   induction 1; intros; inversion H.
-
-  - (* Halt, in txn *)
-    eexists; cc.
-  - (* Halt, no txn *)
-    eexists; cc.
 
   - (* Read, in txn *)
     tt; unfold do_tread; eexists; split.
@@ -470,8 +467,12 @@ Lemma phalt_inv_eq:
   star pstep s s' ->  s = s'.
 Proof.
   intros; destruct s as [ p d ad dt ]; t.
-  inversion H0; t. inversion H. rewrite H2 in H.
+  inversion H0; t. inversion H.
+(* XXX from when we had PHalt:
+
+  rewrite H2 in H.
   eapply star_stuttering; eauto; [ exact pstep_determ | constructor ].
+*)
 Qed.
 
 
@@ -561,12 +562,14 @@ Proof.
   | [ H: star pstep _ _ |- _ ] => inversion H; t; []; clear H
   end.
 
+(*
   - (* THalt, in txn *)
     do 2 iv. right.
     cut (s2=s).  crush.
     destruct s; destruct s2.
     inversion M2; clear M2; repeat subst.
     apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=true); crush.
+*)
 
   - (* TRead, in txn *)
     do 5 iv. right.
@@ -604,12 +607,14 @@ Proof.
     inversion M2; clear M2; repeat subst.
     apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
 
+(*
   - (* THalt, no txn *)
     do 2 iv. right.
     cut (s2=s). crush. rewrite flush_nofail. crush.
     destruct s; destruct s2.
     inversion M2; clear M2; repeat subst.
     apply pstep_loopfree with (d3:=pd0) (l3:=lg0) (t3:=false); crush.
+*)
 
   - (* TAbort, no txn *)
     do 2 iv. right.

@@ -119,8 +119,6 @@ Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
 Definition log_init := DSt DHalt st_init st_init.
 
 Inductive dstep : dstate -> dstate -> Prop :=
-  | DsmHalt: forall d l,
-    dstep (DSt DHalt d l) (DSt DHalt d l)
   | DsmRead: forall dd d l b rx,
        dstep (DSt (DRead dd b rx) d l)
                (match dd with 
@@ -160,8 +158,10 @@ Proof.
 
   induction 1; intros; inversion H.
 
+(*
   (* PHalt *)
   exists D1; t2; apply star_refl.
+*)
 
   (* PRead *)
   eexists; split.

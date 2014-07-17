@@ -24,9 +24,6 @@ Record t2state := T2St {
 }.
 
 Inductive t2step : t2state -> t2state -> Prop :=
-  | T2smHalt: forall d oad,
-    t2step (T2St (T2PSt d) (T2ESt T2Halt oad))
-           (T2St (T2PSt d) (T2ESt T2Halt oad))
   | T2smBegin: forall d rx,
     t2step (T2St (T2PSt d) (T2ESt (T2Begin rx) None))
            (T2St (T2PSt d) (T2ESt rx (Some d)))
