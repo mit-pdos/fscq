@@ -30,11 +30,14 @@ Definition NBlockMap := 3.    (* total number of blocks is NBlockMap * SizeBlock
 (* In-memory representation of inode and free block map: *)
 Record inode := Inode {
   IFree: bool;
-  ILen: nat;  (* in blocks *)
+  ILen: { l: nat | l < NBlockPerInode };  (* in blocks *)
   IBlocks: ilist blocknum NBlockPerInode
 }.
 
-Definition mkinode b : inode := (Inode b 0 (everywhere 0 NBlockPerInode)).
+Local Obligation Tactic := crush.
+
+Program Definition mkinode b : inode :=
+  (Inode b 0 (everywhere 0 NBlockPerInode)).
 
 Record blockmap := Blockmap {
   FreeList: ilist (nat*bool) SizeBlock
@@ -83,7 +86,7 @@ Fixpoint do_iread_blocklist n (ls: ilist blocknum n) size free inum rx: dprog :=
   end.
 *)
 
-Fixpoint do_iread_blocklist free inum rx :=
+Program Fixpoint do_iread_blocklist free inum rx :=
   (* number of DReads should be NBlockPerInode; maybe use module iteration? *)
   b0 <- DRead ((inum * SizeBlock) + 1); 
   b1 <- DRead ((inum * SizeBlock) + 2); 
