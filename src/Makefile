@@ -20,6 +20,7 @@ FILES = CpdtTactics.v \
 	MemLog.v \
 	DiskLog.v \
 	Inode.v \
+	Block.v \
 	FileSpec.v \
 	BufferedFileSpec.v \
 	File.v
