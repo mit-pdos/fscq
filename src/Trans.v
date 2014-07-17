@@ -220,6 +220,17 @@ Proof.
 Qed.
 Hint Rewrite tspersist_extract_2.
 
+Lemma tspersist_extract_3:
+  forall p (e:tstate_ephem) ep a,
+  (TSPersist
+     (let (_, _) := e in
+      {|
+      TSPersist := p;
+      TSEphem := {| TESProg := ep; TESAltDisk := a |} |})) = p.
+Proof.
+  intros.  destruct e.  crush.
+Qed.
+Hint Rewrite tspersist_extract_3.
 
 Theorem t2t_atomicity:
   forall t2s1 t2s2 ts1 ts2 s sr
@@ -269,13 +280,14 @@ Proof.
 
   (*==== dprog *)
   - right.
-    assert (TPSDisk (TSPersist s) = d); [ idtac | destruct s; crush ].
-admit.
-
-
+    destruct s.
+    destruct TSPersist0.
+    assert (TPSDisk0 = d); [ idtac | crush ].
     generalize M2; clear M2.
     generalize NS; clear NS.
     generalize ad; clear ad.
+admit.
+(*
     induction dp; intros ad NS M2.
     + iv. iv.
       apply H with (ad:=ad) (v:=(st_read ad b)); crush.
@@ -283,6 +295,7 @@ admit.
       apply IHdp with (ad:=(st_write ad b v)); crush.
     + assert (ts2={| TSPersist := TSPersist0; TSEphem := TSEphem0 |}); [ tstep_end | idtac ].
       inversion M2; crush.
+*)
 
   (*==== commit *)
   - inversion NS.
