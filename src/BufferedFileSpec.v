@@ -19,31 +19,41 @@ Record bfstate := BFSt {
 }.
 
 Inductive bfstep: bfstate -> bfstate -> Prop :=
-  | BFsmRead: forall inum off frx bfrx pd d bdata,
-    fstep (FSt (FRead inum off frx) d)
-          (FSt (frx bdata) d) ->
-    bfstep (BFSt (BFRead inum off bfrx) pd d)
-           (BFSt (bfrx bdata) pd d)
-  | BFsmWrite: forall inum off frx bfrx pd d d' bdata,
-    fstep (FSt (FWrite inum off bdata frx) d)
-          (FSt frx d') ->
-    bfstep (BFSt (BFWrite inum off bdata bfrx) pd d)
-           (BFSt bfrx pd d)
-  | BFsmAlloc: forall inum frx bfrx pd d d',
-    fstep (FSt (FAlloc frx) d)
-          (FSt (frx inum) d') ->
-    bfstep (BFSt (BFAlloc bfrx) pd d)
-           (BFSt (bfrx inum) pd d')
-  | BFsmFree: forall inum frx bfrx pd d d',
-    fstep (FSt (FFree inum frx) d)
-          (FSt frx d') ->
-    bfstep (BFSt (BFFree inum bfrx) pd d)
-           (BFSt bfrx pd d')
-  | BFsmTrunc: forall inum len frx bfrx pd d d',
-    fstep (FSt (FTrunc inum len frx) d)
-          (FSt frx d') ->
-    bfstep (BFSt (BFTrunc inum len bfrx) pd d)
-           (BFSt bfrx pd d')
+  | BFsmRead: forall inum off pd d d' bdata,
+    (forall frx,
+     fstep (FSt (FRead inum off frx) d)
+           (FSt (frx bdata) d')) ->
+    (forall bfrx,
+     bfstep (BFSt (BFRead inum off bfrx) pd d)
+            (BFSt (bfrx bdata) pd d'))
+  | BFsmWrite: forall inum off pd d d' bdata,
+    (forall frx,
+     fstep (FSt (FWrite inum off bdata frx) d)
+           (FSt frx d')) ->
+    (forall bfrx,
+     bfstep (BFSt (BFWrite inum off bdata bfrx) pd d)
+            (BFSt bfrx pd d))
+  | BFsmAlloc: forall inum pd d d',
+    (forall frx,
+     fstep (FSt (FAlloc frx) d)
+           (FSt (frx inum) d')) ->
+    (forall bfrx,
+     bfstep (BFSt (BFAlloc bfrx) pd d)
+            (BFSt (bfrx inum) pd d'))
+  | BFsmFree: forall inum pd d d',
+    (forall frx,
+     fstep (FSt (FFree inum frx) d)
+           (FSt frx d')) ->
+    (forall bfrx,
+     bfstep (BFSt (BFFree inum bfrx) pd d)
+            (BFSt bfrx pd d'))
+  | BFsmTrunc: forall inum len pd d d',
+    (forall frx,
+     fstep (FSt (FTrunc inum len frx) d)
+           (FSt frx d')) ->
+    (forall bfrx,
+     bfstep (BFSt (BFTrunc inum len bfrx) pd d)
+            (BFSt bfrx pd d'))
   | BFsmSync: forall inum rx pd d
     (P: d inum = pd inum),
     bfstep (BFSt (BFSync inum rx) pd d)
