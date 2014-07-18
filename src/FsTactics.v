@@ -35,3 +35,8 @@ Ltac destruct_type T := repeat match goal with
   | [ H: T |- _ ] => destruct H
   end.
 
+Ltac destruct_sig :=
+  match goal with
+  | [ H: sig _ |- _ ] => destruct H
+  end.
+

@@ -51,9 +51,7 @@ Program Definition shrinkdata {oldlen: blockoffset}
                               (SHRINK: len <= oldlen)
                               (olddata: {o : blockoffset | o < oldlen} -> block) :=
   fun x: {o: blockoffset | o < len} => olddata (exist _ (proj1_sig x) _).
-Next Obligation.
-  crush.
-Qed.
+Solve Obligations using intros; try destruct_sig; crush.
 
 Program Definition growzerodata {oldlen: blockoffset}
                                 {len: blockoffset}

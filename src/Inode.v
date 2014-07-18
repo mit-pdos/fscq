@@ -42,12 +42,7 @@ Record inode := Inode {
 
 Program Definition mkinode b : inode :=
   (Inode b 0 _).
-Next Obligation.
-  crush.
-Qed.
-Next Obligation.
-  crush.
-Qed.
+Solve Obligations using intros; try destruct_sig; crush.
 
 Record blockmap := Blockmap {
   FreeList: { b: nat | b < SizeBlock } -> bool
@@ -107,10 +102,7 @@ Program Definition do_iread inum rx :=
   let len := if lt_dec dlen NBlockPerInode then dlen else NBlockPerInode-1 in
   bl <- do_iread_blocklist inum len (fun _ => 0);
   rx (Inode (nat2bool free) len bl).
-Next Obligation.
-  destruct (lt_dec dlen NBlockPerInode); crush.
-Qed.
-
+Solve Obligations using intros; destruct (lt_dec dlen NBlockPerInode); crush.
 
 Program Fixpoint do_readblockmap bn off fl rx :=
   match off with
@@ -128,9 +120,7 @@ Program Fixpoint do_writeblockmap bn off (OFFOK: off <= SizeBlock) bm rx :=
            (bool2nat (FreeList bm off'));;
     @do_writeblockmap bn off' _ bm rx
   end.
-Next Obligation.
-  crush.
-Qed.
+Solve Obligations using crush.
 
 Definition do_iwriteblock (o:blocknum) b rx :=
   DWrite (NInode + NBlockMap + o) b ;; rx.
