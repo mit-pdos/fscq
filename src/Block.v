@@ -8,6 +8,7 @@ Require Import Disk.
 Require Import Util.
 Require Import Trans2.
 Require Import Inode.
+Require Import NPeano.
 
 Set Implicit Arguments.
 
@@ -34,24 +35,37 @@ Notation "a ;; b" := (a (b))
 
 Open Scope iprog_scope.
 
-Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) rx : iproc :=
+Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) : option blocknum :=
   match off with
-  | O => rx None
+  | O => None
   | S off' =>
-    let isfree := (FreeList bm off') in
-    if isfree then rx (Some (SizeBlock * bn + off'))
-    else @find_block bm bn off' _ rx
+    let isfree := (FreeList bm) off' in
+    if isfree then (Some (SizeBlock * bn + off'))
+    else @find_block bm bn off' _
   end.
 Next Obligation.
   crush.
 Qed.
 
-Program Definition do_ballocate rx :=
-  bm <- IReadBlockMap 0;
-  @find_block bm 0 SizeBlock _ rx.
+Program Fixpoint do_ballocate n rx : iproc :=
+  match n with
+  | O => rx None
+  | S m =>
+    bm <- IReadBlockMap m;
+    match @find_block bm m SizeBlock _ with
+    | None => do_ballocate m rx
+    | Some b => 
+      IWriteBlockMap m (Blockmap (fun x => if eq_nat_dec x b then false else (FreeList bm) x));;
+    rx (Some (b + SizeBlock * m))
+    end
+  end.
 
 Definition do_bfree (bn:nat) (rx:iproc) : iproc :=
-  rx.
+  let blockmapnum := div bn SizeBlock in
+  let b  := modulo bn SizeBlock in
+  (* XXX I want to say (and prove) that {b0: nat | b0 < SizeBlock} *)
+  bm <- IReadBlockMap blockmapnum;
+  IWriteBlockMap blockmapnum (Blockmap (fun x => if eq_nat_dec x b then true else (FreeList bm) x));; rx.
 
 Program Fixpoint compile_bi (p:bproc) : iproc :=
   match p with
@@ -60,7 +74,7 @@ Program Fixpoint compile_bi (p:bproc) : iproc :=
   | BIRead inum rx => IRead inum (fun v => compile_bi (rx v))
   | BRead bn rx => IReadBlock bn (fun v => compile_bi (rx v))
   | BWrite bn b rx => IWriteBlock bn b (compile_bi rx)
-  | BAllocate rx => do_ballocate (fun v => compile_bi (rx v))
+  | BAllocate rx => do_ballocate NBlockMap (fun v => compile_bi (rx v))
   | BFree bn rx => do_bfree bn (compile_bi rx)
   end.
 
