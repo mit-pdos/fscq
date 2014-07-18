@@ -3,13 +3,11 @@ Require Import Arith.
 Import ListNotations.
 Require Import CpdtTactics.
 Require Import FunctionalExtensionality.
-
-Set Implicit Arguments.
-
 Require Import FsTactics.
 Require Import Storage.
 Require Import Trans.
-Load Closures.
+Require Import Closures.
+Require Import LoopfreeWF.
 
 
 (* language that manipulates a disk and a persistent log *)
@@ -126,6 +124,14 @@ Inductive pstep : pstate -> pstate -> Prop :=
   | PsmGetTx: forall d l rx it,
     pstep (PSt (PGetTx rx) d l it)
             (PSt (rx it) d l it).
+
+Lemma opp_pstep_wf:
+  well_founded (opposite_rel pstep).
+Proof.
+  unfold well_founded. destruct a.
+  generalize_type storage. generalize_type bool. generalize_type (list (block*value)).
+  induction PSProg0; constructor; intros; invert_rel (opposite_rel pstep); crush.
+Qed.
 
 Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   let (_, d, l, it) := s in
@@ -482,7 +488,11 @@ Lemma pstep_loopfree:
   star pstep (PSt pB d2 l2 t2) (PSt pA d3 l3 t3) ->
   (PSt pA d1 l1 t1) = (PSt pB d2 l2 t2).
 Proof.
-  admit.
+  intros.  apply wf_loopfree with (step:=(opposite_rel pstep)).
+  - exact opp_pstep_wf.
+  - apply opposite_star. admit.
+    (* XXX *)
+  - apply opposite_star; auto.
 Qed.
 
 
