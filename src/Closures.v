@@ -98,7 +98,7 @@ Proof.
 Qed.
 
 Lemma starN_last:
-  forall n s1 s2 s3,
+  forall {n s1 s2 s3},
   step s1 s2 -> starN n s2 s3 ->
   exists s2', starN n s1 s2' /\ step s2' s3.
 Proof.
