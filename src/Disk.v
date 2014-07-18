@@ -1,7 +1,7 @@
 Require Import CpdtTactics.
 Require Import FsTactics.
 Require Import Storage.
-Require Import Util.
+Require Import Closures.
 Require Import Recdef.
 
 Inductive dprog :=
