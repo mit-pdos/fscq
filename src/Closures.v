@@ -1,3 +1,4 @@
+Require Import CpdtTactics.
 Require Import List.
 Require Import Arith.
 Import ListNotations.
@@ -141,4 +142,28 @@ Proof.
   - constructor.
   - apply star_trans with (s2:=s2); auto.
     apply star_step with (s2:=s1). auto. constructor.
+Qed.
+
+Remark opposite_starN:
+  forall (A:Type) (a b:A) (n:nat) step,
+  starN step n a b -> starN (opposite_rel step) n b a.
+Proof.
+  intros; induction H; subst.
+  - constructor.
+  - assert (S n = n+1) as HSn. crush. rewrite HSn.
+    eapply starN_trans. eauto.
+    eapply starN_step. unfold opposite_rel. eauto. constructor.
+Qed.
+
+Lemma starN_proj:
+  forall (A:Type) (B:Type) (step1:A->A->Prop) (step2:B->B->Prop) (proj:A->B),
+  (forall x y, step1 x y -> step2 (proj x) (proj y)) ->
+  forall a b n, starN step1 n a b -> starN step2 n (proj a) (proj b).
+Proof.
+  intros.
+  induction H0.
+  - constructor.
+  - eapply starN_step.
+    apply H. exact H0.
+    auto.
 Qed.

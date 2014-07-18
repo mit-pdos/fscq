@@ -156,6 +156,13 @@ Proof.
   intros; inversion H; constructor.
 Qed.
 
+Lemma opp_pstep_pprog_next:
+  forall a b,
+  opposite_rel pstep a b -> pprog_next (PSProg a) (PSProg b).
+Proof.
+  unfold opposite_rel. intros. apply pstep_pprog_next. auto.
+Qed.
+
 Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   let (_, d, l, it) := s in
   match p with
@@ -511,11 +518,23 @@ Lemma pstep_loopfree:
   star pstep (PSt pB d2 l2 t2) (PSt pA d3 l3 t3) ->
   (PSt pA d1 l1 t1) = (PSt pB d2 l2 t2).
 Proof.
-  intros.  apply wf_loopfree with (step:=(opposite_rel pstep)).
-  - exact opp_pstep_wf.
-  - apply opposite_star. admit.
-    (* XXX *)
-  - apply opposite_star; auto.
+  intros.
+  repeat match goal with
+  | [ H: star _ _ _ |- _ ] => destruct (star_starN H); clear H
+  end.
+  remember (opposite_starN H0) as H0'; clear HeqH0'; clear H0.
+  remember (opposite_starN H1) as H1'; clear HeqH1'; clear H1.
+  destruct wf_loopfreeN with (A:=pprog) (step:=pprog_next) (n0:=x) (n1:=x0)
+           (x:=PSProg {| PSProg := pA; PSDisk := d1; PSLog := l1; PSInTrans := t1 |})
+           (y:=PSProg {| PSProg := pB; PSDisk := d2; PSLog := l2; PSInTrans := t2 |}).
+  - exact pprog_next_wf.
+  - apply (@starN_proj pstate pprog
+                       (opposite_rel pstep) pprog_next PSProg
+                       opp_pstep_pprog_next _ _ _ H1').
+  - apply (@starN_proj pstate pprog
+                       (opposite_rel pstep) pprog_next PSProg
+                       opp_pstep_pprog_next _ _ _ H0').
+  - subst. inversion H0'. crush.
 Qed.
 
 
