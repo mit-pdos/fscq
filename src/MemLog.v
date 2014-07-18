@@ -133,6 +133,29 @@ Proof.
   induction PSProg0; constructor; intros; invert_rel (opposite_rel pstep); crush.
 Qed.
 
+Inductive pprog_next: pprog -> pprog -> Prop :=
+  | NextPRead: forall rx v b, pprog_next (rx v) (PRead b rx)
+  | NextPWrite: forall rx b v, pprog_next rx (PWrite b v rx)
+  | NextAddLog: forall rx b v, pprog_next rx (PAddLog b v rx)
+  | NextClrLog: forall rx, pprog_next rx (PClrLog rx)
+  | NextGetLog: forall rx l, pprog_next (rx l) (PGetLog rx)
+  | NextSetTx: forall rx b, pprog_next rx (PSetTx b rx)
+  | NextGetTx: forall rx b, pprog_next (rx b) (PGetTx rx).
+
+Lemma pprog_next_wf:
+  well_founded pprog_next.
+Proof.
+  unfold well_founded; induction 0; constructor; intros;
+  invert_rel pprog_next; crush.
+Qed.
+
+Lemma pstep_pprog_next:
+  forall a b,
+  pstep a b -> pprog_next (PSProg b) (PSProg a).
+Proof.
+  intros; inversion H; constructor.
+Qed.
+
 Fixpoint pexec (p:pprog) (s:pstate) {struct p} : pstate :=
   let (_, d, l, it) := s in
   match p with
