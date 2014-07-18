@@ -65,7 +65,7 @@ Definition do_bfree (bn:nat) (rx:iproc) : iproc :=
   let b  := modulo bn SizeBlock in
   (* XXX I want to say (and prove) that {b0: nat | b0 < SizeBlock} *)
   bm <- IReadBlockMap blockmapnum;
-  IWriteBlockMap blockmapnum (Blockmap (fun x => if eq_nat_dec x b then true else (FreeList bm) x));; rx.
+  IWriteBlockMap blockmapnum (Blockmap (fun x => if eq_nat_dec (proj1_sig x) b then true else (FreeList bm) x));; rx.
 
 Program Fixpoint compile_bi (p:bproc) : iproc :=
   match p with
