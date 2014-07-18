@@ -108,6 +108,15 @@ Proof.
     exists x. split; intuition. eapply starN_step; eauto.
 Qed.
 
+Lemma starN_trans:
+  forall s1 s2 n1, starN n1 s1 s2 ->
+  forall s3 n2, starN n2 s2 s3 -> starN (n1+n2) s1 s3.
+Proof.
+  induction 1; intros.
+  simpl. auto.
+  eapply starN_step; eauto.
+Qed.
+
 Lemma star_last:
   forall {s1 s2 s3},
   step s1 s2 -> star s2 s3 ->
