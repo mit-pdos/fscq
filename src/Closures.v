@@ -109,7 +109,7 @@ Proof.
 Qed.
 
 Lemma star_last:
-  forall s1 s2 s3,
+  forall {s1 s2 s3},
   step s1 s2 -> star s2 s3 ->
   exists s2', star s1 s2' /\ step s2' s3.
 Proof.
@@ -120,4 +120,16 @@ Proof.
   split; try apply starN_star with (n:=x); intuition.
 Qed.
 
+Definition opposite_rel := fun b a => step a b.
+
 End CLOSURES.
+
+Remark opposite_star:
+  forall (A:Type) (a b:A) step,
+  star step a b -> star (opposite_rel step) b a.
+Proof.
+  intros; induction H; subst.
+  - constructor.
+  - apply star_trans with (s2:=s2); auto.
+    apply star_step with (s2:=s1). auto. constructor.
+Qed.

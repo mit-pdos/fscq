@@ -9,6 +9,3 @@ Definition nat2bool (v : nat) : bool :=
    | 1 => true
    | _ => false
    end.
-
-Definition opposite_rel {A:Type} (R:A->A->Prop) := fun b a => R a b.
-
