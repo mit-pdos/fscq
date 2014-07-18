@@ -136,6 +136,8 @@ Program Fixpoint compile_id (p:iproc) : dprog :=
 Definition compile_it2 (p:iproc) : t2prog :=
   T2Begin ;; T2DProg (compile_id p) ;; T2Commit ;; T2Halt.
 
+Close Scope fscq_scope.
+
 (* For small-step simulation and proof *)
 
 Definition iread (s:istorage) (inum:inodenum) : inode := s inum.

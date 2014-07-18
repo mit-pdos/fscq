@@ -72,6 +72,8 @@ Program Fixpoint compile_bi (p:bproc) : iproc :=
   | BFree bn rx => do_bfree bn (compile_bi rx)
   end.
 
+Close Scope fscq_scope.
+
 (* For small-step simulation and proof 
 
 Record bstate := BSt {

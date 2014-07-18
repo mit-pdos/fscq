@@ -35,6 +35,8 @@ Fixpoint do_t2dprog (d:dprog) (rx:tprog) : tprog :=
   | DRead b drx => v <- TRead b ; do_t2dprog (drx v) rx
   end.
 
+Close Scope fscq_scope.
+
 Fixpoint compile_t2t (t2:t2prog) : tprog :=
   match t2 with
   | T2Halt => THalt

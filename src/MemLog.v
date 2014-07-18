@@ -78,6 +78,8 @@ Definition do_precover : pprog :=
   else
     do_apply_log PHalt.
 
+Close Scope fscq_scope.
+
 Fixpoint compile_tp (p:tprog) : pprog :=
   match p with
   | THalt         => PHalt

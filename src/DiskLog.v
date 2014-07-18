@@ -17,14 +17,12 @@ Load Closures.
 
 Inductive ddisk :=
   | NDataDisk
-  | NLogDisk
-  .
+  | NLogDisk.
 
 Inductive dprog :=
   | DRead   (d:ddisk) (b:block) (rx:value -> dprog)
   | DWrite  (d:ddisk) (b:block) ( v:value) (rx:dprog)
-  | DHalt
-  .
+  | DHalt.
 
 
 Definition ATx := 0.
@@ -72,6 +70,8 @@ Definition do_psettx v rx : dprog :=
 
 Definition do_pgettx rx : dprog :=
   v <- DRead NLogDisk ATx; rx (nat2bool v).
+
+Close Scope fscq_scope.
 
 Fixpoint compile_pd (p:pprog) : dprog :=
   match p with
