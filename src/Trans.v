@@ -2,15 +2,13 @@ Require Import List.
 Require Import Arith.
 Import ListNotations.
 Require Import CpdtTactics.
-
-Set Implicit Arguments.
-
 Require Import FsTactics.
 Require Import Storage.
-Load Closures.
-
+Require Import Closures.
 Require Import Disk.
 Require Import Trans2.
+Require Import Util.
+Require Import LoopfreeWF.
 
 
 Section TransactionLanguage.
@@ -116,11 +114,24 @@ Inductive tstep : tstate -> tstate -> Prop :=
 Hint Constructors tstep.
 
 
+Lemma opp_tstep_wf:
+  well_founded (opposite_rel tstep).
+Proof.
+  unfold well_founded. destruct a. destruct TSEphem0.
+  generalize_type tstate_persist. generalize_type (option storage).
+  induction TESProg0; constructor; intros; invert_rel (opposite_rel tstep);
+  destruct_type tstate; destruct_type tstate_persist; destruct_type tstate_ephem;
+  crush.
+Qed.
+
 Lemma tstep_loopfree:
   forall a b,
   star tstep a b -> star tstep b a -> a = b.
 Proof.
-  admit.
+  intros.  apply wf_loopfree with (step:=(opposite_rel tstep)).
+  - exact opp_tstep_wf.
+  - apply opposite_star; auto.
+  - apply opposite_star; auto.
 Qed.
 
 End TransactionLanguage.
