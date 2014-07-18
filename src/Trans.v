@@ -70,29 +70,30 @@ Record tstate := TSt {
 
 
 (* high level interpreter *)
-Fixpoint texec (p:tprog) (s:tstate) {struct p} : tstate :=
-  let (persist, ephem) := s in
-  let (d) := persist in
-  let (_, oad) := ephem in
+Fixpoint texec' (p:tprog) (oad:option storage) (d:storage) : tstate :=
   match p with
-  | THalt => s
-  | TAbort rx => texec rx (TSt (TPSt d) (TESt rx None))
-  | TBegin rx => texec rx (TSt (TPSt d) (TESt rx (Some d)))
+  | THalt => TSt (TPSt d) (TESt p oad)
+  | TAbort rx => texec' rx None d
+  | TBegin rx => texec' rx (Some d) d
   | TRead b rx => match oad with
-    | Some ad => texec (rx (st_read ad b))
-                       (TSt (TPSt d) (TESt (rx (st_read ad b)) (Some ad)))
-    | None => s
+    | Some ad => texec' (rx (st_read ad b)) (Some ad) d
+    | None => TSt (TPSt d) (TESt p oad)
     end
   | TWrite b v rx => match oad with
-    | Some ad => texec rx (TSt (TPSt d) (TESt rx (Some (st_write ad b v))))
-    | None => s
+    | Some ad => texec' rx (Some (st_write ad b v)) d
+    | None => TSt (TPSt d) (TESt p oad)
     end
   | TCommit rx => match oad with
-    | Some ad => texec rx (TSt (TPSt ad) (TESt rx None))
-    | None => s
+    | Some ad => texec' rx None ad
+    | None => TSt (TPSt d) (TESt p oad)
     end
   end.
 
+Definition texec (s:tstate) : tstate :=
+  let (persist, ephem) := s in
+  let (d) := persist in
+  let (p, oad) := ephem in
+  texec' p oad d.
 
 Inductive tstep : tstate -> tstate -> Prop :=
   | TsmRead: forall d ad b rx,
@@ -249,7 +250,7 @@ Theorem t2t_atomicity:
     (M2: t2tmatch t2s2 ts2)
     (NS: star tstep ts1 s)
     (NS2: star tstep s ts2)
-    (RC: sr = texec do_trecover s),
+    (RC: sr = texec' do_trecover None (TPSDisk (TSPersist s))),
     t2tmatch_persist (T2SPersist t2s1) (TSPersist sr) \/
     t2tmatch_persist (T2SPersist t2s2) (TSPersist sr).
 Proof.
@@ -289,7 +290,7 @@ Proof.
 *)
 
   (*==== begin *)
-  - right.
+  - right. inv_ps.
     iv. iv.
     assert (s2=s); [ tstep_end | crush ].
 
@@ -312,12 +313,12 @@ Proof.
 
   (*==== commit *)
   - inversion NS.
-    + crush.
+    + inv_ps. crush.
     + subst. iv.
       right. assert (s2=s); [ tstep_end | crush ].
 
   (*==== abort *)
-  - right.
+  - right. inv_ps.
     iv. iv.
     assert (s2=s); [ tstep_end | crush ].
 Qed.
