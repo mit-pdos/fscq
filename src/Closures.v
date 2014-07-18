@@ -13,8 +13,7 @@ Inductive star: state -> state -> Prop :=
   | star_refl: forall s,
       star s s
   | star_step: forall s1 s2 s3,
-      step s1 s2 -> star s2 s3 -> star s1 s3
-  .
+      step s1 s2 -> star s2 s3 -> star s1 s3.
 
 Lemma star_one:
   forall s1 s2, step s1 s2 -> star s1 s2.
@@ -75,8 +74,7 @@ Qed.
 
 Inductive plus : state -> state -> Prop :=
   | plus_left: forall s1 s2 s3,
-      step s1 s2 -> star s2 s3 -> plus s1 s3
-  .
+      step s1 s2 -> star s2 s3 -> plus s1 s3.
 
 Inductive starN : nat -> state -> state -> Prop :=
   | starN_refl: forall s,
@@ -97,6 +95,29 @@ Proof.
   induction 1. 
   exists O; constructor.
   destruct IHstar as [n P]. exists (S n); econstructor; eauto.
+Qed.
+
+Lemma starN_last:
+  forall n s1 s2 s3,
+  step s1 s2 -> starN n s2 s3 ->
+  exists s2', starN n s1 s2' /\ step s2' s3.
+Proof.
+  induction n; intros; inversion H0; subst.
+  - exists s1. split; [ constructor | auto ].
+  - destruct (IHn s2 s' s3); auto.
+    exists x. split; intuition. eapply starN_step; eauto.
+Qed.
+
+Lemma star_last:
+  forall s1 s2 s3,
+  step s1 s2 -> star s2 s3 ->
+  exists s2', star s1 s2' /\ step s2' s3.
+Proof.
+  intros.
+  destruct (star_starN H0).
+  destruct (starN_last H H1).
+  exists x0.
+  split; try apply starN_star with (n:=x); intuition.
 Qed.
 
 End CLOSURES.
