@@ -9,6 +9,7 @@ Require Import Disk.
 Require Import Trans2.
 Require Import Util.
 Require Import LoopfreeWF.
+Require Import FSim.
 
 
 Section TransactionLanguage.
@@ -144,11 +145,9 @@ Hint Constructors t2tmatch_persist.
 
 
 Theorem t2t_forward_sim:
-  forall T1 T2,
-  t2step T1 T2 ->
-  forall P1, t2tmatch T1 P1 ->
-  exists P2, star tstep P1 P2 /\ t2tmatch T2 P2.
+  forward_simulation t2step tstep.
 Proof.
+  exists t2tmatch.
   induction 1; intros; inversion H; inversion PM; tt.
 
 (*
