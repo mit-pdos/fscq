@@ -7,22 +7,25 @@ Require Import FunctionalExtensionality.
 Set Implicit Arguments.
 
 Require Import FsTactics.
+Require Import Util.
 Require Import Storage.
-Require Import Trans.
+Require Import MemLog.
 Load Closures.
+
 
 (* language that implements the log as a disk *)
 
 Inductive ddisk :=
   | NDataDisk
-  | NLogDisk.
-  
+  | NLogDisk
+  .
 
 Inductive dprog :=
   | DRead   (d:ddisk) (b:block) (rx:value -> dprog)
   | DWrite  (d:ddisk) (b:block) ( v:value) (rx:dprog)
-  | DHalt.
- 
+  | DHalt
+  .
+
 
 Definition ATx := 0.
 Definition AEol := 1.
@@ -39,21 +42,21 @@ Notation "a ;; b" := (a (b))
 
 Open Scope dprog_scope.
 
-Definition do_tread b rx : dprog :=
+Definition do_pread b rx : dprog :=
   v <- DRead NDataDisk b; rx v.
 
-Definition do_twrite b v rx : dprog :=
+Definition do_pwrite b v rx : dprog :=
   DWrite NDataDisk b v ;; rx.
 
-(* XXX taddlog is atomic. *)
-Definition do_taddlog b v rx : dprog :=
+(* XXX paddlog is atomic. *)
+Definition do_paddlog b v rx : dprog :=
   idx <- DRead NLogDisk AEol;
   DWrite NLogDisk (AVal idx) v ;;
   DWrite NLogDisk (ABlk idx) b ;;
   DWrite NLogDisk AEol (S idx) ;;
   rx.
 
-Definition do_tclrlog rx : dprog :=
+Definition do_pclrlog rx : dprog :=
   DWrite NLogDisk AEol 0 ;; rx.
 
 Fixpoint dreadlog idx eol log rx: dprog :=
@@ -65,49 +68,28 @@ Fixpoint dreadlog idx eol log rx: dprog :=
     dreadlog n eol (log ++ [(b, v)]) rx
   end.
 
-Definition do_tgetlog rx : dprog :=
+Definition do_pgetlog rx : dprog :=
   eol <- DRead NLogDisk AEol;
   dreadlog eol eol nil rx.
 
-Definition bool2nat (v : bool) : nat :=
-   match v with
-   | true => 1
-   | _ => 0
-   end.
+Definition do_psettx v rx : dprog :=
+  DWrite NLogDisk ATx (bool2nat v) ;; rx.
 
-Definition nat2bool (v : nat) : bool :=
-   match v with
-   | 1 => true
-   | _ => false
-   end.
-
-Definition do_tcommit rx : dprog :=
-  DWrite NLogDisk ATx (bool2nat true) ;; rx.
-
-Definition do_tgetcommitted rx : dprog :=
+Definition do_pgettx rx : dprog :=
   v <- DRead NLogDisk ATx; rx (nat2bool v).
-
-(* XXX maybe we don't have to do anything. It appears each D instruction has
-   a clear commit point, for which no clean up is necessary after crash *)
-Definition do_drecover : dprog := 
-  c <- DRead NLogDisk ATx; 
-  if c then
-    DHalt
-  else
-    DWrite NLogDisk AEol 0 ;; DHalt.
 
 Close Scope dprog_scope.
 
-Fixpoint compile_pd (p:tprog) : dprog :=
+Fixpoint compile_pd (p:pprog) : dprog :=
   match p with
-  | THalt         => DHalt
-  | TRead b rx    => do_tread b (fun v => compile_pd (rx v))
-  | TWrite b v rx => do_twrite b v (compile_pd rx)
-  | TAddLog b v rx  => do_taddlog b v (compile_pd rx)
-  | TClrLog rx      => do_tclrlog (compile_pd rx)
-  | TCommit rx     => do_tcommit (compile_pd rx)
-  | TGetCommitted rx    => do_tgetcommitted (fun v => compile_pd (rx v))
-  | TGetLog rx      => do_tgetlog (fun v => compile_pd (rx v))
+  | PHalt         => DHalt
+  | PRead b rx    => do_pread b (fun v => compile_pd (rx v))
+  | PWrite b v rx => do_pwrite b v (compile_pd rx)
+  | PAddLog b v rx  => do_paddlog b v (compile_pd rx)
+  | PClrLog rx      => do_pclrlog (compile_pd rx)
+  | PSetTx v rx     => do_psettx v (compile_pd rx)
+  | PGetTx rx       => do_pgettx (fun v => compile_pd (rx v))
+  | PGetLog rx      => do_pgetlog (fun v => compile_pd (rx v))
   end.
 
 Record dstate := DSt {
@@ -136,17 +118,15 @@ Fixpoint dexec (p:dprog) (s:dstate) {struct p} : dstate :=
 
 Definition log_init := DSt DHalt st_init st_init.
 
-Inductive dsmstep : dstate -> dstate -> Prop :=
-  | DsmHalt: forall d l,
-    dsmstep (DSt DHalt d l) (DSt DHalt d l)
+Inductive dstep : dstate -> dstate -> Prop :=
   | DsmRead: forall dd d l b rx,
-       dsmstep (DSt (DRead dd b rx) d l)
+       dstep (DSt (DRead dd b rx) d l)
                (match dd with 
                   | NDataDisk => (DSt (rx (st_read d b)) d l)
                   | NLogDisk =>  (DSt (rx (st_read l b)) d l)
                end)
   | DsmWrite: forall dd d l b v rx,
-    dsmstep (DSt (DWrite dd b v rx) d l)
+    dstep (DSt (DWrite dd b v rx) d l)
                (match dd with 
                   | NDataDisk => (DSt rx (st_write d b v) l)
                   | NLogDisk =>  (DSt rx d (st_write l b v))
@@ -154,40 +134,34 @@ Inductive dsmstep : dstate -> dstate -> Prop :=
   .
 
 
-Inductive tdmatch : tstate -> dstate -> Prop :=
+Inductive pdmatch : pstate -> dstate -> Prop :=
   | PDMatchState :
-    forall tp tdisk tlg tcommit dp dd lgd
-    (DD: tdisk = dd)
-    (TX: tcommit = match lgd ATx with
+    forall pp pdisk lg tx pd dd lgd
+    (DD: pdisk = dd)
+    (TX: tx = match lgd ATx with
          | 1 => true
          | _ => false
          end)
     (* XXX match lg with lgd *)
-    (PD: compile_pd tp = dp) ,
-    tdmatch (TSt tp tdisk tlg tcommit) (DSt dp dd lgd).
-
-Inductive tdmatch_fail : tstate -> dstate -> Prop :=
-  | PDMatchFail :
-    forall tp tdisk tlg tcommit dp dd lgd
-    (DD: tdisk = dd)
-    (TX: tcommit = match lgd ATx with
-         | 1 => true
-         | _ => false
-         end)
-    (* XXX match lg with lgd *)
-    (PD: dp = DHalt) ,
-    tdmatch_fail (TSt tp tdisk tlg tcommit) (DSt dp dd lgd).
+    (PD: compile_pd pp = pd) ,
+    pdmatch (PSt pp pdisk lg tx) (DSt pd dd lgd)
+  .
 
 Theorem pd_forward_sim:
-  forall P1 P2, tsmstep P1 P2 ->
-  forall D1, tdmatch P1 D1 ->
-  exists D2, star dsmstep D1 D2 /\ tdmatch P2 D2.
+  forall P1 P2, pstep P1 P2 ->
+  forall D1, pdmatch P1 D1 ->
+  exists D2, star dstep D1 D2 /\ pdmatch P2 D2.
 Proof.
   Ltac t2 := simpl in *; subst; try autorewrite with core in *;
             intuition (eauto; try congruence).
   Ltac cc2 := t2; try constructor; t2.
 
   induction 1; intros; inversion H.
+
+(*
+  (* PHalt *)
+  exists D1; t2; apply star_refl.
+*)
 
   (* PRead *)
   eexists; split.
@@ -202,44 +176,18 @@ Proof.
   cc2.
   cc2.
   cc2.
-
-  (* PHalt *)
-  (* exists D1; t2; apply star_refl. *)
 Admitted.
 
-
-Lemma dexec_smstep :
-  forall p d l s',
-  dexec p (DSt p d l) = s' -> star dsmstep (DSt p d l) s'.
+  
+(* XXX need to reformulate as pd_atomicity
+Theorem dcorrect:
+  forall p dd dd' ld ld' lg lg' d tx s,
+  
+  star dstep_fail (DSt (compile_pd p) dd ld lg) (DSt DHalt dd' ld' lg') ->
+  pexec p (PSt p d nil tx) = s ->
+  pdmatch s (DSt DHalt dd' ld' lg').
 Proof.
-  induction p; intros;
-  eapply star_step; t; try constructor.
-  admit.  (* XXXX *)
-  admit.
-  admit.
-Qed.
-
-Lemma dsmstep_determ:
-  forall s0 s s',
-  dsmstep s0 s -> dsmstep s0 s' -> s = s'.
-Proof.
-  intro s0; case_eq s0; intros.
-  induction DSProg0; intros;
-  repeat match goal with
-  | [ H: dsmstep _ _ |- _ ] => inversion H; clear H
-  end; subst; reflexivity.
-Qed.
-
-Theorem at_atomicity:
-  forall ts1 ts2 ds1 ds2 tf1 tf2 s s'
-    (HS: tsmstep ts1 ts2)
-    (M1: tdmatch ts1 ds1)
-    (M2: tdmatch ts2 ds2)
-    (MF1: tdmatch_fail ts1 tf1)
-    (MF2: tdmatch_fail ts2 tf2)
-    (NS: star dsmstep ds1 s)
-    (NS2: star dsmstep s ds2)
-    (RC: s' = dexec do_drecover s),
-    s' = tf1 \/ s' = tf2.
-Proof.
+  intros; eexists.
+  inversion H.
 Admitted.
+*)

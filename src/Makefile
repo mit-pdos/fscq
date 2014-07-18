@@ -10,11 +10,21 @@ OCAMLINC   = \
 
 FILES = CpdtTactics.v \
 	FsTactics.v \
+	Util.v \
 	Storage.v \
 	Closures.v \
+	LoopfreeWF.v \
+	Disk.v \
 	Bank.v \
+	Trans2.v \
 	Trans.v \
-	DiskLog.v
+	MemLog.v \
+	DiskLog.v \
+	Inode.v \
+	Block.v \
+	FileSpec.v \
+	BufferedFileSpec.v \
+	File.v
 
 PROOFFILES = 
 
@@ -37,7 +47,7 @@ depend: $(FILES)
 	> .depend
 
 clean:
-	rm -rf _build *.vo *.glob build/*.native
+	rm -rf _build *.vo *.glob build/*.native *.v.d *.crashcoqide
 	cd codegen && rm -f *.ml *.mli *.mlo *.glob *.vo
 
 include .depend
