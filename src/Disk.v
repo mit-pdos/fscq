@@ -9,6 +9,8 @@ Inductive dprog :=
   | DWrite (b:block) ( v:value) (rx:dprog)
   | DHalt.
 
+Bind Scope fscq_scope with dprog.
+
 Record dstate := DSt {
   DSProg: dprog;
   DSDisk: storage
@@ -52,14 +54,3 @@ Fixpoint drun (p:dprog) (dd:storage) : storage :=
   | DRead b rx    => drun (rx (st_read dd b)) dd
   | DWrite b v rx => drun rx (st_write dd b v)
   end.
-
-
-
-(* some helpful notation *)
-Bind Scope dprog_scope with dprog.
-
-Notation "a ;; b" := (a (b))
-  (right associativity, at level 60) : dprog_scope.
-
-Notation "ra <- a ; b" := (a (fun ra => b))
-  (right associativity, at level 60) : dprog_scope.

@@ -5,8 +5,8 @@ Require Import Storage.
 Require Import CpdtTactics.
 Require Import FsTactics.
 Require Import Disk.
-Set Implicit Arguments.
-Load Closures.
+Require Import Util.
+Require Import Closures.
 
 Section App.
 
@@ -16,8 +16,7 @@ Inductive aproc :=
   | AHalt
   | ASetAcct (a:nat) (v:nat) (rx: aproc)
   | AGetAcct (a:nat) (rx: nat->aproc)
-  | ATransfer (src:nat) (dst:nat) (v:nat) (rx: aproc)
-  .
+  | ATransfer (src:nat) (dst:nat) (v:nat) (rx: aproc).
 
 Fixpoint aexec (p:aproc) (s:storage) : storage :=
   match p with
@@ -70,7 +69,7 @@ Inductive astep : astate -> astate -> Prop :=
 
 
 (* Compiling to a disk *)
-Open Scope dprog_scope.
+Open Scope fscq_scope.
 
 Fixpoint compile_ad (p:aproc) : dprog :=
   match p with

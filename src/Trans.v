@@ -23,18 +23,9 @@ Inductive tprog :=
   | TAbort  (rx:tprog)
   | THalt.
 
-Bind Scope tprog_scope with tprog.
+Bind Scope fscq_scope with tprog.
 
-
-Notation "a ;; b" := (a (b))
-                       (right associativity, at level 60) : tprog_scope.
-
-Notation "ra <- a ; b" := (a (fun ra => b))
-                             (right associativity, at level 60) : tprog_scope.
-
-
-Open Scope tprog_scope.
-
+Open Scope fscq_scope.
 
 Fixpoint do_t2dprog (d:dprog) (rx:tprog) : tprog :=
   match d with
@@ -51,8 +42,6 @@ Fixpoint compile_t2t (t2:t2prog) : tprog :=
   | T2Abort rx => TAbort (compile_t2t rx)
   | T2DProg d rx => do_t2dprog d (compile_t2t rx)
   end.
-
-Close Scope tprog_scope.
 
 Record tstate_persist := TPSt {
   TPSDisk: storage (* main disk *)

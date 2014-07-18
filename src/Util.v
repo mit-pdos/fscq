@@ -9,3 +9,11 @@ Definition nat2bool (v : nat) : bool :=
    | 1 => true
    | _ => false
    end.
+
+Notation "a ;; b" := (a (b))
+  (right associativity, at level 60) : fscq_scope.
+
+Notation "ra <- a ; b" := (a (fun ra => b))
+  (right associativity, at level 60) : fscq_scope.
+
+Delimit Scope fscq_scope with fscq.

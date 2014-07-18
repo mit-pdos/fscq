@@ -32,15 +32,10 @@ Definition AEol := 1.
 Definition ABlk (i:nat) := i * 2 + 2.
 Definition AVal (i:nat) := i * 2 + 3.
 
-Bind Scope dprog_scope with dprog.
+Bind Scope fscq_scope with dprog.
 
-Notation "ra <- a ; b" := (a (fun ra => b))
-  (right associativity, at level 60) : dprog_scope.
+Open Scope fscq_scope.
 
-Notation "a ;; b" := (a (b))
-  (right associativity, at level 60) : dprog_scope.
-
-Open Scope dprog_scope.
 
 Definition do_pread b rx : dprog :=
   v <- DRead NDataDisk b; rx v.
@@ -77,8 +72,6 @@ Definition do_psettx v rx : dprog :=
 
 Definition do_pgettx rx : dprog :=
   v <- DRead NLogDisk ATx; rx (nat2bool v).
-
-Close Scope dprog_scope.
 
 Fixpoint compile_pd (p:pprog) : dprog :=
   match p with

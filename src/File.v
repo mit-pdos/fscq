@@ -12,16 +12,7 @@ Require Import Block.
 Require Import FileSpec.
 
 
-Bind Scope bprog_scope with bproc.
-
-Notation "ra <- a ; b" := (a (fun ra => b))
-  (right associativity, at level 60) : bprog_scope.
-
-Notation "a ;; b" := (a (b))
-  (right associativity, at level 60) : bprog_scope.
-
-Open Scope bprog_scope.
-
+Open Scope fscq_scope.
 
 Program Definition do_read (inum: inodenum) (off: blockoffset) (rx: block -> bproc): bproc :=
   i <- BIRead inum;

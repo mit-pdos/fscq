@@ -25,15 +25,9 @@ Inductive bproc :=
   | BRead (bn:blocknum) (rx:block -> bproc)
   | BWrite (bn:blocknum) (b: block) (rx: bproc).
 
-Bind Scope iprog_scope with bproc.
+Bind Scope fscq_scope with bproc.
 
-Notation "ra <- a ; b" := (a (fun ra => b))
-  (right associativity, at level 60) : iprog_scope.
-
-Notation "a ;; b" := (a (b))
-  (right associativity, at level 60) : iprog_scope.
-
-Open Scope iprog_scope.
+Open Scope fscq_scope.
 
 Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) : option blocknum :=
   match off with
@@ -77,8 +71,6 @@ Program Fixpoint compile_bi (p:bproc) : iproc :=
   | BAllocate rx => do_ballocate NBlockMap (fun v => compile_bi (rx v))
   | BFree bn rx => do_bfree bn (compile_bi rx)
   end.
-
-Close Scope iprog_scope.
 
 (* For small-step simulation and proof 
 

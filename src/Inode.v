@@ -61,15 +61,9 @@ Inductive iproc :=
   | IReadBlock (o:blocknum) (rx:block -> iproc)
   | IWriteBlock (o:blocknum) (b: block) (rx: iproc).
 
-Bind Scope iprog_scope with iproc.
+Bind Scope fscq_scope with iproc.
 
-Notation "ra <- a ; b" := (a (fun ra => b))
-  (right associativity, at level 60) : iprog_scope.
-
-Notation "a ;; b" := (a (b))
-  (right associativity, at level 60) : iprog_scope.
-
-Open Scope iprog_scope.
+Open Scope fscq_scope.
 
 
 Program Fixpoint do_iwrite_blocklist inum i n rx :=
@@ -141,8 +135,6 @@ Program Fixpoint compile_id (p:iproc) : dprog :=
 
 Definition compile_it2 (p:iproc) : t2prog :=
   T2Begin ;; T2DProg (compile_id p) ;; T2Commit ;; T2Halt.
-
-Close Scope iprog_scope.
 
 (* For small-step simulation and proof *)
 

@@ -8,6 +8,7 @@ Require Import Storage.
 Require Import Trans.
 Require Import Closures.
 Require Import LoopfreeWF.
+Require Import Util.
 
 
 (* language that manipulates a disk and a persistent log *)
@@ -22,15 +23,9 @@ Inductive pprog :=
   | PGetTx  (rx:bool -> pprog)
   | PHalt.
 
-Bind Scope pprog_scope with pprog.
+Bind Scope fscq_scope with pprog.
 
-Notation "ra <- a ; b" := (a (fun ra => b))
-  (right associativity, at level 60) : pprog_scope.
-
-Notation "a ;; b" := (a (b))
-  (right associativity, at level 60) : pprog_scope.
-
-Open Scope pprog_scope.
+Open Scope fscq_scope.
 
 Fixpoint pfind (p:list (block * value)) (b:block) : option value :=
   match p with
@@ -82,8 +77,6 @@ Definition do_precover : pprog :=
     PClrLog ;; PSetTx false ;; PHalt
   else
     do_apply_log PHalt.
-
-Close Scope pprog_scope.
 
 Fixpoint compile_tp (p:tprog) : pprog :=
   match p with
