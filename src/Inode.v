@@ -7,6 +7,7 @@ Require Import Storage.
 Require Import Disk.
 Require Import Util.
 Require Import Trans2.
+Require Import FSim.
 
 Set Implicit Arguments.
 
@@ -164,8 +165,6 @@ Record istate := ISt {
 }.
 
 Inductive istep : istate -> istate -> Prop :=
-  | IsmHalt: forall i m b,
-    istep (ISt IHalt i m b) (ISt IHalt i m b)
   | IsmIwrite: forall is inum i m b rx,
     istep (ISt (IWrite inum i rx) is m b) (ISt rx (iwrite is inum i) m b)
   | IsmIread: forall is inum b m rx,
@@ -196,5 +195,32 @@ Fixpoint iexec (p:iproc) (s:istate) : istate :=
   | IWriteBlock o b rx =>
     iexec rx (ISt p (ISInodes s) (ISBlockMap s) (bwrite (ISBlocks s) o b))
   end.
+
+Inductive idmatch : istate -> dstate -> Prop :=
+  | IDMatch:
+    forall ip inodes blockmap blocks dp disk
+    (Inodes: forall i (Hi: i < NInode),
+     disk (i * SizeBlock)     = bool2nat (IFree (inodes i)) /\
+     disk (i * SizeBlock + 1) = proj1_sig (ILen (inodes i)) /\
+     forall off (Hoff: off < proj1_sig (ILen (inodes i))),
+     disk (i * SizeBlock + 2 + off) = IBlocks (inodes i) (exist _ off Hoff))
+    (BlockMap: forall n (Hn: n < NBlockMap),
+     forall off (Hoff: off < SizeBlock),
+     disk (NInode * SizeBlock + n * SizeBlock + off) =
+     bool2nat (FreeList (blockmap n) (exist _ off Hoff)))
+    (Blocks: forall n, blocks n = disk (n + (NInode + NBlockMap) * SizeBlock))
+    (Prog: compile_id ip = dp),
+    idmatch (ISt ip inodes blockmap blocks) (DSt dp disk).
+
+Theorem id_forward_sim:
+  forward_simulation istep dstep.
+Proof.
+  exists idmatch.
+  induction 1; intros; invert_rel idmatch.
+
+  - (* Write *)
+    econstructor.
+
+Abort.
 
 End Inode.
