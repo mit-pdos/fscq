@@ -1,0 +1,6 @@
+Replace block addrs with fixed-range Z's.
+
+Replace block values with 512-byte units.
+
+Have programs return values (see some ideas on the "returnvalues" branch).
+
