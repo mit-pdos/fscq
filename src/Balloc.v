@@ -73,6 +73,15 @@ Program Fixpoint compile_bi (p:bproc) : iproc :=
   | BFree bn rx => do_bfree bn (compile_bi rx)
   end.
 
+Fixpoint do_free_all n rx : bproc :=
+  match n with
+  | O => rx
+  | S n' => BFree n' ;; do_free_all n' rx
+  end.
+
+Definition do_init rx : bproc :=
+  do_free_all (NBlockMap * SizeBlock) rx.
+
 Close Scope fscq_scope.
 
 

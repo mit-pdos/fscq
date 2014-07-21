@@ -136,6 +136,15 @@ Program Fixpoint compile_id (p:iproc) : dprog :=
   | IWriteBlock o b rx => do_iwriteblock o b (compile_id rx)
   end.
 
+Fixpoint do_free_inodes n rx : iproc :=
+  match n with
+  | O => rx
+  | S n' => IWrite n' (mkinode true) ;; do_free_inodes n' rx
+  end.
+
+Definition do_init rx : iproc :=
+  do_free_inodes NInode rx.
+
 Definition compile_it2 (p:iproc) : t2prog :=
   T2Begin ;; T2DProg (compile_id p) ;; T2Commit ;; T2Halt.
 
