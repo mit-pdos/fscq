@@ -13,11 +13,9 @@ Set Implicit Arguments.
 
 Section DiskLayout.
 
-(* Disk layout *)
-
 Definition inodenum := nat.
-Definition blocknum := nat.
 Definition blockmapnum := nat.
+Definition blocknum := nat.
 
 (* Disk layout: 
  *     | NInode blocks | NBlockMap block maps | data blocks |  
@@ -26,18 +24,16 @@ Definition blockmapnum := nat.
  * the first entry in the blockmap corresponds to the first data block.
  *)
 
-Definition SizeBlock := 4.    (* number of nats in an inode/blockmap "block" *)
-Definition NBlockPerInode := 2.
+Definition SizeBlock := 4.      (* number of nats in an inode/blockmap "block" *)
+Definition NBlockPerInode := 2. (* max number of data blocks per inode *)
 Definition NInode := 2.
-Definition NBlockMap := 3.    (* total number of blocks is NBlockMap * SizeBlock *)
+Definition NBlockMap := 3.      (* total number of data blocks is NBlockMap * SizeBlock *)
 
 Remark inode_fits_in_block:
   NBlockPerInode + 2 <= SizeBlock.
 Proof.
   crush.
 Qed.
-
-(* XXX NBlockMap * SizeBlock better be larger than NInode + NBlockMap *)
 
 (* In-memory representation of inode and free block map: *)
 Record inode := Inode {
