@@ -31,13 +31,13 @@ Bind Scope fscq_scope with bproc.
 
 Open Scope fscq_scope.
 
-Program Fixpoint find_block bm bn off (OFFOK: off <= SizeBlock) : option blocknum :=
+Program Fixpoint find_block bm off (OFFOK: off <= SizeBlock) : option blocknum :=
   match off with
   | O => None
   | S off' =>
     let isfree := (FreeList bm) off' in
-    if isfree then (Some (SizeBlock * bn + off'))
-    else @find_block bm bn off' _
+    if isfree then (Some off')
+    else @find_block bm off' _
   end.
 Next Obligation.
   crush.
@@ -48,7 +48,7 @@ Program Fixpoint do_ballocate n rx : iproc :=
   | O => rx None
   | S m =>
     bm <- IReadBlockMap m;
-    match @find_block bm m SizeBlock _ with
+    match @find_block bm SizeBlock _ with
     | None => do_ballocate m rx
     | Some b => 
       IWriteBlockMap m (Blockmap (fun x => if eq_nat_dec x b then false else (FreeList bm) x));;
