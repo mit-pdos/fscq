@@ -78,8 +78,6 @@ Definition do_precover : pprog :=
   else
     do_apply_log PHalt.
 
-Close Scope fscq_scope.
-
 Fixpoint compile_tp (p:tprog) : pprog :=
   match p with
   | THalt         => PHalt
@@ -382,8 +380,8 @@ Qed.
 
 Lemma flush_nofail:
   forall l m l' tx,
-  pexec (pflush l (PClrLog PHalt))
-   (PSt (pflush l (PClrLog PHalt)) m l' tx) =
+  pexec (pflush l ;; PClrLog ;; PHalt)
+   (PSt (pflush l ;; PClrLog ;; PHalt) m l' tx) =
   (PSt PHalt (log_flush l m) nil tx).
 Proof.
   induction l; t.

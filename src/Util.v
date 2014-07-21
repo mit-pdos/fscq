@@ -10,10 +10,13 @@ Definition nat2bool (v : nat) : bool :=
    | _ => false
    end.
 
-Notation "a ;; b" := (a (b))
+Definition progseq1 {A B:Type} (a:B->A) (b:B) := a b.
+Definition progseq2 {A B:Type} (a:B->A) (b:B) := a b.
+
+Notation "a ;; b" := (progseq1 a b)
   (right associativity, at level 60) : fscq_scope.
 
-Notation "ra <- a ; b" := (a (fun ra => b))
+Notation "ra <- a ; b" := (progseq2 a (fun ra => b))
   (right associativity, at level 60) : fscq_scope.
 
 Delimit Scope fscq_scope with fscq.
