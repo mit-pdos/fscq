@@ -1,13 +1,9 @@
-open Bank
+open Disk
 open DiskLog
-open Trans
 open Printf
 open Datatypes
-
-let run_dcode_coq dcode =
-  DiskLog.dexec dcode { coq_DSProg = dcode;
-                        coq_DSDataDisk = Storage.st_init;
-                        coq_DSLogDisk = Storage.st_init }
+open FileSpec
+open FsLayout
 
 let choose_disk d =
   match d with
@@ -30,22 +26,31 @@ let write_disk d b v =
   output_byte oc v;
   close_out oc
 
+let rec run_dcode2_real p =
+  match p with
+  | DiskLog.DRead (d, b, rx) -> run_dcode2_real (rx (read_disk d b))
+  | DiskLog.DWrite (d, b, v, rx) -> write_disk d b v; run_dcode2_real rx
+  | DiskLog.DHalt -> 0
+
 let rec run_dcode_real p =
   match p with
-  | DRead (d, b, rx) -> run_dcode_real (rx (read_disk d b))
-  | DWrite (d, b, v, rx) -> write_disk d b v; run_dcode_real rx
-  | DHalt -> 0
+  | Disk.DRead (b, rx) ->
+    let v = read_disk NDataDisk b in
+    Printf.printf "read(%d): %d\n" b v;
+    run_dcode_real (rx v)
+  | Disk.DWrite (b, v, rx) ->
+    Printf.printf "write(%d, %d)\n" b v;
+    write_disk NDataDisk b v; run_dcode_real rx
+  | Disk.DHalt -> 0
 
-let acode = (Bank.ASetAcct (1, Bank.initial,
-            (Bank.ASetAcct (2, Bank.initial,
-            (Bank.ATransfer (1, 2, 10,
-             Bank.ACommit))))));;
+let fcode = FileSpec.FCommon (FileSpec.FAlloc,
+            fun o -> match Obj.magic o with
+            | None -> FileSpec.FHalt
+            | Some f -> FileSpec.FCommon (FileSpec.FTrunc (f, 1),
+            fun x -> FileSpec.FCommon (FileSpec.FWrite (f, 0, 7),
+            fun x -> FileSpec.FHalt)));;
 
-let tcode = Trans.compile_at acode;;
-
-let dcode = DiskLog.compile_pd tcode;;
-
-run_dcode_coq dcode;;
+let dcode = FsLayout.compile_id (FsLayout.do_init (Balloc.compile_bi (Balloc.do_init (File.compile_fb fcode))));;
 
 run_dcode_real dcode;;
 
