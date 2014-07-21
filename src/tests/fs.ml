@@ -46,9 +46,10 @@ let rec run_dcode_real p =
 let fcode = FileSpec.FCommon (FileSpec.FAlloc,
             fun o -> match Obj.magic o with
             | None -> FileSpec.FHalt
-            | Some f -> FileSpec.FCommon (FileSpec.FTrunc (f, 1),
+            | Some f -> FileSpec.FCommon (FileSpec.FTrunc (f, 2),
             fun x -> FileSpec.FCommon (FileSpec.FWrite (f, 0, 7),
-            fun x -> FileSpec.FHalt)));;
+            fun x -> FileSpec.FCommon (FileSpec.FWrite (f, 1, 8),
+            fun x -> FileSpec.FHalt))));;
 
 let dcode = FsLayout.compile_id (FsLayout.do_init (Balloc.compile_bi (Balloc.do_init (File.compile_fb fcode))));;
 
