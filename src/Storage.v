@@ -35,5 +35,21 @@ Proof.
   unfold st_write; intros; extensionality b''; t.
 Qed.
 
+Lemma st_read_other:
+  forall d b v b',
+  b <> b' ->
+  st_write d b v b' = d b'.
+Proof.
+  unfold st_write; intros; t.
+Qed.
+
+Lemma st_read_same:
+  forall d b v b',
+  b = b' ->
+  st_write d b v b' = v.
+Proof.
+  unfold st_write; intros; t.
+Qed.
+
 End Storage.
 

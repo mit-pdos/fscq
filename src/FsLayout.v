@@ -8,6 +8,7 @@ Require Import Disk.
 Require Import Util.
 Require Import Trans2.
 Require Import FSim.
+Require Import Closures.
 
 Set Implicit Arguments.
 
@@ -119,10 +120,10 @@ Program Fixpoint do_writeblockmap bn off (OFFOK: off <= SizeBlock) bm rx :=
 Solve Obligations using crush.
 
 Definition do_iwriteblock (o:blocknum) b rx :=
-  DWrite (NInode + NBlockMap + o) b ;; rx.
+  DWrite ((NInode + NBlockMap) * SizeBlock + o) b ;; rx.
 
 Definition do_ireadblock (o:blocknum) rx :=
-  b <- DRead (NInode + NBlockMap + o) ; rx b.
+  b <- DRead ((NInode + NBlockMap) * SizeBlock + o) ; rx b.
 
 Program Fixpoint compile_id (p:iproc) : dprog :=
   match p with
@@ -220,8 +221,56 @@ Proof.
   induction 1; intros; invert_rel idmatch.
 
   - (* Write *)
-    econstructor.
+    admit.
 
-Abort.
+  - (* Read *)
+    admit.
+
+  - (* IWriteBlockMap *)
+    admit.
+
+  - (* IReadBlockMap *)
+    admit.
+
+  - (* IReadBlock *)
+    econstructor; split; tt.
+    + eapply star_step; [ constructor | ].
+      eapply star_refl.
+    + constructor; cc.
+      rewrite Blocks. repeat rewrite <- plus_n_Sm. rewrite <- plus_n_O. cc.
+
+  - (* IWriteBlock *)
+    econstructor; split; tt.
+    + eapply star_step; [ constructor | ].
+      eapply star_refl.
+    + constructor; cc.
+
+Ltac destruct_ilen := match goal with
+  | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
+  end.
+
+Ltac disk_write_other := match goal with
+  | [ |- context[st_write _ ?A _ ?B] ] =>
+    assert (A <> B); [ repeat destruct_ilen;
+                       unfold SizeBlock in *; unfold NInode in *;
+                       unfold NBlockPerInode in *; unfold NBlockMap in *;
+                       simpl in *; omega
+                     | rewrite st_read_other; auto ]
+  end.
+
+Ltac disk_write_same := subst; match goal with
+  | [ |- context[st_write _ ?A _ ?B] ] =>
+    subst; assert (A = B); [ omega | rewrite st_read_same; auto ]
+  end.
+
+      * disk_write_other. apply Inodes. cc.
+      * disk_write_other. apply Inodes. cc.
+      * disk_write_other. apply Inodes. cc.
+      * disk_write_other.
+      * unfold bwrite. destruct (eq_nat_dec n bn).
+        disk_write_same.
+        disk_write_other.
+
+Qed.
 
 End DiskLayout.
