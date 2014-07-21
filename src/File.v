@@ -62,7 +62,7 @@ Program Fixpoint do_trunc_shrink (i: inode)
 Solve Obligations using crush; destruct_type inode; repeat destruct_sig; crush.
 
 Program Fixpoint do_trunc_grow (i: inode)
-                               (target: nat) (TARGET_OK1: target < NBlockPerInode)
+                               (target: nat) (TARGET_OK1: target <= NBlockPerInode)
                                              (TARGET_OK2: target >= (ILen i))
                                (nleft: nat) (NLEFT_OK: nleft = target - (ILen i))
                                (rx: option inode->bproc): bproc :=
@@ -82,7 +82,7 @@ Solve Obligations using crush; destruct_type inode; repeat destruct_sig; crush.
 
 Program Definition do_trunc (inum: inodenum) (len: blockoffset) (rx: bproc): bproc :=
   i <- BIRead inum;
-  if lt_dec len NBlockPerInode then
+  if le_dec len NBlockPerInode then
     if le_lt_dec len (ILen i) then
       i' <- do_trunc_shrink i len _ ((ILen i) - len) _;
       BIWrite inum i';;

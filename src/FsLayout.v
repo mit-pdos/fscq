@@ -39,7 +39,7 @@ Qed.
 (* In-memory representation of inode and free block map: *)
 Record inode := Inode {
   IFree: bool;
-  ILen: { l: nat | l < NBlockPerInode };  (* in blocks *)
+  ILen: { l: nat | l <= NBlockPerInode };  (* in blocks *)
   IBlocks: { b: nat | b < proj1_sig ILen } -> blocknum
 }.
 
@@ -96,10 +96,10 @@ Program Fixpoint do_iread_blocklist inum n bl rx :=
 Program Definition do_iread inum rx :=
   free <- DRead (inum * SizeBlock);
   dlen <- DRead (inum * SizeBlock + 1);
-  let len := if lt_dec dlen NBlockPerInode then dlen else NBlockPerInode-1 in
+  let len := if le_dec dlen NBlockPerInode then dlen else NBlockPerInode-1 in
   bl <- do_iread_blocklist inum len (fun _ => 0);
   rx (Inode (nat2bool free) len bl).
-Solve Obligations using intros; destruct (lt_dec dlen NBlockPerInode); crush.
+Solve Obligations using intros; destruct (le_dec dlen NBlockPerInode); crush.
 
 Program Fixpoint do_readblockmap bn off fl rx :=
   match off with
