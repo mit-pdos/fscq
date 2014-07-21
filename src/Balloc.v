@@ -10,12 +10,13 @@ Require Import Trans2.
 Require Import FsLayout.
 Require Import NPeano.
 Require Import FSim.
+Require Import Closures.
 
 Set Implicit Arguments.
 
 Section Balloc.
 
-(* Allocate and free a block.  Block 0 is the first data block. *)
+(* Allocate and free a data block.  Block 0 is the first data block. *)
 
 Inductive bproc :=
   | BHalt
@@ -143,8 +144,12 @@ Proof.
   induction 1; intros; invert_rel bimatch.
 
   - (* iwrite *)
-    econstructor.
-
+    econstructor; split; tt.
+    + eapply star_step; [constructor | ].
+      eapply star_refl.
+    + constructor; cc.
+      admit.
+  - (* iread *)
 Abort.
 
 
