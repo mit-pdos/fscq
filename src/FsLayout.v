@@ -248,8 +248,7 @@ Proof.
         rewrite st_read_same; auto.
         destruct (lt_dec len (proj1_sig (ILen i))); [ | crush ].
         destruct i. simpl.
-        (* How to invoke proof irrelevance here? *)
-        admit.
+        apply arg_sig_pi. crush.
       * apply H0. crush.
     + rewrite H1; [ | crush ].
       rewrite st_read_other; crush.

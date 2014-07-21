@@ -1,3 +1,5 @@
+Require Import ProofIrrelevance.
+
 Definition bool2nat (v : bool) : nat :=
    match v with
    | true => 1
@@ -20,3 +22,22 @@ Notation "ra <- a ; b" := (progseq2 a (fun ra => b))
   (right associativity, at level 60) : fscq_scope.
 
 Delimit Scope fscq_scope with fscq.
+
+Lemma sig_pi:
+  forall {T:Type} {P:T->Prop} (a b:sig P),
+  proj1_sig a = proj1_sig b ->
+  a = b.
+Proof.
+  intros; destruct a; destruct b.
+  simpl in *; subst.
+  replace p with p0; [ auto | apply proof_irrelevance ].
+Qed.
+
+Lemma arg_sig_pi:
+  forall {T R:Type} {P:T->Prop} (a b:sig P) (M:sig P->R),
+  proj1_sig a = proj1_sig b ->
+  M a = M b.
+Proof.
+  intros.
+  rewrite (sig_pi a b); auto.
+Qed.
