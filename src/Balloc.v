@@ -7,7 +7,7 @@ Require Import Storage.
 Require Import Disk.
 Require Import Util.
 Require Import Trans2.
-Require Import Inode.
+Require Import FsLayout.
 Require Import NPeano.
 Require Import FSim.
 

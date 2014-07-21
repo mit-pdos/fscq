@@ -11,15 +11,20 @@ Require Import FSim.
 
 Set Implicit Arguments.
 
-Section Inode.
+Section DiskLayout.
 
-(* inode language *)
+(* Disk layout *)
 
 Definition inodenum := nat.
 Definition blocknum := nat.
 Definition blockmapnum := nat.
 
-(* Disk layout: | NInode blocks | NBlockMap block maps | blocks |  *)
+(* Disk layout: 
+ *     | NInode blocks | NBlockMap block maps | data blocks |  
+ * 
+ * Each inode block holds one inode. The blockmap records which data blocks are free;
+ * the first entry in the blockmap corresponds to the first data block.
+ *)
 
 Definition SizeBlock := 4.    (* number of nats in an inode/blockmap "block" *)
 Definition NBlockPerInode := 2.
@@ -223,4 +228,4 @@ Proof.
 
 Abort.
 
-End Inode.
+End DiskLayout.

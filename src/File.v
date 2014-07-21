@@ -7,7 +7,7 @@ Require Import Storage.
 Require Import Trans.
 Require Import Disk.
 Require Import Util.
-Require Import Inode.
+Require Import FsLayout.
 Require Import Balloc.
 Require Import FileSpec.
 

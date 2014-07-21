@@ -21,7 +21,7 @@ FILES = CpdtTactics.v \
 	Trans.v \
 	MemLog.v \
 	DiskLog.v \
-	Inode.v \
+	FsLayout.v \
 	Balloc.v \
 	FileSpec.v \
 	BufferedFileSpec.v \
