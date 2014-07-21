@@ -243,7 +243,6 @@ Proof.
     econstructor; split; tt.
     + eapply star_step; [ constructor | ].
       eapply star_refl.
-    + constructor; cc.
 
 Ltac destruct_ilen := match goal with
   | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
@@ -263,13 +262,8 @@ Ltac disk_write_same := subst; match goal with
     subst; assert (A = B); [ omega | rewrite st_read_same; auto ]
   end.
 
-      * disk_write_other. apply Inodes. cc.
-      * disk_write_other. apply Inodes. cc.
-      * disk_write_other. apply Inodes. cc.
-      * disk_write_other.
-      * unfold bwrite. destruct (eq_nat_dec n bn).
-        disk_write_same.
-        disk_write_other.
+    + constructor; cc; try (disk_write_other; cc; apply Inodes; cc).
+      unfold bwrite; destruct (eq_nat_dec n bn); [ disk_write_same | disk_write_other ].
 
 Qed.
 
