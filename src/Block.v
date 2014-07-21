@@ -16,6 +16,8 @@ Section Block.
 
 (* block allocation *)
 
+(* XXX is block 0 the first block after the blockmap? *)
+
 Inductive bproc :=
   | BHalt
   | BIRead (inum:inodenum) (rx: inode -> bproc)
@@ -57,7 +59,6 @@ Program Fixpoint do_ballocate n rx : iproc :=
 Definition do_bfree (bn:nat) (rx:iproc) : iproc :=
   let blockmapnum := div bn SizeBlock in
   let b  := modulo bn SizeBlock in
-  (* XXX I want to say (and prove) that {b0: nat | b0 < SizeBlock} *)
   bm <- IReadBlockMap blockmapnum;
   IWriteBlockMap blockmapnum (Blockmap (fun x => if eq_nat_dec (proj1_sig x) b then true else (FreeList bm) x));; rx.
 
@@ -74,51 +75,59 @@ Program Fixpoint compile_bi (p:bproc) : iproc :=
 
 Close Scope fscq_scope.
 
-(* For small-step simulation and proof 
+
+Definition blockfreemap := blocknum -> bool.
 
 Record bstate := BSt {
   BSProg: bproc;
   BSInodes: istorage;
-  BSBlockMap: bmstorage;
+  BSFreeMap: blockfreemap;
   BSBlocks: bstorage
 }.
 
+Definition iread (is: istorage) (inum:inodenum) : inode := is inum.
+
+Definition iwrite (is:istorage) (inum:inodenum) (i:inode) : istorage :=
+  fun in' => if eq_nat_dec in' inum then i else is in'.
+
+Definition bread (s:bstorage) (b:blocknum) : block := s b.
+
+Definition bwrite (s:bstorage) (bn:blocknum) (b:block) : bstorage :=
+  fun bn' => if eq_nat_dec bn' bn then b else s bn'.
+
+Definition block_free (bn:blocknum) (bm:blockfreemap) : blockfreemap :=
+  fun bn' => if eq_nat_dec bn' bn then true else bm bn'.
+
+Fixpoint find_freeblock (bn:blocknum) (bm:blockfreemap) : option blocknum :=
+  match bn with
+  | O => None
+  | S bn' =>
+    if bm bn then Some bn
+    else find_freeblock bn' bm
+  end.
+
+Definition block_allocate (bm:blockfreemap) : blockfreemap :=
+  let bn := find_freeblock (NBlockMap * SizeBlock) bm in
+  match bn with
+  | None => bm
+  | Some b => fun bn' => if eq_nat_dec bn' b then false else bm bn'
+  end.
 
 Inductive bstep : bstate -> bstate -> Prop :=
   | BsmHalt: forall i m b,
-    istep (BSt BHalt i m b) (BSt IHalt i m b)
-  | BsmIwrite: forall is inum i m b rx,
-    istep (ISt (IWrite inum i rx) is m b) (ISt rx (iwrite is inum i) m b)
-  | BsmIread: forall is inum b m rx,
-    istep (ISt (IRead inum rx) is m b) (ISt (rx (iread is inum)) is m b)
-  | BsmIwriteBlockMap: forall is bn bm map b rx,
-    istep (ISt (IWriteBlockMap bn bm rx) is map b) (ISt rx is (blockmap_write map bn bm) b)
-  | BsmIreadBlockMap: forall is bn map b rx,
-    istep (ISt (IReadBlockMap bn rx) is map b) (ISt (rx (blockmap_read map bn)) is map b)
-  | BsmIreadBlock: forall is bn b m rx,
-    istep (ISt (IReadBlock bn rx) is m b) (ISt (rx (bread b bn)) is m b)
-  | BsmIwriteBlock: forall is bn b bs m rx,
-    istep (ISt (IWriteBlock bn b rx) is m bs) (ISt rx is m (bwrite bs bn b)).
-
-(* XXX perhaps for showing small-step simulation does something sensible? *)
-Fixpoint iexec (p:iproc) (s:istate) : istate :=
-  match p with
-  | IHalt => s
-  | IWrite inum i rx  =>
-    iexec rx (ISt p (iwrite (ISInodes s) inum i) (ISBlockMap s) (ISBlocks s))
-  | IRead inum rx =>
-    iexec (rx (iread (ISInodes s) inum)) s                            
-  | IReadBlockMap bn rx =>
-    iexec (rx (blockmap_read (ISBlockMap s) bn)) s
-  | IWriteBlockMap bn bm rx =>
-    iexec rx (ISt p (ISInodes s) (blockmap_write (ISBlockMap s) bn bm) (ISBlocks s))
-  | IReadBlock o rx =>
-    iexec (rx (bread (ISBlocks s) o)) s
-  | IWriteBlock o b rx =>
-    iexec rx (ISt p (ISInodes s) (ISBlockMap s) (bwrite (ISBlocks s) o b))
-  end.
-
-*)
+    bstep (BSt BHalt i m b) (BSt BHalt i m b)
+  | BsmBIwrite: forall is inum i m b rx,
+    bstep (BSt (BIWrite inum i rx) is m b) (BSt rx (iwrite is inum i) m b)
+  | BsmBIread: forall is inum b m rx,
+    bstep (BSt (BIRead inum rx) is m b) (BSt (rx (iread is inum)) is m b)
+  | BsmBread: forall is bn b m rx,
+    bstep (BSt (BRead bn rx) is m b) (BSt (rx (bread b bn)) is m b)
+  | BsmBwrite: forall is bn b bs m rx,
+    bstep (BSt (BWrite bn b rx) is m bs) (BSt rx is m (bwrite bs bn b))
+  | BsmBAllocate: forall i m b bn rx,
+    bstep (BSt (BAllocate rx) i m b) (BSt (rx bn) i (block_allocate m) b)
+  | BsmBFree: forall bn i m b rx,
+    bstep (BSt (BFree bn rx) i m b) (BSt rx i (block_free bn m) b).
 
 End Block.
 
