@@ -13,11 +13,9 @@ Require Import FSim.
 
 Set Implicit Arguments.
 
-Section Block.
+Section Balloc.
 
-(* block allocation *)
-
-(* XXX is block 0 the first block after the blockmap? *)
+(* Allocate and free a block.  Block 0 is the first data block. *)
 
 Inductive bproc :=
   | BHalt
@@ -150,5 +148,5 @@ Proof.
 Abort.
 
 
-End Block.
+End Balloc.
 
