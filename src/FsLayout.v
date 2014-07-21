@@ -69,14 +69,16 @@ Bind Scope fscq_scope with iproc.
 Open Scope fscq_scope.
 
 
-Program Fixpoint do_iwrite_blocklist inum i n rx :=
-  match n with
+Fixpoint do_iwrite_blocklist (inum:inodenum) (i:inode) (n:nat) (rx:dprog) : dprog.
+  refine match n with
   | 0 => rx
   | S x =>
     DWrite (inum * SizeBlock + 2 + x)
-           (if lt_dec x (proj1_sig (ILen i)) then (IBlocks i x) else 0);;
+           (if lt_dec x (proj1_sig (ILen i)) then (IBlocks i (exist _ x _)) else 0);;
     do_iwrite_blocklist inum i x rx
   end.
+  auto.
+Defined.
 
 Definition do_iwrite inum i rx  :=
   DWrite (inum * SizeBlock) (bool2nat (IFree i)) ;;
