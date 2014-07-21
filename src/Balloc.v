@@ -150,7 +150,20 @@ Proof.
     + constructor; cc.
       admit.
   - (* iread *)
-Abort.
+    econstructor; split; tt.
+    + eapply star_step; [constructor | ].
+      eapply star_refl.
+    + constructor; cc.
+      admit.
+  - (* bread *)
+    admit.
+  - (* bwrite *)
+    admit.
+  - (* allocate *)
+    admit.
+  - (* free *)
+    admit.
+Qed.
 
 
 End Balloc.
