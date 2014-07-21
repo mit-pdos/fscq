@@ -142,23 +142,38 @@ Theorem bi_forward_sim:
 Proof.
   exists bimatch.
   induction 1; intros; invert_rel bimatch.
-
   - (* iwrite *)
-    econstructor; split; tt.
+    econstructor; split;  tt.
     + eapply star_step; [constructor | ].
       eapply star_refl.
     + constructor; cc.
-      admit.
+      unfold iwrite.
+      unfold FsLayout.iwrite.
+      rewrite Inodes; tt.
   - (* iread *)
     econstructor; split; tt.
     + eapply star_step; [constructor | ].
       eapply star_refl.
     + constructor; cc.
-      admit.
+      unfold iread.
+      unfold FsLayout.iread.
+      rewrite Inodes; tt.
   - (* bread *)
-    admit.
+    econstructor; split; tt.
+    + eapply star_step; [constructor | ].
+      eapply star_refl.
+    + constructor; cc.
+      unfold bread.
+      unfold FsLayout.bread.
+      rewrite Blocks; tt.
   - (* bwrite *)
-    admit.
+    econstructor; split; tt.
+    + eapply star_step; [constructor | ].
+      eapply star_refl.
+    + constructor; cc.
+      unfold bwrite.
+      unfold FsLayout.bwrite.
+      rewrite Blocks; tt.
   - (* allocate *)
     admit.
   - (* free *)
