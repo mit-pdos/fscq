@@ -4,6 +4,7 @@ open Printf
 open Datatypes
 open FileSpec
 open FsLayout
+open Sys
 
 let choose_disk d =
   match d with
@@ -28,8 +29,13 @@ let write_disk d b v =
 
 let rec run_dcode2_real p =
   match p with
-  | DiskLog.DRead (d, b, rx) -> run_dcode2_real (rx (read_disk d b))
-  | DiskLog.DWrite (d, b, v, rx) -> write_disk d b v; run_dcode2_real rx
+  | DiskLog.DRead (d, b, rx) ->
+    let v = read_disk d b in
+    Printf.printf "read(%s, %d): %d\n" (choose_disk d) b v;
+    run_dcode2_real (rx v)
+  | DiskLog.DWrite (d, b, v, rx) ->
+    Printf.printf "write(%s, %d, %d)\n" (choose_disk d) b v;
+    write_disk d b v; run_dcode2_real rx
   | DiskLog.DHalt -> 0
 
 let rec run_dcode_real p =
@@ -53,5 +59,20 @@ let fcode = FileSpec.FCommon (FileSpec.FAlloc,
 
 let dcode = FsLayout.compile_id (FsLayout.do_init (Balloc.compile_bi (Balloc.do_init (File.compile_fb fcode))));;
 
+let t2code = Trans2.T2Begin (Trans2.T2DProg (dcode, Trans2.T2Commit (Trans2.T2Halt)));;
+
+let dcode2 = DiskLog.compile_pd (MemLog.compile_tp (Trans.compile_t2t t2code));;
+
+Printf.printf "Running fcode on bare disk..\n";;
+
+try Sys.remove (choose_disk NDataDisk) with Sys_error _ -> ();;
+
 run_dcode_real dcode;;
+
+Printf.printf "Running fcode on logged disk..\n";;
+
+try Sys.remove (choose_disk NDataDisk) with Sys_error _ -> ();;
+try Sys.remove (choose_disk NLogDisk)  with Sys_error _ -> ();;
+
+run_dcode2_real dcode2;;
 
