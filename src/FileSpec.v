@@ -42,23 +42,28 @@ Definition setidxsig {K: Type} {V: Type} {KP: K->Prop}
 
 Ltac crush_inv_sig := intros; inv_sig; crush.
 
-Program Definition nodata: { o: blockoffset | o < 0 } -> block.
+Definition nodata: { o: blockoffset | o < 0 } -> block.
   crush_inv_sig.
 Qed.
 
-Program Definition shrinkdata {oldlen: blockoffset}
-                              {len: blockoffset}
-                              (SHRINK: len <= oldlen)
-                              (olddata: {o : blockoffset | o < oldlen} -> block) :=
-  fun x: {o: blockoffset | o < len} => olddata (exist _ (proj1_sig x) _).
-Solve Obligations using intros; try destruct_sig; crush.
+Definition shrinkdata {oldlen: blockoffset}
+                      {len: blockoffset}
+                      (SHRINK: len <= oldlen)
+                      (olddata: {o : blockoffset | o < oldlen} -> block) :
+                      {o : blockoffset | o < len} -> block.
+  refine (fun x: {o: blockoffset | o < len} => olddata (exist _ (proj1_sig x) _)).
+  try destruct_sig; crush.
+Defined.
 
-Program Definition growzerodata {oldlen: blockoffset}
-                                {len: blockoffset}
-                                (GROW: len > oldlen)
-                                (olddata: {o: blockoffset | o < oldlen} -> block) :=
-  fun x: {o: blockoffset | o < len} =>
-    if lt_dec (proj1_sig x) oldlen then olddata x else 0.
+Definition growzerodata {oldlen: blockoffset}
+                        {len: blockoffset}
+                        (GROW: len > oldlen)
+                        (olddata: {o: blockoffset | o < oldlen} -> block) :
+                        {o: blockoffset | o < len} -> block.
+  refine (fun x: {o: blockoffset | o < len} =>
+    if lt_dec (proj1_sig x) oldlen then olddata (exist _ (proj1_sig x) _) else 0).
+  auto.
+Defined.
 
 Inductive fileop_and_result :=
   | FileOpR {R:Type} (o:fileop R) (r:R).
