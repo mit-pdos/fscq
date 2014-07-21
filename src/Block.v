@@ -9,6 +9,7 @@ Require Import Util.
 Require Import Trans2.
 Require Import Inode.
 Require Import NPeano.
+Require Import FSim.
 
 Set Implicit Arguments.
 
@@ -114,8 +115,6 @@ Definition block_allocate (bm:blockfreemap) : blockfreemap :=
   end.
 
 Inductive bstep : bstate -> bstate -> Prop :=
-  | BsmHalt: forall i m b,
-    bstep (BSt BHalt i m b) (BSt BHalt i m b)
   | BsmBIwrite: forall is inum i m b rx,
     bstep (BSt (BIWrite inum i rx) is m b) (BSt rx (iwrite is inum i) m b)
   | BsmBIread: forall is inum b m rx,
@@ -128,6 +127,28 @@ Inductive bstep : bstate -> bstate -> Prop :=
     bstep (BSt (BAllocate rx) i m b) (BSt (rx bn) i (block_allocate m) b)
   | BsmBFree: forall bn i m b rx,
     bstep (BSt (BFree bn rx) i m b) (BSt rx i (block_free bn m) b).
+
+Inductive bimatch: bstate -> istate -> Prop :=
+  | BIMatch:
+    forall bp binodes bfreemap bblocks ip iinodes iblockmap iblocks
+    (Inodes: forall i, binodes i = iinodes i)
+    (Freemap: forall n (Hn: n < NBlockMap * SizeBlock) (Hmod: modulo n SizeBlock < SizeBlock),
+     bfreemap n = (FreeList (iblockmap (div n SizeBlock)) (exist _ (modulo n SizeBlock) Hmod)))
+    (Blocks: forall n, bblocks n = iblocks n)
+    (Prog: compile_bi bp = ip),
+    bimatch (BSt bp binodes bfreemap bblocks) (ISt ip iinodes iblockmap iblocks).
+
+Theorem bi_forward_sim:
+  forward_simulation bstep istep.
+Proof.
+  exists bimatch.
+  induction 1; intros; invert_rel bimatch.
+
+  - (* iwrite *)
+    econstructor.
+
+Abort.
+
 
 End Block.
 
