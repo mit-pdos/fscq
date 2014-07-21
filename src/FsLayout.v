@@ -214,6 +214,47 @@ Inductive idmatch : istate -> dstate -> Prop :=
     (Prog: compile_id ip = dp),
     idmatch (ISt ip inodes blockmap blocks) (DSt dp disk).
 
+Lemma star_do_iwrite_blocklist:
+  forall len inum i rx d,
+  exists d',
+  star dstep
+    (DSt (do_iwrite_blocklist inum i len rx) d)
+    (DSt rx d') /\
+  (forall off (Hoff: off < proj1_sig (ILen i)),
+   off < len ->
+   d' (inum * SizeBlock + 2 + off) = IBlocks i (exist _ off Hoff)) /\
+  (forall b, (b < inum * SizeBlock + 2 \/ b >= inum * SizeBlock + 2 + len) ->
+   d' b = d b).
+Proof.
+  induction len.
+  - eexists; split; intros.
+    + apply star_refl.
+    + crush.
+  - intros.
+    destruct (IHlen inum i rx (st_write d (inum * SizeBlock + 2 + len)
+              match lt_dec len (proj1_sig (ILen i)) with
+              | left H =>
+                  IBlocks i
+                    (exist (fun b : nat => b < proj1_sig (ILen i)) len
+                       (do_iwrite_blocklist_obligation_1 inum i rx eq_refl H))
+              | right _ => 0
+              end)). destruct H. destruct H0.
+    eexists; split; [ | split ]; intros.
+    + unfold do_iwrite_blocklist; fold do_iwrite_blocklist.
+      eapply star_step; [ constructor | ]. apply H.
+    + destruct (eq_nat_dec off len).
+      * subst.
+        rewrite H1; [ | crush ].
+        rewrite st_read_same; auto.
+        destruct (lt_dec len (proj1_sig (ILen i))); [ | crush ].
+        destruct i. simpl.
+        (* How to invoke proof irrelevance here? *)
+        admit.
+      * apply H0. crush.
+    + rewrite H1; [ | crush ].
+      rewrite st_read_other; crush.
+Qed.
+
 Theorem id_forward_sim:
   forward_simulation istep dstep.
 Proof.
@@ -221,7 +262,21 @@ Proof.
   induction 1; intros; invert_rel idmatch.
 
   - (* Write *)
-    admit.
+    destruct (star_do_iwrite_blocklist NBlockPerInode inum i (compile_id rx)
+                (st_write (st_write disk (inum * SizeBlock) (bool2nat (IFree i)))
+                 (inum * SizeBlock + 1) (proj1_sig (ILen i)))).
+    econstructor; split; tt.
+    + eapply star_step; [ constructor | ].
+      eapply star_step; [ constructor | ].
+      apply H0.
+    + constructor; cc.
+      * rewrite H2.
+        admit. admit.
+      * rewrite H2.
+        admit. admit.
+      * admit.
+      * admit.
+      * admit.
 
   - (* Read *)
     admit.
