@@ -14,34 +14,31 @@ Theorem wf_norefl:
   forall (a:A),
   ~step a a.
 Proof.
-  unfold not; intros; assert (Acc step a); auto.
-  induction H0; eapply H1; apply H.
+  intro a; hnf; induction (WF a); eauto.
+Qed.
+
+Theorem wf_norefl':
+  forall (a:A),
+  step a a -> False.
+Proof.
+  exact wf_norefl.
 Qed.
 
 Lemma wf_loopfreeN':
   forall (x y:A) (n:nat),
   step x y -> starN step n y x -> False.
 Proof.
-  unfold not; intro x; assert (Acc step x); auto.
-  induction H; intros.
-  inversion H2; subst.
-  - exact (wf_norefl H1).
-  - destruct (starN_last H3 H4).
-    apply H0 with (y:=x0) (y0:=x) (n:=(S n0)); intuition.
-    eapply starN_step; eauto.
+  intro x; induction (WF x); inversion 2; subst;
+    eauto using wf_norefl';
+      edestruct starN_last; [ | eassumption | ]; intuition eauto.
 Qed.
 
 Lemma wf_loopfreeN:
   forall (x y:A) (n0 n1:nat),
   starN step n0 x y -> starN step n1 y x -> n0 = 0 /\ n1 = 0.
 Proof.
-  intros. inversion H; subst.
-  - split; auto.
-    destruct n1; auto.
-    inversion H0; subst.
-    destruct (wf_loopfreeN' H2 H3).
-  - assert (starN step (n+n1) s' x). eapply starN_trans; eauto.
-    destruct (wf_loopfreeN' H1 H3).
+  destruct 1; inversion 1; subst; intuition;
+    exfalso; eauto using wf_loopfreeN', starN_trans.
 Qed.
 
 Lemma wf_loopfree:
