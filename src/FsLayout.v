@@ -9,6 +9,7 @@ Require Import Util.
 Require Import Trans2.
 Require Import FSim.
 Require Import Closures.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
@@ -284,6 +285,23 @@ Proof.
       rewrite st_read_other; crush.
 Qed.
 
+Lemma star_do_iread_blocklist:
+  forall len inum rx d bl blfinal,
+  inum < NInode ->
+  len <= d (inum * SizeBlock + 1) ->
+  (forall off (Hoff: off < d (inum * SizeBlock + 1)) (Hoff': off >= len),
+   bl off = d (inum * SizeBlock + 2 + off)) ->
+  (forall off (Hoff: off < d (inum * SizeBlock + 1)),
+   blfinal off = d (inum * SizeBlock + 2 + off)) ->
+  star dstep (DSt (progseq2 (do_iread_blocklist inum len bl) rx) d)
+             (DSt (rx blfinal) d).
+Proof.
+  induction len.
+  - intros; unfold progseq2; simpl; replace bl with blfinal; [ apply star_refl | ].
+    apply functional_extensionality.
+    (* XXX *)
+Admitted.
+
 Theorem id_forward_sim:
   forward_simulation istep dstep.
 Proof.
@@ -341,7 +359,35 @@ Ltac disk_write_same := subst; match goal with
       * rewrite H2. disk_write_other. disk_write_other. right. omega'.
 
   - (* Read *)
-    admit.
+(*
+    destruct (@star_do_iread_blocklist (st_read disk (inum * SizeBlock + 1))
+              inum
+              (fun bl => compile_id
+               (rx
+                 {|
+                 IFree := nat2bool (st_read disk (inum * SizeBlock));
+                 ILen := exist (fun l1 : nat => l1 <= NBlockPerInode)
+                           (st_read disk (inum * SizeBlock + 1)) (l0 bl);
+                 IBlocks := fun
+                              x : {b0 : nat |
+                                  b0 < st_read disk (inum * SizeBlock + 1)} =>
+                            bl (proj1_sig x) |}))
+              disk (fun _ : nat => 0)).
+*)
+
+    econstructor; split; tt.
+    + eapply star_step; [ constructor | ].
+      eapply star_step; [ constructor | ].
+      simpl.
+      generalize (do_iread_obligation_1 inum
+                              (fun v : inode => compile_id (rx v))
+                              (st_read disk (inum * SizeBlock))
+                              (st_read disk (inum * SizeBlock + 1))).
+      destruct (le_dec (st_read disk (inum * SizeBlock + 1)) NBlockPerInode); intros.
+      * (* XXX apply star_do_iread_blocklist. *)
+      * destruct (Inodes inum); auto; destruct H0.
+        unfold st_read in n; rewrite H0 in n. clear H0 H1.
+        destruct (ILen (is inum)); crush.
 
   - (* IWriteBlockMap *)
     admit.
