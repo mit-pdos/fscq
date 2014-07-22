@@ -123,9 +123,11 @@ Definition block_allocate (bm:blockfreemap) : blockfreemap :=
   end.
 
 Inductive bstep : bstate -> bstate -> Prop :=
-  | BsmBIwrite: forall is inum i m b rx,
+  | BsmBIwrite: forall is inum i m b rx
+    (I: inum < NInode),
     bstep (BSt (BIWrite inum i rx) is m b) (BSt rx (iwrite is inum i) m b)
-  | BsmBIread: forall is inum b m rx,
+  | BsmBIread: forall is inum b m rx
+    (I: inum < NInode),
     bstep (BSt (BIRead inum rx) is m b) (BSt (rx (iread is inum)) is m b)
   | BsmBread: forall is bn b m rx,
     bstep (BSt (BRead bn rx) is m b) (BSt (rx (bread b bn)) is m b)
@@ -153,7 +155,7 @@ Proof.
   induction 1; intros; invert_rel bimatch.
   - (* iwrite *)
     econstructor; split;  tt.
-    + eapply star_step; [constructor | ].
+    + eapply star_step; [constructor;auto | ].
       eapply star_refl.
     + constructor; cc.
       unfold iwrite.
@@ -161,7 +163,7 @@ Proof.
       rewrite Inodes; tt.
   - (* iread *)
     econstructor; split; tt.
-    + eapply star_step; [constructor | ].
+    + eapply star_step; [constructor;auto | ].
       eapply star_refl.
     + constructor; cc.
       unfold iread.
