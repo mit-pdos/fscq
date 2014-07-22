@@ -2,6 +2,7 @@ Require Import Arith.
 Require Import CpdtTactics.
 Require Import Storage.
 Require Import FileSpec.
+Require Import Util.
 
 Inductive bfprog :=
   | BFCommon {R:Type} (o:fileop R) (rx:R -> bfprog)
