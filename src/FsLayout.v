@@ -169,6 +169,21 @@ Definition blockmap_read s (bn: blockmapnum) : blockmap :=  s bn.
 Definition blockmap_write (s:bmstorage) (bn: blockmapnum) (bm: blockmap) : bmstorage :=
   fun bn' => if eq_nat_dec bn' bn then bm else s bn'.
 
+Lemma iwrite_same:
+  forall s inum i,
+  iwrite s inum i inum = i.
+Proof.
+  unfold iwrite. intros. destruct (eq_nat_dec inum inum); crush.
+Qed.
+Hint Rewrite iwrite_same.
+
+Lemma iwrite_other:
+  forall s inum i inum',
+  inum <> inum' ->
+  iwrite s inum i inum' = s inum'.
+Proof.
+  unfold iwrite. intros. destruct (eq_nat_dec inum' inum); crush.
+Qed.
 
 Record istate := ISt {
   ISProg: iproc;
@@ -178,13 +193,17 @@ Record istate := ISt {
 }.
 
 Inductive istep : istate -> istate -> Prop :=
-  | IsmIwrite: forall is inum i m b rx,
+  | IsmIwrite: forall is inum i m b rx
+    (I: inum < NInode),
     istep (ISt (IWrite inum i rx) is m b) (ISt rx (iwrite is inum i) m b)
-  | IsmIread: forall is inum b m rx,
+  | IsmIread: forall is inum b m rx
+    (I: inum < NInode),
     istep (ISt (IRead inum rx) is m b) (ISt (rx (iread is inum)) is m b)
-  | IsmIwriteBlockMap: forall is bn bm map b rx,
+  | IsmIwriteBlockMap: forall is bn bm map b rx
+    (B: bn < NBlockMap),
     istep (ISt (IWriteBlockMap bn bm rx) is map b) (ISt rx is (blockmap_write map bn bm) b)
-  | IsmIreadBlockMap: forall is bn map b rx,
+  | IsmIreadBlockMap: forall is bn map b rx
+    (B: bn < NBlockMap),
     istep (ISt (IReadBlockMap bn rx) is map b) (ISt (rx (blockmap_read map bn)) is map b)
   | IsmIreadBlock: forall is bn b m rx,
     istep (ISt (IReadBlock bn rx) is m b) (ISt (rx (bread b bn)) is m b)
@@ -227,6 +246,7 @@ Inductive idmatch : istate -> dstate -> Prop :=
 
 Lemma star_do_iwrite_blocklist:
   forall len inum i rx d,
+  inum < NInode ->
   exists d',
   star dstep
     (DSt (do_iwrite_blocklist inum i len rx) d)
@@ -246,22 +266,21 @@ Proof.
               match lt_dec len (proj1_sig (ILen i)) with
               | left H =>
                   IBlocks i
-                    (exist (fun b : nat => b < proj1_sig (ILen i)) len
-                       (do_iwrite_blocklist_obligation_1 inum i rx eq_refl H))
+                    (exist (fun b : nat => b < proj1_sig (ILen i)) len H)
               | right _ => 0
-              end)). destruct H. destruct H0.
+              end)); [ auto | ]. destruct H0. destruct H1.
     eexists; split; [ | split ]; intros.
     + unfold do_iwrite_blocklist; fold do_iwrite_blocklist.
-      eapply star_step; [ constructor | ]. apply H.
+      eapply star_step; [ constructor | ]. apply H0.
     + destruct (eq_nat_dec off len).
       * subst.
-        rewrite H1; [ | crush ].
+        rewrite H2; [ | crush ].
         rewrite st_read_same; auto.
         destruct (lt_dec len (proj1_sig (ILen i))); [ | crush ].
         destruct i. simpl.
         apply arg_sig_pi. crush.
-      * apply H0. crush.
-    + rewrite H1; [ | crush ].
+      * apply H1. crush.
+    + rewrite H2; [ | crush ].
       rewrite st_read_other; crush.
 Qed.
 
@@ -271,22 +290,55 @@ Proof.
   exists idmatch.
   induction 1; intros; invert_rel idmatch.
 
+Ltac destruct_ilen := match goal with
+  | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
+  end.
+
+Ltac omega' := unfold SizeBlock in *; unfold NInode in *;
+               unfold NBlockPerInode in *; unfold NBlockMap in *;
+               simpl in *; omega.
+
+Ltac disk_write_other := match goal with
+  | [ |- context[st_write _ ?A _ ?B] ] =>
+    assert (A <> B); [ repeat destruct_ilen; omega'
+                     | rewrite st_read_other; auto ]
+  end.
+
+Ltac disk_write_same := subst; match goal with
+  | [ |- context[st_write _ ?A _ ?B] ] =>
+    subst; assert (A = B); [ omega | rewrite st_read_same; auto ]
+  end.
+
   - (* Write *)
-    destruct (star_do_iwrite_blocklist NBlockPerInode inum i (compile_id rx)
+    destruct (@star_do_iwrite_blocklist NBlockPerInode inum i (compile_id rx)
                 (st_write (st_write disk (inum * SizeBlock) (bool2nat (IFree i)))
-                 (inum * SizeBlock + 1) (proj1_sig (ILen i)))).
+                 (inum * SizeBlock + 1) (proj1_sig (ILen i)))); [ auto | ].
     econstructor; split; tt.
     + eapply star_step; [ constructor | ].
       eapply star_step; [ constructor | ].
       apply H0.
     + constructor; cc.
       * rewrite H2.
-        admit. admit.
+        disk_write_other; destruct (eq_nat_dec inum i0); [ disk_write_same; crush
+                                                         | disk_write_other;
+                                                           rewrite iwrite_other; [ | auto ];
+                                                           apply Inodes; auto ].
+        omega'.
       * rewrite H2.
-        admit. admit.
-      * admit.
-      * admit.
-      * admit.
+        destruct (eq_nat_dec inum i0); [ disk_write_same; crush
+                                       | disk_write_other; disk_write_other;
+                                         rewrite iwrite_other; [ | auto ];
+                                         apply Inodes; auto ].
+        omega'.
+      * generalize Hoff.
+        destruct (eq_nat_dec i0 inum).
+        subst; rewrite iwrite_same; intros. apply H. destruct (ILen (iwrite is inum i inum)). omega'.
+        rewrite iwrite_other; intros. rewrite H2. disk_write_other. disk_write_other. apply Inodes.
+        omega'.
+        destruct (le_gt_dec i0 inum); [ left | right ]; destruct (ILen (is i0)); omega'.
+        auto.
+      * rewrite H2. disk_write_other. disk_write_other. right. omega'.
+      * rewrite H2. disk_write_other. disk_write_other. right. omega'.
 
   - (* Read *)
     admit.
@@ -308,25 +360,6 @@ Proof.
     econstructor; split; tt.
     + eapply star_step; [ constructor | ].
       eapply star_refl.
-
-Ltac destruct_ilen := match goal with
-  | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
-  end.
-
-Ltac disk_write_other := match goal with
-  | [ |- context[st_write _ ?A _ ?B] ] =>
-    assert (A <> B); [ repeat destruct_ilen;
-                       unfold SizeBlock in *; unfold NInode in *;
-                       unfold NBlockPerInode in *; unfold NBlockMap in *;
-                       simpl in *; omega
-                     | rewrite st_read_other; auto ]
-  end.
-
-Ltac disk_write_same := subst; match goal with
-  | [ |- context[st_write _ ?A _ ?B] ] =>
-    subst; assert (A = B); [ omega | rewrite st_read_same; auto ]
-  end.
-
     + constructor; cc; try (disk_write_other; cc; apply Inodes; cc).
       unfold bwrite; destruct (eq_nat_dec n bn); [ disk_write_same | disk_write_other ].
 
