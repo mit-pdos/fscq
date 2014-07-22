@@ -104,23 +104,24 @@ Program Definition do_iread inum rx :=
   rx (Inode (nat2bool free) len bl).
 Solve Obligations using intros; destruct (le_dec dlen NBlockPerInode); crush.
 
-Program Fixpoint do_readblockmap bn off fl rx :=
-  match off with
+Fixpoint do_readblockmap (bn:nat) (off:nat) (fl:{b:nat|b<SizeBlock}->bool)
+                         (rx:blockmap->dprog) {struct off} : dprog.
+  refine match off with
   | O => rx (Blockmap fl)
   | S off' =>
     freebit <- DRead ((NInode * SizeBlock) + (bn * SizeBlock) + off');
-    do_readblockmap bn off' (fun x => if eq_nat_dec x off' then nat2bool freebit else fl x) rx
+    do_readblockmap bn off' (fun x => if eq_nat_dec (proj1_sig x) off' then nat2bool freebit else fl x) rx
   end.
+Defined.
 
-Program Fixpoint do_writeblockmap bn off (OFFOK: off <= SizeBlock) bm rx :=
-  match off with
-  | O => rx
-  | S off' =>
-    DWrite ((NInode * SizeBlock) + (bn * SizeBlock) + off')
-           (bool2nat (FreeList bm off'));;
-    @do_writeblockmap bn off' _ bm rx
-  end.
-Solve Obligations using crush.
+Fixpoint do_writeblockmap (bn:nat) (off:nat) (OFFOK: off <= SizeBlock)
+                          (bm:blockmap) (rx:dprog) {struct off} : dprog.
+  case_eq off; intros.
+  - exact rx.
+  - refine (DWrite ((NInode * SizeBlock) + (bn * SizeBlock) + n)
+                   (bool2nat (FreeList bm (exist _ n _)));;
+            @do_writeblockmap bn n _ bm rx); omega.
+Defined.
 
 Definition do_iwriteblock (o:blocknum) b rx :=
   DWrite ((NInode + NBlockMap) * SizeBlock + o) b ;; rx.
