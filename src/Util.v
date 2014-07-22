@@ -12,6 +12,14 @@ Definition nat2bool (v : nat) : bool :=
    | _ => false
    end.
 
+Lemma nat2bool2nat:
+  forall b,
+  nat2bool (bool2nat b) = b.
+Proof.
+  destruct b; auto.
+Qed.
+Hint Rewrite nat2bool2nat.
+
 Definition progseq1 {A B:Type} (a:B->A) (b:B) := a b.
 Definition progseq2 {A B:Type} (a:B->A) (b:B) := a b.
 

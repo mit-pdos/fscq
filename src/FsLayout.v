@@ -307,6 +307,56 @@ Proof.
     + apply H1. omega.
 Qed.
 
+Lemma star_do_iread:
+  forall inum rx disk i,
+  inum < NInode ->
+  (disk (inum * SizeBlock) = bool2nat (IFree i)) ->
+  (disk (inum * SizeBlock + 1) = proj1_sig (ILen i)) ->
+  (forall off (Hoff: off < proj1_sig (ILen i)),
+   disk (inum * SizeBlock + 2 + off) = IBlocks i (exist _ off Hoff)) ->
+  star dstep (DSt (do_iread inum rx) disk) 
+             (DSt (rx i) disk).
+Proof.
+  intros.
+  eapply star_step; [ constructor | ].
+  eapply star_step; [ constructor | ].
+  simpl.
+  generalize (do_iread_obligation_1 inum rx
+                              (st_read disk (inum * SizeBlock))
+                              (st_read disk (inum * SizeBlock + 1))).
+  destruct (le_dec (st_read disk (inum * SizeBlock + 1)) NBlockPerInode).
+  - intros.
+    eapply star_trans. apply star_do_iread_blocklist; intros; auto.
+    instantiate (1:=fun o => if lt_dec o (st_read disk (inum*SizeBlock+1))
+                             then (st_read disk (inum*SizeBlock+2+o))
+                             else 0).
+    simpl; destruct (lt_dec off (st_read disk (inum*SizeBlock+1))); crush.
+    simpl; destruct (lt_dec off (st_read disk (inum*SizeBlock+1))); crush.
+    match goal with
+    | [ |- star dstep (DSt (rx ?I1) _) (DSt (rx ?I2) _) ] =>
+      assert (I1=I2); [ | subst; apply star_refl ]
+    end.
+    destruct i; simpl in *.
+    generalize l0; clear l0.
+    unfold st_read; rewrite H1; rewrite H0; rewrite nat2bool2nat; intros.
+    match goal with
+    | [ |- context[Inode ?F1 ?L1 ?B1 = Inode ?F2 ?L2 ?B2] ] =>
+      assert (B1=B2) as Hblocks;
+      [ apply functional_extensionality; intros; destruct x; simpl;
+        destruct (lt_dec x (proj1_sig ILen0));
+        [ rewrite H2 with (Hoff:=l1); auto | crush ] | rewrite Hblocks; clear Hblocks ]
+    end.
+    match goal with
+    | [ |- Inode ?F1 ?L1 ?B1 = Inode ?F2 ?L2 ?B2 ] =>
+      assert (L1=L2) as Hlen; [ apply sig_pi; crush | ]
+    end.
+    (* XXX dependent type mess.. *)
+    (* rewrite Hlen *)
+    admit.
+  - unfold st_read in n; rewrite H1 in n. clear H1 H2.
+    destruct (ILen i); crush.
+Qed.
+
 Theorem id_forward_sim:
   forward_simulation istep dstep.
 Proof.
@@ -364,35 +414,9 @@ Ltac disk_write_same := subst; match goal with
       * rewrite H2. disk_write_other. disk_write_other. right. omega'.
 
   - (* Read *)
-(*
-    destruct (@star_do_iread_blocklist (st_read disk (inum * SizeBlock + 1))
-              inum
-              (fun bl => compile_id
-               (rx
-                 {|
-                 IFree := nat2bool (st_read disk (inum * SizeBlock));
-                 ILen := exist (fun l1 : nat => l1 <= NBlockPerInode)
-                           (st_read disk (inum * SizeBlock + 1)) (l0 bl);
-                 IBlocks := fun
-                              x : {b0 : nat |
-                                  b0 < st_read disk (inum * SizeBlock + 1)} =>
-                            bl (proj1_sig x) |}))
-              disk (fun _ : nat => 0)).
-*)
-
     econstructor; split; tt.
-    + eapply star_step; [ constructor | ].
-      eapply star_step; [ constructor | ].
-      simpl.
-      generalize (do_iread_obligation_1 inum
-                              (fun v : inode => compile_id (rx v))
-                              (st_read disk (inum * SizeBlock))
-                              (st_read disk (inum * SizeBlock + 1))).
-      destruct (le_dec (st_read disk (inum * SizeBlock + 1)) NBlockPerInode); intros.
-      * (* XXX apply star_do_iread_blocklist. *)
-      * destruct (Inodes inum); auto; destruct H0.
-        unfold st_read in n; rewrite H0 in n. clear H0 H1.
-        destruct (ILen (is inum)); crush.
+    + apply star_do_iread; auto; apply Inodes; auto.
+    + constructor; cc.
 
   - (* IWriteBlockMap *)
     admit.
