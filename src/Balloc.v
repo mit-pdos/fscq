@@ -31,6 +31,18 @@ Bind Scope fscq_scope with bproc.
 
 Open Scope fscq_scope.
 
+Remark n_mod_SizeBlock:
+  forall n,
+  n mod SizeBlock < SizeBlock.
+Proof.
+  intros; apply Nat.mod_upper_bound; unfold SizeBlock; auto.
+Qed.
+
+Definition blockmap_lookup (bms:bmstorage) (n:blockmapnum) : bool.
+  refine (FreeList (bms (n / SizeBlock)) (exist _ (n mod SizeBlock) _)).
+  apply n_mod_SizeBlock.
+Defined.
+
 Program Fixpoint find_block bm off (OFFOK: off <= SizeBlock) : option blocknum :=
   match off with
   | O => None
@@ -51,16 +63,59 @@ Program Fixpoint do_ballocate n rx : iproc :=
     match @find_block bm SizeBlock _ with
     | None => do_ballocate m rx
     | Some b => 
-      IWriteBlockMap m (Blockmap (fun x => if eq_nat_dec x b then false else (FreeList bm) x));;
-    rx (Some (b + SizeBlock * m))
+      IWriteBlockMap m (Blockmap (setidxsig eq_nat_dec (FreeList bm) b false));;
+      rx (Some (b + SizeBlock * m))
     end
   end.
 
 Definition do_bfree (bn:nat) (rx:iproc) : iproc :=
   let blockmapnum := div bn SizeBlock in
-  let b  := modulo bn SizeBlock in
+  let b  := bn mod SizeBlock in
   bm <- IReadBlockMap blockmapnum;
-  IWriteBlockMap blockmapnum (Blockmap (fun x => if eq_nat_dec (proj1_sig x) b then true else (FreeList bm) x));; rx.
+  IWriteBlockMap blockmapnum (Blockmap (setidxsig eq_nat_dec (FreeList bm) b true));;
+  rx.
+
+Lemma blockmap_lookup_write_same:
+  forall bms bn v,
+  blockmap_lookup (blockmap_write bms (bn / SizeBlock)
+                                  (Blockmap (setidxsig eq_nat_dec (FreeList (bms (bn / SizeBlock)))
+                                                       (bn mod SizeBlock) v))) bn = v.
+Proof.
+  intros.
+  unfold blockmap_lookup.
+  rewrite blockmap_write_same.
+  simpl.
+  rewrite setidxsig_same; auto.
+Qed.
+
+Remark blockmap_lookup_write_other_helper:
+  forall a b,
+  a <> b ->
+  a / SizeBlock = b / SizeBlock ->
+  a mod SizeBlock <> b mod SizeBlock.
+Proof.
+  admit.
+Qed.
+
+Lemma blockmap_lookup_write_other:
+  forall bms bn bn' v,
+  bn <> bn' ->
+  blockmap_lookup (blockmap_write bms (bn / SizeBlock)
+                                  (Blockmap (setidxsig eq_nat_dec (FreeList (bms (bn / SizeBlock)))
+                                                       (bn mod SizeBlock) v))) bn' =
+  blockmap_lookup bms bn'.
+Proof.
+  intros.
+  unfold blockmap_lookup.
+  destruct (eq_nat_dec (bn' / SizeBlock) (bn / SizeBlock)).
+  - rewrite e.
+    rewrite blockmap_write_same.
+    simpl.
+    rewrite setidxsig_other; auto.
+    simpl.
+    apply blockmap_lookup_write_other_helper; auto.
+  - rewrite blockmap_write_other; auto.
+Qed.
 
 Program Fixpoint compile_bi (p:bproc) : iproc :=
   match p with
@@ -135,7 +190,8 @@ Inductive bstep : bstate -> bstate -> Prop :=
     bstep (BSt (BWrite bn b rx) is m bs) (BSt rx is m (bwrite bs bn b))
   | BsmBAllocate: forall i m b bn rx,
     bstep (BSt (BAllocate rx) i m b) (BSt (rx bn) i (block_allocate m) b)
-  | BsmBFree: forall bn i m b rx,
+  | BsmBFree: forall bn i m b rx
+    (BN: bn < NBlockMap * SizeBlock),
     bstep (BSt (BFree bn rx) i m b) (BSt rx i (block_free bn m) b).
 
 Inductive bimatch: bstate -> istate -> Prop :=
@@ -143,7 +199,7 @@ Inductive bimatch: bstate -> istate -> Prop :=
     forall bp binodes bfreemap bblocks ip iinodes iblockmap iblocks
     (Inodes: forall i, binodes i = iinodes i)
     (Freemap: forall n (Hn: n < NBlockMap * SizeBlock) (Hmod: modulo n SizeBlock < SizeBlock),
-     bfreemap n = (FreeList (iblockmap (div n SizeBlock)) (exist _ (modulo n SizeBlock) Hmod)))
+     bfreemap n = blockmap_lookup iblockmap n)
     (Blocks: forall n, bblocks n = iblocks n)
     (Prog: compile_bi bp = ip),
     bimatch (BSt bp binodes bfreemap bblocks) (ISt ip iinodes iblockmap iblocks).
@@ -186,9 +242,25 @@ Proof.
       unfold FsLayout.bwrite.
       rewrite Blocks; tt.
   - (* allocate *)
+(*
+    econstructor; split.
+    + eapply star_step. constructor.
+*)
     admit.
   - (* free *)
-    admit.
+    econstructor; split; tt.
+    + eapply star_step; [constructor; apply Nat.div_lt_upper_bound; omega' | ].
+      eapply star_step; [constructor; apply Nat.div_lt_upper_bound; omega' | ].
+      apply star_refl.
+    + constructor.
+      * cc.
+      * intros.
+        unfold block_free.
+        destruct (eq_nat_dec n bn).
+        unfold blockmap_read; subst. rewrite blockmap_lookup_write_same. auto.
+        unfold blockmap_read. rewrite blockmap_lookup_write_other. rewrite <- Freemap; cc. cc.
+      * auto.
+      * auto.
 Qed.
 
 
