@@ -43,7 +43,7 @@ Definition blockmap_lookup (bms:bmstorage) (n:blockmapnum) : bool.
   apply n_mod_SizeBlock.
 Defined.
 
-Program Fixpoint find_block bm off (OFFOK: off <= SizeBlock) : option blocknum :=
+Program Fixpoint find_block bm off (OFFOK: off <= SizeBlock) : option {b: blocknum | b < SizeBlock} :=
   match off with
   | O => None
   | S off' =>
@@ -204,6 +204,43 @@ Inductive bimatch: bstate -> istate -> Prop :=
     (Prog: compile_bi bp = ip),
     bimatch (BSt bp binodes bfreemap bblocks) (ISt ip iinodes iblockmap iblocks).
 
+Lemma star_do_ballocate:
+  forall n rx is bms bs,
+  n <= NBlockMap ->
+  exists bms' o,
+  star istep
+    (ISt (do_ballocate n rx) is bms bs)
+    (ISt (rx o) is bms' bs) /\
+  ((o = None /\ bms' = bms) \/
+   (exists bn, o = Some bn /\
+    blockmap_lookup bms' bn = false /\
+    (forall bn', bn' <> bn -> blockmap_lookup bms' bn = blockmap_lookup bms bn))).
+Proof.
+  induction n; intros.
+  - exists bms. exists None.
+    split. simpl. apply star_refl. cc.
+  - case_eq (find_block (blockmap_read bms n)
+                (@do_ballocate_obligation_1 (S n) rx n eq_refl (blockmap_read bms n))); intros.
+
+    eexists. eexists.
+    split. eapply star_step. constructor. omega'.
+    fold do_ballocate.
+    cbv beta. rewrite H0. simpl.
+    eapply star_step; [ constructor; omega' | ].
+    apply star_refl.
+    right.
+    destruct s. simpl.
+    exists (x + (n + (n + (n + (n + 0))))). split; auto.
+    split.
+
+    remember (n * SizeBlock + x) as bn.
+    remember (Nat.mod_unique bn SizeBlock n x). rewrite e at 1; try omega'.
+    assert (n = bn / SizeBlock).
+
+    (* XXX *)
+    admit. admit. admit. admit.
+Qed.
+
 Theorem bi_forward_sim:
   forward_simulation bstep istep.
 Proof.
@@ -242,10 +279,6 @@ Proof.
       unfold FsLayout.bwrite.
       rewrite Blocks; tt.
   - (* allocate *)
-(*
-    econstructor; split.
-    + eapply star_step. constructor.
-*)
     admit.
   - (* free *)
     econstructor; split; tt.
