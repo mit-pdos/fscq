@@ -74,3 +74,19 @@ Lemma setidx_other:
 Proof.
   intros. unfold setidx. destruct (eq k' k). destruct H. auto. auto.
 Qed.
+
+Lemma setidxsig_same:
+  forall K V {KP:K->Prop} eq (db:sig KP->V) (k:K) (v:V) (k':sig KP),
+  (proj1_sig k' = k) ->
+  setidxsig eq db k v k' = v.
+Proof.
+  intros. unfold setidxsig. destruct (eq (proj1_sig k') k). auto. destruct n. auto.
+Qed.
+
+Lemma setidxsig_other:
+  forall K V {KP:K->Prop} eq (db:sig KP->V) (k:K) (v:V) (k':sig KP),
+  (proj1_sig k' <> k) ->
+  setidxsig eq db k v k' = db k'.
+Proof.
+  intros. unfold setidxsig. destruct (eq (proj1_sig k') k). destruct H. auto. auto.
+Qed.
