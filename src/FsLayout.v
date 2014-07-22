@@ -289,8 +289,8 @@ Lemma star_do_iread_blocklist:
   forall len inum rx d bl blfinal,
   inum < NInode ->
   len <= d (inum * SizeBlock + 1) ->
-  (forall off (Hoff: off < d (inum * SizeBlock + 1)) (Hoff': off >= len),
-   bl off = d (inum * SizeBlock + 2 + off)) ->
+  (forall off (Hoff: off >= len),
+   blfinal off = bl off) ->
   (forall off (Hoff: off < d (inum * SizeBlock + 1)),
    blfinal off = d (inum * SizeBlock + 2 + off)) ->
   star dstep (DSt (progseq2 (do_iread_blocklist inum len bl) rx) d)
@@ -298,9 +298,14 @@ Lemma star_do_iread_blocklist:
 Proof.
   induction len.
   - intros; unfold progseq2; simpl; replace bl with blfinal; [ apply star_refl | ].
-    apply functional_extensionality.
-    (* XXX *)
-Admitted.
+    apply functional_extensionality. intros. apply H1. omega.
+  - intros.
+    eapply star_step; [ constructor | ].
+    apply IHlen; auto; try omega.
+    intros. destruct (eq_nat_dec off len).
+    + subst. apply H2. omega.
+    + apply H1. omega.
+Qed.
 
 Theorem id_forward_sim:
   forward_simulation istep dstep.
