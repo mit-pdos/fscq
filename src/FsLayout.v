@@ -10,6 +10,7 @@ Require Import Trans2.
 Require Import FSim.
 Require Import Closures.
 Require Import FunctionalExtensionality.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
@@ -114,13 +115,33 @@ Fixpoint do_readblockmap (bn:nat) (off:nat) (fl:{b:nat|b<SizeBlock}->bool)
   end.
 Defined.
 
+Remark do_writeblockmap_helper_1:
+  forall n off,
+  off <= SizeBlock ->
+  off = S n ->
+  n < SizeBlock.
+Proof.
+  intros; omega.
+Qed.
+
+Remark do_writeblockmap_helper_2:
+  forall n off,
+  off <= SizeBlock ->
+  off = S n ->
+  n <= SizeBlock.
+Proof.
+  intros; omega.
+Qed.
+
 Fixpoint do_writeblockmap (bn:nat) (off:nat) (OFFOK: off <= SizeBlock)
                           (bm:blockmap) (rx:dprog) {struct off} : dprog.
   case_eq off; intros.
   - exact rx.
   - refine (DWrite ((NInode * SizeBlock) + (bn * SizeBlock) + n)
                    (bool2nat (FreeList bm (exist _ n _)));;
-            @do_writeblockmap bn n _ bm rx); omega.
+            @do_writeblockmap bn n _ bm rx).
+    exact (do_writeblockmap_helper_1 OFFOK H).
+    exact (do_writeblockmap_helper_2 OFFOK H).
 Defined.
 
 Definition do_iwriteblock (o:blocknum) b rx :=
@@ -187,6 +208,22 @@ Proof.
   unfold iwrite. intros. destruct (eq_nat_dec inum' inum); crush.
 Qed.
 
+Lemma blockmap_write_same:
+  forall s bn bm,
+  blockmap_write s bn bm bn = bm.
+Proof.
+  unfold blockmap_write. intros. destruct (eq_nat_dec bn bn); crush.
+Qed.
+Hint Rewrite blockmap_write_same.
+
+Lemma blockmap_write_other:
+  forall s bn bm bn',
+  bn <> bn' ->
+  blockmap_write s bn bm bn' = s bn'.
+Proof.
+  unfold blockmap_write. intros. destruct (eq_nat_dec bn' bn); crush.
+Qed.
+
 Record istate := ISt {
   ISProg: iproc;
   ISInodes: istorage;
@@ -245,6 +282,25 @@ Inductive idmatch : istate -> dstate -> Prop :=
     (Blocks: forall n, blocks n = disk (n + (NInode + NBlockMap) * SizeBlock))
     (Prog: compile_id ip = dp),
     idmatch (ISt ip inodes blockmap blocks) (DSt dp disk).
+
+Ltac destruct_ilen := match goal with
+  | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
+  end.
+
+Ltac omega' := unfold SizeBlock in *; unfold NInode in *;
+               unfold NBlockPerInode in *; unfold NBlockMap in *;
+               simpl in *; omega.
+
+Ltac disk_write_other := match goal with
+  | [ |- context[st_write _ ?A _ ?B] ] =>
+    assert (A <> B); [ repeat destruct_ilen; omega'
+                     | rewrite st_read_other; auto ]
+  end.
+
+Ltac disk_write_same := subst; match goal with
+  | [ |- context[st_write _ ?A _ ?B] ] =>
+    subst; assert (A = B); [ omega | rewrite st_read_same; auto ]
+  end.
 
 Lemma star_do_iwrite_blocklist:
   forall len inum i rx d,
@@ -358,30 +414,57 @@ Proof.
     destruct (ILen i); crush.
 Qed.
 
+Ltac fl' := match goal with
+  | [ |- bool2nat (FreeList _ ?E1) = bool2nat (FreeList _ ?E2) ] =>
+    assert (E1=E2); [ apply sig_pi; crush | crush ]
+  end.
+
+Lemma star_do_writeblockmap:
+  forall n idx rx disk (bm:blockmap)
+         (IDXOK: idx <= SizeBlock)
+         (ZEROK: 0 <= SizeBlock),
+  n < NBlockMap ->
+  (forall off (Hoff: off < SizeBlock) (Hoff': off >= idx),
+   disk (NInode * SizeBlock + n * SizeBlock + off) =
+   bool2nat (FreeList bm (exist _ off Hoff))) ->
+  exists disk',
+  (forall off (Hoff: off < SizeBlock),
+   disk' (NInode * SizeBlock + n * SizeBlock + off) =
+   bool2nat (FreeList bm (exist _ off Hoff))) /\
+  (forall b,
+   b < NInode * SizeBlock + n * SizeBlock \/
+   b >= NInode * SizeBlock + n * SizeBlock + SizeBlock ->
+   disk' b = disk b) /\
+  star dstep (DSt (@do_writeblockmap n idx IDXOK bm rx) disk) 
+             (DSt (@do_writeblockmap n 0   ZEROK bm rx) disk').
+Proof.
+  induction idx; intros.
+  - eexists; split; [ | split ]; intros.
+    + apply H0; omega.
+    + auto.
+    + apply star_refl.
+  - destruct (IHidx rx
+              (st_write disk (NInode * SizeBlock + n * SizeBlock + idx)
+                (bool2nat
+                  (FreeList bm
+                    (exist (fun b : nat => b < SizeBlock) idx
+                      (do_writeblockmap_helper_1 IDXOK eq_refl)))))
+              bm (do_writeblockmap_helper_2 IDXOK eq_refl) ZEROK); clear IHidx; auto.
+    + intros; destruct (eq_nat_dec off idx).
+      * subst. disk_write_same. fl'.
+      * disk_write_other. apply H0. omega.
+    + eexists; split; [ | split; [ | eapply star_step; [ constructor | apply H1 ] ] ];
+      intros; destruct H1.
+      crush.
+      destruct H3. clear H4.
+      rewrite H3. disk_write_other. crush.
+Qed.
+
 Theorem id_forward_sim:
   forward_simulation istep dstep.
 Proof.
   exists idmatch.
   induction 1; intros; invert_rel idmatch.
-
-Ltac destruct_ilen := match goal with
-  | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
-  end.
-
-Ltac omega' := unfold SizeBlock in *; unfold NInode in *;
-               unfold NBlockPerInode in *; unfold NBlockMap in *;
-               simpl in *; omega.
-
-Ltac disk_write_other := match goal with
-  | [ |- context[st_write _ ?A _ ?B] ] =>
-    assert (A <> B); [ repeat destruct_ilen; omega'
-                     | rewrite st_read_other; auto ]
-  end.
-
-Ltac disk_write_same := subst; match goal with
-  | [ |- context[st_write _ ?A _ ?B] ] =>
-    subst; assert (A = B); [ omega | rewrite st_read_same; auto ]
-  end.
 
   - (* Write *)
     destruct (@star_do_iwrite_blocklist NBlockPerInode inum i (compile_id rx)
@@ -420,7 +503,29 @@ Ltac disk_write_same := subst; match goal with
     + constructor; cc.
 
   - (* IWriteBlockMap *)
-    admit.
+    assert (SizeBlock <= SizeBlock) as Hx0; [ omega | ].
+    assert (0 <= SizeBlock) as Hx1; [ omega | ].
+    destruct (@star_do_writeblockmap bn SizeBlock (compile_id rx) disk bm Hx0 Hx1);
+    [ crush | crush | ].
+    econstructor; split.
+    + inversion Prog. simpl.
+      match goal with
+      | [ |- context[@compile_id_obligation_1 ?P ?BN ?BM ?RX eq_refl] ] =>
+        assert (@compile_id_obligation_1 P BN BM RX eq_refl = Hx0) as Hx0e;
+        [ apply proof_irrelevance | rewrite Hx0e; clear Hx0e ]
+      end.
+      apply H; clear H; intros.
+    + constructor; cc.
+      * rewrite H; [ apply Inodes; crush | omega' ].
+      * rewrite H; [ apply Inodes; crush | omega' ].
+      * rewrite H; [ apply Inodes; crush | destruct (ILen (is i)); omega' ].
+      * destruct (eq_nat_dec n bn).
+        subst; rewrite H0 with (Hoff:=Hoff); fl'.
+        rewrite H; [ | omega' ].
+        rewrite BlockMap with (Hoff:=Hoff); [ | omega' ].
+        rewrite blockmap_write_other; auto.
+      * rewrite H; [ | omega' ].
+        apply Blocks.
 
   - (* IReadBlockMap *)
     admit.
