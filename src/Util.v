@@ -49,3 +49,28 @@ Proof.
   intros.
   rewrite (sig_pi a b); auto.
 Qed.
+
+Definition setidx {K: Type} {V: Type}
+                  (eq: forall (a b:K), {a=b}+{a<>b})
+                  (db: K->V) (k: K) (v: V) :=
+  fun x: K => if eq x k then v else db x.
+
+Definition setidxsig {K: Type} {V: Type} {KP: K->Prop}
+                     (eq: forall (a b:K), {a=b}+{a<>b})
+                     (db: (sig KP) -> V) (k: K) (v: V) :=
+  fun x: (sig KP) => if eq (proj1_sig x) k then v else db x.
+
+Lemma setidx_same:
+  forall K V eq db (k:K) (v:V),
+  setidx eq db k v k = v.
+Proof.
+  intros. unfold setidx. destruct (eq k k). auto. destruct n. auto.
+Qed.
+
+Lemma setidx_other:
+  forall K V eq db (k k':K) (v:V),
+  k <> k' ->
+  setidx eq db k v k' = db k'.
+Proof.
+  intros. unfold setidx. destruct (eq k' k). destruct H. auto. auto.
+Qed.

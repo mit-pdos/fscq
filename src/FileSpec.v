@@ -2,6 +2,7 @@ Require Import Arith.
 Require Import CpdtTactics.
 Require Import FsTactics.
 Require Import Storage.
+Require Import Util.
 
 Definition inodenum := nat.
 Definition blockoffset := nat.
@@ -29,16 +30,6 @@ Record fstate := FSt {
   FSProg: fprog;
   FSData: fstatedata
 }.
-
-Definition setidx {K: Type} {V: Type}
-                  (eq: forall (a b:K), {a=b}+{a<>b})
-                  (db: K->V) (k: K) (v: V) :=
-  fun x: K => if eq x k then v else db x.
-
-Definition setidxsig {K: Type} {V: Type} {KP: K->Prop}
-                     (eq: forall (a b:K), {a=b}+{a<>b})
-                     (db: (sig KP) -> V) (k: K) (v: V) :=
-  fun x: (sig KP) => if eq (proj1_sig x) k then v else db x.
 
 Ltac crush_inv_sig := intros; inv_sig; crush.
 
