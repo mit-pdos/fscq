@@ -242,11 +242,15 @@ Proof.
       unfold FsLayout.bwrite.
       rewrite Blocks; tt.
   - (* allocate *)
+(*
+    econstructor; split.
+    + eapply star_step. constructor.
+*)
     admit.
   - (* free *)
     econstructor; split; tt.
-    + eapply star_step; [constructor;admit | ].
-      eapply star_step; [constructor;admit | ].
+    + eapply star_step; [constructor; apply Nat.div_lt_upper_bound; omega' | ].
+      eapply star_step; [constructor; apply Nat.div_lt_upper_bound; omega' | ].
       apply star_refl.
     + constructor.
       * cc.

@@ -14,8 +14,6 @@ Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
-Section DiskLayout.
-
 Definition inodenum := nat.
 Definition blockmapnum := nat.
 Definition blocknum := nat.
@@ -545,5 +543,3 @@ Proof.
       unfold bwrite; destruct (eq_nat_dec n bn); [ disk_write_same | disk_write_other ].
 
 Qed.
-
-End DiskLayout.
