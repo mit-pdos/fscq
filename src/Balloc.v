@@ -323,7 +323,16 @@ Proof.
       unfold FsLayout.bwrite.
       rewrite Blocks; tt.
   - (* allocate *)
-    admit.
+    destruct (@star_do_ballocate NBlockMap (fun o => compile_bi (rx o)) iinodes iblockmap iblocks); auto.
+    destruct H. destruct H.
+    econstructor; split.
+    + rewrite <- Prog. apply H.
+    + constructor.
+      * cc.
+      * admit.
+      * cc.
+      * 
+
   - (* free *)
     econstructor; split; tt.
     + eapply star_step; [constructor; apply Nat.div_lt_upper_bound; omega' | ].
