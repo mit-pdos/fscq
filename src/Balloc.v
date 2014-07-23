@@ -38,10 +38,53 @@ Proof.
   intros; apply Nat.mod_upper_bound; unfold SizeBlock; auto.
 Qed.
 
+Lemma div_same_mod_differs:
+  forall a b,
+  a <> b ->
+  a / SizeBlock = b / SizeBlock ->
+  a mod SizeBlock <> b mod SizeBlock.
+Proof.
+  unfold not; intros.
+  apply H.
+  rewrite (Nat.div_mod a SizeBlock); [ | omega' ].
+  rewrite H0; rewrite H1.
+  rewrite <- (Nat.div_mod b SizeBlock); omega'.
+Qed.
+
 Definition blockmap_lookup (bms:bmstorage) (n:blockmapnum) : bool.
   refine (FreeList (bms (n / SizeBlock)) (exist _ (n mod SizeBlock) _)).
   apply n_mod_SizeBlock.
 Defined.
+
+Definition blockmap_set (bms:bmstorage) (n:blockmapnum) (v:bool) : bmstorage :=
+  setidx eq_nat_dec bms (n / SizeBlock) (Blockmap
+    (setidxsig eq_nat_dec (FreeList (bms (n / SizeBlock))) (n mod SizeBlock) v)).
+
+Lemma blockmap_set_same:
+  forall bms n v,
+  blockmap_lookup (blockmap_set bms n v) n = v.
+Proof.
+  intros.
+  unfold blockmap_lookup.
+  unfold blockmap_set.
+  rewrite setidx_same.
+  simpl.
+  rewrite setidxsig_same; cc.
+Qed.
+
+Lemma blockmap_set_other:
+  forall bms n n' v,
+  n <> n' ->
+  blockmap_lookup (blockmap_set bms n v) n' = blockmap_lookup bms n'.
+Proof.
+  intros.
+  unfold blockmap_lookup.
+  unfold blockmap_set.
+  destruct (eq_nat_dec (n / SizeBlock) (n' / SizeBlock)).
+  + rewrite e. rewrite setidx_same. unfold FreeList.
+    rewrite setidxsig_other; [ | apply div_same_mod_differs ]; auto.
+  + rewrite setidx_other; auto.
+Qed.
 
 Program Fixpoint find_block bm off (OFFOK: off <= SizeBlock) : option {b: blocknum | b < SizeBlock} :=
   match off with
@@ -88,19 +131,6 @@ Proof.
   rewrite setidxsig_same; auto.
 Qed.
 
-Remark blockmap_lookup_write_other_helper:
-  forall a b,
-  a <> b ->
-  a / SizeBlock = b / SizeBlock ->
-  a mod SizeBlock <> b mod SizeBlock.
-Proof.
-  intros.
-  crush.
-  destruct (snd (divmod a 3 0 3)).
-  admit.
-  admit.
-Qed.
-
 Lemma blockmap_lookup_write_other:
   forall bms bn bn' v,
   bn <> bn' ->
@@ -117,7 +147,7 @@ Proof.
     simpl.
     rewrite setidxsig_other; auto.
     simpl.
-    apply blockmap_lookup_write_other_helper; auto.
+    apply div_same_mod_differs; auto.
   - rewrite blockmap_write_other; auto.
 Qed.
 
@@ -219,18 +249,16 @@ Proof.
     (* need a reverse compiler? *)
 Admitted.
 
-
 Lemma star_do_ballocate:
-  forall n rx is bms bs,
+  forall n rx is bms bms' bs o,
   n <= NBlockMap ->
-  exists bms' o,
+  (((~exists bn', blockmap_lookup bms bn' = true) /\ o = None /\ bms' = bms) \/
+   (exists bn, blockmap_lookup bms bn = true /\
+    (~exists bn', bn' > bn /\ blockmap_lookup bms bn' = true) /\
+    o = Some bn /\ bms' = blockmap_set bms bn false)) ->
   star istep
     (ISt (do_ballocate n rx) is bms bs)
-    (ISt (rx o) is bms' bs) /\
-  ((o = None /\ bms' = bms) \/
-   (exists bn, o = Some bn /\
-    blockmap_lookup bms' bn = false /\
-    (forall bn', bn' <> bn -> blockmap_lookup bms' bn = blockmap_lookup bms bn))).
+    (ISt (rx o) is bms' bs).
 Proof.
   induction n; intros.
   - exists bms. exists None.
