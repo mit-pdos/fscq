@@ -28,7 +28,7 @@ Definition NBlockMap := 3.      (* total number of data blocks is NBlockMap * Si
 
 Definition inodenum := {n: nat | n < NInode}.
 Definition blockmapnum := {n: nat | n < NBlockMap}.
-Definition blocknum := nat.
+Definition blocknum := {n: nat | n < NBlockMap * SizeBlock}.
 
 Remark inode_fits_in_block:
   NBlockPerInode + 2 <= SizeBlock.
@@ -74,7 +74,9 @@ Fixpoint do_iwrite_blocklist (inum:inodenum) (i:inode) (n:nat) (rx:dprog) : dpro
   | 0 => rx
   | S x =>
     DWrite ((proj1_sig inum) * SizeBlock + 2 + x)
-           (if lt_dec x (proj1_sig (ILen i)) then (IBlocks i (exist _ x _)) else 0);;
+           (if lt_dec x (proj1_sig (ILen i))
+            then (proj1_sig (IBlocks i (exist _ x _)))
+            else 0);;
     do_iwrite_blocklist inum i x rx
   end.
   auto.
@@ -86,14 +88,18 @@ Definition do_iwrite (inum:inodenum) (i:inode) (rx:dprog) : dprog :=
   do_iwrite_blocklist inum i NBlockPerInode rx.
 
 
-Program Fixpoint do_iread_blocklist (inum:inodenum) n bl rx :=
+Program Fixpoint do_iread_blocklist (inum:inodenum) n (bl:nat->{n:nat|n<NBlockMap*SizeBlock}) rx :=
   match n with
   | 0 => rx bl
   | S x =>
     bx <- DRead (inum * SizeBlock + 2 + x);
-    do_iread_blocklist inum x
-                       (fun bn => if eq_nat_dec bn x then bx else bl bn) rx
+    if lt_dec bx (NBlockMap * SizeBlock)
+    then
+      do_iread_blocklist inum x (setidx eq_nat_dec bl x bx) rx
+    else
+      do_iread_blocklist inum x (setidx eq_nat_dec bl x 0) rx
   end.
+Solve Obligations using intros; destruct (lt_dec bx (NBlockMap * SizeBlock)); crush.
 
 Program Definition do_iread (inum:inodenum) rx :=
   free <- DRead (inum * SizeBlock);
@@ -143,10 +149,10 @@ Fixpoint do_writeblockmap (bn:nat) (off:nat) (OFFOK: off <= SizeBlock)
 Defined.
 
 Definition do_iwriteblock (o:blocknum) b rx :=
-  DWrite ((NInode + NBlockMap) * SizeBlock + o) b ;; rx.
+  DWrite ((NInode + NBlockMap) * SizeBlock + (proj1_sig o)) b ;; rx.
 
 Definition do_ireadblock (o:blocknum) rx :=
-  b <- DRead ((NInode + NBlockMap) * SizeBlock + o) ; rx b.
+  b <- DRead ((NInode + NBlockMap) * SizeBlock + (proj1_sig o)) ; rx b.
 
 Program Fixpoint compile_id (p:iproc) : dprog :=
   match p with
@@ -184,7 +190,7 @@ Definition iwrite (s:istorage) (inum:inodenum) (i: inode) : istorage :=
 Definition bread (s:bstorage) (b:blocknum) : block := s b.
 
 Definition bwrite (s:bstorage) (bn:blocknum) (b:block) : bstorage :=
-  setidx eq_nat_dec s bn b.
+  setidxsig eq_nat_dec s (proj1_sig bn) b.
 
 Definition blockmap_read s (bn: blockmapnum) : blockmap :=  s bn.
 
@@ -269,12 +275,12 @@ Inductive idmatch : istate -> dstate -> Prop :=
      disk ((proj1_sig i) * SizeBlock)     = bool2nat (IFree (inodes i)) /\
      disk ((proj1_sig i) * SizeBlock + 1) = proj1_sig (ILen (inodes i)) /\
      forall off (Hoff: off < proj1_sig (ILen (inodes i))),
-     disk ((proj1_sig i) * SizeBlock + 2 + off) = IBlocks (inodes i) (exist _ off Hoff))
+     disk ((proj1_sig i) * SizeBlock + 2 + off) = proj1_sig (IBlocks (inodes i) (exist _ off Hoff)))
     (BlockMap: forall n,
      forall off (Hoff: off < SizeBlock),
      disk (NInode * SizeBlock + (proj1_sig n) * SizeBlock + off) =
      bool2nat (FreeList (blockmap n) (exist _ off Hoff)))
-    (Blocks: forall n, blocks n = disk (n + (NInode + NBlockMap) * SizeBlock))
+    (Blocks: forall n, blocks n = disk ((proj1_sig n) + (NInode + NBlockMap) * SizeBlock))
     (Prog: compile_id ip = dp),
     idmatch (ISt ip inodes blockmap blocks) (DSt dp disk).
 
@@ -313,7 +319,7 @@ Lemma star_do_iwrite_blocklist:
     (DSt rx d') /\
   (forall off (Hoff: off < proj1_sig (ILen i)),
    off < len ->
-   d' ((proj1_sig inum) * SizeBlock + 2 + off) = IBlocks i (exist _ off Hoff)) /\
+   d' ((proj1_sig inum) * SizeBlock + 2 + off) = (proj1_sig (IBlocks i (exist _ off Hoff)))) /\
   (forall b, (b < (proj1_sig inum) * SizeBlock + 2 \/
               b >= (proj1_sig inum) * SizeBlock + 2 + len) ->
    d' b = d b).
@@ -326,8 +332,8 @@ Proof.
     destruct (IHlen inum i rx (st_write d ((proj1_sig inum) * SizeBlock + 2 + len)
               match lt_dec len (proj1_sig (ILen i)) with
               | left H =>
-                  IBlocks i
-                    (exist (fun b : nat => b < proj1_sig (ILen i)) len H)
+                  proj1_sig (IBlocks i
+                    (exist (fun b : nat => b < proj1_sig (ILen i)) len H))
               | right _ => 0
               end)). destruct H. destruct H0.
     eexists; split; [ | split ]; intros.
@@ -338,8 +344,10 @@ Proof.
         rewrite H1; [ | crush ].
         rewrite st_read_same; auto.
         destruct (lt_dec len (proj1_sig (ILen i))); [ | crush ].
-        destruct i. simpl.
-        apply arg_sig_pi. crush.
+        match goal with
+        | [ |- proj1_sig (_ (exist ?a ?b ?c)) = proj1_sig (_ (exist ?a ?b ?d)) ] =>
+          rewrite (sig_pi (exist a b c) (exist a b d)); auto
+        end.
       * apply H0. crush.
     + rewrite H1; [ | crush ].
       rewrite st_read_other; crush.
@@ -347,23 +355,29 @@ Qed.
 
 Lemma star_do_iread_blocklist:
   forall len inum rx d bl blfinal,
+  len <= NBlockPerInode ->
   len <= d ((proj1_sig inum) * SizeBlock + 1) ->
+  (forall (i:inodenum) off (Hoff: off < NBlockPerInode),
+   d ((proj1_sig i) * SizeBlock + 2 + off) < NBlockMap * SizeBlock) ->
   (forall off (Hoff: off >= len),
    blfinal off = bl off) ->
   (forall off (Hoff: off < d ((proj1_sig inum) * SizeBlock + 1)),
-   blfinal off = d ((proj1_sig inum) * SizeBlock + 2 + off)) ->
+   (proj1_sig (blfinal off)) = d ((proj1_sig inum) * SizeBlock + 2 + off)) ->
   star dstep (DSt (progseq2 (do_iread_blocklist inum len bl) rx) d)
              (DSt (rx blfinal) d).
 Proof.
   induction len.
   - intros; unfold progseq2; simpl; replace bl with blfinal; [ apply star_refl | ].
-    apply functional_extensionality. intros. apply H0. omega.
+    apply functional_extensionality. intros. apply H2. omega.
   - intros.
     eapply star_step; [ constructor | ].
-    apply IHlen; auto; try omega.
-    intros. destruct (eq_nat_dec off len).
-    + subst. apply H1. omega.
-    + apply H0. omega.
+    cbv beta.
+    destruct (lt_dec (st_read d (proj1_sig inum * SizeBlock + 2 + len)) (NBlockMap * SizeBlock));
+    apply IHlen; auto; try omega; intros.
+    + destruct (eq_nat_dec off len).
+      * subst. rewrite setidx_same. apply sig_pi. rewrite H3. cc. omega'.
+      * rewrite setidx_other; auto. rewrite H2; auto; omega'.
+    + destruct n. cc.
 Qed.
 
 Lemma star_do_iread:
@@ -371,7 +385,7 @@ Lemma star_do_iread:
   (disk ((proj1_sig inum) * SizeBlock) = bool2nat (IFree i)) ->
   (disk ((proj1_sig inum) * SizeBlock + 1) = proj1_sig (ILen i)) ->
   (forall off (Hoff: off < proj1_sig (ILen i)),
-   disk ((proj1_sig inum) * SizeBlock + 2 + off) = IBlocks i (exist _ off Hoff)) ->
+   disk ((proj1_sig inum) * SizeBlock + 2 + off) = proj1_sig (IBlocks i (exist _ off Hoff))) ->
   star dstep (DSt (do_iread inum rx) disk) 
              (DSt (rx i) disk).
 Proof.
