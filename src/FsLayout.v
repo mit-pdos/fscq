@@ -278,18 +278,26 @@ Inductive idmatch : istate -> dstate -> Prop :=
     (Prog: compile_id ip = dp),
     idmatch (ISt ip inodes blockmap blocks) (DSt dp disk).
 
-Ltac destruct_ilen := match goal with
-  | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
+Ltac destruct_intact_sig e :=
+  match e with
+  | exist _ _ _ => fail 1
+  | _ => destruct e
   end.
 
-Ltac omega' := unfold SizeBlock in *; unfold NInode in *;
+Ltac destruct_sigs :=
+  repeat match goal with
+  | [ _: context[proj1_sig ?x] |- _ ] => destruct_intact_sig x
+  | [ |- context[proj1_sig ?x] ] => destruct_intact_sig x
+  end.
+
+Ltac omega' := destruct_sigs;
+               unfold SizeBlock in *; unfold NInode in *;
                unfold NBlockPerInode in *; unfold NBlockMap in *;
                simpl in *; omega.
 
 Ltac disk_write_other := match goal with
   | [ |- context[st_write _ ?A _ ?B] ] =>
-    assert (A <> B); [ repeat destruct_ilen; omega'
-                     | rewrite st_read_other; auto ]
+    assert (A <> B); [ omega' | rewrite st_read_other; auto ]
   end.
 
 Ltac disk_write_same := subst; match goal with
@@ -484,18 +492,17 @@ Proof.
       * generalize Hoff.
         destruct (eq_nat_dec (proj1_sig i0) (proj1_sig inum)).
         rewrite e; rewrite iwrite_same; auto; intros.
-        apply H. destruct (ILen (iwrite is inum i inum)).
-        destruct (ILen (iwrite is inum i i0)). omega'.
+        apply H. omega'.
         rewrite iwrite_other; intros. rewrite H2. disk_write_other. disk_write_other. apply Inodes.
         destruct (le_gt_dec (proj1_sig i0) (proj1_sig inum));
-        [ left | right ]; destruct (ILen (is i0)); omega'.
+        [ left | right ]; omega'.
         apply sig_pi_ne; auto.
       * intros. rewrite H2. destruct inum.
         disk_write_other. disk_write_other. apply BlockMap.
-        destruct n. destruct inum. omega'. 
+        omega'. 
       * intros. rewrite H2. destruct inum.
         disk_write_other. disk_write_other.
-        destruct inum. omega'. 
+        omega'. 
       * auto.
 
   - (* Read *)
@@ -516,18 +523,14 @@ Proof.
         [ apply proof_irrelevance | rewrite Hx0e; clear Hx0e ]
       end.
       apply H; clear H; intros.
-    + constructor; cc.
-      * rewrite H; [ apply Inodes; crush | destruct i; destruct bn; omega' ].
-      * rewrite H; [ apply Inodes; crush | destruct i; destruct bn; omega' ].
-      * rewrite H; [ apply Inodes; crush | destruct (ILen (is i)); destruct i; destruct bn; omega' ].
-      * destruct (eq_nat_dec (proj1_sig n) (proj1_sig bn)).
-        rewrite blockmap_write_same; auto.
-        rewrite e; rewrite H0 with (Hoff:=Hoff); fl'.
-        rewrite H; [ | omega' ].
-        rewrite BlockMap with (Hoff:=Hoff).
-        rewrite blockmap_write_other; try apply sig_pi_ne; auto. 
-      * rewrite H; [ | destruct bn; omega' ].
-        apply Blocks.
+    + constructor; cc;
+      try (rewrite H; [ try apply Inodes; try apply Blocks; crush | omega' ]).
+      destruct (eq_nat_dec (proj1_sig n) (proj1_sig bn)).
+      rewrite blockmap_write_same; auto.
+      rewrite e; rewrite H0 with (Hoff:=Hoff); fl'.
+      rewrite H; [ | omega' ].
+      rewrite BlockMap with (Hoff:=Hoff).
+      rewrite blockmap_write_other; try apply sig_pi_ne; auto.
 
   - (* IReadBlockMap *)
     admit.
@@ -543,8 +546,7 @@ Proof.
     econstructor; split; tt.
     + eapply star_step; [ constructor | ].
       eapply star_refl.
-    + constructor; cc; try (try destruct i; try destruct n;
-      disk_write_other; cc;
+    + constructor; cc; try (disk_write_other; cc;
       try (assert (x = (proj1_sig (exist (fun n : nat => n < NInode) x l)));
            [ cc | rewrite H0 at 1 ]);
       apply Inodes;
