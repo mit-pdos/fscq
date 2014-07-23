@@ -9,7 +9,7 @@ Require Import Disk.
 Require Import Trans2.
 Require Import Util.
 Require Import LoopfreeWF.
-Require Import FSim.
+Require Import Smallstep.
 
 
 Section TransactionLanguage.

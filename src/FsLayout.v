@@ -7,7 +7,7 @@ Require Import Storage.
 Require Import Disk.
 Require Import Util.
 Require Import Trans2.
-Require Import FSim.
+Require Import Smallstep.
 Require Import Closures.
 Require Import FunctionalExtensionality.
 Require Import ProofIrrelevance.

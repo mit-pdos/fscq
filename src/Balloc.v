@@ -9,7 +9,7 @@ Require Import Util.
 Require Import Trans2.
 Require Import FsLayout.
 Require Import NPeano.
-Require Import FSim.
+Require Import Smallstep.
 Require Import Closures.
 
 Set Implicit Arguments.
