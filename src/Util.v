@@ -41,6 +41,14 @@ Proof.
   replace p with p0; [ auto | apply proof_irrelevance ].
 Qed.
 
+Lemma sig_pi_ne:
+  forall {T:Type} {P:T->Prop} (a b:sig P),
+  proj1_sig a <> proj1_sig b ->
+  a <> b.
+Proof.
+  unfold not; intros. apply H. rewrite H0. auto.
+Qed.
+
 Lemma arg_sig_pi:
   forall {T R:Type} {P:T->Prop} (a b:sig P) (M:sig P->R),
   proj1_sig a = proj1_sig b ->
