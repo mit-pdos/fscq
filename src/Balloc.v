@@ -94,6 +94,10 @@ Remark blockmap_lookup_write_other_helper:
   a / SizeBlock = b / SizeBlock ->
   a mod SizeBlock <> b mod SizeBlock.
 Proof.
+  intros.
+  crush.
+  destruct (snd (divmod a 3 0 3)).
+  admit.
   admit.
 Qed.
 
@@ -194,6 +198,7 @@ Inductive bstep : bstate -> bstate -> Prop :=
     (BN: bn < NBlockMap * SizeBlock),
     bstep (BSt (BFree bn rx) i m b) (BSt rx i (block_free bn m) b).
 
+
 Inductive bimatch: bstate -> istate -> Prop :=
   | BIMatch:
     forall bp binodes bfreemap bblocks ip iinodes iblockmap iblocks
@@ -203,6 +208,17 @@ Inductive bimatch: bstate -> istate -> Prop :=
     (Blocks: forall n, bblocks n = iblocks n)
     (Prog: compile_bi bp = ip),
     bimatch (BSt bp binodes bfreemap bblocks) (ISt ip iinodes iblockmap iblocks).
+
+Theorem ib_backward_sim:
+  bsim_simulation bstep istep.
+Proof.
+  exists bimatch.  
+  induction 1; intros; invert_rel bimatch.
+  - (* iwrite *)
+    econstructor; split;  cc.
+    (* need a reverse compiler? *)
+Admitted.
+
 
 Lemma star_do_ballocate:
   forall n rx is bms bs,

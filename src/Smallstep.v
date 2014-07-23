@@ -22,18 +22,9 @@ Definition forward_simulation {StateA StateB:Type} (SA:StateA->StateA->Prop) (SB
   forall B1, MATCH A1 B1 ->
   exists B2, star SB B1 B2 /\ MATCH A2 B2.
 
-Section backward_simulation.
-
-Parameter StateA: Type.
-Parameter StateB: Type.
-Parameter StepA: StateA -> StateA -> Prop.
-Parameter StepB: StateB -> StateB -> Prop.
-Parameter Match: StateA -> StateB -> Prop.
-
-Definition bsim_simulation :=
+Definition bsim_simulation {StateA StateB:Type} (StepA:StateA->StateA->Prop) (StepB:StateB->StateB->Prop) :=
+  exists (Match:StateA->StateB->Prop),
   forall B1 B2, StepB B1 B2 ->
   forall A1, Match A1 B1 ->
   exists A2, Match A2 B2 /\ plus StepA A1 A2.
-
-End backward_simulation.
 
