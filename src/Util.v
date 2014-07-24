@@ -115,3 +115,6 @@ Lemma setidxsig_other:
 Proof.
   intros. unfold setidxsig. destruct (eq (proj1_sig k') k). destruct H. auto. auto.
 Qed.
+
+Ltac resolve_setidx t :=
+  (subst; rewrite setidx_same) || (rewrite setidx_other; [|t]).
