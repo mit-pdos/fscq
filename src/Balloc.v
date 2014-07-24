@@ -138,13 +138,14 @@ Definition do_bfree (bn:blocknum) (rx:iproc) : iproc :=
   rx.
 
 Lemma blockmap_lookup_write_same:
-  forall bms bn v,
+  forall bms bn bn' v,
+  bn = bn' ->
   blockmap_lookup (blockmap_write bms (blocknum_to_blockmapnum bn)
                    (Blockmap (setidxsig eq_nat_dec
                               (FreeList (bms (blocknum_to_blockmapnum bn)))
-                              (proj1_sig (blocknum_to_blockmapoff bn)) v))) bn = v.
+                              (proj1_sig (blocknum_to_blockmapoff bn)) v))) bn' = v.
 Proof.
-  intros.
+  intros. subst.
   unfold blockmap_lookup.
   rewrite blockmap_write_same; auto.
   simpl.
@@ -258,10 +259,10 @@ Inductive bstep : bstate -> bstate -> Prop :=
 Inductive bimatch: bstate -> istate -> Prop :=
   | BIMatch:
     forall bp binodes bfreemap bblocks ip iinodes iblockmap iblocks
-    (Inodes: forall i, binodes i = iinodes i)
-    (Freemap: forall n (Hn: n < NBlockMap * SizeBlock) (Hmod: modulo n SizeBlock < SizeBlock),
+    (Inodes: binodes = iinodes)
+    (Freemap: forall n,
      bfreemap n = blockmap_lookup iblockmap n)
-    (Blocks: forall n, bblocks n = iblocks n)
+    (Blocks: bblocks = iblocks)
     (Prog: compile_bi bp = ip),
     bimatch (BSt bp binodes bfreemap bblocks) (ISt ip iinodes iblockmap iblocks).
 
@@ -275,24 +276,69 @@ Proof.
     (* need a reverse compiler? *)
 Admitted.
 
-Lemma star_do_ballocate:
-  forall n rx is bms bms' bs o,
+Remark star_do_ballocate_helper_2:
+  forall n bn,
   n <= NBlockMap ->
-  (((~exists bn', blockmap_lookup bms bn' = true) /\ o = None /\ bms' = bms) \/
-   (exists bn, blockmap_lookup bms bn = true /\
-    (~exists bn', bn' > bn /\ blockmap_lookup bms bn' = true) /\
-    o = Some bn /\ bms' = blockmap_set bms bn false)) ->
-  star istep
-    (ISt (do_ballocate n rx) is bms bs)
-    (ISt (rx o) is bms' bs).
+  bn < n * SizeBlock ->
+  bn < NBlockMap * SizeBlock.
+Proof. omega'. Qed.
+
+Definition star_do_ballocate_helper_1 (bn:nat) (n:nat) (Hn: n <= NBlockMap)
+                                      (Hbn: bn < n * SizeBlock) : blocknum :=
+  exist _ bn (star_do_ballocate_helper_2 Hn Hbn).
+
+Lemma star_do_ballocate:
+  forall n Hn rx is bms bs,
+  (exists bms' o,
+   star istep
+     (ISt (@do_ballocate n Hn rx) is bms bs)
+     (ISt (rx o) is bms' bs) /\
+   (((~exists bn (Hbn: bn < n * SizeBlock),
+      blockmap_lookup bms (star_do_ballocate_helper_1 Hn Hbn) = true) /\
+     o = None /\ bms' = bms) \/
+    (exists bn (Hbn: bn < n * SizeBlock),
+     blockmap_lookup bms (star_do_ballocate_helper_1 Hn Hbn) = true /\
+     (~exists bn' (Hbn': bn' < n * SizeBlock),
+      bn' > bn /\ blockmap_lookup bms (star_do_ballocate_helper_1 Hn Hbn') = true) /\
+     o = Some (star_do_ballocate_helper_1 Hn Hbn) /\
+     bms' = blockmap_set bms (star_do_ballocate_helper_1 Hn Hbn) false))).
 Proof.
   induction n; intros.
   - exists bms. exists None.
-    split. simpl. apply star_refl. cc.
-  - case_eq (find_block (blockmap_read bms n)
-                (@do_ballocate_obligation_1 (S n) rx n eq_refl (blockmap_read bms n))); intros.
+    split; [ simpl; apply star_refl | ].
+    left; cc. destruct H. destruct H. omega'.
+  - unfold do_ballocate.
+    pose (bn:=exist (fun x => x < NBlockMap) n (do_ballocate_obligation_1 Hn rx eq_refl)).
+    pose (bm:=blockmap_read bms bn).
+    case_eq (find_block bm (do_ballocate_obligation_2 Hn rx eq_refl bm)); intros.
+    + admit.
+    + assert (n <= NBlockMap) as Hn'; [omega'|].
+      destruct (IHn Hn' rx is bms bs) as [bms' IHn2]; exists bms';
+      destruct IHn2 as [o IHn3]; exists o;
+      destruct IHn3 as [IHnStep IHnCond]; clear IHn.
+      split.
+      * eapply star_step; [constructor|]. cbv beta. fold do_ballocate.
+        subst bn; subst bm.
+        generalize dependent do_ballocate_obligation_5.
+        generalize dependent do_ballocate_obligation_4.
+        generalize dependent do_ballocate_obligation_3.
+        generalize dependent do_ballocate_obligation_2.
+        generalize dependent do_ballocate_obligation_1.
+        intros.
 
-    eexists. eexists.
+        admit.
+      * admit.
+
+(*
+        rewrite H.
+        generalize dependent H.
+      
+
+
+
+
+
+    + eexists. eexists.
     split. eapply star_step. constructor. omega'.
     fold do_ballocate.
     cbv beta. rewrite H0. simpl.
@@ -309,55 +355,32 @@ Proof.
 
     (* XXX *)
     admit. admit. admit. admit.
+*)
 Qed.
 
 Theorem bi_forward_sim:
   forward_simulation bstep istep.
 Proof.
   exists bimatch.
-  induction 1; intros; invert_rel bimatch.
-  - (* iwrite *)
-    econstructor; split;  tt.
-    + eapply star_step; [constructor;auto | ].
-      eapply star_refl.
-    + constructor; cc.
-      unfold iwrite.
-      unfold FsLayout.iwrite.
-      rewrite Inodes; tt.
-  - (* iread *)
-    econstructor; split; tt.
-    + eapply star_step; [constructor;auto | ].
-      eapply star_refl.
-    + constructor; cc.
-      unfold iread.
-      unfold FsLayout.iread.
-      rewrite Inodes; tt.
-  - (* bread *)
-    econstructor; split; tt.
-    + eapply star_step; [constructor | ].
-      eapply star_refl.
-    + constructor; cc.
-      unfold bread.
-      unfold FsLayout.bread.
-      rewrite Blocks; tt.
-  - (* bwrite *)
-    econstructor; split; tt.
-    + eapply star_step; [constructor | ].
-      eapply star_refl.
-    + constructor; cc.
-      unfold bwrite.
-      unfold FsLayout.bwrite.
-      rewrite Blocks; tt.
+  induction 1; intros; invert_rel bimatch;
+  [ (* iwrite, iread, bread, bwrite *)
+    econstructor; split; tt;
+    [ eapply star_step; [constructor;auto | apply star_refl]
+    | constructor; cc ] .. | | ].
   - (* allocate *)
-    destruct (@star_do_ballocate NBlockMap (fun o => compile_bi (rx o)) iinodes iblockmap iblocks); auto.
+    destruct (@star_do_ballocate NBlockMap do_ballocate_helper_1
+                                 (fun o => compile_bi (rx o)) iinodes iblockmap iblocks).
     destruct H. destruct H.
-    econstructor; split.
-    + rewrite <- Prog. apply H.
-    + constructor.
-      * cc.
-      * admit.
-      * cc.
-      * 
+    econstructor; split; [ rewrite <- Prog; apply H | ].
+    clear H. clear H0. clear B1. clear Prog.
+    constructor; auto; subst.
+    + intros; destruct x0.
+      * destruct H5; [cc|]. destruct H. destruct H. Tactics.destruct_pairs.
+        admit.
+      * destruct H5; [| destruct H; destruct H; Tactics.destruct_pairs; cc ].
+        Tactics.destruct_pairs. subst. rewrite <- Freemap.
+        admit.
+    + admit.
 
   - (* free *)
     econstructor; split; tt.
@@ -368,9 +391,11 @@ Proof.
       * cc.
       * intros.
         unfold block_free.
-        destruct (eq_nat_dec n bn).
-        unfold blockmap_read; subst. rewrite blockmap_lookup_write_same. auto.
-        unfold blockmap_read. rewrite blockmap_lookup_write_other. rewrite <- Freemap; cc. cc.
+        destruct (eq_nat_dec (proj1_sig n) (proj1_sig bn)).
+        unfold blockmap_read; subst. rewrite blockmap_lookup_write_same; [|apply sig_pi; auto].
+          rewrite setidxsig_same; auto; apply sig_pi; auto.
+        unfold blockmap_read. rewrite blockmap_lookup_write_other; [|apply sig_pi_ne; auto].
+          rewrite setidxsig_other; auto.
       * auto.
       * auto.
 Qed.
