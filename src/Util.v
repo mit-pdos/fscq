@@ -58,6 +58,15 @@ Proof.
   rewrite (sig_pi a b); auto.
 Qed.
 
+Lemma sig_exists:
+  forall {T:Type} (P:T->Prop) (a:T),
+  P a ->
+  exists H,
+  a = proj1_sig (exist P a H).
+Proof.
+  intros. exists H. auto.
+Qed.
+
 Definition setidx {K: Type} {V: Type}
                   (eq: forall (a b:K), {a=b}+{a<>b})
                   (db: K->V) (k: K) (v: V) :=
