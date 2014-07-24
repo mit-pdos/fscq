@@ -30,6 +30,7 @@ Definition NBlockMap := 3.      (* total number of data blocks is NBlockMap * Si
 Definition inodenum := {n: nat | n < NInode}.
 Definition iblocknum := {n: nat | n < NBlockPerInode}.
 Definition blockmapnum := {n: nat | n < NBlockMap}.
+Definition blockmapoff := {n: nat | n < SizeBlock}.
 Definition blocknum := {n: nat | n < NBlockMap * SizeBlock}.
 
 Remark inode_fits_in_block:
@@ -80,7 +81,7 @@ Program Definition mkinode b : inode :=
 Solve Obligations using intros; try destruct_sig; crush.
 
 Record blockmap := Blockmap {
-  FreeList: { b: nat | b < SizeBlock } -> bool
+  FreeList: blockmapoff -> bool
 }.
 
 Definition istorage := inodenum -> inode.

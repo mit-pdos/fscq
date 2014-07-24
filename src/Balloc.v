@@ -11,6 +11,7 @@ Require Import FsLayout.
 Require Import NPeano.
 Require Import Smallstep.
 Require Import Closures.
+Require Import Tactics.
 
 Set Implicit Arguments.
 
@@ -31,13 +32,6 @@ Bind Scope fscq_scope with bproc.
 
 Open Scope fscq_scope.
 
-Remark n_mod_SizeBlock:
-  forall n,
-  n mod SizeBlock < SizeBlock.
-Proof.
-  intros; apply Nat.mod_upper_bound; unfold SizeBlock; auto.
-Qed.
-
 Lemma div_same_mod_differs:
   forall a b,
   a <> b ->
@@ -51,14 +45,37 @@ Proof.
   rewrite <- (Nat.div_mod b SizeBlock); omega'.
 Qed.
 
-Definition blockmap_lookup (bms:bmstorage) (n:blockmapnum) : bool.
-  refine (FreeList (bms (n / SizeBlock)) (exist _ (n mod SizeBlock) _)).
-  apply n_mod_SizeBlock.
+Definition blocknum_to_blockmapnum (n:blocknum) : blockmapnum.
+  refine (exist _ ((proj1_sig n) / SizeBlock) _).
+  Lemma bn_bmn: forall (n:blocknum), proj1_sig n / SizeBlock < NBlockMap.
+  Proof. intros; apply Nat.div_lt_upper_bound; omega'. Qed.
+  apply bn_bmn.
 Defined.
 
-Definition blockmap_set (bms:bmstorage) (n:blockmapnum) (v:bool) : bmstorage :=
-  setidx eq_nat_dec bms (n / SizeBlock) (Blockmap
-    (setidxsig eq_nat_dec (FreeList (bms (n / SizeBlock))) (n mod SizeBlock) v)).
+Definition blocknum_to_blockmapoff (n:blocknum) : blockmapoff.
+  refine (exist _ ((proj1_sig n) mod SizeBlock) _).
+  Lemma bn_bmo: forall (n:blocknum), proj1_sig n mod SizeBlock < SizeBlock.
+  Proof. intros; apply Nat.mod_upper_bound; omega'. Qed.
+  apply bn_bmo.
+Defined.
+
+Lemma blockmap_num_same_off_differs:
+  forall (a b:blocknum),
+  proj1_sig a <> proj1_sig b ->
+  proj1_sig (blocknum_to_blockmapnum a) = proj1_sig (blocknum_to_blockmapnum b) ->
+  proj1_sig (blocknum_to_blockmapoff a) <> proj1_sig (blocknum_to_blockmapoff b).
+Proof.
+  unfold blocknum_to_blockmapnum; unfold blocknum_to_blockmapoff; simpl; intros.
+  apply div_same_mod_differs; cc.
+Qed.
+
+Definition blockmap_lookup (bms:bmstorage) (n:blocknum) : bool :=
+  FreeList (bms (blocknum_to_blockmapnum n)) (blocknum_to_blockmapoff n).
+
+Definition blockmap_set (bms:bmstorage) (n:blocknum) (v:bool) : bmstorage :=
+  setidxsig eq_nat_dec bms (proj1_sig (blocknum_to_blockmapnum n))
+    (Blockmap (setidxsig eq_nat_dec (FreeList (bms (blocknum_to_blockmapnum n)))
+                         (proj1_sig (blocknum_to_blockmapoff n)) v)).
 
 Lemma blockmap_set_same:
   forall bms n v,
@@ -67,7 +84,7 @@ Proof.
   intros.
   unfold blockmap_lookup.
   unfold blockmap_set.
-  rewrite setidx_same.
+  rewrite setidxsig_same; auto.
   simpl.
   rewrite setidxsig_same; cc.
 Qed.
@@ -80,10 +97,12 @@ Proof.
   intros.
   unfold blockmap_lookup.
   unfold blockmap_set.
-  destruct (eq_nat_dec (n / SizeBlock) (n' / SizeBlock)).
-  + rewrite e. rewrite setidx_same. unfold FreeList.
-    rewrite setidxsig_other; [ | apply div_same_mod_differs ]; auto.
-  + rewrite setidx_other; auto.
+  destruct (eq_nat_dec (proj1_sig (blocknum_to_blockmapnum n))
+                       (proj1_sig (blocknum_to_blockmapnum n'))).
+  + rewrite (sig_pi _ _ e). rewrite setidxsig_same; auto. unfold FreeList.
+    rewrite setidxsig_other; [ | apply blockmap_num_same_off_differs ]; auto.
+    apply sig_ne; auto.
+  + rewrite setidxsig_other; auto.
 Qed.
 
 Program Fixpoint find_block bm off (OFFOK: off <= SizeBlock) : option {b: blocknum | b < SizeBlock} :=
@@ -94,39 +113,40 @@ Program Fixpoint find_block bm off (OFFOK: off <= SizeBlock) : option {b: blockn
     if isfree then (Some off')
     else @find_block bm off' _
   end.
-Next Obligation.
-  crush.
-Qed.
+Solve Obligations using Tactics.program_simpl; omega'.
 
-Program Fixpoint do_ballocate n rx : iproc :=
+Program Fixpoint do_ballocate (n:nat) (NOK:n<=NBlockMap)
+                              (rx: (option blocknum)->iproc) : iproc :=
   match n with
   | O => rx None
   | S m =>
     bm <- IReadBlockMap m;
     match @find_block bm SizeBlock _ with
-    | None => do_ballocate m rx
+    | None => @do_ballocate m _ rx
     | Some b => 
       IWriteBlockMap m (Blockmap (setidxsig eq_nat_dec (FreeList bm) b false));;
       rx (Some (b + SizeBlock * m))
     end
   end.
+Solve Obligations using Tactics.program_simpl; omega'.
 
-Definition do_bfree (bn:nat) (rx:iproc) : iproc :=
-  let blockmapnum := div bn SizeBlock in
-  let b  := bn mod SizeBlock in
-  bm <- IReadBlockMap blockmapnum;
-  IWriteBlockMap blockmapnum (Blockmap (setidxsig eq_nat_dec (FreeList bm) b true));;
+Definition do_bfree (bn:blocknum) (rx:iproc) : iproc :=
+  let bmn := (blocknum_to_blockmapnum bn) in
+  let bmo := (blocknum_to_blockmapoff bn) in
+  bm <- IReadBlockMap bmn;
+  IWriteBlockMap bmn (Blockmap (setidxsig eq_nat_dec (FreeList bm) (proj1_sig bmo) true));;
   rx.
 
 Lemma blockmap_lookup_write_same:
   forall bms bn v,
-  blockmap_lookup (blockmap_write bms (bn / SizeBlock)
-                                  (Blockmap (setidxsig eq_nat_dec (FreeList (bms (bn / SizeBlock)))
-                                                       (bn mod SizeBlock) v))) bn = v.
+  blockmap_lookup (blockmap_write bms (blocknum_to_blockmapnum bn)
+                   (Blockmap (setidxsig eq_nat_dec
+                              (FreeList (bms (blocknum_to_blockmapnum bn)))
+                              (proj1_sig (blocknum_to_blockmapoff bn)) v))) bn = v.
 Proof.
   intros.
   unfold blockmap_lookup.
-  rewrite blockmap_write_same.
+  rewrite blockmap_write_same; auto.
   simpl.
   rewrite setidxsig_same; auto.
 Qed.
@@ -134,22 +154,28 @@ Qed.
 Lemma blockmap_lookup_write_other:
   forall bms bn bn' v,
   bn <> bn' ->
-  blockmap_lookup (blockmap_write bms (bn / SizeBlock)
-                                  (Blockmap (setidxsig eq_nat_dec (FreeList (bms (bn / SizeBlock)))
-                                                       (bn mod SizeBlock) v))) bn' =
+  blockmap_lookup (blockmap_write bms (blocknum_to_blockmapnum bn)
+                   (Blockmap (setidxsig eq_nat_dec
+                              (FreeList (bms (blocknum_to_blockmapnum bn)))
+                              (proj1_sig (blocknum_to_blockmapoff bn)) v))) bn' =
   blockmap_lookup bms bn'.
 Proof.
   intros.
   unfold blockmap_lookup.
-  destruct (eq_nat_dec (bn' / SizeBlock) (bn / SizeBlock)).
-  - rewrite e.
-    rewrite blockmap_write_same.
-    simpl.
-    rewrite setidxsig_other; auto.
-    simpl.
-    apply div_same_mod_differs; auto.
+  destruct (eq_nat_dec (proj1_sig (blocknum_to_blockmapnum bn'))
+                       (proj1_sig (blocknum_to_blockmapnum bn))).
+  - rewrite (sig_pi _ _ e).
+    rewrite blockmap_write_same; auto; simpl.
+    rewrite setidxsig_other; auto; simpl.
+    apply blockmap_num_same_off_differs; auto.
+    apply sig_ne; auto.
   - rewrite blockmap_write_other; auto.
+    apply sig_pi_ne; auto.
 Qed.
+
+Remark do_ballocate_helper_1:
+  NBlockMap <= NBlockMap.
+Proof. omega'. Qed.
 
 Program Fixpoint compile_bi (p:bproc) : iproc :=
   match p with
@@ -158,18 +184,19 @@ Program Fixpoint compile_bi (p:bproc) : iproc :=
   | BIRead inum rx => IRead inum (fun v => compile_bi (rx v))
   | BRead bn rx => IReadBlock bn (fun v => compile_bi (rx v))
   | BWrite bn b rx => IWriteBlock bn b (compile_bi rx)
-  | BAllocate rx => do_ballocate NBlockMap (fun v => compile_bi (rx v))
+  | BAllocate rx => @do_ballocate NBlockMap do_ballocate_helper_1 (fun v => compile_bi (rx v))
   | BFree bn rx => do_bfree bn (compile_bi rx)
   end.
 
-Fixpoint do_free_all n rx : bproc :=
+Program Fixpoint do_free_all n (NOK: n <= NBlockMap * SizeBlock) rx : bproc :=
   match n with
   | O => rx
-  | S n' => BFree n' ;; do_free_all n' rx
+  | S n' => BFree n' ;; @do_free_all n' _ rx
   end.
+Solve Obligations using Tactics.program_simpl; omega'.
 
-Definition do_init rx : bproc :=
-  do_free_all (NBlockMap * SizeBlock) rx.
+Program Definition do_init rx : bproc :=
+  @do_free_all (NBlockMap * SizeBlock) _ rx.
 
 Close Scope fscq_scope.
 
@@ -186,37 +213,37 @@ Record bstate := BSt {
 Definition iread (is: istorage) (inum:inodenum) : inode := is inum.
 
 Definition iwrite (is:istorage) (inum:inodenum) (i:inode) : istorage :=
-  fun in' => if eq_nat_dec in' inum then i else is in'.
+  setidxsig eq_nat_dec is (proj1_sig inum) i.
 
 Definition bread (s:bstorage) (b:blocknum) : block := s b.
 
 Definition bwrite (s:bstorage) (bn:blocknum) (b:block) : bstorage :=
-  fun bn' => if eq_nat_dec bn' bn then b else s bn'.
+  setidxsig eq_nat_dec s (proj1_sig bn) b.
 
 Definition block_free (bn:blocknum) (bm:blockfreemap) : blockfreemap :=
-  fun bn' => if eq_nat_dec bn' bn then true else bm bn'.
+  setidxsig eq_nat_dec bm (proj1_sig bn) true.
 
-Fixpoint find_freeblock (bn:blocknum) (bm:blockfreemap) : option blocknum :=
+Program Fixpoint find_freeblock (bn:nat) (BNOK: bn <= NBlockMap * SizeBlock)
+                                (bm:blockfreemap) : option blocknum :=
   match bn with
   | O => None
   | S bn' =>
-    if bm bn then Some bn
-    else find_freeblock bn' bm
+    if bm bn' then Some bn'
+    else @find_freeblock bn' _ bm
   end.
+Solve Obligations using Tactics.program_simpl; omega'.
 
-Definition block_allocate (bm:blockfreemap) : blockfreemap :=
-  let bn := find_freeblock (NBlockMap * SizeBlock) bm in
+Program Definition block_allocate (bm:blockfreemap) : blockfreemap :=
+  let bn := @find_freeblock (NBlockMap * SizeBlock) _ bm in
   match bn with
   | None => bm
-  | Some b => fun bn' => if eq_nat_dec bn' b then false else bm bn'
+  | Some b => setidxsig eq_nat_dec bm (proj1_sig b) false
   end.
 
 Inductive bstep : bstate -> bstate -> Prop :=
-  | BsmBIwrite: forall is inum i m b rx
-    (I: inum < NInode),
+  | BsmBIwrite: forall is inum i m b rx,
     bstep (BSt (BIWrite inum i rx) is m b) (BSt rx (iwrite is inum i) m b)
-  | BsmBIread: forall is inum b m rx
-    (I: inum < NInode),
+  | BsmBIread: forall is inum b m rx,
     bstep (BSt (BIRead inum rx) is m b) (BSt (rx (iread is inum)) is m b)
   | BsmBread: forall is bn b m rx,
     bstep (BSt (BRead bn rx) is m b) (BSt (rx (bread b bn)) is m b)
@@ -224,8 +251,7 @@ Inductive bstep : bstate -> bstate -> Prop :=
     bstep (BSt (BWrite bn b rx) is m bs) (BSt rx is m (bwrite bs bn b))
   | BsmBAllocate: forall i m b bn rx,
     bstep (BSt (BAllocate rx) i m b) (BSt (rx bn) i (block_allocate m) b)
-  | BsmBFree: forall bn i m b rx
-    (BN: bn < NBlockMap * SizeBlock),
+  | BsmBFree: forall bn i m b rx,
     bstep (BSt (BFree bn rx) i m b) (BSt rx i (block_free bn m) b).
 
 

@@ -58,6 +58,14 @@ Proof.
   rewrite (sig_pi a b); auto.
 Qed.
 
+Lemma sig_ne:
+  forall {T:Type} {P:T->Prop} (a b:sig P),
+  a <> b ->
+  proj1_sig a <> proj1_sig b.
+Proof.
+  unfold not; intros. apply H. apply sig_pi. auto.
+Qed.
+
 Lemma sig_exists:
   forall {T:Type} (P:T->Prop) (a:T),
   P a ->
