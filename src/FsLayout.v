@@ -40,11 +40,11 @@ Qed.
 
 Ltac elim_intact_sig e :=
   match e with
-  | exist _ _ _ => idtac "elim_intact_sig: unfolded version" e; fail 1
+  | exist _ _ _ => (* idtac "elim_intact_sig: unfolded version" e; *) fail 1
   | _ =>
     match goal with
-    | [ _: e = exist _ _ _ |- _ ] => idtac "elim_intact_sig: already got" e; fail 2
-    | _ => idtac "elim_intact_sig:" e; destruct e || case_eq e; intros
+    | [ _: e = exist _ _ _ |- _ ] => (* idtac "elim_intact_sig: already got" e; *) fail 2
+    | _ => (* idtac "elim_intact_sig:" e; *) destruct e || case_eq e; intros
     end
   end.
 
