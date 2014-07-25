@@ -190,7 +190,53 @@ Qed.
 End RefineSelf.
 
 
-Module DualProg (Left: SmallStepLang) (Right: SmallStepLang) <: SmallStepLang.
+Module Type DualProgType (Left Right:SmallStepLang) <: SmallStepLang.
+
+(* XXX Module system warts: this weird type seems needed for the RefineDual
+ * module below, for two reasons.
+ *
+ * First, RefineDual needs to refer to (DualProg L1 R1) and (DualProg L2 R2).
+ * If RefineDual instantiates these internally, then they appear as different
+ * types from instantiations of the same DualProg elsewhere; as a result,
+ * programs that are the same appear to have different types.
+ *
+ * Second, RefineDual satisfies Refine (DualProg L1 R1) (DualProg L2 R2), but
+ * specifying that syntax causes Coq to complain that "Application of modules
+ * is restricted to paths".
+ *
+ * Using this type allows passing in "existing" copies of the two DualProg
+ * modules, avoiding both problems.
+ *
+ * Unfortunately, it's a verbatim copy of DualProg..
+ *)
+
+Inductive prog {R:Type} : Type :=
+  | DoLeft {T:Type} (p:Left.Prog T) (rx:T->prog)
+  | DoRight {T:Type} (p:Right.Prog T) (rx:T->prog)
+  | Return (r:R).
+Definition Prog := @prog.
+Definition ReturnOp := @Return.
+
+Inductive state :=
+  | DualState (l:Left.State) (r:Right.State).
+Definition State := state.
+
+Inductive step {R:Type} : @progstate R Prog State ->
+                          @progstate R Prog State -> Prop :=
+  | DualStepLeft: forall p rx ls ls' rs r
+    (LS: progreturns (Left.Step R) (Left.ReturnOp R) p ls ls' r),
+    step (PS (DoLeft p rx) (DualState ls rs))
+         (PS (rx r) (DualState ls' rs))
+  | DualStepRight: forall p rx ls rs rs' r
+    (RS: progreturns (Right.Step R) (Right.ReturnOp R) p rs rs' r),
+    step (PS (DoRight p rx) (DualState ls rs))
+         (PS (rx r) (DualState ls rs')).
+Definition Step := @step.
+
+End DualProgType.
+
+
+Module DualProg (Left: SmallStepLang) (Right: SmallStepLang) <: DualProgType Left Right.
 
 Inductive prog {R:Type} : Type :=
   | DoLeft {T:Type} (p:Left.Prog T) (rx:T->prog)
@@ -236,20 +282,11 @@ Qed.
 End FSimReturn.
 
 
-(* XXX Module system limitation:
-
 Module RefineDual (L1 R1 L2 R2: SmallStepLang)
+                  (DP1: DualProgType L1 R1)
+                  (DP2: DualProgType L2 R2)
                   (L12: Refines L1 L2)
-                  (R12: Refines R1 R2) <: Refines (DualProg L1 R1) (DualProg L2 R2).
-
-*)
-
-Module RefineDual (L1 R1 L2 R2: SmallStepLang)
-                  (L12: Refines L1 L2)
-                  (R12: Refines R1 R2).
-
-Module DP1 := DualProg L1 R1.
-Module DP2 := DualProg L2 R2.
+                  (R12: Refines R1 R2) <: Refines DP1 DP2.
 
 Module FSR_L := FSimReturn L1 L2 L12.
 Module FSR_R := FSimReturn R1 R2 R12.
@@ -317,16 +354,11 @@ Definition example_pd_prog : PairDisk.Prog nat :=
   PairDisk.Return b.
 
 Module DiskToDisk := RefineSelf Disk.
-Module PairDiskToDDisk := RefineDual Pair Disk Disk Disk PairToDisk DiskToDisk.
+Module PairDiskToDDisk :=
+  RefineDual Pair Disk Disk Disk
+             PairDisk DDisk PairToDisk DiskToDisk.
 
-(* XXX Module system wart: PairDiskToDDisk.DP1 <> PairDisk *)
-Definition example_pd_prog' : PairDiskToDDisk.DP1.Prog nat :=
-  PairDiskToDDisk.DP1.DoLeft (Pair.Write 0 (1,2) ;; Pair.Return tt) ;;
-  a <- PairDiskToDDisk.DP1.DoLeft (x <- Pair.Read 0 ; Pair.Return x) ;
-  b <- PairDiskToDDisk.DP1.DoRight (Disk.Write 7 (fst a) ;; x <- Disk.Read 7 ; Disk.Return x) ;
-  PairDiskToDDisk.DP1.Return b.
-
-Eval compute in PairDiskToDDisk.Compile example_pd_prog'.
+Eval compute in PairDiskToDDisk.Compile example_pd_prog.
 (*
  * Cool: even though I never wrote how to compile (Pair+Disk) -> (Disk+Disk),
  * and never proved that it correctly refines, this module figures out how to
