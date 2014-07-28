@@ -159,21 +159,21 @@ Qed.
 
 Hint Resolve pimpl_refl.
 
-Fixpoint Countdown (f : nat -> prog) (n : nat) : prog :=
+Fixpoint For_ (f : nat -> prog) (i n : nat) : prog :=
   match n with
     | O => Halt
-    | S n' => (f n');; (Countdown f n')
+    | S n' => (f i);; (For_ f (S i) n')
   end.
 
-Theorem CCountdown : forall (f : nat -> prog)
+Theorem CFor : forall (f : nat -> prog)
   (nocrash : nat -> pred) (crashed : pred),
-  (nocrash 0 --> crashed)
-  -> forall n,
-    (forall m, m < n
-      -> {{nocrash (S m)}} (f m)
-      {{r, ([r = Halted 0] /\ nocrash m) \/ ([r = Crashed] /\ crashed)}})
-    -> {{nocrash n}} (Countdown f n)
-    {{r, ([r = Halted 0] /\ nocrash 0) \/ ([r = Crashed] /\ crashed)}}.
+  (forall m, nocrash m --> crashed)
+  -> forall n i,
+    (forall m, i <= m < n + i
+      -> {{nocrash m}} (f m)
+      {{r, ([r = Halted 0] /\ nocrash (S m)) \/ ([r = Crashed] /\ crashed)}})
+    -> {{nocrash i}} (For_ f i n)
+    {{r, ([r = Halted 0] /\ nocrash (n + i)) \/ ([r = Crashed] /\ crashed)}}.
 Proof.
   induction n; simpl; intros.
 
@@ -185,18 +185,21 @@ Proof.
   
   eapply Conseq.
   econstructor.
-  eauto.
+  eapply H0.
+  omega.
   simpl.
   intros.
   eapply Conseq.
   apply IHn.
-  pred.
+  intros.
+  apply H0; omega.
   pred.
   simpl.
   intros.
   apply pimpl_refl.
   apply pimpl_refl.
   pred.
+  replace (S (n + i)) with (n + S i) by omega; auto.
 Qed.
 
 
@@ -214,7 +217,7 @@ Section prog'.
   | Write' (a : addr) (v : valu)
   | Seq' (p1 : prog') (p2 : valu -> prog')
   | If' P Q (b : {P} + {Q}) (p1 p2 : prog')
-  | Countdown' (nocrash : ghostT -> nat -> pred) (crashed : ghostT -> pred)
+  | For' (nocrash : ghostT -> nat -> pred) (crashed : ghostT -> pred)
     (f : nat -> prog') (n : nat).
 
   Fixpoint prog'Out (p : prog') : prog :=
@@ -225,7 +228,7 @@ Section prog'.
       | Write' a v => Write a v
       | Seq' p1 p2 => Seq (prog'Out p1) (fun x => prog'Out (p2 x))
       | If' _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
-      | Countdown' _ _ f n => Countdown (fun x => prog'Out (f x)) n
+      | For' _ _ f n => For_ (fun x => prog'Out (f x)) 0 n
     end.
 
   Variable ghost : ghostT.
@@ -241,8 +244,8 @@ Section prog'.
         \/ exists v, spost (spost pre p1 (Halted v)) (p2 v) r
       | If' P Q b p1 p2 => fun r => spost (pre /\ [P]) p1 r
         \/ spost (pre /\ [Q]) p2 r
-      | Countdown' nocrash crashed f n => fun r =>
-        ([r = Halted 0] /\ nocrash ghost 0) \/ ([r = Crashed] /\ crashed ghost)
+      | For' nocrash crashed f n => fun r =>
+        ([r = Halted 0] /\ nocrash ghost n) \/ ([r = Crashed] /\ crashed ghost)
     end%pred.
 
   (* Verification conditions *)
@@ -255,12 +258,12 @@ Section prog'.
       | Seq' p1 p2 => vc pre p1
         /\ forall v, vc (spost pre p1 (Halted v)) (p2 v)
       | If' P Q b p1 p2 => vc (pre /\ [P]) p1 /\ vc (pre /\ [Q]) p2
-      | Countdown' nocrash crashed f n =>
-        (nocrash ghost 0 --> crashed ghost)
-        /\ (pre --> nocrash ghost n)
-        /\ (forall m, m < n -> vc (nocrash ghost (S m)) (f m))
-        /\ (forall m r, m < n -> (spost (nocrash ghost (S m)) (f m) r -->
-          ([r = Halted 0] /\ nocrash ghost m) \/ ([r = Crashed] /\ crashed ghost)))
+      | For' nocrash crashed f n =>
+        (forall m, nocrash ghost m --> crashed ghost)
+        /\ (pre --> nocrash ghost 0)
+        /\ (forall m, m < n -> vc (nocrash ghost m) (f m))
+        /\ (forall m r, m < n -> (spost (nocrash ghost m) (f m) r -->
+          ([r = Halted 0] /\ nocrash ghost (S m)) \/ ([r = Crashed] /\ crashed ghost)))
     end.
 
   Lemma spost_sound' : forall p pre,
@@ -287,11 +290,15 @@ Section prog'.
     eapply Conseq; eauto; pred.
 
     eapply Conseq.
-    apply (@CCountdown _ (nocrash ghost) (crashed ghost)); auto.
+    apply (@CFor _ (nocrash ghost) (crashed ghost)); auto.
     intros.
     eapply Conseq; [ | apply pimpl_refl | ]; eauto.
+    apply H; apply H2; omega.
+    intros.
+    apply H4; omega.
     auto.
-    auto.
+    simpl.
+    replace (n + 0) with n; auto.
   Qed.
 
   Theorem spost_sound : forall p pre post,
@@ -317,8 +324,8 @@ Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
 Delimit Scope prog'_scope with prog'.
 Bind Scope prog'_scope with prog'.
 
-Notation "'Loop' i < n 'Ghost' g 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Pool'" :=
-  (Countdown' (fun g i => nocrash%pred) (fun g => crashed%pred) (fun i => body) n)
+Notation "'For' i < n 'Ghost' g 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Pool'" :=
+  (For' (fun g i => nocrash%pred) (fun g => crashed%pred) (fun i => body) n)
   (at level 9, i at level 0, n at level 0, body at level 9) : prog'_scope.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If' b p1 p2) (at level 9, b at level 0)
@@ -411,125 +418,173 @@ Ltac hoare := intros; match goal with
                       end; simpl; pred; repeat hoare';
   intuition eauto.
 
+Inductive logstate :=
+| NoTransaction (cur : mem)
+(* Don't touch the disk directly in this state. *)
+| InTransaction (old_cur : mem * mem)
+(* A transaction is in progress.
+ * It started from the first memory and has evolved into the second. *)
+| Failed (cur : mem)
+(* Crashed!  Recovery procedure should bring us to this memory. *).
+
 Module Type LOG.
   (* Methods *)
   Parameter init : xparams -> prog.
-  Parameter flush : xparams -> prog.
+  Parameter begin : xparams -> prog.
+  Parameter commit : xparams -> prog.
+  Parameter rollback : xparams -> prog.
+  Parameter recover : xparams -> prog.
   Parameter read : xparams -> addr -> prog.
   Parameter write : xparams -> addr -> valu -> prog.
 
   (* Representation invariant *)
-  Parameter rep : xparams
-    -> mem (* Memory as modified by current transaction,
-            * only consulted for addresses in data range *)
-    -> pred.
+  Parameter rep : xparams -> logstate -> pred.
 
   (* Specs *)
   Axiom init_ok : forall xp m, {{diskIs m}} (init xp)
-    {{r, ([r = Crashed] /\ diskIs m) \/ rep xp m}}.
+    {{r, rep xp (NoTransaction m)
+      \/ ([r = Crashed] /\ diskIs m)}}.
 
-  Axiom read_ok : forall xp m a,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp] /\ rep xp m}}
+  Axiom begin_ok : forall xp m, {{rep xp (NoTransaction m)}} (begin xp)
+    {{r, rep xp (InTransaction (m, m))
+      \/ ([r = Crashed] /\ rep xp (NoTransaction m))}}.
+
+  Axiom commit_ok : forall xp ms, {{rep xp (InTransaction ms)}}
+    (commit xp)
+    {{r, rep xp (NoTransaction (snd ms))
+      \/ ([r = Crashed] /\ rep xp (Failed (snd ms)))}}.
+
+  Axiom rollback_ok : forall xp ms, {{rep xp (InTransaction ms)}}
+    (rollback xp)
+    {{r, rep xp (NoTransaction (fst ms))
+      \/ ([r = Crashed] /\ rep xp (InTransaction ms))}}.
+
+  Axiom recover_ok : forall xp m, {{rep xp (Failed m)}}
+    (recover xp)
+    {{r, rep xp (NoTransaction m)
+      \/ ([r = Crashed] /\ rep xp (Failed m))}}.
+
+  Axiom read_ok : forall xp ms a,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp]
+      /\ rep xp (InTransaction ms)}}
     (read xp a)
-    {{r, rep xp m /\ [r = Crashed \/ r = Halted (m a)]}}.
+    {{r, rep xp (InTransaction ms)
+      /\ [r = Crashed \/ r = Halted (snd ms a)]}}.
 
-  Axiom write_ok : forall xp m a v,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp] /\ rep xp m}}
+  Axiom write_ok : forall xp ms a v,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp]
+      /\ rep xp (InTransaction ms)}}
     (write xp a v)
-    {{r, ([r = Crashed] /\ rep xp m) \/ rep xp (upd m a v)}}.
+    {{r, rep xp (InTransaction (fst ms, upd (snd ms) a v))
+      \/ ([r = Crashed] /\ rep xp (InTransaction ms))}}.
 End LOG.
 
 Module Log : LOG.
-  Definition rep' xp (m : mem) (ls : list (addr * valu)) := (
-    (* The right log length is stored. *)
-    (LogLength xp) |-> (length ls)
+  (* Actually replay a log to implement redo in a memory. *)
+  Fixpoint replay (a : addr) (len : nat) (m : mem) : mem :=
+    match len with
+      | O => m
+      | S len' => replay (a+2) len' (upd m (m a) (m (a+1)))
+    end.
 
-    (* The log is not too long. *)
-    /\ [length ls <= LogLen xp]
+  (* Check that a log is well-formed in memory. *)
+  Fixpoint validLog xp (a : addr) (len : nat) (m : mem) : Prop :=
+    match len with
+      | O => True
+      | S len' => DataStart xp <= m a < DataStart xp + DataLen xp
+        /\ validLog xp (a+2) len' m
+    end.
 
-    (* Log entries are only for addresses within the data region. *)
-    /\ [forall i a_v, nth_error (ls : list (addr * valu)) i = Some a_v
-      -> DataStart xp <= fst a_v < DataStart xp + DataLen xp]
+  Definition rep xp (st : logstate) :=
+    match st with
+      | NoTransaction m =>
+        (* Log is empty. *)
+        (LogLength xp) |-> 0
+        (* Every data address has its value from [m]. *)
+        /\ foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
+        --> a |-> m a
 
-    (* This log is stored in the real memory. *)
-    /\ (foral i a_v, [nth_error ls i = Some a_v]
-      --> (LogStart xp + i*2) |-> (fst a_v))
-    /\ (foral i a_v, [nth_error ls i = Some a_v]
-      --> (LogStart xp + i*2 + 1) |-> (snd a_v))
+      | InTransaction (old, cur) =>
+        (* Every data address has its value from [old]. *)
+        (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
+          --> a |-> old a)
+        (* Look up log length. *)
+        /\ exists len, (LogLength xp) |-> len
+          /\ [len <= LogLen xp]
+          /\ exists m, diskIs m
+            (* All log entries reference data addresses. *)
+            /\ [validLog xp (LogStart xp) len m]
+            (* We may compute the current memory by replaying the log. *)
+            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+              -> cur a = replay (LogStart xp) len m a]
 
-    (* The final log entry for each address is in the abstract memory. *)
-    /\ [forall i a_v, nth_error ls i = Some a_v
-      -> (forall j a_v', j > i -> nth_error ls j = Some a_v'
-        -> fst a_v' <> fst a_v)
-      -> m (fst a_v) = snd a_v]
-
-    (* Unupdated addresses are unchanged. *)
-    /\ (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
-      --> [forall i a_v, nth_error ls i = Some a_v
-        -> fst a_v <> a]
-      --> a |-> m a)
-  )%pred.
-
-  Definition rep xp (m : mem) := (
-    (* Quantify over log. *)
-    exists ls, rep' xp m ls
-  )%pred.
-
+      | Failed cur =>
+        exists len, (LogLength xp) |-> len
+          /\ [len <= LogLen xp]
+          /\ exists m, diskIs m
+            /\ [validLog xp (LogStart xp) len m]
+            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+              -> cur a = replay (LogStart xp) len m a]
+    end%pred.
 
   Definition init xp := $(unit:
     (LogLength xp) <-- 0
   ).
 
-  Definition flush xp := $(unit:
+  Definition begin := init.
+
+  Definition commit xp := $((mem*mem):
     len <- !(LogLength xp);
-    Loop i < len
-      Ghost _
-      Invariant [True]
-      OnCrash [True] Begin
+    For i < len
+      Ghost old_cur
+      Invariant (
+        (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
+          --> a |-> replay (LogStart xp) i (fst old_cur) a)
+        /\ (LogLength xp) |-> len
+          /\ [len <= LogLen xp]
+          /\ exists m, diskIs m
+            /\ [validLog xp (LogStart xp) len m]
+            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+              -> snd old_cur a = replay (LogStart xp) len m a])
+      OnCrash rep xp (NoTransaction (snd old_cur))
+      \/ rep xp (Failed (snd old_cur)) Begin
       a <- !(LogStart xp + i*2);
       v <- !(LogStart xp + i*2 + 1);
       a <-- v
-    Pool).
+    Pool;;
 
-  Definition read xp a := $(mem:
+    (LogLength xp) <-- 0).
+
+  Definition rollback := init.
+  Definition recover := commit.
+
+  Definition read xp a := $((mem*mem):
     len <- !(LogLength xp);
-    (Temp xp) <-- len;;
+    v <- !a;
+    (Temp xp) <-- v;;
 
-    Loop i < len
-      Ghost m
-      Invariant (exists ls, rep' xp m ls
-        /\ [DataStart xp <= a < DataStart xp + DataLen xp]
+    For i < len
+      Ghost old_cur
+      Invariant (
+        (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
+          --> a |-> fst old_cur a)
         /\ (LogLength xp) |-> len
-        /\ (((Temp xp) |-> len
-          /\ [forall j a_v, j >= i
-            -> nth_error ls j = Some a_v
-            -> fst a_v <> a])
-        \/ (exists k a_v, (Temp xp) |-> k
-          /\ [nth_error ls k = Some a_v
-            /\ fst a_v = a
-            /\ forall j a_v', j > k
-              -> nth_error ls j = Some a_v'
-              -> fst a_v' <> a])))
-      OnCrash rep xp m Begin
+          /\ [len <= LogLen xp]
+          /\ exists m, diskIs m
+            /\ [validLog xp (LogStart xp) len m]
+            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+              -> snd old_cur a = replay (LogStart xp) len m a]
+            /\ [m (Temp xp) = replay (LogStart xp) i m a])
+      OnCrash rep xp (InTransaction old_cur) Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
-        tmp <- !(Temp xp);
-        If (eq_nat_dec tmp len) {
-          (Temp xp) <-- i
-        } else {
-          Halt
-        }
+        (Temp xp) <-- i
       } else {
         Halt
       }
      Pool;;
 
-     tmp <- !(Temp xp);
-     If (eq_nat_dec tmp len) {
-       !a
-     } else {
-       !(LogStart xp + tmp*2 + 1)
-     }
+     (!(Temp xp))
   ).
 
   Definition write xp a v := $(unit:
@@ -543,197 +598,65 @@ Module Log : LOG.
     }
   ).
 
-  Lemma rep_nil : forall xp m,
-    rep xp m (upd m (LogLength xp) 0).
-  Proof.
-    exists nil; unfold rep'; pred;
-      try match goal with
-            | [ _ : nth_error nil ?X = Some _ |- _ ] =>
-              destruct X; discriminate
-          end.
-  Qed.
-
-  Hint Resolve rep_nil.
-
-  Theorem init_ok : forall xp m, {{diskIs m}} (init xp) {{r, ([r = Crashed] /\ diskIs m) \/ rep xp m}}.
+  Theorem init_ok : forall xp m, {{diskIs m}} (init xp)
+    {{r, rep xp (NoTransaction m)
+      \/ ([r = Crashed] /\ diskIs m)}}.
   Proof.
     hoare.
   Qed.
+    
+  Hint Extern 1 (_ <= _) => omega.
 
-  Lemma nth_error_bound : forall A v n (ls : list A),
-    nth_error ls n = Some v
-    -> n < length ls.
-  Proof.
-    induction n; destruct ls; simpl; intuition; discriminate.
-  Qed.
+  Ltac t'' := intuition eauto; pred;
+    try solve [ symmetry; eauto ].
 
-  Ltac nth_error_bound :=
+  Ltac t' := t'';
+    repeat (match goal with
+              | [ |- ex _ ] => eexists
+            end; t'').
+
+  Ltac t := t';
     match goal with
-      | [ H : nth_error _ _ = Some _ |- _ ] =>
-        specialize (nth_error_bound _ _ H); pred
+      | [ |- _ \/ _ ] => (left; solve [t]) || (right; solve [t])
+      | _ => idtac
     end.
 
-  Lemma rep_write1 : forall xp m m' a,
-    m' (LogLength xp) < LogLen xp
-    -> rep xp m m'
-    -> rep xp m (upd m' (LogStart xp + m' (LogLength xp) * 2) a).
+  Theorem begin_ok : forall xp m, {{rep xp (NoTransaction m)}} (begin xp)
+    {{r, rep xp (InTransaction (m, m))
+      \/ ([r = Crashed] /\ rep xp (NoTransaction m))}}.
   Proof.
-    destruct 2 as [ls]; exists ls; unfold rep, rep' in *; pred;
-      nth_error_bound.
+    hoare; t.
   Qed.
 
-  Hint Resolve rep_write1.
-
-  Lemma rep_write2 : forall xp m m' a v,
-    m' (LogLength xp) < LogLen xp
-    -> rep xp m m'
-    -> rep xp m (upd (upd m' (LogStart xp + m' (LogLength xp) * 2) a)
-      (LogStart xp + m' (LogLength xp) * 2 + 1) v).
-  Proof.
-    destruct 2 as [ls]; exists ls; unfold rep, rep' in *; pred;
-      nth_error_bound.
-  Qed.
-
-  Hint Resolve rep_write2.
-
-  Hint Rewrite app_length.
-
-  Lemma nth_error_end : forall A v v' n (ls : list A),
-    nth_error (ls ++ v :: nil) n = Some v'
-    -> (n < length ls /\ nth_error ls n = Some v')
-    \/ (n = length ls /\ v = v').
-  Proof.
-    induction n; destruct ls; simpl; unfold value, error in *; intuition.
-    intuition (try congruence).
-    destruct n; discriminate.
-    apply IHn in H; intuition.
-  Qed.
-
-  Lemma nth_error_end_preserve : forall A x v (ls : list A) n,
-    nth_error ls n = Some v
-    -> nth_error (ls ++ x :: nil) n = Some v.
-  Proof.
-    induction ls; destruct n; simpl; intuition; discriminate.
-  Qed.
-
-  Lemma nth_error_end_skip : forall A x (ls : list A),
-    nth_error (ls ++ x :: nil) (length ls) = Some x.
-  Proof.
-    induction ls; simpl; intuition.
-  Qed.
-
-  Hint Resolve nth_error_end_preserve nth_error_end_skip.
-
-  Lemma rep_write3 : forall xp m m' a v,
-    m' (LogLength xp) < LogLen xp
-    -> rep xp m m'
-    -> DataStart xp <= a < DataStart xp + DataLen xp
-    -> rep xp (upd m a v) (upd
-      (upd (upd m' (LogStart xp + m' (LogLength xp) * 2) a)
-        (LogStart xp + m' (LogLength xp) * 2 + 1) v)
-      (LogLength xp) (S (m' (LogLength xp)))).
-  Proof.
-    destruct 2 as [ls]; exists (ls ++ (a, v) :: nil); unfold rep, rep' in *; pred;
-      try match goal with
-            | [ H : nth_error (_ ++ _ :: nil) _ = _ |- _ ] =>
-              apply nth_error_end in H; intuition (subst; simpl);
-                autorewrite with core; eauto
-          end;
-      match goal with
-        | _ => rewrite upd_ne; eauto
-        | [ H' : context[_ <= _ < _], H : nth_error _ _ = _ |- _ ] =>
-          apply H' in H; tauto
-      end.
-  Qed.
-
-  Hint Resolve rep_write3.
-
-  Theorem write_ok : forall xp m a v,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp] /\ rep xp m}}
-    (write xp a v)
-    {{r, ([r = Crashed] /\ rep xp m) \/ rep xp (upd m a v)}}.
+  Theorem rollback_ok : forall xp ms, {{rep xp (InTransaction ms)}}
+    (rollback xp)
+    {{r, rep xp (NoTransaction (fst ms))
+      \/ ([r = Crashed] /\ rep xp (InTransaction ms))}}.
   Proof.
     hoare.
   Qed.
 
-  Lemma unfold_rep : forall xp m m' ls,
-    rep' xp m ls m'
-    -> rep xp m m'.
-  Proof.
-    intros; hnf; eauto.
-  Qed.
+  Axiom commit_ok : forall xp ms, {{rep xp (InTransaction ms)}}
+    (commit xp)
+    {{r, rep xp (NoTransaction (snd ms))
+      \/ ([r = Crashed] /\ rep xp (Failed (snd ms)))}}.
 
-  Hint Resolve unfold_rep.
+  Axiom recover_ok : forall xp m, {{rep xp (Failed m)}}
+    (recover xp)
+    {{r, rep xp (NoTransaction m)
+      \/ ([r = Crashed] /\ rep xp (Failed m))}}.
 
-  Lemma rep'_Temp : forall xp m ls m' v,
-    rep' xp m ls m'
-    -> rep' xp m ls (upd m' (Temp xp) v).
-  Proof.
-    unfold rep'; pred; nth_error_bound.
-  Qed.
-
-  Hint Resolve rep'_Temp.
-
-  Lemma nth_error_out_of_bound : forall xp m ls m' v j,
-    rep' xp m ls m'
-    -> j >= m' (LogLength xp)
-    -> nth_error ls j = Some v
-    -> False.
-  Proof.
-    unfold rep'; pred; nth_error_bound.
-  Qed.
-
-  Hint Immediate nth_error_out_of_bound.
-
-  Lemma nth_error_exists : forall A (ls : list A) n,
-    n < length ls
-    -> exists v, nth_error ls n = Some v.
-  Proof.
-    induction ls; destruct n; simpl; intuition (omega || eauto).
-    edestruct IHls; eauto; omega.
-  Qed.
-
-  Theorem read_ok : forall xp m a,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp] /\ rep xp m}}
+  Axiom read_ok : forall xp ms a,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp]
+      /\ rep xp (InTransaction ms)}}
     (read xp a)
-    {{r, rep xp m /\ [r = Crashed \/ r = Halted (m a)]}}.
-  Proof.
-    hoare.
+    {{r, rep xp (InTransaction ms)
+      /\ [r = Crashed \/ r = Halted (snd ms a)]}}.
 
-    destruct H4; eauto 9.
-    
-    left; intuition.
-    exists x; intuition.
-    right.
-    assert (Hlen : x1 (LogLength xp) = length x)
-      by (unfold rep' in *; pred).
-    rewrite Hlen in H.
-    apply nth_error_exists in H; destruct H.
-    do 2 eexists; intuition eauto.
-    unfold rep' in *; pred.
-    symmetry; eauto.
-
-    unfold rep' in *; nth_error_bound.
-
-    eauto 14.
-
-    left; intuition.
-    eexists; intuition eauto.
-    left; intuition subst.
-    destruct (eq_nat_dec j m0); subst.
-    unfold rep' in *; pred.
-    eapply H8 in H2; eauto; omega.
-
-    eauto 14.
-
-    unfold rep' in *; pred.
-    rewrite H11; intuition.
-    eapply H7; [ | eauto | ]; eauto; omega.
-
-    unfold rep' in *; nth_error_bound.
-
-    unfold rep' in *; pred.
-    erewrite H7 by eauto.
-    erewrite H8; eauto.
-  Qed.
+  Axiom write_ok : forall xp ms a v,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp]
+      /\ rep xp (InTransaction ms)}}
+    (write xp a v)
+    {{r, rep xp (InTransaction (fst ms, upd (snd ms) a v))
+      \/ ([r = Crashed] /\ rep xp (InTransaction ms))}}.
 End Log.
