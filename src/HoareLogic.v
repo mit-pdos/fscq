@@ -419,7 +419,9 @@ Module Type LOG.
   (* Specs *)
   Axiom begin_ok : forall xp m, {{diskIs m}} (begin xp)
     {{r, ([r = Crashed] /\ diskIs m) \/ rep xp m}}.
-  Axiom write_ok : forall xp m a v, {{rep xp m}} (write xp a v)
+  Axiom write_ok : forall xp m a v,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp] /\ rep xp m}}
+    (write xp a v)
     {{r, ([r = Crashed] /\ rep xp m) \/ rep xp (upd m a v)}}.
 End LOG.
 
@@ -486,8 +488,12 @@ Module Log : LOG.
       (* The log is not too long. *)
       /\ [length ls <= LogLen xp]
 
+      (* Log entries are only for addresses within the data region. *)
+      /\ [forall i a_v, nth_error (ls : list (addr * valu)) i = Some a_v
+        -> DataStart xp <= fst a_v < DataStart xp + DataLen xp]
+
       (* This log is stored in the real memory. *)
-      /\ (foral i a_v, [nth_error (ls : list (addr * valu)) i = Some a_v]
+      /\ (foral i a_v, [nth_error ls i = Some a_v]
         --> (LogStart xp + i*2) |-> (fst a_v))
       /\ (foral i a_v, [nth_error ls i = Some a_v]
         --> (LogStart xp + i*2 + 1) |-> (snd a_v))
@@ -590,6 +596,7 @@ Module Log : LOG.
   Lemma rep_write3 : forall xp m m' a v,
     m' (LogLength xp) < LogLen xp
     -> rep xp m m'
+    -> DataStart xp <= a < DataStart xp + DataLen xp
     -> rep xp (upd m a v) (upd
       (upd (upd m' (LogStart xp + m' (LogLength xp) * 2) a)
         (LogStart xp + m' (LogLength xp) * 2 + 1) v)
@@ -600,12 +607,19 @@ Module Log : LOG.
             | [ H : nth_error (_ ++ _ :: nil) _ = _ |- _ ] =>
               apply nth_error_end in H; intuition (subst; simpl);
                 autorewrite with core; eauto
-          end; rewrite upd_ne; eauto.
+          end;
+      match goal with
+        | _ => rewrite upd_ne; eauto
+        | [ H' : context[_ <= _ < _], H : nth_error _ _ = _ |- _ ] =>
+          apply H' in H; tauto
+      end.
   Qed.
 
   Hint Resolve rep_write3.
 
-  Theorem write_ok : forall xp m a v, {{rep xp m}} (write xp a v)
+  Theorem write_ok : forall xp m a v,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp] /\ rep xp m}}
+    (write xp a v)
     {{r, ([r = Crashed] /\ rep xp m) \/ rep xp (upd m a v)}}.
   Proof.
     hoare.
