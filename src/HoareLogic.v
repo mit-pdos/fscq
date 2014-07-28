@@ -121,10 +121,11 @@ Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
              end.
 
-Ltac pred_unfold := unfold ptsto, impl, and, or, foral_, exis, lift, pimpl, pupd, diskIs in *.
+Ltac pred_unfold := unfold ptsto, impl, and, or, foral_, exis, lift, pimpl, pupd, diskIs, addr, valu in *.
 Ltac pred := pred_unfold;
-  repeat (repeat deex;
-    intuition (try congruence; try autorewrite with core in *; eauto)).
+  repeat (repeat deex; simpl in *;
+    intuition (try (congruence || omega);
+      try autorewrite with core in *; eauto)).
 
 Lemma could_always_crash : forall pre p post, corr pre p post
   -> forall m, pre m -> post Crashed m.
@@ -199,6 +200,129 @@ Proof.
 Qed.
 
 
+(** * Better automation for Hoare triples *)
+
+Inductive prog' :=
+| Halt'
+| Crash'
+| Read' (a : addr)
+| Write' (a : addr) (v : valu)
+| Seq' (p1 : prog') (p2 : valu -> prog')
+| If' P Q (b : {P} + {Q}) (p1 p2 : prog')
+| Countdown' (nocrash : nat -> pred) (crashed : pred)
+  (f : nat -> prog') (n : nat).
+
+Fixpoint prog'Out (p : prog') : prog :=
+  match p with
+    | Halt' => Halt
+    | Crash' => Crash
+    | Read' a => Read a
+    | Write' a v => Write a v
+    | Seq' p1 p2 => Seq (prog'Out p1) (fun x => prog'Out (p2 x))
+    | If' _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
+    | Countdown' nocrash crashed f n => Countdown nocrash crashed (fun x => prog'Out (f x)) n
+  end.
+
+(* Strongest postcondition *)
+Fixpoint spost (pre : pred) (p : prog') : result -> pred :=
+  match p with
+    | Halt' => fun r => [r = Crashed \/ r = Halted 0] /\ pre
+    | Crash' => fun r => [r = Crashed] /\ pre
+    | Read' a => fun r => exists v, a |-> v /\ [r = Crashed \/ r = Halted v] /\ pre
+    | Write' a v => fun r => ([r = Crashed] /\ pre) \/ ([r = Halted 0] /\ pre[a <--- v])
+    | Seq' p1 p2 => fun r => ([r = Crashed] /\ spost pre p1 Crashed)
+      \/ exists v, spost (spost pre p1 (Halted v)) (p2 v) r
+    | If' P Q b p1 p2 => fun r => spost (pre /\ [P]) p1 r
+      \/ spost (pre /\ [Q]) p2 r
+    | Countdown' nocrash crashed f n => fun r =>
+      ([r = Halted 0] /\ nocrash 0) \/ ([r = Crashed] /\ crashed)
+  end%pred.
+
+(* Verification conditions *)
+Fixpoint vc (pre : pred) (p : prog') : Prop :=
+  match p with
+    | Halt' => True
+    | Crash' => True
+    | Read' _ => True
+    | Write' _ _ => True
+    | Seq' p1 p2 => vc pre p1
+      /\ forall v, vc (spost pre p1 (Halted v)) (p2 v)
+    | If' P Q b p1 p2 => vc (pre /\ [P]) p1 /\ vc (pre /\ [Q]) p2
+    | Countdown' nocrash crashed f n =>
+      (nocrash 0 --> crashed)
+      /\ (pre --> nocrash n)
+      /\ (forall n, vc (nocrash (S n)) (f n))
+      /\ (forall n r, spost (nocrash (S n)) (f n) r -->
+        ([r = Halted 0] /\ nocrash n) \/ ([r = Crashed] /\ crashed))
+  end.
+
+Lemma spost_sound' : forall p pre,
+  vc pre p
+  -> corr pre (prog'Out p) (spost pre p).
+Proof.
+  induction p; simpl; intuition.
+
+  eapply Conseq; [ | apply pimpl_refl | ].
+  econstructor.
+  eauto.
+  intros.
+  specialize (H2 v).
+  apply H in H2.
+  instantiate (1 := (fun r => exists v, spost (spost pre p (Halted v)) (p2 v) r)%pred).
+  eapply Conseq; [ | apply pimpl_refl | ]; eauto.
+  pred.
+  auto.
+
+  eapply IHp1 in H0.
+  eapply Conseq; eauto; pred.
+
+  eapply IHp2 in H1.
+  eapply Conseq; eauto; pred.
+
+  eapply Conseq.
+  apply CCountdown; auto.
+  intros.
+  eapply Conseq; [ | apply pimpl_refl | ]; eauto.
+  auto.
+  auto.
+Qed.
+
+Theorem spost_sound : forall p pre post,
+  vc pre p
+  -> (forall r, spost pre p r --> post r)
+  -> corr pre (prog'Out p) post.
+Proof.
+  intros; eapply Conseq; eauto using spost_sound'.
+Qed.
+
+
+(** ** Some notations *)
+
+Definition prog'In (p : prog) : prog' :=
+  match p with
+    | Halt => Halt'
+    | Crash => Crash'
+    | Read a => Read' a
+    | Write a v => Write' a v
+    | _ => Halt'
+  end.
+
+Coercion prog'In : prog >-> prog'.
+
+Notation "p1 ;; p2" := (Seq' p1 (fun _ => p2)) : prog'_scope.
+Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
+Delimit Scope prog'_scope with prog'.
+Bind Scope prog'_scope with prog'.
+
+Notation "'Loop' i < n 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Pool'" :=
+  (Countdown' (fun i => nocrash)%pred crashed (fun i => body) n) : prog'_scope.
+
+Notation "'If' b { p1 } 'else' { p2 }" := (If' b p1 p2) (at level 9, b at level 0)
+  : prog'_scope.
+
+Notation "$( p )" := (prog'Out p%prog').
+
+
 (** * A log-based transactions implementation *)
 
 Definition disjoint (r1 : addr * nat) (r2 : addr * nat) :=
@@ -224,7 +348,7 @@ Record xparams := {
 
    Disjoint : disjoints ((DataStart, DataLen)
      :: (LogLength, 1)
-     :: (LogStart, LogLen)
+     :: (LogStart, LogLen*2)
      :: (Temp, 1)
      :: nil)
 }.
@@ -262,6 +386,7 @@ Ltac disjoint xp :=
   disjoint' xp;
   match goal with
     | [ _ : _ <= ?n |- _ ] => disjoint'' n
+    | [ _ : _ = ?n |- _ ] => disjoint'' n
   end.
 
 Hint Rewrite upd_eq upd_ne using (congruence
@@ -269,11 +394,14 @@ Hint Rewrite upd_eq upd_ne using (congruence
        | [ xp : xparams |- _ ] => disjoint xp
      end).
 
-Ltac corr :=
-  ((apply CHalt || apply CCrash || apply CRead || apply CWrite
-    || eapply CSeq)
-  || (eapply Conseq; [ | apply pimpl_refl | ])); intros.
+Ltac hoare' :=
+  match goal with
+    | [ H : Crashed = Crashed |- _ ] => clear H
+    | [ H : Halted _ = Halted _ |- _ ] => injection H; clear H; intros; subst
+  end.
 
+Ltac hoare := intros; apply spost_sound; simpl; pred; repeat hoare';
+  intuition eauto.
 
 Module Type LOG.
   (* Methods *)
@@ -291,54 +419,63 @@ Module Type LOG.
   (* Specs *)
   Axiom begin_ok : forall xp m, {{diskIs m}} (begin xp)
     {{r, ([r = Crashed] /\ diskIs m) \/ rep xp m}}.
+  Axiom write_ok : forall xp m a v, {{rep xp m}} (write xp a v)
+    {{r, ([r = Crashed] /\ rep xp m) \/ rep xp (upd m a v)}}.
 End LOG.
 
 Module Log : LOG.
-  Definition begin xp :=
-    (LogLength xp) <-- 0.
+  Definition begin xp := $(
+    (LogLength xp) <-- 0
+  ).
 
-  Definition commit xp :=
+  Definition commit xp := $(
     len <- !(LogLength xp);
     Loop i < len
       Invariant [True]
       OnCrash [True] Begin
-      a <- !(LogStart xp + 2*i);
-      v <- !(LogStart xp + 2*i + 1);
+      a <- !(LogStart xp + i*2);
+      v <- !(LogStart xp + i*2 + 1);
       a <-- v
-    Pool.
+    Pool).
 
-  Definition read xp a :=
+  Definition read xp a := $(
     len <- !(LogLength xp);
     (Temp xp) <-- len;;
 
     Loop i < len
       Invariant [True]
       OnCrash [True] Begin
-      a' <- !(LogStart xp + 2*i);
-      if eq_nat_dec a' a then
+      a' <- !(LogStart xp + i*2);
+      If (eq_nat_dec a' a) {
         tmp <- !(Temp xp);
-        if eq_nat_dec tmp len then
+        If (eq_nat_dec tmp len) {
           (Temp xp) <-- a
-        else
+        } else {
           Halt
-      else
+        }
+      } else {
         Halt
+      }
      Pool;;
 
      tmp <- !(Temp xp);
-     if eq_nat_dec tmp len then
+     If (eq_nat_dec tmp len) {
        !a
-     else
-       !(LogStart xp + 2*tmp + 1).
+     } else {
+       !(LogStart xp + tmp*2 + 1)
+     }
+  ).
 
-  Definition write xp a v :=
+  Definition write xp a v := $(
     len <- !(LogLength xp);
-    if le_lt_dec (LogLen xp) len then
+    If (le_lt_dec (LogLen xp) len) {
       Crash
-    else
-      (LogStart xp + 2*len) <-- a;;
-      (LogStart xp + 2*len + 1) <-- v;;
-      (LogLength xp) <-- (S len).
+    } else {
+      (LogStart xp + len*2) <-- a;;
+      (LogStart xp + len*2 + 1) <-- v;;
+      (LogLength xp) <-- (S len)
+    }
+  ).
 
   Definition rep xp (m : mem) := (
     (* Quantify over log. *)
@@ -346,15 +483,18 @@ Module Log : LOG.
       (* The right log length is stored. *)
       (LogLength xp) |-> (length ls)
 
+      (* The log is not too long. *)
+      /\ [length ls <= LogLen xp]
+
       (* This log is stored in the real memory. *)
       /\ (foral i a_v, [nth_error (ls : list (addr * valu)) i = Some a_v]
-        --> (LogStart xp + 2*i) |-> (fst a_v))
+        --> (LogStart xp + i*2) |-> (fst a_v))
       /\ (foral i a_v, [nth_error ls i = Some a_v]
-        --> (LogStart xp + 2*i + 1) |-> (snd a_v))
+        --> (LogStart xp + i*2 + 1) |-> (snd a_v))
 
       (* The final log entry for each address is in the abstract memory. *)
       /\ [forall i a_v, nth_error ls i = Some a_v
-        -> (forall j a_v', j > i -> nth_error ls i = Some a_v'
+        -> (forall j a_v', j > i -> nth_error ls j = Some a_v'
           -> fst a_v' <> fst a_v)
         -> m (fst a_v) = snd a_v]
 
@@ -380,6 +520,94 @@ Module Log : LOG.
 
   Theorem begin_ok : forall xp m, {{diskIs m}} (begin xp) {{r, ([r = Crashed] /\ diskIs m) \/ rep xp m}}.
   Proof.
-    repeat (corr || pred).
+    hoare.
+  Qed.
+
+  Lemma nth_error_bound : forall A v n (ls : list A),
+    nth_error ls n = Some v
+    -> n < length ls.
+  Proof.
+    induction n; destruct ls; simpl; intuition; discriminate.
+  Qed.
+
+  Lemma rep_write1 : forall xp m m' a,
+    m' (LogLength xp) < LogLen xp
+    -> rep xp m m'
+    -> rep xp m (upd m' (LogStart xp + m' (LogLength xp) * 2) a).
+  Proof.
+    destruct 2 as [ls]; exists ls; pred;
+      match goal with
+        | [ H : nth_error _ _ = Some _ |- _ ] =>
+          specialize (nth_error_bound _ _ H); pred
+      end.
+  Qed.
+
+  Hint Resolve rep_write1.
+
+  Lemma rep_write2 : forall xp m m' a v,
+    m' (LogLength xp) < LogLen xp
+    -> rep xp m m'
+    -> rep xp m (upd (upd m' (LogStart xp + m' (LogLength xp) * 2) a)
+      (LogStart xp + m' (LogLength xp) * 2 + 1) v).
+  Proof.
+    destruct 2 as [ls]; exists ls; pred;
+      match goal with
+        | [ H : nth_error _ _ = Some _ |- _ ] =>
+          specialize (nth_error_bound _ _ H); pred
+      end.
+  Qed.
+
+  Hint Resolve rep_write2.
+
+  Hint Rewrite app_length.
+
+  Lemma nth_error_end : forall A v v' n (ls : list A),
+    nth_error (ls ++ v :: nil) n = Some v'
+    -> (n < length ls /\ nth_error ls n = Some v')
+    \/ (n = length ls /\ v = v').
+  Proof.
+    induction n; destruct ls; simpl; unfold value, error in *; intuition.
+    intuition (try congruence).
+    destruct n; discriminate.
+    apply IHn in H; intuition.
+  Qed.
+
+  Lemma nth_error_end_preserve : forall A x v (ls : list A) n,
+    nth_error ls n = Some v
+    -> nth_error (ls ++ x :: nil) n = Some v.
+  Proof.
+    induction ls; destruct n; simpl; intuition; discriminate.
+  Qed.
+
+  Lemma nth_error_end_skip : forall A x (ls : list A),
+    nth_error (ls ++ x :: nil) (length ls) = Some x.
+  Proof.
+    induction ls; simpl; intuition.
+  Qed.
+
+  Hint Resolve nth_error_end_preserve nth_error_end_skip.
+
+  Lemma rep_write3 : forall xp m m' a v,
+    m' (LogLength xp) < LogLen xp
+    -> rep xp m m'
+    -> rep xp (upd m a v) (upd
+      (upd (upd m' (LogStart xp + m' (LogLength xp) * 2) a)
+        (LogStart xp + m' (LogLength xp) * 2 + 1) v)
+      (LogLength xp) (S (m' (LogLength xp)))).
+  Proof.
+    destruct 2 as [ls]; exists (ls ++ (a, v) :: nil); pred;
+      try match goal with
+            | [ H : nth_error (_ ++ _ :: nil) _ = _ |- _ ] =>
+              apply nth_error_end in H; intuition (subst; simpl);
+                autorewrite with core; eauto
+          end; rewrite upd_ne; eauto.
+  Qed.
+
+  Hint Resolve rep_write3.
+
+  Theorem write_ok : forall xp m a v, {{rep xp m}} (write xp a v)
+    {{r, ([r = Crashed] /\ rep xp m) \/ rep xp (upd m a v)}}.
+  Proof.
+    hoare.
   Qed.
 End Log.
