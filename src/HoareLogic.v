@@ -555,7 +555,27 @@ Module Log : LOG.
     (LogLength xp) <-- 0).
 
   Definition rollback := init.
-  Definition recover := commit.
+
+  Definition recover xp := $(mem:
+    len <- !(LogLength xp);
+    For i < len
+      Ghost cur
+      Invariant (exists m, diskIs m
+        /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+          -> cur a = replay (LogStart xp) len m a]
+        /\ (LogLength xp) |-> len
+        /\ [len <= LogLen xp]
+        /\ [validLog xp (LogStart xp) len m]
+        /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+          -> m a = replay (LogStart xp) i m a])
+      OnCrash rep xp (NoTransaction cur)
+      \/ rep xp (Failed cur) Begin
+      a <- !(LogStart xp + i*2);
+      v <- !(LogStart xp + i*2 + 1);
+      a <-- v
+    Pool;;
+
+    (LogLength xp) <-- 0).
 
   Definition read xp a := $((mem*mem):
     len <- !(LogLength xp);
@@ -828,9 +848,44 @@ Module Log : LOG.
     firstorder.
   Qed.
 
-  Axiom recover_ok : forall xp m, {{rep xp (Failed m)}}
+  Theorem recover_ok : forall xp m, {{rep xp (Failed m)}}
     (recover xp)
     {{r, rep xp (NoTransaction m)
       \/ ([r = Crashed] /\ rep xp (Failed m))}}.
+  Proof.
+    hoare.
 
+    eauto 10.
+    eauto 10.
+    eauto 10.
+    eauto 12.
+    eauto 12.
+
+    assert (DataStart xp <= x1 (LogStart xp + m0 * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
+    left; intuition.
+    eexists; intuition eauto.
+    rewrite H0 by auto.
+
+    apply replay_redo.
+    pred.
+    destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
+    eexists; intuition eauto; pred.
+    pred.
+    disjoint xp.
+    pred.
+    eapply validLog_irrel; eauto; pred.
+    apply upd_same; pred.
+    rewrite H8 by auto.
+    apply replay_redo.
+    pred.
+    destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
+    pred.
+    disjoint xp.
+
+    eauto 10.
+
+    left; intuition.
+    pred.
+    firstorder.
+  Qed.
 End Log.
