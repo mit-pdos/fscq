@@ -537,15 +537,14 @@ Module Log : LOG.
     len <- !(LogLength xp);
     For i < len
       Ghost old_cur
-      Invariant (
-        (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
-          --> a |-> replay (LogStart xp) i (fst old_cur) a)
+      Invariant (exists m, diskIs m
+        /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+          -> snd old_cur a = replay (LogStart xp) len m a]
         /\ (LogLength xp) |-> len
-          /\ [len <= LogLen xp]
-          /\ exists m, diskIs m
-            /\ [validLog xp (LogStart xp) len m]
-            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-              -> snd old_cur a = replay (LogStart xp) len m a])
+        /\ [len <= LogLen xp]
+        /\ [validLog xp (LogStart xp) len m]
+        /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
+          -> m a = replay (LogStart xp) i m a])
       OnCrash rep xp (NoTransaction (snd old_cur))
       \/ rep xp (Failed (snd old_cur)) Begin
       a <- !(LogStart xp + i*2);
@@ -652,9 +651,9 @@ Module Log : LOG.
   Qed.
 
   Lemma upd_same : forall m1 m2 a1 a2 v1 v2 a',
-    m1 a' = m2 a'
-    -> a1 = a2
+    a1 = a2
     -> v1 = v2
+    -> (a' <> a1 -> m1 a' = m2 a')
     -> upd m1 a1 v1 a' = upd m2 a2 v2 a'.
   Proof.
     intros; subst; unfold upd; destruct (eq_nat_dec a' a2); auto.
@@ -667,8 +666,7 @@ Module Log : LOG.
     -> forall a len m1 m2,
       (forall a', a <= a' < a + len*2
         -> m1 a' = m2 a')
-      -> (forall a', DataStart xp <= a' < DataStart xp + DataLen xp
-        -> m1 a' = m2 a')
+      -> m1 a' = m2 a'
       -> replay a len m1 a' = replay a len m2 a'.
   Proof.
     induction len; simpl; intuition eauto.
@@ -754,10 +752,81 @@ Module Log : LOG.
     rewrite <- H4; auto.
   Qed.
 
-  Axiom commit_ok : forall xp ms, {{rep xp (InTransaction ms)}}
+  Lemma validLog_data : forall xp m len a x1,
+    m < len
+    -> validLog xp a len x1
+    -> DataStart xp <= x1 (a + m * 2) < DataStart xp + DataLen xp.
+  Proof.
+    induction len; simpl; intros.
+    intuition.
+    destruct H0.
+    destruct (eq_nat_dec m len); subst; auto.
+  Qed.
+
+  Lemma replay_redo : forall a a' len m1 m2,
+    (forall a'', a <= a'' < a + len*2
+      -> m1 a'' = m2 a'')
+    -> (m1 a' <> m2 a'
+      -> exists k, k < len
+        /\ m1 (a + k*2) = a'
+        /\ m2 (a + k*2) = a')
+    -> ~(a <= a' < a + len*2)
+    -> replay a len m1 a' = replay a len m2 a'.
+  Proof.
+    induction len; simpl; intuition.
+    destruct (eq_nat_dec (m1 a') (m2 a')); auto.
+    apply H0 in n.
+    destruct n; intuition omega.
+
+    apply upd_same; eauto; intros.
+    apply IHlen; eauto; intros.
+    apply H0 in H3.
+    destruct H3; intuition.
+    destruct (eq_nat_dec x len); subst; eauto.
+    2: exists x; eauto.
+    tauto.
+  Qed.
+
+  Theorem commit_ok : forall xp ms, {{rep xp (InTransaction ms)}}
     (commit xp)
     {{r, rep xp (NoTransaction (snd ms))
       \/ ([r = Crashed] /\ rep xp (Failed (snd ms)))}}.
+  Proof.
+    hoare.
+
+    eauto 10.
+    eauto 10.
+    eauto 10.
+    eauto 12.
+    eauto 12.
+
+    assert (DataStart xp <= x1 (LogStart xp + m * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
+    left; intuition.
+    eexists; intuition eauto.
+    rewrite H0 by auto.
+
+    apply replay_redo.
+    pred.
+    destruct (eq_nat_dec a0 (x1 (LogStart xp + m * 2))); subst; eauto; pred.
+    eexists; intuition eauto; pred.
+    pred.
+    disjoint xp.
+    pred.
+    eapply validLog_irrel; eauto; pred.
+    apply upd_same; pred.
+    rewrite H8 by auto.
+    apply replay_redo.
+    pred.
+    destruct (eq_nat_dec a0 (x1 (LogStart xp + m * 2))); subst; eauto; pred.
+    pred.
+    disjoint xp.
+
+    eauto 10.
+
+    left; intuition.
+    pred.
+    firstorder.
+  Qed.
 
   Axiom recover_ok : forall xp m, {{rep xp (Failed m)}}
     (recover xp)
