@@ -636,6 +636,152 @@ Module Log : LOG.
     hoare.
   Qed.
 
+  Lemma validLog_irrel : forall xp len a m1 m2,
+    validLog xp a len m1
+    -> (forall a', a <= a' < a + len*2
+      -> m1 a' = m2 a')
+    -> validLog xp a len m2.
+  Proof.
+    induction len; simpl; intuition eauto;
+      try match goal with
+            | [ H : _ |- _ ] => rewrite <- H by omega; solve [ auto ]
+            | [ H : _ |- _ ] => eapply H; intuition eauto
+          end.
+  Qed.
+
+  Lemma upd_same : forall m1 m2 a1 a2 v1 v2 a',
+    m1 a' = m2 a'
+    -> a1 = a2
+    -> v1 = v2
+    -> upd m1 a1 v1 a' = upd m2 a2 v2 a'.
+  Proof.
+    intros; subst; unfold upd; destruct (eq_nat_dec a' a2); auto.
+  Qed.
+
+  Hint Resolve upd_same.
+
+  Lemma replay_irrel : forall xp a',
+    DataStart xp <= a' < DataStart xp + DataLen xp
+    -> forall len a m1 m2,
+      (forall a', a <= a' < a + len*2
+        -> m1 a' = m2 a')
+      -> (forall a', DataStart xp <= a' < DataStart xp + DataLen xp
+        -> m1 a' = m2 a')
+      -> replay a len m1 a' = replay a len m2 a'.
+  Proof.
+    induction len; simpl; intuition eauto;
+      apply IHlen; intuition;
+        match goal with
+          | [ H : _ |- _ ] => repeat rewrite H by omega; solve [ auto ]
+        end.
+  Qed.
+
+  Hint Rewrite plus_0_r.
+
+  Lemma two : forall a len,
+    a + 2 + len * 2 = a + S (S (len * 2)).
+  Proof.
+    intros; omega.
+  Qed.
+
+  Hint Rewrite two.
+
+  Lemma validLog_add' : forall xp len a m1 m2,
+    validLog xp a len m1
+    -> (forall a', a <= a' < a + len*2
+      -> m1 a' = m2 a')
+    -> DataStart xp <= m2 (a + len*2) < DataStart xp + DataLen xp
+    -> validLog xp a (len+1) m2.
+  Proof.
+    induction len; simpl; intuition eauto;
+      try match goal with
+            | [ H : _ |- _ ] => rewrite <- H by omega; solve [ auto ]
+          end; pred;
+      match goal with
+        | [ H : _ |- _ ] => eapply H; intuition eauto; pred
+      end.
+  Qed.
+
+  Lemma validLog_add : forall xp len a m1 m2,
+    validLog xp a len m1
+    -> (forall a', a <= a' < a + len*2
+      -> m1 a' = m2 a')
+    -> DataStart xp <= m2 (a + len*2) < DataStart xp + DataLen xp
+    -> validLog xp a (S len) m2.
+  Proof.
+    intros; replace (S len) with (len + 1) by omega.
+    eauto using validLog_add'.
+  Qed.
+
+  Lemma replay_plus : forall len2 len1 a m,
+    replay a (len1 + len2) m = replay (a + len1*2) len2 (replay a len1 m).
+  Proof.
+    induction len1; simpl; intuition eauto; pred.
+    rewrite IHlen1; pred.
+  Qed.
+
+  Lemma replay_log : forall xp a' len m a,
+    LogStart xp <= a' < LogStart xp + LogLen xp*2
+    -> validLog xp a len m
+    -> LogStart xp <= a
+    -> a + len*2 < LogStart xp + LogLen xp * 2
+    -> replay a len m a' = m a'.
+  Proof.
+    induction len; simpl; intuition eauto.
+    rewrite IHlen; intuition eauto.
+    pred.
+    eapply validLog_irrel; eauto; pred.
+  Qed.
+
+  Theorem write_ok : forall xp ms a v,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp]
+      /\ rep xp (InTransaction ms)}}
+    (write xp a v)
+    {{r, rep xp (InTransaction (fst ms, upd (snd ms) a v))
+      \/ ([r = Crashed] /\ rep xp (InTransaction ms))}}.
+  Proof.
+    hoare.
+
+    right; intuition.
+    pred.
+    eexists; intuition eauto.
+    eexists; intuition eauto.
+    eapply validLog_irrel; eauto; pred.
+    erewrite replay_irrel; eauto; pred.
+
+    right; intuition.
+    pred.
+    eexists; intuition eauto.
+    eexists; intuition eauto.
+    eapply validLog_irrel; eauto; pred.
+    erewrite replay_irrel; eauto; pred.
+
+    left; intuition.
+    pred.
+    eexists; intuition eauto.
+    eexists; intuition eauto.
+    eapply validLog_add; eauto; pred.
+    replace (S (x2 (LogLength xp))) with (x2 (LogLength xp) + 1) by omega.
+    rewrite replay_plus.
+    simpl.
+
+    apply upd_same.
+    rewrite H10 by auto.
+    eapply replay_irrel; eauto; pred.
+    erewrite replay_log.
+    2: instantiate (1 := xp); eauto.
+    pred.
+    eapply validLog_irrel; eauto; pred.
+    auto.
+    auto.
+    erewrite replay_log.
+    2: instantiate (1 := xp); eauto.
+    pred.
+    eapply validLog_irrel; eauto; pred.
+    auto.
+    auto.
+  Qed.
+
   Axiom commit_ok : forall xp ms, {{rep xp (InTransaction ms)}}
     (commit xp)
     {{r, rep xp (NoTransaction (snd ms))
@@ -653,10 +799,4 @@ Module Log : LOG.
     {{r, rep xp (InTransaction ms)
       /\ [r = Crashed \/ r = Halted (snd ms a)]}}.
 
-  Axiom write_ok : forall xp ms a v,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp]
-      /\ rep xp (InTransaction ms)}}
-    (write xp a v)
-    {{r, rep xp (InTransaction (fst ms, upd (snd ms) a v))
-      \/ ([r = Crashed] /\ rep xp (InTransaction ms))}}.
 End Log.
