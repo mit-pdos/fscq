@@ -4,3 +4,9 @@ Replace block values with 512-byte units.
 
 Have programs return values (see some ideas on the "returnvalues" branch).
 
+What should we do about non-determinism in the high-level (source) language?
+  We want non-determinism: e.g., return any FD, any mmap addr, any block, any inode.
+  But then forward simulation doesn't work because only one choice is possible in
+  the target (deterministic) language.  Potential soln: backward simulation directly,
+  without going through fsim.  But how difficult is this?
+

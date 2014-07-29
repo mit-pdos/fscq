@@ -7,16 +7,13 @@ Require Import Storage.
 Require Import Disk.
 Require Import Util.
 Require Import Trans2.
-Require Import FSim.
+Require Import Smallstep.
 Require Import Closures.
 Require Import FunctionalExtensionality.
 Require Import ProofIrrelevance.
+Require Import Tactics.
 
 Set Implicit Arguments.
-
-Definition inodenum := nat.
-Definition blockmapnum := nat.
-Definition blocknum := nat.
 
 (* Disk layout: 
  *     | NInode blocks | NBlockMap block maps | data blocks |  
@@ -30,25 +27,61 @@ Definition NBlockPerInode := 2. (* max number of data blocks per inode *)
 Definition NInode := 2.
 Definition NBlockMap := 3.      (* total number of data blocks is NBlockMap * SizeBlock *)
 
+Definition inodenum := {n: nat | n < NInode}.
+Definition iblocknum := {n: nat | n < NBlockPerInode}.
+Definition blockmapnum := {n: nat | n < NBlockMap}.
+Definition blockmapoff := {n: nat | n < SizeBlock}.
+Definition blocknum := {n: nat | n < NBlockMap * SizeBlock}.
+
 Remark inode_fits_in_block:
   NBlockPerInode + 2 <= SizeBlock.
 Proof.
   crush.
 Qed.
 
+Ltac elim_intact_sig e :=
+  match e with
+  | exist _ _ _ => (* idtac "elim_intact_sig: unfolded version" e; *) fail 1
+  | _ =>
+    match goal with
+    | [ _: e = exist _ _ _ |- _ ] => (* idtac "elim_intact_sig: already got" e; *) fail 2
+    | _ => (* idtac "elim_intact_sig:" e; *) destruct e || case_eq e; intros
+    end
+  end.
+
+Ltac elim_sigs :=
+  match goal with
+  | [ _: context[proj1_sig ?x] |- _ ] => elim_intact_sig x
+  | [ |- context[proj1_sig ?x] ] => elim_intact_sig x
+  end.
+
+Ltac propagate_sigs :=
+  match goal with
+  | [ H1: ?a = exist _ _ _ |- _ ] =>
+    match goal with
+    | [ H2: context[proj1_sig a] |- _ ] => rewrite H1 in H2; simpl in H2
+    | [ |- context[proj1_sig a] ] => rewrite H1; simpl
+    end
+  end.
+
+Ltac omega' := repeat elim_sigs; intros; subst; simpl in *;
+               unfold SizeBlock in *; unfold NInode in *;
+               unfold NBlockPerInode in *; unfold NBlockMap in *;
+               omega.
+
 (* In-memory representation of inode and free block map: *)
 Record inode := Inode {
   IFree: bool;
   ILen: { l: nat | l <= NBlockPerInode };  (* in blocks *)
-  IBlocks: { b: nat | b < proj1_sig ILen } -> blocknum
+  IBlocks: iblocknum -> blocknum
 }.
 
 Program Definition mkinode b : inode :=
-  (Inode b 0 _).
+  (Inode b 0 (fun _ => 0)).
 Solve Obligations using intros; try destruct_sig; crush.
 
 Record blockmap := Blockmap {
-  FreeList: { b: nat | b < SizeBlock } -> bool
+  FreeList: blockmapoff -> bool
 }.
 
 Definition istorage := inodenum -> inode.
@@ -69,39 +102,51 @@ Bind Scope fscq_scope with iproc.
 Open Scope fscq_scope.
 
 
-Fixpoint do_iwrite_blocklist (inum:inodenum) (i:inode) (n:nat) (rx:dprog) : dprog.
-  refine match n with
+Program Fixpoint do_iwrite_blocklist (inum:inodenum) (i:inode)
+                                     (n:nat) (NATOK:n <= NBlockPerInode) (rx:dprog) : dprog :=
+  match n with
   | 0 => rx
   | S x =>
-    DWrite (inum * SizeBlock + 2 + x)
-           (if lt_dec x (proj1_sig (ILen i)) then (IBlocks i (exist _ x _)) else 0);;
-    do_iwrite_blocklist inum i x rx
+    DWrite ((proj1_sig inum) * SizeBlock + 2 + x)
+           (proj1_sig (IBlocks i (exist _ x _)));;
+    @do_iwrite_blocklist inum i x _ rx
   end.
+Solve Obligations using intros; omega'.
+
+Lemma do_iwrite_helper_1:
+  NBlockPerInode <= NBlockPerInode.
+Proof.
   auto.
-Defined.
+Qed.
 
-Definition do_iwrite inum i rx  :=
-  DWrite (inum * SizeBlock) (bool2nat (IFree i)) ;;
-  DWrite (inum * SizeBlock + 1) (proj1_sig (ILen i)) ;;
-  do_iwrite_blocklist inum i NBlockPerInode rx.
+Definition do_iwrite (inum:inodenum) (i:inode) (rx:dprog) : dprog :=
+  DWrite ((proj1_sig inum) * SizeBlock) (bool2nat (IFree i)) ;;
+  DWrite ((proj1_sig inum) * SizeBlock + 1) (proj1_sig (ILen i)) ;;
+  @do_iwrite_blocklist inum i NBlockPerInode do_iwrite_helper_1 rx.
 
 
-Program Fixpoint do_iread_blocklist inum n bl rx :=
+Program Fixpoint do_iread_blocklist (inum:inodenum) n (bl:iblocknum->blocknum) rx :=
   match n with
   | 0 => rx bl
   | S x =>
     bx <- DRead (inum * SizeBlock + 2 + x);
-    do_iread_blocklist inum x
-                       (fun bn => if eq_nat_dec bn x then bx else bl bn) rx
+    if lt_dec bx (NBlockMap * SizeBlock)
+    then
+      do_iread_blocklist inum x (setidxsig eq_nat_dec bl x bx) rx
+    else
+      do_iread_blocklist inum x (setidxsig eq_nat_dec bl x 0) rx
   end.
+Solve Obligations using intros; simpl; omega'.
 
-Program Definition do_iread inum rx :=
+Program Definition do_iread (inum:inodenum) rx :=
   free <- DRead (inum * SizeBlock);
-  dlen <- DRead (inum * SizeBlock + 1);
-  let len := if le_dec dlen NBlockPerInode then dlen else NBlockPerInode-1 in
-  bl <- do_iread_blocklist inum len (fun _ => 0);
-  rx (Inode (nat2bool free) len bl).
-Solve Obligations using intros; destruct (le_dec dlen NBlockPerInode); crush.
+  len <- DRead (inum * SizeBlock + 1);
+  bl <- do_iread_blocklist inum NBlockPerInode (fun _ => 0);
+  if le_dec len NBlockPerInode then
+    rx (Inode (nat2bool free) len bl)
+  else
+    rx (Inode (nat2bool free) NBlockPerInode bl).
+Solve Obligations using intros; simpl; omega'.
 
 Fixpoint do_readblockmap (bn:nat) (off:nat) (fl:{b:nat|b<SizeBlock}->bool)
                          (rx:blockmap->dprog) {struct off} : dprog.
@@ -143,10 +188,10 @@ Fixpoint do_writeblockmap (bn:nat) (off:nat) (OFFOK: off <= SizeBlock)
 Defined.
 
 Definition do_iwriteblock (o:blocknum) b rx :=
-  DWrite ((NInode + NBlockMap) * SizeBlock + o) b ;; rx.
+  DWrite ((NInode + NBlockMap) * SizeBlock + (proj1_sig o)) b ;; rx.
 
 Definition do_ireadblock (o:blocknum) rx :=
-  b <- DRead ((NInode + NBlockMap) * SizeBlock + o) ; rx b.
+  b <- DRead ((NInode + NBlockMap) * SizeBlock + (proj1_sig o)) ; rx b.
 
 Program Fixpoint compile_id (p:iproc) : dprog :=
   match p with
@@ -159,14 +204,15 @@ Program Fixpoint compile_id (p:iproc) : dprog :=
   | IWriteBlock o b rx => do_iwriteblock o b (compile_id rx)
   end.
 
-Fixpoint do_free_inodes n rx : iproc :=
-  match n with
-  | O => rx
-  | S n' => IWrite n' (mkinode true) ;; do_free_inodes n' rx
-  end.
+Fixpoint do_free_inodes (n:nat) (INUMOK:n <= NInode) (rx:iproc) : iproc.
+  case_eq n.
+  - intros. refine rx.
+  - intros. refine (IWrite (exist _ n0 _) (mkinode true) ;; do_free_inodes n0 _ rx).
+    omega. omega.
+Defined.
 
-Definition do_init rx : iproc :=
-  do_free_inodes NInode rx.
+Program Definition do_init rx : iproc :=
+  @do_free_inodes NInode _ rx.
 
 Definition compile_it2 (p:iproc) : t2prog :=
   T2Begin ;; T2DProg (compile_id p) ;; T2Commit ;; T2Halt.
@@ -178,48 +224,48 @@ Close Scope fscq_scope.
 Definition iread (s:istorage) (inum:inodenum) : inode := s inum.
 
 Definition iwrite (s:istorage) (inum:inodenum) (i: inode) : istorage :=
-  fun inum' => if eq_nat_dec inum' inum then i else s inum'.
+  setidxsig eq_nat_dec s (proj1_sig inum) i.
 
 Definition bread (s:bstorage) (b:blocknum) : block := s b.
 
 Definition bwrite (s:bstorage) (bn:blocknum) (b:block) : bstorage :=
-  fun bn' => if eq_nat_dec bn' bn then b else s bn'.
+  setidxsig eq_nat_dec s (proj1_sig bn) b.
 
 Definition blockmap_read s (bn: blockmapnum) : blockmap :=  s bn.
 
 Definition blockmap_write (s:bmstorage) (bn: blockmapnum) (bm: blockmap) : bmstorage :=
-  fun bn' => if eq_nat_dec bn' bn then bm else s bn'.
+  setidxsig eq_nat_dec s (proj1_sig bn) bm.
 
 Lemma iwrite_same:
-  forall s inum i,
-  iwrite s inum i inum = i.
+  forall s inum i inum',
+  proj1_sig inum = proj1_sig inum' ->
+  iwrite s inum i inum' = i.
 Proof.
-  unfold iwrite. intros. destruct (eq_nat_dec inum inum); crush.
+  unfold iwrite. intros. apply setidxsig_same. auto.
 Qed.
-Hint Rewrite iwrite_same.
 
 Lemma iwrite_other:
   forall s inum i inum',
   inum <> inum' ->
   iwrite s inum i inum' = s inum'.
 Proof.
-  unfold iwrite. intros. destruct (eq_nat_dec inum' inum); crush.
+  unfold iwrite. intros. apply setidxsig_other. cc. apply H. apply sig_pi. cc.
 Qed.
 
 Lemma blockmap_write_same:
-  forall s bn bm,
-  blockmap_write s bn bm bn = bm.
+  forall s bn bm bn',
+  proj1_sig bn = proj1_sig bn' ->
+  blockmap_write s bn bm bn' = bm.
 Proof.
-  unfold blockmap_write. intros. destruct (eq_nat_dec bn bn); crush.
+  unfold blockmap_write. intros. apply setidxsig_same. auto.
 Qed.
-Hint Rewrite blockmap_write_same.
 
 Lemma blockmap_write_other:
   forall s bn bm bn',
   bn <> bn' ->
   blockmap_write s bn bm bn' = s bn'.
 Proof.
-  unfold blockmap_write. intros. destruct (eq_nat_dec bn' bn); crush.
+  unfold blockmap_write. intros. apply setidxsig_other. cc. apply H. apply sig_pi. cc.
 Qed.
 
 Record istate := ISt {
@@ -230,17 +276,13 @@ Record istate := ISt {
 }.
 
 Inductive istep : istate -> istate -> Prop :=
-  | IsmIwrite: forall is inum i m b rx
-    (I: inum < NInode),
+  | IsmIwrite: forall is inum i m b rx,
     istep (ISt (IWrite inum i rx) is m b) (ISt rx (iwrite is inum i) m b)
-  | IsmIread: forall is inum b m rx
-    (I: inum < NInode),
+  | IsmIread: forall is inum b m rx,
     istep (ISt (IRead inum rx) is m b) (ISt (rx (iread is inum)) is m b)
-  | IsmIwriteBlockMap: forall is bn bm map b rx
-    (B: bn < NBlockMap),
+  | IsmIwriteBlockMap: forall is bn bm map b rx,
     istep (ISt (IWriteBlockMap bn bm rx) is map b) (ISt rx is (blockmap_write map bn bm) b)
-  | IsmIreadBlockMap: forall is bn map b rx
-    (B: bn < NBlockMap),
+  | IsmIreadBlockMap: forall is bn map b rx,
     istep (ISt (IReadBlockMap bn rx) is map b) (ISt (rx (blockmap_read map bn)) is map b)
   | IsmIreadBlock: forall is bn b m rx,
     istep (ISt (IReadBlock bn rx) is m b) (ISt (rx (bread b bn)) is m b)
@@ -268,49 +310,40 @@ Fixpoint iexec (p:iproc) (s:istate) : istate :=
 Inductive idmatch : istate -> dstate -> Prop :=
   | IDMatch:
     forall ip inodes blockmap blocks dp disk
-    (Inodes: forall i (Hi: i < NInode),
-     disk (i * SizeBlock)     = bool2nat (IFree (inodes i)) /\
-     disk (i * SizeBlock + 1) = proj1_sig (ILen (inodes i)) /\
-     forall off (Hoff: off < proj1_sig (ILen (inodes i))),
-     disk (i * SizeBlock + 2 + off) = IBlocks (inodes i) (exist _ off Hoff))
-    (BlockMap: forall n (Hn: n < NBlockMap),
+    (Inodes: forall i,
+     disk ((proj1_sig i) * SizeBlock)     = bool2nat (IFree (inodes i)) /\
+     disk ((proj1_sig i) * SizeBlock + 1) = proj1_sig (ILen (inodes i)) /\
+     forall off,
+     disk ((proj1_sig i) * SizeBlock + 2 + (proj1_sig off)) = proj1_sig (IBlocks (inodes i) off))
+    (BlockMap: forall n,
      forall off (Hoff: off < SizeBlock),
-     disk (NInode * SizeBlock + n * SizeBlock + off) =
+     disk (NInode * SizeBlock + (proj1_sig n) * SizeBlock + off) =
      bool2nat (FreeList (blockmap n) (exist _ off Hoff)))
-    (Blocks: forall n, blocks n = disk (n + (NInode + NBlockMap) * SizeBlock))
+    (Blocks: forall n, blocks n = disk ((proj1_sig n) + (NInode + NBlockMap) * SizeBlock))
     (Prog: compile_id ip = dp),
     idmatch (ISt ip inodes blockmap blocks) (DSt dp disk).
 
-Ltac destruct_ilen := match goal with
-  | [ H: context[ILen ?x] |- _ ] => destruct (ILen x)
-  end.
-
-Ltac omega' := unfold SizeBlock in *; unfold NInode in *;
-               unfold NBlockPerInode in *; unfold NBlockMap in *;
-               simpl in *; omega.
-
 Ltac disk_write_other := match goal with
   | [ |- context[st_write _ ?A _ ?B] ] =>
-    assert (A <> B); [ repeat destruct_ilen; omega'
-                     | rewrite st_read_other; auto ]
+    assert (A <> B); [ omega' | rewrite st_read_other; auto ]
   end.
 
 Ltac disk_write_same := subst; match goal with
   | [ |- context[st_write _ ?A _ ?B] ] =>
-    subst; assert (A = B); [ omega | rewrite st_read_same; auto ]
+    assert (A = B); [ omega' | rewrite st_read_same; auto ]
   end.
 
 Lemma star_do_iwrite_blocklist:
-  forall len inum i rx d,
-  inum < NInode ->
+  forall len inum i rx d Hlen,
   exists d',
   star dstep
-    (DSt (do_iwrite_blocklist inum i len rx) d)
+    (DSt (@do_iwrite_blocklist inum i len Hlen rx) d)
     (DSt rx d') /\
-  (forall off (Hoff: off < proj1_sig (ILen i)),
-   off < len ->
-   d' (inum * SizeBlock + 2 + off) = IBlocks i (exist _ off Hoff)) /\
-  (forall b, (b < inum * SizeBlock + 2 \/ b >= inum * SizeBlock + 2 + len) ->
+  (forall off,
+   proj1_sig off < len ->
+   d' ((proj1_sig inum) * SizeBlock + 2 + (proj1_sig off)) = (proj1_sig (IBlocks i off))) /\
+  (forall b, (b < (proj1_sig inum) * SizeBlock + 2 \/
+              b >= (proj1_sig inum) * SizeBlock + 2 + len) ->
    d' b = d b).
 Proof.
   induction len.
@@ -318,36 +351,35 @@ Proof.
     + apply star_refl.
     + crush.
   - intros.
-    destruct (IHlen inum i rx (st_write d (inum * SizeBlock + 2 + len)
-              match lt_dec len (proj1_sig (ILen i)) with
-              | left H =>
-                  IBlocks i
-                    (exist (fun b : nat => b < proj1_sig (ILen i)) len H)
-              | right _ => 0
-              end)); [ auto | ]. destruct H0. destruct H1.
-    eexists; split; [ | split ]; intros.
+    destruct (IHlen inum i rx (st_write d ((proj1_sig inum) * SizeBlock + 2 + len)
+                               (proj1_sig (IBlocks i (exist (fun n => n < NBlockPerInode) len
+                                (do_iwrite_blocklist_obligation_1 inum i Hlen rx eq_refl)))))
+              (do_iwrite_blocklist_obligation_2 inum i Hlen rx eq_refl)). Tactics.destruct_pairs.
+    eexists. split; [ | split ]; intros.
     + unfold do_iwrite_blocklist; fold do_iwrite_blocklist.
-      eapply star_step; [ constructor | ]. apply H0.
-    + destruct (eq_nat_dec off len).
+      eapply star_step; [ constructor | ]. apply H.
+    + destruct (eq_nat_dec (proj1_sig off) len).
       * subst.
-        rewrite H2; [ | crush ].
+        rewrite H1; [ | crush ].
         rewrite st_read_same; auto.
-        destruct (lt_dec len (proj1_sig (ILen i))); [ | crush ].
-        destruct i. simpl.
-        apply arg_sig_pi. crush.
-      * apply H1. crush.
-    + rewrite H2; [ | crush ].
+        match goal with
+        | [ |- proj1_sig (IBlocks _ ?a) = proj1_sig (IBlocks _ ?b) ] =>
+          assert (a=b) as Hab; [ apply sig_pi; auto | rewrite Hab; auto ]
+        end.
+      * apply H0. crush.
+    + rewrite H1; [ | crush ].
       rewrite st_read_other; crush.
 Qed.
 
 Lemma star_do_iread_blocklist:
-  forall len inum rx d bl blfinal,
-  inum < NInode ->
-  len <= d (inum * SizeBlock + 1) ->
-  (forall off (Hoff: off >= len),
+  forall len inum rx d (bl:iblocknum->blocknum) blfinal,
+  len <= NBlockPerInode ->
+  (forall (i:inodenum) (off:iblocknum),
+   d ((proj1_sig i) * SizeBlock + 2 + (proj1_sig off)) < NBlockMap * SizeBlock) ->
+  (forall off (Hoff: (proj1_sig off) >= len),
    blfinal off = bl off) ->
-  (forall off (Hoff: off < d (inum * SizeBlock + 1)),
-   blfinal off = d (inum * SizeBlock + 2 + off)) ->
+  (forall off,
+   (proj1_sig (blfinal off)) = d ((proj1_sig inum) * SizeBlock + 2 + (proj1_sig off))) ->
   star dstep (DSt (progseq2 (do_iread_blocklist inum len bl) rx) d)
              (DSt (rx blfinal) d).
 Proof.
@@ -356,60 +388,58 @@ Proof.
     apply functional_extensionality. intros. apply H1. omega.
   - intros.
     eapply star_step; [ constructor | ].
-    apply IHlen; auto; try omega.
-    intros. destruct (eq_nat_dec off len).
-    + subst. apply H2. omega.
-    + apply H1. omega.
+    cbv beta.
+    destruct (lt_dec (st_read d (proj1_sig inum * SizeBlock + 2 + len)) (NBlockMap * SizeBlock));
+    apply IHlen; clear IHlen; auto; try omega; intros.
+    + destruct (eq_nat_dec len (proj1_sig off)).
+      * subst. rewrite setidxsig_same; auto. apply sig_pi. rewrite H2. cc.
+      * rewrite setidxsig_other; auto. rewrite H1; auto; omega'.
+    + destruct n.
+      destruct (sig_exists (fun n => n < NBlockPerInode) len); [omega'|].
+      rewrite H3. apply H0.
 Qed.
 
 Lemma star_do_iread:
   forall inum rx disk i,
-  inum < NInode ->
-  (disk (inum * SizeBlock) = bool2nat (IFree i)) ->
-  (disk (inum * SizeBlock + 1) = proj1_sig (ILen i)) ->
-  (forall off (Hoff: off < proj1_sig (ILen i)),
-   disk (inum * SizeBlock + 2 + off) = IBlocks i (exist _ off Hoff)) ->
+  (forall (i:inodenum) (off:iblocknum),
+   disk ((proj1_sig i) * SizeBlock + 2 + (proj1_sig off)) < NBlockMap * SizeBlock) ->
+  (disk ((proj1_sig inum) * SizeBlock) = bool2nat (IFree i)) ->
+  (disk ((proj1_sig inum) * SizeBlock + 1) = proj1_sig (ILen i)) ->
+  (forall off,
+   disk ((proj1_sig inum) * SizeBlock + 2 + (proj1_sig off)) = proj1_sig (IBlocks i off)) ->
   star dstep (DSt (do_iread inum rx) disk) 
              (DSt (rx i) disk).
 Proof.
   intros.
   eapply star_step; [ constructor | ].
   eapply star_step; [ constructor | ].
-  simpl.
-  generalize (do_iread_obligation_1 inum rx
-                              (st_read disk (inum * SizeBlock))
-                              (st_read disk (inum * SizeBlock + 1))).
-  destruct (le_dec (st_read disk (inum * SizeBlock + 1)) NBlockPerInode).
-  - intros.
-    eapply star_trans. apply star_do_iread_blocklist; intros; auto.
-    instantiate (1:=fun o => if lt_dec o (st_read disk (inum*SizeBlock+1))
-                             then (st_read disk (inum*SizeBlock+2+o))
-                             else 0).
-    simpl; destruct (lt_dec off (st_read disk (inum*SizeBlock+1))); crush.
-    simpl; destruct (lt_dec off (st_read disk (inum*SizeBlock+1))); crush.
+  cbv beta.
+
+  pose (blfinal:=fun (off:iblocknum) =>
+              exist (fun n: nat => n < NBlockMap * SizeBlock)
+                    (disk ((proj1_sig inum) * SizeBlock + 2 + (proj1_sig off)))
+                    (H inum off)).
+  eapply star_trans.
+  - apply star_do_iread_blocklist with (blfinal:=blfinal); subst blfinal; cc; omega'.
+  - subst blfinal. cbv beta.
+    destruct (le_dec (st_read disk (proj1_sig inum * SizeBlock + 1)) NBlockPerInode);
+    [| destruct n; unfold st_read; rewrite H1; omega' ].
     match goal with
     | [ |- star dstep (DSt (rx ?I1) _) (DSt (rx ?I2) _) ] =>
       assert (I1=I2); [ | subst; apply star_refl ]
     end.
-    destruct i; simpl in *.
-    generalize l0; clear l0.
-    unfold st_read; rewrite H1; rewrite H0; rewrite nat2bool2nat; intros.
+    destruct i; simpl in *; unfold st_read; rewrite H0; rewrite nat2bool2nat.
     match goal with
-    | [ |- context[Inode ?F1 ?L1 ?B1 = Inode ?F2 ?L2 ?B2] ] =>
-      assert (B1=B2) as Hblocks;
-      [ apply functional_extensionality; intros; destruct x; simpl;
-        destruct (lt_dec x (proj1_sig ILen0));
-        [ rewrite H2 with (Hoff:=l1); auto | crush ] | rewrite Hblocks; clear Hblocks ]
+    | [ |- Inode ?F1 ?L1 ?B1 = Inode ?F2 ?L2 ?B2 ] =>
+      assert (L1=L2) as Hlen; [ apply sig_pi; cc | rewrite Hlen; clear Hlen ]
     end.
     match goal with
     | [ |- Inode ?F1 ?L1 ?B1 = Inode ?F2 ?L2 ?B2 ] =>
-      assert (L1=L2) as Hlen; [ apply sig_pi; crush | ]
+      assert (B1=B2) as Hblocks; [| cc ]
     end.
-    (* XXX dependent type mess.. *)
-    (* rewrite Hlen *)
-    admit.
-  - unfold st_read in n; rewrite H1 in n. clear H1 H2.
-    destruct (ILen i); crush.
+    apply functional_extensionality; intros.
+    generalize dependent (H inum x).
+    rewrite H2; intros. apply sig_pi. cc.
 Qed.
 
 Ltac fl' := match goal with
@@ -466,45 +496,45 @@ Proof.
 
   - (* Write *)
     destruct (@star_do_iwrite_blocklist NBlockPerInode inum i (compile_id rx)
-                (st_write (st_write disk (inum * SizeBlock) (bool2nat (IFree i)))
-                 (inum * SizeBlock + 1) (proj1_sig (ILen i)))); [ auto | ].
-    econstructor; split; tt.
+                (st_write (st_write disk ((proj1_sig inum) * SizeBlock) (bool2nat (IFree i)))
+                 ((proj1_sig inum) * SizeBlock + 1) (proj1_sig (ILen i)))
+                do_iwrite_helper_1); Tactics.destruct_pairs.
+    econstructor; split; subst.
     + eapply star_step; [ constructor | ].
       eapply star_step; [ constructor | ].
-      apply H0.
-    + constructor; cc.
-      * rewrite H2.
-        disk_write_other; destruct (eq_nat_dec inum i0); [ disk_write_same; crush
-                                                         | disk_write_other;
-                                                           rewrite iwrite_other; [ | auto ];
-                                                           apply Inodes; auto ].
-        omega'.
-      * rewrite H2.
-        destruct (eq_nat_dec inum i0); [ disk_write_same; crush
-                                       | disk_write_other; disk_write_other;
-                                         rewrite iwrite_other; [ | auto ];
-                                         apply Inodes; auto ].
-        omega'.
-      * generalize Hoff.
-        destruct (eq_nat_dec i0 inum).
-        subst; rewrite iwrite_same; intros. apply H. destruct (ILen (iwrite is inum i inum)). omega'.
-        rewrite iwrite_other; intros. rewrite H2. disk_write_other. disk_write_other. apply Inodes.
-        omega'.
-        destruct (le_gt_dec i0 inum); [ left | right ]; destruct (ILen (is i0)); omega'.
-        auto.
-      * rewrite H2. disk_write_other. disk_write_other. right. omega'.
-      * rewrite H2. disk_write_other. disk_write_other. right. omega'.
+      apply H.
+    + clear H. constructor; cc.
+      * rewrite H6; [|omega']. disk_write_other.
+        destruct (eq_nat_dec (proj1_sig inum) (proj1_sig i0));
+        [ disk_write_same; rewrite iwrite_same; cc
+        | disk_write_other; rewrite iwrite_other;
+          try apply Inodes; try apply sig_pi_ne; auto ].
+      * rewrite H6; [|omega'].
+        destruct (eq_nat_dec (proj1_sig inum) (proj1_sig i0));
+        [ disk_write_same; rewrite iwrite_same; cc
+        | disk_write_other; disk_write_other; rewrite iwrite_other;
+          try apply Inodes; try apply sig_pi_ne; auto ].
+      * destruct (eq_nat_dec (proj1_sig i0) (proj1_sig inum)).
+        rewrite e; rewrite iwrite_same; auto; intros; apply H5; omega'.
+        rewrite iwrite_other; [|apply sig_pi_ne;auto].
+        rewrite H6; [|omega'].
+        disk_write_other. disk_write_other. apply Inodes.
+      * rewrite H6; [|omega'].
+        disk_write_other. disk_write_other.
+      * intros. rewrite H6; [|omega'].
+        disk_write_other. disk_write_other.
 
   - (* Read *)
     econstructor; split; tt.
-    + apply star_do_iread; auto; apply Inodes; auto.
+    + apply star_do_iread; try apply Inodes; auto.
+      intros. destruct (Inodes i). destruct H0. rewrite H1. omega'. 
     + constructor; cc.
 
   - (* IWriteBlockMap *)
     assert (SizeBlock <= SizeBlock) as Hx0; [ omega | ].
     assert (0 <= SizeBlock) as Hx1; [ omega | ].
-    destruct (@star_do_writeblockmap bn SizeBlock (compile_id rx) disk bm Hx0 Hx1);
-    [ crush | crush | ].
+    destruct (@star_do_writeblockmap (proj1_sig bn) SizeBlock (compile_id rx) disk bm Hx0 Hx1);
+    [ destruct bn; crush | crush | ].
     econstructor; split.
     + inversion Prog. simpl.
       match goal with
@@ -513,17 +543,14 @@ Proof.
         [ apply proof_irrelevance | rewrite Hx0e; clear Hx0e ]
       end.
       apply H; clear H; intros.
-    + constructor; cc.
-      * rewrite H; [ apply Inodes; crush | omega' ].
-      * rewrite H; [ apply Inodes; crush | omega' ].
-      * rewrite H; [ apply Inodes; crush | destruct (ILen (is i)); omega' ].
-      * destruct (eq_nat_dec n bn).
-        subst; rewrite H0 with (Hoff:=Hoff); fl'.
-        rewrite H; [ | omega' ].
-        rewrite BlockMap with (Hoff:=Hoff); [ | omega' ].
-        rewrite blockmap_write_other; auto.
-      * rewrite H; [ | omega' ].
-        apply Blocks.
+    + constructor; cc;
+      try (rewrite H; [ try apply Inodes; try apply Blocks; crush | omega' ]).
+      destruct (eq_nat_dec (proj1_sig n) (proj1_sig bn)).
+      rewrite blockmap_write_same; auto.
+      rewrite e; rewrite H0 with (Hoff:=Hoff); fl'.
+      rewrite H; [ | omega' ].
+      rewrite BlockMap with (Hoff:=Hoff).
+      rewrite blockmap_write_other; try apply sig_pi_ne; auto.
 
   - (* IReadBlockMap *)
     admit.
@@ -539,7 +566,12 @@ Proof.
     econstructor; split; tt.
     + eapply star_step; [ constructor | ].
       eapply star_refl.
-    + constructor; cc; try (disk_write_other; cc; apply Inodes; cc).
-      unfold bwrite; destruct (eq_nat_dec n bn); [ disk_write_same | disk_write_other ].
-
+    + constructor; cc; try (disk_write_other; cc;
+      try (assert (x = (proj1_sig (exist (fun n : nat => n < NInode) x l)));
+           [ cc | rewrite H0 at 1 ]);
+      apply Inodes;
+      cc).
+      unfold bwrite; destruct (eq_nat_dec (proj1_sig n) (proj1_sig bn));
+      [ disk_write_same; rewrite setidxsig_same
+      | disk_write_other; rewrite setidxsig_other ]; cc.
 Qed.

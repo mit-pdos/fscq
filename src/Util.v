@@ -41,6 +41,14 @@ Proof.
   replace p with p0; [ auto | apply proof_irrelevance ].
 Qed.
 
+Lemma sig_pi_ne:
+  forall {T:Type} {P:T->Prop} (a b:sig P),
+  proj1_sig a <> proj1_sig b ->
+  a <> b.
+Proof.
+  unfold not; intros. apply H. rewrite H0. auto.
+Qed.
+
 Lemma arg_sig_pi:
   forall {T R:Type} {P:T->Prop} (a b:sig P) (M:sig P->R),
   proj1_sig a = proj1_sig b ->
@@ -48,6 +56,23 @@ Lemma arg_sig_pi:
 Proof.
   intros.
   rewrite (sig_pi a b); auto.
+Qed.
+
+Lemma sig_ne:
+  forall {T:Type} {P:T->Prop} (a b:sig P),
+  a <> b ->
+  proj1_sig a <> proj1_sig b.
+Proof.
+  unfold not; intros. apply H. apply sig_pi. auto.
+Qed.
+
+Lemma sig_exists:
+  forall {T:Type} (P:T->Prop) (a:T),
+  P a ->
+  exists H,
+  a = proj1_sig (exist P a H).
+Proof.
+  intros. exists H. auto.
 Qed.
 
 Definition setidx {K: Type} {V: Type}
@@ -90,3 +115,6 @@ Lemma setidxsig_other:
 Proof.
   intros. unfold setidxsig. destruct (eq (proj1_sig k') k). destruct H. auto. auto.
 Qed.
+
+Ltac resolve_setidx t :=
+  (subst; rewrite setidx_same) || (rewrite setidx_other; [|t]).

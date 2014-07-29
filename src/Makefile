@@ -13,7 +13,7 @@ FILES = CpdtTactics.v \
 	Util.v \
 	Storage.v \
 	Closures.v \
-	FSim.v \
+	Smallstep.v \
 	LoopfreeWF.v \
 	Disk.v \
 	Bank.v \
