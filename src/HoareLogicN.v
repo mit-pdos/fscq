@@ -414,11 +414,12 @@ Ltac hoare' :=
     | [ H : Halted _ = Halted _ |- _ ] => injection H; clear H; intros; subst
   end.
 
+Ltac hoare_ghost g := apply (spost_sound g); simpl; pred; repeat hoare'; intuition eauto.
+
 Ltac hoare := intros; match goal with
-                        | _ => apply (spost_sound tt)
-                        | [ x : _ |- _ ] => apply (spost_sound x)
-                      end; simpl; pred; repeat hoare';
-  intuition eauto.
+                        | _ => hoare_ghost tt
+                        | [ x : _ |- _ ] => hoare_ghost x
+                      end.
 
 Inductive logstate :=
 | NoTransaction (cur : mem)
@@ -575,7 +576,7 @@ Module Log : LOG.
     (apply xp)
   ).
 
-  Definition rollback xp := $(unit:
+  Definition abort xp := $(unit:
     (LogLength xp) <-- 0
   ).
 
@@ -663,7 +664,7 @@ Module Log : LOG.
   Qed.
 
   Theorem abort_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
-    (rollback xp)
+    (abort xp)
     {{r, rep xp (NoTransaction m1)
       \/ ([r = Crashed] /\ rep xp (ActiveTxn (m1, m2)))}}.
   Proof.
@@ -875,41 +876,36 @@ Module Log : LOG.
       \/ ([r = Crashed] /\ (rep xp (NoTransaction m) \/
                             rep xp (CommittedTxn m)))}}.
   Proof.
-    hoare.
+    intros; hoare_ghost m.
 
     - eauto 10.
-    - (* XXX why is m' showing up here?? *)
-
-    eauto 10.
-    eauto 10.
-    eauto 12.
-    eauto 12.
-
-    assert (DataStart xp <= x1 (LogStart xp + m0 * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
-    left; intuition.
-    eexists; intuition eauto.
-    rewrite H0 by auto.
-
-    apply replay_redo.
-    pred.
-    destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
-    eexists; intuition eauto; pred.
-    pred.
-    disjoint xp.
-    pred.
-    eapply validLog_irrel; eauto; pred.
-    apply upd_same; pred.
-    rewrite H8 by auto.
-    apply replay_redo.
-    pred.
-    destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
-    pred.
-    disjoint xp.
-
-    eauto 10.
-
-    left; intuition.
-    pred.
-    firstorder.
+    - eauto 10.
+    - eauto 12.
+    - eauto 12.
+    - eauto 12.
+    - assert (DataStart xp <= x1 (LogStart xp + m0 * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
+      left; intuition.
+      eexists; intuition eauto.
+      + rewrite H0 by auto.
+        apply replay_redo.
+        * pred.
+        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
+          eexists; intuition eauto; pred.
+        * pred.
+          disjoint xp.
+      + pred.
+      + pred.
+      + eapply validLog_irrel; eauto; pred.
+      + apply upd_same; pred.
+        rewrite H9 by auto.
+        apply replay_redo.
+        * pred.
+        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
+        * pred.
+          disjoint xp.
+    - eauto 12.
+    - left; intuition.
+      pred.
+      firstorder.
   Qed.
 End Log.
