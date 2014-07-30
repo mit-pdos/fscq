@@ -218,7 +218,9 @@ Section prog'.
   | Seq' (p1 : prog') (p2 : valu -> prog')
   | If' P Q (b : {P} + {Q}) (p1 p2 : prog')
   | For' (nocrash : ghostT -> nat -> pred) (crashed : ghostT -> pred)
-    (f : nat -> prog') (n : nat).
+    (f : nat -> prog') (n : nat)
+  | Call' (pre: ghostT -> pred) (p: prog) (post: ghostT -> result -> pred)
+    (c: forall g: ghostT, corr (pre g) p (post g)).
 
   Fixpoint prog'Out (p : prog') : prog :=
     match p with
@@ -229,6 +231,7 @@ Section prog'.
       | Seq' p1 p2 => Seq (prog'Out p1) (fun x => prog'Out (p2 x))
       | If' _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
       | For' _ _ f n => For_ (fun x => prog'Out (f x)) 0 n
+      | Call' _ p _ _ => p
     end.
 
   Variable ghost : ghostT.
@@ -246,6 +249,7 @@ Section prog'.
         \/ spost (pre /\ [Q]) p2 r
       | For' nocrash crashed f n => fun r =>
         ([r = Halted 0] /\ nocrash ghost n) \/ ([r = Crashed] /\ crashed ghost)
+      | Call' cpre cp cpost c => cpost ghost
     end%pred.
 
   (* Verification conditions *)
@@ -264,6 +268,7 @@ Section prog'.
         /\ (forall m, m < n -> vc (nocrash ghost m) (f m))
         /\ (forall m r, m < n -> (spost (nocrash ghost m) (f m) r -->
           ([r = Halted 0] /\ nocrash ghost (S m)) \/ ([r = Crashed] /\ crashed ghost)))
+      | Call' cpre cp cpost c => pre --> (cpre ghost)
     end.
 
   Lemma spost_sound' : forall p pre,
@@ -272,33 +277,35 @@ Section prog'.
   Proof.
     induction p; simpl; intuition.
 
-    eapply Conseq; [ | apply pimpl_refl | ].
-    econstructor.
-    eauto.
-    intros.
-    specialize (H2 v).
-    apply H in H2.
-    instantiate (1 := (fun r => exists v, spost (spost pre p (Halted v)) (p2 v) r)%pred).
-    eapply Conseq; [ | apply pimpl_refl | ]; eauto.
-    pred.
-    auto.
+    - eapply Conseq; [ | apply pimpl_refl | ].
+      + econstructor.
+        * eauto.
+        * intros.
+          specialize (H2 v).
+          apply H in H2.
+          instantiate (1 := (fun r => exists v, spost (spost pre p (Halted v)) (p2 v) r)%pred).
+          eapply Conseq; [ | apply pimpl_refl | ]; eauto.
+          pred.
+      + auto.
 
-    eapply IHp1 in H0.
-    eapply Conseq; eauto; pred.
+    - eapply IHp1 in H0.
+      eapply Conseq; eauto; pred.
 
-    eapply IHp2 in H1.
-    eapply Conseq; eauto; pred.
+    - eapply IHp2 in H1.
+      eapply Conseq; eauto; pred.
 
-    eapply Conseq.
-    apply (@CFor _ (nocrash ghost) (crashed ghost)); auto.
-    intros.
-    eapply Conseq; [ | apply pimpl_refl | ]; eauto.
-    apply H; apply H2; omega.
-    intros.
-    apply H4; omega.
-    auto.
-    simpl.
-    replace (n + 0) with n; auto.
+    - eapply Conseq.
+      + apply (@CFor _ (nocrash ghost) (crashed ghost)); auto.
+        intros.
+        eapply Conseq; [ | apply pimpl_refl | ]; eauto.
+        * apply H; apply H2; omega.
+        * intros.
+          apply H4; omega.
+      + auto.
+      + simpl.
+        replace (n + 0) with n; auto.
+
+    - eauto.
   Qed.
 
   Theorem spost_sound : forall p pre post,
@@ -314,11 +321,13 @@ Implicit Arguments Halt' [ghostT].
 Implicit Arguments Crash' [ghostT].
 Implicit Arguments Read' [ghostT].
 Implicit Arguments Write' [ghostT].
+Implicit Arguments Call' [ghostT pre p post].
 
 Notation "'Halt'" := Halt' : prog'_scope.
 Notation "'Crash'" := Crash' : prog'_scope.
 Notation "!" := Read' : prog'_scope.
 Infix "<--" := Write' : prog'_scope.
+Notation "'Call'" := Call' : prog'_scope.
 Notation "p1 ;; p2" := (Seq' p1 (fun _ => p2)) : prog'_scope.
 Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
 Delimit Scope prog'_scope with prog'.
@@ -544,12 +553,41 @@ Module Log : LOG.
     (LogCommit xp) <-- 0
   ).
 
+  Theorem init_ok : forall xp m, {{diskIs m}} (init xp)
+    {{r, rep xp (NoTransaction m)
+      \/ ([r = Crashed] /\ diskIs m)}}.
+  Proof.
+    hoare.
+  Qed.
+
   Definition begin xp := $(unit:
     (LogLength xp) <-- 0
   ).
+    
+  Hint Extern 1 (_ <= _) => omega.
 
-  (* XXX how do you call a regular prog from another function? *)
-  Definition apply xp : prog' mem := (
+  Ltac t'' := intuition eauto; pred;
+    try solve [ symmetry; eauto ].
+
+  Ltac t' := t'';
+    repeat (match goal with
+              | [ |- ex _ ] => eexists
+            end; t'').
+
+  Ltac t := t';
+    match goal with
+      | [ |- _ \/ _ ] => (left; solve [t]) || (right; solve [t])
+      | _ => idtac
+    end.
+
+  Theorem begin_ok : forall xp m, {{rep xp (NoTransaction m)}} (begin xp)
+    {{r, rep xp (ActiveTxn (m, m))
+      \/ ([r = Crashed] /\ rep xp (NoTransaction m))}}.
+  Proof.
+    hoare; t.
+  Qed.
+
+  Definition apply xp := $(mem:
     len <- !(LogLength xp);
     For i < len
       Ghost cur
@@ -569,26 +607,167 @@ Module Log : LOG.
       a <-- v
     Pool;;
     (LogCommit xp) <-- 0
-  )%prog'.
+  ).
+
+  Lemma validLog_irrel : forall xp a len m1 m2,
+    validLog xp a len m1
+    -> (forall a', a <= a' < a + len*2
+      -> m1 a' = m2 a')
+    -> validLog xp a len m2.
+  Proof.
+    induction len; simpl; intuition eauto;
+      try match goal with
+            | [ H : _ |- _ ] => rewrite <- H by omega; solve [ auto ]
+            | [ H : _ |- _ ] => eapply H; intuition eauto
+          end.
+  Qed.
+
+  Lemma validLog_data : forall xp m len a x1,
+    m < len
+    -> validLog xp a len x1
+    -> DataStart xp <= x1 (a + m * 2) < DataStart xp + DataLen xp.
+  Proof.
+    induction len; simpl; intros.
+    intuition.
+    destruct H0.
+    destruct (eq_nat_dec m len); subst; auto.
+  Qed.
+
+  Lemma upd_same : forall m1 m2 a1 a2 v1 v2 a',
+    a1 = a2
+    -> v1 = v2
+    -> (a' <> a1 -> m1 a' = m2 a')
+    -> upd m1 a1 v1 a' = upd m2 a2 v2 a'.
+  Proof.
+    intros; subst; unfold upd; destruct (eq_nat_dec a' a2); auto.
+  Qed.
+
+  Hint Resolve upd_same.
+
+  Lemma replay_irrel : forall xp a',
+    DataStart xp <= a' < DataStart xp + DataLen xp
+    -> forall a len m1 m2,
+      (forall a', a <= a' < a + len*2
+        -> m1 a' = m2 a')
+      -> m1 a' = m2 a'
+      -> replay a len m1 a' = replay a len m2 a'.
+  Proof.
+    induction len; simpl; intuition eauto.
+    apply upd_same; eauto.
+  Qed.
+
+  Hint Rewrite plus_0_r.
+
+  Lemma replay_redo : forall a a' len m1 m2,
+    (forall a'', a <= a'' < a + len*2
+      -> m1 a'' = m2 a'')
+    -> (m1 a' <> m2 a'
+      -> exists k, k < len
+        /\ m1 (a + k*2) = a'
+        /\ m2 (a + k*2) = a')
+    -> ~(a <= a' < a + len*2)
+    -> replay a len m1 a' = replay a len m2 a'.
+  Proof.
+    induction len; simpl; intuition.
+    destruct (eq_nat_dec (m1 a') (m2 a')); auto.
+    apply H0 in n.
+    destruct n; intuition omega.
+
+    apply upd_same; eauto; intros.
+    apply IHlen; eauto; intros.
+    apply H0 in H3.
+    destruct H3; intuition.
+    destruct (eq_nat_dec x len); subst; eauto.
+    2: exists x; eauto.
+    tauto.
+  Qed.
+
+  Theorem apply_ok : forall xp m, {{rep xp (CommittedTxn m)}} (apply xp)
+    {{r, rep xp (NoTransaction m)
+      \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
+  Proof.
+    hoare.
+
+    - eauto 10.
+    - eauto 10.
+    - eauto 12.
+    - eauto 12.
+    - eauto 12.
+    - assert (DataStart xp <= x1 (LogStart xp + m0 * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
+      left; intuition eauto.
+      eexists; intuition eauto.
+      + rewrite H0 by auto.
+        apply replay_redo.
+        * pred.
+        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
+          eexists; intuition eauto; pred.
+        * pred.
+          disjoint xp.
+      + pred.
+      + pred.
+      + eapply validLog_irrel; eauto; pred.
+      + apply upd_same; pred.
+        rewrite H9 by auto.
+        apply replay_redo.
+        * pred.
+        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
+        * pred.
+          disjoint xp.
+    - eauto 12.
+    - left; intuition.
+      pred.
+      firstorder.
+  Qed.
 
   Definition commit xp := $(mem:
     (LogCommit xp) <-- 1;;
-    (apply xp)
+    (Call (apply_ok xp))
   ).
+
+  Theorem commit_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
+    (commit xp)
+    {{r, rep xp (NoTransaction m2)
+      \/ ([r = Crashed] /\ (rep xp (ActiveTxn (m1, m2)) \/
+                            rep xp (CommittedTxn m2)))}}.
+  Proof.
+    intros; hoare_ghost m2.
+    eexists; intuition eauto.
+    eexists; intuition eauto.
+    - eapply validLog_irrel; eauto; pred.
+    - erewrite replay_irrel; eauto; pred.
+  Qed.
 
   Definition abort xp := $(unit:
     (LogLength xp) <-- 0
   ).
 
+  Theorem abort_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
+    (abort xp)
+    {{r, rep xp (NoTransaction m1)
+      \/ ([r = Crashed] /\ rep xp (ActiveTxn (m1, m2)))}}.
+  Proof.
+    hoare.
+  Qed.
+
   Definition recover xp := $(mem:
     com <- !(LogCommit xp);
     If (eq_nat_dec com 1) {
-      (apply xp)
+      (Call (apply_ok xp))
     } else {
-      (* XXX do a dummy write, since there is no way to "do nothing" in prog' *)
-      (LogCommit xp) <-- 0
+      Halt
     }
   ).
+
+  Theorem recover_ok : forall xp m m', {{rep xp (NoTransaction m) \/
+                                         rep xp (ActiveTxn (m, m')) \/
+                                         rep xp (CommittedTxn m)}}
+    (recover xp)
+    {{r, rep xp (NoTransaction m)
+      \/ ([r = Crashed] /\ (rep xp (NoTransaction m) \/
+                            rep xp (CommittedTxn m)))}}.
+  Proof.
+    intros; hoare_ghost m.
+  Qed.
 
   Definition read xp a := $((mem*mem):
     len <- !(LogLength xp);
@@ -617,132 +796,10 @@ Module Log : LOG.
       } else {
         Halt
       }
-     Pool;;
+    Pool;;
 
-     (!(Temp xp))
+    (!(Temp xp))
   ).
-
-  Definition write xp a v := $(unit:
-    len <- !(LogLength xp);
-    If (le_lt_dec (LogLen xp) len) {
-      Crash
-    } else {
-      (LogStart xp + len*2) <-- a;;
-      (LogStart xp + len*2 + 1) <-- v;;
-      (LogLength xp) <-- (S len)
-    }
-  ).
-
-  Theorem init_ok : forall xp m, {{diskIs m}} (init xp)
-    {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ diskIs m)}}.
-  Proof.
-    hoare.
-  Qed.
-    
-  Hint Extern 1 (_ <= _) => omega.
-
-  Ltac t'' := intuition eauto; pred;
-    try solve [ symmetry; eauto ].
-
-  Ltac t' := t'';
-    repeat (match goal with
-              | [ |- ex _ ] => eexists
-            end; t'').
-
-  Ltac t := t';
-    match goal with
-      | [ |- _ \/ _ ] => (left; solve [t]) || (right; solve [t])
-      | _ => idtac
-    end.
-
-  Theorem begin_ok : forall xp m, {{rep xp (NoTransaction m)}} (begin xp)
-    {{r, rep xp (ActiveTxn (m, m))
-      \/ ([r = Crashed] /\ rep xp (NoTransaction m))}}.
-  Proof.
-    hoare; t.
-  Qed.
-
-  Theorem abort_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
-    (abort xp)
-    {{r, rep xp (NoTransaction m1)
-      \/ ([r = Crashed] /\ rep xp (ActiveTxn (m1, m2)))}}.
-  Proof.
-    hoare.
-  Qed.
-
-  Lemma validLog_irrel : forall xp a len m1 m2,
-    validLog xp a len m1
-    -> (forall a', a <= a' < a + len*2
-      -> m1 a' = m2 a')
-    -> validLog xp a len m2.
-  Proof.
-    induction len; simpl; intuition eauto;
-      try match goal with
-            | [ H : _ |- _ ] => rewrite <- H by omega; solve [ auto ]
-            | [ H : _ |- _ ] => eapply H; intuition eauto
-          end.
-  Qed.
-
-  Lemma upd_same : forall m1 m2 a1 a2 v1 v2 a',
-    a1 = a2
-    -> v1 = v2
-    -> (a' <> a1 -> m1 a' = m2 a')
-    -> upd m1 a1 v1 a' = upd m2 a2 v2 a'.
-  Proof.
-    intros; subst; unfold upd; destruct (eq_nat_dec a' a2); auto.
-  Qed.
-
-  Hint Resolve upd_same.
-
-  Lemma replay_irrel : forall xp a',
-    DataStart xp <= a' < DataStart xp + DataLen xp
-    -> forall a len m1 m2,
-      (forall a', a <= a' < a + len*2
-        -> m1 a' = m2 a')
-      -> m1 a' = m2 a'
-      -> replay a len m1 a' = replay a len m2 a'.
-  Proof.
-    induction len; simpl; intuition eauto.
-    apply upd_same; eauto.
-  Qed.
-
-  Hint Rewrite plus_0_r.
-
-  Theorem write_ok : forall xp ms a v,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp]
-      /\ rep xp (ActiveTxn ms)}}
-    (write xp a v)
-    {{r, rep xp (ActiveTxn (fst ms, upd (snd ms) a v))
-      \/ ([r = Crashed] /\ rep xp (ActiveTxn ms))}}.
-  Proof.
-    hoare.
-
-    - right; intuition.
-      + pred.
-      + eexists; intuition eauto.
-        eexists; intuition eauto.
-        * eapply validLog_irrel; eauto; pred.
-        * erewrite replay_irrel; eauto; pred.
-
-    - right; intuition.
-      + pred.
-      + eexists; intuition eauto.
-        eexists; intuition eauto.
-        * eapply validLog_irrel; eauto; pred.
-        * erewrite replay_irrel; eauto; pred.
-
-    - left; intuition.
-      + pred.
-      + eexists; intuition eauto.
-        eexists; intuition eauto.
-        * pred.
-          eapply validLog_irrel; eauto; pred.
-        * pred.
-          apply upd_same; pred.
-          rewrite H11 by auto.
-          erewrite replay_irrel; eauto; pred.
-  Qed.
 
   Theorem read_ok : forall xp ms a,
     {{[DataStart xp <= a < DataStart xp + DataLen xp]
@@ -786,126 +843,49 @@ Module Log : LOG.
       rewrite <- H6; auto.
   Qed.
 
-  Lemma validLog_data : forall xp m len a x1,
-    m < len
-    -> validLog xp a len x1
-    -> DataStart xp <= x1 (a + m * 2) < DataStart xp + DataLen xp.
-  Proof.
-    induction len; simpl; intros.
-    intuition.
-    destruct H0.
-    destruct (eq_nat_dec m len); subst; auto.
-  Qed.
+  Definition write xp a v := $(unit:
+    len <- !(LogLength xp);
+    If (le_lt_dec (LogLen xp) len) {
+      Crash
+    } else {
+      (LogStart xp + len*2) <-- a;;
+      (LogStart xp + len*2 + 1) <-- v;;
+      (LogLength xp) <-- (S len)
+    }
+  ).
 
-  Lemma replay_redo : forall a a' len m1 m2,
-    (forall a'', a <= a'' < a + len*2
-      -> m1 a'' = m2 a'')
-    -> (m1 a' <> m2 a'
-      -> exists k, k < len
-        /\ m1 (a + k*2) = a'
-        /\ m2 (a + k*2) = a')
-    -> ~(a <= a' < a + len*2)
-    -> replay a len m1 a' = replay a len m2 a'.
-  Proof.
-    induction len; simpl; intuition.
-    destruct (eq_nat_dec (m1 a') (m2 a')); auto.
-    apply H0 in n.
-    destruct n; intuition omega.
-
-    apply upd_same; eauto; intros.
-    apply IHlen; eauto; intros.
-    apply H0 in H3.
-    destruct H3; intuition.
-    destruct (eq_nat_dec x len); subst; eauto.
-    2: exists x; eauto.
-    tauto.
-  Qed.
-
-  Theorem commit_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
-    (commit xp)
-    {{r, rep xp (NoTransaction m2)
-      \/ ([r = Crashed] /\ (rep xp (ActiveTxn (m1, m2)) \/
-                            rep xp (CommittedTxn m2)))}}.
+  Theorem write_ok : forall xp ms a v,
+    {{[DataStart xp <= a < DataStart xp + DataLen xp]
+      /\ rep xp (ActiveTxn ms)}}
+    (write xp a v)
+    {{r, rep xp (ActiveTxn (fst ms, upd (snd ms) a v))
+      \/ ([r = Crashed] /\ rep xp (ActiveTxn ms))}}.
   Proof.
     hoare.
 
-    - eauto 10.
-    - eexists; intuition eauto.
-      + erewrite replay_irrel; eauto; pred.
-      + eapply validLog_irrel; eauto; pred.
-    - eauto 20.
-    - eauto 20.
-    - eauto 12.
-    - assert (DataStart xp <= x1 (LogStart xp + m * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
-      left; intuition eauto.
-      eexists; intuition eauto.
-      + rewrite H0 by auto.
-        apply replay_redo.
-        * pred.
-        * destruct (eq_nat_dec a (x1 (LogStart xp + m * 2))); subst; eauto; pred.
-          eexists; intuition eauto; pred.
-        * pred.
-          disjoint xp.
-      + pred.
-      + pred.
-      + eapply validLog_irrel; eauto; pred.
-      + apply upd_same; pred.
-        rewrite H9 by auto.
-        apply replay_redo.
-        * pred.
-        * destruct (eq_nat_dec a (x1 (LogStart xp + m * 2))); subst; eauto; pred.
-        * pred.
-          disjoint xp.
     - right; intuition.
-      right; intuition.
-      eexists; intuition eauto.
-      eexists; intuition eauto.
-      * eapply validLog_irrel; eauto; pred.
-      * erewrite replay_irrel; eauto; pred.
-    - eauto 20.
-    - left; intuition.
-      pred.
-      firstorder.
-  Qed.
-
-  Theorem recover_ok : forall xp m m', {{rep xp (NoTransaction m) \/
-                                         rep xp (ActiveTxn (m, m')) \/
-                                         rep xp (CommittedTxn m)}}
-    (recover xp)
-    {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ (rep xp (NoTransaction m) \/
-                            rep xp (CommittedTxn m)))}}.
-  Proof.
-    intros; hoare_ghost m.
-
-    - eauto 10.
-    - eauto 10.
-    - eauto 12.
-    - eauto 12.
-    - eauto 12.
-    - assert (DataStart xp <= x1 (LogStart xp + m0 * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
-      left; intuition.
-      eexists; intuition eauto.
-      + rewrite H0 by auto.
-        apply replay_redo.
-        * pred.
-        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
-          eexists; intuition eauto; pred.
-        * pred.
-          disjoint xp.
       + pred.
+      + eexists; intuition eauto.
+        eexists; intuition eauto.
+        * eapply validLog_irrel; eauto; pred.
+        * erewrite replay_irrel; eauto; pred.
+
+    - right; intuition.
       + pred.
-      + eapply validLog_irrel; eauto; pred.
-      + apply upd_same; pred.
-        rewrite H9 by auto.
-        apply replay_redo.
-        * pred.
-        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
-        * pred.
-          disjoint xp.
-    - eauto 12.
+      + eexists; intuition eauto.
+        eexists; intuition eauto.
+        * eapply validLog_irrel; eauto; pred.
+        * erewrite replay_irrel; eauto; pred.
+
     - left; intuition.
-      pred.
-      firstorder.
+      + pred.
+      + eexists; intuition eauto.
+        eexists; intuition eauto.
+        * pred.
+          eapply validLog_irrel; eauto; pred.
+        * pred.
+          apply upd_same; pred.
+          rewrite H11 by auto.
+          erewrite replay_irrel; eauto; pred.
   Qed.
 End Log.
