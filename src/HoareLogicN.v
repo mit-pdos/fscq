@@ -936,3 +936,59 @@ Proof.
   - right. intuition eauto. right. left. eexists. split; eauto. eauto.
   - right. intuition eauto. right. left. eexists. split; eauto. eauto.
 Qed.
+
+
+Inductive recovery_result (R:Set) :=
+| RHalted (v : R)
+| RRecovered.
+Implicit Arguments RHalted [R].
+Implicit Arguments RRecovered [R].
+
+Inductive exec_tryrecover xp : mem -> mem -> result unit -> Prop :=
+| XTROK : forall m m',
+  exec m (Log.recover xp) m' (Halted tt) ->
+  exec_tryrecover xp m m' (Halted tt)
+| XTRCrash : forall m m' m'',
+  exec m (Log.recover xp) m' Crashed ->
+  exec_tryrecover xp m' m'' (Halted tt) ->
+  exec_tryrecover xp m m'' (Halted tt).
+
+Inductive exec_recover xp : forall {R : Set}, mem -> prog R -> mem -> recovery_result R -> Prop :=
+| XROK : forall (R:Set) m (p:prog R) m' v,
+  exec m p m' (Halted v) ->
+  exec_recover xp m p m' (RHalted v)
+| XRCrash : forall (R:Set) m (p:prog R) m' m'',
+  exec m p m' Crashed ->
+  exec_tryrecover xp m' m'' (Halted tt) ->
+  exec_recover xp m p m'' RRecovered.
+
+Inductive recover_corr xp : forall {R : Set},
+     pred        (* precondition *)
+  -> prog R      (* program *)
+  -> (R -> pred) (* postcondition if halted *)
+  -> pred        (* postcondition if crashed and recovered *)
+  -> Prop :=
+| RCbase : forall (R:Set) pre (p:prog R) post postcrash,
+  corr pre p post ->
+  corr (post Crashed) (Log.recover xp) postcrash ->
+  corr (postcrash Crashed) (Log.recover xp) postcrash ->
+  recover_corr xp pre p (fun r => post (Halted r)) (postcrash (Halted tt)).
+
+Hint Constructors recover_corr.
+
+Parameter the_xp : xparams.
+Notation "{{ pre }} p {{ r , postok }} {{ postcrash }}" :=
+  (recover_corr the_xp (pre)%pred p (fun r => postok)%pred (postcrash)%pred)
+  (at level 0, p at level 9).
+
+(* XXX prove recover_corr_sound *)
+
+Theorem write_two_blocks_ok2: forall xp a1 a2 v1 v2 m,
+  {{[DataStart xp <= a1 < DataStart xp + DataLen xp]
+    /\ [DataStart xp <= a2 < DataStart xp + DataLen xp]
+    /\ Log.rep xp (NoTransaction m)}}
+  (write_two_blocks xp a1 a2 v1 v2)
+  {{r, Log.rep xp (NoTransaction (upd (upd m a1 v1) a2 v2))}}
+  {{Log.rep xp (NoTransaction m)}}.
+Proof.
+  intros.
