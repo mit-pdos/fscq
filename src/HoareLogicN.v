@@ -9,7 +9,7 @@ Definition addr := nat.
 Definition valu := nat.
 
 Inductive prog :=
-| Halt_
+| Halt_ (v : valu)
 | Crash_
 | Read (a : addr)
 | Write (a : addr) (v : valu)
@@ -32,7 +32,7 @@ Inductive result :=
 | Crashed.
 
 Inductive exec : mem -> prog -> mem -> result -> Prop :=
-| XHalt : forall m, exec m Halt m (Halted 0)
+| XHalt : forall m v, exec m (Halt v) m (Halted v)
 | XRead : forall m a, exec m (Read a) m (Halted (m a))
 | XWrite : forall m a v, exec m (Write a v) (upd m a v) (Halted 0)
 | XCrash : forall m p, exec m p m Crashed
@@ -95,8 +95,8 @@ Inductive corr :
   -> prog             (* Program being verified *)
   -> (result -> pred) (* Postcondition *)
   -> Prop :=
-| CHalt : forall pre,
-  corr pre Halt (fun r => [r = Crashed \/ r = Halted 0] /\ pre)%pred
+| CHalt : forall pre v,
+  corr pre (Halt v) (fun r => [r = Crashed \/ r = Halted v] /\ pre)%pred
 | CCrash : forall pre,
   corr pre Crash (fun r => [r = Crashed] /\ pre)%pred
 | CRead : forall pre a,
@@ -161,7 +161,7 @@ Hint Resolve pimpl_refl.
 
 Fixpoint For_ (f : nat -> prog) (i n : nat) : prog :=
   match n with
-    | O => Halt
+    | O => Halt 0
     | S n' => (f i);; (For_ f (S i) n')
   end.
 
@@ -211,7 +211,7 @@ Section prog'.
    * function argument, for specification purposes. *)
 
   Inductive prog' :=
-  | Halt'
+  | Halt' (v : valu)
   | Crash'
   | Read' (a : addr)
   | Write' (a : addr) (v : valu)
@@ -224,7 +224,7 @@ Section prog'.
 
   Fixpoint prog'Out (p : prog') : prog :=
     match p with
-      | Halt' => Halt
+      | Halt' v => Halt v
       | Crash' => Crash
       | Read' a => Read a
       | Write' a v => Write a v
@@ -239,7 +239,7 @@ Section prog'.
   (* Strongest postcondition *)
   Fixpoint spost (pre : pred) (p : prog') : result -> pred :=
     match p with
-      | Halt' => fun r => [r = Crashed \/ r = Halted 0] /\ pre
+      | Halt' v => fun r => [r = Crashed \/ r = Halted v] /\ pre
       | Crash' => fun r => [r = Crashed] /\ pre
       | Read' a => fun r => exists v, a |-> v /\ [r = Crashed \/ r = Halted v] /\ pre
       | Write' a v => fun r => ([r = Crashed] /\ pre) \/ ([r = Halted 0] /\ pre[a <--- v])
@@ -255,7 +255,7 @@ Section prog'.
   (* Verification conditions *)
   Fixpoint vc (pre : pred) (p : prog') : Prop :=
     match p with
-      | Halt' => True
+      | Halt' v => True
       | Crash' => True
       | Read' _ => True
       | Write' _ _ => True
@@ -754,7 +754,7 @@ Module Log : LOG.
     If (eq_nat_dec com 1) {
       (Call (apply_ok xp))
     } else {
-      Halt
+      Halt 0
     }
   ).
 
@@ -794,7 +794,7 @@ Module Log : LOG.
         v <- !(LogStart xp + i*2 + 1);
         (Temp xp) <-- v
       } else {
-        Halt
+        Halt 0
       }
     Pool;;
 
