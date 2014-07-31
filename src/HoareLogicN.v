@@ -129,7 +129,7 @@ Ltac pred_unfold := unfold ptsto, impl, and, or, foral_, exis, lift, pimpl, pupd
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
-      try autorewrite with core in *; eauto)).
+      try autorewrite with core in *; eauto); try subst).
 
 Lemma could_always_crash : forall R pre p post, @corr R pre p post
   -> forall m, pre m -> post Crashed m.
@@ -139,19 +139,32 @@ Qed.
 
 Local Hint Extern 1 =>
   match goal with
-    | [ |- _ (Crashed _) _ ] =>
+    | [ |- _ Crashed _ ] =>
       eapply could_always_crash; eassumption
   end.
+
+Lemma invert_exec : forall R m (p : prog R) m' r,
+  exec m p m' r
+  -> (m' = m /\ r = Crashed)
+     \/ match p in prog R return result R -> Prop with
+        | Halt_ _ v => fun r => m' = m /\ r = Halted v
+        | Read a => fun r => m' = m /\ r = Halted (m a)
+        | Write a v => fun r => m' = upd m a v /\ r = Halted tt
+        | Seq _ _ p1 p2 => fun r => (exec m p1 m' Crashed /\ r = Crashed)
+          \/ (exists m'' v, exec m p1 m'' (Halted v)
+                            /\ exec m'' (p2 v) m' r)
+        | Crash_ _ => fun _ => False
+        end r.
+Proof.
+  destruct 1; eauto 10.
+Qed.
 
 Theorem corr_sound : forall R pre p post, @corr R pre p post
   -> forall m m' r, exec m p m' r
     -> pre m
     -> post r m'.
 Proof.
-  admit.
-(*
-  induction 1; solve [ pred | inversion_clear 1; pred ].
-*)
+  induction 1; try solve [ pred | intros ? ? ? Hexec; apply invert_exec in Hexec; pred ].
 Qed.
 
 
