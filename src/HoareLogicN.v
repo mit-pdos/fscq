@@ -112,7 +112,9 @@ Inductive corr : forall {R : Set},
 | Conseq : forall (R:Set) pre post p pre' post', @corr R pre p post
   -> (pre' --> pre)
   -> (forall r, post r --> post' r)
-  -> corr pre' p post'.
+  -> corr pre' p post'
+| CExistsPre : forall (R:Set) pre post p, @corr R pre p post
+  -> corr pre p (fun rr => post rr /\ [exists s', pre s'])%pred.
 
 Hint Constructors corr.
 
@@ -268,7 +270,7 @@ Section prog'.
         \/ spost (pre /\ [Q]) p2 r
       | For' nocrash crashed f n => fun r =>
         ([r = Halted tt] /\ nocrash ghost n) \/ ([r = Crashed] /\ crashed ghost)
-      | Call' _ cpre cp cpost c => cpost ghost
+      | Call' _ cpre cp cpost c => (fun r => cpost ghost r /\ [exists s', pre s'])
     end%pred.
 
   (* Verification conditions *)
