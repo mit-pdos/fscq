@@ -972,7 +972,13 @@ Inductive recover_corr xp : forall {R : Set},
   corr pre p post ->
   corr (post Crashed) (Log.recover xp) postcrash ->
   corr (postcrash Crashed) (Log.recover xp) postcrash ->
-  recover_corr xp pre p (fun r => post (Halted r)) (postcrash (Halted tt)).
+  recover_corr xp pre p (fun r => post (Halted r)) (postcrash (Halted tt))
+| RCConseq : forall (R:Set) pre (p:prog R) post postcrash pre' post' postcrash',
+  recover_corr xp pre p post postcrash ->
+  (pre' --> pre) ->
+  (forall r, post r --> post' r) ->
+  (postcrash --> postcrash') ->
+  recover_corr xp pre' p post' postcrash'.
 
 Hint Constructors recover_corr.
 
@@ -1000,18 +1006,27 @@ Theorem recover_corr_sound: forall xp R pre p postok postcrash,
   ((exists v, rr = RHalted v /\ postok v m') \/
    (rr = RRecovered /\ postcrash m')).
 Proof.
-  destruct 1.
-  intros m m' rr Hexec Hpre.
-  inversion Hexec; clear Hexec; repeat deexistT.
-  - left; eexists; intuition eauto; subst.
-    eapply corr_sound; eauto.
-  - right; intuition eauto; subst.
-    match goal with
-    | [ H: exec_tryrecover _ _ _ _ |- _ ] => induction H
-    end.
-    + eapply corr_sound with (pre:=(post Crashed)); eauto.
+  induction 1.
+
+  - intros m m' rr Hexec Hpre.
+    inversion Hexec; clear Hexec; repeat deexistT.
+    + left; eexists; intuition eauto; subst.
       eapply corr_sound; eauto.
-    + eapply corr_sound with (pre:=(postcrash Crashed)); eauto.
+    + right; intuition eauto; subst.
+      match goal with
+      | [ H: exec_tryrecover _ _ _ _ |- _ ] => induction H
+      end.
+      * eapply corr_sound with (pre:=(post Crashed)); eauto.
+        eapply corr_sound; eauto.
+      * eapply corr_sound with (pre:=(postcrash Crashed)); eauto.
+
+  - intros.
+    edestruct IHrecover_corr; eauto.
+    + destruct H5. destruct H5.
+      left; eexists; split; eauto.
+      apply H1; eauto.
+    + destruct H5.
+      right; split; eauto.
 Qed.
 
 Theorem write_two_blocks_ok2: forall xp a1 a2 v1 v2 m,
@@ -1023,3 +1038,5 @@ Theorem write_two_blocks_ok2: forall xp a1 a2 v1 v2 m,
   {{Log.rep xp (NoTransaction m)}}.
 Proof.
   intros.
+  econstructor.
+
