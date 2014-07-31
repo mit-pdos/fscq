@@ -5,4 +5,4 @@
 compcert
 /codegen/*.ml
 _build
-/fs_disk
+/disk.img

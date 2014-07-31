@@ -9,23 +9,7 @@ OCAMLINC   = \
     -I compcert/lib -I compcert/common
 
 FILES = CpdtTactics.v \
-	FsTactics.v \
-	Util.v \
-	Storage.v \
-	Closures.v \
-	Smallstep.v \
-	LoopfreeWF.v \
-	Disk.v \
-	Bank.v \
-	Trans2.v \
-	Trans.v \
-	MemLog.v \
-	DiskLog.v \
-	FsLayout.v \
-	Balloc.v \
-	FileSpec.v \
-	BufferedFileSpec.v \
-	File.v
+	HoareLogicN.v
 
 PROOFFILES = 
 
