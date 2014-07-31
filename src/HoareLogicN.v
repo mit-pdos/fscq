@@ -911,31 +911,28 @@ Module Log : LOG.
   Qed.
 End Log.
 
-Record triplemem := TripleMem {
-  s0: mem;
-  s1: mem;
-  s2: mem
-}.
-
-Definition write_two_blocks xp a1 a2 v1 v2 := $(triplemem:
-  (Call (fun t: triplemem => Log.begin_ok xp (s0 t)));;
-  (Call (fun t: triplemem => Log.write_ok xp a1 v1 (s0 t, s1 t)));;
-  (Call (fun t: triplemem => Log.write_ok xp a2 v2 (s1 t, s2 t)));;
-  (Call (fun t: triplemem => Log.commit_ok xp (s0 t) (s2 t)))
+Definition write_two_blocks xp a1 a2 v1 v2 := $(mem:
+  (Call (fun m: mem => Log.begin_ok xp m));;
+  (Call (fun m: mem => Log.write_ok xp a1 v1 (m, m)));;
+  (Call (fun m: mem => Log.write_ok xp a2 v2 (m, upd m a1 v1)));;
+  (Call (fun m: mem => Log.commit_ok xp m (upd (upd m a1 v1) a2 v2)))
 ).
 
-Theorem write_two_blocks_ok: forall xp a1 a2 v1 v2 t,
+Theorem write_two_blocks_ok: forall xp a1 a2 v1 v2 m,
   {{[DataStart xp <= a1 < DataStart xp + DataLen xp]
     /\ [DataStart xp <= a2 < DataStart xp + DataLen xp]
-    /\ Log.rep xp (NoTransaction (s0 t))}}
+    /\ Log.rep xp (NoTransaction m)}}
   (write_two_blocks xp a1 a2 v1 v2)
-  {{r, Log.rep xp (NoTransaction (upd (upd (s0 t) a1 v1) a2 v2))
-    \/ ([r = Crashed] /\ (Log.rep xp (NoTransaction (s0 t)) \/
-                          (exists ms, [fst ms = s0 t] /\ Log.rep xp (ActiveTxn ms)) \/
-                          Log.rep xp (CommittedTxn (upd (upd (s0 t) a1 v1) a2 v2))))}}.
+  {{r, Log.rep xp (NoTransaction (upd (upd m a1 v1) a2 v2))
+    \/ ([r = Crashed] /\ (Log.rep xp (NoTransaction m) \/
+                          (exists ms, [fst ms = m] /\ Log.rep xp (ActiveTxn ms)) \/
+                          Log.rep xp (CommittedTxn (upd (upd m a1 v1) a2 v2))))}}.
 Proof.
   hoare.
-  (* XXX we lost the a1/a2 parts of the precondition after begin,
-   * because Call's spost is just the function's postcondition.
-   *)
-Abort.
+  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
+  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
+  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
+  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
+  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
+  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
+Qed.
