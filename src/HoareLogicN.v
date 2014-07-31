@@ -500,14 +500,14 @@ Module Type LOG.
       \/ ([r = Crashed] /\ (rep xp (NoTransaction m) \/
                             rep xp (CommittedTxn m)))}}.
 
-  Axiom read_ok : forall xp ms a,
+  Axiom read_ok : forall xp a ms,
     {{[DataStart xp <= a < DataStart xp + DataLen xp]
       /\ rep xp (ActiveTxn ms)}}
     (read xp a)
     {{r, rep xp (ActiveTxn ms)
       /\ [r = Crashed \/ r = Halted (snd ms a)]}}.
 
-  Axiom write_ok : forall xp ms a v,
+  Axiom write_ok : forall xp a v ms,
     {{[DataStart xp <= a < DataStart xp + DataLen xp]
       /\ rep xp (ActiveTxn ms)}}
     (write xp a v)
@@ -820,7 +820,7 @@ Module Log : LOG.
     (!(Temp xp))
   ).
 
-  Theorem read_ok : forall xp ms a,
+  Theorem read_ok : forall xp a ms,
     {{[DataStart xp <= a < DataStart xp + DataLen xp]
       /\ rep xp (ActiveTxn ms)}}
     (read xp a)
@@ -873,7 +873,7 @@ Module Log : LOG.
     }
   ).
 
-  Theorem write_ok : forall xp ms a v,
+  Theorem write_ok : forall xp a v ms,
     {{[DataStart xp <= a < DataStart xp + DataLen xp]
       /\ rep xp (ActiveTxn ms)}}
     (write xp a v)
@@ -908,3 +908,32 @@ Module Log : LOG.
           erewrite replay_irrel; eauto; pred.
   Qed.
 End Log.
+
+Record triplemem := TripleMem {
+  s0: mem;
+  s1: mem;
+  s2: mem
+}.
+
+Definition write_two_blocks xp a1 a2 v1 v2 := $(triplemem:
+  (Call (fun t: triplemem => Log.begin_ok xp (s0 t)));;
+  (Call (fun t: triplemem => Log.write_ok xp a1 v1 (s0 t, s1 t)));;
+  (Call (fun t: triplemem => Log.write_ok xp a2 v2 (s1 t, s2 t)));;
+  (Call (fun t: triplemem => Log.commit_ok xp (s0 t) (s2 t)))
+).
+
+Theorem write_two_blocks_ok: forall xp a1 a2 v1 v2 t,
+  {{[DataStart xp <= a1 < DataStart xp + DataLen xp]
+    /\ [DataStart xp <= a2 < DataStart xp + DataLen xp]
+    /\ Log.rep xp (NoTransaction (s0 t))}}
+  (write_two_blocks xp a1 a2 v1 v2)
+  {{r, Log.rep xp (NoTransaction (upd (upd (s0 t) a1 v1) a2 v2))
+    \/ ([r = Crashed] /\ (Log.rep xp (NoTransaction (s0 t)) \/
+                          (exists ms, [fst ms = s0 t] /\ Log.rep xp (ActiveTxn ms)) \/
+                          Log.rep xp (CommittedTxn (upd (upd (s0 t) a1 v1) a2 v2))))}}.
+Proof.
+  hoare.
+  (* XXX we lost the a1/a2 parts of the precondition after begin,
+   * because Call's spost is just the function's postcondition.
+   *)
+Abort.
