@@ -945,13 +945,13 @@ Implicit Arguments RHalted [R].
 Implicit Arguments RRecovered [R].
 
 Inductive exec_tryrecover xp : mem -> mem -> result unit -> Prop :=
-| XTROK : forall m m',
-  exec m (Log.recover xp) m' (Halted tt) ->
-  exec_tryrecover xp m m' (Halted tt)
-| XTRCrash : forall m m' m'',
-  exec m (Log.recover xp) m' Crashed ->
-  exec_tryrecover xp m' m'' (Halted tt) ->
-  exec_tryrecover xp m m'' (Halted tt).
+| XTROK : forall m m' r,
+  exec m (Log.recover xp) m' r ->
+  exec_tryrecover xp m m' r
+| XTRCrash : forall m m' m'' r,
+  exec_tryrecover xp m m' Crashed ->
+  exec m' (Log.recover xp) m'' r ->
+  exec_tryrecover xp m m'' r.
 
 Inductive exec_recover xp : forall {R : Set}, mem -> prog R -> mem -> recovery_result R -> Prop :=
 | XROK : forall (R:Set) m (p:prog R) m' v,
@@ -981,7 +981,38 @@ Notation "{{ pre }} p {{ r , postok }} {{ postcrash }}" :=
   (recover_corr the_xp (pre)%pred p (fun r => postok)%pred (postcrash)%pred)
   (at level 0, p at level 9).
 
-(* XXX prove recover_corr_sound *)
+Require Import Eqdep.
+Ltac deexistT :=
+  match goal with
+  | [ H: existT _ _ _ = existT _ _ _ |- _ ] => apply inj_pair2 in H
+  end.
+
+Ltac invert_exec :=
+  match goal with
+  | [ H: exec _ _ _ _ |- _ ] => apply invert_exec in H
+  end.
+
+Theorem recover_corr_sound: forall xp R pre p postok postcrash,
+  @recover_corr xp R pre p postok postcrash ->
+  forall m m' rr,
+  exec_recover xp m p m' rr ->
+  pre m ->
+  ((exists v, rr = RHalted v /\ postok v m') \/
+   (rr = RRecovered /\ postcrash m')).
+Proof.
+  destruct 1.
+  intros m m' rr Hexec Hpre.
+  inversion Hexec; clear Hexec; repeat deexistT.
+  - left; eexists; intuition eauto; subst.
+    eapply corr_sound; eauto.
+  - right; intuition eauto; subst.
+    match goal with
+    | [ H: exec_tryrecover _ _ _ _ |- _ ] => induction H
+    end.
+    + eapply corr_sound with (pre:=(post Crashed)); eauto.
+      eapply corr_sound; eauto.
+    + eapply corr_sound with (pre:=(postcrash Crashed)); eauto.
+Qed.
 
 Theorem write_two_blocks_ok2: forall xp a1 a2 v1 v2 m,
   {{[DataStart xp <= a1 < DataStart xp + DataLen xp]
