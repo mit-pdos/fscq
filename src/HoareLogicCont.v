@@ -95,28 +95,33 @@ Notation "p [ a <--- v ]" := (pupd p a v) (at level 0) : pred_scope.
 
 Definition diskIs (m : mem) : pred := eq m.
 
+
 (** ** Hoare doubles *)
 
-Inductive corr : forall (R S: Set),
-     (outcome S->pred)  (* Precondition *)
-  -> prog R             (* Program being verified *)
+Inductive corr: forall (A R S: Set),
+     (A->outcome S->pred)  (* Precondition *)
+  -> (A->prog R)           (* Program being verified *)
   -> Prop :=
-| CReturn: forall (R:Set) v,
-  corr (fun out: outcome R => [out = Crashed \/ out = Returned v]%pred)
-       (Return_ v)
-| CStepRead: forall (R: Set) a (rx: valu->prog R) (pre: pred),
-  corr (fun out: outcome valu => exists v,
-                                 a |-> v /\
-                                 [out = Crashed \/ out = Returned v] /\
-                                 pre /\
-                                 [corr (fun out': outcome R => pre) (rx v)])%pred
-       (Cont_ (OpRead a) rx)
+| CReturn: forall (R:Set),
+  corr (fun (arg: R) (out: outcome R) => [out = Crashed \/ out = Returned arg]%pred)
+       (@Return_ R)
+| CStepRead: forall (R: Set) (rx: valu->prog R) (pre: addr->pred),
+  corr (fun (arg:addr) (out: outcome valu) =>
+        exists v,
+        arg |-> v /\
+        [out = Crashed \/ out = Returned v] /\
+        pre arg /\
+        [corr (fun _ (out': outcome R) => pre arg) rx])%pred
+       (fun (arg:addr) => (Cont_ (OpRead arg) rx)).
+
+(*
 | CStepWrite: forall (R: Set) a v (rx: unit->prog R) (pre: pred),
   corr (fun out: outcome unit => pre /\
                                  ([out = Crashed] \/
                                   ([out = Returned tt] /\
                                    [corr (fun out': outcome R => pre[a <--- v]) (rx tt)])))%pred
        (Cont_ (OpWrite a v) rx).
+*)
 
 
 
