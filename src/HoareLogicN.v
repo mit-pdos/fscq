@@ -1073,3 +1073,4 @@ Proof.
   eapply Conseq.
   apply Log.recover_ok.
   *)
+Abort.
