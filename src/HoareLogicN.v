@@ -1117,3 +1117,146 @@ Proof.
   pred.
 Qed.
 
+
+
+Definition write_two_blocks_inner a1 a2 v1 v2 := $((mem*mem):
+  (Call (fun ms: mem*mem => Log.write_ok the_xp a1 v1 ((fst ms), (snd ms))));;
+  (Call (fun ms: mem*mem => Log.write_ok the_xp a2 v2 ((fst ms), upd (snd ms) a1 v1)))
+).
+
+Theorem write_two_blocks_inner_ok: forall a1 a2 v1 v2 m0 m,
+  {{[DataStart the_xp <= a1 < DataStart the_xp + DataLen the_xp]
+    /\ [DataStart the_xp <= a2 < DataStart the_xp + DataLen the_xp]
+    /\ Log.rep the_xp (ActiveTxn (m0, m))}}
+  (write_two_blocks_inner a1 a2 v1 v2)
+  {{r, Log.rep the_xp (ActiveTxn (m0, (upd (upd m a1 v1) a2 v2)))
+    \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m0, m')))}}.
+Proof.
+  intros; hoare_ghost (m0, m).
+Qed.
+
+Definition wrappable (R:Set) (p:prog R) (fn:mem->mem) := forall m0 m,
+  {{Log.rep the_xp (ActiveTxn (m0, m))}}
+  p
+  {{r, Log.rep the_xp (ActiveTxn (m0, fn m))
+    \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m0, m')))}}.
+
+Theorem write_two_blocks_wrappable a1 a2 v1 v2
+  (A1OK: DataStart the_xp <= a1 < DataStart the_xp + DataLen the_xp)
+  (A2OK: DataStart the_xp <= a2 < DataStart the_xp + DataLen the_xp):
+  wrappable (write_two_blocks_inner a1 a2 v1 v2) (fun m => upd (upd m a1 v1) a2 v2).
+Proof.
+  unfold wrappable; intros.
+  eapply Conseq.
+  apply write_two_blocks_inner_ok.
+  pred. pred.
+Qed.
+
+Definition txn_wrap (p:prog unit) (fn:mem->mem) (wrappable_p: wrappable p fn) := $(mem:
+  (Call (fun m: mem => Log.begin_ok the_xp m));;
+  (Call (fun m: mem => wrappable_p m m));;
+  (Call (fun m: mem => Log.commit_ok the_xp m (fn m)))
+).
+
+Theorem txn_wrap_ok_norecover:
+  forall (p:prog unit) (fn:mem->mem) (wrappable_p: wrappable p fn) m,
+  {{Log.rep the_xp (NoTransaction m)}}
+  (txn_wrap wrappable_p)
+  {{r, Log.rep the_xp (NoTransaction (fn m))
+    \/ ([r = Crashed] /\ (Log.rep the_xp (NoTransaction m) \/
+                          (exists m', Log.rep the_xp (ActiveTxn (m, m'))) \/
+                          Log.rep the_xp (CommittedTxn (fn m))))}}.
+Proof.
+  hoare.
+Qed.
+
+Theorem txn_wrap_ok:
+  forall (p:prog unit) (fn:mem->mem) (wrappable_p: wrappable p fn) m,
+  {{Log.rep the_xp (NoTransaction m)}}
+  (txn_wrap wrappable_p)
+  {{r, Log.rep the_xp (NoTransaction (fn m))}}
+  {{Log.rep the_xp (NoTransaction m) \/
+    Log.rep the_xp (NoTransaction (fn m))}}.
+Proof.
+  intros.
+  eapply RCConseq.
+  instantiate (1:=(fun r : result unit =>
+                     Log.rep the_xp (NoTransaction m) \/
+                     Log.rep the_xp (NoTransaction (fn m)) \/
+                     ([r = Crashed] /\ Log.rep the_xp (CommittedTxn m)) \/
+                     ([r = Crashed] /\ Log.rep the_xp (CommittedTxn (fn m)))
+                  )%pred (Halted tt)).
+  instantiate (1:=fun r : unit =>
+                  (fun res : result unit =>
+                     match res with
+                     | Halted _ => Log.rep the_xp (NoTransaction (fn m))
+                     | Crashed => Log.rep the_xp (NoTransaction m) \/
+                                  Log.rep the_xp (NoTransaction (fn m)) \/
+                                  (exists m', Log.rep the_xp (ActiveTxn (m, m'))) \/
+                                  Log.rep the_xp (CommittedTxn (fn m))
+                     end
+                   )%pred (Halted r)).
+  instantiate (1:=(Log.rep the_xp (NoTransaction m))%pred).
+  apply RCbase.
+
+  (* corr 1: hoare triple for write_two_blocks *)
+  eapply Conseq.
+  apply txn_wrap_ok_norecover.
+  pred.
+  pred; destruct r; pred.
+
+  (* corr 2: hoare triple for the first time recover runs *)
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  (* corr 3: hoare triple for repeated recover runs *)
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  (* prove implicications from the original RCConseq *)
+  pred.
+  pred.
+  pred.
+Qed.
+
+
