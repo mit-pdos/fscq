@@ -499,8 +499,7 @@ Module Type LOG.
                                        rep xp (CommittedTxn m)}}
     (recover xp)
     {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ (rep xp (NoTransaction m) \/
-                            rep xp (CommittedTxn m)))}}.
+      \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
 
   Axiom read_ok : forall xp a ms,
     {{[DataStart xp <= a < DataStart xp + DataLen xp]
@@ -784,8 +783,7 @@ Module Log : LOG.
                                          rep xp (CommittedTxn m)}}
     (recover xp)
     {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ (rep xp (NoTransaction m) \/
-                            rep xp (CommittedTxn m)))}}.
+      \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
   Proof.
     intros; hoare_ghost m.
   Qed.
@@ -1029,14 +1027,49 @@ Proof.
       right; split; eauto.
 Qed.
 
-Theorem write_two_blocks_ok2: forall xp a1 a2 v1 v2 m,
-  {{[DataStart xp <= a1 < DataStart xp + DataLen xp]
-    /\ [DataStart xp <= a2 < DataStart xp + DataLen xp]
-    /\ Log.rep xp (NoTransaction m)}}
-  (write_two_blocks xp a1 a2 v1 v2)
-  {{r, Log.rep xp (NoTransaction (upd (upd m a1 v1) a2 v2))}}
-  {{Log.rep xp (NoTransaction m)}}.
+Theorem write_two_blocks_ok2: forall a1 a2 v1 v2 m,
+  {{[DataStart the_xp <= a1 < DataStart the_xp + DataLen the_xp]
+    /\ [DataStart the_xp <= a2 < DataStart the_xp + DataLen the_xp]
+    /\ Log.rep the_xp (NoTransaction m)}}
+  (write_two_blocks the_xp a1 a2 v1 v2)
+  {{r, Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2))}}
+  {{Log.rep the_xp (NoTransaction m) \/
+    Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2))}}.
 Proof.
   intros.
-  econstructor.
+  eapply RCConseq.
+  instantiate (1:=(fun r : result unit =>
+                     Log.rep the_xp (NoTransaction m) \/
+                     Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2)) \/
+                     ([r = Crashed] /\ Log.rep the_xp (CommittedTxn m))
+                  )%pred (Halted tt)).
+  instantiate (1:=fun r : unit =>
+                  (fun res : result unit =>
+                     match res with
+                     | Halted _ => Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2))
+                     | Crashed => Log.rep the_xp (NoTransaction m) \/
+                                  Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2)) \/
+                                  (exists ms, [fst ms = m] /\ Log.rep the_xp (ActiveTxn ms)) \/
+                                  Log.rep the_xp (CommittedTxn (upd (upd m a1 v1) a2 v2))
+                     end
+                   )%pred (Halted r)).
+  instantiate (1:=([DataStart the_xp <= a1 < DataStart the_xp + DataLen the_xp] /\
+                   [DataStart the_xp <= a2 < DataStart the_xp + DataLen the_xp] /\
+                   Log.rep the_xp (NoTransaction m))%pred).
+  apply RCbase.
 
+  eapply Conseq.
+  apply write_two_blocks_ok.
+  pred.
+  pred; destruct r; pred.
+
+  (* XXX how do we use Log.recover_ok here?  it requires some m, but we don't
+   * know which state the disk is in: it could have reached the final updated m,
+   * or not...  it's almost like we want to destruct the precondition, and invoke
+   * Log.recover_ok with a different m argument in each case..
+   *)
+
+  (*
+  eapply Conseq.
+  apply Log.recover_ok.
+  *)
