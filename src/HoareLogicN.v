@@ -183,21 +183,27 @@ Qed.
 
 Hint Resolve pimpl_refl.
 
-Fixpoint For_ (f : nat -> prog unit) (i n : nat) : prog unit :=
+Fixpoint For_ {L : Set} (f : nat -> L -> prog L) (i n : nat) (l : L) : prog L :=
   match n with
-    | O => Halt tt
-    | S n' => (f i);; (For_ f (S i) n')
+    | O => Halt l
+    | S n' => l' <- (f i l); (For_ f (S i) n' l')
   end.
 
-Theorem CFor : forall (f : nat -> prog unit)
-  (nocrash : nat -> pred) (crashed : pred),
-  (forall m, nocrash m --> crashed)
-  -> forall n i,
-    (forall m, i <= m < n + i
-      -> {{nocrash m}} (f m)
-      {{r, ([r = Halted tt] /\ nocrash (S m)) \/ ([r = Crashed] /\ crashed)}})
-    -> {{nocrash i}} (For_ f i n)
-    {{r, ([r = Halted tt] /\ nocrash (n + i)) \/ ([r = Crashed] /\ crashed)}}.
+Theorem CFor:
+  forall {L : Set} (f : nat -> L -> prog L)
+         (nocrash : nat -> L -> pred) (crashed : pred),
+  (forall m l, nocrash m l --> crashed) ->
+  forall n i l,
+    (forall m lx,
+     i <= m < n + i ->
+     {{nocrash m lx}}
+     (f m lx)
+     {{r, (exists lx', [r = Halted lx'] /\ nocrash (S m) lx') \/
+          ([r = Crashed] /\ crashed)}}) ->
+    {{nocrash i l}}
+    (For_ f i n l)
+    {{r, (exists l', [r = Halted l'] /\ nocrash (n + i) l') \/
+         ([r = Crashed] /\ crashed)}}.
 Proof.
   induction n; simpl; intros.
 
@@ -206,7 +212,7 @@ Proof.
   apply pimpl_refl.
   simpl.
   pred.
-  
+
   eapply Conseq.
   econstructor.
   eapply H0.
@@ -223,7 +229,7 @@ Proof.
   apply pimpl_refl.
   apply pimpl_refl.
   pred.
-  replace (S (n + i)) with (n + S i) by omega; auto.
+  replace (S (n + i)) with (n + S i) by omega; eauto.
 Qed.
 
 
@@ -241,8 +247,8 @@ Section prog'.
   | Write' (a : addr) (v : valu) : prog' unit
   | Seq' {T R : Set} (p1 : prog' T) (p2 : T -> prog' R) : prog' R
   | If' (R : Set) P Q (b : {P} + {Q}) (p1 p2 : prog' R) : prog' R
-  | For' (nocrash : ghostT -> nat -> pred) (crashed : ghostT -> pred)
-    (f : nat -> prog' unit) (n : nat) : prog' unit
+  | For' {L : Set} (nocrash : ghostT -> nat -> L -> pred) (crashed : ghostT -> pred)
+    (f : nat -> L -> prog' L) (n : nat) (l : L) : prog' L
   | Call' (R : Set) (pre: ghostT -> pred) (p: prog R)
     (post: ghostT -> result R -> pred)
     (c: forall g: ghostT, corr (pre g) p (post g)) : prog' R.
@@ -255,7 +261,7 @@ Section prog'.
       | Write' a v => Write a v
       | Seq' _ _ p1 p2 => Seq (prog'Out p1) (fun x => prog'Out (p2 x))
       | If' _ _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
-      | For' _ _ f n => For_ (fun x => prog'Out (f x)) 0 n
+      | For' _ _ _ f n l => For_ (fun x l => prog'Out (f x l)) 0 n l
       | Call' _ _ p _ _ => p
     end.
 
@@ -272,8 +278,9 @@ Section prog'.
         \/ exists v, spost (spost pre p1 (Halted v)) (p2 v) r
       | If' _ P Q b p1 p2 => fun r => spost (pre /\ [P]) p1 r
         \/ spost (pre /\ [Q]) p2 r
-      | For' nocrash crashed f n => fun r =>
-        ([r = Halted tt] /\ nocrash ghost n) \/ ([r = Crashed] /\ crashed ghost)
+      | For' _ nocrash crashed f n l => fun r =>
+        (exists l', [r = Halted l'] /\ nocrash ghost n l') \/
+        ([r = Crashed] /\ crashed ghost)
       | Call' _ cpre cp cpost c => (fun r => cpost ghost r /\ [exists s', pre s'])
     end%pred.
 
@@ -287,12 +294,13 @@ Section prog'.
       | Seq' _ _ p1 p2 => vc pre p1
         /\ forall v, vc (spost pre p1 (Halted v)) (p2 v)
       | If' _ P Q b p1 p2 => vc (pre /\ [P]) p1 /\ vc (pre /\ [Q]) p2
-      | For' nocrash crashed f n =>
-        (forall m, nocrash ghost m --> crashed ghost)
-        /\ (pre --> nocrash ghost 0)
-        /\ (forall m, m < n -> vc (nocrash ghost m) (f m))
-        /\ (forall m r, m < n -> (spost (nocrash ghost m) (f m) r -->
-          ([r = Halted tt] /\ nocrash ghost (S m)) \/ ([r = Crashed] /\ crashed ghost)))
+      | For' _ nocrash crashed f n l0 =>
+        (forall m l, nocrash ghost m l --> crashed ghost)
+        /\ (pre --> nocrash ghost 0 l0)
+        /\ (forall m l, m < n -> vc (nocrash ghost m l) (f m l))
+        /\ (forall m r l, m < n -> (spost (nocrash ghost m l) (f m l) r -->
+          (exists l', [r = Halted l'] /\ nocrash ghost (S m) l') \/
+          ([r = Crashed] /\ crashed ghost)))
       | Call' _ cpre cp cpost c => pre --> (cpre ghost)
     end.
 
@@ -320,7 +328,7 @@ Section prog'.
       eapply Conseq; eauto; pred.
 
     - eapply Conseq.
-      + apply (@CFor _ (nocrash ghost) (crashed ghost)); auto.
+      + apply (@CFor _ _ (nocrash ghost) (crashed ghost)); auto.
         intros.
         eapply Conseq; [ | apply pimpl_refl | ]; eauto.
         * apply H; apply H2; omega.
@@ -358,8 +366,8 @@ Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
 Delimit Scope prog'_scope with prog'.
 Bind Scope prog'_scope with prog'.
 
-Notation "'For' i < n 'Ghost' g 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Pool'" :=
-  (For' (fun g i => nocrash%pred) (fun g => crashed%pred) (fun i => body) n)
+Notation "'For' i < n 'Ghost' g 'Loopvar' l 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Pool'" :=
+  (For' (fun g i l => nocrash%pred) (fun g => crashed%pred) (fun i l => body) n)
   (at level 9, i at level 0, n at level 0, body at level 9) : prog'_scope.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If' b p1 p2) (at level 9, b at level 0)
@@ -391,13 +399,10 @@ Record xparams := {
    LogStart : addr; (* Start of log region on disk *)
      LogLen : nat;  (* Size of log region *)
 
-       Temp : addr; (* Temporary slot for use by library code *)
-
    Disjoint : disjoints ((DataStart, DataLen)
      :: (LogLength, 1)
      :: (LogCommit, 1)
      :: (LogStart, LogLen*2)
-     :: (Temp, 1)
      :: nil)
 }.
 
@@ -613,8 +618,9 @@ Module Log : LOG.
 
   Definition apply xp := $(mem:
     len <- !(LogLength xp);
-    For i < len
+    (For i < len
       Ghost cur
+      Loopvar _
       Invariant (exists m, diskIs m
         /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
           -> cur a = replay (LogStart xp) len m a]
@@ -629,7 +635,7 @@ Module Log : LOG.
       a <- !(LogStart xp + i*2);
       v <- !(LogStart xp + i*2 + 1);
       a <-- v
-    Pool;;
+    Pool tt);;
     (LogCommit xp) <-- 0
   ).
 
@@ -718,7 +724,7 @@ Module Log : LOG.
     - eauto 12.
     - eauto 12.
     - assert (DataStart xp <= x1 (LogStart xp + m0 * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
-      left; intuition eauto.
+      left; exists tt; intuition eauto.
       eexists; intuition eauto.
       + rewrite H0 by auto.
         apply replay_redo.
@@ -795,10 +801,10 @@ Module Log : LOG.
   Definition read xp a := $((mem*mem):
     len <- !(LogLength xp);
     v <- !a;
-    (Temp xp) <-- v;;
 
-    For i < len
+    v <- (For i < len
       Ghost old_cur
+      Loopvar v
       Invariant (
         [DataStart xp <= a < DataStart xp + DataLen xp]
         /\ (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
@@ -810,18 +816,18 @@ Module Log : LOG.
             /\ [validLog xp (LogStart xp) len m]
             /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
               -> snd old_cur a = replay (LogStart xp) len m a]
-            /\ [m (Temp xp) = replay (LogStart xp) i m a])
+            /\ [v = replay (LogStart xp) i m a])
       OnCrash rep xp (ActiveTxn old_cur) Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
         v <- !(LogStart xp + i*2 + 1);
-        (Temp xp) <-- v
+        (Halt v)
       } else {
-        Halt tt
+        (Halt v)
       }
-    Pool;;
+    Pool v);
 
-    (!(Temp xp))
+    (Halt v)
   ).
 
   Theorem read_ok : forall xp a ms,
@@ -834,36 +840,22 @@ Module Log : LOG.
     hoare.
 
     - eauto 7.
-
-    - eexists; intuition eauto.
-      + eapply validLog_irrel; eauto; pred.
-      + erewrite replay_irrel; eauto; pred.
-      + pred.
-
     - eauto 20.
     - eauto 20.
     - eauto 20.
 
-    - left; intuition.
-      + pred.
-      + eexists; intuition eauto.
-        * eapply validLog_irrel; eauto; pred.
-        * erewrite replay_irrel; eauto; pred.
-        * pred.
-          symmetry.
-          rewrite upd_eq; pred.
+    - left; eexists; intuition.
+      eexists; pred.
 
     - eauto 20.
 
-    - left; intuition.
-      eexists; intuition eauto.
-      pred.
+    - left; eexists; intuition.
+      eexists; pred.
 
     - eauto 10.
     - eauto 10.
 
-    - rewrite H9.
-      rewrite <- H6; auto.
+    - rewrite H7; pred.
   Qed.
 
   Definition write xp a v := $(unit:

@@ -44,8 +44,7 @@ let xp =
     coq_LogLength = 20;
     coq_LogCommit = 21;
     coq_LogStart = 22;
-    coq_LogLen = 20;
-    coq_Temp = 42 };;
+    coq_LogLen = 20 };;
 
 Printf.printf "Running write_two_blocks on disk..\n";;
 
