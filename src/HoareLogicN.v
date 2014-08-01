@@ -114,7 +114,11 @@ Inductive corr : forall {R : Set},
   -> (forall r, post r --> post' r)
   -> corr pre' p post'
 | CExistsPre : forall (R:Set) pre post p, @corr R pre p post
-  -> corr pre p (fun rr => post rr /\ [exists s', pre s'])%pred.
+  -> corr pre p (fun rr => post rr /\ [exists s', pre s'])%pred
+| CPreOr: forall (R:Set) preA preB (p:prog R) post,
+  corr preA p post
+  -> corr preB p post
+  -> corr (preA \/ preB) p post.
 
 Hint Constructors corr.
 
@@ -494,9 +498,9 @@ Module Type LOG.
     {{r, rep xp (NoTransaction m1)
       \/ ([r = Crashed] /\ rep xp (ActiveTxn (m1, m2)))}}.
 
-  Axiom recover_ok : forall xp m m', {{rep xp (NoTransaction m) \/
-                                       rep xp (ActiveTxn (m, m')) \/
-                                       rep xp (CommittedTxn m)}}
+  Axiom recover_ok : forall xp m, {{rep xp (NoTransaction m) \/
+                                    (exists m', rep xp (ActiveTxn (m, m'))) \/
+                                    rep xp (CommittedTxn m)}}
     (recover xp)
     {{r, rep xp (NoTransaction m)
       \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
@@ -778,9 +782,9 @@ Module Log : LOG.
     }
   ).
 
-  Theorem recover_ok : forall xp m m', {{rep xp (NoTransaction m) \/
-                                         rep xp (ActiveTxn (m, m')) \/
-                                         rep xp (CommittedTxn m)}}
+  Theorem recover_ok : forall xp m, {{rep xp (NoTransaction m) \/
+                                      (exists m', rep xp (ActiveTxn (m, m'))) \/
+                                      rep xp (CommittedTxn m)}}
     (recover xp)
     {{r, rep xp (NoTransaction m)
       \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
@@ -923,16 +927,10 @@ Theorem write_two_blocks_ok: forall xp a1 a2 v1 v2 m,
   (write_two_blocks xp a1 a2 v1 v2)
   {{r, Log.rep xp (NoTransaction (upd (upd m a1 v1) a2 v2))
     \/ ([r = Crashed] /\ (Log.rep xp (NoTransaction m) \/
-                          (exists ms, [fst ms = m] /\ Log.rep xp (ActiveTxn ms)) \/
+                          (exists m', Log.rep xp (ActiveTxn (m, m'))) \/
                           Log.rep xp (CommittedTxn (upd (upd m a1 v1) a2 v2))))}}.
 Proof.
   hoare.
-  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
-  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
-  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
-  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
-  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
-  - right. intuition eauto. right. left. eexists. split; eauto. eauto.
 Qed.
 
 
@@ -1041,7 +1039,8 @@ Proof.
   instantiate (1:=(fun r : result unit =>
                      Log.rep the_xp (NoTransaction m) \/
                      Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2)) \/
-                     ([r = Crashed] /\ Log.rep the_xp (CommittedTxn m))
+                     ([r = Crashed] /\ Log.rep the_xp (CommittedTxn m)) \/
+                     ([r = Crashed] /\ Log.rep the_xp (CommittedTxn (upd (upd m a1 v1) a2 v2)))
                   )%pred (Halted tt)).
   instantiate (1:=fun r : unit =>
                   (fun res : result unit =>
@@ -1049,7 +1048,7 @@ Proof.
                      | Halted _ => Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2))
                      | Crashed => Log.rep the_xp (NoTransaction m) \/
                                   Log.rep the_xp (NoTransaction (upd (upd m a1 v1) a2 v2)) \/
-                                  (exists ms, [fst ms = m] /\ Log.rep the_xp (ActiveTxn ms)) \/
+                                  (exists m', Log.rep the_xp (ActiveTxn (m, m'))) \/
                                   Log.rep the_xp (CommittedTxn (upd (upd m a1 v1) a2 v2))
                      end
                    )%pred (Halted r)).
@@ -1058,19 +1057,63 @@ Proof.
                    Log.rep the_xp (NoTransaction m))%pred).
   apply RCbase.
 
+  (* corr 1: hoare triple for write_two_blocks *)
   eapply Conseq.
   apply write_two_blocks_ok.
   pred.
   pred; destruct r; pred.
 
-  (* XXX how do we use Log.recover_ok here?  it requires some m, but we don't
-   * know which state the disk is in: it could have reached the final updated m,
-   * or not...  it's almost like we want to destruct the precondition, and invoke
-   * Log.recover_ok with a different m argument in each case..
-   *)
-
-  (*
+  (* corr 2: hoare triple for the first time recover runs *)
+  constructor.  (* CPreOr *)
   eapply Conseq.
   apply Log.recover_ok.
-  *)
-Abort.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  (* corr 3: hoare triple for repeated recover runs *)
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  constructor.  (* CPreOr *)
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  eapply Conseq.
+  apply Log.recover_ok.
+  pred.
+  pred.
+
+  (* prove implicications from the original RCConseq *)
+  pred.
+  pred.
+  pred.
+Qed.
+
