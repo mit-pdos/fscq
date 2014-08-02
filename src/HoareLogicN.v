@@ -19,8 +19,8 @@ Notation "'Halt'" := Halt_.
 Notation "'Crash'" := Crash_.
 Notation "!" := Read.
 Infix "<--" := Write (at level 8).
-Notation "p1 ;; p2" := (Seq p1 (fun _: unit => p2)) (at level 9, right associativity).
-Notation "x <- p1 ; p2" := (Seq p1 (fun x => p2)) (at level 9, right associativity).
+Notation "p1 ;; p2" := (Seq p1 (fun _: unit => p2)) (at level 60, right associativity).
+Notation "x <- p1 ; p2" := (Seq p1 (fun x => p2)) (at level 60, right associativity).
 
 Definition mem := addr -> valu.
 Definition mem0 : mem := fun _ => 0.
@@ -618,7 +618,7 @@ Module Log : LOG.
 
   Definition apply xp := $(mem:
     len <- !(LogLength xp);
-    (For i < len
+    For i < len
       Ghost cur
       Loopvar _
       Invariant (exists m, diskIs m
@@ -630,12 +630,13 @@ Module Log : LOG.
         /\ [validLog xp (LogStart xp) len m]
         /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
           -> m a = replay (LogStart xp) i m a])
-      OnCrash rep xp (NoTransaction cur)
-      \/ rep xp (CommittedTxn cur) Begin
+      OnCrash rep xp (NoTransaction cur) \/
+              rep xp (CommittedTxn cur)
+      Begin
       a <- !(LogStart xp + i*2);
       v <- !(LogStart xp + i*2 + 1);
       a <-- v
-    Pool tt);;
+    Pool tt;;
     (LogCommit xp) <-- 0
   ).
 
@@ -751,7 +752,7 @@ Module Log : LOG.
 
   Definition commit xp := $(mem:
     (LogCommit xp) <-- 1;;
-    (Call (apply_ok xp))
+    Call (apply_ok xp)
   ).
 
   Theorem commit_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
@@ -782,7 +783,7 @@ Module Log : LOG.
   Definition recover xp := $(mem:
     com <- !(LogCommit xp);
     If (eq_nat_dec com 1) {
-      (Call (apply_ok xp))
+      Call (apply_ok xp)
     } else {
       Halt tt
     }
@@ -802,7 +803,7 @@ Module Log : LOG.
     len <- !(LogLength xp);
     v <- !a;
 
-    v <- (For i < len
+    For i < len
       Ghost old_cur
       Loopvar v
       Invariant (
@@ -817,17 +818,16 @@ Module Log : LOG.
             /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
               -> snd old_cur a = replay (LogStart xp) len m a]
             /\ [v = replay (LogStart xp) i m a])
-      OnCrash rep xp (ActiveTxn old_cur) Begin
+      OnCrash rep xp (ActiveTxn old_cur)
+      Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
         v <- !(LogStart xp + i*2 + 1);
-        (Halt v)
+        Halt v
       } else {
-        (Halt v)
+        Halt v
       }
-    Pool v);
-
-    (Halt v)
+    Pool v
   ).
 
   Theorem read_ok : forall xp a ms,
@@ -853,9 +853,8 @@ Module Log : LOG.
       eexists; pred.
 
     - eauto 10.
-    - eauto 10.
 
-    - rewrite H7; pred.
+    - rewrite H6; pred.
   Qed.
 
   Definition write xp a v := $(unit:
@@ -1006,9 +1005,9 @@ Definition wrappable (R:Set) (p:prog R) (fn:mem->mem) := forall m0 m,
     \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m0, m')))}}.
 
 Definition txn_wrap (p:prog unit) (fn:mem->mem) (wrappable_p: wrappable p fn) := $(mem:
-  (Call (fun m: mem => Log.begin_ok the_xp m));;
-  (Call (fun m: mem => wrappable_p m m));;
-  (Call (fun m: mem => Log.commit_ok the_xp m (fn m)))
+  Call (fun m: mem => Log.begin_ok the_xp m);;
+  Call (fun m: mem => wrappable_p m m);;
+  Call (fun m: mem => Log.commit_ok the_xp m (fn m))
 ).
 
 Theorem txn_wrap_ok_norecover:
@@ -1115,8 +1114,8 @@ Qed.
 
 
 Definition write_two_blocks a1 a2 v1 v2 := $((mem*mem):
-  (Call (fun ms: mem*mem => Log.write_ok the_xp a1 v1 ((fst ms), (snd ms))));;
-  (Call (fun ms: mem*mem => Log.write_ok the_xp a2 v2 ((fst ms), upd (snd ms) a1 v1)))
+  Call (fun ms: mem*mem => Log.write_ok the_xp a1 v1 ((fst ms), (snd ms)));;
+  Call (fun ms: mem*mem => Log.write_ok the_xp a2 v2 ((fst ms), upd (snd ms) a1 v1))
 ).
 
 Theorem write_two_blocks_wrappable a1 a2 v1 v2
