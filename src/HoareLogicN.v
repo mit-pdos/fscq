@@ -27,20 +27,20 @@ Definition mem0 : mem := fun _ => 0.
 Definition upd (m : mem) (a : addr) (v : valu) : mem :=
   fun a' => if eq_nat_dec a' a then v else m a'.
 
-Inductive result (R:Set) :=
+Inductive outcome (R:Set) :=
 | Halted (v : R)
 | Crashed.
 Implicit Arguments Halted [R].
 Implicit Arguments Crashed [R].
 
-Inductive exec : forall {R : Set}, mem -> prog R -> mem -> result R -> Prop :=
+Inductive exec : forall {R : Set}, mem -> prog R -> mem -> outcome R -> Prop :=
 | XHalt : forall (R : Set) m (v : R), exec m (Halt v) m (Halted v)
 | XRead : forall m a, exec m (Read a) m (Halted (m a))
 | XWrite : forall m a v, exec m (Write a v) (upd m a v) (Halted tt)
 | XCrash : forall (R : Set) m p, exec m p m (@Crashed R)
 | XSeqC : forall (R T : Set) m p1 p2 m', exec m p1 m' (@Crashed T)
   -> exec m (Seq p1 p2) m' (@Crashed R)
-| XSeqH : forall (R T : Set) m p1 p2 m' (v : T) m'' (r : result R), exec m p1 m' (Halted v)
+| XSeqH : forall (R T : Set) m p1 p2 m' (v : T) m'' (r : outcome R), exec m p1 m' (Halted v)
   -> exec m' (p2 v) m'' r
   -> exec m (Seq p1 p2) m'' r.
 
@@ -95,7 +95,7 @@ Definition diskIs (m : mem) : pred := eq m.
 Inductive corr : forall {R : Set},
      pred                (* Precondition *)
   -> prog R              (* Program being verified *)
-  -> (@result R -> pred) (* Postcondition *)
+  -> (@outcome R -> pred) (* Postcondition *)
   -> Prop :=
 | CHalt : forall (R:Set) pre (v:R),
   corr pre (Halt v) (fun r => [r = Crashed \/ r = Halted v] /\ pre)%pred
@@ -152,7 +152,7 @@ Local Hint Extern 1 =>
 Lemma invert_exec : forall R m (p : prog R) m' r,
   exec m p m' r
   -> (m' = m /\ r = Crashed)
-     \/ match p in prog R return result R -> Prop with
+     \/ match p in prog R return outcome R -> Prop with
         | Halt_ _ v => fun r => m' = m /\ r = Halted v
         | Read a => fun r => m' = m /\ r = Halted (m a)
         | Write a v => fun r => m' = upd m a v /\ r = Halted tt
@@ -250,7 +250,7 @@ Section prog'.
   | For' {L : Set} (nocrash : ghostT -> nat -> L -> pred) (crashed : ghostT -> pred)
     (f : nat -> L -> prog' L) (n : nat) (l : L) : prog' L
   | Call' (R : Set) (pre: ghostT -> pred) (p: prog R)
-    (post: ghostT -> result R -> pred)
+    (post: ghostT -> outcome R -> pred)
     (c: forall g: ghostT, corr (pre g) p (post g)) : prog' R.
 
   Fixpoint prog'Out {R : Set} (p : prog' R) : prog R :=
@@ -268,7 +268,7 @@ Section prog'.
   Variable ghost : ghostT.
 
   (* Strongest postcondition *)
-  Fixpoint spost {R : Set} (pre : pred) (p : prog' R) : result R -> pred :=
+  Fixpoint spost {R : Set} (pre : pred) (p : prog' R) : outcome R -> pred :=
     match p with
       | Halt' _ v => fun r => [r = Crashed \/ r = Halted v] /\ pre
       | Crash' _ => fun r => [r = Crashed] /\ pre
@@ -905,13 +905,13 @@ Module Log : LOG.
 End Log.
 
 
-Inductive recovery_result (R:Set) :=
+Inductive recovery_outcome (R:Set) :=
 | RHalted (v : R)
 | RRecovered.
 Implicit Arguments RHalted [R].
 Implicit Arguments RRecovered [R].
 
-Inductive exec_tryrecover xp : mem -> mem -> result unit -> Prop :=
+Inductive exec_tryrecover xp : mem -> mem -> outcome unit -> Prop :=
 | XTROK : forall m m' r,
   exec m (Log.recover xp) m' r ->
   exec_tryrecover xp m m' r
@@ -920,7 +920,7 @@ Inductive exec_tryrecover xp : mem -> mem -> result unit -> Prop :=
   exec m' (Log.recover xp) m'' r ->
   exec_tryrecover xp m m'' r.
 
-Inductive exec_recover xp : forall {R : Set}, mem -> prog R -> mem -> recovery_result R -> Prop :=
+Inductive exec_recover xp : forall {R : Set}, mem -> prog R -> mem -> recovery_outcome R -> Prop :=
 | XROK : forall (R:Set) m (p:prog R) m' v,
   exec m p m' (Halted v) ->
   exec_recover xp m p m' (RHalted v)
@@ -1032,14 +1032,14 @@ Theorem txn_wrap_ok:
 Proof.
   intros.
   eapply RCConseq.
-  instantiate (1:=(fun r : result unit =>
+  instantiate (1:=(fun r : outcome unit =>
                      Log.rep the_xp (NoTransaction m) \/
                      Log.rep the_xp (NoTransaction (fn m)) \/
                      ([r = Crashed] /\ Log.rep the_xp (CommittedTxn m)) \/
                      ([r = Crashed] /\ Log.rep the_xp (CommittedTxn (fn m)))
                   )%pred (Halted tt)).
   instantiate (1:=fun r : unit =>
-                  (fun res : result unit =>
+                  (fun res : outcome unit =>
                      match res with
                      | Halted _ => Log.rep the_xp (NoTransaction (fn m))
                      | Crashed => Log.rep the_xp (NoTransaction m) \/
