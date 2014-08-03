@@ -1047,9 +1047,9 @@ Definition wrappable (R:Set) (p:prog R) (fn:mem->mem) := forall m0 m,
   {{r, Log.rep the_xp (ActiveTxn (m0, fn m))
     \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m0, m')))}}.
 
-Definition txn_wrap (p:prog unit) (fn:mem->mem) (wrappable_p: wrappable p fn) := $(mem:
+Definition txn_wrap (p:prog unit) (fn:mem->mem) (wr: wrappable p fn) := $(unit:
   Call1 (Log.begin_ok the_xp);;
-  Call2 (wrappable_p);;
+  Call2 (wr);;
   Call2 (Log.commit_ok the_xp)
 ).
 
@@ -1193,3 +1193,52 @@ Parameter A2OK: DataStart the_xp <= a2 < DataStart the_xp + DataLen the_xp.
 Check (txn_wrap (write_two_blocks_wrappable v1 v2 A1OK A2OK)).
 Check (txn_wrap_ok (write_two_blocks_wrappable v1 v2 A1OK A2OK)).
 
+
+
+Definition wrappable_nd (R:Set) (p:prog R) (ok:pred) := forall m,
+  {{Log.rep the_xp (ActiveTxn (m, m))}}
+  p
+  {{r, (exists m', Log.rep the_xp (ActiveTxn (m, m')) /\ [ok m'])
+    \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m, m')))}}.
+
+Definition txn_wrap_nd (p:prog unit) (ok:pred) (wr: wrappable_nd p ok) := $(unit:
+  Call1 (Log.begin_ok the_xp);;
+  Call1 (wr);;
+  Call2 (Log.commit_ok the_xp)
+).
+
+Theorem txn_wrap_nd_ok_norecover:
+  forall (p:prog unit) (ok:pred) (wr: wrappable_nd p ok) m,
+  {{Log.rep the_xp (NoTransaction m)}}
+  (txn_wrap_nd wr)
+  {{r, (exists m', Log.rep the_xp (NoTransaction m') /\ [ok m'])
+    \/ ([r = Crashed] /\ (Log.rep the_xp (NoTransaction m) \/
+                          (exists m', Log.rep the_xp (ActiveTxn (m, m'))) \/
+                          (exists m', Log.rep the_xp (CommittedTxn m') /\ [ok m'])))}}.
+Proof.
+  hoare.
+  - destruct (H0 m); clear H0; pred.
+  - destruct (H1 m); clear H1; pred.
+    destruct (H0 m); clear H0; pred.
+    destruct (H1 m); clear H1; pred.
+  - destruct (H2 m); clear H2; pred.
+    destruct (H1 m); clear H1; pred.
+    + destruct (H2 m); clear H2; pred.
+    + (* we have our non-deterministic mem: x4 *)
+      destruct (H0 m x4); clear H0; pred.
+
+      destruct (H5 m); clear H5; pred.
+      destruct (H1 m); clear H1; pred.
+      destruct (H5 m); clear H5; pred.
+      (* XXX so close but something is broken..
+       * we need to prove:
+       *   Log.rep the_xp (ActiveTxn (m, x4)) m1
+       * but we have:
+       *   Log.rep the_xp (ActiveTxn (m, x7)) m1
+       * where x7 and x4 are two possibly-different mem's, both of which satisfy ok.
+       *
+       * seems like the pre-/post-conditions of wr get copied to several places,
+       * and when we destruct them, we end up with two possibly-different mem's,
+       * since there's no constraint that they be the same..
+       *)
+Aborted.
