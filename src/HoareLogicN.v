@@ -114,9 +114,13 @@ Inductive corr : forall {R : Set},
   -> (forall r, post r --> post' r)
   -> corr pre' p post'
 | ConseqForall1 : forall (Q1:Type) (R:Set) pre post p pre',
-     (forall q:Q1, @corr R (pre q) p (post q))
+     (forall (q1:Q1), @corr R (pre q1) p (post q1))
   -> corr pre' p
-          (fun rr => foral q, [pimpl pre' (pre q)] --> post q rr)%pred
+          (fun rr => foral q1, [pimpl pre' (pre q1)] --> post q1 rr)%pred
+| ConseqForall2 : forall (Q1 Q2:Type) (R:Set) pre post p pre',
+     (forall (q1:Q1) (q2:Q2), @corr R (pre q1 q2) p (post q1 q2))
+  -> corr pre' p
+          (fun rr => foral q1 q2, [pimpl pre' (pre q1 q2)] --> post q1 q2 rr)%pred
 | CExistsPre : forall (R:Set) pre post p, @corr R pre p post
   -> corr pre p (fun rr => post rr /\ [exists s', pre s'])%pred
 | CPreOr: forall (R:Set) preA preB (p:prog R) post,
@@ -265,7 +269,14 @@ Section prog'.
     (pre: Q1 -> pred)
     (p: prog R)
     (post: outcome R -> Q1 -> pred)
-    (c: forall q: Q1, corr (pre q) p (fun r => post r q)) : prog' R.
+    (c: forall (q1: Q1), corr (pre q1) p (fun r => post r q1)) : prog' R
+  | Call'2
+    (Q1 Q2 : Type)
+    (R : Set)
+    (pre: Q1 -> Q2 -> pred)
+    (p: prog R)
+    (post: outcome R -> Q1 -> Q2 -> pred)
+    (c: forall (q1: Q1) (q2: Q2), corr (pre q1 q2) p (fun r => post r q1 q2)) : prog' R.
 
   Fixpoint prog'Out {R : Set} (p : prog' R) : prog R :=
     match p with
@@ -278,6 +289,7 @@ Section prog'.
       | For' _ _ _ f n l => For_ (fun x l => prog'Out (f x l)) 0 n l
       | Call'0 _ _ p _ _ => p
       | Call'1 _ _ _ p _ _ => p
+      | Call'2 _ _ _ _ p _ _ => p
     end.
 
   Variable ghost : ghostT.
@@ -300,7 +312,10 @@ Section prog'.
         fun r => (cpost r)
               /\ [exists s', pre s']
       | Call'1 _ _ cpre _ cpost _ =>
-        fun r => (foral q, [pimpl pre (cpre q)] --> cpost r q)
+        fun r => (foral q1, [pimpl pre (cpre q1)] --> cpost r q1)
+              /\ [exists s', pre s']
+      | Call'2 _ _ _ cpre _ cpost _ =>
+        fun r => (foral q1 q2, [pimpl pre (cpre q1 q2)] --> cpost r q1 q2)
               /\ [exists s', pre s']
     end%pred.
 
@@ -323,6 +338,7 @@ Section prog'.
           ([r = Crashed] /\ crashed ghost)))
       | Call'0 _ cpre _ _ _ => pre --> cpre
       | Call'1 _ _ cpre _ _ _ => True
+      | Call'2 _ _ _ cpre _ _ _ => True
     end.
 
   Lemma spost_sound' : forall R p pre,
@@ -377,6 +393,7 @@ Implicit Arguments Read' [ghostT].
 Implicit Arguments Write' [ghostT].
 Implicit Arguments Call'0 [ghostT R pre p post].
 Implicit Arguments Call'1 [ghostT R pre p post Q1].
+Implicit Arguments Call'2 [ghostT R pre p post Q1 Q2].
 
 Notation "'Halt'" := Halt' : prog'_scope.
 Notation "'Crash'" := Crash' : prog'_scope.
@@ -384,6 +401,7 @@ Notation "!" := Read' : prog'_scope.
 Infix "<--" := Write' : prog'_scope.
 Notation "'Call0'" := Call'0 : prog'_scope.
 Notation "'Call1'" := Call'1 : prog'_scope.
+Notation "'Call2'" := Call'2 : prog'_scope.
 Notation "p1 ;; p2" := (Seq' p1 (fun _ : unit => p2)) : prog'_scope.
 Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
 Delimit Scope prog'_scope with prog'.
@@ -1030,9 +1048,9 @@ Definition wrappable (R:Set) (p:prog R) (fn:mem->mem) := forall m0 m,
     \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m0, m')))}}.
 
 Definition txn_wrap (p:prog unit) (fn:mem->mem) (wrappable_p: wrappable p fn) := $(mem:
-  Call (fun m: mem => Log.begin_ok the_xp m);;
-  Call (fun m: mem => wrappable_p m m);;
-  Call (fun m: mem => Log.commit_ok the_xp m (fn m))
+  Call1 (Log.begin_ok the_xp);;
+  Call2 (wrappable_p);;
+  Call2 (Log.commit_ok the_xp)
 ).
 
 Theorem txn_wrap_ok_norecover:
@@ -1045,6 +1063,15 @@ Theorem txn_wrap_ok_norecover:
                           Log.rep the_xp (CommittedTxn (fn m))))}}.
 Proof.
   hoare.
+  - destruct (H0 m); clear H0; pred.
+  - destruct (H1 m); clear H1; pred.
+    destruct (H0 m m); clear H0; pred.
+    destruct (H1 m); clear H1; pred.
+  - destruct (H2 m); clear H2; pred.
+    destruct (H0 m (fn m)); clear H0; pred.
+    destruct (H4 m); clear H4; pred.
+    destruct (H2 m m); clear H2; pred.
+    destruct (H4 m); clear H4; pred.
 Qed.
 
 Theorem txn_wrap_ok:
@@ -1139,8 +1166,8 @@ Qed.
 
 
 Definition write_two_blocks a1 a2 v1 v2 := $((mem*mem):
-  Call (fun ms: mem*mem => Log.write_ok the_xp a1 v1 ((fst ms), (snd ms)));;
-  Call (fun ms: mem*mem => Log.write_ok the_xp a2 v2 ((fst ms), upd (snd ms) a1 v1))
+  Call1 (Log.write_ok the_xp a1 v1);;
+  Call1 (Log.write_ok the_xp a2 v2)
 ).
 
 Theorem write_two_blocks_wrappable a1 a2 v1 v2
@@ -1150,6 +1177,9 @@ Theorem write_two_blocks_wrappable a1 a2 v1 v2
 Proof.
   unfold wrappable; intros.
   hoare_ghost (m0, m).
+  - destruct (H4 (m0, m)); clear H4; pred.
+  - destruct (H4 (m0, (upd m a1 v1))); clear H4; pred.
+    destruct (H6 (m0, m)); clear H6; pred.
 Qed.
 
 Parameter a1 : nat.
