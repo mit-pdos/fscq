@@ -113,6 +113,10 @@ Inductive corr : forall {R : Set},
   -> (pre' --> pre)
   -> (forall r, post r --> post' r)
   -> corr pre' p post'
+| ConseqForall1 : forall (Q1:Type) (R:Set) pre post p pre',
+     (forall q:Q1, @corr R (pre q) p (post q))
+  -> corr pre' p
+          (fun rr => foral q, [pimpl pre' (pre q)] --> post q rr)%pred
 | CExistsPre : forall (R:Set) pre post p, @corr R pre p post
   -> corr pre p (fun rr => post rr /\ [exists s', pre s'])%pred
 | CPreOr: forall (R:Set) preA preB (p:prog R) post,
@@ -249,9 +253,19 @@ Section prog'.
   | If' (R : Set) P Q (b : {P} + {Q}) (p1 p2 : prog' R) : prog' R
   | For' {L : Set} (nocrash : ghostT -> nat -> L -> pred) (crashed : ghostT -> pred)
     (f : nat -> L -> prog' L) (n : nat) (l : L) : prog' L
-  | Call' (R : Set) (pre: ghostT -> pred) (p: prog R)
-    (post: ghostT -> outcome R -> pred)
-    (c: forall g: ghostT, corr (pre g) p (post g)) : prog' R.
+  | Call'0
+    (R : Set)
+    (pre: pred)
+    (p: prog R)
+    (post: outcome R -> pred)
+    (c: corr pre p post) : prog' R
+  | Call'1
+    (Q1 : Type)
+    (R : Set)
+    (pre: Q1 -> pred)
+    (p: prog R)
+    (post: outcome R -> Q1 -> pred)
+    (c: forall q: Q1, corr (pre q) p (fun r => post r q)) : prog' R.
 
   Fixpoint prog'Out {R : Set} (p : prog' R) : prog R :=
     match p with
@@ -262,7 +276,8 @@ Section prog'.
       | Seq' _ _ p1 p2 => Seq (prog'Out p1) (fun x => prog'Out (p2 x))
       | If' _ _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
       | For' _ _ _ f n l => For_ (fun x l => prog'Out (f x l)) 0 n l
-      | Call' _ _ p _ _ => p
+      | Call'0 _ _ p _ _ => p
+      | Call'1 _ _ _ p _ _ => p
     end.
 
   Variable ghost : ghostT.
@@ -281,7 +296,12 @@ Section prog'.
       | For' _ nocrash crashed f n l => fun r =>
         (exists l', [r = Halted l'] /\ nocrash ghost n l') \/
         ([r = Crashed] /\ crashed ghost)
-      | Call' _ cpre cp cpost c => (fun r => cpost ghost r /\ [exists s', pre s'])
+      | Call'0 _ cpre _ cpost _ =>
+        fun r => (cpost r)
+              /\ [exists s', pre s']
+      | Call'1 _ _ cpre _ cpost _ =>
+        fun r => (foral q, [pimpl pre (cpre q)] --> cpost r q)
+              /\ [exists s', pre s']
     end%pred.
 
   (* Verification conditions *)
@@ -301,7 +321,8 @@ Section prog'.
         /\ (forall m r l, m < n -> (spost (nocrash ghost m l) (f m l) r -->
           (exists l', [r = Halted l'] /\ nocrash ghost (S m) l') \/
           ([r = Crashed] /\ crashed ghost)))
-      | Call' _ cpre cp cpost c => pre --> (cpre ghost)
+      | Call'0 _ cpre _ _ _ => pre --> cpre
+      | Call'1 _ _ cpre _ _ _ => True
     end.
 
   Lemma spost_sound' : forall R p pre,
@@ -354,13 +375,15 @@ Implicit Arguments Halt' [ghostT R].
 Implicit Arguments Crash' [ghostT R].
 Implicit Arguments Read' [ghostT].
 Implicit Arguments Write' [ghostT].
-Implicit Arguments Call' [ghostT R pre p post].
+Implicit Arguments Call'0 [ghostT R pre p post].
+Implicit Arguments Call'1 [ghostT R pre p post Q1].
 
 Notation "'Halt'" := Halt' : prog'_scope.
 Notation "'Crash'" := Crash' : prog'_scope.
 Notation "!" := Read' : prog'_scope.
 Infix "<--" := Write' : prog'_scope.
-Notation "'Call'" := Call' : prog'_scope.
+Notation "'Call0'" := Call'0 : prog'_scope.
+Notation "'Call1'" := Call'1 : prog'_scope.
 Notation "p1 ;; p2" := (Seq' p1 (fun _ : unit => p2)) : prog'_scope.
 Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
 Delimit Scope prog'_scope with prog'.
@@ -750,9 +773,9 @@ Module Log : LOG.
       firstorder.
   Qed.
 
-  Definition commit xp := $(mem:
+  Definition commit xp := $(unit:
     (LogCommit xp) <-- 1;;
-    Call (apply_ok xp)
+    Call1 (apply_ok xp)
   ).
 
   Theorem commit_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
@@ -761,7 +784,8 @@ Module Log : LOG.
       \/ ([r = Crashed] /\ (rep xp (ActiveTxn (m1, m2)) \/
                             rep xp (CommittedTxn m2)))}}.
   Proof.
-    intros; hoare_ghost m2.
+    hoare.
+    destruct (H0 m2); pred.
     eexists; intuition eauto.
     eexists; intuition eauto.
     - eapply validLog_irrel; eauto; pred.
@@ -780,10 +804,10 @@ Module Log : LOG.
     hoare.
   Qed.
 
-  Definition recover xp := $(mem:
+  Definition recover xp := $(unit:
     com <- !(LogCommit xp);
     If (eq_nat_dec com 1) {
-      Call (apply_ok xp)
+      Call1 (apply_ok xp)
     } else {
       Halt tt
     }
@@ -796,7 +820,8 @@ Module Log : LOG.
     {{r, rep xp (NoTransaction m)
       \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
   Proof.
-    intros; hoare_ghost m.
+    hoare.
+    destruct (H m); pred.
   Qed.
 
   Definition read xp a := $((mem*mem):
