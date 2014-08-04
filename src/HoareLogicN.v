@@ -77,6 +77,10 @@ Definition exis A (p : A -> pred) : pred :=
   fun m => exists x, p x m.
 Notation "'exists' x .. y , p" := (exis (fun x => .. (exis (fun y => p)) ..)) : pred_scope.
 
+Definition uniqpred A (p : A -> pred) (x : A) :=
+  fun m => p x m /\ (forall (x' : A), p x' m -> x = x').
+Notation "'exists' ! x .. y , p" := (exis (uniqpred (fun x => .. (exis (uniqpred (fun y => p))) ..))) : pred_scope.
+
 Definition lift (P : Prop) : pred :=
   fun _ => P.
 Notation "[ P ]" := (lift P) : pred_scope.
@@ -135,7 +139,7 @@ Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
              end.
 
-Ltac pred_unfold := unfold ptsto, impl, and, or, foral_, exis, lift, pimpl, pupd, diskIs, addr, valu in *.
+Ltac pred_unfold := unfold ptsto, impl, and, or, foral_, exis, uniqpred, lift, pimpl, pupd, diskIs, addr, valu in *.
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
@@ -1184,7 +1188,7 @@ Check (txn_wrap_ok (write_two_blocks_wrappable v1 v2 A1OK A2OK)).
 Definition wrappable_nd (R:Set) (p:prog R) (ok:pred) := forall m,
   {{Log.rep the_xp (ActiveTxn (m, m))}}
   p
-  {{r, (exists m', Log.rep the_xp (ActiveTxn (m, m')) /\ [ok m'])
+  {{r, (exists! m', Log.rep the_xp (ActiveTxn (m, m')) /\ [ok m'])
     \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m, m')))}}.
 
 Definition txn_wrap_nd (p:prog unit) (ok:pred) (wr: wrappable_nd p ok) := $(unit:
@@ -1207,15 +1211,20 @@ Proof.
   - destruct (H1 m); clear H1; pred.
     destruct (H0 m); clear H0; pred.
     destruct (H1 m); clear H1; pred.
+    unfold uniqpred in *.
+    pred.
   - destruct (H2 m); clear H2; pred.
     destruct (H1 m); clear H1; pred.
     + destruct (H2 m); clear H2; pred.
     + (* we have our non-deterministic mem: x4 *)
+      unfold uniqpred in *.
       destruct (H0 m x4); clear H0; pred.
 
       destruct (H5 m); clear H5; pred.
-      destruct (H1 m); clear H1; pred.
-      destruct (H5 m); clear H5; pred.
+      destruct (H6 m); clear H6; pred.
+      destruct (H7 m); clear H7; pred.
+      erewrite H2. apply H5. 
+      erewrite H8 in H5.  apply H5.  appl
       (* XXX so close but something is broken..
        * we need to prove:
        *   Log.rep the_xp (ActiveTxn (m, x4)) m1
