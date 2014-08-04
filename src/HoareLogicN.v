@@ -1191,38 +1191,40 @@ Definition wrappable_nd (R:Set) (p:prog R) (ok:pred) := forall m,
   {{r, (exists! m', Log.rep the_xp (ActiveTxn (m, m')) /\ [ok m'])
     \/ ([r = Crashed] /\ exists m', Log.rep the_xp (ActiveTxn (m, m')))}}.
 
-Definition txn_wrap_nd (p:prog unit) (ok:pred) (wr: wrappable_nd p ok) := $(unit:
-  Call1 (Log.begin_ok the_xp);;
-  Call1 (wr);;
-  Call2 (Log.commit_ok the_xp)
+Definition txn_wrap_nd (p:prog unit) (ok:pred) (wr: wrappable_nd p ok) (m: mem) := $(unit:
+  Call0 (Log.begin_ok the_xp m);;
+  Call0 (wr m);;
+  Call1 (fun m' => Log.commit_ok the_xp m m')
 ).
 
 Theorem txn_wrap_nd_ok_norecover:
   forall (p:prog unit) (ok:pred) (wr: wrappable_nd p ok) m,
   {{Log.rep the_xp (NoTransaction m)}}
-  (txn_wrap_nd wr)
+  (txn_wrap_nd wr m)
   {{r, (exists m', Log.rep the_xp (NoTransaction m') /\ [ok m'])
-    \/ ([r = Crashed] /\ (Log.rep the_xp (NoTransaction m) \/
+    \/ ([r = Crashed] (* /\ (Log.rep the_xp (NoTransaction m) \/
                           (exists m', Log.rep the_xp (ActiveTxn (m, m'))) \/
-                          (exists m', Log.rep the_xp (CommittedTxn m') /\ [ok m'])))}}.
+                          (exists m', Log.rep the_xp (CommittedTxn m') /\ [ok m'])) *) )}}.
 Proof.
   hoare.
-  - destruct (H0 m); clear H0; pred.
+  destruct (H x2); clear H; pred.
+  (* XXX something is still broken.. *)
+
+
+
   - destruct (H1 m); clear H1; pred.
-    destruct (H0 m); clear H0; pred.
+  - destruct (H1 m); clear H1; pred.
+    destruct (H m); clear H; pred.
     destruct (H1 m); clear H1; pred.
-    unfold uniqpred in *.
-    pred.
-  - destruct (H2 m); clear H2; pred.
-    destruct (H1 m); clear H1; pred.
-    + destruct (H2 m); clear H2; pred.
+  - destruct (H1 m); clear H1; pred.
+    destruct (H m); clear H; pred.
+    + destruct (H m); clear H; pred.
     + (* we have our non-deterministic mem: x4 *)
-      unfold uniqpred in *.
       destruct (H0 m x4); clear H0; pred.
 
-      destruct (H5 m); clear H5; pred.
-      destruct (H6 m); clear H6; pred.
-      destruct (H7 m); clear H7; pred.
+      destruct (H1 m); clear H1; pred.
+      destruct (H0 m); clear H0; pred.
+      destruct (H0 m); clear H0; pred.
       erewrite H2. apply H5. 
       erewrite H8 in H5.  apply H5.  appl
       (* XXX so close but something is broken..
