@@ -1,0 +1,36 @@
+higher-order hoare logic:
+  define corr in terms of corr_sound
+    if pre holds, and exec produces a new state, then post holds and outcome != Failed
+  lemmas for all cases (e.g., read)
+
+  Parameter donetoken : Set.
+  Inductive prog :=
+  | Read (a: addr) (k: value->prog)
+  | Fail
+  | Done (t: donetoken).
+
+  forall k kc,
+  { exists v F,
+    Cell(v) * F
+    /\ { Cell(v) * F } k(v)
+    /\ { Cell(v) * F } kc }
+  try
+    Read(k)
+  with
+    recovery(kc)
+
+need to have complete exec, to avoid the program weaseling out through crashes
+
+separation logic:
+  Definition mem := addr -> option valu.
+  Definition mem_disjoint m1 m2 :=
+    ~ exists a v1 v2, m1 a = Some v1 /\ m2 a = Some v2.
+  Definition mem_union m1 m2 := fun a =>
+    match m1 a with
+    | Some v => Some v
+    | None => m2 a
+    end.
+  Definition sep_star (p1: pred) (p2: pred) :=
+    exists m1 m2, m = mem_union m1 m2 /\ mem_disjoint m1 m2 /\ p1 m1 /\ p2 m2.
+
+
