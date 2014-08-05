@@ -1,5 +1,6 @@
 Require Import Arith Omega List.
 Require Import FunctionalExtensionality.
+Require Import Tactics.
 
 Set Implicit Arguments.
 
@@ -152,6 +153,16 @@ Proof.
   split; unfold mem_disjoint, not; intros; repeat deex; eauto 10.
 Qed.
 
+Theorem mem_disjoint_upd:
+  forall m1 m2 a v v0,
+  m1 a = Some v0 ->
+  mem_disjoint m1 m2 ->
+  mem_disjoint (upd m1 a v) m2.
+Proof.
+  unfold mem_disjoint, upd, not; intros; repeat deex;
+    destruct (eq_nat_dec x a); subst; eauto 10.
+Qed.
+
 Theorem mem_union_comm:
   forall m1 m2,
   mem_disjoint m1 m2 ->
@@ -168,6 +179,15 @@ Theorem mem_union_addr:
   mem_union m1 m2 a = Some v.
 Proof.
   unfold mem_disjoint, mem_union; intros; rewrite H0; auto.
+Qed.
+
+Theorem mem_union_upd:
+  forall m1 m2 a v v0,
+  m1 a = Some v0 ->
+  mem_union (upd m1 a v) m2 = upd (mem_union m1 m2) a v.
+Proof.
+  unfold mem_union, upd; intros; apply functional_extensionality; intros.
+  destruct (eq_nat_dec x a); eauto.
 Qed.
 
 Theorem sep_star_comm:
@@ -250,22 +270,31 @@ Theorem read_ok:
 Proof.
   constructor; pred; repeat inv_corr; inv_exec_recover;
     inv_exec; unfold sep_star in *; repeat deex;
-    try (erewrite mem_union_addr in *; [|pred|pred]);
+    try (erewrite mem_union_addr in *; [|pred|pred]; []);
     repeat inv_corr; eauto 10; pred.
 Qed.
 
 Theorem write_ok:
   forall (a:addr) (v:valu) (rx:prog) (rec:prog),
-  ({{ exists v0, a |-> v0
-   /\ [{{ a |-> v }} rx >> rec]
-   /\ [{{ a |-> v \/ a |-> v0 }} rec >> rec]}}
+  ({{ exists v0 F, a |-> v0 * F
+   /\ [{{ a |-> v * F }} rx >> rec]
+   /\ [{{ (a |-> v \/ a |-> v0) * F }} rec >> rec]}}
    Write a v rx >> rec)%pred.
 Proof.
-  constructor; pred; repeat inv_corr; inv_exec_recover; eauto.
-  - inv_exec; pred; repeat inv_corr. eapply H3; [|eauto]; eauto.
-  - inv_exec.
-    + eapply H3; [|eauto]; eauto.
-    + eauto.
+  constructor; pred; repeat inv_corr; inv_exec_recover;
+    inv_exec; unfold sep_star in *; Tactics.destruct_conjs;
+    repeat inv_corr;
+    try solve [subst; erewrite mem_union_addr in *; pred].
+  - eapply H3; [|eauto].
+    subst; exists (upd H1 a v); exists H; intuition eauto.
+    erewrite mem_union_upd; eauto.
+    eapply mem_disjoint_upd; eauto.
+  - eapply H3; [|eauto].
+    subst; exists (upd H1 a v); exists H; intuition eauto.
+    erewrite mem_union_upd; eauto.
+    eapply mem_disjoint_upd; eauto.
+  - eapply H2; [|eauto].
+    subst; exists H1; exists H; intuition eauto.
 Qed.
 
 
