@@ -146,6 +146,13 @@ Ltac pred := pred_unfold;
     intuition (try (congruence || omega);
       try autorewrite with core in *; eauto); try subst).
 
+Theorem pimpl_refl : forall p, p ==> p.
+Proof.
+  pred.
+Qed.
+
+Hint Resolve pimpl_refl.
+
 Theorem mem_disjoint_comm:
   forall m1 m2,
   mem_disjoint m1 m2 <-> mem_disjoint m2 m1.
@@ -214,7 +221,7 @@ Inductive corr :
 Hint Constructors corr.
 
 Notation "{{ pre }} p1 >> p2" := (corr pre p1 p2)
-  (at level 0, p1 at level 60, p2 at level 60) : pred_scope.
+  (at level 0, p1 at level 60, p2 at level 60).
 
 Theorem upd_eq : forall m a v a',
   a' = a
@@ -261,6 +268,18 @@ Ltac inv_exec :=
   | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
+Theorem pimpl_ok:
+  forall pre pre' pr rec,
+  (pre ==> [{{pre'}} pr >> rec]) ->
+  (pre ==> pre') ->
+  {{pre}} pr >> rec.
+Proof.
+  pred.
+  constructor; intros.
+  remember (H m H1) as Hc; inversion Hc.
+  eauto.
+Qed.
+
 Theorem read_ok:
   forall (a:addr) (rx:valu->prog) (rec:prog),
   ({{ exists v F, a |-> v * F
@@ -300,12 +319,31 @@ Qed.
 
 (** * Some helpful [prog] combinators *)
 
-Theorem pimpl_refl : forall p, p ==> p.
+Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
+  if b then p1 else p2.
+
+Theorem if_ok:
+  forall P Q (b : {P}+{Q}) p1 p2 rec,
+  ({{ exists pre, pre
+   /\ [{{ pre /\ [P] }} p1 >> rec]
+   /\ [{{ pre /\ [Q] }} p2 >> rec] }}
+   If_ b p1 p2 >> rec)%pred.
 Proof.
-  pred.
+  unfold If_; destruct b; intros;
+    constructor; pred; repeat inv_corr; eauto.
+  (* XXX it seems unfortunate that I cannot use pimpl_ok here.. *)
 Qed.
 
-Hint Resolve pimpl_refl.
+Definition Call_ pre pr rec (c : corr pre pr rec) : prog :=
+  pr.
+
+Theorem call_ok:
+  forall pre pr rec (c : corr pre pr rec) pre',
+  (pre' ==> pre)%pred ->
+  ({{ pre' }} Call_ c >> rec).
+Proof.
+  intros. eapply pimpl_ok; [|eauto]. pred.
+Qed.
 
 Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
               (i n : nat) (l : L) (rx: L -> prog) : prog :=
@@ -313,6 +351,7 @@ Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
     | O => rx l
     | S n' => l' <- (f i l); (For_ f (S i) n' l' rx)
   end.
+
 
 (*
 Theorem CFor:
@@ -359,52 +398,6 @@ Proof.
 Qed.
 *)
 
-
-(** * Better automation for Hoare triples *)
-
-Inductive prog' : Type :=
-| Fail'
-| Done' (t : donetoken)
-| Read' (a : addr) (rx : valu->prog')
-| Write' (a : addr) (v : valu) (rx : prog')
-| If' P Q (b : {P} + {Q}) (p1 p2 : prog') : prog'
-(*
-| For' (nocrash : ghostT -> nat -> L -> pred) (crashed : ghostT -> pred)
-  (f : nat -> L -> prog' L) (n : nat) (l : L) : prog' L
-*)
-| Call' (pre : pred) (p1 p2: prog) (c: corr pre p1 p2) : prog'.
-
-Fixpoint prog'Out (p : prog') : prog :=
-  match p with
-  | Fail' => Fail
-  | Done' t => Done t
-  | Read' a rx => Read a (fun v => prog'Out (rx v))
-  | Write' a v rx => Write a v (prog'Out rx)
-  | If' _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
-(*
-  | For' _ _ _ f n l => For_ (fun x l => prog'Out (f x l)) 0 n l
-*)
-  | Call' _ p1 _ _ => p1
-  end.
-
-(* Verification conditions *)
-Fixpoint vc (pre : pred) (p : prog') : Prop :=
-  match p with
-  | Fail' => True
-  | Done' _ => True
-  | Read' _ _ => True
-  | Write' _ _ _ => True
-  | If' P Q b p1 p2 => vc (pre /\ [P]) p1 /\ vc (pre /\ [Q]) p2
-  | For' _ nocrash crashed f n l0 =>
-    (forall m l, nocrash ghost m l --> crashed ghost)
-    /\ (pre --> nocrash ghost 0 l0)
-    /\ (forall m l, m < n -> vc (nocrash ghost m l) (f m l))
-    /\ (forall m r l, m < n -> (spost (nocrash ghost m l) (f m l) r -->
-      (exists l', [r = Halted l'] /\ nocrash ghost (S m) l') \/
-      ([r = Crashed] /\ crashed ghost)))
-  | Call'0 _ cpre _ _ _ => pre --> cpre
-  | Call'2 _ _ _ cpre _ _ _ => True
-end.
 
 Theorem vc_sound : forall pre p p2,
   vc pre p
