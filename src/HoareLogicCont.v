@@ -105,6 +105,9 @@ Definition uniqpred A (p : A -> pred) (x : A) :=
   fun m => p x m /\ (forall (x' : A), p x' m -> x = x').
 Notation "'exists' ! x .. y , p" := (exis (uniqpred (fun x => .. (exis (uniqpred (fun y => p))) ..))) : pred_scope.
 
+Definition emp : pred :=
+  fun m => forall a, m a = None.
+
 Definition lift (P : Prop) : pred :=
   fun m => P.
 Notation "[ P ]" := (lift P) : pred_scope.
@@ -483,6 +486,118 @@ Proof.
 
 Opaque sep_star.
 
+
+(** * Separation logic proof automation *)
+
+Hint Extern 1 ({{_}} progseq1 (Write _ _) _ >> _) => apply write_ok : prog.
+
+Ltac intu' :=
+  match goal with
+  | [ H : ex _ |- _ ] => destruct H
+  | [ |- ex _ ] => eexists
+  end.
+
+Ltac intu := intuition; repeat (intu'; intuition).
+
+Ltac pintu := unfold lift, and, or, exis, pimpl; intu.
+
+Definition stars (ps : list pred) :=
+  fold_left sep_star ps emp.
+
+Ltac sep_imply'' H := eapply pimpl_apply; [ apply H | ].
+
+Ltac sep_imply' m :=
+  match goal with
+  | [ H : _ m |- _ ] => sep_imply'' H
+  | [ H : _ _ m |- _ ] => sep_imply'' H
+  | [ H : _ _ _ m |- _ ] => sep_imply'' H
+  end.
+
+Ltac sep_imply :=
+  match goal with
+  | [ |- _ ?m ] => sep_imply' m
+  | [ |- _ _ ?m ] => sep_imply' m
+  | [ |- _ _ _ ?m ] => sep_imply' m
+  end.
+
+Theorem start_canceling : forall p q ps qs,
+  p <==> stars ps
+  -> q <==> stars qs
+  -> (stars ps * stars nil ==> stars qs)
+  -> p ==> q.
+Admitted.
+
+Lemma flatten_default : forall p,
+  p <==> stars (p :: nil).
+Admitted.
+
+Lemma flatten_emp : emp <==> stars nil.
+Proof.
+  firstorder.
+Qed.
+
+Lemma flatten_star : forall p q ps qs,
+  p <==> stars ps
+  -> q <==> stars qs
+  -> p * q <==> stars (ps ++ qs).
+Admitted.
+
+Ltac flatten := repeat match goal with
+                       | [ |- emp <==> _ ] => apply flatten_emp
+                       | [ |- _ * _ <==> _ ] => eapply flatten_star
+                       | _ => apply flatten_default
+                       end.
+
+Definition okToUnify (p1 p2 : pred) := p1 = p2.
+
+Hint Extern 1 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
+
+Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
+| PickFirst : forall p ps,
+  okToUnify lhs p
+  -> pick lhs (p :: ps) ps
+| PickLater : forall p ps ps',
+  pick lhs ps ps'
+  -> pick lhs (p :: ps) (p :: ps').
+
+Ltac pick := solve [ repeat ((apply PickFirst; solve [ auto with okToUnify ])
+                               || apply PickLater) ].
+
+Theorem cancel_one : forall qs qs' p ps F,
+  pick p qs qs'
+  -> (stars ps * F ==> stars qs')
+  -> stars (p :: ps) * F ==> stars qs.
+Admitted.
+
+Ltac cancel_one := eapply cancel_one; [ pick | ].
+
+Theorem delay_one : forall p ps q qs,
+  (stars ps * stars (p :: qs) ==> q)
+  -> stars (p :: ps) * stars qs ==> q.
+Admitted.
+
+Ltac delay_one := apply delay_one.
+
+Lemma finish_frame : forall p,
+  stars nil * p ==> stars (p :: nil).
+Admitted.
+
+Lemma finish_easier : forall p,
+  stars nil * p ==> p.
+Admitted.
+
+Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
+               repeat (cancel_one || delay_one);
+               try (apply finish_frame || apply finish_easier).
+
+Ltac sep := sep_imply; cancel.
+
+Ltac step := intros;
+             eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ];
+             try solve [ intuition sep ]; (unfold stars; simpl).
+
+Ltac hoare := repeat step.
+
 Example two_writes: forall a1 a2 v1 v2 rx rec,
   ({{ exists v1' v2' F,
       a1 |-> v1' * a2 |-> v2' * F
@@ -492,84 +607,7 @@ Example two_writes: forall a1 a2 v1 v2 rx rec,
           (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec] }}
    Write a1 v1 ;; Write a2 v2 ;; rx >> rec)%pred.
 Proof.
-  intros.
-  eapply pimpl_ok.
-  eapply write_ok.
-  repeat (apply pimpl_exists_l; intro).
-  repeat (apply pimpl_exists_r; eexists).
-  unfold and, or, pimpl.
-  intuition eauto.
-  eapply pimpl_apply; try eapply H0.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  apply pimpl_refl.
-
-  unfold lift.
-  eapply pimpl_ok.
-  eapply write_ok.
-  repeat (apply pimpl_exists_l; intro).
-  repeat (apply pimpl_exists_r; eexists).
-  unfold and, or, pimpl.
-  intuition eauto.
-  eapply pimpl_apply; try eapply H1.
-  eapply pimpl_trans.
-  eapply sep_star_comm.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  apply pimpl_refl.
-
-  unfold lift in *.
-  eapply pimpl_ok.
-  eauto.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  eapply pimpl_trans.
-  eapply sep_star_comm.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  apply pimpl_refl.
-
-  unfold lift in *.
-  eapply pimpl_ok.
-  eauto.
-  unfold and, or, pimpl.
-  intuition eauto.
-  right. right.
-  eapply pimpl_apply; try eapply H4.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  eapply pimpl_trans.
-  eapply sep_star_comm.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  apply pimpl_refl.
-
-  right. left.
-  eapply pimpl_apply; try eapply H4.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  eapply pimpl_trans.
-  eapply sep_star_comm.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  apply pimpl_refl.
-
-  unfold lift in *.
-  eapply pimpl_ok.
-  eauto.
-  unfold and, or, pimpl.
-  intuition eauto.
-  right. left.
-  eapply pimpl_apply; try eapply H3.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  apply pimpl_refl.
-
-  left.
-  eapply pimpl_apply; try eapply H3.
-  eapply pimpl_trans.
-  eapply sep_star_assoc.
-  apply pimpl_refl.
+  hoare.
 Qed.
 
 
