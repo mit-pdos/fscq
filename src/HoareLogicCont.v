@@ -428,15 +428,51 @@ Qed.
 Example two_writes: forall a1 a2 v1 v2 rx rec,
   ({{ exists v1' v2' F,
       a1 |-> v1' * a2 |-> v2' * F
-   \/ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]
-   \/ [{{ ((a1 |-> v1' * a2 |-> v2') \/
+   /\ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]
+   /\ [{{ ((a1 |-> v1' * a2 |-> v2') \/
            (a1 |-> v1 * a2 |-> v2') \/
            (a1 |-> v1 * a2 |-> v2)) * F }} rec >> rec] }}
    Write a1 v1 ;; Write a2 v2 ;; rx >> rec)%pred.
 Proof.
-  (* XXX *)
-Aborted.
-
+  intros.
+  constructor.
+  intros.
+  pred.
+  inv_exec_recover; auto.
+  - (* case 1: exec failed (impossible) *)
+    inv_exec.
+    + (* option 1a: accessed an invalid address *)
+      unfold sep_star in H1. repeat deex.
+      erewrite mem_union_addr in H8.
+      pred.
+      auto.
+      apply mem_union_addr. auto. eauto.
+    + (* option 1b: the continuation failed *)
+      inv_exec.
+      * (* option 1b1: the continuation accessed an invalid address *)
+        unfold sep_star in H1. repeat deex.
+        admit.
+      * (* option 1b2: the continuation's  continuation failed *)
+        admit.
+  - (* case 2: exec crashed, need to show rec ends up with Finished *)
+    (* need to look at all possible points where we could have crashed before invoking
+     * the continuation (rx).  once we get to rx, we can rely on the hoare tuple from
+     * our precondition to prove that the rest of the program finishes correctly.
+     *)
+    inv_exec.
+    + (* case 2a: first write OK, crashed afterwards *)
+      
+      admit.
+    + (* case 2b: first write crash *)
+      (* use the Hoare tuple: {{ .. }} rec >> rec *)
+      repeat inv_corr.
+      eapply H0; [|eauto].
+      unfold sep_star in H1. repeat deex.
+      unfold sep_star. eexists. eexists.
+      split; [|split; [|split]]; [ .. | eauto ].
+      eauto. eauto.
+      eauto 12.
+Qed.
 
 Theorem vc_sound : forall pre p p2,
   vc pre p
