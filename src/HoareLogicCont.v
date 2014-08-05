@@ -300,7 +300,7 @@ Qed.
 
 (** * Some helpful [prog] combinators *)
 
-Theorem pimpl_refl : forall p, p --> p.
+Theorem pimpl_refl : forall p, p ==> p.
 Proof.
   pred.
 Qed.
@@ -362,144 +362,57 @@ Qed.
 
 (** * Better automation for Hoare triples *)
 
-Section prog'.
-  Variable ghostT : Type.
-  (* This is a type that we pretend was passed as an extra
-   * function argument, for specification purposes. *)
+Inductive prog' : Type :=
+| Fail'
+| Done' (t : donetoken)
+| Read' (a : addr) (rx : valu->prog')
+| Write' (a : addr) (v : valu) (rx : prog')
+| If' P Q (b : {P} + {Q}) (p1 p2 : prog') : prog'
+(*
+| For' (nocrash : ghostT -> nat -> L -> pred) (crashed : ghostT -> pred)
+  (f : nat -> L -> prog' L) (n : nat) (l : L) : prog' L
+*)
+| Call' (pre : pred) (p1 p2: prog) (c: corr pre p1 p2) : prog'.
 
-  Inductive prog' : Set -> Type :=
-  | Halt' (R : Set) (v : R) : prog' R
-  | Crash' (R : Set) : prog' R
-  | Read' (a : addr) : prog' valu
-  | Write' (a : addr) (v : valu) : prog' unit
-  | Seq' {T R : Set} (p1 : prog' T) (p2 : T -> prog' R) : prog' R
-  | If' (R : Set) P Q (b : {P} + {Q}) (p1 p2 : prog' R) : prog' R
-  | For' {L : Set} (nocrash : ghostT -> nat -> L -> pred) (crashed : ghostT -> pred)
-    (f : nat -> L -> prog' L) (n : nat) (l : L) : prog' L
-  | Call'0
-    (R : Set)
-    (pre: pred)
-    (p: prog R)
-    (post: outcome R -> pred)
-    (c: corr pre p post) : prog' R
-  | Call'2
-    (Q1 Q2 : Type)
-    (R : Set)
-    (pre: Q1 -> Q2 -> pred)
-    (p: prog R)
-    (post: outcome R -> Q1 -> Q2 -> pred)
-    (c: forall (q1: Q1) (q2: Q2), corr (pre q1 q2) p (fun r => post r q1 q2)) : prog' R.
+Fixpoint prog'Out (p : prog') : prog :=
+  match p with
+  | Fail' => Fail
+  | Done' t => Done t
+  | Read' a rx => Read a (fun v => prog'Out (rx v))
+  | Write' a v rx => Write a v (prog'Out rx)
+  | If' _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
+(*
+  | For' _ _ _ f n l => For_ (fun x l => prog'Out (f x l)) 0 n l
+*)
+  | Call' _ p1 _ _ => p1
+  end.
 
-  Fixpoint prog'Out {R : Set} (p : prog' R) : prog R :=
-    match p with
-      | Halt' _ v => Halt v
-      | Crash' R => Crash R
-      | Read' a => Read a
-      | Write' a v => Write a v
-      | Seq' _ _ p1 p2 => Seq (prog'Out p1) (fun x => prog'Out (p2 x))
-      | If' _ _ _ b p1 p2 => if b then prog'Out p1 else prog'Out p2
-      | For' _ _ _ f n l => For_ (fun x l => prog'Out (f x l)) 0 n l
-      | Call'0 _ _ p _ _ => p
-      | Call'2 _ _ _ _ p _ _ => p
-    end.
+(* Verification conditions *)
+Fixpoint vc (pre : pred) (p : prog') : Prop :=
+  match p with
+  | Fail' => True
+  | Done' _ => True
+  | Read' _ _ => True
+  | Write' _ _ _ => True
+  | If' P Q b p1 p2 => vc (pre /\ [P]) p1 /\ vc (pre /\ [Q]) p2
+  | For' _ nocrash crashed f n l0 =>
+    (forall m l, nocrash ghost m l --> crashed ghost)
+    /\ (pre --> nocrash ghost 0 l0)
+    /\ (forall m l, m < n -> vc (nocrash ghost m l) (f m l))
+    /\ (forall m r l, m < n -> (spost (nocrash ghost m l) (f m l) r -->
+      (exists l', [r = Halted l'] /\ nocrash ghost (S m) l') \/
+      ([r = Crashed] /\ crashed ghost)))
+  | Call'0 _ cpre _ _ _ => pre --> cpre
+  | Call'2 _ _ _ cpre _ _ _ => True
+end.
 
-  Variable ghost : ghostT.
+Theorem vc_sound : forall pre p p2,
+  vc pre p
+  -> corr pre (prog'Out p) p2.
+Proof.
+  intros; eapply Conseq; eauto using spost_sound'.
+Qed.
 
-  (* Strongest postcondition *)
-  Fixpoint spost {R : Set} (pre : pred) (p : prog' R) : outcome R -> pred :=
-    match p with
-      | Halt' _ v => fun r => [r = Crashed \/ r = Halted v] /\ pre
-      | Crash' _ => fun r => [r = Crashed] /\ pre
-      | Read' a => fun r => exists v, a |-> v /\ [r = Crashed \/ r = Halted v] /\ pre
-      | Write' a v => fun r => ([r = Crashed] /\ pre) \/ ([r = Halted tt] /\ pre[a <--- v])
-      | Seq' _ _ p1 p2 => fun r => ([r = Crashed] /\ spost pre p1 Crashed)
-        \/ exists v, spost (spost pre p1 (Halted v)) (p2 v) r
-      | If' _ P Q b p1 p2 => fun r => spost (pre /\ [P]) p1 r
-        \/ spost (pre /\ [Q]) p2 r
-      | For' _ nocrash crashed f n l => fun r =>
-        (exists l', [r = Halted l'] /\ nocrash ghost n l') \/
-        ([r = Crashed] /\ crashed ghost)
-      | Call'0 _ cpre _ cpost _ =>
-        fun r => (cpost r)
-              /\ [exists s', pre s']
-      | Call'2 _ _ _ cpre _ cpost _ =>
-        fun r => (foral q1 q2, [pimpl pre (cpre q1 q2)] --> cpost r q1 q2)
-              /\ [exists s', pre s']
-    end%pred.
-
-  (* Verification conditions *)
-  Fixpoint vc {R : Set} (pre : pred) (p : prog' R) : Prop :=
-    match p with
-      | Halt' _ v => True
-      | Crash' _ => True
-      | Read' _ => True
-      | Write' _ _ => True
-      | Seq' _ _ p1 p2 => vc pre p1
-        /\ forall v, vc (spost pre p1 (Halted v)) (p2 v)
-      | If' _ P Q b p1 p2 => vc (pre /\ [P]) p1 /\ vc (pre /\ [Q]) p2
-      | For' _ nocrash crashed f n l0 =>
-        (forall m l, nocrash ghost m l --> crashed ghost)
-        /\ (pre --> nocrash ghost 0 l0)
-        /\ (forall m l, m < n -> vc (nocrash ghost m l) (f m l))
-        /\ (forall m r l, m < n -> (spost (nocrash ghost m l) (f m l) r -->
-          (exists l', [r = Halted l'] /\ nocrash ghost (S m) l') \/
-          ([r = Crashed] /\ crashed ghost)))
-      | Call'0 _ cpre _ _ _ => pre --> cpre
-      | Call'2 _ _ _ cpre _ _ _ => True
-    end.
-
-  Lemma spost_sound' : forall R p pre,
-    @vc R pre p
-    -> corr pre (prog'Out p) (spost pre p).
-  Proof.
-    induction p; simpl; intuition.
-
-    - eapply Conseq; [ | apply pimpl_refl | ].
-      + econstructor.
-        * eauto.
-        * intros.
-          specialize (H2 v).
-          apply H in H2.
-          instantiate (1 := (fun r => exists v, spost (spost pre p (Halted v)) (p2 v) r)%pred).
-          eapply Conseq; [ | apply pimpl_refl | ]; eauto.
-          pred.
-      + auto.
-
-    - eapply IHp1 in H0.
-      eapply Conseq; eauto; pred.
-
-    - eapply IHp2 in H1.
-      eapply Conseq; eauto; pred.
-
-    - eapply Conseq.
-      + apply (@CFor _ _ (nocrash ghost) (crashed ghost)); auto.
-        intros.
-        eapply Conseq; [ | apply pimpl_refl | ]; eauto.
-        * apply H; apply H2; omega.
-        * intros.
-          apply H4; omega.
-      + auto.
-      + simpl.
-        replace (n + 0) with n; auto.
-
-    - eauto.
-  Qed.
-
-  Theorem spost_sound : forall R p pre post,
-    @vc R pre p
-    -> (forall r, spost pre p r --> post r)
-    -> corr pre (prog'Out p) post.
-  Proof.
-    intros; eapply Conseq; eauto using spost_sound'.
-  Qed.
-End prog'.
-
-Implicit Arguments Halt' [ghostT R].
-Implicit Arguments Crash' [ghostT R].
-Implicit Arguments Read' [ghostT].
-Implicit Arguments Write' [ghostT].
-Implicit Arguments Call'0 [ghostT R pre p post].
-Implicit Arguments Call'2 [ghostT R pre p post Q1 Q2].
 
 Notation "'Halt'" := Halt' : prog'_scope.
 Notation "'Crash'" := Crash' : prog'_scope.
