@@ -352,6 +352,33 @@ Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
     | S n' => l' <- (f i l); (For_ f (S i) n' l' rx)
   end.
 
+Theorem for_ok:
+  forall (L : Set) f i n (li : L) rx rec (nocrash : nat -> L -> pred) (crashed : pred),
+  (* Can crash at any point in the loop *)
+  (* XXX what if we crash in the middle of f's execution? *)
+  (forall m l, nocrash m l ==> crashed) ->
+  ({{ (* Precondition for entering the For loop at the ith iteration: *)
+      (* Must satisfy i'th loop invariant *)
+      nocrash i li
+      (* For all subsequent loop invocations: *)
+   /\ [forall m lm rxm lSm,
+       (* From i to the end *)
+       i <= m < n + i ->
+       (* If we satisfy the m'th loop invariant.. *)
+       {{ nocrash m lm
+       (* And we can invoke the rx callback with the next loop state (l),
+        * under the (m+1)'st loop invariant.. *)
+       /\ [{{ nocrash (S m) lSm }} (rxm lSm) >> rec] }}
+       (* Then we can invoke f with that callback *)
+       f m lm rxm >> rec]
+      (* The final loop invariant allows us to call the For loop's continuation (rx) *)
+   /\ [exists lfinal,
+       {{ nocrash n lfinal }} (rx lfinal) >> rec ]
+   }}
+   (For_ f i n li rx) >> rec)%pred.
+Proof.
+  admit.
+Qed.
 
 (*
 Theorem CFor:
