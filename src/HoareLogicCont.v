@@ -167,6 +167,11 @@ Proof.
   destruct (eq_nat_dec a a); tauto.
 Qed.
 
+Local Hint Extern 1 =>
+  match goal with
+    | [ |- upd _ ?a ?v ?a = Some ?v ] => apply upd_eq; auto
+  end.
+
 Theorem upd_ne : forall m a v a',
   a' <> a
   -> upd m a v a' = m a'.
@@ -175,6 +180,30 @@ Proof.
   destruct (eq_nat_dec a' a); tauto.
 Qed.
 
+Ltac inv_corr :=
+  match goal with
+  | [ H: corr _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: Some _ = Some _ |- _ ] => inversion H; clear H; subst
+  | [ H: ?a = Some ?b |- _ ] =>
+    match goal with
+    | [ H': a = Some ?c |- _ ] =>
+      match b with
+      | c => fail 1
+      | _ => rewrite H in H'
+      end
+    end
+  end.
+
+Ltac inv_exec_recover :=
+  match goal with
+  | [ H: exec_recover _ _ _ _ _ |- _ ] => inversion H; clear H; subst
+  end.
+
+Ltac inv_exec :=
+  match goal with
+  | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
+  end.
+
 Theorem read_ok:
   forall (a:addr) (rx:valu->prog) (rec:prog),
   ({{ exists v, a |-> v
@@ -182,19 +211,8 @@ Theorem read_ok:
    /\ [{{ a |-> v }} rec >> rec] }}
    Read a rx >> rec)%pred.
 Proof.
-  constructor.
-  pred.
-  inversion H; clear H; subst.
-  inversion H3; clear H3; subst.
-  inversion H0; clear H0; subst.
-  - inversion H3; clear H3; subst.
-    pred.
-    eapply H2. eauto.
-    constructor. rewrite H6 in H1. inversion H1. subst. pred.
-  - auto.
-  - inversion H3; clear H3; subst.
-    + eapply H2; eauto. econstructor. rewrite H7 in H1. inversion H1. subst. pred. eauto.
-    + eapply H; eauto.
+  constructor; pred; repeat inv_corr; inv_exec_recover; eauto;
+    inv_exec; pred; repeat inv_corr; eauto.
 Qed.
 
 Theorem write_ok:
@@ -204,18 +222,11 @@ Theorem write_ok:
    /\ [{{ a |-> v \/ a |-> v0 }} rec >> rec]}}
    Write a v rx >> rec)%pred.
 Proof.
-  constructor.
-  pred.
-  inversion H; clear H; subst.
-  inversion H3; clear H3; subst.
-  inversion H0; clear H0; subst.
-  - inversion H3; clear H3; subst.
-    pred.
-    eapply H2. instantiate (1:=upd m a v). rewrite upd_eq; auto. eauto.
-  - auto.
-  - inversion H3; clear H3; subst.
-    + eapply H2; eauto. apply upd_eq. auto.
-    + eapply H. eauto. eauto.
+  constructor; pred; repeat inv_corr; inv_exec_recover; eauto.
+  - inv_exec; pred; repeat inv_corr. eapply H3; [|eauto]; eauto.
+  - inv_exec.
+    + eapply H3; [|eauto]; eauto.
+    + eauto.
 Qed.
 
 
