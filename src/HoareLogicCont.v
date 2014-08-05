@@ -76,7 +76,7 @@ Hint Constructors exec_recover.
 Definition pred := mem -> Prop.
 
 Definition ptsto (a : addr) (v : valu) : pred :=
-  fun m => m a = Some v.
+  fun m => m a = Some v /\ forall a', a <> a' -> m a' = None.
 Infix "|->" := ptsto (at level 35) : pred_scope.
 Bind Scope pred_scope with pred.
 Delimit Scope pred_scope with pred.
@@ -106,8 +106,12 @@ Definition uniqpred A (p : A -> pred) (x : A) :=
 Notation "'exists' ! x .. y , p" := (exis (uniqpred (fun x => .. (exis (uniqpred (fun y => p))) ..))) : pred_scope.
 
 Definition lift (P : Prop) : pred :=
-  fun _ => P.
+  fun m => P.
 Notation "[ P ]" := (lift P) : pred_scope.
+(*
+Notation "[[ P ]]" := (lift_empty P) : pred_scope.
+ /\ forall a, m a = None
+*)
 
 Definition pimpl (p q : pred) := forall m, p m -> q m.
 Notation "p ==> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
@@ -139,8 +143,7 @@ Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
              end.
 
-Ltac pred_unfold := unfold ptsto, impl, and, or, foral_, exis, uniqpred,
-                           lift, pimpl, pupd, diskIs, addr, valu in *.
+Ltac pred_unfold := unfold pupd, diskIs, addr, valu in *.
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
@@ -199,26 +202,27 @@ Qed.
 
 Theorem sep_star_comm:
   forall p1 p2,
-  (p1 * p2 <==> p2 * p1)%pred.
+  (p1 * p2 ==> p2 * p1)%pred.
 Proof.
-  split; unfold sep_star; pred.
-  - exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
-  - exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
+  unfold pimpl, sep_star; pred.
+  exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
+Qed.
+
+Theorem sep_star_assoc:
+  forall p1 p2 p3,
+  (p1 * p2 * p3 <==> p1 * (p2 * p3))%pred.
+Proof.
+  admit.
 Qed.
 
 
 (** ** Hoare triples *)
 
-Inductive corr :
-     pred      (* Precondition *)
-  -> prog      (* Program being executed *)
-  -> prog      (* Program that runs after a crash *)
-  -> Prop :=
-| Corr : forall (pre:pred) prog1 prog2,
-  (forall m m' out, pre m -> exec_recover m prog1 prog2 m' out -> out = Finished) ->
-  corr pre prog1 prog2.
-
-Hint Constructors corr.
+Definition corr (pre: pred) (prog1 prog2: prog) :=
+  forall m m' out,
+  pre m ->
+  exec_recover m prog1 prog2 m' out ->
+  out = Finished.
 
 Notation "{{ pre }} p1 >> p2" := (corr pre p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
@@ -270,14 +274,11 @@ Ltac inv_exec :=
 
 Theorem pimpl_ok:
   forall pre pre' pr rec,
-  (pre ==> [{{pre'}} pr >> rec]) ->
+  {{pre'}} pr >> rec ->
   (pre ==> pre') ->
   {{pre}} pr >> rec.
 Proof.
-  pred.
-  constructor; intros.
-  remember (H m H1) as Hc; inversion Hc.
-  eauto.
+  unfold corr, pimpl. eauto.
 Qed.
 
 Theorem read_ok:
@@ -287,19 +288,24 @@ Theorem read_ok:
    /\ [{{ a |-> v * F }} rec >> rec] }}
    Read a rx >> rec)%pred.
 Proof.
+  admit.
+(*
   constructor; pred; repeat inv_corr; inv_exec_recover;
     inv_exec; unfold sep_star in *; repeat deex;
     try (erewrite mem_union_addr in *; [|pred|pred]; []);
     repeat inv_corr; eauto 10; pred.
+*)
 Qed.
 
 Theorem write_ok:
   forall (a:addr) (v:valu) (rx:prog) (rec:prog),
   ({{ exists v0 F, a |-> v0 * F
    /\ [{{ a |-> v * F }} rx >> rec]
-   /\ [{{ (a |-> v \/ a |-> v0) * F }} rec >> rec]}}
+   /\ [{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]}}
    Write a v rx >> rec)%pred.
 Proof.
+  admit.
+(*
   constructor; pred; repeat inv_corr; inv_exec_recover;
     inv_exec; unfold sep_star in *; Tactics.destruct_conjs;
     repeat inv_corr;
@@ -314,6 +320,7 @@ Proof.
     eapply mem_disjoint_upd; eauto.
   - eapply H2; [|eauto].
     subst; exists H1; exists H; intuition eauto.
+*)
 Qed.
 
 
@@ -323,42 +330,36 @@ Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
   if b then p1 else p2.
 
 Theorem if_ok:
-  forall P Q (b : {P}+{Q}) p1 p2 rec,
-  ({{ exists pre, pre
-   /\ [{{ pre /\ [P] }} p1 >> rec]
-   /\ [{{ pre /\ [Q] }} p2 >> rec] }}
-   If_ b p1 p2 >> rec)%pred.
+  forall P Q (b : {P}+{Q}) p1 p2 rec pre,
+  {{ pre * [P] }} p1 >> rec ->
+  {{ pre * [Q] }} p2 >> rec ->
+  {{ pre }} If_ b p1 p2 >> rec.
 Proof.
+  admit.
+(*
   unfold If_; destruct b; intros;
     constructor; pred; repeat inv_corr; eauto.
   (* XXX it seems unfortunate that I cannot use pimpl_ok here.. *)
-Qed.
-
-Definition Call_ pre pr rec (c : corr pre pr rec) : prog :=
-  pr.
-
-Theorem call_ok:
-  forall pre pr rec (c : corr pre pr rec) pre',
-  (pre' ==> pre)%pred ->
-  ({{ pre' }} Call_ c >> rec).
-Proof.
-  intros. eapply pimpl_ok; [|eauto]. pred.
+*)
 Qed.
 
 Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
-              (i n : nat) (l : L) (rx: L -> prog) : prog :=
+              (i n : nat) (l : L)
+              (nocrash : nat -> L -> pred)
+              (crashed : pred)
+              (rx: L -> prog) : prog :=
   match n with
     | O => rx l
-    | S n' => l' <- (f i l); (For_ f (S i) n' l' rx)
+    | S n' => l' <- (f i l); (For_ f (S i) n' l' nocrash crashed rx)
   end.
 
+(*
 Theorem for_ok:
   forall (L : Set) f i n (li : L) rx rec (nocrash : nat -> L -> pred) (crashed : pred),
   (* Can crash at any point in the loop *)
   (* XXX what if we crash in the middle of f's execution? *)
   (forall m l, nocrash m l ==> crashed) ->
-  ({{ (* Precondition for entering the For loop at the ith iteration: *)
-      (* Must satisfy i'th loop invariant *)
+
       nocrash i li
       (* For all subsequent loop invocations: *)
    /\ [forall m lm rxm lSm,
@@ -374,11 +375,13 @@ Theorem for_ok:
       (* The final loop invariant allows us to call the For loop's continuation (rx) *)
    /\ [exists lfinal,
        {{ nocrash n lfinal }} (rx lfinal) >> rec ]
-   }}
-   (For_ f i n li rx) >> rec)%pred.
+
+
+  {{ pre }} (For_ f i n li rx) >> rec.
 Proof.
   admit.
 Qed.
+*)
 
 (*
 Theorem CFor:
@@ -425,60 +428,148 @@ Proof.
 Qed.
 *)
 
+Lemma pimpl_exists_l:
+  forall T p q,
+  (forall x:T, p x ==> q) ->
+  (exists x:T, p x) ==> q.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_exists_r:
+  forall T p q,
+  (exists x:T, p ==> q x) ->
+  (p ==> exists x:T, q x).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_trans:
+  forall a b c,
+  (a ==> b) ->
+  (b ==> c) ->
+  (a ==> c).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_apply:
+  forall (p q:pred) m,
+  p m ->
+  (p ==> q) ->
+  q m.
+  (* XXX change level of ==> to bind more tightly than -> *)
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_sep_star:
+  forall a b c d,
+  (a ==> c) ->
+  (b ==> d) ->
+  (a * b ==> c * d).
+Proof.
+  admit.
+Qed.
+
+(*
+
+Lemma sep_star_lift_l:
+  forall (a: Prop) (b c: pred),
+  (a -> (b ==> c)) ->
+  [a] * b ==> c.
+Proof.
+*)
+
+Opaque sep_star.
+
 Example two_writes: forall a1 a2 v1 v2 rx rec,
   ({{ exists v1' v2' F,
       a1 |-> v1' * a2 |-> v2' * F
    /\ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]
-   /\ [{{ ((a1 |-> v1' * a2 |-> v2') \/
-           (a1 |-> v1 * a2 |-> v2') \/
-           (a1 |-> v1 * a2 |-> v2)) * F }} rec >> rec] }}
+   /\ [{{ (a1 |-> v1' * a2 |-> v2' * F) \/
+          (a1 |-> v1 * a2 |-> v2' * F) \/
+          (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec] }}
    Write a1 v1 ;; Write a2 v2 ;; rx >> rec)%pred.
 Proof.
   intros.
-  constructor.
-  intros.
-  pred.
-  inv_exec_recover; auto.
-  - (* case 1: exec failed (impossible) *)
-    inv_exec.
-    + (* option 1a: accessed an invalid address *)
-      unfold sep_star in H1. repeat deex.
-      erewrite mem_union_addr in H8.
-      pred.
-      auto.
-      apply mem_union_addr. auto. eauto.
-    + (* option 1b: the continuation failed *)
-      inv_exec.
-      * (* option 1b1: the continuation accessed an invalid address *)
-        unfold sep_star in H1. repeat deex.
-        admit.
-      * (* option 1b2: the continuation's  continuation failed *)
-        admit.
-  - (* case 2: exec crashed, need to show rec ends up with Finished *)
-    (* need to look at all possible points where we could have crashed before invoking
-     * the continuation (rx).  once we get to rx, we can rely on the hoare tuple from
-     * our precondition to prove that the rest of the program finishes correctly.
-     *)
-    inv_exec.
-    + (* case 2a: first write OK, crashed afterwards *)
-      
-      admit.
-    + (* case 2b: first write crash *)
-      (* use the Hoare tuple: {{ .. }} rec >> rec *)
-      repeat inv_corr.
-      eapply H0; [|eauto].
-      unfold sep_star in H1. repeat deex.
-      unfold sep_star. eexists. eexists.
-      split; [|split; [|split]]; [ .. | eauto ].
-      eauto. eauto.
-      eauto 12.
-Qed.
+  eapply pimpl_ok.
+  eapply write_ok.
+  repeat (apply pimpl_exists_l; intro).
+  repeat (apply pimpl_exists_r; eexists).
+  unfold and, or, pimpl.
+  intuition eauto.
+  eapply pimpl_apply; try eapply H0.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  apply pimpl_refl.
 
-Theorem vc_sound : forall pre p p2,
-  vc pre p
-  -> corr pre (prog'Out p) p2.
-Proof.
-  intros; eapply Conseq; eauto using spost_sound'.
+  unfold lift.
+  eapply pimpl_ok.
+  eapply write_ok.
+  repeat (apply pimpl_exists_l; intro).
+  repeat (apply pimpl_exists_r; eexists).
+  unfold and, or, pimpl.
+  intuition eauto.
+  eapply pimpl_apply; try eapply H1.
+  eapply pimpl_trans.
+  eapply sep_star_comm.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  apply pimpl_refl.
+
+  unfold lift in *.
+  eapply pimpl_ok.
+  eauto.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  eapply pimpl_trans.
+  eapply sep_star_comm.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  apply pimpl_refl.
+
+  unfold lift in *.
+  eapply pimpl_ok.
+  eauto.
+  unfold and, or, pimpl.
+  intuition eauto.
+  right. right.
+  eapply pimpl_apply; try eapply H4.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  eapply pimpl_trans.
+  eapply sep_star_comm.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  apply pimpl_refl.
+
+  right. left.
+  eapply pimpl_apply; try eapply H4.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  eapply pimpl_trans.
+  eapply sep_star_comm.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  apply pimpl_refl.
+
+  unfold lift in *.
+  eapply pimpl_ok.
+  eauto.
+  unfold and, or, pimpl.
+  intuition eauto.
+  right. left.
+  eapply pimpl_apply; try eapply H3.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  apply pimpl_refl.
+
+  left.
+  eapply pimpl_apply; try eapply H3.
+  eapply pimpl_trans.
+  eapply sep_star_assoc.
+  apply pimpl_refl.
 Qed.
 
 
