@@ -1,4 +1,5 @@
 Require Import Arith Omega List.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
@@ -108,7 +109,10 @@ Definition lift (P : Prop) : pred :=
 Notation "[ P ]" := (lift P) : pred_scope.
 
 Definition pimpl (p q : pred) := forall m, p m -> q m.
-Notation "p --> q" := (pimpl p%pred q%pred).
+Notation "p ==> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
+
+Definition piff (p q : pred) : Prop := (p ==> q) /\ (q ==> p).
+Notation "p <==> q" := (piff p%pred q%pred) (at level 90).
 
 Definition pupd (p : pred) (a : addr) (v : valu) : pred :=
   fun m => exists m', p m' /\ m = upd m' a v.
@@ -129,7 +133,6 @@ Definition sep_star (p1: pred) (p2: pred) :=
   fun m => exists m1 m2, m = mem_union m1 m2 /\ mem_disjoint m1 m2 /\ p1 m1 /\ p2 m2.
 Infix "*" := sep_star : pred_scope.
 
-(* Tactics for dealing with predicates *)
 
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
@@ -141,6 +144,40 @@ Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
       try autorewrite with core in *; eauto); try subst).
+
+Theorem mem_disjoint_comm:
+  forall m1 m2,
+  mem_disjoint m1 m2 <-> mem_disjoint m2 m1.
+Proof.
+  split; unfold mem_disjoint, not; intros; repeat deex; eauto 10.
+Qed.
+
+Theorem mem_union_comm:
+  forall m1 m2,
+  mem_disjoint m1 m2 ->
+  mem_union m1 m2 = mem_union m2 m1.
+Proof.
+  unfold mem_disjoint, mem_union; intros; apply functional_extensionality; intros.
+  case_eq (m1 x); case_eq (m2 x); intros; eauto; destruct H; eauto.
+Qed.
+
+Theorem mem_union_addr:
+  forall m1 m2 a v,
+  mem_disjoint m1 m2 ->
+  m1 a = Some v ->
+  mem_union m1 m2 a = Some v.
+Proof.
+  unfold mem_disjoint, mem_union; intros; rewrite H0; auto.
+Qed.
+
+Theorem sep_star_comm:
+  forall p1 p2,
+  (p1 * p2 <==> p2 * p1)%pred.
+Proof.
+  split; unfold sep_star; pred.
+  - exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
+  - exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
+Qed.
 
 
 (** ** Hoare triples *)
@@ -206,13 +243,15 @@ Ltac inv_exec :=
 
 Theorem read_ok:
   forall (a:addr) (rx:valu->prog) (rec:prog),
-  ({{ exists v, a |-> v
-   /\ [{{ a |-> v }} (rx v) >> rec]
-   /\ [{{ a |-> v }} rec >> rec] }}
+  ({{ exists v F, a |-> v * F
+   /\ [{{ a |-> v * F }} (rx v) >> rec]
+   /\ [{{ a |-> v * F }} rec >> rec] }}
    Read a rx >> rec)%pred.
 Proof.
-  constructor; pred; repeat inv_corr; inv_exec_recover; eauto;
-    inv_exec; pred; repeat inv_corr; eauto.
+  constructor; pred; repeat inv_corr; inv_exec_recover;
+    inv_exec; unfold sep_star in *; repeat deex;
+    try (erewrite mem_union_addr in *; [|pred|pred]);
+    repeat inv_corr; eauto 10; pred.
 Qed.
 
 Theorem write_ok:
