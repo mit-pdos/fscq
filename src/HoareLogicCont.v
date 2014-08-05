@@ -227,7 +227,7 @@ Definition corr (pre: pred) (prog1 prog2: prog) :=
   exec_recover m prog1 prog2 m' out ->
   out = Finished.
 
-Notation "{{ pre }} p1 >> p2" := (corr pre p1 p2)
+Notation "{{ pre }} p1 >> p2" := (corr pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
 
 Theorem upd_eq : forall m a v a',
@@ -333,10 +333,11 @@ Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
   if b then p1 else p2.
 
 Theorem if_ok:
-  forall P Q (b : {P}+{Q}) p1 p2 rec pre,
-  {{ pre * [P] }} p1 >> rec ->
-  {{ pre * [Q] }} p2 >> rec ->
-  {{ pre }} If_ b p1 p2 >> rec.
+  forall P Q (b : {P}+{Q}) p1 p2 rec,
+  {{ exists pre, pre
+  /\ [{{ pre /\ [P] }} p1 >> rec]
+  /\ [{{ pre /\ [Q] }} p2 >> rec]
+  }} If_ b p1 p2 >> rec.
 Proof.
   admit.
 (*
@@ -356,35 +357,20 @@ Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
     | S n' => l' <- (f i l); (For_ f (S i) n' l' nocrash crashed rx)
   end.
 
-(*
 Theorem for_ok:
   forall (L : Set) f i n (li : L) rx rec (nocrash : nat -> L -> pred) (crashed : pred),
-  (* Can crash at any point in the loop *)
-  (* XXX what if we crash in the middle of f's execution? *)
-  (forall m l, nocrash m l ==> crashed) ->
-
-      nocrash i li
-      (* For all subsequent loop invocations: *)
-   /\ [forall m lm rxm lSm,
-       (* From i to the end *)
-       i <= m < n + i ->
-       (* If we satisfy the m'th loop invariant.. *)
-       {{ nocrash m lm
-       (* And we can invoke the rx callback with the next loop state (l),
-        * under the (m+1)'st loop invariant.. *)
-       /\ [{{ nocrash (S m) lSm }} (rxm lSm) >> rec] }}
-       (* Then we can invoke f with that callback *)
-       f m lm rxm >> rec]
-      (* The final loop invariant allows us to call the For loop's continuation (rx) *)
-   /\ [exists lfinal,
-       {{ nocrash n lfinal }} (rx lfinal) >> rec ]
-
-
-  {{ pre }} (For_ f i n li rx) >> rec.
+  {{ nocrash i li
+  /\ [forall m l, nocrash m l ==> crashed]
+  /\ [forall m lm rxm,
+      i <= m < n + i ->
+      (forall lSm, {{ nocrash (S m) lSm }} (rxm lSm) >> rec) ->
+      {{ nocrash m lm }} f m lm rxm >> rec]
+  /\ [exists lfinal, {{ nocrash n lfinal }} (rx lfinal) >> rec]
+  }} (For_ f i n li nocrash crashed rx) >> rec.
 Proof.
   admit.
 Qed.
-*)
+
 
 (*
 Theorem CFor:
@@ -490,6 +476,7 @@ Opaque sep_star.
 (** * Separation logic proof automation *)
 
 Hint Extern 1 ({{_}} progseq1 (Write _ _) _ >> _) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq2 (Read _) _ >> _) => apply read_ok : prog.
 
 Ltac intu' :=
   match goal with
@@ -499,7 +486,7 @@ Ltac intu' :=
 
 Ltac intu := intuition; repeat (intu'; intuition).
 
-Ltac pintu := unfold lift, and, or, exis, pimpl; intu.
+Ltac pintu := unfold lift, and, or, exis, pimpl, impl; intu.
 
 Definition stars (ps : list pred) :=
   fold_left sep_star ps emp.
@@ -551,6 +538,8 @@ Ltac flatten := repeat match goal with
 Definition okToUnify (p1 p2 : pred) := p1 = p2.
 
 Hint Extern 1 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
+Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
+(* XXX the above unification rule might help us deal with array predicates *)
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 | PickFirst : forall p ps,
@@ -594,9 +583,13 @@ Ltac sep := sep_imply; cancel.
 
 Ltac step := intros;
              eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ];
-             try solve [ intuition sep ]; (unfold stars; simpl).
+             try solve [ intuition sep ]; (unfold stars; simpl);
+             try omega.
 
 Ltac hoare := repeat step.
+
+Definition do_two_writes a1 a2 v1 v2 rx :=
+  Write a1 v1 ;; Write a2 v2 ;; rx.
 
 Example two_writes: forall a1 a2 v1 v2 rx rec,
   ({{ exists v1' v2' F,
@@ -605,7 +598,97 @@ Example two_writes: forall a1 a2 v1 v2 rx rec,
    /\ [{{ (a1 |-> v1' * a2 |-> v2' * F) \/
           (a1 |-> v1 * a2 |-> v2' * F) \/
           (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec] }}
-   Write a1 v1 ;; Write a2 v2 ;; rx >> rec)%pred.
+   do_two_writes a1 a2 v1 v2 rx >> rec)%pred.
+Proof.
+  unfold do_two_writes.
+  hoare.
+Qed.
+
+Hint Extern 1 ({{_}} progseq1 (do_two_writes _ _ _ _) _ >> _) => apply two_writes : prog.
+
+Example read_write: forall a v rx rec,
+  ({{ exists v' F,
+      a |-> v' * F
+   /\ [{{ a |-> v * F }} (rx v) >> rec]
+   /\ [{{ (a |-> v' * F) \/
+          (a |-> v * F) }} rec >> rec] }}
+   Write a v ;; x <- Read a ; rx x >> rec)%pred.
+Proof.
+  hoare.
+Qed.
+
+Example four_writes: forall a1 a2 v1 v2 rx rec,
+  ({{ exists v1' v2' F,
+      a1 |-> v1' * a2 |-> v2' * F
+   /\ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]
+   /\ [{{ (a1 |-> v1' * a2 |-> v2' * F) \/
+          (a1 |-> v1 * a2 |-> v2' * F) \/
+          (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec] }}
+   do_two_writes a1 a2 v1 v2 ;; do_two_writes a1 a2 v1 v2 ;; rx >> rec)%pred.
+Proof.
+  hoare.
+Qed.
+
+Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
+Hint Extern 1 ({{_}} If_ _ _ _ >> _) => apply if_ok : prog.
+
+Example inc_up_to_5: forall a rx rec,
+  ({{ exists v F,
+      a |-> v * F
+   /\ [{{ [v < 5] --> (a |-> (S v) * F)
+       /\ [v >= 5] --> (a |-> v * F) }} rx >> rec]
+(*
+   /\ [{{ (a |-> (S v) * F)
+       \/ (a |-> v * F) }} rx >> rec]
+*)
+   /\ [{{ (a |-> v * F) \/
+          (a |-> S v * F) }} rec >> rec] }}
+   x <- !a;
+   If (lt_dec x 5) {
+     a <-- (S x) ;; rx
+   } else {
+     rx
+   } >> rec)%pred.
+Proof.
+  hoare.
+Qed.
+
+Notation "'For' i < n 'Loopvar' l < l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun i l lrx => body)
+        0 n l0
+        (fun i l => nocrash%pred)
+        (crashed%pred))
+  (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
+   body at level 9).
+
+Hint Extern 1 ({{_}} progseq2 (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
+
+Theorem pimpl_pre:
+  forall pre pre' pr rec,
+  (pre ==> [{{pre'}} pr >> rec]) ->
+  (pre ==> pre') ->
+  {{pre}} pr >> rec.
+Proof.
+  firstorder.
+Qed.
+
+Example count_up: forall (n:nat) rx rec F,
+  {{ F
+  /\ [{{ F }} (rx n) >> rec]
+  /\ [{{ F }} rec >> rec]
+  }} r <- For i < n
+     Loopvar l < 0
+     Continuation lrx
+     Invariant
+       [l=i] /\ F
+       /\ [{{ F }} rx n >> rec]
+       /\ [{{ F }} rec >> rec]
+     OnCrash
+       [True]
+     Begin
+       lrx (S l)
+     Rof; rx r
+  >> rec.
 Proof.
   hoare.
 Qed.
@@ -623,12 +706,8 @@ Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
 Delimit Scope prog'_scope with prog'.
 Bind Scope prog'_scope with prog'.
 
-Notation "'For' i < n 'Ghost' g 'Loopvar' l 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Pool'" :=
-  (For' (fun g i l => nocrash%pred) (fun g => crashed%pred) (fun i l => body) n)
-  (at level 9, i at level 0, n at level 0, body at level 9) : prog'_scope.
 
-Notation "'If' b { p1 } 'else' { p2 }" := (If' b p1 p2) (at level 9, b at level 0)
-  : prog'_scope.
+
 
 Notation "$( ghostT : p )" := (prog'Out (p%prog' : prog' ghostT _))
   (ghostT at level 0).
