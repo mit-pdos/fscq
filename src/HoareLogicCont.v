@@ -77,7 +77,7 @@ Definition pred := mem -> Prop.
 
 Definition ptsto (a : addr) (v : valu) : pred :=
   fun m => m a = Some v.
-Infix "|->" := ptsto (at level 40) : pred_scope.
+Infix "|->" := ptsto (at level 35) : pred_scope.
 Bind Scope pred_scope with pred.
 Delimit Scope pred_scope with pred.
 
@@ -397,6 +397,18 @@ Proof.
   replace (S (n + i)) with (n + S i) by omega; eauto.
 Qed.
 *)
+
+Example two_writes: forall a1 a2 v1 v2 rx rec,
+  ({{ exists v1' v2' F,
+      a1 |-> v1' * a2 |-> v2' * F
+   \/ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]
+   \/ [{{ ((a1 |-> v1' * a2 |-> v2') \/
+           (a1 |-> v1 * a2 |-> v2') \/
+           (a1 |-> v1 * a2 |-> v2)) * F }} rec >> rec] }}
+   Write a1 v1 ;; Write a2 v2 ;; rx >> rec)%pred.
+Proof.
+  (* XXX *)
+Aborted.
 
 
 Theorem vc_sound : forall pre p p2,
