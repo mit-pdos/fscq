@@ -557,6 +557,7 @@ Proof.
   firstorder.
 Qed.
 
+(*
 Lemma pimpl_sep_star:
   forall a b c d,
   (a ==> c) ->
@@ -565,6 +566,7 @@ Lemma pimpl_sep_star:
 Proof.
   admit.
 Qed.
+*)
 
 (*
 
@@ -574,6 +576,29 @@ Lemma sep_star_lift_l:
   [a] * b ==> c.
 Proof.
 *)
+
+Lemma pimpl_star_emp: forall p, p ==> emp * p.
+Proof.
+  unfold sep_star, pimpl; intros.
+  repeat eexists; eauto.
+  unfold mem_union; eauto.
+  unfold mem_disjoint; pred.
+Qed.
+
+Lemma star_emp_pimpl: forall p, emp * p ==> p.
+Proof.
+  unfold sep_star, pimpl; intros.
+  unfold emp in *; pred.
+  assert (mem_union x x0 = x0).
+  apply functional_extensionality; unfold mem_union; intros.
+  case_eq (x x1); intuition. rewrite H1 in H0; pred.
+  pred.
+Qed.
+
+Lemma emp_star: forall p, p <==> emp * p.
+Proof.
+  intros; split; [ apply pimpl_star_emp | apply star_emp_pimpl ].
+Qed.
 
 Opaque sep_star.
 
@@ -617,11 +642,20 @@ Theorem start_canceling : forall p q ps qs,
   -> q <==> stars qs
   -> (stars ps * stars nil ==> stars qs)
   -> p ==> q.
-Admitted.
+Proof.
+  unfold stars; simpl; intros.
+  eapply pimpl_trans; [apply H|].
+  eapply pimpl_trans; [apply pimpl_star_emp|].
+  eapply pimpl_trans; [apply sep_star_comm|].
+  eapply pimpl_trans; [apply H1|].
+  apply H0.
+Qed.
 
 Lemma flatten_default : forall p,
   p <==> stars (p :: nil).
-Admitted.
+Proof.
+  unfold stars; apply emp_star.
+Qed.
 
 Lemma flatten_emp : emp <==> stars nil.
 Proof.
@@ -674,11 +708,15 @@ Ltac delay_one := apply delay_one.
 
 Lemma finish_frame : forall p,
   stars nil * p ==> stars (p :: nil).
-Admitted.
+Proof.
+  unfold stars. intros. apply pimpl_refl.
+Qed.
 
 Lemma finish_easier : forall p,
   stars nil * p ==> p.
-Admitted.
+Proof.
+  unfold stars. apply emp_star.
+Qed.
 
 Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
                repeat (cancel_one || delay_one);
