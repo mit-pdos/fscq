@@ -166,6 +166,42 @@ Proof.
   split; unfold mem_disjoint, not; intros; repeat deex; eauto 10.
 Qed.
 
+Theorem mem_disjoint_assoc_1:
+  forall m1 m2 m3,
+  mem_disjoint m1 m2 ->
+  mem_disjoint (mem_union m1 m2) m3 ->
+  mem_disjoint m1 (mem_union m2 m3).
+Proof.
+  unfold mem_disjoint, mem_union; intuition; repeat deex.
+  case_eq (m2 x); intros.
+  - apply H. eauto.
+  - rewrite H1 in H3.
+    apply H0. repeat eexists; eauto. rewrite H2. eauto.
+Qed.
+
+Theorem mem_disjoint_assoc_2:
+  forall m1 m2 m3,
+  mem_disjoint m2 m3 ->
+  mem_disjoint m1 (mem_union m2 m3) ->
+  mem_disjoint (mem_union m1 m2) m3.
+Proof.
+  unfold mem_disjoint, mem_union; intuition; repeat deex.
+  case_eq (m2 x); intros.
+  - apply H. eauto.
+  - case_eq (m1 x); intros.
+    + apply H0. repeat eexists; eauto. rewrite H1. eauto.
+    + rewrite H4 in H2. firstorder.
+Qed.
+
+Theorem mem_disjoint_union:
+  forall m1 m2 m3,
+  mem_disjoint (mem_union m1 m2) m3 ->
+  mem_disjoint m2 m3.
+Proof.
+  unfold mem_disjoint, mem_union; intuition; repeat deex.
+  apply H; exists x; destruct (m1 x); eauto.
+Qed.
+
 Theorem mem_disjoint_upd:
   forall m1 m2 a v v0,
   m1 a = Some v0 ->
@@ -203,6 +239,16 @@ Proof.
   destruct (eq_nat_dec x a); eauto.
 Qed.
 
+Theorem mem_union_assoc:
+  forall m1 m2 m3,
+  mem_disjoint m1 m2 ->
+  mem_disjoint (mem_union m1 m2) m3 ->
+  mem_union (mem_union m1 m2) m3 = mem_union m1 (mem_union m2 m3).
+Proof.
+  unfold mem_union, mem_disjoint; intros; apply functional_extensionality; intuition.
+  destruct (m1 x); auto.
+Qed.
+
 Theorem sep_star_comm:
   forall p1 p2,
   (p1 * p2 ==> p2 * p1)%pred.
@@ -215,7 +261,22 @@ Theorem sep_star_assoc:
   forall p1 p2 p3,
   (p1 * p2 * p3 <==> p1 * (p2 * p3))%pred.
 Proof.
-  admit.
+  split; unfold pimpl, sep_star; pred.
+  - exists x1; exists (mem_union x2 x0); intuition.
+    apply mem_union_assoc; auto.
+    apply mem_disjoint_assoc_1; auto.
+    exists x2; exists x0; intuition eauto.
+    eapply mem_disjoint_union; eauto.
+  - exists (mem_union x x1); exists x2; intuition.
+    rewrite mem_union_assoc; auto.
+    apply mem_disjoint_comm. eapply mem_disjoint_union. apply mem_disjoint_comm.
+    rewrite mem_union_comm. eauto. apply mem_disjoint_comm. eauto.
+    apply mem_disjoint_assoc_2; eauto.
+    apply mem_disjoint_assoc_2; eauto.
+    repeat eexists; eauto.
+    apply mem_disjoint_comm. eapply mem_disjoint_union.
+    rewrite mem_union_comm; [|apply mem_disjoint_comm;eassumption].
+    apply mem_disjoint_comm; assumption.
 Qed.
 
 
