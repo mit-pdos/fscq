@@ -249,12 +249,19 @@ Proof.
   destruct (m1 x); auto.
 Qed.
 
-Theorem sep_star_comm:
+Theorem sep_star_comm1:
   forall p1 p2,
   (p1 * p2 ==> p2 * p1)%pred.
 Proof.
   unfold pimpl, sep_star; pred.
   exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
+Qed.
+
+Theorem sep_star_comm:
+  forall p1 p2,
+  (p1 * p2 <==> p2 * p1)%pred.
+Proof.
+  unfold piff; split; apply sep_star_comm1.
 Qed.
 
 Theorem sep_star_assoc:
@@ -557,6 +564,30 @@ Proof.
   firstorder.
 Qed.
 
+Lemma piff_trans:
+  forall a b c,
+  (a <==> b) ->
+  (b <==> c) ->
+  (a <==> c).
+Proof.
+  unfold piff; intuition; eapply pimpl_trans; eauto.
+Qed.
+
+Lemma piff_comm:
+  forall a b,
+  (a <==> b) ->
+  (b <==> a).
+Proof.
+  unfold piff; intuition.
+Qed.
+
+Lemma piff_refl:
+  forall a,
+  (a <==> a).
+Proof.
+  unfold piff; intuition.
+Qed.
+
 Lemma pimpl_apply:
   forall (p q:pred) m,
   p m ->
@@ -608,6 +639,22 @@ Qed.
 Lemma emp_star: forall p, p <==> emp * p.
 Proof.
   intros; split; [ apply pimpl_star_emp | apply star_emp_pimpl ].
+Qed.
+
+Lemma piff_star_r: forall a b c,
+  (a <==> b) ->
+  (a * c <==> b * c).
+Proof.
+  unfold piff, sep_star, pimpl; intuition;
+    repeat deex; repeat eexists; eauto.
+Qed.
+
+Lemma piff_star_l: forall a b c,
+  (a <==> b) ->
+  (c * a <==> c * b).
+Proof.
+  unfold piff, sep_star, pimpl; intuition;
+    repeat deex; repeat eexists; eauto.
 Qed.
 
 Opaque sep_star.
@@ -672,11 +719,68 @@ Proof.
   firstorder.
 Qed.
 
+Lemma stars_prepend:
+  forall l x,
+  fold_left sep_star l x <==> x * fold_left sep_star l emp.
+Proof.
+  induction l.
+  - simpl. intros.
+    eapply piff_trans.
+    apply emp_star.
+    apply sep_star_comm.
+  - simpl. intros.
+    eapply piff_trans.
+    eapply IHl.
+    eapply piff_trans.
+    eapply sep_star_assoc.
+    eapply piff_star_l.
+    eapply piff_comm.
+    eapply piff_trans.
+    eapply IHl.
+    eapply piff_comm.
+    eapply piff_trans.
+    eapply emp_star.
+    eapply piff_comm.
+    eapply piff_trans.
+    eapply sep_star_assoc.
+    eapply piff_refl.
+Qed.
+
 Lemma flatten_star : forall p q ps qs,
   p <==> stars ps
   -> q <==> stars qs
   -> p * q <==> stars (ps ++ qs).
-Admitted.
+Proof.
+  intros.
+  eapply piff_trans.
+  eapply piff_star_r with (b:=stars ps); eauto.
+  eapply piff_trans.
+  eapply piff_star_l with (b:=stars qs); eauto.
+  clear H H0.
+  induction ps.
+  - simpl.
+    eapply piff_trans.
+    eapply piff_comm.
+    eapply emp_star.
+    apply piff_refl.
+  - unfold stars in *; simpl.
+    eapply piff_comm.
+    eapply piff_trans.
+    eapply stars_prepend.
+    eapply piff_trans.
+    eapply piff_star_l.
+    eapply piff_comm.
+    eapply IHps.
+    eapply piff_trans.
+    eapply piff_comm.
+    eapply sep_star_assoc.
+    apply piff_star_r.
+    eapply piff_comm.
+    eapply piff_trans.
+    eapply stars_prepend.
+    apply piff_star_r.
+    apply piff_refl.
+Qed.
 
 Ltac flatten := repeat match goal with
                        | [ |- emp <==> _ ] => apply flatten_emp
