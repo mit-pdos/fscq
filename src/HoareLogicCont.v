@@ -146,7 +146,8 @@ Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
              end.
 
-Ltac pred_unfold := unfold pupd, diskIs, addr, valu in *.
+Ltac pred_unfold := unfold impl, and, or, foral_, exis, uniqpred, lift,
+                           pupd, diskIs, addr, valu in *.
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
@@ -344,6 +345,15 @@ Proof.
   unfold corr, pimpl. eauto.
 Qed.
 
+Theorem pimpl_pre:
+  forall pre pre' pr rec,
+  (pre ==> [{{pre'}} pr >> rec]) ->
+  (pre ==> pre') ->
+  {{pre}} pr >> rec.
+Proof.
+  firstorder.
+Qed.
+
 Theorem read_ok:
   forall (a:addr) (rx:valu->prog) (rec:prog),
   ({{ exists v F, a |-> v * F
@@ -395,7 +405,7 @@ Theorem write_ok:
    /\ [{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]}}
    Write a v rx >> rec)%pred.
 Proof.
-  unfold corr; unfold exis, foral_, lift, and; pred.
+  unfold corr; pred.
   remember H1 as H1'; clear HeqH1'.
   unfold ptsto, sep_star in H1'; simpl in H1'; repeat deex.
   inv_exec_recover; auto; inv_exec.
@@ -407,7 +417,6 @@ Proof.
     eapply ptsto_upd; eauto.
     eauto.
   - eapply H3; eauto.
-    unfold or in *. eauto.
 Qed.
 
 
@@ -423,12 +432,7 @@ Theorem if_ok:
   /\ [{{ pre /\ [Q] }} p2 >> rec]
   }} If_ b p1 p2 >> rec.
 Proof.
-  admit.
-(*
-  unfold If_; destruct b; intros;
-    constructor; pred; repeat inv_corr; eauto.
-  (* XXX it seems unfortunate that I cannot use pimpl_ok here.. *)
-*)
+  unfold corr; destruct b; intuition pred.
 Qed.
 
 Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
@@ -442,17 +446,38 @@ Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
   end.
 
 Theorem for_ok:
-  forall (L : Set) f i n (li : L) rx rec (nocrash : nat -> L -> pred) (crashed : pred),
+  forall (L : Set) f rx rec (nocrash : nat -> L -> pred) (crashed : pred)
+         n i (li : L),
   {{ nocrash i li
   /\ [forall m l, nocrash m l ==> crashed]
   /\ [forall m lm rxm,
       i <= m < n + i ->
       (forall lSm, {{ nocrash (S m) lSm }} (rxm lSm) >> rec) ->
       {{ nocrash m lm }} f m lm rxm >> rec]
-  /\ [exists lfinal, {{ nocrash n lfinal }} (rx lfinal) >> rec]
+  /\ [exists lfinal, {{ nocrash (n+i) lfinal }} (rx lfinal) >> rec]
   }} (For_ f i n li nocrash crashed rx) >> rec.
 Proof.
-  admit.
+  induction n.
+  - intros.
+    eapply pimpl_pre.
+    + unfold pimpl; intuition pred.
+      (* XXX: li <> lifinal (x).. so the last part of the precondition is broken *)
+      (* hack around existential restriction.. *)
+      assert (x=li); [admit|].
+      pred.
+    + unfold pimpl; pred.
+  - intros.
+    eapply pimpl_pre.
+    + unfold pimpl; intuition pred.
+      eapply H1; try omega.
+      intros.
+      eapply pimpl_ok.
+      apply IHn.
+      unfold pimpl; intuition pred.
+      eapply H1; try omega; eauto.
+      replace (n + S i) with (S (n + i)) by omega.
+      eauto.
+    + unfold pimpl; pred.
 Qed.
 
 
@@ -746,15 +771,6 @@ Notation "'For' i < n 'Loopvar' l < l0 'Continuation' lrx 'Invariant' nocrash 'O
    body at level 9).
 
 Hint Extern 1 ({{_}} progseq2 (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
-
-Theorem pimpl_pre:
-  forall pre pre' pr rec,
-  (pre ==> [{{pre'}} pr >> rec]) ->
-  (pre ==> pre') ->
-  {{pre}} pr >> rec.
-Proof.
-  firstorder.
-Qed.
 
 Example count_up: forall (n:nat) rx rec F,
   {{ F
