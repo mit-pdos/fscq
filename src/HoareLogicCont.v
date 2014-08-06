@@ -312,9 +312,8 @@ Proof.
   destruct (eq_nat_dec a' a); tauto.
 Qed.
 
-Ltac inv_corr :=
+Ltac inv_option :=
   match goal with
-  | [ H: corr _ _ _ |- _ ] => inversion H; clear H; subst
   | [ H: Some _ = Some _ |- _ ] => inversion H; clear H; subst
   | [ H: ?a = Some ?b |- _ ] =>
     match goal with
@@ -352,13 +351,41 @@ Theorem read_ok:
    /\ [{{ a |-> v * F }} rec >> rec] }}
    Read a rx >> rec)%pred.
 Proof.
-  admit.
-(*
-  constructor; pred; repeat inv_corr; inv_exec_recover;
-    inv_exec; unfold sep_star in *; repeat deex;
-    try (erewrite mem_union_addr in *; [|pred|pred]; []);
-    repeat inv_corr; eauto 10; pred.
-*)
+  unfold corr; unfold exis, foral_, lift, and; pred.
+  remember H1 as H1'; clear HeqH1'.
+  unfold ptsto, sep_star in H1'; simpl in H1'; repeat deex.
+  inv_exec_recover; auto; inv_exec.
+  - erewrite mem_union_addr in H11. inversion H11. eauto. eauto.
+  - eapply H. eauto. constructor.
+    erewrite mem_union_addr in H10; eauto.
+    inv_option. eauto.
+  - eapply H; eauto.
+    erewrite mem_union_addr in H11; eauto. inv_option.
+    econstructor; eauto.
+  - eapply H3; eauto.
+Qed.
+
+Lemma ptsto_upd:
+  forall a v v0 F m,
+  (a |-> v0 * F)%pred m ->
+  (a |-> v * F)%pred (upd m a v).
+Proof.
+  unfold sep_star, upd; intros; repeat deex.
+  exists (fun a' => if eq_nat_dec a' a then Some v else None).
+  exists x0.
+  split; [|split].
+  - apply functional_extensionality; intro.
+    unfold mem_union; destruct (eq_nat_dec x1 a); eauto.
+    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
+  - unfold mem_disjoint in *. intuition. repeat deex.
+    apply H. repeat eexists; eauto.
+    unfold ptsto in H1; destruct H1.
+    destruct (eq_nat_dec x1 a); subst; eauto.
+    pred.
+  - intuition eauto.
+    unfold ptsto; intuition.
+    destruct (eq_nat_dec a a); pred.
+    destruct (eq_nat_dec a' a); pred.
 Qed.
 
 Theorem write_ok:
@@ -368,23 +395,19 @@ Theorem write_ok:
    /\ [{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]}}
    Write a v rx >> rec)%pred.
 Proof.
-  admit.
-(*
-  constructor; pred; repeat inv_corr; inv_exec_recover;
-    inv_exec; unfold sep_star in *; Tactics.destruct_conjs;
-    repeat inv_corr;
-    try solve [subst; erewrite mem_union_addr in *; pred].
-  - eapply H3; [|eauto].
-    subst; exists (upd H1 a v); exists H; intuition eauto.
-    erewrite mem_union_upd; eauto.
-    eapply mem_disjoint_upd; eauto.
-  - eapply H3; [|eauto].
-    subst; exists (upd H1 a v); exists H; intuition eauto.
-    erewrite mem_union_upd; eauto.
-    eapply mem_disjoint_upd; eauto.
-  - eapply H2; [|eauto].
-    subst; exists H1; exists H; intuition eauto.
-*)
+  unfold corr; unfold exis, foral_, lift, and; pred.
+  remember H1 as H1'; clear HeqH1'.
+  unfold ptsto, sep_star in H1'; simpl in H1'; repeat deex.
+  inv_exec_recover; auto; inv_exec.
+  - erewrite mem_union_addr in H12. inversion H12. eauto. eauto.
+  - eapply H. instantiate (1:=upd (mem_union x1 x2) a v).
+    eapply ptsto_upd; eauto.
+    eauto.
+  - eapply H. instantiate (1:=upd (mem_union x1 x2) a v).
+    eapply ptsto_upd; eauto.
+    eauto.
+  - eapply H3; eauto.
+    unfold or in *. eauto.
 Qed.
 
 
