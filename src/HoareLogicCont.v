@@ -16,13 +16,12 @@ Inductive prog :=
 | Fail
 | Done (t: donetoken)
 | Read (a: addr) (rx: valu -> prog)
-| Write (a: addr) (v: valu) (rx: prog).
+| Write (a: addr) (v: valu) (rx: unit -> prog).
 
-Definition progseq1 (A B:Type) (a:B->A) (b:B) := a b.
-Definition progseq2 (A B:Type) (a:B->A) (b:B) := a b.
+Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 
-Notation "p1 ;; p2" := (progseq1 p1 p2) (at level 60, right associativity).
-Notation "x <- p1 ; p2" := (progseq2 p1 (fun x => p2)) (at level 60, right associativity).
+Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right associativity).
+Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
 
 Notation "!" := Read.
 Infix "<--" := Write (at level 8).
@@ -53,7 +52,7 @@ Inductive exec : mem -> prog -> mem -> outcome -> Prop :=
   exec m (Read a rx) m' out
 | XWriteOK : forall m a v v0 rx m' out,
   m a = Some v0 ->
-  exec (upd m a v) rx m' out ->
+  exec (upd m a v) (rx tt) m' out ->
   exec m (Write a v rx) m' out
 | XCrash : forall m p, exec m p m Crashed.
 
@@ -399,9 +398,9 @@ Proof.
 Qed.
 
 Theorem write_ok:
-  forall (a:addr) (v:valu) (rx:prog) (rec:prog),
+  forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
   ({{ exists v0 F, a |-> v0 * F
-   /\ [{{ a |-> v * F }} rx >> rec]
+   /\ [{{ a |-> v * F }} rx tt >> rec]
    /\ [{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]}}
    Write a v rx >> rec)%pred.
 Proof.
@@ -605,8 +604,8 @@ Opaque sep_star.
 
 (** * Separation logic proof automation *)
 
-Hint Extern 1 ({{_}} progseq1 (Write _ _) _ >> _) => apply write_ok : prog.
-Hint Extern 1 ({{_}} progseq2 (Read _) _ >> _) => apply read_ok : prog.
+Hint Extern 1 ({{_}} progseq (Write _ _) _ >> _) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
 
 Ltac intu' :=
   match goal with
@@ -732,12 +731,12 @@ Ltac step := intros;
 Ltac hoare := repeat step.
 
 Definition do_two_writes a1 a2 v1 v2 rx :=
-  Write a1 v1 ;; Write a2 v2 ;; rx.
+  Write a1 v1 ;; Write a2 v2 ;; rx tt.
 
 Example two_writes: forall a1 a2 v1 v2 rx rec,
   ({{ exists v1' v2' F,
       a1 |-> v1' * a2 |-> v2' * F
-   /\ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]
+   /\ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx tt >> rec]
    /\ [{{ (a1 |-> v1' * a2 |-> v2' * F) \/
           (a1 |-> v1 * a2 |-> v2' * F) \/
           (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec] }}
@@ -747,7 +746,7 @@ Proof.
   hoare.
 Qed.
 
-Hint Extern 1 ({{_}} progseq1 (do_two_writes _ _ _ _) _ >> _) => apply two_writes : prog.
+Hint Extern 1 ({{_}} progseq (do_two_writes _ _ _ _) _ >> _) => apply two_writes : prog.
 
 Example read_write: forall a v rx rec,
   ({{ exists v' F,
@@ -804,7 +803,7 @@ Notation "'For' i < n 'Loopvar' l < l0 'Continuation' lrx 'Invariant' nocrash 'O
   (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
 
-Hint Extern 1 ({{_}} progseq2 (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
+Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
 
 Lemma pre_false:
   forall pre p1 p2,
@@ -841,24 +840,6 @@ Proof.
     unfold pimpl; pred.
 Qed.
 
-
-Notation "'Halt'" := Halt' : prog'_scope.
-Notation "'Crash'" := Crash' : prog'_scope.
-Notation "!" := Read' : prog'_scope.
-Infix "<--" := Write' : prog'_scope.
-Notation "'Call0'" := Call'0 : prog'_scope.
-Notation "'Call1' f" := (Call'2 (fun _: unit => f)) (at level 9) : prog'_scope.
-Notation "'Call2'" := Call'2 : prog'_scope.
-Notation "p1 ;; p2" := (Seq' p1 (fun _ : unit => p2)) : prog'_scope.
-Notation "x <- p1 ; p2" := (Seq' p1 (fun x => p2)) : prog'_scope.
-Delimit Scope prog'_scope with prog'.
-Bind Scope prog'_scope with prog'.
-
-
-
-
-Notation "$( ghostT : p )" := (prog'Out (p%prog' : prog' ghostT _))
-  (ghostT at level 0).
 
 
 (** * A log-based transactions implementation *)
@@ -915,19 +896,6 @@ Hint Rewrite upd_eq upd_ne using (congruence
        | [ xp : xparams |- _ ] => disjoint xp
      end).
 
-Ltac hoare' :=
-  match goal with
-    | [ H : Crashed = Crashed |- _ ] => clear H
-    | [ H : Halted _ = Halted _ |- _ ] => injection H; clear H; intros; subst
-  end.
-
-Ltac hoare_ghost g := apply (spost_sound g); simpl; pred; repeat hoare'; intuition eauto.
-
-Ltac hoare := intros; match goal with
-                        | _ => hoare_ghost tt
-                        | [ x : _ |- _ ] => hoare_ghost x
-                      end.
-
 Inductive logstate :=
 | NoTransaction (cur : mem)
 (* Don't touch the disk directly in this state. *)
@@ -940,13 +908,13 @@ Inductive logstate :=
 
 Module Type LOG.
   (* Methods *)
-  Parameter init : xparams -> prog unit.
-  Parameter begin : xparams -> prog unit.
-  Parameter commit : xparams -> prog unit.
-  Parameter abort : xparams -> prog unit.
-  Parameter recover : xparams -> prog unit.
-  Parameter read : xparams -> addr -> prog valu.
-  Parameter write : xparams -> addr -> valu -> prog unit.
+  Parameter init : xparams -> (unit -> prog) -> prog.
+  Parameter begin : xparams -> (unit -> prog) -> prog.
+  Parameter commit : xparams -> (unit -> prog) -> prog.
+  Parameter abort : xparams -> (unit -> prog) -> prog.
+  Parameter recover : xparams -> (unit -> prog) -> prog.
+  Parameter read : xparams -> addr -> (valu -> prog) -> prog.
+  Parameter write : xparams -> addr -> valu -> (unit -> prog) -> prog.
 
   (* Representation invariant *)
   Parameter rep : xparams -> logstate -> pred.
