@@ -344,6 +344,17 @@ Proof.
   unfold corr, pimpl. eauto.
 Qed.
 
+Theorem pimpl_ok_cont :
+  forall pre pre' A (k : A -> _) x y rec,
+  {{pre'}} k y >> rec ->
+  (pre ==> pre') ->
+  (pre ==> [x = y]) ->
+  {{pre}} k x >> rec.
+Proof.
+  unfold corr, pimpl, lift; intros.
+  erewrite H1 in *; eauto.
+Qed.
+
 Theorem pimpl_pre:
   forall pre pre' pr rec,
   (pre ==> [{{pre'}} pr >> rec]) ->
@@ -724,7 +735,8 @@ Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
 Ltac sep := sep_imply; cancel.
 
 Ltac step := intros;
-             eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ];
+             ((eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ])
+                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | pintu | pintu ]));
              try solve [ intuition sep ]; (unfold stars; simpl);
              try omega.
 
@@ -832,12 +844,6 @@ Example count_up: forall (n:nat) rx rec F,
   >> rec.
 Proof.
   hoare.
-  destruct (eq_nat_dec lfinal n).
-  - eapply pimpl_ok.
-    subst; eauto.
-    firstorder.
-  - eapply pre_false.
-    unfold pimpl; pred.
 Qed.
 
 
