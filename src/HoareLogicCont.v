@@ -454,17 +454,13 @@ Theorem for_ok:
       i <= m < n + i ->
       (forall lSm, {{ nocrash (S m) lSm }} (rxm lSm) >> rec) ->
       {{ nocrash m lm }} f m lm rxm >> rec]
-  /\ [exists lfinal, {{ nocrash (n+i) lfinal }} (rx lfinal) >> rec]
+  /\ [forall lfinal, {{ nocrash (n+i) lfinal }} (rx lfinal) >> rec]
   }} (For_ f i n li nocrash crashed rx) >> rec.
 Proof.
   induction n.
   - intros.
     eapply pimpl_pre.
     + unfold pimpl; intuition pred.
-      (* XXX: li <> lifinal (x).. so the last part of the precondition is broken *)
-      (* hack around existential restriction.. *)
-      assert (x=li); [admit|].
-      pred.
     + unfold pimpl; pred.
   - intros.
     eapply pimpl_pre.
@@ -772,6 +768,14 @@ Notation "'For' i < n 'Loopvar' l < l0 'Continuation' lrx 'Invariant' nocrash 'O
 
 Hint Extern 1 ({{_}} progseq2 (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
 
+Lemma pre_false:
+  forall pre p1 p2,
+  (pre ==> [False]) ->
+  {{ pre }} p1 >> p2.
+Proof.
+  firstorder.
+Qed.
+
 Example count_up: forall (n:nat) rx rec F,
   {{ F
   /\ [{{ F }} (rx n) >> rec]
@@ -791,6 +795,12 @@ Example count_up: forall (n:nat) rx rec F,
   >> rec.
 Proof.
   hoare.
+  destruct (eq_nat_dec lfinal n).
+  - eapply pimpl_ok.
+    subst; eauto.
+    firstorder.
+  - eapply pre_false.
+    unfold pimpl; pred.
 Qed.
 
 
