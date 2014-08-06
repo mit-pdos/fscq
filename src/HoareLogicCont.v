@@ -905,7 +905,7 @@ Hint Rewrite upd_eq upd_ne using (congruence
 Inductive logstate :=
 | NoTransaction (cur : mem)
 (* Don't touch the disk directly in this state. *)
-| ActiveTxn (old_cur : mem * mem)
+| ActiveTxn (old : mem) (cur : mem)
 (* A transaction is in progress.
  * It started from the first memory and has evolved into the second.
  * It has not committed yet. *)
@@ -926,45 +926,60 @@ Module Type LOG.
   Parameter rep : xparams -> logstate -> pred.
 
   (* Specs *)
-  Axiom init_ok : forall xp m, {{diskIs m}} (init xp)
-    {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ diskIs m)}}.
+  Axiom init_ok : forall xp rx rec,
+    {{ exists m F, diskIs m * F
+    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
+    /\ [{{ diskIs m * F }} rec >> rec]
+    }} init xp rx >> rec.
 
-  Axiom begin_ok : forall xp m, {{rep xp (NoTransaction m)}} (begin xp)
-    {{r, rep xp (ActiveTxn (m, m))
-      \/ ([r = Crashed] /\ rep xp (NoTransaction m))}}.
+  Axiom begin_ok : forall xp rx rec,
+    {{ exists m F, rep xp (NoTransaction m) * F
+    /\ [{{ rep xp (ActiveTxn m m) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m) * F }} rec >> rec]
+    }} begin xp rx >> rec.
 
-  Axiom commit_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
-    (commit xp)
-    {{r, rep xp (NoTransaction m2)
-      \/ ([r = Crashed] /\ (rep xp (ActiveTxn (m1, m2)) \/
-                            rep xp (CommittedTxn m2)))}}.
+  Axiom commit_ok : forall xp rx rec,
+    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+    /\ [{{ rep xp (NoTransaction m2) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m2) * F
+        \/ rep xp (ActiveTxn m1 m2) * F
+        \/ rep xp (CommittedTxn m2) * F }} rec >> rec]
+    }} commit xp rx >> rec.
 
-  Axiom abort_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
-    (abort xp)
-    {{r, rep xp (NoTransaction m1)
-      \/ ([r = Crashed] /\ rep xp (ActiveTxn (m1, m2)))}}.
+  Axiom abort_ok : forall xp rx rec,
+    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+    /\ [{{ rep xp (NoTransaction m1) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m1) * F
+        \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+    }} abort xp rx >> rec.
 
-  Axiom recover_ok : forall xp m, {{rep xp (NoTransaction m) \/
-                                    (exists m', rep xp (ActiveTxn (m, m'))) \/
-                                    rep xp (CommittedTxn m)}}
-    (recover xp)
-    {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
+  (* XXX disjunction not at top level.. might cause problems later *)
+  Axiom recover_ok : forall xp rx rec,
+    {{ exists m F, (rep xp (NoTransaction m) * F \/
+                    (exists m', rep xp (ActiveTxn m m') * F) \/
+                    rep xp (CommittedTxn m) * F)
+    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m) * F
+        \/ rep xp (CommittedTxn m) * F }} rec >> rec]
+    }} recover xp rx >> rec.
 
-  Axiom read_ok : forall xp a ms,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp]
-      /\ rep xp (ActiveTxn ms)}}
-    (read xp a)
-    {{r, rep xp (ActiveTxn ms)
-      /\ [r = Crashed \/ r = Halted (snd ms a)]}}.
+  (* previously we used to have [DataStart xp <= a < DataStart xp + DataLen xp];
+   * hopefully we can fold that into the partialness of memory m2.
+   *)
+  Axiom read_ok : forall xp a rx rec,
+    {{ exists m1 m2 v F F', rep xp (ActiveTxn m1 m2) * F
+    /\ [(a |-> v * F')%pred m2]
+    /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec]
+    /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+    }} read xp a rx >> rec.
 
-  Axiom write_ok : forall xp a v ms,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp]
-      /\ rep xp (ActiveTxn ms)}}
-    (write xp a v)
-    {{r, rep xp (ActiveTxn (fst ms, upd (snd ms) a v))
-      \/ ([r = Crashed] /\ rep xp (ActiveTxn ms))}}.
+  Axiom write_ok : forall xp a v rx rec,
+    {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
+    /\ [(a |-> v0 * F')%pred m2]
+    /\ [{{ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx tt >> rec]
+    /\ [{{ rep xp (ActiveTxn m1 (upd m2 a v)) * F
+        \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+    }} write xp a v rx >> rec.
 End LOG.
 
 Module Log : LOG.
