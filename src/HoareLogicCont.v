@@ -125,8 +125,6 @@ Definition pupd (p : pred) (a : addr) (v : valu) : pred :=
   fun m => exists m', p m' /\ m = upd m' a v.
 Notation "p [ a <--- v ]" := (pupd p a v) (at level 0) : pred_scope.
 
-Definition diskIs (m : mem) : pred := eq m.
-
 Definition mem_disjoint (m1 m2:mem) :=
   ~ exists a v1 v2, m1 a = Some v1 /\ m2 a = Some v2.
 
@@ -146,7 +144,7 @@ Ltac deex := match goal with
              end.
 
 Ltac pred_unfold := unfold impl, and, or, foral_, exis, uniqpred, lift,
-                           pupd, diskIs, addr, valu in *.
+                           pupd, addr, valu in *.
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
@@ -791,8 +789,6 @@ Ltac flatten := repeat match goal with
 Definition okToUnify (p1 p2 : pred) := p1 = p2.
 
 Hint Extern 1 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
-Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
-(* XXX the above unification rule might help us deal with array predicates *)
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 | PickFirst : forall p ps,
@@ -1006,14 +1002,21 @@ Hint Rewrite upd_eq upd_ne using (congruence
        | [ xp : xparams |- _ ] => disjoint xp
      end).
 
+Definition logmem := addr -> valu.
+Definition lupd (lm : logmem) (a : addr) (v : valu) : logmem :=
+  fun a' => if eq_nat_dec a' a then v else lm a'.
+Definition diskIs (lm : logmem) : pred := (foral a, a |-> (lm a))%pred.
+Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
+(* XXX the above unification rule might help us deal with array predicates *)
+
 Inductive logstate :=
-| NoTransaction (cur : mem)
+| NoTransaction (cur : logmem)
 (* Don't touch the disk directly in this state. *)
-| ActiveTxn (old : mem) (cur : mem)
+| ActiveTxn (old : logmem) (cur : logmem)
 (* A transaction is in progress.
  * It started from the first memory and has evolved into the second.
  * It has not committed yet. *)
-| CommittedTxn (cur : mem)
+| CommittedTxn (cur : logmem)
 (* A transaction has committed but the log has not been applied yet. *).
 
 Module Type LOG.
@@ -1033,7 +1036,8 @@ Module Type LOG.
   Axiom init_ok : forall xp rx rec,
     {{ exists m F, diskIs m * F
     /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
-    /\ [{{ diskIs m * F }} rec >> rec]
+    /\ [{{ rep xp (NoTransaction m) * F
+        \/ F }} rec >> rec]
     }} init xp rx >> rec.
 
   Axiom begin_ok : forall xp rx rec,
@@ -1067,35 +1071,33 @@ Module Type LOG.
         \/ rep xp (CommittedTxn m) * F }} rec >> rec]
     }} recover xp rx >> rec.
 
-  (* previously we used to have [DataStart xp <= a < DataStart xp + DataLen xp];
-   * hopefully we can fold that into the partialness of memory m2.
-   *)
   Axiom read_ok : forall xp a rx rec,
-    {{ exists m1 m2 v F F', rep xp (ActiveTxn m1 m2) * F
-    /\ [(a |-> v * F')%pred m2]
+    {{ exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
+    /\ [DataStart xp <= a < DataStart xp + DataLen xp]
+    /\ [m2 a = v]
     /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec]
     /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
     }} read xp a rx >> rec.
 
   Axiom write_ok : forall xp a v rx rec,
-    {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
-    /\ [(a |-> v0 * F')%pred m2]
-    /\ [{{ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx tt >> rec]
-    /\ [{{ rep xp (ActiveTxn m1 (upd m2 a v)) * F
+    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+    /\ [DataStart xp <= a < DataStart xp + DataLen xp]
+    /\ [{{ rep xp (ActiveTxn m1 (lupd m2 a v)) * F }} rx tt >> rec]
+    /\ [{{ rep xp (ActiveTxn m1 (lupd m2 a v)) * F
         \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
     }} write xp a v rx >> rec.
 End LOG.
 
 Module Log : LOG.
   (* Actually replay a log to implement redo in a memory. *)
-  Fixpoint replay (a : addr) (len : nat) (m : mem) : mem :=
+  Fixpoint replay (a : addr) (len : nat) (m : logmem) : logmem :=
     match len with
       | O => m
-      | S len' => upd (replay a len' m) (m (a + len'*2)) (m (a + len'*2 + 1))
+      | S len' => lupd (replay a len' m) (m (a + len'*2)) (m (a + len'*2 + 1))
     end.
 
   (* Check that a log is well-formed in memory. *)
-  Fixpoint validLog xp (a : addr) (len : nat) (m : mem) : Prop :=
+  Fixpoint validLog xp (a : addr) (len : nat) (m : logmem) : Prop :=
     match len with
       | O => True
       | S len' => DataStart xp <= m (a + len'*2) < DataStart xp + DataLen xp
@@ -1108,17 +1110,17 @@ Module Log : LOG.
         (* Not committed. *)
         (LogCommit xp) |-> 0
         (* Every data address has its value from [m]. *)
-        /\ foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
-        --> a |-> m a
+      * (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
+         --> a |-> m a)
 
-      | ActiveTxn (old, cur) =>
+      | ActiveTxn old cur =>
         (* Not committed. *)
         (LogCommit xp) |-> 0
         (* Every data address has its value from [old]. *)
-        /\ (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
-          --> a |-> old a)
+      * (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
+         --> a |-> old a)
         (* Look up log length. *)
-        /\ exists len, (LogLength xp) |-> len
+      * exists len, (LogLength xp) |-> len
           /\ [len <= LogLen xp]
           /\ exists m, diskIs m
             (* All log entries reference data addresses. *)
@@ -1131,7 +1133,7 @@ Module Log : LOG.
         (* Committed but not applied. *)
         (LogCommit xp) |-> 1
         (* Log produces cur. *)
-        /\ exists len, (LogLength xp) |-> len
+      * exists len, (LogLength xp) |-> len
           /\ [len <= LogLen xp]
           /\ exists m, diskIs m
             /\ [validLog xp (LogStart xp) len m]
@@ -1139,21 +1141,25 @@ Module Log : LOG.
               -> cur a = replay (LogStart xp) len m a]
     end%pred.
 
-  Definition init xp := $(unit:
-    (LogCommit xp) <-- 0
-  ).
+  Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
 
-  Theorem init_ok : forall xp m, {{diskIs m}} (init xp)
-    {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ diskIs m)}}.
+  Theorem init_ok : forall xp rx rec,
+    {{ exists m F, diskIs m * F
+    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m) * F
+        \/ F }} rec >> rec]
+    }} init xp rx >> rec.
   Proof.
+    unfold init.
     hoare.
-  Qed.
+    (* XXX probably need better array-like handling? *)
+    (* XXX how will separation logic work for log-level memories
+     * rather than the bare disk memory?
+     *)
+  Abort.
 
-  Definition begin xp := $(unit:
-    (LogLength xp) <-- 0
-  ).
-    
+  Definition begin xp rx := (LogLength xp) <-- 0 ;; rx tt.
+
   Hint Extern 1 (_ <= _) => omega.
 
   Ltac t'' := intuition eauto; pred;
@@ -1170,12 +1176,49 @@ Module Log : LOG.
       | _ => idtac
     end.
 
-  Theorem begin_ok : forall xp m, {{rep xp (NoTransaction m)}} (begin xp)
-    {{r, rep xp (ActiveTxn (m, m))
-      \/ ([r = Crashed] /\ rep xp (NoTransaction m))}}.
+  Theorem begin_ok : forall xp rx rec,
+    {{ exists m F, rep xp (NoTransaction m) * F
+    /\ [{{ rep xp (ActiveTxn m m) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m) * F }} rec >> rec]
+    }} begin xp rx >> rec.
   Proof.
-    hoare; t.
-  Qed.
+    unfold begin.
+    unfold rep.
+    hoare.
+    (* XXX odd, because this doesn't seem to involve any array handling.. *)
+  Abort.
+
+  Definition silly_nop xp rx :=
+    x <- !(LogCommit xp) ;
+    (LogCommit xp) <-- x ;;
+    rx tt.
+
+  Theorem silly_nop_ok : forall xp rx rec,
+    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+    /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rx tt >> rec]
+    /\ [{{ [True] }} rec >> rec]
+    }} silly_nop xp rx >> rec.
+  Proof.
+    unfold silly_nop.
+    unfold rep.
+    hoare.
+    (* XXX something seems missing.. *)
+  Abort.
+
+  Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
+
+  Theorem abort_ok : forall xp rx rec,
+    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+    /\ [{{ rep xp (NoTransaction m1) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m1) * F
+        \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+    }} abort xp rx >> rec.
+  Proof.
+    unfold abort.
+    unfold rep.
+    hoare.
+    (* XXX not quite.. *)
+  Abort.
 
   Definition apply xp := $(mem:
     len <- !(LogLength xp);
@@ -1328,18 +1371,6 @@ Module Log : LOG.
     eexists; intuition eauto.
     - eapply validLog_irrel; eauto; pred.
     - erewrite replay_irrel; eauto; pred.
-  Qed.
-
-  Definition abort xp := $(unit:
-    (LogLength xp) <-- 0
-  ).
-
-  Theorem abort_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
-    (abort xp)
-    {{r, rep xp (NoTransaction m1)
-      \/ ([r = Crashed] /\ rep xp (ActiveTxn (m1, m2)))}}.
-  Proof.
-    hoare.
   Qed.
 
   Definition recover xp := $(unit:
