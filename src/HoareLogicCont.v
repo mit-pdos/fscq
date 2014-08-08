@@ -885,8 +885,8 @@ Ltac pick := solve [ repeat ((apply PickFirst; solve [ auto with okToUnify ])
 
 Theorem imply_one : forall qs qs' p p' ps F,
   pick p qs qs'
-  -> (stars ps * F ==> stars qs')
   -> (p' ==> p)
+  -> (stars ps * F ==> stars qs')
   -> stars (p' :: ps) * F ==> stars qs.
 Proof.
   intros.
@@ -1420,22 +1420,54 @@ Module Log : LOG.
 
       eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
       cancel_one. cancel_one. cancel_one.
-      (* XXX not actually equal terms, but the left does imply the right.. *)
-      delay_one.
-      delay_one.
 
-      admit.
+      (* Not actually equal terms, but the left does imply the right..
+       * Unclear how to automate this, short of trying all combinations.
+       *)
+      eapply imply_one with (p:=diskIs x).
+      pick.
+      pintu.
+
+      delay_one.
+      repeat finish_lift_one.
+      apply finish_easier.
 
     - unfold stars; simpl.
       step.
       + left.
-        (* XXX "sep" should work, but doesn't, because of the "exists" on the right,
-         * just as above.
-         *)
-        admit.
-      + (* same as the other case above *)
-        admit.
-  Abort.
+        (* just like above.. *)
+        eapply sep_star_assoc_2.
+        eapply sep_star_assoc_2.
+        eapply sep_star_comm.
+        eapply sep_star_assoc_2.
+        eapply pimpl_exists_r_star.
+        sep_imply.
+        eapply pimpl_exists_r.
+        eexists.
+        eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
+        cancel_one. cancel_one. cancel_one.
+        eapply imply_one with (p:=diskIs x); [ pick | pintu | ].
+        delay_one.
+        repeat finish_lift_one.
+        apply finish_easier.
+
+      + left.
+        (* just like above.. *)
+        eapply sep_star_assoc_2.
+        eapply sep_star_assoc_2.
+        eapply sep_star_comm.
+        eapply sep_star_assoc_2.
+        eapply pimpl_exists_r_star.
+        sep_imply.
+        eapply pimpl_exists_r.
+        eexists.
+        eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
+        cancel_one. cancel_one. cancel_one.
+        eapply imply_one with (p:=diskIs x); [ pick | pintu | ].
+        delay_one.
+        repeat finish_lift_one.
+        apply finish_easier.
+  Qed.
 
   Definition apply xp := $(mem:
     len <- !(LogLength xp);
