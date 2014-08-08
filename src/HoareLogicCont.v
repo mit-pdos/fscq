@@ -632,10 +632,18 @@ Qed.
 
 Lemma pimpl_apply:
   forall (p q:pred) m,
-  p m ->
   (p ==> q) ->
+  p m ->
   q m.
-  (* XXX change level of ==> to bind more tightly than -> *)
+Proof.
+  firstorder.
+Qed.
+
+Lemma piff_apply:
+  forall (p q:pred) m,
+  (p <==> q) ->
+  q m ->
+  p m.
 Proof.
   firstorder.
 Qed.
@@ -748,7 +756,7 @@ Ltac pintu := unfold lift, and, or, exis, pimpl, impl; intu.
 Definition stars (ps : list pred) :=
   fold_left sep_star ps emp.
 
-Ltac sep_imply'' H := eapply pimpl_apply; [ apply H | ].
+Ltac sep_imply'' H := eapply pimpl_apply; [ | apply H ].
 
 Ltac sep_imply' m :=
   match goal with
@@ -985,7 +993,48 @@ Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
                repeat finish_lift_one;
                try (apply finish_frame || apply finish_easier).
 
-Ltac sep := sep_imply; cancel.
+(* Logic for getting rid of "exists" among the [sep_star]s in the conclusion *)
+Lemma add_stars_nil:
+  forall p,
+  stars p <==> stars p * stars nil.
+Proof.
+  intros. eapply piff_trans; [ | apply sep_star_comm ].
+  eapply piff_trans. apply emp_star. firstorder.
+Qed.
+
+Theorem stars_skip : forall p ps qs,
+  stars ps * stars (p :: qs) ==> stars (p :: ps) * stars qs.
+Proof.
+  intros.
+  eapply pimpl_trans. eapply pimpl_sep_star; [ apply pimpl_refl | apply stars_prepend ].
+  eapply pimpl_trans; [|eapply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ].
+  eapply pimpl_trans. apply sep_star_assoc_2.
+  eapply pimpl_sep_star; [|eapply pimpl_refl].
+  eapply sep_star_comm.
+Qed.
+
+Ltac deex_stars_r_one :=
+  (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
+  match goal with
+  | [ |- (stars ((fun _ => exists _, _)%type :: _) * stars _)%pred _ ] => idtac
+  | _ => fail
+  end;
+  eapply pimpl_apply; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ];
+  apply sep_star_assoc_2;
+  apply pimpl_exists_r_star; eexists;
+  apply sep_star_assoc_1;
+  eapply pimpl_apply; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ].
+
+Ltac deex_stars_r_skip :=
+  eapply pimpl_apply; [ apply stars_skip | ].
+
+Ltac deex_stars_r :=
+  eapply piff_apply; [ flatten | ]; unfold app; simpl;
+  eapply piff_apply; [ apply add_stars_nil | ];
+  repeat ( deex_stars_r_one || deex_stars_r_skip );
+  unfold stars; simpl.
+
+Ltac sep := deex_stars_r; sep_imply; cancel.
 
 Ltac step := intros;
              ((eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ])
@@ -1376,7 +1425,10 @@ Module Log : LOG.
     unfold silly_nop.
     unfold rep.
     hoare.
-  Qed.
+    (* Now that we destruct exists on the right side, we need to also destruct
+     * them on the left side, for the cancelation to work out..
+     *)
+  Abort.
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
@@ -1435,40 +1487,8 @@ Module Log : LOG.
 
     - unfold stars; simpl.
       step.
-
-      (* Extract the "exists" in [pimpl]'s conclusion *)
-      eapply sep_star_assoc_2.
-      eapply sep_star_assoc_2.
-      eapply sep_star_comm.
-      eapply sep_star_assoc_2.
-      eapply pimpl_exists_r_star.
-      eexists.
-
-      sep.
-
     - unfold stars; simpl.
       step.
-      + left.
-        (* just like above.. *)
-        eapply sep_star_assoc_2.
-        eapply sep_star_assoc_2.
-        eapply sep_star_comm.
-        eapply sep_star_assoc_2.
-        eapply pimpl_exists_r_star.
-        eexists.
-
-        sep.
-
-      + left.
-        (* just like above.. *)
-        eapply sep_star_assoc_2.
-        eapply sep_star_assoc_2.
-        eapply sep_star_comm.
-        eapply sep_star_assoc_2.
-        eapply pimpl_exists_r_star.
-        eexists.
-
-        sep.
   Qed.
 
   Definition write xp a v rx :=
