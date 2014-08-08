@@ -1434,9 +1434,7 @@ Module Log : LOG.
     - intuition sep.  (* This is what getting rid of the "exists" got us! *)
 
     - unfold stars; simpl.
-
-      (* Another inlined "step", because of the "exists" in the conclusion.. *)
-      eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ].
+      step.
 
       (* Extract the "exists" in [pimpl]'s conclusion *)
       eapply sep_star_assoc_2.
@@ -1444,11 +1442,9 @@ Module Log : LOG.
       eapply sep_star_comm.
       eapply sep_star_assoc_2.
       eapply pimpl_exists_r_star.
-
-      sep_imply.
-      eapply pimpl_exists_r.
       eexists.
-      cancel.
+
+      sep.
 
     - unfold stars; simpl.
       step.
@@ -1459,10 +1455,9 @@ Module Log : LOG.
         eapply sep_star_comm.
         eapply sep_star_assoc_2.
         eapply pimpl_exists_r_star.
-        sep_imply.
-        eapply pimpl_exists_r.
         eexists.
-        cancel.
+
+        sep.
 
       + left.
         (* just like above.. *)
@@ -1471,10 +1466,9 @@ Module Log : LOG.
         eapply sep_star_comm.
         eapply sep_star_assoc_2.
         eapply pimpl_exists_r_star.
-        sep_imply.
-        eapply pimpl_exists_r.
         eexists.
-        cancel.
+
+        sep.
   Qed.
 
   Definition write xp a v rx :=
