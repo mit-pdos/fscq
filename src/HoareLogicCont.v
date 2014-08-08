@@ -778,6 +778,14 @@ Proof.
   apply H0.
 Qed.
 
+Theorem restart_canceling:
+  forall p q,
+  (stars p * stars nil ==> stars q) ->
+  (stars nil * stars p ==> stars q).
+Proof.
+  intros; eapply pimpl_trans; [ eapply sep_star_comm | eauto ].
+Qed.
+
 Lemma flatten_default : forall p,
   p <==> stars (p :: nil).
 Proof.
@@ -884,12 +892,11 @@ Ltac pick := solve [ repeat ((apply PickFirst; solve [ auto with okToUnify ])
                                || apply PickLater) ].
 
 Theorem imply_one : forall qs qs' p p' ps F,
-  pick p qs qs'
-  -> (p' ==> p)
+  (pick p qs qs' /\ (p' ==> p))
   -> (stars ps * F ==> stars qs')
   -> stars (p' :: ps) * F ==> stars qs.
 Proof.
-  intros.
+  intros. destruct H.
   eapply pimpl_trans. eapply pimpl_sep_star. apply stars_prepend. apply pimpl_refl.
   eapply pimpl_trans. apply sep_star_assoc_1.
   eapply pimpl_trans. eapply pimpl_sep_star. eauto. eauto.
@@ -930,6 +937,20 @@ Qed.
 
 Ltac delay_one := apply delay_one.
 
+Lemma and_imp:
+  forall (A B C:Prop),
+  (A -> B)
+  -> (A /\ C)
+  -> (B /\ C).
+Proof.
+  firstorder.
+Qed.
+
+Ltac pick_imply :=
+  solve [ repeat (solve [ split; [ apply PickFirst; unfold okToUnify; auto | pintu ] ]
+                  || (eapply and_imp; [apply PickLater|]) ) ].
+Ltac imply_one := eapply imply_one ; [ pick_imply | ].
+
 Lemma finish_lift_one:
   forall p q,
   (stars nil * stars q ==> stars nil) ->
@@ -959,6 +980,8 @@ Qed.
 
 Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
                repeat (cancel_one || delay_one);
+               eapply restart_canceling;
+               repeat (imply_one || delay_one);
                repeat finish_lift_one;
                try (apply finish_frame || apply finish_easier).
 
@@ -1425,20 +1448,7 @@ Module Log : LOG.
       sep_imply.
       eapply pimpl_exists_r.
       eexists.
-
-      eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
-      cancel_one. cancel_one. cancel_one.
-
-      (* Not actually equal terms, but the left does imply the right..
-       * Unclear how to automate this, short of trying all combinations.
-       *)
-      eapply imply_one with (p:=diskIs x).
-      pick.
-      pintu.
-
-      delay_one.
-      repeat finish_lift_one.
-      apply finish_easier.
+      cancel.
 
     - unfold stars; simpl.
       step.
@@ -1452,12 +1462,7 @@ Module Log : LOG.
         sep_imply.
         eapply pimpl_exists_r.
         eexists.
-        eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
-        cancel_one. cancel_one. cancel_one.
-        eapply imply_one with (p:=diskIs x); [ pick | pintu | ].
-        delay_one.
-        repeat finish_lift_one.
-        apply finish_easier.
+        cancel.
 
       + left.
         (* just like above.. *)
@@ -1469,12 +1474,7 @@ Module Log : LOG.
         sep_imply.
         eapply pimpl_exists_r.
         eexists.
-        eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
-        cancel_one. cancel_one. cancel_one.
-        eapply imply_one with (p:=diskIs x); [ pick | pintu | ].
-        delay_one.
-        repeat finish_lift_one.
-        apply finish_easier.
+        cancel.
   Qed.
 
   Definition write xp a v rx :=
