@@ -789,6 +789,7 @@ Ltac flatten := repeat match goal with
 Definition okToUnify (p1 p2 : pred) := p1 = p2.
 
 Hint Extern 1 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
+Hint Extern 1 (okToUnify ?a ?a) => constructor : okToUnify.
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 | PickFirst : forall p ps,
@@ -1118,6 +1119,8 @@ Module Log : LOG.
       | NoTransaction m =>
         (* Not committed. *)
         (LogCommit xp) |-> 0
+        (* We're allowed to modify log length (XXX slightly awkward) *)
+      * (exists v0, (LogLength xp) |-> v0)
         (* Every data address has its value from [m]. *)
       * diskIs m
 
@@ -1128,13 +1131,13 @@ Module Log : LOG.
       * diskIs old
         (* Look up log length. *)
       * exists len, (LogLength xp) |-> len
-          /\ [len <= LogLen xp]
+          * ([len <= LogLen xp]
           /\ exists m, diskIs m
             (* All log entries reference data addresses. *)
             /\ [validLog xp (LogStart xp) len m]
             (* We may compute the current memory by replaying the log. *)
             /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-              -> cur a = replay (LogStart xp) len m a]
+              -> cur a = replay (LogStart xp) len m a])
 
       | CommittedTxn cur =>
         (* Committed but not applied. *)
@@ -1209,8 +1212,7 @@ Module Log : LOG.
     unfold silly_nop.
     unfold rep.
     hoare.
-    (* XXX something seems missing.. *)
-  Abort.
+  Qed.
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
