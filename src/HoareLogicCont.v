@@ -696,6 +696,18 @@ Proof.
   rewrite H. eauto.
 Qed.
 
+Lemma sep_star_lift_r:
+  forall (b: Prop) (a c: pred),
+  (a ==> [[b]] /\ c) ->
+  (a ==> [[b]] * c).
+Proof.
+  unfold pimpl, lift_empty, and, sep_star; intros.
+  exists (fun _ => None).
+  exists m.
+  intuition firstorder.
+  unfold mem_disjoint. intuition. repeat deex. congruence.
+Qed.
+
 Lemma pimpl_star_emp: forall p, p ==> emp * p.
 Proof.
   unfold sep_star, pimpl; intros.
