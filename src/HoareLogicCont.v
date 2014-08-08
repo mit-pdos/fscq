@@ -1469,6 +1469,32 @@ Module Log : LOG.
         apply finish_easier.
   Qed.
 
+  Definition write xp a v rx :=
+    len <- !(LogLength xp);
+    If (le_lt_dec (LogLen xp) len) {
+      rx false
+    } else {
+      (LogStart xp + len*2) <-- a;;
+      (LogStart xp + len*2 + 1) <-- v;;
+      (LogLength xp) <-- (S len);;
+      rx true
+    }.
+
+  Theorem write_ok : forall xp a v rx rec,
+    {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
+    /\ [(a |-> v0 * F')%pred m2]
+    /\ [{{ [(a |-> v * F')%pred (upd m2 a v)]
+        /\ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]
+    /\ [{{ [(a |-> v0 * F')%pred m2]
+        /\ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]
+    /\ [{{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec]
+    }} write xp a v rx >> rec.
+  Proof.
+    unfold write.
+    hoare.
+    (* Too hard to do 13 cases by hand.. *)
+  Abort.
+
   Definition apply xp := $(mem:
     len <- !(LogLength xp);
     For i < len
