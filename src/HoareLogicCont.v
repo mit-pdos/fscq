@@ -262,26 +262,40 @@ Proof.
   unfold piff; split; apply sep_star_comm1.
 Qed.
 
+Theorem sep_star_assoc_1:
+  forall p1 p2 p3,
+  (p1 * p2 * p3 ==> p1 * (p2 * p3))%pred.
+Proof.
+  unfold pimpl, sep_star; pred.
+  exists x1; exists (mem_union x2 x0); intuition.
+  apply mem_union_assoc; auto.
+  apply mem_disjoint_assoc_1; auto.
+  exists x2; exists x0; intuition eauto.
+  eapply mem_disjoint_union; eauto.
+Qed.
+
+Theorem sep_star_assoc_2:
+  forall p1 p2 p3,
+  (p1 * (p2 * p3) ==> p1 * p2 * p3)%pred.
+Proof.
+  unfold pimpl, sep_star; pred.
+  exists (mem_union x x1); exists x2; intuition.
+  rewrite mem_union_assoc; auto.
+  apply mem_disjoint_comm. eapply mem_disjoint_union. apply mem_disjoint_comm.
+  rewrite mem_union_comm. eauto. apply mem_disjoint_comm. eauto.
+  apply mem_disjoint_assoc_2; eauto.
+  apply mem_disjoint_assoc_2; eauto.
+  repeat eexists; eauto.
+  apply mem_disjoint_comm. eapply mem_disjoint_union.
+  rewrite mem_union_comm; [|apply mem_disjoint_comm;eassumption].
+  apply mem_disjoint_comm; assumption.
+Qed.
+
 Theorem sep_star_assoc:
   forall p1 p2 p3,
   (p1 * p2 * p3 <==> p1 * (p2 * p3))%pred.
 Proof.
-  split; unfold pimpl, sep_star; pred.
-  - exists x1; exists (mem_union x2 x0); intuition.
-    apply mem_union_assoc; auto.
-    apply mem_disjoint_assoc_1; auto.
-    exists x2; exists x0; intuition eauto.
-    eapply mem_disjoint_union; eauto.
-  - exists (mem_union x x1); exists x2; intuition.
-    rewrite mem_union_assoc; auto.
-    apply mem_disjoint_comm. eapply mem_disjoint_union. apply mem_disjoint_comm.
-    rewrite mem_union_comm. eauto. apply mem_disjoint_comm. eauto.
-    apply mem_disjoint_assoc_2; eauto.
-    apply mem_disjoint_assoc_2; eauto.
-    repeat eexists; eauto.
-    apply mem_disjoint_comm. eapply mem_disjoint_union.
-    rewrite mem_union_comm; [|apply mem_disjoint_comm;eassumption].
-    apply mem_disjoint_comm; assumption.
+  split; [ apply sep_star_assoc_1 | apply sep_star_assoc_2 ].
 Qed.
 
 
@@ -553,6 +567,36 @@ Proof.
   firstorder.
 Qed.
 
+Lemma pimpl_exists_l_star:
+  forall T p q r,
+  ((exists x:T, p x * r) ==> q) ->
+  (exists x:T, p x) * r ==> q.
+Proof.
+  unfold pimpl, sep_star, exis; intros.
+  repeat deex.
+  eapply H.
+  do 3 eexists.
+  intuition eauto.
+Qed.
+
+Lemma pimpl_exists_r_star:
+  forall T p q,
+  (exists x:T, p x * q) ==> ((exists x:T, p x) * q).
+Proof.
+  unfold pimpl, sep_star, exis; intros.
+  repeat deex.
+  do 2 eexists.
+  intuition eauto.
+Qed.
+
+Lemma pimpl_exists_l_and:
+  forall T p q r,
+  ((exists x:T, p x /\ r) ==> q) ->
+  (exists x:T, p x) /\ r ==> q.
+Proof.
+  firstorder.
+Qed.
+
 Lemma pimpl_trans:
   forall a b c,
   (a ==> b) ->
@@ -596,16 +640,40 @@ Proof.
   firstorder.
 Qed.
 
-(*
+Lemma pimpl_fun_l:
+  forall (p:pred),
+  (fun m => p m) ==> p.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_fun_r:
+  forall (p:pred),
+  p ==> (fun m => p m).
+Proof.
+  firstorder.
+Qed.
+
 Lemma pimpl_sep_star:
   forall a b c d,
   (a ==> c) ->
   (b ==> d) ->
   (a * b ==> c * d).
 Proof.
-  admit.
+  unfold pimpl, sep_star; intros.
+  do 2 deex.
+  do 2 eexists.
+  intuition eauto.
 Qed.
-*)
+
+Lemma pimpl_and:
+  forall a b c d,
+  (a ==> c) ->
+  (b ==> d) ->
+  (a /\ b ==> c /\ d).
+Proof.
+  firstorder.
+Qed.
 
 (*
 
@@ -1225,8 +1293,84 @@ Module Log : LOG.
   Proof.
     unfold abort.
     unfold rep.
-    hoare.
-    (* XXX not quite.. *)
+
+    (* Instead of doing "hoare", do some manual steps first.. *)
+
+    (* Do the first part of "step", except for the cancel'ing and the [pintu] *)
+    intros; eapply pimpl_ok; [ solve [ eauto with prog ] | ].
+
+    (* Get rid of the "exists" at the head of pimpl's premise *)
+    repeat ( apply pimpl_exists_l; intros ).
+
+    (*
+     * Trying to extract the "exists" from one of the [sep_star]ed [pred]s
+     *)
+
+    (* Work on the [sep_star] part of the [and] expression first.. *)
+    eapply pimpl_trans.
+    eapply pimpl_and; [|apply pimpl_refl].
+
+    (* First, several steps to get the "exists" term to the front of the [sep_star] chain. *)
+    eapply pimpl_trans.
+    eapply sep_star_assoc_1.
+
+    eapply pimpl_trans.
+    eapply sep_star_comm.
+
+    eapply pimpl_trans.
+    eapply sep_star_assoc_1.
+
+    (* Pull the "exists" past the top-level [sep_star] *)
+    eapply pimpl_exists_l_star.
+
+    (* Get back to the top-level [and] *)
+    apply pimpl_refl.
+
+    (* Pull the "exists" past the top-level [and] *)
+    eapply pimpl_exists_l_and.
+
+    (* Get rid of the "exists" *)
+    eapply pimpl_exists_l; intros.
+
+    (* Now, resume the rest of the "hoare" tactic.. *)
+    pintu.
+
+    - intuition sep.  (* This is what getting rid of the "exists" got us! *)
+
+    - unfold stars; simpl.
+
+      (* Another inlined "step", because of the "exists" in the conclusion.. *)
+      eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ].
+
+      (* Extract the "exists" in [pimpl]'s conclusion *)
+      eapply sep_star_assoc_2.
+      eapply sep_star_assoc_2.
+      eapply sep_star_comm.
+      eapply sep_star_assoc_2.
+      eapply pimpl_exists_r_star.
+
+      sep_imply.
+      eapply pimpl_exists_r.
+      eexists.
+
+      eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
+      cancel_one. cancel_one. cancel_one. cancel_one. delay_one.
+      (* XXX interesting! looks like the ActiveTxn pred is incorrect:
+       * we use [sep_star] between "diskIs old" and the rest of the
+       * condition, but that second part is NOT separable from the
+       * first part!
+       *)
+      admit.
+
+    - unfold stars; simpl.
+      step.
+      + left.
+        (* XXX "sep" should work, but doesn't, because of the "exists" on the right,
+         * just as above.
+         *)
+        admit.
+      + (* same as the other case above *)
+        admit.
   Abort.
 
   Definition apply xp := $(mem:
