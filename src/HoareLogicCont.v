@@ -110,10 +110,10 @@ Definition emp : pred :=
 Definition lift (P : Prop) : pred :=
   fun m => P.
 Notation "[ P ]" := (lift P) : pred_scope.
-(*
+
+Definition lift_empty (P : Prop) : pred :=
+  fun m => P /\ forall a, m a = None.
 Notation "[[ P ]]" := (lift_empty P) : pred_scope.
- /\ forall a, m a = None
-*)
 
 Definition pimpl (p q : pred) := forall m, p m -> q m.
 Notation "p ==> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
@@ -675,14 +675,18 @@ Proof.
   firstorder.
 Qed.
 
-(*
-
 Lemma sep_star_lift_l:
   forall (a: Prop) (b c: pred),
   (a -> (b ==> c)) ->
-  [a] * b ==> c.
+  [[a]] * b ==> c.
 Proof.
-*)
+  unfold pimpl, lift_empty, sep_star; intros.
+  repeat deex.
+  assert (mem_union x x0 = x0).
+  apply functional_extensionality; unfold mem_union; intros.
+  case_eq (x x1); pred.
+  rewrite H. eauto.
+Qed.
 
 Lemma pimpl_star_emp: forall p, p ==> emp * p.
 Proof.
@@ -893,7 +897,7 @@ Proof.
   induction H; intros.
   - inversion H; subst. apply stars_prepend.
   - eapply pimpl_trans; [|apply stars_prepend].
-    eapply pimpl_trans; [|eapply pimpl_sep_star; [apply pimpl_refl|apply IHpick]].
+    eapply pimpl_trans; [|eapply pimpl_sep_star; [apply pimpl_refl|apply IHpick] ].
     eapply pimpl_trans. eapply pimpl_sep_star. eapply pimpl_refl. eapply stars_prepend.
     eapply pimpl_trans; [eapply sep_star_assoc_2|].
     eapply pimpl_trans; [|eapply sep_star_assoc_1].
@@ -918,7 +922,7 @@ Proof.
   unfold stars; simpl; intros.
   eapply pimpl_trans; [|eauto].
   eapply pimpl_trans. eapply pimpl_sep_star; [|eapply pimpl_refl]. apply stars_prepend.
-  eapply pimpl_trans; [|eapply pimpl_sep_star; [apply pimpl_refl|apply stars_prepend]].
+  eapply pimpl_trans; [|eapply pimpl_sep_star; [apply pimpl_refl|apply stars_prepend] ].
   eapply pimpl_trans; [|eapply sep_star_assoc_1].
   eapply pimpl_sep_star; [|eapply pimpl_refl].
   eapply sep_star_comm.
