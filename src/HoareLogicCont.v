@@ -785,7 +785,7 @@ Proof.
   firstorder.
 Qed.
 
-Lemma stars_prepend:
+Lemma stars_prepend':
   forall l x,
   fold_left sep_star l x <==> x * fold_left sep_star l emp.
 Proof.
@@ -812,6 +812,16 @@ Proof.
     eapply piff_refl.
 Qed.
 
+Lemma stars_prepend:
+  forall l x,
+  stars (x :: l) <==> x * stars l.
+Proof.
+  unfold stars; simpl; intros.
+  eapply piff_trans. apply stars_prepend'.
+  eapply piff_trans. apply sep_star_assoc.
+  apply piff_comm. apply emp_star.
+Qed.
+
 Lemma flatten_star : forall p q ps qs,
   p <==> stars ps
   -> q <==> stars qs
@@ -829,8 +839,7 @@ Proof.
     eapply piff_comm.
     eapply emp_star.
     apply piff_refl.
-  - unfold stars in *; simpl.
-    eapply piff_comm.
+  - eapply piff_comm.
     eapply piff_trans.
     eapply stars_prepend.
     eapply piff_trans.
@@ -874,7 +883,21 @@ Theorem cancel_one : forall qs qs' p ps F,
   pick p qs qs'
   -> (stars ps * F ==> stars qs')
   -> stars (p :: ps) * F ==> stars qs.
-Admitted.
+Proof.
+  intros.
+  eapply pimpl_trans. eapply pimpl_sep_star. apply stars_prepend. apply pimpl_refl.
+  eapply pimpl_trans. apply sep_star_assoc_1.
+  eapply pimpl_trans. eapply pimpl_sep_star. apply pimpl_refl. eauto.
+  clear dependent ps.
+  induction H; intros.
+  - inversion H; subst. apply stars_prepend.
+  - eapply pimpl_trans; [|apply stars_prepend].
+    eapply pimpl_trans; [|eapply pimpl_sep_star; [apply pimpl_refl|apply IHpick]].
+    eapply pimpl_trans. eapply pimpl_sep_star. eapply pimpl_refl. eapply stars_prepend.
+    eapply pimpl_trans; [eapply sep_star_assoc_2|].
+    eapply pimpl_trans; [|eapply sep_star_assoc_1].
+    eapply pimpl_sep_star. eapply sep_star_comm. eapply pimpl_refl.
+Qed.
 
 Ltac cancel_one := eapply cancel_one; [ pick | ].
 
