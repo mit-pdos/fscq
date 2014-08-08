@@ -505,52 +505,6 @@ Proof.
     + unfold pimpl; pred.
 Qed.
 
-
-(*
-Theorem CFor:
-  forall {L : Set} (f : nat -> L -> prog L)
-         (nocrash : nat -> L -> pred) (crashed : pred),
-  (forall m l, nocrash m l --> crashed) ->
-  forall n i l,
-    (forall m lx,
-     i <= m < n + i ->
-     {{nocrash m lx}}
-     (f m lx)
-     {{r, (exists lx', [r = Halted lx'] /\ nocrash (S m) lx') \/
-          ([r = Crashed] /\ crashed)}}) ->
-    {{nocrash i l}}
-    (For_ f i n l)
-    {{r, (exists l', [r = Halted l'] /\ nocrash (n + i) l') \/
-         ([r = Crashed] /\ crashed)}}.
-Proof.
-  induction n; simpl; intros.
-
-  eapply Conseq.
-  apply CHalt.
-  apply pimpl_refl.
-  simpl.
-  pred.
-
-  eapply Conseq.
-  econstructor.
-  eapply H0.
-  omega.
-  simpl.
-  intros.
-  eapply Conseq.
-  apply IHn.
-  intros.
-  apply H0; omega.
-  pred.
-  simpl.
-  intros.
-  apply pimpl_refl.
-  apply pimpl_refl.
-  pred.
-  replace (S (n + i)) with (n + S i) by omega; eauto.
-Qed.
-*)
-
 Lemma pimpl_exists_l:
   forall T p q,
   (forall x:T, p x ==> q) ->
