@@ -881,7 +881,15 @@ Ltac cancel_one := eapply cancel_one; [ pick | ].
 Theorem delay_one : forall p ps q qs,
   (stars ps * stars (p :: qs) ==> q)
   -> stars (p :: ps) * stars qs ==> q.
-Admitted.
+Proof.
+  unfold stars; simpl; intros.
+  eapply pimpl_trans; [|eauto].
+  eapply pimpl_trans. eapply pimpl_sep_star; [|eapply pimpl_refl]. apply stars_prepend.
+  eapply pimpl_trans; [|eapply pimpl_sep_star; [apply pimpl_refl|apply stars_prepend]].
+  eapply pimpl_trans; [|eapply sep_star_assoc_1].
+  eapply pimpl_sep_star; [|eapply pimpl_refl].
+  eapply sep_star_comm.
+Qed.
 
 Ltac delay_one := apply delay_one.
 
