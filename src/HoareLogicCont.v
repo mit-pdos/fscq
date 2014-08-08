@@ -930,6 +930,21 @@ Qed.
 
 Ltac delay_one := apply delay_one.
 
+Lemma finish_lift_one:
+  forall p q,
+  (stars nil * stars q ==> stars nil) ->
+  (stars nil * stars ([[p]] :: q) ==> stars nil).
+Proof.
+  intros.
+  eapply pimpl_trans. apply pimpl_sep_star. apply pimpl_refl. apply stars_prepend.
+  eapply pimpl_trans. apply sep_star_assoc.
+  eapply pimpl_trans. apply pimpl_sep_star. apply sep_star_comm. apply pimpl_refl.
+  eapply pimpl_trans. apply sep_star_assoc.
+  apply sep_star_lift_l. eauto.
+Qed.
+
+Ltac finish_lift_one := apply finish_lift_one.
+
 Lemma finish_frame : forall p,
   stars nil * p ==> stars (p :: nil).
 Proof.
@@ -944,6 +959,7 @@ Qed.
 
 Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
                repeat (cancel_one || delay_one);
+               repeat finish_lift_one;
                try (apply finish_frame || apply finish_easier).
 
 Ltac sep := sep_imply; cancel.
