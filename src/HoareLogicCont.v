@@ -1195,12 +1195,16 @@ Module Log : LOG.
       | ActiveTxn old cur =>
         (* Not committed. *)
         (LogCommit xp) |-> 0
-        (* Every data address has its value from [old]. *)
-      * diskIs old
-        (* Look up log length. *)
       * exists len, (LogLength xp) |-> len
-          * ([len <= LogLen xp]
-          /\ exists m, diskIs m
+        (* XXX should we use [and] here instead of [sep_star]?
+         * [sep_star] flattens nicely with [stars].
+         * [and] doesn't require changing cancel, if it's at the top level,
+         * but this one isn't top-level..
+         *)
+      * [len <= LogLen xp]
+        (* Every data address has its value from [old]. *)
+      * (diskIs old
+         /\ exists m, diskIs m
             (* All log entries reference data addresses. *)
             /\ [validLog xp (LogStart xp) len m]
             (* We may compute the current memory by replaying the log. *)
@@ -1354,12 +1358,11 @@ Module Log : LOG.
       eexists.
 
       eapply start_canceling; [ flatten | flatten | cbv beta; simpl ].
-      cancel_one. cancel_one. cancel_one. cancel_one. delay_one.
-      (* XXX interesting! looks like the ActiveTxn pred is incorrect:
-       * we use [sep_star] between "diskIs old" and the rest of the
-       * condition, but that second part is NOT separable from the
-       * first part!
-       *)
+      cancel_one. cancel_one. cancel_one.
+      (* XXX not actually equal terms, but the left does imply the right.. *)
+      delay_one.
+      delay_one.
+
       admit.
 
     - unfold stars; simpl.
