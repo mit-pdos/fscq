@@ -1150,16 +1150,21 @@ Module Type LOG.
   (* Methods *)
   Parameter init : xparams -> (unit -> prog) -> prog.
   Parameter begin : xparams -> (unit -> prog) -> prog.
+(*
   Parameter commit : xparams -> (unit -> prog) -> prog.
+*)
   Parameter abort : xparams -> (unit -> prog) -> prog.
+(*
   Parameter recover : xparams -> (unit -> prog) -> prog.
   Parameter read : xparams -> addr -> (valu -> prog) -> prog.
-  Parameter write : xparams -> addr -> valu -> (unit -> prog) -> prog.
+*)
+  Parameter write : xparams -> addr -> valu -> (bool -> prog) -> prog.
 
   (* Representation invariant *)
   Parameter rep : xparams -> logstate -> pred.
 
   (* Specs *)
+(*
   Axiom init_ok : forall xp rx rec,
     {{ exists m F, diskIs m * F
     /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
@@ -1180,6 +1185,7 @@ Module Type LOG.
         \/ rep xp (ActiveTxn m1 m2) * F
         \/ rep xp (CommittedTxn m2) * F }} rec >> rec]
     }} commit xp rx >> rec.
+*)
 
   Axiom abort_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
@@ -1188,6 +1194,7 @@ Module Type LOG.
         \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
     }} abort xp rx >> rec.
 
+(*
   (* XXX disjunction not at top level.. might cause problems later *)
   Axiom recover_ok : forall xp rx rec,
     {{ exists m F, (rep xp (NoTransaction m) * F \/
@@ -1216,6 +1223,7 @@ Module Type LOG.
     /\ [{{ ([(a |-> v * F')%pred (upd m2 a v)] /\ rep xp (ActiveTxn m1 (upd m2 a v)) * F)
         \/ ([(a |-> v0 * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F) }} rec >> rec]
     }} write xp a v rx >> rec.
+*)
 End LOG.
 
 Module Log : LOG.
@@ -1495,6 +1503,7 @@ Module Log : LOG.
     (* Too hard to do 13 cases by hand.. *)
   Abort.
 
+(*
   Definition apply xp := $(mem:
     len <- !(LogLength xp);
     For i < len
@@ -1771,9 +1780,11 @@ Module Log : LOG.
           rewrite H11 by auto.
           erewrite replay_irrel; eauto; pred.
   Qed.
+*)
 End Log.
 
 
+(*
 Inductive recovery_outcome (R:Set) :=
 | RHalted (v : R)
 | RRecovered.
@@ -2078,3 +2089,4 @@ Proof.
        * since there's no constraint that they be the same..
        *)
 Aborted.
+*)

@@ -1,8 +1,9 @@
 *.glob
 *.vo
+*.v.d
 *.mli
 *.native
-compcert
 /codegen/*.ml
 _build
 /disk.img
+/Makefile.coq

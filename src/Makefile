@@ -1,38 +1,14 @@
-COQINC = -I .
-COQEXE = coqtop $(COQINC) -batch -load-vernac-source
-COQC = coqc $(COQINC)
-COQDEP = coqdep $(COQINC)
+MODULES := HoareLogicCont
+VS      := $(MODULES:%=%.v)
 
-OCAMLBUILD = ocamlbuild -lib str
-OCAMLINC   = \
-    -I codegen -I compcert/extraction \
-    -I compcert/lib -I compcert/common
+.PHONY: coq clean
 
-FILES = CpdtTactics.v \
-	HoareLogicN.v
+coq: Makefile.coq
+	$(MAKE) -f Makefile.coq
 
-PROOFFILES = 
+Makefile.coq: Makefile $(VS)
+	coq_makefile $(VS) -o Makefile.coq
 
-all:	tests/fs.native
-
-tests/%.native: tests/%.ml codegen/extraction.vo
-	rm -f $@
-	$(OCAMLBUILD) $(OCAMLINC) -no-links $@
-	ln -s $(CURDIR)/_build/$@ $@
-
-codegen/extraction.vo: $(FILES:.v=.vo)
-
-proof: $(PROOFFILES:.v=.vo)
-
-%.vo: %.v
-	$(COQC) $*.v
-
-depend: $(FILES)
-	$(COQDEP) $^ \
-	> .depend
-
-clean:
-	rm -rf _build *.vo *.glob build/*.native *.v.d *.crashcoqide
-	cd codegen && rm -f *.ml *.mli *.mlo *.glob *.vo
-
-include .depend
+clean:: Makefile.coq
+	$(MAKE) -f Makefile.coq clean
+	rm -f Makefile.coq
