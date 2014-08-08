@@ -1262,26 +1262,26 @@ Module Log : LOG.
          * [and] doesn't require changing cancel, if it's at the top level,
          * but this one isn't top-level..
          *)
-      * [len <= LogLen xp]
+      * [[len <= LogLen xp]]
         (* Every data address has its value from [old]. *)
       * (diskIs old
          /\ exists m, diskIs m
             (* All log entries reference data addresses. *)
-            /\ [validLog xp (LogStart xp) len m]
+            /\ [[validLog xp (LogStart xp) len m]]
             (* We may compute the current memory by replaying the log. *)
-            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-              -> cur a = replay (LogStart xp) len m a])
+            /\ [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
+              -> cur a = replay (LogStart xp) len m a]])
 
       | CommittedTxn cur =>
         (* Committed but not applied. *)
         (LogCommit xp) |-> 1
         (* Log produces cur. *)
       * exists len, (LogLength xp) |-> len
-          /\ [len <= LogLen xp]
+          /\ [[len <= LogLen xp]]
           /\ exists m, diskIs m
-            /\ [validLog xp (LogStart xp) len m]
-            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-              -> cur a = replay (LogStart xp) len m a]
+            /\ [[validLog xp (LogStart xp) len m]]
+            /\ [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
+              -> cur a = replay (LogStart xp) len m a]]
     end%pred.
 
   Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
