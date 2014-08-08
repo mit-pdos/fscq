@@ -1002,21 +1002,18 @@ Hint Rewrite upd_eq upd_ne using (congruence
        | [ xp : xparams |- _ ] => disjoint xp
      end).
 
-Definition logmem := addr -> valu.
-Definition lupd (lm : logmem) (a : addr) (v : valu) : logmem :=
-  fun a' => if eq_nat_dec a' a then v else lm a'.
-Definition diskIs (lm : logmem) : pred := (foral a, a |-> (lm a))%pred.
+Definition diskIs (m : mem) : pred := eq m.
 Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
 (* XXX the above unification rule might help us deal with array predicates *)
 
 Inductive logstate :=
-| NoTransaction (cur : logmem)
+| NoTransaction (cur : mem)
 (* Don't touch the disk directly in this state. *)
-| ActiveTxn (old : logmem) (cur : logmem)
+| ActiveTxn (old : mem) (cur : mem)
 (* A transaction is in progress.
  * It started from the first memory and has evolved into the second.
  * It has not committed yet. *)
-| CommittedTxn (cur : logmem)
+| CommittedTxn (cur : mem)
 (* A transaction has committed but the log has not been applied yet. *).
 
 Module Type LOG.
@@ -1071,37 +1068,49 @@ Module Type LOG.
         \/ rep xp (CommittedTxn m) * F }} rec >> rec]
     }} recover xp rx >> rec.
 
+  (* XXX
+   * How to best represent this sort of nested separation logic?
+   *)
   Axiom read_ok : forall xp a rx rec,
-    {{ exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
-    /\ [DataStart xp <= a < DataStart xp + DataLen xp]
-    /\ [m2 a = v]
-    /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec]
-    /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+    {{ exists m1 m2 v F F', rep xp (ActiveTxn m1 m2) * F
+    /\ [(a |-> v * F')%pred m2]
+    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec]
+    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
     }} read xp a rx >> rec.
 
   Axiom write_ok : forall xp a v rx rec,
-    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-    /\ [DataStart xp <= a < DataStart xp + DataLen xp]
-    /\ [{{ rep xp (ActiveTxn m1 (lupd m2 a v)) * F }} rx tt >> rec]
-    /\ [{{ rep xp (ActiveTxn m1 (lupd m2 a v)) * F
-        \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+    {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
+    /\ [(a |-> v0 * F')%pred m2]
+    /\ [{{ [(a |-> v * F')%pred (upd m2 a v)]
+        /\ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx tt >> rec]
+    /\ [{{ ([(a |-> v * F')%pred (upd m2 a v)] /\ rep xp (ActiveTxn m1 (upd m2 a v)) * F)
+        \/ ([(a |-> v0 * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F) }} rec >> rec]
     }} write xp a v rx >> rec.
 End LOG.
 
 Module Log : LOG.
   (* Actually replay a log to implement redo in a memory. *)
-  Fixpoint replay (a : addr) (len : nat) (m : logmem) : logmem :=
+  Fixpoint replay (a : addr) (len : nat) (m : mem) : mem :=
     match len with
       | O => m
-      | S len' => lupd (replay a len' m) (m (a + len'*2)) (m (a + len'*2 + 1))
+      | S len' => match m (a + len'*2) with
+        | None => m
+        | Some logaddr => match m (a + len'*2 + 1) with
+          | None => m
+          | Some logvalu => upd (replay a len' m) logaddr logvalu
+        end
+      end
     end.
 
   (* Check that a log is well-formed in memory. *)
-  Fixpoint validLog xp (a : addr) (len : nat) (m : logmem) : Prop :=
+  Fixpoint validLog xp (a : addr) (len : nat) (m : mem) : Prop :=
     match len with
       | O => True
-      | S len' => DataStart xp <= m (a + len'*2) < DataStart xp + DataLen xp
-        /\ validLog xp a len' m
+      | S len' => match m (a + len'*2) with
+        | None => False
+        | Some logaddr => DataStart xp <= logaddr < DataStart xp + DataLen xp
+                       /\ validLog xp a len' m
+      end
     end.
 
   Definition rep xp (st : logstate) :=
@@ -1110,15 +1119,13 @@ Module Log : LOG.
         (* Not committed. *)
         (LogCommit xp) |-> 0
         (* Every data address has its value from [m]. *)
-      * (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
-         --> a |-> m a)
+      * diskIs m
 
       | ActiveTxn old cur =>
         (* Not committed. *)
         (LogCommit xp) |-> 0
         (* Every data address has its value from [old]. *)
-      * (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
-         --> a |-> old a)
+      * diskIs old
         (* Look up log length. *)
       * exists len, (LogLength xp) |-> len
           /\ [len <= LogLen xp]
