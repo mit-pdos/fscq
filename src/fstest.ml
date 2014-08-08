@@ -1,4 +1,4 @@
-open HoareLogicN
+open HoareLogicCont
 open Printf
 open Sys
 
@@ -21,22 +21,19 @@ let write_disk b v =
   close_out oc
 
 let rec run_dcode = function
-  | HoareLogicN.Halt_ r ->
-    r
-  | HoareLogicN.Crash_ ->
-    Printf.printf "crash\n";
+  | HoareLogicCont.Fail ->
+    Printf.printf "Fail\n";
     raise Exit
-  | HoareLogicN.Read b ->
-    let v = read_disk b in
-    Printf.printf "read(%d): %d\n" b v;
-    Obj.magic v
-  | HoareLogicN.Write (b, v) ->
-    Printf.printf "write(%d, %d)\n" b v;
-    write_disk b v;
-    Obj.magic ()
-  | HoareLogicN.Seq (p1, p2) ->
-    let v = run_dcode (Obj.magic p1) in
-    run_dcode (Obj.magic p2 v);;
+  | HoareLogicCont.Done t ->
+    ()
+  | HoareLogicCont.Read (a, rx) ->
+    let v = read_disk a in
+    Printf.printf "read(%d): %d\n" a v;
+    run_dcode (rx v)
+  | HoareLogicCont.Write (a, v, rx) ->
+    Printf.printf "write(%d, %d)\n" a v;
+    write_disk a v;
+    run_dcode (rx ());;
 
 let xp =
   { coq_DataStart = 0;
@@ -46,9 +43,16 @@ let xp =
     coq_LogStart = 22;
     coq_LogLen = 20 };;
 
-Printf.printf "Running write_two_blocks on disk..\n";;
+let finish = function
+  | () ->
+    Printf.printf "Done\n";
+    HoareLogicCont.Done ();;
 
 try Sys.remove disk_fn with Sys_error _ -> ();;
 
-run_dcode (write_two_blocks xp 3 4 5 6);;
+Printf.printf "Running..\n";;
+run_dcode
+  (Log.init xp (fun _ ->
+   Log.coq_begin xp (fun _ ->
+   Log.abort xp finish)));;
 
