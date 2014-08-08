@@ -879,15 +879,16 @@ Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 Ltac pick := solve [ repeat ((apply PickFirst; solve [ auto with okToUnify ])
                                || apply PickLater) ].
 
-Theorem cancel_one : forall qs qs' p ps F,
+Theorem imply_one : forall qs qs' p p' ps F,
   pick p qs qs'
   -> (stars ps * F ==> stars qs')
-  -> stars (p :: ps) * F ==> stars qs.
+  -> (p' ==> p)
+  -> stars (p' :: ps) * F ==> stars qs.
 Proof.
   intros.
   eapply pimpl_trans. eapply pimpl_sep_star. apply stars_prepend. apply pimpl_refl.
   eapply pimpl_trans. apply sep_star_assoc_1.
-  eapply pimpl_trans. eapply pimpl_sep_star. apply pimpl_refl. eauto.
+  eapply pimpl_trans. eapply pimpl_sep_star. eauto. eauto.
   clear dependent ps.
   induction H; intros.
   - inversion H; subst. apply stars_prepend.
@@ -897,6 +898,15 @@ Proof.
     eapply pimpl_trans; [eapply sep_star_assoc_2|].
     eapply pimpl_trans; [|eapply sep_star_assoc_1].
     eapply pimpl_sep_star. eapply sep_star_comm. eapply pimpl_refl.
+Qed.
+
+Theorem cancel_one : forall qs qs' p ps F,
+  pick p qs qs'
+  -> (stars ps * F ==> stars qs')
+  -> stars (p :: ps) * F ==> stars qs.
+Proof.
+  intros.
+  eapply imply_one; eauto.
 Qed.
 
 Ltac cancel_one := eapply cancel_one; [ pick | ].
