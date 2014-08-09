@@ -383,128 +383,6 @@ Proof.
   firstorder.
 Qed.
 
-Theorem read_ok:
-  forall (a:addr) (rx:valu->prog) (rec:prog),
-  ({{ exists v F, a |-> v * F
-   /\ [{{ a |-> v * F }} (rx v) >> rec]
-   /\ [{{ a |-> v * F }} rec >> rec] }}
-   Read a rx >> rec)%pred.
-Proof.
-  unfold corr; unfold exis, foral_, lift, and; pred.
-  remember H1 as H1'; clear HeqH1'.
-  unfold ptsto, sep_star in H1'; simpl in H1'; repeat deex.
-  inv_exec_recover; auto; inv_exec.
-  - erewrite mem_union_addr in H11. inversion H11. eauto. eauto.
-  - eapply H. eauto. constructor.
-    erewrite mem_union_addr in H10; eauto.
-    inv_option. eauto.
-  - eapply H; eauto.
-    erewrite mem_union_addr in H11; eauto. inv_option.
-    econstructor; eauto.
-  - eapply H3; eauto.
-Qed.
-
-Lemma ptsto_upd:
-  forall a v v0 F m,
-  (a |-> v0 * F)%pred m ->
-  (a |-> v * F)%pred (upd m a v).
-Proof.
-  unfold sep_star, upd; intros; repeat deex.
-  exists (fun a' => if eq_nat_dec a' a then Some v else None).
-  exists x0.
-  split; [|split].
-  - apply functional_extensionality; intro.
-    unfold mem_union; destruct (eq_nat_dec x1 a); eauto.
-    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
-  - unfold mem_disjoint in *. intuition. repeat deex.
-    apply H. repeat eexists; eauto.
-    unfold ptsto in H1; destruct H1.
-    destruct (eq_nat_dec x1 a); subst; eauto.
-    pred.
-  - intuition eauto.
-    unfold ptsto; intuition.
-    destruct (eq_nat_dec a a); pred.
-    destruct (eq_nat_dec a' a); pred.
-Qed.
-
-Theorem write_ok:
-  forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
-  ({{ exists v0 F, a |-> v0 * F
-   /\ [{{ a |-> v * F }} rx tt >> rec]
-   /\ [{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]}}
-   Write a v rx >> rec)%pred.
-Proof.
-  unfold corr; pred.
-  remember H1 as H1'; clear HeqH1'.
-  unfold ptsto, sep_star in H1'; simpl in H1'; repeat deex.
-  inv_exec_recover; auto; inv_exec.
-  - erewrite mem_union_addr in H12. inversion H12. eauto. eauto.
-  - eapply H. instantiate (1:=upd (mem_union x1 x2) a v).
-    eapply ptsto_upd; eauto.
-    eauto.
-  - eapply H. instantiate (1:=upd (mem_union x1 x2) a v).
-    eapply ptsto_upd; eauto.
-    eauto.
-  - eapply H3; eauto.
-Qed.
-
-
-(** * Some helpful [prog] combinators *)
-
-Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
-  if b then p1 else p2.
-
-Theorem if_ok:
-  forall P Q (b : {P}+{Q}) p1 p2 rec,
-  {{ exists pre, pre
-  /\ [{{ pre /\ [P] }} p1 >> rec]
-  /\ [{{ pre /\ [Q] }} p2 >> rec]
-  }} If_ b p1 p2 >> rec.
-Proof.
-  unfold corr; destruct b; intuition pred.
-Qed.
-
-Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
-              (i n : nat) (l : L)
-              (nocrash : nat -> L -> pred)
-              (crashed : pred)
-              (rx: L -> prog) : prog :=
-  match n with
-    | O => rx l
-    | S n' => l' <- (f i l); (For_ f (S i) n' l' nocrash crashed rx)
-  end.
-
-Theorem for_ok:
-  forall (L : Set) f rx rec (nocrash : nat -> L -> pred) (crashed : pred)
-         n i (li : L),
-  {{ nocrash i li
-  /\ [forall m l, nocrash m l ==> crashed]
-  /\ [forall m lm rxm,
-      i <= m < n + i ->
-      (forall lSm, {{ nocrash (S m) lSm }} (rxm lSm) >> rec) ->
-      {{ nocrash m lm }} f m lm rxm >> rec]
-  /\ [forall lfinal, {{ nocrash (n+i) lfinal }} (rx lfinal) >> rec]
-  }} (For_ f i n li nocrash crashed rx) >> rec.
-Proof.
-  induction n.
-  - intros.
-    eapply pimpl_pre.
-    + unfold pimpl; intuition pred.
-    + unfold pimpl; pred.
-  - intros.
-    eapply pimpl_pre.
-    + unfold pimpl; intuition pred.
-      eapply H1; try omega.
-      intros.
-      eapply pimpl_ok.
-      apply IHn.
-      unfold pimpl; intuition pred.
-      eapply H1; try omega; eauto.
-      replace (n + S i) with (S (n + i)) by omega.
-      eauto.
-    + unfold pimpl; pred.
-Qed.
-
 Lemma pimpl_exists_l:
   forall T p q,
   (forall x:T, p x ==> q) ->
@@ -652,7 +530,7 @@ Qed.
 
 Lemma sep_star_lift_r:
   forall (b: Prop) (a c: pred),
-  (a ==> [[b]] /\ c) ->
+  (a ==> [b] /\ c) ->
   (a ==> [[b]] * c).
 Proof.
   unfold pimpl, lift_empty, and, sep_star; intros.
@@ -701,13 +579,82 @@ Proof.
     repeat deex; repeat eexists; eauto.
 Qed.
 
+Lemma piff_l :
+  forall p p' q,
+  (p <==> p')
+  -> (p' ==> q)
+  -> (p ==> q).
+Proof.
+  firstorder.
+Qed.
+
+Lemma piff_r :
+  forall p q q',
+  (q <==> q')
+  -> (p ==> q')
+  -> (p ==> q).
+Proof.
+  firstorder.
+Qed.
+
+Lemma sep_star_lift2and:
+  forall a b,
+  (a * [[b]]) ==> a /\ [b].
+Proof.
+  unfold sep_star, and, lift, lift_empty, pimpl.
+  intros; repeat deex.
+  assert (mem_union x x0 = x).
+  apply functional_extensionality; intros.
+  unfold mem_union. destruct (x x1); eauto.
+  congruence.
+Qed.
+
+Lemma ptsto_valid:
+  forall a v F m,
+  (a |-> v * F)%pred m
+  -> m a = Some v.
+Proof.
+  unfold sep_star, ptsto.
+  intros; repeat deex.
+  apply mem_union_addr; eauto.
+Qed.
+
+Lemma ptsto_upd:
+  forall a v v0 F m,
+  (a |-> v0 * F)%pred m ->
+  (a |-> v * F)%pred (upd m a v).
+Proof.
+  unfold sep_star, upd; intros; repeat deex.
+  exists (fun a' => if eq_nat_dec a' a then Some v else None).
+  exists x0.
+  split; [|split].
+  - apply functional_extensionality; intro.
+    unfold mem_union; destruct (eq_nat_dec x1 a); eauto.
+    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
+  - unfold mem_disjoint in *. intuition. repeat deex.
+    apply H. repeat eexists; eauto.
+    unfold ptsto in H1; destruct H1.
+    destruct (eq_nat_dec x1 a); subst; eauto.
+    pred.
+  - intuition eauto.
+    unfold ptsto; intuition.
+    destruct (eq_nat_dec a a); pred.
+    destruct (eq_nat_dec a' a); pred.
+Qed.
+
+Lemma pimpl_and_split:
+  forall a b c,
+  (a ==> b)
+  -> (a ==> c)
+  -> (a ==> b /\ c).
+Proof.
+  firstorder.
+Qed.
+
 Opaque sep_star.
 
 
 (** * Separation logic proof automation *)
-
-Hint Extern 1 ({{_}} progseq (Write _ _) _ >> _) => apply write_ok : prog.
-Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
 
 Ltac intu' :=
   match goal with
@@ -717,7 +664,7 @@ Ltac intu' :=
 
 Ltac intu := intuition; repeat (intu'; intuition).
 
-Ltac pintu := unfold lift, and, or, exis, pimpl, impl; intu.
+Ltac pintu := unfold lift, lift_empty, and, or, exis, pimpl, impl; intu.
 
 Definition stars (ps : list pred) :=
   fold_left sep_star ps emp.
@@ -959,7 +906,12 @@ Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
                repeat finish_lift_one;
                try (apply finish_frame || apply finish_easier).
 
-(* Logic for getting rid of "exists" among the [sep_star]s in the conclusion *)
+(* Logic for normalizing a chain of [sep_star]s:
+ * - Turn exists in the premise into forall.
+ * - Turn exists in the conclusion into existential variables.
+ * - Turn lift_empty in the premise into hypotheses.
+ * - Turn lift_empty in the conclusion into separate subgoals.
+ *)
 Lemma add_stars_nil:
   forall p,
   stars p <==> stars p * stars nil.
@@ -968,7 +920,7 @@ Proof.
   eapply piff_trans. apply emp_star. firstorder.
 Qed.
 
-Theorem stars_skip : forall p ps qs,
+Lemma stars_skip_r : forall p ps qs,
   stars ps * stars (p :: qs) ==> stars (p :: ps) * stars qs.
 Proof.
   intros.
@@ -979,48 +931,263 @@ Proof.
   eapply sep_star_comm.
 Qed.
 
+Lemma stars_skip_l : forall p ps qs,
+  stars (p :: ps) * stars qs ==> stars ps * stars (p :: qs).
+Proof.
+  intros.
+  eapply pimpl_trans. eapply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ].
+  eapply pimpl_trans; [|eapply pimpl_sep_star; [ apply pimpl_refl | apply stars_prepend ] ].
+  eapply pimpl_trans; [|apply sep_star_assoc_1].
+  eapply pimpl_sep_star; [|eapply pimpl_refl].
+  eapply sep_star_comm.
+Qed.
+
+(* Left-side normalization *)
+
+Ltac kill_emp_l :=
+  eapply pimpl_trans; [ apply star_emp_pimpl
+                        || (eapply pimpl_trans;
+                            [ apply sep_star_comm | apply star_emp_pimpl ]) |].
+Ltac kill_emps_l :=
+  kill_emp_l;
+  repeat ( eapply pimpl_trans; [ apply sep_star_assoc_1 |] );
+  kill_emp_l;
+  repeat ( eapply pimpl_trans; [ apply sep_star_assoc_2 |] ).
+
+Ltac deex_stars_l_one :=
+  (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
+  match goal with
+  | [ |- (stars ((fun _ => exists _, _)%type :: _) * stars _ ==> _)%pred ] => idtac
+  | _ => fail
+  end;
+  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ];
+  eapply pimpl_trans; [ apply sep_star_assoc_1 | ];
+  (* Get rid of "exists" on the left side of pimpl *)
+  eapply pimpl_exists_l_star; apply pimpl_exists_l; intros;
+  (* Get rid of potential leftover dummy fun's; might be worth making this a separate pass *)
+  try ( eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_fun_l | apply pimpl_refl ] | ] );
+  eapply pimpl_trans; [ apply sep_star_assoc_2 | ];
+  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ].
+
+Ltac delift_stars_l_one :=
+  (* Avoid destructing "lift_empty" in an existential variable at the head of stars.. *)
+  match goal with
+  | [ |- (stars ([[_]] :: _) * stars _ ==> _)%pred ] => idtac
+  | _ => fail
+  end;
+  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ];
+  eapply pimpl_trans; [ apply sep_star_assoc_1 | ];
+  eapply sep_star_lift_l; intros.
+
+Ltac normalize_stars_l_skip :=
+  eapply pimpl_trans; [ apply stars_skip_l | ].
+
+Ltac normalize_stars_l :=
+  repeat ( apply pimpl_exists_l; intros );
+  eapply piff_l; [flatten|];
+  unfold app; simpl;
+  eapply piff_l; [apply add_stars_nil|];
+  repeat (deex_stars_l_one || delift_stars_l_one || normalize_stars_l_skip );
+  unfold stars; simpl; kill_emps_l.
+
+(* Right-side normalization *)
+
+Ltac kill_emp_r :=
+  eapply pimpl_trans; [| apply pimpl_star_emp
+                         || (eapply pimpl_trans;
+                             [ apply pimpl_star_emp | apply sep_star_comm ]) ].
+Ltac kill_emps_r :=
+  kill_emp_r;
+  repeat ( eapply pimpl_trans; [| apply sep_star_assoc_2 ] );
+  kill_emp_r;
+  repeat ( eapply pimpl_trans; [| apply sep_star_assoc_1 ] ).
+
 Ltac deex_stars_r_one :=
   (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
   match goal with
-  | [ |- (stars ((fun _ => exists _, _)%type :: _) * stars _)%pred _ ] => idtac
+  | [ |- _ ==> (stars (exis _ :: _) * stars _)%pred ] => idtac
   | _ => fail
   end;
-  eapply pimpl_apply; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ];
-  apply sep_star_assoc_2;
-  apply pimpl_exists_r_star; eexists;
-  apply sep_star_assoc_1;
-  eapply pimpl_apply; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ].
+  eapply pimpl_trans; [| apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ];
+  eapply pimpl_trans; [| apply sep_star_assoc_2 ];
+  eapply pimpl_trans; [| apply pimpl_exists_r_star ];
+  eapply pimpl_exists_r; eexists;
+  eapply pimpl_trans; [| apply sep_star_assoc_1 ];
+  eapply pimpl_trans; [| apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ].
 
-Ltac deex_stars_r_skip :=
-  eapply pimpl_apply; [ apply stars_skip | ].
+Ltac normalize_stars_r_skip :=
+  eapply pimpl_trans; [ | apply stars_skip_r ].
 
-Ltac deex_stars_r :=
-  eapply piff_apply; [ flatten | ]; unfold app; simpl;
-  eapply piff_apply; [ apply add_stars_nil | ];
-  repeat ( deex_stars_r_one || deex_stars_r_skip );
-  unfold stars; simpl.
+Ltac normalize_stars_r :=
+  repeat ( apply pimpl_exists_r; eexists; intros );
+  eapply piff_r; [flatten|];
+  unfold app; simpl;
+  eapply piff_r; [apply add_stars_nil|];
+  repeat ( deex_stars_r_one || normalize_stars_r_skip );
+  unfold stars; simpl; kill_emps_r.
 
-Ltac sep := deex_stars_r; sep_imply; cancel.
+(* Split and-like lifted conditions.  We assume they appear at the right of the
+ * preconditions -- e.g., foo * bar * [[baz]] * [[quux]].  We use sep_star for
+ * these conditions (instead of "and") because that makes them easier to handle
+ * when they show up on the left-hand side (in assumptions).
+ *)
+
+Ltac split_trailing_lift_one :=
+  match goal with
+  | [ |- _ ==> _ * [[_]] ] =>
+    eapply pimpl_trans; [ apply sep_star_lift_r | apply sep_star_comm ]; apply pimpl_and_split
+  end.
+
+Ltac split_trailing_lifts :=
+  repeat ( apply pimpl_exists_r; eexists; intros );
+  repeat split_trailing_lift_one.
+
+Ltac npintu := normalize_stars_l; split_trailing_lifts; normalize_stars_r; pintu.
+
+Ltac sep := sep_imply; cancel.
 
 Ltac step := intros;
-             ((eapply pimpl_ok; [ solve [ eauto with prog ] | pintu ])
-                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | pintu | pintu ]));
+             ((eapply pimpl_ok; [ solve [ eauto with prog ] | npintu ])
+                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | npintu | npintu ]));
              try solve [ intuition sep ]; (unfold stars; simpl);
              try omega.
 
 Ltac hoare := repeat step.
 
+
+(** * Some helpful [prog] combinators and proofs *)
+
+Theorem read_ok:
+  forall (a:addr) (rx:valu->prog) (rec:prog),
+  {{ exists v F, a |-> v * F
+   * [[{{ a |-> v * F }} (rx v) >> rec]]
+   * [[{{ a |-> v * F }} rec >> rec]]
+  }} Read a rx >> rec.
+Proof.
+  unfold corr, exis; intros; repeat deex.
+  repeat ( apply sep_star_lift2and in H; destruct H ).
+  unfold lift in *; simpl in *.
+  inv_exec_recover; auto; inv_exec.
+  - apply ptsto_valid in H. congruence.
+  - eapply H2. eauto.
+    apply ptsto_valid in H. repeat inv_option.
+    eauto.
+  - eapply H2. eauto.
+    apply ptsto_valid in H. repeat inv_option.
+    eauto.
+  - eapply H1; eauto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
+
+Theorem write_ok:
+  forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
+  {{ exists v0 F, a |-> v0 * F
+   * [[{{ a |-> v * F }} rx tt >> rec]]
+   * [[{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]]
+  }} Write a v rx >> rec.
+Proof.
+  unfold corr, exis; intros; repeat deex.
+  repeat ( apply sep_star_lift2and in H; destruct H ).
+  unfold lift in *; simpl in *.
+  inv_exec_recover; auto; inv_exec.
+  - apply ptsto_valid in H. congruence.
+  - eapply H2. instantiate (1:=upd m a v).
+    eapply ptsto_upd; eauto.
+    eauto.
+  - eapply H2. instantiate (1:=upd m a v).
+    eapply ptsto_upd; eauto.
+    eauto.
+  - eapply H1; unfold or; eauto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (Write _ _) _ >> _) => apply write_ok : prog.
+
+Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
+  if b then p1 else p2.
+
+Theorem if_ok:
+  forall P Q (b : {P}+{Q}) p1 p2 rec,
+  {{ exists pre, pre
+   * [[{{ pre /\ [P] }} p1 >> rec]]
+   * [[{{ pre /\ [Q] }} p2 >> rec]]
+  }} If_ b p1 p2 >> rec.
+Proof.
+  unfold corr, exis; intros; repeat deex.
+  repeat ( apply sep_star_lift2and in H; destruct H ).
+  destruct b; intuition pred.
+Qed.
+
+Hint Extern 1 ({{_}} If_ _ _ _ >> _) => apply if_ok : prog.
+Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
+
+Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
+              (i n : nat) (l : L)
+              (nocrash : nat -> L -> pred)
+              (crashed : pred)
+              (rx: L -> prog) : prog :=
+  match n with
+    | O => rx l
+    | S n' => l' <- (f i l); (For_ f (S i) n' l' nocrash crashed rx)
+  end.
+
+Theorem for_ok:
+  forall (L : Set) f rx rec (nocrash : nat -> L -> pred) (crashed : pred)
+         n i (li : L),
+  {{ nocrash i li
+   * [[forall m l, nocrash m l ==> crashed]]
+   * [[forall m lm rxm,
+      i <= m < n + i ->
+      (forall lSm, {{ nocrash (S m) lSm }} (rxm lSm) >> rec) ->
+      {{ nocrash m lm }} f m lm rxm >> rec]]
+   * [[forall lfinal, {{ nocrash (n+i) lfinal }} (rx lfinal) >> rec]]
+  }} (For_ f i n li nocrash crashed rx) >> rec.
+Proof.
+(*
+  induction n.
+  - intros.
+    eapply pimpl_pre.
+    + unfold pimpl; intuition pred.
+    + unfold pimpl; pred.
+  - intros.
+    eapply pimpl_pre.
+    + unfold pimpl; intuition pred.
+      eapply H1; try omega.
+      intros.
+      eapply pimpl_ok.
+      apply IHn.
+      unfold pimpl; intuition pred.
+      eapply H1; try omega; eauto.
+      replace (n + S i) with (S (n + i)) by omega.
+      eauto.
+    + unfold pimpl; pred.
+*)
+  admit.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
+Notation "'For' i < n 'Loopvar' l < l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun i l lrx => body)
+        0 n l0
+        (fun i l => nocrash%pred)
+        (crashed%pred))
+  (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
+   body at level 9).
+
+
+(* Testing.. *)
+
 Definition do_two_writes a1 a2 v1 v2 rx :=
   Write a1 v1 ;; Write a2 v2 ;; rx tt.
 
 Example two_writes: forall a1 a2 v1 v2 rx rec,
-  ({{ exists v1' v2' F,
-      a1 |-> v1' * a2 |-> v2' * F
-   /\ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx tt >> rec]
-   /\ [{{ (a1 |-> v1' * a2 |-> v2' * F) \/
+  {{ exists v1' v2' F,
+     a1 |-> v1' * a2 |-> v2' * F
+   * [[{{ a1 |-> v1 * a2 |-> v2 * F }} rx tt >> rec]]
+   * [[{{ (a1 |-> v1' * a2 |-> v2' * F) \/
           (a1 |-> v1 * a2 |-> v2' * F) \/
-          (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec] }}
-   do_two_writes a1 a2 v1 v2 rx >> rec)%pred.
+          (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec]]
+  }} do_two_writes a1 a2 v1 v2 rx >> rec.
 Proof.
   unfold do_two_writes.
   hoare.
@@ -1051,8 +1218,6 @@ Proof.
   hoare.
 Qed.
 
-Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
-Hint Extern 1 ({{_}} If_ _ _ _ >> _) => apply if_ok : prog.
 
 Example inc_up_to_5: forall a rx rec,
   ({{ exists v F,
@@ -1075,15 +1240,6 @@ Proof.
   hoare.
 Qed.
 
-Notation "'For' i < n 'Loopvar' l < l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (For_ (fun i l lrx => body)
-        0 n l0
-        (fun i l => nocrash%pred)
-        (crashed%pred))
-  (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
-   body at level 9).
-
-Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
 
 Lemma pre_false:
   forall pre p1 p2,
@@ -1400,61 +1556,14 @@ Module Log : LOG.
 
   Theorem abort_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-    /\ [{{ rep xp (NoTransaction m1) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m1) * F
-        \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+     * [[{{ rep xp (NoTransaction m1) * F }} rx tt >> rec]]
+     * [[{{ rep xp (NoTransaction m1) * F
+         \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]]
     }} abort xp rx >> rec.
   Proof.
     unfold abort.
     unfold rep.
-
-    (* Instead of doing "hoare", do some manual steps first.. *)
-
-    (* Do the first part of "step", except for the cancel'ing and the [pintu] *)
-    intros; eapply pimpl_ok; [ solve [ eauto with prog ] | ].
-
-    (* Get rid of the "exists" at the head of pimpl's premise *)
-    repeat ( apply pimpl_exists_l; intros ).
-
-    (*
-     * Trying to extract the "exists" from one of the [sep_star]ed [pred]s
-     *)
-
-    (* Work on the [sep_star] part of the [and] expression first.. *)
-    eapply pimpl_trans.
-    eapply pimpl_and; [|apply pimpl_refl].
-
-    (* First, several steps to get the "exists" term to the front of the [sep_star] chain. *)
-    eapply pimpl_trans.
-    eapply sep_star_assoc_1.
-
-    eapply pimpl_trans.
-    eapply sep_star_comm.
-
-    eapply pimpl_trans.
-    eapply sep_star_assoc_1.
-
-    (* Pull the "exists" past the top-level [sep_star] *)
-    eapply pimpl_exists_l_star.
-
-    (* Get back to the top-level [and] *)
-    apply pimpl_refl.
-
-    (* Pull the "exists" past the top-level [and] *)
-    eapply pimpl_exists_l_and.
-
-    (* Get rid of the "exists" *)
-    eapply pimpl_exists_l; intros.
-
-    (* Now, resume the rest of the "hoare" tactic.. *)
-    pintu.
-
-    - intuition sep.  (* This is what getting rid of the "exists" got us! *)
-
-    - unfold stars; simpl.
-      step.
-    - unfold stars; simpl.
-      step.
+    hoare.
   Qed.
 
   Definition write xp a v rx :=
