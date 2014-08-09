@@ -664,7 +664,7 @@ Ltac intu' :=
 
 Ltac intu := intuition; repeat (intu'; intuition).
 
-Ltac pintu := unfold lift, lift_empty, and, or, exis, pimpl, impl; intu.
+Ltac pintu := unfold lift, (* lift_empty, *) and, or, pimpl, impl; intu.
 
 Definition stars (ps : list pred) :=
   fold_left sep_star ps emp.
@@ -950,9 +950,10 @@ Ltac kill_emp_l :=
                             [ apply sep_star_comm | apply star_emp_pimpl ]) |].
 Ltac kill_emps_l :=
   kill_emp_l;
-  repeat ( eapply pimpl_trans; [ apply sep_star_assoc_1 |] );
-  kill_emp_l;
-  repeat ( eapply pimpl_trans; [ apply sep_star_assoc_2 |] ).
+  ( kill_emp_l ||
+    ( repeat ( eapply pimpl_trans; [ apply sep_star_assoc_1 |] );
+      kill_emp_l;
+      repeat ( eapply pimpl_trans; [ apply sep_star_assoc_2 |] ) ) ).
 
 Ltac deex_stars_l_one :=
   (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
@@ -982,8 +983,13 @@ Ltac delift_stars_l_one :=
 Ltac normalize_stars_l_skip :=
   eapply pimpl_trans; [ apply stars_skip_l | ].
 
+Ltac deex_l :=
+  match goal with
+  | [ |- (exists _, _) ==> _ ] => apply pimpl_exists_l; intro
+  end.
+
 Ltac normalize_stars_l :=
-  repeat ( apply pimpl_exists_l; intros );
+  repeat deex_l;
   eapply piff_l; [flatten|];
   unfold app; simpl;
   eapply piff_l; [apply add_stars_nil|];
@@ -998,9 +1004,10 @@ Ltac kill_emp_r :=
                              [ apply pimpl_star_emp | apply sep_star_comm ]) ].
 Ltac kill_emps_r :=
   kill_emp_r;
-  repeat ( eapply pimpl_trans; [| apply sep_star_assoc_2 ] );
-  kill_emp_r;
-  repeat ( eapply pimpl_trans; [| apply sep_star_assoc_1 ] ).
+  ( kill_emp_r ||
+    ( repeat ( eapply pimpl_trans; [| apply sep_star_assoc_2 ] );
+      kill_emp_r;
+      repeat ( eapply pimpl_trans; [| apply sep_star_assoc_1 ] ) ) ).
 
 Ltac deex_stars_r_one :=
   (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
@@ -1018,8 +1025,13 @@ Ltac deex_stars_r_one :=
 Ltac normalize_stars_r_skip :=
   eapply pimpl_trans; [ | apply stars_skip_r ].
 
+Ltac deex_r :=
+  match goal with
+  | [ |- _ ==> exists _, _ ] => apply pimpl_exists_r; eexists
+  end.
+
 Ltac normalize_stars_r :=
-  repeat ( apply pimpl_exists_r; eexists; intros );
+  repeat deex_r;
   eapply piff_r; [flatten|];
   unfold app; simpl;
   eapply piff_r; [apply add_stars_nil|];
@@ -1039,7 +1051,7 @@ Ltac split_trailing_lift_one :=
   end.
 
 Ltac split_trailing_lifts :=
-  repeat ( apply pimpl_exists_r; eexists; intros );
+  repeat deex_r;
   repeat split_trailing_lift_one.
 
 Ltac npintu := normalize_stars_l; split_trailing_lifts; normalize_stars_r; pintu.
@@ -1489,19 +1501,20 @@ Module Log : LOG.
   Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
 
   Theorem init_ok : forall xp rx rec,
-    {{ exists m F, diskIs m * F
-    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m) * F
-        \/ F }} rec >> rec]
+    {{ exists m F v0 v1,
+       diskIs m
+     * (LogCommit xp) |-> v0
+     * (LogLength xp) |-> v1
+     * F
+     * [[{{ rep xp (NoTransaction m) * F }} rx tt >> rec]]
+     * [[{{ rep xp (NoTransaction m) * F
+         \/ diskIs m * (LogCommit xp) |-> v0 * (LogLength xp) |-> v1 * F }} rec >> rec]]
     }} init xp rx >> rec.
   Proof.
     unfold init.
     hoare.
-    (* XXX probably need better array-like handling? *)
-    (* XXX how will separation logic work for log-level memories
-     * rather than the bare disk memory?
-     *)
-  Abort.
+    left. sep_imply. normalize_stars_r. cancel.
+  Qed.
 
   Definition begin xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
@@ -1523,14 +1536,14 @@ Module Log : LOG.
 
   Theorem begin_ok : forall xp rx rec,
     {{ exists m F, rep xp (NoTransaction m) * F
-    /\ [{{ rep xp (ActiveTxn m m) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m) * F }} rec >> rec]
+     * [[{{ rep xp (ActiveTxn m m) * F }} rx tt >> rec]]
+     * [[{{ rep xp (NoTransaction m) * F }} rec >> rec]]
     }} begin xp rx >> rec.
   Proof.
     unfold begin.
     unfold rep.
     hoare.
-    (* XXX odd, because this doesn't seem to involve any array handling.. *)
+    (* XXX existential variable unification problems.. *)
   Abort.
 
   Definition silly_nop xp rx :=
@@ -1540,17 +1553,17 @@ Module Log : LOG.
 
   Theorem silly_nop_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-    /\ [{{ rep xp (ActiveTxn m1 m2) * F }} rx tt >> rec]
-    /\ [{{ [True] }} rec >> rec]
+     * [[{{ rep xp (ActiveTxn m1 m2) * F }} rx tt >> rec]]
+     * [[{{ [True] }} rec >> rec]]
     }} silly_nop xp rx >> rec.
   Proof.
     unfold silly_nop.
     unfold rep.
     hoare.
-    (* Now that we destruct exists on the right side, we need to also destruct
-     * them on the left side, for the cancelation to work out..
-     *)
+    sep_imply. 
+    (* XXX for some reason, normalize_stars_l fails to destruct the "exists" on the left.. *)
   Abort.
+
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
@@ -1564,7 +1577,9 @@ Module Log : LOG.
     unfold abort.
     unfold rep.
     hoare.
-  Qed.
+    left. sep_imply. normalize_stars_r. cancel.
+    (* XXX something is not quite right *)
+  Abort.
 
   Definition write xp a v rx :=
     len <- !(LogLength xp);
