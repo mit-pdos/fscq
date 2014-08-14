@@ -1,0 +1,510 @@
+Require Import Arith.
+Require Import Omega.
+Require Import FunctionalExtensionality.
+Require Import Prog.
+
+Set Implicit Arguments.
+
+
+(** ** Predicates *)
+
+Definition pred := mem -> Prop.
+
+Definition ptsto (a : addr) (v : valu) : pred :=
+  fun m => m a = Some v /\ forall a', a <> a' -> m a' = None.
+Infix "|->" := ptsto (at level 35) : pred_scope.
+Bind Scope pred_scope with pred.
+Delimit Scope pred_scope with pred.
+
+Definition impl (p q : pred) : pred :=
+  fun m => p m -> q m.
+Infix "-->" := impl (right associativity, at level 95) : pred_scope.
+
+Definition and (p q : pred) : pred :=
+  fun m => p m /\ q m.
+Infix "/\" := and : pred_scope.
+
+Definition or (p q : pred) : pred :=
+  fun m => p m \/ q m.
+Infix "\/" := or : pred_scope.
+
+Definition foral_ A (p : A -> pred) : pred :=
+  fun m => forall x, p x m.
+Notation "'foral' x .. y , p" := (foral_ (fun x => .. (foral_ (fun y => p)) ..)) (at level 200, x binder, right associativity) : pred_scope.
+
+Definition exis A (p : A -> pred) : pred :=
+  fun m => exists x, p x m.
+Notation "'exists' x .. y , p" := (exis (fun x => .. (exis (fun y => p)) ..)) : pred_scope.
+
+Definition uniqpred A (p : A -> pred) (x : A) :=
+  fun m => p x m /\ (forall (x' : A), p x' m -> x = x').
+Notation "'exists' ! x .. y , p" := (exis (uniqpred (fun x => .. (exis (uniqpred (fun y => p))) ..))) : pred_scope.
+
+Definition emp : pred :=
+  fun m => forall a, m a = None.
+
+Definition lift (P : Prop) : pred :=
+  fun m => P.
+Notation "[ P ]" := (lift P) : pred_scope.
+
+Definition lift_empty (P : Prop) : pred :=
+  fun m => P /\ forall a, m a = None.
+Notation "[[ P ]]" := (lift_empty P) : pred_scope.
+
+Definition pimpl (p q : pred) := forall m, p m -> q m.
+Notation "p ==> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
+
+Definition piff (p q : pred) : Prop := (p ==> q) /\ (q ==> p).
+Notation "p <==> q" := (piff p%pred q%pred) (at level 90).
+
+Definition pupd (p : pred) (a : addr) (v : valu) : pred :=
+  fun m => exists m', p m' /\ m = upd m' a v.
+Notation "p [ a <--- v ]" := (pupd p a v) (at level 0) : pred_scope.
+
+Definition mem_disjoint (m1 m2:mem) :=
+  ~ exists a v1 v2, m1 a = Some v1 /\ m2 a = Some v2.
+
+Definition mem_union (m1 m2:mem) := fun a =>
+  match m1 a with
+  | Some v => Some v
+  | None => m2 a
+  end.
+
+Definition sep_star (p1: pred) (p2: pred) :=
+  fun m => exists m1 m2, m = mem_union m1 m2 /\ mem_disjoint m1 m2 /\ p1 m1 /\ p2 m2.
+Infix "*" := sep_star : pred_scope.
+
+
+Ltac deex := match goal with
+               | [ H : ex _ |- _ ] => destruct H; intuition subst
+             end.
+
+Ltac pred_unfold :=
+  unfold impl, and, or, foral_, exis, uniqpred, lift, pupd, addr, valu in *.
+Ltac pred := pred_unfold;
+  repeat (repeat deex; simpl in *;
+    intuition (try (congruence || omega);
+      try autorewrite with core in *; eauto); try subst).
+
+Theorem pimpl_refl : forall p, p ==> p.
+Proof.
+  pred.
+Qed.
+
+Hint Resolve pimpl_refl.
+
+Theorem mem_disjoint_comm:
+  forall m1 m2,
+  mem_disjoint m1 m2 <-> mem_disjoint m2 m1.
+Proof.
+  split; unfold mem_disjoint, not; intros; repeat deex; eauto 10.
+Qed.
+
+Theorem mem_disjoint_assoc_1:
+  forall m1 m2 m3,
+  mem_disjoint m1 m2 ->
+  mem_disjoint (mem_union m1 m2) m3 ->
+  mem_disjoint m1 (mem_union m2 m3).
+Proof.
+  unfold mem_disjoint, mem_union; intuition; repeat deex.
+  case_eq (m2 x); intros.
+  - apply H. eauto.
+  - rewrite H1 in H3.
+    apply H0. repeat eexists; eauto. rewrite H2. eauto.
+Qed.
+
+Theorem mem_disjoint_assoc_2:
+  forall m1 m2 m3,
+  mem_disjoint m2 m3 ->
+  mem_disjoint m1 (mem_union m2 m3) ->
+  mem_disjoint (mem_union m1 m2) m3.
+Proof.
+  unfold mem_disjoint, mem_union; intuition; repeat deex.
+  case_eq (m2 x); intros.
+  - apply H. eauto.
+  - case_eq (m1 x); intros.
+    + apply H0. repeat eexists; eauto. rewrite H1. eauto.
+    + rewrite H4 in H2. firstorder.
+Qed.
+
+Theorem mem_disjoint_union:
+  forall m1 m2 m3,
+  mem_disjoint (mem_union m1 m2) m3 ->
+  mem_disjoint m2 m3.
+Proof.
+  unfold mem_disjoint, mem_union; intuition; repeat deex.
+  apply H; exists x; destruct (m1 x); eauto.
+Qed.
+
+Theorem mem_disjoint_upd:
+  forall m1 m2 a v v0,
+  m1 a = Some v0 ->
+  mem_disjoint m1 m2 ->
+  mem_disjoint (upd m1 a v) m2.
+Proof.
+  unfold mem_disjoint, upd, not; intros; repeat deex;
+    destruct (eq_nat_dec x a); subst; eauto 10.
+Qed.
+
+Theorem mem_union_comm:
+  forall m1 m2,
+  mem_disjoint m1 m2 ->
+  mem_union m1 m2 = mem_union m2 m1.
+Proof.
+  unfold mem_disjoint, mem_union; intros; apply functional_extensionality; intros.
+  case_eq (m1 x); case_eq (m2 x); intros; eauto; destruct H; eauto.
+Qed.
+
+Theorem mem_union_addr:
+  forall m1 m2 a v,
+  mem_disjoint m1 m2 ->
+  m1 a = Some v ->
+  mem_union m1 m2 a = Some v.
+Proof.
+  unfold mem_disjoint, mem_union; intros; rewrite H0; auto.
+Qed.
+
+Theorem mem_union_upd:
+  forall m1 m2 a v v0,
+  m1 a = Some v0 ->
+  mem_union (upd m1 a v) m2 = upd (mem_union m1 m2) a v.
+Proof.
+  unfold mem_union, upd; intros; apply functional_extensionality; intros.
+  destruct (eq_nat_dec x a); eauto.
+Qed.
+
+Theorem mem_union_assoc:
+  forall m1 m2 m3,
+  mem_disjoint m1 m2 ->
+  mem_disjoint (mem_union m1 m2) m3 ->
+  mem_union (mem_union m1 m2) m3 = mem_union m1 (mem_union m2 m3).
+Proof.
+  unfold mem_union, mem_disjoint; intros; apply functional_extensionality; intuition.
+  destruct (m1 x); auto.
+Qed.
+
+Theorem sep_star_comm1:
+  forall p1 p2,
+  (p1 * p2 ==> p2 * p1)%pred.
+Proof.
+  unfold pimpl, sep_star; pred.
+  exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
+Qed.
+
+Theorem sep_star_comm:
+  forall p1 p2,
+  (p1 * p2 <==> p2 * p1)%pred.
+Proof.
+  unfold piff; split; apply sep_star_comm1.
+Qed.
+
+Theorem sep_star_assoc_1:
+  forall p1 p2 p3,
+  (p1 * p2 * p3 ==> p1 * (p2 * p3))%pred.
+Proof.
+  unfold pimpl, sep_star; pred.
+  exists x1; exists (mem_union x2 x0); intuition.
+  apply mem_union_assoc; auto.
+  apply mem_disjoint_assoc_1; auto.
+  exists x2; exists x0; intuition eauto.
+  eapply mem_disjoint_union; eauto.
+Qed.
+
+Theorem sep_star_assoc_2:
+  forall p1 p2 p3,
+  (p1 * (p2 * p3) ==> p1 * p2 * p3)%pred.
+Proof.
+  unfold pimpl, sep_star; pred.
+  exists (mem_union x x1); exists x2; intuition.
+  rewrite mem_union_assoc; auto.
+  apply mem_disjoint_comm. eapply mem_disjoint_union. apply mem_disjoint_comm.
+  rewrite mem_union_comm. eauto. apply mem_disjoint_comm. eauto.
+  apply mem_disjoint_assoc_2; eauto.
+  apply mem_disjoint_assoc_2; eauto.
+  repeat eexists; eauto.
+  apply mem_disjoint_comm. eapply mem_disjoint_union.
+  rewrite mem_union_comm; [|apply mem_disjoint_comm;eassumption].
+  apply mem_disjoint_comm; assumption.
+Qed.
+
+Theorem sep_star_assoc:
+  forall p1 p2 p3,
+  (p1 * p2 * p3 <==> p1 * (p2 * p3))%pred.
+Proof.
+  split; [ apply sep_star_assoc_1 | apply sep_star_assoc_2 ].
+Qed.
+
+Local Hint Extern 1 =>
+  match goal with
+    | [ |- upd _ ?a ?v ?a = Some ?v ] => apply upd_eq; auto
+  end.
+
+Lemma pimpl_exists_l:
+  forall T p q,
+  (forall x:T, p x ==> q) ->
+  (exists x:T, p x) ==> q.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_exists_r:
+  forall T p q,
+  (exists x:T, p ==> q x) ->
+  (p ==> exists x:T, q x).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_exists_l_star:
+  forall T p q r,
+  ((exists x:T, p x * r) ==> q) ->
+  (exists x:T, p x) * r ==> q.
+Proof.
+  unfold pimpl, sep_star, exis; intros.
+  repeat deex.
+  eapply H.
+  do 3 eexists.
+  intuition eauto.
+Qed.
+
+Lemma pimpl_exists_r_star:
+  forall T p q,
+  (exists x:T, p x * q) ==> ((exists x:T, p x) * q).
+Proof.
+  unfold pimpl, sep_star, exis; intros.
+  repeat deex.
+  do 2 eexists.
+  intuition eauto.
+Qed.
+
+Lemma pimpl_exists_l_and:
+  forall T p q r,
+  ((exists x:T, p x /\ r) ==> q) ->
+  (exists x:T, p x) /\ r ==> q.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_trans:
+  forall a b c,
+  (a ==> b) ->
+  (b ==> c) ->
+  (a ==> c).
+Proof.
+  firstorder.
+Qed.
+
+Lemma piff_trans:
+  forall a b c,
+  (a <==> b) ->
+  (b <==> c) ->
+  (a <==> c).
+Proof.
+  unfold piff; intuition; eapply pimpl_trans; eauto.
+Qed.
+
+Lemma piff_comm:
+  forall a b,
+  (a <==> b) ->
+  (b <==> a).
+Proof.
+  unfold piff; intuition.
+Qed.
+
+Lemma piff_refl:
+  forall a,
+  (a <==> a).
+Proof.
+  unfold piff; intuition.
+Qed.
+
+Lemma pimpl_apply:
+  forall (p q:pred) m,
+  (p ==> q) ->
+  p m ->
+  q m.
+Proof.
+  firstorder.
+Qed.
+
+Lemma piff_apply:
+  forall (p q:pred) m,
+  (p <==> q) ->
+  q m ->
+  p m.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_fun_l:
+  forall (p:pred),
+  (fun m => p m) ==> p.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_fun_r:
+  forall (p:pred),
+  p ==> (fun m => p m).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_sep_star:
+  forall a b c d,
+  (a ==> c) ->
+  (b ==> d) ->
+  (a * b ==> c * d).
+Proof.
+  unfold pimpl, sep_star; intros.
+  do 2 deex.
+  do 2 eexists.
+  intuition eauto.
+Qed.
+
+Lemma pimpl_and:
+  forall a b c d,
+  (a ==> c) ->
+  (b ==> d) ->
+  (a /\ b ==> c /\ d).
+Proof.
+  firstorder.
+Qed.
+
+Lemma sep_star_lift_l:
+  forall (a: Prop) (b c: pred),
+  (a -> (b ==> c)) ->
+  [[a]] * b ==> c.
+Proof.
+  unfold pimpl, lift_empty, sep_star; intros.
+  repeat deex.
+  assert (mem_union x x0 = x0).
+  apply functional_extensionality; unfold mem_union; intros.
+  case_eq (x x1); pred.
+  rewrite H. eauto.
+Qed.
+
+Lemma sep_star_lift_r:
+  forall (b: Prop) (a c: pred),
+  (a ==> [b] /\ c) ->
+  (a ==> [[b]] * c).
+Proof.
+  unfold pimpl, lift_empty, and, sep_star; intros.
+  exists (fun _ => None).
+  exists m.
+  intuition firstorder.
+  unfold mem_disjoint. intuition. repeat deex. congruence.
+Qed.
+
+Lemma pimpl_star_emp: forall p, p ==> emp * p.
+Proof.
+  unfold sep_star, pimpl; intros.
+  repeat eexists; eauto.
+  unfold mem_union; eauto.
+  unfold mem_disjoint; pred.
+Qed.
+
+Lemma star_emp_pimpl: forall p, emp * p ==> p.
+Proof.
+  unfold sep_star, pimpl; intros.
+  unfold emp in *; pred.
+  assert (mem_union x x0 = x0).
+  apply functional_extensionality; unfold mem_union; intros.
+  case_eq (x x1); intuition. rewrite H1 in H0; pred.
+  pred.
+Qed.
+
+Lemma emp_star: forall p, p <==> emp * p.
+Proof.
+  intros; split; [ apply pimpl_star_emp | apply star_emp_pimpl ].
+Qed.
+
+Lemma piff_star_r: forall a b c,
+  (a <==> b) ->
+  (a * c <==> b * c).
+Proof.
+  unfold piff, sep_star, pimpl; intuition;
+    repeat deex; repeat eexists; eauto.
+Qed.
+
+Lemma piff_star_l: forall a b c,
+  (a <==> b) ->
+  (c * a <==> c * b).
+Proof.
+  unfold piff, sep_star, pimpl; intuition;
+    repeat deex; repeat eexists; eauto.
+Qed.
+
+Lemma piff_l :
+  forall p p' q,
+  (p <==> p')
+  -> (p' ==> q)
+  -> (p ==> q).
+Proof.
+  firstorder.
+Qed.
+
+Lemma piff_r :
+  forall p q q',
+  (q <==> q')
+  -> (p ==> q')
+  -> (p ==> q).
+Proof.
+  firstorder.
+Qed.
+
+Lemma sep_star_lift2and:
+  forall a b,
+  (a * [[b]]) ==> a /\ [b].
+Proof.
+  unfold sep_star, and, lift, lift_empty, pimpl.
+  intros; repeat deex.
+  assert (mem_union x x0 = x).
+  apply functional_extensionality; intros.
+  unfold mem_union. destruct (x x1); eauto.
+  congruence.
+Qed.
+
+Lemma ptsto_valid:
+  forall a v F m,
+  (a |-> v * F)%pred m
+  -> m a = Some v.
+Proof.
+  unfold sep_star, ptsto.
+  intros; repeat deex.
+  apply mem_union_addr; eauto.
+Qed.
+
+Lemma ptsto_upd:
+  forall a v v0 F m,
+  (a |-> v0 * F)%pred m ->
+  (a |-> v * F)%pred (upd m a v).
+Proof.
+  unfold sep_star, upd; intros; repeat deex.
+  exists (fun a' => if eq_nat_dec a' a then Some v else None).
+  exists x0.
+  split; [|split].
+  - apply functional_extensionality; intro.
+    unfold mem_union; destruct (eq_nat_dec x1 a); eauto.
+    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
+  - unfold mem_disjoint in *. intuition. repeat deex.
+    apply H. repeat eexists; eauto.
+    unfold ptsto in H1; destruct H1.
+    destruct (eq_nat_dec x1 a); subst; eauto.
+    pred.
+  - intuition eauto.
+    unfold ptsto; intuition.
+    destruct (eq_nat_dec a a); pred.
+    destruct (eq_nat_dec a' a); pred.
+Qed.
+
+Lemma pimpl_and_split:
+  forall a b c,
+  (a ==> b)
+  -> (a ==> c)
+  -> (a ==> b /\ c).
+Proof.
+  firstorder.
+Qed.
+
+Opaque sep_star.

@@ -1,6 +1,6 @@
 OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
-MODULES    := HoareLogicCont Extraction
+MODULES    := Prog Pred Hoare SepAuto BasicProg Log Extraction Scratch
 VS         := $(MODULES:%=%.v)
 
 .PHONY: coq clean
@@ -17,7 +17,7 @@ coq: Makefile.coq
 	$(MAKE) -f Makefile.coq
 
 Makefile.coq: Makefile $(VS)
-	coq_makefile -R . Fscq $(VS) -o Makefile.coq
+	coq_makefile $(VS) -o Makefile.coq
 
 clean:: Makefile.coq
 	$(MAKE) -f Makefile.coq clean
