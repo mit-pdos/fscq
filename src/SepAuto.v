@@ -418,6 +418,8 @@ Ltac step' t := intros;
 
 Ltac npintu := normalize_stars_l; split_trailing_lifts; normalize_stars_r; pintu.
 
+Ltac trysep := sep_imply; cancel; unfold stars; simpl; npintu.
+
 Ltac step := step' npintu.
 
 Ltac hoare := repeat step.

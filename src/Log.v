@@ -177,46 +177,31 @@ Module Log : LOG.
       end
     end.
 
+  Definition dataIs xp old cur loglen : pred :=
+    (exists d, diskIs d
+     * [[loglen <= LogLen xp]]
+     * [[validLog xp (LogStart xp) loglen d]]
+     * [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
+         -> old a = d a]]
+     * [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
+         -> cur a = replay (LogStart xp) loglen d a]])%pred.
 
   Definition rep xp (st : logstate) :=
     match st with
       | NoTransaction m =>
-        (* Not committed. *)
         (LogCommit xp) |-> 0
-        (* We're allowed to modify log length (XXX slightly awkward) *)
-      * (exists v0, (LogLength xp) |-> v0)
-        (* Every data address has its value from [m]. *)
-      * diskIs m
+      * (exists len, (LogLength xp) |-> len)
+      * dataIs xp m m 0
 
       | ActiveTxn old cur =>
-        (* Not committed. *)
         (LogCommit xp) |-> 0
       * exists len, (LogLength xp) |-> len
-        (* XXX should we use [and] here instead of [sep_star]?
-         * [sep_star] flattens nicely with [stars].
-         * [and] doesn't require changing cancel, if it's at the top level,
-         * but this one isn't top-level..
-         *)
-      * [[len <= LogLen xp]]
-        (* Every data address has its value from [old]. *)
-      * (diskIs old
-         /\ exists m, diskIs m
-            (* All log entries reference data addresses. *)
-            /\ [[validLog xp (LogStart xp) len m]]
-            (* We may compute the current memory by replaying the log. *)
-            /\ [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
-              -> cur a = replay (LogStart xp) len m a]])
+      * dataIs xp old cur len
 
       | CommittedTxn cur =>
-        (* Committed but not applied. *)
         (LogCommit xp) |-> 1
-        (* Log produces cur. *)
       * exists len, (LogLength xp) |-> len
-          /\ [[len <= LogLen xp]]
-          /\ exists m, diskIs m
-            /\ [[validLog xp (LogStart xp) len m]]
-            /\ [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
-              -> cur a = replay (LogStart xp) len m a]]
+      * exists old, dataIs xp old cur len
     end%pred.
 
   Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
@@ -232,13 +217,14 @@ Module Log : LOG.
          \/ diskIs m * (LogCommit xp) |-> v0 * (LogLength xp) |-> v1 * F }} rec >> rec]]
     }} init xp rx >> rec.
   Proof.
-    unfold init.
+    unfold init, rep, dataIs.
     hoare.
-    - left. sep_imply. normalize_stars_r. cancel.
+    - left. trysep. sep_imply. normalize_stars_r. cancel.
   Qed.
 
   Definition begin xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
+(*
   Hint Extern 1 (_ <= _) => omega.
 
   Ltac t'' := intuition eauto; pred;
@@ -254,6 +240,7 @@ Module Log : LOG.
       | [ |- _ \/ _ ] => (left; solve [t]) || (right; solve [t])
       | _ => idtac
     end.
+*)
 
   Theorem begin_ok : forall xp rx rec,
     {{ exists m F, rep xp (NoTransaction m) * F
@@ -263,6 +250,20 @@ Module Log : LOG.
   Proof.
     unfold begin.
     unfold rep.
+    step.
+    step.
+    admit.
+    step.
+    trysep. eexists. split; eauto. split.
+
+intros.
+             (eapply pimpl_ok; [ solve [ eauto with prog ] | npintu ]).
+sep_imply.
+cancel.
+unfold stars; simpl.
+try omega.
+npintu.
+
     hoare.
     - sep_imply. normalize_stars_r. cancel.
     (* XXX existential variable unification problems.. *)
