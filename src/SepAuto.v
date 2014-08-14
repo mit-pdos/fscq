@@ -312,7 +312,7 @@ Ltac kill_emps_l :=
 Ltac deex_stars_l_one :=
   (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
   match goal with
-  | [ |- (stars ((fun _ => exists _, _)%type :: _) * stars _ ==> _)%pred ] => idtac
+  | [ |- (stars ((exists _, _) :: _) * stars _ ==> _)%pred ] => idtac
   | _ => fail
   end;
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ];
