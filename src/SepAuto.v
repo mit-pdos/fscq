@@ -408,14 +408,16 @@ Ltac split_trailing_lifts :=
   repeat deex_r;
   repeat split_trailing_lift_one.
 
-Ltac npintu := normalize_stars_l; split_trailing_lifts; normalize_stars_r; pintu.
-
 Ltac sep := sep_imply; cancel.
 
-Ltac step := intros;
-             ((eapply pimpl_ok; [ solve [ eauto with prog ] | npintu ])
-                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | npintu | npintu ]));
+Ltac step' t := intros;
+             ((eapply pimpl_ok; [ solve [ eauto with prog ] | t ])
+                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | t | t ]));
              try solve [ intuition sep ]; (unfold stars; simpl);
              try omega.
+
+Ltac npintu := normalize_stars_l; split_trailing_lifts; normalize_stars_r; pintu.
+
+Ltac step := step' npintu.
 
 Ltac hoare := repeat step.
