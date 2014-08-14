@@ -371,7 +371,7 @@ Ltac deex_stars_r_one :=
   end;
   eapply pimpl_trans; [| apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ];
   eapply pimpl_trans; [| apply sep_star_assoc_2 ];
-  eapply pimpl_trans; [| apply pimpl_exists_r_star ];
+  eapply pimpl_trans; [| exact (@pimpl_exists_r_star _ _ _) ];
   eapply pimpl_exists_r; eexists;
   eapply pimpl_trans; [| apply sep_star_assoc_1 ];
   eapply pimpl_trans; [| apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ].
