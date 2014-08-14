@@ -219,7 +219,12 @@ Module Log : LOG.
   Proof.
     unfold init, rep, dataIs.
     hoare.
-    - left. trysep. sep_imply. normalize_stars_r. cancel.
+    - left. sep_imply. normalize_stars_r. cancel. unfold stars; simpl.
+      kill_emp_l.
+      split_trailing_lifts; pintu.
+    - sep_imply. cancel. unfold stars; simpl.
+      kill_emp_l.
+      split_trailing_lifts; pintu.
   Qed.
 
   Definition begin xp rx := (LogLength xp) <-- 0 ;; rx tt.
@@ -248,26 +253,18 @@ Module Log : LOG.
      * [[{{ rep xp (NoTransaction m) * F }} rec >> rec]]
     }} begin xp rx >> rec.
   Proof.
-    unfold begin.
-    unfold rep.
+    unfold begin, rep.
     step.
-    step.
-    admit.
-    step.
-    trysep. eexists. split; eauto. split.
+    (* XXX normalizing right away with "step" leads to creating an existential
+     * variable for log length too early, whereas we need to consider each of
+     * the "or" cases separately, and have different variables for each of them.
+     *)
+    step' pintu.
+    sep_imply. normalize_stars_r. cancel.
+    sep_imply. normalize_stars_r. cancel.
 
-intros.
-             (eapply pimpl_ok; [ solve [ eauto with prog ] | npintu ]).
-sep_imply.
-cancel.
-unfold stars; simpl.
-try omega.
-npintu.
-
-    hoare.
-    - sep_imply. normalize_stars_r. cancel.
-    (* XXX existential variable unification problems.. *)
-  Abort.
+    step.
+  Qed.
 
   Definition silly_nop xp rx :=
     x <- !(LogCommit xp) ;
@@ -280,29 +277,33 @@ npintu.
      * [[{{ [True] }} rec >> rec]]
     }} silly_nop xp rx >> rec.
   Proof.
-    unfold silly_nop.
-    unfold rep.
+    unfold silly_nop, rep.
     hoare.
-    sep_imply. 
-    (* XXX for some reason, normalize_stars_l fails to destruct the "exists" on the left.. *)
-  Abort.
-
+  Qed.
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
   Theorem abort_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
      * [[{{ rep xp (NoTransaction m1) * F }} rx tt >> rec]]
-     * [[{{ rep xp (NoTransaction m1) * F
-         \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]]
+     * [[{{ rep xp (NoTransaction m1) * F }} rec >> rec]]
     }} abort xp rx >> rec.
   Proof.
-    unfold abort.
-    unfold rep.
-    hoare.
-    left. sep_imply. normalize_stars_r. cancel.
-    (* XXX something is not quite right *)
-  Abort.
+    unfold abort, rep.
+    step.
+    (* XXX same problem as in "begin" w.r.t. "step" creating an existential
+     * variable too early..
+     *)
+    step' pintu.
+    sep_imply. normalize_stars_r. cancel.
+    admit. (* XXX need some lemma about dataIs *)
+    sep_imply. normalize_stars_r. cancel.
+    admit. (* XXX need some lemma about dataIs *)
+
+    step.
+    sep_imply. normalize_stars_r. cancel.
+    admit. (* XXX need some lemma about dataIs *)
+  Qed.
 
   Definition write xp a v rx :=
     len <- !(LogLength xp);
@@ -317,15 +318,15 @@ npintu.
 
   Theorem write_ok : forall xp a v rx rec,
     {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
-    /\ [(a |-> v0 * F')%pred m2]
-    /\ [{{ [(a |-> v * F')%pred (upd m2 a v)]
-        /\ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]
-    /\ [{{ [(a |-> v0 * F')%pred m2]
-        /\ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]
-    /\ [{{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec]
+     * [[(a |-> v0 * F')%pred m2]]
+     * [[{{ [[(a |-> v * F')%pred (upd m2 a v)]]
+          * rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]]
+     * [[{{ [[(a |-> v0 * F')%pred m2]]
+          * rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]]
+     * [[{{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec]]
     }} write xp a v rx >> rec.
   Proof.
-    unfold write.
+    unfold write, rep.
     hoare.
     (* Too hard to do 13 cases by hand.. *)
   Abort.
