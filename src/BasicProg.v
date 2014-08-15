@@ -117,26 +117,22 @@ Theorem for_ok:
    * [[forall lfinal, {{ nocrash (n+i) lfinal }} (rx lfinal) >> rec]]
   }} (For_ f i n li nocrash crashed rx) >> rec.
 Proof.
-(*
   induction n.
   - intros.
-    eapply pimpl_pre.
+    eapply pimpl_pre; normalize_stars_l.
     + unfold pimpl; intuition pred.
     + unfold pimpl; pred.
   - intros.
-    eapply pimpl_pre.
+    eapply pimpl_pre; normalize_stars_l.
     + unfold pimpl; intuition pred.
-      eapply H1; try omega.
+      eapply H0; try omega.
       intros.
       eapply pimpl_ok.
       apply IHn.
-      unfold pimpl; intuition pred.
-      eapply H1; try omega; eauto.
-      replace (n + S i) with (S (n + i)) by omega.
-      eauto.
+      split_trailing_lifts; eauto; unfold pimpl, lift; intuition pred.
+      replace (n + S i) with (S (n + i)) by omega; eauto.
+      eapply H0; try omega; eauto.
     + unfold pimpl; pred.
-*)
-  admit.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
