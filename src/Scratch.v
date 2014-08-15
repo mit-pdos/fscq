@@ -29,45 +29,41 @@ Qed.
 Hint Extern 1 ({{_}} progseq (do_two_writes _ _ _ _) _ >> _) => apply two_writes : prog.
 
 Example read_write: forall a v rx rec,
-  ({{ exists v' F,
-      a |-> v' * F
-   /\ [{{ a |-> v * F }} (rx v) >> rec]
-   /\ [{{ (a |-> v' * F) \/
-          (a |-> v * F) }} rec >> rec] }}
-   Write a v ;; x <- Read a ; rx x >> rec)%pred.
+  {{ exists v' F,
+     a |-> v' * F
+   * [[{{ a |-> v * F }} (rx v) >> rec]]
+   * [[{{ (a |-> v' * F)
+       \/ (a |-> v * F) }} rec >> rec]]
+  }} Write a v ;; x <- Read a ; rx x >> rec.
 Proof.
   hoare.
 Qed.
 
 Example four_writes: forall a1 a2 v1 v2 rx rec,
-  ({{ exists v1' v2' F,
-      a1 |-> v1' * a2 |-> v2' * F
-   /\ [{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]
-   /\ [{{ (a1 |-> v1' * a2 |-> v2' * F) \/
-          (a1 |-> v1 * a2 |-> v2' * F) \/
-          (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec] }}
-   do_two_writes a1 a2 v1 v2 ;; do_two_writes a1 a2 v1 v2 ;; rx >> rec)%pred.
+  {{ exists v1' v2' F,
+     a1 |-> v1' * a2 |-> v2' * F
+   * [[{{ a1 |-> v1 * a2 |-> v2 * F }} rx >> rec]]
+   * [[{{ (a1 |-> v1' * a2 |-> v2' * F)
+       \/ (a1 |-> v1 * a2 |-> v2' * F)
+       \/ (a1 |-> v1 * a2 |-> v2 * F) }} rec >> rec]]
+  }} do_two_writes a1 a2 v1 v2 ;; do_two_writes a1 a2 v1 v2 ;; rx >> rec.
 Proof.
   hoare.
 Qed.
 
 Example inc_up_to_5: forall a rx rec,
-  ({{ exists v F,
-      a |-> v * F
-   /\ [{{ [v < 5] --> (a |-> (S v) * F)
-       /\ [v >= 5] --> (a |-> v * F) }} rx >> rec]
-(*
-   /\ [{{ (a |-> (S v) * F)
-       \/ (a |-> v * F) }} rx >> rec]
-*)
-   /\ [{{ (a |-> v * F) \/
-          (a |-> S v * F) }} rec >> rec] }}
-   x <- !a;
-   If (lt_dec x 5) {
-     a <-- (S x) ;; rx
-   } else {
-     rx
-   } >> rec)%pred.
+  {{ exists v F,
+     a |-> v * F
+   * [[{{ [v < 5] --> (a |-> (S v) * F)
+       /\ [v >= 5] --> (a |-> v * F) }} rx >> rec]]
+   * [[{{ (a |-> v * F)
+       \/ (a |-> S v * F) }} rec >> rec]]
+  }} x <- !a;
+  If (lt_dec x 5) {
+    a <-- (S x) ;; rx
+  } else {
+    rx
+  } >> rec.
 Proof.
   hoare.
 Qed.
