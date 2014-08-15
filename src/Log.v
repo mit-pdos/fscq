@@ -281,6 +281,19 @@ Module Log : LOG.
     hoare.
   Qed.
 
+  Lemma dataIs_truncate:
+    forall xp old cur len,
+    dataIs xp old cur len ==> dataIs xp old old 0.
+  Proof.
+    intros.
+    unfold dataIs.
+    normalize_stars_l. split_trailing_lifts; eauto.
+    pintu.
+    pintu.
+    pintu.
+    pintu.
+  Qed.
+
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
   Theorem abort_ok : forall xp rx rec,
@@ -290,19 +303,16 @@ Module Log : LOG.
     }} abort xp rx >> rec.
   Proof.
     unfold abort, rep.
-    step.
+    step;
+    assert (dataIs xp x x0 x2 ==> dataIs xp x x 0) by eauto using dataIs_truncate.
     (* XXX same problem as in "begin" w.r.t. "step" creating an existential
      * variable too early..
      *)
     step' pintu.
     sep_imply. normalize_stars_r. cancel.
-    admit. (* XXX need some lemma about dataIs *)
     sep_imply. normalize_stars_r. cancel.
-    admit. (* XXX need some lemma about dataIs *)
 
     step.
-    sep_imply. normalize_stars_r. cancel.
-    admit. (* XXX need some lemma about dataIs *)
   Qed.
 
   Definition write xp a v rx :=
