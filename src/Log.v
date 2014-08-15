@@ -338,16 +338,22 @@ Module Log : LOG.
   Proof.
     unfold write, rep.
     hoare.
-    (* Too hard to do 13 cases by hand.. *)
+    - sep.
+      (* Need to relate:
+       *   (LogStart xp + x4 * 2) |-> a
+       * with:
+       *   dataIs xp x ?16193 ?16234
+       * where x4 is the current log length (?16234).
+       *)
   Abort.
 
-(*
-  Definition apply xp := $(mem:
+  Definition apply xp rx :=
     len <- !(LogLength xp);
     For i < len
-      Ghost cur
-      Loopvar _
-      Invariant (exists m, diskIs m
+      Loopvar _ < tt
+      Continuation lrx
+      Invariant (*
+        (exists m, diskIs m
         /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
           -> cur a = replay (LogStart xp) len m a]
         /\ (LogCommit xp) |-> 1
@@ -355,16 +361,23 @@ Module Log : LOG.
         /\ [len <= LogLen xp]
         /\ [validLog xp (LogStart xp) len m]
         /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-          -> m a = replay (LogStart xp) i m a])
-      OnCrash rep xp (NoTransaction cur) \/
-              rep xp (CommittedTxn cur)
+          -> m a = replay (LogStart xp) i m a]) *)
+        [[True]]
+      OnCrash
+        (* XXX how to specify "cur" here? previously this was the ghost variable.. *)
+        (*
+        rep xp (NoTransaction cur) \/
+        rep xp (CommittedTxn cur)
+        *)
+        [[True]]
       Begin
       a <- !(LogStart xp + i*2);
       v <- !(LogStart xp + i*2 + 1);
-      a <-- v
-    Pool tt;;
-    (LogCommit xp) <-- 0
-  ).
+      a <-- v;;
+      lrx tt
+    Rof;;
+    (LogCommit xp) <-- 0;;
+    rx tt.
 
   Lemma validLog_irrel : forall xp a len m1 m2,
     validLog xp a len m1
