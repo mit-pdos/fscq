@@ -350,7 +350,7 @@ Module Log : LOG.
   Definition apply xp rx :=
     len <- !(LogLength xp);
     For i < len
-      Loopvar _ < tt
+      Loopvar _ <- tt
       Continuation lrx
       Invariant (*
         (exists m, diskIs m

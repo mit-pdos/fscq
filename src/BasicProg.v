@@ -136,7 +136,7 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
-Notation "'For' i < n 'Loopvar' l < l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
         0 n l0
         (fun i l => nocrash%pred)

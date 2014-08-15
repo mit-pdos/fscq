@@ -73,7 +73,7 @@ Example count_up: forall (n:nat) rx rec F,
   /\ [{{ F }} (rx n) >> rec]
   /\ [{{ F }} rec >> rec]
   }} r <- For i < n
-     Loopvar l < 0
+     Loopvar l <- 0
      Continuation lrx
      Invariant
        [l=i] /\ F
