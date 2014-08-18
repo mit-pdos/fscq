@@ -78,6 +78,7 @@ Inductive logstate :=
 | CommittedTxn (cur : mem)
 (* A transaction has committed but the log has not been applied yet. *).
 
+(*
 Module Type LOG.
   (* Methods *)
   Parameter init : xparams -> (unit -> prog) -> prog.
@@ -155,8 +156,9 @@ Module Type LOG.
         \/ ([(a |-> v0 * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F) }} rec >> rec]
     }} write xp a v rx >> rec.
 End LOG.
+*)
 
-Module Log : LOG.
+Module Log (* : LOG *).
   (* Actually replay a log to implement redo in a memory. *)
   Fixpoint replay (a : addr) (len : nat) (m : mem) : mem :=
     match len with
@@ -614,6 +616,30 @@ Module Log : LOG.
 
 End Log.
 
+(* Ideally, would detect log overflow in this wrapper, and call the rx continuation
+ * with (None) for overflow, and (Some v) for successful commit..
+ *)
+Definition txn_wrap (T : Type) xp (p : (T -> prog) -> prog) (rx : T -> prog) :=
+  Log.begin xp;;
+  v <- p;
+  ok <- Log.commit xp;
+  rx v.
+
+Theorem txn_wrap_ok : forall T xp (p : (T -> prog) -> prog) rx rec,
+  {{ exists m1 m2 v F, Log.rep xp (NoTransaction m1) * F
+  /\ [forall prx,
+      {{ exists F', Log.rep xp (ActiveTxn m1 m1) * F'
+      /\ [{{ Log.rep xp (ActiveTxn m1 m2) * F' }} prx v >> Log.recover xp rec]
+      }} p prx >> Log.recover xp rec]
+  /\ [{{ Log.rep xp (NoTransaction m2) * F }} rx v >> Log.recover xp rec]
+  /\ [{{ Log.rep xp (NoTransaction m1) * F
+      \/ Log.rep xp (NoTransaction m2) * F
+      }} rec tt >> Log.recover xp rec]
+  }} txn_wrap xp p rx >> Log.recover xp rec.
+Proof.
+  unfold txn_wrap.
+  hoare.
+Abort.
 
 (*
 Definition wrappable (R:Set) (p:prog R) (fn:mem->mem) := forall m0 m,
