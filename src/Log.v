@@ -183,6 +183,7 @@ Module Log (* : LOG *).
       end
     end.
 
+  (* Rewrite log predicate as exists list of log entries + folded stars of ptsto for each entry *)
   Definition dataIs xp old cur loglen : pred :=
     (exists d, diskIs d
      * [[loglen <= LogLen xp]]
@@ -243,14 +244,6 @@ Module Log (* : LOG *).
   Proof.
     unfold begin, rep.
     step.
-
-Ltac t := pintu.
-intros.
-             ((eapply pimpl_ok; [ solve [ eauto with prog ] | t ])
-                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | t | t ])).
-             try solve [ intuition sep ]; (unfold stars; simpl);
-             try omega.
-
     (* XXX normalizing right away with "step" leads to creating an existential
      * variable for log length too early, whereas we need to consider each of
      * the "or" cases separately, and have different variables for each of them.
@@ -325,10 +318,8 @@ intros.
   Theorem write_ok : forall xp a v rx rec,
     {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
      * [[(a |-> v0 * F')%pred m2]]
-     * [[{{ [[(a |-> v * F')%pred (upd m2 a v)]]
-          * rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]]
-     * [[{{ [[(a |-> v0 * F')%pred m2]]
-          * rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]]
+     * [[{{ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]]
+     * [[{{ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]]
      * [[{{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec]]
     }} write xp a v rx >> rec.
   Proof.
@@ -630,7 +621,7 @@ End Log.
 Definition txn_wrap (T : Type) xp (p : (T -> prog) -> prog) (rx : T -> prog) :=
   Log.begin xp;;
   v <- p;
-  ok <- Log.commit xp;
+  Log.commit xp;;
   rx v.
 
 Theorem txn_wrap_ok : forall T xp (p : (T -> prog) -> prog) rx rec,
@@ -648,6 +639,8 @@ Proof.
   unfold txn_wrap.
   hoare.
 Abort.
+
+
 
 (*
 Definition wrappable (R:Set) (p:prog R) (fn:mem->mem) := forall m0 m,
