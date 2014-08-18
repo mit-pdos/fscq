@@ -93,10 +93,14 @@ Module Type LOG.
 
   (* Specs *)
   Axiom init_ok : forall xp rx rec,
-    {{ exists m F, diskIs m * F
-    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m) * F
-        \/ F }} rec >> rec]
+    {{ exists m F v0 v1,
+       diskIs m
+     * (LogCommit xp) |-> v0
+     * (LogLength xp) |-> v1
+     * F
+     * [[{{ rep xp (NoTransaction m) * F }} rx tt >> rec]]
+     * [[{{ rep xp (NoTransaction m) * F
+         \/ diskIs m * (LogCommit xp) |-> v0 * (LogLength xp) |-> v1 * F }} rec >> rec]]
     }} init xp rx >> rec.
 
   Axiom begin_ok : forall xp rx rec,
@@ -228,24 +232,6 @@ Module Log : LOG.
   Qed.
 
   Definition begin xp rx := (LogLength xp) <-- 0 ;; rx tt.
-
-(*
-  Hint Extern 1 (_ <= _) => omega.
-
-  Ltac t'' := intuition eauto; pred;
-    try solve [ symmetry; eauto ].
-
-  Ltac t' := t'';
-    repeat (match goal with
-              | [ |- ex _ ] => eexists
-            end; t'').
-
-  Ltac t := t';
-    match goal with
-      | [ |- _ \/ _ ] => (left; solve [t]) || (right; solve [t])
-      | _ => idtac
-    end.
-*)
 
   Theorem begin_ok : forall xp rx rec,
     {{ exists m F, rep xp (NoTransaction m) * F
@@ -379,6 +365,7 @@ Module Log : LOG.
     (LogCommit xp) <-- 0;;
     rx tt.
 
+(*
   Lemma validLog_irrel : forall xp a len m1 m2,
     validLog xp a len m1
     -> (forall a', a <= a' < a + len*2
@@ -451,7 +438,22 @@ Module Log : LOG.
     2: exists x; eauto.
     tauto.
   Qed.
+*)
 
+  Theorem apply_ok : forall xp rx rec,
+    {{ exists m F, rep xp (CommittedTxn m) * F
+    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m) * F
+        \/ rep xp (CommittedTxn m) * F }} rec >> rec]
+    }} apply xp rx >> rec.
+  Proof.
+    unfold apply.
+    hoare.
+  Admitted.
+
+  Hint Extern 1 ({{_}} progseq (apply _) _ >> _) => apply apply_ok : prog.
+
+(*
   Theorem apply_ok : forall xp m, {{rep xp (CommittedTxn m)}} (apply xp)
     {{r, rep xp (NoTransaction m)
       \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
@@ -488,55 +490,73 @@ Module Log : LOG.
       pred.
       firstorder.
   Qed.
+*)
 
-  Definition commit xp := $(unit:
+  Definition commit xp rx :=
     (LogCommit xp) <-- 1;;
-    Call1 (apply_ok xp)
-  ).
+    apply xp;;
+    rx tt.
 
-  Theorem commit_ok : forall xp m1 m2, {{rep xp (ActiveTxn (m1, m2))}}
-    (commit xp)
-    {{r, rep xp (NoTransaction m2)
-      \/ ([r = Crashed] /\ (rep xp (ActiveTxn (m1, m2)) \/
-                            rep xp (CommittedTxn m2)))}}.
+  Theorem commit_ok : forall xp rx rec,
+    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+    /\ [{{ rep xp (NoTransaction m2) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m2) * F
+        \/ rep xp (ActiveTxn m1 m2) * F
+        \/ rep xp (CommittedTxn m2) * F }} rec >> rec]
+    }} commit xp rx >> rec.
   Proof.
+    unfold commit.
     hoare.
-    destruct (H m2); pred.
-    eexists; intuition eauto.
-    eexists; intuition eauto.
-    - eapply validLog_irrel; eauto; pred.
-    - erewrite replay_irrel; eauto; pred.
-  Qed.
+    - right. right. sep_imply.
+      normalize_stars_l.
+      normalize_stars_r. normalize_stars_r.
+      (* XXX have to normalize_stars_r twice because of nested exists *)
+      cancel.
+    - sep_imply. normalize_stars_r. normalize_stars_r. cancel.
+      (* XXX have to normalize_stars_r twice because of nested exists *)
+    - (* XXX the existential variable for LogLength in the goal was created too early... *)
+      sep_imply. normalize_stars_l. cancel.
+  Admitted.
 
-  Definition recover xp := $(unit:
+  Definition recover xp rx :=
     com <- !(LogCommit xp);
     If (eq_nat_dec com 1) {
-      Call1 (apply_ok xp)
+      apply xp rx
     } else {
-      Halt tt
-    }
-  ).
+      rx tt
+    }.
 
-  Theorem recover_ok : forall xp m, {{rep xp (NoTransaction m) \/
-                                      (exists m', rep xp (ActiveTxn (m, m'))) \/
-                                      rep xp (CommittedTxn m)}}
-    (recover xp)
-    {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
+  Theorem recover_ok : forall xp rx rec,
+    {{ exists m F, (rep xp (NoTransaction m) * F \/
+                    (exists m', rep xp (ActiveTxn m m') * F) \/
+                    rep xp (CommittedTxn m) * F)
+    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
+    /\ [{{ rep xp (NoTransaction m) * F
+        \/ rep xp (CommittedTxn m) * F }} rec >> rec]
+    }} recover xp rx >> rec.
   Proof.
+    unfold recover.
     hoare.
-    destruct (H0 m); pred.
-  Qed.
+    - left. sep_imply. normalize_stars_r. cancel.
+    - left. sep_imply. normalize_stars_r. cancel.
+    - left. sep_imply. normalize_stars_r. cancel.
+    - sep_imply. normalize_stars_l. normalize_stars_r.
+      assert (dataIs xp x x1 x2 ==> dataIs xp x x 0) by eauto using dataIs_truncate.
+      cancel.
+    - (* XXX something is wrong.. *)
+  Abort.
 
-  Definition read xp a := $((mem*mem):
+  Definition read xp a rx :=
     len <- !(LogLength xp);
     v <- !a;
 
-    For i < len
-      Ghost old_cur
-      Loopvar v
-      Invariant (
-        [DataStart xp <= a < DataStart xp + DataLen xp]
+    v <- For i < len
+      Loopvar v <- v
+      Continuation lrx
+      Invariant
+        [True]
+(*
+       ([DataStart xp <= a < DataStart xp + DataLen xp]
         /\ (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
           --> a |-> fst old_cur a)
         /\ (LogCommit xp) |-> 0
@@ -547,27 +567,32 @@ Module Log : LOG.
             /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
               -> snd old_cur a = replay (LogStart xp) len m a]
             /\ [v = replay (LogStart xp) i m a])
-      OnCrash rep xp (ActiveTxn old_cur)
+*)
+      OnCrash
+        [True]
+(* rep xp (ActiveTxn old_cur) *)
       Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
         v <- !(LogStart xp + i*2 + 1);
-        Halt v
+        lrx v
       } else {
-        Halt v
+        lrx v
       }
-    Pool v
-  ).
+    Rof;
 
-  Theorem read_ok : forall xp a ms,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp]
-      /\ rep xp (ActiveTxn ms)}}
-    (read xp a)
-    {{r, rep xp (ActiveTxn ms)
-      /\ [r = Crashed \/ r = Halted (snd ms a)]}}.
+    rx v.
+
+  Theorem read_ok : forall xp a rx rec,
+    {{ exists m1 m2 v F F', rep xp (ActiveTxn m1 m2) * F
+    /\ [(a |-> v * F')%pred m2]
+    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec]
+    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
+    }} read xp a rx >> rec.
   Proof.
+    unfold read.
     hoare.
-
+(*
     - eauto 7.
     - eauto 20.
     - eauto 20.
@@ -584,54 +609,9 @@ Module Log : LOG.
     - eauto 10.
 
     - rewrite H6; pred.
-  Qed.
-
-  Definition write xp a v := $(unit:
-    len <- !(LogLength xp);
-    If (le_lt_dec (LogLen xp) len) {
-      Crash
-    } else {
-      (LogStart xp + len*2) <-- a;;
-      (LogStart xp + len*2 + 1) <-- v;;
-      (LogLength xp) <-- (S len)
-    }
-  ).
-
-  Theorem write_ok : forall xp a v ms,
-    {{[DataStart xp <= a < DataStart xp + DataLen xp]
-      /\ rep xp (ActiveTxn ms)}}
-    (write xp a v)
-    {{r, rep xp (ActiveTxn (fst ms, upd (snd ms) a v))
-      \/ ([r = Crashed] /\ rep xp (ActiveTxn ms))}}.
-  Proof.
-    hoare.
-
-    - right; intuition.
-      + pred.
-      + eexists; intuition eauto.
-        eexists; intuition eauto.
-        * eapply validLog_irrel; eauto; pred.
-        * erewrite replay_irrel; eauto; pred.
-
-    - right; intuition.
-      + pred.
-      + eexists; intuition eauto.
-        eexists; intuition eauto.
-        * eapply validLog_irrel; eauto; pred.
-        * erewrite replay_irrel; eauto; pred.
-
-    - left; intuition.
-      + pred.
-      + eexists; intuition eauto.
-        eexists; intuition eauto.
-        * pred.
-          eapply validLog_irrel; eauto; pred.
-        * pred.
-          apply upd_same; pred.
-          rewrite H11 by auto.
-          erewrite replay_irrel; eauto; pred.
-  Qed.
 *)
+  Abort.
+
 End Log.
 
 
