@@ -243,6 +243,14 @@ Module Log (* : LOG *).
   Proof.
     unfold begin, rep.
     step.
+
+Ltac t := pintu.
+intros.
+             ((eapply pimpl_ok; [ solve [ eauto with prog ] | t ])
+                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | t | t ])).
+             try solve [ intuition sep ]; (unfold stars; simpl);
+             try omega.
+
     (* XXX normalizing right away with "step" leads to creating an existential
      * variable for log length too early, whereas we need to consider each of
      * the "or" cases separately, and have different variables for each of them.

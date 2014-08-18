@@ -8,7 +8,10 @@ Work out an example of non-determinism in the API (e.g., make
 Work out an example of higher-level abstraction (e.g., HoareLogicRefine.v).
 
 Work out an example of ephemeral state (e.g., a single-block buffer cache);
-  probably needs higher-level abstraction.
+  probably needs higher-level abstraction.  Adam suggests passing ephemeral
+  state as an argument to each function, and also passing it to the rep
+  invariant (e.g., Log.rep), which would then be able to capture invariants
+  about both on-disk and in-memory state.
 
 Work out an example that needs separation logic (e.g., split the two
   block writes from write_two_blocks into separate programs, and then

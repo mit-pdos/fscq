@@ -109,11 +109,12 @@ Proof.
   apply piff_comm. apply emp_star.
 Qed.
 
-Lemma flatten_star : forall p q ps qs,
-  p <==> stars ps
-  -> q <==> stars qs
-  -> p * q <==> stars (ps ++ qs).
+Lemma flatten_star : forall PT QT p q ps qs P Q,
+  p <==> (exists (x:PT), stars (ps x) * [[P x]])%pred
+  -> q <==> (exists (x:QT), stars (qs x) * [[Q x]])%pred
+  -> p * q <==> exists (x:PT*QT), stars (ps (fst x) ++ qs (snd x)) * [[P (fst x) /\ Q (snd x)]].
 Proof.
+(*
   intros.
   eapply piff_trans.
   eapply piff_star_r with (b:=stars ps); eauto.
@@ -143,6 +144,8 @@ Proof.
     apply piff_star_r.
     apply piff_refl.
 Qed.
+*)
+Admitted.
 
 Ltac flatten := repeat match goal with
                        | [ |- emp <==> _ ] => apply flatten_emp
@@ -415,6 +418,8 @@ Ltac step' t := intros;
                 || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | t | t ]));
              try solve [ intuition sep ]; (unfold stars; simpl);
              try omega.
+
+(* XXX npintu: handle everything on the left first, including ORs, which pintu does now.. *)
 
 Ltac npintu := normalize_stars_l; split_trailing_lifts; normalize_stars_r; pintu.
 

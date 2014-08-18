@@ -54,6 +54,8 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
 
+(* write_ok' : start with a in domain of m and (diskIs m), end with (diskIs (upd m a v)) *)
+
 Theorem write_ok:
   forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
   {{ exists v0 F, a |-> v0 * F
@@ -95,10 +97,10 @@ Qed.
 Hint Extern 1 ({{_}} If_ _ _ _ >> _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
-Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
+Fixpoint For_ (L : Set) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
               (i n : nat) (l : L)
-              (nocrash : nat -> L -> pred)
-              (crashed : pred)
+              (nocrash : G -> nat -> L -> pred)
+              (crashed : G -> pred)
               (rx: L -> prog) : prog :=
   match n with
     | O => rx l
@@ -106,29 +108,36 @@ Fixpoint For_ (L : Set) (f : nat -> L -> (L -> prog) -> prog)
   end.
 
 Theorem for_ok:
-  forall (L : Set) f rx rec (nocrash : nat -> L -> pred) (crashed : pred)
+  forall (L : Set) (G : Type)
+         f rx rec (nocrash : G -> nat -> L -> pred) (crashed : G -> pred)
          n i (li : L),
-  {{ nocrash i li
-   * [[forall m l, nocrash m l ==> crashed]]
+  {{ exists (g:G), nocrash g i li
+   * [[forall m l, nocrash g m l ==> crashed g]]
    * [[forall m lm rxm,
       i <= m < n + i ->
-      (forall lSm, {{ nocrash (S m) lSm }} (rxm lSm) >> rec) ->
-      {{ nocrash m lm }} f m lm rxm >> rec]]
-   * [[forall lfinal, {{ nocrash (n+i) lfinal }} (rx lfinal) >> rec]]
+      (forall lSm, {{ nocrash g (S m) lSm }} (rxm lSm) >> rec) ->
+      {{ nocrash g m lm }} f m lm rxm >> rec]]
+   * [[forall lfinal, {{ nocrash g (n+i) lfinal }} (rx lfinal) >> rec]]
   }} (For_ f i n li nocrash crashed rx) >> rec.
 Proof.
   induction n.
   - intros.
+    apply corr_exists.
+    intros.
     eapply pimpl_pre; normalize_stars_l.
     + unfold pimpl; intuition pred.
     + unfold pimpl; pred.
   - intros.
+    apply corr_exists.
+    intros.
     eapply pimpl_pre; normalize_stars_l.
-    + unfold pimpl; intuition pred.
+    + unfold pimpl; intuition idtac.
       eapply H0; try omega.
       intros.
       eapply pimpl_ok.
       apply IHn.
+      apply pimpl_exists_r.
+      exists a.
       split_trailing_lifts; eauto; unfold pimpl, lift; intuition pred.
       replace (n + S i) with (S (n + i)) by omega; eauto.
       eapply H0; try omega; eauto.
@@ -139,7 +148,15 @@ Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
 Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
         0 n l0
-        (fun i l => nocrash%pred)
-        (crashed%pred))
+        (fun (_:unit) i l => nocrash%pred)
+        (fun (_:unit) => crashed%pred))
   (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
+   body at level 9).
+
+Notation "'For' i < n 'Ghost' g 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun i l lrx => body)
+        0 n l0
+        (fun g i l => nocrash%pred)
+        (fun g => crashed%pred))
+  (at level 9, i at level 0, n at level 0, g at level 0, lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).

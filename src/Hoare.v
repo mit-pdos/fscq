@@ -51,3 +51,11 @@ Theorem pre_false:
 Proof.
   firstorder.
 Qed.
+
+Theorem corr_exists:
+  forall T pre p rec,
+  (forall (a:T), {{ pre a }} p >> rec) ->
+  {{ exists a:T, pre a }} p >> rec.
+Proof.
+  firstorder.
+Qed.

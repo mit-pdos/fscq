@@ -86,6 +86,18 @@ Example count_up: forall (n:nat) rx rec F,
      Rof; rx r
   >> rec.
 Proof.
+  intros.
+  step' pintu.
+  exists tt.
+  sep_imply.
+  split_trailing_lifts.
+
+  eapply pimpl_ok.
+  eauto with prog.
+  apply for_ok.
+  pintu.
+  exists tt.
+Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
   hoare.
 Qed.
 
