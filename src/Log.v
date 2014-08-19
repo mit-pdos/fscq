@@ -412,24 +412,36 @@ Module Log.
 
   Theorem commit_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-    /\ [{{ rep xp (NoTransaction m2) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m2) * F
-        \/ rep xp (ActiveTxn m1 m2) * F
-        \/ rep xp (CommittedTxn m2) * F }} rec >> rec]
+     * [[ {{ rep xp (NoTransaction m2) * F }} rx tt >> rec ]]
+     * [[ {{ rep xp (NoTransaction m2) * F
+          \/ rep xp (ActiveTxn m1 m2) * F
+          \/ rep xp (CommittedTxn m2) * F }} rec >> rec ]]
     }} commit xp rx >> rec.
   Proof.
-    unfold commit.
-    hoare.
-    - right. right. sep_imply.
-      normalize_stars_l.
-      normalize_stars_r. normalize_stars_r.
-      (* XXX have to normalize_stars_r twice because of nested exists *)
-      cancel.
-    - sep_imply. normalize_stars_r. normalize_stars_r. cancel.
-      (* XXX have to normalize_stars_r twice because of nested exists *)
-    - (* XXX the existential variable for LogLength in the goal was created too early... *)
-      sep_imply. normalize_stars_l. cancel.
-  Admitted.
+    unfold commit; log_unfold.
+    step.
+    step.
+
+    (* XXX need to log_unfold again, because these guys came from apply_ok's theorem *)
+    log_unfold.
+    norm. cancel. intuition eauto.
+
+    (* XXX need to log_unfold again *)
+    log_unfold.
+    step.
+    norm. apply stars_or_right. apply stars_or_right. unfold stars; simpl.
+    norm. cancel.
+    intuition eauto. intuition eauto.
+
+    step.
+    norm. apply stars_or_right. apply stars_or_right. unfold stars; simpl.
+    norm. cancel.
+    intuition eauto. intuition eauto.
+
+    norm. apply stars_or_right. apply stars_or_left. unfold stars; simpl.
+    norm. cancel.
+    intuition eauto. intuition eauto.
+  Qed.
 
   Definition recover xp rx :=
     com <- !(LogCommit xp);
@@ -443,12 +455,15 @@ Module Log.
     {{ exists m F, (rep xp (NoTransaction m) * F \/
                     (exists m', rep xp (ActiveTxn m m') * F) \/
                     rep xp (CommittedTxn m) * F)
-    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m) * F
-        \/ rep xp (CommittedTxn m) * F }} rec >> rec]
+     * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
+     * [[ {{ rep xp (NoTransaction m) * F
+          \/ rep xp (CommittedTxn m) * F }} rec >> rec ]]
     }} recover xp rx >> rec.
   Proof.
-    unfold recover.
+    unfold recover; log_unfold.
+    step.
+    norm.
+
     hoare.
     - left. sep_imply. normalize_stars_r. cancel.
     - left. sep_imply. normalize_stars_r. cancel.
