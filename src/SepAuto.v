@@ -300,10 +300,12 @@ Qed.
 
 Ltac destruct_prod := match goal with
                       | [ H: (?a * ?b)%type |- _ ] => destruct H
+                      | [ H: unit |- _ ] => clear H
                       end.
 
 Ltac destruct_and := match goal with
                      | [ H: ?a /\ ?b |- _ ] => destruct H
+                     | [ H: True |- _ ] => clear H
                      end.
 
 Lemma eexists_pair: forall A B p,
@@ -357,6 +359,7 @@ Ltac step := intros;
              intuition eauto;
              try intu';
              unfold stars; simpl;
-             try omega.
+             try omega;
+             eauto.
 
 Ltac hoare := repeat step.
