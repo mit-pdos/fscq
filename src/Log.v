@@ -299,14 +299,19 @@ Module Log (* : LOG *).
     }} write xp a v rx >> rec.
   Proof.
     unfold write, rep.
-    hoare.
-    - sep.
-      (* Need to relate:
-       *   (LogStart xp + x4 * 2) |-> a
-       * with:
-       *   dataIs xp x ?16193 ?16234
-       * where x4 is the current log length (?16234).
-       *)
+    step.
+    step.
+    step.
+    step.
+    (* XXX need a better rep that plays nice with ptsto *)
+
+    Focus 2.
+    eapply pimpl_ok.
+    eauto with prog.
+    eapply start_normalizing.
+    - eapply piff_trans; [ apply flatten_star | apply piff_refl ].
+      eapply flatten_default.
+      eapply flatten_default.
   Abort.
 
   Definition apply xp rx :=
