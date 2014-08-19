@@ -148,6 +148,18 @@ Module Log.
     unfold logupd; intros; case_eq (eq_nat_dec p' p); congruence.
   Qed.
 
+  Lemma replay_irrel:
+    forall l len off e m,
+    len <= off ->
+    replay (logupd l off e) len m = replay l len m.
+  Proof.
+    induction len; eauto; intros.
+    simpl.
+    rewrite logupd_ne; try omega.
+    rewrite IHlen; try omega.
+    reflexivity.
+  Qed.
+
   Theorem logentry_merge : forall xp l len pos a v,
     pos < len
     -> stars (logentry_ptsto_len xp (logupd l pos (a, v)) len) <==>
@@ -197,9 +209,6 @@ Module Log.
     end%pred.
 
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, log_len.
-(*
-  Opaque log_entries.
-*)
   Hint Extern 1 (okToUnify (log_entries _ _) (log_entries _ _)) => constructor : okToUnify.
 
   Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
@@ -234,14 +243,6 @@ Module Log.
     unfold begin; log_unfold.
     hoare.
   Qed.
-
-(*
-  Lemma log_entries_truncate:
-    forall xp l,
-    log_entries xp l ==> log_entries xp nil.
-  Admitted.
-  Hint Resolve log_entries_truncate : imply.
-*)
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
@@ -361,7 +362,18 @@ Module Log.
      * same domain as [m] due to [m0 a = replay l v0 m a], and nothing else is
      * known about [m]..
      *)
-  Abort.
+    admit.
+
+    rewrite logupd_eq; auto.
+    rewrite replay_irrel; try omega.
+    unfold upd; destruct (eq_nat_dec a0 a); eauto.
+
+    (* XXX these steps require more folding/unfolding of log_entries.. *)
+    admit.
+    admit.
+    admit.
+    step.
+  Qed.
 
   Definition apply xp rx :=
     len <- !(LogLength xp);
