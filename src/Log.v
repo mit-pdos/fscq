@@ -345,11 +345,18 @@ auto.
 
   Qed.
 
-Theorem replace_one : forall ps ps' q p p' F,
+Theorem replace_left : forall ps ps' q p p' F,
   pick p ps ps'
   -> (p ==> p')
   -> (stars (p' :: ps') * F ==> q)
   -> (stars ps * F ==> q).
+Admitted.
+
+Theorem replace_right : forall ps ps' q p p',
+  pick p ps ps'
+  -> (p' ==> p)
+  -> (q ==> stars (p' :: ps'))
+  -> (q ==> stars ps).
 Admitted.
 
 Theorem avail_region_first : forall start len,
@@ -358,6 +365,12 @@ Theorem avail_region_first : forall start len,
 Proof.
   inversion 1; firstorder.
 Qed.
+
+Lemma logentry_ptsto_append : forall xp l a v,
+  logentry_ptsto_len xp l 0 * ((LogStart xp + length l * 2) |-> a)
+  * ((LogStart xp + length l * 2 + 1) |-> v)
+  ==> logentry_ptsto_len xp (l ++ (a, v) :: nil) 0.
+Admitted.
 
   Definition write xp a v rx :=
     len <- !(LogLength xp);
@@ -393,7 +406,7 @@ eapply start_normalizing; [ flatten | flatten | ].
               repeat destruct_and.
 simpl.
 
-eapply replace_one.
+eapply replace_left.
 do 3 apply PickLater.
 apply PickFirst.
 apply eq_refl.
@@ -417,7 +430,7 @@ eapply start_normalizing; [ flatten | flatten | ].
               repeat destruct_and.
 simpl.
 
-eapply replace_one.
+eapply replace_left.
 do 1 apply PickLater.
 apply PickFirst.
 apply eq_refl.
@@ -426,6 +439,31 @@ apply avail_region_first.
 omega.
 
 unfold stars; simpl; norm.
+
+Lemma eq_pimpl : forall a b,
+  a = b
+  -> (a ==> b).
+Proof.
+  intros; subst; firstorder.
+Qed.
+
+assert (exists x, ((S (LogStart xp + length l * 2) |-> v1) ==> (LogStart xp + length l * 2 + x) |-> v1)).
+eexists.
+apply eq_pimpl.
+f_equal.
+omega.
+(* omega does not unify existentials, so safe to okToUnify any two |-> things if their addrs
+ * can be proven equal using omega.
+ *)
+
+assert ((S (LogStart xp + length l * 2) |-> v1) ==> (LogStart xp + length l * 2 + 1) |-> v1).
+
+
+apply eq_pimpl.
+f_equal; omega.
+
+
+
 replace (S (LogStart xp + length l * 2)) with (LogStart xp + length l * 2 + 1) by omega.
 cancel.
 unfold stars; simpl.
@@ -442,6 +480,39 @@ intros;
              try cancel.
              ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
                 || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ])).
+
+norm.
+
+
+eapply replace_right.
+do 2 apply PickLater.
+apply PickFirst.
+apply eq_refl.
+
+eapply logentry_ptsto_append.
+unfold stars; simpl.
+cancel.
+cancel.
+rewrite app_length. simpl.
+
+replace (length l + 1) with (S (length l)) by omega.
+cancel.
+
+replace (S (LogStart xp + length l * 2 + 1)) with (LogStart xp + S (S (length l * 2))) by omega.
+replace (Init.Nat.pred (Init.Nat.pred ((LogLen xp - length l) * 2))) with ((LogLen xp - S (length l)) * 2) by omega.
+cancel.
+
+intuition.
+rewrite app_length. simpl. omega.
+
+admit. (* XXX indomain is not enough, maybe change validLog *)
+
+admit.  (* prove lemma about upd vs. replay with an appended last log entry *)
+
+step.
+
+length_app.
+
              try ( cancel ; try ( progress autorewrite with core in * ; cancel ) ).
              intuition eauto;
              try omega;
