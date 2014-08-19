@@ -385,24 +385,22 @@ Ltac norm' := eapply start_normalizing; [ flatten | flatten | ];
 Ltac norm := repeat norm_or_l; norm'.
 
 Ltac cancel :=
-  match goal with
-  | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
-    solve [ apply stars_or_left; unfold stars; simpl; norm; [|intuition]; cancel
-          | apply stars_or_right; unfold stars; simpl; norm; [|intuition]; cancel ]
-  | [ |- _ ==> _ ] => cancel'
-  end.
-
-Ltac intu' := eauto; match goal with
-  | [ |- _ ==> _ ] => norm; [ solve [ cancel ] | intuition intu' ] 
-  end.
+  unfold stars; simpl;
+  norm; intuition;
+  try match goal with
+      | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
+        solve [ apply stars_or_left; cancel
+              | apply stars_or_right; cancel ]
+      | [ |- _ ==> _ ] => cancel'
+      end;
+  unfold stars; simpl.
 
 Ltac step := intros;
-             ((eapply pimpl_ok; [ solve [ eauto with prog ] | norm ])
-                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | norm | norm ]));
              try cancel;
+             ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
+                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ]));
+             try ( cancel ; try ( progress autorewrite with core in * ; cancel ) );
              intuition eauto;
-             try intu';
-             unfold stars; simpl;
              try omega;
              eauto.
 

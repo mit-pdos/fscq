@@ -80,38 +80,37 @@ Inductive logstate :=
 
 Module Log.
   Definition logentry := (addr * valu)%type.
-  Definition log := nat -> logentry.
+  Definition log := list logentry.
 
   (* Actually replay a log to implement redo in a memory. *)
-  Fixpoint replay (l : log) (len : nat) (m : mem) : mem :=
-    match len with
-    | O => m
-    | S len' =>
-      let (a, v) := l len' in
-      upd (replay l len' m) a v
+  Fixpoint replay (l : log) (m : mem) : mem :=
+    match l with
+    | nil => m
+    | (a, v) :: rest =>
+      replay rest (upd m a v)
     end.
 
   (* Check that a log is well-formed in memory. *)
-  Fixpoint validLog xp (l : log) (len : nat) : Prop :=
-    match len with
-    | O => True
-    | S len' =>
-      let (a, v) := l len' in
+  Fixpoint validLog xp (l : log) : Prop :=
+    match l with
+    | nil => True
+    | (a, _) :: rest =>
       DataStart xp <= a < DataStart xp + DataLen xp
-      /\ validLog xp l len'
+      /\ validLog xp rest
     end.
 
   Definition logentry_ptsto xp (e : logentry) idx :=
     let (a, v) := e in
-    ((LogStart xp + idx*2) |-> a  :: (LogStart xp + idx*2 + 1) |-> v :: nil)%pred.
+    ((LogStart xp + idx*2) |-> a  * (LogStart xp + idx*2 + 1) |-> v)%pred.
 
-  Fixpoint logentry_ptsto_len xp l len :=
-    match len with
-    | O => nil
-    | S len' =>
-      logentry_ptsto xp (l len') len' ++ logentry_ptsto_len xp l len'
+  Fixpoint logentry_ptsto_len xp l idx :=
+    match l with
+    | nil => emp
+    | e :: rest =>
+      logentry_ptsto xp e idx * logentry_ptsto_len xp rest (S idx)
     end%pred.
 
+(*
   Fixpoint logentry_ptsto_lenskip xp l len skipidx :=
     match len with
     | O => nil
@@ -147,7 +146,9 @@ Module Log.
   Proof.
     unfold logupd; intros; case_eq (eq_nat_dec p' p); congruence.
   Qed.
+*)
 
+(*
   Lemma replay_irrel:
     forall l len off e m,
     len <= off ->
@@ -159,7 +160,9 @@ Module Log.
     rewrite IHlen; try omega.
     reflexivity.
   Qed.
+*)
 
+(*
   Theorem logentry_merge : forall xp l len pos a v,
     pos < len
     -> stars (logentry_ptsto_len xp (logupd l pos (a, v)) len) <==>
@@ -167,65 +170,92 @@ Module Log.
               (LogStart xp + pos*2 + 1) |-> v ::
               logentry_ptsto_lenskip xp l len pos).
   Admitted.
+*)
 
   Definition data_rep old : pred :=
     diskIs old.
 
-  Definition log_entries xp (l : log) : pred :=
-    stars (logentry_ptsto_len xp l (LogLen xp)).
+  Notation "a |->?" := (exists v, a |-> v)%pred (at level 35) : pred_scope.
 
-  Definition log_len xp len : pred :=
-    ((LogLength xp) |-> len)%pred.
+  Fixpoint avail_region start len : pred :=
+    match len with
+    | O => emp
+    | S len' => start |->? * avail_region (S start) len'
+    end%pred.
 
-  Definition log_rep xp len l : pred :=
-     (log_len xp len
-      * [[ len <= LogLen xp ]]
-      * [[ validLog xp l len ]]
-      * log_entries xp l)%pred.
+  Definition log_rep xp l : pred :=
+     ((LogLength xp) |-> length l
+      * [[ length l <= LogLen xp ]]
+      * [[ validLog xp l ]]
+      * logentry_ptsto_len xp l 0
+      * avail_region (LogStart xp + length l * 2) ((LogLen xp - length l) * 2))%pred.
 
-  Definition cur_rep xp (old : mem) len (l : log) (cur : mem) : pred :=
+  Definition cur_rep xp (old : mem) (l : log) (cur : mem) : pred :=
     [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
-       -> cur a = replay l len old a ]]%pred.
+       -> cur a = replay l old a ]]%pred.
 
   Definition rep xp (st : logstate) :=
     match st with
       | NoTransaction m =>
         (LogCommit xp) |-> 0
-      * (exists len, log_len xp len)
-      * (exists log, log_entries xp log)
+      * log_rep xp nil
       * data_rep m
 
       | ActiveTxn old cur =>
         (LogCommit xp) |-> 0
-      * exists len log, log_rep xp len log
+      * exists log, log_rep xp log
       * data_rep old
-      * cur_rep xp old len log cur
+      * cur_rep xp old log cur
 
       | CommittedTxn cur =>
         (LogCommit xp) |-> 1
-      * exists len log, log_rep xp len log
+      * exists log, log_rep xp log
       * exists old, data_rep old
-      * cur_rep xp old len log cur
+      * cur_rep xp old log cur
     end%pred.
 
-  Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, log_len.
+  Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
+(*
   Hint Extern 1 (okToUnify (log_entries _ _) (log_entries _ _)) => constructor : okToUnify.
+*)
 
-  Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
+  Definition init xp rx :=
+    (LogLength xp) <-- 0 ;;
+    (LogCommit xp) <-- 0 ;;
+    rx tt.
+
+  Definition any : pred := fun m => True.
+
+Lemma pimpl_any :
+  forall p,
+  p ==> any.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_emp_any :
+  forall p,
+  p ==> emp * any.
+Proof.
+  intros.
+  eapply pimpl_trans; [|apply pimpl_star_emp]; apply pimpl_any.
+Qed.
+
+Hint Resolve pimpl_emp_any.
+
+Hint Extern 1 (okToUnify (LogLength ?a |-> 0) (LogLength ?a |-> @length ?T ?b)) =>
+  unify b (@nil T); constructor : okToUnify.
+
+Hint Rewrite <- plus_n_O minus_n_O.
 
   Theorem init_ok : forall xp rx rec,
-    {{ exists old F l len com, F
+    {{ exists old F, F
      * data_rep old
-     * log_entries xp l
-     * log_len xp len
-     * (LogCommit xp) |-> com
+     * avail_region (LogStart xp) (LogLen xp * 2)
+     * (LogCommit xp) |->?
+     * (LogLength xp) |->?
      * [[ {{ rep xp (NoTransaction old) * F }} rx tt >> rec ]]
-     * [[ {{ rep xp (NoTransaction old) * F
-          \/ data_rep old
-             * log_entries xp l
-             * log_len xp len
-             * (LogCommit xp) |-> com
-             * F }} rec >> rec ]]
+     * [[ {{ any }} rec >> rec ]]
     }} init xp rx >> rec.
   Proof.
     unfold init; log_unfold.
@@ -244,17 +274,90 @@ Module Log.
     hoare.
   Qed.
 
+  Lemma avail_region_grow' : forall xp l idx,
+    length l + idx <= LogLen xp ->
+    logentry_ptsto_len xp l idx *
+      avail_region (LogStart xp + idx * 2 + length l * 2) (((LogLen xp) - length l - idx) * 2) ==>
+    avail_region (LogStart xp + idx * 2) ((LogLen xp - idx) * 2).
+  Proof.
+    induction l; simpl.
+    intros; autorewrite with core; cancel.
+    intros.
+    case_eq ((LogLen xp - idx) * 2); try omega; intros; simpl.
+    destruct n; try omega; intros; simpl.
+    destruct a; unfold logentry_ptsto.
+    replace (LogStart xp + idx * 2 + 1) with (S (LogStart xp + idx * 2)) by omega.
+    cancel.
+    replace (S (S (LogStart xp + idx * 2))) with (LogStart xp + (S idx) * 2) by omega.
+    replace n with ((LogLen xp - (S idx)) * 2) by omega.
+    eapply pimpl_trans; [|apply pimpl_star_emp].
+    eapply pimpl_trans; [|apply IHl].
+    replace (LogStart xp + idx * 2 + S (S (length l * 2))) with (LogStart xp + S idx * 2 + length l * 2) by omega.
+    replace ((LogLen xp - S (length l) - idx) * 2) with ((LogLen xp - length l - S idx) * 2) by omega.
+    cancel.
+    omega.
+  Qed.
+
+  Lemma avail_region_grow : forall xp l,
+    length l <= LogLen xp ->
+    logentry_ptsto_len xp l 0 *
+      avail_region (LogStart xp + length l * 2) (((LogLen xp) - length l) * 2) ==>
+    avail_region (LogStart xp) ((LogLen xp) * 2).
+  Proof.
+    intros.
+    replace (LogStart xp) with (LogStart xp + 0 * 2) by omega.
+    replace (LogLen xp * 2) with ((LogLen xp - 0) * 2) by omega.
+    replace ((LogLen xp - length l) * 2) with (((LogLen xp) - length l - 0) * 2) by omega.
+    apply avail_region_grow'.
+    omega.
+  Qed.
+
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
   Theorem abort_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-     * [[{{ rep xp (NoTransaction m1) * F }} rx tt >> rec]]
-     * [[{{ rep xp (NoTransaction m1) * F }} rec >> rec]]
+     * [[ {{ rep xp (NoTransaction m1) * F }} rx tt >> rec ]]
+     * [[ {{ rep xp (NoTransaction m1) * F
+          \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec ]]
     }} abort xp rx >> rec.
   Proof.
     unfold abort; log_unfold.
     hoare.
+
+eapply pimpl_trans; [|apply pimpl_star_emp].
+eapply pimpl_trans; [|eapply avail_region_grow].
+cancel.
+omega.
+
+norm; intuition.
+apply stars_or_left.
+cancel.
+eapply pimpl_trans; [|apply pimpl_star_emp].
+eapply pimpl_trans; [|eapply avail_region_grow].
+cancel.
+omega.
+
+norm; intuition.
+apply stars_or_right.
+cancel.
+omega.
+auto.
+
   Qed.
+
+Theorem replace_one : forall ps ps' q p p' F,
+  pick p ps ps'
+  -> (p ==> p')
+  -> (stars (p' :: ps') * F ==> q)
+  -> (stars ps * F ==> q).
+Admitted.
+
+Theorem avail_region_first : forall start len,
+  len > 0
+  -> avail_region start len <==> start |->? * avail_region (S start) (Peano.pred len).
+Proof.
+  inversion 1; firstorder.
+Qed.
 
   Definition write xp a v rx :=
     len <- !(LogLength xp);
@@ -279,6 +382,80 @@ Module Log.
     step.
     step.
     step.
+
+intros.
+eapply pimpl_ok.
+eauto with prog.
+eapply start_normalizing; [ flatten | flatten | ].
+              eapply pimpl_exists_l; intros;
+              apply sep_star_lift_l; intros;
+              repeat destruct_prod;
+              repeat destruct_and.
+simpl.
+
+eapply replace_one.
+do 3 apply PickLater.
+apply PickFirst.
+apply eq_refl.
+
+apply avail_region_first.
+omega.
+
+unfold stars; simpl; norm.
+cancel.
+unfold stars; simpl.
+
+intuition.
+
+
+eapply pimpl_ok.
+eauto with prog.
+eapply start_normalizing; [ flatten | flatten | ].
+              eapply pimpl_exists_l; intros;
+              apply sep_star_lift_l; intros;
+              repeat destruct_prod;
+              repeat destruct_and.
+simpl.
+
+eapply replace_one.
+do 1 apply PickLater.
+apply PickFirst.
+apply eq_refl.
+
+apply avail_region_first.
+omega.
+
+unfold stars; simpl; norm.
+replace (S (LogStart xp + length l * 2)) with (LogStart xp + length l * 2 + 1) by omega.
+cancel.
+unfold stars; simpl.
+
+intuition.
+
+
+step.
+
+Hint Extern 1 (okToUnify (logentry_ptsto_len _ _ _) (logentry_ptsto_len _ _ _))
+  => constructor : okToUnify.
+
+intros;
+             try cancel.
+             ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
+                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ])).
+             try ( cancel ; try ( progress autorewrite with core in * ; cancel ) ).
+             intuition eauto;
+             try omega;
+             eauto.
+
+
+step.
+
+    step.
+
+replace ((LogLen xp - length l) * 2) with (S (Peano.pred ((LogLen xp - length l) * 2))) by omega.
+simpl.
+
+
     (* XXX need to fish out the right ptsto from "log_entries xp l".. *)
     eapply pimpl_ok; eauto with prog.
     unfold log_entries.
