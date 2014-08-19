@@ -114,6 +114,11 @@ Proof.
     firstorder.
 Qed.
 
+Lemma flatten_emp' : emp <==> stars nil.
+Proof.
+  firstorder.
+Qed.
+
 Lemma flatten_emp :
   emp <==> exists (x:unit), stars nil * [[True]].
 Proof.
