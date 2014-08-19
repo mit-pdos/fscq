@@ -80,37 +80,87 @@ Inductive logstate :=
 
 Module Log.
   Definition logentry := (addr * valu)%type.
+  Definition log := nat -> logentry.
 
   (* Actually replay a log to implement redo in a memory. *)
-  Fixpoint replay (l : list logentry) (m : mem) : mem :=
-    match l with
-    | nil => m
-    | (a, v) :: rest => replay rest (upd m a v)
+  Fixpoint replay (l : log) (len : nat) (m : mem) : mem :=
+    match len with
+    | O => m
+    | S len' =>
+      let (a, v) := l len' in
+      upd (replay l len' m) a v
     end.
 
   (* Check that a log is well-formed in memory. *)
-  Fixpoint validLog xp (l : list logentry) : Prop :=
-    match l with
-    | nil => True
-    | (a, v) :: rest => DataStart xp <= a < DataStart xp + DataLen xp
-                        /\ validLog xp rest
+  Fixpoint validLog xp (l : log) (len : nat) : Prop :=
+    match len with
+    | O => True
+    | S len' =>
+      let (a, v) := l len' in
+      DataStart xp <= a < DataStart xp + DataLen xp
+      /\ validLog xp l len'
     end.
 
-  Fixpoint logentry_ptsto xp l idx :=
-    match l with
-    | nil => nil
-    | (a, v) :: rest =>
-      (LogStart xp + idx*2) |-> a ::
-      (LogStart xp + idx*2 + 1) |-> v ::
-      logentry_ptsto xp rest (idx+1)
+  Definition logentry_ptsto xp (e : logentry) idx :=
+    let (a, v) := e in
+    ((LogStart xp + idx*2) |-> a  :: (LogStart xp + idx*2 + 1) |-> v :: nil)%pred.
+
+  Fixpoint logentry_ptsto_len xp l len :=
+    match len with
+    | O => nil
+    | S len' =>
+      logentry_ptsto xp (l len') len' ++ logentry_ptsto_len xp l len'
     end%pred.
+
+  Fixpoint logentry_ptsto_lenskip xp l len skipidx :=
+    match len with
+    | O => nil
+    | S len' =>
+      if eq_nat_dec len' skipidx then
+        logentry_ptsto_lenskip xp l len' skipidx
+      else
+        logentry_ptsto xp (l len') len' ++
+        logentry_ptsto_lenskip xp l len' skipidx
+    end%pred.
+
+  Theorem logentry_split : forall xp l len pos,
+    pos < len
+    -> stars (logentry_ptsto_len xp l len) <==>
+       stars ((LogStart xp + pos*2) |-> (fst (l pos)) ::
+              (LogStart xp + pos*2 + 1) |-> (snd (l pos)) ::
+              logentry_ptsto_lenskip xp l len pos).
+  Admitted.
+
+  Definition logupd (l : log) (p : nat) (e : logentry) : log :=
+    fun p' => if eq_nat_dec p' p then e else l p'.
+
+  Lemma logupd_eq: forall l p e p',
+    p' = p
+    -> logupd l p e p' = e.
+  Proof.
+    unfold logupd; intros; case_eq (eq_nat_dec p' p); congruence.
+  Qed.
+
+  Lemma logupd_ne: forall l p e p',
+    p' <> p
+    -> logupd l p e p' = l p'.
+  Proof.
+    unfold logupd; intros; case_eq (eq_nat_dec p' p); congruence.
+  Qed.
+
+  Theorem logentry_merge : forall xp l len pos a v,
+    pos < len
+    -> stars (logentry_ptsto_len xp (logupd l pos (a, v)) len) <==>
+       stars ((LogStart xp + pos*2) |-> a ::
+              (LogStart xp + pos*2 + 1) |-> v ::
+              logentry_ptsto_lenskip xp l len pos).
+  Admitted.
 
   Definition data_rep old : pred :=
     diskIs old.
 
-  Definition log_entries xp (l : list logentry) : pred :=
-    (stars (logentry_ptsto xp l 0) *
-     [[ length l = LogLen xp ]])%pred.
+  Definition log_entries xp (l : log) : pred :=
+    stars (logentry_ptsto_len xp l (LogLen xp)).
 
   Definition log_len xp len : pred :=
     ((LogLength xp) |-> len)%pred.
@@ -118,12 +168,12 @@ Module Log.
   Definition log_rep xp len l : pred :=
      (log_len xp len
       * [[ len <= LogLen xp ]]
-      * [[ validLog xp (firstn len l) ]]
+      * [[ validLog xp l len ]]
       * log_entries xp l)%pred.
 
-  Definition cur_rep xp (old : mem) len (log : list logentry) (cur : mem) : pred :=
+  Definition cur_rep xp (old : mem) len (l : log) (cur : mem) : pred :=
     [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
-       -> cur a = replay (firstn len log) old a ]]%pred.
+       -> cur a = replay l len old a ]]%pred.
 
   Definition rep xp (st : logstate) :=
     match st with
@@ -147,21 +197,23 @@ Module Log.
     end%pred.
 
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, log_len.
+(*
   Opaque log_entries.
+*)
   Hint Extern 1 (okToUnify (log_entries _ _) (log_entries _ _)) => constructor : okToUnify.
 
   Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
 
   Theorem init_ok : forall xp rx rec,
-    {{ exists old F len com, F
+    {{ exists old F l len com, F
      * data_rep old
-     * log_entries xp nil
+     * log_entries xp l
      * log_len xp len
      * (LogCommit xp) |-> com
      * [[ {{ rep xp (NoTransaction old) * F }} rx tt >> rec ]]
      * [[ {{ rep xp (NoTransaction old) * F
           \/ data_rep old
-             * log_entries xp nil
+             * log_entries xp l
              * log_len xp len
              * (LogCommit xp) |-> com
              * F }} rec >> rec ]]
@@ -226,22 +278,89 @@ Module Log.
     step.
     step.
     step.
-    step.
     (* XXX need to fish out the right ptsto from "log_entries xp l".. *)
+    eapply pimpl_ok; eauto with prog.
+    unfold log_entries.
+    norm.
 
+    (* Start fishing out ptsto out of log_entries.. *)
+    Focus 1.
+    delay_one.
+    delay_one.
+
+    (* Try to apply logentry_split to log_entries at the head of stars on the left *)
+    eapply pimpl_trans; [eapply piff_star_r|].
+    apply piff_comm.
+    eapply piff_trans; [apply stars_prepend|].
+    eapply piff_trans; [eapply piff_star_r|].
+    apply logentry_split.
+
+    (* XXX don't want to tell Coq that the existential variable is "v0" yet.. *)
     Focus 2.
-    eapply pimpl_ok.
-    eauto with prog.
-    eapply start_normalizing.
-    - eapply piff_trans; [ apply flatten_star | apply piff_refl ].
-      eapply flatten_default.
-      (* eapply flatten_default. *)
-      (* XXX the second "eapply flatten_default" produces, in Coq 8.4pl3:
-       *
-       * Anomaly: Uncaught exception Not_found. Please report.
-       *
-       * but seems OK with Coq 8.5trunk (56ece74efc25af1b0e09265f3c7fcf74323abcaf).
-       *)
+    eapply piff_trans; [eapply piff_star_r|].
+    eapply piff_trans; [apply stars_prepend|].
+    eapply piff_trans; [eapply piff_star_l|].
+    eapply piff_trans; [apply stars_prepend|].
+    apply flatten_star'.
+    apply flatten_default'.
+    apply flatten_default'.
+    apply flatten_star'.
+    apply flatten_default'.
+    apply piff_refl.
+    apply flatten_star'.
+    apply piff_refl.
+    apply piff_refl.
+
+    (* XXX still don't want to tell Coq that this is "v0" yet.. *)
+    Focus 2.
+    simpl.
+    eapply cancel_one.
+    apply PickFirst.
+    apply eq_refl.  (* XXX okToUnify *)
+
+    repeat delay_one.
+    apply finish_frame.
+
+    (* Finally, can solve (v0 < length l) *)
+    auto.
+    (* Done fishing out ptsto out of log_entries.. *)
+
+    intuition eauto; unfold stars; simpl.
+    step.
+    step.
+    step.
+
+    (* Merge ptsto back into log_entries.. *)
+    Focus 1.
+    eapply pimpl_trans.
+    apply flatten_star'. apply flatten_emp'.
+    apply flatten_star'.
+    (* Re-order the addr and valu [ptsto] preds here for logentry_merge later..
+     * Easier to do here, for now.
+     *)
+    eapply piff_trans; [apply sep_star_assoc|].
+    eapply piff_trans; [apply piff_star_l|].
+    eapply piff_trans; [apply sep_star_comm|].
+    apply flatten_star'.
+    apply flatten_default'.
+    apply flatten_default'.
+    apply flatten_star'. apply flatten_emp'.
+    apply piff_refl.
+    apply piff_refl.
+
+    simpl.
+    eapply pimpl_trans.
+    apply logentry_merge.
+    auto.  (* v0 < LogLen xp *)
+    unfold log_entries. apply pimpl_star_emp.
+    (* Done merging ptsto back into log_entries *)
+
+    rewrite logupd_eq; auto.
+    (* XXX [indomain a m0] doesn't quite tell us [a] is in range, because we don't
+     * know what the domain of [m0] is; all we know is that it seems to have the
+     * same domain as [m] due to [m0 a = replay l v0 m a], and nothing else is
+     * known about [m]..
+     *)
   Abort.
 
   Definition apply xp rx :=
