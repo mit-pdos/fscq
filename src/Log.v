@@ -79,72 +79,95 @@ Inductive logstate :=
 (* A transaction has committed but the log has not been applied yet. *).
 
 Module Log.
+  Definition logentry := (addr * valu)%type.
+
   (* Actually replay a log to implement redo in a memory. *)
-  Fixpoint replay (a : addr) (len : nat) (m : mem) : mem :=
-    match len with
-      | O => m
-      | S len' => match m (a + len'*2) with
-        | None => m
-        | Some logaddr => match m (a + len'*2 + 1) with
-          | None => m
-          | Some logvalu => upd (replay a len' m) logaddr logvalu
-        end
-      end
+  Fixpoint replay (l : list logentry) (m : mem) : mem :=
+    match l with
+    | nil => m
+    | (a, v) :: rest => replay rest (upd m a v)
     end.
 
   (* Check that a log is well-formed in memory. *)
-  Fixpoint validLog xp (a : addr) (len : nat) (m : mem) : Prop :=
-    match len with
-      | O => True
-      | S len' => match m (a + len'*2) with
-        | None => False
-        | Some logaddr => DataStart xp <= logaddr < DataStart xp + DataLen xp
-                       /\ validLog xp a len' m
-      end
+  Fixpoint validLog xp (l : list logentry) : Prop :=
+    match l with
+    | nil => True
+    | (a, v) :: rest => DataStart xp <= a < DataStart xp + DataLen xp
+                        /\ validLog xp rest
     end.
 
-  (* Rewrite log predicate as exists list of log entries + folded stars of ptsto for each entry *)
-  Definition dataIs xp old cur loglen : pred :=
-    (exists d, diskIs d
-     * [[loglen <= LogLen xp]]
-     * [[validLog xp (LogStart xp) loglen d]]
-     * [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
-         -> old a = d a]]
-     * [[forall a, DataStart xp <= a < DataStart xp + DataLen xp
-         -> cur a = replay (LogStart xp) loglen d a]])%pred.
+  Fixpoint logentry_ptsto xp l idx :=
+    match l with
+    | nil => nil
+    | (a, v) :: rest =>
+      (LogStart xp + idx*2) |-> a ::
+      (LogStart xp + idx*2 + 1) |-> v ::
+      logentry_ptsto xp rest (idx+1)
+    end%pred.
+
+  Definition data_rep old : pred :=
+    diskIs old.
+
+  Definition log_entries xp (l : list logentry) : pred :=
+    (stars (logentry_ptsto xp l 0) *
+     [[ length l = LogLen xp ]])%pred.
+
+  Definition log_len xp len : pred :=
+    ((LogLength xp) |-> len)%pred.
+
+  Definition log_rep xp len l : pred :=
+     (log_len xp len
+      * [[ len <= LogLen xp ]]
+      * [[ validLog xp (firstn len l) ]]
+      * log_entries xp l)%pred.
+
+  Definition cur_rep xp (old : mem) len (log : list logentry) (cur : mem) : pred :=
+    [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
+       -> cur a = replay (firstn len log) old a ]]%pred.
 
   Definition rep xp (st : logstate) :=
     match st with
       | NoTransaction m =>
         (LogCommit xp) |-> 0
-      * (exists len, (LogLength xp) |-> len)
-      * dataIs xp m m 0
+      * (exists len, log_len xp len)
+      * (exists log, log_entries xp log)
+      * data_rep m
 
       | ActiveTxn old cur =>
         (LogCommit xp) |-> 0
-      * exists len, (LogLength xp) |-> len
-      * dataIs xp old cur len
+      * exists len log, log_rep xp len log
+      * data_rep old
+      * cur_rep xp old len log cur
 
       | CommittedTxn cur =>
         (LogCommit xp) |-> 1
-      * exists len, (LogLength xp) |-> len
-      * exists old, dataIs xp old cur len
+      * exists len log, log_rep xp len log
+      * exists old, data_rep old
+      * cur_rep xp old len log cur
     end%pred.
+
+  Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, log_len.
+  Opaque log_entries.
+  Hint Extern 1 (okToUnify (log_entries _ _) (log_entries _ _)) => constructor : okToUnify.
 
   Definition init xp rx := (LogCommit xp) <-- 0 ;; rx tt.
 
   Theorem init_ok : forall xp rx rec,
-    {{ exists m F v0 v1,
-       diskIs m
-     * (LogCommit xp) |-> v0
-     * (LogLength xp) |-> v1
-     * F
-     * [[{{ rep xp (NoTransaction m) * F }} rx tt >> rec]]
-     * [[{{ rep xp (NoTransaction m) * F
-         \/ diskIs m * (LogCommit xp) |-> v0 * (LogLength xp) |-> v1 * F }} rec >> rec]]
+    {{ exists old F len com, F
+     * data_rep old
+     * log_entries xp nil
+     * log_len xp len
+     * (LogCommit xp) |-> com
+     * [[ {{ rep xp (NoTransaction old) * F }} rx tt >> rec ]]
+     * [[ {{ rep xp (NoTransaction old) * F
+          \/ data_rep old
+             * log_entries xp nil
+             * log_len xp len
+             * (LogCommit xp) |-> com
+             * F }} rec >> rec ]]
     }} init xp rx >> rec.
   Proof.
-    unfold init, rep, dataIs.
+    unfold init; log_unfold.
     hoare.
   Qed.
 
@@ -156,36 +179,17 @@ Module Log.
      * [[{{ rep xp (NoTransaction m) * F }} rec >> rec]]
     }} begin xp rx >> rec.
   Proof.
-    unfold begin, rep.
+    unfold begin; log_unfold.
     hoare.
   Qed.
 
-  Definition silly_nop xp rx :=
-    x <- !(LogCommit xp) ;
-    (LogCommit xp) <-- x ;;
-    rx tt.
-
-  Theorem silly_nop_ok : forall xp rx rec,
-    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-     * [[{{ rep xp (ActiveTxn m1 m2) * F }} rx tt >> rec]]
-     * [[{{ exists F', F' }} rec >> rec]]
-    }} silly_nop xp rx >> rec.
-  Proof.
-    unfold silly_nop, rep.
-    hoare.
-  Qed.
-
-  Lemma dataIs_truncate:
-    forall xp old cur len,
-    dataIs xp old cur len ==> dataIs xp old old 0.
-  Proof.
-    intros.
-    unfold dataIs.
-    norm.
-    cancel.
-    firstorder.
-  Qed.
-  Hint Resolve dataIs_truncate : imply.
+(*
+  Lemma log_entries_truncate:
+    forall xp l,
+    log_entries xp l ==> log_entries xp nil.
+  Admitted.
+  Hint Resolve log_entries_truncate : imply.
+*)
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
@@ -195,7 +199,7 @@ Module Log.
      * [[{{ rep xp (NoTransaction m1) * F }} rec >> rec]]
     }} abort xp rx >> rec.
   Proof.
-    unfold abort, rep.
+    unfold abort; log_unfold.
     hoare.
   Qed.
 
@@ -212,18 +216,18 @@ Module Log.
 
   Theorem write_ok : forall xp a v rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-     * [[indomain a m2]]
-     * [[{{ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]]
-     * [[{{ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]]
-     * [[{{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec]]
+     * [[ indomain a m2 ]]
+     * [[ {{ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec ]]
+     * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec ]]
+     * [[ {{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec ]]
     }} write xp a v rx >> rec.
   Proof.
-    unfold write, rep.
+    unfold write; log_unfold.
     step.
     step.
     step.
     step.
-    (* XXX need a better rep that plays nice with ptsto *)
+    (* XXX need to fish out the right ptsto from "log_entries xp l".. *)
 
     Focus 2.
     eapply pimpl_ok.
@@ -247,15 +251,12 @@ Module Log.
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        exists m F, F * diskIs m
+        exists old len log F, F
         * (LogCommit xp) |-> 1
-        * (LogLength xp) |-> len
-        * [[ len <= LogLen xp ]]
-        * [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
-             -> cur a = replay (LogStart xp) len m a ]]
-        * [[ validLog xp (LogStart xp) len m ]]
-        * [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
-             -> m a = replay (LogStart xp) i m a ]]
+        * data_rep old
+        * log_rep xp len log
+        * cur_rep xp old len log cur
+        * cur_rep xp old i log old
       OnCrash
         (exists F, rep xp (NoTransaction cur) * F) \/
         (exists F, rep xp (CommittedTxn cur) * F)
@@ -350,7 +351,7 @@ Module Log.
           \/ rep xp (CommittedTxn m) * F }} rec >> rec ]]
     }} apply xp rx >> rec.
   Proof.
-    unfold apply, rep, dataIs.
+    unfold apply; log_unfold.
     step.
     step.
     norm; [|intuition].
