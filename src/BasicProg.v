@@ -89,12 +89,18 @@ Theorem if_ok:
    * [[{{ pre * [[Q]] }} p2 >> rec]]
   }} If_ b p1 p2 >> rec.
 Proof.
-(*
   unfold corr, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
-  destruct b; intuition pred.
-*)
-Admitted.
+  destruct b.
+  - eapply H2; eauto.
+    eapply pimpl_apply; [|apply H].
+    apply sep_star_lift_r.
+    split; pred.
+  - eapply H1; eauto.
+    eapply pimpl_apply; [|apply H].
+    apply sep_star_lift_r.
+    split; pred.
+Qed.
 
 Hint Extern 1 ({{_}} If_ _ _ _ >> _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
@@ -122,18 +128,17 @@ Theorem for_ok:
    * [[forall lfinal, {{ nocrash g (n+i) lfinal }} (rx lfinal) >> rec]]
   }} (For_ f i n li nocrash crashed rx) >> rec.
 Proof.
-(*
   induction n.
   - intros.
     apply corr_exists.
     intros.
-    eapply pimpl_pre; normalize_stars_l.
+    eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl; intuition pred.
     + unfold pimpl; pred.
   - intros.
     apply corr_exists.
     intros.
-    eapply pimpl_pre; normalize_stars_l.
+    eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl; intuition idtac.
       eapply H0; try omega.
       intros.
@@ -141,12 +146,12 @@ Proof.
       apply IHn.
       apply pimpl_exists_r.
       exists a.
-      split_trailing_lifts; eauto; unfold pimpl, lift; intuition pred.
+      repeat ( apply sep_star_lift_r; apply pimpl_and_split );
+        unfold pimpl, lift; intuition eauto.
+      apply H0; eauto; omega.
       replace (n + S i) with (S (n + i)) by omega; eauto.
-      eapply H0; try omega; eauto.
     + unfold pimpl; pred.
-*)
-Admitted.
+Qed.
 
 Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
 Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
