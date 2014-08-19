@@ -231,10 +231,10 @@ Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 Ltac pick := solve [ repeat ((apply PickFirst; solve [ auto with okToUnify ])
                                || apply PickLater) ].
 
-Theorem imply_one : forall qs qs' p p' ps F,
-  (pick p qs qs' /\ (p' ==> p))
+Theorem imply_one : forall qs qs' p q ps F,
+  (pick q qs qs' /\ (p ==> q))
   -> (stars ps * F ==> stars qs')
-  -> stars (p' :: ps) * F ==> stars qs.
+  -> stars (p :: ps) * F ==> stars qs.
 Proof.
   intros. destruct H.
   eapply pimpl_trans. eapply pimpl_sep_star. apply stars_prepend. apply pimpl_refl.
