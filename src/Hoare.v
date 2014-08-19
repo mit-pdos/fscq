@@ -28,11 +28,14 @@ Theorem pimpl_ok_cont :
   forall pre pre' A (k : A -> _) x y rec,
   {{pre'}} k y >> rec ->
   (pre ==> pre') ->
-  (pre ==> [x = y]) ->
+  (pre ==> exists F, F * [[x = y]]) ->
   {{pre}} k x >> rec.
 Proof.
-  unfold corr, pimpl, lift; intros.
-  erewrite H1 in *; eauto.
+  unfold corr, pimpl; intros.
+  edestruct H1; eauto.
+  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
+  unfold lift in H4; rewrite H4 in *; eauto.
+  firstorder.
 Qed.
 
 Theorem pimpl_pre:

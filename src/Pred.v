@@ -374,17 +374,17 @@ Qed.
 Lemma sep_star_lift_l:
   forall (a: Prop) (b c: pred),
   (a -> (b ==> c)) ->
-  [[a]] * b ==> c.
+  b * [[a]] ==> c.
 Proof.
   unfold pimpl, lift_empty, sep_star; intros.
   repeat deex.
-  assert (mem_union x x0 = x0).
+  assert (mem_union x x0 = x).
   apply functional_extensionality; unfold mem_union; intros.
   case_eq (x x1); pred.
   rewrite H. eauto.
 Qed.
 
-Lemma sep_star_lift_r:
+Lemma sep_star_lift_r':
   forall (b: Prop) (a c: pred),
   (a ==> [b] /\ c) ->
   (a ==> [[b]] * c).
@@ -394,6 +394,17 @@ Proof.
   exists m.
   intuition firstorder.
   unfold mem_disjoint. intuition. repeat deex. congruence.
+Qed.
+
+Lemma sep_star_lift_r:
+  forall (a b: pred) (c: Prop),
+  (a ==> b /\ [c]) ->
+  (a ==> b * [[c]]).
+Proof.
+  intros.
+  eapply pimpl_trans; [|apply sep_star_comm].
+  apply sep_star_lift_r'.
+  firstorder.
 Qed.
 
 Lemma pimpl_star_emp: forall p, p ==> emp * p.
@@ -503,6 +514,29 @@ Lemma pimpl_and_split:
   (a ==> b)
   -> (a ==> c)
   -> (a ==> b /\ c).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_and_lift: forall (a b: pred) (c:Prop),
+  (a ==> b)
+  -> c
+  -> (a ==> b /\ [c]).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_or_l: forall (a b c: pred),
+  (a ==> c)
+  -> (b ==> c)
+  -> (a \/ b ==> c).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_or_r: forall (a b c: pred),
+  ((a ==> b) \/ (a ==> c))
+  -> (a ==> b \/ c).
 Proof.
   firstorder.
 Qed.

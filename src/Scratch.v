@@ -54,10 +54,10 @@ Qed.
 Example inc_up_to_5: forall a rx rec,
   {{ exists v F,
      a |-> v * F
-   * [[{{ [v < 5] --> (a |-> (S v) * F)
-       /\ [v >= 5] --> (a |-> v * F) }} rx >> rec]]
-   * [[{{ (a |-> v * F)
-       \/ (a |-> S v * F) }} rec >> rec]]
+   * [[{{ [[v < 5]] * a |-> (S v) * F
+       \/ [[v >= 5]] * a |-> v * F }} rx >> rec]]
+   * [[{{ a |-> v * F
+       \/ a |-> S v * F }} rec >> rec]]
   }} x <- !a;
   If (lt_dec x 5) {
     a <-- (S x) ;; rx
@@ -70,34 +70,22 @@ Qed.
 
 Example count_up: forall (n:nat) rx rec F,
   {{ F
-  /\ [{{ F }} (rx n) >> rec]
-  /\ [{{ F }} rec >> rec]
+   * [[ {{ F }} (rx n) >> rec ]]
+   * [[ {{ F }} rec >> rec ]]
   }} r <- For i < n
      Loopvar l <- 0
      Continuation lrx
      Invariant
-       [l=i] /\ F
-       /\ [{{ F }} rx n >> rec]
-       /\ [{{ F }} rec >> rec]
+       F * [[ l=i ]]
+         * [[ {{ F }} rx n >> rec ]]
+         * [[ {{ F }} rec >> rec ]]
      OnCrash
-       [True]
+       F * [[ True ]]
      Begin
        lrx (S l)
      Rof; rx r
   >> rec.
 Proof.
-  intros.
-  step' pintu.
-  exists tt.
-  sep_imply.
-  split_trailing_lifts.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  apply for_ok.
-  pintu.
-  exists tt.
-Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
   hoare.
 Qed.
 

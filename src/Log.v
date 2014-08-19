@@ -226,12 +226,6 @@ Module Log (* : LOG *).
   Proof.
     unfold init, rep, dataIs.
     hoare.
-    - left. sep_imply. normalize_stars_r. cancel. unfold stars; simpl.
-      kill_emp_l.
-      split_trailing_lifts; pintu.
-    - sep_imply. cancel. unfold stars; simpl.
-      kill_emp_l.
-      split_trailing_lifts; pintu.
   Qed.
 
   Definition begin xp rx := (LogLength xp) <-- 0 ;; rx tt.
@@ -243,16 +237,7 @@ Module Log (* : LOG *).
     }} begin xp rx >> rec.
   Proof.
     unfold begin, rep.
-    step.
-    (* XXX normalizing right away with "step" leads to creating an existential
-     * variable for log length too early, whereas we need to consider each of
-     * the "or" cases separately, and have different variables for each of them.
-     *)
-    step' pintu.
-    sep_imply. normalize_stars_r. cancel.
-    sep_imply. normalize_stars_r. cancel.
-
-    step.
+    hoare.
   Qed.
 
   Definition silly_nop xp rx :=
@@ -263,7 +248,7 @@ Module Log (* : LOG *).
   Theorem silly_nop_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
      * [[{{ rep xp (ActiveTxn m1 m2) * F }} rx tt >> rec]]
-     * [[{{ [True] }} rec >> rec]]
+     * [[{{ exists F', F' }} rec >> rec]]
     }} silly_nop xp rx >> rec.
   Proof.
     unfold silly_nop, rep.
@@ -276,12 +261,11 @@ Module Log (* : LOG *).
   Proof.
     intros.
     unfold dataIs.
-    normalize_stars_l. split_trailing_lifts; eauto.
-    pintu.
-    pintu.
-    pintu.
-    pintu.
+    norm.
+    cancel.
+    firstorder.
   Qed.
+  Hint Resolve dataIs_truncate : imply.
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
@@ -292,16 +276,7 @@ Module Log (* : LOG *).
     }} abort xp rx >> rec.
   Proof.
     unfold abort, rep.
-    step;
-    assert (dataIs xp x x0 x2 ==> dataIs xp x x 0) by eauto using dataIs_truncate.
-    (* XXX same problem as in "begin" w.r.t. "step" creating an existential
-     * variable too early..
-     *)
-    step' pintu.
-    sep_imply. normalize_stars_r. cancel.
-    sep_imply. normalize_stars_r. cancel.
-
-    step.
+    hoare.
   Qed.
 
   Definition write xp a v rx :=

@@ -10,16 +10,6 @@ Set Implicit Arguments.
 
 (** * Separation logic proof automation *)
 
-Ltac intu' :=
-  match goal with
-  | [ H : ex _ |- _ ] => destruct H
-  | [ |- ex _ ] => eexists
-  end.
-
-Ltac intu := intuition; repeat (intu'; intuition).
-
-Ltac pintu := unfold lift, (* lift_empty, *) and, or, pimpl, impl; intu.
-
 Definition stars (ps : list pred) :=
   fold_left sep_star ps emp.
 
@@ -39,6 +29,15 @@ Ltac sep_imply :=
   | [ |- _ _ _ ?m ] => sep_imply' m
   end.
 
+Theorem start_normalizing : forall PT QT p q ps qs P Q,
+  p <==> (exists (x:PT), stars (ps x) * [[P x]])%pred
+  -> q <==> (exists (x:QT), stars (qs x) * [[Q x]])%pred
+  -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) ==>
+      (exists (x:QT), stars (qs x) * [[Q x]]))
+  -> p ==> q.
+Admitted.
+
+(*
 Theorem start_canceling : forall p q ps qs,
   p <==> stars ps
   -> q <==> stars qs
@@ -52,6 +51,7 @@ Proof.
   eapply pimpl_trans; [apply H1|].
   apply H0.
 Qed.
+*)
 
 Theorem restart_canceling:
   forall p q,
@@ -59,17 +59,6 @@ Theorem restart_canceling:
   (stars nil * stars p ==> stars q).
 Proof.
   intros; eapply pimpl_trans; [ eapply sep_star_comm | eauto ].
-Qed.
-
-Lemma flatten_default : forall p,
-  p <==> stars (p :: nil).
-Proof.
-  unfold stars; apply emp_star.
-Qed.
-
-Lemma flatten_emp : emp <==> stars nil.
-Proof.
-  firstorder.
 Qed.
 
 Lemma stars_prepend':
@@ -107,6 +96,31 @@ Proof.
   eapply piff_trans. apply stars_prepend'.
   eapply piff_trans. apply sep_star_assoc.
   apply piff_comm. apply emp_star.
+Qed.
+
+Lemma flatten_default : forall p,
+  p <==> exists (x:unit), stars (p :: nil) * [[True]].
+Proof.
+  unfold stars; split.
+  - apply pimpl_exists_r; exists tt.
+    apply sep_star_lift_r.
+    split; pred. apply pimpl_star_emp; auto.
+  - apply pimpl_exists_l; intros.
+    eapply pimpl_trans; [apply sep_star_lift2and|].
+    eapply pimpl_trans; [|apply star_emp_pimpl].
+    firstorder.
+Qed.
+
+Lemma flatten_emp :
+  emp <==> exists (x:unit), stars nil * [[True]].
+Proof.
+  split.
+  - apply pimpl_exists_r; exists tt.
+    apply sep_star_lift_r.
+    firstorder.
+  - apply pimpl_exists_l; intros.
+    eapply pimpl_trans; [apply sep_star_lift2and|].
+    firstorder.
 Qed.
 
 Lemma flatten_star : forall PT QT p q ps qs P Q,
@@ -147,9 +161,24 @@ Qed.
 *)
 Admitted.
 
+Lemma flatten_exists: forall T PT p ps P,
+  (forall (a:T), (p a <==> exists (x:PT), stars (ps a x) * [[P a x]]))
+  -> (exists (a:T), p a) <==>
+      (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
+Admitted.
+
+Lemma flatten_lift_empty: forall P,
+  [[P]] <==> (exists (x:unit), stars nil * [[P]]).
+Admitted.
+
 Ltac flatten := repeat match goal with
                        | [ |- emp <==> _ ] => apply flatten_emp
-                       | [ |- _ * _ <==> _ ] => eapply flatten_star
+                       | [ |- _ * _ <==> _ ] =>
+                         eapply piff_trans; [ apply flatten_star | apply piff_refl ]
+                       | [ |- (exists _, _)%pred <==> _ ] =>
+                         eapply piff_trans; [ apply flatten_exists | apply piff_refl ]; intros
+                       | [ |- [[_]] <==> _ ] =>
+                         eapply piff_trans; [ apply flatten_lift_empty | apply piff_refl ]
                        | _ => apply flatten_default
                        end.
 
@@ -224,25 +253,11 @@ Proof.
   firstorder.
 Qed.
 
-Ltac pick_imply :=
-  solve [ repeat (solve [ split; [ apply PickFirst; unfold okToUnify; auto | pintu ] ]
-                  || (eapply and_imp; [apply PickLater|]) ) ].
+Ltac pick_imply_this :=
+  split; [ apply PickFirst; apply eq_refl | solve [ eauto with imply ] ].
+Ltac pick_imply_next := eapply and_imp; [apply PickLater|].
+Ltac pick_imply := solve [ repeat (pick_imply_this || pick_imply_next) ].
 Ltac imply_one := eapply imply_one ; [ pick_imply | ].
-
-Lemma finish_lift_one:
-  forall p q,
-  (stars nil * stars q ==> stars nil) ->
-  (stars nil * stars ([[p]] :: q) ==> stars nil).
-Proof.
-  intros.
-  eapply pimpl_trans. apply pimpl_sep_star. apply pimpl_refl. apply stars_prepend.
-  eapply pimpl_trans. apply sep_star_assoc.
-  eapply pimpl_trans. apply pimpl_sep_star. apply sep_star_comm. apply pimpl_refl.
-  eapply pimpl_trans. apply sep_star_assoc.
-  apply sep_star_lift_l. eauto.
-Qed.
-
-Ltac finish_lift_one := apply finish_lift_one.
 
 Lemma finish_frame : forall p,
   stars nil * p ==> stars (p :: nil).
@@ -256,175 +271,92 @@ Proof.
   unfold stars. apply emp_star.
 Qed.
 
-Ltac cancel := eapply start_canceling; [ flatten | flatten | cbv beta; simpl ];
-               repeat (cancel_one || delay_one);
-               eapply restart_canceling;
-               repeat (imply_one || delay_one);
-               repeat finish_lift_one;
-               try (apply finish_frame || apply finish_easier).
+Ltac cancel' := repeat (cancel_one || delay_one);
+                eapply restart_canceling;
+                repeat (imply_one || delay_one);
+                try (apply finish_frame || apply finish_easier).
 
-(* Logic for normalizing a chain of [sep_star]s:
- * - Turn exists in the premise into forall.
- * - Turn exists in the conclusion into existential variables.
- * - Turn lift_empty in the premise into hypotheses.
- * - Turn lift_empty in the conclusion into separate subgoals.
- *)
-Lemma add_stars_nil:
-  forall p,
-  stars p <==> stars p * stars nil.
+Lemma stars_or_left: forall a b c,
+  (a ==> stars (b :: nil))
+  -> (a ==> stars ((b \/ c) :: nil)).
 Proof.
-  intros. eapply piff_trans; [ | apply sep_star_comm ].
-  eapply piff_trans. apply emp_star. firstorder.
+  unfold stars; simpl; intros.
+  eapply pimpl_trans; [|apply pimpl_star_emp].
+  apply pimpl_or_r. left.
+  eapply pimpl_trans; [|apply star_emp_pimpl].
+  eauto.
 Qed.
 
-Lemma stars_skip_r : forall p ps qs,
-  stars ps * stars (p :: qs) ==> stars (p :: ps) * stars qs.
+Lemma stars_or_right: forall a b c,
+  (a ==> stars (c :: nil))
+  -> (a ==> stars ((b \/ c) :: nil)).
+Proof.
+  unfold stars; simpl; intros.
+  eapply pimpl_trans; [|apply pimpl_star_emp].
+  apply pimpl_or_r. right.
+  eapply pimpl_trans; [|apply star_emp_pimpl].
+  eauto.
+Qed.
+
+Ltac destruct_prod := match goal with
+                      | [ H: (?a * ?b)%type |- _ ] => destruct H
+                      end.
+
+Ltac destruct_and := match goal with
+                     | [ H: ?a /\ ?b |- _ ] => destruct H
+                     end.
+
+Lemma eexists_pair: forall A B p,
+  (exists (a:A) (b:B), p (a, b))
+  -> (exists (e:A*B), p e).
 Proof.
   intros.
-  eapply pimpl_trans. eapply pimpl_sep_star; [ apply pimpl_refl | apply stars_prepend ].
-  eapply pimpl_trans; [|eapply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ].
-  eapply pimpl_trans. apply sep_star_assoc_2.
-  eapply pimpl_sep_star; [|eapply pimpl_refl].
-  eapply sep_star_comm.
+  destruct H as [a H].
+  destruct H as [b H].
+  exists (a, b); auto.
 Qed.
 
-Lemma stars_skip_l : forall p ps qs,
-  stars (p :: ps) * stars qs ==> stars ps * stars (p :: qs).
-Proof.
-  intros.
-  eapply pimpl_trans. eapply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ].
-  eapply pimpl_trans; [|eapply pimpl_sep_star; [ apply pimpl_refl | apply stars_prepend ] ].
-  eapply pimpl_trans; [|apply sep_star_assoc_1].
-  eapply pimpl_sep_star; [|eapply pimpl_refl].
-  eapply sep_star_comm.
-Qed.
-
-(* Left-side normalization *)
-
-Ltac kill_emp_l :=
-  eapply pimpl_trans; [ apply star_emp_pimpl
-                        || (eapply pimpl_trans;
-                            [ apply sep_star_comm | apply star_emp_pimpl ]) |].
-Ltac kill_emps_l :=
-  kill_emp_l;
-  ( kill_emp_l ||
-    ( repeat ( eapply pimpl_trans; [ apply sep_star_assoc_1 |] );
-      kill_emp_l;
-      repeat ( eapply pimpl_trans; [ apply sep_star_assoc_2 |] ) ) ).
-
-Ltac deex_stars_l_one :=
-  (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
+Ltac eexists_one :=
   match goal with
-  | [ |- (stars ((exists _, _) :: _) * stars _ ==> _)%pred ] => idtac
-  | _ => fail
-  end;
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ];
-  eapply pimpl_trans; [ apply sep_star_assoc_1 | ];
-  (* Get rid of "exists" on the left side of pimpl *)
-  eapply pimpl_exists_l_star; apply pimpl_exists_l; intros;
-  (* Get rid of potential leftover dummy fun's; might be worth making this a separate pass *)
-  try ( eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_fun_l | apply pimpl_refl ] | ] );
-  eapply pimpl_trans; [ apply sep_star_assoc_2 | ];
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ].
-
-Ltac delift_stars_l_one :=
-  (* Avoid destructing "lift_empty" in an existential variable at the head of stars.. *)
-  match goal with
-  | [ |- (stars ([[_]] :: _) * stars _ ==> _)%pred ] => idtac
-  | _ => fail
-  end;
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] | ];
-  eapply pimpl_trans; [ apply sep_star_assoc_1 | ];
-  eapply sep_star_lift_l; intros.
-
-Ltac normalize_stars_l_skip :=
-  eapply pimpl_trans; [ apply stars_skip_l | ].
-
-Ltac deex_l :=
-  match goal with
-  | [ |- (exists _, _) ==> _ ] => apply pimpl_exists_l; intro
+  | [ |- exists (_:unit), _ ] => exists tt
+  | [ |- exists (_:(_*_)), _ ] => apply eexists_pair
+  | [ |- exists _, _ ] => eexists
   end.
 
-Ltac normalize_stars_l :=
-  repeat deex_l;
-  eapply piff_l; [flatten|];
-  unfold app; simpl;
-  eapply piff_l; [apply add_stars_nil|];
-  repeat (deex_stars_l_one || delift_stars_l_one || normalize_stars_l_skip );
-  unfold stars; simpl; kill_emps_l.
+Ltac norm_or_l := match goal with
+                  | [ |- _ \/ _ ==> _ ] => apply pimpl_or_l
+                  end.
 
-(* Right-side normalization *)
+Ltac norm' := eapply start_normalizing; [ flatten | flatten | ];
+              eapply pimpl_exists_l; intros;
+              apply sep_star_lift_l; intros;
+              repeat destruct_prod;
+              repeat destruct_and;
+              eapply pimpl_exists_r; repeat eexists_one;
+              apply sep_star_lift_r; apply pimpl_and_lift;
+              simpl in *.
 
-Ltac kill_emp_r :=
-  eapply pimpl_trans; [| apply pimpl_star_emp
-                         || (eapply pimpl_trans;
-                             [ apply pimpl_star_emp | apply sep_star_comm ]) ].
-Ltac kill_emps_r :=
-  kill_emp_r;
-  ( kill_emp_r ||
-    ( repeat ( eapply pimpl_trans; [| apply sep_star_assoc_2 ] );
-      kill_emp_r;
-      repeat ( eapply pimpl_trans; [| apply sep_star_assoc_1 ] ) ) ).
+Ltac norm := repeat norm_or_l; norm'.
 
-Ltac deex_stars_r_one :=
-  (* Avoid destructing "exists" in an existential variable at the head of stars.. *)
+Ltac cancel :=
   match goal with
-  | [ |- _ ==> (stars (exis _ :: _) * stars _)%pred ] => idtac
-  | _ => fail
-  end;
-  eapply pimpl_trans; [| apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ];
-  eapply pimpl_trans; [| apply sep_star_assoc_2 ];
-  eapply pimpl_trans; [| exact (@pimpl_exists_r_star _ _ _) ];
-  eapply pimpl_exists_r; eexists;
-  eapply pimpl_trans; [| apply sep_star_assoc_1 ];
-  eapply pimpl_trans; [| apply pimpl_sep_star; [ apply stars_prepend | apply pimpl_refl ] ].
-
-Ltac normalize_stars_r_skip :=
-  eapply pimpl_trans; [ | apply stars_skip_r ].
-
-Ltac deex_r :=
-  match goal with
-  | [ |- _ ==> exists _, _ ] => apply pimpl_exists_r; eexists
+  | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
+    solve [ apply stars_or_left; unfold stars; simpl; norm; [|intuition]; cancel
+          | apply stars_or_right; unfold stars; simpl; norm; [|intuition]; cancel ]
+  | [ |- _ ==> _ ] => cancel'
   end.
 
-Ltac normalize_stars_r :=
-  repeat deex_r;
-  eapply piff_r; [flatten|];
-  unfold app; simpl;
-  eapply piff_r; [apply add_stars_nil|];
-  repeat ( deex_stars_r_one || normalize_stars_r_skip );
-  unfold stars; simpl; kill_emps_r.
-
-(* Split and-like lifted conditions.  We assume they appear at the right of the
- * preconditions -- e.g., foo * bar * [[baz]] * [[quux]].  We use sep_star for
- * these conditions (instead of "and") because that makes them easier to handle
- * when they show up on the left-hand side (in assumptions).
- *)
-
-Ltac split_trailing_lift_one :=
-  match goal with
-  | [ |- _ ==> _ * [[_]] ] =>
-    eapply pimpl_trans; [ apply sep_star_lift_r | apply sep_star_comm ]; apply pimpl_and_split
+Ltac intu' := eauto; match goal with
+  | [ |- _ ==> _ ] => norm; [ solve [ cancel ] | intuition intu' ] 
   end.
 
-Ltac split_trailing_lifts :=
-  repeat deex_r;
-  repeat split_trailing_lift_one.
-
-Ltac sep := sep_imply; cancel.
-
-Ltac step' t := intros;
-             ((eapply pimpl_ok; [ solve [ eauto with prog ] | t ])
-                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | t | t ]));
-             try solve [ intuition sep ]; (unfold stars; simpl);
+Ltac step := intros;
+             ((eapply pimpl_ok; [ solve [ eauto with prog ] | norm ])
+                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | norm | norm ]));
+             try cancel;
+             intuition eauto;
+             try intu';
+             unfold stars; simpl;
              try omega.
-
-(* XXX npintu: handle everything on the left first, including ORs, which pintu does now.. *)
-
-Ltac npintu := normalize_stars_l; split_trailing_lifts; normalize_stars_r; pintu.
-
-Ltac trysep := sep_imply; cancel; unfold stars; simpl; npintu.
-
-Ltac step := step' npintu.
 
 Ltac hoare := repeat step.
