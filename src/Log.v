@@ -78,87 +78,7 @@ Inductive logstate :=
 | CommittedTxn (cur : mem)
 (* A transaction has committed but the log has not been applied yet. *).
 
-(*
-Module Type LOG.
-  (* Methods *)
-  Parameter init : xparams -> (unit -> prog) -> prog.
-  Parameter begin : xparams -> (unit -> prog) -> prog.
-  Parameter commit : xparams -> (unit -> prog) -> prog.
-  Parameter abort : xparams -> (unit -> prog) -> prog.
-  Parameter recover : xparams -> (unit -> prog) -> prog.
-  Parameter read : xparams -> addr -> (valu -> prog) -> prog.
-  Parameter write : xparams -> addr -> valu -> (bool -> prog) -> prog.
-
-  (* Representation invariant *)
-  Parameter rep : xparams -> logstate -> pred.
-
-  (* Specs *)
-  Axiom init_ok : forall xp rx rec,
-    {{ exists m F v0 v1,
-       diskIs m
-     * (LogCommit xp) |-> v0
-     * (LogLength xp) |-> v1
-     * F
-     * [[{{ rep xp (NoTransaction m) * F }} rx tt >> rec]]
-     * [[{{ rep xp (NoTransaction m) * F
-         \/ diskIs m * (LogCommit xp) |-> v0 * (LogLength xp) |-> v1 * F }} rec >> rec]]
-    }} init xp rx >> rec.
-
-  Axiom begin_ok : forall xp rx rec,
-    {{ exists m F, rep xp (NoTransaction m) * F
-    /\ [{{ rep xp (ActiveTxn m m) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m) * F }} rec >> rec]
-    }} begin xp rx >> rec.
-
-  Axiom commit_ok : forall xp rx rec,
-    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-    /\ [{{ rep xp (NoTransaction m2) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m2) * F
-        \/ rep xp (ActiveTxn m1 m2) * F
-        \/ rep xp (CommittedTxn m2) * F }} rec >> rec]
-    }} commit xp rx >> rec.
-
-  Axiom abort_ok : forall xp rx rec,
-    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-    /\ [{{ rep xp (NoTransaction m1) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m1) * F
-        \/ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
-    }} abort xp rx >> rec.
-
-  (* XXX disjunction not at top level.. might cause problems later *)
-  Axiom recover_ok : forall xp rx rec,
-    {{ exists m F, (rep xp (NoTransaction m) * F \/
-                    (exists m', rep xp (ActiveTxn m m') * F) \/
-                    rep xp (CommittedTxn m) * F)
-    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m) * F
-        \/ rep xp (CommittedTxn m) * F }} rec >> rec]
-    }} recover xp rx >> rec.
-
-  (* XXX
-   * How to best represent this sort of nested separation logic?
-   *)
-  Axiom read_ok : forall xp a rx rec,
-    {{ exists m1 m2 v F F', rep xp (ActiveTxn m1 m2) * F
-    /\ [(a |-> v * F')%pred m2]
-    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec]
-    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
-    }} read xp a rx >> rec.
-
-  Axiom write_ok : forall xp a v rx rec,
-    {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
-    /\ [(a |-> v0 * F')%pred m2]
-    /\ [{{ [(a |-> v * F')%pred (upd m2 a v)]
-        /\ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]
-    /\ [{{ [(a |-> v0 * F')%pred m2]
-        /\ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]
-    /\ [{{ ([(a |-> v * F')%pred (upd m2 a v)] /\ rep xp (ActiveTxn m1 (upd m2 a v)) * F)
-        \/ ([(a |-> v0 * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F) }} rec >> rec]
-    }} write xp a v rx >> rec.
-End LOG.
-*)
-
-Module Log (* : LOG *).
+Module Log.
   (* Actually replay a log to implement redo in a memory. *)
   Fixpoint replay (a : addr) (len : nat) (m : mem) : mem :=
     match len with
@@ -291,8 +211,8 @@ Module Log (* : LOG *).
     }.
 
   Theorem write_ok : forall xp a v rx rec,
-    {{ exists m1 m2 v0 F F', rep xp (ActiveTxn m1 m2) * F
-     * [[(a |-> v0 * F')%pred m2]]
+    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+     * [[indomain a m2]]
      * [[{{ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec]]
      * [[{{ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec]]
      * [[{{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec]]
@@ -311,32 +231,34 @@ Module Log (* : LOG *).
     eapply start_normalizing.
     - eapply piff_trans; [ apply flatten_star | apply piff_refl ].
       eapply flatten_default.
-      eapply flatten_default.
+      (* eapply flatten_default. *)
+      (* XXX the second "eapply flatten_default" produces, in Coq 8.4pl3:
+       *
+       * Anomaly: Uncaught exception Not_found. Please report.
+       *
+       * but seems OK with Coq 8.5trunk (56ece74efc25af1b0e09265f3c7fcf74323abcaf).
+       *)
   Abort.
 
   Definition apply xp rx :=
     len <- !(LogLength xp);
     For i < len
+      Ghost cur
       Loopvar _ <- tt
       Continuation lrx
-      Invariant (*
-        (exists m, diskIs m
-        /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-          -> cur a = replay (LogStart xp) len m a]
-        /\ (LogCommit xp) |-> 1
-        /\ (LogLength xp) |-> len
-        /\ [len <= LogLen xp]
-        /\ [validLog xp (LogStart xp) len m]
-        /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-          -> m a = replay (LogStart xp) i m a]) *)
-        [[True]]
+      Invariant
+        exists m F, F * diskIs m
+        * (LogCommit xp) |-> 1
+        * (LogLength xp) |-> len
+        * [[ len <= LogLen xp ]]
+        * [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
+             -> cur a = replay (LogStart xp) len m a ]]
+        * [[ validLog xp (LogStart xp) len m ]]
+        * [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
+             -> m a = replay (LogStart xp) i m a ]]
       OnCrash
-        (* XXX how to specify "cur" here? previously this was the ghost variable.. *)
-        (*
-        rep xp (NoTransaction cur) \/
-        rep xp (CommittedTxn cur)
-        *)
-        [[True]]
+        (exists F, rep xp (NoTransaction cur) * F) \/
+        (exists F, rep xp (CommittedTxn cur) * F)
       Begin
       a <- !(LogStart xp + i*2);
       v <- !(LogStart xp + i*2 + 1);
@@ -423,13 +345,22 @@ Module Log (* : LOG *).
 
   Theorem apply_ok : forall xp rx rec,
     {{ exists m F, rep xp (CommittedTxn m) * F
-    /\ [{{ rep xp (NoTransaction m) * F }} rx tt >> rec]
-    /\ [{{ rep xp (NoTransaction m) * F
-        \/ rep xp (CommittedTxn m) * F }} rec >> rec]
+     * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
+     * [[ {{ rep xp (NoTransaction m) * F
+          \/ rep xp (CommittedTxn m) * F }} rec >> rec ]]
     }} apply xp rx >> rec.
   Proof.
-    unfold apply.
-    hoare.
+    unfold apply, rep, dataIs.
+    step.
+    step.
+    norm; [|intuition].
+    apply stars_or_right.
+    unfold stars; simpl; norm.
+    cancel.
+    intuition.
+    (* XXX have to do "cancel" before "intuition", otherwise intuition makes up a "min".. *)
+    step.
+    (* XXX log contents.. *)
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (apply _) _ >> _) => apply apply_ok : prog.

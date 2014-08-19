@@ -74,6 +74,9 @@ Definition sep_star (p1: pred) (p2: pred) :=
   fun m => exists m1 m2, m = mem_union m1 m2 /\ mem_disjoint m1 m2 /\ p1 m1 /\ p2 m2.
 Infix "*" := sep_star : pred_scope.
 
+Definition indomain (a: addr) (m: mem) :=
+  exists v, m a = Some v.
+
 
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
