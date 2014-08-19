@@ -35,23 +35,20 @@ Theorem start_normalizing : forall PT QT p q ps qs P Q,
   -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) ==>
       (exists (x:QT), stars (qs x) * [[Q x]]))
   -> p ==> q.
-Admitted.
-
-(*
-Theorem start_canceling : forall p q ps qs,
-  p <==> stars ps
-  -> q <==> stars qs
-  -> (stars ps * stars nil ==> stars qs)
-  -> p ==> q.
 Proof.
   unfold stars; simpl; intros.
   eapply pimpl_trans; [apply H|].
+  eapply pimpl_exists_l; intro eP.
+  eapply pimpl_trans; [eapply pimpl_trans; [|apply H1]|].
+  eapply pimpl_exists_r; exists eP.
   eapply pimpl_trans; [apply pimpl_star_emp|].
-  eapply pimpl_trans; [apply sep_star_comm|].
-  eapply pimpl_trans; [apply H1|].
-  apply H0.
+  eapply pimpl_trans; [apply sep_star_assoc|].
+  apply piff_star_r. apply sep_star_comm.
+  eapply pimpl_exists_l; intro eQ.
+  eapply pimpl_trans; [|apply H0].
+  eapply pimpl_exists_r; exists eQ.
+  apply pimpl_refl.
 Qed.
-*)
 
 Theorem restart_canceling:
   forall p q,
@@ -123,53 +120,89 @@ Proof.
     firstorder.
 Qed.
 
+Lemma flatten_star' : forall p q ps qs,
+  p <==> stars ps
+  -> q <==> stars qs
+  -> p * q <==> stars (ps ++ qs).
+Proof.
+  intros.
+  eapply piff_trans; [eapply piff_star_r; apply H|]; clear H.
+  eapply piff_trans; [eapply piff_star_l; apply H0|]; clear H0.
+  induction ps.
+  - eapply piff_trans; [apply piff_comm; apply emp_star|apply piff_refl].
+  - apply piff_comm.
+    eapply piff_trans; [apply stars_prepend|].
+    eapply piff_trans; [apply piff_star_l; apply piff_comm; apply IHps|].
+    eapply piff_trans; [apply piff_comm; apply sep_star_assoc|].
+    apply piff_star_r.
+    apply piff_comm.
+    eapply piff_trans; [eapply stars_prepend|].
+    apply piff_refl.
+Qed.
+
 Lemma flatten_star : forall PT QT p q ps qs P Q,
   p <==> (exists (x:PT), stars (ps x) * [[P x]])%pred
   -> q <==> (exists (x:QT), stars (qs x) * [[Q x]])%pred
   -> p * q <==> exists (x:PT*QT), stars (ps (fst x) ++ qs (snd x)) * [[P (fst x) /\ Q (snd x)]].
 Proof.
-(*
   intros.
-  eapply piff_trans.
-  eapply piff_star_r with (b:=stars ps); eauto.
-  eapply piff_trans.
-  eapply piff_star_l with (b:=stars qs); eauto.
-  clear H H0.
-  induction ps.
-  - simpl.
-    eapply piff_trans.
-    eapply piff_comm.
-    eapply emp_star.
-    apply piff_refl.
-  - eapply piff_comm.
-    eapply piff_trans.
-    eapply stars_prepend.
-    eapply piff_trans.
-    eapply piff_star_l.
-    eapply piff_comm.
-    eapply IHps.
-    eapply piff_trans.
-    eapply piff_comm.
-    eapply sep_star_assoc.
-    apply piff_star_r.
-    eapply piff_comm.
-    eapply piff_trans.
-    eapply stars_prepend.
-    apply piff_star_r.
-    apply piff_refl.
+  eapply piff_trans; [eapply piff_star_r; apply H|]; clear H.
+  eapply piff_trans; [eapply piff_star_l; apply H0|]; clear H0.
+  split.
+  - apply pimpl_exists_l_star. apply pimpl_exists_l. intro ePT.
+    eapply pimpl_trans; [apply sep_star_comm|].
+    apply pimpl_exists_l_star. apply pimpl_exists_l. intro eQT.
+    apply pimpl_exists_r. exists (ePT, eQT). simpl.
+    eapply pimpl_trans; [apply sep_star_assoc_2|].
+    apply sep_star_lift_l; intros.
+    eapply pimpl_trans; [apply sep_star_comm|].
+    eapply pimpl_trans; [apply sep_star_assoc_2|].
+    apply sep_star_lift_l; intros.
+    apply sep_star_lift_r.
+    apply pimpl_and_split; [|firstorder].
+    apply flatten_star'; apply piff_refl.
+  - apply pimpl_exists_l. intro e. simpl.
+    eapply pimpl_trans; [|apply pimpl_exists_r_star].
+    apply pimpl_exists_r. exists (fst e).
+    eapply pimpl_trans; [|apply sep_star_comm].
+    eapply pimpl_trans; [|apply pimpl_exists_r_star].
+    apply pimpl_exists_r. exists (snd e).
+    apply sep_star_lift_l; intros.
+    eapply pimpl_trans; [|apply sep_star_assoc_1].
+    apply sep_star_lift_r.
+    apply pimpl_and_split; [|firstorder].
+    eapply pimpl_trans; [|apply sep_star_comm].
+    eapply pimpl_trans; [|apply sep_star_assoc_1].
+    apply sep_star_lift_r.
+    apply pimpl_and_split; [|firstorder].
+    apply flatten_star'; apply piff_refl.
 Qed.
-*)
-Admitted.
 
 Lemma flatten_exists: forall T PT p ps P,
   (forall (a:T), (p a <==> exists (x:PT), stars (ps a x) * [[P a x]]))
   -> (exists (a:T), p a) <==>
       (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
-Admitted.
+Proof.
+  intros; split.
+  - apply pimpl_exists_l; intro eT.
+    eapply pimpl_trans; [apply H|].
+    apply pimpl_exists_l; intro ePT.
+    apply pimpl_exists_r. exists (eT, ePT).
+    apply pimpl_refl.
+  - apply pimpl_exists_l; intro e.
+    apply pimpl_exists_r. exists (fst e).
+    eapply pimpl_trans; [|apply H].
+    apply pimpl_exists_r. exists (snd e).
+    apply pimpl_refl.
+Qed.
 
 Lemma flatten_lift_empty: forall P,
   [[P]] <==> (exists (x:unit), stars nil * [[P]]).
-Admitted.
+Proof.
+  split.
+  - apply pimpl_exists_r. exists tt. apply emp_star.
+  - apply pimpl_exists_l; intros. apply emp_star.
+Qed.
 
 Ltac flatten := repeat match goal with
                        | [ |- emp <==> _ ] => apply flatten_emp
