@@ -95,6 +95,12 @@ Proof.
   apply piff_comm. apply emp_star.
 Qed.
 
+Lemma flatten_default' : forall p,
+  p <==> stars (p :: nil).
+Proof.
+  unfold stars; apply emp_star.
+Qed.
+
 Lemma flatten_default : forall p,
   p <==> exists (x:unit), stars (p :: nil) * [[True]].
 Proof.
