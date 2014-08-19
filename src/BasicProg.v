@@ -1,6 +1,7 @@
 Require Import Prog.
 Require Import Pred.
 Require Import Hoare.
+Require Import Omega.
 Require Import SepAuto.
 
 Set Implicit Arguments.
