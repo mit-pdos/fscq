@@ -380,35 +380,42 @@ Ltac norm_or_l := match goal with
                   | [ |- _ \/ _ ==> _ ] => apply pimpl_or_l
                   end.
 
-Ltac norm' := eapply start_normalizing; [ flatten | flatten | ];
-              eapply pimpl_exists_l; intros;
-              apply sep_star_lift_l; intros;
-              repeat destruct_prod;
-              repeat destruct_and;
-              eapply pimpl_exists_r; repeat eexists_one;
-              apply sep_star_lift_r; apply pimpl_and_lift;
-              simpl in *.
+Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
+               eapply pimpl_exists_l; intros;
+               apply sep_star_lift_l; intros;
+               repeat destruct_prod;
+               repeat destruct_and;
+               simpl in *.
 
-Ltac norm := repeat norm_or_l; norm'.
+Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
+               apply sep_star_lift_r; apply pimpl_and_lift;
+               simpl in *.
 
-Ltac cancel :=
+Ltac norm_hint h := repeat norm_or_l; norm'l; try h; try norm'r.
+Ltac norm := norm_hint idtac.
+
+Ltac cancel_hint h :=
   unfold stars; simpl;
-  norm; intuition;
+  norm_hint h; intuition;
   try match goal with
       | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
-        solve [ apply stars_or_left; cancel
-              | apply stars_or_right; cancel ]
+        solve [ apply stars_or_left; cancel_hint h
+              | apply stars_or_right; cancel_hint h ]
       | [ |- _ ==> _ ] => cancel'
       end;
   unfold stars; simpl.
+Ltac cancel := cancel_hint idtac.
 
-Ltac step := intros;
-             try cancel;
-             ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
-                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ]));
-             try ( cancel ; try ( progress autorewrite with core in * ; cancel ) );
-             intuition eauto;
-             try omega;
-             eauto.
+Ltac step_hint h :=
+  intros;
+  try cancel_hint h;
+  ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
+   || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ]));
+  try ( cancel_hint h ; try ( progress autorewrite with core in * ; cancel_hint h ) );
+  intuition eauto;
+  try omega;
+  eauto.
+Ltac step := step_hint idtac.
 
-Ltac hoare := repeat step.
+Ltac hoare_hint h := repeat step_hint h.
+Ltac hoare := hoare_hint idtac.

@@ -245,23 +245,21 @@ Module Log.
     hoare.
   Qed.
 
-  Definition hint_log_truncate rx : prog := rx tt.
-  Theorem hint_log_truncate_ok : forall xp rx rec,
-    {{ exists F l, F
-     * logentry_ptsto_list xp l 0
-     * avail_region (LogStart xp + length l * 2) (((LogLen xp) - length l) * 2)
-     * [[ {{ F * avail_region (LogStart xp) ((LogLen xp) * 2) }} rx tt >> rec ]]
-     * [[ {{ F * avail_region (LogStart xp) ((LogLen xp) * 2) }} rec >> rec ]]
-    }} hint_log_truncate rx >> rec.
-  Proof.
-    unfold hint_log_truncate; intros.
-    do 2 ( apply corr_exists; intros ).
-    (* XXX.. unfold corr; intros. *)
-  Admitted.
-  Opaque hint_log_truncate.
-  Hint Extern 1 ({{_}} progseq hint_log_truncate _ >> _) => apply hint_log_truncate_ok : prog.
+  Ltac hint_avail_region_grow :=
+    match goal with
+    | [ |- ?a ==> ?b ] =>
+      match a with
+      | context[avail_region (LogStart _ + length _ * 2) ((LogLen _ - length _) * 2)] => idtac
+      end;
+      match b with
+      | context[avail_region (LogStart _ + 0) ((LogLen _ - 0) * 2)] => idtac
+      end;
+      ( eapply pimpl_trans; [|eapply pimpl_trans];
+        [|eapply pimpl_sep_star; [apply avail_region_grow|apply pimpl_refl]|] );
+      unfold stars; simpl; try norm'l
+    end.
 
-  Definition abort xp rx := (LogLength xp) <-- 0 ;; hint_log_truncate ;; rx tt.
+  Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
   Theorem abort_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
@@ -271,6 +269,82 @@ Module Log.
     }} abort xp rx >> rec.
   Proof.
     unfold abort; log_unfold.
+    step.
+
+intros.
+try cancel_hint hint_avail_region_grow.
+eapply pimpl_ok.
+eauto with prog.
+
+  unfold stars; simpl.
+
+Ltac hhh := hint_avail_region_grow.
+Ltac norm_hint2 hhh := repeat norm_or_l; norm'l; idtac; try hhh; try norm'r.
+norm_hint2 hhh.
+repeat norm_or_l; norm'l; try h; try norm'r.
+
+repeat norm_or_l;
+norm'l;
+try h; try norm'r.
+
+cancel_hint hint_avail_region_grow.
+
+    step_hint hint_avail_region_grow.
+
+
+eapply pimpl_ok.
+eauto with prog.
+repeat norm_or_l.
+norm'l.
+
+  Hint Extern 1 (?a ==> ?b) => idtac "xx" a b; hint_avail_region_grow a b; idtac "ok" : normhint.
+
+eauto using idtac.
+ normhint.
+
+match goal with
+| [ |- ?a ==> ?b ] => idtac "xx" a b; hint_avail_region_grow a b
+end.
+
+hint_avail_region_grow.
+auto with normhint.
+
+
+norm'r.
+cancel.
+try norm'r.
+intuition.
+omega.
+norm'r.
+
+    step.
+
+intros.
+apply pre_hint_unfold.
+eapply pimpl_ok.
+
+pimpl_ok_prog_hint.
+
+step.
+step.
+step.
+
+intros.
+pimpl_ok_prog_hint.
+try cancel.
+
+apply pre_hint_unfold.
+pimpl_ok_prog.
+
+norml.
+
+
+
+cancel.
+omega.
+cancel.
+
+cancel.
 step.
 
 eapply pimpl_ok.
