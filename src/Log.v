@@ -127,8 +127,6 @@ Module Log.
   Definition data_rep old : pred :=
     diskIs old.
 
-  Notation "a |->?" := (exists v, a |-> v)%pred (at level 35) : pred_scope.
-
   Fixpoint avail_region start len : pred :=
     match len with
     | O => emp
@@ -370,33 +368,12 @@ omega.
 
 unfold stars; simpl; norm.
 
-Lemma eq_pimpl : forall a b,
-  a = b
-  -> (a ==> b).
-Proof.
-  intros; subst; firstorder.
-Qed.
-
-assert (exists x, ((S (LogStart xp + length l * 2) |-> v1) ==> (LogStart xp + length l * 2 + x) |-> v1)).
-eexists.
-apply eq_pimpl.
-f_equal.
-omega.
-(* omega does not unify existentials, so safe to okToUnify any two |-> things if their addrs
- * can be proven equal using omega.
- *)
-
-assert ((S (LogStart xp + length l * 2) |-> v1) ==> (LogStart xp + length l * 2 + 1) |-> v1).
-
-
-apply eq_pimpl.
-f_equal; omega.
-
-
-
-replace (S (LogStart xp + length l * 2)) with (LogStart xp + length l * 2 + 1) by omega.
 cancel.
 unfold stars; simpl.
+
+
+
+
 
 intuition.
 

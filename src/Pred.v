@@ -35,6 +35,7 @@ Notation "'foral' x .. y , p" := (foral_ (fun x => .. (foral_ (fun y => p)) ..))
 Definition exis A (p : A -> pred) : pred :=
   fun m => exists x, p x m.
 Notation "'exists' x .. y , p" := (exis (fun x => .. (exis (fun y => p)) ..)) : pred_scope.
+Notation "a |->?" := (exists v, a |-> v)%pred (at level 35) : pred_scope.
 
 Definition uniqpred A (p : A -> pred) (x : A) :=
   fun m => p x m /\ (forall (x' : A), p x' m -> x = x').
@@ -563,5 +564,12 @@ Proof.
 Qed.
 
 Hint Resolve pimpl_emp_any.
+
+Lemma eq_pimpl : forall a b,
+  a = b
+  -> (a ==> b).
+Proof.
+  intros; subst; firstorder.
+Qed.
 
 Opaque sep_star.

@@ -231,6 +231,13 @@ Definition okToUnify (p1 p2 : pred) := p1 = p2.
 Hint Extern 1 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
 Hint Extern 1 (okToUnify ?a ?a) => constructor : okToUnify.
 
+(* Try to unify any two [ptsto] predicates.  Since omega does not unify
+ * existential variables, this is safe to do; they will be unified only
+ * if the addresses in the two [ptsto] predicates are necessarily equal.
+ *)
+Hint Extern 1 (okToUnify (?a |-> _) (?b |-> _)) =>
+  unfold okToUnify; f_equal; omega : okToUnify.
+
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 | PickFirst : forall p ps,
   okToUnify lhs p
