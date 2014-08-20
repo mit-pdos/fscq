@@ -2,8 +2,10 @@
 *.vo
 *.v.d
 *.mli
+.*.aux
 *.native
 /codegen/*.ml
 _build
 /disk.img
 /Makefile.coq
+/.coq-native
