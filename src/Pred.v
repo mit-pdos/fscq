@@ -43,6 +43,9 @@ Notation "'exists' ! x .. y , p" := (exis (uniqpred (fun x => .. (exis (uniqpred
 Definition emp : pred :=
   fun m => forall a, m a = None.
 
+Definition any : pred :=
+  fun m => True.
+
 Definition lift (P : Prop) : pred :=
   fun m => P.
 Notation "[ P ]" := (lift P) : pred_scope.
@@ -543,5 +546,22 @@ Lemma pimpl_or_r: forall (a b c: pred),
 Proof.
   firstorder.
 Qed.
+
+Lemma pimpl_any :
+  forall p,
+  p ==> any.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_emp_any :
+  forall p,
+  p ==> emp * any.
+Proof.
+  intros.
+  eapply pimpl_trans; [|apply pimpl_star_emp]; apply pimpl_any.
+Qed.
+
+Hint Resolve pimpl_emp_any.
 
 Opaque sep_star.

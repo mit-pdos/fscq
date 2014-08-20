@@ -111,44 +111,6 @@ Module Log.
     end%pred.
 
 (*
-  Fixpoint logentry_ptsto_lenskip xp l len skipidx :=
-    match len with
-    | O => nil
-    | S len' =>
-      if eq_nat_dec len' skipidx then
-        logentry_ptsto_lenskip xp l len' skipidx
-      else
-        logentry_ptsto xp (l len') len' ++
-        logentry_ptsto_lenskip xp l len' skipidx
-    end%pred.
-
-  Theorem logentry_split : forall xp l len pos,
-    pos < len
-    -> stars (logentry_ptsto_len xp l len) <==>
-       stars ((LogStart xp + pos*2) |-> (fst (l pos)) ::
-              (LogStart xp + pos*2 + 1) |-> (snd (l pos)) ::
-              logentry_ptsto_lenskip xp l len pos).
-  Admitted.
-
-  Definition logupd (l : log) (p : nat) (e : logentry) : log :=
-    fun p' => if eq_nat_dec p' p then e else l p'.
-
-  Lemma logupd_eq: forall l p e p',
-    p' = p
-    -> logupd l p e p' = e.
-  Proof.
-    unfold logupd; intros; case_eq (eq_nat_dec p' p); congruence.
-  Qed.
-
-  Lemma logupd_ne: forall l p e p',
-    p' <> p
-    -> logupd l p e p' = l p'.
-  Proof.
-    unfold logupd; intros; case_eq (eq_nat_dec p' p); congruence.
-  Qed.
-*)
-
-(*
   Lemma replay_irrel:
     forall l len off e m,
     len <= off ->
@@ -160,16 +122,6 @@ Module Log.
     rewrite IHlen; try omega.
     reflexivity.
   Qed.
-*)
-
-(*
-  Theorem logentry_merge : forall xp l len pos a v,
-    pos < len
-    -> stars (logentry_ptsto_len xp (logupd l pos (a, v)) len) <==>
-       stars ((LogStart xp + pos*2) |-> a ::
-              (LogStart xp + pos*2 + 1) |-> v ::
-              logentry_ptsto_lenskip xp l len pos).
-  Admitted.
 *)
 
   Definition data_rep old : pred :=
@@ -215,33 +167,11 @@ Module Log.
     end%pred.
 
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
-(*
-  Hint Extern 1 (okToUnify (log_entries _ _) (log_entries _ _)) => constructor : okToUnify.
-*)
 
   Definition init xp rx :=
     (LogLength xp) <-- 0 ;;
     (LogCommit xp) <-- 0 ;;
     rx tt.
-
-  Definition any : pred := fun m => True.
-
-Lemma pimpl_any :
-  forall p,
-  p ==> any.
-Proof.
-  firstorder.
-Qed.
-
-Lemma pimpl_emp_any :
-  forall p,
-  p ==> emp * any.
-Proof.
-  intros.
-  eapply pimpl_trans; [|apply pimpl_star_emp]; apply pimpl_any.
-Qed.
-
-Hint Resolve pimpl_emp_any.
 
 Hint Extern 1 (okToUnify (LogLength ?a |-> 0) (LogLength ?a |-> @length ?T ?b)) =>
   unify b (@nil T); constructor : okToUnify.
