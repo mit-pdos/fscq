@@ -245,7 +245,23 @@ Module Log.
     hoare.
   Qed.
 
-  Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
+  Definition hint_log_truncate rx : prog := rx tt.
+  Theorem hint_log_truncate_ok : forall xp rx rec,
+    {{ exists F l, F
+     * logentry_ptsto_list xp l 0
+     * avail_region (LogStart xp + length l * 2) (((LogLen xp) - length l) * 2)
+     * [[ {{ F * avail_region (LogStart xp) ((LogLen xp) * 2) }} rx tt >> rec ]]
+     * [[ {{ F * avail_region (LogStart xp) ((LogLen xp) * 2) }} rec >> rec ]]
+    }} hint_log_truncate rx >> rec.
+  Proof.
+    unfold hint_log_truncate; intros.
+    do 2 ( apply corr_exists; intros ).
+    (* XXX.. unfold corr; intros. *)
+  Admitted.
+  Opaque hint_log_truncate.
+  Hint Extern 1 ({{_}} progseq hint_log_truncate _ >> _) => apply hint_log_truncate_ok : prog.
+
+  Definition abort xp rx := (LogLength xp) <-- 0 ;; hint_log_truncate ;; rx tt.
 
   Theorem abort_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
@@ -255,6 +271,18 @@ Module Log.
     }} abort xp rx >> rec.
   Proof.
     unfold abort; log_unfold.
+step.
+
+eapply pimpl_ok.
+(* XXX "eauto with prog" seems to peek behind hint_log_truncate's opacity somehow,
+ * matching it with H1.. *)
+auto with prog.
+cancel.
+
+step.
+step.
+step.
+
     hoare.
 
 eapply pimpl_trans; [|apply pimpl_star_emp].
