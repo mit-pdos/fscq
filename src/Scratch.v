@@ -80,7 +80,7 @@ Example count_up: forall (n:nat) rx rec F,
          * [[ {{ F }} rx n >> rec ]]
          * [[ {{ F }} rec >> rec ]]
      OnCrash
-       F * [[ True ]]
+       any
      Begin
        lrx (S l)
      Rof; rx r

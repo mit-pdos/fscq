@@ -103,12 +103,19 @@ Module Log.
     let (a, v) := e in
     ((LogStart xp + idx*2) |-> a  * (LogStart xp + idx*2 + 1) |-> v)%pred.
 
-  Fixpoint logentry_ptsto_len xp l idx :=
+  Fixpoint logentry_ptsto_list xp l idx :=
     match l with
     | nil => emp
     | e :: rest =>
-      logentry_ptsto xp e idx * logentry_ptsto_len xp rest (S idx)
+      logentry_ptsto xp e idx * logentry_ptsto_list xp rest (S idx)
     end%pred.
+
+  Hint Extern 1 (okToUnify (logentry_ptsto_list _ _ _) (logentry_ptsto_list _ _ _)) =>
+    unfold okToUnify; f_equal; omega : okToUnify.
+
+  (* If the log appears to have zero length, unify the log's list rep with nil *)
+  Hint Extern 1 (okToUnify (LogLength ?a |-> 0) (LogLength ?a |-> @length ?T ?b)) =>
+    unify b (@nil T); constructor : okToUnify.
 
 (*
   Lemma replay_irrel:
@@ -133,11 +140,52 @@ Module Log.
     | S len' => start |->? * avail_region (S start) len'
     end%pred.
 
+  Hint Extern 1 (okToUnify (avail_region _ _) (avail_region _ _)) =>
+    unfold okToUnify; f_equal; omega : okToUnify.
+
+  Hint Rewrite <- plus_n_O minus_n_O.
+
+  Lemma avail_region_grow' : forall xp l idx,
+    length l + idx <= LogLen xp ->
+    logentry_ptsto_list xp l idx *
+      avail_region (LogStart xp + idx * 2 + length l * 2)
+                   (((LogLen xp) - length l - idx) * 2) ==>
+    avail_region (LogStart xp + idx * 2) ((LogLen xp - idx) * 2).
+  Proof.
+    induction l; simpl.
+    intros; autorewrite with core; cancel.
+    intros.
+    case_eq ((LogLen xp - idx) * 2); try omega; intros; simpl.
+    destruct n; try omega; intros; simpl.
+    destruct a; unfold logentry_ptsto.
+    cancel.
+    replace (S (S (LogStart xp + idx * 2))) with (LogStart xp + (S idx) * 2) by omega.
+    replace n with ((LogLen xp - (S idx)) * 2) by omega.
+    eapply pimpl_trans; [|apply pimpl_star_emp].
+    eapply pimpl_trans; [|apply IHl].
+    cancel.
+    omega.
+  Qed.
+
+  Lemma avail_region_grow : forall xp l,
+    length l <= LogLen xp ->
+    logentry_ptsto_list xp l 0 *
+      avail_region (LogStart xp + length l * 2) (((LogLen xp) - length l) * 2) ==>
+    avail_region (LogStart xp) ((LogLen xp) * 2).
+  Proof.
+    intros.
+    replace (LogStart xp) with (LogStart xp + 0 * 2) by omega.
+    replace (LogLen xp * 2) with ((LogLen xp - 0) * 2) by omega.
+    replace ((LogLen xp - length l) * 2) with (((LogLen xp) - length l - 0) * 2) by omega.
+    apply avail_region_grow'.
+    omega.
+  Qed.
+
   Definition log_rep xp l : pred :=
      ((LogLength xp) |-> length l
       * [[ length l <= LogLen xp ]]
       * [[ validLog xp l ]]
-      * logentry_ptsto_len xp l 0
+      * logentry_ptsto_list xp l 0
       * avail_region (LogStart xp + length l * 2) ((LogLen xp - length l) * 2))%pred.
 
   Definition cur_rep xp (old : mem) (l : log) (cur : mem) : pred :=
@@ -171,11 +219,6 @@ Module Log.
     (LogCommit xp) <-- 0 ;;
     rx tt.
 
-Hint Extern 1 (okToUnify (LogLength ?a |-> 0) (LogLength ?a |-> @length ?T ?b)) =>
-  unify b (@nil T); constructor : okToUnify.
-
-Hint Rewrite <- plus_n_O minus_n_O.
-
   Theorem init_ok : forall xp rx rec,
     {{ exists old F, F
      * data_rep old
@@ -200,44 +243,6 @@ Hint Rewrite <- plus_n_O minus_n_O.
   Proof.
     unfold begin; log_unfold.
     hoare.
-  Qed.
-
-  Lemma avail_region_grow' : forall xp l idx,
-    length l + idx <= LogLen xp ->
-    logentry_ptsto_len xp l idx *
-      avail_region (LogStart xp + idx * 2 + length l * 2) (((LogLen xp) - length l - idx) * 2) ==>
-    avail_region (LogStart xp + idx * 2) ((LogLen xp - idx) * 2).
-  Proof.
-    induction l; simpl.
-    intros; autorewrite with core; cancel.
-    intros.
-    case_eq ((LogLen xp - idx) * 2); try omega; intros; simpl.
-    destruct n; try omega; intros; simpl.
-    destruct a; unfold logentry_ptsto.
-    replace (LogStart xp + idx * 2 + 1) with (S (LogStart xp + idx * 2)) by omega.
-    cancel.
-    replace (S (S (LogStart xp + idx * 2))) with (LogStart xp + (S idx) * 2) by omega.
-    replace n with ((LogLen xp - (S idx)) * 2) by omega.
-    eapply pimpl_trans; [|apply pimpl_star_emp].
-    eapply pimpl_trans; [|apply IHl].
-    replace (LogStart xp + idx * 2 + S (S (length l * 2))) with (LogStart xp + S idx * 2 + length l * 2) by omega.
-    replace ((LogLen xp - S (length l) - idx) * 2) with ((LogLen xp - length l - S idx) * 2) by omega.
-    cancel.
-    omega.
-  Qed.
-
-  Lemma avail_region_grow : forall xp l,
-    length l <= LogLen xp ->
-    logentry_ptsto_len xp l 0 *
-      avail_region (LogStart xp + length l * 2) (((LogLen xp) - length l) * 2) ==>
-    avail_region (LogStart xp) ((LogLen xp) * 2).
-  Proof.
-    intros.
-    replace (LogStart xp) with (LogStart xp + 0 * 2) by omega.
-    replace (LogLen xp * 2) with ((LogLen xp - 0) * 2) by omega.
-    replace ((LogLen xp - length l) * 2) with (((LogLen xp) - length l - 0) * 2) by omega.
-    apply avail_region_grow'.
-    omega.
   Qed.
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
@@ -349,6 +354,8 @@ unfold stars; simpl.
 intuition.
 
 
+
+
 eapply pimpl_ok.
 eauto with prog.
 eapply start_normalizing; [ flatten | flatten | ].
@@ -380,8 +387,6 @@ intuition.
 
 step.
 
-Hint Extern 1 (okToUnify (logentry_ptsto_len _ _ _) (logentry_ptsto_len _ _ _))
-  => constructor : okToUnify.
 
 intros;
              try cancel.
