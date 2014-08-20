@@ -271,17 +271,19 @@ Module Log.
     unfold abort; log_unfold.
     step.
 
+
+
 intros.
-try cancel_hint hint_avail_region_grow.
 eapply pimpl_ok.
 eauto with prog.
 
   unfold stars; simpl.
 
 Ltac hhh := hint_avail_region_grow.
-Ltac norm_hint2 hhh := repeat norm_or_l; norm'l; idtac; try hhh; try norm'r.
-norm_hint2 hhh.
-repeat norm_or_l; norm'l; try h; try norm'r.
+Ltac norm_hint2 hhh := repeat norm_or_l; norm'l.
+norm_hint2 ltac:(hhh).
+repeat norm_or_l; norm'l.
+
 
 repeat norm_or_l;
 norm'l;
