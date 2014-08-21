@@ -308,11 +308,26 @@ Module Log.
       end
     end : norm_hint_right.
 
+  Theorem logentry_ptsto_append' : forall xp l idx a v,
+    ((LogStart xp + (length l + idx) * 2) |-> a)
+    * ((LogStart xp + (length l + idx) * 2 + 1) |-> v)
+    * logentry_ptsto_list xp l idx
+    ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) idx.
+  Proof.
+    induction l; auto; simpl; intros.
+    - eapply pimpl_trans; [|eapply pimpl_sep_star;[apply pimpl_refl|apply IHl] ].
+      cancel.
+  Qed.
+
   Theorem logentry_ptsto_append : forall xp l a v,
     logentry_ptsto_list xp l 0 * ((LogStart xp + length l * 2) |-> a)
     * ((LogStart xp + length l * 2 + 1) |-> v)
     ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) 0.
-  Admitted.
+  Proof.
+    intros.
+    eapply pimpl_trans; [|apply logentry_ptsto_append'].
+    cancel.
+  Qed.
 
   Hint Extern 1 (_ =!=> logentry_ptsto_list ?xp ?r _) =>
     match goal with
