@@ -197,7 +197,7 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
   end : norm_hint_right.
 
 Theorem read_array_ok : forall a rx rec,
-  {{ exists m v F, diskIs m * F * [[ m a = Some v ]]
+  {{ exists m v F, diskIs m * F * [[ m @ a |-> v ]]
    * [[ {{ diskIs m * F }} rx v >> rec ]]
    * [[ {{ diskIs m * F }} rec >> rec ]]
   }} read_array a rx >> rec.
@@ -233,6 +233,9 @@ Proof.
   unfold write_array, indomain.
   hoare.
 Qed.
+
+Hint Extern 1 ({{_}} progseq (read_array _) _ >> _) => apply read_array_ok : prog.
+Hint Extern 1 ({{_}} progseq (write_array _ _) _ >> _) => apply write_array_ok : prog.
 
 Notation "!@" := read_array.
 Infix "<--@" := write_array (at level 8).

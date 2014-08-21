@@ -423,7 +423,7 @@ Module Log.
 
   Theorem read_ok : forall xp a rx rec,
     {{ exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
-     * [[ m2 a = Some v ]]
+     * [[ m2 @ a |-> v ]]
      * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec ]]
      * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rec >> rec ]]
     }} read xp a rx >> rec.
@@ -432,7 +432,6 @@ Module Log.
 
 step.
 step.
-
 
     hoare.
 

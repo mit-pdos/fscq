@@ -82,6 +82,8 @@ Definition indomain (a: addr) (m: mem) :=
   exists v, m a = Some v.
 
 Definition diskIs (m : mem) : pred := eq m.
+Definition diskptsto (m : mem) (a : addr) (v : valu) := m a = Some v.
+Notation "m @ a |-> v" := (diskptsto m a v) (a at level 34, at level 35).
 
 Definition mem_except (m: mem) (a: addr) :=
   fun a' => if eq_nat_dec a' a then None else m a'.
@@ -578,7 +580,7 @@ Proof.
 Qed.
 
 Theorem diskIs_split : forall m a v,
-  m a = Some v
+  (m @ a |-> v)
   -> (diskIs m ==> diskIs (mem_except m a) * a |-> v).
 Proof.
   unfold pimpl, diskIs, sep_star, ptsto; intros; subst.
@@ -610,7 +612,7 @@ Proof.
 Qed.
 
 Theorem diskIs_merge_except : forall m a v,
-  m a = Some v
+  (m @ a |-> v)
   -> (diskIs (mem_except m a) * a |-> v ==> diskIs m).
 Proof.
   unfold pimpl, diskIs, sep_star, ptsto, upd; intros; subst; repeat deex.
