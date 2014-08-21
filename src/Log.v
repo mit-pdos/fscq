@@ -167,7 +167,7 @@ Module Log.
     omega.
   Qed.
 
-  Lemma avail_region_grow : forall xp l,
+  Lemma avail_region_grow_all : forall xp l,
     length l <= LogLen xp ->
     logentry_ptsto_list xp l 0 *
       avail_region (LogStart xp + length l * 2) (((LogLen xp) - length l) * 2) ==>
@@ -251,7 +251,7 @@ Module Log.
       match L with
       | context[logentry_ptsto_list ?xp ?l _] =>
         eapply pimpl_trans;
-        [ apply avail_region_grow with (xp:=xp) (l:=l); omega
+        [ apply avail_region_grow_all with (xp:=xp) (l:=l); omega
         | apply eq_pimpl; f_equal; auto; omega ]
       end
     end : norm_hint_right.
@@ -269,15 +269,44 @@ Module Log.
     hoare.
   Qed.
 
-  Theorem avail_region_first : forall start len,
+  Theorem avail_region_shrink_one : forall start len,
     len > 0
-    -> avail_region start len <==> start |->? * avail_region (S start) (Peano.pred len).
+    -> avail_region start len ==> start |->? * avail_region (S start) (Peano.pred len).
   Proof.
     inversion 1; firstorder.
   Qed.
 
   Hint Extern 1 (avail_region _ _ =!=> _) =>
-    apply avail_region_first; omega : norm_hint_left.
+    apply avail_region_shrink_one; omega : norm_hint_left.
+
+  Theorem avail_region_grow_two : forall start len a b,
+    len > 1
+    -> start |-> a * (start + 1) |-> b
+       * avail_region (S (S start)) (Init.Nat.pred (Init.Nat.pred len))
+       ==> avail_region start len.
+  Proof.
+    intros.
+    destruct len; try omega.
+    destruct len; try omega.
+    cancel.
+  Qed.
+
+  Hint Extern 1 (_ =!=> avail_region _ ?len) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[avail_region (S (S ?lstart)) _] =>
+        match L with
+        | context[(lstart |-> _)%pred] =>
+          match L with
+          | context[((lstart + 1) |-> _)%pred] =>
+            apply avail_region_grow_two with (start:=lstart); omega
+          | context[(S lstart |-> _)%pred] =>
+            apply avail_region_grow_two with (start:=lstart); omega
+          end
+        end
+      end
+    end : norm_hint_right.
 
   Theorem logentry_ptsto_append : forall xp l a v,
     logentry_ptsto_list xp l 0 * ((LogStart xp + length l * 2) |-> a)
@@ -353,22 +382,11 @@ Module Log.
     rewrite app_length; simpl; omega.
     admit. admit.
 
-    (* need to absorb one more log entry into avail_region:
-        emp *
-        (emp *
-         avail_region (S (S (LogStart xp + length l * 2)))
-           (Init.Nat.pred (Init.Nat.pred ((LogLen xp - length l) * 2))) *
-         (LogStart xp + length l * 2) |-> a * (LogStart xp + length l * 2 + 1) |-> v) ==>
-        emp * avail_region (LogStart xp + length l * 2) ((LogLen xp - length l) * 2)
-     *)
     step.
-    admit.
-    admit.
-
     step.
-    admit.
-    admit.
-
+    step.
+    step.
+    step.
     step.
   Qed.
 
