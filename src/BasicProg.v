@@ -170,3 +170,69 @@ Notation "'For' i < n 'Ghost' g 'Loopvar' l <- l0 'Continuation' lrx 'Invariant'
         (fun g => crashed%pred))
   (at level 9, i at level 0, n at level 0, g at level 0, lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
+
+Definition read_array a rx :=
+  v <- !a;
+  rx v.
+
+Local Hint Extern 1 (diskIs ?m =!=> _) =>
+  match goal with
+  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    match R with
+    | context[(?a |-> ?v)%pred] =>
+      apply diskIs_split; eauto
+    end
+  end : norm_hint_left.
+
+Local Hint Extern 1 (_ =!=> diskIs ?m) =>
+  match goal with
+  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    match L with
+    | context[(?a |-> ?v)%pred] =>
+      match L with
+      | context[diskIs (mem_except m a)] =>
+        apply diskIs_merge_except; eauto
+      end
+    end
+  end : norm_hint_right.
+
+Theorem read_array_ok : forall a rx rec,
+  {{ exists m v F, diskIs m * F * [[ m a = Some v ]]
+   * [[ {{ diskIs m * F }} rx v >> rec ]]
+   * [[ {{ diskIs m * F }} rec >> rec ]]
+  }} read_array a rx >> rec.
+Proof.
+  unfold read_array.
+  hoare.
+Admitted.
+(* XXX seemingly deterministic failure to coerce Type to Type *)
+
+Definition write_array a v rx :=
+  a <-- v;;
+  rx.
+
+Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
+  match goal with
+  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    match L with
+    | context[(?a |-> ?v')%pred] =>
+      match L with
+      | context[diskIs (mem_except m a)] =>
+        apply diskIs_merge_upd; eauto
+      end
+    end
+  end : norm_hint_right.
+
+Theorem write_array_ok : forall a v rx rec,
+  {{ exists m F, diskIs m * F * [[ indomain a m ]]
+   * [[ {{ diskIs (upd m a v) * F }} rx >> rec ]]
+   * [[ {{ diskIs m * F
+        \/ diskIs (upd m a v) * F }} rec >> rec ]]
+  }} write_array a v rx >> rec.
+Proof.
+  unfold write_array, indomain.
+  hoare.
+Qed.
+
+Notation "!@" := read_array.
+Infix "<--@" := write_array (at level 8).

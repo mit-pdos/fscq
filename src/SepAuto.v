@@ -476,7 +476,7 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                simpl in *.
 
 Ltac norm := repeat norm_or_l; set_norm_goal;
-             norm'l; try ( replace_left; unfold stars; simpl; norm'l );
+             norm'l; repeat deex; try ( replace_left; unfold stars; simpl; norm'l );
              norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ].
 
 Ltac cancel :=

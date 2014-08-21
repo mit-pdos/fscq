@@ -81,6 +81,11 @@ Infix "*" := sep_star : pred_scope.
 Definition indomain (a: addr) (m: mem) :=
   exists v, m a = Some v.
 
+Definition diskIs (m : mem) : pred := eq m.
+
+Definition mem_except (m: mem) (a: addr) :=
+  fun a' => if eq_nat_dec a' a then None else m a'.
+
 
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
@@ -570,6 +575,50 @@ Lemma eq_pimpl : forall a b,
   -> (a ==> b).
 Proof.
   intros; subst; firstorder.
+Qed.
+
+Theorem diskIs_split : forall m a v,
+  m a = Some v
+  -> (diskIs m ==> diskIs (mem_except m a) * a |-> v).
+Proof.
+  unfold pimpl, diskIs, sep_star, ptsto; intros; subst.
+  exists (fun a' => if eq_nat_dec a' a then None else m0 a').
+  exists (fun a' => if eq_nat_dec a' a then Some v else None).
+  intuition.
+  - unfold mem_union; apply functional_extensionality; intros.
+    destruct (eq_nat_dec x a); subst; auto.
+    destruct (m0 x); auto.
+  - unfold mem_disjoint; unfold not; intros. repeat deex.
+    destruct (eq_nat_dec x a); discriminate.
+  - destruct (eq_nat_dec a a); auto; omega.
+  - destruct (eq_nat_dec a' a); subst; congruence.
+Qed.
+
+Theorem diskIs_merge_upd : forall m a v,
+  diskIs (mem_except m a) * a |-> v ==> diskIs (upd m a v).
+Proof.
+  unfold pimpl, diskIs, sep_star, ptsto, upd; intros; subst; repeat deex.
+  apply functional_extensionality; intros.
+  case_eq (eq_nat_dec x a); intros; subst.
+  - rewrite mem_union_comm; auto.
+    erewrite mem_union_addr; eauto.
+    apply mem_disjoint_comm; auto.
+  - unfold mem_union, mem_except.
+    destruct (eq_nat_dec x a); try discriminate.
+    case_eq (m x); auto; intros.
+    rewrite H4; auto.
+Qed.
+
+Theorem diskIs_merge_except : forall m a v,
+  m a = Some v
+  -> (diskIs (mem_except m a) * a |-> v ==> diskIs m).
+Proof.
+  unfold pimpl, diskIs, sep_star, ptsto, upd; intros; subst; repeat deex.
+  apply functional_extensionality; intros.
+  unfold mem_union, mem_except.
+  destruct (eq_nat_dec x a); subst; try congruence.
+  destruct (m x); auto.
+  rewrite H5; auto; discriminate.
 Qed.
 
 Opaque sep_star.
