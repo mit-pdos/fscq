@@ -66,7 +66,6 @@ Hint Rewrite upd_eq upd_ne using (congruence
 
 Definition diskIs (m : mem) : pred := eq m.
 Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
-(* XXX the above unification rule might help us deal with array predicates *)
 
 Inductive logstate :=
 | NoTransaction (cur : mem)
@@ -90,14 +89,78 @@ Module Log.
       replay rest (upd m a v)
     end.
 
+  Theorem replay_app : forall l m m0 a v,
+    (forall a', m a' = replay l m0 a')
+    -> (forall a', upd m a v a' = replay (l ++ (a, v) :: nil) m0 a').
+  Proof.
+    induction l; simpl; intros.
+    - unfold upd; destruct (eq_nat_dec a' a); auto.
+    - destruct a. auto.
+  Qed.
+
   (* Check that a log is well-formed in memory. *)
-  Fixpoint validLog xp (l : log) : Prop :=
+  Fixpoint valid_log m (l : log) : Prop :=
     match l with
     | nil => True
     | (a, _) :: rest =>
-      DataStart xp <= a < DataStart xp + DataLen xp
-      /\ validLog xp rest
+      indomain a m /\ valid_log m rest
     end.
+
+  Theorem valid_log_app : forall m l1 l2,
+    valid_log m l1
+    -> valid_log m l2
+    -> valid_log m (l1 ++ l2).
+  Proof.
+    induction l1; auto; intros.
+    rewrite <- app_comm_cons.
+    destruct a; simpl.
+    destruct H.
+    intuition.
+  Qed.
+
+  Theorem indomain_upd_1 : forall m a a' v,
+    indomain a m
+    -> indomain a' (upd m a v)
+    -> indomain a' m.
+  Proof.
+    unfold indomain, upd; intros.
+    destruct (eq_nat_dec a' a); subst; auto.
+  Qed.
+
+  Theorem indomain_upd_2 : forall m a a' v,
+    indomain a m
+    -> indomain a' m
+    -> indomain a' (upd m a v).
+  Proof.
+    unfold indomain, upd; intros.
+    destruct (eq_nat_dec a' a); auto.
+    exists v; auto.
+  Qed.
+
+  Theorem valid_log_upd : forall m a v l,
+    indomain a m
+    -> valid_log m l
+    -> valid_log (upd m a v) l.
+  Proof.
+    intros.
+    induction l; [firstorder|].
+    destruct a0; simpl in *; intuition.
+    eapply indomain_upd_2; auto.
+  Qed.
+
+  Theorem indomain_replay : forall l m m0 a,
+    valid_log m l
+    -> m0 a = replay l m a
+    -> indomain a m0
+    -> indomain a m.
+  Proof.
+    induction l; simpl.
+    - unfold indomain. intros. deex. exists x. congruence.
+    - destruct a. intros. destruct_and.
+      eapply indomain_upd_1; eauto.
+      eapply IHl; eauto.
+      apply valid_log_upd; auto.
+  Qed.
 
   Definition logentry_ptsto xp (e : logentry) idx :=
     let (a, v) := e in
@@ -116,20 +179,6 @@ Module Log.
   (* If the log appears to have zero length, unify the log's list rep with nil *)
   Hint Extern 1 (okToUnify (LogLength ?a |-> 0) (LogLength ?a |-> @length ?T ?b)) =>
     unify b (@nil T); constructor : okToUnify.
-
-(*
-  Lemma replay_irrel:
-    forall l len off e m,
-    len <= off ->
-    replay (logupd l off e) len m = replay l len m.
-  Proof.
-    induction len; eauto; intros.
-    simpl.
-    rewrite logupd_ne; try omega.
-    rewrite IHlen; try omega.
-    reflexivity.
-  Qed.
-*)
 
   Definition data_rep old : pred :=
     diskIs old.
@@ -181,35 +230,34 @@ Module Log.
     omega.
   Qed.
 
-  Definition log_rep xp l : pred :=
+  Definition log_rep xp m l : pred :=
      ((LogLength xp) |-> length l
       * [[ length l <= LogLen xp ]]
-      * [[ validLog xp l ]]
+      * [[ valid_log m l ]]
       * logentry_ptsto_list xp l 0
       * avail_region (LogStart xp + length l * 2) ((LogLen xp - length l) * 2))%pred.
 
-  Definition cur_rep xp (old : mem) (l : log) (cur : mem) : pred :=
-    [[ forall a, DataStart xp <= a < DataStart xp + DataLen xp
-       -> cur a = replay l old a ]]%pred.
+  Definition cur_rep (old : mem) (l : log) (cur : mem) : pred :=
+    [[ forall a, cur a = replay l old a ]]%pred.
 
   Definition rep xp (st : logstate) :=
     match st with
       | NoTransaction m =>
         (LogCommit xp) |-> 0
-      * log_rep xp nil
       * data_rep m
+      * log_rep xp m nil
 
       | ActiveTxn old cur =>
         (LogCommit xp) |-> 0
-      * exists log, log_rep xp log
       * data_rep old
-      * cur_rep xp old log cur
+      * exists log, log_rep xp old log
+      * cur_rep old log cur
 
       | CommittedTxn cur =>
         (LogCommit xp) |-> 1
-      * exists log, log_rep xp log
       * exists old, data_rep old
-      * cur_rep xp old log cur
+      * exists log, log_rep xp old log
+      * cur_rep old log cur
     end%pred.
 
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
@@ -368,6 +416,9 @@ Module Log.
       rx true
     }.
 
+  Hint Resolve indomain_replay.
+  Hint Resolve replay_app.
+
   Theorem write_ok : forall xp a v rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
      * [[ indomain a m2 ]]
@@ -377,32 +428,12 @@ Module Log.
     }} write xp a v rx >> rec.
   Proof.
     unfold write; log_unfold.
-    step.
-    step.
-    step.
-    step.
-    step.
-    step.
-    step.
-    step.
+    hoare.
 
     rewrite app_length; simpl; omega.
-    admit.  (* validLog xp (l ++ (a, v) :: nil) *)
-    (* indomain is not quite enough; perhaps convert validLog to talk about indomain? *)
-    admit.  (* upd m0 a v a0 = replay (l ++ (a, v) :: nil) m a0 *)
-
-    step.
-    step.
-
+    apply valid_log_app; simpl; intuition eauto.
     rewrite app_length; simpl; omega.
-    admit. admit.
-
-    step.
-    step.
-    step.
-    step.
-    step.
-    step.
+    apply valid_log_app; simpl; intuition eauto.
   Qed.
 
   Definition apply xp rx :=
@@ -502,6 +533,21 @@ Module Log.
     destruct (eq_nat_dec x len); subst; eauto.
     2: exists x; eauto.
     tauto.
+  Qed.
+*)
+
+
+(*
+  Lemma replay_irrel:
+    forall l len off e m,
+    len <= off ->
+    replay (logupd l off e) len m = replay l len m.
+  Proof.
+    induction len; eauto; intros.
+    simpl.
+    rewrite logupd_ne; try omega.
+    rewrite IHlen; try omega.
+    reflexivity.
   Qed.
 *)
 
