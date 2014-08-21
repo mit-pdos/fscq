@@ -12,59 +12,16 @@ Set Implicit Arguments.
 
 (** * A log-based transactions implementation *)
 
-Definition disjoint (r1 : addr * nat) (r2 : addr * nat) :=
-  forall a, fst r1 <= a < fst r1 + snd r1
-    -> ~(fst r2 <= a < fst r2 + snd r2).
-
-Fixpoint disjoints (rs : list (addr * nat)) :=
-  match rs with
-    | nil => True
-    | r1 :: rs => Forall (disjoint r1) rs /\ disjoints rs
-  end.
-
 Record xparams := {
-  DataStart : addr; (* The actual committed data start at this disk address. *)
-    DataLen : nat;  (* Size of data region *)
+  (* The actual data region is everything that's not described here *)
 
   LogLength : addr; (* Store the length of the log here. *)
   LogCommit : addr; (* Store true to apply after crash. *)
 
    LogStart : addr; (* Start of log region on disk *)
-     LogLen : nat;  (* Size of log region *)
-
-   Disjoint : disjoints ((DataStart, DataLen)
-     :: (LogLength, 1)
-     :: (LogCommit, 1)
-     :: (LogStart, LogLen*2)
-     :: nil)
+     LogLen : nat   (* Size of log region *)
 }.
 
-Ltac disjoint' xp :=
-  generalize (Disjoint xp); simpl; intuition;
-    repeat match goal with
-             | [ H : True |- _ ] => clear H
-             | [ H : Forall _ nil |- _ ] => clear H
-             | [ H : Forall _ (_ :: _) |- _ ] => inversion_clear H
-           end; unfold disjoint in *; simpl in *; subst.
-
-Ltac disjoint'' a :=
-  match goal with
-    | [ H : forall a', _ |- _ ] => specialize (H a); omega
-  end.
-
-Ltac disjoint xp :=
-  disjoint' xp;
-  match goal with
-    | [ _ : _ <= ?n |- _ ] => disjoint'' n
-    | [ _ : _ = ?n |- _ ] => disjoint'' n
-  end.
-
-Hint Rewrite upd_eq upd_ne using (congruence
-  || match goal with
-       | [ xp : xparams |- _ ] => disjoint xp
-     end).
-
-Definition diskIs (m : mem) : pred := eq m.
 Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
 
 Inductive logstate :=
@@ -436,6 +393,72 @@ Module Log.
     apply valid_log_app; simpl; intuition eauto.
   Qed.
 
+  Definition read xp a rx :=
+    len <- !(LogLength xp);
+    v <- !@a;
+
+    v <- For i < len
+      Ghost old_cur
+      Loopvar v <- v
+      Continuation lrx
+      Invariant
+        (LogCommit xp) |-> 0
+        * data_rep (fst old_cur)
+        * exists log, log_rep xp (fst old_cur) log
+        * cur_rep (fst old_cur) log (snd old_cur)
+        * [[ Some v = replay (firstn i log) (fst old_cur) a ]]
+      OnCrash
+        rep xp (ActiveTxn (fst old_cur) (snd old_cur))
+      Begin
+      a' <- !(LogStart xp + i*2);
+      If (eq_nat_dec a' a) {
+        v <- !(LogStart xp + i*2 + 1);
+        lrx v
+      } else {
+        lrx v
+      }
+    Rof;
+
+    rx v.
+
+  Theorem read_ok : forall xp a rx rec,
+    {{ exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
+     * [[ m2 a = Some v ]]
+     * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec ]]
+     * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rec >> rec ]]
+    }} read xp a rx >> rec.
+  Proof.
+    unfold read; log_unfold.
+
+step.
+step.
+
+
+    hoare.
+
+
+
+(*
+    - eauto 7.
+    - eauto 20.
+    - eauto 20.
+    - eauto 20.
+
+    - left; eexists; intuition.
+      eexists; pred.
+
+    - eauto 20.
+
+    - left; eexists; intuition.
+      eexists; pred.
+
+    - eauto 10.
+
+    - rewrite H6; pred.
+*)
+  Abort.
+
+
   Definition apply xp rx :=
     len <- !(LogLength xp);
     For i < len
@@ -679,72 +702,6 @@ Module Log.
       assert (dataIs xp x x1 x2 ==> dataIs xp x x 0) by eauto using dataIs_truncate.
       cancel.
     - (* XXX something is wrong.. *)
-  Abort.
-
-  Definition read xp a rx :=
-    len <- !(LogLength xp);
-    v <- !a;
-
-    v <- For i < len
-      Loopvar v <- v
-      Continuation lrx
-      Invariant
-        [True]
-(*
-       ([DataStart xp <= a < DataStart xp + DataLen xp]
-        /\ (foral a, [DataStart xp <= a < DataStart xp + DataLen xp]
-          --> a |-> fst old_cur a)
-        /\ (LogCommit xp) |-> 0
-        /\ (LogLength xp) |-> len
-          /\ [len <= LogLen xp]
-          /\ exists m, diskIs m
-            /\ [validLog xp (LogStart xp) len m]
-            /\ [forall a, DataStart xp <= a < DataStart xp + DataLen xp
-              -> snd old_cur a = replay (LogStart xp) len m a]
-            /\ [v = replay (LogStart xp) i m a])
-*)
-      OnCrash
-        [True]
-(* rep xp (ActiveTxn old_cur) *)
-      Begin
-      a' <- !(LogStart xp + i*2);
-      If (eq_nat_dec a' a) {
-        v <- !(LogStart xp + i*2 + 1);
-        lrx v
-      } else {
-        lrx v
-      }
-    Rof;
-
-    rx v.
-
-  Theorem read_ok : forall xp a rx rec,
-    {{ exists m1 m2 v F F', rep xp (ActiveTxn m1 m2) * F
-    /\ [(a |-> v * F')%pred m2]
-    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec]
-    /\ [{{ [(a |-> v * F')%pred m2] /\ rep xp (ActiveTxn m1 m2) * F }} rec >> rec]
-    }} read xp a rx >> rec.
-  Proof.
-    unfold read.
-    hoare.
-(*
-    - eauto 7.
-    - eauto 20.
-    - eauto 20.
-    - eauto 20.
-
-    - left; eexists; intuition.
-      eexists; pred.
-
-    - eauto 20.
-
-    - left; eexists; intuition.
-      eexists; pred.
-
-    - eauto 10.
-
-    - rewrite H6; pred.
-*)
   Abort.
 
 End Log.
