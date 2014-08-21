@@ -403,13 +403,50 @@ Theorem replace_left : forall ps ps' q p p' F,
   pick p ps ps' /\ (p ==> p')
   -> (stars (p' :: ps') * F ==> q)
   -> (stars ps * F ==> q).
-Admitted.
+Proof.
+  intros; destruct H.
+  eapply pimpl_trans; [|apply H0].
+  apply pimpl_sep_star; [|apply pimpl_refl].
+  clear dependent q.
+  induction H; intros.
+  - inversion H; subst.
+    eapply pimpl_trans; [apply stars_prepend|].
+    eapply pimpl_trans; [|apply stars_prepend].
+    eapply pimpl_sep_star; auto.
+  - eapply pimpl_trans; [apply stars_prepend|].
+    eapply pimpl_trans; [|apply stars_prepend].
+    eapply pimpl_trans; [|apply pimpl_sep_star; [apply pimpl_refl|apply stars_prepend] ].
+    eapply pimpl_trans; [|apply sep_star_assoc].
+    eapply pimpl_trans; [|apply pimpl_sep_star; [apply sep_star_comm|apply pimpl_refl] ].
+    eapply pimpl_trans; [|apply sep_star_assoc].
+    eapply pimpl_sep_star; auto.
+    eapply pimpl_trans; [|apply stars_prepend].
+    auto.
+Qed.
 
 Theorem replace_right : forall ps ps' q p p',
   pick p ps ps' /\ (p' ==> p)
   -> (q ==> stars (p' :: ps'))
   -> (q ==> stars ps).
-Admitted.
+Proof.
+  intros; destruct H.
+  eapply pimpl_trans; [apply H0|].
+  clear dependent q.
+  induction H; intros.
+  - inversion H; subst.
+    eapply pimpl_trans; [|apply stars_prepend].
+    eapply pimpl_trans; [apply stars_prepend|].
+    eapply pimpl_sep_star; auto.
+  - eapply pimpl_trans; [|apply stars_prepend].
+    eapply pimpl_trans; [apply stars_prepend|].
+    eapply pimpl_trans; [apply pimpl_sep_star; [apply pimpl_refl|apply stars_prepend]|].
+    eapply pimpl_trans; [apply sep_star_assoc|].
+    eapply pimpl_trans; [apply pimpl_sep_star; [apply sep_star_comm|apply pimpl_refl]|].
+    eapply pimpl_trans; [apply sep_star_assoc|].
+    eapply pimpl_sep_star; auto.
+    eapply pimpl_trans; [apply stars_prepend|].
+    auto.
+Qed.
 
 Ltac replace_left_one := split; [ apply PickFirst; constructor
                                 | apply pimpl_hide; auto with norm_hint_left ].
