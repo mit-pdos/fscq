@@ -269,18 +269,23 @@ Module Log.
     hoare.
   Qed.
 
-Theorem avail_region_first : forall start len,
-  len > 0
-  -> avail_region start len <==> start |->? * avail_region (S start) (Peano.pred len).
-Proof.
-  inversion 1; firstorder.
-Qed.
+  Theorem avail_region_first : forall start len,
+    len > 0
+    -> avail_region start len <==> start |->? * avail_region (S start) (Peano.pred len).
+  Proof.
+    inversion 1; firstorder.
+  Qed.
 
+  Hint Extern 1 (avail_region _ _ =!=> _) =>
+    apply avail_region_first; omega : norm_hint_left.
+
+(*
 Lemma logentry_ptsto_append : forall xp l a v,
   logentry_ptsto_len xp l 0 * ((LogStart xp + length l * 2) |-> a)
   * ((LogStart xp + length l * 2 + 1) |-> v)
   ==> logentry_ptsto_len xp (l ++ (a, v) :: nil) 0.
 Admitted.
+*)
 
   Definition write xp a v rx :=
     len <- !(LogLength xp);
@@ -305,30 +310,18 @@ Admitted.
     step.
     step.
     step.
+    step.
+    step.
+    step.
 
-intros.
 eapply pimpl_ok.
 eauto with prog.
-eapply start_normalizing; [ flatten | flatten | ].
-              eapply pimpl_exists_l; intros;
-              apply sep_star_lift_l; intros;
-              repeat destruct_prod;
-              repeat destruct_and.
-simpl.
-
-eapply replace_left.
-do 3 apply PickLater.
-apply PickFirst.
-apply eq_refl.
-
-apply avail_region_first.
-omega.
-
-unfold stars; simpl; norm.
-cancel.
 unfold stars; simpl.
+norm; intuition.
+cancel'.
 
-intuition.
+
+    step.
 
 
 

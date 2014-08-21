@@ -311,12 +311,6 @@ Proof.
   firstorder.
 Qed.
 
-Ltac pick_imply_this :=
-  split; [ apply PickFirst; apply eq_refl | solve [ eauto with imply ] ].
-Ltac pick_imply_next := eapply and_imp; [apply PickLater|].
-Ltac pick_imply := solve [ repeat (pick_imply_this || pick_imply_next) ].
-Ltac imply_one := eapply imply_one ; [ pick_imply | ].
-
 Lemma finish_frame : forall p,
   stars nil * p ==> stars (p :: nil).
 Proof.
@@ -330,8 +324,6 @@ Proof.
 Qed.
 
 Ltac cancel' := repeat (cancel_one || delay_one);
-                eapply restart_canceling;
-                repeat (imply_one || delay_one);
                 try (apply finish_frame || apply finish_easier).
 
 Lemma stars_or_left: forall a b c,
@@ -419,8 +411,14 @@ Theorem replace_right : forall ps ps' q p p',
   -> (q ==> stars ps).
 Admitted.
 
+Ltac replace_left_one := split; [ apply PickFirst; constructor
+                                | apply pimpl_hide; auto with norm_hint_left ].
+
 Ltac replace_right_one := split; [ apply PickFirst; constructor
                                  | apply pimpl_hide; auto with norm_hint_right ].
+
+Ltac replace_left := eapply replace_left;
+  [ solve [ repeat ( solve [ replace_left_one ] || apply pick_later_and ) ] | ].
 
 Ltac replace_right := eapply replace_right;
   [ solve [ repeat ( solve [ replace_right_one ] || apply pick_later_and ) ] | ].
@@ -441,7 +439,7 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                simpl in *.
 
 Ltac norm := repeat norm_or_l; set_norm_goal;
-             norm'l; (* XXX do left hints *)
+             norm'l; try ( replace_left; unfold stars; simpl; norm'l );
              norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ].
 
 Ltac cancel :=
