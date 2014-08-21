@@ -246,6 +246,13 @@ Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
   pick lhs ps ps'
   -> pick lhs (p :: ps) (p :: ps').
 
+Lemma pick_later_and : forall p p' ps ps' a b,
+  pick p ps ps' /\ (a ==> b)
+  -> pick p (p' :: ps) (p' :: ps') /\ (a ==> b).
+Proof.
+  intuition; apply PickLater; auto.
+Qed.
+
 Ltac pick := solve [ repeat ((apply PickFirst; solve [ auto with okToUnify ])
                                || apply PickLater) ].
 
@@ -376,6 +383,48 @@ Ltac eexists_one :=
   | [ |- exists _, _ ] => eexists
   end.
 
+Definition norm_goal (T: Type) (g: T) := True.
+Opaque norm_goal.
+
+Ltac clear_norm_goal :=
+  match goal with
+  | [ H: norm_goal _ |- _ ] => clear H
+  end.
+
+Ltac set_norm_goal :=
+  match goal with
+  | [ |- ?g ] => repeat clear_norm_goal; assert (norm_goal g) by firstorder
+  end.
+
+(* The goal of pimpl_hidden is to prevent "auto with norm_hint_right" from
+ * solving things automatically for us, unless we have an explicit hint..
+ *)
+Definition pimpl_hidden := pimpl.
+Infix "=!=>" := pimpl_hidden (at level 90).
+Theorem pimpl_hide: forall a b, (pimpl_hidden a b) -> (pimpl a b).
+Proof. auto. Qed.
+Theorem pimpl_unhide: forall a b, (pimpl a b) -> (pimpl_hidden a b).
+Proof. auto. Qed.
+Opaque pimpl_hidden.
+
+Theorem replace_left : forall ps ps' q p p' F,
+  pick p ps ps' /\ (p ==> p')
+  -> (stars (p' :: ps') * F ==> q)
+  -> (stars ps * F ==> q).
+Admitted.
+
+Theorem replace_right : forall ps ps' q p p',
+  pick p ps ps' /\ (p' ==> p)
+  -> (q ==> stars (p' :: ps'))
+  -> (q ==> stars ps).
+Admitted.
+
+Ltac replace_right_one := split; [ apply PickFirst; constructor
+                                 | apply pimpl_hide; auto with norm_hint_right ].
+
+Ltac replace_right := eapply replace_right;
+  [ solve [ repeat ( solve [ replace_right_one ] || apply pick_later_and ) ] | ].
+
 Ltac norm_or_l := match goal with
                   | [ |- _ \/ _ ==> _ ] => apply pimpl_or_l
                   end.
@@ -391,7 +440,9 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
                simpl in *.
 
-Ltac norm := repeat norm_or_l; norm'l; (* XXX do hints *) try norm'r.
+Ltac norm := repeat norm_or_l; set_norm_goal;
+             norm'l; (* XXX do left hints *)
+             norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ].
 
 Ltac cancel :=
   unfold stars; simpl;
@@ -402,6 +453,7 @@ Ltac cancel :=
               | apply stars_or_right; cancel ]
       | [ |- _ ==> _ ] => cancel'
       end;
+  intuition;
   unfold stars; simpl.
 
 Ltac step :=

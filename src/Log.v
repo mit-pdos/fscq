@@ -245,19 +245,16 @@ Module Log.
     hoare.
   Qed.
 
-  Ltac hint_avail_region_grow :=
+  Hint Extern 1 (_ =!=> avail_region _ _) =>
     match goal with
-    | [ |- ?a ==> ?b ] =>
-      match a with
-      | context[avail_region (LogStart _ + length _ * 2) ((LogLen _ - length _) * 2)] => idtac
-      end;
-      match b with
-      | context[avail_region (LogStart _ + 0) ((LogLen _ - 0) * 2)] => idtac
-      end;
-      ( eapply pimpl_trans; [|eapply pimpl_trans];
-        [|eapply pimpl_sep_star; [apply avail_region_grow|apply pimpl_refl]|] );
-      unfold stars; simpl; try norm'l
-    end.
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[logentry_ptsto_list ?xp ?l _] =>
+        eapply pimpl_trans;
+        [ apply avail_region_grow with (xp:=xp) (l:=l); omega
+        | apply eq_pimpl; f_equal; auto; omega ]
+      end
+    end : norm_hint_right.
 
   Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
 
@@ -269,132 +266,8 @@ Module Log.
     }} abort xp rx >> rec.
   Proof.
     unfold abort; log_unfold.
-    step.
-
-
-
-intros.
-eapply pimpl_ok.
-eauto with prog.
-
-  unfold stars; simpl.
-
-Ltac hhh := hint_avail_region_grow.
-Ltac norm_hint2 hhh := repeat norm_or_l; norm'l.
-norm_hint2 ltac:(hhh).
-repeat norm_or_l; norm'l.
-
-
-repeat norm_or_l;
-norm'l;
-try h; try norm'r.
-
-cancel_hint hint_avail_region_grow.
-
-    step_hint hint_avail_region_grow.
-
-
-eapply pimpl_ok.
-eauto with prog.
-repeat norm_or_l.
-norm'l.
-
-  Hint Extern 1 (?a ==> ?b) => idtac "xx" a b; hint_avail_region_grow a b; idtac "ok" : normhint.
-
-eauto using idtac.
- normhint.
-
-match goal with
-| [ |- ?a ==> ?b ] => idtac "xx" a b; hint_avail_region_grow a b
-end.
-
-hint_avail_region_grow.
-auto with normhint.
-
-
-norm'r.
-cancel.
-try norm'r.
-intuition.
-omega.
-norm'r.
-
-    step.
-
-intros.
-apply pre_hint_unfold.
-eapply pimpl_ok.
-
-pimpl_ok_prog_hint.
-
-step.
-step.
-step.
-
-intros.
-pimpl_ok_prog_hint.
-try cancel.
-
-apply pre_hint_unfold.
-pimpl_ok_prog.
-
-norml.
-
-
-
-cancel.
-omega.
-cancel.
-
-cancel.
-step.
-
-eapply pimpl_ok.
-(* XXX "eauto with prog" seems to peek behind hint_log_truncate's opacity somehow,
- * matching it with H1.. *)
-auto with prog.
-cancel.
-
-step.
-step.
-step.
-
     hoare.
-
-eapply pimpl_trans; [|apply pimpl_star_emp].
-eapply pimpl_trans; [|eapply avail_region_grow].
-cancel.
-omega.
-
-norm; intuition.
-apply stars_or_left.
-cancel.
-eapply pimpl_trans; [|apply pimpl_star_emp].
-eapply pimpl_trans; [|eapply avail_region_grow].
-cancel.
-omega.
-
-norm; intuition.
-apply stars_or_right.
-cancel.
-omega.
-auto.
-
   Qed.
-
-Theorem replace_left : forall ps ps' q p p' F,
-  pick p ps ps'
-  -> (p ==> p')
-  -> (stars (p' :: ps') * F ==> q)
-  -> (stars ps * F ==> q).
-Admitted.
-
-Theorem replace_right : forall ps ps' q p p',
-  pick p ps ps'
-  -> (p' ==> p)
-  -> (q ==> stars (p' :: ps'))
-  -> (q ==> stars ps).
-Admitted.
 
 Theorem avail_region_first : forall start len,
   len > 0
