@@ -279,13 +279,39 @@ Module Log.
   Hint Extern 1 (avail_region _ _ =!=> _) =>
     apply avail_region_first; omega : norm_hint_left.
 
-(*
-Lemma logentry_ptsto_append : forall xp l a v,
-  logentry_ptsto_len xp l 0 * ((LogStart xp + length l * 2) |-> a)
-  * ((LogStart xp + length l * 2 + 1) |-> v)
-  ==> logentry_ptsto_len xp (l ++ (a, v) :: nil) 0.
-Admitted.
-*)
+  Theorem logentry_ptsto_append : forall xp l a v,
+    logentry_ptsto_list xp l 0 * ((LogStart xp + length l * 2) |-> a)
+    * ((LogStart xp + length l * 2 + 1) |-> v)
+    ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) 0.
+  Admitted.
+
+  Hint Extern 1 (_ =!=> logentry_ptsto_list ?xp ?r _) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[logentry_ptsto_list xp ?l _] =>
+        match L with
+        | context[((LogStart xp + length l * 2) |-> _)%pred] =>
+          match L with
+          | context[((LogStart xp + length l * 2 + 1) |-> _)%pred] =>
+            match L with
+            | context[(LogLength xp |-> S (length l))%pred] =>
+              match R with
+              (* Make sure this hint does not apply multiple times.. *)
+              | context[((LogStart xp + length r * 2) |-> _)%pred] => fail 1
+              | context[((LogStart xp + (length l + 1) * 2) |-> _)%pred] => fail 1
+              | _ => apply logentry_ptsto_append
+              end
+            end
+          end
+        end
+      end
+    end : norm_hint_right.
+
+  Hint Extern 1 (_ =!=> ?R) =>
+    match R with
+    | context[length (_ ++ _ :: nil)] => rewrite app_length; apply pimpl_refl
+    end : norm_hint_right.
 
   Definition write xp a v rx :=
     len <- !(LogLength xp);
@@ -313,195 +339,36 @@ Admitted.
     step.
     step.
     step.
-
-eapply pimpl_ok.
-eauto with prog.
-unfold stars; simpl.
-norm; intuition.
-cancel'.
-
-
-    step.
-
-
-
-
-eapply pimpl_ok.
-eauto with prog.
-eapply start_normalizing; [ flatten | flatten | ].
-              eapply pimpl_exists_l; intros;
-              apply sep_star_lift_l; intros;
-              repeat destruct_prod;
-              repeat destruct_and.
-simpl.
-
-eapply replace_left.
-do 1 apply PickLater.
-apply PickFirst.
-apply eq_refl.
-
-apply avail_region_first.
-omega.
-
-unfold stars; simpl; norm.
-
-cancel.
-unfold stars; simpl.
-
-
-
-
-
-intuition.
-
-
-step.
-
-
-intros;
-             try cancel.
-             ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
-                || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ])).
-
-norm.
-
-
-eapply replace_right.
-do 2 apply PickLater.
-apply PickFirst.
-apply eq_refl.
-
-eapply logentry_ptsto_append.
-unfold stars; simpl.
-cancel.
-cancel.
-rewrite app_length. simpl.
-
-replace (length l + 1) with (S (length l)) by omega.
-cancel.
-
-replace (S (LogStart xp + length l * 2 + 1)) with (LogStart xp + S (S (length l * 2))) by omega.
-replace (Init.Nat.pred (Init.Nat.pred ((LogLen xp - length l) * 2))) with ((LogLen xp - S (length l)) * 2) by omega.
-cancel.
-
-intuition.
-rewrite app_length. simpl. omega.
-
-admit. (* XXX indomain is not enough, maybe change validLog *)
-
-admit.  (* prove lemma about upd vs. replay with an appended last log entry *)
-
-step.
-
-length_app.
-
-             try ( cancel ; try ( progress autorewrite with core in * ; cancel ) ).
-             intuition eauto;
-             try omega;
-             eauto.
-
-
-step.
-
-    step.
-
-replace ((LogLen xp - length l) * 2) with (S (Peano.pred ((LogLen xp - length l) * 2))) by omega.
-simpl.
-
-
-    (* XXX need to fish out the right ptsto from "log_entries xp l".. *)
-    eapply pimpl_ok; eauto with prog.
-    unfold log_entries.
-    norm.
-
-    (* Start fishing out ptsto out of log_entries.. *)
-    Focus 1.
-    delay_one.
-    delay_one.
-
-    (* Try to apply logentry_split to log_entries at the head of stars on the left *)
-    eapply pimpl_trans; [eapply piff_star_r|].
-    apply piff_comm.
-    eapply piff_trans; [apply stars_prepend|].
-    eapply piff_trans; [eapply piff_star_r|].
-    apply logentry_split.
-
-    (* XXX don't want to tell Coq that the existential variable is "v0" yet.. *)
-    Focus 2.
-    eapply piff_trans; [eapply piff_star_r|].
-    eapply piff_trans; [apply stars_prepend|].
-    eapply piff_trans; [eapply piff_star_l|].
-    eapply piff_trans; [apply stars_prepend|].
-    apply flatten_star'.
-    apply flatten_default'.
-    apply flatten_default'.
-    apply flatten_star'.
-    apply flatten_default'.
-    apply piff_refl.
-    apply flatten_star'.
-    apply piff_refl.
-    apply piff_refl.
-
-    (* XXX still don't want to tell Coq that this is "v0" yet.. *)
-    Focus 2.
-    simpl.
-    eapply cancel_one.
-    apply PickFirst.
-    apply eq_refl.  (* XXX okToUnify *)
-
-    repeat delay_one.
-    apply finish_frame.
-
-    (* Finally, can solve (v0 < length l) *)
-    auto.
-    (* Done fishing out ptsto out of log_entries.. *)
-
-    intuition eauto; unfold stars; simpl.
-    step.
     step.
     step.
 
-    (* Merge ptsto back into log_entries.. *)
-    Focus 1.
-    eapply pimpl_trans.
-    apply flatten_star'. apply flatten_emp'.
-    apply flatten_star'.
-    (* Re-order the addr and valu [ptsto] preds here for logentry_merge later..
-     * Easier to do here, for now.
+    rewrite app_length; simpl; omega.
+    admit.  (* validLog xp (l ++ (a, v) :: nil) *)
+    (* indomain is not quite enough; perhaps convert validLog to talk about indomain? *)
+    admit.  (* upd m0 a v a0 = replay (l ++ (a, v) :: nil) m a0 *)
+
+    step.
+    step.
+
+    rewrite app_length; simpl; omega.
+    admit. admit.
+
+    (* need to absorb one more log entry into avail_region:
+        emp *
+        (emp *
+         avail_region (S (S (LogStart xp + length l * 2)))
+           (Init.Nat.pred (Init.Nat.pred ((LogLen xp - length l) * 2))) *
+         (LogStart xp + length l * 2) |-> a * (LogStart xp + length l * 2 + 1) |-> v) ==>
+        emp * avail_region (LogStart xp + length l * 2) ((LogLen xp - length l) * 2)
      *)
-    eapply piff_trans; [apply sep_star_assoc|].
-    eapply piff_trans; [apply piff_star_l|].
-    eapply piff_trans; [apply sep_star_comm|].
-    apply flatten_star'.
-    apply flatten_default'.
-    apply flatten_default'.
-    apply flatten_star'. apply flatten_emp'.
-    apply piff_refl.
-    apply piff_refl.
-
-    simpl.
-    eapply pimpl_trans.
-    apply logentry_merge.
-    auto.  (* v0 < LogLen xp *)
-    unfold log_entries. apply pimpl_star_emp.
-    (* Done merging ptsto back into log_entries *)
-
-    rewrite logupd_eq; auto.
-    (* XXX [indomain a m0] doesn't quite tell us [a] is in range, because we don't
-     * know what the domain of [m0] is; all we know is that it seems to have the
-     * same domain as [m] due to [m0 a = replay l v0 m a], and nothing else is
-     * known about [m]..
-     *)
-    admit.
-
-    rewrite logupd_eq; auto.
-    rewrite replay_irrel; try omega.
-    unfold upd; destruct (eq_nat_dec a0 a); eauto.
-
-    (* XXX these steps require more folding/unfolding of log_entries.. *)
+    step.
     admit.
     admit.
+
+    step.
     admit.
+    admit.
+
     step.
   Qed.
 
