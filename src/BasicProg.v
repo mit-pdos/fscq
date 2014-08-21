@@ -204,8 +204,7 @@ Theorem read_array_ok : forall a rx rec,
 Proof.
   unfold read_array.
   hoare.
-Admitted.
-(* XXX seemingly deterministic failure to coerce Type to Type *)
+Qed.
 
 Definition write_array a v rx :=
   a <-- v;;
