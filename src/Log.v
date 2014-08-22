@@ -465,20 +465,19 @@ step.
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        exists old len log F, F
+        exists F, F
         * (LogCommit xp) |-> 1
-        * data_rep old
-        * log_rep xp len log
-        * cur_rep xp old len log cur
-        * cur_rep xp old i log old
+        * exists old, data_rep old
+        * exists log, log_rep xp old log
+        * [[ forall a, cur a = replay (skipn i log) old a ]]
       OnCrash
-        (exists F, rep xp (NoTransaction cur) * F) \/
-        (exists F, rep xp (CommittedTxn cur) * F)
+        (exists F, F * rep xp (NoTransaction cur)) \/
+        (exists F, F * rep xp (CommittedTxn cur))
       Begin
-      a <- !(LogStart xp + i*2);
-      v <- !(LogStart xp + i*2 + 1);
-      a <-- v;;
-      lrx tt
+        a <- !(LogStart xp + i*2);
+        v <- !(LogStart xp + i*2 + 1);
+        a <-- v;;
+        lrx tt
     Rof;;
     (LogCommit xp) <-- 0;;
     rx tt.
@@ -583,6 +582,23 @@ step.
     unfold apply; log_unfold.
     step.
     step.
+
+unfold stars; simpl.
+norm; intuition.
+apply stars_or_right.
+cancel.
+(* XXX the loop condition says there exists some log that satisfies log_rep,
+ * and the apply_ok precondition says there exists some other log that satisfies
+ * log_rep.  there's nothing that requires them to be unique (unless we prove
+ * some theorem about uniqueness of log_rep)..  or maybe we should pass in the
+ * outer log (from apply_ok's theorem) into the for loop invariant, somehow?
+ *)
+cancel.
+
+
+eapply pimpl_ok.
+
+
     norm; [|intuition].
     apply stars_or_right.
     unfold stars; simpl; norm.
