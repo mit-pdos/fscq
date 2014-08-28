@@ -431,6 +431,30 @@ Module Log.
     unfold read; log_unfold.
 
 step.
+eapply pimpl_ok.
+eauto with prog.
+
+assert (indomain a m) as Ham.
+eapply indomain_replay.
+eauto.
+eauto.
+unfold indomain; eauto.
+destruct Ham.
+cancel; eauto.
+
+eapply pimpl_ok.
+eauto with prog.
+unfold stars; simpl.
+set_norm_goal.
+norm'l.
+repeat deex.
+norm'r.
+
+Focus 2.
+(* XXX why is "intuition" unifying existential variables?? *)
+intuition.
+
+
 step.
 
     hoare.
