@@ -465,14 +465,14 @@ Module Log.
       Loopvar v <- v
       Continuation lrx
       Invariant
-        exists F, F * (LogCommit xp) |-> 0
+        (LogCommit xp) |-> 0
         * data_rep (fst old_cur)
         * exists log, log_rep xp (fst old_cur) log
         * cur_rep (fst old_cur) log (snd old_cur)
         * [[ Some v = replay (firstn i log) (fst old_cur) a ]]
         * [[ length log = len ]]
       OnCrash
-        exists F, F * rep xp (ActiveTxn (fst old_cur) (snd old_cur))
+        rep xp (ActiveTxn (fst old_cur) (snd old_cur))
       Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
@@ -571,14 +571,13 @@ step.
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        exists F, F
-        * (LogCommit xp) |-> 1
+        (LogCommit xp) |-> 1
         * exists old, data_rep old
         * exists log, log_rep xp old log
         * [[ forall a, cur a = replay (skipn i log) old a ]]
       OnCrash
-        (exists F, F * rep xp (NoTransaction cur)) \/
-        (exists F, F * rep xp (CommittedTxn cur))
+        rep xp (NoTransaction cur)) \/
+        rep xp (CommittedTxn cur))
       Begin
         a <- !(LogStart xp + i*2);
         v <- !(LogStart xp + i*2 + 1);

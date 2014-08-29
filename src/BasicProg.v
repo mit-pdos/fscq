@@ -120,33 +120,33 @@ Theorem for_ok:
   forall (L : Set) (G : Type)
          f rx rec (nocrash : G -> nat -> L -> pred) (crashed : G -> pred)
          n i (li : L),
-  {{ exists (g:G), nocrash g i li
-   * [[forall m l, nocrash g m l ==> crashed g]]
+  {{ exists F (g:G), F * nocrash g i li
+   * [[forall m l, F * nocrash g m l ==> F * crashed g]]
    * [[forall m lm rxm,
       i <= m < n + i ->
-      (forall lSm, {{ nocrash g (S m) lSm }} (rxm lSm) >> rec) ->
-      {{ nocrash g m lm }} f m lm rxm >> rec]]
-   * [[forall lfinal, {{ nocrash g (n+i) lfinal }} (rx lfinal) >> rec]]
+      (forall lSm, {{ F * nocrash g (S m) lSm }} (rxm lSm) >> rec) ->
+      {{ F * nocrash g m lm }} f m lm rxm >> rec]]
+   * [[forall lfinal, {{ F * nocrash g (n+i) lfinal }} (rx lfinal) >> rec]]
   }} (For_ f i n li nocrash crashed rx) >> rec.
 Proof.
   induction n.
   - intros.
-    apply corr_exists.
-    intros.
+    apply corr_exists; intros.
+    apply corr_exists; intros.
     eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl; intuition pred.
     + unfold pimpl; pred.
   - intros.
-    apply corr_exists.
-    intros.
+    apply corr_exists; intros.
+    apply corr_exists; intros.
     eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl; intuition idtac.
       eapply H0; try omega.
       intros.
       eapply pimpl_ok.
       apply IHn.
-      apply pimpl_exists_r.
-      exists a.
+      apply pimpl_exists_r; exists a.
+      apply pimpl_exists_r; exists a0.
       repeat ( apply sep_star_lift_r; apply pimpl_and_split );
         unfold pimpl, lift; intuition eauto.
       apply H0; eauto; omega.
