@@ -132,6 +132,8 @@ Module Log.
 
   Hint Extern 1 (okToUnify (logentry_ptsto_list _ _ _) (logentry_ptsto_list _ _ _)) =>
     unfold okToUnify; f_equal; omega : okToUnify.
+  Hint Extern 1 (okToUnify (logentry_ptsto _ _ _) (logentry_ptsto _ _ _)) =>
+    unfold okToUnify; f_equal; omega : okToUnify.
 
   (* If the log appears to have zero length, unify the log's list rep with nil *)
   Hint Extern 1 (okToUnify (LogLength ?a |-> 0) (LogLength ?a |-> @length ?T ?b)) =>
@@ -393,6 +395,67 @@ Module Log.
     apply valid_log_app; simpl; intuition eauto.
   Qed.
 
+  Lemma logentry_ptsto_extract: forall xp pos l idx,
+    pos < length l
+    -> (logentry_ptsto_list xp l idx ==>
+        logentry_ptsto_list xp (firstn pos l) idx *
+        ((LogStart xp + (idx+pos) * 2) |-> fst (nth pos l (0, 0))) *
+        ((LogStart xp + (idx+pos) * 2 + 1) |-> snd (nth pos l (0, 0))) *
+        logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1)).
+  Proof.
+    induction pos; intros.
+    - destruct l; simpl in *; try omega.
+      unfold logentry_ptsto; destruct l.
+      cancel.
+    - destruct l; simpl in *; try omega.
+      cancel.
+      eapply pimpl_trans; [eapply pimpl_trans; [| apply IHpos ]|].
+      cancel.
+      omega.
+      cancel.
+  Qed.
+
+  Lemma logentry_ptsto_absorb: forall xp pos l idx,
+    pos < length l
+    -> (logentry_ptsto_list xp (firstn pos l) idx *
+        ((LogStart xp + (idx+pos) * 2) |-> fst (nth pos l (0, 0))) *
+        ((LogStart xp + (idx+pos) * 2 + 1) |-> snd (nth pos l (0, 0))) *
+        logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1) ==>
+        logentry_ptsto_list xp l idx).
+  Proof.
+    induction pos; intros.
+    - destruct l; simpl in *; try omega.
+      unfold logentry_ptsto; destruct l.
+      cancel.
+    - destruct l; simpl in *; try omega.
+      cancel.
+      eapply pimpl_trans; [eapply pimpl_trans; [| apply IHpos]|].
+      repeat cancel.
+      omega.
+      cancel.
+  Qed.
+
+  Hint Extern 1 (logentry_ptsto_list ?xp ?log 0 =!=> _) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match R with
+      | context[((LogStart xp + ?p * 2) |-> _)%pred] =>
+        apply logentry_ptsto_extract with (pos:=p); omega
+      end
+    end : norm_hint_left.
+
+  Hint Extern 1 (_ =!=> logentry_ptsto_list ?xp ?log 0) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[((LogStart xp + ?p * 2) |-> _)%pred] =>
+        match L with
+        | context[logentry_ptsto_list xp (firstn p ?log) 0] =>
+          apply logentry_ptsto_absorb with (pos:=p) (l:=log); omega
+        end
+      end
+    end : norm_hint_right.
+
   Definition read xp a rx :=
     len <- !(LogLength xp);
     v <- !@a;
@@ -407,6 +470,7 @@ Module Log.
         * exists log, log_rep xp (fst old_cur) log
         * cur_rep (fst old_cur) log (snd old_cur)
         * [[ Some v = replay (firstn i log) (fst old_cur) a ]]
+        * [[ length log = len ]]
       OnCrash
         exists F, F * rep xp (ActiveTxn (fst old_cur) (snd old_cur))
       Begin
@@ -459,13 +523,21 @@ cancel'.
 intuition.
 (* XXX again "intuition" going first is messing up existentials... *)
 
+(* XXX this is where the second frame predicate starts showing up.. *)
 eapply pimpl_ok.
 eauto with prog.
+(* XXX second frame predicate created by norm *)
 norm.
-(* XXX we have two logs whose only relation is:
- * [forall a0 : addr, replay l m a0 = replay l0 m a0]
- *)
-(* XXX need to split a log entry from the middle of logentry_ptsto_list *)
+cancel.
+intuition.
+
+step.
+step.
+step.
+
+admit.
+
+step.
 
 Focus 3.
 eapply pimpl_ok_cont.
