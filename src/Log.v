@@ -402,13 +402,13 @@ Module Log.
       Loopvar v <- v
       Continuation lrx
       Invariant
-        (LogCommit xp) |-> 0
+        exists F, F * (LogCommit xp) |-> 0
         * data_rep (fst old_cur)
         * exists log, log_rep xp (fst old_cur) log
         * cur_rep (fst old_cur) log (snd old_cur)
         * [[ Some v = replay (firstn i log) (fst old_cur) a ]]
       OnCrash
-        rep xp (ActiveTxn (fst old_cur) (snd old_cur))
+        exists F, F * rep xp (ActiveTxn (fst old_cur) (snd old_cur))
       Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
@@ -450,35 +450,45 @@ norm'l.
 repeat deex.
 norm'r.
 
-Focus 2.
-(* XXX why is "intuition" unifying existential variables?? *)
+cancel'.
 intuition.
+(* XXX why is "intuition" unifying existential variables if it runs first?? *)
 
+norm.
+cancel'.
+intuition.
+(* XXX again "intuition" going first is messing up existentials... *)
 
+eapply pimpl_ok.
+eauto with prog.
+norm.
+(* XXX we have two logs whose only relation is:
+ * [forall a0 : addr, replay l m a0 = replay l0 m a0]
+ *)
+(* XXX need to split a log entry from the middle of logentry_ptsto_list *)
+
+Focus 3.
+eapply pimpl_ok_cont.
+eauto with prog.
+norm.
+cancel.
+(* XXX our two frame predicates differ..  need the "exists F" in the For Invariant
+ * clause to match the F in the read_ok theorem..
+ *)
+admit.
+intuition.
+rewrite H6. auto.
+
+cancel.
+(* XXX two-log problem again; need to know their lengths match.. *)
+admit.
+
+Focus 3.
 step.
 
-    hoare.
+Focus 3.
+step.
 
-
-
-(*
-    - eauto 7.
-    - eauto 20.
-    - eauto 20.
-    - eauto 20.
-
-    - left; eexists; intuition.
-      eexists; pred.
-
-    - eauto 20.
-
-    - left; eexists; intuition.
-      eexists; pred.
-
-    - eauto 10.
-
-    - rewrite H6; pred.
-*)
   Abort.
 
 
