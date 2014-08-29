@@ -461,18 +461,17 @@ Module Log.
     v <- !@a;
 
     v <- For i < len
-      Ghost old_cur
+      Ghost log_old_cur
       Loopvar v <- v
       Continuation lrx
       Invariant
         (LogCommit xp) |-> 0
-        * data_rep (fst old_cur)
-        * exists log, log_rep xp (fst old_cur) log
-        * cur_rep (fst old_cur) log (snd old_cur)
-        * [[ Some v = replay (firstn i log) (fst old_cur) a ]]
-        * [[ length log = len ]]
+        * data_rep (fst (snd log_old_cur))
+        * log_rep xp (fst (snd log_old_cur)) (fst log_old_cur)
+        * cur_rep (fst (snd log_old_cur)) (fst log_old_cur) (snd (snd log_old_cur))
+        * [[ Some v = replay (firstn i (fst log_old_cur)) (fst (snd log_old_cur)) a ]]
       OnCrash
-        rep xp (ActiveTxn (fst old_cur) (snd old_cur))
+        rep xp (ActiveTxn (fst (snd log_old_cur)) (snd (snd log_old_cur)))
       Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
@@ -508,61 +507,26 @@ cancel; eauto.
 
 eapply pimpl_ok.
 eauto with prog.
-unfold stars; simpl.
-set_norm_goal.
-norm'l.
-repeat deex.
-norm'r.
-
+norm.
 cancel'.
 intuition.
 (* XXX why is "intuition" unifying existential variables if it runs first?? *)
 
-norm.
-cancel'.
-intuition.
-(* XXX again "intuition" going first is messing up existentials... *)
-
-(* XXX this is where the second frame predicate starts showing up.. *)
-eapply pimpl_ok.
-eauto with prog.
-(* XXX second frame predicate created by norm *)
-norm.
-cancel.
-intuition.
-
 step.
 step.
 step.
-
+step.
+step.
 admit.
-
 step.
-
-Focus 3.
-eapply pimpl_ok_cont.
-eauto with prog.
-norm.
-cancel.
-(* XXX our two frame predicates differ..  need the "exists F" in the For Invariant
- * clause to match the F in the read_ok theorem..
- *)
+step.
 admit.
-intuition.
-rewrite H6. auto.
-
-cancel.
-(* XXX two-log problem again; need to know their lengths match.. *)
+step.
+step.
 admit.
-
-Focus 3.
 step.
-
-Focus 3.
 step.
-
-  Abort.
-
+  Qed.
 
   Definition apply xp rx :=
     len <- !(LogLength xp);
