@@ -456,6 +456,93 @@ Module Log.
       end
     end : norm_hint_right.
 
+  Lemma replay_last_eq': forall l i a m,
+    i + 1 = length l
+    -> fst (nth i l (0, 0)) = a
+    -> Some (snd (nth i l (0, 0))) = replay l m a.
+  Proof.
+    induction l; simpl; intros.
+    - omega.
+    - destruct a; destruct i.
+      + destruct l; simpl in *; try omega.
+        rewrite upd_eq; auto.
+      + erewrite <- IHl; eauto; omega.
+  Qed.
+
+  Lemma firstn_step: forall T (a:T) i l,
+    firstn (S i) (a :: l) = a :: firstn i l.
+  Proof.
+    firstorder.
+  Qed.
+
+  Lemma nth_firstn: forall T i l (x:T),
+    i < length l
+    -> nth i (firstn (S i) l) x = nth i l x.
+  Proof.
+    induction i.
+    - destruct l; simpl; intros; auto; omega.
+    - destruct l; auto; intros.
+      rewrite firstn_step.
+      apply IHi.
+      simpl in *; omega.
+  Qed.
+
+  Lemma replay_last_eq: forall l i a m,
+    i < length l
+    -> fst (nth i l (0, 0)) = a
+    -> Some (snd (nth i l (0, 0))) = replay (firstn (S i) l) m a.
+  Proof.
+    intros.
+    rewrite <- replay_last_eq' with (i := i).
+    - rewrite nth_firstn; auto.
+    - destruct l; simpl in *; try omega.
+      rewrite firstn_length.
+      rewrite Nat.min_l; omega.
+    - rewrite nth_firstn; auto.
+  Qed.
+
+  Lemma replay_last_ne': forall (e:logentry) l a m,
+    fst e <> a
+    -> replay l m a = replay (l ++ (e :: nil)) m a.
+  Proof.
+    destruct e.
+    induction l; simpl; intros.
+    - rewrite upd_ne; auto.
+    - destruct a0.
+      apply IHl; auto.
+  Qed.
+
+  Lemma firstn_lastone: forall T i l (e:T),
+    S i <= length l
+    -> firstn (S i) l = firstn i l ++ (nth i l e :: nil).
+  Proof.
+    induction i.
+    - destruct l; simpl; intros; auto; omega.
+    - destruct l; intros; [simpl in *; omega | ].
+      repeat rewrite firstn_step.
+      rewrite <- app_comm_cons.
+      f_equal.
+      apply IHi.
+      simpl in *; omega.
+  Qed.
+
+  Lemma replay_last_ne: forall i l m a v,
+    i < length l
+    -> fst (nth i l (0, 0)) <> a
+    -> Some v = replay (firstn i l) m a
+    -> Some v = replay (firstn (S i) l) m a.
+  Proof.
+    intros.
+    erewrite firstn_lastone; try omega.
+    rewrite <- replay_last_ne'; eauto.
+  Qed.
+
+  Lemma firstn_length: forall A (l:list A),
+    firstn (length l) l = l.
+  Proof.
+    induction l; simpl; f_equal; auto.
+  Qed.
+
   Definition read xp a rx :=
     len <- !(LogLength xp);
     v <- !@a;
@@ -492,40 +579,39 @@ Module Log.
     }} read xp a rx >> rec.
   Proof.
     unfold read; log_unfold.
+    Opaque firstn.
 
-step.
-eapply pimpl_ok.
-eauto with prog.
+    step.
 
-assert (indomain a m) as Ham.
-eapply indomain_replay.
-eauto.
-eauto.
-unfold indomain; eauto.
-destruct Ham.
-cancel; eauto.
+    eapply pimpl_ok.
+    eauto with prog.
+    assert (indomain a m) as Ham.
+    eapply indomain_replay; eauto.
+    unfold indomain; eauto.
+    destruct Ham.
+    cancel; eauto.
 
-eapply pimpl_ok.
-eauto with prog.
-norm.
-cancel'.
-intuition.
-(* XXX why is "intuition" unifying existential variables if it runs first?? *)
+    eapply pimpl_ok.
+    eauto with prog.
+    norm.
+    cancel'.
+    intuition.
+    (* XXX why is "intuition" unifying existential variables if it runs first?? *)
 
-step.
-step.
-step.
-step.
-step.
-admit.
-step.
-step.
-admit.
-step.
-step.
-admit.
-step.
-step.
+    hoare.
+    hoare.
+    rewrite <- plus_n_O in *.
+    apply replay_last_eq; auto.
+    rewrite <- plus_n_O in *.
+    apply replay_last_ne; auto.
+
+    hoare.
+    rewrite <- plus_n_O in *.
+    rewrite firstn_length in *.
+    congruence.
+
+    hoare.
+    hoare.
   Qed.
 
   Definition apply xp rx :=
