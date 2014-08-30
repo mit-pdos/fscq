@@ -746,45 +746,6 @@ Module Log.
 
   Hint Extern 1 ({{_}} progseq (apply _) _ >> _) => apply apply_ok : prog.
 
-(*
-  Theorem apply_ok : forall xp m, {{rep xp (CommittedTxn m)}} (apply xp)
-    {{r, rep xp (NoTransaction m)
-      \/ ([r = Crashed] /\ rep xp (CommittedTxn m))}}.
-  Proof.
-    hoare.
-
-    - eauto 10.
-    - eauto 10.
-    - eauto 12.
-    - eauto 12.
-    - eauto 12.
-    - assert (DataStart xp <= x1 (LogStart xp + m0 * 2) < DataStart xp + DataLen xp) by eauto using validLog_data.
-      left; exists tt; intuition eauto.
-      eexists; intuition eauto.
-      + rewrite H0 by auto.
-        apply replay_redo.
-        * pred.
-        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
-          eexists; intuition eauto; pred.
-        * pred.
-          disjoint xp.
-      + pred.
-      + pred.
-      + eapply validLog_irrel; eauto; pred.
-      + apply upd_same; pred.
-        rewrite H9 by auto.
-        apply replay_redo.
-        * pred.
-        * destruct (eq_nat_dec a (x1 (LogStart xp + m0 * 2))); subst; eauto; pred.
-        * pred.
-          disjoint xp.
-    - eauto 12.
-    - left; intuition.
-      pred.
-      firstorder.
-  Qed.
-*)
-
   Definition commit xp rx :=
     (LogCommit xp) <-- 1;;
     apply xp;;
@@ -799,29 +760,15 @@ Module Log.
     }} commit xp rx >> rec.
   Proof.
     unfold commit; log_unfold.
-    step.
-    step.
-
-    (* XXX need to log_unfold again, because these guys came from apply_ok's theorem *)
-    log_unfold.
-    norm. cancel. intuition eauto.
-
-    (* XXX need to log_unfold again *)
-    log_unfold.
-    step.
-    norm. apply stars_or_right. apply stars_or_right. unfold stars; simpl.
-    norm. cancel.
-    intuition eauto. intuition eauto.
-
-    step.
-    norm. apply stars_or_right. apply stars_or_right. unfold stars; simpl.
-    norm. cancel.
-    intuition eauto. intuition eauto.
-
-    norm. apply stars_or_right. apply stars_or_left. unfold stars; simpl.
-    norm. cancel.
-    intuition eauto. intuition eauto.
-  Qed.
+    hoare.
+    log_unfold; cancel.
+    log_unfold; cancel.
+    log_unfold; cancel.
+    apply stars_or_right.
+    apply stars_or_right.
+    cancel.
+    (* XXX why did we end up with two diskIs values and two logs? *)
+  Abort.
 
   Definition recover xp rx :=
     com <- !(LogCommit xp);
@@ -841,17 +788,10 @@ Module Log.
     }} recover xp rx >> rec.
   Proof.
     unfold recover; log_unfold.
+    (* XXX need to destruct the commit bit somehow...
+     * but it seems too late by the time [step] makes up an existential variable for it..
+     *)
     step.
-    norm.
-
-    hoare.
-    - left. sep_imply. normalize_stars_r. cancel.
-    - left. sep_imply. normalize_stars_r. cancel.
-    - left. sep_imply. normalize_stars_r. cancel.
-    - sep_imply. normalize_stars_l. normalize_stars_r.
-      assert (dataIs xp x x1 x2 ==> dataIs xp x x 0) by eauto using dataIs_truncate.
-      cancel.
-    - (* XXX something is wrong.. *)
   Abort.
 
 End Log.
