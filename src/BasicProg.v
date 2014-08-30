@@ -208,7 +208,7 @@ Qed.
 
 Definition write_array a v rx :=
   a <-- v;;
-  rx.
+  rx tt.
 
 Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
   match goal with
@@ -224,7 +224,7 @@ Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
 
 Theorem write_array_ok : forall a v rx rec,
   {{ exists m F, diskIs m * F * [[ indomain a m ]]
-   * [[ {{ diskIs (upd m a v) * F }} rx >> rec ]]
+   * [[ {{ diskIs (upd m a v) * F }} rx tt >> rec ]]
    * [[ {{ diskIs m * F
         \/ diskIs (upd m a v) * F }} rec >> rec ]]
   }} write_array a v rx >> rec.

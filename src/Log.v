@@ -6,6 +6,7 @@ Require Import Pred.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
@@ -617,115 +618,46 @@ Module Log.
   Definition apply xp rx :=
     len <- !(LogLength xp);
     For i < len
-      Ghost cur
+      Ghost log_cur
       Loopvar _ <- tt
       Continuation lrx
       Invariant
         (LogCommit xp) |-> 1
         * exists old, data_rep old
-        * exists log, log_rep xp old log
-        * [[ forall a, cur a = replay (skipn i log) old a ]]
+        * log_rep xp old (fst log_cur)
+        * [[ forall a, (snd log_cur) a =
+                       replay (skipn i (fst log_cur)) old a ]]
       OnCrash
-        rep xp (NoTransaction cur)) \/
-        rep xp (CommittedTxn cur))
+        rep xp (NoTransaction (snd log_cur)) \/
+        rep xp (CommittedTxn (snd log_cur))
       Begin
         a <- !(LogStart xp + i*2);
         v <- !(LogStart xp + i*2 + 1);
-        a <-- v;;
+        a <--@ v;;
         lrx tt
     Rof;;
+    (LogLength xp) <-- 0;;
     (LogCommit xp) <-- 0;;
     rx tt.
 
-(*
-  Lemma validLog_irrel : forall xp a len m1 m2,
-    validLog xp a len m1
-    -> (forall a', a <= a' < a + len*2
-      -> m1 a' = m2 a')
-    -> validLog xp a len m2.
+  Lemma indomain_log_nth: forall l i m,
+    i < length l
+    -> valid_log m l
+    -> indomain (fst (nth i l (0, 0))) m.
   Proof.
-    induction len; simpl; intuition eauto;
-      try match goal with
-            | [ H : _ |- _ ] => rewrite <- H by omega; solve [ auto ]
-            | [ H : _ |- _ ] => eapply H; intuition eauto
-          end.
+    induction l.
+    - simpl; intros; omega.
+    - simpl length; simpl valid_log; destruct a; intros; destruct_and.
+      destruct i.
+      + auto.
+      + simpl nth. apply IHl. omega. auto.
   Qed.
 
-  Lemma validLog_data : forall xp m len a x1,
-    m < len
-    -> validLog xp a len x1
-    -> DataStart xp <= x1 (a + m * 2) < DataStart xp + DataLen xp.
+  Lemma skipn_length: forall T (l:list T),
+    skipn (length l) l = nil.
   Proof.
-    induction len; simpl; intros.
-    intuition.
-    destruct H0.
-    destruct (eq_nat_dec m len); subst; auto.
+    induction l; auto.
   Qed.
-
-  Lemma upd_same : forall m1 m2 a1 a2 v1 v2 a',
-    a1 = a2
-    -> v1 = v2
-    -> (a' <> a1 -> m1 a' = m2 a')
-    -> upd m1 a1 v1 a' = upd m2 a2 v2 a'.
-  Proof.
-    intros; subst; unfold upd; destruct (eq_nat_dec a' a2); auto.
-  Qed.
-
-  Hint Resolve upd_same.
-
-  Lemma replay_irrel : forall xp a',
-    DataStart xp <= a' < DataStart xp + DataLen xp
-    -> forall a len m1 m2,
-      (forall a', a <= a' < a + len*2
-        -> m1 a' = m2 a')
-      -> m1 a' = m2 a'
-      -> replay a len m1 a' = replay a len m2 a'.
-  Proof.
-    induction len; simpl; intuition eauto.
-    apply upd_same; eauto.
-  Qed.
-
-  Hint Rewrite plus_0_r.
-
-  Lemma replay_redo : forall a a' len m1 m2,
-    (forall a'', a <= a'' < a + len*2
-      -> m1 a'' = m2 a'')
-    -> (m1 a' <> m2 a'
-      -> exists k, k < len
-        /\ m1 (a + k*2) = a'
-        /\ m2 (a + k*2) = a')
-    -> ~(a <= a' < a + len*2)
-    -> replay a len m1 a' = replay a len m2 a'.
-  Proof.
-    induction len; simpl; intuition.
-    destruct (eq_nat_dec (m1 a') (m2 a')); auto.
-    apply H0 in n.
-    destruct n; intuition omega.
-
-    apply upd_same; eauto; intros.
-    apply IHlen; eauto; intros.
-    apply H0 in H3.
-    destruct H3; intuition.
-    destruct (eq_nat_dec x len); subst; eauto.
-    2: exists x; eauto.
-    tauto.
-  Qed.
-*)
-
-
-(*
-  Lemma replay_irrel:
-    forall l len off e m,
-    len <= off ->
-    replay (logupd l off e) len m = replay l len m.
-  Proof.
-    induction len; eauto; intros.
-    simpl.
-    rewrite logupd_ne; try omega.
-    rewrite IHlen; try omega.
-    reflexivity.
-  Qed.
-*)
 
   Theorem apply_ok : forall xp rx rec,
     {{ exists m F, rep xp (CommittedTxn m) * F
@@ -738,31 +670,79 @@ Module Log.
     step.
     step.
 
-unfold stars; simpl.
-norm; intuition.
-apply stars_or_right.
-cancel.
-(* XXX the loop condition says there exists some log that satisfies log_rep,
- * and the apply_ok precondition says there exists some other log that satisfies
- * log_rep.  there's nothing that requires them to be unique (unless we prove
- * some theorem about uniqueness of log_rep)..  or maybe we should pass in the
- * outer log (from apply_ok's theorem) into the for loop invariant, somehow?
- *)
-cancel.
-
-
-eapply pimpl_ok.
-
-
-    norm; [|intuition].
     apply stars_or_right.
-    unfold stars; simpl; norm.
     cancel.
-    intuition.
-    (* XXX have to do "cancel" before "intuition", otherwise intuition makes up a "min".. *)
+    (* XXX diskIs confusion.. *)
+    admit.
+
     step.
-    (* XXX log contents.. *)
-  Admitted.
+    step.
+    step.
+
+    apply indomain_log_nth; auto; omega.
+
+    step.
+    admit.
+    admit.
+
+    step.
+    apply stars_or_right.
+    cancel.
+    (* XXX diskIs confusion, again *)
+    admit.
+
+    apply stars_or_right.
+    cancel.
+    (* XXX diskIs confusion with upd *)
+    admit.
+
+    step.
+    apply stars_or_right.
+    cancel.
+    (* XXX diskIs confusion *)
+    admit.
+
+    step.
+    apply stars_or_right.
+    cancel.
+    (* XXX diskIs confusion *)
+    admit.
+
+    step.
+    step.
+    step.
+
+    (* XXX diskIs confusion, this one seems solvable.. *)
+    assert (m = m1).
+    apply functional_extensionality.
+    rewrite skipn_length in *; simpl replay in *.
+    congruence.
+    subst; cancel.
+
+    step.
+    apply stars_or_left.
+    cancel.
+    (* XXX diskIs confusion *)
+    admit.
+
+    apply stars_or_right.
+    cancel.
+    (* XXX diskIs and log confusion *)
+    admit.
+
+    step.
+    apply stars_or_right.
+    cancel.
+    (* XXX diskIs and log confusion *)
+    admit.
+
+    apply stars_or_right.
+    cancel.
+    (* XXX diskIs confusion *)
+    admit.
+
+    step.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _) _ >> _) => apply apply_ok : prog.
 
