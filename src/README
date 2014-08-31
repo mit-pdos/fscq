@@ -4,6 +4,6 @@ building Coq from source:
 
   git clone https://github.com/coq/coq.git
 
-As one reference point, commit 56ece74e seems to produce a working
+As one reference point, commit 437b91a3 seems to produce a working
 version of Coq that builds fscq.
 

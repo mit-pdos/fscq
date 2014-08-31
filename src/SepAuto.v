@@ -189,10 +189,7 @@ Proof.
     apply flatten_star'; apply piff_refl.
 Qed.
 
-(* Add [Polymorphic] as a workaround for a possible Coq bug.  More details here:
- * https://coq.inria.fr/bugs/show_bug.cgi?id=3531
- *)
-Polymorphic Lemma flatten_exists: forall T PT p ps P,
+Lemma flatten_exists: forall T PT p ps P,
   (forall (a:T), (p a <==> exists (x:PT), stars (ps a x) * [[P a x]]))
   -> (exists (a:T), p a) <==>
       (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
