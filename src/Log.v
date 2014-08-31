@@ -625,6 +625,7 @@ Module Log.
         (LogCommit xp) |-> 1
         * exists old, data_rep old
         * log_rep xp old (fst log_cur)
+        * cur_rep old (fst log_cur) (snd log_cur)
         * [[ forall a, (snd log_cur) a =
                        replay (skipn i (fst log_cur)) old a ]]
       OnCrash
@@ -640,24 +641,75 @@ Module Log.
     (LogCommit xp) <-- 0;;
     rx tt.
 
-  Lemma indomain_log_nth: forall l i m,
-    i < length l
-    -> valid_log m l
-    -> indomain (fst (nth i l (0, 0))) m.
-  Proof.
-    induction l.
-    - simpl; intros; omega.
-    - simpl length; simpl valid_log; destruct a; intros; destruct_and.
-      destruct i.
-      + auto.
-      + simpl nth. apply IHl. omega. auto.
-  Qed.
-
   Lemma skipn_length: forall T (l:list T),
     skipn (length l) l = nil.
   Proof.
     induction l; auto.
   Qed.
+
+  Lemma indomain_log_nth: forall l i m, i < length l
+    -> valid_log m l
+    -> indomain (fst (nth i l (0, 0))) m.
+  Proof.
+    induction l.
+    - simpl; intros; omega.
+    - destruct a; destruct i; intros m Hi Hvl; destruct Hvl; auto.
+      apply IHl; auto; simpl in *; omega.
+  Qed.
+
+  Lemma replay_upd: forall l m0 m1 a v a', replay l m0 a' = replay l m1 a'
+    -> replay l (upd m0 a v) a' = replay l (upd m1 a v) a'.
+  Proof.
+    induction l.
+    - simpl; intros; case_eq (eq_nat_dec a a'); intros; subst.
+      repeat rewrite upd_eq; auto.
+      repeat rewrite upd_ne; auto.
+    - destruct a; simpl; intros.
+      case_eq (eq_nat_dec a0 a); intros; subst.
+      repeat rewrite upd_repeat; auto.
+      repeat rewrite upd_comm with (a0:=a0); auto.
+  Qed.
+
+  Lemma replay_logupd: forall l m a i, i < length l
+    -> replay l (upd m (fst (nth i l (0, 0))) (snd (nth i l (0, 0)))) a = replay l m a.
+  Proof.
+    induction l.
+    - destruct i; simpl; intros; omega.
+    - destruct i; destruct a.
+      + simpl; intros; f_equal.
+        rewrite upd_repeat; auto.
+      + simpl; intros.
+        apply replay_upd.
+        apply IHl.
+        omega.
+  Qed.
+
+  Lemma skipn_S_cons: forall T (a:T) l i,
+    skipn (S i) (a :: l) = skipn i l.
+  Proof.
+    induction i; auto.
+  Qed.
+
+  Lemma replay_skip_more: forall l m a i, i < length l
+    -> replay (skipn (S i) l) (upd m (fst (nth i l (0, 0))) (snd (nth i l (0, 0)))) a =
+       replay (skipn i l) m a.
+  Proof.
+    induction l.
+    - destruct i; simpl; intros; omega.
+    - destruct i; destruct a; simpl; intros; auto.
+      destruct l; [simpl in *; omega| ].
+      rewrite <- IHl; try omega.
+      rewrite skipn_S_cons; auto.
+  Qed.
+
+  Hint Extern 1 (_ =!=> LogLength ?xp |-> @length ?T ?l) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[(LogLength xp |-> 0)%pred] =>
+        unify l (@nil T); apply pimpl_refl
+      end
+    end : norm_hint_right.
 
   Theorem apply_ok : forall xp rx rec,
     {{ exists m F, rep xp (CommittedTxn m) * F
@@ -667,13 +719,14 @@ Module Log.
     }} apply xp rx >> rec.
   Proof.
     unfold apply; log_unfold.
+    Opaque skipn.
     step.
     step.
 
-    apply stars_or_right.
-    cancel.
-    (* XXX diskIs confusion.. *)
-    admit.
+    apply stars_or_right; unfold stars; simpl.
+    norm.
+    cancel. (* XXX cancel before intuition, otherwise intuition unifies the wrong diskIs *)
+    intuition.
 
     step.
     step.
@@ -681,65 +734,77 @@ Module Log.
 
     apply indomain_log_nth; auto; omega.
 
-    step.
-    admit.
-    admit.
-
-    step.
-    apply stars_or_right.
+    eapply pimpl_ok.
+    eauto with prog.
+    norm.
     cancel.
-    (* XXX diskIs confusion, again *)
-    admit.
+    intuition.
+    intuition.
+    apply valid_log_upd; auto.
+    apply indomain_log_nth; auto; omega.
+    rewrite replay_logupd; auto; omega.
+    rewrite replay_skip_more; auto; omega.
 
-    apply stars_or_right.
+    step.
+    apply stars_or_right; unfold stars; simpl.
+    norm.
     cancel.
-    (* XXX diskIs confusion with upd *)
-    admit.
-
-    step.
-    apply stars_or_right.
-    cancel.
-    (* XXX diskIs confusion *)
-    admit.
-
-    step.
-    apply stars_or_right.
-    cancel.
-    (* XXX diskIs confusion *)
-    admit.
-
-    step.
-    step.
-    step.
-
-    (* XXX diskIs confusion, this one seems solvable.. *)
-    assert (m = m1).
-    apply functional_extensionality.
-    rewrite skipn_length in *; simpl replay in *.
+    intuition.
+    intuition.
     congruence.
-    subst; cancel.
+
+    apply stars_or_right; unfold stars; simpl.
+    norm.
+    cancel.
+    intuition.
+    intuition.
+    apply valid_log_upd; auto.
+    apply indomain_log_nth; auto.
+    rewrite replay_logupd; congruence.
 
     step.
-    apply stars_or_left.
+    apply stars_or_right; unfold stars; simpl.
+    norm.
     cancel.
-    (* XXX diskIs confusion *)
-    admit.
-
-    apply stars_or_right.
-    cancel.
-    (* XXX diskIs and log confusion *)
-    admit.
+    intuition.
+    intuition.
+    congruence.
 
     step.
-    apply stars_or_right.
+    apply stars_or_right; unfold stars; simpl.
+    norm.
     cancel.
-    (* XXX diskIs and log confusion *)
-    admit.
+    intuition.
+    intuition.
+    congruence.
 
-    apply stars_or_right.
+    step.
+
+    rewrite <- plus_n_O in *; rewrite skipn_length in *.
+
+    assert (m1 = m); subst.
+    apply functional_extensionality; intros.
+    simpl replay in *; congruence.
+
+    step.
+    step.
+    step.
+
+    rewrite <- plus_n_O in *; rewrite skipn_length in *.
+
+    step.
+
+    apply stars_or_right; unfold stars; simpl.
+    norm.
     cancel.
-    (* XXX diskIs confusion *)
-    admit.
+    intuition.
+    intuition.
+    intuition ( simpl; try omega; try congruence ).
+
+    apply stars_or_right; unfold stars; simpl.
+    norm.
+    cancel.
+    intuition congruence.
 
     step.
   Qed.
