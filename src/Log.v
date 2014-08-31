@@ -825,15 +825,20 @@ Module Log.
     }} commit xp rx >> rec.
   Proof.
     unfold commit; log_unfold.
-    hoare.
+    step.
+    step.
     log_unfold; cancel.
+    step.
     log_unfold; cancel.
     log_unfold; cancel.
     apply stars_or_right.
     apply stars_or_right.
+    unfold stars; simpl.
+    norm.
     cancel.
-    (* XXX why did we end up with two diskIs values and two logs? *)
-  Abort.
+    intuition.
+    step.
+  Qed.
 
   Definition recover xp rx :=
     com <- !(LogCommit xp);
