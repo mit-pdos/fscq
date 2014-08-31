@@ -163,12 +163,16 @@ Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash '
   (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
 
-Notation "'For' i < n 'Ghost' g 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
         0 n l0
-        (fun g i l => nocrash%pred)
-        (fun g => crashed%pred))
-  (at level 9, i at level 0, n at level 0, g at level 0, lrx at level 0, l at level 0, l0 at level 0,
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i l => nocrash%pred)) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         crashed%pred)) .. )))
+  (at level 9, i at level 0, n at level 0,
+   g1 binder, g2 binder,
+   lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
 
 Definition read_array a rx :=

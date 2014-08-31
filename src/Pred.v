@@ -623,4 +623,6 @@ Proof.
   rewrite H5; auto; discriminate.
 Qed.
 
+Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
+
 Opaque sep_star.

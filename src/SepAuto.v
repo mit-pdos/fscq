@@ -475,7 +475,8 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
                simpl in *.
 
-Ltac norm := repeat norm_or_l; set_norm_goal;
+Ltac norm := unfold pair_args_helper;
+             repeat norm_or_l; set_norm_goal;
              norm'l; repeat deex; try ( replace_left; unfold stars; simpl; norm'l );
              norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ].
 
