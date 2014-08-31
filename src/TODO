@@ -13,11 +13,6 @@ Work out an example of ephemeral state (e.g., a single-block buffer cache);
   invariant (e.g., Log.rep), which would then be able to capture invariants
   about both on-disk and in-memory state.
 
-Work out an example that needs separation logic (e.g., split the two
-  block writes from write_two_blocks into separate programs, and then
-  combine their Hoare triples).
-
-Implement separation logic.
-
-Figure out if we need higher-order Hoare logic.
+[cancel] should try to cancel out stars with [cancel'] before doing intuition
+  because intuition often makes bad choices about existential variables.
 
