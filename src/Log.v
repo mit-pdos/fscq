@@ -843,25 +843,56 @@ Module Log.
   Definition recover xp rx :=
     com <- !(LogCommit xp);
     If (eq_nat_dec com 1) {
-      apply xp rx
+      apply xp;;
+      rx tt
     } else {
+      (LogLength xp) <-- 0;;
       rx tt
     }.
 
   Theorem recover_ok : forall xp rx rec,
-    {{ exists m F, (rep xp (NoTransaction m) * F \/
-                    (exists m', rep xp (ActiveTxn m m') * F) \/
-                    rep xp (CommittedTxn m) * F)
-     * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
-     * [[ {{ rep xp (NoTransaction m) * F
-          \/ rep xp (CommittedTxn m) * F }} rec >> rec ]]
+    {{ (exists m F, rep xp (NoTransaction m) * F
+        * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
+        * [[ {{ rep xp (NoTransaction m) * F }} rec >> rec ]])
+    \/ (exists m m' F, rep xp (ActiveTxn m m') * F
+        * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
+        * [[ {{ rep xp (ActiveTxn m m') * F
+             \/ rep xp (NoTransaction m) * F }} rec >> rec ]])
+    \/ (exists m F, rep xp (CommittedTxn m) * F
+        * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
+        * [[ {{ rep xp (CommittedTxn m) * F
+             \/ rep xp (NoTransaction m) * F }} rec >> rec ]])
     }} recover xp rx >> rec.
   Proof.
     unfold recover; log_unfold.
-    (* XXX need to destruct the commit bit somehow...
-     * but it seems too late by the time [step] makes up an existential variable for it..
-     *)
     step.
-  Abort.
+
+    step.
+    step.
+
+    step.
+    step.
+
+    step.
+    step.
+    step.
+    step.
+    step.
+
+    log_unfold.
+    cancel.
+
+    step.
+    log_unfold.
+    cancel.
+
+    log_unfold.
+    apply stars_or_left; unfold stars; simpl.
+    norm.
+    cancel.
+    intuition.
+
+    step.
+  Qed.
 
 End Log.
