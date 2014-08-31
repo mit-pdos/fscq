@@ -196,16 +196,16 @@ Module MemLog.
 
   Definition read xp ms a rx :=
     For i < length ms
-      Ghost v_m1_m2
+      Ghost v m1 m2
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        exists curdisk, Log.rep xp (ActiveTxn (fst (snd v_m1_m2)) curdisk)
-        * [[ forall a, (snd (snd v_m1_m2)) a = Log.replay ms curdisk a ]]
+        exists curdisk, Log.rep xp (ActiveTxn m1 curdisk)
+        * [[ forall a, m2 a = Log.replay ms curdisk a ]]
         * [[ Log.valid_log curdisk ms ]]
-        * [[ Log.replay (firstn (length ms - i) ms) curdisk a = Some (fst v_m1_m2) ]]
+        * [[ Log.replay (firstn (length ms - i) ms) curdisk a = Some v ]]
       OnCrash
-        rep xp (ActiveTxn (fst (snd v_m1_m2)) (snd (snd v_m1_m2))) ms
+        rep xp (ActiveTxn m1 m2) ms
       Begin
         If (eq_nat_dec a (fst (nth i (rev ms) (0, 0)))) {
           rx (snd (nth i (rev ms) (0, 0)))

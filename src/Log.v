@@ -549,17 +549,17 @@ Module Log.
     v <- !@a;
 
     v <- For i < len
-      Ghost log_old_cur
+      Ghost log old cur
       Loopvar v <- v
       Continuation lrx
       Invariant
         (LogCommit xp) |-> 0
-        * data_rep (fst (snd log_old_cur))
-        * log_rep xp (fst (snd log_old_cur)) (fst log_old_cur)
-        * cur_rep (fst (snd log_old_cur)) (fst log_old_cur) (snd (snd log_old_cur))
-        * [[ Some v = replay (firstn i (fst log_old_cur)) (fst (snd log_old_cur)) a ]]
+        * data_rep old
+        * log_rep xp old log
+        * cur_rep old log cur
+        * [[ Some v = replay (firstn i log) old a ]]
       OnCrash
-        rep xp (ActiveTxn (fst (snd log_old_cur)) (snd (snd log_old_cur)))
+        rep xp (ActiveTxn old cur)
       Begin
       a' <- !(LogStart xp + i*2);
       If (eq_nat_dec a' a) {
@@ -618,19 +618,18 @@ Module Log.
   Definition apply xp rx :=
     len <- !(LogLength xp);
     For i < len
-      Ghost log_cur
+      Ghost log cur
       Loopvar _ <- tt
       Continuation lrx
       Invariant
         (LogCommit xp) |-> 1
         * exists old, data_rep old
-        * log_rep xp old (fst log_cur)
-        * cur_rep old (fst log_cur) (snd log_cur)
-        * [[ forall a, (snd log_cur) a =
-                       replay (skipn i (fst log_cur)) old a ]]
+        * log_rep xp old log
+        * cur_rep old log cur
+        * [[ forall a, cur a = replay (skipn i log) old a ]]
       OnCrash
-        rep xp (NoTransaction (snd log_cur)) \/
-        rep xp (CommittedTxn (snd log_cur))
+        rep xp (NoTransaction cur) \/
+        rep xp (CommittedTxn cur)
       Begin
         a <- !(LogStart xp + i*2);
         v <- !(LogStart xp + i*2 + 1);
