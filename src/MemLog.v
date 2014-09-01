@@ -8,6 +8,7 @@ Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
 Require Import FunctionalExtensionality.
+Require Import Omega.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -196,11 +197,11 @@ Module MemLog.
 
   Definition read xp ms a rx :=
     For i < length ms
-      Ghost v m1 m2
+      Ghost v m1 m2 curdisk
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        exists curdisk, Log.rep xp (ActiveTxn m1 curdisk)
+        Log.rep xp (ActiveTxn m1 curdisk)
         * [[ forall a, m2 a = Log.replay ms curdisk a ]]
         * [[ Log.valid_log curdisk ms ]]
         * [[ Log.replay (firstn (length ms - i) ms) curdisk a = Some v ]]
@@ -220,6 +221,62 @@ Module MemLog.
     firstn (length l) l = l.
   Proof.
     induction l; simpl; f_equal; auto.
+  Qed.
+
+  Lemma replay_last_val: forall ms m i a v, i < length ms
+    -> Log.replay (firstn (length ms - i) ms) m a = Some v
+    -> fst (nth i (rev ms) (0, 0)) = a
+    -> snd (nth i (rev ms) (0, 0)) = v.
+  Proof.
+    induction ms.
+    - simpl; intros; omega.
+    - intros m i.
+      case_eq (eq_nat_dec i (length ms)).
+      + intro Hi.
+        simpl rev. rewrite app_nth2; rewrite rev_length.
+        intros. subst i. rewrite Nat.sub_diag in *.
+        simpl nth in *.
+        simpl length in *.
+        rewrite Nat.sub_succ_l in *.
+        rewrite Nat.sub_diag in *.
+        destruct a.
+        simpl in *.
+        subst.
+        rewrite upd_eq in *; congruence.
+        omega.
+        omega.
+      + simpl length. intros Hi _ a' v' Hi2.
+        simpl rev. rewrite app_nth1; [|rewrite rev_length; omega].
+        rewrite Nat.sub_succ_l; [|omega].
+        destruct a; simpl.
+        apply IHms.
+        omega.
+  Qed.
+
+  Lemma replay_last_irrel: forall ms m i a v, i < length ms
+    -> fst (nth i (rev ms) (0, 0)) <> a
+    -> Log.replay (firstn (length ms - i) ms) m a = Some v
+    -> Log.replay (firstn (length ms - S i) ms) m a = Some v.
+  Proof.
+    induction ms.
+    - simpl; intros; omega.
+    - simpl length.
+      intros.
+      case_eq (eq_nat_dec i (length ms)); intros.
+      + subst i. rewrite Nat.sub_diag in *. simpl.
+        simpl rev in *.
+        rewrite app_nth2 in *; rewrite rev_length in *; [|omega].
+        rewrite Nat.sub_succ_l in *; [|omega].
+        rewrite Nat.sub_diag in *.
+        destruct a; simpl in *.
+        rewrite upd_ne in *; auto.
+      + rewrite Nat.sub_succ_l in *; try omega.
+        destruct a; simpl.
+        apply IHms.
+        omega.
+        simpl rev in *; rewrite app_nth1 in *; [|rewrite rev_length; omega].
+        auto.
+        auto.
   Qed.
 
   Theorem read_ok: forall xp ms a rx rec,
@@ -246,6 +303,22 @@ Module MemLog.
     unfold stars; simpl.
     step.
     step.
-  Abort.
+    eapply replay_last_val; eauto. rewrite <- plus_n_O in *; auto.
+
+    step.
+    apply replay_last_irrel; auto. omega.
+
+    assert (indomain a m1) as Ham1.
+    eapply Log.indomain_replay; eauto.
+    eexists; eauto.
+    destruct Ham1.
+    step.
+    step.
+    rewrite <- plus_n_O in *.
+    rewrite Nat.sub_diag in *.
+    simpl in *.
+    congruence.
+    step.
+  Qed.
 
 End MemLog.
