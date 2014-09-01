@@ -1,12 +1,14 @@
 Require Import Arith.
+Require Import ZArith.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
 (** * The programming language *)
 
-Definition addr := nat.
-Definition valu := nat.
+Definition addr := Z.
+Definition valu := Z.
+Definition addr_eq_dec := Z_eq_dec.
 
 Parameter donetoken : Set.
 
@@ -26,9 +28,8 @@ Infix "<--" := Write (at level 8).
 
 
 Definition mem := addr -> option valu.
-Definition mem0 : mem := fun _ => Some 0.
 Definition upd (m : mem) (a : addr) (v : valu) : mem :=
-  fun a' => if eq_nat_dec a' a then Some v else m a'.
+  fun a' => if addr_eq_dec a' a then Some v else m a'.
 
 Inductive outcome :=
 | Failed
@@ -71,7 +72,7 @@ Theorem upd_eq : forall m a v a',
   -> upd m a v a' = Some v.
 Proof.
   intros; subst; unfold upd.
-  destruct (eq_nat_dec a a); tauto.
+  destruct (addr_eq_dec a a); tauto.
 Qed.
 
 Theorem upd_ne : forall m a v a',
@@ -79,14 +80,14 @@ Theorem upd_ne : forall m a v a',
   -> upd m a v a' = m a'.
 Proof.
   intros; subst; unfold upd.
-  destruct (eq_nat_dec a' a); tauto.
+  destruct (addr_eq_dec a' a); tauto.
 Qed.
 
 Theorem upd_repeat: forall m a v v',
   upd (upd m a v') a v = upd m a v.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (eq_nat_dec a x); intros; subst.
+  case_eq (addr_eq_dec a x); intros; subst.
   repeat rewrite upd_eq; auto.
   repeat rewrite upd_ne; auto.
 Qed.
@@ -95,7 +96,7 @@ Theorem upd_comm: forall m a0 v0 a1 v1, a0 <> a1
   -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (eq_nat_dec a1 x); case_eq (eq_nat_dec a0 x); intros; subst.
+  case_eq (addr_eq_dec a1 x); case_eq (addr_eq_dec a0 x); intros; subst.
   rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
   rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
   rewrite upd_ne; auto. rewrite upd_eq; auto. rewrite upd_eq; auto.

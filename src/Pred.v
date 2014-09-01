@@ -86,7 +86,7 @@ Definition diskptsto (m : mem) (a : addr) (v : valu) := m a = Some v.
 Notation "m @ a |-> v" := (diskptsto m a v) (a at level 34, at level 35).
 
 Definition mem_except (m: mem) (a: addr) :=
-  fun a' => if eq_nat_dec a' a then None else m a'.
+  fun a' => if addr_eq_dec a' a then None else m a'.
 
 
 Ltac deex := match goal with
@@ -157,7 +157,7 @@ Theorem mem_disjoint_upd:
   mem_disjoint (upd m1 a v) m2.
 Proof.
   unfold mem_disjoint, upd, not; intros; repeat deex;
-    destruct (eq_nat_dec x a); subst; eauto 10.
+    destruct (addr_eq_dec x a); subst; eauto 10.
 Qed.
 
 Theorem mem_union_comm:
@@ -184,7 +184,7 @@ Theorem mem_union_upd:
   mem_union (upd m1 a v) m2 = upd (mem_union m1 m2) a v.
 Proof.
   unfold mem_union, upd; intros; apply functional_extensionality; intros.
-  destruct (eq_nat_dec x a); eauto.
+  destruct (addr_eq_dec x a); eauto.
 Qed.
 
 Theorem mem_union_assoc:
@@ -506,21 +506,21 @@ Lemma ptsto_upd:
   (a |-> v * F)%pred (upd m a v).
 Proof.
   unfold sep_star, upd; intros; repeat deex.
-  exists (fun a' => if eq_nat_dec a' a then Some v else None).
+  exists (fun a' => if addr_eq_dec a' a then Some v else None).
   exists x0.
   split; [|split].
   - apply functional_extensionality; intro.
-    unfold mem_union; destruct (eq_nat_dec x1 a); eauto.
+    unfold mem_union; destruct (addr_eq_dec x1 a); eauto.
     unfold ptsto in H1; destruct H1. rewrite H1; eauto.
   - unfold mem_disjoint in *. intuition. repeat deex.
     apply H. repeat eexists; eauto.
     unfold ptsto in H1; destruct H1.
-    destruct (eq_nat_dec x1 a); subst; eauto.
+    destruct (addr_eq_dec x1 a); subst; eauto.
     pred.
   - intuition eauto.
     unfold ptsto; intuition.
-    destruct (eq_nat_dec a a); pred.
-    destruct (eq_nat_dec a' a); pred.
+    destruct (addr_eq_dec a a); pred.
+    destruct (addr_eq_dec a' a); pred.
 Qed.
 
 Lemma pimpl_and_split:
@@ -584,16 +584,16 @@ Theorem diskIs_split : forall m a v,
   -> (diskIs m ==> diskIs (mem_except m a) * a |-> v).
 Proof.
   unfold pimpl, diskIs, sep_star, ptsto; intros; subst.
-  exists (fun a' => if eq_nat_dec a' a then None else m0 a').
-  exists (fun a' => if eq_nat_dec a' a then Some v else None).
+  exists (fun a' => if addr_eq_dec a' a then None else m0 a').
+  exists (fun a' => if addr_eq_dec a' a then Some v else None).
   intuition.
   - unfold mem_union; apply functional_extensionality; intros.
-    destruct (eq_nat_dec x a); subst; auto.
+    destruct (addr_eq_dec x a); subst; auto.
     destruct (m0 x); auto.
   - unfold mem_disjoint; unfold not; intros. repeat deex.
-    destruct (eq_nat_dec x a); discriminate.
-  - destruct (eq_nat_dec a a); auto; omega.
-  - destruct (eq_nat_dec a' a); subst; congruence.
+    destruct (addr_eq_dec x a); discriminate.
+  - destruct (addr_eq_dec a a); auto; omega.
+  - destruct (addr_eq_dec a' a); subst; congruence.
 Qed.
 
 Theorem diskIs_merge_upd : forall m a v,
@@ -601,12 +601,12 @@ Theorem diskIs_merge_upd : forall m a v,
 Proof.
   unfold pimpl, diskIs, sep_star, ptsto, upd; intros; subst; repeat deex.
   apply functional_extensionality; intros.
-  case_eq (eq_nat_dec x a); intros; subst.
+  case_eq (addr_eq_dec x a); intros; subst.
   - rewrite mem_union_comm; auto.
     erewrite mem_union_addr; eauto.
     apply mem_disjoint_comm; auto.
   - unfold mem_union, mem_except.
-    destruct (eq_nat_dec x a); try discriminate.
+    destruct (addr_eq_dec x a); try discriminate.
     case_eq (m x); auto; intros.
     rewrite H4; auto.
 Qed.
@@ -618,7 +618,7 @@ Proof.
   unfold pimpl, diskIs, sep_star, ptsto, upd; intros; subst; repeat deex.
   apply functional_extensionality; intros.
   unfold mem_union, mem_except.
-  destruct (eq_nat_dec x a); subst; try congruence.
+  destruct (addr_eq_dec x a); subst; try congruence.
   destruct (m x); auto.
   rewrite H5; auto; discriminate.
 Qed.

@@ -7,11 +7,14 @@ Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
 Require Import FunctionalExtensionality.
+Require Import ZArith.
+Require Import Lia.
 
 Set Implicit Arguments.
 
 
 (** * A log-based transactions implementation *)
+Open Scope Z_scope.
 
 Record xparams := {
   (* The actual data region is everything that's not described here *)
@@ -20,8 +23,16 @@ Record xparams := {
   LogCommit : addr; (* Store true to apply after crash. *)
 
    LogStart : addr; (* Start of log region on disk *)
-     LogLen : nat   (* Size of log region *)
+     LogLen : Z;    (* Size of log region *)
+
+   LogLenOK : 0 <= LogLen
 }.
+
+Lemma loglen_pos: forall xp, 0 <= LogLen xp.
+Proof.
+  destruct xp; auto.
+Qed.
+Hint Resolve loglen_pos.
 
 Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
 
@@ -52,7 +63,7 @@ Module Log.
     -> (forall a', upd m a v a' = replay (l ++ (a, v) :: nil) m0 a').
   Proof.
     induction l; simpl; intros.
-    - unfold upd; destruct (eq_nat_dec a' a); auto.
+    - unfold upd; destruct (addr_eq_dec a' a); auto.
     - destruct a. auto.
   Qed.
 
@@ -82,7 +93,7 @@ Module Log.
     -> indomain a' m.
   Proof.
     unfold indomain, upd; intros.
-    destruct (eq_nat_dec a' a); subst; auto.
+    destruct (addr_eq_dec a' a); subst; auto.
   Qed.
 
   Theorem indomain_upd_2 : forall m a a' v,
@@ -91,7 +102,7 @@ Module Log.
     -> indomain a' (upd m a v).
   Proof.
     unfold indomain, upd; intros.
-    destruct (eq_nat_dec a' a); auto.
+    destruct (addr_eq_dec a' a); auto.
     exists v; auto.
   Qed.
 
@@ -128,7 +139,7 @@ Module Log.
     match l with
     | nil => emp
     | e :: rest =>
-      logentry_ptsto xp e idx * logentry_ptsto_list xp rest (S idx)
+      logentry_ptsto xp e idx * logentry_ptsto_list xp rest (idx + 1)
     end%pred.
 
   Hint Extern 1 (okToUnify (logentry_ptsto_list _ _ _) (logentry_ptsto_list _ _ _)) =>
@@ -143,59 +154,83 @@ Module Log.
   Definition data_rep old : pred :=
     diskIs old.
 
-  Fixpoint avail_region start len : pred :=
+  Fixpoint avail_region start len: pred :=
     match len with
     | O => emp
-    | S len' => start |->? * avail_region (S start) len'
+    | S len' => start |->? * avail_region (start + 1) len'
     end%pred.
 
   Hint Extern 1 (okToUnify (avail_region _ _) (avail_region _ _)) =>
-    unfold okToUnify; f_equal; omega : okToUnify.
+    unfold okToUnify; repeat ( progress f_equal ; try omega ) : okToUnify.
 
-  Hint Rewrite <- plus_n_O minus_n_O.
+  Hint Rewrite Z.sub_0_r Z.add_0_r.
+  Hint Rewrite Zlength_cons.
+  Hint Rewrite Zlength_nil.
 
-  Lemma avail_region_grow' : forall xp l idx,
-    length l + idx <= LogLen xp ->
-    logentry_ptsto_list xp l idx *
-      avail_region (LogStart xp + idx * 2 + length l * 2)
-                   (((LogLen xp) - length l - idx) * 2) ==>
-    avail_region (LogStart xp + idx * 2) ((LogLen xp - idx) * 2).
+  Lemma zlength_pos': forall T (l:list T) acc, Zlength_aux acc T l >= acc.
   Proof.
-    induction l; simpl.
-    intros; autorewrite with core; cancel.
+    induction l.
+    - simpl; intros; omega.
+    - simpl; intros.
+      eapply Zge_trans.
+      apply IHl.
+      omega.
+  Qed.
+
+  Lemma zlength_pos: forall T (l:list T), Zlength l >= 0.
+  Proof.
+    intros; apply zlength_pos'.
+  Qed.
+
+  Lemma avail_region_grow' : forall xp l idx, 0 <= idx
+    -> Zlength l + idx <= LogLen xp
+    -> logentry_ptsto_list xp l idx *
+         avail_region (LogStart xp + idx * 2 + Zlength l * 2)
+                      (Z.to_nat (((LogLen xp) - Zlength l - idx) * 2)) ==>
+       avail_region (LogStart xp + idx * 2) (Z.to_nat ((LogLen xp - idx) * 2)).
+  Proof.
+    induction l; autorewrite with core; simpl.
+    intros; cancel.
     intros.
-    case_eq ((LogLen xp - idx) * 2); try omega; intros; simpl.
-    destruct n; try omega; intros; simpl.
+    assert (Zlength l >= 0); [apply zlength_pos|].
+    case_eq ((LogLen xp - idx) * 2); intros; try lia.
+    simpl; destruct (Pos2Nat.is_succ p); rewrite H3; simpl.
+    destruct x; try lia.
+    simpl.
     destruct a; unfold logentry_ptsto.
     cancel.
-    replace (S (S (LogStart xp + idx * 2))) with (LogStart xp + (S idx) * 2) by omega.
-    replace n with ((LogLen xp - (S idx)) * 2) by omega.
+    replace (LogStart xp + idx * 2 + 1 + 1) with (LogStart xp + (idx + 1) * 2) by omega.
+    replace x with (Z.to_nat ((LogLen xp - (idx + 1)) * 2)).
     eapply pimpl_trans; [|apply pimpl_star_emp].
     eapply pimpl_trans; [|apply IHl].
     cancel.
     omega.
+    omega.
+    (* XXX *)
+    admit.
   Qed.
 
   Lemma avail_region_grow_all : forall xp l,
-    length l <= LogLen xp ->
+    Zlength l <= LogLen xp ->
     logentry_ptsto_list xp l 0 *
-      avail_region (LogStart xp + length l * 2) (((LogLen xp) - length l) * 2) ==>
-    avail_region (LogStart xp) ((LogLen xp) * 2).
+      avail_region (LogStart xp + Zlength l * 2)
+                   (Z.to_nat (((LogLen xp) - Zlength l) * 2)) ==>
+    avail_region (LogStart xp) (Z.to_nat ((LogLen xp) * 2)).
   Proof.
     intros.
     replace (LogStart xp) with (LogStart xp + 0 * 2) by omega.
     replace (LogLen xp * 2) with ((LogLen xp - 0) * 2) by omega.
-    replace ((LogLen xp - length l) * 2) with (((LogLen xp) - length l - 0) * 2) by omega.
-    apply avail_region_grow'.
-    omega.
+    replace ((LogLen xp - Zlength l) * 2) with (((LogLen xp) - Zlength l - 0) * 2) by omega.
+    apply avail_region_grow'; omega.
   Qed.
 
   Definition log_rep xp m l : pred :=
-     ((LogLength xp) |-> length l
-      * [[ length l <= LogLen xp ]]
+     ((LogLength xp) |-> Zlength l
+      * [[ Zlength l <= LogLen xp ]]
       * [[ valid_log m l ]]
       * logentry_ptsto_list xp l 0
-      * avail_region (LogStart xp + length l * 2) ((LogLen xp - length l) * 2))%pred.
+      * avail_region (LogStart xp + Zlength l * 2)
+                     (Z.to_nat ((LogLen xp - Zlength l) * 2)))%pred.
 
   Definition cur_rep (old : mem) (l : log) (cur : mem) : pred :=
     [[ forall a, cur a = replay l old a ]]%pred.
@@ -230,7 +265,7 @@ Module Log.
   Theorem init_ok : forall xp rx rec,
     {{ exists old F, F
      * data_rep old
-     * avail_region (LogStart xp) (LogLen xp * 2)
+     * avail_region (LogStart xp) (Z.to_nat (LogLen xp * 2))
      * (LogCommit xp) |->?
      * (LogLength xp) |->?
      * [[ {{ rep xp (NoTransaction old) * F }} rx tt >> rec ]]
@@ -279,9 +314,16 @@ Module Log.
 
   Theorem avail_region_shrink_one : forall start len,
     len > 0
-    -> avail_region start len ==> start |->? * avail_region (S start) (Peano.pred len).
+    -> avail_region start (Z.to_nat len) ==>
+       start |->? * avail_region (start + 1) (Z.to_nat (len - 1)).
   Proof.
-    inversion 1; firstorder.
+    destruct len; intros; try lia.
+    destruct (Pos2Nat.is_succ p).
+    simpl avail_region at 1.
+    rewrite H0.
+    simpl avail_region at 1.
+    assert (x = Z.to_nat (Z.pos p - 1)) by admit.
+    cancel.
   Qed.
 
   Hint Extern 1 (avail_region _ _ =!=> _) =>
