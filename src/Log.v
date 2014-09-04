@@ -168,6 +168,11 @@ Module Log.
     case_eq ((wordToNat (LogLen xp) - idx) * 2); intros; try omega.
     destruct n; try omega.
     destruct a; unfold logentry_ptsto.
+    simpl.
+
+    assert (LogStart xp = LogStart xp).
+    ring.  (* XXX should this work?? *)
+
     cancel.
     replace (LogStart xp + idx * 2 + 1 + 1) with (LogStart xp + (idx + 1) * 2) by omega.
     replace x with (Z.to_nat ((LogLen xp - (idx + 1)) * 2)).

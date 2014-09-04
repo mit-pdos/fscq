@@ -22,6 +22,15 @@ Definition addr := word addrlen.
 Definition valu := word valulen.
 Definition addr_eq_dec := @weq addrlen.
 
+Definition wringaddr := wring addrlen.
+Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]).
+
+(* wringaddr' explicitly ties ring_theory to [addr] instead of [word addrlen],
+ * since the [ring] tactic can't seem to unfold the [addr] type on its own.
+ *)
+Definition wringaddr' : @ring_theory addr _ _ _ _ _ _ _ := wring addrlen.
+Add Ring wringaddr' : wringaddr' (decidable (weqb_sound addrlen), constants [wcst]).
+
 Parameter donetoken : Set.
 
 Inductive prog :=
