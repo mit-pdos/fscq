@@ -15,15 +15,15 @@ Inductive word : nat -> Set :=
 Fixpoint wordToNat sz (w : word sz) : nat :=
   match w with
     | WO => O
-    | WS false _ w' => (wordToNat w') * 2
-    | WS true _ w' => S (wordToNat w' * 2)
+    | WS false w' => (wordToNat w') * 2
+    | WS true w' => S (wordToNat w' * 2)
   end.
 
 Fixpoint wordToNat' sz (w : word sz) : nat :=
   match w with
     | WO => O
-    | WS false _ w' => 2 * wordToNat w'
-    | WS true _ w' => S (2 * wordToNat w')
+    | WS false w' => 2 * wordToNat w'
+    | WS true w' => S (2 * wordToNat w')
   end.
 
 Theorem wordToNat_wordToNat' : forall sz (w : word sz),
@@ -48,8 +48,8 @@ Fixpoint natToWord (sz n : nat) : word sz :=
 Fixpoint wordToN sz (w : word sz) : N :=
   match w with
     | WO => 0
-    | WS false _ w' => 2 * wordToN w'
-    | WS true _ w' => Nsucc (2 * wordToN w')
+    | WS false w' => 2 * wordToN w'
+    | WS true w' => Nsucc (2 * wordToN w')
   end%N.
 
 Definition Nmod2 (n : N) : bool :=
@@ -226,7 +226,7 @@ Fixpoint wones (sz : nat) : word sz :=
 Fixpoint wmsb sz (w : word sz) (a : bool) : bool :=
   match w with
     | WO => a
-    | WS b _ x => wmsb x b
+    | WS b  x => wmsb x b
   end.
 
 Definition whd sz (w : word (S sz)) : bool :=
@@ -235,7 +235,7 @@ Definition whd sz (w : word (S sz)) : bool :=
                                | S _ => bool
                              end with
     | WO => tt
-    | WS b _ _ => b
+    | WS b _ => b
   end.
 
 Definition wtl sz (w : word (S sz)) : word sz :=
@@ -244,7 +244,7 @@ Definition wtl sz (w : word (S sz)) : word sz :=
                                | S sz'' => word sz''
                              end with
     | WO => tt
-    | WS _ _ w' => w'
+    | WS _ w' => w'
   end.
 
 Theorem WS_neq : forall b1 b2 sz (w1 w2 : word sz),
@@ -285,7 +285,7 @@ Definition weq : forall sz (x y : word sz), {x = y} + {x <> y}.
   refine (fix weq sz (x : word sz) : forall y : word sz, {x = y} + {x <> y} :=
     match x in word sz return forall y : word sz, {x = y} + {x <> y} with
       | WO => fun _ => left _ _
-      | WS b _ x' => fun y => if bool_dec b (whd y)
+      | WS b x' => fun y => if bool_dec b (whd y)
         then if weq _ x' (wtl y) then left _ _ else right _ _
         else right _ _
     end); clear weq.
@@ -295,15 +295,15 @@ Definition weq : forall sz (x y : word sz), {x = y} + {x <> y}.
   abstract (subst; symmetry; apply (shatter_word y)).
 
   abstract (rewrite (shatter_word y); simpl; intro; injection H; intros;
-    apply _H0; apply inj_pair2_eq_dec in H0; [ auto | apply eq_nat_dec ]).
+    apply n0; apply inj_pair2_eq_dec in H0; [ auto | apply eq_nat_dec ]).
 
-  abstract (rewrite (shatter_word y); simpl; intro; apply _H; injection H; auto).
+  abstract (rewrite (shatter_word y); simpl; intro; apply n0; injection H; auto).
 Defined.
 
 Fixpoint weqb sz (x : word sz) : word sz -> bool :=
   match x in word sz return word sz -> bool with
     | WO => fun _ => true
-    | WS b _ x' => fun y => 
+    | WS b x' => fun y => 
       if eqb b (whd y)
       then if @weqb _ x' (wtl y) then true else false
       else false
@@ -330,7 +330,7 @@ Qed.
 Fixpoint combine (sz1 : nat) (w : word sz1) : forall sz2, word sz2 -> word (sz1 + sz2) :=
   match w in word sz1 return forall sz2, word sz2 -> word (sz1 + sz2) with
     | WO => fun _ w' => w'
-    | WS b _ w' => fun _ w'' => WS b (combine w' w'')
+    | WS b w' => fun _ w'' => WS b (combine w' w'')
   end.
 
 Fixpoint split1 (sz1 sz2 : nat) : word (sz1 + sz2) -> word sz1 :=
@@ -880,13 +880,13 @@ Add Ring wring8 : wring8 (decidable (weqb_sound 8), constants [wcst]).
 Fixpoint wnot sz (w : word sz) : word sz :=
   match w with
     | WO => WO
-    | WS b _ w' => WS (negb b) (wnot w')
+    | WS b w' => WS (negb b) (wnot w')
   end.
 
 Fixpoint bitwp (f : bool -> bool -> bool) sz (w1 : word sz) : word sz -> word sz :=
   match w1 with
     | WO => fun _ => WO
-    | WS b _ w1' => fun w2 => WS (f b (whd w2)) (bitwp f w1' (wtl w2))
+    | WS b w1' => fun w2 => WS (f b (whd w2)) (bitwp f w1' (wtl w2))
   end.
 
 Definition wor := bitwp orb.
@@ -1176,3 +1176,5 @@ Lemma wplus_cancel : forall sz (a b c : word sz),
   repeat rewrite wplus_unit in H.
   assumption.
 Qed.
+
+Close Scope word_scope.
