@@ -1,14 +1,26 @@
 Require Import Arith.
-Require Import ZArith.
+Require Import Word.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
 (** * The programming language *)
 
-Definition addr := Z.
-Definition valu := Z.
-Definition addr_eq_dec := Z_eq_dec.
+Definition addrlen := 64.
+Definition valulen := 4096.  (* 512 bytes *)
+
+(* Hide the actual values of addrlen and valulen; otherwise, Coq likes
+ * to expand them out, and chews up a lot of memory because 4096 is a
+ * lot of (S ..) terms.
+ *)
+Theorem addrlen_is: addrlen = 64. Proof. auto. Qed.
+Theorem valulen_is: valulen = 4096. Proof. auto. Qed.
+Global Opaque addrlen.
+Global Opaque valulen.
+
+Definition addr := word addrlen.
+Definition valu := word valulen.
+Definition addr_eq_dec := @weq addrlen.
 
 Parameter donetoken : Set.
 

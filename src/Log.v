@@ -7,14 +7,12 @@ Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
 Require Import FunctionalExtensionality.
-Require Import ZArith.
-Require Import Lia.
+Require Import Word.
 
 Set Implicit Arguments.
 
 
 (** * A log-based transactions implementation *)
-Open Scope Z_scope.
 
 Record xparams := {
   (* The actual data region is everything that's not described here *)
@@ -23,16 +21,8 @@ Record xparams := {
   LogCommit : addr; (* Store true to apply after crash. *)
 
    LogStart : addr; (* Start of log region on disk *)
-     LogLen : Z;    (* Size of log region *)
-
-   LogLenOK : 0 <= LogLen
+     LogLen : addr  (* Size of log region; length but still use addr type *)
 }.
-
-Lemma loglen_pos: forall xp, 0 <= LogLen xp.
-Proof.
-  destruct xp; auto.
-Qed.
-Hint Resolve loglen_pos.
 
 Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
 
@@ -133,7 +123,8 @@ Module Log.
 
   Definition logentry_ptsto xp (e : logentry) idx :=
     let (a, v) := e in
-    ((LogStart xp + idx*2) |-> a  * (LogStart xp + idx*2 + 1) |-> v)%pred.
+    ((LogStart xp ^+ (natToWord addrlen (idx*2))) |-> (zext a (valulen-addrlen)) *
+     (LogStart xp ^+ (natToWord addrlen (idx*2 + 1))) |-> v)%pred.
 
   Fixpoint logentry_ptsto_list xp l idx :=
     match l with
@@ -154,49 +145,28 @@ Module Log.
   Definition data_rep old : pred :=
     diskIs old.
 
-  Fixpoint avail_region start len: pred :=
+  Fixpoint avail_region start len : pred :=
     match len with
     | O => emp
-    | S len' => start |->? * avail_region (start + 1) len'
+    | S len' => start |->? * avail_region (start ^+ (natToWord addrlen 1)) len'
     end%pred.
 
   Hint Extern 1 (okToUnify (avail_region _ _) (avail_region _ _)) =>
     unfold okToUnify; repeat ( progress f_equal ; try omega ) : okToUnify.
 
-  Hint Rewrite Z.sub_0_r Z.add_0_r.
-  Hint Rewrite Zlength_cons.
-  Hint Rewrite Zlength_nil.
-
-  Lemma zlength_pos': forall T (l:list T) acc, Zlength_aux acc T l >= acc.
-  Proof.
-    induction l.
-    - simpl; intros; omega.
-    - simpl; intros.
-      eapply Zge_trans.
-      apply IHl.
-      omega.
-  Qed.
-
-  Lemma zlength_pos: forall T (l:list T), Zlength l >= 0.
-  Proof.
-    intros; apply zlength_pos'.
-  Qed.
-
-  Lemma avail_region_grow' : forall xp l idx, 0 <= idx
-    -> Zlength l + idx <= LogLen xp
+  Lemma avail_region_grow' : forall xp l (idx:nat),
+    length l + idx <= wordToNat (LogLen xp)
     -> logentry_ptsto_list xp l idx *
-         avail_region (LogStart xp + idx * 2 + Zlength l * 2)
-                      (Z.to_nat (((LogLen xp) - Zlength l - idx) * 2)) ==>
-       avail_region (LogStart xp + idx * 2) (Z.to_nat ((LogLen xp - idx) * 2)).
+         avail_region (LogStart xp ^+ (natToWord addrlen (idx * 2 + length l * 2)))
+                      ((wordToNat (LogLen xp) - length l - idx) * 2) ==>
+       avail_region (LogStart xp ^+ (natToWord addrlen (idx * 2)))
+                    ((wordToNat (LogLen xp) - idx) * 2).
   Proof.
-    induction l; autorewrite with core; simpl.
+    induction l; simpl.
     intros; cancel.
     intros.
-    assert (Zlength l >= 0); [apply zlength_pos|].
-    case_eq ((LogLen xp - idx) * 2); intros; try lia.
-    simpl; destruct (Pos2Nat.is_succ p); rewrite H3; simpl.
-    destruct x; try lia.
-    simpl.
+    case_eq ((wordToNat (LogLen xp) - idx) * 2); intros; try omega.
+    destruct n; try omega.
     destruct a; unfold logentry_ptsto.
     cancel.
     replace (LogStart xp + idx * 2 + 1 + 1) with (LogStart xp + (idx + 1) * 2) by omega.

@@ -94,7 +94,7 @@ Ltac deex := match goal with
              end.
 
 Ltac pred_unfold :=
-  unfold impl, and, or, foral_, exis, uniqpred, lift, pupd, addr, valu in *.
+  unfold impl, and, or, foral_, exis, uniqpred, lift, pupd in *.
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
@@ -592,7 +592,7 @@ Proof.
     destruct (m0 x); auto.
   - unfold mem_disjoint; unfold not; intros. repeat deex.
     destruct (addr_eq_dec x a); discriminate.
-  - destruct (addr_eq_dec a a); auto; omega.
+  - destruct (addr_eq_dec a a); congruence.
   - destruct (addr_eq_dec a' a); subst; congruence.
 Qed.
 
