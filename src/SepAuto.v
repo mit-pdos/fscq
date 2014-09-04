@@ -376,6 +376,7 @@ Ltac eexists_one :=
   end.
 
 Definition norm_goal (T: Type) (g: T) := True.
+Theorem norm_goal_ok: forall T g, @norm_goal T g. Proof. firstorder. Qed.
 Opaque norm_goal.
 
 Ltac clear_norm_goal :=
@@ -385,7 +386,7 @@ Ltac clear_norm_goal :=
 
 Ltac set_norm_goal :=
   match goal with
-  | [ |- ?g ] => repeat clear_norm_goal; assert (norm_goal g) by firstorder
+  | [ |- ?g ] => repeat clear_norm_goal; assert (norm_goal g) by apply norm_goal_ok
   end.
 
 (* The goal of pimpl_hidden is to prevent "auto with norm_hint_right" from
