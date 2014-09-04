@@ -1,6 +1,6 @@
 OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
-MODULES    := Prog Pred Hoare SepAuto BasicProg Log MemLog TxnWrap Extraction Scratch
+MODULES    := Nomega Prog Pred Hoare SepAuto BasicProg Log MemLog TxnWrap Extraction Scratch
 VS         := $(MODULES:%=%.v)
 
 .PHONY: coq clean
