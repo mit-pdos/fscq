@@ -38,9 +38,6 @@ Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right associativity).
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
 
-Notation "!" := Read.
-Infix "<--" := Write (at level 8).
-
 
 Definition mem := addr -> option valu.
 Definition upd (m : mem) (a : addr) (v : valu) : mem :=

@@ -176,7 +176,7 @@ Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Inv
    body at level 9).
 
 Definition read_array a rx :=
-  v <- !a;
+  v <- Read a;
   rx v.
 
 Local Hint Extern 1 (diskIs ?m =!=> _) =>
@@ -211,7 +211,7 @@ Proof.
 Qed.
 
 Definition write_array a v rx :=
-  a <-- v;;
+  Write a v ;;
   rx tt.
 
 Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
@@ -239,6 +239,3 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (read_array _) _ >> _) => apply read_array_ok : prog.
 Hint Extern 1 ({{_}} progseq (write_array _ _) _ >> _) => apply write_array_ok : prog.
-
-Notation "!@" := read_array.
-Infix "<--@" := write_array (at level 8).
