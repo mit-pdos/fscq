@@ -294,16 +294,13 @@ Module Log.
 
   Theorem avail_region_shrink_one : forall start len,
     len > 0
-    -> avail_region start (Z.to_nat len) ==>
-       start |->? * avail_region (start + 1) (Z.to_nat (len - 1)).
+    -> avail_region start len ==>
+       start |->? * avail_region (start ^+ (natToWord addrlen 1)) (len - 1).
   Proof.
-    destruct len; intros; try lia.
-    destruct (Pos2Nat.is_succ p).
-    simpl avail_region at 1.
-    rewrite H0.
-    simpl avail_region at 1.
-    assert (x = Z.to_nat (Z.pos p - 1)) by admit.
-    cancel.
+    destruct len; intros; try omega.
+    simpl.
+    replace (len - 0) with (len) by omega.
+    auto.
   Qed.
 
   Hint Extern 1 (avail_region _ _ =!=> _) =>
@@ -311,8 +308,9 @@ Module Log.
 
   Theorem avail_region_grow_two : forall start len a b,
     len > 1
-    -> start |-> a * (start + 1) |-> b
-       * avail_region (S (S start)) (Init.Nat.pred (Init.Nat.pred len))
+    -> start |-> a * (start ^+ (natToWord addrlen 1)) |-> b
+       * avail_region (start ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1))
+                      (Init.Nat.pred (Init.Nat.pred len))
        ==> avail_region start len.
   Proof.
     intros.
@@ -338,10 +336,13 @@ Module Log.
       end
     end : norm_hint_right.
 
+  Definition addr2valu (a: addr) : valu := zext a (valulen-addrlen).
+  Definition valu2addr (v: valu) : addr := split1 addrlen (valulen-addrlen) v.
+
   Theorem logentry_ptsto_append' : forall xp l idx a v,
-    ((LogStart xp + (length l + idx) * 2) |-> a)
-    * ((LogStart xp + (length l + idx) * 2 + 1) |-> v)
-    * logentry_ptsto_list xp l idx
+    ((LogStart xp ^+ (natToWord addrlen ((length l + idx) * 2))) |-> addr2valu a) *
+    ((LogStart xp ^+ (natToWord addrlen ((length l + idx) * 2 + 1))) |-> v) *
+    logentry_ptsto_list xp l idx
     ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) idx.
   Proof.
     induction l; auto; simpl; intros.
@@ -350,8 +351,9 @@ Module Log.
   Qed.
 
   Theorem logentry_ptsto_append : forall xp l a v,
-    logentry_ptsto_list xp l 0 * ((LogStart xp + length l * 2) |-> a)
-    * ((LogStart xp + length l * 2 + 1) |-> v)
+    logentry_ptsto_list xp l 0 *
+    ((LogStart xp ^+ (natToWord addrlen (length l * 2))) |-> addr2valu a) *
+    ((LogStart xp ^+ (natToWord addrlen (length l * 2 + 1))) |-> v)
     ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) 0.
   Proof.
     intros.
@@ -388,14 +390,15 @@ Module Log.
     end : norm_hint_right.
 
   Definition write xp a v rx :=
-    len <- !(LogLength xp);
-    If (le_lt_dec (LogLen xp) len) {
-      rx false
-    } else {
-      (LogStart xp + len*2) <-- a;;
-      (LogStart xp + len*2 + 1) <-- v;;
-      (LogLength xp) <-- (S len);;
+    len' <- Read (LogLength xp);
+    let len := valu2addr len' in
+    If (wlt_dec len (LogLen xp)) {
+      Write (LogStart xp ^+ len ^* (natToWord addrlen 2)) (addr2valu a);;
+      Write (LogStart xp ^+ len ^* (natToWord addrlen 2) ^+ (natToWord addrlen 1)) v;;
+      Write (LogLength xp) (addr2valu (len ^+ (natToWord addrlen 1)));;
       rx true
+    } else {
+      rx false
     }.
 
   Hint Resolve indomain_replay.

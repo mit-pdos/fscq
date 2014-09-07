@@ -4,6 +4,7 @@ Require Import List.
 Require Import Prog.
 Require Import Pred.
 Require Import Hoare.
+Require Import Word.
 
 Set Implicit Arguments.
 
@@ -236,7 +237,8 @@ Hint Extern 1 (okToUnify ?a ?a) => constructor : okToUnify.
  * if the addresses in the two [ptsto] predicates are necessarily equal.
  *)
 Hint Extern 1 (okToUnify (?a |-> _) (?b |-> _)) =>
-  unfold okToUnify; f_equal; omega : okToUnify.
+  unfold okToUnify; fold (wzero addrlen);
+  repeat ( progress f_equal; try omega; try ring) : okToUnify.
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 | PickFirst : forall p ps,
