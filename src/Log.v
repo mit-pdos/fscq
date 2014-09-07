@@ -139,7 +139,8 @@ Module Log.
     unfold okToUnify; f_equal; omega : okToUnify.
 
   (* If the log appears to have zero length, unify the log's list rep with nil *)
-  Hint Extern 1 (okToUnify (LogLength ?a |-> 0) (LogLength ?a |-> @length ?T ?b)) =>
+  Hint Extern 1 (okToUnify (LogLength ?a |-> natToWord valulen 0)
+                           (LogLength ?a |-> natToWord valulen (@length ?T ?b))) =>
     unify b (@nil T); constructor : okToUnify.
 
   Definition data_rep old : pred :=
@@ -152,13 +153,14 @@ Module Log.
     end%pred.
 
   Hint Extern 1 (okToUnify (avail_region _ _) (avail_region _ _)) =>
-    unfold okToUnify; repeat ( progress f_equal ; try omega ) : okToUnify.
+    unfold okToUnify; fold (wzero addrlen);
+    repeat ( progress f_equal; try omega; try ring ) : okToUnify.
 
   Lemma avail_region_grow' : forall xp l (idx:nat),
     length l + idx <= wordToNat (LogLen xp)
     -> logentry_ptsto_list xp l idx *
          avail_region (LogStart xp ^+ (natToWord addrlen (idx * 2 + length l * 2)))
-                      ((wordToNat (LogLen xp) - length l - idx) * 2) ==>
+                      ((wordToNat (LogLen xp) - idx - length l) * 2) ==>
        avail_region (LogStart xp ^+ (natToWord addrlen (idx * 2)))
                     ((wordToNat (LogLen xp) - idx) * 2).
   Proof.
@@ -169,43 +171,42 @@ Module Log.
     destruct n; try omega.
     destruct a; unfold logentry_ptsto.
     simpl.
-
-    assert (LogStart xp = LogStart xp).
-    ring.  (* XXX should this work?? *)
-
+    repeat rewrite <- wplus_assoc.
+    repeat rewrite <- natToWord_plus.
     cancel.
-    replace (LogStart xp + idx * 2 + 1 + 1) with (LogStart xp + (idx + 1) * 2) by omega.
-    replace x with (Z.to_nat ((LogLen xp - (idx + 1)) * 2)).
     eapply pimpl_trans; [|apply pimpl_star_emp].
+    replace (idx * 2 + 2) with ((idx + 1) * 2) by omega.
+    replace n with ((wordToNat (LogLen xp) - (idx + 1)) * 2) by omega.
     eapply pimpl_trans; [|apply IHl].
     cancel.
     omega.
-    omega.
-    (* XXX *)
-    admit.
   Qed.
 
   Lemma avail_region_grow_all : forall xp l,
-    Zlength l <= LogLen xp ->
+    length l <= wordToNat (LogLen xp) ->
     logentry_ptsto_list xp l 0 *
-      avail_region (LogStart xp + Zlength l * 2)
-                   (Z.to_nat (((LogLen xp) - Zlength l) * 2)) ==>
-    avail_region (LogStart xp) (Z.to_nat ((LogLen xp) * 2)).
+      avail_region (LogStart xp ^+ (natToWord addrlen (length l * 2)))
+                   ((wordToNat (LogLen xp) - length l) * 2) ==>
+    avail_region (LogStart xp) (wordToNat (LogLen xp) * 2).
   Proof.
     intros.
-    replace (LogStart xp) with (LogStart xp + 0 * 2) by omega.
-    replace (LogLen xp * 2) with ((LogLen xp - 0) * 2) by omega.
-    replace ((LogLen xp - Zlength l) * 2) with (((LogLen xp) - Zlength l - 0) * 2) by omega.
+    replace (LogStart xp) with (LogStart xp ^+ (natToWord addrlen (0 * 2))).
+    replace (wordToNat (LogLen xp)) with ((wordToNat (LogLen xp) - 0)) by omega.
+    rewrite <- wplus_assoc.
+    rewrite <- natToWord_plus.
     apply avail_region_grow'; omega.
+    simpl.
+    replace (natToWord addrlen 0) with (@wzero addrlen) by (unfold wzero; congruence).
+    ring.
   Qed.
 
   Definition log_rep xp m l : pred :=
-     ((LogLength xp) |-> Zlength l
-      * [[ Zlength l <= LogLen xp ]]
+     ((LogLength xp) |-> natToWord valulen (length l)
+      * [[ length l <= wordToNat (LogLen xp) ]]
       * [[ valid_log m l ]]
       * logentry_ptsto_list xp l 0
-      * avail_region (LogStart xp + Zlength l * 2)
-                     (Z.to_nat ((LogLen xp - Zlength l) * 2)))%pred.
+      * avail_region (LogStart xp ^+ (natToWord addrlen (length l * 2)))
+                     ((wordToNat (LogLen xp) - length l) * 2))%pred.
 
   Definition cur_rep (old : mem) (l : log) (cur : mem) : pred :=
     [[ forall a, cur a = replay l old a ]]%pred.
@@ -213,18 +214,18 @@ Module Log.
   Definition rep xp (st : logstate) :=
     match st with
       | NoTransaction m =>
-        (LogCommit xp) |-> 0
+        (LogCommit xp) |-> natToWord valulen 0
       * data_rep m
       * log_rep xp m nil
 
       | ActiveTxn old cur =>
-        (LogCommit xp) |-> 0
+        (LogCommit xp) |-> natToWord valulen 0
       * data_rep old
       * exists log, log_rep xp old log
       * cur_rep old log cur
 
       | CommittedTxn cur =>
-        (LogCommit xp) |-> 1
+        (LogCommit xp) |-> natToWord valulen 1
       * exists old, data_rep old
       * exists log, log_rep xp old log
       * cur_rep old log cur
@@ -233,14 +234,14 @@ Module Log.
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
 
   Definition init xp rx :=
-    (LogLength xp) <-- 0 ;;
-    (LogCommit xp) <-- 0 ;;
+    Write (LogLength xp) (natToWord valulen 0) ;;
+    Write (LogCommit xp) (natToWord valulen 0) ;;
     rx tt.
 
   Theorem init_ok : forall xp rx rec,
     {{ exists old F, F
      * data_rep old
-     * avail_region (LogStart xp) (Z.to_nat (LogLen xp * 2))
+     * avail_region (LogStart xp) (wordToNat (LogLen xp) * 2)
      * (LogCommit xp) |->?
      * (LogLength xp) |->?
      * [[ {{ rep xp (NoTransaction old) * F }} rx tt >> rec ]]
@@ -251,7 +252,9 @@ Module Log.
     hoare.
   Qed.
 
-  Definition begin xp rx := (LogLength xp) <-- 0 ;; rx tt.
+  Definition begin xp rx :=
+    Write (LogLength xp) (natToWord valulen 0) ;;
+    rx tt.
 
   Theorem begin_ok : forall xp rx rec,
     {{ exists m F, rep xp (NoTransaction m) * F
@@ -268,13 +271,15 @@ Module Log.
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
       | context[logentry_ptsto_list ?xp ?l _] =>
-        eapply pimpl_trans;
+        eapply pimpl_trans ;
         [ apply avail_region_grow_all with (xp:=xp) (l:=l); omega
-        | apply eq_pimpl; f_equal; auto; omega ]
+        | apply eq_pimpl; f_equal; try omega; fold (wzero addrlen); ring ]
       end
     end : norm_hint_right.
 
-  Definition abort xp rx := (LogLength xp) <-- 0 ;; rx tt.
+  Definition abort xp rx :=
+    Write (LogLength xp) (natToWord valulen 0) ;;
+    rx tt.
 
   Theorem abort_ok : forall xp rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
