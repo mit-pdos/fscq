@@ -480,7 +480,7 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
 
 Ltac norm := unfold pair_args_helper;
              repeat norm_or_l; set_norm_goal;
-             norm'l; repeat deex; try ( replace_left; unfold stars; simpl; norm'l );
+             norm'l; repeat deex; repeat ( replace_left; unfold stars; simpl; norm'l );
              norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ].
 
 Ltac cancel :=
