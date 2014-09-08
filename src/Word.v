@@ -1177,4 +1177,28 @@ Lemma wplus_cancel : forall sz (a b c : word sz),
   assumption.
 Qed.
 
+
+(* Some additional useful facts added in the fscq version of Word.v *)
+
+Lemma natToWord_mult : forall sz n m, natToWord sz (n * m) = natToWord _ n ^* natToWord _ m.
+  destruct sz; intuition.
+  rewrite wmult_alt.
+  unfold wmultN, wordBinN.
+  destruct (wordToNat_natToWord (S sz) n); intuition.
+  destruct (wordToNat_natToWord (S sz) m); intuition.
+  rewrite H0; rewrite H2; clear H0 H2.
+  replace ((n - x * pow2 (S sz)) * (m - x0 * pow2 (S sz)))
+    with ((n - x * pow2 (S sz)) * m - (n - x * pow2 (S sz)) * (x0 * pow2 (S sz)))
+    by (rewrite Nat.mul_sub_distr_l; auto).
+  rewrite mult_assoc; rewrite drop_sub.
+  repeat rewrite mult_comm with (m:=m).
+  replace (m * (n - x * pow2 (S sz)))
+    with (m * n - m * (x * pow2 (S sz)))
+    by (rewrite Nat.mul_sub_distr_l; auto).
+  rewrite mult_assoc; rewrite drop_sub.
+  auto.
+  rewrite <- mult_assoc; apply Nat.mul_le_mono_l; auto.
+  rewrite <- mult_assoc; apply Nat.mul_le_mono_l; auto.
+Qed.
+
 Close Scope word_scope.
