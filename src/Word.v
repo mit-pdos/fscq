@@ -1239,4 +1239,8 @@ Proof.
   intros; omega.
 Qed.
 
+(* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
+
+(* Don't allow simpl to expand out natToWord *)
+Arguments natToWord : simpl never.

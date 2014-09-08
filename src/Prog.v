@@ -9,15 +9,6 @@ Set Implicit Arguments.
 Definition addrlen := 64.
 Definition valulen := 4096.  (* 512 bytes *)
 
-(* Hide the actual values of addrlen and valulen; otherwise, Coq likes
- * to expand them out, and chews up a lot of memory because 4096 is a
- * lot of (S ..) terms.
- *)
-Theorem addrlen_is: addrlen = 64. Proof. auto. Qed.
-Theorem valulen_is: valulen = 4096. Proof. auto. Qed.
-Global Opaque addrlen.
-Global Opaque valulen.
-
 Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).
 Definition addr_eq_dec := @weq addrlen.
