@@ -28,7 +28,6 @@ Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]
 Parameter donetoken : Set.
 
 Inductive prog :=
-| Fail
 | Done (t: donetoken)
 | Read (a: addr) (rx: valu -> prog)
 | Write (a: addr) (v: valu) (rx: unit -> prog).
@@ -49,7 +48,6 @@ Inductive outcome :=
 | Crashed.
 
 Inductive exec : mem -> prog -> mem -> outcome -> Prop :=
-| XFail : forall m, exec m Fail m Failed
 | XDone : forall m t, exec m (Done t) m Finished
 | XReadFail : forall m a rx,
   m a = None ->
