@@ -232,16 +232,29 @@ Definition okToUnify (p1 p2 : pred) := p1 = p2.
 Hint Extern 1 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
 Hint Extern 1 (okToUnify ?a ?a) => constructor : okToUnify.
 
-(* Try to unify any two [ptsto] predicates.  Since omega does not unify
+(* Try to unify any two [ptsto] predicates.  Since ring does not unify
  * existential variables, this is safe to do; they will be unified only
  * if the addresses in the two [ptsto] predicates are necessarily equal.
  * Fold [wzero] for [ring], and convert nat multiplications and additions
  * into word, so that [ring] can solve them.
  *)
+Ltac rewrite_natToWord_S :=
+  match goal with
+  | [ |- context[natToWord ?s (S ?x)] ] =>
+    match x with
+    | O => fail 1
+    | _ => rewrite natToWord_S with (sz:=s) (n:=x)
+    end
+  end.
+
+Ltac ring_prepare :=
+  repeat ( rewrite natToWord_mult ||
+           rewrite natToWord_plus ||
+           rewrite_natToWord_S );
+  fold (wzero addrlen).
+
 Hint Extern 1 (okToUnify (?a |-> _) (?b |-> _)) =>
-  unfold okToUnify; fold (wzero addrlen);
-  repeat ( rewrite natToWord_mult || rewrite natToWord_plus );
-  repeat ( progress f_equal; try omega; try ring) : okToUnify.
+  unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 | PickFirst : forall p ps,
