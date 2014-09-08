@@ -8,6 +8,7 @@ Require Import SepAuto.
 Require Import BasicProg.
 Require Import FunctionalExtensionality.
 Require Import Word.
+Require Import Omega.
 
 Set Implicit Arguments.
 
@@ -156,8 +157,7 @@ Module Log.
     end%pred.
 
   Hint Extern 1 (okToUnify (avail_region _ _) (avail_region _ _)) =>
-    unfold okToUnify; fold (wzero addrlen);
-    repeat ( progress f_equal; try omega; try ring ) : okToUnify.
+    unfold okToUnify; f_equal; try omega; ring_prepare; ring : okToUnify.
 
   Lemma avail_region_grow' : forall xp l (idx:nat),
     length l + idx <= wordToNat (LogLen xp)
@@ -303,6 +303,12 @@ Module Log.
     apply split1_combine.
   Qed.
 
+  Hint Extern 1 (?L =!=> _) =>
+    match L with
+    | context[valu2addr (addr2valu ?x)] =>
+      rewrite addr2valu2addr with (a:=x); apply pimpl_refl
+    end : norm_hint_left.
+
   Hint Extern 1 (_ =!=> ?R) =>
     match R with
     | context[valu2addr (addr2valu ?x)] =>
@@ -338,7 +344,7 @@ Module Log.
     len > 1
     -> start |-> a * (start ^+ (natToWord addrlen 1)) |-> b
        * avail_region (start ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1))
-                      (Init.Nat.pred (Init.Nat.pred len))
+                      (len - 1 - 1)
        ==> avail_region start len.
   Proof.
     intros.
@@ -348,17 +354,17 @@ Module Log.
   Qed.
 
   Hint Extern 1 (_ =!=> avail_region _ ?len) =>
+    repeat ( rewrite natToWord_mult in * || rewrite natToWord_plus in * );
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
-      | context[avail_region (S (S ?lstart)) _] =>
+      | context[avail_region (?lstart ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1)) _] =>
         match L with
         | context[(lstart |-> _)%pred] =>
           match L with
-          | context[((lstart + 1) |-> _)%pred] =>
-            apply avail_region_grow_two with (start:=lstart); omega
-          | context[(S lstart |-> _)%pred] =>
-            apply avail_region_grow_two with (start:=lstart); omega
+          | context[((lstart ^+ (natToWord addrlen 1)) |-> _)%pred] =>
+            apply avail_region_grow_two with (start:=lstart);
+            repeat extract_nat_comparisons; omega
           end
         end
       end
@@ -377,11 +383,14 @@ Module Log.
 
   Theorem logentry_ptsto_append : forall xp l a v,
     logentry_ptsto_list xp l 0 *
-    ((LogStart xp ^+ (natToWord addrlen (length l * 2))) |-> addr2valu a) *
-    ((LogStart xp ^+ (natToWord addrlen (length l * 2 + 1))) |-> v)
+    ((LogStart xp ^+ natToWord addrlen (length l) ^* natToWord addrlen 2) |-> addr2valu a) *
+    ((LogStart xp ^+ natToWord addrlen (length l) ^* natToWord addrlen 2 ^+ natToWord addrlen 1) |-> v)
     ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) 0.
   Proof.
     intros.
+    repeat rewrite <- natToWord_mult.
+    rewrite <- wplus_assoc.
+    repeat rewrite <- natToWord_plus.
     eapply pimpl_trans; [|apply logentry_ptsto_append'].
     cancel.
   Qed.
@@ -392,15 +401,14 @@ Module Log.
       match L with
       | context[logentry_ptsto_list xp ?l _] =>
         match L with
-        | context[((LogStart xp + length l * 2) |-> _)%pred] =>
+        | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2) |-> _)%pred] =>
           match L with
-          | context[((LogStart xp + length l * 2 + 1) |-> _)%pred] =>
+          | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2 ^+ natToWord _ 1) |-> _)%pred] =>
             match L with
-            | context[(LogLength xp |-> S (length l))%pred] =>
+            | context[(LogLength xp |-> addr2valu (natToWord _ (length l) ^+ natToWord _ 1))%pred] =>
               match R with
               (* Make sure this hint does not apply multiple times.. *)
-              | context[((LogStart xp + length r * 2) |-> _)%pred] => fail 1
-              | context[((LogStart xp + (length l + 1) * 2) |-> _)%pred] => fail 1
+              | context[((LogStart xp ^+ natToWord _ (length _) ^* natToWord _ 2) |-> _)%pred] => fail 1
               | _ => apply logentry_ptsto_append
               end
             end
@@ -441,10 +449,125 @@ Module Log.
     step.
     step.
     step.
+    step.
+    step.
+    step.
 
-    rewrite natToWord_mult.
+    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
+    apply valid_log_app; simpl; intuition eauto.
+
+    step.
+
+    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
+    apply valid_log_app; simpl; intuition eauto.
+
     cancel.
-    (* XXX existential variable for RHS frame predicate created too early *)
+    step.
+    norm.
+    cancel'.
+    intuition.
+    intuition.
+    cancel'.
+    (* XXX this cancel' produces an unexpected error, because all [cancel_one] invocations
+     * that fail should fail over to [delay_one] instead:
+     *)
+
+    cancel.
+
+unfold pair_args_helper;
+             repeat norm_or_l; set_norm_goal;
+             norm'l; repeat deex;
+             repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
+             norm'r.
+
+eapply replace_right.
+apply pick_later_and.
+apply pick_later_and.
+apply pick_later_and.
+apply pick_later_and.
+split. apply PickFirst. constructor.
+apply pimpl_hide.
+
+    repeat ( rewrite natToWord_mult in * || rewrite natToWord_plus in * ).
+
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[avail_region (?lstart ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1)) _] =>
+        match L with
+        | context[(lstart |-> _)%pred] =>
+          match L with
+          | context[((lstart ^+ (natToWord addrlen 1)) |-> _)%pred] =>
+            apply avail_region_grow_two with (start:=lstart);
+            repeat extract_nat_comparisons; omega
+          end
+        end
+      end
+    end.
+
+apply avail_region_grow_two.
+logentry_ptsto_append.
+
+unfold stars; simpl.
+norm.
+
+
+
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[logentry_ptsto_list xp ?l _] =>
+        match L with
+        | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2) |-> _)%pred] =>
+          match L with
+          | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2 ^+ natToWord _ 1) |-> _)%pred] =>
+            match L with
+            | context[(LogLength xp |-> addr2valu (natToWord _ (length l) ^+ natToWord _ 1))%pred] =>
+idtac "foo";
+              match R with
+              (* Make sure this hint does not apply multiple times.. *)
+              | context[((LogStart xp ^+ natToWord _ (length _) ^* natToWord _ 2) |-> _)%pred] => fail 1
+              | _ => apply logentry_ptsto_append
+              end
+            end
+          end
+        end
+      end
+    end.
+
+
+    norm.
+
+
+Focus 2.
+
+set_norm_goal.
+norm'l. repeat deex. repeat ( replace_left; unfold stars; simpl; norm'l ).
+norm'r; [ | intuition ].
+eapply replace_right.
+split.
+apply PickFirst. constructor.
+apply pimpl_hide.
+
+
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[avail_region (?lstart ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1)) _] =>
+        match L with
+        | context[(lstart |-> _)%pred] =>
+          match L with
+          | context[((lstart ^+ (natToWord addrlen 1)) |-> _)%pred] =>
+            apply avail_region_grow_two with (start:=lstart);
+            repeat extract_nat_comparisons; omega
+          end
+        end
+      end
+    end.
+
+            apply avail_region_grow_two.
+repeat extract_nat_comparisons.
+omega.
 
     hoare.
 
