@@ -1,5 +1,6 @@
 Require Import Arith.
 Require Import Pred.
+Require Import Word.
 Require Import Prog.
 Require Import Hoare.
 Require Import SepAuto.
@@ -20,38 +21,42 @@ Module Balloc.
   | Avail
   | InUse.
 
-  Definition alloc_state_to_bit a :=
+  Definition alloc_state_to_bit a : valu :=
     match a with
-    | Avail => 0
-    | InUse => 1
+    | Avail => natToWord valulen 0
+    | InUse => natToWord valulen 1
     end.
+
 
   Fixpoint bmap_stars start len bmap off :=
     match len with
     | O => emp
     | S len' =>
-      start |-> alloc_state_to_bit (bmap off) * bmap_stars (S start) len' bmap (S off)
+      start |-> alloc_state_to_bit (bmap off) *
+      bmap_stars (liftWord S start) len' bmap (S off)
     end%pred.
 
   Definition rep xp bmap := bmap_stars (BmapStart xp) (BmapLen xp) bmap 0.
 
+
   Definition free xp bn rx :=
-    (BmapStart xp + bn) <-- 0;;
+    Write (liftWord (plus bn) (BmapStart xp)) (natToWord valulen 0);;
     rx tt.
 
-  Definition bupd (m:addr->alloc_state) n a :=
-    fun n' => if eq_nat_dec n' n then a else m n'.
+  Definition bupd (m:nat->alloc_state) n a :=
+    fun n' => if eq_nat_dec n n' then a else m n'.
 
   Theorem free_ok: forall xp bn rx rec,
-    {{ exists F bmap, F * rep xp bmap
-     * [[ {{ F * rep xp (bupd bmap bn Avail) }} rx tt >> rec ]]
-     * [[ {{ any }} rec >> rec ]]
-       (* XXX figure out how to wrap this in transactions,
-        * so we don't have to specify crash cases.. *)
+                     {{ exists F bmap, F * rep xp bmap
+                                       * [[ {{ F * rep xp (bupd bmap bn Avail) }} rx tt >> rec ]]
+                                       * [[ {{ any }} rec >> rec ]]
+                     (* XXX figure out how to wrap this in transactions,
+                      * so we don't have to specify crash cases.. *)
     }} free xp bn rx >> rec.
   Proof.
     unfold free.
     step.
+
     (* XXX need lemma about extracting a given bmap entry *)
   Abort.
 

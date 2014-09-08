@@ -45,6 +45,9 @@ Fixpoint natToWord (sz n : nat) : word sz :=
     | S sz' => WS (mod2 n) (natToWord sz' (div2 n))
   end.
 
+Definition liftWord (sz : nat) (f : nat -> nat) (w: word sz) :=
+  natToWord sz (f (wordToNat w)).
+
 Fixpoint wordToN sz (w : word sz) : N :=
   match w with
     | WO => 0
