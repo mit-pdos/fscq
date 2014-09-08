@@ -138,9 +138,12 @@ Module Log.
   Hint Extern 1 (okToUnify (logentry_ptsto _ _ _) (logentry_ptsto _ _ _)) =>
     unfold okToUnify; f_equal; omega : okToUnify.
 
+  Definition addr2valu (a: addr) : valu := zext a (valulen-addrlen).
+  Definition valu2addr (v: valu) : addr := split1 addrlen (valulen-addrlen) v.
+
   (* If the log appears to have zero length, unify the log's list rep with nil *)
-  Hint Extern 1 (okToUnify (LogLength ?a |-> natToWord valulen 0)
-                           (LogLength ?a |-> natToWord valulen (@length ?T ?b))) =>
+  Hint Extern 1 (okToUnify (LogLength ?a |-> addr2valu (natToWord addrlen 0))
+                           (LogLength ?a |-> addr2valu (natToWord addrlen (@length ?T ?b)))) =>
     unify b (@nil T); constructor : okToUnify.
 
   Definition data_rep old : pred :=
@@ -201,7 +204,7 @@ Module Log.
   Qed.
 
   Definition log_rep xp m l : pred :=
-     ((LogLength xp) |-> natToWord valulen (length l)
+     ((LogLength xp) |-> addr2valu (natToWord addrlen (length l))
       * [[ length l <= wordToNat (LogLen xp) ]]
       * [[ valid_log m l ]]
       * logentry_ptsto_list xp l 0
@@ -234,7 +237,7 @@ Module Log.
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
 
   Definition init xp rx :=
-    Write (LogLength xp) (natToWord valulen 0) ;;
+    Write (LogLength xp) (addr2valu (natToWord addrlen 0)) ;;
     Write (LogCommit xp) (natToWord valulen 0) ;;
     rx tt.
 
@@ -253,7 +256,7 @@ Module Log.
   Qed.
 
   Definition begin xp rx :=
-    Write (LogLength xp) (natToWord valulen 0) ;;
+    Write (LogLength xp) (addr2valu (natToWord addrlen 0)) ;;
     rx tt.
 
   Theorem begin_ok : forall xp rx rec,
@@ -336,9 +339,6 @@ Module Log.
       end
     end : norm_hint_right.
 
-  Definition addr2valu (a: addr) : valu := zext a (valulen-addrlen).
-  Definition valu2addr (v: valu) : addr := split1 addrlen (valulen-addrlen) v.
-
   Theorem logentry_ptsto_append' : forall xp l idx a v,
     ((LogStart xp ^+ (natToWord addrlen ((length l + idx) * 2))) |-> addr2valu a) *
     ((LogStart xp ^+ (natToWord addrlen ((length l + idx) * 2 + 1))) |-> v) *
@@ -404,6 +404,20 @@ Module Log.
   Hint Resolve indomain_replay.
   Hint Resolve replay_app.
 
+  Lemma addr2valu2addr: forall a,
+    valu2addr (addr2valu a) = a.
+  Proof.
+    unfold valu2addr, addr2valu.
+    intros.
+    apply split1_combine.
+  Qed.
+
+  Hint Extern 1 (_ =!=> ?R) =>
+    match R with
+    | context[valu2addr (addr2valu ?x)] =>
+      rewrite addr2valu2addr with (a:=x); apply pimpl_refl
+    end : norm_hint_right.
+
   Theorem write_ok : forall xp a v rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
      * [[ indomain a m2 ]]
@@ -413,6 +427,15 @@ Module Log.
     }} write xp a v rx >> rec.
   Proof.
     unfold write; log_unfold.
+    step.
+    step.
+    step.
+
+rewrite natToWord_mult.
+norm.
+
+(* XXX *)
+
     hoare.
 
     rewrite app_length; simpl; omega.
