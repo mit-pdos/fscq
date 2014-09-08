@@ -1204,4 +1204,39 @@ Lemma natToWord_mult : forall sz n m, natToWord sz (n * m) = natToWord _ n ^* na
   rewrite <- mult_assoc; apply Nat.mul_le_mono_l; auto.
 Qed.
 
+Lemma wlt_lt: forall sz a b, (a < pow2 sz)%nat
+  -> natToWord sz a < b
+  -> (wordToNat (natToWord sz a) < wordToNat b)%nat.
+Proof.
+  intros.
+  destruct (wordToNat_natToWord sz a); intuition.
+  rewrite H2.
+  destruct x.
+  - clear H3.
+    simpl in *.
+    repeat rewrite Nat.sub_0_r in *.
+    unfold wlt in *.
+    repeat rewrite wordToN_nat in *.
+    apply Nlt_out in H0.
+    repeat rewrite Nat2N.id in *.
+    omega.
+  - assert (pow2 sz <= a)%nat; [|omega].
+    simpl in H3.
+    assert (pow2 sz <= pow2 sz + x * pow2 sz)%nat by (apply Nat.le_add_r).
+    omega.
+Qed.
+
+Lemma wordToNat_natToWord_idempotent' : forall sz n,
+  (n < pow2 sz)%nat
+  -> wordToNat (natToWord sz n) = n.
+Proof.
+  intros.
+  destruct (wordToNat_natToWord sz n); intuition.
+  destruct x.
+  simpl in *; omega.
+  simpl in *.
+  generalize dependent (x * pow2 sz).
+  intros; omega.
+Qed.
+
 Close Scope word_scope.

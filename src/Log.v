@@ -295,6 +295,20 @@ Module Log.
     hoare.
   Qed.
 
+  Lemma addr2valu2addr: forall a,
+    valu2addr (addr2valu a) = a.
+  Proof.
+    unfold valu2addr, addr2valu.
+    intros.
+    apply split1_combine.
+  Qed.
+
+  Hint Extern 1 (_ =!=> ?R) =>
+    match R with
+    | context[valu2addr (addr2valu ?x)] =>
+      rewrite addr2valu2addr with (a:=x); apply pimpl_refl
+    end : norm_hint_right.
+
   Theorem avail_region_shrink_one : forall start len,
     len > 0
     -> avail_region start len ==>
@@ -306,8 +320,19 @@ Module Log.
     auto.
   Qed.
 
+  Ltac extract_nat_comparisons :=
+    match goal with
+    | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
+    | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
+      assert (wordToNat x < pow2 sz) by (apply wordToNat_bound);
+      assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt; auto; omega);
+      clear H
+    | [ H: wordToNat (natToWord _ _) < _ |- _ ] =>
+      rewrite wordToNat_natToWord_idempotent' in H by omega
+    end.
+
   Hint Extern 1 (avail_region _ _ =!=> _) =>
-    apply avail_region_shrink_one; omega : norm_hint_left.
+    apply avail_region_shrink_one; repeat extract_nat_comparisons; omega : norm_hint_left.
 
   Theorem avail_region_grow_two : forall start len a b,
     len > 1
@@ -404,20 +429,6 @@ Module Log.
   Hint Resolve indomain_replay.
   Hint Resolve replay_app.
 
-  Lemma addr2valu2addr: forall a,
-    valu2addr (addr2valu a) = a.
-  Proof.
-    unfold valu2addr, addr2valu.
-    intros.
-    apply split1_combine.
-  Qed.
-
-  Hint Extern 1 (_ =!=> ?R) =>
-    match R with
-    | context[valu2addr (addr2valu ?x)] =>
-      rewrite addr2valu2addr with (a:=x); apply pimpl_refl
-    end : norm_hint_right.
-
   Theorem write_ok : forall xp a v rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
      * [[ indomain a m2 ]]
@@ -431,10 +442,9 @@ Module Log.
     step.
     step.
 
-rewrite natToWord_mult.
-norm.
-
-(* XXX *)
+    rewrite natToWord_mult.
+    cancel.
+    (* XXX existential variable for RHS frame predicate created too early *)
 
     hoare.
 
