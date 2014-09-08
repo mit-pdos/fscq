@@ -235,9 +235,12 @@ Hint Extern 1 (okToUnify ?a ?a) => constructor : okToUnify.
 (* Try to unify any two [ptsto] predicates.  Since omega does not unify
  * existential variables, this is safe to do; they will be unified only
  * if the addresses in the two [ptsto] predicates are necessarily equal.
+ * Fold [wzero] for [ring], and convert nat multiplications and additions
+ * into word, so that [ring] can solve them.
  *)
 Hint Extern 1 (okToUnify (?a |-> _) (?b |-> _)) =>
   unfold okToUnify; fold (wzero addrlen);
+  repeat ( rewrite natToWord_mult || rewrite natToWord_plus );
   repeat ( progress f_equal; try omega; try ring) : okToUnify.
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
