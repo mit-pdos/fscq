@@ -501,7 +501,7 @@ Ltac norm := unfold pair_args_helper;
 
 Ltac cancel :=
   unfold stars; simpl;
-  norm; intuition;
+  norm;
   try match goal with
       | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
         solve [ apply stars_or_left; cancel
