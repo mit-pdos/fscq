@@ -157,7 +157,7 @@ Module Log.
     end%pred.
 
   Hint Extern 1 (okToUnify (avail_region _ _) (avail_region _ _)) =>
-    unfold okToUnify; f_equal; try omega; ring_prepare; ring : okToUnify.
+    unfold okToUnify; f_equal; try omega; ring_prepare; ring' : okToUnify.
 
   Lemma avail_region_grow' : forall xp l (idx:nat),
     length l + idx <= wordToNat (LogLen xp)
@@ -446,134 +446,11 @@ Module Log.
     }} write xp a v rx >> rec.
   Proof.
     unfold write; log_unfold.
-    step.
-    step.
-    step.
-    step.
-    step.
-    step.
-
-    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
-    apply valid_log_app; simpl; intuition eauto.
-
-    step.
-
-    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
-    apply valid_log_app; simpl; intuition eauto.
-
-    cancel.
-    step.
-    norm.
-    cancel'.
-    intuition.
-    intuition.
-    cancel'.
-    (* XXX this cancel' produces an unexpected error, because all [cancel_one] invocations
-     * that fail should fail over to [delay_one] instead:
-     *)
-
-    cancel.
-
-unfold pair_args_helper;
-             repeat norm_or_l; set_norm_goal;
-             norm'l; repeat deex;
-             repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
-             norm'r.
-
-eapply replace_right.
-apply pick_later_and.
-apply pick_later_and.
-apply pick_later_and.
-apply pick_later_and.
-split. apply PickFirst. constructor.
-apply pimpl_hide.
-
-    repeat ( rewrite natToWord_mult in * || rewrite natToWord_plus in * ).
-
-    match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
-      match L with
-      | context[avail_region (?lstart ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1)) _] =>
-        match L with
-        | context[(lstart |-> _)%pred] =>
-          match L with
-          | context[((lstart ^+ (natToWord addrlen 1)) |-> _)%pred] =>
-            apply avail_region_grow_two with (start:=lstart);
-            repeat extract_nat_comparisons; omega
-          end
-        end
-      end
-    end.
-
-apply avail_region_grow_two.
-logentry_ptsto_append.
-
-unfold stars; simpl.
-norm.
-
-
-
-    match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
-      match L with
-      | context[logentry_ptsto_list xp ?l _] =>
-        match L with
-        | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2) |-> _)%pred] =>
-          match L with
-          | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2 ^+ natToWord _ 1) |-> _)%pred] =>
-            match L with
-            | context[(LogLength xp |-> addr2valu (natToWord _ (length l) ^+ natToWord _ 1))%pred] =>
-idtac "foo";
-              match R with
-              (* Make sure this hint does not apply multiple times.. *)
-              | context[((LogStart xp ^+ natToWord _ (length _) ^* natToWord _ 2) |-> _)%pred] => fail 1
-              | _ => apply logentry_ptsto_append
-              end
-            end
-          end
-        end
-      end
-    end.
-
-
-    norm.
-
-
-Focus 2.
-
-set_norm_goal.
-norm'l. repeat deex. repeat ( replace_left; unfold stars; simpl; norm'l ).
-norm'r; [ | intuition ].
-eapply replace_right.
-split.
-apply PickFirst. constructor.
-apply pimpl_hide.
-
-
-    match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
-      match L with
-      | context[avail_region (?lstart ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1)) _] =>
-        match L with
-        | context[(lstart |-> _)%pred] =>
-          match L with
-          | context[((lstart ^+ (natToWord addrlen 1)) |-> _)%pred] =>
-            apply avail_region_grow_two with (start:=lstart);
-            repeat extract_nat_comparisons; omega
-          end
-        end
-      end
-    end.
-
-            apply avail_region_grow_two.
-repeat extract_nat_comparisons.
-omega.
-
     hoare.
 
-    rewrite app_length; simpl; omega.
+    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
     apply valid_log_app; simpl; intuition eauto.
-    rewrite app_length; simpl; omega.
+    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
     apply valid_log_app; simpl; intuition eauto.
   Qed.
 
