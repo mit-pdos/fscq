@@ -14,7 +14,7 @@ Set Implicit Arguments.
 
 Record xparams := {
   BmapStart : addr;
-    BmapLen : nat
+    BmapLen : addr
 }.
 
 Module Balloc.
@@ -34,25 +34,21 @@ Module Balloc.
     | O => emp
     | S len' =>
       start |-> alloc_state_to_bit (bmap off) *
-      bmap_stars (liftWord S start) len' bmap (S off)
+      bmap_stars (liftWord S start) len' bmap (off ^+ (natToWord addrlen 1))
     end%pred.
 
-  Definition rep xp bmap := bmap_stars (BmapStart xp) (BmapLen xp) bmap 0.
+(*
+  Hint Extern 1 (okToUnify (bmap_stars _ _ _ _) (bmap_stars _ _ _ _))
+    => unfold okToUnify; f_equal; try omega; ring_prepare; ring : okToUnify.
+*)
 
-
-  Definition free xp bn rx :=
-    Write (liftWord (plus bn) (BmapStart xp)) (natToWord valulen 0);;
-    rx tt.
-
-  Definition bupd (m:nat->alloc_state) n a :=
-    fun n' => if eq_nat_dec n n' then a else m n'.
-
-
-  Lemma bmap_stars_split: forall len start bmap off len', len' <= len
-    -> bmap_stars start len bmap off ==>
-       bmap_stars start len' bmap off *
-       bmap_stars (start ^+ natToWord addrlen len') (len-len') bmap (off+len').
+  Lemma bmap_stars_split: forall len start bmap off len', (len' <= len)%word
+    -> bmap_stars start (wordToNat len) bmap off ==>
+       bmap_stars start (wordToNat len') bmap off *
+       bmap_stars (start ^+ len') (wordToNat (len ^- len')) bmap (off ^+ len').
   Proof.
+    admit.
+(*
     induction len.
     - intros. assert (len' = 0) by omega. subst. simpl. cancel.
     - destruct len'; intros.
@@ -69,20 +65,60 @@ Module Balloc.
         instantiate (1:=len'). omega.
         replace (S off + len') with (off + S len') by omega.
         cancel.
+*)
   Qed.
+
+  Lemma bmap_stars_extract: forall start len bmap off, (len > wzero addrlen)%word
+    -> bmap_stars start (wordToNat len) bmap off ==>
+       start |-> alloc_state_to_bit (bmap off) *
+       bmap_stars (start ^+ natToWord addrlen 1) (wordToNat (len ^- natToWord addrlen 1)) bmap
+                  (off ^+ natToWord addrlen 1).
+  Proof.
+    admit.
+  Qed.
+
+  Definition rep xp bmap := bmap_stars (BmapStart xp) (wordToNat (BmapLen xp)) bmap (wzero addrlen).
+
+
+  Definition free xp bn rx :=
+    Write ((BmapStart xp) ^+ bn) (natToWord valulen 0);;
+    rx tt.
+
+  Definition bupd (m:addr->alloc_state) n a :=
+    fun n' => if addr_eq_dec n n' then a else m n'.
+
+  Hint Extern 1 (bmap_stars (BmapStart ?xp) (wordToNat (BmapLen ?xp)) _ (wzero addrlen) =!=> _) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match R with
+      | context[((BmapStart xp ^+ ?len2) |-> _)%pred] =>
+        apply bmap_stars_split with (len':=len2); admit
+      end
+    end : norm_hint_left.
+
+  Hint Extern 1 (bmap_stars (BmapStart ?xp ^+ ?bn) _ _ (wzero addrlen ^+ ?bn) =!=> _) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match R with
+      | context[((BmapStart xp ^+ ?bn) |-> _)%pred] =>
+        apply bmap_stars_extract; admit
+      end
+    end : norm_hint_left.
 
   Theorem free_ok: forall xp bn rx rec,
                      {{ exists F bmap, F * rep xp bmap
+                                       * [[ (bn < (BmapLen xp))%word ]]
                                        * [[ {{ F * rep xp (bupd bmap bn Avail) }} rx tt >> rec ]]
                                        * [[ {{ any }} rec >> rec ]]
                      (* XXX figure out how to wrap this in transactions,
                       * so we don't have to specify crash cases.. *)
     }} free xp bn rx >> rec.
   Proof.
-    unfold free.
+    unfold free, rep.
     step.
+    step.
+    (* Need the opposite of the two existing rewrite rules to re-combine *)
 
-    (* XXX need lemma about extracting a given bmap entry *)
   Abort.
 
   Definition alloc xp rx :=
@@ -105,9 +141,6 @@ Module Balloc.
         }
     Rof;;
     rx None.
-
-  Hint Extern 1 (okToUnify (bmap_stars _ _ _ _) (bmap_stars _ _ _ _))
-    => constructor : okToUnify.
 
   Theorem alloc_ok: forall xp rx rec,
     {{ exists F bmap, F * rep xp bmap
