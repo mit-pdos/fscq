@@ -5,6 +5,7 @@ Require Import Prog.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
+Require Import Omega.
 
 Set Implicit Arguments.
 
@@ -45,6 +46,30 @@ Module Balloc.
 
   Definition bupd (m:nat->alloc_state) n a :=
     fun n' => if eq_nat_dec n n' then a else m n'.
+
+
+  Lemma bmap_stars_split: forall len start bmap off len', len' <= len
+    -> bmap_stars start len bmap off ==>
+       bmap_stars start len' bmap off *
+       bmap_stars (start ^+ natToWord addrlen len') (len-len') bmap (off+len').
+  Proof.
+    induction len.
+    - intros. assert (len' = 0) by omega. subst. simpl. cancel.
+    - destruct len'; intros.
+      + fold (wzero addrlen). ring_simplify (start ^+ wzero addrlen).
+        rewrite <- plus_n_O. rewrite <- minus_n_O. cancel.
+      + rewrite natToWord_S. rewrite wplus_assoc.
+        simpl.
+        unfold liftWord. rewrite natToWord_S. rewrite wplus_comm.
+        rewrite natToWord_wordToNat.
+        cancel.
+        eapply pimpl_trans.
+        eapply pimpl_trans; [ | apply IHlen ].
+        cancel.
+        instantiate (1:=len'). omega.
+        replace (S off + len') with (off + S len') by omega.
+        cancel.
+  Qed.
 
   Theorem free_ok: forall xp bn rx rec,
                      {{ exists F bmap, F * rep xp bmap
