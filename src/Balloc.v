@@ -77,6 +77,25 @@ Module Balloc.
     admit.
   Qed.
 
+  
+  Lemma bmap_stars_combine: forall start len bmap off len',
+     bmap_stars start (wordToNat len') bmap off * 
+        bmap_stars (start^+len') (wordToNat (len ^- len')) bmap (off ^+ len')
+        ==> bmap_stars start (wordToNat len) bmap off.
+  Proof.
+    admit.
+  Qed.
+
+  Lemma bmap_stars_insert: forall start len bmap off, 
+     (len > wzero addrlen)%word 
+      ->  start |-> alloc_state_to_bit (bmap off) *
+          bmap_stars (start ^+ natToWord addrlen 1) (wordToNat (len ^- natToWord addrlen 1)) bmap (off ^+ natToWord addrlen 1) 
+           ==>  bmap_stars start (wordToNat len) bmap off.
+  Proof.
+    admit.
+  Qed.
+
+
   Definition rep xp bmap := bmap_stars (BmapStart xp) (wordToNat (BmapLen xp)) bmap (wzero addrlen).
 
 
@@ -86,6 +105,28 @@ Module Balloc.
 
   Definition bupd (m:addr->alloc_state) n a :=
     fun n' => if addr_eq_dec n n' then a else m n'.
+
+  Lemma bmap_stars_upd: forall start len bmap off x, 
+      bmap_stars start (wordToNat len) bmap off  ==>
+        bmap_stars start (wordToNat len) (bupd bmap len x) off.
+  Proof.
+    admit.
+  Qed.
+
+  Lemma bmap_stars_upd': forall start len bmap off x bn, 
+      bmap_stars (start ^+ bn ^+ (natToWord addrlen 1)) (wordToNat (len ^- bn ^- (natToWord addrlen 1))) bmap off  ==>
+        bmap_stars (start ^+ bn ^+ (natToWord addrlen 1))  (wordToNat (len ^- bn ^- (natToWord addrlen 1))) (bupd bmap bn x) off.
+  Proof.
+    admit.
+  Qed.
+
+Theorem bupd_eq : forall m a v a',
+  a' = a
+  -> bupd m a v a' = v.
+Proof.
+  admit.
+Qed.
+
 
   Hint Extern 1 (bmap_stars (BmapStart ?xp) (wordToNat (BmapLen ?xp)) _ (wzero addrlen) =!=> _) =>
     match goal with
@@ -105,6 +146,34 @@ Module Balloc.
       end
     end : norm_hint_left.
 
+  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp) (wordToNat (BmapLen ?xp)) _ (wzero addrlen)) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[((BmapStart xp ^+ ?len2) |-> _)%pred] =>
+        apply bmap_stars_combine with (len':=len2); admit
+      end
+    end : norm_hint_right.
+
+  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp ^+ ?bn ^+ _) (wordToNat _) (bupd _ ?bn _) _) =>
+     apply bmap_stars_upd'
+  : norm_hint_right.
+
+
+  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp) (wordToNat ?len) (bupd _ ?len _) (wzero addrlen)) =>
+     apply bmap_stars_upd
+  : norm_hint_right.
+
+
+  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp ^+ ?start) (wordToNat _)  _ _ ) =>
+    match goal with
+    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+      match L with
+      | context[((BmapStart xp ^+ start) |-> _)%pred] =>
+        apply bmap_stars_insert; admit
+      end
+    end : norm_hint_right.
+
   Theorem free_ok: forall xp bn rx rec,
                      {{ exists F bmap, F * rep xp bmap
                                        * [[ (bn < (BmapLen xp))%word ]]
@@ -116,10 +185,12 @@ Module Balloc.
   Proof.
     unfold free, rep.
     step.
+    step. ring_simplify (wzero addrlen ^+ bn).
+    rewrite bupd_eq; auto.
+    simpl.
+    cancel.
     step.
-    (* Need the opposite of the two existing rewrite rules to re-combine *)
-
-  Abort.
+  Qed.
 
   Definition alloc xp rx :=
     For i < (BmapLen xp)
