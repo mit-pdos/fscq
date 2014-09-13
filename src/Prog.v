@@ -7,7 +7,8 @@ Set Implicit Arguments.
 (** * The programming language *)
 
 Definition addrlen := 64.
-Definition valulen := 4096.  (* 512 bytes *)
+Parameter valulen : nat.
+Axiom valulen_is: valulen = 4096.  (* 512 bytes *)
 
 Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).

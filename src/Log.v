@@ -9,6 +9,7 @@ Require Import BasicProg.
 Require Import FunctionalExtensionality.
 Require Import Word.
 Require Import Omega.
+Require Import Eqdep_dec.
 
 Set Implicit Arguments.
 
@@ -122,9 +123,37 @@ Module Log.
       apply valid_log_upd; auto.
   Qed.
 
+  Lemma addrlen_valulen: addrlen + (valulen - addrlen) = valulen.
+  Proof.
+    rewrite valulen_is; auto.
+  Qed.
+
+  Definition addr2valu (a: addr) : valu.
+    set (zext a (valulen-addrlen)) as r.
+    rewrite addrlen_valulen in r.
+    apply r.
+  Defined.
+
+  Definition valu2addr (v: valu) : addr.
+    rewrite <- addrlen_valulen in v.
+    apply (split1 addrlen (valulen-addrlen) v).
+  Defined.
+
+  Lemma addr2valu2addr: forall a,
+    valu2addr (addr2valu a) = a.
+  Proof.
+    unfold valu2addr, addr2valu.
+    unfold eq_rec_r, eq_rec.
+    intros.
+    rewrite <- addrlen_valulen.
+    rewrite <- eq_rect_eq_dec; try apply eq_nat_dec.
+    rewrite <- eq_rect_eq_dec; try apply eq_nat_dec.
+    apply split1_combine.
+  Qed.
+
   Definition logentry_ptsto xp (e : logentry) idx :=
     let (a, v) := e in
-    ((LogStart xp ^+ (natToWord addrlen (idx*2))) |-> (zext a (valulen-addrlen)) *
+    ((LogStart xp ^+ (natToWord addrlen (idx*2))) |-> addr2valu a *
      (LogStart xp ^+ (natToWord addrlen (idx*2 + 1))) |-> v)%pred.
 
   Fixpoint logentry_ptsto_list xp l idx :=
@@ -138,9 +167,6 @@ Module Log.
     unfold okToUnify; f_equal; omega : okToUnify.
   Hint Extern 1 (okToUnify (logentry_ptsto _ _ _) (logentry_ptsto _ _ _)) =>
     unfold okToUnify; f_equal; omega : okToUnify.
-
-  Definition addr2valu (a: addr) : valu := zext a (valulen-addrlen).
-  Definition valu2addr (v: valu) : addr := split1 addrlen (valulen-addrlen) v.
 
   (* If the log appears to have zero length, unify the log's list rep with nil *)
   Hint Extern 1 (okToUnify (LogLength ?a |-> addr2valu (natToWord addrlen 0))
@@ -281,7 +307,7 @@ Module Log.
     end : norm_hint_right.
 
   Definition abort xp rx :=
-    Write (LogLength xp) (natToWord valulen 0) ;;
+    Write (LogLength xp) (addr2valu (natToWord addrlen 0)) ;;
     rx tt.
 
   Theorem abort_ok : forall xp rx rec,
@@ -293,14 +319,6 @@ Module Log.
   Proof.
     unfold abort; log_unfold.
     hoare.
-  Qed.
-
-  Lemma addr2valu2addr: forall a,
-    valu2addr (addr2valu a) = a.
-  Proof.
-    unfold valu2addr, addr2valu.
-    intros.
-    apply split1_combine.
   Qed.
 
   Hint Extern 1 (?L =!=> _) =>
