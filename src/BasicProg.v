@@ -3,6 +3,10 @@ Require Import Pred.
 Require Import Hoare.
 Require Import Omega.
 Require Import SepAuto.
+Require Import Word.
+Require Import Nomega.
+Require Import Recdef.
+Require Import NArith.
 
 Set Implicit Arguments.
 
@@ -115,6 +119,64 @@ Fixpoint For_ (L : Set) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
     | O => rx l
     | S n' => l' <- (f i l); (For_ f (S i) n' l' nocrash crashed rx)
   end.
+
+Lemma wminus_Alt2: forall sz x y, (y <= x)%word ->
+  @wminusN sz x y = wordBinN minus x y.
+Proof.
+  admit.
+Qed.
+
+Definition For_round (L : Set)
+                     (f : addr -> L -> (L -> prog) -> prog)
+                     (i : addr)
+                     (nextround : L -> prog)
+                     (l : L) : prog :=
+  l' <- (f i l); nextround l'.
+
+Function For_loop (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
+                  (i n : addr)
+                  (nocrash : G -> addr -> L -> pred)
+                  (crashed : G -> pred)
+                  (rx: L -> prog)
+                  {measure wordToNat n}
+                  : L -> prog :=
+  match wlt_dec (natToWord addrlen 0) n with
+  | left _ =>
+    For_round f i
+    (For_loop f (i ^+ (natToWord addrlen 1))
+                (n ^- (natToWord addrlen 1))
+                nocrash crashed rx)
+  | right _ => rx
+  end.
+Proof.
+  intros.
+
+  clear teq.
+  unfold wlt in w.
+  repeat rewrite wordToN_nat in w.
+  apply Nlt_out in w.
+  repeat rewrite Nat2N.id in w.
+  simpl in w.
+
+  rewrite wminus_Alt.
+  rewrite wminus_Alt2.
+  unfold wordBinN.
+  rewrite (@wordToNat_natToWord_idempotent' addrlen 1).
+  rewrite wordToNat_natToWord_idempotent'.
+  apply PeanoNat.Nat.sub_lt; omega.
+
+  assert (wordToNat n < pow2 addrlen) by apply wordToNat_bound; omega.
+
+  replace (1) with (wordToNat (natToWord addrlen 1)) by auto.
+  apply wordToNat_bound.
+
+  unfold wlt, not; intros.
+  apply Nlt_out in H.
+  repeat rewrite wordToN_nat in H.
+  repeat rewrite Nat2N.id in H.
+  simpl in H.
+  omega.
+Qed.
 
 Theorem for_ok:
   forall (L : Set) (G : Type)

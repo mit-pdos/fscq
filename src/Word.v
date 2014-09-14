@@ -1239,6 +1239,43 @@ Proof.
   intros; omega.
 Qed.
 
+Lemma wminus_Alt2: forall sz x y, y <= x ->
+  @wminusN sz x y = wordBinN minus x y.
+Proof.
+  intros.
+  unfold wminusN, wplusN, wnegN, wordBinN.
+  destruct (weq y (natToWord sz 0)); subst.
+
+  rewrite roundTrip_0.
+  repeat rewrite <- minus_n_O.
+  rewrite <- drop_sub with (k:=1) (n:=pow2 sz); try omega.
+  replace (pow2 sz - 1 * pow2 sz) with (0) by omega.
+  rewrite roundTrip_0.
+  rewrite <- plus_n_O.
+  reflexivity.
+
+  rewrite wordToNat_natToWord_idempotent' with (n:=pow2 sz - wordToNat y).
+  rewrite <- drop_sub with (k:=1).
+  simpl.
+  rewrite <- plus_n_O.
+  replace (wordToNat x + (pow2 sz - wordToNat y) - pow2 sz) with (wordToNat x - wordToNat y).
+  auto.
+  rewrite Nat.add_sub_assoc.
+  (* XXX *)
+  admit.
+
+  remember (wordToNat_bound y); omega.
+
+  (* XXX *)
+  admit.
+
+  apply Nat.sub_lt.
+  remember (wordToNat_bound y); omega.
+
+  (* XXX *)
+  admit.
+Qed.
+
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
 
