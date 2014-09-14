@@ -486,12 +486,16 @@ Module Log.
     apply valid_log_app; simpl; intuition eauto.
   Qed.
 
+  Definition addr_zero := natToWord addrlen 0.
+  Definition valu_zero := natToWord valulen 0.
+  Definition logentry_zero := (addr_zero, valu_zero).
+
   Lemma logentry_ptsto_extract: forall xp pos l idx,
     pos < length l
     -> (logentry_ptsto_list xp l idx ==>
         logentry_ptsto_list xp (firstn pos l) idx *
-        ((LogStart xp + (idx+pos) * 2) |-> fst (nth pos l (0, 0))) *
-        ((LogStart xp + (idx+pos) * 2 + 1) |-> snd (nth pos l (0, 0))) *
+        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2))) |-> addr2valu (fst (nth pos l logentry_zero))) *
+        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2 + 1))) |-> snd (nth pos l logentry_zero)) *
         logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1)).
   Proof.
     induction pos; intros.
@@ -509,8 +513,8 @@ Module Log.
   Lemma logentry_ptsto_absorb: forall xp pos l idx,
     pos < length l
     -> (logentry_ptsto_list xp (firstn pos l) idx *
-        ((LogStart xp + (idx+pos) * 2) |-> fst (nth pos l (0, 0))) *
-        ((LogStart xp + (idx+pos) * 2 + 1) |-> snd (nth pos l (0, 0))) *
+        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2))) |-> addr2valu (fst (nth pos l logentry_zero))) *
+        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2 + 1))) |-> snd (nth pos l logentry_zero)) *
         logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1) ==>
         logentry_ptsto_list xp l idx).
   Proof.
@@ -530,7 +534,7 @@ Module Log.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match R with
-      | context[((LogStart xp + ?p * 2) |-> _)%pred] =>
+      | context[((LogStart xp ^+ (natToWord _ (?p * 2))) |-> _)%pred] =>
         apply logentry_ptsto_extract with (pos:=p); omega
       end
     end : norm_hint_left.
@@ -539,7 +543,7 @@ Module Log.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
-      | context[((LogStart xp + ?p * 2) |-> _)%pred] =>
+      | context[((LogStart xp ^+ (natToWord _ (?p * 2))) |-> _)%pred] =>
         match L with
         | context[logentry_ptsto_list xp (firstn p ?log) 0] =>
           apply logentry_ptsto_absorb with (pos:=p) (l:=log); omega
@@ -549,8 +553,8 @@ Module Log.
 
   Lemma replay_last_eq': forall l i a m,
     i + 1 = length l
-    -> fst (nth i l (0, 0)) = a
-    -> Some (snd (nth i l (0, 0))) = replay l m a.
+    -> fst (nth i l logentry_zero) = a
+    -> Some (snd (nth i l logentry_zero)) = replay l m a.
   Proof.
     induction l; simpl; intros.
     - omega.
@@ -580,8 +584,8 @@ Module Log.
 
   Lemma replay_last_eq: forall l i a m,
     i < length l
-    -> fst (nth i l (0, 0)) = a
-    -> Some (snd (nth i l (0, 0))) = replay (firstn (S i) l) m a.
+    -> fst (nth i l logentry_zero) = a
+    -> Some (snd (nth i l logentry_zero)) = replay (firstn (S i) l) m a.
   Proof.
     intros.
     rewrite <- replay_last_eq' with (i := i).
@@ -599,7 +603,7 @@ Module Log.
     destruct e.
     induction l; simpl; intros.
     - rewrite upd_ne; auto.
-    - destruct a0.
+    - match goal with | [ a: logentry |- _ ] => destruct a end.
       apply IHl; auto.
   Qed.
 
@@ -619,7 +623,7 @@ Module Log.
 
   Lemma replay_last_ne: forall i l m a v,
     i < length l
-    -> fst (nth i l (0, 0)) <> a
+    -> fst (nth i l logentry_zero) <> a
     -> Some v = replay (firstn i l) m a
     -> Some v = replay (firstn (S i) l) m a.
   Proof.
@@ -635,8 +639,8 @@ Module Log.
   Qed.
 
   Definition read xp a rx :=
-    len <- !(LogLength xp);
-    v <- !@a;
+    len <- Read (LogLength xp);
+    v <- read_array a;
 
     v <- For i < len
       Ghost log old cur
@@ -651,9 +655,9 @@ Module Log.
       OnCrash
         rep xp (ActiveTxn old cur)
       Begin
-      a' <- !(LogStart xp + i*2);
+      a' <- Read (LogStart xp ^+ i ^* 2);
       If (eq_nat_dec a' a) {
-        v <- !(LogStart xp + i*2 + 1);
+        v <- Read (LogStart xp ^+ i ^* 2 + 1);
         lrx v
       } else {
         lrx v

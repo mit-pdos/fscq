@@ -238,7 +238,25 @@ Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
  * Fold [wzero] for [ring], and convert nat multiplications and additions
  * into word, so that [ring] can solve them.
  *)
-Ltac rewrite_natToWord_S :=
+Ltac rw_natToWord_mult :=
+  match goal with
+  | [ |- context[natToWord ?s (?x * ?y)] ] =>
+    match x with
+    | O => fail 1
+    | _ => rewrite natToWord_mult with (sz:=s) (n:=x) (m:=y)
+    end
+  end.
+
+Ltac rw_natToWord_plus :=
+  match goal with
+  | [ |- context[natToWord ?s (?x + ?y)] ] =>
+    match x with
+    | O => fail 1
+    | _ => rewrite natToWord_plus with (sz:=s) (n:=x) (m:=y)
+    end
+  end.
+
+Ltac rw_natToWord_S :=
   match goal with
   | [ |- context[natToWord ?s (S ?x)] ] =>
     match x with
@@ -264,9 +282,9 @@ Ltac ring' :=
   ring.
 
 Ltac ring_prepare :=
-  repeat ( rewrite natToWord_mult ||
-           rewrite natToWord_plus ||
-           rewrite_natToWord_S );
+  repeat ( rw_natToWord_mult ||
+           rw_natToWord_plus ||
+           rw_natToWord_S );
   fold (wzero addrlen).
 
 Hint Extern 0 (okToUnify (?a |-> _) (?b |-> _)) =>
