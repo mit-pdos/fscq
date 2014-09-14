@@ -26,7 +26,7 @@ Record xparams := {
      LogLen : addr  (* Size of log region; length but still use addr type *)
 }.
 
-Hint Extern 1 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
 
 Inductive logstate :=
 | NoTransaction (cur : mem)
@@ -163,13 +163,13 @@ Module Log.
       logentry_ptsto xp e idx * logentry_ptsto_list xp rest (idx + 1)
     end%pred.
 
-  Hint Extern 1 (okToUnify (logentry_ptsto_list _ _ _) (logentry_ptsto_list _ _ _)) =>
+  Hint Extern 0 (okToUnify (logentry_ptsto_list _ _ _) (logentry_ptsto_list _ _ _)) =>
     unfold okToUnify; f_equal; omega : okToUnify.
-  Hint Extern 1 (okToUnify (logentry_ptsto _ _ _) (logentry_ptsto _ _ _)) =>
+  Hint Extern 0 (okToUnify (logentry_ptsto _ _ _) (logentry_ptsto _ _ _)) =>
     unfold okToUnify; f_equal; omega : okToUnify.
 
   (* If the log appears to have zero length, unify the log's list rep with nil *)
-  Hint Extern 1 (okToUnify (LogLength ?a |-> addr2valu (natToWord addrlen 0))
+  Hint Extern 0 (okToUnify (LogLength ?a |-> addr2valu (natToWord addrlen 0))
                            (LogLength ?a |-> addr2valu (natToWord addrlen (@length ?T ?b)))) =>
     unify b (@nil T); constructor : okToUnify.
 
@@ -182,7 +182,7 @@ Module Log.
     | S len' => start |->? * avail_region (start ^+ (natToWord addrlen 1)) len'
     end%pred.
 
-  Hint Extern 1 (okToUnify (avail_region _ _) (avail_region _ _)) =>
+  Hint Extern 0 (okToUnify (avail_region _ _) (avail_region _ _)) =>
     unfold okToUnify; f_equal; try omega; ring_prepare; ring' : okToUnify.
 
   Lemma avail_region_grow' : forall xp l (idx:nat),

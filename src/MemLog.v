@@ -42,9 +42,9 @@ Module MemLog.
   Hint Extern 1 ({{_}} progseq (Log.commit _) _ >> _) => apply Log.commit_ok : prog.
   Hint Extern 1 ({{_}} progseq (Log.recover _) _ >> _) => apply Log.recover_ok : prog.
 
-  Hint Extern 1 (okToUnify (Log.log_rep _ _ _) (Log.log_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 1 (okToUnify (Log.cur_rep _ _ _) (Log.cur_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 1 (okToUnify (Log.data_rep _) (Log.data_rep _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (Log.log_rep _ _ _) (Log.log_rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (Log.cur_rep _ _ _) (Log.cur_rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (Log.data_rep _) (Log.data_rep _)) => constructor : okToUnify.
 
   Theorem init_ok : forall xp rx rec,
     {{ exists old F, F
@@ -169,7 +169,7 @@ Module MemLog.
     Log.recover xp;;
     rx tt.
 
-  Hint Extern 1 (okToUnify (Log.rep _ _) (Log.rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (Log.rep _ _) (Log.rep _ _)) => constructor : okToUnify.
 
   Theorem recover_ok: forall xp rx rec,
     {{ (exists m F, rep xp (NoTransaction m) ms_empty * F

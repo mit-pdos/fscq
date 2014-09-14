@@ -229,8 +229,8 @@ Ltac flatten := repeat match goal with
 
 Definition okToUnify (p1 p2 : pred) := p1 = p2.
 
-Hint Extern 1 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
-Hint Extern 1 (okToUnify ?a ?a) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
 
 (* Try to unify any two [ptsto] predicates.  Since ring does not unify
  * existential variables, this is safe to do; they will be unified only
@@ -269,7 +269,7 @@ Ltac ring_prepare :=
            rewrite_natToWord_S );
   fold (wzero addrlen).
 
-Hint Extern 1 (okToUnify (?a |-> _) (?b |-> _)) =>
+Hint Extern 0 (okToUnify (?a |-> _) (?b |-> _)) =>
   unfold okToUnify; ring_prepare; f_equal; ring' : okToUnify.
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
@@ -287,7 +287,7 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
-Ltac pick := solve [ repeat ((apply PickFirst; solve [ auto with okToUnify ])
+Ltac pick := solve [ repeat ((apply PickFirst; solve [ trivial with okToUnify ])
                                || apply PickLater) ].
 
 Theorem imply_one : forall qs qs' p q ps F,

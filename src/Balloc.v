@@ -38,7 +38,7 @@ Module Balloc.
     end%pred.
 
 (*
-  Hint Extern 1 (okToUnify (bmap_stars _ _ _ _) (bmap_stars _ _ _ _))
+  Hint Extern 0 (okToUnify (bmap_stars _ _ _ _) (bmap_stars _ _ _ _))
     => unfold okToUnify; f_equal; try omega; ring_prepare; ring : okToUnify.
 *)
 
