@@ -371,8 +371,22 @@ Module Log.
     cancel.
   Qed.
 
+  Ltac rw_natToWord_mult := match goal with
+  | [ H: context[natToWord ?sz (?a * ?b)] |- _ ] =>
+    rewrite natToWord_mult in H
+  | [ |- context[natToWord ?sz (?a * ?b)] ] =>
+    rewrite natToWord_mult
+  end.
+
+  Ltac rw_natToWord_plus := match goal with
+  | [ H: context[natToWord ?sz (?a + ?b)] |- _ ] =>
+    rewrite natToWord_plus in H
+  | [ |- context[natToWord ?sz (?a + ?b)] ] =>
+    rewrite natToWord_plus
+  end.
+
   Hint Extern 1 (_ =!=> avail_region _ ?len) =>
-    repeat ( rewrite natToWord_mult in * || rewrite natToWord_plus in * );
+    repeat ( rw_natToWord_mult || rw_natToWord_plus );
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
