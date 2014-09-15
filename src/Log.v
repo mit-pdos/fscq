@@ -642,22 +642,22 @@ Module Log.
     len <- Read (LogLength xp);
     v <- read_array a;
 
-    v <- For i < len
+    v <- For i < (valu2addr len)
       Ghost log old cur
       Loopvar v <- v
       Continuation lrx
       Invariant
-        (LogCommit xp) |-> 0
+        (LogCommit xp) |-> natToWord valulen 0
         * data_rep old
         * log_rep xp old log
         * cur_rep old log cur
-        * [[ Some v = replay (firstn i log) old a ]]
+        * [[ Some v = replay (firstn (wordToNat i) log) old a ]]
       OnCrash
         rep xp (ActiveTxn old cur)
       Begin
-      a' <- Read (LogStart xp ^+ i ^* 2);
-      If (eq_nat_dec a' a) {
-        v <- Read (LogStart xp ^+ i ^* 2 + 1);
+      a' <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2));
+      If (weq (valu2addr a') a) {
+        v <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2) ^+ (natToWord addrlen 1));
         lrx v
       } else {
         lrx v
