@@ -537,7 +537,7 @@ Module Log.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match R with
-      | context[((LogStart xp ^+ (natToWord _ (?p * 2))) |-> _)%pred] =>
+      | context[((LogStart xp ^+ ?p ^* natToWord _ 2) |-> _)%pred] =>
         apply logentry_ptsto_extract with (pos:=p); omega
       end
     end : norm_hint_left.
@@ -546,7 +546,7 @@ Module Log.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
-      | context[((LogStart xp ^+ (natToWord _ (?p * 2))) |-> _)%pred] =>
+      | context[((LogStart xp ^+ ?p ^* natToWord _ 2) |-> _)%pred] =>
         match L with
         | context[logentry_ptsto_list xp (firstn p ?log) 0] =>
           apply logentry_ptsto_absorb with (pos:=p) (l:=log); omega
@@ -692,6 +692,50 @@ Module Log.
     step.
     step.
     step.
+
+set_norm_goal.
+norm'l.
+repeat deex.
+eapply replace_left.
+apply pick_later_and.
+split. apply PickFirst. constructor.
+apply pimpl_hide.
+
+(* manual version of the hint from above.. *)
+apply logentry_ptsto_extract with (pos:=wordToNat m1).
+rewrite addr2valu2addr in *.
+apply wlt_lt in H4.
+rewrite wordToNat_natToWord_idempotent' in H4; auto.
+eapply Nat.le_lt_trans; eauto; apply wordToNat_bound.
+
+unfold stars; simpl.
+cancel.
+
+    step.
+    step.
+    step.
+
+set_norm_goal.
+norm'l; repeat deex.
+repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l ).
+norm'r.
+
+eapply replace_right.
+split. apply PickFirst. constructor.
+apply pimpl_hide.
+
+(* manual version of the other hint from above.. *)
+apply logentry_ptsto_absorb with (pos:=wordToNat m1) (l:=l).
+rewrite addr2valu2addr in *.
+apply wlt_lt in H4.
+rewrite wordToNat_natToWord_idempotent' in H4; auto.
+eapply Nat.le_lt_trans; eauto; apply wordToNat_bound.
+
+unfold stars; simpl.
+cancel.
+intuition.
+
+(* XXX stopped here *)
 
     hoare.
     hoare.
