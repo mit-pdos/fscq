@@ -349,7 +349,7 @@ Module Log.
     | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
     | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
       assert (wordToNat x < pow2 sz) by (apply wordToNat_bound);
-      assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt; auto; omega);
+      assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; auto; omega);
       clear H
     | [ H: wordToNat (natToWord _ _) < _ |- _ ] =>
       rewrite wordToNat_natToWord_idempotent' in H by omega

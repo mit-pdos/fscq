@@ -2,6 +2,7 @@
 
 Require Import Arith Div2 NArith Bool Omega.
 Require Import Nomega.
+Require Import Wf_nat.
 
 Set Implicit Arguments.
 
@@ -1204,26 +1205,24 @@ Lemma natToWord_mult : forall sz n m, natToWord sz (n * m) = natToWord _ n ^* na
   rewrite <- mult_assoc; apply Nat.mul_le_mono_l; auto.
 Qed.
 
-Lemma wlt_lt: forall sz a b, (a < pow2 sz)%nat
+Lemma wlt_lt: forall sz (a b : word sz), a < b ->
+  (wordToNat a < wordToNat b)%nat.
+Proof.
+  intros.
+  unfold wlt in H.
+  repeat rewrite wordToN_nat in *.
+  apply Nlt_out in H.
+  repeat rewrite Nat2N.id in *.
+  auto.
+Qed.
+
+Lemma wlt_lt': forall sz a b, (a < pow2 sz)%nat
   -> natToWord sz a < b
   -> (wordToNat (natToWord sz a) < wordToNat b)%nat.
 Proof.
   intros.
-  destruct (wordToNat_natToWord sz a); intuition.
-  rewrite H2.
-  destruct x.
-  - clear H3.
-    simpl in *.
-    repeat rewrite Nat.sub_0_r in *.
-    unfold wlt in *.
-    repeat rewrite wordToN_nat in *.
-    apply Nlt_out in H0.
-    repeat rewrite Nat2N.id in *.
-    omega.
-  - assert (pow2 sz <= a)%nat; [|omega].
-    simpl in H3.
-    assert (pow2 sz <= pow2 sz + x * pow2 sz)%nat by (apply Nat.le_add_r).
-    omega.
+  apply wlt_lt.
+  auto.
 Qed.
 
 Lemma wordToNat_natToWord_idempotent' : forall sz n,
@@ -1239,7 +1238,8 @@ Proof.
   intros; omega.
 Qed.
 
-Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat -> n < m.
+Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat ->
+  n < m.
 Proof.
   intros.
   unfold wlt.
@@ -1302,6 +1302,14 @@ Proof.
   repeat rewrite Nat2N.id.
   rewrite roundTrip_0.
   auto.
+Qed.
+
+Theorem wlt_wf:
+  forall sz, well_founded (@wlt sz).
+Proof.
+  intros.
+  eapply well_founded_lt_compat with (f:=@wordToNat sz).
+  apply wlt_lt.
 Qed.
 
 (* Coq trunk seems to inherit open scopes across imports? *)
