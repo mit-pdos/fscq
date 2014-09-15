@@ -151,6 +151,9 @@ Module Log.
     apply split1_combine.
   Qed.
 
+  Opaque addr2valu.
+  Opaque valu2addr.
+
   Definition logentry_ptsto xp (e : logentry) idx :=
     let (a, v) := e in
     ((LogStart xp ^+ (natToWord addrlen (idx*2))) |-> addr2valu a *
@@ -686,12 +689,9 @@ Module Log.
     destruct Ham.
     cancel; eauto.
 
-    eapply pimpl_ok.
-    eauto with prog.
-    norm.
-    cancel'.
-    intuition.
-    (* XXX why is "intuition" unifying existential variables if it runs first?? *)
+    step.
+    step.
+    step.
 
     hoare.
     hoare.
