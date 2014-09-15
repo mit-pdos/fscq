@@ -1239,6 +1239,16 @@ Proof.
   intros; omega.
 Qed.
 
+Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat -> n < m.
+Proof.
+  intros.
+  unfold wlt.
+  repeat rewrite wordToN_nat.
+  apply Nlt_in.
+  repeat rewrite Nat2N.id.
+  auto.
+Qed.
+
 Lemma wminus_Alt2: forall sz x y, y <= x ->
   @wminusN sz x y = wordBinN minus x y.
 Proof.
@@ -1261,19 +1271,37 @@ Proof.
   replace (wordToNat x + (pow2 sz - wordToNat y) - pow2 sz) with (wordToNat x - wordToNat y).
   auto.
   rewrite Nat.add_sub_assoc.
-  (* XXX *)
-  admit.
+  omega.
 
   remember (wordToNat_bound y); omega.
 
-  (* XXX *)
-  admit.
+  simpl. rewrite <- plus_n_O.
+  rewrite Nat.add_sub_assoc; [| remember (wordToNat_bound y); omega ].
+  rewrite plus_comm.
+  rewrite <- Nat.add_sub_assoc.
+  omega.
+
+  apply Nat.nlt_ge.
+  unfold not in *; intros.
+  apply H.
+  apply lt_wlt; auto.
 
   apply Nat.sub_lt.
   remember (wordToNat_bound y); omega.
 
-  (* XXX *)
-  admit.
+  assert (wordToNat y <> 0); try omega.
+
+  assert (wordToN y <> wordToN (natToWord sz 0)).
+  unfold not in *. intros. apply n.
+  apply wordToN_inj.
+  auto.
+
+  repeat rewrite wordToN_nat in H0.
+  unfold not in *. intros. apply H0.
+  apply N2Nat.inj.
+  repeat rewrite Nat2N.id.
+  rewrite roundTrip_0.
+  auto.
 Qed.
 
 (* Coq trunk seems to inherit open scopes across imports? *)

@@ -120,12 +120,6 @@ Fixpoint For_ (L : Set) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
     | S n' => l' <- (f i l); (For_ f (S i) n' l' nocrash crashed rx)
   end.
 
-Lemma wminus_Alt2: forall sz x y, (y <= x)%word ->
-  @wminusN sz x y = wordBinN minus x y.
-Proof.
-  admit.
-Qed.
-
 Definition For_round (L : Set)
                      (f : addr -> L -> (L -> prog) -> prog)
                      (i : addr)
