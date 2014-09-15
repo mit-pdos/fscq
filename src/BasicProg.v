@@ -127,19 +127,19 @@ Definition For_round (L : Set)
                      (l : L) : prog :=
   l' <- (f i l); nextround l'.
 
-Function For_loop (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
-                  (i n : addr)
-                  (nocrash : G -> addr -> L -> pred)
-                  (crashed : G -> pred)
-                  (rx: L -> prog)
-                  {measure wordToNat n}
-                  : L -> prog :=
+Function For_loop' (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
+                   (i n : addr)
+                   (nocrash : G -> addr -> L -> pred)
+                   (crashed : G -> pred)
+                   (rx: L -> prog)
+                   {measure wordToNat n}
+                   : L -> prog :=
   match wlt_dec (natToWord addrlen 0) n with
   | left _ =>
     For_round f i
-    (For_loop f (i ^+ (natToWord addrlen 1))
-                (n ^- (natToWord addrlen 1))
-                nocrash crashed rx)
+    (For_loop' f (i ^+ (natToWord addrlen 1))
+                 (n ^- (natToWord addrlen 1))
+                 nocrash crashed rx)
   | right _ => rx
   end.
 Proof.
@@ -170,6 +170,51 @@ Proof.
   repeat rewrite Nat2N.id in H.
   simpl in H.
   omega.
+Qed.
+
+Definition For_loop L G f i n li nocrash crashed rx :=
+  @For_loop' L G f i n nocrash crashed rx li.
+
+Theorem word_for_ok:
+  forall (L : Set) (G : Type)
+         f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
+         (n i : addr) (li : L),
+  {{ exists F (g:G), F * nocrash g i li
+   * [[forall m l, F * nocrash g m l ==> F * crashed g]]
+   * [[forall m lm rxm,
+      (i <= m)%word ->
+      (m < n ^+ i)%word ->
+      (forall lSm, {{ F * nocrash g (m ^+ (natToWord addrlen 1)) lSm }} (rxm lSm) >> rec) ->
+      {{ F * nocrash g m lm }} f m lm rxm >> rec]]
+   * [[forall lfinal, {{ F * nocrash g (n ^+ i) lfinal }} (rx lfinal) >> rec]]
+  }} (For_loop f i n li nocrash crashed rx) >> rec.
+Proof.
+(*
+  induction n.
+  - intros.
+    apply corr_exists; intros.
+    apply corr_exists; intros.
+    eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
+    + unfold pimpl; intuition pred.
+    + unfold pimpl; pred.
+  - intros.
+    apply corr_exists; intros.
+    apply corr_exists; intros.
+    eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
+    + unfold pimpl; intuition idtac.
+      eapply H0; try omega.
+      intros.
+      eapply pimpl_ok.
+      apply IHn.
+      apply pimpl_exists_r; exists a.
+      apply pimpl_exists_r; exists a0.
+      repeat ( apply sep_star_lift_r; apply pimpl_and_split );
+        unfold pimpl, lift; intuition eauto.
+      apply H0; eauto; omega.
+      replace (n + S i) with (S (n + i)) by omega; eauto.
+    + unfold pimpl; pred.
+*)
+  admit.
 Qed.
 
 Theorem for_ok:
