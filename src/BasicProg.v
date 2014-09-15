@@ -5,8 +5,8 @@ Require Import Omega.
 Require Import SepAuto.
 Require Import Word.
 Require Import Nomega.
-Require Import Recdef.
 Require Import NArith.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
@@ -120,65 +120,93 @@ Fixpoint For_ (L : Set) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
     | S n' => l' <- (f i l); (For_ f (S i) n' l' nocrash crashed rx)
   end.
 
-Definition For_round (L : Set)
-                     (f : addr -> L -> (L -> prog) -> prog)
-                     (i : addr)
-                     (nextround : L -> prog)
-                     (l : L) : prog :=
-  l' <- (f i l); nextround l'.
+Record For_args (L : Set) := {
+  For_args_i : addr;
+  For_args_n : addr;
+  For_args_l : L
+}.
 
-Function For_loop' (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
-                   (i n : addr)
-                   (nocrash : G -> addr -> L -> pred)
-                   (crashed : G -> pred)
-                   (rx: L -> prog)
-                   {measure wordToNat n}
-                   : L -> prog :=
-  match wlt_dec (natToWord addrlen 0) n with
-  | left _ =>
-    For_round f i
-    (For_loop' f (i ^+ (natToWord addrlen 1))
-                 (n ^- (natToWord addrlen 1))
-                 nocrash crashed rx)
-  | right _ => rx
-  end.
+Theorem for_args_wf: forall L,
+  well_founded (fun a b => wlt a.(@For_args_n L) b.(@For_args_n L)).
 Proof.
   intros.
+  apply well_founded_lt_compat with (f:=fun a => wordToNat (a.(For_args_n))).
+  intros.
+  apply wlt_lt; auto.
+Qed.
 
-  clear teq.
-  unfold wlt in w.
-  repeat rewrite wordToN_nat in w.
-  apply Nlt_out in w.
-  repeat rewrite Nat2N.id in w.
-  simpl in w.
+Definition For_loop (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
+                    (i n : addr) (l : L)
+                    (nocrash : G -> addr -> L -> pred)
+                    (crashed : G -> pred)
+                    (rx: L -> prog)
+                    : prog.
+  refine (Fix (@for_args_wf L) (fun _ => prog)
+          (fun args For_loop => _)
+          {| For_args_i := i; For_args_n := n; For_args_l := l |}).
+  clear i n l.
+  destruct args.
+  refine (if weq For_args_n0 (natToWord addrlen 0) then rx For_args_l0 else _).
+  refine (l' <- (f For_args_i0 For_args_l0); _).
+  refine (For_loop {| For_args_i := For_args_i0 ^+ (natToWord addrlen 1);
+                      For_args_n := For_args_n0 ^- (natToWord addrlen 1);
+                      For_args_l := l' |} _).
 
+  assert (wordToNat For_args_n0 <> 0).
+  unfold not in *; intros; apply n.
+  rewrite <- H.
+  rewrite natToWord_wordToNat; auto.
+
+  simpl.
   rewrite wminus_Alt.
   rewrite wminus_Alt2.
   unfold wordBinN.
-  rewrite (@wordToNat_natToWord_idempotent' addrlen 1).
-  rewrite wordToNat_natToWord_idempotent'.
+  rewrite (@wordToNat_natToWord_idempotent' addrlen 1);
+    [| replace (1) with (wordToNat (natToWord addrlen 1)) by auto; apply wordToNat_bound ].
+  apply lt_wlt.
+
+  rewrite wordToNat_natToWord_idempotent';
+    [| assert (wordToNat For_args_n0 < pow2 addrlen) by apply wordToNat_bound; omega ].
   apply PeanoNat.Nat.sub_lt; omega.
 
-  assert (wordToNat n < pow2 addrlen) by apply wordToNat_bound; omega.
-
-  replace (1) with (wordToNat (natToWord addrlen 1)) by auto.
-  apply wordToNat_bound.
-
-  unfold wlt, not; intros.
-  apply Nlt_out in H.
-  repeat rewrite wordToN_nat in H.
-  repeat rewrite Nat2N.id in H.
-  simpl in H.
+  unfold wlt, not in *; intro Hn.
+  apply H.
+  apply Nlt_out in Hn.
+  repeat rewrite wordToN_nat in Hn.
+  repeat rewrite Nat2N.id in Hn.
+  simpl in Hn.
   omega.
+Defined.
+
+Lemma For_loop_step: forall L G f i n l nocrash crashed rx,
+  @For_loop L G f i n l nocrash crashed rx =
+    if weq n (natToWord addrlen 0)
+    then rx l
+    else l' <- (f i l);
+         @For_loop L G f
+                   (i ^+ (natToWord addrlen 1))
+                   (n ^- (natToWord addrlen 1))
+                   l' nocrash crashed rx.
+Proof.
+  intros.
+  unfold For_loop.
+  rewrite Fix_eq.
+
+  destruct (weq n (natToWord addrlen 0)); f_equal.
+
+  intros.
+  repeat match goal with
+  | [ |- context[match ?x with _ => _ end] ] =>
+     destruct x; f_equal
+  end.
+  apply functional_extensionality; auto.
 Qed.
 
-Definition For_loop L G f i n li nocrash crashed rx :=
-  @For_loop' L G f i n nocrash crashed rx li.
-
 Theorem word_for_ok:
-  forall (L : Set) (G : Type)
+  forall (n i : addr)
+         (L : Set) (G : Type)
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
-         (n i : addr) (li : L),
+         (li : L),
   {{ exists F (g:G), F * nocrash g i li
    * [[forall m l, F * nocrash g m l ==> F * crashed g]]
    * [[forall m lm rxm,
@@ -189,32 +217,52 @@ Theorem word_for_ok:
    * [[forall lfinal, {{ F * nocrash g (n ^+ i) lfinal }} (rx lfinal) >> rec]]
   }} (For_loop f i n li nocrash crashed rx) >> rec.
 Proof.
-(*
-  induction n.
-  - intros.
-    apply corr_exists; intros.
-    apply corr_exists; intros.
-    eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
-    + unfold pimpl; intuition pred.
-    + unfold pimpl; pred.
-  - intros.
-    apply corr_exists; intros.
-    apply corr_exists; intros.
-    eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
-    + unfold pimpl; intuition idtac.
-      eapply H0; try omega.
+  match goal with
+  | [ |- forall (n: addr), ?P ] =>
+    refine (well_founded_ind (@wlt_wf addrlen) (fun n => P) _)
+  end.
+
+  intros.
+  apply corr_exists; intros.
+  apply corr_exists; intros.
+  case_eq (weq x (natToWord addrlen 0)); intros; subst.
+
+  - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
+    + unfold pimpl, lift; intros.
+      rewrite For_loop_step.
+      apply H1.
+    + fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). auto.
+
+  - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
+    + unfold pimpl, lift; intros.
+      rewrite For_loop_step.
+      rewrite H0.
+      apply H2.
+
+      apply eq_le; auto.
+      (* XXX i < x ^+ i: need something to prove non-overflow? *)
+      admit.
+
       intros.
       eapply pimpl_ok.
-      apply IHn.
+      apply H.
+
+      (* XXX [x ^- natToWord addrlen 1 < x] given [x <> natToWord addrlen 0] *)
+      admit.
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
       repeat ( apply sep_star_lift_r; apply pimpl_and_split );
         unfold pimpl, lift; intuition eauto.
-      apply H0; eauto; omega.
-      replace (n + S i) with (S (n + i)) by omega; eauto.
-    + unfold pimpl; pred.
-*)
-  admit.
+
+      apply H2; eauto.
+      (* XXX *)
+      admit.
+      (* XXX *)
+      admit.
+
+      ring_simplify (x ^- natToWord addrlen 1 ^+ (i ^+ natToWord addrlen 1)).
+      eauto.
+    + auto.
 Qed.
 
 Theorem for_ok:
