@@ -234,8 +234,9 @@ Proof.
       apply H3.
 
       apply eq_le; auto.
-      (* XXX i < x ^+ i: need something to prove non-overflow? *)
-      admit.
+      rewrite wplus_comm.
+      apply lt_wlt.
+      omega.
 
       intros.
       eapply pimpl_ok.
@@ -258,20 +259,41 @@ Proof.
 
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
+      ring_simplify (i ^+ natToWord addrlen 1 ^+ (x ^- natToWord addrlen 1)).
+      ring_simplify (x ^- natToWord addrlen 1 ^+ (i ^+ natToWord addrlen 1)).
       repeat ( apply sep_star_lift_r; apply pimpl_and_split );
         unfold pimpl, lift; intuition eauto.
 
       apply H3; eauto.
-      (* XXX *)
-      admit.
-      (* XXX *)
-      admit.
+      intros; apply H8; clear H8.
+      apply wlt_lt in H11.
+      unfold wlt.
+      repeat rewrite wordToN_nat.
+      apply Nlt_in.
+      repeat rewrite Nat2N.id.
+      rewrite wplus_alt.
+      unfold wplusN, wordBinN.
+      simpl (wordToNat (natToWord addrlen 1)).
+      rewrite wordToNat_natToWord_idempotent'.
+      omega.
+      eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
 
-      ring_simplify (x ^- natToWord addrlen 1 ^+ (i ^+ natToWord addrlen 1)).
-      eauto.
+      rewrite wminus_Alt.
+      rewrite wminus_Alt2.
+      repeat rewrite wplus_alt.
+      repeat unfold wplusN, wordBinN.
 
-      (* XXX *)
-      admit.
+      simpl (wordToNat (natToWord addrlen 1)).
+      repeat rewrite wordToNat_natToWord_idempotent'.
+      omega.
+      rewrite H1; apply wordToNat_bound.
+
+      eapply Nat.le_lt_trans; [| apply (wordToNat_bound x) ]; omega.
+      eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
+
+      unfold not; intros; apply H5.
+      assert (wordToNat x < 1); [| omega ].
+      apply wlt_lt in H8; simpl in H8; auto.
     + auto.
 Qed.
 
