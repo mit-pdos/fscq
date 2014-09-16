@@ -38,7 +38,7 @@ Inductive logstate :=
 | CommittedTxn (cur : mem)
 (* A transaction has committed but the log has not been applied yet. *).
 
-Module Log.
+Module LOG.
   Definition logentry := (addr * valu)%type.
   Definition log := list logentry.
 
@@ -972,4 +972,4 @@ Module Log.
     step.
   Qed.
 
-End Log.
+End LOG.
