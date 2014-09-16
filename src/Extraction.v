@@ -1,8 +1,9 @@
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlNatInt.
+Require Import ExtrHaskellPrelude.
 Require Import Log.
 
-Extract Constant Prog.donetoken => "unit".
+Extraction Language Haskell.
+
+Extract Constant Prog.donetoken => "()".
 
 Cd "codegen".
 Recursive Extraction Library Log.
