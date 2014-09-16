@@ -887,7 +887,7 @@ Module Log.
   Hint Extern 1 ({{_}} progseq (apply _) _ >> _) => apply apply_ok : prog.
 
   Definition commit xp rx :=
-    (LogCommit xp) <-- 1;;
+    Write (LogCommit xp) (natToWord valulen 1);;
     apply xp;;
     rx tt.
 
@@ -906,12 +906,6 @@ Module Log.
     step.
     log_unfold; cancel.
     log_unfold; cancel.
-    apply stars_or_right.
-    apply stars_or_right.
-    unfold stars; simpl.
-    norm.
-    cancel.
-    intuition.
     step.
   Qed.
 
