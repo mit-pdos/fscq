@@ -910,12 +910,12 @@ Module Log.
   Qed.
 
   Definition recover xp rx :=
-    com <- !(LogCommit xp);
-    If (eq_nat_dec com 1) {
+    com <- Read (LogCommit xp);
+    If (weq com (natToWord valulen 1)) {
       apply xp;;
       rx tt
     } else {
-      (LogLength xp) <-- 0;;
+      Write (LogLength xp) (addr2valu (natToWord addrlen 0));;
       rx tt
     }.
 
