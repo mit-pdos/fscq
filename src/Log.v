@@ -347,19 +347,26 @@ Module Log.
     auto.
   Qed.
 
-  Ltac extract_nat_comparisons :=
+  Ltac helper_wordcmp_one :=
     match goal with
     | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
     | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
       assert (wordToNat x < pow2 sz) by (apply wordToNat_bound);
       assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; auto; omega);
       clear H
-    | [ H: wordToNat (natToWord _ _) < _ |- _ ] =>
-      rewrite wordToNat_natToWord_idempotent' in H by omega
+    | [ H: context[wordToNat (natToWord _ _)] |- _ ] =>
+      rewrite wordToNat_natToWord_idempotent' in H;
+      [| solve [ omega ||
+                 ( eapply Nat.le_lt_trans; [| apply wordToNat_bound ]; eauto ) ] ]
+    | [ H: (?a < natToWord _ ?b)%word |- wordToNat ?a < ?b ] =>
+      apply wlt_lt in H; rewrite wordToNat_natToWord_idempotent' in H;
+      [ apply H | eapply Nat.le_lt_trans; [| apply wordToNat_bound ]; eauto ]
     end.
 
+  Ltac helper_wordcmp := repeat helper_wordcmp_one.
+
   Hint Extern 1 (avail_region _ _ =!=> _) =>
-    apply avail_region_shrink_one; repeat extract_nat_comparisons; omega : norm_hint_left.
+    apply avail_region_shrink_one; helper_wordcmp; omega : norm_hint_left.
 
   Theorem avail_region_grow_two : forall start len a b,
     len > 1
@@ -399,7 +406,7 @@ Module Log.
           match L with
           | context[((lstart ^+ (natToWord addrlen 1)) |-> _)%pred] =>
             apply avail_region_grow_two with (start:=lstart);
-            repeat extract_nat_comparisons; omega
+            helper_wordcmp; omega
           end
         end
       end
@@ -483,9 +490,9 @@ Module Log.
     unfold write; log_unfold.
     hoare.
 
-    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
+    rewrite app_length; simpl; helper_wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.
-    rewrite app_length; simpl; repeat extract_nat_comparisons; omega.
+    rewrite app_length; simpl; helper_wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.
   Qed.
 
@@ -538,7 +545,7 @@ Module Log.
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match R with
       | context[((LogStart xp ^+ ?p ^* natToWord _ 2) |-> _)%pred] =>
-        apply logentry_ptsto_extract with (pos:=p); omega
+        apply logentry_ptsto_extract with (pos:=wordToNat p); helper_wordcmp
       end
     end : norm_hint_left.
 
@@ -548,8 +555,8 @@ Module Log.
       match L with
       | context[((LogStart xp ^+ ?p ^* natToWord _ 2) |-> _)%pred] =>
         match L with
-        | context[logentry_ptsto_list xp (firstn p ?log) 0] =>
-          apply logentry_ptsto_absorb with (pos:=p) (l:=log); omega
+        | context[logentry_ptsto_list xp (firstn (wordToNat p) ?log) 0] =>
+          apply logentry_ptsto_absorb with (pos:=wordToNat p) (l:=log); helper_wordcmp
         end
       end
     end : norm_hint_right.
@@ -689,65 +696,11 @@ Module Log.
     destruct Ham.
     cancel; eauto.
 
-    step.
-    step.
-    step.
-
-set_norm_goal.
-norm'l.
-repeat deex.
-eapply replace_left.
-apply pick_later_and.
-split. apply PickFirst. constructor.
-apply pimpl_hide.
-
-(* manual version of the hint from above.. *)
-apply logentry_ptsto_extract with (pos:=wordToNat m1).
-rewrite addr2valu2addr in *.
-apply wlt_lt in H4.
-rewrite wordToNat_natToWord_idempotent' in H4; auto.
-eapply Nat.le_lt_trans; eauto; apply wordToNat_bound.
-
-unfold stars; simpl.
-cancel.
-
-    step.
-    step.
-    step.
-
-set_norm_goal.
-norm'l; repeat deex.
-repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l ).
-norm'r.
-
-eapply replace_right.
-split. apply PickFirst. constructor.
-apply pimpl_hide.
-
-(* manual version of the other hint from above.. *)
-apply logentry_ptsto_absorb with (pos:=wordToNat m1) (l:=l).
-rewrite addr2valu2addr in *.
-apply wlt_lt in H4.
-rewrite wordToNat_natToWord_idempotent' in H4; auto.
-eapply Nat.le_lt_trans; eauto; apply wordToNat_bound.
-
-unfold stars; simpl.
-cancel.
-intuition.
-
-(* XXX stopped here *)
-
     hoare.
-    hoare.
-    rewrite <- plus_n_O in *.
-    apply replay_last_eq; auto.
-    rewrite <- plus_n_O in *.
-    apply replay_last_ne; auto.
 
-    hoare.
-    rewrite <- plus_n_O in *.
-    rewrite firstn_length in *.
-    congruence.
+    erewrite wordToNat_plusone; [ apply replay_last_eq |]; helper_wordcmp; eauto.
+    erewrite wordToNat_plusone; [ apply replay_last_ne |]; helper_wordcmp; eauto.
+    helper_wordcmp. rewrite firstn_length in *. congruence.
 
     hoare.
     hoare.

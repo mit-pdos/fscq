@@ -1312,6 +1312,38 @@ Proof.
   apply wlt_lt.
 Qed.
 
+Theorem word0: forall (w : word 0), w = WO.
+Proof.
+  firstorder.
+Qed.
+
+Theorem wordToNat_plusone: forall sz w w', w < w' ->
+  wordToNat (w ^+ natToWord sz 1) = S (wordToNat w).
+Proof.
+  intros.
+
+  destruct sz.
+  exfalso.
+  rewrite word0 with (w:=w') in H.
+  rewrite word0 with (w:=w) in H.
+  apply wlt_lt in H.
+  omega.
+
+  rewrite wplus_alt.
+  unfold wplusN, wordBinN.
+  rewrite wordToNat_natToWord_idempotent'.
+
+  rewrite roundTrip_1.
+  omega.
+
+  eapply Nat.le_lt_trans; [| apply wordToNat_bound ].
+  rewrite wordToNat_natToWord_idempotent';
+    [| erewrite <- roundTrip_1; apply wordToNat_bound ].
+  apply wlt_lt in H.
+  instantiate (1:=w').
+  omega.
+Qed.
+
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
 
