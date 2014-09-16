@@ -539,7 +539,11 @@ Module Log.
     - destruct l; simpl in *; try omega.
       cancel.
       eapply pimpl_trans; [eapply pimpl_trans; [| apply IHpos]|].
-      repeat cancel.
+      repeat match goal with
+      | [ |- context[nth pos ?l' logentry_zero] ] => is_evar l'; unify l' l0
+      | [ |- context[?idx' + pos] ] => is_evar idx'; unify idx' (S idx)
+      end.
+      cancel.
       omega.
       cancel.
   Qed.
