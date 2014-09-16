@@ -815,88 +815,71 @@ Module Log.
     step.
     step.
 
-    apply stars_or_right; unfold stars; simpl.
-    norm.
-    cancel. (* XXX cancel before intuition, otherwise intuition unifies the wrong diskIs *)
-    intuition.
-
-    step.
-    step.
-    step.
-
-    apply indomain_log_nth; auto; omega.
-
-    eapply pimpl_ok.
-    eauto with prog.
-    norm.
+    cancel; apply stars_or_right; unfold stars; simpl.
     cancel.
-    intuition.
-    intuition.
+
+    step.
+    step.
+    step.
+
+    rewrite addr2valu2addr. apply indomain_log_nth; auto; helper_wordcmp.
+
+    step.
     apply valid_log_upd; auto.
-    apply indomain_log_nth; auto; omega.
-    rewrite replay_logupd; auto; omega.
-    rewrite replay_skip_more; auto; omega.
+    apply indomain_log_nth; auto; helper_wordcmp.
+    rewrite replay_logupd; auto; helper_wordcmp.
+    erewrite wordToNat_plusone; eauto.
+    rewrite replay_skip_more; auto; helper_wordcmp.
 
     step.
-    apply stars_or_right; unfold stars; simpl.
-    norm.
-    cancel.
-    intuition.
-    intuition.
-    congruence.
+    cancel; apply stars_or_right; unfold stars; simpl.
+    cancel; congruence.
 
-    apply stars_or_right; unfold stars; simpl.
-    norm.
+    cancel; apply stars_or_right; unfold stars; simpl.
     cancel.
-    intuition.
-    intuition.
     apply valid_log_upd; auto.
-    apply indomain_log_nth; auto.
-    rewrite replay_logupd; congruence.
+    apply indomain_log_nth; auto; helper_wordcmp.
+    rewrite replay_logupd; [ congruence | helper_wordcmp ].
 
     step.
-    apply stars_or_right; unfold stars; simpl.
-    norm.
-    cancel.
-    intuition.
-    intuition.
-    congruence.
+    cancel; apply stars_or_right; unfold stars; simpl.
+    cancel; congruence.
 
     step.
-    apply stars_or_right; unfold stars; simpl.
-    norm.
-    cancel.
-    intuition.
-    intuition.
-    congruence.
+    cancel; apply stars_or_right; unfold stars; simpl.
+    cancel; congruence.
 
     step.
-
-    rewrite <- plus_n_O in *; rewrite skipn_length in *.
 
     assert (m1 = m); subst.
     apply functional_extensionality; intros.
+    helper_wordcmp.
+    rewrite skipn_length in *.
     simpl replay in *; congruence.
 
     step.
     step.
     step.
 
-    rewrite <- plus_n_O in *; rewrite skipn_length in *.
+    cancel; apply stars_or_right; unfold stars; simpl.
+    norm.
+    match goal with | [ |- context[@length ?T ?l] ] => unify l (@nil T) end.
+    cancel.
+    intuition.
 
     step.
-
-    apply stars_or_right; unfold stars; simpl.
-    norm.
+    cancel; apply stars_or_right; unfold stars; simpl.
     cancel.
-    intuition.
-    intuition.
-    intuition ( simpl; try omega; try congruence ).
-
-    apply stars_or_right; unfold stars; simpl.
-    norm.
     cancel.
-    intuition congruence.
+
+    assert (m1 = m); subst; auto.
+    apply functional_extensionality; intros.
+    helper_wordcmp.
+    rewrite skipn_length in *.
+    simpl replay in *; congruence.
+
+    cancel; apply stars_or_right; unfold stars; simpl.
+    cancel; congruence.
 
     step.
   Qed.
