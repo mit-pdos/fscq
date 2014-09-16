@@ -943,7 +943,8 @@ Module Log.
     step.
 
     step.
-    step.
+    eapply pimpl_ok. eauto with prog. norm'l.
+    exfalso; eapply natToWord_discriminate; [|eauto]; rewrite valulen_is; omega.
 
     step.
     step.
@@ -951,22 +952,23 @@ Module Log.
     step.
     step.
     step.
-    step.
-    step.
 
-    log_unfold.
-    cancel.
+    eapply pimpl_ok. eauto with prog. norm'l.
+    exfalso; eapply natToWord_discriminate; [|eauto]; rewrite valulen_is; omega.
 
     step.
-    log_unfold.
-    cancel.
+    step.
+    step.
+    step.
+    step.
+    step.
+    log_unfold; cancel.
 
-    log_unfold.
-    apply stars_or_left; unfold stars; simpl.
-    norm.
-    cancel.
-    intuition.
+    step.
+    log_unfold; cancel.
+    log_unfold; cancel.
 
+    step.
     step.
   Qed.
 

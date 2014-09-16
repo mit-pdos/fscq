@@ -1344,6 +1344,16 @@ Proof.
   omega.
 Qed.
 
+Lemma natToWord_discriminate: forall sz, (sz > 0)%nat -> natToWord sz 0 <> natToWord sz 1.
+Proof.
+  unfold not.
+  intros.
+  induction sz.
+  omega.
+  unfold natToWord in H0; fold natToWord in H0.
+  discriminate H0.
+Qed.
+
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
 
