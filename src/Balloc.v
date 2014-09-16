@@ -6,6 +6,7 @@ Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
 Require Import Omega.
+Require Import Log.
 
 Set Implicit Arguments.
 
@@ -37,6 +38,7 @@ Module Balloc.
       bmap_stars (liftWord S start) len' bmap (off ^+ (natToWord addrlen 1))
     end%pred.
 
+(*
 (*
   Hint Extern 0 (okToUnify (bmap_stars _ _ _ _) (bmap_stars _ _ _ _))
     => unfold okToUnify; f_equal; try omega; ring_prepare; ring : okToUnify.
@@ -77,7 +79,6 @@ Module Balloc.
     admit.
   Qed.
 
-  
   Lemma bmap_stars_combine: forall start len bmap off len',
      bmap_stars start (wordToNat len') bmap off * 
         bmap_stars (start^+len') (wordToNat (len ^- len')) bmap (off ^+ len')
@@ -94,18 +95,18 @@ Module Balloc.
   Proof.
     admit.
   Qed.
-
+*)
 
   Definition rep xp bmap := bmap_stars (BmapStart xp) (wordToNat (BmapLen xp)) bmap (wzero addrlen).
 
-
-  Definition free xp bn rx :=
-    Write ((BmapStart xp) ^+ bn) (natToWord valulen 0);;
-    rx tt.
+  Definition free lxp xp bn rx :=
+    ok <- LOG.write lxp ((BmapStart xp) ^+ bn) (natToWord valulen 0);
+    rx ok.
 
   Definition bupd (m:addr->alloc_state) n a :=
     fun n' => if addr_eq_dec n n' then a else m n'.
 
+(*
   Lemma bmap_stars_upd: forall start len bmap off x, 
       bmap_stars start (wordToNat len) bmap off  ==>
         bmap_stars start (wordToNat len) (bupd bmap len x) off.
@@ -173,23 +174,50 @@ Qed.
         apply bmap_stars_insert; admit
       end
     end : norm_hint_right.
+*)
 
-  Theorem free_ok: forall xp bn rx rec,
-                     {{ exists F bmap, F * rep xp bmap
-                                       * [[ (bn < (BmapLen xp))%word ]]
-                                       * [[ {{ F * rep xp (bupd bmap bn Avail) }} rx tt >> rec ]]
-                                       * [[ {{ any }} rec >> rec ]]
-                     (* XXX figure out how to wrap this in transactions,
-                      * so we don't have to specify crash cases.. *)
-    }} free xp bn rx >> rec.
+  Lemma bmap_stars_indomain: forall start bmap m len bn,
+    bmap_stars start (wordToNat len) bmap (wzero addrlen) m ->
+    (bn < len)%word ->
+    indomain (start ^+ bn) m.
+  Proof.
+    intros start bmap m.
+    match goal with
+    | [ |- forall (len : addr), ?P ] =>
+      refine (well_founded_ind (@wlt_wf addrlen) (fun len => P) _)
+    end.
+    admit.
+  Qed.
+
+  Lemma bmap_stars_upd2: forall start bmap m len bn,
+    bmap_stars start (wordToNat len) bmap (wzero addrlen) m ->
+    (bn < len)%word ->
+    bmap_stars start (wordToNat len) (bupd bmap bn Avail) (wzero addrlen)
+      (upd m (start ^+ bn) (natToWord valulen 0)).
+  Proof.
+    admit.
+  Qed.
+
+  Hint Extern 0 (okToUnify (LOG.log_rep _ _ _) (LOG.log_rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (LOG.cur_rep _ _ _) (LOG.cur_rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (LOG.data_rep _) (LOG.data_rep _)) => constructor : okToUnify.
+
+  Hint Extern 1 ({{_}} progseq (LOG.write _ _ _) _ >> _) => apply LOG.write_ok : prog.
+
+  Theorem free_ok: forall lxp xp bn rx rec,
+    {{ exists F mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
+     * [[ rep xp bmap m ]]
+     * [[ (bn < (BmapLen xp))%word ]]
+     * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
+           * [[ rep xp (bupd bmap bn Avail) m' ]] }} rx true >> rec ]]
+     * [[ {{ F * LOG.rep lxp (ActiveTxn mbase m) }} rx false >> rec ]]
+     * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m') }} rec >> rec ]]
+    }} free lxp xp bn rx >> rec.
   Proof.
     unfold free, rep.
-    step.
-    step. ring_simplify (wzero addrlen ^+ bn).
-    rewrite bupd_eq; auto.
-    simpl.
-    cancel.
-    step.
+    hoare.
+    eapply bmap_stars_indomain; eauto.
+    apply bmap_stars_upd2; eauto.
   Qed.
 
   Definition alloc xp rx :=
