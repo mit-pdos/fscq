@@ -205,11 +205,11 @@ Qed.
   Hint Extern 1 ({{_}} progseq (LOG.write _ _ _) _ >> _) => apply LOG.write_ok : prog.
 
   Theorem free_ok: forall lxp xp bn rx rec,
-    {{ exists F mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
-     * [[ rep xp bmap m ]]
+    {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
+     * [[ (Fm * rep xp bmap)%pred m ]]
      * [[ (bn < (BmapLen xp))%word ]]
      * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
-           * [[ rep xp (bupd bmap bn Avail) m' ]] }} rx true >> rec ]]
+           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]] }} rx true >> rec ]]
      * [[ {{ F * LOG.rep lxp (ActiveTxn mbase m) }} rx false >> rec ]]
      * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m') }} rec >> rec ]]
     }} free lxp xp bn rx >> rec.
