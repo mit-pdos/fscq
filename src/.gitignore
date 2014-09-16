@@ -4,9 +4,10 @@
 *.mli
 .*.aux
 *.native
+.coq-native
 /codegen/*.ml
+/codegen/*.mli
 _build
 /disk.img
 /Makefile.coq
-/.coq-native
 /lia.cache

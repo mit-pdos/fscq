@@ -1,6 +1,7 @@
-open HoareLogicCont
+open Log
 open Printf
 open Sys
+open Word
 
 let disk_fn = "disk.img"
 
@@ -21,24 +22,19 @@ let write_disk b v =
   close_out oc
 
 let rec run_dcode = function
-  | HoareLogicCont.Fail ->
-    Printf.printf "Fail\n";
-    raise Exit
-  | HoareLogicCont.Done t ->
+  | Prog.Done t ->
     ()
-  | HoareLogicCont.Read (a, rx) ->
-    let v = read_disk a in
+  | Prog.Read (a, rx) ->
+    let v = read_disk (wordToN 64 a) in
     Printf.printf "read(%d): %d\n" a v;
     run_dcode (rx v)
-  | HoareLogicCont.Write (a, v, rx) ->
+  | Prog.Write (a, v, rx) ->
     Printf.printf "write(%d, %d)\n" a v;
     write_disk a v;
     run_dcode (rx ());;
 
 let xp =
-  { coq_DataStart = 0;
-    coq_DataLen = 20;
-    coq_LogLength = 20;
+  { coq_LogLength = 20;
     coq_LogCommit = 21;
     coq_LogStart = 22;
     coq_LogLen = 20 };;
@@ -46,7 +42,7 @@ let xp =
 let finish = function
   | () ->
     Printf.printf "Done\n";
-    HoareLogicCont.Done ();;
+    Prog.Done ();;
 
 try Sys.remove disk_fn with Sys_error _ -> ();;
 
