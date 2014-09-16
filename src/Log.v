@@ -166,8 +166,10 @@ Module Log.
       logentry_ptsto xp e idx * logentry_ptsto_list xp rest (idx + 1)
     end%pred.
 
-  Hint Extern 0 (okToUnify (logentry_ptsto_list _ _ _) (logentry_ptsto_list _ _ _)) =>
-    unfold okToUnify; f_equal; omega : okToUnify.
+  Hint Extern 0 (okToUnify (logentry_ptsto_list _ ?la _) (logentry_ptsto_list _ ?lb _)) =>
+    unfold okToUnify; ( ( has_evar la; fail 1 ) ||
+                        ( has_evar lb; fail 1 ) ||
+                        ( f_equal; omega ) ) : okToUnify.
   Hint Extern 0 (okToUnify (logentry_ptsto _ _ _) (logentry_ptsto _ _ _)) =>
     unfold okToUnify; f_equal; omega : okToUnify.
 
@@ -185,8 +187,10 @@ Module Log.
     | S len' => start |->? * avail_region (start ^+ (natToWord addrlen 1)) len'
     end%pred.
 
-  Hint Extern 0 (okToUnify (avail_region _ _) (avail_region _ _)) =>
-    unfold okToUnify; f_equal; try omega; ring_prepare; ring' : okToUnify.
+  Hint Extern 0 (okToUnify (avail_region ?sa _) (avail_region ?sb _)) =>
+    unfold okToUnify; ( ( has_evar sa; fail 1 ) ||
+                        ( has_evar sb; fail 1 ) ||
+                        ( f_equal; try omega; ring_prepare; ring' ) ) : okToUnify.
 
   Lemma avail_region_grow' : forall xp l (idx:nat),
     length l + idx <= wordToNat (LogLen xp)
@@ -862,10 +866,8 @@ Module Log.
     step.
 
     cancel; apply stars_or_right; unfold stars; simpl.
-    norm.
-    match goal with | [ |- context[@length ?T ?l] ] => unify l (@nil T) end.
     cancel.
-    intuition.
+    cancel.
 
     step.
     cancel; apply stars_or_right; unfold stars; simpl.
