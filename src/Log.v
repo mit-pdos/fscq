@@ -707,28 +707,28 @@ Module Log.
   Qed.
 
   Definition apply xp rx :=
-    len <- !(LogLength xp);
-    For i < len
+    len <- Read (LogLength xp);
+    For i < (valu2addr len)
       Ghost log cur
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        (LogCommit xp) |-> 1
+        (LogCommit xp) |-> natToWord valulen 1
         * exists old, data_rep old
         * log_rep xp old log
         * cur_rep old log cur
-        * [[ forall a, cur a = replay (skipn i log) old a ]]
+        * [[ forall a, cur a = replay (skipn (wordToNat i) log) old a ]]
       OnCrash
         rep xp (NoTransaction cur) \/
         rep xp (CommittedTxn cur)
       Begin
-        a <- !(LogStart xp + i*2);
-        v <- !(LogStart xp + i*2 + 1);
-        a <--@ v;;
+        a <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2));
+        v <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2) ^+ (natToWord addrlen 1));
+        write_array (valu2addr a) v;;
         lrx tt
     Rof;;
-    (LogLength xp) <-- 0;;
-    (LogCommit xp) <-- 0;;
+    Write (LogLength xp) (addr2valu (natToWord addrlen 0));;
+    Write (LogCommit xp) (natToWord valulen 0);;
     rx tt.
 
   Lemma skipn_length: forall T (l:list T),
@@ -739,7 +739,7 @@ Module Log.
 
   Lemma indomain_log_nth: forall l i m, i < length l
     -> valid_log m l
-    -> indomain (fst (nth i l (0, 0))) m.
+    -> indomain (fst (nth i l logentry_zero)) m.
   Proof.
     induction l.
     - simpl; intros; omega.
@@ -751,17 +751,18 @@ Module Log.
     -> replay l (upd m0 a v) a' = replay l (upd m1 a v) a'.
   Proof.
     induction l.
-    - simpl; intros; case_eq (eq_nat_dec a a'); intros; subst.
+    - simpl; intros; case_eq (addr_eq_dec a a'); intros; subst.
       repeat rewrite upd_eq; auto.
       repeat rewrite upd_ne; auto.
     - destruct a; simpl; intros.
-      case_eq (eq_nat_dec a0 a); intros; subst.
+      case_eq (addr_eq_dec w a); intros; subst.
       repeat rewrite upd_repeat; auto.
-      repeat rewrite upd_comm with (a0:=a0); auto.
+      repeat rewrite upd_comm with (a0:=a); auto.
   Qed.
 
   Lemma replay_logupd: forall l m a i, i < length l
-    -> replay l (upd m (fst (nth i l (0, 0))) (snd (nth i l (0, 0)))) a = replay l m a.
+    -> replay l (upd m (fst (nth i l logentry_zero))
+                       (snd (nth i l logentry_zero))) a = replay l m a.
   Proof.
     induction l.
     - destruct i; simpl; intros; omega.
@@ -781,7 +782,8 @@ Module Log.
   Qed.
 
   Lemma replay_skip_more: forall l m a i, i < length l
-    -> replay (skipn (S i) l) (upd m (fst (nth i l (0, 0))) (snd (nth i l (0, 0)))) a =
+    -> replay (skipn (S i) l) (upd m (fst (nth i l logentry_zero))
+                                     (snd (nth i l logentry_zero))) a =
        replay (skipn i l) m a.
   Proof.
     induction l.
@@ -796,7 +798,7 @@ Module Log.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
-      | context[(LogLength xp |-> 0)%pred] =>
+      | context[(LogLength xp |-> addr2valu (natToWord addrlen 0))%pred] =>
         unify l (@nil T); apply pimpl_refl
       end
     end : norm_hint_right.
