@@ -203,19 +203,51 @@ Qed.
   Hint Extern 0 (okToUnify (LOG.data_rep _) (LOG.data_rep _)) => constructor : okToUnify.
 
   Hint Extern 1 ({{_}} progseq (LOG.write _ _ _) _ >> _) => apply LOG.write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (LOG.recover _) _ >> _) => apply LOG.recover_ok : prog.
 
   Theorem free_ok: forall lxp xp bn rx rec,
     {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
      * [[ (Fm * rep xp bmap)%pred m ]]
      * [[ (bn < (BmapLen xp))%word ]]
      * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
-           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]] }} rx true >> rec ]]
-     * [[ {{ F * LOG.rep lxp (ActiveTxn mbase m) }} rx false >> rec ]]
-     * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m') }} rec >> rec ]]
-    }} free lxp xp bn rx >> rec.
+           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]] }} rx true >> LOG.recover lxp ;; rec tt ]]
+     * [[ {{ F * LOG.rep lxp (ActiveTxn mbase m) }} rx false >> LOG.recover lxp ;; rec tt ]]
+     * [[ {{ F * LOG.rep lxp (NoTransaction mbase) }} rec tt >> LOG.recover lxp ;; rec tt ]]
+    }} free lxp xp bn rx >> LOG.recover lxp ;; rec tt.
   Proof.
     unfold free, rep.
     hoare.
+admit.
+admit.
+apply stars_or_right.
+apply stars_or_left.
+unfold stars; simpl.
+cancel.
+hoare.
+hoare.
+apply stars_or_right.
+apply stars_or_left.
+cancel.
+hoare.
+hoare.
+apply stars_or_right.
+apply stars_or_left.
+cancel.
+hoare.
+hoare.
+apply stars_or_right.
+apply stars_or_left.
+cancel.
+hoare.
+hoare.
+apply stars_or_right.
+apply stars_or_left.
+cancel.
+hoare.
+hoare.
+
+step.
+
     eapply bmap_stars_indomain; eauto.
     apply bmap_stars_upd2; eauto.
   Qed.
