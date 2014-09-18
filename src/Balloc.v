@@ -198,13 +198,6 @@ Qed.
     admit.
   Qed.
 
-  Hint Extern 0 (okToUnify (LOG.log_rep _ _ _) (LOG.log_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (LOG.cur_rep _ _ _) (LOG.cur_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (LOG.data_rep _) (LOG.data_rep _)) => constructor : okToUnify.
-
-  Hint Extern 1 ({{_}} progseq (LOG.write _ _ _) _ >> _) => apply LOG.write_ok : prog.
-  Hint Extern 1 ({{_}} progseq (LOG.recover _) _ >> _) => apply LOG.recover_ok : prog.
-
   Theorem free_ok: forall lxp xp bn rx rec,
     {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
      * [[ (Fm * rep xp bmap)%pred m ]]
@@ -216,6 +209,7 @@ Qed.
     }} free lxp xp bn rx >> LOG.recover lxp ;; rec tt.
   Proof.
     unfold free, rep.
+    Opaque LOG.rep.
     hoare.
 admit.
 admit.

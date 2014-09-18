@@ -288,6 +288,8 @@ Module LOG.
     hoare.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (init _) _ >> _) => apply init_ok : prog.
+
   Definition begin xp rx :=
     Write (LogLength xp) (addr2valu (natToWord addrlen 0)) ;;
     rx tt.
@@ -301,6 +303,8 @@ Module LOG.
     unfold begin; log_unfold.
     hoare.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (begin _) _ >> _) => apply begin_ok : prog.
 
   Hint Extern 1 (_ =!=> avail_region _ _) =>
     match goal with
@@ -327,6 +331,8 @@ Module LOG.
     unfold abort; log_unfold.
     hoare.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (abort _) _ >> _) => apply abort_ok : prog.
 
   Hint Extern 1 (?L =!=> _) =>
     match L with
@@ -499,6 +505,8 @@ Module LOG.
     rewrite app_length; simpl; helper_wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (write _ _ _) _ >> _) => apply write_ok : prog.
 
   Definition addr_zero := natToWord addrlen 0.
   Definition valu_zero := natToWord valulen 0.
@@ -714,6 +722,8 @@ Module LOG.
     hoare.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (read _ _) _ >> _) => apply read_ok : prog.
+
   Definition apply xp rx :=
     len <- Read (LogLength xp);
     For i < (valu2addr len)
@@ -915,6 +925,8 @@ Module LOG.
     step.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (commit _) _ >> _) => apply commit_ok : prog.
+
   Definition recover xp rx :=
     com <- Read (LogCommit xp);
     If (weq com (natToWord valulen 1)) {
@@ -971,5 +983,7 @@ Module LOG.
     step.
     step.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
 
 End LOG.

@@ -34,14 +34,6 @@ Module MemLog.
     Log.init xp ;;
     rx tt.
 
-  Hint Extern 1 ({{_}} progseq (Log.init _) _ >> _) => apply Log.init_ok : prog.
-  Hint Extern 1 ({{_}} progseq (Log.begin _) _ >> _) => apply Log.begin_ok : prog.
-  Hint Extern 1 ({{_}} progseq (Log.abort _) _ >> _) => apply Log.abort_ok : prog.
-  Hint Extern 1 ({{_}} progseq (Log.write _ _ _) _ >> _) => apply Log.write_ok : prog.
-  Hint Extern 1 ({{_}} progseq (Log.read _ _) _ >> _) => apply Log.read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (Log.commit _) _ >> _) => apply Log.commit_ok : prog.
-  Hint Extern 1 ({{_}} progseq (Log.recover _) _ >> _) => apply Log.recover_ok : prog.
-
   Hint Extern 0 (okToUnify (Log.log_rep _ _ _) (Log.log_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (Log.cur_rep _ _ _) (Log.cur_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (Log.data_rep _) (Log.data_rep _)) => constructor : okToUnify.
