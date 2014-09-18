@@ -69,6 +69,47 @@ Inductive exec_recover : mem -> prog -> prog -> mem -> outcome -> Prop :=
 Hint Constructors exec.
 Hint Constructors exec_recover.
 
+
+Theorem exec_need_not_crash : forall p m,
+  exists m' out, exec m p m' out /\ out <> Crashed.
+Proof.
+  induction p.
+  - do 2 eexists; split.
+    constructor.
+    discriminate.
+  - intros.
+    case_eq (m a); intros.
+    + edestruct H. destruct H1. destruct H1.
+      do 2 eexists; split.
+      * eapply XReadOK; eauto.
+      * auto.
+    + do 2 eexists; split.
+      * eapply XReadFail; eauto.
+      * discriminate.
+  - intros.
+    case_eq (m a); intros.
+    + edestruct H. destruct H1. destruct H1.
+      do 2 eexists; split.
+      * eapply XWriteOK; eauto.
+      * auto.
+    + do 2 eexists; split.
+      * eapply XWriteFail; eauto.
+      * discriminate.
+Qed.
+
+Theorem exec_recover_can_terminate : forall p1 p2 m,
+  exists m' out, exec_recover m p1 p2 m' out.
+Proof.
+  intros.
+  destruct (exec_need_not_crash p1 m).
+  destruct H. destruct H.
+  do 2 eexists.
+  destruct x0; try congruence.
+  - apply XRFail; eauto.
+  - apply XRFinished; eauto.
+Qed.
+
+
 Theorem upd_eq : forall m a v a',
   a' = a
   -> upd m a v a' = Some v.
