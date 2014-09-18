@@ -209,7 +209,6 @@ Qed.
     }} free lxp xp bn rx >> LOG.recover lxp ;; rec tt.
   Proof.
     unfold free, rep.
-    Opaque LOG.rep.
     hoare.
 admit.
 admit.

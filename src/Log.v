@@ -986,4 +986,6 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
 
+  Global Opaque rep.
+
 End LOG.

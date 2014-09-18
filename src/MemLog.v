@@ -17,8 +17,6 @@ Set Implicit Arguments.
 Definition memstate := list Log.logentry.
 
 Module MemLog.
-  Opaque Log.rep.
-
   Definition rep xp (st: logstate) (ms: memstate) :=
     match st with
     | ActiveTxn old cur =>
