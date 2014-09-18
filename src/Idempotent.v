@@ -12,36 +12,21 @@ Definition preserves_precondition (pre : pred) p :=
 
 Axiom recover_preserves: forall rx, preserves_precondition rpre (recover rx).
 
-Theorem recover_recursive : forall p,
+Theorem idempotent_ok : forall p p1 p2,
   preserves_precondition rpre p ->
+  p1 = p ->
+  p2 = p ->
   {{ rpre
-  }} p >> p.
+  }} p1 >> p2.
 Proof.
   unfold corr at 1.
   intros.
-(*
-  apply sep_star_lift2and in H.
-  destruct H.
-  unfold lift in *.
-*)
 
   match goal with
-  | [ H: exec_recover _ _ _ _ _ |- _ ] => induction H; auto
+  | [ H: exec_recover _ _ _ _ _ |- _ ] => induction H; subst; auto
   end.
 
-(*
-  edestruct H.
-  eauto.
-
-eauto. congruence.
-
-  edestruct recover_ok; eauto. congruence.
-*)
-
-admit.
-
+  edestruct H; eauto; congruence.
   apply IHexec_recover; auto.
-
-  remember (recover_ok after) as Hok. clear HeqHok.
-  unfold corr at 1 in Hok.
-
+  edestruct H; eauto.
+Qed.
