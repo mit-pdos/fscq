@@ -190,7 +190,7 @@ Module LOG.
   Hint Extern 0 (okToUnify (avail_region ?sa _) (avail_region ?sb _)) =>
     unfold okToUnify; ( ( has_evar sa; fail 1 ) ||
                         ( has_evar sb; fail 1 ) ||
-                        ( f_equal; try omega; ring_prepare; ring' ) ) : okToUnify.
+                        ( f_equal; try omega; ring_prepare; ring ) ) : okToUnify.
 
   Lemma avail_region_grow' : forall xp l (idx:nat),
     length l + idx <= wordToNat (LogLen xp)

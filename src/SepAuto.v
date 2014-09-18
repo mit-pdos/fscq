@@ -265,22 +265,6 @@ Ltac rw_natToWord_S :=
     end
   end.
 
-(* A silly workaround for a bug in the Coq libraries:
- *   https://coq.inria.fr/bugs/show_bug.cgi?id=2947
- *)
-Ltac ring' :=
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  try try try try try try try try try try
-  ring.
-
 Ltac ring_prepare :=
   repeat ( rw_natToWord_mult ||
            rw_natToWord_plus ||
@@ -289,7 +273,7 @@ Ltac ring_prepare :=
   repeat rewrite natToWord_wordToNat.
 
 Hint Extern 0 (okToUnify (?a |-> _) (?b |-> _)) =>
-  unfold okToUnify; ring_prepare; f_equal; ring' : okToUnify.
+  unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
 
 Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
 | PickFirst : forall p ps,
