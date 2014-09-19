@@ -17,7 +17,8 @@ all: hstest
 	ln -s $(CURDIR)/_build/$@.native $@
 
 %: %.hs coq
-	ghc -F -pgmF ./fix_extraction.py codegen/*.hs $< -o $@
+	mv codegen/Word.hs codegen/.Word.hs
+	ghc codegen/*.hs hslib/*.hs $< -o $@
 
 coq: Makefile.coq
 	@mkdir -p codegen

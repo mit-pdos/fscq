@@ -25,3 +25,9 @@ Extract Inlined Constant andb => "(Prelude.&&)".
 Extract Inlined Constant orb => "(Prelude.||)".
 Extract Inlined Constant negb => "Prelude.not".
 
+(* Integer isn't quite right, because it can go negative, and
+ * subtraction does not saturate at zero.  But good enough for
+ * now, since we use it only for minor things like word sizes.
+ *)
+Extract Inductive nat => "Prelude.Integer" [ "0" "Prelude.succ" ]
+  "(\fO fS n -> if n Prelude.== 0 then fO () else fS (n Prelude.- 1))".
