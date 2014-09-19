@@ -65,7 +65,7 @@ unpack64 x = map (fromIntegral.(Data.Bits.shiftR x)) [56,48..0]
 
 pack64 :: [Data.Word.Word8] -> Data.Word.Word64
 pack64 x = foldl (\a x -> a Data.Bits..|. x) 0 $
-           map (\(x, s) -> fromIntegral $ Data.Bits.shiftL x s)
+           map (\(x, s) -> Data.Bits.shiftL ((fromIntegral x) :: Data.Word.Word64) s)
                (zip x [56,48..0])
 
 zext :: Prelude.Integer -> Coq_word -> Prelude.Integer -> Coq_word
