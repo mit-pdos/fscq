@@ -5,7 +5,7 @@ import qualified Data.ByteString
 import qualified Data.Bits
 
 data Coq_word =
-   W64 Data.Word.Word64
+   W64 !Data.Word.Word64
  | W4096 Data.ByteString.ByteString
 
 weq :: Prelude.Integer -> Coq_word -> Coq_word -> Prelude.Bool
