@@ -6,9 +6,24 @@ Set Implicit Arguments.
 
 (** * The programming language *)
 
+Module Type VALULEN.
+  Parameter valulen : nat.
+  Axiom valulen_is: valulen = 4096.
+End VALULEN.
+
+Module Valulen : VALULEN.
+  Definition valulen := 4096.
+  Theorem valulen_is: valulen = 4096.
+  Proof.
+    auto.
+  Qed.
+End Valulen.
+
+Import Valulen.
+
 Definition addrlen := 64.
 Parameter valulen : nat.
-Axiom valulen_is: valulen = 4096.  (* 512 bytes *)
+Axiom valulen_is: valulen = 4096.  (* 512 bytes *)∑
 
 Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).
