@@ -5,13 +5,22 @@ import Log
 import Prog
 import Word
 import qualified Data.ByteString
+import qualified Testprog
 
 disk_fn = "disk.img"
+verbose = True
+
+debugmsg :: String -> IO ()
+debugmsg s =
+  if verbose then
+    putStrLn s
+  else
+    return ()
 
 read_disk :: Handle -> Coq_word -> IO Coq_word
 read_disk f addr = case addr of {
   W64 a -> (do
-    putStrLn $ "read(" ++ (show a) ++ ")"
+    debugmsg $ "read(" ++ (show a) ++ ")"
     hSeek f AbsoluteSeek (512 * (fromIntegral a))
     bs <- Data.ByteString.hGet f 512
     return $ W4096 bs);
@@ -22,7 +31,7 @@ write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
 write_disk f addr val = case addr of {
   W64 a -> case val of {
     W4096 v -> (do
-      putStrLn $ "write(" ++ (show a) ++ ")"
+      debugmsg $ "write(" ++ (show a) ++ ")"
       hSeek f AbsoluteSeek (512 * (fromIntegral a))
       Data.ByteString.hPut f v
       return ());
@@ -51,16 +60,17 @@ the_prog xp =
 
 xp :: Coq_xparams
 xp = Build_xparams
-  (W64 100)   -- log length sector
-  (W64 101)   -- commit flag sector
-  (W64 102)   -- log start sector
-  (W64 50)    -- log length
+  (W64 1000)  -- log length sector
+  (W64 1001)  -- commit flag sector
+  (W64 1002)  -- log start sector
+  (W64 1000)  -- log length
 
 main :: IO ()
 main = do
   putStrLn "Running program.."
   f <- openFile disk_fn ReadWriteMode
-  run_dcode f $ the_prog xp
+  -- run_dcode f $ the_prog xp
+  run_dcode f $ Testprog.testcopy xp $ Prog.Done ()
   hClose f
   putStrLn "Done."
 

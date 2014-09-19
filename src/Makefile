@@ -3,6 +3,7 @@ OCAMLINC   := -I codegen
 MODULES    := Nomega Word \
 	      Prog Pred Hoare SepAuto BasicProg \
 	      Log \
+	      Testprog \
 	      ExtrHaskellPrelude Extraction
 	      # MemLog TxnWrap Scratch
 VS         := $(MODULES:%=%.v)
