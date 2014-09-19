@@ -53,4 +53,36 @@ Proof.
   unfold preserves_precondition.
   intros.
   unfold corr in H.
-  
+  destruct out.
+  - assert (Failed = Finished); try discriminate.
+    eapply H.
+    eauto.
+    eauto.
+  - split; try discriminate.
+    assert (exec m p1 m' Crashed) by ( eapply prog_can_crash; eauto ).
+    admit.
+
+  - split; try discriminate.
+    assert ({{ pre2 }} p2 >> p2) by firstorder.
+    unfold corr in H4.
+
+    destruct (exec_recover_can_terminate p2 p2 m').
+    destruct H5.
+
+    assert (x0 = Finished); subst.
+    eapply H.
+    eauto.
+    eapply XRCrashed.
+    eauto.
+    eauto.
+
+    (* XXX what i really want here is for [{{ pre2 }} p2 >> p2] to be
+     * a necessary -- not just sufficient -- precondition for getting
+     * a Finished outcome from p2.  then i could prove that indeed
+     * p1 establishes pre2 at every crash point, and thus implies that
+     * p1 is precondition-preserving.
+     *)
+
+    admit.
+
+Qed.

@@ -109,6 +109,16 @@ Proof.
   - apply XRFinished; eauto.
 Qed.
 
+Theorem prog_can_crash : forall p m m' out,
+  exec m p m' out ->
+  exec m p m' Crashed.
+Proof.
+  induction p; intros.
+  - inversion H; eauto.
+  - inversion H0; eauto.
+  - inversion H0; eauto.
+Qed.
+
 
 Theorem upd_eq : forall m a v a',
   a' = a
