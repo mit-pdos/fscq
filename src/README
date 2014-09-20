@@ -7,3 +7,11 @@ building Coq from source:
 As one reference point, commit d9736dae seems to produce a working
 version of Coq that builds fscq.
 
+To develop Coq code using CoqIDE, check out coqide.sh, which invokes
+coqide with the appropriate arguments for spawning many parallel coqtop
+processes and setting the right logical-to-physical path mappings.
+
+To build Haskell-extracted code, install a few extra packages:
+
+  sudo apt-get install libghc-cereal-dev
+

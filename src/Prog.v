@@ -8,7 +8,7 @@ Set Implicit Arguments.
 
 Module Type VALULEN.
   Parameter valulen : nat.
-  Axiom valulen_is: valulen = 4096.
+  Axiom valulen_is: valulen = 4096. (* 512 bytes *)
 End VALULEN.
 
 Module Valulen : VALULEN.
@@ -19,11 +19,9 @@ Module Valulen : VALULEN.
   Qed.
 End Valulen.
 
-Import Valulen.
-
 Definition addrlen := 64.
-Parameter valulen : nat.
-Axiom valulen_is: valulen = 4096.  (* 512 bytes *)∑
+Notation "'valulen'" := (Valulen.valulen).
+Notation "'valulen_is'" := (Valulen.valulen_is).
 
 Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).
