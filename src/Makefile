@@ -1,7 +1,7 @@
 OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
 MODULES    := Nomega Word \
-	      Prog Pred Hoare SepAuto BasicProg \
+	      Prog Pred Hoare SepAuto BasicProg Array \
 	      Log \
 	      Testprog \
 	      ExtrHaskellPrelude Extraction
