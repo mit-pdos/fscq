@@ -834,7 +834,6 @@ Module LOG.
     step.
 
     cancel; apply stars_or_right; unfold stars; simpl.
-    cancel.
 
     step.
     step.
@@ -895,7 +894,8 @@ Module LOG.
     simpl replay in *; congruence.
 
     cancel; apply stars_or_right; unfold stars; simpl.
-    cancel; congruence.
+    cancel; try congruence.
+    cancel.
 
     step.
   Qed.

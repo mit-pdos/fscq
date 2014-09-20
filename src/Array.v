@@ -1,7 +1,7 @@
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg.
 
 
-Notation "$" := (natToWord _).
+Notation "$ n" := (natToWord _ n) (at level 0).
 Ltac words := ring_prepare; ring.
 
 Lemma pimpl_or : forall p q p' q',
@@ -75,7 +75,7 @@ Proof.
   intros; apply selN_updN_eq; auto.
 Qed.
 
-Hint Rewrite selN_updN_eq sel_upd_eq using omega.
+Hint Rewrite selN_updN_eq sel_upd_eq using (simpl; omega).
 
 Lemma firstn_updN : forall v vs i j,
   i <= j
@@ -346,4 +346,44 @@ Proof.
   cancel.
   autorewrite with core.
   cancel.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (ArrayRead _ _) _ >> _) => apply read_ok : prog.
+Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _) _ >> _) => apply write_ok : prog.
+
+
+(** * Some test cases *)
+
+Definition read_back a rx :=
+  ArrayWrite a $0 $42;;
+  v <- ArrayRead a $0;
+  rx v.
+
+Theorem read_back_ok : forall a rx rec,
+  {{ exists vs F, array a vs * F
+     * [[length vs > 0]]
+     * [[ {{array a (upd vs $0 $42) * F}} rx $42 >> rec ]]
+     * [[ {{(array a vs * F) \/ (array a (upd vs $0 $42) * F)}} rec >> rec ]]
+  }} read_back a rx >> rec.
+Proof.
+  unfold read_back; hoare.
+Qed.
+
+Definition swap a i j rx :=
+  vi <- ArrayRead a i;
+  vj <- ArrayRead a j;
+  ArrayWrite a i vj;;
+  ArrayWrite a j vi;;
+  rx.
+
+Theorem swap_ok : forall a i j rx rec,
+  {{ exists vs F, array a vs * F
+     * [[wordToNat i < length vs]]
+     * [[wordToNat j < length vs]]
+     * [[ {{array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F}} rx >> rec ]]
+     * [[ {{(array a vs * F) \/ (array a (upd vs i (sel vs j)) * F)
+            \/ (array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F)}} rec >> rec ]]
+  }} swap a i j rx >> rec.
+Proof.
+  unfold swap; hoare.
 Qed.
