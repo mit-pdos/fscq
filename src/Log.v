@@ -156,8 +156,8 @@ Module LOG.
 
   Definition logentry_ptsto xp (e : logentry) idx :=
     let (a, v) := e in
-    ((LogStart xp ^+ (natToWord addrlen (idx*2))) |-> addr2valu a *
-     (LogStart xp ^+ (natToWord addrlen (idx*2 + 1))) |-> v)%pred.
+    ((LogStart xp ^+ $ (idx*2)) |-> addr2valu a *
+     (LogStart xp ^+ $ (idx*2 + 1)) |-> v)%pred.
 
   Fixpoint logentry_ptsto_list xp l idx :=
     match l with
@@ -174,8 +174,8 @@ Module LOG.
     unfold okToUnify; f_equal; omega : okToUnify.
 
   (* If the log appears to have zero length, unify the log's list rep with nil *)
-  Hint Extern 0 (okToUnify (LogLength ?a |-> addr2valu (natToWord addrlen 0))
-                           (LogLength ?a |-> addr2valu (natToWord addrlen (@length ?T ?b)))) =>
+  Hint Extern 0 (okToUnify (LogLength ?a |-> addr2valu $0)
+                           (LogLength ?a |-> addr2valu $ (@length ?T ?b))) =>
     unify b (@nil T); constructor : okToUnify.
 
   Definition data_rep old : pred :=
@@ -184,7 +184,7 @@ Module LOG.
   Fixpoint avail_region start len : pred :=
     match len with
     | O => emp
-    | S len' => start |->? * avail_region (start ^+ (natToWord addrlen 1)) len'
+    | S len' => start |->? * avail_region (start ^+ $1) len'
     end%pred.
 
   Hint Extern 0 (okToUnify (avail_region ?sa _) (avail_region ?sb _)) =>
@@ -195,9 +195,9 @@ Module LOG.
   Lemma avail_region_grow' : forall xp l (idx:nat),
     length l + idx <= wordToNat (LogLen xp)
     -> logentry_ptsto_list xp l idx *
-         avail_region (LogStart xp ^+ (natToWord addrlen (idx * 2 + length l * 2)))
+         avail_region (LogStart xp ^+ $ (idx * 2 + length l * 2))
                       ((wordToNat (LogLen xp) - idx - length l) * 2) ==>
-       avail_region (LogStart xp ^+ (natToWord addrlen (idx * 2)))
+       avail_region (LogStart xp ^+ $ (idx * 2))
                     ((wordToNat (LogLen xp) - idx) * 2).
   Proof.
     induction l; simpl.
@@ -221,12 +221,12 @@ Module LOG.
   Lemma avail_region_grow_all : forall xp l,
     length l <= wordToNat (LogLen xp) ->
     logentry_ptsto_list xp l 0 *
-      avail_region (LogStart xp ^+ (natToWord addrlen (length l * 2)))
+      avail_region (LogStart xp ^+ $ (length l * 2))
                    ((wordToNat (LogLen xp) - length l) * 2) ==>
     avail_region (LogStart xp) (wordToNat (LogLen xp) * 2).
   Proof.
     intros.
-    replace (LogStart xp) with (LogStart xp ^+ (natToWord addrlen (0 * 2))).
+    replace (LogStart xp) with (LogStart xp ^+ $ (0 * 2)).
     replace (wordToNat (LogLen xp)) with ((wordToNat (LogLen xp) - 0)) by omega.
     rewrite <- wplus_assoc.
     rewrite <- natToWord_plus.
@@ -237,11 +237,11 @@ Module LOG.
   Qed.
 
   Definition log_rep xp m l : pred :=
-     ((LogLength xp) |-> addr2valu (natToWord addrlen (length l))
+     ((LogLength xp) |-> addr2valu $ (length l)
       * [[ length l <= wordToNat (LogLen xp) ]]
       * [[ valid_log m l ]]
       * logentry_ptsto_list xp l 0
-      * avail_region (LogStart xp ^+ (natToWord addrlen (length l * 2)))
+      * avail_region (LogStart xp ^+ $ (length l * 2))
                      ((wordToNat (LogLen xp) - length l) * 2))%pred.
 
   Definition cur_rep (old : mem) (l : log) (cur : mem) : pred :=
@@ -250,18 +250,18 @@ Module LOG.
   Definition rep xp (st : logstate) :=
     match st with
       | NoTransaction m =>
-        (LogCommit xp) |-> natToWord valulen 0
+        (LogCommit xp) |-> $0
       * data_rep m
       * log_rep xp m nil
 
       | ActiveTxn old cur =>
-        (LogCommit xp) |-> natToWord valulen 0
+        (LogCommit xp) |-> $0
       * data_rep old
       * exists log, log_rep xp old log
       * cur_rep old log cur
 
       | CommittedTxn cur =>
-        (LogCommit xp) |-> natToWord valulen 1
+        (LogCommit xp) |-> $1
       * exists old, data_rep old
       * exists log, log_rep xp old log
       * cur_rep old log cur
@@ -270,8 +270,8 @@ Module LOG.
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
 
   Definition init xp rx :=
-    Write (LogLength xp) (addr2valu (natToWord addrlen 0)) ;;
-    Write (LogCommit xp) (natToWord valulen 0) ;;
+    Write (LogLength xp) (addr2valu $0) ;;
+    Write (LogCommit xp) $0 ;;
     rx tt.
 
   Theorem init_ok : forall xp rx rec,
@@ -291,7 +291,7 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (init _) _ >> _) => apply init_ok : prog.
 
   Definition begin xp rx :=
-    Write (LogLength xp) (addr2valu (natToWord addrlen 0)) ;;
+    Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
   Theorem begin_ok : forall xp rx rec,
@@ -318,7 +318,7 @@ Module LOG.
     end : norm_hint_right.
 
   Definition abort xp rx :=
-    Write (LogLength xp) (addr2valu (natToWord addrlen 0)) ;;
+    Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
   Theorem abort_ok : forall xp rx rec,
@@ -349,7 +349,7 @@ Module LOG.
   Theorem avail_region_shrink_one : forall start len,
     len > 0
     -> avail_region start len ==>
-       start |->? * avail_region (start ^+ (natToWord addrlen 1)) (len - 1).
+       start |->? * avail_region (start ^+ $1) (len - 1).
   Proof.
     destruct len; intros; try omega.
     simpl.
@@ -380,8 +380,8 @@ Module LOG.
 
   Theorem avail_region_grow_two : forall start len a b,
     len > 1
-    -> start |-> a * (start ^+ (natToWord addrlen 1)) |-> b
-       * avail_region (start ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1))
+    -> start |-> a * (start ^+ $1) |-> b
+       * avail_region (start ^+ $1 ^+ $1)
                       (len - 1 - 1)
        ==> avail_region start len.
   Proof.
@@ -410,11 +410,11 @@ Module LOG.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
-      | context[avail_region (?lstart ^+ (natToWord addrlen 1) ^+ (natToWord addrlen 1)) _] =>
+      | context[avail_region (?lstart ^+ $1 ^+ $1) _] =>
         match L with
         | context[(lstart |-> _)%pred] =>
           match L with
-          | context[((lstart ^+ (natToWord addrlen 1)) |-> _)%pred] =>
+          | context[((lstart ^+ $1) |-> _)%pred] =>
             apply avail_region_grow_two with (start:=lstart);
             helper_wordcmp; omega
           end
@@ -423,8 +423,8 @@ Module LOG.
     end : norm_hint_right.
 
   Theorem logentry_ptsto_append' : forall xp l idx a v,
-    ((LogStart xp ^+ (natToWord addrlen ((length l + idx) * 2))) |-> addr2valu a) *
-    ((LogStart xp ^+ (natToWord addrlen ((length l + idx) * 2 + 1))) |-> v) *
+    ((LogStart xp ^+ $ ((length l + idx) * 2)) |-> addr2valu a) *
+    ((LogStart xp ^+ $ ((length l + idx) * 2 + 1)) |-> v) *
     logentry_ptsto_list xp l idx
     ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) idx.
   Proof.
@@ -435,8 +435,8 @@ Module LOG.
 
   Theorem logentry_ptsto_append : forall xp l a v,
     logentry_ptsto_list xp l 0 *
-    ((LogStart xp ^+ natToWord addrlen (length l) ^* natToWord addrlen 2) |-> addr2valu a) *
-    ((LogStart xp ^+ natToWord addrlen (length l) ^* natToWord addrlen 2 ^+ natToWord addrlen 1) |-> v)
+    ((LogStart xp ^+ $ (length l) ^* $2) |-> addr2valu a) *
+    ((LogStart xp ^+ $ (length l) ^* $2 ^+ $1) |-> v)
     ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) 0.
   Proof.
     intros.
@@ -453,14 +453,14 @@ Module LOG.
       match L with
       | context[logentry_ptsto_list xp ?l _] =>
         match L with
-        | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2) |-> _)%pred] =>
+        | context[((LogStart xp ^+ $ (length l) ^* $2) |-> _)%pred] =>
           match L with
-          | context[((LogStart xp ^+ natToWord _ (length l) ^* natToWord _ 2 ^+ natToWord _ 1) |-> _)%pred] =>
+          | context[((LogStart xp ^+ $ (length l) ^* $2 ^+ $1) |-> _)%pred] =>
             match L with
-            | context[(LogLength xp |-> addr2valu (natToWord _ (length l) ^+ natToWord _ 1))%pred] =>
+            | context[(LogLength xp |-> addr2valu ($ (length l) ^+ $1))%pred] =>
               match R with
               (* Make sure this hint does not apply multiple times.. *)
-              | context[((LogStart xp ^+ natToWord _ (length _) ^* natToWord _ 2) |-> _)%pred] => fail 1
+              | context[((LogStart xp ^+ $ (length _) ^* $2) |-> _)%pred] => fail 1
               | _ => apply logentry_ptsto_append
               end
             end
@@ -478,9 +478,9 @@ Module LOG.
     len' <- Read (LogLength xp);
     let len := valu2addr len' in
     If (wlt_dec len (LogLen xp)) {
-      Write (LogStart xp ^+ len ^* (natToWord addrlen 2)) (addr2valu a);;
-      Write (LogStart xp ^+ len ^* (natToWord addrlen 2) ^+ (natToWord addrlen 1)) v;;
-      Write (LogLength xp) (addr2valu (len ^+ (natToWord addrlen 1)));;
+      Write (LogStart xp ^+ len ^* $2) (addr2valu a);;
+      Write (LogStart xp ^+ len ^* $2 ^+ $1) v;;
+      Write (LogLength xp) (addr2valu (len ^+ $1));;
       rx true
     } else {
       rx false
@@ -516,8 +516,8 @@ Module LOG.
     pos < length l
     -> (logentry_ptsto_list xp l idx ==>
         logentry_ptsto_list xp (firstn pos l) idx *
-        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2))) |-> addr2valu (fst (nth pos l logentry_zero))) *
-        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2 + 1))) |-> snd (nth pos l logentry_zero)) *
+        ((LogStart xp ^+ $ ((idx+pos) * 2)) |-> addr2valu (fst (nth pos l logentry_zero))) *
+        ((LogStart xp ^+ $ ((idx+pos) * 2 + 1)) |-> snd (nth pos l logentry_zero)) *
         logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1)).
   Proof.
     induction pos; intros.
@@ -535,8 +535,8 @@ Module LOG.
   Lemma logentry_ptsto_absorb: forall xp pos l idx,
     pos < length l
     -> (logentry_ptsto_list xp (firstn pos l) idx *
-        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2))) |-> addr2valu (fst (nth pos l logentry_zero))) *
-        ((LogStart xp ^+ (natToWord addrlen ((idx+pos) * 2 + 1))) |-> snd (nth pos l logentry_zero)) *
+        ((LogStart xp ^+ $ ((idx+pos) * 2)) |-> addr2valu (fst (nth pos l logentry_zero))) *
+        ((LogStart xp ^+ $ ((idx+pos) * 2 + 1)) |-> snd (nth pos l logentry_zero)) *
         logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1) ==>
         logentry_ptsto_list xp l idx).
   Proof.
@@ -560,7 +560,7 @@ Module LOG.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match R with
-      | context[((LogStart xp ^+ ?p ^* natToWord _ 2) |-> _)%pred] =>
+      | context[((LogStart xp ^+ ?p ^* $2) |-> _)%pred] =>
         apply logentry_ptsto_extract with (pos:=wordToNat p); helper_wordcmp
       end
     end : norm_hint_left.
@@ -569,7 +569,7 @@ Module LOG.
     match goal with
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match L with
-      | context[((LogStart xp ^+ ?p ^* natToWord _ 2) |-> _)%pred] =>
+      | context[((LogStart xp ^+ ?p ^* $2) |-> _)%pred] =>
         match L with
         | context[logentry_ptsto_list xp (firstn (wordToNat p) ?log) 0] =>
           apply logentry_ptsto_absorb with (pos:=wordToNat p) (l:=log); helper_wordcmp
@@ -673,7 +673,7 @@ Module LOG.
       Loopvar v <- v
       Continuation lrx
       Invariant
-        (LogCommit xp) |-> natToWord valulen 0
+        (LogCommit xp) |-> $0
         * data_rep old
         * log_rep xp old log
         * cur_rep old log cur
@@ -681,9 +681,9 @@ Module LOG.
       OnCrash
         rep xp (ActiveTxn old cur)
       Begin
-      a' <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2));
+      a' <- Read (LogStart xp ^+ i ^* $2);
       If (weq (valu2addr a') a) {
-        v <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2) ^+ (natToWord addrlen 1));
+        v <- Read (LogStart xp ^+ i ^* $2 ^+ $1);
         lrx v
       } else {
         lrx v
@@ -731,7 +731,7 @@ Module LOG.
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        (LogCommit xp) |-> natToWord valulen 1
+        (LogCommit xp) |-> $1
         * exists old, data_rep old
         * log_rep xp old log
         * cur_rep old log cur
@@ -740,13 +740,13 @@ Module LOG.
         rep xp (NoTransaction cur) \/
         rep xp (CommittedTxn cur)
       Begin
-        a <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2));
-        v <- Read (LogStart xp ^+ i ^* (natToWord addrlen 2) ^+ (natToWord addrlen 1));
+        a <- Read (LogStart xp ^+ i ^* $2);
+        v <- Read (LogStart xp ^+ i ^* $2 ^+ $1);
         write_array (valu2addr a) v;;
         lrx tt
     Rof;;
-    Write (LogLength xp) (addr2valu (natToWord addrlen 0));;
-    Write (LogCommit xp) (natToWord valulen 0);;
+    Write (LogLength xp) (addr2valu $0);;
+    Write (LogCommit xp) $0;;
     rx tt.
 
   Lemma skipn_length: forall T (l:list T),
@@ -903,7 +903,7 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (apply _) _ >> _) => apply apply_ok : prog.
 
   Definition commit xp rx :=
-    Write (LogCommit xp) (natToWord valulen 1);;
+    Write (LogCommit xp) $1;;
     apply xp;;
     rx tt.
 
@@ -929,11 +929,11 @@ Module LOG.
 
   Definition recover xp rx :=
     com <- Read (LogCommit xp);
-    If (weq com (natToWord valulen 1)) {
+    If (weq com $1) {
       apply xp;;
       rx tt
     } else {
-      Write (LogLength xp) (addr2valu (natToWord addrlen 0));;
+      Write (LogLength xp) (addr2valu $0);;
       rx tt
     }.
 

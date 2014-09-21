@@ -135,10 +135,10 @@ Definition For_ (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
           {| For_args_i := i; For_args_n := n; For_args_l := l |}).
   clear i n l.
   destruct args.
-  refine (if weq For_args_n0 (natToWord addrlen 0) then rx For_args_l0 else _).
+  refine (if weq For_args_n0 $0 then rx For_args_l0 else _).
   refine (l' <- (f For_args_i0 For_args_l0); _).
-  refine (For_ {| For_args_i := For_args_i0 ^+ (natToWord addrlen 1);
-                  For_args_n := For_args_n0 ^- (natToWord addrlen 1);
+  refine (For_ {| For_args_i := For_args_i0 ^+ $1;
+                  For_args_n := For_args_n0 ^- $1;
                   For_args_l := l' |} _).
 
   assert (wordToNat For_args_n0 <> 0).
@@ -169,19 +169,19 @@ Defined.
 
 Lemma For_step: forall L G f i n l nocrash crashed rx,
   @For_ L G f i n l nocrash crashed rx =
-    if weq n (natToWord addrlen 0)
+    if weq n $0
     then rx l
     else l' <- (f i l);
          @For_ L G f
-               (i ^+ (natToWord addrlen 1))
-               (n ^- (natToWord addrlen 1))
+               (i ^+ $1)
+               (n ^- $1)
                l' nocrash crashed rx.
 Proof.
   intros.
   unfold For_.
   rewrite Fix_eq.
 
-  destruct (weq n (natToWord addrlen 0)); f_equal.
+  destruct (weq n $0); f_equal.
 
   intros.
   repeat match goal with
@@ -201,7 +201,7 @@ Theorem for_ok':
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
-      (forall lSm, {{ F * nocrash g (m ^+ (natToWord addrlen 1)) lSm }} (rxm lSm) >> rec) ->
+      (forall lSm, {{ F * nocrash g (m ^+ $1) lSm }} (rxm lSm) >> rec) ->
       {{ F * nocrash g m lm }} f m lm rxm >> rec]]
    * [[forall lfinal, {{ F * nocrash g (n ^+ i) lfinal }} (rx lfinal) >> rec]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
@@ -215,7 +215,7 @@ Proof.
   intros.
   apply corr_exists; intros.
   apply corr_exists; intros.
-  case_eq (weq x (natToWord addrlen 0)); intros; subst.
+  case_eq (weq x $0); intros; subst.
 
   - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl, lift; intros.
@@ -248,7 +248,7 @@ Proof.
       unfold wordBinN.
       rewrite wordToNat_natToWord_idempotent'.
       simpl; omega.
-      simpl (wordToNat (natToWord addrlen 1)).
+      simpl (wordToNat $1).
       eapply Nat.lt_le_trans; [| apply (wordToNat_bound x) ].
       omega.
       unfold not in *; intros; apply n.
@@ -259,8 +259,8 @@ Proof.
 
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
-      ring_simplify (i ^+ natToWord addrlen 1 ^+ (x ^- natToWord addrlen 1)).
-      ring_simplify (x ^- natToWord addrlen 1 ^+ (i ^+ natToWord addrlen 1)).
+      ring_simplify (i ^+ $1 ^+ (x ^- $1)).
+      ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       repeat ( apply sep_star_lift_r; apply pimpl_and_split );
         unfold pimpl, lift; intuition eauto.
 
@@ -273,7 +273,7 @@ Proof.
       repeat rewrite Nat2N.id.
       rewrite wplus_alt.
       unfold wplusN, wordBinN.
-      simpl (wordToNat (natToWord addrlen 1)).
+      simpl (wordToNat $1).
       rewrite wordToNat_natToWord_idempotent'.
       omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
@@ -283,7 +283,7 @@ Proof.
       repeat rewrite wplus_alt.
       repeat unfold wplusN, wordBinN.
 
-      simpl (wordToNat (natToWord addrlen 1)).
+      simpl (wordToNat $1).
       repeat rewrite wordToNat_natToWord_idempotent'.
       omega.
       rewrite H1; apply wordToNat_bound.
@@ -302,14 +302,14 @@ Theorem for_ok:
          (L : Set) (G : Type)
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
          (li : L),
-  {{ exists F (g:G), F * nocrash g (natToWord addrlen 0) li
+  {{ exists F (g:G), F * nocrash g $0 li
    * [[forall m l, F * nocrash g m l ==> F * crashed g]]
    * [[forall m lm rxm,
       (m < n)%word ->
-      (forall lSm, {{ F * nocrash g (m ^+ (natToWord addrlen 1)) lSm }} (rxm lSm) >> rec) ->
+      (forall lSm, {{ F * nocrash g (m ^+ $1) lSm }} (rxm lSm) >> rec) ->
       {{ F * nocrash g m lm }} f m lm rxm >> rec]]
    * [[forall lfinal, {{ F * nocrash g n lfinal }} (rx lfinal) >> rec]]
-  }} (For_ f (natToWord addrlen 0) n li nocrash crashed rx) >> rec.
+  }} (For_ f $0 n li nocrash crashed rx) >> rec.
 Proof.
   intros.
   eapply pimpl_ok.
@@ -324,7 +324,7 @@ Qed.
 Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
 Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
-        (natToWord addrlen 0) n l0
+        $0 n l0
         (fun (_:unit) i l => nocrash%pred)
         (fun (_:unit) => crashed%pred))
   (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
@@ -332,7 +332,7 @@ Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash '
 
 Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
-        (natToWord addrlen 0) n l0
+        $0 n l0
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i l => nocrash%pred)) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>

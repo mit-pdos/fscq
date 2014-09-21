@@ -272,6 +272,8 @@ Ltac ring_prepare :=
   fold (wzero addrlen);
   repeat rewrite natToWord_wordToNat.
 
+Ltac words := ring_prepare; ring.
+
 Hint Extern 0 (okToUnify (?a |-> _) (?b |-> _)) =>
   unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
 

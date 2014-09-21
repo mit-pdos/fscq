@@ -1,18 +1,6 @@
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg.
 
 
-Notation "$ n" := (natToWord _ n) (at level 0).
-Ltac words := ring_prepare; ring.
-
-Lemma pimpl_or : forall p q p' q',
-  p ==> p'
-  -> q ==> q'
-  -> p \/ q ==> p' \/ q'.
-Proof.
-  firstorder.
-Qed.
-
-
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
 Fixpoint array (a : addr) (vs : list valu) :=

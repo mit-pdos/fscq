@@ -1354,6 +1354,8 @@ Proof.
   discriminate H0.
 Qed.
 
+Notation "$ n" := (natToWord _ n) (at level 0).
+
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
 

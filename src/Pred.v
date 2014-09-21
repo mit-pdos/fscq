@@ -385,6 +385,14 @@ Proof.
   firstorder.
 Qed.
 
+Lemma pimpl_or : forall p q p' q',
+  p ==> p'
+  -> q ==> q'
+  -> p \/ q ==> p' \/ q'.
+Proof.
+  firstorder.
+Qed.
+
 Lemma sep_star_lift_l:
   forall (a: Prop) (b c: pred),
   (a -> (b ==> c)) ->
