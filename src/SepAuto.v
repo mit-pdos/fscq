@@ -11,6 +11,10 @@ Set Implicit Arguments.
 
 (** * Separation logic proof automation *)
 
+Ltac pred_apply := match goal with
+  | [ H: _ ?m |- _ ?m ] => eapply pimpl_apply; [ | exact H ]
+  end.
+
 Definition stars (ps : list pred) :=
   fold_left sep_star ps emp.
 

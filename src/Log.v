@@ -747,8 +747,6 @@ Module LOG.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
-  Opaque skipn.
-
   Theorem read_array_ok : forall xp a i rx rec,
     {{ exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
      * [[ exists F', (array a vs * F')%pred m ]]
@@ -772,19 +770,17 @@ Module LOG.
     cancel.
 
     eexists.
-    eapply pimpl_apply; [| eauto ].
-    cancel.
+    pred_apply; cancel.
 
     step.
     step.
 
     cancel; eauto; try step.
     eexists.
-    eapply pimpl_apply; [| eauto ].
+    pred_apply.
     eapply pimpl_trans.
-    eapply pimpl_sep_star.
+    eapply pimpl_sep_star; [| apply pimpl_refl ].
     apply isolate_fwd; eauto.
-    eauto.
     cancel.
   Qed.
 
@@ -812,12 +808,33 @@ Module LOG.
     eapply pimpl_ok.
     apply write_ok.
     cancel.
-    eapply sep_star_ptsto_indomain.
-    eapply pimpl_apply; [| eauto ].
-    cancel.
-    step.
+    pred_apply; cancel.
 
-  Admitted.
+    step.
+    pred_apply.
+    eapply pimpl_trans; [| apply pimpl_sep_star; [ apply isolate_bwd | apply pimpl_refl ] ].
+    instantiate (1:=i).
+    autorewrite with core.
+    cancel.
+    autorewrite with core.
+    cancel.
+    autorewrite with core; assumption.
+
+    step.
+    step.
+    cancel; eauto.
+    pred_apply.
+    eapply pimpl_trans.
+    apply pimpl_sep_star; [| apply pimpl_refl ].
+    apply isolate_fwd; eauto.
+    cancel.
+
+    step.
+    pred_apply; cancel.
+
+    step.
+    step.
+  Qed.
 
   Definition apply xp rx :=
     len <- Read (LogLength xp);
