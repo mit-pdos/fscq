@@ -692,6 +692,8 @@ Module LOG.
 
     rx v.
 
+  Opaque firstn.
+
   Theorem read_ok : forall xp a rx rec,
     {{ exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
      * [[ m2 @ a |-> v ]]
@@ -700,7 +702,6 @@ Module LOG.
     }} read xp a rx >> rec.
   Proof.
     unfold read; log_unfold.
-    Opaque firstn.
 
     step.
 
@@ -821,6 +822,8 @@ Module LOG.
       end
     end : norm_hint_right.
 
+  Opaque skipn.
+
   Theorem apply_ok : forall xp rx rec,
     {{ exists m F, rep xp (CommittedTxn m) * F
      * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
@@ -829,7 +832,6 @@ Module LOG.
     }} apply xp rx >> rec.
   Proof.
     unfold apply; log_unfold.
-    Opaque skipn.
     step.
     step.
 
