@@ -700,7 +700,7 @@ Module LOG.
 
   Theorem read_ok : forall xp a rx rec,
     {{ exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
-     * [[ m2 @ a |-> v ]]
+     * [[ exists F', (a |-> v * F') m2 ]]
      * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rx v >> rec ]]
      * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rec >> rec ]]
     }} read xp a rx >> rec.
@@ -709,21 +709,21 @@ Module LOG.
 
     step.
 
-    eapply pimpl_ok.
-    eauto with prog.
     assert (indomain a m) as Ham.
     eapply indomain_replay; eauto.
-    unfold indomain; eauto.
+    eapply sep_star_indomain; [ apply ptsto_indomain | eauto ].
     destruct Ham.
-    cancel; eauto.
 
     hoare.
 
     erewrite wordToNat_plusone; [ apply replay_last_eq |]; helper_wordcmp; eauto.
     erewrite wordToNat_plusone; [ apply replay_last_ne |]; helper_wordcmp; eauto.
-    helper_wordcmp. rewrite firstn_length in *. congruence.
+    helper_wordcmp. rewrite firstn_length in *.
+    match goal with
+    | [ H: (_ |-> _ * _)%pred _ |- _ ] => apply sep_star_ptsto_some in H
+    end.
+    congruence.
 
-    hoare.
     hoare.
   Qed.
 

@@ -643,6 +643,22 @@ Proof.
   eauto.
 Qed.
 
+Theorem ptsto_indomain : forall a v,
+  a |-> v ==> indomain a.
+Proof.
+  firstorder.
+Qed.
+
+Theorem sep_star_ptsto_some : forall a v F m,
+  (a |-> v * F)%pred m -> m a = Some v.
+Proof.
+  unfold ptsto, sep_star, mem_union.
+  intros.
+  repeat deex.
+  rewrite H2.
+  auto.
+Qed.
+
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 
 Opaque sep_star.
