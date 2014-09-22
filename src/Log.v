@@ -836,6 +836,9 @@ Module LOG.
     step.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _ >> _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _ >> _) => apply write_array_ok : prog.
+
   Definition apply xp rx :=
     len <- Read (LogLength xp);
     For i < (valu2addr len)
