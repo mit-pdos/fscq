@@ -631,6 +631,18 @@ Proof.
   rewrite H5; auto; discriminate.
 Qed.
 
+Theorem sep_star_indomain : forall p q a,
+  (p ==> indomain a) ->
+  (p * q ==> indomain a).
+Proof.
+  unfold pimpl, sep_star, indomain, mem_union.
+  intros.
+  repeat deex.
+  edestruct H; eauto.
+  rewrite H1.
+  eauto.
+Qed.
+
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 
 Opaque sep_star.
