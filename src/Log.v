@@ -10,6 +10,7 @@ Require Import FunctionalExtensionality.
 Require Import Word.
 Require Import Omega.
 Require Import Eqdep_dec.
+Require Import Array.
 
 Set Implicit Arguments.
 
@@ -47,15 +48,15 @@ Module LOG.
     match l with
     | nil => m
     | (a, v) :: rest =>
-      replay rest (upd m a v)
+      replay rest (Prog.upd m a v)
     end.
 
   Theorem replay_app : forall l m m0 a v,
     (forall a', m a' = replay l m0 a')
-    -> (forall a', upd m a v a' = replay (l ++ (a, v) :: nil) m0 a').
+    -> (forall a', Prog.upd m a v a' = replay (l ++ (a, v) :: nil) m0 a').
   Proof.
     induction l; simpl; intros.
-    - unfold upd; destruct (addr_eq_dec a' a); auto.
+    - unfold Prog.upd; destruct (addr_eq_dec a' a); auto.
     - destruct a. auto.
   Qed.
 
@@ -81,19 +82,19 @@ Module LOG.
 
   Theorem indomain_upd_1 : forall m a a' v,
     indomain a m
-    -> indomain a' (upd m a v)
+    -> indomain a' (Prog.upd m a v)
     -> indomain a' m.
   Proof.
-    unfold indomain, upd; intros.
+    unfold indomain, Prog.upd; intros.
     destruct (addr_eq_dec a' a); subst; auto.
   Qed.
 
   Theorem indomain_upd_2 : forall m a a' v,
     indomain a m
     -> indomain a' m
-    -> indomain a' (upd m a v).
+    -> indomain a' (Prog.upd m a v).
   Proof.
-    unfold indomain, upd; intros.
+    unfold indomain, Prog.upd; intros.
     destruct (addr_eq_dec a' a); auto.
     exists v; auto.
   Qed.
@@ -101,7 +102,7 @@ Module LOG.
   Theorem valid_log_upd : forall m a v l,
     indomain a m
     -> valid_log m l
-    -> valid_log (upd m a v) l.
+    -> valid_log (Prog.upd m a v) l.
   Proof.
     intros.
     induction l; [firstorder|].
@@ -492,7 +493,7 @@ Module LOG.
   Theorem write_ok : forall xp a v rx rec,
     {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
      * [[ indomain a m2 ]]
-     * [[ {{ rep xp (ActiveTxn m1 (upd m2 a v)) * F }} rx true >> rec ]]
+     * [[ {{ rep xp (ActiveTxn m1 (Prog.upd m2 a v)) * F }} rx true >> rec ]]
      * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec ]]
      * [[ {{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec ]]
     }} write xp a v rx >> rec.
@@ -767,7 +768,7 @@ Module LOG.
   Qed.
 
   Lemma replay_upd: forall l m0 m1 a v a', replay l m0 a' = replay l m1 a'
-    -> replay l (upd m0 a v) a' = replay l (upd m1 a v) a'.
+    -> replay l (Prog.upd m0 a v) a' = replay l (Prog.upd m1 a v) a'.
   Proof.
     induction l.
     - simpl; intros; case_eq (addr_eq_dec a a'); intros; subst.
@@ -780,8 +781,8 @@ Module LOG.
   Qed.
 
   Lemma replay_logupd: forall l m a i, i < length l
-    -> replay l (upd m (fst (nth i l logentry_zero))
-                       (snd (nth i l logentry_zero))) a = replay l m a.
+    -> replay l (Prog.upd m (fst (nth i l logentry_zero))
+                            (snd (nth i l logentry_zero))) a = replay l m a.
   Proof.
     induction l.
     - destruct i; simpl; intros; omega.
@@ -801,8 +802,8 @@ Module LOG.
   Qed.
 
   Lemma replay_skip_more: forall l m a i, i < length l
-    -> replay (skipn (S i) l) (upd m (fst (nth i l logentry_zero))
-                                     (snd (nth i l logentry_zero))) a =
+    -> replay (skipn (S i) l) (Prog.upd m (fst (nth i l logentry_zero))
+                                          (snd (nth i l logentry_zero))) a =
        replay (skipn i l) m a.
   Proof.
     induction l.
