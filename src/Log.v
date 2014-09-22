@@ -268,6 +268,9 @@ Module LOG.
       * cur_rep old log cur
     end%pred.
 
+  (* Don't unfold rep unless explicitly asked *)
+  Arguments rep : simpl never.
+
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
 
   Definition init xp rx :=
@@ -988,7 +991,5 @@ Module LOG.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
-
-  Global Opaque rep.
 
 End LOG.
