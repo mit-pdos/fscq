@@ -659,6 +659,15 @@ Proof.
   auto.
 Qed.
 
+Theorem sep_star_ptsto_indomain : forall a v F m,
+  (a |-> v * F)%pred m -> indomain a m.
+Proof.
+  intros.
+  eexists.
+  eapply sep_star_ptsto_some.
+  eauto.
+Qed.
+
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 
 Opaque sep_star.
