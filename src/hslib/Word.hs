@@ -2,7 +2,6 @@ module Word where
 
 import qualified Data.Word
 import qualified Data.ByteString
-import qualified Data.Bits
 import qualified Data.Serialize as S -- cabal install cereal
 
 data Coq_word =
