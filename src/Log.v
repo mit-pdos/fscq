@@ -729,6 +729,66 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _ >> _) => apply read_ok : prog.
 
+  Definition read_array xp a i rx :=
+    read xp (a ^+ i) rx.
+
+  Definition write_array xp a i v rx :=
+    write xp (a ^+ i) v rx.
+
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+
+  Opaque skipn.
+
+  Theorem read_array_ok : forall xp a i rx rec,
+    {{ exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
+     * [[ exists F', (array a vs * F')%pred m ]]
+     * [[ wordToNat i < length vs ]]
+     * [[ {{ rep xp (ActiveTxn mbase m) * F }} rx (sel vs i) >> rec ]]
+     * [[ {{ rep xp (ActiveTxn mbase m) * F }} rec >> rec ]]
+    }} read_array xp a i rx >> rec.
+  Proof.
+    intros.
+    apply pimpl_ok with (exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
+     * [[ exists F',
+          (array a (firstn (wordToNat i) vs)
+           * (a ^+ i) |-> sel vs i
+           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F')%pred m ]]
+     * [[ wordToNat i < length vs ]]
+     * [[ {{ rep xp (ActiveTxn mbase m) * F }} rx (sel vs i) >> rec ]]
+     * [[ {{ rep xp (ActiveTxn mbase m) * F }} rec >> rec ]])%pred.
+    unfold read_array.
+    eapply pimpl_ok.
+    apply read_ok.
+    cancel.
+
+    eexists.
+    eapply pimpl_apply; [| eauto ].
+    cancel.
+
+    step.
+    step.
+
+    cancel; eauto; try step.
+    eexists.
+    eapply pimpl_apply; [| eauto ].
+    eapply pimpl_trans.
+    eapply pimpl_sep_star.
+    apply isolate_fwd; eauto.
+    eauto.
+    cancel.
+  Qed.
+
+  Theorem write_array_ok : forall xp base off v rx rec,
+    {{ exists F mbase m vs F', rep xp (ActiveTxn mbase m) * F
+     * [[ (array base vs * F')%pred m ]]
+     * [[ wordToNat off < length vs ]]
+     * [[ {{ exists m', rep xp (ActiveTxn mbase m') * F
+           * [[ (array base (Array.upd vs off v) * F')%pred m' ]] }} rx true >> rec ]]
+     * [[ {{ rep xp (ActiveTxn mbase m) * F }} rx false >> rec ]]
+     * [[ {{ exists m', rep xp (ActiveTxn mbase m') * F }} rec >> rec ]]
+    }} write_array xp base off v rx >> rec.
+  Admitted.
+
   Definition apply xp rx :=
     len <- Read (LogLength xp);
     For i < (valu2addr len)
@@ -747,7 +807,7 @@ Module LOG.
       Begin
         a <- Read (LogStart xp ^+ i ^* $2);
         v <- Read (LogStart xp ^+ i ^* $2 ^+ $1);
-        write_array (valu2addr a) v;;
+        BasicProg.write_array (valu2addr a) v;;
         lrx tt
     Rof;;
     Write (LogLength xp) (addr2valu $0);;
@@ -825,8 +885,6 @@ Module LOG.
         unify l (@nil T); apply pimpl_refl
       end
     end : norm_hint_right.
-
-  Opaque skipn.
 
   Theorem apply_ok : forall xp rx rec,
     {{ exists m F, rep xp (CommittedTxn m) * F
