@@ -53,11 +53,12 @@ Module LOG.
 
   Theorem replay_app : forall l m m0 a v,
     (forall a', m a' = replay l m0 a')
-    -> (forall a', Prog.upd m a v a' = replay (l ++ (a, v) :: nil) m0 a').
+    -> Prog.upd m a v = replay (l ++ (a, v) :: nil) m0.
   Proof.
     induction l; simpl; intros.
-    - unfold Prog.upd; destruct (addr_eq_dec a' a); auto.
-    - destruct a. auto.
+    - apply functional_extensionality; intros.
+      unfold Prog.upd; destruct (addr_eq_dec x a); auto.
+    - destruct a; auto.
   Qed.
 
   (* Check that a log is well-formed in memory. *)
@@ -494,9 +495,10 @@ Module LOG.
   Hint Resolve replay_app.
 
   Theorem write_ok : forall xp a v rx rec,
-    {{ exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-     * [[ indomain a m2 ]]
-     * [[ {{ rep xp (ActiveTxn m1 (Prog.upd m2 a v)) * F }} rx true >> rec ]]
+    {{ exists m1 m2 F F' v0, rep xp (ActiveTxn m1 m2) * F
+     * [[ (a |-> v0 * F')%pred m2 ]]
+     * [[ {{ exists m', rep xp (ActiveTxn m1 m') * F
+           * [[ (a |-> v * F')%pred m' ]] }} rx true >> rec ]]
      * [[ {{ rep xp (ActiveTxn m1 m2) * F }} rx false >> rec ]]
      * [[ {{ exists m', rep xp (ActiveTxn m1 m') * F }} rec >> rec ]]
     }} write xp a v rx >> rec.
@@ -506,8 +508,16 @@ Module LOG.
 
     rewrite app_length; simpl; helper_wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.
+    eapply indomain_replay; eauto.
+    eapply sep_star_ptsto_indomain; eauto.
+
+    erewrite <- replay_app; [| eauto ].
+    eapply ptsto_upd; eauto.
+
     rewrite app_length; simpl; helper_wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.
+    eapply indomain_replay; eauto.
+    eapply sep_star_ptsto_indomain; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _) _ >> _) => apply write_ok : prog.
@@ -778,15 +788,35 @@ Module LOG.
     cancel.
   Qed.
 
-  Theorem write_array_ok : forall xp base off v rx rec,
+  Theorem write_array_ok : forall xp a i v rx rec,
     {{ exists F mbase m vs F', rep xp (ActiveTxn mbase m) * F
-     * [[ (array base vs * F')%pred m ]]
-     * [[ wordToNat off < length vs ]]
+     * [[ (array a vs * F')%pred m ]]
+     * [[ wordToNat i < length vs ]]
      * [[ {{ exists m', rep xp (ActiveTxn mbase m') * F
-           * [[ (array base (Array.upd vs off v) * F')%pred m' ]] }} rx true >> rec ]]
+           * [[ (array a (Array.upd vs i v) * F')%pred m' ]] }} rx true >> rec ]]
      * [[ {{ rep xp (ActiveTxn mbase m) * F }} rx false >> rec ]]
      * [[ {{ exists m', rep xp (ActiveTxn mbase m') * F }} rec >> rec ]]
-    }} write_array xp base off v rx >> rec.
+    }} write_array xp a i v rx >> rec.
+  Proof.
+    intros.
+    apply pimpl_ok with (exists F mbase m vs F', rep xp (ActiveTxn mbase m) * F
+     * [[ (array a (firstn (wordToNat i) vs)
+           * (a ^+ i) |-> sel vs i
+           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F')%pred m ]]
+     * [[ wordToNat i < length vs ]]
+     * [[ {{ exists m', rep xp (ActiveTxn mbase m') * F
+           * [[ (array a (Array.upd vs i v) * F')%pred m' ]] }} rx true >> rec ]]
+     * [[ {{ rep xp (ActiveTxn mbase m) * F }} rx false >> rec ]]
+     * [[ {{ exists m', rep xp (ActiveTxn mbase m') * F }} rec >> rec ]])%pred.
+    unfold write_array.
+    eapply pimpl_ok.
+    apply write_ok.
+    cancel.
+    eapply sep_star_ptsto_indomain.
+    eapply pimpl_apply; [| eauto ].
+    cancel.
+    step.
+
   Admitted.
 
   Definition apply xp rx :=

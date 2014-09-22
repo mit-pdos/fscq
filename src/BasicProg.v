@@ -59,8 +59,6 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
 
-(* write_ok' : start with a in domain of m and (diskIs m), end with (diskIs (upd m a v)) *)
-
 Theorem write_ok:
   forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
   {{ exists v0 F, a |-> v0 * F
