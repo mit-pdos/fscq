@@ -19,7 +19,9 @@ all: hstest
 
 %: %.hs coq
 	mv codegen/Word.hs codegen/.Word.hs
-	ghc -O2 codegen/*.hs hslib/*.hs $< -o $@
+	ghc -Wall -O2 hslib/*.hs
+	ghc -O2 codegen/*.hs -ihslib
+	ghc -Wall -O2 $< -ihslib -icodegen -o $@
 
 coq: Makefile.coq
 	@mkdir -p codegen
