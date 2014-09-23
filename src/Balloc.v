@@ -26,7 +26,7 @@ Module BALLOC.
   | Avail
   | InUse.
 
-  Definition alloc_state_to_bit a : valu :=
+  Definition alloc_state_to_valu a : valu :=
     match a with
     | Avail => $0
     | InUse => $1
@@ -34,7 +34,7 @@ Module BALLOC.
 
   Definition rep xp (bmap : addr -> alloc_state) :=
     array (BmapStart xp)
-          (map (fun i => alloc_state_to_bit (bmap $ i)) (seq 0 (wordToNat (BmapLen xp)))).
+          (map (fun i => alloc_state_to_valu (bmap $ i)) (seq 0 (wordToNat (BmapLen xp)))).
 
   Definition free lxp xp bn rx :=
     ok <- LOG.write_array lxp (BmapStart xp) bn (natToWord valulen 0);
@@ -44,9 +44,9 @@ Module BALLOC.
     fun n' => if addr_eq_dec n n' then a else m n'.
 
   Theorem upd_bupd : forall a bn len v s, wordToNat bn < len ->
-    v = alloc_state_to_bit s ->
-    upd (map (fun i => alloc_state_to_bit (a $ i)) (seq 0 len)) bn v =
-    map (fun i => alloc_state_to_bit (bupd a bn s $ i)) (seq 0 len).
+    v = alloc_state_to_valu s ->
+    upd (map (fun i => alloc_state_to_valu (a $ i)) (seq 0 len)) bn v =
+    map (fun i => alloc_state_to_valu (bupd a bn s $ i)) (seq 0 len).
   Admitted.
 
   Theorem free_ok : forall lxp xp bn rx rec,
@@ -99,7 +99,7 @@ Module BALLOC.
     rx None.
 
   Theorem sel_avail : forall a bn len, (bn < len)%word ->
-    sel (map (fun i => alloc_state_to_bit (a $ i)) (seq 0 (wordToNat len))) bn = $0 ->
+    sel (map (fun i => alloc_state_to_valu (a $ i)) (seq 0 (wordToNat len))) bn = $0 ->
     a bn = Avail.
   Admitted.
 
