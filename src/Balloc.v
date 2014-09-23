@@ -21,7 +21,7 @@ Record xparams := {
     BmapLen : addr
 }.
 
-Module Balloc.
+Module BALLOC.
   Inductive alloc_state :=
   | Avail
   | InUse.
@@ -154,4 +154,4 @@ Module Balloc.
     step.
   Qed.
 
-End Balloc.
+End BALLOC.

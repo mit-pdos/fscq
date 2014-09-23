@@ -2,6 +2,7 @@ module Main where
 
 import System.IO
 import Log
+import Balloc
 import Prog
 import Word
 import qualified Data.ByteString
@@ -49,7 +50,7 @@ run_dcode f prog =
     Write addr val rx ->
       do write_disk f addr val; run_dcode f $ rx ()
 
-the_prog :: Coq_xparams -> Prog.Coq_prog
+the_prog :: Log.Coq_xparams -> Prog.Coq_prog
 the_prog xp =
   _LOG__init xp $ \_ ->
   _LOG__begin xp $ \_ ->
@@ -58,19 +59,25 @@ the_prog xp =
   _LOG__commit xp $ \_ ->
   Prog.Done ()
 
-xp :: Coq_xparams
-xp = Build_xparams
+lxp :: Log.Coq_xparams
+lxp = Log.Build_xparams
   (W64 1000)  -- log length sector
   (W64 1001)  -- commit flag sector
   (W64 1002)  -- log start sector
   (W64 1000)  -- log length
 
+bxp :: Balloc.Coq_xparams
+bxp = Balloc.Build_xparams
+  (W64 950)   -- bitmap start sector
+  (W64 50)    -- bitmap length
+
 main :: IO ()
 main = do
   putStrLn "Running program.."
   f <- openFile disk_fn ReadWriteMode
-  -- run_dcode f $ the_prog xp
-  run_dcode f $ Testprog.testcopy xp $ Prog.Done ()
+  -- run_dcode f $ the_prog lxp
+  -- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()
+  run_dcode f $ Testprog.testalloc lxp bxp $ Prog.Done ()
   hClose f
   putStrLn "Done."
 
