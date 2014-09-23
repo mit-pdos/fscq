@@ -29,9 +29,9 @@ Definition testalloc lxp bxp rx :=
   match b with
   | None =>
     LOG.abort lxp ;;
-    rx
+    rx None
   | Some bn =>
     ok <- LOG.write lxp $0 (LOG.addr2valu bn) ;
     LOG.commit lxp ;;
-    rx
+    rx (Some bn)
   end.

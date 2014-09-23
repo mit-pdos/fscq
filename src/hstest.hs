@@ -37,8 +37,8 @@ write_disk f (W64 a) (W4096 v) = do
   return ()
 write_disk _ _ _ = error "write_disk: unexpected addr or val"
 
-run_dcode :: Handle -> Prog.Coq_prog -> IO ()
-run_dcode _ (Done _) = return ()
+run_dcode :: Handle -> Prog.Coq_prog -> IO Prog.Coq_donetoken
+run_dcode _ (Done r) = return r
 run_dcode f (Read a rx) = do val <- read_disk f a; run_dcode f $ rx val
 run_dcode f (Write a v rx) = do write_disk f a v; run_dcode f $ rx ()
 
@@ -49,7 +49,7 @@ the_prog xp =
   _LOG__read xp (W64 5) $ \v ->
   _LOG__write xp (W64 6) v $ \_ ->
   _LOG__commit xp $ \_ ->
-  Prog.Done ()
+  Prog.Done Nothing
 
 lxp :: Log.Coq_xparams
 lxp = Log.Build_xparams
@@ -67,9 +67,9 @@ main :: IO ()
 main = do
   putStrLn "Running program.."
   f <- openFile disk_fn ReadWriteMode
-  -- run_dcode f $ the_prog lxp
-  -- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()
-  run_dcode f $ Testprog.testalloc lxp bxp $ Prog.Done ()
+  -- r <- run_dcode f $ the_prog lxp
+  -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done Nothing
+  r <- run_dcode f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
   hClose f
-  putStrLn "Done."
+  putStrLn $ "Done: " ++ (show r)
 

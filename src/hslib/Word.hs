@@ -54,3 +54,7 @@ split1 64 _ (W4096 w) = W64 x
         Right z -> z
 split1 _ _ (W4096 _) = error "split1 not 64"
 split1 _ _ (W64 _) = error "split1 W64"
+
+instance Show Coq_word where
+  show (W64 x) = show x
+  show (W4096 x) = "[[W4096]]"
