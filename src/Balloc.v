@@ -7,6 +7,8 @@ Require Import SepAuto.
 Require Import BasicProg.
 Require Import Omega.
 Require Import Log.
+Require Import Array.
+Require Import List.
 
 Set Implicit Arguments.
 
@@ -15,7 +17,7 @@ Set Implicit Arguments.
 
 Record xparams := {
   BmapStart : addr;
-    BmapLen : addr
+    BmapLen : nat
 }.
 
 Module Balloc.
@@ -25,183 +27,29 @@ Module Balloc.
 
   Definition alloc_state_to_bit a : valu :=
     match a with
-    | Avail => natToWord valulen 0
-    | InUse => natToWord valulen 1
+    | Avail => $0
+    | InUse => $1
     end.
 
-
-  Fixpoint bmap_stars start len bmap off :=
-    match len with
-    | O => emp
-    | S len' =>
-      start |-> alloc_state_to_bit (bmap off) *
-      bmap_stars (liftWord S start) len' bmap (off ^+ (natToWord addrlen 1))
-    end%pred.
-
-(*
-(*
-  Hint Extern 0 (okToUnify (bmap_stars _ _ _ _) (bmap_stars _ _ _ _))
-    => unfold okToUnify; f_equal; try omega; ring_prepare; ring : okToUnify.
-*)
-
-  Lemma bmap_stars_split: forall len start bmap off len', (len' <= len)%word
-    -> bmap_stars start (wordToNat len) bmap off ==>
-       bmap_stars start (wordToNat len') bmap off *
-       bmap_stars (start ^+ len') (wordToNat (len ^- len')) bmap (off ^+ len').
-  Proof.
-    admit.
-(*
-    induction len.
-    - intros. assert (len' = 0) by omega. subst. simpl. cancel.
-    - destruct len'; intros.
-      + fold (wzero addrlen). ring_simplify (start ^+ wzero addrlen).
-        rewrite <- plus_n_O. rewrite <- minus_n_O. cancel.
-      + rewrite natToWord_S. rewrite wplus_assoc.
-        simpl.
-        unfold liftWord. rewrite natToWord_S. rewrite wplus_comm.
-        rewrite natToWord_wordToNat.
-        cancel.
-        eapply pimpl_trans.
-        eapply pimpl_trans; [ | apply IHlen ].
-        cancel.
-        instantiate (1:=len'). omega.
-        replace (S off + len') with (off + S len') by omega.
-        cancel.
-*)
-  Qed.
-
-  Lemma bmap_stars_extract: forall start len bmap off, (len > wzero addrlen)%word
-    -> bmap_stars start (wordToNat len) bmap off ==>
-       start |-> alloc_state_to_bit (bmap off) *
-       bmap_stars (start ^+ natToWord addrlen 1) (wordToNat (len ^- natToWord addrlen 1)) bmap
-                  (off ^+ natToWord addrlen 1).
-  Proof.
-    admit.
-  Qed.
-
-  Lemma bmap_stars_combine: forall start len bmap off len',
-     bmap_stars start (wordToNat len') bmap off * 
-        bmap_stars (start^+len') (wordToNat (len ^- len')) bmap (off ^+ len')
-        ==> bmap_stars start (wordToNat len) bmap off.
-  Proof.
-    admit.
-  Qed.
-
-  Lemma bmap_stars_insert: forall start len bmap off, 
-     (len > wzero addrlen)%word 
-      ->  start |-> alloc_state_to_bit (bmap off) *
-          bmap_stars (start ^+ natToWord addrlen 1) (wordToNat (len ^- natToWord addrlen 1)) bmap (off ^+ natToWord addrlen 1) 
-           ==>  bmap_stars start (wordToNat len) bmap off.
-  Proof.
-    admit.
-  Qed.
-*)
-
-  Definition rep xp bmap := bmap_stars (BmapStart xp) (wordToNat (BmapLen xp)) bmap (wzero addrlen).
+  Definition rep xp (bmap : addr -> alloc_state) :=
+    array (BmapStart xp) (map (fun i => alloc_state_to_bit (bmap $ i)) (seq 0 (BmapLen xp))).
 
   Definition free lxp xp bn rx :=
-    ok <- LOG.write lxp ((BmapStart xp) ^+ bn) (natToWord valulen 0);
+    ok <- LOG.write_array lxp (BmapStart xp) bn (natToWord valulen 0);
     rx ok.
 
-  Definition bupd (m:addr->alloc_state) n a :=
+  Definition bupd (m : addr -> alloc_state) n a :=
     fun n' => if addr_eq_dec n n' then a else m n'.
 
-(*
-  Lemma bmap_stars_upd: forall start len bmap off x, 
-      bmap_stars start (wordToNat len) bmap off  ==>
-        bmap_stars start (wordToNat len) (bupd bmap len x) off.
-  Proof.
-    admit.
-  Qed.
+  Theorem upd_bupd : forall a bn len, wordToNat bn < len ->
+    upd (map (fun i => alloc_state_to_bit (a $ i)) (seq 0 len)) bn $0 =
+    map (fun i => alloc_state_to_bit (bupd a bn Avail $ i)) (seq 0 len).
+  Admitted.
 
-  Lemma bmap_stars_upd': forall start len bmap off x bn, 
-      bmap_stars (start ^+ bn ^+ (natToWord addrlen 1)) (wordToNat (len ^- bn ^- (natToWord addrlen 1))) bmap off  ==>
-        bmap_stars (start ^+ bn ^+ (natToWord addrlen 1))  (wordToNat (len ^- bn ^- (natToWord addrlen 1))) (bupd bmap bn x) off.
-  Proof.
-    admit.
-  Qed.
-
-Theorem bupd_eq : forall m a v a',
-  a' = a
-  -> bupd m a v a' = v.
-Proof.
-  admit.
-Qed.
-
-
-  Hint Extern 1 (bmap_stars (BmapStart ?xp) (wordToNat (BmapLen ?xp)) _ (wzero addrlen) =!=> _) =>
-    match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
-      match R with
-      | context[((BmapStart xp ^+ ?len2) |-> _)%pred] =>
-        apply bmap_stars_split with (len':=len2); admit
-      end
-    end : norm_hint_left.
-
-  Hint Extern 1 (bmap_stars (BmapStart ?xp ^+ ?bn) _ _ (wzero addrlen ^+ ?bn) =!=> _) =>
-    match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
-      match R with
-      | context[((BmapStart xp ^+ ?bn) |-> _)%pred] =>
-        apply bmap_stars_extract; admit
-      end
-    end : norm_hint_left.
-
-  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp) (wordToNat (BmapLen ?xp)) _ (wzero addrlen)) =>
-    match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
-      match L with
-      | context[((BmapStart xp ^+ ?len2) |-> _)%pred] =>
-        apply bmap_stars_combine with (len':=len2); admit
-      end
-    end : norm_hint_right.
-
-  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp ^+ ?bn ^+ _) (wordToNat _) (bupd _ ?bn _) _) =>
-     apply bmap_stars_upd'
-  : norm_hint_right.
-
-
-  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp) (wordToNat ?len) (bupd _ ?len _) (wzero addrlen)) =>
-     apply bmap_stars_upd
-  : norm_hint_right.
-
-
-  Hint Extern 1 ( _ =!=> bmap_stars (BmapStart ?xp ^+ ?start) (wordToNat _)  _ _ ) =>
-    match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
-      match L with
-      | context[((BmapStart xp ^+ start) |-> _)%pred] =>
-        apply bmap_stars_insert; admit
-      end
-    end : norm_hint_right.
-*)
-
-  Lemma bmap_stars_indomain: forall start bmap m len bn,
-    bmap_stars start (wordToNat len) bmap (wzero addrlen) m ->
-    (bn < len)%word ->
-    indomain (start ^+ bn) m.
-  Proof.
-    intros start bmap m.
-    match goal with
-    | [ |- forall (len : addr), ?P ] =>
-      refine (well_founded_ind (@wlt_wf addrlen) (fun len => P) _)
-    end.
-    admit.
-  Qed.
-
-  Lemma bmap_stars_upd2: forall start bmap m len bn,
-    bmap_stars start (wordToNat len) bmap (wzero addrlen) m ->
-    (bn < len)%word ->
-    bmap_stars start (wordToNat len) (bupd bmap bn Avail) (wzero addrlen)
-      (upd m (start ^+ bn) (natToWord valulen 0)).
-  Proof.
-    admit.
-  Qed.
-
-  Theorem free_ok: forall lxp xp bn rx rec,
+  Theorem free_ok : forall lxp xp bn rx rec,
     {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
      * [[ (Fm * rep xp bmap)%pred m ]]
-     * [[ (bn < (BmapLen xp))%word ]]
+     * [[ wordToNat bn < BmapLen xp ]]
      * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
            * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]] }} rx true >> LOG.recover lxp ;; rec tt ]]
      * [[ {{ F * LOG.rep lxp (ActiveTxn mbase m) }} rx false >> LOG.recover lxp ;; rec tt ]]
@@ -209,40 +57,18 @@ Qed.
     }} free lxp xp bn rx >> LOG.recover lxp ;; rec tt.
   Proof.
     unfold free, rep.
-    hoare.
-admit.
-admit.
-apply stars_or_right.
-apply stars_or_left.
-unfold stars; simpl.
-cancel.
-hoare.
-hoare.
-apply stars_or_right.
-apply stars_or_left.
-cancel.
-hoare.
-hoare.
-apply stars_or_right.
-apply stars_or_left.
-cancel.
-hoare.
-hoare.
-apply stars_or_right.
-apply stars_or_left.
-cancel.
-hoare.
-hoare.
-apply stars_or_right.
-apply stars_or_left.
-cancel.
-hoare.
-hoare.
+    step.
+    pred_apply; cancel.
+    rewrite map_length. rewrite seq_length. auto.
 
-step.
+    step.
+    rewrite <- upd_bupd; eauto.
+    pred_apply; cancel.
 
-    eapply bmap_stars_indomain; eauto.
-    apply bmap_stars_upd2; eauto.
+    step.
+
+    (* XXX LOG.recover infinite loop... *)
+    admit.
   Qed.
 
   Definition alloc xp rx :=
