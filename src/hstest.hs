@@ -8,7 +8,10 @@ import Word
 import qualified Data.ByteString
 import qualified Testprog
 
+disk_fn :: String
 disk_fn = "disk.img"
+
+verbose :: Bool
 verbose = True
 
 debugmsg :: String -> IO ()
@@ -19,36 +22,25 @@ debugmsg s =
     return ()
 
 read_disk :: Handle -> Coq_word -> IO Coq_word
-read_disk f addr = case addr of {
-  W64 a -> (do
-    debugmsg $ "read(" ++ (show a) ++ ")"
-    hSeek f AbsoluteSeek (512 * (fromIntegral a))
-    bs <- Data.ByteString.hGet f 512
-    return $ W4096 bs);
-  _ -> error "read_disk: non-W64 addr"
-}
+read_disk f (W64 a) = do
+  debugmsg $ "read(" ++ (show a) ++ ")"
+  hSeek f AbsoluteSeek (512 * (fromIntegral a))
+  bs <- Data.ByteString.hGet f 512
+  return $ W4096 bs
+read_disk _ _ = error "read_disk: non-W64 addr"
 
 write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
-write_disk f addr val = case addr of {
-  W64 a -> case val of {
-    W4096 v -> (do
-      debugmsg $ "write(" ++ (show a) ++ ")"
-      hSeek f AbsoluteSeek (512 * (fromIntegral a))
-      Data.ByteString.hPut f v
-      return ());
-    _ -> error "write_disk: non-W4096 val"
-  };
-  _ -> error "write_disk: non-W64 addr"
-}
+write_disk f (W64 a) (W4096 v) = do
+  debugmsg $ "write(" ++ (show a) ++ ")"
+  hSeek f AbsoluteSeek (512 * (fromIntegral a))
+  Data.ByteString.hPut f v
+  return ()
+write_disk _ _ _ = error "write_disk: unexpected addr or val"
 
 run_dcode :: Handle -> Prog.Coq_prog -> IO ()
-run_dcode f prog =
-  case prog of
-    Done _ -> return ()
-    Read addr rx ->
-      do val <- read_disk f addr; run_dcode f $ rx val
-    Write addr val rx ->
-      do write_disk f addr val; run_dcode f $ rx ()
+run_dcode _ (Done _) = return ()
+run_dcode f (Read a rx) = do val <- read_disk f a; run_dcode f $ rx val
+run_dcode f (Write a v rx) = do write_disk f a v; run_dcode f $ rx ()
 
 the_prog :: Log.Coq_xparams -> Prog.Coq_prog
 the_prog xp =
