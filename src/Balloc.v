@@ -9,6 +9,7 @@ Require Import Omega.
 Require Import Log.
 Require Import Array.
 Require Import List.
+Require Import Bool.
 
 Set Implicit Arguments.
 
@@ -17,7 +18,7 @@ Set Implicit Arguments.
 
 Record xparams := {
   BmapStart : addr;
-    BmapLen : nat
+    BmapLen : addr
 }.
 
 Module Balloc.
@@ -32,7 +33,8 @@ Module Balloc.
     end.
 
   Definition rep xp (bmap : addr -> alloc_state) :=
-    array (BmapStart xp) (map (fun i => alloc_state_to_bit (bmap $ i)) (seq 0 (BmapLen xp))).
+    array (BmapStart xp)
+          (map (fun i => alloc_state_to_bit (bmap $ i)) (seq 0 (wordToNat (BmapLen xp)))).
 
   Definition free lxp xp bn rx :=
     ok <- LOG.write_array lxp (BmapStart xp) bn (natToWord valulen 0);
@@ -41,15 +43,16 @@ Module Balloc.
   Definition bupd (m : addr -> alloc_state) n a :=
     fun n' => if addr_eq_dec n n' then a else m n'.
 
-  Theorem upd_bupd : forall a bn len, wordToNat bn < len ->
-    upd (map (fun i => alloc_state_to_bit (a $ i)) (seq 0 len)) bn $0 =
-    map (fun i => alloc_state_to_bit (bupd a bn Avail $ i)) (seq 0 len).
+  Theorem upd_bupd : forall a bn len v s, wordToNat bn < len ->
+    v = alloc_state_to_bit s ->
+    upd (map (fun i => alloc_state_to_bit (a $ i)) (seq 0 len)) bn v =
+    map (fun i => alloc_state_to_bit (bupd a bn s $ i)) (seq 0 len).
   Admitted.
 
   Theorem free_ok : forall lxp xp bn rx rec,
     {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
      * [[ (Fm * rep xp bmap)%pred m ]]
-     * [[ wordToNat bn < BmapLen xp ]]
+     * [[ (bn < BmapLen xp)%word ]]
      * [[ {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
            * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]] }} rx true >> LOG.recover lxp ;; rec tt ]]
      * [[ {{ F * LOG.rep lxp (ActiveTxn mbase m) }} rx false >> LOG.recover lxp ;; rec tt ]]
@@ -59,10 +62,10 @@ Module Balloc.
     unfold free, rep.
     step.
     pred_apply; cancel.
-    rewrite map_length. rewrite seq_length. auto.
+    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
 
     step.
-    rewrite <- upd_bupd; eauto.
+    erewrite <- upd_bupd; [| apply wlt_lt; eauto | eauto ].
     pred_apply; cancel.
 
     step.
@@ -71,49 +74,84 @@ Module Balloc.
     admit.
   Qed.
 
-  Definition alloc xp rx :=
+  Definition alloc lxp xp rx :=
     For i < (BmapLen xp)
-      Ghost bmap
+      Ghost F mbase m
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        rep xp bmap
+        F * LOG.rep lxp (ActiveTxn mbase m)
       OnCrash
         any
-        (* XXX figure out how to wrap this in transactions,
-         * so we don't have to specify crash cases.. *)
       Begin
-        f <- !(BmapStart xp + i);
-        If (eq_nat_dec f 0) {
-          (BmapStart xp + i) <-- 1;; rx (Some i)
+        f <- LOG.read_array lxp (BmapStart xp) i;
+        If (weq f $0) {
+          ok <- LOG.write_array lxp (BmapStart xp) i $1;
+          If (bool_dec ok true) {
+            rx (Some i)
+          } else {
+            rx None
+          }
         } else {
           lrx tt
         }
     Rof;;
     rx None.
 
-  Theorem alloc_ok: forall xp rx rec,
-    {{ exists F bmap, F * rep xp bmap
-     * [[ exists bn, bmap bn = Avail
-          -> {{ F * rep xp (bupd bmap bn InUse) }} rx (Some bn) >> rec ]]
-     * [[ {{ F * rep xp bmap }} rx None >> rec ]]
-     * [[ {{ any }} rec >> rec ]]
-    }} alloc xp rx >> rec.
+  Theorem sel_avail : forall a bn len, (bn < len)%word ->
+    sel (map (fun i => alloc_state_to_bit (a $ i)) (seq 0 (wordToNat len))) bn = $0 ->
+    a bn = Avail.
+  Admitted.
+
+  Theorem alloc_ok: forall lxp xp rx rec,
+    {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
+     * [[ (Fm * rep xp bmap)%pred m ]]
+     * [[ forall bn, bmap bn = Avail
+          -> {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
+              * [[ (Fm * rep xp (bupd bmap bn InUse))%pred m' ]] }} rx (Some bn) >> LOG.recover lxp rec ]]
+     * [[ {{ F * LOG.rep lxp (ActiveTxn mbase m) }} rx None >> LOG.recover lxp rec ]]
+     * [[ {{ F * LOG.rep lxp (NoTransaction mbase) }} rec tt >> LOG.recover lxp rec ]]
+    }} alloc lxp xp rx >> LOG.recover lxp rec.
   Proof.
     unfold alloc, rep.
+    step.
+    step.
+    eexists. pred_apply. cancel.
+    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
+    step.
+    step.
+    pred_apply. cancel.
+    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
 
-    intros.
-    eapply pimpl_ok.
-    eauto with prog.
-    norm.
+    (* XXX interesting case: there are two possible hoare tuples about
+     * the continuation [rx], and [eauto with prog] picks the wrong one:
+     * it chooses [rx None] when we should be using [rx (Some bn)].
+     *)
+    eapply pimpl_ok_cont.
+    match goal with
+    | [ H: forall bn, _ -> {{ _ }} rx (Some bn) >> _ |- _ ] => apply H
+    end.
+
+    eapply sel_avail; [| eauto ]; auto.
+
     cancel.
-    intuition.
-    (* XXX again, if intuition goes first, it mismatches existential variables *)
+    pred_apply. erewrite <- upd_bupd. cancel.
+    apply wlt_lt; auto.
+    eauto.
 
     cancel.
 
     step.
-    (* XXX need to extract a bitmap entry *)
-  Abort.
+
+    (* XXX recovery loop *)
+    admit.
+
+    step.
+
+    (* XXX recovery loop *)
+    admit.
+
+    step.
+  Qed.
 
 End Balloc.
