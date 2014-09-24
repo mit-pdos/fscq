@@ -498,6 +498,21 @@ Proof.
   congruence.
 Qed.
 
+Lemma sep_star_and2lift:
+  forall a b,
+  (a /\ [b]) ==> (a * [[b]]).
+Proof.
+  unfold sep_star, and, lift, lift_empty, pimpl.
+  intros; repeat deex.
+  do 2 eexists; intuition; eauto.
+  - unfold mem_union.
+    apply functional_extensionality.
+    intros; destruct (m x); auto.
+  - unfold mem_disjoint, not; intros.
+    repeat deex.
+    congruence.
+Qed.
+
 Lemma ptsto_valid:
   forall a v F m,
   (a |-> v * F)%pred m

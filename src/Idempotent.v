@@ -5,6 +5,18 @@ Require Import Pred.
 Definition preserves_precondition (pre : pred) p :=
   forall m m' out, pre m -> exec m p m' out -> pre m' /\ out <> Failed.
 
+Theorem pp_lift : forall pre P p,
+  preserves_precondition pre p ->
+  preserves_precondition (pre * [[ P ]]) p.
+Proof.
+  unfold preserves_precondition; intros.
+  apply sep_star_lift2and in H0; destruct H0.
+  edestruct H; clear H; eauto.
+  intuition.
+  apply sep_star_and2lift.
+  split; eauto.
+Qed.
+
 Theorem idempotent_ok' : forall p p1 p2 pre,
   preserves_precondition pre p ->
   p1 = p ->
