@@ -243,12 +243,7 @@ Module BALLOC.
     eapply sel_avail; [| eauto ]; auto.
 
     cancel.
-
-(* XXX broke because change in upd_bupd
-    pred_apply. erewrite <- upd_bupd. cancel.
-    apply wlt_lt; auto.
-    eauto.
-
+    pred_apply. erewrite <- upd_bupd; auto. cancel.
     cancel.
 
     step.
@@ -263,10 +258,5 @@ Module BALLOC.
 
     step.
   Qed.
-*)
-
-  Admitted.
-
-
 
 End BALLOC.
