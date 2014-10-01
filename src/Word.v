@@ -1238,6 +1238,23 @@ Proof.
   intros; omega.
 Qed.
 
+Lemma wordToNat_natToWord_bound : forall sz n (bound : word sz),
+  (n <= wordToNat bound)%nat
+  -> wordToNat (natToWord sz n) = n.
+Proof.
+  intros.
+  apply wordToNat_natToWord_idempotent'.
+  eapply le_lt_trans; eauto.
+  apply wordToNat_bound.
+Qed.
+
+Lemma wordToNat_eq_natToWord : forall sz (w : word sz) n,
+  wordToNat w = n
+  -> w = natToWord sz n.
+Proof.
+  intros. rewrite <- H. rewrite natToWord_wordToNat. auto.
+Qed.
+
 Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat ->
   n < m.
 Proof.
