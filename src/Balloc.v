@@ -119,11 +119,15 @@ Module BALLOC.
     step.
     pred_apply; cancel.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
-
     step.
-(* XXX broke because updated upd_bupd 
-    erewrite <- upd_bupd; [| apply wlt_lt; eauto | eauto ].
+    replace bn with (bn ^+ $ 0). 
+    erewrite <- upd_bupd.
     pred_apply; cancel.
+    admit.
+    apply wlt_lt; eauto.
+    eauto.
+    subst.
+    admit. (* bn ^+ $ (0) = 0 *).
 
     step.
     admit.
@@ -132,7 +136,7 @@ Module BALLOC.
     admit.
   Qed.
 *)
-  Admitted.
+Admitted.
 
   Definition alloc lxp xp rx :=
     For i < (BmapLen xp)
