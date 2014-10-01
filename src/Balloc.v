@@ -10,6 +10,7 @@ Require Import Log.
 Require Import Array.
 Require Import List.
 Require Import Bool.
+Require Import Nomega.
 
 Set Implicit Arguments.
 
@@ -55,11 +56,6 @@ Module BALLOC.
     intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
   Qed.
 
-  Lemma updN_split: forall a l n v,
-    (updN (a :: l) n v) = (updN (a::nil) n v) ++ (updN l n v).
-  Proof.
-  Admitted.
-
   Lemma upd_bupd_outb : forall len a bn s start (bound : addr),
     start > wordToNat bn ->
     start + len <= wordToNat bound ->
@@ -78,7 +74,7 @@ Module BALLOC.
     - apply IHlen with (bound:=bound); omega.
   Qed.
 
-  Theorem upd_bupd : forall len a bn v s start (bound1 : addr) (bound2 : addr),
+  Theorem upd_bupd' : forall len a bn v s start (bound1 : addr) (bound2 : addr),
     start + len <= wordToNat bound1 ->
     start + wordToNat bn <= wordToNat bound2 ->
     v = alloc_state_to_valu s ->
@@ -128,14 +124,39 @@ Module BALLOC.
     congruence.
     fold updN.
     replace (bn ^+ $ (start)) with ((bn ^- $ 1) ^+ $ (S start)).
+
+    assert (wordToNat (bn ^- $ (1)) = n).
+    rewrite wminus_Alt. rewrite wminus_Alt2. unfold wordBinN.
+    erewrite wordToNat_natToWord_bound.
+    rewrite bn'. unfold addrlen; rewrite roundTrip_1. omega.
+    rewrite bn'. instantiate (1:=bound2). omega.
+    unfold not; intros. apply wlt_lt in H2. rewrite bn' in H2. simpl in H2. omega.
+
     rewrite <- IHlen with (v:=v) (bound1:=bound1) (bound2:=bound2).
     unfold upd.
     f_equal.
-    admit.
-    admit.
-    admit.
+    auto.
+    omega.
+    rewrite H2; omega.
+
     assumption.
     rewrite natToWord_S with (n:=start). ring.
+  Qed.
+
+  Theorem upd_bupd : forall (len : addr) a bn v s,
+    v = alloc_state_to_valu s ->
+    upd (map (fun i => alloc_state_to_valu (a $ i)) (seq 0 (wordToNat len))) bn v =
+    map (fun i => alloc_state_to_valu (bupd a bn s $ i)) (seq 0 (wordToNat len)).
+  Proof.
+    intros.
+    replace (bn) with (bn ^+ $0).
+    replace (bn ^+ $0) with (bn) at 1.
+    eapply upd_bupd'.
+    instantiate (1:=len); omega.
+    instantiate (1:=bn); omega.
+    auto.
+    replace ($0) with (wzero addrlen) by auto; ring.
+    replace ($0) with (wzero addrlen) by auto; ring.
   Qed.
 
   Theorem free_ok : forall lxp xp bn rx rec,
@@ -153,23 +174,13 @@ Module BALLOC.
     pred_apply; cancel.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
     step.
-    replace bn with (bn ^+ $ 0). 
-    erewrite <- upd_bupd.
+    erewrite <- upd_bupd; [|eauto].
     pred_apply; cancel.
-    admit.
-    apply wlt_lt; eauto.
-    eauto.
-    subst.
-    admit. (* bn ^+ $ (0) = 0 *).
-
     step.
-    admit.
 
     (* XXX LOG.recover infinite loop... *)
     admit.
   Qed.
-*)
-Admitted.
 
   Definition alloc lxp xp rx :=
     For i < (BmapLen xp)
