@@ -43,22 +43,44 @@ Module BALLOC.
   Definition bupd (m : addr -> alloc_state) n a :=
     fun n' => if addr_eq_dec n n' then a else m n'.
 
+  Lemma bupd_same: forall m n n' a,
+    n = n' -> bupd m n a n' = a.
+  Proof.
+    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
+  Qed.
+
+  Lemma bupd_other: forall m n n' a,
+    n <> n' -> bupd m n a n' = m n'.
+  Proof.
+    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
+  Qed.
+
   Lemma updN_split: forall a l n v,
     (updN (a :: l) n v) = (updN (a::nil) n v) ++ (updN l n v).
   Proof.
   Admitted.
 
-  Lemma upd_bupd_outb : forall a bn s len start, 
-    start = S(wordToNat bn) -> 
+  Lemma upd_bupd_outb : forall len a bn s start (bound : addr),
+    start > wordToNat bn ->
+    start + len <= wordToNat bound ->
     map (fun i => alloc_state_to_valu (a $ i)) (seq start len) =
     map (fun i => alloc_state_to_valu (bupd a bn s $ i)) (seq start len).
-   Proof.
-   Admitted.
-  
+  Proof.
+    induction len; auto.
+    simpl; intros.
+    f_equal.
+    - f_equal.
+      rewrite bupd_other; auto.
+      unfold not; intros; subst bn.
+      erewrite wordToNat_natToWord_bound in H; try omega.
+      instantiate (1:=bound).
+      omega.
+    - apply IHlen with (bound:=bound); omega.
+  Qed.
 
-  Theorem upd_bupd : forall len a bn v s start, 
-    start <= wordToNat bn -> 
-    wordToNat bn < start + len ->
+  Theorem upd_bupd : forall len a bn v s start (bound1 : addr) (bound2 : addr),
+    start + len <= wordToNat bound1 ->
+    start + wordToNat bn <= wordToNat bound2 ->
     v = alloc_state_to_valu s ->
     upd (map (fun i => alloc_state_to_valu (a $ i)) (seq start len)) bn v =
     map (fun i => alloc_state_to_valu (bupd a (bn ^+ $ start) s $ i)) (seq start len).
@@ -74,7 +96,7 @@ Module BALLOC.
     unfold upd, updN.
     destruct (wordToNat bn) eqn:bn'.
     (* bn = 0 *)
-    assert (bn = wzero addrlen) by admit.
+    assert (bn = wzero addrlen) by ( apply wordToNat_eq_natToWord; auto ).
     f_equal.
     subst.
     ring_simplify (wzero addrlen ^+ $ (start)).
@@ -83,27 +105,38 @@ Module BALLOC.
     auto.
     congruence.
     (* bn = 0, rest of list *)
-    rewrite <- upd_bupd_outb.
-    auto.
+    erewrite <- upd_bupd_outb; auto.
     subst.
-    ring_simplify (wzero addrlen ^+ $ (start)). 
-    admit.
-    (* bn != 0 *) 
+    ring_simplify (wzero addrlen ^+ $ (start)).
+    erewrite wordToNat_natToWord_bound; try omega.
+    eapply le_trans; [|eauto]; omega.
+    instantiate (1:=bound1).
+    omega.
+    (* bn != 0 *)
     f_equal.
     f_equal.
-    admit.
+    rewrite bupd_other; auto.
+    unfold not; intros.
+    assert (bn ^+ $ start ^- $ start = $ start ^- $ start) by ( rewrite H2; auto ); clear H2.
+    rewrite wminus_def in H3.
+    rewrite <- wplus_assoc in H3.
+    rewrite <- wminus_def in H3.
+    replace ($ (start) ^- $ (start)) with (wzero addrlen) in H3 by ring.
+    replace (bn ^+ wzero addrlen) with (bn) in H3 by ring.
+    rewrite H3 in bn'.
+    rewrite roundTrip_0 in bn'.
+    congruence.
     fold updN.
     replace (bn ^+ $ (start)) with ((bn ^- $ 1) ^+ $ (S start)).
-    erewrite <- IHlen.
+    rewrite <- IHlen with (v:=v) (bound1:=bound1) (bound2:=bound2).
     unfold upd.
     f_equal.
     admit.
     admit.
     admit.
     assumption.
-    admit.
+    rewrite natToWord_S with (n:=start). ring.
   Qed.
-    
 
   Theorem free_ok : forall lxp xp bn rx rec,
     {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
