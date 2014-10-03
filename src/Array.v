@@ -237,9 +237,9 @@ Theorem read_ok:
 Proof.
   intros.
 
-  apply corr_exists.
+  apply corr_exists_pre.
   intro vs.
-  apply corr_exists.
+  apply corr_exists_pre.
   intro F.
 
   apply pimpl_ok with
@@ -331,29 +331,7 @@ Theorem read_back_ok : forall a rx post,
      * [[ {{array a (upd vs $0 $42) * F}} rx $42 {{post}} ]]
   }} read_back a rx {{ unchanged \/ post [ a^+$0 <--- $42 ] }}.
 Proof.
-(*
   unfold read_back; hoare.
-*)
-  unfold read_back.
-  intros.
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  try autorewrite with core in *.
-  eauto.
-
-  try autorewrite with core in *.
-  eauto.
-
-  apply pimpl2_and_r; eauto.
-  apply pimpl2_and_r; eauto.
 Qed.
 
 Definition swap a i j rx :=
@@ -372,71 +350,8 @@ Theorem swap_ok : forall a i j rx post,
     exists vs F,
     before (array a vs * F) /\
     (unchanged \/
-     unchanged [ a^+i <--- (sel vs j) ] \/
-     post [ a^+j <--- (sel vs i) ] [ a^+i <--- (sel vs j) ])
+     (unchanged \/ post [ a^+j <--- (sel vs i) ]) [ a^+i <--- (sel vs j) ])
   }}.
 Proof.
-(*
   unfold swap; hoare.
-*)
-  unfold swap.
-  intros.
-
-  apply corr_exists.
-  intro vs.
-  apply corr_exists.
-  intro F.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  autorewrite with core in *.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  eauto.
-
-  eauto.
-  eauto.
-  eauto.
-
-  unfold pimpl2; intros.
-  exists vs.
-  exists F.
-  destruct H.
-  destruct H0.
-  destruct H1.
-
-  split; eauto.
-
-  destruct H2.
-  left; eauto.
-
-  destruct H2.
-  destruct H3.
-  right; left; eauto.
-
-  destruct H3.
-  right; right; eauto.
 Qed.
