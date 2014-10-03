@@ -732,4 +732,20 @@ Qed.
 
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 
+Theorem pimpl2_and_l:
+  forall p q r,
+  (p ===> r) ->
+  (p /\ q ===> r).
+Proof.
+  firstorder.
+Qed.
+
+Theorem pimpl2_and_r:
+  forall p q r,
+  (p ===> r) ->
+  (q /\ p ===> r).
+Proof.
+  firstorder.
+Qed.
+
 Opaque sep_star.
