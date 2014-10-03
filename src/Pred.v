@@ -129,6 +129,9 @@ Definition unchanged (m1 m2: mem) := m1 = m2.
 Definition pimpl2 (p q : pred2) := forall m1 m2, p m1 m2 -> q m1 m2.
 Notation "p ===> q" := (pimpl2 p%pred2 q%pred2) (right associativity, at level 90).
 
+Definition any2 : pred2 :=
+  fun m1 m2 => True.
+
 (* Useful tactics and lemmas *)
 
 Ltac deex := match goal with
@@ -794,6 +797,13 @@ Lemma pimpl2_before:
   forall p q,
   (p ==> q) ->
   (before p ===> before q).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl2_any:
+  forall p,
+  p ===> any2.
 Proof.
   firstorder.
 Qed.
