@@ -768,6 +768,14 @@ Proof.
   firstorder.
 Qed.
 
+Lemma pimpl2_exists_l:
+  forall T p q,
+  (forall x:T, p x ===> q) ->
+  ((exists x:T, p x) ===> q).
+Proof.
+  firstorder.
+Qed.
+
 Lemma pimpl2_or_split:
   forall p q r,
   (p ===> r) ->
