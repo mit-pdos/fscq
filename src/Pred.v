@@ -88,6 +88,48 @@ Notation "m @ a |-> v" := (diskptsto m a v) (a at level 34, at level 35).
 Definition mem_except (m: mem) (a: addr) :=
   fun a' => if addr_eq_dec a' a then None else m a'.
 
+(* Predicates on two disks (before and after) *)
+
+Definition pred2 := mem -> mem -> Prop.
+
+Definition and2 (p q : pred2) : pred2 :=
+  fun m1 m2 => p m1 m2 /\ q m1 m2.
+Infix "/\" := and2 : pred2_scope.
+
+Bind Scope pred2_scope with pred2.
+Delimit Scope pred2_scope with pred2.
+
+Definition or2 (p q : pred2) : pred2 :=
+  fun m1 m2 => p m1 m2 \/ q m1 m2.
+Infix "\/" := or2 : pred2_scope.
+
+Definition foral2_ A (p : A -> pred2) : pred2 :=
+  fun m1 m2 => forall x, p x m1 m2.
+Notation "'foral' x .. y , p" :=
+  (foral2_ (fun x => .. (foral2_ (fun y => p)) ..))
+  (at level 200, x binder, right associativity) : pred2_scope.
+
+Definition exis2 A (p : A -> pred2) : pred2 :=
+  fun m1 m2 => exists x, p x m1 m2.
+Notation "'exists' x .. y , p" :=
+  (exis2 (fun x => .. (exis2 (fun y => p)) ..)) : pred2_scope.
+
+Definition before (p : pred) : pred2 :=
+  fun m1 m2 => p m1.
+
+Definition after (p : pred) : pred2 :=
+  fun m1 m2 => p m2.
+
+Definition pupd2 (p : pred2) (a : addr) (v : valu) : pred2 :=
+  fun m1 m2 => p (upd m1 a v) m2.
+Notation "p [ a <--- v ]" := (pupd2 p a v) (at level 0) : pred2_scope.
+
+Definition unchanged (m1 m2: mem) := m1 = m2.
+
+Definition pimpl2 (p q : pred2) := forall m1 m2, p m1 m2 -> q m1 m2.
+Notation "p ===> q" := (pimpl2 p%pred2 q%pred2) (right associativity, at level 90).
+
+(* Useful tactics and lemmas *)
 
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
@@ -105,7 +147,12 @@ Proof.
   pred.
 Qed.
 
-Hint Resolve pimpl_refl.
+Theorem pimpl2_refl : forall p, p ===> p.
+Proof.
+  firstorder.
+Qed.
+
+Hint Resolve pimpl_refl pimpl2_refl.
 
 Theorem mem_disjoint_comm:
   forall m1 m2,
