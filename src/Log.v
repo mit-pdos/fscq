@@ -1051,6 +1051,12 @@ Module LOG.
       rx tt
     }.
 
+  Hint Extern 1 (False) =>
+    match goal with
+    | [ H: $0 = $1 |- _ ] =>
+      eapply natToWord_discriminate; [|eauto]; rewrite valulen_is; omega
+    end : false_precondition_hint.
+
   Theorem recover_ok : forall xp rx rec,
     {{ (exists m F, rep xp (NoTransaction m) * F
         * [[ {{ rep xp (NoTransaction m) * F }} rx tt >> rec ]]
