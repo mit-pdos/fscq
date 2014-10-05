@@ -1029,14 +1029,7 @@ Module LOG.
           \/ rep xp (CommittedTxn m2) * F }} rec >> rec ]]
     }} commit xp rx >> rec.
   Proof.
-    unfold commit; log_unfold.
-    step.
-    step.
-    log_unfold; cancel.
-    step.
-    log_unfold; cancel.
-    log_unfold; cancel.
-    step.
+    unfold commit; hoare_unfold log_unfold.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (commit _) _ >> _) => apply commit_ok : prog.
@@ -1071,37 +1064,7 @@ Module LOG.
              \/ rep xp (NoTransaction m) * F }} rec >> rec ]])
     }} recover xp rx >> rec.
   Proof.
-    unfold recover; log_unfold.
-    step.
-
-    step.
-    eapply pimpl_ok. eauto with prog. norm'l.
-    exfalso; eapply natToWord_discriminate; [|eauto]; rewrite valulen_is; omega.
-
-    step.
-    step.
-
-    step.
-    step.
-    step.
-
-    eapply pimpl_ok. eauto with prog. norm'l.
-    exfalso; eapply natToWord_discriminate; [|eauto]; rewrite valulen_is; omega.
-
-    step.
-    step.
-    step.
-    step.
-    step.
-    step.
-    log_unfold; cancel.
-
-    step.
-    log_unfold; cancel.
-    log_unfold; cancel.
-
-    step.
-    step.
+    unfold recover; hoare_unfold log_unfold.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.

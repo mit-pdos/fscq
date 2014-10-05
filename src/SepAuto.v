@@ -550,3 +550,4 @@ Ltac step :=
   eauto.
 
 Ltac hoare := repeat step.
+Ltac hoare_unfold unfolder := repeat (unfolder; step).
