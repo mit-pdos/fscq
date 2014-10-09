@@ -37,71 +37,75 @@ Ltac inv_exec :=
   end.
 
 Theorem read_ok:
-  forall (a:addr) (rx:valu->prog) (post:pred2),
+  forall (a:addr) (rx:valu->prog) (rec:prog),
   {{ exists v F, a |-> v * F
-   * [[{{ a |-> v * F }} (rx v) {{ post }}]]
-  }} Read a rx {{ post }}.
+   * [[{{ a |-> v * F }} (rx v) >> rec]]
+   * [[{{ a |-> v * F }} rec >> rec]]
+  }} Read a rx >> rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
-  inv_exec; auto.
+  inv_exec_recover; auto; inv_exec.
   - apply ptsto_valid in H. congruence.
-  - remember H as Hm. clear HeqHm.
+  - eapply H2. eauto.
     apply ptsto_valid in H. repeat inv_option.
     eauto.
+  - eapply H2. eauto.
+    apply ptsto_valid in H. repeat inv_option.
+    eauto.
+  - eapply H1; eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Read _) _ {{_}}) => apply read_ok : prog.
+Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
 
 Theorem write_ok:
-  forall (a:addr) (v:valu) (rx:unit->prog) (post:pred2),
+  forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
   {{ exists v0 F, a |-> v0 * F
-   * [[{{ a |-> v * F }} rx tt {{ post }}]]
-  }} Write a v rx {{ unchanged \/ post [ a <--- v ] }}.
+   * [[{{ a |-> v * F }} rx tt >> rec]]
+   * [[{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]]
+  }} Write a v rx >> rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
-  inv_exec; auto.
+  inv_exec_recover; auto; inv_exec.
   - apply ptsto_valid in H. congruence.
-  - unfold nonfail, pupd in *.
-    edestruct H1; [ | eauto | ].
+  - eapply H2. instantiate (1:=upd m a v).
     eapply ptsto_upd; eauto.
-    split; [|auto].
-    right. eauto.
-  - unfold nonfail.
-    split.
-    left. unfold unchanged. eauto.
-    discriminate.
+    eauto.
+  - eapply H2. instantiate (1:=upd m a v).
+    eapply ptsto_upd; eauto.
+    eauto.
+  - eapply H1; unfold or; eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Write _ _) _ {{_}}) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq (Write _ _) _ >> _) => apply write_ok : prog.
 
 Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
   if b then p1 else p2.
 
 Theorem if_ok:
-  forall P Q (b : {P}+{Q}) p1 p2 post1 post2,
+  forall P Q (b : {P}+{Q}) p1 p2 rec,
   {{ exists pre, pre
-   * [[{{ pre * [[P]] }} p1 {{ post1 }}]]
-   * [[{{ pre * [[Q]] }} p2 {{ post2 }}]]
-  }} If_ b p1 p2 {{ post1 \/ post2 }}.
+   * [[{{ pre * [[P]] }} p1 >> rec]]
+   * [[{{ pre * [[Q]] }} p2 >> rec]]
+  }} If_ b p1 p2 >> rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
-  unfold lift in *. destruct b.
-  - edestruct H2; eauto.
-    apply sep_star_and2lift; split; eauto.
-    split; eauto.
-    left; eauto.
-  - edestruct H1; eauto.
-    apply sep_star_and2lift; split; eauto.
-    split; eauto.
-    right; eauto.
+  destruct b.
+  - eapply H2; eauto.
+    eapply pimpl_apply; [|apply H].
+    apply sep_star_lift_r.
+    split; pred.
+  - eapply H1; eauto.
+    eapply pimpl_apply; [|apply H].
+    apply sep_star_lift_r.
+    split; pred.
 Qed.
 
-Hint Extern 1 ({{_}} If_ _ _ _ {{_}}) => apply if_ok : prog.
+Hint Extern 1 ({{_}} If_ _ _ _ >> _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
 Record For_args (L : Set) := {
@@ -119,7 +123,6 @@ Proof.
   apply wlt_lt; auto.
 Qed.
 
-(*
 Definition For_ (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
                 (i n : addr) (l : L)
                 (nocrash : G -> addr -> L -> pred)
@@ -336,9 +339,7 @@ Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Inv
    g1 binder, g2 binder,
    lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
-*)
 
-(*
 Definition read_array a rx :=
   v <- Read a;
   rx v.
@@ -403,4 +404,3 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (read_array _) _ >> _) => apply read_array_ok : prog.
 Hint Extern 1 ({{_}} progseq (write_array _ _) _ >> _) => apply write_array_ok : prog.
-*)

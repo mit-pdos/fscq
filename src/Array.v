@@ -143,7 +143,7 @@ Proof.
   simpl.
   replace (a0 ^+ $1 ^+ $ i ^+ $1) with (a0 ^+ $ (S i) ^+ $1) by words.
   cancel.
-Qed.
+Qed.  
 
 Theorem isolate_fwd : forall (a i : addr) vs,
   wordToNat i < length vs
@@ -229,36 +229,32 @@ Export ArrayOps.
 (** * Hoare rules *)
 
 Theorem read_ok:
-  forall (a i:addr) (rx:valu->prog) (post:pred2),
+  forall (a i:addr) (rx:valu->prog) (rec:prog),
   {{ exists vs F, array a vs * F
    * [[wordToNat i < length vs]]
-   * [[{{ array a vs * F }} (rx (sel vs i)) {{ post }}]]
-  }} ArrayRead a i rx {{ post }}.
+   * [[{{ array a vs * F }} (rx (sel vs i)) >> rec]]
+   * [[{{ array a vs * F }} rec >> rec]]
+  }} ArrayRead a i rx >> rec.
 Proof.
   intros.
-
-  apply corr_exists.
-  intro vs.
-  apply corr_exists.
-  intro F.
-
-  apply pimpl_ok with
-    (post':=post)
-    (pre':=(exists vs F,
+  apply pimpl_ok with (exists vs F,
     array a (firstn (wordToNat i) vs)
     * (a ^+ i) |-> sel vs i
     * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
     * [[wordToNat i < length vs]]
     * [[{{ array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> sel vs i
-           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F }} (rx (sel vs i)) {{ post }}]])%pred);
-  [ | | eauto ].
+           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F }} (rx (sel vs i)) >> rec]]
+    * [[{{ array a (firstn (wordToNat i) vs)
+           * (a ^+ i) |-> sel vs i
+           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F }} rec >> rec]])%pred.
 
   rewrite ArrayRead_eq.
-  eapply pimpl_ok; [| | eauto ].
+  eapply pimpl_ok.
   apply read_ok.
   cancel.
-  eapply pimpl_ok; [ eassumption | cancel | eauto ].
+  eapply pimpl_ok; [ eassumption | cancel ].
+  eapply pimpl_ok; [ eassumption | cancel ].
 
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
@@ -267,36 +263,47 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eassumption | cancel | eauto ].
+  eapply pimpl_ok; [ eassumption | cancel ].
+  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
+                                                | apply isolate_bwd; eassumption ] ].
+  cancel.
+
+  eapply pimpl_ok; [ eassumption | cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; eassumption ] ].
   cancel.
 Qed.
 
 Theorem write_ok:
-  forall (a i:addr) (v:valu) (rx:unit->prog) (post:pred2),
+  forall (a i:addr) (v:valu) (rx:unit->prog) (rec:prog),
   {{ exists vs F, array a vs * F
    * [[wordToNat i < length vs]]
-   * [[{{ array a (upd vs i v) * F }} (rx tt) {{ post }}]]
-  }} ArrayWrite a i v rx {{ unchanged \/ post [ a^+i <--- v ] }}.
+   * [[{{ array a (upd vs i v) * F }} (rx tt) >> rec]]
+   * [[{{ array a vs * F \/ array a (upd vs i v) * F }} rec >> rec]]
+  }} ArrayWrite a i v rx >> rec.
 Proof.
   intros.
-  eapply pimpl_ok with
-    (pre':=(exists vs F,
+  apply pimpl_ok with (exists vs F,
     array a (firstn (wordToNat i) vs)
     * (a ^+ i) |-> sel vs i
     * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
     * [[wordToNat i < length vs]]
     * [[{{ array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> v
-           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F }} (rx tt) {{ post }}]])%pred);
-  [ | | eauto ].
+           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F }} (rx tt) >> rec]]
+    * [[{{ (array a (firstn (wordToNat i) vs)
+           * (a ^+ i) |-> sel vs i
+           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F)
+           \/ (array a (firstn (wordToNat i) vs)
+           * (a ^+ i) |-> v
+           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F) }} rec >> rec]])%pred.
 
   rewrite ArrayWrite_eq.
-  eapply pimpl_ok; [ | | eauto ].
+  eapply pimpl_ok.
   apply write_ok.
   cancel.
-  eapply pimpl_ok; [ eassumption | cancel | eauto ].
+  eapply pimpl_ok; [ eassumption | cancel ].
+  eapply pimpl_ok; [ eassumption | cancel ].
 
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
@@ -305,7 +312,22 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eassumption | cancel | eauto ].
+  eapply pimpl_ok; [ eassumption | cancel ].
+  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
+                                                | apply isolate_bwd; autorewrite with core; eassumption ] ].
+  autorewrite with core.
+  cancel.
+  autorewrite with core.
+  cancel.
+
+  eapply pimpl_ok; [ eassumption | apply pimpl_or; cancel ].
+  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
+                                                | apply isolate_bwd; autorewrite with core; eassumption ] ].
+  autorewrite with core.
+  cancel.
+  autorewrite with core.
+  cancel.
+
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; autorewrite with core; eassumption ] ].
   autorewrite with core.
@@ -314,8 +336,8 @@ Proof.
   cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (ArrayRead _ _) _ {{_}}) => apply read_ok : prog.
-Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _) _ {{_}}) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq (ArrayRead _ _) _ >> _) => apply read_ok : prog.
+Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _) _ >> _) => apply write_ok : prog.
 
 
 (** * Some test cases *)
@@ -325,35 +347,14 @@ Definition read_back a rx :=
   v <- ArrayRead a $0;
   rx v.
 
-Theorem read_back_ok : forall a rx post,
+Theorem read_back_ok : forall a rx rec,
   {{ exists vs F, array a vs * F
      * [[length vs > 0]]
-     * [[ {{array a (upd vs $0 $42) * F}} rx $42 {{post}} ]]
-  }} read_back a rx {{ unchanged \/ post [ a^+$0 <--- $42 ] }}.
+     * [[ {{array a (upd vs $0 $42) * F}} rx $42 >> rec ]]
+     * [[ {{(array a vs * F) \/ (array a (upd vs $0 $42) * F)}} rec >> rec ]]
+  }} read_back a rx >> rec.
 Proof.
-(*
   unfold read_back; hoare.
-*)
-  unfold read_back.
-  intros.
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  try autorewrite with core in *.
-  eauto.
-
-  try autorewrite with core in *.
-  eauto.
-
-  eauto.
-  eauto.
 Qed.
 
 Definition swap a i j rx :=
@@ -363,80 +364,14 @@ Definition swap a i j rx :=
   ArrayWrite a j vi;;
   rx.
 
-Theorem swap_ok : forall a i j rx post,
+Theorem swap_ok : forall a i j rx rec,
   {{ exists vs F, array a vs * F
      * [[wordToNat i < length vs]]
      * [[wordToNat j < length vs]]
-     * [[ {{array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F}} rx {{post}} ]]
-  }} swap a i j rx {{
-    exists vs F,
-    before (array a vs * F) /\
-    (unchanged \/
-     unchanged [ a^+i <--- (sel vs j) ] \/
-     post [ a^+j <--- (sel vs i) ] [ a^+i <--- (sel vs j) ])
-  }}.
+     * [[ {{array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F}} rx >> rec ]]
+     * [[ {{(array a vs * F) \/ (array a (upd vs i (sel vs j)) * F)
+            \/ (array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F)}} rec >> rec ]]
+  }} swap a i j rx >> rec.
 Proof.
-(*
   unfold swap; hoare.
-*)
-  unfold swap.
-  intros.
-
-  apply corr_exists.
-  intro vs.
-  apply corr_exists.
-  intro F.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  cancel.
-  autorewrite with core in *.
-  eauto.
-
-  eapply pimpl_ok.
-  eauto with prog.
-  cancel.
-  eauto.
-
-  eauto.
-  eauto.
-  eauto.
-
-  unfold pimpl2; intros.
-  exists vs.
-  exists F.
-  destruct H.
-  destruct H0.
-  destruct H1.
-
-  split; eauto.
-
-  destruct H2.
-  left; eauto.
-
-  destruct H2.
-  destruct H3.
-  right; left; eauto.
-
-  destruct H3.
-  right; right; eauto.
 Qed.
