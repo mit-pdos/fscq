@@ -252,13 +252,13 @@ Proof.
     * [[{{ array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> sel vs i
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F }} (rx (sel vs i)) {{ post }}]])%pred);
-  [ | | apply pimpl2_and_r; eauto ].
+  [ | | eauto ].
 
   rewrite ArrayRead_eq.
-  eapply pimpl_ok; [| | apply pimpl2_and_r; eauto ].
+  eapply pimpl_ok; [| | eauto ].
   apply read_ok.
   cancel.
-  eapply pimpl_ok; [ eassumption | cancel | apply pimpl2_and_r; eauto ].
+  eapply pimpl_ok; [ eassumption | cancel | eauto ].
 
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
@@ -267,7 +267,7 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eassumption | cancel | apply pimpl2_and_r; eauto ].
+  eapply pimpl_ok; [ eassumption | cancel | eauto ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; eassumption ] ].
   cancel.
@@ -290,13 +290,13 @@ Proof.
     * [[{{ array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> v
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F }} (rx tt) {{ post }}]])%pred);
-  [ | | apply pimpl2_and_r; eauto ].
+  [ | | eauto ].
 
   rewrite ArrayWrite_eq.
-  eapply pimpl_ok; [ | | apply pimpl2_and_r; eauto ].
+  eapply pimpl_ok; [ | | eauto ].
   apply write_ok.
   cancel.
-  eapply pimpl_ok; [ eassumption | cancel | apply pimpl2_and_r; eauto ].
+  eapply pimpl_ok; [ eassumption | cancel | eauto ].
 
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
@@ -305,7 +305,7 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eassumption | cancel | apply pimpl2_and_r; eauto ].
+  eapply pimpl_ok; [ eassumption | cancel | eauto ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; autorewrite with core; eassumption ] ].
   autorewrite with core.
@@ -352,8 +352,8 @@ Proof.
   try autorewrite with core in *.
   eauto.
 
-  apply pimpl2_and_r; eauto.
-  apply pimpl2_and_r; eauto.
+  eauto.
+  eauto.
 Qed.
 
 Definition swap a i j rx :=
