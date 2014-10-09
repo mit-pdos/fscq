@@ -539,7 +539,6 @@ Ltac cancel :=
 
 Ltac pred2 := match goal with
   | [ |- _ ===> _ ] => exact (pimpl2_refl _)
-  | [ |- _ ===> any2 ] => exact (pimpl2_any _)
   | [ |- _ ===> exists _, _ ] => apply pimpl2_exists_r; eexists; pred2
   | [ |- before _ ===> before _ ] => apply pimpl2_before; cancel
   | [ |- _ /\ _ ===> _ /\ _ ] => apply pimpl2_and; pred2
@@ -555,8 +554,8 @@ Ltac step :=
   try cancel;
   (* Extract common existentials from pre and post upfront *)
   repeat ( apply corr_or || apply corr_exists; intro );
-  ((eapply pimpl_ok; [ solve [ eauto with prog ] | | try pred2 ])
-   || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | try pred2 ]));
+  ((eapply pimpl_ok; [ solve [ eauto with prog ] | | pred2 ])
+   || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | pred2 ]));
   try ( cancel ; try ( progress autorewrite with core in * ; cancel ) );
   try cancel; try autorewrite with core in *;
   intuition eauto;

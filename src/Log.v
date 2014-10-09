@@ -279,14 +279,15 @@ Module LOG.
     Write (LogCommit xp) $0 ;;
     rx tt.
 
-  Theorem init_ok : forall xp rx,
+  Theorem init_ok : forall xp rx rec,
     {{ exists old F, F
      * data_rep old
      * avail_region (LogStart xp) (wordToNat (LogLen xp) * 2)
      * (LogCommit xp) |->?
      * (LogLength xp) |->?
-     * [[ {{ rep xp (NoTransaction old) * F }} rx tt {{ any2 }} ]]
-    }} init xp rx {{ any2 }}.
+     * [[ {{ rep xp (NoTransaction old) * F }} rx tt >> rec ]]
+     * [[ {{ any }} rec >> rec ]]
+    }} init xp rx >> rec.
   Proof.
     unfold init; log_unfold.
     hoare.
