@@ -60,7 +60,7 @@ Proof.
   eauto.
 Qed.
 
-Theorem corr_exists_pre:
+Theorem corr_exists:
   forall T pre p post,
   (forall (a:T), {{ pre a }} p {{ post }}) ->
   {{ exists a:T, pre a }} p {{ post }}.
@@ -68,25 +68,4 @@ Proof.
   unfold corr, exis; intros.
   destruct H0.
   eauto.
-Qed.
-
-Theorem corr_exists:
-  forall T pre p post,
-  (forall (a:T), {{ pre a }} p {{ post a }}) ->
-  {{ exists a:T, pre a }} p {{ exists a:T, post a }}.
-Proof.
-  unfold corr, exis; intros.
-  destruct H0.
-  edestruct H; eauto.
-  split; eauto.
-  eexists; eauto.
-Qed.
-
-Theorem corr_or:
-  forall pre1 pre2 p post1 post2,
-  {{ pre1 }} p {{ post1 }} ->
-  {{ pre2 }} p {{ post2 }} ->
-  {{ pre1 \/ pre2 }} p {{ post1 \/ post2 }}.
-Proof.
-  firstorder.
 Qed.

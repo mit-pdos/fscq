@@ -732,15 +732,6 @@ Qed.
 
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 
-Theorem pimpl2_and:
-  forall p p' q q',
-  (p ===> p') ->
-  (q ===> q') ->
-  (p /\ q ===> p' /\ q').
-Proof.
-  firstorder.
-Qed.
-
 Theorem pimpl2_and_l:
   forall p q r,
   (p ===> r) ->
@@ -753,47 +744,6 @@ Theorem pimpl2_and_r:
   forall p q r,
   (p ===> r) ->
   (q /\ p ===> r).
-Proof.
-  firstorder.
-Qed.
-
-Lemma pimpl2_exists_r:
-  forall T p q,
-  (exists x:T, p ===> q x) ->
-  (p ===> exists x:T, q x).
-Proof.
-  firstorder.
-Qed.
-
-Lemma pimpl2_or_split:
-  forall p q r,
-  (p ===> r) ->
-  (q ===> r) ->
-  (p \/ q ===> r).
-Proof.
-  firstorder.
-Qed.
-
-Lemma pimpl2_or_l:
-  forall p q r,
-  (p ===> q) ->
-  (p ===> q \/ r).
-Proof.
-  firstorder.
-Qed.
-
-Lemma pimpl2_or_r:
-  forall p q r,
-  (p ===> r) ->
-  (p ===> q \/ r).
-Proof.
-  firstorder.
-Qed.
-
-Lemma pimpl2_before:
-  forall p q,
-  (p ==> q) ->
-  (before p ===> before q).
 Proof.
   firstorder.
 Qed.
