@@ -5,7 +5,7 @@ Require Import Pred.
 Definition preserves_precondition (pre : pred) p :=
   forall m m' out, pre m -> exec m p m' out -> pre m' /\ out <> Failed.
 
-Theorem pp_lift : forall pre P p,
+Theorem pp_add_lift : forall pre P p,
   preserves_precondition pre p ->
   preserves_precondition (pre * [[ P ]]) p.
 Proof.
@@ -15,6 +15,18 @@ Proof.
   intuition.
   apply sep_star_and2lift.
   split; eauto.
+Qed.
+
+Theorem pp_drop_lift : forall pre (P : Prop) p,
+  P ->
+  preserves_precondition (pre * [[ P ]]) p ->
+  preserves_precondition pre p.
+Proof.
+  unfold preserves_precondition; intros.
+  edestruct H0; clear H0; eauto.
+  apply sep_star_and2lift. split; eauto.
+  apply sep_star_lift2and in H3; destruct H3.
+  eauto.
 Qed.
 
 Theorem idempotent_ok' : forall p p1 p2 pre,
@@ -43,22 +55,8 @@ Proof.
   eapply idempotent_ok'; eauto.
 Qed.
 
-Parameter recover : prog -> prog.
-Parameter rpre : pred.
-
-Axiom recover_preserves : forall rx, preserves_precondition rpre (recover rx).
-
-Theorem recover_idempotent : forall rx,
-  {{ rpre }} recover rx >> recover rx.
-Proof.
-  intros.
-  apply idempotent_ok.
-  apply recover_preserves.
-Qed.
-
 Theorem corr_to_pp : forall p1 p2 pre1 pre2,
-  {{ pre1 }} p1 >> p2 ->
-  (pre1 ==> [ {{ pre2 }} p2 >> p2 ]) ->
+  {{ pre1 }} p1 >> Check pre2 ;; p2 ->
   (pre1 ==> [ pre2 ==> pre1 ]) ->
   preserves_precondition pre1 p1.
 Proof.
@@ -66,35 +64,54 @@ Proof.
   intros.
   unfold corr in H.
   destruct out.
-  - assert (Failed = Finished); try discriminate.
-    eapply H.
-    eauto.
-    eauto.
-  - split; try discriminate.
-    assert (exec m p1 m' Crashed) by ( eapply prog_can_crash; eauto ).
-    admit.
+  - exfalso.
+    destruct (H m RFailed); eauto.
+  - do 2 eexists; split; eauto.
 
-  - split; try discriminate.
-    assert ({{ pre2 }} p2 >> p2) by firstorder.
-    unfold corr in H4.
+    assert (exec m p1 (Stopped m0 Crashed)) by ( eapply prog_can_crash; eauto ).
+    clear H2.
 
-    destruct (exec_recover_can_terminate p2 p2 m').
-    destruct H5.
+    assert (forall out, exec m0 (Check pre2 ;; p2) out -> out <> Failed).
+    + unfold not in *; intros; subst; eauto.
+    + destruct (exec_need_not_crash (Check pre2 ;; p2) m0).
+      destruct H4.
+      inversion H4; subst.
+      * exfalso. edestruct H2; eauto.
+      * eapply H0; eauto.
+Qed.
 
-    assert (x0 = Finished); subst.
-    eapply H.
-    eauto.
-    eapply XRCrashed.
-    eauto.
-    eauto.
+(* Sketch of how we might prove recover's idempotence *)
 
-    (* XXX what i really want here is for [{{ pre2 }} p2 >> p2] to be
-     * a necessary -- not just sufficient -- precondition for getting
-     * a Finished outcome from p2.  then i could prove that indeed
-     * p1 establishes pre2 at every crash point, and thus implies that
-     * p1 is precondition-preserving.
-     *)
+Parameter xrecover : prog -> prog.
+Parameter log_intact : pred.
+Parameter recovered : pred.
 
-    admit.
+Theorem recover_base_ok : forall rx,
+  {{ log_intact
+   * [[ {{ recovered }} rx >> Check log_intact ;; Done tt ]]
+  }} xrecover rx >> Check log_intact ;; Done tt.
+Admitted.
 
+Theorem recover_preserves : forall rx,
+  preserves_precondition
+    (log_intact
+   * [[ {{ recovered }} rx >> Check log_intact ;; Done tt ]])
+    (xrecover rx).
+Proof.
+  intros.
+  eapply corr_to_pp.
+  eapply pimpl_ok. apply recover_base_ok. apply pimpl_refl.
+  repeat ( apply sep_star_lift_l; intros ).
+  unfold lift, pimpl; intros.
+  repeat ( apply sep_star_and2lift; unfold lift; split; eauto ).
+Qed.
+
+Theorem recover_idempotent_ok : forall rx,
+  {{ log_intact
+   * [[ {{ recovered }} rx >> Check log_intact ;; Done tt ]]
+  }} xrecover rx >> xrecover rx.
+Proof.
+  intros.
+  apply idempotent_ok.
+  apply recover_preserves.
 Qed.
