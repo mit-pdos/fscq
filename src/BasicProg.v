@@ -38,9 +38,10 @@ Ltac inv_exec :=
 
 Theorem read_ok:
   forall (a:addr) (rx:valu->prog) (rec:prog),
-  {{ exists v F, a |-> v * F
-   * [[{{ a |-> v * F }} (rx v) >> rec]]
-   * [[{{ a |-> v * F }} rec >> rec]]
+  {{ exists v F rxcrash, a |-> v * F
+   * [[ forall rec',
+        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx v >> rec' ]]
+   * [[ {{ rxcrash }} rec >> rec ]]
   }} Read a rx >> rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
@@ -48,22 +49,27 @@ Proof.
   unfold lift in *; simpl in *.
   inv_exec_recover; auto; inv_exec.
   - apply ptsto_valid in H. congruence.
-  - eapply H2. eauto.
+  - eapply H2. apply sep_star_and2lift.
+    split; eauto.
     apply ptsto_valid in H. repeat inv_option.
     eauto.
-  - eapply H2. eauto.
+  - eapply H2. apply sep_star_and2lift.
+    split; eauto.
     apply ptsto_valid in H. repeat inv_option.
     eauto.
-  - eapply H1; eauto.
+  - eapply H2; eauto.
+    apply sep_star_and2lift.
+    split; eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
 
 Theorem write_ok:
   forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
-  {{ exists v0 F, a |-> v0 * F
-   * [[{{ a |-> v * F }} rx tt >> rec]]
-   * [[{{ a |-> v * F \/ a |-> v0 * F }} rec >> rec]]
+  {{ exists v0 F rxcrash, a |-> v0 * F
+   * [[ forall rec',
+        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx tt >> rec' ]]
+   * [[ {{ a |-> v * F \/ a |-> v0 * F \/ rxcrash }} rec >> rec ]]
   }} Write a v rx >> rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
@@ -72,10 +78,18 @@ Proof.
   inv_exec_recover; auto; inv_exec.
   - apply ptsto_valid in H. congruence.
   - eapply H2. instantiate (1:=upd m a v).
+    apply sep_star_and2lift; split.
     eapply ptsto_upd; eauto.
+    unfold lift; intros.
+    eapply H1; eauto.
+    pred_apply. cancel.
     eauto.
   - eapply H2. instantiate (1:=upd m a v).
+    apply sep_star_and2lift; split.
     eapply ptsto_upd; eauto.
+    unfold lift; intros.
+    eapply H1; eauto.
+    pred_apply. cancel.
     eauto.
   - eapply H1; unfold or; eauto.
 Qed.

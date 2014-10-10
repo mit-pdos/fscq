@@ -55,6 +55,7 @@ Proof.
   eapply idempotent_ok'; eauto.
 Qed.
 
+(*
 Theorem corr_to_pp : forall p1 p2 pre1 pre2,
   {{ pre1 }} p1 >> Check pre2 ;; p2 ->
   (pre1 ==> [ pre2 ==> pre1 ]) ->
@@ -79,17 +80,19 @@ Proof.
       * exfalso. edestruct H2; eauto.
       * eapply H0; eauto.
 Qed.
+*)
 
 (* Sketch of how we might prove recover's idempotence *)
 
 Parameter xrecover : prog -> prog.
-Parameter log_intact : pred.
-Parameter recovered : pred.
+Parameter log_intact : mem -> pred.
+Parameter recovered : mem -> pred.
 
-Theorem recover_base_ok : forall rx,
-  {{ log_intact
-   * [[ {{ recovered }} rx >> Check log_intact ;; Done tt ]]
-  }} xrecover rx >> Check log_intact ;; Done tt.
+Theorem recover_base_ok : forall rx id,
+  {{ exists m, log_intact m
+   * [[ guardcond (Done id tt) = log_intact m ]]
+   * [[ {{ recovered m }} rx >> Done id tt ]]
+  }} xrecover rx >> Done id tt.
 Admitted.
 
 Theorem recover_preserves : forall rx,
