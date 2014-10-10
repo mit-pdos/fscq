@@ -69,7 +69,7 @@ Theorem write_ok:
   {{ exists v0 F rxcrash, a |-> v0 * F
    * [[ forall rec',
         {{ a |-> v * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx tt >> rec' ]]
-   * [[ {{ a |-> v * F \/ a |-> v0 * F \/ rxcrash }} rec >> rec ]]
+   * [[ {{ a |-> v0 * F \/ rxcrash }} rec >> rec ]]
   }} Write a v rx >> rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
@@ -380,9 +380,10 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
   end : norm_hint_right.
 
 Theorem read_array_ok : forall a rx rec,
-  {{ exists m v F, diskIs m * F * [[ m @ a |-> v ]]
-   * [[ {{ diskIs m * F }} rx v >> rec ]]
-   * [[ {{ diskIs m * F }} rec >> rec ]]
+  {{ exists m v F rxcrash, diskIs m * F * [[ m @ a |-> v ]]
+   * [[ forall rec',
+        {{ diskIs m * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx v >> rec' ]]
+   * [[ {{ rxcrash }} rec >> rec ]]
   }} read_array a rx >> rec.
 Proof.
   unfold read_array.
@@ -406,10 +407,10 @@ Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
   end : norm_hint_right.
 
 Theorem write_array_ok : forall a v rx rec,
-  {{ exists m F, diskIs m * F * [[ indomain a m ]]
-   * [[ {{ diskIs (upd m a v) * F }} rx tt >> rec ]]
-   * [[ {{ diskIs m * F
-        \/ diskIs (upd m a v) * F }} rec >> rec ]]
+  {{ exists m F rxcrash, diskIs m * F * [[ indomain a m ]]
+   * [[ forall rec',
+        {{ diskIs (upd m a v) * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx tt >> rec' ]]
+   * [[ {{ diskIs m * F \/ rxcrash }} rec >> rec ]]
   }} write_array a v rx >> rec.
 Proof.
   unfold write_array, indomain.
