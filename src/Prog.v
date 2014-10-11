@@ -37,7 +37,7 @@ Inductive some_id :=
 
 Inductive prog :=
 | Done (id: some_id) (T: Type) (v: T)
-| Check (id: some_id) (rx: unit -> prog)
+| CheckID (id: some_id) (rx: unit -> prog)
 | Read (a: addr) (rx: valu -> prog)
 | Write (a: addr) (v: valu) (rx: unit -> prog).
 
@@ -51,7 +51,12 @@ Definition mem := addr -> option valu.
 Definition upd (m : mem) (a : addr) (v : valu) : mem :=
   fun a' => if addr_eq_dec a' a then Some v else m a'.
 
-Parameter guardcond : prog -> mem -> Prop.
+Parameter done_cond : forall (_: some_id) (T: Type) (v: T), mem -> Prop.
+Parameter check_cond : forall (_: some_id), mem -> Prop.
+Parameter check_id : (mem -> Prop) -> some_id.
+Axiom check_id_ok : forall P, check_cond (check_id P) = P.
+
+Definition Check p := CheckID (check_id p).
 
 Inductive outcome :=
 | Failed
@@ -59,19 +64,19 @@ Inductive outcome :=
 | Crashed.
 
 Inductive exec : mem -> prog -> mem -> outcome -> Prop :=
-| XDoneOK : forall m id T (v: T), guardcond (Done id v) m
+| XDoneOK : forall m id T (v: T), done_cond id v m
   -> exec m (Done id v) m Finished
-| XDoneFail : forall m id T (v: T), ~ guardcond (Done id v) m
-  -> exec m (Done id v) m Failed
-| XCheckOK : forall m m' id rx out, guardcond (Check id rx) m
+| XDoneFail : forall m m' id T (v: T), ~ done_cond id v m
+  -> exec m (Done id v) m' Failed
+| XCheckOK : forall m m' id rx out, check_cond id m
   -> exec m (rx tt) m' out
-  -> exec m (Check id rx) m' out
-| XCheckFail : forall m id rx, ~ guardcond (Check id rx) m
-  -> exec m (Check id rx) m Failed
-| XReadFail : forall m a rx, m a = None
-  -> exec m (Read a rx) m Failed
-| XWriteFail : forall m a v rx, m a = None
-  -> exec m (Write a v rx) m Failed
+  -> exec m (CheckID id rx) m' out
+| XCheckFail : forall m m' id rx, ~ check_cond id m
+  -> exec m (CheckID id rx) m' Failed
+| XReadFail : forall m m' a rx, m a = None
+  -> exec m (Read a rx) m' Failed
+| XWriteFail : forall m m' a v rx, m a = None
+  -> exec m (Write a v rx) m' Failed
 | XReadOK : forall m a v rx m' out, m a = Some v
   -> exec m (rx v) m' out
   -> exec m (Read a rx) m' out
@@ -98,21 +103,21 @@ Theorem exec_need_not_crash : forall p m,
 Proof.
   induction p.
   - intros.
-    destruct (classic (guardcond (Done id v) m)).
+    destruct (classic (done_cond id v m)).
     + do 2 eexists; split.
       apply XDoneOK; auto.
       discriminate.
     + do 2 eexists; split.
-      apply XDoneFail; auto.
+      apply XDoneFail with (m':=m); auto.
       discriminate.
   - intros.
-    destruct (classic (guardcond (Check id rx) m)).
+    destruct (classic (check_cond id m)).
     + edestruct H. destruct H1. destruct H1.
       do 2 eexists; split.
       apply XCheckOK; eassumption.
       auto.
     + do 2 eexists; split.
-      apply XCheckFail; auto.
+      apply XCheckFail with (m':=m); auto.
       discriminate.
   - intros.
     case_eq (m a); intros.
@@ -121,7 +126,7 @@ Proof.
       * eapply XReadOK; eauto.
       * auto.
     + do 2 eexists; split.
-      * eapply XReadFail; eauto.
+      * eapply XReadFail with (m':=m); eauto.
       * discriminate.
   - intros.
     case_eq (m a); intros.
@@ -130,7 +135,7 @@ Proof.
       * eapply XWriteOK; eauto.
       * auto.
     + do 2 eexists; split.
-      * eapply XWriteFail; eauto.
+      * eapply XWriteFail with (m':=m); eauto.
       * discriminate.
 Qed.
 
@@ -146,12 +151,12 @@ Proof.
   - apply XRFinished; eauto.
 Qed.
 
-Theorem prog_can_crash : forall p m m' out,
-  exec m p m' out ->
+Theorem prog_can_crash : forall p m m',
+  exec m p m' Finished ->
   exec m p m' Crashed.
 Proof.
   induction p; intros.
-  - inversion H; eauto.
+  - inversion H; eauto. 
   - inversion H0; eauto.
   - inversion H0; eauto.
   - inversion H0; eauto.

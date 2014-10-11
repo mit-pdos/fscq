@@ -62,3 +62,12 @@ Theorem corr_exists:
 Proof.
   firstorder.
 Qed.
+
+Theorem corr_forall: forall T pre p rec, {{ exists a:T, pre a }} p >> rec
+  -> forall (a:T), {{ pre a }} p >> rec.
+Proof.
+  unfold corr; intros.
+  eapply H.
+  exists a; eauto.
+  eauto.
+Qed.
