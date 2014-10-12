@@ -208,17 +208,17 @@ Theorem for_ok':
          (L : Set) (G : Type)
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
          (li : L),
-  {{ exists F (g:G), F * nocrash g i li
-   * [[forall m l, F * nocrash g m l ==> F * crashed g]]
+  {{ exists (g:G), nocrash g i li
+   * [[forall m l, nocrash g m l ==> crashed g]]
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
-      (forall lSm rec', {{ F * nocrash g (m ^+ $1) lSm
+      (forall lSm rec', {{ nocrash g (m ^+ $1) lSm
                          * [[ {{ crashed g }} rec' >> rec' ]] }} (rxm lSm) >> rec') ->
-      forall rec', {{ F * nocrash g m lm
+      forall rec', {{ nocrash g m lm
                     * [[ {{ crashed g }} rec' >> rec' ]] }} f m lm rxm >> rec']]
    * [[forall lfinal rec',
-       {{ F * nocrash g (n ^+ i) lfinal
+       {{ nocrash g (n ^+ i) lfinal
         * [[ {{ crashed g }} rec' >> rec' ]] }} (rx lfinal) >> rec']]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
    * [[{{ crashed g }} rec >> rec]]
@@ -230,7 +230,6 @@ Proof.
   end.
 
   intros.
-  apply corr_exists; intros.
   apply corr_exists; intros.
   case_eq (weq x $0); intros; subst.
 
@@ -275,7 +274,6 @@ Proof.
       omega.
 
       apply pimpl_exists_r; exists a.
-      apply pimpl_exists_r; exists a0.
       ring_simplify (i ^+ $1 ^+ (x ^- $1)).
       ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       cancel.
@@ -318,16 +316,16 @@ Theorem for_ok:
          (L : Set) (G : Type)
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
          (li : L),
-  {{ exists F (g:G), F * nocrash g $0 li
-   * [[forall m l, F * nocrash g m l ==> F * crashed g]]
+  {{ exists (g:G), nocrash g $0 li
+   * [[forall m l, nocrash g m l ==> crashed g]]
    * [[forall m lm rxm,
       (m < n)%word ->
-      (forall lSm rec', {{ F * nocrash g (m ^+ $1) lSm
+      (forall lSm rec', {{ nocrash g (m ^+ $1) lSm
                          * [[ {{ crashed g }} rec' >> rec' ]] }} (rxm lSm) >> rec') ->
-      forall rec', {{ F * nocrash g m lm
+      forall rec', {{ nocrash g m lm
                     * [[ {{ crashed g }} rec' >> rec' ]] }} f m lm rxm >> rec']]
    * [[forall lfinal rec',
-       {{ F * nocrash g n lfinal
+       {{ nocrash g n lfinal
         * [[ {{ crashed g }} rec' >> rec' ]] }} (rx lfinal) >> rec']]
    * [[{{ crashed g }} rec >> rec]]
   }} (For_ f $0 n li nocrash crashed rx) >> rec.
@@ -338,7 +336,6 @@ Proof.
   fold (wzero addrlen); ring_simplify (wzero addrlen ^+ n).
   simpl (wordToNat (wzero addrlen)); replace (0 + wordToNat n) with (wordToNat n) by omega.
   ring_simplify (n ^+ wzero addrlen).
-  cancel.
   cancel.
 Qed.
 
