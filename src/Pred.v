@@ -593,8 +593,6 @@ Proof.
   eapply pimpl_trans; [|apply pimpl_star_emp]; apply pimpl_any.
 Qed.
 
-Hint Resolve pimpl_emp_any.
-
 Lemma eq_pimpl : forall a b,
   a = b
   -> (a ==> b).
