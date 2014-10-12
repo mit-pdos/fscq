@@ -57,8 +57,8 @@ Qed.
 
 Theorem restart_canceling:
   forall p q,
-  (stars p * stars nil ==> stars q) ->
-  (stars nil * stars p ==> stars q).
+  (stars p * stars nil ==> q) ->
+  (stars nil * stars p ==> q).
 Proof.
   intros; eapply pimpl_trans; [ eapply sep_star_comm | eauto ].
 Qed.
@@ -369,6 +369,34 @@ Qed.
 Ltac cancel' := repeat (cancel_one || delay_one);
                 try (apply finish_frame || apply finish_easier).
 
+Theorem split_or_one : forall q pa pb ps F,
+  stars (pa :: ps) * F ==> q
+  -> stars (pb :: ps) * F ==> q
+  -> stars ((pa \/ pb) :: ps) * F ==> q.
+Proof.
+  intros.
+  eapply pimpl_trans. eapply piff_star_r. eapply piff_comm. apply stars_prepend.
+  eapply pimpl_trans. eapply sep_star_assoc.
+  eapply pimpl_trans. eapply sep_star_comm.
+  eapply pimpl_trans. eapply sep_star_or_distr.
+  apply pimpl_or_l.
+  - eapply pimpl_trans. eapply sep_star_comm.
+    eapply pimpl_trans. eapply sep_star_assoc.
+    eapply pimpl_trans. eapply piff_star_r. apply stars_prepend.
+    eauto.
+  - eapply pimpl_trans. eapply sep_star_comm.
+    eapply pimpl_trans. eapply sep_star_assoc.
+    eapply pimpl_trans. eapply piff_star_r. apply stars_prepend.
+    eauto.
+Qed.
+
+Ltac split_or_one := match goal with
+                     | [ |- stars ((_ \/ _) :: _) * _ ==> _ ] => apply split_or_one
+                     end.
+
+Ltac split_or_l := repeat ( (repeat split_or_one) ; delay_one );
+                   apply restart_canceling.
+
 Lemma stars_or_left: forall a b c,
   (a ==> stars (b :: nil))
   -> (a ==> stars ((b \/ c) :: nil)).
@@ -504,10 +532,6 @@ Ltac replace_left := eapply replace_left;
 Ltac replace_right := eapply replace_right;
   [ solve [ repeat ( solve [ replace_right_one ] || apply pick_later_and ) ] | ].
 
-Ltac norm_or_l := match goal with
-                  | [ |- _ \/ _ ==> _ ] => apply pimpl_or_l
-                  end.
-
 Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
                eapply pimpl_exists_l; intros;
                apply sep_star_lift_l; intros;
@@ -520,8 +544,13 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                simpl in *.
 
 Ltac norm := unfold pair_args_helper;
-             repeat norm_or_l; set_norm_goal;
              norm'l; repeat deex;
+             (* Each iteration of [split_or_l] reverses the list of predicates
+              * inside [stars].  To allow [progress] to detect when there's
+              * nothing left to split, reverse the list twice.
+              *)
+             repeat progress ( split_or_l; split_or_l );
+             set_norm_goal;
              repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
              solve [ exfalso ; auto with false_precondition_hint ] ||
              ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] ).

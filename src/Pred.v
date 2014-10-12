@@ -683,4 +683,19 @@ Qed.
 
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 
+Theorem sep_star_or_distr : forall a b c,
+  (a * (b \/ c))%pred <==> (a * b \/ a * c)%pred.
+Proof.
+  split.
+  - unfold sep_star, pimpl, or.
+    intros; repeat deex.
+    + left. do 2 eexists. eauto.
+    + right. do 2 eexists. eauto.
+  - apply pimpl_or_l.
+    + apply pimpl_sep_star; [apply pimpl_refl|].
+      apply pimpl_or_r; left; apply pimpl_refl.
+    + apply pimpl_sep_star; [apply pimpl_refl|].
+      apply pimpl_or_r; right; apply pimpl_refl.
+Qed.
+
 Opaque sep_star.
