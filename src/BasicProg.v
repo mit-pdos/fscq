@@ -209,7 +209,6 @@ Theorem for_ok':
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
          (li : L),
   {{ exists (g:G), nocrash g i li
-   * [[forall m l, nocrash g m l ==> crashed g]]
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
@@ -242,7 +241,7 @@ Proof.
   - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
     + assert (wordToNat x <> 0).
       unfold not in *; intros; apply n.
-      rewrite <- H6; rewrite natToWord_wordToNat; auto.
+      rewrite <- H5; rewrite natToWord_wordToNat; auto.
 
       unfold pimpl, lift; intros.
       rewrite For_step.
@@ -268,7 +267,7 @@ Proof.
       eapply Nat.lt_le_trans; [| apply (wordToNat_bound x) ].
       omega.
       unfold not in *; intros; apply n.
-      apply wlt_lt in H8; simpl in H8.
+      apply wlt_lt in H7; simpl in H7.
       rewrite <- natToWord_wordToNat with (w:=x).
       f_equal.
       omega.
@@ -279,8 +278,8 @@ Proof.
       cancel.
 
       apply H4; eauto.
-      intros; apply H9; clear H9.
-      apply wlt_lt in H13.
+      intros; apply H8; clear H8.
+      apply wlt_lt in H12.
       unfold wlt.
       repeat rewrite wordToN_nat.
       apply Nlt_in.
@@ -305,9 +304,9 @@ Proof.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound x) ]; omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
 
-      unfold not; intros; apply H6.
+      unfold not; intros; apply H5.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H9; simpl in H9; auto.
+      apply wlt_lt in H8; simpl in H8; auto.
     + cancel.
 Qed.
 
@@ -317,7 +316,6 @@ Theorem for_ok:
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
          (li : L),
   {{ exists (g:G), nocrash g $0 li
-   * [[forall m l, nocrash g m l ==> crashed g]]
    * [[forall m lm rxm,
       (m < n)%word ->
       (forall lSm rec', {{ nocrash g (m ^+ $1) lSm
