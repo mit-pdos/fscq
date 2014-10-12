@@ -390,11 +390,30 @@ Proof.
     eauto.
 Qed.
 
-Ltac split_or_one := match goal with
-                     | [ |- stars ((_ \/ _) :: _) * _ ==> _ ] => apply split_or_one
-                     end.
+Theorem exists_one : forall T p ps F q,
+  (forall a:T, stars (p a :: ps) * F ==> q)
+  -> stars ((exists a:T, p a) :: ps) * F ==> q.
+Proof.
+  intros.
+  eapply pimpl_trans. eapply piff_star_r. eapply piff_comm. apply stars_prepend.
+  eapply pimpl_trans. eapply sep_star_assoc.
+  eapply pimpl_exists_l_star.
+  eapply pimpl_exists_l; intros.
+  eapply pimpl_trans; [| eauto ].
+  eapply pimpl_trans. eapply sep_star_assoc.
+  eapply pimpl_sep_star; [| eapply pimpl_refl ].
+  eapply pimpl_trans. apply stars_prepend.
+  apply pimpl_refl.
+Qed.
 
-Ltac split_or_l := repeat ( (repeat split_or_one) ; delay_one );
+Ltac split_one := match goal with
+                  | [ |- stars ((_ \/ _) :: _) * _ ==> _ ]
+                    => apply split_or_one
+                  | [ |- stars ((exists _, _)%pred :: _) * _ ==> _ ]
+                    => apply exists_one; intro
+                  end.
+
+Ltac split_or_l := repeat ( (repeat split_one) ; delay_one );
                    apply restart_canceling.
 
 Lemma stars_or_left: forall a b c,
@@ -549,7 +568,7 @@ Ltac norm := unfold pair_args_helper;
               * inside [stars].  To allow [progress] to detect when there's
               * nothing left to split, reverse the list twice.
               *)
-             repeat progress ( split_or_l; split_or_l );
+             repeat ( progress ( split_or_l; split_or_l ); unfold stars; simpl; norm'l );
              set_norm_goal;
              repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
              solve [ exfalso ; auto with false_precondition_hint ] ||
