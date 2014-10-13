@@ -11,6 +11,7 @@ Require Import Array.
 Require Import List.
 Require Import Bool.
 Require Import Nomega.
+Require Import Idempotent.
 
 Set Implicit Arguments.
 
@@ -188,6 +189,8 @@ Module BALLOC.
     cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (free _ _ _) _ >> _) => apply free_ok : prog.
+
   Definition alloc lxp xp rx :=
     For i < (BmapLen xp)
       Ghost F mbase m
@@ -273,5 +276,54 @@ Module BALLOC.
     step.
     unfold LOG.log_intact; cancel.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (alloc _) _ >> _) => apply alloc_ok : prog.
+
+  Theorem free_recover_ok : forall lxp xp bn rx rec crashid,
+    {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
+     * [[ (Fm * rep xp bmap)%pred m ]]
+     * [[ (bn < BmapLen xp)%word ]]
+
+     * [[ forall rec',
+          {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
+           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
+           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
+          }} rx true >> CheckID crashid ;; rec' ]]
+     * [[ forall rec',
+          {{ F * LOG.rep lxp (ActiveTxn mbase m)
+           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
+          }} rx false >> CheckID crashid ;; rec' ]]
+(*
+     * [[ forall rec',
+          {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
+           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
+           * [[ {{ LOG.rep lxp (NoTransaction mbase) * F
+                }} rec' >> Check (LOG.log_intact lxp mbase F) ;; rec' ]]
+          }} rx true >> CheckID crashid ;; LOG.recover lxp ;; rec' ]]
+     * [[ forall rec',
+          {{ F * LOG.rep lxp (ActiveTxn mbase m)
+           * [[ {{ LOG.rep lxp (NoTransaction mbase) * F
+                }} rec' >> Check (LOG.log_intact lxp mbase F) ;; rec' ]]
+          }} rx false >> CheckID crashid ;; LOG.recover lxp ;; rec' ]]
+*)
+     * [[ {{ LOG.rep lxp (NoTransaction mbase) * F
+          }} rec >> CheckID crashid ;; LOG.recover lxp ;; rec ]]
+    }} v <- free lxp xp bn ; rx v >> CheckID crashid ;; LOG.recover lxp ;; rec.
+  Proof.
+    intros.
+    step.
+    step.
+    step.
+    unfold LOG.log_intact; cancel.
+    step.
+    step.
+    unfold LOG.log_intact; cancel.
+    edestruct LOG.recover_idem_ok.
+    eapply pimpl_ok.
+    eapply corr_drop_check1.
+    unfold progseq at 4.
+    unfold progseq at 2.
+    (* XXX *)
+  Abort.
 
 End BALLOC.

@@ -1125,17 +1125,18 @@ Module LOG.
     cancel.
   Qed.
 
-  Theorem recover_idem_ok : forall xp rx,
+  Theorem recover_idem_ok : forall xp rx, exists crashid,
     {{ exists m F rec, log_intact xp m F
      * [[ forall rec',
           {{ rep xp (NoTransaction m) * F
            * [[ {{ log_intact xp m F }} rec' >> Check (log_intact xp m F) ;; rec' ]]
           }} rx tt >> Check (log_intact xp m F) ;; rec' ]]
      * [[ {{ log_intact xp m F }} rec >> Check (log_intact xp m F) ;; rec ]]
-    }} recover xp rx >> recover xp rx.
+    }} CheckID crashid ;; recover xp rx >> CheckID crashid ;; recover xp rx.
   Proof.
     intros.
-    apply idempotent_nocheck_ok.
+    eexists.
+    apply idempotent_ok.
     apply recover_pp.
   Qed.
 
