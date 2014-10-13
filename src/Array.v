@@ -229,13 +229,14 @@ Export ArrayOps.
 (** * Hoare rules *)
 
 Theorem read_ok:
-  forall (a i:addr) (rx:valu->prog) (rec:prog),
+  forall (a i:addr) (rx:valu->prog) (rec:prog) crashid,
   {{ exists vs F rxcrash, array a vs * F
    * [[wordToNat i < length vs]]
    * [[forall rec',
-       {{ array a vs * F * [[ {{rxcrash}} rec' >> rec' ]] }} (rx (sel vs i)) >> rec']]
-   * [[{{ rxcrash }} rec >> rec]]
-  }} ArrayRead a i rx >> rec.
+       {{ array a vs * F * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
+       }} (rx (sel vs i)) >> CheckID crashid ;; rec']]
+   * [[{{ rxcrash }} rec >> CheckID crashid ;; rec]]
+  }} ArrayRead a i rx >> CheckID crashid ;; rec.
 Proof.
   intros.
   apply pimpl_ok with (exists vs F rxcrash,
@@ -247,8 +248,9 @@ Proof.
         {{ array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> sel vs i
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
-           * [[ {{rxcrash}} rec' >> rec' ]] }} (rx (sel vs i)) >> rec']]
-    * [[{{ rxcrash }} rec >> rec]])%pred.
+           * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
+        }} (rx (sel vs i)) >> CheckID crashid ;; rec']]
+    * [[{{ rxcrash }} rec >> CheckID crashid ;; rec]])%pred.
 
   rewrite ArrayRead_eq.
   eapply pimpl_ok.
@@ -274,13 +276,14 @@ Proof.
 Qed.
 
 Theorem write_ok:
-  forall (a i:addr) (v:valu) (rx:unit->prog) (rec:prog),
+  forall (a i:addr) (v:valu) (rx:unit->prog) (rec:prog) crashid,
   {{ exists vs F rxcrash, array a vs * F
    * [[wordToNat i < length vs]]
    * [[forall rec',
-       {{ array a (upd vs i v) * F * [[ {{rxcrash}} rec' >> rec' ]] }} (rx tt) >> rec']]
-   * [[{{ array a vs * F \/ rxcrash }} rec >> rec]]
-  }} ArrayWrite a i v rx >> rec.
+       {{ array a (upd vs i v) * F * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
+       }} (rx tt) >> CheckID crashid ;; rec']]
+   * [[{{ array a vs * F \/ rxcrash }} rec >> CheckID crashid ;; rec]]
+  }} ArrayWrite a i v rx >> CheckID crashid ;; rec.
 Proof.
   intros.
   apply pimpl_ok with (exists vs F rxcrash,
@@ -292,11 +295,12 @@ Proof.
         {{ array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> v
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
-           * [[ {{rxcrash}} rec' >> rec' ]] }} (rx tt) >> rec']]
+           * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
+        }} (rx tt) >> CheckID crashid ;; rec']]
     * [[{{ (array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> sel vs i
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F)
-           \/ rxcrash }} rec >> rec]])%pred.
+           \/ rxcrash }} rec >> CheckID crashid ;; rec]])%pred.
 
   rewrite ArrayWrite_eq.
   eapply pimpl_ok.
@@ -339,13 +343,14 @@ Definition read_back a rx :=
   v <- ArrayRead a $0;
   rx v.
 
-Theorem read_back_ok : forall a rx rec,
+Theorem read_back_ok : forall a rx rec crashid,
   {{ exists vs F rxcrash, array a vs * F
      * [[length vs > 0]]
      * [[forall rec',
-         {{array a (upd vs $0 $42) * F * [[ {{rxcrash}} rec' >> rec' ]]}} rx $42 >> rec' ]]
-     * [[ {{(array a vs * F) \/ rxcrash}} rec >> rec ]]
-  }} read_back a rx >> rec.
+         {{array a (upd vs $0 $42) * F * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
+         }} rx $42 >> CheckID crashid ;; rec' ]]
+     * [[ {{(array a vs * F) \/ rxcrash}} rec >> CheckID crashid ;; rec ]]
+  }} read_back a rx >> CheckID crashid ;; rec.
 Proof.
   unfold read_back; hoare.
 Qed.
@@ -357,16 +362,17 @@ Definition swap a i j rx :=
   ArrayWrite a j vi;;
   rx.
 
-Theorem swap_ok : forall a i j rx rec,
+Theorem swap_ok : forall a i j rx rec crashid,
   {{ exists vs F rxcrash, array a vs * F
      * [[wordToNat i < length vs]]
      * [[wordToNat j < length vs]]
      * [[forall rec',
          {{array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F
-           * [[ {{rxcrash}} rec' >> rec' ]]}} rx >> rec' ]]
+           * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
+         }} rx >> CheckID crashid ;; rec' ]]
      * [[ {{(array a vs * F) \/ (array a (upd vs i (sel vs j)) * F)
-            \/ rxcrash}} rec >> rec ]]
-  }} swap a i j rx >> rec.
+            \/ rxcrash}} rec >> CheckID crashid ;; rec ]]
+  }} swap a i j rx >> CheckID crashid ;; rec.
 Proof.
   unfold swap; hoare.
 Qed.

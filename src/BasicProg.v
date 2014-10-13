@@ -37,12 +37,13 @@ Ltac inv_exec :=
   end.
 
 Theorem read_ok:
-  forall (a:addr) (rx:valu->prog) (rec:prog),
+  forall (a:addr) (rx:valu->prog) (rec:prog) crashid,
   {{ exists v F rxcrash, a |-> v * F
    * [[ forall rec',
-        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx v >> rec' ]]
-   * [[ {{ rxcrash }} rec >> rec ]]
-  }} Read a rx >> rec.
+        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
+        }} rx v >> CheckID crashid ;; rec' ]]
+   * [[ {{ rxcrash }} rec >> CheckID crashid ;; rec ]]
+  }} Read a rx >> CheckID crashid ;; rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
@@ -65,12 +66,13 @@ Qed.
 Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
 
 Theorem write_ok:
-  forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog),
+  forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog) crashid,
   {{ exists v0 F rxcrash, a |-> v0 * F
    * [[ forall rec',
-        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx tt >> rec' ]]
-   * [[ {{ a |-> v0 * F \/ rxcrash }} rec >> rec ]]
-  }} Write a v rx >> rec.
+        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
+        }} rx tt >> CheckID crashid ;; rec' ]]
+   * [[ {{ a |-> v0 * F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
+  }} Write a v rx >> CheckID crashid ;; rec.
 Proof.
   unfold corr, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
@@ -207,21 +209,23 @@ Theorem for_ok':
   forall (n i : addr)
          (L : Set) (G : Type)
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
-         (li : L),
+         (li : L) crashid,
   {{ exists (g:G), nocrash g i li
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
-      (forall lSm rec', {{ nocrash g (m ^+ $1) lSm
-                         * [[ {{ crashed g }} rec' >> rec' ]] }} (rxm lSm) >> rec') ->
-      forall rec', {{ nocrash g m lm
-                    * [[ {{ crashed g }} rec' >> rec' ]] }} f m lm rxm >> rec']]
+      (forall lSm rec',
+       {{ nocrash g (m ^+ $1) lSm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
+       }} (rxm lSm) >> CheckID crashid ;; rec') ->
+      forall rec',
+      {{ nocrash g m lm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
+      }} f m lm rxm >> CheckID crashid ;; rec']]
    * [[forall lfinal rec',
-       {{ nocrash g (n ^+ i) lfinal
-        * [[ {{ crashed g }} rec' >> rec' ]] }} (rx lfinal) >> rec']]
+       {{ nocrash g (n ^+ i) lfinal * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
+       }} (rx lfinal) >> CheckID crashid ;; rec']]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
-   * [[{{ crashed g }} rec >> rec]]
-  }} (For_ f i n li nocrash crashed rx) >> rec.
+   * [[{{ crashed g }} rec >> CheckID crashid ;; rec]]
+  }} (For_ f i n li nocrash crashed rx) >> CheckID crashid ;; rec.
 Proof.
   match goal with
   | [ |- forall (n: addr), ?P ] =>
@@ -314,19 +318,21 @@ Theorem for_ok:
   forall (n : addr)
          (L : Set) (G : Type)
          f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
-         (li : L),
+         (li : L) crashid,
   {{ exists (g:G), nocrash g $0 li
    * [[forall m lm rxm,
       (m < n)%word ->
-      (forall lSm rec', {{ nocrash g (m ^+ $1) lSm
-                         * [[ {{ crashed g }} rec' >> rec' ]] }} (rxm lSm) >> rec') ->
-      forall rec', {{ nocrash g m lm
-                    * [[ {{ crashed g }} rec' >> rec' ]] }} f m lm rxm >> rec']]
+      (forall lSm rec',
+       {{ nocrash g (m ^+ $1) lSm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
+       }} (rxm lSm) >> CheckID crashid ;; rec') ->
+      forall rec',
+      {{ nocrash g m lm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
+      }} f m lm rxm >> CheckID crashid ;; rec']]
    * [[forall lfinal rec',
-       {{ nocrash g n lfinal
-        * [[ {{ crashed g }} rec' >> rec' ]] }} (rx lfinal) >> rec']]
-   * [[{{ crashed g }} rec >> rec]]
-  }} (For_ f $0 n li nocrash crashed rx) >> rec.
+       {{ nocrash g n lfinal * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
+       }} (rx lfinal) >> CheckID crashid ;; rec']]
+   * [[{{ crashed g }} rec >> CheckID crashid ;; rec]]
+  }} (For_ f $0 n li nocrash crashed rx) >> CheckID crashid ;; rec.
 Proof.
   intros.
   eapply pimpl_ok.
@@ -383,12 +389,13 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
     end
   end : norm_hint_right.
 
-Theorem read_array_ok : forall a rx rec,
+Theorem read_array_ok : forall a rx rec crashid,
   {{ exists m v F rxcrash, diskIs m * F * [[ m @ a |-> v ]]
    * [[ forall rec',
-        {{ diskIs m * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx v >> rec' ]]
-   * [[ {{ rxcrash }} rec >> rec ]]
-  }} read_array a rx >> rec.
+        {{ diskIs m * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
+        }} rx v >> CheckID crashid ;; rec' ]]
+   * [[ {{ rxcrash }} rec >> CheckID crashid ;; rec ]]
+  }} read_array a rx >> CheckID crashid ;; rec.
 Proof.
   unfold read_array.
   hoare.
@@ -410,12 +417,13 @@ Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
     end
   end : norm_hint_right.
 
-Theorem write_array_ok : forall a v rx rec,
+Theorem write_array_ok : forall a v rx rec crashid,
   {{ exists m F rxcrash, diskIs m * F * [[ indomain a m ]]
    * [[ forall rec',
-        {{ diskIs (upd m a v) * F * [[ {{ rxcrash }} rec' >> rec' ]] }} rx tt >> rec' ]]
-   * [[ {{ diskIs m * F \/ rxcrash }} rec >> rec ]]
-  }} write_array a v rx >> rec.
+        {{ diskIs (upd m a v) * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
+        }} rx tt >> CheckID crashid ;; rec' ]]
+   * [[ {{ diskIs m * F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
+  }} write_array a v rx >> CheckID crashid ;; rec.
 Proof.
   unfold write_array, indomain.
   hoare.
