@@ -519,7 +519,6 @@ Module LOG.
           }} rec >> CheckID crashid ;; rec ]]
     }} write xp a v rx >> CheckID crashid ;; rec.
   Proof.
-(*
     unfold write; log_unfold.
     hoare.
 
@@ -530,8 +529,6 @@ Module LOG.
 
     erewrite <- replay_app; [| eauto ].
     eapply ptsto_upd; eauto.
-*)
-    admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _) _ >> _) => apply write_ok : prog.
@@ -733,7 +730,6 @@ Module LOG.
      * [[ {{ rxcrash }} rec >> CheckID crashid ;; rec ]]
     }} read xp a rx >> CheckID crashid ;; rec.
   Proof.
-(*
     unfold read; log_unfold.
 
     step.
@@ -753,8 +749,6 @@ Module LOG.
     | [ H: (_ |-> _ * _)%pred _ |- _ ] => apply sep_star_ptsto_some in H
     end.
     congruence.
-*)
-    admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _ >> _) => apply read_ok : prog.
@@ -988,7 +982,6 @@ Module LOG.
      * [[ {{ rep xp (CommittedTxn m) * F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
     }} apply xp rx >> CheckID crashid ;; rec.
   Proof.
-(*
     unfold apply; log_unfold.
     step.
     step.
@@ -1037,8 +1030,6 @@ Module LOG.
     apply stars_or_left; unfold stars; simpl.
     cancel.
     congruence.
-*)
-    admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _) _ >> _) => apply apply_ok : prog.
@@ -1096,10 +1087,7 @@ Module LOG.
      * [[ {{ log_intact xp m F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
     }} recover xp rx >> CheckID crashid ;; rec.
   Proof.
-(*
     unfold recover; hoare_unfold log_unfold'.
-*)
-    admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
@@ -1114,10 +1102,7 @@ Module LOG.
      * [[ {{ log_intact xp m F }} rec >> CheckID crashid ;; rec ]]
     }} recover xp rx >> CheckID crashid ;; rec.
   Proof.
-(*
     unfold recover; hoare_unfold log_unfold'.
-*)
-    admit.
   Qed.
 
   Theorem recover_pp : forall xp rx,
