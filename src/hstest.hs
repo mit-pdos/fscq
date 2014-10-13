@@ -40,7 +40,7 @@ write_disk _ _ _ = error "write_disk: unexpected addr or val"
 
 run_dcode :: Handle -> Prog.Coq_prog -> IO (Prelude.Maybe Word.Coq_word)
 run_dcode _ (Done _ r) = return $ unsafeCoerce r
-run_dcode f (Check _ rx) = run_dcode f $ rx ()
+run_dcode f (CheckID _ rx) = run_dcode f $ rx ()
 run_dcode f (Read a rx) = do val <- read_disk f a; run_dcode f $ rx val
 run_dcode f (Write a v rx) = do write_disk f a v; run_dcode f $ rx ()
 
