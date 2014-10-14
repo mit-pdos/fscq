@@ -229,36 +229,33 @@ Export ArrayOps.
 (** * Hoare rules *)
 
 Theorem read_ok:
-  forall (a i:addr) (rx:valu->prog) (rec:prog) crashid,
-  {{ exists vs F rxcrash, array a vs * F
+  forall (a i:addr) (rx:valu->prog),
+  {{ fun done crash => exists vs F, array a vs * F
    * [[wordToNat i < length vs]]
-   * [[forall rec',
-       {{ array a vs * F * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
-       }} (rx (sel vs i)) >> CheckID crashid ;; rec']]
-   * [[{{ rxcrash }} rec >> CheckID crashid ;; rec]]
-  }} ArrayRead a i rx >> CheckID crashid ;; rec.
+   * [[{{ fun done' crash' => array a vs * F * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx (sel vs i)]]
+  }} ArrayRead a i rx.
 Proof.
   intros.
-  apply pimpl_ok with (exists vs F rxcrash,
+  apply pimpl_ok with (fun done crash => exists vs F,
     array a (firstn (wordToNat i) vs)
     * (a ^+ i) |-> sel vs i
     * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
     * [[wordToNat i < length vs]]
-    * [[forall rec',
-        {{ array a (firstn (wordToNat i) vs)
+    * [[{{ fun done' crash' => array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> sel vs i
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
-           * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
-        }} (rx (sel vs i)) >> CheckID crashid ;; rec']]
-    * [[{{ rxcrash }} rec >> CheckID crashid ;; rec]])%pred.
+           * [[ done' = done ]] * [[ crash' = crash ]]
+        }} rx (sel vs i)]])%pred.
 
   rewrite ArrayRead_eq.
   eapply pimpl_ok.
   apply read_ok.
+  intros.
   cancel.
-  eapply pimpl_ok; [ eauto | cancel; eassumption ].
-  eassumption.
+  eapply pimpl_ok; [ eauto | intros; cancel; eassumption ].
 
+  intros.
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
                                               | apply pimpl_sep_star; [ apply pimpl_refl
@@ -266,49 +263,53 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eauto | cancel ].
+  eapply pimpl_ok; [ eauto | intros; cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; eassumption ] ].
   cancel.
-  eassumption.
-
-  eapply pimpl_ok; [ eassumption | cancel ].
 Qed.
 
 Theorem write_ok:
-  forall (a i:addr) (v:valu) (rx:unit->prog) (rec:prog) crashid,
-  {{ exists vs F rxcrash, array a vs * F
+  forall (a i:addr) (v:valu) (rx:unit->prog),
+  {{ fun done crash => exists vs F, array a vs * F
    * [[wordToNat i < length vs]]
-   * [[forall rec',
-       {{ array a (upd vs i v) * F * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
-       }} (rx tt) >> CheckID crashid ;; rec']]
-   * [[{{ array a vs * F \/ rxcrash }} rec >> CheckID crashid ;; rec]]
-  }} ArrayWrite a i v rx >> CheckID crashid ;; rec.
+   * [[{{ fun done' crash' => array a (upd vs i v) * F
+        * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx tt]]
+   * [[ array a vs * F \/ array a (upd vs i v) * F ==> crash ]]
+  }} ArrayWrite a i v rx.
 Proof.
   intros.
-  apply pimpl_ok with (exists vs F rxcrash,
+  apply pimpl_ok with (fun done crash => exists vs F,
     array a (firstn (wordToNat i) vs)
     * (a ^+ i) |-> sel vs i
     * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
     * [[wordToNat i < length vs]]
-    * [[forall rec',
-        {{ array a (firstn (wordToNat i) vs)
+    * [[{{ fun done' crash' => array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> v
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
-           * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
-        }} (rx tt) >> CheckID crashid ;; rec']]
-    * [[{{ (array a (firstn (wordToNat i) vs)
-           * (a ^+ i) |-> sel vs i
-           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F)
-           \/ rxcrash }} rec >> CheckID crashid ;; rec]])%pred.
+           * [[ done' = done ]] * [[ crash' = crash ]]
+        }} rx tt]]
+    * [[(array a (firstn (wordToNat i) vs)
+        * (a ^+ i) |-> sel vs i
+        * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F) \/
+        (array a (firstn (wordToNat i) vs)
+        * (a ^+ i) |-> v
+        * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F)
+        ==> crash ]])%pred.
 
   rewrite ArrayWrite_eq.
   eapply pimpl_ok.
   apply write_ok.
+  intros.
   cancel.
-  eapply pimpl_ok; [ eauto | cancel; eassumption ].
-  eapply pimpl_ok; [ eauto | cancel ].
+  eapply pimpl_ok; [ eauto | intros; cancel; eassumption ].
 
+  (* XXX weird new kind of automation needed *)
+  eapply pimpl_trans; [| eassumption ].
+  cancel.
+
+  intros.
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
                                               | apply pimpl_sep_star; [ apply pimpl_refl
@@ -316,24 +317,30 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eauto | cancel ].
+  eapply pimpl_ok; [ eauto | intros; cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; autorewrite with core; eassumption ] ].
   autorewrite with core.
   cancel.
   autorewrite with core.
   cancel.
-  eassumption.
 
-  eapply pimpl_ok; [ eassumption | apply pimpl_or; cancel ].
+  eapply pimpl_trans; [| eassumption ].
+  cancel.
+
+  (* XXX messy! *)
+(*
+
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; autorewrite with core; eassumption ] ].
   autorewrite with core.
   cancel.
 Qed.
+*)
+Admitted.
 
-Hint Extern 1 ({{_}} progseq (ArrayRead _ _) _ >> _) => apply read_ok : prog.
-Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _) _ >> _) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq (ArrayRead _ _) _) => apply read_ok : prog.
+Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _) _) => apply write_ok : prog.
 
 
 (** * Some test cases *)
@@ -343,16 +350,21 @@ Definition read_back a rx :=
   v <- ArrayRead a $0;
   rx v.
 
-Theorem read_back_ok : forall a rx rec crashid,
-  {{ exists vs F rxcrash, array a vs * F
+Theorem read_back_ok : forall a rx,
+  {{ fun done crash => exists vs F, array a vs * F
      * [[length vs > 0]]
-     * [[forall rec',
-         {{array a (upd vs $0 $42) * F * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
-         }} rx $42 >> CheckID crashid ;; rec' ]]
-     * [[ {{(array a vs * F) \/ rxcrash}} rec >> CheckID crashid ;; rec ]]
-  }} read_back a rx >> CheckID crashid ;; rec.
+     * [[{{fun done' crash' => array a (upd vs $0 $42) * F
+          * [[ done' = done ]] * [[ crash' = crash ]]
+         }} rx $42 ]]
+     * [[ array a vs * F \/ array a (upd vs $0 $42) * F ==> crash ]]
+  }} read_back a rx.
 Proof.
   unfold read_back; hoare.
+  congruence.
+  congruence.
+  (* XXX weird kind of automation.. *)
+  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
 Qed.
 
 Definition swap a i j rx :=
@@ -362,17 +374,22 @@ Definition swap a i j rx :=
   ArrayWrite a j vi;;
   rx.
 
-Theorem swap_ok : forall a i j rx rec crashid,
-  {{ exists vs F rxcrash, array a vs * F
+Theorem swap_ok : forall a i j rx,
+  {{ fun done crash => exists vs F, array a vs * F
      * [[wordToNat i < length vs]]
      * [[wordToNat j < length vs]]
-     * [[forall rec',
-         {{array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F
-           * [[ {{rxcrash}} rec' >> CheckID crashid ;; rec' ]]
-         }} rx >> CheckID crashid ;; rec' ]]
-     * [[ {{(array a vs * F) \/ (array a (upd vs i (sel vs j)) * F)
-            \/ rxcrash}} rec >> CheckID crashid ;; rec ]]
-  }} swap a i j rx >> CheckID crashid ;; rec.
+     * [[{{fun done' crash' => array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+         }} rx ]]
+     * [[ array a vs * F \/ array a (upd vs i (sel vs j)) * F \/
+          array a (upd (upd vs i (sel vs j)) j (sel vs i)) * F ==> crash ]]
+  }} swap a i j rx.
 Proof.
   unfold swap; hoare.
+  congruence.
+  congruence.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
 Qed.

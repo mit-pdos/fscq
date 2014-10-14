@@ -32,12 +32,8 @@ Definition wringaddr := wring addrlen.
 Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]).
 
 
-Inductive some_id :=
-| ID (T: Type) (id: T).
-
 Inductive prog :=
-| Done (id: some_id) (T: Type) (v: T)
-| CheckID (id: some_id) (rx: unit -> prog)
+| Done (T: Type) (v: T)
 | Read (a: addr) (rx: valu -> prog)
 | Write (a: addr) (v: valu) (rx: unit -> prog).
 
@@ -51,40 +47,36 @@ Definition mem := addr -> option valu.
 Definition upd (m : mem) (a : addr) (v : valu) : mem :=
   fun a' => if addr_eq_dec a' a then Some v else m a'.
 
-Parameter done_cond : forall (_: some_id) (T: Type) (v: T), mem -> Prop.
-Parameter check_cond : forall (_: some_id), mem -> Prop.
-Parameter check_id : (mem -> Prop) -> some_id.
-Axiom check_id_ok : forall P, check_cond (check_id P) = P.
-
-Definition Check p := CheckID (check_id p).
+Definition donecond := forall (T: Type), T -> mem -> Prop.
 
 Inductive outcome :=
 | Failed
 | Finished
 | Crashed.
 
-Inductive exec : mem -> prog -> mem -> outcome -> Prop :=
-| XDoneOK : forall m id T (v: T), done_cond id v m
-  -> exec m (Done id v) m Finished
-| XDoneFail : forall m m' id T (v: T), ~ done_cond id v m
-  -> exec m (Done id v) m' Failed
-| XCheckOK : forall m m' id rx out, check_cond id m
-  -> exec m (rx tt) m' out
-  -> exec m (CheckID id rx) m' out
-| XCheckFail : forall m m' id rx, ~ check_cond id m
-  -> exec m (CheckID id rx) m' Failed
+Inductive exec (done: donecond) (crash: mem -> Prop) : mem -> prog -> mem -> outcome -> Prop :=
+| XDoneOK : forall (m: mem) T (v: T), done T v m
+  -> exec done crash m (Done v) m Finished
+| XDoneFail : forall m m' T (v: T), ~ done T v m
+  -> exec done crash m (Done v) m' Failed
 | XReadFail : forall m m' a rx, m a = None
-  -> exec m (Read a rx) m' Failed
+  -> exec done crash m (Read a rx) m' Failed
 | XWriteFail : forall m m' a v rx, m a = None
-  -> exec m (Write a v rx) m' Failed
+  -> exec done crash m (Write a v rx) m' Failed
 | XReadOK : forall m a v rx m' out, m a = Some v
-  -> exec m (rx v) m' out
-  -> exec m (Read a rx) m' out
+  -> exec done crash m (rx v) m' out
+  -> exec done crash m (Read a rx) m' out
 | XWriteOK : forall m a v v0 rx m' out, m a = Some v0
-  -> exec (upd m a v) (rx tt) m' out
-  -> exec m (Write a v rx) m' out
-| XCrash : forall m p, exec m p m Crashed.
+  -> exec done crash (upd m a v) (rx tt) m' out
+  -> exec done crash m (Write a v rx) m' out
+| XCrashOK : forall m p, crash m
+  -> exec done crash m p m Crashed
+| XCrashFail : forall m p m', ~ crash m
+  -> exec done crash m p m' Failed.
 
+Hint Constructors exec.
+
+(*
 Inductive exec_recover : mem -> prog -> prog -> mem -> outcome -> Prop :=
 | XRFail : forall m p1 p2 m',
   exec m p1 m' Failed -> exec_recover m p1 p2 m' Failed
@@ -94,10 +86,11 @@ Inductive exec_recover : mem -> prog -> prog -> mem -> outcome -> Prop :=
   exec m p1 m' Crashed ->
   exec_recover m' p2 p2 m'' out -> exec_recover m p1 p2 m'' out.
 
-Hint Constructors exec.
 Hint Constructors exec_recover.
+*)
 
 
+(*
 Theorem exec_need_not_crash : forall p m,
   exists m' out, exec m p m' out /\ out <> Crashed.
 Proof.
@@ -161,7 +154,7 @@ Proof.
   - inversion H0; eauto.
   - inversion H0; eauto.
 Qed.
-
+*)
 
 Theorem upd_eq : forall m a v a',
   a' = a

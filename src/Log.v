@@ -11,7 +11,9 @@ Require Import Word.
 Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Array.
+(*
 Require Import Idempotent.
+*)
 
 Set Implicit Arguments.
 
@@ -280,43 +282,46 @@ Module LOG.
     Write (LogCommit xp) $0 ;;
     rx tt.
 
-  Theorem init_ok : forall xp rx rec crashid,
-    {{ exists old F rxcrash, F
+  Theorem init_ok : forall xp rx,
+    {{ fun done crash => exists old F, F
      * data_rep old
      * avail_region (LogStart xp) (wordToNat (LogLen xp) * 2)
      * (LogCommit xp) |->?
      * (LogLength xp) |->?
-     * [[ forall rec',
-          {{ rep xp (NoTransaction old) * F
-           * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx tt >> CheckID crashid ;; rec' ]]
-     * [[ {{ any }} rec >> CheckID crashid ;; rec ]]
-    }} init xp rx >> CheckID crashid ;; rec.
+     * [[ {{ fun done' crash' => rep xp (NoTransaction old) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx tt ]]
+     * [[ crash = any ]]
+    }} init xp rx.
   Proof.
     unfold init; log_unfold.
-    hoare; apply pimpl_emp_any.
+    hoare.
+    congruence.
+    congruence.
+    subst; apply pimpl_emp_any.
+    subst; apply pimpl_emp_any.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (init _) _ >> _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
 
   Definition begin xp rx :=
     Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
-  Theorem begin_ok : forall xp rx rec crashid,
-    {{ exists m F rxcrash, rep xp (NoTransaction m) * F
-     * [[ forall rec',
-          {{ rep xp (ActiveTxn m m) * F
-           * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx tt >> CheckID crashid ;; rec' ]]
-     * [[ {{ rep xp (NoTransaction m) * F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
-    }} begin xp rx >> CheckID crashid ;; rec.
+  Theorem begin_ok : forall xp rx,
+    {{ fun done crash => exists m F, rep xp (NoTransaction m) * F
+     * [[ {{ fun done' crash' => rep xp (ActiveTxn m m) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx tt ]]
+     * [[ rep xp (NoTransaction m) * F \/ rep xp (ActiveTxn m m) * F ==> crash ]]
+    }} begin xp rx.
   Proof.
     unfold begin; log_unfold.
     hoare.
+    eapply pimpl_trans; [|eapply pimpl_trans; [eassumption|] ]; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (begin _) _ >> _) => apply begin_ok : prog.
+  Hint Extern 1 ({{_}} progseq (begin _) _) => apply begin_ok : prog.
 
   Hint Extern 1 (_ =!=> avail_region _ _) =>
     match goal with
@@ -333,20 +338,23 @@ Module LOG.
     Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
-  Theorem abort_ok : forall xp rx rec crashid,
-    {{ exists m1 m2 F rxcrash, rep xp (ActiveTxn m1 m2) * F
-     * [[ forall rec',
-          {{ rep xp (NoTransaction m1) * F
-           * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx tt >> CheckID crashid ;; rec' ]]
-     * [[ {{ rep xp (ActiveTxn m1 m2) * F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
-    }} abort xp rx >> CheckID crashid ;; rec.
+  Theorem abort_ok : forall xp rx,
+    {{ fun done crash => exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
+     * [[ {{ fun done' crash' => rep xp (NoTransaction m1) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx tt ]]
+     * [[ rep xp (ActiveTxn m1 m2) * F \/ rep xp (NoTransaction m1) * F ==> crash ]]
+    }} abort xp rx.
   Proof.
     unfold abort; log_unfold.
     hoare.
+    eapply pimpl_trans; [|eapply pimpl_trans; [eassumption|] ]; [| cancel].
+    (* RHS OR handling is poor *)
+    cancel.
+    cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (abort _) _ >> _) => apply abort_ok : prog.
+  Hint Extern 1 ({{_}} progseq (abort _) _) => apply abort_ok : prog.
 
   Hint Extern 1 (?L =!=> _) =>
     match L with
@@ -503,21 +511,18 @@ Module LOG.
   Hint Resolve indomain_replay.
   Hint Resolve replay_app.
 
-  Theorem write_ok : forall xp a v rx rec crashid,
-    {{ exists m1 m2 F F' v0 rxcrashT rxcrashF, rep xp (ActiveTxn m1 m2) * F
+  Theorem write_ok : forall xp a v rx,
+    {{ fun done crash => exists m1 m2 F F' v0, rep xp (ActiveTxn m1 m2) * F
      * [[ (a |-> v0 * F')%pred m2 ]]
-     * [[ forall rec',
-          {{ exists m', rep xp (ActiveTxn m1 m') * F
+     * [[ {{ fun done' crash' => exists m', rep xp (ActiveTxn m1 m') * F
            * [[ (a |-> v * F')%pred m' ]]
-           * [[ {{ rxcrashT }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx true >> CheckID crashid ;; rec' ]]
-     * [[ forall rec',
-          {{ rep xp (ActiveTxn m1 m2) * F
-           * [[ {{ rxcrashF }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx false >> CheckID crashid ;; rec' ]]
-     * [[ {{ rep xp (ActiveTxn m1 m2) * F \/ rxcrashT \/ rxcrashF
-          }} rec >> CheckID crashid ;; rec ]]
-    }} write xp a v rx >> CheckID crashid ;; rec.
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx true ]]
+     * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx false ]]
+     * [[ forall m', rep xp (ActiveTxn m1 m') * F  ==> crash ]]
+    }} write xp a v rx.
   Proof.
     unfold write; log_unfold.
     hoare.
@@ -529,9 +534,18 @@ Module LOG.
 
     erewrite <- replay_app; [| eauto ].
     eapply ptsto_upd; eauto.
+
+    congruence.
+    congruence.
+
+    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
+    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
+    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
+    congruence.
+    congruence.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (write _ _ _) _ >> _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
 
   Definition addr_zero := natToWord addrlen 0.
   Definition valu_zero := natToWord valulen 0.
@@ -720,15 +734,13 @@ Module LOG.
 
   Opaque firstn.
 
-  Theorem read_ok : forall xp a rx rec crashid,
-    {{ exists m1 m2 v F rxcrash, rep xp (ActiveTxn m1 m2) * F
+  Theorem read_ok : forall xp a rx,
+    {{ fun done crash => exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
      * [[ exists F', (a |-> v * F') m2 ]]
-     * [[ forall rec',
-          {{ rep xp (ActiveTxn m1 m2) * F
-           * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx v >> CheckID crashid ;; rec' ]]
-     * [[ {{ rxcrash }} rec >> CheckID crashid ;; rec ]]
-    }} read xp a rx >> CheckID crashid ;; rec.
+     * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx v ]]
+    }} read xp a rx.
   Proof.
     unfold read; log_unfold.
 

@@ -26,102 +26,90 @@ Ltac inv_option :=
     end
   end.
 
+(*
 Ltac inv_exec_recover :=
   match goal with
   | [ H: exec_recover _ _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
+*)
 
 Ltac inv_exec :=
   match goal with
-  | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: exec _ _ _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
 Theorem read_ok:
-  forall (a:addr) (rx:valu->prog) (rec:prog) crashid,
-  {{ exists v F rxcrash, a |-> v * F
-   * [[ forall rec',
-        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-        }} rx v >> CheckID crashid ;; rec' ]]
-   * [[ {{ rxcrash }} rec >> CheckID crashid ;; rec ]]
-  }} Read a rx >> CheckID crashid ;; rec.
+  forall (a:addr) (rx:valu->prog),
+  {{ fun done crash => exists v F, a |-> v * F
+   * [[ {{ fun done' crash' => a |-> v * F
+         * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
+  }} Read a rx.
 Proof.
-  unfold corr, exis; intros; repeat deex.
+  unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
-  inv_exec_recover; auto; inv_exec.
+  inv_exec.
   - apply ptsto_valid in H. congruence.
-  - eapply H2. apply sep_star_and2lift.
-    split; eauto.
+  - eapply H1. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply ptsto_valid in H. repeat inv_option.
-    eauto.
-  - eapply H2. apply sep_star_and2lift.
-    split; eauto.
+    eauto. eauto.
+  - eapply H1. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply ptsto_valid in H. repeat inv_option.
-    eauto.
-  - eapply H2; eauto.
-    apply sep_star_and2lift.
-    split; eauto.
+    eapply XCrashFail with (m':=m); eauto. eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Read _) _ >> _) => apply read_ok : prog.
+Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 
 Theorem write_ok:
-  forall (a:addr) (v:valu) (rx:unit->prog) (rec:prog) crashid,
-  {{ exists v0 F rxcrash, a |-> v0 * F
-   * [[ forall rec',
-        {{ a |-> v * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-        }} rx tt >> CheckID crashid ;; rec' ]]
-   * [[ {{ a |-> v0 * F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
-  }} Write a v rx >> CheckID crashid ;; rec.
+  forall (a:addr) (v:valu) (rx:unit->prog),
+  {{ fun done crash => exists v0 F, a |-> v0 * F
+   * [[ {{ fun done' crash' => a |-> v * F
+         * [[ done' = done ]] * [[ crash' = crash ]] }} rx tt ]]
+   * [[ a |-> v0 * F ==> crash ]]
+  }} Write a v rx.
 Proof.
-  unfold corr, exis; intros; repeat deex.
+  unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
-  inv_exec_recover; auto; inv_exec.
+  inv_exec.
   - apply ptsto_valid in H. congruence.
   - eapply H2. instantiate (1:=upd m a v).
-    apply sep_star_and2lift; split.
+    repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     eapply ptsto_upd; eauto.
-    unfold lift; intros.
-    eapply H1; eauto.
-    pred_apply. cancel.
+    eauto.
     eauto.
   - eapply H2. instantiate (1:=upd m a v).
-    apply sep_star_and2lift; split.
+    repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     eapply ptsto_upd; eauto.
-    unfold lift; intros.
-    eapply H1; eauto.
-    pred_apply. cancel.
+    instantiate (2:=m).
     eauto.
-  - eapply H1; unfold or; eauto.
+    eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Write _ _) _ >> _) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
 
 Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
   if b then p1 else p2.
 
 Theorem if_ok:
-  forall P Q (b : {P}+{Q}) p1 p2 rec,
-  {{ exists pre, pre
-   * [[{{ pre * [[P]] }} p1 >> rec]]
-   * [[{{ pre * [[Q]] }} p2 >> rec]]
-  }} If_ b p1 p2 >> rec.
+  forall P Q (b : {P}+{Q}) p1 p2,
+  {{ fun done crash => exists pre, pre
+   * [[ {{ fun done' crash' => pre * [[P]] * [[ done' = done ]] * [[ crash' = crash ]] }} p1 ]]
+   * [[ {{ fun done' crash' => pre * [[Q]] * [[ done' = done ]] * [[ crash' = crash ]] }} p2 ]]
+  }} If_ b p1 p2.
 Proof.
-  unfold corr, exis; intros; repeat deex.
+  unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   destruct b.
   - eapply H2; eauto.
     eapply pimpl_apply; [|apply H].
-    apply sep_star_lift_r.
-    split; pred.
+    cancel.
   - eapply H1; eauto.
     eapply pimpl_apply; [|apply H].
-    apply sep_star_lift_r.
-    split; pred.
+    cancel.
 Qed.
 
-Hint Extern 1 ({{_}} If_ _ _ _ >> _) => apply if_ok : prog.
+Hint Extern 1 ({{_}} If_ _ _ _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
 Record For_args (L : Set) := {
@@ -208,24 +196,25 @@ Qed.
 Theorem for_ok':
   forall (n i : addr)
          (L : Set) (G : Type)
-         f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
-         (li : L) crashid,
-  {{ exists (g:G), nocrash g i li
+         f rx
+         (nocrash : G -> addr -> L -> pred)
+         (crashed : G -> pred)
+         (li : L),
+  {{ fun done crash => exists (g:G), nocrash g i li
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
-      (forall lSm rec',
-       {{ nocrash g (m ^+ $1) lSm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
-       }} (rxm lSm) >> CheckID crashid ;; rec') ->
-      forall rec',
-      {{ nocrash g m lm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
-      }} f m lm rxm >> CheckID crashid ;; rec']]
-   * [[forall lfinal rec',
-       {{ nocrash g (n ^+ i) lfinal * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
-       }} (rx lfinal) >> CheckID crashid ;; rec']]
+      (forall lSm,
+       {{ fun done' crash' => nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rxm lSm) ->
+      {{ fun done' crash' => nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      }} f m lm rxm]]
+   * [[forall lfinal,
+       {{ fun done' crash' => nocrash g (n ^+ i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
-   * [[{{ crashed g }} rec >> CheckID crashid ;; rec]]
-  }} (For_ f i n li nocrash crashed rx) >> CheckID crashid ;; rec.
+   * [[crashed g ==> crash]]
+  }} (For_ f i n li nocrash crashed rx).
 Proof.
   match goal with
   | [ |- forall (n: addr), ?P ] =>
@@ -236,10 +225,18 @@ Proof.
   apply corr_exists; intros.
   case_eq (weq x $0); intros; subst.
 
-  - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
+  - eapply pimpl_pre; intros; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl, lift; intros.
       rewrite For_step.
-      apply H3.
+      (* XXX EXISTENTIAL PROBLEM
+       * cannot use [done] in [?pre'] because the [?pre'] came from [eapply pimpl_pre]
+       * and the [done] came later from the [intros].
+       *)
+Abort.
+
+(*
+      eapply H3.
+      apply H1.
     + fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
 
   - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
@@ -363,6 +360,7 @@ Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Inv
    g1 binder, g2 binder,
    lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
+*)
 
 Definition read_array a rx :=
   v <- Read a;
@@ -389,13 +387,10 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
     end
   end : norm_hint_right.
 
-Theorem read_array_ok : forall a rx rec crashid,
-  {{ exists m v F rxcrash, diskIs m * F * [[ m @ a |-> v ]]
-   * [[ forall rec',
-        {{ diskIs m * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-        }} rx v >> CheckID crashid ;; rec' ]]
-   * [[ {{ rxcrash }} rec >> CheckID crashid ;; rec ]]
-  }} read_array a rx >> CheckID crashid ;; rec.
+Theorem read_array_ok : forall a rx,
+  {{ fun done crash => exists m v F, diskIs m * F * [[ m @ a |-> v ]]
+   * [[ {{ fun done' crash' => diskIs m * F * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
+  }} read_array a rx.
 Proof.
   unfold read_array.
   hoare.
@@ -417,17 +412,21 @@ Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
     end
   end : norm_hint_right.
 
-Theorem write_array_ok : forall a v rx rec crashid,
-  {{ exists m F rxcrash, diskIs m * F * [[ indomain a m ]]
-   * [[ forall rec',
-        {{ diskIs (upd m a v) * F * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-        }} rx tt >> CheckID crashid ;; rec' ]]
-   * [[ {{ diskIs m * F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
-  }} write_array a v rx >> CheckID crashid ;; rec.
+Theorem write_array_ok : forall a v rx,
+  {{ fun done crash => exists m F, diskIs m * F * [[ indomain a m ]]
+   * [[ {{ fun done' crash' => diskIs (upd m a v) * F
+      * [[ done' = done ]] * [[ crash' = crash ]] }} rx tt ]]
+   * [[ diskIs m * F \/ diskIs (upd m a v) * F ==> crash ]]
+  }} write_array a v rx.
 Proof.
   unfold write_array, indomain.
   hoare.
+
+  (* XXX weird new kind of situation that needs automation... *)
+  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ].
+  cancel.
+  cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (read_array _) _ >> _) => apply read_array_ok : prog.
-Hint Extern 1 ({{_}} progseq (write_array _ _) _ >> _) => apply write_array_ok : prog.
+Hint Extern 1 ({{_}} progseq (read_array _) _) => apply read_array_ok : prog.
+Hint Extern 1 ({{_}} progseq (write_array _ _) _) => apply write_array_ok : prog.

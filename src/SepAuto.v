@@ -613,6 +613,7 @@ Ltac step :=
   try cancel;
   ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ]));
+  intros;
   try ( cancel ; try ( progress autorewrite with core in * ; cancel ) );
   try cancel; try autorewrite with core in *;
   intuition eauto;
