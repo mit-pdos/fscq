@@ -586,13 +586,21 @@ Ltac cancel :=
   intuition;
   unfold stars; simpl.
 
+Ltac autorewrite_fast :=
+  repeat match goal with
+  | [ H: ?x |- _ ] => ( has_evar x; fail 1 ) || rewrite_strat (topdown (hints core)) in H
+  | [ H: ?x |- _ ] => has_evar x; progress autorewrite with core in H
+  | [ |- ?x ] => ( has_evar x; fail 1 ) || rewrite_strat (topdown (hints core))
+  | [ |- ?x ] => has_evar x; progress autorewrite with core
+  end.
+
 Ltac step :=
   intros;
   try cancel;
   ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ]));
-  try ( cancel ; try ( progress autorewrite with core in * ; cancel ) );
-  try cancel; try autorewrite with core in *;
+  try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
+  try cancel; try autorewrite_fast;
   intuition eauto;
   try omega;
   eauto.
