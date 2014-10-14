@@ -8,6 +8,22 @@ Require Import Word.
 
 Set Implicit Arguments.
 
+(* Helpers for existential variables *)
+
+Ltac set_evars :=
+  repeat match goal with
+              | [ |- context[?e] ] => is_evar e; let H := fresh in set (H := e)
+            end.
+
+Ltac subst_evars :=
+  repeat match goal with
+              | [ H := ?e |- _ ] => is_evar e; subst H
+            end.
+
+Ltac set_evars_in H :=
+  repeat match type of H with
+              | context[?e] => is_evar e; let E := fresh in set (E := e) in H
+            end.
 
 (** * Separation logic proof automation *)
 
@@ -588,10 +604,8 @@ Ltac cancel :=
 
 Ltac autorewrite_fast :=
   repeat match goal with
-  | [ H: ?x |- _ ] => ( has_evar x; fail 1 ) || rewrite_strat (topdown (hints core)) in H
-  | [ H: ?x |- _ ] => has_evar x; progress autorewrite with core in H
-  | [ |- ?x ] => ( has_evar x; fail 1 ) || rewrite_strat (topdown (hints core))
-  | [ |- ?x ] => has_evar x; progress autorewrite with core
+  | [ H: _ |- _ ] => set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars
+  | [ |- _ ] => set_evars; (rewrite_strat (topdown (hints core))); subst_evars
   end.
 
 Ltac step :=
