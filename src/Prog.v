@@ -76,18 +76,18 @@ Inductive exec (done: donecond) (crash: mem -> Prop) : mem -> prog -> mem -> out
 
 Hint Constructors exec.
 
-(*
-Inductive exec_recover : mem -> prog -> prog -> mem -> outcome -> Prop :=
-| XRFail : forall m p1 p2 m',
-  exec m p1 m' Failed -> exec_recover m p1 p2 m' Failed
-| XRFinished : forall m p1 p2 m',
-  exec m p1 m' Finished -> exec_recover m p1 p2 m' Finished
-| XRCrashed : forall m p1 p2 m' m'' out,
-  exec m p1 m' Crashed ->
-  exec_recover m' p2 p2 m'' out -> exec_recover m p1 p2 m'' out.
+
+Inductive exec_recover (done: donecond) (crashdone: donecond)
+  : mem -> prog -> prog -> outcome -> Prop :=
+| XRFail : forall m p1 p2 m' crash, exec done crash m p1 m' Failed
+  -> exec_recover done crashdone m p1 p2 Failed
+| XRFinished : forall m p1 p2 m' crash, exec done crash m p1 m' Finished
+  -> exec_recover done crashdone m p1 p2 Finished
+| XRCrashed : forall m p1 p2 m' out crash, exec done crash m p1 m' Crashed
+  -> exec_recover crashdone crashdone m' p2 p2 out
+  -> exec_recover done crashdone m p1 p2 out.
 
 Hint Constructors exec_recover.
-*)
 
 
 (*

@@ -7,18 +7,22 @@ Set Implicit Arguments.
 (** ** Hoare logic *)
 
 Definition corr2 (pre: donecond -> pred -> pred) (p: prog) :=
-  forall done crash m m' out,
-  pre done crash m ->
-  exec done crash m p m' out ->
-  out <> Failed.
+  forall done crash m m' out, pre done crash m
+  -> exec done crash m p m' out
+  -> out <> Failed.
 
 Notation "{{ pre }} p" := (corr2 pre%pred p)
   (at level 0, p at level 60).
 
-(*
-Notation "{{ pre }} p1 >> p2" := (corr pre%pred p1 p2)
+
+Definition corr3 (pre: donecond -> donecond -> pred) (p1 p2: prog) :=
+  forall done crashdone m out, pre done crashdone m
+  -> exec_recover done crashdone m p1 p2 out
+  -> out = Finished.
+
+Notation "{{ pre }} p1 >> p2" := (corr3 pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
-*)
+
 
 Theorem pimpl_ok:
   forall pre pre' pr,
