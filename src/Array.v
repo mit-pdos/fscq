@@ -251,11 +251,9 @@ Proof.
   rewrite ArrayRead_eq.
   eapply pimpl_ok.
   apply read_ok.
-  intros.
   cancel.
-  eapply pimpl_ok; [ eauto | intros; cancel; eassumption ].
+  eapply pimpl_ok; [ eauto | cancel; eassumption ].
 
-  intros.
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
                                               | apply pimpl_sep_star; [ apply pimpl_refl
@@ -263,7 +261,7 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eauto | intros; cancel ].
+  eapply pimpl_ok; [ eauto | cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; eassumption ] ].
   cancel.
@@ -301,15 +299,13 @@ Proof.
   rewrite ArrayWrite_eq.
   eapply pimpl_ok.
   apply write_ok.
-  intros.
   cancel.
-  eapply pimpl_ok; [ eauto | intros; cancel; eassumption ].
+  eapply pimpl_ok; [ eauto | cancel; eassumption ].
 
   (* XXX weird new kind of automation needed *)
   eapply pimpl_trans; [| eassumption ].
   cancel.
 
-  intros.
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
                                               | apply pimpl_sep_star; [ apply pimpl_refl
@@ -317,7 +313,7 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eauto | intros; cancel ].
+  eapply pimpl_ok; [ eauto | cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; autorewrite with core; eassumption ] ].
   autorewrite with core.

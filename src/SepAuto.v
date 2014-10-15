@@ -591,6 +591,7 @@ Ltac norm := unfold pair_args_helper;
              ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] ).
 
 Ltac cancel :=
+  intros;
   unfold stars; simpl;
   norm;
   try match goal with

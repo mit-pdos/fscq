@@ -232,7 +232,7 @@ Proof.
        * cannot use [done] in [?pre'] because the [?pre'] came from [eapply pimpl_pre]
        * and the [done] came later from the [intros].
        *)
-Abort.
+Admitted.
 
 (*
       eapply H3.
@@ -310,26 +310,28 @@ Abort.
       apply wlt_lt in H9; simpl in H9; auto.
     + cancel.
 Qed.
+*)
 
 Theorem for_ok:
   forall (n : addr)
          (L : Set) (G : Type)
-         f rx rec (nocrash : G -> addr -> L -> pred) (crashed : G -> pred)
-         (li : L) crashid,
-  {{ exists (g:G), nocrash g $0 li
+         f rx
+         (nocrash : G -> addr -> L -> pred)
+         (crashed : G -> pred)
+         (li : L),
+  {{ fun done crash => exists (g:G), nocrash g $0 li
    * [[forall m lm rxm,
       (m < n)%word ->
-      (forall lSm rec',
-       {{ nocrash g (m ^+ $1) lSm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
-       }} (rxm lSm) >> CheckID crashid ;; rec') ->
-      forall rec',
-      {{ nocrash g m lm * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
-      }} f m lm rxm >> CheckID crashid ;; rec']]
-   * [[forall lfinal rec',
-       {{ nocrash g n lfinal * [[ {{ crashed g }} rec' >> CheckID crashid ;; rec' ]]
-       }} (rx lfinal) >> CheckID crashid ;; rec']]
-   * [[{{ crashed g }} rec >> CheckID crashid ;; rec]]
-  }} (For_ f $0 n li nocrash crashed rx) >> CheckID crashid ;; rec.
+      (forall lSm,
+       {{ fun done' crash' => nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rxm lSm) ->
+      {{ fun done' crash' => nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      }} f m lm rxm]]
+   * [[forall lfinal,
+       {{ fun done' crash' => nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx lfinal]]
+   * [[crashed g ==> crash]]
+  }} For_ f $0 n li nocrash crashed rx.
 Proof.
   intros.
   eapply pimpl_ok.
@@ -340,7 +342,7 @@ Proof.
   cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _ >> _) => apply for_ok : prog.
+Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _) => apply for_ok : prog.
 Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
         $0 n l0
@@ -360,7 +362,6 @@ Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Inv
    g1 binder, g2 binder,
    lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
-*)
 
 Definition read_array a rx :=
   v <- Read a;
