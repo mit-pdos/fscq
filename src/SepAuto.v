@@ -615,8 +615,8 @@ Ltac step :=
   ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ]));
   intros;
-  try ( cancel ; try ( progress autorewrite with core in * ; cancel ) );
-  try cancel; try autorewrite with core in *;
+  try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
+  try cancel; try autorewrite_fast;
   intuition eauto;
   try omega;
   eauto.
