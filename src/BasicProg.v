@@ -200,20 +200,20 @@ Theorem for_ok':
          (nocrash : G -> addr -> L -> pred)
          (crashed : G -> pred)
          (li : L),
-  {{ fun done crash => exists (g:G), nocrash g i li
+  {{ fun done crash => exists F (g:G), F * nocrash g i li
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
       (forall lSm,
-       {{ fun done' crash' => nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun done' crash' => F * nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun done' crash' => nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      {{ fun done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
       }} f m lm rxm]]
    * [[forall lfinal,
-       {{ fun done' crash' => nocrash g (n ^+ i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun done' crash' => F * nocrash g (n ^+ i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
-   * [[crashed g ==> crash]]
+   * [[F * crashed g ==> crash]]
   }} (For_ f i n li nocrash crashed rx).
 Proof.
   match goal with
@@ -222,6 +222,7 @@ Proof.
   end.
 
   intros.
+  apply corr_exists; intros.
   apply corr_exists; intros.
   case_eq (weq x $0); intros; subst.
 
@@ -274,6 +275,7 @@ Admitted.
       omega.
 
       apply pimpl_exists_r; exists a.
+      apply pimpl_exists_r; exists a0.
       ring_simplify (i ^+ $1 ^+ (x ^- $1)).
       ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       cancel.
@@ -319,18 +321,18 @@ Theorem for_ok:
          (nocrash : G -> addr -> L -> pred)
          (crashed : G -> pred)
          (li : L),
-  {{ fun done crash => exists (g:G), nocrash g $0 li
+  {{ fun done crash => exists F (g:G), F * nocrash g $0 li
    * [[forall m lm rxm,
       (m < n)%word ->
       (forall lSm,
-       {{ fun done' crash' => nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun done' crash' => F * nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun done' crash' => nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      {{ fun done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
       }} f m lm rxm]]
    * [[forall lfinal,
-       {{ fun done' crash' => nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun done' crash' => F * nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
-   * [[crashed g ==> crash]]
+   * [[F * crashed g ==> crash]]
   }} For_ f $0 n li nocrash crashed rx.
 Proof.
   intros.
@@ -339,6 +341,7 @@ Proof.
   fold (wzero addrlen); ring_simplify (wzero addrlen ^+ n).
   simpl (wordToNat (wzero addrlen)); replace (0 + wordToNat n) with (wordToNat n) by omega.
   ring_simplify (n ^+ wzero addrlen).
+  cancel.
   cancel.
 Qed.
 
