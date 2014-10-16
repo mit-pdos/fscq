@@ -41,6 +41,18 @@ Proof.
   eauto.
 Qed.
 
+Theorem pimpl3_ok:
+  forall pre pre' p r,
+  {{pre'}} p >> r ->
+  (forall done crashdone, pre done crashdone ==> pre' done crashdone) ->
+  {{pre}} p >> r.
+Proof.
+  unfold corr3; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
 Theorem pimpl_ok_cont :
   forall pre pre' A (k : A -> _) x y,
   {{pre'}} k y ->

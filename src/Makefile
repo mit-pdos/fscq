@@ -1,7 +1,7 @@
 OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
 MODULES    := Nomega Word \
-	      Prog Pred Hoare SepAuto \
+	      Prog Pred Hoare SepAuto Idempotent \
 	      BasicProg Array \
 	      Log Balloc \
 	      Testprog \

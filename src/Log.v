@@ -11,9 +11,7 @@ Require Import Word.
 Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Array.
-(*
 Require Import Idempotent.
-*)
 
 Set Implicit Arguments.
 
@@ -349,7 +347,7 @@ Module LOG.
     unfold abort; log_unfold.
     hoare.
     eapply pimpl_trans; [|eapply pimpl_trans; [eassumption|] ]; [| cancel].
-    (* RHS OR handling is poor *)
+    (* XXX RHS OR handling is poor *)
     cancel.
     cancel.
   Qed.
@@ -543,6 +541,8 @@ Module LOG.
     subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
     congruence.
     congruence.
+    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
+    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
@@ -739,6 +739,7 @@ Module LOG.
      * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
            * [[ done' = done ]] * [[ crash' = crash ]]
           }} rx v ]]
+     * [[ rep xp (ActiveTxn m1 m2) * F ==> crash ]]
     }} read xp a rx.
   Proof.
     unfold read; log_unfold.
@@ -752,19 +753,39 @@ Module LOG.
 
     hoare.
 
-    (* XXX some unification goes wrong! *)
-  Admitted.
-(*
     erewrite wordToNat_plusone; [ apply replay_last_eq |]; helper_wordcmp; eauto.
+    congruence.
+    congruence.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+
     erewrite wordToNat_plusone; [ apply replay_last_ne |]; helper_wordcmp; eauto.
+    congruence.
+    congruence.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    congruence.
+    congruence.
 
     helper_wordcmp. rewrite firstn_length in *.
     match goal with
     | [ H: (_ |-> _ * _)%pred _ |- _ ] => apply sep_star_ptsto_some in H
     end.
     congruence.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    instantiate (1:=(LogCommit xp |-> $ (0) * diskIs m * LogLength xp |-> addr2valu $ (length l) *
+logentry_ptsto_list xp l 0 *
+avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length l) * 2))%pred).
+    cancel.
+
+    eauto.
+    eauto.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    cancel.
   Qed.
-*)
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
 
@@ -783,6 +804,7 @@ Module LOG.
      * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
            * [[ done' = done ]] * [[ crash' = crash ]]
           }} rx (sel vs i) ]]
+     * [[ rep xp (ActiveTxn mbase m) * F ==> crash ]]
     }} read_array xp a i rx.
   Proof.
     intros.
@@ -794,7 +816,8 @@ Module LOG.
      * [[ wordToNat i < length vs ]]
      * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
            * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx (sel vs i) ]])%pred.
+          }} rx (sel vs i) ]]
+     * [[ rep xp (ActiveTxn mbase m) * F ==> crash ]])%pred.
     unfold read_array.
     eapply pimpl_ok.
     apply read_ok.
@@ -805,6 +828,8 @@ Module LOG.
 
     step.
 
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+
     cancel; eauto; try step.
     eexists.
     pred_apply.
@@ -812,6 +837,8 @@ Module LOG.
     eapply pimpl_sep_star; [| apply pimpl_refl ].
     apply isolate_fwd; eauto.
     cancel.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
   Qed.
 
   Theorem write_array_ok : forall xp a i v rx,
@@ -993,9 +1020,6 @@ Module LOG.
     unfold apply; log_unfold.
     step.
     step.
-    (* XXX some unfortunate unification! *)
-  Admitted.
-(*
     step.
     step.
     step.
@@ -1008,6 +1032,18 @@ Module LOG.
     rewrite replay_logupd; auto; helper_wordcmp.
     erewrite wordToNat_plusone; eauto.
     rewrite replay_skip_more; auto; helper_wordcmp.
+
+    congruence.
+    congruence.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r; left. cancel.
+    (* XXX fix up later *)
+  Admitted.
+(*
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+
 
     step.
     step.
@@ -1069,20 +1105,26 @@ Module LOG.
     congruence.
     congruence.
 
-    subst.
-    eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
     log_unfold; cancel.
-    (* XXX problem: our hypothesis H0 is that, in part,
-     *   rep xp (CommittedTxn m2) * F ==> crash.
-     * now we have to prove that rep xp (CommittedTxn m2) * F ==> crash.
-     * unfortunately, there's an [exists] inside CommittedTxn!
-     * so these two [exists] might not be the same, so we cannot prove
-     * the goal using that hypothesis..  hmm.
-     *)
-  Admitted.
-(*
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r. right.
+    eapply pimpl_or_r. left.
+    cancel.
+    congruence.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    log_unfold; cancel.
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r. right.
+    eapply pimpl_or_r. right.
+    cancel.
+
+    assert (m0 = replay l m) by (apply functional_extensionality; auto).
+    subst; cancel.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
   Qed.
-*)
 
   Hint Extern 1 ({{_}} progseq (commit _) _) => apply commit_ok : prog.
 
@@ -1109,66 +1151,88 @@ Module LOG.
 
   Ltac log_unfold' := unfold log_intact; log_unfold.
 
-  Theorem recover_ok : forall xp rx rec crashid,
-    {{ exists m F rxcrash, log_intact xp m F
-     * [[ forall rec',
-          {{ rep xp (NoTransaction m) * F
-           * [[ {{ rxcrash }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx tt >> CheckID crashid ;; rec' ]]
-     * [[ {{ log_intact xp m F \/ rxcrash }} rec >> CheckID crashid ;; rec ]]
-    }} recover xp rx >> CheckID crashid ;; rec.
+  Theorem recover_ok : forall xp rx,
+    {{ fun done crash => exists m F, log_intact xp m F
+     * [[ {{ fun done' crash' => rep xp (NoTransaction m) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx tt ]]
+     * [[ log_intact xp m F ==> crash ]]
+    }} recover xp rx.
   Proof.
     unfold recover; hoare_unfold log_unfold'.
+    congruence.
+    congruence.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    congruence.
+    congruence.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r. right.
+    eapply pimpl_or_r. left.
+    cancel.
+
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    assert (m = replay l m0) by ( apply functional_extensionality; auto ).
+    subst; cancel.
+
+    congruence.
+    congruence.
+
+    log_unfold'.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r. right.
+    eapply pimpl_or_r. right.
+    cancel.
+    congruence.
+
+    log_unfold'.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r. left.
+    cancel.
+    assert (m = replay l m0) by ( apply functional_extensionality; auto ).
+    subst; cancel.
+
+    log_unfold'.
+    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
 
-  Theorem recover_idem_base_ok : forall xp rx rec crashid,
-    {{ exists m F, log_intact xp m F
-     * [[ crashid = check_id (log_intact xp m F) ]]
-     * [[ forall rec',
-          {{ rep xp (NoTransaction m) * F
-           * [[ {{ log_intact xp m F }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx tt >> CheckID crashid ;; rec' ]]
-     * [[ {{ log_intact xp m F }} rec >> CheckID crashid ;; rec ]]
-    }} recover xp rx >> CheckID crashid ;; rec.
-  Proof.
-    unfold recover; hoare_unfold log_unfold'.
-  Qed.
+  Theorem corr3_from_corr2': forall p r ppre rpre, {{ ppre }} p
+    -> {{ rpre }} r
+    -> {{ fun done crashdone => exists crash,
+          ppre done crash * [[ crash ==> rpre crashdone crash ]] }} p >> r.
+  Admitted.
 
-  Theorem recover_pp : forall xp rx,
-    preserves_precondition (exists m F rec, log_intact xp m F
-     * [[ forall rec',
-          {{ rep xp (NoTransaction m) * F
-           * [[ {{ log_intact xp m F }} rec' >> Check (log_intact xp m F) ;; rec' ]]
-          }} rx tt >> Check (log_intact xp m F) ;; rec' ]]
-     * [[ {{ log_intact xp m F }} rec >> Check (log_intact xp m F) ;; rec ]])%pred
-    (recover xp rx).
+  Theorem read_recover_ok : forall xp a rxOK rxREC,
+    {{ fun done crashdone => exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
+     * [[ exists F', (a |-> v * F') m2 ]]
+     * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
+           * [[ done' = done ]] * [[ crash' ==> log_intact xp m1 F ]] }} rxOK v ]]
+     * [[ {{ fun done' crash' => rep xp (NoTransaction m1) * F
+           * [[ done' = crashdone ]] * [[ crash' ==> log_intact xp m1 F ]] }} rxREC tt ]]
+    }} read xp a rxOK >> recover xp rxREC.
   Proof.
     intros.
-    do 3 (eapply pp_exists; intros).
-    unfold Check.
-    eapply corr_to_pp.
-    eapply pimpl_ok. apply recover_idem_base_ok.
-    cancel. eassumption.
-    rewrite check_id_ok.
-    cancel.
-    cancel.
-  Qed.
+    eapply pimpl3_ok.
+    eapply corr3_from_corr2'.
+    eapply read_ok.
+    eapply recover_ok.
 
-  Theorem recover_idem_ok : forall xp rx, exists crashid,
-    {{ exists m F rec, log_intact xp m F
-     * [[ forall rec',
-          {{ rep xp (NoTransaction m) * F
-           * [[ {{ log_intact xp m F }} rec' >> Check (log_intact xp m F) ;; rec' ]]
-          }} rx tt >> Check (log_intact xp m F) ;; rec' ]]
-     * [[ {{ log_intact xp m F }} rec >> Check (log_intact xp m F) ;; rec ]]
-    }} CheckID crashid ;; recover xp rx >> CheckID crashid ;; recover xp rx.
-  Proof.
-    intros.
-    eexists.
-    apply idempotent_ok.
-    apply recover_pp.
+    intros; simpl.
+    norm.
+    cancel.
+
+    instantiate (a:=log_intact xp m p).
+    intuition eauto.
+
+    step.
+    unfold log_intact; cancel.
+    cancel.
+    step.
   Qed.
 
 End LOG.

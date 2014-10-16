@@ -234,6 +234,7 @@ Theorem read_ok:
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a vs * F * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx (sel vs i)]]
+   * [[array a vs * F ==> crash]]
   }} ArrayRead a i rx.
 Proof.
   intros.
@@ -246,13 +247,20 @@ Proof.
            * (a ^+ i) |-> sel vs i
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
            * [[ done' = done ]] * [[ crash' = crash ]]
-        }} rx (sel vs i)]])%pred.
+        }} rx (sel vs i)]]
+    * [[array a (firstn (wordToNat i) vs)
+        * (a ^+ i) |-> sel vs i
+        * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F ==> crash]]
+  )%pred.
 
   rewrite ArrayRead_eq.
   eapply pimpl_ok.
   apply read_ok.
   cancel.
   eapply pimpl_ok; [ eauto | cancel; eassumption ].
+
+  eapply pimpl_trans; [ | eassumption ].
+  cancel.
 
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
@@ -265,6 +273,12 @@ Proof.
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; eassumption ] ].
   cancel.
+
+  eapply pimpl_trans; [ | eassumption ].
+  cancel.
+
+  (* XXX figure this out *)
+  admit.
 Qed.
 
 Theorem write_ok:
@@ -359,8 +373,9 @@ Proof.
   congruence.
   congruence.
   (* XXX weird kind of automation.. *)
-  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
 Qed.
 
 Definition swap a i j rx :=
@@ -384,6 +399,8 @@ Proof.
   unfold swap; hoare.
   congruence.
   congruence.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
   subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
   subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
   subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
