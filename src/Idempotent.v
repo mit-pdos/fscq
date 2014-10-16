@@ -4,6 +4,21 @@ Require Import Pred.
 Require Import SepAuto.
 Require Import Classical_Prop.
 
+Theorem corr3_from_corr2: forall p r ppre rpre crash, {{ ppre }} p
+  -> {{ rpre }} r
+  -> (forall done, ppre done crash ==> [crash ==> exists rdone, rpre rdone crash])
+  -> (forall done, rpre done crash ==> [crash ==> rpre done crash])
+  -> {{ fun done crashdone =>
+        ppre done crash *
+        [[ {{ fun done' crash' => rpre done' crash' * [[ done' = crashdone ]] }} r ]]
+     }} p >> r.
+Proof.
+  unfold corr3; intros.
+  apply sep_star_lift2and in H3; unfold lift in H3; destruct H3.
+  induction H4; eauto.
+  - exfalso. eapply H; eauto.
+
+
 Definition preserves_precondition (pre : pred) p :=
   forall m m' out, pre m -> exec m p m' out -> pre m' /\ out <> Failed.
 
