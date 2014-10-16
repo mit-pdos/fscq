@@ -35,7 +35,7 @@ Ltac inv_exec_recover :=
 
 Ltac inv_exec :=
   match goal with
-  | [ H: exec _ _ _ _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
 Theorem read_ok:
@@ -43,6 +43,7 @@ Theorem read_ok:
   {{ fun done crash => exists v F, a |-> v * F
    * [[ {{ fun done' crash' => a |-> v * F
          * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
+   * [[ a |-> v * F ==> crash ]]
   }} Read a rx.
 Proof.
   unfold corr2, exis; intros; repeat deex.
@@ -50,12 +51,10 @@ Proof.
   unfold lift in *; simpl in *.
   inv_exec.
   - apply ptsto_valid in H. congruence.
-  - eapply H1. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
+  - eapply H2. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply ptsto_valid in H. repeat inv_option.
-    eauto. eauto.
-  - eapply H1. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
-    apply ptsto_valid in H. repeat inv_option.
-    eapply XCrashFail with (m':=m); eauto. eauto.
+    eauto.
+  - right. eexists; intuition eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
@@ -77,13 +76,7 @@ Proof.
     repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     eapply ptsto_upd; eauto.
     eauto.
-    eauto.
-  - eapply H2. instantiate (1:=upd m a v).
-    repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
-    eapply ptsto_upd; eauto.
-    instantiate (2:=m).
-    eauto.
-    eauto.
+  - right. eexists; intuition eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
@@ -229,10 +222,12 @@ Proof.
   - eapply pimpl_pre; intros; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl, lift; intros.
       rewrite For_step.
-      (* XXX EXISTENTIAL PROBLEM
-       * cannot use [done] in [?pre'] because the [?pre'] came from [eapply pimpl_pre]
-       * and the [done] came later from the [intros].
-       *)
+      eapply pimpl_ok.
+      simpl; eauto.
+      instantiate (1:=(fun _ _ => a * nocrash a0 ($ (0) ^+ i) li)%pred).
+      intros; simpl.
+      cancel.
+      (* XXX something wrong with the done'=done requirements *)
 Admitted.
 
 (*
@@ -394,10 +389,14 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
 Theorem read_array_ok : forall a rx,
   {{ fun done crash => exists m v F, diskIs m * F * [[ m @ a |-> v ]]
    * [[ {{ fun done' crash' => diskIs m * F * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
+   * [[ diskIs m * F ==> crash ]]
   }} read_array a rx.
 Proof.
   unfold read_array.
   hoare.
+  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ].
+  cancel.
+  cancel.
 Qed.
 
 Definition write_array a v rx :=
@@ -426,7 +425,6 @@ Proof.
   unfold write_array, indomain.
   hoare.
 
-  (* XXX weird new kind of situation that needs automation... *)
   eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ].
   cancel.
   cancel.
