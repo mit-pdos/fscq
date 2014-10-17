@@ -394,9 +394,6 @@ Theorem read_array_ok : forall a rx,
 Proof.
   unfold read_array.
   hoare.
-  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ].
-  cancel.
-  cancel.
 Qed.
 
 Definition write_array a v rx :=
@@ -424,10 +421,6 @@ Theorem write_array_ok : forall a v rx,
 Proof.
   unfold write_array, indomain.
   hoare.
-
-  eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ].
-  cancel.
-  cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (read_array _) _) => apply read_array_ok : prog.

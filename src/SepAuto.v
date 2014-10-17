@@ -590,9 +590,22 @@ Ltac norm := unfold pair_args_helper;
              solve [ exfalso ; auto with false_precondition_hint ] ||
              ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] ).
 
+Ltac pimpl_crash :=
+  try match goal with
+  | [ |- _ ==> emp * _ ] => eapply pimpl_trans; [| eapply pimpl_star_emp ]
+  end;
+  match goal with
+  | [ |- _ ==> ?crash ] =>
+    match goal with
+    | [ H: _ ==> crash |- _ ] =>
+      eapply pimpl_trans; [| eexact H ]
+    end
+  end.
+
 Ltac cancel :=
   intros;
   unfold stars; simpl;
+  try pimpl_crash;
   norm;
   try match goal with
       | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
