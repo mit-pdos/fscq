@@ -45,9 +45,8 @@ Proof.
     + inversion H1; clear H1; subst; do_inj_pair2.
       repeat eexists; intros; try congruence.
       edestruct H0; eauto; repeat deex; try congruence.
-      admit.
-      (* inversion H4; subst; do_inj_pair2.
-      eauto. *)
+      inversion H3; subst; do_inj_pair2.
+      eauto.
     + inversion H1; clear H1; subst; do_inj_pair2.
       destruct c0.
       * clear IHexec_recover.
