@@ -9,11 +9,28 @@ Ltac do_inj_pair2 :=
   | [ H: existT _ _ _ = existT _ _ _ |- _ ] => apply inj_pair2 in H; subst
   end.
 
-Theorem corr3_from_corr2: forall p r ppre rpre crash, {{ ppre }} p
+Theorem corr2_from_corr3: forall p pre, {{ pre }} p >> Done tt
+  -> {{ fun done crash => pre done (fun _ _ => crash) }} p.
+Proof.
+  unfold corr2; intros.
+  destruct out.
+  - exfalso.
+    edestruct H; eauto; repeat deex; try congruence.
+  - edestruct H; eauto; repeat deex.
+    inversion H3; subst; do_inj_pair2.
+    left. repeat eexists; eauto.
+  - edestruct H; eauto; repeat deex.
+    inversion H3; subst; do_inj_pair2.
+    right. repeat eexists; eauto.
+Qed.
+
+Theorem corr3_from_corr2: forall p r ppre rpre, {{ ppre }} p
   -> {{ rpre }} r
-  -> {{ fun done crashdone => ppre done crash * [[ crash ==> rpre crashdone crash ]] }} p >> r.
+  -> {{ fun done crashdone => exists crash,
+        ppre done crash * [[ crash ==> rpre crashdone crash ]] }} p >> r.
 Proof.
   unfold corr3; intros.
+  destruct H1. rename x into crash.
   apply sep_star_lift2and in H1; unfold lift in H1; destruct H1.
   inversion H2; subst.
   - exfalso.

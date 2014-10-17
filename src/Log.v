@@ -1201,12 +1201,6 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
 
   Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
 
-  Theorem corr3_from_corr2': forall p r ppre rpre, {{ ppre }} p
-    -> {{ rpre }} r
-    -> {{ fun done crashdone => exists crash,
-          ppre done crash * [[ crash ==> rpre crashdone crash ]] }} p >> r.
-  Admitted.
-
   Theorem read_recover_ok : forall xp a rxOK rxREC,
     {{ fun done crashdone => exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
      * [[ exists F', (a |-> v * F') m2 ]]
@@ -1218,7 +1212,7 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
   Proof.
     intros.
     eapply pimpl3_ok.
-    eapply corr3_from_corr2'.
+    eapply corr3_from_corr2.
     eapply read_ok.
     eapply recover_ok.
 
