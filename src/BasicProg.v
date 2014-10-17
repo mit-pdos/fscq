@@ -215,14 +215,14 @@ Proof.
   end.
 
   intros.
-  apply corr_exists; intros.
-  apply corr_exists; intros.
+  apply corr2_exists; intros.
+  apply corr2_exists; intros.
   case_eq (weq x $0); intros; subst.
 
-  - eapply pimpl_pre; intros; repeat ( apply sep_star_lift_l; intros ).
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + unfold pimpl, lift; intros.
       rewrite For_step.
-      eapply pimpl_ok.
+      eapply pimpl_ok2.
       simpl; eauto.
       instantiate (1:=(fun _ _ => a * nocrash a0 ($ (0) ^+ i) li)%pred).
       intros; simpl.
@@ -331,7 +331,7 @@ Theorem for_ok:
   }} For_ f $0 n li nocrash crashed rx.
 Proof.
   intros.
-  eapply pimpl_ok.
+  eapply pimpl_ok2.
   apply for_ok'.
   fold (wzero addrlen); ring_simplify (wzero addrlen ^+ n).
   simpl (wordToNat (wzero addrlen)); replace (0 + wordToNat n) with (wordToNat n) by omega.

@@ -612,8 +612,10 @@ Ltac autorewrite_fast :=
 Ltac step :=
   intros;
   try cancel;
-  ((eapply pimpl_ok; [ solve [ eauto with prog ] | ])
-   || (eapply pimpl_ok_cont; [ solve [ eauto with prog ] | | ]));
+  ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
+   || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
+   || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
+   || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ]));
   intros;
   try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
   try cancel; try autorewrite_fast;

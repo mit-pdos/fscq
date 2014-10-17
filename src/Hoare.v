@@ -29,7 +29,7 @@ Notation "{{ pre }} p1 >> p2" := (corr3 pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
 
 
-Theorem pimpl_ok:
+Theorem pimpl_ok2:
   forall pre pre' pr,
   {{pre'}} pr ->
   (forall done crash, pre done crash ==> pre' done crash) ->
@@ -41,7 +41,7 @@ Proof.
   eauto.
 Qed.
 
-Theorem pimpl3_ok:
+Theorem pimpl_ok3:
   forall pre pre' p r,
   {{pre'}} p >> r ->
   (forall done crashdone, pre done crashdone ==> pre' done crashdone) ->
@@ -53,7 +53,7 @@ Proof.
   eauto.
 Qed.
 
-Theorem pimpl_ok_cont :
+Theorem pimpl_ok2_cont :
   forall pre pre' A (k : A -> _) x y,
   {{pre'}} k y ->
   (forall done crash, pre done crash ==> pre' done crash) ->
@@ -67,7 +67,21 @@ Proof.
   firstorder.
 Qed.
 
-Theorem pimpl_pre:
+Theorem pimpl_ok3_cont :
+  forall pre pre' A (k : A -> _) x y r,
+  {{pre'}} k y >> r ->
+  (forall done crashdone, pre done crashdone ==> pre' done crashdone) ->
+  (forall done crashdone, pre done crashdone ==> exists F, F * [[x = y]]) ->
+  {{pre}} k x >> r.
+Proof.
+  unfold corr3, pimpl; intros.
+  edestruct H1; eauto.
+  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
+  unfold lift in H4; rewrite H4 in *; eauto.
+  firstorder.
+Qed.
+
+Theorem pimpl_pre2:
   forall pre pre' pr,
   (forall done crash, pre done crash ==> [{{pre'}} pr])
   -> (forall done crash, pre done crash ==> pre' done crash)
@@ -79,7 +93,19 @@ Proof.
   eauto.
 Qed.
 
-Theorem pre_false:
+Theorem pimpl_pre3:
+  forall pre pre' p r,
+  (forall done crashdone, pre done crashdone ==> [{{pre'}} p >> r])
+  -> (forall done crashdone, pre done crashdone ==> pre' done crashdone)
+  -> {{pre}} p >> r.
+Proof.
+  unfold corr3; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
+Theorem pre_false2:
   forall pre p,
   (forall done crash, pre done crash ==> [False])
   -> {{ pre }} p.
@@ -87,7 +113,16 @@ Proof.
   firstorder.
 Qed.
 
-Theorem corr_exists:
+Theorem pre_false3:
+  forall pre p r,
+  (forall done crashdone, pre done crashdone ==> [False])
+  -> {{ pre }} p >> r.
+Proof.
+  firstorder.
+Qed.
+
+
+Theorem corr2_exists:
   forall T pre p,
   (forall (a:T), {{ fun done crash => pre done crash a }} p)
   -> {{ fun done crash => exists a:T, pre done crash a }} p.
@@ -97,11 +132,31 @@ Proof.
   eapply H; eauto.
 Qed.
 
-Theorem corr_forall: forall T pre p,
+Theorem corr3_exists:
+  forall T pre p r,
+  (forall (a:T), {{ fun done crashdone => pre done crashdone a }} p >> r)
+  -> {{ fun done crashdone => exists a:T, pre done crashdone a }} p >> r.
+Proof.
+  unfold corr3; intros.
+  destruct H0.
+  eapply H; eauto.
+Qed.
+
+Theorem corr2_forall: forall T pre p,
   {{ fun done crash => exists a:T, pre done crash a }} p
   -> forall (a:T), {{ fun done crash => pre done crash a }} p.
 Proof.
   unfold corr2; intros.
+  eapply H.
+  exists a; eauto.
+  eauto.
+Qed.
+
+Theorem corr3_forall: forall T pre p r,
+  {{ fun done crashdone => exists a:T, pre done crashdone a }} p >> r
+  -> forall (a:T), {{ fun done crashdone => pre done crashdone a }} p >> r.
+Proof.
+  unfold corr3; intros.
   eapply H.
   exists a; eauto.
   eauto.
