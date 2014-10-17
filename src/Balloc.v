@@ -212,10 +212,33 @@ Module BALLOC.
     Rof;;
     rx None.
 
-  Theorem sel_avail : forall a bn len, (bn < len)%word ->
-    sel (map (fun i => alloc_state_to_valu (a $ i)) (seq 0 (wordToNat len))) bn = $0 ->
-    a bn = Avail.
-  Admitted.
+  Theorem sel_avail : forall len a bn start, (bn < $ len)%word ->
+    sel (map (fun i => alloc_state_to_valu (a $ i)) (seq start len)) bn = $0 ->
+    a (bn ^+ $ start) = Avail.
+  Proof.
+    unfold sel.
+    induction len; intros; simpl.
+    - exfalso. apply wlt_lt in H. simpl in H. omega.
+    - simpl in H0.
+      destruct (weq bn $0); subst; simpl in *.
+      + rewrite wplus_unit.
+        unfold alloc_state_to_valu in *.
+        destruct (a $ start); auto.
+        apply natToWord_inj in H0.
+        discriminate.
+        admit.
+        admit.
+      + case_eq (wordToNat bn); intros.
+        * admit.
+        * rewrite H1 in *.
+          replace (bn ^+ $ start) with ((bn ^- $1) ^+ $ (S start)).
+          apply IHlen.
+          admit.
+          replace (wordToNat (bn ^- $1)) with (n0).
+          auto.
+          admit.
+          admit.
+  Qed.
 
   Theorem alloc_ok: forall lxp xp rx,
     {{ fun done crash => exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
