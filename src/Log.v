@@ -1089,7 +1089,7 @@ Module LOG.
     extract_functional_extensionality; log_unfold; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
   Theorem read_recover_ok : forall xp a rxOK rxREC,
     {{ fun done crashdone => exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F

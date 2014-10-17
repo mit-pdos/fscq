@@ -160,21 +160,19 @@ Module BALLOC.
     replace ($0) with (wzero addrlen) by auto; ring.
   Qed.
 
-  Theorem free_ok : forall lxp xp bn rx rec crashid,
-    {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
+  Theorem free_ok : forall lxp xp bn rx,
+    {{ fun done crash => exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
      * [[ (Fm * rep xp bmap)%pred m ]]
      * [[ (bn < BmapLen xp)%word ]]
-     * [[ forall rec',
-          {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
+     * [[ {{ fun done' crash' => exists m', F * LOG.rep lxp (ActiveTxn mbase m')
            * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
-           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx true >> CheckID crashid ;; rec' ]]
-     * [[ forall rec',
-          {{ F * LOG.rep lxp (ActiveTxn mbase m)
-           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx false >> CheckID crashid ;; rec' ]]
-     * [[ {{ LOG.log_intact lxp mbase F }} rec >> CheckID crashid ;; rec ]]
-    }} free lxp xp bn rx >> CheckID crashid ;; rec.
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx true ]]
+     * [[ {{ fun done' crash' => F * LOG.rep lxp (ActiveTxn mbase m)
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx false ]]
+     * [[ LOG.log_intact lxp mbase F ==> crash ]]
+    }} free lxp xp bn rx.
   Proof.
     unfold free, rep.
     step.
@@ -184,12 +182,11 @@ Module BALLOC.
     erewrite <- upd_bupd; [|eauto].
     pred_apply; cancel.
     step.
-    step.
     unfold LOG.log_intact.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (free _ _ _) _ >> _) => apply free_ok : prog.
+  Hint Extern 1 ({{_}} progseq (free _ _ _) _) => apply free_ok : prog.
 
   Definition alloc lxp xp rx :=
     For i < (BmapLen xp)
@@ -220,27 +217,30 @@ Module BALLOC.
     a bn = Avail.
   Admitted.
 
-  Theorem alloc_ok: forall lxp xp rx rec crashid,
-    {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
+  Theorem alloc_ok: forall lxp xp rx,
+    {{ fun done crash => exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
      * [[ (Fm * rep xp bmap)%pred m ]]
-     * [[ forall bn, bmap bn = Avail
-          -> forall rec',
-          {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
+     * [[ forall bn, bmap bn = Avail ->
+          {{ fun done' crash' => exists m', F * LOG.rep lxp (ActiveTxn mbase m')
            * [[ (Fm * rep xp (bupd bmap bn InUse))%pred m' ]]
-           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx (Some bn) >> CheckID crashid ;; rec' ]]
-     * [[ forall rec',
-          {{ F * LOG.rep lxp (ActiveTxn mbase m)
-           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx None >> CheckID crashid ;; rec' ]]
-     * [[ {{ LOG.log_intact lxp mbase F }} rec >> CheckID crashid ;; rec ]]
-    }} alloc lxp xp rx >> CheckID crashid ;; rec.
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx (Some bn) ]]
+     * [[ {{ fun done' crash' => F * LOG.rep lxp (ActiveTxn mbase m)
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx None ]]
+     * [[ LOG.log_intact lxp mbase F ==> crash ]]
+    }} alloc lxp xp rx.
   Proof.
     unfold alloc, rep.
     step.
+
+    (* XXX what the heck happened here? *)
+    instantiate (2:=emp); cancel.
+
     step.
     eexists. pred_apply. cancel.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
+
     step.
     step.
     pred_apply. cancel.
@@ -250,9 +250,9 @@ Module BALLOC.
      * the continuation [rx], and [eauto with prog] picks the wrong one:
      * it chooses [rx None] when we should be using [rx (Some bn)].
      *)
-    eapply pimpl_ok_cont.
+    eapply pimpl_ok2_cont.
     match goal with
-    | [ H: forall bn, _ -> forall _, {{ _ }} rx (Some bn) >> _ |- _ ] => apply H
+    | [ H: forall bn, _ -> {{ _ }} rx (Some bn) |- _ ] => apply H
     end.
 
     eapply sel_avail; [| eauto ]; auto.
@@ -261,69 +261,51 @@ Module BALLOC.
     pred_apply. erewrite <- upd_bupd; auto. cancel.
 
     step.
-    cancel.
-
     step.
-    step.
-    unfold LOG.log_intact; cancel.
-    unfold LOG.log_intact; cancel.
     unfold LOG.log_intact; cancel.
 
-    step.
-    step.
     step.
     unfold LOG.log_intact; cancel.
     step.
     unfold LOG.log_intact; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (alloc _) _ >> _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (alloc _) _) => apply alloc_ok : prog.
 
-  Theorem free_recover_ok : forall lxp xp bn rx rec crashid,
-    {{ exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
+  Theorem free_recover_ok : forall lxp xp bn rx rec,
+    {{ fun done crashdone => exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
      * [[ (Fm * rep xp bmap)%pred m ]]
      * [[ (bn < BmapLen xp)%word ]]
-
-     * [[ forall rec',
-          {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
+     * [[ {{ fun done' crash' => exists m', F * LOG.rep lxp (ActiveTxn mbase m')
            * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
-           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx true >> CheckID crashid ;; rec' ]]
-     * [[ forall rec',
-          {{ F * LOG.rep lxp (ActiveTxn mbase m)
-           * [[ {{ LOG.log_intact lxp mbase F }} rec' >> CheckID crashid ;; rec' ]]
-          }} rx false >> CheckID crashid ;; rec' ]]
-(*
-     * [[ forall rec',
-          {{ exists m', F * LOG.rep lxp (ActiveTxn mbase m')
-           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
-           * [[ {{ LOG.rep lxp (NoTransaction mbase) * F
-                }} rec' >> Check (LOG.log_intact lxp mbase F) ;; rec' ]]
-          }} rx true >> CheckID crashid ;; LOG.recover lxp ;; rec' ]]
-     * [[ forall rec',
-          {{ F * LOG.rep lxp (ActiveTxn mbase m)
-           * [[ {{ LOG.rep lxp (NoTransaction mbase) * F
-                }} rec' >> Check (LOG.log_intact lxp mbase F) ;; rec' ]]
-          }} rx false >> CheckID crashid ;; LOG.recover lxp ;; rec' ]]
-*)
-     * [[ {{ LOG.rep lxp (NoTransaction mbase) * F
-          }} rec >> CheckID crashid ;; LOG.recover lxp ;; rec ]]
-    }} v <- free lxp xp bn ; rx v >> CheckID crashid ;; LOG.recover lxp ;; rec.
+           * [[ done' = done ]] * [[ crash' = LOG.log_intact lxp mbase F ]]
+          }} rx true ]]
+     * [[ {{ fun done' crash' => F * LOG.rep lxp (ActiveTxn mbase m)
+           * [[ done' = done ]] * [[ crash' = LOG.log_intact lxp mbase F ]]
+          }} rx false ]]
+     * [[ {{ fun done' crash' => F * LOG.rep lxp (NoTransaction mbase)
+           * [[ done' = crashdone ]] * [[ crash' = LOG.log_intact lxp mbase F ]]
+          }} rec ]]
+    }} v <- free lxp xp bn ; rx v >> LOG.recover lxp ;; rec.
   Proof.
     intros.
-    step.
+    eapply pimpl_ok3.
+    eapply corr3_from_corr2.
+    eapply free_ok.
+    eapply LOG.recover_ok.
+
+    intros; simpl.
+    norm.
+    cancel.
+
+    instantiate (a:=LOG.log_intact lxp m p).
+    intuition eauto.
+
     step.
     step.
     unfold LOG.log_intact; cancel.
+    cancel.
     step.
-    step.
-    unfold LOG.log_intact; cancel.
-    edestruct LOG.recover_idem_ok.
-    eapply pimpl_ok.
-    eapply corr_drop_check1.
-    unfold progseq at 4.
-    unfold progseq at 2.
-    (* XXX *)
-  Abort.
+  Qed.
 
 End BALLOC.
