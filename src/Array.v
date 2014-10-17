@@ -238,7 +238,7 @@ Theorem read_ok:
   }} ArrayRead a i rx.
 Proof.
   intros.
-  apply pimpl_ok with (fun done crash => exists vs F,
+  apply pimpl_ok2 with (fun done crash => exists vs F,
     array a (firstn (wordToNat i) vs)
     * (a ^+ i) |-> sel vs i
     * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
@@ -254,10 +254,10 @@ Proof.
   )%pred.
 
   rewrite ArrayRead_eq.
-  eapply pimpl_ok.
+  eapply pimpl_ok2.
   apply read_ok.
   cancel.
-  eapply pimpl_ok; [ eauto | cancel; eassumption ].
+  eapply pimpl_ok2; [ eauto | cancel; eassumption ].
 
   eapply pimpl_trans; [ | eassumption ].
   cancel.
@@ -269,7 +269,7 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eauto | cancel ].
+  eapply pimpl_ok2; [ eauto | cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; eassumption ] ].
   cancel.
@@ -292,7 +292,7 @@ Theorem write_ok:
   }} ArrayWrite a i v rx.
 Proof.
   intros.
-  apply pimpl_ok with (fun done crash => exists vs F,
+  apply pimpl_ok2 with (fun done crash => exists vs F,
     array a (firstn (wordToNat i) vs)
     * (a ^+ i) |-> sel vs i
     * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F
@@ -311,15 +311,12 @@ Proof.
         ==> crash ]])%pred.
 
   rewrite ArrayWrite_eq.
-  eapply pimpl_ok.
+  eapply pimpl_ok2.
   apply write_ok.
   cancel.
-  eapply pimpl_ok; [ eauto | cancel; eassumption ].
+  eapply pimpl_ok2; [ eauto | cancel; eassumption ].
 
-  (* XXX weird new kind of automation needed *)
-  eapply pimpl_trans; [| eassumption ].
   cancel.
-
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
                                               | apply pimpl_sep_star; [ apply pimpl_refl
@@ -327,7 +324,7 @@ Proof.
   cancel.
   assumption.
 
-  eapply pimpl_ok; [ eauto | cancel ].
+  eapply pimpl_ok2; [ eauto | cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; autorewrite with core; eassumption ] ].
   autorewrite with core.
@@ -370,12 +367,6 @@ Theorem read_back_ok : forall a rx,
   }} read_back a rx.
 Proof.
   unfold read_back; hoare.
-  congruence.
-  congruence.
-  (* XXX weird kind of automation.. *)
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
 Qed.
 
 Definition swap a i j rx :=
@@ -397,12 +388,4 @@ Theorem swap_ok : forall a i j rx,
   }} swap a i j rx.
 Proof.
   unfold swap; hoare.
-  congruence.
-  congruence.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-  subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
 Qed.

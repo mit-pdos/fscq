@@ -604,7 +604,7 @@ Ltac pimpl_crash :=
 
 Ltac cancel :=
   intros;
-  unfold stars; simpl;
+  unfold stars; simpl; subst;
   try pimpl_crash;
   norm;
   try match goal with
@@ -629,11 +629,12 @@ Ltac step :=
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ]));
-  intros;
+  intros; subst;
   try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
   try cancel; try autorewrite_fast;
   intuition eauto;
   try omega;
+  try congruence;
   eauto.
 
 Ltac hoare := repeat step.
