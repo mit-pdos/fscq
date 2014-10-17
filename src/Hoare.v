@@ -29,6 +29,19 @@ Notation "{{ pre }} p1 >> p2" := (corr3 pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
 
 
+Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
+  (forall rx, corr2
+   (fun done_ crash_ =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     pre * [[ forall r_,
+             {{ fun done'_ crash'_ => (fun r => post) r_ * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
+             }} rx r_ ]] * [[ (crash)%pred ==> crash_ ]]
+     )) .. ))
+   )%pred
+   (p1 rx)%pred)
+  (at level 0, p1 at level 60, e1 binder, e2 binder, r at level 0).
+
+
 Theorem pimpl_ok2:
   forall pre pre' pr,
   {{pre'}} pr ->

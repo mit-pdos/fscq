@@ -257,7 +257,7 @@ Proof.
   eapply pimpl_ok2.
   apply read_ok.
   cancel.
-  eapply pimpl_ok2; [ eauto | cancel; eassumption ].
+  eapply pimpl_ok2_cont; [ eauto | cancel; eassumption | cancel ].
 
   cancel.
 
@@ -312,7 +312,7 @@ Proof.
   eapply pimpl_ok2.
   apply write_ok.
   cancel.
-  eapply pimpl_ok2; [ eauto | cancel; eassumption ].
+  eapply pimpl_ok2_cont; [ eauto | cancel; eassumption | cancel; destruct r_; auto ].
 
   cancel.
   cancel.

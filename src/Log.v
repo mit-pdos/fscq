@@ -501,7 +501,15 @@ Module LOG.
   Hint Resolve indomain_replay.
   Hint Resolve replay_app.
 
-  Theorem write_ok : forall xp a v rx,
+  Theorem write_ok : forall xp a v,
+    {< m1 m2 F F' v0,
+    PRE    rep xp (ActiveTxn m1 m2) * F * [[ (a |-> v0 * F')%pred m2 ]]
+    POST:r ([[ r = true ]]  * exists m', rep xp (ActiveTxn m1 m') * F
+                            * [[ (a |-> v * F')%pred m' ]]) \/
+           ([[ r = false ]] * rep xp (ActiveTxn m1 m2) * F)
+    CRASH  exists m', rep xp (ActiveTxn m1 m') * F
+    >} write xp a v.
+(*
     {{ fun done crash => exists m1 m2 F F' v0, rep xp (ActiveTxn m1 m2) * F
      * [[ (a |-> v0 * F')%pred m2 ]]
      * [[ {{ fun done' crash' => exists m', rep xp (ActiveTxn m1 m') * F
@@ -513,9 +521,13 @@ Module LOG.
           }} rx false ]]
      * [[ forall m', rep xp (ActiveTxn m1 m') * F  ==> crash ]]
     }} write xp a v rx.
+*)
   Proof.
     unfold write; log_unfold.
     hoare.
+
+    eapply pimpl_trans; [| eapply pimpl_star_emp ].
+    eapply pimpl_or_r. left. cancel.
 
     rewrite app_length; simpl; helper_wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.

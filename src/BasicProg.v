@@ -39,12 +39,12 @@ Ltac inv_exec :=
   end.
 
 Theorem read_ok:
-  forall (a:addr) (rx:valu->prog),
-  {{ fun done crash => exists v F, a |-> v * F
-   * [[ {{ fun done' crash' => a |-> v * F
-         * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
-   * [[ a |-> v * F ==> crash ]]
-  }} Read a rx.
+  forall (a:addr),
+  {< v F,
+  PRE    a |-> v * F
+  POST:r a |-> v * F * [[ r = v ]]
+  CRASH  a |-> v * F
+  >} Read a.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
@@ -60,12 +60,12 @@ Qed.
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 
 Theorem write_ok:
-  forall (a:addr) (v:valu) (rx:unit->prog),
-  {{ fun done crash => exists v0 F, a |-> v0 * F
-   * [[ {{ fun done' crash' => a |-> v * F
-         * [[ done' = done ]] * [[ crash' = crash ]] }} rx tt ]]
-   * [[ a |-> v0 * F ==> crash ]]
-  }} Write a v rx.
+  forall (a:addr) (v:valu),
+  {< v0 F,
+  PRE    a |-> v0 * F
+  POST:r a |-> v * F
+  CRASH  a |-> v0 * F
+  >} Write a v.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
