@@ -259,7 +259,6 @@ Proof.
   cancel.
   eapply pimpl_ok2; [ eauto | cancel; eassumption ].
 
-  eapply pimpl_trans; [ | eassumption ].
   cancel.
 
   cancel.
@@ -267,18 +266,17 @@ Proof.
                                               | apply pimpl_sep_star; [ apply pimpl_refl
                                                                       | apply isolate_fwd; eassumption ] ] | ].
   cancel.
-  assumption.
+  eauto.
 
   eapply pimpl_ok2; [ eauto | cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
                                                 | apply isolate_bwd; eassumption ] ].
   cancel.
 
-  eapply pimpl_trans; [ | eassumption ].
   cancel.
-
-  (* XXX figure this out *)
-  admit.
+  eapply pimpl_trans; [| eapply pimpl_star_emp].
+  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eauto ].
+  cancel.
 Qed.
 
 Theorem write_ok:
@@ -305,9 +303,9 @@ Proof.
     * [[(array a (firstn (wordToNat i) vs)
         * (a ^+ i) |-> sel vs i
         * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F) \/
-        (array a (firstn (wordToNat i) vs)
-        * (a ^+ i) |-> v
-        * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F)
+        (array a (firstn (wordToNat i) (upd vs i v))
+        * (a ^+ i) |-> sel (upd vs i v) i
+        * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) (upd vs i v)) * F)
         ==> crash ]])%pred.
 
   rewrite ArrayWrite_eq.
@@ -322,7 +320,7 @@ Proof.
                                               | apply pimpl_sep_star; [ apply pimpl_refl
                                                                       | apply isolate_fwd; eassumption ] ] | ].
   cancel.
-  assumption.
+  auto.
 
   eapply pimpl_ok2; [ eauto | cancel ].
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
@@ -332,19 +330,20 @@ Proof.
   autorewrite with core.
   cancel.
 
-  eapply pimpl_trans; [| eassumption ].
   cancel.
 
-  (* XXX messy! *)
-(*
+  eapply pimpl_trans; [| eapply pimpl_star_emp].
+  eapply pimpl_or_r; left. cancel.
+  eapply pimpl_trans; [| eapply pimpl_star_emp].
+  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
+  cancel.
 
-  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
-                                                | apply isolate_bwd; autorewrite with core; eassumption ] ].
-  autorewrite with core.
+  eapply pimpl_trans; [| eapply pimpl_star_emp].
+  eapply pimpl_or_r; right. cancel.
+  eapply pimpl_trans; [| eapply pimpl_star_emp].
+  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
   cancel.
 Qed.
-*)
-Admitted.
 
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _) _) => apply read_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _) _) => apply write_ok : prog.

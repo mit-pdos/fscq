@@ -382,8 +382,17 @@ Proof.
   unfold stars. apply emp_star.
 Qed.
 
+Lemma finish_unify : forall p,
+  stars nil * stars (p :: nil) ==> p.
+Proof.
+  unfold stars; simpl; intros.
+  eapply pimpl_trans; [apply star_emp_pimpl|].
+  eapply pimpl_trans; [apply star_emp_pimpl|].
+  apply pimpl_refl.
+Qed.
+
 Ltac cancel' := repeat (cancel_one || delay_one);
-                try (apply finish_frame || apply finish_easier).
+                try (apply finish_frame || apply finish_easier || apply finish_unify).
 
 Theorem split_or_one : forall q pa pb ps F,
   stars (pa :: ps) * F ==> q
@@ -597,24 +606,28 @@ Ltac pimpl_crash :=
   match goal with
   | [ |- _ ==> ?crash ] =>
     match goal with
-    | [ H: _ ==> crash |- _ ] =>
-      eapply pimpl_trans; [| eexact H ]
+    | [ H: _ ==> crash |- _ ] => eapply pimpl_trans; [| eexact H ]
+    | [ H: forall _, _ ==> crash |- _ ] => eapply pimpl_trans; [| eapply H ]
     end
   end.
 
-Ltac cancel :=
+Ltac cancel_with t :=
   intros;
   unfold stars; simpl; subst;
   try pimpl_crash;
   norm;
   try match goal with
       | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
-        solve [ apply stars_or_left; cancel
-              | apply stars_or_right; cancel ]
+        solve [ apply stars_or_left; cancel_with t
+              | apply stars_or_right; cancel_with t ]
       | [ |- _ ==> _ ] => cancel'
       end;
   intuition;
+  try congruence;
+  try t;
   unfold stars; simpl.
+
+Ltac cancel := cancel_with idtac.
 
 Ltac autorewrite_fast :=
   repeat match goal with

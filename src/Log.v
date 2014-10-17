@@ -293,11 +293,7 @@ Module LOG.
     }} init xp rx.
   Proof.
     unfold init; log_unfold.
-    hoare.
-    congruence.
-    congruence.
-    subst; apply pimpl_emp_any.
-    subst; apply pimpl_emp_any.
+    hoare; try apply pimpl_emp_any.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
@@ -316,7 +312,6 @@ Module LOG.
   Proof.
     unfold begin; log_unfold.
     hoare.
-    eapply pimpl_trans; [|eapply pimpl_trans; [eassumption|] ]; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (begin _) _) => apply begin_ok : prog.
@@ -346,10 +341,6 @@ Module LOG.
   Proof.
     unfold abort; log_unfold.
     hoare.
-    eapply pimpl_trans; [|eapply pimpl_trans; [eassumption|] ]; [| cancel].
-    (* XXX RHS OR handling is poor *)
-    cancel.
-    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (abort _) _) => apply abort_ok : prog.
@@ -380,6 +371,7 @@ Module LOG.
   Ltac helper_wordcmp_one :=
     match goal with
     | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
+    | [ |- context[valu2addr (addr2valu _)] ] => rewrite addr2valu2addr
     | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
       assert (wordToNat x < pow2 sz) by (apply wordToNat_bound);
       assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; auto; omega);
@@ -532,17 +524,6 @@ Module LOG.
 
     erewrite <- replay_app; [| eauto ].
     eapply ptsto_upd; eauto.
-
-    congruence.
-    congruence.
-
-    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
-    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
-    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
-    congruence.
-    congruence.
-    subst. eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
-    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
@@ -754,37 +735,13 @@ Module LOG.
     hoare.
 
     erewrite wordToNat_plusone; [ apply replay_last_eq |]; helper_wordcmp; eauto.
-    congruence.
-    congruence.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-
     erewrite wordToNat_plusone; [ apply replay_last_ne |]; helper_wordcmp; eauto.
-    congruence.
-    congruence.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    congruence.
-    congruence.
 
     helper_wordcmp. rewrite firstn_length in *.
     match goal with
     | [ H: (_ |-> _ * _)%pred _ |- _ ] => apply sep_star_ptsto_some in H
     end.
     congruence.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    instantiate (1:=(LogCommit xp |-> $ (0) * diskIs m * LogLength xp |-> addr2valu $ (length l) *
-logentry_ptsto_list xp l 0 *
-avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length l) * 2))%pred).
-    cancel.
-
-    eauto.
-    eauto.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
@@ -808,7 +765,7 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     }} read_array xp a i rx.
   Proof.
     intros.
-    apply pimpl_ok with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
+    apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
      * [[ exists F',
           (array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> sel vs i
@@ -819,7 +776,7 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
           }} rx (sel vs i) ]]
      * [[ rep xp (ActiveTxn mbase m) * F ==> crash ]])%pred.
     unfold read_array.
-    eapply pimpl_ok.
+    eapply pimpl_ok2.
     apply read_ok.
     cancel.
 
@@ -827,18 +784,20 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     pred_apply; cancel.
 
     step.
+    cancel.
+    cancel.
 
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-
-    cancel; eauto; try step.
     eexists.
     pred_apply.
     eapply pimpl_trans.
     eapply pimpl_sep_star; [| apply pimpl_refl ].
     apply isolate_fwd; eauto.
     cancel.
+    cancel.
 
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eauto|] ]; cancel.
+    eauto.
+    step.
+    step.
   Qed.
 
   Theorem write_array_ok : forall xp a i v rx,
@@ -856,7 +815,7 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     }} write_array xp a i v rx.
   Proof.
     intros.
-    apply pimpl_ok with (fun done crash => exists F mbase m vs F',
+    apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
        rep xp (ActiveTxn mbase m) * F
      * [[ (array a (firstn (wordToNat i) vs)
            * (a ^+ i) |-> sel vs i
@@ -871,7 +830,7 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
           }} rx false ]]
      * [[ forall m', rep xp (ActiveTxn mbase m') * F ==> crash ]])%pred.
     unfold write_array.
-    eapply pimpl_ok.
+    eapply pimpl_ok2.
     apply write_ok.
     cancel.
     pred_apply; cancel.
@@ -904,9 +863,7 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     pred_apply; cancel.
 
     step.
-
-    eapply pimpl_trans; [|eauto].
-    cancel.
+    step.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
@@ -1009,6 +966,15 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
       end
     end : norm_hint_right.
 
+  Ltac extract_functional_extensionality :=
+    repeat match goal with
+    | [ H: forall x, ?lhs x = ?rhs x |- _ ] =>
+      assert (lhs = rhs) by ( apply functional_extensionality; eassumption );
+      clear H; subst
+    end.
+
+  Hint Resolve valid_log_upd.
+
   Theorem apply_ok : forall xp rx,
     {{ fun done crash => exists m F, rep xp (CommittedTxn m) * F
      * [[ {{ fun done' crash' => rep xp (NoTransaction m) * F
@@ -1018,67 +984,46 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     }} apply xp rx.
   Proof.
     unfold apply; log_unfold.
-    step.
-    step.
-    step.
-    step.
-    step.
+    hoare.
 
     rewrite addr2valu2addr. apply indomain_log_nth; auto; helper_wordcmp.
 
-    step.
     apply valid_log_upd; auto.
     apply indomain_log_nth; auto; helper_wordcmp.
     rewrite replay_logupd; auto; helper_wordcmp.
     erewrite wordToNat_plusone; eauto.
     rewrite replay_skip_more; auto; helper_wordcmp.
 
-    congruence.
-    congruence.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
     eapply pimpl_trans; [| eapply pimpl_star_emp].
     eapply pimpl_or_r; left. cancel.
-    (* XXX fix up later *)
-  Admitted.
-(*
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
 
-
-    step.
-    step.
-    step.
-    step.
-
-    assert (m1 = m); subst.
-    apply functional_extensionality; intros.
+    eapply valid_log_upd; eauto.
+    eapply indomain_log_nth; eauto.
     helper_wordcmp.
-    rewrite skipn_length in *.
-    simpl replay in *; congruence.
 
-    step.
-    step.
-
-    apply stars_or_right. apply stars_or_left. unfold stars; simpl.
-    cancel.
-    cancel.
+    extract_functional_extensionality.
+    rewrite replay_logupd; try congruence.
+    helper_wordcmp.
 
     rewrite addr2valu2addr in *.
-    replace (wordToNat $ (length l)) with (length l) in *.
-    rewrite skipn_length in *.
-    auto.
+    helper_wordcmp.
+    rewrite skipn_length in *; simpl in *.
 
-    erewrite wordToNat_natToWord_bound; eauto.
-
-    step.
-    (* XXX unification problem: missing one of the crash conditions... *)
-    admit.
-
-    apply stars_or_left; unfold stars; simpl.
+    extract_functional_extensionality.
     cancel.
-    congruence.
+
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r; left. cancel.
+    cancel.
+
+    helper_wordcmp; rewrite skipn_length in *; simpl in *. congruence.
+
+    eapply pimpl_trans; [| eapply pimpl_star_emp].
+    eapply pimpl_or_r; right. cancel.
+
+    extract_functional_extensionality.
+    cancel.
   Qed.
-*)
 
   Hint Extern 1 ({{_}} progseq (apply _) _) => apply apply_ok : prog.
 
@@ -1102,28 +1047,8 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     assert (m0 = replay l m) by (apply functional_extensionality; auto).
     subst; cancel.
 
-    congruence.
-    congruence.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    extract_functional_extensionality.
     log_unfold; cancel.
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
-    eapply pimpl_or_r. right.
-    eapply pimpl_or_r. left.
-    cancel.
-    congruence.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    log_unfold; cancel.
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
-    eapply pimpl_or_r. right.
-    eapply pimpl_or_r. right.
-    cancel.
-
-    assert (m0 = replay l m) by (apply functional_extensionality; auto).
-    subst; cancel.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (commit _) _) => apply commit_ok : prog.
@@ -1160,43 +1085,8 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     }} recover xp rx.
   Proof.
     unfold recover; hoare_unfold log_unfold'.
-    congruence.
-    congruence.
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    congruence.
-    congruence.
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
-    eapply pimpl_or_r. right.
-    eapply pimpl_or_r. left.
-    cancel.
-
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    assert (m = replay l m0) by ( apply functional_extensionality; auto ).
-    subst; cancel.
-
-    congruence.
-    congruence.
-
-    log_unfold'.
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
-    eapply pimpl_or_r. right.
-    eapply pimpl_or_r. right.
-    cancel.
-    congruence.
-
-    log_unfold'.
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
-    eapply pimpl_or_r. left.
-    cancel.
-    assert (m = replay l m0) by ( apply functional_extensionality; auto ).
-    subst; cancel.
-
-    log_unfold'.
-    subst; eapply pimpl_trans; [| eapply pimpl_trans; [eassumption|] ]; cancel.
+    extract_functional_extensionality; cancel.
+    extract_functional_extensionality; log_unfold; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _ >> _) => apply recover_ok : prog.
@@ -1211,7 +1101,7 @@ avail_region (LogStart xp ^+ $ (length l * 2)) ((wordToNat (LogLen xp) - length 
     }} read xp a rxOK >> recover xp rxREC.
   Proof.
     intros.
-    eapply pimpl3_ok.
+    eapply pimpl_ok3.
     eapply corr3_from_corr2.
     eapply read_ok.
     eapply recover_ok.
