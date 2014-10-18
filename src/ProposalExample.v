@@ -79,26 +79,23 @@ Proof.
   unfold log_inc_two, LOG.log_intact.
   hoare.
   eexists; pred_apply; cancel.
-  pred_apply; cancel.
   eexists; pred_apply; cancel.
-  pred_apply; cancel.
-  pred_apply; cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp ].
+  cancel.
   eapply pimpl_or_r; right.
   cancel.
   pred_apply; cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp ].
   eapply pimpl_or_r; right.
   cancel.
   pred_apply; cancel.
   admit.  (* something went wrong with guessing OR branches *)
   eexists; pred_apply; cancel.
-  pred_apply; cancel.
   admit.  (* something went wrong with guessing OR branches *)
   admit.  (* something went wrong with guessing OR branches *)
 Qed.
 
 Hint Extern 1 ({{_}} log_inc_two _ _ _ _) => apply log_inc_two_ok : prog.
+
+Ltac unfold_intact := unfold LOG.log_intact.
 
 Theorem log_inc_two_recover_ok: forall xp s0 s1,
   {< d F v0 v1 F',
@@ -122,36 +119,10 @@ Proof.
 
   cancel.
   pred_apply; cancel.
-  step.
-  pred_apply; cancel.
-  unfold LOG.log_intact; cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp ].
-  eapply pimpl_or_r; right.
-  unfold LOG.log_intact; cancel.
-  pred_apply; cancel.
-  pred_apply; cancel.
-  pred_apply; cancel.
+  hoare_unfold unfold_intact.
   cancel.
-  step.
-  unfold LOG.log_intact; cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp ].
-  eapply pimpl_or_r; right.
-  unfold LOG.log_intact; cancel.
-  pred_apply; cancel.
-  pred_apply; cancel.
-  pred_apply; cancel.
+  hoare_unfold unfold_intact.
   cancel.
-  step.
-  eapply pimpl_trans; [| eapply pimpl_star_emp ].
-  eapply pimpl_or_r; right.
-  cancel.
-  pred_apply; cancel.
-  unfold LOG.log_intact; cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp ].
-  eapply pimpl_or_r; right.
-  cancel.
-  unfold LOG.log_intact; cancel.
-  pred_apply; cancel.
-  eapply pimpl_or_r; right.
+  hoare_unfold unfold_intact.
   cancel.
 Qed.
