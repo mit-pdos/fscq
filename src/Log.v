@@ -280,17 +280,16 @@ Module LOG.
     Write (LogCommit xp) $0 ;;
     rx tt.
 
-  Theorem init_ok : forall xp rx,
-    {{ fun done crash => exists old F, F
-     * data_rep old
-     * avail_region (LogStart xp) (wordToNat (LogLen xp) * 2)
-     * (LogCommit xp) |->?
-     * (LogLength xp) |->?
-     * [[ {{ fun done' crash' => rep xp (NoTransaction old) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx tt ]]
-     * [[ crash = any ]]
-    }} init xp rx.
+  Theorem init_ok: forall xp,
+    {< old F,
+    PRE    F *
+           data_rep old *
+           avail_region (LogStart xp) (wordToNat (LogLen xp) * 2) *
+           (LogCommit xp) |->? *
+           (LogLength xp) |->?
+    POST:r rep xp (NoTransaction old) * F
+    CRASH  any
+    >} init xp.
   Proof.
     unfold init; log_unfold.
     hoare; try apply pimpl_emp_any.
@@ -302,13 +301,12 @@ Module LOG.
     Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
-  Theorem begin_ok : forall xp rx,
-    {{ fun done crash => exists m F, rep xp (NoTransaction m) * F
-     * [[ {{ fun done' crash' => rep xp (ActiveTxn m m) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx tt ]]
-     * [[ rep xp (NoTransaction m) * F \/ rep xp (ActiveTxn m m) * F ==> crash ]]
-    }} begin xp rx.
+  Theorem begin_ok: forall xp,
+    {< m F,
+    PRE    rep xp (NoTransaction m) * F
+    POST:r rep xp (ActiveTxn m m) * F
+    CRASH  rep xp (NoTransaction m) * F \/ rep xp (ActiveTxn m m) * F
+    >} begin xp.
   Proof.
     unfold begin; log_unfold.
     hoare.
@@ -331,13 +329,12 @@ Module LOG.
     Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
-  Theorem abort_ok : forall xp rx,
-    {{ fun done crash => exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-     * [[ {{ fun done' crash' => rep xp (NoTransaction m1) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx tt ]]
-     * [[ rep xp (ActiveTxn m1 m2) * F \/ rep xp (NoTransaction m1) * F ==> crash ]]
-    }} abort xp rx.
+  Theorem abort_ok : forall xp,
+    {< m1 m2 F,
+    PRE    rep xp (ActiveTxn m1 m2) * F
+    POST:r rep xp (NoTransaction m1) * F
+    CRASH  rep xp (ActiveTxn m1 m2) * F \/ rep xp (NoTransaction m1) * F
+    >} abort xp.
   Proof.
     unfold abort; log_unfold.
     hoare.
@@ -509,19 +506,6 @@ Module LOG.
            ([[ r = false ]] * rep xp (ActiveTxn m1 m2) * F)
     CRASH  exists m', rep xp (ActiveTxn m1 m') * F
     >} write xp a v.
-(*
-    {{ fun done crash => exists m1 m2 F F' v0, rep xp (ActiveTxn m1 m2) * F
-     * [[ (a |-> v0 * F')%pred m2 ]]
-     * [[ {{ fun done' crash' => exists m', rep xp (ActiveTxn m1 m') * F
-           * [[ (a |-> v * F')%pred m' ]]
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx true ]]
-     * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx false ]]
-     * [[ forall m', rep xp (ActiveTxn m1 m') * F  ==> crash ]]
-    }} write xp a v rx.
-*)
   Proof.
     unfold write; log_unfold.
     hoare.
@@ -726,14 +710,13 @@ Module LOG.
 
   Opaque firstn.
 
-  Theorem read_ok : forall xp a rx,
-    {{ fun done crash => exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
-     * [[ exists F', (a |-> v * F') m2 ]]
-     * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx v ]]
-     * [[ rep xp (ActiveTxn m1 m2) * F ==> crash ]]
-    }} read xp a rx.
+  Theorem read_ok: forall xp a,
+    {< m1 m2 v F,
+    PRE    rep xp (ActiveTxn m1 m2) * F *
+           [[ exists F', (a |-> v * F') m2 ]]
+    POST:r [[ r = v ]] * rep xp (ActiveTxn m1 m2) * F
+    CRASH  rep xp (ActiveTxn m1 m2) * F
+    >} read xp a.
   Proof.
     unfold read; log_unfold.
 
@@ -746,6 +729,7 @@ Module LOG.
 
     hoare.
 
+    subst.
     erewrite wordToNat_plusone; [ apply replay_last_eq |]; helper_wordcmp; eauto.
     erewrite wordToNat_plusone; [ apply replay_last_ne |]; helper_wordcmp; eauto.
 
@@ -766,15 +750,14 @@ Module LOG.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
-  Theorem read_array_ok : forall xp a i rx,
-    {{ fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
-     * [[ exists F', (array a vs * F')%pred m ]]
-     * [[ wordToNat i < length vs ]]
-     * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx (sel vs i) ]]
-     * [[ rep xp (ActiveTxn mbase m) * F ==> crash ]]
-    }} read_array xp a i rx.
+  Theorem read_array_ok : forall xp a i,
+    {< F mbase m vs,
+    PRE    rep xp (ActiveTxn mbase m) * F *
+           [[ exists F', (array a vs * F')%pred m ]] *
+           [[ wordToNat i < length vs ]]
+    POST:r [[ r = sel vs i ]] * rep xp (ActiveTxn mbase m) * F
+    CRASH  rep xp (ActiveTxn mbase m) * F
+    >} read_array xp a i.
   Proof.
     intros.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
@@ -812,19 +795,16 @@ Module LOG.
     step.
   Qed.
 
-  Theorem write_array_ok : forall xp a i v rx,
-    {{ fun done crash => exists F mbase m vs F', rep xp (ActiveTxn mbase m) * F
-     * [[ (array a vs * F')%pred m ]]
-     * [[ wordToNat i < length vs ]]
-     * [[ {{ fun done' crash' => exists m', rep xp (ActiveTxn mbase m') * F
-           * [[ (array a (Array.upd vs i v) * F')%pred m' ]]
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx true ]]
-     * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx false ]]
-     * [[ forall m', rep xp (ActiveTxn mbase m') * F ==> crash ]]
-    }} write_array xp a i v rx.
+  Theorem write_array_ok : forall xp a i v,
+    {< F mbase m vs F',
+    PRE    rep xp (ActiveTxn mbase m) * F
+         * [[ (array a vs * F')%pred m ]]
+         * [[ wordToNat i < length vs ]]
+    POST:r ([[ r = true ]] * exists m', rep xp (ActiveTxn mbase m') * F *
+            [[ (array a (Array.upd vs i v) * F')%pred m' ]]) \/
+           ([[ r = false ]] * rep xp (ActiveTxn mbase m) * F)
+    CRASH  exists m', rep xp (ActiveTxn mbase m') * F
+    >} write_array xp a i v.
   Proof.
     intros.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
@@ -833,13 +813,13 @@ Module LOG.
            * (a ^+ i) |-> sel vs i
            * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F')%pred m ]]
      * [[ wordToNat i < length vs ]]
-     * [[ {{ fun done' crash' => exists m', rep xp (ActiveTxn mbase m') * F
+     * [[ forall r,
+          {{ fun done' crash' =>
+          ([[ r = true ]] * exists m', rep xp (ActiveTxn mbase m') * F
            * [[ (array a (Array.upd vs i v) * F')%pred m' ]]
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx true ]]
-     * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx false ]]
+           * [[ done' = done ]] * [[ crash' = crash ]]) \/
+          ([[ r = false ]] * rep xp (ActiveTxn mbase m) * F
+           * [[ done' = done ]] * [[ crash' = crash ]]) }} rx r ]]
      * [[ forall m', rep xp (ActiveTxn mbase m') * F ==> crash ]])%pred.
     unfold write_array.
     eapply pimpl_ok2.
@@ -848,6 +828,9 @@ Module LOG.
     pred_apply; cancel.
 
     step.
+    eapply pimpl_trans; [| eapply pimpl_star_emp ].
+    eapply pimpl_or_r; left.
+    cancel.
     pred_apply.
     eapply pimpl_trans; [| apply pimpl_sep_star; [ apply isolate_bwd | apply pimpl_refl ] ].
     instantiate (1:=i).
@@ -857,9 +840,9 @@ Module LOG.
     cancel.
     autorewrite with core; assumption.
 
-    step.
-    eapply pimpl_trans; [|eauto].
-    cancel; eauto.
+    norm.
+    cancel.
+    auto.
 
     cancel.
     pred_apply.
@@ -872,9 +855,11 @@ Module LOG.
     eauto.
 
     step.
+    eapply pimpl_trans; [| eapply pimpl_star_emp ].
+    eapply pimpl_or_r; left.
+    cancel.
     pred_apply; cancel.
 
-    step.
     step.
   Qed.
 
@@ -987,13 +972,12 @@ Module LOG.
 
   Hint Resolve valid_log_upd.
 
-  Theorem apply_ok : forall xp rx,
-    {{ fun done crash => exists m F, rep xp (CommittedTxn m) * F
-     * [[ {{ fun done' crash' => rep xp (NoTransaction m) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx tt ]]
-     * [[ rep xp (CommittedTxn m) * F \/ rep xp (NoTransaction m) * F ==> crash ]]
-    }} apply xp rx.
+  Theorem apply_ok : forall xp,
+    {< m F,
+    PRE    rep xp (CommittedTxn m) * F
+    POST:r rep xp (NoTransaction m) * F
+    CRASH  rep xp (CommittedTxn m) * F \/ rep xp (NoTransaction m) * F
+    >} apply xp.
   Proof.
     unfold apply; log_unfold.
     hoare.
@@ -1044,15 +1028,14 @@ Module LOG.
     apply xp;;
     rx tt.
 
-  Theorem commit_ok : forall xp rx,
-    {{ fun done crash => exists m1 m2 F, rep xp (ActiveTxn m1 m2) * F
-     * [[ {{ fun done' crash' => rep xp (NoTransaction m2) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx tt ]]
-     * [[ rep xp (ActiveTxn m1 m2) * F \/
-          rep xp (CommittedTxn m2) * F \/
-          rep xp (NoTransaction m2) * F ==> crash ]]
-    }} commit xp rx.
+  Theorem commit_ok: forall xp,
+    {< m1 m2 F,
+    PRE    rep xp (ActiveTxn m1 m2) * F
+    POST:r rep xp (NoTransaction m2) * F
+    CRASH  rep xp (ActiveTxn m1 m2) * F \/
+           rep xp (CommittedTxn m2) * F \/
+           rep xp (NoTransaction m2) * F
+    >} commit xp.
   Proof.
     unfold commit; hoare_unfold log_unfold.
 
@@ -1088,13 +1071,12 @@ Module LOG.
 
   Ltac log_unfold' := unfold log_intact; log_unfold.
 
-  Theorem recover_ok : forall xp rx,
-    {{ fun done crash => exists m F, log_intact xp m F
-     * [[ {{ fun done' crash' => rep xp (NoTransaction m) * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx tt ]]
-     * [[ log_intact xp m F ==> crash ]]
-    }} recover xp rx.
+  Theorem recover_ok: forall xp,
+    {< m F,
+    PRE    log_intact xp m F
+    POST:r rep xp (NoTransaction m) * F
+    CRASH  log_intact xp m F
+    >} recover xp.
   Proof.
     unfold recover; hoare_unfold log_unfold'.
     extract_functional_extensionality; cancel.
@@ -1129,6 +1111,7 @@ Module LOG.
     unfold log_intact; cancel.
     cancel.
     step.
+    destruct r_; auto.
   Qed.
 
 End LOG.
