@@ -41,6 +41,25 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
    (p1 rx)%pred)
   (at level 0, p1 at level 60, e1 binder, e2 binder, r at level 0).
 
+Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash 'IDEM' idemcrash >} p1 >> p2" :=
+  (forall rxOK rxREC, corr3
+   (fun done_ crashdone_ =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     pre *
+     [[ forall r_,
+        {{ fun done'_ crash'_ => (fun rp => post) r_ *
+                                 [[ done'_ = done_ ]] * [[ crash'_ ==> idemcrash ]]
+        }} rxOK r_ ]] *
+     [[ forall r_,
+        {{ fun done'_ crash'_ => (fun rc => crash) r_ *
+                                 [[ done'_ = crashdone_ ]] * [[ crash'_ ==> idemcrash ]]
+        }} rxREC r_ ]]
+     )) .. ))
+   )%pred
+   (p1 rxOK)%pred
+   (p2 rxREC)%pred)
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder, rp at level 0, rc at level 0).
+
 
 Theorem pimpl_ok2:
   forall pre pre' pr,
