@@ -213,7 +213,6 @@ Module LOG.
     repeat rewrite <- wplus_assoc.
     repeat rewrite <- natToWord_plus.
     cancel.
-    eapply pimpl_trans; [|apply pimpl_star_emp].
     replace (idx * 2 + 2) with ((idx + 1) * 2) by omega.
     replace n with ((wordToNat (LogLen xp) - (idx + 1)) * 2) by omega.
     eapply pimpl_trans; [|apply IHl].
@@ -292,7 +291,7 @@ Module LOG.
     >} init xp.
   Proof.
     unfold init; log_unfold.
-    hoare; try apply pimpl_emp_any.
+    hoare; try apply pimpl_any.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
@@ -510,7 +509,6 @@ Module LOG.
     unfold write; log_unfold.
     hoare.
 
-    eapply pimpl_trans; [| eapply pimpl_star_emp ].
     eapply pimpl_or_r. left. cancel.
 
     rewrite app_length; simpl; helper_wordcmp; omega.
@@ -780,7 +778,6 @@ Module LOG.
 
     step.
     cancel.
-    cancel.
 
     eexists.
     pred_apply.
@@ -791,7 +788,6 @@ Module LOG.
     cancel.
 
     eauto.
-    step.
     step.
   Qed.
 
@@ -828,7 +824,6 @@ Module LOG.
     pred_apply; cancel.
 
     step.
-    eapply pimpl_trans; [| eapply pimpl_star_emp ].
     eapply pimpl_or_r; left.
     cancel.
     pred_apply.
@@ -855,11 +850,6 @@ Module LOG.
     eauto.
 
     step.
-    eapply pimpl_trans; [| eapply pimpl_star_emp ].
-    eapply pimpl_or_r; left.
-    cancel.
-    pred_apply; cancel.
-
     step.
   Qed.
 
@@ -990,7 +980,6 @@ Module LOG.
     erewrite wordToNat_plusone; eauto.
     rewrite replay_skip_more; auto; helper_wordcmp.
 
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
     eapply pimpl_or_r; left. cancel.
 
     eapply valid_log_upd; eauto.
@@ -1008,13 +997,11 @@ Module LOG.
     extract_functional_extensionality.
     cancel.
 
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
     eapply pimpl_or_r; left. cancel.
     cancel.
 
     helper_wordcmp; rewrite skipn_length in *; simpl in *. congruence.
 
-    eapply pimpl_trans; [| eapply pimpl_star_emp].
     eapply pimpl_or_r; right. cancel.
 
     extract_functional_extensionality.

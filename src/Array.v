@@ -269,12 +269,11 @@ Proof.
   eauto.
 
   eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
-                                                | apply isolate_bwd; eassumption ] ].
+  eapply pimpl_trans; [ apply star_emp_pimpl |].
+  eapply pimpl_trans; [ | apply isolate_bwd; eassumption ].
   cancel.
 
   cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp].
   eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eauto ].
   cancel.
 Qed.
@@ -323,8 +322,8 @@ Proof.
   auto.
 
   eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl
-                                                | apply isolate_bwd; autorewrite with core; eassumption ] ].
+  eapply pimpl_trans; [ apply star_emp_pimpl |].
+  eapply pimpl_trans; [ | apply isolate_bwd; autorewrite with core; eassumption ].
   autorewrite with core.
   cancel.
   autorewrite with core.
@@ -332,15 +331,11 @@ Proof.
 
   cancel.
 
-  eapply pimpl_trans; [| eapply pimpl_star_emp].
   eapply pimpl_or_r; left. cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp].
   eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
   cancel.
 
-  eapply pimpl_trans; [| eapply pimpl_star_emp].
   eapply pimpl_or_r; right. cancel.
-  eapply pimpl_trans; [| eapply pimpl_star_emp].
   eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
   cancel.
 Qed.
