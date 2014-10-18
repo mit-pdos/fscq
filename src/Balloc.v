@@ -160,30 +160,27 @@ Module BALLOC.
     replace ($0) with (wzero addrlen) by auto; ring.
   Qed.
 
-  Theorem free_ok : forall lxp xp bn rx,
-    {{ fun done crash => exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
-     * [[ (Fm * rep xp bmap)%pred m ]]
-     * [[ (bn < BmapLen xp)%word ]]
-     * [[ {{ fun done' crash' => exists m', F * LOG.rep lxp (ActiveTxn mbase m')
-           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx true ]]
-     * [[ {{ fun done' crash' => F * LOG.rep lxp (ActiveTxn mbase m)
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx false ]]
-     * [[ LOG.log_intact lxp mbase F ==> crash ]]
-    }} free lxp xp bn rx.
+  Theorem free_ok : forall lxp xp bn,
+    {< F Fm mbase m bmap,
+    PRE    F * LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (Fm * rep xp bmap)%pred m ]] *
+           [[ (bn < BmapLen xp)%word ]]
+    POST:r ([[ r = true ]] * exists m', F * LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]) \/
+           ([[ r = false ]] * F * LOG.rep lxp (ActiveTxn mbase m))
+    CRASH  LOG.log_intact lxp mbase F
+    >} free lxp xp bn.
   Proof.
-    unfold free, rep.
+    unfold free, rep, LOG.log_intact.
     step.
     pred_apply; cancel.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
     step.
+    eapply pimpl_trans; [| eapply pimpl_star_emp ].
+    eapply pimpl_or_r; left.
     erewrite <- upd_bupd; [|eauto].
-    pred_apply; cancel.
-    step.
-    unfold LOG.log_intact.
     cancel.
+    pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (free _ _ _) _) => apply free_ok : prog.
