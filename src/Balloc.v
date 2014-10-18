@@ -161,14 +161,14 @@ Module BALLOC.
   Qed.
 
   Theorem free_ok : forall lxp xp bn,
-    {< F Fm mbase m bmap,
-    PRE    F * LOG.rep lxp (ActiveTxn mbase m) *
+    {< Fm mbase m bmap,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (Fm * rep xp bmap)%pred m ]] *
            [[ (bn < BmapLen xp)%word ]]
-    POST:r ([[ r = true ]] * exists m', F * LOG.rep lxp (ActiveTxn mbase m') *
+    POST:r ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
             [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]) \/
-           ([[ r = false ]] * F * LOG.rep lxp (ActiveTxn mbase m))
-    CRASH  LOG.log_intact lxp mbase F
+           ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
+    CRASH  LOG.log_intact lxp mbase
     >} free lxp xp bn.
   Proof.
     unfold free, rep, LOG.log_intact.
@@ -187,13 +187,13 @@ Module BALLOC.
 
   Definition alloc lxp xp rx :=
     For i < (BmapLen xp)
-      Ghost F mbase m
+      Ghost mbase m
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        F * LOG.rep lxp (ActiveTxn mbase m)
+        LOG.rep lxp (ActiveTxn mbase m)
       OnCrash
-        LOG.log_intact lxp mbase F
+        LOG.log_intact lxp mbase
       Begin
         f <- LOG.read_array lxp (BmapStart xp) i;
         If (weq f $0) {

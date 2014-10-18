@@ -636,7 +636,10 @@ Ltac cancel_with t :=
   try ( pred_apply; cancel_with t );
   try congruence;
   try t;
-  unfold stars; simpl.
+  unfold stars; simpl;
+  try match goal with
+  | [ |- emp * _ ==> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
+  end.
 
 Ltac cancel := cancel_with idtac.
 

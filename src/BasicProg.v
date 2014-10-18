@@ -40,20 +40,22 @@ Ltac inv_exec :=
 
 Theorem read_ok:
   forall (a:addr),
-  {< v F,
-  PRE    a |-> v * F
-  POST:r a |-> v * F * [[ r = v ]]
-  CRASH  a |-> v * F
+  {< v,
+  PRE    a |-> v
+  POST:r a |-> v * [[ r = v ]]
+  CRASH  a |-> v
   >} Read a.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
   inv_exec.
-  - apply ptsto_valid in H. congruence.
+  - apply sep_star_comm in H; apply ptsto_valid in H.
+    congruence.
   - eapply H2. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
-    apply ptsto_valid in H. repeat inv_option.
-    eauto.
+    apply sep_star_assoc. apply sep_star_and2lift; split; unfold lift; eauto.
+    apply sep_star_comm in H; apply ptsto_valid in H.
+    repeat inv_option. eauto.
   - right. eexists; intuition eauto.
 Qed.
 
@@ -61,19 +63,21 @@ Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 
 Theorem write_ok:
   forall (a:addr) (v:valu),
-  {< v0 F,
-  PRE    a |-> v0 * F
-  POST:r a |-> v * F
-  CRASH  a |-> v0 * F
+  {< v0,
+  PRE    a |-> v0
+  POST:r a |-> v
+  CRASH  a |-> v0
   >} Write a v.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
   inv_exec.
-  - apply ptsto_valid in H. congruence.
+  - apply sep_star_comm in H; apply ptsto_valid in H.
+    congruence.
   - eapply H2. instantiate (1:=upd m a v).
     repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
+    apply sep_star_comm. apply sep_star_comm in H.
     eapply ptsto_upd; eauto.
     eauto.
   - right. eexists; intuition eauto.

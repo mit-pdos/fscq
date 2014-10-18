@@ -262,14 +262,11 @@ Proof.
   cancel.
 
   cancel.
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
-                                              | apply pimpl_sep_star; [ apply pimpl_refl
-                                                                      | apply isolate_fwd; eassumption ] ] | ].
+  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply isolate_fwd; eassumption ] | ].
   cancel.
   eauto.
 
   eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ apply star_emp_pimpl |].
   eapply pimpl_trans; [ | apply isolate_bwd; eassumption ].
   cancel.
 
@@ -316,13 +313,11 @@ Proof.
   cancel.
   cancel.
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
-                                              | apply pimpl_sep_star; [ apply pimpl_refl
-                                                                      | apply isolate_fwd; eassumption ] ] | ].
+                                              | apply isolate_fwd; eassumption ] | ].
   cancel.
   auto.
 
   eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ apply star_emp_pimpl |].
   eapply pimpl_trans; [ | apply isolate_bwd; autorewrite with core; eassumption ].
   autorewrite with core.
   cancel.
