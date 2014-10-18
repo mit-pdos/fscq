@@ -31,8 +31,15 @@ Ltac pred_apply := match goal with
   | [ H: _ ?m |- _ ?m ] => eapply pimpl_apply; [ | exact H ]
   end.
 
+Definition pred_fold_left (l : list pred) : pred :=
+  match l with
+  | nil => emp
+  | a :: t => fold_left sep_star t a
+  end.
+
 Definition stars (ps : list pred) :=
-  fold_left sep_star ps emp.
+  pred_fold_left ps.
+Arguments stars : simpl never.
 
 Ltac sep_imply'' H := eapply pimpl_apply; [ | apply H ].
 
@@ -110,16 +117,26 @@ Lemma stars_prepend:
   forall l x,
   stars (x :: l) <==> x * stars l.
 Proof.
-  unfold stars; simpl; intros.
-  eapply piff_trans. apply stars_prepend'.
-  eapply piff_trans. apply sep_star_assoc.
-  apply piff_comm. apply emp_star.
+  unfold stars, pred_fold_left; simpl; intros.
+  destruct l.
+  - simpl; split.
+    eapply pimpl_trans; [| eapply sep_star_comm ]. eapply pimpl_star_emp.
+    eapply pimpl_trans; [eapply sep_star_comm |]. eapply star_emp_pimpl.
+  - eapply piff_trans. apply stars_prepend'.
+    eapply piff_star_l.
+    simpl.
+    eapply piff_trans; [ apply stars_prepend' |].
+    eapply piff_trans; [| apply piff_comm; apply stars_prepend' ].
+    apply piff_star_r.
+    split.
+    apply star_emp_pimpl.
+    apply pimpl_star_emp.
 Qed.
 
 Lemma flatten_default' : forall p,
   p <==> stars (p :: nil).
 Proof.
-  unfold stars; apply emp_star.
+  firstorder.
 Qed.
 
 Lemma flatten_default : forall p,
@@ -128,10 +145,9 @@ Proof.
   unfold stars; split.
   - apply pimpl_exists_r; exists tt.
     apply sep_star_lift_r.
-    split; pred. apply pimpl_star_emp; auto.
+    split; pred.
   - apply pimpl_exists_l; intros.
     eapply pimpl_trans; [apply sep_star_lift2and|].
-    eapply pimpl_trans; [|apply star_emp_pimpl].
     firstorder.
 Qed.
 
@@ -373,7 +389,7 @@ Qed.
 Lemma finish_frame : forall p,
   stars nil * p ==> stars (p :: nil).
 Proof.
-  unfold stars. intros. apply pimpl_refl.
+  unfold stars. intros. apply star_emp_pimpl.
 Qed.
 
 Lemma finish_easier : forall p,
@@ -387,12 +403,14 @@ Lemma finish_unify : forall p,
 Proof.
   unfold stars; simpl; intros.
   eapply pimpl_trans; [apply star_emp_pimpl|].
-  eapply pimpl_trans; [apply star_emp_pimpl|].
   apply pimpl_refl.
 Qed.
 
+Ltac finish_unify :=
+  solve [ unfold stars at 3; simpl; apply finish_unify ].
+
 Ltac cancel' := repeat (cancel_one || delay_one);
-                try (apply finish_frame || apply finish_easier || apply finish_unify).
+                try (apply finish_frame || apply finish_easier || finish_unify).
 
 Theorem split_or_one : forall q pa pb ps F,
   stars (pa :: ps) * F ==> q
@@ -445,22 +463,14 @@ Lemma stars_or_left: forall a b c,
   (a ==> stars (b :: nil))
   -> (a ==> stars ((b \/ c) :: nil)).
 Proof.
-  unfold stars; simpl; intros.
-  eapply pimpl_trans; [|apply pimpl_star_emp].
-  apply pimpl_or_r. left.
-  eapply pimpl_trans; [|apply star_emp_pimpl].
-  eauto.
+  firstorder.
 Qed.
 
 Lemma stars_or_right: forall a b c,
   (a ==> stars (c :: nil))
   -> (a ==> stars ((b \/ c) :: nil)).
 Proof.
-  unfold stars; simpl; intros.
-  eapply pimpl_trans; [|apply pimpl_star_emp].
-  apply pimpl_or_r. right.
-  eapply pimpl_trans; [|apply star_emp_pimpl].
-  eauto.
+  firstorder.
 Qed.
 
 Ltac destruct_prod := match goal with
