@@ -614,6 +614,7 @@ Ltac pimpl_crash :=
 Ltac cancel_with t :=
   intros;
   unfold stars; simpl; subst;
+  try pred_apply;
   try pimpl_crash;
   norm;
   try match goal with
