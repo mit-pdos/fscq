@@ -172,15 +172,11 @@ Module BALLOC.
     >} free lxp xp bn.
   Proof.
     unfold free, rep, LOG.log_intact.
-    step.
-    pred_apply; cancel.
+    hoare.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
-    step.
-    eapply pimpl_trans; [| eapply pimpl_star_emp ].
     eapply pimpl_or_r; left.
     erewrite <- upd_bupd; [|eauto].
     cancel.
-    pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (free _ _ _) _) => apply free_ok : prog.
@@ -209,7 +205,7 @@ Module BALLOC.
     Rof;;
     rx None.
 
-  Theorem sel_avail : forall len a bn start, (bn < $ len)%word ->
+  Theorem sel_avail' : forall len a bn start, (bn < $ len)%word ->
     sel (map (fun i => alloc_state_to_valu (a $ i)) (seq start len)) bn = $0 ->
     a (bn ^+ $ start) = Avail.
   Proof.
@@ -237,76 +233,54 @@ Module BALLOC.
           admit.
   Qed.
 
-  Theorem alloc_ok: forall lxp xp rx,
-    {{ fun done crash => exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
-     * [[ (Fm * rep xp bmap)%pred m ]]
-     * [[ forall bn, bmap bn = Avail ->
-          {{ fun done' crash' => exists m', F * LOG.rep lxp (ActiveTxn mbase m')
-           * [[ (Fm * rep xp (bupd bmap bn InUse))%pred m' ]]
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx (Some bn) ]]
-     * [[ {{ fun done' crash' => F * LOG.rep lxp (ActiveTxn mbase m)
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx None ]]
-     * [[ LOG.log_intact lxp mbase F ==> crash ]]
-    }} alloc lxp xp rx.
+  Theorem sel_avail : forall len a bn, (bn < $ len)%word ->
+    sel (map (fun i => alloc_state_to_valu (a $ i)) (seq 0 len)) bn = $0 ->
+    a bn = Avail.
   Proof.
-    unfold alloc, rep.
-    step.
+    intros.
+    replace (bn) with (bn ^+ $0).
+    eapply sel_avail'; eauto.
+    rewrite wplus_comm. rewrite wplus_unit. auto.
+  Qed.
 
-    (* XXX what the heck happened here? *)
-    instantiate (2:=emp); cancel.
+  Theorem alloc_ok: forall lxp xp,
+    {< Fm mbase m bmap,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp bmap)%pred m ]]
+    POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
+           exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
+           LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (Fm * rep xp (bupd bmap bn InUse))%pred m' ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} alloc lxp xp.
+  Proof.
+    unfold alloc, rep, LOG.log_intact.
+    hoare.
 
-    step.
     eexists. pred_apply. cancel.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
-
-    step.
-    step.
-    pred_apply. cancel.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
 
-    (* XXX interesting case: there are two possible hoare tuples about
-     * the continuation [rx], and [eauto with prog] picks the wrong one:
-     * it chooses [rx None] when we should be using [rx (Some bn)].
-     *)
-    eapply pimpl_ok2_cont.
-    match goal with
-    | [ H: forall bn, _ -> {{ _ }} rx (Some bn) |- _ ] => apply H
-    end.
-
-    eapply sel_avail; [| eauto ]; auto.
-
+    apply pimpl_or_r. right.
     cancel.
-    pred_apply. erewrite <- upd_bupd; auto. cancel.
+    eapply sel_avail; eauto.
+    rewrite natToWord_wordToNat; eauto.
 
-    step.
-    step.
-    unfold LOG.log_intact; cancel.
-
-    step.
-    unfold LOG.log_intact; cancel.
-    step.
-    unfold LOG.log_intact; cancel.
+    erewrite <- upd_bupd; auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (alloc _) _) => apply alloc_ok : prog.
 
-  Theorem free_recover_ok : forall lxp xp bn rx rec,
-    {{ fun done crashdone => exists F Fm mbase m bmap, F * LOG.rep lxp (ActiveTxn mbase m)
-     * [[ (Fm * rep xp bmap)%pred m ]]
-     * [[ (bn < BmapLen xp)%word ]]
-     * [[ {{ fun done' crash' => exists m', F * LOG.rep lxp (ActiveTxn mbase m')
-           * [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
-           * [[ done' = done ]] * [[ crash' = LOG.log_intact lxp mbase F ]]
-          }} rx true ]]
-     * [[ {{ fun done' crash' => F * LOG.rep lxp (ActiveTxn mbase m)
-           * [[ done' = done ]] * [[ crash' = LOG.log_intact lxp mbase F ]]
-          }} rx false ]]
-     * [[ {{ fun done' crash' => F * LOG.rep lxp (NoTransaction mbase)
-           * [[ done' = crashdone ]] * [[ crash' = LOG.log_intact lxp mbase F ]]
-          }} rec ]]
-    }} v <- free lxp xp bn ; rx v >> LOG.recover lxp ;; rec.
+  Theorem free_recover_ok : forall lxp xp bn,
+    {< Fm mbase m bmap,
+    PRE     LOG.rep lxp (ActiveTxn mbase m) *
+            [[ (Fm * rep xp bmap)%pred m ]] *
+            [[ (bn < BmapLen xp)%word ]]
+    POST:r  [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
+            [[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
+    CRASH:r LOG.rep lxp (NoTransaction mbase)
+    IDEM    LOG.log_intact lxp mbase
+    >} free lxp xp bn >> LOG.recover lxp.
   Proof.
     intros.
     eapply pimpl_ok3.
@@ -314,18 +288,12 @@ Module BALLOC.
     eapply free_ok.
     eapply LOG.recover_ok.
 
-    intros; simpl.
-    norm.
     cancel.
-
-    instantiate (a:=LOG.log_intact lxp m p).
-    intuition eauto.
-
-    step.
-    step.
-    unfold LOG.log_intact; cancel.
     cancel.
-    step.
+    hoare.
+    cancel.
+    cancel.
+    hoare.
   Qed.
 
 End BALLOC.
