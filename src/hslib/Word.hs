@@ -3,6 +3,7 @@ module Word where
 import qualified Data.Word
 import qualified Data.ByteString
 import qualified Data.Serialize as S -- cabal install cereal
+import qualified Data.Bits
 
 data Coq_word =
    W64 !Data.Word.Word64
@@ -54,6 +55,34 @@ split1 64 _ (W4096 w) = W64 x
         Right z -> z
 split1 _ _ (W4096 _) = error "split1 not 64"
 split1 _ _ (W64 _) = error "split1 W64"
+
+wbit :: Prelude.Integer -> Prelude.Integer -> Coq_word -> Coq_word
+wbit 4096 64 (W64 n) = W4096 $ Data.ByteString.append prefix
+                             $ Data.ByteString.append byte suffix
+  where
+    ni = fromIntegral n
+    prefix = Data.ByteString.replicate (511 - (ni `div` 8)) 0
+    byte = Data.ByteString.replicate 1 (Data.Bits.shift 1 (ni `mod` 8))
+    suffix = Data.ByteString.replicate (ni `div` 8) 0
+wbit _ _ _ = error "wbit not 4096/64"
+
+wand :: Prelude.Integer -> Coq_word -> Coq_word -> Coq_word
+wand 4096 (W4096 a) (W4096 b) = W4096 c
+  where
+    c = Data.ByteString.pack $ Data.ByteString.zipWith (Data.Bits..&.) a b
+wand _ _ _ = error "wand not 4096"
+
+wor :: Prelude.Integer -> Coq_word -> Coq_word -> Coq_word
+wor 4096 (W4096 a) (W4096 b) = W4096 c
+  where
+    c = Data.ByteString.pack $ Data.ByteString.zipWith (Data.Bits..|.) a b
+wor _ _ _ = error "wand not 4096"
+
+wnot :: Prelude.Integer -> Coq_word -> Coq_word
+wnot 4096 (W4096 a) = W4096 b
+  where
+    b = Data.ByteString.map (\x -> Data.Bits.xor x 0xff) a
+wnot _ _ = error "wnot not 4096"
 
 instance Show Coq_word where
   show (W64 x) = show x

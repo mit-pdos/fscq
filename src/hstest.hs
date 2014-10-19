@@ -54,15 +54,15 @@ the_prog xp =
 
 lxp :: Log.Coq_xparams
 lxp = Log.Build_xparams
-  (W64 1000)  -- log length sector
-  (W64 1001)  -- commit flag sector
-  (W64 1002)  -- log start sector
-  (W64 1000)  -- log length
+  (W64 0x1000)  -- log length sector
+  (W64 0x1001)  -- commit flag sector
+  (W64 0x1010)  -- log start sector
+  (W64 0x1000)  -- log length
 
 bxp :: Balloc.Coq_xparams
 bxp = Balloc.Build_xparams
-  (W64 950)   -- bitmap start sector
-  (W64 50)    -- bitmap length
+  (W64 0x500)   -- bitmap start sector
+  (W64 0x10)    -- bitmap length
 
 main :: IO ()
 main = do
