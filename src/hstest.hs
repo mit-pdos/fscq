@@ -6,6 +6,8 @@ import Balloc
 import Prog
 import Word
 import qualified System.Directory
+import qualified System.Exit
+import qualified System.Random -- apt-get install libghc-random-dev
 import qualified Data.ByteString
 import qualified Testprog
 
@@ -22,6 +24,20 @@ debugmsg s =
   else
     return ()
 
+crashRandom :: IO Int
+crashRandom = System.Random.getStdRandom (System.Random.randomR (1, 20))
+
+maybeCrash :: IO ()
+maybeCrash = do
+  x <- crashRandom
+  if x == 1
+  then
+    do
+      putStrLn "CRASH!"
+      System.Exit.exitFailure
+  else
+    return ()
+
 read_disk :: Handle -> Coq_word -> IO Coq_word
 read_disk f (W64 a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
@@ -32,6 +48,7 @@ read_disk _ _ = error "read_disk: non-W64 addr"
 
 write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
 write_disk f (W64 a) (W4096 v) = do
+  maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   hSeek f AbsoluteSeek (512 * (fromIntegral a))
   Data.ByteString.hPut f v
