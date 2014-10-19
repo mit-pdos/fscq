@@ -19,8 +19,8 @@ Set Implicit Arguments.
 (* Block allocator *)
 
 Record xparams := {
-  BmapStart : addr;
-    BmapLen : addr
+    BmapStart : addr;
+  BmapNBlocks : addr
 }.
 
 Module BALLOC.
@@ -28,19 +28,43 @@ Module BALLOC.
   | Avail
   | InUse.
 
-  Definition alloc_state_to_valu a : valu :=
+  Definition alloc_state_to_valu a pos : valu :=
     match a with
     | Avail => $0
-    | InUse => $1
+    | InUse => wbit _ ($ pos : addr)
     end.
+
+  Definition blockbits (bmap : addr -> alloc_state) offset :=
+    fold_left (@wor _)
+              (map (fun i => alloc_state_to_valu (bmap $ (offset + i)) i)
+                   (seq 0 valulen))
+              $0.
 
   Definition rep xp (bmap : addr -> alloc_state) :=
     array (BmapStart xp)
-          (map (fun i => alloc_state_to_valu (bmap $ i)) (seq 0 (wordToNat (BmapLen xp)))).
+          (map (fun nblock => blockbits bmap (nblock * valulen))
+               (seq 0 (wordToNat (BmapNBlocks xp)))).
 
   Definition free lxp xp bn rx :=
-    ok <- LOG.write_array lxp (BmapStart xp) bn (natToWord valulen 0);
-    rx ok.
+    For i < (BmapNBlocks xp)
+      Ghost mbase m
+      Loopvar _ <- tt
+      Continuation lrx
+      Invariant
+        LOG.rep lxp (ActiveTxn mbase m) * [[ (i ^* $ valulen <= bn)%word ]]
+      OnCrash
+        LOG.log_intact lxp mbase
+      Begin
+        If (wlt_dec bn (i ^* $ valulen ^+ $ valulen)) {
+          b <- LOG.read_array lxp (BmapStart xp) i ;
+          ok <- LOG.write_array lxp (BmapStart xp) i
+                (b ^& wnot (wbit _ (bn ^- (i ^* $ valulen)))) ;
+          rx ok
+        } else {
+          lrx tt
+        }
+    Rof ;;
+    rx false.
 
   Definition bupd (m : addr -> alloc_state) n a :=
     fun n' => if addr_eq_dec n n' then a else m n'.
@@ -57,30 +81,56 @@ Module BALLOC.
     intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
   Qed.
 
+  Lemma map_ext_seq : forall (A: Type) (f g: nat->A) len start,
+    (forall n, start <= n -> n < start + len -> f n = g n)
+    -> map f (seq start len) = map g (seq start len).
+  Proof.
+    induction len; simpl; intros; auto.
+    f_equal.
+    apply H; omega.
+    apply IHlen; intros.
+    apply H; omega.
+  Qed.
+
   Lemma upd_bupd_outb : forall len a bn s start (bound : addr),
-    start > wordToNat bn ->
-    start + len <= wordToNat bound ->
-    map (fun i => alloc_state_to_valu (a $ i)) (seq start len) =
-    map (fun i => alloc_state_to_valu (bupd a bn s $ i)) (seq start len).
+    start * valulen > wordToNat bn ->
+    start * valulen + len * valulen <= wordToNat bound ->
+    map (fun i => blockbits a (i * valulen)) (seq start len) =
+    map (fun i => blockbits (bupd a bn s) (i * valulen)) (seq start len).
   Proof.
     induction len; auto.
     simpl; intros.
     f_equal.
-    - f_equal.
+    - unfold blockbits.
+      f_equal.
+      apply map_ext_seq; intros.
+      f_equal.
       rewrite bupd_other; auto.
-      unfold not; intros; subst bn.
-      erewrite wordToNat_natToWord_bound in H; try omega.
-      instantiate (1:=bound).
+      unfold not; intros; subst.
+      rewrite wordToNat_natToWord_bound with (bound:=bound) in H.
       omega.
-    - apply IHlen with (bound:=bound); omega.
+      (* Surely there's some omega-like tactic that can do this... *)
+      replace (0 + valulen) with (valulen) in H2 by omega.
+      eapply le_trans; try eassumption.
+      apply Nat.add_le_mono; try omega.
+      apply Nat.lt_le_incl.
+      eapply lt_le_trans; try eassumption.
+      replace (valulen) with (valulen + 0) at 1 by omega.
+      eapply Nat.add_le_mono; try omega.
+      apply Nat.le_0_l.
+    - apply IHlen with (bound:=bound); simpl; omega.
   Qed.
 
-  Theorem upd_bupd' : forall len a bn v s start (bound1 : addr) (bound2 : addr),
-    start + len <= wordToNat bound1 ->
-    start + wordToNat bn <= wordToNat bound2 ->
-    v = alloc_state_to_valu s ->
-    upd (map (fun i => alloc_state_to_valu (a $ i)) (seq start len)) bn v =
-    map (fun i => alloc_state_to_valu (bupd a (bn ^+ $ start) s $ i)) (seq start len).
+(*
+  Theorem upd_bupd' : forall len a bn_block bn_off v s start (bound1 : addr) (bound2 : addr),
+    start * valulen + len * valulen <= wordToNat bound1 ->
+    start * valulen + wordToNat bn_block * valulen + wordToNat bn_off <= wordToNat bound2 ->
+    v = alloc_state_to_valu s bn ->
+    upd (map (fun i => blockbits a (i * valulen)) (seq start len)) bn
+        ??? =
+    map (fun i => blockbits (bupd a (bn_block ^* $ valulen ^+ bn_off ^+ $ start) s)
+                            (i * valulen))
+        (seq start len).
   Proof.
     simpl.
     induction len; intros.
@@ -159,12 +209,44 @@ Module BALLOC.
     replace ($0) with (wzero addrlen) by auto; ring.
     replace ($0) with (wzero addrlen) by auto; ring.
   Qed.
+*)
+
+  Theorem upd_bupd_avail : forall bmap astart nblocks bn bnblock oldblocks,
+    (bn >= bnblock ^* $ valulen)%word
+    -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
+    -> (bnblock < nblocks)%word
+    -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
+                        (seq 0 (wordToNat nblocks)))
+    -> array astart (upd oldblocks bnblock
+                         (sel oldblocks bnblock ^&
+                          wnot (wbit valulen (bn ^- bnblock ^* $ valulen)))) =
+       array astart
+         (map (fun nblock => blockbits (bupd bmap bn Avail) (nblock * valulen))
+              (seq 0 (wordToNat nblocks))).
+  Proof.
+    admit.
+  Qed.
+
+  Theorem upd_bupd_inuse : forall bmap astart nblocks bnblock bnoff oldblocks,
+    (bnoff < $ valulen)%word
+    -> (bnblock < nblocks)%word
+    -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
+                        (seq 0 (wordToNat nblocks)))
+    -> array astart (upd oldblocks bnblock
+                         (sel oldblocks bnblock ^| wbit valulen bnoff)) =
+       array astart
+         (map (fun nblock => blockbits (bupd bmap (bnblock ^* $ valulen ^+ bnoff) InUse)
+                                       (nblock * valulen))
+              (seq 0 (wordToNat nblocks))).
+  Proof.
+    admit.
+  Qed.
 
   Theorem free_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (Fm * rep xp bmap)%pred m ]] *
-           [[ (bn < BmapLen xp)%word ]]
+           [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
     POST:r ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
             [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]) \/
            ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
@@ -173,16 +255,28 @@ Module BALLOC.
   Proof.
     unfold free, rep, LOG.log_intact.
     hoare.
+
+    apply wlt_lt in H2.
+    ring_simplify ($ 0 ^* $ valulen : addr) in H2; simpl in H2; omega.
+
+    eexists; pred_apply. cancel.
+
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
+    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
+
     eapply pimpl_or_r; left.
-    erewrite <- upd_bupd; [|eauto].
     cancel.
+    erewrite upd_bupd_avail; eauto.
+
+    rewrite wmult_plus_distr in *.
+    rewrite wmult_unit in *.
+    auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (free _ _ _) _) => apply free_ok : prog.
 
   Definition alloc lxp xp rx :=
-    For i < (BmapLen xp)
+    For i < (BmapNBlocks xp)
       Ghost mbase m
       Loopvar _ <- tt
       Continuation lrx
@@ -191,20 +285,33 @@ Module BALLOC.
       OnCrash
         LOG.log_intact lxp mbase
       Begin
-        f <- LOG.read_array lxp (BmapStart xp) i;
-        If (weq f $0) {
-          ok <- LOG.write_array lxp (BmapStart xp) i $1;
-          If (bool_dec ok true) {
-            rx (Some i)
-          } else {
-            rx None
-          }
-        } else {
-          lrx tt
-        }
-    Rof;;
+        blk <- LOG.read_array lxp (BmapStart xp) i;
+
+        For j < $ valulen
+          Ghost mbase' m'
+          Loopvar _ <- tt
+          Continuation lrx_inner
+          Invariant
+            LOG.rep lxp (ActiveTxn mbase' m')
+          OnCrash
+            LOG.log_intact lxp mbase'
+          Begin
+            If (weq (blk ^& wbit _ j) $0) {
+              ok <- LOG.write_array lxp (BmapStart xp) i (blk ^| wbit _ j) ;
+              If (bool_dec ok true) {
+                rx (Some (i ^* $ valulen ^+ j))
+              } else {
+                rx None
+              }
+            } else {
+              lrx_inner tt
+            }
+          Rof;;
+        lrx tt
+      Rof;;
     rx None.
 
+(*
   Theorem sel_avail' : forall len a bn start, (bn < $ len)%word ->
     sel (map (fun i => alloc_state_to_valu (a $ i)) (seq start len)) bn = $0 ->
     a (bn ^+ $ start) = Avail.
@@ -242,6 +349,17 @@ Module BALLOC.
     eapply sel_avail'; eauto.
     rewrite wplus_comm. rewrite wplus_unit. auto.
   Qed.
+*)
+
+  Theorem sel_avail : forall bmap bnblock bnoff nblocks,
+     sel (map (fun nblock => blockbits bmap (nblock * valulen))
+              (seq 0 (wordToNat nblocks))) bnblock ^& wbit valulen bnoff = $ 0
+    -> (bnblock < nblocks)%word
+    -> (bnoff < $ valulen)%word
+    -> bmap (bnblock ^* $ valulen ^+ bnoff) = Avail.
+  Proof.
+    admit.
+  Qed.
 
   Theorem alloc_ok: forall lxp xp,
     {< Fm mbase m bmap,
@@ -262,14 +380,14 @@ Module BALLOC.
 
     apply pimpl_or_r. right.
     cancel.
-    eapply sel_avail; eauto.
-    rewrite natToWord_wordToNat; eauto.
 
-    erewrite <- upd_bupd; auto.
+    eapply sel_avail; eauto.
+    erewrite upd_bupd_inuse; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (alloc _) _) => apply alloc_ok : prog.
 
+(*
   Theorem free_recover_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
     PRE     LOG.rep lxp (ActiveTxn mbase m) *
@@ -295,5 +413,6 @@ Module BALLOC.
     cancel.
     hoare.
   Qed.
+*)
 
 End BALLOC.
