@@ -5,6 +5,7 @@ import Log
 import Balloc
 import Prog
 import Word
+import qualified System.Directory
 import qualified Data.ByteString
 import qualified Testprog
 
@@ -42,14 +43,14 @@ run_dcode _ (Done r) = return r
 run_dcode f (Read a rx) = do val <- read_disk f a; run_dcode f $ rx val
 run_dcode f (Write a v rx) = do write_disk f a v; run_dcode f $ rx ()
 
-the_prog :: Log.Coq_xparams -> Prog.Coq_prog Prelude.Integer
+the_prog :: Log.Coq_xparams -> Prog.Coq_prog ()
 the_prog xp =
   _LOG__init xp $ \_ ->
   _LOG__begin xp $ \_ ->
   _LOG__read xp (W64 5) $ \v ->
   _LOG__write xp (W64 6) v $ \_ ->
   _LOG__commit xp $ \_ ->
-  Prog.Done 0
+  Prog.Done ()
 
 lxp :: Log.Coq_xparams
 lxp = Log.Build_xparams
@@ -65,10 +66,21 @@ bxp = Balloc.Build_xparams
 
 main :: IO ()
 main = do
-  putStrLn "Running program.."
+  -- This is racy (stat'ing the file first and opening it later)
+  fileExists <- System.Directory.doesFileExist disk_fn
   f <- openFile disk_fn ReadWriteMode
+  if fileExists
+  then
+    do
+      putStrLn "Recovering disk.."
+      run_dcode f $ _LOG__recover lxp $ \_ -> Prog.Done ()
+  else
+    do
+      putStrLn "Initializing disk.."
+      run_dcode f $ _LOG__init lxp $ \_ -> Prog.Done ()
+  putStrLn "Running program.."
   -- r <- run_dcode f $ the_prog lxp
-  -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done Nothing
+  -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()
   r <- run_dcode f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
   hClose f
   putStrLn $ "Done: " ++ (show r)
