@@ -2,7 +2,7 @@ module Word where
 
 import qualified Data.Word
 import qualified Data.ByteString
-import qualified Data.Serialize as S -- cabal install cereal
+import qualified Data.Serialize as S -- cabal install cereal // apt-get install libghc-cereal-dev
 import qualified Data.Bits
 
 data Coq_word =
