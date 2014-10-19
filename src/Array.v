@@ -348,8 +348,6 @@ Definition read_back T a rx : prog T :=
   v <- ArrayRead a $0;
   rx v.
 
-Print read_back.
-
 Theorem read_back_ok : forall T a (rx : _ -> prog T),
   {{ fun done crash => exists vs F, array a vs * F
      * [[length vs > 0]]
