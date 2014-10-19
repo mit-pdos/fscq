@@ -3,6 +3,7 @@
 Require Import Arith Div2 NArith Bool Omega.
 Require Import Nomega.
 Require Import Wf_nat.
+Require Import Eqdep.
 
 Set Implicit Arguments.
 
@@ -1372,6 +1373,60 @@ Proof.
 Qed.
 
 Notation "$ n" := (natToWord _ n) (at level 0).
+
+
+(* Setting an individual bit *)
+
+Definition wbit sz n := natToWord sz (pow2 n).
+
+Theorem div2_pow2_twice: forall n,
+  Nat.div2 (pow2 n + (pow2 n + 0)) = pow2 n.
+Proof.
+  intros.
+  replace (pow2 n + (pow2 n + 0)) with (2 * pow2 n) by omega.
+  rewrite Nat.div2_double.
+  auto.
+Qed.
+
+Theorem wbit_or_same : forall sz n, (n < sz)%nat
+  -> (wbit sz n) ^| (wbit sz n) <> wzero sz.
+Proof.
+  unfold not.
+  induction sz; intros; try omega.
+  unfold wbit, wzero, wor in *.
+  simpl in *.
+  destruct n; try discriminate.
+  inversion H0.
+  apply inj_pair2 in H3.
+  rewrite div2_pow2_twice in H3.
+  eapply IHsz; eauto.
+  omega.
+Qed.
+
+Theorem mod2_pow2_twice: forall n,
+  mod2 (pow2 n + (pow2 n + 0)) = false.
+Proof.
+  intros.
+  replace (pow2 n + (pow2 n + 0)) with (2 * pow2 n) by omega.
+  apply mod2_double.
+Qed.
+
+Theorem wbit_or_other : forall sz n1 n2, (n1 < sz)%nat
+  -> (n2 < sz)%nat
+  -> (n1 <> n2)
+  -> (wbit sz n1) ^& (wbit sz n2) = wzero sz.
+Proof.
+  induction sz; intros; try omega.
+  unfold wbit, wzero, wand.
+  simpl.
+  destruct n1; destruct n2; try congruence;
+    simpl; repeat rewrite mod2_pow2_twice; f_equal.
+  rewrite wand_kill; auto.
+  rewrite wand_comm; rewrite wand_kill; auto.
+  repeat rewrite div2_pow2_twice.
+  eapply IHsz; omega.
+Qed.
+
 
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
