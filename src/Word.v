@@ -1376,6 +1376,50 @@ Qed.
 Notation "$ n" := (natToWord _ n) (at level 0).
 
 
+(* Bit shifting *)
+
+Lemma sz_minus_nshift : forall sz nshift, (nshift < sz)%nat -> sz = sz - nshift + nshift.
+Proof.
+  intros; omega.
+Qed.
+
+Lemma nshift_plus_nkeep : forall sz nshift, (nshift < sz)%nat -> nshift + (sz - nshift) = sz.
+Proof.
+  intros; omega.
+Qed.
+
+Definition wlshift' (sz : nat) (w : word sz) (nshift : nat) : word sz.
+  refine (if lt_dec nshift sz then _ else wzero sz).
+  refine (let nkeep := sz - nshift in _).
+  erewrite sz_minus_nshift in w by eassumption.
+  refine (let keepbits := split1 nkeep nshift w in _).
+  refine (let result := combine (wzero nshift) keepbits in _).
+  subst nkeep.
+  rewrite nshift_plus_nkeep in result by eassumption.
+  exact result.
+Defined.
+
+Definition wrshift' (sz : nat) (w : word sz) (nshift : nat) : word sz.
+  refine (if lt_dec nshift sz then _ else wzero sz).
+  refine (let nkeep := sz - nshift in _).
+  erewrite sz_minus_nshift in w by eassumption; rewrite plus_comm in w.
+  refine (let keepbits := split2 nshift nkeep w in _).
+  refine (let result := combine keepbits (wzero nshift) in _).
+  subst nkeep.
+  rewrite plus_comm in result.
+  rewrite nshift_plus_nkeep in result by eassumption.
+  exact result.
+Defined.
+
+Definition wlshift (sz sz' : nat) (w : word sz) (nshift : word sz') :=
+  wlshift' w (wordToNat nshift).
+Definition wrshift (sz sz' : nat) (w : word sz) (nshift : word sz') :=
+  wrshift' w (wordToNat nshift).
+
+Notation "l ^<< r" := (@wlshift _ _ l%word r%word) (at level 35).
+Notation "l ^>> r" := (@wrshift _ _ l%word r%word) (at level 35).
+
+
 (* Setting an individual bit *)
 
 Definition wbit sz sz' (n : word sz') := natToWord sz (pow2 (wordToNat n)).
