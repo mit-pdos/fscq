@@ -45,7 +45,7 @@ Module BALLOC.
           (map (fun nblock => blockbits bmap (nblock * valulen))
                (seq 0 (wordToNat (BmapNBlocks xp)))).
 
-  Definition free lxp xp bn rx :=
+  Definition free T lxp xp bn rx : prog T :=
     For i < (BmapNBlocks xp)
       Ghost mbase m
       Loopvar _ <- tt
@@ -275,7 +275,7 @@ Module BALLOC.
 
   Hint Extern 1 ({{_}} progseq (free _ _ _) _) => apply free_ok : prog.
 
-  Definition alloc lxp xp rx :=
+  Definition alloc T lxp xp rx : prog T :=
     For i < (BmapNBlocks xp)
       Ghost mbase m
       Loopvar _ <- tt

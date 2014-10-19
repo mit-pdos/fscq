@@ -3,26 +3,29 @@ Require Import Log.
 Require Import Word.
 Require Import Balloc.
 
-Definition copy_block xp (a b : addr) (rx : prog) : prog :=
+Set Implicit Arguments.
+
+
+Definition copy_block T xp (a b : addr) rx : prog T :=
   v <- LOG.read xp a;
   ok <- LOG.write xp b v;
   rx.
 
-Fixpoint copy_many xp (count : nat) (src dst : addr) rx :=
+Fixpoint copy_many T xp (count : nat) (src dst : addr) rx : prog T :=
   match count with
   | O => rx tt
   | S c => copy_block xp (src ^+ $ c) (dst ^+ $ c)
-           (copy_many xp c src dst rx)
+           (copy_many T xp c src dst rx)
   end.
 
-Definition testcopy xp rx :=
+Definition testcopy T xp rx : prog T :=
   LOG.init xp ;;
   LOG.begin xp ;;
   copy_many xp 200 $100 $500 ;;
   LOG.commit xp ;;
   rx.
 
-Definition testalloc lxp bxp rx :=
+Definition testalloc T lxp bxp rx : prog T :=
   LOG.init lxp ;;
   LOG.begin lxp ;;
   b <- BALLOC.alloc lxp bxp ;

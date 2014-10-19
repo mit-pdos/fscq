@@ -1,5 +1,7 @@
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg.
 
+Set Implicit Arguments.
+
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
@@ -199,24 +201,24 @@ Qed.
 (** * Opaque operations for array accesses, to guide automation *)
 
 Module Type ARRAY_OPS.
-  Parameter ArrayRead : addr -> addr -> (valu -> prog) -> prog.
-  Axiom ArrayRead_eq : ArrayRead = fun a i k => Read (a ^+ i) k.
+  Parameter ArrayRead : forall (T: Set), addr -> addr -> (valu -> prog T) -> prog T.
+  Axiom ArrayRead_eq : ArrayRead = fun T a i k => Read (a ^+ i) k.
 
-  Parameter ArrayWrite : addr -> addr -> valu -> (unit -> prog) -> prog.
-  Axiom ArrayWrite_eq : ArrayWrite = fun a i v k => Write (a ^+ i) v k.
+  Parameter ArrayWrite : forall (T: Set), addr -> addr -> valu -> (unit -> prog T) -> prog T.
+  Axiom ArrayWrite_eq : ArrayWrite = fun T a i v k => Write (a ^+ i) v k.
 End ARRAY_OPS.
 
 Module ArrayOps : ARRAY_OPS.
-  Definition ArrayRead : addr -> addr -> (valu -> prog) -> prog :=
-    fun a i k => Read (a ^+ i) k.
-  Theorem ArrayRead_eq : ArrayRead = fun a i k => Read (a ^+ i) k.
+  Definition ArrayRead : forall (T: Set), addr -> addr -> (valu -> prog T) -> prog T :=
+    fun T a i k => Read (a ^+ i) k.
+  Theorem ArrayRead_eq : ArrayRead = fun T a i k => Read (a ^+ i) k.
   Proof.
     auto.
   Qed.
 
-  Definition ArrayWrite : addr -> addr -> valu -> (unit -> prog) -> prog :=
-    fun a i v k => Write (a ^+ i) v k.    
-  Theorem ArrayWrite_eq : ArrayWrite = fun a i v k => Write (a ^+ i) v k.
+  Definition ArrayWrite : forall (T: Set), addr -> addr -> valu -> (unit -> prog T) -> prog T :=
+    fun T a i v k => Write (a ^+ i) v k.
+  Theorem ArrayWrite_eq : ArrayWrite = fun T a i v k => Write (a ^+ i) v k.
   Proof.
     auto.
   Qed.
@@ -229,7 +231,7 @@ Export ArrayOps.
 (** * Hoare rules *)
 
 Theorem read_ok:
-  forall (a i:addr) (rx:valu->prog),
+  forall T (a i:addr) (rx:valu->prog T),
   {{ fun done crash => exists vs F, array a vs * F
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a vs * F * [[ done' = done ]] * [[ crash' = crash ]]
@@ -276,7 +278,7 @@ Proof.
 Qed.
 
 Theorem write_ok:
-  forall (a i:addr) (v:valu) (rx:unit->prog),
+  forall T (a i:addr) (v:valu) (rx:unit->prog T),
   {{ fun done crash => exists vs F, array a vs * F
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a (upd vs i v) * F
@@ -341,12 +343,14 @@ Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _) _) => apply write_ok : prog.
 
 (** * Some test cases *)
 
-Definition read_back a rx :=
+Definition read_back T a rx : prog T :=
   ArrayWrite a $0 $42;;
   v <- ArrayRead a $0;
   rx v.
 
-Theorem read_back_ok : forall a rx,
+Print read_back.
+
+Theorem read_back_ok : forall T a (rx : _ -> prog T),
   {{ fun done crash => exists vs F, array a vs * F
      * [[length vs > 0]]
      * [[{{fun done' crash' => array a (upd vs $0 $42) * F
@@ -358,14 +362,14 @@ Proof.
   unfold read_back; hoare.
 Qed.
 
-Definition swap a i j rx :=
+Definition swap T a i j rx : prog T :=
   vi <- ArrayRead a i;
   vj <- ArrayRead a j;
   ArrayWrite a i vj;;
   ArrayWrite a j vi;;
   rx.
 
-Theorem swap_ok : forall a i j rx,
+Theorem swap_ok : forall T a i j (rx : prog T),
   {{ fun done crash => exists vs F, array a vs * F
      * [[wordToNat i < length vs]]
      * [[wordToNat j < length vs]]

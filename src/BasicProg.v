@@ -85,11 +85,11 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
 
-Definition If_ P Q (b : {P} + {Q}) (p1 p2 : prog) :=
+Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
 
 Theorem if_ok:
-  forall P Q (b : {P}+{Q}) p1 p2,
+  forall T P Q (b : {P}+{Q}) (p1 p2 : prog T),
   {{ fun done crash => exists pre, pre
    * [[ {{ fun done' crash' => pre * [[P]] * [[ done' = done ]] * [[ crash' = crash ]] }} p1 ]]
    * [[ {{ fun done' crash' => pre * [[Q]] * [[ done' = done ]] * [[ crash' = crash ]] }} p2 ]]
@@ -124,12 +124,13 @@ Proof.
   apply wlt_lt; auto.
 Qed.
 
-Definition For_ (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
+Definition For_ (T: Set)
+                (L : Set) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
                 (nocrash : G -> addr -> L -> pred)
                 (crashed : G -> pred)
-                (rx: L -> prog) : prog.
-  refine (Fix (@for_args_wf L) (fun _ => prog)
+                (rx: L -> prog T) : prog T.
+  refine (Fix (@for_args_wf L) (fun _ => prog T)
           (fun args For_ => _)
           {| For_args_i := i; For_args_n := n; For_args_l := l |}).
   clear i n l.
@@ -166,12 +167,12 @@ Definition For_ (L : Set) (G : Type) (f : addr -> L -> (L -> prog) -> prog)
   omega.
 Defined.
 
-Lemma For_step: forall L G f i n l nocrash crashed rx,
-  @For_ L G f i n l nocrash crashed rx =
+Lemma For_step: forall T L G f i n l nocrash crashed (rx: _ -> prog T),
+  @For_ T L G f i n l nocrash crashed rx =
     if weq n $0
     then rx l
     else l' <- (f i l);
-         @For_ L G f
+         @For_ T L G f
                (i ^+ $1)
                (n ^- $1)
                l' nocrash crashed rx.
@@ -191,9 +192,9 @@ Proof.
 Qed.
 
 Theorem for_ok':
-  forall (n i : addr)
+  forall T (n i : addr)
          (L : Set) (G : Type)
-         f rx
+         f (rx: _ -> prog T)
          (nocrash : G -> addr -> L -> pred)
          (crashed : G -> pred)
          (li : L),
@@ -213,6 +214,7 @@ Theorem for_ok':
    * [[F * crashed g ==> crash]]
   }} (For_ f i n li nocrash crashed rx).
 Proof.
+  intro T.
   match goal with
   | [ |- forall (n: addr), ?P ] =>
     refine (well_founded_ind (@wlt_wf addrlen) (fun n => P) _)
@@ -230,7 +232,6 @@ Proof.
       simpl; eauto.
       instantiate (1:=(fun _ _ => a * nocrash a0 ($ (0) ^+ i) li)%pred).
       intros; simpl.
-      cancel.
       (* XXX something wrong with the done'=done requirements *)
 Admitted.
 
@@ -314,9 +315,9 @@ Qed.
 *)
 
 Theorem for_ok:
-  forall (n : addr)
+  forall T (n : addr)
          (L : Set) (G : Type)
-         f rx
+         f (rx: _ -> prog T)
          (nocrash : G -> addr -> L -> pred)
          (crashed : G -> pred)
          (li : L),
@@ -365,7 +366,7 @@ Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Inv
    lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
 
-Definition read_array a rx :=
+Definition read_array T a rx : prog T :=
   v <- Read a;
   rx v.
 
@@ -390,7 +391,7 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
     end
   end : norm_hint_right.
 
-Theorem read_array_ok : forall a rx,
+Theorem read_array_ok : forall T a (rx : _ -> prog T),
   {{ fun done crash => exists m v F, diskIs m * F * [[ m @ a |-> v ]]
    * [[ {{ fun done' crash' => diskIs m * F * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
    * [[ diskIs m * F ==> crash ]]
@@ -400,7 +401,7 @@ Proof.
   hoare.
 Qed.
 
-Definition write_array a v rx :=
+Definition write_array T a v rx : prog T :=
   Write a v ;;
   rx tt.
 
@@ -416,7 +417,7 @@ Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
     end
   end : norm_hint_right.
 
-Theorem write_array_ok : forall a v rx,
+Theorem write_array_ok : forall T a v (rx : _ -> prog T),
   {{ fun done crash => exists m F, diskIs m * F * [[ indomain a m ]]
    * [[ {{ fun done' crash' => diskIs (upd m a v) * F
       * [[ done' = done ]] * [[ crash' = crash ]] }} rx tt ]]

@@ -274,7 +274,7 @@ Module LOG.
 
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep.
 
-  Definition init xp rx :=
+  Definition init T xp rx : prog T :=
     Write (LogLength xp) (addr2valu $0) ;;
     Write (LogCommit xp) $0 ;;
     rx tt.
@@ -295,7 +295,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
 
-  Definition begin xp rx :=
+  Definition begin T xp rx : prog T :=
     Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
@@ -323,7 +323,7 @@ Module LOG.
       end
     end : norm_hint_right.
 
-  Definition abort xp rx :=
+  Definition abort T xp rx : prog T :=
     Write (LogLength xp) (addr2valu $0) ;;
     rx tt.
 
@@ -481,7 +481,7 @@ Module LOG.
     | context[length (_ ++ _ :: nil)] => rewrite app_length; apply pimpl_refl
     end : norm_hint_right.
 
-  Definition write xp a v rx :=
+  Definition write T xp a v rx : prog T :=
     len' <- Read (LogLength xp);
     let len := valu2addr len' in
     If (wlt_dec len (LogLen xp)) {
@@ -677,7 +677,7 @@ Module LOG.
     induction l; simpl; f_equal; auto.
   Qed.
 
-  Definition read xp a rx :=
+  Definition read T xp a rx : prog T :=
     len <- Read (LogLength xp);
     v <- read_array a;
 
@@ -739,10 +739,10 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
 
-  Definition read_array xp a i rx :=
+  Definition read_array T xp a i rx : prog T :=
     read xp (a ^+ i) rx.
 
-  Definition write_array xp a i v rx :=
+  Definition write_array T xp a i v rx : prog T :=
     write xp (a ^+ i) v rx.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
@@ -849,7 +849,7 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
 
-  Definition apply xp rx :=
+  Definition apply T xp rx : prog T :=
     len <- Read (LogLength xp);
     For i < (valu2addr len)
       Ghost log cur
@@ -1003,7 +1003,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (apply _) _) => apply apply_ok : prog.
 
-  Definition commit xp rx :=
+  Definition commit T xp rx : prog T :=
     Write (LogCommit xp) $1;;
     apply xp;;
     rx tt.
@@ -1031,7 +1031,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (commit _) _) => apply commit_ok : prog.
 
-  Definition recover xp rx :=
+  Definition recover T xp rx : prog T :=
     com <- Read (LogCommit xp);
     If (weq com $1) {
       apply xp;;
@@ -1069,7 +1069,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
-  Theorem read_recover_ok : forall xp a rxOK rxREC,
+  Theorem read_recover_ok : forall TF TR xp a (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
     {{ fun done crashdone => exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
      * [[ exists F', (a |-> v * F') m2 ]]
      * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
