@@ -4,6 +4,7 @@ Require Import Arith Div2 NArith Bool Omega.
 Require Import Nomega.
 Require Import Wf_nat.
 Require Import Eqdep.
+Require Import Program.Tactics.
 
 Set Implicit Arguments.
 
@@ -1377,7 +1378,7 @@ Notation "$ n" := (natToWord _ n) (at level 0).
 
 (* Setting an individual bit *)
 
-Definition wbit sz n := natToWord sz (pow2 n).
+Definition wbit sz sz' (n : word sz') := natToWord sz (pow2 (wordToNat n)).
 
 Theorem div2_pow2_twice: forall n,
   Nat.div2 (pow2 n + (pow2 n + 0)) = pow2 n.
@@ -1388,17 +1389,47 @@ Proof.
   auto.
 Qed.
 
-Theorem wbit_or_same : forall sz n, (n < sz)%nat
+Theorem zero_or_wordToNat_S: forall sz (n : word sz),
+  n = $0 \/
+  exists nn, wordToNat n = S nn /\ wordToNat (n ^- $1) = nn.
+Proof.
+  intros.
+  destruct sz.
+  left. rewrite (word0 n). auto.
+  destruct (weq n $0); intuition.
+  right.
+  exists (wordToNat (n ^- $1)); intuition.
+  rewrite wminus_Alt.
+  rewrite wminus_Alt2.
+  unfold wordBinN.
+  rewrite roundTrip_1.
+  erewrite wordToNat_natToWord_bound with (bound:=n); try omega.
+  assert (wordToNat n <> 0); try omega.
+  unfold not; intros; apply n0; clear n0.
+  rewrite <- H. rewrite natToWord_wordToNat; auto.
+  unfold not; intros; apply n0; clear n0.
+  apply wlt_lt in H.
+  replace n with (natToWord (S sz) (wordToNat n)) by (rewrite natToWord_wordToNat; auto).
+  f_equal.
+  rewrite roundTrip_1 in *.
+  omega.
+Qed.
+
+Theorem wbit_or_same : forall sz sz' (n : word sz'), (wordToNat n < sz)%nat
   -> (wbit sz n) ^| (wbit sz n) <> wzero sz.
 Proof.
   unfold not.
   induction sz; intros; try omega.
   unfold wbit, wzero, wor in *.
   simpl in *.
-  destruct n; try discriminate.
+  destruct (zero_or_wordToNat_S n).
+  subst; rewrite roundTrip_0 in *. discriminate.
+  destruct H1. destruct H1.
+  rewrite H1 in *.
   inversion H0.
-  apply inj_pair2 in H3.
-  rewrite div2_pow2_twice in H3.
+  apply inj_pair2 in H5.
+  rewrite div2_pow2_twice in H5.
+  repeat rewrite <- H2 in H5.
   eapply IHsz; eauto.
   omega.
 Qed.
@@ -1411,20 +1442,45 @@ Proof.
   apply mod2_double.
 Qed.
 
-Theorem wbit_or_other : forall sz n1 n2, (n1 < sz)%nat
-  -> (n2 < sz)%nat
+Theorem wbit_or_other : forall sz sz' (n1 n2 : word sz'), (wordToNat n1 < sz)%nat
+  -> (wordToNat n2 < sz)%nat
   -> (n1 <> n2)
   -> (wbit sz n1) ^& (wbit sz n2) = wzero sz.
 Proof.
   induction sz; intros; try omega.
   unfold wbit, wzero, wand.
   simpl.
-  destruct n1; destruct n2; try congruence;
-    simpl; repeat rewrite mod2_pow2_twice; f_equal.
+  destruct (zero_or_wordToNat_S n1); destruct (zero_or_wordToNat_S n2);
+    try congruence; destruct_conjs; subst; try rewrite roundTrip_0.
+
+  repeat rewrite H4; simpl; repeat rewrite mod2_pow2_twice; f_equal.
   rewrite wand_kill; auto.
+
+  repeat rewrite H4; simpl; repeat rewrite mod2_pow2_twice; f_equal.
   rewrite wand_comm; rewrite wand_kill; auto.
+
+  repeat rewrite H4; repeat rewrite H6; simpl.
+  repeat rewrite mod2_pow2_twice; f_equal.
   repeat rewrite div2_pow2_twice.
-  eapply IHsz; omega.
+  eapply IHsz; try omega.
+
+  (* ring isn't defined over arbitrary sizes, so do this by hand... *)
+  unfold not in *; intros; apply H1.
+  replace (n1) with ((n1 ^- $1) ^+ $1).
+  rewrite H2.
+  rewrite wminus_def.
+  rewrite <- wplus_assoc.
+  rewrite <- (wplus_comm $1).
+  rewrite wminus_inv.
+  rewrite wplus_comm.
+  apply wplus_unit.
+
+  rewrite wminus_def.
+  rewrite <- wplus_assoc.
+  rewrite <- (wplus_comm $1).
+  rewrite wminus_inv.
+  rewrite wplus_comm.
+  apply wplus_unit.
 Qed.
 
 
