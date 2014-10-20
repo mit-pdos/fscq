@@ -6,6 +6,7 @@
 *.o
 .*.aux
 .coq-native
+/lia.cache
 /codegen/*.ml
 /codegen/*.mli
 /codegen/*.hs

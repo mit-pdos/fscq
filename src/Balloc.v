@@ -12,6 +12,7 @@ Require Import List.
 Require Import Bool.
 Require Import Nomega.
 Require Import Idempotent.
+Require Import Psatz.
 
 Set Implicit Arguments.
 
@@ -109,15 +110,9 @@ Module BALLOC.
       unfold not; intros; subst.
       rewrite wordToNat_natToWord_bound with (bound:=bound) in H.
       omega.
-      (* Surely there's some omega-like tactic that can do this... *)
-      replace (0 + valulen) with (valulen) in H2 by omega.
-      eapply le_trans; try eassumption.
-      apply Nat.add_le_mono; try omega.
-      apply Nat.lt_le_incl.
-      eapply lt_le_trans; try eassumption.
-      replace (valulen) with (valulen + 0) at 1 by omega.
-      eapply Nat.add_le_mono; try omega.
-      apply Nat.le_0_l.
+
+      clear H.
+      lia.
     - apply IHlen with (bound:=bound); simpl; omega.
   Qed.
 
