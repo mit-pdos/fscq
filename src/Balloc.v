@@ -36,15 +36,245 @@ Module BALLOC.
     end.
 
   Definition blockbits (bmap : addr -> alloc_state) offset :=
-    fold_left (@wor _)
-              (map (fun i => alloc_state_to_valu (bmap $ (offset + i)) i)
-                   (seq 0 valulen))
-              $0.
+    fold_right (@wor _) $0
+               (map (fun i => alloc_state_to_valu (bmap $ (offset + i)) i)
+                    (seq 0 valulen)).
 
   Definition rep xp (bmap : addr -> alloc_state) :=
     array (BmapStart xp)
           (map (fun nblock => blockbits bmap (nblock * valulen))
                (seq 0 (wordToNat (BmapNBlocks xp)))).
+
+  Definition bupd (m : addr -> alloc_state) n a :=
+    fun n' => if addr_eq_dec n n' then a else m n'.
+
+  Lemma bupd_same: forall m n n' a,
+    n = n' -> bupd m n a n' = a.
+  Proof.
+    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
+  Qed.
+
+  Lemma bupd_other: forall m n n' a,
+    n <> n' -> bupd m n a n' = m n'.
+  Proof.
+    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
+  Qed.
+
+  Theorem selN_list_eq' : forall len vs vs',
+    length vs = len
+    -> length vs' = len
+    -> (forall i, i < len -> selN vs i = selN vs' i)
+    -> vs = vs'.
+  Proof.
+    induction len.
+    - destruct vs; destruct vs'; simpl; intros; try congruence.
+    - destruct vs; destruct vs'; simpl; intros; try congruence.
+      f_equal.
+      apply (H1 0); omega.
+      apply IHlen; eauto.
+      intros.
+      apply (H1 (S i)); omega.
+  Qed.
+
+  Theorem selN_list_eq : forall vs vs',
+    length vs = length vs'
+    -> (forall i, i < length vs -> selN vs i = selN vs' i)
+    -> vs = vs'.
+  Proof.
+    intros.
+    eapply selN_list_eq'; [ apply eq_refl | auto | auto ].
+  Qed.
+
+  Theorem selN_map_seq' : forall i n f base, i < n
+    -> selN (map f (seq base n)) i = f (i + base).
+  Proof.
+    induction i; destruct n; simpl; intros; try omega; auto.
+    replace (S (i + base)) with (i + (S base)) by omega.
+    apply IHi; omega.
+  Qed.
+
+  Theorem selN_map_seq : forall i n f, i < n
+    -> selN (map f (seq 0 n)) i = f i.
+  Proof.
+    intros.
+    replace i with (i + 0) at 2 by omega.
+    apply selN_map_seq'; auto.
+  Qed.
+
+  Theorem selN_updN_ne : forall vs n n' v, n < length vs
+    -> n <> n'
+    -> selN (updN vs n v) n' = selN vs n'.
+  Proof.
+    induction vs; destruct n'; destruct n; simpl; intuition; try omega.
+  Qed.
+
+  Hint Rewrite length_updN.
+  Hint Rewrite map_length.
+  Hint Rewrite seq_length.
+
+  Theorem blockbits_bupd_other : forall bmap bn x i bnblock,
+    (bnblock ^* $ valulen <= bn)%word
+    -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
+    -> i <> wordToNat bnblock
+    -> blockbits (bupd bmap bn x) (i * valulen) = blockbits bmap (i * valulen).
+  Proof.
+    unfold blockbits.
+    intros.
+    f_equal.
+    apply selN_list_eq; autorewrite with core; auto.
+
+    intros.
+    repeat rewrite selN_map_seq; auto.
+    f_equal.
+    rewrite bupd_other; auto.
+    unfold not in *; intros; apply H1; clear H1; subst.
+    admit.
+  Qed.
+
+  Theorem valulen_bound : valulen <= wordToNat ($ valulen : addr).
+  Proof.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    rewrite valulen_is.
+    unfold addrlen.
+    unfold pow2; omega.
+  Qed.
+
+  Theorem wordToNat_wminus : forall sz (a b : word sz), (b <= a)%word
+    -> wordToNat (a ^- b) = wordToNat a - wordToNat b.
+  Proof.
+    admit.
+  Qed.
+
+  Theorem blockbits_bupd_same_avail': forall vlen start bmap bn bnblock,
+    start + vlen = valulen
+    -> (bnblock ^* $ valulen <= bn)%word
+    -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
+    -> fold_right (wor (sz:=valulen)) $ (0)
+         (map (fun i : nat => alloc_state_to_valu (bmap $ (wordToNat bnblock * valulen + i)) i)
+            (seq start vlen)) ^& wnot (wbit valulen (bn ^- bnblock ^* $ (valulen))) =
+       fold_right (wor (sz:=valulen)) $ (0)
+         (map
+            (fun i : nat =>
+             alloc_state_to_valu (bupd bmap bn Avail $ (wordToNat bnblock * valulen + i)) i)
+            (seq start vlen)).
+  Proof.
+    induction vlen; simpl; intros.
+    rewrite wand_kill; auto.
+    rewrite wand_or_distr; f_equal.
+    - destruct (weq bn $ (wordToNat bnblock * valulen + start)).
+      + subst. rewrite bupd_same; auto. simpl.
+        destruct (bmap $ (wordToNat bnblock * valulen + start)); simpl; try apply wand_kill.
+        replace ($ (wordToNat bnblock * valulen + start) ^- bnblock ^* $ valulen)
+          with ($ start : addr) by words.
+        rewrite wbit_and_not; auto.
+        clear H0 H1 IHvlen.
+        erewrite wordToNat_natToWord_bound; try omega.
+        eapply le_trans; [| apply valulen_bound ].
+        omega.
+      + rewrite bupd_other; auto.
+        destruct (bmap $ (wordToNat bnblock * valulen + start)); simpl; try apply wand_kill.
+        rewrite wbit_and_not_other; auto.
+        erewrite wordToNat_natToWord_bound; try omega.
+        eapply le_trans; [| apply valulen_bound ]; omega.
+
+        rewrite wordToNat_wminus; auto.
+        apply wlt_lt in H1.
+        admit.
+
+        unfold not in *; intros; apply n.
+        rewrite natToWord_plus.
+        rewrite H2.
+        words.
+    - apply IHvlen; auto; omega.
+  Qed.
+
+  Theorem blockbits_bupd_same_avail : forall bmap bn bnblock,
+    (bnblock ^* $ valulen <= bn)%word
+    -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
+    -> blockbits bmap (wordToNat bnblock * valulen)
+         ^& wnot (wbit valulen (bn ^- bnblock ^* $ (valulen))) =
+       blockbits (bupd bmap bn Avail) (wordToNat bnblock * valulen).
+  Proof.
+    intros.
+    unfold blockbits.
+    rewrite blockbits_bupd_same_avail'; auto.
+  Qed.
+
+  Theorem blockbits_bupd_same_inuse : forall bmap bn bnblock,
+    (bnblock ^* $ valulen <= bn)%word
+    -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
+    -> blockbits bmap (wordToNat bnblock * valulen)
+         ^| wbit valulen (bn ^- bnblock ^* $ valulen) =
+       blockbits (bupd bmap bn InUse) (wordToNat bnblock * valulen).
+  Proof.
+    intros.
+    unfold blockbits.
+    admit.
+  Qed.
+
+  Theorem upd_bupd_avail : forall bmap astart nblocks bn bnblock oldblocks,
+    (bn >= bnblock ^* $ valulen)%word
+    -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
+    -> (bnblock < nblocks)%word
+    -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
+                        (seq 0 (wordToNat nblocks)))
+    -> array astart (upd oldblocks bnblock
+                         (sel oldblocks bnblock ^&
+                          wnot (wbit valulen (bn ^- bnblock ^* $ valulen)))) =
+       array astart
+         (map (fun nblock => blockbits (bupd bmap bn Avail) (nblock * valulen))
+              (seq 0 (wordToNat nblocks))).
+  Proof.
+    intros.
+    f_equal.
+    unfold upd.
+    apply selN_list_eq.
+    - subst; autorewrite with core. auto.
+    - unfold sel; intros.
+      apply wlt_lt in H1 as H1'.
+      destruct (eq_nat_dec (wordToNat bnblock) i); subst.
+      + rewrite selN_updN_eq; autorewrite with core; auto.
+        repeat rewrite selN_map_seq; auto.
+        erewrite blockbits_bupd_same_avail; eauto.
+      + rewrite selN_updN_ne; autorewrite with core; auto.
+        autorewrite with core in *.
+        repeat rewrite selN_map_seq; auto.
+        erewrite blockbits_bupd_other; eauto.
+  Qed.
+
+  Theorem upd_bupd_inuse : forall bmap astart nblocks bnblock bnoff oldblocks,
+    (bnoff < $ valulen)%word
+    -> (bnblock < nblocks)%word
+    -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
+                        (seq 0 (wordToNat nblocks)))
+    -> array astart (upd oldblocks bnblock
+                         (sel oldblocks bnblock ^| wbit valulen bnoff)) =
+       array astart
+         (map (fun nblock => blockbits (bupd bmap (bnblock ^* $ valulen ^+ bnoff) InUse)
+                                       (nblock * valulen))
+              (seq 0 (wordToNat nblocks))).
+  Proof.
+    intros.
+    f_equal.
+    unfold upd.
+    apply selN_list_eq.
+    - subst; autorewrite with core. auto.
+    - unfold sel; intros.
+      apply wlt_lt in H0 as H0'.
+      destruct (eq_nat_dec (wordToNat bnblock) i); subst.
+      + rewrite selN_updN_eq; autorewrite with core; auto.
+        repeat rewrite selN_map_seq; auto.
+        replace (bnoff) with ((bnblock ^* $ valulen ^+ bnoff) ^- bnblock ^* $ valulen) at 1 by ring.
+        erewrite blockbits_bupd_same_inuse; eauto.
+        admit.
+        admit.
+      + rewrite selN_updN_ne; autorewrite with core; auto.
+        autorewrite with core in *.
+        repeat rewrite selN_map_seq; auto.
+        erewrite blockbits_bupd_other; eauto.
+        admit.
+        admit.
+  Qed.
 
   Definition free T lxp xp bn rx : prog T :=
     For i < (BmapNBlocks xp)
@@ -66,176 +296,6 @@ Module BALLOC.
         }
     Rof ;;
     rx false.
-
-  Definition bupd (m : addr -> alloc_state) n a :=
-    fun n' => if addr_eq_dec n n' then a else m n'.
-
-  Lemma bupd_same: forall m n n' a,
-    n = n' -> bupd m n a n' = a.
-  Proof.
-    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
-  Qed.
-
-  Lemma bupd_other: forall m n n' a,
-    n <> n' -> bupd m n a n' = m n'.
-  Proof.
-    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
-  Qed.
-
-  Lemma map_ext_seq : forall (A: Type) (f g: nat->A) len start,
-    (forall n, start <= n -> n < start + len -> f n = g n)
-    -> map f (seq start len) = map g (seq start len).
-  Proof.
-    induction len; simpl; intros; auto.
-    f_equal.
-    apply H; omega.
-    apply IHlen; intros.
-    apply H; omega.
-  Qed.
-
-  Lemma upd_bupd_outb : forall len a bn s start (bound : addr),
-    start * valulen > wordToNat bn ->
-    start * valulen + len * valulen <= wordToNat bound ->
-    map (fun i => blockbits a (i * valulen)) (seq start len) =
-    map (fun i => blockbits (bupd a bn s) (i * valulen)) (seq start len).
-  Proof.
-    induction len; auto.
-    simpl; intros.
-    f_equal.
-    - unfold blockbits.
-      f_equal.
-      apply map_ext_seq; intros.
-      f_equal.
-      rewrite bupd_other; auto.
-      unfold not; intros; subst.
-      rewrite wordToNat_natToWord_bound with (bound:=bound) in H.
-      omega.
-
-      clear H.
-      lia.
-    - apply IHlen with (bound:=bound); simpl; omega.
-  Qed.
-
-(*
-  Theorem upd_bupd' : forall len a bn_block bn_off v s start (bound1 : addr) (bound2 : addr),
-    start * valulen + len * valulen <= wordToNat bound1 ->
-    start * valulen + wordToNat bn_block * valulen + wordToNat bn_off <= wordToNat bound2 ->
-    v = alloc_state_to_valu s bn ->
-    upd (map (fun i => blockbits a (i * valulen)) (seq start len)) bn
-        ??? =
-    map (fun i => blockbits (bupd a (bn_block ^* $ valulen ^+ bn_off ^+ $ start) s)
-                            (i * valulen))
-        (seq start len).
-  Proof.
-    simpl.
-    induction len; intros.
-    (* len = 0 *)
-    simpl.
-    unfold upd, updN.
-    auto.
-    (* some len *)
-    simpl.
-    unfold upd, updN.
-    destruct (wordToNat bn) eqn:bn'.
-    (* bn = 0 *)
-    assert (bn = wzero addrlen) by ( apply wordToNat_eq_natToWord; auto ).
-    f_equal.
-    subst.
-    ring_simplify (wzero addrlen ^+ $ (start)).
-    unfold bupd.
-    destruct (addr_eq_dec $ (start) $ (start)).
-    auto.
-    congruence.
-    (* bn = 0, rest of list *)
-    erewrite <- upd_bupd_outb; auto.
-    subst.
-    ring_simplify (wzero addrlen ^+ $ (start)).
-    erewrite wordToNat_natToWord_bound; try omega.
-    eapply le_trans; [|eauto]; omega.
-    instantiate (1:=bound1).
-    omega.
-    (* bn != 0 *)
-    f_equal.
-    f_equal.
-    rewrite bupd_other; auto.
-    unfold not; intros.
-    assert (bn ^+ $ start ^- $ start = $ start ^- $ start) by ( rewrite H2; auto ); clear H2.
-    rewrite wminus_def in H3.
-    rewrite <- wplus_assoc in H3.
-    rewrite <- wminus_def in H3.
-    replace ($ (start) ^- $ (start)) with (wzero addrlen) in H3 by ring.
-    replace (bn ^+ wzero addrlen) with (bn) in H3 by ring.
-    rewrite H3 in bn'.
-    rewrite roundTrip_0 in bn'.
-    congruence.
-    fold updN.
-    replace (bn ^+ $ (start)) with ((bn ^- $ 1) ^+ $ (S start)).
-
-    assert (wordToNat (bn ^- $ (1)) = n).
-    rewrite wminus_Alt. rewrite wminus_Alt2. unfold wordBinN.
-    erewrite wordToNat_natToWord_bound.
-    rewrite bn'. unfold addrlen; rewrite roundTrip_1. omega.
-    rewrite bn'. instantiate (1:=bound2). omega.
-    unfold not; intros. apply wlt_lt in H2. rewrite bn' in H2. simpl in H2. omega.
-
-    rewrite <- IHlen with (v:=v) (bound1:=bound1) (bound2:=bound2).
-    unfold upd.
-    f_equal.
-    auto.
-    omega.
-    rewrite H2; omega.
-
-    assumption.
-    rewrite natToWord_S with (n:=start). ring.
-  Qed.
-
-  Theorem upd_bupd : forall (len : addr) a bn v s,
-    v = alloc_state_to_valu s ->
-    upd (map (fun i => alloc_state_to_valu (a $ i)) (seq 0 (wordToNat len))) bn v =
-    map (fun i => alloc_state_to_valu (bupd a bn s $ i)) (seq 0 (wordToNat len)).
-  Proof.
-    intros.
-    replace (bn) with (bn ^+ $0).
-    replace (bn ^+ $0) with (bn) at 1.
-    eapply upd_bupd'.
-    instantiate (1:=len); omega.
-    instantiate (1:=bn); omega.
-    auto.
-    replace ($0) with (wzero addrlen) by auto; ring.
-    replace ($0) with (wzero addrlen) by auto; ring.
-  Qed.
-*)
-
-  Theorem upd_bupd_avail : forall bmap astart nblocks bn bnblock oldblocks,
-    (bn >= bnblock ^* $ valulen)%word
-    -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
-    -> (bnblock < nblocks)%word
-    -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
-                        (seq 0 (wordToNat nblocks)))
-    -> array astart (upd oldblocks bnblock
-                         (sel oldblocks bnblock ^&
-                          wnot (wbit valulen (bn ^- bnblock ^* $ valulen)))) =
-       array astart
-         (map (fun nblock => blockbits (bupd bmap bn Avail) (nblock * valulen))
-              (seq 0 (wordToNat nblocks))).
-  Proof.
-    admit.
-  Qed.
-
-  Theorem upd_bupd_inuse : forall bmap astart nblocks bnblock bnoff oldblocks,
-    (bnoff < $ valulen)%word
-    -> (bnblock < nblocks)%word
-    -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
-                        (seq 0 (wordToNat nblocks)))
-    -> array astart (upd oldblocks bnblock
-                         (sel oldblocks bnblock ^| wbit valulen bnoff)) =
-       array astart
-         (map (fun nblock => blockbits (bupd bmap (bnblock ^* $ valulen ^+ bnoff) InUse)
-                                       (nblock * valulen))
-              (seq 0 (wordToNat nblocks))).
-  Proof.
-    admit.
-  Qed.
 
   Theorem free_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
@@ -353,6 +413,9 @@ Module BALLOC.
     -> (bnoff < $ valulen)%word
     -> bmap (bnblock ^* $ valulen ^+ bnoff) = Avail.
   Proof.
+    unfold sel; intros.
+    apply wlt_lt in H0 as H0'.
+    rewrite selN_map_seq in H; auto.
     admit.
   Qed.
 

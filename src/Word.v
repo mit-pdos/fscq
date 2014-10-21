@@ -1527,6 +1527,66 @@ Proof.
   apply wplus_unit.
 Qed.
 
+Theorem wbit_and_not: forall sz sz' (n : word sz'), (wordToNat n < sz)%nat
+  -> (wbit sz n) ^& wnot (wbit sz n) = wzero sz.
+Proof.
+  induction sz; intros; try omega.
+  unfold wbit, wzero, wand, wnot.
+  simpl.
+  f_equal.
+  apply andb_negb_r.
+
+  destruct (zero_or_wordToNat_S n); subst.
+  rewrite roundTrip_0; simpl.
+  apply wand_kill.
+
+  do 2 destruct H0.
+  rewrite H0; simpl.
+  rewrite div2_pow2_twice.
+  fold wnot.
+  rewrite <- H1.
+  eapply IHsz.
+  omega.
+Qed.
+
+Theorem wnot_zero: forall sz, wnot (wzero sz) = wones sz.
+Proof.
+  induction sz; simpl; f_equal; eauto.
+Qed.
+
+Theorem wbit_and_not_other: forall sz sz' (n1 n2 : word sz'), (wordToNat n1 < sz)%nat
+  -> (wordToNat n2 < sz)%nat
+  -> n1 <> n2
+  -> (wbit sz n1) ^& wnot (wbit sz n2) = wbit sz n1.
+Proof.
+  induction sz; intros; try omega.
+  unfold wbit, wzero, wand, wnot.
+  simpl.
+  destruct (zero_or_wordToNat_S n1); destruct (zero_or_wordToNat_S n2);
+    try congruence; destruct_conjs; subst; fold wnot; try rewrite roundTrip_0; simpl;
+    f_equal.
+
+  rewrite H4; simpl; rewrite mod2_pow2_twice; auto.
+  rewrite H4; simpl; rewrite div2_pow2_twice; apply wand_kill.
+
+  rewrite H4; simpl; rewrite mod2_pow2_twice; auto.
+  rewrite H4; simpl; rewrite div2_pow2_twice.
+  rewrite wnot_zero. rewrite wand_comm. apply wand_unit.
+
+  rewrite H4; simpl; rewrite mod2_pow2_twice; simpl; apply andb_true_r.
+  rewrite H4; rewrite H6; simpl.
+  repeat rewrite div2_pow2_twice.
+  apply IHsz; try omega.
+
+  apply word_neq.
+  unfold not in *; intros; apply H1.
+  apply sub_0_eq.
+  rewrite <- H2.
+  apply sub_0_eq.
+  (* XXX *)
+  admit.
+Qed.
+
 
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
