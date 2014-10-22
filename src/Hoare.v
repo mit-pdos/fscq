@@ -9,13 +9,10 @@ Set Implicit Arguments.
 
 Definition donecond (T: Set) := T -> mem -> Prop.
 
-Definition corr2 (T: Set) (pre: donecond T -> pred -> pred) (p: prog T) :=
-  forall done crash m out, pre done crash m
-     (* XXX this is a little weird: what in-flight disk state should corr2
-      * start with?  here, corr2 starts with no in-flight writes.  this
-      * doesn't seem quite right in general, but we'll see..
-      *)
-  -> exec m (m :: nil) p out
+Definition corr2 (T: Set) (pre: donecond T -> pred -> list mem -> pred) (p: prog T) :=
+  forall done crash m cms out, In m cms
+  -> pre done crash cms m
+  -> exec m cms p out
   -> (exists m' v, out = Finished m' v /\ done v m') \/
      (exists m', out = Crashed T m' /\ crash m').
 
@@ -72,7 +69,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash 'IDEM' ide
 Theorem pimpl_ok2:
   forall T pre pre' (pr: prog T),
   {{pre'}} pr ->
-  (forall done crash, pre done crash ==> pre' done crash) ->
+  (forall done crash cms, pre done crash cms ==> pre' done crash cms) ->
   {{pre}} pr.
 Proof.
   unfold corr2; intros.
@@ -96,14 +93,14 @@ Qed.
 Theorem pimpl_ok2_cont :
   forall T pre pre' A (k : A -> prog T) x y,
   {{pre'}} k y ->
-  (forall done crash, pre done crash ==> pre' done crash) ->
-  (forall done crash, pre done crash ==> exists F, F * [[x = y]]) ->
+  (forall done crash cms, pre done crash cms ==> pre' done crash cms) ->
+  (forall done crash cms, pre done crash cms ==> exists F, F * [[x = y]]) ->
   {{pre}} k x.
 Proof.
   unfold corr2, pimpl; intros.
   edestruct H1; eauto.
-  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
-  unfold lift in H4; rewrite H4 in *; eauto.
+  eapply sep_star_lift_l in H5; [|instantiate (1:=([x=y])%pred)].
+  unfold lift in H5; rewrite H5 in *; eauto.
   firstorder.
 Qed.
 
@@ -123,8 +120,8 @@ Qed.
 
 Theorem pimpl_pre2:
   forall T pre pre' (pr: prog T),
-  (forall done crash, pre done crash ==> [{{pre'}} pr])
-  -> (forall done crash, pre done crash ==> pre' done crash)
+  (forall done crash cms, pre done crash cms ==> [{{pre'}} pr])
+  -> (forall done crash cms, pre done crash cms ==> pre' done crash cms)
   -> {{pre}} pr.
 Proof.
   unfold corr2; intros.
@@ -145,6 +142,7 @@ Proof.
   eauto.
 Qed.
 
+(*
 Theorem pre_false2:
   forall T pre (p: prog T),
   (forall done crash, pre done crash ==> [False])
@@ -201,3 +199,4 @@ Proof.
   exists a; eauto.
   eauto.
 Qed.
+*)

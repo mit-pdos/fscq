@@ -32,12 +32,12 @@ Ltac inv_exec :=
   end.
 
 Theorem read_ok:
-  forall (a:addr),
-  {< v,
-  PRE    a |-> v
-  POST:r a |-> v * [[ r = v ]]
-  CRASH  a |-> v
-  >} Read a.
+  forall T (a:addr) (rx : _ -> prog T),
+  {{ fun done crash cms => exists v F, a |-> v * F *
+     [[ forall r, {{ fun done' crash' cms' => a |-> v * [[ r = v ]] * F *
+                     [[ done' = done ]] * [[ crash' = crash ]] * [[ cms' = cms ]] }} rx r ]] *
+     [[ a |-> v * F ==> crash ]]
+  }} Read a rx.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
