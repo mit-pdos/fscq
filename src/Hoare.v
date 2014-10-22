@@ -1,5 +1,6 @@
 Require Import Prog.
 Require Import Pred.
+Require Import List.
 
 Set Implicit Arguments.
 
@@ -10,7 +11,11 @@ Definition donecond (T: Set) := T -> mem -> Prop.
 
 Definition corr2 (T: Set) (pre: donecond T -> pred -> pred) (p: prog T) :=
   forall done crash m out, pre done crash m
-  -> exec m p out
+     (* XXX this is a little weird: what in-flight disk state should corr2
+      * start with?  here, corr2 starts with no in-flight writes.  this
+      * doesn't seem quite right in general, but we'll see..
+      *)
+  -> exec m (m :: nil) p out
   -> (exists m' v, out = Finished m' v /\ done v m') \/
      (exists m', out = Crashed T m' /\ crash m').
 

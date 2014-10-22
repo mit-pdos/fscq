@@ -26,16 +26,9 @@ Ltac inv_option :=
     end
   end.
 
-(*
-Ltac inv_exec_recover :=
-  match goal with
-  | [ H: exec_recover _ _ _ _ _ |- _ ] => inversion H; clear H; subst
-  end.
-*)
-
 Ltac inv_exec :=
   match goal with
-  | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
 Theorem read_ok:
@@ -56,7 +49,10 @@ Proof.
     apply sep_star_assoc. apply sep_star_and2lift; split; unfold lift; eauto.
     apply sep_star_comm in H; apply ptsto_valid in H.
     repeat inv_option. eauto.
-  - right. eexists; intuition eauto.
+  - (* XXX abuse the fact that corr2 starts with just one in-flight write *)
+    inversion H3; subst.
+    right. eexists; intuition eauto.
+    inversion H0.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
@@ -75,7 +71,11 @@ Proof.
   inv_exec.
   - apply sep_star_comm in H; apply ptsto_valid in H.
     congruence.
-  - eapply H2. instantiate (1:=upd m a v).
+  - (* XXX this is where the (m::nil) in corr2 goes wrong: the continuation
+     * requires cms=(m::nil) but we have cms=(m :: upd m a v :: nil)!  need
+     * to update corr2 to match in some way..
+     *)
+    eapply H2. instantiate (1:=upd m a v).
     repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_comm. apply sep_star_comm in H.
     eapply ptsto_upd; eauto.

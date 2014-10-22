@@ -1,6 +1,8 @@
 Require Import Arith.
 Require Import Word.
 Require Import FunctionalExtensionality.
+Require Import List.
+Import ListNotations.
 
 Set Implicit Arguments.
 
@@ -34,7 +36,8 @@ Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]
 Inductive prog (T: Set) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
-| Write (a: addr) (v: valu) (rx: unit -> prog T).
+| Write (a: addr) (v: valu) (rx: unit -> prog T)
+| Sync (rx: unit -> prog T).
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 
@@ -51,19 +54,24 @@ Inductive outcome (T: Set) :=
 | Finished (m: mem) (v: T)
 | Crashed (m: mem).
 
-Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
-| XReadFail : forall m a rx, m a = None
-  -> exec m (Read a rx) (Failed T)
-| XWriteFail : forall m a v rx, m a = None
-  -> exec m (Write a v rx) (Failed T)
-| XReadOK : forall m a v rx out, m a = Some v
-  -> exec m (rx v) out
-  -> exec m (Read a rx) out
-| XWriteOK : forall m a v v0 rx out, m a = Some v0
-  -> exec (upd m a v) (rx tt) out
-  -> exec m (Write a v rx) out
-| XDone : forall (m: mem) v, exec m (Done v) (Finished m v)
-| XCrash : forall m p, exec m p (Crashed T m).
+Inductive exec (T: Set) : mem -> list mem -> prog T -> outcome T -> Prop :=
+| XReadFail : forall m cms a rx, m a = None
+  -> exec m cms (Read a rx) (Failed T)
+| XWriteFail : forall m cms a v rx, m a = None
+  -> exec m cms (Write a v rx) (Failed T)
+| XReadOK : forall m cms a v rx out, m a = Some v
+  -> exec m cms (rx v) out
+  -> exec m cms (Read a rx) out
+| XWriteOK : forall m cms cms' a v v0 rx out, m a = Some v0
+  -> cms' = cms ++ map (fun m' => upd m' a v) cms
+  -> exec (upd m a v) cms (rx tt) out
+  -> exec m cms' (Write a v rx) out
+| XSync : forall m cms rx out, exec m [m] (rx tt) out
+  -> exec m cms (Sync rx) out
+(* Note: the "Done" operation ignores possible crash states;
+ * we assume Done is like sync *)
+| XDone : forall m cms v, exec m cms (Done v) (Finished m v)
+| XCrash : forall m cms p m', In m' cms -> exec m cms p (Crashed T m').
 
 Hint Constructors exec.
 
@@ -75,17 +83,17 @@ Inductive recover_outcome (TF TR: Set) :=
 
 Inductive exec_recover (TF TR: Set)
   : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
-| XRFail : forall m p1 p2, exec m p1 (Failed TF)
+| XRFail : forall m p1 p2, exec m [m] p1 (Failed TF)
   -> exec_recover m p1 p2 (RFailed TF TR)
-| XRFinished : forall m p1 p2 m' (v: TF), exec m p1 (Finished m' v)
+| XRFinished : forall m p1 p2 m' (v: TF), exec m [m] p1 (Finished m' v)
   -> exec_recover m p1 p2 (RFinished TR m' v)
-| XRCrashedFailed : forall m p1 p2 m', exec m p1 (Crashed TF m')
+| XRCrashedFailed : forall m p1 p2 m', exec m [m] p1 (Crashed TF m')
   -> @exec_recover TR TR m' p2 p2 (RFailed TR TR)
   -> exec_recover m p1 p2 (RFailed TF TR)
-| XRCrashedFinished : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
+| XRCrashedFinished : forall m p1 p2 m' m'' (v: TR), exec m [m] p1 (Crashed TF m')
   -> @exec_recover TR TR m' p2 p2 (RFinished TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v)
-| XRCrashedRecovered : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
+| XRCrashedRecovered : forall m p1 p2 m' m'' (v: TR), exec m [m] p1 (Crashed TF m')
   -> @exec_recover TR TR m' p2 p2 (RRecovered TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v).
 
