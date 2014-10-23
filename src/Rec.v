@@ -1,10 +1,10 @@
 Require Import Arith List String Omega. 
-(*Require Import Pred.
+Require Import Pred.
 Require Import Word.
 Require Import Prog.
 Require Import Hoare.
 Require Import SepAuto.
-Require Import BasicProg.*)
+Require Import BasicProg.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -13,28 +13,14 @@ Set Implicit Arguments.
 
 Module Rec.
   
-  Inductive vec : Type -> nat -> Type :=
-  | V0 : forall t, vec t 0
-  | VS : forall t, t -> forall n, vec t n -> vec t (S n).
-  
-  Inductive un : nat -> Type :=
-  | U0 : un 0
-  | US : forall n, un n -> un (S n).
-  
   Definition rectype := list (string * nat).
   
   Fixpoint recdata (t : rectype) : Type := 
     match t with
       | nil => unit
-      | (_, n) :: t' => un n * recdata t'
+      | (_, n) :: t' => word n * recdata t'
     end%type.
-  
-  Fixpoint mkun n : un n :=
-    match n with
-      | 0 => U0
-      | S n => US (mkun n)
-    end.
-  
+
   (* TODO should be Prop *)
   Inductive field_in : rectype -> string -> Type :=
   | FE : forall t n w, field_in ((n, w) :: t) n
@@ -43,10 +29,10 @@ Module Rec.
   Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : nat :=
     match f with
       | FE _ _ w => w
-      | FS _ _ _ _ f => field_type f
+      | FS _ _ f => field_type f
     end.
   
-  Fixpoint recget (t : rectype) (n : string) (r : recdata t) (p : field_in t n) : un (field_type p).
+  Fixpoint recget (t : rectype) (n : string) (r : recdata t) (p : field_in t n) : word (field_type p).
     destruct p.
     destruct r.    
     + assumption.
@@ -55,7 +41,8 @@ Module Rec.
       assumption.
   Defined.
 
-  Fixpoint recset (t : rectype) (n : string) (r : recdata t) (p : field_in t n) (v : un (field_type p)) : recdata t.
+(*
+  Fixpoint recset (t : rectype) (n : string) (r : recdata t) (p : field_in t n) (v : word (field_type p)) : recdata t.
     destruct p; destruct r.
     + constructor. apply v. assumption.
     + constructor.
@@ -66,7 +53,7 @@ Module Rec.
   Defined.
   
   Print recset.
-  
+  *)
   Definition fieldp (t : rectype) (n : string) : option (field_in t n).
     induction t as [| p t'].
     apply None.
@@ -85,7 +72,7 @@ Module Rec.
   Definition recget' {t : rectype} (n : string) (r : recdata t) :=
     match fieldp t n as fp
           return (match fp with 
-                    | Some p => un (field_type p)
+                    | Some p => word (field_type p)
                     | None => True
                   end) with
       | Some p => recget r p
@@ -93,7 +80,7 @@ Module Rec.
     end.
   
   (* TODO 
-  Definition recset' {t : rectype} {w : nat} (n : string) (r : recdata t) (v : un w) :=
+  Definition recset' {t : rectype} {w : nat} (n : string) (r : recdata t) (v : word w) :=
     match fieldp t n as fp
           return (match fp with 
                     | Some p =>
@@ -110,7 +97,7 @@ Module Rec.
   Notation "r :-> n" := (recget' n r) (at level 80).
   
   Definition inodetype : rectype := [("free", 1); ("len", 16); ("block0", 16)].
-  Definition inode1 : recdata inodetype := (mkun 1, (mkun 16, (mkun 16, tt))).
+  Definition inode1 : recdata inodetype := ($1, ($11, ($1677, tt))).
 
-  Definition foo : un 16 := inode1 :-> "len".
+  Definition foo : word 16 := inode1 :-> "len".
 End Rec.
