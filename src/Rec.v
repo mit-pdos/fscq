@@ -36,27 +36,34 @@ Module Rec.
     contradiction ne. reflexivity.
     apply H3.
   Qed.
-  
-  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : nat.
-    destruct t.
-    contradiction empty_field_in with (n := n).
-    destruct p.
-    destruct (string_dec s n).
-    apply n0.
-    apply (field_type t n). apply field_in_next with (n' := s) (w := n0); assumption.
-  Defined.
-  
-  Fixpoint recget (t : rectype) (n : string) (r : recdata t) (p : field_in t n) : word (field_type p).
-    destruct t.
-    contradiction empty_field_in with (n := n).
-    destruct p0.
-    simpl in r.
-    destruct r.
-    simpl.
-    destruct (string_dec s n).
-    apply w.
-    apply (recget t n r).
-  Defined.
+
+  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : nat :=
+    match t as t return (field_in t n -> nat) with
+    | nil => fun f => match (empty_field_in f) with end
+    | (n0, w0)::_ => fun f =>
+      match (string_dec n0 n) with
+      | left _ => w0
+      | right ne => field_type (field_in_next ne f)
+      end
+    end f.
+
+  Fixpoint recget (t : rectype) (n : string) (r : recdata t) (p : field_in t n) : word (field_type p) :=
+    match t as t return (recdata t -> forall f : field_in t n, word (field_type f)) with
+    | [] => fun _ f => match (empty_field_in f) with end
+    | (n0, w0) :: t' =>
+      fun r f =>
+      let (v, r') := r in
+      match (string_dec n0 n) as s
+        return (word
+            match s with
+            | left _ => w0
+            | right ne => field_type (field_in_next ne f)
+            end)
+      with
+      | left _ => v
+      | right ne => recget r' (field_in_next ne f)
+      end
+    end r p.
 
 (*
   Fixpoint recset (t : rectype) (n : string) (r : recdata t) (p : field_in t n) (v : word (field_type p)) : recdata t.
@@ -71,20 +78,22 @@ Module Rec.
   
   Print recset.
   *)
-  Definition fieldp (t : rectype) (n : string) : option (field_in t n).
-    induction t as [| p t'].
-    apply None.
-    destruct p as [n0 w0].
-    destruct (string_dec n0 n).
-    rewrite e.
-    apply Some.
-    constructor.
-    destruct IHt'.
-    constructor.
-    constructor.
-    assumption.
-    apply None.
-  Defined.
+  Fixpoint fieldp (t : rectype) (n : string) : option (field_in t n) :=
+    match t as t return (option (field_in t n)) with
+    | [] => None
+    | (n0, w0) :: t' =>
+      match (string_dec n0 n) with
+      | left e =>
+          eq_rec_r
+            (fun n1 => option (field_in ((n1, w0) :: t') n))
+            (Some (FE t' n w0)) e
+      | right _ =>
+        match (fieldp t' n) with
+        | Some f => Some (FS n0 w0 f)
+        | None => None
+        end
+      end
+    end.
 
   Definition recget' {t : rectype} (n : string) (r : recdata t) :=
     match fieldp t n as fp
