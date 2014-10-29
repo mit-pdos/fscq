@@ -21,24 +21,41 @@ Module Rec.
       | (_, n) :: t' => word n * recdata t'
     end%type.
 
-  (* TODO should be Prop *)
-  Inductive field_in : rectype -> string -> Type :=
+  Inductive field_in : rectype -> string -> Prop :=
   | FE : forall t n w, field_in ((n, w) :: t) n
   | FS : forall t n n' w, field_in t n -> field_in ((n',w) :: t) n.
+
+  Lemma empty_field_in : forall n, ~(field_in nil n).
+  Proof.
+    intros n f. inversion f.
+  Qed.
+
+  Lemma field_in_next : forall t n n' w, n' <> n -> field_in ((n',w) :: t) n -> field_in t n.
+  Proof.
+    intros t n n' w ne f. inversion f; subst.
+    contradiction ne. reflexivity.
+    apply H3.
+  Qed.
   
-  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : nat :=
-    match f with
-      | FE _ _ w => w
-      | FS _ _ f => field_type f
-    end.
+  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : nat.
+    destruct t.
+    contradiction empty_field_in with (n := n).
+    destruct p.
+    destruct (string_dec s n).
+    apply n0.
+    apply (field_type t n). apply field_in_next with (n' := s) (w := n0); assumption.
+  Defined.
   
   Fixpoint recget (t : rectype) (n : string) (r : recdata t) (p : field_in t n) : word (field_type p).
-    destruct p.
-    destruct r.    
-    + assumption.
-    + apply recget with (t := t) (n := n).
-      destruct r.
-      assumption.
+    destruct t.
+    contradiction empty_field_in with (n := n).
+    destruct p0.
+    simpl in r.
+    destruct r.
+    simpl.
+    destruct (string_dec s n).
+    apply w.
+    apply (recget t n r).
   Defined.
 
 (*
@@ -98,6 +115,8 @@ Module Rec.
   
   Definition inodetype : rectype := [("free", 1); ("len", 16); ("block0", 16)].
   Definition inode1 : recdata inodetype := ($1, ($11, ($1677, tt))).
-
-  Definition foo : word 16 := inode1 :-> "len".
+  Parameter inode2 : recdata inodetype.
+  Definition foo := Eval compute in inode2 :-> "len".
+  Extraction Language Haskell.
+  Extraction foo.
 End Rec.
