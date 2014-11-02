@@ -131,32 +131,6 @@ Module LOG.
     rewrite valulen_is; auto.
   Qed.
 
-  Definition addr2valu (a: addr) : valu.
-    set (zext a (valulen-addrlen)) as r.
-    rewrite addrlen_valulen in r.
-    apply r.
-  Defined.
-
-  Definition valu2addr (v: valu) : addr.
-    rewrite <- addrlen_valulen in v.
-    apply (split1 addrlen (valulen-addrlen) v).
-  Defined.
-
-  Lemma addr2valu2addr: forall a,
-    valu2addr (addr2valu a) = a.
-  Proof.
-    unfold valu2addr, addr2valu.
-    unfold eq_rec_r, eq_rec.
-    intros.
-    rewrite <- addrlen_valulen.
-    rewrite <- eq_rect_eq_dec; try apply eq_nat_dec.
-    rewrite <- eq_rect_eq_dec; try apply eq_nat_dec.
-    apply split1_combine.
-  Qed.
-
-  Opaque addr2valu.
-  Opaque valu2addr.
-
   Definition logentry_ptsto xp (e : logentry) idx :=
     let (a, v) := e in
     ((LogStart xp ^+ $ (idx*2)) |-> addr2valu a *
