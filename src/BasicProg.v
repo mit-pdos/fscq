@@ -33,9 +33,10 @@ Ltac inv_exec :=
 
 Theorem read_ok:
   forall T (a:addr) (rx : _ -> prog T),
-  {{ fun done crash cms => exists v F, a |-> v * F *
-     [[ forall r, {{ fun done' crash' cms' => a |-> v * [[ r = v ]] * F *
-                     [[ done' = done ]] * [[ crash' = crash ]] * [[ cms' = cms ]] }} rx r ]] *
+  {{ fun precrash done crash => exists v F, a |-> v * F *
+     [[ precrash ==> crash ]] *
+     [[ forall r, {{ fun precrash' done' crash' => a |-> v * [[ r = v ]] * F *
+                     [[ done' = done ]] * [[ crash' = crash ]] }} rx r ]] *
      [[ a |-> v * F ==> crash ]]
   }} Read a rx.
 Proof.

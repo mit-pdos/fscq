@@ -55,24 +55,36 @@ Inductive outcome (T: Set) :=
 | Finished (m: mem) (v: T)
 | Crashed (m: mem).
 
-Inductive exec (T: Set) : mem -> list mem -> prog T -> outcome T -> Prop :=
-| XReadFail : forall m cms a rx, m a = None
-  -> exec m cms (Read a rx) (Failed T)
-| XWriteFail : forall m cms a v rx, m a = None
-  -> exec m cms (Write a v rx) (Failed T)
-| XReadOK : forall m cms a v rx out, m a = Some v
-  -> exec m cms (rx v) out
-  -> exec m cms (Read a rx) out
-| XWriteOK : forall m cms cms' a v v0 rx out, m a = Some v0
-  -> cms' = cms ++ map (fun m' => upd m' a v) cms
-  -> exec (upd m a v) cms (rx tt) out
-  -> exec m cms' (Write a v rx) out
-| XSync : forall m cms rx out, exec m [m] (rx tt) out
-  -> exec m cms (Sync rx) out
+Fixpoint apply_writes pending m :=
+  match pending with
+  | nil => m
+  | (a, v) :: rest => upd (apply_writes rest m) a v
+  end.
+
+Inductive apply_some : list (addr*valu)%type -> mem -> mem -> Prop :=
+  | KeepOneWrite: forall a v m m' pending, apply_some pending m m'
+    -> apply_some ((a, v) :: pending) m (upd m' a v)
+  | DropOneWrite: forall a v m m' pending, apply_some pending m m'
+    -> apply_some ((a, v) :: pending) m m'.
+
+Inductive exec (T: Set) : mem -> list (addr*valu)%type -> prog T -> outcome T -> Prop :=
+| XReadFail : forall m pending a rx, apply_writes pending m a = None
+  -> exec m pending (Read a rx) (Failed T)
+| XWriteFail : forall m pending a v rx, apply_writes pending m a = None
+  -> exec m pending (Write a v rx) (Failed T)
+| XReadOK : forall m pending a v rx out, apply_writes pending m a = Some v
+  -> exec m pending (rx v) out
+  -> exec m pending (Read a rx) out
+| XWriteOK : forall m pending a v v0 rx out, apply_writes pending m a = Some v0
+  -> exec m ((a, v) :: pending) (rx tt) out
+  -> exec m pending (Write a v rx) out
+| XSync : forall m pending rx out, exec (apply_writes pending m) nil (rx tt) out
+  -> exec m pending (Sync rx) out
+| XCrash : forall m pending p m', apply_some pending m m'
+  -> exec m pending p (Crashed T m')
 (* Note: the "Done" operation ignores possible crash states;
  * we assume Done is like sync *)
-| XDone : forall m cms v, exec m cms (Done v) (Finished m v)
-| XCrash : forall m cms p m', In m' cms -> exec m cms p (Crashed T m').
+| XDone : forall m pending v, exec m pending (Done v) (Finished m v).
 
 Hint Constructors exec.
 
@@ -83,20 +95,21 @@ Inductive recover_outcome (TF TR: Set) :=
 | RRecovered (m: mem) (v: TR).
 
 Inductive exec_recover (TF TR: Set)
-  : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
-| XRFail : forall m p1 p2, exec m [m] p1 (Failed TF)
-  -> exec_recover m p1 p2 (RFailed TF TR)
-| XRFinished : forall m p1 p2 m' (v: TF), exec m [m] p1 (Finished m' v)
-  -> exec_recover m p1 p2 (RFinished TR m' v)
-| XRCrashedFailed : forall m p1 p2 m', exec m [m] p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RFailed TR TR)
-  -> exec_recover m p1 p2 (RFailed TF TR)
-| XRCrashedFinished : forall m p1 p2 m' m'' (v: TR), exec m [m] p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RFinished TR m'' v)
-  -> exec_recover m p1 p2 (RRecovered TF m'' v)
-| XRCrashedRecovered : forall m p1 p2 m' m'' (v: TR), exec m [m] p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RRecovered TR m'' v)
-  -> exec_recover m p1 p2 (RRecovered TF m'' v).
+  : mem -> list (addr*valu)%type ->
+    prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
+| XRFail : forall m pending p1 p2, exec m pending p1 (Failed TF)
+  -> exec_recover m pending p1 p2 (RFailed TF TR)
+| XRFinished : forall m pending p1 p2 m' (v: TF), exec m pending p1 (Finished m' v)
+  -> exec_recover m pending p1 p2 (RFinished TR m' v)
+| XRCrashedFailed : forall m pending p1 p2 m', exec m pending p1 (Crashed TF m')
+  -> @exec_recover TR TR m' nil p2 p2 (RFailed TR TR)
+  -> exec_recover m pending p1 p2 (RFailed TF TR)
+| XRCrashedFinished : forall m pending p1 p2 m' m'' (v: TR), exec m pending p1 (Crashed TF m')
+  -> @exec_recover TR TR m' nil p2 p2 (RFinished TR m'' v)
+  -> exec_recover m pending p1 p2 (RRecovered TF m'' v)
+| XRCrashedRecovered : forall m pending p1 p2 m' m'' (v: TR), exec m pending p1 (Crashed TF m')
+  -> @exec_recover TR TR m' nil p2 p2 (RRecovered TR m'' v)
+  -> exec_recover m pending p1 p2 (RRecovered TF m'' v).
 
 Hint Constructors exec_recover.
 
