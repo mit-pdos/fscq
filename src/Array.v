@@ -26,7 +26,7 @@ Fixpoint selN (vs : list valu) (n : nat) : valu :=
 Definition sel (vs : list valu) (i : addr) : valu :=
   selN vs (wordToNat i).
 
-Fixpoint updN (vs : list valu) (n : nat) (v : valu) : list valu :=
+Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
   match vs with
     | nil => nil
     | v' :: vs' =>
@@ -36,15 +36,15 @@ Fixpoint updN (vs : list valu) (n : nat) (v : valu) : list valu :=
       end
   end.
 
-Definition upd (vs : list valu) (i : addr) (v : valu) : list valu :=
+Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
   updN vs (wordToNat i) v.
 
-Lemma length_updN : forall vs n v, length (updN vs n v) = length vs.
+Lemma length_updN : forall T vs n (v : T), length (updN vs n v) = length vs.
 Proof.
   induction vs; destruct n; simpl; intuition.
 Qed.
 
-Theorem length_upd : forall vs i v, length (upd vs i v) = length vs.
+Theorem length_upd : forall T vs i (v : T), length (upd vs i v) = length vs.
 Proof.
   intros; apply length_updN.
 Qed.
@@ -67,7 +67,7 @@ Qed.
 
 Hint Rewrite selN_updN_eq sel_upd_eq using (simpl; omega).
 
-Lemma firstn_updN : forall v vs i j,
+Lemma firstn_updN : forall T (v : T) vs i j,
   i <= j
   -> firstn i (updN vs j v) = firstn i vs.
 Proof.
@@ -76,7 +76,7 @@ Proof.
   rewrite IHvs; auto; omega.
 Qed.
 
-Lemma firstn_upd : forall v vs i j,
+Lemma firstn_upd : forall T (v : T) vs i j,
   i <= wordToNat j
   -> firstn i (upd vs j v) = firstn i vs.
 Proof.
@@ -85,14 +85,14 @@ Qed.
 
 Hint Rewrite firstn_updN firstn_upd using omega.
 
-Lemma skipN_updN' : forall v vs i j,
+Lemma skipN_updN' : forall T (v : T) vs i j,
   i > j
   -> skipn i (updN vs j v) = skipn i vs.
 Proof.
   induction vs; destruct i, j; simpl; intuition; omega.
 Qed.
 
-Lemma skipn_updN : forall v vs i j,
+Lemma skipn_updN : forall T (v : T) vs i j,
   i >= j
   -> match updN vs j v with
        | nil => nil
@@ -106,7 +106,7 @@ Proof.
   destruct vs, j; simpl; eauto using skipN_updN'.
 Qed.
 
-Lemma skipn_upd : forall v vs i j,
+Lemma skipn_upd : forall T (v : T) vs i j,
   i >= wordToNat j
   -> match upd vs j v with
        | nil => nil
@@ -121,6 +121,21 @@ Proof.
 Qed.
 
 Hint Rewrite skipn_updN skipn_upd using omega.
+
+Lemma map_updN : forall T U (v : T) (f : T -> U) vs i,
+  map f (updN vs i v) = updN (map f vs) i (f v).
+Proof.
+  induction vs; auto; destruct i; simpl; f_equal; auto.
+Qed.
+
+Lemma map_upd : forall T U (v : T) (f : T -> U) vs i,
+  map f (upd vs i v) = upd (map f vs) i (f v).
+Proof.
+  unfold upd; intros.
+  apply map_updN.
+Qed.
+
+Hint Rewrite map_updN map_upd.
 
 
 (** * Isolating an array cell *)

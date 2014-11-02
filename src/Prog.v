@@ -159,3 +159,8 @@ Qed.
 
 Global Opaque addr2valu.
 Global Opaque valu2addr.
+(* Once this bug is fixed:
+     https://coq.inria.fr/bugs/show_bug.cgi?id=3731
+   we should enable this rewrite hint:
+Hint Rewrite addr2valu2addr.
+*)
