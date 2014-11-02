@@ -853,6 +853,13 @@ Qed.
 
 Implicit Arguments weqb_sound [].
 
+Ltac is_nat_cst n :=
+  match eval hnf in n with
+    | O => constr:true
+    | S ?n' => is_nat_cst n'
+    | _ => constr:false
+  end.
+
 Ltac isWcst w :=
   match eval hnf in w with
     | WO => constr:true
@@ -862,6 +869,7 @@ Ltac isWcst w :=
         | false => isWcst w'
         | _ => constr:false
       end
+    | natToWord _ ?n => is_nat_cst n
     | _ => constr:false
   end.
 
@@ -1591,5 +1599,6 @@ Qed.
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
 
-(* Don't allow simpl to expand out natToWord *)
+(* Don't allow simpl to expand out these functions *)
 Arguments natToWord : simpl never.
+Arguments weq : simpl never.

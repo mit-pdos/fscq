@@ -34,7 +34,7 @@ Definition testalloc T lxp bxp rx : prog T :=
     LOG.abort lxp ;;
     rx None
   | Some bn =>
-    ok <- LOG.write lxp $0 (LOG.addr2valu bn) ;
+    ok <- LOG.write lxp $0 (addr2valu bn) ;
     LOG.commit lxp ;;
     rx (Some bn)
   end.

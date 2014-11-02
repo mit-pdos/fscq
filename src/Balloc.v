@@ -43,7 +43,7 @@ Module BALLOC.
   Definition rep xp (bmap : addr -> alloc_state) :=
     array (BmapStart xp)
           (map (fun nblock => blockbits bmap (nblock * valulen))
-               (seq 0 (wordToNat (BmapNBlocks xp)))).
+               (seq 0 (wordToNat (BmapNBlocks xp)))) $1.
 
   Definition bupd (m : addr -> alloc_state) n a :=
     fun n' => if addr_eq_dec n n' then a else m n'.
@@ -287,8 +287,8 @@ Module BALLOC.
         LOG.log_intact lxp mbase
       Begin
         If (wlt_dec bn (i ^* $ valulen ^+ $ valulen)) {
-          b <- LOG.read_array lxp (BmapStart xp) i ;
-          ok <- LOG.write_array lxp (BmapStart xp) i
+          b <- LOG.read_array lxp (BmapStart xp) i $1 ;
+          ok <- LOG.write_array lxp (BmapStart xp) i $1
                 (b ^& wnot (wbit _ (bn ^- (i ^* $ valulen)))) ;
           rx ok
         } else {
@@ -340,7 +340,7 @@ Module BALLOC.
       OnCrash
         LOG.log_intact lxp mbase
       Begin
-        blk <- LOG.read_array lxp (BmapStart xp) i;
+        blk <- LOG.read_array lxp (BmapStart xp) i $1;
 
         For j < $ valulen
           Ghost mbase' m'
@@ -352,7 +352,7 @@ Module BALLOC.
             LOG.log_intact lxp mbase'
           Begin
             If (weq (blk ^& wbit _ j) $0) {
-              ok <- LOG.write_array lxp (BmapStart xp) i (blk ^| wbit _ j) ;
+              ok <- LOG.write_array lxp (BmapStart xp) i $1 (blk ^| wbit _ j) ;
               If (bool_dec ok true) {
                 rx (Some (i ^* $ valulen ^+ j))
               } else {
