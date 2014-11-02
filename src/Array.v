@@ -382,6 +382,9 @@ Qed.
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _ _) _) => apply write_ok : prog.
 
+Hint Extern 0 (okToUnify (array ?base ?l ?stride) (array ?base ?r ?stride)) =>
+  unfold okToUnify; constructor : okToUnify.
+
 
 (** * Some test cases *)
 

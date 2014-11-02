@@ -698,4 +698,4 @@ Proof.
       apply pimpl_or_r; right; apply pimpl_refl.
 Qed.
 
-Opaque sep_star.
+Global Opaque sep_star.

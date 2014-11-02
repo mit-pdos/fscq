@@ -713,29 +713,29 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
 
-  Definition read_array T xp a i rx : prog T :=
-    read xp (a ^+ i) rx.
+  Definition read_array T xp a i stride rx : prog T :=
+    read xp (a ^+ i ^* stride) rx.
 
-  Definition write_array T xp a i v rx : prog T :=
-    write xp (a ^+ i) v rx.
+  Definition write_array T xp a i stride v rx : prog T :=
+    write xp (a ^+ i ^* stride) v rx.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
-  Theorem read_array_ok : forall xp a i,
+  Theorem read_array_ok : forall xp a i stride,
     {< mbase m vs,
     PRE    rep xp (ActiveTxn mbase m) *
-           [[ exists F', (array a vs * F')%pred m ]] *
+           [[ exists F', (array a vs stride * F')%pred m ]] *
            [[ wordToNat i < length vs ]]
     POST:r [[ r = sel vs i ]] * rep xp (ActiveTxn mbase m)
     CRASH  rep xp (ActiveTxn mbase m)
-    >} read_array xp a i.
+    >} read_array xp a i stride.
   Proof.
     intros.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
      * [[ exists F',
-          (array a (firstn (wordToNat i) vs)
-           * (a ^+ i) |-> sel vs i
-           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F')%pred m ]]
+          (array a (firstn (wordToNat i) vs) stride
+           * (a ^+ i ^* stride) |-> sel vs i
+           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred m ]]
      * [[ wordToNat i < length vs ]]
      * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
            * [[ done' = done ]] * [[ crash' = crash ]]
@@ -763,28 +763,28 @@ Module LOG.
     cancel.
   Qed.
 
-  Theorem write_array_ok : forall xp a i v,
+  Theorem write_array_ok : forall xp a i stride v,
     {< mbase m vs F',
     PRE    rep xp (ActiveTxn mbase m)
-         * [[ (array a vs * F')%pred m ]]
+         * [[ (array a vs stride * F')%pred m ]]
          * [[ wordToNat i < length vs ]]
     POST:r ([[ r = true ]] * exists m', rep xp (ActiveTxn mbase m') *
-            [[ (array a (Array.upd vs i v) * F')%pred m' ]]) \/
+            [[ (array a (Array.upd vs i v) stride * F')%pred m' ]]) \/
            ([[ r = false ]] * rep xp (ActiveTxn mbase m))
     CRASH  exists m', rep xp (ActiveTxn mbase m')
-    >} write_array xp a i v.
+    >} write_array xp a i stride v.
   Proof.
     intros.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
        rep xp (ActiveTxn mbase m) * F
-     * [[ (array a (firstn (wordToNat i) vs)
-           * (a ^+ i) |-> sel vs i
-           * array (a ^+ i ^+ $1) (skipn (S (wordToNat i)) vs) * F')%pred m ]]
+     * [[ (array a (firstn (wordToNat i) vs) stride
+           * (a ^+ i ^* stride) |-> sel vs i
+           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred m ]]
      * [[ wordToNat i < length vs ]]
      * [[ forall r,
           {{ fun done' crash' =>
           ([[ r = true ]] * exists m', rep xp (ActiveTxn mbase m') * F
-           * [[ (array a (Array.upd vs i v) * F')%pred m' ]]
+           * [[ (array a (Array.upd vs i v) stride * F')%pred m' ]]
            * [[ done' = done ]] * [[ crash' = crash ]]) \/
           ([[ r = false ]] * rep xp (ActiveTxn mbase m) * F
            * [[ done' = done ]] * [[ crash' = crash ]]) }} rx r ]]
@@ -820,8 +820,8 @@ Module LOG.
     step.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
 
   Definition apply T xp rx : prog T :=
     len <- Read (LogLength xp);

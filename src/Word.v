@@ -1591,5 +1591,6 @@ Qed.
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
 
-(* Don't allow simpl to expand out natToWord *)
+(* Don't allow simpl to expand out these functions *)
 Arguments natToWord : simpl never.
+Arguments weq : simpl never.

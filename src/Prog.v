@@ -157,5 +157,5 @@ Proof.
   apply split1_combine.
 Qed.
 
-Opaque addr2valu.
-Opaque valu2addr.
+Global Opaque addr2valu.
+Global Opaque valu2addr.
