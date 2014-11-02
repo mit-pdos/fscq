@@ -153,34 +153,17 @@ Proof.
   destruct i; simpl.
 
   replace (a0 ^+ $0 ^* stride) with (a0) by words.
-  replace ($0 ^+ $1 : addr) with ($1 : addr)
-    by (rewrite wplus_unit; auto).
-  (* XXX why doesn't "by words" work above?? *)
-  replace ($1 ^* stride) with (stride)
-    by (rewrite wmult_unit; auto).
-  (* XXX why doesn't "by words" work above?? *)
+  replace (($0 ^+ $1) ^* stride) with (stride) by words.
   cancel.
 
   eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] | ]; clear IHvs.
   instantiate (1 := i); omega.
   simpl.
   replace (a0 ^+ stride ^+ ($ i ^+ $1) ^* stride)
-    with (a0 ^+ ($ (S i) ^+ $1) ^* stride).
+    with (a0 ^+ ($ (S i) ^+ $1) ^* stride) by words.
   replace (a0 ^+ stride ^+ $ i ^* stride)
-    with (a0 ^+ $ (S i) ^* stride).
+    with (a0 ^+ $ (S i) ^* stride) by words.
   cancel.
-
-  (* XXX why doesn't "ring" or "words" solve this?? *)
-  ring_prepare.
-  rewrite wmult_plus_distr.
-  rewrite wmult_unit.
-  ring.
-
-  (* XXX why doesn't "ring" or "words" solve this?? *)
-  ring_prepare.
-  repeat rewrite wmult_plus_distr.
-  repeat rewrite wmult_unit.
-  ring.
 Qed.
 
 Theorem isolate_fwd : forall (a i : addr) vs stride,
@@ -210,34 +193,17 @@ Proof.
   destruct i; simpl.
 
   replace (a0 ^+ $0 ^* stride) with (a0) by words.
-  replace ($0 ^+ $1 : addr) with ($1 : addr)
-    by (rewrite wplus_unit; auto).
-  (* XXX why doesn't "by words" work above?? *)
-  replace ($1 ^* stride) with (stride)
-    by (rewrite wmult_unit; auto).
-  (* XXX why doesn't "by words" work above?? *)
+  replace (($0 ^+ $1) ^* stride) with (stride) by words.
   cancel.
 
   eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] ]; clear IHvs.
   2: instantiate (1 := i); omega.
   simpl.
   replace (a0 ^+ stride ^+ ($ i ^+ $1) ^* stride)
-    with (a0 ^+ ($ (S i) ^+ $1) ^* stride).
+    with (a0 ^+ ($ (S i) ^+ $1) ^* stride) by words.
   replace (a0 ^+ stride ^+ $ i ^* stride)
-    with (a0 ^+ $ (S i) ^* stride).
+    with (a0 ^+ $ (S i) ^* stride) by words.
   cancel.
-
-  (* XXX why doesn't "ring" or "words" solve this?? *)
-  ring_prepare.
-  rewrite wmult_plus_distr.
-  rewrite wmult_unit.
-  ring.
-
-  (* XXX why doesn't "ring" or "words" solve this?? *)
-  ring_prepare.
-  repeat rewrite wmult_plus_distr.
-  repeat rewrite wmult_unit.
-  ring.
 Qed.
 
 Theorem isolate_bwd : forall (a i : addr) vs stride,

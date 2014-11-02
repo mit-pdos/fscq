@@ -853,6 +853,13 @@ Qed.
 
 Implicit Arguments weqb_sound [].
 
+Ltac is_nat_cst n :=
+  match eval hnf in n with
+    | O => constr:true
+    | S ?n' => is_nat_cst n'
+    | _ => constr:false
+  end.
+
 Ltac isWcst w :=
   match eval hnf in w with
     | WO => constr:true
@@ -862,6 +869,7 @@ Ltac isWcst w :=
         | false => isWcst w'
         | _ => constr:false
       end
+    | natToWord _ ?n => is_nat_cst n
     | _ => constr:false
   end.
 
