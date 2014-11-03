@@ -73,10 +73,30 @@ Theorem get_ok: forall k,
 Proof.
   unfold get, rep.
   hoare.
-  admit.
-  admit.
+  
+  simpl_list; assert (length l1 >= length l).
+  rewrite <- H10; rewrite firstn_length; apply Nat.le_min_r.
+	eapply lt_le_trans with (m:=length l); auto.
+  rewrite addr2valu2addr in H2.
+  apply wlt_lt in H2.
+  assert (wordToNat (natToWord addrlen (length l)) = length l).
+  eapply wordToNat_natToWord_bound.
+  rewrite H11 in H5; eauto.
+  rewrite <- H9; auto.
+
+  simpl_list; assert (length l1 >= length l).
+  rewrite <- H10; rewrite firstn_length; apply Nat.le_min_r.
+	eapply lt_le_trans with (m:=length l); auto.
+  rewrite addr2valu2addr in H2.
+  apply wlt_lt in H2.
+  assert (wordToNat (natToWord addrlen (length l)) = length l).
+  eapply wordToNat_natToWord_bound.
+  rewrite H11 in H5; eauto.
+  rewrite <- H12; auto.
+
   admit.
 Qed.
+
 
 Definition put T k v (rx : bool -> prog T) :=
   l <- Read $0;
