@@ -337,27 +337,8 @@ Module LOG.
     auto.
   Qed.
 
-  Ltac helper_wordcmp_one :=
-    match goal with
-    | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
-    | [ |- context[valu2addr (addr2valu _)] ] => rewrite addr2valu2addr
-    | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
-      assert (wordToNat x < pow2 sz) by (apply wordToNat_bound);
-      assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; auto; omega);
-      clear H
-    | [ H: context[wordToNat (natToWord _ _)] |- _ ] =>
-      rewrite wordToNat_natToWord_idempotent' in H;
-      [| solve [ omega ||
-                 ( eapply Nat.le_lt_trans; [| apply wordToNat_bound ]; eauto ) ] ]
-    | [ H: (?a < natToWord _ ?b)%word |- wordToNat ?a < ?b ] =>
-      apply wlt_lt in H; rewrite wordToNat_natToWord_idempotent' in H;
-      [ apply H | eapply Nat.le_lt_trans; [| apply wordToNat_bound ]; eauto ]
-    end.
-
-  Ltac helper_wordcmp := repeat helper_wordcmp_one.
-
   Hint Extern 1 (avail_region _ _ =!=> _) =>
-    apply avail_region_shrink_one; helper_wordcmp; omega : norm_hint_left.
+    apply avail_region_shrink_one; wordcmp; omega : norm_hint_left.
 
   Theorem avail_region_grow_two : forall start len a b,
     len > 1
@@ -397,7 +378,7 @@ Module LOG.
           match L with
           | context[((lstart ^+ $1) |-> _)%pred] =>
             apply avail_region_grow_two with (start:=lstart);
-            helper_wordcmp; omega
+            wordcmp; omega
           end
         end
       end
@@ -484,7 +465,7 @@ Module LOG.
 
     eapply pimpl_or_r. left. cancel.
 
-    rewrite app_length; simpl; helper_wordcmp; omega.
+    rewrite app_length; simpl; wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.
     eapply indomain_replay; eauto.
     eapply sep_star_ptsto_indomain; eauto.
@@ -548,7 +529,7 @@ Module LOG.
     | [ H: norm_goal (?L ==> ?R) |- _ ] =>
       match R with
       | context[((LogStart xp ^+ ?p ^* $2) |-> _)%pred] =>
-        apply logentry_ptsto_extract with (pos:=wordToNat p); helper_wordcmp
+        apply logentry_ptsto_extract with (pos:=wordToNat p); wordcmp
       end
     end : norm_hint_left.
 
@@ -559,7 +540,7 @@ Module LOG.
       | context[((LogStart xp ^+ ?p ^* $2) |-> _)%pred] =>
         match L with
         | context[logentry_ptsto_list xp (firstn (wordToNat p) ?log) 0] =>
-          apply logentry_ptsto_absorb with (pos:=wordToNat p) (l:=log); helper_wordcmp
+          apply logentry_ptsto_absorb with (pos:=wordToNat p) (l:=log); wordcmp
         end
       end
     end : norm_hint_right.
@@ -701,10 +682,10 @@ Module LOG.
     hoare.
 
     subst.
-    erewrite wordToNat_plusone; [ apply replay_last_eq |]; helper_wordcmp; eauto.
-    erewrite wordToNat_plusone; [ apply replay_last_ne |]; helper_wordcmp; eauto.
+    erewrite wordToNat_plusone; [ apply replay_last_eq |]; wordcmp; eauto.
+    erewrite wordToNat_plusone; [ apply replay_last_ne |]; wordcmp; eauto.
 
-    helper_wordcmp. rewrite firstn_length in *.
+    wordcmp. rewrite firstn_length in *.
     match goal with
     | [ H: (_ |-> _ * _)%pred _ |- _ ] => apply sep_star_ptsto_some in H
     end.
@@ -939,26 +920,26 @@ Module LOG.
     unfold apply; log_unfold.
     hoare.
 
-    rewrite addr2valu2addr. apply indomain_log_nth; auto; helper_wordcmp.
+    rewrite addr2valu2addr. apply indomain_log_nth; auto; wordcmp.
 
     apply valid_log_upd; auto.
-    apply indomain_log_nth; auto; helper_wordcmp.
-    rewrite replay_logupd; auto; helper_wordcmp.
+    apply indomain_log_nth; auto; wordcmp.
+    rewrite replay_logupd; auto; wordcmp.
     erewrite wordToNat_plusone; eauto.
-    rewrite replay_skip_more; auto; helper_wordcmp.
+    rewrite replay_skip_more; auto; wordcmp.
 
     eapply pimpl_or_r; left. cancel.
 
     eapply valid_log_upd; eauto.
     eapply indomain_log_nth; eauto.
-    helper_wordcmp.
+    wordcmp.
 
     extract_functional_extensionality.
     rewrite replay_logupd; try congruence.
-    helper_wordcmp.
+    wordcmp.
 
     rewrite addr2valu2addr in *.
-    helper_wordcmp.
+    wordcmp.
     rewrite skipn_length in *; simpl in *.
 
     extract_functional_extensionality.
@@ -967,7 +948,7 @@ Module LOG.
     eapply pimpl_or_r; left. cancel.
     cancel.
 
-    helper_wordcmp; rewrite skipn_length in *; simpl in *. congruence.
+    wordcmp; rewrite skipn_length in *; simpl in *. congruence.
 
     eapply pimpl_or_r; right. cancel.
 

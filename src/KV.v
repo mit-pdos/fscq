@@ -8,6 +8,7 @@ Require Import BasicProg.
 Require Import Arith.
 Require Import Omega.
 Require Import Array.
+Require Import Psatz.
 
 Import ListNotations.
 
@@ -21,6 +22,15 @@ Definition empty_entry : entry := ($0, $0).
 
 Definition list_prefix A (p l : list A) :=
   firstn (length p) l = p.
+
+Lemma list_prefix_length: forall T (a b : list T), list_prefix a b
+  -> length a <= length b.
+Proof.
+  unfold list_prefix; intros.
+  rewrite <- H.
+  rewrite firstn_length.
+  lia.
+Qed.
 
 Definition rep l :=
   (exists diskl,
@@ -73,26 +83,18 @@ Theorem get_ok: forall k,
 Proof.
   unfold get, rep.
   hoare.
-  
-  simpl_list; assert (length l1 >= length l).
-  rewrite <- H10; rewrite firstn_length; apply Nat.le_min_r.
-	eapply lt_le_trans with (m:=length l); auto.
-  rewrite addr2valu2addr in H2.
-  apply wlt_lt in H2.
-  assert (wordToNat (natToWord addrlen (length l)) = length l).
-  eapply wordToNat_natToWord_bound.
-  rewrite H11 in H5; eauto.
-  rewrite <- H9; auto.
 
-  simpl_list; assert (length l1 >= length l).
-  rewrite <- H10; rewrite firstn_length; apply Nat.le_min_r.
-	eapply lt_le_trans with (m:=length l); auto.
-  rewrite addr2valu2addr in H2.
-  apply wlt_lt in H2.
-  assert (wordToNat (natToWord addrlen (length l)) = length l).
-  eapply wordToNat_natToWord_bound.
-  rewrite H11 in H5; eauto.
-  rewrite <- H12; auto.
+  simpl_list.
+  eapply lt_le_trans; [| apply list_prefix_length; eauto ].
+  wordcmp.
+  eapply le_trans; [ apply list_prefix_length; eauto |].
+  wordcmp.
+
+  simpl_list.
+  eapply lt_le_trans; [| apply list_prefix_length; eauto ].
+  wordcmp.
+  eapply le_trans; [ apply list_prefix_length; eauto |].
+  wordcmp.
 
   admit.
 Qed.
