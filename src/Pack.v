@@ -1,6 +1,7 @@
 Require Import Word.
 Require Import Prog.
 Require Import Arith.
+Require Import Eqdep.
 
 
 Module Type ItemSize.
@@ -46,6 +47,17 @@ Module Packer (IS: ItemSize).
     exact result.
   Defined.
 
+  Theorem eq_rect_double: forall A T (a b c : A) x ab bc,
+    eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
+  Proof.
+    intros.
+    destruct ab.
+    destruct bc.
+    rewrite (UIP_refl _ _ (eq_trans eq_refl eq_refl)).
+    simpl.
+    auto.
+  Qed.
+
   Theorem extract_same : forall v pos pos' n, pos = pos'
     -> (pos < IS.items_per_valu)%word
     -> extract (update v pos' n) pos = n.
@@ -55,7 +67,9 @@ Module Packer (IS: ItemSize).
     destruct (wlt_dec pos IS.items_per_valu); try congruence.
 
     unfold eq_rec_r, eq_rec.
-    (* XXX messy eq_rect terms.. *)
+    repeat rewrite eq_rect_double.
+
+    (* XXX messy eq_rect term.. *)
     admit.
   Qed.
 
