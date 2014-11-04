@@ -46,6 +46,39 @@ Module Packer (IS: ItemSize).
     exact result.
   Defined.
 
+  (* extract' and update' avoid rewriting types, so they have no eq_rect terms,
+   * but instead they have dependent matches..  unclear which is worse.
+   *)
+  Definition extract' (v : valu) (pos : addr) : word IS.itemsz.
+    refine (if wlt_dec pos IS.items_per_valu then _ else wzero IS.itemsz).
+    refine (let below := (wordToNat pos) * IS.itemsz in _).
+    refine (let above := valulen - below - IS.itemsz in _).
+    refine (let v' := match (eq_sym (extract_len pos w)) in _ = N return word N with
+                      | refl_equal => v
+                      end in _).
+    refine (let v_lower := split1 (below + IS.itemsz) above v' in _).
+    refine (let result := split2 below IS.itemsz v_lower in _).
+    exact result.
+  Defined.
+
+  Definition update' (v : valu) (pos : addr) (n : word IS.itemsz) : valu.
+    refine (if wlt_dec pos IS.items_per_valu then _ else v).
+    refine (let below := (wordToNat pos) * IS.itemsz in _).
+    refine (let above := valulen - below - IS.itemsz in _).
+    refine (let v' := match (eq_sym (extract_len pos w)) in _ = N return word N with
+                      | refl_equal => v
+                      end in _).
+    refine (let v_above := split2 (below + IS.itemsz) above v' in _).
+    refine (let v_lower := split1 (below + IS.itemsz) above v' in _).
+    refine (let v_below := split1 below IS.itemsz v_lower in _).
+    refine (let result := combine (combine v_below n) v_above in _).
+    subst below; subst above.
+    refine (let result' := match (extract_len pos w) in _ = N return word N with
+                           | refl_equal => result
+                           end in _).
+    exact result'.
+  Defined.
+
   Theorem eq_rect_double: forall A T (a b c : A) x ab bc,
     eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
   Proof.
