@@ -6,18 +6,19 @@ Require Import Arith.
 Module Type ItemSize.
   Parameter itemsz : nat.
   Parameter items_per_valu : addr.
-  Axiom itemsz_ok : items_per_valu ^* $ itemsz = $ valulen.
+  Axiom itemsz_ok : wordToNat items_per_valu * itemsz = valulen.
   (* This is in lieu of actually being able to do division.. *)
 End ItemSize.
 
 
 Module Packer (IS: ItemSize).
-
   Theorem extract_len : forall pos, (pos < IS.items_per_valu)%word
     -> wordToNat pos * IS.itemsz + IS.itemsz + (valulen - wordToNat pos * IS.itemsz - IS.itemsz)
        = valulen.
   Proof.
-    admit.
+    intros pos H. rewrite <- Nat.sub_add_distr. rewrite le_plus_minus_r.
+    reflexivity. rewrite <- Nat.mul_succ_l. rewrite <- IS.itemsz_ok.
+    apply mult_le_compat_r. apply Nat.le_succ_l. apply wlt_lt. assumption.
   Qed.
 
   Definition extract (v : valu) (pos : addr) : word IS.itemsz.
