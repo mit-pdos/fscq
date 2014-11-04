@@ -49,7 +49,7 @@ Module Rec.
       end
     end f.
 
-  Fixpoint recget {t : rectype} {n : string} (r : recdata t) (p : field_in t n) : word (field_type p) :=
+  Fixpoint recget {t : rectype} {n : string} (p : field_in t n) (r : recdata t) : word (field_type p) :=
     match t as t return (recdata t -> forall f : field_in t n, word (field_type f)) with
     | [] => fun _ f => match (empty_field_in f) with end
     | (n0, l0) :: t' =>
@@ -63,19 +63,41 @@ Module Rec.
             end)
       with
       | left _ => v
-      | right ne => recget r' (field_in_next ne f)
+      | right ne => recget (field_in_next ne f) r'
       end
     end r p.
 
-  Fixpoint recset {t : rectype} {n : string} (r : recdata t) (p : field_in t n) (v : word (field_type p)) : recdata t.
-    destruct t. contradiction empty_field_in with (n := n).
+  Fixpoint recset {t : rectype} {n : string} (p : field_in t n) (r : recdata t) (v : word (field_type p)) : recdata t.
+    destruct t. contradiction (empty_field_in p).
     destruct p0 as [n0 l0]. destruct r as [v0 r'].
     simpl in v.
-    destruct (string_dec n0 n); constructor.
+    destruct (string_dec n0 n) as [eq|neq]; constructor.
     apply v. apply r'.
-    apply v0. apply (recset t n r' (field_in_next n1 p) v).
+    apply v0. apply (recset t n (field_in_next neq p) r' v).
   Defined.
   (* TODO: define recset without tactics (somewhat messy) *)
+
+  Theorem set_get_same : forall t n p r v, @recget t n p (recset p r v) = v.
+  Proof.
+    induction t; intros.
+    contradiction (empty_field_in p).
+    destruct a as [n0 l0]. destruct r as [v0 r'].
+    simpl in v. simpl. destruct (string_dec n0 n).
+    trivial. apply IHt.
+  Defined.
+
+  Theorem set_get_other : forall t n1 p1 n2 p2 r v, n1 <> n2 ->
+    recget p1 r = @recget t n1 p1 (@recset t n2 p2 r v).
+  Proof.
+    induction t; intros n1 p1 n2 p2 r v neq.
+    contradiction (empty_field_in p1).
+    destruct a as [n0 l0]. destruct r as [v0 r'].
+    simpl in v. simpl. destruct (string_dec n0 n2); destruct (string_dec n0 n1); subst.
+    rewrite e0 in neq. contradiction neq. trivial.
+    trivial.
+    trivial.
+    apply IHt. assumption.
+  Qed.
 
   Fixpoint fieldp (t : rectype) (n : string) : option (field_in t n) :=
     match t as t return (option (field_in t n)) with
@@ -100,7 +122,7 @@ Module Rec.
                     | Some p => word (field_type p)
                     | None => True
                   end) with
-      | Some p => recget r p
+      | Some p => recget p r
       | None => I
     end.
 
@@ -110,12 +132,13 @@ Module Rec.
                     | Some p => word (field_type p) -> recdata t
                     | None => True
                   end) with
-      | Some p => fun r v => recset r p v
+      | Some p => fun r v => recset p r v
       | None => fun _ => I
     end r.
 
   Notation "r :-> n" := (recget' n r) (at level 80).
   Notation "r :=> n := v" := (recset' n r v) (at level 80).
+
 
   Fixpoint rec2word {t : rectype} (r : recdata t) : word (reclen t) :=
     match t as t return recdata t -> word (reclen t) with
@@ -132,12 +155,14 @@ Module Rec.
     end w.
 
   Theorem rec2word_word2rec : forall t w, rec2word (word2rec t w) = w.
+  Proof.
     induction t. auto.
     intro w. destruct a as [n l]. simpl.
     rewrite IHt. apply combine_split.
   Qed.
 
   Theorem word2rec_rec2word : forall t r, word2rec t (rec2word r) = r.
+  Proof.
     induction t; intro r.
     destruct r. reflexivity.
     destruct a as [n l]. destruct r. simpl.
