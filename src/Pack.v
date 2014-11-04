@@ -40,9 +40,8 @@ Module Packer (IS: ItemSize).
     refine (let v_above := split2 (below + IS.itemsz) above v in _).
     refine (let v_lower := split1 (below + IS.itemsz) above v in _).
     refine (let v_below := split1 below IS.itemsz v_lower in _).
-    refine (let result := combine v_below (combine n v_above) in _).
+    refine (let result := combine (combine v_below n) v_above in _).
     subst below; subst above.
-    rewrite plus_assoc in result.
     rewrite extract_len in result by eassumption.
     exact result.
   Defined.
@@ -68,9 +67,11 @@ Module Packer (IS: ItemSize).
 
     unfold eq_rec_r, eq_rec.
     repeat rewrite eq_rect_double.
+    rewrite <- eq_rect_eq.
 
-    (* XXX messy eq_rect term.. *)
-    admit.
+    rewrite split1_combine.
+    rewrite split2_combine.
+    reflexivity.
   Qed.
 
   Theorem extract_other : forall v pos pos' n, pos <> pos'
@@ -82,6 +83,8 @@ Module Packer (IS: ItemSize).
     destruct (wlt_dec pos' IS.items_per_valu); auto.
 
     unfold eq_rec_r, eq_rec.
+    repeat rewrite eq_rect_double.
+
     (* XXX messy eq_rect terms.. *)
     admit.
   Qed.
