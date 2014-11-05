@@ -707,7 +707,7 @@ Module LOG.
     PRE    rep xp (ActiveTxn mbase m) *
            [[ exists F', (array a vs stride * F')%pred m ]] *
            [[ wordToNat i < length vs ]]
-    POST:r [[ r = sel vs i ]] * rep xp (ActiveTxn mbase m)
+    POST:r [[ r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m)
     CRASH  rep xp (ActiveTxn mbase m)
     >} read_array xp a i stride.
   Proof.
@@ -715,12 +715,12 @@ Module LOG.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
      * [[ exists F',
           (array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i
+           * (a ^+ i ^* stride) |-> sel vs i $0
            * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred m ]]
      * [[ wordToNat i < length vs ]]
      * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
            * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx (sel vs i) ]]
+          }} rx (sel vs i $0) ]]
      * [[ rep xp (ActiveTxn mbase m) * F ==> crash ]])%pred.
     unfold read_array.
     eapply pimpl_ok2.
@@ -759,7 +759,7 @@ Module LOG.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
        rep xp (ActiveTxn mbase m) * F
      * [[ (array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i
+           * (a ^+ i ^* stride) |-> sel vs i $0
            * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred m ]]
      * [[ wordToNat i < length vs ]]
      * [[ forall r,

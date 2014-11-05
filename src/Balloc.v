@@ -46,10 +46,10 @@ Module BALLOC.
           (map (fun nblock => blockbits bmap (nblock * valulen))
                (seq 0 (wordToNat (BmapNBlocks xp)))) $1.
 
-  Theorem selN_list_eq' : forall len vs vs',
+  Theorem selN_list_eq' : forall A len (vs vs' : list A) default,
     length vs = len
     -> length vs' = len
-    -> (forall i, i < len -> selN vs i = selN vs' i)
+    -> (forall i, i < len -> selN vs i default = selN vs' i default)
     -> vs = vs'.
   Proof.
     induction len.
@@ -57,39 +57,23 @@ Module BALLOC.
     - destruct vs; destruct vs'; simpl; intros; try congruence.
       f_equal.
       apply (H1 0); omega.
-      apply IHlen; eauto.
+      eapply IHlen; eauto.
       intros.
       apply (H1 (S i)); omega.
   Qed.
 
-  Theorem selN_list_eq : forall vs vs',
+  Theorem selN_list_eq : forall A (vs vs' : list A) default,
     length vs = length vs'
-    -> (forall i, i < length vs -> selN vs i = selN vs' i)
+    -> (forall i, i < length vs -> selN vs i default = selN vs' i default)
     -> vs = vs'.
   Proof.
     intros.
     eapply selN_list_eq'; [ apply eq_refl | auto | auto ].
   Qed.
 
-  Theorem selN_map_seq' : forall i n f base, i < n
-    -> selN (map f (seq base n)) i = f (i + base).
-  Proof.
-    induction i; destruct n; simpl; intros; try omega; auto.
-    replace (S (i + base)) with (i + (S base)) by omega.
-    apply IHi; omega.
-  Qed.
-
-  Theorem selN_map_seq : forall i n f, i < n
-    -> selN (map f (seq 0 n)) i = f i.
-  Proof.
-    intros.
-    replace i with (i + 0) at 2 by omega.
-    apply selN_map_seq'; auto.
-  Qed.
-
   Theorem selN_updN_ne : forall vs n n' v, n < length vs
     -> n <> n'
-    -> selN (updN vs n v) n' = selN vs n'.
+    -> selN (updN vs n v) n' ($0 : valu) = selN vs n' ($0 : valu).
   Proof.
     induction vs; destruct n'; destruct n; simpl; intuition; try omega.
   Qed.
@@ -107,7 +91,7 @@ Module BALLOC.
     unfold blockbits.
     intros.
     f_equal.
-    apply selN_list_eq; autorewrite with core; auto.
+    eapply selN_list_eq; autorewrite with core; auto.
 
     intros.
     repeat rewrite selN_map_seq; auto.
@@ -205,7 +189,7 @@ Module BALLOC.
     -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
                         (seq 0 (wordToNat nblocks)))
     -> array astart (upd oldblocks bnblock
-                         (sel oldblocks bnblock ^&
+                         (sel oldblocks bnblock $0 ^&
                           wnot (wbit valulen (bn ^- bnblock ^* $ valulen)))) =
        array astart
          (map (fun nblock => blockbits (fupd bmap bn Avail) (nblock * valulen))
@@ -214,7 +198,7 @@ Module BALLOC.
     intros.
     f_equal.
     unfold upd.
-    apply selN_list_eq.
+    eapply selN_list_eq.
     - subst; autorewrite with core. auto.
     - unfold sel; intros.
       apply wlt_lt in H1 as H1'.
@@ -234,7 +218,7 @@ Module BALLOC.
     -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
                         (seq 0 (wordToNat nblocks)))
     -> array astart (upd oldblocks bnblock
-                         (sel oldblocks bnblock ^| wbit valulen bnoff)) =
+                         (sel oldblocks bnblock $0 ^| wbit valulen bnoff)) =
        array astart
          (map (fun nblock => blockbits (fupd bmap (bnblock ^* $ valulen ^+ bnoff) InUse)
                                        (nblock * valulen))
@@ -243,7 +227,7 @@ Module BALLOC.
     intros.
     f_equal.
     unfold upd.
-    apply selN_list_eq.
+    eapply selN_list_eq.
     - subst; autorewrite with core. auto.
     - unfold sel; intros.
       apply wlt_lt in H0 as H0'.
@@ -394,7 +378,7 @@ Module BALLOC.
 
   Theorem sel_avail : forall bmap bnblock bnoff nblocks,
      sel (map (fun nblock => blockbits bmap (nblock * valulen))
-              (seq 0 (wordToNat nblocks))) bnblock ^& wbit valulen bnoff = $ 0
+              (seq 0 (wordToNat nblocks))) bnblock $0 ^& wbit valulen bnoff = $ 0
     -> (bnblock < nblocks)%word
     -> (bnoff < $ valulen)%word
     -> bmap (bnblock ^* $ valulen ^+ bnoff) = Avail.
