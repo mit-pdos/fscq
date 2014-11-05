@@ -1339,6 +1339,12 @@ Proof.
   apply wlt_lt.
 Qed.
 
+Ltac wlt_ind :=
+  match goal with
+  | [ |- forall (n: word ?len), ?P ] =>
+    refine (well_founded_ind (@wlt_wf len) (fun n => P) _)
+  end.
+
 Theorem word0: forall (w : word 0), w = WO.
 Proof.
   firstorder.

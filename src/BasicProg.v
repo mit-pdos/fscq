@@ -215,10 +215,7 @@ Theorem for_ok':
   }} (For_ f i n li nocrash crashed rx).
 Proof.
   intro T.
-  match goal with
-  | [ |- forall (n: addr), ?P ] =>
-    refine (well_founded_ind (@wlt_wf addrlen) (fun n => P) _)
-  end.
+  wlt_ind.
 
   intros.
   apply corr2_exists; intros.
