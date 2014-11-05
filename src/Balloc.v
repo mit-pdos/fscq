@@ -91,7 +91,7 @@ Module BALLOC.
     unfold blockbits.
     intros.
     f_equal.
-    eapply selN_list_eq; autorewrite with core; auto.
+    eapply selN_list_eq with (default:=$0); autorewrite with core; auto.
 
     intros.
     repeat rewrite selN_map_seq; auto.
@@ -206,9 +206,8 @@ Module BALLOC.
       + rewrite selN_updN_eq; autorewrite with core; auto.
         repeat rewrite selN_map_seq; auto.
         erewrite blockbits_bupd_same_avail; eauto.
-      + rewrite selN_updN_ne; autorewrite with core; auto.
-        autorewrite with core in *.
-        repeat rewrite selN_map_seq; auto.
+      + autorewrite with core in *.
+        rewrite selN_updN_ne; autorewrite with core; auto.
         erewrite blockbits_bupd_other; eauto.
   Qed.
 

@@ -162,7 +162,7 @@ Proof.
   apply wlt_lt; auto.
 Qed.
 
-Hint Rewrite selN_map_seq sel_map_seq.
+Hint Rewrite selN_map_seq sel_map_seq using ( solve [ auto ] ).
 
 
 (** * Isolating an array cell *)
