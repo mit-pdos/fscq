@@ -734,11 +734,28 @@ Proof.
   apply pimpl_or; assumption.
 Qed.
 
-Example pimpl_sep_star_rewrite : forall a b x y, a =p=> b
-  -> (x * a * y =p=> x * b * y).
+Example pimpl_rewrite : forall a b p q x y, p =p=> q
+  -> (x /\ a * p * b \/ y =p=> x /\ a * q * b \/ y).
 Proof.
   intros.
   rewrite H.
+  reflexivity.
+Qed.
+
+Instance exists_proper {A : Type} :
+  Proper (pointwise_relation A pimpl ==> pimpl) (@exis A).
+Proof.
+  intros a b H.
+  apply pimpl_exists_l; intro x.
+  apply pimpl_exists_r; exists x.
+  auto.
+Qed.
+
+Example pimpl_exists_rewrite : forall p q, p =p=> q
+  -> (exists x, p * x) =p=> (exists x, q * x).
+Proof.
+  intros.
+  setoid_rewrite H.
   reflexivity.
 Qed.
 
