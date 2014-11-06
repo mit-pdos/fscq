@@ -37,7 +37,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
      F * pre *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun r => F * post) r_ * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
-        }} rx r_ ]] * [[ (F * crash)%pred ==> crash_ ]]
+        }} rx r_ ]] * [[ (F * crash)%pred =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -51,11 +51,11 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash 'IDEM' ide
      F * pre *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rp => F * post) r_ *
-                                 [[ done'_ = done_ ]] * [[ crash'_ ==> F * idemcrash ]]
+                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rc => F * crash) r_ *
-                                 [[ done'_ = crashdone_ ]] * [[ crash'_ ==> F * idemcrash ]]
+                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
         }} rxREC r_ ]]
      )) .. ))
    )%pred
@@ -67,7 +67,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash 'IDEM' ide
 Theorem pimpl_ok2:
   forall T pre pre' (pr: prog T),
   {{pre'}} pr ->
-  (forall done crash, pre done crash ==> pre' done crash) ->
+  (forall done crash, pre done crash =p=> pre' done crash) ->
   {{pre}} pr.
 Proof.
   unfold corr2; intros.
@@ -79,7 +79,7 @@ Qed.
 Theorem pimpl_ok3:
   forall TF TR pre pre' (p: prog TF) (r: prog TR),
   {{pre'}} p >> r ->
-  (forall done crashdone, pre done crashdone ==> pre' done crashdone) ->
+  (forall done crashdone, pre done crashdone =p=> pre' done crashdone) ->
   {{pre}} p >> r.
 Proof.
   unfold corr3; intros.
@@ -91,8 +91,8 @@ Qed.
 Theorem pimpl_ok2_cont :
   forall T pre pre' A (k : A -> prog T) x y,
   {{pre'}} k y ->
-  (forall done crash, pre done crash ==> pre' done crash) ->
-  (forall done crash, pre done crash ==> exists F, F * [[x = y]]) ->
+  (forall done crash, pre done crash =p=> pre' done crash) ->
+  (forall done crash, pre done crash =p=> exists F, F * [[x = y]]) ->
   {{pre}} k x.
 Proof.
   unfold corr2, pimpl; intros.
@@ -105,8 +105,8 @@ Qed.
 Theorem pimpl_ok3_cont :
   forall TF TR pre pre' A (k : A -> prog TF) x y (r: prog TR),
   {{pre'}} k y >> r ->
-  (forall done crashdone, pre done crashdone ==> pre' done crashdone) ->
-  (forall done crashdone, pre done crashdone ==> exists F, F * [[x = y]]) ->
+  (forall done crashdone, pre done crashdone =p=> pre' done crashdone) ->
+  (forall done crashdone, pre done crashdone =p=> exists F, F * [[x = y]]) ->
   {{pre}} k x >> r.
 Proof.
   unfold corr3, pimpl; intros.
@@ -118,8 +118,8 @@ Qed.
 
 Theorem pimpl_pre2:
   forall T pre pre' (pr: prog T),
-  (forall done crash, pre done crash ==> [{{pre'}} pr])
-  -> (forall done crash, pre done crash ==> pre' done crash)
+  (forall done crash, pre done crash =p=> [{{pre'}} pr])
+  -> (forall done crash, pre done crash =p=> pre' done crash)
   -> {{pre}} pr.
 Proof.
   unfold corr2; intros.
@@ -130,8 +130,8 @@ Qed.
 
 Theorem pimpl_pre3:
   forall TF TR pre pre' (p: prog TF) (r: prog TR),
-  (forall done crashdone, pre done crashdone ==> [{{pre'}} p >> r])
-  -> (forall done crashdone, pre done crashdone ==> pre' done crashdone)
+  (forall done crashdone, pre done crashdone =p=> [{{pre'}} p >> r])
+  -> (forall done crashdone, pre done crashdone =p=> pre' done crashdone)
   -> {{pre}} p >> r.
 Proof.
   unfold corr3; intros.
@@ -142,7 +142,7 @@ Qed.
 
 Theorem pre_false2:
   forall T pre (p: prog T),
-  (forall done crash, pre done crash ==> [False])
+  (forall done crash, pre done crash =p=> [False])
   -> {{ pre }} p.
 Proof.
   firstorder.
@@ -150,7 +150,7 @@ Qed.
 
 Theorem pre_false3:
   forall TF TR pre (p: prog TF) (r: prog TR),
-  (forall done crashdone, pre done crashdone ==> [False])
+  (forall done crashdone, pre done crashdone =p=> [False])
   -> {{ pre }} p >> r.
 Proof.
   firstorder.

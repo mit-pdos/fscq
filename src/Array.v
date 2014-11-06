@@ -169,7 +169,7 @@ Hint Rewrite selN_map_seq sel_map_seq using ( solve [ auto ] ).
 
 Lemma isolate_fwd' : forall vs i a stride,
   i < length vs
-  -> array a vs stride ==> array a (firstn i vs) stride
+  -> array a vs stride =p=> array a (firstn i vs) stride
      * (a ^+ $ i ^* stride) |-> selN vs i $0
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
 Proof.
@@ -195,7 +195,7 @@ Qed.
 
 Theorem isolate_fwd : forall (a i : addr) vs stride,
   wordToNat i < length vs
-  -> array a vs stride ==> array a (firstn (wordToNat i) vs) stride
+  -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
      * (a ^+ i ^* stride) |-> sel vs i $0
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
@@ -211,7 +211,7 @@ Lemma isolate_bwd' : forall vs i a stride,
   -> array a (firstn i vs) stride
      * (a ^+ $ i ^* stride) |-> selN vs i $0
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
-  ==> array a vs stride.
+  =p=> array a vs stride.
 Proof.
   induction vs; simpl; intuition.
 
@@ -238,7 +238,7 @@ Theorem isolate_bwd : forall (a i : addr) vs stride,
   -> array a (firstn (wordToNat i) vs) stride
      * (a ^+ i ^* stride) |-> sel vs i $0
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
-  ==> array a vs stride.
+  =p=> array a vs stride.
 Proof.
   intros.
   eapply pimpl_trans; [ | apply isolate_bwd' ].
@@ -286,7 +286,7 @@ Theorem read_ok:
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a vs stride * F * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx (sel vs i $0)]]
-   * [[array a vs stride * F ==> crash]]
+   * [[array a vs stride * F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
   intros.
@@ -302,7 +302,7 @@ Proof.
         }} rx (sel vs i $0)]]
     * [[array a (firstn (wordToNat i) vs) stride
         * (a ^+ i ^* stride) |-> sel vs i $0
-        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F ==> crash]]
+        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F =p=> crash]]
   )%pred.
 
   rewrite ArrayRead_eq.
@@ -334,7 +334,7 @@ Theorem write_ok:
    * [[{{ fun done' crash' => array a (upd vs i v) stride * F
         * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx tt]]
-   * [[ array a vs stride * F \/ array a (upd vs i v) stride * F ==> crash ]]
+   * [[ array a vs stride * F \/ array a (upd vs i v) stride * F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
   intros.
@@ -354,7 +354,7 @@ Proof.
         (array a (firstn (wordToNat i) (upd vs i v)) stride
         * (a ^+ i ^* stride) |-> sel (upd vs i v) i $0
         * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) (upd vs i v)) stride * F)
-        ==> crash ]])%pred.
+        =p=> crash ]])%pred.
 
   rewrite ArrayWrite_eq.
   eapply pimpl_ok2.
@@ -407,7 +407,7 @@ Theorem read_back_ok : forall T a (rx : _ -> prog T),
      * [[{{fun done' crash' => array a (upd vs $0 $42) $1 * F
           * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx $42 ]]
-     * [[ array a vs $1 * F \/ array a (upd vs $0 $42) $1 * F ==> crash ]]
+     * [[ array a vs $1 * F \/ array a (upd vs $0 $42) $1 * F =p=> crash ]]
   }} read_back a rx.
 Proof.
   unfold read_back; hoare.
@@ -428,7 +428,7 @@ Theorem swap_ok : forall T a i j (rx : prog T),
            * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx ]]
      * [[ array a vs $1 * F \/ array a (upd vs i (sel vs j $0)) $1 * F \/
-          array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F ==> crash ]]
+          array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F =p=> crash ]]
   }} swap a i j rx.
 Proof.
   unfold swap; hoare.

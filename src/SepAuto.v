@@ -58,11 +58,11 @@ Ltac sep_imply :=
   end.
 
 Theorem start_normalizing : forall PT QT p q ps qs P Q,
-  p <==> (exists (x:PT), stars (ps x) * [[P x]])%pred
-  -> q <==> (exists (x:QT), stars (qs x) * [[Q x]])%pred
-  -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) ==>
+  p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
+  -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
+  -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) =p=>
       (exists (x:QT), stars (qs x) * [[Q x]]))
-  -> p ==> q.
+  -> p =p=> q.
 Proof.
   unfold stars; simpl; intros.
   eapply pimpl_trans; [apply H|].
@@ -80,15 +80,15 @@ Qed.
 
 Theorem restart_canceling:
   forall p q,
-  (stars p * stars nil ==> q) ->
-  (stars nil * stars p ==> q).
+  (stars p * stars nil =p=> q) ->
+  (stars nil * stars p =p=> q).
 Proof.
   intros; eapply pimpl_trans; [ eapply sep_star_comm | eauto ].
 Qed.
 
 Lemma stars_prepend':
   forall l x,
-  fold_left sep_star l x <==> x * fold_left sep_star l emp.
+  fold_left sep_star l x <=p=> x * fold_left sep_star l emp.
 Proof.
   induction l.
   - simpl. intros.
@@ -115,7 +115,7 @@ Qed.
 
 Lemma stars_prepend:
   forall l x,
-  stars (x :: l) <==> x * stars l.
+  stars (x :: l) <=p=> x * stars l.
 Proof.
   unfold stars, pred_fold_left; simpl; intros.
   destruct l.
@@ -134,13 +134,13 @@ Proof.
 Qed.
 
 Lemma flatten_default' : forall p,
-  p <==> stars (p :: nil).
+  p <=p=> stars (p :: nil).
 Proof.
   firstorder.
 Qed.
 
 Lemma flatten_default : forall p,
-  p <==> exists (x:unit), stars (p :: nil) * [[True]].
+  p <=p=> exists (x:unit), stars (p :: nil) * [[True]].
 Proof.
   unfold stars; split.
   - apply pimpl_exists_r; exists tt.
@@ -151,13 +151,13 @@ Proof.
     firstorder.
 Qed.
 
-Lemma flatten_emp' : emp <==> stars nil.
+Lemma flatten_emp' : emp <=p=> stars nil.
 Proof.
   firstorder.
 Qed.
 
 Lemma flatten_emp :
-  emp <==> exists (x:unit), stars nil * [[True]].
+  emp <=p=> exists (x:unit), stars nil * [[True]].
 Proof.
   split.
   - apply pimpl_exists_r; exists tt.
@@ -169,9 +169,9 @@ Proof.
 Qed.
 
 Lemma flatten_star' : forall p q ps qs,
-  p <==> stars ps
-  -> q <==> stars qs
-  -> p * q <==> stars (ps ++ qs).
+  p <=p=> stars ps
+  -> q <=p=> stars qs
+  -> p * q <=p=> stars (ps ++ qs).
 Proof.
   intros.
   eapply piff_trans; [eapply piff_star_r; apply H|]; clear H.
@@ -189,9 +189,9 @@ Proof.
 Qed.
 
 Lemma flatten_star : forall PT QT p q ps qs P Q,
-  p <==> (exists (x:PT), stars (ps x) * [[P x]])%pred
-  -> q <==> (exists (x:QT), stars (qs x) * [[Q x]])%pred
-  -> p * q <==> exists (x:PT*QT), stars (ps (fst x) ++ qs (snd x)) * [[P (fst x) /\ Q (snd x)]].
+  p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
+  -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
+  -> p * q <=p=> exists (x:PT*QT), stars (ps (fst x) ++ qs (snd x)) * [[P (fst x) /\ Q (snd x)]].
 Proof.
   intros.
   eapply piff_trans; [eapply piff_star_r; apply H|]; clear H.
@@ -227,8 +227,8 @@ Proof.
 Qed.
 
 Lemma flatten_exists: forall T PT p ps P,
-  (forall (a:T), (p a <==> exists (x:PT), stars (ps a x) * [[P a x]]))
-  -> (exists (a:T), p a) <==>
+  (forall (a:T), (p a <=p=> exists (x:PT), stars (ps a x) * [[P a x]]))
+  -> (exists (a:T), p a) <=p=>
       (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
 Proof.
   intros; split.
@@ -245,7 +245,7 @@ Proof.
 Qed.
 
 Lemma flatten_lift_empty: forall P,
-  [[P]] <==> (exists (x:unit), stars nil * [[P]]).
+  [[P]] <=p=> (exists (x:unit), stars nil * [[P]]).
 Proof.
   split.
   - apply pimpl_exists_r. exists tt. apply emp_star.
@@ -253,12 +253,12 @@ Proof.
 Qed.
 
 Ltac flatten := repeat match goal with
-                       | [ |- emp <==> _ ] => apply flatten_emp
-                       | [ |- _ * _ <==> _ ] =>
+                       | [ |- emp <=p=> _ ] => apply flatten_emp
+                       | [ |- _ * _ <=p=> _ ] =>
                          eapply piff_trans; [ apply flatten_star | apply piff_refl ]
-                       | [ |- (exists _, _)%pred <==> _ ] =>
+                       | [ |- (exists _, _)%pred <=p=> _ ] =>
                          eapply piff_trans; [ apply flatten_exists | apply piff_refl ]; intros
-                       | [ |- [[_]] <==> _ ] =>
+                       | [ |- [[_]] <=p=> _ ] =>
                          eapply piff_trans; [ apply flatten_lift_empty | apply piff_refl ]
                        | _ => apply flatten_default
                        end.
@@ -343,8 +343,8 @@ Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
   -> pick lhs (p :: ps) (p :: ps').
 
 Lemma pick_later_and : forall p p' ps ps' a b,
-  pick p ps ps' /\ (a ==> b)
-  -> pick p (p' :: ps) (p' :: ps') /\ (a ==> b).
+  pick p ps ps' /\ (a =p=> b)
+  -> pick p (p' :: ps) (p' :: ps') /\ (a =p=> b).
 Proof.
   intuition; apply PickLater; auto.
 Qed.
@@ -353,9 +353,9 @@ Ltac pick := solve [ repeat ((apply PickFirst; solve [ trivial with okToUnify ])
                                || apply PickLater) ].
 
 Theorem imply_one : forall qs qs' p q ps F,
-  (pick q qs qs' /\ (p ==> q))
-  -> (stars ps * F ==> stars qs')
-  -> stars (p :: ps) * F ==> stars qs.
+  (pick q qs qs' /\ (p =p=> q))
+  -> (stars ps * F =p=> stars qs')
+  -> stars (p :: ps) * F =p=> stars qs.
 Proof.
   intros. destruct H.
   eapply pimpl_trans. eapply pimpl_sep_star. apply stars_prepend. apply pimpl_refl.
@@ -374,8 +374,8 @@ Qed.
 
 Theorem cancel_one : forall qs qs' p ps F,
   pick p qs qs'
-  -> (stars ps * F ==> stars qs')
-  -> stars (p :: ps) * F ==> stars qs.
+  -> (stars ps * F =p=> stars qs')
+  -> stars (p :: ps) * F =p=> stars qs.
 Proof.
   intros.
   eapply imply_one; eauto.
@@ -384,8 +384,8 @@ Qed.
 Ltac cancel_one := eapply cancel_one; [ pick | ].
 
 Theorem delay_one : forall p ps q qs,
-  (stars ps * stars (p :: qs) ==> q)
-  -> stars (p :: ps) * stars qs ==> q.
+  (stars ps * stars (p :: qs) =p=> q)
+  -> stars (p :: ps) * stars qs =p=> q.
 Proof.
   unfold stars; simpl; intros.
   eapply pimpl_trans; [|eauto].
@@ -408,19 +408,19 @@ Proof.
 Qed.
 
 Lemma finish_frame : forall p,
-  stars nil * p ==> stars (p :: nil).
+  stars nil * p =p=> stars (p :: nil).
 Proof.
   unfold stars. intros. apply star_emp_pimpl.
 Qed.
 
 Lemma finish_easier : forall p,
-  stars nil * p ==> p.
+  stars nil * p =p=> p.
 Proof.
   unfold stars. apply emp_star.
 Qed.
 
 Lemma finish_unify : forall p,
-  stars nil * stars (p :: nil) ==> p.
+  stars nil * stars (p :: nil) =p=> p.
 Proof.
   unfold stars; simpl; intros.
   eapply pimpl_trans; [apply star_emp_pimpl|].
@@ -434,9 +434,9 @@ Ltac cancel' := repeat (cancel_one || delay_one);
                 try (apply finish_frame || apply finish_easier || finish_unify).
 
 Theorem split_or_one : forall q pa pb ps F,
-  stars (pa :: ps) * F ==> q
-  -> stars (pb :: ps) * F ==> q
-  -> stars ((pa \/ pb) :: ps) * F ==> q.
+  stars (pa :: ps) * F =p=> q
+  -> stars (pb :: ps) * F =p=> q
+  -> stars ((pa \/ pb) :: ps) * F =p=> q.
 Proof.
   intros.
   eapply pimpl_trans. eapply piff_star_r. eapply piff_comm. apply stars_prepend.
@@ -455,8 +455,8 @@ Proof.
 Qed.
 
 Theorem exists_one : forall T p ps F q,
-  (forall a:T, stars (p a :: ps) * F ==> q)
-  -> stars ((exists a:T, p a) :: ps) * F ==> q.
+  (forall a:T, stars (p a :: ps) * F =p=> q)
+  -> stars ((exists a:T, p a) :: ps) * F =p=> q.
 Proof.
   intros.
   eapply pimpl_trans. eapply piff_star_r. eapply piff_comm. apply stars_prepend.
@@ -471,9 +471,9 @@ Proof.
 Qed.
 
 Ltac split_one := match goal with
-                  | [ |- stars ((_ \/ _) :: _) * _ ==> _ ]
+                  | [ |- stars ((_ \/ _) :: _) * _ =p=> _ ]
                     => apply split_or_one
-                  | [ |- stars ((exists _, _)%pred :: _) * _ ==> _ ]
+                  | [ |- stars ((exists _, _)%pred :: _) * _ =p=> _ ]
                     => apply exists_one; intro
                   end.
 
@@ -481,15 +481,15 @@ Ltac split_or_l := repeat ( (repeat split_one) ; delay_one );
                    apply restart_canceling.
 
 Lemma stars_or_left: forall a b c,
-  (a ==> stars (b :: nil))
-  -> (a ==> stars ((b \/ c) :: nil)).
+  (a =p=> stars (b :: nil))
+  -> (a =p=> stars ((b \/ c) :: nil)).
 Proof.
   firstorder.
 Qed.
 
 Lemma stars_or_right: forall a b c,
-  (a ==> stars (c :: nil))
-  -> (a ==> stars ((b \/ c) :: nil)).
+  (a =p=> stars (c :: nil))
+  -> (a =p=> stars ((b \/ c) :: nil)).
 Proof.
   firstorder.
 Qed.
@@ -547,9 +547,9 @@ Proof. auto. Qed.
 Opaque pimpl_hidden.
 
 Theorem replace_left : forall ps ps' q p p' F,
-  pick p ps ps' /\ (p ==> p')
-  -> (stars (p' :: ps') * F ==> q)
-  -> (stars ps * F ==> q).
+  pick p ps ps' /\ (p =p=> p')
+  -> (stars (p' :: ps') * F =p=> q)
+  -> (stars ps * F =p=> q).
 Proof.
   intros; destruct H.
   eapply pimpl_trans; [|apply H0].
@@ -572,9 +572,9 @@ Proof.
 Qed.
 
 Theorem replace_right : forall ps ps' q p p',
-  pick p ps ps' /\ (p' ==> p)
-  -> (q ==> stars (p' :: ps'))
-  -> (q ==> stars ps).
+  pick p ps ps' /\ (p' =p=> p)
+  -> (q =p=> stars (p' :: ps'))
+  -> (q =p=> stars ps).
 Proof.
   intros; destruct H.
   eapply pimpl_trans; [apply H0|].
@@ -632,13 +632,13 @@ Ltac norm := unfold pair_args_helper;
 
 Ltac pimpl_crash :=
   try match goal with
-  | [ |- _ ==> emp * _ ] => eapply pimpl_trans; [| eapply pimpl_star_emp ]
+  | [ |- _ =p=> emp * _ ] => eapply pimpl_trans; [| eapply pimpl_star_emp ]
   end;
   match goal with
-  | [ |- _ ==> ?crash ] =>
+  | [ |- _ =p=> ?crash ] =>
     match goal with
-    | [ H: _ ==> crash |- _ ] => eapply pimpl_trans; [| eexact H ]
-    | [ H: forall _, _ ==> crash |- _ ] => eapply pimpl_trans; [| eapply H ]
+    | [ H: _ =p=> crash |- _ ] => eapply pimpl_trans; [| eexact H ]
+    | [ H: forall _, _ =p=> crash |- _ ] => eapply pimpl_trans; [| eapply H ]
     end
   end.
 
@@ -648,10 +648,10 @@ Ltac cancel_with t :=
   try pimpl_crash;
   norm;
   try match goal with
-      | [ |- _ ==> stars ((_ \/ _) :: nil) ] =>
+      | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
         solve [ apply stars_or_left; cancel_with t
               | apply stars_or_right; cancel_with t ]
-      | [ |- _ ==> _ ] => cancel'
+      | [ |- _ =p=> _ ] => cancel'
       end;
   intuition;
   try ( pred_apply; cancel_with t );
@@ -659,7 +659,7 @@ Ltac cancel_with t :=
   try t;
   unfold stars; simpl;
   try match goal with
-  | [ |- emp * _ ==> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
+  | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
 
 Ltac cancel := cancel_with idtac.

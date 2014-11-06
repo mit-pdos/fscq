@@ -211,7 +211,7 @@ Theorem for_ok':
        {{ fun done' crash' => F * nocrash g (n ^+ i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
-   * [[F * crashed g ==> crash]]
+   * [[F * crashed g =p=> crash]]
   }} (For_ f i n li nocrash crashed rx).
 Proof.
   intro T.
@@ -329,7 +329,7 @@ Theorem for_ok:
    * [[forall lfinal,
        {{ fun done' crash' => F * nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
-   * [[F * crashed g ==> crash]]
+   * [[F * crashed g =p=> crash]]
   }} For_ f $0 n li nocrash crashed rx.
 Proof.
   intros.
@@ -369,7 +369,7 @@ Definition read_array T a rx : prog T :=
 
 Local Hint Extern 1 (diskIs ?m =!=> _) =>
   match goal with
-  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
     match R with
     | context[(?a |-> ?v)%pred] =>
       apply diskIs_split; eauto
@@ -378,7 +378,7 @@ Local Hint Extern 1 (diskIs ?m =!=> _) =>
 
 Local Hint Extern 1 (_ =!=> diskIs ?m) =>
   match goal with
-  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
     match L with
     | context[(?a |-> ?v)%pred] =>
       match L with
@@ -391,7 +391,7 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
 Theorem read_array_ok : forall T a (rx : _ -> prog T),
   {{ fun done crash => exists m v F, diskIs m * F * [[ m @ a |-> v ]]
    * [[ {{ fun done' crash' => diskIs m * F * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
-   * [[ diskIs m * F ==> crash ]]
+   * [[ diskIs m * F =p=> crash ]]
   }} read_array a rx.
 Proof.
   unfold read_array.
@@ -404,7 +404,7 @@ Definition write_array T a v rx : prog T :=
 
 Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
   match goal with
-  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
     match L with
     | context[(?a |-> ?v')%pred] =>
       match L with
@@ -418,7 +418,7 @@ Theorem write_array_ok : forall T a v (rx : _ -> prog T),
   {{ fun done crash => exists m F, diskIs m * F * [[ indomain a m ]]
    * [[ {{ fun done' crash' => diskIs (upd m a v) * F
       * [[ done' = done ]] * [[ crash' = crash ]] }} rx tt ]]
-   * [[ diskIs m * F \/ diskIs (upd m a v) * F ==> crash ]]
+   * [[ diskIs m * F \/ diskIs (upd m a v) * F =p=> crash ]]
   }} write_array a v rx.
 Proof.
   unfold write_array, indomain.

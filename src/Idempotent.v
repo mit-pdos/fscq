@@ -32,8 +32,8 @@ Lemma corr3_from_corr2_failed:
   exec_recover m p r out
   -> TF = TR
   -> crash m
-  -> (crash ==> ppre crashdone_p crash)
-  -> (crash ==> rpre crashdone_r crash)
+  -> (crash =p=> ppre crashdone_p crash)
+  -> (crash =p=> rpre crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out <> RFailed TF TR.
@@ -55,8 +55,8 @@ Lemma corr3_from_corr2_finished:
   exec_recover m p r out
   -> TF = TR
   -> crash m
-  -> (crash ==> ppre crashdone_p crash)
-  -> (crash ==> rpre crashdone_r crash)
+  -> (crash =p=> ppre crashdone_p crash)
+  -> (crash =p=> rpre crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out = RFinished TR m' v
@@ -76,8 +76,8 @@ Lemma corr3_from_corr2_recovered:
   exec_recover m p r out
   -> TF = TR
   -> crash m
-  -> (crash ==> ppre crashdone_p crash)
-  -> (crash ==> rpre crashdone_r crash)
+  -> (crash =p=> ppre crashdone_p crash)
+  -> (crash =p=> rpre crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out = RRecovered TF m' v
@@ -100,7 +100,7 @@ Qed.
 Theorem corr3_from_corr2: forall TF TR (p: prog TF) (r: prog TR) ppre rpre, {{ ppre }} p
   -> {{ rpre }} r
   -> {{ fun done crashdone => exists crash,
-        ppre done crash * [[ crash ==> rpre crashdone crash ]] }} p >> r.
+        ppre done crash * [[ crash =p=> rpre crashdone crash ]] }} p >> r.
 Proof.
   unfold corr3; intros.
   destruct H1. rename x into crash.
