@@ -2,6 +2,8 @@ Require Import Arith.
 Require Import Omega.
 Require Import FunctionalExtensionality.
 Require Import Prog.
+Require Import RelationClasses.
+Require Import Morphisms.
 
 Set Implicit Arguments.
 
@@ -698,8 +700,6 @@ Proof.
       apply pimpl_or_r; right; apply pimpl_refl.
 Qed.
 
-Require Import RelationClasses.
-
 Instance piff_equiv : Equivalence piff.
   split.
   exact piff_refl.
@@ -711,6 +711,21 @@ Instance pimpl_preorder : PreOrder pimpl.
   split.
   exact pimpl_refl.
   exact pimpl_trans.
+Qed.
+
+Instance sep_star_pimpl_proper :
+  Proper (pimpl ==> pimpl ==> pimpl) sep_star.
+Proof.
+  intros a b H c d H'.
+  apply pimpl_sep_star; assumption.
+Qed.
+
+Example pimpl_sep_star_rewrite : forall a b x y, a =p=> b
+  -> (x * a * y =p=> x * b * y).
+Proof.
+  intros.
+  rewrite H.
+  reflexivity.
 Qed.
 
 Global Opaque sep_star.
