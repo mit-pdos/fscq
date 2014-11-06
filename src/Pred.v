@@ -760,3 +760,4 @@ Proof.
 Qed.
 
 Global Opaque sep_star.
+Global Opaque pred.
