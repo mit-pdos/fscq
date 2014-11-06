@@ -720,6 +720,20 @@ Proof.
   apply pimpl_sep_star; assumption.
 Qed.
 
+Instance and_pimpl_proper :
+  Proper (pimpl ==> pimpl ==> pimpl) and.
+Proof.
+  intros a b H c d H'.
+  apply pimpl_and; assumption.
+Qed.
+
+Instance or_pimpl_proper :
+  Proper (pimpl ==> pimpl ==> pimpl) or.
+Proof.
+  intros a b H c d H'.
+  apply pimpl_or; assumption.
+Qed.
+
 Example pimpl_sep_star_rewrite : forall a b x y, a =p=> b
   -> (x * a * y =p=> x * b * y).
 Proof.
