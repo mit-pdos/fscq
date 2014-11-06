@@ -39,7 +39,7 @@ Definition exis A (p : A -> pred) : pred :=
 Notation "'exists' x .. y , p" := (exis (fun x => .. (exis (fun y => p)) ..)) : pred_scope.
 Notation "a |->?" := (exists v, a |-> v)%pred (at level 35) : pred_scope.
 
-Definition uniqpred A (p : A -> pred) (x : A) :=
+Definition uniqpred A (p : A -> pred) (x : A) : pred :=
   fun m => p x m /\ (forall (x' : A), p x' m -> x = x').
 Notation "'exists' ! x .. y , p" := (exis (uniqpred (fun x => .. (exis (uniqpred (fun y => p))) ..))) : pred_scope.
 
@@ -70,13 +70,13 @@ Notation "p [ a <--- v ]" := (pupd p a v) (at level 0) : pred_scope.
 Definition mem_disjoint (m1 m2:mem) :=
   ~ exists a v1 v2, m1 a = Some v1 /\ m2 a = Some v2.
 
-Definition mem_union (m1 m2:mem) := fun a =>
+Definition mem_union (m1 m2:mem) : mem := fun a =>
   match m1 a with
   | Some v => Some v
   | None => m2 a
   end.
 
-Definition sep_star (p1: pred) (p2: pred) :=
+Definition sep_star (p1: pred) (p2: pred) : pred :=
   fun m => exists m1 m2, m = mem_union m1 m2 /\ mem_disjoint m1 m2 /\ p1 m1 /\ p2 m2.
 Infix "*" := sep_star : pred_scope.
 
@@ -87,7 +87,7 @@ Definition diskIs (m : mem) : pred := eq m.
 Definition diskptsto (m : mem) (a : addr) (v : valu) := m a = Some v.
 Notation "m @ a |-> v" := (diskptsto m a v) (a at level 34, at level 35).
 
-Definition mem_except (m: mem) (a: addr) :=
+Definition mem_except (m: mem) (a: addr) : mem :=
   fun a' => if addr_eq_dec a' a then None else m a'.
 
 
