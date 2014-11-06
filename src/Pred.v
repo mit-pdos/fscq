@@ -700,12 +700,18 @@ Proof.
       apply pimpl_or_r; right; apply pimpl_refl.
 Qed.
 
+(* XXX for some reason, the following Instance definition slows down
+ * calls to [setoid_rewrite]..  luckily, we don't seem to really need it.
+ *)
+
+(*
 Instance piff_equiv : Equivalence piff.
   split.
   exact piff_refl.
   exact piff_comm.
   exact piff_trans.
 Qed.
+*)
 
 Instance pimpl_preorder : PreOrder pimpl.
   split.
