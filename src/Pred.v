@@ -698,4 +698,19 @@ Proof.
       apply pimpl_or_r; right; apply pimpl_refl.
 Qed.
 
+Require Import RelationClasses.
+
+Instance piff_equiv : Equivalence piff.
+  split.
+  exact piff_refl.
+  exact piff_comm.
+  exact piff_trans.
+Qed.
+
+Instance pimpl_preorder : PreOrder pimpl.
+  split.
+  exact pimpl_refl.
+  exact pimpl_trans.
+Qed.
+
 Global Opaque sep_star.
