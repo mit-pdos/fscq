@@ -664,10 +664,16 @@ Ltac cancel_with t :=
 
 Ltac cancel := cancel_with idtac.
 
+Ltac autorewrite_fast_goal :=
+  set_evars; (rewrite_strat (topdown (hints core))); subst_evars;
+  try autorewrite_fast_goal.
+
 Ltac autorewrite_fast :=
-  repeat match goal with
-  | [ H: _ |- _ ] => set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars
-  | [ |- _ ] => set_evars; (rewrite_strat (topdown (hints core))); subst_evars
+  match goal with
+  | [ H: _ |- _ ] =>
+    set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
+    [ try autorewrite_fast | try autorewrite_fast_goal .. ]
+  | [ |- _ ] => autorewrite_fast_goal
   end.
 
 Ltac step :=
