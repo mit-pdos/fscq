@@ -151,7 +151,12 @@ Module INODE.
 
     autorewrite with core. auto.
 
-    (* Coq bug 3731 *)
+    step.
+
+    (* Coq bug 3312? *)
+    autorewrite with core. auto.
+
+    (* XXX Type checks take forever due to some expansion of addrlen.. *)
   intros;
   try cancel;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
@@ -161,19 +166,6 @@ Module INODE.
   intros; subst;
   try ( cancel ).
 
-    autorewrite with core in *.
-    auto.
-
-  intros;
-  try cancel;
-  ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
-   || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
-   || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
-   || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ]));
-  intros; subst;
-  try ( cancel ).
-
-    autorewrite with core in *.
     apply pimpl_or_r. right.
 
     norm.
@@ -181,6 +173,9 @@ Module INODE.
 
     split. auto.
     split. constructor.
+
+    (* XXX here's where type checks take forever: e.g., if you run [assumption] *)
+
     pred_apply.
     unfold rep.
 
