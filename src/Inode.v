@@ -109,6 +109,9 @@ Module INODE.
   Hint Rewrite extract_sel using auto.
   Hint Rewrite Rec.word2rec_rec2word.
 
+  Definition iget_rep ilistlist iblock ipos :=
+    sel (sel ilistlist iblock nil) ipos inode_zero.
+
   Theorem iget_ok : forall lxp xp iblock ipos,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -116,7 +119,7 @@ Module INODE.
            [[ (iblock < IXLen xp)%word ]] *
            [[ (ipos < items_per_valu)%word ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
-           [[ r = sel (sel ilistlist iblock nil) ipos inode_zero ]]
+           [[ r = iget_rep ilistlist iblock ipos ]]
     CRASH  LOG.log_intact lxp mbase
     >} iget lxp xp iblock ipos.
   Proof.
