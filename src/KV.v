@@ -127,6 +127,7 @@ Proof.
 
   apply pimpl_or_r. right. cancel.
   instantiate (a := (upd l0 $ (length l) (k, v))).
+  autorewrite_fast.
   rewrite addr2valu2addr. rewrite app_length. rewrite natToWord_plus. cancel.
   admit.
 
@@ -135,7 +136,7 @@ Proof.
 
   apply pimpl_or_r. left. cancel.
   instantiate (a := (upd l0 $ (length l) (k, v))).
-  rewrite addr2valu2addr. autorewrite with core. cancel.
+  rewrite addr2valu2addr. autorewrite_fast. cancel.
   autorewrite_fast; auto.
   admit.
 
@@ -143,7 +144,7 @@ Proof.
 
   apply pimpl_or_r. left. cancel.
   instantiate (a := (upd l0 $ (length l) (k, v))).
-  rewrite addr2valu2addr. autorewrite with core. cancel.
+  rewrite addr2valu2addr. autorewrite_fast. cancel.
   autorewrite_fast; auto.
   admit.
 
