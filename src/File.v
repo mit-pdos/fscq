@@ -23,11 +23,9 @@ Module FILE.
 
   Definition fread T lxp xp inum (off:addr) rx : prog T :=
     (* XXX should computing iblock and ipos be foldable into iget? *)
-    let iblock :=  inum ^/ INODE.items_per_valu in
-    let ipos := inum ^% INODE.items_per_valu in
     let bn := off ^/ $ valulen in
     let boff := off ^% $ valulen in
-    i <-INODE.iget lxp xp iblock ipos;     (* XXX check off < len? *)
+    i <-INODE.iget lxp xp inum;     (* XXX check off < len? *)
     let blocknum := i :-> "block0" in
     fblock <- LOG.read lxp blocknum;
     rx fblock.
@@ -42,15 +40,15 @@ Module FILE.
   *      | Some p => word (Rec.field_type p) '
   *      | None  => True end 
   *) 
-  Definition iget_blocknum ilistlist iblock ipos : addr := let bn
-  := (INODE.iget_rep ilistlist iblock ipos) :-> "block0" in bn.
+  Definition iget_blocknum ilist inum : addr :=
+    (sel ilist inum INODE.inode_zero) :-> "block0".
 
   Theorem fread_ok : forall lxp xp inum off,
-    {< F F' mbase m ilistlist iblock ipos bn v,
+    {< F F' mbase m ilist bn v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * INODE.rep xp ilistlist)% pred m ]] *
-           [[ bn = iget_blocknum ilistlist iblock ipos ]] *
-           [[ exists F', (bn -> v * F') m]]
+           [[ (F * INODE.rep xp ilist)%pred m ]] *
+           [[ bn = iget_blocknum ilist inum ]] *
+           [[ exists F', (bn |-> v * F') m]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
