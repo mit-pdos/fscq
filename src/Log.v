@@ -1007,7 +1007,8 @@ Module LOG.
      (exists m', rep xp (ActiveTxn m m')) \/
      (rep xp (CommittedTxn m)))%pred.
 
-  Ltac log_unfold' := unfold log_intact; log_unfold.
+  Ltac unfold_intact := unfold log_intact.
+  Ltac log_unfold' := unfold_intact; log_unfold.
 
   Theorem recover_ok: forall xp,
     {< m,

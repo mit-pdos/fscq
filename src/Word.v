@@ -1611,3 +1611,14 @@ Close Scope word_scope.
 (* Don't allow simpl to expand out these functions *)
 Arguments natToWord : simpl never.
 Arguments weq : simpl never.
+
+(* Making wlt_dec opaque is necessary to prevent the [exact H] in the
+ * example below from blowing up..
+ *)
+Global Opaque wlt_dec.
+Definition test_wlt_f (a : nat) (b : nat) : nat :=
+  if wlt_dec (natToWord 64 a) $0 then 0 else 0.
+Theorem test_wlt_f_example: forall x y z, test_wlt_f x y = 0 -> test_wlt_f x z = 0.
+  intros.
+  exact H.
+Qed.

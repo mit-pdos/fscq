@@ -23,26 +23,24 @@ Module FILE.
 
   Definition fread T lxp xp inum (off:addr) rx : prog T :=
     (* XXX should computing iblock and ipos be foldable into iget? *)
-    let iblock :=  inum ^/ INODE.items_per_valu in
-    let ipos := inum ^% INODE.items_per_valu in
     let bn := off ^/ $ valulen in
     let boff := off ^% $ valulen in
-    i <-INODE.iget lxp xp iblock ipos;     (* XXX check off < len? *)
+    i <-INODE.iget lxp xp inum;     (* XXX check off < len? *)
     let blocknum := i :-> "block0" in
     fblock <- LOG.read lxp blocknum;
     rx fblock.
 
   (* XXX part of Inode.v? *) 
   Definition iget_blocknum ilistlist iblock ipos : addr := 
-    let i := (INODE.iget_rep ilistlist iblock ipos) in
+    let i := (sel ilist inum INODE.inode_zero) in
     let bn := i :-> "block0" in
     bn.                             
 
   Theorem fread_ok : forall lxp xp inum off,
-    {< F mbase m ilistlist iblock ipos bn v,
+    {< F mbase m ilist bn v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep xp ilistlist)% pred m ]] *
-           [[ bn = (iget_blocknum ilistlist iblock ipos) ]] *
+           [[ bn = (iget_blocknum ilist inum) ]] *
            [[ exists F', (bn |-> v * F') m]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = v]]
