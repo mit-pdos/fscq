@@ -32,25 +32,18 @@ Module FILE.
     fblock <- LOG.read lxp blocknum;
     rx fblock.
 
-  (* XXX part of Inode.v?  XXX I want to reason about an addr that could be the value
-  * for "block0".  I think i want 
-  *
-  * word (Rec.field_type p) 
-  *
-  * but i get: : 
-  *    match  Rec.fieldp inodetype "block0" with 
-  *      | Some p => word (Rec.field_type p) '
-  *      | None  => True end 
-  *) 
-  Definition iget_blocknum ilistlist iblock ipos : addr := let bn
-  := (INODE.iget_rep ilistlist iblock ipos) :-> "block0" in bn.
+  (* XXX part of Inode.v? *) 
+  Definition iget_blocknum ilistlist iblock ipos : addr := 
+    let i := (INODE.iget_rep ilistlist iblock ipos) in
+    let bn := i :-> "block0" in
+    bn.                             
 
   Theorem fread_ok : forall lxp xp inum off,
-    {< F F' mbase m ilistlist iblock ipos bn v,
+    {< F mbase m ilistlist iblock ipos bn v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep xp ilistlist)% pred m ]] *
-           [[ bn = iget_blocknum ilistlist iblock ipos ]] *
-           [[ exists F', (bn -> v * F') m]]
+           [[ bn = (iget_blocknum ilistlist iblock ipos) ]] *
+           [[ exists F', (bn |-> v * F') m]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
