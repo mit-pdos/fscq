@@ -189,6 +189,9 @@ Module INODE.
     unfold LOG.log_intact; cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (iget_pair _ _ _ _) _) => apply iget_pair_ok : prog.
+  Hint Extern 1 ({{_}} progseq (iput_pair _ _ _ _ _) _) => apply iput_pair_ok : prog.
+
   Definition rep xp (ilist : list inode) :=
     (exists ilistlist, rep_pair xp ilistlist *
      [[ ilist = fold_right (@app _) nil ilistlist ]])%pred.
@@ -229,5 +232,8 @@ Module INODE.
     unfold iput.
     admit.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (iget _ _ _) _) => apply iget_ok : prog.
+  Hint Extern 1 ({{_}} progseq (iput _ _ _ _) _) => apply iput_ok : prog.
 
 End INODE.
