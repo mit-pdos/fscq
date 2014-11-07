@@ -174,9 +174,9 @@ Notation "r :-> n" := (Rec.recget' n r) (at level 80).
 Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
 
 (*
-Definition inodetype : rectype := [("free", 1); ("len", 16); ("block0", 16)].
-Definition inode1 : recdata inodetype := ($1, ($11, ($1677, tt))).
-Parameter inode2 : recdata inodetype.
+Definition inodetype : Rec.rectype := [("free", 1); ("len", 16); ("block0", 16)].
+Definition inode1 : Rec.recdata inodetype := ($1, ($11, ($1677, tt))).
+Parameter inode2 : Rec.recdata inodetype.
 Definition foo := Eval compute in inode2 :-> "len".
 Definition foo2 := Eval compute in inode2 :=> "len" := $17.
 *)

@@ -116,7 +116,7 @@ Module INODE.
            [[ (iblock < IXLen xp)%word ]] *
            [[ (ipos < items_per_valu)%word ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
-           [[ r = sel (sel ilistlist iblock nil) ipos inode_zero ]]
+           [[ r = iget_rep ilistlist iblock ipos ]]
     CRASH  LOG.log_intact lxp mbase
     >} iget_pair lxp xp iblock ipos.
   Proof.

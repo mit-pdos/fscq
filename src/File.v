@@ -21,9 +21,6 @@ Set Implicit Arguments.
 
 Module FILE.
 
-  Definition fileblock := (valu)%type.
-  Definition file := list fileblock.   (* XXX list of bytes? *)
-
   Definition fread T lxp xp inum (off:addr) rx : prog T :=
     (* XXX should computing iblock and ipos be foldable into iget? *)
     let iblock :=  inum ^/ INODE.items_per_valu in
@@ -35,17 +32,30 @@ Module FILE.
     fblock <- LOG.read lxp blocknum;
     rx fblock.
 
+  (* XXX part of Inode.v?  XXX I want to reason about an addr that could be the value
+  * for "block0".  I think i want 
+  *
+  * word (Rec.field_type p) 
+  *
+  * but i get: : 
+  *    match  Rec.fieldp inodetype "block0" with 
+  *      | Some p => word (Rec.field_type p) '
+  *      | None  => True end 
+  *) 
+  Definition iget_blocknum ilistlist iblock ipos : addr := let bn
+  := (INODE.iget_rep ilistlist iblock ipos) :-> "block0" in bn.
 
-  (* XXX need a rep for file and use rep in PRE/POST/CRASH *)
   Theorem fread_ok : forall lxp xp inum off,
-    {< F mbase m (f: file),
-    PRE    LOG.rep lxp (ActiveTxn mbase m)
+    {< F F' mbase m ilistlist iblock ipos bn v,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * INODE.rep xp ilistlist)% pred m ]] *
+           [[ bn = iget_blocknum ilistlist iblock ipos ]] *
+           [[ exists F', (bn -> v * F') m]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
-           [[r = sel f $0]]
+           [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
     >} fread lxp xp inum off.
     
-
 
 End FILE.
 
