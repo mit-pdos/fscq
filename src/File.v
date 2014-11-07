@@ -31,7 +31,7 @@ Module FILE.
     rx fblock.
 
   (* XXX part of Inode.v? *) 
-  Definition iget_blocknum ilistlist iblock ipos : addr := 
+  Definition iget_blocknum ilist inum: addr := 
     let i := (sel ilist inum INODE.inode_zero) in
     let bn := i :-> "block0" in
     bn.                             
@@ -39,13 +39,15 @@ Module FILE.
   Theorem fread_ok : forall lxp xp inum off,
     {< F mbase m ilist bn v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * INODE.rep xp ilistlist)% pred m ]] *
+           [[ (F * INODE.rep xp ilist)% pred m ]] *
            [[ bn = (iget_blocknum ilist inum) ]] *
            [[ exists F', (bn |-> v * F') m]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
     >} fread lxp xp inum off.
+   Proof.
+   Admitted.
     
 
 End FILE.
