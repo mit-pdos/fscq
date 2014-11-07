@@ -5,6 +5,7 @@ Require Import Nomega.
 Require Import Wf_nat.
 Require Import Eqdep.
 Require Import Program.Tactics.
+Require Import Recdef.
 
 Set Implicit Arguments.
 
@@ -471,10 +472,11 @@ Definition wordBin (f : N -> N -> N) sz (x y : word sz) : word sz :=
 
 Definition wplus := wordBin Nplus.
 Definition wmult := wordBin Nmult.
+Definition wdiv := wordBin Ndiv.
+Definition wmod := wordBin Nmod.
 Definition wmult' sz (x y : word sz) : word sz := 
   split2 sz sz (NToWord (sz + sz) (Nmult (wordToN x) (wordToN y))).
 Definition wminus sz (x y : word sz) : word sz := wplus x (wneg y).
-
 Definition wnegN sz (x : word sz) : word sz :=
   natToWord sz (pow2 sz - wordToNat x).
 
@@ -503,6 +505,8 @@ Notation "^~" := wneg.
 Notation "l ^+ r" := (@wplus _ l%word r%word) (at level 50, left associativity).
 Notation "l ^* r" := (@wmult _ l%word r%word) (at level 40, left associativity).
 Notation "l ^- r" := (@wminus _ l%word r%word) (at level 50, left associativity).
+Notation "l ^/ r" := (@wdiv _ l%word r%word) (at level 50, left associativity).
+Notation "l ^% r" := (@wmod _ l%word r%word) (at level 50, left associativity).
 
 Theorem wordToN_nat : forall sz (w : word sz), wordToN w = N_of_nat (wordToNat w).
   induction w; intuition.
@@ -1600,7 +1604,6 @@ Proof.
   (* XXX *)
   admit.
 Qed.
-
 
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
