@@ -136,10 +136,6 @@ Module Rec.
       | None => fun _ => I
     end r.
 
-  Notation "r :-> n" := (recget' n r) (at level 80).
-  Notation "r :=> n := v" := (recset' n r v) (at level 80).
-
-
   Fixpoint rec2word {t : rectype} (r : recdata t) : word (reclen t) :=
     match t as t return recdata t -> word (reclen t) with
     | nil => fun _ => WO
@@ -170,14 +166,17 @@ Module Rec.
     reflexivity.
   Qed.
 
-  (*
-  Definition inodetype : rectype := [("free", 1); ("len", 16); ("block0", 16)].
-  Definition inode1 : recdata inodetype := ($1, ($11, ($1677, tt))).
-  Parameter inode2 : recdata inodetype.
-  Definition foo := Eval compute in inode2 :-> "len".
-  Definition foo2 := Eval compute in inode2 :=> "len" := $17.
-  *)
-
   Arguments word2rec : simpl never.
   Arguments rec2word : simpl never.
 End Rec.
+
+Notation "r :-> n" := (Rec.recget' n r) (at level 80).
+Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
+
+(*
+Definition inodetype : rectype := [("free", 1); ("len", 16); ("block0", 16)].
+Definition inode1 : recdata inodetype := ($1, ($11, ($1677, tt))).
+Parameter inode2 : recdata inodetype.
+Definition foo := Eval compute in inode2 :-> "len".
+Definition foo2 := Eval compute in inode2 :=> "len" := $17.
+*)

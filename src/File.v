@@ -31,10 +31,11 @@ Module FILE.
     let bn := off ^/ $ valulen in
     let boff := off ^% $ valulen in
     i <-INODE.iget lxp xp iblock ipos;     (* XXX check off < len? *)
-    fblock <- LOG.read lxp (Rec.recget' "block0" i);  (* XXX notation is not exported? *)
+    let blocknum := i :-> "block0" in
+    fblock <- LOG.read lxp blocknum;
     rx fblock.
 
-  
+
   (* XXX need a rep for file and use rep in PRE/POST/CRASH *)
   Theorem fread_ok : forall lxp xp inum off,
     {< F mbase m (f: file),
