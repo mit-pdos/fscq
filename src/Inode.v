@@ -45,18 +45,18 @@ Module INODE.
                 Pack.update items_per_valu itemsz_ok v $ pos iw)
                $0 (seq 0 (wordToNat items_per_valu)).
 
-  Definition rep xp (ilistlist : list (list inode)) :=
+  Definition rep_pair xp (ilistlist : list (list inode)) :=
     array (IXStart xp)
           (map (fun i => rep_block (selN ilistlist i nil))
           (seq 0 (wordToNat (IXLen xp)))) $1.
 
-  Definition iget T lxp xp iblock ipos rx : prog T :=
+  Definition iget_pair T lxp xp iblock ipos rx : prog T :=
     v <- LOG.read_array lxp (IXStart xp) iblock $1 ;
     let iw := Pack.extract itemsz items_per_valu itemsz_ok v ipos in
     let i := Rec.word2rec inodetype iw in
     rx i.
 
-  Definition iput T lxp xp iblock ipos i rx : prog T :=
+  Definition iput_pair T lxp xp iblock ipos i rx : prog T :=
     v <- LOG.read_array lxp (IXStart xp) iblock $1 ;
     let iw := Rec.rec2word i in
     let v' := Pack.update items_per_valu itemsz_ok v ipos iw in
@@ -109,18 +109,18 @@ Module INODE.
   Hint Rewrite extract_sel using auto.
   Hint Rewrite Rec.word2rec_rec2word.
 
-  Theorem iget_ok : forall lxp xp iblock ipos,
+  Theorem iget_pair_ok : forall lxp xp iblock ipos,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp ilistlist)%pred m ]] *
+           [[ (F * rep_pair xp ilistlist)%pred m ]] *
            [[ (iblock < IXLen xp)%word ]] *
            [[ (ipos < items_per_valu)%word ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = sel (sel ilistlist iblock nil) ipos inode_zero ]]
     CRASH  LOG.log_intact lxp mbase
-    >} iget lxp xp iblock ipos.
+    >} iget_pair lxp xp iblock ipos.
   Proof.
-    unfold iget.
+    unfold iget_pair.
     hoare.
 
     eexists. pred_apply. cancel.
@@ -132,19 +132,19 @@ Module INODE.
     unfold LOG.log_intact; cancel.
   Qed.
 
-  Theorem iput_ok : forall lxp xp iblock ipos i,
+  Theorem iput_pair_ok : forall lxp xp iblock ipos i,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp ilistlist)%pred m ]] *
+           [[ (F * rep_pair xp ilistlist)%pred m ]] *
            [[ (iblock < IXLen xp)%word ]] *
            [[ (ipos < items_per_valu)%word ]]
     POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
            ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (F * rep xp (upd ilistlist iblock (upd (sel ilistlist iblock nil) ipos i)))%pred m' ]])
+            [[ (F * rep_pair xp (upd ilistlist iblock (upd (sel ilistlist iblock nil) ipos i)))%pred m' ]])
     CRASH  LOG.log_intact lxp mbase
-    >} iput lxp xp iblock ipos i.
+    >} iput_pair lxp xp iblock ipos i.
   Proof.
-    unfold iput.
+    unfold iput_pair.
     step.
 
     eexists. pred_apply. cancel.
@@ -177,7 +177,7 @@ Module INODE.
     (* XXX here's where type checks take forever: e.g., if you run [assumption] *)
 
     pred_apply.
-    unfold rep.
+    unfold rep_pair.
 
     cancel.
 
@@ -187,6 +187,47 @@ Module INODE.
 
     cancel; unfold LOG.log_intact; cancel.
     unfold LOG.log_intact; cancel.
+  Qed.
+
+  Definition rep xp (ilist : list inode) :=
+    (exists ilistlist, rep_pair xp ilistlist *
+     [[ ilist = fold_right (@app _) nil ilistlist ]])%pred.
+
+  Definition iget T lxp xp inum rx : prog T :=
+    i <- iget_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu);
+    rx i.
+
+  Definition iput T lxp xp inum i rx : prog T :=
+    ok <- iput_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
+    rx ok.
+
+  Theorem iget_ok : forall lxp xp inum,
+    {< F mbase m ilist,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * rep xp ilist)%pred m ]] *
+           [[ (inum < IXLen xp ^* items_per_valu)%word ]]
+    POST:r LOG.rep lxp (ActiveTxn mbase m) *
+           [[ r = sel ilist inum inode_zero ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} iget lxp xp inum.
+  Proof.
+    unfold iget.
+    admit.
+  Qed.
+
+  Theorem iput_ok : forall lxp xp inum i,
+    {< F mbase m ilist,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * rep xp ilist)%pred m ]] *
+           [[ (inum < IXLen xp ^* items_per_valu)%word ]]
+    POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
+           ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (F * rep xp (upd ilist inum i))%pred m' ]])
+    CRASH  LOG.log_intact lxp mbase
+    >} iput lxp xp inum i.
+  Proof.
+    unfold iput.
+    admit.
   Qed.
 
 End INODE.
