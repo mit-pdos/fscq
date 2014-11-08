@@ -40,13 +40,23 @@ Module FILE.
     {< F mbase m ilist bn v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep xp ilist)% pred m ]] *
+           [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
            [[ bn = (iget_blocknum ilist inum) ]] *
-           [[ exists F', (bn |-> v * F') m]]
+           [[ exists F', (bn |-> v * F) m]] 
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
     >} fread lxp xp inum off.
    Proof.
+     unfold fread.
+     hoare.
+
+
+
+
+     unfold iget_blocknum.
+     eexists.
+     
    Admitted.
     
 
