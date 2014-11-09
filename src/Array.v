@@ -58,6 +58,13 @@ Proof.
   induction vs; destruct n; simpl; intuition; omega.
 Qed.
 
+Lemma selN_updN_ne : forall V vs n n' v (default : V),
+  n <> n'
+  -> selN (updN vs n v) n' default = selN vs n' default.
+Proof.
+  induction vs; destruct n; destruct n'; simpl; intuition.
+Qed.
+
 Lemma sel_upd_eq : forall V vs i v (default : V),
   wordToNat i < length vs
   -> sel (upd vs i v) i default = v.
@@ -122,6 +129,27 @@ Qed.
 
 Hint Rewrite skipn_updN skipn_upd using omega.
 
+Lemma map_ext_in : forall A B (f g : A -> B) l, (forall a, In a l -> f a = g a)
+  -> map f l = map g l.
+Proof.
+  induction l; auto; simpl; intros; f_equal; auto.
+Qed.
+
+Theorem seq_right : forall b a, seq a (S b) = seq a b ++ (a + b :: nil).
+Proof.
+  induction b; simpl; intros.
+  replace (a + 0) with (a) by omega; reflexivity.
+  f_equal.
+  replace (a + S b) with (S a + b) by omega.
+  rewrite <- IHb.
+  auto.
+Qed.
+
+Theorem seq_right_0 : forall b, seq 0 (S b) = seq 0 b ++ (b :: nil).
+Proof.
+  intros; rewrite seq_right; f_equal.
+Qed.
+
 Lemma map_updN : forall T U (v : T) (f : T -> U) vs i,
   map f (updN vs i v) = updN (map f vs) i (f v).
 Proof.
@@ -163,6 +191,44 @@ Proof.
 Qed.
 
 Hint Rewrite selN_map_seq sel_map_seq using ( solve [ auto ] ).
+
+Theorem updN_map_seq_app_eq : forall T (f : nat -> T) len start (v : T) x,
+  updN (map f (seq start len) ++ (x :: nil)) len v =
+  map f (seq start len) ++ (v :: nil).
+Proof.
+  induction len; auto; simpl; intros.
+  f_equal; auto.
+Qed.
+
+Theorem updN_map_seq_app_ne : forall T (f : nat -> T) len start (v : T) x pos, pos < len
+  -> updN (map f (seq start len) ++ (x :: nil)) pos v =
+     updN (map f (seq start len)) pos v ++ (x :: nil).
+Proof.
+  induction len; intros; try omega.
+  simpl; destruct pos; auto.
+  rewrite IHlen by omega.
+  auto.
+Qed.
+
+Theorem updN_map_seq : forall T f len start pos (v : T), pos < len
+  -> updN (map f (seq start len)) pos v =
+     map (fun i => if eq_nat_dec i (start + pos) then v else f i) (seq start len).
+Proof.
+  induction len; intros; try omega.
+  simpl seq; simpl map.
+  destruct pos.
+  - replace (start + 0) with (start) by omega; simpl.
+    f_equal.
+    + destruct (eq_nat_dec start start); congruence.
+    + apply map_ext_in; intros.
+      destruct (eq_nat_dec a start); auto.
+      apply in_seq in H0; omega.
+  - simpl; f_equal.
+    destruct (eq_nat_dec start (start + S pos)); auto; omega.
+    rewrite IHlen by omega.
+    replace (S start + pos) with (start + S pos) by omega.
+    auto.
+Qed.
 
 
 (** * Isolating an array cell *)

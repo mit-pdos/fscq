@@ -133,13 +133,6 @@ Module INODE.
     unfold LOG.log_intact; cancel.
   Qed.
 
-Lemma selN_updN_ne : forall V vs n n' v (default : V),
-  n <> n'
-  -> selN (updN vs n v) n' default = selN vs n' default.
-Proof.
-  induction vs; destruct n; destruct n'; simpl; intuition.
-Qed.
-
   Theorem map_rep_block_below : forall xlen xstart l ui v, ui < xstart
     -> map (fun i => rep_block (selN (updN l ui v) i nil)) (seq xstart xlen) =
        map (fun i => rep_block (selN l i nil)) (seq xstart xlen).
