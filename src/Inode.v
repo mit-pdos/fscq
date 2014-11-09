@@ -39,12 +39,40 @@ Module INODE.
     rewrite valulen_is; auto.
   Qed.
 
+  Definition update_inode (inodes_in_block : list inode) :=
+    fun pos v => let i := selN inodes_in_block pos inode_zero in
+                 let iw := Rec.rec2word i in
+                 Pack.update items_per_valu itemsz_ok v $ pos iw.
+
   Definition rep_block (inodes_in_block : list inode) :=
-    fold_right (fun pos v =>
-                let i := selN inodes_in_block pos inode_zero in
-                let iw := Rec.rec2word i in
-                Pack.update items_per_valu itemsz_ok v $ pos iw)
-               $0 (seq 0 (wordToNat items_per_valu)).
+    fold_right (update_inode inodes_in_block) $0 (seq 0 (wordToNat items_per_valu)).
+
+  Theorem rep_block_fold_left : forall len start l v, len + start <= wordToNat items_per_valu
+    -> fold_right (update_inode l) v (seq start len) =
+       fold_left (fun v' pos => update_inode l pos v') (seq start len) v.
+  Proof.
+    induction len; intros.
+    - simpl; auto.
+    - setoid_rewrite seq_right at 2.
+      rewrite fold_left_app; simpl fold_left.
+      rewrite <- IHlen by omega.
+      clear IHlen; generalize dependent start; simpl.
+      induction len; intros.
+      + simpl. replace (start+0) with (start) by omega. auto.
+      + simpl. rewrite IHlen by omega.
+        unfold update_inode. rewrite update_comm. f_equal.
+        f_equal; omega.
+        f_equal; f_equal; omega.
+
+        unfold not; intros.
+        assert (wordToNat ($ start : addr) = wordToNat ($ (S start + len) : addr))
+          by ( rewrite H0; auto ).
+        rewrite wordToNat_natToWord_bound with (bound:=items_per_valu) in *
+          by ( simpl; omega ).
+        rewrite wordToNat_natToWord_bound with (bound:=items_per_valu) in *
+          by ( simpl; omega ).
+        omega.
+  Qed.
 
   Definition rep_pair xp (ilistlist : list (list inode)) :=
     array (IXStart xp)
