@@ -13,6 +13,7 @@ Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Rec.
 Require Import Pack.
+Require Import FunctionalExtensionality.
 
 Import ListNotations.
 
@@ -132,6 +133,56 @@ Module INODE.
     unfold LOG.log_intact; cancel.
   Qed.
 
+Lemma selN_updN_ne : forall V vs n n' v (default : V),
+  n <> n'
+  -> selN (updN vs n v) n' default = selN vs n' default.
+Proof.
+  induction vs; destruct n; destruct n'; simpl; intuition.
+Qed.
+
+  Theorem map_rep_block_below : forall xlen xstart l ui v, ui < xstart
+    -> map (fun i => rep_block (selN (updN l ui v) i nil)) (seq xstart xlen) =
+       map (fun i => rep_block (selN l i nil)) (seq xstart xlen).
+  Proof.
+    induction xlen; simpl; intros.
+    - reflexivity.
+    - apply f_equal2.
+      rewrite selN_updN_ne by omega; reflexivity.
+      auto.
+  Qed.
+
+  Theorem iput_update' : forall xlen xstart inode l iblock ipos,
+    updN (map (fun i => rep_block (selN l i nil)) (seq xstart xlen)) iblock
+      (update items_per_valu itemsz_ok (rep_block (selN l (iblock + xstart) nil)) ipos
+         (Rec.rec2word inode)) =
+    map (fun i => rep_block
+      (selN (updN l (iblock + xstart) (updN (selN l (iblock + xstart) nil) (wordToNat ipos) inode)) i nil))
+      (seq xstart xlen).
+  Proof.
+    induction xlen; simpl; auto; intros.
+    destruct iblock; apply f_equal2.
+    - admit.
+    - rewrite map_rep_block_below; auto; omega.
+    - rewrite selN_updN_ne; auto; omega.
+    - replace (S iblock + xstart) with (iblock + S xstart) by omega; auto.
+  Qed.
+
+  Theorem iput_update : forall xlen inode l iblock ipos,
+    (upd (map (fun i => rep_block (selN l i nil)) (seq 0 xlen)) iblock
+       (update items_per_valu itemsz_ok (rep_block (selN l (wordToNat iblock) nil)) ipos
+          (Rec.rec2word inode))) =
+    (map (fun i => rep_block (selN (upd l iblock (upd (sel l iblock nil) ipos inode)) i nil))
+       (seq 0 xlen)).
+  Proof.
+    unfold upd, sel; intros.
+    replace (wordToNat iblock) with (wordToNat iblock + 0) at 2 by omega.
+    rewrite iput_update'.
+    apply f_equal2; [| auto ].
+    apply functional_extensionality; intros.
+    replace (wordToNat iblock) with (wordToNat iblock + 0) at 3 4 by omega.
+    auto.
+  Qed.
+
   Theorem iput_pair_ok : forall lxp xp iblock ipos i,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -178,10 +229,8 @@ Module INODE.
 
     pred_apply.
     unfold rep_pair.
-
+    rewrite iput_update; auto.
     cancel.
-
-    (* XXX *) admit.
 
     cancel.
 
