@@ -119,4 +119,16 @@ Section Packer.
     admit.
   Qed.
 
+  Theorem update_comm : forall v pos pos' n n', pos <> pos'
+    -> update (update v pos' n') pos n = update (update v pos n) pos' n'.
+  Proof.
+    intros.
+    unfold update.
+    destruct (wlt_dec pos items_per_valu); auto.
+    destruct (wlt_dec pos' items_per_valu); auto.
+
+    (* XXX messy *)
+    admit.
+  Qed.
+
 End Packer.
