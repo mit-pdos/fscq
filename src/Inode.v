@@ -214,7 +214,30 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} iget lxp xp inum.
   Proof.
-    unfold iget.
+    unfold iget, rep.
+
+    intros.
+    eapply pimpl_ok2. eauto with prog.
+
+    (* XXX nested predicates aren't working so well w.r.t. existential variables!
+     *
+     * We have a goal of the form:
+     *
+     *   ( ... * [[ (exists ilistlist, rep_pair xp ilistlist) m ]] ) =p=>
+     *   (exists ilistlist, ... * [[ (rep_pair xp ilistlist) m ]] )
+     *
+     * and the existential variable for the right-side ilistlist gets created
+     * before we get a chance to look inside the lifted Prop on the left side.
+     *
+     * Requiring that all existential variables appear at the top level could
+     * be a workaround, but it seems quite inconvenient for writing representation
+     * invariants about the abstract disk state inside a transaction!
+     *)
+
+    intros.
+    norm'l.
+    apply sep_star_comm in H4.
+    (* XXX need to destruct the [exis] that's inside H4.. *)
     admit.
   Qed.
 
@@ -229,7 +252,7 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} iput lxp xp inum i.
   Proof.
-    unfold iput.
+    unfold iput, rep.
     admit.
   Qed.
 
