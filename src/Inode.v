@@ -263,6 +263,7 @@ Module INODE.
 
     pred_apply.
     unfold rep_pair.
+    autorewrite with core.
     rewrite iput_update; auto.
     cancel.
 
