@@ -356,41 +356,25 @@ Theorem read_ok:
   }} ArrayRead a i stride rx.
 Proof.
   intros.
-  apply pimpl_ok2 with (fun done crash => exists vs F,
-    array a (firstn (wordToNat i) vs) stride
-    * (a ^+ i ^* stride) |-> sel vs i $0
-    * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-    * [[wordToNat i < length vs]]
-    * [[{{ fun done' crash' => array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i $0
-           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-        }} rx (sel vs i $0)]]
-    * [[array a (firstn (wordToNat i) vs) stride
-        * (a ^+ i ^* stride) |-> sel vs i $0
-        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F =p=> crash]]
-  )%pred.
-
   rewrite ArrayRead_eq.
+
   eapply pimpl_ok2.
   apply read_ok.
   cancel.
-  eapply pimpl_ok2_cont; [ eauto | cancel; eassumption | cancel ].
 
+  rewrite isolate_fwd.
   cancel.
+  auto.
 
+  step.
+  erewrite <- isolate_bwd with (vs:=l).
   cancel.
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply isolate_fwd; eassumption ] | ].
-  cancel.
-  eauto.
+  auto.
 
-  eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ | apply isolate_bwd; eassumption ].
+  pimpl_crash.
+  erewrite <- isolate_bwd with (vs:=l).
   cancel.
-
-  cancel.
-  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eauto ].
-  cancel.
+  auto.
 Qed.
 
 Theorem write_ok:
@@ -404,53 +388,29 @@ Theorem write_ok:
   }} ArrayWrite a i stride v rx.
 Proof.
   intros.
-  apply pimpl_ok2 with (fun done crash => exists vs F,
-    array a (firstn (wordToNat i) vs) stride
-    * (a ^+ i ^* stride) |-> sel vs i $0
-    * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-    * [[wordToNat i < length vs]]
-    * [[{{ fun done' crash' => array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> v
-           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-        }} rx tt]]
-    * [[(array a (firstn (wordToNat i) vs) stride
-        * (a ^+ i ^* stride) |-> sel vs i $0
-        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F) \/
-        (array a (firstn (wordToNat i) (upd vs i v)) stride
-        * (a ^+ i ^* stride) |-> sel (upd vs i v) i $0
-        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) (upd vs i v)) stride * F)
-        =p=> crash ]])%pred.
-
   rewrite ArrayWrite_eq.
+
   eapply pimpl_ok2.
   apply write_ok.
   cancel.
-  eapply pimpl_ok2_cont; [ eauto | cancel; eassumption | cancel; destruct r_; auto ].
 
-  cancel.
-  cancel.
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
-                                              | apply isolate_fwd; eassumption ] | ].
+  rewrite isolate_fwd.
   cancel.
   auto.
 
-  eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ | apply isolate_bwd; autorewrite with core; eassumption ].
+  step.
+  erewrite <- isolate_bwd with (vs:=(upd l i v)) (i:=i) by (autorewrite_fast; auto).
   autorewrite with core.
   cancel.
   autorewrite with core.
   cancel.
 
-  cancel.
+  destruct r_; auto.
 
-  eapply pimpl_or_r; left. cancel.
-  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
+  pimpl_crash.
+  rewrite <- isolate_bwd with (vs:=l).
   cancel.
-
-  eapply pimpl_or_r; right. cancel.
-  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
-  cancel.
+  auto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
