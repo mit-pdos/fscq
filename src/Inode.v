@@ -28,12 +28,15 @@ Record xparams := {
 }.
 
 Module INODE.
-  Definition inodetype : Rec.rectype := [("len", addrlen); ("block0", addrlen)].
+  Definition inodetype : Rec.rectype := [("len", addrlen);
+                                         ("block0", addrlen);
+                                         ("block1", addrlen);
+                                         ("block2", addrlen)].
   Definition inode := Rec.recdata inodetype.
   Definition inode_zero := Rec.word2rec inodetype $0.
 
   Definition itemsz := Rec.reclen inodetype.
-  Definition items_per_valu : addr := $32.
+  Definition items_per_valu : addr := $16.
   Theorem itemsz_ok : wordToNat items_per_valu * itemsz = valulen.
   Proof.
     rewrite valulen_is; auto.
@@ -260,6 +263,7 @@ Module INODE.
 
     pred_apply.
     unfold rep_pair.
+    autorewrite with core.
     rewrite iput_update; auto.
     cancel.
 
