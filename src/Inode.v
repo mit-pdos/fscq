@@ -172,23 +172,33 @@ Module INODE.
       auto.
   Qed.
 
+  Theorem update_rep_block : forall l xstart i ipos,
+    update items_per_valu itemsz_ok (rep_block (selN l (0 + xstart) nil)) ipos (Rec.rec2word i) =
+    rep_block
+      (selN (updN l (0 + xstart) (updN (selN l (0 + xstart) nil) (wordToNat ipos) i)) xstart nil).
+  Proof.
+    admit.
+  Qed.
+
   Theorem iput_update' : forall xlen xstart inode l iblock ipos,
-    updN (map (fun i => rep_block (selN l i nil)) (seq xstart xlen)) iblock
-      (update items_per_valu itemsz_ok (rep_block (selN l (iblock + xstart) nil)) ipos
-         (Rec.rec2word inode)) =
-    map (fun i => rep_block
-      (selN (updN l (iblock + xstart) (updN (selN l (iblock + xstart) nil) (wordToNat ipos) inode)) i nil))
-      (seq xstart xlen).
+    (ipos < items_per_valu)%word
+    -> updN (map (fun i => rep_block (selN l i nil)) (seq xstart xlen)) iblock
+        (update items_per_valu itemsz_ok (rep_block (selN l (iblock + xstart) nil)) ipos
+           (Rec.rec2word inode)) =
+      map (fun i => rep_block
+        (selN (updN l (iblock + xstart) (updN (selN l (iblock + xstart) nil) (wordToNat ipos) inode)) i nil))
+        (seq xstart xlen).
   Proof.
     induction xlen; simpl; auto; intros.
     destruct iblock; apply f_equal2.
-    - admit.
+    - apply update_rep_block.
     - rewrite map_rep_block_below; auto; omega.
     - rewrite selN_updN_ne; auto; omega.
     - replace (S iblock + xstart) with (iblock + S xstart) by omega; auto.
   Qed.
 
   Theorem iput_update : forall xlen inode l iblock ipos,
+    (ipos < items_per_valu)%word ->
     (upd (map (fun i => rep_block (selN l i nil)) (seq 0 xlen)) iblock
        (update items_per_valu itemsz_ok (rep_block (selN l (wordToNat iblock) nil)) ipos
           (Rec.rec2word inode))) =
@@ -197,7 +207,7 @@ Module INODE.
   Proof.
     unfold upd, sel; intros.
     replace (wordToNat iblock) with (wordToNat iblock + 0) at 2 by omega.
-    rewrite iput_update'.
+    rewrite iput_update' by auto.
     apply f_equal2; [| auto ].
     apply functional_extensionality; intros.
     replace (wordToNat iblock) with (wordToNat iblock + 0) at 3 4 by omega.
