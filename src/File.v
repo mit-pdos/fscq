@@ -50,9 +50,15 @@ Module FILE.
      unfold fread.
      hoare.
      unfold iget_blocknum.
-
-     
-   Admitted.
+     instantiate (a2 := l). cancel.
+     eexists.
+     pred_apply.
+     unfold iget_blocknum.
+     subst.
+     cancel.
+     LOG.unfold_intact.
+     cancel.
+   Qed.
     
 
 End FILE.
