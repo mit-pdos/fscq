@@ -13,6 +13,7 @@ Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Rec.
 Require Import Pack.
+Require Import FunctionalExtensionality.
 
 Import ListNotations.
 
@@ -38,12 +39,40 @@ Module INODE.
     rewrite valulen_is; auto.
   Qed.
 
+  Definition update_inode (inodes_in_block : list inode) :=
+    fun pos v => let i := selN inodes_in_block pos inode_zero in
+                 let iw := Rec.rec2word i in
+                 Pack.update items_per_valu itemsz_ok v $ pos iw.
+
   Definition rep_block (inodes_in_block : list inode) :=
-    fold_right (fun pos v =>
-                let i := selN inodes_in_block pos inode_zero in
-                let iw := Rec.rec2word i in
-                Pack.update items_per_valu itemsz_ok v $ pos iw)
-               $0 (seq 0 (wordToNat items_per_valu)).
+    fold_right (update_inode inodes_in_block) $0 (seq 0 (wordToNat items_per_valu)).
+
+  Theorem rep_block_fold_left : forall len start l v, len + start <= wordToNat items_per_valu
+    -> fold_right (update_inode l) v (seq start len) =
+       fold_left (fun v' pos => update_inode l pos v') (seq start len) v.
+  Proof.
+    induction len; intros.
+    - simpl; auto.
+    - setoid_rewrite seq_right at 2.
+      rewrite fold_left_app; simpl fold_left.
+      rewrite <- IHlen by omega.
+      clear IHlen; generalize dependent start; simpl.
+      induction len; intros.
+      + simpl. replace (start+0) with (start) by omega. auto.
+      + simpl. rewrite IHlen by omega.
+        unfold update_inode. rewrite update_comm. f_equal.
+        f_equal; omega.
+        f_equal; f_equal; omega.
+
+        unfold not; intros.
+        assert (wordToNat ($ start : addr) = wordToNat ($ (S start + len) : addr))
+          by ( rewrite H0; auto ).
+        rewrite wordToNat_natToWord_bound with (bound:=items_per_valu) in *
+          by ( simpl; omega ).
+        rewrite wordToNat_natToWord_bound with (bound:=items_per_valu) in *
+          by ( simpl; omega ).
+        omega.
+  Qed.
 
   Definition rep_pair xp (ilistlist : list (list inode)) :=
     array (IXStart xp)
@@ -132,6 +161,59 @@ Module INODE.
     unfold LOG.log_intact; cancel.
   Qed.
 
+  Theorem map_rep_block_below : forall xlen xstart l ui v, ui < xstart
+    -> map (fun i => rep_block (selN (updN l ui v) i nil)) (seq xstart xlen) =
+       map (fun i => rep_block (selN l i nil)) (seq xstart xlen).
+  Proof.
+    induction xlen; simpl; intros.
+    - reflexivity.
+    - apply f_equal2.
+      rewrite selN_updN_ne by omega; reflexivity.
+      auto.
+  Qed.
+
+  Theorem update_rep_block : forall l xstart i ipos,
+    update items_per_valu itemsz_ok (rep_block (selN l (0 + xstart) nil)) ipos (Rec.rec2word i) =
+    rep_block
+      (selN (updN l (0 + xstart) (updN (selN l (0 + xstart) nil) (wordToNat ipos) i)) xstart nil).
+  Proof.
+    admit.
+  Qed.
+
+  Theorem iput_update' : forall xlen xstart inode l iblock ipos,
+    (ipos < items_per_valu)%word
+    -> updN (map (fun i => rep_block (selN l i nil)) (seq xstart xlen)) iblock
+        (update items_per_valu itemsz_ok (rep_block (selN l (iblock + xstart) nil)) ipos
+           (Rec.rec2word inode)) =
+      map (fun i => rep_block
+        (selN (updN l (iblock + xstart) (updN (selN l (iblock + xstart) nil) (wordToNat ipos) inode)) i nil))
+        (seq xstart xlen).
+  Proof.
+    induction xlen; simpl; auto; intros.
+    destruct iblock; apply f_equal2.
+    - apply update_rep_block.
+    - rewrite map_rep_block_below; auto; omega.
+    - rewrite selN_updN_ne; auto; omega.
+    - replace (S iblock + xstart) with (iblock + S xstart) by omega; auto.
+  Qed.
+
+  Theorem iput_update : forall xlen inode l iblock ipos,
+    (ipos < items_per_valu)%word ->
+    (upd (map (fun i => rep_block (selN l i nil)) (seq 0 xlen)) iblock
+       (update items_per_valu itemsz_ok (rep_block (selN l (wordToNat iblock) nil)) ipos
+          (Rec.rec2word inode))) =
+    (map (fun i => rep_block (selN (upd l iblock (upd (sel l iblock nil) ipos inode)) i nil))
+       (seq 0 xlen)).
+  Proof.
+    unfold upd, sel; intros.
+    replace (wordToNat iblock) with (wordToNat iblock + 0) at 2 by omega.
+    rewrite iput_update' by auto.
+    apply f_equal2; [| auto ].
+    apply functional_extensionality; intros.
+    replace (wordToNat iblock) with (wordToNat iblock + 0) at 3 4 by omega.
+    auto.
+  Qed.
+
   Theorem iput_pair_ok : forall lxp xp iblock ipos i,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -178,10 +260,8 @@ Module INODE.
 
     pred_apply.
     unfold rep_pair.
-
+    rewrite iput_update; auto.
     cancel.
-
-    (* XXX *) admit.
 
     cancel.
 
@@ -214,7 +294,30 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} iget lxp xp inum.
   Proof.
-    unfold iget.
+    unfold iget, rep.
+
+    intros.
+    eapply pimpl_ok2. eauto with prog.
+
+    (* XXX nested predicates aren't working so well w.r.t. existential variables!
+     *
+     * We have a goal of the form:
+     *
+     *   ( ... * [[ (exists ilistlist, rep_pair xp ilistlist) m ]] ) =p=>
+     *   (exists ilistlist, ... * [[ (rep_pair xp ilistlist) m ]] )
+     *
+     * and the existential variable for the right-side ilistlist gets created
+     * before we get a chance to look inside the lifted Prop on the left side.
+     *
+     * Requiring that all existential variables appear at the top level could
+     * be a workaround, but it seems quite inconvenient for writing representation
+     * invariants about the abstract disk state inside a transaction!
+     *)
+
+    intros.
+    norm'l.
+    apply sep_star_comm in H4.
+    (* XXX need to destruct the [exis] that's inside H4.. *)
     admit.
   Qed.
 
@@ -229,7 +332,7 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} iput lxp xp inum i.
   Proof.
-    unfold iput.
+    unfold iput, rep.
     admit.
   Qed.
 
