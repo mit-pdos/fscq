@@ -6,6 +6,8 @@ Require Import Wf_nat.
 Require Import Eqdep.
 Require Import Program.Tactics.
 Require Import Recdef.
+Require Import Ring.
+Require Import Ring_polynom.
 
 Set Implicit Arguments.
 
@@ -892,6 +894,30 @@ Definition wring8 := wring 8.
 Add Ring wring8 : wring8 (decidable (weqb_sound 8), constants [wcst]).
 *)
 
+Ltac noptac x := idtac.
+
+Ltac PackWring sz F :=
+  let RNG := (fun proj => proj
+    inv_morph_nothing inv_morph_nothing noptac noptac
+    (word sz) (@eq (word sz)) (wzero sz) (wone sz)
+    (@wplus sz) (@wmult sz) (@wminus sz) (@wneg sz)
+    (BinNums.Z) (BinNums.N) (id_phi_N)
+    (pow_N (wone sz) (@wmult sz))
+    (ring_correct (@Eqsth (word sz))
+                  (Eq_ext _ _ _)
+                  (Rth_ARth (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz))
+                  (gen_phiZ_morph (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz))
+                  (pow_N_th _ _ (@Eqsth (word sz)))
+                  (triv_div_th (@Eqsth (word sz))
+                               (Eq_ext _ _ _)
+                               (Rth_ARth (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz))
+                               (gen_phiZ_morph (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz)))
+    )
+    tt) in
+  F RNG (@nil (word sz)) (@nil (word sz)).
+
+Ltac ring_sz sz := PackWring sz Ring_gen.
+
 
 (** * Bitwise operators *)
 
@@ -1062,6 +1088,13 @@ Proof.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
   f_equal. eapply IHa. 
   destruct (wordToN a); destruct (wordToN (wtl b0)); try congruence.
+Qed.
+Lemma wordToNat_inj : forall sz (a b : word sz),
+  wordToNat a = wordToNat b -> a = b.
+Proof.
+  intros; apply wordToN_inj.
+  repeat rewrite wordToN_nat.
+  apply Nat2N.inj_iff; auto.
 Qed.
 Lemma unique_inverse : forall sz (a b1 b2 : word sz),
   a ^+ b1 = wzero _ ->
@@ -1600,9 +1633,7 @@ Proof.
   unfold not in *; intros; apply H1.
   apply sub_0_eq.
   rewrite <- H2.
-  apply sub_0_eq.
-  (* XXX *)
-  admit.
+  ring_sz sz'.
 Qed.
 
 (* Coq trunk seems to inherit open scopes across imports? *)
