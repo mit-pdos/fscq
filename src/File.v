@@ -14,6 +14,7 @@ Require Import Eqdep_dec.
 Require Import Rec.
 Require Import Pack.
 Require Import Inode.
+Require Import Balloc.
 
 Import ListNotations.
 
@@ -139,6 +140,81 @@ Module FILE.
            [[ (F' * off |-> v)%pred (FileData (sel flist' inum empty_file)) ]]
     CRASH  LOG.log_intact lxp mbase
     >} fwrite lxp xp inum off v.
+  Proof.
+    admit.
+  Qed.
+
+  Definition fgrow T lxp bxp xp inum rx : prog T :=
+    i <- INODE.iget lxp xp inum;
+    bnum <- BALLOC.alloc lxp bxp;
+    match bnum with
+    | None => rx false
+    | Some b =>
+      (* XXX currently assumes we're growing from 0 to 1;
+       * fix once Rec.v supports arrays.
+       *)
+      let i' := (i :=> "block0" := b :=> "len" := ((i :-> "len") ^+ $1)) in
+      ok <- INODE.iput lxp xp inum i';
+      If (bool_dec ok true) {
+        rx true
+      } else {
+        (* This is pretty unfortunate: we allocated a block, but we couldn't
+         * write it into the inode (presumably because the log ran out of space.
+         * The theorem/spec of fgrow says that returning false leaves an active
+         * transaction with some unspecified state, effectively requiring the
+         * caller to abort.  But this isn't always true: one could also get a
+         * false return from BALLOC.alloc returning false above, which leaves
+         * the transaction in a clean state.  Maybe we could add a three-way
+         * return value, with an "abort" value indicating such dead-end cases?
+         *)
+        rx false
+      }
+    end.
+
+  Definition fshrink T lxp bxp xp inum rx : prog T :=
+    i <- INODE.iget lxp xp inum;
+    ok <- BALLOC.free lxp bxp (i :-> "block0");
+    If (bool_dec ok true) {
+      (* XXX currently assumes we're shrinking from 1 to 0;
+       * fix once Rec.v supports arrays.
+       *)
+      let i' := (i :=> "len" := ((i :-> "len") ^- $1)) in
+      ok <- INODE.iput lxp xp inum i';
+      rx ok
+    } else {
+      rx false
+    }.
+
+  (* Note that for [fgrow_ok] and [fshrink_ok], a [false] return value
+   * indicates that the transaction could be in any active state, so
+   * the caller is effectively forced to abort.
+   *)
+  Theorem fgrow_ok : forall lxp bxp xp inum,
+    {< F mbase m flist,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * rep xp flist)%pred m ]] *
+           [[ (inum < $ (length flist))%word ]]
+    POST:r [[ r = false]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
+           [[ r = true ]] * exists m' flist', LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (F * rep xp flist')%pred m ]] *
+           [[ FileLen (sel flist' inum empty_file) = FileLen (sel flist inum empty_file) + 1 ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} fgrow lxp bxp xp inum.
+  Proof.
+    admit.
+  Qed.
+
+  Theorem fshrink_ok : forall lxp bxp xp inum,
+    {< F mbase m flist,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * rep xp flist)%pred m ]] *
+           [[ (inum < $ (length flist))%word ]]
+    POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
+           [[ r = true ]] * exists m' flist', LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (F * rep xp flist')%pred m ]] *
+           [[ FileLen (sel flist' inum empty_file) = FileLen (sel flist inum empty_file) - 1 ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} fshrink lxp bxp xp inum.
   Proof.
     admit.
   Qed.
