@@ -1559,23 +1559,10 @@ Proof.
   repeat rewrite div2_pow2_twice.
   eapply IHsz; try omega.
 
-  (* ring isn't defined over arbitrary sizes, so do this by hand... *)
-  unfold not in *; intros; apply H1.
-  replace (n1) with ((n1 ^- $1) ^+ $1).
-  rewrite H2.
-  rewrite wminus_def.
-  rewrite <- wplus_assoc.
-  rewrite <- (wplus_comm $1).
-  rewrite wminus_inv.
-  rewrite wplus_comm.
-  apply wplus_unit.
-
-  rewrite wminus_def.
-  rewrite <- wplus_assoc.
-  rewrite <- (wplus_comm $1).
-  rewrite wminus_inv.
-  rewrite wplus_comm.
-  apply wplus_unit.
+  apply word_neq.
+  unfold not in *; intros; apply H1; clear H1.
+  apply sub_0_eq; rewrite <- H2.
+  ring_sz sz'.
 Qed.
 
 Theorem wbit_and_not: forall sz sz' (n : word sz'), (wordToNat n < sz)%nat
