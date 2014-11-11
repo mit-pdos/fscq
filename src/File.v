@@ -27,11 +27,10 @@ Module FILE.
     fblock <- LOG.read lxp blocknum;
     rx fblock.
 
-  (* XXX part of Inode.v? *) 
   Definition iget_blocknum ilist inum: addr := 
     let i := (sel ilist inum INODE.inode_zero) in
     let bn := i :-> "block0" in
-    bn.                             
+    bn.
 
   Theorem fread'_ok : forall lxp xp inum off,
     {< F mbase m ilist bn v,
@@ -43,20 +42,20 @@ Module FILE.
            [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
     >} fread' lxp xp inum off.
-   Proof.
-     unfold fread.
-     hoare.
-     unfold iget_blocknum.
-     instantiate (a2 := l). cancel.
-     eexists.
-     pred_apply.
-     unfold iget_blocknum.
-     subst.
-     cancel.
-     LOG.unfold_intact.
-     cancel.
-   Qed.
-    
+  Proof.
+    unfold fread'.
+    hoare.
+    unfold iget_blocknum.
+    instantiate (a2 := l). cancel.
+    eexists.
+    pred_apply.
+    unfold iget_blocknum.
+    subst.
+    cancel.
+    LOG.unfold_intact.
+    cancel.
+  Qed.
+
   Definition fwrite' T lxp xp inum (off:addr) v rx : prog T :=
     i <-INODE.iget lxp xp inum;
     let blocknum := i :-> "block0" in
