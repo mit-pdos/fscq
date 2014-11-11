@@ -28,10 +28,13 @@ Record xparams := {
 }.
 
 Module INODE.
-  Definition inodetype : Rec.rectype := [("len", addrlen);
-                                         ("block0", addrlen);
-                                         ("block1", addrlen);
-                                         ("block2", addrlen)].
+  Definition blocks_per_inode := 3.
+  Definition inodetype : Rec.rectype := [("len", Rec.WordF addrlen);
+                                         ("block0", Rec.WordF addrlen);
+                                         ("block1", Rec.WordF addrlen);
+                                         ("block2", Rec.WordF addrlen)].
+
+  (* XXX use ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)]. *)
   Definition inode := Rec.recdata inodetype.
   Definition inode_zero := Rec.word2rec inodetype $0.
 
@@ -139,7 +142,7 @@ Module INODE.
   Hint Resolve wlt_lt.
   Hint Rewrite sel_map_seq using auto.
   Hint Rewrite extract_sel using auto.
-  Hint Rewrite Rec.word2rec_rec2word.
+  Hint Rewrite Rec.rec2word2rec.
 
   Theorem iget_pair_ok : forall lxp xp iblock ipos,
     {< F mbase m ilistlist,

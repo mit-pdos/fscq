@@ -15,7 +15,8 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Module DIR.
-  Definition dirent_type : Rec.rectype := [("name", 256-addrlen); ("inum", addrlen)].
+  Definition dirent_type : Rec.rectype := [("name", Rec.WordF (256-addrlen));
+                                           ("inum", Rec.WordF addrlen)].
   Definition dirent := Rec.recdata dirent_type.
   Definition dirent_zero := Rec.word2rec dirent_type $0.
 
