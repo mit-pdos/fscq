@@ -303,26 +303,23 @@ Module INODE.
     intros.
     eapply pimpl_ok2. eauto with prog.
 
-    (* XXX nested predicates aren't working so well w.r.t. existential variables!
-     *
-     * We have a goal of the form:
-     *
-     *   ( ... * [[ (exists ilistlist, rep_pair xp ilistlist) m ]] ) =p=>
-     *   (exists ilistlist, ... * [[ (rep_pair xp ilistlist) m ]] )
-     *
-     * and the existential variable for the right-side ilistlist gets created
-     * before we get a chance to look inside the lifted Prop on the left side.
-     *
-     * Requiring that all existential variables appear at the top level could
-     * be a workaround, but it seems quite inconvenient for writing representation
-     * invariants about the abstract disk state inside a transaction!
-     *)
-
     intros.
-    norm'l.
-    apply sep_star_comm in H4.
-    (* XXX need to destruct the [exis] that's inside H4.. *)
-    admit.
+    norm.
+    cancel.
+    (* Something about type coersions is making [assumption] take forever.. *)
+    split; [constructor |].
+    split; [constructor |].
+    split; [constructor |].
+    split; [constructor |].
+    pred_apply; instantiate (a2:=l); cancel.
+    admit.  (* need some lemma about ^/ *)
+    admit.  (* need some lemma about ^% *)
+
+    step.
+    subst.
+    admit.  (* need to prove that we are selecting the right inode.. *)
+
+    step.
   Qed.
 
   Theorem iput_ok : forall lxp xp inum i,

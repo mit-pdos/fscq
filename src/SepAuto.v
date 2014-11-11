@@ -78,6 +78,14 @@ Proof.
   apply pimpl_refl.
 Qed.
 
+Theorem start_normalizing_apply : forall PT p ps P m,
+  p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
+  -> p m
+  -> (exists (x:PT), stars (ps x) * [[P x]])%pred m.
+Proof.
+  firstorder.
+Qed.
+
 Theorem restart_canceling:
   forall p q,
   (stars p * stars nil =p=> q) ->
@@ -494,15 +502,44 @@ Proof.
   firstorder.
 Qed.
 
-Ltac destruct_prod := match goal with
-                      | [ H: (?a * ?b)%type |- _ ] => destruct H
-                      | [ H: unit |- _ ] => clear H
-                      end.
+Ltac destruct_prod :=
+  match goal with
+  | [ H: (?a * ?b)%type |- _ ] => destruct H
+  end.
 
-Ltac destruct_and := match goal with
-                     | [ H: ?a /\ ?b |- _ ] => destruct H
-                     | [ H: True |- _ ] => clear H
-                     end.
+Ltac clear_type T :=
+  match goal with
+  | [ H: T |- _ ] => clear H
+  end.
+
+Ltac destruct_lift H :=
+  match type of H with
+  | (?a /\ ?b) =>
+    let Hlift0:=fresh in
+    let Hlift1:=fresh in
+    destruct H as [Hlift0 Hlift1]; destruct_lift Hlift0; destruct_lift Hlift1
+  | ((sep_star _ _) _) =>
+    eapply start_normalizing_apply in H; [| flatten ];
+    unfold stars in H; simpl in H; destruct H as [? H];
+    apply sep_star_lift_apply in H; destruct H as [? H];
+    destruct_lift H
+  | ((and _ _) _) =>
+    eapply start_normalizing_apply in H; [| flatten ];
+    unfold stars in H; simpl in H; destruct H as [? H];
+    apply sep_star_lift_apply in H; destruct H as [? H];
+    destruct_lift H
+  | ((or _ _) _) =>
+    eapply start_normalizing_apply in H; [| flatten ];
+    unfold stars in H; simpl in H; destruct H as [? H];
+    apply sep_star_lift_apply in H; destruct H as [? H];
+    destruct_lift H
+  | ((exists _, _)%pred _) =>
+    eapply start_normalizing_apply in H; [| flatten ];
+    unfold stars in H; simpl in H; destruct H as [? H];
+    apply sep_star_lift_apply in H; destruct H as [? H];
+    destruct_lift H
+  | _ => idtac
+  end.
 
 Lemma eexists_pair: forall A B p,
   (exists (a:A) (b:B), p (a, b))
@@ -609,10 +646,12 @@ Ltac replace_right := eapply replace_right;
 
 Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
                eapply pimpl_exists_l; intros;
-               apply sep_star_lift_l; intros;
+               apply sep_star_lift_l; let Hlift:=fresh in intro Hlift;
+               destruct_lift Hlift;
                repeat destruct_prod;
-               repeat destruct_and;
-               simpl in *.
+               simpl in *;
+               repeat clear_type True;
+               repeat clear_type unit.
 
 Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;

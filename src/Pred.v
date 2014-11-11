@@ -431,6 +431,17 @@ Proof.
   firstorder.
 Qed.
 
+Theorem sep_star_lift_apply : forall (a : Prop) (b : pred) (m : mem),
+  (b * [[a]])%pred m -> (b m /\ a).
+Proof.
+  unfold lift_empty, sep_star; intros.
+  repeat deex.
+  assert (mem_union x x0 = x).
+  apply functional_extensionality; unfold mem_union; intros.
+  case_eq (x x1); pred.
+  congruence.
+Qed.
+
 Lemma pimpl_star_emp: forall p, p =p=> emp * p.
 Proof.
   unfold sep_star, pimpl; intros.

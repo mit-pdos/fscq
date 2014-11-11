@@ -120,7 +120,7 @@ Module LOG.
   Proof.
     induction l; simpl.
     - unfold indomain. intros. deex. exists x. congruence.
-    - destruct a. intros. destruct_and.
+    - destruct a. intros. destruct H.
       eapply indomain_upd_1; eauto.
       eapply IHl; eauto.
       apply valid_log_upd; auto.
