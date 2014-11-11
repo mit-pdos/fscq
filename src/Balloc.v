@@ -280,8 +280,8 @@ Module BALLOC.
     unfold free, rep, LOG.log_intact.
     hoare.
 
-    apply wlt_lt in H2.
-    ring_simplify ($ 0 ^* $ valulen : addr) in H2; simpl in H2; omega.
+    apply wlt_lt in H3.
+    ring_simplify ($ 0 ^* $ valulen : addr) in H3; simpl in H3; omega.
 
     eexists; pred_apply. cancel.
 
