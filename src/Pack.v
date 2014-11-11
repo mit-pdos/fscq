@@ -104,6 +104,19 @@ Section Packer.
     reflexivity.
   Qed.
 
+  Theorem update_same : forall v pos n n',
+    update (update v pos n') pos n = update v pos n.
+  Proof.
+    intros; unfold update.
+    destruct (wlt_dec pos items_per_valu); try congruence.
+    unfold eq_rec_r, eq_rec.
+    repeat rewrite eq_rect_double.
+    rewrite <- eq_rect_eq.
+    repeat rewrite split1_combine.
+    rewrite split2_combine.
+    auto.
+  Qed.
+
   Theorem extract_other : forall v pos pos' n, pos <> pos'
     -> extract (update v pos' n) pos = extract v pos.
   Proof.

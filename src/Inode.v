@@ -178,16 +178,81 @@ Module INODE.
       auto.
   Qed.
 
-  Theorem update_rep_block : forall l xstart i ipos,
-    update items_per_valu itemsz_ok (rep_block (selN l (0 + xstart) nil)) ipos (Rec.rec2word i) =
-    rep_block
-      (selN (updN l (0 + xstart) (updN (selN l (0 + xstart) nil) (wordToNat ipos) i)) xstart nil).
+  Theorem fold_right_ext : forall A B (f f' : A -> B -> B) (l : list A) (v : B),
+    (forall i v', In i l -> f i v' = f' i v')
+    -> fold_right f v l = fold_right f' v l.
   Proof.
-    admit.
+    induction l; simpl; intros; auto.
+    rewrite IHl by auto; auto.
+  Qed.
+
+  Theorem update_rep_block' : forall xlen xstart l i iblock ipos v,
+    iblock < length l ->
+    length (selN l iblock nil) = wordToNat items_per_valu ->
+    xstart + xlen = (wordToNat items_per_valu) ->
+    ($ xstart <= ipos)%word ->
+    (ipos < $ (xstart + xlen))%word ->
+    update items_per_valu itemsz_ok
+      (fold_right (update_inode (selN l iblock nil)) v (seq xstart xlen)) ipos (Rec.rec2word i) =
+    fold_right (update_inode
+      (selN (updN l iblock (updN (selN l iblock nil) (wordToNat ipos) i)) iblock nil))
+      v (seq xstart xlen).
+  Proof.
+    induction xlen; simpl; intros.
+    - replace (xstart + 0) with (xstart) in * by omega.
+      exfalso. auto.
+    - rewrite selN_updN_eq.
+      unfold update_inode in *.
+      destruct (weq ipos $ xstart); subst.
+      + rewrite Pack.update_same.
+        rewrite wordToNat_natToWord_idempotent' by (unfold pow2, addrlen; omega).
+        rewrite selN_updN_eq by omega.
+        apply f_equal4; [reflexivity | | reflexivity | reflexivity].
+        apply fold_right_ext; intros.
+        destruct (eq_nat_dec i0 xstart).
+        subst; apply in_seq in H4; omega.
+        rewrite selN_updN_ne; auto.
+      + rewrite Pack.update_comm by auto.
+        rewrite selN_updN_ne.
+        apply f_equal4; auto.
+        rewrite IHxlen; [| simpl; auto; try omega .. ]; clear IHxlen.
+        rewrite selN_updN_eq by auto; reflexivity.
+        assert ($ xstart < ipos)%word by ( apply le_neq_lt; auto ).
+        (* XXX word comparisons.. *) admit.
+        replace (S (xstart + xlen)) with (xstart + S xlen) by omega; auto.
+        unfold not; intros; apply n. rewrite <- H4.
+        rewrite natToWord_wordToNat; auto.
+      + auto.
+  Qed.
+
+  Theorem update_rep_block : forall l iblock i ipos,
+    iblock < length l ->
+    length (selN l iblock nil) = wordToNat items_per_valu ->
+    (ipos < items_per_valu)%word ->
+    update items_per_valu itemsz_ok (rep_block (selN l iblock nil)) ipos (Rec.rec2word i) =
+    rep_block
+      (selN (updN l iblock (updN (selN l iblock nil) (wordToNat ipos) i)) iblock nil).
+  Proof.
+    intros.
+    unfold rep_block.
+    apply update_rep_block'; auto.
+    intro x; apply wlt_lt in x.
+    rewrite roundTrip_0 in *; omega.
+  Qed.
+
+  Theorem selN_in : forall T l pos (default : T), pos < length l
+    -> In (selN l pos default) l.
+  Proof.
+    induction l; simpl; intros; try omega.
+    destruct pos; auto.
+    right; apply IHl.
+    omega.
   Qed.
 
   Theorem iput_update' : forall xlen xstart inode l iblock ipos,
     (ipos < items_per_valu)%word
+    -> xstart < length l
+    -> (forall x, In x l -> length x = wordToNat items_per_valu)
     -> updN (map (fun i => rep_block (selN l i nil)) (seq xstart xlen)) iblock
         (update items_per_valu itemsz_ok (rep_block (selN l (iblock + xstart) nil)) ipos
            (Rec.rec2word inode)) =
@@ -197,7 +262,9 @@ Module INODE.
   Proof.
     induction xlen; simpl; auto; intros.
     destruct iblock; apply f_equal2.
-    - apply update_rep_block.
+    - apply update_rep_block; auto.
+      rewrite H1; auto.
+      apply selN_in; auto.
     - rewrite map_rep_block_below; auto; omega.
     - rewrite selN_updN_ne; auto; omega.
     - replace (S iblock + xstart) with (iblock + S xstart) by omega; auto.
@@ -213,11 +280,15 @@ Module INODE.
   Proof.
     unfold upd, sel; intros.
     replace (wordToNat iblock) with (wordToNat iblock + 0) at 2 by omega.
-    rewrite iput_update' by auto.
+    rewrite iput_update'.
     apply f_equal2; [| auto ].
     apply functional_extensionality; intros.
     replace (wordToNat iblock) with (wordToNat iblock + 0) at 3 4 by omega.
     auto.
+
+    assumption.
+    (* XXX this seems too strong.. *) admit.
+    (* XXX this should be part of the rep invariant.. *) admit.
   Qed.
 
   Theorem iput_pair_ok : forall lxp xp iblock ipos i,
