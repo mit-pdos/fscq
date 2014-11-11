@@ -118,8 +118,8 @@ Qed.
 
 Theorem pimpl_pre2:
   forall T pre pre' (pr: prog T),
-  (forall done crash, pre done crash =p=> [{{pre'}} pr])
-  -> (forall done crash, pre done crash =p=> pre' done crash)
+  (forall done crash, pre done crash =p=> [{{pre' done crash}} pr])
+  -> (forall done crash, pre done crash =p=> pre' done crash done crash)
   -> {{pre}} pr.
 Proof.
   unfold corr2; intros.
@@ -130,8 +130,8 @@ Qed.
 
 Theorem pimpl_pre3:
   forall TF TR pre pre' (p: prog TF) (r: prog TR),
-  (forall done crashdone, pre done crashdone =p=> [{{pre'}} p >> r])
-  -> (forall done crashdone, pre done crashdone =p=> pre' done crashdone)
+  (forall done crashdone, pre done crashdone =p=> [{{pre' done crashdone}} p >> r])
+  -> (forall done crashdone, pre done crashdone =p=> pre' done crashdone done crashdone)
   -> {{pre}} p >> r.
 Proof.
   unfold corr3; intros.

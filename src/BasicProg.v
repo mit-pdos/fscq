@@ -227,17 +227,11 @@ Proof.
       rewrite For_step.
       eapply pimpl_ok2.
       simpl; eauto.
-      instantiate (1:=(fun _ _ => a * nocrash a0 ($ (0) ^+ i) li)%pred).
-      intros; simpl.
-      (* XXX something wrong with the done'=done requirements *)
-Admitted.
-
-(*
-      eapply H3.
-      apply H1.
+      intros.
+      apply pimpl_refl.
     + fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
 
-  - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + assert (wordToNat x <> 0).
       unfold not in *; intros; apply n.
       rewrite <- H5; rewrite natToWord_wordToNat; auto.
@@ -253,7 +247,7 @@ Admitted.
       omega.
 
       intros.
-      eapply pimpl_ok.
+      eapply pimpl_ok2.
       apply H.
 
       apply lt_wlt.
@@ -271,15 +265,16 @@ Admitted.
       f_equal.
       omega.
 
+      intros.
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
       ring_simplify (i ^+ $1 ^+ (x ^- $1)).
       ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       cancel.
 
-      apply H4; eauto.
-      intros; apply H9; clear H9.
-      apply wlt_lt in H12.
+      subst; apply H4; eauto.
+      intros; apply H8; clear H8.
+      apply wlt_lt in H9.
       unfold wlt.
       repeat rewrite wordToN_nat.
       apply Nlt_in.
@@ -290,6 +285,8 @@ Admitted.
       rewrite wordToNat_natToWord_idempotent'.
       omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
+
+      subst; eauto.
 
       rewrite wminus_Alt.
       rewrite wminus_Alt2.
@@ -306,10 +303,10 @@ Admitted.
 
       unfold not; intros; apply H5.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H9; simpl in H9; auto.
+      apply wlt_lt in H8; simpl in H8; auto.
+      subst; auto.
     + cancel.
 Qed.
-*)
 
 Theorem for_ok:
   forall T (n : addr)
