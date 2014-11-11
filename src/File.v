@@ -144,6 +144,23 @@ Module FILE.
     admit.
   Qed.
 
+  Definition flen T lxp xp inum rx : prog T :=
+    i <- INODE.iget lxp xp inum;
+    rx (i :-> "len").
+
+  Theorem flen_ok : forall lxp xp inum,
+    {< F mbase m flist,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * rep xp flist)%pred m ]] *
+           [[ (inum < $ (length flist))%word ]]
+    POST:r LOG.rep lxp (ActiveTxn mbase m) *
+           [[ r = $ (FileLen (sel flist inum empty_file)) ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} flen lxp xp inum.
+  Proof.
+    admit.
+  Qed.
+
   Definition fgrow T lxp bxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
     bnum <- BALLOC.alloc lxp bxp;
