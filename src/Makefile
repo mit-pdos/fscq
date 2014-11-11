@@ -3,7 +3,7 @@ OCAMLINC   := -I codegen
 MODULES    := Nomega Word \
 	      Prog Pred Hoare SepAuto Idempotent \
 	      BasicProg Array AddrMap Rec Pack \
-	      Log Balloc Inode File \
+	      Log Balloc Inode File Dir \
 	      Testprog \
 	      ExtrHaskellPrelude Extraction
 	      # MemLog TxnWrap Scratch
