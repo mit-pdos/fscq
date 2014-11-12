@@ -192,6 +192,22 @@ Qed.
 
 Hint Rewrite selN_map_seq sel_map_seq using ( solve [ auto ] ).
 
+Theorem selN_map : forall T T' l i f (default : T) (default' : T'), i < length l
+  -> selN (map f l) i default = f (selN l i default').
+Proof.
+  induction l; simpl; intros; try omega.
+  destruct i; auto.
+  apply IHl; omega.
+Qed.
+
+Theorem sel_map : forall T T' l i f (default : T) (default' : T'), wordToNat i < length l
+  -> sel (map f l) i default = f (sel l i default').
+Proof.
+  intros.
+  unfold sel.
+  apply selN_map; auto.
+Qed.
+
 Theorem updN_map_seq_app_eq : forall T (f : nat -> T) len start (v : T) x,
   updN (map f (seq start len) ++ (x :: nil)) len v =
   map f (seq start len) ++ (v :: nil).
