@@ -43,6 +43,16 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
    (p1 rx)%pred)
   (at level 0, p1 at level 60, e1 binder, e2 binder, r at level 0).
 
+(* XXX puzzle for Adam:
+ * How to get rid of the IDEM part of this notation?
+ * Ideally, we would put in an "exists idemcrash" next to "exists F".
+ * But the problem is, "idemcrash" is going to be a function of e1 .. e2,
+ * so just saying "exists idemcrash" is not enough: we won't be able to
+ * use the e1 .. e2 variables to instantiate the "idemcrash" evar.
+ * We would like to pass e1, .., e2 as arguments to "idemcrash" (i.e.,
+ * idemcrash is e1 -> .. -> e2 -> prop), but how to write this with
+ * Coq's [Notation] machinery?
+ *)
 Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash 'IDEM' idemcrash >} p1 >> p2" :=
   (forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR), corr3
    (fun done_ crashdone_ =>
