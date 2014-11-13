@@ -31,6 +31,10 @@ Module DIR.
    * Probably should be factored out into a common pattern.
    * This code has a nicer-looking [rep_pair] that avoids a needless [seq].
    *)
+  (* XXX puzzle for Adam: what's a good unified abstraction for these
+   * kinds of things, so we don't keep re-proving this in Log.v,
+   * Array.v, Inode.v, Dir.v, etc?
+   *)
   Definition update_dirent (dirents_in_block : list dirent) :=
     fun pos v => let d := selN dirents_in_block pos dirent_zero in
                  let dw := Rec.rec2word d in
