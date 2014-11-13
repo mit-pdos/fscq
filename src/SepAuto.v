@@ -644,6 +644,11 @@ Ltac replace_left := eapply replace_left;
 Ltac replace_right := eapply replace_right;
   [ solve [ repeat ( solve [ replace_right_one ] || apply pick_later_and ) ] | ].
 
+(* XXX ask Adam: should we replace norm_hint_left / norm_hint_write with
+ * setoid-based rewriting?  might be too early: setoid rewriting is still
+ * a bit buggy in Coq..
+ *)
+
 Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
                eapply pimpl_exists_l; intros;
                apply sep_star_lift_l; let Hlift:=fresh in intro Hlift;
