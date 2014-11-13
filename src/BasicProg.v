@@ -31,6 +31,9 @@ Ltac inv_exec :=
   | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
+(* XXX puzzle for Adam: what should the precrash specs of read_ok and write_ok look like?
+ *)
+
 Theorem read_ok:
   forall T (a:addr) (rx : _ -> prog T),
   {{ fun precrash done crash => exists v F, a |-> v * F *
