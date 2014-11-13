@@ -128,7 +128,7 @@ Section Packer.
     unfold eq_rec_r, eq_rec.
     repeat rewrite eq_rect_double.
 
-    (* XXX messy eq_rect terms.. *)
+    (* XXX puzzle for Adam: what to do about these messy eq_rect terms? *)
     admit.
   Qed.
 
@@ -140,7 +140,7 @@ Section Packer.
     destruct (wlt_dec pos items_per_valu); auto.
     destruct (wlt_dec pos' items_per_valu); auto.
 
-    (* XXX messy *)
+    (* XXX puzzle for Adam: what to do about these messy eq_rect terms? *)
     admit.
   Qed.
 
