@@ -221,6 +221,7 @@ Module Rec.
     rewrite IHft. rewrite IHn. clear IHft. clear IHn.
     (* XXX this should be trivial, but "destruct v" results in ill-typed terms,
       and I don't know how else to prove it. *)
+    (* XXX puzzle for Adam *)
     admit.
   Qed.
 
