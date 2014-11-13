@@ -268,6 +268,7 @@ Module INODE.
     - rewrite map_rep_block_below; auto; omega.
     - rewrite selN_updN_ne; auto; omega.
     - replace (S iblock + xstart) with (iblock + S xstart) by omega; auto.
+      admit.
   Qed.
 
   Theorem iput_update : forall xlen inode l iblock ipos,
@@ -334,6 +335,7 @@ Module INODE.
     split. constructor.
 
     (* XXX here's where type checks take forever: e.g., if you run [assumption] *)
+    (* XXX puzzle for Adam: why is [assumption] taking forever? *)
 
     pred_apply.
     unfold rep_pair.
