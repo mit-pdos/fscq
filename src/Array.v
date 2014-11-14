@@ -482,25 +482,37 @@ Qed.
 Section LISTPRED.
 
   Variable T : Type.
-  Variable f : T -> pred.
-  Variable default : T.
+  Variable prd : T -> pred.
+  Variable def : T.
 
   Fixpoint listpred (ts : list T) :=
     match ts with
     | nil => emp
-    | t :: ts' => (f t) * listpred ts'
+    | t :: ts' => (prd t) * listpred ts'
     end%pred.
 
-  Theorem listpred_fwd : forall l i, i < length l
-    -> listpred l =p=> listpred (firstn i l) * (f (selN l i default)) * listpred (skipn (S i) l).
+  Theorem listpred_fwd : forall l i, 
+    i < length l ->
+      listpred l =p=> listpred (firstn i l) * (prd (selN l i def)) * listpred (skipn (S i) l).
   Proof.
-    admit.
+    induction l; simpl; intros; [omega |].
+    destruct i; simpl; cancel.
+    apply IHl; omega.
   Qed.
 
-  Theorem listpred_bwd : forall l i, i < length l
-    -> listpred (firstn i l) * (f (selN l i default)) * listpred (skipn (S i) l) =p=> listpred l.
+  Theorem listpred_bwd : forall l i, 
+    i < length l ->
+      listpred (firstn i l) * (prd (selN l i def)) * listpred (skipn (S i) l) =p=> listpred l.
   Proof.
-    admit.
+    induction l; simpl; intros; [omega |].
+    destruct i; [cancel | simpl].
+    destruct l; simpl in H; [omega |].
+    cancel.
+    eapply pimpl_trans; [ apply pimpl_sep_star |].
+    rewrite sep_star_comm1; apply pimpl_refl. 
+    apply pimpl_refl.
+    rewrite sep_star_comm1; rewrite sep_star_assoc_2.
+    assert (i < S (length l)) by omega; auto.
   Qed.
 
 End LISTPRED.
