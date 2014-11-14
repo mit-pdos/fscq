@@ -508,11 +508,9 @@ Section LISTPRED.
     destruct i; [cancel | simpl].
     destruct l; simpl in H; [omega |].
     cancel.
-    eapply pimpl_trans; [ apply pimpl_sep_star |].
-    rewrite sep_star_comm1; apply pimpl_refl. 
-    apply pimpl_refl.
-    rewrite sep_star_comm1; rewrite sep_star_assoc_2.
-    assert (i < S (length l)) by omega; auto.
+    eapply pimpl_trans; [| apply IHl ].
+    cancel.
+    omega.
   Qed.
 
 End LISTPRED.
