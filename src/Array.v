@@ -475,3 +475,32 @@ Theorem swap_ok : forall T a i j (rx : prog T),
 Proof.
   unfold swap; hoare.
 Qed.
+
+
+(* A general list predicate *)
+
+Section LISTPRED.
+
+  Variable T : Type.
+  Variable f : T -> pred.
+  Variable default : T.
+
+  Fixpoint listpred (ts : list T) :=
+    match ts with
+    | nil => emp
+    | t :: ts' => (f t) * listpred ts'
+    end%pred.
+
+  Theorem listpred_fwd : forall l i, i < length l
+    -> listpred l =p=> listpred (firstn i l) * (f (selN l i default)) * listpred (skipn (S i) l).
+  Proof.
+    admit.
+  Qed.
+
+  Theorem listpred_bwd : forall l i, i < length l
+    -> listpred (firstn i l) * (f (selN l i default)) * listpred (skipn (S i) l) =p=> listpred l.
+  Proof.
+    admit.
+  Qed.
+
+End LISTPRED.
