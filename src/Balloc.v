@@ -414,20 +414,19 @@ Module BALLOC.
 
   Hint Extern 1 ({{_}} progseq (alloc _) _) => apply alloc_ok : prog.
 
-(*
   Theorem free_recover_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
     PRE     LOG.rep lxp (ActiveTxn mbase m) *
             [[ (Fm * rep xp bmap)%pred m ]] *
-            [[ (bn < BmapLen xp)%word ]]
+            [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
     POST:r  [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
             [[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
+            [[ (Fm * rep xp (fupd bmap bn Avail))%pred m' ]]
     CRASH:r LOG.rep lxp (NoTransaction mbase)
-    IDEM    LOG.log_intact lxp mbase
     >} free lxp xp bn >> LOG.recover lxp.
   Proof.
-    intros.
+    unfold forall_helper; intros.
+    exists (LOG.log_intact lxp v0); intros.
     eapply pimpl_ok3.
     eapply corr3_from_corr2.
     eapply free_ok.
@@ -440,6 +439,5 @@ Module BALLOC.
     cancel.
     hoare.
   Qed.
-*)
 
 End BALLOC.
