@@ -29,6 +29,7 @@ Ltac set_evars_in H :=
 
 Ltac pred_apply := match goal with
   | [ H: _ ?m |- _ ?m ] => eapply pimpl_apply; [ | exact H ]
+  | [ |- exists _, _ ] => eexists; pred_apply
   end.
 
 Definition pred_fold_left (l : list pred) : pred :=

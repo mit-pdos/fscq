@@ -727,14 +727,10 @@ Module LOG.
     apply read_ok.
     cancel.
 
-    eexists.
-    pred_apply; cancel.
-
     step.
     cancel.
 
     cancel.
-    eexists; pred_apply; cancel.
     eapply pimpl_trans.
     eapply pimpl_sep_star; [ apply pimpl_refl |].
     apply isolate_fwd; eauto.
