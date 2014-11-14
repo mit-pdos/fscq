@@ -210,6 +210,21 @@ Module Rec.
     rewrite IHt. rewrite word2field2word. apply combine_split.
   Qed.
 
+  Theorem vector_hd_tl' : forall T n (v : Vector.t T n),
+    match n return Vector.t T n -> Prop with
+    | S n' => fun v' => Vector.cons T (Vector.hd v') _ (Vector.tl v') = v'
+    | O => fun _ => True
+    end v.
+  Proof.
+    destruct v; auto.
+  Qed.
+
+  Theorem vector_hd_tl : forall T n (v : Vector.t T (S n)),
+    Vector.cons T (Vector.hd v) _ (Vector.tl v) = v.
+  Proof.
+    intros.
+    apply vector_hd_tl' with (n := S n).
+  Qed.
 
   Theorem field2word2field : forall ft v, word2field (@field2word ft v) = v.
   Proof.
@@ -219,10 +234,7 @@ Module Rec.
     apply Vector.case0. reflexivity.
     simpl in v. simpl. simpl in IHn. rewrite split1_combine. rewrite split2_combine.
     rewrite IHft. rewrite IHn. clear IHft. clear IHn.
-    (* XXX this should be trivial, but "destruct v" results in ill-typed terms,
-      and I don't know how else to prove it. *)
-    (* XXX puzzle for Adam *)
-    admit.
+    apply vector_hd_tl.
   Qed.
 
   Theorem rec2word2rec : forall t r, word2rec t (rec2word r) = r.
