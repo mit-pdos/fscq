@@ -158,8 +158,6 @@ Module INODE.
     unfold iget_pair.
     hoare.
 
-    eexists. pred_apply. cancel.
-
     autorewrite with core. auto.
 
     subst. autorewrite with core. auto.
@@ -306,8 +304,6 @@ Module INODE.
   Proof.
     unfold iput_pair.
     step.
-
-    eexists. pred_apply. cancel.
 
     autorewrite with core. auto.
 
