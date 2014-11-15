@@ -38,9 +38,9 @@ Definition ptsto (a : addr) (v : valu) : pred :=
   fun m => exists x, m a = Some (v, x) /\ forall a', a <> a' -> m a' = None.
 Infix "|->" := ptsto (at level 35) : pred_scope.
 
-Definition ptsto_list (a : addr) (v : list valu) : pred :=
-  fun m => exists vs, m a = Some vs /\ v = valuset_list vs /\ forall a', a <> a' -> m a' = None.
-Infix "|=>" := ptsto_list (at level 35) : pred_scope.
+Definition ptsto_set (a : addr) (vs : valuset) : pred :=
+  fun m => m a = Some vs /\ forall a', a <> a' -> m a' = None.
+Infix "|=>" := ptsto_set (at level 35) : pred_scope.
 
 Notation "a |->?" := (exists v, a |-> v)%pred (at level 35) : pred_scope.
 
@@ -97,6 +97,8 @@ Infix "*" := sep_star : pred_scope.
 
 Definition indomain (a: addr) (m: mem) :=
   exists v, m a = Some v.
+
+Definition diskIs (m : mem) : pred := eq m.
 
 
 Ltac deex := match goal with
@@ -547,21 +549,22 @@ Proof.
   apply mem_union_addr; eauto.
 Qed.
 
+(*
 Lemma ptsto_upd:
-  forall a v v0 F m x,
+  forall a v v0 F m rest,
   (a |-> v0 * F)%pred m ->
-  (a |-> v * F)%pred (upd m a (v, (cons v0 x))).
+  (a |-> v * F)%pred (upd m a (v, (cons v0 rest))).
 Proof.
   unfold upd; unfold_sep_star; intros; repeat deex.
-  exists (fun a' => if addr_eq_dec a' a then Some v else None).
+  exists (fun a' => if addr_eq_dec a' a then Some (v, cons v0 rest) else None).
   exists x0.
   split; [|split].
   - apply functional_extensionality; intro.
     unfold mem_union; destruct (addr_eq_dec x1 a); eauto.
-    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
+    unfold ptsto in H1; repeat deex. rewrite H2; eauto.
   - unfold mem_disjoint in *. intuition. repeat deex.
     apply H. repeat eexists; eauto.
-    unfold ptsto in H1; destruct H1.
+    unfold ptsto in H1; repeat deex.
     destruct (addr_eq_dec x1 a); subst; eauto.
     pred.
   - intuition eauto.
@@ -569,6 +572,7 @@ Proof.
     destruct (addr_eq_dec a a); pred.
     destruct (addr_eq_dec a' a); pred.
 Qed.
+*)
 
 Lemma pimpl_and_split:
   forall a b c,
@@ -624,50 +628,6 @@ Proof.
   intros; subst; firstorder.
 Qed.
 
-Theorem diskIs_split : forall m a v,
-  (m @ a |-> v)
-  -> (diskIs m =p=> diskIs (mem_except m a) * a |-> v).
-Proof.
-  unfold pimpl, diskIs, ptsto; unfold_sep_star; intros; subst.
-  exists (fun a' => if addr_eq_dec a' a then None else m0 a').
-  exists (fun a' => if addr_eq_dec a' a then Some v else None).
-  intuition.
-  - unfold mem_union; apply functional_extensionality; intros.
-    destruct (addr_eq_dec x a); subst; auto.
-    destruct (m0 x); auto.
-  - unfold mem_disjoint; unfold not; intros. repeat deex.
-    destruct (addr_eq_dec x a); discriminate.
-  - destruct (addr_eq_dec a a); congruence.
-  - destruct (addr_eq_dec a' a); subst; congruence.
-Qed.
-
-Theorem diskIs_merge_upd : forall m a v,
-  diskIs (mem_except m a) * a |-> v =p=> diskIs (upd m a v).
-Proof.
-  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
-  apply functional_extensionality; intros.
-  case_eq (addr_eq_dec x a); intros; subst.
-  - rewrite mem_union_comm; auto.
-    erewrite mem_union_addr; eauto.
-    apply mem_disjoint_comm; auto.
-  - unfold mem_union, mem_except.
-    destruct (addr_eq_dec x a); try discriminate.
-    case_eq (m x); auto; intros.
-    rewrite H4; auto.
-Qed.
-
-Theorem diskIs_merge_except : forall m a v,
-  (m @ a |-> v)
-  -> (diskIs (mem_except m a) * a |-> v =p=> diskIs m).
-Proof.
-  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
-  apply functional_extensionality; intros.
-  unfold mem_union, mem_except.
-  destruct (addr_eq_dec x a); subst; try congruence.
-  destruct (m x); auto.
-  rewrite H5; auto; discriminate.
-Qed.
-
 Theorem sep_star_indomain : forall p q a,
   (p =p=> indomain a) ->
   (p * q =p=> indomain a).
@@ -686,13 +646,24 @@ Proof.
   firstorder.
 Qed.
 
-Theorem sep_star_ptsto_some : forall a v F m,
-  (a |-> v * F)%pred m -> m a = Some v.
+Theorem sep_star_ptsto_set_some : forall a v F m,
+  (a |=> v * F)%pred m -> m a = Some v.
 Proof.
-  unfold_sep_star;  unfold ptsto, mem_union.
+  unfold_sep_star; unfold ptsto_set, mem_union.
   intros.
   repeat deex.
   rewrite H2.
+  auto.
+Qed.
+
+Theorem sep_star_ptsto_some : forall a v F m,
+  (a |-> v * F)%pred m -> exists q, m a = Some (v, q).
+Proof.
+  unfold_sep_star; unfold ptsto, mem_union.
+  intros.
+  repeat deex.
+  eexists.
+  rewrite H1.
   auto.
 Qed.
 
@@ -700,9 +671,8 @@ Theorem sep_star_ptsto_indomain : forall a v F m,
   (a |-> v * F)%pred m -> indomain a m.
 Proof.
   intros.
-  eexists.
-  eapply sep_star_ptsto_some.
-  eauto.
+  eapply sep_star_ptsto_some in H.
+  repeat deex; eexists; eauto.
 Qed.
 
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
