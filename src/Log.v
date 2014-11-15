@@ -1052,4 +1052,7 @@ Module LOG.
     cancel.
   Qed.
 
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (log_intact _ _) (log_intact _ _)) => constructor : okToUnify.
+
 End LOG.
