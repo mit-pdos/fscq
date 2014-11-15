@@ -1,5 +1,6 @@
 Require Import Prog.
 Require Import Pred.
+Require Import Morphisms.
 
 Set Implicit Arguments.
 
@@ -199,4 +200,21 @@ Proof.
   eapply H.
   exists a; eauto.
   eauto.
+Qed.
+
+
+Instance corr2_proper {T : Set} :
+  Proper (pointwise_relation (donecond T) (pointwise_relation pred piff)
+          ==> eq ==> iff) (@corr2 T).
+Proof.
+  intros a b Hab x y Hxy; subst.
+  split; intros; eapply pimpl_ok2; try eassumption; apply Hab.
+Qed.
+
+Instance corr3_proper {T R : Set} :
+  Proper (pointwise_relation (donecond T) (pointwise_relation (donecond R) piff)
+          ==> eq ==> eq ==> iff) (@corr3 T R).
+Proof.
+  intros a b Hab x y Hxy p q Hpq; subst.
+  split; intros; eapply pimpl_ok3; try eassumption; apply Hab.
 Qed.
