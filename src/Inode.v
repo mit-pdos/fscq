@@ -303,46 +303,15 @@ Module INODE.
     >} iput_pair lxp xp iblock ipos i.
   Proof.
     unfold iput_pair.
-    step.
+    hoare_unfold LOG.unfold_intact.
 
+    (* Coq bug 3815 or 3816? *)
+    autorewrite with core. auto.
     autorewrite with core. auto.
 
-    step.
-
-    (* Coq bug 3312? *)
-    autorewrite with core. auto.
-
-    (* XXX Type checks take forever due to some expansion of addrlen.. *)
-  intros;
-  try cancel;
-  ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
-   || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
-   || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
-   || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ]));
-  intros; subst;
-  try ( cancel ).
-
-    apply pimpl_or_r. right.
-
-    norm.
-    cancel.
-
-    split. auto.
-    split. constructor.
-
-    (* XXX here's where type checks take forever: e.g., if you run [assumption] *)
-    (* XXX puzzle for Adam: why is [assumption] taking forever? *)
-
-    pred_apply.
+    apply pimpl_or_r. right. cancel.
     unfold rep_pair.
-    autorewrite with core.
     rewrite iput_update; auto.
-    cancel.
-
-    cancel.
-
-    cancel; unfold LOG.log_intact; cancel.
-    unfold LOG.log_intact; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (iget_pair _ _ _ _) _) => apply iget_pair_ok : prog.
