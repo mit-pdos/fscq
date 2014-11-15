@@ -10,10 +10,9 @@ Set Implicit Arguments.
 
 Definition donecond (T: Set) := T -> mem -> Prop.
 
-Definition corr2 (T: Set) (pre: pred -> donecond T -> pred -> pred) (p: prog T) :=
-  forall precrash done crash m pending out, pre precrash done crash m
-  -> (forall m', apply_some pending m m' -> precrash m')
-  -> exec m pending p out
+Definition corr2 (T: Set) (pre: donecond T -> pred -> pred) (p: prog T) :=
+  forall done crash m out, pre done crash m
+  -> exec m p out
   -> (exists m' v, out = Finished m' v /\ done v m') \/
      (exists m', out = Crashed T m' /\ crash m').
 
@@ -21,11 +20,10 @@ Notation "{{ pre }} p" := (corr2 pre%pred p)
   (at level 0, p at level 60).
 
 
-Definition corr3 (TF TR: Set) (pre: pred -> donecond TF -> donecond TR -> pred)
+Definition corr3 (TF TR: Set) (pre: donecond TF -> donecond TR -> pred)
                  (p1: prog TF) (p2: prog TR) :=
-  forall precrash done crashdone m pending out, pre precrash done crashdone m
-  -> (forall m', apply_some pending m m' -> precrash m')
-  -> exec_recover m pending p1 p2 out
+  forall done crashdone m out, pre done crashdone m
+  -> exec_recover m p1 p2 out
   -> (exists m' v, out = RFinished TR m' v /\ done v m') \/
      (exists m' v, out = RRecovered TF m' v /\ crashdone v m').
 
@@ -33,13 +31,12 @@ Notation "{{ pre }} p1 >> p2" := (corr3 pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
 
 
-Notation "{< e1 .. e2 , 'PRE' pre 'PRECRASH' precrash 'POST' : r post 'CRASH' crash >} p1" :=
+Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun precrash_ done_ crash_ =>
+   (fun done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F,
      F * pre *
-     [[ precrash_ = precrash ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun r => F * post) r_ * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] * [[ (F * crash)%pred =p=> crash_ ]]
@@ -59,7 +56,6 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash >} p1 >> p
    (fun done_ crashdone_ =>
      exists F,
      F * pre *
-     [[ precrash_ = precrash ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rp => F * post) r_ *
                                  [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
@@ -107,7 +103,7 @@ Theorem pimpl_ok2_cont :
 Proof.
   unfold corr2, pimpl; intros.
   edestruct H1; eauto.
-  eapply sep_star_lift_l in H5; [|instantiate (1:=([x=y])%pred)].
+  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
   unfold lift in *; subst; eauto.
   firstorder.
 Qed.
@@ -121,7 +117,7 @@ Theorem pimpl_ok3_cont :
 Proof.
   unfold corr3, pimpl; intros.
   edestruct H1; eauto.
-  eapply sep_star_lift_l in H5; [|instantiate (1:=([x=y])%pred)].
+  eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
   unfold lift in *; subst; eauto.
   firstorder.
 Qed.
@@ -168,10 +164,11 @@ Proof.
   eapply H; eauto.
 Qed.
 
+
 Theorem corr2_exists:
   forall T R pre (p: prog R),
-  (forall (a:T), {{ fun precrash done crash => pre precrash done crash a }} p)
-  -> {{ fun precrash done crash => exists a:T, pre precrash done crash a }} p.
+  (forall (a:T), {{ fun done crash => pre done crash a }} p)
+  -> {{ fun done crash => exists a:T, pre done crash a }} p.
 Proof.
   unfold corr2; intros.
   destruct H0.
@@ -180,8 +177,8 @@ Qed.
 
 Theorem corr3_exists:
   forall T RF RR pre (p: prog RF) (r: prog RR),
-  (forall (a:T), {{ fun precrash done crashdone => pre precrash done crashdone a }} p >> r)
-  -> {{ fun precrash done crashdone => exists a:T, pre precrash done crashdone a }} p >> r.
+  (forall (a:T), {{ fun done crashdone => pre done crashdone a }} p >> r)
+  -> {{ fun done crashdone => exists a:T, pre done crashdone a }} p >> r.
 Proof.
   unfold corr3; intros.
   destruct H0.
@@ -189,8 +186,8 @@ Proof.
 Qed.
 
 Theorem corr2_forall: forall T R pre (p: prog R),
-  {{ fun precrash done crash => exists a:T, pre precrash done crash a }} p
-  -> forall (a:T), {{ fun precrash done crash => pre precrash done crash a }} p.
+  {{ fun done crash => exists a:T, pre done crash a }} p
+  -> forall (a:T), {{ fun done crash => pre done crash a }} p.
 Proof.
   unfold corr2; intros.
   eapply H; eauto.
@@ -198,8 +195,8 @@ Proof.
 Qed.
 
 Theorem corr3_forall: forall T RF RR pre (p: prog RF) (r: prog RR),
-  {{ fun precrash done crashdone => exists a:T, pre precrash done crashdone a }} p >> r
-  -> forall (a:T), {{ fun precrash done crashdone => pre precrash done crashdone a }} p >> r.
+  {{ fun done crashdone => exists a:T, pre done crashdone a }} p >> r
+  -> forall (a:T), {{ fun done crashdone => pre done crashdone a }} p >> r.
 Proof.
   unfold corr3; intros.
   eapply H; eauto.
