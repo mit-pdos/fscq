@@ -776,5 +776,29 @@ Proof.
   reflexivity.
 Qed.
 
+(**
+ * The following variation is needed for situations where a [pred] containing
+ * an [exis] is applied to a [mem], and [setoid_rewrite] tries to rewrite the
+ * term that appears under [exis].
+ *)
+Instance exists_proper_impl {A : Type} :
+  Proper (pointwise_relation A piff ==> eq ==> iff) (@exis A).
+Proof.
+  intros a b Hab m1 m2 Hm.
+  split; unfold Basics.impl, exis; intros; deex; eexists.
+  eapply Hab; eauto.
+  eapply Hab; eauto.
+Qed.
+
+(**
+ * The following instance is needed to make [setoid_rewrite] fast on terms
+ * that involve [lift_empty].  Otherwise, typeclass search takes forever.
+ *)
+Instance lift_empty_proper :
+  Proper (iff ==> piff) lift_empty.
+Proof.
+  firstorder.
+Qed.
+
 Global Opaque sep_star.
 Global Opaque pred.
