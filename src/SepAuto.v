@@ -679,18 +679,16 @@ Ltac pimpl_crash :=
   try match goal with
   | [ |- _ =p=> emp * _ ] => eapply pimpl_trans; [| eapply pimpl_star_emp ]
   end;
-  match goal with
-  | [ |- _ =p=> ?crash ] =>
-    match goal with
-    | [ H: _ =p=> crash |- _ ] => eapply pimpl_trans; [| eexact H ]
-    | [ H: forall _, _ =p=> crash |- _ ] => eapply pimpl_trans; [| eapply H ]
-    end
-  end.
+  set_evars;
+  try match goal with
+  | [ H: _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
+  end;
+  subst_evars.
 
 Ltac cancel_with t :=
   intros;
   unfold stars; simpl; subst;
-  try pimpl_crash;
+  pimpl_crash;
   norm;
   try match goal with
       | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
