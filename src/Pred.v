@@ -76,8 +76,22 @@ Definition mem_union (m1 m2:mem) : mem := fun a =>
   | None => m2 a
   end.
 
-Definition sep_star (p1: pred) (p2: pred) : pred :=
+Definition sep_star_impl (p1: pred) (p2: pred) : pred :=
   fun m => exists m1 m2, m = mem_union m1 m2 /\ mem_disjoint m1 m2 /\ p1 m1 /\ p2 m2.
+
+Module Type SEP_STAR.
+  Parameter sep_star : pred -> pred -> pred.
+  Axiom sep_star_is : sep_star = sep_star_impl.
+End SEP_STAR.
+
+Module Sep_Star : SEP_STAR.
+  Definition sep_star := sep_star_impl.
+  Theorem sep_star_is : sep_star = sep_star_impl.
+  Proof. auto. Qed.
+End Sep_Star.
+
+Definition sep_star := Sep_Star.sep_star.
+Definition sep_star_is := Sep_Star.sep_star_is.
 Infix "*" := sep_star : pred_scope.
 
 Definition indomain (a: addr) (m: mem) :=
@@ -101,6 +115,8 @@ Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
       try autorewrite with core in *; eauto); try subst).
+Ltac unfold_sep_star :=
+  unfold sep_star; rewrite sep_star_is; unfold sep_star_impl.
 
 Theorem pimpl_refl : forall p, p =p=> p.
 Proof.
@@ -203,7 +219,7 @@ Theorem sep_star_comm1:
   forall p1 p2,
   (p1 * p2 =p=> p2 * p1)%pred.
 Proof.
-  unfold pimpl, sep_star; pred.
+  unfold pimpl; unfold_sep_star; pred.
   exists x0; exists x. intuition eauto using mem_union_comm. apply mem_disjoint_comm; auto.
 Qed.
 
@@ -218,7 +234,7 @@ Theorem sep_star_assoc_1:
   forall p1 p2 p3,
   (p1 * p2 * p3 =p=> p1 * (p2 * p3))%pred.
 Proof.
-  unfold pimpl, sep_star; pred.
+  unfold pimpl; unfold_sep_star; pred.
   exists x1; exists (mem_union x2 x0); intuition.
   apply mem_union_assoc; auto.
   apply mem_disjoint_assoc_1; auto.
@@ -230,7 +246,7 @@ Theorem sep_star_assoc_2:
   forall p1 p2 p3,
   (p1 * (p2 * p3) =p=> p1 * p2 * p3)%pred.
 Proof.
-  unfold pimpl, sep_star; pred.
+  unfold pimpl; unfold_sep_star; pred.
   exists (mem_union x x1); exists x2; intuition.
   rewrite mem_union_assoc; auto.
   apply mem_disjoint_comm. eapply mem_disjoint_union. apply mem_disjoint_comm.
@@ -276,7 +292,7 @@ Lemma pimpl_exists_l_star:
   ((exists x:T, p x * r) =p=> q) ->
   (exists x:T, p x) * r =p=> q.
 Proof.
-  unfold pimpl, sep_star, exis; intros.
+  unfold pimpl, exis; unfold_sep_star; intros.
   repeat deex.
   eapply H.
   do 3 eexists.
@@ -287,7 +303,7 @@ Lemma pimpl_exists_r_star:
   forall T p q,
   (exists x:T, p x * q) =p=> ((exists x:T, p x) * q).
 Proof.
-  unfold pimpl, sep_star, exis; intros.
+  unfold pimpl, exis; unfold_sep_star; intros.
   repeat deex.
   do 2 eexists.
   intuition eauto.
@@ -372,7 +388,7 @@ Lemma pimpl_sep_star:
   (b =p=> d) ->
   (a * b =p=> c * d).
 Proof.
-  unfold pimpl, sep_star; intros.
+  unfold pimpl; unfold_sep_star; intros.
   do 2 deex.
   do 2 eexists.
   intuition eauto.
@@ -400,7 +416,7 @@ Lemma sep_star_lift_l:
   (a -> (b =p=> c)) ->
   b * [[a]] =p=> c.
 Proof.
-  unfold pimpl, lift_empty, sep_star; intros.
+  unfold pimpl, lift_empty; unfold_sep_star; intros.
   repeat deex.
   assert (mem_union x x0 = x).
   apply functional_extensionality; unfold mem_union; intros.
@@ -413,7 +429,7 @@ Lemma sep_star_lift_r':
   (a =p=> [b] /\ c) ->
   (a =p=> [[b]] * c).
 Proof.
-  unfold pimpl, lift_empty, and, sep_star; intros.
+  unfold pimpl, lift_empty, and; unfold_sep_star; intros.
   exists (fun _ => None).
   exists m.
   intuition firstorder.
@@ -434,7 +450,7 @@ Qed.
 Theorem sep_star_lift_apply : forall (a : Prop) (b : pred) (m : mem),
   (b * [[a]])%pred m -> (b m /\ a).
 Proof.
-  unfold lift_empty, sep_star; intros.
+  unfold lift_empty; unfold_sep_star; intros.
   repeat deex.
   assert (mem_union x x0 = x).
   apply functional_extensionality; unfold mem_union; intros.
@@ -444,7 +460,7 @@ Qed.
 
 Lemma pimpl_star_emp: forall p, p =p=> emp * p.
 Proof.
-  unfold sep_star, pimpl; intros.
+  unfold pimpl; unfold_sep_star; intros.
   repeat eexists; eauto.
   unfold mem_union; eauto.
   unfold mem_disjoint; pred.
@@ -452,7 +468,7 @@ Qed.
 
 Lemma star_emp_pimpl: forall p, emp * p =p=> p.
 Proof.
-  unfold sep_star, pimpl; intros.
+  unfold pimpl; unfold_sep_star; intros.
   unfold emp in *; pred.
   assert (mem_union x x0 = x0).
   apply functional_extensionality; unfold mem_union; intros.
@@ -469,7 +485,7 @@ Lemma piff_star_r: forall a b c,
   (a <=p=> b) ->
   (a * c <=p=> b * c).
 Proof.
-  unfold piff, sep_star, pimpl; intuition;
+  unfold piff, pimpl; unfold_sep_star; intuition;
     repeat deex; repeat eexists; eauto.
 Qed.
 
@@ -477,7 +493,7 @@ Lemma piff_star_l: forall a b c,
   (a <=p=> b) ->
   (c * a <=p=> c * b).
 Proof.
-  unfold piff, sep_star, pimpl; intuition;
+  unfold piff, pimpl; unfold_sep_star; intuition;
     repeat deex; repeat eexists; eauto.
 Qed.
 
@@ -503,7 +519,7 @@ Lemma sep_star_lift2and:
   forall a b,
   (a * [[b]]) =p=> a /\ [b].
 Proof.
-  unfold sep_star, and, lift, lift_empty, pimpl.
+  unfold and, lift, lift_empty, pimpl; unfold_sep_star.
   intros; repeat deex.
   assert (mem_union x x0 = x).
   apply functional_extensionality; intros.
@@ -515,7 +531,7 @@ Lemma sep_star_and2lift:
   forall a b,
   (a /\ [b]) =p=> (a * [[b]]).
 Proof.
-  unfold sep_star, and, lift, lift_empty, pimpl.
+  unfold and, lift, lift_empty, pimpl; unfold_sep_star.
   intros; repeat deex.
   do 2 eexists; intuition; eauto.
   - unfold mem_union.
@@ -531,7 +547,7 @@ Lemma ptsto_valid:
   (a |-> v * F)%pred m
   -> m a = Some v.
 Proof.
-  unfold sep_star, ptsto.
+  unfold ptsto; unfold_sep_star.
   intros; repeat deex.
   apply mem_union_addr; eauto.
 Qed.
@@ -541,7 +557,7 @@ Lemma ptsto_upd:
   (a |-> v0 * F)%pred m ->
   (a |-> v * F)%pred (upd m a v).
 Proof.
-  unfold sep_star, upd; intros; repeat deex.
+  unfold upd; unfold_sep_star; intros; repeat deex.
   exists (fun a' => if addr_eq_dec a' a then Some v else None).
   exists x0.
   split; [|split].
@@ -617,7 +633,7 @@ Theorem diskIs_split : forall m a v,
   (m @ a |-> v)
   -> (diskIs m =p=> diskIs (mem_except m a) * a |-> v).
 Proof.
-  unfold pimpl, diskIs, sep_star, ptsto; intros; subst.
+  unfold pimpl, diskIs, ptsto; unfold_sep_star; intros; subst.
   exists (fun a' => if addr_eq_dec a' a then None else m0 a').
   exists (fun a' => if addr_eq_dec a' a then Some v else None).
   intuition.
@@ -633,7 +649,7 @@ Qed.
 Theorem diskIs_merge_upd : forall m a v,
   diskIs (mem_except m a) * a |-> v =p=> diskIs (upd m a v).
 Proof.
-  unfold pimpl, diskIs, sep_star, ptsto, upd; intros; subst; repeat deex.
+  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
   apply functional_extensionality; intros.
   case_eq (addr_eq_dec x a); intros; subst.
   - rewrite mem_union_comm; auto.
@@ -649,7 +665,7 @@ Theorem diskIs_merge_except : forall m a v,
   (m @ a |-> v)
   -> (diskIs (mem_except m a) * a |-> v =p=> diskIs m).
 Proof.
-  unfold pimpl, diskIs, sep_star, ptsto, upd; intros; subst; repeat deex.
+  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
   apply functional_extensionality; intros.
   unfold mem_union, mem_except.
   destruct (addr_eq_dec x a); subst; try congruence.
@@ -661,7 +677,7 @@ Theorem sep_star_indomain : forall p q a,
   (p =p=> indomain a) ->
   (p * q =p=> indomain a).
 Proof.
-  unfold pimpl, sep_star, indomain, mem_union.
+  unfold_sep_star; unfold pimpl, indomain, mem_union.
   intros.
   repeat deex.
   edestruct H; eauto.
@@ -678,7 +694,7 @@ Qed.
 Theorem sep_star_ptsto_some : forall a v F m,
   (a |-> v * F)%pred m -> m a = Some v.
 Proof.
-  unfold ptsto, sep_star, mem_union.
+  unfold_sep_star;  unfold ptsto, mem_union.
   intros.
   repeat deex.
   rewrite H2.
@@ -700,7 +716,7 @@ Theorem sep_star_or_distr : forall a b c,
   (a * (b \/ c))%pred <=p=> (a * b \/ a * c)%pred.
 Proof.
   split.
-  - unfold sep_star, pimpl, or.
+  - unfold_sep_star; unfold pimpl, or.
     intros; repeat deex.
     + left. do 2 eexists. eauto.
     + right. do 2 eexists. eauto.
@@ -801,5 +817,4 @@ Proof.
   firstorder.
 Qed.
 
-Global Opaque sep_star.
 Global Opaque pred.
