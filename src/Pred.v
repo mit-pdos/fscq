@@ -101,6 +101,10 @@ Definition indomain (a: addr) (m: mem) :=
 Definition diskIs (m : mem) : pred := eq m.
 
 
+Definition crash_xform (p : pred) : pred :=
+  fun m => exists m', p m' /\ possible_crash m' m.
+
+
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
              end.
@@ -536,6 +540,16 @@ Proof.
   - unfold mem_disjoint, not; intros.
     repeat deex.
     congruence.
+Qed.
+
+Lemma ptsto_set_valid:
+  forall a vs F m,
+  (a |=> vs * F)%pred m
+  -> m a = Some vs.
+Proof.
+  unfold ptsto_set, exis; unfold_sep_star.
+  intros; repeat deex.
+  apply mem_union_addr; eauto.
 Qed.
 
 Lemma ptsto_valid:
