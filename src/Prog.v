@@ -38,7 +38,7 @@ Inductive prog (T: Set) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
 | Write (a: addr) (v: valu) (rx: unit -> prog T)
-| Sync (rx: unit -> prog T).
+| Sync (a: addr) (rx: unit -> prog T).
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 
@@ -46,45 +46,42 @@ Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right asso
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
 
 
-Definition mem := addr -> option valu.
-Definition upd (m : mem) (a : addr) (v : valu) : mem :=
-  fun a' => if addr_eq_dec a' a then Some v else m a'.
+Definition valuset := (valu * list valu)%type.
+Definition valuset_list (vs : valuset) := fst vs :: snd vs.
+
+Definition mem := addr -> option valuset.
+Definition upd (m : mem) (a : addr) (vs : valuset) : mem :=
+  fun a' => if addr_eq_dec a' a then Some vs else m a'.
 
 Inductive outcome (T: Set) :=
 | Failed
 | Finished (m: mem) (v: T)
 | Crashed (m: mem).
 
-Fixpoint apply_writes pending m :=
-  match pending with
-  | nil => m
-  | (a, v) :: rest => upd (apply_writes rest m) a v
-  end.
+Definition possible_crash (m m' : mem) : Prop :=
+  forall a,
+  (m a = None /\ m' a = None) \/
+  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
 
-Inductive apply_some : list (addr*valu)%type -> mem -> mem -> Prop :=
-  | KeepOneWrite: forall a v m m' pending, apply_some pending m m'
-    -> apply_some ((a, v) :: pending) m (upd m' a v)
-  | DropOneWrite: forall a v m m' pending, apply_some pending m m'
-    -> apply_some ((a, v) :: pending) m m'.
-
-Inductive exec (T: Set) : mem -> list (addr*valu)%type -> prog T -> outcome T -> Prop :=
-| XReadFail : forall m pending a rx, apply_writes pending m a = None
-  -> exec m pending (Read a rx) (Failed T)
-| XWriteFail : forall m pending a v rx, apply_writes pending m a = None
-  -> exec m pending (Write a v rx) (Failed T)
-| XReadOK : forall m pending a v rx out, apply_writes pending m a = Some v
-  -> exec m pending (rx v) out
-  -> exec m pending (Read a rx) out
-| XWriteOK : forall m pending a v v0 rx out, apply_writes pending m a = Some v0
-  -> exec m ((a, v) :: pending) (rx tt) out
-  -> exec m pending (Write a v rx) out
-| XSync : forall m pending rx out, exec (apply_writes pending m) nil (rx tt) out
-  -> exec m pending (Sync rx) out
-| XCrash : forall m pending p m', apply_some pending m m'
-  -> exec m pending p (Crashed T m')
-(* Note: the "Done" operation ignores possible crash states;
- * we assume Done is like sync *)
-| XDone : forall m pending v, exec m pending (Done v) (Finished m v).
+Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
+| XReadFail : forall m a rx, m a = None
+  -> exec m (Read a rx) (Failed T)
+| XReadOK : forall m a v rx out x, m a = Some (v, x)
+  -> exec m (rx v) out
+  -> exec m (Read a rx) out
+| XWriteFail : forall m a v rx, m a = None
+  -> exec m (Write a v rx) (Failed T)
+| XWriteOK : forall m a v v0 rx out x, m a = Some (v0, x)
+  -> exec (upd m a (v, v0 :: x)) (rx tt) out
+  -> exec m (Write a v rx) out
+| XSyncFail : forall m a rx, m a = None
+  -> exec m (Sync a rx) (Failed T)
+| XSyncOK : forall m a rx v out x, m a = Some (v, x)
+  -> exec (upd m a (v, nil)) (rx tt) out
+  -> exec m (Sync a rx) out
+| XCrash : forall m p m', possible_crash m m'
+  -> exec m p (Crashed T m')
+| XDone : forall m v, exec m (Done v) (Finished m v).
 
 Hint Constructors exec.
 
@@ -95,21 +92,20 @@ Inductive recover_outcome (TF TR: Set) :=
 | RRecovered (m: mem) (v: TR).
 
 Inductive exec_recover (TF TR: Set)
-  : mem -> list (addr*valu)%type ->
-    prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
-| XRFail : forall m pending p1 p2, exec m pending p1 (Failed TF)
-  -> exec_recover m pending p1 p2 (RFailed TF TR)
-| XRFinished : forall m pending p1 p2 m' (v: TF), exec m pending p1 (Finished m' v)
-  -> exec_recover m pending p1 p2 (RFinished TR m' v)
-| XRCrashedFailed : forall m pending p1 p2 m', exec m pending p1 (Crashed TF m')
-  -> @exec_recover TR TR m' nil p2 p2 (RFailed TR TR)
-  -> exec_recover m pending p1 p2 (RFailed TF TR)
-| XRCrashedFinished : forall m pending p1 p2 m' m'' (v: TR), exec m pending p1 (Crashed TF m')
-  -> @exec_recover TR TR m' nil p2 p2 (RFinished TR m'' v)
-  -> exec_recover m pending p1 p2 (RRecovered TF m'' v)
-| XRCrashedRecovered : forall m pending p1 p2 m' m'' (v: TR), exec m pending p1 (Crashed TF m')
-  -> @exec_recover TR TR m' nil p2 p2 (RRecovered TR m'' v)
-  -> exec_recover m pending p1 p2 (RRecovered TF m'' v).
+  : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
+| XRFail : forall m p1 p2, exec m p1 (Failed TF)
+  -> exec_recover m p1 p2 (RFailed TF TR)
+| XRFinished : forall m p1 p2 m' (v: TF), exec m p1 (Finished m' v)
+  -> exec_recover m p1 p2 (RFinished TR m' v)
+| XRCrashedFailed : forall m p1 p2 m', exec m p1 (Crashed TF m')
+  -> @exec_recover TR TR m' p2 p2 (RFailed TR TR)
+  -> exec_recover m p1 p2 (RFailed TF TR)
+| XRCrashedFinished : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
+  -> @exec_recover TR TR m' p2 p2 (RFinished TR m'' v)
+  -> exec_recover m p1 p2 (RRecovered TF m'' v)
+| XRCrashedRecovered : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
+  -> @exec_recover TR TR m' p2 p2 (RRecovered TR m'' v)
+  -> exec_recover m p1 p2 (RRecovered TF m'' v).
 
 Hint Constructors exec_recover.
 
@@ -143,11 +139,8 @@ Theorem upd_comm: forall m a0 v0 a1 v1, a0 <> a1
   -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (addr_eq_dec a1 x); case_eq (addr_eq_dec a0 x); intros; subst.
-  rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
-  rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
-  rewrite upd_ne; auto. rewrite upd_eq; auto. rewrite upd_eq; auto.
-  rewrite upd_ne; auto. rewrite upd_ne; auto. rewrite upd_ne; auto. rewrite upd_ne; auto.
+  case_eq (addr_eq_dec a1 x); case_eq (addr_eq_dec a0 x); intros; subst; try congruence;
+  repeat ( ( rewrite upd_ne by auto ) || ( rewrite upd_eq by auto ) ); auto.
 Qed.
 
 Lemma addrlen_valulen: addrlen + (valulen - addrlen) = valulen.

@@ -9,10 +9,6 @@ Set Implicit Arguments.
 (** ** Predicates *)
 
 Definition pred := mem -> Prop.
-
-Definition ptsto (a : addr) (v : valu) : pred :=
-  fun m => m a = Some v /\ forall a', a <> a' -> m a' = None.
-Infix "|->" := ptsto (at level 35) : pred_scope.
 Bind Scope pred_scope with pred.
 Delimit Scope pred_scope with pred.
 
@@ -35,6 +31,15 @@ Notation "'foral' x .. y , p" := (foral_ (fun x => .. (foral_ (fun y => p)) ..))
 Definition exis A (p : A -> pred) : pred :=
   fun m => exists x, p x m.
 Notation "'exists' x .. y , p" := (exis (fun x => .. (exis (fun y => p)) ..)) : pred_scope.
+
+Definition ptsto (a : addr) (v : valu) : pred :=
+  fun m => exists x, m a = Some (v, x) /\ forall a', a <> a' -> m a' = None.
+Infix "|->" := ptsto (at level 35) : pred_scope.
+
+Definition ptsto_list (a : addr) (v : list valu) : pred :=
+  fun m => exists vs, m a = Some vs /\ v = valuset_list vs /\ forall a', a <> a' -> m a' = None.
+Infix "|=>" := ptsto_list (at level 35) : pred_scope.
+
 Notation "a |->?" := (exists v, a |-> v)%pred (at level 35) : pred_scope.
 
 Definition uniqpred A (p : A -> pred) (x : A) :=
@@ -61,10 +66,6 @@ Notation "p ==> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
 Definition piff (p q : pred) : Prop := (p ==> q) /\ (q ==> p).
 Notation "p <==> q" := (piff p%pred q%pred) (at level 90).
 
-Definition pupd (p : pred) (a : addr) (v : valu) : pred :=
-  fun m => exists m', p m' /\ m = upd m' a v.
-Notation "p [ a <--- v ]" := (pupd p a v) (at level 0) : pred_scope.
-
 Definition mem_disjoint (m1 m2:mem) :=
   ~ exists a v1 v2, m1 a = Some v1 /\ m2 a = Some v2.
 
@@ -81,20 +82,13 @@ Infix "*" := sep_star : pred_scope.
 Definition indomain (a: addr) (m: mem) :=
   exists v, m a = Some v.
 
-Definition diskIs (m : mem) : pred := eq m.
-Definition diskptsto (m : mem) (a : addr) (v : valu) := m a = Some v.
-Notation "m @ a |-> v" := (diskptsto m a v) (a at level 34, at level 35).
-
-Definition mem_except (m: mem) (a: addr) :=
-  fun a' => if addr_eq_dec a' a then None else m a'.
-
 
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
              end.
 
 Ltac pred_unfold :=
-  unfold impl, and, or, foral_, exis, uniqpred, lift, pupd in *.
+  unfold impl, and, or, foral_, exis, uniqpred, lift in *.
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
@@ -516,17 +510,18 @@ Qed.
 Lemma ptsto_valid:
   forall a v F m,
   (a |-> v * F)%pred m
-  -> m a = Some v.
+  -> exists x, m a = Some (v, x).
 Proof.
   unfold sep_star, ptsto.
   intros; repeat deex.
+  eexists.
   apply mem_union_addr; eauto.
 Qed.
 
 Lemma ptsto_upd:
-  forall a v v0 F m,
+  forall a v v0 F m x,
   (a |-> v0 * F)%pred m ->
-  (a |-> v * F)%pred (upd m a v).
+  (a |-> v * F)%pred (upd m a (v, (cons v0 x))).
 Proof.
   unfold sep_star, upd; intros; repeat deex.
   exists (fun a' => if addr_eq_dec a' a then Some v else None).
