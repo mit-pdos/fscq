@@ -48,10 +48,6 @@ Module FILE.
     hoare.
     unfold iget_blocknum.
     instantiate (a2 := l). cancel.
-    eexists.
-    pred_apply.
-    unfold iget_blocknum.
-    subst.
     cancel.
     LOG.unfold_intact.
     cancel.
