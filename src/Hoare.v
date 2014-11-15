@@ -39,7 +39,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
      F * pre *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun r => F * post) r_ * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
-        }} rx r_ ]] * [[ (F * crash)%pred =p=> crash_ ]]
+        }} rx r_ ]] * [[ (crash_xform F * crash)%pred =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -58,11 +58,11 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash >} p1 >> p
      F * pre *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rp => F * post) r_ *
-                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> crash_xform F * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rc => F * crash) r_ *
-                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> crash_xform F * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
    (p1 rxOK)%pred

@@ -7,6 +7,7 @@ Require Import Word.
 Require Import Nomega.
 Require Import NArith.
 Require Import FunctionalExtensionality.
+Require Import List.
 
 Set Implicit Arguments.
 
@@ -28,35 +29,32 @@ Ltac inv_option :=
 
 Ltac inv_exec :=
   match goal with
-  | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
-(* XXX puzzle for Adam: what should the precrash specs of read_ok and write_ok look like?
- *)
-
 Theorem read_ok:
-  forall T (a:addr) (rx : _ -> prog T),
-  {{ fun precrash done crash => exists v F, a |-> v * F *
-     [[ precrash ==> crash ]] *
-     [[ forall r, {{ fun precrash' done' crash' => a |-> v * [[ r = v ]] * F *
-                     [[ done' = done ]] * [[ crash' = crash ]] }} rx r ]] *
-     [[ a |-> v * F ==> crash ]]
-  }} Read a rx.
+  forall (a:addr),
+  {< v,
+  PRE    a |=> v
+  POST:r a |=> v * [[ r = (fst v) ]]
+  CRASH  crash_xform (a |=> v)
+  >} Read a.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_valid in H.
+  - apply sep_star_comm in H; apply ptsto_set_valid in H.
     congruence.
   - eapply H2. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_assoc. apply sep_star_and2lift; split; unfold lift; eauto.
-    apply sep_star_comm in H; apply ptsto_valid in H.
+    apply sep_star_comm in H; apply ptsto_set_valid in H.
     repeat inv_option. eauto.
-  - (* XXX abuse the fact that corr2 starts with just one in-flight write *)
-    inversion H3; subst.
-    right. eexists; intuition eauto.
-    inversion H0.
+  - right. eexists; intuition eauto.
+    unfold possible_crash, crash_xform in *.
+    apply H1.
+    (* XXX need the predicate transformer for crashes.. *)
+
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
