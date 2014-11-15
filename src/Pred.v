@@ -34,13 +34,13 @@ Definition exis A (p : A -> pred) : pred :=
   fun m => exists x, p x m.
 Notation "'exists' x .. y , p" := (exis (fun x => .. (exis (fun y => p)) ..)) : pred_scope.
 
-Definition ptsto (a : addr) (v : valu) : pred :=
-  fun m => exists x, m a = Some (v, x) /\ forall a', a <> a' -> m a' = None.
-Infix "|->" := ptsto (at level 35) : pred_scope.
-
 Definition ptsto_set (a : addr) (vs : valuset) : pred :=
   fun m => m a = Some vs /\ forall a', a <> a' -> m a' = None.
 Infix "|=>" := ptsto_set (at level 35) : pred_scope.
+
+Definition ptsto (a : addr) (v : valu) : pred :=
+  (exists x, a |=> (v, x))%pred.
+Infix "|->" := ptsto (at level 35) : pred_scope.
 
 Notation "a |->?" := (exists v, a |-> v)%pred (at level 35) : pred_scope.
 
@@ -543,7 +543,7 @@ Lemma ptsto_valid:
   (a |-> v * F)%pred m
   -> exists x, m a = Some (v, x).
 Proof.
-  unfold ptsto; unfold_sep_star.
+  unfold ptsto, ptsto_set, exis; unfold_sep_star.
   intros; repeat deex.
   eexists.
   apply mem_union_addr; eauto.
@@ -659,7 +659,7 @@ Qed.
 Theorem sep_star_ptsto_some : forall a v F m,
   (a |-> v * F)%pred m -> exists q, m a = Some (v, q).
 Proof.
-  unfold_sep_star; unfold ptsto, mem_union.
+  unfold_sep_star; unfold ptsto, ptsto_set, mem_union, exis.
   intros.
   repeat deex.
   eexists.
