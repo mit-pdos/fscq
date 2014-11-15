@@ -1,6 +1,7 @@
 Require Import Prog.
 Require Import Pred.
 Require Import List.
+Require Import Morphisms.
 
 Set Implicit Arguments.
 
@@ -41,39 +42,42 @@ Notation "{< e1 .. e2 , 'PRE' pre 'PRECRASH' precrash 'POST' : r post 'CRASH' cr
      [[ precrash_ = precrash ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun r => F * post) r_ * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
-        }} rx r_ ]] *
-     [[ (F * crash)%pred ==> crash_ ]]
+        }} rx r_ ]] * [[ (F * crash)%pred =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
   (at level 0, p1 at level 60, e1 binder, e2 binder, r at level 0).
 
-Notation "{< e1 .. e2 , 'PRE' pre 'PRECRASH' precrash 'POST' : rp post 'CRASH' : rc crash 'IDEM' idemcrash >} p1 >> p2" :=
-  (forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR), corr3
-   (fun precrash_ done_ crashdone_ =>
-    (exis (fun e1 => .. (exis (fun e2 =>
+Definition forall_helper T (p : T -> Prop) :=
+  forall v, p v.
+
+Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash >} p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   exists idemcrash,
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3
+   (fun done_ crashdone_ =>
      exists F,
      F * pre *
      [[ precrash_ = precrash ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rp => F * post) r_ *
-                                 [[ done'_ = done_ ]] * [[ crash'_ ==> F * idemcrash ]]
+                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rc => F * crash) r_ *
-                                 [[ done'_ = crashdone_ ]] * [[ crash'_ ==> F * idemcrash ]]
+                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
         }} rxREC r_ ]]
-     )) .. ))
    )%pred
    (p1 rxOK)%pred
-   (p2 rxREC)%pred)
+   (p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder, rp at level 0, rc at level 0).
 
 
 Theorem pimpl_ok2:
   forall T pre pre' (pr: prog T),
   {{pre'}} pr ->
-  (forall precrash done crash, pre precrash done crash ==> pre' precrash done crash) ->
+  (forall done crash, pre done crash =p=> pre' done crash) ->
   {{pre}} pr.
 Proof.
   unfold corr2; intros.
@@ -85,7 +89,7 @@ Qed.
 Theorem pimpl_ok3:
   forall TF TR pre pre' (p: prog TF) (r: prog TR),
   {{pre'}} p >> r ->
-  (forall precrash done crashdone, pre precrash done crashdone ==> pre' precrash done crashdone) ->
+  (forall done crashdone, pre done crashdone =p=> pre' done crashdone) ->
   {{pre}} p >> r.
 Proof.
   unfold corr3; intros.
@@ -97,8 +101,8 @@ Qed.
 Theorem pimpl_ok2_cont :
   forall T pre pre' A (k : A -> prog T) x y,
   {{pre'}} k y ->
-  (forall precrash done crash, pre precrash done crash ==> pre' precrash done crash) ->
-  (forall precrash done crash, pre precrash done crash ==> exists F, F * [[x = y]]) ->
+  (forall done crash, pre done crash =p=> pre' done crash) ->
+  (forall done crash, pre done crash =p=> exists F, F * [[x = y]]) ->
   {{pre}} k x.
 Proof.
   unfold corr2, pimpl; intros.
@@ -111,8 +115,8 @@ Qed.
 Theorem pimpl_ok3_cont :
   forall TF TR pre pre' A (k : A -> prog TF) x y (r: prog TR),
   {{pre'}} k y >> r ->
-  (forall precrash done crashdone, pre precrash done crashdone ==> pre' precrash done crashdone) ->
-  (forall precrash done crashdone, pre precrash done crashdone ==> exists F, F * [[x = y]]) ->
+  (forall done crashdone, pre done crashdone =p=> pre' done crashdone) ->
+  (forall done crashdone, pre done crashdone =p=> exists F, F * [[x = y]]) ->
   {{pre}} k x >> r.
 Proof.
   unfold corr3, pimpl; intros.
@@ -124,8 +128,8 @@ Qed.
 
 Theorem pimpl_pre2:
   forall T pre pre' (pr: prog T),
-  (forall precrash done crash, pre precrash done crash ==> [{{pre'}} pr])
-  -> (forall precrash done crash, pre precrash done crash ==> pre' precrash done crash)
+  (forall done crash, pre done crash =p=> [{{pre' done crash}} pr])
+  -> (forall done crash, pre done crash =p=> pre' done crash done crash)
   -> {{pre}} pr.
 Proof.
   unfold corr2; intros.
@@ -136,8 +140,8 @@ Qed.
 
 Theorem pimpl_pre3:
   forall TF TR pre pre' (p: prog TF) (r: prog TR),
-  (forall precrash done crashdone, pre precrash done crashdone ==> [{{pre'}} p >> r])
-  -> (forall precrash done crashdone, pre precrash done crashdone ==> pre' precrash done crashdone)
+  (forall done crashdone, pre done crashdone =p=> [{{pre' done crashdone}} p >> r])
+  -> (forall done crashdone, pre done crashdone =p=> pre' done crashdone done crashdone)
   -> {{pre}} p >> r.
 Proof.
   unfold corr3; intros.
@@ -148,7 +152,7 @@ Qed.
 
 Theorem pre_false2:
   forall T pre (p: prog T),
-  (forall precrash done crash, pre precrash done crash ==> [False])
+  (forall done crash, pre done crash =p=> [False])
   -> {{ pre }} p.
 Proof.
   unfold corr2; intros; exfalso.
@@ -157,7 +161,7 @@ Qed.
 
 Theorem pre_false3:
   forall TF TR pre (p: prog TF) (r: prog TR),
-  (forall precrash done crashdone, pre precrash done crashdone ==> [False])
+  (forall done crashdone, pre done crashdone =p=> [False])
   -> {{ pre }} p >> r.
 Proof.
   unfold corr3; intros; exfalso.
@@ -200,4 +204,21 @@ Proof.
   unfold corr3; intros.
   eapply H; eauto.
   exists a; eauto.
+Qed.
+
+
+Instance corr2_proper {T : Set} :
+  Proper (pointwise_relation (donecond T) (pointwise_relation pred piff)
+          ==> eq ==> iff) (@corr2 T).
+Proof.
+  intros a b Hab x y Hxy; subst.
+  split; intros; eapply pimpl_ok2; try eassumption; apply Hab.
+Qed.
+
+Instance corr3_proper {T R : Set} :
+  Proper (pointwise_relation (donecond T) (pointwise_relation (donecond R) piff)
+          ==> eq ==> eq ==> iff) (@corr3 T R).
+Proof.
+  intros a b Hab x y Hxy p q Hpq; subst.
+  split; intros; eapply pimpl_ok3; try eassumption; apply Hab.
 Qed.

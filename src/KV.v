@@ -8,6 +8,7 @@ Require Import BasicProg.
 Require Import Arith.
 Require Import Omega.
 Require Import Array.
+Require Import Psatz.
 
 Import ListNotations.
 
@@ -21,6 +22,15 @@ Definition empty_entry : entry := ($0, $0).
 
 Definition list_prefix A (p l : list A) :=
   firstn (length p) l = p.
+
+Lemma list_prefix_length: forall T (a b : list T), list_prefix a b
+  -> length a <= length b.
+Proof.
+  unfold list_prefix; intros.
+  rewrite <- H.
+  rewrite firstn_length.
+  lia.
+Qed.
 
 Definition rep l :=
   (exists diskl,
@@ -73,10 +83,22 @@ Theorem get_ok: forall k,
 Proof.
   unfold get, rep.
   hoare.
-  admit.
-  admit.
+
+  simpl_list.
+  eapply lt_le_trans; [| apply list_prefix_length; eauto ].
+  wordcmp.
+  eapply le_trans; [ apply list_prefix_length; eauto |].
+  wordcmp.
+
+  simpl_list.
+  eapply lt_le_trans; [| apply list_prefix_length; eauto ].
+  wordcmp.
+  eapply le_trans; [ apply list_prefix_length; eauto |].
+  wordcmp.
+
   admit.
 Qed.
+
 
 Definition put T k v (rx : bool -> prog T) :=
   l <- Read $0;
@@ -105,6 +127,7 @@ Proof.
 
   apply pimpl_or_r. right. cancel.
   instantiate (a := (upd l0 $ (length l) (k, v))).
+  autorewrite_fast.
   rewrite addr2valu2addr. rewrite app_length. rewrite natToWord_plus. cancel.
   admit.
 
@@ -113,7 +136,7 @@ Proof.
 
   apply pimpl_or_r. left. cancel.
   instantiate (a := (upd l0 $ (length l) (k, v))).
-  rewrite addr2valu2addr. autorewrite with core. cancel.
+  rewrite addr2valu2addr. autorewrite_fast. cancel.
   autorewrite_fast; auto.
   admit.
 
@@ -121,7 +144,7 @@ Proof.
 
   apply pimpl_or_r. left. cancel.
   instantiate (a := (upd l0 $ (length l) (k, v))).
-  rewrite addr2valu2addr. autorewrite with core. cancel.
+  rewrite addr2valu2addr. autorewrite_fast. cancel.
   autorewrite_fast; auto.
   admit.
 

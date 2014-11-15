@@ -13,6 +13,7 @@ Require Import Bool.
 Require Import Nomega.
 Require Import Idempotent.
 Require Import Psatz.
+Require Import AddrMap.
 
 Set Implicit Arguments.
 
@@ -45,25 +46,10 @@ Module BALLOC.
           (map (fun nblock => blockbits bmap (nblock * valulen))
                (seq 0 (wordToNat (BmapNBlocks xp)))) $1.
 
-  Definition bupd (m : addr -> alloc_state) n a :=
-    fun n' => if addr_eq_dec n n' then a else m n'.
-
-  Lemma bupd_same: forall m n n' a,
-    n = n' -> bupd m n a n' = a.
-  Proof.
-    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
-  Qed.
-
-  Lemma bupd_other: forall m n n' a,
-    n <> n' -> bupd m n a n' = m n'.
-  Proof.
-    intros; unfold bupd; destruct (addr_eq_dec n n'); congruence.
-  Qed.
-
-  Theorem selN_list_eq' : forall len vs vs',
+  Theorem selN_list_eq' : forall A len (vs vs' : list A) default,
     length vs = len
     -> length vs' = len
-    -> (forall i, i < len -> selN vs i = selN vs' i)
+    -> (forall i, i < len -> selN vs i default = selN vs' i default)
     -> vs = vs'.
   Proof.
     induction len.
@@ -71,39 +57,23 @@ Module BALLOC.
     - destruct vs; destruct vs'; simpl; intros; try congruence.
       f_equal.
       apply (H1 0); omega.
-      apply IHlen; eauto.
+      eapply IHlen; eauto.
       intros.
       apply (H1 (S i)); omega.
   Qed.
 
-  Theorem selN_list_eq : forall vs vs',
+  Theorem selN_list_eq : forall A (vs vs' : list A) default,
     length vs = length vs'
-    -> (forall i, i < length vs -> selN vs i = selN vs' i)
+    -> (forall i, i < length vs -> selN vs i default = selN vs' i default)
     -> vs = vs'.
   Proof.
     intros.
     eapply selN_list_eq'; [ apply eq_refl | auto | auto ].
   Qed.
 
-  Theorem selN_map_seq' : forall i n f base, i < n
-    -> selN (map f (seq base n)) i = f (i + base).
-  Proof.
-    induction i; destruct n; simpl; intros; try omega; auto.
-    replace (S (i + base)) with (i + (S base)) by omega.
-    apply IHi; omega.
-  Qed.
-
-  Theorem selN_map_seq : forall i n f, i < n
-    -> selN (map f (seq 0 n)) i = f i.
-  Proof.
-    intros.
-    replace i with (i + 0) at 2 by omega.
-    apply selN_map_seq'; auto.
-  Qed.
-
   Theorem selN_updN_ne : forall vs n n' v, n < length vs
     -> n <> n'
-    -> selN (updN vs n v) n' = selN vs n'.
+    -> selN (updN vs n v) n' ($0 : valu) = selN vs n' ($0 : valu).
   Proof.
     induction vs; destruct n'; destruct n; simpl; intuition; try omega.
   Qed.
@@ -116,17 +86,17 @@ Module BALLOC.
     (bnblock ^* $ valulen <= bn)%word
     -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
     -> i <> wordToNat bnblock
-    -> blockbits (bupd bmap bn x) (i * valulen) = blockbits bmap (i * valulen).
+    -> blockbits (fupd bmap bn x) (i * valulen) = blockbits bmap (i * valulen).
   Proof.
     unfold blockbits.
     intros.
     f_equal.
-    apply selN_list_eq; autorewrite with core; auto.
+    eapply selN_list_eq with (default:=$0); autorewrite with core; auto.
 
     intros.
     repeat rewrite selN_map_seq; auto.
     f_equal.
-    rewrite bupd_other; auto.
+    rewrite fupd_other; auto.
     unfold not in *; intros; apply H1; clear H1; subst.
     admit.
   Qed.
@@ -155,14 +125,14 @@ Module BALLOC.
        fold_right (wor (sz:=valulen)) $ (0)
          (map
             (fun i : nat =>
-             alloc_state_to_valu (bupd bmap bn Avail $ (wordToNat bnblock * valulen + i)) i)
+             alloc_state_to_valu (fupd bmap bn Avail $ (wordToNat bnblock * valulen + i)) i)
             (seq start vlen)).
   Proof.
     induction vlen; simpl; intros.
     rewrite wand_kill; auto.
     rewrite wand_or_distr; f_equal.
     - destruct (weq bn $ (wordToNat bnblock * valulen + start)).
-      + subst. rewrite bupd_same; auto. simpl.
+      + subst. rewrite fupd_same; auto. simpl.
         destruct (bmap $ (wordToNat bnblock * valulen + start)); simpl; try apply wand_kill.
         replace ($ (wordToNat bnblock * valulen + start) ^- bnblock ^* $ valulen)
           with ($ start : addr) by words.
@@ -171,7 +141,7 @@ Module BALLOC.
         erewrite wordToNat_natToWord_bound; try omega.
         eapply le_trans; [| apply valulen_bound ].
         omega.
-      + rewrite bupd_other; auto.
+      + rewrite fupd_other; auto.
         destruct (bmap $ (wordToNat bnblock * valulen + start)); simpl; try apply wand_kill.
         rewrite wbit_and_not_other; auto.
         erewrite wordToNat_natToWord_bound; try omega.
@@ -193,7 +163,7 @@ Module BALLOC.
     -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
     -> blockbits bmap (wordToNat bnblock * valulen)
          ^& wnot (wbit valulen (bn ^- bnblock ^* $ (valulen))) =
-       blockbits (bupd bmap bn Avail) (wordToNat bnblock * valulen).
+       blockbits (fupd bmap bn Avail) (wordToNat bnblock * valulen).
   Proof.
     intros.
     unfold blockbits.
@@ -205,7 +175,7 @@ Module BALLOC.
     -> (bn < bnblock ^* $ valulen ^+ $ valulen)%word
     -> blockbits bmap (wordToNat bnblock * valulen)
          ^| wbit valulen (bn ^- bnblock ^* $ valulen) =
-       blockbits (bupd bmap bn InUse) (wordToNat bnblock * valulen).
+       blockbits (fupd bmap bn InUse) (wordToNat bnblock * valulen).
   Proof.
     intros.
     unfold blockbits.
@@ -219,16 +189,16 @@ Module BALLOC.
     -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
                         (seq 0 (wordToNat nblocks)))
     -> array astart (upd oldblocks bnblock
-                         (sel oldblocks bnblock ^&
+                         (sel oldblocks bnblock $0 ^&
                           wnot (wbit valulen (bn ^- bnblock ^* $ valulen)))) =
        array astart
-         (map (fun nblock => blockbits (bupd bmap bn Avail) (nblock * valulen))
+         (map (fun nblock => blockbits (fupd bmap bn Avail) (nblock * valulen))
               (seq 0 (wordToNat nblocks))).
   Proof.
     intros.
     f_equal.
     unfold upd.
-    apply selN_list_eq.
+    eapply selN_list_eq.
     - subst; autorewrite with core. auto.
     - unfold sel; intros.
       apply wlt_lt in H1 as H1'.
@@ -236,9 +206,8 @@ Module BALLOC.
       + rewrite selN_updN_eq; autorewrite with core; auto.
         repeat rewrite selN_map_seq; auto.
         erewrite blockbits_bupd_same_avail; eauto.
-      + rewrite selN_updN_ne; autorewrite with core; auto.
-        autorewrite with core in *.
-        repeat rewrite selN_map_seq; auto.
+      + autorewrite with core in *.
+        rewrite selN_updN_ne; autorewrite with core; auto.
         erewrite blockbits_bupd_other; eauto.
   Qed.
 
@@ -248,16 +217,16 @@ Module BALLOC.
     -> oldblocks = (map (fun nblock => blockbits bmap (nblock * valulen))
                         (seq 0 (wordToNat nblocks)))
     -> array astart (upd oldblocks bnblock
-                         (sel oldblocks bnblock ^| wbit valulen bnoff)) =
+                         (sel oldblocks bnblock $0 ^| wbit valulen bnoff)) =
        array astart
-         (map (fun nblock => blockbits (bupd bmap (bnblock ^* $ valulen ^+ bnoff) InUse)
+         (map (fun nblock => blockbits (fupd bmap (bnblock ^* $ valulen ^+ bnoff) InUse)
                                        (nblock * valulen))
               (seq 0 (wordToNat nblocks))).
   Proof.
     intros.
     f_equal.
     unfold upd.
-    apply selN_list_eq.
+    eapply selN_list_eq.
     - subst; autorewrite with core. auto.
     - unfold sel; intros.
       apply wlt_lt in H0 as H0'.
@@ -303,7 +272,7 @@ Module BALLOC.
            [[ (Fm * rep xp bmap)%pred m ]] *
            [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
     POST:r ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]) \/
+            [[ (Fm * rep xp (fupd bmap bn Avail))%pred m' ]]) \/
            ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
     CRASH  LOG.log_intact lxp mbase
     >} free lxp xp bn.
@@ -311,17 +280,18 @@ Module BALLOC.
     unfold free, rep, LOG.log_intact.
     hoare.
 
-    apply wlt_lt in H2.
-    ring_simplify ($ 0 ^* $ valulen : addr) in H2; simpl in H2; omega.
-
-    eexists; pred_apply. cancel.
+    apply wlt_lt in H3.
+    ring_simplify ($ 0 ^* $ valulen : addr) in H3; simpl in H3; omega.
 
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
 
     eapply pimpl_or_r; left.
     cancel.
+    admit.
+(*
     erewrite upd_bupd_avail; eauto.
+*)
 
     rewrite wmult_plus_distr in *.
     rewrite wmult_unit in *.
@@ -408,7 +378,7 @@ Module BALLOC.
 
   Theorem sel_avail : forall bmap bnblock bnoff nblocks,
      sel (map (fun nblock => blockbits bmap (nblock * valulen))
-              (seq 0 (wordToNat nblocks))) bnblock ^& wbit valulen bnoff = $ 0
+              (seq 0 (wordToNat nblocks))) bnblock $0 ^& wbit valulen bnoff = $ 0
     -> (bnblock < nblocks)%word
     -> (bnoff < $ valulen)%word
     -> bmap (bnblock ^* $ valulen ^+ bnoff) = Avail.
@@ -425,40 +395,41 @@ Module BALLOC.
     POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
            LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (Fm * rep xp (bupd bmap bn InUse))%pred m' ]]
+           [[ (Fm * rep xp (fupd bmap bn InUse))%pred m' ]]
     CRASH  LOG.log_intact lxp mbase
     >} alloc lxp xp.
   Proof.
     unfold alloc, rep, LOG.log_intact.
     hoare.
 
-    eexists. pred_apply. cancel.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
     rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
 
     apply pimpl_or_r. right.
     cancel.
 
-    eapply sel_avail; eauto.
+    eapply sel_avail; try autorewrite_fast; eauto.
+    admit.
+(*
     erewrite upd_bupd_inuse; eauto.
+*)
   Qed.
 
   Hint Extern 1 ({{_}} progseq (alloc _) _) => apply alloc_ok : prog.
 
-(*
   Theorem free_recover_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
     PRE     LOG.rep lxp (ActiveTxn mbase m) *
             [[ (Fm * rep xp bmap)%pred m ]] *
-            [[ (bn < BmapLen xp)%word ]]
+            [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
     POST:r  [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
             [[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (Fm * rep xp (bupd bmap bn Avail))%pred m' ]]
+            [[ (Fm * rep xp (fupd bmap bn Avail))%pred m' ]]
     CRASH:r LOG.rep lxp (NoTransaction mbase)
-    IDEM    LOG.log_intact lxp mbase
     >} free lxp xp bn >> LOG.recover lxp.
   Proof.
-    intros.
+    unfold forall_helper; intros.
+    exists (LOG.log_intact lxp v0); intros.
     eapply pimpl_ok3.
     eapply corr3_from_corr2.
     eapply free_ok.
@@ -468,9 +439,7 @@ Module BALLOC.
     cancel.
     hoare.
     cancel.
-    cancel.
     hoare.
   Qed.
-*)
 
 End BALLOC.

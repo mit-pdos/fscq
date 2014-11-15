@@ -1,10 +1,7 @@
 Require Import Arith List String Omega. 
-Require Import Pred.
 Require Import Word.
-Require Import Prog.
-Require Import Hoare.
-Require Import SepAuto.
-Require Import BasicProg.
+
+Require Coq.Vectors.VectorDef.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -12,84 +9,125 @@ Open Scope string_scope.
 Set Implicit Arguments.
 
 Module Rec.
-  
-  Definition rectype := list (string * nat).
-  
+
+  Inductive fieldtype :=
+    | WordF : nat -> fieldtype
+    | ArrayF : fieldtype -> nat -> fieldtype.
+
+  Fixpoint fielddata (t : fieldtype) : Type :=
+    match t with
+    | WordF l => word l
+    | ArrayF t' l => Vector.t (fielddata t') l
+    end.
+
+  Fixpoint fieldlen (t : fieldtype) : nat :=
+    match t with
+    | WordF l => l
+    | ArrayF t' l => l * fieldlen t'
+    end.
+
+  Definition rectype := list (string * fieldtype).
+
   Fixpoint recdata (t : rectype) : Type := 
     match t with
-      | nil => unit
-      | (_, n) :: t' => word n * recdata t'
+    | [] => unit
+    | (_, ft) :: t' => fielddata ft * recdata t'
     end%type.
 
+  Fixpoint reclen (t : rectype) : nat :=
+    match t with
+    | [] => 0
+    | (_, ft) :: t' => fieldlen ft + reclen t'
+    end.
+
   Inductive field_in : rectype -> string -> Prop :=
-  | FE : forall t n w, field_in ((n, w) :: t) n
-  | FS : forall t n n' w, field_in t n -> field_in ((n',w) :: t) n.
+  | FE : forall t n ft, field_in ((n, ft) :: t) n
+  | FS : forall t n n' ft, field_in t n -> field_in ((n', ft) :: t) n.
 
   Lemma empty_field_in : forall n, ~(field_in nil n).
   Proof.
     intros n f. inversion f.
   Qed.
 
-  Lemma field_in_next : forall t n n' w, n' <> n -> field_in ((n',w) :: t) n -> field_in t n.
+  Lemma field_in_next : forall t n n' ft, n' <> n -> field_in ((n',ft) :: t) n -> field_in t n.
   Proof.
-    intros t n n' w ne f. inversion f; subst.
+    intros t n n' ft ne f. inversion f; subst.
     contradiction ne. reflexivity.
     apply H3.
   Qed.
 
-  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : nat :=
-    match t as t return (field_in t n -> nat) with
+  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : fieldtype :=
+    match t as t return (field_in t n -> fieldtype) with
     | nil => fun f => match (empty_field_in f) with end
-    | (n0, w0)::_ => fun f =>
+    | (n0, ft0)::_ => fun f =>
       match (string_dec n0 n) with
-      | left _ => w0
+      | left _ => ft0
       | right ne => field_type (field_in_next ne f)
       end
     end f.
 
-  Fixpoint recget (t : rectype) (n : string) (r : recdata t) (p : field_in t n) : word (field_type p) :=
-    match t as t return (recdata t -> forall f : field_in t n, word (field_type f)) with
+  Fixpoint recget {t : rectype} {n : string} (p : field_in t n) (r : recdata t) : fielddata (field_type p) :=
+    match t as t return (recdata t -> forall f : field_in t n, fielddata (field_type f)) with
     | [] => fun _ f => match (empty_field_in f) with end
-    | (n0, w0) :: t' =>
+    | (n0, ft0) :: t' =>
       fun r f =>
       let (v, r') := r in
       match (string_dec n0 n) as s
-        return (word
+        return (fielddata
             match s with
-            | left _ => w0
+            | left _ => ft0
             | right ne => field_type (field_in_next ne f)
             end)
       with
       | left _ => v
-      | right ne => recget r' (field_in_next ne f)
+      | right ne => recget (field_in_next ne f) r'
       end
     end r p.
 
-(*
-  Fixpoint recset (t : rectype) (n : string) (r : recdata t) (p : field_in t n) (v : word (field_type p)) : recdata t.
-    destruct p; destruct r.
-    + constructor. apply v. assumption.
-    + constructor.
-      apply u.
-      apply recset with (n := n) (p := p).
-      apply r.
-      apply v.
+  Fixpoint recset {t : rectype} {n : string} (p : field_in t n) (r : recdata t) (v : fielddata (field_type p)) {struct t} : recdata t.
+    destruct t. contradiction (empty_field_in p).
+    destruct p0 as [n0 ft0]. destruct r as [v0 r'].
+    simpl in v.
+    destruct (string_dec n0 n) as [eq|neq]; constructor.
+    apply v. apply r'.
+    apply v0. apply (recset t n (field_in_next neq p) r' v).
   Defined.
-  
-  Print recset.
-  *)
+  (* TODO: define recset without tactics (somewhat messy) *)
+
+  Theorem set_get_same : forall t n p r v, @recget t n p (recset p r v) = v.
+  Proof.
+    induction t; intros.
+    contradiction (empty_field_in p).
+    destruct a as [n0 ft0]. destruct r as [v0 r'].
+    simpl in v. simpl. destruct (string_dec n0 n).
+    trivial. apply IHt.
+  Defined.
+
+  Theorem set_get_other : forall t n1 p1 n2 p2 r v, n1 <> n2 ->
+    recget p1 r = @recget t n1 p1 (@recset t n2 p2 r v).
+  Proof.
+    induction t; intros n1 p1 n2 p2 r v neq.
+    contradiction (empty_field_in p1).
+    destruct a as [n0 ft0]. destruct r as [v0 r'].
+    simpl in v. simpl. destruct (string_dec n0 n2); destruct (string_dec n0 n1); subst.
+    rewrite e0 in neq. contradiction neq. trivial.
+    trivial.
+    trivial.
+    apply IHt. assumption.
+  Qed.
+
   Fixpoint fieldp (t : rectype) (n : string) : option (field_in t n) :=
     match t as t return (option (field_in t n)) with
     | [] => None
-    | (n0, w0) :: t' =>
+    | (n0, l0) :: t' =>
       match (string_dec n0 n) with
       | left e =>
           eq_rec_r
-            (fun n1 => option (field_in ((n1, w0) :: t') n))
-            (Some (FE t' n w0)) e
+            (fun n1 => option (field_in ((n1, l0) :: t') n))
+            (Some (FE t' n l0)) e
       | right _ =>
         match (fieldp t' n) with
-        | Some f => Some (FS n0 w0 f)
+        | Some f => Some (FS n0 l0 f)
         | None => None
         end
       end
@@ -98,34 +136,127 @@ Module Rec.
   Definition recget' {t : rectype} (n : string) (r : recdata t) :=
     match fieldp t n as fp
           return (match fp with 
-                    | Some p => word (field_type p)
+                    | Some p => fielddata (field_type p)
                     | None => True
                   end) with
-      | Some p => recget r p
+      | Some p => recget p r
       | None => I
     end.
-  
-  (* TODO 
-  Definition recset' {t : rectype} {w : nat} (n : string) (r : recdata t) (v : word w) :=
+
+  Definition recset' {t : rectype} (n : string) (r : recdata t) :=
     match fieldp t n as fp
-          return (match fp with 
-                    | Some p =>
-                      match N.eq_dec w (field_type t n p) (*TODO*) with
-                        | recdata t
-                        |   
+          return (recdata t -> match fp with
+                    | Some p => fielddata (field_type p) -> recdata t
                     | None => True
                   end) with
-      | Some p => recset r p v
-      | None => I
+      | Some p => fun r v => recset p r v
+      | None => fun _ => I
+    end r.
+
+  Fixpoint field2word {ft : fieldtype} : fielddata ft -> word (fieldlen ft) :=
+    match ft as ft return (fielddata ft -> word (fieldlen ft)) with
+    | WordF n => fun v => v
+    | ArrayF ft0 n as ft =>
+      (fix arrayf2word n v :=
+        match n as n0 return (fielddata (ArrayF ft0 n0) -> word (fieldlen (ArrayF ft0 n0))) with
+        | 0 => fun _ => WO
+        | S n0 =>
+            fun v0 =>
+            combine (field2word (Vector.hd v0)) (arrayf2word n0 (Vector.tl v0))
+        end v) n
     end.
-*)
-  
-  Notation "r :-> n" := (recget' n r) (at level 80).
-  
-  Definition inodetype : rectype := [("free", 1); ("len", 16); ("block0", 16)].
-  Definition inode1 : recdata inodetype := ($1, ($11, ($1677, tt))).
-  Parameter inode2 : recdata inodetype.
-  Definition foo := Eval compute in inode2 :-> "len".
-  Extraction Language Haskell.
-  Extraction foo.
+
+  Fixpoint rec2word {t : rectype} (r : recdata t) : word (reclen t) :=
+    match t as t return recdata t -> word (reclen t) with
+    | nil => fun _ => WO
+    | (_, _) :: _ => fun r =>
+      let (v, r') := r in combine (field2word v) (rec2word r')
+    end r.
+
+  Fixpoint word2field {ft : fieldtype} : word (fieldlen ft) -> fielddata ft :=
+    match ft as ft return (word (fieldlen ft) -> fielddata ft) with
+    | WordF n => fun w => w
+    | ArrayF ft0 n as ft =>
+      (fix word2arrayf n w :=
+        match n as n return (word (fieldlen (ArrayF ft0 n)) -> fielddata (ArrayF ft0 n)) with
+        | 0 => fun _ => Vector.nil (fielddata ft0)
+        | S n' => fun w0 => Vector.cons (fielddata ft0)
+          (word2field (split1 (fieldlen ft0) _ w0)) n'
+          (word2arrayf n' (split2 (fieldlen ft0) _ w0))
+        end w) n
+    end.
+
+  Fixpoint word2rec (t : rectype) (w : word (reclen t)) : recdata t :=
+    match t as t return word (reclen t) -> recdata t with
+    | nil => fun _ => tt
+    | (_, ft) :: t' => fun w =>
+      (word2field (split1 (fieldlen ft) (reclen t') w), 
+       word2rec t' (split2 (fieldlen ft) (reclen t') w))
+    end w.
+
+  Theorem word2field2word : forall ft w, field2word (@word2field ft w) = w.
+  Proof.
+    induction ft; intro w.
+    reflexivity.
+    induction n.
+    auto.
+    simpl in w. simpl. simpl in IHn. rewrite IHn. rewrite IHft. apply combine_split.
+  Qed.
+
+  Theorem word2rec2word : forall t w, rec2word (word2rec t w) = w.
+  Proof.
+    induction t. auto.
+    intro w. destruct a as [n l]. simpl.
+    rewrite IHt. rewrite word2field2word. apply combine_split.
+  Qed.
+
+  Theorem vector_hd_tl' : forall T n (v : Vector.t T n),
+    match n return Vector.t T n -> Prop with
+    | S n' => fun v' => Vector.cons T (Vector.hd v') _ (Vector.tl v') = v'
+    | O => fun _ => True
+    end v.
+  Proof.
+    destruct v; auto.
+  Qed.
+
+  Theorem vector_hd_tl : forall T n (v : Vector.t T (S n)),
+    Vector.cons T (Vector.hd v) _ (Vector.tl v) = v.
+  Proof.
+    intros.
+    apply vector_hd_tl' with (n := S n).
+  Qed.
+
+  Theorem field2word2field : forall ft v, word2field (@field2word ft v) = v.
+  Proof.
+    induction ft; intro v.
+    reflexivity.
+    induction n.
+    apply Vector.case0. reflexivity.
+    simpl in v. simpl. simpl in IHn. rewrite split1_combine. rewrite split2_combine.
+    rewrite IHft. rewrite IHn. clear IHft. clear IHn.
+    apply vector_hd_tl.
+  Qed.
+
+  Theorem rec2word2rec : forall t r, word2rec t (rec2word r) = r.
+  Proof.
+    induction t; intro r.
+    destruct r. reflexivity.
+    destruct a as [n l]. destruct r. simpl.
+    rewrite split1_combine. rewrite split2_combine. rewrite field2word2field. rewrite IHt.
+    reflexivity.
+  Qed.
+
+  Arguments word2rec : simpl never.
+  Arguments rec2word : simpl never.
 End Rec.
+
+Notation "r :-> n" := (Rec.recget' n r) (at level 80).
+Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
+
+(*
+Definition inodetype : Rec.rectype := [("free", Rec.WordF 1); ("len", Rec.WordF 16); ("block0", Rec.WordF 16)].
+Definition inode1 : Rec.recdata inodetype := ($1, ($11, ($1677, tt))).
+Parameter inode2 : Rec.recdata inodetype.
+Definition foo := Eval compute in inode2 :-> "len".
+Definition foo2 := Eval compute in inode2 :=> "len" := $17.
+*)

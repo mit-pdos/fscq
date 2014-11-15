@@ -5,6 +5,9 @@ Require Import Nomega.
 Require Import Wf_nat.
 Require Import Eqdep.
 Require Import Program.Tactics.
+Require Import Recdef.
+Require Import Ring.
+Require Import Ring_polynom.
 
 Set Implicit Arguments.
 
@@ -471,10 +474,11 @@ Definition wordBin (f : N -> N -> N) sz (x y : word sz) : word sz :=
 
 Definition wplus := wordBin Nplus.
 Definition wmult := wordBin Nmult.
+Definition wdiv := wordBin Ndiv.
+Definition wmod := wordBin Nmod.
 Definition wmult' sz (x y : word sz) : word sz := 
   split2 sz sz (NToWord (sz + sz) (Nmult (wordToN x) (wordToN y))).
 Definition wminus sz (x y : word sz) : word sz := wplus x (wneg y).
-
 Definition wnegN sz (x : word sz) : word sz :=
   natToWord sz (pow2 sz - wordToNat x).
 
@@ -503,6 +507,8 @@ Notation "^~" := wneg.
 Notation "l ^+ r" := (@wplus _ l%word r%word) (at level 50, left associativity).
 Notation "l ^* r" := (@wmult _ l%word r%word) (at level 40, left associativity).
 Notation "l ^- r" := (@wminus _ l%word r%word) (at level 50, left associativity).
+Notation "l ^/ r" := (@wdiv _ l%word r%word) (at level 50, left associativity).
+Notation "l ^% r" := (@wmod _ l%word r%word) (at level 50, left associativity).
 
 Theorem wordToN_nat : forall sz (w : word sz), wordToN w = N_of_nat (wordToNat w).
   induction w; intuition.
@@ -888,6 +894,30 @@ Definition wring8 := wring 8.
 Add Ring wring8 : wring8 (decidable (weqb_sound 8), constants [wcst]).
 *)
 
+Ltac noptac x := idtac.
+
+Ltac PackWring sz F :=
+  let RNG := (fun proj => proj
+    inv_morph_nothing inv_morph_nothing noptac noptac
+    (word sz) (@eq (word sz)) (wzero sz) (wone sz)
+    (@wplus sz) (@wmult sz) (@wminus sz) (@wneg sz)
+    (BinNums.Z) (BinNums.N) (id_phi_N)
+    (pow_N (wone sz) (@wmult sz))
+    (ring_correct (@Eqsth (word sz))
+                  (Eq_ext _ _ _)
+                  (Rth_ARth (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz))
+                  (gen_phiZ_morph (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz))
+                  (pow_N_th _ _ (@Eqsth (word sz)))
+                  (triv_div_th (@Eqsth (word sz))
+                               (Eq_ext _ _ _)
+                               (Rth_ARth (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz))
+                               (gen_phiZ_morph (@Eqsth (word sz)) (Eq_ext _ _ _) (wring sz)))
+    )
+    tt) in
+  F RNG (@nil (word sz)) (@nil (word sz)).
+
+Ltac ring_sz sz := PackWring sz Ring_gen.
+
 
 (** * Bitwise operators *)
 
@@ -1058,6 +1088,13 @@ Proof.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
   f_equal. eapply IHa. 
   destruct (wordToN a); destruct (wordToN (wtl b0)); try congruence.
+Qed.
+Lemma wordToNat_inj : forall sz (a b : word sz),
+  wordToNat a = wordToNat b -> a = b.
+Proof.
+  intros; apply wordToN_inj.
+  repeat rewrite wordToN_nat.
+  apply Nat2N.inj_iff; auto.
 Qed.
 Lemma unique_inverse : forall sz (a b1 b2 : word sz),
   a ^+ b1 = wzero _ ->
@@ -1339,6 +1376,12 @@ Proof.
   apply wlt_lt.
 Qed.
 
+Ltac wlt_ind :=
+  match goal with
+  | [ |- forall (n: word ?len), ?P ] =>
+    refine (well_founded_ind (@wlt_wf len) (fun n => P) _)
+  end.
+
 Theorem word0: forall (w : word 0), w = WO.
 Proof.
   firstorder.
@@ -1516,23 +1559,10 @@ Proof.
   repeat rewrite div2_pow2_twice.
   eapply IHsz; try omega.
 
-  (* ring isn't defined over arbitrary sizes, so do this by hand... *)
-  unfold not in *; intros; apply H1.
-  replace (n1) with ((n1 ^- $1) ^+ $1).
-  rewrite H2.
-  rewrite wminus_def.
-  rewrite <- wplus_assoc.
-  rewrite <- (wplus_comm $1).
-  rewrite wminus_inv.
-  rewrite wplus_comm.
-  apply wplus_unit.
-
-  rewrite wminus_def.
-  rewrite <- wplus_assoc.
-  rewrite <- (wplus_comm $1).
-  rewrite wminus_inv.
-  rewrite wplus_comm.
-  apply wplus_unit.
+  apply word_neq.
+  unfold not in *; intros; apply H1; clear H1.
+  apply sub_0_eq; rewrite <- H2.
+  ring_sz sz'.
 Qed.
 
 Theorem wbit_and_not: forall sz sz' (n : word sz'), (wordToNat n < sz)%nat
@@ -1590,11 +1620,8 @@ Proof.
   unfold not in *; intros; apply H1.
   apply sub_0_eq.
   rewrite <- H2.
-  apply sub_0_eq.
-  (* XXX *)
-  admit.
+  ring_sz sz'.
 Qed.
-
 
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
@@ -1602,3 +1629,14 @@ Close Scope word_scope.
 (* Don't allow simpl to expand out these functions *)
 Arguments natToWord : simpl never.
 Arguments weq : simpl never.
+
+(* Making wlt_dec opaque is necessary to prevent the [exact H] in the
+ * example below from blowing up..
+ *)
+Global Opaque wlt_dec.
+Definition test_wlt_f (a : nat) (b : nat) : nat :=
+  if wlt_dec (natToWord 64 a) $0 then 0 else 0.
+Theorem test_wlt_f_example: forall x y z, test_wlt_f x y = 0 -> test_wlt_f x z = 0.
+  intros.
+  exact H.
+Qed.

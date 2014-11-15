@@ -215,14 +215,11 @@ Theorem for_ok':
        {{ fun done' crash' => F * nocrash g (n ^+ i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
-   * [[F * crashed g ==> crash]]
+   * [[F * crashed g =p=> crash]]
   }} (For_ f i n li nocrash crashed rx).
 Proof.
   intro T.
-  match goal with
-  | [ |- forall (n: addr), ?P ] =>
-    refine (well_founded_ind (@wlt_wf addrlen) (fun n => P) _)
-  end.
+  wlt_ind.
 
   intros.
   apply corr2_exists; intros.
@@ -234,17 +231,11 @@ Proof.
       rewrite For_step.
       eapply pimpl_ok2.
       simpl; eauto.
-      instantiate (1:=(fun _ _ => a * nocrash a0 ($ (0) ^+ i) li)%pred).
-      intros; simpl.
-      (* XXX something wrong with the done'=done requirements *)
-Admitted.
-
-(*
-      eapply H3.
-      apply H1.
+      intros.
+      apply pimpl_refl.
     + fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
 
-  - eapply pimpl_pre; repeat ( apply sep_star_lift_l; intros ).
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + assert (wordToNat x <> 0).
       unfold not in *; intros; apply n.
       rewrite <- H5; rewrite natToWord_wordToNat; auto.
@@ -260,7 +251,7 @@ Admitted.
       omega.
 
       intros.
-      eapply pimpl_ok.
+      eapply pimpl_ok2.
       apply H.
 
       apply lt_wlt.
@@ -278,15 +269,16 @@ Admitted.
       f_equal.
       omega.
 
+      intros.
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
       ring_simplify (i ^+ $1 ^+ (x ^- $1)).
       ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       cancel.
 
-      apply H4; eauto.
-      intros; apply H9; clear H9.
-      apply wlt_lt in H12.
+      subst; apply H4; eauto.
+      intros; apply H8; clear H8.
+      apply wlt_lt in H9.
       unfold wlt.
       repeat rewrite wordToN_nat.
       apply Nlt_in.
@@ -297,6 +289,8 @@ Admitted.
       rewrite wordToNat_natToWord_idempotent'.
       omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
+
+      subst; eauto.
 
       rewrite wminus_Alt.
       rewrite wminus_Alt2.
@@ -313,10 +307,10 @@ Admitted.
 
       unfold not; intros; apply H5.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H9; simpl in H9; auto.
+      apply wlt_lt in H8; simpl in H8; auto.
+      subst; auto.
     + cancel.
 Qed.
-*)
 
 Theorem for_ok:
   forall T (n : addr)
@@ -336,7 +330,7 @@ Theorem for_ok:
    * [[forall lfinal,
        {{ fun done' crash' => F * nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
-   * [[F * crashed g ==> crash]]
+   * [[F * crashed g =p=> crash]]
   }} For_ f $0 n li nocrash crashed rx.
 Proof.
   intros.
@@ -376,7 +370,7 @@ Definition read_array T a rx : prog T :=
 
 Local Hint Extern 1 (diskIs ?m =!=> _) =>
   match goal with
-  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
     match R with
     | context[(?a |-> ?v)%pred] =>
       apply diskIs_split; eauto
@@ -385,7 +379,7 @@ Local Hint Extern 1 (diskIs ?m =!=> _) =>
 
 Local Hint Extern 1 (_ =!=> diskIs ?m) =>
   match goal with
-  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
     match L with
     | context[(?a |-> ?v)%pred] =>
       match L with
@@ -398,7 +392,7 @@ Local Hint Extern 1 (_ =!=> diskIs ?m) =>
 Theorem read_array_ok : forall T a (rx : _ -> prog T),
   {{ fun done crash => exists m v F, diskIs m * F * [[ m @ a |-> v ]]
    * [[ {{ fun done' crash' => diskIs m * F * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
-   * [[ diskIs m * F ==> crash ]]
+   * [[ diskIs m * F =p=> crash ]]
   }} read_array a rx.
 Proof.
   unfold read_array.
@@ -411,7 +405,7 @@ Definition write_array T a v rx : prog T :=
 
 Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
   match goal with
-  | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
     match L with
     | context[(?a |-> ?v')%pred] =>
       match L with
@@ -425,7 +419,7 @@ Theorem write_array_ok : forall T a v (rx : _ -> prog T),
   {{ fun done crash => exists m F, diskIs m * F * [[ indomain a m ]]
    * [[ {{ fun done' crash' => diskIs (upd m a v) * F
       * [[ done' = done ]] * [[ crash' = crash ]] }} rx tt ]]
-   * [[ diskIs m * F \/ diskIs (upd m a v) * F ==> crash ]]
+   * [[ diskIs m * F \/ diskIs (upd m a v) * F =p=> crash ]]
   }} write_array a v rx.
 Proof.
   unfold write_array, indomain.

@@ -120,7 +120,7 @@ Module LOG.
   Proof.
     induction l; simpl.
     - unfold indomain. intros. deex. exists x. congruence.
-    - destruct a. intros. destruct_and.
+    - destruct a. intros. destruct H.
       eapply indomain_upd_1; eauto.
       eapply IHl; eauto.
       apply valid_log_upd; auto.
@@ -173,7 +173,7 @@ Module LOG.
     length l + idx <= wordToNat (LogLen xp)
     -> logentry_ptsto_list xp l idx *
          avail_region (LogStart xp ^+ $ (idx * 2 + length l * 2))
-                      ((wordToNat (LogLen xp) - idx - length l) * 2) ==>
+                      ((wordToNat (LogLen xp) - idx - length l) * 2) =p=>
        avail_region (LogStart xp ^+ $ (idx * 2))
                     ((wordToNat (LogLen xp) - idx) * 2).
   Proof.
@@ -198,7 +198,7 @@ Module LOG.
     length l <= wordToNat (LogLen xp) ->
     logentry_ptsto_list xp l 0 *
       avail_region (LogStart xp ^+ $ (length l * 2))
-                   ((wordToNat (LogLen xp) - length l) * 2) ==>
+                   ((wordToNat (LogLen xp) - length l) * 2) =p=>
     avail_region (LogStart xp) (wordToNat (LogLen xp) * 2).
   Proof.
     intros.
@@ -288,7 +288,7 @@ Module LOG.
 
   Hint Extern 1 (_ =!=> avail_region _ _) =>
     match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
       match L with
       | context[logentry_ptsto_list ?xp ?l _] =>
         eapply pimpl_trans ;
@@ -328,7 +328,7 @@ Module LOG.
 
   Theorem avail_region_shrink_one : forall start len,
     len > 0
-    -> avail_region start len ==>
+    -> avail_region start len =p=>
        start |->? * avail_region (start ^+ $1) (len - 1).
   Proof.
     destruct len; intros; try omega.
@@ -337,34 +337,15 @@ Module LOG.
     auto.
   Qed.
 
-  Ltac helper_wordcmp_one :=
-    match goal with
-    | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
-    | [ |- context[valu2addr (addr2valu _)] ] => rewrite addr2valu2addr
-    | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
-      assert (wordToNat x < pow2 sz) by (apply wordToNat_bound);
-      assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; auto; omega);
-      clear H
-    | [ H: context[wordToNat (natToWord _ _)] |- _ ] =>
-      rewrite wordToNat_natToWord_idempotent' in H;
-      [| solve [ omega ||
-                 ( eapply Nat.le_lt_trans; [| apply wordToNat_bound ]; eauto ) ] ]
-    | [ H: (?a < natToWord _ ?b)%word |- wordToNat ?a < ?b ] =>
-      apply wlt_lt in H; rewrite wordToNat_natToWord_idempotent' in H;
-      [ apply H | eapply Nat.le_lt_trans; [| apply wordToNat_bound ]; eauto ]
-    end.
-
-  Ltac helper_wordcmp := repeat helper_wordcmp_one.
-
   Hint Extern 1 (avail_region _ _ =!=> _) =>
-    apply avail_region_shrink_one; helper_wordcmp; omega : norm_hint_left.
+    apply avail_region_shrink_one; wordcmp; omega : norm_hint_left.
 
   Theorem avail_region_grow_two : forall start len a b,
     len > 1
     -> start |-> a * (start ^+ $1) |-> b
        * avail_region (start ^+ $1 ^+ $1)
                       (len - 1 - 1)
-       ==> avail_region start len.
+       =p=> avail_region start len.
   Proof.
     intros.
     destruct len; try omega.
@@ -389,7 +370,7 @@ Module LOG.
   Hint Extern 1 (_ =!=> avail_region _ ?len) =>
     repeat ( rw_natToWord_mult || rw_natToWord_plus );
     match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
       match L with
       | context[avail_region (?lstart ^+ $1 ^+ $1) _] =>
         match L with
@@ -397,7 +378,7 @@ Module LOG.
           match L with
           | context[((lstart ^+ $1) |-> _)%pred] =>
             apply avail_region_grow_two with (start:=lstart);
-            helper_wordcmp; omega
+            wordcmp; omega
           end
         end
       end
@@ -407,7 +388,7 @@ Module LOG.
     ((LogStart xp ^+ $ ((length l + idx) * 2)) |-> addr2valu a) *
     ((LogStart xp ^+ $ ((length l + idx) * 2 + 1)) |-> v) *
     logentry_ptsto_list xp l idx
-    ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) idx.
+    =p=> logentry_ptsto_list xp (l ++ (a, v) :: nil) idx.
   Proof.
     induction l; auto; simpl; intros.
     - eapply pimpl_trans; [|eapply pimpl_sep_star;[apply pimpl_refl|apply IHl] ].
@@ -418,7 +399,7 @@ Module LOG.
     logentry_ptsto_list xp l 0 *
     ((LogStart xp ^+ $ (length l) ^* $2) |-> addr2valu a) *
     ((LogStart xp ^+ $ (length l) ^* $2 ^+ $1) |-> v)
-    ==> logentry_ptsto_list xp (l ++ (a, v) :: nil) 0.
+    =p=> logentry_ptsto_list xp (l ++ (a, v) :: nil) 0.
   Proof.
     intros.
     repeat rewrite <- natToWord_mult.
@@ -430,7 +411,7 @@ Module LOG.
 
   Hint Extern 1 (_ =!=> logentry_ptsto_list ?xp ?r _) =>
     match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
       match L with
       | context[logentry_ptsto_list xp ?l _] =>
         match L with
@@ -484,7 +465,7 @@ Module LOG.
 
     eapply pimpl_or_r. left. cancel.
 
-    rewrite app_length; simpl; helper_wordcmp; omega.
+    rewrite app_length; simpl; wordcmp; omega.
     apply valid_log_app; simpl; intuition eauto.
     eapply indomain_replay; eauto.
     eapply sep_star_ptsto_indomain; eauto.
@@ -501,7 +482,7 @@ Module LOG.
 
   Lemma logentry_ptsto_extract: forall xp pos l idx,
     pos < length l
-    -> (logentry_ptsto_list xp l idx ==>
+    -> (logentry_ptsto_list xp l idx =p=>
         logentry_ptsto_list xp (firstn pos l) idx *
         ((LogStart xp ^+ $ ((idx+pos) * 2)) |-> addr2valu (fst (nth pos l logentry_zero))) *
         ((LogStart xp ^+ $ ((idx+pos) * 2 + 1)) |-> snd (nth pos l logentry_zero)) *
@@ -524,7 +505,7 @@ Module LOG.
     -> (logentry_ptsto_list xp (firstn pos l) idx *
         ((LogStart xp ^+ $ ((idx+pos) * 2)) |-> addr2valu (fst (nth pos l logentry_zero))) *
         ((LogStart xp ^+ $ ((idx+pos) * 2 + 1)) |-> snd (nth pos l logentry_zero)) *
-        logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1) ==>
+        logentry_ptsto_list xp (skipn (pos+1) l) (idx+pos+1) =p=>
         logentry_ptsto_list xp l idx).
   Proof.
     induction pos; intros.
@@ -545,21 +526,21 @@ Module LOG.
 
   Hint Extern 1 (logentry_ptsto_list ?xp ?log 0 =!=> _) =>
     match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
       match R with
       | context[((LogStart xp ^+ ?p ^* $2) |-> _)%pred] =>
-        apply logentry_ptsto_extract with (pos:=wordToNat p); helper_wordcmp
+        apply logentry_ptsto_extract with (pos:=wordToNat p); wordcmp
       end
     end : norm_hint_left.
 
   Hint Extern 1 (_ =!=> logentry_ptsto_list ?xp ?log 0) =>
     match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
       match L with
       | context[((LogStart xp ^+ ?p ^* $2) |-> _)%pred] =>
         match L with
         | context[logentry_ptsto_list xp (firstn (wordToNat p) ?log) 0] =>
-          apply logentry_ptsto_absorb with (pos:=wordToNat p) (l:=log); helper_wordcmp
+          apply logentry_ptsto_absorb with (pos:=wordToNat p) (l:=log); wordcmp
         end
       end
     end : norm_hint_right.
@@ -701,10 +682,10 @@ Module LOG.
     hoare.
 
     subst.
-    erewrite wordToNat_plusone; [ apply replay_last_eq |]; helper_wordcmp; eauto.
-    erewrite wordToNat_plusone; [ apply replay_last_ne |]; helper_wordcmp; eauto.
+    erewrite wordToNat_plusone; [ apply replay_last_eq |]; wordcmp; eauto.
+    erewrite wordToNat_plusone; [ apply replay_last_ne |]; wordcmp; eauto.
 
-    helper_wordcmp. rewrite firstn_length in *.
+    wordcmp. rewrite firstn_length in *.
     match goal with
     | [ H: (_ |-> _ * _)%pred _ |- _ ] => apply sep_star_ptsto_some in H
     end.
@@ -726,7 +707,7 @@ Module LOG.
     PRE    rep xp (ActiveTxn mbase m) *
            [[ exists F', (array a vs stride * F')%pred m ]] *
            [[ wordToNat i < length vs ]]
-    POST:r [[ r = sel vs i ]] * rep xp (ActiveTxn mbase m)
+    POST:r [[ r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m)
     CRASH  rep xp (ActiveTxn mbase m)
     >} read_array xp a i stride.
   Proof.
@@ -734,26 +715,22 @@ Module LOG.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) * F
      * [[ exists F',
           (array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i
+           * (a ^+ i ^* stride) |-> sel vs i $0
            * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred m ]]
      * [[ wordToNat i < length vs ]]
      * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) * F
            * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx (sel vs i) ]]
-     * [[ rep xp (ActiveTxn mbase m) * F ==> crash ]])%pred.
+          }} rx (sel vs i $0) ]]
+     * [[ rep xp (ActiveTxn mbase m) * F =p=> crash ]])%pred.
     unfold read_array.
     eapply pimpl_ok2.
     apply read_ok.
     cancel.
 
-    eexists.
-    pred_apply; cancel.
-
     step.
     cancel.
 
     cancel.
-    eexists; pred_apply; cancel.
     eapply pimpl_trans.
     eapply pimpl_sep_star; [ apply pimpl_refl |].
     apply isolate_fwd; eauto.
@@ -778,7 +755,7 @@ Module LOG.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
        rep xp (ActiveTxn mbase m) * F
      * [[ (array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i
+           * (a ^+ i ^* stride) |-> sel vs i $0
            * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred m ]]
      * [[ wordToNat i < length vs ]]
      * [[ forall r,
@@ -788,7 +765,7 @@ Module LOG.
            * [[ done' = done ]] * [[ crash' = crash ]]) \/
           ([[ r = false ]] * rep xp (ActiveTxn mbase m) * F
            * [[ done' = done ]] * [[ crash' = crash ]]) }} rx r ]]
-     * [[ forall m', rep xp (ActiveTxn mbase m') * F ==> crash ]])%pred.
+     * [[ forall m', rep xp (ActiveTxn mbase m') * F =p=> crash ]])%pred.
     unfold write_array.
     eapply pimpl_ok2.
     apply write_ok.
@@ -913,7 +890,7 @@ Module LOG.
 
   Hint Extern 1 (_ =!=> LogLength ?xp |-> @length ?T ?l) =>
     match goal with
-    | [ H: norm_goal (?L ==> ?R) |- _ ] =>
+    | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
       match L with
       | context[(LogLength xp |-> addr2valu (natToWord addrlen 0))%pred] =>
         unify l (@nil T); apply pimpl_refl
@@ -939,26 +916,26 @@ Module LOG.
     unfold apply; log_unfold.
     hoare.
 
-    rewrite addr2valu2addr. apply indomain_log_nth; auto; helper_wordcmp.
+    rewrite addr2valu2addr. apply indomain_log_nth; auto; wordcmp.
 
     apply valid_log_upd; auto.
-    apply indomain_log_nth; auto; helper_wordcmp.
-    rewrite replay_logupd; auto; helper_wordcmp.
+    apply indomain_log_nth; auto; wordcmp.
+    rewrite replay_logupd; auto; wordcmp.
     erewrite wordToNat_plusone; eauto.
-    rewrite replay_skip_more; auto; helper_wordcmp.
+    rewrite replay_skip_more; auto; wordcmp.
 
     eapply pimpl_or_r; left. cancel.
 
     eapply valid_log_upd; eauto.
     eapply indomain_log_nth; eauto.
-    helper_wordcmp.
+    wordcmp.
 
     extract_functional_extensionality.
     rewrite replay_logupd; try congruence.
-    helper_wordcmp.
+    wordcmp.
 
     rewrite addr2valu2addr in *.
-    helper_wordcmp.
+    wordcmp.
     rewrite skipn_length in *; simpl in *.
 
     extract_functional_extensionality.
@@ -967,7 +944,7 @@ Module LOG.
     eapply pimpl_or_r; left. cancel.
     cancel.
 
-    helper_wordcmp; rewrite skipn_length in *; simpl in *. congruence.
+    wordcmp; rewrite skipn_length in *; simpl in *. congruence.
 
     eapply pimpl_or_r; right. cancel.
 
@@ -1026,7 +1003,8 @@ Module LOG.
      (exists m', rep xp (ActiveTxn m m')) \/
      (rep xp (CommittedTxn m)))%pred.
 
-  Ltac log_unfold' := unfold log_intact; log_unfold.
+  Ltac unfold_intact := unfold log_intact.
+  Ltac log_unfold' := unfold_intact; log_unfold.
 
   Theorem recover_ok: forall xp,
     {< m,
@@ -1047,9 +1025,9 @@ Module LOG.
     {{ fun done crashdone => exists m1 m2 v F, rep xp (ActiveTxn m1 m2) * F
      * [[ exists F', (a |-> v * F') m2 ]]
      * [[ {{ fun done' crash' => rep xp (ActiveTxn m1 m2) * F
-           * [[ done' = done ]] * [[ crash' ==> log_intact xp m1 * F ]] }} rxOK v ]]
+           * [[ done' = done ]] * [[ crash' =p=> log_intact xp m1 * F ]] }} rxOK v ]]
      * [[ {{ fun done' crash' => rep xp (NoTransaction m1) * F
-           * [[ done' = crashdone ]] * [[ crash' ==> log_intact xp m1 * F ]] }} rxREC tt ]]
+           * [[ done' = crashdone ]] * [[ crash' =p=> log_intact xp m1 * F ]] }} rxREC tt ]]
     }} read xp a rxOK >> recover xp rxREC.
   Proof.
     intros.
@@ -1073,5 +1051,8 @@ Module LOG.
     destruct r_; auto.
     cancel.
   Qed.
+
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (log_intact _ _) (log_intact _ _)) => constructor : okToUnify.
 
 End LOG.

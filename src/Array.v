@@ -13,18 +13,18 @@ Fixpoint array (a : addr) (vs : list valu) (stride : addr) :=
 
 (** * Reading and writing from arrays *)
 
-Fixpoint selN (vs : list valu) (n : nat) : valu :=
+Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
   match vs with
-    | nil => $0
+    | nil => default
     | v :: vs' =>
       match n with
         | O => v
-        | S n' => selN vs' n'
+        | S n' => selN vs' n' default
       end
   end.
 
-Definition sel (vs : list valu) (i : addr) : valu :=
-  selN vs (wordToNat i).
+Definition sel (V : Type) (vs : list V) (i : addr) (default : V) : V :=
+  selN vs (wordToNat i) default.
 
 Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
   match vs with
@@ -51,16 +51,23 @@ Qed.
 
 Hint Rewrite length_updN length_upd.
 
-Lemma selN_updN_eq : forall vs n v,
+Lemma selN_updN_eq : forall V vs n v (default : V),
   n < length vs
-  -> selN (updN vs n v) n = v.
+  -> selN (updN vs n v) n default = v.
 Proof.
   induction vs; destruct n; simpl; intuition; omega.
 Qed.
 
-Lemma sel_upd_eq : forall vs i v,
+Lemma selN_updN_ne : forall V vs n n' v (default : V),
+  n <> n'
+  -> selN (updN vs n v) n' default = selN vs n' default.
+Proof.
+  induction vs; destruct n; destruct n'; simpl; intuition.
+Qed.
+
+Lemma sel_upd_eq : forall V vs i v (default : V),
   wordToNat i < length vs
-  -> sel (upd vs i v) i = v.
+  -> sel (upd vs i v) i default = v.
 Proof.
   intros; apply selN_updN_eq; auto.
 Qed.
@@ -122,6 +129,27 @@ Qed.
 
 Hint Rewrite skipn_updN skipn_upd using omega.
 
+Lemma map_ext_in : forall A B (f g : A -> B) l, (forall a, In a l -> f a = g a)
+  -> map f l = map g l.
+Proof.
+  induction l; auto; simpl; intros; f_equal; auto.
+Qed.
+
+Theorem seq_right : forall b a, seq a (S b) = seq a b ++ (a + b :: nil).
+Proof.
+  induction b; simpl; intros.
+  replace (a + 0) with (a) by omega; reflexivity.
+  f_equal.
+  replace (a + S b) with (S a + b) by omega.
+  rewrite <- IHb.
+  auto.
+Qed.
+
+Theorem seq_right_0 : forall b, seq 0 (S b) = seq 0 b ++ (b :: nil).
+Proof.
+  intros; rewrite seq_right; f_equal.
+Qed.
+
 Lemma map_updN : forall T U (v : T) (f : T -> U) vs i,
   map f (updN vs i v) = updN (map f vs) i (f v).
 Proof.
@@ -137,13 +165,94 @@ Qed.
 
 Hint Rewrite map_updN map_upd.
 
+Theorem selN_map_seq' : forall T i n f base (default : T), i < n
+  -> selN (map f (seq base n)) i default = f (i + base).
+Proof.
+  induction i; destruct n; simpl; intros; try omega; auto.
+  replace (S (i + base)) with (i + (S base)) by omega.
+  apply IHi; omega.
+Qed.
+
+Theorem selN_map_seq : forall T i n f (default : T), i < n
+  -> selN (map f (seq 0 n)) i default = f i.
+Proof.
+  intros.
+  replace i with (i + 0) at 2 by omega.
+  apply selN_map_seq'; auto.
+Qed.
+
+Theorem sel_map_seq : forall T i n f (default : T), (i < n)%word
+  -> sel (map f (seq 0 (wordToNat n))) i default = f (wordToNat i).
+Proof.
+  intros.
+  unfold sel.
+  apply selN_map_seq.
+  apply wlt_lt; auto.
+Qed.
+
+Hint Rewrite selN_map_seq sel_map_seq using ( solve [ auto ] ).
+
+Theorem selN_map : forall T T' l i f (default : T) (default' : T'), i < length l
+  -> selN (map f l) i default = f (selN l i default').
+Proof.
+  induction l; simpl; intros; try omega.
+  destruct i; auto.
+  apply IHl; omega.
+Qed.
+
+Theorem sel_map : forall T T' l i f (default : T) (default' : T'), wordToNat i < length l
+  -> sel (map f l) i default = f (sel l i default').
+Proof.
+  intros.
+  unfold sel.
+  apply selN_map; auto.
+Qed.
+
+Theorem updN_map_seq_app_eq : forall T (f : nat -> T) len start (v : T) x,
+  updN (map f (seq start len) ++ (x :: nil)) len v =
+  map f (seq start len) ++ (v :: nil).
+Proof.
+  induction len; auto; simpl; intros.
+  f_equal; auto.
+Qed.
+
+Theorem updN_map_seq_app_ne : forall T (f : nat -> T) len start (v : T) x pos, pos < len
+  -> updN (map f (seq start len) ++ (x :: nil)) pos v =
+     updN (map f (seq start len)) pos v ++ (x :: nil).
+Proof.
+  induction len; intros; try omega.
+  simpl; destruct pos; auto.
+  rewrite IHlen by omega.
+  auto.
+Qed.
+
+Theorem updN_map_seq : forall T f len start pos (v : T), pos < len
+  -> updN (map f (seq start len)) pos v =
+     map (fun i => if eq_nat_dec i (start + pos) then v else f i) (seq start len).
+Proof.
+  induction len; intros; try omega.
+  simpl seq; simpl map.
+  destruct pos.
+  - replace (start + 0) with (start) by omega; simpl.
+    f_equal.
+    + destruct (eq_nat_dec start start); congruence.
+    + apply map_ext_in; intros.
+      destruct (eq_nat_dec a start); auto.
+      apply in_seq in H0; omega.
+  - simpl; f_equal.
+    destruct (eq_nat_dec start (start + S pos)); auto; omega.
+    rewrite IHlen by omega.
+    replace (S start + pos) with (start + S pos) by omega.
+    auto.
+Qed.
+
 
 (** * Isolating an array cell *)
 
 Lemma isolate_fwd' : forall vs i a stride,
   i < length vs
-  -> array a vs stride ==> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i
+  -> array a vs stride =p=> array a (firstn i vs) stride
+     * (a ^+ $ i ^* stride) |-> selN vs i $0
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
 Proof.
   induction vs; simpl; intuition.
@@ -168,8 +277,8 @@ Qed.
 
 Theorem isolate_fwd : forall (a i : addr) vs stride,
   wordToNat i < length vs
-  -> array a vs stride ==> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i
+  -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
+     * (a ^+ i ^* stride) |-> sel vs i $0
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
@@ -182,9 +291,9 @@ Qed.
 Lemma isolate_bwd' : forall vs i a stride,
   i < length vs
   -> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i
+     * (a ^+ $ i ^* stride) |-> selN vs i $0
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
-  ==> array a vs stride.
+  =p=> array a vs stride.
 Proof.
   induction vs; simpl; intuition.
 
@@ -209,9 +318,9 @@ Qed.
 Theorem isolate_bwd : forall (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i
+     * (a ^+ i ^* stride) |-> sel vs i $0
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
-  ==> array a vs stride.
+  =p=> array a vs stride.
 Proof.
   intros.
   eapply pimpl_trans; [ | apply isolate_bwd' ].
@@ -258,46 +367,30 @@ Theorem read_ok:
   {{ fun done crash => exists vs F, array a vs stride * F
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a vs stride * F * [[ done' = done ]] * [[ crash' = crash ]]
-       }} rx (sel vs i)]]
-   * [[array a vs stride * F ==> crash]]
+       }} rx (sel vs i $0)]]
+   * [[array a vs stride * F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
   intros.
-  apply pimpl_ok2 with (fun done crash => exists vs F,
-    array a (firstn (wordToNat i) vs) stride
-    * (a ^+ i ^* stride) |-> sel vs i
-    * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-    * [[wordToNat i < length vs]]
-    * [[{{ fun done' crash' => array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i
-           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-        }} rx (sel vs i)]]
-    * [[array a (firstn (wordToNat i) vs) stride
-        * (a ^+ i ^* stride) |-> sel vs i
-        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F ==> crash]]
-  )%pred.
-
   rewrite ArrayRead_eq.
+
   eapply pimpl_ok2.
   apply read_ok.
   cancel.
-  eapply pimpl_ok2_cont; [ eauto | cancel; eassumption | cancel ].
 
+  rewrite isolate_fwd.
   cancel.
+  auto.
 
+  step.
+  erewrite <- isolate_bwd with (vs:=l).
   cancel.
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply isolate_fwd; eassumption ] | ].
-  cancel.
-  eauto.
+  auto.
 
-  eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ | apply isolate_bwd; eassumption ].
+  pimpl_crash.
+  erewrite <- isolate_bwd with (vs:=l).
   cancel.
-
-  cancel.
-  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eauto ].
-  cancel.
+  auto.
 Qed.
 
 Theorem write_ok:
@@ -307,57 +400,33 @@ Theorem write_ok:
    * [[{{ fun done' crash' => array a (upd vs i v) stride * F
         * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx tt]]
-   * [[ array a vs stride * F \/ array a (upd vs i v) stride * F ==> crash ]]
+   * [[ array a vs stride * F \/ array a (upd vs i v) stride * F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
   intros.
-  apply pimpl_ok2 with (fun done crash => exists vs F,
-    array a (firstn (wordToNat i) vs) stride
-    * (a ^+ i ^* stride) |-> sel vs i
-    * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-    * [[wordToNat i < length vs]]
-    * [[{{ fun done' crash' => array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> v
-           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-        }} rx tt]]
-    * [[(array a (firstn (wordToNat i) vs) stride
-        * (a ^+ i ^* stride) |-> sel vs i
-        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F) \/
-        (array a (firstn (wordToNat i) (upd vs i v)) stride
-        * (a ^+ i ^* stride) |-> sel (upd vs i v) i
-        * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) (upd vs i v)) stride * F)
-        ==> crash ]])%pred.
-
   rewrite ArrayWrite_eq.
+
   eapply pimpl_ok2.
   apply write_ok.
   cancel.
-  eapply pimpl_ok2_cont; [ eauto | cancel; eassumption | cancel; destruct r_; auto ].
 
-  cancel.
-  cancel.
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
-                                              | apply isolate_fwd; eassumption ] | ].
+  rewrite isolate_fwd.
   cancel.
   auto.
 
-  eapply pimpl_ok2; [ eauto | cancel ].
-  eapply pimpl_trans; [ | apply isolate_bwd; autorewrite with core; eassumption ].
+  step.
+  erewrite <- isolate_bwd with (vs:=(upd l i v)) (i:=i) by (autorewrite_fast; auto).
   autorewrite with core.
   cancel.
   autorewrite with core.
   cancel.
 
-  cancel.
+  destruct r_; auto.
 
-  eapply pimpl_or_r; left. cancel.
-  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
+  pimpl_crash.
+  rewrite <- isolate_bwd with (vs:=l).
   cancel.
-
-  eapply pimpl_or_r; right. cancel.
-  eapply pimpl_trans; [| apply isolate_bwd; autorewrite with core; eassumption ].
-  cancel.
+  auto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
@@ -380,7 +449,7 @@ Theorem read_back_ok : forall T a (rx : _ -> prog T),
      * [[{{fun done' crash' => array a (upd vs $0 $42) $1 * F
           * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx $42 ]]
-     * [[ array a vs $1 * F \/ array a (upd vs $0 $42) $1 * F ==> crash ]]
+     * [[ array a vs $1 * F \/ array a (upd vs $0 $42) $1 * F =p=> crash ]]
   }} read_back a rx.
 Proof.
   unfold read_back; hoare.
@@ -397,12 +466,51 @@ Theorem swap_ok : forall T a i j (rx : prog T),
   {{ fun done crash => exists vs F, array a vs $1 * F
      * [[wordToNat i < length vs]]
      * [[wordToNat j < length vs]]
-     * [[{{fun done' crash' => array a (upd (upd vs i (sel vs j)) j (sel vs i)) $1 * F
+     * [[{{fun done' crash' => array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F
            * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx ]]
-     * [[ array a vs $1 * F \/ array a (upd vs i (sel vs j)) $1 * F \/
-          array a (upd (upd vs i (sel vs j)) j (sel vs i)) $1 * F ==> crash ]]
+     * [[ array a vs $1 * F \/ array a (upd vs i (sel vs j $0)) $1 * F \/
+          array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F =p=> crash ]]
   }} swap a i j rx.
 Proof.
   unfold swap; hoare.
 Qed.
+
+
+(* A general list predicate *)
+
+Section LISTPRED.
+
+  Variable T : Type.
+  Variable prd : T -> pred.
+  Variable def : T.
+
+  Fixpoint listpred (ts : list T) :=
+    match ts with
+    | nil => emp
+    | t :: ts' => (prd t) * listpred ts'
+    end%pred.
+
+  Theorem listpred_fwd : forall l i, 
+    i < length l ->
+      listpred l =p=> listpred (firstn i l) * (prd (selN l i def)) * listpred (skipn (S i) l).
+  Proof.
+    induction l; simpl; intros; [omega |].
+    destruct i; simpl; cancel.
+    apply IHl; omega.
+  Qed.
+
+  Theorem listpred_bwd : forall l i, 
+    i < length l ->
+      listpred (firstn i l) * (prd (selN l i def)) * listpred (skipn (S i) l) =p=> listpred l.
+  Proof.
+    induction l; simpl; intros; [omega |].
+    destruct i; [cancel | simpl].
+    destruct l; simpl in H; [omega |].
+    cancel.
+    eapply pimpl_trans; [| apply IHl ].
+    cancel.
+    omega.
+  Qed.
+
+End LISTPRED.
