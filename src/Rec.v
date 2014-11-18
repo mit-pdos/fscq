@@ -1,8 +1,6 @@
 Require Import Arith List String Omega. 
 Require Import Word.
 
-Require Coq.Vectors.VectorDef.
-
 Import ListNotations.
 Open Scope string_scope.
 
@@ -17,7 +15,7 @@ Module Rec.
   Fixpoint fielddata (t : fieldtype) : Type :=
     match t with
     | WordF l => word l
-    | ArrayF t' l => Vector.t (fielddata t') l
+    | ArrayF t' _ => list (fielddata t')
     end.
 
   Fixpoint fieldlen (t : fieldtype) : nat :=
@@ -38,6 +36,25 @@ Module Rec.
     match t with
     | [] => 0
     | (_, ft) :: t' => fieldlen ft + reclen t'
+    end.
+
+  Fixpoint list_all {A : Type} (P : A -> Prop) (xs : list A) : Prop :=
+    match xs with
+    | [] => True
+    | x :: x' => P x /\ list_all P x'
+    end.
+
+  Fixpoint has_right_length {ft : fieldtype} : fielddata ft -> Prop :=
+    match ft as ft return (fielddata ft -> Prop) with
+    | WordF _ => fun _ => True
+    | ArrayF ft0 l => fun v => Datatypes.length v = l /\ list_all has_right_length v
+    end.
+
+  Fixpoint has_right_lengths {t : rectype} : recdata t -> Prop :=
+    match t as t return (recdata t -> Prop) with
+    | [] => fun _ => True
+    | (_, ft) :: t' => fun r =>
+      let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
     end.
 
   Inductive field_in : rectype -> string -> Prop :=
@@ -160,9 +177,11 @@ Module Rec.
       (fix arrayf2word n v :=
         match n as n0 return (fielddata (ArrayF ft0 n0) -> word (fieldlen (ArrayF ft0 n0))) with
         | 0 => fun _ => WO
-        | S n0 =>
-            fun v0 =>
-            combine (field2word (Vector.hd v0)) (arrayf2word n0 (Vector.tl v0))
+        | S n0 => fun v =>
+          match v with
+          | nil => $0
+          | v0 :: v' => combine (field2word v0) (arrayf2word n0 v')
+          end
         end v) n
     end.
 
@@ -179,9 +198,9 @@ Module Rec.
     | ArrayF ft0 n as ft =>
       (fix word2arrayf n w :=
         match n as n return (word (fieldlen (ArrayF ft0 n)) -> fielddata (ArrayF ft0 n)) with
-        | 0 => fun _ => Vector.nil (fielddata ft0)
-        | S n' => fun w0 => Vector.cons (fielddata ft0)
-          (word2field (split1 (fieldlen ft0) _ w0)) n'
+        | 0 => fun _ => []
+        | S n' => fun w0 =>
+          (word2field (split1 (fieldlen ft0) _ w0)) ::
           (word2arrayf n' (split2 (fieldlen ft0) _ w0))
         end w) n
     end.
@@ -210,40 +229,45 @@ Module Rec.
     rewrite IHt. rewrite word2field2word. apply combine_split.
   Qed.
 
-  Theorem vector_hd_tl' : forall T n (v : Vector.t T n),
-    match n return Vector.t T n -> Prop with
-    | S n' => fun v' => Vector.cons T (Vector.hd v') _ (Vector.tl v') = v'
-    | O => fun _ => True
-    end v.
-  Proof.
-    destruct v; auto.
-  Qed.
-
-  Theorem vector_hd_tl : forall T n (v : Vector.t T (S n)),
-    Vector.cons T (Vector.hd v) _ (Vector.tl v) = v.
-  Proof.
-    intros.
-    apply vector_hd_tl' with (n := S n).
-  Qed.
-
-  Theorem field2word2field : forall ft v, word2field (@field2word ft v) = v.
+  Theorem field2word2field : forall ft v, has_right_length v -> word2field (@field2word ft v) = v.
   Proof.
     induction ft; intro v.
     reflexivity.
-    induction n.
-    apply Vector.case0. reflexivity.
-    simpl in v. simpl. simpl in IHn. rewrite split1_combine. rewrite split2_combine.
-    rewrite IHft. rewrite IHn. clear IHft. clear IHn.
-    apply vector_hd_tl.
+    induction n; intro H; simpl in v.
+    destruct H. destruct v. reflexivity. discriminate.
+    simpl. simpl in IHn. destruct H. destruct v. discriminate.
+    rewrite split1_combine. rewrite split2_combine.
+    destruct H0.
+    rewrite IHft by assumption. rewrite IHn by auto. reflexivity.
   Qed.
 
-  Theorem rec2word2rec : forall t r, word2rec t (rec2word r) = r.
+  Theorem rec2word2rec : forall t r, has_right_lengths r -> word2rec t (rec2word r) = r.
   Proof.
-    induction t; intro r.
+    induction t; intros r H.
     destruct r. reflexivity.
     destruct a as [n l]. destruct r. simpl.
-    rewrite split1_combine. rewrite split2_combine. rewrite field2word2field. rewrite IHt.
+    rewrite split1_combine. rewrite split2_combine.
+    destruct H. rewrite field2word2field by assumption. rewrite IHt by assumption.
     reflexivity.
+  Qed.
+
+  Theorem word2field_length : forall ft w, has_right_length (@word2field ft w).
+  Proof.
+    induction ft; intro w.
+    simpl. trivial.
+    split. induction n. reflexivity.
+    simpl. simpl in IHn. auto.
+    induction n; simpl.
+    trivial.
+    split. apply IHft. apply IHn.
+   Qed.
+
+  Theorem word2rec_length : forall t w, has_right_lengths (@word2rec t w).
+  Proof.
+    induction t; intro w.
+    simpl. trivial.
+    destruct a. simpl. split.
+    apply word2field_length. apply IHt.
   Qed.
 
   Arguments word2rec : simpl never.
