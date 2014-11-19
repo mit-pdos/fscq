@@ -159,7 +159,9 @@ Module INODE.
     autorewrite with core. auto.
 
     subst. autorewrite with core. auto.
-
+    clear H.
+    unfold Rec.has_right_lengths; simpl.
+    admit.
     unfold LOG.log_intact; cancel.
   Qed.
 

@@ -47,7 +47,8 @@ Module FILE.
     unfold fread'.
     hoare.
     unfold iget_blocknum.
-    instantiate (a2 := l). cancel.
+    instantiate (a2 := l). cancel.   
+    unfold iget_blocknum in H3.
     cancel.
     LOG.unfold_intact.
     cancel.
@@ -71,7 +72,17 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fwrite' lxp xp inum off v.
   Proof.
+    unfold fwrite'.
+    hoare.
+    instantiate (a2:=l).
+    unfold iget_blocknum.
+    cancel. clear H.
     admit.
+    cancel. clear H.
+    right; exists m1.
+    admit.
+    LOG.unfold_intact.
+    cancel.
   Qed.
 
   Record file := {

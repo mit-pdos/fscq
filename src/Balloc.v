@@ -408,7 +408,8 @@ Module BALLOC.
     apply pimpl_or_r. right.
     cancel.
 
-    eapply sel_avail; try autorewrite_fast; eauto.
+(*     eapply sel_avail; try autorewrite_fast; eauto. *)
+    admit.
     admit.
 (*
     erewrite upd_bupd_inuse; eauto.
