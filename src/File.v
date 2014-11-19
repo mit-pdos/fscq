@@ -34,9 +34,9 @@ Module FILE.
     bn.
 
   Theorem fread'_ok : forall lxp xp inum off,
-    {< F mbase m ilist bn v,
+    {< mbase m ilist bn v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * INODE.rep xp ilist * bn |-> v)% pred m ]] *
+           [[ (exists F, F * INODE.rep xp ilist * bn |-> v)% pred m ]] *
            [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
            [[ bn = iget_blocknum ilist inum off ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
@@ -46,6 +46,7 @@ Module FILE.
   Proof.
     unfold fread'.
     hoare.
+    cancel.
     unfold iget_blocknum.
     instantiate (a2 := l). cancel.
     unfold iget_blocknum in H3.
@@ -53,6 +54,8 @@ Module FILE.
     LOG.unfold_intact.
     cancel.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (fread' _ _ _ _) _) => apply fread'_ok : prog.
 
   Definition fwrite' T lxp xp inum off v rx : prog T :=
     i <-INODE.iget lxp xp inum;
@@ -87,64 +90,19 @@ Module FILE.
 
   Definition empty_file := Build_file 0 (fun _ => None).
 
-  Fixpoint blocks_ptto (fl : nat) (f : file) (i : INODE.inode) : pred :=
-    match fl with
-    | 0 => [[ emp (FileData f) ]]
-    | S fl' => exists v, (sel (i :-> "blocks") ($ fl') $0) |-> v * blocks_ptto fl' f i
-    end%pred.
+  Definition file_match (x: addr * valu) : pred :=
+      fst x |-> snd x.
 
-  Fixpoint file_rep (l : list (INODE.inode * file)) : pred :=
-    match l with
-    | nil => emp
-    | (i, f) :: rest =>
-      (file_rep rest *
-       [[ (i :-> "len") = $ (FileLen f) ]] *
-       blocks_ptto (FileLen f) f i)%pred
-    end%pred.
-
-(*
-Lemma isolate_block0 : forall x,
-  exists F F' v0, 
-  file_rep x =p=> F * ((fst x) :-> "block0") |-> v0 * [[ (F' * $0 |-> v0)%pred (FileData (snd x)) ]].
-
-  Admitted.
-
-  Fixpoint files_rep (l : list (INODE.inode * file)) : pred :=
-    match l with
-    | nil => emp
-    | x :: rest =>  files_rep rest * file_rep x
-    end.
-
-
-Lemma isolate_file : forall fl i,
-  i < length fl
-  -> files_rep fl =p=> files_rep (firstn i fl)
-     * file_rep (selN fl i (INODE.inode_zero, empty_file))
-     * files_rep (skipn (S i) fl).
-Proof.
-  induction fl. 
-  simpl.
-  intros; omega.
-  
-  simpl.
-  intros.
-
-  destruct i; simpl.
-  cancel.
-
-  cancel.
-  clear H0.
-  apply IHfl.
-
-  omega.
-Qed.
-
-
+  Definition file_rep (inof : INODE.inode * file) : pred :=
+     ([[ (fst inof :-> "len") = $ (FileLen (snd inof)) ]] *
+     exists d,
+     listpred file_match (combine ((fst inof) :-> "blocks") d) *
+     [[ array $0 d $1 (FileData (snd inof)) ]] )%pred.
 
   Definition rep xp (filelist : list file) :=
     (exists inodelist, INODE.rep xp inodelist *
      [[ length inodelist = length filelist ]] *
-     files_rep (combine inodelist filelist))%pred.
+     listpred file_rep (combine inodelist filelist))%pred.
 
   Definition fread T lxp xp inum (off:addr) rx : prog T :=
     fblock <- fread' lxp xp inum off;
@@ -153,79 +111,82 @@ Qed.
   Hint Extern 0 (okToUnify (INODE.rep _ _) (INODE.rep _ _)) => constructor : okToUnify.
 
 
+  Lemma fst_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
+  fst ( selN (combine a b) i (a0, b0)) = selN a i a0.
+    admit.
+  Qed.
+
+  Lemma snd_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
+  snd ( selN (combine a b) i (a0, b0)) = selN b i b0.
+    admit.
+  Qed.
+
   Theorem fread_ok : forall lxp xp inum off,
-    {< F F' mbase m flist v,
+    {< mbase m flist v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp flist)%pred m ]] *
+           [[ (exists F, F * rep xp flist)%pred m ]] *
+           [[ wordToNat off < (FileLen (sel flist inum empty_file)) ]] *
            [[ (inum < $ (length flist))%word ]] *
-           [[ (F' * off |-> v)%pred (FileData (sel flist inum empty_file)) ]]
-            * [[ off = $0 ]]
+           [[ (exists F', F' * off |-> v)%pred (FileData (sel flist inum empty_file)) ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
     >} fread lxp xp inum off. 
   Proof.
- 
-    unfold fread.
-    unfold rep. 
+    unfold fread, rep, LOG.log_intact.
     intros.
+
     eapply pimpl_ok2.
     eauto with prog.
-    intros.
-    norm'l.
-       edestruct isolate_block0.
-    repeat deex.
-    unfold stars.
-    simpl.
+    intros; norm.
     cancel.
-    
-    rewrite isolate_file.
+    intuition.
+    pred_apply.
 
-    rewrite H0.
-    cancel.
-    
-    Lemma snd_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
-    snd ( selN (combine a b) i (a0, b0)) = selN b i b0.
-      
-    Qed.
-
-    rewrite snd_selN_comm in *.
-    instantiate (n:=wordToNat inum).
-    unfold sel in H5.
-
-    Lemma ptsto_valid':
-     forall a v F m,
-      (F * a |-> v)%pred m ->  m a = Some v.
-    Proof.
-      admit.
-    Qed.
-
-    apply ptsto_valid' in H5 as H5'.
-    apply ptsto_valid' in H4 as H4'.
-    assert (w=x1) by congruence.
-    subst.
-    
-    Lemma fst_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
-    fst ( selN (combine a b) i (a0, b0)) = selN a i a0.
-     admit.
-    Qed.
-
-    rewrite fst_selN_comm in *.
     unfold iget_blocknum.
-    unfold sel.
-    Show Existentials.
+    rewrite listpred_fwd.
+    unfold file_rep at 2.
     cancel.
+    rewrite listpred_fwd with (prd := file_match).
+    unfold file_match.
+    cancel. clear H.
+
+    rewrite fst_selN_comm.
+    rewrite fst_selN_comm.
+    unfold sel.
+    rewrite snd_selN_comm in *.
+
+    assert (w=selN l1 (wordToNat off) $0).
+    destruct H4.
+    eapply ptsto_eq.
+    exact H.
+    exact H14.
+    eexists.
+    cancel.
+
+    eexists.
+    rewrite isolate_fwd.
+    instantiate (i:=off).
+    cancel.
+
+    clear H0.
+    unfold sel in H6.
+    admit.
+
+    subst.
+    cancel.
+
+    admit.
 
     rewrite combine_length.
     rewrite H11.
     rewrite Nat.min_id.
     wordcmp.
-    admit.
-    clear H3.
-    
-  Qed.
+    admit.  (* bound for file/inode list *)
 
-*)
+    admit.
+
+  Qed.
 
   Definition fwrite T lxp xp inum (off:addr) v rx : prog T :=
     ok <- fwrite' lxp xp inum off v;

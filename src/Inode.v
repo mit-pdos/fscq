@@ -32,6 +32,7 @@ Module INODE.
   Definition inodetype : Rec.rectype := [("len", Rec.WordF addrlen);
                                          ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)].
 
+  (* XXX use ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)]. *)
   Definition inode := Rec.recdata inodetype.
   Definition inode_zero := Rec.word2rec inodetype $0.
 
@@ -265,7 +266,7 @@ Module INODE.
     - rewrite map_rep_block_below; auto; omega.
     - rewrite selN_updN_ne; auto; omega.
     - replace (S iblock + xstart) with (iblock + S xstart) by omega; auto.
-    admit.
+      admit.
   Qed.
 
   Theorem iput_update : forall xlen inode l iblock ipos,

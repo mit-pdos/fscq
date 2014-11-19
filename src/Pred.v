@@ -552,6 +552,18 @@ Proof.
   apply mem_union_addr; eauto.
 Qed.
 
+Lemma ptsto_valid':
+  forall a v F m,
+  (F * (a |-> v))%pred m
+  -> m a = Some v.
+Proof.
+  unfold ptsto; unfold_sep_star.
+  intros; repeat deex.
+  rewrite mem_union_comm; eauto.
+  apply mem_union_addr; eauto.
+  rewrite mem_disjoint_comm; eauto.
+Qed.
+
 Lemma ptsto_upd:
   forall a v v0 F m,
   (a |-> v0 * F)%pred m ->
@@ -574,6 +586,23 @@ Proof.
     destruct (addr_eq_dec a a); pred.
     destruct (addr_eq_dec a' a); pred.
 Qed.
+
+
+Lemma ptsto_eq : forall (p1 p2 : pred) m a v1 v2,
+  p1 m -> p2 m ->
+  (exists F, p1 =p=> a |-> v1 * F) ->
+  (exists F, p2 =p=> a |-> v2 * F) ->
+  v1 = v2.
+Proof.
+  intros.
+  repeat deex.
+  apply H1 in H; clear H1.
+  apply H2 in H0; clear H2.
+  apply ptsto_valid in H.
+  apply ptsto_valid in H0.
+  congruence.
+Qed.
+
 
 Lemma pimpl_and_split:
   forall a b c,
