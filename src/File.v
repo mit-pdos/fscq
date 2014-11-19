@@ -97,6 +97,7 @@ Module FILE.
      ([[ (fst inof :-> "len") = $ (FileLen (snd inof)) ]] *
      exists d,
      listpred file_match (combine ((fst inof) :-> "blocks") d) *
+     [[ length d = FileLen (snd inof) ]] *
      [[ array $0 d $1 (FileData (snd inof)) ]] )%pred.
 
   Definition rep xp (filelist : list file) :=
@@ -170,22 +171,25 @@ Module FILE.
     cancel.
 
     clear H0.
-    unfold sel in H6.
-    admit.
+    rewrite H15.
+    unfold sel in H6; auto.
 
     subst.
     cancel.
 
-    admit.
+    rewrite fst_selN_comm.
+    rewrite combine_length.
+    rewrite H15.
+    rewrite snd_selN_comm.
+    admit. (* XXX why is this so complicated? *)
 
     rewrite combine_length.
     rewrite H11.
     rewrite Nat.min_id.
     wordcmp.
-    admit.  (* bound for file/inode list *)
+    admit.  (* XXX bound for file/inode list *)
 
     admit.
-
   Qed.
 
   Definition fwrite T lxp xp inum (off:addr) v rx : prog T :=
