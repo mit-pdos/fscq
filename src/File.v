@@ -68,19 +68,15 @@ Module FILE.
            [[ bn = iget_blocknum ilist inum ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) * [[ r = false ]] \/
            exists m', LOG.rep lxp (ActiveTxn mbase m') * [[ r = true ]] *
-           [[ (F * INODE.rep xp ilist * bn |-> v)%pred m ]]
+           [[ (F * INODE.rep xp ilist * bn |-> v)%pred m' ]]
     CRASH  LOG.log_intact lxp mbase
     >} fwrite' lxp xp inum off v.
   Proof.
     unfold fwrite'.
     hoare.
-    instantiate (a2:=l).
-    unfold iget_blocknum.
-    cancel. clear H.
+    cancel.
     admit.
-    cancel. clear H.
-    right; exists m1.
-    admit.
+    cancel.
     LOG.unfold_intact.
     cancel.
   Qed.
