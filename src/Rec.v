@@ -274,7 +274,7 @@ Module Rec.
   Arguments rec2word : simpl never.
 End Rec.
 
-Notation "r :-> n" := (Rec.recget' n r) (at level 80).
+Notation "r :-> n" := (Rec.recget' n r) (at level 20).
 Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
 
 (*

@@ -30,9 +30,7 @@ Record xparams := {
 Module INODE.
   Definition blocks_per_inode := 3.
   Definition inodetype : Rec.rectype := [("len", Rec.WordF addrlen);
-                                         ("block0", Rec.WordF addrlen);
-                                         ("block1", Rec.WordF addrlen);
-                                         ("block2", Rec.WordF addrlen)].
+                                         ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)].
 
   (* XXX use ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)]. *)
   Definition inode := Rec.recdata inodetype.

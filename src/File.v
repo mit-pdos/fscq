@@ -24,13 +24,13 @@ Module FILE.
 
   Definition fread' T lxp xp inum (off:addr) rx : prog T :=
     i <-INODE.iget lxp xp inum;     (* XXX check off < len? *)
-    let blocknum := i :-> "block0" in
+    let blocknum := sel (i :-> "blocks") $0 $0 in
     fblock <- LOG.read lxp blocknum;
     rx fblock.
 
   Definition iget_blocknum ilist inum: addr := 
     let i := (sel ilist inum INODE.inode_zero) in
-    let bn := i :-> "block0" in
+    let bn := sel (i :-> "blocks") $0 $0 in
     bn.
 
   Theorem fread'_ok : forall lxp xp inum off,
@@ -55,7 +55,7 @@ Module FILE.
 
   Definition fwrite' T lxp xp inum (off:addr) v rx : prog T :=
     i <-INODE.iget lxp xp inum;
-    let blocknum := i :-> "block0" in
+    let blocknum := sel (i :-> "blocks") $0 $0 in
     ok <- LOG.write lxp blocknum v;
     rx ok.
 
@@ -81,20 +81,19 @@ Module FILE.
 
   Definition empty_file := Build_file 0 (fun _ => None).
 
+  Fixpoint blocks_ptto (fl : nat) (f : file) (i : INODE.inode) : pred :=
+    match fl with
+    | 0 => [[ emp (FileData f) ]]
+    | S fl' => exists v, (sel (i :-> "blocks") ($ fl') $0) |-> v * blocks_ptto fl' f i
+    end%pred.
+
   Fixpoint file_rep (l : list (INODE.inode * file)) : pred :=
     match l with
     | nil => emp
     | (i, f) :: rest =>
       (file_rep rest *
        [[ (i :-> "len") = $ (FileLen f) ]] *
-       exists v0 v1 v2,
-       (i :-> "block0") |-> v0 * (i :-> "block1") |-> v1 * (i :-> "block2") |-> v2 *
-       [[ ($0 |-> v0 * $1 |-> v1 * $2 |-> v2)%pred (FileData f) ]] * [[ FileLen f = 3 ]] \/
-       (i :-> "block0") |-> v0 * (i :-> "block1") |-> v1 *
-       [[ ($0 |-> v0 * $1 |-> v1)%pred (FileData f) ]] * [[ FileLen f = 2 ]] \/
-       (i :-> "block0") |-> v0 *
-       [[ ($0 |-> v0)%pred (FileData f) ]] * [[ FileLen f = 1 ]] \/
-       [[ emp (FileData f) ]] * [[ FileLen f = 0 ]])%pred
+       blocks_ptto (FileLen f) f i)%pred
     end.
 
   Definition rep xp (filelist : list file) :=
@@ -163,10 +162,8 @@ Module FILE.
     match bnum with
     | None => rx false
     | Some b =>
-      (* XXX currently assumes we're growing from 0 to 1;
-       * fix once Rec.v supports arrays.
-       *)
-      let i' := (i :=> "block0" := b :=> "len" := ((i :-> "len") ^+ $1)) in
+      let l' := i :-> "len" ^+ $1 in
+      let i' := (i :=> "blocks" := (upd (i :-> "blocks") l' b) :=> "len" := l') in
       ok <- INODE.iput lxp xp inum i';
       If (bool_dec ok true) {
         rx true
@@ -186,12 +183,10 @@ Module FILE.
 
   Definition fshrink T lxp bxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
-    ok <- BALLOC.free lxp bxp (i :-> "block0");
+    let l := i :-> "len" in
+    ok <- BALLOC.free lxp bxp (sel (i :-> "blocks") $0 l);
     If (bool_dec ok true) {
-      (* XXX currently assumes we're shrinking from 1 to 0;
-       * fix once Rec.v supports arrays.
-       *)
-      let i' := (i :=> "len" := ((i :-> "len") ^- $1)) in
+      let i' := (i :=> "len" := l ^- $1) in
       ok <- INODE.iput lxp xp inum i';
       rx ok
     } else {
