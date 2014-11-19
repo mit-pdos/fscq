@@ -22,15 +22,15 @@ Set Implicit Arguments.
 
 Module FILE.
 
-  Definition fread' T lxp xp inum (off:addr) rx : prog T :=
-    i <-INODE.iget lxp xp inum;     (* XXX check off < len? *)
-    let blocknum := sel (i :-> "blocks") $0 $0 in
+  Definition fread' T lxp xp inum off rx : prog T :=
+    i <-INODE.iget lxp xp inum;
+    let blocknum := sel (i :-> "blocks") off $0 in
     fblock <- LOG.read lxp blocknum;
     rx fblock.
 
-  Definition iget_blocknum ilist inum: addr := 
+  Definition iget_blocknum ilist inum off: addr := 
     let i := (sel ilist inum INODE.inode_zero) in
-    let bn := sel (i :-> "blocks") $0 $0 in
+    let bn := sel (i :-> "blocks") off $0 in
     bn.
 
   Theorem fread'_ok : forall lxp xp inum off,
@@ -38,25 +38,25 @@ Module FILE.
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep xp ilist * bn |-> v)% pred m ]] *
            [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
-           [[ bn = (iget_blocknum ilist inum) ]]
+           [[ bn = iget_blocknum ilist inum off ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
-           [[ r = v]]
+           [[ r = v ]]
     CRASH  LOG.log_intact lxp mbase
     >} fread' lxp xp inum off.
   Proof.
     unfold fread'.
     hoare.
     unfold iget_blocknum.
-    instantiate (a2 := l). cancel.   
+    instantiate (a2 := l). cancel.
     unfold iget_blocknum in H3.
     cancel.
     LOG.unfold_intact.
     cancel.
   Qed.
 
-  Definition fwrite' T lxp xp inum (off:addr) v rx : prog T :=
+  Definition fwrite' T lxp xp inum off v rx : prog T :=
     i <-INODE.iget lxp xp inum;
-    let blocknum := sel (i :-> "blocks") $0 $0 in
+    let blocknum := sel (i :-> "blocks") off $0 in
     ok <- LOG.write lxp blocknum v;
     rx ok.
 
@@ -64,8 +64,8 @@ Module FILE.
     {< F mbase m ilist bn v0,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep xp ilist * bn |-> v0)%pred m ]] *
-           [[ (inum < $ (length ilist))%word ]] *
-           [[ bn = iget_blocknum ilist inum ]]
+           [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
+           [[ bn = iget_blocknum ilist inum off ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) * [[ r = false ]] \/
            exists m', LOG.rep lxp (ActiveTxn mbase m') * [[ r = true ]] *
            [[ (F * INODE.rep xp ilist * bn |-> v)%pred m' ]]
@@ -75,7 +75,6 @@ Module FILE.
     unfold fwrite'.
     hoare.
     cancel.
-    admit.
     cancel.
     LOG.unfold_intact.
     cancel.
