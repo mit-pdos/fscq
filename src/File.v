@@ -134,6 +134,30 @@ Module FILE.
     intros; rewrite selN_combine; auto.
   Qed.
 
+  Ltac flength_simpl' :=
+    match goal with
+    | [ H : norm_goal _ |- _ ] => clear H
+    | [ |- context [ fst (selN (combine _ _) _ _)] ] 
+           => rewrite fst_selN_comm
+    | [ |- context [ snd (selN (combine _ _) _ _)] ] 
+           => rewrite snd_selN_comm
+    | [ H : context [ fst (selN (combine _ _) _ _)] |- _ ] 
+           => rewrite fst_selN_comm in H
+    | [ H : context [ snd (selN (combine _ _) _ _)] |- _ ] 
+           => rewrite snd_selN_comm in H
+    | [ H : length ?l = FileLen _ |- context [ length ?l ] ]
+           => rewrite H
+    | [ |- context [ length (combine _ _) ] ]
+           => rewrite combine_length
+    | [ |- context [ Init.Nat.min ?a ?a ] ] 
+           => rewrite Nat.min_id
+    | [ H: length ?a = length ?b |- context [ length ?a ] ] 
+           => rewrite H
+    end.
+
+  Ltac flength_simpl :=
+    repeat (unfold sel; flength_simpl'; wordcmp; auto).
+
   Theorem fread_ok : forall lxp xp inum off,
     {< mbase m flist v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -164,17 +188,13 @@ Module FILE.
     unfold file_match.
     cancel.
 
+    flength_simpl.
 
-    unfold sel.
-    repeat rewrite fst_selN_comm, snd_selN_comm; auto.
-    rewrite snd_selN_comm in *; auto.
-    rewrite fst_selN_comm in *; auto.
-    
-
+    (* this section needs cleanup *)
     assert (w=selN l1 (wordToNat off) $0).
     destruct H4.
     eapply ptsto_eq.
-    exact H4.
+    exact H3.
     exact H15.
     eexists.
     cancel.
@@ -183,37 +203,20 @@ Module FILE.
     rewrite isolate_fwd.
     instantiate (i:=off).
     cancel.
-
-    unfold sel in *; congruence; subst.
+    flength_simpl.
     cancel.
 
-    rewrite H16; auto.
-    rewrite fst_selN_comm in *; auto.
-    rewrite H16; auto.
-    rewrite fst_selN_comm in *; auto.
-    rewrite snd_selN_comm in *; auto.
-    rewrite H16; auto.
-    rewrite H16; auto.
+    flength_simpl.
+    flength_simpl.
 
-    rewrite fst_selN_comm in *; auto.
-    rewrite snd_selN_comm in *; auto.
-    rewrite combine_length.
-    rewrite H16.
-    rewrite H8.
-    rewrite Nat.min_id.
-    unfold sel in *; auto.
-
-    rewrite combine_length.
-    rewrite H12.
-    rewrite Nat.min_id.
-    wordcmp.
-
+    (* this section needs cleanup *)
     erewrite INODE.rep_length_eq with (ilist:=l).
     rewrite H12.
     apply lt_wlt.
     apply wlt_lt in H5.
     rewrite H5.
     unfold INODE.items_per_valu.
+    (* not quite right, unless length of file list > 0 *)
     admit.
     cancel.
   Qed.
