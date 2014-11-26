@@ -329,12 +329,34 @@ Module INODE.
     ok <- iput_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
     rx ok.
 
-  Lemma rep_length_eq: forall (p:pred) xp ilist,
-    p =p=> rep xp ilist
-    -> IXLen xp = $ (length ilist).
+  Require Import NArith.
+  Lemma wdiv_lt_upper_bound :
+    forall sz (a b c:word sz), b <> $0 -> (a < b ^* c)%word -> (a ^/ b < c)%word.
   Proof.
+    (* XXX This is a massive load of painful conversion between word, N, and nat,
+       and desperately needs automation. *)
+    intros.
+    unfold wdiv. unfold wordBin. unfold wlt.
+    rewrite NToWord_nat.
+    rewrite wordToN_nat.
+    rewrite wordToNat_natToWord_idempotent.
+    rewrite N2Nat.id.
+    apply N.div_lt_upper_bound.
+    rewrite wordToN_nat.
+    admit. (* XXX this is rather annoying *)
     admit.
+    rewrite N2Nat.id.
+    apply N.le_lt_trans with (m := wordToN a).
+    admit.
+    (* apply N.div_lt. *)
+    rewrite wordToN_nat.
+    rewrite pow2_N.
+    unfold Nlt.
+    rewrite <- Nat2N.inj_compare.
+    apply nat_compare_lt.
+    apply wordToNat_bound.
   Qed.
+
 
   Theorem iget_ok : forall lxp xp inum,
     {< F mbase m ilist,
@@ -360,13 +382,14 @@ Module INODE.
     split; [constructor |].
     split; [constructor |].
     pred_apply; instantiate (a2:=l); cancel.
-    admit.  (* need some lemma about ^/ *)
+    apply wdiv_lt_upper_bound.
+    word_neq. rewrite wmult_comm. assumption.
     admit.  (* need some lemma about ^% *)
 
     step.
     subst.
-    admit.  (* need to prove that we are selecting the right inode.. *)
-
+    (* need to prove that we are selecting the right inode.. *)
+    admit.
     step.
   Qed.
 
@@ -382,7 +405,38 @@ Module INODE.
     >} iput lxp xp inum i.
   Proof.
     unfold iput, rep.
+    intros. eapply pimpl_ok2. eauto with prog.
+    intros.
+    norm.
+    cancel.
+    split; [constructor |].
+    split; [constructor |].
+    split; [constructor |].
+    split; [constructor |].
+    pred_apply. instantiate (a2:=l); cancel.
+    apply wdiv_lt_upper_bound.
+    word_neq. rewrite wmult_comm. assumption.
     admit.
+    (* I've unfolded [step] here manually *)
+    intros.
+    eapply pimpl_ok2. eauto with prog.
+    intros. subst.
+    cancel. step. subst.
+    intros.
+    unfold stars. simpl. subst.
+    pimpl_crash.
+    norm.
+    apply stars_or_right.
+    unfold stars. simpl. subst.
+    pimpl_crash.
+    norm.
+    cancel'.
+    intuition. pred_apply.
+    norm.
+    repeat (cancel_one || delay_one).
+    apply finish_frame. (* Coq loops here :( ()
+
+    step.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (iget _ _ _) _) => apply iget_ok : prog.

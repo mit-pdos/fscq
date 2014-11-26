@@ -604,6 +604,10 @@ Theorem Npow2_nat : forall n, nat_of_N (Npow2 n) = pow2 n.
   apply nat_of_Ndouble.
 Qed.
 
+Theorem pow2_N : forall n, Npow2 n = N.of_nat (pow2 n).
+  intro n. apply nat_of_N_eq. rewrite Nat2N.id. apply Npow2_nat.
+Qed.
+
 Theorem wneg_alt : forall sz (x : word sz), wneg x = wnegN x.
   unfold wnegN, wneg; intros.
   repeat rewrite wordToN_nat; repeat rewrite NToWord_nat.
