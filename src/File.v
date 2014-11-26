@@ -94,7 +94,7 @@ Module FILE.
       fst x |-> snd x.
 
   Definition file_rep (inof : INODE.inode * file) : pred :=
-     ([[ (fst inof :-> "len") = $ (FileLen (snd inof)) ]] *
+     ([[ length (fst inof :-> "blocks") = (FileLen (snd inof)) ]] *
      exists d,
      listpred file_match (combine ((fst inof) :-> "blocks") d) *
      [[ length d = FileLen (snd inof) ]] *
@@ -103,6 +103,7 @@ Module FILE.
   Definition rep xp (filelist : list file) :=
     (exists inodelist, INODE.rep xp inodelist *
      [[ length inodelist = length filelist ]] *
+     [[ exists b:addr, length filelist <= wordToNat b ]] *
      listpred file_rep (combine inodelist filelist))%pred.
 
   Definition fread T lxp xp inum (off:addr) rx : prog T :=
@@ -111,15 +112,26 @@ Module FILE.
 
   Hint Extern 0 (okToUnify (INODE.rep _ _) (INODE.rep _ _)) => constructor : okToUnify.
 
+  Lemma selN_combine : forall Ta Tb i a b (a0:Ta) (b0:Tb),
+    length a = length b ->
+    selN (combine a b) i (a0, b0) = pair (selN a i a0) (selN b i b0).
+  Proof.
+    induction i; destruct a, b; intros; inversion H; auto.
+    simpl; apply IHi; assumption.
+  Qed.
 
   Lemma fst_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
-  fst ( selN (combine a b) i (a0, b0)) = selN a i a0.
-    admit.
+    length a = length b ->
+    fst ( selN (combine a b) i (a0, b0)) = selN a i a0.
+  Proof.
+    intros; rewrite selN_combine; auto.
   Qed.
 
   Lemma snd_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
-  snd ( selN (combine a b) i (a0, b0)) = selN b i b0.
-    admit.
+    length a = length b ->
+    snd ( selN (combine a b) i (a0, b0)) = selN b i b0.
+  Proof.
+    intros; rewrite selN_combine; auto.
   Qed.
 
   Theorem fread_ok : forall lxp xp inum off,
@@ -150,18 +162,20 @@ Module FILE.
     cancel.
     rewrite listpred_fwd with (prd := file_match).
     unfold file_match.
-    cancel. clear H.
+    cancel.
 
-    rewrite fst_selN_comm.
-    rewrite fst_selN_comm.
+
     unfold sel.
-    rewrite snd_selN_comm in *.
+    repeat rewrite fst_selN_comm, snd_selN_comm; auto.
+    rewrite snd_selN_comm in *; auto.
+    rewrite fst_selN_comm in *; auto.
+    
 
     assert (w=selN l1 (wordToNat off) $0).
     destruct H4.
     eapply ptsto_eq.
-    exact H.
-    exact H14.
+    exact H4.
+    exact H15.
     eexists.
     cancel.
 
@@ -170,26 +184,38 @@ Module FILE.
     instantiate (i:=off).
     cancel.
 
-    clear H0.
-    rewrite H15.
-    unfold sel in H6; auto.
-
-    subst.
+    unfold sel in *; congruence; subst.
     cancel.
 
-    rewrite fst_selN_comm.
+    rewrite H16; auto.
+    rewrite fst_selN_comm in *; auto.
+    rewrite H16; auto.
+    rewrite fst_selN_comm in *; auto.
+    rewrite snd_selN_comm in *; auto.
+    rewrite H16; auto.
+    rewrite H16; auto.
+
+    rewrite fst_selN_comm in *; auto.
+    rewrite snd_selN_comm in *; auto.
     rewrite combine_length.
-    rewrite H15.
-    rewrite snd_selN_comm.
-    admit. (* XXX why is this so complicated? *)
+    rewrite H16.
+    rewrite H8.
+    rewrite Nat.min_id.
+    unfold sel in *; auto.
 
     rewrite combine_length.
-    rewrite H11.
+    rewrite H12.
     rewrite Nat.min_id.
     wordcmp.
-    admit.  (* XXX bound for file/inode list *)
 
+    erewrite INODE.rep_length_eq with (ilist:=l).
+    rewrite H12.
+    apply lt_wlt.
+    apply wlt_lt in H5.
+    rewrite H5.
+    unfold INODE.items_per_valu.
     admit.
+    cancel.
   Qed.
 
   Definition fwrite T lxp xp inum (off:addr) v rx : prog T :=

@@ -329,6 +329,13 @@ Module INODE.
     ok <- iput_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
     rx ok.
 
+  Lemma rep_length_eq: forall (p:pred) xp ilist,
+    p =p=> rep xp ilist
+    -> IXLen xp = $ (length ilist).
+  Proof.
+    admit.
+  Qed.
+
   Theorem iget_ok : forall lxp xp inum,
     {< F mbase m ilist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
