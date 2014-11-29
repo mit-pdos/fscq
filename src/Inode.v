@@ -332,39 +332,6 @@ Module INODE.
     ok <- iput_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
     rx ok.
 
-  Lemma wlt_mult_inj : forall sz (a b c:word sz),
-    (a < b ^* c)%word -> wordToNat a < wordToNat b * wordToNat c.
-  Proof.
-    intros. word2nat. destruct (lt_dec (wordToNat b * wordToNat c) (pow2 sz)).
-    (* Either there's no overflow... *)
-    + word2nat'; assumption.
-    (* ... or it's true even without the hypothesis *)
-    + assert (wordToNat a < pow2 sz) by (apply wordToNat_bound). omega.
-  Qed.
-
-  Lemma div_le : forall a b, b <> 0 -> a / b <= a.
-  Proof.
-    intros.
-    destruct (Nat.eq_dec a 0).
-    rewrite e. rewrite Nat.div_0_l by assumption. omega.
-    destruct (Nat.eq_dec b 1).
-    rewrite e. rewrite Nat.div_1_r. omega.
-    apply Nat.lt_le_incl.
-    apply Nat.div_lt; omega.
-  Qed.
-
-  Lemma wdiv_lt_upper_bound :
-    forall sz (a b c:word sz), b <> $0 -> (a < b ^* c)%word -> (a ^/ b < c)%word.
-  Proof.
-    intros sz a b c Hnz Hlm.
-    apply wlt_mult_inj in Hlm.
-    word2nat'.
-    apply Nat.div_lt_upper_bound; assumption.
-    apply le_lt_trans with (m := wordToNat a).
-    apply div_le; assumption.
-    apply wordToNat_bound.
-  Qed.
-
   Theorem iget_ok : forall lxp xp inum,
     {< F mbase m ilist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -389,10 +356,8 @@ Module INODE.
     split; [constructor |].
     split; [constructor |].
     pred_apply; instantiate (a2:=l); cancel.
-    apply wdiv_lt_upper_bound.
-    word_neq. rewrite wmult_comm. assumption.
-    admit.  (* need some lemma about ^% *)
-
+    apply wdiv_lt_upper_bound; [word_neq | rewrite wmult_comm; assumption].
+    apply wmod_upper_bound; word_neq.
     step.
     subst.
     (* need to prove that we are selecting the right inode.. *)
@@ -421,9 +386,8 @@ Module INODE.
     split; [constructor |].
     split; [constructor |].
     pred_apply. instantiate (a2:=l); cancel.
-    apply wdiv_lt_upper_bound.
-    word_neq. rewrite wmult_comm. assumption.
-    admit.
+    apply wdiv_lt_upper_bound; [word_neq | rewrite wmult_comm; assumption].
+    apply wmod_upper_bound; word_neq.
     (* I've unfolded [step] here manually *)
     intros.
     eapply pimpl_ok2. eauto with prog.

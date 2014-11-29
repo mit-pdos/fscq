@@ -41,7 +41,8 @@ Qed.
 
 (* The standard library should really define this... *)
 Lemma Ninj_div : forall a a' : N, N.to_nat (a / a') = N.to_nat a / N.to_nat a'. admit. Qed.
-Hint Rewrite Ninj_div : W2Nat W2Nat'.
+Lemma Ninj_mod : forall a a' : N, N.to_nat (a mod a') = (N.to_nat a) mod (N.to_nat a'). admit. Qed.
+Hint Rewrite Ninj_div Ninj_mod N2Nat.inj_mul N2Nat.inj_add N2Nat.inj_sub : W2Nat W2Nat'.
 
 Lemma wordToNat_mult : forall sz (n m:word sz), wordToNat n * wordToNat m < pow2 sz ->
   wordToNat (n ^* m) = wordToNat n * wordToNat m.
@@ -58,8 +59,7 @@ Hint Rewrite wordToNat_mult : W2Nat'.
 (* XXX this needs some restructuring *)
 Ltac word2nat_with tac :=
   try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); simpl;
-    repeat (progress autorewrite with W2Nat in *; simpl);
-    unfold wplus, wminus, wmult, wdiv, wordBin;
+    unfold wplus, wminus, wmult, wdiv, wmod, wordBin; (* XXX should be in * but that's screwy later *)
     tac;
     repeat match goal with
            (* XXX the 1 and 2 here are fragile -- is there a better way? *)
@@ -74,8 +74,55 @@ Ltac word2nat_with tac :=
     repeat (progress autorewrite with W2Nat in *; simpl).
 
 (* These tactics try to convert statements about words into statements about nats *)
-Ltac word2nat := word2nat_with idtac.
+Ltac word2nat := word2nat_with ltac:(autorewrite with W2Nat in *).
 
 Ltac word2nat' := word2nat_with ltac:(autorewrite with W2Nat' in *).
+Lemma wlt_mult_inj : forall sz (a b c:word sz),
+  (a < b ^* c)%word -> wordToNat a < wordToNat b * wordToNat c.
+Proof.
+  intros. word2nat. destruct (lt_dec (wordToNat b * wordToNat c) (pow2 sz)).
+  (* Either there's no overflow... *)
+  + word2nat'; assumption.
+  (* ... or it's true even without the hypothesis *)
+  + assert (wordToNat a < pow2 sz) by (apply wordToNat_bound). omega.
+Qed.
 
-Ltac womega := word2nat'; omega.
+Lemma div_le : forall a b, b <> 0 -> a / b <= a.
+Proof.
+  intros.
+  destruct (Nat.eq_dec a 0).
+  rewrite e. rewrite Nat.div_0_l by assumption. omega.
+  destruct (Nat.eq_dec b 1).
+  rewrite e. rewrite Nat.div_1_r. omega.
+  apply Nat.lt_le_incl.
+  apply Nat.div_lt; omega.
+Qed.
+
+
+(* unlike auto, this does not solve things completely *)
+Ltac word2nat_auto := word2nat_with ltac:(
+    try (unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *; match goal with
+    | [ H : (_ < NToWord _ (_ * _)%N)%word |- _ ] => apply wlt_mult_inj in H
+    end); autorewrite with W2Nat' in * ).
+
+Ltac womega := word2nat_auto; omega.
+
+Lemma wdiv_lt_upper_bound :
+  forall sz (a b c:word sz), b <> $0 -> (a < b ^* c)%word -> (a ^/ b < c)%word.
+Proof.
+  intros. word2nat_auto.
+  apply Nat.div_lt_upper_bound; assumption.
+  apply le_lt_trans with (m := wordToNat a).
+  apply div_le; assumption.
+  apply wordToNat_bound.
+Qed.
+
+Lemma wmod_upper_bound :
+  forall sz (a b:word sz), b <> $0 -> (a ^% b < b)%word.
+Proof.
+  intros. word2nat_auto.
+  apply Nat.mod_upper_bound; assumption.
+  apply le_lt_trans with (m := wordToNat a).
+  apply Nat.mod_le; assumption.
+  apply wordToNat_bound.
+Qed.
