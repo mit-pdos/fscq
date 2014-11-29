@@ -1,4 +1,4 @@
-Require Import Word.
+Require Import Word WordAuto.
 Require Import Prog.
 Require Import Arith.
 Require Import Eqdep.
@@ -16,7 +16,7 @@ Section Packer.
   Proof.
     intros pos H. rewrite <- Nat.sub_add_distr. rewrite le_plus_minus_r.
     reflexivity. rewrite <- Nat.mul_succ_l. rewrite <- itemsz_ok.
-    apply mult_le_compat_r. apply Nat.le_succ_l. apply wlt_lt. assumption.
+    apply mult_le_compat_r. womega.
   Qed.
 
   Definition extract (v : valu) (pos : addr) : word itemsz.

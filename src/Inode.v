@@ -14,6 +14,8 @@ Require Import Eqdep_dec.
 Require Import Rec.
 Require Import Pack.
 Require Import FunctionalExtensionality.
+Require Import NArith.
+Require Import WordAuto.
 
 Import ListNotations.
 
@@ -330,34 +332,38 @@ Module INODE.
     ok <- iput_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
     rx ok.
 
-  Require Import NArith.
+  Lemma wlt_mult_inj : forall sz (a b c:word sz),
+    (a < b ^* c)%word -> wordToNat a < wordToNat b * wordToNat c.
+  Proof.
+    intros. word2nat. destruct (lt_dec (wordToNat b * wordToNat c) (pow2 sz)).
+    (* Either there's no overflow... *)
+    + word2nat'; assumption.
+    (* ... or it's true even without the hypothesis *)
+    + assert (wordToNat a < pow2 sz) by (apply wordToNat_bound). omega.
+  Qed.
+
+  Lemma div_le : forall a b, b <> 0 -> a / b <= a.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec a 0).
+    rewrite e. rewrite Nat.div_0_l by assumption. omega.
+    destruct (Nat.eq_dec b 1).
+    rewrite e. rewrite Nat.div_1_r. omega.
+    apply Nat.lt_le_incl.
+    apply Nat.div_lt; omega.
+  Qed.
+
   Lemma wdiv_lt_upper_bound :
     forall sz (a b c:word sz), b <> $0 -> (a < b ^* c)%word -> (a ^/ b < c)%word.
   Proof.
-    (* XXX This is a massive load of painful conversion between word, N, and nat,
-       and desperately needs automation. *)
-    intros.
-    unfold wdiv. unfold wordBin. unfold wlt.
-    rewrite NToWord_nat.
-    rewrite wordToN_nat.
-    rewrite wordToNat_natToWord_idempotent.
-    rewrite N2Nat.id.
-    apply N.div_lt_upper_bound.
-    rewrite wordToN_nat.
-    admit. (* XXX this is rather annoying *)
-    admit.
-    rewrite N2Nat.id.
-    apply N.le_lt_trans with (m := wordToN a).
-    admit.
-    (* apply N.div_lt. *)
-    rewrite wordToN_nat.
-    rewrite pow2_N.
-    unfold Nlt.
-    rewrite <- Nat2N.inj_compare.
-    apply nat_compare_lt.
+    intros sz a b c Hnz Hlm.
+    apply wlt_mult_inj in Hlm.
+    word2nat'.
+    apply Nat.div_lt_upper_bound; assumption.
+    apply le_lt_trans with (m := wordToNat a).
+    apply div_le; assumption.
     apply wordToNat_bound.
   Qed.
-
 
   Theorem iget_ok : forall lxp xp inum,
     {< F mbase m ilist,
