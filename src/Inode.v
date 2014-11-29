@@ -32,7 +32,6 @@ Module INODE.
   Definition inodetype : Rec.rectype := [("len", Rec.WordF addrlen);
                                          ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)].
 
-  (* XXX use ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)]. *)
   Definition inode := Rec.recdata inodetype.
   Definition inode_zero := Rec.word2rec inodetype $0.
 
@@ -159,10 +158,10 @@ Module INODE.
     autorewrite with core. auto.
 
     subst. autorewrite with core. auto.
-    clear H.
+    unfold inode_zero.
     unfold Rec.has_right_lengths; simpl.
     admit.
-    unfold LOG.log_intact; cancel.
+    unfold LOG.log_intact. cancel.
   Qed.
 
   Theorem map_rep_block_below : forall xlen xstart l ui v, ui < xstart
@@ -216,7 +215,9 @@ Module INODE.
         rewrite IHxlen; [| simpl; auto; try omega .. ]; clear IHxlen.
         rewrite selN_updN_eq by auto; reflexivity.
         assert ($ xstart < ipos)%word by ( apply le_neq_lt; auto ).
-        (* XXX word comparisons.. *) admit.
+        rewrite natToWord_S. apply le_wle. rewrite wplus_comm.
+        rewrite wordToNat_plusone with (w' := ipos) by assumption.
+        apply Nat.le_succ_l. apply wlt_lt. assumption.
         replace (S (xstart + xlen)) with (xstart + S xlen) by omega; auto.
         unfold not; intros; apply n. rewrite <- H4.
         rewrite natToWord_wordToNat; auto.
@@ -434,8 +435,13 @@ Module INODE.
     intuition. pred_apply.
     norm.
     repeat (cancel_one || delay_one).
-    apply finish_frame. (* Coq loops here :( ()
-
+    instantiate (a:= (upd l (inum ^/ items_per_valu)
+        (upd (sel l (inum ^/ items_per_valu) nil) (inum ^% items_per_valu) i))).
+    apply finish_frame. (* Coq loops here without the [instantiate] *)
+    split; [constructor |].
+    split; [constructor |].
+    admit. (* right inode again *)
+    constructor.
     step.
   Qed.
 

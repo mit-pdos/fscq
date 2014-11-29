@@ -1267,6 +1267,17 @@ Proof.
   auto.
 Qed.
 
+Lemma wle_le: forall sz (a b : word sz), (a <= b)%word ->
+  (wordToNat a <= wordToNat b)%nat.
+Proof.
+  intros.
+  unfold wlt in H.
+  repeat rewrite wordToN_nat in *.
+  apply Nge_out in H.
+  repeat rewrite Nat2N.id in *.
+  auto.
+Qed.
+
 Lemma wlt_lt': forall sz a b, (a < pow2 sz)%nat
   -> natToWord sz a < b
   -> (wordToNat (natToWord sz a) < wordToNat b)%nat.
@@ -1316,6 +1327,20 @@ Proof.
   repeat rewrite Nat2N.id.
   auto.
 Qed.
+
+Lemma le_wle: forall sz (n : word sz) m, (wordToNat n <= wordToNat m)%nat ->
+  n <= m.
+Proof.
+  intros.
+  unfold wlt.
+  repeat rewrite wordToN_nat.
+  apply N.le_ngt.
+  apply N.ge_le.
+  apply Nge_in.
+  repeat rewrite Nat2N.id.
+  auto.
+Qed.
+
 
 Lemma wminus_Alt2: forall sz x y, y <= x ->
   @wminusN sz x y = wordBinN minus x y.
