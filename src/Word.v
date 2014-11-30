@@ -3,7 +3,7 @@
 Require Import Arith Div2 NArith Bool Omega.
 Require Import Nomega.
 Require Import Wf_nat.
-Require Import Eqdep.
+Require Import Eqdep_dec.
 Require Import Program.Tactics.
 Require Import Recdef.
 Require Import Ring.
@@ -288,8 +288,6 @@ Qed.
 
 Hint Resolve shatter_word_0.
 
-Require Import Eqdep_dec.
-
 Definition weq : forall sz (x y : word sz), {x = y} + {x <> y}.
   refine (fix weq sz (x : word sz) : forall y : word sz, {x = y} + {x <> y} :=
     match x in word sz return forall y : word sz, {x = y} + {x <> y} with
@@ -373,9 +371,6 @@ Theorem split2_combine : forall sz1 sz2 (w : word sz1) (z : word sz2),
   split2 sz1 sz2 (combine w z) = z.
   induction sz1; shatterer.
 Qed.
-
-Require Import Eqdep_dec.
-
 
 Theorem combine_assoc : forall n1 (w1 : word n1) n2 n3 (w2 : word n2) (w3 : word n3) Heq,
   combine (combine w1 w2) w3
@@ -1551,7 +1546,7 @@ Proof.
   destruct H1. destruct H1.
   rewrite H1 in *.
   inversion H0.
-  apply inj_pair2 in H5.
+  apply (inj_pair2_eq_dec _ eq_nat_dec) in H5.
   rewrite div2_pow2_twice in H5.
   repeat rewrite <- H2 in H5.
   eapply IHsz; eauto.
