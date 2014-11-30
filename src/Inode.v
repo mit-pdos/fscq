@@ -65,7 +65,7 @@ Module INODE.
     unfold valu_to_block, rep_block.
     unfold eq_rec_r, eq_rec.
     intros.
-    rewrite Pack.eq_rect_double.
+    rewrite Pack.eq_rect_nat_double.
     rewrite <- eq_rect_eq_dec; [| apply eq_nat_dec ].
     admit.
   Qed.
