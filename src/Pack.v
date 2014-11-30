@@ -1,7 +1,6 @@
 Require Import Word WordAuto.
 Require Import Prog.
 Require Import Arith.
-Require Import Eqdep.
 Require Import Eqdep_dec.
 
 Set Implicit Arguments.
@@ -98,7 +97,7 @@ Section Packer.
 
     unfold eq_rec_r, eq_rec.
     repeat rewrite eq_rect_nat_double.
-    rewrite <- eq_rect_eq.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
 
     rewrite split1_combine.
     rewrite split2_combine.
@@ -112,7 +111,7 @@ Section Packer.
     destruct (wlt_dec pos items_per_valu); try congruence.
     unfold eq_rec_r, eq_rec.
     repeat rewrite eq_rect_nat_double.
-    rewrite <- eq_rect_eq.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
     repeat rewrite split1_combine.
     rewrite split2_combine.
     auto.
