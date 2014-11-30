@@ -62,7 +62,12 @@ Module INODE.
   Defined.
 
   Lemma rep_valu_idem : forall b, valu_to_block (rep_block b) = b.
-    (* XXX lots of nasty eq_rects *) admit.
+    unfold valu_to_block, rep_block.
+    unfold eq_rec_r, eq_rec.
+    intros.
+    rewrite Pack.eq_rect_double.
+    rewrite <- eq_rect_eq_dec; [| apply eq_nat_dec ].
+    admit.
   Qed.
 
   Definition rep_pair xp (ilistlist : list block) :=
