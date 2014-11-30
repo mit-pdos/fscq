@@ -2,6 +2,7 @@ Require Import Word WordAuto.
 Require Import Prog.
 Require Import Arith.
 Require Import Eqdep.
+Require Import Eqdep_dec.
 
 Set Implicit Arguments.
 
@@ -116,6 +117,10 @@ Section Packer.
     rewrite split2_combine.
     auto.
   Qed.
+
+  (* plan 1: prove split/combine equivalent to some ops on bool lists.
+     plan 2: explicit impls of update/extract in Word.v
+   *)
 
   Theorem extract_other : forall v pos pos' n, pos <> pos'
     -> extract (update v pos' n) pos = extract v pos.
