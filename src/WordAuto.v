@@ -24,8 +24,6 @@ Proof.
 Qed.
 Hint Rewrite wordToNat_N : W2Nat W2Nat'.
 
-Check wordToNat_natToWord_idempotent.
-
 Lemma wordToNat_natToWord_idempotent'
    : forall sz n:nat, n < pow2 sz -> wordToNat (natToWord sz n) = n.
 Proof.

@@ -2,12 +2,6 @@ Require Import Hoare.
 Require Import Prog.
 Require Import Pred.
 Require Import SepAuto.
-Require Import Eqdep.
-
-Ltac do_inj_pair2 :=
-  repeat match goal with
-  | [ H: existT _ _ _ = existT _ _ _ |- _ ] => apply inj_pair2 in H; subst
-  end.
 
 Theorem corr2_from_corr3: forall T (p: prog T) pre, {{ pre }} p >> Done tt
   -> {{ fun done crash => pre done (fun _ => crash) }} p.
@@ -17,12 +11,12 @@ Proof.
   - exfalso.
     edestruct H; eauto; repeat deex; try congruence.
   - edestruct H; eauto; repeat deex.
-    + inversion H3; subst; do_inj_pair2.
+    + inversion H3; subst.
       left. repeat eexists; eauto.
-    + inversion H3; subst; do_inj_pair2.
+    + inversion H3; subst.
   - edestruct H; eauto; repeat deex.
-    + inversion H3; subst; do_inj_pair2.
-    + inversion H3; subst; do_inj_pair2.
+    + inversion H3; subst.
+    + inversion H3; subst.
       right. repeat eexists; eauto.
 Qed.
 
@@ -110,7 +104,7 @@ Proof.
     edestruct H; eauto; repeat deex; try congruence.
   - repeat eexists; intuition eauto; try congruence.
     edestruct H; eauto; repeat deex; try congruence.
-    inversion H6; subst; do_inj_pair2; eauto.
+    inversion H6; subst; eauto.
   - edestruct H; eauto; repeat deex; try congruence.
     inversion H7; clear H7; subst.
     exfalso.
