@@ -111,10 +111,31 @@ Module INODE.
     unfold LOG.log_intact. cancel.
   Qed.
 
+  Lemma selS : forall t (z : t) h l i,
+    selN l i z = selN (h :: l) (S i) z.
+  Proof.
+    auto.
+  Qed.
+
+  Lemma sel_lists_eq : forall t (z : t) n l1 l2, n = length l1 -> n = length l2 ->
+    (forall i, i < n -> selN l1 i z = selN l2 i z) -> l1 = l2.
+  Proof.
+    induction n; destruct l1; try discriminate; destruct l2; try discriminate.
+    trivial.
+    intros.
+    replace t1 with t0 by (apply (H1 0); omega).
+    replace l2 with l1. trivial. apply IHn; auto.
+    intros i Hl. erewrite selS.
+    replace (selN l2 i z) with (selN (t1 :: l2) (S i) z). apply H1. omega.
+    erewrite <- selS. trivial.
+  Qed.
+
   Lemma map_sel_seq : forall t (z : t) (l : list t) n,
     n = length l -> map (fun i => selN l i z) (seq 0 n) = l.
   Proof.
-    admit.
+    intros. apply sel_lists_eq with (z := z) (n := n); auto.
+    rewrite map_length. rewrite seq_length. trivial.
+    intros i Hl. apply selN_map_seq; assumption.
   Qed.
 
   Theorem iput_update : forall xlen inode l iblock ipos,
@@ -129,7 +150,7 @@ Module INODE.
     rewrite <- map_map. rewrite map_sel_seq by assumption. rewrite <- map_updN.
     replace (map (fun i : nat => rep_block (selN (updN l (wordToNat iblock) ud) i nil)) (seq 0 xlen))
       with (map rep_block (map (fun i : nat => (selN (updN l (wordToNat iblock) ud) i nil)) (seq 0 xlen)))
-      by (apply map_map).
+      by (apply map_map). (* XXX how can I specify the rewrite location here?? *)
     rewrite map_sel_seq. trivial. autorewrite with core. assumption.
   Qed.
 
@@ -154,8 +175,8 @@ Module INODE.
     (* Coq bug 3815 or 3816? *)
     autorewrite with core. auto.
 
-    apply pimpl_or_r. right. unfold rep_pair.
-    unfold rep_pair in H3. destruct_lift H3. cancel.
+    apply pimpl_or_r. right. unfold rep_pair in *.
+    destruct_lift H3. cancel.
     rewrite sel_map_seq by auto. autorewrite with core.
     rewrite iput_update; auto.
     autorewrite with core. auto.
