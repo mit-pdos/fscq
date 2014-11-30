@@ -8,34 +8,37 @@ Set Implicit Arguments.
 
 Module Rec.
 
-  Inductive fieldtype :=
-    | WordF : nat -> fieldtype
-    | ArrayF : fieldtype -> nat -> fieldtype.
+  Inductive type :=
+    | WordF : nat -> type
+    | ArrayF : type -> nat -> type
+    | RecF : list (string * type) -> type.
 
-  Fixpoint fielddata (t : fieldtype) : Type :=
+  Definition rectype := list (string * type).
+
+  Fixpoint data (t : type) : Type :=
     match t with
     | WordF l => word l
-    | ArrayF t' _ => list (fielddata t')
+    | ArrayF t' _ => list (data t')
+    | RecF rt =>
+      (fix recdata (t : list (string * type)) : Type :=
+        match t with
+        | [] => unit
+        | (_, ft) :: t' => data ft * recdata t'
+        end%type) rt
     end.
 
-  Fixpoint fieldlen (t : fieldtype) : nat :=
+  Definition recdata ft := data (RecF ft).
+
+  Fixpoint len (t : type) : nat :=
     match t with
     | WordF l => l
-    | ArrayF t' l => l * fieldlen t'
-    end.
-
-  Definition rectype := list (string * fieldtype).
-
-  Fixpoint recdata (t : rectype) : Type := 
-    match t with
-    | [] => unit
-    | (_, ft) :: t' => fielddata ft * recdata t'
-    end%type.
-
-  Fixpoint reclen (t : rectype) : nat :=
-    match t with
-    | [] => 0
-    | (_, ft) :: t' => fieldlen ft + reclen t'
+    | ArrayF t' l => l * len t'
+    | RecF rt =>
+      (fix reclen (t : rectype) : nat :=
+        match t with
+        | [] => 0
+        | (_, ft) :: t' => len ft + reclen t'
+        end) rt
     end.
 
   Fixpoint list_all {A : Type} (P : A -> Prop) (xs : list A) : Prop :=
@@ -44,17 +47,17 @@ Module Rec.
     | x :: x' => P x /\ list_all P x'
     end.
 
-  Fixpoint has_right_length {ft : fieldtype} : fielddata ft -> Prop :=
-    match ft as ft return (fielddata ft -> Prop) with
+  Fixpoint has_right_length {t : type} : data t -> Prop :=
+    match t as t return (data t -> Prop) with
     | WordF _ => fun _ => True
-    | ArrayF ft0 l => fun v => Datatypes.length v = l /\ list_all has_right_length v
-    end.
-
-  Fixpoint has_right_lengths {t : rectype} : recdata t -> Prop :=
-    match t as t return (recdata t -> Prop) with
-    | [] => fun _ => True
-    | (_, ft) :: t' => fun r =>
-      let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
+    | ArrayF _ l => fun v => Datatypes.length v = l /\ list_all has_right_length v
+    | RecF rt =>
+      (fix has_right_lengths {rt : rectype} : data (RecF rt) -> Prop :=
+        match rt as rt return (data (RecF rt) -> Prop) with
+        | [] => fun _ => True
+        | (_, ft) :: t' => fun r =>
+          let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
+        end) rt
     end.
 
   Inductive field_in : rectype -> string -> Prop :=
@@ -73,8 +76,8 @@ Module Rec.
     apply H3.
   Qed.
 
-  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : fieldtype :=
-    match t as t return (field_in t n -> fieldtype) with
+  Fixpoint field_type (t : rectype) (n : string) (f : field_in t n) : type :=
+    match t as t return (field_in t n -> type) with
     | nil => fun f => match (empty_field_in f) with end
     | (n0, ft0)::_ => fun f =>
       match (string_dec n0 n) with
@@ -83,14 +86,14 @@ Module Rec.
       end
     end f.
 
-  Fixpoint recget {t : rectype} {n : string} (p : field_in t n) (r : recdata t) : fielddata (field_type p) :=
-    match t as t return (recdata t -> forall f : field_in t n, fielddata (field_type f)) with
+  Fixpoint recget {t : rectype} {n : string} (p : field_in t n) (r : recdata t) : data (field_type p) :=
+    match t as t return (recdata t -> forall f : field_in t n, data (field_type f)) with
     | [] => fun _ f => match (empty_field_in f) with end
     | (n0, ft0) :: t' =>
       fun r f =>
       let (v, r') := r in
       match (string_dec n0 n) as s
-        return (fielddata
+        return (data
             match s with
             | left _ => ft0
             | right ne => field_type (field_in_next ne f)
@@ -101,7 +104,7 @@ Module Rec.
       end
     end r p.
 
-  Fixpoint recset {t : rectype} {n : string} (p : field_in t n) (r : recdata t) (v : fielddata (field_type p)) {struct t} : recdata t.
+  Fixpoint recset {t : rectype} {n : string} (p : field_in t n) (r : recdata t) (v : data (field_type p)) {struct t} : recdata t.
     destruct t. contradiction (empty_field_in p).
     destruct p0 as [n0 ft0]. destruct r as [v0 r'].
     simpl in v.
@@ -153,7 +156,7 @@ Module Rec.
   Definition recget' {t : rectype} (n : string) (r : recdata t) :=
     match fieldp t n as fp
           return (match fp with 
-                    | Some p => fielddata (field_type p)
+                    | Some p => data (field_type p)
                     | None => True
                   end) with
       | Some p => recget p r
@@ -163,74 +166,86 @@ Module Rec.
   Definition recset' {t : rectype} (n : string) (r : recdata t) :=
     match fieldp t n as fp
           return (recdata t -> match fp with
-                    | Some p => fielddata (field_type p) -> recdata t
+                    | Some p => data (field_type p) -> recdata t
                     | None => True
                   end) with
       | Some p => fun r v => recset p r v
       | None => fun _ => I
     end r.
 
-  Fixpoint field2word {ft : fieldtype} : fielddata ft -> word (fieldlen ft) :=
-    match ft as ft return (fielddata ft -> word (fieldlen ft)) with
+  Fixpoint to_word {ft : type} : data ft -> word (len ft) :=
+    match ft as ft return (data ft -> word (len ft)) with
     | WordF n => fun v => v
     | ArrayF ft0 n as ft =>
       (fix arrayf2word n v :=
-        match n as n0 return (fielddata (ArrayF ft0 n0) -> word (fieldlen (ArrayF ft0 n0))) with
+        match n as n0 return (data (ArrayF ft0 n0) -> word (len (ArrayF ft0 n0))) with
         | 0 => fun _ => WO
         | S n0 => fun v =>
           match v with
           | nil => $0
-          | v0 :: v' => combine (field2word v0) (arrayf2word n0 v')
+          | v0 :: v' => combine (to_word v0) (arrayf2word n0 v')
           end
         end v) n
+    | RecF t =>
+      (fix rec2word {t : rectype} (r : recdata t) : word (len (RecF t)) :=
+        match t as t return recdata t -> word (len (RecF t)) with
+        | nil => fun _ => WO
+        | (_, _) :: _ => fun r =>
+          let (v, r') := r in combine (to_word v) (rec2word r')
+        end r) t
     end.
 
-  Fixpoint rec2word {t : rectype} (r : recdata t) : word (reclen t) :=
-    match t as t return recdata t -> word (reclen t) with
-    | nil => fun _ => WO
-    | (_, _) :: _ => fun r =>
-      let (v, r') := r in combine (field2word v) (rec2word r')
-    end r.
-
-  Fixpoint word2field {ft : fieldtype} : word (fieldlen ft) -> fielddata ft :=
-    match ft as ft return (word (fieldlen ft) -> fielddata ft) with
+  Fixpoint of_word {ft : type} : word (len ft) -> data ft :=
+    match ft as ft return (word (len ft) -> data ft) with
     | WordF n => fun w => w
     | ArrayF ft0 n as ft =>
       (fix word2arrayf n w :=
-        match n as n return (word (fieldlen (ArrayF ft0 n)) -> fielddata (ArrayF ft0 n)) with
+        match n as n return (word (len (ArrayF ft0 n)) -> data (ArrayF ft0 n)) with
         | 0 => fun _ => []
         | S n' => fun w0 =>
-          (word2field (split1 (fieldlen ft0) _ w0)) ::
-          (word2arrayf n' (split2 (fieldlen ft0) _ w0))
+          (of_word (split1 (len ft0) _ w0)) ::
+          (word2arrayf n' (split2 (len ft0) _ w0))
         end w) n
-    end.
+    | RecF t =>
+      (fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
+        match t as t return word (len (RecF t)) -> recdata t with
+        | nil => fun _ => tt
+        | (_, ft) :: t' => fun w =>
+          (of_word (split1 (len ft) (len (RecF t')) w), 
+           word2rec t' (split2 (len ft) (len (RecF t')) w))
+        end w) t
+  end.
 
-  Fixpoint word2rec (t : rectype) (w : word (reclen t)) : recdata t :=
-    match t as t return word (reclen t) -> recdata t with
-    | nil => fun _ => tt
-    | (_, ft) :: t' => fun w =>
-      (word2field (split1 (fieldlen ft) (reclen t') w), 
-       word2rec t' (split2 (fieldlen ft) (reclen t') w))
-    end w.
-
-  Theorem word2field2word : forall ft w, field2word (@word2field ft w) = w.
+  Theorem word2field2word : forall ft w, to_word (@of_word ft w) = w.
   Proof.
-    induction ft; intro w.
+    admit.
+(*
+    refine (fix w2f2w (ft : type) := _).
+    destruct ft; intro w.
     reflexivity.
     induction n.
     auto.
-    simpl in w. simpl. simpl in IHn. rewrite IHn. rewrite IHft. apply combine_split.
+    simpl in w. simpl. simpl in IHn. rewrite IHn. admit. (*apply combine_split. *)
+    induction l.
+    rewrite word0. trivial.
+    destruct a as [n ft].
+    simpl in w. simpl. admit. (* XXX apply combine_split. *) *)
   Qed.
 
-  Theorem word2rec2word : forall t w, rec2word (word2rec t w) = w.
+(*
+  Theorem word2rec2word : forall t w, to_word (@of_word (RecF t) w) = w.
   Proof.
     induction t. auto.
     intro w. destruct a as [n l]. simpl.
     rewrite IHt. rewrite word2field2word. apply combine_split.
   Qed.
+*)
 
-  Theorem field2word2field : forall ft v, has_right_length v -> word2field (@field2word ft v) = v.
+  Theorem field2word2field : forall ft v, has_right_length v -> of_word (@to_word ft v) = v.
   Proof.
+    admit.
+  Qed.
+(*
     induction ft; intro v.
     reflexivity.
     induction n; intro H; simpl in v.
@@ -250,9 +265,12 @@ Module Rec.
     destruct H. rewrite field2word2field by assumption. rewrite IHt by assumption.
     reflexivity.
   Qed.
-
-  Theorem word2field_length : forall ft w, has_right_length (@word2field ft w).
+*)
+  Theorem of_word_length : forall ft w, has_right_length (@of_word ft w).
   Proof.
+    admit.
+  Qed.
+(*
     induction ft; intro w.
     simpl. trivial.
     split. induction n. reflexivity.
@@ -269,9 +287,9 @@ Module Rec.
     destruct a. simpl. split.
     apply word2field_length. apply IHt.
   Qed.
-
-  Arguments word2rec : simpl never.
-  Arguments rec2word : simpl never.
+*)
+  Arguments of_word : simpl never.
+  Arguments to_word : simpl never.
 End Rec.
 
 Notation "r :-> n" := (Rec.recget' n r) (at level 20).
