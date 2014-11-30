@@ -15,6 +15,25 @@ Module Rec.
 
   Definition rectype := list (string * type).
 
+  (* Better induction principle *)
+  Fixpoint type_rect_nest
+      (P : type -> Type)
+      (Q : rectype -> Type)
+      (wordc : forall n, P (WordF n))
+      (arrayc : forall t, P t -> forall n, P (ArrayF t n))
+      (recc : forall rt : rectype, Q rt -> P (RecF rt))
+      (nilc : Q nil)
+      (consc : forall n t rt, P t -> Q rt -> Q ((n,t)::rt))
+      (t : type) : P t :=
+    match t as t0 return (P t0) with
+    | WordF n => wordc n
+    | ArrayF t' n => arrayc t' (type_rect_nest P Q wordc arrayc recc nilc consc t') n
+    | RecF rt => recc rt (list_rect Q nilc (fun p r =>
+        let (n, t') as p return (Q r -> Q (p :: r)) := p
+        in consc n t' r (type_rect_nest P Q wordc arrayc recc nilc consc t')) rt)
+    end.
+
+
   Fixpoint data (t : type) : Type :=
     match t with
     | WordF l => word l
@@ -216,78 +235,102 @@ Module Rec.
         end w) t
   end.
 
-  Theorem word2field2word : forall ft w, to_word (@of_word ft w) = w.
+  Theorem to_of_id : forall ft w, to_word (@of_word ft w) = w.
   Proof.
-    admit.
-(*
-    refine (fix w2f2w (ft : type) := _).
-    destruct ft; intro w.
+    einduction ft using type_rect_nest; simpl.
     reflexivity.
     induction n.
     auto.
-    simpl in w. simpl. simpl in IHn. rewrite IHn. admit. (*apply combine_split. *)
-    induction l.
-    rewrite word0. trivial.
-    destruct a as [n ft].
-    simpl in w. simpl. admit. (* XXX apply combine_split. *) *)
+    intro w. simpl in *. rewrite IHn. rewrite IHt. apply combine_split.
+    instantiate (Q := fun rt => forall w,
+      (fix rec2word {t : rectype} (r : recdata t) : word (len (RecF t)) :=
+        match t as t return recdata t -> word (len (RecF t)) with
+        | nil => fun _ => WO
+        | (_, _) :: _ => fun r =>
+          let (v, r') := r in combine (to_word v) (rec2word r')
+        end r)
+        rt
+        ((fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
+          match t as t return word (len (RecF t)) -> recdata t with
+          | nil => fun _ => tt
+          | (_, ft) :: t' => fun w =>
+            (of_word (split1 (len ft) (len (RecF t')) w),
+             word2rec t' (split2 (len ft) (len (RecF t')) w))
+          end w) rt w) = w).
+    apply IHt.
+    intro w. rewrite word0. trivial.
+    simpl. intro w.
+    rewrite IHt. rewrite IHt0. apply combine_split.
   Qed.
-
-(*
-  Theorem word2rec2word : forall t w, to_word (@of_word (RecF t) w) = w.
-  Proof.
-    induction t. auto.
-    intro w. destruct a as [n l]. simpl.
-    rewrite IHt. rewrite word2field2word. apply combine_split.
-  Qed.
-*)
 
   Theorem field2word2field : forall ft v, has_right_length v -> of_word (@to_word ft v) = v.
   Proof.
-    admit.
-  Qed.
-(*
-    induction ft; intro v.
+    einduction ft using type_rect_nest.
     reflexivity.
-    induction n; intro H; simpl in v.
-    destruct H. destruct v. reflexivity. discriminate.
-    simpl. simpl in IHn. destruct H. destruct v. discriminate.
+    induction n; intros v H; simpl in v.
+    destruct H. destruct v; try discriminate. reflexivity.
+    simpl in *. destruct H. destruct v; try discriminate.
     rewrite split1_combine. rewrite split2_combine.
-    destruct H0.
-    rewrite IHft by assumption. rewrite IHn by auto. reflexivity.
+    destruct H0. rewrite IHt by assumption. rewrite IHn by auto. trivial.
+    instantiate (Q := fun rt => forall v,
+      (fix has_right_lengths {rt : rectype} : data (RecF rt) -> Prop :=
+        match rt as rt return (data (RecF rt) -> Prop) with
+        | [] => fun _ => True
+        | (_, ft) :: t' => fun r =>
+          let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
+        end) rt v ->
+      (fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
+        match t as t return word (len (RecF t)) -> recdata t with
+        | nil => fun _ => tt
+        | (_, ft) :: t' => fun w =>
+          (of_word (split1 (len ft) (len (RecF t')) w),
+           word2rec t' (split2 (len ft) (len (RecF t')) w))
+        end w)
+        rt
+        ((fix rec2word {t : rectype} (r : recdata t) : word (len (RecF t)) :=
+          match t as t return recdata t -> word (len (RecF t)) with
+          | nil => fun _ => WO
+          | (_, _) :: _ => fun r =>
+            let (v, r') := r in combine (to_word v) (rec2word r')
+          end r) rt v) = v).
+    apply IHt.
+    simpl. intros v t. destruct v. trivial.
+    simpl. intro v. destruct v. intro Hrl. destruct Hrl.
+    rewrite split1_combine. rewrite split2_combine.
+    rewrite IHt0 by assumption. rewrite IHt by assumption. trivial.
   Qed.
 
-  Theorem rec2word2rec : forall t r, has_right_lengths r -> word2rec t (rec2word r) = r.
-  Proof.
-    induction t; intros r H.
-    destruct r. reflexivity.
-    destruct a as [n l]. destruct r. simpl.
-    rewrite split1_combine. rewrite split2_combine.
-    destruct H. rewrite field2word2field by assumption. rewrite IHt by assumption.
-    reflexivity.
-  Qed.
-*)
   Theorem of_word_length : forall ft w, has_right_length (@of_word ft w).
   Proof.
-    admit.
-  Qed.
-(*
-    induction ft; intro w.
+    einduction ft using type_rect_nest.
     simpl. trivial.
-    split. induction n. reflexivity.
-    simpl. simpl in IHn. auto.
-    induction n; simpl.
-    trivial.
-    split. apply IHft. apply IHn.
-   Qed.
+    simpl. induction n.
+    unfold list_all. split; trivial.
+    intro w.
+    edestruct IHn.
+    split. simpl. rewrite H. trivial.
+    simpl. split. apply IHt. assumption.
+    instantiate (Q := fun rt => forall w,
+      (fix has_right_lengths {rt : rectype} : data (RecF rt) -> Prop :=
+        match rt as rt return (data (RecF rt) -> Prop) with
+        | [] => fun _ => True
+        | (_, ft) :: t' => fun r =>
+          let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
+        end)
+        rt
+        ((fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
+          match t as t return word (len (RecF t)) -> recdata t with
+          | nil => fun _ => tt
+          | (_, ft) :: t' => fun w =>
+            (of_word (split1 (len ft) (len (RecF t')) w),
+             word2rec t' (split2 (len ft) (len (RecF t')) w))
+          end w) rt w)).
+    apply IHt.
+    simpl. trivial.
+    simpl. intro w. split.
+    apply IHt. apply IHt0.
+  Qed.
 
-  Theorem word2rec_length : forall t w, has_right_lengths (@word2rec t w).
-  Proof.
-    induction t; intro w.
-    simpl. trivial.
-    destruct a. simpl. split.
-    apply word2field_length. apply IHt.
-  Qed.
-*)
   Arguments of_word : simpl never.
   Arguments to_word : simpl never.
 End Rec.
