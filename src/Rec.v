@@ -242,21 +242,6 @@ Module Rec.
     induction n.
     auto.
     intro w. simpl in *. rewrite IHn. rewrite IHt. apply combine_split.
-    instantiate (Q := fun rt => forall w,
-      (fix rec2word {t : rectype} (r : recdata t) : word (len (RecF t)) :=
-        match t as t return recdata t -> word (len (RecF t)) with
-        | nil => fun _ => WO
-        | (_, _) :: _ => fun r =>
-          let (v, r') := r in combine (to_word v) (rec2word r')
-        end r)
-        rt
-        ((fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
-          match t as t return word (len (RecF t)) -> recdata t with
-          | nil => fun _ => tt
-          | (_, ft) :: t' => fun w =>
-            (of_word (split1 (len ft) (len (RecF t')) w),
-             word2rec t' (split2 (len ft) (len (RecF t')) w))
-          end w) rt w) = w).
     apply IHt.
     intro w. rewrite word0. trivial.
     simpl. intro w.
