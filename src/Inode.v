@@ -61,7 +61,7 @@ Module INODE.
     rewrite <- blocksz in v. apply (Rec.of_word v).
   Defined.
 
-  Lemma rep_valu_idem : forall b, valu_to_block (rep_block b) = b.
+  Lemma rep_valu_id : forall b, valu_to_block (rep_block b) = b.
     unfold valu_to_block, rep_block.
     unfold eq_rec_r, eq_rec.
     intros.
@@ -93,7 +93,7 @@ Module INODE.
   Hint Rewrite seq_length.
   Hint Resolve wlt_lt.
   Hint Rewrite sel_map_seq using auto.
-  Hint Rewrite rep_valu_idem.
+  Hint Rewrite rep_valu_id.
 
   Theorem iget_pair_ok : forall lxp xp iblock ipos,
     {< F mbase m ilistlist,

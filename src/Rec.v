@@ -248,7 +248,7 @@ Module Rec.
     rewrite IHt. rewrite IHt0. apply combine_split.
   Qed.
 
-  Theorem field2word2field : forall ft v, has_right_length v -> of_word (@to_word ft v) = v.
+  Theorem of_to_id : forall ft v, has_right_length v -> of_word (@to_word ft v) = v.
   Proof.
     einduction ft using type_rect_nest.
     reflexivity.
@@ -295,21 +295,6 @@ Module Rec.
     edestruct IHn.
     split. simpl. rewrite H. trivial.
     simpl. split. apply IHt. assumption.
-    instantiate (Q := fun rt => forall w,
-      (fix has_right_lengths {rt : rectype} : data (RecF rt) -> Prop :=
-        match rt as rt return (data (RecF rt) -> Prop) with
-        | [] => fun _ => True
-        | (_, ft) :: t' => fun r =>
-          let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
-        end)
-        rt
-        ((fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
-          match t as t return word (len (RecF t)) -> recdata t with
-          | nil => fun _ => tt
-          | (_, ft) :: t' => fun w =>
-            (of_word (split1 (len ft) (len (RecF t')) w),
-             word2rec t' (split2 (len ft) (len (RecF t')) w))
-          end w) rt w)).
     apply IHt.
     simpl. trivial.
     simpl. intro w. split.
