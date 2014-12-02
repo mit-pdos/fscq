@@ -106,6 +106,11 @@ Module INODE.
       * intros d ie; right; apply hn; auto with arith.
   Qed.
 
+  Lemma in_sel : forall t n l (z:t), wordToNat n < length l -> In (sel l n z) l.
+  Proof.
+    intros. apply in_selN; assumption.
+  Qed.
+
   Theorem iget_pair_ok : forall lxp xp iblock ipos,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -172,11 +177,17 @@ Module INODE.
     rewrite map_sel_seq. trivial. autorewrite with core. assumption.
   Qed.
 
-
   Lemma in_upd : forall t l n x (xn:t), In x (upd l n xn) ->
     In x l \/ x = xn.
   Proof.
     admit.
+  Qed.
+
+  Lemma Forall_upd : forall t P l n (v:t), Forall P l -> P v -> Forall P (upd l n v).
+  Proof.
+    intros. apply Forall_forall. intros v0 Hi. apply in_upd in Hi. destruct Hi.
+    rewrite Forall_forall in H. apply H; assumption.
+    subst. assumption.
   Qed.
 
   Theorem iput_pair_ok : forall lxp xp iblock ipos i,
@@ -184,7 +195,8 @@ Module INODE.
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep_pair xp ilistlist)%pred m ]] *
            [[ (iblock < IXLen xp)%word ]] *
-           [[ (ipos < items_per_valu)%word ]]
+           [[ (ipos < items_per_valu)%word ]] *
+           [[ Rec.well_formed i ]]
     POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
            ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
             [[ (F * rep_pair xp (upd ilistlist iblock (upd (sel ilistlist iblock nil) ipos i)))%pred m' ]])
@@ -201,16 +213,18 @@ Module INODE.
     autorewrite with core. auto.
 
     apply pimpl_or_r. right. unfold rep_pair in *.
-    destruct_lift H3. cancel.
+    destruct_lift H. cancel.
     rewrite sel_map_seq by auto. autorewrite with core.
     rewrite iput_update; auto.
     rewrite Forall_forall in H9. apply H9.
     apply in_selN. rewrite H7. auto.
     autorewrite with core. auto.
-    apply Forall_forall. rewrite Forall_forall in H9. intros x Hi.
-    apply in_upd in Hi. destruct Hi.
-    apply H9; assumption.
-    admit.
+    apply Forall_upd. assumption.
+    split. autorewrite with core. rewrite Forall_forall in H9. apply H9.
+    apply in_sel. rewrite H7. auto.
+    apply Forall_upd. rewrite Forall_forall in H9. apply H9. apply in_sel. rewrite H7. auto.
+    rewrite Forall_forall in H9.
+    auto.
   Qed.
 
 
