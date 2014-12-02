@@ -66,16 +66,16 @@ Module Rec.
     | x :: x' => P x /\ list_all P x'
     end.
 
-  Fixpoint has_right_length {t : type} : data t -> Prop :=
+  Fixpoint well_formed {t : type} : data t -> Prop :=
     match t as t return (data t -> Prop) with
     | WordF _ => fun _ => True
-    | ArrayF _ l => fun v => Datatypes.length v = l /\ list_all has_right_length v
+    | ArrayF _ l => fun v => Datatypes.length v = l /\ list_all well_formed v
     | RecF rt =>
-      (fix has_right_lengths {rt : rectype} : data (RecF rt) -> Prop :=
+      (fix well_formed' {rt : rectype} : data (RecF rt) -> Prop :=
         match rt as rt return (data (RecF rt) -> Prop) with
         | [] => fun _ => True
         | (_, ft) :: t' => fun r =>
-          let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
+          let (r0, r') := r in well_formed r0 /\ well_formed' r'
         end) rt
     end.
 
@@ -248,7 +248,7 @@ Module Rec.
     rewrite IHt. rewrite IHt0. apply combine_split.
   Qed.
 
-  Theorem of_to_id : forall ft v, has_right_length v -> of_word (@to_word ft v) = v.
+  Theorem of_to_id : forall ft v, well_formed v -> of_word (@to_word ft v) = v.
   Proof.
     einduction ft using type_rect_nest.
     reflexivity.
@@ -258,11 +258,11 @@ Module Rec.
     rewrite split1_combine. rewrite split2_combine.
     destruct H0. rewrite IHt by assumption. rewrite IHn by auto. trivial.
     instantiate (Q := fun rt => forall v,
-      (fix has_right_lengths {rt : rectype} : data (RecF rt) -> Prop :=
+      (fix well_formed' {rt : rectype} : data (RecF rt) -> Prop :=
         match rt as rt return (data (RecF rt) -> Prop) with
         | [] => fun _ => True
         | (_, ft) :: t' => fun r =>
-          let (r0, r') := r in has_right_length r0 /\ has_right_lengths r'
+          let (r0, r') := r in well_formed r0 /\ well_formed' r'
         end) rt v ->
       (fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
         match t as t return word (len (RecF t)) -> recdata t with
@@ -285,7 +285,7 @@ Module Rec.
     rewrite IHt0 by assumption. rewrite IHt by assumption. trivial.
   Qed.
 
-  Theorem of_word_length : forall ft w, has_right_length (@of_word ft w).
+  Theorem of_word_length : forall ft w, well_formed (@of_word ft w).
   Proof.
     einduction ft using type_rect_nest.
     simpl. trivial.

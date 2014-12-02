@@ -61,17 +61,18 @@ Module INODE.
     rewrite <- blocksz in v. apply (Rec.of_word v).
   Defined.
 
-  Lemma rep_valu_id : forall b, valu_to_block (rep_block b) = b.
+  Lemma rep_valu_id : forall b, Rec.well_formed b -> valu_to_block (rep_block b) = b.
     unfold valu_to_block, rep_block.
     unfold eq_rec_r, eq_rec.
     intros.
     rewrite Pack.eq_rect_nat_double.
     rewrite <- eq_rect_eq_dec; [| apply eq_nat_dec ].
-    admit.
+    apply Rec.of_to_id; assumption.
   Qed.
 
   Definition rep_pair xp (ilistlist : list block) :=
-    ( [[ length ilistlist = wordToNat (IXLen xp) ]] *
+    ([[ length ilistlist = wordToNat (IXLen xp) ]] *
+     [[ Forall Rec.well_formed ilistlist ]] *
      array (IXStart xp)
           (map (fun i => rep_block (selN ilistlist i nil))
           (seq 0 (wordToNat (IXLen xp)))) $1)%pred.
@@ -95,6 +96,16 @@ Module INODE.
   Hint Rewrite sel_map_seq using auto.
   Hint Rewrite rep_valu_id.
 
+  Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.
+  Proof.
+    (* Blatantly copied from nth_In *)
+    unfold lt; induction n as [| n hn]; simpl.
+    + destruct l; simpl. inversion 2. auto.
+    + destruct l as [| a l hl]; simpl.
+      * inversion 2.
+      * intros d ie; right; apply hn; auto with arith.
+  Qed.
+
   Theorem iget_pair_ok : forall lxp xp iblock ipos,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -110,9 +121,11 @@ Module INODE.
     hoare.
     unfold rep_pair in *. cancel.
     autorewrite with core. auto.
-    autorewrite with core. auto.
 
     subst. autorewrite with core. auto.
+    unfold rep_pair in H3.
+    destruct_lift H3. rewrite Forall_forall in H9. apply H9.
+    apply in_selN. rewrite H7. auto.
     unfold LOG.log_intact. cancel.
   Qed.
 
@@ -159,6 +172,13 @@ Module INODE.
     rewrite map_sel_seq. trivial. autorewrite with core. assumption.
   Qed.
 
+
+  Lemma in_upd : forall t l n x (xn:t), In x (upd l n xn) ->
+    In x l \/ x = xn.
+  Proof.
+    admit.
+  Qed.
+
   Theorem iput_pair_ok : forall lxp xp iblock ipos i,
     {< F mbase m ilistlist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -184,7 +204,13 @@ Module INODE.
     destruct_lift H3. cancel.
     rewrite sel_map_seq by auto. autorewrite with core.
     rewrite iput_update; auto.
+    rewrite Forall_forall in H9. apply H9.
+    apply in_selN. rewrite H7. auto.
     autorewrite with core. auto.
+    apply Forall_forall. rewrite Forall_forall in H9. intros x Hi.
+    apply in_upd in Hi. destruct Hi.
+    apply H9; assumption.
+    admit.
   Qed.
 
 
@@ -233,7 +259,7 @@ Module INODE.
     subst.
     (* need to prove that we are selecting the right inode.. *)
     unfold rep_pair in H. unfold rep_block in H.
-    
+    rewrite H9.
     admit.
     step.
   Qed.
