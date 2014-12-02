@@ -60,16 +60,10 @@ Module Rec.
         end) rt
     end.
 
-  Fixpoint list_all {A : Type} (P : A -> Prop) (xs : list A) : Prop :=
-    match xs with
-    | [] => True
-    | x :: x' => P x /\ list_all P x'
-    end.
-
   Fixpoint well_formed {t : type} : data t -> Prop :=
     match t as t return (data t -> Prop) with
     | WordF _ => fun _ => True
-    | ArrayF _ l => fun v => Datatypes.length v = l /\ list_all well_formed v
+    | ArrayF _ l => fun v => Datatypes.length v = l /\ Forall well_formed v
     | RecF rt =>
       (fix well_formed' {rt : rectype} : data (RecF rt) -> Prop :=
         match rt as rt return (data (RecF rt) -> Prop) with
@@ -256,7 +250,7 @@ Module Rec.
     destruct H. destruct v; try discriminate. reflexivity.
     simpl in *. destruct H. destruct v; try discriminate.
     rewrite split1_combine. rewrite split2_combine.
-    destruct H0. rewrite IHt by assumption. rewrite IHn by auto. trivial.
+    inversion H0. subst. rewrite IHt by assumption. rewrite IHn by auto. trivial.
     instantiate (Q := fun rt => forall v,
       (fix well_formed' {rt : rectype} : data (RecF rt) -> Prop :=
         match rt as rt return (data (RecF rt) -> Prop) with
@@ -290,11 +284,11 @@ Module Rec.
     einduction ft using type_rect_nest.
     simpl. trivial.
     simpl. induction n.
-    unfold list_all. split; trivial.
+    split; trivial.
     intro w.
     edestruct IHn.
     split. simpl. rewrite H. trivial.
-    simpl. split. apply IHt. assumption.
+    simpl. constructor. apply IHt. assumption.
     apply IHt.
     simpl. trivial.
     simpl. intro w. split.
