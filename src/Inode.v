@@ -47,7 +47,6 @@ Module INODE.
   Qed.
 
   Definition blocktype : Rec.type := Rec.ArrayF inodetype (wordToNat items_per_valu).
-  (** This is actually just [list inode] *)
   Definition block := Rec.data blocktype.
   Definition block_zero := @Rec.of_word blocktype $0.
 
@@ -55,10 +54,7 @@ Module INODE.
     rewrite valulen_is; auto.
   Qed.
 
-  (** [valu] = [word valulen] = [word 4096], but [valulen] is kept opaque so Coq
-      doesn't try to do stupid things like compute 2**4096 in unary :P (and in fact
-      it seems to try to do that anyway occasionally, causing it to hang
-      indefinitely). *)
+
   Definition rep_block (b : block) : valu.
     rewrite <- blocksz. apply (Rec.to_word b).
   Defined.
@@ -339,12 +335,10 @@ Module INODE.
     apply wmod_upper_bound; word_neq.
     step.
     subst.
-    (* need to prove that we are selecting the right inode.. *)
     unfold rep_pair in H. unfold rep_block in H.
     rewrite H9. destruct_lift H.
     apply nested_sel_divmod_concat; auto. word_neq.
-    eapply Forall_impl.
-    Focus 2. apply H8.
+    eapply Forall_impl; [| apply H8].
     intro a. simpl. tauto.
     step.
   Qed.
