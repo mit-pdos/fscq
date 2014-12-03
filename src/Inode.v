@@ -282,7 +282,8 @@ Module INODE.
     {< F mbase m ilist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep xp ilist)%pred m ]] *
-           [[ (inum < IXLen xp ^* items_per_valu)%word ]]
+           [[ (inum < IXLen xp ^* items_per_valu)%word ]] *
+           [[ Rec.well_formed i ]]
     POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
            ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
             [[ (F * rep xp (upd ilist inum i))%pred m' ]])
@@ -297,34 +298,20 @@ Module INODE.
     split; [constructor |].
     split; [constructor |].
     split; [constructor |].
+    split.
     split; [constructor |].
     pred_apply. instantiate (a2:=l); cancel.
     apply wdiv_lt_upper_bound; [word_neq | rewrite wmult_comm; assumption].
     apply wmod_upper_bound; word_neq.
-    (* I've unfolded [step] here manually *)
-    intros.
-    eapply pimpl_ok2. eauto with prog.
-    intros. subst.
-    cancel. step. subst.
-    intros.
-    unfold stars. simpl. subst.
-    pimpl_crash.
+    assumption.
+    step.
+    apply pimpl_or_r. right.
     norm.
-    apply stars_or_right.
-    unfold stars. simpl. subst.
-    pimpl_crash.
-    norm.
-    cancel'.
-    intuition. pred_apply.
-    norm.
-    repeat (cancel_one || delay_one).
-    instantiate (a:= (upd l (inum ^/ items_per_valu)
-        (upd (sel l (inum ^/ items_per_valu) nil) (inum ^% items_per_valu) i))).
-    apply finish_frame. (* Coq loops here without the [instantiate] *)
+    cancel.
     split; [constructor |].
     split; [constructor |].
+    pred_apply. cancel.
     admit. (* right inode again *)
-    constructor.
     step.
   Qed.
 
