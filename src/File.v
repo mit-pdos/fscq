@@ -15,6 +15,7 @@ Require Import Rec.
 Require Import Pack.
 Require Import Inode.
 Require Import Balloc.
+Require Import WordAuto.
 
 Import ListNotations.
 
@@ -83,6 +84,8 @@ Module FILE.
     cancel.
   Qed.
 
+
+
   Record file := {
      FileLen : nat;   (* Just a representation invariant, not used in computation *)
     FileData : mem
@@ -93,15 +96,19 @@ Module FILE.
   Definition file_match (x: addr * valu) : pred :=
       fst x |-> snd x.
 
+  Definition valid_blocks (ino:INODE.inode) :=
+      firstn (wordToNat (ino :-> "len")) (ino :-> "blocks").
+
   Definition file_rep (inof : INODE.inode * file) : pred :=
-     ([[ length (fst inof :-> "blocks") = (FileLen (snd inof)) ]] *
-     exists d,
-     listpred file_match (combine ((fst inof) :-> "blocks") d) *
-     [[ length d = FileLen (snd inof) ]] *
-     [[ array $0 d $1 (FileData (snd inof)) ]] )%pred.
+     ([[ wordToNat ((fst inof) :-> "len") = FileLen (snd inof) ]] *
+     exists blist,
+     [[ length blist = FileLen (snd inof) ]] *
+     listpred file_match (combine (valid_blocks (fst inof)) blist) *
+     [[ array $0 blist $1 (FileData (snd inof)) ]] )%pred.
 
   Definition rep xp (filelist : list file) :=
     (exists inodelist, INODE.rep xp inodelist *
+     [[ ($ (length inodelist) < IXLen xp ^* INODE.items_per_valu)%word ]] *
      [[ length inodelist = length filelist ]] *
      [[ exists b:addr, length filelist <= wordToNat b ]] *
      listpred file_rep (combine inodelist filelist))%pred.
@@ -111,6 +118,7 @@ Module FILE.
     rx fblock.
 
   Hint Extern 0 (okToUnify (INODE.rep _ _) (INODE.rep _ _)) => constructor : okToUnify.
+
 
   Lemma selN_combine : forall Ta Tb i a b (a0:Ta) (b0:Tb),
     length a = length b ->
@@ -134,6 +142,30 @@ Module FILE.
     intros; rewrite selN_combine; auto.
   Qed.
 
+  Lemma selN_firstn: forall {A} (l:list A) i n d,
+    i < n ->
+    selN (firstn n l) i d = selN l i d.
+  Proof.
+    induction l; destruct i, n; intros; try omega; auto.
+    apply IHl; omega.
+  Qed.
+    
+  Lemma wlt_trans: forall (x:addr) y z,
+     (x < y -> y < z -> x < z) %word.
+  Proof.
+    intros.
+    apply lt_wlt.
+    apply wlt_lt in H.
+    apply wlt_lt in H0.
+    omega.
+  Qed.
+
+
+  (* XXX: expect this from the inode layer *)
+  Axiom inode_correct: forall (ino:INODE.inode),
+    wordToNat (ino :-> "len") <= length (ino :-> "blocks").
+
+
   Ltac flength_simpl' :=
     match goal with
     | [ H : norm_goal _ |- _ ] => clear H
@@ -151,12 +183,27 @@ Module FILE.
            => rewrite combine_length
     | [ |- context [ Init.Nat.min ?a ?a ] ] 
            => rewrite Nat.min_id
+    | [ |- context [ length (firstn _ _) ] ]
+           => rewrite firstn_length
+    | [ H: ?a = ?b |- ?a <= ?b ]
+           => rewrite H; auto
+    | [ H: ?a < ?b, H2: ?c = ?b |- ?a < ?c ]
+           => rewrite H2; auto
+    | [ H: length ?a = length ?b, H2: context [ length ?a ] |- _ ]
+           => rewrite H in H2
+    | [ H: (?a < ?b)%word, H2: (?b < ?c)%word |- (?a < ?c)%word ]
+           => eapply wlt_trans; eauto
+    | [ |- context [ Init.Nat.min ?a ?b ] ] =>
+      match a with context [ _ :-> "len" ] =>
+      match b with context [ _ :-> "blocks" ] =>
+        rewrite min_l; [ auto | try apply inode_correct]
+      end end
     | [ H: length ?a = length ?b |- context [ length ?a ] ] 
            => rewrite H
     end.
 
   Ltac flength_simpl :=
-    repeat (unfold sel; flength_simpl'; wordcmp; auto).
+    repeat (auto; unfold sel; flength_simpl'; wordcmp; auto).
 
   Theorem fread_ok : forall lxp xp inum off,
     {< mbase m flist v,
@@ -177,24 +224,21 @@ Module FILE.
     eauto with prog.
     intros; norm.
     cancel.
-    intuition.
-    pred_apply.
+    intuition; flength_simpl.
 
+    pred_apply.
     unfold iget_blocknum.
     rewrite listpred_fwd.
     unfold file_rep at 2.
     cancel.
     rewrite listpred_fwd with (prd := file_match).
+    unfold valid_blocks.
     unfold file_match.
-    cancel.
-
     flength_simpl.
 
-    (* this section needs cleanup *)
     assert (w=selN l1 (wordToNat off) $0).
-    destruct H4.
     eapply ptsto_eq.
-    exact H3.
+    exact H4.
     exact H15.
     eexists.
     cancel.
@@ -204,26 +248,21 @@ Module FILE.
     instantiate (i:=off).
     cancel.
     flength_simpl.
+    instantiate (i0:=wordToNat off).
+    rewrite selN_firstn; subst.
     cancel.
 
     flength_simpl.
+    unfold valid_blocks; flength_simpl.
     flength_simpl.
-
-    (* this section needs cleanup *)
-    erewrite INODE.rep_length_eq with (ilist:=l).
-    rewrite H12.
-    apply lt_wlt.
-    apply wlt_lt in H5.
-    rewrite H5.
-    unfold INODE.items_per_valu.
-    (* not quite right, unless length of file list > 0 *)
-    admit.
-    cancel.
+    flength_simpl.
   Qed.
 
   Definition fwrite T lxp xp inum (off:addr) v rx : prog T :=
     ok <- fwrite' lxp xp inum off v;
     rx ok.
+
+  Hint Extern 1 ({{_}} progseq (fwrite' _ _ _ _ _) _) => apply fwrite'_ok : prog.
 
   Theorem fwrite_ok : forall lxp xp inum off v,
     {< F F' mbase m flist v0,
@@ -238,7 +277,8 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fwrite lxp xp inum off v.
   Proof.
-    admit.
+
+
   Qed.
 
   Definition flen T lxp xp inum rx : prog T :=
