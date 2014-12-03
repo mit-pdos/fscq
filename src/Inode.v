@@ -177,10 +177,17 @@ Module INODE.
     rewrite map_sel_seq. trivial. autorewrite with core. assumption.
   Qed.
 
-  Lemma in_upd : forall t l n x (xn:t), In x (upd l n xn) ->
+  Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
     In x l \/ x = xn.
   Proof.
-    admit.
+    induction n; intros; destruct l; intuition; simpl in *; destruct H; auto.
+    destruct (IHn l x xn H); auto.
+  Qed.
+
+  Lemma in_upd : forall t n l x (xn:t), In x (upd l n xn) ->
+    In x l \/ x = xn.
+  Proof.
+    intros. apply in_updN with (n:=wordToNat n); auto.
   Qed.
 
   Lemma Forall_upd : forall t P l n (v:t), Forall P l -> P v -> Forall P (upd l n v).
