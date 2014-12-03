@@ -96,14 +96,16 @@ Module INODE.
   Hint Rewrite sel_map_seq using auto.
   Hint Rewrite rep_valu_id.
 
+  Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
+  Proof.
+    induction n; intros; destruct l; simpl; auto.
+  Qed.
+
+  Ltac nth_selN H := intros; repeat rewrite nth_selN_eq; apply H; assumption.
+
   Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.
   Proof.
-    (* Blatantly copied from nth_In *)
-    unfold lt; induction n as [| n hn]; simpl.
-    + destruct l; simpl. inversion 2. auto.
-    + destruct l as [| a l hl]; simpl.
-      * inversion 2.
-      * intros d ie; right; apply hn; auto with arith.
+    nth_selN nth_In.
   Qed.
 
   Lemma in_sel : forall t n l (z:t), wordToNat n < length l -> In (sel l n z) l.
@@ -250,6 +252,51 @@ Module INODE.
     ok <- iput_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
     rx ok.
 
+  Lemma selN_app1 : forall t l l' (d:t) n,
+    n < length l -> selN (l ++ l') n d = selN l n d.
+  Proof.
+    nth_selN app_nth1.
+  Qed.
+
+  Lemma selN_app2 : forall t l l' (d:t) n,
+    n >= length l -> selN (l ++ l') n d = selN l' (n - length l) d.
+  Proof.
+    nth_selN app_nth2.
+  Qed.
+
+  Lemma nested_selN_concat : forall t a b m l (z:t), b < m ->
+    Forall (fun sl => length sl = m) l ->
+    selN (selN l a nil) b z = selN (fold_right (app (A:=t)) nil l) (b + a * m) z.
+  Proof.
+    induction a; intros; destruct l; simpl; inversion H0.
+    trivial.
+    replace (b + 0) with b by omega. subst.
+    rewrite selN_app1; auto.
+    trivial.
+    subst. remember (a * length l) as al. rewrite selN_app2 by omega.
+    replace (b + (length l + al) - length l) with (b + al) by omega. subst.
+    apply IHa; assumption.
+  Qed.
+
+  Lemma nested_sel_divmod_concat : forall t l n m (z:t), m <> $0 ->
+    Forall (fun sl => length sl = wordToNat m) l ->
+    sel (sel l (n ^/ m) nil) (n ^% m) z = sel (fold_right (app (A:=t)) nil l) n z.
+  Proof.
+    intros. unfold sel. rewrite nested_selN_concat with (m:=wordToNat m).
+    word2nat'. rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod.
+    trivial. assumption. apply le_lt_trans with (m := wordToNat n). apply div_le; assumption.
+    apply wordToNat_bound.
+    apply lt_le_trans with (m := wordToNat m).
+    apply Nat.mod_upper_bound; assumption.
+    apply Nat.lt_le_incl; apply wordToNat_bound.
+    word2nat'.
+    apply Nat.mod_upper_bound; assumption.
+    apply lt_le_trans with (m := wordToNat m).
+    apply Nat.mod_upper_bound; assumption.
+    apply Nat.lt_le_incl; apply wordToNat_bound.
+    assumption.
+  Qed.
+
   Theorem iget_ok : forall lxp xp inum,
     {< F mbase m ilist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -280,8 +327,11 @@ Module INODE.
     subst.
     (* need to prove that we are selecting the right inode.. *)
     unfold rep_pair in H. unfold rep_block in H.
-    rewrite H9.
-    admit.
+    rewrite H9. destruct_lift H.
+    apply nested_sel_divmod_concat; auto. word_neq.
+    eapply Forall_impl.
+    Focus 2. apply H8.
+    intro a. simpl. tauto.
     step.
   Qed.
 

@@ -69,7 +69,7 @@ Ltac word2nat_with tac :=
            | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H
              || apply Nlt_out in H || apply Nge_out in H); nsimp H
            end;
-    repeat (progress autorewrite with W2Nat in *; simpl).
+    autorewrite with W2Nat in *.
 
 (* These tactics try to convert statements about words into statements about nats *)
 Ltac word2nat := word2nat_with ltac:(autorewrite with W2Nat in *).
