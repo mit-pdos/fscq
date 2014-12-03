@@ -15,7 +15,7 @@ Module Rec.
 
   Definition rectype := list (string * type).
 
-  (* Better induction principle *)
+  (** Better induction principle *)
   Fixpoint type_rect_nest
       (P : type -> Type)
       (Q : rectype -> Type)

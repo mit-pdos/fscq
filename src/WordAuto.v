@@ -71,7 +71,7 @@ Ltac word2nat_with tac :=
            end;
     autorewrite with W2Nat in *.
 
-(* These tactics try to convert statements about words into statements about nats *)
+(** These tactics try to convert statements about words into statements about nats *)
 Ltac word2nat := word2nat_with ltac:(autorewrite with W2Nat in *).
 
 Ltac word2nat' := word2nat_with ltac:(autorewrite with W2Nat' in *).
@@ -97,7 +97,7 @@ Proof.
 Qed.
 
 
-(* unlike auto, this does not solve things completely *)
+(** Unlike auto, this does not solve things completely *)
 Ltac word2nat_auto := word2nat_with ltac:(
     try (unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *; match goal with
     | [ H : (_ < NToWord _ (_ * _)%N)%word |- _ ] => apply wlt_mult_inj in H

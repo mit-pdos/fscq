@@ -46,6 +46,7 @@ Module INODE.
   Qed.
 
   Definition blocktype : Rec.type := Rec.ArrayF inodetype (wordToNat items_per_valu).
+  (** This is actually just [list inode] *)
   Definition block := Rec.data blocktype.
   Definition block_zero := @Rec.of_word blocktype $0.
 
@@ -53,6 +54,10 @@ Module INODE.
     rewrite valulen_is; auto.
   Qed.
 
+  (** [valu] = [word valulen] = [word 4096], but [valulen] is kept opaque so Coq
+      doesn't try to do stupid things like compute 2**4096 in unary :P (and in fact
+      it seems to try to do that anyway occasionally, causing it to hang
+      indefinitely). *)
   Definition rep_block (b : block) : valu.
     rewrite <- blocksz. apply (Rec.to_word b).
   Defined.
@@ -70,6 +75,7 @@ Module INODE.
     apply Rec.of_to_id; assumption.
   Qed.
 
+  (** The representation invariant for the first layer, which uses two indices *)
   Definition rep_pair xp (ilistlist : list block) :=
     ([[ length ilistlist = wordToNat (IXLen xp) ]] *
      [[ Forall Rec.well_formed ilistlist ]] *
@@ -77,12 +83,14 @@ Module INODE.
           (map (fun i => rep_block (selN ilistlist i nil))
           (seq 0 (wordToNat (IXLen xp)))) $1)%pred.
 
+  (** Get the [ipos]'th inode in the [iblock]'th block *)
   Definition iget_pair T lxp xp iblock ipos rx : prog T :=
     v <- LOG.read_array lxp (IXStart xp) iblock $1 ;
     let ib := valu_to_block v in
     let i := sel ib ipos inode_zero in
     rx i.
 
+  (** Update the [ipos]'th inode in the [iblock]'th block to [i] *)
   Definition iput_pair T lxp xp iblock ipos i rx : prog T :=
     v <- LOG.read_array lxp (IXStart xp) iblock $1 ;
     let ib' := upd (valu_to_block v) ipos i in
@@ -96,6 +104,7 @@ Module INODE.
   Hint Rewrite sel_map_seq using auto.
   Hint Rewrite rep_valu_id.
 
+  (** Not sure why we didn't just use [nth] *)
   Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
   Proof.
     induction n; intros; destruct l; simpl; auto.
@@ -155,6 +164,7 @@ Module INODE.
     erewrite <- selS. trivial.
   Qed.
 
+  (** Mapping indexing into l over the list of indices in l gives you l *)
   Lemma map_sel_seq : forall t (z : t) (l : list t) n,
     n = length l -> map (fun i => selN l i z) (seq 0 n) = l.
   Proof.
@@ -240,6 +250,7 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (iget_pair _ _ _ _) _) => apply iget_pair_ok : prog.
   Hint Extern 1 ({{_}} progseq (iput_pair _ _ _ _ _) _) => apply iput_pair_ok : prog.
 
+  (** The representation invariant for the second layer, which uses one index *)
   Definition rep xp (ilist : list inode) :=
     (exists ilistlist, rep_pair xp ilistlist *
      [[ ilist = fold_right (@app _) nil ilistlist ]])%pred.
@@ -278,6 +289,8 @@ Module INODE.
     apply IHa; assumption.
   Qed.
 
+  (** If we index into the concatenation of a list of length-[m] lists, it's
+      the same as indexing into the [n % m]'th element of the [n / m]'th list *)
   Lemma nested_sel_divmod_concat : forall t l n m (z:t), m <> $0 ->
     Forall (fun sl => length sl = wordToNat m) l ->
     sel (sel l (n ^/ m) nil) (n ^% m) z = sel (fold_right (app (A:=t)) nil l) n z.
