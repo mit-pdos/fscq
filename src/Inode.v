@@ -16,6 +16,7 @@ Require Import Pack.
 Require Import FunctionalExtensionality.
 Require Import NArith.
 Require Import WordAuto.
+Require Import RecArray.
 
 Import ListNotations.
 
@@ -381,7 +382,14 @@ Module INODE.
     split; [constructor |].
     split; [constructor |].
     pred_apply. cancel.
-    admit. (* right inode again *)
+
+    apply upd_divmod.
+    repeat match goal with
+    | [ H: context[rep_pair _ _] |- _ ] =>
+      unfold rep_pair in H; destruct_lift H
+    end.
+    auto.
+
     step.
   Qed.
 

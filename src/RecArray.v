@@ -49,4 +49,13 @@ Section RECARRAY.
 
   (* XXX what lemmas would be helpful if Inode.v and Balloc.v were to use this? *)
 
+  Theorem upd_divmod : forall (l : list block) (pos : addr) (v : item),
+    Forall Rec.well_formed l
+    -> Array.upd (fold_right (@app _) nil l) pos v =
+       fold_right (@app _) nil (Array.upd l (pos ^/ items_per_valu)
+         (Array.upd (sel l (pos ^/ items_per_valu) nil) (pos ^% items_per_valu) v)).
+  Proof.
+    admit.
+  Qed.
+
 End RECARRAY.
