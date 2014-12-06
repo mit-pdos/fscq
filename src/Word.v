@@ -3,7 +3,7 @@
 Require Import Arith Div2 NArith Bool Omega.
 Require Import Nomega.
 Require Import Wf_nat.
-Require Import Eqdep.
+Require Import Eqdep_dec.
 Require Import Program.Tactics.
 Require Import Recdef.
 Require Import Ring.
@@ -288,8 +288,6 @@ Qed.
 
 Hint Resolve shatter_word_0.
 
-Require Import Eqdep_dec.
-
 Definition weq : forall sz (x y : word sz), {x = y} + {x <> y}.
   refine (fix weq sz (x : word sz) : forall y : word sz, {x = y} + {x <> y} :=
     match x in word sz return forall y : word sz, {x = y} + {x <> y} with
@@ -373,9 +371,6 @@ Theorem split2_combine : forall sz1 sz2 (w : word sz1) (z : word sz2),
   split2 sz1 sz2 (combine w z) = z.
   induction sz1; shatterer.
 Qed.
-
-Require Import Eqdep_dec.
-
 
 Theorem combine_assoc : forall n1 (w1 : word n1) n2 n3 (w2 : word n2) (w3 : word n3) Heq,
   combine (combine w1 w2) w3
@@ -602,6 +597,10 @@ Theorem Npow2_nat : forall n, nat_of_N (Npow2 n) = pow2 n.
   rewrite untimes2.
   replace (Npos p~0) with (Ndouble (Npos p)) by reflexivity.
   apply nat_of_Ndouble.
+Qed.
+
+Theorem pow2_N : forall n, Npow2 n = N.of_nat (pow2 n).
+  intro n. apply nat_of_N_eq. rewrite Nat2N.id. apply Npow2_nat.
 Qed.
 
 Theorem wneg_alt : forall sz (x : word sz), wneg x = wnegN x.
@@ -1263,6 +1262,17 @@ Proof.
   auto.
 Qed.
 
+Lemma wle_le: forall sz (a b : word sz), (a <= b)%word ->
+  (wordToNat a <= wordToNat b)%nat.
+Proof.
+  intros.
+  unfold wlt in H.
+  repeat rewrite wordToN_nat in *.
+  apply Nge_out in H.
+  repeat rewrite Nat2N.id in *.
+  auto.
+Qed.
+
 Lemma wlt_lt': forall sz a b, (a < pow2 sz)%nat
   -> natToWord sz a < b
   -> (wordToNat (natToWord sz a) < wordToNat b)%nat.
@@ -1312,6 +1322,20 @@ Proof.
   repeat rewrite Nat2N.id.
   auto.
 Qed.
+
+Lemma le_wle: forall sz (n : word sz) m, (wordToNat n <= wordToNat m)%nat ->
+  n <= m.
+Proof.
+  intros.
+  unfold wlt.
+  repeat rewrite wordToN_nat.
+  apply N.le_ngt.
+  apply N.ge_le.
+  apply Nge_in.
+  repeat rewrite Nat2N.id.
+  auto.
+Qed.
+
 
 Lemma wminus_Alt2: forall sz x y, y <= x ->
   @wminusN sz x y = wordBinN minus x y.
@@ -1522,7 +1546,7 @@ Proof.
   destruct H1. destruct H1.
   rewrite H1 in *.
   inversion H0.
-  apply inj_pair2 in H5.
+  apply (inj_pair2_eq_dec _ eq_nat_dec) in H5.
   rewrite div2_pow2_twice in H5.
   repeat rewrite <- H2 in H5.
   eapply IHsz; eauto.

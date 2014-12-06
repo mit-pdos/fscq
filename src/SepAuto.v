@@ -521,24 +521,32 @@ Ltac destruct_lift H :=
     destruct H as [Hlift0 Hlift1]; destruct_lift Hlift0; destruct_lift Hlift1
   | ((sep_star _ _) _) =>
     eapply start_normalizing_apply in H; [| flatten ];
-    unfold stars in H; simpl in H; destruct H as [? H];
-    apply sep_star_lift_apply in H; destruct H as [? H];
-    destruct_lift H
+    let H1:=fresh in
+    let H2:=fresh in
+    unfold stars in H; simpl in H; destruct H as [? H1];
+    apply sep_star_lift_apply in H1; destruct H1 as [? H2];
+    destruct_lift H2
   | ((and _ _) _) =>
     eapply start_normalizing_apply in H; [| flatten ];
-    unfold stars in H; simpl in H; destruct H as [? H];
-    apply sep_star_lift_apply in H; destruct H as [? H];
-    destruct_lift H
+    let H1:=fresh in
+    let H2:=fresh in
+    unfold stars in H; simpl in H; destruct H as [? H1];
+    apply sep_star_lift_apply in H1; destruct H1 as [? H2];
+    destruct_lift H2
   | ((or _ _) _) =>
     eapply start_normalizing_apply in H; [| flatten ];
-    unfold stars in H; simpl in H; destruct H as [? H];
-    apply sep_star_lift_apply in H; destruct H as [? H];
-    destruct_lift H
+    let H1:=fresh in
+    let H2:=fresh in
+    unfold stars in H; simpl in H; destruct H as [? H1];
+    apply sep_star_lift_apply in H1; destruct H1 as [? H2];
+    destruct_lift H2
   | ((exists _, _)%pred _) =>
     eapply start_normalizing_apply in H; [| flatten ];
-    unfold stars in H; simpl in H; destruct H as [? H];
-    apply sep_star_lift_apply in H; destruct H as [? H];
-    destruct_lift H
+    let H1:=fresh in
+    let H2:=fresh in
+    unfold stars in H; simpl in H; destruct H as [? H1];
+    apply sep_star_lift_apply in H1; destruct H1 as [? H2];
+    destruct_lift H2
   | _ => idtac
   end.
 

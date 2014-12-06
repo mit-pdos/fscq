@@ -1,7 +1,7 @@
-Require Import Word.
+Require Import Word WordAuto.
 Require Import Prog.
 Require Import Arith.
-Require Import Eqdep.
+Require Import Eqdep_dec.
 
 Set Implicit Arguments.
 
@@ -16,7 +16,7 @@ Section Packer.
   Proof.
     intros pos H. rewrite <- Nat.sub_add_distr. rewrite le_plus_minus_r.
     reflexivity. rewrite <- Nat.mul_succ_l. rewrite <- itemsz_ok.
-    apply mult_le_compat_r. apply Nat.le_succ_l. apply wlt_lt. assumption.
+    apply mult_le_compat_r. womega.
   Qed.
 
   Definition extract (v : valu) (pos : addr) : word itemsz.
@@ -76,13 +76,13 @@ Section Packer.
     exact result'.
   Defined.
 
-  Theorem eq_rect_double: forall A T (a b c : A) x ab bc,
+  Theorem eq_rect_nat_double: forall T (a b c : nat) x ab bc,
     eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
   Proof.
     intros.
     destruct ab.
     destruct bc.
-    rewrite (UIP_refl _ _ (eq_trans eq_refl eq_refl)).
+    rewrite (UIP_dec eq_nat_dec (eq_trans eq_refl eq_refl) eq_refl).
     simpl.
     auto.
   Qed.
@@ -96,8 +96,8 @@ Section Packer.
     destruct (wlt_dec pos items_per_valu); try congruence.
 
     unfold eq_rec_r, eq_rec.
-    repeat rewrite eq_rect_double.
-    rewrite <- eq_rect_eq.
+    repeat rewrite eq_rect_nat_double.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
 
     rewrite split1_combine.
     rewrite split2_combine.
@@ -110,12 +110,16 @@ Section Packer.
     intros; unfold update.
     destruct (wlt_dec pos items_per_valu); try congruence.
     unfold eq_rec_r, eq_rec.
-    repeat rewrite eq_rect_double.
-    rewrite <- eq_rect_eq.
+    repeat rewrite eq_rect_nat_double.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
     repeat rewrite split1_combine.
     rewrite split2_combine.
     auto.
   Qed.
+
+  (* plan 1: prove split/combine equivalent to some ops on bool lists.
+     plan 2: explicit impls of update/extract in Word.v
+   *)
 
   Theorem extract_other : forall v pos pos' n, pos <> pos'
     -> extract (update v pos' n) pos = extract v pos.
@@ -126,7 +130,7 @@ Section Packer.
     destruct (wlt_dec pos' items_per_valu); auto.
 
     unfold eq_rec_r, eq_rec.
-    repeat rewrite eq_rect_double.
+    repeat rewrite eq_rect_nat_double.
 
     (* XXX puzzle for Adam: what to do about these messy eq_rect terms? *)
     admit.

@@ -15,12 +15,12 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Module DIR.
-  Definition dirent_type : Rec.rectype := [("name", Rec.WordF (256-addrlen));
-                                           ("inum", Rec.WordF addrlen)].
-  Definition dirent := Rec.recdata dirent_type.
-  Definition dirent_zero := Rec.word2rec dirent_type $0.
+  Definition dirent_type : Rec.type := Rec.RecF ([("name", Rec.WordF (256-addrlen));
+                                                  ("inum", Rec.WordF addrlen)]).
+  Definition dirent := Rec.data dirent_type.
+  Definition dirent_zero := @Rec.of_word dirent_type $0.
 
-  Definition itemsz := Rec.reclen dirent_type.
+  Definition itemsz := Rec.len dirent_type.
   Definition items_per_valu : addr := $16.
   Theorem itemsz_ok : wordToNat items_per_valu * itemsz = valulen.
   Proof.
@@ -37,7 +37,7 @@ Module DIR.
    *)
   Definition update_dirent (dirents_in_block : list dirent) :=
     fun pos v => let d := selN dirents_in_block pos dirent_zero in
-                 let dw := Rec.rec2word d in
+                 let dw := Rec.to_word d in
                  Pack.update items_per_valu itemsz_ok v $ pos dw.
 
   Definition rep_block (dirents_in_block : list dirent) :=
@@ -70,7 +70,7 @@ Module DIR.
             LOG.rep lxp (ActiveTxn mbase m)
           Begin
             let dw := Pack.extract itemsz items_per_valu itemsz_ok blockdata doff in
-            let d := Rec.word2rec dirent_type dw in
+            let d := @Rec.of_word dirent_type dw in
             If (weq (d :-> "name") name) {
               rx (Some (d :-> "inum"))
             } else {
