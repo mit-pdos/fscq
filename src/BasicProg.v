@@ -51,10 +51,8 @@ Proof.
     apply sep_star_comm in H; apply ptsto_set_valid in H.
     repeat inv_option. eauto.
   - right. eexists; intuition eauto.
-    unfold possible_crash, crash_xform in *.
     apply H1.
-    (* XXX need the predicate transformer for crashes.. *)
-
+    eapply crash_xform_sep_star; eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
@@ -62,27 +60,26 @@ Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
-  PRE    a |-> v0
-  POST:r a |-> v
-  CRASH  a |-> v0
+  PRE    a |=> v0
+  POST:r a |=> (v, valuset_list v0)
+  CRASH  crash_xform (a |=> v0)
   >} Write a v.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_valid in H.
+  - apply sep_star_comm in H; apply ptsto_set_valid in H.
     congruence.
-  - (* XXX this is where the (m::nil) in corr2 goes wrong: the continuation
-     * requires cms=(m::nil) but we have cms=(m :: upd m a v :: nil)!  need
-     * to update corr2 to match in some way..
-     *)
-    eapply H2. instantiate (1:=upd m a v).
+  - eapply H2; eauto.
     repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_comm. apply sep_star_comm in H.
+    apply ptsto_set_valid in H as H'.
+    rewrite H' in H8. inversion H8; subst.
     eapply ptsto_upd; eauto.
-    eauto.
   - right. eexists; intuition eauto.
+    apply H1.
+    eapply crash_xform_sep_star; eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
@@ -361,68 +358,3 @@ Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Inv
    g1 binder, g2 binder,
    lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
-
-Definition read_array T a rx : prog T :=
-  v <- Read a;
-  rx v.
-
-Local Hint Extern 1 (diskIs ?m =!=> _) =>
-  match goal with
-  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
-    match R with
-    | context[(?a |-> ?v)%pred] =>
-      apply diskIs_split; eauto
-    end
-  end : norm_hint_left.
-
-Local Hint Extern 1 (_ =!=> diskIs ?m) =>
-  match goal with
-  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
-    match L with
-    | context[(?a |-> ?v)%pred] =>
-      match L with
-      | context[diskIs (mem_except m a)] =>
-        apply diskIs_merge_except; eauto
-      end
-    end
-  end : norm_hint_right.
-
-Theorem read_array_ok : forall T a (rx : _ -> prog T),
-  {{ fun done crash => exists m v F, diskIs m * F * [[ m @ a |-> v ]]
-   * [[ {{ fun done' crash' => diskIs m * F * [[ done' = done ]] * [[ crash' = crash ]] }} rx v ]]
-   * [[ diskIs m * F =p=> crash ]]
-  }} read_array a rx.
-Proof.
-  unfold read_array.
-  hoare.
-Qed.
-
-Definition write_array T a v rx : prog T :=
-  Write a v ;;
-  rx tt.
-
-Local Hint Extern 1 (_ =!=> diskIs (upd ?m ?a ?v)) =>
-  match goal with
-  | [ H: norm_goal (?L =p=> ?R) |- _ ] =>
-    match L with
-    | context[(?a |-> ?v')%pred] =>
-      match L with
-      | context[diskIs (mem_except m a)] =>
-        apply diskIs_merge_upd; eauto
-      end
-    end
-  end : norm_hint_right.
-
-Theorem write_array_ok : forall T a v (rx : _ -> prog T),
-  {{ fun done crash => exists m F, diskIs m * F * [[ indomain a m ]]
-   * [[ {{ fun done' crash' => diskIs (upd m a v) * F
-      * [[ done' = done ]] * [[ crash' = crash ]] }} rx tt ]]
-   * [[ diskIs m * F \/ diskIs (upd m a v) * F =p=> crash ]]
-  }} write_array a v rx.
-Proof.
-  unfold write_array, indomain.
-  hoare.
-Qed.
-
-Hint Extern 1 ({{_}} progseq (read_array _) _) => apply read_array_ok : prog.
-Hint Extern 1 ({{_}} progseq (write_array _ _) _) => apply write_array_ok : prog.

@@ -575,31 +575,30 @@ Proof.
   apply mem_union_addr; eauto.
   rewrite mem_disjoint_comm; eauto.
 Qed.
+*)
 
 Lemma ptsto_upd:
-  forall a v v0 F m rest,
-  (a |-> v0 * F)%pred m ->
-  (a |-> v * F)%pred (upd m a (v, (cons v0 rest))).
+  forall a v v0 F m,
+  (a |=> v0 * F)%pred m ->
+  (a |=> v * F)%pred (upd m a v).
 Proof.
   unfold upd; unfold_sep_star; intros; repeat deex.
-  exists (fun a' => if addr_eq_dec a' a then Some (v, cons v0 rest) else None).
+  exists (fun a' => if addr_eq_dec a' a then Some v else None).
   exists x0.
   split; [|split].
   - apply functional_extensionality; intro.
     unfold mem_union; destruct (addr_eq_dec x1 a); eauto.
-    unfold ptsto in H1; repeat deex. rewrite H2; eauto.
+    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
   - unfold mem_disjoint in *. intuition. repeat deex.
     apply H. repeat eexists; eauto.
-    unfold ptsto in H1; repeat deex.
+    unfold ptsto in H1; destruct H1.
     destruct (addr_eq_dec x1 a); subst; eauto.
     pred.
   - intuition eauto.
-    unfold ptsto; intuition.
+    unfold ptsto_set; intuition.
     destruct (addr_eq_dec a a); pred.
     destruct (addr_eq_dec a' a); pred.
 Qed.
-*)
-
 
 Lemma ptsto_eq : forall (p1 p2 : pred) m a v1 v2,
   p1 m -> p2 m ->
@@ -734,6 +733,60 @@ Proof.
       apply pimpl_or_r; left; apply pimpl_refl.
     + apply pimpl_sep_star; [apply pimpl_refl|].
       apply pimpl_or_r; right; apply pimpl_refl.
+Qed.
+
+Theorem crash_xform_apply : forall (p : pred) (m m' : mem), possible_crash m m'
+  -> p m
+  -> crash_xform p m'.
+Proof.
+  unfold crash_xform; eauto.
+Qed.
+
+Theorem possible_crash_mem_union : forall (ma mb m' : mem), possible_crash (mem_union ma mb) m'
+  -> mem_disjoint ma mb
+  -> exists ma' mb', m' = mem_union ma' mb' /\ mem_disjoint ma' mb' /\
+                     possible_crash ma ma' /\ possible_crash mb mb'.
+Proof.
+  intros.
+  exists (fun a => match ma a with | None => None | Some v => m' a end).
+  exists (fun a => match mb a with | None => None | Some v => m' a end).
+  repeat split.
+
+  - unfold mem_union; apply functional_extensionality; intros.
+    case_eq (ma x); case_eq (mb x); case_eq (m' x); auto.
+    intros; unfold possible_crash in *.
+    destruct (H x).
+    destruct H4; congruence.
+    repeat deex. unfold mem_union in H5.
+    rewrite H2 in H5. rewrite H3 in H5. congruence.
+  - unfold mem_disjoint; intro; repeat deex.
+    case_eq (ma x); case_eq (mb x); intros.
+    firstorder.
+    rewrite H1 in H3; congruence.
+    rewrite H4 in H2; congruence.
+    rewrite H4 in H2; congruence.
+  - unfold possible_crash in *; intro a.
+    case_eq (ma a); intros; [right|left]; auto.
+    pose proof (mem_union_addr a H0 H1).
+    destruct (H a); destruct H3; try congruence.
+    repeat deex; repeat eexists; eauto.
+    congruence.
+  - unfold possible_crash in *; intro a.
+    case_eq (mb a); intros; [right|left]; auto.
+    rewrite mem_disjoint_comm in H0.
+    pose proof (mem_union_addr a H0 H1); rewrite mem_union_comm in H2 by auto.
+    destruct (H a); destruct H3; try congruence.
+    repeat deex; repeat eexists; eauto.
+    congruence.
+Qed.
+
+Theorem crash_xform_sep_star : forall (p q : pred) (m m' : mem), possible_crash m m'
+  -> (p * q)%pred m
+  -> (crash_xform p * crash_xform q)%pred m'.
+Proof.
+  unfold_sep_star; intros; repeat deex.
+  edestruct possible_crash_mem_union; try eassumption; repeat deex.
+  do 2 eexists; repeat split; auto; unfold crash_xform; eexists; split; eauto.
 Qed.
 
 Instance piff_equiv : Equivalence piff.
