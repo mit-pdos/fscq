@@ -613,6 +613,7 @@ Proof.
   apply H2 in H0; clear H2.
   apply ptsto_valid in H.
   apply ptsto_valid in H0.
+  repeat deex.
   congruence.
 Qed.
 
