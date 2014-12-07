@@ -52,7 +52,7 @@ Proof.
     repeat inv_option. eauto.
   - right. eexists; intuition eauto.
     apply H1.
-    eapply crash_xform_sep_star; eauto.
+    eapply crash_xform_sep_star_apply; eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
@@ -79,7 +79,7 @@ Proof.
     eapply ptsto_upd; eauto.
   - right. eexists; intuition eauto.
     apply H1.
-    eapply crash_xform_sep_star; eauto.
+    eapply crash_xform_sep_star_apply; eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.

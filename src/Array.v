@@ -5,10 +5,10 @@ Set Implicit Arguments.
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
-Fixpoint array (a : addr) (vs : list valu) (stride : addr) :=
+Fixpoint array (a : addr) (vs : list valuset) (stride : addr) :=
   match vs with
     | nil => emp
-    | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
+    | v :: vs' => a |=> v * array (a ^+ stride) vs' stride
   end%pred.
 
 (** * Reading and writing from arrays *)
@@ -38,6 +38,9 @@ Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
 
 Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
   updN vs (wordToNat i) v.
+
+Definition upd_prepend (vs : list valuset) (i : addr) (v : valu) : list valuset :=
+  upd vs i (v, valuset_list (sel vs i ($0, nil))).
 
 Lemma length_updN : forall T vs n (v : T), length (updN vs n v) = length vs.
 Proof.
@@ -252,7 +255,7 @@ Qed.
 Lemma isolate_fwd' : forall vs i a stride,
   i < length vs
   -> array a vs stride =p=> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i $0
+     * (a ^+ $ i ^* stride) |=> selN vs i ($0, nil)
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
 Proof.
   induction vs; simpl; intuition.
@@ -278,7 +281,7 @@ Qed.
 Theorem isolate_fwd : forall (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i $0
+     * (a ^+ i ^* stride) |=> sel vs i ($0, nil)
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
@@ -291,7 +294,7 @@ Qed.
 Lemma isolate_bwd' : forall vs i a stride,
   i < length vs
   -> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i $0
+     * (a ^+ $ i ^* stride) |=> selN vs i ($0, nil)
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
   =p=> array a vs stride.
 Proof.
@@ -318,7 +321,7 @@ Qed.
 Theorem isolate_bwd : forall (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i $0
+     * (a ^+ i ^* stride) |=> sel vs i ($0, nil)
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
   =p=> array a vs stride.
 Proof.
@@ -367,8 +370,8 @@ Theorem read_ok:
   {{ fun done crash => exists vs F, array a vs stride * F
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a vs stride * F * [[ done' = done ]] * [[ crash' = crash ]]
-       }} rx (sel vs i $0)]]
-   * [[array a vs stride * F =p=> crash]]
+       }} rx (fst (sel vs i ($0, nil)))]]
+   * [[crash_xform (array a vs stride) * crash_xform F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
   intros.
@@ -379,16 +382,22 @@ Proof.
   cancel.
 
   rewrite isolate_fwd.
+  instantiate (w0:=i).
+  instantiate (a:=sel l i ($ (0), nil)).
   cancel.
   auto.
 
   step.
   erewrite <- isolate_bwd with (vs:=l).
+  instantiate (w0:=i).
   cancel.
   auto.
 
   pimpl_crash.
   erewrite <- isolate_bwd with (vs:=l).
+  unfold stars; simpl.
+  repeat rewrite crash_xform_sep_star_dist.
+  instantiate (w0:=i).
   cancel.
   auto.
 Qed.
@@ -397,10 +406,10 @@ Theorem write_ok:
   forall T (a i stride:addr) (v:valu) (rx:unit->prog T),
   {{ fun done crash => exists vs F, array a vs stride * F
    * [[wordToNat i < length vs]]
-   * [[{{ fun done' crash' => array a (upd vs i v) stride * F
+   * [[{{ fun done' crash' => array a (upd_prepend vs i v) stride * F
         * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx tt]]
-   * [[ array a vs stride * F \/ array a (upd vs i v) stride * F =p=> crash ]]
+   * [[ crash_xform (array a vs stride) * crash_xform F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
   intros.
@@ -411,11 +420,15 @@ Proof.
   cancel.
 
   rewrite isolate_fwd.
+  instantiate (w0:=i).
+  instantiate (a:=sel l i ($ (0), nil)).
   cancel.
   auto.
 
   step.
-  erewrite <- isolate_bwd with (vs:=(upd l i v)) (i:=i) by (autorewrite_fast; auto).
+  erewrite <- isolate_bwd
+    with (vs:=(upd l i (v, valuset_list (sel l i ($0, nil))))) (i:=i)
+    by (autorewrite_fast; auto).
   autorewrite with core.
   cancel.
   autorewrite with core.
@@ -425,6 +438,9 @@ Proof.
 
   pimpl_crash.
   rewrite <- isolate_bwd with (vs:=l).
+  unfold stars; simpl.
+  repeat rewrite crash_xform_sep_star_dist.
+  instantiate (w0:=i).
   cancel.
   auto.
 Qed.
@@ -443,16 +459,19 @@ Definition read_back T a rx : prog T :=
   v <- ArrayRead a $0 $1;
   rx v.
 
+Ltac unfold_prepend := unfold upd_prepend.
+
 Theorem read_back_ok : forall T a (rx : _ -> prog T),
   {{ fun done crash => exists vs F, array a vs $1 * F
      * [[length vs > 0]]
-     * [[{{fun done' crash' => array a (upd vs $0 $42) $1 * F
+     * [[{{fun done' crash' => array a (upd_prepend vs $0 $42) $1 * F
           * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx $42 ]]
-     * [[ array a vs $1 * F \/ array a (upd vs $0 $42) $1 * F =p=> crash ]]
+     * [[ crash_xform (array a vs $1) * crash_xform F \/
+          crash_xform (array a (upd_prepend vs $0 $42) $1) * crash_xform F =p=> crash ]]
   }} read_back a rx.
 Proof.
-  unfold read_back; hoare.
+  unfold read_back; hoare_unfold unfold_prepend.
 Qed.
 
 Definition swap T a i j rx : prog T :=
@@ -466,14 +485,15 @@ Theorem swap_ok : forall T a i j (rx : prog T),
   {{ fun done crash => exists vs F, array a vs $1 * F
      * [[wordToNat i < length vs]]
      * [[wordToNat j < length vs]]
-     * [[{{fun done' crash' => array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F
+     * [[{{fun done' crash' => array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1 * F
            * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx ]]
-     * [[ array a vs $1 * F \/ array a (upd vs i (sel vs j $0)) $1 * F \/
-          array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F =p=> crash ]]
+     * [[ crash_xform (array a vs $1) * crash_xform F \/
+          crash_xform (array a (upd_prepend vs i (fst (sel vs j ($0, nil)))) $1) * crash_xform F \/
+          crash_xform (array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1) * crash_xform F =p=> crash ]]
   }} swap a i j rx.
 Proof.
-  unfold swap; hoare.
+  unfold swap; hoare_unfold unfold_prepend.
 Qed.
 
 

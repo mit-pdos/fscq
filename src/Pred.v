@@ -780,13 +780,72 @@ Proof.
     congruence.
 Qed.
 
-Theorem crash_xform_sep_star : forall (p q : pred) (m m' : mem), possible_crash m m'
+Theorem possible_crash_disjoint : forall ma mb ma' mb', mem_disjoint ma' mb'
+  -> possible_crash ma ma'
+  -> possible_crash mb mb'
+  -> mem_disjoint ma mb.
+Proof.
+  unfold mem_disjoint, possible_crash; intros.
+  intro Hnot.
+  repeat deex.
+  destruct (H0 x); destruct (H1 x); try intuition congruence.
+  repeat deex.
+  apply H.
+  do 3 eexists; eauto.
+Qed.
+
+Theorem possible_crash_union : forall ma mb ma' mb', possible_crash ma ma'
+  -> possible_crash mb mb'
+  -> possible_crash (mem_union ma mb) (mem_union ma' mb').
+Proof.
+  unfold possible_crash, mem_union; intros.
+  destruct (H a); destruct (H0 a).
+  - destruct H1. destruct H2.
+    rewrite H1 in *; rewrite H2 in *; rewrite H3 in *; rewrite H4 in *.
+    intuition.
+  - destruct H1. repeat deex.
+    rewrite H1 in *; rewrite H2 in *; rewrite H3 in *; rewrite H4 in *.
+    right. do 2 eexists. intuition.
+  - repeat deex.
+    rewrite H1 in *; rewrite H2 in *.
+    right. do 2 eexists. intuition.
+  - repeat deex.
+    rewrite H1 in *; rewrite H3 in *; rewrite H4 in *.
+    right. do 2 eexists. intuition.
+Qed.
+
+Theorem crash_xform_sep_star_dist : forall (p q : pred),
+  crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
+Proof.
+  unfold_sep_star; unfold crash_xform, piff, pimpl; split; intros; repeat deex.
+  - edestruct possible_crash_mem_union; try eassumption; repeat deex.
+    do 2 eexists; intuition; eexists; eauto.
+  - eexists; split.
+    do 2 eexists; intuition; [| eassumption | eassumption].
+    eapply possible_crash_disjoint; eauto.
+    apply possible_crash_union; eauto.
+Qed.
+
+Theorem crash_xform_or_dist : forall (p q : pred),
+  crash_xform (p \/ q) <=p=> crash_xform p \/ crash_xform q.
+Proof.
+  firstorder.
+Qed.
+
+Theorem crash_xform_sep_star_apply : forall (p q : pred) (m m' : mem), possible_crash m m'
   -> (p * q)%pred m
   -> (crash_xform p * crash_xform q)%pred m'.
 Proof.
   unfold_sep_star; intros; repeat deex.
   edestruct possible_crash_mem_union; try eassumption; repeat deex.
   do 2 eexists; repeat split; auto; unfold crash_xform; eexists; split; eauto.
+Qed.
+
+Theorem crash_xform_pimpl : forall p q, p =p=>q
+  -> crash_xform p =p=> crash_xform q.
+Proof.
+  unfold crash_xform, pimpl; intros.
+  repeat deex; eexists; intuition eauto.
 Qed.
 
 Instance piff_equiv : Equivalence piff.
@@ -800,6 +859,15 @@ Instance pimpl_preorder : PreOrder pimpl.
   split.
   exact pimpl_refl.
   exact pimpl_trans.
+Qed.
+
+Instance pimpl_piff_proper :
+  Proper (piff ==> piff ==> Basics.flip Basics.impl) pimpl.
+Proof.
+  intros p p' Hp q q' Hq H.
+  eapply pimpl_trans; [ apply Hp | ].
+  eapply pimpl_trans; [ | apply Hq ].
+  assumption.
 Qed.
 
 Instance sep_star_piff_proper :
@@ -853,6 +921,13 @@ Proof.
   intros.
   setoid_rewrite H.
   reflexivity.
+Qed.
+
+Instance crash_xform_pimpl_proper :
+  Proper (pimpl ==> pimpl) crash_xform.
+Proof.
+  intros p q Hp.
+  apply crash_xform_pimpl; auto.
 Qed.
 
 (**
