@@ -255,7 +255,6 @@ Module FILE.
     flength_simpl.
     unfold valid_blocks; flength_simpl.
     flength_simpl.
-    flength_simpl.
   Qed.
 
   Definition fwrite T lxp xp inum (off:addr) v rx : prog T :=
@@ -268,6 +267,7 @@ Module FILE.
     {< F F' mbase m flist v0,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep xp flist)%pred m ]] *
+           [[ wordToNat off < (FileLen (sel flist inum empty_file)) ]] *
            [[ (inum < $ (length flist))%word ]] *
            [[ (F' * off |-> v0)%pred (FileData (sel flist inum empty_file)) ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) * [[ r = false ]] \/
@@ -277,7 +277,46 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fwrite lxp xp inum off v.
   Proof.
+    unfold fwrite, rep, LOG.log_intact.
+    intros.
 
+    eapply pimpl_ok2.
+    eauto with prog.
+    intros; norm'l.
+
+(*     intuition; flength_simpl. *)
+
+(*     pred_apply. *)
+(*     unfold iget_blocknum. *)
+    rewrite listpred_fwd in H.
+    unfold file_rep at 2.
+    cancel.
+    rewrite listpred_fwd with (prd := file_match).
+    unfold valid_blocks.
+    unfold file_match.
+    flength_simpl.
+
+    assert (w=selN l1 (wordToNat off) $0).
+    eapply ptsto_eq.
+    exact H4.
+    exact H15.
+    eexists.
+    cancel.
+
+    eexists.
+    rewrite isolate_fwd.
+    instantiate (i:=off).
+    cancel.
+    flength_simpl.
+    instantiate (i0:=wordToNat off).
+    rewrite selN_firstn. 
+    instantiate (a4:=w).
+    subst.
+    instantiate (Goal9:=$0).
+    instantiate (Goal6:=INODE.inode_zero).
+    instantiate (Goal8:=$0).
+    cancel.
+    
 
   Qed.
 
