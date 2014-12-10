@@ -246,6 +246,44 @@ Proof.
     auto.
 Qed.
 
+Lemma combine_l_nil : forall T R (a : list T), List.combine a (@nil R) = nil.
+Proof.
+  induction a; auto.
+Qed.
+
+Hint Rewrite combine_l_nil.
+
+Theorem firstn_combine_comm : forall n T R (a : list T) (b : list R),
+  firstn n (List.combine a b) = List.combine (firstn n a) (firstn n b).
+Proof.
+  induction n; simpl; intros; auto.
+  destruct a; simpl; auto.
+  destruct b; simpl; auto.
+  f_equal.
+  auto.
+Qed.
+
+Theorem skipn_combine_comm : forall n T R (a : list T) (b : list R),
+  match (List.combine a b) with
+  | nil => nil
+  | _ :: c => skipn n c
+  end = List.combine (skipn (S n) a) (skipn (S n) b).
+Proof.
+  induction n.
+  - simpl; intros.
+    destruct a; simpl; auto.
+    destruct b; simpl; auto.
+    autorewrite with core; auto.
+  - intros.
+    destruct a; [simpl; auto|].
+    destruct b; [simpl; auto|].
+    autorewrite with core; auto.
+    replace (skipn (S (S n)) (t :: a)) with (skipn (S n) a) by auto.
+    replace (skipn (S (S n)) (r :: b)) with (skipn (S n) b) by auto.
+    rewrite <- IHn.
+    simpl; auto.
+Qed.
+
 
 (** * Isolating an array cell *)
 
