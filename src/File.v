@@ -345,31 +345,78 @@ Qed.
     eapply pimpl_trans; [| apply listpred_bwd ].
     unfold file_rep at 4.
     cancel.
-    instantiate (a0:=l0).
+
+    instantiate (a0:=upd l0 inum (Build_file (FileLen (sel l0 inum empty_file)) (Prog.upd (FileData (sel l0 inum empty_file)) off v))).
     instantiate (i:=wordToNat inum).
+
+Lemma firstn_combine_comm : forall T1 T2 (a:list T1) (b : list T2) n,
+  firstn n (List.combine a b) = List.combine (firstn n a) (firstn n b).
+Proof.
+  admit.
+Qed.
+
+Lemma skipn_combine_comm : forall T R (a : list T) (b : list R) n,
+  match (List.combine a b) with
+  | nil => nil
+  | _ :: c => skipn n c
+  end = List.combine (skipn (S n) a) (skipn (S n) b).
+Proof.
+  admit.
+Qed.
+
+    repeat rewrite firstn_combine_comm.
+    unfold upd.
+    rewrite firstn_updN by auto.
+    unfold file_match; flength_simpl.
+
+    repeat rewrite skipn_combine_comm.
+    simpl.
+    rewrite skipn_updN by auto.
     cancel.
-    rewrite <- listpred_bwd with (prd:=file_match).
-    unfold file_match.
-    flength_simpl.
-    instantiate (a:=l1).
-    instantiate (i:=wordToNat off).
+    Show Existentials.
+
+    eapply pimpl_trans; [| apply listpred_bwd].
+    rewrite firstn_combine_comm.
+    simpl; rewrite skipn_combine_comm.
+    instantiate (i:=(wordToNat off)).
     unfold valid_blocks.
-
-    instantiate (Goal11:=INODE.inode_zero).
-    instantiate (Goal14:=$0).
-    unfold iget_blocknum.
-    instantiate (Goal13:=$0).
+    instantiate (Goal8:=INODE.inode_zero).
+    instantiate (a:=upd l1 off v).
+   
+    unfold upd.
+    rewrite firstn_updN by auto.
+    simpl.
+    rewrite skipn_updN by auto.
     cancel.
+
+    flength_simpl.
+    rewrite selN_updN_eq by flength_simpl.
+    unfold iget_blocknum, sel.
+    instantiate (Goal13:=$0).
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+    instantiate (Goal11:=empty_file).
+    flength_simpl.
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
     
-
-
-    flength_simpl.
-    flength_simpl.
-    eexists.
+    rewrite sel_upd_eq by flength_simpl.
+    simpl.
+    apply sep_star_comm1.
+    eapply ptsto_upd.
+    apply sep_star_comm1.
     eassumption.
-    
-
-
+    deex.
+    flength_simpl.
   Qed.
 
   Definition flen T lxp xp inum rx : prog T :=
