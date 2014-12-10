@@ -261,6 +261,19 @@ Module FILE.
     ok <- fwrite' lxp xp inum off v;
     rx ok.
 
+
+Require Import Morphisms.
+
+Instance pimpl_pimpl_proper :
+  Proper (pimpl ==> Basics.flip pimpl ==> Basics.flip Basics.impl) pimpl.
+Proof.
+  intros p p' Hp q q' Hq H.
+  eapply pimpl_trans; [ eassumption | ].
+  eapply pimpl_trans; [ eassumption | ].
+  eassumption.
+Qed.
+
+
   Hint Extern 1 ({{_}} progseq (fwrite' _ _ _ _ _) _) => apply fwrite'_ok : prog.
 
   Theorem fwrite_ok : forall lxp xp inum off v,
@@ -272,7 +285,7 @@ Module FILE.
            [[ (F' * off |-> v0)%pred (FileData (sel flist inum empty_file)) ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) * [[ r = false ]] \/
            exists m' flist', LOG.rep lxp (ActiveTxn mbase m') * [[ r = true ]] *
-           [[ (F * rep xp flist')%pred m ]] *
+           [[ (F * rep xp flist')%pred m' ]] *
            [[ (F' * off |-> v)%pred (FileData (sel flist' inum empty_file)) ]]
     CRASH  LOG.log_intact lxp mbase
     >} fwrite lxp xp inum off v.
@@ -289,10 +302,10 @@ Module FILE.
 (*     pred_apply. *)
 (*     unfold iget_blocknum. *)
     rewrite listpred_fwd in H.
-    unfold file_rep in H at 2.
+    unfold file_rep at 2 in H.
     destruct_lift H.
-
     cancel.
+
     rewrite listpred_fwd with (prd := file_match).
     unfold valid_blocks.
     unfold file_match.
@@ -301,8 +314,10 @@ Module FILE.
     assert (w=selN l1 (wordToNat off) $0).
     eapply ptsto_eq.
     exact H4.
-    exact H15.
+    eauto.
     eexists.
+    (* coq bug *)
+    instantiate (Goal6:=INODE.inode_zero).
     cancel.
 
     eexists.
@@ -315,10 +330,45 @@ Module FILE.
     instantiate (a4:=w).
     subst.
     instantiate (Goal9:=$0).
-    instantiate (Goal6:=INODE.inode_zero).
-    instantiate (Goal8:=$0).
+    instantiate (Goal10:=$0).
+    cancel.
+
+    flength_simpl.
+    flength_simpl.
+    admit.
+    flength_simpl.
+
+    step.
+    apply pimpl_or_r.
+    right.
+    cancel.
+    eapply pimpl_trans; [| apply listpred_bwd ].
+    unfold file_rep at 4.
+    cancel.
+    instantiate (a0:=l0).
+    instantiate (i:=wordToNat inum).
+    cancel.
+    rewrite <- listpred_bwd with (prd:=file_match).
+    unfold file_match.
+    flength_simpl.
+    instantiate (a:=l1).
+    instantiate (i:=wordToNat off).
+    unfold valid_blocks.
+
+    instantiate (Goal11:=INODE.inode_zero).
+    instantiate (Goal14:=$0).
+    unfold iget_blocknum.
+    instantiate (Goal13:=$0).
     cancel.
     
+
+
+    flength_simpl.
+    flength_simpl.
+    eexists.
+    eassumption.
+    
+
 
   Qed.
 
