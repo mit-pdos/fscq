@@ -769,6 +769,24 @@ Instance pimpl_preorder : PreOrder pimpl.
   exact pimpl_trans.
 Qed.
 
+Instance pimpl_piff_proper :
+  Proper (piff ==> piff ==> Basics.flip Basics.impl) pimpl.
+Proof.
+  intros p p' Hp q q' Hq H.
+  eapply pimpl_trans; [ apply Hp | ].
+  eapply pimpl_trans; [ | apply Hq ].
+  assumption.
+Qed.
+
+Instance sep_star_apply_pimpl_proper :
+  Proper (pimpl ==> pimpl ==> eq ==> Basics.impl) sep_star.
+Proof.
+  intros p p' Hp q q' Hq m m' Hm H.
+  subst.
+  eapply pimpl_apply; [| eassumption ].
+  apply pimpl_sep_star; assumption.
+Qed.
+
 Instance sep_star_piff_proper :
   Proper (piff ==> piff ==> piff) sep_star.
 Proof.

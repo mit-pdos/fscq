@@ -289,7 +289,9 @@ Module FILE.
 (*     pred_apply. *)
 (*     unfold iget_blocknum. *)
     rewrite listpred_fwd in H.
-    unfold file_rep at 2.
+    unfold file_rep in H at 2.
+    destruct_lift H.
+
     cancel.
     rewrite listpred_fwd with (prd := file_match).
     unfold valid_blocks.
