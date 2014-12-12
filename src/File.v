@@ -229,7 +229,7 @@ Module FILE.
     finstdef; repeat (repeat flensimpl'; auto; wordcmp).
 
   (* Simplify list combine *)
-  Ltac flstsimpl' :=
+  Ltac flstsimpl1 :=
     match goal with
     | [ H : norm_goal _ |- _ ] => clear H
     | [ |- context [ fst (selN (combine _ _) _ _)] ]
@@ -246,9 +246,29 @@ Module FILE.
            => rewrite selN_firstn_elim in H by flensimpl
     end.
 
+  Ltac flstsimpl2 := match goal with
+    | [ |- context [ upd _ _ _ ] ] => unfold upd
+    | [ |- context [ firstn _ (combine _ _) ] ]
+       => rewrite firstn_combine_comm
+    | [ |- context [ firstn _ (updN _ _ _) ] ]
+       => rewrite firstn_updN by auto
+    | [ |- context [ match combine _ _ with 
+                     | nil => nil 
+                     | _ :: _ => skipn _ _
+                     end ] ]
+       => rewrite skipn_combine_comm
+    | [ |- context [ skipn _ (combine _ _) ] ]
+       => simpl; rewrite skipn_combine_comm
+    | [ |- context [ skipn _ (updN _ _ _) ] ]
+       => simpl; rewrite skipn_updN by auto
+    | [ |- context [ selN (updN _ ?i _) ?i _ ] ]
+       => rewrite selN_updN_eq by flensimpl
+  end.
+
+
   Ltac fsimpl :=
-    repeat (finstdef; unfold valid_blocks; 
-            flensimpl; flstsimpl'; flensimpl; auto).
+    finstdef; unfold valid_blocks; flensimpl;
+    repeat (repeat flstsimpl1; repeat flstsimpl2; flensimpl; auto).
 
   Theorem fread_ok : forall lxp xp inum off,
     {< mbase m flist v,
@@ -276,6 +296,7 @@ Module FILE.
     unfold file_rep at 2.
     cancel.
     rewrite listpred_fwd with (prd:=file_match) (i:=wordToNat off) by fsimpl.
+
     unfold iget_blocknum.
     unfold file_match.
 
@@ -349,44 +370,31 @@ Module FILE.
     unfold file_rep at 4.
     cancel.
 
-    repeat rewrite firstn_combine_comm.
-    unfold upd; rewrite firstn_updN by auto.
     unfold file_match; fsimpl.
-
-    repeat rewrite skipn_combine_comm.
-    simpl; rewrite skipn_updN by auto.
     cancel.
 
+    (* construct new file *)
+    instantiate (a:=upd l1 off v).
     eapply pimpl_trans; 
       [| apply listpred_bwd with (i:=wordToNat off)].
-    rewrite firstn_combine_comm.
-    simpl; rewrite skipn_combine_comm.
-    instantiate (a:=upd l1 off v).
-   
-    unfold upd; rewrite firstn_updN by auto.
-    simpl; rewrite skipn_updN by auto.
+    fsimpl.
     cancel.
 
     fsimpl.
-    rewrite selN_updN_eq by flensimpl.
-    unfold iget_blocknum, sel; auto.
+    fsimpl.
+    fsimpl.
 
-    flensimpl.
-    fsimpl; unfold upd; rewrite selN_updN_eq; auto.
-    fsimpl; unfold upd; rewrite selN_updN_eq; auto.
-    fsimpl; unfold upd; rewrite selN_updN_eq; [simpl | flensimpl].
+    fsimpl; simpl.
+    admit. (* by H15, should be similar to Array.write_ok *)
 
-    admit.
-
-    flensimpl.
+    fsimpl.
     fsimpl; eexists; eassumption.
 
-    rewrite sel_upd_eq by fsimpl; simpl.
-    apply sep_star_comm1.
-    eapply ptsto_upd.
-    apply sep_star_comm1.
+    fsimpl; simpl.
+    apply sep_star_comm1; eapply ptsto_upd; apply sep_star_comm1.
     eassumption.
   Qed.
+
 
   Definition flen T lxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
