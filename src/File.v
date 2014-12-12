@@ -385,7 +385,8 @@ Module FILE.
     fsimpl.
 
     fsimpl; simpl.
-    admit. (* by H15, should be similar to Array.write_ok *)
+    apply array_progupd; fsimpl; eauto.
+    fsimpl.
 
     fsimpl.
     fsimpl; eexists; eassumption.

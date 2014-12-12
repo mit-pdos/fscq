@@ -367,6 +367,14 @@ Proof.
   apply pimpl_refl.
 Qed.
 
+Theorem array_progupd : forall l off v m start,
+  array start l $1 m
+  -> wordToNat off < length l
+  -> array start (updN l (wordToNat off) v) $1 (Prog.upd m off v).
+Proof.
+  admit.
+Qed.
+
 
 (** * Opaque operations for array accesses, to guide automation *)
 
