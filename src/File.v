@@ -120,7 +120,7 @@ Module FILE.
   Hint Extern 0 (okToUnify (INODE.rep _ _) (INODE.rep _ _)) => constructor : okToUnify.
 
 
-  Lemma selN_combine : forall Ta Tb i a b (a0:Ta) (b0:Tb),
+  Lemma selN_combine_elim : forall Ta Tb i a b (a0:Ta) (b0:Tb),
     length a = length b ->
     selN (combine a b) i (a0, b0) = pair (selN a i a0) (selN b i b0).
   Proof.
@@ -128,21 +128,21 @@ Module FILE.
     simpl; apply IHi; assumption.
   Qed.
 
-  Lemma fst_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
+  Lemma fst_selN_combine_elim : forall Ta Tb a b i (a0:Ta) (b0:Tb),
     length a = length b ->
     fst ( selN (combine a b) i (a0, b0)) = selN a i a0.
   Proof.
-    intros; rewrite selN_combine; auto.
+    intros; rewrite selN_combine_elim; auto.
   Qed.
 
-  Lemma snd_selN_comm : forall Ta Tb a b i (a0:Ta) (b0:Tb),
+  Lemma snd_selN_combine_elim : forall Ta Tb a b i (a0:Ta) (b0:Tb),
     length a = length b ->
     snd ( selN (combine a b) i (a0, b0)) = selN b i b0.
   Proof.
-    intros; rewrite selN_combine; auto.
+    intros; rewrite selN_combine_elim; auto.
   Qed.
 
-  Lemma selN_firstn: forall {A} (l:list A) i n d,
+  Lemma selN_firstn_elim: forall {A} (l:list A) i n d,
     i < n ->
     selN (firstn n l) i d = selN l i d.
   Proof.
@@ -165,22 +165,37 @@ Module FILE.
   Axiom inode_correct: forall (ino:INODE.inode),
     wordToNat (ino :-> "len") <= length (ino :-> "blocks").
 
+  (* instantiate default values *)
+  Ltac finstdef' D := is_evar D; let H := fresh in set (H := D);
+    match type of D with
+    | (file) => instantiate (1:=empty_file) in (Value of H)
+    | (nat)  => instantiate (1:=0) in (Value of H)
+    | (addr) => instantiate (1:=$0) in (Value of H)
+    | (valu) => instantiate (1:=$0) in (Value of H)
+    | (addr * valu)%type 
+        => instantiate (1:=($0, $0)) in (Value of H)
+    | (INODE.inode)
+        => instantiate (1:=INODE.inode_zero) in (Value of H)
+    | (INODE.inode * file)%type 
+        => instantiate (1:=(INODE.inode_zero, empty_file)) in (Value of H)
+    end; subst H.
 
-  Ltac flength_simpl' :=
+  Ltac finstdef :=
+    repeat match goal with
+    | [ |- context [sel _ _ _] ] => unfold sel
+    | [ |- context [selN _ _ ?def] ]
+        => is_evar def; finstdef' def
+    end.
+
+  Ltac flensimpl' :=
     match goal with
     | [ H : norm_goal _ |- _ ] => clear H
-    | [ |- context [ fst (selN (combine _ _) _ _)] ] 
-           => rewrite fst_selN_comm
-    | [ |- context [ snd (selN (combine _ _) _ _)] ] 
-           => rewrite snd_selN_comm
-    | [ H : context [ fst (selN (combine _ _) _ _)] |- _ ] 
-           => rewrite fst_selN_comm in H
-    | [ H : context [ snd (selN (combine _ _) _ _)] |- _ ] 
-           => rewrite snd_selN_comm in H
-    | [ H : length ?l = FileLen _ |- context [ length ?l ] ]
-           => rewrite H
     | [ |- context [ length (combine _ _) ] ]
            => rewrite combine_length
+    | [ H : context [ length (combine _ _) ] |- _ ]
+           => rewrite combine_length
+    | [ H : length ?l = FileLen _ |- context [ length ?l ] ]
+           => rewrite H
     | [ |- context [ Init.Nat.min ?a ?a ] ] 
            => rewrite Nat.min_id
     | [ |- context [ length (firstn _ _) ] ]
@@ -202,8 +217,30 @@ Module FILE.
            => rewrite H
     end.
 
-  Ltac flength_simpl :=
-    repeat (auto; unfold sel; flength_simpl'; wordcmp; auto).
+  Ltac flensimpl :=
+    repeat (finstdef; auto; flensimpl'; wordcmp; auto).
+
+  (* Simplify list combine *)
+  Ltac flstsimpl' :=
+    match goal with
+    | [ H : norm_goal _ |- _ ] => clear H
+    | [ |- context [ fst (selN (combine _ _) _ _)] ]
+           => rewrite fst_selN_combine_elim by flensimpl
+    | [ |- context [ snd (selN (combine _ _) _ _)] ] 
+           => rewrite snd_selN_combine_elim by flensimpl
+    | [ |- context [ selN (firstn _ _) _ _ ] ]
+           => rewrite selN_firstn_elim by flensimpl
+    | [ H : context [ fst (selN (combine _ _) _ _)] |- _ ]
+           => rewrite fst_selN_combine_elim in H by flensimpl
+    | [ H : context [ snd (selN (combine _ _) _ _)] |- _ ]
+           => rewrite snd_selN_combine_elim in H by flensimpl
+    | [ H: context [ selN (firstn _ _) _ _ ] |- _ ]
+           => rewrite selN_firstn_elim in H by flensimpl
+    end.
+
+  Ltac fsimpl :=
+    repeat (finstdef; unfold valid_blocks; 
+            flensimpl; flstsimpl'; flensimpl; auto).
 
   Theorem fread_ok : forall lxp xp inum off,
     {< mbase m flist v,
@@ -224,55 +261,28 @@ Module FILE.
     eauto with prog.
     intros; norm.
     cancel.
-    intuition; flength_simpl.
+    intuition; flensimpl.
 
     pred_apply.
-    unfold iget_blocknum.
-    rewrite listpred_fwd.
+    rewrite listpred_fwd with (i:=wordToNat inum) by flensimpl.
     unfold file_rep at 2.
     cancel.
-    rewrite listpred_fwd with (prd := file_match).
-    unfold valid_blocks.
+    rewrite listpred_fwd with (prd:=file_match) (i:=wordToNat off) by fsimpl.
+    unfold iget_blocknum.
     unfold file_match.
-    flength_simpl.
 
+    fsimpl.
     assert (w=selN l1 (wordToNat off) $0).
-    eapply ptsto_eq.
-    exact H4.
-    exact H15.
-    eexists.
+    eapply ptsto_eq; [exact H4 | eauto | | ].
+    eexists; cancel.
+    eexists; rewrite isolate_fwd with (i:=off) by fsimpl.
     cancel.
-
-    eexists.
-    rewrite isolate_fwd.
-    instantiate (i:=off).
     cancel.
-    flength_simpl.
-    instantiate (i0:=wordToNat off).
-    rewrite selN_firstn; subst.
-    cancel.
-
-    flength_simpl.
-    unfold valid_blocks; flength_simpl.
-    flength_simpl.
   Qed.
 
   Definition fwrite T lxp xp inum (off:addr) v rx : prog T :=
     ok <- fwrite' lxp xp inum off v;
     rx ok.
-
-
-Require Import Morphisms.
-
-Instance pimpl_pimpl_proper :
-  Proper (pimpl ==> Basics.flip pimpl ==> Basics.flip Basics.impl) pimpl.
-Proof.
-  intros p p' Hp q q' Hq H.
-  eapply pimpl_trans; [ eassumption | ].
-  eapply pimpl_trans; [ eassumption | ].
-  eassumption.
-Qed.
-
 
   Hint Extern 1 ({{_}} progseq (fwrite' _ _ _ _ _) _) => apply fwrite'_ok : prog.
 
@@ -297,10 +307,6 @@ Qed.
     eauto with prog.
     intros; norm'l.
 
-(*     intuition; flength_simpl. *)
-
-(*     pred_apply. *)
-(*     unfold iget_blocknum. *)
     rewrite listpred_fwd in H.
     unfold file_rep at 2 in H.
     destruct_lift H.
@@ -349,21 +355,6 @@ Qed.
     instantiate (a0:=upd l0 inum (Build_file (FileLen (sel l0 inum empty_file)) (Prog.upd (FileData (sel l0 inum empty_file)) off v))).
     instantiate (i:=wordToNat inum).
 
-Lemma firstn_combine_comm : forall T1 T2 (a:list T1) (b : list T2) n,
-  firstn n (List.combine a b) = List.combine (firstn n a) (firstn n b).
-Proof.
-  admit.
-Qed.
-
-Lemma skipn_combine_comm : forall T R (a : list T) (b : list R) n,
-  match (List.combine a b) with
-  | nil => nil
-  | _ :: c => skipn n c
-  end = List.combine (skipn (S n) a) (skipn (S n) b).
-Proof.
-  admit.
-Qed.
-
     repeat rewrite firstn_combine_comm.
     unfold upd.
     rewrite firstn_updN by auto.
@@ -373,7 +364,6 @@ Qed.
     simpl.
     rewrite skipn_updN by auto.
     cancel.
-    Show Existentials.
 
     eapply pimpl_trans; [| apply listpred_bwd].
     rewrite firstn_combine_comm.
@@ -404,11 +394,16 @@ Qed.
     admit.
     admit.
     admit.
+    flength_simpl.
+    unfold upd.
+    rewrite selN_updN_eq.
+    simpl.
     admit.
     admit.
     admit.
     admit.
-    
+    admit.
+    admit.
     rewrite sel_upd_eq by flength_simpl.
     simpl.
     apply sep_star_comm1.

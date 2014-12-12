@@ -864,4 +864,14 @@ Proof.
   firstorder.
 Qed.
 
+Instance pimpl_pimpl_proper :
+  Proper (pimpl ==> Basics.flip pimpl ==> Basics.flip Basics.impl) pimpl.
+Proof.
+  intros p p' Hp q q' Hq H.
+  eapply pimpl_trans; [ eassumption | ].
+  eapply pimpl_trans; [ eassumption | ].
+  eassumption.
+Qed.
+
+
 Global Opaque pred.
