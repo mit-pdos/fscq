@@ -772,10 +772,19 @@ Qed.
 Instance pimpl_piff_proper :
   Proper (piff ==> piff ==> Basics.flip Basics.impl) pimpl.
 Proof.
-  intros p p' Hp q q' Hq H.
-  eapply pimpl_trans; [ apply Hp | ].
-  eapply pimpl_trans; [ | apply Hq ].
-  assumption.
+  firstorder.
+Qed.
+
+Instance pimpl_pimpl_proper1 :
+  Proper (pimpl ==> Basics.flip pimpl ==> Basics.flip Basics.impl) pimpl.
+Proof.
+  firstorder.
+Qed.
+
+Instance pimpl_pimpl_proper2 :
+  Proper (Basics.flip pimpl ==> pimpl ==> Basics.impl) pimpl.
+Proof.
+  firstorder.
 Qed.
 
 Instance sep_star_apply_pimpl_proper :
@@ -804,15 +813,13 @@ Qed.
 Instance and_pimpl_proper :
   Proper (pimpl ==> pimpl ==> pimpl) and.
 Proof.
-  intros a b H c d H'.
-  apply pimpl_and; assumption.
+  firstorder.
 Qed.
 
 Instance or_pimpl_proper :
   Proper (pimpl ==> pimpl ==> pimpl) or.
 Proof.
-  intros a b H c d H'.
-  apply pimpl_or; assumption.
+  firstorder.
 Qed.
 
 Example pimpl_rewrite : forall a b p q x y, p =p=> q
@@ -826,10 +833,7 @@ Qed.
 Instance exists_proper {A : Type} :
   Proper (pointwise_relation A pimpl ==> pimpl) (@exis A).
 Proof.
-  intros a b H.
-  apply pimpl_exists_l; intro x.
-  apply pimpl_exists_r; exists x.
-  auto.
+  firstorder.
 Qed.
 
 Example pimpl_exists_rewrite : forall p q, p =p=> q
@@ -863,15 +867,5 @@ Instance lift_empty_proper :
 Proof.
   firstorder.
 Qed.
-
-Instance pimpl_pimpl_proper :
-  Proper (pimpl ==> Basics.flip pimpl ==> Basics.flip Basics.impl) pimpl.
-Proof.
-  intros p p' Hp q q' Hq H.
-  eapply pimpl_trans; [ eassumption | ].
-  eapply pimpl_trans; [ eassumption | ].
-  eassumption.
-Qed.
-
 
 Global Opaque pred.
