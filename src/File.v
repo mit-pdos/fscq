@@ -194,6 +194,14 @@ Module FILE.
            => rewrite combine_length
     | [ H : context [ length (combine _ _) ] |- _ ]
            => rewrite combine_length
+    | [ |- context [ length (upd _ _ _) ] ]
+           => rewrite length_upd
+    | [ H : context [ length (upd _ _ _) ] |- _ ]
+           => rewrite length_upd in H
+    | [ |- context [ length (updN _ _ _) ] ]
+           => rewrite length_updN
+    | [ H : context [ length (updN _ _ _) ] |- _ ]
+           => rewrite length_updN in H
     | [ H : length ?l = FileLen _ |- context [ length ?l ] ]
            => rewrite H
     | [ |- context [ Init.Nat.min ?a ?a ] ] 
@@ -218,7 +226,7 @@ Module FILE.
     end.
 
   Ltac flensimpl :=
-    repeat (finstdef; auto; flensimpl'; wordcmp; auto).
+    finstdef; repeat (repeat flensimpl'; auto; wordcmp).
 
   (* Simplify list combine *)
   Ltac flstsimpl' :=
@@ -302,116 +310,82 @@ Module FILE.
   Proof.
     unfold fwrite, rep, LOG.log_intact.
     intros.
-
     eapply pimpl_ok2.
     eauto with prog.
     intros; norm'l.
 
-    rewrite listpred_fwd in H.
+    assert (wordToNat inum < length l0) as TODO.
+    admit.
+
+    rewrite listpred_fwd with (i:=wordToNat inum) in H by flensimpl.
     unfold file_rep at 2 in H.
     destruct_lift H.
     cancel.
 
-    rewrite listpred_fwd with (prd := file_match).
-    unfold valid_blocks.
+    rewrite listpred_fwd with (prd:=file_match) (i:=wordToNat off) by fsimpl.
     unfold file_match.
-    flength_simpl.
+    fsimpl.
 
     assert (w=selN l1 (wordToNat off) $0).
-    eapply ptsto_eq.
-    exact H4.
-    eauto.
-    eexists.
-    (* coq bug *)
-    instantiate (Goal6:=INODE.inode_zero).
+    eapply ptsto_eq; [exact H4 | eauto | | ].
+    eexists; cancel.
+    eexists; rewrite isolate_fwd with (i:=off) by flensimpl.
     cancel.
 
-    eexists.
-    rewrite isolate_fwd.
-    instantiate (i:=off).
+    instantiate (a4:=w); subst.
     cancel.
-    flength_simpl.
-    instantiate (i0:=wordToNat off).
-    rewrite selN_firstn. 
-    instantiate (a4:=w).
-    subst.
-    instantiate (Goal9:=$0).
-    instantiate (Goal10:=$0).
+    flensimpl.
+
+    step. (* super slow! *)
+    apply pimpl_or_r; right.
     cancel.
 
-    flength_simpl.
-    flength_simpl.
-    admit.
-    flength_simpl.
+    (* construct the new file rep *)
+    instantiate (a0:=upd l0 inum (Build_file (FileLen (sel l0 inum empty_file)) 
+                (Prog.upd (FileData (sel l0 inum empty_file)) off v))).
 
-    step.
-    apply pimpl_or_r.
-    right.
-    cancel.
-    eapply pimpl_trans; [| apply listpred_bwd ].
+    eapply pimpl_trans; 
+      [ | apply listpred_bwd with (i:=wordToNat inum); flensimpl].
     unfold file_rep at 4.
     cancel.
 
-    instantiate (a0:=upd l0 inum (Build_file (FileLen (sel l0 inum empty_file)) (Prog.upd (FileData (sel l0 inum empty_file)) off v))).
-    instantiate (i:=wordToNat inum).
-
     repeat rewrite firstn_combine_comm.
-    unfold upd.
-    rewrite firstn_updN by auto.
-    unfold file_match; flength_simpl.
+    unfold upd; rewrite firstn_updN by auto.
+    unfold file_match; fsimpl.
 
     repeat rewrite skipn_combine_comm.
-    simpl.
-    rewrite skipn_updN by auto.
+    simpl; rewrite skipn_updN by auto.
     cancel.
 
-    eapply pimpl_trans; [| apply listpred_bwd].
+    eapply pimpl_trans; 
+      [| apply listpred_bwd with (i:=wordToNat off)].
     rewrite firstn_combine_comm.
     simpl; rewrite skipn_combine_comm.
-    instantiate (i:=(wordToNat off)).
-    unfold valid_blocks.
-    instantiate (Goal8:=INODE.inode_zero).
     instantiate (a:=upd l1 off v).
    
-    unfold upd.
-    rewrite firstn_updN by auto.
-    simpl.
-    rewrite skipn_updN by auto.
+    unfold upd; rewrite firstn_updN by auto.
+    simpl; rewrite skipn_updN by auto.
     cancel.
 
-    flength_simpl.
-    rewrite selN_updN_eq by flength_simpl.
-    unfold iget_blocknum, sel.
-    instantiate (Goal13:=$0).
+    fsimpl.
+    rewrite selN_updN_eq by flensimpl.
+    unfold iget_blocknum, sel; auto.
+
+    flensimpl.
+    fsimpl; unfold upd; rewrite selN_updN_eq; auto.
+    fsimpl; unfold upd; rewrite selN_updN_eq; auto.
+    fsimpl; unfold upd; rewrite selN_updN_eq; [simpl | flensimpl].
+
     admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    instantiate (Goal11:=empty_file).
-    flength_simpl.
-    admit.
-    admit.
-    admit.
-    admit.
-    flength_simpl.
-    unfold upd.
-    rewrite selN_updN_eq.
-    simpl.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    rewrite sel_upd_eq by flength_simpl.
-    simpl.
+
+    flensimpl.
+    fsimpl; eexists; eassumption.
+
+    rewrite sel_upd_eq by fsimpl; simpl.
     apply sep_star_comm1.
     eapply ptsto_upd.
     apply sep_star_comm1.
     eassumption.
-    deex.
-    flength_simpl.
   Qed.
 
   Definition flen T lxp xp inum rx : prog T :=
