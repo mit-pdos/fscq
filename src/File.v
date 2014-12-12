@@ -335,8 +335,10 @@ Module FILE.
     eauto with prog.
     intros; norm'l.
 
-    assert (wordToNat inum < length l0) as TODO.
-    admit.
+    assert (wordToNat inum < length l0).
+    deex; apply wlt_lt in H5.
+    erewrite wordToNat_natToWord_bound in H5 by eauto.
+    auto.
 
     rewrite listpred_fwd with (i:=wordToNat inum) in H by flensimpl.
     unfold file_rep at 2 in H.
