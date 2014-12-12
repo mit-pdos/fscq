@@ -367,12 +367,25 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Theorem array_progupd : forall l off v m start,
-  array start l $1 m
+Theorem array_progupd : forall l off v m,
+  array $0 l $1 m
   -> wordToNat off < length l
-  -> array start (updN l (wordToNat off) v) $1 (Prog.upd m off v).
+  -> array $0 (updN l (wordToNat off) v) $1 (Prog.upd m off v).
 Proof.
-  admit.
+  intros.
+  eapply isolate_bwd.
+  autorewrite with core.
+  eassumption.
+  eapply pimpl_trans; [| apply pimpl_refl | eapply ptsto_upd ].
+  unfold sel; rewrite selN_updN_eq by auto.
+  cancel.
+  pred_apply.
+  rewrite isolate_fwd by eassumption.
+  simpl.
+  rewrite firstn_updN by auto.
+  rewrite skipn_updN by auto.
+  fold sep_star.
+  cancel.
 Qed.
 
 
