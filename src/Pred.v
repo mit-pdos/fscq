@@ -4,6 +4,7 @@ Require Import FunctionalExtensionality.
 Require Import Prog.
 Require Import RelationClasses.
 Require Import Morphisms.
+Require Import List.
 
 Set Implicit Arguments.
 
@@ -35,7 +36,10 @@ Definition exis A (p : A -> pred) : pred :=
 Notation "'exists' x .. y , p" := (exis (fun x => .. (exis (fun y => p)) ..)) : pred_scope.
 
 Definition ptsto_set (a : addr) (vs : valuset) : pred :=
-  fun m => m a = Some vs /\ forall a', a <> a' -> m a' = None.
+  fun m => (forall a', a <> a' -> m a' = None) /\
+           (exists vs', m a = Some vs' /\
+                        fst vs' = fst vs /\
+                        incl (snd vs') (snd vs)).
 Infix "|=>" := ptsto_set (at level 35) : pred_scope.
 
 Definition ptsto (a : addr) (v : valu) : pred :=
