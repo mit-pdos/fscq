@@ -549,10 +549,12 @@ Qed.
 Lemma ptsto_set_valid:
   forall a vs F m,
   (a |=> vs * F)%pred m
-  -> m a = Some vs.
+  -> exists l, m a = Some (fst vs, l) /\ incl l (snd vs).
 Proof.
   unfold ptsto_set, exis; unfold_sep_star.
   intros; repeat deex.
+  destruct x1; simpl in *; subst.
+  eexists; split; eauto.
   apply mem_union_addr; eauto.
 Qed.
 
@@ -563,6 +565,7 @@ Lemma ptsto_valid:
 Proof.
   unfold ptsto, ptsto_set, exis; unfold_sep_star.
   intros; repeat deex.
+  destruct x2; simpl in *; subst.
   eexists.
   apply mem_union_addr; eauto.
 Qed.
@@ -592,16 +595,20 @@ Proof.
   split; [|split].
   - apply functional_extensionality; intro.
     unfold mem_union; destruct (addr_eq_dec x1 a); eauto.
-    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
+    destruct H1; repeat deex.
+    rewrite H0; auto.
   - unfold mem_disjoint in *. intuition. repeat deex.
-    apply H. repeat eexists; eauto.
-    unfold ptsto in H1; destruct H1.
+    apply H.
+    destruct H1; repeat deex.
+    repeat eexists; eauto.
     destruct (addr_eq_dec x1 a); subst; eauto.
     pred.
   - intuition eauto.
     unfold ptsto_set; intuition.
     destruct (addr_eq_dec a a); pred.
     destruct (addr_eq_dec a' a); pred.
+    exists v.
+    destruct (addr_eq_dec a a); pred.
 Qed.
 
 Lemma ptsto_eq : forall (p1 p2 : pred) m a v1 v2,
@@ -693,24 +700,15 @@ Proof.
   firstorder.
 Qed.
 
-Theorem sep_star_ptsto_set_some : forall a v F m,
-  (a |=> v * F)%pred m -> m a = Some v.
-Proof.
-  unfold_sep_star; unfold ptsto_set, mem_union.
-  intros.
-  repeat deex.
-  rewrite H2.
-  auto.
-Qed.
-
 Theorem sep_star_ptsto_some : forall a v F m,
   (a |-> v * F)%pred m -> exists q, m a = Some (v, q).
 Proof.
   unfold_sep_star; unfold ptsto, ptsto_set, mem_union, exis.
   intros.
   repeat deex.
+  destruct x2; simpl in *; subst.
   eexists.
-  rewrite H1.
+  rewrite H2.
   auto.
 Qed.
 
