@@ -41,7 +41,7 @@ Module BALLOC.
                (map (fun i => alloc_state_to_valu (bmap $ (offset + i)) i)
                     (seq 0 valulen)).
 
-  Definition rep xp (bmap : addr -> alloc_state) :=
+  Definition rep' xp (bmap : addr -> alloc_state) :=
     array (BmapStart xp)
           (map (fun nblock => blockbits bmap (nblock * valulen))
                (seq 0 (wordToNat (BmapNBlocks xp)))) $1.
@@ -245,7 +245,7 @@ Module BALLOC.
         admit.
   Qed.
 
-  Definition free T lxp xp bn rx : prog T :=
+  Definition free' T lxp xp bn rx : prog T :=
     For i < (BmapNBlocks xp)
       Ghost mbase m
       Loopvar _ <- tt
@@ -266,25 +266,25 @@ Module BALLOC.
     Rof ;;
     rx false.
 
-  Theorem free_ok : forall lxp xp bn,
+  Theorem free'_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (Fm * rep xp bmap)%pred m ]] *
+           [[ (Fm * rep' xp bmap)%pred m ]] *
            [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
     POST:r ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (Fm * rep xp (fupd bmap bn Avail))%pred m' ]]) \/
+            [[ (Fm * rep' xp (fupd bmap bn Avail))%pred m' ]]) \/
            ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
     CRASH  LOG.log_intact lxp mbase
-    >} free lxp xp bn.
+    >} free' lxp xp bn.
   Proof.
-    unfold free, rep, LOG.log_intact.
+    unfold free', rep', LOG.log_intact.
     hoare.
 
     apply wlt_lt in H3.
     ring_simplify ($ 0 ^* $ valulen : addr) in H3; simpl in H3; omega.
 
-    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
-    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
+    try rewrite map_length. try rewrite seq_length. apply wlt_lt. auto.
+    try rewrite map_length. try rewrite seq_length. apply wlt_lt. auto.
 
     eapply pimpl_or_r; left.
     cancel.
@@ -298,9 +298,9 @@ Module BALLOC.
     auto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (free _ _ _) _) => apply free_ok : prog.
+  Hint Extern 1 ({{_}} progseq (free' _ _ _) _) => apply free'_ok : prog.
 
-  Definition alloc T lxp xp rx : prog T :=
+  Definition alloc' T lxp xp rx : prog T :=
     For i < (BmapNBlocks xp)
       Ghost mbase m
       Loopvar _ <- tt
@@ -389,21 +389,21 @@ Module BALLOC.
     admit.
   Qed.
 
-  Theorem alloc_ok: forall lxp xp,
+  Theorem alloc'_ok: forall lxp xp,
     {< Fm mbase m bmap,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp bmap)%pred m ]]
+    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep' xp bmap)%pred m ]]
     POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
            LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (Fm * rep xp (fupd bmap bn InUse))%pred m' ]]
+           [[ (Fm * rep' xp (fupd bmap bn InUse))%pred m' ]]
     CRASH  LOG.log_intact lxp mbase
-    >} alloc lxp xp.
+    >} alloc' lxp xp.
   Proof.
-    unfold alloc, rep, LOG.log_intact.
+    unfold alloc', rep', LOG.log_intact.
     hoare.
 
-    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
-    rewrite map_length. rewrite seq_length. apply wlt_lt. auto.
+    try rewrite map_length. try rewrite seq_length. apply wlt_lt. auto.
+    try rewrite map_length. try rewrite seq_length. apply wlt_lt. auto.
 
     apply pimpl_or_r. right.
     cancel.
@@ -416,24 +416,24 @@ Module BALLOC.
 *)
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (alloc _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (alloc' _) _) => apply alloc'_ok : prog.
 
-  Theorem free_recover_ok : forall lxp xp bn,
+  Theorem free'_recover_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
     PRE     LOG.rep lxp (ActiveTxn mbase m) *
-            [[ (Fm * rep xp bmap)%pred m ]] *
+            [[ (Fm * rep' xp bmap)%pred m ]] *
             [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
     POST:r  [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
             [[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (Fm * rep xp (fupd bmap bn Avail))%pred m' ]]
+            [[ (Fm * rep' xp (fupd bmap bn Avail))%pred m' ]]
     CRASH:r LOG.rep lxp (NoTransaction mbase)
-    >} free lxp xp bn >> LOG.recover lxp.
+    >} free' lxp xp bn >> LOG.recover lxp.
   Proof.
     unfold forall_helper; intros.
     exists (LOG.log_intact lxp v0); intros.
     eapply pimpl_ok3.
     eapply corr3_from_corr2.
-    eapply free_ok.
+    eapply free'_ok.
     eapply LOG.recover_ok.
 
     cancel.
@@ -441,6 +441,43 @@ Module BALLOC.
     hoare.
     cancel.
     hoare.
+  Qed.
+
+  (* Different names just so that we can state another theorem about them *)
+  Definition alloc := alloc'.
+  Definition free := free'.
+
+  Definition rep xp (freeblocks : list addr) :=
+    (exists bmap,
+     rep' xp bmap *
+     [[ forall a, In a freeblocks <-> bmap a = Avail ]] *
+     listpred (fun a => exists v, a |-> v) freeblocks)%pred.  
+
+  Theorem alloc_ok : forall lxp xp,
+    {< Fm mbase m freeblocks,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp freeblocks)%pred m ]]
+    POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
+           exists bn m' freeblocks', [[ r = Some bn ]] *
+           LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (Fm * bn |->? * rep xp freeblocks')%pred m' ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} alloc lxp xp.
+  Proof.
+    admit.
+  Qed.
+
+  Theorem free_ok : forall lxp xp bn,
+    {< Fm mbase m freeblocks,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (Fm * rep xp freeblocks * bn |->?)%pred m ]] *
+           [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+    POST:r ([[ r = true ]] * exists m' freeblocks', LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (Fm * rep xp freeblocks')%pred m' ]]) \/
+           ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
+    CRASH  LOG.log_intact lxp mbase
+    >} free lxp xp bn.
+  Proof.
+    admit.
   Qed.
 
 End BALLOC.
