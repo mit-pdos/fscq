@@ -37,7 +37,7 @@ Theorem read_ok:
   {< v,
   PRE    a |=> v
   POST:r a |=> v * [[ r = (fst v) ]]
-  CRASH  crash_xform (a |=> v)
+  CRASH  a |=> v
   >} Read a.
 Proof.
   unfold corr2, exis; intros; repeat deex.
@@ -45,14 +45,14 @@ Proof.
   unfold lift in *; simpl in *.
   inv_exec.
   - apply sep_star_comm in H; apply ptsto_set_valid in H.
+    repeat deex.
     congruence.
   - eapply H2. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_assoc. apply sep_star_and2lift; split; unfold lift; eauto.
     apply sep_star_comm in H; apply ptsto_set_valid in H.
+    repeat deex.
     repeat inv_option. eauto.
   - right. eexists; intuition eauto.
-    apply H1.
-    eapply crash_xform_sep_star_apply; eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
@@ -62,7 +62,7 @@ Theorem write_ok:
   {< v0,
   PRE    a |=> v0
   POST:r a |=> (v, valuset_list v0)
-  CRASH  crash_xform (a |=> v0)
+  CRASH  a |=> v0
   >} Write a v.
 Proof.
   unfold corr2, exis; intros; repeat deex.
@@ -70,16 +70,23 @@ Proof.
   unfold lift in *; simpl in *.
   inv_exec.
   - apply sep_star_comm in H; apply ptsto_set_valid in H.
+    repeat deex.
     congruence.
   - eapply H2; eauto.
     repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_comm. apply sep_star_comm in H.
     apply ptsto_set_valid in H as H'.
-    rewrite H' in H8. inversion H8; subst.
+    repeat deex.
+    rewrite H3 in H8. inversion H8; subst.
+    eapply pimpl_trans; [ apply pimpl_refl | | ].
+    apply pimpl_sep_star; [ | apply pimpl_refl ].
+    eapply ptsto_incl.
+    unfold valuset_list.
+    instantiate (l := (fst x :: x1)).
+    apply incl_cons; [ constructor; auto | ].
+    apply incl_tl; auto.
     eapply ptsto_upd; eauto.
   - right. eexists; intuition eauto.
-    apply H1.
-    eapply crash_xform_sep_star_apply; eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.

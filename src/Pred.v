@@ -546,6 +546,12 @@ Proof.
     congruence.
 Qed.
 
+Lemma incl_cons : forall T (a b : list T) (v : T), incl a b
+  -> incl (v :: a) (v :: b).
+Proof.
+  firstorder.
+Qed.
+
 Lemma ptsto_set_valid:
   forall a vs F m,
   (a |=> vs * F)%pred m
@@ -627,6 +633,16 @@ Proof.
   congruence.
 Qed.
 
+Lemma ptsto_incl : forall a v l l', incl l l'
+  -> a |=> (v, l) =p=> a |=> (v, l').
+Proof.
+  unfold ptsto_set, pimpl; intros.
+  destruct H0; split; auto.
+  repeat deex.
+  eexists; intuition eauto.
+  simpl in *.
+  eapply incl_tran; eauto.
+Qed.
 
 Lemma pimpl_and_split:
   forall a b c,
