@@ -371,7 +371,7 @@ Theorem read_ok:
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a vs stride * F * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx (fst (sel vs i ($0, nil)))]]
-   * [[crash_xform (array a vs stride) * crash_xform F =p=> crash]]
+   * [[array a vs stride * F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
   intros.
@@ -382,22 +382,21 @@ Proof.
   cancel.
 
   rewrite isolate_fwd.
-  instantiate (w0:=i).
+  instantiate (i:=i).
   instantiate (a:=sel l i ($ (0), nil)).
   cancel.
   auto.
 
   step.
   erewrite <- isolate_bwd with (vs:=l).
-  instantiate (w0:=i).
+  instantiate (i:=i).
   cancel.
   auto.
 
   pimpl_crash.
   erewrite <- isolate_bwd with (vs:=l).
   unfold stars; simpl.
-  repeat rewrite crash_xform_sep_star_dist.
-  instantiate (w0:=i).
+  instantiate (i:=i).
   cancel.
   auto.
 Qed.
@@ -409,7 +408,7 @@ Theorem write_ok:
    * [[{{ fun done' crash' => array a (upd_prepend vs i v) stride * F
         * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx tt]]
-   * [[ crash_xform (array a vs stride) * crash_xform F =p=> crash ]]
+   * [[ array a vs stride * F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
   intros.
@@ -420,7 +419,7 @@ Proof.
   cancel.
 
   rewrite isolate_fwd.
-  instantiate (w0:=i).
+  instantiate (i:=i).
   instantiate (a:=sel l i ($ (0), nil)).
   cancel.
   auto.
@@ -440,7 +439,7 @@ Proof.
   rewrite <- isolate_bwd with (vs:=l).
   unfold stars; simpl.
   repeat rewrite crash_xform_sep_star_dist.
-  instantiate (w0:=i).
+  instantiate (i:=i).
   cancel.
   auto.
 Qed.
@@ -467,8 +466,8 @@ Theorem read_back_ok : forall T a (rx : _ -> prog T),
      * [[{{fun done' crash' => array a (upd_prepend vs $0 $42) $1 * F
           * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx $42 ]]
-     * [[ crash_xform (array a vs $1) * crash_xform F \/
-          crash_xform (array a (upd_prepend vs $0 $42) $1) * crash_xform F =p=> crash ]]
+     * [[ array a vs $1 * F \/
+          array a (upd_prepend vs $0 $42) $1 * F =p=> crash ]]
   }} read_back a rx.
 Proof.
   unfold read_back; hoare_unfold unfold_prepend.
@@ -488,9 +487,9 @@ Theorem swap_ok : forall T a i j (rx : prog T),
      * [[{{fun done' crash' => array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1 * F
            * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx ]]
-     * [[ crash_xform (array a vs $1) * crash_xform F \/
-          crash_xform (array a (upd_prepend vs i (fst (sel vs j ($0, nil)))) $1) * crash_xform F \/
-          crash_xform (array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1) * crash_xform F =p=> crash ]]
+     * [[ array a vs $1 * F \/
+          array a (upd_prepend vs i (fst (sel vs j ($0, nil)))) $1 * F \/
+          array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1 * F =p=> crash ]]
   }} swap a i j rx.
 Proof.
   unfold swap; hoare_unfold unfold_prepend.
