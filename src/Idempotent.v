@@ -3,6 +3,7 @@ Require Import Prog.
 Require Import Pred.
 Require Import SepAuto.
 
+(*
 Theorem corr2_from_corr3: forall T (p: prog T) pre, {{ pre }} p >> Done tt
   -> {{ fun done crash => pre done (fun _ => crash) }} p.
 Proof.
@@ -19,6 +20,7 @@ Proof.
     + inversion H3; subst.
       right. repeat eexists; eauto.
 Qed.
+*)
 
 Lemma corr3_from_corr2_failed:
   forall (TF TR: Set) m (p: prog TF) (r: prog TR) out
@@ -26,8 +28,8 @@ Lemma corr3_from_corr2_failed:
   exec_recover m p r out
   -> TF = TR
   -> crash m
-  -> (crash =p=> ppre crashdone_p crash)
-  -> (crash =p=> rpre crashdone_r crash)
+  -> (crash_xform crash =p=> ppre crashdone_p crash)
+  -> (crash_xform crash =p=> rpre crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out <> RFailed TF TR.
@@ -49,8 +51,8 @@ Lemma corr3_from_corr2_finished:
   exec_recover m p r out
   -> TF = TR
   -> crash m
-  -> (crash =p=> ppre crashdone_p crash)
-  -> (crash =p=> rpre crashdone_r crash)
+  -> (crash_xform crash =p=> ppre crashdone_p crash)
+  -> (crash_xform crash =p=> rpre crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out = RFinished TR m' v
@@ -70,8 +72,8 @@ Lemma corr3_from_corr2_recovered:
   exec_recover m p r out
   -> TF = TR
   -> crash m
-  -> (crash =p=> ppre crashdone_p crash)
-  -> (crash =p=> rpre crashdone_r crash)
+  -> (crash_xform crash =p=> ppre crashdone_p crash)
+  -> (crash_xform crash =p=> rpre crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out = RRecovered TF m' v
@@ -94,7 +96,7 @@ Qed.
 Theorem corr3_from_corr2: forall TF TR (p: prog TF) (r: prog TR) ppre rpre, {{ ppre }} p
   -> {{ rpre }} r
   -> {{ fun done crashdone => exists crash,
-        ppre done crash * [[ crash =p=> rpre crashdone crash ]] }} p >> r.
+        ppre done crash * [[ crash_xform crash =p=> rpre crashdone crash ]] }} p >> r.
 Proof.
   unfold corr3; intros.
   destruct H1. rename x into crash.

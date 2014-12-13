@@ -1,11 +1,12 @@
 OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
 MODULES    := Nomega Word WordAuto \
-	      Prog Pred Hoare SepAuto Idempotent \
+	      Prog Pred Hoare SepAuto \
 	      BasicProg Array AddrMap Rec Pack RecArray \
 	      Log Balloc Inode File Dir \
 	      Testprog \
 	      ExtrHaskellPrelude Extraction
+	      # Idempotent
 	      # MemLog TxnWrap Scratch
 VS         := $(MODULES:%=%.v)
 
