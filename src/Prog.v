@@ -58,11 +58,6 @@ Inductive outcome (T: Set) :=
 | Finished (m: mem) (v: T)
 | Crashed (m: mem).
 
-Definition possible_crash (m m' : mem) : Prop :=
-  forall a,
-  (m a = None /\ m' a = None) \/
-  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
-
 Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
   -> exec m (Read a rx) (Failed T)
@@ -79,11 +74,11 @@ Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
 | XSyncOK : forall m a rx v out x, m a = Some (v, x)
   -> exec (upd m a (v, nil)) (rx tt) out
   -> exec m (Sync a rx) out
-| XCrash : forall m p m', possible_crash m m'
-  -> exec m p (Crashed T m')
+| XCrash : forall m p, exec m p (Crashed T m)
 | XDone : forall m v, exec m (Done v) (Finished m v).
 
 Hint Constructors exec.
+
 
 
 Inductive recover_outcome (TF TR: Set) :=
@@ -91,20 +86,28 @@ Inductive recover_outcome (TF TR: Set) :=
 | RFinished (m: mem) (v: TF)
 | RRecovered (m: mem) (v: TR).
 
+Definition possible_crash (m m' : mem) : Prop :=
+  forall a,
+  (m a = None /\ m' a = None) \/
+  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
+
 Inductive exec_recover (TF TR: Set)
   : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
 | XRFail : forall m p1 p2, exec m p1 (Failed TF)
   -> exec_recover m p1 p2 (RFailed TF TR)
 | XRFinished : forall m p1 p2 m' (v: TF), exec m p1 (Finished m' v)
   -> exec_recover m p1 p2 (RFinished TR m' v)
-| XRCrashedFailed : forall m p1 p2 m', exec m p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RFailed TR TR)
+| XRCrashedFailed : forall m p1 p2 m' m'r, exec m p1 (Crashed TF m')
+  -> possible_crash m' m'r
+  -> @exec_recover TR TR m'r p2 p2 (RFailed TR TR)
   -> exec_recover m p1 p2 (RFailed TF TR)
-| XRCrashedFinished : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RFinished TR m'' v)
+| XRCrashedFinished : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+  -> possible_crash m' m'r
+  -> @exec_recover TR TR m'r p2 p2 (RFinished TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v)
-| XRCrashedRecovered : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RRecovered TR m'' v)
+| XRCrashedRecovered : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+  -> possible_crash m' m'r
+  -> @exec_recover TR TR m'r p2 p2 (RRecovered TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v).
 
 Hint Constructors exec_recover.
