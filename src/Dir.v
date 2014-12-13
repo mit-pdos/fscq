@@ -9,13 +9,56 @@ Require Import BasicProg.
 Require Import Log.
 Require Import Hoare.
 Require Import Pred.
+Require Import FMapList.
+Require Import Structures.OrderedType.
+Require Import Structures.OrderedTypeEx.
+Require Import Omega.
 
 Import ListNotations.
 
 Set Implicit Arguments.
 
+Definition filename_len := (256 - addrlen).
+Definition filename := word filename_len.
+
+Module Filename_as_OT <: UsualOrderedType.
+  Definition t := filename.
+  Definition eq := @eq t.
+  Definition eq_refl := @eq_refl t.
+  Definition eq_sym := @eq_sym t.
+  Definition eq_trans := @eq_trans t.
+  Definition lt := @wlt filename_len.
+
+  Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
+  Proof.
+    unfold lt; intros.
+    apply wlt_lt in H; apply wlt_lt in H0.
+    apply lt_wlt.
+    omega.
+  Qed.
+
+  Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
+  Proof.
+    unfold lt, eq; intros.
+    apply wlt_lt in H.
+    intro He; subst; omega.
+  Qed.
+
+  Definition compare x y : Compare lt eq x y.
+  Proof.
+    unfold lt, eq.
+    destruct (wlt_dec x y); [ apply LT; auto | ].
+    destruct (weq x y); [ apply EQ; auto | ].
+    apply GT. apply le_neq_lt; auto.
+  Defined.
+
+  Definition eq_dec := @weq filename_len.
+End Filename_as_OT.
+
+Module DirFMap := FMapList.Make(Filename_as_OT).
+
 Module DIR.
-  Definition dirent_type : Rec.type := Rec.RecF ([("name", Rec.WordF (256-addrlen));
+  Definition dirent_type : Rec.type := Rec.RecF ([("name", Rec.WordF filename_len);
                                                   ("inum", Rec.WordF addrlen)]).
   Definition dirent := Rec.data dirent_type.
   Definition dirent_zero := @Rec.of_word dirent_type $0.
@@ -97,8 +140,14 @@ Module DIR.
     admit.
   Qed.
 
-  (* XXX what should the flattened representation of dir look like?
-   * having a map seems appealing, but might be harder to manipulate.
-   *)
+  Definition dirmap := DirFMap.t addr.
+  Definition map_find k (m : dirmap) := DirFMap.find k m.
+  Definition map_update fn inum (m : dirmap) := DirFMap.add fn inum m.
+
+  Definition rep (m : dirmap) :=
+    (exists dlistlist,
+     rep_pair dlistlist *
+     [[ (forall fn inum, map_find fn m = Some inum <->
+                         exists dlist, In dlist dlistlist /\ In (fn, (inum, tt)) dlist)%type ]])%pred.
 
 End DIR.
