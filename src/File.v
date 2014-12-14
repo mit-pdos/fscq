@@ -191,27 +191,27 @@ Module FILE.
     match goal with
     | [ H : norm_goal _ |- _ ] => clear H
     | [ |- context [ length (combine _ _) ] ]
-           => rewrite combine_length
+           => erewrite combine_length
     | [ H : context [ length (combine _ _) ] |- _ ]
-           => rewrite combine_length
+           => erewrite combine_length
     | [ |- context [ length (upd _ _ _) ] ]
-           => rewrite length_upd
+           => erewrite length_upd
     | [ H : context [ length (upd _ _ _) ] |- _ ]
-           => rewrite length_upd in H
+           => erewrite length_upd in H
     | [ |- context [ length (updN _ _ _) ] ]
-           => rewrite length_updN
+           => erewrite length_updN
     | [ H : context [ length (updN _ _ _) ] |- _ ]
-           => rewrite length_updN in H
+           => erewrite length_updN in H
     | [ H : length ?l = FileLen _ |- context [ length ?l ] ]
            => rewrite H
     | [ |- context [ Init.Nat.min ?a ?a ] ] 
-           => rewrite Nat.min_id
+           => erewrite Nat.min_id
     | [ |- context [ length (firstn _ _) ] ]
-           => rewrite firstn_length
+           => erewrite firstn_length
     | [ H: ?a = ?b |- ?a <= ?b ]
-           => rewrite H; auto
+           => erewrite H by eauto
     | [ H: ?a < ?b, H2: ?c = ?b |- ?a < ?c ]
-           => rewrite H2; auto
+           => erewrite H2 by eauto
     | [ H: length ?a = length ?b, H2: context [ length ?a ] |- _ ]
            => rewrite H in H2
     | [ H: (?a < ?b)%word, H2: (?b < ?c)%word |- (?a < ?c)%word ]
@@ -219,7 +219,7 @@ Module FILE.
     | [ |- context [ Init.Nat.min ?a ?b ] ] =>
       match a with context [ _ :-> "len" ] =>
       match b with context [ _ :-> "blocks" ] =>
-        rewrite min_l; [ auto | try apply inode_correct]
+        erewrite min_l; [ auto | try apply inode_correct]
       end end
     | [ H: length ?a = length ?b |- context [ length ?a ] ] 
            => rewrite H
@@ -233,17 +233,17 @@ Module FILE.
     match goal with
     | [ H : norm_goal _ |- _ ] => clear H
     | [ |- context [ fst (selN (combine _ _) _ _)] ]
-           => rewrite fst_selN_combine_elim by flensimpl
+           => erewrite fst_selN_combine_elim by flensimpl
     | [ |- context [ snd (selN (combine _ _) _ _)] ] 
-           => rewrite snd_selN_combine_elim by flensimpl
+           => erewrite snd_selN_combine_elim by flensimpl
     | [ |- context [ selN (firstn _ _) _ _ ] ]
-           => rewrite selN_firstn_elim by flensimpl
+           => erewrite selN_firstn_elim by flensimpl
     | [ H : context [ fst (selN (combine _ _) _ _)] |- _ ]
-           => rewrite fst_selN_combine_elim in H by flensimpl
+           => erewrite fst_selN_combine_elim in H by flensimpl
     | [ H : context [ snd (selN (combine _ _) _ _)] |- _ ]
-           => rewrite snd_selN_combine_elim in H by flensimpl
+           => erewrite snd_selN_combine_elim in H by flensimpl
     | [ H: context [ selN (firstn _ _) _ _ ] |- _ ]
-           => rewrite selN_firstn_elim in H by flensimpl
+           => erewrite selN_firstn_elim in H by flensimpl
     end.
 
   Ltac flstsimpl2 := match goal with
@@ -417,10 +417,9 @@ Module FILE.
     hoare; fsimpl.
     rewrite listpred_fwd with (i:=wordToNat inum) in H by flensimpl.
     destruct_lift H.
-    instantiate (def:=(INODE.inode_zero, empty_file)).
-    fsimpl.
     subst; unfold sel.
     apply wordToNat_eq_natToWord in H3; auto.
+    fsimpl; eauto.
   Qed.
 
 
