@@ -413,8 +413,16 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} flen lxp xp inum.
   Proof.
-    admit.
+    unfold flen, rep, file_rep.
+    hoare; fsimpl.
+    rewrite listpred_fwd with (i:=wordToNat inum) in H by flensimpl.
+    destruct_lift H.
+    instantiate (def:=(INODE.inode_zero, empty_file)).
+    fsimpl.
+    subst; unfold sel.
+    apply wordToNat_eq_natToWord in H3; auto.
   Qed.
+
 
   Definition fgrow T lxp bxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
