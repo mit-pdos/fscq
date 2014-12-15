@@ -171,60 +171,6 @@ Module BALLOC.
       Rof;;
     rx None.
 
-(*
-  Theorem sel_avail' : forall len a bn start, (bn < $ len)%word ->
-    sel (map (fun i => alloc_state_to_valu (a $ i)) (seq start len)) bn = $0 ->
-    a (bn ^+ $ start) = Avail.
-  Proof.
-    unfold sel.
-    induction len; intros; simpl.
-    - exfalso. apply wlt_lt in H. simpl in H. omega.
-    - simpl in H0.
-      destruct (weq bn $0); subst; simpl in *.
-      + rewrite wplus_unit.
-        unfold alloc_state_to_valu in *.
-        destruct (a $ start); auto.
-        apply natToWord_inj in H0.
-        discriminate.
-        admit.
-        admit.
-      + case_eq (wordToNat bn); intros.
-        * admit.
-        * rewrite H1 in *.
-          replace (bn ^+ $ start) with ((bn ^- $1) ^+ $ (S start)).
-          apply IHlen.
-          admit.
-          replace (wordToNat (bn ^- $1)) with (n0).
-          auto.
-          admit.
-          admit.
-  Qed.
-
-  Theorem sel_avail : forall len a bn, (bn < $ len)%word ->
-    sel (map (fun i => alloc_state_to_valu (a $ i)) (seq 0 len)) bn = $0 ->
-    a bn = Avail.
-  Proof.
-    intros.
-    replace (bn) with (bn ^+ $0).
-    eapply sel_avail'; eauto.
-    rewrite wplus_comm. rewrite wplus_unit. auto.
-  Qed.
-
-
-  Theorem sel_avail : forall bmap bnblock bnoff nblocks,
-     sel (map (fun nblock => blockbits bmap (nblock * valulen))
-              (seq 0 (wordToNat nblocks))) bnblock $0 ^& wbit valulen bnoff = $ 0
-    -> (bnblock < nblocks)%word
-    -> (bnoff < $ valulen)%word
-    -> bmap (bnblock ^* $ valulen ^+ bnoff) = Avail.
-  Proof.
-    unfold sel; intros.
-    apply wlt_lt in H0 as H0'.
-    rewrite selN_map_seq in H; auto.
-    admit.
-  Qed.
-*)
-
   Hint Rewrite natToWord_wordToNat selN_map_seq.
 
   Theorem alloc'_ok: forall lxp xp,
@@ -296,11 +242,56 @@ Module BALLOC.
     (exists bmap,
      rep' xp bmap *
      [[ forall a, In a freeblocks <-> bmap a = Avail ]] *
-     listpred (fun a => exists v, a |-> v) freeblocks)%pred.  
+     listpred (fun a => a |->?) freeblocks)%pred.
+
+  Lemma listpred_remove : forall T dec P (x : T) l,
+    In x l -> listpred P l =p=> P x * listpred P (remove dec x l).
+  Proof.
+    induction l; intro Hi.
+    inversion Hi.
+    simpl; destruct (dec x a).
+    rewrite e.
+    admit. (* have to prove [a] can't be in [l] (or the left side couldn't be disjoint) *)
+    simpl. rewrite <- sep_star_assoc.
+    rewrite (sep_star_comm (P x) (P a)). rewrite IHl.
+    rewrite sep_star_assoc. auto.
+    destruct Hi; subst; tauto.
+  Qed.
+
+  Lemma remove_still_In : forall T dec (a b : T) l,
+    In a (remove dec b l) -> In a l.
+  Proof.
+    induction l; simpl; [tauto|].
+    destruct (dec b a0).
+    right; apply IHl; assumption.
+    intro H. destruct H. subst. auto.
+    right; apply IHl; assumption.
+  Qed.
+
+  Lemma remove_still_In_ne : forall T dec (a b : T) l,
+    In a (remove dec b l) -> b <> a.
+  Proof.
+    induction l; simpl; [tauto|].
+    destruct (dec b a0).
+    assumption.
+    intro H. destruct H. subst. auto.
+    apply IHl; assumption.
+  Qed.
+
+  Lemma remove_other_In : forall T dec (a b : T) l,
+    b <> a -> In a l -> In a (remove dec b l).
+  Proof.
+    induction l.
+    auto.
+    simpl. destruct (dec b a0).
+    subst. intros. destruct H0; [subst; tauto | apply IHl; auto].
+    simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
+  Qed.
 
   Theorem alloc_ok : forall lxp xp,
     {< Fm mbase m freeblocks,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp freeblocks)%pred m ]]
+    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp freeblocks)%pred m ]] *
+           [[ (wordToN (BmapNBlocks xp) * N.of_nat valulen < Npow2 addrlen)%N ]]
     POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            exists bn m' freeblocks', [[ r = Some bn ]] *
            LOG.rep lxp (ActiveTxn mbase m') *
@@ -308,7 +299,30 @@ Module BALLOC.
     CRASH  LOG.log_intact lxp mbase
     >} alloc lxp xp.
   Proof.
-    admit.
+    unfold alloc.
+    intros.
+    eapply pimpl_ok2. apply alloc'_ok.
+    unfold rep, rep'.
+    cancel.
+    step.
+    apply pimpl_or_r. right.
+    norm. (* We can't just [cancel] here because it introduces evars too early *)
+    cancel.
+    rewrite <- H9 in H13.
+    split; [split; trivial |].
+    pred_apply.
+    instantiate (a1 := remove (@weq addrlen) a0 l).
+    rewrite listpred_remove by (apply H13). cancel.
+    assert (a a2 = Avail) as Ha.
+    apply H9.
+    eapply remove_still_In; apply H3.
+    rewrite <- Ha.
+    apply fupd_other.
+    eapply remove_still_In_ne; apply H3.
+    assert (a0 <> a2).
+    intro He. subst. rewrite fupd_same in H3. discriminate. trivial.
+    rewrite fupd_other in H3 by assumption. rewrite <- H9 in H3.
+    apply remove_other_In; assumption.
   Qed.
 
   Theorem free_ok : forall lxp xp bn,
