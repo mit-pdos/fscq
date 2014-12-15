@@ -469,13 +469,14 @@ Module FILE.
   Theorem fshrink'_ok : forall lxp bxp xp inum,
     {< F mbase m ilist bn len freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * INODE.rep xp ilist * bn |->? * Balloc.rep bxp freeblocks)%pred m ]] *
+           [[ (F * INODE.rep xp ilist * bn |->? * BALLOC.rep bxp freeblocks)%pred m ]] *
            [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
            [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]] *
-           [[ bn = iget_blocknum ilist inum len ]]
+           [[ bn = iget_blocknum ilist inum (len ^- $1) ]] *
+           [[ (len > $0)%word ]]
     POST:r [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            [[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * INODE.rep xp ilist' * Balloc.rep bxp (bn :: freeblocks))%pred m' ]] *
+           [[ (F * INODE.rep xp ilist' * BALLOC.rep bxp (bn :: freeblocks))%pred m' ]] *
            [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]]
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
