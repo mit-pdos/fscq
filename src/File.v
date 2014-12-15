@@ -480,6 +480,10 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
   Proof.
+    (* Is inum and off starting from 0 or 1 ?  I'm a little confused
+       since fshrink frees the block at inode :-> "len" *)
+    (* Do we need to put (bn |->?) in precondition?  
+       If so, how to say it is free in postcondition? *)
     admit.
   Qed.
 
