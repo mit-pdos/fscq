@@ -433,7 +433,7 @@ Module FILE.
     | None => rx false
     | Some b =>
       let l' := i :-> "len" ^+ $1 in
-      let i' := (i :=> "blocks" := (upd (i :-> "blocks") l' b) :=> "len" := l') in
+      let i' := (i :=> "blocks" := (upd (i :-> "blocks") (i :-> "len") b) :=> "len" := l') in
       ok <- INODE.iput lxp xp inum i';
       If (bool_dec ok true) {
         rx true
@@ -454,7 +454,7 @@ Module FILE.
   Definition fshrink T lxp bxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
     let l := i :-> "len" in
-    ok <- BALLOC.free lxp bxp (sel (i :-> "blocks") $0 l);
+    ok <- BALLOC.free lxp bxp (sel (i :-> "blocks") (l ^- $1) $0);
     If (bool_dec ok true) {
       let i' := (i :=> "len" := l ^- $1) in
       ok <- INODE.iput lxp xp inum i';
@@ -480,8 +480,6 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
   Proof.
-    (* Is inum and off starting from 0 or 1 ?  I'm a little confused
-       since fshrink frees the block at inode :-> "len" *)
     (* Do we need to put (bn |->?) in precondition?  
        If so, how to say it is free in postcondition? *)
     admit.
