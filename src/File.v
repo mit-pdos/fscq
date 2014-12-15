@@ -423,6 +423,9 @@ Module FILE.
   Qed.
 
 
+  Hint Extern 1 ({{_}} progseq (BALLOC.alloc _) _) => apply BALLOC.alloc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (BALLOC.free _ _ _) _) => apply BALLOC.free_ok : prog.
+
   Definition fgrow T lxp bxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
     bnum <- BALLOC.alloc lxp bxp;
@@ -460,6 +463,27 @@ Module FILE.
       rx false
     }.
 
+
+  Definition fshrink' := fshrink.
+
+  Theorem fshrink'_ok : forall lxp bxp xp inum,
+    {< F mbase m ilist bn len,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * INODE.rep xp ilist * bn |->? )%pred m ]] *
+           [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
+           [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]] *
+           [[ bn = iget_blocknum ilist inum len ]]
+    POST:r [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
+           [[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (F * INODE.rep xp ilist')%pred m' ]] *
+           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} fshrink' lxp bxp xp inum.
+  Proof.
+    admit.
+  Qed.
+
+
   (* Note that for [fgrow_ok] and [fshrink_ok], a [false] return value
    * indicates that the transaction could be in any active state, so
    * the caller is effectively forced to abort.
@@ -479,6 +503,8 @@ Module FILE.
     admit.
   Qed.
 
+
+
   Theorem fshrink_ok : forall lxp bxp xp inum,
     {< F mbase m flist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -491,7 +517,19 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fshrink lxp bxp xp inum.
   Proof.
-    admit.
+    unfold fshrink, rep.
+    hoare.
+    fsimpl.
+    
+    rewrite listpred_fwd with (i:=wordToNat inum) by flensimpl.
+    unfold file_rep at 2.
+    cancel; fsimpl.
+    erewrite listpred_fwd with (prd:=file_match).
+    unfold file_match.
+    cancel; fsimpl.
+    unfold BALLOC.rep.
+    cancel.
+
   Qed.
 
 End FILE.
