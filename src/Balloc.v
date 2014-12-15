@@ -252,18 +252,64 @@ Module BALLOC.
      [[ forall a, In a freeblocks <-> bmap a = Avail ]] *
      listpred (fun a => a |->?) freeblocks)%pred.
 
-  Lemma listpred_remove : forall T dec P (x : T) l,
-    In x l -> listpred P l =p=> P x * listpred P (remove dec x l).
+  Lemma remove_not_In :
+    forall T dec (a : T) l, ~ In a l -> remove dec a l = l.   
+  Proof.
+    induction l.
+    auto.
+    intro Hni. simpl.
+    destruct (dec a a0).
+    subst. destruct Hni. simpl. tauto.
+    rewrite IHl. trivial.
+    simpl in Hni. tauto.
+  Qed.
+
+  Lemma listpred_pick : forall T P (x : T) l, In x l -> listpred P l =p=> exists F, P x * F.
+    induction l; intro Hi.
+    inversion Hi.
+    simpl.
+    destruct Hi.
+    cancel.
+    rewrite IHl by assumption.
+    cancel.
+  Qed.
+
+  Lemma disj_union : forall a b c, mem_disjoint a (mem_union b c) -> mem_disjoint a b.
+  Proof.
+    unfold mem_disjoint, mem_union.
+    intros.
+    intro He.
+    destruct H.
+    do 4 destruct He as [? He].
+    repeat eexists. apply H.
+    rewrite He. tauto.
+  Qed.
+
+  Lemma listpred_remove : forall x l,
+    In x l ->
+    listpred (fun a => a |->?) l =p=>
+        (fun a => a |->?) x * listpred (fun a => a |->?) (remove (@weq _) x l).
   Proof.
     induction l; intro Hi.
     inversion Hi.
-    simpl; destruct (dec x a).
-    rewrite e.
-    admit. (* have to prove [a] can't be in [l] (or the left side couldn't be disjoint) *)
-    simpl. rewrite <- sep_star_assoc.
-    rewrite (sep_star_comm (P x) (P a)). rewrite IHl.
-    rewrite sep_star_assoc. auto.
-    destruct Hi; subst; tauto.
+    simpl; destruct ((@weq _) x a).
+    (* have to prove [x] can't be in [l] (or the left side couldn't be disjoint) *)
+    + intros m Hp.
+      rewrite e.
+      rewrite remove_not_In. trivial.
+      subst. intro Hil.
+      rewrite listpred_pick with (x := a) in Hp by assumption; subst.
+      unfold sep_star in Hp; rewrite sep_star_is in Hp; unfold sep_star_impl in Hp.
+      destruct Hp as [m1 Hp]. destruct Hp as [x1 Hp]. repeat destruct Hp as [? Hp].
+      subst.
+      apply disj_union in H0. unfold mem_disjoint in H0.
+      unfold ptsto in H1. destruct H1.
+      unfold ptsto in H4. destruct H4.
+      destruct H0. repeat eexists. apply H. apply H1.
+    + simpl. rewrite <- sep_star_assoc.
+      rewrite (sep_star_comm (x |->?) (a |->?)). rewrite IHl.
+      rewrite sep_star_assoc. auto.
+      destruct Hi; subst; tauto.
   Qed.
 
   Lemma remove_still_In : forall T dec (a b : T) l,
@@ -318,7 +364,6 @@ Module BALLOC.
     cancel.
     split; [split; trivial |].
     pred_apply.
-    instantiate (a1 := remove (@weq addrlen) a0 l).
     rewrite listpred_remove by (apply H9; apply H14). cancel.
     assert (a a2 = Avail) as Ha.
     apply H9.
