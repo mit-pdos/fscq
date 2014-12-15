@@ -38,6 +38,44 @@ Section RECARRAY.
     intros. apply list_selN_ext' with (len:=length a) (default:=default); auto.
   Qed.
 
+  (** XXX use [nth] *)
+  Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
+  Proof.
+    induction n; intros; destruct l; simpl; auto.
+  Qed.
+
+  Ltac nth_selN H := intros; repeat rewrite nth_selN_eq; apply H; assumption.
+
+  Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.
+  Proof.
+    nth_selN nth_In.
+  Qed.
+
+  Lemma in_sel : forall t n l (z:t), wordToNat n < length l -> In (sel l n z) l.
+  Proof.
+    intros. apply in_selN; assumption.
+  Qed.
+
+  Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
+    In x l \/ x = xn.
+  Proof.
+    induction n; intros; destruct l; intuition; simpl in *; destruct H; auto.
+    destruct (IHn l x xn H); auto.
+  Qed.
+
+  Lemma in_upd : forall t n l x (xn:t), In x (upd l n xn) ->
+    In x l \/ x = xn.
+  Proof.
+    intros. apply in_updN with (n:=wordToNat n); auto.
+  Qed.
+
+  Lemma Forall_upd : forall t P l n (v:t), Forall P l -> P v -> Forall P (upd l n v).
+  Proof.
+    intros. apply Forall_forall. intros v0 Hi. apply in_upd in Hi. destruct Hi.
+    rewrite Forall_forall in H. apply H; assumption.
+    subst. assumption.
+  Qed.
+
   Lemma concat_length : forall T (l : list (list T)),
     length (fold_right (@app _) nil l) = fold_right plus 0 (map (@length _) l).
   Proof.
@@ -84,6 +122,85 @@ Section RECARRAY.
     subst. remember (a * length l) as al. rewrite updN_app2 by omega.
     replace (b + (length l + al) - length l) with (b + al) by omega. subst.
     rewrite IHa; auto.
+  Qed.
+
+  Lemma selN_app1 : forall t l l' (d:t) n,
+    n < length l -> selN (l ++ l') n d = selN l n d.
+  Proof.
+    nth_selN app_nth1.
+  Qed.
+
+  Lemma selN_app2 : forall t l l' (d:t) n,
+    n >= length l -> selN (l ++ l') n d = selN l' (n - length l) d.
+  Proof.
+    nth_selN app_nth2.
+  Qed.
+
+  Lemma nested_selN_concat : forall t a b m l (z:t), b < m ->
+    Forall (fun sl => length sl = m) l ->
+    selN (selN l a nil) b z = selN (fold_right (app (A:=t)) nil l) (b + a * m) z.
+  Proof.
+    induction a; intros; destruct l; simpl; inversion H0.
+    trivial.
+    replace (b + 0) with b by omega. subst.
+    rewrite selN_app1; auto.
+    trivial.
+    subst. remember (a * length l) as al. rewrite selN_app2 by omega.
+    replace (b + (length l + al) - length l) with (b + al) by omega. subst.
+    apply IHa; assumption.
+  Qed.
+
+  (** If we index into the concatenation of a list of length-[m] lists, it's
+      the same as indexing into the [n % m]'th element of the [n / m]'th list *)
+  Lemma nested_sel_divmod_concat : forall t l n m (z:t), m <> $0 ->
+    Forall (fun sl => length sl = wordToNat m) l ->
+    sel (sel l (n ^/ m) nil) (n ^% m) z = sel (fold_right (app (A:=t)) nil l) n z.
+  Proof.
+    intros. unfold sel. rewrite nested_selN_concat with (m:=wordToNat m).
+    word2nat'. rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod.
+    trivial. assumption. apply le_lt_trans with (m := wordToNat n). apply div_le; assumption.
+    apply wordToNat_bound.
+    apply lt_le_trans with (m := wordToNat m).
+    apply Nat.mod_upper_bound; assumption.
+    apply Nat.lt_le_incl; apply wordToNat_bound.
+    word2nat'.
+    apply Nat.mod_upper_bound; assumption.
+    apply lt_le_trans with (m := wordToNat m).
+    apply Nat.mod_upper_bound; assumption.
+    apply Nat.lt_le_incl; apply wordToNat_bound.
+    assumption.
+  Qed.
+
+  Theorem selN_list_eq' : forall A len (vs vs' : list A) default,
+    length vs = len
+    -> length vs' = len
+    -> (forall i, i < len -> selN vs i default = selN vs' i default)
+    -> vs = vs'.
+  Proof.
+    induction len.
+    - destruct vs; destruct vs'; simpl; intros; try congruence.
+    - destruct vs; destruct vs'; simpl; intros; try congruence.
+      f_equal.
+      apply (H1 0); omega.
+      eapply IHlen; eauto.
+      intros.
+      apply (H1 (S i)); omega.
+  Qed.
+
+  Theorem selN_list_eq : forall A (vs vs' : list A) default,
+    length vs = length vs'
+    -> (forall i, i < length vs -> selN vs i default = selN vs' i default)
+    -> vs = vs'.
+  Proof.
+    intros.
+    eapply selN_list_eq'; [ apply eq_refl | auto | auto ].
+  Qed.
+
+  Theorem selN_updN_ne : forall vs n n' v, n < length vs
+    -> n <> n'
+    -> selN (updN vs n v) n' ($0 : valu) = selN vs n' ($0 : valu).
+  Proof.
+    induction vs; destruct n'; destruct n; simpl; intuition; try omega.
   Qed.
 
   Variable itemtype : Rec.type.
@@ -143,23 +260,6 @@ Section RECARRAY.
   Hint Rewrite sel_map_seq using auto.
   Hint Rewrite rep_valu_id.
 
-  (** Not sure why we didn't just use [nth] *)
-  Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
-  Proof.
-    induction n; intros; destruct l; simpl; auto.
-  Qed.
-
-  Ltac nth_selN H := intros; repeat rewrite nth_selN_eq; apply H; assumption.
-
-  Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.
-  Proof.
-    nth_selN nth_In.
-  Qed.
-
-  Lemma in_sel : forall t n l (z:t), wordToNat n < length l -> In (sel l n z) l.
-  Proof.
-    intros. apply in_selN; assumption.
-  Qed.
 
   Theorem get_pair_ok : forall lxp xp block_ix pos,
     {< F mbase m ilistlist,
@@ -184,25 +284,6 @@ Section RECARRAY.
     unfold LOG.log_intact. cancel.
   Qed.
 
-  Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
-    In x l \/ x = xn.
-  Proof.
-    induction n; intros; destruct l; intuition; simpl in *; destruct H; auto.
-    destruct (IHn l x xn H); auto.
-  Qed.
-
-  Lemma in_upd : forall t n l x (xn:t), In x (upd l n xn) ->
-    In x l \/ x = xn.
-  Proof.
-    intros. apply in_updN with (n:=wordToNat n); auto.
-  Qed.
-
-  Lemma Forall_upd : forall t P l n (v:t), Forall P l -> P v -> Forall P (upd l n v).
-  Proof.
-    intros. apply Forall_forall. intros v0 Hi. apply in_upd in Hi. destruct Hi.
-    rewrite Forall_forall in H. apply H; assumption.
-    subst. assumption.
-  Qed.
 
   Theorem put_pair_ok : forall lxp xp block_ix pos i,
     {< F mbase m ilistlist,
@@ -256,53 +337,6 @@ Section RECARRAY.
   Definition put T lxp xp inum i rx : prog T :=
     ok <- put_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
     rx ok.
-
-  Lemma selN_app1 : forall t l l' (d:t) n,
-    n < length l -> selN (l ++ l') n d = selN l n d.
-  Proof.
-    nth_selN app_nth1.
-  Qed.
-
-  Lemma selN_app2 : forall t l l' (d:t) n,
-    n >= length l -> selN (l ++ l') n d = selN l' (n - length l) d.
-  Proof.
-    nth_selN app_nth2.
-  Qed.
-
-  Lemma nested_selN_concat : forall t a b m l (z:t), b < m ->
-    Forall (fun sl => length sl = m) l ->
-    selN (selN l a nil) b z = selN (fold_right (app (A:=t)) nil l) (b + a * m) z.
-  Proof.
-    induction a; intros; destruct l; simpl; inversion H0.
-    trivial.
-    replace (b + 0) with b by omega. subst.
-    rewrite selN_app1; auto.
-    trivial.
-    subst. remember (a * length l) as al. rewrite selN_app2 by omega.
-    replace (b + (length l + al) - length l) with (b + al) by omega. subst.
-    apply IHa; assumption.
-  Qed.
-
-  (** If we index into the concatenation of a list of length-[m] lists, it's
-      the same as indexing into the [n % m]'th element of the [n / m]'th list *)
-  Lemma nested_sel_divmod_concat : forall t l n m (z:t), m <> $0 ->
-    Forall (fun sl => length sl = wordToNat m) l ->
-    sel (sel l (n ^/ m) nil) (n ^% m) z = sel (fold_right (app (A:=t)) nil l) n z.
-  Proof.
-    intros. unfold sel. rewrite nested_selN_concat with (m:=wordToNat m).
-    word2nat'. rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod.
-    trivial. assumption. apply le_lt_trans with (m := wordToNat n). apply div_le; assumption.
-    apply wordToNat_bound.
-    apply lt_le_trans with (m := wordToNat m).
-    apply Nat.mod_upper_bound; assumption.
-    apply Nat.lt_le_incl; apply wordToNat_bound.
-    word2nat'.
-    apply Nat.mod_upper_bound; assumption.
-    apply lt_le_trans with (m := wordToNat m).
-    apply Nat.mod_upper_bound; assumption.
-    apply Nat.lt_le_incl; apply wordToNat_bound.
-    assumption.
-  Qed.
 
   Theorem get_ok : forall lxp xp inum,
     {< F mbase m ilist,
@@ -418,6 +452,6 @@ End RECARRAY.
 Hint Extern 1 ({{_}} progseq (get _ _ _ _ _ _) _) => apply get_ok : prog.
 Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _ _) _) => apply put_ok : prog.
 
-  (* If two arrays are in the same spot, their contents have to be equal *)
-  Hint Extern 0 (okToUnify (array_item ?a ?b ?c ?xp _) (array_item ?a ?b ?c ?xp _)) =>
-    unfold okToUnify; constructor : okToUnify.
+(* If two arrays are in the same spot, their contents have to be equal *)
+Hint Extern 0 (okToUnify (array_item ?a ?b ?c ?xp _) (array_item ?a ?b ?c ?xp _)) =>
+  unfold okToUnify; constructor : okToUnify.

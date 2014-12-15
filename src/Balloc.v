@@ -75,38 +75,6 @@ Module BALLOC.
   Qed.
   Hint Rewrite bit_alloc_state_id.
 
-  Theorem selN_list_eq' : forall A len (vs vs' : list A) default,
-    length vs = len
-    -> length vs' = len
-    -> (forall i, i < len -> selN vs i default = selN vs' i default)
-    -> vs = vs'.
-  Proof.
-    induction len.
-    - destruct vs; destruct vs'; simpl; intros; try congruence.
-    - destruct vs; destruct vs'; simpl; intros; try congruence.
-      f_equal.
-      apply (H1 0); omega.
-      eapply IHlen; eauto.
-      intros.
-      apply (H1 (S i)); omega.
-  Qed.
-
-  Theorem selN_list_eq : forall A (vs vs' : list A) default,
-    length vs = length vs'
-    -> (forall i, i < length vs -> selN vs i default = selN vs' i default)
-    -> vs = vs'.
-  Proof.
-    intros.
-    eapply selN_list_eq'; [ apply eq_refl | auto | auto ].
-  Qed.
-
-  Theorem selN_updN_ne : forall vs n n' v, n < length vs
-    -> n <> n'
-    -> selN (updN vs n v) n' ($0 : valu) = selN vs n' ($0 : valu).
-  Proof.
-    induction vs; destruct n'; destruct n; simpl; intuition; try omega.
-  Qed.
-
   Definition bmap_bits xp (bmap : addr -> alloc_state) :=
      map (fun i => alloc_state_to_bit (bmap $ (i)))
           (seq 0 (wordToNat (BmapNBlocks xp) * valulen)).
