@@ -336,7 +336,26 @@ Module BALLOC.
     CRASH  LOG.log_intact lxp mbase
     >} free lxp xp bn.
   Proof.
-    admit.
+    unfold free.
+    intros.
+    eapply pimpl_ok2. apply free'_ok.
+    unfold rep, rep'.
+    cancel.
+    step.
+    apply pimpl_or_r. left.
+    cancel.
+    rewrite sep_star_comm.
+    instantiate (a0 := bn :: l).
+    simpl. cancel.
+    destruct H3.
+    subst; apply fupd_same; trivial.
+    rewrite H10 in H3.
+    destruct (weq bn a0).
+    subst; apply fupd_same; trivial.
+    rewrite <- H3. apply fupd_other; assumption.
+    destruct (weq bn a0).
+    left. auto.
+    right. rewrite fupd_other in H3 by assumption. apply H10; assumption.
   Qed.
 
 End BALLOC.
