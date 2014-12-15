@@ -83,16 +83,23 @@ Module BALLOC.
     RecArray.Build_xparams (BmapStart xp) (BmapNBlocks xp).
 
   Definition rep' xp (bmap : addr -> alloc_state) :=
-    RecArray.array_item itemtype items_per_valu blocksz (xp_to_raxp xp)
-      (bmap_bits xp bmap).
+    ([[ (wordToN (BmapNBlocks xp) * N.of_nat valulen < Npow2 addrlen)%N ]] *
+     RecArray.array_item itemtype items_per_valu blocksz (xp_to_raxp xp)
+       (bmap_bits xp bmap))%pred.
 
   Definition free' T lxp xp bn rx : prog T :=
     RecArray.put itemtype items_per_valu blocksz
       lxp (xp_to_raxp xp) bn (alloc_state_to_bit Avail) rx.
 
-  (* The second hypothesis isn't actually necessary but makes things simpler *)
+  Lemma selN_seq : forall a b c d, c < b -> selN (seq a b) c d = a + c.
+  Proof.
+    intros. rewrite nth_selN_eq. apply seq_nth; assumption.
+  Qed.
+
+  (* The third hypothesis isn't necessary but makes things simpler *)
   Lemma upd_bmap_bits : forall xp a bn b state,
     b = alloc_state_to_bit state ->
+    (wordToN (BmapNBlocks xp) * N.of_nat valulen < Npow2 addrlen)%N ->
     wordToNat bn < wordToNat (BmapNBlocks xp) * valulen ->
     upd (bmap_bits xp a) bn b = bmap_bits xp (fupd a bn state).
   Proof.
@@ -103,15 +110,17 @@ Module BALLOC.
     intros pos Hl.
     rewrite map_length in Hl. rewrite seq_length in Hl.
     repeat rewrite selN_map with (default' := 0) by (rewrite seq_length; assumption).
-    Lemma selN_seq : forall a b c d, c < b -> selN (seq a b) c d = a + c.
-    Proof.
-      intros. rewrite nth_selN_eq. apply seq_nth; assumption.
-    Qed.
     rewrite selN_seq by assumption. simpl.
     destruct (Nat.eq_dec pos (wordToNat bn)).
     rewrite e. rewrite natToWord_wordToNat. rewrite fupd_same; trivial.
     rewrite fupd_other. trivial.
-    admit. (* XXX might need to worry about overflow here *)
+    apply f_neq with (f:=@wordToNat addrlen).
+    rewrite wordToNat_natToWord_idempotent'.
+    auto.
+    eapply Nat.lt_trans. apply Hl.
+    apply Nlt_out in H0. rewrite N2Nat.inj_mul in H0.
+    autorewrite with N in H0. autorewrite with W2Nat in H0.
+    rewrite <- Npow2_nat. assumption.
     assumption.
   Qed.
 
@@ -175,8 +184,7 @@ Module BALLOC.
 
   Theorem alloc'_ok: forall lxp xp,
     {< Fm mbase m bmap,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep' xp bmap)%pred m ]] *
-           [[ (wordToN (BmapNBlocks xp) * N.of_nat valulen < Npow2 addrlen)%N ]]
+    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep' xp bmap)%pred m ]]
     POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
            LOG.rep lxp (ActiveTxn mbase m') *
@@ -197,8 +205,8 @@ Module BALLOC.
     hoare.
     apply pimpl_or_r. right.
     (* XXX word automation *)
-    apply wlt_mult_inj in H3.
-    rewrite wordToNat_natToWord_idempotent in H3 by (simpl; rewrite valulen_is; compute; trivial).
+    apply wlt_mult_inj in H0.
+    rewrite wordToNat_natToWord_idempotent in H0 by (simpl; rewrite valulen_is; compute; trivial).
     cancel.
     rewrite <- H10. unfold bmap_bits, sel.
     autorewrite with core; auto.
@@ -308,11 +316,10 @@ Module BALLOC.
     apply pimpl_or_r. right.
     norm. (* We can't just [cancel] here because it introduces evars too early *)
     cancel.
-    rewrite <- H9 in H13.
     split; [split; trivial |].
     pred_apply.
     instantiate (a1 := remove (@weq addrlen) a0 l).
-    rewrite listpred_remove by (apply H13). cancel.
+    rewrite listpred_remove by (apply H9; apply H14). cancel.
     assert (a a2 = Avail) as Ha.
     apply H9.
     eapply remove_still_In; apply H3.
