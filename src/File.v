@@ -508,13 +508,14 @@ Module FILE.
 
 
   Theorem fshrink_ok : forall lxp bxp xp inum,
-    {< F mbase m flist,
+    {< F mbase m flist freeblocks freeblocks',
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp flist)%pred m ]] *
+           [[ (F * rep xp flist * Balloc.rep bxp freeblocks)%pred m ]] *
            [[ (inum < $ (length flist))%word ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' flist', LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * rep xp flist')%pred m ]] *
+           [[ (F * rep xp flist' * Balloc.rep bxp freeblocks')%pred m ]] *
+           (* XXX should say that flist' is equal to flist in everything but inum's length *)
            [[ FileLen (sel flist' inum empty_file) = FileLen (sel flist inum empty_file) - 1 ]]
     CRASH  LOG.log_intact lxp mbase
     >} fshrink lxp bxp xp inum.
