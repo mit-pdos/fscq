@@ -99,13 +99,29 @@ Section RECARRAY.
   Lemma updN_app1 : forall t l l' (v:t) n,
     n < length l -> updN (l ++ l') n v = updN l n v ++ l'.
   Proof.
-    admit.
+    (* copied from proof of app_nth1 *)
+    induction l.
+    intros.
+    inversion H.
+    intros l' d n.
+    case n; simpl; auto.
+    intros; rewrite IHl; auto with arith.
   Qed.
 
   Lemma updN_app2 : forall t l l' (v:t) n,
     n >= length l -> updN (l ++ l') n v = l ++ updN l' (n - length l) v.
   Proof.
-    admit.
+    (* copied from proof of app_nth2 *)
+    induction l.
+    intros.
+    simpl.
+    rewrite <- minus_n_O; auto.
+    intros l' d n.
+    case n; simpl; auto.
+    intros.
+    inversion H.
+    intros.
+    rewrite IHl; auto with arith.
   Qed.
 
   Lemma updN_concat : forall t a b m l (v:t), b < m ->
