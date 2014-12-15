@@ -467,21 +467,19 @@ Module FILE.
   Definition fshrink' := fshrink.
 
   Theorem fshrink'_ok : forall lxp bxp xp inum,
-    {< F mbase m ilist bn len,
+    {< F mbase m ilist bn len freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * INODE.rep xp ilist * bn |->? )%pred m ]] *
+           [[ (F * INODE.rep xp ilist * bn |->? * Balloc.rep bxp freeblocks)%pred m ]] *
            [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
            [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]] *
            [[ bn = iget_blocknum ilist inum len ]]
     POST:r [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            [[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * INODE.rep xp ilist')%pred m' ]] *
+           [[ (F * INODE.rep xp ilist' * Balloc.rep bxp (bn :: freeblocks))%pred m' ]] *
            [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]]
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
   Proof.
-    (* Do we need to put (bn |->?) in precondition?  
-       If so, how to say it is free in postcondition? *)
     admit.
   Qed.
 
