@@ -505,20 +505,27 @@ Module FILE.
 
     (* dmz: needs to show
        (length (ino :=> "blocks") = INODE.blocks_per_inode) *)
-    unfold Rec.recset', Rec.recget'; simpl; intros.
+    clear H0.
+    unfold INODE.rep, RecArray.array_item, RecArray.array_item_pairs in H3.
+
+    destruct_lift H3.
+    rewrite Forall_forall in H17.
+    specialize (H17 (sel (fst (snd (fst (fst x0)))) (inum ^/ INODE.items_per_valu) nil)).
+    (* This is a bit of a pain *)
     admit.
+
 
     apply pimpl_or_r.
     right.
     cancel.
     rewrite sel_upd_eq by fsimpl.
 
-    (* dmz: need a generalized theorem like Rec.set_get_same
-        i.e.   ((r :=> p := v ) :-> p) = v *)
-    generalize ((sel l inum INODE.inode_zero) :-> "len" ^- $1).
-    generalize (sel l inum INODE.inode_zero).
+    (* It would be nice to have a statement like [((r :=> n := v) :-> n) = v],
+       but that's only valid if [n] is a valid field name, so the dependent types could
+       get tricky, whereas this proof is quite trivial. Maybe a tactic would work. *)
+    remember (sel l inum INODE.inode_zero) as i.
     unfold Rec.recset', Rec.recget'; simpl; intros.
-    admit.
+    destruct i; auto.
   Qed.
 
 
@@ -542,6 +549,7 @@ Module FILE.
     unfold fgrow', fgrow.
     intros.
     hoare.
+    admit.
     destruct r_0; simpl.
     step.
 
@@ -554,7 +562,9 @@ Module FILE.
 
     rewrite sel_upd_eq by fsimpl.
     (* ((r :=> p := v ) :-> p) = v *)
-    admit.
+    remember (sel l inum INODE.inode_zero) as i.
+    unfold Rec.recset', Rec.recget'; simpl; intros.
+    destruct i; auto.
 
     step.
    Qed.
@@ -584,11 +594,11 @@ Module FILE.
   Theorem fshrink_ok : forall lxp bxp xp inum,
     {< F mbase m flist freeblocks freeblocks',
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp flist * Balloc.rep bxp freeblocks)%pred m ]] *
+           [[ (F * rep xp flist * BALLOC.rep bxp freeblocks)%pred m ]] *
            [[ (inum < $ (length flist))%word ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' flist', LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * rep xp flist' * Balloc.rep bxp freeblocks')%pred m ]] *
+           [[ (F * rep xp flist' * BALLOC.rep bxp freeblocks')%pred m ]] *
            (* XXX should say that flist' is equal to flist in everything but inum's length *)
            [[ FileLen (sel flist' inum empty_file) = FileLen (sel flist inum empty_file) - 1 ]]
     CRASH  LOG.log_intact lxp mbase
@@ -597,7 +607,7 @@ Module FILE.
     unfold fshrink, rep.
     hoare.
     fsimpl.
-    
+
     rewrite listpred_fwd with (i:=wordToNat inum) by flensimpl.
     unfold file_rep at 2.
     cancel; fsimpl.
