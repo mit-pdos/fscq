@@ -525,7 +525,7 @@ Module FILE.
   Definition fgrow' := fgrow.
 
   Theorem fgrow'_ok : forall lxp bxp xp inum,
-    {< F mbase m ilist bn len freeblocks,
+    {< F mbase m ilist len freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep xp ilist * BALLOC.rep bxp freeblocks)%pred m ]] *
            [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
@@ -533,7 +533,7 @@ Module FILE.
            [[ exists b:addr, length ilist <= wordToNat b ]] *
            [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
-           [[ r = true ]] * exists m' ilist' freeblocks', LOG.rep lxp (ActiveTxn mbase m') *
+           [[ r = true ]] * exists m' ilist' bn freeblocks', LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * INODE.rep xp ilist' * bn |->? * BALLOC.rep bxp freeblocks')%pred m' ]] *
            [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^+ $1 ]]
     CRASH  LOG.log_intact lxp mbase
@@ -542,10 +542,21 @@ Module FILE.
     unfold fgrow', fgrow.
     intros.
     hoare.
+    destruct r_0; simpl.
+    step.
+
+    (* length (ino :=> "blocks") = INODE.blocks_per_inode *) 
     admit.
-    
 
+    hoare.
+    apply pimpl_or_r; right.
+    cancel.
 
+    rewrite sel_upd_eq by fsimpl.
+    (* ((r :=> p := v ) :-> p) = v *)
+    admit.
+
+    step.
    Qed.
 
 
