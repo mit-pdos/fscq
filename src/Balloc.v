@@ -363,12 +363,8 @@ Module BALLOC.
     cancel.
     split; [split; trivial |].
     pred_apply.
-<<<<<<< HEAD
-    rewrite listpred_remove by (apply H9; apply H14). cancel.
-=======
     instantiate (a1 := remove (@weq addrlen) a0 l).
     erewrite listpred_remove. cancel.
->>>>>>> remove an unnecessary precondition from alloc_ok
     assert (a a2 = Avail) as Ha.
     apply H8.
     eapply remove_still_In; apply H0.
