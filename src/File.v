@@ -466,6 +466,18 @@ Module FILE.
 
   Definition fshrink' := fshrink.
 
+
+  (* Another required inode invariant.  Probably fgrow should ensure this.
+     But fgrow and fshrink are disconnected, fgrow's post condition cannot
+     be implicitly used as fshrink's precondition.
+
+     How to formalize the idea that any file operations in FILE preserves
+     this invariant?
+   *)
+  Axiom inode_correct2: forall (ino:INODE.inode) xp off,
+    ((sel (ino :-> "blocks") off $0) < BmapNBlocks xp ^* $ valulen)%word.
+
+
   Theorem fshrink'_ok : forall lxp bxp xp inum,
     {< F mbase m ilist bn len freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -473,15 +485,54 @@ Module FILE.
            [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
            [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]] *
            [[ bn = iget_blocknum ilist inum (len ^- $1) ]] *
-           [[ (len > $0)%word ]]
-    POST:r [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
+           [[ wordToNat len > 0 ]]
+    POST:r [[ r = false ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') \/
            [[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * INODE.rep xp ilist' * BALLOC.rep bxp (bn :: freeblocks))%pred m' ]] *
            [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]]
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
   Proof.
+    unfold fshrink', fshrink.
+    intros.
+
+    eapply pimpl_ok2.
+    eauto with prog.
+    intros; norm.
+    cancel.
+
+    intuition; fsimpl.
+    instantiate (a2:=l).
+    pred_apply.
+    cancel.
+    
+    step.
+    apply inode_correct2.
+    
+    eapply pimpl_ok2.
+    eauto with prog.
+
+    step.
     admit.
+
+    eapply pimpl_ok2; eauto with prog.
+    intros; subst; simpl.
+
+    (*
+       Now we have goal in this form:
+         p1 * ( A \/ B) * p2 * p3 =p=> p1 (A' \/ B') * p2 * p3
+       What I want to prove is:
+         A =p=> A' /\ B =p=> B'
+       so that
+         A =p=> (A' \/ B') /\
+         B =p=> (A' \/ B')
+       Then the original goal can be resolved using pimpl_or
+
+       I wish I could use `cancel` here. But `norm` inside `cancel`
+       splits \/ too agressively and creates an unsolvable goal [true = false].
+
+       Maybe type class based rewrite can help?
+    *)
   Qed.
 
 
