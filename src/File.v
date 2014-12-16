@@ -485,10 +485,12 @@ Module FILE.
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep xp ilist * bn |->? * BALLOC.rep bxp freeblocks)%pred m ]] *
            [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
+           [[ (inum < $ (length ilist))%word ]] *
+           [[ exists b:addr, length ilist <= wordToNat b ]] *
            [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]] *
            [[ bn = iget_blocknum ilist inum (len ^- $1) ]] *
            [[ wordToNat len > 0 ]]
-    POST:r [[ r = false ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') \/
+    POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * INODE.rep xp ilist' * BALLOC.rep bxp (bn :: freeblocks))%pred m' ]] *
            [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]]
@@ -498,50 +500,25 @@ Module FILE.
     unfold fshrink', fshrink.
     intros.
 
-    eapply pimpl_ok2.
-    eauto with prog.
-    intros; norm.
-    cancel.
-
-    intuition; fsimpl.
-    instantiate (a2:=l).
-    pred_apply.
-    cancel.
-    
-    step.
+    hoare.  (* takes about 5 mins *)
     apply inode_correct2.
-    
-    eapply pimpl_ok2.
-    eauto with prog.
 
-    step.
+    (* dmz: needs to show
+       (length (ino :=> "blocks") = INODE.blocks_per_inode) *)
+    unfold Rec.recset', Rec.recget'; simpl; intros.
     admit.
 
-    eapply pimpl_ok2; eauto with prog.
-    intros; subst; simpl.
+    apply pimpl_or_r.
+    right.
+    cancel.
+    rewrite sel_upd_eq by fsimpl.
 
-    (*
-       Now we have goal in this form:
-         p1 * ( A \/ B) * p2 * p3 =p=> p1 (A' \/ B') * p2 * p3
-       What I want to prove is:
-         A =p=> A' /\ B =p=> B'
-       so that
-         A =p=> (A' \/ B') /\
-         B =p=> (A' \/ B')
-       Then the original goal can be resolved using pimpl_or
-
-       I wish I could use `cancel` here. But `norm` inside `cancel`
-       splits \/ too agressively and creates an unsolvable goal [true = false].
-
-       Maybe type class based rewrite can help?
-
-       If you get an unsolvable goal [true = false], it should hopefully
-       also have a False hypothesis somewhere, so that you can use that
-       to solve the goal.  [norm] does break up ORs on the left, but it
-       is very careful about ORs on the right: it (should) break them up
-       ONLY if can then solve it completely; otherwise it leaves the ORs
-       on the right as-is.
-    *)
+    (* dmz: need a generalized theorem like Rec.set_get_same
+        i.e.   ((r :=> p := v ) :-> p) = v *)
+    generalize ((sel l inum INODE.inode_zero) :-> "len" ^- $1).
+    generalize (sel l inum INODE.inode_zero).
+    unfold Rec.recset', Rec.recget'; simpl; intros.
+    admit.
   Qed.
 
 

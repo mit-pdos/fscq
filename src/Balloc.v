@@ -337,8 +337,8 @@ Module BALLOC.
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (Fm * rep xp freeblocks * bn |->?)%pred m ]] *
            [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
-    POST:r ([[ r = true ]] * exists m' freeblocks', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (Fm * rep xp freeblocks')%pred m' ]]) \/
+    POST:r ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (Fm * rep xp (bn :: freeblocks))%pred m' ]]) \/
            ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
     CRASH  LOG.log_intact lxp mbase
     >} free lxp xp bn.
@@ -351,15 +351,11 @@ Module BALLOC.
     step.
     apply pimpl_or_r. left.
     cancel.
-    rewrite sep_star_comm.
-    instantiate (a0 := bn :: l).
-    simpl. cancel.
-    destruct H3.
     subst; apply fupd_same; trivial.
-    rewrite H10 in H3.
+    rewrite H10 in H6.
     destruct (weq bn a0).
     subst; apply fupd_same; trivial.
-    rewrite <- H3. apply fupd_other; assumption.
+    rewrite <- H6; apply fupd_other; assumption.
     destruct (weq bn a0).
     left. auto.
     right. rewrite fupd_other in H3 by assumption. apply H10; assumption.
