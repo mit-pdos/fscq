@@ -473,6 +473,8 @@ Module FILE.
 
      How to formalize the idea that any file operations in FILE preserves
      this invariant?
+
+     One approach would be to stick it inside of FILE.rep as a lifted Prop.
    *)
   Axiom inode_correct2: forall (ino:INODE.inode) xp off,
     ((sel (ino :-> "blocks") off $0) < BmapNBlocks xp ^* $ valulen)%word.
@@ -532,6 +534,13 @@ Module FILE.
        splits \/ too agressively and creates an unsolvable goal [true = false].
 
        Maybe type class based rewrite can help?
+
+       If you get an unsolvable goal [true = false], it should hopefully
+       also have a False hypothesis somewhere, so that you can use that
+       to solve the goal.  [norm] does break up ORs on the left, but it
+       is very careful about ORs on the right: it (should) break them up
+       ONLY if can then solve it completely; otherwise it leaves the ORs
+       on the right as-is.
     *)
   Qed.
 
