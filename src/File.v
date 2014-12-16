@@ -423,7 +423,7 @@ Module FILE.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (BALLOC.alloc _) _) => apply BALLOC.alloc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (BALLOC.alloc _ _) _) => apply BALLOC.alloc_ok : prog.
   Hint Extern 1 ({{_}} progseq (BALLOC.free _ _ _) _) => apply BALLOC.free_ok : prog.
 
   Definition fgrow T lxp bxp xp inum rx : prog T :=
@@ -520,6 +520,33 @@ Module FILE.
     unfold Rec.recset', Rec.recget'; simpl; intros.
     admit.
   Qed.
+
+
+  Definition fgrow' := fgrow.
+
+  Theorem fgrow'_ok : forall lxp bxp xp inum,
+    {< F mbase m ilist bn len freeblocks,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * INODE.rep xp ilist * BALLOC.rep bxp freeblocks)%pred m ]] *
+           [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
+           [[ (inum < $ (length ilist))%word ]] *
+           [[ exists b:addr, length ilist <= wordToNat b ]] *
+           [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]]
+    POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
+           [[ r = true ]] * exists m' ilist' freeblocks', LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (F * INODE.rep xp ilist' * bn |->? * BALLOC.rep bxp freeblocks')%pred m' ]] *
+           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^+ $1 ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} fgrow' lxp bxp xp inum.
+   Proof.
+    unfold fgrow', fgrow.
+    intros.
+    hoare.
+    admit.
+    
+
+
+   Qed.
 
 
   (* Note that for [fgrow_ok] and [fshrink_ok], a [false] return value

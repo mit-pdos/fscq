@@ -344,8 +344,7 @@ Module BALLOC.
 
   Theorem alloc_ok : forall lxp xp,
     {< Fm mbase m freeblocks,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp freeblocks)%pred m ]] *
-           [[ (wordToN (BmapNBlocks xp) * N.of_nat valulen < Npow2 addrlen)%N ]]
+    PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp freeblocks)%pred m ]]
     POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            exists bn m' freeblocks', [[ r = Some bn ]] *
            LOG.rep lxp (ActiveTxn mbase m') *
@@ -364,17 +363,24 @@ Module BALLOC.
     cancel.
     split; [split; trivial |].
     pred_apply.
+<<<<<<< HEAD
     rewrite listpred_remove by (apply H9; apply H14). cancel.
+=======
+    instantiate (a1 := remove (@weq addrlen) a0 l).
+    erewrite listpred_remove. cancel.
+>>>>>>> remove an unnecessary precondition from alloc_ok
     assert (a a2 = Avail) as Ha.
-    apply H9.
-    eapply remove_still_In; apply H3.
+    apply H8.
+    eapply remove_still_In; apply H0.
     rewrite <- Ha.
     apply fupd_other.
-    eapply remove_still_In_ne; apply H3.
+    eapply remove_still_In_ne; apply H0.
     assert (a0 <> a2).
-    intro He. subst. rewrite fupd_same in H3. discriminate. trivial.
-    rewrite fupd_other in H3 by assumption. rewrite <- H9 in H3.
-    apply remove_other_In; assumption.
+    intro He. subst. rewrite fupd_same in H0. discriminate. trivial.
+    rewrite fupd_other in H0 by assumption. 
+    apply remove_other_In. assumption.
+    rewrite H8; assumption.
+    rewrite H8; assumption.
   Qed.
 
   Theorem free_ok : forall lxp xp bn,
