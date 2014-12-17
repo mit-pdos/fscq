@@ -512,10 +512,9 @@ Module FILE.
     (* Should be very trivial now? 
        Should we add Rec.well_formed to the precondition? *)
     admit.
-    rewrite Forall_forall.
-    (* This is a weired goal. Where does the Forall come from? *)
-    admit.
-
+    rewrite Forall_forall; intro.
+    destruct in_dec with (a:=x0) (l:=d0); intros; trivial.
+    apply weq.
 
     apply pimpl_or_r.
     right.
