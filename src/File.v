@@ -505,13 +505,15 @@ Module FILE.
 
     (* dmz: needs to show
        (length (ino :=> "blocks") = INODE.blocks_per_inode) *)
-    clear H0.
-    unfold INODE.rep, RecArray.array_item, RecArray.array_item_pairs in H3.
-
-    destruct_lift H3.
-    rewrite Forall_forall in H17.
-    specialize (H17 (sel (fst (snd (fst (fst x0)))) (inum ^/ INODE.items_per_valu) nil)).
-    (* This is a bit of a pain *)
+    remember (sel l inum INODE.inode_zero) as i.
+    unfold Rec.recset', Rec.recget'; simpl; intros.
+    destruct i; auto; intuition.
+    destruct p1; auto; intuition.
+    (* Should be very trivial now? 
+       Should we add Rec.well_formed to the precondition? *)
+    admit.
+    rewrite Forall_forall.
+    (* This is a weired goal. Where does the Forall come from? *)
     admit.
 
 
