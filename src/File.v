@@ -425,7 +425,7 @@ Module FILE.
   Hint Extern 1 ({{_}} progseq (BALLOC.alloc _ _) _) => apply BALLOC.alloc_ok : prog.
   Hint Extern 1 ({{_}} progseq (BALLOC.free _ _ _) _) => apply BALLOC.free_ok : prog.
 
-  Definition fgrow T lxp bxp xp inum rx : prog T :=
+  Definition fgrow' T lxp bxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
     bnum <- BALLOC.alloc lxp bxp;
     match bnum with
@@ -450,7 +450,7 @@ Module FILE.
       }
     end.
 
-  Definition fshrink T lxp bxp xp inum rx : prog T :=
+  Definition fshrink' T lxp bxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
     let l := i :-> "len" in
     ok <- BALLOC.free lxp bxp (sel (i :-> "blocks") (l ^- $1) $0);
@@ -461,9 +461,6 @@ Module FILE.
     } else {
       rx false
     }.
-
-
-  Definition fshrink' := fshrink.
 
 
   (* Another required inode invariant.  Probably fgrow should ensure this.
@@ -496,7 +493,7 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
   Proof.
-    unfold fshrink', fshrink.
+    unfold fshrink'.
     intros.
 
     hoare.  (* takes about 5 mins *)
@@ -528,9 +525,6 @@ Module FILE.
     destruct i; auto.
   Qed.
 
-
-  Definition fgrow' := fgrow.
-
   Theorem fgrow'_ok : forall lxp bxp xp inum,
     {< F mbase m ilist len freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -546,10 +540,9 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fgrow' lxp bxp xp inum.
    Proof.
-    unfold fgrow', fgrow.
+    unfold fgrow'.
     intros.
     hoare.
-    admit.
     destruct r_0; simpl.
     step.
 
@@ -569,6 +562,26 @@ Module FILE.
     step.
    Qed.
 
+  Hint Extern 1 ({{_}} progseq (fgrow' _ _ _ _) _) => apply fgrow'_ok : prog.
+  Hint Extern 1 ({{_}} progseq (fshrink' _ _ _ _) _) => apply fshrink'_ok : prog.
+
+  (* fastest version of cancel, should always try this first *)
+  Ltac cancel_exact := repeat match goal with 
+    | [ |- (?a =p=> ?a)%pred ] =>
+          eapply pimpl_refl
+    | [ |- (_ * ?a =p=> _ * ?a)%pred ] =>
+          eapply pimpl_sep_star; [ | eapply pimpl_refl]
+    | [ |- ( ?a * _ =p=> ?a * _)%pred ] =>
+          eapply pimpl_sep_star; [ eapply pimpl_refl | ]
+    | [ |- ( (?a * _) * _ =p=> ?a * _)%pred ] =>
+          rewrite sep_star_assoc_1
+  end.
+
+  Definition fshrink T lxp bxp xp inum rx : prog T :=
+      r <- fshrink' lxp bxp xp inum; rx r.
+
+  Definition fgrow T lxp bxp xp inum rx : prog T :=
+      r <- fgrow' lxp bxp xp inum; rx r.
 
   (* Note that for [fgrow_ok] and [fshrink_ok], a [false] return value
    * indicates that the transaction could be in any active state, so
@@ -586,7 +599,35 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fgrow lxp bxp xp inum.
   Proof.
+    unfold fgrow, rep, LOG.log_intact.
+    intros; eapply pimpl_ok2.
+    eauto with prog. 
+    intros; norm.
+    cancel.
+    intuition; [ pred_apply; cancel | | | | ];
+        fsimpl; try (eexists; eassumption).
+    (* precondition about BALLOC.rep seems to comefrom nowhere *)
     admit.
+    eapply pimpl_ok2; eauto with prog; intros.
+    unfold stars; simpl; subst.
+    cancel_exact; apply pimpl_or; cancel_exact.
+
+    remember (sel l0 inum empty_file) as of.
+    remember (sel l inum INODE.inode_zero) as oi.
+    norm; [cancel | intuition].
+    (* construct the new file *)
+    instantiate (a0:=upd l0 inum (Build_file 
+                 ((FileLen of) + 1) (Prog.upd (FileData of) $ (FileLen of) w))).
+    pred_apply; norm.
+    (* construct the new inode *)
+    instantiate (a:=l1).
+    cancel.
+    (* TODO: proof using listpred *)
+    admit.
+    assert (length l1 = length l0).
+    admit.
+    intuition; fsimpl; try (eexists; eassumption).
+    rewrite sel_upd_eq by fsimpl; intuition.
   Qed.
 
 
