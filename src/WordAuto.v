@@ -75,14 +75,25 @@ Ltac word2nat_with tac :=
 Ltac word2nat := word2nat_with ltac:(autorewrite with W2Nat in *).
 
 Ltac word2nat' := word2nat_with ltac:(autorewrite with W2Nat' in *).
+
+Lemma word_lt_nat : forall sz w n, (w < $ n)%word -> (@wordToNat sz w) < n.
+Proof.
+  intros.
+  apply wlt_lt in H.
+  destruct (lt_dec n (pow2 sz)).
+  (* Either there's no overflow... *)
+  + rewrite wordToNat_natToWord_idempotent' in H; assumption.
+  (* ... or it's true even without the hypothesis *)
+  + eapply lt_le_trans; [apply wordToNat_bound | omega].
+Qed.
+
+(* XXX wlt_mult_inj is just a special case of word_lt_nat, so the automation should just use that *)
 Lemma wlt_mult_inj : forall sz (a b c:word sz),
   (a < b ^* c)%word -> wordToNat a < wordToNat b * wordToNat c.
 Proof.
-  intros. word2nat. destruct (lt_dec (wordToNat b * wordToNat c) (pow2 sz)).
-  (* Either there's no overflow... *)
-  + word2nat'; assumption.
-  (* ... or it's true even without the hypothesis *)
-  + assert (wordToNat a < pow2 sz) by (apply wordToNat_bound). omega.
+  intros. apply word_lt_nat. rewrite natToWord_mult.
+  repeat rewrite natToWord_wordToNat.
+  assumption.
 Qed.
 
 Lemma div_le : forall a b, b <> 0 -> a / b <= a.

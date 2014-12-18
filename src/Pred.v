@@ -822,6 +822,16 @@ Proof.
   firstorder.
 Qed.
 
+Theorem lift_impl : forall (P : pred) (Q : Prop), (forall m, P m -> Q) -> P =p=> [[ Q ]] * any.
+Proof.
+  intros. etransitivity; hnf.
+  apply H.
+  intros. unfold_sep_star.
+  exists (fun _ => None). exists m.
+  intuition; hnf; try tauto; firstorder discriminate.
+Qed.
+
+
 Example pimpl_rewrite : forall a b p q x y, p =p=> q
   -> (x /\ a * p * b \/ y =p=> x /\ a * q * b \/ y).
 Proof.

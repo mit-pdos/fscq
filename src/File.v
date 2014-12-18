@@ -22,7 +22,6 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Module FILE.
-
   Definition fread' T lxp xp inum off rx : prog T :=
     i <-INODE.iget lxp xp inum;
     let blocknum := sel (i :-> "blocks") off $0 in
@@ -503,18 +502,18 @@ Module FILE.
     hoare.  (* takes about 5 mins *)
     apply inode_correct2.
 
-    (* dmz: needs to show
-       (length (ino :=> "blocks") = INODE.blocks_per_inode) *)
+    unfold Rec.recset', Rec.recget', INODE.rep in H13.
+
+    rewrite RecArray.array_item_well_formed' in H13.
+    destruct_lift H13.
+    rewrite Forall_forall in *.
     remember (sel l inum INODE.inode_zero) as i.
-    unfold Rec.recset', Rec.recget'; simpl; intros.
-    destruct i; auto; intuition.
-    destruct p1; auto; intuition.
-    (* Should be very trivial now? 
-       Should we add Rec.well_formed to the precondition? *)
-    admit.
-    rewrite Forall_forall; intro.
-    destruct in_dec with (a:=x0) (l:=d0); intros; trivial.
-    apply weq.
+    destruct i; destruct p1; simpl; intuition.
+    apply (H12 (d, (d0, u))).
+    rewrite Heqi.
+    apply RecArray.in_sel.
+    apply word_lt_nat; assumption.
+    rewrite Forall_forall; intros; trivial.
 
     apply pimpl_or_r.
     right.

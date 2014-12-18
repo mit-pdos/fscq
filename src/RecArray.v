@@ -219,6 +219,16 @@ Section RECARRAY.
     induction vs; destruct n'; destruct n; simpl; intuition; try omega.
   Qed.
 
+  Lemma concat_In :
+    forall T ls (x : T), In x (fold_right (@app _) nil ls) -> exists l, In l ls /\ In x l.
+  Proof.
+    induction ls.
+    intros. simpl in H. inversion H.
+    simpl. intros x Hi. apply in_app_or in Hi. destruct Hi.
+    exists a. tauto.
+    apply IHls in H. destruct H. exists x0. tauto.
+  Qed.
+
   Variable itemtype : Rec.type.
   Variable items_per_valu : addr.
   Variable items_per_valu_not_0 : items_per_valu <> $0.
@@ -254,6 +264,22 @@ Section RECARRAY.
   Definition array_item (xp : xparams) (vs : list item) :=
     (exists vs_nested, array_item_pairs xp vs_nested *
      [[ vs = fold_right (@app _) nil vs_nested ]])%pred.
+
+  Theorem array_item_well_formed :
+    forall xp vs m, array_item xp vs m -> Forall Rec.well_formed vs.
+  Proof.
+    intros; rewrite Forall_forall; simpl; intros.
+    unfold array_item, array_item_pairs in *.
+    destruct H. destruct_lift H. rewrite Forall_forall in H5.
+    subst. apply concat_In in H0. destruct H0.
+    eapply Forall_forall; [apply H5|]; apply H0.
+  Qed.
+
+  Theorem array_item_well_formed' :
+    forall xp vs, array_item xp vs =p=> [[ Forall Rec.well_formed vs ]] * any.
+  Proof.
+    intros. apply lift_impl. apply array_item_well_formed.
+  Qed.
 
   (** Get the [pos]'th item in the [block_ix]'th block *)
   Definition get_pair T lxp xp block_ix pos rx : prog T :=
@@ -457,13 +483,7 @@ Section RECARRAY.
     auto.
     step.
   Qed.
-
-
-  (* XXX what lemmas would be helpful if Inode.v and Balloc.v were to use this? *)
-
-
 End RECARRAY.
-
 
 Hint Extern 1 ({{_}} progseq (get _ _ _ _ _ _) _) => apply get_ok : prog.
 Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _ _) _) => apply put_ok : prog.
