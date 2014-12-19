@@ -489,7 +489,8 @@ Module FILE.
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * INODE.rep xp ilist' * BALLOC.rep bxp (bn :: freeblocks))%pred m' ]] *
-           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]]
+           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]] *
+           [[ length ilist' = length ilist ]]
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
   Proof.
@@ -499,30 +500,42 @@ Module FILE.
     hoare.  (* takes about 5 mins *)
     apply inode_correct2.
 
+    remember (sel l inum INODE.inode_zero) as i.
+    unfold Rec.recset', Rec.recget'; simpl; intros.
+    destruct i; destruct p1; auto; intuition.
     unfold Rec.recset', Rec.recget', INODE.rep in H13.
-
     rewrite RecArray.array_item_well_formed' in H13.
     destruct_lift H13.
     rewrite Forall_forall in *.
-    remember (sel l inum INODE.inode_zero) as i.
-    destruct i; destruct p1; simpl; intuition.
     apply (H12 (d, (d0, u))).
     rewrite Heqi.
+
     apply RecArray.in_sel.
     apply word_lt_nat; assumption.
     rewrite Forall_forall; intros; trivial.
 
     apply pimpl_or_r.
     right.
+
+    (* Cannot simply `cancel` after adding [[ length ilist' = length ilist ]]
+       in the postcondition.  Run `intuition` on that goal will instantiate
+       (ilist' := ilist).  We must use the BALLOC goal to infer ilist'.  *)
+    norm.
     cancel.
-    rewrite sel_upd_eq by fsimpl.
+    split; trivial.
+    split; [ trivial | ].
+    intuition.
+    pred_apply.
+    cancel.
+    fsimpl.
 
     (* It would be nice to have a statement like [((r :=> n := v) :-> n) = v],
        but that's only valid if [n] is a valid field name, so the dependent types could
        get tricky, whereas this proof is quite trivial. Maybe a tactic would work. *)
-    remember (sel l inum INODE.inode_zero) as i.
+    remember (selN l (wordToNat inum) INODE.inode_zero) as i.
     unfold Rec.recset', Rec.recget'; simpl; intros.
     destruct i; auto.
+    fsimpl.
   Qed.
 
   Theorem fgrow'_ok : forall lxp bxp xp inum,
@@ -536,7 +549,8 @@ Module FILE.
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' ilist' bn freeblocks', LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * INODE.rep xp ilist' * bn |->? * BALLOC.rep bxp freeblocks')%pred m' ]] *
-           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^+ $1 ]]
+           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^+ $1 ]] *
+           [[ length ilist' = length ilist ]]
     CRASH  LOG.log_intact lxp mbase
     >} fgrow' lxp bxp xp inum.
    Proof.
@@ -547,18 +561,37 @@ Module FILE.
     step.
 
     (* length (ino :=> "blocks") = INODE.blocks_per_inode *) 
-    admit.
+    remember (sel l inum INODE.inode_zero) as i.
+    unfold Rec.recset', Rec.recget'; simpl; intros.
+    destruct i; destruct p1; auto; intuition.
+    unfold Rec.recset', Rec.recget', INODE.rep in H5.
+    rewrite RecArray.array_item_well_formed' in H5.
+    destruct_lift H5.
+    rewrite Forall_forall in *.
+    fsimpl.
+    apply (H10 (d, (d0, u))).
+    rewrite Heqi.
+    apply RecArray.in_sel.
+    apply word_lt_nat; assumption.
+    rewrite Forall_forall; intros; trivial.
 
     hoare.
     apply pimpl_or_r; right.
+    norm.
     cancel.
-
-    rewrite sel_upd_eq by fsimpl.
+    split; trivial.
+    split; [ trivial | ].
+    intuition.
+    pred_apply.
+    cancel.
+    fsimpl.
+    
     (* ((r :=> p := v ) :-> p) = v *)
-    remember (sel l inum INODE.inode_zero) as i.
+    remember (selN l (wordToNat inum) INODE.inode_zero) as i.
     unfold Rec.recset', Rec.recget'; simpl; intros.
     destruct i; auto.
 
+    fsimpl.
     step.
    Qed.
 
@@ -606,14 +639,13 @@ Module FILE.
     cancel.
     intuition; [ pred_apply; cancel | | | | ];
         fsimpl; try (eexists; eassumption).
-    (* precondition about BALLOC.rep seems to comefrom nowhere *)
+    (* precondition about BALLOC.rep seems come from nowhere *)
     admit.
     eapply pimpl_ok2; eauto with prog; intros.
     unfold stars; simpl; subst.
     cancel_exact; apply pimpl_or; cancel_exact.
 
     remember (sel l0 inum empty_file) as of.
-    remember (sel l inum INODE.inode_zero) as oi.
     norm; [cancel | intuition].
     (* construct the new file *)
     instantiate (a0:=upd l0 inum (Build_file 
@@ -622,10 +654,10 @@ Module FILE.
     (* construct the new inode *)
     instantiate (a:=l1).
     cancel.
+
     (* TODO: proof using listpred *)
     admit.
-    assert (length l1 = length l0).
-    admit.
+
     intuition; fsimpl; try (eexists; eassumption).
     rewrite sel_upd_eq by fsimpl; intuition.
   Qed.
