@@ -656,7 +656,18 @@ Module FILE.
     cancel.
 
     (* TODO: proof using listpred *)
-    admit.
+    rewrite listpred_fwd with (i:=wordToNat inum) by fsimpl.
+    (* Question: why cannot I use listpred_fwd to rewrite right side
+             of pimpl?  Lack of Instance declaration or Coq bug?  *)
+    rewrite listpred_fwd with (l:=(combine l1
+     (upd l0 inum
+        {|
+        FileLen := FileLen (sel l0 inum empty_file) + 1;
+        FileData := Prog.upd (FileData (sel l0 inum empty_file))
+                      $ (FileLen (sel l0 inum empty_file)) w |}))
+    ).
+    unfold file_rep at 2.
+    cancel; fsimpl.
 
     intuition; fsimpl; try (eexists; eassumption).
     rewrite sel_upd_eq by fsimpl; intuition.
