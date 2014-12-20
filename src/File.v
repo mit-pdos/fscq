@@ -597,87 +597,100 @@ Module FILE.
    * indicates that the transaction could be in any active state, so
    * the caller is effectively forced to abort.
    *)
-  Theorem fgrow_ok : forall lxp bxp xp inum,
-    {< F mbase m flist,
+  Theorem fgrow_ok : forall lxp bxp ixp inum,
+    {< F mbase m flist file,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp flist)%pred m ]] *
-           [[ (inum < $ (length flist))%word ]]
+           [[ (F * rep ixp bxp flist)%pred m ]] *
+           [[ (inum < $ (length flist))%word ]] *
+           [[ file = sel flist inum empty_file ]]
     POST:r [[ r = false]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
-           [[ r = true ]] * exists m' flist', LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * rep xp flist')%pred m ]] *
-           [[ FileLen (sel flist' inum empty_file) = FileLen (sel flist inum empty_file) + 1 ]]
+           [[ r = true ]] * exists m' flist' file',
+           LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (F * rep ixp bxp flist')%pred m' ]] *
+           [[ FileLen file' = (FileLen file) + 1 ]] *
+           [[ flist' = upd flist inum file' ]]
     CRASH  LOG.log_intact lxp mbase
-    >} fgrow lxp bxp xp inum.
+    >} fgrow lxp bxp ixp inum.
   Proof.
     unfold fgrow, rep, LOG.log_intact.
     intros; eapply pimpl_ok2.
     eauto with prog. 
     intros; norm.
     cancel.
-    intuition; [ pred_apply; cancel | | | | ];
-        fsimpl; try (eexists; eassumption).
+    intuition; [ pred_apply; cancel | | | | ]; fsimpl.
+
     (* precondition about BALLOC.rep seems come from nowhere *)
     admit.
     eapply pimpl_ok2; eauto with prog; intros.
     unfold stars; simpl; subst.
     cancel_exact; apply pimpl_or; cancel_exact.
 
-    remember (sel l0 inum empty_file) as of.
+    remember (sel l1 inum empty_file) as of.
     norm; [cancel | intuition].
     (* construct the new file *)
-    instantiate (a0:=upd l0 inum (Build_file 
-                 ((FileLen of) + 1) (Prog.upd (FileData of) $ (FileLen of) w))).
+    instantiate (a1:=Build_file ((FileLen of) + 1)
+                      (Prog.upd (FileData of) $ (FileLen of) w)).
     pred_apply; norm.
     (* construct the new inode *)
-    instantiate (a:=l1).
+    instantiate (a:=l2).
     cancel.
 
     (* TODO: proof using listpred *)
-    rewrite listpred_fwd with (i:=wordToNat inum) by fsimpl.
-    (* Question: why cannot I use listpred_fwd to rewrite right side
-             of pimpl?  Lack of Instance declaration or Coq bug?  *)
-    rewrite listpred_fwd with (l:=(combine l1
-     (upd l0 inum
-        {|
-        FileLen := FileLen (sel l0 inum empty_file) + 1;
-        FileData := Prog.upd (FileData (sel l0 inum empty_file))
-                      $ (FileLen (sel l0 inum empty_file)) w |}))
-    ).
-    unfold file_rep at 2.
-    cancel; fsimpl.
+    admit.
 
-    intuition; fsimpl; try (eexists; eassumption).
-    rewrite sel_upd_eq by fsimpl; intuition.
+    assert (length l1 = length l2) by (subst; fsimpl).
+    intuition; fsimpl.
+    subst; intuition.
   Qed.
 
 
 
-  Theorem fshrink_ok : forall lxp bxp xp inum,
-    {< F mbase m flist freeblocks freeblocks',
+  Theorem fshrink_ok : forall lxp bxp ixp inum,
+    {< F mbase m flist file,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp flist * BALLOC.rep bxp freeblocks)%pred m ]] *
-           [[ (inum < $ (length flist))%word ]]
+           [[ (F * rep ixp bxp flist)%pred m ]] *
+           [[ (inum < $ (length flist))%word ]] *
+           [[ file = sel flist inum empty_file ]] *
+           [[ FileLen file > 0 ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
-           [[ r = true ]] * exists m' flist', LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * rep xp flist' * BALLOC.rep bxp freeblocks')%pred m ]] *
-           (* XXX should say that flist' is equal to flist in everything but inum's length *)
-           [[ FileLen (sel flist' inum empty_file) = FileLen (sel flist inum empty_file) - 1 ]]
+           [[ r = true  ]] * exists m' flist' file',
+           LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (F * rep ixp bxp flist')%pred m' ]] *
+           [[ FileLen file' = (FileLen file) - 1 ]] *
+           [[ flist' = upd flist inum file' ]]
     CRASH  LOG.log_intact lxp mbase
-    >} fshrink lxp bxp xp inum.
+    >} fshrink lxp bxp ixp inum.
   Proof.
-    unfold fshrink, rep.
-    hoare.
-    fsimpl.
+    unfold fshrink, rep, LOG.log_intact.
+    intros; eapply pimpl_ok2.
+    eauto with prog. 
+    intros; norm.
+    cancel.
+    intuition; [ pred_apply; cancel | | | | | ]; fsimpl.
 
-    rewrite listpred_fwd with (i:=wordToNat inum) by flensimpl.
-    unfold file_rep at 2.
-    cancel; fsimpl.
-    erewrite listpred_fwd with (prd:=file_match).
-    unfold file_match.
-    cancel; fsimpl.
-    unfold BALLOC.rep.
+    (* precondition about BALLOC.rep seems come from nowhere *)
+    admit.
+    admit.
+
+    eapply pimpl_ok2; eauto with prog; intros.
+    unfold stars; simpl; subst.
+    cancel_exact; apply pimpl_or; cancel_exact.
+
+    remember (sel l1 inum empty_file) as of.
+    norm; [cancel | intuition].
+    (* construct the new file *)
+    instantiate (a2:=Build_file ((FileLen of) - 1) (FileData of)).
+    pred_apply; norm.
+    (* construct the new inode *)
+    instantiate (a0:=l2).
     cancel.
 
+    (* TODO: proof using listpred *)
+    admit.
+
+    assert (length l1 = length l2) by (subst; fsimpl).
+    intuition; fsimpl.
+    subst; intuition.
   Qed.
 
 End FILE.
