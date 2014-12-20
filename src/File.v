@@ -83,6 +83,7 @@ Module FILE.
     cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (fwrite' _ _ _ _ _) _) => apply fwrite'_ok : prog.
 
 
   Record file := {
@@ -99,15 +100,17 @@ Module FILE.
       firstn (wordToNat (ino :-> "len")) (ino :-> "blocks").
 
   Definition file_rep (inof : INODE.inode * file) : pred :=
-     ([[ wordToNat ((fst inof) :-> "len") = FileLen (snd inof) ]] *
+    ([[ wordToNat ((fst inof) :-> "len") <= length ((fst inof) :-> "blocks") ]] *
+     [[ wordToNat ((fst inof) :-> "len") = FileLen (snd inof) ]] *
      exists blist,
      [[ length blist = FileLen (snd inof) ]] *
      listpred file_match (combine (valid_blocks (fst inof)) blist) *
      [[ array $0 blist $1 (FileData (snd inof)) ]] )%pred.
 
-  Definition rep xp (filelist : list file) :=
-    (exists inodelist, INODE.rep xp inodelist *
-     [[ ($ (length inodelist) < IXLen xp ^* INODE.items_per_valu)%word ]] *
+  Definition rep ixp bxp (filelist : list file) :=
+    (exists inodelist freeblocks,
+     INODE.rep ixp inodelist * BALLOC.rep bxp freeblocks *
+     [[ ($ (length inodelist) < IXLen ixp ^* INODE.items_per_valu)%word ]] *
      [[ length inodelist = length filelist ]] *
      [[ exists b:addr, length filelist <= wordToNat b ]] *
      listpred file_rep (combine inodelist filelist))%pred.
@@ -159,11 +162,6 @@ Module FILE.
     omega.
   Qed.
 
-
-  (* XXX: expect this from the inode layer *)
-  Axiom inode_correct: forall (ino:INODE.inode),
-    wordToNat (ino :-> "len") <= length (ino :-> "blocks").
-
   (* instantiate default values *)
   Ltac finstdef' D := is_evar D; let H := fresh in set (H := D);
     match type of D with
@@ -184,48 +182,56 @@ Module FILE.
     | [ |- context [sel _ _ _] ] => unfold sel
     | [ |- context [selN _ _ ?def] ]
         => is_evar def; finstdef' def
+    | [ H: context [selN _ _ ?def] |- _ ]
+        => is_evar def; finstdef' def
     end.
 
   Ltac flensimpl' :=
     match goal with
     | [ H : norm_goal _ |- _ ] => clear H
+    | [ |- context [ upd _ _ _ ] ] => unfold upd
+    | [ |- context [ sel _ _ _ ] ] => unfold sel
     | [ |- context [ length (combine _ _) ] ]
            => erewrite combine_length
-    | [ H : context [ length (combine _ _) ] |- _ ]
-           => erewrite combine_length
-    | [ |- context [ length (upd _ _ _) ] ]
-           => erewrite length_upd
-    | [ H : context [ length (upd _ _ _) ] |- _ ]
-           => erewrite length_upd in H
-    | [ |- context [ length (updN _ _ _) ] ]
-           => erewrite length_updN
-    | [ H : context [ length (updN _ _ _) ] |- _ ]
-           => erewrite length_updN in H
-    | [ H : length ?l = FileLen _ |- context [ length ?l ] ]
-           => rewrite H
-    | [ |- context [ Init.Nat.min ?a ?a ] ] 
-           => erewrite Nat.min_id
     | [ |- context [ length (firstn _ _) ] ]
            => erewrite firstn_length
-    | [ H: ?a = ?b |- ?a <= ?b ]
-           => erewrite H by eauto
-    | [ H: ?a < ?b, H2: ?c = ?b |- ?a < ?c ]
-           => erewrite H2 by eauto
-    | [ H: length ?a = length ?b, H2: context [ length ?a ] |- _ ]
-           => rewrite H in H2
-    | [ H: (?a < ?b)%word, H2: (?b < ?c)%word |- (?a < ?c)%word ]
-           => eapply wlt_trans; eauto
+    | [ |- context [ length (updN _ _ _) ] ]
+           => erewrite length_updN
+    | [ |- context [ Init.Nat.min ?a ?a ] ] 
+           => erewrite Nat.min_id
     | [ |- context [ Init.Nat.min ?a ?b ] ] =>
       match a with context [ _ :-> "len" ] =>
       match b with context [ _ :-> "blocks" ] =>
-        erewrite min_l; [ auto | try apply inode_correct]
+        erewrite min_l; [ eauto | try eassumption ]
       end end
+    | [ H : context [ upd _ _ _ ] |- _ ] => unfold upd in H
+    | [ H : context [ sel _ _ _ ] |- _ ] => unfold sel in H
+    | [ H: context [ length (combine _ _) ] |- _ ]
+           => erewrite combine_length in H
+    | [ H: context [ length (firstn _ _) ] |- _ ]
+           => erewrite firstn_length in H
+    | [ H: context [ length (updN _ _ _) ] |- _ ]
+           => erewrite length_updN in H
+    | [ H: length ?l = FileLen _ |- context [ length ?l ] ]
+           => rewrite H
+    | [ H: ?a = ?b |- ?a <= ?b ]
+           => erewrite H by eauto
+    | [ H: ?a < ?b, H2: ?c = ?b |- ?a < ?c ]
+           => erewrite H2 by eauto; eassumption
+    | [ H: ?a < ?b, H2: ?b = ?c |- ?a < ?c ]
+           => erewrite <- H2 by eauto; eassumption
+    | [ H: length ?a = length ?b, H2: context [ length ?a ] |- _ ]
+           => rewrite H in H2
     | [ H: length ?a = length ?b |- context [ length ?a ] ] 
            => rewrite H
+    | [ H: (?a < ?b)%word, H2: (?b < ?c)%word |- (?a < ?c)%word ]
+           => eapply wlt_trans; eauto
+    | [ H: _ < ?b |- exists _, _ < ?b ]
+           => eexists; eassumption
     end.
 
   Ltac flensimpl :=
-    finstdef; repeat (repeat flensimpl'; auto; wordcmp).
+    finstdef; repeat (repeat flensimpl'; eauto; wordcmp).
 
   (* Simplify list combine *)
   Ltac flstsimpl1 :=
@@ -267,19 +273,35 @@ Module FILE.
 
   Ltac fsimpl :=
     finstdef; unfold valid_blocks; flensimpl;
-    repeat (repeat flstsimpl1; repeat flstsimpl2; flensimpl; auto).
+    repeat (repeat flstsimpl1; repeat flstsimpl2; flensimpl; eauto).
 
-  Theorem fread_ok : forall lxp xp inum off,
+
+  (* fastest version of cancel, should always try this first *)
+  Ltac cancel_exact := repeat match goal with 
+    | [ |- (?a =p=> ?a)%pred ] =>
+          eapply pimpl_refl
+    | [ |- (_ * ?a =p=> _ * ?a)%pred ] =>
+          eapply pimpl_sep_star; [ | eapply pimpl_refl]
+    | [ |- ( ?a * _ =p=> ?a * _)%pred ] =>
+          eapply pimpl_sep_star; [ eapply pimpl_refl | ]
+    | [ |- ( ?a * _ =p=> _ * ?a)%pred ] =>
+          rewrite sep_star_comm1
+    | [ |- ( (?a * _) * _ =p=> ?a * _)%pred ] =>
+          rewrite sep_star_assoc_1
+  end.
+
+
+  Theorem fread_ok : forall lxp ixp bxp inum off,
     {< mbase m flist v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (exists F, F * rep xp flist)%pred m ]] *
+           [[ (exists F, F * rep ixp bxp flist)%pred m ]] *
            [[ wordToNat off < (FileLen (sel flist inum empty_file)) ]] *
            [[ (inum < $ (length flist))%word ]] *
            [[ (exists F', F' * off |-> v)%pred (FileData (sel flist inum empty_file)) ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = v]]
     CRASH  LOG.log_intact lxp mbase
-    >} fread lxp xp inum off. 
+    >} fread lxp ixp inum off. 
   Proof.
     unfold fread, rep, LOG.log_intact.
     intros.
@@ -296,11 +318,8 @@ Module FILE.
     cancel.
     rewrite listpred_fwd with (prd:=file_match) (i:=wordToNat off) by fsimpl.
 
-    unfold iget_blocknum.
-    unfold file_match.
-
-    fsimpl.
-    assert (w=selN l1 (wordToNat off) $0).
+    unfold iget_blocknum, file_match; fsimpl.
+    assert (w=selN l2 (wordToNat off) $0).
     eapply ptsto_eq; [exact H4 | eauto | | ].
     eexists; cancel.
     eexists; rewrite isolate_fwd with (i:=off) by fsimpl.
@@ -312,113 +331,99 @@ Module FILE.
     ok <- fwrite' lxp xp inum off v;
     rx ok.
 
-  Hint Extern 1 ({{_}} progseq (fwrite' _ _ _ _ _) _) => apply fwrite'_ok : prog.
 
-  Theorem fwrite_ok : forall lxp xp inum off v,
-    {< F F' mbase m flist v0,
+  Lemma fwrite_ok : forall lxp ixp bxp inum off v,
+    {< F F' mbase m flist file v0,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp flist)%pred m ]] *
-           [[ wordToNat off < (FileLen (sel flist inum empty_file)) ]] *
            [[ (inum < $ (length flist))%word ]] *
-           [[ (F' * off |-> v0)%pred (FileData (sel flist inum empty_file)) ]]
-    POST:r LOG.rep lxp (ActiveTxn mbase m) * [[ r = false ]] \/
-           exists m' flist', LOG.rep lxp (ActiveTxn mbase m') * [[ r = true ]] *
-           [[ (F * rep xp flist')%pred m' ]] *
-           [[ (F' * off |-> v)%pred (FileData (sel flist' inum empty_file)) ]]
+           [[ wordToNat off < (FileLen file) ]] *
+           [[ file = sel flist inum empty_file ]] *
+           [[ (F * rep ixp bxp flist)%pred m ]] *
+           [[ (F' * off |-> v0)%pred (FileData file) ]]
+    POST:r [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
+           [[ r = true  ]] * exists m' file' flist',
+           LOG.rep lxp (ActiveTxn mbase m') *
+           [[ flist' = upd flist inum file' ]] *
+           [[ (F * rep ixp bxp flist')%pred m' ]] *
+           [[ (F' * off |-> v)%pred (FileData file') ]]
     CRASH  LOG.log_intact lxp mbase
-    >} fwrite lxp xp inum off v.
+    >} fwrite' lxp ixp inum off v.
   Proof.
-    unfold fwrite, rep, LOG.log_intact.
-    intros.
-    eapply pimpl_ok2.
-    eauto with prog.
+    unfold fwrite', rep, LOG.log_intact; intros.
+    eapply pimpl_ok2; eauto with prog.
     intros; norm'l.
+    assert (wordToNat inum < length l1) by (deex; fsimpl).
 
-    assert (wordToNat inum < length l0).
-    deex; apply wlt_lt in H5.
-    erewrite wordToNat_natToWord_bound in H5 by eauto.
-    auto.
+    rewrite listpred_fwd with (i:=wordToNat inum) in H3 by fsimpl.
+    unfold file_rep at 2 in H3.
+    destruct_lift H3.
+    cancel; fsimpl.
 
-    rewrite listpred_fwd with (i:=wordToNat inum) in H by flensimpl.
-    unfold file_rep at 2 in H.
-    destruct_lift H.
-    cancel.
-
-    rewrite listpred_fwd with (prd:=file_match) (i:=wordToNat off) by fsimpl.
-    unfold file_match.
-    fsimpl.
-
-    assert (w=selN l1 (wordToNat off) $0).
-    eapply ptsto_eq; [exact H4 | eauto | | ].
-    eexists; cancel.
-    eexists; rewrite isolate_fwd with (i:=off) by flensimpl.
-    cancel.
-
-    instantiate (a4:=w); subst.
-    cancel.
-    flensimpl.
-
-    step. (* super slow! *)
-    apply pimpl_or_r; right.
-    cancel.
-
-    (* construct the new file rep *)
-    instantiate (a0:=upd l0 inum (Build_file (FileLen (sel l0 inum empty_file)) 
-                (Prog.upd (FileData (sel l0 inum empty_file)) off v))).
-
-    eapply pimpl_trans; 
-      [ | apply listpred_bwd with (i:=wordToNat inum); flensimpl].
-    unfold file_rep at 4.
-    cancel.
-
+    step.
+    rewrite listpred_fwd with (i:=wordToNat off) (prd:=file_match) by fsimpl.
     unfold file_match; fsimpl.
+    instantiate (a2:=w); assert (w=selN l2 (wordToNat off) $0).
+    eapply ptsto_eq; [exact H4 | eauto | eexists; cancel | eexists ].
+    rewrite isolate_fwd with (i:=off) by flensimpl; cancel.
+    subst; cancel.
+
+    (* could run `step` here but it's super slow *)
+    eapply pimpl_ok2; eauto with prog.
+    intros; norm; subst; intuition; cancel.
+    apply pimpl_or_r; right.
+
+    (* construct the new file rep and memory *)
+    remember (selN l1 (wordToNat inum) empty_file) as f.
+    norm; [ cancel | intuition ].
+    instantiate (a0:=Build_file (FileLen f) (Prog.upd (FileData f) off v)).
+    pred_apply; rewrite sep_star_comm; cancel_exact.
+
+    norm. (* slow! *)
+    instantiate (a:=l); instantiate (a0:=l0); cancel.
+    eapply pimpl_trans2.
+    apply listpred_bwd with (i:=wordToNat inum); fsimpl.
+    unfold file_rep at 4;
+    unfold file_match; unfold iget_blocknum; fsimpl.
     cancel.
 
-    (* construct new file *)
-    instantiate (a:=upd l1 off v).
-    eapply pimpl_trans; 
-      [| apply listpred_bwd with (i:=wordToNat off)].
-    fsimpl.
-    cancel.
+    (* construct new mem *)
+    instantiate (a:=upd l2 off v).
+    eapply pimpl_trans2.
+    apply listpred_bwd with (i:=wordToNat off); fsimpl.
+    fsimpl; cancel.
 
     fsimpl.
-    fsimpl.
-    fsimpl.
-
-    fsimpl; simpl.
     apply array_progupd; fsimpl; eauto.
-    fsimpl.
-
-    fsimpl.
-    fsimpl; eexists; eassumption.
-
-    fsimpl; simpl.
-    apply sep_star_comm1; eapply ptsto_upd; apply sep_star_comm1.
-    eassumption.
+    intuition; fsimpl.
+    apply sep_star_comm1; subst; eapply ptsto_upd;
+    apply sep_star_comm1; eassumption.
+    apply pimpl_or_r; left.
+    cancel.
+    cancel.
   Qed.
+
 
 
   Definition flen T lxp xp inum rx : prog T :=
     i <- INODE.iget lxp xp inum;
     rx (i :-> "len").
 
-  Theorem flen_ok : forall lxp xp inum,
+  Theorem flen_ok : forall lxp ixp bxp inum,
     {< F mbase m flist,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep xp flist)%pred m ]] *
+           [[ (F * rep ixp bxp flist)%pred m ]] *
            [[ (inum < $ (length flist))%word ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
            [[ r = $ (FileLen (sel flist inum empty_file)) ]]
     CRASH  LOG.log_intact lxp mbase
-    >} flen lxp xp inum.
+    >} flen lxp ixp inum.
   Proof.
     unfold flen, rep, file_rep.
     hoare; fsimpl.
     rewrite listpred_fwd with (i:=wordToNat inum) in H by flensimpl.
     destruct_lift H.
-    subst; unfold sel.
-    apply wordToNat_eq_natToWord in H3; auto.
-    fsimpl; eauto.
+    subst; fsimpl.
+    apply wordToNat_eq_natToWord in H17; eauto.
   Qed.
 
 
@@ -597,18 +602,6 @@ Module FILE.
 
   Hint Extern 1 ({{_}} progseq (fgrow' _ _ _ _) _) => apply fgrow'_ok : prog.
   Hint Extern 1 ({{_}} progseq (fshrink' _ _ _ _) _) => apply fshrink'_ok : prog.
-
-  (* fastest version of cancel, should always try this first *)
-  Ltac cancel_exact := repeat match goal with 
-    | [ |- (?a =p=> ?a)%pred ] =>
-          eapply pimpl_refl
-    | [ |- (_ * ?a =p=> _ * ?a)%pred ] =>
-          eapply pimpl_sep_star; [ | eapply pimpl_refl]
-    | [ |- ( ?a * _ =p=> ?a * _)%pred ] =>
-          eapply pimpl_sep_star; [ eapply pimpl_refl | ]
-    | [ |- ( (?a * _) * _ =p=> ?a * _)%pred ] =>
-          rewrite sep_star_assoc_1
-  end.
 
   Definition fshrink T lxp bxp xp inum rx : prog T :=
       r <- fshrink' lxp bxp xp inum; rx r.

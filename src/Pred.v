@@ -326,6 +326,15 @@ Proof.
   firstorder.
 Qed.
 
+Lemma pimpl_trans2:
+  forall a b c,
+  (b =p=> c) ->
+  (a =p=> b) ->
+  (a =p=> c).
+Proof.
+  firstorder.
+Qed.
+
 Lemma piff_trans:
   forall a b c,
   (a <=p=> b) ->
