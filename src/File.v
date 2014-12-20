@@ -492,10 +492,11 @@ Module FILE.
            [[ bn = iget_blocknum ilist inum (len ^- $1) ]] *
            [[ wordToNat len > 0 ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
-           [[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
+           [[ r = true ]] * exists m' ilist' ino',
+           LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * INODE.rep xp ilist' * BALLOC.rep bxp (bn :: freeblocks))%pred m' ]] *
-           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^- $1 ]] *
-           [[ length ilist' = length ilist ]]
+           [[ ilist' = upd ilist inum ino' ]] *
+           [[ ino' :-> "len" = len ^- $1 ]]
     CRASH  LOG.log_intact lxp mbase
     >} fshrink' lxp bxp xp inum.
   Proof.
@@ -522,48 +523,36 @@ Module FILE.
     apply pimpl_or_r.
     right.
 
-    (* Cannot simply `cancel` after adding [[ length ilist' = length ilist ]]
-       in the postcondition.  Run `intuition` on that goal will instantiate
-       (ilist' := ilist).  We must use the BALLOC goal to infer ilist'.  *)
-    norm.
     cancel.
-    split; trivial.
-    split; [ trivial | ].
-    intuition.
-    pred_apply.
-    cancel.
-    fsimpl.
 
     (* It would be nice to have a statement like [((r :=> n := v) :-> n) = v],
        but that's only valid if [n] is a valid field name, so the dependent types could
        get tricky, whereas this proof is quite trivial. Maybe a tactic would work. *)
-    remember (selN l (wordToNat inum) INODE.inode_zero) as i.
+    remember (sel l inum INODE.inode_zero) as i.
     unfold Rec.recset', Rec.recget'; simpl; intros.
     destruct i; auto.
-    fsimpl.
   Qed.
 
-  Theorem fgrow'_ok : forall lxp bxp xp inum,
+  Theorem fgrow'_ok : forall lxp bxp ixp inum,
     {< F mbase m ilist len freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * INODE.rep xp ilist * BALLOC.rep bxp freeblocks)%pred m ]] *
-           [[ (inum < IXLen xp ^* INODE.items_per_valu)%word ]] *
+           [[ (F * INODE.rep ixp ilist * BALLOC.rep bxp freeblocks)%pred m ]] *
+           [[ (inum < IXLen ixp ^* INODE.items_per_valu)%word ]] *
            [[ (inum < $ (length ilist))%word ]] *
            [[ exists b:addr, length ilist <= wordToNat b ]] *
            [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
-           [[ r = true ]] * exists m' ilist' bn freeblocks', LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * INODE.rep xp ilist' * bn |->? * BALLOC.rep bxp freeblocks')%pred m' ]] *
-           [[ (sel ilist' inum INODE.inode_zero) :-> "len" = len ^+ $1 ]] *
-           [[ length ilist' = length ilist ]]
+           [[ r = true ]] * exists m' ilist' ino' bn freeblocks',
+           LOG.rep lxp (ActiveTxn mbase m') *
+           [[ (F * INODE.rep ixp ilist' * bn |->? * BALLOC.rep bxp freeblocks')%pred m' ]] *
+           [[ ilist' = upd ilist inum ino' ]] *
+           [[ ino' :-> "len" = len ^+ $1 ]]
     CRASH  LOG.log_intact lxp mbase
-    >} fgrow' lxp bxp xp inum.
+    >} fgrow' lxp bxp ixp inum.
    Proof.
-    unfold fgrow'.
-    intros.
+    unfold fgrow'; intros.
     hoare.
-    destruct r_0; simpl.
-    step.
+    destruct r_0; simpl; step. (* slow *)
 
     (* length (ino :=> "blocks") = INODE.blocks_per_inode *) 
     remember (sel l inum INODE.inode_zero) as i.
@@ -580,24 +569,19 @@ Module FILE.
     apply word_lt_nat; assumption.
     rewrite Forall_forall; intros; trivial.
 
-    hoare.
-    apply pimpl_or_r; right.
-    norm.
-    cancel.
-    split; trivial.
-    split; [ trivial | ].
-    intuition.
-    pred_apply.
-    cancel.
-    fsimpl.
-    
+    (* could use `hoare` but this is faster *)
+    eapply pimpl_ok2; eauto with prog; subst; intros.
+    norm; [ cancel | | cancel | ];
+    intuition; eapply pimpl_ok2; eauto with prog;
+    subst; intros; cancel.
+
+    apply pimpl_or_r; left; cancel.
+    apply pimpl_or_r; right; cancel.
+
     (* ((r :=> p := v ) :-> p) = v *)
-    remember (selN l (wordToNat inum) INODE.inode_zero) as i.
+    remember (sel l inum INODE.inode_zero) as i.
     unfold Rec.recset', Rec.recget'; simpl; intros.
     destruct i; auto.
-
-    fsimpl.
-    step.
    Qed.
 
   Hint Extern 1 ({{_}} progseq (fgrow' _ _ _ _) _) => apply fgrow'_ok : prog.
