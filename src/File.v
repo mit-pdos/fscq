@@ -480,6 +480,23 @@ Module FILE.
   Axiom inode_correct2: forall (ino:INODE.inode) xp off,
     ((sel (ino :-> "blocks") off $0) < BmapNBlocks xp ^* $ valulen)%word.
 
+  Lemma inode_block_length: forall m xp l inum F,
+    (F * INODE.rep xp l)%pred m ->
+    inum < length l ->
+    length (selN l inum INODE.inode_zero :-> "blocks") = INODE.blocks_per_inode.
+  Proof.
+    intros.
+    remember (selN l inum INODE.inode_zero) as i.
+    unfold Rec.recset', Rec.recget', INODE.rep in H.
+    rewrite RecArray.array_item_well_formed' in H.
+    destruct i; destruct p. 
+    destruct_lift H.
+    rewrite Forall_forall in *.
+    apply (H2 (d, (d0, u))).
+    rewrite Heqi.
+    apply RecArray.in_selN; auto.
+  Qed.
+
 
   Theorem fshrink'_ok : forall lxp bxp xp inum,
     {< F mbase m ilist bn len freeblocks,
@@ -534,19 +551,20 @@ Module FILE.
   Qed.
 
   Theorem fgrow'_ok : forall lxp bxp ixp inum,
-    {< F mbase m ilist len freeblocks,
+    {< F mbase m ilist ino freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * INODE.rep ixp ilist * BALLOC.rep bxp freeblocks)%pred m ]] *
            [[ (inum < IXLen ixp ^* INODE.items_per_valu)%word ]] *
            [[ (inum < $ (length ilist))%word ]] *
            [[ exists b:addr, length ilist <= wordToNat b ]] *
-           [[ len = (sel ilist inum INODE.inode_zero) :-> "len" ]]
+           [[ ino = (sel ilist inum INODE.inode_zero) ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' ilist' ino' bn freeblocks',
            LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * INODE.rep ixp ilist' * bn |->? * BALLOC.rep bxp freeblocks')%pred m' ]] *
            [[ ilist' = upd ilist inum ino' ]] *
-           [[ ino' :-> "len" = len ^+ $1 ]]
+           [[ ino' :-> "len" = ino :-> "len" ^+ $1 ]] *
+           [[ ino' :-> "blocks" = upd (ino :-> "blocks") (ino :-> "len") bn ]]
     CRASH  LOG.log_intact lxp mbase
     >} fgrow' lxp bxp ixp inum.
    Proof.
@@ -582,6 +600,11 @@ Module FILE.
     remember (sel l inum INODE.inode_zero) as i.
     unfold Rec.recset', Rec.recget'; simpl; intros.
     destruct i; auto.
+
+    remember (sel l inum INODE.inode_zero) as i.
+    unfold Rec.recset', Rec.recget'; simpl; intros.
+    destruct i; auto.
+    admit.
    Qed.
 
   Hint Extern 1 ({{_}} progseq (fgrow' _ _ _ _) _) => apply fgrow'_ok : prog.
@@ -602,7 +625,8 @@ Module FILE.
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep ixp bxp flist)%pred m ]] *
            [[ (inum < $ (length flist))%word ]] *
-           [[ file = sel flist inum empty_file ]]
+           [[ file = sel flist inum empty_file ]] *
+           [[ FileLen file < INODE.blocks_per_inode - 1 ]]
     POST:r [[ r = false]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' flist' file',
            LOG.rep lxp (ActiveTxn mbase m') *
@@ -619,8 +643,7 @@ Module FILE.
     cancel.
     intuition; [ pred_apply; cancel | | | | ]; fsimpl.
 
-    (* precondition about BALLOC.rep seems come from nowhere *)
-    admit.
+    instantiate (a4:=l0); cancel.
     eapply pimpl_ok2; eauto with prog; intros.
     unfold stars; simpl; subst.
     cancel_exact; apply pimpl_or; cancel_exact.
@@ -633,9 +656,16 @@ Module FILE.
     pred_apply; norm.
     (* construct the new inode *)
     instantiate (a:=l2).
+    instantiate (a0:=l3).
     cancel.
 
     (* TODO: proof using listpred *)
+    eapply pimpl_trans2.
+    apply listpred_bwd with (i:=wordToNat inum); fsimpl.
+    rewrite listpred_fwd with (i:=wordToNat inum) by fsimpl.
+    fsimpl; rewrite skipn_updN by auto.
+    cancel.
+
     admit.
 
     assert (length l1 = length l2) by (subst; fsimpl).
