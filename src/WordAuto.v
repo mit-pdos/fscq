@@ -137,7 +137,7 @@ Proof.
 Qed.
 
 Ltac word2nat_simpl :=
-  try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); simpl;
+  try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
   unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
   repeat match goal with
   | [ H : _ <> _ |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); nsimp H
@@ -151,7 +151,9 @@ Ltac word2nat_simpl :=
   end.
 
 (* XXX this should probably word2nat_auto side goals -- mutual recursion? *)
-Ltac word2nat_solve := omega || ((apply div_le; [| word2nat_solve] || apply zero_lt_pow2 || apply wordToNat_bound || (eapply le_lt_trans; [(apply div_le || apply Nat.mod_le) |]; word2nat_solve) || idtac); solve [auto]).
+Ltac word2nat_solve := omega || ((apply div_le; [| word2nat_solve] || apply zero_lt_pow2 || apply wordToNat_bound
+  || apply Nat.mod_upper_bound
+  || (eapply le_lt_trans; [(apply div_le || apply Nat.mod_le) |]; word2nat_solve) || idtac); solve [auto]).
 
 
 (* XXX does this actually rewrite from the inside out? *)
@@ -167,7 +169,7 @@ Ltac word2nat_rewrites :=
   end
   || rewrite wordToNat_natToWord_idempotent'
   || rewrite N2Nat_word'
-  || rewrite wordToNat_div); autorewrite with W2Nat in *).
+  || rewrite wordToNat_div); word2nat_simpl).
 
 Ltac word2nat_auto :=
   intros; word2nat_simpl; word2nat_rewrites; try word2nat_solve.
@@ -183,7 +185,6 @@ Lemma wmod_upper_bound :
   forall sz (a b:word sz), b <> $0 -> (a ^% b < b)%word.
 Proof.
   word2nat_auto.
-  apply Nat.mod_upper_bound; assumption.
 Qed.
 
 Lemma wlt_mult_inj : forall sz (a b c:word sz),

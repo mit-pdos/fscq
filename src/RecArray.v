@@ -172,19 +172,8 @@ Section RECARRAY.
     Forall (fun sl => length sl = wordToNat m) l ->
     sel (sel l (n ^/ m) nil) (n ^% m) z = sel (fold_right (app (A:=t)) nil l) n z.
   Proof.
-    intros. unfold sel. rewrite nested_selN_concat with (m:=wordToNat m).
-    word2nat'. rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod.
-    trivial. assumption. apply le_lt_trans with (m := wordToNat n). apply div_le; assumption.
-    apply wordToNat_bound.
-    apply lt_le_trans with (m := wordToNat m).
-    apply Nat.mod_upper_bound; assumption.
-    apply Nat.lt_le_incl; apply wordToNat_bound.
-    word2nat'.
-    apply Nat.mod_upper_bound; assumption.
-    apply lt_le_trans with (m := wordToNat m).
-    apply Nat.mod_upper_bound; assumption.
-    apply Nat.lt_le_incl; apply wordToNat_bound.
-    assumption.
+    intros. unfold sel. erewrite nested_selN_concat; word2nat_auto.
+    rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod; auto.
   Qed.
 
   Theorem selN_list_eq' : forall A len (vs vs' : list A) default,
@@ -426,17 +415,8 @@ Section RECARRAY.
   Proof.
     intros. unfold upd.
     rewrite <- updN_concat with (m := wordToNat items_per_valu).
-    word2nat'. rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod.
-    trivial. assumption. apply le_lt_trans with (m := wordToNat pos). apply div_le; assumption.
-    apply wordToNat_bound.
-    apply lt_le_trans with (m := wordToNat items_per_valu).
-    apply Nat.mod_upper_bound; assumption.
-    apply Nat.lt_le_incl; apply wordToNat_bound.
-    word2nat'.
-    apply Nat.mod_upper_bound; assumption.
-    apply lt_le_trans with (m := wordToNat items_per_valu).
-    apply Nat.mod_upper_bound; assumption.
-    apply Nat.lt_le_incl; apply wordToNat_bound.
+    word2nat_auto. rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod.
+    trivial. assumption. word2nat_auto.
     rewrite Forall_forall in *; intros; apply H; assumption.
   Qed.
 

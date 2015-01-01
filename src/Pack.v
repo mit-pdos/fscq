@@ -16,7 +16,7 @@ Section Packer.
   Proof.
     intros pos H. rewrite <- Nat.sub_add_distr. rewrite le_plus_minus_r.
     reflexivity. rewrite <- Nat.mul_succ_l. rewrite <- itemsz_ok.
-    apply mult_le_compat_r. womega.
+    apply mult_le_compat_r. word2nat_auto.
   Qed.
 
   Definition extract (v : valu) (pos : addr) : word itemsz.
