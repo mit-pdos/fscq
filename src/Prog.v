@@ -28,9 +28,9 @@ Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).
 Definition addr_eq_dec := @weq addrlen.
 
+
 Definition wringaddr := wring addrlen.
 Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]).
-
 
 Inductive prog (T: Set) :=
 | Done (v: T)

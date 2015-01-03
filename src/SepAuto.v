@@ -324,15 +324,15 @@ Ltac wordcmp_one :=
   | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
   | [ |- context[valu2addr (addr2valu _)] ] => rewrite addr2valu2addr
   | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
-    assert (wordToNat x < pow2 sz) by (apply wordToNat_bound);
-    assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; auto; omega);
+    assert (goodSize sz (wordToNat x)) by (apply wordToNat_good);
+    assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; unfold goodSize in *; auto; omega);
     clear H
   | [ H: context[wordToNat (natToWord _ _)] |- _ ] =>
     rewrite wordToNat_natToWord_idempotent' in H;
     [| solve [ omega ||
-               ( eapply Nat.le_lt_trans; [| apply wordToNat_bound ]; eauto ) ] ]
+               ( eapply Nat.le_lt_trans; [| apply wordToNat_good ]; eauto ) ] ]
   | [ H: (?a < natToWord _ ?b)%word |- wordToNat ?a < ?b ] =>
-    apply wlt_lt in H; erewrite wordToNat_natToWord_bound in H;
+    apply wlt_lt in H; unfold goodSize in *; erewrite wordToNat_natToWord_bound in H;
     [ apply H | eauto ]
   | [ H: ?a = wordToNat ?b |- ?a <= wordToNat ?c ] =>
     try solve [ rewrite H; apply le_n ]

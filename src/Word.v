@@ -136,6 +136,7 @@ Fixpoint pow2 (n : nat) : nat :=
     | S n' => 2 * pow2 n'
   end.
 
+
 Theorem roundTrip_0 : forall sz, wordToNat (natToWord sz 0) = 0.
   induction sz; simpl; intuition.
 Qed.
@@ -819,6 +820,12 @@ Theorem wordToNat_bound : forall sz (w : word sz), wordToNat w < pow2 sz.
   destruct b; simpl; omega.
 Qed.
 
+Definition goodSize sz n := n < pow2 sz.
+
+Theorem wordToNat_good : forall sz (w : word sz), goodSize sz (wordToNat w).
+  apply wordToNat_bound.
+Qed.
+
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
   induction sz; simpl; intuition.
 
@@ -1176,9 +1183,10 @@ Lemma natToWord_S : forall sz n, natToWord sz (S n) = natToWord _ 1 ^+ natToWord
 Qed.
 
 Theorem natToWord_inj : forall sz n m, natToWord sz n = natToWord sz m
-  -> (n < pow2 sz)%nat
-  -> (m < pow2 sz)%nat
+  -> goodSize sz n
+  -> goodSize sz m
   -> n = m.
+  unfold goodSize.
   intros.
   apply (f_equal (@wordToNat _)) in H.
   destruct (wordToNat_natToWord sz n).
@@ -1273,7 +1281,7 @@ Proof.
   auto.
 Qed.
 
-Lemma wlt_lt': forall sz a b, (a < pow2 sz)%nat
+Lemma wlt_lt': forall sz a b, goodSize sz a
   -> natToWord sz a < b
   -> (wordToNat (natToWord sz a) < wordToNat b)%nat.
 Proof.
@@ -1283,9 +1291,10 @@ Proof.
 Qed.
 
 Lemma wordToNat_natToWord_idempotent' : forall sz n,
-  (n < pow2 sz)%nat
+  goodSize sz n
   -> wordToNat (natToWord sz n) = n.
 Proof.
+  unfold goodSize.
   intros.
   destruct (wordToNat_natToWord sz n); intuition.
   destruct x.

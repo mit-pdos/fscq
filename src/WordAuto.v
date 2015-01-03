@@ -1,5 +1,4 @@
-Require Import Arith Omega NArith Nomega Word.
-
+Require Import Arith Omega NArith Nomega Word Prog.
 
 Theorem f_neq : forall {A B : Type} (f : A -> B) x y, f x <> f y -> x <> y.
   intros. unfold not. intro He. rewrite He in H. auto.
@@ -14,12 +13,14 @@ Proof.
   intros. rewrite NToWord_nat. apply wordToNat_natToWord_idempotent.
   rewrite N2Nat.id. assumption.
 Qed.
+
 Lemma N2Nat_word'
-   : forall sz n, N.to_nat n < pow2 sz -> wordToNat (NToWord sz n) = N.to_nat n.
+   : forall sz n, goodSize sz (N.to_nat n) -> wordToNat (NToWord sz n) = N.to_nat n.
 Proof.
-  intros. rewrite N2Nat_word. trivial. rewrite <- Npow2_nat in H. nomega.
+  intros. rewrite N2Nat_word. trivial. unfold goodSize in H. rewrite <- Npow2_nat in H. nomega.
 Qed.
 Hint Rewrite NToWord_nat : W2Nat.
+
 Lemma wordToNat_N : forall sz (w:word sz), N.to_nat (wordToN w) = wordToNat w.
 Proof.
   intros. rewrite wordToN_nat. autorewrite with N. trivial.
@@ -33,6 +34,7 @@ Proof.
   replace (x - x0 * pow2 sz + y) with (x + y - x0 * pow2 sz) by omega.
   apply drop_sub; omega.
 Qed.
+
 Theorem plus_ovf_r : forall sz x y, $ (x + wordToNat (natToWord sz y)) = natToWord sz (x + y).
 Proof.
   intros.
@@ -127,7 +129,7 @@ Proof.
     rewrite wordToNat_natToWord_idempotent' in H |
     (* ... or it's true even without the hypothesis *)
     generalize (wordToNat_bound (natToWord sz y))];
-  intuition; omega.
+  intuition; unfold goodSize in *; omega.
 Qed.
 
 
@@ -135,6 +137,9 @@ Lemma zero_lt_pow2 : forall sz, 0 < pow2 sz.
 Proof.
   induction sz; simpl; omega.
 Qed.
+
+(* simpl causes problems *)
+Ltac mynsimp H := repeat progress (autorewrite with N in H).
 
 Ltac word2nat_simpl :=
   try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
@@ -150,15 +155,15 @@ Ltac word2nat_simpl :=
   | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
   end.
 
-(* XXX this should probably word2nat_auto side goals -- mutual recursion? *)
-Ltac word2nat_solve := omega || ((apply div_le; [| word2nat_solve] || apply zero_lt_pow2 || apply wordToNat_bound
-  || apply Nat.mod_upper_bound
-  || (eapply le_lt_trans; [(apply div_le || apply Nat.mod_le) |]; word2nat_solve) || idtac); solve [auto]).
-
+Ltac word2nat_solve := unfold goodSize in *; (omega
+  || ((apply div_le; [| word2nat_auto]
+    || apply zero_lt_pow2
+    || apply wordToNat_bound || apply wordToNat_good
+    || apply Nat.mod_upper_bound
+    || (eapply le_lt_trans; [(apply div_le || apply Nat.mod_le) |]; word2nat_auto) || idtac); solve [auto]))
 
 (* XXX does this actually rewrite from the inside out? *)
-Check wordToNat_div.
-Ltac word2nat_rewrites :=
+with word2nat_rewrites :=
   repeat ((match goal with
   | H : context[wordToNat (natToWord ?sz ?n)] |- _ =>
     rewrite (@wordToNat_natToWord_idempotent' sz n) in H; [|clear H]
@@ -169,9 +174,9 @@ Ltac word2nat_rewrites :=
   end
   || rewrite wordToNat_natToWord_idempotent'
   || rewrite N2Nat_word'
-  || rewrite wordToNat_div); word2nat_simpl).
+  || rewrite wordToNat_div); word2nat_simpl)
 
-Ltac word2nat_auto :=
+with word2nat_auto :=
   intros; word2nat_simpl; word2nat_rewrites; try word2nat_solve.
 
 Lemma wdiv_lt_upper_bound :

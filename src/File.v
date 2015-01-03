@@ -497,6 +497,10 @@ Module FILE.
     apply RecArray.in_selN; auto.
   Qed.
 
+  Lemma word_lt_nat : forall sz w n, (w < $ n)%word -> (@wordToNat sz w) < n.
+  Proof.
+    word2nat_auto.
+  Qed.
 
   Theorem fshrink'_ok : forall lxp bxp xp inum,
     {< F mbase m ilist bn len freeblocks,

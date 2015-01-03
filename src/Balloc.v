@@ -6,7 +6,6 @@ Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
 Require Import Omega.
-Require Import Log.
 Require Import Array.
 Require Import List.
 Require Import Bool.
@@ -15,9 +14,9 @@ Require Import Idempotent.
 Require Import Psatz.
 Require Import AddrMap.
 Require Import Rec.
-Require Import RecArray.
 Require Import NArith.
-
+Require Import Log.
+Require Import RecArray.
 
 Set Implicit Arguments.
 
@@ -83,7 +82,7 @@ Module BALLOC.
     RecArray.Build_xparams (BmapStart xp) (BmapNBlocks xp).
 
   Definition rep' xp (bmap : addr -> alloc_state) :=
-    ([[ (wordToN (BmapNBlocks xp) * N.of_nat valulen < Npow2 addrlen)%N ]] *
+    ([[ goodSize addrlen (wordToNat (BmapNBlocks xp) * valulen) ]] *
      RecArray.array_item itemtype items_per_valu blocksz (xp_to_raxp xp)
        (bmap_bits xp bmap))%pred.
 
@@ -99,13 +98,13 @@ Module BALLOC.
   (* The third hypothesis isn't necessary but makes things simpler *)
   Lemma upd_bmap_bits : forall xp a bn b state,
     b = alloc_state_to_bit state ->
-    (wordToN (BmapNBlocks xp) * N.of_nat valulen < Npow2 addrlen)%N ->
+    goodSize addrlen (wordToNat (BmapNBlocks xp) * valulen) ->
     wordToNat bn < wordToNat (BmapNBlocks xp) * valulen ->
     upd (bmap_bits xp a) bn b = bmap_bits xp (fupd a bn state).
   Proof.
     intros. rewrite H. unfold bmap_bits, upd.
-    rewrite updN_map_seq.
-    apply list_selN_ext with (default := $ (0)).
+    rewrite updN_map_seq by assumption.
+    eapply list_selN_ext with (default := $ (0)).
     repeat rewrite map_length; trivial.
     intros pos Hl.
     rewrite map_length in Hl. rewrite seq_length in Hl.
@@ -114,13 +113,10 @@ Module BALLOC.
     destruct (Nat.eq_dec pos (wordToNat bn)).
     rewrite e. rewrite natToWord_wordToNat. rewrite fupd_same; trivial.
     rewrite fupd_other. trivial.
-    apply f_neq with (f:=@wordToNat addrlen).
+    eapply f_neq.
     rewrite wordToNat_natToWord_idempotent'.
     auto.
     eapply Nat.lt_trans. apply Hl.
-    apply Nlt_out in H0. rewrite N2Nat.inj_mul in H0.
-    autorewrite with N in H0. autorewrite with W2Nat in H0.
-    rewrite <- Npow2_nat. assumption.
     assumption.
   Qed.
 
@@ -147,8 +143,20 @@ Module BALLOC.
     repeat (split; [constructor |]).
     pred_apply. cancel.
     erewrite upd_bmap_bits; try trivial.
-    apply wlt_mult_inj in H4. rewrite wordToNat_natToWord_idempotent in H4. assumption.
-    simpl. rewrite valulen_is. compute. trivial.
+    (* XXX for some extremely mysterious reason inlining [word2nat_simpl] here saves it from hanging *)
+    try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
+    unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
+    repeat match goal with
+    | [ H : _ <> _ |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
+    | [ H : _ = _ -> False |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
+    | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal wordToNat) in H
+               || apply Nlt_out in H || apply Nge_out in H); mynsimp H
+    end;
+    autorewrite with W2Nat in *;
+    repeat match goal with
+    | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
+    end.
+    word2nat_auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (free' _ _ _) _) => apply free'_ok : prog.
@@ -204,9 +212,21 @@ Module BALLOC.
     cancel.
     hoare.
     apply pimpl_or_r. right.
-    (* XXX word automation *)
-    apply wlt_mult_inj in H0.
-    rewrite wordToNat_natToWord_idempotent in H0 by (simpl; rewrite valulen_is; compute; trivial).
+     (* XXX for some extremely mysterious reason inlining [word2nat_simpl] here saves it from hanging *)
+    try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
+    unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
+    repeat match goal with
+    | [ H : _ <> _ |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
+    | [ H : _ = _ -> False |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
+    | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal wordToNat) in H
+               || apply Nlt_out in H || apply Nge_out in H); mynsimp H
+    end;
+    autorewrite with W2Nat in *;
+    repeat match goal with
+    | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
+    end.
+    word2nat_auto.
+    clear H6. (* XXX need to hunt down this [pow2 addrlen] *)
     cancel.
     rewrite <- H10. unfold bmap_bits, sel.
     autorewrite with core; auto.
@@ -293,8 +313,8 @@ Module BALLOC.
     induction l; intro Hi.
     inversion Hi.
     simpl; destruct ((@weq _) x a).
-    (* have to prove [x] can't be in [l] (or the left side couldn't be disjoint) *)
     + intros m Hp.
+      (* have to prove [x] can't be in [l] (or the left side couldn't be disjoint) *)
       rewrite e.
       rewrite remove_not_In. trivial.
       subst. intro Hil.

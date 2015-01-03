@@ -155,7 +155,8 @@ Definition For_ (T: Set)
   apply lt_wlt.
 
   rewrite wordToNat_natToWord_idempotent';
-    [| assert (wordToNat For_args_n0 < pow2 addrlen) by apply wordToNat_bound; omega ].
+    [| assert (wordToNat For_args_n0 < pow2 addrlen) by apply wordToNat_bound;
+       unfold goodSize in *; omega ].
   apply PeanoNat.Nat.sub_lt; omega.
 
   unfold wlt, not in *; intro Hn.
