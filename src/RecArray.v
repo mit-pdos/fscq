@@ -265,7 +265,7 @@ Section RECARRAY.
   Qed.
 
   Theorem array_item_well_formed' :
-    forall xp vs, array_item xp vs =p=> [[ Forall Rec.well_formed vs ]] * any.
+    forall xp vs, array_item xp vs =p=> [[ Forall Rec.well_formed vs ]] * array_item xp vs.
   Proof.
     intros. apply lift_impl. apply array_item_well_formed.
   Qed.

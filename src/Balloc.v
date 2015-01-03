@@ -273,7 +273,7 @@ Module BALLOC.
      listpred (fun a => a |->?) freeblocks)%pred.
 
   Lemma remove_not_In :
-    forall T dec (a : T) l, ~ In a l -> remove dec a l = l.   
+    forall T dec (a : T) l, ~ In a l -> remove dec a l = l.
   Proof.
     induction l.
     auto.
@@ -305,31 +305,51 @@ Module BALLOC.
     rewrite He. tauto.
   Qed.
 
-  Lemma listpred_remove : forall x l,
-    In x l ->
-    listpred (fun a => a |->?) l =p=>
-        (fun a => a |->?) x * listpred (fun a => a |->?) (remove (@weq _) x l).
+  Lemma listpred_nodup :
+    forall T P l m,
+      (forall x y : T, {x = y} + {x <> y}) ->
+      (forall (y : T) m', ~ (P y * P y)%pred m') ->
+      listpred P l m -> NoDup l.
   Proof.
-    induction l; intro Hi.
-    inversion Hi.
-    simpl; destruct ((@weq _) x a).
-    + intros m Hp.
-      (* have to prove [x] can't be in [l] (or the left side couldn't be disjoint) *)
-      rewrite e.
-      rewrite remove_not_In. trivial.
-      subst. intro Hil.
-      rewrite listpred_pick with (x := a) in Hp by assumption; subst.
-      unfold sep_star in Hp; rewrite sep_star_is in Hp; unfold sep_star_impl in Hp.
-      destruct Hp as [m1 Hp]. destruct Hp as [x1 Hp]. repeat destruct Hp as [? Hp].
-      subst.
-      apply disj_union in H0. unfold mem_disjoint in H0.
-      unfold ptsto in H1. destruct H1.
-      unfold ptsto in H4. destruct H4.
-      destruct H0. repeat eexists. apply H. apply H1.
-    + simpl. rewrite <- sep_star_assoc.
-      rewrite (sep_star_comm (x |->?) (a |->?)). rewrite IHl.
-      rewrite sep_star_assoc. auto.
-      destruct Hi; subst; tauto.
+    induction l; intuition; constructor; simpl in H0.
+    intro Hin.
+    revert H0.
+    erewrite listpred_pick by (apply Hin).
+    (* XXX should be possible not to bash this *)
+    unfold_sep_star; intuition.
+    do 2 destruct H0. intuition. destruct H4. do 2 destruct H3. intuition.
+    eapply H.
+    unfold_sep_star.
+    exists x. exists x2.
+    repeat split; [ subst; eapply disj_union; eauto | | ]; intuition; eauto.
+
+    revert H0.
+    unfold_sep_star.
+    intuition. do 2 destruct H0. intuition.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma listpred_nodup' :
+    forall T P l,
+      (forall x y : T, {x = y} + {x <> y}) ->
+      (forall (y : T) m', ~ (P y * P y)%pred m') ->
+      listpred P l =p=> [[ NoDup l ]] * listpred P l.
+    intros. apply lift_impl. intros. eapply listpred_nodup; eauto.
+  Qed.
+
+  Lemma listpred_remove :
+    forall T (dec : forall x y : T, {x = y} + {x <> y}) P (x : T) l,
+      (forall (y : T) m', ~ (P y * P y)%pred m') ->
+      In x l ->
+      listpred P l =p=> P x * listpred P (remove dec x l).
+  Proof.
+    intros.
+    induction l.
+    cancel.
+    rewrite listpred_nodup'; eauto.
+    simpl; destruct (dec x a).
+    cancel; inversion H2; rewrite remove_not_In; eauto.
+    rewrite IHl; [ cancel | destruct H0; subst; tauto ].
   Qed.
 
   Lemma remove_still_In : forall T dec (a b : T) l,
@@ -362,6 +382,11 @@ Module BALLOC.
     simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
   Qed.
 
+  Lemma ptsto_conflict : forall x m, ~ (x |->? * x |->?)%pred m.
+  Proof.
+    unfold_sep_star; firstorder discriminate.
+  Qed.
+
   Theorem alloc_ok : forall lxp xp,
     {< Fm mbase m freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) * [[ (Fm * rep xp freeblocks)%pred m ]]
@@ -384,7 +409,7 @@ Module BALLOC.
     split; [split; trivial |].
     pred_apply.
     instantiate (a1 := remove (@weq addrlen) a0 l).
-    erewrite listpred_remove. cancel.
+    erewrite listpred_remove with (dec := @weq addrlen). cancel.
     assert (a a2 = Avail) as Ha.
     apply H8.
     eapply remove_still_In; apply H0.
@@ -393,9 +418,10 @@ Module BALLOC.
     eapply remove_still_In_ne; apply H0.
     assert (a0 <> a2).
     intro He. subst. rewrite fupd_same in H0. discriminate. trivial.
-    rewrite fupd_other in H0 by assumption. 
+    rewrite fupd_other in H0 by assumption.
     apply remove_other_In. assumption.
     rewrite H8; assumption.
+    apply ptsto_conflict.
     rewrite H8; assumption.
   Qed.
 

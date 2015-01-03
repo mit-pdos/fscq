@@ -831,10 +831,8 @@ Proof.
   firstorder.
 Qed.
 
-Theorem lift_impl : forall (P : pred) (Q : Prop), (forall m, P m -> Q) -> P =p=> [[ Q ]] * any.
+Theorem lift_impl : forall (P : pred) (Q : Prop), (forall m, P m -> Q) -> P =p=> [[ Q ]] * P.
 Proof.
-  intros. etransitivity; hnf.
-  apply H.
   intros. unfold_sep_star.
   exists (fun _ => None). exists m.
   intuition; hnf; try tauto; firstorder discriminate.
