@@ -608,7 +608,8 @@ Module FILE.
     remember (sel l inum INODE.inode_zero) as i.
     unfold Rec.recset', Rec.recget'; simpl; intros.
     destruct i; auto.
-    admit.
+    destruct p1; auto.
+    inversion H11; subst; auto.
    Qed.
 
   Hint Extern 1 ({{_}} progseq (fgrow' _ _ _ _) _) => apply fgrow'_ok : prog.
