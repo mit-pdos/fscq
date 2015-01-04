@@ -76,9 +76,97 @@ Proof.
   intuition. apply wordToNat_inj in H0; tauto.
 Qed.
 
+Lemma divmod_Ndiv_eucl :
+  forall a b Sb,
+    Pos.to_nat Sb = S b ->
+    N.to_nat (fst (N.pos_div_eucl a (N.pos Sb))) =
+    fst (Nat.divmod (Pos.to_nat a) b 0 b) /\
+    N.to_nat (snd (N.pos_div_eucl a (N.pos Sb))) =
+    b - snd (Nat.divmod (Pos.to_nat a) b 0 b).
+Proof.
+  intros.
+  (* Remember the specs of divmod and pow_div_eucl... *)
+  generalize (N.pos_div_eucl_spec a (N.pos Sb)); intro HN.
+  generalize (N.pos_div_eucl_remainder a (N.pos Sb)); intro HNR.
+  remember (N.pos_div_eucl a (N.pos Sb)) as DN; destruct DN.
+  generalize (Nat.divmod_spec (Pos.to_nat a) b 0 b); intro HNat.
+  remember (Nat.divmod (Pos.to_nat a) b 0 b) as DNat; destruct DNat.
+  simpl.
+  destruct HNat; auto.
+  (* ... and show that they are equivalent *)
+  apply (f_equal nat_of_N) in HN.
+  rewrite nat_of_Nplus in HN.
+  rewrite nat_of_Nmult in HN.
+  repeat rewrite positive_N_nat in HN.
+  rewrite H in HN.
+  rewrite Nat.mul_0_r in H0.
+  rewrite Nat.sub_diag in H0.
+  repeat rewrite Nat.add_0_r in H0.
+  rewrite Nat.mul_comm in H0.
+  clear HeqDN. clear HeqDNat.
+  rewrite H0 in HN.
+  clear H0.
+  assert (N.pos Sb <> 0%N).
+  apply Nneq_in. simpl.
+  generalize (Pos2Nat.is_pos Sb).
+  omega.
+  apply Nlt_out in HNR; [|auto].
+  rewrite positive_N_nat in HNR.
+  simpl in HNR.
+  assert (N.to_nat n = n1).
+  destruct (lt_eq_lt_dec (N.to_nat n) n1); [destruct s; auto|]; [
+    remember (n1 - N.to_nat n) as d;
+    assert (n1 = d + N.to_nat n) as He by omega |
+    remember (N.to_nat n - n1) as d;
+    assert (N.to_nat n = d + n1) as He by omega
+  ]; assert (d > 0) by omega;
+     rewrite He in HN;
+     rewrite Nat.mul_add_distr_r in HN;
+     destruct (mult_O_le (S b) d); omega.
+  intuition.
+  rewrite H2 in HN.
+  omega.
+Qed.
+
 (* The standard library should really define this... *)
-Lemma Ninj_div : forall a a' : N, N.to_nat (a / a') = N.to_nat a / N.to_nat a'. admit. Qed.
-Lemma Ninj_mod : forall a a' : N, N.to_nat (a mod a') = (N.to_nat a) mod (N.to_nat a'). admit. Qed.
+Lemma Ninj_div : forall a a' : N, N.to_nat (a / a') = N.to_nat a / N.to_nat a'.
+  destruct a.
+  destruct a'; [|rewrite Nat.div_0_l]; auto.
+  replace 0 with (N.to_nat 0) by auto.
+  apply Nneq_out; discriminate.
+  unfold Ndiv, Nat.div.
+  intro a'.
+  case_eq (N.to_nat a').
+  + intro He.
+    destruct a'.
+    reflexivity.
+    inversion He.
+    generalize (Pos2Nat.is_pos p0).
+    omega.
+  + intros.
+    simpl.
+    destruct a'; try discriminate.
+    rewrite positive_N_nat in H.
+    apply divmod_Ndiv_eucl; auto.
+Qed.
+
+Lemma Ninj_mod : forall a a' : N, N.to_nat a' <> 0 ->
+  N.to_nat (a mod a') = (N.to_nat a) mod (N.to_nat a').
+Proof.
+  destruct a.
+  destruct a'; [|rewrite Nat.mod_0_l]; auto.
+  replace 0 with (N.to_nat 0) by auto.
+  apply Nneq_out. discriminate.
+  unfold Nmod, Nat.modulo.
+  intros.
+  case_eq (N.to_nat a').
+  omega.
+  simpl.
+  destruct a'; try discriminate.
+  intro n.
+  apply divmod_Ndiv_eucl; auto.
+Qed.
+
 Hint Rewrite Ninj_div Ninj_mod N2Nat.inj_mul N2Nat.inj_add N2Nat.inj_sub : W2Nat.
 
 Lemma wordToNat_mult : forall sz (n m:word sz),
