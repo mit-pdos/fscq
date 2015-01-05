@@ -127,8 +127,8 @@ Qed.
 Definition For_ (T: Set)
                 (L : Set) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
-                (nocrash : G -> addr -> L -> pred)
-                (crashed : G -> pred)
+                (nocrash : G -> addr -> L -> @pred valu)
+                (crashed : G -> @pred valu)
                 (rx: L -> prog T) : prog T.
   refine (Fix (@for_args_wf L) (fun _ => prog T)
           (fun args For_ => _)

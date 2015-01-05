@@ -5,7 +5,7 @@ Set Implicit Arguments.
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
-Fixpoint array (a : addr) (vs : list valu) (stride : addr) :=
+Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
   match vs with
     | nil => emp
     | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
@@ -287,10 +287,10 @@ Qed.
 
 (** * Isolating an array cell *)
 
-Lemma isolate_fwd' : forall vs i a stride,
+Lemma isolate_fwd' : forall V vs i a stride (default : V),
   i < length vs
   -> array a vs stride =p=> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i $0
+     * (a ^+ $ i ^* stride) |-> selN vs i default
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
 Proof.
   induction vs; simpl; intuition.
@@ -313,10 +313,10 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_fwd : forall (a i : addr) vs stride,
+Theorem isolate_fwd : forall V (a i : addr) vs stride (default : V),
   wordToNat i < length vs
   -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i $0
+     * (a ^+ i ^* stride) |-> sel vs i default
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
@@ -326,10 +326,10 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Lemma isolate_bwd' : forall vs i a stride,
+Lemma isolate_bwd' : forall V vs i a stride (default : V),
   i < length vs
   -> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i $0
+     * (a ^+ $ i ^* stride) |-> selN vs i default
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
   =p=> array a vs stride.
 Proof.
@@ -353,10 +353,10 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_bwd : forall (a i : addr) vs stride,
+Theorem isolate_bwd : forall V (a i : addr) vs stride (default : V),
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i $0
+     * (a ^+ i ^* stride) |-> sel vs i default
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
   =p=> array a vs stride.
 Proof.
@@ -367,24 +367,24 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Theorem array_progupd : forall l off v m,
+Theorem array_progupd : forall V l off (v : V) m (default : V),
   array $0 l $1 m
   -> wordToNat off < length l
   -> array $0 (updN l (wordToNat off) v) $1 (Prog.upd m off v).
 Proof.
   intros.
-  eapply isolate_bwd.
+  eapply isolate_bwd with (default:=default).
   autorewrite with core.
   eassumption.
   eapply pimpl_trans; [| apply pimpl_refl | eapply ptsto_upd ].
   unfold sel; rewrite selN_updN_eq by auto.
   cancel.
   pred_apply.
-  rewrite isolate_fwd by eassumption.
+  rewrite isolate_fwd with (default:=default) by eassumption.
   simpl.
   rewrite firstn_updN by auto.
   rewrite skipn_updN by auto.
-  fold sep_star.
+  fold @sep_star.
   cancel.
 Qed.
 
@@ -474,7 +474,7 @@ Proof.
   auto.
 
   step.
-  erewrite <- isolate_bwd with (vs:=(upd l i v)) (i:=i) by (autorewrite_fast; auto).
+  erewrite <- isolate_bwd with (vs:=(upd l i v)) (i:=i) (default:=$0) by (autorewrite_fast; auto).
   autorewrite with core.
   cancel.
   autorewrite with core.
@@ -483,7 +483,7 @@ Proof.
   destruct r_; auto.
 
   pimpl_crash.
-  rewrite <- isolate_bwd with (vs:=l).
+  rewrite <- isolate_bwd with (vs:=l) (default:=$0).
   cancel.
   auto.
 Qed.
@@ -541,7 +541,8 @@ Qed.
 Section LISTPRED.
 
   Variable T : Type.
-  Variable prd : T -> pred.
+  Variable V : Type.
+  Variable prd : T -> @pred V.
   Variable def : T.
 
   Fixpoint listpred (ts : list T) :=
