@@ -43,14 +43,14 @@ Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right asso
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
 
 
-Definition mem := addr -> option valu.
-Definition upd (m : mem) (a : addr) (v : valu) : mem :=
+Definition mem {V: Type} := addr -> option V.
+Definition upd {V: Type} (m : mem) (a : addr) (v : V) : mem :=
   fun a' => if addr_eq_dec a' a then Some v else m a'.
 
 Inductive outcome (T: Set) :=
 | Failed
-| Finished (m: mem) (v: T)
-| Crashed (m: mem).
+| Finished (m: @mem valu) (v: T)
+| Crashed (m: @mem valu).
 
 Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
@@ -71,8 +71,8 @@ Hint Constructors exec.
 
 Inductive recover_outcome (TF TR: Set) :=
 | RFailed
-| RFinished (m: mem) (v: TF)
-| RRecovered (m: mem) (v: TR).
+| RFinished (m: @mem valu) (v: TF)
+| RRecovered (m: @mem valu) (v: TR).
 
 Inductive exec_recover (TF TR: Set)
   : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
@@ -93,7 +93,11 @@ Inductive exec_recover (TF TR: Set)
 Hint Constructors exec_recover.
 
 
-Theorem upd_eq : forall m a v a',
+Section GenMem.
+
+Variable V : Type.
+
+Theorem upd_eq : forall m a (v:V) a',
   a' = a
   -> upd m a v a' = Some v.
 Proof.
@@ -101,7 +105,7 @@ Proof.
   destruct (addr_eq_dec a a); tauto.
 Qed.
 
-Theorem upd_ne : forall m a v a',
+Theorem upd_ne : forall m a (v:V) a',
   a' <> a
   -> upd m a v a' = m a'.
 Proof.
@@ -109,7 +113,7 @@ Proof.
   destruct (addr_eq_dec a' a); tauto.
 Qed.
 
-Theorem upd_repeat: forall m a v v',
+Theorem upd_repeat: forall m a (v v':V),
   upd (upd m a v') a v = upd m a v.
 Proof.
   intros; apply functional_extensionality; intros.
@@ -118,7 +122,7 @@ Proof.
   repeat rewrite upd_ne; auto.
 Qed.
 
-Theorem upd_comm: forall m a0 v0 a1 v1, a0 <> a1
+Theorem upd_comm: forall m a0 (v0:V) a1 v1, a0 <> a1
   -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.
   intros; apply functional_extensionality; intros.
@@ -128,6 +132,8 @@ Proof.
   rewrite upd_ne; auto. rewrite upd_eq; auto. rewrite upd_eq; auto.
   rewrite upd_ne; auto. rewrite upd_ne; auto. rewrite upd_ne; auto. rewrite upd_ne; auto.
 Qed.
+
+End GenMem.
 
 Lemma addrlen_valulen: addrlen + (valulen - addrlen) = valulen.
 Proof.
