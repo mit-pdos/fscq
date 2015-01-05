@@ -9,7 +9,7 @@ Set Implicit Arguments.
 
 Definition donecond (T: Set) := T -> @mem valu -> Prop.
 
-Definition corr2 (T: Set) (pre: donecond T -> @pred valu -> @pred valu) (p: prog T) :=
+Definition corr2 (T: Set) (pre: donecond T -> pred -> pred) (p: prog T) :=
   forall done crash m out, pre done crash m
   -> exec m p out
   -> (exists m' v, out = Finished m' v /\ done v m') \/
@@ -19,7 +19,7 @@ Notation "{{ pre }} p" := (corr2 pre%pred p)
   (at level 0, p at level 60).
 
 
-Definition corr3 (TF TR: Set) (pre: donecond TF -> donecond TR -> @pred valu)
+Definition corr3 (TF TR: Set) (pre: donecond TF -> donecond TR -> pred)
                  (p1: prog TF) (p2: prog TR) :=
   forall done crashdone m out, pre done crashdone m
   -> exec_recover m p1 p2 out
@@ -204,7 +204,7 @@ Qed.
 
 
 Instance corr2_proper {T : Set} :
-  Proper (pointwise_relation (donecond T) (pointwise_relation (@pred valu) (@piff _))
+  Proper (pointwise_relation (donecond T) (pointwise_relation pred piff)
           ==> eq ==> iff) (@corr2 T).
 Proof.
   intros a b Hab x y Hxy; subst.
@@ -212,7 +212,7 @@ Proof.
 Qed.
 
 Instance corr3_proper {T R : Set} :
-  Proper (pointwise_relation (donecond T) (pointwise_relation (donecond R) (@piff _))
+  Proper (pointwise_relation (donecond T) (pointwise_relation (donecond R) piff)
           ==> eq ==> eq ==> iff) (@corr3 T R).
 Proof.
   intros a b Hab x y Hxy p q Hpq; subst.

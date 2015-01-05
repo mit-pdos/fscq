@@ -32,13 +32,13 @@ Ltac pred_apply := match goal with
   | [ |- exists _, _ ] => eexists; pred_apply
   end.
 
-Definition pred_fold_left (l : list pred) : pred :=
+Definition pred_fold_left (V: Type) (l : list (@pred V)) : (@pred V) :=
   match l with
   | nil => emp
   | a :: t => fold_left sep_star t a
   end.
 
-Definition stars (ps : list pred) :=
+Definition stars {V: Type} (ps : list (@pred V)) :=
   pred_fold_left ps.
 Arguments stars : simpl never.
 
@@ -58,7 +58,7 @@ Ltac sep_imply :=
   | [ |- _ _ _ ?m ] => sep_imply' m
   end.
 
-Theorem start_normalizing : forall PT QT p q ps qs P Q,
+Theorem start_normalizing : forall V PT QT (p : @pred V) q ps qs P Q,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
   -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
   -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) =p=>
@@ -79,7 +79,7 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Theorem start_normalizing_apply : forall PT p ps P m,
+Theorem start_normalizing_apply : forall V PT (p : @pred V) ps P m,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
   -> p m
   -> (exists (x:PT), stars (ps x) * [[P x]])%pred m.
@@ -88,7 +88,7 @@ Proof.
 Qed.
 
 Theorem restart_canceling:
-  forall p q,
+  forall V p (q : @pred V),
   (stars p * stars nil =p=> q) ->
   (stars nil * stars p =p=> q).
 Proof.
@@ -96,8 +96,8 @@ Proof.
 Qed.
 
 Lemma stars_prepend':
-  forall l x,
-  fold_left sep_star l x <=p=> x * fold_left sep_star l emp.
+  forall V l x,
+  fold_left sep_star l x <=p=> x * fold_left sep_star l (@emp V).
 Proof.
   induction l.
   - simpl. intros.
@@ -123,7 +123,7 @@ Proof.
 Qed.
 
 Lemma stars_prepend:
-  forall l x,
+  forall V l (x : @pred V),
   stars (x :: l) <=p=> x * stars l.
 Proof.
   unfold stars, pred_fold_left; simpl; intros.
@@ -142,13 +142,13 @@ Proof.
     apply pimpl_star_emp.
 Qed.
 
-Lemma flatten_default' : forall p,
+Lemma flatten_default' : forall V (p : @pred V),
   p <=p=> stars (p :: nil).
 Proof.
   firstorder.
 Qed.
 
-Lemma flatten_default : forall p,
+Lemma flatten_default : forall V (p : @pred V),
   p <=p=> exists (x:unit), stars (p :: nil) * [[True]].
 Proof.
   unfold stars; split.
@@ -160,13 +160,13 @@ Proof.
     firstorder.
 Qed.
 
-Lemma flatten_emp' : emp <=p=> stars nil.
+Lemma flatten_emp' : forall V, (@emp V) <=p=> stars nil.
 Proof.
   firstorder.
 Qed.
 
-Lemma flatten_emp :
-  emp <=p=> exists (x:unit), stars nil * [[True]].
+Lemma flatten_emp : forall V,
+  (@emp V) <=p=> exists (x:unit), stars nil * [[True]].
 Proof.
   split.
   - apply pimpl_exists_r; exists tt.
