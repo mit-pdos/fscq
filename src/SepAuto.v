@@ -177,7 +177,7 @@ Proof.
     firstorder.
 Qed.
 
-Lemma flatten_star' : forall p q ps qs,
+Lemma flatten_star' : forall V (p : @pred V) q ps qs,
   p <=p=> stars ps
   -> q <=p=> stars qs
   -> p * q <=p=> stars (ps ++ qs).
@@ -197,7 +197,7 @@ Proof.
     apply piff_refl.
 Qed.
 
-Lemma flatten_star : forall PT QT p q ps qs P Q,
+Lemma flatten_star : forall V PT QT (p : @pred V) q ps qs P Q,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
   -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
   -> p * q <=p=> exists (x:PT*QT), stars (ps (fst x) ++ qs (snd x)) * [[P (fst x) /\ Q (snd x)]].
@@ -235,7 +235,7 @@ Proof.
     apply flatten_star'; apply piff_refl.
 Qed.
 
-Lemma flatten_exists: forall T PT p ps P,
+Lemma flatten_exists: forall V T PT (p : _ -> @pred V) ps P,
   (forall (a:T), (p a <=p=> exists (x:PT), stars (ps a x) * [[P a x]]))
   -> (exists (a:T), p a) <=p=>
       (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
@@ -253,8 +253,8 @@ Proof.
     apply pimpl_refl.
 Qed.
 
-Lemma flatten_lift_empty: forall P,
-  [[P]] <=p=> (exists (x:unit), stars nil * [[P]]).
+Lemma flatten_lift_empty: forall V P,
+  [[P]] <=p=> (exists (x:unit), stars (@nil (@pred V)) * [[P]]).
 Proof.
   split.
   - apply pimpl_exists_r. exists tt. apply emp_star.
@@ -272,7 +272,7 @@ Ltac flatten := repeat match goal with
                        | _ => apply flatten_default
                        end.
 
-Definition okToUnify (p1 p2 : pred) := p1 = p2.
+Definition okToUnify {V} (p1 p2 : @pred V) := p1 = p2.
 
 Hint Extern 0 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
 Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
@@ -343,7 +343,7 @@ Ltac wordcmp := repeat wordcmp_one.
 Hint Extern 0 (okToUnify (?a |-> _) (?b |-> _)) =>
   unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
 
-Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
+Inductive pick {V} (lhs : pred) : list (@pred V) -> list pred -> Prop :=
 | PickFirst : forall p ps,
   okToUnify lhs p
   -> pick lhs (p :: ps) ps
@@ -351,7 +351,7 @@ Inductive pick (lhs : pred) : list pred -> list pred -> Prop :=
   pick lhs ps ps'
   -> pick lhs (p :: ps) (p :: ps').
 
-Lemma pick_later_and : forall p p' ps ps' a b,
+Lemma pick_later_and : forall V (p : @pred V) p' ps ps' (a b : @pred V),
   pick p ps ps' /\ (a =p=> b)
   -> pick p (p' :: ps) (p' :: ps') /\ (a =p=> b).
 Proof.
@@ -361,7 +361,7 @@ Qed.
 Ltac pick := solve [ repeat ((apply PickFirst; solve [ trivial with okToUnify ])
                                || apply PickLater) ].
 
-Theorem imply_one : forall qs qs' p q ps F,
+Theorem imply_one : forall V qs qs' (p : @pred V) q ps F,
   (pick q qs qs' /\ (p =p=> q))
   -> (stars ps * F =p=> stars qs')
   -> stars (p :: ps) * F =p=> stars qs.
@@ -381,7 +381,7 @@ Proof.
     eapply pimpl_sep_star. eapply sep_star_comm. eapply pimpl_refl.
 Qed.
 
-Theorem cancel_one : forall qs qs' p ps F,
+Theorem cancel_one : forall V qs qs' (p : @pred V) ps F,
   pick p qs qs'
   -> (stars ps * F =p=> stars qs')
   -> stars (p :: ps) * F =p=> stars qs.
@@ -392,7 +392,7 @@ Qed.
 
 Ltac cancel_one := eapply cancel_one; [ pick | ].
 
-Theorem delay_one : forall p ps q qs,
+Theorem delay_one : forall V (p : @pred V) ps q qs,
   (stars ps * stars (p :: qs) =p=> q)
   -> stars (p :: ps) * stars qs =p=> q.
 Proof.
@@ -416,19 +416,19 @@ Proof.
   firstorder.
 Qed.
 
-Lemma finish_frame : forall p,
+Lemma finish_frame : forall V (p : @pred V),
   stars nil * p =p=> stars (p :: nil).
 Proof.
   unfold stars. intros. apply star_emp_pimpl.
 Qed.
 
-Lemma finish_easier : forall p,
+Lemma finish_easier : forall V (p : @pred V),
   stars nil * p =p=> p.
 Proof.
   unfold stars. apply emp_star.
 Qed.
 
-Lemma finish_unify : forall p,
+Lemma finish_unify : forall V (p : @pred V),
   stars nil * stars (p :: nil) =p=> p.
 Proof.
   unfold stars; simpl; intros.
@@ -442,7 +442,7 @@ Ltac finish_unify :=
 Ltac cancel' := repeat (cancel_one || delay_one);
                 try (apply finish_frame || apply finish_easier || finish_unify).
 
-Theorem split_or_one : forall q pa pb ps F,
+Theorem split_or_one : forall V (q : @pred V) pa pb ps F,
   stars (pa :: ps) * F =p=> q
   -> stars (pb :: ps) * F =p=> q
   -> stars ((pa \/ pb) :: ps) * F =p=> q.
@@ -463,7 +463,7 @@ Proof.
     eauto.
 Qed.
 
-Theorem exists_one : forall T p ps F q,
+Theorem exists_one : forall V T p ps F (q : @pred V),
   (forall a:T, stars (p a :: ps) * F =p=> q)
   -> stars ((exists a:T, p a) :: ps) * F =p=> q.
 Proof.
@@ -489,14 +489,14 @@ Ltac split_one := match goal with
 Ltac split_or_l := repeat ( (repeat split_one) ; delay_one );
                    apply restart_canceling.
 
-Lemma stars_or_left: forall a b c,
+Lemma stars_or_left: forall V (a b c : @pred V),
   (a =p=> stars (b :: nil))
   -> (a =p=> stars ((b \/ c) :: nil)).
 Proof.
   firstorder.
 Qed.
 
-Lemma stars_or_right: forall a b c,
+Lemma stars_or_right: forall V (a b c : @pred V),
   (a =p=> stars (c :: nil))
   -> (a =p=> stars ((b \/ c) :: nil)).
 Proof.
@@ -584,15 +584,16 @@ Ltac set_norm_goal :=
 (* The goal of pimpl_hidden is to prevent "auto with norm_hint_right" from
  * solving things automatically for us, unless we have an explicit hint..
  *)
-Definition pimpl_hidden := pimpl.
+Definition pimpl_hidden := @pimpl.
 Infix "=!=>" := pimpl_hidden (at level 90).
-Theorem pimpl_hide: forall a b, (pimpl_hidden a b) -> (pimpl a b).
+Arguments pimpl_hidden {V} _ _.
+Theorem pimpl_hide: forall V (a b : @pred V), (pimpl_hidden a b) -> (pimpl a b).
 Proof. auto. Qed.
-Theorem pimpl_unhide: forall a b, (pimpl a b) -> (pimpl_hidden a b).
+Theorem pimpl_unhide: forall V (a b : @pred V), (pimpl a b) -> (pimpl_hidden a b).
 Proof. auto. Qed.
 Opaque pimpl_hidden.
 
-Theorem replace_left : forall ps ps' q p p' F,
+Theorem replace_left : forall V ps ps' q (p : @pred V) p' F,
   pick p ps ps' /\ (p =p=> p')
   -> (stars (p' :: ps') * F =p=> q)
   -> (stars ps * F =p=> q).
@@ -617,7 +618,7 @@ Proof.
     auto.
 Qed.
 
-Theorem replace_right : forall ps ps' q p p',
+Theorem replace_right : forall V ps ps' q (p : @pred V) p',
   pick p ps ps' /\ (p' =p=> p)
   -> (q =p=> stars (p' :: ps'))
   -> (q =p=> stars ps).

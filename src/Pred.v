@@ -86,6 +86,9 @@ Arguments pimpl {V} _ _.
 Arguments piff {V} _ _.
 Arguments sep_star_impl {V} _ _ _.
 
+Hint Unfold pimpl.
+Hint Unfold piff.
+
 Infix "|->" := ptsto (at level 35) : pred_scope.
 Bind Scope pred_scope with pred.
 Delimit Scope pred_scope with pred.
