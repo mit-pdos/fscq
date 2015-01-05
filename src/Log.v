@@ -31,13 +31,13 @@ Record xparams := {
 Hint Extern 0 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
 
 Inductive logstate :=
-| NoTransaction (cur : mem)
+| NoTransaction (cur : @mem valu)
 (* Don't touch the disk directly in this state. *)
-| ActiveTxn (old : mem) (cur : mem)
+| ActiveTxn (old : @mem valu) (cur : @mem valu)
 (* A transaction is in progress.
  * It started from the first memory and has evolved into the second.
  * It has not committed yet. *)
-| CommittedTxn (cur : mem)
+| CommittedTxn (cur : @mem valu)
 (* A transaction has committed but the log has not been applied yet. *).
 
 Module LOG.
@@ -63,7 +63,7 @@ Module LOG.
   Qed.
 
   (* Check that a log is well-formed in memory. *)
-  Fixpoint valid_log m (l : log) : Prop :=
+  Fixpoint valid_log (m : @mem valu) (l : log) : Prop :=
     match l with
     | nil => True
     | (a, _) :: rest =>
@@ -82,7 +82,7 @@ Module LOG.
     intuition.
   Qed.
 
-  Theorem indomain_upd_1 : forall m a a' v,
+  Theorem indomain_upd_1 : forall m a a' (v : valu),
     indomain a m
     -> indomain a' (Prog.upd m a v)
     -> indomain a' m.
@@ -91,7 +91,7 @@ Module LOG.
     destruct (addr_eq_dec a' a); subst; auto.
   Qed.
 
-  Theorem indomain_upd_2 : forall m a a' v,
+  Theorem indomain_upd_2 : forall m a a' (v : valu),
     indomain a m
     -> indomain a' m
     -> indomain a' (Prog.upd m a v).
@@ -155,10 +155,10 @@ Module LOG.
                            (LogLength ?a |-> addr2valu $ (@length ?T ?b))) =>
     unify b (@nil T); constructor : okToUnify.
 
-  Definition data_rep old : pred :=
+  Definition data_rep old : @pred valu :=
     diskIs old.
 
-  Fixpoint avail_region start len : pred :=
+  Fixpoint avail_region start len : @pred valu :=
     match len with
     | O => emp
     | S len' => start |->? * avail_region (start ^+ $1) len'
@@ -220,7 +220,7 @@ Module LOG.
       * avail_region (LogStart xp ^+ $ (length l * 2))
                      ((wordToNat (LogLen xp) - length l) * 2))%pred.
 
-  Definition cur_rep (old : mem) (l : log) (cur : mem) : pred :=
+  Definition cur_rep (old : mem) (l : log) (cur : mem) : @pred valu :=
     [[ forall a, cur a = replay l old a ]]%pred.
 
   Definition rep xp (st : logstate) :=

@@ -85,6 +85,7 @@ Arguments any {V} _.
 Arguments pimpl {V} _ _.
 Arguments piff {V} _ _.
 Arguments sep_star_impl {V} _ _ _.
+Arguments indomain {V} _ _.
 
 Hint Unfold pimpl.
 Hint Unfold piff.
