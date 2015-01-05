@@ -16,6 +16,7 @@ Require Import Pack.
 Require Import Inode.
 Require Import Balloc.
 Require Import WordAuto.
+Require Import GenSep.
 
 Import ListNotations.
 
@@ -626,16 +627,17 @@ Module FILE.
    * the caller is effectively forced to abort.
    *)
   Theorem fgrow_ok : forall lxp bxp ixp inum,
-    {< F mbase m flist file,
+    {< F F' mbase m flist file,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep ixp bxp flist)%pred m ]] *
            [[ (inum < $ (length flist))%word ]] *
-           [[ file = sel flist inum empty_file ]] *
+           [[ (F' * inum |-> file)%pred (list2mem flist) ]] *
            [[ FileLen file < INODE.blocks_per_inode - 1 ]]
     POST:r [[ r = false]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
            [[ r = true ]] * exists m' flist' file',
            LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * rep ixp bxp flist')%pred m' ]] *
+           [[ (F' * inum |-> file')%pred (list2mem flist') ]] *
            [[ FileLen file' = (FileLen file) + 1 ]] *
            [[ flist' = upd flist inum file' ]]
     CRASH  LOG.log_intact lxp mbase
