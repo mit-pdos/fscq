@@ -143,6 +143,8 @@ Module BALLOC.
     repeat (split; [constructor |]).
     pred_apply. cancel.
     erewrite upd_bmap_bits; try trivial.
+    cancel.
+    trivial.
     (* XXX for some extremely mysterious reason inlining [word2nat_simpl] here saves it from hanging *)
     try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
     unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
@@ -232,6 +234,8 @@ Module BALLOC.
     autorewrite with core; auto.
     erewrite upd_bmap_bits; trivial.
     step.
+    trivial.
+    step.
     step.
   Qed.
 
@@ -260,6 +264,8 @@ Module BALLOC.
     hoare.
     cancel.
     hoare.
+    cancel.
+    hoare.
   Qed.
 
   (* Different names just so that we can state another theorem about them *)
@@ -284,7 +290,9 @@ Module BALLOC.
     simpl in Hni. tauto.
   Qed.
 
-  Lemma listpred_pick : forall T P (x : T) l, In x l -> listpred P l =p=> exists F, P x * F.
+  Lemma listpred_pick : forall V T (P : T -> @pred V) (x : T) l, 
+    In x l -> listpred P l =p=> exists F, P x * F.
+  Proof.
     induction l; intro Hi.
     inversion Hi.
     simpl.
@@ -294,7 +302,8 @@ Module BALLOC.
     cancel.
   Qed.
 
-  Lemma disj_union : forall a b c, mem_disjoint a (mem_union b c) -> mem_disjoint a b.
+  Lemma disj_union : forall V (a : @mem V) b c, 
+    mem_disjoint a (mem_union b c) -> mem_disjoint a b.
   Proof.
     unfold mem_disjoint, mem_union.
     intros.
@@ -306,7 +315,7 @@ Module BALLOC.
   Qed.
 
   Lemma listpred_nodup :
-    forall T P l m,
+    forall V T P l (m : @mem V),
       (forall x y : T, {x = y} + {x <> y}) ->
       (forall (y : T) m', ~ (P y * P y)%pred m') ->
       listpred P l m -> NoDup l.
@@ -330,7 +339,7 @@ Module BALLOC.
   Qed.
 
   Lemma listpred_nodup' :
-    forall T P l,
+    forall V T (P : T -> @pred V) l,
       (forall x y : T, {x = y} + {x <> y}) ->
       (forall (y : T) m', ~ (P y * P y)%pred m') ->
       listpred P l =p=> [[ NoDup l ]] * listpred P l.
@@ -338,7 +347,7 @@ Module BALLOC.
   Qed.
 
   Lemma listpred_remove :
-    forall T (dec : forall x y : T, {x = y} + {x <> y}) P (x : T) l,
+    forall V T (dec : forall x y : T, {x = y} + {x <> y}) (P : T -> @pred V) (x : T) l,
       (forall (y : T) m', ~ (P y * P y)%pred m') ->
       In x l ->
       listpred P l =p=> P x * listpred P (remove dec x l).
@@ -382,7 +391,7 @@ Module BALLOC.
     simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
   Qed.
 
-  Lemma ptsto_conflict : forall x m, ~ (x |->? * x |->?)%pred m.
+  Lemma ptsto_conflict : forall V x (m : @mem V), ~ (x |->? * x |->?)%pred m.
   Proof.
     unfold_sep_star; firstorder discriminate.
   Qed.

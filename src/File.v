@@ -89,7 +89,7 @@ Module FILE.
 
   Record file := {
      FileLen : nat;   (* Just a representation invariant, not used in computation *)
-    FileData : mem
+    FileData : @mem valu
   }.
 
   Definition empty_file := Build_file 0 (fun _ => None).
@@ -324,6 +324,7 @@ Module FILE.
     eapply ptsto_eq; [exact H4 | eauto | | ].
     eexists; cancel.
     eexists; rewrite isolate_fwd with (i:=off) by fsimpl.
+    instantiate (default := $0).
     cancel.
     cancel.
   Qed.
@@ -366,6 +367,8 @@ Module FILE.
     instantiate (a2:=w); assert (w=selN l2 (wordToNat off) $0).
     eapply ptsto_eq; [exact H4 | eauto | eexists; cancel | eexists ].
     rewrite isolate_fwd with (i:=off) by flensimpl; cancel.
+    instantiate (default := $0).
+    subst; cancel.
     subst; cancel.
 
     (* could run `step` here but it's super slow *)

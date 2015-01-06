@@ -793,6 +793,7 @@ Module LOG.
 
     eauto.
 
+    instantiate (default:=$0).
     step.
     step.
   Qed.
