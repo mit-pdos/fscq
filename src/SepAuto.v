@@ -422,25 +422,15 @@ Proof.
   unfold stars. intros. apply star_emp_pimpl.
 Qed.
 
-Lemma finish_easier : forall p,
-  stars nil * p =p=> p.
+Lemma finish_noframe :
+  stars nil * emp =p=> stars nil.
 Proof.
   unfold stars. apply emp_star.
 Qed.
 
-Lemma finish_unify : forall p,
-  stars nil * stars (p :: nil) =p=> p.
-Proof.
-  unfold stars; simpl; intros.
-  eapply pimpl_trans; [apply star_emp_pimpl|].
-  apply pimpl_refl.
-Qed.
-
-Ltac finish_unify :=
-  solve [ unfold stars at 3; simpl; apply finish_unify ].
-
 Ltac cancel' := repeat (cancel_one || delay_one);
-                try (apply finish_frame || apply finish_easier || finish_unify).
+                try solve [ unfold stars at 2; simpl;
+                            apply finish_frame || apply finish_noframe ].
 
 Theorem split_or_one : forall q pa pb ps F,
   stars (pa :: ps) * F =p=> q
