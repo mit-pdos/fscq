@@ -274,7 +274,7 @@ Proof.
       cancel.
 
       subst; apply H4; eauto.
-      intros; apply H8; clear H8.
+      intros; apply H7; clear H7.
       apply wlt_lt in H9.
       unfold wlt.
       repeat rewrite wordToN_nat.
@@ -304,7 +304,7 @@ Proof.
 
       unfold not; intros; apply H5.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H8; simpl in H8; auto.
+      apply wlt_lt in H7; simpl in H7; auto.
       subst; auto.
     + cancel.
 Qed.

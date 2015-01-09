@@ -681,7 +681,8 @@ Ltac norm := unfold pair_args_helper;
              set_norm_goal;
              repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
              solve [ exfalso ; auto with false_precondition_hint ] ||
-             ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] ).
+             ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] );
+             repeat clear_norm_goal.
 
 Ltac pimpl_crash :=
   try match goal with
