@@ -60,6 +60,7 @@ Fixpoint wordToN sz (w : word sz) : N :=
     | WS false w' => 2 * wordToN w'
     | WS true w' => Nsucc (2 * wordToN w')
   end%N.
+Arguments wordToN : simpl nomatch.
 
 Definition Nmod2 (n : N) : bool :=
   match n with
@@ -821,6 +822,7 @@ Theorem wordToNat_bound : forall sz (w : word sz), wordToNat w < pow2 sz.
 Qed.
 
 Definition goodSize sz n := n < pow2 sz.
+Arguments goodSize : simpl never.
 
 Theorem wordToNat_good : forall sz (w : word sz), goodSize sz (wordToNat w).
   apply wordToNat_bound.
@@ -1086,14 +1088,13 @@ Lemma wordToN_inj : forall sz (a b : word sz),
   wordToN a = wordToN b -> a = b.
 Proof.
   induction a; intro b0; rewrite (shatter_word b0); intuition.
-  simpl in H.
-  destruct b; destruct (whd b0); intros.
+  destruct b; destruct (whd b0); intros; unfold wordToN in H; fold wordToN in H.
   f_equal. eapply IHa. eapply Nsucc_inj in H.
-  destruct (wordToN a); destruct (wordToN (wtl b0)); try congruence.
+  destruct (wordToN a); destruct (wordToN (wtl b0)); simpl in H; try congruence.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
   f_equal. eapply IHa. 
-  destruct (wordToN a); destruct (wordToN (wtl b0)); try congruence.
+  destruct (wordToN a); destruct (wordToN (wtl b0)); simpl in *; try congruence.
 Qed.
 Lemma wordToNat_inj : forall sz (a b : word sz),
   wordToNat a = wordToNat b -> a = b.

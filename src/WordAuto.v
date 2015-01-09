@@ -167,7 +167,7 @@ Proof.
   apply divmod_Ndiv_eucl; auto.
 Qed.
 
-Hint Rewrite Ninj_div Ninj_mod N2Nat.inj_mul N2Nat.inj_add N2Nat.inj_sub : W2Nat.
+Hint Rewrite Ninj_div N2Nat.inj_mul N2Nat.inj_add N2Nat.inj_sub : W2Nat.
 
 Lemma wordToNat_mult : forall sz (n m:word sz),
   NToWord sz (wordToN n * wordToN m)%N = $ (wordToNat n * wordToNat m).
@@ -209,7 +209,7 @@ Proof.
 Qed.
 
 
-Lemma lt_ovf : forall sz x y, x < wordToNat (natToWord sz y) -> x < y /\ x < pow2 sz.
+Lemma lt_ovf : forall sz x y, x < wordToNat (natToWord sz y) -> x < y /\ goodSize sz x.
 Proof.
   intros.
   destruct (lt_dec y (pow2 sz)); [
@@ -226,11 +226,8 @@ Proof.
   induction sz; simpl; omega.
 Qed.
 
-(* simpl causes problems *)
-Ltac mynsimp H := repeat progress (autorewrite with N in H).
-
 Ltac word2nat_simpl :=
-  try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
+  try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX still causes hangs: simpl; *)
   unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
   repeat match goal with
   | [ H : _ <> _ |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); nsimp H
@@ -259,10 +256,13 @@ with word2nat_rewrites :=
     rewrite (@N2Nat_word' sz n) in H; [|clear H]
   | H : context[wordToNat (NToWord ?sz (wordToN ?a / wordToN ?b))] |- _ =>
     rewrite (@wordToNat_div sz a b); [|clear H]
+  | H : context[N.to_nat (?a mod ?b)] |- _ =>
+    rewrite (Ninj_mod a b); [|clear H]
   end
   || rewrite wordToNat_natToWord_idempotent'
   || rewrite N2Nat_word'
-  || rewrite wordToNat_div); word2nat_simpl)
+  || rewrite wordToNat_div
+  || rewrite Ninj_mod); word2nat_simpl)
 
 with word2nat_auto :=
   intros; word2nat_simpl; word2nat_rewrites; try word2nat_solve.

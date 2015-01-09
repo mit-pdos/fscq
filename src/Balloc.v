@@ -143,19 +143,6 @@ Module BALLOC.
     repeat (split; [constructor |]).
     pred_apply. cancel.
     erewrite upd_bmap_bits; try trivial.
-    (* XXX for some extremely mysterious reason inlining [word2nat_simpl] here saves it from hanging *)
-    try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
-    unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
-    repeat match goal with
-    | [ H : _ <> _ |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
-    | [ H : _ = _ -> False |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
-    | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal wordToNat) in H
-               || apply Nlt_out in H || apply Nge_out in H); mynsimp H
-    end;
-    autorewrite with W2Nat in *;
-    repeat match goal with
-    | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
-    end.
     word2nat_auto.
   Qed.
 
@@ -204,7 +191,6 @@ Module BALLOC.
     hoare.
     eapply pimpl_ok2. apply get_ok. (* XXX why doesn't eauto with prog work? *)
     apply items_per_valu_not_0.
-
     cancel.
     hoare.
     eapply pimpl_ok2. apply put_ok.
@@ -212,21 +198,7 @@ Module BALLOC.
     cancel.
     hoare.
     apply pimpl_or_r. right.
-     (* XXX for some extremely mysterious reason inlining [word2nat_simpl] here saves it from hanging *)
-    try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX this causes problems: simpl; *)
-    unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
-    repeat match goal with
-    | [ H : _ <> _ |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
-    | [ H : _ = _ -> False |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); mynsimp H
-    | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal wordToNat) in H
-               || apply Nlt_out in H || apply Nge_out in H); mynsimp H
-    end;
-    autorewrite with W2Nat in *;
-    repeat match goal with
-    | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
-    end.
     word2nat_auto.
-    clear H6. (* XXX need to hunt down this [pow2 addrlen] *)
     cancel.
     rewrite <- H10. unfold bmap_bits, sel.
     autorewrite with core; auto.
