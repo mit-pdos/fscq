@@ -307,11 +307,11 @@ Section RECARRAY.
     hoare.
     unfold array_item_pairs in *. cancel. autorewrite with core.
     unfold array_item_pairs in H3. destruct_lift H3.
-    rewrite H7. auto.
+    rewrite H6. auto.
     unfold array_item_pairs in H3. destruct_lift H3.
     subst. rewrite sel_map at 1. autorewrite with core. auto.
-    rewrite Forall_forall in H12. apply H12.
-    apply in_selN. rewrite H10. auto. rewrite H10. auto.
+    rewrite Forall_forall in H11. apply H11.
+    apply in_selN. rewrite H9. auto. rewrite H9. auto.
     unfold LOG.log_intact. cancel.
   Qed.
 
@@ -334,26 +334,26 @@ Section RECARRAY.
     unfold array_item_pairs. cancel.
     autorewrite with core. auto.
     unfold array_item_pairs in H. destruct_lift H.
-    rewrite H8. auto.
+    rewrite H7. auto.
     unfold array_item_pairs. cancel.
 
     (* Coq bug 3815 or 3816? *)
     autorewrite with core. auto.
     unfold array_item_pairs in H. destruct_lift H.
-    rewrite H11. auto.
+    rewrite H10. auto.
 
     apply pimpl_or_r. right. unfold array_item_pairs in *.
     destruct_lift H. cancel.
     autorewrite with core.
     rewrite sel_map at 1. autorewrite with core. cancel.
-    rewrite Forall_forall in H10. apply H10.
-    apply in_selN. rewrite H8. auto.  rewrite H8. auto.
+    rewrite Forall_forall in H9. apply H9.
+    apply in_selN. rewrite H7. auto.  rewrite H7. auto.
     autorewrite with core. auto.
     apply Forall_upd. assumption.
-    split. autorewrite with core. rewrite Forall_forall in H10. apply H10.
-    apply in_sel. rewrite H8. auto.
-    apply Forall_upd. rewrite Forall_forall in H10. apply H10. apply in_sel. rewrite H8. auto.
-    rewrite Forall_forall in H10.
+    split. autorewrite with core. rewrite Forall_forall in H9. apply H9.
+    apply in_sel. rewrite H7. auto.
+    apply Forall_upd. rewrite Forall_forall in H9. apply H9. apply in_sel. rewrite H7. auto.
+    rewrite Forall_forall in H9.
     auto.
   Qed.
 
@@ -401,7 +401,7 @@ Section RECARRAY.
     unfold array_item_pairs in H. unfold rep_block in H.
     destruct_lift H.
     apply nested_sel_divmod_concat; auto.
-    eapply Forall_impl; [| apply H8].
+    eapply Forall_impl; [| apply H7].
     intro a. simpl. tauto.
     step.
   Qed.

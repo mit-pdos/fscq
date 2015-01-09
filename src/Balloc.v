@@ -191,6 +191,7 @@ Module BALLOC.
     hoare.
     eapply pimpl_ok2. apply get_ok. (* XXX why doesn't eauto with prog work? *)
     apply items_per_valu_not_0.
+
     cancel.
     hoare.
     eapply pimpl_ok2. apply put_ok.
@@ -200,7 +201,7 @@ Module BALLOC.
     apply pimpl_or_r. right.
     word2nat_auto.
     cancel.
-    rewrite <- H10. unfold bmap_bits, sel.
+    rewrite <- H9. unfold bmap_bits, sel.
     autorewrite with core; auto.
     erewrite upd_bmap_bits; trivial.
     step.
@@ -384,13 +385,13 @@ Module BALLOC.
     erewrite listpred_remove with (dec := @weq addrlen). cancel.
     assert (a a2 = Avail) as Ha.
     apply H8.
-    eapply remove_still_In; apply H0.
+    eapply remove_still_In; apply H.
     rewrite <- Ha.
     apply fupd_other.
-    eapply remove_still_In_ne; apply H0.
+    eapply remove_still_In_ne; apply H.
     assert (a0 <> a2).
-    intro He. subst. rewrite fupd_same in H0. discriminate. trivial.
-    rewrite fupd_other in H0 by assumption.
+    intro He. subst. rewrite fupd_same in H. discriminate. trivial.
+    rewrite fupd_other in H by assumption.
     apply remove_other_In. assumption.
     rewrite H8; assumption.
     apply ptsto_conflict.
@@ -417,13 +418,13 @@ Module BALLOC.
     apply pimpl_or_r. left.
     cancel.
     subst; apply fupd_same; trivial.
-    rewrite H10 in H6.
+    rewrite H10 in H3.
     destruct (weq bn a0).
     subst; apply fupd_same; trivial.
-    rewrite <- H6; apply fupd_other; assumption.
+    rewrite <- H3; apply fupd_other; assumption.
     destruct (weq bn a0).
     left. auto.
-    right. rewrite fupd_other in H3 by assumption. apply H10; assumption.
+    right. rewrite fupd_other in H0 by assumption. apply H10; assumption.
   Qed.
 
 End BALLOC.
