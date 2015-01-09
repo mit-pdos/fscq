@@ -944,6 +944,7 @@ Module LOG.
     eapply pimpl_or_r; left. cancel.
     cancel.
 
+    trivial.
     wordcmp; rewrite skipn_length in *; simpl in *. congruence.
 
     eapply pimpl_or_r; right. cancel.
