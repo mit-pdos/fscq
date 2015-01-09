@@ -389,34 +389,12 @@ Proof.
 Qed.
 
 
-(** * Opaque operations for array accesses, to guide automation *)
+(** * Operations for array accesses, to guide automation *)
 
-Module Type ARRAY_OPS.
-  Parameter ArrayRead : forall (T: Set), addr -> addr -> addr -> (valu -> prog T) -> prog T.
-  Axiom ArrayRead_eq : ArrayRead = fun T a i stride k => Read (a ^+ i ^* stride) k.
-
-  Parameter ArrayWrite : forall (T: Set), addr -> addr -> addr -> valu -> (unit -> prog T) -> prog T.
-  Axiom ArrayWrite_eq : ArrayWrite = fun T a i stride v k => Write (a ^+ i ^* stride) v k.
-End ARRAY_OPS.
-
-Module ArrayOps : ARRAY_OPS.
-  Definition ArrayRead : forall (T: Set), addr -> addr -> addr -> (valu -> prog T) -> prog T :=
-    fun T a i stride k => Read (a ^+ i ^* stride) k.
-  Theorem ArrayRead_eq : ArrayRead = fun T a i stride k => Read (a ^+ i ^* stride) k.
-  Proof.
-    auto.
-  Qed.
-
-  Definition ArrayWrite : forall (T: Set), addr -> addr -> addr -> valu -> (unit -> prog T) -> prog T :=
-    fun T a i stride v k => Write (a ^+ i ^* stride) v k.
-  Theorem ArrayWrite_eq : ArrayWrite = fun T a i stride v k => Write (a ^+ i ^* stride) v k.
-  Proof.
-    auto.
-  Qed.
-End ArrayOps.
-
-Import ArrayOps.
-Export ArrayOps.
+Definition ArrayRead T a i stride k : prog T :=
+  Read (a ^+ i ^* stride) k.
+Definition ArrayWrite T a i stride v k : prog T :=
+  Write (a ^+ i ^* stride) v k.
 
 
 (** * Hoare rules *)
@@ -430,8 +408,7 @@ Theorem read_ok:
    * [[array a vs stride * F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
-  intros.
-  rewrite ArrayRead_eq.
+  intros; unfold ArrayRead.
 
   eapply pimpl_ok2.
   apply read_ok.
@@ -462,8 +439,7 @@ Theorem write_ok:
    * [[ array a vs stride * F \/ array a (upd vs i v) stride * F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
-  intros.
-  rewrite ArrayWrite_eq.
+  intros; unfold ArrayWrite.
 
   eapply pimpl_ok2.
   apply write_ok.
