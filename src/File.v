@@ -18,6 +18,7 @@ Require Import Balloc.
 Require Import WordAuto.
 Require Import GenSep.
 
+
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -625,6 +626,7 @@ Module FILE.
   Definition fgrow T lxp bxp xp inum rx : prog T :=
       r <- fgrow' lxp bxp xp inum; rx r.
 
+
   (* Note that for [fgrow_ok] and [fshrink_ok], a [false] return value
    * indicates that the transaction could be in any active state, so
    * the caller is effectively forced to abort.
@@ -641,15 +643,17 @@ Module FILE.
            LOG.rep lxp (ActiveTxn mbase m') *
            [[ (F * rep ixp bxp flist')%pred m' ]] *
            [[ (F' * inum |-> file')%pred (list2mem flist') ]] *
-           [[ FileLen file' = (FileLen file) + 1 ]] *
-           [[ flist' = upd flist inum file' ]]
+           [[ FileLen file' = (FileLen file) + 1 ]]
     CRASH  LOG.log_intact lxp mbase
     >} fgrow lxp bxp ixp inum.
   Proof.
     unfold fgrow, rep, LOG.log_intact.
     intros; eapply pimpl_ok2.
     eauto with prog. 
-    intros; norm.
+    intros; norm'l.
+    assert (f=sel l1 inum empty_file).
+    eapply list2mem_sel; eauto; deex; fsimpl.
+    norm.
     cancel.
     intuition; [ pred_apply; cancel | | | | ]; fsimpl.
 
@@ -658,15 +662,18 @@ Module FILE.
     unfold stars; simpl; subst.
     cancel_exact; apply pimpl_or; cancel_exact.
 
-    remember (sel l1 inum empty_file) as of.
+    norm'l.
+    remember (selN l1 (wordToNat inum) empty_file) as f.
+    remember (Build_file ((FileLen f) + 1)
+                      (Prog.upd (FileData f) $ (FileLen f) w)) as nf.
     norm; [cancel | intuition].
     (* construct the new file *)
-    instantiate (a1:=Build_file ((FileLen of) + 1)
-                      (Prog.upd (FileData of) $ (FileLen of) w)).
+    instantiate (a1 := nf).
     pred_apply; norm.
-    (* construct the new inode *)
+    (* construct the new inode, bmap and filelist *)
     instantiate (a:=l2).
-    instantiate (a0:=l3).
+    instantiate (a1:=l3).
+    instantiate (a0:=upd l1 inum nf).
     cancel.
 
     (* TODO: proof using listpred *)
@@ -676,11 +683,49 @@ Module FILE.
     fsimpl; rewrite skipn_updN by auto.
     cancel.
 
+    unfold file_rep.
+    fsimpl.
+    assert (wordToNat (i :-> "len") = FileLen (selN l1 (wordToNat inum) empty_file) + 1) .
+    admit.
+    cancel.
+    instantiate (a:=l2 ++ [w]).
+    eapply pimpl_trans2.
+    apply listpred_bwd with (i:=FileLen (selN l1 (wordToNat inum) empty_file)).
+
     admit.
 
-    assert (length l1 = length l2) by (subst; fsimpl).
-    intuition; fsimpl.
-    subst; intuition.
+
+    repeat rewrite firstn_combine_comm.
+    repeat rewrite firstn_firstn.
+    rewrite firstn_app by auto.
+    rewrite min_l by omega.
+    rewrite H8.
+    rewrite <- H16.
+    rewrite firstn_updN by auto.
+
+    rewrite skipn_oob.
+    rewrite listpred_nil.
+    rewrite selN_combine_elim.
+    rewrite selN_firstn_elim by omega.
+    rewrite selN_updN_eq.
+    unfold file_match at 3; simpl.
+
+    rewrite selN_last by omega.
+    cancel.
+
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+
+
+    rewrite <- H15.
+    eapply array_app_progupd; eauto.
+    rewrite H15; rewrite <- H16; eauto.
+    subst; intuition; fsimpl.
+    eapply list2mem_upd; fsimpl.
+    subst; auto.
   Qed.
 
 
