@@ -143,6 +143,8 @@ Module BALLOC.
     repeat (split; [constructor |]).
     pred_apply. cancel.
     erewrite upd_bmap_bits; try trivial.
+    cancel.
+    auto.
     word2nat_auto.
   Qed.
 
