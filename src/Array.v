@@ -667,8 +667,9 @@ Theorem combine_app: forall A B (al ar : list A) (bl br: list B),
   -> List.combine (al ++ ar) (bl ++ br) 
      = (List.combine al bl) ++ (List.combine ar br).
 Proof.
-  intros.
-  admit.
+  induction al; destruct bl; simpl; intros; try omega; auto.
+  f_equal.
+  apply IHal; omega.
 Qed.
 
 Lemma removeN_head: forall A l i (a : A),
