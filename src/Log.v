@@ -1049,7 +1049,6 @@ Module LOG.
     cancel.
     cancel.
     step.
-    destruct r_; auto.
     cancel.
   Qed.
 
