@@ -692,7 +692,41 @@ Proof.
    simpl; rewrite skipn_updN; auto.
 Qed.
 
+Theorem removeN_oob: forall A (l : list A) i,
+  i >= length l -> removeN l i = l.
+Proof.
+  intros; unfold removeN.
+  rewrite firstn_oob by auto.
+  rewrite skipn_oob by auto.
+  firstorder.
+Qed.
 
+Theorem combine_app: forall A B (al ar : list A) (bl br: list B),
+  length al = length bl
+  -> List.combine (al ++ ar) (bl ++ br) 
+     = (List.combine al bl) ++ (List.combine ar br).
+Proof.
+  intros.
+  admit.
+Qed.
+
+Lemma removeN_head: forall A l i (a : A),
+  removeN (a :: l) (S i) = a :: (removeN l i).
+Proof.
+  unfold removeN; firstorder.
+Qed.
+
+Theorem removeN_combine: forall A B i (a : list A) (b : list B),
+  removeN (List.combine a b) i = List.combine (removeN a i) (removeN b i).
+Proof.
+  induction i; destruct a, b; intros; simpl; auto.
+  - unfold removeN at 2; simpl.
+    repeat rewrite removeN_oob by auto.
+    induction a0; firstorder.
+  - rewrite removeN_head.
+    rewrite IHi.
+    unfold removeN; firstorder.
+Qed.
 
 
 (* A general list predicate *)
