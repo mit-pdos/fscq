@@ -676,22 +676,40 @@ Module FILE.
     instantiate (a0:=upd l1 inum nf).
     cancel.
 
-    (* TODO: proof using listpred *)
-    eapply pimpl_trans2.
-    apply listpred_bwd with (i:=wordToNat inum); fsimpl.
-    rewrite listpred_fwd with (i:=wordToNat inum) by fsimpl.
-    fsimpl; rewrite skipn_updN by auto.
+    (* proof using listpred *)
+    unfold upd; rewrite combine_updN.
+    rewrite listpred_updN; [ | intuition; exact empty_file | fsimpl].
+    rewrite listpred_isolate with (i := wordToNat inum); fsimpl.
+    rewrite selN_combine_elim by auto.
     cancel.
+
+    (* painful proof of word *)
+    assert (wordToNat (i :-> "len") = FileLen (selN l1 (wordToNat inum) empty_file) + 1) .
+    rewrite listpred_extract with (i:=wordToNat inum)
+       (def:=(INODE.inode_zero, empty_file)) in H by fsimpl.
+    unfold file_rep in H.
+    destruct_lift H.
+    fsimpl.
+    rewrite H9.
+    rewrite <- H19.
+    rewrite wordToNat_plusone with (w' := $2).
+    rewrite Nat.add_1_r; auto.  (* why omega doesn't work? *)
+    apply lt_wlt.
+    erewrite wordToNat_natToWord_bound with (bound := $2); eauto.
+    rewrite <- H19 in H4; auto.
 
     unfold file_rep.
     fsimpl.
-    assert (wordToNat (i :-> "len") = FileLen (selN l1 (wordToNat inum) empty_file) + 1) .
-    admit.
     cancel.
+
     instantiate (a:=l2 ++ [w]).
     eapply pimpl_trans2.
     apply listpred_bwd with (i:=FileLen (selN l1 (wordToNat inum) empty_file)).
 
+    (* XXX: painful *)
+    rewrite combine_length.
+    rewrite firstn_length.
+    rewrite app_length; simpl.
     admit.
 
 
@@ -704,7 +722,7 @@ Module FILE.
     rewrite firstn_updN by auto.
 
     rewrite skipn_oob.
-    rewrite listpred_nil.
+    erewrite listpred_nil; eauto.
     rewrite selN_combine_elim.
     rewrite selN_firstn_elim by omega.
     rewrite selN_updN_eq.
@@ -719,10 +737,10 @@ Module FILE.
     admit.
     admit.
 
-
     rewrite <- H15.
     eapply array_app_progupd; eauto.
     rewrite H15; rewrite <- H16; eauto.
+
     subst; intuition; fsimpl.
     eapply list2mem_upd; fsimpl.
     subst; auto.
