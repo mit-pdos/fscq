@@ -518,42 +518,52 @@ Ltac destruct_type T :=
   | [ H: T |- _ ] => destruct H
   end.
 
-Ltac destruct_lift H :=
+Ltac destruct_lift' H :=
   match type of H with
   | (?a /\ ?b) =>
     let Hlift0:=fresh in
     let Hlift1:=fresh in
-    destruct H as [Hlift0 Hlift1]; destruct_lift Hlift0; destruct_lift Hlift1
+    destruct H as [Hlift0 Hlift1]; destruct_lift' Hlift0; destruct_lift' Hlift1
   | ((sep_star _ _) _) =>
     eapply start_normalizing_apply in H; [| flatten ];
     let H1:=fresh in
     let H2:=fresh in
     unfold stars in H; simpl in H; destruct H as [? H1];
     apply sep_star_lift_apply in H1; destruct H1 as [? H2];
-    destruct_lift H2
+    destruct_lift' H2
   | ((and _ _) _) =>
     eapply start_normalizing_apply in H; [| flatten ];
     let H1:=fresh in
     let H2:=fresh in
     unfold stars in H; simpl in H; destruct H as [? H1];
     apply sep_star_lift_apply in H1; destruct H1 as [? H2];
-    destruct_lift H2
+    destruct_lift' H2
   | ((or _ _) _) =>
     eapply start_normalizing_apply in H; [| flatten ];
     let H1:=fresh in
     let H2:=fresh in
     unfold stars in H; simpl in H; destruct H as [? H1];
     apply sep_star_lift_apply in H1; destruct H1 as [? H2];
-    destruct_lift H2
+    destruct_lift' H2
   | ((exists _, _)%pred _) =>
     eapply start_normalizing_apply in H; [| flatten ];
     let H1:=fresh in
     let H2:=fresh in
     unfold stars in H; simpl in H; destruct H as [? H1];
     apply sep_star_lift_apply in H1; destruct H1 as [? H2];
-    destruct_lift H2
+    destruct_lift' H2
   | _ => idtac
   end.
+
+(* XXX it could be faster to avoid [simpl in *] by explicitly doing
+ * destruct_prod / clear_type / destruct_type in each case of [destruct_lift']
+ * and then doing [simpl in H] on specific hypotheses. *)
+Ltac destruct_lift H :=
+  destruct_lift' H;
+  repeat destruct_prod;
+  simpl in *;
+  repeat clear_type True;
+  repeat destruct_type unit.
 
 Lemma eexists_pair: forall A B p,
   (exists (a:A) (b:B), p (a, b))
@@ -725,11 +735,7 @@ Ltac replace_right := eapply replace_right;
 Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
                eapply pimpl_exists_l; intros;
                apply sep_star_lift_l; let Hlift:=fresh in intro Hlift;
-               destruct_lift Hlift;
-               repeat destruct_prod;
-               simpl in *;
-               repeat clear_type True;
-               repeat destruct_type unit.
+               destruct_lift Hlift.
 
 Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
