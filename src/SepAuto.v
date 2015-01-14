@@ -32,6 +32,16 @@ Ltac pred_apply := match goal with
   | [ |- exists _, _ ] => eexists; pred_apply
   end.
 
+Ltac pimpl_crash :=
+  try match goal with
+  | [ |- _ =p=> emp * _ ] => eapply pimpl_trans; [| eapply pimpl_star_emp ]
+  end;
+  set_evars;
+  try match goal with
+  | [ H: _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
+  end;
+  subst_evars.
+
 Definition pred_fold_left (l : list pred) : pred :=
   match l with
   | nil => emp
@@ -503,6 +513,11 @@ Ltac clear_type T :=
   | [ H: T |- _ ] => clear H
   end.
 
+Ltac destruct_type T :=
+  match goal with
+  | [ H: T |- _ ] => destruct H
+  end.
+
 Ltac destruct_lift H :=
   match type of H with
   | (?a /\ ?b) =>
@@ -582,6 +597,64 @@ Theorem pimpl_unhide: forall a b, (pimpl a b) -> (pimpl_hidden a b).
 Proof. auto. Qed.
 Opaque pimpl_hidden.
 
+(**
+ * In-code hints to transform predicates.
+ *)
+
+Definition xform_fwd {T: Prop} (x: T) := True.
+Definition xform_bwd {T: Prop} (x: T) := True.
+Opaque xform_fwd xform_bwd.
+
+Definition Xform {T} {TFWD TBWD : Prop} (fwd : TFWD) (bwd : TBWD) p : prog T :=
+  p.
+
+Theorem xform_ok : forall T p (TF TB:Prop) (tf:TF) (tb:TB) (rx:prog T), {{p}} rx
+  -> {{p}} Xform tf tb rx.
+Proof.
+  auto.
+Qed.
+
+Ltac clear_xform := repeat match goal with
+  | [ H: xform_fwd _ |- _ ] => clear H
+  | [ H: xform_bwd _ |- _ ] => clear H
+  end.
+
+Ltac remember_xform := try match goal with
+  | [ |- {{_}} Xform ?fwd ?bwd _ ] =>
+    clear_xform;
+    assert (xform_fwd fwd) by constructor;
+    assert (xform_bwd bwd) by constructor;
+    apply xform_ok
+  end.
+
+Ltac apply_xform canceller := match goal with
+  | [ |- _ =p=> ?rhs ] => match goal with
+    | [ H: _ =p=> rhs |- _ ] => match goal with
+      | [ Hx: xform_bwd ?bwd |- _ ] => pimpl_crash;
+        clear_xform;
+        eapply pimpl_trans; [| eapply pimpl_trans;
+        [ apply pimpl_sep_star; [ apply pimpl_refl | apply bwd ] | ] ];
+        [ try canceller .. ]
+        || fail 3
+      | _ => idtac
+      end
+    | _ => match goal with
+      | [ Hx: xform_fwd ?fwd |- _ ] =>
+        clear_xform;
+        eapply pimpl_trans; [| eapply pimpl_trans;
+        [ apply pimpl_sep_star; [ apply pimpl_refl | apply fwd ] | ] ];
+        [ try canceller .. ]
+        || fail 3
+      | _ => idtac
+      end
+    end
+  | _ => idtac
+  end; clear_xform.
+
+(**
+ * Older predicate replacement machinery.
+ *)
+
 Theorem replace_left : forall ps ps' q p p' F,
   pick p ps ps' /\ (p =p=> p')
   -> (stars (p' :: ps') * F =p=> q)
@@ -655,7 +728,7 @@ Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
                repeat destruct_prod;
                simpl in *;
                repeat clear_type True;
-               repeat clear_type unit.
+               repeat destruct_type unit.
 
 Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
@@ -673,16 +746,6 @@ Ltac norm := unfold pair_args_helper;
              solve [ exfalso ; auto with false_precondition_hint ] ||
              ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] );
              repeat clear_norm_goal.
-
-Ltac pimpl_crash :=
-  try match goal with
-  | [ |- _ =p=> emp * _ ] => eapply pimpl_trans; [| eapply pimpl_star_emp ]
-  end;
-  set_evars;
-  try match goal with
-  | [ H: _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
-  end;
-  subst_evars.
 
 Ltac cancel_with t :=
   intros;
@@ -721,12 +784,15 @@ Ltac autorewrite_fast :=
 Ltac step :=
   intros;
   try cancel;
+  remember_xform;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ]));
   intros; subst;
+  repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
+  apply_xform cancel;
   try cancel; try autorewrite_fast;
   intuition eauto;
   try omega;

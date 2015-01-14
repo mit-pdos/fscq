@@ -388,16 +388,39 @@ Proof.
   cancel.
 Qed.
 
+Theorem isolate_bwd_upd : forall (a i : addr) vs v stride,
+  wordToNat i < length vs
+  -> array a (firstn (wordToNat i) vs) stride
+     * (a ^+ i ^* stride) |-> v
+     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
+     =p=> array a (upd vs i v) stride.
+Proof.
+  intros.
+  erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i).
+  cancel.
+  autorewrite with core.
+  cancel.
+  autorewrite with core.
+  auto.
+Qed.
+
 
 (** * Operations for array accesses, to guide automation *)
 
-Definition ArrayRead T a i stride k : prog T :=
-  Read (a ^+ i ^* stride) k.
-Definition ArrayWrite T a i stride v k : prog T :=
-  Write (a ^+ i ^* stride) v k.
+Definition ArrayRead T a i stride rx : prog T :=
+  Xform isolate_fwd isolate_bwd
+    (v <- Read (a ^+ i ^* stride);
+     Xform isolate_bwd pimpl_refl (rx v)).
+
+Definition ArrayWrite T a i stride v rx : prog T :=
+  Xform isolate_fwd isolate_bwd
+    (v <- Write (a ^+ i ^* stride) v;
+     Xform isolate_bwd_upd pimpl_refl (rx v)).
 
 
 (** * Hoare rules *)
+
+Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
 
 Theorem read_ok:
   forall T (a i stride:addr) (rx:valu->prog T),
@@ -408,25 +431,8 @@ Theorem read_ok:
    * [[array a vs stride * F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
-  intros; unfold ArrayRead.
-
-  eapply pimpl_ok2.
-  apply read_ok.
-  cancel.
-
-  rewrite isolate_fwd.
-  cancel.
-  auto.
-
-  step.
-  erewrite <- isolate_bwd with (vs:=l).
-  cancel.
-  auto.
-
-  pimpl_crash.
-  erewrite <- isolate_bwd with (vs:=l).
-  cancel.
-  auto.
+  unfold ArrayRead.
+  hoare.
 Qed.
 
 Theorem write_ok:
@@ -439,29 +445,8 @@ Theorem write_ok:
    * [[ array a vs stride * F \/ array a (upd vs i v) stride * F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
-  intros; unfold ArrayWrite.
-
-  eapply pimpl_ok2.
-  apply write_ok.
-  cancel.
-
-  rewrite isolate_fwd.
-  cancel.
-  auto.
-
-  step.
-  erewrite <- isolate_bwd with (vs:=(upd l i v)) (i:=i) by (autorewrite_fast; auto).
-  autorewrite with core.
-  cancel.
-  autorewrite with core.
-  cancel.
-
-  destruct r_; auto.
-
-  pimpl_crash.
-  rewrite <- isolate_bwd with (vs:=l).
-  cancel.
-  auto.
+  unfold ArrayWrite.
+  hoare.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
