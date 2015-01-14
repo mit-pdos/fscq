@@ -12,7 +12,6 @@ Require Import List.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Rec.
-Require Import Pack.
 Require Import FunctionalExtensionality.
 Require Import NArith.
 Require Import WordAuto.

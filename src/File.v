@@ -12,7 +12,6 @@ Require Import List.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Rec.
-Require Import Pack.
 Require Import Inode.
 Require Import Balloc.
 Require Import WordAuto.

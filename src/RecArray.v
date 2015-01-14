@@ -1,5 +1,5 @@
 Require Import Eqdep_dec Arith Omega List.
-Require Import Word WordAuto Pred Rec Pack Prog BasicProg Hoare SepAuto Array Log.
+Require Import Word WordAuto Pred Rec Prog BasicProg Hoare SepAuto Array Log.
 
 Set Implicit Arguments.
 
@@ -236,11 +236,22 @@ Section RECARRAY.
     rewrite blocksz_ok in v. refine (Rec.of_word v).
   Defined.
 
+  Theorem eq_rect_nat_double: forall T (a b c : nat) x ab bc,
+    eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
+  Proof.
+    intros.
+    destruct ab.
+    destruct bc.
+    rewrite (UIP_dec eq_nat_dec (eq_trans eq_refl eq_refl) eq_refl).
+    simpl.
+    auto.
+  Qed.
+
   Lemma rep_valu_id : forall b, Rec.well_formed b -> valu_to_block (rep_block b) = b.
     unfold valu_to_block, rep_block.
     unfold eq_rec_r, eq_rec.
     intros.
-    rewrite Pack.eq_rect_nat_double.
+    rewrite eq_rect_nat_double.
     rewrite <- eq_rect_eq_dec; [| apply eq_nat_dec ].
     apply Rec.of_to_id; assumption.
   Qed.
