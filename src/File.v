@@ -678,7 +678,7 @@ Module FILE.
 
     (* proof using listpred *)
     unfold upd; rewrite combine_updN.
-    rewrite listpred_updN; [ | intuition; exact empty_file | fsimpl].
+    rewrite listpred_updN. 
     rewrite listpred_isolate with (i := wordToNat inum); fsimpl.
     rewrite selN_combine_elim by auto.
     cancel.
@@ -691,12 +691,12 @@ Module FILE.
     destruct_lift H.
     fsimpl.
     rewrite H9.
-    rewrite <- H19.
+    rewrite <- H18.
     rewrite wordToNat_plusone with (w' := $2).
     rewrite Nat.add_1_r; auto.  (* why omega doesn't work? *)
     apply lt_wlt.
     erewrite wordToNat_natToWord_bound with (bound := $2); eauto.
-    rewrite <- H19 in H4; auto.
+    rewrite <- H18 in H4; auto.
 
     unfold file_rep.
     fsimpl.
