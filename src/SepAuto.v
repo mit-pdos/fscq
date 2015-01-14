@@ -432,10 +432,10 @@ Proof.
   unfold stars. intros. apply star_emp_pimpl.
 Qed.
 
-Lemma finish_noframe :
-  stars nil * emp =p=> stars nil.
+Lemma finish_noframe : forall V,
+  stars nil * (@emp V) =p=> stars nil.
 Proof.
-  unfold stars. apply emp_star.
+  intros. unfold stars. apply emp_star.
 Qed.
 
 Ltac cancel' := repeat (cancel_one || delay_one);

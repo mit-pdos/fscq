@@ -314,7 +314,7 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_fwd : forall V (a i : addr) vs stride (default : V),
+Theorem isolate_fwd : forall V (default : V) (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
      * (a ^+ i ^* stride) |-> sel vs i default
@@ -354,7 +354,7 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_bwd : forall V (a i : addr) vs stride (default : V),
+Theorem isolate_bwd : forall V (default : V) (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
      * (a ^+ i ^* stride) |-> sel vs i default
@@ -367,6 +367,23 @@ Proof.
   rewrite natToWord_wordToNat.
   apply pimpl_refl.
 Qed.
+
+Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
+  wordToNat i < length vs
+  -> array a (firstn (wordToNat i) vs) stride
+     * (a ^+ i ^* stride) |-> v
+     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
+     =p=> array a (upd vs i v) stride.
+Proof.
+  intros.
+  erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i) (default:=v).
+  cancel.
+  autorewrite with core.
+  cancel.
+  autorewrite with core.
+  auto.
+Qed.
+
 
 Theorem array_progupd : forall V l off (v : V) m (default : V),
   array $0 l $1 m
@@ -387,22 +404,6 @@ Proof.
   rewrite skipn_updN by auto.
   fold @sep_star.
   cancel.
-Qed.
-
-Theorem isolate_bwd_upd : forall (a i : addr) vs v stride,
-  wordToNat i < length vs
-  -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> v
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
-     =p=> array a (upd vs i v) stride.
-Proof.
-  intros.
-  erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i).
-  cancel.
-  autorewrite with core.
-  cancel.
-  autorewrite with core.
-  auto.
 Qed.
 
 Lemma array_oob': forall A (l : list A) a i m,
@@ -545,12 +546,12 @@ Qed.
 (** * Operations for array accesses, to guide automation *)
 
 Definition ArrayRead T a i stride rx : prog T :=
-  Xform isolate_fwd isolate_bwd
+  Xform (isolate_fwd (V:=valu) $0) isolate_bwd
     (v <- Read (a ^+ i ^* stride);
      Xform isolate_bwd pimpl_refl (rx v)).
 
 Definition ArrayWrite T a i stride v rx : prog T :=
-  Xform isolate_fwd isolate_bwd
+  Xform (isolate_fwd (V:=valu) $0) isolate_bwd
     (v <- Write (a ^+ i ^* stride) v;
      Xform isolate_bwd_upd pimpl_refl (rx v)).
 
