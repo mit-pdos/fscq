@@ -1448,6 +1448,46 @@ Proof.
   omega.
 Qed.
 
+
+Theorem wordToNat_minus_one': forall sz n, n <> natToWord sz 0 ->
+  S (wordToNat (n ^- natToWord sz 1)) = wordToNat n.
+Proof.
+  intros.
+  destruct sz.
+  rewrite word0 with (w:=n) in H.
+  rewrite word0 with (w:=natToWord 0 0) in H.
+  exfalso; auto. 
+
+  destruct (weq n (natToWord (S sz) 0)); intuition.
+  rewrite wminus_Alt.
+  rewrite wminus_Alt2.
+  unfold wordBinN.
+  rewrite roundTrip_1.
+  erewrite wordToNat_natToWord_bound with (bound:=n); try omega.
+  assert (wordToNat n <> 0); try omega.
+  unfold not; intros; apply n0; clear n0.
+  rewrite <- H0; rewrite natToWord_wordToNat; auto.
+  unfold not; intros; apply n0; clear n0.
+  apply wlt_lt in H0.
+  replace n with (natToWord (S sz) (wordToNat n)) by (rewrite natToWord_wordToNat; auto).
+  f_equal; rewrite roundTrip_1 in *.
+  omega.
+Qed.
+
+Theorem wordToNat_minus_one: forall sz n, n <> natToWord sz 0 ->
+  wordToNat (n ^- natToWord sz 1) = wordToNat n - 1.
+Proof.
+  intros.
+  erewrite Nat.succ_inj with (n2 := wordToNat (n ^- (natToWord sz 1))); auto.
+  rewrite wordToNat_minus_one'; auto.
+  assert (wordToNat n <> 0).
+  intuition.
+  erewrite <- roundTrip_0 with (sz := sz) in H0.
+  apply wordToNat_inj in H0; tauto.
+  omega.
+Qed.
+
+
 Lemma natToWord_discriminate: forall sz, (sz > 0)%nat -> natToWord sz 0 <> natToWord sz 1.
 Proof.
   unfold not.

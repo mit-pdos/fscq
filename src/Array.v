@@ -1,11 +1,12 @@
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
-Fixpoint array (a : addr) (vs : list valu) (stride : addr) :=
+Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
   match vs with
     | nil => emp
     | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
@@ -287,10 +288,10 @@ Qed.
 
 (** * Isolating an array cell *)
 
-Lemma isolate_fwd' : forall vs i a stride,
+Lemma isolate_fwd' : forall V vs i a stride (default : V),
   i < length vs
   -> array a vs stride =p=> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i $0
+     * (a ^+ $ i ^* stride) |-> selN vs i default
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
 Proof.
   induction vs; simpl; intuition.
@@ -313,10 +314,10 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_fwd : forall (a i : addr) vs stride,
+Theorem isolate_fwd : forall V (a i : addr) vs stride (default : V),
   wordToNat i < length vs
   -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i $0
+     * (a ^+ i ^* stride) |-> sel vs i default
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
@@ -326,10 +327,10 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Lemma isolate_bwd' : forall vs i a stride,
+Lemma isolate_bwd' : forall V vs i a stride (default : V),
   i < length vs
   -> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i $0
+     * (a ^+ $ i ^* stride) |-> selN vs i default
      * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
   =p=> array a vs stride.
 Proof.
@@ -353,10 +354,10 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_bwd : forall (a i : addr) vs stride,
+Theorem isolate_bwd : forall V (a i : addr) vs stride (default : V),
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i $0
+     * (a ^+ i ^* stride) |-> sel vs i default
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
   =p=> array a vs stride.
 Proof.
@@ -367,24 +368,24 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Theorem array_progupd : forall l off v m,
+Theorem array_progupd : forall V l off (v : V) m (default : V),
   array $0 l $1 m
   -> wordToNat off < length l
   -> array $0 (updN l (wordToNat off) v) $1 (Prog.upd m off v).
 Proof.
   intros.
-  eapply isolate_bwd.
+  eapply isolate_bwd with (default:=default).
   autorewrite with core.
   eassumption.
   eapply pimpl_trans; [| apply pimpl_refl | eapply ptsto_upd ].
   unfold sel; rewrite selN_updN_eq by auto.
   cancel.
   pred_apply.
-  rewrite isolate_fwd by eassumption.
+  rewrite isolate_fwd with (default:=default) by eassumption.
   simpl.
   rewrite firstn_updN by auto.
   rewrite skipn_updN by auto.
-  fold sep_star.
+  fold @sep_star.
   cancel.
 Qed.
 
@@ -403,6 +404,142 @@ Proof.
   autorewrite with core.
   auto.
 Qed.
+
+Lemma array_oob': forall A (l : list A) a i m,
+  wordToNat i >= length l
+  -> array a l $1 m
+  -> m (a ^+ i)%word = None.
+Proof.
+  induction l; intros; auto; simpl in *.
+  destruct (weq i $0); auto.
+  subst; simpl in *; omega.
+
+  unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
+  repeat deex.
+  unfold mem_union.
+  unfold ptsto in H2; destruct H2; rewrite H2.
+  pose proof (IHl (a0 ^+ $1) (i ^- $1)).
+  ring_simplify (a0 ^+ $1 ^+ (i ^- $1)) in H3.
+  apply H3.
+  rewrite wordToNat_minus_one; try omega; auto.
+
+  auto.
+  apply not_eq_sym.
+  apply word_neq.
+  replace (a0 ^+ i ^- a0) with i by ring; auto.
+Qed.
+
+Lemma array_oob: forall A (l : list A) i m,
+  wordToNat i >= length l
+  -> array $0 l $1 m
+  -> m i = None.
+Proof.
+  intros.
+  replace i with ($0 ^+ i).
+  eapply array_oob'; eauto.
+  ring_simplify ($0 ^+ i); auto.
+Qed.
+
+
+Lemma emp_star_r: forall V (F:@pred V),
+  F =p=> (F * emp)%pred.
+Proof.
+  intros.
+  rewrite sep_star_comm.
+  apply emp_star.
+Qed.
+
+
+Lemma selN_last: forall A l n def (a : A),
+  n = length l -> selN (l ++ a :: nil) n def = a.
+Proof.
+  unfold selN; induction l; destruct n; intros;
+  firstorder; inversion H.
+Qed.
+
+
+Lemma firstn_app: forall A n (l1 l2 : list A),
+  n = length l1 -> firstn n (l1 ++ l2) = l1.
+Proof.
+  induction n; destruct l1; intros; inversion H; auto; subst.
+  unfold firstn; simpl.
+  rewrite IHn; auto.
+Qed.
+
+
+Lemma skipn_oob: forall T n (l : list T),
+  n >= length l -> skipn n l = nil.
+Proof.
+  unfold skipn; induction n; destruct l; intros; auto.
+  inversion H.
+  apply IHn; firstorder.
+Qed.
+
+Lemma updN_oob: forall T l i (v : T),
+  i >= length l -> updN l i v = l.
+Proof.
+  unfold updN; induction l; destruct i; intros; auto.
+  inversion H.
+  rewrite IHl; firstorder.
+Qed.
+
+
+Lemma firstn_oob: forall A (l : list A) n,
+  n >= length l -> firstn n l = l.
+Proof.
+  unfold firstn; induction l; destruct n; intros; firstorder.
+  rewrite IHl; firstorder.
+Qed.
+
+
+Lemma firstn_firstn : forall A (l : list A) n1 n2 ,
+  firstn n1 (firstn n2 l) = firstn (Init.Nat.min n1 n2) l.
+Proof.
+  induction l; destruct n1, n2; simpl; auto.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma array_app_progupd : forall V l (v : V) m (b : addr),
+  length l <= wordToNat b
+  -> array $0 l $1 m
+  -> array $0 (l ++ v :: nil) $1 (Prog.upd m $ (length l) v)%word.
+Proof.
+  intros.
+  assert (wordToNat (natToWord addrlen (length l)) = length l).
+  erewrite wordToNat_natToWord_bound; eauto.
+  eapply isolate_bwd with (i := $ (length l)) (default := v).
+  rewrite H1; rewrite app_length; simpl; omega.
+
+  unfold sel; rewrite H1; rewrite firstn_app; auto.
+  rewrite selN_last; auto.
+  rewrite skipn_oob; [ | rewrite app_length; simpl; omega ].
+  unfold array at 2; auto; apply emp_star_r.
+  ring_simplify ($ (0) ^+ $ (length l) ^* natToWord addrlen (1)).
+  replace (0 + length l * 1) with (length l) by omega; auto.
+
+  unfold_sep_star; exists m.
+  exists (fun a' => if addr_eq_dec a' $ (length l) then Some v else None).
+  intuition.
+  - unfold Prog.upd, mem_union.
+    apply functional_extensionality.
+    intro; destruct (addr_eq_dec x $ (length l)).
+    replace (m x) with (@None V); auto.
+    erewrite array_oob; eauto.
+    subst; erewrite wordToNat_natToWord_bound; eauto.
+    case_eq (m $ (length l)); case_eq (m x); auto.
+  - unfold Prog.upd, mem_disjoint.
+    intuition; repeat deex.
+    destruct (addr_eq_dec x $ (length l)).
+    eapply array_oob with (i := x) in H0.
+    rewrite H3 in H0; inversion H0.
+    subst; erewrite wordToNat_natToWord_bound; eauto.
+    inversion H4.
+  - unfold ptsto; intuition.
+    destruct (addr_eq_dec $ (length l) $ (length l)); intuition.
+    destruct (addr_eq_dec a' $ (length l)); subst; intuition.
+Qed.
+
 
 
 (** * Operations for array accesses, to guide automation *)
@@ -502,7 +639,8 @@ Qed.
 Section LISTPRED.
 
   Variable T : Type.
-  Variable prd : T -> pred.
+  Variable V : Type.
+  Variable prd : T -> @pred V.
   Variable def : T.
 
   Fixpoint listpred (ts : list T) :=
@@ -532,5 +670,12 @@ Section LISTPRED.
     cancel.
     omega.
   Qed.
+
+  Lemma listpred_nil: forall T V (prd : T -> @pred V),
+    listpred nil = emp.
+  Proof.
+    unfold listpred; intros; auto.
+  Qed.
+
 
 End LISTPRED.
