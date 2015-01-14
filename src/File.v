@@ -108,6 +108,58 @@ Module FILE.
      listpred file_match (combine (valid_blocks (fst inof)) blist) *
      [[ array $0 blist $1 (FileData (snd inof)) ]] )%pred.
 
+  (* XXX this should go into listpred in Array.v *)
+  Theorem extract_lift_from_listpred' : forall (T V : Type) (prd : T -> @pred V),
+    forall (liftprop : T -> Prop),
+    (forall (t : T), prd t =p=> prd t * [[ liftprop t ]])
+    -> forall l, (exists F, listpred prd l * F)%pred =p=> (exists F, listpred prd l * F * [[ forall t, In t l -> liftprop t ]]).
+  Proof.
+    intros.
+    unfold pimpl; intros.
+    pred_apply.
+    cancel.
+    destruct_lift H0.
+    (* XXX put listpred_pick into listpred in Array.v *)
+    erewrite BALLOC.listpred_pick in H0 by eauto.
+    assert ((exists F, F * [[ liftprop t ]])%pred m).
+    pred_apply.
+    setoid_rewrite H.
+    cancel.
+    destruct_lift H3.
+    auto.
+  Qed.
+
+  Theorem extract_lift_from_listpred : forall (T V : Type) (prd : T -> @pred V),
+    forall (liftprop : T -> Prop) m l,
+    (forall (t : T), prd t =p=> prd t * [[ liftprop t ]])
+    -> (exists F, listpred prd l * F)%pred m
+    -> forall t, In t l -> liftprop t.
+  Proof.
+    intros.
+    assert ((exists F, listpred prd l * F * [[ forall t, In t l -> liftprop t ]])%pred m).
+    pred_apply.
+    apply extract_lift_from_listpred'.
+    auto.
+    destruct_lift H2.
+    auto.
+  Qed.
+
+  Theorem extract_lift_from_file_rep : forall inof m,
+    (exists F, listpred file_rep inof * F)%pred m
+    -> forall a b, In (a, b) inof -> wordToNat (a :-> "len") = FileLen b.
+  Proof.
+    intros.
+    replace (a) with (fst (a, b)) by reflexivity.
+    replace (b) with (snd (a, b)) at 2 by reflexivity.
+    eapply extract_lift_from_listpred with (t:=(a, b)); eauto.
+    unfold pimpl; intros.
+    pred_apply.
+    cancel.
+    unfold file_rep in H1.
+    destruct_lift H1.
+    auto.
+  Qed.
+
   Definition rep ixp bxp (filelist : list file) :=
     (exists inodelist freeblocks,
      INODE.rep ixp inodelist * BALLOC.rep bxp freeblocks *
@@ -683,7 +735,7 @@ Module FILE.
     cancel.
 
     (* painful proof of word *)
-    assert (wordToNat (i :-> "len") = FileLen (selN l1 (wordToNat inum) empty_file) + 1) .
+    assert (wordToNat (i :-> "len") = FileLen (selN l1 (wordToNat inum) empty_file) + 1).
     rewrite listpred_extract with (i:=wordToNat inum)
        (def:=(INODE.inode_zero, empty_file)) in H by fsimpl.
     unfold file_rep in H.
@@ -695,7 +747,8 @@ Module FILE.
     rewrite Nat.add_1_r; auto.  (* why omega doesn't work? *)
     apply lt_wlt.
     erewrite wordToNat_natToWord_bound with (bound := $2); eauto.
-    rewrite <- H18 in H4; auto.
+    setoid_rewrite H18.
+    auto.
 
     unfold file_rep.
     fsimpl.

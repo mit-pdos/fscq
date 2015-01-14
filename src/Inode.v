@@ -68,12 +68,11 @@ Module INODE.
       lxp (xp_to_raxp xp) inum i rx.
 
   Theorem iget_ok : forall lxp xp inum,
-    {< F mbase m ilist,
+    {< F F' mbase m ilist idata,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep xp ilist)%pred m ]] *
-           [[ (inum < IXLen xp ^* items_per_valu)%word ]]
-    POST:r LOG.rep lxp (ActiveTxn mbase m) *
-           [[ r = sel ilist inum inode_zero ]]
+           [[ (F' * inum |-> idata)%pred (list2mem ilist) ]]
+    POST:r LOG.rep lxp (ActiveTxn mbase m) * [[ r = idata ]]
     CRASH  LOG.log_intact lxp mbase
     >} iget lxp xp inum.
   Proof.
@@ -83,14 +82,15 @@ Module INODE.
   Qed.
 
   Theorem iput_ok : forall lxp xp inum i,
-    {< F mbase m ilist,
+    {< F F' mbase m ilist oldidata,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep xp ilist)%pred m ]] *
-           [[ (inum < IXLen xp ^* items_per_valu)%word ]] *
+           [[ (F' * inum |-> oldidata)%pred (list2mem ilist) ]] *
            [[ Rec.well_formed i ]]
     POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
-           ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (F * rep xp (upd ilist inum i))%pred m' ]])
+           ([[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (F * rep xp ilist')%pred m' ]] *
+            [[ (F' * inum |-> i)%pred (list2mem ilist) ]])
     CRASH  LOG.log_intact lxp mbase
     >} iput lxp xp inum i.
   Proof.
