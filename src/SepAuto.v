@@ -812,7 +812,7 @@ Ltac step :=
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ])
-   || (eapply pimpl_ok2; [ solve [ eapply nop_ok ] | | ]));
+   || (eapply pimpl_ok2; [ solve [ eapply nop_ok ] | ]));
   intros; subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try ( cancel ; try ( progress autorewrite_fast ; cancel ) );

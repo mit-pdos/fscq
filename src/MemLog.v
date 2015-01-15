@@ -58,15 +58,15 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Inductive logstate :=
-| NoTransaction (cur : mem)
+| NoTransaction (cur : @mem valu)
 (* Don't touch the disk directly in this state. *)
-| ActiveTxn (old : mem) (cur : mem)
+| ActiveTxn (old : @mem valu) (cur : @mem valu)
 (* A transaction is in progress.
  * It started from the first memory and has evolved into the second.
  * It has not committed yet. *)
-| FlushedTxn (old : mem) (cur : mem)
+| FlushedTxn (old : @mem valu) (cur : @mem valu)
 (* A transaction has been flushed to the log, but not committed yet. *)
-| CommittedTxn (cur : mem)
+| CommittedTxn (cur : @mem valu)
 (* A transaction has committed but the log has not been applied yet. *).
 
 Definition memstate := Map.t valu.
@@ -156,7 +156,7 @@ Module MEMLOG.
 
   (* Check that the state is well-formed *)
   Definition valid_entries m (ms : memstate) :=
-    Forall (fun p => indomain (fst p) m) (Map.elements ms).
+    Forall (fun p => @indomain valu (fst p) m) (Map.elements ms).
 
   Definition valid_size xp (ms : memstate) :=
     Map.cardinal ms <= wordToNat (LogLen xp).
@@ -178,10 +178,10 @@ Module MEMLOG.
       LOG.avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms))
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
-  Definition data_rep old : pred :=
+  Definition data_rep (old : @mem valu) : pred :=
     diskIs old.
 
-  Definition cur_rep (old : mem) (ms : memstate) (cur : mem) : pred :=
+  Definition cur_rep (old : mem) (ms : memstate) (cur : mem) : @pred valu :=
     [[ forall a, cur a = replay ms old a ]]%pred.
 
   Definition rep xp (st: logstate) (ms: memstate) :=
@@ -274,54 +274,6 @@ Module MEMLOG.
     unfold abort; log_unfold.
     hoare.
   Qed.
-
-  (*
-  Theorem valid_entries_upd : forall m a v l,
-    indomain a m
-    -> valid_entries m l
-    -> valid_entries (Prog.upd m a v) l.
-  Proof.
-    unfold valid_entries.
-    intros.
-    rewrite Forall_forall in *.
-    induction (Map.elements l); [ firstorder | ].
-    destruct a0; simpl in *; intuition.
-    eapply LOG.indomain_upd_2; intuition.
-  Qed.
-
-  Theorem Forall_app : forall T P (l1 l2 : list T),
-    Forall P (l1 ++ l2) <-> Forall P l1 /\ Forall P l2.
-  Proof.
-    induction l1.
-    firstorder.
-    split; intros.
-    inversion H.
-    split; [ constructor; auto | ]; apply (IHl1 l2); auto.
-    simpl.
-    destruct H.
-    inversion H.
-    constructor; [ auto | apply IHl1; tauto ].
-  Qed.
-
-  Theorem indomain_replay : forall l m m0 a,
-    valid_entries m l
-    -> m0 a = replay l m a
-    -> indomain a m0
-    -> indomain a m.
-  Proof.
-    intros l.
-    destruct l.
-    induction this; simpl.
-    - unfold indomain. intros. deex. exists x. rewrite Map.fold_1 in H0. simpl in H0. congruence.
-    - destruct a. intros. inversion H. inversion H3.
-      eapply LOG.indomain_upd_1; eauto.
-      inversion sorted.
-      specialize (IHthis H9).
-      eapply IHthis; [ | apply H0 | ]; eauto.
-      apply valid_entries_upd; auto.
-  Qed.
-*)
-
   Lemma replay_add : forall a v ms m,
     replay (Map.add a v ms) m = Prog.upd (replay ms m) a v.
   Proof.
@@ -342,20 +294,8 @@ Module MEMLOG.
     >} write xp ms a v.
   Proof.
     unfold write; log_unfold.
-    intros.
-    hoare.
-
-    cancel.
-    step.
-
-    apply pimpl_or_r. left.
-    Arguments Map.add : simpl never.
-    Arguments replay : simpl never.
-    cancel.
-
-    admit. (* XXX indomain Map.add *)
-
-    unfold valid_size. unfold Map.cardinal. unfold Map.add. simpl. omega.
+    hoare; subst.
+    admit. (* XXX valid_entries Map.add *)
 
     rewrite replay_add.
     eapply ptsto_upd; eauto.
@@ -363,10 +303,9 @@ Module MEMLOG.
     eauto.
   Qed.
 
-  Definition read T xp ms a rx : prog T :=
+  Definition read T (xp : xparams) ms a rx : prog T :=
     match Map.find a ms with
     | Some v =>
-      _ <- Read (LogHeader xp);
       rx v
     | None =>
       v <- Read a;
@@ -423,20 +362,23 @@ Module MEMLOG.
   Qed.
 
   Definition flush T xp (ms:memstate) rx : prog T :=
-
-    Write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms)));;
-    Write (LogStart xp) (descriptor_to_valu (map fst (Map.elements ms)));;
-    For i < $ (Map.cardinal ms)
-    Ghost crash
-    Loopvar _ <- tt
-    Continuation lrx
-    Invariant array (LogStart xp ^+ $1) (firstn (wordToNat i) (map snd (Map.elements ms))) $1
-    OnCrash crash
-    Begin
-      Write (LogStart xp ^+ $1 ^+ i) (sel (map snd (Map.elements ms)) i $0);;
-      lrx tt
-    Rof;;
-    rx true.
+    If Map.cardinal ms > wordToNat (LogLen xp) {
+      rx false
+    } else {
+      Write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms)));;
+      Write (LogStart xp) (descriptor_to_valu (map fst (Map.elements ms)));;
+      For i < $ (Map.cardinal ms)
+      Ghost crash
+      Loopvar _ <- tt
+      Continuation lrx
+      Invariant array (LogStart xp ^+ $1) (firstn (wordToNat i) (map snd (Map.elements ms))) $1
+      OnCrash crash
+      Begin
+        Write (LogStart xp ^+ $1 ^+ i) (sel (map snd (Map.elements ms)) i $0);;
+        lrx tt
+      Rof;;
+      rx true
+    }.
 
   Theorem flush_ok : forall xp ms,
     {< m1 m2,
@@ -450,15 +392,33 @@ Module MEMLOG.
   Qed.
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
+  Definition apply T xp ms rx : prog T :=
+    For i < $ (Map.cardinal ms)
+    Ghost crash cur
+    Loopvar _ <- tt
+    Continuation lrx
+    Invariant
+      (LogCommit xp) |-> $1
+      * exists old, data_rep old
+      * (replay (firstn (wordToNat i) (Map.elements ms)))
+      * cur_rep old log cur
+      * [[ forall a, cur a = replay (skipn (wordToNat i) log) old a ]]
+    OnCrash
+      rep xp (NoTransaction cur) \/
+      rep xp (CommittedTxn cur)
+    Begin
+    rx tt.
+
   Definition commit T xp (ms:memstate) rx : prog T :=
     flush xp ms;;
     Write (LogCommit xp) $1;;
+    apply xp ms;;
     rx tt.
 
   Theorem commit_ok: forall xp ms,
     {< m1 m2,
      PRE    rep xp (ActiveTxn m1 m2) ms
-     POST:r rep xp (CommittedTxn m2) ms_empty (* XXX apply as well? *)
+     POST:r rep xp (NoTransaction m2) ms_empty
      CRASH  any (* XXX *)
     >} commit xp ms.
   Proof.
@@ -475,8 +435,8 @@ Module MEMLOG.
     apply pimpl_any.
   Qed.
 
-  Definition apply T xp rx : prog T :=
-    rx tt.
+  Definition read_log T xp rx : prog T :=
+    rx ms_empty.
 
   Definition recover T xp rx : prog T :=
     v <- Read (LogCommit xp);
