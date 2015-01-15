@@ -776,6 +776,22 @@ Ltac cancel_with t :=
 
 Ltac cancel := cancel_with idtac.
 
+Theorem nop_ok :
+  forall T A v (rx : A -> prog T),
+  {{ fun done_ crash_ => exists F, F * [[ forall r_,
+    {{ fun done' crash' => (fun r => F * [[ r = v ]]) r_ *
+                           [[ done' = done_ ]] * [[ crash' = crash_ ]]}}
+     rx r_ ]] * [[ F =p=> crash_]] }} rx v.
+Proof.
+  unfold corr2, pimpl.
+  intros.
+  destruct H.
+  destruct_lift H.
+  eapply H4; eauto.
+  pred_apply.
+  cancel.
+Qed.
+
 Ltac autorewrite_fast_goal :=
   set_evars; (rewrite_strat (topdown (hints core))); subst_evars;
   try autorewrite_fast_goal.
@@ -795,7 +811,8 @@ Ltac step :=
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
-   || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ]));
+   || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ])
+   || (eapply pimpl_ok2; [ solve [ eapply nop_ok ] | | ]));
   intros; subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
