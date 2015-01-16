@@ -477,7 +477,7 @@ Module FILE.
          * caller to abort.  But this isn't always true: one could also get a
          * false return from BALLOC.alloc returning false above, which leaves
          * the transaction in a clean state.  Maybe we could add a three-way
-         * return value, with an "abort" vd0 : Rec.data (Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)alue indicating such dead-end cases?
+         * return value, with an "abort" value indicating such dead-end cases?
          *)
         rx false
       }
