@@ -103,6 +103,7 @@ Module MEMLOG.
     rewrite plus_minus_header in r.
     refine r.
   Defined.
+  Arguments header_to_valu : simpl never.
 
   Definition valu_to_header (v : valu) : header.
     apply Rec.of_word.
@@ -135,6 +136,7 @@ Module MEMLOG.
     rewrite descriptor_sz_ok.
     apply Rec.to_word; auto.
   Defined.
+  Arguments descriptor_to_valu : simpl never.
 
   Definition valu_to_descriptor (v : valu) : descriptor.
     rewrite descriptor_sz_ok in v.
@@ -362,7 +364,7 @@ Module MEMLOG.
   Qed.
 
   Definition flush T xp (ms:memstate) rx : prog T :=
-    If Map.cardinal ms > wordToNat (LogLen xp) {
+    If (lt_dec (wordToNat (LogLen xp)) (Map.cardinal ms)) {
       rx false
     } else {
       Write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms)));;
@@ -383,12 +385,17 @@ Module MEMLOG.
   Theorem flush_ok : forall xp ms,
     {< m1 m2,
     PRE    rep xp (ActiveTxn m1 m2) ms
-    POST:r rep xp (FlushedTxn m1 m2) ms_empty
+    POST:r ([[ r = true ]] * rep xp (FlushedTxn m1 m2) ms_empty) \/
+           ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
     CRASH  any (* XXX this won't work *)
     >} flush xp ms.
   Proof.
     unfold flush; log_unfold.
-    admit.
+    step.
+    step.
+    step.
+    step.
+    step.
   Qed.
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
