@@ -459,6 +459,14 @@ Proof.
 Qed.
 
 
+Lemma selN_firstn: forall {A} (l:list A) i n d,
+  i < n -> selN (firstn n l) i d = selN l i d.
+Proof.
+  induction l; destruct i, n; intros; try omega; auto.
+  apply IHl; omega.
+Qed.
+
+
 Lemma firstn_app: forall A n (l1 l2 : list A),
   n = length l1 -> firstn n (l1 ++ l2) = l1.
 Proof.
@@ -642,6 +650,34 @@ Proof.
   rewrite IHi; auto.
 Qed.
 
+Lemma selN_combine : forall Ta Tb i a b (a0:Ta) (b0:Tb),
+  length a = length b
+  -> selN (List.combine a b) i (a0, b0) = pair (selN a i a0) (selN b i b0).
+Proof.
+  induction i; destruct a, b; intros; inversion H; auto.
+  simpl; apply IHi; assumption.
+Qed.
+
+Lemma combine_length_eq: forall A B (a : list A) (b : list B),
+  length a = length b
+  -> length (List.combine a b) = length a.
+Proof.
+  intros.
+  rewrite combine_length.
+  rewrite H; intuition.
+Qed.
+
+Theorem combine_app: forall A B (al ar : list A) (bl br: list B),
+  length al = length bl
+  -> List.combine (al ++ ar) (bl ++ br) 
+     = (List.combine al bl) ++ (List.combine ar br).
+Proof.
+  induction al; destruct bl; simpl; intros; try omega; auto.
+  f_equal.
+  apply IHal; omega.
+Qed.
+
+
 Definition removeN {V} (l : list V) i :=
    (firstn i l) ++ (skipn (S i) l).
 
@@ -660,16 +696,6 @@ Proof.
   rewrite firstn_oob by auto.
   rewrite skipn_oob by auto.
   firstorder.
-Qed.
-
-Theorem combine_app: forall A B (al ar : list A) (bl br: list B),
-  length al = length bl
-  -> List.combine (al ++ ar) (bl ++ br) 
-     = (List.combine al bl) ++ (List.combine ar br).
-Proof.
-  induction al; destruct bl; simpl; intros; try omega; auto.
-  f_equal.
-  apply IHal; omega.
 Qed.
 
 Lemma removeN_head: forall A l i (a : A),

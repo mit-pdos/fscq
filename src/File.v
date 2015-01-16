@@ -175,35 +175,7 @@ Module FILE.
   Hint Extern 0 (okToUnify (INODE.rep _ _) (INODE.rep _ _)) => constructor : okToUnify.
 
 
-  Lemma selN_combine_elim : forall Ta Tb i a b (a0:Ta) (b0:Tb),
-    length a = length b ->
-    selN (combine a b) i (a0, b0) = pair (selN a i a0) (selN b i b0).
-  Proof.
-    induction i; destruct a, b; intros; inversion H; auto.
-    simpl; apply IHi; assumption.
-  Qed.
 
-  Lemma fst_selN_combine_elim : forall Ta Tb a b i (a0:Ta) (b0:Tb),
-    length a = length b ->
-    fst ( selN (combine a b) i (a0, b0)) = selN a i a0.
-  Proof.
-    intros; rewrite selN_combine_elim; auto.
-  Qed.
-
-  Lemma snd_selN_combine_elim : forall Ta Tb a b i (a0:Ta) (b0:Tb),
-    length a = length b ->
-    snd ( selN (combine a b) i (a0, b0)) = selN b i b0.
-  Proof.
-    intros; rewrite selN_combine_elim; auto.
-  Qed.
-
-  Lemma selN_firstn_elim: forall {A} (l:list A) i n d,
-    i < n ->
-    selN (firstn n l) i d = selN l i d.
-  Proof.
-    induction l; destruct i, n; intros; try omega; auto.
-    apply IHl; omega.
-  Qed.
     
   Lemma wlt_trans: forall (x:addr) y z,
      (x < y -> y < z -> x < z) %word.
@@ -505,7 +477,7 @@ Module FILE.
          * caller to abort.  But this isn't always true: one could also get a
          * false return from BALLOC.alloc returning false above, which leaves
          * the transaction in a clean state.  Maybe we could add a three-way
-         * return value, with an "abort" value indicating such dead-end cases?
+         * return value, with an "abort" vd0 : Rec.data (Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)alue indicating such dead-end cases?
          *)
         rx false
       }
@@ -536,22 +508,7 @@ Module FILE.
   Axiom inode_correct2: forall (ino:INODE.inode) xp off,
     ((sel (ino :-> "blocks") off $0) < BmapNBlocks xp ^* $ valulen)%word.
 
-  Lemma inode_block_length: forall m xp l inum F,
-    (F * INODE.rep xp l)%pred m ->
-    inum < length l ->
-    length (selN l inum INODE.inode_zero :-> "blocks") = INODE.blocks_per_inode.
-  Proof.
-    intros.
-    remember (selN l inum INODE.inode_zero) as i.
-    unfold Rec.recset', Rec.recget', INODE.rep in H.
-    rewrite RecArray.array_item_well_formed' in H.
-    destruct i; destruct p. 
-    destruct_lift H.
-    rewrite Forall_forall in *.
-    apply (H2 (d, (d0, u))).
-    rewrite Heqi.
-    apply RecArray.in_selN; auto.
-  Qed.
+
 
   Lemma word_lt_nat : forall sz w n, (w < $ n)%word -> (@wordToNat sz w) < n.
   Proof.
