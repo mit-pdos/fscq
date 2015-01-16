@@ -265,8 +265,7 @@ Module INODE.
     step.
     instantiate (a2 := l); cancel.
 
-    unfold Rec.recset', Rec.recget'; simpl.
-    destruct r_; destruct p3; auto; intuition.
+    destruct r_; destruct p3; simpl; intuition.
     rewrite length_upd.
     unfold rep' in H.
     rewrite RecArray.array_item_well_formed' in H.
