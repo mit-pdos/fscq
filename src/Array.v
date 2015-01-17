@@ -91,6 +91,15 @@ Proof.
   intros; apply firstn_updN; auto.
 Qed.
 
+Theorem updN_firstn_comm : forall T (v : T) vs i j,
+  j < i
+  -> firstn i (updN vs j v) = updN (firstn i vs) j v.
+Proof.
+  induction vs; destruct i, j; simpl; intuition.
+  rewrite IHvs by omega.
+  reflexivity.
+Qed.
+
 Hint Rewrite firstn_updN firstn_upd using omega.
 
 Lemma skipN_updN' : forall T (v : T) vs i j,
