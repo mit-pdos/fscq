@@ -300,10 +300,20 @@ Module INODE.
     rewrite length_updN; inode_simpl; simpl.
 
     (* ((r :=> p := v ) :-> p) = v *)
-    remember (sel l inum inode0') as ii.
-    unfold Rec.recset', Rec.recget'; simpl; intros.
-    destruct ii; destruct p3; auto.
-    admit.
+    unfold sel; remember (selN l (wordToNat inum) inode0') as ii.
+
+    Opaque Rec.recset.
+    Opaque Rec.recget.
+    unfold Rec.recset', Rec.recget'; simpl.
+    repeat rewrite Rec.set_get_same.
+    repeat rewrite <- Rec.set_get_other by discriminate.
+
+    cancel.
+    autorewrite with core.
+    rewrite <- H10; auto.
+    rewrite updN_firstn_comm by assumption.
+    rewrite H6 at 1.
+    reflexivity.
 
     repeat rewrite length_upd; auto.
     eapply list2mem_upd; eauto.
