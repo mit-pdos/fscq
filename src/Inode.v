@@ -1,4 +1,3 @@
-
 Require Import Arith.
 Require Import Pred.
 Require Import Word.
@@ -191,14 +190,25 @@ Module INODE.
 
   Ltac inode_simpl := repeat inode_sep2sel; subst.
 
-  Ltac extract_inode_match inum := match goal with
-    | [ H : context [ listpred inode_match _ ] |- _ ] =>
+  Ltac extract_inode_match inum :=
+    match goal with
+      | [ H : context [ listpred inode_match _ ] |- _ ] =>
         unfold inode_match in H;
         rewrite listpred_extract with (i := wordToNat inum) (def := (inode0, inode0')) in H;
         autorewrite with core; auto;
         autorewrite with core in H; simpl in H; auto;
         destruct_lift H
-  end.
+    end.
+
+  Ltac isolate_inode_match :=
+    unfold upd; try rewrite combine_updN;
+    match goal with
+       | [ |- listpred inode_match ?l =p=> listpred inode_match (updN ?l _ _) ] =>
+          apply listpred_updN_selN with (def := (inode0, inode0'));
+          [ rewrite combine_length_eq; auto |
+            unfold inode_match; simpl ];
+          autorewrite with core; auto; inode_simpl; simpl
+    end.
 
   Theorem igetlen_ok : forall lxp xp inum,
     {< F A mbase m ilist ino,
@@ -286,24 +296,12 @@ Module INODE.
     instantiate (a := upd l inum (sel l inum inode0' :=> "blocks" := upd (sel l inum inode0' :-> "blocks") off a)).
     cancel.
 
-    eapply pimpl_trans2.
-    unfold upd; rewrite combine_updN.
-    rewrite listpred_isolate with (i := wordToNat inum) (def := (inode0, inode0'))
-      by (rewrite length_updN; rewrite combine_length_eq; eauto).
-    rewrite removeN_updN.
-    apply pimpl_refl.
-    rewrite listpred_isolate with (i := wordToNat inum) (def := (inode0, inode0'))
-      by (rewrite combine_length_eq; eauto).
-    cancel.
-    rewrite selN_updN_eq; autorewrite with core; auto.
-    unfold inode_match; simpl.
-    rewrite length_updN; inode_simpl; simpl.
+    isolate_inode_match.
 
     (* ((r :=> p := v ) :-> p) = v *)
-    unfold sel; remember (selN l (wordToNat inum) inode0') as ii.
-
     Opaque Rec.recset.
     Opaque Rec.recget.
+    unfold sel; remember (selN l (wordToNat inum) inode0') as ii.
     unfold Rec.recset', Rec.recget'; simpl.
     repeat rewrite Rec.set_get_same.
     repeat rewrite <- Rec.set_get_other by discriminate.
@@ -312,13 +310,14 @@ Module INODE.
     autorewrite with core.
     rewrite <- H10; auto.
     rewrite updN_firstn_comm by assumption.
-    rewrite H6 at 1.
-    reflexivity.
+    rewrite H6 at 1; auto.
 
     repeat rewrite length_upd; auto.
     eapply list2mem_upd; eauto.
     eapply list2mem_upd; eauto.
   Qed.
+
+
 
 
 End INODE.

@@ -841,5 +841,16 @@ Section LISTPRED.
     rewrite selN_updN_eq; auto.
   Qed.
 
+  Theorem listpred_updN_selN: forall l i v def,
+    i < length l ->
+    prd (selN l i def) =p=> prd v ->
+    listpred l =p=> listpred (updN l i v).
+  Proof.
+    intros.
+    rewrite listpred_updN by auto.
+    rewrite listpred_isolate with (def:=def) at 1 by eauto.
+    cancel; auto.
+  Qed.
+
 End LISTPRED.
 
