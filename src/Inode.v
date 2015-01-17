@@ -318,6 +318,45 @@ Module INODE.
   Qed.
 
 
+  Theorem igrow_ok : forall lxp xp inum a,
+    {< F A B mbase m ilist ino,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ inum_valid inum xp ilist /\ length (IBlocks ino) < blocks_per_inode ]] *
+           [[ (F * rep xp ilist)%pred m ]] *
+           [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
+           [[  B (list2mem (IBlocks ino)) ]]
+    POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
+           ([[ r = true ]] * exists m' ilist' ino',
+            LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (F * rep xp ilist')%pred m' ]] *
+            [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
+            [[ (B * $ (length (IBlocks ino')) |-> a)%pred (list2mem (IBlocks ino')) ]])
+    CRASH  LOG.log_intact lxp mbase
+    >} igrow lxp xp inum a.
+  Proof.
+    admit.
+  Qed.
+
+
+  Theorem ishrink_ok : forall lxp xp inum,
+    {< F A B mbase m ilist ino,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ inum_valid inum xp ilist /\ length (IBlocks ino) > 0 ]] *
+           [[ (F * rep xp ilist)%pred m ]] *
+           [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
+           [[ (B * $ (length (IBlocks ino)) |->? )%pred (list2mem (IBlocks ino)) ]]
+    POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
+           ([[ r = true ]] * exists m' ilist' ino',
+            LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (F * rep xp ilist')%pred m' ]] *
+            [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
+            [[  B (list2mem (IBlocks ino')) ]])
+    CRASH  LOG.log_intact lxp mbase
+    >} ishrink lxp xp inum.
+  Proof.
+    admit.
+  Qed.
+
 
 
 End INODE.
