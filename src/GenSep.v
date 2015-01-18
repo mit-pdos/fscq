@@ -134,12 +134,76 @@ Proof.
 Qed.
 
 
-Theorem list2mem_removelast: forall A F (l : list A),
-  l <> nil
-  -> (F * $ (length l - 1) |->?)%pred (list2mem l)
+Theorem list2mem_removelast_is : forall A l (def : A) (b : addr),
+  l <> nil -> length l <= wordToNat b
+  -> list2mem (removelast l) =
+     fun i => if (wlt_dec i $ (length l - 1)) then Some (sel l i def) else None.
+Proof.
+  intros; apply functional_extensionality; intros.
+  destruct (wlt_dec x $ (length l - 1)); unfold list2mem, sel.
+  - assert (wordToNat x < length l - 1); apply wlt_lt in w.
+    erewrite wordToNat_natToWord_bound with (bound:=b) in w by omega; auto.
+    rewrite selN_map with (default' := def).
+    rewrite selN_removelast by omega; auto.
+    rewrite length_removelast by auto; omega.
+  - rewrite selN_oob; auto.
+    rewrite map_length.
+    rewrite length_removelast by auto.
+    apply wle_le in n.
+    rewrite wordToNat_natToWord_bound with (bound:=b) in n by omega; auto.
+Qed.
+
+
+Theorem list2mem_removelast_list2mem : forall A (l : list A) (def : A) (b : addr),
+  l <> nil -> length l <= wordToNat b
+  -> list2mem (removelast l) =
+     fun i => if (weq i $ (length l - 1)) then None else (list2mem l) i.
+Proof.
+  intros; apply functional_extensionality; intros.
+  erewrite list2mem_removelast_is with (def := def) by eauto.
+  unfold list2mem, sel.
+  destruct (wlt_dec x $ (length l - 1));
+  destruct (weq x $ (length l - 1)); subst; intuition.
+  apply wlt_lt in w; omega.
+  erewrite selN_map with (default' := def); auto.
+  apply wlt_lt in w; rewrite wordToNat_natToWord_bound with (bound:=b) in w by omega; omega.
+  erewrite selN_oob; auto.
+  rewrite map_length.
+  assert ($ (length l - 1) < x)%word.
+  destruct (weq $ (length l - 1) x); intuition.
+  apply wlt_lt in H1; rewrite wordToNat_natToWord_bound with (bound:=b) in H1 by omega; omega.
+Qed.
+
+
+Lemma mem_disjoint_either: forall V (m1 m2 : @mem V) a v,
+  mem_disjoint m1 m2
+  -> m1 a = Some v -> m2 a = None.
+Proof.
+  unfold mem_disjoint; intros; firstorder.
+  pose proof (H a); firstorder.
+  pose proof (H1 v); firstorder.
+  destruct (m2 a); auto.
+  pose proof (H2 v0); firstorder.
+Qed.
+
+
+Theorem list2mem_removelast: forall A F (l : list A) v (b : addr),
+  l <> nil -> length l <= wordToNat b
+  -> (F * $ (length l - 1) |-> v)%pred (list2mem l)
   -> F (list2mem (removelast l)).
 Proof.
-  admit.
+  unfold_sep_star; unfold ptsto; intuition; repeat deex.
+  assert (x = list2mem (removelast l)); subst; auto.
+  apply functional_extensionality; intros.
+  rewrite list2mem_removelast_list2mem with (b:=b); auto.
+
+  destruct (weq x1 $ (length l - 1)); subst.
+  apply mem_disjoint_comm in H1. 
+  eapply mem_disjoint_either; eauto.
+
+  rewrite H2; unfold mem_union.
+  destruct (x x1); subst; simpl; auto.
+  apply eq_sym; apply H6; auto.
 Qed.
 
 

@@ -338,17 +338,6 @@ Module INODE.
   Qed.
 
 
-  Lemma length_removelast : forall A (l : list A),
-    l <> nil -> length (removelast l) = length l - 1.
-  Proof.
-    induction l using rev_ind; intros; simpl; auto.
-    rewrite app_length; simpl.
-    rewrite removelast_app; firstorder.
-    unfold removelast; rewrite app_length; simpl.
-    omega.
-  Qed.
-
-
   Theorem ishrink_ok : forall lxp xp inum,
     {< F A B mbase m ilist ino,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -402,7 +391,10 @@ Module INODE.
     autorewrite with core; auto.
     eapply list2mem_upd; eauto.
     simpl.
-    
+    eapply list2mem_removelast; eauto.
+    extract_inode_match inum.
+    inode_simpl.
+    unfold sel; rewrite H12; eauto.
   Qed.
 
 

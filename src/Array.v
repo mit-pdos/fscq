@@ -727,6 +727,32 @@ Proof.
 Qed.
 
 
+Lemma selN_removelast : forall A n l (def : A),
+  n < length l - 1
+  -> selN (removelast l) n def = selN l n def.
+Proof.
+  induction l using rev_ind; destruct n;
+  intros; simpl; intuition;
+  rewrite removelast_app; pred;
+  simpl; rewrite app_nil_r;
+  rewrite app_length in H; simpl in H;
+  rewrite selN_app; firstorder.
+Qed.
+
+
+Lemma length_removelast : forall A (l : list A),
+  l <> nil -> length (removelast l) = length l - 1.
+Proof.
+  induction l using rev_ind; intros; simpl; auto.
+  rewrite app_length; simpl.
+  rewrite removelast_app; firstorder.
+  unfold removelast; rewrite app_length; simpl.
+  omega.
+Qed.
+
+
+
+
 (* A general list predicate *)
 
 Section LISTPRED.
