@@ -330,7 +330,7 @@ Module INODE.
             LOG.rep lxp (ActiveTxn mbase m') *
             [[ (F * rep xp ilist')%pred m' ]] *
             [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
-            [[ (B * $ (length (IBlocks ino')) |-> a)%pred (list2mem (IBlocks ino')) ]])
+            [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]])
     CRASH  LOG.log_intact lxp mbase
     >} igrow lxp xp inum a.
   Proof.
@@ -338,13 +338,24 @@ Module INODE.
   Qed.
 
 
+  Lemma length_removelast : forall A (l : list A),
+    l <> nil -> length (removelast l) = length l - 1.
+  Proof.
+    induction l using rev_ind; intros; simpl; auto.
+    rewrite app_length; simpl.
+    rewrite removelast_app; firstorder.
+    unfold removelast; rewrite app_length; simpl.
+    omega.
+  Qed.
+
+
   Theorem ishrink_ok : forall lxp xp inum,
     {< F A B mbase m ilist ino,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum xp ilist /\ length (IBlocks ino) > 0 ]] *
+           [[ inum_valid inum xp ilist /\ (IBlocks ino) <> nil ]] *
            [[ (F * rep xp ilist)%pred m ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
-           [[ (B * $ (length (IBlocks ino)) |->? )%pred (list2mem (IBlocks ino)) ]]
+           [[ (B * $ (length (IBlocks ino) - 1) |->? )%pred (list2mem (IBlocks ino)) ]]
     POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
            ([[ r = true ]] * exists m' ilist' ino',
             LOG.rep lxp (ActiveTxn mbase m') *
@@ -354,7 +365,44 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} ishrink lxp xp inum.
   Proof.
+    unfold ishrink, rep, inum_valid.
+    hoare.
+    instantiate (a2 := l); cancel.
+    instantiate (a3 := l); cancel.
+    
+    destruct r_; destruct p3; simpl; intuition.
+    unfold rep' in H.
+    rewrite RecArray.array_item_well_formed' in H.
+    destruct_lift H.
+    rewrite Forall_forall in *.
+    apply (H0 (d, (d0, tt))).
+    rewrite H12.
+    apply RecArray.in_selN; intuition.
+
+    apply pimpl_or_r; right; cancel.
+    instantiate (a1 := Build_inode (removelast (IBlocks i))).
+    instantiate (a0 := upd l0 inum (Build_inode (removelast (IBlocks i)))).
+    instantiate (a := (upd l inum (sel l inum inode0' :=> "len" :=
+       sel l inum inode0' :-> "len" ^- $ (1)))).
+    cancel.
+
+    isolate_inode_match.
+    rewrite length_removelast by auto.
+
+    (* ((r :=> p := v ) :-> p) = v *)
+    Opaque Rec.recset.
+    Opaque Rec.recget.
+    unfold sel; remember (selN l (wordToNat inum) inode0') as ii.
+    unfold Rec.recset', Rec.recget'; simpl.
+    repeat rewrite Rec.set_get_same.
+    repeat rewrite <- Rec.set_get_other by discriminate.
+
     admit.
+
+    autorewrite with core; auto.
+    eapply list2mem_upd; eauto.
+    simpl.
+    
   Qed.
 
 

@@ -71,3 +71,76 @@ Proof.
 Qed.
 
 
+Theorem listapp_progupd: forall A l (a : A) (b : addr),
+  length l <= wordToNat b
+  -> list2mem (l ++ a :: nil) = Prog.upd (list2mem l) $ (length l) a.
+Proof.
+  intros.
+  apply functional_extensionality; intro.
+  unfold list2mem, sel, upd, Prog.upd.
+
+  destruct (wlt_dec x $ (length l)).
+  - apply wlt_lt in w.
+    erewrite wordToNat_natToWord_bound in w; eauto.
+    subst; rewrite selN_map with (default' := a).
+    destruct (addr_eq_dec x $ (length l)); subst.
+    + erewrite wordToNat_natToWord_bound in *; eauto.
+      rewrite selN_last; auto.
+    + rewrite selN_map with (default' := a); auto.
+      rewrite selN_app; auto.
+    + rewrite app_length; simpl; omega.
+  - destruct (addr_eq_dec x $ (length l)).
+    + subst; erewrite selN_map with (default' := a).
+      rewrite selN_last; auto.
+      eapply wordToNat_natToWord_bound; eauto.
+      erewrite wordToNat_natToWord_bound; eauto.
+      rewrite app_length; simpl; omega.
+    + apply wle_le in n.
+      erewrite wordToNat_natToWord_bound in n; eauto.
+      repeat erewrite selN_oob with (def := None); try rewrite map_length; auto.
+      rewrite app_length; simpl; intuition.
+      rewrite Nat.add_1_r; apply lt_le_S.
+      apply le_lt_or_eq in n; intuition.
+      contradict n0; rewrite H0.
+      apply wordToNat_inj.
+      erewrite wordToNat_natToWord_bound; eauto.
+Qed.
+
+
+Theorem list2mem_array: forall  A (l : list A) (b : addr),
+  length l <= wordToNat b
+  -> array $0 l $1 (list2mem l).
+Proof.
+  induction l using rev_ind; intros; firstorder; simpl.
+  rewrite app_length in H; simpl in H.
+  erewrite listapp_progupd with (b := b); try omega.
+  eapply array_app_progupd with (b := b); try omega.
+  apply IHl with (b := b); omega.
+Qed.
+
+
+Theorem list2mem_app: forall A (F : @pred A) l a (b : addr),
+  length l <= wordToNat b
+  -> F (list2mem l)
+  -> (F * $ (length l) |-> a)%pred (list2mem (l ++ a :: nil)).
+Proof.
+  intros.
+  erewrite listapp_progupd; eauto.
+  apply ptsto_upd_disjoint; auto.
+  unfold list2mem, sel.
+  rewrite selN_oob; auto.
+  rewrite map_length.
+  erewrite wordToNat_natToWord_bound; eauto.
+Qed.
+
+
+Theorem list2mem_removelast: forall A F (l : list A),
+  l <> nil
+  -> (F * $ (length l - 1) |->?)%pred (list2mem l)
+  -> F (list2mem (removelast l)).
+Proof.
+  admit.
+Qed.
+
+
+

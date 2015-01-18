@@ -599,6 +599,28 @@ Proof.
   rewrite mem_disjoint_comm; eauto.
 Qed.
 
+
+Lemma ptsto_upd_disjoint: forall V (F : @pred V) a v m,
+  F m -> m a = None
+  -> (F * a |-> v)%pred (upd m a v).
+Proof.
+  unfold upd; unfold_sep_star; intros; repeat deex.
+  exists m.
+  exists (fun a' => if addr_eq_dec a' a then Some v else None).
+  split; [|split].
+  - apply functional_extensionality; intro.
+    unfold mem_union; destruct (addr_eq_dec x a); subst; intuition.
+    rewrite H0; auto.
+    destruct (m x); auto.
+  - unfold mem_disjoint in *. intuition. repeat deex.
+    destruct (addr_eq_dec x a); subst; intuition; pred.
+  - intuition; eauto.
+    unfold ptsto; intuition.
+    destruct (addr_eq_dec a a); pred.
+    destruct (addr_eq_dec a' a); pred.
+Qed.
+
+
 Lemma ptsto_upd:
   forall a (v v0 : V) F m,
   (a |-> v0 * F)%pred m ->

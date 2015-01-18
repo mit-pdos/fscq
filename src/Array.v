@@ -476,6 +476,23 @@ Proof.
 Qed.
 
 
+Lemma selN_oob: forall A n l (def : A),
+  length l <= n
+  -> selN l n def = def.
+Proof.
+  induction n; destruct l; simpl; firstorder.
+  inversion H.
+Qed.
+
+
+Lemma selN_app: forall A n l l' (def : A),
+  n < length l
+  -> selN (l ++ l') n def = selN l n def.
+Proof.
+  induction n; destruct l; simpl; firstorder; inversion H.
+Qed.
+
+
 Lemma firstn_app: forall A n (l1 l2 : list A),
   n = length l1 -> firstn n (l1 ++ l2) = l1.
 Proof.
@@ -524,6 +541,7 @@ Lemma array_app_progupd : forall V l (v : V) m (b : addr),
   -> array $0 (l ++ v :: nil) $1 (Prog.upd m $ (length l) v)%word.
 Proof.
   intros.
+
   assert (wordToNat (natToWord addrlen (length l)) = length l).
   erewrite wordToNat_natToWord_bound; eauto.
   eapply isolate_bwd with (i := $ (length l)) (default := v).
@@ -536,26 +554,9 @@ Proof.
   ring_simplify ($ (0) ^+ $ (length l) ^* natToWord addrlen (1)).
   replace (0 + length l * 1) with (length l) by omega; auto.
 
-  unfold_sep_star; exists m.
-  exists (fun a' => if addr_eq_dec a' $ (length l) then Some v else None).
-  intuition.
-  - unfold Prog.upd, mem_union.
-    apply functional_extensionality.
-    intro; destruct (addr_eq_dec x $ (length l)).
-    replace (m x) with (@None V); auto.
-    erewrite array_oob; eauto.
-    subst; erewrite wordToNat_natToWord_bound; eauto.
-    case_eq (m $ (length l)); case_eq (m x); auto.
-  - unfold Prog.upd, mem_disjoint.
-    intuition; repeat deex.
-    destruct (addr_eq_dec x $ (length l)).
-    eapply array_oob with (i := x) in H0.
-    rewrite H3 in H0; inversion H0.
-    subst; erewrite wordToNat_natToWord_bound; eauto.
-    inversion H4.
-  - unfold ptsto; intuition.
-    destruct (addr_eq_dec $ (length l) $ (length l)); intuition.
-    destruct (addr_eq_dec a' $ (length l)); subst; intuition.
+  apply ptsto_upd_disjoint; auto.
+  eapply array_oob; eauto.
+  erewrite wordToNat_natToWord_bound; eauto.
 Qed.
 
 
