@@ -381,8 +381,63 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} igrow lxp xp inum a.
   Proof.
-    admit.
+    unfold igrow, rep, inum_valid.
+    hoare.
+    instantiate (a2 := l); cancel.
+    instantiate (a3 := l); cancel.
+
+    destruct r_; destruct p2; simpl; intuition.
+    unfold rep' in H.
+    rewrite RecArray.array_item_well_formed' in H.
+    destruct_lift H.
+    rewrite Forall_forall in *.
+    rewrite length_upd.
+    apply (H0 (d, (d0, tt))).
+    rewrite H12.
+    apply RecArray.in_selN; intuition.
+    rewrite Forall_forall; intuition.
+
+    apply pimpl_or_r; right; cancel.
+    instantiate (a1 := Build_inode ((IBlocks i) ++ [a])).
+    instantiate (a0 := upd l0 inum (Build_inode ((IBlocks i) ++ [a]))).
+    (* messy: `cancel` should be able to instantiate this automatically *)
+    match goal with
+      | [ |- rep' _ ?x * _ =p=> rep' _ ?y * _ ] => instantiate (1 := x)
+    end; cancel_exact.
+
+    isolate_inode_match.
+    assert (length (selN l (wordToNat inum) inode0' :-> "blocks") = blocks_per_inode) as Heq.
+    eapply inode_blocks_length with (xp := xp) (m := m0); try omega.
+    pred_apply; cancel.
+    unfold sel; cancel.
+
+    (* omega doesn't work well *)
+    rewrite app_length; simpl.
+    erewrite wordToNat_plusone with (w' := $ blocks_per_inode) by
+      (apply lt_wlt; setoid_rewrite <- H0;
+       rewrite wordToNat_natToWord_bound with (bound := $ blocks_per_inode); auto).
+    rewrite Nat.add_1_r; auto.
+
+    erewrite wordToNat_plusone with (w' := $ blocks_per_inode) by
+      (apply lt_wlt; setoid_rewrite <- H0;
+       rewrite wordToNat_natToWord_bound with (bound := $ blocks_per_inode); auto).
+    rewrite Heq; setoid_rewrite <- H0.
+    rewrite lt_le_S; auto.
+
+    rewrite app_length; simpl.
+    setoid_rewrite <- H0.
+    apply firstn_app_updN; auto.
+    rewrite Heq; auto.
+
+    autorewrite with core; auto.
+    eapply list2mem_upd; eauto.
+    simpl.
+    eapply list2mem_app; eauto.
+    extract_inode_match inum.
+    inode_simpl.
+    unfold sel; rewrite H12; eauto.
   Qed.
+
 
   Theorem ishrink_ok : forall lxp xp inum,
     {< F A B mbase m ilist ino,

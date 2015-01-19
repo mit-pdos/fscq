@@ -776,6 +776,21 @@ Ltac cancel_with t :=
 
 Ltac cancel := cancel_with idtac.
 
+
+(* fastest version of cancel, should always try this first *)
+Ltac cancel_exact := repeat match goal with 
+  | [ |- (?a =p=> ?a)%pred ] =>
+        eapply pimpl_refl
+  | [ |- (_ * ?a =p=> _ * ?a)%pred ] =>
+        eapply pimpl_sep_star; [ | eapply pimpl_refl]
+  | [ |- ( ?a * _ =p=> ?a * _)%pred ] =>
+        eapply pimpl_sep_star; [ eapply pimpl_refl | ]
+  | [ |- ( ?a * _ =p=> _ * ?a)%pred ] =>
+        rewrite sep_star_comm1
+  | [ |- ( (?a * _) * _ =p=> ?a * _)%pred ] =>
+        rewrite sep_star_assoc_1
+end.
+
 Theorem nop_ok :
   forall T A v (rx : A -> prog T),
   {{ fun done_ crash_ => exists F, F * [[ forall r_,

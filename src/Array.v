@@ -534,6 +534,35 @@ Proof.
   rewrite IHl; auto.
 Qed.
 
+Lemma firstn_plusone_selN : forall A n (l : list A) def,
+  n < length l
+  -> firstn (n + 1) l = firstn n l ++ (selN l n def :: nil).
+Proof.
+  induction n; destruct l; intros; simpl in *; firstorder.
+  inversion H.
+  rewrite IHn with (def:=def) by omega; auto.
+Qed.
+
+Lemma firstn_updN_oob: forall A (l : list A) n i def,
+  n <= i -> firstn n (updN l i def) = firstn n l.
+Proof.
+  induction l; destruct n; destruct i; intros; simpl; auto.
+  inversion H.
+  rewrite IHl by omega; auto.
+Qed.
+
+Lemma firstn_app_updN: forall A (a b : list A) x,
+  length a < length b
+  -> a = firstn (length a) b
+  -> a ++ x :: nil = firstn (length a + 1) (updN b (length a) x).
+Proof.
+  intros.
+  rewrite firstn_plusone_selN with (def := x).
+  rewrite selN_updN_eq by auto.
+  rewrite firstn_updN_oob; auto.
+  rewrite H0 at 1; auto.
+  rewrite length_updN; auto.
+Qed.
 
 Lemma array_app_progupd : forall V l (v : V) m (b : addr),
   length l <= wordToNat b
