@@ -96,6 +96,46 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (iput' _ _ _ _) _) => apply iput_ok' : prog.
 
 
+  Opaque Rec.recset Rec.recget.
+
+  Ltac rec_simpl :=
+      unfold Rec.recset', Rec.recget'; simpl;
+      repeat (repeat rewrite Rec.set_get_same; auto;
+              repeat rewrite <- Rec.set_get_other by discriminate; auto).
+
+  Lemma inode_set_len_get_len : forall (ino : inode') v,
+    ((ino :=> "len" := v) :-> "len") = v.
+  Proof.
+    intros; rec_simpl.
+  Qed.
+
+  Lemma inode_set_blocks_get_blocks : forall (ino : inode') v,
+    ((ino :=> "blocks" := v) :-> "blocks") = v.
+  Proof.
+    intros; rec_simpl.
+  Qed.
+
+  Lemma inode_set_len_get_blocks : forall (ino : inode') v,
+    ((ino :=> "len" := v) :-> "blocks") = ino :-> "blocks".
+  Proof.
+    intros; rec_simpl.
+  Qed.
+
+  Lemma inode_set_blocks_get_len : forall (ino : inode') v,
+    ((ino :=> "blocks" := v) :-> "len") = ino :-> "len".
+  Proof.
+    intros; rec_simpl.
+  Qed.
+
+  Transparent Rec.recset Rec.recget.
+
+  Hint Rewrite inode_set_len_get_len : core.
+  Hint Rewrite inode_set_len_get_blocks : core.
+  Hint Rewrite inode_set_blocks_get_blocks : core.
+  Hint Rewrite inode_set_blocks_get_len : core.
+
+
+
   (* separation logic based theorems *)
 
   Record inode := {
@@ -201,7 +241,7 @@ Module INODE.
     end.
 
   Ltac isolate_inode_match :=
-    unfold upd; try rewrite combine_updN;
+    unfold sel, upd; try rewrite combine_updN;
     match goal with
        | [ |- listpred inode_match ?l =p=> listpred inode_match (updN ?l _ _) ] =>
           apply listpred_updN_selN with (def := (inode0, inode0'));
@@ -297,22 +337,11 @@ Module INODE.
     cancel.
 
     isolate_inode_match.
+    unfold sel; cancel.
 
-    (* ((r :=> p := v ) :-> p) = v *)
-    Opaque Rec.recset.
-    Opaque Rec.recget.
-    unfold sel; remember (selN l (wordToNat inum) inode0') as ii.
-    unfold Rec.recset', Rec.recget'; simpl.
-    repeat rewrite Rec.set_get_same.
-    repeat rewrite <- Rec.set_get_other by discriminate.
-
-    cancel.
-    autorewrite with core.
-    rewrite <- H10; auto.
-    rewrite updN_firstn_comm by assumption.
+    rewrite updN_firstn_comm; auto.
     rewrite H6 at 1; auto.
-
-    repeat rewrite length_upd; auto.
+    autorewrite with core; auto.
     eapply list2mem_upd; eauto.
     eapply list2mem_upd; eauto.
   Qed.
@@ -336,6 +365,7 @@ Module INODE.
   Proof.
     admit.
   Qed.
+
 
 
   Theorem ishrink_ok : forall lxp xp inum,
@@ -377,14 +407,6 @@ Module INODE.
 
     isolate_inode_match.
     rewrite length_removelast by auto.
-
-    (* ((r :=> p := v ) :-> p) = v *)
-    Opaque Rec.recset.
-    Opaque Rec.recget.
-    unfold sel; remember (selN l (wordToNat inum) inode0') as ii.
-    unfold Rec.recset', Rec.recget'; simpl.
-    repeat rewrite Rec.set_get_same.
-    repeat rewrite <- Rec.set_get_other by discriminate.
 
     admit.
 
