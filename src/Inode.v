@@ -174,7 +174,7 @@ Module INODE.
     (* The following won't hold after introducing indirect blocks.
        For indirect blocks, we need to refer to disk state,
        so write inode_match in separation logic style. *)
-    [[ wordToNat ((snd x) :-> "len") <= length ((snd x) :-> "blocks") ]] *
+    [[ wordToNat ((snd x) :-> "len") <= blocks_per_inode ]] *
     [[ IBlocks (fst x) = firstn (length (IBlocks (fst x))) ((snd x) :-> "blocks") ]]
     )%pred.
 
@@ -197,7 +197,7 @@ Module INODE.
   Lemma inode_blocks_length: forall m xp l inum F,
     (F * rep' xp l)%pred m ->
     inum < length l ->
-    length (selN l inum inode0' :-> "blocks") = INODE.blocks_per_inode.
+    length (selN l inum inode0' :-> "blocks") = blocks_per_inode.
   Proof.
     intros.
     remember (selN l inum inode0') as i.
@@ -421,7 +421,7 @@ Module INODE.
     erewrite wordToNat_plusone with (w' := $ blocks_per_inode) by
       (apply lt_wlt; setoid_rewrite <- H0;
        rewrite wordToNat_natToWord_bound with (bound := $ blocks_per_inode); auto).
-    rewrite Heq; setoid_rewrite <- H0.
+    setoid_rewrite <- H0.
     rewrite lt_le_S; auto.
 
     rewrite app_length; simpl.
@@ -491,6 +491,11 @@ Module INODE.
     apply le_minus_one_lt.
     apply length_not_nil; auto.
     rewrite H0; auto.
+
+    assert (length (selN l (wordToNat inum) inode0' :-> "blocks") = blocks_per_inode) as Heq.
+    eapply inode_blocks_length with (xp := xp) (m := m0); try omega.
+    pred_apply; cancel.
+    setoid_rewrite Heq; auto.
 
     extract_inode_match inum.
     apply gt_0_wneq_0.
