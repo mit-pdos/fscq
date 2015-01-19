@@ -347,6 +347,24 @@ Module INODE.
   Qed.
 
 
+  (* small helper to replace omega *)
+  Lemma le_minus_one_lt : forall a b,
+    a > 0 -> a <= b -> a - 1 < b.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma gt_0_wneq_0: forall (n : addr),
+    (wordToNat n > 0)%nat -> n <> $0.
+  Proof.
+    intros.
+    apply word_neq.
+    ring_simplify (n ^- $0).
+    destruct (weq n $0); auto; subst.
+    rewrite roundTrip_0 in H; intuition.
+  Qed.
+
+
   Theorem igrow_ok : forall lxp xp inum a,
     {< F A B mbase m ilist ino,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
@@ -365,8 +383,6 @@ Module INODE.
   Proof.
     admit.
   Qed.
-
-
 
   Theorem ishrink_ok : forall lxp xp inum,
     {< F A B mbase m ilist ino,
@@ -388,7 +404,7 @@ Module INODE.
     hoare.
     instantiate (a2 := l); cancel.
     instantiate (a3 := l); cancel.
-    
+
     destruct r_; destruct p3; simpl; intuition.
     unfold rep' in H.
     rewrite RecArray.array_item_well_formed' in H.
@@ -397,6 +413,7 @@ Module INODE.
     apply (H0 (d, (d0, tt))).
     rewrite H12.
     apply RecArray.in_selN; intuition.
+    rewrite Forall_forall; intuition.
 
     apply pimpl_or_r; right; cancel.
     instantiate (a1 := Build_inode (removelast (IBlocks i))).
@@ -407,8 +424,23 @@ Module INODE.
 
     isolate_inode_match.
     rewrite length_removelast by auto.
+    rewrite wordToNat_minus_one.
+    unfold sel; cancel.
 
-    admit.
+    (* omega doesn't work well *)
+    rewrite Nat.sub_1_r; apply Nat.le_le_pred; auto.
+    rewrite <- removelast_firstn; f_equal.
+    rewrite Nat.sub_1_r.
+    rewrite Nat.succ_pred_pos; auto.
+    apply length_not_nil; auto.
+    apply le_minus_one_lt.
+    apply length_not_nil; auto.
+    rewrite H0; auto.
+
+    extract_inode_match inum.
+    apply gt_0_wneq_0.
+    setoid_rewrite <- H12.
+    apply length_not_nil; auto.
 
     autorewrite with core; auto.
     eapply list2mem_upd; eauto.

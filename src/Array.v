@@ -560,6 +560,13 @@ Proof.
 Qed.
 
 
+Lemma length_not_nil : forall A (l : list A),
+  l <> nil -> length l > 0.
+Proof.
+  induction l; simpl; firstorder.
+Qed.
+
+
 
 (** * Operations for array accesses, to guide automation *)
 
