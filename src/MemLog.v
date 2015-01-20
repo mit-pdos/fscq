@@ -16,6 +16,7 @@ Require Import Word.
 Require Import Rec.
 Require Import Array.
 Require Import Eqdep_dec.
+Require Import GenSep.
 
 (* XXX parameterize by length and stick in Word.v *)
 Module Addr_as_OT <: UsualOrderedType.
@@ -57,20 +58,22 @@ Module Map := FMapList.Make(Addr_as_OT).
 Import ListNotations.
 Set Implicit Arguments.
 
+Definition memstate := Map.t valu.
+Definition ms_empty := Map.empty valu.
+
+Definition diskstate := list valu.
+
 Inductive logstate :=
-| NoTransaction (cur : @mem valu)
+| NoTransaction (cur : diskstate)
 (* Don't touch the disk directly in this state. *)
-| ActiveTxn (old : @mem valu) (cur : @mem valu)
+| ActiveTxn (old : diskstate) (cur : diskstate)
 (* A transaction is in progress.
  * It started from the first memory and has evolved into the second.
  * It has not committed yet. *)
-| FlushedTxn (old : @mem valu) (cur : @mem valu)
+| FlushedTxn (old : diskstate) (cur : diskstate)
 (* A transaction has been flushed to the log, but not committed yet. *)
-| CommittedTxn (cur : @mem valu)
+| CommittedTxn (cur : diskstate)
 (* A transaction has committed but the log has not been applied yet. *).
-
-Definition memstate := Map.t valu.
-Definition ms_empty := Map.empty valu.
 
 Record xparams := {
   (* The actual data region is everything that's not described here *)
@@ -155,17 +158,18 @@ Module MEMLOG.
     trivial.
   Defined.
 
+  Definition indomain' (a : addr) (m : diskstate) := wordToNat a < length m.
 
   (* Check that the state is well-formed *)
   Definition valid_entries m (ms : memstate) :=
-    Forall (fun p => @indomain valu (fst p) m) (Map.elements ms).
+    forall a v, Map.MapsTo a v ms -> indomain' a m.
 
   Definition valid_size xp (ms : memstate) :=
     Map.cardinal ms <= wordToNat (LogLen xp).
 
   (* Replay the state in memory *)
-  Fixpoint replay (ms : memstate) (m : mem) : mem :=
-    Map.fold (fun a v m' => Prog.upd m' a v) ms m.
+  Fixpoint replay (ms : memstate) (m : diskstate) : diskstate :=
+    Map.fold (fun a v m' => upd m' a v) ms m.
 
   (** On-disk representation of the log *)
   Definition log_rep xp m (ms : memstate) : pred :=
@@ -180,11 +184,11 @@ Module MEMLOG.
       LOG.avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms))
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
-  Definition data_rep (old : @mem valu) : pred :=
-    diskIs old.
+  Definition data_rep (old : diskstate) : pred :=
+    diskIs (list2mem old).
 
-  Definition cur_rep (old : mem) (ms : memstate) (cur : mem) : @pred valu :=
-    [[ forall a, cur a = replay ms old a ]]%pred.
+  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred valu :=
+    [[ cur = replay ms old ]]%pred.
 
   Definition rep xp (st: logstate) (ms: memstate) :=
     match st with
@@ -192,7 +196,8 @@ Module MEMLOG.
       (LogCommit xp) |-> $0
     * [[ ms = ms_empty ]]
     * data_rep m
-    * log_rep xp m ms_empty
+    * (LogHeader xp) |->?
+    * LOG.avail_region (LogStart xp) (wordToNat (LogLen xp) + 1)
     | ActiveTxn old cur =>
       (LogCommit xp) |-> $0
     * data_rep old (* Transactions are always completely buffered in memory. *)
@@ -214,7 +219,6 @@ Module MEMLOG.
     end%pred.
 
   Definition init T xp rx : prog T :=
-    Write (LogHeader xp) (header_to_valu (mk_header 0)) ;;
     Write (LogCommit xp) $0 ;;
     rx tt.
 
@@ -325,8 +329,7 @@ Module MEMLOG.
   Proof.
     unfold read; log_unfold.
     intros.
-    admit.
-    (* XXX case_eq (Map.find a ms); hoare. *)
+    case_eq (Map.find a ms); hoare.
 
     (*
     eapply pimpl_ok.
@@ -391,11 +394,8 @@ Module MEMLOG.
     >} flush xp ms.
   Proof.
     unfold flush; log_unfold.
-    step.
-    step.
-    step.
-    step.
-    step.
+    hoare.
+    
   Qed.
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
