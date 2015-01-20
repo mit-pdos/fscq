@@ -197,7 +197,7 @@ Module MEMLOG.
     * [[ ms = ms_empty ]]
     * data_rep m
     * (LogHeader xp) |->?
-    * LOG.avail_region (LogStart xp) (wordToNat (LogLen xp) + 1)
+    * LOG.avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
     | ActiveTxn old cur =>
       (LogCommit xp) |-> $0
     * data_rep old (* Transactions are always completely buffered in memory. *)
@@ -226,7 +226,7 @@ Module MEMLOG.
   Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (data_rep _) (data_rep _)) => constructor : okToUnify.
 
-  Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, Map.cardinal.
+  Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, valid_size, Map.cardinal.
 
   Theorem init_ok : forall xp,
     {< old,
@@ -240,15 +240,7 @@ Module MEMLOG.
   Proof.
     unfold init; log_unfold.
     intros.
-    hoare; try apply pimpl_any.
-
-    instantiate (a := valu_to_descriptor w1).
-    rewrite valu_descriptor_id.
-    cancel.
-
-    constructor.
-
-    unfold valid_size. log_unfold. simpl. omega.
+    hoare; apply pimpl_any.
   Qed.
 
   Definition begin T xp rx : prog T :=
@@ -264,6 +256,13 @@ Module MEMLOG.
   Proof.
     unfold begin; log_unfold.
     hoare.
+
+    instantiate (a := valu_to_descriptor w).
+    rewrite valu_descriptor_id.
+    cancel.
+
+    unfold valid_entries; intuition; inversion H.
+    unfold valid_entries; intuition; inversion H.
   Qed.
 
   Definition abort T xp (ms:memstate) rx : prog T :=
@@ -280,11 +279,11 @@ Module MEMLOG.
     unfold abort; log_unfold.
     hoare.
   Qed.
+
   Lemma replay_add : forall a v ms m,
-    replay (Map.add a v ms) m = Prog.upd (replay ms m) a v.
+    replay (Map.add a v ms) m = upd (replay ms m) a v.
   Proof.
     intros.
-    apply functional_extensionality.
     admit.
   Qed.
 
@@ -293,9 +292,9 @@ Module MEMLOG.
 
   Theorem write_ok : forall xp ms a v,
     {< m1 m2 F' v0,
-    PRE      rep xp (ActiveTxn m1 m2) ms * [[ (a |-> v0 * F')%pred m2 ]]
+    PRE      rep xp (ActiveTxn m1 m2) ms * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
     POST:ms' exists m', rep xp (ActiveTxn m1 m') ms' *
-             [[(a |-> v * F')%pred m' ]]
+             [[(F' * a |-> v)%pred (list2mem m') ]]
     CRASH    exists m' ms', rep xp (ActiveTxn m1 m') ms'
     >} write xp ms a v.
   Proof.
@@ -304,9 +303,7 @@ Module MEMLOG.
     admit. (* XXX valid_entries Map.add *)
 
     rewrite replay_add.
-    eapply ptsto_upd; eauto.
-    replace (replay ms m) with m0 by (apply functional_extensionality; eauto).
-    eauto.
+    eapply list2mem_upd; eauto.
   Qed.
 
   Definition read T (xp : xparams) ms a rx : prog T :=
@@ -321,7 +318,7 @@ Module MEMLOG.
   Theorem read_ok: forall xp ms a,
     {< m1 m2 v,
     PRE    rep xp (ActiveTxn m1 m2) ms *
-           [[ m2 @ a |-> v ]]
+           [[ list2mem m2 @ a |-> v ]]
     POST:r rep xp (ActiveTxn m1 m2) ms *
            [[ r = v ]]
     CRASH  rep xp (ActiveTxn m1 m2) ms
@@ -329,7 +326,14 @@ Module MEMLOG.
   Proof.
     unfold read; log_unfold.
     intros.
+
+(*
     case_eq (Map.find a ms); hoare.
+    subst.
+*)
+
+    admit.
+
 
     (*
     eapply pimpl_ok.
