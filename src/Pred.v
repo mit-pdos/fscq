@@ -1157,5 +1157,25 @@ Proof.
   firstorder.
 Qed.
 
+Theorem sync_xform_ptsto_set : forall a vs,
+  sync_xform (a |=> vs) =p=> (a |=> vs).
+Proof.
+  unfold sync_xform, ptsto_set, pimpl; intros; repeat deex.
+  destruct H0.
+  apply sep_star_lift_apply in H; destruct H; destruct H0.
+  destruct x0; destruct vs; simpl in *.
+
+  exists (w, nil).
+  apply sep_star_and2lift.
+  split.
+
+  unfold ptsto in *; destruct H.
+  unfold mem_sync; intuition.
+  rewrite H; auto.
+  rewrite H2; auto.
+
+  firstorder.
+Qed.
+
 
 Global Opaque pred.
