@@ -243,12 +243,15 @@ Module INODE.
   Ltac isolate_inode_match :=
     unfold sel, upd; try rewrite combine_updN;
     match goal with
-       | [ |- listpred inode_match ?l =p=> listpred inode_match (updN ?l _ _) ] =>
+       | [ |- listpred inode_match ?l =p=> listpred inode_match (updN ?l' _ _) ] =>
+          assert (l = l') by reflexivity;
           apply listpred_updN_selN with (def := (inode0, inode0'));
           [ rewrite combine_length_eq; auto |
             unfold inode_match; simpl ];
           autorewrite with core; auto; inode_simpl; simpl
     end.
+
+  Hint Extern 0 (okToUnify (rep' _ _) (rep' _ _)) => constructor : okToUnify.
 
   Theorem igetlen_ok : forall lxp xp inum,
     {< F A mbase m ilist ino,
@@ -262,7 +265,6 @@ Module INODE.
   Proof.
     unfold igetlen, rep, inum_valid.
     hoare.
-    instantiate (a2 := l); cancel.
 
     extract_inode_match inum.
     inode_simpl.
@@ -284,7 +286,6 @@ Module INODE.
   Proof.
     unfold iget, rep, inum_valid, off_valid.
     hoare.
-    instantiate (a2 := l); cancel.
 
     extract_inode_match inum.
     inode_simpl.
@@ -311,9 +312,7 @@ Module INODE.
   Proof.
     unfold iput, rep, inum_valid, off_valid.
     step.
-    instantiate (a2 := l); cancel.
     step.
-    instantiate (a2 := l); cancel.
 
     destruct r_; destruct p3; simpl; intuition.
     rewrite length_upd.
@@ -331,16 +330,12 @@ Module INODE.
     apply pimpl_or_r; left; cancel.
     apply pimpl_or_r; right; cancel.
 
-    instantiate (a1 := Build_inode (upd (IBlocks i) off a)).
     instantiate (a0 := upd l0 inum (Build_inode (upd (IBlocks i) off a))).
-    instantiate (a := upd l inum (sel l inum inode0' :=> "blocks" := upd (sel l inum inode0' :-> "blocks") off a)).
-    cancel.
-
     isolate_inode_match.
     unfold sel; cancel.
 
     rewrite updN_firstn_comm; auto.
-    rewrite H6 at 1; auto.
+    rewrite H10 at 1; auto.
     autorewrite with core; auto.
     eapply list2mem_upd; eauto.
     eapply list2mem_upd; eauto.
@@ -383,8 +378,6 @@ Module INODE.
   Proof.
     unfold igrow, rep, inum_valid.
     hoare.
-    instantiate (a2 := l); cancel.
-    instantiate (a3 := l); cancel.
 
     destruct r_; destruct p2; simpl; intuition.
     unfold rep' in H.
@@ -398,12 +391,7 @@ Module INODE.
     rewrite Forall_forall; intuition.
 
     apply pimpl_or_r; right; cancel.
-    instantiate (a1 := Build_inode ((IBlocks i) ++ [a])).
     instantiate (a0 := upd l0 inum (Build_inode ((IBlocks i) ++ [a]))).
-    (* messy: `cancel` should be able to instantiate this automatically *)
-    match goal with
-      | [ |- rep' _ ?x * _ =p=> rep' _ ?y * _ ] => instantiate (1 := x)
-    end; cancel_exact.
 
     isolate_inode_match.
     assert (length (selN l (wordToNat inum) inode0' :-> "blocks") = blocks_per_inode) as Heq.
@@ -414,18 +402,18 @@ Module INODE.
     (* omega doesn't work well *)
     rewrite app_length; simpl.
     erewrite wordToNat_plusone with (w' := $ blocks_per_inode) by
-      (apply lt_wlt; setoid_rewrite <- H0;
+      (apply lt_wlt; setoid_rewrite <- H3;
        rewrite wordToNat_natToWord_bound with (bound := $ blocks_per_inode); auto).
     rewrite Nat.add_1_r; auto.
 
     erewrite wordToNat_plusone with (w' := $ blocks_per_inode) by
-      (apply lt_wlt; setoid_rewrite <- H0;
+      (apply lt_wlt; setoid_rewrite <- H3;
        rewrite wordToNat_natToWord_bound with (bound := $ blocks_per_inode); auto).
-    setoid_rewrite <- H0.
+    setoid_rewrite <- H3.
     rewrite lt_le_S; auto.
 
     rewrite app_length; simpl.
-    setoid_rewrite <- H0.
+    setoid_rewrite <- H3.
     apply firstn_app_updN; auto.
     rewrite Heq; auto.
 
@@ -457,8 +445,6 @@ Module INODE.
   Proof.
     unfold ishrink, rep, inum_valid.
     hoare.
-    instantiate (a2 := l); cancel.
-    instantiate (a3 := l); cancel.
 
     destruct r_; destruct p3; simpl; intuition.
     unfold rep' in H.
@@ -471,11 +457,7 @@ Module INODE.
     rewrite Forall_forall; intuition.
 
     apply pimpl_or_r; right; cancel.
-    instantiate (a1 := Build_inode (removelast (IBlocks i))).
     instantiate (a0 := upd l0 inum (Build_inode (removelast (IBlocks i)))).
-    instantiate (a := (upd l inum (sel l inum inode0' :=> "len" :=
-       sel l inum inode0' :-> "len" ^- $ (1)))).
-    cancel.
 
     isolate_inode_match.
     rewrite length_removelast by auto.
@@ -490,7 +472,7 @@ Module INODE.
     apply length_not_nil; auto.
     apply le_minus_one_lt.
     apply length_not_nil; auto.
-    rewrite H0; auto.
+    rewrite H3; auto.
 
     assert (length (selN l (wordToNat inum) inode0' :-> "blocks") = blocks_per_inode) as Heq.
     eapply inode_blocks_length with (xp := xp) (m := m0); try omega.
@@ -499,7 +481,7 @@ Module INODE.
 
     extract_inode_match inum.
     apply gt_0_wneq_0.
-    setoid_rewrite <- H12.
+    setoid_rewrite <- H14.
     apply length_not_nil; auto.
 
     autorewrite with core; auto.
