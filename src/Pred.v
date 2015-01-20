@@ -130,7 +130,7 @@ Definition ptsto_set (a : addr) (vs : valuset) : @pred valuset :=
 Infix "|=>" := ptsto_set (at level 35) : pred_scope.
 
 Definition ptsto_cur (a : addr) (v : valu) : @pred valuset :=
-  (exists vs_disk, a |-> vs_disk * [[ fst vs_disk = v ]])%pred.
+  (exists vs_disk, a |=> vs_disk * [[ fst vs_disk = v ]])%pred.
 Infix "|~>" := ptsto_cur (at level 35) : pred_scope.
 
 
@@ -1138,25 +1138,6 @@ Proof.
     rewrite mem_sync_mem_union_dist; auto.
 Qed.
 
-Theorem sync_xform_ptsto_cur : forall a v,
-  sync_xform (a |~> v) =p=> a |~> v.
-Proof.
-  unfold sync_xform, ptsto_cur, pimpl; intros; repeat deex.
-  destruct H0.
-  apply sep_star_lift_apply in H; destruct H.
-  exists (v, nil).
-  apply sep_star_and2lift.
-  split.
-
-  destruct x0; simpl in *; subst.
-  unfold ptsto in *; destruct H.
-  unfold mem_sync; intuition.
-  rewrite H; auto.
-  rewrite H0; auto.
-
-  firstorder.
-Qed.
-
 Theorem sync_xform_ptsto_set : forall a vs,
   sync_xform (a |=> vs) =p=> (a |=> vs).
 Proof.
@@ -1174,6 +1155,31 @@ Proof.
   rewrite H; auto.
   rewrite H2; auto.
 
+  firstorder.
+Qed.
+
+Theorem sync_xform_ptsto_cur : forall a v,
+  sync_xform (a |~> v) =p=> a |~> v.
+Proof.
+  unfold sync_xform, ptsto_cur, ptsto_set, pimpl; intros; repeat deex.
+  destruct H0.
+  apply sep_star_lift_apply in H; destruct H; destruct H.
+  apply sep_star_lift_apply in H; destruct H; destruct H1.
+  exists (v, nil).
+  apply sep_star_and2lift.
+  destruct x0; destruct x1; simpl in *; subst.
+  split.
+
+  eexists.
+  apply sep_star_and2lift.
+  split.
+
+  unfold ptsto in *; destruct H.
+  unfold mem_sync; intuition.
+  rewrite H; auto.
+  rewrite H0; auto.
+
+  firstorder.
   firstorder.
 Qed.
 
