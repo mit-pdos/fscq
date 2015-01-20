@@ -133,8 +133,8 @@ Qed.
 Definition For_ (T: Set)
                 (L : Set) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
-                (nocrash : G -> addr -> L -> pred)
-                (crashed : G -> pred)
+                (nocrash : G -> addr -> L -> @pred valu)
+                (crashed : G -> @pred valu)
                 (rx: L -> prog T) : prog T.
   refine (Fix (@for_args_wf L) (fun _ => prog T)
           (fun args For_ => _)
@@ -161,7 +161,8 @@ Definition For_ (T: Set)
   apply lt_wlt.
 
   rewrite wordToNat_natToWord_idempotent';
-    [| assert (wordToNat For_args_n0 < pow2 addrlen) by apply wordToNat_bound; omega ].
+    [| assert (wordToNat For_args_n0 < pow2 addrlen) by apply wordToNat_bound;
+       unfold goodSize in *; omega ].
   apply PeanoNat.Nat.sub_lt; omega.
 
   unfold wlt, not in *; intro Hn.
@@ -279,7 +280,7 @@ Proof.
       cancel.
 
       subst; apply H4; eauto.
-      intros; apply H8; clear H8.
+      intros; apply H7; clear H7.
       apply wlt_lt in H9.
       unfold wlt.
       repeat rewrite wordToN_nat.
@@ -309,7 +310,7 @@ Proof.
 
       unfold not; intros; apply H5.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H8; simpl in H8; auto.
+      apply wlt_lt in H7; simpl in H7; auto.
       subst; auto.
     + cancel.
 Qed.

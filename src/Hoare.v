@@ -8,7 +8,7 @@ Set Implicit Arguments.
 
 (** ** Hoare logic *)
 
-Definition donecond (T: Set) := T -> mem -> Prop.
+Definition donecond (T: Set) := T -> @mem valuset -> Prop.
 
 Definition corr2 (T: Set) (pre: donecond T -> pred -> pred) (p: prog T) :=
   forall done crash m out, pre done crash m

@@ -20,7 +20,6 @@ Proof.
     + inversion H3; subst.
       right. repeat eexists; eauto.
 Qed.
-*)
 
 Lemma corr3_from_corr2_failed:
   forall (TF TR: Set) m (p: prog TF) (r: prog TR) out
@@ -123,3 +122,4 @@ Proof.
     right. exists m''; exists v. intuition.
     eapply corr3_from_corr2_recovered; eauto.
 Qed.
+*)

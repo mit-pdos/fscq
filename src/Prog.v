@@ -30,9 +30,9 @@ Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).
 Definition addr_eq_dec := @weq addrlen.
 
+
 Definition wringaddr := wring addrlen.
 Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]).
-
 
 Inductive prog (T: Set) :=
 | Done (v: T)
@@ -49,14 +49,14 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associ
 Definition valuset := (valu * list valu)%type.
 Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 
-Definition mem := addr -> option valuset.
-Definition upd (m : mem) (a : addr) (vs : valuset) : mem :=
-  fun a' => if addr_eq_dec a' a then Some vs else m a'.
+Definition mem {V: Type} := addr -> option V.
+Definition upd {V: Type} (m : mem) (a : addr) (v : V) : mem :=
+  fun a' => if addr_eq_dec a' a then Some v else m a'.
 
 Inductive outcome (T: Set) :=
 | Failed
-| Finished (m: mem) (v: T)
-| Crashed (m: mem).
+| Finished (m: @mem valuset) (v: T)
+| Crashed (m: @mem valuset).
 
 Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
@@ -83,10 +83,10 @@ Hint Constructors exec.
 
 Inductive recover_outcome (TF TR: Set) :=
 | RFailed
-| RFinished (m: mem) (v: TF)
-| RRecovered (m: mem) (v: TR).
+| RFinished (m: @mem valuset) (v: TF)
+| RRecovered (m: @mem valuset) (v: TR).
 
-Definition possible_crash (m m' : mem) : Prop :=
+Definition possible_crash (m m' : @mem valuset) : Prop :=
   forall a,
   (m a = None /\ m' a = None) \/
   (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
@@ -113,7 +113,11 @@ Inductive exec_recover (TF TR: Set)
 Hint Constructors exec_recover.
 
 
-Theorem upd_eq : forall m a v a',
+Section GenMem.
+
+Variable V : Type.
+
+Theorem upd_eq : forall m a (v:V) a',
   a' = a
   -> upd m a v a' = Some v.
 Proof.
@@ -121,7 +125,7 @@ Proof.
   destruct (addr_eq_dec a a); tauto.
 Qed.
 
-Theorem upd_ne : forall m a v a',
+Theorem upd_ne : forall m a (v:V) a',
   a' <> a
   -> upd m a v a' = m a'.
 Proof.
@@ -129,7 +133,7 @@ Proof.
   destruct (addr_eq_dec a' a); tauto.
 Qed.
 
-Theorem upd_repeat: forall m a v v',
+Theorem upd_repeat: forall m a (v v':V),
   upd (upd m a v') a v = upd m a v.
 Proof.
   intros; apply functional_extensionality; intros.
@@ -138,13 +142,15 @@ Proof.
   repeat rewrite upd_ne; auto.
 Qed.
 
-Theorem upd_comm: forall m a0 v0 a1 v1, a0 <> a1
+Theorem upd_comm: forall m a0 (v0:V) a1 v1, a0 <> a1
   -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.
   intros; apply functional_extensionality; intros.
   case_eq (addr_eq_dec a1 x); case_eq (addr_eq_dec a0 x); intros; subst; try congruence;
   repeat ( ( rewrite upd_ne by auto ) || ( rewrite upd_eq by auto ) ); auto.
 Qed.
+
+End GenMem.
 
 Lemma addrlen_valulen: addrlen + (valulen - addrlen) = valulen.
 Proof.

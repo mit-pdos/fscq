@@ -60,6 +60,7 @@ Fixpoint wordToN sz (w : word sz) : N :=
     | WS false w' => 2 * wordToN w'
     | WS true w' => Nsucc (2 * wordToN w')
   end%N.
+Arguments wordToN : simpl nomatch.
 
 Definition Nmod2 (n : N) : bool :=
   match n with
@@ -135,6 +136,7 @@ Fixpoint pow2 (n : nat) : nat :=
     | O => 1
     | S n' => 2 * pow2 n'
   end.
+
 
 Theorem roundTrip_0 : forall sz, wordToNat (natToWord sz 0) = 0.
   induction sz; simpl; intuition.
@@ -819,6 +821,13 @@ Theorem wordToNat_bound : forall sz (w : word sz), wordToNat w < pow2 sz.
   destruct b; simpl; omega.
 Qed.
 
+Definition goodSize sz n := n < pow2 sz.
+Arguments goodSize : simpl never.
+
+Theorem wordToNat_good : forall sz (w : word sz), goodSize sz (wordToNat w).
+  apply wordToNat_bound.
+Qed.
+
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
   induction sz; simpl; intuition.
 
@@ -1079,14 +1088,13 @@ Lemma wordToN_inj : forall sz (a b : word sz),
   wordToN a = wordToN b -> a = b.
 Proof.
   induction a; intro b0; rewrite (shatter_word b0); intuition.
-  simpl in H.
-  destruct b; destruct (whd b0); intros.
+  destruct b; destruct (whd b0); intros; unfold wordToN in H; fold wordToN in H.
   f_equal. eapply IHa. eapply Nsucc_inj in H.
-  destruct (wordToN a); destruct (wordToN (wtl b0)); try congruence.
+  destruct (wordToN a); destruct (wordToN (wtl b0)); simpl in H; try congruence.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
   destruct (wordToN (wtl b0)); destruct (wordToN a); inversion H.
   f_equal. eapply IHa. 
-  destruct (wordToN a); destruct (wordToN (wtl b0)); try congruence.
+  destruct (wordToN a); destruct (wordToN (wtl b0)); simpl in *; try congruence.
 Qed.
 Lemma wordToNat_inj : forall sz (a b : word sz),
   wordToNat a = wordToNat b -> a = b.
@@ -1176,9 +1184,10 @@ Lemma natToWord_S : forall sz n, natToWord sz (S n) = natToWord _ 1 ^+ natToWord
 Qed.
 
 Theorem natToWord_inj : forall sz n m, natToWord sz n = natToWord sz m
-  -> (n < pow2 sz)%nat
-  -> (m < pow2 sz)%nat
+  -> goodSize sz n
+  -> goodSize sz m
   -> n = m.
+  unfold goodSize.
   intros.
   apply (f_equal (@wordToNat _)) in H.
   destruct (wordToNat_natToWord sz n).
@@ -1273,7 +1282,7 @@ Proof.
   auto.
 Qed.
 
-Lemma wlt_lt': forall sz a b, (a < pow2 sz)%nat
+Lemma wlt_lt': forall sz a b, goodSize sz a
   -> natToWord sz a < b
   -> (wordToNat (natToWord sz a) < wordToNat b)%nat.
 Proof.
@@ -1283,9 +1292,10 @@ Proof.
 Qed.
 
 Lemma wordToNat_natToWord_idempotent' : forall sz n,
-  (n < pow2 sz)%nat
+  goodSize sz n
   -> wordToNat (natToWord sz n) = n.
 Proof.
+  unfold goodSize.
   intros.
   destruct (wordToNat_natToWord sz n); intuition.
   destruct x.
@@ -1437,6 +1447,46 @@ Proof.
   instantiate (1:=w').
   omega.
 Qed.
+
+
+Theorem wordToNat_minus_one': forall sz n, n <> natToWord sz 0 ->
+  S (wordToNat (n ^- natToWord sz 1)) = wordToNat n.
+Proof.
+  intros.
+  destruct sz.
+  rewrite word0 with (w:=n) in H.
+  rewrite word0 with (w:=natToWord 0 0) in H.
+  exfalso; auto. 
+
+  destruct (weq n (natToWord (S sz) 0)); intuition.
+  rewrite wminus_Alt.
+  rewrite wminus_Alt2.
+  unfold wordBinN.
+  rewrite roundTrip_1.
+  erewrite wordToNat_natToWord_bound with (bound:=n); try omega.
+  assert (wordToNat n <> 0); try omega.
+  unfold not; intros; apply n0; clear n0.
+  rewrite <- H0; rewrite natToWord_wordToNat; auto.
+  unfold not; intros; apply n0; clear n0.
+  apply wlt_lt in H0.
+  replace n with (natToWord (S sz) (wordToNat n)) by (rewrite natToWord_wordToNat; auto).
+  f_equal; rewrite roundTrip_1 in *.
+  omega.
+Qed.
+
+Theorem wordToNat_minus_one: forall sz n, n <> natToWord sz 0 ->
+  wordToNat (n ^- natToWord sz 1) = wordToNat n - 1.
+Proof.
+  intros.
+  erewrite Nat.succ_inj with (n2 := wordToNat (n ^- (natToWord sz 1))); auto.
+  rewrite wordToNat_minus_one'; auto.
+  assert (wordToNat n <> 0).
+  intuition.
+  erewrite <- roundTrip_0 with (sz := sz) in H0.
+  apply wordToNat_inj in H0; tauto.
+  omega.
+Qed.
+
 
 Lemma natToWord_discriminate: forall sz, (sz > 0)%nat -> natToWord sz 0 <> natToWord sz 1.
 Proof.
