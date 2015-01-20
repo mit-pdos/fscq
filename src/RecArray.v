@@ -38,12 +38,6 @@ Section RECARRAY.
     intros. apply list_selN_ext' with (len:=length a) (default:=default); auto.
   Qed.
 
-  (** XXX use [nth] *)
-  Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
-  Proof.
-    induction n; intros; destruct l; simpl; auto.
-  Qed.
-
   Ltac nth_selN H := intros; repeat rewrite nth_selN_eq; apply H; assumption.
 
   Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.

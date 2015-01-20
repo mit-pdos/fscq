@@ -40,6 +40,13 @@ Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
 Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
   updN vs (wordToNat i) v.
 
+(** XXX use [nth] everywhere *)
+Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
+Proof.
+  induction n; intros; destruct l; simpl; auto.
+Qed.
+
+
 Lemma length_updN : forall T vs n (v : T), length (updN vs n v) = length vs.
 Proof.
   induction vs; destruct n; simpl; intuition.

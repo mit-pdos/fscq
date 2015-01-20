@@ -28,6 +28,17 @@ Set Implicit Arguments.
 Definition list2mem (A: Type) (l: list A) : (addr -> option A) :=
   fun a => sel (map (@Some A) l) a None.
 
+Theorem list2mem_ptsto_bounds: forall A F (l: list A) i x,
+  (F * i |-> x)%pred (list2mem l) -> wordToNat i < length l.
+Proof.
+  intros.
+  unfold list2mem in H.
+  apply ptsto_valid' in H.
+  destruct (lt_dec (wordToNat i) (length l)); auto.
+  unfold sel in H. rewrite nth_selN_eq in H.
+  rewrite nth_overflow in H by (rewrite map_length; omega); discriminate.
+Qed.
+
 
 Theorem list2mem_oob : forall A (l : list A) i,
   wordToNat i >= length l
@@ -82,7 +93,6 @@ Proof.
   erewrite selN_updN_ne; auto.
   word2nat_simpl; omega.
 Qed.
-
 
 Theorem list2mem_upd: forall A F (l: list A) i x y,
   (F * i |-> x)%pred (list2mem l)
