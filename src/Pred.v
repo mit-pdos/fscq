@@ -137,6 +137,9 @@ Infix "|~>" := ptsto_cur (at level 35) : pred_scope.
 Definition crash_xform (p : pred) : pred :=
   fun m => exists m', p m' /\ possible_crash m' m.
 
+Definition sync_xform (p : pred) : pred :=
+  fun m => exists m', p m' /\ m = mem_sync m'.
+
 
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
@@ -956,8 +959,7 @@ Qed.
 
 (* Specialized relations for [@pred valuset], to deal with async IO *)
 
-(*
-Theorem crash_xform_apply : forall (p : pred) (m m' : mem), possible_crash m m'
+Theorem crash_xform_apply : forall (p : @pred valuset) (m m' : mem), possible_crash m m'
   -> p m
   -> crash_xform p m'.
 Proof.
@@ -1077,7 +1079,83 @@ Proof.
   apply crash_xform_pimpl; auto.
 Qed.
 
-*)
+
+Theorem sync_xform_apply : forall (p : @pred valuset) m, p m
+  -> sync_xform p (mem_sync m).
+Proof.
+  unfold sync_xform; eauto.
+Qed.
+
+Theorem mem_sync_mem_union_dist : forall m1 m2,
+  mem_sync (mem_union m1 m2) = mem_union (mem_sync m1) (mem_sync m2).
+Proof.
+  intros; apply functional_extensionality; intro a.
+  unfold mem_sync, mem_union.
+  destruct (m1 a); destruct (m2 a);
+    repeat match goal with | [ x: valuset |- _ ] => destruct x end;
+    reflexivity.
+Qed.
+
+Theorem mem_sync_mem_disjoint_1 : forall m1 m2,
+  mem_disjoint m1 m2 -> mem_disjoint (mem_sync m1) (mem_sync m2).
+Proof.
+  unfold mem_disjoint, not, mem_sync; intros; repeat deex.
+  destruct (m1 x) eqn:Hm1; try discriminate.
+  destruct (m2 x) eqn:Hm2; try discriminate.
+  destruct v; destruct v0.
+  apply H.
+  do 3 eexists.
+  intuition eauto.
+Qed.
+
+Theorem mem_sync_mem_disjoint_2 : forall m1 m2,
+  mem_disjoint (mem_sync m1) (mem_sync m2) -> mem_disjoint m1 m2.
+Proof.
+  unfold mem_disjoint, not, mem_sync; intros; repeat deex.
+  destruct (m1 x) eqn:Hm1; try discriminate.
+  destruct (m2 x) eqn:Hm2; try discriminate.
+  destruct v; destruct v0.
+  apply H.
+  exists x; do 2 eexists.
+  intuition eauto.
+  rewrite Hm1; eauto.
+  rewrite Hm2; eauto.
+Qed.
+
+Theorem sync_xform_sep_star_dist : forall (p q : pred),
+  sync_xform (p * q) <=p=> sync_xform p * sync_xform q.
+Proof.
+  unfold_sep_star; unfold sync_xform, piff, pimpl; split; intros; repeat deex.
+  - exists (mem_sync x0). exists (mem_sync x1).
+    intuition eauto.
+    rewrite mem_sync_mem_union_dist; auto.
+    apply mem_sync_mem_disjoint_1; auto.
+  - exists (mem_union x0 x1).
+    intuition.
+    exists x0. exists x1.
+    intuition.
+    apply mem_sync_mem_disjoint_2; auto.
+    rewrite mem_sync_mem_union_dist; auto.
+Qed.
+
+Theorem sync_xform_ptsto_cur : forall a v,
+  sync_xform (a |~> v) =p=> a |~> v.
+Proof.
+  unfold sync_xform, ptsto_cur, pimpl; intros; repeat deex.
+  destruct H0.
+  apply sep_star_lift_apply in H; destruct H.
+  exists (v, nil).
+  apply sep_star_and2lift.
+  split.
+
+  destruct x0; simpl in *; subst.
+  unfold ptsto in *; destruct H.
+  unfold mem_sync; intuition.
+  rewrite H; auto.
+  rewrite H0; auto.
+
+  firstorder.
+Qed.
 
 
 Global Opaque pred.
