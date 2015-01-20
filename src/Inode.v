@@ -511,6 +511,10 @@ Module INODE.
     unfold sel; rewrite H12; eauto.
   Qed.
 
-
+Hint Extern 1 ({{_}} progseq (igetlen _ _ _) _) => apply igetlen_ok : prog.
+Hint Extern 1 ({{_}} progseq (iget _ _ _ _) _) => apply iget_ok : prog.
+Hint Extern 1 ({{_}} progseq (iput _ _ _ _ _) _) => apply iput_ok : prog.
+Hint Extern 1 ({{_}} progseq (igrow _ _ _ _) _) => apply igrow_ok : prog.
+Hint Extern 1 ({{_}} progseq (ishrink _ _ _) _) => apply ishrink_ok : prog.
 
 End INODE.
