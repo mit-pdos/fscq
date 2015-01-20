@@ -43,7 +43,8 @@ Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
-  inv_exec.
+  remember (Read a rx) as p. generalize dependent Heqp.
+  induction H0; intros; inversion Heqp; subst.
   - apply sep_star_comm in H; apply ptsto_set_valid in H.
     repeat deex.
     congruence.
@@ -53,6 +54,9 @@ Proof.
     repeat deex.
     repeat inv_option. eauto.
   - right. eexists; intuition eauto.
+  - apply IHexec; auto.
+    (* XXX the sync-everything model is problematic because it means we have to
+     * restrict frame predicates.. *)
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.

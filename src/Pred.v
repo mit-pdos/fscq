@@ -1183,5 +1183,39 @@ Proof.
   firstorder.
 Qed.
 
+Lemma ptsto_set_valid:
+  forall a vs F m,
+  (a |=> vs * F)%pred m
+  -> exists l, m a = Some (fst vs, l) /\ incl l (snd vs).
+Proof.
+  unfold ptsto_set, ptsto, lift_empty; unfold_sep_star; intros.
+  repeat deex.
+  destruct H1.
+  repeat deex.
+  exists (snd x1); intuition.
+  apply mem_union_addr; eauto.
+  apply mem_union_addr; eauto.
+  rewrite <- H5.
+  destruct x1; auto.
+Qed.
+
+Lemma ptsto_cur_valid:
+  forall a v F m,
+  (a |~> v * F)%pred m
+  -> exists l, m a = Some (v, l).
+Proof.
+  unfold ptsto_cur, ptsto_set, ptsto, lift_empty; unfold_sep_star; intros.
+  repeat deex.
+  destruct H1.
+  repeat deex.
+  destruct H2.
+  repeat deex.
+  destruct x; simpl in *; subst.
+  eexists; intuition.
+  apply mem_union_addr; eauto.
+  apply mem_union_addr; eauto.
+  apply mem_union_addr; eauto.
+Qed.
+
 
 Global Opaque pred.
