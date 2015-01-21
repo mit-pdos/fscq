@@ -377,6 +377,34 @@ Proof.
   apply pimpl_refl.
 Qed.
 
+Theorem array_isolate : forall V (default : V) (a i : addr) vs stride,
+  wordToNat i < length vs
+  -> array a vs stride <=p=>
+     array a (firstn (wordToNat i) vs) stride
+     * (a ^+ i ^* stride) |-> sel vs i default
+     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+Proof.
+  unfold piff; split.
+  apply isolate_fwd; auto.
+  apply isolate_bwd; auto.
+Qed.
+
+Theorem array_isolate_upd : forall V (v : V) (a i : addr) vs stride,
+  wordToNat i < length vs
+  -> array a (upd vs i v) stride <=p=>
+     array a (firstn (wordToNat i) vs) stride
+     * (a ^+ i ^* stride) |-> v
+     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+Proof.
+  intros.
+  erewrite array_isolate with (vs:=upd vs i v) (i:=i) (default:=v);
+    autorewrite with core; auto.
+  unfold piff; split.
+  cancel; autorewrite with core; cancel.
+  cancel; autorewrite with core; cancel.
+Qed.
+
+
 Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
@@ -786,10 +814,33 @@ Proof.
   omega.
 Qed.
 
+Lemma isolate_last: forall A l (a : A) (b:addr),
+  length l <= wordToNat b ->
+  (array $0 (l ++ a :: nil) $1 <=p=>
+   array $0 l $1 * $ (length l) |-> a)%pred.
+Proof.
+  intros.
+  assert (wordToNat (natToWord addrlen (length l)) = length l) as Heq by
+    (eapply wordToNat_natToWord_bound; eauto).
+
+  rewrite array_isolate with (i := $ (length l)) (default := a) by
+    (rewrite app_length; unfold length at 3; omega ).
+  unfold sel; rewrite selN_last by omega.
+  ring_simplify ((natToWord addrlen 0) ^+ $ (length l) ^* $ (1)).
+  replace (wordToNat $ (length l)) with (length l) by auto.
+  rewrite firstn_app by auto.
+  rewrite skipn_oob by (rewrite app_length; simpl; omega).
+  unfold array at 2.
+
+  clear Heq.
+  unfold piff; split; cancel.
+Qed.
+
+  
 
 
-
-(* A general list predicate *)
+(* 
+A general list predicate *)
 
 Section LISTPRED.
 

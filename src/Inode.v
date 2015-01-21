@@ -50,7 +50,9 @@ Module INODE.
     RecArray.Build_xparams (IXStart xp) (IXLen xp).
 
   Definition rep' xp (ilist : list inode') :=
-    RecArray.array_item inodetype items_per_valu itemsz_ok (xp_to_raxp xp) ilist.
+    ([[ length ilist = wordToNat (IXLen xp ^* items_per_valu) ]] *
+     RecArray.array_item inodetype items_per_valu itemsz_ok (xp_to_raxp xp) ilist
+    )%pred.
 
   Definition iget' T lxp xp inum rx : prog T :=
     RecArray.get inodetype items_per_valu itemsz_ok
@@ -60,36 +62,55 @@ Module INODE.
     RecArray.put inodetype items_per_valu itemsz_ok
       lxp (xp_to_raxp xp) inum i rx.
 
+
   Theorem iget_ok' : forall lxp xp inum,
-    {< F mbase m ilist,
+    {< F A mbase m ilist ino,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep' xp ilist)%pred m ]] *
-           [[ (inum < IXLen xp ^* items_per_valu)%word ]]
+           [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
-           [[ r = sel ilist inum inode0' ]]
+           [[ r = ino ]]
     CRASH  LOG.log_intact lxp mbase
     >} iget' lxp xp inum.
   Proof.
-    unfold iget', rep'.
-    intros. eapply pimpl_ok2. eapply RecArray.get_ok; word_neq.
+    unfold iget', rep'; intros.
+    eapply pimpl_ok2. 
+    eapply RecArray.get_ok; word_neq.
+    intros; norm.
+    cancel.
+    intuition; eauto.
+    apply list2mem_inbound in H4.
+    apply lt_wlt; omega.
+    apply list2mem_sel with (def:=inode0') in H4.
     step.
   Qed.
 
   Theorem iput_ok' : forall lxp xp inum i,
-    {< F mbase m ilist,
+    {< F A mbase m ilist ino,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (F * rep' xp ilist)%pred m ]] *
-           [[ (inum < IXLen xp ^* items_per_valu)%word ]] *
+           [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
            [[ Rec.well_formed i ]]
     POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
-           ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (F * rep' xp (upd ilist inum i))%pred m' ]])
+           ([[ r = true ]] * exists m' ilist', LOG.rep lxp (ActiveTxn mbase m') *
+            [[ (F * rep' xp ilist')%pred m' ]] *
+            [[ (A * inum |-> i)%pred (list2mem ilist')]] )
     CRASH  LOG.log_intact lxp mbase
     >} iput' lxp xp inum i.
   Proof.
     unfold iput', rep'.
     intros. eapply pimpl_ok2. eapply RecArray.put_ok; word_neq.
+    intros; norm.
+    cancel.
+    intuition; eauto.
+    apply list2mem_inbound in H5.
+    apply lt_wlt; omega.
+    apply list2mem_sel with (def:=inode0') in H5 as H5'.
     step.
+    apply pimpl_or_r; right.
+    cancel.
+    autorewrite with core; auto.
+    eapply list2mem_upd; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (iget' _ _ _) _) => apply iget_ok' : prog.
@@ -183,17 +204,6 @@ Module INODE.
      [[ length ilist = length ilist' ]] * 
      listpred inode_match (combine ilist ilist'))%pred.
 
-  Definition inum_valid inum xp (ilist : list inode) :=
-      (inum < IXLen xp ^* items_per_valu)%word /\
-      wordToNat inum < length ilist.
-
-  Definition off_valid (off : addr) ino :=
-    wordToNat off < length (IBlocks ino).
-
-  Hint Unfold inum_valid.
-  Hint Unfold off_valid.
-
-
   Lemma inode_blocks_length: forall m xp l inum F,
     (F * rep' xp l)%pred m ->
     inum < length l ->
@@ -206,7 +216,7 @@ Module INODE.
     destruct i; destruct p. 
     destruct_lift H.
     rewrite Forall_forall in *.
-    apply (H2 (d, (d0, tt))).
+    apply (H3 (d, (d0, tt))).
     rewrite Heqi.
     apply RecArray.in_selN; auto.
   Qed.
@@ -214,6 +224,51 @@ Module INODE.
   Hint Rewrite selN_combine: core.
   Hint Rewrite combine_length_eq: core.
 
+
+  (* Hints for resolving default values *)
+
+  Fact resolve_sel_inode0' : forall l i d,
+    d = inode0' -> sel l i d = sel l i inode0'.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_inode0' : forall l i d,
+    d = inode0' -> selN l i d = selN l i inode0'.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_sel_inode0 : forall l i d,
+    d = inode0 -> sel l i d = sel l i inode0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_inode0 : forall l i d,
+    d = inode0 -> selN l i d = selN l i inode0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Hint Rewrite resolve_sel_inode0'  using reflexivity : defaults.
+  Hint Rewrite resolve_selN_inode0' using reflexivity : defaults.
+  Hint Rewrite resolve_sel_inode0   using reflexivity : defaults.
+  Hint Rewrite resolve_selN_inode0  using reflexivity : defaults.
+
+
+  Ltac inode_bounds' := match goal with
+    | [ H : ( _ * ?p |-> ?i)%pred (list2mem ?l) |- wordToNat ?p < length ?l' ] =>
+          let Ha := fresh in assert (length l = length l') by eauto;
+          let Hb := fresh in apply list2mem_inbound in H as Hb;
+          eauto; (omega || setoid_rewrite <- Ha; omega); clear Hb Ha
+    | [ H : context [ (rep' _ ?l) ] |- length ?l <= _ ] =>
+        unfold rep' in H; destruct_lift H
+    | [ H : length ?l = _ |- context [ length ?l ] ] =>
+        solve [ rewrite H ; eauto ; try omega ]
+  end.
+
+  Ltac inode_bounds := eauto; repeat inode_bounds'; eauto.
 
   Ltac inode_sep2sel := match goal with
     | [ H: (_ * ?inum |-> ?i)%pred (list2mem ?il) |- context [?i] ] =>
@@ -237,7 +292,7 @@ Module INODE.
         rewrite listpred_extract with (i := wordToNat inum) (def := (inode0, inode0')) in H;
         autorewrite with core; auto;
         autorewrite with core in H; simpl in H; auto;
-        destruct_lift H
+        destruct_lift H; inode_bounds
     end.
 
   Ltac isolate_inode_match :=
@@ -256,27 +311,27 @@ Module INODE.
   Theorem igetlen_ok : forall lxp xp inum,
     {< F A mbase m ilist ino,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum xp ilist ]] *
            [[ (F * rep xp ilist)%pred m ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) * [[ r = $ (length (IBlocks ino)) ]]
     CRASH  LOG.log_intact lxp mbase
     >} igetlen lxp xp inum.
   Proof.
-    unfold igetlen, rep, inum_valid.
+    unfold igetlen, rep.
     hoare.
+
+    list2mem_cancel; inode_bounds.
 
     extract_inode_match inum.
     inode_simpl.
     apply wordToNat_inj; unfold sel.
     erewrite wordToNat_natToWord_bound; eauto.
-    rewrite H13; auto.
+    rewrite H11; auto.
   Qed.
 
   Theorem iget_ok : forall lxp xp inum off,
     {< F A B mbase m ilist ino a,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum xp ilist /\ off_valid off ino ]] *
            [[ (F * rep xp ilist)%pred m ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
            [[ (B * off |-> a)%pred (list2mem (IBlocks ino)) ]]
@@ -284,20 +339,21 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} iget lxp xp inum off.
   Proof.
-    unfold iget, rep, inum_valid, off_valid.
+    unfold iget, rep.
     hoare.
+
+    list2mem_cancel; inode_bounds.
 
     extract_inode_match inum.
     inode_simpl.
-    unfold sel; rewrite H16.
-    rewrite selN_firstn; auto.
+    unfold sel; rewrite H13.
+    rewrite selN_firstn; inode_bounds.
   Qed.
 
 
   Theorem iput_ok : forall lxp xp inum off a,
     {< F A B mbase m ilist ino,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum xp ilist /\ off_valid off ino ]] *
            [[ (F * rep xp ilist)%pred m ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
            [[ (B * off |->?)%pred (list2mem (IBlocks ino)) ]]
@@ -310,20 +366,18 @@ Module INODE.
     CRASH  LOG.log_intact lxp mbase
     >} iput lxp xp inum off a.
   Proof.
-    unfold iput, rep, inum_valid, off_valid.
+    unfold iput, rep.
     step.
+    list2mem_cancel; inode_bounds.
     step.
+    list2mem_cancel; inode_bounds.
 
     destruct r_; destruct p3; simpl; intuition.
     rewrite length_upd.
-    unfold rep' in H.
-    rewrite RecArray.array_item_well_formed' in H.
-    destruct_lift H.
-    rewrite Forall_forall in *.
-    apply (H0 (d, (d0, tt))).
-    rewrite H12.
-    apply RecArray.in_selN; intuition.
-    rewrite Forall_forall; intuition.
+    setoid_rewrite H9; unfold sel.
+    eapply inode_blocks_length with (m := m0); inode_bounds.
+    pred_apply; cancel.
+    rewrite Forall_forall in *; intuition.
 
     eapply pimpl_ok2; eauto with prog.
     intros; cancel.
@@ -331,12 +385,27 @@ Module INODE.
     apply pimpl_or_r; right; cancel.
 
     instantiate (a0 := upd l0 inum (Build_inode (upd (IBlocks i) off a))).
+    remember (upd l inum (sel l inum inode0' :=> "blocks" := upd (sel l inum inode0' :-> "blocks") off a)) as l'.
+    assert (array $0 l' $1 (list2mem l1)).
+    pred_apply.
+    rewrite Heql'; rewrite array_isolate_upd by inode_bounds.
+    ring_simplify ($ (0) ^+ inum ^* $ (1)); simpl.
+    cancel.
+    replace l1 with l'.
+    subst.
+
     isolate_inode_match.
+    inode_bounds.
     unfold sel; cancel.
 
-    rewrite updN_firstn_comm; auto.
-    rewrite H10 at 1; auto.
-    autorewrite with core; auto.
+    rewrite updN_firstn_comm; inode_bounds.
+    rewrite H8 at 1; auto.
+
+    apply eq_sym; eapply list2mem_array_eq with (l:=l'); eauto.
+    subst; rewrite length_upd; inode_bounds.
+    subst; rewrite length_upd; inode_bounds.
+    admit. admit.
+
     eapply list2mem_upd; eauto.
     eapply list2mem_upd; eauto.
   Qed.

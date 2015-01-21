@@ -6,6 +6,8 @@ Require Import FunctionalExtensionality.
 Require Import Word.
 Require Import WordAuto.
 Require Import Omega.
+Require Import Ring.
+Require Import SepAuto.
 
 Set Implicit Arguments.
 
@@ -27,17 +29,41 @@ Definition list2mem (A: Type) (l: list A) : (addr -> option A) :=
   fun a => sel (map (@Some A) l) a None.
 
 
+Theorem list2mem_oob : forall A (l : list A) i,
+  wordToNat i >= length l
+  -> (list2mem l) i = None.
+Proof.
+  unfold list2mem; intros.
+  unfold sel; rewrite selN_oob; auto.
+  rewrite map_length; auto.
+Qed.
+
+
+Theorem list2mem_inbound: forall A F (l : list A) i x,
+  (F * i |-> x)%pred (list2mem l)
+  -> wordToNat i < length l.
+Proof.
+  intros.
+  destruct (lt_dec (wordToNat i) (length l)); auto; exfalso.
+  apply not_lt in n.
+  apply list2mem_oob in n.
+  apply ptsto_valid' in H.
+  rewrite H in n.
+  inversion n.
+Qed.
+
+
 Theorem list2mem_sel: forall A F (l: list A) i x def,
   (F * i |-> x)%pred (list2mem l)
-  -> wordToNat i < length l
   -> x = sel l i def.
 Proof.
   intros.
+  assert (wordToNat i < length l).
+  eapply list2mem_inbound; eauto.
   unfold list2mem in H.
   apply ptsto_valid' in H.
   erewrite sel_map in H by auto.
-  inversion H.
-  eauto.
+  inversion H; eauto.
 Qed.
 
 
@@ -59,15 +85,15 @@ Qed.
 
 
 Theorem list2mem_upd: forall A F (l: list A) i x y,
-  wordToNat i < length l
-  -> (F * i |-> x)%pred (list2mem l)
+  (F * i |-> x)%pred (list2mem l)
   -> (F * i |-> y)%pred (list2mem (upd l i y)).
 Proof.
   intros.
   rewrite listupd_progupd; auto.
   apply sep_star_comm.
-  apply sep_star_comm in H0.
+  apply sep_star_comm in H.
   eapply ptsto_upd; eauto.
+  eapply list2mem_inbound; eauto.
 Qed.
 
 
@@ -104,18 +130,6 @@ Proof.
       contradict n0; rewrite H0.
       apply wordToNat_inj.
       erewrite wordToNat_natToWord_bound; eauto.
-Qed.
-
-
-Theorem list2mem_array: forall  A (l : list A) (b : addr),
-  length l <= wordToNat b
-  -> array $0 l $1 (list2mem l).
-Proof.
-  induction l using rev_ind; intros; firstorder; simpl.
-  rewrite app_length in H; simpl in H.
-  erewrite listapp_progupd with (b := b); try omega.
-  eapply array_app_progupd with (b := b); try omega.
-  apply IHl with (b := b); omega.
 Qed.
 
 
@@ -205,6 +219,63 @@ Proof.
   destruct (x x1); subst; simpl; auto.
   apply eq_sym; apply H6; auto.
 Qed.
+
+
+Theorem list2mem_array: forall  A (l : list A) (b : addr),
+  length l <= wordToNat b
+  -> array $0 l $1 (list2mem l).
+Proof.
+  induction l using rev_ind; intros; firstorder; simpl.
+  rewrite app_length in H; simpl in H.
+  erewrite listapp_progupd with (b := b); try omega.
+  eapply array_app_progupd with (b := b); try omega.
+  apply IHl with (b := b); omega.
+Qed.
+
+
+Theorem list2mem_array_eq: forall A (l' l : list A) (b : addr),
+  length l <= wordToNat b -> length l = length l'
+  -> array $0 l $1 (list2mem l')
+  -> l = l'.
+Proof.
+  induction l' using rev_ind; destruct l using rev_ind;
+  intros; firstorder; repeat rewrite app_length in *; simpl in *.
+  contradict H0; omega.
+  contradict H0; omega.
+  rewrite IHl' with (l := l) (b := b); try omega.
+
+  repeat f_equal.
+  assert (exists F, (F * $ (length l) |-> x0)%pred (list2mem (l' ++ x :: nil))).
+  pred_apply; eapply isolate_last with (b:=b); omega.
+  destruct H2.
+  eapply list2mem_sel with (def := x) in H2; eauto.
+  unfold sel in H2; rewrite selN_last in H2; auto.
+  rewrite wordToNat_natToWord_bound with (bound:=b); omega.
+
+  replace l' with (removelast (l' ++ x :: nil)).
+  eapply list2mem_removelast with (b := b) (v := x0).
+  firstorder.
+  rewrite app_length; simpl; omega.
+  pred_apply; cancel. 
+  erewrite isolate_last with (b:=b) by try omega.
+  rewrite app_length; simpl.
+  replace (length l' + 1 - 1) with (length l) by omega.
+  cancel.
+  rewrite removelast_app; simpl; firstorder.
+Qed.
+
+
+
+Ltac list2mem_cancel' t := match goal with
+  [ |- (_ * ?p |-> ?a)%pred (list2mem ?l) ] =>
+    assert (array $0 l $1 (list2mem l)); 
+    [ eapply list2mem_array; t |
+      pred_apply; rewrite isolate_fwd with (i := p);
+      try autorewrite with defaults;
+      [ cancel | t ] ]
+end.
+
+Ltac list2mem_cancel := list2mem_cancel' idtac.
 
 
 
