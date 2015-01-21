@@ -94,7 +94,7 @@ Module MEMLOG.
 
   Theorem header_sz_ok : Rec.len header_type <= valulen.
   Proof.
-    rewrite valulen_is. simpl. firstorder. (* this could be much faster, say with reflection *)
+    rewrite valulen_is. apply leb_complete. compute. trivial.
   Qed.
 
   Theorem plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
@@ -412,7 +412,7 @@ Module MEMLOG.
     }.
 
   Theorem firstn_map : forall A B l n (f: A -> B),
-    firstn n (map f l) = map f (firstn n l)).
+    firstn n (map f l) = map f (firstn n l).
   Proof.
     admit.
   Qed.
@@ -432,7 +432,7 @@ Module MEMLOG.
     intros.
     (* XXX make word2nat_auto handle this *)
     assert (goodSize addrlen (wordToNat (LogLen xp))) by (apply wordToNat_bound).
-    hoare; try apply pimpl_any.
+    hoare; try apply pimpl_any. (* XXX takes forever, partially due to [word2nat_auto] *)
 
     unfold wplus, wminus, wmult, wdiv, wmod, wordBin.
     autorewrite with W2Nat.
