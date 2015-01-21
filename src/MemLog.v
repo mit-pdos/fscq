@@ -17,6 +17,7 @@ Require Import Rec.
 Require Import Array.
 Require Import Eqdep_dec.
 Require Import GenSep.
+Require Import WordAuto.
 
 (* XXX parameterize by length and stick in Word.v *)
 Module Addr_as_OT <: UsualOrderedType.
@@ -290,6 +291,17 @@ Module MEMLOG.
   Definition write T (xp : xparams) (ms : memstate) a v rx : prog T :=
     rx (Map.add a v ms).
 
+  Lemma valid_entries_add : forall a v ms m,
+    valid_entries m ms -> indomain' a m -> valid_entries m (Map.add a v ms).
+  Proof.
+    unfold valid_entries in *.
+    intros.
+    destruct (weq a a0).
+    subst; auto.
+    eapply H.
+    eapply Map.add_3; eauto.
+  Qed.
+
   Theorem write_ok : forall xp ms a v,
     {< m1 m2 F' v0,
     PRE      rep xp (ActiveTxn m1 m2) ms * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
@@ -300,7 +312,10 @@ Module MEMLOG.
   Proof.
     unfold write; log_unfold.
     hoare; subst.
-    admit. (* XXX valid_entries Map.add *)
+
+    apply valid_entries_add; eauto.
+    unfold indomain'.
+    admit.
 
     rewrite replay_add.
     eapply list2mem_upd; eauto.
@@ -377,10 +392,17 @@ Module MEMLOG.
       Write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms)));;
       Write (LogStart xp) (descriptor_to_valu (map fst (Map.elements ms)));;
       For i < $ (Map.cardinal ms)
-      Ghost crash
+      Ghost old crash
       Loopvar _ <- tt
       Continuation lrx
-      Invariant array (LogStart xp ^+ $1) (firstn (wordToNat i) (map snd (Map.elements ms))) $1
+      Invariant
+        (LogCommit xp) |-> $0
+        * data_rep old
+        * (LogHeader xp) |-> header_to_valu (mk_header (Map.cardinal ms))
+        * (LogStart xp) |-> descriptor_to_valu (map fst (Map.elements ms))
+        * array (LogStart xp ^+ $1) (firstn (wordToNat i) (map snd (Map.elements ms))) $1
+        * LOG.avail_region (LogStart xp ^+ $1 ^+ i)
+                           (wordToNat (LogLen xp) - wordToNat i)
       OnCrash crash
       Begin
         Write (LogStart xp ^+ $1 ^+ i) (sel (map snd (Map.elements ms)) i $0);;
@@ -388,6 +410,15 @@ Module MEMLOG.
       Rof;;
       rx true
     }.
+
+  Theorem firstn_map : forall A B l n (f: A -> B),
+    firstn n (map f l) = map f (firstn n l)).
+  Proof.
+    admit.
+  Qed.
+
+  Hint Extern 1 (LOG.avail_region _ (_ - wordToNat _) =!=> _) =>
+    clear_norm_goal; apply LOG.avail_region_shrink_one; word2nat_auto : norm_hint_left.
 
   Theorem flush_ok : forall xp ms,
     {< m1 m2,
@@ -398,9 +429,36 @@ Module MEMLOG.
     >} flush xp ms.
   Proof.
     unfold flush; log_unfold.
-    hoare.
+    intros.
+    (* XXX make word2nat_auto handle this *)
+    assert (goodSize addrlen (wordToNat (LogLen xp))) by (apply wordToNat_bound).
+    hoare; try apply pimpl_any.
+
+    unfold wplus, wminus, wmult, wdiv, wmod, wordBin.
+    autorewrite with W2Nat.
+    rewrite wordToNat_natToWord_idempotent' with (n := wordToNat m + 1).
+    rewrite Nat.sub_add_distr.
+    cancel.
     
+    admit. (* XXX append to array *)
+    abstract word2nat_auto.
+    norm.
+    apply stars_or_left.
+    cancel.
+    clear H3.
+    word2nat_auto.
+    rewrite app_nil_r.
+    cancel.
+    rewrite firstn_map.
+    unfold Map.elements, Map.Raw.elements.
+    rewrite LOG.firstn_length.
+    abstract cancel.
+
+    clear H3.
+    admit. (* XXX need to change [rep] slightly! *)
+    constructor.
   Qed.
+
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
   Definition apply T xp ms rx : prog T :=
