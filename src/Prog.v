@@ -38,7 +38,7 @@ Inductive prog (T: Set) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
 | Write (a: addr) (v: valu) (rx: unit -> prog T)
-| Sync (rx: unit -> prog T).
+| Sync (a: addr) (rx: unit -> prog T).
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 
@@ -75,14 +75,12 @@ Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
 | XWriteOK : forall m a v v0 rx out x, m a = Some (v0, x)
   -> exec (upd m a (v, v0 :: x)) (rx tt) out
   -> exec m (Write a v rx) out
-| XSync : forall m rx out,
-  exec (mem_sync m) (rx tt) out
-  -> exec m (Sync rx) out
+| XSyncFail : forall m a rx, m a = None
+  -> exec m (Sync a rx) (Failed T)
+| XSyncOK : forall m a v l rx out, m a = Some (v, l)
+  -> exec (upd m a (v, nil)) (rx tt) out
+  -> exec m (Sync a rx) out
 | XCrash : forall m p, exec m p (Crashed T m)
-| XSelfFlush : forall m p out a v l l', m a = Some (v, l)
-  -> incl l' l
-  -> exec (upd m a (v, l')) p out
-  -> exec m p out
 | XDone : forall m v, exec m (Done v) (Finished m v).
 
 Hint Constructors exec.

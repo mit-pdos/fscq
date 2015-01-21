@@ -134,11 +134,19 @@ Definition ptsto_cur (a : addr) (v : valu) : @pred valuset :=
 Infix "|~>" := ptsto_cur (at level 35) : pred_scope.
 
 
-Definition crash_xform (p : pred) : pred :=
+(* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
+Definition crash_xform (p : pred) : @pred valuset :=
   fun m => exists m', p m' /\ possible_crash m' m.
 
-Definition sync_xform (p : pred) : pred :=
+(* if [p] was true before a sync, then [sync_xform p] is true after a sync *)
+Definition sync_xform (p : pred) : @pred valuset :=
   fun m => exists m', p m' /\ m = mem_sync m'.
+
+(* if [p] was true before some flushing, then [flush_xform p] is true after some flushing *)
+Definition flush_xform (p : pred) : @pred valuset :=
+  fun m => exists m', p m' /\
+           forall a, (m a = None /\ m' a = None) \/
+           exists v l l', m a = Some (v, l) /\ m' a = Some (v, l') /\ incl l l'.
 
 
 Ltac deex := match goal with
@@ -1215,6 +1223,21 @@ Proof.
   apply mem_union_addr; eauto.
   apply mem_union_addr; eauto.
   apply mem_union_addr; eauto.
+Qed.
+
+Lemma ptsto_incl:
+  forall a v l1 l2, incl l1 l2
+  -> a |=> (v, l1) =p=> a |=> (v, l2).
+Proof.
+  unfold ptsto_set, pimpl; intros.
+  destruct H0.
+  exists x.
+  eapply pimpl_apply; [| apply H0 ].
+  simpl.
+  apply sep_star_lift_r.
+  apply sep_star_lift_l.
+  unfold lift; intros; split; intuition.
+  eapply incl_tran; eauto.
 Qed.
 
 
