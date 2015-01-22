@@ -243,17 +243,147 @@ Proof.
 Qed.
 
 
+(* Alternative variants of [list2mem] that are more induction-friendly *)
+Definition list2mem_off (A: Type) (start : nat) (l: list A) : (addr -> option A) :=
+  fun a => if lt_dec (wordToNat a) start then None
+                                         else selN (map (@Some A) l) (wordToNat a - start) None.
+
+Theorem list2mem_off_eq : forall A (l : list A), list2mem l = list2mem_off 0 l.
+Proof.
+  unfold list2mem, list2mem_off, sel; intros.
+  apply functional_extensionality; intros.
+  rewrite <- minus_n_O.
+  reflexivity.
+Qed.
+
+Fixpoint list2mem_fix (A : Type) (start : nat) (l : list A) : (addr -> option A) :=
+  match l with
+  | nil => fun a => None
+  | h :: l' => fun a => if eq_nat_dec (wordToNat a) start then Some h else list2mem_fix (S start) l' a
+  end.
+
+Lemma list2mem_fix_below : forall (A : Type) (l : list A) start a,
+  wordToNat a < start -> list2mem_fix start l a = None.
+Proof.
+  induction l; auto; simpl; intros.
+  destruct (eq_nat_dec (wordToNat a0) start); [omega |].
+  apply IHl; omega.
+Qed.
+
+Theorem list2mem_fix_off_eq : forall A (l : list A) n (b : addr),
+  length l + n <= wordToNat b -> list2mem_off n l = list2mem_fix n l.
+Proof.
+  induction l; intros; apply functional_extensionality; intros.
+  unfold list2mem_off; destruct (lt_dec (wordToNat x) n); auto.
+
+  unfold list2mem_off; simpl in *.
+
+  destruct (lt_dec (wordToNat x) n).
+  destruct (eq_nat_dec (wordToNat x) n); [omega |].
+  rewrite list2mem_fix_below by omega.
+  auto.
+
+  destruct (eq_nat_dec (wordToNat x) n).
+  rewrite e; replace (n-n) with (0) by omega; auto.
+
+  assert (wordToNat x - n <> 0) by omega.
+  destruct (wordToNat x - n) eqn:Hxn; try congruence.
+
+  rewrite <- IHl with (b:=b) by omega.
+  unfold list2mem_off.
+
+  destruct (lt_dec (wordToNat x) (S n)); [omega |].
+  f_equal; omega.
+Qed.
+
+Theorem list2mem_fix_eq : forall A (l : list A) (b : addr),
+  length l <= wordToNat b -> list2mem l = list2mem_fix 0 l.
+Proof.
+  intros.
+  rewrite list2mem_off_eq.
+  eapply list2mem_fix_off_eq.
+  rewrite <- plus_n_O.
+  eassumption.
+Qed.
+
+
+Lemma list2mem_nil_array : forall A (l : list A) start,
+  array $ start l $1 (list2mem nil) -> l = nil.
+Proof.
+  destruct l; simpl; auto.
+  unfold_sep_star; unfold ptsto, list2mem, sel; simpl; intros.
+  repeat deex.
+  unfold mem_union in H0.
+  apply equal_f with ($ start) in H0.
+  rewrite H2 in H0.
+  congruence.
+Qed.
+
+Lemma list2mem_array_nil : forall A (l : list A) start (b : addr),
+  start <= wordToNat b -> array $ start nil $1 (list2mem_fix start l) -> l = nil.
+Proof.
+  destruct l; simpl; auto.
+  unfold list2mem, sel, emp; intros.
+  pose proof (H0 $ start).
+  erewrite wordToNat_natToWord_bound in H1 by eauto.
+  destruct (eq_nat_dec start start); simpl in *; congruence.
+Qed.
+
+Theorem list2mem_array_eq': forall A (l' l : list A) (b : addr) (def : A) start,
+  array $ start l $1 (list2mem_fix start l')
+  -> length l + start <= wordToNat b
+  -> length l' + start <= wordToNat b
+  -> l' = l.
+Proof.
+  induction l'; simpl; intros.
+  - erewrite list2mem_nil_array; eauto.
+  - destruct l.
+    + eapply list2mem_array_nil with (start:=start) (b:=b).
+      omega.
+      auto.
+    + simpl in *.
+      unfold sep_star in H; rewrite sep_star_is in H; unfold sep_star_impl in H.
+      repeat deex.
+      unfold ptsto in H3; destruct H3.
+      f_equal.
+      * eapply equal_f with ($ start) in H2 as H2'.
+        erewrite wordToNat_natToWord_bound with (bound:=b) in H2' by omega.
+
+        unfold mem_union in H2'.
+        rewrite H3 in H2'.
+        destruct (eq_nat_dec start start); congruence.
+      * apply IHl' with (b:=b) (start:=S start); eauto; try omega.
+        replace ($ start ^+ $1) with (natToWord addrlen (S start)) in H5 by words.
+        assert (x0 = list2mem_fix (S start) l'); subst; auto.
+
+        apply functional_extensionality; intros.
+        unfold mem_union in H2.
+        apply equal_f with x1 in H2.
+        destruct (eq_nat_dec (wordToNat x1) start).
+
+        rewrite list2mem_fix_below by omega.
+        eapply mem_disjoint_either.
+        eauto.
+        rewrite <- e in H3.
+        rewrite natToWord_wordToNat in *.
+        eauto.
+
+        rewrite H2.
+        rewrite H4; auto.
+        intro; apply n.
+        rewrite <- H6.
+        rewrite wordToNat_natToWord_bound with (bound:=b); auto.
+        omega.
+Qed.
+
 Theorem list2mem_array_eq: forall A (l' l : list A) (b : addr) (def : A),
   array $0 l $1 (list2mem l')
   -> length l <= wordToNat b
   -> length l' <= wordToNat b
   -> l' = l.
 Proof.
-  (* used to prove this theorem with assumption (length l = length l').
-     This doesn't seems to be necessary, 
-     But the proof is getting tricky without it...
-   *)
-  admit.
+  intros; eapply list2mem_array_eq' with (start:=0); try rewrite <- plus_n_O; eauto.
+  erewrite <- list2mem_fix_eq; eauto.
 Qed.
 
 
