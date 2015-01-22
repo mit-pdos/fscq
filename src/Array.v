@@ -14,6 +14,14 @@ Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
 
 (** * Reading and writing from arrays *)
 
+Class Defaultable (T : Type) := {
+  the_default : T
+}.
+
+Instance valu_def : Defaultable valu := {
+  the_default := $0
+}.
+
 Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
   match vs with
     | nil => default
@@ -24,8 +32,8 @@ Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
       end
   end.
 
-Definition sel (V : Type) (vs : list V) (i : addr) (default : V) : V :=
-  selN vs (wordToNat i) default.
+Definition sel (V : Type) {defV : Defaultable V} (vs : list V) (i : addr) : V :=
+  selN vs (wordToNat i) the_default.
 
 Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
   match vs with
@@ -73,9 +81,9 @@ Proof.
   induction vs; destruct n; destruct n'; simpl; intuition.
 Qed.
 
-Lemma sel_upd_eq : forall V vs i v (default : V),
+Lemma sel_upd_eq : forall V {defV : Defaultable V} vs i v,
   wordToNat i < length vs
-  -> sel (upd vs i v) i default = v.
+  -> sel (upd vs i v) i = v.
 Proof.
   intros; apply selN_updN_eq; auto.
 Qed.
@@ -198,8 +206,8 @@ Proof.
   apply selN_map_seq'; auto.
 Qed.
 
-Theorem sel_map_seq : forall T i n f (default : T), (i < n)%word
-  -> sel (map f (seq 0 (wordToNat n))) i default = f (wordToNat i).
+Theorem sel_map_seq : forall T {defT : Defaultable T} i n f, (i < n)%word
+  -> sel (map f (seq 0 (wordToNat n))) i = f (wordToNat i).
 Proof.
   intros.
   unfold sel.
@@ -217,8 +225,9 @@ Proof.
   apply IHl; omega.
 Qed.
 
-Theorem sel_map : forall T T' l i f (default : T) (default' : T'), wordToNat i < length l
-  -> sel (map f l) i default = f (sel l i default').
+Theorem sel_map : forall T T' {defT : Defaultable T} {defT' : Defaultable T'} l i f,
+  wordToNat i < length l
+  -> sel (map f l) i = f (sel l i).
 Proof.
   intros.
   unfold sel.
@@ -330,10 +339,10 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_fwd : forall V (default : V) (a i : addr) vs stride,
+Theorem isolate_fwd : forall V {defV : Defaultable V} (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
+     * (a ^+ i ^* stride) |-> sel vs i
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
@@ -370,10 +379,10 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_bwd : forall V (default : V) (a i : addr) vs stride,
+Theorem isolate_bwd : forall V {defV : Defaultable V} (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
+     * (a ^+ i ^* stride) |-> sel vs i
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
   =p=> array a vs stride.
 Proof.
@@ -384,11 +393,11 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Theorem array_isolate : forall V (default : V) (a i : addr) vs stride,
+Theorem array_isolate : forall V {defV : Defaultable V} (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a vs stride <=p=>
      array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
+     * (a ^+ i ^* stride) |-> sel vs i
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   unfold piff; split.
@@ -396,7 +405,7 @@ Proof.
   apply isolate_bwd; auto.
 Qed.
 
-Theorem array_isolate_upd : forall V (v : V) (a i : addr) vs stride,
+Theorem array_isolate_upd : forall V {defV : Defaultable V} (v : V) (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a (upd vs i v) stride <=p=>
      array a (firstn (wordToNat i) vs) stride
@@ -404,7 +413,7 @@ Theorem array_isolate_upd : forall V (v : V) (a i : addr) vs stride,
      * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
-  erewrite array_isolate with (vs:=upd vs i v) (i:=i) (default:=v);
+  erewrite array_isolate with (vs:=upd vs i v) (i:=i);
     autorewrite with core; auto.
   unfold piff; split.
   cancel; autorewrite with core; cancel.
@@ -412,7 +421,7 @@ Proof.
 Qed.
 
 
-Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
+Theorem isolate_bwd_upd : forall V {defV : Defaultable V} (v : V) (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a (firstn (wordToNat i) vs) stride
      * (a ^+ i ^* stride) |-> v
@@ -420,7 +429,7 @@ Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
      =p=> array a (upd vs i v) stride.
 Proof.
   intros.
-  erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i) (default:=v).
+  erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i).
   cancel.
   autorewrite with core.
   cancel.
@@ -429,20 +438,20 @@ Proof.
 Qed.
 
 
-Theorem array_progupd : forall V l off (v : V) m (default : V),
+Theorem array_progupd : forall V {defV : Defaultable V} l off (v : V) m,
   array $0 l $1 m
   -> wordToNat off < length l
   -> array $0 (updN l (wordToNat off) v) $1 (Prog.upd m off v).
 Proof.
   intros.
-  eapply isolate_bwd with (default:=default).
+  eapply isolate_bwd.
   autorewrite with core.
   eassumption.
   eapply pimpl_trans; [| apply pimpl_refl | eapply ptsto_upd ].
   unfold sel; rewrite selN_updN_eq by auto.
   cancel.
   pred_apply.
-  rewrite isolate_fwd with (default:=default) by eassumption.
+  rewrite isolate_fwd by eassumption.
   simpl.
   rewrite firstn_updN by auto.
   rewrite skipn_updN by auto.
