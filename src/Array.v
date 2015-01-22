@@ -9,7 +9,7 @@ Set Implicit Arguments.
 Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
   match vs with
     | nil => emp
-    | v :: vs' => a |=> v * array (a ^+ stride) vs' stride
+    | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
   end%pred.
 
 (** * Reading and writing from arrays *)
@@ -603,12 +603,12 @@ Qed.
 (** * Operations for array accesses, to guide automation *)
 
 Definition ArrayRead T a i stride rx : prog T :=
-  Xform (isolate_fwd (V:=valu) $0) isolate_bwd
+  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
     (v <- Read (a ^+ i ^* stride);
      Xform isolate_bwd pimpl_refl (rx v)).
 
 Definition ArrayWrite T a i stride v rx : prog T :=
-  Xform (isolate_fwd (V:=valu) $0) isolate_bwd
+  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
     (v <- Write (a ^+ i ^* stride) v;
      Xform isolate_bwd_upd pimpl_refl (rx v)).
 
@@ -628,6 +628,15 @@ Theorem read_ok:
 Proof.
   unfold ArrayRead.
   hoare.
+
+  unfold ptsto_set; cancel.
+  rewrite <- surjective_pairing; cancel.
+
+  instantiate (default0:=($0, nil)).
+  admit.  (* actually not quite true.. *)
+
+  instantiate (default:=($0, nil)).
+  admit.
 Qed.
 
 Theorem write_ok:
@@ -642,6 +651,14 @@ Theorem write_ok:
 Proof.
   unfold ArrayWrite.
   hoare.
+
+  unfold ptsto_set; cancel.
+  rewrite <- surjective_pairing; cancel.
+
+  admit.  (* actually not quite true.. *)
+
+  instantiate (default:=($0, nil)).
+  admit.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
