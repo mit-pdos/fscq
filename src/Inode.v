@@ -17,6 +17,7 @@ Require Import NArith.
 Require Import WordAuto.
 Require Import RecArray.
 Require Import GenSep.
+Require Import ListPred.
 
 Import ListNotations.
 
