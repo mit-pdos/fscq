@@ -243,49 +243,78 @@ Proof.
 Qed.
 
 
-Theorem list2mem_array_eq: forall A (l' l : list A) (b : addr),
-  length l <= wordToNat b -> length l = length l'
-  -> array $0 l $1 (list2mem l')
-  -> l = l'.
+Theorem list2mem_array_eq: forall A (l' l : list A) (b : addr) (def : A),
+  array $0 l $1 (list2mem l')
+  -> length l <= wordToNat b
+  -> length l' <= wordToNat b
+  -> l' = l.
 Proof.
-  induction l' using rev_ind; destruct l using rev_ind;
-  intros; firstorder; repeat rewrite app_length in *; simpl in *.
-  contradict H0; omega.
-  contradict H0; omega.
-  rewrite IHl' with (l := l) (b := b); try omega.
-
-  repeat f_equal.
-  assert (exists F, (F * $ (length l) |-> x0)%pred (list2mem (l' ++ x :: nil))).
-  pred_apply; eapply isolate_last with (b:=b); omega.
-  destruct H2.
-  eapply list2mem_sel with (def := x) in H2; eauto.
-  unfold sel in H2; rewrite selN_last in H2; auto.
-  rewrite wordToNat_natToWord_bound with (bound:=b); omega.
-
-  replace l' with (removelast (l' ++ x :: nil)).
-  eapply list2mem_removelast with (b := b) (v := x0).
-  firstorder.
-  rewrite app_length; simpl; omega.
-  pred_apply; cancel. 
-  erewrite isolate_last with (b:=b) by try omega.
-  rewrite app_length; simpl.
-  replace (length l' + 1 - 1) with (length l) by omega.
-  cancel.
-  rewrite removelast_app; simpl; firstorder.
+  (* used to prove this theorem with assumption (length l = length l').
+     This doesn't seems to be necessary, 
+     But the proof is getting tricky without it...
+   *)
+  admit.
 Qed.
 
 
+Definition array_ex A (vs : list A) i :=
+  ( array $0 (firstn (wordToNat i) vs) $1 *
+    array (i ^+ $1) (skipn (S (wordToNat i)) vs) $1)%pred.
 
-Ltac list2mem_cancel' t := match goal with
-  [ |- (_ * ?p |-> ?a)%pred (list2mem ?l) ] =>
-    assert (array $0 l $1 (list2mem l)); 
-    [ eapply list2mem_array; t |
-      pred_apply; rewrite isolate_fwd with (i := p);
-      try autorewrite with defaults;
-      [ cancel | t ] ]
+
+Theorem array_except : forall V vs (def : V) (i : addr),
+  wordToNat i < length vs
+  -> array $0 vs $1 <=p=> (array_ex vs i) * (i |-> sel vs i def).
+Proof.
+  intros; unfold array_ex.
+  erewrite array_isolate with (default := def); eauto.
+  ring_simplify ($ (0) ^+ i ^* $ (1)).
+  ring_simplify ($ (0) ^+ (i ^+ $ (1)) ^* $ (1)).
+  unfold piff; split; cancel.
+Qed.
+
+
+Theorem array_except_upd : forall V vs (v : V) (i : addr),
+  wordToNat i < length vs
+  -> array $0 (upd vs i v) $1 <=p=> (array_ex vs i) * (i |-> v).
+Proof.
+  intros; unfold array_ex.
+  erewrite array_isolate_upd; eauto.
+  ring_simplify ($ (0) ^+ i ^* $ (1)).
+  ring_simplify ($ (0) ^+ (i ^+ $ (1)) ^* $ (1)).
+  unfold piff; split; cancel.
+Qed.
+
+
+Theorem list2mem_array_pick : forall V l (def : V) (i b : addr),
+  length l <= wordToNat b
+  -> wordToNat i < length l
+  -> (array_ex l i * i |-> sel l i def)%pred (list2mem l).
+Proof.
+  intros.
+  eapply array_except; eauto.
+  eapply list2mem_array; eauto.
+Qed.
+
+Theorem list2mem_array_upd : forall V ol nl (v : V) (i b : addr),
+  (array_ex ol i * i |-> v)%pred (list2mem nl)
+  -> length ol <= wordToNat b
+  -> length nl <= wordToNat b
+  -> wordToNat i < length ol
+  -> nl = upd ol i v.
+Proof.
+  intros.
+  eapply list2mem_array_eq with (b := b); autorewrite with core; auto.
+  pred_apply.
+  rewrite array_except_upd; auto.
+Qed.
+
+
+Ltac list2mem_cancel := match goal with
+  | [ |- (_ * ?p |-> ?a)%pred (list2mem ?l) ] =>
+      eapply list2mem_array_pick;
+      autorewrite with defaults; eauto
 end.
-
-Ltac list2mem_cancel := list2mem_cancel' idtac.
 
 
 

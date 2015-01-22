@@ -369,8 +369,12 @@ Module INODE.
     unfold iput, rep.
     step.
     list2mem_cancel; inode_bounds.
+    autorewrite with defaults.
     step.
     list2mem_cancel; inode_bounds.
+
+    (* have to manually instantiate? def isn't showing up in any context *)
+    instantiate (def := inode0').
 
     destruct r_; destruct p3; simpl; intuition.
     rewrite length_upd.
@@ -385,26 +389,18 @@ Module INODE.
     apply pimpl_or_r; right; cancel.
 
     instantiate (a0 := upd l0 inum (Build_inode (upd (IBlocks i) off a))).
-    remember (upd l inum (sel l inum inode0' :=> "blocks" := upd (sel l inum inode0' :-> "blocks") off a)) as l'.
-    assert (array $0 l' $1 (list2mem l1)).
-    pred_apply.
-    rewrite Heql'; rewrite array_isolate_upd by inode_bounds.
-    ring_simplify ($ (0) ^+ inum ^* $ (1)); simpl.
-    cancel.
-    replace l1 with l'.
-    subst.
 
+    eapply list2mem_array_upd in H12;autorewrite with core; inode_bounds.
+    subst.
     isolate_inode_match.
     inode_bounds.
     unfold sel; cancel.
 
     rewrite updN_firstn_comm; inode_bounds.
-    rewrite H8 at 1; auto.
-
-    apply eq_sym; eapply list2mem_array_eq with (l:=l'); eauto.
+    rewrite H7 at 1; auto.
+    eapply list2mem_array_upd in H12;
+    autorewrite with core; inode_bounds.
     subst; rewrite length_upd; inode_bounds.
-    subst; rewrite length_upd; inode_bounds.
-    admit. admit.
 
     eapply list2mem_upd; eauto.
     eapply list2mem_upd; eauto.
