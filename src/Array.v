@@ -798,6 +798,36 @@ Proof.
 Qed.
 
 
+Lemma skipn_length: forall A n (l : list A),
+  n <= length l
+  -> length (skipn n l) = length l - n.
+Proof.
+  induction n; destruct l; intros; firstorder.
+Qed.
+
+Lemma removeN_length: forall A (l : list A) i,
+  i < length l -> length (removeN l i) = length l - 1.
+Proof.
+  unfold removeN; induction l; intros; simpl.
+  unfold length in H; omega.
+  rewrite app_length.
+  rewrite firstn_length; rewrite Nat.min_l; simpl in *; try omega.
+  rewrite skipn_length; omega.
+Qed.
+
+
+Lemma removeN_length_eq: forall A B (a : list A) (b : list B) i,
+  i < length a -> i < length b
+  -> length (removeN a i) = length (removeN b i)
+  -> length a = length b.
+Proof.
+  intros; destruct (Nat.eq_dec (length a) 0); try omega.
+  rewrite removeN_length in H1; auto.
+  rewrite removeN_length in H1; auto.
+  omega.
+Qed.
+
+
 Lemma selN_removelast : forall A n l (def : A),
   n < length l - 1
   -> selN (removelast l) n def = selN l n def.

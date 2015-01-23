@@ -134,7 +134,6 @@ Section LISTPRED.
 End LISTPRED.
 
 
-
 (* predicate over a pair of lists *)
 
 Section LISTMATCH.
@@ -147,7 +146,117 @@ Section LISTMATCH.
   Definition pprd := prod_curry prd.
 
   Definition listmatch (a : list A) (b : list B) :=
-    listpred pprd (List.combine a b).
+    ([[ length a = length b ]] *
+     listpred pprd (List.combine a b))%pred.
+
+  Lemma listmatch_length : forall a b m,
+    listmatch a b m -> length a = length b.
+  Proof.
+    unfold listmatch; intros.
+    destruct_lift H; auto.
+  Qed.
+
+  Lemma listmatch_length_r : forall F a b m,
+    (F * listmatch a b)%pred m -> length a = length b.
+  Proof.
+    unfold listmatch; intros.
+    destruct_lift H; auto.
+  Qed.
+
+  Lemma listmatch_length_l : forall F a b m,
+    (listmatch a b * F)%pred m -> length a = length b.
+  Proof.
+    unfold listmatch; intros.
+    destruct_lift H; auto.
+  Qed.
+
+
+  Theorem listmatch_isolate : forall a b i ad bd,
+    i < length a -> i < length b ->
+    listmatch a b <=p=>
+    listmatch (removeN a i) (removeN b i) * prd (selN a i ad) (selN b i bd).
+  Proof.
+    intros; unfold listmatch.
+    unfold piff; split.
+
+    cancel.
+    rewrite listpred_isolate with (i := i) (def := (ad, bd)) at 1.
+    rewrite removeN_combine.
+    rewrite selN_combine; auto.
+    rewrite combine_length; rewrite <- H2; rewrite Nat.min_id; auto.
+    repeat rewrite removeN_length by omega.
+    omega.
+
+    cancel.
+    eapply removeN_length_eq with (a:=a) (b:=b) in H0; eauto.
+    eapply pimpl_trans2.
+    rewrite listpred_isolate with (i := i) (def := (ad, bd)).
+    rewrite removeN_combine.
+    rewrite selN_combine; auto.
+    apply pimpl_refl.
+    rewrite combine_length; rewrite <- H0; rewrite Nat.min_id; auto.
+    repeat rewrite removeN_length by omega.
+    cancel.
+    eapply removeN_length_eq with (a:=a) (b:=b) in H1; eauto.
+  Qed.
+
+  Theorem listmatch_extract : forall a b i ad bd,
+    i < length a ->
+    listmatch a b =p=>
+    [[ length a = length b ]] * exists F, F * prd (selN a i ad) (selN b i bd).
+  Proof.
+    intros; unfold listmatch; cancel.
+    rewrite listpred_fwd with (def := (ad, bd)) (i := i); eauto.
+    rewrite selN_combine; auto.
+    unfold pprd, prod_curry.
+    cancel.
+    rewrite combine_length; rewrite <- H1; rewrite Nat.min_id; auto.
+  Qed.
+
+  Theorem listmatch_updN_removeN : forall a b i av bv,
+    i < length a -> i < length b ->
+    listmatch (updN a i av) (updN b i bv) <=p=>
+    listmatch (removeN a i) (removeN b i) * (prd av bv).
+  Proof.
+    intros; unfold piff; split.
+    rewrite listmatch_isolate with (ad := av) (bd := bv);
+      [ | rewrite length_updN; eauto ..].
+    repeat rewrite selN_updN_eq by auto.
+    repeat rewrite removeN_updN; auto.
+
+    eapply pimpl_trans2.
+    rewrite listmatch_isolate with (i := i) (ad := av) (bd := bv);
+      [ | rewrite length_updN; eauto ..].
+    apply pimpl_refl.
+    repeat rewrite selN_updN_eq by auto.
+    repeat rewrite removeN_updN; auto.
+  Qed.
+
+  Theorem listmatch_updN_selN: forall a b i av bv ad bd,
+    i < length a -> i < length b ->
+    prd (selN a i ad) (selN b i bd) =p=> prd av bv ->
+    listmatch a b =p=> listmatch (updN a i av) (updN b i bv).
+  Proof.
+    intros.
+    rewrite listmatch_updN_removeN by auto.
+    rewrite listmatch_isolate with (ad := ad) (bd := bd) by eauto.
+    cancel; auto.
+  Qed.
 
 
 End LISTMATCH.
+
+Hint Resolve listmatch_length_r.
+Hint Resolve listmatch_length_l.
+Hint Resolve listmatch_length.
+
+
+Ltac extract_listmatch_at ix :=
+  match goal with
+    | [  H : context [ listmatch ?p ?a _ ] |- _ ] =>
+            try unfold p in H;
+            erewrite listmatch_extract with (i := wordToNat ix) in H;
+            try autorewrite with defaults in H; auto;
+            destruct_lift H
+  end.
+

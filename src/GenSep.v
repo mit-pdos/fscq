@@ -8,6 +8,7 @@ Require Import WordAuto.
 Require Import Omega.
 Require Import Ring.
 Require Import SepAuto.
+Require Import ListPred.
 
 Set Implicit Arguments.
 
@@ -440,11 +441,56 @@ Proof.
 Qed.
 
 
-Ltac list2mem_cancel := match goal with
+Ltac extract_list2mem_ptsto :=
+  match goal with
+  | [ H : ?p%pred (list2mem _) |- context [?x] ] =>
+      match p with
+        | context [ (?ix |-> x)%pred ] =>
+          let Hx := fresh in
+          eapply list2mem_sel in H as Hx;
+          try autorewrite with defaults in Hx;
+          eauto; rewrite Hx
+      end
+  end.
+
+Ltac extract_list2mem_upd :=
+  match goal with
+  | [ H : (array_ex ?ol ?ix * ?ix |-> _)%pred (list2mem ?nl) |- context [?nl] ] =>
+      first [ assert (ol = nl) by reflexivity |
+        let Hx := fresh in
+        eapply list2mem_array_upd in H as Hx;
+        [ rewrite Hx | .. ]; eauto ]
+  end.
+
+
+Ltac extract_listmatch :=
+  match goal with
+    | [  H : context [ listmatch ?prd ?a _ ],
+        H2 : ?p%pred (list2mem ?a) |- _ ] =>
+      try extract_list2mem_ptsto;
+      match p with
+        | context [ (?ix |-> _)%pred ] =>
+            let Hb := fresh in
+            apply list2mem_inbound in H2 as Hb;
+            extract_listmatch_at ix
+      end
+  end.
+
+
+Ltac list2mem_cancel :=
+  match goal with
   | [ |- (_ * ?p |-> ?a)%pred (list2mem ?l) ] =>
-      eapply list2mem_array_pick;
-      autorewrite with defaults; eauto
-end.
+    let Hx := fresh in
+    assert (array $0 l $1 (list2mem l)) as Hx;
+      [ eapply list2mem_array; eauto; try omega |
+        pred_apply; erewrite array_except;
+        try autorewrite with defaults; eauto ]
+  end.
 
-
-
+Ltac list2mem_bound :=
+   match goal with
+    | [ H : ( _ * ?p |-> ?i)%pred (list2mem ?l) |- wordToNat ?p < length ?l' ] =>
+          let Ha := fresh in assert (length l = length l') by eauto;
+          let Hb := fresh in apply list2mem_inbound in H as Hb;
+          eauto; (omega || setoid_rewrite <- Ha; omega); clear Hb Ha
+  end.
