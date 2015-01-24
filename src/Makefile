@@ -28,8 +28,8 @@ all: hstest
 
 coqbuild/%.v: %.v strip-proofs.py
 	@mkdir -p coqbuild
-	cat $< | python strip-proofs.py > $@
-	touch -r $< $@
+	python strip-proofs.py < $< > $@
+	@touch -r $< $@
 
 coq: Makefile.coq
 	@mkdir -p codegen
