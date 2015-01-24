@@ -16,6 +16,7 @@ Require Import Inode.
 Require Import Balloc.
 Require Import WordAuto.
 Require Import GenSep.
+Require Import ListPred.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -68,26 +69,15 @@ Module FILE.
 
   Definition file0 := Build_file nil.
 
-  Definition data_match (x : addr * valu) : @pred valu :=
-    fst x |-> snd x.
-
-  Definition file_match (x : INODE.inode * file) : @pred valu := (
-    [[ length (INODE.IBlocks (fst x)) = length (FData (snd x)) ]] *
-    listpred data_match (combine (INODE.IBlocks (fst x)) (FData (snd x)))
+  Definition file_match f i : @pred valu := (
+     listmatch (fun v a => a |-> v) (FData f) (INODE.IBlocks i)
     )%pred.
 
   Definition rep bxp ixp (flist : list file) :=
     (exists freeblocks ilist,
      BALLOC.rep bxp freeblocks * INODE.rep ixp ilist *
-     [[ length ilist = length flist ]] *
-     listpred file_match (combine ilist flist))%pred.
-
-  Definition inum_valid inum ixp (flist : list file) :=
-      (inum < IXLen ixp ^* INODE.items_per_valu)%word /\
-      wordToNat inum < length flist.
-
-  Definition off_valid (off : addr) f :=
-    wordToNat off < length (FData f).
+     listmatch file_match flist ilist
+    )%pred.
 
 
   (* correctness theorems *)
@@ -95,7 +85,6 @@ Module FILE.
   Theorem fread_ok : forall lxp bxp ixp inum off,
     {<F A B mbase m flist f v,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum ixp flist /\ off_valid off f ]] *
            [[ (F * rep bxp ixp flist)%pred m ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]] *
            [[ (B * off |-> v)%pred (list2mem (FData f)) ]]
@@ -110,7 +99,6 @@ Module FILE.
   Lemma fwrite_ok : forall lxp bxp ixp inum off v,
     {<F A B mbase m flist f v0,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum ixp flist /\ off_valid off f ]] *
            [[ (F * rep bxp ixp flist)%pred m ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]] *
            [[ (B * off |-> v0)%pred (list2mem (FData f)) ]]
@@ -130,7 +118,6 @@ Module FILE.
   Theorem flen_ok : forall lxp bxp ixp inum,
     {< F A mbase m flist f,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum ixp flist ]] *
            [[ (F * rep bxp ixp flist)%pred m ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]]
     POST:r LOG.rep lxp (ActiveTxn mbase m) *
@@ -138,37 +125,14 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} flen lxp ixp inum.
   Proof.
-    unfold flen, rep, file_match, inum_valid.
-    hoare.
-
-    instantiate (a3 := l0).
-    unfold INODE.inum_valid; intuition.
-    cancel.
-
-    (* Automation should be able to figure out what is ?a4.
-       We also need to construct frame ?a0, the predicate about all other
-       items in the list.  We can do so via array_isolate.
-       But why do we have to?  All other items are totally irrelevant.
-       Maybe separation logic is not good for lists?
-     *)
+    unfold flen, rep.
     admit.
-
-    instantiate (a4 := (sel l0 inum INODE.inode0)).
-    rewrite listpred_extract with (i := wordToNat inum) (def := (INODE.inode0, file0)) in H5.
-    autorewrite with core in H5; auto.
-    simpl in H5; auto.
-    destruct_lift H5.
-    subst; f_equal.
-    apply list2mem_sel with (def:=file0) in H4; auto.
-    unfold sel; subst; auto.
-    rewrite combine_length_eq; try omega. 
   Qed.
 
 
   Theorem fgrow_ok : forall lxp bxp ixp inum,
     {< F A mbase m flist f,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum ixp flist ]] *
            [[ length (FData f) < INODE.blocks_per_inode ]] *
            [[ (F * rep bxp ixp flist)%pred m ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]]
@@ -188,7 +152,7 @@ Module FILE.
   Theorem fshrink_ok : forall lxp bxp ixp inum,
     {< F A mbase m flist f,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ inum_valid inum ixp flist /\ length (FData f) > 0 ]] *
+           [[ length (FData f) > 0 ]] *
            [[ (F * rep bxp ixp flist)%pred m ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]]
     POST:r [[ r = false ]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
