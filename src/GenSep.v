@@ -451,6 +451,14 @@ Ltac extract_list2mem_ptsto :=
           try autorewrite with defaults in Hx;
           eauto; rewrite Hx
       end
+  | [ H : ?p%pred (list2mem _), H2 : context [?x] |- _ ] =>
+      match p with
+        | context [ (?ix |-> x)%pred ] =>
+          let Hx := fresh in
+          eapply list2mem_sel in H as Hx;
+          try autorewrite with defaults in Hx;
+          eauto; rewrite Hx in H2
+      end
   end.
 
 Ltac extract_list2mem_upd :=

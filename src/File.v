@@ -102,7 +102,9 @@ Module FILE.
     | [ H : ?p%pred ?mem |- length ?l <= _ ] =>
       match p with
       | context [ (INODE.rep _ ?l) ] =>
-        eapply INODE.rep_bound with (m := mem); pred_apply; cancel
+        first [ eapply INODE.rep_bound with (m := mem)
+              | eapply INODE.blocks_bound with (m := mem)
+              ]; pred_apply; cancel
       end
     | [ H : length ?l = _ |- context [ length ?l ] ] =>
         solve [ rewrite H ; eauto ; try omega ]
@@ -148,7 +150,37 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fread lxp ixp inum off.
   Proof.
-    admit.
+    unfold fread, rep.
+    hoare.
+    list2mem_cancel; file_bounds.
+    list2mem_cancel; file_bounds.
+    repeat extract_listmatch; file_bounds.
+
+    extract_listmatch.
+    extract_listmatch_at off.
+    erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
+    unfold file_match at 2; autorewrite with defaults.
+    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off).
+    unfold data_match, sel; autorewrite with defaults.
+    eapply list2mem_sel in H5 as Hx; autorewrite with defaults.
+    rewrite Hx; clear Hx.
+    cancel.
+
+
+    apply list2mem_inbound in H4 as Hx.
+    extract_list2mem_ptsto; auto.
+
+    apply list2mem_inbound in H4 as Hx.
+    rewrite <- H6.
+    extract_list2mem_ptsto; auto.
+
+    apply list2mem_inbound in H4 as Hx.
+    extract_list2mem_ptsto; auto.
+
+    instantiate (ad := $0).
+    instantiate (ad0 := $0).
+
+    LOG.unfold_intact; cancel.
   Qed.
 
   Lemma fwrite_ok : forall lxp bxp ixp inum off v,

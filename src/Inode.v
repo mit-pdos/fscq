@@ -203,14 +203,6 @@ Module INODE.
     (exists ilist', rep' xp ilist' *
      listmatch inode_match ilist ilist')%pred.
 
-  Lemma rep_bound: forall F xp l m,
-    (F * rep xp l)%pred m
-    -> length l <= wordToNat (IXLen xp ^* items_per_valu).
-  Proof.
-    unfold rep, rep'; intros.
-    destruct_lift H.
-    erewrite listmatch_length_r; eauto; omega.
-  Qed.
 
   Lemma inode_blocks_length: forall m xp l inum F,
     (F * rep' xp l)%pred m ->
@@ -292,6 +284,28 @@ Module INODE.
   Hint Rewrite resolve_sel_word0    using reflexivity : defaults.
   Hint Rewrite resolve_selN_word0   using reflexivity : defaults.
 
+
+  Lemma rep_bound: forall F xp l m,
+    (F * rep xp l)%pred m
+    -> length l <= wordToNat (IXLen xp ^* items_per_valu).
+  Proof.
+    unfold rep, rep'; intros.
+    destruct_lift H.
+    erewrite listmatch_length_r; eauto; omega.
+  Qed.
+
+  Lemma blocks_bound: forall F xp l m i,
+    (F * rep xp l)%pred m
+    -> length (IBlocks (sel l i inode0)) <= wordToNat (natToWord addrlen blocks_per_inode).
+  Proof.
+    unfold rep, sel; intros.
+    destruct_lift H.
+    destruct (lt_dec (wordToNat i) (length l)).
+    extract_listmatch_at i; unfold blocks_per_inode in *.
+    autorewrite with defaults; omega.
+    rewrite selN_oob by omega.
+    simpl; omega.
+  Qed.
 
   Ltac inode_bounds' := match goal with
     | [ H : context [ (rep' _ ?l) ] |- length ?l <= _ ] =>
