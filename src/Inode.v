@@ -295,42 +295,6 @@ Module INODE.
 
   Ltac inode_bounds := eauto; try list2mem_bound; repeat inode_bounds'; eauto.
 
-  Ltac inode_sep2sel := match goal with
-    | [ H: (_ * ?inum |-> ?i)%pred (list2mem ?il) |- context [?i] ] =>
-      match type of i with
-      | inode => replace i with (sel il inum inode0) by (erewrite list2mem_sel; eauto)
-      | addr => replace i with (sel il inum $0) by (erewrite list2mem_sel; eauto)
-      end
-    | [ H: (_ * ?inum |-> ?i)%pred (list2mem ?il), H2: context [?i] |- _ ] =>
-      match type of i with
-      | inode => replace i with (sel il inum inode0) in H2 by (erewrite list2mem_sel; eauto)
-      | addr => replace i with (sel il inum $0) in H2 by (erewrite list2mem_sel; eauto)
-      end
-  end.
-
-  Ltac inode_simpl := repeat inode_sep2sel; subst.
-
-  Ltac extract_inode_match inum :=
-    match goal with
-      | [ H : context [ listpred inode_match _ ] |- _ ] =>
-        unfold inode_match in H;
-        rewrite listpred_extract with (i := wordToNat inum) (def := (inode0, inode0')) in H;
-        autorewrite with core; auto;
-        autorewrite with core in H; simpl in H; auto;
-        destruct_lift H; inode_bounds
-    end.
-
-  Ltac isolate_inode_match :=
-    unfold sel, upd; try rewrite combine_updN;
-    match goal with
-       | [ |- listpred inode_match ?l =p=> listpred inode_match (updN ?l' _ _) ] =>
-          assert (l = l') by reflexivity;
-          apply listpred_updN_selN with (def := (inode0, inode0'));
-          [ rewrite combine_length_eq; auto |
-            unfold inode_match; simpl ];
-          autorewrite with core; auto; inode_simpl; simpl
-    end.
-
   Hint Extern 0 (okToUnify (rep' _ _) (rep' _ _)) => constructor : okToUnify.
 
   Theorem igetlen_ok : forall lxp xp inum,
