@@ -203,6 +203,15 @@ Module INODE.
     (exists ilist', rep' xp ilist' *
      listmatch inode_match ilist ilist')%pred.
 
+  Lemma rep_bound: forall F xp l m,
+    (F * rep xp l)%pred m
+    -> length l <= wordToNat (IXLen xp ^* items_per_valu).
+  Proof.
+    unfold rep, rep'; intros.
+    destruct_lift H.
+    erewrite listmatch_length_r; eauto; omega.
+  Qed.
+
   Lemma inode_blocks_length: forall m xp l inum F,
     (F * rep' xp l)%pred m ->
     inum < length l ->
@@ -540,5 +549,7 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (iput _ _ _ _ _) _) => apply iput_ok : prog.
   Hint Extern 1 ({{_}} progseq (igrow _ _ _ _) _) => apply igrow_ok : prog.
   Hint Extern 1 ({{_}} progseq (ishrink _ _ _) _) => apply ishrink_ok : prog.
+
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
 End INODE.

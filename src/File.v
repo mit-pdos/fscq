@@ -25,6 +25,10 @@ Module FILE.
 
   (* interface implementation *)
 
+  Definition flen T lxp ixp inum rx : prog T :=
+    n <- INODE.igetlen lxp ixp inum;
+    rx n.
+
   Definition fread T lxp ixp inum off rx : prog T :=
     b <-INODE.iget lxp ixp inum off;
     fblock <- LOG.read lxp b;
@@ -34,10 +38,6 @@ Module FILE.
     b <-INODE.iget lxp ixp inum off;
     ok <- LOG.write lxp b v;
     rx ok.
-
-  Definition flen T lxp ixp inum rx : prog T :=
-    n <- INODE.igetlen lxp ixp inum;
-    rx n.
 
   Definition fgrow T lxp bxp ixp inum rx : prog T :=
     bnum <- BALLOC.alloc lxp bxp;
@@ -69,8 +69,10 @@ Module FILE.
 
   Definition file0 := Build_file nil.
 
+  Definition data_match (v : valu) a := ( a |-> v)%pred.
+
   Definition file_match f i : @pred valu := (
-     listmatch (fun v a => a |-> v) (FData f) (INODE.IBlocks i)
+     listmatch data_match (FData f) (INODE.IBlocks i)
     )%pred.
 
   Definition rep bxp ixp (flist : list file) :=
@@ -80,7 +82,60 @@ Module FILE.
     )%pred.
 
 
+  Fact resolve_sel_file0 : forall l i d,
+    d = file0 -> sel l i d = sel l i file0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_file0 : forall l i d,
+    d = file0 -> selN l i d = selN l i file0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+
+  Hint Rewrite resolve_sel_file0  using reflexivity : defaults.
+  Hint Rewrite resolve_selN_file0 using reflexivity : defaults.
+
+  Ltac file_bounds' := match goal with
+    | [ H : ?p%pred ?mem |- length ?l <= _ ] =>
+      match p with
+      | context [ (INODE.rep _ ?l) ] =>
+        eapply INODE.rep_bound with (m := mem); pred_apply; cancel
+      end
+    | [ H : length ?l = _ |- context [ length ?l ] ] =>
+        solve [ rewrite H ; eauto ; try omega ]
+    | [ H : _ = length ?l |- context [ length ?l ] ] =>
+        solve [ rewrite <- H ; eauto ; try omega ]
+  end.
+
+  Ltac file_bounds := eauto; try list2mem_bound; repeat file_bounds'; eauto.
+
+
+
+
   (* correctness theorems *)
+
+  Theorem flen_ok : forall lxp bxp ixp inum,
+    {< F A mbase m flist f,
+    PRE    LOG.rep lxp (ActiveTxn mbase m) *
+           [[ (F * rep bxp ixp flist)%pred m ]] *
+           [[ (A * inum |-> f)%pred (list2mem flist) ]]
+    POST:r LOG.rep lxp (ActiveTxn mbase m) *
+           [[ r = $ (length (FData f)) ]]
+    CRASH  LOG.log_intact lxp mbase
+    >} flen lxp ixp inum.
+  Proof.
+    unfold flen, rep.
+    hoare.
+    list2mem_cancel; file_bounds.
+
+    extract_listmatch.
+    subst; unfold sel; auto.
+    f_equal; apply eq_sym; eauto.
+  Qed.
+
 
   Theorem fread_ok : forall lxp bxp ixp inum off,
     {<F A B mbase m flist f v,
@@ -111,21 +166,6 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fwrite lxp ixp inum off v.
   Proof.
-    admit.
-  Qed.
-
-
-  Theorem flen_ok : forall lxp bxp ixp inum,
-    {< F A mbase m flist f,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep bxp ixp flist)%pred m ]] *
-           [[ (A * inum |-> f)%pred (list2mem flist) ]]
-    POST:r LOG.rep lxp (ActiveTxn mbase m) *
-           [[ r = $ (length (FData f)) ]]
-    CRASH  LOG.log_intact lxp mbase
-    >} flen lxp ixp inum.
-  Proof.
-    unfold flen, rep.
     admit.
   Qed.
 
