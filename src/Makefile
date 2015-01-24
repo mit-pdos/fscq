@@ -3,7 +3,7 @@ OCAMLINC   := -I codegen
 MODULES    := Nomega Word WordAuto \
 	      Prog Pred Hoare SepAuto Idempotent \
 	      BasicProg Array AddrMap Rec RecArray \
-		  GenSep ListPred \
+	      GenSep ListPred \
 	      Log Balloc Inode File Dir \
 	      Testprog \
 	      ExtrHaskellPrelude Extraction
@@ -33,6 +33,7 @@ coqbuild/%.v: %.v strip-proofs.py
 
 coq: Makefile.coq
 	@mkdir -p codegen
+	@ln -sf ../coqbuild codegen
 	$(MAKE) -f Makefile.coq
 
 Makefile.coq: Makefile $(VS_XFORM)
