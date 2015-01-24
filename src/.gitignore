@@ -16,3 +16,4 @@ _build
 /Makefile.coq
 /fstest
 /hstest
+/coqbuild
