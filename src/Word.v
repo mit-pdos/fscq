@@ -1503,6 +1503,7 @@ Proof.
 Qed.
 
 Notation "$ n" := (natToWord _ n) (at level 0).
+Notation "# n" := (wordToNat n) (at level 0).
 
 
 (* Bit shifting *)

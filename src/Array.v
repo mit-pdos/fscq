@@ -40,6 +40,14 @@ Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
 Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
   updN vs (wordToNat i) v.
 
+
+
+Notation "l [ i ]" := (selN l i _) (at level 56, left associativity).
+Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
+Notation "l $[ i ]" := (sel l i _) (at level 56, left associativity).
+Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
+
+
 (** XXX use [nth] everywhere *)
 Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
 Proof.
