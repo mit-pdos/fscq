@@ -240,7 +240,7 @@ Ltac word2nat_simpl :=
   | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
   end.
 
-Ltac word2nat_solve := unfold goodSize in *; (omega
+Ltac word2nat_solve := unfold goodSize in *; (omega || congruence
   || ((apply div_le; [| word2nat_auto]
     || apply zero_lt_pow2
     || apply wordToNat_bound || apply wordToNat_good
