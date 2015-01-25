@@ -168,12 +168,11 @@ Module MEMLOG.
     Map.cardinal ms <= wordToNat (LogLen xp).
 
   (* Replay the state in memory *)
-  Fixpoint replay (ms : memstate) (m : diskstate) : diskstate :=
-    Map.fold (fun a v m' => upd m' a v) ms m.
-
-  (* XXX: switch everything to [replay'] *)
   Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
     fold_left (fun m' p => upd m' (fst p) (snd p)) l m.
+
+  Definition replay (ms : memstate) (m : diskstate) : diskstate :=
+    replay' (Map.elements ms) m.
 
   Definition avail_region start len : @pred valu :=
     (exists l, [[ length l = len ]] * array start l $1)%pred.
@@ -236,7 +235,6 @@ Module MEMLOG.
   Definition init T xp rx : prog T :=
     Write (LogCommit xp) $0 ;;
     rx tt.
-
 
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, valid_size, Map.cardinal.
 
@@ -516,12 +514,6 @@ Module MEMLOG.
     eapply pimpl_or_r. right.
     cancel.
     admit.
-    admit.
-    eapply pimpl_or_r. left.
-    cancel.
-    admit.
-    eapply pimpl_or_r. right.
-    cancel.
     admit.
   Qed.
 

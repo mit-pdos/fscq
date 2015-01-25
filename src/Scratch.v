@@ -175,11 +175,11 @@ Module MEMLOG.
     Map.cardinal ms <= wordToNat (LogLen xp).
 
   (* Replay the state in memory *)
-  Definition replay (ms : memstate) (m : diskstate) : diskstate :=
-    Map.fold (fun a v m' => upd m' a v) ms m.
-
   Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
     fold_left (fun m' p => upd m' (fst p) (snd p)) l m.
+
+  Definition replay (ms : memstate) (m : diskstate) : diskstate :=
+    replay' (Map.elements ms) m.
 
   Definition data_rep (old : diskstate) : pred :=
     diskIs (list2mem old).
@@ -194,14 +194,6 @@ Module MEMLOG.
     destruct l.
     reflexivity.
     simpl. rewrite IHn. reflexivity.
-  Qed.
-  
-  Lemma replay_replay' : forall ms m,
-    replay ms m = replay' (Map.elements ms) m.
-  Proof.
-    intros. unfold replay.
-    rewrite Map.fold_1.
-    trivial.
   Qed.
 
   Definition KIn V := InA (@Map.eq_key V).
@@ -249,7 +241,7 @@ Module MEMLOG.
   Proof.
     intros.
     apply mapsto_In in H.
-    rewrite replay_replay'.
+    unfold replay.
     apply replay'_sel.
     apply Map.elements_3w.
     auto.
@@ -276,7 +268,7 @@ Module MEMLOG.
     length (replay ms m) = length m.
   Proof.
     intros.
-    rewrite replay_replay'.
+    unfold replay.
     apply replay'_len.
   Qed.
   
