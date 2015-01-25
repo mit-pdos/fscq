@@ -4,7 +4,6 @@ Require Import List.
 Require Import FMapList.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
-Require Import Log.
 Require Import Pred.
 Require Import Prog.
 Require Import Hoare.
@@ -28,7 +27,7 @@ Module Addr_as_OT <: UsualOrderedType.
   Definition eq_trans := @eq_trans t.
   Definition lt := @wlt addrlen.
 
-  Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
+  Lemma lt_trans: forall x y z : t, lt x y -> lt y z -> lt x z.
   Proof.
     unfold lt; intros.
     apply wlt_lt in H; apply wlt_lt in H0.
@@ -172,67 +171,84 @@ Module MEMLOG.
   Fixpoint replay (ms : memstate) (m : diskstate) : diskstate :=
     Map.fold (fun a v m' => upd m' a v) ms m.
 
+  (* XXX: switch everything to [replay'] *)
+  Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
+    fold_left (fun m' p => upd m' (fst p) (snd p)) l m.
+
+  Definition avail_region start len : @pred valu :=
+    (exists l, [[ length l = len ]] * array start l $1)%pred.
+
+  Theorem avail_region_shrink_one : forall start len,
+    len > 0
+    -> avail_region start len =p=>
+       start |->? * avail_region (start ^+ $1) (len - 1).
+  Proof.
+    destruct len; intros; try omega.
+    unfold avail_region.
+    admit.
+  Qed.
+
   (** On-disk representation of the log *)
   Definition log_rep xp m (ms : memstate) : pred :=
      ((LogHeader xp) |-> header_to_valu (mk_header (Map.cardinal ms)) *
       [[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
-      (* For now, support just one descriptor block, at the start of the log. *)
-      [[ Map.cardinal ms <= addr_per_block ]] *
       exists rest, (LogStart xp) |-> descriptor_to_valu (map fst (Map.elements ms) ++ rest) *
       array (LogStart xp ^+ $1) (map snd (Map.elements ms)) $1 *
-      (* XXX use array for this too (with an exis)? *)
-      LOG.avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms))
+      avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms))
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
-  Definition data_rep (old : diskstate) : pred :=
-    diskIs (list2mem old).
+  Definition data_rep (xp: xparams) (m: diskstate) : pred :=
+    array $0 m $1.
 
   Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred valu :=
     [[ cur = replay ms old ]]%pred.
 
   Definition rep xp (st: logstate) (ms: memstate) :=
+    (* For now, support just one descriptor block, at the start of the log. *)
+    ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
     match st with
     | NoTransaction m =>
       (LogCommit xp) |-> $0
     * [[ ms = ms_empty ]]
-    * data_rep m
+    * data_rep xp m
     * (LogHeader xp) |->?
-    * LOG.avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
+    * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
     | ActiveTxn old cur =>
       (LogCommit xp) |-> $0
-    * data_rep old (* Transactions are always completely buffered in memory. *)
-    * log_rep xp old ms_empty
+    * data_rep xp old (* Transactions are always completely buffered in memory. *)
+    * (LogHeader xp) |->?
+    * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
     * cur_rep old ms cur
     * [[ valid_entries old ms ]]
     | FlushedTxn old cur =>
       (LogCommit xp) |-> $0
-    * [[ ms = ms_empty ]]
-    * data_rep old
-    * exists log, log_rep xp old log
-    * cur_rep old log cur
+    * data_rep xp old
+    * log_rep xp old ms
+    * cur_rep old ms cur
     | CommittedTxn cur =>
       (LogCommit xp) |-> $1
-    * [[ ms = ms_empty ]]
-    * exists old, data_rep old
-    * exists log, log_rep xp old log
-    * cur_rep old log cur
-    end%pred.
+    * exists old, data_rep xp old
+    * log_rep xp old ms
+    * cur_rep old ms cur
+    end)%pred.
 
   Definition init T xp rx : prog T :=
     Write (LogCommit xp) $0 ;;
     rx tt.
 
-  Hint Extern 0 (okToUnify (log_rep _ _ _) (log_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (data_rep _) (data_rep _)) => constructor : okToUnify.
 
   Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, valid_size, Map.cardinal.
 
+  Hint Extern 0 (okToUnify (log_rep _ _ _) (log_rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (data_rep _ _) (data_rep _)) => constructor : okToUnify.
+
   Theorem init_ok : forall xp,
     {< old,
-    PRE    data_rep old *
-           LOG.avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
+    PRE    [[ wordToNat (LogLen xp) <= addr_per_block ]] *
+           data_rep xp old *
+           avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
            (LogCommit xp) |->? *
            (LogHeader xp) |->?
     POST:r rep xp (NoTransaction old) ms_empty
@@ -258,12 +274,7 @@ Module MEMLOG.
     unfold begin; log_unfold.
     hoare.
 
-    instantiate (a := valu_to_descriptor w).
-    rewrite valu_descriptor_id.
-    cancel.
-
-    unfold valid_entries; intuition; inversion H.
-    unfold valid_entries; intuition; inversion H.
+    unfold valid_entries; intuition; inversion H0.
   Qed.
 
   Definition abort T xp (ms:memstate) rx : prog T :=
@@ -285,6 +296,7 @@ Module MEMLOG.
     replay (Map.add a v ms) m = upd (replay ms m) a v.
   Proof.
     intros.
+    (* XXX move proof from Scratch.v *)
     admit.
   Qed.
 
@@ -321,14 +333,20 @@ Module MEMLOG.
     eapply list2mem_upd; eauto.
   Qed.
 
-  Definition read T (xp : xparams) ms a rx : prog T :=
+  Definition read T (xp: xparams) ms a rx : prog T :=
     match Map.find a ms with
     | Some v =>
       rx v
     | None =>
-      v <- Read a;
+      v <- ArrayRead $0 a $1;
       rx v
     end.
+
+  Lemma replay_sel : forall a v ms m def,
+    Map.MapsTo a v ms -> sel (replay ms m) a def = v.
+  Proof.
+    admit.
+  Qed.
 
   Theorem read_ok: forall xp ms a,
     {< m1 m2 v,
@@ -342,47 +360,25 @@ Module MEMLOG.
     unfold read; log_unfold.
     intros.
 
-(*
     case_eq (Map.find a ms); hoare.
     subst.
-*)
+
+    unfold diskptsto in H5.
+    apply Map.find_2 in H.
+    eapply replay_sel in H.
+    unfold list2mem in H5.
+    erewrite sel_map in H5.
+    inversion H5.
+    rewrite <- H.
+    instantiate (def := $0).
+    reflexivity.
+
+    destruct (lt_dec (wordToNat a) (length (replay ms d))); auto.
+    admit.
 
     admit.
 
-
-    (*
-    eapply pimpl_ok.
-    auto with prog.
-    norm.
-    cancel.
-    intuition.
-    rewrite <- minus_n_O.
-    rewrite firstn_length.
-    instantiate (1:=v); congruence.
-    unfold stars; simpl.
-    norm.
-    cancel.
-    intuition.
-    unfold stars; simpl.
-    step.
-    step.
-    eapply replay_last_val; eauto. rewrite <- plus_n_O in *; auto.
-
-    step.
-    apply replay_last_irrel; auto. omega.
-
-    assert (indomain a m1) as Ham1.
-    eapply Log.indomain_replay; eauto.
-    eexists; eauto.
-    destruct Ham1.
-    step.
-    step.
-    rewrite <- plus_n_O in *.
-    rewrite Nat.sub_diag in *.
-    simpl in *.
-    congruence.
-    step.
-*)
+    admit.
   Qed.
 
   Definition flush T xp (ms:memstate) rx : prog T :=
@@ -397,15 +393,14 @@ Module MEMLOG.
       Continuation lrx
       Invariant
         (LogCommit xp) |-> $0
-        * data_rep old
+        * data_rep xp old
         * (LogHeader xp) |-> header_to_valu (mk_header (Map.cardinal ms))
         * (LogStart xp) |-> descriptor_to_valu (map fst (Map.elements ms))
         * array (LogStart xp ^+ $1) (firstn (wordToNat i) (map snd (Map.elements ms))) $1
-        * LOG.avail_region (LogStart xp ^+ $1 ^+ i)
-                           (wordToNat (LogLen xp) - wordToNat i)
+        * avail_region (LogStart xp ^+ $1 ^+ i) (wordToNat (LogLen xp) - wordToNat i)
       OnCrash crash
       Begin
-        Write (LogStart xp ^+ $1 ^+ i) (sel (map snd (Map.elements ms)) i $0);;
+        ArrayWrite (LogStart xp ^+ $1 ^+ i) $0 $1 (sel (map snd (Map.elements ms)) i $0);;
         lrx tt
       Rof;;
       rx true
@@ -417,30 +412,43 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Hint Extern 1 (LOG.avail_region _ (_ - wordToNat _) =!=> _) =>
-    clear_norm_goal; apply LOG.avail_region_shrink_one; word2nat_auto : norm_hint_left.
+  Lemma array_inc_firstn : forall a l i,
+    $ (a + wordToNat i) |-> sel l i (natToWord valulen 0) * array ($ a) (firstn (wordToNat i) l) $1 =p=>
+    array ($ a) (firstn (wordToNat i + 1) l) $1.
+  Proof.
+    intros.
+    admit.
+  Qed.
+
+  (*
+  Hint Extern 1 (avail_region _ _ =!=> _) =>
+    clear_norm_goal; repeat match goal with
+    | [ H : forall _, _ |- _ ] => clear H
+    | [ H : _ =p=> _ |- _ ] => clear H
+    end; apply avail_region_shrink_one; word2nat_auto : norm_hint_left.
+*)
 
   Theorem flush_ok : forall xp ms,
     {< m1 m2,
     PRE    rep xp (ActiveTxn m1 m2) ms
-    POST:r ([[ r = true ]] * rep xp (FlushedTxn m1 m2) ms_empty) \/
+    POST:r ([[ r = true ]] * rep xp (FlushedTxn m1 m2) ms) \/
            ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
-    CRASH  any (* XXX this won't work *)
+    CRASH  rep xp (ActiveTxn m1 m2) ms
     >} flush xp ms.
   Proof.
     unfold flush; log_unfold.
     intros.
     (* XXX make word2nat_auto handle this *)
     assert (goodSize addrlen (wordToNat (LogLen xp))) by (apply wordToNat_bound).
-    hoare; try apply pimpl_any. (* XXX takes forever, partially due to [word2nat_auto] *)
+    (*
+    hoare. (* XXX takes forever, partially due to [word2nat_auto] *)
 
-    unfold wplus, wminus, wmult, wdiv, wmod, wordBin.
-    autorewrite with W2Nat.
     rewrite wordToNat_natToWord_idempotent' with (n := wordToNat m + 1).
     rewrite Nat.sub_add_distr.
     cancel.
-    
-    admit. (* XXX append to array *)
+    rewrite array_inc_firstn.
+    cancel.
+
     abstract word2nat_auto.
     norm.
     apply stars_or_left.
@@ -454,157 +462,192 @@ Module MEMLOG.
     rewrite LOG.firstn_length.
     abstract cancel.
 
-    clear H3.
-    admit. (* XXX need to change [rep] slightly! *)
     constructor.
+*)
+    repeat admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
   Definition apply T xp ms rx : prog T :=
     For i < $ (Map.cardinal ms)
-    Ghost crash cur
+    Ghost cur
     Loopvar _ <- tt
     Continuation lrx
     Invariant
       (LogCommit xp) |-> $1
-      * exists old, data_rep old
-      * (replay (firstn (wordToNat i) (Map.elements ms)))
-      * cur_rep old log cur
-      * [[ forall a, cur a = replay (skipn (wordToNat i) log) old a ]]
+      * log_rep xp cur ms
+      * exists old, data_rep xp old
+      * [[ replay' (skipn (wordToNat i) (Map.elements ms)) old = cur ]]
     OnCrash
-      rep xp (NoTransaction cur) \/
-      rep xp (CommittedTxn cur)
+      rep xp (NoTransaction cur) ms_empty \/
+      rep xp (CommittedTxn cur) ms
     Begin
+      ArrayWrite $0 (sel (map fst (Map.elements ms)) i $0) $1 (sel (map snd (Map.elements ms)) i $0);;
+      lrx tt
+    Rof;;
+    Write (LogCommit xp) $0;;
     rx tt.
 
+  Theorem apply_ok: forall xp ms,
+    {< m,
+    PRE    rep xp (CommittedTxn m) ms
+    POST:r rep xp (NoTransaction m) ms_empty
+    CRASH  rep xp (NoTransaction m) ms_empty \/
+           rep xp (CommittedTxn m) ms
+    >} apply xp ms.
+  Proof.
+    unfold apply; log_unfold.
+    hoare.
+    admit.
+    admit.
+    admit.
+    eapply pimpl_or_r. right.
+    cancel.
+    admit.
+    (* Somewhat subtle: if replaying the entire log on [d0] is equal to replaying a suffix on [d],
+       then replaying the entire log on [d] is also equal. *)
+    admit.
+    eapply pimpl_or_r. right.
+    cancel.
+    admit.
+    admit.
+    admit.
+    eapply pimpl_or_r. right.
+    cancel.
+    admit.
+    admit.
+    eapply pimpl_or_r. left.
+    cancel.
+    admit.
+    eapply pimpl_or_r. right.
+    cancel.
+    admit.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
+
   Definition commit T xp (ms:memstate) rx : prog T :=
-    flush xp ms;;
-    Write (LogCommit xp) $1;;
-    apply xp ms;;
-    rx tt.
+    ok <- flush xp ms;
+    If (bool_dec ok true) {
+      Write (LogCommit xp) $1;;
+      apply xp ms;;
+      rx true
+    } else {
+      rx false
+    }.
 
   Theorem commit_ok: forall xp ms,
     {< m1 m2,
      PRE    rep xp (ActiveTxn m1 m2) ms
-     POST:r rep xp (NoTransaction m2) ms_empty
-     CRASH  any (* XXX *)
+     POST:r ([[ r = true ]] * rep xp (NoTransaction m2) ms_empty) \/
+            ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
+     CRASH  rep xp (ActiveTxn m1 m2) ms \/
+            rep xp (CommittedTxn m2) ms \/
+            rep xp (NoTransaction m2) ms_empty
     >} commit xp ms.
   Proof.
-    unfold commit; log_unfold.
-    intros.
-    eapply pimpl_ok2.
-    eauto with prog.
-    intros; simpl.
-    norm.
-    log_unfold.
-    cancel.
-    intuition; eauto.
+    unfold commit.
     hoare_unfold log_unfold.
-    apply pimpl_any.
+    (* XXX make [hoare_unfold] unfold before [cancel] so it can handle all these goals *)
+    log_unfold; cancel.
+    eapply pimpl_or_r; right.
+    eapply pimpl_or_r; right.
+    abstract cancel.
+    log_unfold; cancel.
+    eapply pimpl_or_r; right.
+    eapply pimpl_or_r; left.
+    abstract cancel.
+    eapply pimpl_or_r; left.
+    cancel.
+    admit.
+    log_unfold; cancel.
+    eapply pimpl_or_r; left.
+    cancel.
   Qed.
 
-  Definition read_log T xp rx : prog T :=
+  Definition read_log T (xp: xparams) rx : prog T :=
     rx ms_empty.
+
+(*
+    d <- Read (LogStart xp);
+    let desc := valu_to_descriptor d in
+    h <- Read (LogHeader xp);
+    let len := (valu_to_header h) :-> "length" in
+    log <- For i < len
+    Ghost cur log_on_disk
+    Loopvar log_prefix <- ms_empty
+    Continuation lrx
+    Invariant
+      (LogCommit xp) |-> $1
+      * log_rep xp cur log_on_disk
+      * exists old, data_rep xp old
+    OnCrash
+      rep xp (CommittedTxn cur) log_on_disk
+    Begin
+      v <- ArrayRead (LogStart xp ^+ $1) i $1;
+      lrx log_prefix
+    Rof;
+    rx log.
+*)
+
+  Definition read_log_ok: forall xp,
+    {< m ms,
+    PRE    rep xp (CommittedTxn m) ms
+    POST:r [[ r = ms ]] * rep xp (CommittedTxn m) ms
+    CRASH  rep xp (CommittedTxn m) ms
+    >} read_log xp.
+    unfold read_log; log_unfold.
+    admit.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read_log _) _) => apply read_log_ok : prog.
 
   Definition recover T xp rx : prog T :=
     v <- Read (LogCommit xp);
     If (weq v $1) {
-      apply xp;;
-      Write (LogCommit xp) $0;;
-      Write (LogHeader xp) (header_to_valu (mk_header 0));;
+      ms <- read_log xp;
+      apply xp ms;;
       rx tt
     } else {
-      Write (LogHeader xp) (header_to_valu (mk_header 0));;
       rx tt
     }.
 
-  Hint Extern 0 (okToUnify (LOG.rep _ _) (LOG.rep _ _)) => constructor : okToUnify.
-
   Theorem recover_ok: forall xp,
-    {< (exists m F, rep xp (NoTransaction m) ms_empty * F
-        * [[ {{ rep xp (NoTransaction m) ms_empty * F }} rx tt >> rec ]]
-        * [[ {{ rep xp (NoTransaction m) ms_empty * F }} rec >> rec ]])
-    \/ (exists m m' ms F, rep xp (ActiveTxn m m') ms * F
-        * [[ {{ rep xp (NoTransaction m) ms_empty * F }} rx tt >> rec ]]
-        * [[ {{ rep xp (ActiveTxn m m') ms * F
-             \/ rep xp (NoTransaction m) ms_empty * F }} rec >> rec ]])
-    \/ (exists m F, rep xp (CommittedTxn m) ms_empty * F
-        * [[ {{ rep xp (NoTransaction m) ms_empty * F }} rx tt >> rec ]]
-        * [[ {{ rep xp (CommittedTxn m) ms_empty * F
-             \/ rep xp (NoTransaction m) ms_empty * F }} rec >> rec ]])
-    >} recover xp rx >> rec.
+    {< m ms,
+    PRE     rep xp (NoTransaction m) ms_empty \/
+            rep xp (CommittedTxn m) ms
+    POST:r  rep xp (NoTransaction m) ms_empty
+    CRASH   rep xp (NoTransaction m) ms_empty \/
+            rep xp (CommittedTxn m) ms
+    >} recover xp.
   Proof.
-    unfold recover, rep.
-    step.
+    unfold recover.
+    hoare_unfold log_unfold.
+    log_unfold; cancel.
+    instantiate (a1 := any).
+    instantiate (a := nil).
+    instantiate (a3 := nil).
+    instantiate (a0 := ms_empty).
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    log_unfold; cancel.
     apply stars_or_left.
-    cancel; step.
-    apply stars_or_right; apply stars_or_left.
-    cancel; step.
-    apply stars_or_right; apply stars_or_right.
-    cancel; step.
-  Qed.
-
-  Lemma firstn_length: forall T (l:list T),
-    firstn (length l) l = l.
-  Proof.
-    induction l; simpl; f_equal; auto.
-  Qed.
-
-  Lemma replay_last_val: forall ms m i a v, i < length ms
-    -> LOG.replay (firstn (length ms - i) ms) m a = Some v
-    -> fst (nth i (rev ms) LOG.logentry_zero) = a
-    -> snd (nth i (rev ms) LOG.logentry_zero) = v.
-  Proof.
-    induction ms.
-    - simpl; intros; omega.
-    - intros m i.
-      case_eq (eq_nat_dec i (length ms)).
-      + intro Hi.
-        simpl rev. rewrite app_nth2; rewrite rev_length.
-        intros. subst i. rewrite Nat.sub_diag in *.
-        simpl nth in *.
-        simpl length in *.
-        rewrite Nat.sub_succ_l in *.
-        rewrite Nat.sub_diag in *.
-        destruct a.
-        simpl in *.
-        subst.
-        rewrite upd_eq in *; congruence.
-        omega.
-        omega.
-      + simpl length. intros Hi _ a' v' Hi2.
-        simpl rev. rewrite app_nth1; [|rewrite rev_length; omega].
-        rewrite Nat.sub_succ_l; [|omega].
-        destruct a; simpl.
-        apply IHms.
-        omega.
-  Qed.
-
-  Lemma replay_last_irrel: forall ms m i a v, i < length ms
-    -> fst (nth i (rev ms) LOG.logentry_zero) <> a
-    -> LOG.replay (firstn (length ms - i) ms) m a = Some v
-    -> LOG.replay (firstn (length ms - S i) ms) m a = Some v.
-  Proof.
-    induction ms.
-    - simpl; intros; omega.
-    - simpl length.
-      intros.
-      case_eq (eq_nat_dec i (length ms)); intros.
-      + subst i. rewrite Nat.sub_diag in *. simpl.
-        simpl rev in *.
-        rewrite app_nth2 in *; rewrite rev_length in *; [|omega].
-        rewrite Nat.sub_succ_l in *; [|omega].
-        rewrite Nat.sub_diag in *.
-        destruct a; simpl in *.
-        rewrite upd_ne in *; auto.
-      + rewrite Nat.sub_succ_l in *; try omega.
-        destruct a; simpl.
-        apply IHms.
-        omega.
-        simpl rev in *; rewrite app_nth1 in *; [|rewrite rev_length; omega].
-        auto.
-        auto.
+    cancel.
+    rewrite H13.
+    cancel.
+    log_unfold; cancel.
+    apply stars_or_right.
+    abstract cancel.
+    log_unfold; cancel.
+    apply stars_or_right.
+    abstract cancel.
   Qed.
 
 End MEMLOG.
