@@ -124,7 +124,7 @@ Proof.
   apply wlt_lt; auto.
 Qed.
 
-Definition For_ (T: Set)
+Definition For_ (T: Type)
                 (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
                 (nocrash : G -> addr -> L -> @pred valu)
@@ -311,7 +311,7 @@ Qed.
 
 Theorem for_ok:
   forall T (n : addr)
-         (L : Set) (G : Type)
+         (L : Type) (G : Type)
          f (rx: _ -> prog T)
          (nocrash : G -> addr -> L -> pred)
          (crashed : G -> pred)
