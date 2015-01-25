@@ -28,7 +28,7 @@ all: hstest
 
 coqbuild/%.v: %.v strip-proofs.py
 	@mkdir -p coqbuild
-	python strip-proofs.py < $< > $@
+	python2 strip-proofs.py < $< > $@
 	@touch -r $< $@
 
 coq: Makefile.coq
