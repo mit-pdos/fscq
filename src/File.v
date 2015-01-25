@@ -186,7 +186,28 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fwrite lxp ixp inum off v.
   Proof.
-    admit.
+    unfold fwrite, rep.
+    hoare.
+
+    list2mem_ptsto_cancel; file_bounds.
+    repeat rewrite_list2mem_pred.
+    destruct_listmatch.
+    list2mem_ptsto_cancel; file_bounds.
+
+    repeat rewrite_list2mem_pred.
+    repeat destruct_listmatch.
+    erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
+    unfold file_match at 2; autorewrite with defaults.
+    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off); try omega.
+    unfold data_match, sel; autorewrite with defaults.
+    cancel.
+
+    apply pimpl_or_r; right; cancel.
+    instantiate (a1 := Build_file (upd (FData f) off v)).
+    eapply list2mem_upd; eauto.
+    simpl; eapply list2mem_upd; eauto.
+
+    LOG.unfold_intact; cancel.
   Qed.
 
 
