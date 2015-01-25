@@ -441,59 +441,66 @@ Proof.
 Qed.
 
 
-Ltac extract_list2mem_ptsto :=
+
+(* Ltacs *)
+
+Ltac rewrite_list2mem_pred_bound H :=
+  let Hi := fresh in
+  eapply list2mem_inbound in H as Hi.
+
+Ltac rewrite_list2mem_pred_sel H :=
+  let Hx := fresh in
+  eapply list2mem_sel in H as Hx;
+  try autorewrite with defaults in Hx;
+  unfold sel in Hx.
+
+Ltac rewrite_list2mem_pred_upd H:=
+  let Hx := fresh in
+  eapply list2mem_array_upd in H as Hx;
+  [ unfold upd in Hx | .. ].
+
+Ltac rewrite_list2mem_pred :=
   match goal with
-  | [ H : ?p%pred (list2mem _) |- context [?x] ] =>
-      match p with
-        | context [ (?ix |-> x)%pred ] =>
-          let Hx := fresh in
-          eapply list2mem_sel in H as Hx;
-          try autorewrite with defaults in Hx;
-          eauto; rewrite Hx
-      end
-  | [ H : ?p%pred (list2mem _), H2 : context [?x] |- _ ] =>
-      match p with
-        | context [ (?ix |-> x)%pred ] =>
-          let Hx := fresh in
-          eapply list2mem_sel in H as Hx;
-          try autorewrite with defaults in Hx;
-          eauto; rewrite Hx in H2
-      end
+  | [ H : (?prd * ?ix |-> ?v)%pred (list2mem ?l) |- _ ] =>
+    rewrite_list2mem_pred_bound H;
+    first [
+      is_var v; rewrite_list2mem_pred_sel H; subst v |
+      match prd with
+      | array_ex ?ol ix =>
+        is_var l; rewrite_list2mem_pred_upd H;
+        [ subst l | clear H .. ]
+      end ]
   end.
 
-Ltac extract_list2mem_upd :=
-  match goal with
-  | [ H : (array_ex ?ol ?ix * ?ix |-> _)%pred (list2mem ?nl) |- context [?nl] ] =>
-      first [ assert (ol = nl) by reflexivity |
-        let Hx := fresh in
-        eapply list2mem_array_upd in H as Hx;
-        [ rewrite Hx | .. ]; eauto ]
-  end.
-
-
-Ltac extract_listmatch :=
-  match goal with
-    | [  H : context [ listmatch ?prd ?a _ ],
-        H2 : ?p%pred (list2mem ?a) |- _ ] =>
-      try extract_list2mem_ptsto;
-      match p with
-        | context [ (?ix |-> _)%pred ] =>
-            let Hb := fresh in
-            apply list2mem_inbound in H2 as Hb;
-            extract_listmatch_at ix
-      end
-  end.
-
-
-Ltac list2mem_cancel :=
+Ltac list2mem_ptsto_cancel :=
   match goal with
   | [ |- (_ * ?p |-> ?a)%pred (list2mem ?l) ] =>
     let Hx := fresh in
     assert (array $0 l $1 (list2mem l)) as Hx;
       [ eapply list2mem_array; eauto; try omega |
-        pred_apply; erewrite array_except;
+        pred_apply; erewrite array_except; unfold sel; clear Hx;
         try autorewrite with defaults; eauto ]
   end.
+
+Ltac destruct_listmatch :=
+  match goal with
+    | [  H : context [ listmatch ?prd ?a _ ],
+        H2 : ?p%pred (list2mem ?a) |- _ ] =>
+      match p with
+        | context [ (?ix |-> _)%pred ] =>
+            let Hb := fresh in
+            apply list2mem_inbound in H2 as Hb;
+            extract_listmatch_at ix;
+            clear Hb
+      end
+  end.
+
+Ltac list2mem_cancel :=
+    repeat rewrite_list2mem_pred;
+    repeat destruct_listmatch;
+    subst; eauto;
+    try list2mem_ptsto_cancel; eauto.
+
 
 Ltac list2mem_bound :=
    match goal with

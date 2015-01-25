@@ -131,9 +131,10 @@ Module FILE.
   Proof.
     unfold flen, rep.
     hoare.
-    list2mem_cancel; file_bounds.
+    list2mem_ptsto_cancel; file_bounds.
 
-    extract_listmatch.
+    rewrite_list2mem_pred.
+    destruct_listmatch.
     subst; unfold sel; auto.
     f_equal; apply eq_sym; eauto.
   Qed.
@@ -152,33 +153,20 @@ Module FILE.
   Proof.
     unfold fread, rep.
     hoare.
-    list2mem_cancel; file_bounds.
-    list2mem_cancel; file_bounds.
-    repeat extract_listmatch; file_bounds.
 
-    extract_listmatch.
-    extract_listmatch_at off.
+    list2mem_ptsto_cancel; file_bounds.
+    repeat rewrite_list2mem_pred.
+    destruct_listmatch.
+    list2mem_ptsto_cancel; file_bounds.
+
+    repeat rewrite_list2mem_pred.
+    repeat destruct_listmatch.
+
     erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
     unfold file_match at 2; autorewrite with defaults.
-    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off).
+    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off); try omega.
     unfold data_match, sel; autorewrite with defaults.
-    eapply list2mem_sel in H5 as Hx; autorewrite with defaults.
-    rewrite Hx; clear Hx.
     cancel.
-
-
-    apply list2mem_inbound in H4 as Hx.
-    extract_list2mem_ptsto; auto.
-
-    apply list2mem_inbound in H4 as Hx.
-    rewrite <- H6.
-    extract_list2mem_ptsto; auto.
-
-    apply list2mem_inbound in H4 as Hx.
-    extract_list2mem_ptsto; auto.
-
-    instantiate (ad := $0).
-    instantiate (ad0 := $0).
 
     LOG.unfold_intact; cancel.
   Qed.

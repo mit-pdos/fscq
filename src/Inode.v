@@ -264,13 +264,25 @@ Module INODE.
     intros; subst; auto.
   Qed.
 
-  Fact resolve_sel_word0 : forall sz l i (d : word sz),
+  Fact resolve_sel_addr0 : forall l i (d : addr),
     d = $0 -> sel l i d = sel l i $0.
   Proof.
     intros; subst; auto.
   Qed.
 
-  Fact resolve_selN_word0 : forall sz l i (d : word sz),
+  Fact resolve_selN_addr0 : forall l i (d : addr),
+    d = $0 -> selN l i d = selN l i $0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_sel_valu0 : forall l i (d : valu),
+    d = $0 -> sel l i d = sel l i $0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_valu0 : forall l i (d : valu),
     d = $0 -> selN l i d = selN l i $0.
   Proof.
     intros; subst; auto.
@@ -281,8 +293,10 @@ Module INODE.
   Hint Rewrite resolve_selN_inode0' using reflexivity : defaults.
   Hint Rewrite resolve_sel_inode0   using reflexivity : defaults.
   Hint Rewrite resolve_selN_inode0  using reflexivity : defaults.
-  Hint Rewrite resolve_sel_word0    using reflexivity : defaults.
-  Hint Rewrite resolve_selN_word0   using reflexivity : defaults.
+  Hint Rewrite resolve_sel_addr0    using reflexivity : defaults.
+  Hint Rewrite resolve_selN_addr0   using reflexivity : defaults.
+  Hint Rewrite resolve_sel_valu0    using reflexivity : defaults.
+  Hint Rewrite resolve_selN_valu0   using reflexivity : defaults.
 
 
   Lemma rep_bound: forall F xp l m,
@@ -331,11 +345,11 @@ Module INODE.
   Proof.
     unfold igetlen, rep.
     hoare.
-    list2mem_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
 
-    extract_listmatch.
-    subst; unfold sel.
-    apply wordToNat_inj.
+    rewrite_list2mem_pred.
+    destruct_listmatch.
+    subst; apply wordToNat_inj.
     erewrite wordToNat_natToWord_bound; eauto.
     rewrite H13; auto.
   Qed.
@@ -352,11 +366,12 @@ Module INODE.
   Proof.
     unfold iget, rep.
     hoare.
-    list2mem_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
 
-    extract_listmatch.
-    extract_list2mem_ptsto.
-    subst; unfold sel; rewrite H15.
+    repeat rewrite_list2mem_pred.
+    destruct_listmatch.
+    unfold sel; subst.
+    rewrite H16.
     rewrite selN_firstn; inode_bounds.
   Qed.
 
@@ -378,9 +393,9 @@ Module INODE.
   Proof.
     unfold iput, rep.
     step.
-    list2mem_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
     step.
-    list2mem_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
 
     destruct r_; destruct p3; simpl; intuition.
     rewrite length_upd.
@@ -398,11 +413,14 @@ Module INODE.
     2: eapply list2mem_upd; eauto.
     2: eapply list2mem_upd; eauto.
 
-    extract_list2mem_upd; inode_bounds.
+
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
+
+    unfold upd.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
     simpl; autorewrite with core.
-    extract_list2mem_ptsto.
     cancel.
     rewrite updN_firstn_comm; inode_bounds.
     f_equal; auto.
@@ -451,8 +469,8 @@ Module INODE.
   Proof.
     unfold igrow, rep.
     hoare.
-    list2mem_cancel; inode_bounds.
-    list2mem_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
 
     destruct r_; destruct p2; simpl; intuition.
     rewrite length_upd.
@@ -467,30 +485,32 @@ Module INODE.
     2: eapply list2mem_upd; eauto.
     2: eapply list2mem_app; eauto.
 
-    extract_list2mem_upd; inode_bounds.
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
+
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
     simpl; autorewrite with core.
-    extract_list2mem_ptsto.
     cancel.
 
     (* omega doesn't work well *)
     rewrite app_length; simpl.
     erewrite wordToNat_plusone with (w' := $ blocks_per_inode).
     rewrite Nat.add_1_r; auto.
-    apply lt_wlt; rewrite <- H0; auto.
+    apply lt_wlt; rewrite <- H15; auto.
 
     erewrite wordToNat_plusone with (w' := $ blocks_per_inode).
-    rewrite <- H0; rewrite lt_le_S; auto.
-    apply lt_wlt; rewrite <- H0; auto.
+    rewrite <- H15; rewrite lt_le_S; auto.
+    apply lt_wlt; rewrite <- H15; auto.
 
     rewrite app_length; simpl.
-    setoid_rewrite <- H0.
+    rewrite <- H15.
     apply firstn_app_updN; auto.
     erewrite inode_blocks_length with (m := m0); inode_bounds.
     pred_apply; cancel.
 
-    extract_listmatch.
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
     unfold sel; inode_bounds.
   Qed.
 
@@ -513,8 +533,8 @@ Module INODE.
   Proof.
     unfold ishrink, rep.
     hoare.
-    list2mem_cancel; inode_bounds.
-    list2mem_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
+    list2mem_ptsto_cancel; inode_bounds.
 
     destruct r_; destruct p3; simpl; intuition.
     eapply inode_blocks_length' with (m := m0); inode_bounds.
@@ -526,22 +546,22 @@ Module INODE.
     2: eapply list2mem_upd; eauto.
     2: simpl; eapply list2mem_removelast; eauto.
 
-    extract_list2mem_upd; inode_bounds.
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
     simpl; autorewrite with core.
-    extract_list2mem_ptsto.
     cancel.
 
     (* omega doesn't work well *)
     rewrite length_removelast by auto.
     rewrite wordToNat_minus_one; auto.
-    apply gt_0_wneq_0; rewrite <- H0.
+    apply gt_0_wneq_0; rewrite <- H16.
     apply length_not_nil; auto.
 
     rewrite wordToNat_minus_one; auto.
     rewrite Nat.sub_1_r; apply Nat.le_le_pred; auto.
-    apply gt_0_wneq_0; rewrite <- H0.
+    apply gt_0_wneq_0; rewrite <- H16.
     apply length_not_nil; auto.
 
     unfold sel; rewrite length_removelast by auto.
@@ -549,12 +569,10 @@ Module INODE.
     f_equal; rewrite S_minus_one; auto.
     apply length_not_nil; auto.
     erewrite inode_blocks_length with (m := m0); inode_bounds.
-    apply le_minus_one_lt; auto.
-    apply length_not_nil; auto.
-    rewrite H0; auto.
     pred_apply; cancel.
 
-    extract_listmatch.
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
     unfold sel; inode_bounds.
   Qed.
 
