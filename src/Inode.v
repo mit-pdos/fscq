@@ -234,7 +234,7 @@ Module INODE.
     rewrite Forall_forall in *.
     apply (H4 (d, (d0, tt))).
     rewrite H1.
-    apply RecArray.in_selN; intuition.
+    apply Array.in_selN; intuition.
   Qed.
 
 
