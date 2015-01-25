@@ -45,7 +45,6 @@ Module Filename_as_OT <: UsualOrderedType.
   Qed.
 
   Definition compare x y : Compare lt eq x y.
-  Proof.
     unfold lt, eq.
     destruct (wlt_dec x y); [ apply LT; auto | ].
     destruct (weq x y); [ apply EQ; auto | ].

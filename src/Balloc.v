@@ -17,6 +17,8 @@ Require Import Rec.
 Require Import NArith.
 Require Import Log.
 Require Import RecArray.
+Require Import ListPred.
+
 
 Set Implicit Arguments.
 
