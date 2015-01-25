@@ -146,6 +146,132 @@ Qed.
 
 Hint Rewrite skipn_updN skipn_upd using omega.
 
+Theorem list_selN_ext' : forall len T (a b : list T) default,
+  length a = len
+  -> length b = len
+  -> (forall pos, pos < len -> selN a pos default = selN b pos default)
+  -> a = b.
+Proof.
+  induction len; intros; destruct a; destruct b; simpl in *; try congruence.
+  f_equal.
+  apply (H1 0).
+  omega.
+  eapply IHlen; [ omega | omega | ].
+  intros.
+  apply (H1 (S pos)).
+  omega.
+Qed.
+
+Theorem list_selN_ext : forall T (a b : list T) default,
+  length a = length b
+  -> (forall pos, pos < length a -> selN a pos default = selN b pos default)
+  -> a = b.
+Proof.
+  intros. apply list_selN_ext' with (len:=length a) (default:=default); auto.
+Qed.
+
+
+Ltac nth_selN H := intros; repeat rewrite nth_selN_eq; apply H; assumption.
+
+Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.
+Proof.
+  nth_selN nth_In.
+Qed.
+
+Lemma in_sel : forall t n l (z:t), wordToNat n < length l -> In (sel l n z) l.
+Proof.
+  intros. apply in_selN; assumption.
+Qed.
+
+Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
+  In x l \/ x = xn.
+Proof.
+  induction n; intros; destruct l; intuition; simpl in *; destruct H; auto.
+  destruct (IHn l x xn H); auto.
+Qed.
+
+Lemma in_upd : forall t n l x (xn:t), In x (upd l n xn) ->
+  In x l \/ x = xn.
+Proof.
+  intros. apply in_updN with (n:=wordToNat n); auto.
+Qed.
+
+Lemma Forall_upd : forall t P l n (v:t), Forall P l -> P v -> Forall P (upd l n v).
+Proof.
+  intros. apply Forall_forall. intros v0 Hi. apply in_upd in Hi. destruct Hi.
+  rewrite Forall_forall in H. apply H; assumption.
+  subst. assumption.
+Qed.
+
+Lemma updN_selN_eq : forall T (l : list T) ix default,
+  updN l ix (selN l ix default) = l.
+Proof.
+  induction l; auto.
+  intros. destruct ix. auto. simpl. rewrite IHl. trivial.
+Qed.
+
+Lemma upd_sel_eq : forall T (l : list T) ix default,
+  upd l ix (sel l ix default) = l.
+Proof.
+  unfold upd, sel. intros. apply updN_selN_eq.
+Qed.
+
+Lemma updN_app1 : forall t l l' (v:t) n,
+  n < length l -> updN (l ++ l') n v = updN l n v ++ l'.
+Proof.
+  (* copied from proof of app_nth1 *)
+  induction l.
+  intros.
+  inversion H.
+  intros l' d n.
+  case n; simpl; auto.
+  intros; rewrite IHl; auto with arith.
+Qed.
+
+Lemma updN_app2 : forall t l l' (v:t) n,
+  n >= length l -> updN (l ++ l') n v = l ++ updN l' (n - length l) v.
+Proof.
+  (* copied from proof of app_nth2 *)
+  induction l.
+  intros.
+  simpl.
+  rewrite <- minus_n_O; auto.
+  intros l' d n.
+  case n; simpl; auto.
+  intros.
+  inversion H.
+  intros.
+  rewrite IHl; auto with arith.
+Qed.
+
+Lemma updN_concat : forall t a b m l (v:t), b < m ->
+  Forall (fun sl => length sl = m) l ->
+  updN (fold_right (@app _) nil l) (b + a * m) v =
+    fold_right (@app _) nil (updN l a (updN (selN l a nil) b v)).
+Proof.
+  (* XXX this is almost exactly the same as selN_concat *)
+  induction a; intros; destruct l; simpl; inversion H0.
+  trivial.
+  replace (b + 0) with b by omega. subst.
+  rewrite updN_app1; auto.
+  trivial.
+  subst. remember (a * length l) as al. rewrite updN_app2 by omega.
+  replace (b + (length l + al) - length l) with (b + al) by omega. subst.
+  rewrite IHa; auto.
+Qed.
+
+Lemma selN_app1 : forall t l l' (d:t) n,
+  n < length l -> selN (l ++ l') n d = selN l n d.
+Proof.
+  nth_selN app_nth1.
+Qed.
+
+Lemma selN_app2 : forall t l l' (d:t) n,
+  n >= length l -> selN (l ++ l') n d = selN l' (n - length l) d.
+Proof.
+  nth_selN app_nth2.
+Qed.
+
 Lemma map_ext_in : forall A B (f g : A -> B) l, (forall a, In a l -> f a = g a)
   -> map f l = map g l.
 Proof.

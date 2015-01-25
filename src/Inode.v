@@ -218,7 +218,7 @@ Module INODE.
     rewrite Forall_forall in *.
     apply (H3 (d, (d0, tt))).
     rewrite Heqi.
-    apply RecArray.in_selN; auto.
+    apply Array.in_selN; auto.
   Qed.
 
   Hint Rewrite selN_combine: core.
@@ -456,7 +456,7 @@ Module INODE.
     rewrite length_upd.
     apply (H0 (d, (d0, tt))).
     rewrite H12.
-    apply RecArray.in_selN; intuition.
+    apply Array.in_selN; intuition.
     rewrite Forall_forall; intuition.
 
     apply pimpl_or_r; right; cancel.
@@ -522,7 +522,7 @@ Module INODE.
     rewrite Forall_forall in *.
     apply (H0 (d, (d0, tt))).
     rewrite H12.
-    apply RecArray.in_selN; intuition.
+    apply Array.in_selN; intuition.
     rewrite Forall_forall; intuition.
 
     apply pimpl_or_r; right; cancel.
