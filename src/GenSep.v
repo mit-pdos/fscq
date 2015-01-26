@@ -389,11 +389,26 @@ Qed.
 
 
 Theorem list2mem_array_app_eq: forall A (F : @pred A) (l l' : list A) a (b : addr),
-  length l <= wordToNat b
+  length l < wordToNat b
+  -> length l' <= wordToNat b
   -> (array $0 l $1 * $ (length l) |-> a)%pred (list2mem l')
   -> l' = (l ++ a :: nil).
 Proof.
-  admit.
+  intros.
+  rewrite list2mem_array_eq with (l':=l') (l:=l++a::nil) (b:=b); eauto;
+    [ | rewrite app_length; simpl; omega ].
+  pred_apply.
+  rewrite <- isolate_bwd with (vs:=l++a::nil) (i:=$ (length l)) by
+    ( rewrite wordToNat_natToWord_bound with (bound:=b) by omega;
+      rewrite app_length; simpl; omega ).
+  unfold sel.
+  erewrite wordToNat_natToWord_bound with (bound:=b) by omega.
+  rewrite firstn_app by auto.
+  replace (S (length l)) with (length (l ++ a :: nil)) by (rewrite app_length; simpl; omega).
+  rewrite skipn_oob by omega; simpl.
+  instantiate (default:=a).
+  rewrite selN_last by auto.
+  cancel.
 Qed.
 
 
