@@ -11,6 +11,8 @@
 _build
 /disk.img
 /Makefile.coq
+/Makefile.coqproof
 /fstest
 /hstest
 /coqbuild
+/coqproof
