@@ -228,6 +228,7 @@ Module FILE.
     destruct_listmatch.
     destruct (r_); simpl; step.
 
+
     (* FIXME: where are these evars from? *)
     instantiate (a5:=INODE.inode0).
     instantiate (a0:=emp).
@@ -236,7 +237,6 @@ Module FILE.
     2: list2mem_ptsto_cancel; file_bounds.
     rewrite_list2mem_pred; file_bounds.
     eapply list2mem_array; file_bounds.
-    eauto.
 
     eapply pimpl_ok2; eauto with prog.
     intros; cancel.
@@ -253,11 +253,17 @@ Module FILE.
     unfold file_match; cancel_exact; simpl.
 
     inversion H10; clear H10; subst.
-    eapply list2mem_app_eq in H14 as Heq; [ rewrite Heq; clear Heq | ].
-    2: eapply INODE.blocks_bound with (m := m0); pred_apply; cancel.
-
+    eapply list2mem_array_app_eq in H14 as Heq; eauto.
+    rewrite Heq; clear Heq.
     rewrite_list2mem_pred_sel H4; subst f.
     eapply listmatch_app_r; file_bounds.
+    repeat rewrite_list2mem_pred.
+
+    destruct_listmatch.
+    instantiate (bd := INODE.inode0).
+    instantiate (b := natToWord addrlen INODE.blocks_per_inode); file_bounds.
+    eapply INODE.blocks_bound in H13 as Heq; unfold sel in Heq.
+    rewrite selN_updN_eq in Heq; file_bounds.
   Qed.
 
 
