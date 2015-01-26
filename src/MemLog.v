@@ -270,6 +270,8 @@ Module MEMLOG.
     hoare; apply pimpl_any.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
+
   Definition begin T xp rx : prog T :=
     Write (LogHeader xp) (header_to_valu (mk_header 0)) ;;
     rx ms_empty.
@@ -287,6 +289,8 @@ Module MEMLOG.
     unfold valid_entries; intuition; inversion H0.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (begin _) _) => apply begin_ok : prog.
+
   Definition abort T xp (ms:memstate) rx : prog T :=
     Write (LogHeader xp) (header_to_valu (mk_header 0)) ;;
     rx tt.
@@ -301,6 +305,8 @@ Module MEMLOG.
     unfold abort; log_unfold.
     hoare.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
 
   Lemma replay_add : forall a v ms m,
     replay (Map.add a v ms) m = upd (replay ms m) a v.
@@ -342,6 +348,8 @@ Module MEMLOG.
     rewrite replay_add.
     eapply list2mem_upd; eauto.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
   Definition read T (xp: xparams) ms a rx : prog T :=
     match Map.find a ms with
@@ -390,6 +398,8 @@ Module MEMLOG.
 
     admit.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
 
   Definition flush T xp (ms:memstate) rx : prog T :=
     If (lt_dec (wordToNat (LogLen xp)) (Map.cardinal ms)) {
@@ -625,6 +635,8 @@ Module MEMLOG.
     cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
+
   Module MapProperties := WProperties Map.
 
   Definition read_log T (xp: xparams) rx : prog T :=
@@ -771,6 +783,8 @@ Module MEMLOG.
     cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
+
 
   Definition read_array T xp ms a i stride rx : prog T :=
     read xp ms (a ^+ i ^* stride) rx.
@@ -877,5 +891,6 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
 
 End MEMLOG.
