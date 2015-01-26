@@ -152,18 +152,18 @@ Section RECARRAY.
   Qed.
 
   (** Get the [pos]'th item in the [block_ix]'th block *)
-  Definition get_pair T lxp xp ms block_ix pos rx : prog T :=
-    v <- MEMLOG.read_array lxp ms (RAStart xp) block_ix $1 ;
+  Definition get_pair T lxp xp block_ix pos ms rx : prog T :=
+    v <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 ms;
     let ib := valu_to_block v in
     let i := sel ib pos item_zero in
     rx i.
 
   (** Update the [pos]'th item in the [block_ix]'th block to [i] *)
-  Definition put_pair T lxp xp ms block_ix pos i rx : prog T :=
-    v <- MEMLOG.read_array lxp ms (RAStart xp) block_ix $1 ;
+  Definition put_pair T lxp xp block_ix pos i ms rx : prog T :=
+    v <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 ms;
     let ib' := upd (valu_to_block v) pos i in
     let v' := rep_block ib' in
-    ms' <- MEMLOG.write_array lxp ms (RAStart xp) block_ix $1 v' ;
+    ms' <- MEMLOG.write_array lxp (RAStart xp) block_ix $1 v' ms;
     rx ms'.
 
   Hint Rewrite map_length.
@@ -182,7 +182,7 @@ Section RECARRAY.
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} get_pair lxp xp ms block_ix pos.
+    >} get_pair lxp xp block_ix pos ms.
   Proof.
     unfold get_pair.
     unfold array_item_pairs.
@@ -209,7 +209,7 @@ Section RECARRAY.
     POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (array_item_pairs xp (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i)) * F)%pred (list2mem m') ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} put_pair lxp xp ms block_ix pos i.
+    >} put_pair lxp xp block_ix pos i ms.
   Proof.
     unfold put_pair.
     unfold array_item_pairs.
@@ -254,12 +254,12 @@ Section RECARRAY.
   Hint Extern 1 ({{_}} progseq (get_pair _ _ _ _ _) _) => apply get_pair_ok : prog.
   Hint Extern 1 ({{_}} progseq (put_pair _ _ _ _ _ _) _) => apply put_pair_ok : prog.
 
-  Definition get T lxp xp ms inum rx : prog T :=
-    i <- get_pair lxp xp ms (inum ^/ items_per_valu) (inum ^% items_per_valu);
+  Definition get T lxp xp inum ms rx : prog T :=
+    i <- get_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) ms;
     rx i.
 
-  Definition put T lxp xp ms inum i rx : prog T :=
-    ms' <- put_pair lxp xp ms (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
+  Definition put T lxp xp inum i ms rx : prog T :=
+    ms' <- put_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i ms;
     rx ms'.
 
   Theorem get_ok : forall lxp xp ms inum,
@@ -270,7 +270,7 @@ Section RECARRAY.
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = sel ilist inum item_zero ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} get lxp xp ms inum.
+    >} get lxp xp inum ms.
   Proof.
     unfold get, array_item.
 
@@ -307,7 +307,7 @@ Section RECARRAY.
     rewrite Forall_forall in *; intros; apply H; assumption.
   Qed.
 
-  Theorem put_ok : forall lxp xp ms inum i,
+  Theorem put_ok : forall lxp xp inum i ms,
     {< F mbase m ilist,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
@@ -316,7 +316,7 @@ Section RECARRAY.
     POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * array_item xp (upd ilist inum i))%pred (list2mem m') ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} put lxp xp ms inum i.
+    >} put lxp xp inum i ms.
   Proof.
     unfold put, array_item.
     unfold array_item_pairs.

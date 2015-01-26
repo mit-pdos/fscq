@@ -89,9 +89,9 @@ Module BALLOC.
      RecArray.array_item itemtype items_per_valu blocksz (xp_to_raxp xp)
        (bmap_bits xp bmap))%pred.
 
-  Definition free' T lxp xp ms bn rx : prog T :=
+  Definition free' T lxp xp bn ms rx : prog T :=
     RecArray.put itemtype items_per_valu blocksz
-      lxp (xp_to_raxp xp) ms bn (alloc_state_to_bit Avail) rx.
+      lxp (xp_to_raxp xp) bn (alloc_state_to_bit Avail) ms rx.
 
   Lemma selN_seq : forall a b c d, c < b -> selN (seq a b) c d = a + c.
   Proof.
@@ -131,7 +131,7 @@ Module BALLOC.
     POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (Fm * rep' xp (fupd bmap bn Avail))%pred (list2mem m') ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} free' lxp xp ms bn.
+    >} free' lxp xp bn ms.
   Proof.
     unfold free', rep', MEMLOG.log_intact.
     intros. eapply pimpl_ok2. apply put_ok. (* XXX why doesn't eauto with prog work? *)
@@ -157,11 +157,11 @@ Module BALLOC.
         MEMLOG.log_intact lxp mbase
       Begin
         bit <- RecArray.get itemtype items_per_valu blocksz
-          lxp (xp_to_raxp xp) ms i;
+          lxp (xp_to_raxp xp) i ms;
         let state := bit_to_alloc_state bit in
         If (alloc_state_dec state Avail) {
           ms' <- RecArray.put itemtype items_per_valu blocksz
-            lxp (xp_to_raxp xp) ms i (alloc_state_to_bit InUse);
+            lxp (xp_to_raxp xp) i (alloc_state_to_bit InUse) ms;
           rx (Some i, ms')
         } else {
           lrx tt
@@ -213,7 +213,7 @@ Module BALLOC.
     POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (Fm * rep' xp (fupd bmap bn Avail))%pred (list2mem m') ]]
     CRASH:r  MEMLOG.rep lxp (NoTransaction mbase) ms_empty
-    >} free' lxp xp ms bn >> MEMLOG.recover lxp.
+    >} free' lxp xp bn ms >> MEMLOG.recover lxp.
   Proof.
     unfold forall_helper; intros.
     exists (MEMLOG.log_intact lxp v0); intros.
@@ -411,7 +411,7 @@ Module BALLOC.
     POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (Fm * rep xp (bn :: freeblocks))%pred (list2mem m') ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} free lxp xp ms bn.
+    >} free lxp xp bn ms.
   Proof.
     unfold free.
     intros.

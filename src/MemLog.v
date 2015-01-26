@@ -316,7 +316,7 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Definition write T (xp : xparams) (ms : memstate) a v rx : prog T :=
+  Definition write T (xp : xparams) a v (ms : memstate) rx : prog T :=
     rx (Map.add a v ms).
 
   Lemma valid_entries_add : forall a v ms m,
@@ -336,7 +336,7 @@ Module MEMLOG.
     POST:ms' exists m', rep xp (ActiveTxn m1 m') ms' *
              [[(F' * a |-> v)%pred (list2mem m') ]]
     CRASH    exists m' ms', rep xp (ActiveTxn m1 m') ms'
-    >} write xp ms a v.
+    >} write xp a v ms.
   Proof.
     unfold write; log_unfold.
     hoare; subst.
@@ -351,7 +351,7 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Definition read T (xp: xparams) ms a rx : prog T :=
+  Definition read T (xp: xparams) a ms rx : prog T :=
     match Map.find a ms with
     | Some v =>
       rx v
@@ -373,7 +373,7 @@ Module MEMLOG.
     POST:r rep xp (ActiveTxn m1 m2) ms *
            [[ r = v ]]
     CRASH  rep xp (ActiveTxn m1 m2) ms
-    >} read xp ms a.
+    >} read xp a ms.
   Proof.
     unfold read; log_unfold.
     intros.
@@ -786,11 +786,11 @@ Module MEMLOG.
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
 
-  Definition read_array T xp ms a i stride rx : prog T :=
-    read xp ms (a ^+ i ^* stride) rx.
+  Definition read_array T xp a i stride ms rx : prog T :=
+    read xp (a ^+ i ^* stride) ms rx.
 
-  Definition write_array T xp ms a i stride v rx : prog T :=
-    write xp ms (a ^+ i ^* stride) v rx.
+  Definition write_array T xp a i stride v ms rx : prog T :=
+    write xp (a ^+ i ^* stride) v ms rx.
 
   Theorem read_array_ok : forall xp ms a i stride,
     {< mbase m vs,
@@ -799,7 +799,7 @@ Module MEMLOG.
            [[ wordToNat i < length vs ]]
     POST:r [[ r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m) ms
     CRASH  rep xp (ActiveTxn mbase m) ms
-    >} read_array xp ms a i stride.
+    >} read_array xp a i stride ms.
   Proof.
     intros.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) ms * F
@@ -836,7 +836,7 @@ Module MEMLOG.
     cancel.
   Qed.
 
-  Theorem write_array_ok : forall xp ms a i stride v,
+  Theorem write_array_ok : forall xp a i stride v ms,
     {< mbase m vs F',
     PRE      rep xp (ActiveTxn mbase m) ms
            * [[ (array a vs stride * F')%pred (list2mem m) ]]
@@ -844,7 +844,7 @@ Module MEMLOG.
     POST:ms' exists m', rep xp (ActiveTxn mbase m') ms'
            * [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
     CRASH  exists m' ms', rep xp (ActiveTxn mbase m') ms'
-    >} write_array xp ms a i stride v.
+    >} write_array xp a i stride v ms.
   Proof.
     intros.
     apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
