@@ -2,6 +2,7 @@ Require Import Arith.
 Require Import Bool.
 Require Import List.
 Require Import FMapList.
+Require Import FMapFacts.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Pred.
@@ -158,6 +159,17 @@ Module MEMLOG.
     trivial.
   Defined.
 
+  Theorem descriptor_valu_id : forall d,
+    Rec.well_formed d -> valu_to_descriptor (descriptor_to_valu d) = d.
+  Proof.
+    unfold descriptor_to_valu, valu_to_descriptor.
+    unfold eq_rec_r, eq_rec.
+    intros.
+    rewrite descriptor_sz_ok.
+    do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
+    apply Rec.of_to_id; auto.
+  Defined.
+
   Definition indomain' (a : addr) (m : diskstate) := wordToNat a < length m.
 
   (* Check that the state is well-formed *)
@@ -193,6 +205,7 @@ Module MEMLOG.
       [[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
       exists rest, (LogStart xp) |-> descriptor_to_valu (map fst (Map.elements ms) ++ rest) *
+      [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]] *
       array (LogStart xp ^+ $1) (map snd (Map.elements ms)) $1 *
       avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms))
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
@@ -398,7 +411,7 @@ Module MEMLOG.
         * avail_region (LogStart xp ^+ $1 ^+ i) (wordToNat (LogLen xp) - wordToNat i)
       OnCrash crash
       Begin
-        ArrayWrite (LogStart xp ^+ $1 ^+ i) $0 $1 (sel (map snd (Map.elements ms)) i $0);;
+        Write (LogStart xp ^+ $1 ^+ i) (sel (map snd (Map.elements ms)) i $0);;
         lrx tt
       Rof;;
       rx true
@@ -418,13 +431,21 @@ Module MEMLOG.
     admit.
   Qed.
 
-  (*
-  Hint Extern 1 (avail_region _ _ =!=> _) =>
-    clear_norm_goal; repeat match goal with
-    | [ H : forall _, _ |- _ ] => clear H
+  Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
+    | [ H : forall _, {{ _ }} _ |- _ ] => clear H
     | [ H : _ =p=> _ |- _ ] => clear H
-    end; apply avail_region_shrink_one; word2nat_auto : norm_hint_left.
+    end.
+
+(*
+  Hint Extern 1 (avail_region _ _ =!=> _) =>
+    word2nat_clear; apply avail_region_shrink_one; word2nat_auto : norm_hint_left.
 *)
+
+  Fixpoint zeroes sz n :=
+    match n with
+    | 0 => []
+    | S n' => natToWord sz n :: zeroes sz n'
+    end.
 
   Theorem flush_ok : forall xp ms,
     {< m1 m2,
@@ -434,35 +455,82 @@ Module MEMLOG.
     CRASH  rep xp (ActiveTxn m1 m2) ms
     >} flush xp ms.
   Proof.
-    unfold flush; log_unfold.
+    unfold flush; log_unfold; unfold avail_region.
     intros.
-    (* XXX make word2nat_auto handle this *)
     assert (goodSize addrlen (wordToNat (LogLen xp))) by (apply wordToNat_bound).
-    (*
-    hoare. (* XXX takes forever, partially due to [word2nat_auto] *)
 
-    rewrite wordToNat_natToWord_idempotent' with (n := wordToNat m + 1).
-    rewrite Nat.sub_add_distr.
+    step.
+    step.
+    step.
+    eapply pimpl_ok2.
+    eauto with prog.
+    simpl.
+    intros.
+    rewrite isolate_fwd with (a := LogStart xp) (i := $0).
     cancel.
-    rewrite array_inc_firstn.
+    eapply pimpl_ok2.
+    eauto with prog.
     cancel.
-
-    abstract word2nat_auto.
-    norm.
+    word2nat_clear. word2nat_simpl. rewrite plus_0_r.
+    rewrite wordToNat_natToWord_idempotent'.
+    rewrite wordToNat_natToWord_idempotent'.
+    simpl.
+    cancel.
+    hnf. apply leb_complete. reflexivity.
+    hnf. apply leb_complete. reflexivity.
+    admit.
+    eapply pimpl_ok2.
+    eauto with prog.
+    intros.
+    simpl.
+    norm'l.
+    unfold stars.
+    simpl.
+    rewrite isolate_fwd with (a := LogStart xp ^+ $ (1) ^+ m) (i := $0).
+    cancel.
+    step.
+    word2nat_clear. word2nat_simpl.
+    simpl wordToNat.
+    simpl.
+    rewrite <- plus_assoc.
+    rewrite plus_ovf_l.
+    cancel.
+    admit.
+    word2nat_clear.
+    destruct l0; word2nat_auto; simpl in *; omega.
+    cancel.
+    word2nat_clear.
+    instantiate (default0 := $0).
+    instantiate (default := $0).
+    instantiate (a0 := descriptor_to_valu (map fst (Map.elements ms)) :: firstn (wordToNat m) (map snd (Map.elements ms)) ++ l0).
+    admit.
+    admit.
+    word2nat_clear. word2nat_auto.
+    step.
     apply stars_or_left.
     cancel.
-    clear H3.
-    word2nat_auto.
-    rewrite app_nil_r.
+    instantiate (a := zeroes addrlen (addr_per_block - length (Map.this ms))).
+    rewrite firstn_oob.
     cancel.
-    rewrite firstn_map.
+    admit.
     unfold Map.elements, Map.Raw.elements.
-    rewrite LOG.firstn_length.
-    abstract cancel.
-
-    constructor.
-*)
-    repeat admit.
+    word2nat_clear. rewrite map_length.
+    word2nat_auto.
+    rewrite app_length.
+    rewrite map_length.
+    unfold Map.elements, Map.Raw.elements.
+    admit.
+    rewrite Forall_forall. intros. trivial.
+    word2nat_auto.
+    cancel.
+    instantiate (l := zeroes valulen (S (wordToNat (LogLen xp)))).
+    admit.
+    cancel.
+    instantiate (a0 := l).
+    admit.
+    auto.
+    instantiate (w := $0).
+    word2nat_auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
@@ -558,30 +626,29 @@ Module MEMLOG.
     cancel.
   Qed.
 
-  Definition read_log T (xp: xparams) rx : prog T :=
-    rx ms_empty.
+  Module MapProperties := WProperties Map.
 
-(*
+  Definition read_log T (xp: xparams) rx : prog T :=
     d <- Read (LogStart xp);
     let desc := valu_to_descriptor d in
     h <- Read (LogHeader xp);
     let len := (valu_to_header h) :-> "length" in
     log <- For i < len
     Ghost cur log_on_disk
-    Loopvar log_prefix <- ms_empty
+    Loopvar log_prefix <- []
     Continuation lrx
     Invariant
       (LogCommit xp) |-> $1
       * log_rep xp cur log_on_disk
-      * exists old, data_rep xp old
+      * [[ log_prefix = firstn (wordToNat i) (Map.elements log_on_disk) ]]
+      * data_rep xp cur
     OnCrash
       rep xp (CommittedTxn cur) log_on_disk
     Begin
       v <- ArrayRead (LogStart xp ^+ $1) i $1;
-      lrx log_prefix
+      lrx (log_prefix ++ [(sel desc i $0, v)])
     Rof;
-    rx log.
-*)
+    rx (MapProperties.of_list log).
 
   Definition read_log_ok: forall xp,
     {< m ms,
@@ -590,6 +657,14 @@ Module MEMLOG.
     CRASH  rep xp (CommittedTxn m) ms
     >} read_log xp.
     unfold read_log; log_unfold.
+    hoare.
+    rewrite header_valu_id in H0. unfold mk_header, Rec.recget' in H0. simpl in H0.
+    rewrite map_length.
+    word2nat_clear. unfold Map.elements, Map.Raw.elements. word2nat_auto.
+    rewrite descriptor_valu_id.
+    admit.
+    hnf. intuition.
+    admit.
     admit.
   Qed.
 
@@ -605,41 +680,95 @@ Module MEMLOG.
       rx tt
     }.
 
+  Definition log_intact xp m ms :=
+    ((rep xp (NoTransaction m) ms) \/
+     (exists m', rep xp (ActiveTxn m m') ms) \/
+     (exists m', rep xp (FlushedTxn m m') ms) \/
+     (rep xp (CommittedTxn m) ms))%pred.
+
   Theorem recover_ok: forall xp,
     {< m ms,
-    PRE     rep xp (NoTransaction m) ms_empty \/
-            rep xp (CommittedTxn m) ms
+    PRE     log_intact xp m ms
     POST:r  rep xp (NoTransaction m) ms_empty
-    CRASH   rep xp (NoTransaction m) ms_empty \/
-            rep xp (CommittedTxn m) ms
+    CRASH   log_intact xp m ms
     >} recover xp.
   Proof.
-    unfold recover.
-    hoare_unfold log_unfold.
-    log_unfold; cancel.
-    instantiate (a1 := any).
+    unfold recover; log_unfold.
+    intros; eapply pimpl_ok2; [ eauto with prog | ].
+    unfold log_intact; log_unfold.
+    cancel.
+    step.
+    step.
     instantiate (a := nil).
-    instantiate (a3 := nil).
     instantiate (a0 := ms_empty).
     apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
     apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
     apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
-    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
-    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
-    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
-    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
-    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
-    log_unfold; cancel.
+    step.
+    cancel.
     apply stars_or_left.
     cancel.
-    rewrite H13.
+    step.
+    step.
+    instantiate (a := nil).
+    instantiate (a0 := ms_empty).
+    apply natToWord_discriminate in H7; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H7; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H7; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    step.
     cancel.
-    log_unfold; cancel.
     apply stars_or_right.
-    abstract cancel.
-    log_unfold; cancel.
+    apply stars_or_left.
+    cancel.
+    step.
+    step.
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
+    step.
+    admit.
+    cancel.
     apply stars_or_right.
-    abstract cancel.
+    apply stars_or_right.
+    apply stars_or_left.
+    cancel.
+    step.
+    eapply pimpl_ok2.
+    eauto with prog.
+    log_unfold.
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ]; log_unfold; subst; cancel.
+    subst; cancel.
+    subst; auto.
+    subst; auto.
+    subst; auto.
+    step.
+    cancel.
+    apply stars_or_right.
+    apply stars_or_left.
+    cancel.
+    congruence.
+    admit.
+    apply stars_or_right.
+    apply stars_or_right.
+    apply stars_or_right.
+    cancel.
+    cancel.
+    apply stars_or_right.
+    apply stars_or_right.
+    apply stars_or_right.
+    cancel.
+    step.
+    cancel.
+    apply stars_or_right.
+    apply stars_or_right.
+    apply stars_or_right.
+    instantiate (a := nil).
+    instantiate (a0 := ms_empty).
+    instantiate (a1 := any).
+    instantiate (a2 := any).
+    instantiate (a3 := any).
+    cancel.
   Qed.
 
 End MEMLOG.
