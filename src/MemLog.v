@@ -771,4 +771,111 @@ Module MEMLOG.
     cancel.
   Qed.
 
+
+  Definition read_array T xp ms a i stride rx : prog T :=
+    read xp ms (a ^+ i ^* stride) rx.
+
+  Definition write_array T xp ms a i stride v rx : prog T :=
+    write xp ms (a ^+ i ^* stride) v rx.
+
+  Theorem read_array_ok : forall xp ms a i stride,
+    {< mbase m vs,
+    PRE    rep xp (ActiveTxn mbase m) ms *
+           [[ exists F', (array a vs stride * F')%pred (list2mem m) ]] *
+           [[ wordToNat i < length vs ]]
+    POST:r [[ r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m) ms
+    CRASH  rep xp (ActiveTxn mbase m) ms
+    >} read_array xp ms a i stride.
+  Proof.
+    intros.
+    apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) ms * F
+     * [[ exists F',
+          (array a (firstn (wordToNat i) vs) stride
+           * (a ^+ i ^* stride) |-> sel vs i $0
+           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred (list2mem m) ]]
+     * [[ wordToNat i < length vs ]]
+     * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) ms * F
+           * [[ done' = done ]] * [[ crash' = crash ]]
+          }} rx (sel vs i $0) ]]
+     * [[ rep xp (ActiveTxn mbase m) ms * F =p=> crash ]])%pred.
+    unfold read_array.
+    eapply pimpl_ok2.
+    apply read_ok.
+    cancel.
+    hnf. unfold list2mem.
+    erewrite sel_map.
+    instantiate (default' := $0).
+    f_equal.
+    admit.
+    step.
+    admit.
+    cancel.
+
+    cancel.
+    eapply pimpl_trans.
+    eapply pimpl_sep_star; [ apply pimpl_refl |].
+    apply isolate_fwd; eauto.
+    cancel.
+    auto.
+    step.
+
+    cancel.
+  Qed.
+
+  Theorem write_array_ok : forall xp ms a i stride v,
+    {< mbase m vs F',
+    PRE      rep xp (ActiveTxn mbase m) ms
+           * [[ (array a vs stride * F')%pred (list2mem m) ]]
+           * [[ wordToNat i < length vs ]]
+    POST:ms' exists m', rep xp (ActiveTxn mbase m') ms'
+           * [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
+    CRASH  exists m' ms', rep xp (ActiveTxn mbase m') ms'
+    >} write_array xp ms a i stride v.
+  Proof.
+    intros.
+    apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
+       rep xp (ActiveTxn mbase m) ms * F
+     * [[ (array a (firstn (wordToNat i) vs) stride
+           * (a ^+ i ^* stride) |-> sel vs i $0
+           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred (list2mem m) ]]
+     * [[ wordToNat i < length vs ]]
+     * [[ forall ms',
+          {{ fun done' crash' =>
+          exists m', rep xp (ActiveTxn mbase m') ms' * F
+           * [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
+           * [[ done' = done ]] * [[ crash' = crash ]] }} rx ms' ]]
+     * [[ forall m' ms', rep xp (ActiveTxn mbase m') ms' * F =p=> crash ]])%pred.
+    unfold write_array.
+    eapply pimpl_ok2.
+    apply write_ok.
+    cancel.
+
+    step.
+    eapply pimpl_trans; [| apply isolate_bwd ].
+    instantiate (1:=i).
+    autorewrite with core.
+    cancel.
+    autorewrite with core.
+    cancel.
+    autorewrite with core; assumption.
+
+    norm.
+    cancel.
+    auto.
+
+    cancel.
+    eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
+                                                | apply isolate_fwd; eauto ] | ].
+    cancel.
+
+    eauto.
+
+    instantiate (default:=$0).
+    step.
+    step.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _ _) _) => apply write_array_ok : prog.
+
 End MEMLOG.
