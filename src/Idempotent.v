@@ -21,7 +21,7 @@ Proof.
 Qed.
 
 Lemma corr3_from_corr2_failed:
-  forall (TF TR: Set) m (p: prog TF) (r: prog TR) out
+  forall (TF TR: Type) m (p: prog TF) (r: prog TR) out
          (crash: pred) ppre rpre crashdone_p crashdone_r,
   exec_recover m p r out
   -> TF = TR
@@ -44,7 +44,7 @@ Proof.
 Qed.
 
 Lemma corr3_from_corr2_finished:
-  forall (TF TR: Set) m (p: prog TF) (r: prog TR) out
+  forall (TF TR: Type) m (p: prog TF) (r: prog TR) out
          (crash: pred) ppre rpre crashdone_p crashdone_r m' v,
   exec_recover m p r out
   -> TF = TR
@@ -65,7 +65,7 @@ Proof.
 Qed.
 
 Lemma corr3_from_corr2_recovered:
-  forall (TF TR: Set) m (p: prog TF) (r: prog TR) out
+  forall (TF TR: Type) m (p: prog TF) (r: prog TR) out
          (crash: pred) ppre rpre crashdone_p crashdone_r m' v,
   exec_recover m p r out
   -> TF = TR
