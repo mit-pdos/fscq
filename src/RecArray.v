@@ -1,5 +1,5 @@
 Require Import Eqdep_dec Arith Omega List.
-Require Import Word WordAuto Pred Rec Prog BasicProg Hoare SepAuto Array Log.
+Require Import Word WordAuto Pred GenSep Rec Prog BasicProg Hoare SepAuto Array MemLog.
 
 Set Implicit Arguments.
 
@@ -152,19 +152,19 @@ Section RECARRAY.
   Qed.
 
   (** Get the [pos]'th item in the [block_ix]'th block *)
-  Definition get_pair T lxp xp block_ix pos rx : prog T :=
-    v <- LOG.read_array lxp (RAStart xp) block_ix $1 ;
+  Definition get_pair T lxp xp ms block_ix pos rx : prog T :=
+    v <- MEMLOG.read_array lxp ms (RAStart xp) block_ix $1 ;
     let ib := valu_to_block v in
     let i := sel ib pos item_zero in
     rx i.
 
   (** Update the [pos]'th item in the [block_ix]'th block to [i] *)
-  Definition put_pair T lxp xp block_ix pos i rx : prog T :=
-    v <- LOG.read_array lxp (RAStart xp) block_ix $1 ;
+  Definition put_pair T lxp xp ms block_ix pos i rx : prog T :=
+    v <- MEMLOG.read_array lxp ms (RAStart xp) block_ix $1 ;
     let ib' := upd (valu_to_block v) pos i in
     let v' := rep_block ib' in
-    ok <- LOG.write_array lxp (RAStart xp) block_ix $1 v' ;
-    rx ok.
+    ms' <- MEMLOG.write_array lxp ms (RAStart xp) block_ix $1 v' ;
+    rx ms'.
 
   Hint Rewrite map_length.
   Hint Rewrite seq_length.
@@ -173,110 +173,117 @@ Section RECARRAY.
   Hint Rewrite rep_valu_id.
 
 
-  Theorem get_pair_ok : forall lxp xp block_ix pos,
+  Theorem get_pair_ok : forall lxp xp ms block_ix pos,
     {< F mbase m ilistlist,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * array_item_pairs xp ilistlist)%pred m ]] *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ (array_item_pairs xp ilistlist * F)%pred (list2mem m) ]] *
            [[ (block_ix < RALen xp)%word ]] *
            [[ (pos < items_per_valu)%word ]]
-    POST:r LOG.rep lxp (ActiveTxn mbase m) *
+    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
-    CRASH  LOG.log_intact lxp mbase
-    >} get_pair lxp xp block_ix pos.
+    CRASH  MEMLOG.log_intact lxp mbase ms
+    >} get_pair lxp xp ms block_ix pos.
   Proof.
     unfold get_pair.
+    unfold array_item_pairs.
     hoare.
-    unfold array_item_pairs in *. cancel. autorewrite with core.
-    unfold array_item_pairs in H3. destruct_lift H3.
-    rewrite H6. auto.
-    unfold array_item_pairs in H3. destruct_lift H3.
-    subst. rewrite sel_map at 1. autorewrite with core. auto.
-    rewrite Forall_forall in H11. apply H11.
-    apply in_selN. rewrite H9. auto. rewrite H9. auto.
-    unfold LOG.log_intact. cancel.
+    autorewrite with core.
+    word2nat_auto.
+    subst.
+    erewrite sel_map.
+    autorewrite with core.
+    trivial.
+    rewrite Forall_forall in *. apply H10.
+    apply in_selN. abstract word2nat_auto.
+    abstract word2nat_auto.
+    unfold MEMLOG.log_intact. cancel.
   Qed.
 
-
-  Theorem put_pair_ok : forall lxp xp block_ix pos i,
+  Theorem put_pair_ok : forall lxp xp ms block_ix pos i,
     {< F mbase m ilistlist,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * array_item_pairs xp ilistlist)%pred m ]] *
-           [[ (block_ix < RALen xp)%word ]] *
-           [[ (pos < items_per_valu)%word ]] *
-           [[ Rec.well_formed i ]]
-    POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
-           ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (F * array_item_pairs xp (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i)))%pred m' ]])
-    CRASH  LOG.log_intact lxp mbase
-    >} put_pair lxp xp block_ix pos i.
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (array_item_pairs xp ilistlist * F)%pred (list2mem m) ]] *
+             [[ (block_ix < RALen xp)%word ]] *
+             [[ (pos < items_per_valu)%word ]] *
+             [[ Rec.well_formed i ]]
+    POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (array_item_pairs xp (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i)) * F)%pred (list2mem m') ]]
+    CRASH    exists ms', MEMLOG.log_intact lxp mbase ms'
+    >} put_pair lxp xp ms block_ix pos i.
   Proof.
     unfold put_pair.
-    hoare_unfold LOG.unfold_intact.
-    unfold array_item_pairs. cancel.
-    autorewrite with core. auto.
-    unfold array_item_pairs in H. destruct_lift H.
-    rewrite H7. auto.
-    unfold array_item_pairs. cancel.
-
-    (* Coq bug 3815 or 3816? *)
-    autorewrite with core. auto.
-    unfold array_item_pairs in H. destruct_lift H.
-    rewrite H10. auto.
-
-    apply pimpl_or_r. right. unfold array_item_pairs in *.
-    destruct_lift H. cancel.
+    unfold array_item_pairs.
+    intros.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
     autorewrite with core.
-    rewrite sel_map at 1. autorewrite with core. cancel.
-    rewrite Forall_forall in H9. apply H9.
-    apply in_selN. rewrite H7. auto.  rewrite H7. auto.
+    abstract word2nat_auto.
+    eapply pimpl_ok2.
+    clear H2.
+    eauto with prog.
+    cancel.
+    autorewrite with core.
+    abstract word2nat_auto.
+
+    eapply pimpl_ok2.
+    auto.
+    cancel.
+    erewrite sel_map.
+    autorewrite with core.
+    cancel.
+
+    rewrite Forall_forall in *. apply H11.
+    apply in_selN. abstract word2nat_auto.
+    abstract word2nat_auto.
     autorewrite with core. auto.
     apply Forall_upd. assumption.
-    split. autorewrite with core. rewrite Forall_forall in H9. apply H9.
+    split. autorewrite with core. rewrite Forall_forall in *. apply H11.
     apply in_sel. rewrite H7. auto.
-    apply Forall_upd. rewrite Forall_forall in H9. apply H9. apply in_sel. rewrite H7. auto.
-    rewrite Forall_forall in H9.
+    apply Forall_upd. rewrite Forall_forall in H11. apply H11. apply in_sel. rewrite H7. auto.
+    rewrite Forall_forall in *.
     auto.
+    cancel.
+    unfold MEMLOG.log_intact.
+    cancel.
+    cancel.
+    unfold MEMLOG.log_intact.
+    cancel.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (get_pair _ _ _ _) _) => apply get_pair_ok : prog.
-  Hint Extern 1 ({{_}} progseq (put_pair _ _ _ _ _) _) => apply put_pair_ok : prog.
+  Hint Extern 1 ({{_}} progseq (get_pair _ _ _ _ _) _) => apply get_pair_ok : prog.
+  Hint Extern 1 ({{_}} progseq (put_pair _ _ _ _ _ _) _) => apply put_pair_ok : prog.
 
-  Definition get T lxp xp inum rx : prog T :=
-    i <- get_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu);
+  Definition get T lxp xp ms inum rx : prog T :=
+    i <- get_pair lxp xp ms (inum ^/ items_per_valu) (inum ^% items_per_valu);
     rx i.
 
-  Definition put T lxp xp inum i rx : prog T :=
-    ok <- put_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
-    rx ok.
+  Definition put T lxp xp ms inum i rx : prog T :=
+    ms' <- put_pair lxp xp ms (inum ^/ items_per_valu) (inum ^% items_per_valu) i;
+    rx ms'.
 
-  Theorem get_ok : forall lxp xp inum,
+  Theorem get_ok : forall lxp xp ms inum,
     {< F mbase m ilist,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * array_item xp ilist)%pred m ]] *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
            [[ (inum < RALen xp ^* items_per_valu)%word ]]
-    POST:r LOG.rep lxp (ActiveTxn mbase m) *
+    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = sel ilist inum item_zero ]]
-    CRASH  LOG.log_intact lxp mbase
-    >} get lxp xp inum.
+    CRASH  MEMLOG.log_intact lxp mbase ms
+    >} get lxp xp ms inum.
   Proof.
     unfold get, array_item.
 
     intros.
     eapply pimpl_ok2. eauto with prog.
 
-    intros.
-    norm.
     cancel.
-    (* Something about type coersions is making [assumption] take forever.. *)
-    split; [constructor |].
-    split; [constructor |].
-    split; [constructor |].
-    split; [constructor |].
-    pred_apply; instantiate (a2:=l); cancel.
-    apply wdiv_lt_upper_bound; [auto | rewrite wmult_comm; assumption].
+    word2nat_auto.
+    apply Nat.div_lt_upper_bound.
+    abstract word2nat_auto.
+    rewrite mult_comm; assumption.
 
-    apply wmod_upper_bound; auto.
+    abstract word2nat_auto.
     step.
     subst.
     unfold array_item_pairs in H. unfold rep_block in H.
@@ -284,7 +291,6 @@ Section RECARRAY.
     apply nested_sel_divmod_concat; auto.
     eapply Forall_impl; [| apply H7].
     intro a. simpl. tauto.
-    step.
   Qed.
 
 
@@ -301,54 +307,40 @@ Section RECARRAY.
     rewrite Forall_forall in *; intros; apply H; assumption.
   Qed.
 
-  Theorem put_ok : forall lxp xp inum i,
+  Theorem put_ok : forall lxp xp ms inum i,
     {< F mbase m ilist,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * array_item xp ilist)%pred m ]] *
-           [[ (inum < RALen xp ^* items_per_valu)%word ]] *
-           [[ Rec.well_formed i ]]
-    POST:r ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m)) \/
-           ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
-            [[ (F * array_item xp (upd ilist inum i))%pred m' ]])
-    CRASH  LOG.log_intact lxp mbase
-    >} put lxp xp inum i.
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
+             [[ (inum < RALen xp ^* items_per_valu)%word ]] *
+             [[ Rec.well_formed i ]]
+    POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (F * array_item xp (upd ilist inum i))%pred (list2mem m') ]]
+    CRASH    exists ms', MEMLOG.log_intact lxp mbase ms'
+    >} put lxp xp ms inum i.
   Proof.
     unfold put, array_item.
-    intros. eapply pimpl_ok2. eauto with prog.
-    intros.
-    norm.
+    unfold array_item_pairs.
+    step.
+
+    unfold array_item_pairs.
     cancel.
-    split; [constructor |].
-    split; [constructor |].
-    split; [constructor |].
-    split.
-    split; [constructor |].
-    pred_apply. instantiate (a2:=l); cancel.
-    apply wdiv_lt_upper_bound; [auto | rewrite wmult_comm; assumption].
+    apply wdiv_lt_upper_bound; try rewrite wmult_comm; auto.
     apply wmod_upper_bound; auto.
-    assumption.
-    step.
-    apply pimpl_or_r. right.
-    norm.
+
+    eapply pimpl_ok2.
+    eauto with prog.
+    intros; simpl; subst.
+    unfold array_item_pairs.
     cancel.
-    split; [constructor |].
-    split; [constructor |].
-    pred_apply. cancel.
 
-    apply upd_divmod.
-
-    repeat match goal with
-    | [ H: context[array_item_pairs _ _] |- _ ] =>
-      unfold array_item_pairs in H; destruct_lift H
-    end.
-    auto.
-    step.
+    rewrite upd_divmod; auto.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
+  Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.
+
+  (* If two arrays are in the same spot, their contents have to be equal *)
+  Hint Extern 0 (okToUnify (array_item ?xp _) (array_item ?xp _)) =>
+    unfold okToUnify; constructor : okToUnify.
+
 End RECARRAY.
-
-Hint Extern 1 ({{_}} progseq (get _ _ _ _ _ _) _) => apply get_ok : prog.
-Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _ _) _) => apply put_ok : prog.
-
-(* If two arrays are in the same spot, their contents have to be equal *)
-Hint Extern 0 (okToUnify (array_item ?a ?b ?c ?xp _) (array_item ?a ?b ?c ?xp _)) =>
-  unfold okToUnify; constructor : okToUnify.
