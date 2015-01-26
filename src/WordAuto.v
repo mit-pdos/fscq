@@ -240,13 +240,20 @@ Ltac word2nat_simpl :=
   | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
   end.
 
-Ltac word2nat_solve := unfold goodSize in *; subst; (omega || congruence
-  || (apply f_equal; word2nat_solve)
-  || ((apply div_le; [| word2nat_auto]
-    || apply zero_lt_pow2
-    || apply wordToNat_bound || apply wordToNat_good
-    || apply Nat.mod_upper_bound
-    || (eapply le_lt_trans; [(apply div_le || apply Nat.mod_le) |]; word2nat_auto) || idtac); solve [auto]))
+Ltac word2nat_solve := unfold goodSize in *; subst;
+  (omega ||
+   congruence ||
+   (apply f_equal; word2nat_solve) ||
+   ((apply div_le; [| word2nat_auto] ||
+     apply zero_lt_pow2 ||
+     apply wordToNat_bound || apply wordToNat_good ||
+     apply Nat.mod_upper_bound ||
+     idtac
+    ); solve [auto]
+   ) ||
+   (apply Nat.div_lt_upper_bound; solve [word2nat_auto]) ||
+   (eapply le_lt_trans; [(apply div_le || apply Nat.mod_le) |]; solve [word2nat_auto])
+  )
 
 (* XXX does this actually rewrite from the inside out? *)
 with word2nat_rewrites :=
@@ -272,7 +279,6 @@ Lemma wdiv_lt_upper_bound :
   forall sz (a b c:word sz), b <> $0 -> (a < b ^* c)%word -> (a ^/ b < c)%word.
 Proof.
   word2nat_auto.
-  apply Nat.div_lt_upper_bound; intuition.
 Qed.
 
 Lemma wmod_upper_bound :
