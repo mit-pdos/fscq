@@ -4,10 +4,10 @@ MODULES    := Nomega Word WordAuto \
 	      Prog Pred Hoare SepAuto Idempotent \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep ListPred \
-	      Log Balloc Inode File Dir \
+	      MemLog Log Balloc Inode File Dir \
 	      Testprog \
 	      ExtrHaskellPrelude Extraction
-	      # MemLog TxnWrap Scratch
+	      # TxnWrap Scratch
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))

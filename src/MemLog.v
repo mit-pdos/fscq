@@ -44,7 +44,6 @@ Module Addr_as_OT <: UsualOrderedType.
   Qed.
 
   Definition compare x y : Compare lt eq x y.
-  Proof.
     unfold lt, eq.
     destruct (wlt_dec x y); [ apply LT; auto | ].
     destruct (weq x y); [ apply EQ; auto | ].
@@ -157,7 +156,7 @@ Module MEMLOG.
     rewrite <- descriptor_sz_ok.
     do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
     trivial.
-  Defined.
+  Qed.
 
   Theorem descriptor_valu_id : forall d,
     Rec.well_formed d -> valu_to_descriptor (descriptor_to_valu d) = d.
@@ -168,7 +167,7 @@ Module MEMLOG.
     rewrite descriptor_sz_ok.
     do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
     apply Rec.of_to_id; auto.
-  Defined.
+  Qed.
 
   Definition indomain' (a : addr) (m : diskstate) := wordToNat a < length m.
 
@@ -650,12 +649,13 @@ Module MEMLOG.
     Rof;
     rx (MapProperties.of_list log).
 
-  Definition read_log_ok: forall xp,
+  Theorem read_log_ok: forall xp,
     {< m ms,
     PRE    rep xp (CommittedTxn m) ms
     POST:r [[ r = ms ]] * rep xp (CommittedTxn m) ms
     CRASH  rep xp (CommittedTxn m) ms
     >} read_log xp.
+  Proof.
     unfold read_log; log_unfold.
     hoare.
     rewrite header_valu_id in H0. unfold mk_header, Rec.recget' in H0. simpl in H0.
