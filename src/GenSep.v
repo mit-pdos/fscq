@@ -388,6 +388,15 @@ Proof.
 Qed.
 
 
+Theorem list2mem_array_app_eq: forall A (F : @pred A) (l l' : list A) a (b : addr),
+  length l <= wordToNat b
+  -> (array $0 l $1 * $ (length l) |-> a)%pred (list2mem l')
+  -> l' = (l ++ a :: nil).
+Proof.
+  admit.
+Qed.
+
+
 Definition array_ex A (vs : list A) i :=
   ( array $0 (firstn (wordToNat i) vs) $1 *
     array (i ^+ $1) (skipn (S (wordToNat i)) vs) $1)%pred.
@@ -505,7 +514,7 @@ Ltac list2mem_cancel :=
 Ltac list2mem_bound :=
    match goal with
     | [ H : ( _ * ?p |-> ?i)%pred (list2mem ?l) |- wordToNat ?p < length ?l' ] =>
-          let Ha := fresh in assert (length l = length l') by eauto;
+          let Ha := fresh in assert (length l = length l') by solve_length_eq;
           let Hb := fresh in apply list2mem_inbound in H as Hb;
           eauto; (omega || setoid_rewrite <- Ha; omega); clear Hb Ha
   end.

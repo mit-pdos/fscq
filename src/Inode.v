@@ -324,13 +324,11 @@ Module INODE.
   Ltac inode_bounds' := match goal with
     | [ H : context [ (rep' _ ?l) ] |- length ?l <= _ ] =>
         unfold rep' in H; destruct_lift H
-    | [ H : length ?l = _ |- context [ length ?l ] ] =>
-        solve [ rewrite H ; eauto ; try omega ]
-    | [ H : _ = length ?l |- context [ length ?l ] ] =>
-        solve [ rewrite <- H ; eauto ; try omega ]
   end.
 
-  Ltac inode_bounds := eauto; try list2mem_bound; repeat inode_bounds'; eauto.
+  Ltac inode_bounds := eauto; try list2mem_bound; try solve_length_eq;
+                       repeat (inode_bounds'; solve_length_eq);
+                       try list2mem_bound; eauto.
 
   Hint Extern 0 (okToUnify (rep' _ _) (rep' _ _)) => constructor : okToUnify.
 
@@ -423,7 +421,6 @@ Module INODE.
     simpl; autorewrite with core.
     cancel.
     rewrite updN_firstn_comm; inode_bounds.
-    f_equal; auto.
   Qed.
 
 

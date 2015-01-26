@@ -150,7 +150,7 @@ Section LISTMATCH.
      listpred pprd (List.combine a b))%pred.
 
   Lemma listmatch_length : forall a b m,
-    listmatch a b m -> length a = length b.
+    (listmatch a b)%pred m -> length a = length b.
   Proof.
     unfold listmatch; intros.
     destruct_lift H; auto.
@@ -243,12 +243,60 @@ Section LISTMATCH.
     cancel; auto.
   Qed.
 
+  Theorem listmatch_updN_selN_r: forall F a b i av bv ad bd,
+    i < length a -> i < length b ->
+    (prd (selN a i ad) (selN b i bd)) * F =p=> prd av bv ->
+    (listmatch a b) * F =p=> listmatch (updN a i av) (updN b i bv).
+  Proof.
+    intros.
+    rewrite listmatch_updN_removeN by auto.
+    rewrite listmatch_isolate with (ad := ad) (bd := bd) by eauto.
+    cancel; rewrite sep_star_comm; auto.
+  Qed.
+
+
+  Theorem listmatch_app_r: forall F a b av bv,
+    length a = length b ->
+    F =p=> prd av bv ->
+    (listmatch a b) * F =p=> listmatch (a ++ av :: nil) (b ++ bv :: nil).
+  Proof.
+    intros.
+    eapply pimpl_trans2.
+    eapply listmatch_isolate with (i := length a);
+    try rewrite app_length; simpl; omega.
+    rewrite removeN_tail.
+    rewrite selN_last with (def := av); auto.
+    rewrite H.
+    rewrite removeN_tail.
+    rewrite selN_last with (def := bv); auto.
+    cancel; auto.
+  Qed.
+
 
 End LISTMATCH.
 
 Hint Resolve listmatch_length_r.
 Hint Resolve listmatch_length_l.
 Hint Resolve listmatch_length.
+
+Ltac solve_length_eq :=
+  eauto; try congruence ; try omega;
+  match goal with
+  | [ H : length ?l = _ |- context [ length ?l ] ] =>
+        solve [ rewrite H ; eauto ; try congruence ; try omega ]
+  | [ H : _ = length ?l |- context [ length ?l ] ] =>
+        solve [ rewrite <- H ; eauto ; try congruence ; try omega ]
+  | [ H : context [ listmatch _ ?a ?b ] |- context [ length ?c ] ] =>
+        let Heq := fresh in
+        first [ apply listmatch_length_r in H as Heq
+              | apply listmatch_length_l in H as Heq
+              | apply listmatch_length in H as Heq ];
+        solve [ constr_eq a c; repeat rewrite Heq ;
+                eauto ; try congruence ; try omega
+              | constr_eq b c; repeat rewrite <- Heq;
+                eauto; try congruence ; try omega ];
+        clear Heq
+  end.
 
 
 Ltac extract_listmatch_at ix :=

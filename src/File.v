@@ -101,20 +101,16 @@ Module FILE.
   Ltac file_bounds' := match goal with
     | [ H : ?p%pred ?mem |- length ?l <= _ ] =>
       match p with
-      | context [ (INODE.rep _ ?l) ] =>
-        first [ eapply INODE.rep_bound with (m := mem)
+      | context [ (INODE.rep _ ?l') ] =>
+        first [ constr_eq l l'; eapply INODE.rep_bound with (m := mem)
               | eapply INODE.blocks_bound with (m := mem)
               ]; pred_apply; cancel
       end
-    | [ H : length ?l = _ |- context [ length ?l ] ] =>
-        solve [ rewrite H ; eauto ; try omega ]
-    | [ H : _ = length ?l |- context [ length ?l ] ] =>
-        solve [ rewrite <- H ; eauto ; try omega ]
   end.
 
-  Ltac file_bounds := eauto; try list2mem_bound; repeat file_bounds'; eauto.
-
-
+  Ltac file_bounds := eauto; try list2mem_bound; try solve_length_eq;
+                      repeat file_bounds';
+                      try list2mem_bound; eauto.
 
 
   (* correctness theorems *)
@@ -226,7 +222,42 @@ Module FILE.
     CRASH  LOG.log_intact lxp mbase
     >} fgrow lxp bxp ixp inum.
   Proof.
-    admit.
+    unfold fgrow, rep.
+    hoare.
+
+    destruct_listmatch.
+    destruct (r_); simpl; step.
+
+    (* FIXME: where are these evars from? *)
+    instantiate (a5:=INODE.inode0).
+    instantiate (a0:=emp).
+    instantiate (a1:=fun _ => True).
+
+    2: list2mem_ptsto_cancel; file_bounds.
+    rewrite_list2mem_pred; file_bounds.
+    eapply list2mem_array; file_bounds.
+    eauto.
+
+    eapply pimpl_ok2; eauto with prog.
+    intros; cancel.
+    apply pimpl_or_r; left; cancel.
+    apply pimpl_or_r; right; cancel.
+
+    instantiate (a1 := Build_file (FData f ++ [w0])).
+    2: simpl; eapply list2mem_upd; eauto.
+    2: simpl; rewrite app_length; simpl; eauto.
+
+    rewrite_list2mem_pred_upd H15; file_bounds.
+    subst; unfold upd.
+    eapply listmatch_updN_selN_r; autorewrite with defaults; file_bounds.
+    unfold file_match; cancel_exact; simpl.
+
+    inversion H10; clear H10; subst.
+    eapply list2mem_app_eq in H14 as Heq; [ rewrite Heq; clear Heq | ].
+    2: eapply INODE.blocks_bound with (m := m0); pred_apply; cancel.
+
+    rewrite_list2mem_pred_sel H4; subst f.
+    eapply listmatch_app_r; file_bounds.
   Qed.
 
 

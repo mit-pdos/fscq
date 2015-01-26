@@ -962,6 +962,16 @@ Proof.
 Qed.
 
 
+Lemma removeN_tail: forall A (l : list A) a,
+  removeN (l ++ a :: nil) (length l) = l.
+Proof.
+  intros; unfold removeN.
+  rewrite skipn_oob.
+  rewrite firstn_app; firstorder.
+  rewrite app_length; simpl; omega.
+Qed.
+
+
 Lemma selN_removelast : forall A n l (def : A),
   n < length l - 1
   -> selN (removelast l) n def = selN l n def.
