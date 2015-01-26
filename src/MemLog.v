@@ -692,17 +692,17 @@ Module MEMLOG.
       rx tt
     }.
 
-  Definition log_intact xp m ms :=
-    ((rep xp (NoTransaction m) ms) \/
+  Definition log_intact xp m :=
+    (exists ms, (rep xp (NoTransaction m) ms) \/
      (exists m', rep xp (ActiveTxn m m') ms) \/
      (exists m', rep xp (FlushedTxn m m') ms) \/
      (rep xp (CommittedTxn m) ms))%pred.
 
   Theorem recover_ok: forall xp,
-    {< m ms,
-    PRE     log_intact xp m ms
+    {< m,
+    PRE     log_intact xp m
     POST:r  rep xp (NoTransaction m) ms_empty
-    CRASH   log_intact xp m ms
+    CRASH   log_intact xp m
     >} recover xp.
   Proof.
     unfold recover; log_unfold.

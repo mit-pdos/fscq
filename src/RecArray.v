@@ -181,7 +181,7 @@ Section RECARRAY.
            [[ (pos < items_per_valu)%word ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
-    CRASH  MEMLOG.log_intact lxp mbase ms
+    CRASH  MEMLOG.log_intact lxp mbase
     >} get_pair lxp xp ms block_ix pos.
   Proof.
     unfold get_pair.
@@ -208,7 +208,7 @@ Section RECARRAY.
              [[ Rec.well_formed i ]]
     POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (array_item_pairs xp (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i)) * F)%pred (list2mem m') ]]
-    CRASH    exists ms', MEMLOG.log_intact lxp mbase ms'
+    CRASH    MEMLOG.log_intact lxp mbase
     >} put_pair lxp xp ms block_ix pos i.
   Proof.
     unfold put_pair.
@@ -269,7 +269,7 @@ Section RECARRAY.
            [[ (inum < RALen xp ^* items_per_valu)%word ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = sel ilist inum item_zero ]]
-    CRASH  MEMLOG.log_intact lxp mbase ms
+    CRASH  MEMLOG.log_intact lxp mbase
     >} get lxp xp ms inum.
   Proof.
     unfold get, array_item.
@@ -315,7 +315,7 @@ Section RECARRAY.
              [[ Rec.well_formed i ]]
     POST:ms' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * array_item xp (upd ilist inum i))%pred (list2mem m') ]]
-    CRASH    exists ms', MEMLOG.log_intact lxp mbase ms'
+    CRASH    MEMLOG.log_intact lxp mbase
     >} put lxp xp ms inum i.
   Proof.
     unfold put, array_item.
@@ -339,8 +339,8 @@ Section RECARRAY.
   Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
   Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.
 
-  (* If two arrays are in the same spot, their contents have to be equal *)
-  Hint Extern 0 (okToUnify (array_item ?xp _) (array_item ?xp _)) =>
-    unfold okToUnify; constructor : okToUnify.
-
 End RECARRAY.
+
+(* If two arrays are in the same spot, their contents have to be equal *)
+Hint Extern 0 (okToUnify (array_item ?a ?b ?c ?xp _) (array_item ?a ?b ?c ?xp _)) =>
+  unfold okToUnify; constructor : okToUnify.
