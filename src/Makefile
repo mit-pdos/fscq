@@ -22,7 +22,7 @@ all: hstest
 	ln -s $(CURDIR)/_build/$@.native $@
 
 %: %.hs coq
-	mv codegen/Word.hs codegen/.Word.hs
+	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	ghc -Wall -O2 hslib/*.hs
 	ghc -O2 codegen/*.hs -ihslib
 	ghc -Wall -O2 $< -ihslib -icodegen -o $@
