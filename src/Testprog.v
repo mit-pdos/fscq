@@ -1,40 +1,43 @@
 Require Import Prog.
-Require Import Log.
+Require Import MemLog.
 Require Import Word.
 Require Import Balloc.
 
 Set Implicit Arguments.
 
 
-Definition copy_block T xp (a b : addr) rx : prog T :=
-  v <- LOG.read xp a;
-  ok <- LOG.write xp b v;
-  rx.
+Definition copy_block T xp (a b : addr) ms rx : prog T :=
+  v <- MEMLOG.read xp a ms;
+  ms' <- MEMLOG.write xp b v ms;
+  rx ms'.
 
-Fixpoint copy_many T xp (count : nat) (src dst : addr) rx : prog T :=
+Fixpoint copy_many T xp (count : nat) (src dst : addr) ms rx : prog T :=
   match count with
-  | O => rx tt
-  | S c => copy_block xp (src ^+ $ c) (dst ^+ $ c)
-           (copy_many T xp c src dst rx)
+  | O =>
+    rx ms
+  | S c =>
+    ms' <- copy_block xp (src ^+ $ c) (dst ^+ $ c) ms;
+    copy_many T xp c src dst ms' rx
   end.
 
 Definition testcopy T xp rx : prog T :=
-  LOG.init xp ;;
-  LOG.begin xp ;;
-  copy_many xp 200 $100 $500 ;;
-  LOG.commit xp ;;
-  rx.
+  MEMLOG.init xp ;;
+  ms <- MEMLOG.begin xp ;
+  ms' <- copy_many xp 200 $100 $500 ms ;
+  ok <- MEMLOG.commit xp ms' ;
+  rx ok.
 
 Definition testalloc T lxp bxp rx : prog T :=
-  LOG.init lxp ;;
-  LOG.begin lxp ;;
-  b <- BALLOC.alloc lxp bxp ;
+  MEMLOG.init lxp ;;
+  ms <- MEMLOG.begin lxp ;
+  b_ms' <- BALLOC.alloc lxp bxp ms ;
+  let (b, ms') := b_ms' in
   match b with
   | None =>
-    LOG.abort lxp ;;
+    MEMLOG.abort lxp ms' ;;
     rx None
   | Some bn =>
-    ok <- LOG.write lxp $0 (addr2valu bn) ;
-    LOG.commit lxp ;;
+    ms'' <- MEMLOG.write lxp $0 (addr2valu bn) ms' ;
+    ok <- MEMLOG.commit lxp ms'' ;
     rx (Some bn)
   end.
