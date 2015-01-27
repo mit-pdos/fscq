@@ -429,8 +429,8 @@ Module BALLOC.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
-  Hint Extern 1 ({{_}} progseq (BALLOC.alloc _ _) _) => apply BALLOC.alloc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (BALLOC.free _ _ _) _) => apply BALLOC.free_ok : prog.
+  Hint Extern 1 ({{_}} progseq (BALLOC.alloc _ _ _) _) => apply BALLOC.alloc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (BALLOC.free _ _ _ _) _) => apply BALLOC.free_ok : prog.
 
 
 End BALLOC.

@@ -149,41 +149,6 @@ Module FILE.
     destruct_listmatch.
     list2mem_ptsto_cancel; file_bounds.
 
-    subst r_.
-    (* XXX: how to convert diskptsto to predicate so that I can pred_apply and cancel ? *)
-
-    erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
-    unfold file_match at 2; autorewrite with defaults.
-    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off); try omega.
-    unfold data_match, sel; autorewrite with defaults.
-    cancel.
-
-    LOG.unfold_intact; cancel.
-  Qed.
-
-  Lemma fwrite_ok : forall lxp bxp ixp inum off v,
-    {<F A B mbase m flist f v0,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep bxp ixp flist)%pred m ]] *
-           [[ (A * inum |-> f)%pred (list2mem flist) ]] *
-           [[ (B * off |-> v0)%pred (list2mem (FData f)) ]]
-    POST:r [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
-           [[ r = true  ]] * exists m' flist' f',
-           LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * rep bxp ixp flist)%pred m ]] *
-           [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-           [[ (B * off |-> v)%pred (list2mem (FData f')) ]]
-    CRASH  LOG.log_intact lxp mbase
-    >} fwrite lxp ixp inum off v.
-  Proof.
-    unfold fwrite, rep.
-    hoare.
-
-    list2mem_ptsto_cancel; file_bounds.
-    repeat rewrite_list2mem_pred.
-    destruct_listmatch.
-    list2mem_ptsto_cancel; file_bounds.
-
     repeat rewrite_list2mem_pred.
     repeat destruct_listmatch.
     erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
@@ -192,31 +157,64 @@ Module FILE.
     unfold data_match, sel; autorewrite with defaults.
     cancel.
 
-    apply pimpl_or_r; right; cancel.
-    instantiate (a1 := Build_file (upd (FData f) off v)).
-    eapply list2mem_upd; eauto.
-    simpl; eapply list2mem_upd; eauto.
-
-    LOG.unfold_intact; cancel.
+    unfold MEMLOG.log_intact; cancel.
   Qed.
 
 
-  Theorem fgrow_ok : forall lxp bxp ixp inum,
+  Lemma fwrite_ok : forall lxp bxp ixp inum off v ms,
+    {<F A B mbase m flist f v0,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * inum |-> f)%pred (list2mem flist) ]] *
+             [[ (B * off |-> v0)%pred (list2mem (FData f)) ]]
+    POST:ms' exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * inum |-> f')%pred (list2mem flist') ]] *
+             [[ (B * off |-> v)%pred (list2mem (FData f')) ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} fwrite lxp ixp inum off v ms.
+  Proof.
+    unfold fwrite, rep.
+    step.
+    list2mem_ptsto_cancel; file_bounds.
+    repeat rewrite_list2mem_pred.
+    destruct_listmatch.
+    list2mem_ptsto_cancel; file_bounds.
+
+    eapply pimpl_ok2; eauto with prog.
+    intros; cancel.
+
+    (* constructing new file and disk *)
+    instantiate (a := upd d0 off v).
+    instantiate (a1 := Build_file (upd (FData f) off v)).
+
+    admit. (* MEMLOG layer should have lemma for this *)
+
+    2: eapply list2mem_upd; eauto.
+    2: simpl; eapply list2mem_upd; eauto.
+
+    repeat rewrite_list2mem_pred.
+    admit.
+  Qed.
+
+
+  Theorem fgrow_ok : forall lxp bxp ixp inum ms,
     {< F A mbase m flist f,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ length (FData f) < INODE.blocks_per_inode ]] *
-           [[ (F * rep bxp ixp flist)%pred m ]] *
-           [[ (A * inum |-> f)%pred (list2mem flist) ]]
-    POST:r [[ r = false]] * (exists m', LOG.rep lxp (ActiveTxn mbase m')) \/
-           [[ r = true ]] * exists m' flist' f',
-           LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * rep bxp ixp flist')%pred m' ]] *
-           [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-           [[ length (FData f') = length (FData f) + 1 ]]
-    CRASH  LOG.log_intact lxp mbase
-    >} fgrow lxp bxp ixp inum.
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ length (FData f) < INODE.blocks_per_inode ]] *
+             [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * inum |-> f)%pred (list2mem flist) ]]
+    POST:ms' exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * inum |-> f')%pred (list2mem flist') ]] *
+             [[ length (FData f') = length (FData f) + 1 ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} fgrow lxp bxp ixp inum ms.
   Proof.
     unfold fgrow, rep.
+    (* step doesn't work? *)
     hoare.
 
     destruct_listmatch.
