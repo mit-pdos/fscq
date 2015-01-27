@@ -67,10 +67,7 @@ Module BALLOC.
     end.
 
   Definition bit_to_alloc_state (b : word 1) : alloc_state :=
-    match b with
-    | WS false W0 => Avail
-    | _ => InUse
-    end.
+    if weq b $0 then Avail else InUse.
 
   Lemma bit_alloc_state_id : forall a, bit_to_alloc_state (alloc_state_to_bit a) = a.
     destruct a; auto.
