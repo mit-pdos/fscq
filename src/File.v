@@ -60,7 +60,6 @@ Module FILE.
     }.
 
 
-
   (* representation invariants *)
 
   Record file := {
@@ -176,33 +175,60 @@ Module FILE.
     POST:r [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            [[ r = true  ]] * exists m' flist' f',
            LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (F * rep bxp ixp flist)%pred m ]] *
+           [[ (F * rep bxp ixp flist')%pred m' ]] *
            [[ (A * inum |-> f')%pred (list2mem flist') ]] *
            [[ (B * off |-> v)%pred (list2mem (FData f')) ]]
     CRASH  LOG.log_intact lxp mbase
     >} fwrite lxp ixp inum off v.
   Proof.
     unfold fwrite, rep.
-    hoare.
+    step.
 
     list2mem_ptsto_cancel; file_bounds.
     repeat rewrite_list2mem_pred.
     destruct_listmatch.
     list2mem_ptsto_cancel; file_bounds.
 
+    eapply pimpl_ok2; eauto with prog.
+    intros; cancel.
+
     repeat rewrite_list2mem_pred.
     repeat destruct_listmatch.
     erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
     unfold file_match at 2; autorewrite with defaults.
     erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off); try omega.
-    unfold data_match, sel; autorewrite with defaults.
+    unfold data_match at 2, sel; autorewrite with defaults.
     cancel.
 
-    apply pimpl_or_r; right; cancel.
-    instantiate (a1 := Build_file (upd (FData f) off v)).
-    eapply list2mem_upd; eauto.
-    simpl; eapply list2mem_upd; eauto.
+    eapply pimpl_ok2; eauto with prog.
+    intros; cancel.
+    apply pimpl_or_r; right. 
 
+    cancel.
+    instantiate (a1 := Build_file (upd (FData f) off v)).
+    2: eapply list2mem_upd; eauto.
+    2: simpl; eapply list2mem_upd; eauto.
+
+    eapply pimpl_trans2.
+    erewrite listmatch_isolate with (i := wordToNat inum);
+      autorewrite with defaults; autorewrite with core; file_bounds.
+    unfold file_match at 3.
+
+    repeat rewrite_list2mem_pred.
+    eapply pimpl_trans2.
+    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off);
+      autorewrite with defaults; autorewrite with core; file_bounds.
+    unfold upd; autorewrite with core; simpl; rewrite length_updN; file_bounds.
+    erewrite listmatch_extract with (i := wordToNat inum) in H3; file_bounds.
+    destruct_lift H3; file_bounds.
+
+    unfold sel, upd; unfold data_match at 3.
+    simpl; rewrite removeN_updN, selN_updN_eq; file_bounds.
+    simpl; rewrite removeN_updN, selN_updN_eq; file_bounds.
+    cancel.
+
+    apply pimpl_or_r; left; cancel.
+    cancel.
     LOG.unfold_intact; cancel.
   Qed.
 
