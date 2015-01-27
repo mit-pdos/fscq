@@ -456,8 +456,9 @@ Module INODE.
     >} igrow lxp xp inum a ms.
   Proof.
     unfold igrow, rep.
-    hoare.
+    step.
     list2mem_ptsto_cancel; inode_bounds.
+    step.
     list2mem_ptsto_cancel; inode_bounds.
 
     destruct r_; destruct p2; simpl; intuition.
@@ -467,12 +468,8 @@ Module INODE.
     pred_apply; cancel.
     rewrite Forall_forall in *; intuition.
 
-    admit.
-    admit.
-
-    (* XXX need to update proof starting here *)
-    (*
-    apply pimpl_or_r; right; cancel.
+    eapply pimpl_ok2; eauto with prog.
+    intros; cancel.
 
     instantiate (a1 := Build_inode ((IBlocks i) ++ [a])).
     2: eapply list2mem_upd; eauto.
@@ -499,13 +496,12 @@ Module INODE.
     rewrite app_length; simpl.
     rewrite <- H15.
     apply firstn_app_updN; auto.
-    erewrite inode_blocks_length with (m := m0); inode_bounds.
+    erewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
     pred_apply; cancel.
 
     repeat rewrite_list2mem_pred; inode_bounds.
     destruct_listmatch.
     unfold sel; inode_bounds.
-    *)
   Qed.
 
 
@@ -525,8 +521,9 @@ Module INODE.
     >} ishrink lxp xp inum ms.
   Proof.
     unfold ishrink, rep.
-    hoare.
+    step.
     list2mem_ptsto_cancel; inode_bounds.
+    step.
     list2mem_ptsto_cancel; inode_bounds.
 
     destruct r_; destruct p3; simpl; intuition.
@@ -534,11 +531,9 @@ Module INODE.
     pred_apply; cancel.
     rewrite Forall_forall; auto.
 
-    admit.
-    admit.
-    (* XXX need to update proof starting here *)
-    (*
-    apply pimpl_or_r; right; cancel.
+    eapply pimpl_ok2; eauto with prog.
+    intros; cancel.
+
     instantiate (a1 := Build_inode (removelast (IBlocks i))).
     2: eapply list2mem_upd; eauto.
     2: simpl; eapply list2mem_removelast; eauto.
@@ -565,13 +560,12 @@ Module INODE.
     rewrite <- removelast_firstn.
     f_equal; rewrite S_minus_one; auto.
     apply length_not_nil; auto.
-    erewrite inode_blocks_length with (m := m0); inode_bounds.
+    erewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
     pred_apply; cancel.
 
     repeat rewrite_list2mem_pred; inode_bounds.
     destruct_listmatch.
     unfold sel; inode_bounds.
-    *)
   Qed.
 
   Hint Extern 1 ({{_}} progseq (igetlen _ _ _ _) _) => apply igetlen_ok : prog.
