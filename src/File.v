@@ -6,7 +6,7 @@ Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
 Require Import Omega.
-Require Import Log.
+Require Import MemLog.
 Require Import Array.
 Require Import List.
 Require Import Bool.
@@ -25,40 +25,35 @@ Module FILE.
 
   (* interface implementation *)
 
-  Definition flen T lxp ixp inum rx : prog T :=
-    n <- INODE.igetlen lxp ixp inum;
+  Definition flen T lxp ixp inum ms rx : prog T :=
+    n <- INODE.igetlen lxp ixp inum ms;
     rx n.
 
-  Definition fread T lxp ixp inum off rx : prog T :=
-    b <-INODE.iget lxp ixp inum off;
-    fblock <- LOG.read lxp b;
+  Definition fread T lxp ixp inum off ms rx : prog T :=
+    b <-INODE.iget lxp ixp inum off ms;
+    fblock <- MEMLOG.read lxp b ms;
     rx fblock.
 
-  Definition fwrite T lxp ixp inum off v rx : prog T :=
-    b <-INODE.iget lxp ixp inum off;
-    ok <- LOG.write lxp b v;
+  Definition fwrite T lxp ixp inum off v ms rx : prog T :=
+    b <-INODE.iget lxp ixp inum off ms;
+    ok <- MEMLOG.write lxp b v ms;
     rx ok.
 
-  Definition fgrow T lxp bxp ixp inum rx : prog T :=
-    bnum <- BALLOC.alloc lxp bxp;
-    match bnum with
-    | None => rx false
-    | Some b =>
-        ok <- INODE.igrow lxp ixp inum b;
+  Definition fgrow T lxp bxp ixp inum ms rx : prog T :=
+    r <- BALLOC.alloc lxp bxp ms;
+    match r with
+    | (None, ms') => rx ms'
+    | (Some bnum, ms') =>
+        ok <- INODE.igrow lxp ixp inum bnum ms';
         rx ok
     end.
 
-  Definition fshrink T lxp bxp ixp inum rx : prog T :=
-    n <- INODE.igetlen lxp ixp inum;
-    b <- INODE.iget lxp ixp inum n;
-    ok <- BALLOC.free lxp bxp b;
-    If (bool_dec ok true) {
-      ok <- INODE.ishrink lxp ixp inum;
-      rx ok
-    } else {
-      rx false
-    }.
-
+  Definition fshrink T lxp bxp ixp inum ms rx : prog T :=
+    n <- INODE.igetlen lxp ixp inum ms;
+    b <- INODE.iget lxp ixp inum n ms;
+    ms' <- BALLOC.free lxp bxp b ms;
+    r <- INODE.ishrink lxp ixp inum ms';
+    rx r.
 
 
   (* representation invariants *)
@@ -112,18 +107,17 @@ Module FILE.
                       repeat file_bounds';
                       try list2mem_bound; eauto.
 
-
   (* correctness theorems *)
 
-  Theorem flen_ok : forall lxp bxp ixp inum,
+  Theorem flen_ok : forall lxp bxp ixp inum ms,
     {< F A mbase m flist f,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep bxp ixp flist)%pred m ]] *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]]
-    POST:r LOG.rep lxp (ActiveTxn mbase m) *
+    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = $ (length (FData f)) ]]
-    CRASH  LOG.log_intact lxp mbase
-    >} flen lxp ixp inum.
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} flen lxp ixp inum ms.
   Proof.
     unfold flen, rep.
     hoare.
@@ -136,16 +130,16 @@ Module FILE.
   Qed.
 
 
-  Theorem fread_ok : forall lxp bxp ixp inum off,
+  Theorem fread_ok : forall lxp bxp ixp inum off ms,
     {<F A B mbase m flist f v,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * rep bxp ixp flist)%pred m ]] *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]] *
            [[ (B * off |-> v)%pred (list2mem (FData f)) ]]
-    POST:r LOG.rep lxp (ActiveTxn mbase m) *
+    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = v ]]
-    CRASH  LOG.log_intact lxp mbase
-    >} fread lxp ixp inum off.
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} fread lxp ixp inum off ms.
   Proof.
     unfold fread, rep.
     hoare.
@@ -155,8 +149,8 @@ Module FILE.
     destruct_listmatch.
     list2mem_ptsto_cancel; file_bounds.
 
-    repeat rewrite_list2mem_pred.
-    repeat destruct_listmatch.
+    subst r_.
+    (* XXX: how to convert diskptsto to predicate so that I can pred_apply and cancel ? *)
 
     erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
     unfold file_match at 2; autorewrite with defaults.
