@@ -71,12 +71,6 @@ Definition sep_star_impl (p1: pred) (p2: pred) : pred :=
 Definition indomain (a: addr) (m: mem) :=
   exists (v:V), m a = Some v.
 
-Definition diskIs (m : mem) : pred := eq m.
-Definition diskptsto (m : mem) (a : addr) (v : V) := m a = Some v.
-
-Definition mem_except (m: @mem V) (a: addr) : mem :=
-  fun a' => if addr_eq_dec a' a then None else m a'.
-
 End GenPredDef.
 
 Arguments pred {V}.
@@ -106,7 +100,6 @@ Notation "[[ P ]]" := (lift_empty P) : pred_scope.
 Notation "p =p=> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
 Notation "p <=p=> q" := (piff p%pred q%pred) (at level 90).
 Notation "p [ a <--- v ]" := (pupd p a v) (at level 0) : pred_scope.
-Notation "m @ a |-> v" := (diskptsto m a v) (a at level 34, at level 35).
 
 
 Module Type SEP_STAR.
@@ -713,50 +706,6 @@ Lemma eq_pimpl : forall (a b : @pred V),
   -> (a =p=> b).
 Proof.
   intros; subst; firstorder.
-Qed.
-
-Theorem diskIs_split : forall m a (v : V),
-  (m @ a |-> v)
-  -> (diskIs m =p=> diskIs (mem_except m a) * a |-> v).
-Proof.
-  unfold pimpl, diskIs, ptsto; unfold_sep_star; intros; subst.
-  exists (fun a' => if addr_eq_dec a' a then None else m0 a').
-  exists (fun a' => if addr_eq_dec a' a then Some v else None).
-  intuition.
-  - unfold mem_union; apply functional_extensionality; intros.
-    destruct (addr_eq_dec x a); subst; auto.
-    destruct (m0 x); auto.
-  - unfold mem_disjoint; unfold not; intros. repeat deex.
-    destruct (addr_eq_dec x a); discriminate.
-  - destruct (addr_eq_dec a a); congruence.
-  - destruct (addr_eq_dec a' a); subst; congruence.
-Qed.
-
-Theorem diskIs_merge_upd : forall m a (v : V),
-  diskIs (mem_except m a) * a |-> v =p=> diskIs (upd m a v).
-Proof.
-  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
-  apply functional_extensionality; intros.
-  case_eq (addr_eq_dec x a); intros; subst.
-  - rewrite mem_union_comm; auto.
-    erewrite mem_union_addr; eauto.
-    apply mem_disjoint_comm; auto.
-  - unfold mem_union, mem_except.
-    destruct (addr_eq_dec x a); try discriminate.
-    case_eq (m x); auto; intros.
-    rewrite H4; auto.
-Qed.
-
-Theorem diskIs_merge_except : forall m a (v : V),
-  (m @ a |-> v)
-  -> (diskIs (mem_except m a) * a |-> v =p=> diskIs m).
-Proof.
-  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
-  apply functional_extensionality; intros.
-  unfold mem_union, mem_except.
-  destruct (addr_eq_dec x a); subst; try congruence.
-  destruct (m x); auto.
-  rewrite H5; auto; discriminate.
 Qed.
 
 Theorem sep_star_indomain : forall (p q : @pred V) a,
