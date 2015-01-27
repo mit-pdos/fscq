@@ -361,7 +361,19 @@ Module MEMLOG.
     end.
 
   Lemma replay_sel : forall a v ms m def,
-    Map.MapsTo a v ms -> sel (replay ms m) a def = v.
+    indomain' a m -> Map.MapsTo a v ms -> sel (replay ms m) a def = v.
+  Proof.
+    admit.
+  Qed.
+
+  Lemma replay_len : forall ms m,
+    length (replay ms m) = length m.
+  Proof.
+    admit.
+  Qed.
+
+  Lemma replay_sel_other : forall a ms m def,
+    ~ Map.In a ms -> selN (replay ms m) (wordToNat a) def = selN m (wordToNat a) def.
   Proof.
     admit.
   Qed.
@@ -369,7 +381,7 @@ Module MEMLOG.
   Theorem read_ok: forall xp ms a,
     {< m1 m2 v,
     PRE    rep xp (ActiveTxn m1 m2) ms *
-           [[ list2mem m2 @ a |-> v ]]
+           [[ exists F, (F * a |-> v) (list2mem m2) ]]
     POST:r rep xp (ActiveTxn m1 m2) ms *
            [[ r = v ]]
     CRASH  rep xp (ActiveTxn m1 m2) ms
@@ -381,22 +393,26 @@ Module MEMLOG.
     case_eq (Map.find a ms); hoare.
     subst.
 
-    unfold diskptsto in H5.
+    eapply list2mem_sel with (def := $0) in H0.
     apply Map.find_2 in H.
     eapply replay_sel in H.
-    unfold list2mem in H5.
-    erewrite sel_map in H5.
-    inversion H5.
     rewrite <- H.
-    instantiate (def := $0).
+    rewrite H0.
     reflexivity.
+    unfold valid_entries in H7.
+    eapply H7; eauto.
 
-    destruct (lt_dec (wordToNat a) (length (replay ms d))); auto.
-    admit.
-
-    admit.
-
-    admit.
+    erewrite <- replay_len.
+    eapply list2mem_ptsto_bounds; eauto.
+    eapply list2mem_sel with (def := $0) in H0.
+    rewrite H0.
+    unfold sel.
+    rewrite replay_sel_other. trivial.
+    intuition.
+    hnf in H1.
+    destruct H1.
+    apply Map.find_1 in H1.
+    congruence.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
@@ -732,6 +748,8 @@ Module MEMLOG.
     apply stars_or_right.
     apply stars_or_left.
     cancel.
+    eauto.
+
     step.
     step.
     apply natToWord_discriminate in H6; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial].
@@ -778,8 +796,12 @@ Module MEMLOG.
     instantiate (a := nil).
     instantiate (a0 := ms_empty).
     instantiate (a1 := any).
-    instantiate (a2 := any).
+    instantiate (a2 := ms_empty).
     instantiate (a3 := any).
+    instantiate (a4 := ms_empty).
+    instantiate (a5 := any).
+    instantiate (a6 := ms_empty).
+    instantiate (a7 := ms_empty).
     cancel.
   Qed.
 
@@ -816,13 +838,7 @@ Module MEMLOG.
     eapply pimpl_ok2.
     apply read_ok.
     cancel.
-    hnf. unfold list2mem.
-    erewrite sel_map.
-    instantiate (default' := $0).
-    f_equal.
-    admit.
     step.
-    admit.
     cancel.
 
     cancel.
