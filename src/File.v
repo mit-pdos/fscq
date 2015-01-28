@@ -369,6 +369,7 @@ Module FILE.
     destruct_lift H.
     subst; eauto.
 
+    autorewrite with defaults.
     (* XXX should be easy with one of Haogang's tactics, but I don't know which one.. *)
     admit.
 
