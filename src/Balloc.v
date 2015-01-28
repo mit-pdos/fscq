@@ -123,18 +123,20 @@ Module BALLOC.
     assumption.
   Qed.
 
+  Definition valid_block xp bn := (bn < BmapNBlocks xp ^* $ valulen)%word.
+
   Theorem free'_ok : forall lxp xp bn,
     {< Fm mbase m bmap,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (Fm * rep' xp bmap)%pred m ]] *
-           [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+           [[ valid_block xp bn ]]
     POST:r ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
             [[ (Fm * rep' xp (fupd bmap bn Avail))%pred m' ]]) \/
            ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
     CRASH  LOG.log_intact lxp mbase
     >} free' lxp xp bn.
   Proof.
-    unfold free', rep', LOG.log_intact.
+    unfold free', rep', valid_block, LOG.log_intact.
     hoare.
     apply pimpl_or_r. left.
     cancel.
@@ -181,7 +183,8 @@ Module BALLOC.
     POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
            LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (Fm * rep' xp (fupd bmap bn InUse))%pred m' ]]
+           [[ (Fm * rep' xp (fupd bmap bn InUse))%pred m' ]] *
+           [[ valid_block xp bn ]]
     CRASH  LOG.log_intact lxp mbase
     >} alloc' lxp xp.
   Proof.
@@ -204,7 +207,7 @@ Module BALLOC.
     {< Fm mbase m bmap,
     PRE     LOG.rep lxp (ActiveTxn mbase m) *
             [[ (Fm * rep' xp bmap)%pred m ]] *
-            [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+            [[ valid_block xp bn ]]
     POST:r  [[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m) \/
             [[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
             [[ (Fm * rep' xp (fupd bmap bn Avail))%pred m' ]]
@@ -361,7 +364,8 @@ Module BALLOC.
     POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) \/
            exists bn m' freeblocks', [[ r = Some bn ]] *
            LOG.rep lxp (ActiveTxn mbase m') *
-           [[ (Fm * bn |->? * rep xp freeblocks')%pred m' ]]
+           [[ (Fm * bn |->? * rep xp freeblocks')%pred m' ]] *
+           [[ valid_block xp bn ]]
     CRASH  LOG.log_intact lxp mbase
     >} alloc lxp xp.
   Proof.
@@ -374,7 +378,7 @@ Module BALLOC.
     apply pimpl_or_r. right.
     norm. (* We can't just [cancel] here because it introduces evars too early *)
     cancel.
-    split; [split; trivial |].
+    intuition.
     pred_apply.
     instantiate (a1 := remove (@weq addrlen) a0 l).
     erewrite listpred_remove with (dec := @weq addrlen). cancel.
@@ -397,7 +401,7 @@ Module BALLOC.
     {< Fm mbase m freeblocks,
     PRE    LOG.rep lxp (ActiveTxn mbase m) *
            [[ (Fm * rep xp freeblocks * bn |->?)%pred m ]] *
-           [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+           [[ valid_block xp bn ]]
     POST:r ([[ r = true ]] * exists m', LOG.rep lxp (ActiveTxn mbase m') *
             [[ (Fm * rep xp (bn :: freeblocks))%pred m' ]]) \/
            ([[ r = false ]] * LOG.rep lxp (ActiveTxn mbase m))
