@@ -233,6 +233,7 @@ Module FILE.
     destruct_lift H3.
     erewrite listmatch_extract with (i := # off) in H3 by file_bounds.
     unfold data_match in H3.
+    autorewrite with defaults in H3.
     destruct_lift H3.
     eauto.
 
@@ -364,14 +365,20 @@ Module FILE.
     erewrite listmatch_extract with (i := # inum) in H3 by file_bounds.
     unfold file_match in H3.
     destruct_lift H3.
-    erewrite listmatch_extract with (i := # ($ (length (INODE.IBlocks (sel l0 inum _))) ^- $ (1))) in H.
+    erewrite listmatch_extract with (i := # ($ (length (INODE.IBlocks (sel l0 inum _))) ^- $ (1))) in H;
+      autorewrite with defaults in H.
     unfold data_match in H.
     destruct_lift H.
     subst; eauto.
 
-    autorewrite with defaults.
-    (* XXX should be easy with one of Haogang's tactics, but I don't know which one.. *)
-    admit.
+    repeat rewrite_list2mem_pred.
+    apply listmatch_length_r in H as Heq; file_bounds.
+    unfold sel; rewrite wordToNat_minus_one.
+    apply INODE.le_minus_one_lt.
+    erewrite wordToNat_natToWord_bound; file_bounds.
+    erewrite wordToNat_natToWord_bound; file_bounds.
+    apply INODE.gt_0_wneq_0.
+    erewrite wordToNat_natToWord_bound; file_bounds.
 
     hoare.
 
