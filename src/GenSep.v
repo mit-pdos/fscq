@@ -388,7 +388,7 @@ Proof.
 Qed.
 
 
-Theorem list2mem_array_app_eq: forall A (F : @pred A) (l l' : list A) a (b : addr),
+Theorem list2mem_array_app_eq: forall A V (F : @pred V) (l l' : list A) a (b : addr),
   length l < wordToNat b
   -> length l' <= wordToNat b
   -> (array $0 l $1 * $ (length l) |-> a)%pred (list2mem l')

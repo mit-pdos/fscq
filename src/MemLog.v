@@ -910,3 +910,6 @@ Module MEMLOG.
   Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
 
 End MEMLOG.
+
+Global Opaque MEMLOG.write.
+
