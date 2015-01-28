@@ -65,16 +65,16 @@ Module FILE.
 
   Definition file0 := Build_file nil.
 
-  Definition data_match (v : valu) a := ( a |-> v)%pred.
+  Definition data_match bxp (v : valu) a := (a |-> v * [[ BALLOC.valid_block bxp a ]])%pred.
 
-  Definition file_match f i : @pred valu := (
-     listmatch data_match (FData f) (INODE.IBlocks i)
+  Definition file_match bxp f i : @pred valu := (
+     listmatch (data_match bxp) (FData f) (INODE.IBlocks i)
     )%pred.
 
   Definition rep bxp ixp (flist : list file) :=
     (exists freeblocks ilist,
      BALLOC.rep bxp freeblocks * INODE.rep ixp ilist *
-     listmatch file_match flist ilist
+     listmatch (file_match bxp) flist ilist
     )%pred.
 
 
@@ -154,7 +154,7 @@ Module FILE.
     repeat destruct_listmatch.
     erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
     unfold file_match at 2; autorewrite with defaults.
-    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off); try omega.
+    erewrite listmatch_isolate with (prd := data_match bxp) (i := wordToNat off); try file_bounds.
     unfold data_match, sel; autorewrite with defaults.
     cancel.
 
@@ -188,12 +188,12 @@ Module FILE.
     repeat destruct_listmatch.
     erewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
     unfold file_match at 2; autorewrite with defaults.
-    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off); try file_bounds.
+    erewrite listmatch_isolate with (prd := data_match bxp) (i := wordToNat off); try file_bounds.
     unfold data_match at 2, sel; autorewrite with defaults.
     cancel.
 
     eapply pimpl_ok2; eauto with prog.
-    cancel.
+    intros; cancel.
 
     instantiate (a1 := Build_file (upd (FData f) off v)).
     2: eapply list2mem_upd; eauto.
@@ -206,7 +206,7 @@ Module FILE.
 
     repeat rewrite_list2mem_pred.
     eapply pimpl_trans2.
-    erewrite listmatch_isolate with (prd := data_match) (i := wordToNat off);
+    erewrite listmatch_isolate with (prd := data_match bxp) (i := wordToNat off);
       autorewrite with defaults; autorewrite with core; file_bounds.
     unfold upd; autorewrite with core; simpl; rewrite length_updN; file_bounds.
     erewrite listmatch_extract with (i := wordToNat inum) in H3; file_bounds.
@@ -217,6 +217,16 @@ Module FILE.
     simpl; rewrite removeN_updN, selN_updN_eq; file_bounds.
     instantiate (ad := $0).
     cancel.
+
+    (* extract BALLOC.valid_block out of [listmatch (file_match bxp)] *)
+    erewrite listmatch_extract with (i := # inum) in H3 by file_bounds.
+    unfold file_match in H3.
+    destruct_lift H3.
+    erewrite listmatch_extract with (i := # off) in H3 by file_bounds.
+    unfold data_match in H3.
+    autorewrite with defaults in H3.
+    destruct_lift H3.
+    eauto.
 
     unfold MEMLOG.log_intact; cancel.
   Qed.
@@ -247,12 +257,12 @@ Module FILE.
 
     (* FIXME: where are these evars from? *)
     instantiate (a := emp).
-    instantiate (a0:=emp).
-    instantiate (a1:=emp).
+    instantiate (a0 := emp).
+    instantiate (a1 := emp).
     instantiate (a2 := nil).
     instantiate (a3 := nil).
     instantiate (a4 := nil).
-    instantiate (a5:=INODE.inode0).
+    instantiate (a5 := INODE.inode0).
     instantiate (a6 := emp).
 
     inversion H; subst; cancel.
@@ -269,22 +279,24 @@ Module FILE.
     2: simpl; eapply list2mem_upd; eauto.
     2: simpl; rewrite app_length; simpl; eauto.
 
-    rewrite_list2mem_pred_upd H13; file_bounds.
+    rewrite_list2mem_pred_upd H14; file_bounds.
     subst; unfold upd.
     eapply listmatch_updN_selN_r; autorewrite with defaults; file_bounds.
     unfold file_match; cancel_exact; simpl.
 
     inversion H; clear H; subst.
-    eapply list2mem_array_app_eq in H12 as Heq; eauto.
+    eapply list2mem_array_app_eq in H13 as Heq; eauto.
     rewrite Heq; clear Heq.
     rewrite_list2mem_pred_sel H4; subst f.
     eapply listmatch_app_r; file_bounds.
+    unfold data_match; cancel.
+
     repeat rewrite_list2mem_pred.
     destruct_listmatch.
     instantiate (bd := INODE.inode0).
     instantiate (b := natToWord addrlen INODE.blocks_per_inode).
     unfold file_match in *; file_bounds.
-    eapply INODE.blocks_bound in H11 as Heq; unfold sel in Heq.
+    eapply INODE.blocks_bound in H10 as Heq; unfold sel in Heq.
     rewrite selN_updN_eq in Heq; file_bounds.
     cancel.
 
@@ -310,7 +322,119 @@ Module FILE.
     CRASH    MEMLOG.log_intact lxp mbase
     >} fshrink lxp bxp ixp inum ms.
   Proof.
-    admit.
-  Qed.
+    unfold fshrink, rep.
+    step.
+    list2mem_ptsto_cancel; file_bounds.
+    step.
+    list2mem_ptsto_cancel; file_bounds.
+
+    repeat rewrite_list2mem_pred.
+    destruct_listmatch.
+    subst r_; list2mem_ptsto_cancel; file_bounds.
+    rewrite wordToNat_minus_one.
+    erewrite wordToNat_natToWord_bound; unfold file_match in *; file_bounds.
+    apply INODE.gt_0_wneq_0; file_bounds.
+    erewrite wordToNat_natToWord_bound; unfold file_match in *; file_bounds.
+
+    step.
+    rewrite wordToNat_minus_one.
+    erewrite wordToNat_natToWord_bound; file_bounds.
+
+    rewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
+    unfold file_match at 2; autorewrite with defaults.
+    rewrite listmatch_isolate with (prd := data_match bxp)
+      (i := length (FData f) - 1); autorewrite with defaults.
+    unfold data_match at 2.
+    destruct_listmatch.
+    apply listmatch_length_r in H0 as Heq.
+    rewrite <- Heq.
+    repeat rewrite_list2mem_pred.
+    cancel.
+
+    repeat rewrite_list2mem_pred; omega.
+    destruct_listmatch.
+    apply listmatch_length_r in H0 as Heq.
+    rewrite <- Heq.
+    repeat rewrite_list2mem_pred; omega.
+
+    apply INODE.gt_0_wneq_0; file_bounds.
+    erewrite wordToNat_natToWord_bound; file_bounds.
+    destruct_listmatch.
+    repeat rewrite_list2mem_pred.
+    apply listmatch_length_r in H0 as Heq.
+    rewrite <- Heq; auto.
+
+    (* extract BALLOC.valid_block out of [listmatch (file_match bxp)] *)
+    erewrite listmatch_extract with (i := # inum) in H3 by file_bounds.
+    unfold file_match in H3.
+    destruct_lift H3.
+    erewrite listmatch_extract with (i := # ($ (length (INODE.IBlocks (sel l0 inum _))) ^- $ (1))) in H;
+      autorewrite with defaults in H.
+    unfold data_match in H.
+    destruct_lift H.
+    subst; eauto.
+
+    repeat rewrite_list2mem_pred.
+    apply listmatch_length_r in H as Heq; file_bounds.
+    unfold sel; rewrite wordToNat_minus_one.
+    apply INODE.le_minus_one_lt.
+    erewrite wordToNat_natToWord_bound; file_bounds.
+    erewrite wordToNat_natToWord_bound; file_bounds.
+    apply INODE.gt_0_wneq_0.
+    erewrite wordToNat_natToWord_bound; file_bounds.
+
+    hoare.
+
+    2: list2mem_ptsto_cancel; file_bounds.
+    repeat rewrite_list2mem_pred.
+    erewrite listmatch_extract with (i := wordToNat inum) in H3; file_bounds.
+    destruct_lift H3.
+    apply listmatch_length_r in H3 as Heq; file_bounds.
+    contradict H6; rewrite Heq; autorewrite with defaults.
+    rewrite H; simpl; omega.
+    eapply list2mem_array_exis; autorewrite with defaults.
+    list2mem_ptsto_cancel; file_bounds.
+
+    repeat rewrite_list2mem_pred.
+    erewrite listmatch_extract in H3; eauto.
+    destruct_lift H3.
+    apply listmatch_length_r in H0 as Heq; file_bounds.
+    rewrite <- Heq; autorewrite with defaults.
+    erewrite wordToNat_natToWord_bound.
+    apply INODE.le_minus_one_lt; auto.
+    apply Nat.lt_le_incl.
+    apply INODE.le_minus_one_lt; auto.
+    rewrite Heq; file_bounds.
+
+    apply pimpl_or_r; right; cancel.
+    instantiate (a1 := Build_file (removelast (FData f))).
+    2: simpl; eapply list2mem_upd; eauto.
+    eapply list2mem_array_upd in H14; file_bounds.
+    subst l2; unfold upd, sel.
+    eapply pimpl_trans2.
+    rewrite listmatch_isolate with (i := wordToNat inum); 
+      autorewrite with defaults; try rewrite length_updN; file_bounds.
+    repeat rewrite removeN_updN.
+    repeat rewrite selN_updN_eq; file_bounds; simpl.
+    unfold file_match; cancel.
+
+    repeat rewrite_list2mem_pred.
+    erewrite listmatch_extract in H3; eauto.
+    destruct_lift H3.
+    apply listmatch_length_r in H0 as Heq; file_bounds.
+    rewrite Heq at 2.
+    repeat rewrite removeN_removelast; file_bounds.
+    erewrite list2mem_array_removelast_eq with (nl := INODE.IBlocks i); file_bounds.
+    eapply INODE.blocks_bound with (i:=inum) in H12 as Hx; unfold sel in Hx.
+    unfold upd in Hx; rewrite selN_updN_eq in Hx; file_bounds.
+
+    instantiate (a8 := INODE.inode0).
+    instantiate (a2 := emp).
+    instantiate (a3 := emp).
+
+    simpl; apply length_removelast.
+    contradict H6; rewrite H6.
+    simpl; omega.
+Qed.
 
 End FILE.

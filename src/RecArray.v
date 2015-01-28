@@ -336,10 +336,11 @@ Section RECARRAY.
     rewrite upd_divmod; auto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
-  Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.
-
 End RECARRAY.
+
+Hint Extern 1 ({{_}} progseq (get _ _ _ _ _ _ _) _) => apply get_ok : prog.
+Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _ _ _) _) => apply put_ok : prog.
+
 
 (* If two arrays are in the same spot, their contents have to be equal *)
 Hint Extern 0 (okToUnify (array_item ?a ?b ?c ?xp _) (array_item ?a ?b ?c ?xp _)) =>
