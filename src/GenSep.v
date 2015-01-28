@@ -388,7 +388,7 @@ Proof.
 Qed.
 
 
-Theorem list2mem_array_app_eq: forall A (F : @pred A) (l l' : list A) a (b : addr),
+Theorem list2mem_array_app_eq: forall A V (F : @pred V) (l l' : list A) a (b : addr),
   length l < wordToNat b
   -> length l' <= wordToNat b
   -> (array $0 l $1 * $ (length l) |-> a)%pred (list2mem l')
@@ -464,6 +464,38 @@ Proof.
   rewrite array_except_upd; auto.
 Qed.
 
+
+Theorem list2mem_array_removelast_eq : forall V (nl ol : list V) (b : addr),
+  (array_ex ol $ (length ol - 1))%pred (list2mem nl)
+  -> length ol <= wordToNat b
+  -> length nl <= wordToNat b
+  -> length ol > 0
+  -> nl = removelast ol.
+Proof.
+  unfold array_ex; intros.
+  destruct ol.
+  inversion H2.
+
+  eapply list2mem_array_eq with (l' := nl); eauto.
+  pred_apply.
+  erewrite wordToNat_natToWord_bound with (bound:=b) by omega.
+  rewrite firstn_removelast_eq; auto.
+  rewrite skipn_oob by omega.
+  unfold array at 2.
+  clear H; cancel.
+  rewrite length_removelast.
+  omega.
+  contradict H2; rewrite H2.
+  unfold length; omega.
+Qed.
+
+
+Theorem list2mem_array_exis : forall V l (def : V) i,
+  (array_ex l i * i |-> sel l i def)%pred (list2mem l)
+  -> (array_ex l i * i |->?)%pred (list2mem l).
+Proof.
+  intros; pred_apply; cancel.
+Qed.
 
 
 (* Ltacs *)

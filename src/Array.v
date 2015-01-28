@@ -995,6 +995,33 @@ Proof.
   omega.
 Qed.
 
+Lemma removeN_removelast : forall A (l : list A),
+  length l > 0
+  -> removeN l (length l - 1) = removelast l.
+Proof.
+  induction l using rev_ind; intros; simpl; firstorder.
+  rewrite removelast_app; simpl.
+  rewrite app_nil_r.
+  rewrite app_length; simpl.
+  replace (length l + 1 - 1) with (length l) by omega.
+  rewrite removeN_tail; auto.
+  congruence.
+Qed.
+
+
+Theorem firstn_removelast_eq : forall V (l : list V),
+  length l > 0
+  -> firstn (length l - 1) l = removelast l.
+Proof.
+  destruct l using rev_ind; firstorder.
+  rewrite app_length; simpl.
+  rewrite removelast_app; simpl; try congruence.
+  replace (length l + 1 - 1) with (length l) by omega.
+  rewrite firstn_app; auto.
+  rewrite app_nil_r; auto.
+Qed.
+
+
 Lemma isolate_last: forall A l (a : A) (b:addr),
   length l <= wordToNat b ->
   (array $0 (l ++ a :: nil) $1 <=p=>
