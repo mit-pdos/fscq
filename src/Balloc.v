@@ -89,8 +89,9 @@ Module BALLOC.
        (bmap_bits xp bmap))%pred.
 
   Definition free' T lxp xp bn rx : prog T :=
-    RecArray.put itemtype items_per_valu blocksz
-      lxp (xp_to_raxp xp) bn (alloc_state_to_bit Avail) rx.
+    ok <- RecArray.put itemtype items_per_valu blocksz
+      lxp (xp_to_raxp xp) bn (alloc_state_to_bit Avail);
+    rx ok.
 
   Lemma selN_seq : forall a b c d, c < b -> selN (seq a b) c d = a + c.
   Proof.
@@ -134,16 +135,9 @@ Module BALLOC.
     >} free' lxp xp bn.
   Proof.
     unfold free', rep', LOG.log_intact.
-    intros. eapply pimpl_ok2. apply put_ok. (* XXX why doesn't eauto with prog work? *)
-    apply items_per_valu_not_0.
-
-    cancel.
-    step.
+    hoare.
     apply pimpl_or_r. left.
-    norm.
     cancel.
-    repeat (split; [constructor |]).
-    pred_apply. cancel.
     erewrite upd_bmap_bits; try trivial.
     cancel.
     auto.
@@ -193,25 +187,15 @@ Module BALLOC.
   Proof.
     unfold alloc', rep', LOG.log_intact.
     hoare.
-    eapply pimpl_ok2. apply get_ok. (* XXX why doesn't eauto with prog work? *)
-    apply items_per_valu_not_0.
-
-    cancel.
-    hoare.
-    eapply pimpl_ok2. apply put_ok.
-    apply items_per_valu_not_0.
-    cancel.
-    hoare.
     apply pimpl_or_r. right.
-    word2nat_auto.
     cancel.
     rewrite <- H9. unfold bmap_bits, sel.
     autorewrite with core; auto.
+    word2nat_auto.
     erewrite upd_bmap_bits; trivial.
-    step.
-    trivial.
-    step.
-    step.
+    cancel.
+    auto.
+    word2nat_auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (alloc' _) _) => apply alloc'_ok : prog.
