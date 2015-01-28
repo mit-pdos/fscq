@@ -383,7 +383,7 @@ Module FILE.
     apply INODE.gt_0_wneq_0.
     erewrite wordToNat_natToWord_bound; file_bounds.
 
-    hoare.
+    step.
 
     2: list2mem_ptsto_cancel; file_bounds.
     repeat rewrite_list2mem_pred.
@@ -406,10 +406,12 @@ Module FILE.
     apply INODE.le_minus_one_lt; auto.
     rewrite Heq; file_bounds.
 
-    apply pimpl_or_r; right; cancel.
+    eapply pimpl_ok2; eauto with prog; intros.
+    cancel.
+
     instantiate (a1 := Build_file (removelast (FData f))).
     2: simpl; eapply list2mem_upd; eauto.
-    eapply list2mem_array_upd in H14; file_bounds.
+    eapply list2mem_array_upd in H11; file_bounds.
     subst l2; unfold upd, sel.
     eapply pimpl_trans2.
     rewrite listmatch_isolate with (i := wordToNat inum); 
@@ -425,12 +427,8 @@ Module FILE.
     rewrite Heq at 2.
     repeat rewrite removeN_removelast; file_bounds.
     erewrite list2mem_array_removelast_eq with (nl := INODE.IBlocks i); file_bounds.
-    eapply INODE.blocks_bound with (i:=inum) in H12 as Hx; unfold sel in Hx.
+    eapply INODE.blocks_bound with (i:=inum) in H9 as Hx; unfold sel in Hx.
     unfold upd in Hx; rewrite selN_updN_eq in Hx; file_bounds.
-
-    instantiate (a8 := INODE.inode0).
-    instantiate (a2 := emp).
-    instantiate (a3 := emp).
 
     simpl; apply length_removelast.
     contradict H6; rewrite H6.
