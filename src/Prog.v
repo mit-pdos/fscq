@@ -34,7 +34,7 @@ Definition addr_eq_dec := @weq addrlen.
 Definition wringaddr := wring addrlen.
 Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]).
 
-Inductive prog (T: Set) :=
+Inductive prog (T: Type) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
 | Write (a: addr) (v: valu) (rx: unit -> prog T)
@@ -53,7 +53,7 @@ Definition mem {V: Type} := addr -> option V.
 Definition upd {V: Type} (m : mem) (a : addr) (v : V) : mem :=
   fun a' => if addr_eq_dec a' a then Some v else m a'.
 
-Inductive outcome (T: Set) :=
+Inductive outcome (T: Type) :=
 | Failed
 | Finished (m: @mem valuset) (v: T)
 | Crashed (m: @mem valuset).
@@ -64,7 +64,7 @@ Definition mem_sync (m : @mem valuset) : @mem valuset :=
     | Some (v, l) => Some (v, nil)
     end.
 
-Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
+Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
   -> exec m (Read a rx) (Failed T)
 | XReadOK : forall m a v rx out x, m a = Some (v, x)
@@ -86,7 +86,7 @@ Inductive exec (T: Set) : mem -> prog T -> outcome T -> Prop :=
 Hint Constructors exec.
 
 
-Inductive recover_outcome (TF TR: Set) :=
+Inductive recover_outcome (TF TR: Type) :=
 | RFailed
 | RFinished (m: @mem valuset) (v: TF)
 | RRecovered (m: @mem valuset) (v: TR).
@@ -96,7 +96,7 @@ Definition possible_crash (m m' : @mem valuset) : Prop :=
   (m a = None /\ m' a = None) \/
   (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
 
-Inductive exec_recover (TF TR: Set)
+Inductive exec_recover (TF TR: Type)
   : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
 | XRFail : forall m p1 p2, exec m p1 (Failed TF)
   -> exec_recover m p1 p2 (RFailed TF TR)

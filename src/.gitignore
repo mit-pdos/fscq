@@ -7,12 +7,13 @@
 .*.aux
 .coq-native
 /lia.cache
-/codegen/*.ml
-/codegen/*.mli
-/codegen/*.hs
-/codegen/*.hi
+/codegen
 _build
 /disk.img
 /Makefile.coq
+/Makefile.coqproof
 /fstest
 /hstest
+/coqbuild
+/coqproof
+/#*#

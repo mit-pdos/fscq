@@ -6,7 +6,8 @@ import qualified Data.Serialize as S -- cabal install cereal // apt-get install 
 import qualified Data.Bits
 
 data Coq_word =
-   W64 !Data.Word.Word64
+   WO
+ | W64 !Data.Word.Word64
  | W4096 Data.ByteString.ByteString
 
 weq :: Prelude.Integer -> Coq_word -> Coq_word -> Prelude.Bool
@@ -16,19 +17,27 @@ weq _ _ _ = False
 
 wlt_dec :: Prelude.Integer -> Coq_word -> Coq_word -> Prelude.Bool
 wlt_dec _ (W64 x) (W64 y) = x < y
-wlt_dec _ _ _ = error "wlt_dec W4096"
+wlt_dec _ _ _ = error "wlt_dec unexpected bits"
 
 wplus :: Prelude.Integer -> Coq_word -> Coq_word -> Coq_word
 wplus _ (W64 x) (W64 y) = W64 (x + y)
-wplus _ _ _ = error "wplus W4096"
+wplus _ _ _ = error "wplus unexpected bits"
 
 wminus :: Prelude.Integer -> Coq_word -> Coq_word -> Coq_word
 wminus _ (W64 x) (W64 y) = W64 (x - y)
-wminus _ _ _ = error "wminus W4096"
+wminus _ _ _ = error "wminus unexpected bits"
 
 wmult :: Prelude.Integer -> Coq_word -> Coq_word -> Coq_word
 wmult _ (W64 x) (W64 y) = W64 (x * y)
-wmult _ _ _ = error "wmult W4096"
+wmult _ _ _ = error "wmult unexpected bits"
+
+wdiv :: Prelude.Integer -> Coq_word -> Coq_word -> Coq_word
+wdiv _ (W64 x) (W64 y) = W64 (x `div` y)
+wdiv _ _ _ = error "wdiv unexpected bits"
+
+wmod :: Prelude.Integer -> Coq_word -> Coq_word -> Coq_word
+wmod _ (W64 x) (W64 y) = W64 (x `mod` y)
+wmod _ _ _ = error "wmod unexpected bits"
 
 natToWord :: Prelude.Integer -> Prelude.Integer -> Coq_word
 natToWord 64 x = W64 (fromIntegral x)
@@ -37,6 +46,10 @@ natToWord 4096 1 = W4096 $ Data.ByteString.append (Data.ByteString.replicate 511
                                                   (Data.ByteString.replicate 1 1)
 natToWord 4096 x = error $ "natToWord unexpected W4096 value: " ++ show x
 natToWord sz _ = error $ "natToWord unexpected size: " ++ show sz
+
+wordToNat :: Prelude.Integer -> Coq_word -> Prelude.Integer
+wordToNat _ (W64 x) = fromIntegral x
+wordToNat n _ = error "wordToNat unsupported " + n
 
 zext :: Prelude.Integer -> Coq_word -> Prelude.Integer -> Coq_word
 zext _ (W64 w) sz' | sz' == 4096-64 = W4096 x
@@ -55,6 +68,13 @@ split1 64 _ (W4096 w) = W64 x
         Right z -> z
 split1 _ _ (W4096 _) = error "split1 not 64"
 split1 _ _ (W64 _) = error "split1 W64"
+split1 _ _ WO = error "split1 WO"
+
+split2 :: Prelude.Integer -> Prelude.Integer -> Coq_word -> Coq_word
+split2 _ _ _ = error "split2 not implemented"
+
+combine :: Prelude.Integer -> Coq_word -> Prelude.Integer -> Coq_word -> Coq_word
+combine _ _ _ _ = error "combine not implemented"
 
 wbit :: Prelude.Integer -> Prelude.Integer -> Coq_word -> Coq_word
 wbit 4096 64 (W64 n) = W4096 $ Data.ByteString.append prefix
@@ -85,5 +105,6 @@ wnot 4096 (W4096 a) = W4096 b
 wnot _ _ = error "wnot not 4096"
 
 instance Show Coq_word where
+  show WO = "[[WO]]"
   show (W64 x) = show x
-  show (W4096 x) = "[[W4096]]"
+  show (W4096 _) = "[[W4096]]"

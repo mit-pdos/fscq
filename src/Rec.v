@@ -128,7 +128,6 @@ Module Rec.
   (* TODO: define recset without tactics (somewhat messy) *)
 
   Theorem set_get_same : forall t n p r v, @recget t n p (recset p r v) = v.
-  Proof.
     induction t; intros.
     contradiction (empty_field_in p).
     destruct a as [n0 ft0]. destruct r as [v0 r'].

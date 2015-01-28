@@ -1,7 +1,7 @@
 module Main where
 
 import System.IO
-import Log
+import MemLog
 import Balloc
 import Prog
 import Word
@@ -60,21 +60,21 @@ run_dcode _ (Done r) = return r
 run_dcode f (Read a rx) = do val <- read_disk f a; run_dcode f $ rx val
 run_dcode f (Write a v rx) = do write_disk f a v; run_dcode f $ rx ()
 
-the_prog :: Log.Coq_xparams -> Prog.Coq_prog ()
-the_prog xp =
-  _LOG__init xp $ \_ ->
-  _LOG__begin xp $ \_ ->
-  _LOG__read xp (W64 5) $ \v ->
-  _LOG__write xp (W64 6) v $ \_ ->
-  _LOG__commit xp $ \_ ->
-  Prog.Done ()
+-- the_prog :: Log.Coq_xparams -> Prog.Coq_prog ()
+-- the_prog xp =
+--   _LOG__init xp $ \_ ->
+--   _LOG__begin xp $ \_ ->
+--   _LOG__read xp (W64 5) $ \v ->
+--   _LOG__write xp (W64 6) v $ \_ ->
+--   _LOG__commit xp $ \_ ->
+--   Prog.Done ()
 
-lxp :: Log.Coq_xparams
-lxp = Log.Build_xparams
-  (W64 0x1000)  -- log length sector
+lxp :: MemLog.Coq_xparams
+lxp = MemLog.Build_xparams
+  (W64 0x1000)  -- log header sector
   (W64 0x1001)  -- commit flag sector
   (W64 0x1010)  -- log start sector
-  (W64 0x1000)  -- log length
+  (W64 0x1000)  -- log length, and MemLog uses one more for a block of addrs
 
 bxp :: Balloc.Coq_xparams
 bxp = Balloc.Build_xparams
@@ -90,11 +90,11 @@ main = do
   then
     do
       putStrLn "Recovering disk.."
-      run_dcode f $ _LOG__recover lxp $ \_ -> Prog.Done ()
+      run_dcode f $ _MEMLOG__recover lxp $ \_ -> Prog.Done ()
   else
     do
       putStrLn "Initializing disk.."
-      run_dcode f $ _LOG__init lxp $ \_ -> Prog.Done ()
+      run_dcode f $ _MEMLOG__init lxp $ \_ -> Prog.Done ()
   putStrLn "Running program.."
   -- r <- run_dcode f $ the_prog lxp
   -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()

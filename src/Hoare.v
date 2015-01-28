@@ -8,9 +8,9 @@ Set Implicit Arguments.
 
 (** ** Hoare logic *)
 
-Definition donecond (T: Set) := T -> @mem valuset -> Prop.
+Definition donecond (T: Type) := T -> @mem valuset -> Prop.
 
-Definition corr2 (T: Set) (pre: donecond T -> pred -> pred) (p: prog T) :=
+Definition corr2 (T: Type) (pre: donecond T -> pred -> pred) (p: prog T) :=
   forall done crash m out, pre done crash m
   -> exec m p out
   -> (exists m' v, out = Finished m' v /\ done v m') \/
@@ -20,7 +20,7 @@ Notation "{{ pre }} p" := (corr2 pre%pred p)
   (at level 0, p at level 60).
 
 
-Definition corr3 (TF TR: Set) (pre: donecond TF -> donecond TR -> pred)
+Definition corr3 (TF TR: Type) (pre: donecond TF -> donecond TR -> pred)
                  (p1: prog TF) (p2: prog TR) :=
   forall done crashdone m out, pre done crashdone m
   -> exec_recover m p1 p2 out
@@ -204,7 +204,7 @@ Proof.
 Qed.
 
 
-Instance corr2_proper {T : Set} :
+Instance corr2_proper {T : Type} :
   Proper (pointwise_relation (donecond T) (pointwise_relation pred piff)
           ==> eq ==> iff) (@corr2 T).
 Proof.
@@ -212,7 +212,7 @@ Proof.
   split; intros; eapply pimpl_ok2; try eassumption; apply Hab.
 Qed.
 
-Instance corr3_proper {T R : Set} :
+Instance corr3_proper {T R : Type} :
   Proper (pointwise_relation (donecond T) (pointwise_relation (donecond R) piff)
           ==> eq ==> eq ==> iff) (@corr3 T R).
 Proof.

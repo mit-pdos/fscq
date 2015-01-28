@@ -157,7 +157,7 @@ Qed.
 Hint Extern 1 ({{_}} If_ _ _ _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
-Record For_args (L : Set) := {
+Record For_args (L : Type) := {
   For_args_i : addr;
   For_args_n : addr;
   For_args_l : L
@@ -172,8 +172,8 @@ Proof.
   apply wlt_lt; auto.
 Qed.
 
-Definition For_ (T: Set)
-                (L : Set) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
+Definition For_ (T: Type)
+                (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
                 (nocrash : G -> addr -> L -> @pred valuset)
                 (crashed : G -> @pred valuset)
@@ -242,7 +242,7 @@ Qed.
 
 Theorem for_ok':
   forall T (n i : addr)
-         (L : Set) (G : Type)
+         (L : Type) (G : Type)
          f (rx: _ -> prog T)
          (nocrash : G -> addr -> L -> pred)
          (crashed : G -> pred)
@@ -359,7 +359,7 @@ Qed.
 
 Theorem for_ok:
   forall T (n : addr)
-         (L : Set) (G : Type)
+         (L : Type) (G : Type)
          f (rx: _ -> prog T)
          (nocrash : G -> addr -> L -> pred)
          (crashed : G -> pred)

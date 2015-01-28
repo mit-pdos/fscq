@@ -1,3 +1,4 @@
+
 (** Fixed precision machine words *)
 
 Require Import Arith Div2 NArith Bool Omega.
@@ -24,6 +25,7 @@ Fixpoint wordToNat sz (w : word sz) : nat :=
     | WS false w' => (wordToNat w') * 2
     | WS true w' => S (wordToNat w' * 2)
   end.
+Arguments wordToNat : simpl nomatch.
 
 Fixpoint wordToNat' sz (w : word sz) : nat :=
   match w with
@@ -35,7 +37,7 @@ Fixpoint wordToNat' sz (w : word sz) : nat :=
 Theorem wordToNat_wordToNat' : forall sz (w : word sz),
   wordToNat w = wordToNat' w.
 Proof.
-  induction w. auto. simpl. rewrite mult_comm. reflexivity.
+  induction w. auto. unfold wordToNat. simpl. rewrite mult_comm. reflexivity.
 Qed.
 
 Fixpoint mod2 (n : nat) : bool :=
@@ -197,7 +199,8 @@ Lemma wordToNat_natToWord' : forall sz w, exists k, wordToNat (natToWord sz w) +
   case_eq (mod2 w); intro Hmw.
 
   specialize (IHsz (div2 w)); firstorder.
-  rewrite wordToNat_wordToNat' in *. 
+  simpl wordToNat.
+  rewrite wordToNat_wordToNat' in *.
   exists x; intuition.
   rewrite mult_assoc.
   rewrite (mult_comm x 2).
@@ -207,8 +210,9 @@ Lemma wordToNat_natToWord' : forall sz w, exists k, wordToNat (natToWord sz w) +
   rewrite <- mult_plus_distr_l.
   rewrite H; clear H.
   symmetry; apply div2_odd; auto.
-  
+
   specialize (IHsz (div2 w)); firstorder.
+  simpl wordToNat.
   exists x; intuition.
   rewrite mult_assoc.
   rewrite (mult_comm x 2).
@@ -1499,6 +1503,7 @@ Proof.
 Qed.
 
 Notation "$ n" := (natToWord _ n) (at level 0).
+Notation "# n" := (wordToNat n) (at level 0).
 
 
 (* Bit shifting *)

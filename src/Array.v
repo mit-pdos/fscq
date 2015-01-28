@@ -43,6 +43,19 @@ Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
 Definition upd_prepend (vs : list valuset) (i : addr) (v : valu) : list valuset :=
   upd vs i (v, valuset_list (sel vs i ($0, nil))).
 
+
+Notation "l [ i ]" := (selN l i _) (at level 56, left associativity).
+Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
+Notation "l $[ i ]" := (sel l i _) (at level 56, left associativity).
+Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
+
+
+(** XXX use [nth] everywhere *)
+Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
+Proof.
+  induction n; intros; destruct l; simpl; auto.
+Qed.
+
 Lemma length_updN : forall T vs n (v : T), length (updN vs n v) = length vs.
 Proof.
   induction vs; destruct n; simpl; intuition.
@@ -141,6 +154,132 @@ Proof.
 Qed.
 
 Hint Rewrite skipn_updN skipn_upd using omega.
+
+Theorem list_selN_ext' : forall len T (a b : list T) default,
+  length a = len
+  -> length b = len
+  -> (forall pos, pos < len -> selN a pos default = selN b pos default)
+  -> a = b.
+Proof.
+  induction len; intros; destruct a; destruct b; simpl in *; try congruence.
+  f_equal.
+  apply (H1 0).
+  omega.
+  eapply IHlen; [ omega | omega | ].
+  intros.
+  apply (H1 (S pos)).
+  omega.
+Qed.
+
+Theorem list_selN_ext : forall T (a b : list T) default,
+  length a = length b
+  -> (forall pos, pos < length a -> selN a pos default = selN b pos default)
+  -> a = b.
+Proof.
+  intros. apply list_selN_ext' with (len:=length a) (default:=default); auto.
+Qed.
+
+
+Ltac nth_selN H := intros; repeat rewrite nth_selN_eq; apply H; assumption.
+
+Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.
+Proof.
+  nth_selN nth_In.
+Qed.
+
+Lemma in_sel : forall t n l (z:t), wordToNat n < length l -> In (sel l n z) l.
+Proof.
+  intros. apply in_selN; assumption.
+Qed.
+
+Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
+  In x l \/ x = xn.
+Proof.
+  induction n; intros; destruct l; intuition; simpl in *; destruct H; auto.
+  destruct (IHn l x xn H); auto.
+Qed.
+
+Lemma in_upd : forall t n l x (xn:t), In x (upd l n xn) ->
+  In x l \/ x = xn.
+Proof.
+  intros. apply in_updN with (n:=wordToNat n); auto.
+Qed.
+
+Lemma Forall_upd : forall t P l n (v:t), Forall P l -> P v -> Forall P (upd l n v).
+Proof.
+  intros. apply Forall_forall. intros v0 Hi. apply in_upd in Hi. destruct Hi.
+  rewrite Forall_forall in H. apply H; assumption.
+  subst. assumption.
+Qed.
+
+Lemma updN_selN_eq : forall T (l : list T) ix default,
+  updN l ix (selN l ix default) = l.
+Proof.
+  induction l; auto.
+  intros. destruct ix. auto. simpl. rewrite IHl. trivial.
+Qed.
+
+Lemma upd_sel_eq : forall T (l : list T) ix default,
+  upd l ix (sel l ix default) = l.
+Proof.
+  unfold upd, sel. intros. apply updN_selN_eq.
+Qed.
+
+Lemma updN_app1 : forall t l l' (v:t) n,
+  n < length l -> updN (l ++ l') n v = updN l n v ++ l'.
+Proof.
+  (* copied from proof of app_nth1 *)
+  induction l.
+  intros.
+  inversion H.
+  intros l' d n.
+  case n; simpl; auto.
+  intros; rewrite IHl; auto with arith.
+Qed.
+
+Lemma updN_app2 : forall t l l' (v:t) n,
+  n >= length l -> updN (l ++ l') n v = l ++ updN l' (n - length l) v.
+Proof.
+  (* copied from proof of app_nth2 *)
+  induction l.
+  intros.
+  simpl.
+  rewrite <- minus_n_O; auto.
+  intros l' d n.
+  case n; simpl; auto.
+  intros.
+  inversion H.
+  intros.
+  rewrite IHl; auto with arith.
+Qed.
+
+Lemma updN_concat : forall t a b m l (v:t), b < m ->
+  Forall (fun sl => length sl = m) l ->
+  updN (fold_right (@app _) nil l) (b + a * m) v =
+    fold_right (@app _) nil (updN l a (updN (selN l a nil) b v)).
+Proof.
+  (* XXX this is almost exactly the same as selN_concat *)
+  induction a; intros; destruct l; simpl; inversion H0.
+  trivial.
+  replace (b + 0) with b by omega. subst.
+  rewrite updN_app1; auto.
+  trivial.
+  subst. remember (a * length l) as al. rewrite updN_app2 by omega.
+  replace (b + (length l + al) - length l) with (b + al) by omega. subst.
+  rewrite IHa; auto.
+Qed.
+
+Lemma selN_app1 : forall t l l' (d:t) n,
+  n < length l -> selN (l ++ l') n d = selN l n d.
+Proof.
+  nth_selN app_nth1.
+Qed.
+
+Lemma selN_app2 : forall t l l' (d:t) n,
+  n >= length l -> selN (l ++ l') n d = selN l' (n - length l) d.
+Proof.
+  nth_selN app_nth2.
+Qed.
 
 Lemma map_ext_in : forall A B (f g : A -> B) l, (forall a, In a l -> f a = g a)
   -> map f l = map g l.
@@ -379,6 +518,34 @@ Proof.
   rewrite natToWord_wordToNat.
   apply pimpl_refl.
 Qed.
+
+Theorem array_isolate : forall V (default : V) (a i : addr) vs stride,
+  wordToNat i < length vs
+  -> array a vs stride <=p=>
+     array a (firstn (wordToNat i) vs) stride
+     * (a ^+ i ^* stride) |-> sel vs i default
+     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+Proof.
+  unfold piff; split.
+  apply isolate_fwd; auto.
+  apply isolate_bwd; auto.
+Qed.
+
+Theorem array_isolate_upd : forall V (v : V) (a i : addr) vs stride,
+  wordToNat i < length vs
+  -> array a (upd vs i v) stride <=p=>
+     array a (firstn (wordToNat i) vs) stride
+     * (a ^+ i ^* stride) |-> v
+     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+Proof.
+  intros.
+  erewrite array_isolate with (vs:=upd vs i v) (i:=i) (default:=v);
+    autorewrite with core; auto.
+  unfold piff; split.
+  cancel; autorewrite with core; cancel.
+  cancel; autorewrite with core; cancel.
+Qed.
+
 
 Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
   wordToNat i < length vs
@@ -787,6 +954,46 @@ Proof.
 Qed.
 
 
+Lemma skipn_length: forall A n (l : list A),
+  n <= length l
+  -> length (skipn n l) = length l - n.
+Proof.
+  induction n; destruct l; intros; firstorder.
+Qed.
+
+Lemma removeN_length: forall A (l : list A) i,
+  i < length l -> length (removeN l i) = length l - 1.
+Proof.
+  unfold removeN; induction l; intros; simpl.
+  unfold length in H; omega.
+  rewrite app_length.
+  rewrite firstn_length; rewrite Nat.min_l; simpl in *; try omega.
+  rewrite skipn_length; omega.
+Qed.
+
+
+Lemma removeN_length_eq: forall A B (a : list A) (b : list B) i,
+  i < length a -> i < length b
+  -> length (removeN a i) = length (removeN b i)
+  -> length a = length b.
+Proof.
+  intros; destruct (Nat.eq_dec (length a) 0); try omega.
+  rewrite removeN_length in H1; auto.
+  rewrite removeN_length in H1; auto.
+  omega.
+Qed.
+
+
+Lemma removeN_tail: forall A (l : list A) a,
+  removeN (l ++ a :: nil) (length l) = l.
+Proof.
+  intros; unfold removeN.
+  rewrite skipn_oob.
+  rewrite firstn_app; firstorder.
+  rewrite app_length; simpl; omega.
+Qed.
+
+
 Lemma selN_removelast : forall A n l (def : A),
   n < length l - 1
   -> selN (removelast l) n def = selN l n def.
@@ -810,134 +1017,28 @@ Proof.
   omega.
 Qed.
 
+Lemma isolate_last: forall A l (a : A) (b:addr),
+  length l <= wordToNat b ->
+  (array $0 (l ++ a :: nil) $1 <=p=>
+   array $0 l $1 * $ (length l) |-> a)%pred.
+Proof.
+  intros.
+  assert (wordToNat (natToWord addrlen (length l)) = length l) as Heq by
+    (eapply wordToNat_natToWord_bound; eauto).
 
+  rewrite array_isolate with (i := $ (length l)) (default := a) by
+    (rewrite app_length; unfold length at 3; omega ).
+  unfold sel; rewrite selN_last by omega.
+  ring_simplify ((natToWord addrlen 0) ^+ $ (length l) ^* $ (1)).
+  replace (wordToNat $ (length l)) with (length l) by auto.
+  rewrite firstn_app by auto.
+  rewrite skipn_oob by (rewrite app_length; simpl; omega).
+  unfold array at 2.
 
+  clear Heq.
+  unfold piff; split; cancel.
+Qed.
 
-(* A general list predicate *)
+  
 
-Section LISTPRED.
-
-  Variable T : Type.
-  Variable V : Type.
-  Variable prd : T -> @pred V.
-
-  Fixpoint listpred (ts : list T) :=
-    match ts with
-    | nil => emp
-    | t :: ts' => (prd t) * listpred ts'
-    end%pred.
-
-  Lemma listpred_nil: forall T V (prd : T -> @pred V),
-    listpred nil = emp.
-  Proof.
-    unfold listpred; intros; auto.
-  Qed.
-
-  Theorem listpred_fwd : forall l i def, 
-    i < length l ->
-      listpred l =p=> listpred (firstn i l) * (prd (selN l i def)) * listpred (skipn (S i) l).
-  Proof.
-    induction l; simpl; intros; [omega |].
-    destruct i; simpl; cancel.
-    apply IHl; omega.
-  Qed.
-
-  Theorem listpred_bwd : forall l i def, 
-    i < length l ->
-      listpred (firstn i l) * (prd (selN l i def)) * listpred (skipn (S i) l) =p=> listpred l.
-  Proof.
-    induction l; simpl; intros; [omega |].
-    destruct i; [cancel | simpl].
-    destruct l; simpl in H; [omega |].
-    cancel.
-    eapply pimpl_trans; [| apply IHl ].
-    cancel.
-    omega.
-  Qed.
-
-  Theorem listpred_extract : forall l i def,
-    i < length l ->
-    listpred l =p=> exists F, F * prd (selN l i def).
-  Proof.
-    intros; rewrite listpred_fwd with (def:=def) by eauto; cancel.
-  Qed.
-
-  Theorem listpred_inj: forall l1 l2,
-     l1 = l2 -> listpred l1 <=p=> listpred l2.
-  Proof.
-     intros; subst; auto.
-  Qed.
-
-  Definition sep_star_fold : (T -> @pred V -> @pred V) := fun x => sep_star (prd x).
-  Definition listpred' := fold_right sep_star_fold emp.
-
-  Theorem listpred_listpred': forall l,
-    listpred l = listpred' l.
-  Proof.
-    induction l; unfold listpred, listpred', sep_star_fold, fold_right; auto.
-  Qed.
-
-  Theorem listpred'_app_fwd: forall l1 l2,
-    listpred' (l1 ++ l2) =p=> listpred' l1 * listpred' l2.
-  Proof.
-    unfold listpred'.
-    induction l1; destruct l2; unfold sep_star_fold; try cancel;
-    rewrite IHl1; unfold sep_star_fold; cancel.
-  Qed.
-
-  Theorem listpred'_app_bwd: forall l1 l2,
-    listpred' l1 * listpred' l2 =p=> listpred' (l1 ++ l2).
-  Proof.
-    unfold listpred'.
-    induction l1; destruct l2; unfold sep_star_fold; try cancel;
-    rewrite <- IHl1; unfold sep_star_fold; cancel.
-  Qed.
-
-  Theorem listpred_app: forall l1 l2,
-    listpred (l1 ++ l2) <=p=> listpred l1 * listpred l2.
-  Proof.
-    intros; replace listpred with listpred'.
-    unfold piff; split.
-    apply listpred'_app_fwd.
-    apply listpred'_app_bwd.
-    apply functional_extensionality.
-    apply listpred_listpred'.
-  Qed.
-
-  Theorem listpred_isolate : forall l i def,
-    i < length l ->
-    listpred l <=p=> listpred (removeN l i) * prd (selN l i def).
-  Proof.
-    intros.
-    unfold removeN.
-    rewrite listpred_app.
-    unfold piff; split.
-    rewrite listpred_fwd by eauto; cancel.
-    eapply pimpl_trans2.
-    apply listpred_bwd; eauto.
-    cancel.
-  Qed.
-
-  Theorem listpred_updN : forall l i v,
-    i < length l ->
-    listpred (updN l i v) <=p=> listpred (removeN l i) * prd v.
-  Proof.
-    intros; rewrite listpred_isolate with (def:=v);
-       [ | rewrite length_updN; eauto].
-    rewrite removeN_updN.
-    rewrite selN_updN_eq; auto.
-  Qed.
-
-  Theorem listpred_updN_selN: forall l i v def,
-    i < length l ->
-    prd (selN l i def) =p=> prd v ->
-    listpred l =p=> listpred (updN l i v).
-  Proof.
-    intros.
-    rewrite listpred_updN by auto.
-    rewrite listpred_isolate with (def:=def) at 1 by eauto.
-    cancel; auto.
-  Qed.
-
-End LISTPRED.
 
