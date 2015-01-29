@@ -185,16 +185,20 @@ Proof.
   destruct (weq n $0); f_equal.
 
   intros.
-  repeat match goal with
+
+  match goal with
   | [ |- context[match ?x with _ => _ end] ] =>
      destruct x; f_equal
   end.
+
+  match goal with
+  | [ |- context[match ?x with _ => _ end] ] =>
+     destruct x; try reflexivity
+  end.
+
+  apply f_equal.
   apply functional_extensionality; auto.
-(* XXX Proof broken: see commits 7a21fca1 and 8fd8b6fd *)
-(*
 Qed.
-*)
-Admitted.
 
 Theorem for_ok':
   forall T (n i : addr)
