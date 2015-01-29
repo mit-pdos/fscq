@@ -67,7 +67,7 @@ Module BFILE.
 
   Definition data_match bxp (v : valu) a := (a |-> v * [[ BALLOC.valid_block bxp a ]])%pred.
 
-  Definition file_match bxp f i : @pred valu := (
+  Definition file_match bxp f i : @pred addrlen valu := (
      listmatch (data_match bxp) (BFData f) (INODE.IBlocks i)
     )%pred.
 

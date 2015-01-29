@@ -218,7 +218,7 @@ Module BALLOC.
     cancel.
     cancel.
     hoare.
-    fold (@sep_star valu).
+    fold (@sep_star addrlen valu).
     cancel.
     cancel.
     hoare.
@@ -246,7 +246,7 @@ Module BALLOC.
     simpl in Hni. tauto.
   Qed.
 
-  Lemma listpred_pick : forall V T (P : T -> @pred V) (x : T) l, 
+  Lemma listpred_pick : forall len V T (P : T -> @pred len V) (x : T) l, 
     In x l -> listpred P l =p=> exists F, P x * F.
   Proof.
     induction l; intro Hi.
@@ -258,7 +258,7 @@ Module BALLOC.
     cancel.
   Qed.
 
-  Lemma disj_union : forall V (a : @mem V) b c, 
+  Lemma disj_union : forall len V (a : @mem len V) b c, 
     mem_disjoint a (mem_union b c) -> mem_disjoint a b.
   Proof.
     unfold mem_disjoint, mem_union.
@@ -271,7 +271,7 @@ Module BALLOC.
   Qed.
 
   Lemma listpred_nodup :
-    forall V T P l (m : @mem V),
+    forall len V T P l (m : @mem len V),
       (forall x y : T, {x = y} + {x <> y}) ->
       (forall (y : T) m', ~ (P y * P y)%pred m') ->
       listpred P l m -> NoDup l.
@@ -295,7 +295,7 @@ Module BALLOC.
   Qed.
 
   Lemma listpred_nodup' :
-    forall V T (P : T -> @pred V) l,
+    forall len V T (P : T -> @pred len V) l,
       (forall x y : T, {x = y} + {x <> y}) ->
       (forall (y : T) m', ~ (P y * P y)%pred m') ->
       listpred P l =p=> [[ NoDup l ]] * listpred P l.
@@ -303,7 +303,7 @@ Module BALLOC.
   Qed.
 
   Lemma listpred_remove :
-    forall V T (dec : forall x y : T, {x = y} + {x <> y}) (P : T -> @pred V) (x : T) l,
+    forall len V T (dec : forall x y : T, {x = y} + {x <> y}) (P : T -> @pred len V) (x : T) l,
       (forall (y : T) m', ~ (P y * P y)%pred m') ->
       In x l ->
       listpred P l =p=> P x * listpred P (remove dec x l).
@@ -347,7 +347,7 @@ Module BALLOC.
     simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
   Qed.
 
-  Lemma ptsto_conflict : forall V x (m : @mem V), ~ (x |->? * x |->?)%pred m.
+  Lemma ptsto_conflict : forall len V x (m : @mem len V), ~ (x |->? * x |->?)%pred m.
   Proof.
     unfold_sep_star; firstorder discriminate.
   Qed.

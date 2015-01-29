@@ -620,7 +620,7 @@ Proof.
 Qed.
 
 
-Lemma emp_star_r: forall V (F:@pred V),
+Lemma emp_star_r: forall len V (F:@pred len V),
   F =p=> (F * emp)%pred.
 Proof.
   intros.
@@ -1043,7 +1043,3 @@ Proof.
   clear Heq.
   unfold piff; split; cancel.
 Qed.
-
-  
-
-

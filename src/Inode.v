@@ -243,7 +243,7 @@ Module INODE.
     ms' <- iput' lxp xp inum i' ms;
     rx ms'.
 
-  Definition inode_match ino (ino' : inode') : @pred valu := (
+  Definition inode_match ino (ino' : inode') : @pred addrlen valu := (
     [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
     [[ ISize ino = ino' :-> "size" ]] *
     (* The following won't hold after introducing indirect blocks.
