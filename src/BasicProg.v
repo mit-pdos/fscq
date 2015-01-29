@@ -118,7 +118,7 @@ Proof.
   - right. eexists; intuition eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Sync _ _) _) => apply sync_ok : prog.
+Hint Extern 1 ({{_}} progseq (Sync _) _) => apply sync_ok : prog.
 
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
