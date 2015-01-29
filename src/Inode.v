@@ -661,7 +661,6 @@ Module INODE.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
 
-      Opaque Rec.recset Rec.recget.
     simpl; autorewrite with inode.
     cancel.
 

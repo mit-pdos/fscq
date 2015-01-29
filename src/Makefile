@@ -4,7 +4,7 @@ MODULES    := Nomega Word WordAuto \
 	      Prog Pred Hoare SepAuto Idempotent \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep ListPred \
-	      MemLog Balloc Inode File Dir \
+	      MemLog Balloc Inode BFile Dir \
 	      Testprog \
 	      ExtrHaskellPrelude Extraction
 	      # TxnWrap Scratch

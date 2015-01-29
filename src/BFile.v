@@ -21,25 +21,25 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-Module FILE.
+Module BFILE.
 
   (* interface implementation *)
 
-  Definition flen T lxp ixp inum ms rx : prog T :=
+  Definition bflen T lxp ixp inum ms rx : prog T :=
     n <- INODE.ilen lxp ixp inum ms;
     rx n.
 
-  Definition fread T lxp ixp inum off ms rx : prog T :=
+  Definition bfread T lxp ixp inum off ms rx : prog T :=
     b <-INODE.iget lxp ixp inum off ms;
     fblock <- MEMLOG.read lxp b ms;
     rx fblock.
 
-  Definition fwrite T lxp ixp inum off v ms rx : prog T :=
+  Definition bfwrite T lxp ixp inum off v ms rx : prog T :=
     b <-INODE.iget lxp ixp inum off ms;
     ok <- MEMLOG.write lxp b v ms;
     rx ok.
 
-  Definition fgrow T lxp bxp ixp inum ms rx : prog T :=
+  Definition bfgrow T lxp bxp ixp inum ms rx : prog T :=
     r <- BALLOC.alloc lxp bxp ms;
     let (bn, ms') := r in
     match bn with
@@ -49,7 +49,7 @@ Module FILE.
         rx (true, ms'')
     end.
 
-  Definition fshrink T lxp bxp ixp inum ms rx : prog T :=
+  Definition bfshrink T lxp bxp ixp inum ms rx : prog T :=
     n <- INODE.ilen lxp ixp inum ms;
     b <- INODE.iget lxp ixp inum (n ^- $1) ms;
     ms' <- BALLOC.free lxp bxp b ms;
@@ -59,40 +59,40 @@ Module FILE.
 
   (* representation invariants *)
 
-  Record file := {
-    FData : list valu
+  Record bfile := {
+    BFData : list valu
   }.
 
-  Definition file0 := Build_file nil.
+  Definition bfile0 := Build_bfile nil.
 
   Definition data_match bxp (v : valu) a := (a |-> v * [[ BALLOC.valid_block bxp a ]])%pred.
 
   Definition file_match bxp f i : @pred valu := (
-     listmatch (data_match bxp) (FData f) (INODE.IBlocks i)
+     listmatch (data_match bxp) (BFData f) (INODE.IBlocks i)
     )%pred.
 
-  Definition rep bxp ixp (flist : list file) :=
+  Definition rep bxp ixp (flist : list bfile) :=
     (exists freeblocks ilist,
      BALLOC.rep bxp freeblocks * INODE.rep ixp ilist *
      listmatch (file_match bxp) flist ilist
     )%pred.
 
 
-  Fact resolve_sel_file0 : forall l i d,
-    d = file0 -> sel l i d = sel l i file0.
+  Fact resolve_sel_bfile0 : forall l i d,
+    d = bfile0 -> sel l i d = sel l i bfile0.
   Proof.
     intros; subst; auto.
   Qed.
 
-  Fact resolve_selN_file0 : forall l i d,
-    d = file0 -> selN l i d = selN l i file0.
+  Fact resolve_selN_bfile0 : forall l i d,
+    d = bfile0 -> selN l i d = selN l i bfile0.
   Proof.
     intros; subst; auto.
   Qed.
 
 
-  Hint Rewrite resolve_sel_file0  using reflexivity : defaults.
-  Hint Rewrite resolve_selN_file0 using reflexivity : defaults.
+  Hint Rewrite resolve_sel_bfile0  using reflexivity : defaults.
+  Hint Rewrite resolve_selN_bfile0 using reflexivity : defaults.
 
   Ltac file_bounds' := match goal with
     | [ H : ?p%pred ?mem |- length ?l <= _ ] =>
@@ -110,17 +110,17 @@ Module FILE.
 
   (* correctness theorems *)
 
-  Theorem flen_ok : forall lxp bxp ixp inum ms,
+  Theorem bflen_ok : forall lxp bxp ixp inum ms,
     {< F A mbase m flist f,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-           [[ r = $ (length (FData f)) ]]
+           [[ r = $ (length (BFData f)) ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} flen lxp ixp inum ms.
+    >} bflen lxp ixp inum ms.
   Proof.
-    unfold flen, rep.
+    unfold bflen, rep.
     hoare.
     list2mem_ptsto_cancel; file_bounds.
 
@@ -131,18 +131,18 @@ Module FILE.
   Qed.
 
 
-  Theorem fread_ok : forall lxp bxp ixp inum off ms,
+  Theorem bfread_ok : forall lxp bxp ixp inum off ms,
     {<F A B mbase m flist f v,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * inum |-> f)%pred (list2mem flist) ]] *
-           [[ (B * off |-> v)%pred (list2mem (FData f)) ]]
+           [[ (B * off |-> v)%pred (list2mem (BFData f)) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = v ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} fread lxp ixp inum off ms.
+    >} bfread lxp ixp inum off ms.
   Proof.
-    unfold fread, rep.
+    unfold bfread, rep.
     hoare.
 
     list2mem_ptsto_cancel; file_bounds.
@@ -162,21 +162,21 @@ Module FILE.
   Qed.
 
 
-  Lemma fwrite_ok : forall lxp bxp ixp inum off v ms,
+  Lemma bfwrite_ok : forall lxp bxp ixp inum off v ms,
     {<F A B mbase m flist f v0,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * inum |-> f)%pred (list2mem flist) ]] *
-             [[ (B * off |-> v0)%pred (list2mem (FData f)) ]]
+             [[ (B * off |-> v0)%pred (list2mem (BFData f)) ]]
     POST:ms' exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-             [[ (B * off |-> v)%pred (list2mem (FData f')) ]]
+             [[ (B * off |-> v)%pred (list2mem (BFData f')) ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} fwrite lxp ixp inum off v ms.
+    >} bfwrite lxp ixp inum off v ms.
   Proof.
-    unfold fwrite, rep.
+    unfold bfwrite, rep.
     step.
     list2mem_ptsto_cancel; file_bounds.
     repeat rewrite_list2mem_pred.
@@ -195,7 +195,7 @@ Module FILE.
     eapply pimpl_ok2; eauto with prog.
     intros; cancel.
 
-    instantiate (a1 := Build_file (upd (FData f) off v)).
+    instantiate (a1 := Build_bfile (upd (BFData b) off v)).
     2: eapply list2mem_upd; eauto.
     2: simpl; eapply list2mem_upd; eauto.
 
@@ -232,10 +232,10 @@ Module FILE.
   Qed.
 
 
-  Theorem fgrow_ok : forall lxp bxp ixp inum ms,
+  Theorem bfgrow_ok : forall lxp bxp ixp inum ms,
     {< F A mbase m flist f,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-             [[ length (FData f) < INODE.blocks_per_inode ]] *
+             [[ length (BFData f) < INODE.blocks_per_inode ]] *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * inum |-> f)%pred (list2mem flist) ]]
     POST:r   exists m', MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
@@ -243,11 +243,11 @@ Module FILE.
              [[ fst r = true ]] * exists flist' f',
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-             [[ length (FData f') = length (FData f) + 1 ]])
+             [[ length (BFData f') = length (BFData f) + 1 ]])
     CRASH    MEMLOG.log_intact lxp mbase
-    >} fgrow lxp bxp ixp inum ms.
+    >} bfgrow lxp bxp ixp inum ms.
   Proof.
-    unfold fgrow, rep.
+    unfold bfgrow, rep.
     hoare.
 
     destruct_listmatch.
@@ -275,7 +275,7 @@ Module FILE.
     intros; cancel.
     eapply pimpl_or_r; right; cancel.
 
-    instantiate (a0 := Build_file (FData f ++ [w0])).
+    instantiate (a0 := Build_bfile (BFData b ++ [w0])).
     2: simpl; eapply list2mem_upd; eauto.
     2: simpl; rewrite app_length; simpl; eauto.
 
@@ -287,7 +287,7 @@ Module FILE.
     inversion H; clear H; subst.
     eapply list2mem_array_app_eq in H13 as Heq; eauto.
     rewrite Heq; clear Heq.
-    rewrite_list2mem_pred_sel H4; subst f.
+    rewrite_list2mem_pred_sel H4; subst b.
     eapply listmatch_app_r; file_bounds.
     unfold data_match; cancel.
 
@@ -308,21 +308,21 @@ Module FILE.
   Qed.
 
 
-  Theorem fshrink_ok : forall lxp bxp ixp inum ms,
+  Theorem bfshrink_ok : forall lxp bxp ixp inum ms,
     {< F A mbase m flist f,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-             [[ length (FData f) > 0 ]] *
+             [[ length (BFData f) > 0 ]] *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * inum |-> f)%pred (list2mem flist) ]]
     POST:ms' exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-             [[ length (FData f') = length (FData f) - 1 ]]
+             [[ length (BFData f') = length (BFData f) - 1 ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} fshrink lxp bxp ixp inum ms.
+    >} bfshrink lxp bxp ixp inum ms.
   Proof.
-    unfold fshrink, rep.
+    unfold bfshrink, rep.
     step.
     list2mem_ptsto_cancel; file_bounds.
     step.
@@ -343,7 +343,7 @@ Module FILE.
     rewrite listmatch_isolate with (i := wordToNat inum); file_bounds.
     unfold file_match at 2; autorewrite with defaults.
     rewrite listmatch_isolate with (prd := data_match bxp)
-      (i := length (FData f) - 1); autorewrite with defaults.
+      (i := length (BFData b) - 1); autorewrite with defaults.
     unfold data_match at 2.
     destruct_listmatch.
     apply listmatch_length_r in H0 as Heq.
@@ -409,7 +409,7 @@ Module FILE.
     eapply pimpl_ok2; eauto with prog; intros.
     cancel.
 
-    instantiate (a1 := Build_file (removelast (FData f))).
+    instantiate (a1 := Build_bfile (removelast (BFData b))).
     2: simpl; eapply list2mem_upd; eauto.
     eapply list2mem_array_upd in H11; file_bounds.
     subst l2; unfold upd, sel.
@@ -433,6 +433,16 @@ Module FILE.
     simpl; apply length_removelast.
     contradict H6; rewrite H6.
     simpl; omega.
-Qed.
+  Qed.
 
-End FILE.
+
+  Hint Extern 1 ({{_}} progseq (bflen _ _ _ _) _) => apply bflen_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfread _ _ _ _ _) _) => apply bfread_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfwrite _ _ _ _ _ _) _) => apply bfwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfgrow _ _ _ _ _) _) => apply bfgrow_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfshrink _ _ _ _ _) _) => apply bfshrink_ok : prog.
+
+  Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
+
+
+End BFILE.
