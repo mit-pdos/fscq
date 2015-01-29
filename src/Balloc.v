@@ -74,6 +74,8 @@ Module BALLOC.
   Qed.
   Hint Rewrite bit_alloc_state_id.
 
+  Definition valid_block xp bn := (bn < BmapNBlocks xp ^* $ valulen)%word.
+
   Definition bmap_bits xp (bmap : addr -> alloc_state) :=
      map (fun i => alloc_state_to_bit (bmap $ (i)))
           (seq 0 (wordToNat (BmapNBlocks xp) * valulen)).
@@ -87,8 +89,9 @@ Module BALLOC.
        (bmap_bits xp bmap))%pred.
 
   Definition free' T lxp xp bn ms rx : prog T :=
-    RecArray.put itemtype items_per_valu blocksz
-      lxp (xp_to_raxp xp) bn (alloc_state_to_bit Avail) ms rx.
+    ms' <- RecArray.put itemtype items_per_valu blocksz
+      lxp (xp_to_raxp xp) bn (alloc_state_to_bit Avail) ms;
+    rx ms'.
 
   Lemma selN_seq : forall a b c d, c < b -> selN (seq a b) c d = a + c.
   Proof.
@@ -130,11 +133,8 @@ Module BALLOC.
     CRASH    MEMLOG.log_intact lxp mbase
     >} free' lxp xp bn ms.
   Proof.
-    unfold free', rep', MEMLOG.log_intact.
-    intros. eapply pimpl_ok2. apply put_ok. (* XXX why doesn't eauto with prog work? *)
-
-    cancel.
-    step.
+    unfold free', rep', valid_block, MEMLOG.log_intact.
+    hoare.
     erewrite upd_bmap_bits; try trivial.
     cancel.
     auto.
@@ -168,6 +168,8 @@ Module BALLOC.
 
   Hint Rewrite natToWord_wordToNat selN_map_seq.
 
+
+
   Theorem alloc'_ok: forall lxp xp ms,
     {< Fm mbase m bmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms * [[ (Fm * rep' xp bmap)%pred (list2mem m) ]]
@@ -175,30 +177,24 @@ Module BALLOC.
            ([[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) ms' \/
             exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-            [[ (Fm * rep' xp (fupd bmap bn InUse))%pred (list2mem m') ]])
+            [[ (Fm * rep' xp (fupd bmap bn InUse))%pred (list2mem m') ]] *
+            [[ valid_block xp bn ]] )
     CRASH  MEMLOG.log_intact lxp mbase
     >} alloc' lxp xp ms.
   Proof.
     unfold alloc', rep'.
     hoare.
-    eapply pimpl_ok2. apply get_ok. (* XXX why doesn't eauto with prog work? *)
-
-    cancel.
-    hoare.
-    eapply pimpl_ok2. apply put_ok.
-    cancel.
-    hoare.
-    apply pimpl_or_r. right.
-    word2nat_auto.
+    apply pimpl_or_r; right.
     cancel.
     rewrite <- H9. unfold bmap_bits, sel.
     autorewrite with core; auto.
+    word2nat_auto.
     erewrite upd_bmap_bits; trivial.
     cancel.
-    trivial.
-    cancel.
-    cancel.
+    auto.
+    word2nat_auto.
   Qed.
+
 
   Hint Extern 1 ({{_}} progseq (alloc' _ _ _) _) => apply alloc'_ok : prog.
 
@@ -363,7 +359,8 @@ Module BALLOC.
            ([[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) ms' \/
             exists bn m' freeblocks', [[ r = Some bn ]] *
             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-            [[ (Fm * bn |->? * rep xp freeblocks')%pred (list2mem m') ]])
+            [[ (Fm * bn |->? * rep xp freeblocks')%pred (list2mem m') ]] *
+            [[ valid_block xp bn ]])
     CRASH  MEMLOG.log_intact lxp mbase
     >} alloc lxp xp ms.
   Proof.
@@ -380,8 +377,8 @@ Module BALLOC.
     inversion H.
     cancel.
     intuition.
-    inversion H.
-    subst; trivial.
+    inversion H; eauto.
+
     pred_apply.
     (* instantiate (a1 := remove (@weq addrlen) a0 l). *)
     erewrite listpred_remove with (dec := @weq addrlen). cancel.
@@ -398,7 +395,10 @@ Module BALLOC.
     rewrite H8; assumption.
     apply ptsto_conflict.
     rewrite H8; assumption.
+    auto.
   Qed.
+
+
 
   Theorem free_ok : forall lxp xp bn ms,
     {< Fm mbase m freeblocks,
