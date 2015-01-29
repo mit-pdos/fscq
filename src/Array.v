@@ -802,14 +802,10 @@ Proof.
   unfold ArrayRead.
   hoare.
 
-  unfold ptsto_set; cancel.
+  instantiate (b:=snd (l $[ i])).
   rewrite <- surjective_pairing; cancel.
-
-  instantiate (default0:=($0, nil)).
-  admit.  (* actually not quite true.. *)
-
-  instantiate (default:=($0, nil)).
-  admit.
+  rewrite <- surjective_pairing; cancel.
+  rewrite <- surjective_pairing; cancel.
 Qed.
 
 Theorem write_ok:
@@ -824,14 +820,6 @@ Theorem write_ok:
 Proof.
   unfold ArrayWrite.
   hoare.
-
-  unfold ptsto_set; cancel.
-  rewrite <- surjective_pairing; cancel.
-
-  admit.  (* actually not quite true.. *)
-
-  instantiate (default:=($0, nil)).
-  admit.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
