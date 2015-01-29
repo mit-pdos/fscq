@@ -2,7 +2,7 @@ Require Import Arith.
 Require Import Bool.
 Require Import List.
 Require Import FMapInterface.
-Require Import FMapList.
+Require Import FMapFacts.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Log.
@@ -10,7 +10,6 @@ Require Import Pred.
 Require Import Prog.
 Require Import Hoare.
 Require Import SepAuto.
-Require Import BasicProg.
 Require Import FunctionalExtensionality.
 Require Import Omega.
 Require Import Word.
@@ -21,16 +20,17 @@ Require Import Eqdep_dec.
 Require Import GenSep.
 
 Set Implicit Arguments.
-
+Import List.ListNotations.
 
 (* XXX parameterize by length and stick in Word.v *)
-Module Addr_as_OT <: UsualOrderedType.
-  Definition t := addr.
+Module addr_as_OT <: UsualOrderedType.
+  Definition WIDTH:=addrlen.
+  Definition t := word WIDTH.
   Definition eq := @eq t.
   Definition eq_refl := @eq_refl t.
   Definition eq_sym := @eq_sym t.
   Definition eq_trans := @eq_trans t.
-  Definition lt := @wlt addrlen.
+  Definition lt := @wlt WIDTH.
 
   Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
   Proof.
@@ -55,42 +55,36 @@ Module Addr_as_OT <: UsualOrderedType.
     apply GT. apply le_neq_lt; auto.
   Defined.
 
-  Definition eq_dec := @weq addrlen.
-End Addr_as_OT.
+  Definition eq_dec := @weq WIDTH.
+End addr_as_OT.
 
-Module Map := FMapList.Make(Addr_as_OT).
+Module MEMLOG (Map:FMapInterface.WSfun addr_as_OT).
+  Definition memstate := Map.t valu.
+  Definition ms_empty := Map.empty valu : memstate.
+  Definition diskstate := list valu.
+  Module MapFacts := WFacts_fun addr_as_OT Map.
+  Module MapProperties := WProperties_fun addr_as_OT Map.
 
-Import ListNotations.
-Set Implicit Arguments.
+  Inductive logstate :=
+  | NoTransaction (cur : diskstate)
+  (* Don't touch the disk directly in this state. *)
+  | ActiveTxn (old : diskstate) (cur : diskstate)
+  (* A transaction is in progress.
+   * It started from the first memory and has evolved into the second.
+   * It has not committed yet. *)
+  | FlushedTxn (old : diskstate) (cur : diskstate)
+  (* A transaction has been flushed to the log, but not committed yet. *)
+  | CommittedTxn (cur : diskstate)
+  (* A transaction has committed but the log has not been applied yet. *).
 
-Definition memstate := Map.t valu.
-Definition ms_empty := Map.empty valu.
+  Record xparams := {
+    (* The actual data region is everything that's not described here *)
+    LogHeader : word addrlen; (* Store the header here *)
+    LogCommit : word addrlen; (* Store true to apply after crash. *)
 
-Definition diskstate := list valu.
-
-Inductive logstate :=
-| NoTransaction (cur : diskstate)
-(* Don't touch the disk directly in this state. *)
-| ActiveTxn (old : diskstate) (cur : diskstate)
-(* A transaction is in progress.
- * It started from the first memory and has evolved into the second.
- * It has not committed yet. *)
-| FlushedTxn (old : diskstate) (cur : diskstate)
-(* A transaction has been flushed to the log, but not committed yet. *)
-| CommittedTxn (cur : diskstate)
-(* A transaction has committed but the log has not been applied yet. *).
-
-Record xparams := {
-  (* The actual data region is everything that's not described here *)
-  LogHeader : addr; (* Store the header here *)
-  LogCommit : addr; (* Store true to apply after crash. *)
-
-  LogStart : addr; (* Start of log region on disk *)
-  LogLen : addr  (* Maximum number of entries in log; length but still use addr type *)
-}.
-
-
-Module MEMLOG.
+    LogStart : word addrlen; (* Start of log region on disk *)
+    LogLen : word addrlen  (* Maximum number of entries in log; length but still use addr type *)
+  }.
 
   Definition header_type := Rec.RecF ([("length", Rec.WordF addrlen)]).
   Definition header := Rec.data header_type.
@@ -176,7 +170,7 @@ Module MEMLOG.
 
   (* Replay the state in memory *)
   Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
-    fold_left (fun m' p => upd m' (fst p) (snd p)) l m.
+    fold_right (fun p m' => upd m' (fst p) (snd p)) m l.
 
   Definition replay (ms : memstate) (m : diskstate) : diskstate :=
     replay' (Map.elements ms) m.
@@ -202,19 +196,93 @@ Module MEMLOG.
   Lemma replay_sel_other : forall a ms m def,
     ~ Map.In a ms -> selN (replay ms m) (wordToNat a) def = selN m (wordToNat a) def.
   Proof.
-    admit.
+    (* intros; rename a into a'; remember (wordToNat a') as a. *)
+    intros a ms m def HnotIn.
+    destruct (MapFacts.elements_in_iff ms a) as [_ Hr].
+    assert (not (exists e : valu, InA (Map.eq_key_elt (elt:=valu))
+      (a, e) (Map.elements ms))) as HnotElem by auto; clear Hr HnotIn.
+    remember (Map.eq_key_elt (elt:=valu)) as eq in *.
+    unfold replay, replay'.
+    remember (Map.elements ms) as elems in *.
+    assert (forall x y, InA eq (x,y) elems -> x <> a) as Hneq. {
+      intros x y Hin.
+      destruct (addr_as_OT.eq_dec a x); [|intuition].
+      destruct HnotElem; exists y; subst; auto.
+    }
+    clear Heqelems HnotElem.
+    induction elems as [|p]; [reflexivity|].
+    rewrite <- IHelems; clear IHelems; [|intros; eapply Hneq; right; eauto].
+    destruct p as [x y]; simpl.
+    assert (x <> a) as Hsep. {
+      apply (Hneq x y); left; subst eq. 
+      apply Equivalence.equiv_reflexive_obligation_1.
+      apply MapProperties.eqke_equiv.
+    }
+    eapply (selN_updN_ne _ y);
+      unfold not; intros; destruct Hsep; apply wordToNat_inj; trivial.
+  Qed.
+
+  Lemma replay'_length : forall V (l:list (addr * V)) (m:list V),
+      length m = length (replay' l m).
+    induction l; [trivial|]; intro.
+    unfold replay'; simpl.
+    rewrite length_upd.
+    eapply IHl.
+  Qed.
+
+  Lemma InA_NotInA_neq : forall T eq, Equivalence eq -> forall l (x y:T),
+      InA eq x l -> ~ (InA eq y l) -> ~ eq x y.
+    intros until 0; intros Eqeq; intros until 0; intros HIn HnotIn.
+    rewrite InA_altdef, Exists_exists in *.
+    intro Hcontra; apply HnotIn; clear HnotIn.
+    elim HIn; clear HIn; intros until 0; intros HIn.
+    destruct HIn as [HIn Heq_x_x0].
+    exists x0. split; [apply HIn|].
+    etransitivity; eauto; symmetry; auto.
   Qed.
 
   Lemma replay'_sel : forall V a (v: V) l m def,
-    KNoDup l -> In (a, v) l -> sel (replay' l m) a def = v.
+    KNoDup l -> In (a, v) l -> wordToNat a < length m -> sel (replay' l m) a def = v.
   Proof.
-    induction l; intros; simpl.
-    admit.
-    admit.
+    intros until 0; intros HNoDup HIn Hbounds.
+
+    induction l as [|p]; [inversion HIn|]; destruct p as [x y]; simpl.
+    destruct HIn. {
+      clear IHl.
+      injection H; clear H;
+        intro H; rewrite H in *; clear H;
+        intro H; rewrite H in *; clear H.
+      apply selN_updN_eq. rewrite <- replay'_length; assumption.
+    } {
+      assert (x <> a) as Hneq. {
+        inversion HNoDup. 
+        assert (InA eq (a,v) l). {
+          apply In_InA; subst; eauto using MapProperties.eqk_equiv.
+        }
+      remember (Map.eq_key (elt:=V)) as eq_key in *.
+      assert (forall a b, eq a b -> eq_key a b) as Heq_eqk by (
+        intros; subst; apply MapProperties.eqk_equiv).
+      assert (forall a l, InA eq a l -> InA eq_key a l) as HIn_eq_eqk by (
+        intros until 0; intro HInAeq; induction HInAeq; [subst|right]; auto).
+      assert (@Equivalence (Map.key*V) eq_key) as Eqeq by (
+        subst eq_key; apply MapProperties.eqk_equiv).
+      intro Hcontra; destruct
+        (@InA_NotInA_neq (Map.key*V) eq_key Eqeq l (a,v) (x,y) (HIn_eq_eqk _ _ H4) H2).
+      subst; unfold Map.eq_key; reflexivity.
+      }
+      unfold sel, upd in *.
+      rewrite selN_updN_ne, IHl;
+        try trivial;
+        match goal with
+          | [ H: KNoDup (?a::?l) |- KNoDup ?l ] => inversion H; assumption
+          | [ Hneq: ?a<>?b |- wordToNat ?a <> wordToNat ?b] =>
+            unfold not; intro Hcontra; destruct (Hneq (wordToNat_inj _  _ Hcontra))
+        end.
+    }
   Qed.
 
   Lemma InA_eqke_In : forall V a v l,
-    InA (Map.Raw.PX.eqke (elt:=V)) (a, v) l -> In (a, v) l.
+    InA (Map.eq_key_elt (elt:=V)) (a, v) l -> In (a, v) l.
   Proof.
     intros.
     induction l.
@@ -250,9 +318,19 @@ Module MEMLOG.
   Lemma replay_sel_invalid : forall a ms m def,
     ~ goodSize addrlen a -> selN (replay ms m) a def = selN m a def.
   Proof.
-    admit.
+    intros; unfold goodSize in *.
+    destruct (lt_dec a (length m)); [|
+      repeat (rewrite selN_oob); unfold replay;
+        try match goal with [H: _ |- length (replay' _ _) <= a]
+            => rewrite <- replay'_length end;
+        auto; omega].
+    unfold replay, replay'.
+    induction (Map.elements ms); [reflexivity|].
+    rewrite <- IHl0; clear IHl0; simpl.
+    unfold upd.
+    rewrite selN_updN_ne.
   Qed.
-  
+
   Lemma replay'_len : forall V l m,
     length (@replay' V l m) = length m.
   Proof.
@@ -260,8 +338,7 @@ Module MEMLOG.
     auto.
     intros.
     simpl.
-    rewrite IHl.
-    apply length_upd.
+    rewrite length_upd, IHl.
   Qed.
 
   Lemma replay_len : forall ms m,
@@ -313,33 +390,27 @@ Module MEMLOG.
 
         erewrite replay_sel_in.
         apply Map.add_2.
-        congruence.
+        unfold not in *; intros; solve [auto].
         eauto.
         eauto.
         
         (* [pos] is not in the transaction *)
-        intro Hf.
-        erewrite replay_sel_other.
-        erewrite replay_sel_other.
-        trivial.
-        intuition.
-        destruct H0.
-        apply Map.find_1 in H0.
-        congruence.
-        
-        intuition.
-        destruct H0.
-        apply Map.add_3 in H0.
-        apply Map.find_1 in H0.
-        congruence.
-        congruence.
-        
+        Ltac wneq H := intro HeqContra; symmetry in HeqContra; apply H; auto.
+        intro Hf; 
+          repeat (erewrite replay_sel_other);
+          try trivial;
+          intro HIn; destruct HIn as [x HIn];
+          try apply Map.add_3 in HIn;
+          try apply Map.find_1 in HIn;
+          try wneq n;
+          replace (Map.find $ (pos) ms) with (Some x) in Hf; inversion Hf.
     - (* [pos] is an invalid address *)
       rewrite replay_sel_invalid by auto.
       unfold upd.
-      rewrite selN_updN_ne by (generalize (wordToNat_bound a); intro Hb; omega).
-      rewrite replay_sel_invalid by auto.
-      trivial.
+      rewrite selN_updN_ne by (
+        generalize (wordToNat_bound a); intro Hb;
+        unfold addr_as_OT.WIDTH in *; omega).
+      rewrite replay_sel_invalid by auto; trivial.
   Qed.
 
 
