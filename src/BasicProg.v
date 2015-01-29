@@ -35,21 +35,21 @@ Ltac inv_exec :=
 Theorem read_ok:
   forall (a:addr),
   {< v,
-  PRE    a |=> v
-  POST:r a |=> v * [[ r = (fst v) ]]
-  CRASH  a |=> v
+  PRE    a |-> v
+  POST:r a |-> v * [[ r = (fst v) ]]
+  CRASH  a |-> v
   >} Read a.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_set_valid in H.
+  - apply sep_star_comm in H; apply ptsto_valid in H.
     repeat deex.
     congruence.
   - eapply H2. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_assoc. apply sep_star_and2lift; split; unfold lift; eauto.
-    apply sep_star_comm in H; apply ptsto_set_valid in H.
+    apply sep_star_comm in H; apply ptsto_valid in H.
     repeat deex.
     repeat inv_option. eauto.
   - right. eexists; intuition eauto.
@@ -57,43 +57,32 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 
-Lemma ptsto_set_upd : forall a v v0 F m,
-  (a |=> v0 * F)%pred m -> (a |=> v * F)%pred (upd m a v).
-Proof.
-  unfold ptsto_set; intros.
-  destruct_lift H.
-  assert ((a |-> v * F)%pred (upd m a v)) by ( eapply ptsto_upd; eauto ).
-  destruct v; pred_apply; cancel.
-Qed.
-
 Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
-  PRE    a |=> v0
-  POST:r a |=> (v, valuset_list v0)
-  CRASH  a |=> v0
+  PRE    a |-> v0
+  POST:r a |-> (v, valuset_list v0)
+  CRASH  a |-> v0
   >} Write a v.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   unfold lift in *; simpl in *.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_set_valid in H.
+  - apply sep_star_comm in H; apply ptsto_valid in H.
     repeat deex.
     congruence.
   - eapply H2; eauto.
     repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_comm. apply sep_star_comm in H.
-    apply ptsto_set_valid in H as H'.
-    repeat deex.
-    rewrite H3 in H8. inversion H8; subst.
+    apply ptsto_valid in H as H'.
+    rewrite H' in H8. inversion H8; subst.
     eapply pimpl_trans; [ apply pimpl_refl | | ].
     apply pimpl_sep_star; [ | apply pimpl_refl ].
-    unfold valuset_list.
-    apply ptsto_incl.
-    apply incl_cons; [ constructor; auto | ].
-    apply incl_tl; eauto.
-    eapply ptsto_set_upd; eauto.
+    unfold valuset_list; simpl.
+    apply pimpl_refl.
+    eapply ptsto_upd.
+    eauto.
   - right. eexists; intuition eauto.
 Qed.
 
@@ -102,16 +91,15 @@ Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
 Theorem sync_ok:
   forall (a:addr),
   {< v,
-  PRE    a |=> v
-  POST:r a |=> (fst v, nil)
-  CRASH  a |=> v
+  PRE    a |-> v
+  POST:r a |-> (fst v, nil)
+  CRASH  a |-> v
   >} Sync a.
 Proof.
   unfold corr2, exis; intros; repeat deex.
   destruct_lift H.
-  destruct x; simpl in *; subst.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_set_valid in H.
+  - apply sep_star_comm in H; apply ptsto_valid in H.
     repeat deex.
     congruence.
   - eapply H4; eauto.
@@ -120,12 +108,11 @@ Proof.
     apply sep_star_comm.
 
     apply sep_star_comm in H as H'.
-    apply ptsto_set_valid in H'.
-    destruct H'; destruct H0.
-    rewrite H6 in H0.
-    inversion H0; simpl in *; subst.
+    apply ptsto_valid in H'.
+    rewrite H' in H6.
+    inversion H6; simpl in *; subst.
 
-    eapply ptsto_set_upd.
+    eapply ptsto_upd.
     apply sep_star_comm.
     eauto.
   - right. eexists; intuition eauto.

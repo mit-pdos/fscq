@@ -58,12 +58,6 @@ Inductive outcome (T: Type) :=
 | Finished (m: @mem valuset) (v: T)
 | Crashed (m: @mem valuset).
 
-Definition mem_sync (m : @mem valuset) : @mem valuset :=
-  fun a => match m a with
-    | None => None
-    | Some (v, l) => Some (v, nil)
-    end.
-
 Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
   -> exec m (Read a rx) (Failed T)

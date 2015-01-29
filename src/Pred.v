@@ -118,28 +118,18 @@ Infix "*" := sep_star : pred_scope.
 
 (* Specializations of ptsto to deal with async IO *)
 
-Definition ptsto_set (a : addr) (vs : valuset) : @pred valuset :=
-  (exists vs_disk, a |-> vs_disk * [[ fst vs_disk = fst vs /\ incl (snd vs_disk) (snd vs) ]])%pred.
-Infix "|=>" := ptsto_set (at level 35) : pred_scope.
+Definition ptsto_synced (a : addr) (v : valu) : @pred valuset :=
+  (a |-> (v, nil))%pred.
+Infix "|=>" := ptsto_synced (at level 35) : pred_scope.
 
 Definition ptsto_cur (a : addr) (v : valu) : @pred valuset :=
-  (exists vs_disk, a |=> vs_disk * [[ fst vs_disk = v ]])%pred.
+  (exists old, a |-> (v, old))%pred.
 Infix "|~>" := ptsto_cur (at level 35) : pred_scope.
 
 
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
 Definition crash_xform (p : pred) : @pred valuset :=
   fun m => exists m', p m' /\ possible_crash m' m.
-
-(* if [p] was true before a sync, then [sync_xform p] is true after a sync *)
-Definition sync_xform (p : pred) : @pred valuset :=
-  fun m => exists m', p m' /\ m = mem_sync m'.
-
-(* if [p] was true before some flushing, then [flush_xform p] is true after some flushing *)
-Definition flush_xform (p : pred) : @pred valuset :=
-  fun m => exists m', p m' /\
-           forall a, (m a = None /\ m' a = None) \/
-           exists v l l', m a = Some (v, l) /\ m' a = Some (v, l') /\ incl l l'.
 
 
 Ltac deex := match goal with
@@ -759,7 +749,7 @@ Qed.
 Theorem sep_star_ptsto_some : forall a (v : V) F m,
   (a |-> v * F)%pred m -> m a = Some v.
 Proof.
-  unfold_sep_star; unfold ptsto, ptsto_set, mem_union, exis.
+  unfold_sep_star; unfold ptsto, mem_union, exis.
   intros.
   repeat deex.
   rewrite H2.
@@ -1037,123 +1027,13 @@ Proof.
 Qed.
 
 
-Theorem sync_xform_apply : forall (p : @pred valuset) m, p m
-  -> sync_xform p (mem_sync m).
+Lemma ptsto_synced_valid:
+  forall a v F m,
+  (a |=> v * F)%pred m
+  -> m a = Some (v, nil).
 Proof.
-  unfold sync_xform; eauto.
-Qed.
-
-Theorem mem_sync_mem_union_dist : forall m1 m2,
-  mem_sync (mem_union m1 m2) = mem_union (mem_sync m1) (mem_sync m2).
-Proof.
-  intros; apply functional_extensionality; intro a.
-  unfold mem_sync, mem_union.
-  destruct (m1 a); destruct (m2 a);
-    repeat match goal with | [ x: valuset |- _ ] => destruct x end;
-    reflexivity.
-Qed.
-
-Theorem mem_sync_mem_disjoint_1 : forall m1 m2,
-  mem_disjoint m1 m2 -> mem_disjoint (mem_sync m1) (mem_sync m2).
-Proof.
-  unfold mem_disjoint, not, mem_sync; intros; repeat deex.
-  destruct (m1 x) eqn:Hm1; try discriminate.
-  destruct (m2 x) eqn:Hm2; try discriminate.
-  destruct v; destruct v0.
-  apply H.
-  do 3 eexists.
-  intuition eauto.
-Qed.
-
-Theorem mem_sync_mem_disjoint_2 : forall m1 m2,
-  mem_disjoint (mem_sync m1) (mem_sync m2) -> mem_disjoint m1 m2.
-Proof.
-  unfold mem_disjoint, not, mem_sync; intros; repeat deex.
-  destruct (m1 x) eqn:Hm1; try discriminate.
-  destruct (m2 x) eqn:Hm2; try discriminate.
-  destruct v; destruct v0.
-  apply H.
-  exists x; do 2 eexists.
-  intuition eauto.
-  rewrite Hm1; eauto.
-  rewrite Hm2; eauto.
-Qed.
-
-Theorem sync_xform_sep_star_dist : forall (p q : pred),
-  sync_xform (p * q) <=p=> sync_xform p * sync_xform q.
-Proof.
-  unfold_sep_star; unfold sync_xform, piff, pimpl; split; intros; repeat deex.
-  - exists (mem_sync x0). exists (mem_sync x1).
-    intuition eauto.
-    rewrite mem_sync_mem_union_dist; auto.
-    apply mem_sync_mem_disjoint_1; auto.
-  - exists (mem_union x0 x1).
-    intuition.
-    exists x0. exists x1.
-    intuition.
-    apply mem_sync_mem_disjoint_2; auto.
-    rewrite mem_sync_mem_union_dist; auto.
-Qed.
-
-Theorem sync_xform_ptsto_set : forall a vs,
-  sync_xform (a |=> vs) =p=> (a |=> vs).
-Proof.
-  unfold sync_xform, ptsto_set, pimpl; intros; repeat deex.
-  destruct H0.
-  apply sep_star_lift_apply in H; destruct H; destruct H0.
-  destruct x0; destruct vs; simpl in *.
-
-  exists (w, nil).
-  apply sep_star_and2lift.
-  split.
-
-  unfold ptsto in *; destruct H.
-  unfold mem_sync; intuition.
-  rewrite H; auto.
-  rewrite H2; auto.
-
-  firstorder.
-Qed.
-
-Theorem sync_xform_ptsto_cur : forall a v,
-  sync_xform (a |~> v) =p=> a |~> v.
-Proof.
-  unfold sync_xform, ptsto_cur, ptsto_set, pimpl; intros; repeat deex.
-  destruct H0.
-  apply sep_star_lift_apply in H; destruct H; destruct H.
-  apply sep_star_lift_apply in H; destruct H; destruct H1.
-  exists (v, nil).
-  apply sep_star_and2lift.
-  destruct x0; destruct x1; simpl in *; subst.
-  split.
-
-  eexists.
-  apply sep_star_and2lift.
-  split.
-
-  unfold ptsto in *; destruct H.
-  unfold mem_sync; intuition.
-  rewrite H; auto.
-  rewrite H0; auto.
-
-  firstorder.
-  firstorder.
-Qed.
-
-Lemma ptsto_set_valid:
-  forall a vs F m,
-  (a |=> vs * F)%pred m
-  -> exists l, m a = Some (fst vs, l) /\ incl l (snd vs).
-Proof.
-  unfold ptsto_set, ptsto, lift_empty; unfold_sep_star; intros.
-  repeat deex.
-  destruct H1.
-  repeat deex.
-  exists (snd x1); intuition.
-  apply mem_union_addr; eauto.
-  apply mem_union_addr; eauto.
-  rewrite <- H5.
-  destruct x1; auto.
+  unfold ptsto_synced; intros.
+  eapply ptsto_valid; eauto.
 Qed.
 
 Lemma ptsto_cur_valid:
@@ -1161,32 +1041,12 @@ Lemma ptsto_cur_valid:
   (a |~> v * F)%pred m
   -> exists l, m a = Some (v, l).
 Proof.
-  unfold ptsto_cur, ptsto_set, ptsto, lift_empty; unfold_sep_star; intros.
+  unfold ptsto_cur, ptsto; unfold_sep_star; intros.
   repeat deex.
   destruct H1.
-  repeat deex.
-  destruct H2.
-  repeat deex.
-  destruct x; simpl in *; subst.
-  eexists; intuition.
-  apply mem_union_addr; eauto.
-  apply mem_union_addr; eauto.
-  apply mem_union_addr; eauto.
-Qed.
-
-Lemma ptsto_incl:
-  forall a v l1 l2, incl l1 l2
-  -> a |=> (v, l1) =p=> a |=> (v, l2).
-Proof.
-  unfold ptsto_set, pimpl; intros.
   destruct H0.
-  exists x.
-  eapply pimpl_apply; [| apply H0 ].
-  simpl.
-  apply sep_star_lift_r.
-  apply sep_star_lift_l.
-  unfold lift; intros; split; intuition.
-  eapply incl_tran; eauto.
+  exists x1.
+  apply mem_union_addr; eauto.
 Qed.
 
 

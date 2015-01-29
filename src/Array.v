@@ -12,6 +12,12 @@ Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
     | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
   end%pred.
 
+Fixpoint arrayR {PT : Type} (ptsto_rel : addr -> valu -> pred) (a : addr) (vs : list valu) (stride : addr) : @pred PT :=
+  match vs with
+    | nil => emp
+    | v :: vs' => (ptsto_rel a v) * arrayR ptsto_rel (a ^+ stride) vs' stride
+  end%pred.
+
 (** * Reading and writing from arrays *)
 
 Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
