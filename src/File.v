@@ -26,7 +26,7 @@ Module FILE.
   (* interface implementation *)
 
   Definition flen T lxp ixp inum ms rx : prog T :=
-    n <- INODE.igetlen lxp ixp inum ms;
+    n <- INODE.ilen lxp ixp inum ms;
     rx n.
 
   Definition fread T lxp ixp inum off ms rx : prog T :=
@@ -50,7 +50,7 @@ Module FILE.
     end.
 
   Definition fshrink T lxp bxp ixp inum ms rx : prog T :=
-    n <- INODE.igetlen lxp ixp inum ms;
+    n <- INODE.ilen lxp ixp inum ms;
     b <- INODE.iget lxp ixp inum (n ^- $1) ms;
     ms' <- BALLOC.free lxp bxp b ms;
     ms'' <- INODE.ishrink lxp ixp inum ms';
