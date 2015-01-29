@@ -11,6 +11,8 @@ Require Import Omega.
 Require Import Rec.
 Require Import Array.
 Require Import ListPred.
+Require Import GenSep.
+Require Import BFile.
 
 Import ListNotations.
 
@@ -50,8 +52,10 @@ Module DIR.
        [[ listpred dmatch delist dmap ]] 
     )%pred.
 
+  Definition dlookup T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
+                       (dnum : addr) (name : word filename_len) (rx : option addr -> prog T) : prog T.
+  Admitted.
 (*
-  Definition dlookup' T lxp ixp dnum name rx : prog T :=
     dlen <- FILE.flen lxp ixp dnum;
     For dblock < dlen
       Ghost mbase m
@@ -90,30 +94,14 @@ Module DIR.
   Theorem dlookup_ok : forall lxp bxp ixp dnum name,
     {< F A mbase m ms flist f dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-           [[ (rep dmap) (list2mem (BFData f)) ]]
+           [[ (rep dmap) (list2mem (BFILE.BFData f)) ]]
     POST:r (exists inum DF, [[ r = Some inum ]] *
             [[ (DF * name |-> inum)%pred dmap ]]) \/
            ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]])
-    CRASH  LOG.log_intact lxp mbase
-    >} dlookup lxp ixp dnum name.
-  Proof.
-    admit.
-  Qed.
-
-  Theorem dlookup'_ok : forall lxp ixp dnum name,
-    {< F mbase m flist dlistlist,
-    PRE    LOG.rep lxp (ActiveTxn mbase m) *
-           [[ (F * FILE.rep ixp flist)%pred m ]] *
-           [[ (dnum < $ (length flist))%word ]] *
-           [[ rep_pair dlistlist (FILE.FileData (sel flist dnum FILE.empty_file)) ]]
-    POST:r [[ r = None ]] * LOG.rep lxp (ActiveTxn mbase m) *
-           [[ ~ exists dlist inum, In (name, (inum, tt)) dlist /\ In dlist dlistlist ]]%type \/
-           exists inum, [[ r = Some inum ]] * LOG.rep lxp (ActiveTxn mbase m) *
-           [[ exists dlist, In (name, (inum, tt)) dlist /\ In dlist dlistlist ]]%type
-    CRASH  LOG.log_intact lxp mbase
-    >} dlookup' lxp ixp dnum name.
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} dlookup lxp bxp ixp dnum name.
   Proof.
     admit.
   Qed.
