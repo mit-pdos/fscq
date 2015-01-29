@@ -2,17 +2,18 @@ Require Import Prog.
 Require Import List.
 Require Import Word.
 Require Import Rec.
-Require Import Pack.
-Require Import Array.
-Require Import File.
+Require Import BFile.
 Require Import BasicProg.
-Require Import Log.
+Require Import MemLog.
 Require Import Hoare.
 Require Import Pred.
 Require Import FMapList.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
+Require Import Rec.
+Require Import Array.
+Require Import ListPred.
 
 Import ListNotations.
 
@@ -64,11 +65,34 @@ Module DIR.
 
   Definition itemsz := Rec.len dirent_type.
   Definition items_per_valu : addr := $16.
-  Theorem itemsz_ok : wordToNat items_per_valu * itemsz = valulen.
+  Theorem itemsz_ok : valulen = wordToNat items_per_valu * itemsz.
   Proof.
     rewrite valulen_is; auto.
   Qed.
 
+   Definition xp_to_raxp (delist: list dirent) :=
+    RecArray.Build_xparams $0 ( $ (length delist) ^/ items_per_valu ).
+
+   Definition rep' (delist : list dirent) :=
+     RecArray.array_item dirent_type items_per_valu itemsz_ok (xp_to_raxp delist) delist %pred.
+
+   Definition dmatch (de: dirent) : @pred filename_len addr :=
+     if weq (de :-> "inum") $0 then
+       emp
+     else
+       (de :-> "name") |-> (de :-> "inum").
+                
+  Definition rep (dmap: @mem filename_len addr) :=
+    (exists delist,
+       rep' delist *
+       [[ listpred dmatch delist dmap ]] 
+    )%pred
+
+  
+  Definition rep bxp ixp (dlist: list DFile) :=
+    (forall d,
+       (exists f : BFile.bfile, (listmatch bxp d f)))%pred.
+  
   (* This looks almost identical to the code in Inode.v..
    * Probably should be factored out into a common pattern.
    * This code has a nicer-looking [rep_pair] that avoids a needless [seq].
