@@ -7,9 +7,6 @@ Require Import BasicProg.
 Require Import MemLog.
 Require Import Hoare.
 Require Import Pred.
-Require Import FMapList.
-Require Import Structures.OrderedType.
-Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import Rec.
 Require Import Array.
@@ -21,41 +18,6 @@ Set Implicit Arguments.
 
 Definition filename_len := (256 - addrlen).
 Definition filename := word filename_len.
-
-Module Filename_as_OT <: UsualOrderedType.
-  Definition t := filename.
-  Definition eq := @eq t.
-  Definition eq_refl := @eq_refl t.
-  Definition eq_sym := @eq_sym t.
-  Definition eq_trans := @eq_trans t.
-  Definition lt := @wlt filename_len.
-
-  Lemma lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
-  Proof.
-    unfold lt; intros.
-    apply wlt_lt in H; apply wlt_lt in H0.
-    apply lt_wlt.
-    omega.
-  Qed.
-
-  Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
-  Proof.
-    unfold lt, eq; intros.
-    apply wlt_lt in H.
-    intro He; subst; omega.
-  Qed.
-
-  Definition compare x y : Compare lt eq x y.
-    unfold lt, eq.
-    destruct (wlt_dec x y); [ apply LT; auto | ].
-    destruct (weq x y); [ apply EQ; auto | ].
-    apply GT. apply le_neq_lt; auto.
-  Defined.
-
-  Definition eq_dec := @weq filename_len.
-End Filename_as_OT.
-
-Module DirFMap := FMapList.Make(Filename_as_OT).
 
 Module DIR.
   Definition dirent_type : Rec.type := Rec.RecF ([("name", Rec.WordF filename_len);
@@ -70,48 +32,25 @@ Module DIR.
     rewrite valulen_is; auto.
   Qed.
 
-   Definition xp_to_raxp (delist: list dirent) :=
+  Definition xp_to_raxp (delist: list dirent) :=
     RecArray.Build_xparams $0 ( $ (length delist) ^/ items_per_valu ).
 
-   Definition rep' (delist : list dirent) :=
-     RecArray.array_item dirent_type items_per_valu itemsz_ok (xp_to_raxp delist) delist %pred.
+  Definition rep' (delist : list dirent) :=
+    RecArray.array_item dirent_type items_per_valu itemsz_ok (xp_to_raxp delist) delist %pred.
 
-   Definition dmatch (de: dirent) : @pred filename_len addr :=
-     if weq (de :-> "inum") $0 then
-       emp
-     else
-       (de :-> "name") |-> (de :-> "inum").
-                
+  Definition dmatch (de: dirent) : @pred filename_len addr :=
+    if weq (de :-> "inum") $0 then
+      emp
+    else
+      (de :-> "name") |-> (de :-> "inum").
+
   Definition rep (dmap: @mem filename_len addr) :=
     (exists delist,
        rep' delist *
        [[ listpred dmatch delist dmap ]] 
-    )%pred
+    )%pred.
 
-  
-  Definition rep bxp ixp (dlist: list DFile) :=
-    (forall d,
-       (exists f : BFile.bfile, (listmatch bxp d f)))%pred.
-  
-  (* This looks almost identical to the code in Inode.v..
-   * Probably should be factored out into a common pattern.
-   * This code has a nicer-looking [rep_pair] that avoids a needless [seq].
-   *)
-  (* XXX puzzle for Adam: what's a good unified abstraction for these
-   * kinds of things, so we don't keep re-proving this in Log.v,
-   * Array.v, Inode.v, Dir.v, etc?
-   *)
-  Definition update_dirent (dirents_in_block : list dirent) :=
-    fun pos v => let d := selN dirents_in_block pos dirent_zero in
-                 let dw := Rec.to_word d in
-                 Pack.update items_per_valu itemsz_ok v $ pos dw.
-
-  Definition rep_block (dirents_in_block : list dirent) :=
-    fold_right (update_dirent dirents_in_block) $0 (seq 0 (wordToNat items_per_valu)).
-
-  Definition rep_pair (dlistlist : list (list dirent)) :=
-    array $0 (map rep_block dlistlist) $1.
-
+(*
   Definition dlookup' T lxp ixp dnum name rx : prog T :=
     dlen <- FILE.flen lxp ixp dnum;
     For dblock < dlen
@@ -146,6 +85,22 @@ Module DIR.
         lrx_outer tt
       Rof;;
     rx None.
+*)
+
+  Theorem dlookup_ok : forall lxp bxp ixp dnum name,
+    {< F A mbase m ms flist f dmap,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+           [[ (rep dmap) (list2mem (BFData f)) ]]
+    POST:r (exists inum DF, [[ r = Some inum ]] *
+            [[ (DF * name |-> inum)%pred dmap ]]) \/
+           ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]])
+    CRASH  LOG.log_intact lxp mbase
+    >} dlookup lxp ixp dnum name.
+  Proof.
+    admit.
+  Qed.
 
   Theorem dlookup'_ok : forall lxp ixp dnum name,
     {< F mbase m flist dlistlist,
@@ -162,15 +117,5 @@ Module DIR.
   Proof.
     admit.
   Qed.
-
-  Definition dirmap := DirFMap.t addr.
-  Definition map_find k (m : dirmap) := DirFMap.find k m.
-  Definition map_update fn inum (m : dirmap) := DirFMap.add fn inum m.
-
-  Definition rep (m : dirmap) :=
-    (exists dlistlist,
-     rep_pair dlistlist *
-     [[ (forall fn inum, map_find fn m = Some inum <->
-                         exists dlist, In dlist dlistlist /\ In (fn, (inum, tt)) dlist)%type ]])%pred.
 
 End DIR.
