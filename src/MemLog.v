@@ -66,14 +66,29 @@ Definition diskstate := list valu.
 Inductive logstate :=
 | NoTransaction (cur : diskstate)
 (* Don't touch the disk directly in this state. *)
+
 | ActiveTxn (old : diskstate) (cur : diskstate)
 (* A transaction is in progress.
  * It started from the first memory and has evolved into the second.
  * It has not committed yet. *)
+
 | FlushedTxn (old : diskstate) (cur : diskstate)
-(* A transaction has been flushed to the log, but not committed yet. *)
+(* A transaction has been flushed to the log, but not sync'ed or
+ * committed yet. *)
+
+| SyncedTxn (old : diskstate) (cur : diskstate)
+(* Like FlushedTxn above, except that we sync'ed the log.
+ * For external API purposes, this can be just a subset of FlushedTxn.
+ *)
+
+| CommittedUnsyncTxn (cur : diskstate)
+(* We wrote but have not flushed the commit bit yet. *)
+
 | CommittedTxn (cur : diskstate)
-(* A transaction has committed but the log has not been applied yet. *).
+(* A transaction has committed but the log has not been applied yet. *)
+
+| AppliedTxn (cur : diskstate)
+(* A transaction has been committed, applied, and flushed. *).
 
 Record xparams := {
   (* The actual data region is everything that's not described here *)
@@ -185,7 +200,7 @@ Module MEMLOG.
   Definition replay (ms : memstate) (m : diskstate) : diskstate :=
     replay' (Map.elements ms) m.
 
-  Definition avail_region start len : @pred valu :=
+  Definition avail_region start len : @pred valuset :=
     (exists l, [[ length l = len ]] * array start l $1)%pred.
 
   Theorem avail_region_shrink_one : forall start len,
@@ -199,49 +214,93 @@ Module MEMLOG.
   Qed.
 
   (** On-disk representation of the log *)
-  Definition log_rep xp m (ms : memstate) : pred :=
-     ((LogHeader xp) |-> header_to_valu (mk_header (Map.cardinal ms)) *
+  Definition log_rep xp (ptsto_rel : addr -> valu -> pred) m (ms : memstate) : @pred valuset :=
+     (ptsto_rel (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms))) *
       [[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
-      exists rest, (LogStart xp) |-> descriptor_to_valu (map fst (Map.elements ms) ++ rest) *
+      exists rest,
+      (ptsto_rel (LogStart xp) (descriptor_to_valu (map fst (Map.elements ms) ++ rest))) *
       [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]] *
-      array (LogStart xp ^+ $1) (map snd (Map.elements ms)) $1 *
+      arrayR ptsto_rel (LogStart xp ^+ $1) (map snd (Map.elements ms)) $1 *
       avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms))
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
-  Definition data_rep (xp: xparams) (m: diskstate) : pred :=
-    array $0 m $1.
+  Definition data_rep (xp: xparams) (ptsto_rel : addr -> valu -> pred) (m: diskstate) : @pred valuset :=
+    arrayR ptsto_rel $0 m $1.
 
-  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred valu :=
+  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred valuset :=
     [[ cur = replay ms old ]]%pred.
+
+  (**
+   * This specialized variant of [ptsto] is used for the [CommittedTxn] state.
+   *
+   * Because we don't want to flush on every block during apply, we want to
+   * use [ptsto_cur] for parts of the disk that are being modified during log
+   * apply.  But using [ptsto_cur] for the entire data portion of the disk is
+   * too loose: this implies that even blocks that are not being modified by
+   * the log could be in flux.  So if we crash, some unrelated block might
+   * change its value, and replaying the log will do nothing to recover from
+   * this change.
+   *
+   * Instead, we want to say that any blocks that are present in [ms] can be
+   * in flux (i.e., use [ptsto_cur]), and all other blocks cannot be in flux
+   * (i.e., use [ptsto_synced]).
+   *)
+  Definition ptsto_cur_for_log (ms : memstate) (a : addr) (v : valu) :=
+    match Map.find a ms with
+    | None => a |=> v
+    | Some _ => a |~> v
+    end%pred.
 
   Definition rep xp (st: logstate) (ms: memstate) :=
     (* For now, support just one descriptor block, at the start of the log. *)
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
     match st with
     | NoTransaction m =>
-      (LogCommit xp) |-> $0
+      (LogCommit xp) |-> ($0, nil)
     * [[ ms = ms_empty ]]
-    * data_rep xp m
+    * data_rep xp ptsto_synced m
     * (LogHeader xp) |->?
     * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
+
     | ActiveTxn old cur =>
-      (LogCommit xp) |-> $0
-    * data_rep xp old (* Transactions are always completely buffered in memory. *)
+      (LogCommit xp) |-> ($0, nil)
+    * data_rep xp ptsto_synced old (* Transactions are always completely buffered in memory. *)
     * (LogHeader xp) |->?
     * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
     * cur_rep old ms cur
     * [[ valid_entries old ms ]]
+
     | FlushedTxn old cur =>
-      (LogCommit xp) |-> $0
-    * data_rep xp old
-    * log_rep xp old ms
+      (LogCommit xp) |-> ($0, nil)
+    * data_rep xp ptsto_synced old
+    * log_rep xp ptsto_cur old ms
     * cur_rep old ms cur
+
+    | SyncedTxn old cur =>
+      (LogCommit xp) |-> ($0, nil)
+    * data_rep xp ptsto_synced old
+    * log_rep xp ptsto_synced old ms
+    * cur_rep old ms cur
+
+    | CommittedUnsyncTxn cur =>
+      (LogCommit xp) |-> ($1, $0 :: nil)
+    * exists old, data_rep xp ptsto_synced old
+    * log_rep xp ptsto_synced old ms
+    * cur_rep old ms cur
+
     | CommittedTxn cur =>
-      (LogCommit xp) |-> $1
-    * exists old, data_rep xp old
-    * log_rep xp old ms
+      (LogCommit xp) |-> ($1, nil)
+    * exists old, data_rep xp (ptsto_cur_for_log ms) old
+    * log_rep xp ptsto_synced old ms
     * cur_rep old ms cur
+
+    | AppliedTxn cur =>
+      (LogCommit xp) |->?
+    * data_rep xp ptsto_synced cur
+    * log_rep xp ptsto_synced cur ms
+    * cur_rep cur ms cur
+
     end)%pred.
 
   Definition init T xp rx : prog T :=
@@ -257,7 +316,7 @@ Module MEMLOG.
   Theorem init_ok : forall xp,
     {< old,
     PRE    [[ wordToNat (LogLen xp) <= addr_per_block ]] *
-           data_rep xp old *
+           data_rep xp ptsto_cur old *
            avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
            (LogCommit xp) |->? *
            (LogHeader xp) |->?
