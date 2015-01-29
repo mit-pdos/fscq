@@ -185,7 +185,7 @@ Module MEMLOG.
   Definition replay (ms : memstate) (m : diskstate) : diskstate :=
     replay' (Map.elements ms) m.
 
-  Definition avail_region start len : @pred valu :=
+  Definition avail_region start len : @pred addrlen valu :=
     (exists l, [[ length l = len ]] * array start l $1)%pred.
 
   Theorem avail_region_shrink_one : forall start len,
@@ -212,7 +212,7 @@ Module MEMLOG.
   Definition data_rep (xp: xparams) (m: diskstate) : pred :=
     array $0 m $1.
 
-  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred valu :=
+  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addrlen valu :=
     [[ cur = replay ms old ]]%pred.
 
   Definition rep xp (st: logstate) (ms: memstate) :=

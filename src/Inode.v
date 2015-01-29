@@ -196,8 +196,6 @@ Module INODE.
   Hint Rewrite inode_set_size_get_len : inode.
   Hint Rewrite inode_set_size_get_size : inode.
 
-
-
   (* separation logic based theorems *)
 
   Record inode := {
@@ -243,7 +241,7 @@ Module INODE.
     ms' <- iput' lxp xp inum i' ms;
     rx ms'.
 
-  Definition inode_match ino (ino' : inode') : @pred valu := (
+  Definition inode_match ino (ino' : inode') : @pred addrlen valu := (
     [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
     [[ ISize ino = ino' :-> "size" ]] *
     (* The following won't hold after introducing indirect blocks.
@@ -384,6 +382,18 @@ Module INODE.
                        repeat (inode_bounds'; solve_length_eq);
                        try list2mem_bound; eauto.
 
+
+  Ltac autorewrite_inode' :=
+    (rewrite_strat (topdown (hints inode)));
+    try autorewrite_inode'.
+
+  Ltac autorewrite_inode := 
+    unfold sel, upd; simpl;
+    autorewrite with defaults;
+    autorewrite_inode';
+    autorewrite with core; inode_bounds.
+
+
   Hint Extern 0 (okToUnify (rep' _ _) (rep' _ _)) => constructor : okToUnify.
 
   Theorem ilen_ok : forall lxp xp inum ms,
@@ -459,7 +469,7 @@ Module INODE.
     destruct_listmatch.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
-    simpl; autorewrite with inode.
+    autorewrite_inode.
     cancel.
     auto.
   Qed.
@@ -527,10 +537,9 @@ Module INODE.
     unfold upd.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
-    simpl; autorewrite with inode.
+    autorewrite_inode.
     cancel.
-    rewrite length_updN; inode_bounds.
-    rewrite length_updN; rewrite updN_firstn_comm; inode_bounds.
+    rewrite updN_firstn_comm; inode_bounds.
   Qed.
 
 
@@ -598,7 +607,7 @@ Module INODE.
 
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
-    simpl; autorewrite with inode.
+    autorewrite_inode.
     cancel.
 
     (* omega doesn't work well *)
@@ -661,7 +670,7 @@ Module INODE.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
 
-    simpl; autorewrite with inode.
+    autorewrite_inode.
     cancel.
 
     (* omega doesn't work well *)

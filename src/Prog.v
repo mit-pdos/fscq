@@ -43,14 +43,14 @@ Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right asso
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
 
 
-Definition mem {V: Type} := addr -> option V.
-Definition upd {V: Type} (m : mem) (a : addr) (v : V) : mem :=
-  fun a' => if addr_eq_dec a' a then Some v else m a'.
+Definition mem {len : nat} {V : Type} := word len -> option V.
+Definition upd {len : nat} {V: Type} (m : mem) (a : word len) (v : V) : mem :=
+  fun a' => if weq a' a then Some v else m a'.
 
 Inductive outcome (T: Type) :=
 | Failed
-| Finished (m: @mem valu) (v: T)
-| Crashed (m: @mem valu).
+| Finished (m: @mem addrlen valu) (v: T)
+| Crashed (m: @mem addrlen valu).
 
 Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
@@ -71,8 +71,8 @@ Hint Constructors exec.
 
 Inductive recover_outcome (TF TR: Type) :=
 | RFailed
-| RFinished (m: @mem valu) (v: TF)
-| RRecovered (m: @mem valu) (v: TR).
+| RFinished (m: @mem addrlen valu) (v: TF)
+| RRecovered (m: @mem addrlen valu) (v: TR).
 
 Inductive exec_recover (TF TR: Type)
   : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
@@ -97,36 +97,36 @@ Section GenMem.
 
 Variable V : Type.
 
-Theorem upd_eq : forall m a (v:V) a',
+Theorem upd_eq : forall len m (a : word len) (v:V) a',
   a' = a
   -> upd m a v a' = Some v.
 Proof.
   intros; subst; unfold upd.
-  destruct (addr_eq_dec a a); tauto.
+  destruct (weq a a); tauto.
 Qed.
 
-Theorem upd_ne : forall m a (v:V) a',
+Theorem upd_ne : forall len m (a : word len) (v:V) a',
   a' <> a
   -> upd m a v a' = m a'.
 Proof.
   intros; subst; unfold upd.
-  destruct (addr_eq_dec a' a); tauto.
+  destruct (weq a' a); tauto.
 Qed.
 
-Theorem upd_repeat: forall m a (v v':V),
+Theorem upd_repeat: forall len m (a : word len) (v v':V),
   upd (upd m a v') a v = upd m a v.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (addr_eq_dec a x); intros; subst.
+  case_eq (weq a x); intros; subst.
   repeat rewrite upd_eq; auto.
   repeat rewrite upd_ne; auto.
 Qed.
 
-Theorem upd_comm: forall m a0 (v0:V) a1 v1, a0 <> a1
+Theorem upd_comm: forall len m (a0 : word len) (v0:V) a1 v1, a0 <> a1
   -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (addr_eq_dec a1 x); case_eq (addr_eq_dec a0 x); intros; subst.
+  case_eq (weq a1 x); case_eq (weq a0 x); intros; subst.
   rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
   rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
   rewrite upd_ne; auto. rewrite upd_eq; auto. rewrite upd_eq; auto.

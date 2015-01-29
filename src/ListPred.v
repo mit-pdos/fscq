@@ -10,8 +10,9 @@ A general list predicate *)
 Section LISTPRED.
 
   Variable T : Type.
+  Variable len : nat.
   Variable V : Type.
-  Variable prd : T -> @pred V.
+  Variable prd : T -> @pred len V.
 
   Fixpoint listpred (ts : list T) :=
     match ts with
@@ -19,7 +20,7 @@ Section LISTPRED.
     | t :: ts' => (prd t) * listpred ts'
     end%pred.
 
-  Lemma listpred_nil: forall T V (prd : T -> @pred V),
+  Lemma listpred_nil: forall T len V (prd : T -> @pred len V),
     listpred nil = emp.
   Proof.
     unfold listpred; intros; auto.
@@ -60,7 +61,7 @@ Section LISTPRED.
      intros; subst; auto.
   Qed.
 
-  Definition sep_star_fold : (T -> @pred V -> @pred V) := fun x => sep_star (prd x).
+  Definition sep_star_fold : (T -> @pred len V -> @pred len V) := fun x => sep_star (prd x).
   Definition listpred' := fold_right sep_star_fold emp.
 
   Theorem listpred_listpred': forall l,
@@ -140,8 +141,9 @@ Section LISTMATCH.
 
   Variable A : Type.
   Variable B : Type.
+  Variable len : nat.
   Variable V : Type.
-  Variable prd : A -> B -> @pred V.
+  Variable prd : A -> B -> @pred len V.
 
   Definition pprd := prod_curry prd.
 

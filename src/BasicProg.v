@@ -127,8 +127,8 @@ Qed.
 Definition For_ (T: Type)
                 (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
-                (nocrash : G -> addr -> L -> @pred valu)
-                (crashed : G -> @pred valu)
+                (nocrash : G -> addr -> L -> @pred addrlen valu)
+                (crashed : G -> @pred addrlen valu)
                 (rx: L -> prog T) : prog T.
   refine (Fix (@for_args_wf L) (fun _ => prog T)
           (fun args For_ => _)
@@ -185,10 +185,18 @@ Proof.
   destruct (weq n $0); f_equal.
 
   intros.
-  repeat match goal with
+
+  match goal with
   | [ |- context[match ?x with _ => _ end] ] =>
      destruct x; f_equal
   end.
+
+  match goal with
+  | [ |- context[match ?x with _ => _ end] ] =>
+     destruct x; try reflexivity
+  end.
+
+  apply f_equal.
   apply functional_extensionality; auto.
 Qed.
 

@@ -88,7 +88,7 @@ Proof.
   unfold list2mem, sel, upd, Prog.upd.
   autorewrite with core.
 
-  destruct (addr_eq_dec x i).
+  destruct (weq x i).
   subst; erewrite selN_updN_eq; auto.
   rewrite map_length; auto.
   erewrite selN_updN_ne; auto.
@@ -120,13 +120,13 @@ Proof.
   - apply wlt_lt in w.
     erewrite wordToNat_natToWord_bound in w; eauto.
     subst; rewrite selN_map with (default' := a).
-    destruct (addr_eq_dec x $ (length l)); subst.
+    destruct (weq x $ (length l)); subst.
     + erewrite wordToNat_natToWord_bound in *; eauto.
       rewrite selN_last; auto.
     + rewrite selN_map with (default' := a); auto.
       rewrite selN_app; auto.
     + rewrite app_length; simpl; omega.
-  - destruct (addr_eq_dec x $ (length l)).
+  - destruct (weq x $ (length l)).
     + subst; erewrite selN_map with (default' := a).
       rewrite selN_last; auto.
       eapply wordToNat_natToWord_bound; eauto.
@@ -144,7 +144,7 @@ Proof.
 Qed.
 
 
-Theorem list2mem_app: forall A (F : @pred A) l a (b : addr),
+Theorem list2mem_app: forall A (F : @pred addrlen A) l a (b : addr),
   length l <= wordToNat b
   -> F (list2mem l)
   -> (F * $ (length l) |-> a)%pred (list2mem (l ++ a :: nil)).
@@ -200,7 +200,7 @@ Proof.
 Qed.
 
 
-Lemma mem_disjoint_either: forall V (m1 m2 : @mem V) a v,
+Lemma mem_disjoint_either: forall len V (m1 m2 : @mem len V) a v,
   mem_disjoint m1 m2
   -> m1 a = Some v -> m2 a = None.
 Proof.
@@ -388,7 +388,7 @@ Proof.
 Qed.
 
 
-Theorem list2mem_array_app_eq: forall A V (F : @pred V) (l l' : list A) a (b : addr),
+Theorem list2mem_array_app_eq: forall A len V (F : @pred len V) (l l' : list A) a (b : addr),
   length l < wordToNat b
   -> length l' <= wordToNat b
   -> (array $0 l $1 * $ (length l) |-> a)%pred (list2mem l')
