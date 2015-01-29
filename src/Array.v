@@ -6,17 +6,13 @@ Set Implicit Arguments.
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
-Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
-  match vs with
-    | nil => emp
-    | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
-  end%pred.
-
-Fixpoint arrayR {PT : Type} (ptsto_rel : addr -> valu -> pred) (a : addr) (vs : list valu) (stride : addr) : @pred PT :=
+Fixpoint arrayR {V : Type} {PT : Type} (ptsto_rel : addr -> V -> @pred PT) (a : addr) (vs : list V) (stride : addr) : @pred PT :=
   match vs with
     | nil => emp
     | v :: vs' => (ptsto_rel a v) * arrayR ptsto_rel (a ^+ stride) vs' stride
   end%pred.
+
+Definition array {V} := arrayR (@ptsto V).
 
 (** * Reading and writing from arrays *)
 
@@ -445,11 +441,11 @@ Qed.
 
 (** * Isolating an array cell *)
 
-Lemma isolate_fwd' : forall V vs i a stride (default : V),
+Lemma isolate_fwd' : forall PT V ptsto_rel vs i a stride (default : V),
   i < length vs
-  -> array a vs stride =p=> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i default
-     * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
+  -> arrayR (PT:=PT) ptsto_rel a vs stride =p=> arrayR ptsto_rel a (firstn i vs) stride
+     * ptsto_rel (a ^+ $ i ^* stride) (selN vs i default)
+     * arrayR ptsto_rel (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
 Proof.
   induction vs; simpl; intuition.
 
@@ -471,11 +467,11 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_fwd : forall V (default : V) (a i : addr) vs stride,
+Theorem isolate_fwd : forall PT V (default : V) ptsto_rel (a i : addr) vs stride,
   wordToNat i < length vs
-  -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+  -> arrayR (PT:=PT) ptsto_rel a vs stride =p=> arrayR ptsto_rel a (firstn (wordToNat i) vs) stride
+     * ptsto_rel (a ^+ i ^* stride) (sel vs i default)
+     * arrayR ptsto_rel (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
   eapply pimpl_trans; [ apply isolate_fwd' | ].
@@ -484,12 +480,12 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Lemma isolate_bwd' : forall V vs i a stride (default : V),
+Lemma isolate_bwd' : forall PT V ptsto_rel vs i a stride (default : V),
   i < length vs
-  -> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i default
-     * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
-  =p=> array a vs stride.
+  -> arrayR (PT:=PT) ptsto_rel a (firstn i vs) stride
+     * ptsto_rel (a ^+ $ i ^* stride) (selN vs i default)
+     * arrayR ptsto_rel (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
+  =p=> arrayR ptsto_rel a vs stride.
 Proof.
   induction vs; simpl; intuition.
 
@@ -511,12 +507,12 @@ Proof.
   cancel.
 Qed.
 
-Theorem isolate_bwd : forall V (default : V) (a i : addr) vs stride,
+Theorem isolate_bwd : forall PT V ptsto_rel (default : V) (a i : addr) vs stride,
   wordToNat i < length vs
-  -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
-  =p=> array a vs stride.
+  -> arrayR (PT:=PT) ptsto_rel a (firstn (wordToNat i) vs) stride
+     * ptsto_rel (a ^+ i ^* stride) (sel vs i default)
+     * arrayR ptsto_rel (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
+  =p=> arrayR ptsto_rel a vs stride.
 Proof.
   intros.
   eapply pimpl_trans; [ | apply isolate_bwd' ].
@@ -525,24 +521,24 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Theorem array_isolate : forall V (default : V) (a i : addr) vs stride,
+Theorem array_isolate : forall PT V ptsto_rel (default : V) (a i : addr) vs stride,
   wordToNat i < length vs
-  -> array a vs stride <=p=>
-     array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+  -> arrayR (PT:=PT) ptsto_rel a vs stride <=p=>
+     arrayR ptsto_rel a (firstn (wordToNat i) vs) stride
+     * ptsto_rel (a ^+ i ^* stride) (sel vs i default)
+     * arrayR ptsto_rel (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   unfold piff; split.
   apply isolate_fwd; auto.
   apply isolate_bwd; auto.
 Qed.
 
-Theorem array_isolate_upd : forall V (v : V) (a i : addr) vs stride,
+Theorem array_isolate_upd : forall PT V ptsto_rel (v : V) (a i : addr) vs stride,
   wordToNat i < length vs
-  -> array a (upd vs i v) stride <=p=>
-     array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> v
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+  -> arrayR (PT:=PT) ptsto_rel a (upd vs i v) stride <=p=>
+     arrayR ptsto_rel a (firstn (wordToNat i) vs) stride
+     * ptsto_rel (a ^+ i ^* stride) v
+     * arrayR ptsto_rel (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
 Proof.
   intros.
   erewrite array_isolate with (vs:=upd vs i v) (i:=i) (default:=v);
@@ -553,12 +549,12 @@ Proof.
 Qed.
 
 
-Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
+Theorem isolate_bwd_upd : forall PT V ptsto_rel (v : V) (a i : addr) vs stride,
   wordToNat i < length vs
-  -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> v
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
-     =p=> array a (upd vs i v) stride.
+  -> arrayR (PT:=PT) ptsto_rel a (firstn (wordToNat i) vs) stride
+     * ptsto_rel (a ^+ i ^* stride) v
+     * arrayR ptsto_rel (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
+     =p=> arrayR ptsto_rel a (upd vs i v) stride.
 Proof.
   intros.
   erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i) (default:=v).
@@ -583,7 +579,7 @@ Proof.
   unfold sel; rewrite selN_updN_eq by auto.
   cancel.
   pred_apply.
-  rewrite isolate_fwd with (default:=default) by eassumption.
+  unfold array; rewrite isolate_fwd with (default:=default) by eassumption.
   simpl.
   rewrite firstn_updN by auto.
   rewrite skipn_updN by auto.
@@ -596,7 +592,7 @@ Lemma array_oob': forall A (l : list A) a i m,
   -> array a l $1 m
   -> m (a ^+ i)%word = None.
 Proof.
-  induction l; intros; auto; simpl in *.
+  induction l; intros; auto; unfold array in *; simpl in *.
   destruct (weq i $0); auto.
   subst; simpl in *; omega.
 
@@ -755,7 +751,7 @@ Proof.
   unfold sel; rewrite H1; rewrite firstn_app; auto.
   rewrite selN_last; auto.
   rewrite skipn_oob; [ | rewrite app_length; simpl; omega ].
-  unfold array at 2; auto; apply emp_star_r.
+  unfold arrayR at 2; auto; apply emp_star_r.
   ring_simplify ($ (0) ^+ $ (length l) ^* natToWord addrlen (1)).
   replace (0 + length l * 1) with (length l) by omega; auto.
 
@@ -776,12 +772,12 @@ Qed.
 (** * Operations for array accesses, to guide automation *)
 
 Definition ArrayRead T a i stride rx : prog T :=
-  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
+  Xform (fun PT => isolate_fwd (PT:=PT) (V:=valuset) ($0, nil)) isolate_bwd
     (v <- Read (a ^+ i ^* stride);
      Xform isolate_bwd pimpl_refl (rx v)).
 
 Definition ArrayWrite T a i stride v rx : prog T :=
-  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
+  Xform (fun PT => isolate_fwd (PT:=PT) (V:=valuset) ($0, nil)) isolate_bwd
     (v <- Write (a ^+ i ^* stride) v;
      Xform isolate_bwd_upd pimpl_refl (rx v)).
 
@@ -789,6 +785,7 @@ Definition ArrayWrite T a i stride v rx : prog T :=
 (** * Hoare rules *)
 
 Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (arrayR _ _ _ _) (arrayR _ _ _ _)) => constructor : okToUnify.
 
 Theorem read_ok:
   forall T (a i stride:addr) (rx:valu->prog T),
@@ -799,7 +796,7 @@ Theorem read_ok:
    * [[array a vs stride * F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
-  unfold ArrayRead.
+  unfold ArrayRead, array.
   hoare.
 
   instantiate (b:=snd (l $[ i])).
@@ -818,7 +815,7 @@ Theorem write_ok:
    * [[ array a vs stride * F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
-  unfold ArrayWrite.
+  unfold ArrayWrite, array.
   hoare.
 Qed.
 
@@ -826,6 +823,8 @@ Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _ _) _) => apply write_ok : prog.
 
 Hint Extern 0 (okToUnify (array ?base ?l ?stride) (array ?base ?r ?stride)) =>
+  unfold okToUnify; constructor : okToUnify.
+Hint Extern 0 (okToUnify (arrayR ?ptsto_rel ?base ?l ?stride) (arrayR ?ptsto_rel ?base ?r ?stride)) =>
   unfold okToUnify; constructor : okToUnify.
 
 
@@ -848,7 +847,7 @@ Theorem read_back_ok : forall T a (rx : _ -> prog T),
           array a (upd_prepend vs $0 $42) $1 * F =p=> crash ]]
   }} read_back a rx.
 Proof.
-  unfold read_back; hoare_unfold unfold_prepend.
+  unfold read_back; hoare_unfold unfold_prepend; autorewrite with core; auto; omega.
 Qed.
 
 Definition swap T a i j rx : prog T :=
@@ -1047,16 +1046,13 @@ Proof.
   assert (wordToNat (natToWord addrlen (length l)) = length l) as Heq by
     (eapply wordToNat_natToWord_bound; eauto).
 
-  rewrite array_isolate with (i := $ (length l)) (default := a) by
+  unfold array; rewrite array_isolate with (i := $ (length l)) (default := a) by
     (rewrite app_length; unfold length at 3; omega ).
   unfold sel; rewrite selN_last by omega.
   ring_simplify ((natToWord addrlen 0) ^+ $ (length l) ^* $ (1)).
   replace (wordToNat $ (length l)) with (length l) by auto.
   rewrite firstn_app by auto.
   rewrite skipn_oob by (rewrite app_length; simpl; omega).
-  unfold array at 2.
-
-  clear Heq.
   unfold piff; split; cancel.
 Qed.
 
