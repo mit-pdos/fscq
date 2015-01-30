@@ -2,6 +2,7 @@ Require Import Prog.
 Require Import MemLog.
 Require Import Word.
 Require Import Balloc.
+Require Import BFile.
 
 Set Implicit Arguments.
 
@@ -40,4 +41,22 @@ Definition testalloc T lxp bxp rx : prog T :=
     ms'' <- MEMLOG.write lxp $0 (addr2valu bn) ms' ;
     ok <- MEMLOG.commit lxp ms'' ;
     rx (Some bn)
+  end.
+
+Definition test_bfile T lxp bxp ixp rx : prog T :=
+  MEMLOG.init lxp ;;
+  ms <- MEMLOG.begin lxp ;
+  r <- BFILE.bfgrow lxp bxp ixp $3 ms ;
+  let (ok, ms) := r in
+  match ok with
+  | false => MEMLOG.abort lxp ms ;; rx None
+  | true =>
+    ms <- BFILE.bfwrite lxp ixp $3 $0 $5 ms ;
+    b <- BFILE.bfread lxp ixp $3 $0 ms ;
+    ms <- BFILE.bfshrink lxp bxp ixp $3 ms ;
+    ok <- MEMLOG.commit lxp ms ;
+    match ok with
+    | false => rx None
+    | true => rx (Some b)
+    end
   end.

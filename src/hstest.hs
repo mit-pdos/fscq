@@ -3,6 +3,7 @@ module Main where
 import System.IO
 import MemLog
 import Balloc
+import Inode
 import Prog
 import Word
 import qualified System.Directory
@@ -31,7 +32,8 @@ crashRandom = System.Random.getStdRandom (System.Random.randomR (1, 20))
 maybeCrash :: IO ()
 maybeCrash = do
   x <- crashRandom
-  if x == 1
+  -- if x == 1
+  if x == 0
   then
     do
       putStrLn "CRASH!"
@@ -76,15 +78,20 @@ run_dcode f (Write a v rx) = do write_disk f a v; run_dcode f $ rx ()
 
 lxp :: MemLog.Coq_xparams
 lxp = MemLog.Build_xparams
-  (W 0x1000)  -- log header sector
-  (W 0x1001)  -- commit flag sector
-  (W 0x1010)  -- log start sector
+  (W 0x2000)  -- log header sector
+  (W 0x2001)  -- commit flag sector
+  (W 0x2010)  -- log start sector
   (W 0x1000)  -- log length, and MemLog uses one more for a block of addrs
 
 bxp :: Balloc.Coq_xparams
 bxp = Balloc.Build_xparams
-  (W 0x500)   -- bitmap start sector
-  (W 0x10)    -- bitmap length
+  (W 0x1100)  -- bitmap start sector
+  (W 0x1)     -- bitmap length
+
+ixp :: Inode.Coq_xparams
+ixp = Inode.Build_xparams
+  (W 0x1000)   -- inode start sector
+  (W 0x100)    -- number of inode sectors
 
 main :: IO ()
 main = do
@@ -103,7 +110,8 @@ main = do
   putStrLn "Running program.."
   -- r <- run_dcode f $ the_prog lxp
   -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()
-  r <- run_dcode f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
+  -- r <- run_dcode f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
+  r <- run_dcode f $ Testprog.test_bfile lxp bxp ixp Prog.Done
   hClose f
   putStrLn $ "Done: " ++ (show r)
 
