@@ -1,5 +1,7 @@
 module Word where
 
+import Data.Bits
+
 data Coq_word = W !Integer
 
 wrap :: Integer -> Integer -> Integer
@@ -39,10 +41,10 @@ split1 :: Integer -> Integer -> Coq_word -> Coq_word
 split1 sz1 _ (W w) = W $ wrap sz1 w
 
 split2 :: Integer -> Integer -> Coq_word -> Coq_word
-split2 sz1 _ (W w) = W $ w `quot` (2^sz1)
+split2 sz1 _ (W w) = W $ w `Data.Bits.shiftR` (fromIntegral sz1)
 
 combine :: Integer -> Coq_word -> Integer -> Coq_word -> Coq_word
-combine sz1 (W w1) _ (W w2) = W $ w1 + w2 * (2^sz1)
+combine sz1 (W w1) _ (W w2) = W $ w1 + (w2 `Data.Bits.shiftL` (fromIntegral sz1))
 
 instance Show Coq_word where
   show (W x) = show x
