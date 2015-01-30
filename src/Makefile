@@ -11,7 +11,7 @@ MODULES    := Nomega Word WordAuto \
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
-GHCARGS    := --make -prof -auto-all -O2
+GHCARGS    := # -prof -auto-all -dcore-lint -O2
 
 .PHONY: coq proof clean
 
