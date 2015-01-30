@@ -43,7 +43,7 @@ Definition testalloc T lxp bxp rx : prog T :=
     rx (Some bn)
   end.
 
-Definition test_bfile T lxp bxp ixp rx : prog T :=
+Definition test_bfile T lxp bxp ixp v rx : prog T :=
   MEMLOG.init lxp ;;
   ms <- MEMLOG.begin lxp ;
   r <- BFILE.bfgrow lxp bxp ixp $3 ms ;
@@ -51,7 +51,7 @@ Definition test_bfile T lxp bxp ixp rx : prog T :=
   match ok with
   | false => MEMLOG.abort lxp ms ;; rx None
   | true =>
-    ms <- BFILE.bfwrite lxp ixp $3 $0 $5 ms ;
+    ms <- BFILE.bfwrite lxp ixp $3 $0 v ms ;
     b <- BFILE.bfread lxp ixp $3 $0 ms ;
     ms <- BFILE.bfshrink lxp bxp ixp $3 ms ;
     ok <- MEMLOG.commit lxp ms ;
@@ -60,3 +60,17 @@ Definition test_bfile T lxp bxp ixp rx : prog T :=
     | true => rx (Some b)
     end
   end.
+
+(* Why does this seemingly simple function take forever to compile?? *)
+(*
+Fixpoint test_bfile_many {T} lxp bxp ixp v n (rx : option valu -> prog T) : prog T :=
+  match n with
+  | O => rx (Some v)
+  | S n' =>
+    ov <- test_bfile lxp bxp ixp v ;
+    match ov with
+    | None => rx None
+    | Some v' => test_bfile_many lxp bxp ixp v' n' rx
+    end
+  end.
+*)

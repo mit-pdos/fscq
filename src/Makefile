@@ -11,6 +11,7 @@ MODULES    := Nomega Word WordAuto \
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
+GHCARGS    := --make -prof -auto-all -O2
 
 .PHONY: coq proof clean
 
@@ -23,9 +24,9 @@ all: hstest
 
 %: %.hs coq
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
-	ghc -Wall -O2 hslib/*.hs
-	ghc -O2 codegen/*.hs -ihslib
-	ghc -Wall -O2 $< -ihslib -icodegen -o $@
+	ghc $(GHCARGS) -Wall hslib/*.hs
+	ghc $(GHCARGS) codegen/*.hs -ihslib
+	ghc $(GHCARGS) -Wall $< -ihslib -icodegen -o $@
 
 coqbuild/%.v: %.v strip-proofs.py
 	@mkdir -p coqbuild

@@ -93,6 +93,13 @@ ixp = Inode.Build_xparams
   (W 0x1000)   -- inode start sector
   (W 0x100)    -- number of inode sectors
 
+repf :: Integer -> t -> (t -> IO t) -> IO t
+repf 0 x _ = return x
+repf n x f = do
+  y <- f x
+  z <- repf (n-1) y f
+  return z
+
 main :: IO ()
 main = do
   -- This is racy (stat'ing the file first and opening it later)
@@ -111,7 +118,10 @@ main = do
   -- r <- run_dcode f $ the_prog lxp
   -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()
   -- r <- run_dcode f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
-  r <- run_dcode f $ Testprog.test_bfile lxp bxp ixp Prog.Done
+  r <- repf 100 (Just (W 123))
+       (\x -> case x of
+              Nothing -> return Nothing
+              Just xv -> run_dcode f $ Testprog.test_bfile lxp bxp ixp xv Prog.Done)
   hClose f
   putStrLn $ "Done: " ++ (show r)
 
