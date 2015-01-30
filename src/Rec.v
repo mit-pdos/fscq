@@ -191,7 +191,7 @@ Module Rec.
     | ArrayF ft0 n as ft =>
       (fix arrayf2word n v :=
         match n as n0 return (data (ArrayF ft0 n0) -> word (len (ArrayF ft0 n0))) with
-        | 0 => fun _ => WO
+        | 0 => fun _ => $0
         | S n0 => fun v =>
           match v with
           | nil => $0
@@ -201,7 +201,7 @@ Module Rec.
     | RecF t =>
       (fix rec2word {t : rectype} (r : recdata t) : word (len (RecF t)) :=
         match t as t return recdata t -> word (len (RecF t)) with
-        | nil => fun _ => WO
+        | nil => fun _ => $0
         | (_, _) :: _ => fun r =>
           let (v, r') := r in combine (to_word v) (rec2word r')
         end r) t
