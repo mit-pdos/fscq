@@ -53,7 +53,8 @@ Module DIR.
     )%pred.
 
   Definition dlookup T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
-                       (dnum : addr) (name : word filename_len) (rx : option addr -> prog T) : prog T.
+                       (dnum : addr) (name : word filename_len) (ms : memstate)
+                       (rx : option addr -> prog T) : prog T.
   Admitted.
 (*
     dlen <- FILE.flen lxp ixp dnum;
@@ -91,8 +92,8 @@ Module DIR.
     rx None.
 *)
 
-  Theorem dlookup_ok : forall lxp bxp ixp dnum name,
-    {< F A mbase m ms flist f dmap,
+  Theorem dlookup_ok : forall lxp bxp ixp dnum name ms,
+    {< F A mbase m flist f dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
@@ -101,7 +102,56 @@ Module DIR.
             [[ (DF * name |-> inum)%pred dmap ]]) \/
            ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]])
     CRASH  MEMLOG.log_intact lxp mbase
-    >} dlookup lxp bxp ixp dnum name.
+    >} dlookup lxp bxp ixp dnum name ms.
+  Proof.
+    admit.
+  Qed.
+
+  Definition dunlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
+                       (dnum : addr) (name : word filename_len) (ms : memstate)
+                       (rx : memstate -> prog T) : prog T.
+  Admitted.
+
+  Theorem dunlink_ok : forall lxp bxp ixp dnum name ms,
+    {< F A mbase m flist f dmap DF,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+             [[ (rep dmap) (list2mem (BFILE.BFData f)) ]] *
+             [[ (DF * name |->?)%pred dmap ]]
+    POST:ms' exists m' ms' flist' f' dmap',
+             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
+             [[ (rep dmap') (list2mem (BFILE.BFData f')) ]] *
+             [[ (DF) dmap' ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dunlink lxp bxp ixp dnum name ms.
+  Proof.
+    admit.
+  Qed.
+
+  Definition dlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
+                     (dnum : addr) (name : word filename_len) (inum : addr) (ms : memstate)
+                     (rx : memstate -> prog T) : prog T.
+  Admitted.
+
+  Theorem dlink_ok : forall lxp bxp ixp dnum name inum ms,
+    {< F A mbase m flist f dmap DF,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+             [[ (rep dmap) (list2mem (BFILE.BFData f)) ]] *
+             [[ (DF) dmap ]] *
+             [[ exists dmap', (DF * name |->?)%pred dmap' ]]
+    POST:ms' exists m' ms' flist' f' dmap',
+             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
+             [[ (rep dmap') (list2mem (BFILE.BFData f')) ]] *
+             [[ (DF * name |-> inum)%pred dmap' ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dlink lxp bxp ixp dnum name inum ms.
   Proof.
     admit.
   Qed.
