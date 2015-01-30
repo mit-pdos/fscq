@@ -6,7 +6,7 @@ import argparse
 import sys
 import pexpect
 import re
-
+import concurrent.futures
 def coq_remove_comments(str):
     #This is hairy because Coq has nested comments
     # if this is a performance issue, add a proper parser for coq.
@@ -50,6 +50,14 @@ def coqtop_simpl_proof(term):
     #coqtop.logfile = None
     proofterm = coqtop.before.decode("utf-8")
     return " refine (" + proofterm + "). Qed. "
+def queue_to_string(queue):
+    val = ""
+    for x in queue:
+        if isinstance(x, str):
+            val += x
+        else: # future
+            val += x.result()
+    return val
 argparser = argparse.ArgumentParser()
 argparser.add_argument('file')
 args = argparser.parse_args()
@@ -63,15 +71,15 @@ proof_depth = 0
 
 fragments = coq_remove_comments(contents).split(".")
 
-pure = "" 
+pure = []
 # fragments.pop().strip() # not removing this adds an extra colon.
-    
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=64)
 for frag_raw in fragments: #
     frag = frag_raw.strip()
     frag_raw += "."
     if  proof_depth <= 0:
         prefix += frag_raw
-        pure += frag_raw
+        pure.append(frag_raw)
     if frag == "Proof":
         if proof_depth != 0:
             panic("Nested proofs are not well tested")
@@ -84,16 +92,16 @@ for frag_raw in fragments: #
         if frag in ('Qed', 'Admitted', 'Abort'):
             proof_depth = 0
             if frag in ('Admitted', 'Abort') :
-                pure += frag_raw
+                pure.append(frag_raw)
                 prefix += frag_raw
             else: #  frag == 'Qed':
                 prefix += ' Admitted. '
-                pure += coqtop_simpl_proof(proof_query)
+                pure.append(executor.submit(coqtop_simpl_proof,proof_query))
         else:
             proof_query += frag_raw
 
 
 
 
-print(pure)
+print(queue_to_string(pure))
 #print ("Query", proof_query)
