@@ -33,12 +33,16 @@ Record xparams := {
 }.
 
 Module INODE.
-  Definition blocks_per_inode := 5.
+
+  (* on-disk representation of inode *)
+
+  Definition nr_direct := 5.
+  Definition wnr_direct := natToWord addrlen nr_direct.
   Definition inodetype : Rec.type := Rec.RecF ([
     ("len", Rec.WordF addrlen);     (* number of blocks *)
     ("size", Rec.WordF addrlen);    (* file size in bytes *)
     ("indptr", Rec.WordF addrlen);  (* indirect block pointer *)
-    ("blocks", Rec.ArrayF (Rec.WordF addrlen) blocks_per_inode)]).
+    ("blocks", Rec.ArrayF (Rec.WordF addrlen) nr_direct)]).
 
   Definition inode' := Rec.data inodetype.
   Definition inode0' := @Rec.of_word inodetype $0.
@@ -196,7 +200,71 @@ Module INODE.
   Hint Rewrite inode_set_size_get_len : inode.
   Hint Rewrite inode_set_size_get_size : inode.
 
+
+
+  (* on-disk representation of indirect blocks *)
+
+  Definition indtype := Rec.WordF addrlen.
+  Definition indblk := Rec.data indtype.
+  Definition ind0 := @Rec.of_word indtype $0.
+
+  Definition nr_indirect := 64.
+  Definition wnr_indirect : addr := natToWord addrlen nr_indirect.
+  Definition inditemsz := Rec.len indtype.
+
+  Theorem indsz_ok : valulen = wordToNat wnr_indirect * inditemsz.
+  Proof.
+    unfold wnr_indirect, nr_indirect, inditemsz, indtype.
+    rewrite valulen_is.
+    rewrite wordToNat_natToWord_idempotent; compute; auto.
+  Qed.
+
+  Definition indxp bn := RecArray.Build_xparams bn $1.
+
+  Definition indrep bn (indlist : list addr) :=
+     RecArray.array_item indtype wnr_indirect indsz_ok (indxp bn) indlist.
+
+
+
+  Definition indget T lxp (ino : inode') off ms rx : prog T :=
+    v <- RecArray.get indtype wnr_indirect indsz_ok
+         lxp (indxp (ino :-> "indptr")) off ms;
+    rx v.
+
+  Definition indput T lxp (ino : inode') off v ms rx : prog T :=
+    ms' <- RecArray.put indtype wnr_indirect indsz_ok
+           lxp (indxp (ino :-> "indptr")) off v ms;
+    rx ms'.
+
+  (* allocate an indirect block if direct entries are full *)
+  Definition indtryalloc T lxp bxp (ino : inode') ms rx : prog T :=
+    If (weq (ino :-> "len") wnr_direct) {
+      r <- BALLOC.alloc lxp bxp ms;
+      let (bn, ms') := r in
+      match bn with
+      | None => rx (None, ms')
+      | Some bnum =>
+          let ino' := (ino :=> "indptr" := bnum) in
+          rx (Some ino', ms')
+      end
+    } else {
+      rx (Some ino, ms)
+    }.
+
+
+  (* free the indirect block if necessary *)
+  Definition indtryfree T lxp bxp (ino : inode') ms rx : prog T :=
+    If (weq (ino :-> "len") wnr_direct) {
+      ms' <- BALLOC.free lxp bxp (ino :-> "indptr") ms;
+      rx ms'
+    } else {
+      rx ms
+    }.
+
+
   (* separation logic based theorems *)
+
+  Definition blocks_per_inode := nr_direct + nr_indirect.
 
   Record inode := {
     IBlocks : list addr;
@@ -220,26 +288,43 @@ Module INODE.
 
   Definition iget T lxp xp inum off ms rx : prog T :=
     i <- iget' lxp xp inum ms;
-    rx (sel (i :-> "blocks") off $0).
+    If (wlt_dec off wnr_direct) {
+      rx (sel (i :-> "blocks") off $0)
+    } else {
+      v <- indget lxp i (off ^- wnr_direct) ms;
+      rx v
+    }.
 
-  Definition iput T lxp xp inum off a ms rx : prog T :=
+  Definition iputbn T lxp xp (i : inode') inum off a ms rx : prog T :=
+    If (wlt_dec off wnr_direct) {
+      let i' := i :=> "blocks" := (upd (i :-> "blocks") off a) in
+      ms' <- iput' lxp xp inum i' ms;
+      rx ms'
+    } else {
+      ms' <- iput' lxp xp inum i ms;
+      ms'' <- indput lxp i (off ^- wnr_direct) a ms';
+      rx ms''
+    }.
+
+  Definition igrow T lxp bxp xp inum a ms rx : prog T :=
     i <- iget' lxp xp inum ms;
-    let i' := i :=> "blocks" := (upd (i :-> "blocks") off a) in
-    ms' <- iput' lxp xp inum i' ms;
-    rx ms'.
+    r <- indtryalloc lxp bxp i ms;
+    let (newi, ms') := r in
+    match newi with
+    | None => rx (false, ms')
+    | Some i' =>
+        let i'' := i' :=> "len" := (i' :-> "len" ^+ $1) in
+        ms'' <- iputbn lxp xp i'' inum (i' :-> "len") a ms';
+        rx (true, ms'')
+    end.
 
-  Definition igrow T lxp xp inum a ms rx : prog T :=
-    i <- iget' lxp xp inum ms;
-    let i' := i :=> "blocks" := (upd (i :-> "blocks") (i :-> "len") a) in
-    let i'' := i' :=> "len" := (i' :-> "len" ^+ $1) in
-    ms' <- iput' lxp xp inum i'' ms;
-    rx ms'.
-
-  Definition ishrink T lxp xp inum ms rx : prog T :=
+  Definition ishrink T lxp bxp xp inum ms rx : prog T :=
     i <- iget' lxp xp inum ms;
     let i' := i :=> "len" := (i :-> "len" ^- $1) in
     ms' <- iput' lxp xp inum i' ms;
-    rx ms'.
+    ms'' <- indtryfree lxp bxp i' ms';
+    rx ms''.
+
 
   Definition inode_match ino (ino' : inode') : @pred addrlen valu := (
     [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
@@ -247,7 +332,7 @@ Module INODE.
     (* The following won't hold after introducing indirect blocks.
        For indirect blocks, we need to refer to disk state,
        so write inode_match in separation logic style. *)
-    [[ wordToNat (ino' :-> "len") <= blocks_per_inode ]] *
+    [[ wordToNat (ino' :-> "len") <= nr_direct ]] *
     [[ IBlocks ino = firstn (length (IBlocks ino)) (ino' :-> "blocks") ]]
     )%pred.
 
@@ -259,7 +344,7 @@ Module INODE.
   Lemma inode_blocks_length: forall m xp l inum F,
     (F * rep' xp l)%pred m ->
     inum < length l ->
-    length (selN l inum inode0' :-> "blocks") = blocks_per_inode.
+    length (selN l inum inode0' :-> "blocks") = nr_direct.
   Proof.
     intros.
     remember (selN l inum inode0') as i.
@@ -277,7 +362,7 @@ Module INODE.
     (F * rep' xp l)%pred m ->
     inum < length l ->
     (d, (d0, (d1, (d2, u)))) = selN l inum inode0' ->
-    length d2 = blocks_per_inode.
+    length d2 = nr_direct.
   Proof.
     intros.
     unfold rep' in H.
@@ -362,12 +447,12 @@ Module INODE.
 
   Lemma blocks_bound: forall F xp l m i,
     (F * rep xp l)%pred m
-    -> length (IBlocks (sel l i inode0)) <= wordToNat (natToWord addrlen blocks_per_inode).
+    -> length (IBlocks (sel l i inode0)) <= wordToNat (natToWord addrlen nr_direct).
   Proof.
     unfold rep, sel; intros.
     destruct_lift H.
     destruct (lt_dec (wordToNat i) (length l)).
-    extract_listmatch_at i; unfold blocks_per_inode in *.
+    extract_listmatch_at i; unfold nr_direct in *.
     autorewrite with defaults; omega.
     rewrite selN_oob by omega.
     simpl; omega.
@@ -570,7 +655,7 @@ Module INODE.
   Theorem igrow_ok : forall lxp xp inum a ms,
     {< F A B mbase m ilist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-             [[ length (IBlocks ino) < blocks_per_inode ]] *
+             [[ length (IBlocks ino) < nr_direct ]] *
              [[ (F * rep xp ilist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
              [[  B (list2mem (IBlocks ino)) ]]
@@ -612,11 +697,11 @@ Module INODE.
 
     (* omega doesn't work well *)
     rewrite app_length; simpl.
-    erewrite wordToNat_plusone with (w' := $ blocks_per_inode).
+    erewrite wordToNat_plusone with (w' := $ nr_direct).
     rewrite Nat.add_1_r; auto.
     apply lt_wlt; rewrite <- H11; auto.
 
-    erewrite wordToNat_plusone with (w' := $ blocks_per_inode).
+    erewrite wordToNat_plusone with (w' := $ nr_direct).
     rewrite <- H11; rewrite lt_le_S; auto.
     apply lt_wlt; rewrite <- H11; auto.
 
