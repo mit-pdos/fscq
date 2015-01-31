@@ -262,6 +262,49 @@ Module INODE.
     }.
 
 
+  Theorem indget_ok : forall lxp (ino : inode') off ms,
+    {< F A mbase m blist bn,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ (F * indrep (ino :-> "indptr") blist)%pred (list2mem m) ]] *
+           [[ (A * off |-> bn)%pred (list2mem blist) ]]
+    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ r = bn ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} indget lxp ino off ms.
+  Proof.
+    unfold indget, indrep, indxp; intros.
+    hoare.
+
+    rewrite wmult_unit.
+    eapply lt_wlt.
+    apply list2mem_inbound in H4.
+    rewrite H6 in H4; auto.
+    subst.
+    eapply list2mem_sel with (def:=$0) in H4; auto.
+  Qed.
+
+
+  Theorem indput_ok : forall lxp (ino : inode') off bn ms,
+    {< F A mbase m blist v0,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (F * indrep (ino :-> "indptr") blist)%pred (list2mem m) ]] *
+             [[ (A * off |-> v0)%pred (list2mem blist) ]]
+    POST:ms' exists m' blist', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (F * indrep (ino :-> "indptr") blist')%pred (list2mem m') ]] *
+             [[ (A * off |-> bn)%pred (list2mem blist')]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} indput lxp ino off bn ms.
+  Proof.
+    unfold indput, indrep, indxp; intros.
+    hoare.
+
+    rewrite wmult_unit; eapply lt_wlt.
+    apply list2mem_inbound in H4.
+    rewrite H6 in H4; auto.
+    eapply list2mem_upd; eauto.
+  Qed.
+
+
   (* separation logic based theorems *)
 
   Definition blocks_per_inode := nr_direct + nr_indirect.
