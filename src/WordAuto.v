@@ -226,6 +226,18 @@ Proof.
   induction sz; simpl; omega.
 Qed.
 
+Ltac autorewrite_fast_goal :=
+  (rewrite_strat (topdown (hints W2Nat)));
+  try autorewrite_fast_goal.
+
+Ltac autorewrite_fast :=
+  match goal with
+  | [ H: _ |- _ ] =>
+    (rewrite_strat (topdown (hints W2Nat)) in H);
+    [ try autorewrite_fast | try autorewrite_fast_goal .. ]
+  | [ |- _ ] => autorewrite_fast_goal
+  end.
+
 Ltac word2nat_simpl :=
   try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX still causes hangs: simpl; *)
   unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
@@ -235,7 +247,7 @@ Ltac word2nat_simpl :=
   | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal wordToNat) in H
              || apply Nlt_out in H || apply Nge_out in H); nsimp H
   end;
-  autorewrite with W2Nat in *;
+  try autorewrite_fast;
   repeat match goal with
   | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
   end.
