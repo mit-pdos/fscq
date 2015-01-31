@@ -221,9 +221,9 @@ Module INODE.
 
   Definition indxp bn := RecArray.Build_xparams bn $1.
 
-  Definition indrep bn (indlist : list addr) :=
-     RecArray.array_item indtype wnr_indirect indsz_ok (indxp bn) indlist.
-
+  Definition indrep bn (blist : list addr) :=
+    ([[ length blist = nr_indirect ]] *
+     RecArray.array_item indtype wnr_indirect indsz_ok (indxp bn) blist)%pred.
 
 
   Definition indget T lxp (ino : inode') off ms rx : prog T :=
@@ -329,15 +329,15 @@ Module INODE.
   Definition inode_match ino (ino' : inode') : @pred addrlen valu := (
     [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
     [[ ISize ino = ino' :-> "size" ]] *
-    (* The following won't hold after introducing indirect blocks.
-       For indirect blocks, we need to refer to disk state,
-       so write inode_match in separation logic style. *)
-    [[ wordToNat (ino' :-> "len") <= nr_direct ]] *
-    [[ IBlocks ino = firstn (length (IBlocks ino)) (ino' :-> "blocks") ]]
+    [[ length (IBlocks ino) <= blocks_per_inode ]] *
+    exists blist,
+    ( [[ length (IBlocks ino) <= nr_direct ]] \/
+     ([[ length (IBlocks ino)  > nr_direct ]] * indrep (ino' :-> "indptr") blist )) *
+    [[ IBlocks ino = firstn (length (IBlocks ino)) ((ino' :-> "blocks") ++ blist) ]]
     )%pred.
 
-  Definition rep xp (ilist : list inode) :=
-    (exists ilist', rep' xp ilist' *
+  Definition rep xp (ilist : list inode) := (
+     exists ilist', rep' xp ilist' *
      listmatch inode_match ilist ilist')%pred.
 
 
