@@ -12,12 +12,6 @@ Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
     | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
   end%pred.
 
-Fixpoint arrayR {PT : Type} (ptsto_rel : addr -> valu -> pred) (a : addr) (vs : list valu) (stride : addr) : @pred PT :=
-  match vs with
-    | nil => emp
-    | v :: vs' => (ptsto_rel a v) * arrayR ptsto_rel (a ^+ stride) vs' stride
-  end%pred.
-
 (** * Reading and writing from arrays *)
 
 Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
@@ -123,6 +117,15 @@ Proof.
 Qed.
 
 Hint Rewrite firstn_updN firstn_upd using omega.
+
+Lemma skipn_selN : forall T i j vs (def: T),
+  selN (skipn i vs) j def = selN vs (i + j) def.
+Proof.
+  induction i; intros; auto.
+  destruct vs; simpl; auto.
+Qed.
+
+Hint Rewrite skipn_selN using omega.
 
 Lemma skipN_updN' : forall T (v : T) vs i j,
   i > j
