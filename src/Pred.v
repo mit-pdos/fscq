@@ -118,13 +118,9 @@ Infix "*" := sep_star : pred_scope.
 
 (* Specializations of ptsto to deal with async IO *)
 
-Definition ptsto_synced (a : addr) (v : valu) : @pred valuset :=
-  (a |-> (v, nil))%pred.
-Infix "|=>" := ptsto_synced (at level 35) : pred_scope.
+Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
 
-Definition ptsto_cur (a : addr) (v : valu) : @pred valuset :=
-  (exists old, a |-> (v, old))%pred.
-Infix "|~>" := ptsto_cur (at level 35) : pred_scope.
+Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
 
 
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
@@ -1032,7 +1028,7 @@ Lemma ptsto_synced_valid:
   (a |=> v * F)%pred m
   -> m a = Some (v, nil).
 Proof.
-  unfold ptsto_synced; intros.
+  intros.
   eapply ptsto_valid; eauto.
 Qed.
 
@@ -1041,7 +1037,7 @@ Lemma ptsto_cur_valid:
   (a |~> v * F)%pred m
   -> exists l, m a = Some (v, l).
 Proof.
-  unfold ptsto_cur, ptsto; unfold_sep_star; intros.
+  unfold ptsto; unfold_sep_star; intros.
   repeat deex.
   destruct H1.
   destruct H0.
