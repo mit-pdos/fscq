@@ -815,6 +815,19 @@ Proof.
   apply pimpl_sep_star; assumption.
 Qed.
 
+
+Instance sep_star_apply_piff_proper {len V} :
+  Proper (piff ==> piff ==> eq ==> Basics.impl) (@sep_star len V).
+Proof.
+  intros p p' Hp q q' Hq m m' Hm H.
+  subst.
+  eapply pimpl_apply; [| eassumption ].
+  apply pimpl_sep_star. 
+  apply Hp.
+  apply Hq.
+Qed.
+
+
 Instance sep_star_piff_proper {len V} :
   Proper (piff ==> piff ==> piff) (@sep_star len V).
 Proof.
