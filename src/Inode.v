@@ -355,6 +355,11 @@ Module INODE.
       rx ms''
     }.
 
+  Definition iput T lxp xp inum off a ms rx : prog T :=
+    i <- iget' lxp xp inum ms ;
+    ms <- iputbn lxp xp i inum off a ms ;
+    rx ms.
+
   Definition igrow T lxp bxp xp inum a ms rx : prog T :=
     i <- iget' lxp xp inum ms;
     r <- indtryalloc lxp bxp i ms;
@@ -786,20 +791,22 @@ Module INODE.
   Qed.
 
 
-  Theorem igrow_ok : forall lxp xp inum a ms,
+  Theorem igrow_ok : forall lxp bxp xp inum a ms,
     {< F A B mbase m ilist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ length (IBlocks ino) < nr_direct ]] *
              [[ (F * rep xp ilist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
              [[  B (list2mem (IBlocks ino)) ]]
-    POST:ms' exists m' ilist' ino',
-             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-             [[ (F * rep xp ilist')%pred (list2mem m') ]] *
-             [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
-             [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]]
+    POST:rms (exists m' ilist' ino', [[ fst rms = true ]] *
+              MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms) *
+              [[ (F * rep xp ilist')%pred (list2mem m') ]] *
+              [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
+              [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]]) \/
+             (exists m', [[ fst rms = false ]] *
+              MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms))
     CRASH    MEMLOG.log_intact lxp mbase
-    >} igrow lxp xp inum a ms.
+    >} igrow lxp bxp xp inum a ms.
   Proof.
     unfold igrow, rep.
     step.
@@ -851,7 +858,7 @@ Module INODE.
   Qed.
 
 
-  Theorem ishrink_ok : forall lxp xp inum ms,
+  Theorem ishrink_ok : forall lxp bxp xp inum ms,
     {< F A B mbase m ilist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (IBlocks ino) <> nil ]] *
@@ -864,7 +871,7 @@ Module INODE.
              [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
              [[  B (list2mem (IBlocks ino')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} ishrink lxp xp inum ms.
+    >} ishrink lxp bxp xp inum ms.
   Proof.
     unfold ishrink, rep.
     step.
