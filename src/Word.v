@@ -1491,6 +1491,27 @@ Proof.
   omega.
 Qed.
 
+Lemma lt_minus : forall a b c,
+  (b <= a -> b < c -> a < c -> a - b < c)%nat.
+Proof.
+  intros; omega.
+Qed.
+
+Lemma wminus_minus : forall sz (a b : word sz),
+  b <= a
+  -> wordToNat (a ^- b) = wordToNat a - wordToNat b.
+Proof.
+  intros.
+  rewrite wminus_Alt.
+  rewrite wminus_Alt2; auto.
+  unfold wordBinN.
+  eapply wordToNat_natToWord_idempotent'.
+  unfold goodSize.
+  apply lt_minus.
+  apply wle_le; auto.
+  apply wordToNat_bound.
+  apply wordToNat_bound.
+Qed.
 
 Lemma natToWord_discriminate: forall sz, (sz > 0)%nat -> natToWord sz 0 <> natToWord sz 1.
 Proof.
