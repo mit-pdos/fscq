@@ -41,20 +41,20 @@ Module BFILE.
 
   Definition bfgrow T lxp bxp ixp inum ms rx : prog T :=
     r <- BALLOC.alloc lxp bxp ms;
-    let (bn, ms') := r in
+    let (bn, ms) := r in
     match bn with
-    | None => rx (false, ms')
+    | None => rx (false, ms)
     | Some bnum =>
-        ms'' <- INODE.igrow lxp ixp inum bnum ms';
-        rx (true, ms'')
+        r <- INODE.igrow lxp bxp ixp inum bnum ms;
+        rx r
     end.
 
   Definition bfshrink T lxp bxp ixp inum ms rx : prog T :=
     n <- INODE.ilen lxp ixp inum ms;
     b <- INODE.iget lxp ixp inum (n ^- $1) ms;
-    ms' <- BALLOC.free lxp bxp b ms;
-    ms'' <- INODE.ishrink lxp ixp inum ms';
-    rx ms''.
+    ms <- BALLOC.free lxp bxp b ms;
+    ms <- INODE.ishrink lxp bxp ixp inum ms;
+    rx ms.
 
 
   (* representation invariants *)
