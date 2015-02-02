@@ -305,6 +305,12 @@ Module INODE.
   Qed.
 
 
+
+  Hint Extern 1 ({{_}} progseq (indget _ _ _ _) _) => apply indget_ok : prog.
+  Hint Extern 1 ({{_}} progseq (indput _ _ _ _ _) _) => apply indput_ok : prog.
+
+
+
   (* separation logic based theorems *)
 
   Definition blocks_per_inode := nr_direct + nr_indirect.
@@ -368,14 +374,55 @@ Module INODE.
     ms'' <- indtryfree lxp bxp i' ms';
     rx ms''.
 
+  Definition indirect_valid n bn blist :=
+     ([[ n <= nr_direct ]] \/ indrep bn blist)%pred.
+
+
+  Lemma indirect_valid_r : forall n bn blist,
+    n > nr_direct
+    -> indirect_valid n bn blist <=p=> indrep bn blist.
+  Proof.
+    intros; unfold indirect_valid, piff; split; cancel.
+    omega.
+  Qed.
+
+  Lemma indirect_valid_r_off : forall n off bn blist,
+    wordToNat off < n
+    -> (off >= wnr_direct)%word
+    -> indirect_valid n bn blist <=p=> indrep bn blist.
+  Proof.
+    intros.
+    apply indirect_valid_r.
+    apply wle_le in H0.
+    replace (wordToNat wnr_direct) with nr_direct in H0 by auto.
+    omega.
+  Qed.
+
+
+  Lemma indirect_valid_off_bound : forall F n off bn blist m,
+    (F * indirect_valid n bn blist)%pred m
+    -> wordToNat off < n
+    -> n <= blocks_per_inode
+    -> (off >= wnr_direct)%word
+    -> wordToNat (off ^- wnr_direct) < length blist.
+  Proof.
+    intros.
+    erewrite indirect_valid_r_off in H; eauto.
+    unfold indrep in H; destruct_lift H.
+    rewrite H4.
+    rewrite wminus_minus; auto.
+    apply wle_le in H2.
+    replace (wordToNat wnr_direct) with nr_direct in * by auto.
+    unfold blocks_per_inode in H1.
+    omega.
+  Qed.
+
 
   Definition inode_match ino (ino' : inode') : @pred addrlen valu := (
     [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
     [[ ISize ino = ino' :-> "size" ]] *
     [[ length (IBlocks ino) <= blocks_per_inode ]] *
-    exists blist,
-    ( [[ length (IBlocks ino) <= nr_direct ]] \/
-     ([[ length (IBlocks ino)  > nr_direct ]] * indrep (ino' :-> "indptr") blist )) *
+    exists blist, indirect_valid (length (IBlocks ino)) (ino' :-> "indptr") blist *
     [[ IBlocks ino = firstn (length (IBlocks ino)) ((ino' :-> "blocks") ++ blist) ]]
     )%pred.
 
@@ -490,16 +537,26 @@ Module INODE.
 
   Lemma blocks_bound: forall F xp l m i,
     (F * rep xp l)%pred m
-    -> length (IBlocks (sel l i inode0)) <= wordToNat (natToWord addrlen nr_direct).
+    -> length (IBlocks (sel l i inode0)) <= wordToNat (natToWord addrlen blocks_per_inode).
   Proof.
     unfold rep, sel; intros.
     destruct_lift H.
     destruct (lt_dec (wordToNat i) (length l)).
     extract_listmatch_at i; unfold nr_direct in *.
-    autorewrite with defaults; omega.
+    autorewrite with defaults. 
+    unfold blocks_per_inode, nr_indirect in H7; simpl in H7; auto.
     rewrite selN_oob by omega.
     simpl; omega.
   Qed.
+
+  Lemma indirect_bound: forall F bn l m,
+    (F * indrep bn l)%pred m
+    -> length l <= wordToNat (wnr_indirect).
+  Proof.
+    unfold indrep, nr_indirect; intros.
+    destruct_lift H; omega.
+  Qed.
+
 
   Ltac inode_bounds' := match goal with
     | [ H : context [ (rep' _ ?l) ] |- length ?l <= _ ] =>
@@ -523,6 +580,7 @@ Module INODE.
 
 
   Hint Extern 0 (okToUnify (rep' _ _) (rep' _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (indrep _ _) (indrep _ _)) => constructor : okToUnify.
 
   Theorem ilen_ok : forall lxp xp inum ms,
     {< F A mbase m ilist ino,
@@ -597,7 +655,9 @@ Module INODE.
     destruct_listmatch.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
-    autorewrite_inode.
+
+    Opaque Rec.recset Rec.recget.
+    rec_simpl.
     cancel.
     auto.
   Qed.
@@ -614,14 +674,45 @@ Module INODE.
     >} iget lxp xp inum off ms.
   Proof.
     unfold iget, rep.
-    hoare.
+    step.
     list2mem_ptsto_cancel; inode_bounds.
 
+    step.
+    step.
+    (* from direct blocks *)
     repeat rewrite_list2mem_pred.
     destruct_listmatch.
     unfold sel; subst.
-    rewrite H16.
+    rewrite H19.
     rewrite selN_firstn; inode_bounds.
+    rewrite selN_app; inode_bounds.
+    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
+    apply wlt_lt in H8; auto.
+    pred_apply; cancel.
+
+    (* from indirect blocks *)
+    repeat rewrite_list2mem_pred.
+    destruct_listmatch.
+    step.
+
+    erewrite indirect_valid_r_off; eauto.
+    list2mem_ptsto_cancel; inode_bounds.
+    eapply indirect_bound with (m := list2mem d0); pred_apply.
+    erewrite indirect_valid_r_off; eauto.
+    eapply indirect_valid_off_bound; eauto.
+
+    step.
+    subst.
+    rewrite H19.
+    rewrite selN_firstn; inode_bounds.
+    rewrite selN_app2.
+    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
+    rewrite wminus_minus; auto.
+    pred_apply; cancel.
+    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
+    apply wle_le in H11.
+    replace (wordToNat wnr_direct) with nr_direct in * by auto; auto.
+    pred_apply; cancel.
   Qed.
 
 
