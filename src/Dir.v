@@ -13,17 +13,20 @@ Require Import Array.
 Require Import ListPred.
 Require Import GenSep.
 Require Import BFile.
+Require Import BFileRec.
+Require Import Bool.
 
 Import ListNotations.
 
 Set Implicit Arguments.
 
-Definition filename_len := (256 - addrlen).
+Definition filename_len := (256 - addrlen - addrlen).
 Definition filename := word filename_len.
 
 Module DIR.
   Definition dirent_type : Rec.type := Rec.RecF ([("name", Rec.WordF filename_len);
-                                                  ("inum", Rec.WordF addrlen)]).
+                                                  ("inum", Rec.WordF addrlen);
+                                                  ("valid", Rec.WordF addrlen)]).
   Definition dirent := Rec.data dirent_type.
   Definition dirent_zero := @Rec.of_word dirent_type $0.
 
@@ -34,14 +37,11 @@ Module DIR.
     rewrite valulen_is; auto.
   Qed.
 
-  Definition xp_to_raxp (delist: list dirent) :=
-    RecArray.Build_xparams $0 ( $ (length delist) ^/ items_per_valu ).
-
   Definition rep' (delist : list dirent) :=
-    RecArray.array_item dirent_type items_per_valu itemsz_ok (xp_to_raxp delist) delist %pred.
+    BFileRec.array_item dirent_type items_per_valu itemsz_ok delist.
 
   Definition dmatch (de: dirent) : @pred filename_len addr :=
-    if weq (de :-> "inum") $0 then
+    if weq (de :-> "valid") $0 then
       emp
     else
       (de :-> "name") |-> (de :-> "inum").
@@ -54,43 +54,30 @@ Module DIR.
 
   Definition dlookup T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
                        (dnum : addr) (name : word filename_len) (ms : memstate)
-                       (rx : option addr -> prog T) : prog T.
-  Admitted.
-(*
-    dlen <- FILE.flen lxp ixp dnum;
-    For dblock < dlen
+                       (rx : option addr -> prog T) : prog T :=
+    dlen <- BFILE.bflen lxp ixp dnum ms;
+    For dpos < dlen ^* items_per_valu
       Ghost mbase m
       Loopvar _ <- tt
-      Continuation lrx_outer
+      Continuation lrx
       Invariant
         (* Need an invariant saying the name is not found in any earlier dirent *)
-        LOG.rep lxp (ActiveTxn mbase m)
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms
       OnCrash
-        LOG.rep lxp (ActiveTxn mbase m)
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms
       Begin
-        blockdata <- FILE.fread lxp ixp dnum dblock;
-        For doff < items_per_valu
-          Ghost mbase m
-          Loopvar _ <- tt
-          Continuation lxr_inner
-          Invariant
-            (* Need an invariant saying the name is not found in any earlier dirent *)
-            LOG.rep lxp (ActiveTxn mbase m)
-          OnCrash
-            LOG.rep lxp (ActiveTxn mbase m)
-          Begin
-            let dw := Pack.extract itemsz items_per_valu itemsz_ok blockdata doff in
-            let d := @Rec.of_word dirent_type dw in
-            If (weq (d :-> "name") name) {
-              rx (Some (d :-> "inum"))
-            } else {
-              lxr_inner tt
-            }
-          Rof;;
-        lrx_outer tt
+        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        If (weq (de :-> "valid") $0) {
+          lrx tt
+        } else {
+          If (weq (de :-> "name") name) {
+            rx (Some (de :-> "inum"))
+          } else {
+            lrx tt
+          }
+        }
       Rof;;
     rx None.
-*)
 
   Theorem dlookup_ok : forall lxp bxp ixp dnum name ms,
     {< F A mbase m flist f dmap,
@@ -109,8 +96,31 @@ Module DIR.
 
   Definition dunlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
                        (dnum : addr) (name : word filename_len) (ms : memstate)
-                       (rx : memstate -> prog T) : prog T.
-  Admitted.
+                       (rx : memstate -> prog T) : prog T :=
+    dlen <- BFILE.bflen lxp ixp dnum ms;
+    For dpos < dlen ^* items_per_valu
+      Ghost mbase m
+      Loopvar _ <- tt
+      Continuation lrx
+      Invariant
+        (* Need an invariant saying the name is not found in any earlier dirent *)
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+      OnCrash
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+      Begin
+        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        If (weq (de :-> "valid") $0) {
+          lrx tt
+        } else {
+          If (weq (de :-> "name") name) {
+            ms <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos (de :=> "valid" := $0) ms;
+            rx ms
+          } else {
+            lrx tt
+          }
+        }
+      Rof;;
+    rx ms.
 
   Theorem dunlink_ok : forall lxp bxp ixp dnum name ms,
     {< F A mbase m flist f dmap DF,
@@ -133,8 +143,35 @@ Module DIR.
 
   Definition dlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
                      (dnum : addr) (name : word filename_len) (inum : addr) (ms : memstate)
-                     (rx : memstate -> prog T) : prog T.
-  Admitted.
+                     (rx : (bool * memstate) -> prog T) : prog T :=
+    dlen <- BFILE.bflen lxp ixp dnum ms;
+    For dpos < dlen ^* items_per_valu
+      Ghost mbase m
+      Loopvar _ <- tt
+      Continuation lrx
+      Invariant
+        (* Need an invariant saying the name is not found in any earlier dirent *)
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+      OnCrash
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+      Begin
+        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        If (weq (de :-> "valid") $0) {
+          ms <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos
+            (de :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) ms;
+          rx (true, ms)
+        } else {
+          lrx tt
+        }
+      Rof;;
+    r <- BFILE.bfgrow lxp bxp ixp dnum ms; let (ok, ms) := r in
+    If (bool_dec ok true) {
+      ms <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum (dlen ^* items_per_valu)
+        (dirent_zero :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) ms;
+      rx (true, ms)
+    } else {
+      rx (false, ms)
+    }.
 
   Theorem dlink_ok : forall lxp bxp ixp dnum name inum ms,
     {< F A mbase m flist f dmap DF,
@@ -144,12 +181,14 @@ Module DIR.
              [[ (rep dmap) (list2mem (BFILE.BFData f)) ]] *
              [[ (DF) dmap ]] *
              [[ exists dmap', (DF * name |->?)%pred dmap' ]]
-    POST:ms' exists m' ms' flist' f' dmap',
-             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-             [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-             [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
-             [[ (rep dmap') (list2mem (BFILE.BFData f')) ]] *
-             [[ (DF * name |-> inum)%pred dmap' ]]
+    POST:rms ([[ fst rms = true ]] * exists m' flist' f' dmap',
+              MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms) *
+              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+              [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
+              [[ (rep dmap') (list2mem (BFILE.BFData f')) ]] *
+              [[ (DF * name |-> inum)%pred dmap' ]]) \/
+             ([[ fst rms = false ]] * exists m',
+              MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms))
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlink lxp bxp ixp dnum name inum ms.
   Proof.
