@@ -779,7 +779,7 @@ Module INODE.
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * indirect_valid (wordToNat (i :-> "len")) (i :-> "indptr") blist *
                  rep' xp ilist)%pred (list2mem m) ]] *
-             [[ off < i :-> "len" ]]%word *
+             [[ wordToNat off < wordToNat (i :-> "len") ]] *
              [[ wordToNat (i :-> "len") <= blocks_per_inode ]] *
              [[ (A * inum |-> i0)%pred (list2mem ilist) ]] *
              [[ (B * (off ^- wnr_direct) |-> v0)%pred (list2mem blist) ]] *
@@ -800,12 +800,10 @@ Module INODE.
     unfold iputbn, rep.
     hoare.
 
-    admit.
+    admit. (* annoying rec bounds *)
 
-    rewrite indirect_valid_r.
+    rewrite indirect_valid_r_off; eauto.
     cancel.
-    replace nr_direct with (wordToNat wnr_direct) by auto.
-    eapply wle_wlt_lt; eauto.
 
     eapply pimpl_or_r; right.
     cancel.
@@ -813,11 +811,11 @@ Module INODE.
     pred_apply; cancel.
     instantiate (a2 := l2).
     pred_apply; cancel.
-    rewrite indirect_valid_r.
+    rewrite indirect_valid_r_off; eauto.
     cancel.
-    replace nr_direct with (wordToNat wnr_direct) by auto.
-    eapply wle_wlt_lt; eauto.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (iputbn _ _ _ _ _ _ _) _) => apply iputbn_ok : prog.
 
 
   Theorem igrow_ok : forall lxp bxp xp inum a ms,
