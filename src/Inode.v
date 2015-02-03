@@ -355,6 +355,7 @@ Module INODE.
       rx ms''
     }.
 
+  (* unused *)
   Definition iput T lxp xp inum off a ms rx : prog T :=
     i <- iget' lxp xp inum ms ;
     ms <- iputbn lxp xp i inum off a ms ;
@@ -721,6 +722,7 @@ Module INODE.
   Qed.
 
 
+  (* unused *)
   Theorem iput_ok : forall lxp xp inum off a ms,
     {< F A B mbase m ilist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
@@ -734,40 +736,21 @@ Module INODE.
              [[ (B * off |-> a)%pred (list2mem (IBlocks ino')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} iput lxp xp inum off a ms.
-  Proof.
-    unfold iput, rep.
-    step.
-    list2mem_ptsto_cancel; inode_bounds.
-    step.
-    list2mem_ptsto_cancel; inode_bounds.
-
-    destruct r_; repeat destruct p3; simpl; intuition auto.
-    rewrite length_upd.
-    setoid_rewrite H9; unfold sel.
-    eapply inode_blocks_length with (m := list2mem d0); inode_bounds.
-    pred_apply; cancel.
-    rewrite Forall_forall in *; intuition.
-
-    eapply pimpl_ok2; eauto with prog.
-    intros; cancel.
-
-    instantiate (a1 := Build_inode (upd (IBlocks i) off a) (ISize i)).
-    2: eapply list2mem_upd; eauto.
-    2: eapply list2mem_upd; eauto.
-
-    repeat rewrite_list2mem_pred; inode_bounds.
-    destruct_listmatch.
-
-    unfold upd.
-    eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
-    unfold sel, upd; unfold inode_match; intros.
-    autorewrite_inode.
-    cancel.
-    rewrite updN_firstn_comm; inode_bounds.
-  Qed.
+   Proof.
+     admit.
+   Qed.
 
 
   (* small helpers *)
+  Lemma wle_wlt_lt: forall sz (a b c : word sz),
+    (a <= b)%word -> (b < c)%word -> wordToNat a < wordToNat c.
+  Proof.
+    intros.
+    apply wlt_lt in H0.
+    apply wle_le in H.
+    omega.
+  Qed.
+
   Lemma le_minus_one_lt : forall a b,
     a > 0 -> a <= b -> a - 1 < b.
   Proof.
@@ -788,6 +771,52 @@ Module INODE.
     ring_simplify (n ^- $0).
     destruct (weq n $0); auto; subst.
     rewrite roundTrip_0 in H; intuition.
+  Qed.
+
+
+  Theorem iputbn_ok : forall lxp xp (i : inode') inum off bn ms,
+    {< F A B mbase m ilist blist i0 v0,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (F * indirect_valid (wordToNat (i :-> "len")) (i :-> "indptr") blist *
+                 rep' xp ilist)%pred (list2mem m) ]] *
+             [[ off < i :-> "len" ]]%word *
+             [[ wordToNat (i :-> "len") <= blocks_per_inode ]] *
+             [[ (A * inum |-> i0)%pred (list2mem ilist) ]] *
+             [[ (B * (off ^- wnr_direct) |-> v0)%pred (list2mem blist) ]] *
+             [[ Rec.well_formed i ]]
+    POST:ms' exists m' ilist' blist',
+             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+             [[ (F * indirect_valid (wordToNat (i :-> "len")) (i :-> "indptr") blist' *
+                 rep' xp ilist')%pred (list2mem m') ]] *
+             (([[ off < wnr_direct ]]%word *  [[ blist' = blist ]] *
+               [[ (A * inum |-> (i :=> "blocks" := 
+                                 (upd (i :-> "blocks") off bn)))%pred (list2mem ilist')]]) \/
+              ([[ off >= wnr_direct ]]%word *
+               [[ (A * inum |-> i)%pred (list2mem ilist')]] *
+               [[ (B * (off ^- wnr_direct) |-> bn)%pred (list2mem blist')]]))
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} iputbn lxp xp i inum off bn ms.
+  Proof.
+    unfold iputbn, rep.
+    hoare.
+
+    admit.
+
+    rewrite indirect_valid_r.
+    cancel.
+    replace nr_direct with (wordToNat wnr_direct) by auto.
+    eapply wle_wlt_lt; eauto.
+
+    eapply pimpl_or_r; right.
+    cancel.
+    instantiate (a1 := l1).
+    pred_apply; cancel.
+    instantiate (a2 := l2).
+    pred_apply; cancel.
+    rewrite indirect_valid_r.
+    cancel.
+    replace nr_direct with (wordToNat wnr_direct) by auto.
+    eapply wle_wlt_lt; eauto.
   Qed.
 
 
