@@ -19,6 +19,7 @@ Require Import MemLog.
 Require Import RecArray.
 Require Import ListPred.
 Require Import GenSep.
+Require Import WordAuto.
 
 
 Set Implicit Arguments.
@@ -35,10 +36,6 @@ Module BALLOC.
 
   Definition itemtype := Rec.WordF 1.
   Definition items_per_valu : addr := natToWord addrlen valulen.
-  Theorem items_per_valu_not_0 : items_per_valu <> $0.
-    Require Import WordAuto.
-    unfold items_per_valu. rewrite valulen_is. apply word_neq. compute. intro H. simpl in H. discriminate.
-  Qed.
 
   Theorem blocksz : valulen = Rec.len (RecArray.blocktype itemtype items_per_valu).
     unfold blocktype, items_per_valu.

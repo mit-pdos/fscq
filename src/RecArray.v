@@ -90,13 +90,22 @@ Section RECARRAY.
 
   Variable itemtype : Rec.type.
   Variable items_per_valu : addr.
-  Variable items_per_valu_not_0 : items_per_valu <> $0.
   Definition item := Rec.data itemtype.
   Definition item_zero := @Rec.of_word itemtype $0.
   Definition blocktype : Rec.type := Rec.ArrayF itemtype (wordToNat items_per_valu).
   Definition block := Rec.data blocktype.
   Definition block_zero := @Rec.of_word blocktype $0.
   Variable blocksz_ok : valulen = Rec.len blocktype.
+
+  Theorem items_per_valu_not_0 : items_per_valu <> $0.
+  Proof.
+    intro H.
+    unfold blocktype in blocksz_ok.
+    rewrite H in blocksz_ok.
+    simpl in blocksz_ok.
+    rewrite valulen_is in blocksz_ok.
+    discriminate.
+  Qed.
 
   Definition rep_block (b : block) : valu.
     rewrite blocksz_ok. refine (Rec.to_word b).
@@ -273,6 +282,7 @@ Section RECARRAY.
     >} get lxp xp inum ms.
   Proof.
     unfold get, array_item.
+    pose proof items_per_valu_not_0.
 
     intros.
     eapply pimpl_ok2. eauto with prog.
@@ -286,10 +296,10 @@ Section RECARRAY.
     abstract word2nat_auto.
     step.
     subst.
-    unfold array_item_pairs in H. unfold rep_block in H.
-    destruct_lift H.
+    unfold array_item_pairs in H0. unfold rep_block in H0.
+    destruct_lift H0.
     apply nested_sel_divmod_concat; auto.
-    eapply Forall_impl; [| apply H7].
+    eapply Forall_impl; [ | apply H8 ].
     intro a. simpl. tauto.
   Qed.
 
@@ -300,7 +310,7 @@ Section RECARRAY.
        fold_right (@app _) nil (Array.upd l (pos ^/ items_per_valu)
          (Array.upd (sel l (pos ^/ items_per_valu) nil) (pos ^% items_per_valu) v)).
   Proof.
-    intros. unfold upd.
+    intros. unfold upd. pose proof items_per_valu_not_0.
     rewrite <- updN_concat with (m := wordToNat items_per_valu).
     word2nat_auto. rewrite Nat.mul_comm. rewrite Nat.add_comm. rewrite <- Nat.div_mod.
     trivial. assumption. word2nat_auto.
@@ -320,6 +330,7 @@ Section RECARRAY.
   Proof.
     unfold put, array_item.
     unfold array_item_pairs.
+    pose proof items_per_valu_not_0.
     step.
 
     unfold array_item_pairs.
