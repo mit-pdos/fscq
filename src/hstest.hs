@@ -7,8 +7,8 @@ import Inode
 import Prog
 import Word
 import qualified System.Directory
-import qualified System.Exit
-import qualified System.Random -- apt-get install libghc-random-dev
+-- import qualified System.Exit
+-- import qualified System.Random
 import qualified Data.ByteString
 import qualified Data.Bits
 import qualified Testprog
@@ -26,20 +26,20 @@ debugmsg s =
   else
     return ()
 
-crashRandom :: IO Int
-crashRandom = System.Random.getStdRandom (System.Random.randomR (1, 20))
+-- crashRandom :: IO Int
+-- crashRandom = System.Random.getStdRandom (System.Random.randomR (1, 20))
 
-maybeCrash :: IO ()
-maybeCrash = do
-  x <- crashRandom
-  -- if x == 1
-  if x == 0
-  then
-    do
-      putStrLn "CRASH!"
-      System.Exit.exitFailure
-  else
-    return ()
+-- maybeCrash :: IO ()
+-- maybeCrash = do
+--   x <- crashRandom
+--   -- if x == 1
+--   if x == 0
+--   then
+--     do
+--       putStrLn "CRASH!"
+--       System.Exit.exitFailure
+--   else
+--     return ()
 
 bs2i :: Data.ByteString.ByteString -> Integer
 bs2i = Data.ByteString.foldl' (\i b -> (i `Data.Bits.shiftL` 8) + fromIntegral b) 0
@@ -56,7 +56,7 @@ read_disk f (W a) = do
 
 write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
 write_disk f (W a) (W v) = do
-  maybeCrash
+  -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   hSeek f AbsoluteSeek $ 512*a
   Data.ByteString.hPut f $ i2bs v
