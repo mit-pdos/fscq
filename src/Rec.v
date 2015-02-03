@@ -1,5 +1,7 @@
 Require Import Arith List String Omega. 
 Require Import Word.
+Require Import Eqdep_dec.
+Require Import Array.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -296,15 +298,95 @@ Module Rec.
 
   Arguments of_word : simpl never.
   Arguments to_word : simpl never.
+
+
+  (**
+   * Efficient implementations for fetching or updating a single element from a
+   * [word (len (ArrayF ft len))], without decoding/encoding the whole word to
+   * and from the corresponding [list (data ft)].
+   *)
+
+  Definition middle (low mid high : nat) (w : word (low + (mid + high))) : word mid :=
+    split1 mid high (split2 low (mid+high) w).
+
+  Lemma word_selN_helper : forall idx l lenft, idx < l ->
+    l * lenft = idx * lenft + (lenft + (l * lenft - lenft - idx * lenft)).
+  Proof.
+    intros.
+    rewrite plus_assoc.
+    rewrite Nat.add_sub_assoc.
+    rewrite <- plus_assoc.
+    rewrite plus_comm.
+    rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.sub_diag; rewrite <- plus_n_O.
+    rewrite Nat.add_sub_assoc.
+    rewrite plus_comm.
+    rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.sub_diag; rewrite <- plus_n_O.
+    reflexivity.
+    replace (lenft) with (1 * lenft) at 1 by omega.
+    apply Nat.mul_le_mono_r; omega.
+    replace (lenft) with (1 * lenft) at 3 by omega.
+    rewrite <- Nat.mul_sub_distr_r.
+    apply Nat.mul_le_mono_r; omega.
+  Qed.
+
+  Definition word_selN {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l))) : word (len ft).
+    refine (if lt_dec idx l then _ else $0).
+    refine (middle (idx * len ft) (len ft) (l * len ft - len ft - idx * len ft) _).
+    replace (idx * len ft + (len ft + (l * len ft - len ft - idx * len ft))) with (l * len ft).
+    exact w.
+    apply word_selN_helper.
+    apply l0.
+  Defined.
+
+  Theorem word_selN_equiv : forall ft l idx w def, idx < l ->
+    of_word (@word_selN ft l idx w) = selN (of_word w) idx def.
+  Proof.
+    induction l; intros; try omega.
+    unfold of_word in *; fold (@of_word ft) in *.
+    destruct idx; simpl.
+    - f_equal.
+      unfold word_selN, middle; simpl.
+      admit.  (* XXX dependent type mess.. *)
+    - rewrite <- IHl by omega; clear IHl.
+      f_equal.
+      unfold word_selN; simpl.
+      destruct (lt_dec (S idx) (S l)); try omega.
+      destruct (lt_dec idx l); try omega.
+      admit.  (* XXX dependent type mess.. *)
+  Qed.
+
+
+  Definition word_updN {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l)))
+                                             (v : word (len ft)) : word (len (ArrayF ft l)).
+    refine (if lt_dec idx l then _ else $0); simpl in *.
+    replace (l * len ft) with (idx * len ft + (l * len ft - idx * len ft)) in *.
+    remember (split1 (idx * len ft) (l * len ft - idx * len ft) w) as low; clear Heqlow.
+    remember (split2 (idx * len ft) (l * len ft - idx * len ft) w) as midhi; clear Heqmidhi.
+    replace (l * len ft - idx * len ft) with (len ft + (l * len ft - idx * len ft - len ft)) in *.
+    remember (split1 (len ft) (l * len ft - idx * len ft - len ft) midhi) as mid; clear Heqmid.
+    remember (split2 (len ft) (l * len ft - idx * len ft - len ft) midhi) as hi; clear Heqhi.
+    refine (combine low _).
+    refine (combine v hi).
+
+    rewrite Nat.add_sub_assoc. rewrite plus_comm. rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.sub_diag. omega.
+
+    rewrite <- Nat.mul_sub_distr_r. replace (len ft) with (1 * len ft) at 1 by omega.
+    apply Nat.mul_le_mono_r; omega.
+
+    rewrite Nat.add_sub_assoc. rewrite plus_comm. rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.sub_diag. omega.
+
+    apply Nat.mul_le_mono_r; omega.
+  Defined.
+
+  Theorem word_updN_equiv : forall ft l idx w v, idx < l ->
+    @word_updN ft l idx w (to_word v) = @to_word (ArrayF ft l) (updN (of_word w) idx v).
+  Admitted.
+
 End Rec.
 
 Notation "r :-> n" := (Rec.recget' n r) (at level 20).
 Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
-
-(*
-Definition inodetype : Rec.rectype := [("free", Rec.WordF 1); ("len", Rec.WordF 16); ("block0", Rec.WordF 16)].
-Definition inode1 : Rec.recdata inodetype := ($1, ($11, ($1677, tt))).
-Parameter inode2 : Rec.recdata inodetype.
-Definition foo := Eval compute in inode2 :-> "len".
-Definition foo2 := Eval compute in inode2 :=> "len" := $17.
-*)
