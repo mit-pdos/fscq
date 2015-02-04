@@ -78,10 +78,11 @@ bs2ba (BSI.PS fp _ _) = do
 ba2i :: BA -> Integer
 ba2i (BA ba) = GMPI.importIntegerFromByteArray ba 0## 512## 1#
 
-bs2i :: BS.ByteString -> Integer
-bs2i bs = BS.foldl' shifter 0 bs
-  where
-    shifter = \i b -> (i `Data.Bits.shiftL` 8) + fromIntegral b
+bs2i :: BS.ByteString -> IO Integer
+bs2i (BSI.PS fp _ _) = do
+  withForeignPtr fp $ \p -> case p of
+    (GHC.Exts.Ptr a) -> IO $ \s -> case GMPI.importIntegerFromAddr a 512## 1# s of
+      (# s', i #) -> (# s', i #)
 
 i2bs :: Integer -> BS.ByteString
 i2bs i = BS.append (BS.replicate (512 - BS.length bs) 0) (BS.reverse bs)
@@ -96,8 +97,8 @@ read_disk f (W a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   hSeek f AbsoluteSeek $ 512*a
   bs <- BS.hGet f 512
-  ba <- bs2ba bs
-  return $ W $ ba2i ba
+  i <- bs2i bs
+  return $ W i
 
 write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
 write_disk f (W a) (W v) = do
