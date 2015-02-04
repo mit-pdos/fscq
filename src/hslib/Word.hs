@@ -5,7 +5,7 @@ import Data.Bits
 data Coq_word = W !Integer
 
 wrap :: Integer -> Integer -> Integer
-wrap nbits v = v `rem` (2^nbits)
+wrap nbits v = (Data.Bits..&.) v (2^nbits - 1)
 
 weq :: Integer -> Coq_word -> Coq_word -> Bool
 weq _ (W x) (W y) = x == y

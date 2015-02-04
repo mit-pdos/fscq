@@ -17,7 +17,7 @@ disk_fn :: String
 disk_fn = "disk.img"
 
 verbose :: Bool
-verbose = True
+verbose = False
 
 debugmsg :: String -> IO ()
 debugmsg s =
@@ -118,7 +118,7 @@ main = do
   -- r <- run_dcode f $ the_prog lxp
   -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()
   -- r <- run_dcode f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
-  r <- repf 100 (Just (W 123))
+  r <- repf 1000 (Just (W 123))
        (\x -> case x of
               Nothing -> return Nothing
               Just xv -> run_dcode f $ Testprog.test_bfile lxp bxp ixp xv Prog.Done)
