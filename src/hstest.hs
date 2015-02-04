@@ -9,7 +9,7 @@ import Word
 import qualified System.Directory
 -- import qualified System.Exit
 -- import qualified System.Random
-import qualified Data.ByteString
+import qualified Data.ByteString as BS
 import qualified Data.Bits
 import qualified Testprog
 
@@ -41,17 +41,24 @@ debugmsg s =
 --   else
 --     return ()
 
-bs2i :: Data.ByteString.ByteString -> Integer
-bs2i = Data.ByteString.foldl' (\i b -> (i `Data.Bits.shiftL` 8) + fromIntegral b) 0
+bs2i :: BS.ByteString -> Integer
+bs2i bs = BS.foldl' shifter 0 bs
+  where
+    shifter = \i b -> (i `Data.Bits.shiftL` 8) + fromIntegral b
 
-i2bs :: Integer -> Data.ByteString.ByteString
-i2bs = Data.ByteString.reverse . Data.ByteString.unfoldr (\i -> if i == 0 then Nothing else Just (fromIntegral i, i `Data.Bits.shiftR` 8))
+i2bs :: Integer -> BS.ByteString
+i2bs i = BS.append (BS.replicate (512 - BS.length bs) 0) (BS.reverse bs)
+  where
+    bs = BS.unfoldr shifter i
+    shifter = \x -> if x == 0
+                    then Nothing
+                    else Just (fromIntegral x, x `Data.Bits.shiftR` 8)
 
 read_disk :: Handle -> Coq_word -> IO Coq_word
 read_disk f (W a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   hSeek f AbsoluteSeek $ 512*a
-  bs <- Data.ByteString.hGet f 512
+  bs <- BS.hGet f 512
   return $ W $ bs2i bs
 
 write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
@@ -59,7 +66,7 @@ write_disk f (W a) (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   hSeek f AbsoluteSeek $ 512*a
-  Data.ByteString.hPut f $ i2bs v
+  BS.hPut f $ i2bs v
   return ()
 
 run_dcode :: Handle -> Prog.Coq_prog a -> IO a
