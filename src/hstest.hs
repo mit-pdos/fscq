@@ -60,13 +60,13 @@ bs2i (BSI.PS fp _ _) = do
       (# s', i #) -> (# s', i #)
 
 i2bs :: Integer -> IO BS.ByteString
-i2bs i = do
-    bs <- BSI.createAndTrim 512 f
-    return $ BS.append bs (BS.replicate (512 - BS.length bs) 0)
+i2bs i = BSI.create 512 f
   where
-    f = \p -> case p of
-      (GHC.Exts.Ptr a) -> IO $ \s -> case GMPI.exportIntegerToAddr i a -1# s of
-        (# s', nwritten #) -> (# s', I# (word2Int# nwritten) #)
+    f = \p -> do
+      _ <- BSI.memset p 0 512
+      case p of
+        (GHC.Exts.Ptr a) -> IO $ \s -> case GMPI.exportIntegerToAddr i a -1# s of
+          (# s', _ #) -> (# s', () #)
 
 read_disk :: Handle -> Coq_word -> IO Coq_word
 read_disk f (W a) = do
