@@ -4,8 +4,12 @@ import Data.Bits
 
 data Coq_word = W !Integer
 
+-- Memoize bitmasks for wrap
+bitmask :: [Integer]
+bitmask = map (\x -> 2^x - 1) [(0::Int) ..]
+
 wrap :: Integer -> Integer -> Integer
-wrap nbits v = (Data.Bits..&.) v (2^nbits - 1)
+wrap nbits v = (Data.Bits..&.) v (bitmask !! fromIntegral nbits)
 
 weq :: Integer -> Coq_word -> Coq_word -> Bool
 weq _ (W x) (W y) = x == y
