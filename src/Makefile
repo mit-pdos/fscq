@@ -26,7 +26,7 @@ all: hstest
 %: %.hs coq
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) -Wall hslib/*.hs
-	$(GHC) $(GHCARGS) codegen/*.hs -ihslib
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -Wall $< -ihslib -icodegen -o $@
 
 coqbuild/%.v: %.v strip-proofs.py
