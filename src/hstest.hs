@@ -1,3 +1,5 @@
+{-# LANGUAGE MagicHash, UnboxedTuples #-}
+
 module Main where
 
 import System.IO
@@ -12,6 +14,10 @@ import qualified System.Directory
 import qualified Data.ByteString as BS
 import qualified Data.Bits
 import qualified Testprog
+import qualified GHC.Integer.GMP.Internals as GMPI
+import GHC.Word
+import GHC.Base
+import Control.Monad
 
 disk_fn :: String
 disk_fn = "disk.img"
@@ -41,6 +47,34 @@ debugmsg s =
 --   else
 --     return ()
 
+-- For a more efficient array implementation, perhaps worth checking out:
+-- http://www.macs.hw.ac.uk/~hwloidl/hackspace/ghc-6.12-eden-gumsmp-MSA-IFL13/libraries/dph/dph-base/Data/Array/Parallel/Arr/BUArr.hs
+
+-- Snippets of ByteArray# manipulation code from GHC's
+-- testsuite/tests/lib/integer/integerGmpInternals.hs
+
+data MBA = MBA { unMBA :: !(MutableByteArray# RealWorld) }
+data BA  = BA  { unBA  :: !ByteArray# }
+
+newByteArray :: Word# -> IO MBA
+newByteArray sz = IO $ \s -> case newPinnedByteArray# (word2Int# sz) s of (# s', arr #) -> (# s', MBA arr #)
+
+writeByteArray :: MutableByteArray# RealWorld -> Int# -> Word8 -> IO ()
+writeByteArray arr i (W8# w) = IO $ \s -> case writeWord8Array# arr i w s of s' -> (# s', () #)
+
+freezeByteArray :: MutableByteArray# RealWorld -> IO BA
+freezeByteArray arr = IO $ \s -> case unsafeFreezeByteArray# arr s of (# s', arr' #) -> (# s', BA arr' #)
+
+bs2ba :: BS.ByteString -> IO BA
+bs2ba bs = do
+  MBA mba <- newByteArray 512##
+  _ <- forM (zip [0..511] $ BS.unpack bs) $ \(I# i, w) -> do
+    writeByteArray mba i w
+  freezeByteArray mba
+
+ba2i :: BA -> Integer
+ba2i (BA ba) = GMPI.importIntegerFromByteArray ba 0## 512## 1#
+
 bs2i :: BS.ByteString -> Integer
 bs2i bs = BS.foldl' shifter 0 bs
   where
@@ -59,7 +93,8 @@ read_disk f (W a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   hSeek f AbsoluteSeek $ 512*a
   bs <- BS.hGet f 512
-  return $ W $ bs2i bs
+  ba <- bs2ba bs
+  return $ W $ ba2i ba
 
 write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
 write_disk f (W a) (W v) = do
