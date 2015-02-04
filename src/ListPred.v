@@ -205,14 +205,17 @@ Section LISTMATCH.
   Theorem listmatch_extract : forall a b i ad bd,
     i < length a ->
     listmatch a b =p=>
-    [[ length a = length b ]] * exists F, F * prd (selN a i ad) (selN b i bd).
+    [[ length a = length b ]] * 
+    listmatch (removeN a i) (removeN b i) * prd (selN a i ad) (selN b i bd).
   Proof.
-    intros; unfold listmatch; cancel.
-    rewrite listpred_fwd with (def := (ad, bd)) (i := i); eauto.
-    rewrite selN_combine; auto.
-    unfold pprd, prod_curry.
+    intros; unfold listmatch.
     cancel.
+    rewrite listpred_isolate with (i := i) (def := (ad, bd)) at 1.
+    rewrite removeN_combine.
+    rewrite selN_combine; auto.
     rewrite combine_length; rewrite <- H1; rewrite Nat.min_id; auto.
+    repeat rewrite removeN_length by omega.
+    omega.
   Qed.
 
   Theorem listmatch_updN_removeN : forall a b i av bv,
@@ -304,8 +307,8 @@ Ltac solve_length_eq :=
 Ltac extract_listmatch_at ix :=
   match goal with
     | [  H : context [ listmatch ?p ?a _ ] |- _ ] =>
-            try unfold p in H;
             erewrite listmatch_extract with (i := wordToNat ix) in H;
+            try unfold p at 2 in H;
             try autorewrite with defaults in H; auto;
             destruct_lift H
   end.
