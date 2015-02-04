@@ -76,16 +76,16 @@ bs2ba (BSI.PS fp _ _) = do
   freezeByteArray mba
 
 ba2i :: BA -> Integer
-ba2i (BA ba) = GMPI.importIntegerFromByteArray ba 0## 512## 1#
+ba2i (BA ba) = GMPI.importIntegerFromByteArray ba 0## 512## -1#
 
 bs2i :: BS.ByteString -> IO Integer
 bs2i (BSI.PS fp _ _) = do
   withForeignPtr fp $ \p -> case p of
-    (GHC.Exts.Ptr a) -> IO $ \s -> case GMPI.importIntegerFromAddr a 512## 1# s of
+    (GHC.Exts.Ptr a) -> IO $ \s -> case GMPI.importIntegerFromAddr a 512## -1# s of
       (# s', i #) -> (# s', i #)
 
 i2bs :: Integer -> BS.ByteString
-i2bs i = BS.append (BS.replicate (512 - BS.length bs) 0) (BS.reverse bs)
+i2bs i = BS.append bs (BS.replicate (512 - BS.length bs) 0)
   where
     bs = BS.unfoldr shifter i
     shifter = \x -> if x == 0
