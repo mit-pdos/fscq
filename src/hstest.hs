@@ -12,12 +12,14 @@ import qualified System.Directory
 -- import qualified System.Exit
 -- import qualified System.Random
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BSI
 import qualified Data.Bits
 import qualified Testprog
 import qualified GHC.Integer.GMP.Internals as GMPI
 import GHC.Word
 import GHC.Base
-import Control.Monad
+import GHC.Exts
+import Foreign.ForeignPtr
 
 disk_fn :: String
 disk_fn = "disk.img"
@@ -66,10 +68,11 @@ freezeByteArray :: MutableByteArray# RealWorld -> IO BA
 freezeByteArray arr = IO $ \s -> case unsafeFreezeByteArray# arr s of (# s', arr' #) -> (# s', BA arr' #)
 
 bs2ba :: BS.ByteString -> IO BA
-bs2ba bs = do
+bs2ba (BSI.PS fp _ _) = do
   MBA mba <- newByteArray 512##
-  _ <- forM (zip [0..511] $ BS.unpack bs) $ \(I# i, w) -> do
-    writeByteArray mba i w
+  _ <- withForeignPtr fp $ \p -> case p of
+    (GHC.Exts.Ptr a) -> IO $ \s -> case copyAddrToByteArray# a mba 0# 512# s of
+      s' -> (# s', () #)
   freezeByteArray mba
 
 ba2i :: BA -> Integer
