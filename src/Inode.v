@@ -355,9 +355,10 @@ Module INODE.
       | None => rx (false, ms')
       | Some bnum =>
           let i' := (i :=> "indptr" := bnum) in
-          ms'' <- indput lxp bnum (off ^- wnr_direct) a ms';
-          ms''' <- iput' lxp xp inum i' ms'';
-          rx (true, ms''')
+          ms2 <- MEMLOG.write lxp bnum $0 ms';
+          ms3 <- indput lxp bnum (off ^- wnr_direct) a ms2;
+          ms4 <- iput' lxp xp inum i' ms3;
+          rx (true, ms4)
       end
     } else {
       ms' <- indput lxp (i :-> "indptr") (off ^- wnr_direct) a ms;
