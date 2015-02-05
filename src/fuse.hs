@@ -26,6 +26,7 @@ helloString = B.pack "Hello World, HFuse!\n"
 
 helloPath :: FilePath
 helloPath = "/hello"
+dirStat :: FuseContext -> FileStat
 dirStat ctx = FileStat { statEntryType = Directory
                        , statFileMode = foldr1 unionFileModes
                                           [ ownerReadMode
@@ -46,6 +47,7 @@ dirStat ctx = FileStat { statEntryType = Directory
                        , statStatusChangeTime = 0
                        }
 
+fileStat :: FuseContext -> FileStat
 fileStat ctx = FileStat { statEntryType = RegularFile
                         , statFileMode = foldr1 unionFileModes
                                            [ ownerReadMode
@@ -73,6 +75,7 @@ helloGetFileStat path | path == helloPath = do
 helloGetFileStat _ =
     return $ Left eNOENT
 
+helloOpenDirectory :: FilePath -> IO Errno
 helloOpenDirectory "/" = return eOK
 helloOpenDirectory _   = return eNOENT
 
@@ -87,7 +90,7 @@ helloReadDirectory "/" = do
 helloReadDirectory _ = return (Left (eNOENT))
 
 helloOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-helloOpen path mode flags
+helloOpen path mode _
     | path == helloPath = case mode of
                             ReadOnly -> return (Right ())
                             _        -> return (Left eACCES)
@@ -101,7 +104,7 @@ helloRead path _ byteCount offset
     | otherwise         = return $ Left eNOENT
 
 helloGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-helloGetFileSystemStats str =
+helloGetFileSystemStats _ =
   return $ Right $ FileSystemStats
     { fsStatBlockSize = 512
     , fsStatBlockCount = 1
