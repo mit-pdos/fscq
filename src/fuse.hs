@@ -1,110 +1,117 @@
 module Main where
 
-import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8
 import Foreign.C.Error
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
+import Word
 
 import System.Fuse
 
-type HT = ()
+-- Handle type for open files; we will use the inode number
+type HT = Coq_word
 
 main :: IO ()
-main = fuseMain helloFSOps defaultExceptionHandler
+main = fuseMain fscqFSOps defaultExceptionHandler
 
-helloFSOps :: FuseOperations HT
-helloFSOps = defaultFuseOps { fuseGetFileStat = helloGetFileStat
-                            , fuseOpen        = helloOpen
-                            , fuseRead        = helloRead 
-                            , fuseOpenDirectory = helloOpenDirectory
-                            , fuseReadDirectory = helloReadDirectory
-                            , fuseGetFileSystemStats = helloGetFileSystemStats
-                            }
-helloString :: B.ByteString
-helloString = B.pack "Hello World, HFuse!\n"
+fscqFSOps :: FuseOperations HT
+fscqFSOps = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat
+  , fuseOpen = fscqOpen
+  , fuseRead = fscqRead
+  , fuseOpenDirectory = fscqOpenDirectory
+  , fuseReadDirectory = fscqReadDirectory
+  , fuseGetFileSystemStats = fscqGetFileSystemStats
+  }
 
-helloPath :: FilePath
-helloPath = "/hello"
+fscqString :: B.ByteString
+fscqString = Data.ByteString.Char8.pack "Hello World, HFuse!\n"
+
+fscqPath :: FilePath
+fscqPath = "/hello"
+
 dirStat :: FuseContext -> FileStat
-dirStat ctx = FileStat { statEntryType = Directory
-                       , statFileMode = foldr1 unionFileModes
-                                          [ ownerReadMode
-                                          , ownerExecuteMode
-                                          , groupReadMode
-                                          , groupExecuteMode
-                                          , otherReadMode
-                                          , otherExecuteMode
-                                          ]
-                       , statLinkCount = 2
-                       , statFileOwner = fuseCtxUserID ctx
-                       , statFileGroup = fuseCtxGroupID ctx
-                       , statSpecialDeviceID = 0
-                       , statFileSize = 4096
-                       , statBlocks = 1
-                       , statAccessTime = 0
-                       , statModificationTime = 0
-                       , statStatusChangeTime = 0
-                       }
+dirStat ctx = FileStat
+  { statEntryType = Directory
+  , statFileMode = foldr1 unionFileModes
+                     [ ownerReadMode
+                     , ownerExecuteMode
+                     , groupReadMode
+                     , groupExecuteMode
+                     , otherReadMode
+                     , otherExecuteMode
+                     ]
+  , statLinkCount = 2
+  , statFileOwner = fuseCtxUserID ctx
+  , statFileGroup = fuseCtxGroupID ctx
+  , statSpecialDeviceID = 0
+  , statFileSize = 4096
+  , statBlocks = 1
+  , statAccessTime = 0
+  , statModificationTime = 0
+  , statStatusChangeTime = 0
+  }
 
 fileStat :: FuseContext -> FileStat
-fileStat ctx = FileStat { statEntryType = RegularFile
-                        , statFileMode = foldr1 unionFileModes
-                                           [ ownerReadMode
-                                           , groupReadMode
-                                           , otherReadMode
-                                           ]
-                        , statLinkCount = 1
-                        , statFileOwner = fuseCtxUserID ctx
-                        , statFileGroup = fuseCtxGroupID ctx
-                        , statSpecialDeviceID = 0
-                        , statFileSize = fromIntegral $ B.length helloString
-                        , statBlocks = 1
-                        , statAccessTime = 0
-                        , statModificationTime = 0
-                        , statStatusChangeTime = 0
-                        }
+fileStat ctx = FileStat
+  { statEntryType = RegularFile
+  , statFileMode = foldr1 unionFileModes
+                     [ ownerReadMode
+                     , groupReadMode
+                     , otherReadMode
+                     ]
+  , statLinkCount = 1
+  , statFileOwner = fuseCtxUserID ctx
+  , statFileGroup = fuseCtxGroupID ctx
+  , statSpecialDeviceID = 0
+  , statFileSize = fromIntegral $ B.length fscqString
+  , statBlocks = 1
+  , statAccessTime = 0
+  , statModificationTime = 0
+  , statStatusChangeTime = 0
+  }
 
-helloGetFileStat :: FilePath -> IO (Either Errno FileStat)
-helloGetFileStat "/" = do
-    ctx <- getFuseContext
-    return $ Right $ dirStat ctx
-helloGetFileStat path | path == helloPath = do
-    ctx <- getFuseContext
-    return $ Right $ fileStat ctx
-helloGetFileStat _ =
-    return $ Left eNOENT
+fscqGetFileStat :: FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat "/" = do
+  ctx <- getFuseContext
+  return $ Right $ dirStat ctx
+fscqGetFileStat path | path == fscqPath = do
+  ctx <- getFuseContext
+  return $ Right $ fileStat ctx
+fscqGetFileStat _ =
+  return $ Left eNOENT
 
-helloOpenDirectory :: FilePath -> IO Errno
-helloOpenDirectory "/" = return eOK
-helloOpenDirectory _   = return eNOENT
+fscqOpenDirectory :: FilePath -> IO Errno
+fscqOpenDirectory "/" = return eOK
+fscqOpenDirectory _   = return eNOENT
 
-helloReadDirectory :: FilePath -> IO (Either Errno [(FilePath, FileStat)])
-helloReadDirectory "/" = do
-    ctx <- getFuseContext
-    return $ Right [(".",          dirStat  ctx)
-                   ,("..",         dirStat  ctx)
-                   ,(helloName,    fileStat ctx)
-                   ]
-    where (_:helloName) = helloPath
-helloReadDirectory _ = return (Left (eNOENT))
+fscqReadDirectory :: FilePath -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory "/" = do
+  ctx <- getFuseContext
+  return $ Right [(".",          dirStat  ctx)
+                 ,("..",         dirStat  ctx)
+                 ,(fscqName,    fileStat ctx)
+                 ]
+  where (_:fscqName) = fscqPath
+fscqReadDirectory _ = return (Left (eNOENT))
 
-helloOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-helloOpen path mode _
-    | path == helloPath = case mode of
-                            ReadOnly -> return (Right ())
-                            _        -> return (Left eACCES)
-    | otherwise         = return (Left eNOENT)
+fscqOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqOpen path mode _
+  | path == fscqPath = case mode of
+                         ReadOnly -> return (Right $ W 0)
+                         _        -> return (Left eACCES)
+  | otherwise        = return (Left eNOENT)
 
+fscqRead :: FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
+fscqRead path _ byteCount offset
+  | path == fscqPath =
+      return $ Right $ B.take (fromIntegral byteCount) $ B.drop (fromIntegral offset) fscqString
+  | otherwise        = return $ Left eNOENT
 
-helloRead :: FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
-helloRead path _ byteCount offset
-    | path == helloPath =
-        return $ Right $ B.take (fromIntegral byteCount) $ B.drop (fromIntegral offset) helloString
-    | otherwise         = return $ Left eNOENT
-
-helloGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-helloGetFileSystemStats _ =
+fscqGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
+fscqGetFileSystemStats _ =
   return $ Right $ FileSystemStats
     { fsStatBlockSize = 512
     , fsStatBlockCount = 1
