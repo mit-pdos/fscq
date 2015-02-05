@@ -93,9 +93,10 @@ Module DIR.
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
            [[ (rep dmap) (list2mem (BFILE.BFData f)) ]]
-    POST:r (exists inum DF, [[ r = Some inum ]] *
-            [[ (DF * name |-> inum)%pred dmap ]]) \/
-           ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]])
+    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           ((exists inum DF, [[ r = Some inum ]] *
+             [[ (DF * name |-> inum)%pred dmap ]]) \/
+            ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
     >} dlookup lxp bxp ixp dnum name ms.
   Proof.
@@ -103,16 +104,52 @@ Module DIR.
     step.
     step.
 
-    instantiate (a8:=fun a => None); unfold emp; auto. (* dmap' *)
+    instantiate (a8:=empty_mem); unfold emp; auto. (* dmap' *)
 
     repeat deex.
-    (* need to prove entry into loop invariant: no names are found in an empty dmap' *)
+    (* prove entry into loop invariant: no names are found in an empty dmap' *)
+    apply sep_star_empty_mem in H; destruct H.
+    apply ptsto_empty_mem in H0; auto.
+
+    step.
+    step.
+    step.
+
+    (* valid=0 dentry: dmap' stays the same across loop iterations *)
     admit.
 
+    step.
+    step.
+
+    (* the name does exist *)
+    apply pimpl_or_r; left.
+    cancel.
+
+    (* need to extract the [m0]th element out of [l] *)
+    unfold Rec.recget' in *; simpl in *.
+    rewrite listpred_fwd with (i:=#m0) (def:=item_zero dirent_type).
+    unfold dmatch at 2; simpl.
+    unfold sel in H16. rewrite <- H16.
+    unfold Rec.recget'; simpl.
+    destruct (weq a1 $0); [ intuition | cancel ].
+    (* some length constraint.. *)
+    admit.
+
+    (* unification mismatch: it assumes dmap' stays the same across loop iterations,
+     * which is not true for this case (valid=1, name not equal).
+     *)
+    eapply pimpl_ok2; eauto.
+    intros; norm.
+    cancel.
+    intuition try congruence; subst.
+    unfold Rec.recget' in *; simpl in *.
+    instantiate (a:=Prog.upd m1 a a0).
     admit.
     admit.
 
-    unfold MEMLOG.log_infact; cancel.
+    admit.  (* step starts running out of memory... *)
+
+    unfold MEMLOG.log_intact; cancel.
   Qed.
 
   Definition dunlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
