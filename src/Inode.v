@@ -460,8 +460,9 @@ Module INODE.
     [[ IBlocks ino = firstn (length (IBlocks ino)) ((ino' :-> "blocks") ++ blist) ]]
     )%pred.
 
-  Definition rep xp (ilist : list inode) := (
-     exists ilist', rep' xp ilist' *
+  Definition rep bxp xp (ilist : list inode) := (
+     exists ilist' freelist, 
+     rep' xp ilist' * BALLOC.rep bxp freelist *
      listmatch inode_match ilist ilist')%pred.
 
   Definition inode_match_direct ino (ino' : inode') : @pred addrlen valu := (
@@ -631,8 +632,8 @@ Module INODE.
   Hint Rewrite resolve_selN_valu0   using reflexivity : defaults.
 
 
-  Lemma rep_bound: forall F xp l m,
-    (F * rep xp l)%pred m
+  Lemma rep_bound: forall F bxp xp l m,
+    (F * rep bxp xp l)%pred m
     -> length l <= wordToNat (IXLen xp ^* items_per_valu).
   Proof.
     unfold rep, rep'; intros.
@@ -640,8 +641,8 @@ Module INODE.
     erewrite listmatch_length_r; eauto; omega.
   Qed.
 
-  Lemma blocks_bound: forall F xp l m i,
-    (F * rep xp l)%pred m
+  Lemma blocks_bound: forall F bxp xp l m i,
+    (F * rep bxp xp l)%pred m
     -> length (IBlocks (sel l i inode0)) <= wordToNat (natToWord addrlen blocks_per_inode).
   Proof.
     unfold rep, sel; intros.
@@ -649,7 +650,7 @@ Module INODE.
     destruct (lt_dec (wordToNat i) (length l)).
     extract_listmatch_at i; unfold nr_direct in *.
     autorewrite with defaults. 
-    unfold blocks_per_inode, nr_indirect in H7; simpl in H7; auto.
+    unfold blocks_per_inode, nr_indirect in H8; simpl in H8; auto.
     rewrite selN_oob by omega.
     simpl; omega.
   Qed.
@@ -696,9 +697,9 @@ Module INODE.
   Hint Extern 0 (okToUnify (indrep _ _) (indrep _ _)) => constructor : okToUnify.
 
   Theorem ilen_ok : forall lxp xp inum ms,
-    {< F A mbase m ilist ino,
+    {< F A mbase m ilist ino bxp,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-           [[ (F * rep xp ilist)%pred (list2mem m) ]] *
+           [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms * [[ r = $ (length (IBlocks ino)) ]]
     CRASH  MEMLOG.log_intact lxp mbase
@@ -716,9 +717,9 @@ Module INODE.
 
 
   Theorem igetsz_ok : forall lxp xp inum ms,
-    {< F A mbase m ilist ino,
+    {< F A mbase m ilist ino bxp,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-           [[ (F * rep xp ilist)%pred (list2mem m) ]] *
+           [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms * [[ r = ISize ino ]]
     CRASH  MEMLOG.log_intact lxp mbase
@@ -734,13 +735,13 @@ Module INODE.
   Qed.
 
   Theorem isetsz_ok : forall lxp xp inum sz ms,
-    {< F A mbase m ilist ino,
+    {< F A mbase m ilist ino bxp,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-             [[ (F * rep xp ilist)%pred (list2mem m) ]] *
+             [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
     POST:ms' exists m' ilist' ino',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-             [[ (F * rep xp ilist')%pred (list2mem m') ]] *
+             [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
              [[ ISize ino' = sz ]]
     CRASH  MEMLOG.log_intact lxp mbase
@@ -773,9 +774,9 @@ Module INODE.
 
 
   Theorem iget_ok : forall lxp xp inum off ms,
-    {< F A B mbase m ilist ino a,
+    {< F A B mbase m ilist ino a bxp,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-           [[ (F * rep xp ilist)%pred (list2mem m) ]] *
+           [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
            [[ (B * off |-> a)%pred (list2mem (IBlocks ino)) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms * [[ r = a ]]
@@ -793,7 +794,7 @@ Module INODE.
     repeat rewrite_list2mem_pred.
     destruct_listmatch.
     unfold sel; subst.
-    rewrite H19.
+    rewrite H20.
     rewrite selN_firstn; inode_bounds.
     rewrite selN_app; inode_bounds.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
@@ -813,28 +814,28 @@ Module INODE.
 
     step.
     subst.
-    rewrite H19.
+    rewrite H20.
     rewrite selN_firstn; inode_bounds.
     rewrite selN_app2.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
     rewrite wminus_minus; auto.
     pred_apply; cancel.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
-    apply wle_le in H11; auto.
+    apply wle_le in H10; auto.
     pred_apply; cancel.
   Qed.
 
 
   (* unused *)
   Theorem iput_ok : forall lxp xp inum off a ms,
-    {< F A B mbase m ilist ino,
+    {< F A B mbase m ilist ino bxp,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-             [[ (F * rep xp ilist)%pred (list2mem m) ]] *
+             [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
              [[ (B * off |->?)%pred (list2mem (IBlocks ino)) ]]
     POST:ms' exists m' ilist' ino',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-             [[ (F * rep xp ilist')%pred (list2mem m') ]] *
+             [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
              [[ (B * off |-> a)%pred (list2mem (IBlocks ino')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
@@ -888,18 +889,80 @@ Module INODE.
     erewrite wordToNat_plusone; eauto.
   Qed.
 
+  Lemma wle_eq_le' : forall sz (a : word sz) b c,
+    b <= wordToNat (natToWord sz b)
+    -> (natToWord sz b <= a)%word -> wordToNat a = c -> b <= c.
+  Proof.
+    intros.
+    apply wle_le in H0.
+    erewrite wordToNat_natToWord_bound in H0; eauto.
+    omega.
+  Qed.
 
-  Theorem igrow_ok : forall lxp bxp xp inum a ms,
-    {< F A B mbase m ilist ino,
+
+  Theorem igrow_tryalloc_ok : forall lxp bxp xp i0 inum ms,
+    {< F A B mbase m ilist ilist' freelist ino bn,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ length (IBlocks ino) < blocks_per_inode ]] *
-             [[ (F * rep xp ilist)%pred (list2mem m) ]] *
+             [[ length (IBlocks ino) >= nr_direct ]] *
+             [[ i0 = sel ilist' inum inode0' ]] *
+             [[ (F * rep' xp ilist' * BALLOC.rep bxp freelist *
+                 listmatch inode_match ilist ilist')%pred (list2mem m) ]] *
+             [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
+             [[  B (list2mem (IBlocks ino)) ]]
+    POST:r   exists m', MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
+            ([[ fst r = None ]] \/
+             [[ fst r = Some bn ]] * exists ilist' ino',
+             [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
+             [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
+             [[ (B * $ (length (IBlocks ino)) |->?)%pred (list2mem (IBlocks ino')) ]])
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} igrow_tryalloc lxp bxp xp i0 inum ms.
+  Proof.
+    unfold igrow_tryalloc, rep.
+    hoare.
+
+    admit. admit. admit. admit.
+
+  Qed.
+
+
+  Theorem igrow_indirect_ok : forall lxp bxp xp i0 inum a ms,
+    {< F A B mbase m ilist ilist' freelist ino,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ length (IBlocks ino) < blocks_per_inode ]] *
+             [[ length (IBlocks ino) >= nr_direct ]] *
+             [[ i0 = sel ilist' inum inode0' ]] *
+             [[ (F * rep' xp ilist' * BALLOC.rep bxp freelist *
+                 listmatch inode_match ilist ilist')%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
              [[  B (list2mem (IBlocks ino)) ]]
     POST:r   exists m', MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
             ([[ fst r = false ]] \/
              [[ fst r = true ]] * exists ilist' ino',
-             [[ (F * rep xp ilist')%pred (list2mem m') ]] *
+             [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
+             [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
+             [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]])
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} igrow_indirect lxp bxp xp i0 inum a ms.
+  Proof.
+    unfold igrow_indirect, rep.
+    admit.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (igrow_indirect _ _ _ _ _ _ _) _) => apply igrow_indirect_ok : prog.
+
+  Theorem igrow_ok : forall lxp bxp xp inum a ms,
+    {< F A B mbase m ilist ino,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ length (IBlocks ino) < blocks_per_inode ]] *
+             [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
+             [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
+             [[  B (list2mem (IBlocks ino)) ]]
+    POST:r   exists m', MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
+            ([[ fst r = false ]] \/
+             [[ fst r = true ]] * exists ilist' ino',
+             [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
              [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]])
     CRASH    MEMLOG.log_intact lxp mbase
@@ -925,18 +988,19 @@ Module INODE.
     repeat rewrite inode_match_is_direct; eauto.
     unfold inode_match_direct.
     simpl; autorewrite with core.
-    rewrite app_length; rewrite H10; simpl.
+    rewrite app_length; rewrite H12; simpl.
     cancel.
 
     rec_simpl.
-    erewrite wordToNat_plusone with (w' := wnr_direct) by auto; omega.
+    erewrite wordToNat_plusone with (w' := wnr_direct) by auto. 
+    rewrite Nat.add_1_r; auto.
     rec_simpl.
 
     apply wlt_plus_one_le; auto.
     rewrite inode_set_blocks_get_blocks.
     rewrite <- firstn_app_updN_eq.
     f_equal; auto.
-    erewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
+    setoid_rewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
     rewrite <- nr_direct_elim; auto.
     pred_apply; cancel.
 
@@ -945,6 +1009,7 @@ Module INODE.
     apply wlt_plus_one_wle; auto.
 
     eapply inode_well_formed with (m := list2mem d1); eauto.
+    instantiate (def := inode0').
     autorewrite with core; auto.
     eapply inode_well_formed with (m := list2mem d0) (l := l); eauto.
     pred_apply; cancel.
@@ -954,8 +1019,13 @@ Module INODE.
     destruct_listmatch.
     unfold sel; inode_bounds.
 
-    admit.
+    (* indirect blocks *)
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
 
+    eapply wle_eq_le'; eauto; simpl; auto.
+    unfold rep in H11; destruct_lift H11.
+    eapply pimpl_or_r; right; cancel; eauto.
   Qed.
 
 
@@ -963,12 +1033,12 @@ Module INODE.
     {< F A B mbase m ilist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (IBlocks ino) <> nil ]] *
-             [[ (F * rep xp ilist)%pred (list2mem m) ]] *
+             [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
              [[ (B * $ (length (IBlocks ino) - 1) |->? )%pred (list2mem (IBlocks ino)) ]]
     POST:ms' exists m' ilist' ino',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-             [[ (F * rep xp ilist')%pred (list2mem m') ]] *
+             [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
              [[  B (list2mem (IBlocks ino')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
