@@ -33,6 +33,7 @@ wmod :: Integer -> Coq_word -> Coq_word -> Coq_word
 wmod _ (W x) (W y) = W $ x `rem` y
 
 natToWord :: Integer -> Integer -> Coq_word
+natToWord _ 0 = W 0
 natToWord n x = W $ wrap n $ fromIntegral x
 
 wordToNat :: Integer -> Coq_word -> Integer
