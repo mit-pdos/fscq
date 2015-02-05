@@ -18,3 +18,11 @@ means running this as root:
   apt-get update
   apt-get install ghc-7.8.4-prof
 
+You also need to install HFuse:
+
+  apt-get install libfuse-dev
+  git clone https://github.com/m15k/hfuse
+  cd hfuse
+  PATH=/opt/ghc/7.8.4/bin:$PATH ./Setup.lhs configure -p --user
+  PATH=/opt/ghc/7.8.4/bin:$PATH ./Setup.lhs build
+  PATH=/opt/ghc/7.8.4/bin:$PATH ./Setup.lhs install

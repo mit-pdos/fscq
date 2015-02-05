@@ -18,7 +18,7 @@ HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
 .PHONY: coq proof clean
 
-all: hstest
+all: hstest fuse
 
 %: %.ml coq
 	rm -f $@
