@@ -83,11 +83,11 @@ Inductive logstate :=
  * For external API purposes, this can be just a subset of FlushedTxn.
  *)
 
-| CommittedUnsyncTxn (cur : diskstate)
-(* We wrote but have not flushed the commit bit yet. *)
-
 | CommittedTxn (cur : diskstate)
-(* A transaction has committed but the log has not been applied yet. *)
+(* A transaction has committed but the log has not necessarily been applied yet. *)
+
+| AppliedUnsyncTxn (cur : diskstate)
+(* A transaction has been committed and applied but not yet flushed. *)
 
 | AppliedTxn (cur : diskstate)
 (* A transaction has been committed, applied, and flushed. *).
@@ -262,22 +262,25 @@ Module MEMLOG.
    * in flux (i.e., use [ptsto_cur]), and all other blocks cannot be in flux
    * (i.e., use [ptsto_synced]).
    *)
-  Definition nil_unless_in (ms: memstate) (l: list (list valu)) :=
-    forall a, ~ Map.In a ms -> sel l a nil = nil.
+  Definition nil_unless_in (ms: list addr) (l: list (list valu)) :=
+    forall a, ~ In a ms -> sel l a nil = nil.
+
+  Definition equal_unless_in T (ms: list addr) (m1: list T) (m2: list T) (def: T) :=
+    forall a, ~ In a ms -> sel m1 a def = sel m2 a def.
 
   Definition rep xp (st: logstate) (ms: memstate) :=
     (* For now, support just one descriptor block, at the start of the log. *)
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
     match st with
     | NoTransaction m =>
-      (LogCommit xp) |-> ($0, nil)
+      (LogCommit xp) |=> $0
     * [[ ms = ms_empty ]]
     * data_rep xp (synced_list m)
     * (LogHeader xp) |->?
     * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
 
     | ActiveTxn old cur =>
-      (LogCommit xp) |-> ($0, nil)
+      (LogCommit xp) |=> $0
     * data_rep xp (synced_list old) (* Transactions are always completely buffered in memory. *)
     * (LogHeader xp) |->?
     * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
@@ -293,21 +296,23 @@ Module MEMLOG.
 *)
 
     | SyncedTxn old cur =>
-      (LogCommit xp) |-> ($0, nil)
+      (LogCommit xp) |=> $0
     * data_rep xp (synced_list old)
     * log_rep xp old ms
     * cur_rep old ms cur
 
-    | CommittedUnsyncTxn cur =>
-      (LogCommit xp) |-> ($1, $0 :: nil)
-    * exists old, data_rep xp (synced_list old)
+    | CommittedTxn cur =>
+      (LogCommit xp) |=> $1
+    * exists old d, data_rep xp d
+      (* If something's in the transaction, it doesn't matter what state it's in on disk *)
+    * [[ equal_unless_in (map fst (Map.elements ms)) (synced_list old) d ($0, nil) ]]
     * log_rep xp old ms
     * cur_rep old ms cur
 
-    | CommittedTxn cur =>
-      (LogCommit xp) |-> ($1, nil)
-    * exists old old', data_rep xp (List.combine old old')
-    * [[ nil_unless_in ms old' ]]
+    | AppliedUnsyncTxn cur =>
+      (LogCommit xp) |=> $1
+    * exists old old_unflushed, data_rep xp (List.combine cur old_unflushed)
+    * [[ nil_unless_in (map fst (Map.elements ms)) old_unflushed ]]
     * log_rep xp old ms
     * cur_rep old ms cur
 
@@ -746,7 +751,7 @@ Module MEMLOG.
     rewrite Forall_forall; intuition.
 
     cancel.
-    instantiate (l0 := repeat (S # (LogLen xp)) ($0, nil)).
+    instantiate (l := repeat (S # (LogLen xp)) ($0, nil)).
     solve_lengths.
 
     cancel.
@@ -764,7 +769,7 @@ Module MEMLOG.
     solve_lengths.
 
     cancel.
-    instantiate (l1 := repeat (S # (LogLen xp)) ($0, nil)).
+    instantiate (l := repeat (S # (LogLen xp)) ($0, nil)).
     solve_lengths.
 
     cancel.
@@ -775,10 +780,8 @@ Module MEMLOG.
     instantiate (default := ($0, nil)).
     instantiate (Goal12 := $0).
     instantiate (Goal13 := nil).
-    instantiate (w := $0).
-    instantiate (l := nil).
-    instantiate (w0 := $0).
-    instantiate (l0 := nil).
+    instantiate (v := ($0, nil)).
+    instantiate (v0 := ($0, nil)).
 
     solve_lengths.
   Qed.
@@ -786,57 +789,52 @@ Module MEMLOG.
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
 
-  Definition apply T xp ms rx : prog T :=
+  Definition apply_unsync T xp ms rx : prog T :=
     For i < $ (Map.cardinal ms)
     Ghost cur
     Loopvar _ <- tt
     Continuation lrx
     Invariant
-      (LogCommit xp) |-> $1
+      (LogCommit xp) |=> $1
       * log_rep xp cur ms
-      * exists old, data_rep xp old
-      * [[ replay' (skipn (wordToNat i) (Map.elements ms)) old = cur ]]
+      * exists d, data_rep xp d
+      * [[ replay' (skipn (wordToNat i) (Map.elements ms)) (map fst d) = cur ]]
+      * [[ equal_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur (map fst d) $0 ]]
+      * [[ nil_unless_in (map fst (Map.elements ms)) (map snd d) ]]
     OnCrash
-      rep xp (NoTransaction cur) ms_empty \/
       rep xp (CommittedTxn cur) ms
     Begin
       ArrayWrite $0 (sel (map fst (Map.elements ms)) i $0) $1 (sel (map snd (Map.elements ms)) i $0);;
       lrx tt
     Rof;;
-    Write (LogCommit xp) $0;;
     rx tt.
 
-  Theorem apply_ok: forall xp ms,
+  Theorem apply_unsync_ok: forall xp ms,
     {< m,
     PRE    rep xp (CommittedTxn m) ms
-    POST:r rep xp (NoTransaction m) ms_empty
-    CRASH  rep xp (NoTransaction m) ms_empty \/
-           rep xp (CommittedTxn m) ms
-    >} apply xp ms.
+    POST:r rep xp (AppliedUnsyncTxn m) ms
+    CRASH  rep xp (CommittedTxn m) ms
+    >} apply_unsync xp ms.
   Proof.
-    unfold apply; log_unfold.
+    unfold apply_unsync; log_unfold.
     hoare.
     admit.
     admit.
     admit.
-    eapply pimpl_or_r. right.
-    cancel.
     admit.
-    (* Somewhat subtle: if replaying the entire log on [d0] is equal to replaying a suffix on [d],
-       then replaying the entire log on [d] is also equal. *)
-    admit.
-    eapply pimpl_or_r. right.
-    cancel.
+    rewrite <- H25.
     admit.
     admit.
     admit.
-    eapply pimpl_or_r. right.
-    cancel.
+    admit.
+    assert (goodSize addrlen (# (LogLen xp))) by (apply wordToNat_bound).
+    rewrite skipn_oob in H22 by solve_lengths.
+    rewrite skipn_oob in H23 by solve_lengths.
     admit.
     admit.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
+  Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
 
   Definition commit T xp (ms:memstate) rx : prog T :=
     ok <- flush xp ms;
