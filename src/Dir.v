@@ -15,6 +15,8 @@ Require Import GenSep.
 Require Import BFile.
 Require Import BFileRec.
 Require Import Bool.
+Require Import SepAuto.
+Require Import MemLog.
 
 Import ListNotations.
 
@@ -57,12 +59,18 @@ Module DIR.
                        (rx : option addr -> prog T) : prog T :=
     dlen <- BFILE.bflen lxp ixp dnum ms;
     For dpos < dlen ^* items_per_valu
-      Ghost mbase m
+      Ghost mbase m F A flist f dmap delist
       Loopvar _ <- tt
       Continuation lrx
       Invariant
-        (* Need an invariant saying the name is not found in any earlier dirent *)
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+        [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+        [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+        [[ (rep' delist) (list2mem (BFILE.BFData f)) ]] *
+        [[ listpred dmatch delist dmap ]] *
+        exists dmap',
+        [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
+        [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap' ]]
       OnCrash
         MEMLOG.rep lxp (ActiveTxn mbase m) ms
       Begin
@@ -91,7 +99,20 @@ Module DIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} dlookup lxp bxp ixp dnum name ms.
   Proof.
+    unfold dlookup, rep.
+    step.
+    step.
+
+    instantiate (a8:=fun a => None); unfold emp; auto. (* dmap' *)
+
+    repeat deex.
+    (* need to prove entry into loop invariant: no names are found in an empty dmap' *)
     admit.
+
+    admit.
+    admit.
+
+    unfold MEMLOG.log_infact; cancel.
   Qed.
 
   Definition dunlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
