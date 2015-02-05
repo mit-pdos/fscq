@@ -12,7 +12,7 @@ VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
 GHC        := /opt/ghc/7.8.4/bin/ghc
-GHCARGS    := -O2 -prof -auto-all
+GHCARGS    := -O2 -prof -fprof-auto
 
 .PHONY: coq proof clean
 
