@@ -44,8 +44,8 @@ Module INODE.
     ("indptr", Rec.WordF addrlen);  (* indirect block pointer *)
     ("blocks", Rec.ArrayF (Rec.WordF addrlen) nr_direct)]).
 
-  Definition inode' := Rec.data inodetype.
-  Definition inode0' := @Rec.of_word inodetype $0.
+  Definition irec := Rec.data inodetype.
+  Definition irec0 := @Rec.of_word inodetype $0.
 
   Definition itemsz := Rec.len inodetype.
   Definition items_per_valu : addr := $8.
@@ -57,30 +57,30 @@ Module INODE.
   Definition xp_to_raxp xp :=
     RecArray.Build_xparams (IXStart xp) (IXLen xp).
 
-  Definition rep' xp (ilist : list inode') :=
+  Definition irrep xp (ilist : list irec) :=
     ([[ length ilist = wordToNat (IXLen xp ^* items_per_valu) ]] *
      RecArray.array_item inodetype items_per_valu itemsz_ok (xp_to_raxp xp) ilist
     )%pred.
 
-  Definition iget' T lxp xp inum ms rx : prog T :=
+  Definition irget T lxp xp inum ms rx : prog T :=
     RecArray.get inodetype items_per_valu itemsz_ok
       lxp (xp_to_raxp xp) inum ms rx.
 
-  Definition iput' T lxp xp inum i ms rx : prog T :=
+  Definition irput T lxp xp inum i ms rx : prog T :=
     RecArray.put inodetype items_per_valu itemsz_ok
       lxp (xp_to_raxp xp) inum i ms rx.
 
-  Theorem iget_ok' : forall lxp xp inum ms,
+  Theorem irget_ok : forall lxp xp inum ms,
     {< F A mbase m ilist ino,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-           [[ (F * rep' xp ilist)%pred (list2mem m) ]] *
+           [[ (F * irrep xp ilist)%pred (list2mem m) ]] *
            [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = ino ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} iget' lxp xp inum ms.
+    >} irget lxp xp inum ms.
   Proof.
-    unfold iget', rep'; intros.
+    unfold irget, irrep; intros.
     eapply pimpl_ok2. 
     eapply RecArray.get_ok; word_neq.
     intros; norm.
@@ -88,37 +88,37 @@ Module INODE.
     intuition; eauto.
     apply list2mem_inbound in H4.
     apply lt_wlt; omega.
-    apply list2mem_sel with (def:=inode0') in H4.
+    apply list2mem_sel with (def:=irec0) in H4.
     step.
   Qed.
 
-  Theorem iput_ok' : forall lxp xp inum i ms,
+  Theorem irput_ok : forall lxp xp inum i ms,
     {< F A mbase m ilist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-             [[ (F * rep' xp ilist)%pred (list2mem m) ]] *
+             [[ (F * irrep xp ilist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
              [[ Rec.well_formed i ]]
     POST:ms' exists m' ilist', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
-             [[ (F * rep' xp ilist')%pred (list2mem m') ]] *
+             [[ (F * irrep xp ilist')%pred (list2mem m') ]] *
              [[ (A * inum |-> i)%pred (list2mem ilist')]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} iput' lxp xp inum i ms.
+    >} irput lxp xp inum i ms.
   Proof.
-    unfold iput', rep'.
+    unfold irput, irrep.
     intros. eapply pimpl_ok2. eapply RecArray.put_ok; word_neq.
     intros; norm.
     cancel.
     intuition; eauto.
     apply list2mem_inbound in H5.
     apply lt_wlt; omega.
-    apply list2mem_sel with (def:=inode0') in H5 as H5'.
+    apply list2mem_sel with (def:=irec0) in H5 as H5'.
     step.
     autorewrite with core; auto.
     eapply list2mem_upd; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (iget' _ _ _ _) _) => apply iget_ok' : prog.
-  Hint Extern 1 ({{_}} progseq (iput' _ _ _ _ _) _) => apply iput_ok' : prog.
+  Hint Extern 1 ({{_}} progseq (irget _ _ _ _) _) => apply irget_ok : prog.
+  Hint Extern 1 ({{_}} progseq (irput _ _ _ _ _) _) => apply irput_ok : prog.
 
   Opaque Rec.recset Rec.recget.
 
@@ -127,62 +127,60 @@ Module INODE.
       repeat (repeat rewrite Rec.set_get_same; auto;
               repeat rewrite <- Rec.set_get_other by discriminate; auto).
 
-  Lemma inode_set_len_get_len : forall (ino : inode') v,
+  Lemma inode_set_len_get_len : forall (ino : irec) v,
     ((ino :=> "len" := v) :-> "len") = v.
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_blocks_get_blocks : forall (ino : inode') v,
+  Lemma inode_set_blocks_get_blocks : forall (ino : irec) v,
     ((ino :=> "blocks" := v) :-> "blocks") = v.
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_len_get_blocks : forall (ino : inode') v,
+  Lemma inode_set_len_get_blocks : forall (ino : irec) v,
     ((ino :=> "len" := v) :-> "blocks") = ino :-> "blocks".
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_blocks_get_len : forall (ino : inode') v,
+  Lemma inode_set_blocks_get_len : forall (ino : irec) v,
     ((ino :=> "blocks" := v) :-> "len") = ino :-> "len".
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_blocks_get_size : forall (ino : inode') v,
+  Lemma inode_set_blocks_get_size : forall (ino : irec) v,
     ((ino :=> "blocks" := v) :-> "size") = ino :-> "size".
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_len_get_size : forall (ino : inode') v,
+  Lemma inode_set_len_get_size : forall (ino : irec) v,
     ((ino :=> "len" := v) :-> "size") = ino :-> "size".
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_size_get_len : forall (ino : inode') v,
+  Lemma inode_set_size_get_len : forall (ino : irec) v,
     ((ino :=> "size" := v) :-> "len") = ino :-> "len".
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_size_get_blocks : forall (ino : inode') v,
+  Lemma inode_set_size_get_blocks : forall (ino : irec) v,
     ((ino :=> "size" := v) :-> "blocks") = ino :-> "blocks".
   Proof.
     intros; rec_simpl.
   Qed.
 
-  Lemma inode_set_size_get_size : forall (ino : inode') v,
+  Lemma inode_set_size_get_size : forall (ino : irec) v,
     ((ino :=> "size" := v) :-> "size") = v.
   Proof.
     intros; rec_simpl.
   Qed.
 
-
-  Transparent Rec.recset Rec.recget.
 
   (* These rules are SUPER SLOW, and will getting exponentially slower when
      we add more!  Sticking them in a separate database to avoid polluting core.
@@ -349,20 +347,20 @@ Module INODE.
   Definition inode0 := Build_inode nil $0.
 
   Definition ilen T lxp xp inum ms rx : prog T :=
-    i <- iget' lxp xp inum ms;
+    i <- irget lxp xp inum ms;
     rx (i :-> "len").
 
   Definition igetsz T lxp xp inum ms rx : prog T :=
-    i <- iget' lxp xp inum ms;
+    i <- irget lxp xp inum ms;
     rx (i :-> "size").
 
   Definition isetsz T lxp xp inum sz ms rx : prog T :=
-    i <- iget' lxp xp inum ms;
-    ms' <- iput' lxp xp inum (i :=> "size" := sz) ms;
+    i <- irget lxp xp inum ms;
+    ms' <- irput lxp xp inum (i :=> "size" := sz) ms;
     rx ms'.
 
   Definition iget T lxp xp inum off ms rx : prog T :=
-    i <- iget' lxp xp inum ms;
+    i <- irget lxp xp inum ms;
     If (wlt_dec off wnr_direct) {
       rx (sel (i :-> "blocks") off $0)
     } else {
@@ -371,17 +369,17 @@ Module INODE.
     }.
 
   Definition iput T lxp xp inum off a ms rx : prog T :=
-    i <- iget' lxp xp inum ms ;
+    i <- irget lxp xp inum ms ;
     If (wlt_dec off wnr_direct) {
       let i' := i :=> "blocks" := (upd (i :-> "blocks") off a) in
-      ms' <- iput' lxp xp inum i' ms;
+      ms' <- irput lxp xp inum i' ms;
       rx ms'
     } else {
       ms' <- indput lxp (i :-> "indptr") (off ^- wnr_direct) a ms;
       rx ms'
     }.
 
-  Definition igrow_indirect T lxp bxp xp (i0 : inode') inum a ms rx : prog T :=
+  Definition igrow_indirect T lxp bxp xp (i0 : irec) inum a ms rx : prog T :=
     let off := i0 :-> "len" in
     let i := i0 :=> "len" := (off ^+ $1) in
     If (weq off wnr_direct) {
@@ -393,23 +391,23 @@ Module INODE.
           let i' := (i :=> "indptr" := bnum) in
           ms2 <- MEMLOG.write lxp bnum $0 ms';
           ms3 <- indput lxp bnum (off ^- wnr_direct) a ms2;
-          ms4 <- iput' lxp xp inum i' ms3;
+          ms4 <- irput lxp xp inum i' ms3;
           rx (true, ms4)
       end
     } else {
       ms' <- indput lxp (i :-> "indptr") (off ^- wnr_direct) a ms;
-      ms'' <- iput' lxp xp inum i ms';
+      ms'' <- irput lxp xp inum i ms';
       rx (true, ms'')
     }.
 
 
   Definition igrow T lxp bxp xp inum a ms rx : prog T :=
-    i0 <- iget' lxp xp inum ms;
+    i0 <- irget lxp xp inum ms;
     let off := i0 :-> "len" in
     If (wlt_dec off wnr_direct) {
       let i := i0 :=> "len" := (off ^+ $1) in
       let i' := i :=> "blocks" := (upd (i0 :-> "blocks") off a) in
-      ms' <- iput' lxp xp inum i' ms;
+      ms' <- irput lxp xp inum i' ms;
       rx (true, ms')
     } else {
       r <- igrow_indirect lxp bxp xp i0 inum a ms;
@@ -417,9 +415,9 @@ Module INODE.
     }.
 
   Definition ishrink T lxp bxp xp inum ms rx : prog T :=
-    i0 <- iget' lxp xp inum ms;
+    i0 <- irget lxp xp inum ms;
     let i := i0 :=> "len" := (i0 :-> "len" ^- $1) in
-    ms' <- iput' lxp xp inum i ms;
+    ms' <- irput lxp xp inum i ms;
     If (weq (i :-> "len") wnr_direct) {
       ms'' <- BALLOC.free lxp bxp (i0 :-> "indptr") ms';
       rx ms''
@@ -480,7 +478,7 @@ Module INODE.
   Qed.
 
 
-  Definition inode_match ino (ino' : inode') : @pred addrlen valu := (
+  Definition inode_match ino (ino' : irec) : @pred addrlen valu := (
     [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
     [[ ISize ino = ino' :-> "size" ]] *
     [[ length (IBlocks ino) <= blocks_per_inode ]] *
@@ -489,23 +487,23 @@ Module INODE.
     )%pred.
 
   Definition rep xp (ilist : list inode) := (
-     exists ilist', rep' xp ilist' *
-     listmatch inode_match ilist ilist')%pred.
+     exists reclist, irrep xp reclist *
+     listmatch inode_match ilist reclist)%pred.
 
-  Definition inode_match_direct ino (ino' : inode') : @pred addrlen valu := (
-    [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
-    [[ ISize ino = ino' :-> "size" ]] *
+  Definition inode_match_direct ino (rec : irec) : @pred addrlen valu := (
+    [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
+    [[ ISize ino = rec :-> "size" ]] *
     [[ length (IBlocks ino) <= nr_direct ]] *
-    [[ IBlocks ino = firstn (length (IBlocks ino)) (ino' :-> "blocks") ]]
+    [[ IBlocks ino = firstn (length (IBlocks ino)) (rec :-> "blocks") ]]
     )%pred.
 
   Lemma inode_well_formed : forall F xp l i inum m def,
-    (F * rep' xp l)%pred m
+    (F * irrep xp l)%pred m
     -> inum < length l
     -> i = selN l inum def
     -> Rec.well_formed i.
   Proof.
-    unfold rep'.
+    unfold irrep.
     setoid_rewrite RecArray.array_item_well_formed'.
     setoid_rewrite Forall_forall.
     intros.
@@ -515,7 +513,7 @@ Module INODE.
     apply Array.in_selN; auto.
   Qed.
 
-  Lemma direct_blocks_length: forall (i : inode'),
+  Lemma direct_blocks_length: forall (i : irec),
     Rec.well_formed i
     -> length (i :-> "blocks") = nr_direct.
   Proof.
@@ -527,9 +525,9 @@ Module INODE.
   Qed.
 
   Lemma inode_blocks_length: forall m xp l inum F,
-    (F * rep' xp l)%pred m ->
+    (F * irrep xp l)%pred m ->
     inum < length l ->
-    length (selN l inum inode0' :-> "blocks") = nr_direct.
+    length (selN l inum irec0 :-> "blocks") = nr_direct.
   Proof.
     intros.
     apply direct_blocks_length.
@@ -537,13 +535,13 @@ Module INODE.
   Qed.
 
   Lemma inode_blocks_length': forall m xp l inum F d d0 d1 d2 u,
-    (F * rep' xp l)%pred m ->
+    (F * irrep xp l)%pred m ->
     inum < length l ->
-    (d, (d0, (d1, (d2, u)))) = selN l inum inode0' ->
+    (d, (d0, (d1, (d2, u)))) = selN l inum irec0 ->
     length d2 = nr_direct.
   Proof.
     intros.
-    unfold rep' in H.
+    unfold irrep in H.
     rewrite RecArray.array_item_well_formed' in H.
     destruct_lift H.
     rewrite Forall_forall in *.
@@ -575,10 +573,10 @@ Module INODE.
     simpl in H; omega.
   Qed.
 
-  Lemma inode_match_is_direct: forall ino (ino' : inode'),
-    (ino' :-> "len" <= wnr_direct)%word
-    -> Rec.well_formed ino'
-    -> inode_match ino ino' <=p=> inode_match_direct ino ino'.
+  Lemma inode_match_is_direct: forall ino (rec : irec),
+    (rec :-> "len" <= wnr_direct)%word
+    -> Rec.well_formed rec
+    -> inode_match ino rec <=p=> inode_match_direct ino rec.
   Proof.
     unfold piff, inode_match, inode_match_direct; split; intros.
 
@@ -600,14 +598,14 @@ Module INODE.
 
   (* Hints for resolving default values *)
 
-  Fact resolve_sel_inode0' : forall l i d,
-    d = inode0' -> sel l i d = sel l i inode0'.
+  Fact resolve_sel_irec0 : forall l i d,
+    d = irec0 -> sel l i d = sel l i irec0.
   Proof.
     intros; subst; auto.
   Qed.
 
-  Fact resolve_selN_inode0' : forall l i d,
-    d = inode0' -> selN l i d = selN l i inode0'.
+  Fact resolve_selN_irec0 : forall l i d,
+    d = irec0 -> selN l i d = selN l i irec0.
   Proof.
     intros; subst; auto.
   Qed.
@@ -649,8 +647,8 @@ Module INODE.
   Qed.
 
 
-  Hint Rewrite resolve_sel_inode0'  using reflexivity : defaults.
-  Hint Rewrite resolve_selN_inode0' using reflexivity : defaults.
+  Hint Rewrite resolve_sel_irec0  using reflexivity : defaults.
+  Hint Rewrite resolve_selN_irec0 using reflexivity : defaults.
   Hint Rewrite resolve_sel_inode0   using reflexivity : defaults.
   Hint Rewrite resolve_selN_inode0  using reflexivity : defaults.
   Hint Rewrite resolve_sel_addr0    using reflexivity : defaults.
@@ -663,7 +661,7 @@ Module INODE.
     (F * rep xp l)%pred m
     -> length l <= wordToNat (IXLen xp ^* items_per_valu).
   Proof.
-    unfold rep, rep'; intros.
+    unfold rep, irrep; intros.
     destruct_lift H.
     erewrite listmatch_length_r; eauto; omega.
   Qed.
@@ -700,8 +698,8 @@ Module INODE.
 
 
   Ltac inode_bounds' := match goal with
-    | [ H : context [ (rep' _ ?l) ] |- length ?l <= _ ] =>
-        unfold rep' in H; destruct_lift H
+    | [ H : context [ (irrep _ ?l) ] |- length ?l <= _ ] =>
+        unfold irrep in H; destruct_lift H
   end.
 
   Ltac inode_bounds := eauto; try list2mem_bound; try solve_length_eq;
@@ -709,18 +707,18 @@ Module INODE.
                        try list2mem_bound; eauto.
 
 
-  Ltac autorewrite_inode' :=
+  Ltac autorewrite_irec :=
     (rewrite_strat (topdown (hints inode)));
-    try autorewrite_inode'.
+    try autorewrite_irec.
 
   Ltac autorewrite_inode := 
     unfold sel, upd; simpl;
     autorewrite with defaults;
-    autorewrite_inode';
+    autorewrite_irec;
     autorewrite with core; inode_bounds.
 
 
-  Hint Extern 0 (okToUnify (rep' _ _) (rep' _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (irrep _ _) (irrep _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (indrep _ _) (indrep _ _)) => constructor : okToUnify.
 
   Theorem ilen_ok : forall lxp xp inum ms,
@@ -793,7 +791,6 @@ Module INODE.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold sel, upd; unfold inode_match; intros.
 
-    Opaque Rec.recset Rec.recget.
     rec_simpl.
     cancel.
     auto.
@@ -938,13 +935,13 @@ Module INODE.
 
 
   Theorem igrow_indirect_ok : forall lxp bxp xp i0 inum a ms,
-    {< F A B mbase m ilist (ilist' : list inode') freelist ino,
+    {< F A B mbase m ilist (reclist : list irec) freelist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ length (IBlocks ino) < blocks_per_inode ]] *
              [[ length (IBlocks ino) >= nr_direct ]] *
-             [[ i0 = sel ilist' inum inode0' ]] *
-             [[ (F * rep' xp ilist' * BALLOC.rep bxp freelist *
-                 listmatch inode_match ilist ilist')%pred (list2mem m) ]] *
+             [[ i0 = sel reclist inum irec0 ]] *
+             [[ (F * irrep xp reclist * BALLOC.rep bxp freelist *
+                 listmatch inode_match ilist reclist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
              [[  B (list2mem (IBlocks ino)) ]]
     POST:r   exists m', MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
@@ -967,7 +964,7 @@ Module INODE.
     step; subst; inversion H0; subst; try cancel.
     pred_apply; cancel.
     step.
-    
+
 
     (* CASE 2: indirect block allocation failed *)
     step; inversion H0; subst; try cancel.
@@ -1069,7 +1066,7 @@ Module INODE.
     apply wlt_plus_one_wle; auto.
 
     eapply inode_well_formed with (m := list2mem d1); eauto.
-    instantiate (def := inode0').
+    instantiate (def := irec0).
     autorewrite with core; auto.
     eapply inode_well_formed with (m := list2mem d0) (l := l); eauto.
     pred_apply; cancel.
