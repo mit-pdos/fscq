@@ -302,6 +302,42 @@ Module INODE.
   Hint Rewrite removeN_updN : core.
 
 
+  (* list population *)
+  Fixpoint repeat T (v : T) (n : nat) :=
+    match n with
+    | O => nil
+    | S n' => cons v (repeat v n')
+    end.
+
+  Arguments repeat : simpl never.
+
+  Definition indlist0 := repeat (natToWord inditemsz 0) nr_indirect.
+
+  Lemma repeat_selN : forall T i n (v def : T),
+    i < n
+    -> selN (repeat v n) i def = v.
+  Proof.
+    induction i; destruct n; firstorder; inversion H.
+  Qed.
+
+  Theorem ind_ptsto_zero : forall a,
+    (a |-> $0)%pred =p=>
+    array_item indtype wnr_indirect indsz_ok (indxp a) indlist0.
+  Proof.
+    intros.
+    unfold array_item, array_item_pairs, indxp.
+    norm.
+    instantiate (a := [ RecArray.block_zero indtype wnr_indirect ]).
+    unfold rep_block, block_zero, wreclen_to_valu; simpl.
+    rewrite Rec.to_of_id.
+    rewrite indsz_ok; auto.
+
+    unfold block_zero.
+    rewrite Forall_forall.
+    intuition.
+    simpl in H; intuition; subst; auto.
+    rewrite Forall_forall; auto.
+  Qed.
 
   (* separation logic based theorems *)
 
@@ -312,7 +348,7 @@ Module INODE.
 
   Definition inode0 := Build_inode nil $0.
 
-  Definition ilen T lxp xp inum ms (rx : addr -> prog T) : prog T :=
+  Definition ilen T lxp xp inum ms rx : prog T :=
     i <- iget' lxp xp inum ms;
     rx (i :-> "len").
 
@@ -785,7 +821,7 @@ Module INODE.
     repeat rewrite_list2mem_pred.
     destruct_listmatch.
     unfold sel; subst.
-    rewrite H20.
+    rewrite H19.
     rewrite selN_firstn; inode_bounds.
     rewrite selN_app; inode_bounds.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
@@ -805,14 +841,14 @@ Module INODE.
 
     step.
     subst.
-    rewrite H20.
+    rewrite H19.
     rewrite selN_firstn; inode_bounds.
     rewrite selN_app2.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
     rewrite wminus_minus; auto.
     pred_apply; cancel.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
-    apply wle_le in H10; auto.
+    apply wle_le in H11; auto.
     pred_apply; cancel.
   Qed.
 
@@ -930,9 +966,8 @@ Module INODE.
     (* CASE 1: indirect block allocating success *)
     step; subst; inversion H0; subst; try cancel.
     pred_apply; cancel.
-    admit.
-    admit.
-    admit.
+    step.
+    
 
     (* CASE 2: indirect block allocation failed *)
     step; inversion H0; subst; try cancel.
