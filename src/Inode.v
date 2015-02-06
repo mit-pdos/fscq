@@ -187,6 +187,12 @@ Module INODE.
     intros; rec_simpl.
   Qed.
 
+  Lemma inode_set_len_get_indptr : forall (ino : irec) v,
+    ((ino :=> "len" := v) :-> "indptr") = ino :-> "indptr".
+  Proof.
+    intros; rec_simpl.
+  Qed.
+
 
   (* These rules are SUPER SLOW, and will getting exponentially slower when
      we add more!  Sticking them in a separate database to avoid polluting core.
@@ -204,6 +210,7 @@ Module INODE.
   Hint Rewrite inode_set_size_get_len : inode.
   Hint Rewrite inode_set_size_get_size : inode.
   Hint Rewrite inode_set_indptr_get_blocks : inode.
+  Hint Rewrite inode_set_len_get_indptr : inode.
 
 
   (* on-disk representation of indirect blocks *)
@@ -1087,12 +1094,60 @@ Module INODE.
 
 
     (* CASE 3: no indirect block allocation *)
-    hoare.
+    destruct_listmatch.
+    step.
+    rewrite indirect_valid_r.
+    rec_simpl; cancel.
+
+    admit.
+    list2mem_ptsto_cancel.
+    admit.
+    admit.
+
+    step.
     list2mem_ptsto_cancel; inode_bounds.
     admit. (* rec bound *)
-    3: eapply pimpl_or_r; right; cancel.
 
+    step.
+    eapply pimpl_or_r; right; cancel.
 
+    (* constructing the new inode *)
+    instantiate (a6 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
+    2: eapply list2mem_upd; eauto.
+    2: simpl; eapply list2mem_app; eauto.
+
+    (* prove representation invariant *)
+    rewrite_list2mem_pred_upd H14; subst.
+    repeat rewrite_list2mem_pred; unfold upd, sel; inode_bounds.
+    rewrite listmatch_updN_removeN; inode_bounds.
+    cancel_exact.
+    unfold inode_match; autorewrite with core.
+    simpl; rewrite app_length; rewrite H6; simpl.
+    cancel.
+
+    rewrite indirect_valid_r.
+    rewrite inode_set_len_get_indptr; cancel.
+    admit.
+
+    rewrite inode_set_len_get_len.
+    eapply add_one_eq_wplus_one; eauto.
+    admit.
+    rec_simpl.
+
+    rewrite inode_set_len_get_blocks.
+    rewrite H18; rewrite H6.
+
+    admit.
+
+    erewrite indirect_length with (m := list2mem d0); eauto.
+    pred_apply; rewrite indirect_valid_r; eauto.
+    admit.
+
+    erewrite indirect_length with (m := list2mem d1); eauto.
+    admit.
+
+    (* clean up goals about bounds *)
+    repeat rewrite_list2mem_pred; inode_bounds.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (igrow_indirect _ _ _ _ _ _ _) _) => apply igrow_indirect_ok : prog.
