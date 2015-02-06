@@ -5,7 +5,7 @@ MODULES    := Nomega Word WordAuto \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep ListPred \
 	      MemLog Balloc Inode BFile BFileRec Dir \
-	      Testprog \
+	      FS Testprog \
 	      ExtrHaskellPrelude Extraction
 	      # TxnWrap Scratch
 VS         := $(MODULES:%=%.v)

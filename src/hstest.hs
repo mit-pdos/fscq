@@ -4,7 +4,6 @@ import System.IO
 import MemLog
 import Balloc
 import Inode
-import Prog
 import Word
 import qualified Interpreter as I
 import qualified System.Directory
@@ -55,19 +54,19 @@ main = do
   then
     do
       putStrLn "Recovering disk.."
-      I.run f $ _MEMLOG__recover lxp $ \_ -> Prog.Done ()
+      I.run f $ _MEMLOG__recover lxp
   else
     do
       putStrLn "Initializing disk.."
-      I.run f $ _MEMLOG__init lxp $ \_ -> Prog.Done ()
+      I.run f $ _MEMLOG__init lxp
   putStrLn "Running program.."
   -- r <- I.run f $ the_prog lxp
-  -- r <- I.run f $ Testprog.testcopy lxp $ Prog.Done ()
-  -- r <- I.run f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
+  -- r <- I.run f $ Testprog.testcopy lxp
+  -- r <- I.run f $ Testprog.testalloc lxp bxp
   r <- repf 10000 (Just (W 123))
        (\x -> case x of
               Nothing -> return Nothing
-              Just xv -> I.run f $ Testprog.test_bfile lxp bxp ixp xv Prog.Done)
+              Just xv -> I.run f $ Testprog.test_bfile lxp bxp ixp xv)
   hClose f
   putStrLn $ "Done: " ++ (show r)
 

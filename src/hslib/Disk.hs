@@ -24,6 +24,9 @@ debugmsg s =
 -- For a more efficient array implementation, perhaps worth checking out:
 -- http://www.macs.hw.ac.uk/~hwloidl/hackspace/ghc-6.12-eden-gumsmp-MSA-IFL13/libraries/dph/dph-base/Data/Array/Parallel/Arr/BUArr.hs
 
+-- Some notes on memory-efficient file IO in Haskell:
+-- http://stackoverflow.com/questions/26333815/why-do-hgetbuf-hputbuf-etc-allocate-memory
+
 -- Snippets of ByteArray# manipulation code from GHC's
 -- testsuite/tests/lib/integer/integerGmpInternals.hs
 
