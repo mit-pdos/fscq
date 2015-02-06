@@ -312,7 +312,7 @@ Module INODE.
 
   Definition inode0 := Build_inode nil $0.
 
-  Definition ilen T lxp xp inum ms rx : prog T :=
+  Definition ilen T lxp xp inum ms (rx : addr -> prog T) : prog T :=
     i <- iget' lxp xp inum ms;
     rx (i :-> "len").
 
