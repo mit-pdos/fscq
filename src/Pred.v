@@ -772,6 +772,38 @@ Proof.
   intuition; hnf; try tauto; firstorder discriminate.
 Qed.
 
+Definition empty_mem {len : nat} {V : Type} : @mem len V := fun a => None.
+
+Theorem sep_star_empty_mem : forall (a b : @pred len V),
+  (a * b)%pred empty_mem -> a empty_mem /\ b empty_mem.
+Proof.
+  unfold_sep_star.
+  intros.
+  destruct H. destruct H. destruct H. destruct H0. destruct H1.
+  cut (x = empty_mem).
+  cut (x0 = empty_mem).
+  intros; subst; intuition.
+
+  unfold mem_union, empty_mem in *.
+  apply functional_extensionality; intro fa.
+  apply equal_f with (x1:=fa) in H.
+  destruct (x0 fa); auto.
+  destruct (x fa); auto.
+  inversion H.
+
+  unfold mem_union, empty_mem in *.
+  apply functional_extensionality; intro fa.
+  apply equal_f with (x1:=fa) in H.
+  destruct (x fa); auto.
+Qed.
+
+Theorem ptsto_empty_mem : forall (a : word len) (v : V),
+  ~ (a |-> v)%pred empty_mem.
+Proof.
+  unfold empty_mem, ptsto.
+  intuition discriminate.
+Qed.
+
 End GenPredThm.
 
 

@@ -107,13 +107,16 @@ Section RECARRAY.
     discriminate.
   Qed.
 
-  Definition rep_block (b : block) : valu.
-    rewrite blocksz_ok. refine (Rec.to_word b).
+  Definition valu_to_wreclen (v : valu) : word (Rec.len blocktype).
+    rewrite blocksz_ok in v. refine v.
   Defined.
 
-  Definition valu_to_block (v : valu) : block.
-    rewrite blocksz_ok in v. refine (Rec.of_word v).
+  Definition wreclen_to_valu (v : word (Rec.len blocktype)) : valu.
+    rewrite blocksz_ok. refine v.
   Defined.
+
+  Definition rep_block (b : block) : valu := wreclen_to_valu (Rec.to_word b).
+  Definition valu_to_block (v : valu) : block := Rec.of_word (valu_to_wreclen v).
 
   Theorem eq_rect_nat_double: forall T (a b c : nat) x ab bc,
     eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
@@ -126,12 +129,21 @@ Section RECARRAY.
     auto.
   Qed.
 
-  Lemma rep_valu_id : forall b, Rec.well_formed b -> valu_to_block (rep_block b) = b.
-    unfold valu_to_block, rep_block.
-    unfold eq_rec_r, eq_rec.
+  Lemma valu_wreclen_id : forall w, valu_to_wreclen (wreclen_to_valu w) = w.
+  Proof.
+    unfold valu_to_wreclen, wreclen_to_valu, eq_rec, eq_rec_r.
     intros.
     rewrite eq_rect_nat_double.
     rewrite <- eq_rect_eq_dec; [| apply eq_nat_dec ].
+    reflexivity.
+  Qed.
+
+  Lemma rep_valu_id : forall b, Rec.well_formed b -> valu_to_block (rep_block b) = b.
+  Proof.
+    unfold valu_to_block, rep_block.
+    unfold eq_rec_r, eq_rec.
+    intros.
+    rewrite valu_wreclen_id.
     apply Rec.of_to_id; assumption.
   Qed.
 
@@ -161,17 +173,15 @@ Section RECARRAY.
   Qed.
 
   (** Get the [pos]'th item in the [block_ix]'th block *)
-  Definition get_pair T lxp xp block_ix pos ms rx : prog T :=
+  Definition get_pair T lxp xp block_ix (pos : addr) ms rx : prog T :=
     v <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 ms;
-    let ib := valu_to_block v in
-    let i := sel ib pos item_zero in
+    let i := Rec.of_word (Rec.word_selN #pos (valu_to_wreclen v)) in
     rx i.
 
   (** Update the [pos]'th item in the [block_ix]'th block to [i] *)
-  Definition put_pair T lxp xp block_ix pos i ms rx : prog T :=
+  Definition put_pair T lxp xp block_ix (pos : addr) (i : item) ms rx : prog T :=
     v <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 ms;
-    let ib' := upd (valu_to_block v) pos i in
-    let v' := rep_block ib' in
+    let v' := wreclen_to_valu (Rec.word_updN #pos (valu_to_wreclen v) (Rec.to_word i)) in
     ms' <- MEMLOG.write_array lxp (RAStart xp) block_ix $1 v' ms;
     rx ms'.
 
@@ -200,10 +210,11 @@ Section RECARRAY.
     word2nat_auto.
     subst.
     erewrite sel_map.
-    autorewrite with core.
-    trivial.
-    rewrite Forall_forall in *. apply H10.
-    apply in_selN. abstract word2nat_auto.
+    rewrite Rec.word_selN_equiv with (def:=item_zero).
+    unfold rep_block. rewrite valu_wreclen_id. rewrite Rec.of_to_id.
+    reflexivity.
+    rewrite Forall_forall in *. apply H10. apply in_selN. abstract word2nat_auto.
+    abstract word2nat_auto.
     abstract word2nat_auto.
     unfold MEMLOG.log_intact. cancel.
   Qed.
@@ -238,11 +249,14 @@ Section RECARRAY.
     auto.
     cancel.
     erewrite sel_map.
+    unfold rep_block. rewrite valu_wreclen_id. rewrite Rec.word_updN_equiv.
+    rewrite Rec.of_to_id.
     autorewrite with core.
     cancel.
 
     rewrite Forall_forall in *. apply H11.
     apply in_selN. abstract word2nat_auto.
+    abstract word2nat_auto.
     abstract word2nat_auto.
     autorewrite with core. auto.
     apply Forall_upd. assumption.

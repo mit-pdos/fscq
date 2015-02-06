@@ -6,66 +6,12 @@ import Balloc
 import Inode
 import Prog
 import Word
+import qualified Interpreter as I
 import qualified System.Directory
--- import qualified System.Exit
--- import qualified System.Random
-import qualified Data.ByteString
-import qualified Data.Bits
 import qualified Testprog
 
 disk_fn :: String
 disk_fn = "disk.img"
-
-verbose :: Bool
-verbose = True
-
-debugmsg :: String -> IO ()
-debugmsg s =
-  if verbose then
-    putStrLn s
-  else
-    return ()
-
--- crashRandom :: IO Int
--- crashRandom = System.Random.getStdRandom (System.Random.randomR (1, 20))
-
--- maybeCrash :: IO ()
--- maybeCrash = do
---   x <- crashRandom
---   -- if x == 1
---   if x == 0
---   then
---     do
---       putStrLn "CRASH!"
---       System.Exit.exitFailure
---   else
---     return ()
-
-bs2i :: Data.ByteString.ByteString -> Integer
-bs2i = Data.ByteString.foldl' (\i b -> (i `Data.Bits.shiftL` 8) + fromIntegral b) 0
-
-i2bs :: Integer -> Data.ByteString.ByteString
-i2bs = Data.ByteString.reverse . Data.ByteString.unfoldr (\i -> if i == 0 then Nothing else Just (fromIntegral i, i `Data.Bits.shiftR` 8))
-
-read_disk :: Handle -> Coq_word -> IO Coq_word
-read_disk f (W a) = do
-  debugmsg $ "read(" ++ (show a) ++ ")"
-  hSeek f AbsoluteSeek $ 512*a
-  bs <- Data.ByteString.hGet f 512
-  return $ W $ bs2i bs
-
-write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
-write_disk f (W a) (W v) = do
-  -- maybeCrash
-  debugmsg $ "write(" ++ (show a) ++ ")"
-  hSeek f AbsoluteSeek $ 512*a
-  Data.ByteString.hPut f $ i2bs v
-  return ()
-
-run_dcode :: Handle -> Prog.Coq_prog a -> IO a
-run_dcode _ (Done r) = return r
-run_dcode f (Read a rx) = do val <- read_disk f a; run_dcode f $ rx val
-run_dcode f (Write a v rx) = do write_disk f a v; run_dcode f $ rx ()
 
 -- the_prog :: Log.Coq_xparams -> Prog.Coq_prog ()
 -- the_prog xp =
@@ -109,19 +55,19 @@ main = do
   then
     do
       putStrLn "Recovering disk.."
-      run_dcode f $ _MEMLOG__recover lxp $ \_ -> Prog.Done ()
+      I.run f $ _MEMLOG__recover lxp $ \_ -> Prog.Done ()
   else
     do
       putStrLn "Initializing disk.."
-      run_dcode f $ _MEMLOG__init lxp $ \_ -> Prog.Done ()
+      I.run f $ _MEMLOG__init lxp $ \_ -> Prog.Done ()
   putStrLn "Running program.."
-  -- r <- run_dcode f $ the_prog lxp
-  -- r <- run_dcode f $ Testprog.testcopy lxp $ Prog.Done ()
-  -- r <- run_dcode f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
-  r <- repf 100 (Just (W 123))
+  -- r <- I.run f $ the_prog lxp
+  -- r <- I.run f $ Testprog.testcopy lxp $ Prog.Done ()
+  -- r <- I.run f $ Testprog.testalloc lxp bxp $ \x -> Prog.Done x
+  r <- repf 10000 (Just (W 123))
        (\x -> case x of
               Nothing -> return Nothing
-              Just xv -> run_dcode f $ Testprog.test_bfile lxp bxp ixp xv Prog.Done)
+              Just xv -> I.run f $ Testprog.test_bfile lxp bxp ixp xv Prog.Done)
   hClose f
   putStrLn $ "Done: " ++ (show r)
 

@@ -44,7 +44,6 @@ Definition testalloc T lxp bxp rx : prog T :=
   end.
 
 Definition test_bfile T lxp bxp ixp v rx : prog T :=
-  MEMLOG.init lxp ;;
   ms <- MEMLOG.begin lxp ;
   r <- BFILE.bfgrow lxp bxp ixp $3 ms ;
   let (ok, ms) := r in
@@ -52,12 +51,19 @@ Definition test_bfile T lxp bxp ixp v rx : prog T :=
   | false => MEMLOG.abort lxp ms ;; rx None
   | true =>
     ms <- BFILE.bfwrite lxp ixp $3 $0 v ms ;
-    b <- BFILE.bfread lxp ixp $3 $0 ms ;
-    ms <- BFILE.bfshrink lxp bxp ixp $3 ms ;
     ok <- MEMLOG.commit lxp ms ;
+
     match ok with
     | false => rx None
-    | true => rx (Some b)
+    | true =>
+      ms <- MEMLOG.begin lxp ;
+      b <- BFILE.bfread lxp ixp $3 $0 ms ;
+      ms <- BFILE.bfshrink lxp bxp ixp $3 ms ;
+      ok <- MEMLOG.commit lxp ms ;
+      match ok with
+      | false => rx None
+      | true => rx (Some b)
+      end
     end
   end.
 

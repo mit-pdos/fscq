@@ -720,16 +720,14 @@ Proof.
   rewrite IHl by omega; auto.
 Qed.
 
-Lemma firstn_app_updN: forall A (a b : list A) x,
-  length a < length b
-  -> a = firstn (length a) b
-  -> a ++ x :: nil = firstn (length a + 1) (updN b (length a) x).
+Lemma firstn_app_updN_eq : forall A l n (x : A),
+  n < length l
+  -> (firstn n l) ++ x :: nil = firstn (n + 1) (updN l n x).
 Proof.
   intros.
   rewrite firstn_plusone_selN with (def := x).
   rewrite selN_updN_eq by auto.
   rewrite firstn_updN_oob; auto.
-  rewrite H0 at 1; auto.
   rewrite length_updN; auto.
 Qed.
 

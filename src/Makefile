@@ -12,11 +12,13 @@ VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
 GHC        := /opt/ghc/7.8.4/bin/ghc
-GHCARGS    := -O2 -prof -auto-all
+GHCARGS    := -O2 -prof -fprof-auto -rtsopts
+HSLIB_PRE  := hslib/Word.hs
+HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
 .PHONY: coq proof clean
 
-all: hstest
+all: hstest fuse
 
 %: %.ml coq
 	rm -f $@
@@ -25,8 +27,9 @@ all: hstest
 
 %: %.hs coq
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
-	$(GHC) $(GHCARGS) -Wall hslib/*.hs
-	$(GHC) $(GHCARGS) codegen/*.hs -ihslib
+	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
+	$(GHC) $(GHCARGS) -Wall $(HSLIB_POST) -ihslib -icodegen
 	$(GHC) $(GHCARGS) -Wall $< -ihslib -icodegen -o $@
 
 coqbuild/%.v: %.v strip-proofs.py
