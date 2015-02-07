@@ -420,39 +420,49 @@ Module INODE.
       rx ms'
     }.
 
-  Definition igrow_indirect T lxp bxp xp (i0 : irec) inum a ms rx : prog T :=
+  Definition igrow_alloc T lxp bxp xp (i0 : irec) inum a ms rx : prog T :=
     let off := i0 :-> "len" in
     let i := i0 :=> "len" := (off ^+ $1) in
-    If (weq off wnr_direct) {
-      r <- BALLOC.alloc lxp bxp ms;
-      let (bn, ms') := r in
-      match bn with
-      | None => rx (false, ms')
-      | Some bnum =>
-          let i' := (i :=> "indptr" := bnum) in
-          ms2 <- MEMLOG.write lxp bnum $0 ms';
-          ms3 <- indput lxp bnum (off ^- wnr_direct) a ms2;
-          ms4 <- irput lxp xp inum i' ms3;
-          rx (true, ms4)
-      end
-    } else {
-      ms' <- indput lxp (i :-> "indptr") (off ^- wnr_direct) a ms;
-      ms'' <- irput lxp xp inum i ms';
-      rx (true, ms'')
-    }.
+    r <- BALLOC.alloc lxp bxp ms;
+    let (bn, ms') := r in
+    match bn with
+    | None => rx (false, ms')
+    | Some bnum =>
+        let i' := (i :=> "indptr" := bnum) in
+        ms2 <- MEMLOG.write lxp bnum $0 ms';
+        ms3 <- indput lxp bnum (off ^- wnr_direct) a ms2;
+        ms4 <- irput lxp xp inum i' ms3;
+        rx (true, ms4)
+    end.
 
+  Definition igrow_indirect T lxp xp (i0 : irec) inum a ms rx : prog T :=
+    let off := i0 :-> "len" in
+    let i := i0 :=> "len" := (off ^+ $1) in
+    ms' <- indput lxp (i :-> "indptr") (off ^- wnr_direct) a ms;
+    ms'' <- irput lxp xp inum i ms';
+    rx (true, ms'').
+
+  Definition igrow_direct T lxp xp (i0 : irec) inum a ms rx : prog T :=
+    let off := i0 :-> "len" in
+    let i := i0 :=> "len" := (off ^+ $1) in
+    let i' := i :=> "blocks" := (upd (i0 :-> "blocks") off a) in
+    ms' <- irput lxp xp inum i' ms;
+    rx (true, ms').
 
   Definition igrow T lxp bxp xp inum a ms rx : prog T :=
     i0 <- irget lxp xp inum ms;
     let off := i0 :-> "len" in
     If (wlt_dec off wnr_direct) {
-      let i := i0 :=> "len" := (off ^+ $1) in
-      let i' := i :=> "blocks" := (upd (i0 :-> "blocks") off a) in
-      ms' <- irput lxp xp inum i' ms;
-      rx (true, ms')
-    } else {
-      r <- igrow_indirect lxp bxp xp i0 inum a ms;
+      r <- igrow_direct lxp xp i0 inum a ms;
       rx r
+    } else {
+      If (weq off wnr_direct) {
+        r <- igrow_alloc lxp bxp xp i0 inum a ms;
+        rx r
+      } else {
+        r <- igrow_indirect lxp xp i0 inum a ms;
+        rx r
+      }
     }.
 
   Definition ishrink T lxp bxp xp inum ms rx : prog T :=
@@ -726,7 +736,7 @@ Module INODE.
     | [ H : context [ (irrep _ ?l) ] |- length ?l <= _ ] =>
         unfold irrep in H; destruct_lift H
     | [ H : context [ (indrep _ ?l) ] |- length ?l <= _ ] =>
-        unfold irrep in H; destruct_lift H
+        unfold indrep in H; destruct_lift H
   end.
 
   Ltac inode_bounds := eauto; try list2mem_bound; try solve_length_eq;
@@ -950,16 +960,6 @@ Module INODE.
     omega.
   Qed.
 
-  Lemma weq_eq : forall sz a b,
-    b = wordToNat (natToWord sz b)
-    -> a = natToWord sz b
-    -> wordToNat a = b.
-  Proof.
-    intros; subst a; auto.
-  Qed.
-
-  Ltac resolve_blocks_len_eq := erewrite weq_eq; eauto; try omega; eauto.
-
   Lemma add_one_eq_wplus_one: forall sz (n : word sz) b,
     b + 1 <= wordToNat (natToWord sz (b + 1))
     -> wordToNat n <= b
@@ -972,6 +972,17 @@ Module INODE.
     erewrite wordToNat_natToWord_bound; eauto.
     omega.
   Qed.
+
+  Fact len_plus_one_eq1: forall (n : addr),
+    wordToNat n <= nr_direct
+    -> wordToNat n + 1 = wordToNat (n ^+ $1)%word.
+  Proof.
+    intros.
+    eapply add_one_eq_wplus_one; eauto.
+    simpl; auto.
+  Qed.
+
+  Hint Resolve len_plus_one_eq1.
 
   Lemma firstn_plusone_app_selN: forall T n a b (def : T),
     n = length a -> length b > 0
@@ -997,12 +1008,218 @@ Module INODE.
   Qed.
 
 
-  Theorem igrow_indirect_ok : forall lxp bxp xp i0 inum a ms,
+  Theorem igrow_direct_ok : forall lxp xp (i0 : irec) inum a ms,
+    {< F A B mbase m ilist (reclist : list irec) ino,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ length (IBlocks ino) < blocks_per_inode ]] *
+             [[ i0 = sel reclist inum irec0 ]] *
+             [[ i0 :-> "len" < wnr_direct ]]%word *
+             [[ (F * irrep xp reclist *
+                 listmatch inode_match ilist reclist)%pred (list2mem m) ]] *
+             [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
+             [[  B (list2mem (IBlocks ino)) ]]
+    POST:r   exists m' ilist' ino',
+             MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
+             [[ fst r = true ]] *
+             [[ (F * rep xp ilist')%pred (list2mem m') ]] *
+             [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
+             [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} igrow_direct lxp xp i0 inum a ms.
+  Proof.
+    unfold igrow_direct, rep.
+    step.
+
+    list2mem_ptsto_cancel; inode_bounds.
+    admit. (* rec bound *)
+
+    eapply pimpl_ok2; eauto with prog; intros; cancel.
+
+    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
+    2: eapply list2mem_upd; eauto.
+    2: simpl; eapply list2mem_app; eauto.
+
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
+
+    eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
+    repeat rewrite inode_match_is_direct; eauto.
+    unfold inode_match_direct.
+    simpl; unfold sel; autorewrite with core.
+    rewrite app_length; rewrite H10; simpl.
+    cancel; try (solve [rec_simpl]).
+
+    eapply wlt_plus_one_le; eauto.
+    rewrite inode_set_blocks_get_blocks.
+    rewrite <- firstn_app_updN_eq.
+    f_equal; auto.
+    setoid_rewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
+    apply wlt_lt in H7; auto.
+    pred_apply; cancel.
+
+    rewrite inode_set_blocks_get_len.
+    rewrite inode_set_len_get_len.
+    apply wlt_plus_one_wle; auto.
+
+    eapply inode_well_formed with (m := list2mem d1); eauto.
+    instantiate (def := irec0).
+    autorewrite with core; auto.
+
+    eapply inode_well_formed with (m := list2mem d0) (l := l0); eauto.
+    pred_apply; cancel.
+    inode_bounds.
+
+    repeat rewrite_list2mem_pred; inode_bounds.
+    destruct_listmatch.
+    unfold sel; inode_bounds.
+  Qed.
+
+
+  Lemma wlt_lt_nr_direct: forall (a c : addr) b,
+    (wnr_direct < a)%word -> (wordToNat a = b) -> (nr_direct < b).
+  Proof.
+    intros; subst.
+    apply wlt_lt in H; simpl in H.
+    simpl; auto.
+  Qed.
+
+  Lemma firstn_length_l : forall A (l : list A) n,
+    n <= length l -> length (firstn n l) = n.
+  Proof.
+    intros.
+    rewrite firstn_length.
+    rewrite Nat.min_l; auto.
+  Qed.
+
+  Lemma gt_plusone_gt: forall n c,
+    n > c -> n + 1 > c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma indirect_valid_eq : forall l (wl : addr),
+    l < nr_direct + nr_indirect
+    -> (wl > wnr_direct)%word
+    -> l = wordToNat wl
+    -> wordToNat wl - nr_direct < nr_indirect.
+  Proof.
+    intros; subst.
+    apply wlt_lt in H0.
+    unfold wnr_direct in H0.
+    erewrite wordToNat_natToWord_bound in H0; eauto.
+    omega.
+  Qed.
+
+  Hint Resolve wlt_lt_nr_direct.
+  Hint Resolve gt_plusone_gt.
+
+  Ltac resolve_length_bound := try solve [
+    repeat match goal with
+    | [ |- context [ length (_ ++ _) ] ] => rewrite app_length
+    | [ |- _ >= _ ] => apply Nat.lt_le_incl
+    | [ H: length ?a = _ |- context [ length ?a ] ] => setoid_rewrite H
+    | [ H: length ?a = _, H2: context [ length ?a ] |- _ ] => rewrite H in H2
+    end; eauto; simpl; try omega ].
+
+
+  Theorem igrow_indirect_ok : forall lxp xp (i0 : irec) inum a ms,
+    {< F A B mbase m ilist (reclist : list irec) ino,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ length (IBlocks ino) < blocks_per_inode ]] *
+             [[ i0 :-> "len" > wnr_direct ]]%word *
+             [[ i0 = sel reclist inum irec0 ]] *
+             [[ (F * irrep xp reclist *
+                 listmatch inode_match ilist reclist)%pred (list2mem m) ]] *
+             [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
+             [[  B (list2mem (IBlocks ino)) ]]
+    POST:r   exists m' ilist' ino',
+             MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
+             [[ fst r = true ]] *
+             [[ (F * rep xp ilist')%pred (list2mem m') ]] *
+             [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
+             [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} igrow_indirect lxp xp i0 inum a ms.
+  Proof.
+    unfold igrow_indirect, rep.
+    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    destruct_listmatch.
+    rewrite indirect_valid_r in H. 
+    cancel.
+
+    rec_simpl; cancel.
+    list2mem_ptsto_cancel; inode_bounds.
+    rewrite wminus_minus; auto.
+    erewrite indirect_length; eauto.
+    rewrite_list2mem_pred; inode_bounds.
+
+    eapply indirect_valid_eq; eauto.
+    step.
+    list2mem_ptsto_cancel; inode_bounds.
+    admit. (* rec bound *)
+    eapply pimpl_ok2; eauto with prog; intros; cancel.
+
+    (* constructing the new inode *)
+    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
+    2: eapply list2mem_upd; eauto.
+    2: simpl; eapply list2mem_app; eauto.
+
+    (* prove representation invariant *)
+    repeat rewrite_list2mem_pred; inode_bounds.
+    unfold upd, sel; unfold sel in *.
+    assert (length l1 = nr_indirect) by (eapply indirect_length; eauto).
+    assert (length l2 = nr_indirect) by (eapply indirect_length; eauto).
+    assert (length ((selN l0 (wordToNat inum) irec0) :-> "blocks") = nr_direct) as Hdeq.
+    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
+    pred_apply; cancel.
+
+    rewrite listmatch_updN_removeN; inode_bounds; cancel_exact.
+    unfold inode_match; autorewrite with core.
+    simpl; rewrite app_length; simpl. 
+    rewrite H17; rewrite H3.
+    rewrite firstn_length_l by resolve_length_bound.
+    cancel.
+
+    rewrite indirect_valid_r.
+    rec_simpl; cancel.
+    eauto.
+    rewrite inode_set_len_get_len.
+    eapply add_one_eq_wplus_one with (b := blocks_per_inode); eauto.
+    setoid_rewrite <- H3; auto.
+    rec_simpl.
+
+    rewrite inode_set_len_get_blocks.
+    rewrite firstn_app_updN_eq by resolve_length_bound.
+    rewrite updN_app2 by resolve_length_bound.
+    repeat f_equal.
+    setoid_rewrite Hdeq.
+    replace nr_direct with (wordToNat wnr_direct) by auto.
+    rewrite <- wminus_minus; auto.
+    setoid_rewrite list2mem_array_updN; inode_bounds.
+    resolve_length_bound.
+
+    (* clean up goals about bounds *)
+    repeat rewrite_list2mem_pred; inode_bounds.
+    unfold sel in *; subst; eauto.
+  Qed.
+
+
+  Lemma weq_eq : forall sz a b,
+    b = wordToNat (natToWord sz b)
+    -> a = natToWord sz b
+    -> wordToNat a = b.
+  Proof.
+    intros; subst a; auto.
+  Qed.
+
+  Ltac resolve_length_eq := try solve [erewrite weq_eq; eauto; try omega; eauto].
+
+  Theorem igrow_alloc_ok : forall lxp bxp xp (i0 : irec) inum a ms,
     {< F A B mbase m ilist (reclist : list irec) freelist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ length (IBlocks ino) < blocks_per_inode ]] *
-             [[ length (IBlocks ino) >= nr_direct ]] *
              [[ i0 = sel reclist inum irec0 ]] *
+             [[ i0 :-> "len" = wnr_direct ]]%word *
              [[ (F * irrep xp reclist * BALLOC.rep bxp freelist *
                  listmatch inode_match ilist reclist)%pred (list2mem m) ]] *
              [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
@@ -1014,10 +1231,9 @@ Module INODE.
              [[ (A * inum |-> ino')%pred (list2mem ilist') ]] *
              [[ (B * $ (length (IBlocks ino)) |-> a)%pred (list2mem (IBlocks ino')) ]])
     CRASH    MEMLOG.log_intact lxp mbase
-    >} igrow_indirect lxp bxp xp i0 inum a ms.
+    >} igrow_alloc lxp bxp xp i0 inum a ms.
   Proof.
-    unfold igrow_indirect, rep.
-    step.
+    unfold igrow_alloc, rep.
     step.
 
     destruct_listmatch.
@@ -1034,9 +1250,10 @@ Module INODE.
     rewrite ind_ptsto_zero.
     cancel.
 
+    repeat rewrite_list2mem_pred; unfold upd; inode_bounds.
     list2mem_ptsto_cancel; inode_bounds.
     rewrite wminus_minus; auto.
-    unfold sel in *; setoid_rewrite H10; simpl; omega.
+    unfold sel in *; setoid_rewrite H7; simpl; omega.
     step.
 
     list2mem_ptsto_cancel; inode_bounds.
@@ -1053,35 +1270,32 @@ Module INODE.
     repeat rewrite_list2mem_pred; unfold upd; inode_bounds.
     eapply listmatch_updN_selN_r; autorewrite with defaults; inode_bounds.
     unfold inode_match.
-    simpl; rewrite app_length; rewrite H11; simpl.
+    simpl; rewrite app_length; rewrite H6; simpl.
     cancel.
 
-    rewrite indirect_valid_l by resolve_blocks_len_eq.
-    rewrite indirect_valid_r by resolve_blocks_len_eq.
+    rewrite indirect_valid_l by resolve_length_eq.
+    rewrite indirect_valid_r by (setoid_rewrite H7; auto).
+
     rec_simpl; cancel.
-    rec_simpl.
-    eapply add_one_eq_wplus_one; eauto; simpl; auto.
+    rec_simpl; eapply add_one_eq_wplus_one; eauto; simpl; auto.
     rec_simpl.
 
     rewrite inode_set_indptr_get_blocks.
     rewrite inode_set_len_get_blocks.
-    rewrite H20; rewrite H11.
+    rewrite H18.
     rewrite firstn_app.
     erewrite firstn_plusone_app_selN; autorewrite with defaults.
     rewrite weq_wminus_0; auto.
 
     (* clean up goals about bounds *)
-    unfold sel.
-    erewrite inode_blocks_length with (m := list2mem a1); inode_bounds.
-    resolve_blocks_len_eq.
+    unfold sel; erewrite inode_blocks_length with (m := list2mem a1); inode_bounds.
+    resolve_length_eq.
     pred_apply; cancel.
-
     erewrite indirect_length with (m := list2mem d2).
     unfold nr_indirect; omega.
     pred_apply; cancel.
-
     erewrite inode_blocks_length with (m := list2mem a1); inode_bounds.
-    resolve_blocks_len_eq.
+    rewrite H6; resolve_length_eq.
     pred_apply; cancel.
 
     repeat rewrite_list2mem_pred; inode_bounds.
@@ -1089,68 +1303,19 @@ Module INODE.
 
 
     (* CASE 2: indirect block allocation failed *)
+    (* XXX: so many unused instantials ! *)
     step; inversion H0; subst; try cancel.
+    instantiate (a := nil); instantiate (a0 := nil); instantiate (a5 := nil);
+    instantiate (a1 := emp); instantiate (a2 := $0); instantiate (a3 := emp).
+    instantiate (Goal13 := valu); instantiate (Goal4 := valu).
+    instantiate (Goal11 := $0); instantiate (Goal9 := $0).
     eapply pimpl_or_r; left; cancel.
-
-
-    (* CASE 3: no indirect block allocation *)
-    destruct_listmatch.
-    step.
-    rewrite indirect_valid_r.
-    rec_simpl; cancel.
-
-    admit.
-    list2mem_ptsto_cancel.
-    admit.
-    admit.
-
-    step.
-    list2mem_ptsto_cancel; inode_bounds.
-    admit. (* rec bound *)
-
-    step.
-    eapply pimpl_or_r; right; cancel.
-
-    (* constructing the new inode *)
-    instantiate (a6 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
-    2: eapply list2mem_upd; eauto.
-    2: simpl; eapply list2mem_app; eauto.
-
-    (* prove representation invariant *)
-    rewrite_list2mem_pred_upd H14; subst.
-    repeat rewrite_list2mem_pred; unfold upd, sel; inode_bounds.
-    rewrite listmatch_updN_removeN; inode_bounds.
-    cancel_exact.
-    unfold inode_match; autorewrite with core.
-    simpl; rewrite app_length; rewrite H6; simpl.
-    cancel.
-
-    rewrite indirect_valid_r.
-    rewrite inode_set_len_get_indptr; cancel.
-    admit.
-
-    rewrite inode_set_len_get_len.
-    eapply add_one_eq_wplus_one; eauto.
-    admit.
-    rec_simpl.
-
-    rewrite inode_set_len_get_blocks.
-    rewrite H18; rewrite H6.
-
-    admit.
-
-    erewrite indirect_length with (m := list2mem d0); eauto.
-    pred_apply; rewrite indirect_valid_r; eauto.
-    admit.
-
-    erewrite indirect_length with (m := list2mem d1); eauto.
-    admit.
-
-    (* clean up goals about bounds *)
-    repeat rewrite_list2mem_pred; inode_bounds.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (igrow_indirect _ _ _ _ _ _ _) _) => apply igrow_indirect_ok : prog.
+
+  Hint Extern 1 ({{_}} progseq (igrow_direct _ _ _ _ _ _) _) => apply igrow_direct_ok : prog.
+  Hint Extern 1 ({{_}} progseq (igrow_indirect _ _ _ _ _ _) _) => apply igrow_indirect_ok : prog.
+  Hint Extern 1 ({{_}} progseq (igrow_alloc _ _ _ _ _ _ _) _) => apply igrow_alloc_ok : prog.
 
   Theorem igrow_ok : forall lxp bxp xp inum a ms,
     {< F A B mbase m ilist ino freelist,
@@ -1171,64 +1336,16 @@ Module INODE.
     unfold igrow, rep.
     hoare.
 
-    (* CASE 1: direct blocks *)
+    destruct_listmatch.
     list2mem_ptsto_cancel; inode_bounds.
-    list2mem_ptsto_cancel; inode_bounds.
 
-    admit. (* rec bound *)
-    eapply pimpl_or_r; right; cancel.
+    unfold rep in H0; destruct_lift H0.
+    eapply pimpl_or_r; right; cancel; eauto.
 
-    instantiate (a0 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
-    2: eapply list2mem_upd; eauto.
-    2: simpl; eapply list2mem_app; eauto.
+    unfold rep in H12; destruct_lift H12.
+    eapply pimpl_or_r; right; cancel; eauto.
 
-    repeat rewrite_list2mem_pred; inode_bounds.
-    destruct_listmatch.
-
-    eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
-    repeat rewrite inode_match_is_direct; eauto.
-    unfold inode_match_direct.
-    simpl; autorewrite with core.
-    rewrite app_length; rewrite H12; simpl.
-    cancel.
-
-    rec_simpl.
-    erewrite wordToNat_plusone with (w' := wnr_direct) by auto. 
-    rewrite Nat.add_1_r; auto.
-    rec_simpl.
-
-    apply wlt_plus_one_le; auto.
-    rewrite inode_set_blocks_get_blocks.
-    rewrite <- firstn_app_updN_eq.
-    f_equal; auto.
-    Check inode_blocks_length.
-    rewrite inode_blocks_length with (m := (list2mem d0)).
-
-    setoid_rewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
-    rewrite <- nr_direct_elim; auto.
-    pred_apply; cancel.
-
-    rewrite inode_set_blocks_get_len.
-    rewrite inode_set_len_get_len.
-    apply wlt_plus_one_wle; auto.
-
-    eapply inode_well_formed with (m := list2mem d1); eauto.
-    instantiate (def := irec0).
-    autorewrite with core; auto.
-    eapply inode_well_formed with (m := list2mem d0) (l := l); eauto.
-    pred_apply; cancel.
-    inode_bounds.
-
-    repeat rewrite_list2mem_pred; inode_bounds.
-    destruct_listmatch.
-    unfold sel; inode_bounds.
-
-    (* CASE 2: indirect blocks *)
-    repeat rewrite_list2mem_pred; inode_bounds.
-    destruct_listmatch.
-
-    eapply wle_eq_le'; eauto; simpl; auto.
-    unfold rep in H11; destruct_lift H11.
+    unfold rep in H0; destruct_lift H0.
     eapply pimpl_or_r; right; cancel; eauto.
   Qed.
 
@@ -1302,8 +1419,8 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (isetsz _ _ _ _ _) _) => apply isetsz_ok : prog.
   Hint Extern 1 ({{_}} progseq (iget _ _ _ _ _) _) => apply iget_ok : prog.
   Hint Extern 1 ({{_}} progseq (iput _ _ _ _ _ _) _) => apply iput_ok : prog.
-  Hint Extern 1 ({{_}} progseq (igrow _ _ _ _ _) _) => apply igrow_ok : prog.
-  Hint Extern 1 ({{_}} progseq (ishrink _ _ _ _) _) => apply ishrink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (igrow _ _ _ _ _ _) _) => apply igrow_ok : prog.
+  Hint Extern 1 ({{_}} progseq (ishrink _ _ _ _ _) _) => apply ishrink_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
