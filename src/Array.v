@@ -43,6 +43,8 @@ Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
 Definition upd_prepend (vs : list valuset) (i : addr) (v : valu) : list valuset :=
   upd vs i (v, valuset_list (sel vs i ($0, nil))).
 
+Definition upd_sync (vs : list valuset) (i : addr) (default : valuset) : list valuset :=
+  upd vs i (fst (sel vs i default), nil).
 
 Notation "l [ i ]" := (selN l i _) (at level 56, left associativity).
 Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
@@ -789,6 +791,11 @@ Definition ArrayWrite T a i stride v rx : prog T :=
      Xform isolate_bwd_upd pimpl_refl (rx v)).
 
 
+Definition ArraySync T a i stride rx : prog T :=
+  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
+    (v <- Sync (a ^+ i ^* stride);
+     Xform isolate_bwd_upd pimpl_refl (rx v)).
+
 (** * Hoare rules *)
 
 Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
@@ -805,7 +812,6 @@ Proof.
   unfold ArrayRead.
   hoare.
 
-  instantiate (b:=snd (l $[ i])).
   rewrite <- surjective_pairing; cancel.
   rewrite <- surjective_pairing; cancel.
   rewrite <- surjective_pairing; cancel.
@@ -825,8 +831,26 @@ Proof.
   hoare.
 Qed.
 
+Theorem sync_ok:
+  forall T (a i stride:addr) (rx:unit->prog T),
+  {{ fun done crash => exists vs F, array a vs stride * F
+   * [[wordToNat i < length vs]]
+   * [[{{ fun done' crash' => array a (upd_sync vs i ($0, nil)) stride * F
+        * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx tt]]
+   * [[ array a vs stride * F =p=> crash ]]
+  }} ArraySync a i stride rx.
+Proof.
+  unfold ArraySync.
+  hoare.
+
+  fold (@sep_star (valu * list valu)); rewrite <- surjective_pairing; cancel.
+  fold (@sep_star (valu * list valu)); rewrite <- surjective_pairing; cancel.
+Qed.
+
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _ _) _) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq (ArraySync _ _ _) _) => apply sync_ok : prog.
 
 Hint Extern 0 (okToUnify (array ?base ?l ?stride) (array ?base ?r ?stride)) =>
   unfold okToUnify; constructor : okToUnify.
