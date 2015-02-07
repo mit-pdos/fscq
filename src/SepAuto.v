@@ -820,7 +820,7 @@ Ltac autorewrite_fast :=
   | [ |- _ ] => autorewrite_fast_goal
   end.
 
-Ltac step :=
+Ltac step_unfold unfolder :=
   intros;
   try cancel;
   remember_xform;
@@ -834,6 +834,7 @@ Ltac step :=
         end; solve [ eapply nop_ok ] | ]));
   intros; subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
+  unfolder;
   try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
   apply_xform cancel;
   try cancel; try autorewrite_fast;
@@ -842,5 +843,7 @@ Ltac step :=
   try congruence;
   eauto.
 
+Ltac step := step_unfold idtac.
+
 Ltac hoare := repeat step.
-Ltac hoare_unfold unfolder := repeat (unfolder; step).
+Ltac hoare_unfold unfolder := unfolder; repeat (step_unfold unfolder).
