@@ -73,18 +73,20 @@ Inductive logstate :=
  * It has not committed yet. *)
 
 (*
-| FlushedTxn (old : diskstate) (cur : diskstate)
+| FlushedUnsyncTxn (old : diskstate) (cur : diskstate)
 (* A transaction has been flushed to the log, but not sync'ed or
  * committed yet. *)
 *)
 
-| SyncedTxn (old : diskstate) (cur : diskstate)
-(* Like FlushedTxn above, except that we sync'ed the log.
- * For external API purposes, this can be just a subset of FlushedTxn.
+| FlushedTxn (old : diskstate) (cur : diskstate)
+(* Like FlushedUnsyncTxn above, except that we sync'ed the log.
  *)
+
+| CommittedUnsyncTxn (old : diskstate) (cur : diskstate)
 
 | CommittedTxn (cur : diskstate)
 (* A transaction has committed but the log has not necessarily been applied yet. *)
+
 
 | AppliedUnsyncTxn (cur : diskstate)
 (* A transaction has been committed and applied but not yet flushed. *)
@@ -288,15 +290,21 @@ Module MEMLOG.
     * [[ valid_entries old ms ]]
 
 (*
-    | FlushedTxn old cur =>
-      (LogCommit xp) |-> ($0, nil)
+    | FlushedUnsyncTxn old cur =>
+      (LogCommit xp) |=> $0
     * data_rep xp (synced_list old)
-    * log_rep xp ptsto_cur old ms
+    * log_rep xp old ms
     * cur_rep old ms cur
 *)
 
-    | SyncedTxn old cur =>
+    | FlushedTxn old cur =>
       (LogCommit xp) |=> $0
+    * data_rep xp (synced_list old)
+    * log_rep xp old ms
+    * cur_rep old ms cur
+
+    | CommittedUnsyncTxn old cur =>
+      (LogCommit xp) |-> ($1, $0 :: nil)
     * data_rep xp (synced_list old)
     * log_rep xp old ms
     * cur_rep old ms cur
@@ -317,12 +325,21 @@ Module MEMLOG.
     * cur_rep old ms cur
 
     | AppliedTxn cur =>
-      (LogCommit xp) |->?
+      (LogCommit xp) |-> ($0, $1 :: nil)
     * data_rep xp (synced_list cur)
-    * log_rep xp cur ms
-    * cur_rep cur ms cur
+    * exists old, log_rep xp old ms
+    * cur_rep old ms cur
 
     end)%pred.
+
+  (* The states in here cover every valid log state -- that there are additional states above is an
+     implementation detail (they constrain the _current_ values more) *)
+  Definition would_recover_either xp old cur :=
+    (exists ms,
+     rep xp (ActiveTxn old cur) ms \/ (* commit |=> $0: data = old *)
+     rep xp (CommittedUnsyncTxn old cur) ms \/ (* commit |~> $1: data = old, log = cur *)
+     rep xp (CommittedTxn cur) ms \/ (* commit |=> $1: log = cur *)
+     rep xp (AppliedUnsyncTxn cur) ms)%pred. (* commit |~> $0: data = cur, log = cur *)
 
   Definition init T xp rx : prog T :=
     Write (LogCommit xp) $0;;
@@ -616,7 +633,7 @@ Module MEMLOG.
   Theorem flush_ok : forall xp ms,
     {< m1 m2,
     PRE    rep xp (ActiveTxn m1 m2) ms
-    POST:r ([[ r = true ]] * rep xp (SyncedTxn m1 m2) ms) \/
+    POST:r ([[ r = true ]] * rep xp (FlushedTxn m1 m2) ms) \/
            ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
     CRASH  rep xp (ActiveTxn m1 m2) ms
     >} flush xp ms.
@@ -836,10 +853,85 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
 
+  Definition apply_sync T xp ms rx : prog T :=
+    For i < $ (Map.cardinal ms)
+    Ghost cur
+    Loopvar _ <- tt
+    Continuation lrx
+    Invariant
+      (LogCommit xp) |=> $1
+      * log_rep xp cur ms
+      * exists cur_unflushed, data_rep xp (List.combine cur cur_unflushed)
+      * [[ nil_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur_unflushed ]]
+    OnCrash
+      rep xp (AppliedUnsyncTxn cur) ms
+    Begin
+      ArraySync $0 (sel (map fst (Map.elements ms)) i $0) $1;;
+      lrx tt
+    Rof;;
+    Write (LogCommit xp) $0;;
+    rx tt.
+
+  Theorem apply_sync_ok: forall xp ms,
+    {< m,
+    PRE    rep xp (AppliedUnsyncTxn m) ms
+    POST:r rep xp (AppliedTxn m) ms
+    CRASH  rep xp (AppliedUnsyncTxn m) ms \/ rep xp (AppliedTxn m) ms
+    >} apply_sync xp ms.
+  Proof.
+    unfold apply_sync; log_unfold.
+    hoare.
+    admit.
+    admit.
+    instantiate (a0 := upd l1 (map fst (Map.elements ms) $[ m]) nil).
+    admit.
+    admit.
+    admit.
+    assert (goodSize addrlen (# (LogLen xp))) by (apply wordToNat_bound).
+    rewrite skipn_oob in H21 by solve_lengths.
+    instantiate (y := $0).
+    admit.
+    apply pimpl_or_r; left; cancel.
+    admit.
+    admit.
+    apply pimpl_or_r; left; cancel.
+    admit.
+ Qed.
+
+  Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
+
+  Definition apply T xp ms rx : prog T :=
+    apply_unsync xp ms;;
+    apply_sync xp ms;;
+    Sync (LogCommit xp);;
+    rx tt.
+
+  Theorem apply_ok: forall xp ms,
+    {< m,
+    PRE    rep xp (CommittedTxn m) ms
+    POST:r rep xp (NoTransaction m) ms_empty
+    CRASH  rep xp (CommittedTxn m) ms \/ rep xp (AppliedTxn m) ms \/ rep xp (NoTransaction m) ms_empty
+    >} apply xp ms.
+  Proof.
+    unfold apply; log_unfold.
+    hoare_unfold log_unfold.
+    unfold avail_region; admit.
+    apply pimpl_or_r; right; cancel; auto.
+    apply pimpl_or_r; left; cancel; auto.
+    apply pimpl_or_r; left; cancel; auto.
+    (* true by [nil_unless_in _ l4] *) admit.
+    apply pimpl_or_r; right; apply pimpl_or_r; left; cancel; auto.
+    apply pimpl_or_r; left; cancel; auto.
+    (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *) admit.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
+
   Definition commit T xp (ms:memstate) rx : prog T :=
     ok <- flush xp ms;
     If (bool_dec ok true) {
       Write (LogCommit xp) $1;;
+      Sync (LogCommit xp);;
       apply xp ms;;
       rx true
     } else {
@@ -851,28 +943,23 @@ Module MEMLOG.
      PRE    rep xp (ActiveTxn m1 m2) ms
      POST:r ([[ r = true ]] * rep xp (NoTransaction m2) ms_empty) \/
             ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
-     CRASH  rep xp (ActiveTxn m1 m2) ms \/
+     CRASH  rep xp (NoTransaction m2) ms_empty \/
+            rep xp (ActiveTxn m1 m2) ms \/
+            rep xp (FlushedTxn m1 m2) ms \/
             rep xp (CommittedTxn m2) ms \/
-            rep xp (NoTransaction m2) ms_empty
+            rep xp (AppliedTxn m2) ms
     >} commit xp ms.
   Proof.
     unfold commit.
     hoare_unfold log_unfold.
-    (* XXX make [hoare_unfold] unfold before [cancel] so it can handle all these goals *)
-    log_unfold; cancel.
-    eapply pimpl_or_r; right.
-    eapply pimpl_or_r; right.
-    abstract cancel.
-    log_unfold; cancel.
-    eapply pimpl_or_r; right.
-    eapply pimpl_or_r; left.
-    abstract cancel.
-    eapply pimpl_or_r; left.
-    cancel.
-    admit.
-    log_unfold; cancel.
-    eapply pimpl_or_r; left.
-    cancel.
+    unfold equal_unless_in; intuition; auto.
+    apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; left; cancel.
+    (* true by H17, H12 *) admit.
+    auto.
+    apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; cancel.
+    auto.
+    apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; cancel.
+    
   Qed.
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
@@ -932,11 +1019,13 @@ Module MEMLOG.
       rx tt
     }.
 
+  (** The log is in a valid state which (after recovery) represents disk state [m] *)
   Definition log_intact xp m :=
     (exists ms, (rep xp (NoTransaction m) ms) \/
      (exists m', rep xp (ActiveTxn m m') ms) \/
      (exists m', rep xp (FlushedTxn m m') ms) \/
-     (rep xp (CommittedTxn m) ms))%pred.
+     (rep xp (CommittedTxn m) ms) \/
+     (rep xp (AppliedTxn m) ms))%pred.
 
   Theorem recover_ok: forall xp,
     {< m,
@@ -1031,6 +1120,7 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
+*)
 
   Definition read_array T xp a i stride ms rx : prog T :=
     read xp (a ^+ i ^* stride) ms rx.
