@@ -1339,7 +1339,7 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (igrow_indirect _ _ _ _ _ _) _) => apply igrow_indirect_ok : prog.
   Hint Extern 1 ({{_}} progseq (igrow_alloc _ _ _ _ _ _ _) _) => apply igrow_alloc_ok : prog.
 
-  Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (listmatch _ ?a ?b) (listmatch _ ?a ?b)) => constructor : okToUnify.
 
   Theorem igrow_ok : forall lxp bxp xp inum a ms,
     {< F A B mbase m ilist ino freelist,
@@ -1393,48 +1393,44 @@ Module INODE.
     step.
     destruct_listmatch.
     list2mem_ptsto_cancel; inode_bounds.
+    step.
+
+    (* CASE 1 : free the indirect block *)
     destruct_listmatch.
+    rewrite indirect_valid_r in H.
     step.
-
-    (* CASE 1 : free indirect block *)
+    rewrite ind_ptsto; cancel.
+    unfold indrep, BALLOC.valid_block in H.
+    destruct_lift H; auto.
     step.
-    rewrite indirect_valid_r.
-    rewrite ind_ptsto.
-    cancel.
-
-
 
     list2mem_ptsto_cancel; inode_bounds.
     admit. (* rec bound *)
+    eapply pimpl_ok2; eauto with prog; intros; cancel.
 
-    hoare.
-
-
+    (* constructing the new inode *)
     instantiate (a1 := Build_inode (removelast (IBlocks i)) (ISize i)).
     2: eapply list2mem_upd; eauto.
     2: simpl; eapply list2mem_removelast; eauto.
 
-    repeat rewrite_list2mem_pred; inode_bounds.
-    destruct_listmatch.
-    eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
-    unfold sel, upd; unfold inode_match; intros.
-
-    autorewrite_inode.
-    cancel.
+    repeat rewrite_list2mem_pred; unfold upd; inode_bounds.
+    setoid_rewrite listmatch_isolate with (i := wordToNat inum) at 2; inode_bounds.
+    2: rewrite length_updN; inode_bounds.
+    autorewrite with core; cancel.
+    rewrite inode_match_is_direct.
+    unfold inode_match_direct.
+    simpl; autorewrite with core; simpl.
+    autorewrite_inode; cancel.
 
     (* omega doesn't work well *)
     rewrite length_removelast by auto.
     rewrite wordToNat_minus_one; auto.
-    apply gt_0_wneq_0; rewrite <- H12.
+    apply gt_0_wneq_0; rewrite <- H9.
     apply length_not_nil; auto.
 
-    rewrite wordToNat_minus_one; auto.
-    rewrite Nat.sub_1_r; apply Nat.le_le_pred; auto.
-    apply gt_0_wneq_0; rewrite <- H12.
-    apply length_not_nil; auto.
+    admit.
 
-    unfold sel; rewrite length_removelast by auto.
-    rewrite <- removelast_firstn.
+    rewrite length_removelast by auto.
     f_equal; rewrite S_minus_one; auto.
     apply length_not_nil; auto.
     erewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
