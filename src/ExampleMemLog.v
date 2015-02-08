@@ -33,6 +33,7 @@ Qed.
 
 
 Definition log_inc_two T xp s0 s1 rx : prog T :=
+  _ <- MEMLOG.init xp ;
   ms <- MEMLOG.begin xp ;
   v0 <- MEMLOG.read xp s0 ms;
   ms <- MEMLOG.write xp s0 (v0 ^+ $1) ms;
@@ -42,10 +43,17 @@ Definition log_inc_two T xp s0 s1 rx : prog T :=
   rx ok
   .
 
+(* XXX i cannot say MEMLOG.log_unfold *)
+Ltac log_unfold := unfold MEMLOG.rep, MEMLOG.data_rep, MEMLOG.cur_rep, MEMLOG.log_rep, MEMLOG.valid_size, Map.cardinal.
 
+(* Several preconditions for MEMLOG.init.  *)
 Theorem log_inc_two_ok: forall xp s0 s1,
   {< mbase v0 v1 F ms,
-  PRE    MEMLOG.rep xp (NoTransaction mbase) ms *
+   PRE   [[ wordToNat (LogLen xp) <= MEMLOG.addr_per_block ]] *
+         MEMLOG.data_rep xp mbase *
+         MEMLOG.avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
+         (LogCommit xp) |->? *
+         (LogHeader xp) |->? *
          [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
   POST:r [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) ms \/
          [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') ms *
@@ -55,15 +63,21 @@ Theorem log_inc_two_ok: forall xp s0 s1,
          [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
   >} log_inc_two xp s0 s1.
 Proof.
-  unfold log_inc_two, MEMLOG.log_intact.
-  (* hoare. *)
+  unfold log_inc_two; log_unfold.
+  intros.
+  hoare.
 Admitted.
 
 Hint Extern 1 ({{_}} log_inc_two _ _ _ _) => apply log_inc_two_ok : prog.
 
+(* Several preconditions for MEMLOG.init.  *)
 Theorem log_inc_two_recover_ok: forall xp s0 s1,
   {< mbase v0 v1 F ms,
-  PRE     MEMLOG.rep xp (NoTransaction mbase) ms *
+  PRE     [[ wordToNat (LogLen xp) <= MEMLOG.addr_per_block ]] *
+          MEMLOG.data_rep xp mbase *
+          MEMLOG.avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
+          (LogCommit xp) |->? *
+          (LogHeader xp) |->? *
           [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
   POST:r  [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) ms \/
           [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') ms *
@@ -74,8 +88,8 @@ Theorem log_inc_two_recover_ok: forall xp s0 s1,
   >} log_inc_two xp s0 s1 >> MEMLOG.recover xp.
 Proof.
   intros.
-  unfold forall_helper; intros d v0 v1 F ms.
-  exists (MEMLOG.log_intact xp d \/
+  unfold forall_helper; intros mbase v0 v1 F ms.
+  exists (MEMLOG.log_intact xp mbase \/
           exists d', MEMLOG.log_intact xp d' *
           [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem d') ]])%pred; intros.
 
@@ -85,6 +99,4 @@ Proof.
   eapply MEMLOG.recover_ok.
   cancel.
   cancel.
-
-  (* what now *)
 Admitted.
