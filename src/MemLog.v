@@ -334,12 +334,12 @@ Module MEMLOG.
 
   (* The states in here cover every valid log state -- that there are additional states above is an
      implementation detail (they constrain the _current_ values more) *)
-  Definition would_recover_either xp old cur :=
-    (exists ms,
-     rep xp (ActiveTxn old cur) ms \/ (* commit |=> $0: data = old *)
+  Definition would_recover_either xp old cur ms :=
+    (rep xp (NoTransaction old) ms_empty \/ (* commit |=> $0: data = old *)
+     rep xp (NoTransaction cur) ms_empty \/ (* commit |=> $0: data = old *)
      rep xp (CommittedUnsyncTxn old cur) ms \/ (* commit |~> $1: data = old, log = cur *)
      rep xp (CommittedTxn cur) ms \/ (* commit |=> $1: log = cur *)
-     rep xp (AppliedUnsyncTxn cur) ms)%pred. (* commit |~> $0: data = cur, log = cur *)
+     rep xp (AppliedTxn cur) ms)%pred. (* commit |~> $0: data = cur, log = cur *)
 
   Definition init T xp rx : prog T :=
     Write (LogCommit xp) $0;;
@@ -943,14 +943,10 @@ Module MEMLOG.
      PRE    rep xp (ActiveTxn m1 m2) ms
      POST:r ([[ r = true ]] * rep xp (NoTransaction m2) ms_empty) \/
             ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
-     CRASH  rep xp (NoTransaction m2) ms_empty \/
-            rep xp (ActiveTxn m1 m2) ms \/
-            rep xp (FlushedTxn m1 m2) ms \/
-            rep xp (CommittedTxn m2) ms \/
-            rep xp (AppliedTxn m2) ms
+     CRASH  would_recover_either xp m1 m2 ms
     >} commit xp ms.
   Proof.
-    unfold commit.
+    unfold commit, would_recover_either.
     hoare_unfold log_unfold.
     unfold equal_unless_in; intuition; auto.
     apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; left; cancel.
@@ -958,8 +954,8 @@ Module MEMLOG.
     auto.
     apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; cancel.
     auto.
-    apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; cancel.
-    
+    apply pimpl_or_r; left; cancel.
+    admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
@@ -976,10 +972,13 @@ Module MEMLOG.
     Loopvar log_prefix <- []
     Continuation lrx
     Invariant
-      (LogCommit xp) |-> $1
-      * log_rep xp cur log_on_disk
+      (LogCommit xp) |=> $1
+      * exists old d, data_rep xp d
+      * cur_rep old log_on_disk cur
+      * log_rep xp old log_on_disk
+        (* If something's in the transaction, it doesn't matter what state it's in on disk *)
+      * [[ equal_unless_in (map fst (Map.elements log_on_disk)) (synced_list old) d ($0, nil) ]]
       * [[ log_prefix = firstn (wordToNat i) (Map.elements log_on_disk) ]]
-      * data_rep xp cur
     OnCrash
       rep xp (CommittedTxn cur) log_on_disk
     Begin
@@ -998,11 +997,13 @@ Module MEMLOG.
     unfold read_log; log_unfold.
     hoare.
     rewrite header_valu_id in H0. unfold mk_header, Rec.recget' in H0. simpl in H0.
-    rewrite map_length.
-    word2nat_clear. unfold Map.elements, Map.Raw.elements. word2nat_auto.
-    rewrite descriptor_valu_id.
-    admit.
+    solve_lengths.
+    (* true by [equal_unless_in _ ...d... l2] and [replay m l = replay m d] *) admit.
+    rewrite header_valu_id in H0. unfold mk_header, Rec.recget' in H0. simpl in H0.
+    rewrite descriptor_valu_id. admit.
     hnf. intuition.
+    admit.
+    rewrite header_valu_id in *. unfold mk_header in *. admit.
     admit.
     admit.
   Qed.
@@ -1028,13 +1029,17 @@ Module MEMLOG.
      (rep xp (AppliedTxn m) ms))%pred.
 
   Theorem recover_ok: forall xp,
-    {< m,
-    PRE     log_intact xp m
-    POST:r  rep xp (NoTransaction m) ms_empty
-    CRASH   log_intact xp m
+    {< m1 m2 ms,
+    PRE     crash_xform (would_recover_either xp m1 m2 ms)
+    POST:r  rep xp (NoTransaction m1) ms_empty \/ rep xp (NoTransaction m2) ms_empty
+    CRASH   crash_xform (would_recover_either xp m1 m2 ms)
     >} recover xp.
   Proof.
-    unfold recover; log_unfold.
+    unfold recover, crash_xform; log_unfold.
+    admit.
+
+(*
+    hoare_unfold log_unfold.
     intros; eapply pimpl_ok2; [ eauto with prog | ].
     unfold log_intact; log_unfold.
     cancel.
@@ -1116,11 +1121,10 @@ Module MEMLOG.
     instantiate (a6 := ms_empty).
     instantiate (a7 := ms_empty).
     cancel.
+*)
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
-
-*)
 
   Definition read_array T xp a i stride ms rx : prog T :=
     read xp (a ^+ i ^* stride) ms rx.
