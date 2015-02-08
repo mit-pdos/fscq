@@ -4,4 +4,3 @@
 - byte-level read/write
 - buffer cache
 - async-io
-- indirect blocks
