@@ -308,7 +308,10 @@ Ltac extract_listmatch_at ix :=
   match goal with
     | [  H : context [ listmatch ?p ?a _ ] |- _ ] =>
             erewrite listmatch_extract with (i := wordToNat ix) in H;
-            try unfold p at 2 in H;
+            match p with
+            | ?n _ => try unfold n at 2 in H
+            | _    => try unfold p at 2 in H
+            end;
             try autorewrite with defaults in H; auto;
             destruct_lift H
   end.

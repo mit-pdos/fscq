@@ -464,6 +464,17 @@ Proof.
   rewrite array_except_upd; auto.
 Qed.
 
+Theorem list2mem_array_updN : forall V ol nl (v : V) (i b : addr),
+  (array_ex ol i * i |-> v)%pred (list2mem nl)
+  -> length ol <= wordToNat b
+  -> length nl <= wordToNat b
+  -> wordToNat i < length ol
+  -> updN ol (wordToNat i) v = nl.
+Proof.
+  intros; apply eq_sym.
+  replace (updN ol (wordToNat i) v) with (upd ol i v) by auto.
+  eapply list2mem_array_upd; eauto.
+Qed.
 
 Theorem list2mem_array_removelast_eq : forall V (nl ol : list V) (b : addr),
   (array_ex ol $ (length ol - 1))%pred (list2mem nl)

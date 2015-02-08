@@ -762,6 +762,29 @@ Proof.
   induction l; simpl; firstorder.
 Qed.
 
+Lemma length_not_nil' : forall A (l : list A),
+  l <> nil -> length l <> 0.
+Proof.
+  intros; apply length_not_nil in H; omega.
+Qed.
+
+Lemma firstn_is_nil : forall A n (l : list A),
+  n > 0 -> firstn n l = nil -> l = nil.
+Proof.
+  induction n; destruct l; firstorder.
+  inversion H.
+  simpl in H0; inversion H0.
+Qed.
+
+Lemma removelast_firstn_sub : forall A n (l : list A),
+  n > 0 -> n <= length l
+  -> removelast (firstn n l) = firstn (n - 1) l.
+Proof.
+  intros.
+  replace n with (S (n - 1)) by omega.
+  replace (S (n - 1) - 1) with (n - 1) by omega.
+  apply removelast_firstn; omega.
+Qed.
 
 
 (** * Operations for array accesses, to guide automation *)
