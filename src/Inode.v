@@ -929,27 +929,6 @@ Module INODE.
 
 
   (* small helpers *)
-  Lemma le_minus_one_lt : forall a b,
-    a > 0 -> a <= b -> a - 1 < b.
-  Proof.
-    intros; omega.
-  Qed.
-
-  Lemma S_minus_one : forall n,
-    n > 0 -> S (n - 1) = n.
-  Proof.
-    intros; omega.
-  Qed.
-
-  Lemma gt_0_wneq_0: forall (n : addr),
-    (wordToNat n > 0)%nat -> n <> $0.
-  Proof.
-    intros.
-    apply word_neq.
-    ring_simplify (n ^- $0).
-    destruct (weq n $0); auto; subst.
-    rewrite roundTrip_0 in H; intuition.
-  Qed.
 
   Lemma wlt_plus_one_le: forall sz (a : word sz) b,
     b <= wordToNat (natToWord sz b)
@@ -1374,6 +1353,59 @@ Module INODE.
   Qed.
 
 
+
+
+  Lemma helper_minus1_nr_direct_gt : forall w n,
+    n > 0 -> n = wordToNat w
+    -> w ^- $1 = wnr_direct
+    -> n > nr_direct.
+  Proof.
+    intros; subst.
+    eapply wlt_lt_nr_direct; eauto.
+    eapply weq_minus1_wlt; auto.
+    apply gt0_wneq0; auto.
+  Qed.
+
+  Lemma helper_minus1_nr_direct_eq : forall w n,
+    n > 0 -> n = wordToNat w
+    -> w ^- $1 = wnr_direct
+    -> n - 1 = nr_direct.
+  Proof.
+    intros; subst.
+    erewrite <- roundTrip_1; eauto.
+    setoid_rewrite <- wminus_minus.
+    unfold wnr_direct in H1.
+    apply weq_eq; auto.
+    apply le_wle; auto.
+  Qed.
+
+  Lemma indirect_valid_shrink: forall bxp n bn l,
+    n > 0 -> n - 1 <> nr_direct
+    -> indirect_valid bxp n bn l =p=> indirect_valid bxp (n - 1) bn l.
+  Proof.
+    intros; unfold indirect_valid; cancel.
+  Qed.
+
+  Lemma helper_minus1_nr_direct_neq : forall w n,
+    n > 0 -> n = wordToNat w
+    -> w ^- $1 <> wnr_direct
+    -> n - 1 <> nr_direct.
+  Proof.
+    intros; subst.
+    erewrite <- roundTrip_1; eauto.
+    setoid_rewrite <- wminus_minus.
+    replace nr_direct with (wordToNat wnr_direct) by auto.
+    apply wordToNat_neq_inj; auto.
+    apply le_wle; auto.
+  Qed.
+
+  Hint Resolve length_not_nil.
+  Hint Resolve length_not_nil'.
+  Hint Resolve wordnat_minus1_eq.
+  Hint Resolve wordToNat_neq_inj.
+  Hint Resolve gt0_wneq0.
+  Hint Resolve neq0_wneq0.
+
   Theorem ishrink_ok : forall lxp bxp xp inum ms,
     {< F A B mbase m ilist ino freelist,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
@@ -1397,11 +1429,18 @@ Module INODE.
 
     (* CASE 1 : free the indirect block *)
     destruct_listmatch.
-    rewrite indirect_valid_r in H.
+    rewrite inode_set_len_get_len.
     step.
+
+    repeat rewrite_list2mem_pred.
+    rewrite indirect_valid_r.
     rewrite ind_ptsto; cancel.
+    eapply helper_minus1_nr_direct_gt; eauto.
+    rewrite indirect_valid_r in H.
     unfold indrep, BALLOC.valid_block in H.
     destruct_lift H; auto.
+    repeat rewrite_list2mem_pred.
+    eapply helper_minus1_nr_direct_gt; eauto.
     step.
 
     list2mem_ptsto_cancel; inode_bounds.
@@ -1414,31 +1453,82 @@ Module INODE.
     2: simpl; eapply list2mem_removelast; eauto.
 
     repeat rewrite_list2mem_pred; unfold upd; inode_bounds.
-    setoid_rewrite listmatch_isolate with (i := wordToNat inum) at 2; inode_bounds.
+    rewrite length_updN in *.
+    setoid_rewrite listmatch_isolate with (i := wordToNat inum)
+      (ad := inode0) (bd := irec0) at 2; inode_bounds.
     2: rewrite length_updN; inode_bounds.
     autorewrite with core; cancel.
     rewrite inode_match_is_direct.
+    2: rec_simpl; auto.
     unfold inode_match_direct.
     simpl; autorewrite with core; simpl.
+    rewrite length_removelast by auto.
     autorewrite_inode; cancel.
 
-    (* omega doesn't work well *)
-    rewrite length_removelast by auto.
-    rewrite wordToNat_minus_one; auto.
-    apply gt_0_wneq_0; rewrite <- H9.
-    apply length_not_nil; auto.
+    erewrite wordnat_minus1_eq; eauto.
+    replace nr_direct with (wordToNat wnr_direct); auto.
 
-    admit.
 
-    rewrite length_removelast by auto.
-    f_equal; rewrite S_minus_one; auto.
-    apply length_not_nil; auto.
-    erewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
+    (* extract facts about length *)
+    rewrite indirect_valid_r in H.
+    2: eapply helper_minus1_nr_direct_gt; eauto.
+    assert (length l2 = nr_indirect) as Hieq.
+    eapply indirect_length with (m := list2mem d0); pred_apply; cancel.
+    assert (length ((selN l (wordToNat inum) irec0) :-> "blocks") = nr_direct) as Hdeq.
+    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
     pred_apply; cancel.
+    assert (length (IBlocks (selN l0 (wordToNat inum) inode0)) - 1 = nr_direct).
+    eapply helper_minus1_nr_direct_eq; eauto.
+
+    rewrite H19 at 1.
+    rewrite removelast_firstn_sub; auto.
+    rewrite firstn_app_l; auto.
+    setoid_rewrite Hdeq; omega.
+    rewrite app_length.
+    setoid_rewrite Hdeq; rewrite Hieq; unfold nr_indirect; omega.
+    admit. (* rec bound *)
+    repeat rewrite_list2mem_pred; inode_bounds.
+
+    (* CASE 2 *)
+    destruct_listmatch.
+    rewrite inode_set_len_get_len.
+    step.
+    list2mem_ptsto_cancel; inode_bounds.
+    admit. (* rec bound *)
+    eapply pimpl_ok2; eauto with prog; intros; cancel.
+
+    (* constructing the new inode *)
+    instantiate (a1 := Build_inode (removelast (IBlocks i)) (ISize i)).
+    2: eapply list2mem_upd; eauto.
+    2: simpl; eapply list2mem_removelast; eauto.
+
+    repeat rewrite_list2mem_pred; unfold upd; inode_bounds.
+    rewrite length_updN in *.
+    setoid_rewrite listmatch_isolate with (i := wordToNat inum)
+      (ad := inode0) (bd := irec0) at 2; inode_bounds.
+    2: rewrite length_updN; inode_bounds.
+    autorewrite with core; cancel.
+    Show Existentials.
+    unfold inode_match.
+    simpl; autorewrite with core; simpl.
+    rewrite length_removelast by auto.
+    cancel.
+
+    instantiate (a := l2).
+    rewrite inode_set_len_get_indptr.
+    apply indirect_valid_shrink; auto.
+    eapply helper_minus1_nr_direct_neq; eauto.
+    rec_simpl.
+    rec_simpl.
+
+    rewrite H19 at 1.
+    rewrite inode_set_len_get_blocks.
+    rewrite removelast_firstn_sub; auto.
+    rewrite H19.
+    rewrite firstn_length.
+    apply Min.le_min_r.
 
     repeat rewrite_list2mem_pred; inode_bounds.
-    destruct_listmatch.
-    unfold sel; inode_bounds.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (ilen _ _ _ _) _) => apply ilen_ok : prog.

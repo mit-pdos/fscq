@@ -73,7 +73,7 @@ Module BFILE.
 
   Definition rep bxp ixp (flist : list bfile) :=
     (exists freeblocks ilist,
-     BALLOC.rep bxp freeblocks * INODE.rep ixp ilist *
+     BALLOC.rep bxp freeblocks * INODE.rep bxp ixp ilist *
      listmatch (file_match bxp) flist ilist
     )%pred.
 

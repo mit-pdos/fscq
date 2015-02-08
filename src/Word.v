@@ -1513,6 +1513,14 @@ Proof.
   apply wordToNat_bound.
 Qed.
 
+Lemma wordToNat_neq_inj: forall sz (a b : word sz),
+  a <> b <-> wordToNat a <> wordToNat b.
+Proof.
+  split; intuition.
+  apply wordToNat_inj in H0; auto.
+  subst; auto.
+Qed.
+
 Lemma natToWord_discriminate: forall sz, (sz > 0)%nat -> natToWord sz 0 <> natToWord sz 1.
 Proof.
   unfold not.
@@ -1526,6 +1534,44 @@ Qed.
 Notation "$ n" := (natToWord _ n) (at level 0).
 Notation "# n" := (wordToNat n) (at level 0).
 
+
+Lemma neq0_wneq0: forall sz (n : word sz),
+  wordToNat n <> 0  <-> n <> $0.
+Proof.
+  split; intros.
+  apply wordToNat_neq_inj.
+  rewrite roundTrip_0; auto.
+  apply wordToNat_neq_inj in H.
+  rewrite roundTrip_0 in H; auto.
+Qed.
+
+Lemma gt0_wneq0: forall sz (n : word sz),
+  (wordToNat n > 0)%nat <-> n <> $0.
+Proof.
+  split; intros.
+  apply neq0_wneq0; omega.
+  apply wordToNat_neq_inj in H.
+  rewrite roundTrip_0 in H; omega.
+Qed.
+
+Lemma weq_minus1_wlt: forall sz (a b : word sz),
+  (a <> $0 -> a ^- $1 = b -> a > b)%word.
+Proof.
+  intros.
+  apply lt_wlt; subst.
+  rewrite wordToNat_minus_one; auto.
+  apply gt0_wneq0 in H.
+  omega.
+Qed.
+
+Lemma wordnat_minus1_eq : forall sz n (w : word sz),
+  (n > 0)%nat
+  -> n = wordToNat w
+  -> n - 1 = wordToNat (w ^- $1).
+Proof.
+  intros; rewrite wordToNat_minus_one; auto.
+  apply gt0_wneq0; subst; auto.
+Qed.
 
 (* Bit shifting *)
 
