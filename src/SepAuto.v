@@ -734,6 +734,8 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
                simpl in *.
 
+Create HintDb false_precondition_hint.
+
 Ltac norm := unfold pair_args_helper;
              norm'l; repeat deex;
              (* Each iteration of [split_or_l] reverses the list of predicates
