@@ -746,9 +746,10 @@ Module INODE.
     unfold rep, sel; intros.
     destruct_lift H.
     destruct (lt_dec (wordToNat i) (length l)).
-    extract_listmatch_at i; unfold nr_direct in *.
-    autorewrite with defaults. 
-    unfold blocks_per_inode, nr_indirect in H8; simpl in H8; auto.
+    extract_listmatch_at i.
+    unfold inode_match in H; destruct_lift H.
+    autorewrite with defaults.
+    auto.
     rewrite selN_oob by omega.
     simpl; omega.
   Qed.
@@ -795,6 +796,7 @@ Module INODE.
 
     rewrite_list2mem_pred.
     destruct_listmatch.
+    unfold inode_match in H; destruct_lift H.
     subst; apply wordToNat_inj.
     erewrite wordToNat_natToWord_bound; inode_bounds.
   Qed.
@@ -815,6 +817,7 @@ Module INODE.
 
     rewrite_list2mem_pred.
     destruct_listmatch.
+    unfold inode_match in H; destruct_lift H.
     subst; auto.
   Qed.
 
