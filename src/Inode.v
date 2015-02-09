@@ -674,17 +674,6 @@ Module INODE.
                        try list2mem_bound; eauto.
 
 
-  Ltac autorewrite_irec :=
-    (rewrite_strat (topdown (hints inode)));
-    try autorewrite_irec.
-
-  Ltac autorewrite_inode := 
-    unfold sel, upd; simpl;
-    autorewrite with defaults;
-    autorewrite_irec;
-    autorewrite with core; inode_bounds.
-
-
   Hint Extern 0 (okToUnify (irrep _ _) (irrep _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (indrep _ _ _) (indrep _ _ _)) => constructor : okToUnify.
 
@@ -956,23 +945,23 @@ Module INODE.
     unfold inode_match_direct.
     simpl; unfold sel; autorewrite with core.
     rewrite app_length; rewrite H10; simpl.
-    cancel; try (solve [rec_simpl]).
+    rec_simpl; cancel.
 
     eapply wlt_plus_one_le; eauto.
-    rewrite inode_set_blocks_get_blocks.
     rewrite <- firstn_app_updN_eq.
     f_equal; auto.
-    setoid_rewrite inode_blocks_length with (m := (list2mem d0)); inode_bounds.
+
+    pose proof (@inode_blocks_length (list2mem d0)) as Hibl.
+    cbn in Hibl.
+    erewrite Hibl; inode_bounds.
     apply wlt_lt in H7; auto.
     pred_apply; cancel.
 
-    rewrite inode_set_blocks_get_len.
-    rewrite inode_set_len_get_len.
     apply wlt_plus_one_wle; auto.
 
     eapply inode_well_formed with (m := list2mem d1); eauto.
     instantiate (def := irec0).
-    autorewrite with core; auto.
+    rewrite selN_updN_eq by inode_bounds; auto.
 
     eapply inode_well_formed with (m := list2mem d0) (l := l0); eauto.
     pred_apply; cancel.
@@ -1052,17 +1041,16 @@ Module INODE.
   Proof.
     unfold igrow_indirect, rep.
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
-    destruct_listmatch.
-    rewrite indirect_valid_r in H. 
+    destruct_listmatch; rec_simpl.
+    rewrite indirect_valid_r in H.
     cancel.
 
-    rec_simpl; cancel.
     list2mem_ptsto_cancel; inode_bounds.
     rewrite wminus_minus; auto.
     erewrite indirect_length; eauto.
     rewrite_list2mem_pred; inode_bounds.
-
     eapply indirect_valid_eq; eauto.
+
     step.
     list2mem_ptsto_cancel; inode_bounds.
     admit. (* rec bound *)
@@ -1078,26 +1066,25 @@ Module INODE.
     unfold upd, sel; unfold sel in *.
     assert (length l1 = nr_indirect) by (eapply indirect_length; eauto).
     assert (length l2 = nr_indirect) by (eapply indirect_length; eauto).
-    assert (length ((selN l0 (wordToNat inum) irec0) :-> "blocks") = nr_direct) as Hdeq.
+    assert (length ((selN l0 (wordToNat inum) irec0 : Rec.data inodetype) :-> "blocks") = nr_direct) as Hdeq.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
     pred_apply; cancel.
 
+    rec_simpl.
     rewrite listmatch_updN_removeN; inode_bounds; cancel_exact.
     unfold inode_match; autorewrite with core.
-    simpl; rewrite app_length; simpl. 
+    simpl; rewrite app_length; simpl.
     rewrite H17; rewrite H3.
     rewrite firstn_length_l by resolve_length_bound.
     cancel.
 
     rewrite indirect_valid_r.
-    rec_simpl; cancel.
+    cancel.
     eauto.
-    rewrite inode_set_len_get_len.
+
     eapply add_one_eq_wplus_one with (b := blocks_per_inode); eauto.
     setoid_rewrite <- H3; auto.
-    rec_simpl.
 
-    rewrite inode_set_len_get_blocks.
     rewrite firstn_app_updN_eq by resolve_length_bound.
     rewrite updN_app2 by resolve_length_bound.
     repeat f_equal.
@@ -1143,9 +1130,10 @@ Module INODE.
     >} igrow_alloc lxp bxp xp i0 inum a ms.
   Proof.
     unfold igrow_alloc, rep.
+    rec_simpl.
     step.
 
-    destruct_listmatch.
+    destruct_listmatch; rec_simpl.
     destruct a0; subst; simpl.
 
     (* CASE 1: indirect block allocating success *)
@@ -1157,7 +1145,7 @@ Module INODE.
     instantiate (a8 := indlist0).
     unfold indrep.
     rewrite ind_ptsto_zero.
-    cancel.
+    cancel. eauto.
 
     repeat rewrite_list2mem_pred; unfold upd; inode_bounds.
     list2mem_ptsto_cancel; inode_bounds.
@@ -1178,32 +1166,34 @@ Module INODE.
     (* prove representation invariant *)
     repeat rewrite_list2mem_pred; unfold upd; inode_bounds.
     eapply listmatch_updN_selN_r; autorewrite with defaults; inode_bounds.
-    unfold inode_match.
+    unfold inode_match; rec_simpl.
     simpl; rewrite app_length; rewrite H6; simpl.
     cancel.
 
     rewrite indirect_valid_l by resolve_length_eq.
     rewrite indirect_valid_r by (setoid_rewrite H7; auto).
 
-    rec_simpl; cancel.
-    rec_simpl; eapply add_one_eq_wplus_one; eauto; simpl; auto.
-    rec_simpl.
+    cancel.
+    eapply add_one_eq_wplus_one; eauto; simpl; auto.
 
-    rewrite inode_set_indptr_get_blocks.
-    rewrite inode_set_len_get_blocks.
     rewrite H18.
     rewrite firstn_app.
     erewrite firstn_plusone_app_selN; autorewrite with defaults.
     rewrite weq_wminus_0; auto.
 
     (* clean up goals about bounds *)
-    unfold sel; erewrite inode_blocks_length with (m := list2mem a1); inode_bounds.
+    unfold sel.
+    pose proof (@inode_blocks_length (list2mem a1)) as Hlen; rec_simpl.
+    erewrite Hlen; inode_bounds.
     resolve_length_eq.
     pred_apply; cancel.
+
     erewrite indirect_length with (m := list2mem d2).
     unfold nr_indirect; omega.
     pred_apply; cancel.
-    erewrite inode_blocks_length with (m := list2mem a1); inode_bounds.
+
+    pose proof (@inode_blocks_length (list2mem a1)) as Hlen; rec_simpl.
+    erewrite Hlen; inode_bounds.
     rewrite H6; resolve_length_eq.
     pred_apply; cancel.
 
@@ -1331,13 +1321,12 @@ Module INODE.
   Proof.
     unfold ishrink, rep.
     step.
-    destruct_listmatch.
+    destruct_listmatch; rec_simpl.
     list2mem_ptsto_cancel; inode_bounds.
     step.
 
     (* CASE 1 : free the indirect block *)
-    destruct_listmatch.
-    rewrite inode_set_len_get_len.
+    destruct_listmatch; rec_simpl.
     step.
 
     repeat rewrite_list2mem_pred.
@@ -1367,11 +1356,11 @@ Module INODE.
     2: rewrite length_updN; inode_bounds.
     autorewrite with core; cancel.
     rewrite inode_match_is_direct.
-    2: rec_simpl; auto.
-    unfold inode_match_direct.
+    2: auto.
+    unfold inode_match_direct; rec_simpl.
     simpl; autorewrite with core; simpl.
     rewrite length_removelast by auto.
-    autorewrite_inode; cancel.
+    cancel.
 
     erewrite wordnat_minus1_eq; eauto.
     replace nr_direct with (wordToNat wnr_direct); auto.
@@ -1398,8 +1387,7 @@ Module INODE.
     repeat rewrite_list2mem_pred; inode_bounds.
 
     (* CASE 2 *)
-    destruct_listmatch.
-    rewrite inode_set_len_get_len.
+    destruct_listmatch; rec_simpl.
     step.
     list2mem_ptsto_cancel; inode_bounds.
     admit. (* rec bound *)
@@ -1416,21 +1404,16 @@ Module INODE.
       (ad := inode0) (bd := irec0) at 2; inode_bounds.
     2: rewrite length_updN; inode_bounds.
     autorewrite with core; cancel.
-    Show Existentials.
-    unfold inode_match.
+    unfold inode_match; rec_simpl.
     simpl; autorewrite with core; simpl.
     rewrite length_removelast by auto.
     cancel.
 
     instantiate (a := l2).
-    rewrite inode_set_len_get_indptr.
     apply indirect_valid_shrink; auto.
     eapply helper_minus1_nr_direct_neq; eauto.
-    rec_simpl.
-    rec_simpl.
 
     rewrite H19 at 1.
-    rewrite inode_set_len_get_blocks.
     rewrite removelast_firstn_sub; auto.
     rewrite H19.
     rewrite firstn_length.
