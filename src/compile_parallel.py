@@ -63,10 +63,13 @@ def coqtop_simpl_proof(term):
 
   coqtop.sendline("Show Proof.")
   coqtop.expect("Show Proof.")
-  coqtop.expect("No more subgoals.")
+  idx = coqtop.expect(["No more subgoals.", "subgoals, subgoal"])
 
-  proofterm = coqtop.before.decode("utf-8")
-  return "refine (" + proofterm + ").\n" + "Qed.\n"
+  if idx == 0:
+    proofterm = coqtop.before.decode("utf-8")
+    return "refine (" + proofterm + ").\n" + "Qed.\n"
+  else:
+    panic("Proof worker unable to complete the proof.")
 
 def queue_to_string(queue):
   val = ""
