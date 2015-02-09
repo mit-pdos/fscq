@@ -11,6 +11,8 @@ import pexpect
 import re
 import concurrent.futures
 
+debug = False
+
 def coq_remove_comments(str):
   # This is hairy because Coq has nested comments.
   # If this is a performance issue, add a proper parser for coq.
@@ -37,29 +39,29 @@ def coqtop_simpl_proof(term):
   prompt = "\<\/prompt\>"
   coqtop = pexpect.spawn('coqtop -emacs')
 
-  # print("Sending")
-  # print(term)
-  # coqtop.logfile = sys.stdout.buffer
+  if debug:
+    print("Sending", file=sys.stderr)
+    print("<<", term, ">>", file=sys.stderr)
+    coqtop.logfile = sys.stderr.buffer
 
   coqtop.expect(prompt)
+
   coqtop.sendline(term)
   coqtop.expect("No more subgoals.")
-
-  # coqtop.logfile = sys.stdout.buffer
   coqtop.expect(prompt)
 
-  # coqtop.logfile = None
-  coqtop.sendline(" Set Printing Depth 2000.")
-  coqtop.expect("\<prompt\>")
-  coqtop.sendline(" Set Printing All.")
-  coqtop.expect("\<prompt\>")
-  coqtop.sendline(" Show Proof.")
-  coqtop.expect("Show Proof.")
+  coqtop.sendline("Set Printing Depth 2000.")
   coqtop.expect("\<prompt\>")
 
-  # coqtop.logfile = None
+  coqtop.sendline("Set Printing All.")
+  coqtop.expect("\<prompt\>")
+
+  coqtop.sendline("Show Proof.")
+  coqtop.expect("Show Proof.")
+  coqtop.expect("No more subgoals.")
+
   proofterm = coqtop.before.decode("utf-8")
-  return " refine (" + proofterm + "). Qed."
+  return " refine (" + proofterm + "). Qed. "
 
 def queue_to_string(queue):
   val = ""
@@ -84,9 +86,10 @@ proof_depth = 0
 fragments = coq_remove_comments(contents).split(".")
 
 pure = []
-# fragments.pop().strip() # not removing this adds an extra colon.
+fragments.pop() # not removing this adds an extra dot
+
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=64)
-for frag_raw in fragments: #
+for frag_raw in fragments:
   frag = frag_raw.strip()
   frag_raw += "."
   if proof_depth <= 0:
@@ -109,7 +112,7 @@ for frag_raw in fragments: #
         prefix += frag_raw
       else:  # frag == 'Qed':
         prefix += ' Admitted. '
-        pure.append(executor.submit(coqtop_simpl_proof,proof_query))
+        pure.append(executor.submit(coqtop_simpl_proof, proof_query))
     else:
       proof_query += frag_raw
 
