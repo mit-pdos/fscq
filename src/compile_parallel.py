@@ -15,6 +15,7 @@ import io
 
 debug = False
 max_workers = multiprocessing.cpu_count()
+coqtop = "coqtop -R coqbuild Fscq"
 
 def coq_remove_comments(str):
   # This is hairy because Coq has nested comments.
@@ -36,11 +37,11 @@ def coq_remove_comments(str):
     panic("Unterminated comment")
   return out
 
-def coqtop_simpl_proof(term):
+def coqtop_simpl_proof(coqtop, term):
   # Takes a coq proof (up to, but not including Qed.) and returns an
   # explicit Coq term for the resulting proof.
   prompt = "\<\/prompt\>"
-  coqtop = pexpect.spawn('coqtop -emacs', timeout=None)
+  coqtop = pexpect.spawn(coqtop + " -emacs", timeout=None)
   buf = io.BytesIO()
 
   if debug:
@@ -124,7 +125,7 @@ for line_raw in lines:
     elif line.strip() in ("Qed."):
       in_proof = False
       prefix += "Admitted.\n"
-      pure.append(executor.submit(coqtop_simpl_proof, proof_query))
+      pure.append(executor.submit(coqtop_simpl_proof, coqtop, proof_query))
     else:
       proof_query += line
 
