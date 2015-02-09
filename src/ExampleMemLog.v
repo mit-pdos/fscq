@@ -33,7 +33,6 @@ Qed.
 
 
 Definition log_inc_two T xp s0 s1 rx : prog T :=
-  _ <- MEMLOG.init xp ;
   ms <- MEMLOG.begin xp ;
   v0 <- MEMLOG.read xp s0 ms;
   ms <- MEMLOG.write xp s0 (v0 ^+ $1) ms;
@@ -46,49 +45,41 @@ Definition log_inc_two T xp s0 s1 rx : prog T :=
     rx false
   }.
 
-
 (* Several preconditions for MEMLOG.init.  *)
 Theorem log_inc_two_ok: forall xp s0 s1,
   {< mbase v0 v1 F,
-   PRE   MEMLOG.log_uninitialized xp mbase *
+  PRE    MEMLOG.rep xp (NoTransaction mbase) ms_empty * 
          [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
   POST:r [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) ms_empty \/
          [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') ms_empty *
          [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
   CRASH  MEMLOG.log_intact xp mbase \/
          exists m', MEMLOG.log_intact xp m' *
-         [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]] \/
-         MEMLOG.log_uninitialized xp mbase
+         [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
   >} log_inc_two xp s0 s1.
 Proof.
   unfold log_inc_two; unfold MEMLOG.log_intact.
   intros.
   hoare.
-  Grab Existential Variables. (* XXX [hoare] really shouldn't leave evars lying around *)
-  auto.
 Qed.
 
 Hint Extern 1 ({{_}} log_inc_two _ _ _ _) => apply log_inc_two_ok : prog.
 
 (* Several preconditions for MEMLOG.init.  *)
 Theorem log_inc_two_recover_ok: forall xp s0 s1,
-  {< mbase v0 v1 F ms,
-  PRE     [[ wordToNat (LogLen xp) <= MEMLOG.addr_per_block ]] *
-          MEMLOG.data_rep xp mbase *
-          MEMLOG.avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
-          (LogCommit xp) |->? *
-          (LogHeader xp) |->? *
+  {< mbase v0 v1 F,
+  PRE     MEMLOG.rep xp (NoTransaction mbase) ms_empty * 
           [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
-  POST:r  [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) ms \/
-          [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') ms *
+  POST:r  [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) ms_empty \/
+          [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') ms_empty *
           [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  CRASH:r MEMLOG.rep xp (NoTransaction mbase) ms \/
-          exists m', MEMLOG.rep xp (NoTransaction m') ms *
+  CRASH:r MEMLOG.rep xp (NoTransaction mbase) ms_empty \/
+          exists m', MEMLOG.rep xp (NoTransaction m') ms_empty *
           [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
   >} log_inc_two xp s0 s1 >> MEMLOG.recover xp.
 Proof.
   intros.
-  unfold forall_helper; intros mbase v0 v1 F ms.
+  unfold forall_helper; intros mbase v0 v1 F.
   exists (MEMLOG.log_intact xp mbase \/
           exists d', MEMLOG.log_intact xp d' *
           [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem d') ]])%pred; intros.
@@ -98,7 +89,5 @@ Proof.
   eapply log_inc_two_ok.
   eapply MEMLOG.recover_ok.
   cancel.
-  cancel.
-
   
 Admitted.
