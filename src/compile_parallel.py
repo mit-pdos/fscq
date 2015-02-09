@@ -11,6 +11,7 @@ import pexpect
 import re
 import concurrent.futures
 import multiprocessing
+import io
 
 debug = False
 max_workers = multiprocessing.cpu_count()
@@ -40,11 +41,14 @@ def coqtop_simpl_proof(term):
   # explicit Coq term for the resulting proof.
   prompt = "\<\/prompt\>"
   coqtop = pexpect.spawn('coqtop -emacs', timeout=None)
+  buf = io.BytesIO()
 
   if debug:
     print("Sending", file=sys.stderr)
     print("<<", term, ">>", file=sys.stderr)
     coqtop.logfile = sys.stderr.buffer
+  else:
+    coqtop.logfile = buf
 
   coqtop.expect(prompt)
 
@@ -69,6 +73,8 @@ def coqtop_simpl_proof(term):
     proofterm = coqtop.before.decode("utf-8")
     return "refine (" + proofterm + ").\n" + "Qed.\n"
   else:
+    print("Unable to complete the proof:", file=sys.stderr)
+    print(buf.getvalue().decode("utf-8", "replace"), file=sys.stderr)
     panic("Proof worker unable to complete the proof.")
 
 def queue_to_string(queue):
