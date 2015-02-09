@@ -39,7 +39,7 @@ def coqtop_simpl_proof(term):
   # Takes a coq proof (up to, but not including Qed.) and returns an
   # explicit Coq term for the resulting proof.
   prompt = "\<\/prompt\>"
-  coqtop = pexpect.spawn('coqtop -emacs')
+  coqtop = pexpect.spawn('coqtop -emacs', timeout=None)
 
   if debug:
     print("Sending", file=sys.stderr)
@@ -79,6 +79,13 @@ def queue_to_string(queue):
     else: # future
       val += x.result()
   return val
+
+def print_queue(queue):
+  for x in queue:
+    if isinstance(x, str):
+      print(x, end="")
+    else: # future
+      print(x.result(), end="")
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument('file')
@@ -124,4 +131,4 @@ for line_raw in lines:
 if in_proof:
   panic("Still in proof mode at the end of file!")
 
-print(queue_to_string(pure))
+print_queue(pure)
