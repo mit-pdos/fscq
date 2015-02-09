@@ -1,4 +1,4 @@
-Require Import Arith List String Omega. 
+Require Import Arith List String Omega.
 Require Import Word.
 Require Import Eqdep_dec.
 Require Import Array.
@@ -390,3 +390,15 @@ End Rec.
 
 Notation "r :-> n" := (Rec.recget' n r) (at level 20).
 Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
+
+(**
+ * This [compute_rec] convtactic allows us to do partial evaluation
+ * of [recget] and [recset] so that extracted code does not deal
+ * with ASCII string names of fields at runtime.  To use it, define
+ * terms with something like:
+ *
+ *   Definition xx := Eval compute_rec in yy.
+ *
+ * where [yy] may contain calls to [recget] and [recset].
+ *)
+Declare Reduction compute_rec := cbn.

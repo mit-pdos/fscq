@@ -120,98 +120,6 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (irget _ _ _ _) _) => apply irget_ok : prog.
   Hint Extern 1 ({{_}} progseq (irput _ _ _ _ _) _) => apply irput_ok : prog.
 
-  Opaque Rec.recset Rec.recget.
-
-  Ltac rec_simpl :=
-      unfold Rec.recset', Rec.recget'; simpl;
-      repeat (repeat rewrite Rec.set_get_same; auto;
-              repeat rewrite <- Rec.set_get_other by discriminate; auto).
-
-  Lemma inode_set_len_get_len : forall (ino : irec) v,
-    ((ino :=> "len" := v) :-> "len") = v.
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_blocks_get_blocks : forall (ino : irec) v,
-    ((ino :=> "blocks" := v) :-> "blocks") = v.
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_len_get_blocks : forall (ino : irec) v,
-    ((ino :=> "len" := v) :-> "blocks") = ino :-> "blocks".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_blocks_get_len : forall (ino : irec) v,
-    ((ino :=> "blocks" := v) :-> "len") = ino :-> "len".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_blocks_get_size : forall (ino : irec) v,
-    ((ino :=> "blocks" := v) :-> "size") = ino :-> "size".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_len_get_size : forall (ino : irec) v,
-    ((ino :=> "len" := v) :-> "size") = ino :-> "size".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_size_get_len : forall (ino : irec) v,
-    ((ino :=> "size" := v) :-> "len") = ino :-> "len".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_size_get_blocks : forall (ino : irec) v,
-    ((ino :=> "size" := v) :-> "blocks") = ino :-> "blocks".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_size_get_size : forall (ino : irec) v,
-    ((ino :=> "size" := v) :-> "size") = v.
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_indptr_get_blocks : forall (ino : irec) v,
-    ((ino :=> "indptr" := v) :-> "blocks") = ino :-> "blocks".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-  Lemma inode_set_len_get_indptr : forall (ino : irec) v,
-    ((ino :=> "len" := v) :-> "indptr") = ino :-> "indptr".
-  Proof.
-    intros; rec_simpl.
-  Qed.
-
-
-  (* These rules are SUPER SLOW, and will getting exponentially slower when
-     we add more!  Sticking them in a separate database to avoid polluting core.
-     Acutally, directly applying rec_simpl to the goal is way, way faster.
-     But the problem is, after unfolding Rec.recget'/set', there's no easy
-     way to fold them back -- that makes the context unreadable.
-   *)
-  Hint Rewrite inode_set_len_get_len : inode.
-  Hint Rewrite inode_set_len_get_blocks : inode.
-  Hint Rewrite inode_set_len_get_size : inode.
-  Hint Rewrite inode_set_blocks_get_blocks : inode.
-  Hint Rewrite inode_set_blocks_get_len : inode.
-  Hint Rewrite inode_set_blocks_get_size : inode.
-  Hint Rewrite inode_set_size_get_blocks : inode.
-  Hint Rewrite inode_set_size_get_len : inode.
-  Hint Rewrite inode_set_size_get_size : inode.
-  Hint Rewrite inode_set_indptr_get_blocks : inode.
-  Hint Rewrite inode_set_len_get_indptr : inode.
-
 
   (* on-disk representation of indirect blocks *)
 
@@ -408,20 +316,20 @@ Module INODE.
 
   Definition inode0 := Build_inode nil $0.
 
-  Definition ilen T lxp xp inum ms rx : prog T :=
+  Definition ilen T lxp xp inum ms rx : prog T := Eval compute_rec in
     i <- irget lxp xp inum ms;
     rx (i :-> "len").
 
-  Definition igetsz T lxp xp inum ms rx : prog T :=
+  Definition igetsz T lxp xp inum ms rx : prog T := Eval compute_rec in
     i <- irget lxp xp inum ms;
     rx (i :-> "size").
 
-  Definition isetsz T lxp xp inum sz ms rx : prog T :=
+  Definition isetsz T lxp xp inum sz ms rx : prog T := Eval compute_rec in
     i <- irget lxp xp inum ms;
     ms' <- irput lxp xp inum (i :=> "size" := sz) ms;
     rx ms'.
 
-  Definition iget T lxp xp inum off ms rx : prog T :=
+  Definition iget T lxp xp inum off ms rx : prog T := Eval compute_rec in
     i <- irget lxp xp inum ms;
     If (wlt_dec off wnr_direct) {
       rx (sel (i :-> "blocks") off $0)
@@ -430,7 +338,7 @@ Module INODE.
       rx v
     }.
 
-  Definition iput T lxp xp inum off a ms rx : prog T :=
+  Definition iput T lxp xp inum off a ms rx : prog T := Eval compute_rec in
     i <- irget lxp xp inum ms ;
     If (wlt_dec off wnr_direct) {
       let i' := i :=> "blocks" := (upd (i :-> "blocks") off a) in
@@ -441,7 +349,7 @@ Module INODE.
       rx ms'
     }.
 
-  Definition igrow_alloc T lxp bxp xp (i0 : irec) inum a ms rx : prog T :=
+  Definition igrow_alloc T lxp bxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
     let off := i0 :-> "len" in
     let i := i0 :=> "len" := (off ^+ $1) in
     r <- BALLOC.alloc lxp bxp ms;
@@ -456,21 +364,21 @@ Module INODE.
         rx (true, ms4)
     end.
 
-  Definition igrow_indirect T lxp xp (i0 : irec) inum a ms rx : prog T :=
+  Definition igrow_indirect T lxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
     let off := i0 :-> "len" in
     let i := i0 :=> "len" := (off ^+ $1) in
     ms' <- indput lxp (i :-> "indptr") (off ^- wnr_direct) a ms;
     ms'' <- irput lxp xp inum i ms';
     rx (true, ms'').
 
-  Definition igrow_direct T lxp xp (i0 : irec) inum a ms rx : prog T :=
+  Definition igrow_direct T lxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
     let off := i0 :-> "len" in
     let i := i0 :=> "len" := (off ^+ $1) in
     let i' := i :=> "blocks" := (upd (i0 :-> "blocks") off a) in
     ms' <- irput lxp xp inum i' ms;
     rx (true, ms').
 
-  Definition igrow T lxp bxp xp inum a ms rx : prog T :=
+  Definition igrow T lxp bxp xp inum a ms rx : prog T := Eval compute_rec in
     i0 <- irget lxp xp inum ms;
     let off := i0 :-> "len" in
     If (wlt_dec off wnr_direct) {
@@ -486,7 +394,7 @@ Module INODE.
       }
     }.
 
-  Definition ishrink T lxp bxp xp inum ms rx : prog T :=
+  Definition ishrink T lxp bxp xp inum ms rx : prog T := Eval compute_rec in
     i0 <- irget lxp xp inum ms;
     let i := i0 :=> "len" := (i0 :-> "len" ^- $1) in
     If (weq (i :-> "len") wnr_direct) {
