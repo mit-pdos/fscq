@@ -34,13 +34,15 @@ all: hstest fuse
 
 coqbuild/%.v: %.v strip-proofs.py
 	@mkdir -p coqbuild
-	./strip-proofs.py < $< > $@
-	@touch -r $< $@
+	./strip-proofs.py < $< > $@.new
+	@touch -r $< $@.new
+	@mv $@.new $@
 
 coqproof/%.v: %.v
 	@mkdir -p coqproof
-	./compile_parallel.py $< > $@
-	@touch -r $< $@
+	./compile_parallel.py $< > $@.new
+	@touch -r $< $@.new
+	@mv $@.new $@
 
 coq: Makefile.coq
 	@mkdir -p codegen
