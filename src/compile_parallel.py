@@ -63,7 +63,7 @@ def coqtop_simpl_proof(term):
   coqtop.expect("No more subgoals.")
 
   proofterm = coqtop.before.decode("utf-8")
-  return " refine (" + proofterm + "). Qed. "
+  return "refine (" + proofterm + ").\n" + "Qed.\n"
 
 def queue_to_string(queue):
   val = ""
@@ -82,41 +82,40 @@ contents = open(args.file).read()
 prefix = ""
 proof_query = ""
 proof_term = ""
-proof_depth = 0
+in_proof = False
 
-
-fragments = coq_remove_comments(contents).split(".")
+lines = coq_remove_comments(contents).splitlines()
 
 pure = []
-fragments.pop() # not removing this adds an extra dot
 
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-for frag_raw in fragments:
-  frag = frag_raw.strip()
-  frag_raw += "."
-  if proof_depth <= 0:
-    prefix += frag_raw
-    pure.append(frag_raw)
+for line_raw in lines:
+  line = line_raw + "\n"
 
-  if frag == "Proof":
-    if proof_depth != 0:
-      panic("Nested proofs are not well tested")
-    if proof_depth <= 0:
-      # prefix += " Proof. "
-      # pure += " Proof. "
-      proof_query = prefix
-    proof_depth += 1
-  else:
-    if frag in ('Qed', 'Admitted', 'Abort'):
-      proof_depth = 0
-      if frag in ('Admitted', 'Abort') :
-        pure.append(frag_raw)
-        prefix += frag_raw
-      else:  # frag == 'Qed':
-        prefix += ' Admitted. '
-        pure.append(executor.submit(coqtop_simpl_proof, proof_query))
+  if not in_proof:
+    prefix += line
+    pure.append(line)
+
+  if in_proof:
+    if line.strip() in ("Admitted.", "Abort."):
+      ## Do not bother trying to construct proofs
+      in_proof = False
+      prefix += line
+      pure.append(line)
+    elif line.strip() in ("Qed."):
+      in_proof = False
+      prefix += "Admitted.\n"
+      pure.append(executor.submit(coqtop_simpl_proof, proof_query))
     else:
-      proof_query += frag_raw
+      proof_query += line
+
+  if line.strip() == "Proof.":
+    if in_proof:
+      panic("Nested proofs are not supported")
+    proof_query = prefix
+    in_proof = True
+
+if in_proof:
+  panic("Still in proof mode at the end of file!")
 
 print(queue_to_string(pure))
-# print ("Query", proof_query)
