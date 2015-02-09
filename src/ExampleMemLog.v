@@ -43,37 +43,30 @@ Definition log_inc_two T xp s0 s1 rx : prog T :=
   If (bool_dec ok true) {
     rx ok
   } else {
-    _ <- MEMLOG.abort xp ms;
-    rx true
+    rx false
   }.
-  
 
-(* XXX i cannot say MEMLOG.log_unfold *)
-Ltac log_unfold := unfold MEMLOG.rep, MEMLOG.data_rep, MEMLOG.cur_rep, MEMLOG.log_rep, MEMLOG.valid_size, MEMLOG.log_intact, Map.cardinal.
 
 (* Several preconditions for MEMLOG.init.  *)
 Theorem log_inc_two_ok: forall xp s0 s1,
   {< mbase v0 v1 F,
-   PRE   [[ wordToNat (LogLen xp) <= MEMLOG.addr_per_block ]] *
-         MEMLOG.data_rep xp mbase *
-         MEMLOG.avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
-         (LogCommit xp) |->? *
-         (LogHeader xp) |->? *
+   PRE   MEMLOG.log_uninitialized xp mbase *
          [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
   POST:r [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) ms_empty \/
          [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') ms_empty *
          [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
   CRASH  MEMLOG.log_intact xp mbase \/
          exists m', MEMLOG.log_intact xp m' *
-         [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
+         [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]] \/
+         MEMLOG.log_uninitialized xp mbase
   >} log_inc_two xp s0 s1.
 Proof.
-  unfold log_inc_two, MEMLOG.log_intact.
+  unfold log_inc_two; unfold MEMLOG.log_intact.
   intros.
   hoare.
-  apply pimpl_or_r; right.
-      
-Admitted.
+  Grab Existential Variables. (* XXX [hoare] really shouldn't leave evars lying around *)
+  auto.
+Qed.
 
 Hint Extern 1 ({{_}} log_inc_two _ _ _ _) => apply log_inc_two_ok : prog.
 
