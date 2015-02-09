@@ -254,20 +254,23 @@ Module MEMLOG.
   Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (data_rep _ _) (data_rep _)) => constructor : okToUnify.
 
+  Definition log_uninitialized xp old :=
+    ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
+     data_rep xp old *
+     avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
+     (LogCommit xp) |->? *
+     (LogHeader xp) |->?)%pred.
+
   Theorem init_ok : forall xp,
     {< old,
-    PRE    [[ wordToNat (LogLen xp) <= addr_per_block ]] *
-           data_rep xp old *
-           avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
-           (LogCommit xp) |->? *
-           (LogHeader xp) |->?
+    PRE    log_uninitialized xp old
     POST:r rep xp (NoTransaction old) ms_empty
-    CRASH  any
+    CRASH  log_uninitialized xp old
     >} init xp.
   Proof.
-    unfold init; log_unfold.
+    unfold init, log_uninitialized; log_unfold.
     intros.
-    hoare; apply pimpl_any.
+    hoare.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
