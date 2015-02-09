@@ -89,5 +89,19 @@ Proof.
   eapply log_inc_two_ok.
   eapply MEMLOG.recover_ok.
   cancel.
-  
-Admitted.
+  step.
+  cancel.
+  cancel.
+  cancel.
+  cancel.
+  cancel.
+  cancel.
+  cancel.
+  step.
+  cancel.
+  cancel.
+  cancel.
+  step.
+  cancel.
+  cancel.
+Qed.
