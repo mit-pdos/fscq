@@ -25,7 +25,7 @@ def coq_remove_comments(str):
     if str[i:i+2] == "(*":
       comment += 1
       i += 1
-    elif str[i:i+2] == "*)":
+    elif comment > 0 and str[i:i+2] == "*)":
       comment -= 1
       i += 1
     elif comment == 0:
