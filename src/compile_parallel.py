@@ -10,8 +10,10 @@ import sys
 import pexpect
 import re
 import concurrent.futures
+import multiprocessing
 
 debug = False
+max_workers = multiprocessing.cpu_count()
 
 def coq_remove_comments(str):
   # This is hairy because Coq has nested comments.
@@ -88,7 +90,7 @@ fragments = coq_remove_comments(contents).split(".")
 pure = []
 fragments.pop() # not removing this adds an extra dot
 
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=64)
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
 for frag_raw in fragments:
   frag = frag_raw.strip()
   frag_raw += "."
