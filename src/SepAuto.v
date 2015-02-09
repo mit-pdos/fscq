@@ -427,20 +427,13 @@ Proof.
 Qed.
 
 Lemma finish_frame : forall len V (p : @pred len V),
-  stars nil * p =p=> stars (p :: nil).
+  stars nil * p =p=> p.
 Proof.
-  unfold stars. intros. apply star_emp_pimpl.
-Qed.
-
-Lemma finish_noframe : forall len V,
-  stars nil * (@emp len V) =p=> stars nil.
-Proof.
-  intros. unfold stars. apply emp_star.
+  intros. apply star_emp_pimpl.
 Qed.
 
 Ltac cancel' := repeat (cancel_one || delay_one);
-                try solve [ unfold stars at 2; simpl;
-                            apply finish_frame || apply finish_noframe ].
+                try solve [ unfold stars at 2 3; simpl; apply finish_frame ].
 
 Theorem split_or_one : forall len V (q : @pred len V) pa pb ps F,
   stars (pa :: ps) * F =p=> q
