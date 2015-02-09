@@ -49,7 +49,10 @@ def coqtop_simpl_proof(term):
   coqtop.expect(prompt)
 
   coqtop.sendline(term)
-  coqtop.expect("No more subgoals.")
+
+  ## Wait for coqtop to process our term
+  coqtop.sendline("Inductive SYNC_FLAG := .\n")
+  coqtop.expect("SYNC_FLAG is defined")
   coqtop.expect(prompt)
 
   coqtop.sendline("Set Printing Depth 2000.")
