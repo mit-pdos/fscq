@@ -619,6 +619,7 @@ Module MEMLOG.
       apply xp ms;;
       rx true
     } else {
+      abort xp ms;;
       rx false
     }.
 
@@ -626,7 +627,7 @@ Module MEMLOG.
     {< m1 m2,
      PRE    rep xp (ActiveTxn m1 m2) ms
      POST:r ([[ r = true ]] * rep xp (NoTransaction m2) ms_empty) \/
-            ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
+            ([[ r = false ]] * rep xp (NoTransaction m1) ms_empty)
      CRASH  rep xp (ActiveTxn m1 m2) ms \/
             rep xp (CommittedTxn m2) ms \/
             rep xp (NoTransaction m2) ms_empty
@@ -634,21 +635,9 @@ Module MEMLOG.
   Proof.
     unfold commit.
     hoare_unfold log_unfold.
-    (* XXX make [hoare_unfold] unfold before [cancel] so it can handle all these goals *)
-    log_unfold; cancel.
-    eapply pimpl_or_r; right.
-    eapply pimpl_or_r; right.
-    abstract cancel.
-    log_unfold; cancel.
-    eapply pimpl_or_r; right.
-    eapply pimpl_or_r; left.
-    abstract cancel.
-    eapply pimpl_or_r; left.
-    cancel.
+    apply pimpl_or_r; left; cancel.
+    instantiate (Goal7 := any).
     admit.
-    log_unfold; cancel.
-    eapply pimpl_or_r; left.
-    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
