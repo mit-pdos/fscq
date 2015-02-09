@@ -44,7 +44,7 @@ Definition log_inc_two T xp s0 s1 rx : prog T :=
   .
 
 (* XXX i cannot say MEMLOG.log_unfold *)
-Ltac log_unfold := unfold MEMLOG.rep, MEMLOG.data_rep, MEMLOG.cur_rep, MEMLOG.log_rep, MEMLOG.valid_size, Map.cardinal.
+Ltac log_unfold := unfold MEMLOG.rep, MEMLOG.data_rep, MEMLOG.cur_rep, MEMLOG.log_rep, MEMLOG.valid_size, MEMLOG.log_intact, Map.cardinal.
 
 (* Several preconditions for MEMLOG.init.  *)
 Theorem log_inc_two_ok: forall xp s0 s1,
@@ -66,6 +66,9 @@ Proof.
   unfold log_inc_two; log_unfold.
   intros.
   hoare.
+  apply pimpl_or_r; right.
+  cancel.
+    
 Admitted.
 
 Hint Extern 1 ({{_}} log_inc_two _ _ _ _) => apply log_inc_two_ok : prog.
@@ -99,4 +102,6 @@ Proof.
   eapply MEMLOG.recover_ok.
   cancel.
   cancel.
+
+  
 Admitted.
