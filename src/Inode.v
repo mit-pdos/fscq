@@ -787,8 +787,8 @@ Module INODE.
     (* from direct blocks *)
     repeat rewrite_list2mem_pred.
     destruct_listmatch.
-    unfold sel; subst.
-    rewrite H19.
+    unfold inode_match in H3; destruct_lift H3.
+    rewrite H18.
     rewrite selN_firstn; inode_bounds.
     rewrite selN_app; inode_bounds.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
@@ -798,6 +798,7 @@ Module INODE.
     (* from indirect blocks *)
     repeat rewrite_list2mem_pred.
     destruct_listmatch.
+    unfold inode_match in H3; destruct_lift H3.
     step.
 
     erewrite indirect_valid_r_off; eauto.
@@ -808,7 +809,7 @@ Module INODE.
 
     step.
     subst.
-    rewrite H19.
+    rewrite H18.
     rewrite selN_firstn; inode_bounds.
     rewrite selN_app2.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
