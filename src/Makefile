@@ -10,7 +10,7 @@ MODULES    := Nomega Word WordAuto \
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
-GHC        := /opt/ghc/7.8.4/bin/ghc
+GHC        := /opt/ghc/7.10.1/bin/ghc
 GHCARGS    := -O2 -prof -fprof-auto -rtsopts
 HSLIB_PRE  := hslib/Word.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs

@@ -11,18 +11,18 @@ To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
 processes and setting the right logical-to-physical path mappings.
 
-Use GHC 7.8.4 to build the Haskell-extracted code.  On Ubuntu, this
+Use GHC 7.10.1 to build the Haskell-extracted code.  On Ubuntu, this
 means running this as root:
 
   add-apt-repository ppa:hvr/ghc
   apt-get update
-  apt-get install ghc-7.8.4-prof
+  apt-get install ghc-7.10.1-prof
 
 You also need to install HFuse:
 
   apt-get install libfuse-dev
   git clone https://github.com/m15k/hfuse
   cd hfuse
-  PATH=/opt/ghc/7.8.4/bin:$PATH ./Setup.lhs configure -p --user
-  PATH=/opt/ghc/7.8.4/bin:$PATH ./Setup.lhs build
-  PATH=/opt/ghc/7.8.4/bin:$PATH ./Setup.lhs install
+  PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs configure -p --user
+  PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs build
+  PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs install
