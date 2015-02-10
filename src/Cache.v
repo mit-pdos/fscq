@@ -51,7 +51,21 @@ Module BUFCACHE.
     ArrayWrite $0 a $1 v;;
     rx (Map.add a v cs).
 
+  Lemma mapsto_add : forall a v v' (m : cachestate),
+    Map.MapsTo a v (Map.add a v' m) -> v' = v.
+  Proof.
+    intros.
+    apply Map.find_1 in H.
+    erewrite Map.find_1 in H by (apply Map.add_1; auto).
+    congruence.
+  Qed.
+
   Hint Resolve list2mem_ptsto_bounds.
+  Hint Resolve Map.remove_3.
+  Hint Resolve Map.add_3.
+  Hint Resolve list2mem_upd.
+  Hint Resolve mapsto_add.
+
   Ltac unfold_rep := unfold rep.
 
   Theorem trim_ok : forall xp cs,
@@ -64,7 +78,6 @@ Module BUFCACHE.
     unfold trim, rep; hoare.
     destruct (Map.elements cs); hoare.
     destruct p0; hoare.
-    apply H4. eapply Map.remove_3. eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (trim _ _) _) => apply trim_ok : prog.
@@ -79,19 +92,11 @@ Module BUFCACHE.
     unfold read.
     hoare_unfold unfold_rep.
 
+    apply list2mem_sel with (def:=$0) in H as H'.
     destruct (Map.find a r_) eqn:Hfind; hoare.
 
-    apply Map.find_2 in Hfind. apply H8 in Hfind.
-    apply list2mem_sel with (def:=$0) in H. congruence.
-
-    destruct (weq a a0); subst.
-    apply Map.find_1 in H0.
-    erewrite Map.find_1 in H0 by (apply Map.add_1; auto).
-    inversion H0; subst. reflexivity.
-    apply Map.add_3 in H0; eauto.
-
-    apply list2mem_sel with (def:=$0) in H.
-    congruence.
+    apply Map.find_2 in Hfind. apply H8 in Hfind. congruence.
+    destruct (weq a a0); subst; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
@@ -111,22 +116,13 @@ Module BUFCACHE.
 
     destruct (weq a a0); subst.
     autorewrite_fast; eauto.
-    apply Map.find_1 in H0. erewrite Map.find_1 in H0 by (apply Map.add_1; eauto).
-    congruence.
-    apply Map.add_3 in H0; eauto.
     rewrite sel_upd_ne; eauto.
 
-    eapply list2mem_upd; eauto.
-
-    apply pimpl_or_r. right. cancel.
+    apply pimpl_or_r. right. cancel; eauto.
     instantiate (a:=(Map.add a v cs)).
     destruct (weq a a0); subst.
     autorewrite_fast; eauto.
-    apply Map.find_1 in H0. erewrite Map.find_1 in H0 by (apply Map.add_1; eauto).
-    congruence.
-    apply Map.add_3 in H0; eauto.
     rewrite sel_upd_ne; eauto.
-    eapply list2mem_upd; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
