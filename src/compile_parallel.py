@@ -122,7 +122,7 @@ for line_raw in lines:
       in_proof = False
       prefix += line
       pure.append(line)
-    elif line.strip() in ("Qed."):
+    elif line.strip() in ("Qed.",):
       in_proof = False
       prefix += "Admitted.\n"
       pure.append(executor.submit(coqtop_simpl_proof, coqtop, proof_query))
