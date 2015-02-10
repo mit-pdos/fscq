@@ -673,6 +673,41 @@ Module INODE.
                        repeat (inode_bounds'; solve_length_eq);
                        try list2mem_bound; eauto.
 
+  Ltac destruct_irec' x :=
+    match type of x with
+    | irec => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
+    | prod _ _ => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
+    | _ => idtac
+    end.
+
+  Ltac destruct_irec x :=
+    match x with
+    | (?a, ?b) => (destruct_irec a || destruct_irec b)
+    | fst ?a => destruct_irec a
+    | snd ?a => destruct_irec a
+    | _ => destruct_irec' x; simpl
+    end.
+
+  Ltac smash_rec_well_formed :=
+    unfold sel, upd; autorewrite with core;
+    match goal with
+    | [ |- Rec.well_formed ?x ] =>
+      destruct_irec x; unfold Rec.well_formed; simpl;
+      try rewrite Forall_forall; intuition
+    end.
+
+  Ltac irec_well_formed :=
+    smash_rec_well_formed;
+    match goal with
+      | [ H : ?p %pred ?mm |- length ?d = nr_direct ] =>
+      match p with
+        | context [ irrep _ ?ll ] => 
+          autorewrite with core;
+          eapply inode_blocks_length' with (m := mm) (l := ll); inode_bounds;
+          pred_apply; cancel
+      end
+    end.
+
 
   Hint Extern 0 (okToUnify (irrep _ _) (irrep _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (indrep _ _ _) (indrep _ _ _)) => constructor : okToUnify.
@@ -733,8 +768,7 @@ Module INODE.
     list2mem_ptsto_cancel; inode_bounds.
     step.
     list2mem_ptsto_cancel; inode_bounds.
-
-    admit.
+    irec_well_formed.
 
     eapply pimpl_ok2; eauto with prog.
     intros; cancel.
@@ -929,8 +963,7 @@ Module INODE.
     step.
 
     list2mem_ptsto_cancel; inode_bounds.
-    admit. (* rec bound *)
-
+    irec_well_formed.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
     instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
@@ -1053,7 +1086,7 @@ Module INODE.
 
     step.
     list2mem_ptsto_cancel; inode_bounds.
-    admit. (* rec bound *)
+    irec_well_formed.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
     (* constructing the new inode *)
@@ -1154,7 +1187,7 @@ Module INODE.
     step.
 
     list2mem_ptsto_cancel; inode_bounds.
-    admit. (* rec bound *)
+    irec_well_formed.
     step.
     eapply pimpl_or_r; right; cancel.
 
@@ -1341,7 +1374,7 @@ Module INODE.
     step.
 
     list2mem_ptsto_cancel; inode_bounds.
-    admit. (* rec bound *)
+    irec_well_formed.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
     (* constructing the new inode *)
@@ -1383,14 +1416,14 @@ Module INODE.
     setoid_rewrite Hdeq; omega.
     rewrite app_length.
     setoid_rewrite Hdeq; rewrite Hieq; unfold nr_indirect; omega.
-    admit. (* rec bound *)
+    irec_well_formed.
     repeat rewrite_list2mem_pred; inode_bounds.
 
     (* CASE 2 *)
     destruct_listmatch; rec_simpl.
     step.
     list2mem_ptsto_cancel; inode_bounds.
-    admit. (* rec bound *)
+    irec_well_formed.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
     (* constructing the new inode *)
