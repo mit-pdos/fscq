@@ -38,7 +38,7 @@ Ltac pimpl_crash :=
   end;
   set_evars;
   try match goal with
-  | [ H: _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
+  | [ H: _ =p=> _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
   end;
   subst_evars.
 
