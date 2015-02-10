@@ -50,6 +50,7 @@ def coqtop_simpl_proof(coqtop, term):
   cin = term + \
         "\n" + \
         "Set Printing Depth 2000.\n" + \
+        "Set Printing Width 2000.\n" + \
         "Set Printing All.\n" + \
         "Inductive SYNC_FLAG := .\n" + \
         "Show Proof.\n"
