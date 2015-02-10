@@ -56,6 +56,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash >} p1 >> p
    (fun done_ crashdone_ =>
      exists F,
      F * pre *
+     [[ crash_xform F =p=> F ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rp => F * post) r_ *
                                  [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]

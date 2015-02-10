@@ -71,20 +71,19 @@ Proof.
   eapply corr3_from_corr2.
   apply nop_ok.
   apply nop_ok.
-  simpl.
-  (* Looking at the right side of the implication here, you can see why this won't work.
-     [F] has to be the same arbitrary [F] as on the left side. Thus, [[ F =p=> crash ]]
-     and [[ crash_xform crash =p=> F ]] can't be satisfied. If we could wrap a [crash_xform]
-     around [F] we'd be fine since [crash_xform] is idempotent. *)
   cancel.
   step.
-  cancel.
-  fold (@sep_star valuset).
-  autorewrite with crash_xform.
+
+  (* Be careful about [pimpl_crash] thinking our [crash_xform p =p=> p] is
+   * actually [.. =p=> crash] and matching up with it..
+   *)
+  rewrite sep_star_comm. apply star_emp_pimpl.
+
   cancel.
   step.
-  (* XXX gonna have a hard time proving [crash_xform p =p=> p] ! *)
-Abort.
+
+  cancel.
+Qed.
 
 Theorem log_inc_two_recover_ok: forall xp s0 s1,
   {< mbase v0 v1 F,
@@ -110,7 +109,7 @@ Proof.
   eapply MEMLOG.recover_ok.
   cancel.
   step.
-  fold (@sep_star valuset); auto. (* XXX where do all these unfolded [sep_star]s come from? *)
+  fold (@sep_star valuset); auto. (* fixed in 8b9ec1fe *)
   unfold MEMLOG.would_recover_either.
   autorewrite with crash_xform.
   cancel.
@@ -121,5 +120,33 @@ Proof.
   step.
   rewrite sep_star_or_distr.
   apply pimpl_or_r; left; cancel.
-  (* XXX again, [crash_xform p =p=> p] ! *)
-Abort.
+  cancel.
+  rewrite H3; cancel.
+  apply pimpl_or_r; left; cancel.
+  fold (@sep_star valuset); auto.
+  rewrite H3; cancel.
+  apply pimpl_or_r; left; cancel.
+  apply pimpl_or_r; left; cancel.
+  apply pimpl_or_r; left; cancel.
+  (* XXX this seems like a theorem that MemLog should provide *)
+  admit.
+
+  rewrite H3.
+  autorewrite with crash_xform.
+  (* missing morphisms somewhere.. *)
+  admit.
+
+  step.
+  instantiate (p:=p); cancel.
+  apply pimpl_or_r; left; cancel.
+
+  cancel; apply pimpl_or_r; left; cancel.
+
+  fold (@sep_star valuset).
+  cancel.
+  cancel.
+  cancel.
+  (* XXX this seems like a theorem that MemLog should provide *)
+  apply pimpl_or_r; left.
+  admit.
+Qed.
