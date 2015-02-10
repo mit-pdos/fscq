@@ -88,7 +88,7 @@ Inductive recover_outcome (TF TR: Type) :=
 | RFinished (m: @mem addrlen valuset) (v: TF)
 | RRecovered (m: @mem addrlen valuset) (v: TR).
 
-Definition possible_crash (m m' : @mem valuset) : Prop :=
+Definition possible_crash (m m' : @mem addrlen valuset) : Prop :=
   forall a,
   (m a = None /\ m' a = None) \/
   (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).

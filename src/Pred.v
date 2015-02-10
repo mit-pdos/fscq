@@ -126,7 +126,7 @@ Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35
 
 
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
-Definition crash_xform (p : pred) : @pred valuset :=
+Definition crash_xform (p : pred) : @pred addrlen valuset :=
   fun m => exists m', p m' /\ possible_crash m' m.
 
 
@@ -642,14 +642,14 @@ Proof.
   exists x0.
   split; [|split].
   - apply functional_extensionality; intro.
-    unfold mem_union; destruct (addr_eq_dec x1 a); eauto.
+    unfold mem_union; destruct (weq x1 a); eauto.
     destruct H1; repeat deex.
     rewrite H1; auto.
   - unfold mem_disjoint in *. intuition. repeat deex.
     apply H.
     destruct H1; repeat deex.
     repeat eexists; eauto.
-    destruct (addr_eq_dec x1 a); subst; eauto.
+    destruct (weq x1 a); subst; eauto.
     pred.
   - intuition eauto.
     unfold ptsto; intuition.
@@ -1010,7 +1010,7 @@ Qed.
 
 (* Specialized relations for [@pred valuset], to deal with async IO *)
 
-Theorem crash_xform_apply : forall (p : @pred valuset) (m m' : mem), possible_crash m m'
+Theorem crash_xform_apply : forall (p : @pred addrlen valuset) (m m' : mem), possible_crash m m'
   -> p m
   -> crash_xform p m'.
 Proof.
@@ -1173,7 +1173,7 @@ Qed.
 
 
 Lemma ptsto_synced_valid:
-  forall a v F m,
+  forall len (a : word len) v F m,
   (a |=> v * F)%pred m
   -> m a = Some (v, nil).
 Proof.
@@ -1182,7 +1182,7 @@ Proof.
 Qed.
 
 Lemma ptsto_cur_valid:
-  forall a v F m,
+  forall len (a : word len) v F m,
   (a |~> v * F)%pred m
   -> exists l, m a = Some (v, l).
 Proof.

@@ -199,11 +199,11 @@ Module MEMLOG.
 
   Definition synced_list m: list valuset := List.combine m (repeat (length m) nil).
 
-  Definition data_rep (xp: xparams) (m: list valuset) : @pred valuset :=
+  Definition data_rep (xp: xparams) (m: list valuset) : @pred addrlen valuset :=
     array $0 m $1.
 
   (** On-disk representation of the log *)
-  Definition log_rep xp m (ms : memstate) : @pred valuset :=
+  Definition log_rep xp m (ms : memstate) : @pred addrlen valuset :=
      ((LogHeader xp) |=> (header_to_valu (mk_header (Map.cardinal ms))) *
       [[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
