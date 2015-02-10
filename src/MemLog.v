@@ -214,7 +214,9 @@ Module MEMLOG.
   Proof.
     destruct len; intros; try omega.
     unfold avail_region.
-    admit.
+    norm'l; unfold stars; simpl.
+    destruct l; simpl in *; try congruence.
+    cancel.
   Qed.
 
   Fixpoint repeat T n (t: T) :=
