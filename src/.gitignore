@@ -1,6 +1,3 @@
-*.glob
-*.vo
-*.v.d
 *.mli
 *.hi
 *.o
