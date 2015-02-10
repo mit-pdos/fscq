@@ -132,6 +132,23 @@ Section LISTPRED.
     cancel; auto.
   Qed.
 
+  (**
+   * For certain kinds of "complete" predicates, if two memories match
+   * [listpred] over the same list, then the memories are equal.
+   *)
+  Theorem listpred_eq : forall l m1 m2,
+    (forall x ma mb, prd x ma -> prd x mb -> ma = mb) ->
+    listpred l m1 -> listpred l m2 -> m1 = m2.
+  Proof.
+    induction l; simpl; intros.
+    - apply emp_complete; eauto.
+    - unfold sep_star in *; rewrite sep_star_is in *; unfold sep_star_impl in *.
+      repeat deex.
+      assert (x0 = x2) by eauto; subst.
+      assert (x1 = x) by eauto; subst.
+      reflexivity.
+  Qed.
+
 End LISTPRED.
 
 

@@ -772,6 +772,23 @@ Proof.
   intuition; hnf; try tauto; firstorder discriminate.
 Qed.
 
+Theorem ptsto_complete : forall (a : word len) (v : V) m1 m2,
+  (a |-> v)%pred m1 -> (a |-> v)%pred m2 -> m1 = m2.
+Proof.
+  unfold ptsto; intros; apply functional_extensionality; intros.
+  destruct H; destruct H0.
+  destruct (weq a x); subst; try congruence.
+  erewrite H1; eauto.
+  erewrite H2; eauto.
+Qed.
+
+Theorem emp_complete : forall m1 m2,
+  (@emp len V) m1 -> emp m2 -> m1 = m2.
+Proof.
+  intros.
+  apply functional_extensionality; unfold emp in *; congruence.
+Qed.
+
 Definition empty_mem {len : nat} {V : Type} : @mem len V := fun a => None.
 
 Theorem sep_star_empty_mem : forall (a b : @pred len V),
