@@ -24,8 +24,8 @@ Record xparams := {
 
 Module BUFCACHE.
 
-  Definition rep (cs : cachestate) (l : list valu) :=
-    (array $0 l $1 * [[ forall a v, Map.MapsTo a v cs -> sel l a $0 = v ]])%pred.
+  Definition rep (cs : cachestate) (l : list valuset) :=
+    (array $0 l $1 * [[ forall a v, Map.MapsTo a v cs -> fst (sel l a ($0, nil)) = v ]])%pred.
 
   Definition trim T xp (cs : cachestate) rx : prog T :=
     If (wlt_dec $ (Map.cardinal cs) (MaxCacheBlocks xp)) {
@@ -84,7 +84,7 @@ Module BUFCACHE.
 
   Theorem read_ok : forall xp cs a,
     {< l F v,
-    PRE      rep cs l * [[ (F * a |-> v)%pred (list2mem l) ]]
+    PRE      rep cs l * [[ (F * a |~> v)%pred (list2mem l) ]]
     POST:csv rep (fst csv) l * [[ snd csv = v ]]
     CRASH    rep cs l
     >} read xp a cs.
@@ -92,23 +92,29 @@ Module BUFCACHE.
     unfold read.
     hoare_unfold unfold_rep.
 
-    apply list2mem_sel with (def:=$0) in H as H'.
+    apply list2mem_sel with (def:=($0,nil)) in H as H'.
     destruct (Map.find a r_) eqn:Hfind; hoare.
 
-    apply Map.find_2 in Hfind. apply H8 in Hfind. congruence.
+    apply Map.find_2 in Hfind. apply H8 in Hfind. rewrite <- H' in Hfind. firstorder.
     destruct (weq a a0); subst; eauto.
+
+    (* Some kind of Coq bug??  [rewrite <- H'] should work.. *)
+    assert (w = fst (w, l)); auto.
+    rewrite H0.
+    rewrite H'.
+    reflexivity.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
 
   Theorem write_ok : forall xp cs a v,
     {< l F v0,
-    PRE      rep cs l * [[ (F * a |-> v0)%pred (list2mem l) ]]
+    PRE      rep cs l * [[ (F * a |~> v0)%pred (list2mem l) ]]
     POST:cs' exists l',
-             rep cs' l' * [[ (F * a |-> v)%pred (list2mem l') ]]
+             rep cs' l' * [[ (F * a |~> v)%pred (list2mem l') ]]
     CRASH    rep cs l \/
              exists cs' l',
-             rep cs' l' * [[ (F * a |-> v)%pred (list2mem l') ]]
+             rep cs' l' * [[ (F * a |~> v)%pred (list2mem l') ]]
     >} write xp a v cs.
   Proof.
     unfold write.
