@@ -38,6 +38,7 @@ Module BALLOC.
   Definition items_per_valu : addr := natToWord addrlen valulen.
 
   Theorem blocksz : valulen = Rec.len (RecArray.blocktype itemtype items_per_valu).
+  Proof.
     unfold blocktype, items_per_valu.
     rewrite wordToNat_natToWord_idempotent.
     simpl. ring.
@@ -55,7 +56,7 @@ Module BALLOC.
 
   Definition alloc_state_dec : forall (a b : alloc_state), {a = b} + {a <> b}.
     destruct a; destruct b; try (left; constructor); right; discriminate.
-  Qed.
+  Defined.
 
   Definition alloc_state_to_bit a : word 1 :=
     match a with
@@ -67,6 +68,7 @@ Module BALLOC.
     if weq b $0 then Avail else InUse.
 
   Lemma bit_alloc_state_id : forall a, bit_to_alloc_state (alloc_state_to_bit a) = a.
+  Proof.
     destruct a; auto.
   Qed.
   Hint Rewrite bit_alloc_state_id.
@@ -296,6 +298,7 @@ Module BALLOC.
       (forall x y : T, {x = y} + {x <> y}) ->
       (forall (y : T) m', ~ (P y * P y)%pred m') ->
       listpred P l =p=> [[ NoDup l ]] * listpred P l.
+  Proof.
     intros. apply lift_impl. intros. eapply listpred_nodup; eauto.
   Qed.
 

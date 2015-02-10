@@ -109,26 +109,31 @@ Ltac rethink :=
   end.
 
 Theorem mod2_S_double : forall n, mod2 (S (2 * n)) = true.
+Proof.
   induction n; simpl; intuition; rethink.
 Qed.
 
 Theorem mod2_double : forall n, mod2 (2 * n) = false.
+Proof.
   induction n; simpl; intuition; rewrite <- plus_n_Sm; rethink.
 Qed.
 
 Local Hint Resolve mod2_S_double mod2_double.
 
 Theorem div2_double : forall n, div2 (2 * n) = n.
+Proof.
   induction n; simpl; intuition; rewrite <- plus_n_Sm; f_equal; rethink.
 Qed.
 
 Theorem div2_S_double : forall n, div2 (S (2 * n)) = n.
+Proof.
   induction n; simpl; intuition; f_equal; rethink.
 Qed.
 
 Hint Rewrite div2_double div2_S_double : div2.
 
 Theorem natToWord_wordToNat : forall sz w, natToWord sz (wordToNat w) = w.
+Proof.
   induction w; rewrite wordToNat_wordToNat'; intuition; f_equal; unfold natToWord, wordToNat'; fold natToWord; fold wordToNat';
     destruct b; f_equal; autorewrite with div2; intuition.
 Qed.
@@ -141,6 +146,7 @@ Fixpoint pow2 (n : nat) : nat :=
 
 
 Theorem roundTrip_0 : forall sz, wordToNat (natToWord sz 0) = 0.
+Proof.
   induction sz; simpl; intuition.
 Qed.
 
@@ -149,6 +155,7 @@ Hint Rewrite roundTrip_0 : wordToNat.
 Local Hint Extern 1 (@eq nat _ _) => omega.
 
 Theorem untimes2 : forall n, n + (n + 0) = 2 * n.
+Proof.
   auto.
 Qed.
 
@@ -158,11 +165,13 @@ Section strong.
   Hypothesis PH : forall n, (forall m, m < n -> P m) -> P n.
 
   Lemma strong' : forall n m, m <= n -> P m.
+  Proof.
     induction n; simpl; intuition; apply PH; intuition.
     elimtype False; omega.
   Qed.
 
   Theorem strong : forall n, P n.
+  Proof.
     intros; eapply strong'; eauto.
   Qed.
 End strong.
@@ -170,6 +179,7 @@ End strong.
 Theorem div2_odd : forall n,
   mod2 n = true
   -> n = S (2 * div2 n).
+Proof.
   induction n using strong; simpl; intuition.
 
   destruct n; simpl in *; intuition.
@@ -182,6 +192,7 @@ Qed.
 Theorem div2_even : forall n,
   mod2 n = false
   -> n = 2 * div2 n.
+Proof.
   induction n using strong; simpl; intuition.
 
   destruct n; simpl in *; intuition.
@@ -192,6 +203,7 @@ Theorem div2_even : forall n,
 Qed.
 
 Lemma wordToNat_natToWord' : forall sz w, exists k, wordToNat (natToWord sz w) + k * pow2 sz = w.
+Proof.
   induction sz; simpl; intuition; repeat rewrite untimes2.
 
   exists w; intuition.
@@ -224,6 +236,7 @@ Lemma wordToNat_natToWord' : forall sz w, exists k, wordToNat (natToWord sz w) +
 Qed.
 
 Theorem wordToNat_natToWord : forall sz w, exists k, wordToNat (natToWord sz w) = w - k * pow2 sz /\ k * pow2 sz <= w.
+Proof.
   intros; destruct (wordToNat_natToWord' sz w) as [k]; exists k; intuition.
 Qed.
 
@@ -265,6 +278,7 @@ Definition wtl sz (w : word (S sz)) : word sz :=
 Theorem WS_neq : forall b1 b2 sz (w1 w2 : word sz),
   (b1 <> b2 \/ w1 <> w2)
   -> WS b1 w1 <> WS b2 w2.
+Proof.
   intuition.
   apply (f_equal (@whd _)) in H0; tauto.
   apply (f_equal (@wtl _)) in H0; tauto.
@@ -278,6 +292,7 @@ Lemma shatter_word : forall n (a : word n),
     | O => fun a => a = WO
     | S _ => fun a => a = WS (whd a) (wtl a)
   end a.
+Proof.
   destruct a; eauto.
 Qed.
 
@@ -365,16 +380,19 @@ Ltac shatterer := simpl; intuition;
 
 Theorem combine_split : forall sz1 sz2 (w : word (sz1 + sz2)),
   combine (split1 sz1 sz2 w) (split2 sz1 sz2 w) = w.
+Proof.
   induction sz1; shatterer.
 Qed.
 
 Theorem split1_combine : forall sz1 sz2 (w : word sz1) (z : word sz2),
   split1 sz1 sz2 (combine w z) = w.
+Proof.
   induction sz1; shatterer.
 Qed.
 
 Theorem split2_combine : forall sz1 sz2 (w : word sz1) (z : word sz2),
   split2 sz1 sz2 (combine w z) = z.
+Proof.
   induction sz1; shatterer.
 Qed.
 
@@ -383,6 +401,7 @@ Theorem combine_assoc : forall n1 (w1 : word n1) n2 n3 (w2 : word n2) (w3 : word
   = match Heq in _ = N return word N with
       | refl_equal => combine w1 (combine w2 w3)
     end.
+Proof.
   induction w1; simpl; intuition.
 
   rewrite (UIP_dec eq_nat_dec Heq (refl_equal _)); reflexivity.
@@ -403,6 +422,7 @@ Theorem split2_iter : forall n1 n2 n3 Heq w,
   = split2 (n1 + n2) n3 (match Heq in _ = N return word N with
                            | refl_equal => w
                          end).
+Proof.
   induction n1; simpl; intuition.
 
   rewrite (UIP_dec eq_nat_dec Heq (refl_equal _)); reflexivity.
@@ -431,6 +451,7 @@ Theorem combine_end : forall n1 n2 n3 Heq w,
                           | refl_equal => w
                         end))
   = split2 n1 (n2 + n3) w.
+Proof.
   induction n1; simpl; intros.
 
   rewrite (UIP_dec eq_nat_dec Heq (refl_equal _)).
@@ -512,6 +533,7 @@ Notation "l ^/ r" := (@wdiv _ l%word r%word) (at level 50, left associativity).
 Notation "l ^% r" := (@wmod _ l%word r%word) (at level 50, left associativity).
 
 Theorem wordToN_nat : forall sz (w : word sz), wordToN w = N_of_nat (wordToNat w).
+Proof.
   induction w; intuition.
   destruct b; unfold wordToN, wordToNat; fold wordToN; fold wordToNat.
 
@@ -530,6 +552,7 @@ Qed.
 Theorem mod2_S : forall n k,
   2 * k = S n
   -> mod2 n = true.
+Proof.
   induction n using strong; intros.
   destruct n; simpl in *.
   elimtype False; omega.
@@ -540,11 +563,13 @@ Theorem mod2_S : forall n k,
 Qed.
 
 Theorem wzero'_def : forall sz, wzero' sz = wzero sz.
+Proof.
   unfold wzero; induction sz; simpl; intuition.
   congruence.
 Qed.
 
 Theorem posToWord_nat : forall p sz, posToWord sz p = natToWord sz (nat_of_P p).
+Proof.
   induction p; destruct sz; simpl; intuition; f_equal; try rewrite wzero'_def in *.
   
   rewrite ZL6.
@@ -573,12 +598,14 @@ Theorem posToWord_nat : forall p sz, posToWord sz p = natToWord sz (nat_of_P p).
 Qed.
 
 Theorem NToWord_nat : forall sz n, NToWord sz n = natToWord sz (nat_of_N n).
+Proof.
   destruct n; simpl; intuition; try rewrite wzero'_def in *.
   auto.
   apply posToWord_nat.
 Qed.
 
 Theorem wplus_alt : forall sz (x y : word sz), wplus x y = wplusN x y.
+Proof.
   unfold wplusN, wplus, wordBinN, wordBin; intros.
 
   repeat rewrite wordToN_nat; repeat rewrite NToWord_nat.
@@ -588,6 +615,7 @@ Theorem wplus_alt : forall sz (x y : word sz), wplus x y = wplusN x y.
 Qed.
 
 Theorem wmult_alt : forall sz (x y : word sz), wmult x y = wmultN x y.
+Proof.
   unfold wmultN, wmult, wordBinN, wordBin; intros.
 
   repeat rewrite wordToN_nat; repeat rewrite NToWord_nat.
@@ -597,6 +625,7 @@ Theorem wmult_alt : forall sz (x y : word sz), wmult x y = wmultN x y.
 Qed.
 
 Theorem Npow2_nat : forall n, nat_of_N (Npow2 n) = pow2 n.
+Proof.
   induction n; simpl; intuition.
   rewrite <- IHn; clear IHn.
   case_eq (Npow2 n); intuition.
@@ -606,10 +635,12 @@ Theorem Npow2_nat : forall n, nat_of_N (Npow2 n) = pow2 n.
 Qed.
 
 Theorem pow2_N : forall n, Npow2 n = N.of_nat (pow2 n).
+Proof.
   intro n. apply nat_of_N_eq. rewrite Nat2N.id. apply Npow2_nat.
 Qed.
 
 Theorem wneg_alt : forall sz (x : word sz), wneg x = wnegN x.
+Proof.
   unfold wnegN, wneg; intros.
   repeat rewrite wordToN_nat; repeat rewrite NToWord_nat.
   rewrite nat_of_Nminus.
@@ -619,21 +650,25 @@ Theorem wneg_alt : forall sz (x : word sz), wneg x = wnegN x.
 Qed.
 
 Theorem wminus_Alt : forall sz (x y : word sz), wminus x y = wminusN x y.
+Proof.
   intros; unfold wminusN, wminus; rewrite wneg_alt; apply wplus_alt.
 Qed.
 
 Theorem wplus_unit : forall sz (x : word sz), natToWord sz 0 ^+ x = x.
+Proof.
   intros; rewrite wplus_alt; unfold wplusN, wordBinN; intros.
   rewrite roundTrip_0; apply natToWord_wordToNat.
 Qed.
 
 Theorem wplus_comm : forall sz (x y : word sz), x ^+ y = y ^+ x.
+Proof.
   intros; repeat rewrite wplus_alt; unfold wplusN, wordBinN; f_equal; auto.
 Qed.
 
 Theorem drop_mod2 : forall n k,
   2 * k <= n
   -> mod2 (n - 2 * k) = mod2 n.
+Proof.
   induction n using strong; intros.
 
   do 2 (destruct n; simpl in *; repeat rewrite untimes2 in *; intuition).
@@ -650,6 +685,7 @@ Qed.
 Theorem div2_minus_2 : forall n k,
   2 * k <= n
   -> div2 (n - 2 * k) = div2 n - k.
+Proof.
   induction n using strong; intros.
 
   do 2 (destruct n; simpl in *; intuition; repeat rewrite untimes2 in *).
@@ -663,6 +699,7 @@ Qed.
 Theorem div2_bound : forall k n,
   2 * k <= n
   -> k <= div2 n.
+Proof.
   intros; case_eq (mod2 n); intro Heq.
 
   rewrite (div2_odd _ Heq) in H.
@@ -675,6 +712,7 @@ Qed.
 Theorem drop_sub : forall sz n k,
   k * pow2 sz <= n
   -> natToWord sz (n - k * pow2 sz) = natToWord sz n.
+Proof.
   induction sz; simpl; intuition; repeat rewrite untimes2 in *; f_equal.
 
   rewrite mult_assoc.
@@ -707,6 +745,7 @@ Qed.
 Local Hint Extern 1 (_ <= _) => omega.
 
 Theorem wplus_assoc : forall sz (x y z : word sz), x ^+ (y ^+ z) = x ^+ y ^+ z.
+Proof.
   intros; repeat rewrite wplus_alt; unfold wplusN, wordBinN; intros.
 
   repeat match goal with
@@ -723,10 +762,12 @@ Theorem wplus_assoc : forall sz (x y z : word sz), x ^+ (y ^+ z) = x ^+ y ^+ z.
 Qed.
 
 Theorem roundTrip_1 : forall sz, wordToNat (natToWord (S sz) 1) = 1.
+Proof.
   induction sz; simpl in *; intuition.
 Qed.
 
 Theorem mod2_WS : forall sz (x : word sz) b, mod2 (wordToNat (WS b x)) = b.
+Proof.
   intros. rewrite wordToNat_wordToNat'.
   destruct b; simpl.
 
@@ -737,12 +778,14 @@ Theorem mod2_WS : forall sz (x : word sz) b, mod2 (wordToNat (WS b x)) = b.
 Qed.
 
 Theorem div2_WS : forall sz (x : word sz) b, div2 (wordToNat (WS b x)) = wordToNat x.
+Proof.
   destruct b; rewrite wordToNat_wordToNat'; unfold wordToNat'; fold wordToNat'.
   apply div2_S_double.
   apply div2_double.
 Qed.
 
 Theorem wmult_unit : forall sz (x : word sz), natToWord sz 1 ^* x = x.
+Proof.
   intros; rewrite wmult_alt; unfold wmultN, wordBinN; intros.
   destruct sz; simpl.
   rewrite (shatter_word x); reflexivity.
@@ -758,10 +801,12 @@ Theorem wmult_unit : forall sz (x : word sz), natToWord sz 1 ^* x = x.
 Qed.
 
 Theorem wmult_comm : forall sz (x y : word sz), x ^* y = y ^* x.
+Proof.
   intros; repeat rewrite wmult_alt; unfold wmultN, wordBinN; auto with arith.
 Qed.
 
 Theorem wmult_assoc : forall sz (x y z : word sz), x ^* (y ^* z) = x ^* y ^* z.
+Proof.
   intros; repeat rewrite wmult_alt; unfold wmultN, wordBinN; intros.
 
   repeat match goal with
@@ -789,6 +834,7 @@ Theorem wmult_assoc : forall sz (x y z : word sz), x ^* (y ^* z) = x ^* y ^* z.
 Qed.
 
 Theorem wmult_plus_distr : forall sz (x y z : word sz), (x ^+ y) ^* z = (x ^* z) ^+ (y ^* z).
+Proof.
   intros; repeat rewrite wmult_alt; repeat rewrite wplus_alt; unfold wmultN, wplusN, wordBinN; intros.
 
   repeat match goal with
@@ -817,10 +863,12 @@ Theorem wmult_plus_distr : forall sz (x y z : word sz), (x ^+ y) ^* z = (x ^* z)
 Qed.
 
 Theorem wminus_def : forall sz (x y : word sz), x ^- y = x ^+ ^~ y.
+Proof.
   reflexivity.
 Qed.
 
 Theorem wordToNat_bound : forall sz (w : word sz), wordToNat w < pow2 sz.
+Proof.
   induction w; simpl; intuition.
   destruct b; simpl; omega.
 Qed.
@@ -829,10 +877,12 @@ Definition goodSize sz n := n < pow2 sz.
 Arguments goodSize : simpl never.
 
 Theorem wordToNat_good : forall sz (w : word sz), goodSize sz (wordToNat w).
+Proof.
   apply wordToNat_bound.
 Qed.
 
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
+Proof.
   induction sz; simpl; intuition.
 
   generalize (div2_double (pow2 sz)); simpl; intro Hr; rewrite Hr; clear Hr.
@@ -842,6 +892,7 @@ Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
 Qed.
 
 Theorem wminus_inv : forall sz (x : word sz), x ^+ ^~ x = wzero sz.
+Proof.
   intros; rewrite wneg_alt; rewrite wplus_alt; unfold wnegN, wplusN, wzero, wordBinN; intros.
 
   repeat match goal with
@@ -953,34 +1004,42 @@ Notation "l ^| r" := (@wor _ l%word r%word) (at level 50, left associativity).
 Notation "l ^& r" := (@wand _ l%word r%word) (at level 40, left associativity).
 
 Theorem wor_unit : forall sz (x : word sz), wzero sz ^| x = x.
+Proof.
   unfold wzero, wor; induction x; simpl; intuition congruence.
 Qed.
 
 Theorem wor_comm : forall sz (x y : word sz), x ^| y = y ^| x.
+Proof.
   unfold wor; induction x; intro y; rewrite (shatter_word y); simpl; intuition; f_equal; auto with bool.
 Qed.
 
 Theorem wor_assoc : forall sz (x y z : word sz), x ^| (y ^| z) = x ^| y ^| z.
+Proof.
   unfold wor; induction x; intro y; rewrite (shatter_word y); simpl; intuition; f_equal; auto with bool.
 Qed.
 
 Theorem wand_unit : forall sz (x : word sz), wones sz ^& x = x.
+Proof.
   unfold wand; induction x; simpl; intuition congruence.
 Qed.
 
 Theorem wand_kill : forall sz (x : word sz), wzero sz ^& x = wzero sz.
+Proof.
   unfold wzero, wand; induction x; simpl; intuition congruence.
 Qed.
 
 Theorem wand_comm : forall sz (x y : word sz), x ^& y = y ^& x.
+Proof.
   unfold wand; induction x; intro y; rewrite (shatter_word y); simpl; intuition; f_equal; auto with bool.
 Qed.
 
 Theorem wand_assoc : forall sz (x y z : word sz), x ^& (y ^& z) = x ^& y ^& z.
+Proof.
   unfold wand; induction x; intro y; rewrite (shatter_word y); simpl; intuition; f_equal; auto with bool.
 Qed.
 
 Theorem wand_or_distr : forall sz (x y z : word sz), (x ^| y) ^& z = (x ^& z) ^| (y ^& z).
+Proof.
   unfold wand, wor; induction x; intro y; rewrite (shatter_word y); intro z; rewrite (shatter_word z); simpl; intuition; f_equal; auto with bool.
   destruct (whd y); destruct (whd z); destruct b; reflexivity.
 Qed.
@@ -1006,6 +1065,7 @@ Ltac word_eq1 := match goal with
 Theorem word_neq : forall sz (w1 w2 : word sz),
   w1 ^- w2 <> wzero sz
   -> w1 <> w2.
+Proof.
   intros; intro; subst.
   unfold wminus in H.
   rewrite wminus_inv in H.
@@ -1172,6 +1232,7 @@ Qed.
 (** * Some more useful derived facts *)
 
 Lemma natToWord_plus : forall sz n m, natToWord sz (n + m) = natToWord _ n ^+ natToWord _ m.
+Proof.
   destruct sz; intuition.
   rewrite wplus_alt.
   unfold wplusN, wordBinN.
@@ -1184,6 +1245,7 @@ Lemma natToWord_plus : forall sz n m, natToWord sz (n + m) = natToWord _ n ^+ na
 Qed.
 
 Lemma natToWord_S : forall sz n, natToWord sz (S n) = natToWord _ 1 ^+ natToWord _ n.
+Proof.
   intros; change (S n) with (1 + n); apply natToWord_plus.
 Qed.
 
@@ -1191,6 +1253,7 @@ Theorem natToWord_inj : forall sz n m, natToWord sz n = natToWord sz m
   -> goodSize sz n
   -> goodSize sz m
   -> n = m.
+Proof.
   unfold goodSize.
   intros.
   apply (f_equal (@wordToNat _)) in H.
@@ -1216,6 +1279,7 @@ Qed.
 Lemma wordToNat_natToWord_idempotent : forall sz n,
   (N.of_nat n < Npow2 sz)%N
   -> wordToNat (natToWord sz n) = n.
+Proof.
   intros.
   destruct (wordToNat_natToWord sz n); intuition.
   destruct x.
@@ -1231,6 +1295,7 @@ Qed.
 Lemma wplus_cancel : forall sz (a b c : word sz),
   a ^+ c = b ^+ c
   -> a = b.
+Proof.
   intros.
   apply (f_equal (fun x => x ^+ ^~ c)) in H.
   repeat rewrite <- wplus_assoc in H.
@@ -1244,6 +1309,7 @@ Qed.
 (* Some additional useful facts added in the fscq version of Word.v *)
 
 Lemma natToWord_mult : forall sz n m, natToWord sz (n * m) = natToWord _ n ^* natToWord _ m.
+Proof.
   destruct sz; intuition.
   rewrite wmult_alt.
   unfold wmultN, wordBinN.
@@ -1783,6 +1849,7 @@ Global Opaque wlt_dec.
 Definition test_wlt_f (a : nat) (b : nat) : nat :=
   if wlt_dec (natToWord 64 a) $0 then 0 else 0.
 Theorem test_wlt_f_example: forall x y z, test_wlt_f x y = 0 -> test_wlt_f x z = 0.
+Proof.
   intros.
   exact H.
 Qed.

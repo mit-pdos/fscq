@@ -1,6 +1,7 @@
 Require Import Arith Omega NArith Nomega Word Prog.
 
 Theorem f_neq : forall {A B : Type} (f : A -> B) x y, f x <> f y -> x <> y.
+Proof.
   intros. unfold not. intro He. rewrite He in H. auto.
 Qed.
 
@@ -130,6 +131,7 @@ Qed.
 
 (* The standard library should really define this... *)
 Lemma Ninj_div : forall a a' : N, N.to_nat (a / a') = N.to_nat a / N.to_nat a'.
+Proof.
   destruct a.
   destruct a'; [|rewrite Nat.div_0_l]; auto.
   replace 0 with (N.to_nat 0) by auto.

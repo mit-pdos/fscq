@@ -132,6 +132,7 @@ Module MEMLOG.
   Definition descriptor_type := Rec.ArrayF (Rec.WordF addrlen) addr_per_block.
   Definition descriptor := Rec.data descriptor_type.
   Theorem descriptor_sz_ok : valulen = Rec.len descriptor_type.
+  Proof.
     simpl. unfold addr_per_block. rewrite valulen_is. reflexivity.
   Qed.
 

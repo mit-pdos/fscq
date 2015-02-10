@@ -807,14 +807,18 @@ Qed.
 End GenPredThm.
 
 
-Instance piff_equiv {len V} : Equivalence (@piff len V).
+Instance piff_equiv {len V} :
+  Equivalence (@piff len V).
+Proof.
   split.
   exact (@piff_refl len V).
   exact (@piff_comm len V).
   exact (@piff_trans len V).
 Qed.
 
-Instance pimpl_preorder {len V} : PreOrder (@pimpl len V).
+Instance pimpl_preorder {len V} :
+  PreOrder (@pimpl len V).
+Proof.
   split.
   exact (@pimpl_refl len V).
   exact (@pimpl_trans len V).
