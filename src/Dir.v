@@ -56,6 +56,8 @@ Module DIR.
     eapply ptsto_complete; eauto.
   Qed.
 
+  Hint Resolve dmatch_complete.
+
   Definition rep (dmap: @mem filename_len addr) :=
     (exists delist,
        rep' delist *
@@ -164,7 +166,7 @@ Module DIR.
      * [listpred dmatch] predicates.
      *)
     rewrite firstn_oob in H17.
-    eapply listpred_eq; [ apply dmatch_complete | eauto | eauto ].
+    eapply listpred_eq; eauto.
 
     (* Need some extra theorem about lengths from BFileRec.. *)
     admit.
@@ -270,6 +272,86 @@ Module DIR.
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlink lxp bxp ixp dnum name inum ms.
   Proof.
+    admit.
+  Qed.
+
+  Definition diritem := (filename * addr)%type.
+  Definition diritemmatch (de: diritem) : @pred filename_len addr := fst de |-> snd de.
+
+  Definition dlist T (lxp : MemLog.xparams) (ixp : Inode.xparams)
+                     (dnum : addr) (ms : memstate)
+                     (rx : list diritem -> prog T) : prog T := Eval compute_rec in
+    dlen <- BFILE.bflen lxp ixp dnum ms;
+    res <- For dpos < dlen ^* items_per_valu
+      Ghost mbase m bxp F A flist f dmap delist
+      Loopvar res <- []
+      Continuation lrx
+      Invariant
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+        [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+        [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+        [[ (rep' delist) (list2mem (BFILE.BFData f)) ]] *
+        [[ listpred dmatch delist dmap ]] *
+        exists dmap',
+        [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
+        [[ listpred diritemmatch res dmap' ]]
+      OnCrash
+        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+      Begin
+        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        If (weq (de :-> "valid") $0) {
+          lrx res
+        } else {
+          lrx ((de :-> "name", de :-> "inum") :: res)
+        }
+      Rof;
+    rx res.
+
+  Theorem dlist_ok : forall lxp bxp ixp dnum ms,
+    {< F A mbase m flist f dmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+             [[ (rep dmap) (list2mem (BFILE.BFData f)) ]]
+    POST:res MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ listpred diritemmatch res dmap ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dlist lxp ixp dnum ms.
+  Proof.
+    unfold dlist, rep.
+    step.
+    step.
+
+    instantiate (a9:=empty_mem); unfold emp; auto. (* dmap' *)
+    unfold emp; auto.
+
+    3: unfold MEMLOG.log_intact; cancel.
+
+    step.
+    step.
+    step.
+
+    (* valid=0 entry, skip it in [res] *)
+    admit.
+
+    step.
+    instantiate (a:=Prog.upd m1 a a0).
+    admit.
+    unfold diritemmatch at 1; simpl.
+    apply sep_star_comm. apply ptsto_upd_disjoint; eauto.
+    (* We are adding one more name to the result list, but to do this, we
+     * have to show that it isn't already there (otherwise sep_star would
+     * no longer be disjoint)..
+     *)
+    admit.
+
+    step.
+    intros m' Hm.
+    erewrite listpred_eq with (l:=l) (m1:=m') (m2:=m); eauto.
+    rewrite firstn_oob in H17.
+    erewrite listpred_eq with (l:=l) (m1:=m) (m2:=m0); eauto.
+
+    (* Need some extra theorem about lengths from BFileRec.. *)
     admit.
   Qed.
 
