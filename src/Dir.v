@@ -48,6 +48,14 @@ Module DIR.
     else
       (de :-> "name") |-> (de :-> "inum").
 
+  Theorem dmatch_complete : forall de m1 m2, dmatch de m1 -> dmatch de m2 -> m1 = m2.
+  Proof.
+    unfold dmatch; intros.
+    destruct (weq (de :-> "valid") $0).
+    apply emp_complete; eauto.
+    eapply ptsto_complete; eauto.
+  Qed.
+
   Definition rep (dmap: @mem filename_len addr) :=
     (exists delist,
        rep' delist *
@@ -56,7 +64,7 @@ Module DIR.
 
   Definition dlookup T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
                        (dnum : addr) (name : word filename_len) (ms : memstate)
-                       (rx : option addr -> prog T) : prog T :=
+                       (rx : option addr -> prog T) : prog T := Eval compute_rec in
     dlen <- BFILE.bflen lxp ixp dnum ms;
     For dpos < dlen ^* items_per_valu
       Ghost mbase m F A flist f dmap delist
@@ -126,11 +134,9 @@ Module DIR.
     cancel.
 
     (* need to extract the [m0]th element out of [l] *)
-    unfold Rec.recget' in *; simpl in *.
     rewrite listpred_fwd with (i:=#m0) (def:=item_zero dirent_type).
-    unfold dmatch at 2; simpl.
-    unfold sel in H16. rewrite <- H16.
-    unfold Rec.recget'; simpl.
+    unfold dmatch at 2; rec_simpl; simpl.
+    unfold sel in H16. rewrite <- H16. simpl.
     destruct (weq a1 $0); [ intuition | cancel ].
     (* some length constraint.. *)
     admit.
@@ -147,14 +153,27 @@ Module DIR.
     admit.
     admit.
 
-    admit.  (* step starts running out of memory... *)
+    (* Did not find the name anywhere *)
+    step.
+    eapply pimpl_or_r. right. cancel. repeat deex.
+    assert (m = m0); [| subst; eauto ].
+    (* Need to prove that the [dmap] in the postcondition, [m], is the same
+     * as the [dmap'] from exiting the loop invariant, [m'].  This is not so
+     * straightforward: we only know that [m] and [m'] satisfy similar-looking
+     * [listpred dmatch] predicates.
+     *)
+    rewrite firstn_oob in H17.
+    eapply listpred_eq; [ apply dmatch_complete | eauto | eauto ].
+
+    (* Need some extra theorem about lengths from BFileRec.. *)
+    admit.
 
     unfold MEMLOG.log_intact; cancel.
   Qed.
 
   Definition dunlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
                        (dnum : addr) (name : word filename_len) (ms : memstate)
-                       (rx : memstate -> prog T) : prog T :=
+                       (rx : memstate -> prog T) : prog T := Eval compute_rec in
     dlen <- BFILE.bflen lxp ixp dnum ms;
     For dpos < dlen ^* items_per_valu
       Ghost mbase m
@@ -201,7 +220,7 @@ Module DIR.
 
   Definition dlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
                      (dnum : addr) (name : word filename_len) (inum : addr) (ms : memstate)
-                     (rx : (bool * memstate) -> prog T) : prog T :=
+                     (rx : (bool * memstate) -> prog T) : prog T := Eval compute_rec in
     dlen <- BFILE.bflen lxp ixp dnum ms;
     For dpos < dlen ^* items_per_valu
       Ghost mbase m
