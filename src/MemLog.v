@@ -334,14 +334,6 @@ Module MEMLOG.
 
     end)%pred.
 
-  (* The states in here cover every valid log state -- that there are additional states above is an
-     implementation detail (they constrain the _current_ values more) *)
-  Definition would_recover_either xp old cur ms :=
-    (rep xp (NoTransaction old) ms_empty \/ (* commit |=> $0: data = old *)
-     rep xp (NoTransaction cur) ms_empty \/ (* commit |=> $0: data = old *)
-     rep xp (CommittedUnsyncTxn old cur) ms \/ (* commit |~> $1: data = old, log = cur *)
-     rep xp (CommittedTxn cur) ms \/ (* commit |=> $1: log = cur *)
-     rep xp (AppliedTxn cur) ms)%pred. (* commit |~> $0: data = cur, log = cur *)
 
   Definition init T xp rx : prog T :=
     Write (LogCommit xp) $0;;
@@ -937,26 +929,48 @@ Module MEMLOG.
       apply xp ms;;
       rx true
     } else {
+      abort xp ms;;
       rx false
     }.
+
+
+  Definition log_intact_either xp old cur :=
+    (exists ms, rep xp (CommittedUnsyncTxn old cur) ms)%pred.
+
+  (** The log is in a valid state which (after recovery) represents disk state [m] *)
+  Definition log_intact xp m :=
+    (exists ms, (rep xp (NoTransaction m) ms) \/
+     (exists m', rep xp (ActiveTxn m m') ms) \/
+     (rep xp (CommittedTxn m) ms) \/
+     (rep xp (AppliedTxn m) ms))%pred.
+
+  (** The log is in a valid state with (after recovery) represents either disk state [old] or [cur] *)
+  Definition would_recover_either xp old cur :=
+    (log_intact xp old \/ log_intact xp cur \/ log_intact_either xp old cur)%pred.
 
   Theorem commit_ok: forall xp ms,
     {< m1 m2,
      PRE    rep xp (ActiveTxn m1 m2) ms
      POST:r ([[ r = true ]] * rep xp (NoTransaction m2) ms_empty) \/
-            ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
-     CRASH  would_recover_either xp m1 m2 ms
+            ([[ r = false ]] * rep xp (NoTransaction m1) ms_empty)
+     CRASH  would_recover_either xp m1 m2
     >} commit xp ms.
   Proof.
-    unfold commit, would_recover_either.
+    unfold commit, would_recover_either, log_intact, log_intact_either.
     hoare_unfold log_unfold.
     unfold equal_unless_in; intuition; auto.
-    apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; left; cancel.
+    Ltac or_r := apply pimpl_or_r; right.
+    Ltac or_l := apply pimpl_or_r; left.
+    or_r; or_l; cancel.
+    or_r; or_r; or_l; cancel.
     (* true by H17, H12 *) admit.
     auto.
-    apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; apply pimpl_or_r; right; cancel.
+    or_r; or_l; cancel.
+    or_r; or_r; or_r; cancel.
     auto.
-    apply pimpl_or_r; left; cancel.
+    or_l; cancel.
+    or_l; cancel.
+    instantiate (Goal7 := any). (* XXX *)
     admit.
   Qed.
 
@@ -1022,19 +1036,12 @@ Module MEMLOG.
       rx tt
     }.
 
-  (** The log is in a valid state which (after recovery) represents disk state [m] *)
-  Definition log_intact xp m :=
-    (exists ms, (rep xp (NoTransaction m) ms) \/
-     (exists m', rep xp (ActiveTxn m m') ms) \/
-     (exists m', rep xp (FlushedTxn m m') ms) \/
-     (rep xp (CommittedTxn m) ms) \/
-     (rep xp (AppliedTxn m) ms))%pred.
 
   Theorem recover_ok: forall xp,
-    {< m1 m2 ms,
-    PRE     crash_xform (would_recover_either xp m1 m2 ms)
+    {< m1 m2,
+    PRE     crash_xform (would_recover_either xp m1 m2)
     POST:r  rep xp (NoTransaction m1) ms_empty \/ rep xp (NoTransaction m2) ms_empty
-    CRASH   crash_xform (would_recover_either xp m1 m2 ms)
+    CRASH   would_recover_either xp m1 m2
     >} recover xp.
   Proof.
     unfold recover, crash_xform; log_unfold.
@@ -1230,6 +1237,8 @@ Module MEMLOG.
   Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
 
 End MEMLOG.
+
+Ltac log_intact_unfold := unfold MEMLOG.would_recover_either, MEMLOG.log_intact, MEMLOG.log_intact_either.
 
 Global Opaque MEMLOG.write.
 
