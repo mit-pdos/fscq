@@ -151,7 +151,8 @@ Module DIR.
     unfold Rec.recget' in *; simpl in *.
     instantiate (a:=Prog.upd m1 a a0).
     admit.
-    admit.
+    repeat deex. apply H21. repeat eexists.
+    apply sep_star_comm. apply sep_star_comm in H6. eapply ptsto_upd_bwd; eauto.
 
     (* Did not find the name anywhere *)
     step.

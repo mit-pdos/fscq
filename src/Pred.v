@@ -640,6 +640,32 @@ Proof.
     destruct (weq a' a); pred.
 Qed.
 
+Lemma ptsto_upd_bwd:
+  forall (a b : word len) (v w : V) F m,
+  a <> b ->
+  (a |-> v * F)%pred (upd m b w) ->
+  (a |-> v * any)%pred m.
+Proof.
+  unfold upd, ptsto; unfold_sep_star; intros; repeat deex.
+  exists (fun a' => if weq a' a then Some v else None).
+  exists (fun a' => if weq a' b then m a' else x0 a').
+  split; [|split].
+  - apply functional_extensionality; intros.
+    unfold mem_union in *. pose proof (equal_f H1 x1); clear H1; simpl in *.
+    destruct (weq x1 a); subst.
+    + rewrite H3 in H2. destruct (weq a b); congruence.
+    + rewrite H5 in H2 by congruence.
+      destruct (weq x1 b); congruence.
+  - unfold mem_disjoint in *. intuition. repeat deex.
+    apply H0; clear H0.
+    destruct (weq x1 a); destruct (weq x1 b); subst; try congruence.
+    repeat eexists; eauto.
+  - intuition eauto.
+    destruct (weq a a); congruence.
+    destruct (weq a' a); congruence.
+    firstorder.
+Qed.
+
 
 Lemma ptsto_eq : forall (p1 p2 : @pred len V) m a v1 v2,
   p1 m -> p2 m ->
