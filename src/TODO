@@ -2,5 +2,5 @@
 - performance
 - directories
 - byte-level read/write
-- buffer cache
+- buffer cache: eviction, integrate with memlog
 - async-io
