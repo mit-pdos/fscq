@@ -25,6 +25,7 @@ run_dcode :: Handle -> Prog.Coq_prog a -> IO a
 run_dcode _ (Done r) = return r
 run_dcode f (Read a rx) = do val <- Disk.read_disk f a; run_dcode f $ rx val
 run_dcode f (Write a v rx) = do Disk.write_disk f a v; run_dcode f $ rx ()
+run_dcode f (Sync _ rx) = do Disk.sync_disk f; run_dcode f $ rx ()
 
 run :: Handle -> ((a -> Prog.Coq_prog a) -> Prog.Coq_prog a) -> IO a
 run h p = run_dcode h $ p (\x -> Prog.Done x)

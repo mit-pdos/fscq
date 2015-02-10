@@ -61,3 +61,7 @@ write_disk f (W a) (W v) = do
   hSeek f AbsoluteSeek $ 512*a
   BS.hPut f bs
   return ()
+
+sync_disk :: Handle -> IO ()
+sync_disk _ = do
+  return ()
