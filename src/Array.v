@@ -88,6 +88,15 @@ Proof.
   intros; apply selN_updN_eq; auto.
 Qed.
 
+Lemma sel_upd_ne : forall V vs i i' v (default : V),
+  i <> i'
+  -> sel (upd vs i v) i' default = sel vs i' default.
+Proof.
+  intros; apply selN_updN_ne.
+  intro Heq. apply H; clear H.
+  apply wordToNat_inj; auto.
+Qed.
+
 Hint Rewrite selN_updN_eq sel_upd_eq using (simpl; omega).
 
 Lemma firstn_updN : forall T (v : T) vs i j,
