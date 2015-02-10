@@ -841,8 +841,20 @@ Proof.
   apply pimpl_sep_star; assumption.
 Qed.
 
+Instance and_piff_proper {V} :
+  Proper (piff ==> piff ==> piff) (@and V).
+Proof.
+  firstorder.
+Qed.
+
 Instance and_pimpl_proper {V} :
   Proper (pimpl ==> pimpl ==> pimpl) (@and V).
+Proof.
+  firstorder.
+Qed.
+
+Instance or_piff_proper {V} :
+  Proper (piff ==> piff ==> piff) (@or V).
 Proof.
   firstorder.
 Qed.
@@ -1021,6 +1033,16 @@ Theorem crash_xform_or_dist : forall (p q : pred),
   crash_xform (p \/ q) <=p=> crash_xform p \/ crash_xform q.
 Proof.
   firstorder.
+Qed.
+
+Theorem crash_xform_lift_empty : forall (P : Prop),
+  crash_xform [[ P ]] <=p=> [[ P ]].
+Proof.
+  unfold crash_xform, lift_empty, possible_crash; intros; split;
+    intros m H; repeat deex.
+  specialize (H1 a); destruct H1; intuition.
+  repeat deex; congruence.
+  eexists; intuition.
 Qed.
 
 Theorem crash_xform_sep_star_apply : forall (p q : pred) (m m' : mem), possible_crash m m'
