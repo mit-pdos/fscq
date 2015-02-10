@@ -737,7 +737,7 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
 Create HintDb false_precondition_hint.
 
 Ltac norm := unfold pair_args_helper;
-             norm'l; repeat deex;
+             norm'l; repeat deex; repeat destruct_type valuset;
              (* Each iteration of [split_or_l] reverses the list of predicates
               * inside [stars].  To allow [progress] to detect when there's
               * nothing left to split, reverse the list twice.

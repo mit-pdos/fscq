@@ -40,7 +40,11 @@ Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
 Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
   updN vs (wordToNat i) v.
 
+Definition upd_prepend (vs : list valuset) (i : addr) (v : valu) : list valuset :=
+  upd vs i (v, valuset_list (sel vs i ($0, nil))).
 
+Definition upd_sync (vs : list valuset) (i : addr) (default : valuset) : list valuset :=
+  upd vs i (fst (sel vs i default), nil).
 
 Notation "l [ i ]" := (selN l i _) (at level 56, left associativity).
 Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
@@ -53,7 +57,6 @@ Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
 Proof.
   induction n; intros; destruct l; simpl; auto.
 Qed.
-
 
 Lemma length_updN : forall T vs n (v : T), length (updN vs n v) = length vs.
 Proof.
@@ -125,6 +128,15 @@ Proof.
 Qed.
 
 Hint Rewrite firstn_updN firstn_upd using omega.
+
+Lemma skipn_selN : forall T i j vs (def: T),
+  selN (skipn i vs) j def = selN vs (i + j) def.
+Proof.
+  induction i; intros; auto.
+  destruct vs; simpl; auto.
+Qed.
+
+Hint Rewrite skipn_selN using omega.
 
 Lemma skipN_updN' : forall T (v : T) vs i j,
   i > j
@@ -799,15 +811,20 @@ Qed.
 (** * Operations for array accesses, to guide automation *)
 
 Definition ArrayRead T a i stride rx : prog T :=
-  Xform (isolate_fwd (V:=valu) $0) isolate_bwd
+  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
     (v <- Read (a ^+ i ^* stride);
      Xform isolate_bwd pimpl_refl (rx v)).
 
 Definition ArrayWrite T a i stride v rx : prog T :=
-  Xform (isolate_fwd (V:=valu) $0) isolate_bwd
+  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
     (v <- Write (a ^+ i ^* stride) v;
      Xform isolate_bwd_upd pimpl_refl (rx v)).
 
+
+Definition ArraySync T a i stride rx : prog T :=
+  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
+    (v <- Sync (a ^+ i ^* stride);
+     Xform isolate_bwd_upd pimpl_refl (rx v)).
 
 (** * Hoare rules *)
 
@@ -818,30 +835,52 @@ Theorem read_ok:
   {{ fun done crash => exists vs F, array a vs stride * F
    * [[wordToNat i < length vs]]
    * [[{{ fun done' crash' => array a vs stride * F * [[ done' = done ]] * [[ crash' = crash ]]
-       }} rx (sel vs i $0)]]
+       }} rx (fst (sel vs i ($0, nil)))]]
    * [[array a vs stride * F =p=> crash]]
   }} ArrayRead a i stride rx.
 Proof.
   unfold ArrayRead.
   hoare.
+
+  rewrite <- surjective_pairing; cancel.
+  rewrite <- surjective_pairing; cancel.
+  rewrite <- surjective_pairing; cancel.
 Qed.
 
 Theorem write_ok:
   forall T (a i stride:addr) (v:valu) (rx:unit->prog T),
   {{ fun done crash => exists vs F, array a vs stride * F
    * [[wordToNat i < length vs]]
-   * [[{{ fun done' crash' => array a (upd vs i v) stride * F
+   * [[{{ fun done' crash' => array a (upd_prepend vs i v) stride * F
         * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx tt]]
-   * [[ array a vs stride * F \/ array a (upd vs i v) stride * F =p=> crash ]]
+   * [[ array a vs stride * F =p=> crash ]]
   }} ArrayWrite a i stride v rx.
 Proof.
   unfold ArrayWrite.
   hoare.
 Qed.
 
+Theorem sync_ok:
+  forall T (a i stride:addr) (rx:unit->prog T),
+  {{ fun done crash => exists vs F, array a vs stride * F
+   * [[wordToNat i < length vs]]
+   * [[{{ fun done' crash' => array a (upd_sync vs i ($0, nil)) stride * F
+        * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx tt]]
+   * [[ array a vs stride * F =p=> crash ]]
+  }} ArraySync a i stride rx.
+Proof.
+  unfold ArraySync.
+  hoare.
+
+  fold (@sep_star (valu * list valu)); rewrite <- surjective_pairing; cancel.
+  fold (@sep_star (valu * list valu)); rewrite <- surjective_pairing; cancel.
+Qed.
+
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _ _) _) => apply write_ok : prog.
+Hint Extern 1 ({{_}} progseq (ArraySync _ _ _) _) => apply sync_ok : prog.
 
 Hint Extern 0 (okToUnify (array ?base ?l ?stride) (array ?base ?r ?stride)) =>
   unfold okToUnify; constructor : okToUnify.
@@ -854,16 +893,19 @@ Definition read_back T a rx : prog T :=
   v <- ArrayRead a $0 $1;
   rx v.
 
+Ltac unfold_prepend := unfold upd_prepend.
+
 Theorem read_back_ok : forall T a (rx : _ -> prog T),
   {{ fun done crash => exists vs F, array a vs $1 * F
      * [[length vs > 0]]
-     * [[{{fun done' crash' => array a (upd vs $0 $42) $1 * F
+     * [[{{fun done' crash' => array a (upd_prepend vs $0 $42) $1 * F
           * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx $42 ]]
-     * [[ array a vs $1 * F \/ array a (upd vs $0 $42) $1 * F =p=> crash ]]
+     * [[ array a vs $1 * F \/
+          array a (upd_prepend vs $0 $42) $1 * F =p=> crash ]]
   }} read_back a rx.
 Proof.
-  unfold read_back; hoare.
+  unfold read_back; hoare_unfold unfold_prepend.
 Qed.
 
 Definition swap T a i j rx : prog T :=
@@ -877,14 +919,15 @@ Theorem swap_ok : forall T a i j (rx : prog T),
   {{ fun done crash => exists vs F, array a vs $1 * F
      * [[wordToNat i < length vs]]
      * [[wordToNat j < length vs]]
-     * [[{{fun done' crash' => array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F
+     * [[{{fun done' crash' => array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1 * F
            * [[ done' = done ]] * [[ crash' = crash ]]
          }} rx ]]
-     * [[ array a vs $1 * F \/ array a (upd vs i (sel vs j $0)) $1 * F \/
-          array a (upd (upd vs i (sel vs j $0)) j (sel vs i $0)) $1 * F =p=> crash ]]
+     * [[ array a vs $1 * F \/
+          array a (upd_prepend vs i (fst (sel vs j ($0, nil)))) $1 * F \/
+          array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1 * F =p=> crash ]]
   }} swap a i j rx.
 Proof.
-  unfold swap; hoare.
+  unfold swap; hoare_unfold unfold_prepend.
 Qed.
 
 

@@ -5,6 +5,7 @@ Require Import Prog.
 Require Import RelationClasses.
 Require Import Morphisms.
 Require Import Word.
+Require Import List.
 
 Set Implicit Arguments.
 
@@ -55,9 +56,6 @@ Definition pimpl (p q : pred) := forall m, p m -> q m.
 
 Definition piff (p q : pred) : Prop := (pimpl p q) /\ (pimpl q p).
 
-Definition pupd (p : pred) (a : word len) (v : V) : pred :=
-  fun m => exists m', p m' /\ m = upd m' a v.
-
 Definition mem_disjoint (m1 m2 : @mem len V) :=
   ~ exists a (v1 v2 : V), m1 a = Some v1 /\ m2 a = Some v2.
 
@@ -101,7 +99,6 @@ Notation "[ P ]" := (lift P) : pred_scope.
 Notation "[[ P ]]" := (lift_empty P) : pred_scope.
 Notation "p =p=> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
 Notation "p <=p=> q" := (piff p%pred q%pred) (at level 90).
-Notation "p [ a <--- v ]" := (pupd p a v) (at level 0) : pred_scope.
 
 
 Module Type SEP_STAR.
@@ -121,12 +118,24 @@ Arguments sep_star {len V} _ _ _.
 Infix "*" := sep_star : pred_scope.
 
 
+(* Specializations of ptsto to deal with async IO *)
+
+Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
+
+Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
+
+
+(* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
+Definition crash_xform (p : pred) : @pred valuset :=
+  fun m => exists m', p m' /\ possible_crash m' m.
+
+
 Ltac deex := match goal with
                | [ H : ex _ |- _ ] => destruct H; intuition subst
              end.
 
 Ltac pred_unfold :=
-  unfold impl, and, or, foral_, exis, uniqpred, lift, pupd in *.
+  unfold impl, and, or, foral_, exis, uniqpred, lift in *.
 Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
@@ -573,6 +582,12 @@ Proof.
     congruence.
 Qed.
 
+Lemma incl_cons : forall T (a b : list T) (v : T), incl a b
+  -> incl (v :: a) (v :: b).
+Proof.
+  firstorder.
+Qed.
+
 Lemma ptsto_valid:
   forall (a : word len) (v : V) F m,
   (a |-> v * F)%pred m
@@ -627,12 +642,14 @@ Proof.
   exists x0.
   split; [|split].
   - apply functional_extensionality; intro.
-    unfold mem_union; destruct (weq x1 a); eauto.
-    unfold ptsto in H1; destruct H1. rewrite H1; eauto.
+    unfold mem_union; destruct (addr_eq_dec x1 a); eauto.
+    destruct H1; repeat deex.
+    rewrite H1; auto.
   - unfold mem_disjoint in *. intuition. repeat deex.
-    apply H. repeat eexists; eauto.
-    unfold ptsto in H1; destruct H1.
-    destruct (weq x1 a); subst; eauto.
+    apply H.
+    destruct H1; repeat deex.
+    repeat eexists; eauto.
+    destruct (addr_eq_dec x1 a); subst; eauto.
     pred.
   - intuition eauto.
     unfold ptsto; intuition.
@@ -679,9 +696,9 @@ Proof.
   apply H2 in H0; clear H2.
   apply ptsto_valid in H.
   apply ptsto_valid in H0.
+  repeat deex.
   congruence.
 Qed.
-
 
 Lemma pimpl_and_split:
   forall (a b c : @pred len V),
@@ -758,7 +775,7 @@ Qed.
 Theorem sep_star_ptsto_some : forall (a : word len) (v : V) F m,
   (a |-> v * F)%pred m -> m a = Some v.
 Proof.
-  unfold_sep_star;  unfold ptsto, mem_union.
+  unfold_sep_star; unfold ptsto, mem_union, exis.
   intros.
   repeat deex.
   rewrite H2.
@@ -769,9 +786,8 @@ Theorem sep_star_ptsto_indomain : forall (a : word len) (v : V) F m,
   (a |-> v * F)%pred m -> indomain a m.
 Proof.
   intros.
-  eexists.
-  eapply sep_star_ptsto_some.
-  eauto.
+  eapply sep_star_ptsto_some in H.
+  repeat deex; eexists; eauto.
 Qed.
 
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
@@ -921,8 +937,20 @@ Proof.
   apply pimpl_sep_star; assumption.
 Qed.
 
+Instance and_piff_proper {len V} :
+  Proper (piff ==> piff ==> piff) (@and len V).
+Proof.
+  firstorder.
+Qed.
+
 Instance and_pimpl_proper {len V} :
   Proper (pimpl ==> pimpl ==> pimpl) (@and len V).
+Proof.
+  firstorder.
+Qed.
+
+Instance or_piff_proper {len V} :
+  Proper (piff ==> piff ==> piff) (@or len V).
 Proof.
   firstorder.
 Qed.
@@ -978,5 +1006,193 @@ Instance lift_empty_proper {len V} :
 Proof.
   firstorder.
 Qed.
+
+
+(* Specialized relations for [@pred valuset], to deal with async IO *)
+
+Theorem crash_xform_apply : forall (p : @pred valuset) (m m' : mem), possible_crash m m'
+  -> p m
+  -> crash_xform p m'.
+Proof.
+  unfold crash_xform; eauto.
+Qed.
+
+Theorem possible_crash_mem_union : forall (ma mb m' : mem), possible_crash (mem_union ma mb) m'
+  -> mem_disjoint ma mb
+  -> exists ma' mb', m' = mem_union ma' mb' /\ mem_disjoint ma' mb' /\
+                     possible_crash ma ma' /\ possible_crash mb mb'.
+Proof.
+  intros.
+  exists (fun a => match ma a with | None => None | Some v => m' a end).
+  exists (fun a => match mb a with | None => None | Some v => m' a end).
+  repeat split.
+
+  - unfold mem_union; apply functional_extensionality; intros.
+    case_eq (ma x); case_eq (mb x); case_eq (m' x); auto.
+    intros; unfold possible_crash in *.
+    destruct (H x).
+    destruct H4; congruence.
+    repeat deex. unfold mem_union in H5.
+    rewrite H2 in H5. rewrite H3 in H5. congruence.
+  - unfold mem_disjoint; intro; repeat deex.
+    case_eq (ma x); case_eq (mb x); intros.
+    firstorder.
+    rewrite H1 in H3; congruence.
+    rewrite H4 in H2; congruence.
+    rewrite H4 in H2; congruence.
+  - unfold possible_crash in *; intro a.
+    case_eq (ma a); intros; [right|left]; auto.
+    pose proof (mem_union_addr a H0 H1).
+    destruct (H a); destruct H3; try congruence.
+    repeat deex; repeat eexists; eauto.
+    congruence.
+  - unfold possible_crash in *; intro a.
+    case_eq (mb a); intros; [right|left]; auto.
+    rewrite mem_disjoint_comm in H0.
+    pose proof (mem_union_addr a H0 H1); rewrite mem_union_comm in H2 by auto.
+    destruct (H a); destruct H3; try congruence.
+    repeat deex; repeat eexists; eauto.
+    congruence.
+Qed.
+
+Theorem possible_crash_disjoint : forall ma mb ma' mb', mem_disjoint ma' mb'
+  -> possible_crash ma ma'
+  -> possible_crash mb mb'
+  -> mem_disjoint ma mb.
+Proof.
+  unfold mem_disjoint, possible_crash; intros.
+  intro Hnot.
+  repeat deex.
+  destruct (H0 x); destruct (H1 x); try intuition congruence.
+  repeat deex.
+  apply H.
+  do 3 eexists; eauto.
+Qed.
+
+Theorem possible_crash_union : forall ma mb ma' mb', possible_crash ma ma'
+  -> possible_crash mb mb'
+  -> possible_crash (mem_union ma mb) (mem_union ma' mb').
+Proof.
+  unfold possible_crash, mem_union; intros.
+  destruct (H a); destruct (H0 a).
+  - destruct H1. destruct H2.
+    rewrite H1 in *; rewrite H2 in *; rewrite H3 in *; rewrite H4 in *.
+    intuition.
+  - destruct H1. repeat deex.
+    rewrite H1 in *; rewrite H2 in *; rewrite H3 in *; rewrite H4 in *.
+    right. do 2 eexists. intuition.
+  - repeat deex.
+    rewrite H1 in *; rewrite H2 in *.
+    right. do 2 eexists. intuition.
+  - repeat deex.
+    rewrite H1 in *; rewrite H3 in *; rewrite H4 in *.
+    right. do 2 eexists. intuition.
+Qed.
+
+Theorem possible_crash_trans : forall ma mb mc,
+  possible_crash ma mb ->
+  possible_crash mb mc ->
+  possible_crash ma mc.
+Proof.
+  unfold possible_crash; intros.
+  specialize (H a).
+  specialize (H0 a).
+  intuition; repeat deex; try congruence.
+  right; repeat eexists; intuition eauto.
+  rewrite H0 in H1.
+  inversion H1; subst; clear H1.
+  inversion H3.
+  simpl in H1; subst; auto.
+  inversion H1.
+Qed.
+
+Theorem crash_xform_idem : forall p, crash_xform (crash_xform p) =p=> crash_xform p.
+Proof.
+  unfold crash_xform, pimpl; intros.
+  repeat deex; eexists; intuition eauto.
+  eapply possible_crash_trans; eauto.
+Qed.
+
+Theorem crash_xform_sep_star_dist : forall (p q : pred),
+  crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
+Proof.
+  unfold_sep_star; unfold crash_xform, piff, pimpl; split; intros; repeat deex.
+  - edestruct possible_crash_mem_union; try eassumption; repeat deex.
+    do 2 eexists; intuition; eexists; eauto.
+  - eexists; split.
+    do 2 eexists; intuition; [| eassumption | eassumption].
+    eapply possible_crash_disjoint; eauto.
+    apply possible_crash_union; eauto.
+Qed.
+
+Theorem crash_xform_or_dist : forall (p q : pred),
+  crash_xform (p \/ q) <=p=> crash_xform p \/ crash_xform q.
+Proof.
+  firstorder.
+Qed.
+
+Theorem crash_xform_lift_empty : forall (P : Prop),
+  crash_xform [[ P ]] <=p=> [[ P ]].
+Proof.
+  unfold crash_xform, lift_empty, possible_crash; intros; split;
+    intros m H; repeat deex.
+  specialize (H1 a); destruct H1; intuition.
+  repeat deex; congruence.
+  eexists; intuition.
+Qed.
+
+Theorem crash_xform_sep_star_apply : forall (p q : pred) (m m' : mem), possible_crash m m'
+  -> (p * q)%pred m
+  -> (crash_xform p * crash_xform q)%pred m'.
+Proof.
+  unfold_sep_star; intros; repeat deex.
+  edestruct possible_crash_mem_union; try eassumption; repeat deex.
+  do 2 eexists; repeat split; auto; unfold crash_xform; eexists; split; eauto.
+Qed.
+
+Theorem crash_xform_exists_comm : forall T (p : T -> pred),
+  crash_xform (exists x, p x) =p=> exists x, crash_xform (p x).
+Proof.
+  unfold crash_xform, exis, pimpl; intros.
+  repeat deex; repeat eexists; intuition eauto.
+Qed.
+
+Theorem crash_xform_pimpl : forall p q, p =p=>q
+  -> crash_xform p =p=> crash_xform q.
+Proof.
+  unfold crash_xform, pimpl; intros.
+  repeat deex; eexists; intuition eauto.
+Qed.
+
+Instance crash_xform_pimpl_proper :
+  Proper (pimpl ==> pimpl) crash_xform.
+Proof.
+  intros p q Hp.
+  apply crash_xform_pimpl; auto.
+Qed.
+
+
+Lemma ptsto_synced_valid:
+  forall a v F m,
+  (a |=> v * F)%pred m
+  -> m a = Some (v, nil).
+Proof.
+  intros.
+  eapply ptsto_valid; eauto.
+Qed.
+
+Lemma ptsto_cur_valid:
+  forall a v F m,
+  (a |~> v * F)%pred m
+  -> exists l, m a = Some (v, l).
+Proof.
+  unfold ptsto; unfold_sep_star; intros.
+  repeat deex.
+  destruct H1.
+  destruct H0.
+  exists x1.
+  apply mem_union_addr; eauto.
+Qed.
+
 
 Global Opaque pred.

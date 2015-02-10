@@ -7,6 +7,7 @@ Require Import Word.
 Require Import Nomega.
 Require Import NArith.
 Require Import FunctionalExtensionality.
+Require Import List.
 
 Set Implicit Arguments.
 
@@ -26,13 +27,6 @@ Ltac inv_option :=
     end
   end.
 
-(*
-Ltac inv_exec_recover :=
-  match goal with
-  | [ H: exec_recover _ _ _ _ _ |- _ ] => inversion H; clear H; subst
-  end.
-*)
-
 Ltac inv_exec :=
   match goal with
   | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst
@@ -42,7 +36,7 @@ Theorem read_ok:
   forall (a:addr),
   {< v,
   PRE    a |-> v
-  POST:r a |-> v * [[ r = v ]]
+  POST:r a |-> v * [[ r = (fst v) ]]
   CRASH  a |-> v
   >} Read a.
 Proof.
@@ -51,10 +45,12 @@ Proof.
   unfold lift in *; simpl in *.
   inv_exec.
   - apply sep_star_comm in H; apply ptsto_valid in H.
+    repeat deex.
     congruence.
   - eapply H2. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_assoc. apply sep_star_and2lift; split; unfold lift; eauto.
     apply sep_star_comm in H; apply ptsto_valid in H.
+    repeat deex.
     repeat inv_option. eauto.
   - right. eexists; intuition eauto.
 Qed.
@@ -65,7 +61,7 @@ Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
   PRE    a |-> v0
-  POST:r a |-> v
+  POST:r a |-> (v, valuset_list v0)
   CRASH  a |-> v0
   >} Write a v.
 Proof.
@@ -74,16 +70,55 @@ Proof.
   unfold lift in *; simpl in *.
   inv_exec.
   - apply sep_star_comm in H; apply ptsto_valid in H.
+    repeat deex.
     congruence.
-  - eapply H2. instantiate (1:=upd m a v).
+  - eapply H2; eauto.
     repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
     apply sep_star_comm. apply sep_star_comm in H.
-    eapply ptsto_upd; eauto.
+    apply ptsto_valid in H as H'.
+    rewrite H' in H8. inversion H8; subst.
+    eapply pimpl_trans; [ apply pimpl_refl | | ].
+    apply pimpl_sep_star; [ | apply pimpl_refl ].
+    unfold valuset_list; simpl.
+    apply pimpl_refl.
+    eapply ptsto_upd.
     eauto.
   - right. eexists; intuition eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
+
+Theorem sync_ok:
+  forall (a:addr),
+  {< v,
+  PRE    a |-> v
+  POST:r a |-> (fst v, nil)
+  CRASH  a |-> v
+  >} Sync a.
+Proof.
+  unfold corr2, exis; intros; repeat deex.
+  destruct_lift H.
+  inv_exec.
+  - apply sep_star_comm in H; apply ptsto_valid in H.
+    repeat deex.
+    congruence.
+  - eapply H4; eauto.
+    apply sep_star_and2lift; split; firstorder.
+    apply sep_star_and2lift; split; firstorder.
+    apply sep_star_comm.
+
+    apply sep_star_comm in H as H'.
+    apply ptsto_valid in H'.
+    rewrite H' in H6.
+    inversion H6; simpl in *; subst.
+
+    eapply ptsto_upd.
+    apply sep_star_comm.
+    eauto.
+  - right. eexists; intuition eauto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (Sync _) _) => apply sync_ok : prog.
 
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
@@ -127,8 +162,8 @@ Qed.
 Definition For_ (T: Type)
                 (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
-                (nocrash : G -> addr -> L -> @pred addrlen valu)
-                (crashed : G -> @pred addrlen valu)
+                (nocrash : G -> addr -> L -> @pred addrlen valuset)
+                (crashed : G -> @pred addrlen valuset)
                 (rx: L -> prog T) : prog T.
   refine (Fix (@for_args_wf L) (fun _ => prog T)
           (fun args For_ => _)

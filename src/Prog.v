@@ -5,6 +5,8 @@ Require Import Eqdep_dec.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
+Require Import List.
+Import ListNotations.
 
 Set Implicit Arguments.
 
@@ -38,7 +40,8 @@ Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]
 Inductive prog (T: Type) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
-| Write (a: addr) (v: valu) (rx: unit -> prog T).
+| Write (a: addr) (v: valu) (rx: unit -> prog T)
+| Sync (a: addr) (rx: unit -> prog T).
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 
@@ -46,36 +49,49 @@ Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right asso
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
 
 
-Definition mem {len : nat} {V : Type} := word len -> option V.
+Definition valuset := (valu * list valu)%type.
+Definition valuset_list (vs : valuset) := fst vs :: snd vs.
+
+Definition mem {len : nat} {V: Type} := word len -> option V.
 Definition upd {len : nat} {V: Type} (m : mem) (a : word len) (v : V) : mem :=
   fun a' => if weq a' a then Some v else m a'.
 
 Inductive outcome (T: Type) :=
 | Failed
-| Finished (m: @mem addrlen valu) (v: T)
-| Crashed (m: @mem addrlen valu).
+| Finished (m: @mem addrlen valuset) (v: T)
+| Crashed (m: @mem addrlen valuset).
 
 Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
   -> exec m (Read a rx) (Failed T)
-| XWriteFail : forall m a v rx, m a = None
-  -> exec m (Write a v rx) (Failed T)
-| XReadOK : forall m a v rx out, m a = Some v
+| XReadOK : forall m a v rx out x, m a = Some (v, x)
   -> exec m (rx v) out
   -> exec m (Read a rx) out
-| XWriteOK : forall m a v v0 rx out, m a = Some v0
-  -> exec (upd m a v) (rx tt) out
+| XWriteFail : forall m a v rx, m a = None
+  -> exec m (Write a v rx) (Failed T)
+| XWriteOK : forall m a v v0 rx out x, m a = Some (v0, x)
+  -> exec (upd m a (v, v0 :: x)) (rx tt) out
   -> exec m (Write a v rx) out
-| XDone : forall (m: mem) v, exec m (Done v) (Finished m v)
-| XCrash : forall m p, exec m p (Crashed T m).
+| XSyncFail : forall m a rx, m a = None
+  -> exec m (Sync a rx) (Failed T)
+| XSyncOK : forall m a v l rx out, m a = Some (v, l)
+  -> exec (upd m a (v, nil)) (rx tt) out
+  -> exec m (Sync a rx) out
+| XCrash : forall m p, exec m p (Crashed T m)
+| XDone : forall m v, exec m (Done v) (Finished m v).
 
 Hint Constructors exec.
 
 
 Inductive recover_outcome (TF TR: Type) :=
 | RFailed
-| RFinished (m: @mem addrlen valu) (v: TF)
-| RRecovered (m: @mem addrlen valu) (v: TR).
+| RFinished (m: @mem addrlen valuset) (v: TF)
+| RRecovered (m: @mem addrlen valuset) (v: TR).
+
+Definition possible_crash (m m' : @mem valuset) : Prop :=
+  forall a,
+  (m a = None /\ m' a = None) \/
+  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
 
 Inductive exec_recover (TF TR: Type)
   : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
@@ -83,14 +99,17 @@ Inductive exec_recover (TF TR: Type)
   -> exec_recover m p1 p2 (RFailed TF TR)
 | XRFinished : forall m p1 p2 m' (v: TF), exec m p1 (Finished m' v)
   -> exec_recover m p1 p2 (RFinished TR m' v)
-| XRCrashedFailed : forall m p1 p2 m', exec m p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RFailed TR TR)
+| XRCrashedFailed : forall m p1 p2 m' m'r, exec m p1 (Crashed TF m')
+  -> possible_crash m' m'r
+  -> @exec_recover TR TR m'r p2 p2 (RFailed TR TR)
   -> exec_recover m p1 p2 (RFailed TF TR)
-| XRCrashedFinished : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RFinished TR m'' v)
+| XRCrashedFinished : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+  -> possible_crash m' m'r
+  -> @exec_recover TR TR m'r p2 p2 (RFinished TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v)
-| XRCrashedRecovered : forall m p1 p2 m' m'' (v: TR), exec m p1 (Crashed TF m')
-  -> @exec_recover TR TR m' p2 p2 (RRecovered TR m'' v)
+| XRCrashedRecovered : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+  -> possible_crash m' m'r
+  -> @exec_recover TR TR m'r p2 p2 (RRecovered TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v).
 
 Hint Constructors exec_recover.
@@ -129,11 +148,8 @@ Theorem upd_comm: forall len m (a0 : word len) (v0:V) a1 v1, a0 <> a1
   -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (weq a1 x); case_eq (weq a0 x); intros; subst.
-  rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
-  rewrite upd_eq; auto. rewrite upd_ne; auto. rewrite upd_eq; auto.
-  rewrite upd_ne; auto. rewrite upd_eq; auto. rewrite upd_eq; auto.
-  rewrite upd_ne; auto. rewrite upd_ne; auto. rewrite upd_ne; auto. rewrite upd_ne; auto.
+  case_eq (weq a1 x); case_eq (weq a0 x); intros; subst; try congruence;
+  repeat ( ( rewrite upd_ne by auto ) || ( rewrite upd_eq by auto ) ); auto.
 Qed.
 
 End GenMem.

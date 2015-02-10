@@ -1,5 +1,6 @@
 Require Import Prog.
 Require Import Pred.
+Require Import List.
 Require Import Morphisms.
 
 Set Implicit Arguments.
@@ -7,7 +8,7 @@ Set Implicit Arguments.
 
 (** ** Hoare logic *)
 
-Definition donecond (T: Type) := T -> @mem addrlen valu -> Prop.
+Definition donecond (T: Type) := T -> @mem addrlen valuset -> Prop.
 
 Definition corr2 (T: Type) (pre: donecond T -> pred -> pred) (p: prog T) :=
   forall done crash m out, pre done crash m
@@ -55,6 +56,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash >} p1 >> p
    (fun done_ crashdone_ =>
      exists F,
      F * pre *
+     [[ crash_xform F =p=> F ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => (fun rp => F * post) r_ *
                                  [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
@@ -103,7 +105,7 @@ Proof.
   unfold corr2, pimpl; intros.
   edestruct H1; eauto.
   eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
-  unfold lift in H4; rewrite H4 in *; eauto.
+  unfold lift in *; subst; eauto.
   firstorder.
 Qed.
 
@@ -117,7 +119,7 @@ Proof.
   unfold corr3, pimpl; intros.
   edestruct H1; eauto.
   eapply sep_star_lift_l in H4; [|instantiate (1:=([x=y])%pred)].
-  unfold lift in H4; rewrite H4 in *; eauto.
+  unfold lift in *; subst; eauto.
   firstorder.
 Qed.
 
@@ -150,7 +152,8 @@ Theorem pre_false2:
   (forall done crash, pre done crash =p=> [False])
   -> {{ pre }} p.
 Proof.
-  firstorder.
+  unfold corr2; intros; exfalso.
+  eapply H; eauto.
 Qed.
 
 Theorem pre_false3:
@@ -158,7 +161,8 @@ Theorem pre_false3:
   (forall done crashdone, pre done crashdone =p=> [False])
   -> {{ pre }} p >> r.
 Proof.
-  firstorder.
+  unfold corr3; intros; exfalso.
+  eapply H; eauto.
 Qed.
 
 
@@ -187,9 +191,8 @@ Theorem corr2_forall: forall T R pre (p: prog R),
   -> forall (a:T), {{ fun done crash => pre done crash a }} p.
 Proof.
   unfold corr2; intros.
-  eapply H.
+  eapply H; eauto.
   exists a; eauto.
-  eauto.
 Qed.
 
 Theorem corr3_forall: forall T RF RR pre (p: prog RF) (r: prog RR),
@@ -197,9 +200,8 @@ Theorem corr3_forall: forall T RF RR pre (p: prog RF) (r: prog RR),
   -> forall (a:T), {{ fun done crashdone => pre done crashdone a }} p >> r.
 Proof.
   unfold corr3; intros.
-  eapply H.
+  eapply H; eauto.
   exists a; eauto.
-  eauto.
 Qed.
 
 

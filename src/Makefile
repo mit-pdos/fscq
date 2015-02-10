@@ -7,7 +7,6 @@ MODULES    := Nomega Word WordAuto \
 	      MemLog Balloc Inode BFile BFileRec Dir \
 	      FS Testprog \
 	      ExtrHaskellPrelude Extraction
-	      # TxnWrap Scratch
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
