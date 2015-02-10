@@ -8,6 +8,7 @@ Require Import Pred.
 Require Import Hoare.
 Require Import GenSep.
 Require Import SepAuto.
+Require Import BasicProg.
 
 Module Map := FMapList.Make(Addr_as_OT).
 
@@ -17,16 +18,27 @@ Set Implicit Arguments.
 Definition cachestate := Map.t valu.
 Definition cs_empty := Map.empty valu.
 
+Record xparams := {
+  MaxCacheBlocks : addr
+}.
+
 Module BUFCACHE.
 
   Definition rep (cs : cachestate) (l : list valu) :=
     (array $0 l $1 * [[ forall a v, Map.MapsTo a v cs -> sel l a $0 = v ]])%pred.
 
-  Definition trim T (cs : cachestate) rx : prog T :=
-    rx cs.
+  Definition trim T xp (cs : cachestate) rx : prog T :=
+    If (wlt_dec $ (Map.cardinal cs) (MaxCacheBlocks xp)) {
+      rx cs
+    } else {
+      match (Map.elements cs) with
+      | nil => rx cs
+      | (a,v) :: tl => rx (Map.remove a cs)
+      end
+    }.
 
-  Definition read T a (cs : cachestate) rx : prog T :=
-    cs <- trim cs;
+  Definition read T xp a (cs : cachestate) rx : prog T :=
+    cs <- trim xp cs;
     match Map.find a cs with
     | Some v => rx (cs, v)
     | None =>
@@ -34,32 +46,35 @@ Module BUFCACHE.
       rx (Map.add a v cs, v)
     end.
 
-  Definition write T a v (cs : cachestate) rx : prog T :=
-    cs <- trim cs;
+  Definition write T xp a v (cs : cachestate) rx : prog T :=
+    cs <- trim xp cs;
     ArrayWrite $0 a $1 v;;
     rx (Map.add a v cs).
 
   Hint Resolve list2mem_ptsto_bounds.
   Ltac unfold_rep := unfold rep.
 
-  Theorem trim_ok : forall cs,
+  Theorem trim_ok : forall xp cs,
     {< l,
     PRE      rep cs l
     POST:cs' rep cs' l
     CRASH    rep cs l
-    >} trim cs.
+    >} trim xp cs.
   Proof.
-    unfold trim; hoare.
+    unfold trim, rep; hoare.
+    destruct (Map.elements cs); hoare.
+    destruct p0; hoare.
+    apply H4. eapply Map.remove_3. eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (trim _) _) => apply trim_ok : prog.
+  Hint Extern 1 ({{_}} progseq (trim _ _) _) => apply trim_ok : prog.
 
-  Theorem read_ok : forall cs a,
+  Theorem read_ok : forall xp cs a,
     {< l F v,
     PRE      rep cs l * [[ (F * a |-> v)%pred (list2mem l) ]]
     POST:csv rep (fst csv) l * [[ snd csv = v ]]
     CRASH    rep cs l
-    >} read a cs.
+    >} read xp a cs.
   Proof.
     unfold read.
     hoare_unfold unfold_rep.
@@ -79,9 +94,9 @@ Module BUFCACHE.
     congruence.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
 
-  Theorem write_ok : forall cs a v,
+  Theorem write_ok : forall xp cs a v,
     {< l F v0,
     PRE      rep cs l * [[ (F * a |-> v0)%pred (list2mem l) ]]
     POST:cs' exists l',
@@ -89,7 +104,7 @@ Module BUFCACHE.
     CRASH    rep cs l \/
              exists cs' l',
              rep cs' l' * [[ (F * a |-> v)%pred (list2mem l') ]]
-    >} write a v cs.
+    >} write xp a v cs.
   Proof.
     unfold write.
     hoare_unfold unfold_rep.
@@ -114,6 +129,6 @@ Module BUFCACHE.
     eapply list2mem_upd; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
 End BUFCACHE.
