@@ -2,6 +2,9 @@ Require Import Arith.
 Require Import Word.
 Require Import FunctionalExtensionality.
 Require Import Eqdep_dec.
+Require Import Structures.OrderedType.
+Require Import Structures.OrderedTypeEx.
+Require Import Omega.
 
 Set Implicit Arguments.
 
@@ -134,6 +137,41 @@ Proof.
 Qed.
 
 End GenMem.
+
+
+Module Addr_as_OT <: UsualOrderedType.
+  Definition t := addr.
+  Definition eq := @eq t.
+  Definition eq_refl := @eq_refl t.
+  Definition eq_sym := @eq_sym t.
+  Definition eq_trans := @eq_trans t.
+  Definition lt := @wlt addrlen.
+
+  Lemma lt_trans: forall x y z : t, lt x y -> lt y z -> lt x z.
+  Proof.
+    unfold lt; intros.
+    apply wlt_lt in H; apply wlt_lt in H0.
+    apply lt_wlt.
+    omega.
+  Qed.
+
+  Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
+  Proof.
+    unfold lt, eq; intros.
+    apply wlt_lt in H.
+    intro He; subst; omega.
+  Qed.
+
+  Definition compare x y : Compare lt eq x y.
+    unfold lt, eq.
+    destruct (wlt_dec x y); [ apply LT; auto | ].
+    destruct (weq x y); [ apply EQ; auto | ].
+    apply GT. apply le_neq_lt; auto.
+  Defined.
+
+  Definition eq_dec := @weq addrlen.
+End Addr_as_OT.
+
 
 Lemma addrlen_valulen: addrlen + (valulen - addrlen) = valulen.
 Proof.
