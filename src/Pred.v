@@ -981,6 +981,30 @@ Proof.
     right. do 2 eexists. intuition.
 Qed.
 
+Theorem possible_crash_trans : forall ma mb mc,
+  possible_crash ma mb ->
+  possible_crash mb mc ->
+  possible_crash ma mc.
+Proof.
+  unfold possible_crash; intros.
+  specialize (H a).
+  specialize (H0 a).
+  intuition; repeat deex; try congruence.
+  right; repeat eexists; intuition eauto.
+  rewrite H0 in H1.
+  inversion H1; subst; clear H1.
+  inversion H3.
+  simpl in H1; subst; auto.
+  inversion H1.
+Qed.
+
+Theorem crash_xform_idem : forall p, crash_xform (crash_xform p) =p=> crash_xform p.
+Proof.
+  unfold crash_xform, pimpl; intros.
+  repeat deex; eexists; intuition eauto.
+  eapply possible_crash_trans; eauto.
+Qed.
+
 Theorem crash_xform_sep_star_dist : forall (p q : pred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
 Proof.
@@ -1006,6 +1030,13 @@ Proof.
   unfold_sep_star; intros; repeat deex.
   edestruct possible_crash_mem_union; try eassumption; repeat deex.
   do 2 eexists; repeat split; auto; unfold crash_xform; eexists; split; eauto.
+Qed.
+
+Theorem crash_xform_exists_comm : forall T (p : T -> pred),
+  crash_xform (exists x, p x) =p=> exists x, crash_xform (p x).
+Proof.
+  unfold crash_xform, exis, pimpl; intros.
+  repeat deex; repeat eexists; intuition eauto.
 Qed.
 
 Theorem crash_xform_pimpl : forall p q, p =p=>q
