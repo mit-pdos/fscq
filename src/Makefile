@@ -40,7 +40,8 @@ coqbuild/%.v: %.v strip-proofs.py
 
 coqproof/%.v: %.v
 	@mkdir -p coqproof
-	./compile_parallel.py $< > $@.new
+	# ./compile_parallel.py $< > $@.new
+	cat $< > $@.new
 	@touch -r $< $@.new
 	@mv $@.new $@
 
