@@ -1,6 +1,6 @@
 - memlog proofs
 - performance
-- directories
+- directory proofs
 - byte-level read/write
-- buffer cache: eviction, integrate with memlog
-- async-io
+- buffer cache: LRU eviction, integrate with memlog
+- end-to-end theorems in FS
