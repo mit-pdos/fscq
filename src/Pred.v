@@ -1171,6 +1171,21 @@ Proof.
   apply crash_xform_pimpl; auto.
 Qed.
 
+Theorem crash_invariant_ptsto: forall a v,
+  crash_xform (a |=> v) =p=> a |=> v.
+Proof.
+  unfold crash_xform, pimpl, possible_crash, ptsto; intros.
+  deex; intuition eauto.
+  { destruct (H1 a).
+    + intuition; congruence.
+    + repeat deex.
+      inversion H5; subst; rewrite H in H3; inversion H3; subst; [ auto | inversion H4 ]. }
+  { destruct (H1 a').
+    + intuition.
+    + repeat deex.
+      assert (x a' = None) by eauto; congruence.
+  }
+Qed.
 
 Lemma ptsto_synced_valid:
   forall len (a : word len) v F m,
