@@ -57,6 +57,8 @@ main = do
   fuseMain (fscqFSOps fd) defaultExceptionHandler
   closeFd fd
 
+-- See the HFuse API docs at:
+-- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
 fscqFSOps :: Fd -> FuseOperations HT
 fscqFSOps fd = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fd
@@ -116,7 +118,7 @@ fscqGetFileStat _ "/" = do
   return $ Right $ dirStat ctx
 fscqGetFileStat fd path | path == fscqPath = do
   ctx <- getFuseContext
-  (W len) <- I.run fd $ FS.file_len lxp ixp (W 0)
+  (W len) <- I.run fd $ FS.file_len lxp ixp (W 1)
   return $ Right $ fileStat ctx $ fromIntegral len
 fscqGetFileStat _ _ =
   return $ Left eNOENT
@@ -128,17 +130,21 @@ fscqOpenDirectory _   = return eNOENT
 fscqReadDirectory :: Fd -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 fscqReadDirectory fd "/" = do
   ctx <- getFuseContext
-  (W len) <- I.run fd $ FS.file_len lxp ixp (W 0)
-  return $ Right [(".",          dirStat ctx)
-                 ,("..",         dirStat ctx)
-                 ,(fscqName,    fileStat ctx $ fromIntegral len)
-                 ]
-  where (_:fscqName) = fscqPath
+  files <- I.run fd $ FS.readdir lxp ixp (W 0)
+  (W len) <- I.run fd $ FS.file_len lxp ixp (W 1)
+  return $ Right $ [(".",          dirStat ctx)
+                   ,("..",         dirStat ctx)
+                   ,(fscqName,    fileStat ctx $ fromIntegral len)
+                   ] ++ map (\item -> (mkfn item, fileStat ctx 0)) files
+  where
+    (_:fscqName) = fscqPath
+    mkfn (W fni, inum) = "dummy"
+    -- should actually convert (fni :: Integer) into a [Char] somehow..
 fscqReadDirectory _ _ = return (Left (eNOENT))
 
 fscqOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen path mode _
-  | path == fscqPath = return $ Right $ W 0
+  | path == fscqPath = return $ Right $ W 1
   | otherwise        = return (Left eNOENT)
 
 -- Wrappers for converting Coq_word to/from ByteString, with

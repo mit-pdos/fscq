@@ -5,6 +5,7 @@ Require Import Word.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred.
+Require Import Dir.
 
 Definition file_len T lxp ixp inum rx : prog T :=
   ms <- MEMLOG.begin lxp;
@@ -46,3 +47,9 @@ Definition write_block T lxp bxp ixp inum off v rx : prog T :=
     ok <- MEMLOG.commit lxp ms;
     rx ok
   }.
+
+Definition readdir T lxp ixp dnum rx : prog T :=
+  ms <- MEMLOG.begin lxp;
+  files <- DIR.dlist lxp ixp dnum ms;
+  _ <- MEMLOG.commit lxp ms;
+  rx files.
