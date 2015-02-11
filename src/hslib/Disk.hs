@@ -7,7 +7,6 @@ import Word
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BSI
 import qualified GHC.Integer.GMP.Internals as GMPI
-import GHC.Base
 import GHC.Exts
 import Foreign.ForeignPtr
 
@@ -33,8 +32,7 @@ debugmsg s =
 bs2i :: BS.ByteString -> IO Integer
 bs2i (BSI.PS fp _ _) = do
   withForeignPtr fp $ \p -> case p of
-    (GHC.Exts.Ptr a) -> IO $ \s -> case GMPI.importIntegerFromAddr a 512## -1# s of
-      (# s', i #) -> (# s', i #)
+    (GHC.Exts.Ptr a) -> GMPI.importIntegerFromAddr a 512## 0#
 
 i2bs :: Integer -> IO BS.ByteString
 i2bs i = BSI.create 512 f
@@ -42,8 +40,9 @@ i2bs i = BSI.create 512 f
     f = \p -> do
       _ <- BSI.memset p 0 512
       case p of
-        (GHC.Exts.Ptr a) -> IO $ \s -> case GMPI.exportIntegerToAddr i a -1# s of
-          (# s', _ #) -> (# s', () #)
+        (GHC.Exts.Ptr a) -> do
+          _ <- GMPI.exportIntegerToAddr i a 0#
+          return ()
 
 read_disk :: Handle -> Coq_word -> IO Coq_word
 read_disk f (W a) = do
