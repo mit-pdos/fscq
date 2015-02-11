@@ -1,12 +1,13 @@
 module Main where
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BSI
 import qualified System.Directory
 import Foreign.C.Error
+import Foreign.ForeignPtr
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
-import System.IO
 import System.Fuse
 import Word
 import Disk
@@ -42,29 +43,29 @@ ixp = Inode.Build_xparams
 main :: IO ()
 main = do
   fileExists <- System.Directory.doesFileExist disk_fn
-  f <- openFile disk_fn ReadWriteMode
+  fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   if fileExists
   then
     do
       putStrLn "Recovering disk.."
-      I.run f $ MemLog._MEMLOG__recover lxp
+      I.run fd $ MemLog._MEMLOG__recover lxp
   else
     do
       putStrLn "Initializing disk.."
-      I.run f $ MemLog._MEMLOG__init lxp
+      I.run fd $ MemLog._MEMLOG__init lxp
   putStrLn "Starting file system.."
-  fuseMain (fscqFSOps f) defaultExceptionHandler
-  hClose f
+  fuseMain (fscqFSOps fd) defaultExceptionHandler
+  closeFd fd
 
-fscqFSOps :: Handle -> FuseOperations HT
-fscqFSOps f = defaultFuseOps
-  { fuseGetFileStat = fscqGetFileStat f
+fscqFSOps :: Fd -> FuseOperations HT
+fscqFSOps fd = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat fd
   , fuseOpen = fscqOpen
-  , fuseRead = fscqRead f
-  , fuseWrite = fscqWrite f
-  , fuseSetFileSize = fscqSetFileSize f
+  , fuseRead = fscqRead fd
+  , fuseWrite = fscqWrite fd
+  , fuseSetFileSize = fscqSetFileSize fd
   , fuseOpenDirectory = fscqOpenDirectory
-  , fuseReadDirectory = fscqReadDirectory f
+  , fuseReadDirectory = fscqReadDirectory fd
   , fuseGetFileSystemStats = fscqGetFileSystemStats
   }
 
@@ -109,13 +110,13 @@ fileStat ctx len = FileStat
   , statStatusChangeTime = 0
   }
 
-fscqGetFileStat :: Handle -> FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat :: Fd -> FilePath -> IO (Either Errno FileStat)
 fscqGetFileStat _ "/" = do
   ctx <- getFuseContext
   return $ Right $ dirStat ctx
-fscqGetFileStat f path | path == fscqPath = do
+fscqGetFileStat fd path | path == fscqPath = do
   ctx <- getFuseContext
-  (W len) <- I.run f $ FS.file_len lxp ixp (W 0)
+  (W len) <- I.run fd $ FS.file_len lxp ixp (W 0)
   return $ Right $ fileStat ctx $ fromIntegral len
 fscqGetFileStat _ _ =
   return $ Left eNOENT
@@ -124,10 +125,10 @@ fscqOpenDirectory :: FilePath -> IO Errno
 fscqOpenDirectory "/" = return eOK
 fscqOpenDirectory _   = return eNOENT
 
-fscqReadDirectory :: Handle -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory f "/" = do
+fscqReadDirectory :: Fd -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory fd "/" = do
   ctx <- getFuseContext
-  (W len) <- I.run f $ FS.file_len lxp ixp (W 0)
+  (W len) <- I.run fd $ FS.file_len lxp ixp (W 0)
   return $ Right [(".",          dirStat ctx)
                  ,("..",         dirStat ctx)
                  ,(fscqName,    fileStat ctx $ fromIntegral len)
@@ -140,18 +141,26 @@ fscqOpen path mode _
   | path == fscqPath = return $ Right $ W 0
   | otherwise        = return (Left eNOENT)
 
-fscqRead :: Handle -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
-fscqRead f _ inum byteCount offset = do
+-- Wrappers for converting Coq_word to/from ByteString, with
+-- the help of i2buf and buf2i from hslib/Disk.
+bs2i :: BS.ByteString -> IO Integer
+bs2i (BSI.PS fp _ _) = withForeignPtr fp buf2i
+
+i2bs :: Integer -> IO BS.ByteString
+i2bs i = BSI.create 512 $ i2buf i
+
+fscqRead :: Fd -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
+fscqRead fd _ inum byteCount offset = do
   -- Ignore the count and offset for now..
-  (W w) <- I.run f $ FS.read_block lxp ixp inum (W 0)
+  (W w) <- I.run fd $ FS.read_block lxp ixp inum (W 0)
   bs <- i2bs w
   return $ Right $ BS.take (fromIntegral byteCount) $ BS.drop (fromIntegral offset) bs
 
-fscqWrite :: Handle -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
-fscqWrite f _ inum bs offset = do
+fscqWrite :: Fd -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
+fscqWrite fd _ inum bs offset = do
   -- Ignore the offset for now..
   w <- bs2i bs_pad
-  ok <- I.run f $ FS.write_block lxp bxp ixp inum (W 0) (W w)
+  ok <- I.run fd $ FS.write_block lxp bxp ixp inum (W 0) (W w)
   if ok then
     return $ Right $ fromIntegral bs_len
   else
@@ -160,8 +169,8 @@ fscqWrite f _ inum bs offset = do
     bs_pad = BS.append bs (BS.replicate (512 - bs_len) 0)
     bs_len = BS.length bs
 
-fscqSetFileSize :: Handle -> FilePath -> FileOffset -> IO Errno
-fscqSetFileSize f path size =
+fscqSetFileSize :: Fd -> FilePath -> FileOffset -> IO Errno
+fscqSetFileSize fd path size =
   return eOK
 
 fscqGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
