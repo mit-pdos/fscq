@@ -163,8 +163,29 @@ Proof.
   admit.
   step.
 
-  (* ... *)
-Admitted.
+  instantiate (p:=p). instantiate (a:=m). cancel.
+  apply pimpl_or_r; left. cancel.
+
+  instantiate (a0:=m). cancel.
+  apply pimpl_or_r; left. cancel.
+
+  cancel. apply pimpl_or_r; left.
+  admit.
+
+  admit.
+
+  step.
+
+  instantiate (p:=p).
+  instantiate (a2:=m). cancel.
+  apply pimpl_or_r; left. cancel.
+
+  instantiate (a3:=m). cancel.
+  apply pimpl_or_r; left. cancel.
+
+  cancel.
+  admit.
+Qed.
 
 Definition write_block T lxp bxp ixp inum off v rx : prog T :=
   ms <- MEMLOG.begin lxp;
