@@ -1,6 +1,6 @@
 module Main where
 
-import System.IO
+import System.Posix.IO
 import MemLog
 import Balloc
 import Inode
@@ -49,24 +49,24 @@ main :: IO ()
 main = do
   -- This is racy (stat'ing the file first and opening it later)
   fileExists <- System.Directory.doesFileExist disk_fn
-  f <- openFile disk_fn ReadWriteMode
+  fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   if fileExists
   then
     do
       putStrLn "Recovering disk.."
-      I.run f $ _MEMLOG__recover lxp
+      I.run fd $ _MEMLOG__recover lxp
   else
     do
       putStrLn "Initializing disk.."
-      I.run f $ _MEMLOG__init lxp
+      I.run fd $ _MEMLOG__init lxp
   putStrLn "Running program.."
-  -- r <- I.run f $ the_prog lxp
-  -- r <- I.run f $ Testprog.testcopy lxp
-  -- r <- I.run f $ Testprog.testalloc lxp bxp
+  -- r <- I.run fd $ the_prog lxp
+  -- r <- I.run fd $ Testprog.testcopy lxp
+  -- r <- I.run fd $ Testprog.testalloc lxp bxp
   r <- repf 10000 (Just (W 123))
        (\x -> case x of
               Nothing -> return Nothing
-              Just xv -> I.run f $ Testprog.test_bfile lxp bxp ixp xv)
-  hClose f
+              Just xv -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv)
+  closeFd fd
   putStrLn $ "Done: " ++ (show r)
 

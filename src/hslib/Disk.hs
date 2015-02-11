@@ -3,12 +3,15 @@
 module Disk where
 
 import System.IO
+import System.Posix.Types
+import System.Posix.IO
+import System.Posix.Unistd
 import Word
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BSI
 import qualified GHC.Integer.GMP.Internals as GMPI
 import GHC.Exts
-import Foreign.ForeignPtr
+import Foreign.Marshal.Alloc
+import Data.Word
 
 verbose :: Bool
 verbose = False
@@ -29,38 +32,45 @@ debugmsg s =
 -- Snippets of ByteArray# manipulation code from GHC's
 -- testsuite/tests/lib/integer/integerGmpInternals.hs
 
-bs2i :: BS.ByteString -> IO Integer
-bs2i (BSI.PS fp _ _) = do
-  withForeignPtr fp $ \p -> case p of
-    (GHC.Exts.Ptr a) -> GMPI.importIntegerFromAddr a 512## 0#
+buf2i :: Ptr Word8 -> IO Integer
+buf2i (GHC.Exts.Ptr a) = do
+  GMPI.importIntegerFromAddr a 512## 0#
 
-i2bs :: Integer -> IO BS.ByteString
-i2bs i = BSI.create 512 f
-  where
-    f = \p -> do
-      _ <- BSI.memset p 0 512
-      case p of
-        (GHC.Exts.Ptr a) -> do
-          _ <- GMPI.exportIntegerToAddr i a 0#
-          return ()
-
-read_disk :: Handle -> Coq_word -> IO Coq_word
-read_disk f (W a) = do
-  debugmsg $ "read(" ++ (show a) ++ ")"
-  hSeek f AbsoluteSeek $ 512*a
-  bs <- BS.hGet f 512
-  i <- bs2i bs
-  return $ W i
-
-write_disk :: Handle -> Coq_word -> Coq_word -> IO ()
-write_disk f (W a) (W v) = do
-  -- maybeCrash
-  debugmsg $ "write(" ++ (show a) ++ ")"
-  bs <- i2bs v
-  hSeek f AbsoluteSeek $ 512*a
-  BS.hPut f bs
+i2buf :: Integer -> Ptr Word8 -> IO ()
+i2buf i (GHC.Exts.Ptr a) = do
+  _ <- BSI.memset (GHC.Exts.Ptr a) 0 512
+  _ <- GMPI.exportIntegerToAddr i a 0#
   return ()
 
-sync_disk :: Handle -> IO ()
-sync_disk _ = do
+read_disk :: Fd -> Coq_word -> IO Coq_word
+read_disk fd (W a) = do
+  debugmsg $ "read(" ++ (show a) ++ ")"
+  allocaBytes 512 $ \buf -> do
+    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 512*a
+    cc <- fdReadBuf fd buf 512
+    if cc == 512 then
+      do
+        i <- buf2i buf
+        return $ W i
+    else
+      do
+        error "read_disk: short read"
+
+write_disk :: Fd -> Coq_word -> Coq_word -> IO ()
+write_disk fd (W a) (W v) = do
+  -- maybeCrash
+  debugmsg $ "write(" ++ (show a) ++ ")"
+  allocaBytes 512 $ \buf -> do
+    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 512*a
+    i2buf v buf
+    cc <- fdWriteBuf fd buf 512
+    if cc == 512 then
+      return ()
+    else
+      do
+        error "write_disk: short write"
+
+sync_disk :: Fd -> IO ()
+sync_disk fd = do
+  -- fileSynchroniseDataOnly fd
   return ()
