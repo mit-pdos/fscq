@@ -72,5 +72,6 @@ write_disk fd (W a) (W v) = do
 
 sync_disk :: Fd -> IO ()
 sync_disk fd = do
+  debugmsg $ "sync()"
   -- fileSynchroniseDataOnly fd
   return ()
