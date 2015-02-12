@@ -234,18 +234,18 @@ Module BFILE.
 
 
   Theorem bfgrow_ok : forall lxp bxp ixp inum ms,
-    {< F A mbase m flist f,
+    {< F A B mbase m flist f,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ length (BFData f) < INODE.blocks_per_inode ]] *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * inum |-> f)%pred (list2mem flist) ]]
+             [[ (A * inum |-> f)%pred (list2mem flist) ]] *
+             [[ B %pred (list2mem (BFData f)) ]]
     POST:r   exists m', MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
             ([[ fst r = false ]] \/ 
-             [[ fst r = true ]] * exists flist' f',
+             [[ fst r = true ]] * exists flist' f' v,
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-             [[ length (BFData f') = length (BFData f) + 1 ]])
-             (* XXX this should be: BFData f' = BFData f ++ [$0] *)
+             [[ (B * $ (length (BFData f)) |-> v)%pred (list2mem (BFData f')) ]] )
     CRASH    MEMLOG.log_intact lxp mbase
     >} bfgrow lxp bxp ixp inum ms.
   Proof.
@@ -321,17 +321,17 @@ Module BFILE.
   Qed.
 
   Theorem bfshrink_ok : forall lxp bxp ixp inum ms,
-    {< F A mbase m flist f,
+    {< F A B mbase m flist f v,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ length (BFData f) > 0 ]] *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * inum |-> f)%pred (list2mem flist) ]]
+             [[ (A * inum |-> f)%pred (list2mem flist) ]] *
+             [[ (B * $ ((length (BFData f)) - 1) |-> v)%pred (list2mem (BFData f)) ]]
     POST:ms' exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-             [[ length (BFData f') = length (BFData f) - 1 ]]
-             (* XXX this should be: BFData f' = (firstn .. BFData f) *)
+             [[ B %pred (list2mem (BFData f')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} bfshrink lxp bxp ixp inum ms.
   Proof.
