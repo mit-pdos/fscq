@@ -1,7 +1,7 @@
 Require Import Arith.
 Require Import Bool.
 Require Import List.
-Require Import FMapList.
+Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
@@ -19,7 +19,7 @@ Require Import Eqdep_dec.
 Require Import GenSep.
 Require Import WordAuto.
 
-Module Map := FMapList.Make(Addr_as_OT).
+Module Map := FMapAVL.Make(Addr_as_OT).
 
 Import ListNotations.
 Set Implicit Arguments.
