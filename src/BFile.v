@@ -245,6 +245,7 @@ Module BFILE.
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
              [[ length (BFData f') = length (BFData f) + 1 ]])
+             (* XXX this should be: BFData f' = BFData f ++ [$0] *)
     CRASH    MEMLOG.log_intact lxp mbase
     >} bfgrow lxp bxp ixp inum ms.
   Proof.
@@ -330,6 +331,7 @@ Module BFILE.
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
              [[ length (BFData f') = length (BFData f) - 1 ]]
+             (* XXX this should be: BFData f' = (firstn .. BFData f) *)
     CRASH    MEMLOG.log_intact lxp mbase
     >} bfshrink lxp bxp ixp inum ms.
   Proof.
