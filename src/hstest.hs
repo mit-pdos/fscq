@@ -8,6 +8,7 @@ import Word
 import qualified Interpreter as I
 import qualified System.Directory
 import qualified Testprog
+import qualified FS
 
 disk_fn :: String
 disk_fn = "disk.img"
@@ -45,6 +46,13 @@ repf n x f = do
   z <- repf (n-1) y f
   return z
 
+repf2 :: Integer -> r -> IO r -> IO r
+repf2 0 r _ = return r
+repf2 n _ f = do
+  r <- f
+  rr <- repf2 (n-1) r f
+  return rr
+
 main :: IO ()
 main = do
   -- This is racy (stat'ing the file first and opening it later)
@@ -63,10 +71,17 @@ main = do
   -- r <- I.run fd $ the_prog lxp
   -- r <- I.run fd $ Testprog.testcopy lxp
   -- r <- I.run fd $ Testprog.testalloc lxp bxp
-  r <- repf 10000 (Just (W 123))
-       (\x -> case x of
-              Nothing -> return Nothing
-              Just xv -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv)
+
+  -- r <- repf 10000 (Just (W 123))
+  --      (\x -> case x of
+  --             Nothing -> return Nothing
+  --             Just xv -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv)
+
+  setok <- I.run fd $ FS.set_size lxp bxp ixp (W 3) (W 68)
+  putStrLn $ "set_size: " ++ (show setok)
+
+  r <- repf2 1000 False $ I.run fd $ Testprog.test_bfile_bulkwrite lxp ixp (W 99) (W 64)
+
   closeFd fd
   putStrLn $ "Done: " ++ (show r)
 
