@@ -187,15 +187,10 @@ Proof.
   admit.
 Qed.
 
-Definition write_block T lxp bxp ixp inum off v rx : prog T :=
-  ms <- MEMLOG.begin lxp;
+Definition set_size_helper T lxp bxp ixp inum size ms rx : prog T :=
   curlen <- BFILE.bflen lxp ixp inum ms;
-  If (wlt_dec off curlen) {
-    ms <- BFILE.bfwrite lxp ixp inum off v ms;
-    ok <- MEMLOG.commit lxp ms;
-    rx ok
-  } else {
-    ms <- For n < off ^- curlen ^+ $1
+  If (wlt_dec size curlen) {
+    ms <- For n < (size ^- curlen)
       Loopvar ms <- ms
       Continuation lrx
       Invariant emp
@@ -205,15 +200,57 @@ Definition write_block T lxp bxp ixp inum off v rx : prog T :=
         let (ok, ms) := r in
         If (bool_dec ok false) {
           MEMLOG.abort lxp ms;;
-          rx false
+          rx (false, ms)
         } else {
           lrx ms
         }
     Rof;
 
+    rx (true, ms)
+  } else {
+    ms <- For n < (curlen ^- size)
+      Loopvar ms <- ms
+      Continuation lrx
+      Invariant emp
+      OnCrash emp
+      Begin
+        ms <- BFILE.bfshrink lxp bxp ixp inum ms;
+        lrx ms
+    Rof;
+
+    rx (true, ms)
+  }.
+
+Definition set_size T lxp bxp ixp inum size rx : prog T :=
+  ms <- MEMLOG.begin lxp;
+  r <- set_size_helper lxp bxp ixp inum size ms;
+  let (ok, ms) := r in
+  If (bool_dec ok true) {
+    ok <- MEMLOG.commit lxp ms;
+    rx ok
+  } else {
+    MEMLOG.abort lxp ms;;
+    rx false
+  }.
+
+Definition write_block T lxp bxp ixp inum off v rx : prog T :=
+  ms <- MEMLOG.begin lxp;
+  curlen <- BFILE.bflen lxp ixp inum ms;
+  If (wlt_dec off curlen) {
     ms <- BFILE.bfwrite lxp ixp inum off v ms;
     ok <- MEMLOG.commit lxp ms;
     rx ok
+  } else {
+    r <- set_size_helper lxp bxp ixp inum (off ^+ $1) ms;
+    let (ok, ms) := r in
+    If (bool_dec ok false) {
+      MEMLOG.abort lxp ms;;
+      rx false
+    } else {
+      ms <- BFILE.bfwrite lxp ixp inum off v ms;
+      ok <- MEMLOG.commit lxp ms;
+      rx ok
+    }
   }.
 
 Definition readdir T lxp ixp dnum rx : prog T :=
