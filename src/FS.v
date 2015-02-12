@@ -189,7 +189,7 @@ Qed.
 
 Definition set_size_helper T lxp bxp ixp inum size ms rx : prog T :=
   curlen <- BFILE.bflen lxp ixp inum ms;
-  If (wlt_dec size curlen) {
+  If (wlt_dec curlen size) {
     ms <- For n < (size ^- curlen)
       Loopvar ms <- ms
       Continuation lrx
