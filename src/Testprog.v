@@ -3,6 +3,8 @@ Require Import MemLog.
 Require Import Word.
 Require Import Balloc.
 Require Import BFile.
+Require Import BasicProg.
+Require Import Pred.
 
 Set Implicit Arguments.
 
@@ -66,6 +68,20 @@ Definition test_bfile T lxp bxp ixp v rx : prog T :=
       end
     end
   end.
+
+Definition test_bfile_bulkwrite T lxp ixp v nblocks rx : prog T :=
+  ms <- MEMLOG.begin lxp;
+  ms <- For block < nblocks
+    Loopvar ms <- ms
+    Continuation lrx
+    Invariant emp
+    OnCrash emp
+    Begin
+      ms <- BFILE.bfwrite lxp ixp $3 block v ms;
+      lrx ms
+  Rof;
+  ok <- MEMLOG.commit lxp ms;
+  rx ok.
 
 (* Why does this seemingly simple function take forever to compile?? *)
 (*
