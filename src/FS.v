@@ -10,8 +10,11 @@ Require Import Hoare.
 Require Import GenSep.
 Require Import SepAuto.
 Require Import Idempotent.
+Require Import Inode.
+Require Import List.
 
 Set Implicit Arguments.
+Import ListNotations.
 
 Definition file_len T lxp ixp inum rx : prog T :=
   ms <- MEMLOG.begin lxp;
@@ -220,6 +223,25 @@ Definition set_size_helper T lxp bxp ixp inum size ms rx : prog T :=
 
     rx (true, ms)
   }.
+
+Theorem set_size_helper_ok : forall lxp bxp ixp inum size ms,
+    {< F A mbase m flist f,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+             [[ # size <= INODE.blocks_per_inode ]] *
+             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * inum |-> f)%pred (list2mem flist) ]]
+    POST:rms [[ fst rms = false ]] * MEMLOG.log_intact lxp mbase \/
+             [[ fst rms = true ]] * exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms) *
+             [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * inum |-> f')%pred (list2mem flist') ]] *
+             [[ BFILE.BFData f' = (firstn #size (BFILE.BFData f)) ++
+                                  (MEMLOG.repeat (#size - length (BFILE.BFData f)) $0) ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} set_size_helper lxp bxp ixp inum size ms.
+Proof.
+  admit.
+Qed.
 
 Definition set_size T lxp bxp ixp inum size rx : prog T :=
   ms <- MEMLOG.begin lxp;
