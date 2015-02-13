@@ -49,17 +49,20 @@ Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right asso
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
 
 
+Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.
+
 Definition valuset := (valu * list valu)%type.
 Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 
-Definition mem {len : nat} {V: Type} := word len -> option V.
-Definition upd {len : nat} {V: Type} (m : mem) (a : word len) (v : V) : mem :=
-  fun a' => if weq a' a then Some v else m a'.
+Definition mem {A : Type} {eq : DecEq A} {V: Type} := A -> option V.
+Definition upd {A : Type} {eq : DecEq A} {V: Type} (m : @mem A eq V) (a : A) (v : V) : @mem A eq V :=
+  fun a' => if eq a' a then Some v else m a'.
+
 
 Inductive outcome (T: Type) :=
 | Failed
-| Finished (m: @mem addrlen valuset) (v: T)
-| Crashed (m: @mem addrlen valuset).
+| Finished (m: @mem addr (@weq addrlen) valuset) (v: T)
+| Crashed (m: @mem addr (@weq addrlen) valuset).
 
 Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
 | XReadFail : forall m a rx, m a = None
@@ -85,10 +88,10 @@ Hint Constructors exec.
 
 Inductive recover_outcome (TF TR: Type) :=
 | RFailed
-| RFinished (m: @mem addrlen valuset) (v: TF)
-| RRecovered (m: @mem addrlen valuset) (v: TR).
+| RFinished (m: @mem addr (@weq addrlen) valuset) (v: TF)
+| RRecovered (m: @mem addr (@weq addrlen) valuset) (v: TR).
 
-Definition possible_crash (m m' : @mem addrlen valuset) : Prop :=
+Definition possible_crash {A : Type} {eq : DecEq A} (m m' : @mem A eq valuset) : Prop :=
   forall a,
   (m a = None /\ m' a = None) \/
   (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
@@ -118,37 +121,39 @@ Hint Constructors exec_recover.
 Section GenMem.
 
 Variable V : Type.
+Variable A : Type.
+Variable aeq : DecEq A.
 
-Theorem upd_eq : forall len m (a : word len) (v:V) a',
+Theorem upd_eq : forall m (a : A) (v:V) a',
   a' = a
-  -> upd m a v a' = Some v.
+  -> @upd A aeq V m a v a' = Some v.
 Proof.
   intros; subst; unfold upd.
-  destruct (weq a a); tauto.
+  destruct (aeq a a); tauto.
 Qed.
 
-Theorem upd_ne : forall len m (a : word len) (v:V) a',
+Theorem upd_ne : forall m (a : A) (v:V) a',
   a' <> a
-  -> upd m a v a' = m a'.
+  -> @upd A aeq V m a v a' = m a'.
 Proof.
   intros; subst; unfold upd.
-  destruct (weq a' a); tauto.
+  destruct (aeq a' a); tauto.
 Qed.
 
-Theorem upd_repeat: forall len m (a : word len) (v v':V),
-  upd (upd m a v') a v = upd m a v.
+Theorem upd_repeat: forall m (a : A) (v v':V),
+  upd (@upd A aeq V m a v') a v = upd m a v.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (weq a x); intros; subst.
+  case_eq (aeq a x); intros; subst.
   repeat rewrite upd_eq; auto.
   repeat rewrite upd_ne; auto.
 Qed.
 
-Theorem upd_comm: forall len m (a0 : word len) (v0:V) a1 v1, a0 <> a1
-  -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
+Theorem upd_comm: forall m (a0 : A) (v0:V) a1 v1, a0 <> a1
+  -> upd (@upd A aeq V m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.
   intros; apply functional_extensionality; intros.
-  case_eq (weq a1 x); case_eq (weq a0 x); intros; subst; try congruence;
+  case_eq (aeq a1 x); case_eq (aeq a0 x); intros; subst; try congruence;
   repeat ( ( rewrite upd_ne by auto ) || ( rewrite upd_eq by auto ) ); auto.
 Qed.
 

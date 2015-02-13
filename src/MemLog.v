@@ -466,7 +466,7 @@ Module MEMLOG.
 
     rewrite combine_length_eq.
     erewrite <- replay_length.
-    eapply list2mem_ptsto_bounds; eauto.
+    eapply list2mem_inbound; eauto.
     rewrite repeat_length; auto.
     unfold sel; rewrite selN_combine.
     simpl.

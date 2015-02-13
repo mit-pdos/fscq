@@ -162,8 +162,8 @@ Qed.
 Definition For_ (T: Type)
                 (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
                 (i n : addr) (l : L)
-                (nocrash : G -> addr -> L -> @pred addrlen valuset)
-                (crashed : G -> @pred addrlen valuset)
+                (nocrash : G -> addr -> L -> @pred addr (@weq addrlen) valuset)
+                (crashed : G -> @pred addr (@weq addrlen) valuset)
                 (rx: L -> prog T) : prog T.
   refine (Fix (@for_args_wf L) (fun _ => prog T)
           (fun args For_ => _)

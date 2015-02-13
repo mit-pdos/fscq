@@ -6,7 +6,7 @@ Set Implicit Arguments.
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
-Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) :=
+Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) : @pred _ (@weq addrlen) _ :=
   match vs with
     | nil => emp
     | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
@@ -641,7 +641,7 @@ Proof.
 Qed.
 
 
-Lemma emp_star_r: forall len V (F:@pred len V),
+Lemma emp_star_r: forall AT AEQ V (F:@pred AT AEQ V),
   F =p=> (F * emp)%pred.
 Proof.
   intros.
@@ -906,6 +906,8 @@ Theorem read_back_ok : forall T a (rx : _ -> prog T),
   }} read_back a rx.
 Proof.
   unfold read_back; hoare_unfold unfold_prepend.
+  autorewrite with core; omega.
+  autorewrite with core; auto.
 Qed.
 
 Definition swap T a i j rx : prog T :=
