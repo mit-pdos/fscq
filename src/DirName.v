@@ -49,33 +49,33 @@ Proof.
   reflexivity.
 Qed.
 
-Fixpoint name2string (nbytes : nat) (name : word (nbytes * 8)) : string.
+Fixpoint name2padstring (nbytes : nat) (name : word (nbytes * 8)) : string.
   destruct nbytes.
   refine EmptyString.
   refine (String (byte2ascii (@split1 8 (nbytes * 8) name))
-                 (name2string nbytes (@split2 8 (nbytes * 8) name))).
+                 (name2padstring nbytes (@split2 8 (nbytes * 8) name))).
 Defined.
 
-Fixpoint string2name (nbytes : nat) (s : string) : word (nbytes * 8).
+Fixpoint padstring2name (nbytes : nat) (s : string) : word (nbytes * 8).
   destruct nbytes.
   refine ($0).
   destruct s.
   refine ($0).
-  refine (combine (ascii2byte a) (string2name nbytes s)).
+  refine (combine (ascii2byte a) (padstring2name nbytes s)).
 Defined.
 
 Opaque ascii2byte byte2ascii split1 split2.
 
-Theorem name2string2name : forall nbytes (name : word (nbytes * 8)),
-  string2name nbytes (name2string nbytes name) = name.
+Theorem name2padstring2name : forall nbytes (name : word (nbytes * 8)),
+  padstring2name nbytes (name2padstring nbytes name) = name.
 Proof.
   induction nbytes; simpl; intros.
   rewrite word0. reflexivity.
   rewrite byte2ascii2byte. rewrite IHnbytes. rewrite combine_split. reflexivity.
 Qed.
 
-Theorem string2name2string : forall nbytes (s : string),
-  length s = nbytes -> name2string nbytes (string2name nbytes s) = s.
+Theorem padstring2name2padstring : forall nbytes (s : string),
+  length s = nbytes -> name2padstring nbytes (padstring2name nbytes s) = s.
 Proof.
   induction nbytes; simpl; intros.
   destruct s; simpl in *; congruence.
@@ -85,6 +85,12 @@ Proof.
   rewrite IHnbytes by congruence.
   rewrite ascii2byte2ascii.
   reflexivity.
+Qed.
+
+Theorem name2padstring_length : forall nbytes name,
+  length (name2padstring nbytes name) = nbytes.
+Proof.
+  induction nbytes; simpl; eauto.
 Qed.
 
 Fixpoint string_pad nbytes (s : string) :=
@@ -128,14 +134,59 @@ Proof.
   omega.
 Qed.
 
-Definition string2pad2name nbytes s := string2name nbytes (string_pad nbytes s).
-Definition name2pad2string nbytes name := string_unpad (name2string nbytes name).
+Inductive zerostring : string -> Prop :=
+  | ZeroEmpty : zerostring EmptyString
+  | ZeroCons : forall s, zerostring s -> zerostring (String zero s).
 
-Theorem s2p2n2p2s : forall nbytes s, length s <= nbytes -> nozero s ->
-  name2pad2string nbytes (string2pad2name nbytes s) = s.
+Inductive wellformedpadstring : string -> Prop :=
+  | WFSzero : forall s, zerostring s -> wellformedpadstring s
+  | WFScons : forall s c, wellformedpadstring s -> c <> zero -> wellformedpadstring (String c s).
+
+Theorem pad_zero_string : forall s, wellformedpadstring (String zero s) ->
+  s = string_pad (length s) EmptyString.
 Proof.
-  unfold string2pad2name, name2pad2string.
   intros.
-  rewrite string2name2string by apply string_pad_length.
+  inversion H; clear H; try congruence.
+  clear H1 s0.
+  inversion H0; clear H0; subst.
+  induction s; simpl.
+  reflexivity.
+  inversion H1; subst.
+  f_equal.
+  apply IHs; auto.
+Qed.
+
+Theorem string_unpad_pad : forall s nbytes, length s = nbytes ->
+  wellformedpadstring s -> string_pad nbytes (string_unpad s) = s.
+Proof.
+  induction s; intros; subst; simpl in *.
+  reflexivity.
+  destruct (ascii_dec a zero); subst.
+  - f_equal.
+    rewrite <- pad_zero_string; auto.
+  - inversion H0.
+    inversion H; congruence.
+    rewrite IHs; auto.
+Qed.
+
+Definition string2name nbytes s := padstring2name nbytes (string_pad nbytes s).
+Definition name2string nbytes name := string_unpad (name2padstring nbytes name).
+
+Theorem string2name2string : forall nbytes s, length s <= nbytes -> nozero s ->
+  name2string nbytes (string2name nbytes s) = s.
+Proof.
+  unfold string2name, name2string.
+  intros.
+  rewrite padstring2name2padstring by apply string_pad_length.
   rewrite string_pad_unpad; eauto.
+Qed.
+
+Theorem name2string2name : forall nbytes name, wellformedpadstring (name2padstring nbytes name)
+  -> string2name nbytes (name2string nbytes name) = name.
+Proof.
+  unfold string2name, name2string.
+  intros.
+  rewrite string_unpad_pad; auto.
+  rewrite name2padstring2name; auto.
+  apply name2padstring_length.
 Qed.
