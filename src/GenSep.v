@@ -179,12 +179,17 @@ Proof.
 Qed.
 
 
-Theorem list2mem_removelast_list2mem : forall A (l : list A) (def : A) (b : addr),
+Theorem list2mem_removelast_list2mem : forall A (l : list A) (b : addr),
   l <> nil -> length l <= wordToNat b
   -> list2mem (removelast l) =
      fun i => if (weq i $ (length l - 1)) then None else (list2mem l) i.
 Proof.
   intros; apply functional_extensionality; intros.
+  assert (exists def, firstn 1 l = def :: nil) as Hdef.
+  destruct l; try congruence.
+  exists a; eauto.
+  destruct Hdef as [def _].
+
   erewrite list2mem_removelast_is with (def := def) by eauto.
   unfold list2mem, sel.
   destruct (wlt_dec x $ (length l - 1));
@@ -330,7 +335,7 @@ Proof.
   destruct (eq_nat_dec start start); simpl in *; congruence.
 Qed.
 
-Theorem list2mem_array_eq': forall A (l' l : list A) (b : addr) (def : A) start,
+Theorem list2mem_array_eq': forall A (l' l : list A) (b : addr) start,
   array $ start l $1 (list2mem_fix start l')
   -> length l + start <= wordToNat b
   -> length l' + start <= wordToNat b
@@ -377,7 +382,7 @@ Proof.
         omega.
 Qed.
 
-Theorem list2mem_array_eq: forall A (l' l : list A) (b : addr) (def : A),
+Theorem list2mem_array_eq: forall A (l' l : list A) (b : addr),
   array $0 l $1 (list2mem l')
   -> length l <= wordToNat b
   -> length l' <= wordToNat b
@@ -406,7 +411,7 @@ Proof.
   rewrite firstn_app by auto.
   replace (S (length l)) with (length (l ++ a :: nil)) by (rewrite app_length; simpl; omega).
   rewrite skipn_oob by omega; simpl.
-  instantiate (default:=a).
+  instantiate (y:=a).
   rewrite selN_last by auto.
   cancel.
 Qed.
