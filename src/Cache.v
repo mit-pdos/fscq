@@ -1,6 +1,6 @@
 Require Import List.
 Require Import Prog.
-Require Import FMapList.
+Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
 Require Import Array.
@@ -10,7 +10,7 @@ Require Import GenSep.
 Require Import SepAuto.
 Require Import BasicProg.
 
-Module Map := FMapList.Make(Addr_as_OT).
+Module Map := FMapAVL.Make(Addr_as_OT).
 
 Import ListNotations.
 Set Implicit Arguments.
