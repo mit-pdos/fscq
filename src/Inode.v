@@ -17,6 +17,7 @@ Require Import NArith.
 Require Import WordAuto.
 Require Import RecArray.
 Require Import GenSep.
+Require Import GenSepN.
 Require Import Balloc.
 Require Import ListPred.
 
@@ -74,7 +75,7 @@ Module INODE.
     {< F A mbase m ilist ino,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * irrep xp ilist)%pred (list2mem m) ]] *
-           [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
+           [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = ino ]]
     CRASH  MEMLOG.log_intact lxp mbase
@@ -86,9 +87,9 @@ Module INODE.
     intros; norm.
     cancel.
     intuition; eauto.
-    apply list2mem_inbound in H4.
+    apply list2nmem_inbound in H4.
     apply lt_wlt; omega.
-    apply list2mem_sel with (def:=irec0) in H4.
+    apply list2nmem_sel with (def:=irec0) in H4.
     step.
   Qed.
 
@@ -96,11 +97,11 @@ Module INODE.
     {< F A mbase m ilist ino,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * irrep xp ilist)%pred (list2mem m) ]] *
-             [[ (A * inum |-> ino)%pred (list2mem ilist) ]] *
+             [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]] *
              [[ Rec.well_formed i ]]
     POST:ms' exists m' ilist', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * irrep xp ilist')%pred (list2mem m') ]] *
-             [[ (A * inum |-> i)%pred (list2mem ilist')]]
+             [[ (A * #inum |-> i)%pred (list2nmem ilist')]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} irput lxp xp inum i ms.
   Proof.
@@ -109,12 +110,12 @@ Module INODE.
     intros; norm.
     cancel.
     intuition; eauto.
-    apply list2mem_inbound in H5.
+    apply list2nmem_inbound in H5.
     apply lt_wlt; omega.
-    apply list2mem_sel with (def:=irec0) in H5 as H5'.
+    apply list2nmem_sel with (def:=irec0) in H5 as H5'.
     step.
     autorewrite with core; auto.
-    eapply list2mem_upd; eauto.
+    eapply list2nmem_upd; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (irget _ _ _ _) _) => apply irget_ok : prog.
@@ -171,7 +172,7 @@ Module INODE.
     {< F A mbase m blist bn,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * indrep bxp a blist)%pred (list2mem m) ]] *
-           [[ (A * off |-> bn)%pred (list2mem blist) ]]
+           [[ (A * #off |-> bn)%pred (list2nmem blist) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ r = bn ]]
     CRASH  MEMLOG.log_intact lxp mbase
@@ -182,10 +183,10 @@ Module INODE.
 
     rewrite wmult_unit.
     eapply lt_wlt.
-    apply list2mem_inbound in H4.
+    apply list2nmem_inbound in H4.
     rewrite H7 in H4; auto.
     subst.
-    eapply list2mem_sel with (def:=$0) in H4; auto.
+    eapply list2nmem_sel with (def:=$0) in H4; auto.
   Qed.
 
 
@@ -193,10 +194,10 @@ Module INODE.
     {< F A mbase m blist v0,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * indrep bxp a blist)%pred (list2mem m) ]] *
-             [[ (A * off |-> v0)%pred (list2mem blist) ]]
+             [[ (A * #off |-> v0)%pred (list2nmem blist) ]]
     POST:ms' exists m' blist', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * indrep bxp a blist')%pred (list2mem m') ]] *
-             [[ (A * off |-> bn)%pred (list2mem blist')]]
+             [[ (A * #off |-> bn)%pred (list2nmem blist')]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} indput lxp a off bn ms.
   Proof.
@@ -204,9 +205,9 @@ Module INODE.
     hoare.
 
     rewrite wmult_unit; eapply lt_wlt.
-    apply list2mem_inbound in H4.
+    apply list2nmem_inbound in H4.
     rewrite H7 in H4; auto.
-    eapply list2mem_upd; eauto.
+    eapply list2nmem_upd; eauto.
   Qed.
 
 
@@ -669,9 +670,9 @@ Module INODE.
         unfold indrep in H; destruct_lift H
   end.
 
-  Ltac inode_bounds := eauto; try list2mem_bound; try solve_length_eq;
+  Ltac inode_bounds := eauto; try list2nmem_bound; try solve_length_eq;
                        repeat (inode_bounds'; solve_length_eq);
-                       try list2mem_bound; eauto.
+                       try list2nmem_bound; eauto.
 
   Ltac destruct_irec' x :=
     match type of x with
@@ -716,16 +717,16 @@ Module INODE.
     {< F A mbase m ilist ino,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
-           [[ (A * inum |-> ino)%pred (list2mem ilist) ]]
+           [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms * [[ r = $ (length (IBlocks ino)) ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} ilen lxp xp inum ms.
   Proof.
     unfold ilen, rep.
     hoare.
-    list2mem_ptsto_cancel; inode_bounds.
+    list2nmem_ptsto_cancel; list2nmem_bound.
 
-    rewrite_list2mem_pred.
+    rewrite_list2nmem_pred.
     destruct_listmatch.
     subst; apply wordToNat_inj.
     erewrite wordToNat_natToWord_bound; inode_bounds.

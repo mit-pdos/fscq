@@ -473,13 +473,12 @@ Ltac list2nmem_ptsto_cancel :=
   match goal with
   | [ |- (_ * ?p |-> ?a)%pred (list2nmem ?l) ] =>
     let Hx := fresh in
-    assert (arrayN 0 l (list2nmem l)) as Hx;
-      [ eapply list2nmem_array; eauto; try omega |
-        pred_apply; erewrite arrayN_except; clear Hx;
-        try autorewrite with defaults; eauto ]
+    assert (arrayN 0 l (list2nmem l)) as Hx by eapply list2nmem_array;
+      pred_apply; erewrite arrayN_except; clear Hx;
+      try autorewrite with defaults; eauto
   end.
 
-Ltac destruct_listmatch :=
+Ltac destruct_listmatch_n :=
   match goal with
     | [  H : context [ listmatch ?prd ?a _ ],
         H2 : ?p%pred (list2nmem ?a) |- _ ] =>
@@ -494,7 +493,7 @@ Ltac destruct_listmatch :=
 
 Ltac list2nmem_cancel :=
     repeat rewrite_list2nmem_pred;
-    repeat destruct_listmatch;
+    repeat destruct_listmatch_n;
     subst; eauto;
     try list2nmem_ptsto_cancel; eauto.
 
