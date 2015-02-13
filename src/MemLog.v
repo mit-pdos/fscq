@@ -931,7 +931,28 @@ Module MEMLOG.
      CRASH  would_recover_either xp m1 m2
     >} commit xp ms.
   Proof.
-    unfold commit, would_recover_either, log_intact, log_intact_either.
+    unfold commit, would_recover_either, rep.
+    step.
+    unfold rep.
+    cancel.
+    cancel.
+    shelve.
+    unfold log_intact.
+    cancel.
+    cancel.
+    Unshelve.
+    step.
+    unfold rep.
+    step.
+    shelve.
+
+    (* we flushed, but crashed before the write of the commit record.
+     * we need log_intact, but log_intact doesn't include flushedtxn 
+     * daniel?   the left side is the post condition of flush, but doesn't imply
+     * log_intact.
+     *)
+
+
   Admitted.
 
 (*
