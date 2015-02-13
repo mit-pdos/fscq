@@ -65,11 +65,11 @@ Module BFILE.
 
   Definition bfile0 := Build_bfile nil.
 
-  Definition data_match bxp (v : valu) a := (a |-> v * [[ BALLOC.valid_block bxp a ]])%pred.
+  Definition data_match bxp (v : valu) a : @pred _ (@weq addrlen) _ :=
+    (a |-> v * [[ BALLOC.valid_block bxp a ]])%pred.
 
-  Definition file_match bxp f i : @pred addrlen valu := (
-     listmatch (data_match bxp) (BFData f) (INODE.IBlocks i)
-    )%pred.
+  Definition file_match bxp f i :=
+    listmatch (data_match bxp) (BFData f) (INODE.IBlocks i).
 
   Definition rep bxp ixp (flist : list bfile) :=
     (exists freeblocks ilist,

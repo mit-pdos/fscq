@@ -459,7 +459,7 @@ Module INODE.
   Qed.
 
 
-  Definition inode_match bxp ino (ino' : irec) : @pred addrlen valu := (
+  Definition inode_match bxp ino (ino' : irec) : @pred addr (@weq addrlen) valu := (
     [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
     [[ ISize ino = ino' :-> "size" ]] *
     [[ length (IBlocks ino) <= blocks_per_inode ]] *
@@ -471,7 +471,7 @@ Module INODE.
      exists reclist, irrep xp reclist *
      listmatch (inode_match bxp) ilist reclist)%pred.
 
-  Definition inode_match_direct ino (rec : irec) : @pred addrlen valu := (
+  Definition inode_match_direct ino (rec : irec) : @pred addr (@weq addrlen) valu := (
     [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
     [[ ISize ino = rec :-> "size" ]] *
     [[ length (IBlocks ino) <= nr_direct ]] *

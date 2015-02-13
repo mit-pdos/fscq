@@ -211,6 +211,18 @@ Proof.
     destruct (AEQ x a); subst; eauto 10.
 Qed.
 
+Lemma mem_disjoint_either:
+  forall (m1 m2 : @mem AT AEQ V) a v,
+  mem_disjoint m1 m2
+  -> m1 a = Some v -> m2 a = None.
+Proof.
+  unfold mem_disjoint; intros; firstorder.
+  pose proof (H a); firstorder.
+  pose proof (H1 v); firstorder.
+  destruct (m2 a); auto.
+  pose proof (H2 v0); firstorder.
+Qed.
+
 Theorem mem_union_comm:
   forall (m1 m2 : @mem AT AEQ V),
   mem_disjoint m1 m2 ->
@@ -816,6 +828,12 @@ Proof.
   intuition; hnf; try tauto; firstorder discriminate.
 Qed.
 
+Lemma ptsto_conflict : forall a (m : @mem AT AEQ V),
+  ~ (a |->? * a |->?)%pred m.
+Proof.
+  unfold_sep_star; firstorder discriminate.
+Qed.
+
 Theorem ptsto_complete : forall a v (m1 m2 : @mem AT AEQ V),
   (a |-> v)%pred m1 -> (a |-> v)%pred m2 -> m1 = m2.
 Proof.
@@ -1159,6 +1177,25 @@ Proof.
   repeat deex; repeat eexists; intuition eauto.
 Qed.
 
+Theorem crash_xform_ptsto: forall AT AEQ a v,
+  (@crash_xform AT AEQ) (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
+Proof.
+  unfold crash_xform, possible_crash, ptsto, pimpl; intros.
+  repeat deex; destruct (H1 a).
+  intuition; congruence.
+  repeat deex; rewrite H in H3; inversion H3; subst.
+  repeat eexists.
+  apply lift_impl.
+  intros; eauto.
+  split; auto.
+  intros.
+  destruct (H1 a').
+  intuition.
+  repeat deex.
+  specialize (H2 a' H4).
+  congruence.
+Qed.
+
 Theorem crash_xform_pimpl : forall AT AEQ (p q : @pred AT AEQ _), p =p=>q
   -> crash_xform p =p=> crash_xform q.
 Proof.
@@ -1171,6 +1208,13 @@ Instance crash_xform_pimpl_proper {AT AEQ} :
 Proof.
   intros p q Hp.
   apply crash_xform_pimpl; auto.
+Qed.
+
+Theorem crash_invariant_emp: forall AT AEQ,
+  (@crash_xform AT AEQ) emp =p=> emp.
+Proof.
+  unfold crash_xform, possible_crash, emp, pimpl; repeat deex; intuition; repeat deex.
+  destruct (H1 a); [ intuition | repeat deex; congruence ].
 Qed.
 
 Theorem crash_invariant_ptsto: forall AT AEQ a v,

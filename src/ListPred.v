@@ -56,6 +56,18 @@ Section LISTPRED.
     intros; rewrite listpred_fwd with (def:=def) by eauto; cancel.
   Qed.
 
+  Theorem listpred_pick : forall x l, 
+    In x l -> listpred l =p=> exists F, prd x * F.
+  Proof.
+    induction l; intro Hi.
+    inversion Hi.
+    simpl.
+    destruct Hi.
+    cancel.
+    rewrite IHl by assumption.
+    cancel.
+  Qed.
+
   Theorem listpred_inj: forall l1 l2,
      l1 = l2 -> listpred l1 <=p=> listpred l2.
   Proof.
@@ -131,6 +143,97 @@ Section LISTPRED.
     rewrite listpred_updN by auto.
     rewrite listpred_isolate with (def:=def) at 1 by eauto.
     cancel; auto.
+  Qed.
+
+  Theorem listpred_nodup : forall l m,
+    (forall x y : T, {x = y} + {x <> y}) ->
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    listpred l m -> NoDup l.
+  Proof.
+    induction l; intuition; constructor; simpl in H0.
+    intro Hin.
+    revert H0.
+    erewrite listpred_pick by (apply Hin).
+    (* XXX should be possible not to bash this *)
+    unfold_sep_star; intuition.
+    do 2 destruct H0. intuition. destruct H4. do 2 destruct H3. intuition.
+    eapply H.
+    unfold_sep_star.
+    exists x. exists x2.
+    repeat split; intuition; eauto.
+    subst. apply mem_disjoint_comm. apply mem_disjoint_comm in H0. rewrite mem_union_comm in H0.
+    eapply mem_disjoint_union. eauto. eauto.
+
+    revert H0.
+    unfold_sep_star.
+    intuition. do 2 destruct H0. intuition.
+    eapply IHl; eauto.
+  Qed.
+
+  Theorem listpred_nodup' : forall l,
+    (forall x y : T, {x = y} + {x <> y}) ->
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    listpred l =p=> [[ NoDup l ]] * listpred l.
+  Proof.
+    intros. apply lift_impl. intros. eapply listpred_nodup; eauto.
+  Qed.
+
+  Theorem remove_not_In :
+    forall dec (a : T) l, ~ In a l -> remove dec a l = l.
+  Proof.
+    induction l.
+    auto.
+    intro Hni. simpl.
+    destruct (dec a a0).
+    subst. destruct Hni. simpl. tauto.
+    rewrite IHl. trivial.
+    simpl in Hni. tauto.
+  Qed.
+
+  Theorem remove_still_In : forall dec (a b : T) l,
+    In a (remove dec b l) -> In a l.
+  Proof.
+    induction l; simpl; [tauto|].
+    destruct (dec b a0).
+    right; apply IHl; assumption.
+    intro H. destruct H. subst. auto.
+    right; apply IHl; assumption.
+  Qed.
+
+  Theorem remove_still_In_ne : forall dec (a b : T) l,
+    In a (remove dec b l) -> b <> a.
+  Proof.
+    induction l; simpl; [tauto|].
+    destruct (dec b a0).
+    assumption.
+    intro H. destruct H. subst. auto.
+    apply IHl; assumption.
+  Qed.
+
+  Theorem remove_other_In : forall dec (a b : T) l,
+    b <> a -> In a l -> In a (remove dec b l).
+  Proof.
+    induction l.
+    auto.
+    simpl. destruct (dec b a0).
+    subst. intros. destruct H0; [subst; tauto | apply IHl; auto].
+    simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
+  Qed.
+
+
+  Theorem listpred_remove :
+    forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    In x l ->
+    listpred l =p=> prd x * listpred (remove dec x l).
+  Proof.
+    intros.
+    induction l.
+    cancel.
+    rewrite listpred_nodup'; eauto.
+    simpl; destruct (dec x a).
+    cancel; inversion H2; rewrite remove_not_In; eauto.
+    rewrite IHl; [ cancel | destruct H0; subst; tauto ].
   Qed.
 
   (**
