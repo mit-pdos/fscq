@@ -3,7 +3,7 @@ OCAMLINC   := -I codegen
 MODULES    := Nomega Word WordAuto \
 	      Prog Pred Hoare SepAuto Idempotent \
 	      BasicProg Array AddrMap Rec RecArray \
-	      GenSep ListPred Cache \
+	      GenSep GenSepN ListPred Cache \
 	      MemLog Balloc Inode BFile BFileRec Dir \
 	      DirName FS Testprog \
 	      ExtrHaskellPrelude Extraction
