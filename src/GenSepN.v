@@ -501,7 +501,7 @@ Ltac list2nmem_cancel :=
 
 Ltac list2nmem_bound :=
    match goal with
-    | [ H : ( _ * ?p |-> ?i)%pred (list2nmem ?l) |- wordToNat ?p < length ?l' ] =>
+    | [ H : ( _ * ?p |-> ?i)%pred (list2nmem ?l) |- ?p < length ?l' ] =>
           let Ha := fresh in assert (length l = length l') by solve_length_eq;
           let Hb := fresh in apply list2nmem_inbound in H as Hb;
           eauto; (omega || setoid_rewrite <- Ha; omega); clear Hb Ha
