@@ -483,7 +483,7 @@ Ltac destruct_listmatch_n :=
     | [  H : context [ listmatch ?prd ?a _ ],
         H2 : ?p%pred (list2nmem ?a) |- _ ] =>
       match p with
-        | context [ (?ix |-> _)%pred ] =>
+        | context [ (wordToNat ?ix |-> _)%pred ] =>
             let Hb := fresh in
             apply list2nmem_inbound in H2 as Hb;
             extract_listmatch_at ix;
