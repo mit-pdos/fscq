@@ -392,6 +392,12 @@ Module MEMLOG.
     eapply Map.add_3; eauto.
   Qed.
 
+  Lemma replay_length : forall ms m,
+    length (replay ms m) = length m.
+  Proof.
+    admit.
+  Qed.
+
   Theorem write_ok : forall xp ms a v,
     {< m1 m2 F' v0,
     PRE      rep xp (ActiveTxn m1 m2) ms * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
@@ -405,7 +411,10 @@ Module MEMLOG.
 
     apply valid_entries_add; eauto.
     unfold indomain'.
-    admit.
+    erewrite <- replay_length.
+    (* XXX probably want to make a version of [list2mem_ptsto_bounds] that takes two lists
+       and a hypothesis that their lengths are equal *)
+    eapply list2mem_ptsto_bounds; eauto.
 
     rewrite replay_add.
     eapply list2mem_upd; eauto.
@@ -424,12 +433,6 @@ Module MEMLOG.
 
   Lemma replay_sel : forall a v ms m def,
     indomain' a m -> Map.MapsTo a v ms -> sel (replay ms m) a def = v.
-  Proof.
-    admit.
-  Qed.
-
-  Lemma replay_length : forall ms m,
-    length (replay ms m) = length m.
   Proof.
     admit.
   Qed.
@@ -622,7 +625,7 @@ Module MEMLOG.
     cancel.
     instantiate (a4 := nil).
     auto.
-    admit.
+    destruct l; simpl in *; try discriminate; solve_lengths.
     eapply pimpl_ok2.
     eauto with prog.
     intros.
@@ -660,8 +663,8 @@ Module MEMLOG.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements ms)), l3) ::
       firstn # (m) (List.combine (map snd (Map.elements ms)) l1) ++
       l2).
-    admit.
-    admit.
+    admit. (* array match *)
+    admit. (* XXX requires Nat.min_r *)
     word2nat_clear. abstract word2nat_auto.
     step'.
     step'.
@@ -693,7 +696,7 @@ Module MEMLOG.
     delay_one.
     delay_one.
     delay_one.
-    apply finish_frame.
+    unfold stars at 2 3; simpl; apply finish_frame.
     intuition.
     solve_lengths.
     solve_lengths.
@@ -702,26 +705,18 @@ Module MEMLOG.
     word2nat_clear; word2nat_auto.
     cancel.
     instantiate (a := match l5 with [] => [] | _ :: l5' => l5' end).
-    admit.
+    admit. (* array match *)
     word2nat_clear.
-    destruct l5.
-    simpl in *.
-    abstract word2nat_auto.
-    simpl in *.
-    abstract word2nat_auto.
+    destruct l5; simpl in *; abstract word2nat_auto.
     auto.
 
-    instantiate (a0 := repeat (# (LogLen xp) - Map.cardinal ms) ($0, nil)).
-    solve_lengths.
-
-    fold (@sep_star addrlen).
     cancel.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements (elt:=valu) ms)), []) ::
       firstn # (m) (List.combine (map snd (Map.elements (elt:=valu) ms))
         (repeat (length (map snd (Map.elements (elt:=valu) ms))) [])) ++
       List.combine (skipn # (m) (map snd (Map.elements (elt:=valu) ms))) l5 ++
       repeat (# (LogLen xp) - Map.cardinal (elt:=valu) ms) ($0, nil)).
-    admit.
+    admit. (* array match *)
     simpl.
     solve_lengths.
 
@@ -731,7 +726,7 @@ Module MEMLOG.
     instantiate (a := repeat (addr_per_block - length (Map.elements ms)) $0).
     rewrite firstn_oob.
     cancel.
-    admit.
+    admit. (* empty array; append zeroes to argument of descriptor_to_valu *)
     solve_lengths.
     solve_lengths.
     rewrite Forall_forall; intuition.
@@ -744,14 +739,14 @@ Module MEMLOG.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements (elt:=valu) ms)), l3) ::
       (firstn (Map.cardinal (elt:=valu) ms) (List.combine (map snd (Map.elements (elt:=valu) ms)) l1)) ++
       l2).
-    admit.
+    admit. (* array match *)
     solve_lengths.
 
     cancel.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements (elt:=valu) ms)), l3) ::
       (firstn (Map.cardinal (elt:=valu) ms) (List.combine (map snd (Map.elements (elt:=valu) ms)) l1)) ++
       l2).
-    admit.
+    admit. (* array match *)
     solve_lengths.
 
     cancel.
@@ -760,7 +755,7 @@ Module MEMLOG.
 
     cancel.
     instantiate (a0 := l).
-    admit.
+    admit. (* array match, more or less *)
     solve_lengths.
 
     instantiate (default := ($0, nil)).
