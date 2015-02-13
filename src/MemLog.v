@@ -171,7 +171,7 @@ Module MEMLOG.
   Definition replay (ms : memstate) (m : diskstate) : diskstate :=
     replay' (Map.elements ms) m.
 
-  Definition avail_region start len : @pred addrlen valuset :=
+  Definition avail_region start len : @pred addr (@weq addrlen) valuset :=
     (exists l, [[ length l = len ]] * array start l $1)%pred.
 
   Theorem avail_region_shrink_one : forall start len,
@@ -199,11 +199,11 @@ Module MEMLOG.
 
   Definition synced_list m: list valuset := List.combine m (repeat (length m) nil).
 
-  Definition data_rep (xp: xparams) (m: list valuset) : @pred addrlen valuset :=
+  Definition data_rep (xp: xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
     array $0 m $1.
 
   (** On-disk representation of the log *)
-  Definition log_rep xp m (ms : memstate) : @pred addrlen valuset :=
+  Definition log_rep xp m (ms : memstate) : @pred addr (@weq addrlen) valuset :=
      ((LogHeader xp) |=> (header_to_valu (mk_header (Map.cardinal ms))) *
       [[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
@@ -215,7 +215,7 @@ Module MEMLOG.
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
 
-  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addrlen valuset :=
+  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addr (@weq addrlen) valuset :=
     [[ cur = replay ms old ]]%pred.
 
   (** XXX update comment
@@ -466,7 +466,7 @@ Module MEMLOG.
 
     rewrite combine_length_eq.
     erewrite <- replay_length.
-    eapply list2mem_ptsto_bounds; eauto.
+    eapply list2mem_inbound; eauto.
     rewrite repeat_length; auto.
     unfold sel; rewrite selN_combine.
     simpl.
@@ -1038,12 +1038,6 @@ Module MEMLOG.
   Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty 
     crash_invariant_ptsto : crash_xform.
 
-  Lemma crash_invariant_emp: crash_xform emp =p=> emp.
-  Proof.
-    unfold crash_xform, possible_crash, emp, pimpl; repeat deex; intuition; repeat deex.
-    destruct (H1 a); [ intuition | repeat deex; congruence ].
-  Qed.
-
   Hint Resolve crash_invariant_emp.
 
   Lemma crash_invariant_synced_array: forall l start stride,
@@ -1075,25 +1069,6 @@ Module MEMLOG.
     cancel.
     (* XXX actually want to just prove a general theorem about [crash_xform] on [array] *)
   Admitted.
-
-  Lemma crash_xform_ptsto: forall a v,
-    crash_xform (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
-  Proof.
-    unfold crash_xform, possible_crash, ptsto, pimpl; intros.
-    repeat deex; destruct (H1 a).
-    intuition; congruence.
-    repeat deex; rewrite H in H3; inversion H3; subst.
-    repeat eexists.
-    apply lift_impl.
-    intros; eauto.
-    split; auto.
-    intros.
-    destruct (H1 a').
-    intuition.
-    repeat deex.
-    specialize (H2 a' H4).
-    congruence.
-  Qed.
 
   Ltac log_intact_unfold := unfold MEMLOG.would_recover_either, MEMLOG.log_intact, MEMLOG.log_intact_either.
   Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty

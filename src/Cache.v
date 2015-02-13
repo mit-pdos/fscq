@@ -60,7 +60,7 @@ Module BUFCACHE.
     congruence.
   Qed.
 
-  Hint Resolve list2mem_ptsto_bounds.
+  Hint Resolve list2mem_inbound.
   Hint Resolve Map.remove_3.
   Hint Resolve Map.add_3.
   Hint Resolve list2mem_upd.

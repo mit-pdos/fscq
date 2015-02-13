@@ -26,7 +26,7 @@ Set Implicit Arguments.
  * object that maps inode numbers (list positions) into files (or None, if the
  * inode number is too big).  For now, this always uses [addr] as the index.
  *)
-Definition list2mem (A: Type) (l: list A) : (addr -> option A) :=
+Definition list2mem (A: Type) (l: list A) : @mem addr (@weq addrlen) A :=
   fun a => sel (map (@Some A) l) a None.
 
 Theorem list2mem_ptsto_bounds: forall A F (l: list A) i x,
@@ -144,7 +144,7 @@ Proof.
 Qed.
 
 
-Theorem list2mem_app: forall A (F : @pred addrlen A) l a (b : addr),
+Theorem list2mem_app: forall A (F : @pred addr (@weq addrlen) A) l a (b : addr),
   length l <= wordToNat b
   -> F (list2mem l)
   -> (F * $ (length l) |-> a)%pred (list2mem (l ++ a :: nil)).
@@ -202,18 +202,6 @@ Proof.
   assert ($ (length l - 1) < x)%word.
   destruct (weq $ (length l - 1) x); intuition.
   apply wlt_lt in H1; rewrite wordToNat_natToWord_bound with (bound:=b) in H1 by omega; omega.
-Qed.
-
-
-Lemma mem_disjoint_either: forall len V (m1 m2 : @mem len V) a v,
-  mem_disjoint m1 m2
-  -> m1 a = Some v -> m2 a = None.
-Proof.
-  unfold mem_disjoint; intros; firstorder.
-  pose proof (H a); firstorder.
-  pose proof (H1 v); firstorder.
-  destruct (m2 a); auto.
-  pose proof (H2 v0); firstorder.
 Qed.
 
 
@@ -393,7 +381,7 @@ Proof.
 Qed.
 
 
-Theorem list2mem_array_app_eq: forall A len V (F : @pred len V) (l l' : list A) a (b : addr),
+Theorem list2mem_array_app_eq: forall A V (F : @pred addr (@weq addrlen) V) (l l' : list A) a (b : addr),
   length l < wordToNat b
   -> length l' <= wordToNat b
   -> (array $0 l $1 * $ (length l) |-> a)%pred (list2mem l')

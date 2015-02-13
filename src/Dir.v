@@ -42,7 +42,7 @@ Module DIR.
   Definition rep' (delist : list dirent) :=
     BFileRec.array_item dirent_type items_per_valu itemsz_ok delist.
 
-  Definition dmatch (de: dirent) : @pred filename_len addr :=
+  Definition dmatch (de: dirent) : @pred filename (@weq filename_len) addr :=
     if weq (de :-> "valid") $0 then
       emp
     else
@@ -58,7 +58,7 @@ Module DIR.
 
   Hint Resolve dmatch_complete.
 
-  Definition rep (dmap: @mem filename_len addr) :=
+  Definition rep (dmap : @mem filename (@weq filename_len) addr) :=
     (exists delist,
        rep' delist *
        [[ listpred dmatch delist dmap ]] 
@@ -276,7 +276,7 @@ Module DIR.
   Qed.
 
   Definition diritem := (filename * addr)%type.
-  Definition diritemmatch (de: diritem) : @pred filename_len addr := fst de |-> snd de.
+  Definition diritemmatch (de: diritem) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
 
   Definition dlist T (lxp : MemLog.xparams) (ixp : Inode.xparams)
                      (dnum : addr) (ms : memstate)

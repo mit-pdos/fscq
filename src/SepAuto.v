@@ -42,13 +42,13 @@ Ltac pimpl_crash :=
   end;
   subst_evars.
 
-Definition pred_fold_left len V (l : list (@pred len V)) : pred :=
+Definition pred_fold_left AT AEQ V (l : list (@pred AT AEQ V)) : pred :=
   match l with
   | nil => emp
   | a :: t => fold_left sep_star t a
   end.
 
-Definition stars {len V} (ps : list (@pred len V)) :=
+Definition stars {AT AEQ V} (ps : list (@pred AT AEQ V)) :=
   pred_fold_left ps.
 Arguments stars : simpl never.
 
@@ -68,7 +68,7 @@ Ltac sep_imply :=
   | [ |- _ _ _ ?m ] => sep_imply' m
   end.
 
-Theorem start_normalizing : forall len V PT QT (p : @pred len V) q ps qs P Q,
+Theorem start_normalizing : forall AT AEQ V PT QT (p : @pred AT AEQ V) q ps qs P Q,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
   -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
   -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) =p=>
@@ -89,7 +89,7 @@ Proof.
   apply pimpl_refl.
 Qed.
 
-Theorem start_normalizing_apply : forall len V PT (p : @pred len V) ps P m,
+Theorem start_normalizing_apply : forall AT AEQ V PT (p : @pred AT AEQ V) ps P m,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
   -> p m
   -> (exists (x:PT), stars (ps x) * [[P x]])%pred m.
@@ -98,7 +98,7 @@ Proof.
 Qed.
 
 Theorem restart_canceling:
-  forall len V p (q : @pred len V),
+  forall AT AEQ V p (q : @pred AT AEQ V),
   (stars p * stars nil =p=> q) ->
   (stars nil * stars p =p=> q).
 Proof.
@@ -106,8 +106,8 @@ Proof.
 Qed.
 
 Lemma stars_prepend':
-  forall len V l x,
-  fold_left sep_star l x <=p=> x * fold_left sep_star l (@emp len V).
+  forall AT AEQ V l x,
+  fold_left sep_star l x <=p=> x * fold_left sep_star l (@emp AT AEQ V).
 Proof.
   induction l.
   - simpl. intros.
@@ -133,7 +133,7 @@ Proof.
 Qed.
 
 Lemma stars_prepend:
-  forall len V l (x : @pred len V),
+  forall AT AEQ V l (x : @pred AT AEQ V),
   stars (x :: l) <=p=> x * stars l.
 Proof.
   unfold stars, pred_fold_left; simpl; intros.
@@ -152,13 +152,13 @@ Proof.
     apply pimpl_star_emp.
 Qed.
 
-Lemma flatten_default' : forall len V (p : @pred len V),
+Lemma flatten_default' : forall AT AEQ V (p : @pred AT AEQ V),
   p <=p=> stars (p :: nil).
 Proof.
   firstorder.
 Qed.
 
-Lemma flatten_default : forall len V (p : @pred len V),
+Lemma flatten_default : forall AT AEQ V (p : @pred AT AEQ V),
   p <=p=> exists (x:unit), stars (p :: nil) * [[True]].
 Proof.
   unfold stars; split.
@@ -170,13 +170,13 @@ Proof.
     firstorder.
 Qed.
 
-Lemma flatten_emp' : forall len V, (@emp len V) <=p=> stars nil.
+Lemma flatten_emp' : forall AT AEQ V, (@emp AT AEQ V) <=p=> stars nil.
 Proof.
   firstorder.
 Qed.
 
-Lemma flatten_emp : forall len V,
-  (@emp len V) <=p=> exists (x:unit), stars nil * [[True]].
+Lemma flatten_emp : forall AT AEQ V,
+  (@emp AT AEQ V) <=p=> exists (x:unit), stars nil * [[True]].
 Proof.
   split.
   - apply pimpl_exists_r; exists tt.
@@ -187,7 +187,7 @@ Proof.
     firstorder.
 Qed.
 
-Lemma flatten_star' : forall len V (p : @pred len V) q ps qs,
+Lemma flatten_star' : forall AT AEQ V (p : @pred AT AEQ V) q ps qs,
   p <=p=> stars ps
   -> q <=p=> stars qs
   -> p * q <=p=> stars (ps ++ qs).
@@ -207,7 +207,7 @@ Proof.
     apply piff_refl.
 Qed.
 
-Lemma flatten_star : forall len V PT QT (p : @pred len V) q ps qs P Q,
+Lemma flatten_star : forall AT AEQ V PT QT (p : @pred AT AEQ V) q ps qs P Q,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
   -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
   -> p * q <=p=> exists (x:PT*QT), stars (ps (fst x) ++ qs (snd x)) * [[P (fst x) /\ Q (snd x)]].
@@ -245,7 +245,7 @@ Proof.
     apply flatten_star'; apply piff_refl.
 Qed.
 
-Lemma flatten_exists: forall len V T PT (p : _ -> @pred len V) ps P,
+Lemma flatten_exists: forall AT AEQ V T PT (p : _ -> @pred AT AEQ V) ps P,
   (forall (a:T), (p a <=p=> exists (x:PT), stars (ps a x) * [[P a x]]))
   -> (exists (a:T), p a) <=p=>
       (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
@@ -263,8 +263,8 @@ Proof.
     apply pimpl_refl.
 Qed.
 
-Lemma flatten_lift_empty: forall len V P,
-  [[P]] <=p=> (exists (x:unit), stars (@nil (@pred len V)) * [[P]]).
+Lemma flatten_lift_empty: forall AT AEQ V P,
+  [[P]] <=p=> (exists (x:unit), stars (@nil (@pred AT AEQ V)) * [[P]]).
 Proof.
   split.
   - apply pimpl_exists_r. exists tt. apply emp_star.
@@ -282,7 +282,7 @@ Ltac flatten := repeat match goal with
                        | _ => apply flatten_default
                        end.
 
-Definition okToUnify {len V} (p1 p2 : @pred len V) := p1 = p2.
+Definition okToUnify {AT AEQ V} (p1 p2 : @pred AT AEQ V) := p1 = p2.
 
 Hint Extern 0 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
 Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
@@ -353,7 +353,7 @@ Ltac wordcmp := repeat wordcmp_one.
 Hint Extern 0 (okToUnify (?a |-> _) (?b |-> _)) =>
   unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
 
-Inductive pick {len V} (lhs : pred) : list (@pred len V) -> list pred -> Prop :=
+Inductive pick {AT AEQ V} (lhs : pred) : list (@pred AT AEQ V) -> list pred -> Prop :=
 | PickFirst : forall p ps,
   okToUnify lhs p
   -> pick lhs (p :: ps) ps
@@ -361,7 +361,7 @@ Inductive pick {len V} (lhs : pred) : list (@pred len V) -> list pred -> Prop :=
   pick lhs ps ps'
   -> pick lhs (p :: ps) (p :: ps').
 
-Lemma pick_later_and : forall len V (p : @pred len V) p' ps ps' (a b : @pred len V),
+Lemma pick_later_and : forall AT AEQ V (p : @pred AT AEQ V) p' ps ps' (a b : @pred AT AEQ V),
   pick p ps ps' /\ (a =p=> b)
   -> pick p (p' :: ps) (p' :: ps') /\ (a =p=> b).
 Proof.
@@ -371,7 +371,7 @@ Qed.
 Ltac pick := solve [ repeat ((apply PickFirst; solve [ trivial with okToUnify ])
                                || apply PickLater) ].
 
-Theorem imply_one : forall len V qs qs' (p : @pred len V) q ps F,
+Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,
   (pick q qs qs' /\ (p =p=> q))
   -> (stars ps * F =p=> stars qs')
   -> stars (p :: ps) * F =p=> stars qs.
@@ -391,7 +391,7 @@ Proof.
     eapply pimpl_sep_star. eapply sep_star_comm. eapply pimpl_refl.
 Qed.
 
-Theorem cancel_one : forall len V qs qs' (p : @pred len V) ps F,
+Theorem cancel_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) ps F,
   pick p qs qs'
   -> (stars ps * F =p=> stars qs')
   -> stars (p :: ps) * F =p=> stars qs.
@@ -402,7 +402,7 @@ Qed.
 
 Ltac cancel_one := eapply cancel_one; [ pick | ].
 
-Theorem delay_one : forall len V (p : @pred len V) ps q qs,
+Theorem delay_one : forall AT AEQ V (p : @pred AT AEQ V) ps q qs,
   (stars ps * stars (p :: qs) =p=> q)
   -> stars (p :: ps) * stars qs =p=> q.
 Proof.
@@ -426,7 +426,7 @@ Proof.
   firstorder.
 Qed.
 
-Lemma finish_frame : forall len V (p : @pred len V),
+Lemma finish_frame : forall AT AEQ V (p : @pred AT AEQ V),
   stars nil * p =p=> p.
 Proof.
   intros. apply star_emp_pimpl.
@@ -435,7 +435,7 @@ Qed.
 Ltac cancel' := repeat (cancel_one || delay_one);
                 try solve [ unfold stars at 2 3; simpl; apply finish_frame ].
 
-Theorem split_or_one : forall len V (q : @pred len V) pa pb ps F,
+Theorem split_or_one : forall AT AEQ V (q : @pred AT AEQ V) pa pb ps F,
   stars (pa :: ps) * F =p=> q
   -> stars (pb :: ps) * F =p=> q
   -> stars ((pa \/ pb) :: ps) * F =p=> q.
@@ -456,7 +456,7 @@ Proof.
     eauto.
 Qed.
 
-Theorem exists_one : forall len V T p ps F (q : @pred len V),
+Theorem exists_one : forall AT AEQ V T p ps F (q : @pred AT AEQ V),
   (forall a:T, stars (p a :: ps) * F =p=> q)
   -> stars ((exists a:T, p a) :: ps) * F =p=> q.
 Proof.
@@ -482,14 +482,14 @@ Ltac split_one := match goal with
 Ltac split_or_l := repeat ( (repeat split_one) ; delay_one );
                    apply restart_canceling.
 
-Lemma stars_or_left: forall len V (a b c : @pred len V),
+Lemma stars_or_left: forall AT AEQ V (a b c : @pred AT AEQ V),
   (a =p=> stars (b :: nil))
   -> (a =p=> stars ((b \/ c) :: nil)).
 Proof.
   firstorder.
 Qed.
 
-Lemma stars_or_right: forall len V (a b c : @pred len V),
+Lemma stars_or_right: forall AT AEQ V (a b c : @pred AT AEQ V),
   (a =p=> stars (c :: nil))
   -> (a =p=> stars ((b \/ c) :: nil)).
 Proof.
@@ -594,10 +594,10 @@ Ltac set_norm_goal :=
  *)
 Definition pimpl_hidden := @pimpl.
 Infix "=!=>" := pimpl_hidden (at level 90).
-Arguments pimpl_hidden {len V} _ _.
-Theorem pimpl_hide: forall len V (a b : @pred len V), (pimpl_hidden a b) -> (pimpl a b).
+Arguments pimpl_hidden {AT AEQ V} _ _.
+Theorem pimpl_hide: forall AT AEQ V (a b : @pred AT AEQ V), (pimpl_hidden a b) -> (pimpl a b).
 Proof. auto. Qed.
-Theorem pimpl_unhide: forall len V (a b : @pred len V), (pimpl a b) -> (pimpl_hidden a b).
+Theorem pimpl_unhide: forall AT AEQ V (a b : @pred AT AEQ V), (pimpl a b) -> (pimpl_hidden a b).
 Proof. auto. Qed.
 Opaque pimpl_hidden.
 
@@ -659,7 +659,7 @@ Ltac apply_xform canceller := match goal with
  * Older predicate replacement machinery.
  *)
 
-Theorem replace_left : forall len V ps ps' q (p : @pred len V) p' F,
+Theorem replace_left : forall AT AEQ V ps ps' q (p : @pred AT AEQ V) p' F,
   pick p ps ps' /\ (p =p=> p')
   -> (stars (p' :: ps') * F =p=> q)
   -> (stars ps * F =p=> q).
@@ -684,7 +684,7 @@ Proof.
     auto.
 Qed.
 
-Theorem replace_right : forall len V ps ps' q (p : @pred len V) p',
+Theorem replace_right : forall AT AEQ V ps ps' q (p : @pred AT AEQ V) p',
   pick p ps ps' /\ (p' =p=> p)
   -> (q =p=> stars (p' :: ps'))
   -> (q =p=> stars ps).

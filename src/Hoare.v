@@ -2,13 +2,14 @@ Require Import Prog.
 Require Import Pred.
 Require Import List.
 Require Import Morphisms.
+Require Import Word.
 
 Set Implicit Arguments.
 
 
 (** ** Hoare logic *)
 
-Definition donecond (T: Type) := T -> @mem addrlen valuset -> Prop.
+Definition donecond (T: Type) := T -> @mem addr (@weq addrlen) valuset -> Prop.
 
 Definition corr2 (T: Type) (pre: donecond T -> pred -> pred) (p: prog T) :=
   forall done crash m out, pre done crash m
