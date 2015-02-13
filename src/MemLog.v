@@ -392,6 +392,12 @@ Module MEMLOG.
     eapply Map.add_3; eauto.
   Qed.
 
+  Lemma replay_length : forall ms m,
+    length (replay ms m) = length m.
+  Proof.
+    admit.
+  Qed.
+
   Theorem write_ok : forall xp ms a v,
     {< m1 m2 F' v0,
     PRE      rep xp (ActiveTxn m1 m2) ms * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
@@ -405,7 +411,10 @@ Module MEMLOG.
 
     apply valid_entries_add; eauto.
     unfold indomain'.
-    admit.
+    erewrite <- replay_length.
+    (* XXX probably want to make a version of [list2mem_ptsto_bounds] that takes two lists
+       and a hypothesis that their lengths are equal *)
+    eapply list2mem_ptsto_bounds; eauto.
 
     rewrite replay_add.
     eapply list2mem_upd; eauto.
@@ -424,12 +433,6 @@ Module MEMLOG.
 
   Lemma replay_sel : forall a v ms m def,
     indomain' a m -> Map.MapsTo a v ms -> sel (replay ms m) a def = v.
-  Proof.
-    admit.
-  Qed.
-
-  Lemma replay_length : forall ms m,
-    length (replay ms m) = length m.
   Proof.
     admit.
   Qed.
@@ -622,7 +625,7 @@ Module MEMLOG.
     cancel.
     instantiate (a4 := nil).
     auto.
-    admit.
+    destruct l; simpl in *; try discriminate; solve_lengths.
     eapply pimpl_ok2.
     eauto with prog.
     intros.
@@ -660,8 +663,8 @@ Module MEMLOG.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements ms)), l3) ::
       firstn # (m) (List.combine (map snd (Map.elements ms)) l1) ++
       l2).
-    admit.
-    admit.
+    admit. (* array match *)
+    admit. (* XXX requires Nat.min_r *)
     word2nat_clear. abstract word2nat_auto.
     step'.
     step'.
@@ -693,7 +696,7 @@ Module MEMLOG.
     delay_one.
     delay_one.
     delay_one.
-    apply finish_frame.
+    unfold stars at 2 3; simpl; apply finish_frame.
     intuition.
     solve_lengths.
     solve_lengths.
@@ -702,26 +705,18 @@ Module MEMLOG.
     word2nat_clear; word2nat_auto.
     cancel.
     instantiate (a := match l5 with [] => [] | _ :: l5' => l5' end).
-    admit.
+    admit. (* array match *)
     word2nat_clear.
-    destruct l5.
-    simpl in *.
-    abstract word2nat_auto.
-    simpl in *.
-    abstract word2nat_auto.
+    destruct l5; simpl in *; abstract word2nat_auto.
     auto.
 
-    instantiate (a0 := repeat (# (LogLen xp) - Map.cardinal ms) ($0, nil)).
-    solve_lengths.
-
-    fold (@sep_star addrlen).
     cancel.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements (elt:=valu) ms)), []) ::
       firstn # (m) (List.combine (map snd (Map.elements (elt:=valu) ms))
         (repeat (length (map snd (Map.elements (elt:=valu) ms))) [])) ++
       List.combine (skipn # (m) (map snd (Map.elements (elt:=valu) ms))) l5 ++
       repeat (# (LogLen xp) - Map.cardinal (elt:=valu) ms) ($0, nil)).
-    admit.
+    admit. (* array match *)
     simpl.
     solve_lengths.
 
@@ -731,7 +726,7 @@ Module MEMLOG.
     instantiate (a := repeat (addr_per_block - length (Map.elements ms)) $0).
     rewrite firstn_oob.
     cancel.
-    admit.
+    admit. (* empty array; append zeroes to argument of descriptor_to_valu *)
     solve_lengths.
     solve_lengths.
     rewrite Forall_forall; intuition.
@@ -744,14 +739,14 @@ Module MEMLOG.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements (elt:=valu) ms)), l3) ::
       (firstn (Map.cardinal (elt:=valu) ms) (List.combine (map snd (Map.elements (elt:=valu) ms)) l1)) ++
       l2).
-    admit.
+    admit. (* array match *)
     solve_lengths.
 
     cancel.
     instantiate (a0 := (descriptor_to_valu (map fst (Map.elements (elt:=valu) ms)), l3) ::
       (firstn (Map.cardinal (elt:=valu) ms) (List.combine (map snd (Map.elements (elt:=valu) ms)) l1)) ++
       l2).
-    admit.
+    admit. (* array match *)
     solve_lengths.
 
     cancel.
@@ -760,7 +755,7 @@ Module MEMLOG.
 
     cancel.
     instantiate (a0 := l).
-    admit.
+    admit. (* array match, more or less *)
     solve_lengths.
 
     instantiate (default := ($0, nil)).
@@ -1050,34 +1045,17 @@ Module MEMLOG.
     cancel.
     auto.
   Qed.
-
-  Lemma crash_invariant_avail_region: forall start len,
-    crash_xform (avail_region start len) =p=> avail_region start len.
-  Proof.
-    unfold avail_region, array.
-    intros.
-    autorewrite with crash_xform.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
-    revert len.
-    induction l; intros.
-    cancel.
-    instantiate (a := nil); cancel; auto.
-    subst; auto.
-    autorewrite with crash_xform.
-    destruct len.
-    cancel.
-    (* XXX actually want to just prove a general theorem about [crash_xform] on [array] *)
-  Admitted.
+  Hint Rewrite crash_invariant_synced_array : crash_xform.
 
   Ltac log_intact_unfold := unfold MEMLOG.would_recover_either, MEMLOG.log_intact, MEMLOG.log_intact_either.
-  Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty
-    crash_invariant_ptsto crash_invariant_synced_array crash_invariant_avail_region crash_xform_ptsto : crash_xform.
 
   Ltac word_discriminate :=
     match goal with [ H: $ _ = $ _ |- _ ] => solve [
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
     ] end.
+
+  Ltac or_r := apply pimpl_or_r; right.
+  Ltac or_l := apply pimpl_or_r; left.
 
   Theorem recover_ok: forall xp,
     {< m1 m2,
@@ -1099,34 +1077,100 @@ Module MEMLOG.
       unfold stars; simpl; autorewrite with crash_xform.
     rewrite sep_star_comm; rewrite <- emp_star.
     repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; unfold stars; simpl; autorewrite with crash_xform.
-    cancel.
-    step.
-    step; try word_discriminate.
-    step; try word_discriminate.
-    cancel.
-    apply pimpl_or_r; left; cancel.
-    step.
-    step; try word_discriminate.
-    step.
-    cancel.
-    apply pimpl_or_r; left; cancel.
-    cancel.
-    step.
-    step; try word_discriminate.
-    step.
-    autorewrite with crash_xform.
-    apply pimpl_or_r; left; cancel.
-    cancel.
-    autorewrite with crash_xform.
-    apply pimpl_or_r; left; cancel.
-    autorewrite with crash_xform.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
-    cancel.
-    step.
-    eapply pimpl_ok2; [ eauto with prog | ]; intros.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
+    + cancel.
+      - step; step; try word_discriminate.
+      - cancel.
+        or_l; cancel.
+      - step; step; try word_discriminate.
+      - cancel.
+        or_l; cancel.
+    + cancel.
+      - step; step; try word_discriminate.
+        autorewrite with crash_xform.
+        or_l; cancel.
+      - cancel.
+        autorewrite with crash_xform.
+        or_l; cancel.
+    + autorewrite with crash_xform.
+      norm'l; unfold stars; simpl.
+      autorewrite with crash_xform.
+      cancel.
+      - step.
+        { eapply pimpl_ok2; [ eauto with prog | ]; intros.
+          norm'l; unfold stars; simpl.
+          autorewrite with crash_xform.
+          log_unfold; rewrite crash_xform_array; cancel.
+          + subst; cancel.
+          + unfold equal_unless_in; intuition.
+          + admit.
+          + auto.
+          + auto.
+          + step_unfold log_unfold.
+            - subst; eauto.
+            - subst; eauto.
+            - step.
+              or_l; cancel.
+              admit. (* by [possible_crash_list], [equal_unless_in], and [replay _ _ = replay _ _] hyps *)
+            - or_l; cancel.
+              or_r; or_r; or_l; cancel; auto.
+              admit.
+            - or_l; cancel.
+              or_r; or_r; or_r; cancel; auto.
+              admit.
+            - or_l; cancel.
+              or_l; cancel.
+              admit.
+          + cancel.
+            or_l; cancel.
+            or_r; or_r; or_l; cancel; auto.
+            admit.
+        }
+        { step. }
+      - autorewrite with crash_xform.
+        cancel.
+        or_l; cancel.
+        rewrite crash_xform_array.
+        or_r; or_r; or_l; cancel; auto.
+        admit.
+    + norm'l; unfold stars; simpl.
+      autorewrite with crash_xform.
+      cancel.
+      - step; step; try word_discriminate.
+        or_l; cancel.
+        admit.
+      - cancel.
+        or_l; cancel.
+        or_l; cancel.
+        admit.
+      - step; step_unfold log_unfold; try word_discriminate.
+        { admit. }
+        { step_unfold log_unfold; subst; eauto.
+          + step.
+            or_l; cancel.
+            admit.
+          + or_l; cancel.
+            or_r; or_r; or_l; cancel; auto.
+            admit.
+          + or_l; cancel.
+            or_r; or_r; or_r; cancel; auto.
+            rewrite H14; auto.
+          + or_l; cancel.
+            or_l; cancel.
+            rewrite H14; auto.
+        }
+        { or_l; cancel.
+          or_r; or_r; or_l; cancel; auto.
+          admit.
+        }
+      - cancel.
+        or_l; cancel.
+        or_r; or_r; or_l; cancel; auto.
+        admit.
+    + norm'l; unfold stars; simpl.
+      autorewrite with crash_xform.
+      cancel.
+      - step; step; try word_discriminate.
+
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
@@ -1233,6 +1277,7 @@ Module MEMLOG.
   Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
 
 End MEMLOG.
+
 
 
 Global Opaque MEMLOG.write.
