@@ -12,6 +12,12 @@ Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) : @pred _ (@w
     | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
   end%pred.
 
+Fixpoint arrayN {V : Type} (a : nat) (vs : list V) : @pred _ eq_nat_dec _ :=
+  match vs with
+    | nil => emp
+    | v :: vs' => a |-> v * arrayN (S a) vs'
+  end%pred.
+
 (** * Reading and writing from arrays *)
 
 Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
@@ -498,6 +504,43 @@ Proof.
   apply pimpl_refl.
 Qed.
 
+Lemma isolateN_fwd' : forall V vs i a (default : V),
+  i < length vs
+  -> arrayN a vs =p=> arrayN a (firstn i vs)
+     * (a + i) |-> selN vs i default
+     * arrayN (a + i + 1) (skipn (S i) vs).
+Proof.
+  induction vs; simpl; intuition.
+
+  inversion H.
+
+  destruct i; simpl.
+
+  replace (a0 + 0) with (a0) by omega.
+  replace (a0 + 1) with (S a0) by omega.
+  cancel.
+
+  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] | ]; clear IHvs.
+  instantiate (1 := i); omega.
+  simpl.
+  replace (S (a0 + i)) with (a0 + S i) by omega.
+  replace (S (a0 + i + 1)) with (a0 + S i + 1) by omega.
+  cancel.
+Qed.
+
+Theorem isolateN_fwd : forall V (default : V) a i vs,
+  i < length vs
+  -> arrayN a vs =p=> arrayN a (firstn i vs)
+     * (a + i) |-> selN vs i default
+     * arrayN (a + i + 1) (skipn (S i) vs).
+Proof.
+  intros.
+  eapply pimpl_trans; [ apply isolateN_fwd' | ].
+  eassumption.
+  apply pimpl_refl.
+Qed.
+
+
 Lemma isolate_bwd' : forall V vs i a stride (default : V),
   i < length vs
   -> array a (firstn i vs) stride
@@ -539,6 +582,44 @@ Proof.
   apply pimpl_refl.
 Qed.
 
+Lemma isolateN_bwd' : forall V vs i a (default : V),
+  i < length vs
+  -> arrayN a (firstn i vs)
+     * (a + i) |-> selN vs i default
+     * arrayN (a + i + 1) (skipn (S i) vs)
+  =p=> arrayN a vs.
+Proof.
+  induction vs; simpl; intuition.
+
+  inversion H.
+
+  destruct i; simpl.
+
+  replace (a0 + 0) with (a0) by omega.
+  replace (a0 + 1) with (S a0) by omega.
+  cancel.
+
+  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] ]; clear IHvs.
+  2: instantiate (1 := i); omega.
+  simpl.
+  replace (a0 + S i) with (S (a0 + i)) by omega.
+  cancel.
+Qed.
+
+Theorem isolateN_bwd : forall V (default : V) a i vs,
+  i < length vs
+  -> arrayN a (firstn i vs)
+     * (a + i) |-> selN vs i default
+     * arrayN (a + i + 1) (skipn (S i) vs)
+  =p=> arrayN a vs.
+Proof.
+  intros.
+  eapply pimpl_trans; [ | apply isolateN_bwd' ].
+  2: eassumption.
+  apply pimpl_refl.
+Qed.
+
+
 Theorem array_isolate : forall V (default : V) (a i : addr) vs stride,
   wordToNat i < length vs
   -> array a vs stride <=p=>
@@ -549,6 +630,18 @@ Proof.
   unfold piff; split.
   apply isolate_fwd; auto.
   apply isolate_bwd; auto.
+Qed.
+
+Theorem arrayN_isolate : forall V (default : V) a i vs,
+  i < length vs
+  -> arrayN a vs <=p=>
+     arrayN a (firstn i vs)
+     * (a + i) |-> selN vs i default
+     * arrayN (a + i + 1) (skipn (S i) vs).
+Proof.
+  unfold piff; split.
+  apply isolateN_fwd; auto.
+  apply isolateN_bwd; auto.
 Qed.
 
 Theorem array_isolate_upd : forall V (v : V) (a i : addr) vs stride,
@@ -566,6 +659,21 @@ Proof.
   cancel; autorewrite with core; cancel.
 Qed.
 
+Theorem arrayN_isolate_upd : forall V (v : V) a i vs,
+  i < length vs
+  -> arrayN a (updN vs i v) <=p=>
+     arrayN a (firstn i vs)
+     * (a + i) |-> v
+     * arrayN (a + i + 1) (skipn (S i) vs).
+Proof.
+  intros.
+  erewrite arrayN_isolate with (vs:=updN vs i v) (i:=i) (default:=v);
+    autorewrite with core; auto.
+  unfold piff; split.
+  cancel; autorewrite with core; cancel.
+  cancel; autorewrite with core; cancel.
+Qed.
+
 
 Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
   wordToNat i < length vs
@@ -576,6 +684,22 @@ Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
 Proof.
   intros.
   erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i) (default:=v).
+  cancel.
+  autorewrite with core.
+  cancel.
+  autorewrite with core.
+  auto.
+Qed.
+
+Theorem isolateN_bwd_upd : forall V (v : V) a i vs,
+  i < length vs
+  -> arrayN a (firstn i vs)
+     * (a + i) |-> v
+     * arrayN (a + i + 1) (skipn (S i) vs)
+     =p=> arrayN a (updN vs i v).
+Proof.
+  intros.
+  erewrite <- isolateN_bwd with (vs:=updN vs i v) (i:=i) (default:=v).
   cancel.
   autorewrite with core.
   cancel.
@@ -638,6 +762,37 @@ Proof.
   replace i with ($0 ^+ i).
   eapply array_oob'; eauto.
   ring_simplify ($0 ^+ i); auto.
+Qed.
+
+Lemma arrayN_oob': forall A (l : list A) a i m,
+  i >= length l
+  -> arrayN a l m
+  -> m (a + i) = None.
+Proof.
+  induction l; intros; auto; simpl in *.
+  destruct (eq_nat_dec i 0); auto.
+  subst; simpl in *; omega.
+
+  unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
+  repeat deex.
+  unfold mem_union.
+  unfold ptsto in H2; destruct H2; rewrite H2.
+  pose proof (IHl (S a0) (i - 1)).
+  replace (S a0 + (i - 1)) with (a0 + i) in H3 by omega.
+  apply H3; try omega.
+
+  auto.
+  omega.
+Qed.
+
+Lemma arrayN_oob: forall A (l : list A) i m,
+  i >= length l
+  -> arrayN 0 l m
+  -> m i = None.
+Proof.
+  intros.
+  replace i with (0 + i) by omega.
+  eapply arrayN_oob'; eauto.
 Qed.
 
 
@@ -774,6 +929,25 @@ Proof.
   apply ptsto_upd_disjoint; auto.
   eapply array_oob; eauto.
   erewrite wordToNat_natToWord_bound; eauto.
+Qed.
+
+Lemma arrayN_app_progupd : forall V l (v : V) m,
+  arrayN 0 l m
+  -> arrayN 0 (l ++ v :: nil) (Prog.upd m (length l) v).
+Proof.
+  intros.
+
+  eapply isolateN_bwd with (i := (length l)) (default := v).
+  rewrite app_length; simpl; omega.
+
+  rewrite firstn_app; auto.
+  rewrite selN_last; auto.
+  rewrite skipn_oob; [ | rewrite app_length; simpl; omega ].
+  unfold arrayN at 2; auto; apply emp_star_r.
+  simpl.
+
+  apply ptsto_upd_disjoint; auto.
+  eapply arrayN_oob; eauto.
 Qed.
 
 
