@@ -1051,25 +1051,7 @@ Module MEMLOG.
     cancel.
     auto.
   Qed.
-
-  Lemma crash_invariant_avail_region: forall start len,
-    crash_xform (avail_region start len) =p=> avail_region start len.
-  Proof.
-    unfold avail_region, array.
-    intros.
-    autorewrite with crash_xform.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
-    revert len.
-    induction l; intros.
-    cancel.
-    instantiate (a := nil); cancel; auto.
-    subst; auto.
-    autorewrite with crash_xform.
-    destruct len.
-    cancel.
-    (* XXX actually want to just prove a general theorem about [crash_xform] on [array] *)
-  Admitted.
+  Hint Rewrite crash_invariant_synced_array : crash_xform.
 
   Lemma crash_xform_ptsto: forall a v,
     crash_xform (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
@@ -1089,15 +1071,53 @@ Module MEMLOG.
     specialize (H2 a' H4).
     congruence.
   Qed.
+  Hint Rewrite crash_xform_ptsto : crash_xform.
+
+  Definition possible_crash_list (l: list valuset) (l': list valu) :=
+    length l = length l' /\ forall i, i < length l -> In (selN l' i $0) (valuset_list (selN l i ($0, nil))).
+
+  Lemma crash_xform_array: forall l start stride,
+    crash_xform (array start l stride) =p=>
+      exists l', [[ possible_crash_list l l' ]] * array start (List.combine l' (repeat (length l') nil)) stride.
+  Proof.
+    unfold array, possible_crash_list.
+    induction l; intros.
+    cancel.
+    instantiate (a := nil).
+    simpl; auto.
+    auto.
+    autorewrite with crash_xform.
+    rewrite IHl.
+    cancel; [ instantiate (a := w :: l0) | .. ]; simpl; auto; try cancel;
+      destruct i; simpl; auto;
+      destruct (H4 i); try omega; simpl; auto.
+  Qed.
+
+  Lemma crash_invariant_avail_region: forall start len,
+    crash_xform (avail_region start len) =p=> avail_region start len.
+  Proof.
+    unfold avail_region.
+    intros.
+    autorewrite with crash_xform.
+    norm'l.
+    unfold stars; simpl.
+    autorewrite with crash_xform.
+    rewrite crash_xform_array.
+    unfold possible_crash_list.
+    cancel.
+    solve_lengths.
+  Qed.
+  Hint Rewrite crash_invariant_avail_region : crash_xform.
 
   Ltac log_intact_unfold := unfold MEMLOG.would_recover_either, MEMLOG.log_intact, MEMLOG.log_intact_either.
-  Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty
-    crash_invariant_ptsto crash_invariant_synced_array crash_invariant_avail_region crash_xform_ptsto : crash_xform.
 
   Ltac word_discriminate :=
     match goal with [ H: $ _ = $ _ |- _ ] => solve [
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
     ] end.
+
+  Ltac or_r := apply pimpl_or_r; right.
+  Ltac or_l := apply pimpl_or_r; left.
 
   Theorem recover_ok: forall xp,
     {< m1 m2,
@@ -1119,34 +1139,100 @@ Module MEMLOG.
       unfold stars; simpl; autorewrite with crash_xform.
     rewrite sep_star_comm; rewrite <- emp_star.
     repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; unfold stars; simpl; autorewrite with crash_xform.
-    cancel.
-    step.
-    step; try word_discriminate.
-    step; try word_discriminate.
-    cancel.
-    apply pimpl_or_r; left; cancel.
-    step.
-    step; try word_discriminate.
-    step.
-    cancel.
-    apply pimpl_or_r; left; cancel.
-    cancel.
-    step.
-    step; try word_discriminate.
-    step.
-    autorewrite with crash_xform.
-    apply pimpl_or_r; left; cancel.
-    cancel.
-    autorewrite with crash_xform.
-    apply pimpl_or_r; left; cancel.
-    autorewrite with crash_xform.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
-    cancel.
-    step.
-    eapply pimpl_ok2; [ eauto with prog | ]; intros.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
+    + cancel.
+      - step; step; try word_discriminate.
+      - cancel.
+        or_l; cancel.
+      - step; step; try word_discriminate.
+      - cancel.
+        or_l; cancel.
+    + cancel.
+      - step; step; try word_discriminate.
+        autorewrite with crash_xform.
+        or_l; cancel.
+      - cancel.
+        autorewrite with crash_xform.
+        or_l; cancel.
+    + autorewrite with crash_xform.
+      norm'l; unfold stars; simpl.
+      autorewrite with crash_xform.
+      cancel.
+      - step.
+        { eapply pimpl_ok2; [ eauto with prog | ]; intros.
+          norm'l; unfold stars; simpl.
+          autorewrite with crash_xform.
+          log_unfold; rewrite crash_xform_array; cancel.
+          + subst; cancel.
+          + unfold equal_unless_in; intuition.
+          + admit.
+          + auto.
+          + auto.
+          + step_unfold log_unfold.
+            - subst; eauto.
+            - subst; eauto.
+            - step.
+              or_l; cancel.
+              admit. (* by [possible_crash_list], [equal_unless_in], and [replay _ _ = replay _ _] hyps *)
+            - or_l; cancel.
+              or_r; or_r; or_l; cancel; auto.
+              admit.
+            - or_l; cancel.
+              or_r; or_r; or_r; cancel; auto.
+              admit.
+            - or_l; cancel.
+              or_l; cancel.
+              admit.
+          + cancel.
+            or_l; cancel.
+            or_r; or_r; or_l; cancel; auto.
+            admit.
+        }
+        { step. }
+      - autorewrite with crash_xform.
+        cancel.
+        or_l; cancel.
+        rewrite crash_xform_array.
+        or_r; or_r; or_l; cancel; auto.
+        admit.
+    + norm'l; unfold stars; simpl.
+      autorewrite with crash_xform.
+      cancel.
+      - step; step; try word_discriminate.
+        or_l; cancel.
+        admit.
+      - cancel.
+        or_l; cancel.
+        or_l; cancel.
+        admit.
+      - step; step_unfold log_unfold; try word_discriminate.
+        { admit. }
+        { step_unfold log_unfold; subst; eauto.
+          + step.
+            or_l; cancel.
+            admit.
+          + or_l; cancel.
+            or_r; or_r; or_l; cancel; auto.
+            admit.
+          + or_l; cancel.
+            or_r; or_r; or_r; cancel; auto.
+            rewrite H14; auto.
+          + or_l; cancel.
+            or_l; cancel.
+            rewrite H14; auto.
+        }
+        { or_l; cancel.
+          or_r; or_r; or_l; cancel; auto.
+          admit.
+        }
+      - cancel.
+        or_l; cancel.
+        or_r; or_r; or_l; cancel; auto.
+        admit.
+    + norm'l; unfold stars; simpl.
+      autorewrite with crash_xform.
+      cancel.
+      - step; step; try word_discriminate.
+
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
@@ -1253,6 +1339,7 @@ Module MEMLOG.
   Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
 
 End MEMLOG.
+
 
 
 Global Opaque MEMLOG.write.
