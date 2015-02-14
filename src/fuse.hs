@@ -135,11 +135,9 @@ fscqReadDirectory fd "/" = do
   return $ Right $ [(".",          dirStat ctx)
                    ,("..",         dirStat ctx)
                    ,(fscqName,    fileStat ctx $ fromIntegral len)
-                   ] ++ map (\item -> (mkfn item, fileStat ctx 0)) files
+                   ] ++ map (\(fn, inum) -> (fn, fileStat ctx 0)) files
   where
     (_:fscqName) = fscqPath
-    mkfn (W fni, inum) = "dummy"
-    -- should actually convert (fni :: Integer) into a [Char] somehow..
 fscqReadDirectory _ _ = return (Left (eNOENT))
 
 fscqOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)

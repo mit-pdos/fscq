@@ -5,7 +5,7 @@ Require Import Word.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred.
-Require Import Dir.
+Require Import DirName.
 Require Import Hoare.
 Require Import GenSep.
 Require Import SepAuto.
@@ -277,6 +277,6 @@ Definition write_block T lxp bxp ixp inum off v rx : prog T :=
 
 Definition readdir T lxp ixp dnum rx : prog T :=
   ms <- MEMLOG.begin lxp;
-  files <- DIR.dlist lxp ixp dnum ms;
+  files <- SDIR.dslist lxp ixp dnum ms;
   _ <- MEMLOG.commit lxp ms;
   rx files.
