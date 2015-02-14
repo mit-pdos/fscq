@@ -43,7 +43,8 @@ i2buf i (GHC.Exts.Ptr a) = do
   return ()
 
 read_disk :: Fd -> Coq_word -> IO Coq_word
-read_disk fd (W a) = do
+read_disk fd (W a) = read_disk fd (W64 $ fromIntegral a)
+read_disk fd (W64 a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   allocaBytes 512 $ \buf -> do
     _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 512*a
@@ -57,7 +58,9 @@ read_disk fd (W a) = do
         error "read_disk: short read"
 
 write_disk :: Fd -> Coq_word -> Coq_word -> IO ()
-write_disk fd (W a) (W v) = do
+write_disk fd (W a) v = write_disk fd (W64 $ fromIntegral a) v
+write_disk _ (W64 _) (W64 _) = error "write_disk: short value"
+write_disk fd (W64 a) (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   allocaBytes 512 $ \buf -> do
