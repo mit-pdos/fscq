@@ -242,6 +242,8 @@ Module MEMLOG.
   Definition rep xp (st: logstate) (ms: memstate) :=
     (* For now, support just one descriptor block, at the start of the log. *)
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
+     (* The log shouldn't overflow past the end of disk *)
+     [[ goodSize addrlen (# (LogStart xp) + # (LogLen xp) + 1) ]] *
     match st with
     | NoTransaction m =>
       (LogCommit xp) |=> $0
@@ -315,6 +317,7 @@ Module MEMLOG.
 
   Definition log_uninitialized xp old :=
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
+     [[ goodSize addrlen (# (LogStart xp) + # (LogLen xp) + 1) ]] *
      data_rep xp (synced_list old) *
      avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
      (LogCommit xp) |->? *
@@ -348,7 +351,7 @@ Module MEMLOG.
     unfold begin; log_unfold.
     hoare.
 
-    unfold valid_entries; intuition; inversion H0.
+    unfold valid_entries; intuition; inversion H.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (begin _) _) => apply begin_ok : prog.
@@ -458,14 +461,14 @@ Module MEMLOG.
     case_eq (Map.find a ms); hoare.
     subst.
 
-    eapply list2mem_sel with (def := $0) in H0.
+    eapply list2mem_sel with (def := $0) in H1.
     apply Map.find_2 in H.
     eapply replay_sel in H.
     rewrite <- H.
-    rewrite H0.
+    rewrite H1.
     reflexivity.
-    unfold valid_entries in H7.
-    eapply H7; eauto.
+    unfold valid_entries in H8.
+    eapply H8; eauto.
 
     rewrite combine_length_eq.
     erewrite <- replay_length.
@@ -473,14 +476,14 @@ Module MEMLOG.
     rewrite repeat_length; auto.
     unfold sel; rewrite selN_combine.
     simpl.
-    eapply list2mem_sel with (def := $0) in H0.
-    rewrite H0.
+    eapply list2mem_sel with (def := $0) in H1.
+    rewrite H1.
     unfold sel.
     rewrite replay_sel_other. trivial.
     intuition.
-    hnf in H1.
-    destruct H1.
-    apply Map.find_1 in H1.
+    hnf in H4.
+    destruct H4.
+    apply Map.find_1 in H4.
     congruence.
     rewrite repeat_length; auto.
   Qed.
@@ -593,10 +596,70 @@ Module MEMLOG.
     try congruence.
 (*  eauto. *)
 
-  Hint Rewrite app_length firstn_length skipn_length combine_length map_length replay_length repeat_length Nat.min_l : lengths.
+  Hint Rewrite app_length firstn_length skipn_length combine_length map_length replay_length repeat_length length_upd : lengths.
 
-  Ltac solve_lengths := intros; word2nat_clear; simpl; word2nat_simpl; word2nat_rewrites;
-    unfold valuset in *; repeat (progress autorewrite with lengths); repeat rewrite Map.cardinal_1 in *; try word2nat_solve.
+  Ltac solve_lengths' :=
+    repeat (progress (autorewrite with lengths; repeat rewrite Nat.min_l by solve_lengths'; repeat rewrite Nat.min_r by solve_lengths'));
+    repeat rewrite Map.cardinal_1 in *;
+    simpl; try word2nat_solve.
+
+  Ltac solve_lengths := intros; word2nat_clear; simpl; word2nat_simpl; word2nat_rewrites; unfold valuset in *; solve_lengths'.
+
+  Lemma upd_prepend_length: forall l a v, length (upd_prepend l a v) = length l.
+  Proof.
+    intros; unfold upd_prepend.
+    solve_lengths.
+  Qed.
+  Hint Rewrite upd_prepend_length : lengths.
+
+  Ltac assert_lte a b := let H := fresh in assert (a <= b)%word as H by
+      (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve); clear H.
+
+  Ltac array_sort' :=
+    eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
+    repeat rewrite <- sep_star_assoc;
+    repeat match goal with
+    | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
+      assert_lte a2 a1;
+      try (assert_lte a1 a2; fail 1); (* don't swap forever if two terms are equal *)
+      rewrite (sep_star_assoc p (array a1 l1 s));
+      rewrite (sep_star_comm (array a1 l1 s)); rewrite <- (sep_star_assoc p (array a2 l2 s))
+    end;
+    eapply pimpl_trans; rewrite <- emp_star; [ apply pimpl_refl |].
+
+  Ltac array_sort :=
+    word2nat_clear; word2nat_auto; [ array_sort' | .. ].
+
+  Lemma singular_array: forall T a (v: T),
+    a |-> v =p=> array a [v] $1.
+  Proof.
+    intros. cancel.
+  Qed.
+
+  Lemma array_app: forall T (l1 l2: list T) a1 a2,
+    a2 = a1 ^+ $ (length l1) ->
+    array a1 l1 $1 * array a2 l2 $1 <=p=> array a1 (l1 ++ l2) $1.
+  Proof.
+    induction l1.
+    (* XXX make word2nat_auto handle all these *)
+    intros; word2nat_auto; simpl in *; rewrite Nat.add_0_r in *; word2nat_auto; split; cancel.
+    intros; simpl; rewrite sep_star_assoc. rewrite IHl1. auto.
+    word2nat_auto; simpl in *; word2nat_auto.
+  Qed.
+
+  Lemma equal_arrays: forall T (l1 l2: list T) a,
+    l1 = l2 -> array a l1 $1 =p=> array a l2 $1.
+  Proof.
+    cancel.
+  Qed.
+
+  Ltac array_match :=
+    repeat rewrite singular_array;
+    array_sort;
+    repeat (rewrite array_app; [ | solve_lengths ]); [ repeat rewrite <- app_assoc | .. ];
+    try apply pimpl_refl;
+    try apply equal_arrays.
+
 
   Theorem flush_ok : forall xp ms,
     {< m1 m2,
@@ -608,7 +671,6 @@ Module MEMLOG.
   Proof.
     unfold flush; log_unfold; unfold avail_region.
     intros.
-    assert (goodSize addrlen (# (LogLen xp))) by (apply wordToNat_bound).
 
     step.
     step.
@@ -633,39 +695,23 @@ Module MEMLOG.
     norm'l.
     unfold stars.
     simpl.
-    rewrite isolate_fwd with (a := LogStart xp ^+ $ (1) ^+ m) (i := $0).
+    rewrite isolate_fwd with (a := LogStart xp ^+ $ (1) ^+ m) (i := $0) by solve_lengths.
     cancel.
     step.
-    word2nat_clear. word2nat_simpl.
-    simpl wordToNat.
-    simpl.
-    rewrite <- plus_assoc.
-    cancel.
-    rewrite array_inc_firstn.
-    word2nat_rewrites.
-    unfold valuset; rewrite combine_one.
-    rewrite firstn_combine_comm.
-    rewrite <- combine_app.
-    unfold sel; rewrite <- firstn_plusone_selN with (def := $0).
-    rewrite firstn_combine_comm.
-    rewrite firstn_firstn.
-    rewrite Nat.min_id.
-    rewrite <- firstn_combine_comm.
-    instantiate (a2 := firstn # (m) l1 ++ [valuset_list (selN l2 0 ($0, nil))]).
-    cancel.
+    array_match.
+    rewrite firstn_plusone_selN with (def := ($0, nil)).
+    instantiate (a2 := l1 ++ [valuset_list (sel l2 $0 ($0, nil))]).
+    instantiate (a3 := skipn 1 l2).
+    admit. (* list manipulation *)
     solve_lengths.
     solve_lengths.
-    word2nat_solve.
     solve_lengths.
-    word2nat_clear; abstract (destruct l2; word2nat_auto; simpl in *; omega).
+    solve_lengths.
+    destruct l2; simpl in *; try discriminate; solve_lengths.
+
     cancel.
-    word2nat_clear.
-    instantiate (a0 := (descriptor_to_valu (map fst (Map.elements ms)), l3) ::
-      firstn # (m) (List.combine (map snd (Map.elements ms)) l1) ++
-      l2).
-    admit. (* array match *)
-    admit. (* XXX requires Nat.min_r *)
-    word2nat_clear. abstract word2nat_auto.
+    array_match.
+    destruct l2; simpl in *; try discriminate; solve_lengths.
     step'.
     step'.
     step'.
@@ -675,7 +721,7 @@ Module MEMLOG.
     cancel.
     solve_lengths.
     solve_lengths.
-    word2nat_clear; abstract word2nat_auto.
+    solve_lengths.
 
     step'.
     rewrite isolate_fwd with (a := LogStart xp ^+ $ (1) ^+ m) (i := $0).
@@ -758,11 +804,12 @@ Module MEMLOG.
     admit. (* array match, more or less *)
     solve_lengths.
 
-    instantiate (default := ($0, nil)).
-    instantiate (Goal12 := $0).
-    instantiate (Goal13 := nil).
+    instantiate (Goal9 := $0).
+    instantiate (Goal11 := nil).
     instantiate (v := ($0, nil)).
     instantiate (v0 := ($0, nil)).
+    instantiate (y := ($0, nil)).
+    instantiate (y0 := ($0, nil)).
 
     solve_lengths.
   Qed.
@@ -803,14 +850,14 @@ Module MEMLOG.
     admit.
     admit.
     admit.
-    rewrite <- H25.
+    rewrite <- H26.
     admit.
     admit.
     admit.
     admit.
     assert (goodSize addrlen (# (LogLen xp))) by (apply wordToNat_bound).
-    rewrite skipn_oob in H22 by solve_lengths.
     rewrite skipn_oob in H23 by solve_lengths.
+    rewrite skipn_oob in H24 by solve_lengths.
     admit.
     admit.
   Qed.
@@ -851,8 +898,7 @@ Module MEMLOG.
     admit.
     admit.
     admit.
-    assert (goodSize addrlen (# (LogLen xp))) by (apply wordToNat_bound).
-    rewrite skipn_oob in H21 by solve_lengths.
+    rewrite skipn_oob in H22 by solve_lengths.
     instantiate (y := $0).
     admit.
     apply pimpl_or_r; left; cancel.
@@ -1006,10 +1052,10 @@ Module MEMLOG.
   Proof.
     unfold read_log; log_unfold.
     hoare.
-    rewrite header_valu_id in H0. unfold mk_header, Rec.recget' in H0. simpl in H0.
+    rewrite header_valu_id in H. unfold mk_header, Rec.recget' in H. simpl in H.
     solve_lengths.
     (* true by [equal_unless_in _ ...d... l2] and [replay m l = replay m d] *) admit.
-    rewrite header_valu_id in H0. unfold mk_header, Rec.recget' in H0. simpl in H0.
+    rewrite header_valu_id in H. unfold mk_header, Rec.recget' in H. simpl in H.
     rewrite descriptor_valu_id. admit.
     hnf. intuition.
     admit.
@@ -1153,10 +1199,10 @@ Module MEMLOG.
             admit.
           + or_l; cancel.
             or_r; or_r; or_r; cancel; auto.
-            rewrite H14; auto.
+            rewrite H16; auto.
           + or_l; cancel.
             or_l; cancel.
-            rewrite H14; auto.
+            rewrite H16; auto.
         }
         { or_l; cancel.
           or_r; or_r; or_l; cancel; auto.
@@ -1258,6 +1304,7 @@ Module MEMLOG.
 
     norm.
     cancel.
+    auto.
     auto.
 
     cancel.

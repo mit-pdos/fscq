@@ -28,6 +28,8 @@ Proof.
 Qed.
 Hint Rewrite wordToNat_N : W2Nat.
 
+Hint Rewrite natToWord_wordToNat : W2Nat.
+
 Theorem plus_ovf_l : forall sz x y, $ (wordToNat (natToWord sz x) + y) = natToWord sz (x + y).
 Proof.
   intros.
