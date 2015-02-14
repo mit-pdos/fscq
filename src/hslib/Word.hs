@@ -32,6 +32,12 @@ wdiv _ (W x) (W y) = W $ x `quot` y
 wmod :: Int -> Coq_word -> Coq_word -> Coq_word
 wmod _ (W x) (W y) = W $ x `rem` y
 
+wbit :: Int -> Int -> Coq_word -> Coq_word
+wbit sz _ (W n) = W $ wrap sz (2^n)
+
+wand :: Int -> Coq_word -> Coq_word -> Coq_word
+wand _ (W x) (W y) = W $ (Data.Bits..&.) x y
+
 natToWord :: Int -> Int -> Coq_word
 natToWord _ 0 = W 0
 natToWord n x = W $ wrap n $ fromIntegral x

@@ -15,49 +15,47 @@ Require List.
 
 Set Implicit Arguments.
 
+Definition ifw {len} (b : bool) (bitpos : word len) : word len := if b then wbit _ bitpos else $0.
+
 Definition ascii2byte (a : ascii) : word 8 :=
   match a with
   | Ascii a1 a2 a3 a4 a5 a6 a7 a8 =>
-    WS a1 (WS a2 (WS a3 (WS a4 (WS a5 (WS a6 (WS a7 (WS a8 WO)))))))
+    ifw a1 $0 ^+
+    ifw a2 $1 ^+
+    ifw a3 $2 ^+
+    ifw a4 $3 ^+
+    ifw a5 $4 ^+
+    ifw a6 $5 ^+
+    ifw a7 $6 ^+
+    ifw a8 $7
   end.
 
+Definition wbitset {len} (bitpos : word len) (w : word len) : bool :=
+  if weq (wand w (wbit _ bitpos)) $0 then false else true.
+
 Definition byte2ascii (b : word 8) : ascii :=
-  match b with
-  | WS a1 b1 => match b1 with
-    | WS a2 b2 => match b2 with
-      | WS a3 b3 => match b3 with
-        | WS a4 b4 => match b4 with
-          | WS a5 b5 => match b5 with
-            | WS a6 b6 => match b6 with
-              | WS a7 b7 => match b7 with
-                | WS a8 _ => Ascii a1 a2 a3 a4 a5 a6 a7 a8
-                | WO => Ascii.zero
-                end
-              | WO => Ascii.zero
-              end
-            | WO => Ascii.zero
-            end
-          | WO => Ascii.zero
-          end
-        | WO => Ascii.zero
-        end
-      | WO => Ascii.zero
-      end
-    | WO => Ascii.zero
-    end
-  | WO => Ascii.zero
-  end.
+  Ascii (wbitset $0 b)
+        (wbitset $1 b)
+        (wbitset $2 b)
+        (wbitset $3 b)
+        (wbitset $4 b)
+        (wbitset $5 b)
+        (wbitset $6 b)
+        (wbitset $7 b).
 
 Theorem ascii2byte2ascii : forall a, byte2ascii (ascii2byte a) = a.
 Proof.
-  destruct a; reflexivity.
+  destruct a.
+  destruct b; destruct b0; destruct b1; destruct b2;
+  destruct b3; destruct b4; destruct b5; destruct b6; reflexivity.
 Qed.
 
 Theorem byte2ascii2byte : forall b, ascii2byte (byte2ascii b) = b.
 Proof.
   intros.
   shatter_word b.
-  reflexivity.
+  destruct x; destruct x0; destruct x1; destruct x2;
+  destruct x3; destruct x4; destruct x5; destruct x6; reflexivity.
 Qed.
 
 Fixpoint name2padstring (nbytes : nat) (name : word (nbytes * 8)) : string.
