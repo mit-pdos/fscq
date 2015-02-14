@@ -280,3 +280,27 @@ Definition readdir T lxp ixp dnum rx : prog T :=
   files <- SDIR.dslist lxp ixp dnum ms;
   _ <- MEMLOG.commit lxp ms;
   rx files.
+
+Definition link T lxp bxp ixp dnum name inum rx : prog T :=
+  ms <- MEMLOG.begin lxp;
+  r <- SDIR.dslink lxp bxp ixp dnum name inum ms;
+  let (ok, ms) := r in
+  If (bool_dec ok false) {
+    MEMLOG.abort lxp ms;;
+    rx false
+  } else {
+    ok <- MEMLOG.commit lxp ms;
+    rx ok
+  }.
+
+Definition unlink T lxp bxp ixp dnum name rx : prog T :=
+  ms <- MEMLOG.begin lxp;
+  ms <- SDIR.dsunlink lxp bxp ixp dnum name ms;
+  ok <- MEMLOG.commit lxp ms;
+  rx ok.
+
+Definition lookup T lxp bxp ixp dnum name rx : prog T :=
+  ms <- MEMLOG.begin lxp;
+  r <- SDIR.dslookup lxp bxp ixp dnum name ms;
+  _ <- MEMLOG.commit lxp ms;
+  rx r.

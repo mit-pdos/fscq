@@ -23,6 +23,12 @@ type HT = Coq_word
 disk_fn :: String
 disk_fn = "disk.img"
 
+-- Special inode numbers
+rootDir :: Coq_word
+rootDir = W 1
+theOneFile :: Coq_word
+theOneFile = W 2
+
 lxp :: MemLog.Coq_xparams
 lxp = MemLog.Build_xparams
   (W 0x2000)  -- log header sector
@@ -62,7 +68,8 @@ main = do
 fscqFSOps :: Fd -> FuseOperations HT
 fscqFSOps fd = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fd
-  , fuseOpen = fscqOpen
+  , fuseOpen = fscqOpen fd
+  , fuseCreateDevice = fscqCreate fd
   , fuseRead = fscqRead fd
   , fuseWrite = fscqWrite fd
   , fuseSetFileSize = fscqSetFileSize fd
@@ -70,9 +77,6 @@ fscqFSOps fd = defaultFuseOps
   , fuseReadDirectory = fscqReadDirectory fd
   , fuseGetFileSystemStats = fscqGetFileSystemStats
   }
-
-fscqPath :: FilePath
-fscqPath = "/hello"
 
 dirStat :: FuseContext -> FileStat
 dirStat ctx = FileStat
@@ -116,12 +120,15 @@ fscqGetFileStat :: Fd -> FilePath -> IO (Either Errno FileStat)
 fscqGetFileStat _ "/" = do
   ctx <- getFuseContext
   return $ Right $ dirStat ctx
-fscqGetFileStat fd path | path == fscqPath = do
-  ctx <- getFuseContext
-  (W len) <- I.run fd $ FS.file_len lxp ixp (W 1)
-  return $ Right $ fileStat ctx $ fromIntegral len
-fscqGetFileStat _ _ =
-  return $ Left eNOENT
+fscqGetFileStat fd (_:path) = do
+  r <- I.run fd $ FS.lookup lxp bxp ixp rootDir path
+  case r of
+    Nothing -> return $ Left eNOENT
+    Just inum -> do
+      (W len) <- I.run fd $ FS.file_len lxp ixp inum
+      ctx <- getFuseContext
+      return $ Right $ fileStat ctx $ fromIntegral len
+fscqGetFileStat _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FilePath -> IO Errno
 fscqOpenDirectory "/" = return eOK
@@ -130,20 +137,29 @@ fscqOpenDirectory _   = return eNOENT
 fscqReadDirectory :: Fd -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 fscqReadDirectory fd "/" = do
   ctx <- getFuseContext
-  files <- I.run fd $ FS.readdir lxp ixp (W 0)
-  (W len) <- I.run fd $ FS.file_len lxp ixp (W 1)
+  files <- I.run fd $ FS.readdir lxp ixp rootDir
+  (W len) <- I.run fd $ FS.file_len lxp ixp theOneFile
   return $ Right $ [(".",          dirStat ctx)
                    ,("..",         dirStat ctx)
-                   ,(fscqName,    fileStat ctx $ fromIntegral len)
-                   ] ++ map (\(fn, inum) -> (fn, fileStat ctx 0)) files
-  where
-    (_:fscqName) = fscqPath
+                   ] ++ map (\(fn, inum) -> (fn, fileStat ctx $ fromIntegral len)) files
 fscqReadDirectory _ _ = return (Left (eNOENT))
 
-fscqOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen path mode _
-  | path == fscqPath = return $ Right $ W 1
-  | otherwise        = return (Left eNOENT)
+fscqOpen :: Fd -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqOpen fd (_:path) mode flags = do
+  r <- I.run fd $ FS.lookup lxp bxp ixp rootDir path
+  case r of
+    Nothing -> return $ Left eNOENT
+    Just inum -> return $ Right $ inum
+fscqOpen _ _ _ _ = return $ Left eIO
+
+fscqCreate :: Fd -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
+fscqCreate fd (_:path) RegularFile _ _ = do
+  -- All created files point to the same file inode..
+  r <- I.run fd $ FS.link lxp bxp ixp rootDir path theOneFile
+  case r of
+    True -> return eOK
+    False -> return eIO
+fscqCreate _ _ _ _ _ = return eOPNOTSUPP
 
 -- Wrappers for converting Coq_word to/from ByteString, with
 -- the help of i2buf and buf2i from hslib/Disk.
@@ -174,8 +190,9 @@ fscqWrite fd _ inum bs offset = do
     bs_len = BS.length bs
 
 fscqSetFileSize :: Fd -> FilePath -> FileOffset -> IO Errno
-fscqSetFileSize fd path size =
+fscqSetFileSize fd (_:path) size =
   return eOK
+fscqSetFileSize _ _ _ = return eIO
 
 fscqGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
 fscqGetFileSystemStats _ =
