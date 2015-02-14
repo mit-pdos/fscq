@@ -1335,12 +1335,12 @@ Module INODE.
   Hint Resolve neq0_wneq0.
 
   Theorem ishrink_ok : forall lxp bxp xp inum ms,
-    {< F A B mbase m ilist ino freelist,
+    {< F A B mbase m ilist bn ino freelist,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
-             [[ (IBlocks ino) <> nil ]] *
+             [[ length (IBlocks ino) > 0 ]] *
              [[ (F * rep bxp xp ilist * BALLOC.rep bxp freelist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]] *
-             [[ (B * (length (IBlocks ino) - 1) |->? )%pred (list2nmem (IBlocks ino)) ]]
+             [[ (B * (length (IBlocks ino) - 1) |-> bn )%pred (list2nmem (IBlocks ino)) ]]
     POST:ms' exists m' ilist' ino' freelist',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * rep bxp xp ilist' * BALLOC.rep bxp freelist')%pred (list2mem m') ]] *
@@ -1389,7 +1389,7 @@ Module INODE.
     2: auto.
     unfold inode_match_direct; rec_simpl.
     simpl; autorewrite with core; simpl.
-    rewrite length_removelast by auto.
+    rewrite length_removelast; auto.
     cancel.
 
     erewrite wordnat_minus1_eq; eauto.
@@ -1413,7 +1413,9 @@ Module INODE.
     setoid_rewrite Hdeq; omega.
     rewrite app_length.
     setoid_rewrite Hdeq; rewrite Hieq; unfold nr_indirect; omega.
+    apply length_not_nil; auto.
     irec_well_formed.
+    apply length_not_nil; auto.
 
     (* CASE 2 *)
     destruct_listmatch_n; rec_simpl.
@@ -1435,7 +1437,7 @@ Module INODE.
     autorewrite with core; cancel.
     unfold inode_match; rec_simpl.
     simpl; autorewrite with core; simpl.
-    rewrite length_removelast by auto.
+    rewrite length_removelast.
     cancel.
 
     instantiate (a := l2).
@@ -1447,6 +1449,8 @@ Module INODE.
     rewrite H19.
     rewrite firstn_length.
     apply Min.le_min_r.
+    apply length_not_nil; auto.
+    apply length_not_nil; auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (ilen _ _ _ _) _) => apply ilen_ok : prog.

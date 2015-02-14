@@ -952,15 +952,17 @@ Qed.
 
 
 Lemma length_not_nil : forall A (l : list A),
-  l <> nil -> length l > 0.
+  l <> nil <-> length l > 0.
 Proof.
-  induction l; simpl; firstorder.
+  split; induction l; simpl; firstorder.
 Qed.
 
 Lemma length_not_nil' : forall A (l : list A),
-  l <> nil -> length l <> 0.
+  l <> nil <-> length l <> 0.
 Proof.
-  intros; apply length_not_nil in H; omega.
+  split; intros.
+  apply length_not_nil in H; omega.
+  apply length_not_nil; omega.
 Qed.
 
 Lemma firstn_is_nil : forall A n (l : list A),
