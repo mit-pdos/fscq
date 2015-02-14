@@ -355,4 +355,9 @@ Module DIR.
     admit.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (dlookup _ _ _ _ _ _) _) => apply dlookup_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dunlink _ _ _ _ _ _) _) => apply dunlink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dlist _ _ _ _) _) => apply dlist_ok : prog.
+
 End DIR.

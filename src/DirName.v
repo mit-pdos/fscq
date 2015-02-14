@@ -3,6 +3,17 @@ Require Import Ascii.
 Require Import String.
 Require Import Dir.
 Require Import Omega.
+Require Import Prog.
+Require Import Pred.
+Require Import Hoare.
+Require Import SepAuto.
+Require Import MemLog.
+Require Import BFile.
+Require Import GenSep.
+Require Import GenSepN.
+Require List.
+
+Set Implicit Arguments.
 
 Definition ascii2byte (a : ascii) : word 8 :=
   match a with
@@ -190,3 +201,55 @@ Proof.
   rewrite name2padstring2name; auto.
   apply name2padstring_length.
 Qed.
+
+Module SDIR.
+
+  Definition dslookup T lxp bxp ixp dnum name ms rx : prog T :=
+    r <- DIR.dlookup lxp bxp ixp dnum (string2name 16 name) ms;
+    rx r.
+
+  Definition dsunlink T lxp bxp ixp dnum name ms rx : prog T :=
+    r <- DIR.dunlink lxp bxp ixp dnum (string2name 16 name) ms;
+    rx r.
+
+  Definition dslink T lxp bxp ixp dnum name inum ms rx : prog T :=
+    r <- DIR.dlink lxp bxp ixp dnum (string2name 16 name) inum ms;
+    rx r.
+
+  Definition dslist T lxp ixp dnum ms rx : prog T :=
+    r <- DIR.dlist lxp ixp dnum ms;
+    rx (List.map (fun di => (name2string 16 (fst di), snd di)) r).
+
+  Definition rep (dsmap : @mem string string_dec addr) := (exists dmap, DIR.rep dmap *
+    [[ True ]])%pred.
+  (* XXX should figure out how to really relate [dsmap] to [dmap] *)
+
+  Theorem dslookup_ok : forall lxp bxp ixp dnum name ms,
+    {< F A mbase m flist f dsmap,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+           [[ (rep dsmap) (list2mem (BFILE.BFData f)) ]]
+    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+           ((exists inum DF, [[ r = Some inum ]] *
+             [[ (DF * name |-> inum)%pred dsmap ]]) \/
+            ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dsmap ]]))
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} dslookup lxp bxp ixp dnum name ms.
+  Proof.
+    unfold dslookup, rep.
+    hoare.
+
+    eapply pimpl_or_r; left. cancel.
+    admit.
+
+    eapply pimpl_or_r; right. cancel.
+    admit.
+
+    Grab Existential Variables.
+    exact emp.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (dslookup _ _ _ _ _ _) _) => apply dslookup_ok : prog.
+
+End SDIR.
