@@ -65,7 +65,8 @@ Record xparams := {
   LogHeader : addr; (* Store the header here *)
   LogCommit : addr; (* Store true to apply after crash. *)
 
-  LogStart : addr; (* Start of log region on disk *)
+  LogDescriptor : addr; (* Start of descriptor region in log *)
+  LogData : addr; (* Start of data region in log *)
   LogLen : addr  (* Maximum number of entries in log; length but still use addr type *)
 }.
 
@@ -208,10 +209,10 @@ Module MEMLOG.
       [[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
       exists rest,
-      (LogStart xp) |=> (descriptor_to_valu (map fst (Map.elements ms) ++ rest)) *
+      (LogDescriptor xp) |=> (descriptor_to_valu (map fst (Map.elements ms) ++ rest)) *
       [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]] *
-      array (LogStart xp ^+ $1) (synced_list (map snd (Map.elements ms))) $1 *
-      avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms))
+      array (LogData xp) (synced_list (map snd (Map.elements ms))) $1 *
+      avail_region (LogData xp ^+ $ (Map.cardinal ms))
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
 
@@ -243,20 +244,22 @@ Module MEMLOG.
     (* For now, support just one descriptor block, at the start of the log. *)
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
      (* The log shouldn't overflow past the end of disk *)
-     [[ goodSize addrlen (# (LogStart xp) + # (LogLen xp) + 1) ]] *
+     [[ goodSize addrlen (# (LogData xp) + # (LogLen xp)) ]] *
     match st with
     | NoTransaction m =>
       (LogCommit xp) |=> $0
     * [[ ms = ms_empty ]]
     * data_rep xp (synced_list m)
     * (LogHeader xp) |->?
-    * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
+    * (LogDescriptor xp) |->?
+    * avail_region (LogData xp) (wordToNat (LogLen xp))
 
     | ActiveTxn old cur =>
       (LogCommit xp) |=> $0
     * data_rep xp (synced_list old) (* Transactions are always completely buffered in memory. *)
     * (LogHeader xp) |->?
-    * avail_region (LogStart xp) (1 + wordToNat (LogLen xp))
+    * (LogDescriptor xp) |->?
+    * avail_region (LogData xp) (wordToNat (LogLen xp))
     * cur_rep old ms cur
     * [[ valid_entries old ms ]]
 
@@ -317,10 +320,11 @@ Module MEMLOG.
 
   Definition log_uninitialized xp old :=
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
-     [[ goodSize addrlen (# (LogStart xp) + # (LogLen xp) + 1) ]] *
+     [[ goodSize addrlen (# (LogData xp) + # (LogLen xp)) ]] *
      data_rep xp (synced_list old) *
-     avail_region (LogStart xp) (1 + wordToNat (LogLen xp)) *
+     avail_region (LogData xp) (wordToNat (LogLen xp)) *
      (LogCommit xp) |->? *
+     (LogDescriptor xp) |->? *
      (LogHeader xp) |->?)%pred.
 
   Theorem init_ok : forall xp,
@@ -496,7 +500,7 @@ Module MEMLOG.
     } else {
       (* Write... *)
       Write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms)));;
-      Write (LogStart xp) (descriptor_to_valu (map fst (Map.elements ms)));;
+      Write (LogDescriptor xp) (descriptor_to_valu (map fst (Map.elements ms)));;
       For i < $ (Map.cardinal ms)
       Ghost old crash
       Loopvar _ <- tt
@@ -505,18 +509,18 @@ Module MEMLOG.
         (LogCommit xp) |=> $0
         * data_rep xp (synced_list old)
         * (LogHeader xp) |~> header_to_valu (mk_header (Map.cardinal ms))
-        * (LogStart xp) |~> descriptor_to_valu (map fst (Map.elements ms))
+        * (LogDescriptor xp) |~> descriptor_to_valu (map fst (Map.elements ms))
         * exists l', [[ length l' = # i ]] 
-        * array (LogStart xp ^+ $1) (firstn (# i) (List.combine (map snd (Map.elements ms)) l')) $1
-        * avail_region (LogStart xp ^+ $1 ^+ i) (# (LogLen xp) - # i)
+        * array (LogData xp) (firstn (# i) (List.combine (map snd (Map.elements ms)) l')) $1
+        * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i)
       OnCrash crash
       Begin
-        Write (LogStart xp ^+ $1 ^+ i) (sel (map snd (Map.elements ms)) i $0);;
+        Write (LogData xp ^+ i) (sel (map snd (Map.elements ms)) i $0);;
         lrx tt
       Rof;;
       (* ... and sync *)
       Sync (LogHeader xp);;
-      Sync (LogStart xp);;
+      Sync (LogDescriptor xp);;
       For i < $ (Map.cardinal ms)
       Ghost old crash
       Loopvar _ <- tt
@@ -525,14 +529,14 @@ Module MEMLOG.
         (LogCommit xp) |=> $0
         * data_rep xp (synced_list old)
         * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
-        * (LogStart xp) |=> descriptor_to_valu (map fst (Map.elements ms))
-        * array (LogStart xp ^+ $1) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
+        * (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms))
+        * array (LogData xp) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
         * exists l', [[ length l' = Map.cardinal ms - # i ]]
-        * array (LogStart xp ^+ $1 ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
-        * avail_region (LogStart xp ^+ $1 ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms)
+        * array (LogData xp ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
+        * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms)
       OnCrash crash
       Begin
-        Sync (LogStart xp ^+ $1 ^+ i);;
+        Sync (LogData xp ^+ i);;
         lrx tt
       Rof;;
       rx true
@@ -675,15 +679,10 @@ Module MEMLOG.
     step.
     step.
     step.
-    eapply pimpl_ok2.
-    eauto with prog.
-    simpl.
-    intros.
-    rewrite isolate_fwd with (a := LogStart xp) (i := $0).
-    cancel.
+    step.
     step'.
-    word2nat_clear. word2nat_simpl. rewrite plus_0_r.
-    rewrite plus_0_l. simpl.
+    word2nat_clear; word2nat_auto. rewrite Nat.add_0_r.
+    word2nat_auto.
     cancel.
     instantiate (a4 := nil).
     auto.
@@ -695,36 +694,51 @@ Module MEMLOG.
     norm'l.
     unfold stars.
     simpl.
-    rewrite isolate_fwd with (a := LogStart xp ^+ $ (1) ^+ m) (i := $0) by solve_lengths.
+    rewrite isolate_fwd with (a := LogData xp ^+ m) (i := $0) by solve_lengths.
     cancel.
     step.
     array_match.
     rewrite firstn_plusone_selN with (def := ($0, nil)).
-    instantiate (a2 := l1 ++ [valuset_list (sel l2 $0 ($0, nil))]).
-    instantiate (a3 := skipn 1 l2).
+    instantiate (a2 := l2 ++ [valuset_list (sel l3 $0 ($0, nil))]).
+    instantiate (a3 := skipn 1 l3).
     admit. (* list manipulation *)
     solve_lengths.
     solve_lengths.
     solve_lengths.
     solve_lengths.
-    destruct l2; simpl in *; try discriminate; solve_lengths.
+    destruct l3; simpl in *; try discriminate; solve_lengths.
 
-    cancel.
+    pimpl_crash.
+    (* XXX prevent [cancel] from canceling the wrong things here *)
+    norm; intuition.
+    delay_one.
+    delay_one.
+    cancel_one.
+    cancel_one.
+    cancel_one.
+    cancel_one.
+    cancel_one.
+    delay_one.
+    unfold stars; simpl;
+    try match goal with
+    | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
+    end.
     array_match.
-    destruct l2; simpl in *; try discriminate; solve_lengths.
+    destruct l3; simpl in *; try discriminate; solve_lengths.
     step'.
     step'.
     step'.
     word2nat_clear. word2nat_auto.
     rewrite plus_0_r.
     rewrite firstn_oob.
+    word2nat_auto.
     cancel.
     solve_lengths.
     solve_lengths.
     solve_lengths.
 
     step'.
-    rewrite isolate_fwd with (a := LogStart xp ^+ $ (1) ^+ m) (i := $0).
+    rewrite isolate_fwd with (a := LogData xp ^+ m) (i := $0).
     word2nat_clear; word2nat_auto.
     rewrite Nat.mul_0_l.
     rewrite plus_0_r.
@@ -750,15 +764,15 @@ Module MEMLOG.
     step'.
     word2nat_clear; word2nat_auto.
     cancel.
-    instantiate (a := match l5 with [] => [] | _ :: l5' => l5' end).
-    admit. (* array match *)
+    instantiate (a := skipn 1 l6).
+    array_match.
+    admit. (* list manipulation *)
     word2nat_clear.
-    destruct l5; simpl in *; abstract word2nat_auto.
+    destruct l6; simpl in *; abstract word2nat_auto.
     auto.
 
     cancel.
-    instantiate (a0 := (descriptor_to_valu (map fst (Map.elements (elt:=valu) ms)), []) ::
-      firstn # (m) (List.combine (map snd (Map.elements (elt:=valu) ms))
+    instantiate (a0 := firstn # (m) (List.combine (map snd (Map.elements (elt:=valu) ms))
         (repeat (length (map snd (Map.elements (elt:=valu) ms))) [])) ++
       List.combine (skipn # (m) (map snd (Map.elements (elt:=valu) ms))) l5 ++
       repeat (# (LogLen xp) - Map.cardinal (elt:=valu) ms) ($0, nil)).
@@ -778,7 +792,7 @@ Module MEMLOG.
     rewrite Forall_forall; intuition.
 
     cancel.
-    instantiate (l := repeat (S # (LogLen xp)) ($0, nil)).
+    instantiate (l := repeat (# (LogLen xp)) ($0, nil)).
     solve_lengths.
 
     cancel.
@@ -796,7 +810,7 @@ Module MEMLOG.
     solve_lengths.
 
     cancel.
-    instantiate (l := repeat (S # (LogLen xp)) ($0, nil)).
+    instantiate (l := repeat (# (LogLen xp)) ($0, nil)).
     solve_lengths.
 
     cancel.
@@ -1019,7 +1033,7 @@ Module MEMLOG.
   Module MapProperties := WProperties Map.
 
   Definition read_log T (xp: xparams) rx : prog T :=
-    d <- Read (LogStart xp);
+    d <- Read (LogDescriptor xp);
     let desc := valu_to_descriptor d in
     h <- Read (LogHeader xp);
     let len := (valu_to_header h) :-> "length" in
@@ -1038,7 +1052,7 @@ Module MEMLOG.
     OnCrash
       rep xp (CommittedTxn cur) log_on_disk
     Begin
-      v <- ArrayRead (LogStart xp ^+ $1) i $1;
+      v <- ArrayRead (LogData xp) i $1;
       lrx (log_prefix ++ [(sel desc i $0, v)])
     Rof;
     rx (MapProperties.of_list log).
