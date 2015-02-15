@@ -708,8 +708,8 @@ Module MEMLOG.
     solve_lengths.
     destruct l3; simpl in *; try discriminate; solve_lengths.
 
-    pimpl_crash.
     (* XXX prevent [cancel] from canceling the wrong things here *)
+    pimpl_crash.
     norm; intuition.
     delay_one.
     delay_one.
@@ -764,13 +764,17 @@ Module MEMLOG.
     step'.
     word2nat_clear; word2nat_auto.
     cancel.
-    instantiate (a := skipn 1 l6).
+
     array_match.
+    instantiate (a := skipn 1 l6).
     admit. (* list manipulation *)
     word2nat_clear.
     destruct l6; simpl in *; abstract word2nat_auto.
     auto.
 
+Admitted. (* XXX solve cancellation problem *)
+
+(*
     cancel.
     instantiate (a0 := firstn # (m) (List.combine (map snd (Map.elements (elt:=valu) ms))
         (repeat (length (map snd (Map.elements (elt:=valu) ms))) [])) ++
@@ -827,7 +831,7 @@ Module MEMLOG.
 
     solve_lengths.
   Qed.
-
+*)
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
 
@@ -978,6 +982,8 @@ Module MEMLOG.
   Definition would_recover_either xp old cur :=
     (log_intact xp old \/ log_intact xp cur \/ log_intact_either xp old cur)%pred.
 
+  Definition hidden_array := @array valuset.
+
   Theorem commit_ok: forall xp ms,
     {< m1 m2,
      PRE    rep xp (ActiveTxn m1 m2) ms
@@ -986,31 +992,7 @@ Module MEMLOG.
      CRASH  would_recover_either xp m1 m2
     >} commit xp ms.
   Proof.
-    unfold commit, would_recover_either, rep.
-    step.
-    unfold rep.
-    cancel.
-    cancel.
-    shelve.
-    unfold log_intact.
-    cancel.
-    cancel.
-    Unshelve.
-    step.
-    unfold rep.
-    step.
-    shelve.
-
-    (* we flushed, but crashed before the write of the commit record.
-     * we need log_intact, but log_intact doesn't include flushedtxn 
-     * daniel?   the left side is the post condition of flush, but doesn't imply
-     * log_intact.
-     *)
-
-
-  Admitted.
-
-(*
+    unfold commit, would_recover_either, log_intact.
     hoare_unfold log_unfold.
     unfold equal_unless_in; intuition; auto.
     Ltac or_r := apply pimpl_or_r; right.
@@ -1022,11 +1004,14 @@ Module MEMLOG.
     or_r; or_l; cancel.
     or_r; or_r; or_r; cancel.
     auto.
+    or_r; or_r.
+    unfold log_intact_either; log_unfold; unfold avail_region; cancel.
     or_l; cancel.
     or_l; cancel.
-    admit.
+    unfold avail_region; fold hidden_array; cancel.
+    unfold hidden_array; array_match.
+    solve_lengths.
   Qed.
-*)
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
 
