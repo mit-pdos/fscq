@@ -70,7 +70,7 @@ Section RECBFILE.
     {< F A mbase m flist f ilistlist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-           [[ (A * inum |-> f)%pred (list2mem flist) ]] *
+           [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
            [[ array_item_pairs ilistlist (list2mem (BFILE.BFData f)) ]] *
            [[ length ilistlist = length (BFILE.BFData f) ]] *
            [[ wordToNat block_ix < length (BFILE.BFData f) ]] *
@@ -84,13 +84,11 @@ Section RECBFILE.
     unfold array_item_pairs.
     hoare.
     list2nmem_ptsto_cancel; rec_bounds.
-    repeat rewrite_list2mem_pred.
-    list2nmem_ptsto_cancel; rec_bounds.
 
-    repeat rewrite_list2mem_pred; subst.
+    repeat rewrite_list2nmem_pred; subst.
     eapply list2mem_array_eq in H7; [ rewrite H7 | .. ].
     assert (length l0 = length (BFILE.BFData (selN l (wordToNat inum) BFILE.bfile0))) as Heq.
-    rewrite H7; autorewrite with core; auto.
+    rewrite H6; autorewrite with core; auto.
 
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block, sel, upd.
     erewrite selN_map.
@@ -110,7 +108,7 @@ Section RECBFILE.
     {< F A mbase m flist f ilistlist,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * inum |-> f)%pred (list2mem flist) ]] *
+             [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
              [[ array_item_pairs ilistlist (list2mem (BFILE.BFData f)) ]] *
              [[ length ilistlist = length (BFILE.BFData f) ]] *
              [[ wordToNat block_ix < length (BFILE.BFData f) ]] *
@@ -119,7 +117,7 @@ Section RECBFILE.
     POST:ms' exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-             [[ (A * inum |-> f')%pred (list2mem flist') ]] *
+             [[ (A * # inum |-> f')%pred (list2nmem flist') ]] *
              [[ array_item_pairs (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i))
                                  (list2mem (BFILE.BFData f')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
@@ -127,51 +125,14 @@ Section RECBFILE.
   Proof.
     unfold bf_put_pair.
     unfold array_item_pairs.
+    hoare.
 
-    step.
-    rewrite isolate_fwd with (i:=block_ix). cancel.
-    eapply list2mem_array_eq in H7; try exact $0.
-    admit.
+    list2nmem_ptsto_cancel; rec_bounds.
+    list2nmem_ptsto_cancel; rec_bounds.
 
-    instantiate (b:=$ INODE.blocks_per_inode).
-    admit.
-    admit.
+    (* to proceed, we need to convert between list2mem and list2nmem, and
+       all predicates on the memory, this is very annoying.  Maybe we should give up GenSepN? *)
 
-    step.
-    rewrite isolate_fwd with (i:=block_ix). cancel.
-    eapply list2mem_array_eq in H7; try exact $0.
-    admit.
-
-    instantiate (b:=$ INODE.blocks_per_inode).
-    admit.
-    admit.
-
-    step.
-    rewrite <- isolate_bwd with (i:=block_ix) (vs:=(map rep_block _)).
-    autorewrite with defaults in *.
-    simpl; autorewrite with core.
-    cancel.
-    erewrite sel_map.
-    autorewrite with defaults.
-    rewrite sel_upd_eq.
-    autorewrite with core.
-    cancel.
-
-    rewrite Forall_forall in H12. eapply H12.
-    apply in_sel.
-    admit.
-    admit.
-    admit.
-    admit.
-
-    apply Forall_upd; eauto.
-    autorewrite with core. intuition eauto.
-    rewrite Forall_forall in H12. apply H12. apply in_sel.
-    admit.
-
-    apply Forall_upd; eauto.
-    rewrite Forall_forall in H12. apply H12. apply in_sel.
-    admit.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (bf_get_pair _ _ _ _ _ _) _) => apply bf_get_pair_ok : prog.
