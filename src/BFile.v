@@ -114,6 +114,23 @@ Module BFILE.
                       repeat file_bounds';
                       try list2nmem_bound; eauto.
 
+
+  Theorem bfdata_bound : forall F m bxp ixp l i,
+    (F * rep bxp ixp l)%pred m
+    -> wordToNat i < length l
+    -> length (BFData (sel l i bfile0)) <= wordToNat (natToWord addrlen INODE.blocks_per_inode).
+  Proof.
+    unfold rep, sel; intros.
+    destruct_lift H.
+    rewrite listmatch_extract with (i := wordToNat i) in H by auto.
+    unfold file_match at 2, listmatch at 2 in H.
+    destruct_lift H.
+    rewrite H2.
+    eapply INODE.blocks_bound with (m := m).
+    pred_apply; cancel.
+  Qed.
+
+
   (* correctness theorems *)
 
   Theorem bflen_ok : forall lxp bxp ixp inum ms,

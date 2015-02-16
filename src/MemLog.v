@@ -772,7 +772,8 @@ Module MEMLOG.
     destruct l6; simpl in *; abstract word2nat_auto.
     auto.
 
-Admitted. (* XXX solve cancellation problem *)
+Admitted.
+ (* XXX solve cancellation problem *)
 
 (*
     cancel.
