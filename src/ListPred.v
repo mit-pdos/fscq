@@ -410,17 +410,17 @@ Ltac solve_length_eq :=
   eauto; try congruence ; try omega;
   match goal with
   | [ H : length ?l = _ |- context [ length ?l ] ] =>
-        solve [ rewrite H ; eauto ; try congruence ; try omega ]
+        solve [ setoid_rewrite H ; eauto ; try congruence ; try omega ]
   | [ H : _ = length ?l |- context [ length ?l ] ] =>
-        solve [ rewrite <- H ; eauto ; try congruence ; try omega ]
+        solve [ setoid_rewrite <- H ; eauto ; try congruence ; try omega ]
   | [ H : context [ listmatch _ ?a ?b ] |- context [ length ?c ] ] =>
         let Heq := fresh in
         first [ apply listmatch_length_r in H as Heq
               | apply listmatch_length_l in H as Heq
               | apply listmatch_length in H as Heq ];
-        solve [ constr_eq a c; repeat rewrite Heq ;
+        solve [ constr_eq a c; repeat setoid_rewrite Heq ;
                 eauto ; try congruence ; try omega
-              | constr_eq b c; repeat rewrite <- Heq;
+              | constr_eq b c; repeat setoid_rewrite <- Heq;
                 eauto; try congruence ; try omega ];
         clear Heq
   end.
