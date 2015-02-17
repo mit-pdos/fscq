@@ -72,6 +72,12 @@ Definition sep_star_impl (p1: pred) (p2: pred) : pred :=
 Definition indomain (a: AT) (m: @mem AT AEQ V) :=
   exists (v:V), m a = Some v.
 
+Definition diskIs (m : @mem AT AEQ V) : pred :=
+  fun m' => m = m'.
+
+Definition mem_except (m: @mem AT AEQ V) (a: AT) : @mem AT AEQ V :=
+  fun a' => if AEQ a' a then None else m a'.
+
 End GenPredDef.
 
 Arguments pred {AT AEQ V}.
@@ -81,6 +87,7 @@ Arguments pimpl {AT AEQ V} _ _.
 Arguments piff {AT AEQ V} _ _.
 Arguments sep_star_impl {AT AEQ V} _ _ _.
 Arguments indomain {AT AEQ V} _ _.
+Arguments diskIs {AT AEQ V} _ _.
 
 Hint Unfold pimpl.
 Hint Unfold piff.
@@ -1253,6 +1260,57 @@ Proof.
   destruct H0.
   exists x1.
   apply mem_union_addr; eauto.
+Qed.
+
+
+Theorem diskIs_extract : forall AT AEQ V a v (m : @mem AT AEQ V),
+  (exists F, F * a |-> v)%pred m
+  -> (diskIs m =p=> diskIs (mem_except m a) * a |-> v).
+Proof.
+  intros.
+  destruct H.
+  apply sep_star_comm in H. apply ptsto_valid in H.
+  unfold pimpl, diskIs, ptsto; unfold_sep_star; intros; subst.
+  exists (fun a' => if AEQ a' a then None else m0 a').
+  exists (fun a' => if AEQ a' a then Some v else None).
+  intuition.
+  - unfold mem_union; apply functional_extensionality; intros.
+    destruct (AEQ x0 a); subst; auto.
+    destruct (m0 x0); auto.
+  - unfold mem_disjoint; unfold not; intros. repeat deex.
+    destruct (AEQ x0 a); discriminate.
+  - destruct (AEQ a a); congruence.
+  - destruct (AEQ a' a); subst; congruence.
+Qed.
+
+Theorem diskIs_combine_upd : forall AT AEQ V a v (m : @mem AT AEQ V),
+  diskIs (mem_except m a) * a |-> v =p=> diskIs (upd m a v).
+Proof.
+  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
+  apply functional_extensionality; intros.
+  case_eq (AEQ x a); intros; subst.
+  - rewrite mem_union_comm; auto.
+    erewrite mem_union_addr; eauto.
+    apply mem_disjoint_comm; auto.
+  - unfold mem_union, mem_except.
+    destruct (AEQ x a); try discriminate.
+    case_eq (m x); auto; intros.
+    rewrite H4; auto.
+Qed.
+
+Theorem diskIs_combine_same : forall AT AEQ V a v (m : @mem AT AEQ V),
+  (exists F, F * a |-> v)%pred m
+  -> diskIs (mem_except m a) * a |-> v =p=> diskIs m.
+Proof.
+  intros.
+  destruct H.
+  apply sep_star_comm in H. apply ptsto_valid in H.
+  unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
+  apply functional_extensionality; intros.
+  unfold mem_union, mem_except.
+  destruct (AEQ x0 a); subst; try congruence.
+  destruct (m x0); auto.
+  rewrite H5; auto; discriminate.
 Qed.
 
 
