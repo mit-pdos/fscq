@@ -384,6 +384,13 @@ Proof.
 Qed.
 
 
+Theorem arrayN_ex_updN_eq : forall A l i (v : A),
+  arrayN_ex (updN l i v) i <=p=> arrayN_ex l i.
+Proof.
+  unfold arrayN_ex; intros; autorewrite with core;
+  split; simpl; rewrite skipn_updN; eauto.
+Qed.
+
 Theorem list2nmem_array_pick : forall V l (def : V) i,
   i < length l
   -> (arrayN_ex l i * i |-> selN l i def)%pred (list2nmem l).
