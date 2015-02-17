@@ -12,6 +12,7 @@ Require Import Rec.
 Require Import Array.
 Require Import ListPred.
 Require Import GenSep.
+Require Import GenSepN.
 Require Import BFile.
 Require Import BFileRec.
 Require Import Bool.
@@ -76,7 +77,7 @@ Module DIR.
         MEMLOG.rep lxp (ActiveTxn mbase m) ms *
         [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
         [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-        [[ (rep' delist) (list2mem (BFILE.BFData f)) ]] *
+        [[ (rep' delist) (list2nmem (BFILE.BFData f)) ]] *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
         [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
@@ -102,7 +103,7 @@ Module DIR.
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-           [[ (rep dmap) (list2mem (BFILE.BFData f)) ]]
+           [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            ((exists inum DF, [[ r = Some inum ]] *
              [[ (DF * name |-> inum)%pred dmap ]]) \/
@@ -207,13 +208,13 @@ Module DIR.
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-             [[ (rep dmap) (list2mem (BFILE.BFData f)) ]] *
+             [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]] *
              [[ (DF * name |->?)%pred dmap ]]
     POST:ms' exists m' ms' flist' f' dmap',
              MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
-             [[ (rep dmap') (list2mem (BFILE.BFData f')) ]] *
+             [[ (rep dmap') (list2nmem (BFILE.BFData f')) ]] *
              [[ (DF) dmap' ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} dunlink lxp bxp ixp dnum name ms.
@@ -258,14 +259,14 @@ Module DIR.
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-             [[ (rep dmap) (list2mem (BFILE.BFData f)) ]] *
+             [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]] *
              [[ (DF) dmap ]] *
              [[ exists dmap', (DF * name |->?)%pred dmap' ]]
     POST:rms ([[ fst rms = true ]] * exists m' flist' f' dmap',
               MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms) *
               [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
               [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
-              [[ (rep dmap') (list2mem (BFILE.BFData f')) ]] *
+              [[ (rep dmap') (list2nmem (BFILE.BFData f')) ]] *
               [[ (DF * name |-> inum)%pred dmap' ]]) \/
              ([[ fst rms = false ]] * exists m',
               MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms))
@@ -290,7 +291,7 @@ Module DIR.
         MEMLOG.rep lxp (ActiveTxn mbase m) ms *
         [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
         [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-        [[ (rep' delist) (list2mem (BFILE.BFData f)) ]] *
+        [[ (rep' delist) (list2nmem (BFILE.BFData f)) ]] *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
         [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
@@ -312,7 +313,7 @@ Module DIR.
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-             [[ (rep dmap) (list2mem (BFILE.BFData f)) ]]
+             [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]]
     POST:res MEMLOG.rep lxp (ActiveTxn mbase m) ms *
              [[ listpred diritemmatch res dmap ]]
     CRASH    MEMLOG.log_intact lxp mbase

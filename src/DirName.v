@@ -227,7 +227,7 @@ Module SDIR.
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-           [[ (rep dsmap) (list2mem (BFILE.BFData f)) ]]
+           [[ (rep dsmap) (list2nmem (BFILE.BFData f)) ]]
     POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
            ((exists inum DF, [[ r = Some inum ]] *
              [[ (DF * name |-> inum)%pred dsmap ]]) \/
