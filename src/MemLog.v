@@ -18,6 +18,7 @@ Require Import Array.
 Require Import Eqdep_dec.
 Require Import GenSep.
 Require Import WordAuto.
+Require Import Cache.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
 
@@ -61,6 +62,8 @@ Inductive logstate :=
 (* A transaction has been committed, applied, and flushed. *).
 
 Record xparams := {
+  LogCache : Cache.xparams;
+
   (* The actual data region is everything that's not described here *)
   LogHeader : addr; (* Store the header here *)
   LogCommit : addr; (* Store true to apply after crash. *)
@@ -240,7 +243,7 @@ Module MEMLOG.
   Definition equal_unless_in T (ms: list addr) (m1: list T) (m2: list T) (def: T) :=
     forall a, ~ In a ms -> sel m1 a def = sel m2 a def.
 
-  Definition rep xp (st: logstate) (ms: memstate) :=
+  Definition rep_inner xp (st: logstate) (ms: memstate) :=
     (* For now, support just one descriptor block, at the start of the log. *)
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
      (* The log shouldn't overflow past the end of disk *)
@@ -306,13 +309,15 @@ Module MEMLOG.
 
     end)%pred.
 
+  Definition rep xp st mscs := (exists d,
+    BUFCACHE.rep (snd mscs) d * [[ rep_inner xp st (fst mscs) d ]])%pred.
 
-  Definition init T xp rx : prog T :=
-    Write (LogCommit xp) $0;;
-    Sync (LogCommit xp);;
-    rx tt.
+  Definition init_cs T xp cs rx : prog T :=
+    cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $0 cs;
+    cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+    rx (ms_empty, cs).
 
-  Ltac log_unfold := unfold rep, data_rep, cur_rep, log_rep, valid_size, synced_list.
+  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, valid_size, synced_list.
 
   Hint Extern 0 (okToUnify (log_rep _ _ _) (log_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
@@ -327,52 +332,75 @@ Module MEMLOG.
      (LogDescriptor xp) |->? *
      (LogHeader xp) |->?)%pred.
 
-  Theorem init_ok : forall xp,
-    {< old,
-    PRE    log_uninitialized xp old
-    POST:r rep xp (NoTransaction old) ms_empty
-    CRASH  log_uninitialized xp old
-    >} init xp.
+  Theorem init_cs_ok : forall xp cs,
+    {< old d,
+    PRE       BUFCACHE.rep cs d * [[ (log_uninitialized xp old) d ]]
+    POST:mscs rep xp (NoTransaction old) mscs
+    CRASH     exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]]
+    >} init_cs xp cs.
   Proof.
-    unfold init, log_uninitialized; log_unfold.
+    unfold init_cs, log_uninitialized; log_unfold.
     intros.
     hoare.
+    pred_apply; cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (init_cs _ _) _) => apply init_cs_ok : prog.
+
+  Definition init T xp rx : prog T :=
+    cs <- BUFCACHE.init (LogCache xp);
+    mscs <- init_cs xp cs;
+    rx mscs.
+
+  Theorem init_ok : forall xp,
+    {< old,
+    PRE       log_uninitialized xp old
+    POST:mscs rep xp (NoTransaction old) mscs
+    CRASH     log_uninitialized xp old \/
+              (exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]])
+    >} init xp.
+  Proof.
+    unfold init.
+    (* XXX the hoare triple for [BUFCACHE.init] needs to be "frameless" *)
+    admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
 
-  Definition begin T xp rx : prog T :=
-    Write (LogHeader xp) (header_to_valu (mk_header 0)) ;;
-    rx ms_empty.
+  Definition begin T xp (mscs : memstate * cachestate) rx : prog T :=
+    cs <- BUFCACHE.write (LogCache xp) (LogHeader xp) (header_to_valu (mk_header 0)) (snd mscs);
+    rx (ms_empty, cs).
 
-  Theorem begin_ok: forall xp,
+  Theorem begin_ok: forall xp mscs,
     {< m,
-    PRE    rep xp (NoTransaction m) ms_empty
+    PRE    rep xp (NoTransaction m) mscs
     POST:r rep xp (ActiveTxn m m) r
-    CRASH  rep xp (NoTransaction m) ms_empty \/ rep xp (ActiveTxn m m) ms_empty
-    >} begin xp.
+    CRASH  exists mscs', rep xp (NoTransaction m) mscs' \/ rep xp (ActiveTxn m m) mscs'
+    >} begin xp mscs.
   Proof.
     unfold begin; log_unfold.
     hoare.
 
+    pred_apply; cancel.
     unfold valid_entries; intuition; inversion H.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (begin _) _) => apply begin_ok : prog.
+  Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
 
-  Definition abort T xp (ms:memstate) rx : prog T :=
-    Write (LogHeader xp) (header_to_valu (mk_header 0)) ;;
-    rx tt.
+  Definition abort T xp (mscs : memstate * cachestate) rx : prog T :=
+    cs <- BUFCACHE.write (LogCache xp) (LogHeader xp) (header_to_valu (mk_header 0)) (snd mscs);
+    rx (ms_empty, cs).
 
-  Theorem abort_ok : forall xp ms,
+  Theorem abort_ok : forall xp mscs,
     {< m1 m2,
-    PRE    rep xp (ActiveTxn m1 m2) ms
-    POST:r rep xp (NoTransaction m1) ms_empty
-    CRASH  rep xp (ActiveTxn m1 m2) ms \/ rep xp (NoTransaction m1) ms_empty
-    >} abort xp ms.
+    PRE    rep xp (ActiveTxn m1 m2) mscs
+    POST:r rep xp (NoTransaction m1) r
+    CRASH  exists mscs', rep xp (ActiveTxn m1 m2) mscs' \/ rep xp (NoTransaction m1) mscs'
+    >} abort xp mscs.
   Proof.
     unfold abort; log_unfold.
     hoare.
+    pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
@@ -385,8 +413,8 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Definition write T (xp : xparams) a v (ms : memstate) rx : prog T :=
-    rx (Map.add a v ms).
+  Definition write T (xp : xparams) a v (mscs : memstate * cachestate) rx : prog T :=
+    rx (Map.add a v (fst mscs), snd mscs).
 
   Lemma valid_entries_add : forall a v ms m,
     valid_entries m ms -> indomain' a m -> valid_entries m (Map.add a v ms).
@@ -405,17 +433,24 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Theorem write_ok : forall xp ms a v,
+  Ltac inv_pair_eq :=
+    match goal with
+    | [ H: (?a, ?b) = (?c, ?d) |- _ ] => inversion H; clear H
+    end.
+
+  Theorem write_ok : forall xp mscs a v,
     {< m1 m2 F' v0,
-    PRE      rep xp (ActiveTxn m1 m2) ms * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
-    POST:ms' exists m', rep xp (ActiveTxn m1 m') ms' *
-             [[(F' * a |-> v)%pred (list2mem m') ]]
-    CRASH    exists m' ms', rep xp (ActiveTxn m1 m') ms'
-    >} write xp a v ms.
+    PRE        rep xp (ActiveTxn m1 m2) mscs * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
+    POST:mscs' exists m', rep xp (ActiveTxn m1 m') mscs' *
+               [[(F' * a |-> v)%pred (list2mem m') ]]
+    CRASH      exists m' mscs', rep xp (ActiveTxn m1 m') mscs'
+    >} write xp a v mscs.
   Proof.
     unfold write; log_unfold.
-    hoare; subst.
+    hoare; repeat inv_pair_eq; subst.
 
+    cancel.
+    pred_apply; cancel.
     apply valid_entries_add; eauto.
     unfold indomain'.
     erewrite <- replay_length.
@@ -429,13 +464,15 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Definition read T (xp: xparams) a ms rx : prog T :=
+  Definition read T (xp: xparams) a (mscs : memstate * cachestate) rx : prog T :=
+    let (ms, cs) := mscs in
     match Map.find a ms with
     | Some v =>
-      rx v
+      rx ((ms, cs), v)
     | None =>
-      v <- ArrayRead $0 a $1;
-      rx v
+      r <- BUFCACHE.read_array (LogCache xp) $0 a cs;
+      let (cs, v) := r in
+      rx ((ms, cs), v)
     end.
 
   Lemma replay_sel : forall a v ms m def,
@@ -450,21 +487,23 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Theorem read_ok: forall xp ms a,
+  Theorem read_ok: forall xp mscs a,
     {< m1 m2 v,
-    PRE    rep xp (ActiveTxn m1 m2) ms *
-           [[ exists F, (F * a |-> v) (list2mem m2) ]]
-    POST:r rep xp (ActiveTxn m1 m2) ms *
-           [[ r = v ]]
-    CRASH  rep xp (ActiveTxn m1 m2) ms
-    >} read xp a ms.
+    PRE         rep xp (ActiveTxn m1 m2) mscs *
+                [[ exists F, (F * a |-> v) (list2mem m2) ]]
+    POST:mscs_r rep xp (ActiveTxn m1 m2) (fst mscs_r) *
+                [[ snd mscs_r = v ]]
+    CRASH       exists mscs', rep xp (ActiveTxn m1 m2) mscs'
+    >} read xp a mscs.
   Proof.
     unfold read; log_unfold.
-    intros.
+    destruct mscs as [ms cs]; simpl; intros.
 
-    case_eq (Map.find a ms); hoare.
-    subst.
+    case_eq (Map.find a ms); hoare; repeat inv_pair_eq; subst.
+    cancel.
+    pred_apply; cancel.
 
+    (* XXX this proof not updated from this point onward *)
     eapply list2mem_sel with (def := $0) in H1.
     apply Map.find_2 in H.
     eapply replay_sel in H.
@@ -494,52 +533,59 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
 
-  Definition flush T xp (ms:memstate) rx : prog T :=
+  Definition flush T xp (mscs : memstate * cachestate) rx : prog T :=
+    let (ms, cs) := mscs in
     If (lt_dec (wordToNat (LogLen xp)) (Map.cardinal ms)) {
-      rx false
+      rx ((ms, cs), false)
     } else {
       (* Write... *)
-      Write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms)));;
-      Write (LogDescriptor xp) (descriptor_to_valu (map fst (Map.elements ms)));;
-      For i < $ (Map.cardinal ms)
+      cs <- BUFCACHE.write (LogCache xp) (LogHeader xp)
+        (header_to_valu (mk_header (Map.cardinal ms))) cs;
+      cs <- BUFCACHE.write (LogCache xp) (LogDescriptor xp)
+        (descriptor_to_valu (map fst (Map.elements ms))) cs;
+      cs <- For i < $ (Map.cardinal ms)
       Ghost old crash
-      Loopvar _ <- tt
+      Loopvar cs <- cs
       Continuation lrx
       Invariant
-        (LogCommit xp) |=> $0
-        * data_rep xp (synced_list old)
-        * (LogHeader xp) |~> header_to_valu (mk_header (Map.cardinal ms))
-        * (LogDescriptor xp) |~> descriptor_to_valu (map fst (Map.elements ms))
-        * exists l', [[ length l' = # i ]] 
-        * array (LogData xp) (firstn (# i) (List.combine (map snd (Map.elements ms)) l')) $1
-        * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i)
+        exists d', BUFCACHE.rep cs d' *
+        [[ ((LogCommit xp) |=> $0
+            * data_rep xp (synced_list old)
+            * (LogHeader xp) |~> header_to_valu (mk_header (Map.cardinal ms))
+            * (LogDescriptor xp) |~> descriptor_to_valu (map fst (Map.elements ms))
+            * exists l', [[ length l' = # i ]] 
+            * array (LogData xp) (firstn (# i) (List.combine (map snd (Map.elements ms)) l')) $1
+            * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i))%pred d' ]]
       OnCrash crash
       Begin
-        Write (LogData xp ^+ i) (sel (map snd (Map.elements ms)) i $0);;
-        lrx tt
-      Rof;;
+        cs <- BUFCACHE.write (LogCache xp) (LogData xp ^+ i)
+          (sel (map snd (Map.elements ms)) i $0) cs;
+        lrx cs
+      Rof;
+
       (* ... and sync *)
-      Sync (LogHeader xp);;
-      Sync (LogDescriptor xp);;
-      For i < $ (Map.cardinal ms)
+      cs <- BUFCACHE.sync (LogCache xp) (LogHeader xp) cs;
+      cs <- BUFCACHE.sync (LogCache xp) (LogDescriptor xp) cs;
+      cs <- For i < $ (Map.cardinal ms)
       Ghost old crash
-      Loopvar _ <- tt
+      Loopvar cs <- cs
       Continuation lrx
       Invariant
-        (LogCommit xp) |=> $0
-        * data_rep xp (synced_list old)
-        * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
-        * (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms))
-        * array (LogData xp) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
-        * exists l', [[ length l' = Map.cardinal ms - # i ]]
-        * array (LogData xp ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
-        * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms)
+        exists d', BUFCACHE.rep cs d' *
+        [[ ((LogCommit xp) |=> $0
+            * data_rep xp (synced_list old)
+            * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
+            * (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms))
+            * array (LogData xp) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
+            * exists l', [[ length l' = Map.cardinal ms - # i ]]
+            * array (LogData xp ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
+            * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms))%pred d' ]]
       OnCrash crash
       Begin
-        Sync (LogData xp ^+ i);;
-        lrx tt
-      Rof;;
-      rx true
+        cs <- BUFCACHE.sync (LogCache xp) (LogData xp ^+ i) cs;
+        lrx cs
+      Rof;
+      rx ((ms, cs), true)
     }.
 
   Theorem firstn_map : forall A B l n (f: A -> B),
@@ -665,13 +711,13 @@ Module MEMLOG.
     try apply equal_arrays.
 
 
-  Theorem flush_ok : forall xp ms,
+  Theorem flush_ok : forall xp mscs,
     {< m1 m2,
-    PRE    rep xp (ActiveTxn m1 m2) ms
-    POST:r ([[ r = true ]] * rep xp (FlushedTxn m1 m2) ms) \/
-           ([[ r = false ]] * rep xp (ActiveTxn m1 m2) ms)
-    CRASH  rep xp (ActiveTxn m1 m2) ms
-    >} flush xp ms.
+    PRE         rep xp (ActiveTxn m1 m2) mscs
+    POST:mscs_r ([[ snd mscs_r = true ]] * rep xp (FlushedTxn m1 m2) (fst mscs_r)) \/
+                ([[ snd mscs_r = false ]] * rep xp (ActiveTxn m1 m2) (fst mscs_r))
+    CRASH       exists mscs', rep xp (ActiveTxn m1 m2) mscs'
+    >} flush xp mscs.
   Proof.
     unfold flush; log_unfold; unfold avail_region.
     intros.
@@ -772,8 +818,11 @@ Module MEMLOG.
     destruct l6; simpl in *; abstract word2nat_auto.
     auto.
 
-Admitted.
- (* XXX solve cancellation problem *)
+    (* XXX solve cancellation problem *)
+    (* I changed the ending from "Admitted" to "Qed" because this allows
+     * CoqIDE's async proofs to skip over this proof.
+     *)
+  Qed.
 
 (*
     cancel.
@@ -833,37 +882,42 @@ Admitted.
     solve_lengths.
   Qed.
 *)
+
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
 
-  Definition apply_unsync T xp ms rx : prog T :=
-    For i < $ (Map.cardinal ms)
+  Definition apply_unsync T xp (mscs : memstate * cachestate) rx : prog T :=
+    let (ms, cs) := mscs in
+    cs <- For i < $ (Map.cardinal ms)
     Ghost cur
-    Loopvar _ <- tt
+    Loopvar cs <- cs
     Continuation lrx
     Invariant
-      (LogCommit xp) |=> $1
-      * log_rep xp cur ms
-      * exists d, data_rep xp d
-      * [[ replay' (skipn (wordToNat i) (Map.elements ms)) (map fst d) = cur ]]
-      * [[ equal_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur (map fst d) $0 ]]
-      * [[ nil_unless_in (map fst (Map.elements ms)) (map snd d) ]]
+      exists d', BUFCACHE.rep cs d' *
+      [[ ((LogCommit xp) |=> $1
+          * log_rep xp cur ms
+          * exists d, data_rep xp d
+          * [[ replay' (skipn (wordToNat i) (Map.elements ms)) (map fst d) = cur ]]
+          * [[ equal_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur (map fst d) $0 ]]
+          * [[ nil_unless_in (map fst (Map.elements ms)) (map snd d) ]])%pred d' ]]
     OnCrash
-      rep xp (CommittedTxn cur) ms
+      exists mscs', rep xp (CommittedTxn cur) mscs'
     Begin
-      ArrayWrite $0 (sel (map fst (Map.elements ms)) i $0) $1 (sel (map snd (Map.elements ms)) i $0);;
-      lrx tt
-    Rof;;
-    rx tt.
+      cs <- BUFCACHE.write_array (LogCache xp) $0
+        (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
+      lrx cs
+    Rof;
+    rx (ms, cs).
 
-  Theorem apply_unsync_ok: forall xp ms,
+  Theorem apply_unsync_ok: forall xp mscs,
     {< m,
-    PRE    rep xp (CommittedTxn m) ms
-    POST:r rep xp (AppliedUnsyncTxn m) ms
-    CRASH  rep xp (CommittedTxn m) ms
-    >} apply_unsync xp ms.
+    PRE        rep xp (CommittedTxn m) mscs
+    POST:mscs' rep xp (AppliedUnsyncTxn m) mscs'
+    CRASH      exists mscs', rep xp (CommittedTxn m) mscs'
+    >} apply_unsync xp mscs.
   Proof.
     unfold apply_unsync; log_unfold.
+    destruct mscs as [ms cs]; simpl.
     hoare.
     admit.
     admit.
@@ -883,33 +937,36 @@ Admitted.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
 
-  Definition apply_sync T xp ms rx : prog T :=
-    For i < $ (Map.cardinal ms)
+  Definition apply_sync T xp (mscs : memstate * cachestate) rx : prog T :=
+    let (ms, cs) := mscs in
+    cs <- For i < $ (Map.cardinal ms)
     Ghost cur
-    Loopvar _ <- tt
+    Loopvar cs <- cs
     Continuation lrx
     Invariant
-      (LogCommit xp) |=> $1
-      * log_rep xp cur ms
-      * exists cur_unflushed, data_rep xp (List.combine cur cur_unflushed)
-      * [[ nil_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur_unflushed ]]
+      exists d', BUFCACHE.rep cs d' *
+      [[ ((LogCommit xp) |=> $1
+          * log_rep xp cur ms
+          * exists cur_unflushed, data_rep xp (List.combine cur cur_unflushed)
+          * [[ nil_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur_unflushed ]])%pred d' ]]
     OnCrash
-      rep xp (AppliedUnsyncTxn cur) ms
+      exists mscs', rep xp (AppliedUnsyncTxn cur) mscs'
     Begin
-      ArraySync $0 (sel (map fst (Map.elements ms)) i $0) $1;;
-      lrx tt
-    Rof;;
-    Write (LogCommit xp) $0;;
-    rx tt.
+      cs <- BUFCACHE.sync_array (LogCache xp) $0 (sel (map fst (Map.elements ms)) i $0) cs;
+      lrx cs
+    Rof;
+    cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $0 cs;
+    rx (ms, cs).
 
-  Theorem apply_sync_ok: forall xp ms,
+  Theorem apply_sync_ok: forall xp mscs,
     {< m,
-    PRE    rep xp (AppliedUnsyncTxn m) ms
-    POST:r rep xp (AppliedTxn m) ms
-    CRASH  rep xp (AppliedUnsyncTxn m) ms \/ rep xp (AppliedTxn m) ms
-    >} apply_sync xp ms.
+    PRE        rep xp (AppliedUnsyncTxn m) mscs
+    POST:mscs' rep xp (AppliedTxn m) mscs'
+    CRASH      exists mscs', rep xp (AppliedUnsyncTxn m) mscs' \/ rep xp (AppliedTxn m) mscs'
+    >} apply_sync xp mscs.
   Proof.
     unfold apply_sync; log_unfold.
+    destruct mscs as [ms cs]; simpl.
     hoare.
     admit.
     admit.
@@ -929,18 +986,21 @@ Admitted.
 
   Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
 
-  Definition apply T xp ms rx : prog T :=
-    apply_unsync xp ms;;
-    apply_sync xp ms;;
-    Sync (LogCommit xp);;
-    rx tt.
+  Definition apply T xp mscs rx : prog T :=
+    mscs <- apply_unsync xp mscs;
+    mscs <- apply_sync xp mscs;
+    let (ms, cs) := mscs in
+    cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+    rx (ms, cs).
 
-  Theorem apply_ok: forall xp ms,
+  Theorem apply_ok: forall xp mscs,
     {< m,
-    PRE    rep xp (CommittedTxn m) ms
-    POST:r rep xp (NoTransaction m) ms_empty
-    CRASH  rep xp (CommittedTxn m) ms \/ rep xp (AppliedTxn m) ms \/ rep xp (NoTransaction m) ms_empty
-    >} apply xp ms.
+    PRE        rep xp (CommittedTxn m) mscs
+    POST:mscs' rep xp (NoTransaction m) mscs'
+    CRASH      exists mscs', rep xp (CommittedTxn m) mscs' \/
+                             rep xp (AppliedTxn m) mscs' \/
+                             rep xp (NoTransaction m) mscs'
+    >} apply xp mscs.
   Proof.
     unfold apply; log_unfold.
     hoare_unfold log_unfold.
@@ -956,28 +1016,31 @@ Admitted.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
 
-  Definition commit T xp (ms:memstate) rx : prog T :=
-    ok <- flush xp ms;
+  Definition commit T xp (mscs : memstate * cachestate) rx : prog T :=
+    r <- flush xp mscs;
+    let (mscs, ok) := r in
     If (bool_dec ok true) {
-      Write (LogCommit xp) $1;;
-      Sync (LogCommit xp);;
-      apply xp ms;;
-      rx true
+      let (ms, cs) := mscs in
+      cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $1 cs;
+      cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+      mscs <- apply xp (ms, cs);
+      rx (mscs, true)
     } else {
-      abort xp ms;;
-      rx false
+      mscs <- abort xp mscs;
+      rx (mscs, false)
     }.
 
 
   Definition log_intact_either xp old cur :=
-    (exists ms, rep xp (CommittedUnsyncTxn old cur) ms)%pred.
+    (exists mscs, rep xp (CommittedUnsyncTxn old cur) mscs)%pred.
 
   (** The log is in a valid state which (after recovery) represents disk state [m] *)
   Definition log_intact xp m :=
-    (exists ms, (rep xp (NoTransaction m) ms) \/
-     (exists m', rep xp (ActiveTxn m m') ms) \/
-     (rep xp (CommittedTxn m) ms) \/
-     (rep xp (AppliedTxn m) ms))%pred.
+    (exists mscs,
+     (rep xp (NoTransaction m) mscs) \/
+     (exists m', rep xp (ActiveTxn m m') mscs) \/
+     (rep xp (CommittedTxn m) mscs) \/
+     (rep xp (AppliedTxn m) mscs))%pred.
 
   (** The log is in a valid state with (after recovery) represents either disk state [old] or [cur] *)
   Definition would_recover_either xp old cur :=
@@ -985,19 +1048,20 @@ Admitted.
 
   Definition hidden_array := @array valuset.
 
-  Theorem commit_ok: forall xp ms,
+  Ltac or_r := apply pimpl_or_r; right.
+  Ltac or_l := apply pimpl_or_r; left.
+
+  Theorem commit_ok: forall xp mscs,
     {< m1 m2,
-     PRE    rep xp (ActiveTxn m1 m2) ms
-     POST:r ([[ r = true ]] * rep xp (NoTransaction m2) ms_empty) \/
-            ([[ r = false ]] * rep xp (NoTransaction m1) ms_empty)
-     CRASH  would_recover_either xp m1 m2
-    >} commit xp ms.
+     PRE         rep xp (ActiveTxn m1 m2) mscs
+     POST:mscs_r ([[ snd mscs_r = true ]] * rep xp (NoTransaction m2) (fst mscs_r)) \/
+                 ([[ snd mscs_r = false ]] * rep xp (NoTransaction m1) (fst mscs_r))
+     CRASH       would_recover_either xp m1 m2
+    >} commit xp mscs.
   Proof.
     unfold commit, would_recover_either, log_intact.
     hoare_unfold log_unfold.
     unfold equal_unless_in; intuition; auto.
-    Ltac or_r := apply pimpl_or_r; right.
-    Ltac or_l := apply pimpl_or_r; left.
     or_r; or_l; cancel.
     or_r; or_r; or_l; cancel.
     (* true by H17, H12 *) admit.
@@ -1018,37 +1082,43 @@ Admitted.
 
   Module MapProperties := WProperties Map.
 
-  Definition read_log T (xp: xparams) rx : prog T :=
-    d <- Read (LogDescriptor xp);
+  Definition read_log T (xp : xparams) cs rx : prog T :=
+    cs_d <- BUFCACHE.read (LogCache xp) (LogDescriptor xp) cs;
+    let (cs, d) := cs_d in
     let desc := valu_to_descriptor d in
-    h <- Read (LogHeader xp);
+    cs_h <- BUFCACHE.read (LogCache xp) (LogHeader xp) cs;
+    let (cs, h) := cs_h in
     let len := (valu_to_header h) :-> "length" in
-    log <- For i < len
+    cs_log <- For i < len
     Ghost cur log_on_disk
-    Loopvar log_prefix <- []
+    Loopvar cs_log_prefix <- (cs, [])
     Continuation lrx
     Invariant
-      (LogCommit xp) |=> $1
-      * exists old d, data_rep xp d
-      * cur_rep old log_on_disk cur
-      * log_rep xp old log_on_disk
-        (* If something's in the transaction, it doesn't matter what state it's in on disk *)
-      * [[ equal_unless_in (map fst (Map.elements log_on_disk)) (synced_list old) d ($0, nil) ]]
-      * [[ log_prefix = firstn (wordToNat i) (Map.elements log_on_disk) ]]
+      exists d', BUFCACHE.rep (fst cs_log_prefix) d' *
+      [[ ((LogCommit xp) |=> $1
+          * exists old d, data_rep xp d
+          * cur_rep old log_on_disk cur
+          * log_rep xp old log_on_disk
+            (* If something's in the transaction, it doesn't matter what state it's in on disk *)
+          * [[ equal_unless_in (map fst (Map.elements log_on_disk)) (synced_list old) d ($0, nil) ]]
+          * [[ snd cs_log_prefix = firstn (wordToNat i) (Map.elements log_on_disk) ]])%pred d' ]]
     OnCrash
-      rep xp (CommittedTxn cur) log_on_disk
+      exists mscs, rep xp (CommittedTxn cur) mscs
     Begin
-      v <- ArrayRead (LogData xp) i $1;
-      lrx (log_prefix ++ [(sel desc i $0, v)])
+      let (cs, log_prefix) := (cs_log_prefix : cachestate * list (addr * valu)) in
+      cs_v <- BUFCACHE.read_array (LogCache xp) (LogData xp) i cs;
+      let (cs, v) := cs_v in
+      lrx (cs, log_prefix ++ [(sel desc i $0, v)])
     Rof;
-    rx (MapProperties.of_list log).
+    let (cs, log) := cs_log in
+    rx (cs, MapProperties.of_list log).
 
-  Theorem read_log_ok: forall xp,
+  Theorem read_log_ok: forall xp cs,
     {< m ms,
-    PRE    rep xp (CommittedTxn m) ms
-    POST:r [[ r = ms ]] * rep xp (CommittedTxn m) ms
-    CRASH  rep xp (CommittedTxn m) ms
-    >} read_log xp.
+    PRE       rep xp (CommittedTxn m) (ms, cs)
+    POST:cs_r [[ snd cs_r = ms ]] * rep xp (CommittedTxn m) (ms, fst cs_r)
+    CRASH     exists mscs', rep xp (CommittedTxn m) mscs'
+    >} read_log xp cs.
   Proof.
     unfold read_log; log_unfold.
     hoare.
@@ -1064,16 +1134,19 @@ Admitted.
     admit.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_log _) _) => apply read_log_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
 
   Definition recover T xp rx : prog T :=
-    v <- Read (LogCommit xp);
+    cs <- BUFCACHE.init (LogCache xp);
+    cs_v <- BUFCACHE.read (LogCache xp) (LogCommit xp) cs;
+    let (cs, v) := cs_v in
     If (weq v $1) {
-      ms <- read_log xp;
-      apply xp ms;;
-      rx tt
+      cs_ms <- read_log xp cs;
+      let (cs, ms) := cs_ms in
+      mscs <- apply xp (ms, cs);
+      rx mscs
     } else {
-      rx tt
+      rx (ms_empty, cs)
     }.
 
   Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty 
@@ -1100,14 +1173,11 @@ Admitted.
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
     ] end.
 
-  Ltac or_r := apply pimpl_or_r; right.
-  Ltac or_l := apply pimpl_or_r; left.
-
   Theorem recover_ok: forall xp,
     {< m1 m2,
-    PRE     crash_xform (would_recover_either xp m1 m2)
-    POST:r  rep xp (NoTransaction m1) ms_empty \/ rep xp (NoTransaction m2) ms_empty
-    CRASH   would_recover_either xp m1 m2
+    PRE       crash_xform (would_recover_either xp m1 m2)
+    POST:mscs rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
+    CRASH     would_recover_either xp m1 m2
     >} recover xp.
   Proof.
     unfold recover; log_intact_unfold; log_unfold.
@@ -1217,106 +1287,58 @@ Admitted.
       cancel.
       - step; step; try word_discriminate.
 
-  Admitted.
+    (* Switched from Admitted to Qed to make CoqIDE's async proofs happy *)
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
-  Definition read_array T xp a i stride ms rx : prog T :=
-    read xp (a ^+ i ^* stride) ms rx.
+  Definition read_array T xp a i stride mscs rx : prog T :=
+    mscs_r <- read xp (a ^+ i ^* stride) mscs;
+    rx mscs_r.
 
-  Definition write_array T xp a i stride v ms rx : prog T :=
-    write xp (a ^+ i ^* stride) v ms rx.
+  Definition write_array T xp a i stride v mscs rx : prog T :=
+    mscs <- write xp (a ^+ i ^* stride) v mscs;
+    rx mscs.
 
-  Theorem read_array_ok : forall xp ms a i stride,
+  Theorem read_array_ok : forall xp mscs a i stride,
     {< mbase m vs,
-    PRE    rep xp (ActiveTxn mbase m) ms *
-           [[ exists F', (array a vs stride * F')%pred (list2mem m) ]] *
-           [[ wordToNat i < length vs ]]
-    POST:r [[ r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m) ms
-    CRASH  rep xp (ActiveTxn mbase m) ms
-    >} read_array xp a i stride ms.
+    PRE         rep xp (ActiveTxn mbase m) mscs *
+                [[ exists F', (array a vs stride * F')%pred (list2mem m) ]] *
+                [[ wordToNat i < length vs ]]
+    POST:mscs_r [[ snd mscs_r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m) (fst mscs_r)
+    CRASH       exists mscs', rep xp (ActiveTxn mbase m) mscs'
+    >} read_array xp a i stride mscs.
   Proof.
-    intros.
-    apply pimpl_ok2 with (fun done crash => exists F mbase m vs, rep xp (ActiveTxn mbase m) ms * F
-     * [[ exists F',
-          (array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i $0
-           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred (list2mem m) ]]
-     * [[ wordToNat i < length vs ]]
-     * [[ {{ fun done' crash' => rep xp (ActiveTxn mbase m) ms * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-          }} rx (sel vs i $0) ]]
-     * [[ rep xp (ActiveTxn mbase m) ms * F =p=> crash ]])%pred.
     unfold read_array.
-    eapply pimpl_ok2.
-    apply read_ok.
-    cancel.
-    step.
-    cancel.
+    hoare.
 
-    cancel.
-    eapply pimpl_trans.
-    eapply pimpl_sep_star; [ apply pimpl_refl |].
-    apply isolate_fwd; eauto.
-    cancel.
-    auto.
-    step.
-
+    pred_apply.
+    rewrite isolate_fwd with (i:=i) by auto.
     cancel.
   Qed.
 
-  Theorem write_array_ok : forall xp a i stride v ms,
+  Theorem write_array_ok : forall xp a i stride v mscs,
     {< mbase m vs F',
-    PRE      rep xp (ActiveTxn mbase m) ms
-           * [[ (array a vs stride * F')%pred (list2mem m) ]]
-           * [[ wordToNat i < length vs ]]
-    POST:ms' exists m', rep xp (ActiveTxn mbase m') ms'
-           * [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
-    CRASH  exists m' ms', rep xp (ActiveTxn mbase m') ms'
-    >} write_array xp a i stride v ms.
+    PRE        rep xp (ActiveTxn mbase m) mscs
+                * [[ (array a vs stride * F')%pred (list2mem m) ]]
+                * [[ wordToNat i < length vs ]]
+    POST:mscs' exists m', rep xp (ActiveTxn mbase m') mscs'
+                * [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
+    CRASH      exists m' mscs', rep xp (ActiveTxn mbase m') mscs'
+    >} write_array xp a i stride v mscs.
   Proof.
-    intros.
-    apply pimpl_ok2 with (fun done crash => exists F mbase m vs F',
-       rep xp (ActiveTxn mbase m) ms * F
-     * [[ (array a (firstn (wordToNat i) vs) stride
-           * (a ^+ i ^* stride) |-> sel vs i $0
-           * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride * F')%pred (list2mem m) ]]
-     * [[ wordToNat i < length vs ]]
-     * [[ forall ms',
-          {{ fun done' crash' =>
-          exists m', rep xp (ActiveTxn mbase m') ms' * F
-           * [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
-           * [[ done' = done ]] * [[ crash' = crash ]] }} rx ms' ]]
-     * [[ forall m' ms', rep xp (ActiveTxn mbase m') ms' * F =p=> crash ]])%pred.
     unfold write_array.
-    eapply pimpl_ok2.
-    apply write_ok.
+    hoare.
+
+    pred_apply.
+    rewrite isolate_fwd with (i:=i) by auto.
     cancel.
 
-    step.
-    eapply pimpl_trans; [| apply isolate_bwd ].
-    instantiate (1:=i).
-    autorewrite with core.
-    cancel.
-    autorewrite with core.
-    cancel.
-    autorewrite with core; assumption.
-
-    norm.
-    cancel.
-    auto.
-    auto.
-
-    cancel.
-    eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl
-                                                | apply isolate_fwd; eauto ] | ].
+    rewrite <- isolate_bwd_upd by auto.
     cancel.
 
-    eauto.
-
-    instantiate (default:=$0).
-    step.
-    step.
+    Grab Existential Variables.
+    exact $0.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _) _) => apply read_array_ok : prog.

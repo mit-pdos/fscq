@@ -5,3 +5,4 @@
 - buffer cache: LRU eviction, integrate with memlog
 - end-to-end theorems in FS
 - allocate/deallocate inodes (create/delete files)
+- multiple variable assignment with [<-] and in postconditions
