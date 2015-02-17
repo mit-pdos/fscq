@@ -33,8 +33,9 @@ lxp :: MemLog.Coq_xparams
 lxp = MemLog.Build_xparams
   (W 0x2000)  -- log header sector
   (W 0x2001)  -- commit flag sector
+  (W 0x2002)  -- log descriptor sector
   (W 0x2010)  -- log start sector
-  (W 0x1000)  -- log length, and MemLog uses one more for a block of addrs
+  (W 0x40)    -- log length (at most addr_per_block)
 
 bxp :: Balloc.Coq_xparams
 bxp = Balloc.Build_xparams
