@@ -120,6 +120,7 @@ Section RECBFILE.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
+    instantiate (def := $0).
 
     unfold sel, upd; autorewrite with core.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
@@ -131,9 +132,17 @@ Section RECBFILE.
     rewrite Forall_forall in *; apply H13.
     apply in_selN; rec_bounds.
 
+    assert (Hx := H13).
     apply Forall_upd; auto.
-    admit.
+    rewrite Forall_forall in Hx.
+    unfold Rec.well_formed in Hx; simpl in Hx.
+    unfold Rec.well_formed; simpl.
+    rewrite length_upd; intuition.
+    apply Hx; apply in_sel; rec_bounds.
+    apply Forall_upd; auto.
+    apply Hx; apply in_sel; rec_bounds.
   Qed.
+
 
   Hint Extern 1 ({{_}} progseq (bf_get_pair _ _ _ _ _ _) _) => apply bf_get_pair_ok : prog.
   Hint Extern 1 ({{_}} progseq (bf_put_pair _ _ _ _ _ _ _) _) => apply bf_put_pair_ok : prog.
