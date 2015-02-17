@@ -49,8 +49,24 @@ Module BUFCACHE.
     Write a v;;
     rx (Map.add a v cs).
 
+  Definition sync T (xp : xparams) a (cs : cachestate) rx : prog T :=
+    Sync a;;
+    rx cs.
+
   Definition init T (xp : xparams) rx : prog T :=
     rx (Map.empty valu).
+
+  Definition read_array T xp a i cs rx : prog T :=
+    r <- read xp (a ^+ i ^* $1) cs;
+    rx r.
+
+  Definition write_array T xp a i v cs rx : prog T :=
+    cs <- write xp (a ^+ i ^* $1) v cs;
+    rx cs.
+
+  Definition sync_array T xp a i cs rx : prog T :=
+    cs <- sync xp (a ^+ i ^* $1) cs;
+    rx cs.
 
   Lemma mapsto_add : forall a v v' (m : cachestate),
     Map.MapsTo a v (Map.add a v' m) -> v' = v.
@@ -110,11 +126,11 @@ Module BUFCACHE.
 
   Theorem write_ok : forall xp cs a v,
     {< d F v0,
-    PRE      rep cs d * [[ (F * a |~> v0)%pred d ]]
+    PRE      rep cs d * [[ (F * a |-> v0)%pred d ]]
     POST:cs' exists d',
-             rep cs' d' * [[ (F * a |~> v)%pred d' ]]
+             rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
     CRASH    exists cs', rep cs' d \/
-             exists d', rep cs' d' * [[ (F * a |~> v)%pred d' ]]
+             exists d', rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
     >} write xp a v cs.
   Proof.
     unfold write.
@@ -128,10 +144,8 @@ Module BUFCACHE.
     apply Map.add_3 in H0; auto.
     rewrite upd_ne by auto. auto.
 
-    assert ((p * a |-> (v, valuset_list (w, l)))%pred (Prog.upd m a (v, valuset_list (w, l)))).
     apply sep_star_comm; apply sep_star_comm in H.
     eapply ptsto_upd; pred_apply; cancel.
-    pred_apply; cancel.
 
     cancel.
     instantiate (a2 := r_).
@@ -143,6 +157,37 @@ Module BUFCACHE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
+
+  Theorem sync_ok : forall xp a cs,
+    {< d F v,
+    PRE      rep cs d * [[ (F * a |-> v)%pred d ]]
+    POST:cs' exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
+    CRASH    exists cs', rep cs' d \/
+             exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
+    >} sync xp a cs.
+  Proof.
+    unfold sync, rep.
+    step.
+    rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
+    eapply pimpl_ok2; eauto with prog.
+    intros; norm.
+    instantiate (a := Prog.upd m a (w, [])); unfold stars; simpl.
+    rewrite <- diskIs_combine_upd with (m:=m); cancel.
+    intuition.
+    apply H5 in H0; deex.
+    destruct (weq a a0); subst.
+    apply sep_star_comm in H; apply ptsto_valid in H.
+    rewrite H in H0. inversion H0. subst.
+    rewrite upd_eq by auto. eexists. eauto.
+    rewrite upd_ne by auto. eexists. eauto.
+    apply sep_star_comm. eapply ptsto_upd. apply sep_star_comm. eauto.
+    cancel.
+    apply pimpl_or_r; left.
+    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
+    eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (sync _ _ _) _) => apply sync_ok : prog.
 
   Theorem init_ok : forall xp,
     {< F,
@@ -175,6 +220,74 @@ Module BUFCACHE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
+
+  Theorem read_array_ok : forall xp a i cs,
+    {< d F vs,
+    PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST:csv rep (fst csv) d * [[ snd csv = fst (sel vs i ($0, nil)) ]]
+    CRASH    exists cs', rep cs' d
+    >} read_array xp a i cs.
+  Proof.
+    unfold read_array.
+    hoare.
+    rewrite isolate_fwd with (i:=i) by auto.
+    rewrite <- surjective_pairing.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
+
+  Theorem write_array_ok : forall xp a i v cs,
+    {< d F vs,
+    PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST:cs' exists d', rep cs' d' *
+             [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
+    CRASH    exists cs', rep cs' d \/
+             exists d', rep cs' d' * [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
+    >} write_array xp a i v cs.
+  Proof.
+    unfold write_array, upd_prepend.
+    hoare.
+
+    pred_apply.
+    rewrite isolate_fwd with (i:=i) by auto.
+    cancel.
+
+    rewrite <- isolate_bwd_upd by auto.
+    cancel.
+
+    apply pimpl_or_r; right; cancel.
+    rewrite <- isolate_bwd_upd by auto.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
+
+  Theorem sync_array_ok : forall xp a i cs,
+    {< d F vs,
+    PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST:cs' exists d', rep cs' d' *
+             [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
+    CRASH    exists cs', rep cs' d \/
+             exists d', rep cs' d' * [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
+    >} sync_array xp a i cs.
+  Proof.
+    unfold sync_array, upd_sync.
+    hoare.
+
+    pred_apply.
+    rewrite isolate_fwd with (i:=i) by auto.
+    cancel.
+
+    rewrite <- isolate_bwd_upd by auto.
+    cancel.
+
+    apply pimpl_or_r; right; cancel.
+    rewrite <- isolate_bwd_upd by auto.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (sync_array _ _ _ _) _) => apply sync_array_ok : prog.
 
 End BUFCACHE.
 
