@@ -519,6 +519,19 @@ Proof.
   congruence.
 Qed.
 
+Theorem sep_star_lift_apply' : forall (a : Prop) (b : @pred AT AEQ V) (m : mem),
+  b m -> a -> (b * [[ a ]])%pred m.
+Proof.
+  unfold lift_empty; unfold_sep_star; intros.
+  exists m. exists (fun _ => None).
+  intuition.
+  apply functional_extensionality; unfold mem_union; intros.
+  destruct (m x); auto.
+  unfold mem_disjoint; intro.
+  repeat deex.
+  congruence.
+Qed.
+
 Lemma pimpl_star_emp: forall (p : @pred AT AEQ V), p =p=> emp * p.
 Proof.
   unfold pimpl; unfold_sep_star; intros.

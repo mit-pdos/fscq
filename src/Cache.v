@@ -6,7 +6,6 @@ Require Import Word.
 Require Import Array.
 Require Import Pred.
 Require Import Hoare.
-Require Import GenSep.
 Require Import SepAuto.
 Require Import BasicProg.
 
@@ -16,7 +15,6 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Definition cachestate := Map.t valu.
-Definition cs_empty := Map.empty valu.
 
 Record xparams := {
   MaxCacheBlocks : addr
@@ -24,8 +22,8 @@ Record xparams := {
 
 Module BUFCACHE.
 
-  Definition rep (cs : cachestate) (l : list valuset) :=
-    (array $0 l $1 * [[ forall a v, Map.MapsTo a v cs -> fst (sel l a ($0, nil)) = v ]])%pred.
+  Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) valuset) :=
+    (diskIs m * [[ forall a v, Map.MapsTo a v cs -> exists old, m a = Some (v, old) ]])%pred.
 
   Definition trim T xp (cs : cachestate) rx : prog T :=
     If (wlt_dec $ (Map.cardinal cs) (MaxCacheBlocks xp)) {
@@ -42,14 +40,17 @@ Module BUFCACHE.
     match Map.find a cs with
     | Some v => rx (cs, v)
     | None =>
-      v <- ArrayRead $0 a $1;
+      v <- Read a;
       rx (Map.add a v cs, v)
     end.
 
   Definition write T xp a v (cs : cachestate) rx : prog T :=
     cs <- trim xp cs;
-    ArrayWrite $0 a $1 v;;
+    Write a v;;
     rx (Map.add a v cs).
+
+  Definition init T (xp : xparams) rx : prog T :=
+    rx (Map.empty valu).
 
   Lemma mapsto_add : forall a v v' (m : cachestate),
     Map.MapsTo a v (Map.add a v' m) -> v' = v.
@@ -60,19 +61,17 @@ Module BUFCACHE.
     congruence.
   Qed.
 
-  Hint Resolve list2mem_inbound.
   Hint Resolve Map.remove_3.
   Hint Resolve Map.add_3.
-  Hint Resolve list2mem_upd.
   Hint Resolve mapsto_add.
 
   Ltac unfold_rep := unfold rep.
 
   Theorem trim_ok : forall xp cs,
-    {< l,
-    PRE      rep cs l
-    POST:cs' rep cs' l
-    CRASH    rep cs l
+    {< d,
+    PRE      rep cs d
+    POST:cs' rep cs' d
+    CRASH    rep cs d
     >} trim xp cs.
   Proof.
     unfold trim, rep; hoare.
@@ -83,54 +82,97 @@ Module BUFCACHE.
   Hint Extern 1 ({{_}} progseq (trim _ _) _) => apply trim_ok : prog.
 
   Theorem read_ok : forall xp cs a,
-    {< l F v,
-    PRE      rep cs l * [[ (F * a |~> v)%pred (list2mem l) ]]
-    POST:csv rep (fst csv) l * [[ snd csv = v ]]
-    CRASH    rep cs l
+    {< d F v,
+    PRE      rep cs d * [[ (F * a |~> v)%pred d ]]
+    POST:csv rep (fst csv) d * [[ snd csv = v ]]
+    CRASH    rep cs d
     >} read xp a cs.
   Proof.
     unfold read.
     hoare_unfold unfold_rep.
 
-    apply list2mem_sel with (def:=($0,nil)) in H as H'.
+    apply sep_star_comm in H.
+    apply ptsto_valid in H as H'.
     destruct (Map.find a r_) eqn:Hfind; hoare.
 
-    apply Map.find_2 in Hfind. apply H8 in Hfind. rewrite <- H' in Hfind. firstorder.
-    destruct (weq a a0); subst; eauto.
+    apply Map.find_2 in Hfind. apply H8 in Hfind. rewrite H' in Hfind. deex; congruence.
+    rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
+    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
 
-    (* Some kind of Coq bug??  [rewrite <- H'] should work.. *)
-    assert (w = fst (w, l)); auto.
-    rewrite H0.
-    rewrite H'.
-    reflexivity.
+    destruct (weq a a0); subst.
+    apply mapsto_add in H0; subst; eauto.
+    edestruct H8. eauto. eexists; eauto.
+
+    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
 
   Theorem write_ok : forall xp cs a v,
-    {< l F v0,
-    PRE      rep cs l * [[ (F * a |~> v0)%pred (list2mem l) ]]
-    POST:cs' exists l',
-             rep cs' l' * [[ (F * a |~> v)%pred (list2mem l') ]]
-    CRASH    rep cs l \/
-             exists cs' l',
-             rep cs' l' * [[ (F * a |~> v)%pred (list2mem l') ]]
+    {< d F v0,
+    PRE      rep cs d * [[ (F * a |~> v0)%pred d ]]
+    POST:cs' exists d',
+             rep cs' d' * [[ (F * a |~> v)%pred d' ]]
+    CRASH    rep cs d \/
+             exists cs' d',
+             rep cs' d' * [[ (F * a |~> v)%pred d' ]]
     >} write xp a v cs.
   Proof.
     unfold write.
     hoare_unfold unfold_rep.
 
+    rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
+    rewrite <- diskIs_combine_upd with (m:=m); try pred_apply; cancel.
     destruct (weq a a0); subst.
-    autorewrite_fast; eauto.
-    rewrite sel_upd_ne; eauto.
+    apply mapsto_add in H0; subst.
+    rewrite upd_eq by auto. eauto.
+    apply Map.add_3 in H0; auto.
+    rewrite upd_ne by auto. auto.
 
-    apply pimpl_or_r. right. cancel; eauto.
-    instantiate (a:=(Map.add a v cs)).
-    destruct (weq a a0); subst.
-    autorewrite_fast; eauto.
-    rewrite sel_upd_ne; eauto.
+    assert ((p * a |-> (v, valuset_list (w, l)))%pred (Prog.upd m a (v, valuset_list (w, l)))).
+    apply sep_star_comm; apply sep_star_comm in H.
+    eapply ptsto_upd; pred_apply; cancel.
+    pred_apply; cancel.
+
+    cancel.
+    apply pimpl_or_r. left. cancel.
+    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
+  Theorem init_ok : forall xp cs,
+    {< F,
+    PRE      F
+    POST:cs  exists d, rep cs d * [[ F d ]]
+    CRASH    F \/ exists d, rep cs d * [[ F d ]]
+    >} init xp.
+  Proof.
+    unfold init, rep.
+    step.
+    2: cancel.
+
+    eapply pimpl_ok2; eauto.
+    simpl; intros.
+
+    (* XXX is there a way to avoid this whole hack? *)
+    remember (exists d : @mem addr _ valuset,
+       diskIs d *
+       [[forall (a : Map.key) (v : valu),
+         Map.MapsTo a v r_ -> exists old : list valu, d a = Some (v, old)]] * 
+       [[p d]])%pred.
+    norm; cancel'; intuition.
+    unfold stars; subst; simpl; rewrite star_emp_pimpl.
+    unfold pimpl; intros; exists m.
+    apply sep_star_lift_apply'; eauto.
+    apply sep_star_lift_apply'; eauto.
+    congruence.
+    intros.
+    contradict H0; apply Map.empty_1.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
+
 End BUFCACHE.
+
+Global Opaque BUFCACHE.init.
