@@ -71,7 +71,7 @@ Module BUFCACHE.
     {< d,
     PRE      rep cs d
     POST:cs' rep cs' d
-    CRASH    rep cs d
+    CRASH    exists cs', rep cs' d
     >} trim xp cs.
   Proof.
     unfold trim, rep; hoare.
@@ -85,7 +85,7 @@ Module BUFCACHE.
     {< d F v,
     PRE      rep cs d * [[ (F * a |~> v)%pred d ]]
     POST:csv rep (fst csv) d * [[ snd csv = v ]]
-    CRASH    rep cs d
+    CRASH    exists cs', rep cs' d
     >} read xp a cs.
   Proof.
     unfold read.
@@ -113,9 +113,8 @@ Module BUFCACHE.
     PRE      rep cs d * [[ (F * a |~> v0)%pred d ]]
     POST:cs' exists d',
              rep cs' d' * [[ (F * a |~> v)%pred d' ]]
-    CRASH    rep cs d \/
-             exists cs' d',
-             rep cs' d' * [[ (F * a |~> v)%pred d' ]]
+    CRASH    exists cs', rep cs' d \/
+             exists d', rep cs' d' * [[ (F * a |~> v)%pred d' ]]
     >} write xp a v cs.
   Proof.
     unfold write.
@@ -135,17 +134,21 @@ Module BUFCACHE.
     pred_apply; cancel.
 
     cancel.
+    instantiate (a2 := r_).
     apply pimpl_or_r. left. cancel.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
+
+    apply pimpl_or_r. left. cancel.
+    eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Theorem init_ok : forall xp cs,
+  Theorem init_ok : forall xp,
     {< F,
     PRE      F
     POST:cs  exists d, rep cs d * [[ F d ]]
-    CRASH    F \/ exists d, rep cs d * [[ F d ]]
+    CRASH    F \/ exists cs' d, rep cs' d * [[ F d ]]
     >} init xp.
   Proof.
     unfold init, rep.
