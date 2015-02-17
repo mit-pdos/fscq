@@ -1,8 +1,20 @@
-- memlog proofs
-- performance
-- directory proofs
-- byte-level read/write
-- buffer cache: LRU eviction, integrate with memlog
-- end-to-end theorems in FS
+FUNCTIONALITY
+
 - allocate/deallocate inodes (create/delete files)
+- maybe doubly-indirect blocks?
+
+PROOFS/SPECS
+
+- memlog proofs
+- directory proofs
+- end-to-end theorems in FS
+
+EXPERIMENTS
+
+- performance
+- buffer cache: LRU eviction
+
+NOT GOING TO HAPPEN / NICE TO HAVE
+
+- byte-level read/write
 - multiple variable assignment with [<-] and in postconditions
