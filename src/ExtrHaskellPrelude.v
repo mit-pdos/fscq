@@ -3,6 +3,7 @@
 Require Import Coq.Program.Basics.
 Require Import Coq.Strings.Ascii.
 Require Import Coq.Strings.String.
+Require Import ZArith.
 
 Extract Inductive bool => "Prelude.Bool" [ "Prelude.True" "Prelude.False" ].
 Extract Inlined Constant Bool.bool_dec => "(Prelude.==)".
@@ -35,7 +36,29 @@ Extract Inductive nat => "Prelude.Int" [ "0" "Prelude.succ" ]
   "(\fO fS n -> if n Prelude.== 0 then fO () else fS (n Prelude.- 1))".
 Extract Inlined Constant Nat.add => "(Prelude.+)".
 Extract Inlined Constant Nat.mul => "(Prelude.*)".
+Extract Inlined Constant Init.Nat.add => "(Prelude.+)".
+Extract Inlined Constant Init.Nat.mul => "(Prelude.*)".
 Extract Inlined Constant Compare_dec.lt_dec => "(Prelude.<)".
+
+Extract Inductive positive => "Prelude.Integer" [
+  "(\x -> 2 Prelude.* x Prelude.+ 1)"
+  "(\x -> 2 Prelude.* x)"
+  "1" ]
+  "(\fI fO fH n -> if n Prelude.== 1 then fH () else
+                   if (n Data.Bits..&. 1) Prelude.== 1
+                   then fI (n `Prelude.div` 2)
+                   else fO (n `Prelude.div` 2))".
+
+Extract Inductive Z => "Prelude.Integer" [ "0" "(\x -> x)" "Prelude.negate" ]
+  "(\fO fP fN n -> if n Prelude.== 0 then fO () else
+                   if n Prelude.> 0 then fP n else
+                   fN (Prelude.negate n))".
+Extract Inlined Constant Z.add => "(Prelude.+)".
+Extract Inlined Constant Z.sub => "(Prelude.-)".
+Extract Inlined Constant Z.mul => "(Prelude.*)".
+Extract Inlined Constant Z.max => "Prelude.max".
+Extract Inlined Constant Z_ge_lt_dec => "(Prelude.>=)".
+Extract Inlined Constant Z_gt_le_dec => "(Prelude.>)".
 
 Extract Inductive ascii => "Prelude.Char"
   [ "(\b0 b1 b2 b3 b4 b5 b6 b7 -> Data.Char.chr (
