@@ -1137,6 +1137,12 @@ Module INODE.
   Qed.
 
   Ltac resolve_length_eq := try solve [erewrite weq_eq; eauto; try omega; eauto].
+  Ltac inv_option_eq := repeat match goal with
+    | [ H: None = None |- _ ] => clear H
+    | [ H: None = Some _ |- _ ] => inversion H
+    | [ H: Some _ = None |- _ ] => inversion H
+    | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
+    end.
 
   Theorem igrow_alloc_ok : forall lxp bxp xp (i0 : irec) inum a mscs,
     {< F A B mbase m ilist (reclist : list irec) freelist ino,
@@ -1163,15 +1169,14 @@ Module INODE.
     step.
 
     destruct_listmatch_n; rec_simpl.
-    destruct a0; subst; simpl.
+    destruct b; subst; simpl.
 
     (* CASE 1: indirect block allocating success *)
-    step; subst; inversion H0; subst; try cancel.
-    pred_apply; cancel.
+    step; subst; inv_option_eq; subst; try cancel.
     step.
 
     (* constructing new indirect list *)
-    instantiate (a8 := indlist0).
+    instantiate (a5 := indlist0).
     unfold indrep.
     rewrite ind_ptsto_zero.
     cancel. eauto.
@@ -1188,7 +1193,7 @@ Module INODE.
     eapply pimpl_or_r; right; cancel.
 
     (* constructing the new inode *)
-    instantiate (a5 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
+    instantiate (a0 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
@@ -1212,7 +1217,7 @@ Module INODE.
 
     (* clean up goals about bounds *)
     unfold sel.
-    pose proof (@inode_blocks_length (list2mem a1)) as Hlen; rec_simpl.
+    pose proof (@inode_blocks_length (list2mem a2)) as Hlen; rec_simpl.
     erewrite Hlen; inode_bounds.
     resolve_length_eq.
     pred_apply; cancel.
@@ -1221,7 +1226,7 @@ Module INODE.
     unfold nr_indirect; omega.
     pred_apply; cancel.
 
-    pose proof (@inode_blocks_length (list2mem a1)) as Hlen; rec_simpl.
+    pose proof (@inode_blocks_length (list2mem a2)) as Hlen; rec_simpl.
     erewrite Hlen; inode_bounds.
     rewrite H6; resolve_length_eq.
     pred_apply; cancel.
@@ -1229,19 +1234,14 @@ Module INODE.
     unfold MEMLOG.log_intact; cancel.
 
     (* CASE 2: indirect block allocation failed *)
-    step; inversion H0; subst; try cancel.
-    eapply pimpl_or_r; left; cancel.
+    step; inv_option_eq; subst; try cancel.
 
     (* XXX: so many unused existentials ! *)
     Grab Existential Variables.
-    exact nil.
     exact True.
     exact True.
     constructor.
     exact $0.
-    exact emp.
-    exact nil.
-    exact nil.
     exact emp.
   Qed.
 
