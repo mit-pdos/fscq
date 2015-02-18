@@ -78,14 +78,13 @@ main = do
   -- r <- I.run fd $ Testprog.testcopy lxp
   -- r <- I.run fd $ Testprog.testalloc lxp bxp
 
-  -- r <- repf 10000 (Just (W 123))
-  --      (\x -> case x of
-  --             Nothing -> return Nothing
-  --             Just xv -> \s -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv s)
+  -- (s, r) <- repf 10000 (Just (W 123)) s
+  --     (\s x -> case x of
+  --         Nothing -> return (s, Nothing)
+  --         Just xv -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv s)
 
   (s, setok) <- I.run fd $ FS.set_size lxp bxp ixp (W 3) (W 68) s
   putStrLn $ "set_size: " ++ (show setok)
-
   (s, r) <- repf2 1000 False s $ \s -> I.run fd $ Testprog.test_bfile_bulkwrite lxp ixp (W 99) (W 64) s
 
   closeFd fd
