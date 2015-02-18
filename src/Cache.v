@@ -8,6 +8,8 @@ Require Import Pred.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
+Require Import WordAuto.
+Require Import Omega.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
 
@@ -87,6 +89,29 @@ Module BUFCACHE.
     congruence.
   Qed.
 
+  Lemma map_remove_cardinal : forall V (m : Map.t V) k, Map.In k m ->
+    Map.cardinal (Map.remove k m) = Map.cardinal m - 1.
+  Proof.
+    admit.
+  Qed.
+
+  Lemma map_add_cardinal : forall V (m : Map.t V) k v, ~ Map.In k m ->
+    Map.cardinal (Map.add k v m) = Map.cardinal m + 1.
+  Proof.
+    admit.
+  Qed.
+
+  Lemma map_elements_hd_in : forall V (m : Map.t V) k w l,
+    Map.elements m = (k, w) :: l ->
+    Map.In k m.
+  Proof.
+    intros.
+    eexists; apply Map.elements_2.
+    rewrite H.
+    apply InA_cons_hd.
+    constructor; eauto.
+  Qed.
+
   Hint Resolve Map.remove_3.
   Hint Resolve Map.add_3.
   Hint Resolve mapsto_add.
@@ -101,8 +126,25 @@ Module BUFCACHE.
     >} trim xp cs.
   Proof.
     unfold trim, rep; hoare.
-    destruct (Map.elements cs); hoare.
-    destruct p0; hoare.
+    destruct cs as [cmap cnum].
+    case_eq (Map.elements cmap); hoare.
+
+    rewrite map_remove_cardinal by (eapply map_elements_hd_in; eauto).
+    rewrite H6.
+    destruct xp; simpl in *.
+
+    rewrite wminus_Alt. rewrite wminus_Alt2. unfold wordBinN.
+    erewrite wordToNat_natToWord_bound with (bound:=cnum).
+    reflexivity.
+    omega.
+    intro; apply H8; clear H8.
+    apply lt_wlt.
+    apply wlt_lt in H0.
+    simpl in *.
+    case_eq (#MaxCacheBlocks0); intros; try omega.
+    rewrite <- H1 in MaxCacheBlocksOK0.
+    rewrite natToWord_wordToNat in MaxCacheBlocksOK0.
+    congruence.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (trim _ _) _) => apply trim_ok : prog.
@@ -117,11 +159,11 @@ Module BUFCACHE.
     unfold read.
     hoare_unfold unfold_rep.
 
-    apply sep_star_comm in H.
-    apply ptsto_valid in H as H'.
-    destruct (Map.find a r_) eqn:Hfind; hoare.
+    apply sep_star_comm in H3.
+    apply ptsto_valid in H3 as H'.
+    destruct (Map.find a (fst r_)) eqn:Hfind; hoare.
 
-    apply Map.find_2 in Hfind. apply H8 in Hfind. rewrite H' in Hfind. deex; congruence.
+    apply Map.find_2 in Hfind. apply H9 in Hfind. rewrite H' in Hfind. deex; congruence.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
 
