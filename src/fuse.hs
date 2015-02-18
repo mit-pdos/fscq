@@ -37,20 +37,23 @@ nDataBitmaps = W 1
 nInodeBitmaps :: Coq_word
 nInodeBitmaps = W 1
 
-xps :: (((MemLog.Coq_xparams, Inode.Coq_xparams), Balloc.Coq_xparams), Coq_word)
+xps :: ((((MemLog.Coq_xparams, Inode.Coq_xparams), Balloc.Coq_xparams), Balloc.Coq_xparams), Coq_word)
 xps = FS.compute_xparams nCache nDataBitmaps nInodeBitmaps
 
 lxp :: MemLog.Coq_xparams
-lxp = case xps of (((l, _), _), _) -> l
-
-bxp :: Balloc.Coq_xparams
-bxp = case xps of (((_, _), b), _) -> b
+lxp = case xps of ((((l, _), _), _), _) -> l
 
 ixp :: Inode.Coq_xparams
-ixp = case xps of (((_, i), _), _) -> i
+ixp = case xps of ((((_, i), _), _), _) -> i
+
+ibxp :: Balloc.Coq_xparams
+ibxp = case xps of ((((_, _), ib), _)) -> ib
+
+dbxp :: Balloc.Coq_xparams
+dbxp = case xps of ((((_, _), _), db), _) -> db
 
 maxaddr :: Coq_word
-maxaddr = case xps of (((_, _), _), m) -> m
+maxaddr = case xps of ((((_, _), _), _), m) -> m
 
 main :: IO ()
 main = do
@@ -127,7 +130,7 @@ fscqGetFileStat _ "/" = do
   ctx <- getFuseContext
   return $ Right $ dirStat ctx
 fscqGetFileStat fd (_:path) = do
-  r <- I.run fd $ FS.lookup lxp bxp ixp rootDir path
+  r <- I.run fd $ FS.lookup lxp dbxp ixp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
     Just inum -> do
@@ -152,7 +155,7 @@ fscqReadDirectory _ _ = return (Left (eNOENT))
 
 fscqOpen :: Fd -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fd (_:path) mode flags = do
-  r <- I.run fd $ FS.lookup lxp bxp ixp rootDir path
+  r <- I.run fd $ FS.lookup lxp dbxp ixp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
     Just inum -> return $ Right $ inum
@@ -161,7 +164,7 @@ fscqOpen _ _ _ _ = return $ Left eIO
 fscqCreate :: Fd -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fd (_:path) RegularFile _ _ = do
   -- All created files point to the same file inode..
-  r <- I.run fd $ FS.link lxp bxp ixp rootDir path theOneFile
+  r <- I.run fd $ FS.link lxp dbxp ixp rootDir path theOneFile
   case r of
     True -> return eOK
     False -> return eIO
@@ -186,7 +189,7 @@ fscqWrite :: Fd -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either E
 fscqWrite fd _ inum bs offset = do
   -- Ignore the offset for now..
   w <- bs2i bs_pad
-  ok <- I.run fd $ FS.write_block lxp bxp ixp inum (W 0) (W w)
+  ok <- I.run fd $ FS.write_block lxp dbxp ixp inum (W 0) (W w)
   if ok then
     return $ Right $ fromIntegral bs_len
   else
