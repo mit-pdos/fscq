@@ -55,7 +55,7 @@ Module BUFCACHE.
     cs <- trim xp cs;
     Write a v;;
     match Map.find a (fst cs) with
-    | Some v =>
+    | Some _ =>
       rx (Map.add a v (fst cs), snd cs)
     | None =>
       rx (Map.add a v (fst cs), snd cs ^+ $1)
