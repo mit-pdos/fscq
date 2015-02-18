@@ -29,6 +29,17 @@ Section RECBFILE.
     discriminate.
   Qed.
 
+  Theorem items_per_valu_not_0' : wordToNat items_per_valu <> 0.
+  Proof.
+    intros H.
+    apply items_per_valu_not_0.
+    apply wordToNat_inj; auto.
+  Qed.
+
+  Hint Resolve items_per_valu_not_0.
+  Hint Resolve items_per_valu_not_0'.
+
+
   Definition rep_block := RecArray.rep_block blocksz_ok.
   Definition valu_to_block := RecArray.valu_to_block itemtype items_per_valu blocksz_ok.
   Definition rep_valu_id := RecArray.rep_valu_id blocksz_ok.
@@ -52,8 +63,10 @@ Section RECBFILE.
     ([[ Forall Rec.well_formed vs ]] *
      arrayN 0 (map rep_block vs))%pred.
 
-  Definition array_item (vs : list item) :=
-    (exists vs_nested, array_item_pairs vs_nested *
+  Definition array_item_file file (vs : list item) : @pred _ (@weq addrlen) valuset :=
+    (exists vs_nested,
+     [[ length vs_nested = length (BFILE.BFData file) ]] *
+     [[ array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) ]] *
      [[ vs = fold_right (@app _) nil vs_nested ]])%pred.
 
   Hint Rewrite map_length.
@@ -109,7 +122,8 @@ Section RECBFILE.
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * # inum |-> f')%pred (list2nmem flist') ]] *
-             [[ array_item_pairs (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i))
+             [[ array_item_pairs (upd ilistlist block_ix 
+                                     (upd (sel ilistlist block_ix nil) pos i))
                                  (list2nmem (BFILE.BFData f')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} bf_put_pair lxp ixp inum block_ix pos i mscs.
@@ -157,46 +171,23 @@ Section RECBFILE.
                                      (idx ^% items_per_valu) v mscs;
     rx mscs.
 
-  Theorem bf_get_ok : forall lxp bxp ixp inum idx mscs,
-    {< F A mbase m flist f ilist,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ array_item ilist (list2nmem (BFILE.BFData f)) ]] *
-           [[ (idx < $ (length (BFILE.BFData f)) ^* items_per_valu)%word ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           [[ r = sel ilist idx item_zero ]]
-    CRASH  MEMLOG.log_intact lxp mbase
-    >} bf_get lxp ixp inum idx mscs.
+
+  Lemma helper_wlt_wmult_wdiv_lt: forall sz (a b : word sz) (c : nat),
+    wordToNat b <> 0 -> (a < ($ c ^* b))%word
+    -> wordToNat (a ^/ b) < c.
   Proof.
-    unfold bf_get, array_item.
-    pose proof items_per_valu_not_0.
-
-    step.
-    admit.
-(*
+    unfold wdiv, wmult, wordBin; intros.
+    rewrite wordToNat_div; auto.
+    apply Nat.div_lt_upper_bound; auto.
     word2nat_auto.
-    apply Nat.div_lt_upper_bound; eauto;
-    rewrite mult_comm; eauto.
-*)
-
-    apply wmod_upper_bound; eauto.
-
-    step.
-    subst.
-    unfold array_item_pairs in H6. unfold rep_block in H6. destruct_lift H6.
-    apply nested_sel_divmod_concat; auto.
-    eapply Forall_impl; [| apply H6].
-    intro a. simpl. tauto.
+    rewrite Nat.mul_comm; auto.
   Qed.
-
 
   Theorem upd_divmod : forall (l : list block) (pos : addr) (v : item),
     Forall Rec.well_formed l
-    -> Array.upd (fold_right (@app _) nil l) pos v =
-       fold_right (@app _) nil (Array.upd l (pos ^/ items_per_valu)
-         (Array.upd (sel l (pos ^/ items_per_valu) nil) (pos ^% items_per_valu) v)).
+    -> upd (fold_right (@app _) nil l) pos v =
+       fold_right (@app _) nil (upd l (pos ^/ items_per_valu)
+         (upd (sel l (pos ^/ items_per_valu) nil) (pos ^% items_per_valu) v)).
   Proof.
     pose proof items_per_valu_not_0.
     intros. unfold upd.
@@ -206,38 +197,71 @@ Section RECBFILE.
     rewrite Forall_forall in *; intros; apply H0; assumption.
   Qed.
 
+  Hint Resolve helper_wlt_wmult_wdiv_lt.
+  Hint Resolve wmod_upper_bound.
+  Hint Resolve upd_divmod.
+
+  Theorem bf_get_ok : forall lxp bxp ixp inum idx mscs,
+    {< F A mbase m flist f ilist,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           array_item_file f ilist *
+           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+           [[ (idx < $ (length (BFILE.BFData f)) ^* items_per_valu)%word ]]
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+           [[ r = sel ilist idx item_zero ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} bf_get lxp ixp inum idx mscs.
+  Proof.
+    unfold bf_get, array_item_file.
+    intros; eapply pimpl_ok2; eauto with prog; intros.
+    norm.
+    cancel.
+    repeat rewrite_list2nmem_pred.
+    intuition; try (eauto; pred_apply; cancel).
+
+    step.
+    subst; unfold array_item_pairs, rep_block in H9.
+    destruct_lift H9.
+    apply nested_sel_divmod_concat; auto.
+    eapply Forall_impl; [ | apply H8 ].
+    unfold Rec.well_formed.
+    simpl; intuition.
+  Qed.
+
   Theorem bf_put_ok : forall lxp bxp ixp inum idx v mscs,
     {< F A mbase m flist f ilist,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             array_item_file f ilist *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-             [[ array_item ilist (list2nmem (BFILE.BFData f)) ]] *
              [[ (idx < $ (length (BFILE.BFData f)) ^* items_per_valu)%word ]] *
              [[ Rec.well_formed v ]]
-    POST:mscs' exists m' flist' f', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST:mscs' exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             array_item_file f' (upd ilist idx v) *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-             [[ array_item (upd ilist idx v) (list2nmem (BFILE.BFData f')) ]]
+             [[ (A * #inum |-> f')%pred (list2nmem flist') ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bf_put lxp ixp inum idx v mscs.
   Proof.
-    unfold bf_put, array_item, array_item_pairs.
-    pose proof items_per_valu_not_0.
-    step.
-
-    unfold array_item_pairs.
+    unfold bf_put, array_item_file, array_item_pairs.
+    intros; eapply pimpl_ok2; eauto with prog; intros; norm.
     cancel.
-    apply wdiv_lt_upper_bound; try rewrite wmult_comm; auto.
-    apply wmod_upper_bound; auto.
-
-    eapply pimpl_ok2.
-    eauto with prog.
-    intros; simpl; subst.
+    repeat rewrite_list2nmem_pred.
     unfold array_item_pairs.
-    cancel.
+    intuition; try (eauto; pred_apply; cancel).
 
-    rewrite upd_divmod; auto.
+    eapply pimpl_ok2; eauto with prog; intros.
+    norm. cancel.
+    subst; repeat rewrite_list2nmem_pred; subst.
+    intuition; try (pred_apply; cancel).
+    apply list2nmem_array_eq in H15 as Heq.
+    rewrite Heq; autorewrite with core; auto.
+    pred_apply; cancel.
   Qed.
+
 
 End RECBFILE.
 
@@ -246,5 +270,5 @@ Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : 
 
 
 (* Two BFileRec arrays should always be equal *)
-Hint Extern 0 (okToUnify (array_item ?a ?b ?c _) (array_item ?a ?b ?c _)) =>
+Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>
   unfold okToUnify; constructor : okToUnify.
