@@ -224,7 +224,6 @@ Definition set_size_helper T lxp bxp ixp inum size mscs rx : prog T :=
       Begin
         let2 (mscs, ok) <- BFILE.bfgrow lxp bxp ixp inum mscs;
         If (bool_dec ok false) {
-          mscs <- MEMLOG.abort lxp mscs;
           rx (mscs, false)
         } else {
           lrx mscs
