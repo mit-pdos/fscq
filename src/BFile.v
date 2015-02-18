@@ -283,19 +283,6 @@ Module BFILE.
 
     step.
 
-    (* FIXME: where are these evars from? *)
-    instantiate (a := emp).
-    instantiate (a0 := emp).
-    instantiate (a1 := emp).
-    instantiate (a2 := nil).
-    instantiate (a3 := nil).
-    instantiate (a4 := nil).
-    instantiate (a5 := INODE.inode0).
-    instantiate (a6 := nil).
-    instantiate (a7 := emp).
-
-    inversion H0; subst; cancel.
-    2: subst; inversion H0; subst; pred_apply; cancel.
     2: list2nmem_ptsto_cancel; file_bounds.
     rewrite_list2nmem_pred; unfold file_match in *; file_bounds.
     eapply list2nmem_array; file_bounds.
@@ -305,7 +292,7 @@ Module BFILE.
     eapply pimpl_or_r; left; cancel.
     eapply pimpl_or_r; right; cancel.
 
-    instantiate (a0 := Build_bfile (BFData b ++ [w0])).
+    instantiate (a2 := Build_bfile (BFData b ++ [w0])).
     2: simpl; eapply list2nmem_upd; eauto.
 
     rewrite_list2nmem_pred_upd H16; file_bounds.
@@ -313,21 +300,21 @@ Module BFILE.
     eapply listmatch_updN_selN_r; autorewrite with defaults; file_bounds.
     unfold file_match; cancel_exact; simpl.
 
-    inversion H0; clear H0; subst.
     eapply list2nmem_array_app_eq in H17 as Heq; eauto.
     rewrite Heq; clear Heq.
     rewrite_list2nmem_pred_sel H5; subst b.
     eapply listmatch_app_r; file_bounds.
+    INODE.inv_option_eq; subst.
     unfold data_match; cancel.
 
     apply list2nmem_app; eauto.
-    cancel.
 
     step.
-    instantiate (a := d0).
-    instantiate (a0 := nil).
-    inversion H0; subst; cancel.
-    cancel.
+
+    Grab Existential Variables.
+    exact emp.
+    exact emp.
+    exact INODE.inode0.
   Qed.
 
 
