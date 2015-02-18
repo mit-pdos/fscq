@@ -41,8 +41,8 @@ Module DIR.
     rewrite valulen_is; auto.
   Qed.
 
-  Definition rep' (delist : list dirent) :=
-    BFileRec.array_item dirent_type items_per_valu itemsz_ok delist.
+  Definition rep' f (delist : list dirent) :=
+    BFileRec.array_item_file dirent_type items_per_valu itemsz_ok f delist.
 
   Definition dmatch (de: dirent) : @pred filename (@weq filename_len) addr :=
     if weq (de :-> "valid") $0 then
@@ -60,9 +60,9 @@ Module DIR.
 
   Hint Resolve dmatch_complete.
 
-  Definition rep (dmap : @mem filename (@weq filename_len) addr) :=
+  Definition rep f (dmap : @mem filename (@weq filename_len) addr) :=
     (exists delist,
-       rep' delist *
+       rep' f delist *
        [[ listpred dmatch delist dmap ]] 
     )%pred.
 
@@ -76,9 +76,9 @@ Module DIR.
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+        rep' f delist *
         [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
         [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-        [[ (rep' delist) (list2nmem (BFILE.BFData f)) ]] *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
         [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
@@ -102,9 +102,9 @@ Module DIR.
   Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m flist f dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           rep f dmap *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-           [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-           [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]]
+           [[ (A * dnum |-> f)%pred (list2mem flist) ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            ((exists inum DF, [[ r = Some inum ]] *
@@ -209,15 +209,15 @@ Module DIR.
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m flist f dmap DF,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             rep f dmap *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-             [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]] *
              [[ (DF * name |->?)%pred dmap ]]
     POST:mscs' exists m' flist' f' dmap',
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             rep f' dmap' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
-             [[ (rep dmap') (list2nmem (BFILE.BFData f')) ]] *
              [[ (DF) dmap' ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} dunlink lxp bxp ixp dnum name mscs.
@@ -260,17 +260,17 @@ Module DIR.
   Theorem dlink_ok : forall lxp bxp ixp dnum name inum mscs,
     {< F A mbase m flist f dmap DF,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             rep f dmap *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-             [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]] *
              [[ (DF) dmap ]] *
              [[ exists dmap', (DF * name |->?)%pred dmap' ]]
     POST:(mscs',r)
              ([[ r = true ]] * exists m' flist' f' dmap',
               MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+              rep f' dmap' *
               [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
               [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
-              [[ (rep dmap') (list2nmem (BFILE.BFData f')) ]] *
               [[ (DF * name |-> inum)%pred dmap' ]]) \/
              ([[ r = false ]] * exists m',
               MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
@@ -293,9 +293,9 @@ Module DIR.
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_res) *
+        rep' f delist *
         [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
         [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-        [[ (rep' delist) (list2nmem (BFILE.BFData f)) ]] *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
         [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
@@ -316,9 +316,9 @@ Module DIR.
   Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
     {< F A mbase m flist f dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             rep f dmap *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
-             [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]]
+             [[ (A * dnum |-> f)%pred (list2mem flist) ]]
     POST:(mscs',res)
              MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ listpred diritemmatch res dmap ]]
