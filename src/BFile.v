@@ -122,6 +122,7 @@ Module BFILE.
     unfold rep, sel; intros.
     destruct_lift H.
     rewrite listmatch_extract with (i := wordToNat i) in H by auto.
+    autorewrite with defaults in *.
     unfold file_match at 2, listmatch at 2 in H.
     destruct_lift H.
     rewrite H2.
@@ -278,7 +279,7 @@ Module BFILE.
     hoare.
 
     destruct_listmatch_n.
-    destruct a; subst; simpl.
+    destruct b0; subst; simpl.
 
     step.
 
