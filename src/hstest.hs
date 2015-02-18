@@ -5,6 +5,7 @@ import MemLog
 import Balloc
 import Inode
 import Word
+import Cache
 import qualified Interpreter as I
 import qualified System.Directory
 import qualified Testprog
@@ -22,8 +23,12 @@ disk_fn = "disk.img"
 --   _LOG__commit xp $ \_ ->
 --   Prog.Done ()
 
+cxp :: Cache.Coq_xparams
+cxp = (W 0x1000)  -- number of blocks in cache
+
 lxp :: MemLog.Coq_xparams
 lxp = MemLog.Build_xparams
+  cxp
   (W 0x2000)  -- log header sector
   (W 0x2001)  -- commit flag sector
   (W 0x2002)  -- log descriptor sector
@@ -40,26 +45,26 @@ ixp = Inode.Build_xparams
   (W 0x1000)   -- inode start sector
   (W 0x100)    -- number of inode sectors
 
-repf :: Integer -> t -> (t -> IO t) -> IO t
-repf 0 x _ = return x
-repf n x f = do
-  y <- f x
-  z <- repf (n-1) y f
-  return z
+repf :: Integer -> t -> s -> (s -> t -> IO (s, t)) -> IO (s, t)
+repf 0 x s _ = return (s, x)
+repf n x s f = do
+  (s, y) <- f s x
+  (s, z) <- repf (n-1) y s f
+  return (s, z)
 
-repf2 :: Integer -> r -> IO r -> IO r
-repf2 0 r _ = return r
-repf2 n _ f = do
-  r <- f
-  rr <- repf2 (n-1) r f
-  return rr
+repf2 :: Integer -> r -> s -> (s -> IO (s, r)) -> IO (s, r)
+repf2 0 r s _ = return (s, r)
+repf2 n _ s f = do
+  (s, r) <- f s
+  (s, rr) <- repf2 (n-1) r s f
+  return (s, rr)
 
 main :: IO ()
 main = do
   -- This is racy (stat'ing the file first and opening it later)
   fileExists <- System.Directory.doesFileExist disk_fn
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
-  if fileExists
+  s <- if fileExists
   then
     do
       putStrLn "Recovering disk.."
@@ -76,12 +81,12 @@ main = do
   -- r <- repf 10000 (Just (W 123))
   --      (\x -> case x of
   --             Nothing -> return Nothing
-  --             Just xv -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv)
+  --             Just xv -> \s -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv s)
 
-  setok <- I.run fd $ FS.set_size lxp bxp ixp (W 3) (W 68)
+  (s, setok) <- I.run fd $ FS.set_size lxp bxp ixp (W 3) (W 68) s
   putStrLn $ "set_size: " ++ (show setok)
 
-  r <- repf2 1000 False $ I.run fd $ Testprog.test_bfile_bulkwrite lxp ixp (W 99) (W 64)
+  (s, r) <- repf2 1000 False s $ \s -> I.run fd $ Testprog.test_bfile_bulkwrite lxp ixp (W 99) (W 64) s
 
   closeFd fd
   putStrLn $ "Done: " ++ (show r)
