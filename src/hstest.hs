@@ -2,10 +2,7 @@ module Main where
 
 import System.Posix.IO
 import MemLog
-import Balloc
-import Inode
 import Word
-import Cache
 import qualified Interpreter as I
 import qualified System.Directory
 import qualified Testprog
@@ -23,28 +20,6 @@ disk_fn = "disk.img"
 --   _LOG__commit xp $ \_ ->
 --   Prog.Done ()
 
-cxp :: Cache.Coq_xparams
-cxp = (W 0x1000)  -- number of blocks in cache
-
-lxp :: MemLog.Coq_xparams
-lxp = MemLog.Build_xparams
-  cxp
-  (W 0x2000)  -- log header sector
-  (W 0x2001)  -- commit flag sector
-  (W 0x2002)  -- log descriptor sector
-  (W 0x2010)  -- log start sector
-  (W 0x40)    -- log length (at most addr_per_block)
-
-bxp :: Balloc.Coq_xparams
-bxp = Balloc.Build_xparams
-  (W 0x1100)  -- bitmap start sector
-  (W 0x1)     -- bitmap length
-
-ixp :: Inode.Coq_xparams
-ixp = Inode.Build_xparams
-  (W 0x1000)   -- inode start sector
-  (W 0x100)    -- number of inode sectors
-
 repf :: Integer -> t -> s -> (s -> t -> IO (s, t)) -> IO (s, t)
 repf 0 x s _ = return (s, x)
 repf n x s f = do
@@ -61,17 +36,18 @@ repf2 n _ s f = do
 
 main :: IO ()
 main = do
+  (((lxp, ixp), bxp), maxaddr) <- return $ FS.compute_xparams (W 1000) (W 1) (W 1)
   -- This is racy (stat'ing the file first and opening it later)
   fileExists <- System.Directory.doesFileExist disk_fn
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   s <- if fileExists
   then
     do
-      putStrLn "Recovering disk.."
+      putStrLn $ "Recovering file system, " ++ (show maxaddr) ++ " blocks"
       I.run fd $ _MEMLOG__recover lxp
   else
     do
-      putStrLn "Initializing disk.."
+      putStrLn $ "Initializing file system, " ++ (show maxaddr) ++ " blocks"
       I.run fd $ _MEMLOG__init lxp
   putStrLn "Running program.."
   -- r <- I.run fd $ the_prog lxp

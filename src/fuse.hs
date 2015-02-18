@@ -29,23 +29,28 @@ rootDir = W 1
 theOneFile :: Coq_word
 theOneFile = W 2
 
+-- File system configuration
+nCache :: Coq_word
+nCache = W 1000
+nDataBitmaps :: Coq_word
+nDataBitmaps = W 1
+nInodeBitmaps :: Coq_word
+nInodeBitmaps = W 1
+
+xps :: (((MemLog.Coq_xparams, Inode.Coq_xparams), Balloc.Coq_xparams), Coq_word)
+xps = FS.compute_xparams nCache nDataBitmaps nInodeBitmaps
+
 lxp :: MemLog.Coq_xparams
-lxp = MemLog.Build_xparams
-  (W 0x2000)  -- log header sector
-  (W 0x2001)  -- commit flag sector
-  (W 0x2002)  -- log descriptor sector
-  (W 0x2010)  -- log start sector
-  (W 0x40)    -- log length (at most addr_per_block)
+lxp = case xps of (((l, _), _), _) -> l
 
 bxp :: Balloc.Coq_xparams
-bxp = Balloc.Build_xparams
-  (W 0x1100)  -- bitmap start sector
-  (W 0x1)     -- bitmap length
+bxp = case xps of (((_, _), b), _) -> b
 
 ixp :: Inode.Coq_xparams
-ixp = Inode.Build_xparams
-  (W 0x1000)   -- inode start sector
-  (W 0x100)    -- number of inode sectors
+ixp = case xps of (((_, i), _), _) -> i
+
+maxaddr :: Coq_word
+maxaddr = case xps of (((_, _), _), m) -> m
 
 main :: IO ()
 main = do
@@ -54,11 +59,11 @@ main = do
   if fileExists
   then
     do
-      putStrLn "Recovering disk.."
+      putStrLn $ "Recovering file system, " ++ (show maxaddr) ++ " blocks"
       I.run fd $ MemLog._MEMLOG__recover lxp
   else
     do
-      putStrLn "Initializing disk.."
+      putStrLn $ "Initializing file system, " ++ (show maxaddr) ++ " blocks"
       I.run fd $ MemLog._MEMLOG__init lxp
   putStrLn "Starting file system.."
   fuseMain (fscqFSOps fd) defaultExceptionHandler

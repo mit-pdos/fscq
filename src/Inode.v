@@ -30,7 +30,8 @@ Set Implicit Arguments.
 
 Record xparams := {
   IXStart : addr;
-  IXLen : addr
+  IXLen : addr;
+  IXAlloc : Balloc.xparams
 }.
 
 Module INODE.

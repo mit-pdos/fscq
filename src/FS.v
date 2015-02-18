@@ -12,9 +12,26 @@ Require Import SepAuto.
 Require Import Idempotent.
 Require Import Inode.
 Require Import List.
+Require Import Balloc.
 
 Set Implicit Arguments.
 Import ListNotations.
+
+Definition compute_xparams (cache_blocks data_bitmaps inode_bitmaps : addr) cache_blocks_ok :
+  (MemLog.xparams * Inode.xparams * Balloc.xparams * addr) :=
+  let data_blocks := data_bitmaps ^* BALLOC.items_per_valu in
+  let inode_blocks := inode_bitmaps ^* BALLOC.items_per_valu ^/ INODE.items_per_valu in
+  let inode_base := data_blocks in
+  let balloc_base := inode_base ^+ inode_blocks ^+ inode_bitmaps in
+  let log_base := balloc_base ^+ data_bitmaps in
+  let log_size := $ MEMLOG.addr_per_block in
+  let max_addr := log_base ^+ $4 ^+ log_size in
+  (MemLog.Build_xparams (@Cache.Build_xparams cache_blocks cache_blocks_ok)
+                        log_base (log_base ^+ $1) (log_base ^+ $2) (log_base ^+ $3) log_size,
+   Inode.Build_xparams inode_base inode_blocks
+                       (Balloc.Build_xparams (inode_base ^+ inode_blocks) inode_bitmaps),
+   Balloc.Build_xparams balloc_base data_bitmaps,
+   max_addr).
 
 Definition file_len T lxp ixp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin lxp mscs;
