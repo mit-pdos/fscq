@@ -13,6 +13,7 @@ Require Import Idempotent.
 Require Import Inode.
 Require Import List.
 Require Import Balloc.
+Require Import DirAlloc.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -301,22 +302,31 @@ Definition readdir T lxp ixp dnum mscs rx : prog T :=
   let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
   rx (mscs, files).
 
-Definition link T lxp bxp ixp dnum name inum mscs rx : prog T :=
+Definition create T lxp ibxp dbxp ixp dnum name mscs rx : prog T :=
   mscs <- MEMLOG.begin lxp mscs;
-  let2 (mscs, ok) <- SDIR.dslink lxp bxp ixp dnum name inum mscs;
-  If (bool_dec ok false) {
+  let2 (mscs, oi) <- DIRALLOC.dacreate lxp ibxp dbxp ixp dnum name mscs;
+  match oi with
+  | None =>
     mscs <- MEMLOG.abort lxp mscs;
-    rx (mscs, false)
-  } else {
+    rx (mscs, None)
+  | Some inum =>
+    let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+    match ok with
+    | true => rx (mscs, Some inum)
+    | false => rx (mscs, None)
+    end
+  end.
+
+Definition delete T lxp ibxp dbxp ixp dnum name mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, ok) <- DIRALLOC.dadelete lxp ibxp dbxp ixp dnum name mscs;
+  If (bool_dec ok true) {
     let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
     rx (mscs, ok)
+  } else {
+    mscs <- MEMLOG.abort lxp mscs;
+    rx (mscs, false)
   }.
-
-Definition unlink T lxp bxp ixp dnum name mscs rx : prog T :=
-  mscs <- MEMLOG.begin lxp mscs;
-  mscs <- SDIR.dsunlink lxp bxp ixp dnum name mscs;
-  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
-  rx (mscs, ok).
 
 Definition lookup T lxp bxp ixp dnum name mscs rx : prog T :=
   mscs <- MEMLOG.begin lxp mscs;

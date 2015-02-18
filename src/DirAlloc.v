@@ -1,0 +1,33 @@
+Require Import DirName.
+Require Import Balloc.
+Require Import Prog.
+
+Set Implicit Arguments.
+
+Module DIRALLOC.
+
+  Definition dacreate T lxp ibxp dbxp ixp dnum name mscs rx : prog T :=
+    let2 (mscs, oi) <- BALLOC.alloc_gen lxp ibxp mscs;
+    match oi with
+    | None => rx (mscs, None)
+    | Some inum =>
+      let2 (mscs, ok) <- SDIR.dslink lxp dbxp ixp dnum name inum mscs;
+      match ok with
+      | true => rx (mscs, Some inum)
+      | false => rx (mscs, None)
+      end
+    end.
+
+  Definition dadelete T lxp ibxp dbxp ixp dnum name mscs rx : prog T :=
+    let2 (mscs, oi) <- SDIR.dslookup lxp dbxp ixp dnum name mscs;
+    match oi with
+    | None => rx (mscs, false)
+    | Some inum =>
+      mscs <- SDIR.dsunlink lxp dbxp ixp dnum name mscs;
+      mscs <- BALLOC.free_gen lxp ibxp inum mscs;
+      rx (mscs, true)
+    end.
+
+  (* XXX what should the rep invariant look like? *)
+
+End DIRALLOC.

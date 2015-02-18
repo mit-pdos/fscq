@@ -5,7 +5,7 @@ MODULES    := Nomega Word WordAuto \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache \
 	      MemLog Balloc Inode BFile BFileRec Dir \
-	      DirName FS Testprog \
+	      DirName DirAlloc FS Testprog \
 	      ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
