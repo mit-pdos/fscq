@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Main where
 
 import qualified Data.ByteString as BS
@@ -11,6 +13,9 @@ import System.Posix.IO
 import System.Fuse
 import Word
 import Disk
+import Cache
+import Prog
+import Data.IORef
 import Interpreter as I
 import qualified FS
 import qualified MemLog
@@ -25,9 +30,10 @@ disk_fn = "disk.img"
 
 -- Special inode numbers
 rootDir :: Coq_word
-rootDir = W 1
-theOneFile :: Coq_word
-theOneFile = W 2
+rootDir = W 4090
+-- we stick the root directory towards the end because we don't currently
+-- have a way of marking it as in-use by the allocator, so we just hope the
+-- allocator never picks this number for now..
 
 -- File system configuration
 nCache :: Coq_word
@@ -55,11 +61,21 @@ dbxp = case xps of ((((_, _), _), db), _) -> db
 maxaddr :: Coq_word
 maxaddr = case xps of ((((_, _), _), _), m) -> m
 
+type MSCS = (MemLog.Coq_memstate, Cache.Coq_cachestate)
+type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
+type FSrunner = forall a. FSprog a -> IO a
+doFScall :: Fd -> IORef MSCS -> FSrunner
+doFScall fd ref f = do
+  s <- readIORef ref
+  (s', r) <- I.run fd $ f s
+  writeIORef ref s'
+  return r
+
 main :: IO ()
 main = do
   fileExists <- System.Directory.doesFileExist disk_fn
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
-  if fileExists
+  s <- if fileExists
   then
     do
       putStrLn $ "Recovering file system, " ++ (show maxaddr) ++ " blocks"
@@ -69,21 +85,23 @@ main = do
       putStrLn $ "Initializing file system, " ++ (show maxaddr) ++ " blocks"
       I.run fd $ MemLog._MEMLOG__init lxp
   putStrLn "Starting file system.."
-  fuseMain (fscqFSOps fd) defaultExceptionHandler
+  ref <- newIORef s
+  fuseMain (fscqFSOps (doFScall fd ref)) defaultExceptionHandler
   closeFd fd
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: Fd -> FuseOperations HT
-fscqFSOps fd = defaultFuseOps
-  { fuseGetFileStat = fscqGetFileStat fd
-  , fuseOpen = fscqOpen fd
-  , fuseCreateDevice = fscqCreate fd
-  , fuseRead = fscqRead fd
-  , fuseWrite = fscqWrite fd
-  , fuseSetFileSize = fscqSetFileSize fd
+fscqFSOps :: FSrunner -> FuseOperations HT
+fscqFSOps fr = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat fr
+  , fuseOpen = fscqOpen fr
+  , fuseCreateDevice = fscqCreate fr
+  , fuseRemoveLink = fscqUnlink fr
+  , fuseRead = fscqRead fr
+  , fuseWrite = fscqWrite fr
+  , fuseSetFileSize = fscqSetFileSize fr
   , fuseOpenDirectory = fscqOpenDirectory
-  , fuseReadDirectory = fscqReadDirectory fd
+  , fuseReadDirectory = fscqReadDirectory fr
   , fuseGetFileSystemStats = fscqGetFileSystemStats
   }
 
@@ -125,50 +143,58 @@ fileStat ctx len = FileStat
   , statStatusChangeTime = 0
   }
 
-fscqGetFileStat :: Fd -> FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat :: FSrunner -> FilePath -> IO (Either Errno FileStat)
 fscqGetFileStat _ "/" = do
   ctx <- getFuseContext
   return $ Right $ dirStat ctx
-fscqGetFileStat fd (_:path) = do
-  r <- I.run fd $ FS.lookup lxp dbxp ixp rootDir path
+fscqGetFileStat fr (_:path) = do
+  r <- fr $ FS.lookup lxp dbxp ixp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
     Just inum -> do
-      (W len) <- I.run fd $ FS.file_len lxp ixp inum
+      len <- fr $ FS.file_len lxp ixp inum
       ctx <- getFuseContext
-      return $ Right $ fileStat ctx $ fromIntegral len
+      return $ Right $ fileStat ctx $ fromIntegral $ wordToNat 64 len
 fscqGetFileStat _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FilePath -> IO Errno
 fscqOpenDirectory "/" = return eOK
 fscqOpenDirectory _   = return eNOENT
 
-fscqReadDirectory :: Fd -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fd "/" = do
+fscqReadDirectory :: FSrunner -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory fr "/" = do
   ctx <- getFuseContext
-  files <- I.run fd $ FS.readdir lxp ixp rootDir
-  (W len) <- I.run fd $ FS.file_len lxp ixp theOneFile
+  files <- fr $ FS.readdir lxp ixp rootDir
+  len <- fr $ FS.file_len lxp ixp rootDir -- should actually stat the right file
   return $ Right $ [(".",          dirStat ctx)
                    ,("..",         dirStat ctx)
-                   ] ++ map (\(fn, inum) -> (fn, fileStat ctx $ fromIntegral len)) files
+                   ] ++ map (\(fn, inum) -> (fn, fileStat ctx 0)) files
 fscqReadDirectory _ _ = return (Left (eNOENT))
 
-fscqOpen :: Fd -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen fd (_:path) mode flags = do
-  r <- I.run fd $ FS.lookup lxp dbxp ixp rootDir path
+fscqOpen :: FSrunner -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqOpen fr (_:path) mode flags = do
+  r <- fr $ FS.lookup lxp dbxp ixp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
     Just inum -> return $ Right $ inum
 fscqOpen _ _ _ _ = return $ Left eIO
 
-fscqCreate :: Fd -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
-fscqCreate fd (_:path) RegularFile _ _ = do
-  -- All created files point to the same file inode..
-  r <- I.run fd $ FS.link lxp dbxp ixp rootDir path theOneFile
+fscqCreate :: FSrunner -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
+fscqCreate fr (_:path) RegularFile _ _ = do
+  r <- fr $ FS.create lxp ibxp dbxp ixp rootDir path
+  putStrLn $ "create: " ++ (show r)
+  case r of
+    Nothing -> return eNOSPC
+    Just _ -> return eOK
+fscqCreate _ _ _ _ _ = return eOPNOTSUPP
+
+fscqUnlink :: FSrunner -> FilePath -> IO Errno
+fscqUnlink fr (_:path) = do
+  r <- fr $ FS.delete lxp ibxp dbxp ixp rootDir path
   case r of
     True -> return eOK
     False -> return eIO
-fscqCreate _ _ _ _ _ = return eOPNOTSUPP
+fscqUnlink _ _ = return eOPNOTSUPP
 
 -- Wrappers for converting Coq_word to/from ByteString, with
 -- the help of i2buf and buf2i from hslib/Disk.
@@ -178,18 +204,18 @@ bs2i (BSI.PS fp _ _) = withForeignPtr fp buf2i
 i2bs :: Integer -> IO BS.ByteString
 i2bs i = BSI.create 512 $ i2buf i
 
-fscqRead :: Fd -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
-fscqRead fd _ inum byteCount offset = do
+fscqRead :: FSrunner -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
+fscqRead fr _ inum byteCount offset = do
   -- Ignore the count and offset for now..
-  (W w) <- I.run fd $ FS.read_block lxp ixp inum (W 0)
+  (W w) <- fr $ FS.read_block lxp ixp inum (W 0)
   bs <- i2bs w
   return $ Right $ BS.take (fromIntegral byteCount) $ BS.drop (fromIntegral offset) bs
 
-fscqWrite :: Fd -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
-fscqWrite fd _ inum bs offset = do
+fscqWrite :: FSrunner -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
+fscqWrite fr _ inum bs offset = do
   -- Ignore the offset for now..
   w <- bs2i bs_pad
-  ok <- I.run fd $ FS.write_block lxp dbxp ixp inum (W 0) (W w)
+  ok <- fr $ FS.write_block lxp dbxp ixp inum (W 0) (W w)
   if ok then
     return $ Right $ fromIntegral bs_len
   else
@@ -198,8 +224,8 @@ fscqWrite fd _ inum bs offset = do
     bs_pad = BS.append bs (BS.replicate (512 - bs_len) 0)
     bs_len = BS.length bs
 
-fscqSetFileSize :: Fd -> FilePath -> FileOffset -> IO Errno
-fscqSetFileSize fd (_:path) size =
+fscqSetFileSize :: FSrunner -> FilePath -> FileOffset -> IO Errno
+fscqSetFileSize fr (_:path) size =
   return eOK
 fscqSetFileSize _ _ _ = return eIO
 
