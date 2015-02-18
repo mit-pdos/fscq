@@ -17,4 +17,3 @@ EXPERIMENTS
 NOT GOING TO HAPPEN / NICE TO HAVE
 
 - byte-level read/write
-- multiple variable assignment with [<-] and in postconditions

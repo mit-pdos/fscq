@@ -46,6 +46,20 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
    (p1 rx)%pred)
   (at level 0, p1 at level 60, e1 binder, e2 binder, r at level 0).
 
+Notation "{< e1 .. e2 , 'PRE' pre 'POST' : ( r1 , r2 ) post 'CRASH' crash >} p1" :=
+  (forall T (rx: _ -> prog T), corr2
+   (fun done_ crash_ =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     exists F,
+     F * pre *
+     [[ forall r_,
+        {{ fun done'_ crash'_ => (fun r1 r2 => F * post) (fst r_) (snd r_) * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
+        }} rx r_ ]] * [[ (F * crash)%pred =p=> crash_ ]]
+     )) .. ))
+   )%pred
+   (p1 rx)%pred)
+  (at level 0, p1 at level 60, e1 binder, e2 binder, r1 at level 0, r2 at level 0).
+
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 

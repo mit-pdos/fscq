@@ -47,6 +47,8 @@ Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 
 Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right associativity).
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
+Notation "'let2' ( a , b ) <- p1 ; p2" := (progseq p1 (fun x => let (a, b) := x in p2)) (at level 60, right associativity).
+Notation "'let3' ( a , b , c ) <- p1 ; p2" := (progseq p1 (fun y => let (x, c) := y in let (a, b) := x in p2)) (at level 60, right associativity).
 
 
 Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.

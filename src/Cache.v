@@ -99,9 +99,9 @@ Module BUFCACHE.
 
   Theorem read_ok : forall xp cs a,
     {< d F v,
-    PRE      rep cs d * [[ (F * a |~> v)%pred d ]]
-    POST:csv rep (fst csv) d * [[ snd csv = v ]]
-    CRASH    exists cs', rep cs' d
+    PRE          rep cs d * [[ (F * a |~> v)%pred d ]]
+    POST:(cs',r) rep cs' d * [[ r = v ]]
+    CRASH        exists cs', rep cs' d
     >} read xp a cs.
   Proof.
     unfold read.
@@ -193,12 +193,11 @@ Module BUFCACHE.
     {< F,
     PRE      F
     POST:cs  exists d, rep cs d * [[ F d ]]
-    CRASH    F \/ exists cs' d, rep cs' d * [[ F d ]]
+    CRASH    F
     >} init xp.
   Proof.
     unfold init, rep.
     step.
-    2: cancel.
 
     eapply pimpl_ok2; eauto.
     simpl; intros.
@@ -223,9 +222,9 @@ Module BUFCACHE.
 
   Theorem read_array_ok : forall xp a i cs,
     {< d F vs,
-    PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
-    POST:csv rep (fst csv) d * [[ snd csv = fst (sel vs i ($0, nil)) ]]
-    CRASH    exists cs', rep cs' d
+    PRE          rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST:(cs',v) rep cs' d * [[ v = fst (sel vs i ($0, nil)) ]]
+    CRASH        exists cs', rep cs' d
     >} read_array xp a i cs.
   Proof.
     unfold read_array.
