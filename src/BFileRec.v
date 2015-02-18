@@ -34,19 +34,19 @@ Section RECBFILE.
   Definition rep_valu_id := RecArray.rep_valu_id blocksz_ok.
 
   (** Get the [pos]'th item in the [block_ix]'th block of inode [inum] *)
-  Definition bf_get_pair T lxp ixp inum block_ix pos ms rx : prog T :=
-    v <- BFILE.bfread lxp ixp inum block_ix ms;
+  Definition bf_get_pair T lxp ixp inum block_ix pos mscs rx : prog T :=
+    let2 (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
     let ib := valu_to_block v in
     let i := sel ib pos item_zero in
-    rx i.
+    rx (mscs, i).
 
   (** Update the [pos]'th item in the [block_ix]'th block of inode [inum] to [i] *)
-  Definition bf_put_pair T lxp ixp inum block_ix pos i ms rx : prog T :=
-    v <- BFILE.bfread lxp ixp inum block_ix ms;
+  Definition bf_put_pair T lxp ixp inum block_ix pos i mscs rx : prog T :=
+    let2 (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
     let ib' := upd (valu_to_block v) pos i in
     let v' := rep_block ib' in
-    ms <- BFILE.bfwrite lxp ixp inum block_ix v' ms;
-    rx ms.
+    mscs <- BFILE.bfwrite lxp ixp inum block_ix v' mscs;
+    rx mscs.
 
   Definition array_item_pairs (vs : list block) : pred :=
     ([[ Forall Rec.well_formed vs ]] *
@@ -66,19 +66,20 @@ Section RECBFILE.
   Ltac rec_bounds := autorewrite with defaults core; eauto;
                      try list2nmem_bound; try solve_length_eq; eauto.
 
-  Theorem bf_get_pair_ok : forall lxp bxp ixp inum ms block_ix pos,
+  Theorem bf_get_pair_ok : forall lxp bxp ixp inum mscs block_ix pos,
     {< F A mbase m flist f ilistlist,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
            [[ array_item_pairs ilistlist (list2nmem (BFILE.BFData f)) ]] *
            [[ length ilistlist = length (BFILE.BFData f) ]] *
            [[ wordToNat block_ix < length (BFILE.BFData f) ]] *
            [[ (pos < items_per_valu)%word ]]
-    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} bf_get_pair lxp ixp inum block_ix pos ms.
+    >} bf_get_pair lxp ixp inum block_ix pos mscs.
   Proof.
     unfold bf_get_pair.
     unfold array_item_pairs.
@@ -94,9 +95,9 @@ Section RECBFILE.
   Qed.
 
 
-  Theorem bf_put_pair_ok : forall lxp bxp ixp inum ms block_ix pos i,
+  Theorem bf_put_pair_ok : forall lxp bxp ixp inum mscs block_ix pos i,
     {< F A mbase m flist f ilistlist,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
              [[ array_item_pairs ilistlist (list2nmem (BFILE.BFData f)) ]] *
@@ -104,14 +105,14 @@ Section RECBFILE.
              [[ wordToNat block_ix < length (BFILE.BFData f) ]] *
              [[ (pos < items_per_valu)%word ]] *
              [[ Rec.well_formed i ]]
-    POST:ms' exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+    POST:mscs' exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * # inum |-> f')%pred (list2nmem flist') ]] *
              [[ array_item_pairs (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i))
                                  (list2nmem (BFILE.BFData f')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} bf_put_pair lxp ixp inum block_ix pos i ms.
+    >} bf_put_pair lxp ixp inum block_ix pos i mscs.
   Proof.
     unfold bf_put_pair.
     unfold array_item_pairs.
@@ -137,25 +138,28 @@ Section RECBFILE.
   Hint Extern 1 ({{_}} progseq (bf_get_pair _ _ _ _ _ _) _) => apply bf_get_pair_ok : prog.
   Hint Extern 1 ({{_}} progseq (bf_put_pair _ _ _ _ _ _ _) _) => apply bf_put_pair_ok : prog.
 
-  Definition bf_get T lxp ixp inum idx ms rx : prog T :=
-    i <- bf_get_pair lxp ixp inum (idx ^/ items_per_valu) (idx ^% items_per_valu) ms;
-    rx i.
+  Definition bf_get T lxp ixp inum idx mscs rx : prog T :=
+    let2 (mscs, i) <- bf_get_pair lxp ixp inum (idx ^/ items_per_valu)
+                                               (idx ^% items_per_valu) mscs;
+    rx (mscs, i).
 
-  Definition bf_put T lxp ixp inum idx v ms rx : prog T :=
-    ms <- bf_put_pair lxp ixp inum (idx ^/ items_per_valu) (idx ^% items_per_valu) v ms;
-    rx ms.
+  Definition bf_put T lxp ixp inum idx v mscs rx : prog T :=
+    mscs <- bf_put_pair lxp ixp inum (idx ^/ items_per_valu)
+                                     (idx ^% items_per_valu) v mscs;
+    rx mscs.
 
-  Theorem bf_get_ok : forall lxp bxp ixp inum idx ms,
+  Theorem bf_get_ok : forall lxp bxp ixp inum idx mscs,
     {< F A mbase m flist f ilist,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ array_item ilist (list2nmem (BFILE.BFData f)) ]] *
            [[ (idx < $ (length (BFILE.BFData f)) ^* items_per_valu)%word ]]
-    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = sel ilist idx item_zero ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} bf_get lxp ixp inum idx ms.
+    >} bf_get lxp ixp inum idx mscs.
   Proof.
     unfold bf_get, array_item.
     pose proof items_per_valu_not_0.
@@ -193,20 +197,20 @@ Section RECBFILE.
     rewrite Forall_forall in *; intros; apply H0; assumption.
   Qed.
 
-  Theorem bf_put_ok : forall lxp bxp ixp inum idx v ms,
+  Theorem bf_put_ok : forall lxp bxp ixp inum idx v mscs,
     {< F A mbase m flist f ilist,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ array_item ilist (list2nmem (BFILE.BFData f)) ]] *
              [[ (idx < $ (length (BFILE.BFData f)) ^* items_per_valu)%word ]] *
              [[ Rec.well_formed v ]]
-    POST:ms' exists m' flist' f', MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+    POST:mscs' exists m' flist' f', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ array_item (upd ilist idx v) (list2nmem (BFILE.BFData f')) ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} bf_put lxp ixp inum idx v ms.
+    >} bf_put lxp ixp inum idx v mscs.
   Proof.
     unfold bf_put, array_item, array_item_pairs.
     pose proof items_per_valu_not_0.

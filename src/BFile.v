@@ -26,36 +26,35 @@ Module BFILE.
 
   (* interface implementation *)
 
-  Definition bflen T lxp ixp inum ms rx : prog T :=
-    n <- INODE.ilen lxp ixp inum ms;
-    rx n.
+  Definition bflen T lxp ixp inum mscs rx : prog T :=
+    let2 (mscs, n) <- INODE.ilen lxp ixp inum mscs;
+    rx (mscs, n).
 
-  Definition bfread T lxp ixp inum off ms rx : prog T :=
-    b <-INODE.iget lxp ixp inum off ms;
-    fblock <- MEMLOG.read lxp b ms;
-    rx fblock.
+  Definition bfread T lxp ixp inum off mscs rx : prog T :=
+    let2 (mscs, b) <-INODE.iget lxp ixp inum off mscs;
+    let2 (mscs, fblock) <- MEMLOG.read lxp b mscs;
+    rx (mscs, fblock).
 
-  Definition bfwrite T lxp ixp inum off v ms rx : prog T :=
-    b <-INODE.iget lxp ixp inum off ms;
-    ok <- MEMLOG.write lxp b v ms;
-    rx ok.
+  Definition bfwrite T lxp ixp inum off v mscs rx : prog T :=
+    let2 (mscs, b) <-INODE.iget lxp ixp inum off mscs;
+    let2 (mscs, ok) <- MEMLOG.write lxp b v mscs;
+    rx (mscs, ok).
 
-  Definition bfgrow T lxp bxp ixp inum ms rx : prog T :=
-    r <- BALLOC.alloc lxp bxp ms;
-    let (bn, ms) := r in
+  Definition bfgrow T lxp bxp ixp inum mscs rx : prog T :=
+    let2 (mscs, bn) <- BALLOC.alloc lxp bxp mscs;
     match bn with
-    | None => rx (false, ms)
+    | None => rx (mscs, false)
     | Some bnum =>
-        r <- INODE.igrow lxp bxp ixp inum bnum ms;
-        rx r
+        let2 (mscs, ok) <- INODE.igrow lxp bxp ixp inum bnum mscs;
+        rx (mscs, ok)
     end.
 
-  Definition bfshrink T lxp bxp ixp inum ms rx : prog T :=
-    n <- INODE.ilen lxp ixp inum ms;
-    b <- INODE.iget lxp ixp inum (n ^- $1) ms;
-    ms <- BALLOC.free lxp bxp b ms;
-    ms <- INODE.ishrink lxp bxp ixp inum ms;
-    rx ms.
+  Definition bfshrink T lxp bxp ixp inum mscs rx : prog T :=
+    let2 (mscs, n) <- INODE.ilen lxp ixp inum mscs;
+    let2 (mscs, b) <- INODE.iget lxp ixp inum (n ^- $1) mscs;
+    mscs <- BALLOC.free lxp bxp b mscs;
+    mscs <- INODE.ishrink lxp bxp ixp inum mscs;
+    rx mscs.
 
 
   (* representation invariants *)
@@ -133,15 +132,16 @@ Module BFILE.
 
   (* correctness theorems *)
 
-  Theorem bflen_ok : forall lxp bxp ixp inum ms,
+  Theorem bflen_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m flist f,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = $ (length (BFData f)) ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} bflen lxp ixp inum ms.
+    >} bflen lxp ixp inum mscs.
   Proof.
     unfold bflen, rep.
     hoare.
@@ -154,16 +154,17 @@ Module BFILE.
   Qed.
 
 
-  Theorem bfread_ok : forall lxp bxp ixp inum off ms,
+  Theorem bfread_ok : forall lxp bxp ixp inum off mscs,
     {<F A B mbase m flist f v,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFData f)) ]]
-    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = v ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} bfread lxp ixp inum off ms.
+    >} bfread lxp ixp inum off mscs.
   Proof.
     unfold bfread, rep.
     hoare.
@@ -185,19 +186,19 @@ Module BFILE.
   Qed.
 
 
-  Lemma bfwrite_ok : forall lxp bxp ixp inum off v ms,
+  Lemma bfwrite_ok : forall lxp bxp ixp inum off v mscs,
     {<F A B mbase m flist f v0,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ (B * #off |-> v0)%pred (list2nmem (BFData f)) ]]
-    POST:ms' exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+    POST:mscs' exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ (B * #off |-> v)%pred (list2nmem (BFData f')) ]]
     CRASH  MEMLOG.log_intact lxp mbase
-    >} bfwrite lxp ixp inum off v ms.
+    >} bfwrite lxp ixp inum off v mscs.
   Proof.
     unfold bfwrite, rep.
     step.
@@ -256,21 +257,22 @@ Module BFILE.
   Qed.
 
 
-  Theorem bfgrow_ok : forall lxp bxp ixp inum ms,
+  Theorem bfgrow_ok : forall lxp bxp ixp inum mscs,
     {< F A B mbase m flist f,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ length (BFData f) < INODE.blocks_per_inode ]] *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ B %pred (list2nmem (BFData f)) ]]
-    POST:r   exists m', MEMLOG.rep lxp (ActiveTxn mbase m') (snd r) *
-            ([[ fst r = false ]] \/ 
-             [[ fst r = true ]] * exists flist' f' v,
+    POST:(mscs',r)
+            exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+            ([[ r = false ]] \/ 
+             [[ r = true ]] * exists flist' f' v,
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ (B * length (BFData f) |-> v)%pred (list2nmem (BFData f')) ]] )
     CRASH    MEMLOG.log_intact lxp mbase
-    >} bfgrow lxp bxp ixp inum ms.
+    >} bfgrow lxp bxp ixp inum mscs.
   Proof.
     unfold bfgrow, rep.
     hoare.
@@ -349,20 +351,20 @@ Module BFILE.
   Hint Resolve helper_minus_one_lt.
 
 
-  Theorem bfshrink_ok : forall lxp bxp ixp inum ms,
+  Theorem bfshrink_ok : forall lxp bxp ixp inum mscs,
     {< F A B mbase m flist f v,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ length (BFData f) > 0 ]] *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ (B * ((length (BFData f)) - 1) |-> v)%pred (list2nmem (BFData f)) ]]
-    POST:ms' exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+    POST:mscs' exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ B %pred (list2nmem (BFData f')) ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} bfshrink lxp bxp ixp inum ms.
+    >} bfshrink lxp bxp ixp inum mscs.
   Proof.
     unfold bfshrink, rep.
     step.

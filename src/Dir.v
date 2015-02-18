@@ -18,6 +18,7 @@ Require Import BFileRec.
 Require Import Bool.
 Require Import SepAuto.
 Require Import MemLog.
+Require Import Cache.
 
 Import ListNotations.
 
@@ -66,15 +67,15 @@ Module DIR.
     )%pred.
 
   Definition dlookup T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
-                       (dnum : addr) (name : word filename_len) (ms : memstate)
-                       (rx : option addr -> prog T) : prog T := Eval compute_rec in
-    dlen <- BFILE.bflen lxp ixp dnum ms;
-    For dpos < dlen ^* items_per_valu
+                       (dnum : addr) (name : word filename_len) (mscs : memstate * cachestate)
+                       (rx : memstate * cachestate * option addr -> prog T) : prog T := Eval compute_rec in
+    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
+    mscs <- For dpos < dlen ^* items_per_valu
       Ghost mbase m F A flist f dmap delist
-      Loopvar _ <- tt
+      Loopvar mscs <- mscs
       Continuation lrx
       Invariant
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
         [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
         [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
         [[ (rep' delist) (list2nmem (BFILE.BFData f)) ]] *
@@ -83,33 +84,34 @@ Module DIR.
         [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
         [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap' ]]
       OnCrash
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+        exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
         If (weq (de :-> "valid") $0) {
-          lrx tt
+          lrx mscs
         } else {
           If (weq (de :-> "name") name) {
-            rx (Some (de :-> "inum"))
+            rx (mscs, Some (de :-> "inum"))
           } else {
-            lrx tt
+            lrx mscs
           }
         }
-      Rof;;
-    rx None.
+      Rof;
+    rx (mscs, None).
 
-  Theorem dlookup_ok : forall lxp bxp ixp dnum name ms,
+  Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m flist f dmap,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
            [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]]
-    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            ((exists inum DF, [[ r = Some inum ]] *
              [[ (DF * name |-> inum)%pred dmap ]]) \/
             ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
-    >} dlookup lxp bxp ixp dnum name ms.
+    >} dlookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dlookup, rep.
     step.
@@ -176,102 +178,104 @@ Module DIR.
   Qed.
 
   Definition dunlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
-                       (dnum : addr) (name : word filename_len) (ms : memstate)
-                       (rx : memstate -> prog T) : prog T := Eval compute_rec in
-    dlen <- BFILE.bflen lxp ixp dnum ms;
-    For dpos < dlen ^* items_per_valu
+                       (dnum : addr) (name : word filename_len) (mscs : memstate * cachestate)
+                       (rx : memstate * cachestate -> prog T) : prog T := Eval compute_rec in
+    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
+    mscs <- For dpos < dlen ^* items_per_valu
       Ghost mbase m
-      Loopvar _ <- tt
+      Loopvar mscs <- mscs
       Continuation lrx
       Invariant
         (* Need an invariant saying the name is not found in any earlier dirent *)
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+        MEMLOG.rep lxp (ActiveTxn mbase m) mscs
       OnCrash
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+        exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
         If (weq (de :-> "valid") $0) {
-          lrx tt
+          lrx mscs
         } else {
           If (weq (de :-> "name") name) {
-            ms <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos (de :=> "valid" := $0) ms;
-            rx ms
+            mscs <- bf_put dirent_type items_per_valu itemsz_ok
+                           lxp ixp dnum dpos (de :=> "valid" := $0) mscs;
+            rx mscs
           } else {
-            lrx tt
+            lrx mscs
           }
         }
-      Rof;;
-    rx ms.
+      Rof;
+    rx mscs.
 
-  Theorem dunlink_ok : forall lxp bxp ixp dnum name ms,
+  Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m flist f dmap DF,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
              [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]] *
              [[ (DF * name |->?)%pred dmap ]]
-    POST:ms' exists m' ms' flist' f' dmap',
-             MEMLOG.rep lxp (ActiveTxn mbase m') ms' *
+    POST:mscs' exists m' flist' f' dmap',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
              [[ (rep dmap') (list2nmem (BFILE.BFData f')) ]] *
              [[ (DF) dmap' ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} dunlink lxp bxp ixp dnum name ms.
+    >} dunlink lxp bxp ixp dnum name mscs.
   Proof.
     admit.
   Qed.
 
   Definition dlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
-                     (dnum : addr) (name : word filename_len) (inum : addr) (ms : memstate)
-                     (rx : (bool * memstate) -> prog T) : prog T := Eval compute_rec in
-    dlen <- BFILE.bflen lxp ixp dnum ms;
-    For dpos < dlen ^* items_per_valu
+                     (dnum : addr) (name : word filename_len) (inum : addr) (mscs : memstate * cachestate)
+                     (rx : (memstate * cachestate * bool) -> prog T) : prog T := Eval compute_rec in
+    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
+    mscs <- For dpos < dlen ^* items_per_valu
       Ghost mbase m
-      Loopvar _ <- tt
+      Loopvar mscs <- mscs
       Continuation lrx
       Invariant
         (* Need an invariant saying the name is not found in any earlier dirent *)
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+        MEMLOG.rep lxp (ActiveTxn mbase m) mscs
       OnCrash
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+        exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
         If (weq (de :-> "valid") $0) {
-          ms <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos
-            (de :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) ms;
-          rx (true, ms)
+          mscs <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos
+            (de :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) mscs;
+          rx (mscs, true)
         } else {
-          lrx tt
+          lrx mscs
         }
-      Rof;;
-    r <- BFILE.bfgrow lxp bxp ixp dnum ms; let (ok, ms) := r in
+      Rof;
+    let2 (mscs, ok) <- BFILE.bfgrow lxp bxp ixp dnum mscs;
     If (bool_dec ok true) {
-      ms <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum (dlen ^* items_per_valu)
-        (dirent_zero :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) ms;
-      rx (true, ms)
+      mscs <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum (dlen ^* items_per_valu)
+        (dirent_zero :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) mscs;
+      rx (mscs, true)
     } else {
-      rx (false, ms)
+      rx (mscs, false)
     }.
 
-  Theorem dlink_ok : forall lxp bxp ixp dnum name inum ms,
+  Theorem dlink_ok : forall lxp bxp ixp dnum name inum mscs,
     {< F A mbase m flist f dmap DF,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
              [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]] *
              [[ (DF) dmap ]] *
              [[ exists dmap', (DF * name |->?)%pred dmap' ]]
-    POST:rms ([[ fst rms = true ]] * exists m' flist' f' dmap',
-              MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms) *
+    POST:(mscs',r)
+             ([[ r = true ]] * exists m' flist' f' dmap',
+              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
               [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
               [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
               [[ (rep dmap') (list2nmem (BFILE.BFData f')) ]] *
               [[ (DF * name |-> inum)%pred dmap' ]]) \/
-             ([[ fst rms = false ]] * exists m',
-              MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms))
+             ([[ r = false ]] * exists m',
+              MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
     CRASH    MEMLOG.log_intact lxp mbase
-    >} dlink lxp bxp ixp dnum name inum ms.
+    >} dlink lxp bxp ixp dnum name inum mscs.
   Proof.
     admit.
   Qed.
@@ -280,44 +284,46 @@ Module DIR.
   Definition diritemmatch (de: diritem) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
 
   Definition dlist T (lxp : MemLog.xparams) (ixp : Inode.xparams)
-                     (dnum : addr) (ms : memstate)
-                     (rx : list diritem -> prog T) : prog T := Eval compute_rec in
-    dlen <- BFILE.bflen lxp ixp dnum ms;
-    res <- For dpos < dlen ^* items_per_valu
+                     (dnum : addr) (mscs : memstate * cachestate)
+                     (rx : (memstate * cachestate * list diritem) -> prog T) : prog T := Eval compute_rec in
+    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
+    let2 (mscs, res) <- For dpos < dlen ^* items_per_valu
       Ghost mbase m bxp F A flist f dmap delist
-      Loopvar res <- []
+      Loopvar mscs_res <- (mscs, [])
       Continuation lrx
       Invariant
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+        MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_res) *
         [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
         [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
         [[ (rep' delist) (list2nmem (BFILE.BFData f)) ]] *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
         [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
-        [[ listpred diritemmatch res dmap' ]]
+        [[ listpred diritemmatch (snd mscs_res) dmap' ]]
       OnCrash
-        MEMLOG.rep lxp (ActiveTxn mbase m) ms
+        exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        de <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos ms;
+        let (mscs, res) := (mscs_res : memstate * cachestate * list diritem) in
+        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
         If (weq (de :-> "valid") $0) {
-          lrx res
+          lrx (mscs, res)
         } else {
-          lrx ((de :-> "name", de :-> "inum") :: res)
+          lrx (mscs, (de :-> "name", de :-> "inum") :: res)
         }
       Rof;
-    rx res.
+    rx (mscs, res).
 
-  Theorem dlist_ok : forall lxp bxp ixp dnum ms,
+  Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
     {< F A mbase m flist f dmap,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
              [[ (rep dmap) (list2nmem (BFILE.BFData f)) ]]
-    POST:res MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    POST:(mscs',res)
+             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ listpred diritemmatch res dmap ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} dlist lxp ixp dnum ms.
+    >} dlist lxp ixp dnum mscs.
   Proof.
     unfold dlist, rep.
     step.

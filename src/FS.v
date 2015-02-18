@@ -16,28 +16,29 @@ Require Import List.
 Set Implicit Arguments.
 Import ListNotations.
 
-Definition file_len T lxp ixp inum rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  len <- BFILE.bflen lxp ixp inum ms;
-  _ <- MEMLOG.commit lxp ms;
-  rx (len ^* $512).
+Definition file_len T lxp ixp inum mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
+  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  rx (mscs, len ^* $512).
 
-Definition read_block T lxp ixp inum off rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  b <- BFILE.bfread lxp ixp inum off ms;
-  _ <- MEMLOG.commit lxp ms;
-  rx b.
+Definition read_block T lxp ixp inum off mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, b) <- BFILE.bfread lxp ixp inum off mscs;
+  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  rx (mscs, b).
 
-Theorem read_block_ok : forall lxp bxp ixp inum off,
+Theorem read_block_ok : forall lxp bxp ixp inum off mscs,
   {< m F flist A f B v,
-  PRE    MEMLOG.rep lxp (NoTransaction m) ms_empty *
+  PRE    MEMLOG.rep lxp (NoTransaction m) mscs *
          [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
          [[ (A * inum |-> f)%pred (list2mem flist) ]] *
          [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f)) ]]
-  POST:r MEMLOG.rep lxp (NoTransaction m) ms_empty *
+  POST:(mscs',r)
+         MEMLOG.rep lxp (NoTransaction m) mscs' *
          [[ r = v ]]
   CRASH  MEMLOG.log_intact lxp m
-  >} read_block lxp ixp inum off.
+  >} read_block lxp ixp inum off mscs.
 Proof.
 (* XXX why doesn't this proof, which unfolds MEM.log_intact first, go through?
   unfold read_block, MEMLOG.log_intact.
@@ -53,16 +54,17 @@ Proof.
   unfold MEMLOG.log_intact; cancel.
 Qed.
 
-Theorem read_block_recover_ok : forall lxp bxp ixp inum off,
+Theorem read_block_recover_ok : forall lxp bxp ixp inum off mscs,
   {< m F flist A f B v,
-  PRE     MEMLOG.rep lxp (NoTransaction m) ms_empty *
+  PRE     MEMLOG.rep lxp (NoTransaction m) mscs *
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
           [[ (A * inum |-> f)%pred (list2mem flist) ]] *
           [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f)) ]]
-  POST:r  MEMLOG.rep lxp (NoTransaction m) ms_empty *
+  POST:(mscs',r)
+          MEMLOG.rep lxp (NoTransaction m) mscs' *
           [[ r = v ]]
-  CRASH:_ MEMLOG.rep lxp (NoTransaction m) ms_empty
-  >} read_block lxp ixp inum off >> MEMLOG.recover lxp.
+  CRASH:mscs' MEMLOG.rep lxp (NoTransaction m) mscs'
+  >} read_block lxp ixp inum off mscs >> MEMLOG.recover lxp.
 Proof.
   intros.
   unfold forall_helper; intros m F flist A f B v.
@@ -86,21 +88,22 @@ Proof.
   admit.
 Qed.
 
-Definition write_block_inbounds T lxp ixp inum off v rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  ms <- BFILE.bfwrite lxp ixp inum off v ms;
-  ok <- MEMLOG.commit lxp ms;
-  rx ok.
+Definition write_block_inbounds T lxp ixp inum off v mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  mscs <- BFILE.bfwrite lxp ixp inum off v mscs;
+  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  rx (mscs, ok).
 
-Theorem write_block_inbounds_ok : forall lxp bxp ixp inum off v,
+Theorem write_block_inbounds_ok : forall lxp bxp ixp inum off v mscs,
   {< m F flist A f B v0,
-  PRE     MEMLOG.rep lxp (NoTransaction m) ms_empty *
+  PRE     MEMLOG.rep lxp (NoTransaction m) mscs *
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
           [[ (A * inum |-> f)%pred (list2mem flist) ]] *
           [[ (B * off |-> v0)%pred (list2mem (BFILE.BFData f)) ]]
-  POST:ok [[ ok = false ]] * MEMLOG.rep lxp (NoTransaction m) ms_empty \/
+  POST:(mscs',ok)
+          [[ ok = false ]] * MEMLOG.rep lxp (NoTransaction m) mscs' \/
           [[ ok = true ]] * exists m' flist' f',
-          MEMLOG.rep lxp (NoTransaction m') ms_empty *
+          MEMLOG.rep lxp (NoTransaction m') mscs' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
           [[ (A * inum |-> f')%pred (list2mem flist') ]] *
           [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
@@ -109,7 +112,7 @@ Theorem write_block_inbounds_ok : forall lxp bxp ixp inum off v,
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
           [[ (A * inum |-> f')%pred (list2mem flist') ]] *
           [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
-  >} write_block_inbounds lxp ixp inum off v.
+  >} write_block_inbounds lxp ixp inum off v mscs.
 Proof.
   unfold write_block_inbounds.
   hoare.
@@ -118,24 +121,26 @@ Proof.
   unfold MEMLOG.log_intact; cancel.
 Qed.
 
-Theorem write_block_inbounds_recover_ok : forall lxp bxp ixp inum off v,
+Theorem write_block_inbounds_recover_ok : forall lxp bxp ixp inum off v mscs,
   {< m F flist A f B v0,
-  PRE     MEMLOG.rep lxp (NoTransaction m) ms_empty *
+  PRE     MEMLOG.rep lxp (NoTransaction m) mscs *
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
           [[ (A * inum |-> f)%pred (list2mem flist) ]] *
           [[ (B * off |-> v0)%pred (list2mem (BFILE.BFData f)) ]]
-  POST:ok [[ ok = false ]] * MEMLOG.rep lxp (NoTransaction m) ms_empty \/
+  POST:(mscs',ok)
+          [[ ok = false ]] * MEMLOG.rep lxp (NoTransaction m) mscs' \/
           [[ ok = true ]] * exists m' flist' f',
-          MEMLOG.rep lxp (NoTransaction m') ms_empty *
+          MEMLOG.rep lxp (NoTransaction m') mscs' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
           [[ (A * inum |-> f')%pred (list2mem flist') ]] *
           [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
-  CRASH:_ MEMLOG.rep lxp (NoTransaction m) ms_empty \/ exists m' flist' f',
-          MEMLOG.rep lxp (NoTransaction m') ms_empty *
+  CRASH:mscs'
+          MEMLOG.rep lxp (NoTransaction m) mscs' \/ exists m' flist' f',
+          MEMLOG.rep lxp (NoTransaction m') mscs' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
           [[ (A * inum |-> f')%pred (list2mem flist') ]] *
           [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
-  >} write_block_inbounds lxp ixp inum off v >> MEMLOG.recover lxp.
+  >} write_block_inbounds lxp ixp inum off v mscs >> MEMLOG.recover lxp.
 Proof.
   intros.
   unfold forall_helper; intros m F flist A f B v0.
@@ -190,117 +195,114 @@ Proof.
   admit.
 Qed.
 
-Definition set_size_helper T lxp bxp ixp inum size ms rx : prog T :=
-  curlen <- BFILE.bflen lxp ixp inum ms;
+Definition set_size_helper T lxp bxp ixp inum size mscs rx : prog T :=
+  let2 (mscs, curlen) <- BFILE.bflen lxp ixp inum mscs;
   If (wlt_dec curlen size) {
-    ms <- For n < (size ^- curlen)
-      Loopvar ms <- ms
+    mscs <- For n < (size ^- curlen)
+      Loopvar mscs <- mscs
       Continuation lrx
       Invariant emp
       OnCrash emp
       Begin
-        r <- BFILE.bfgrow lxp bxp ixp inum ms;
-        let (ok, ms) := r in
+        let2 (mscs, ok) <- BFILE.bfgrow lxp bxp ixp inum mscs;
         If (bool_dec ok false) {
-          MEMLOG.abort lxp ms;;
-          rx (false, ms)
+          mscs <- MEMLOG.abort lxp mscs;
+          rx (mscs, false)
         } else {
-          lrx ms
+          lrx mscs
         }
     Rof;
 
-    rx (true, ms)
+    rx (mscs, true)
   } else {
-    ms <- For n < (curlen ^- size)
-      Loopvar ms <- ms
+    mscs <- For n < (curlen ^- size)
+      Loopvar mscs <- mscs
       Continuation lrx
       Invariant emp
       OnCrash emp
       Begin
-        ms <- BFILE.bfshrink lxp bxp ixp inum ms;
-        lrx ms
+        mscs <- BFILE.bfshrink lxp bxp ixp inum mscs;
+        lrx mscs
     Rof;
 
-    rx (true, ms)
+    rx (mscs, true)
   }.
 
-Theorem set_size_helper_ok : forall lxp bxp ixp inum size ms,
+Theorem set_size_helper_ok : forall lxp bxp ixp inum size mscs,
     {< F A mbase m flist f,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ # size <= INODE.blocks_per_inode ]] *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * inum |-> f)%pred (list2mem flist) ]]
-    POST:rms [[ fst rms = false ]] * MEMLOG.log_intact lxp mbase \/
-             [[ fst rms = true ]] * exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') (snd rms) *
+    POST:(mscs',r)
+             [[ r = false ]] * MEMLOG.log_intact lxp mbase \/
+             [[ r = true ]] * exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * inum |-> f')%pred (list2mem flist') ]] *
              [[ BFILE.BFData f' = (firstn #size (BFILE.BFData f)) ++
                                   (MEMLOG.repeat (#size - length (BFILE.BFData f)) $0) ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} set_size_helper lxp bxp ixp inum size ms.
+    >} set_size_helper lxp bxp ixp inum size mscs.
 Proof.
   admit.
 Qed.
 
-Definition set_size T lxp bxp ixp inum size rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  r <- set_size_helper lxp bxp ixp inum size ms;
-  let (ok, ms) := r in
+Definition set_size T lxp bxp ixp inum size mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, ok) <- set_size_helper lxp bxp ixp inum size mscs;
   If (bool_dec ok true) {
-    ok <- MEMLOG.commit lxp ms;
-    rx ok
+    let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+    rx (mscs, ok)
   } else {
-    MEMLOG.abort lxp ms;;
-    rx false
+    mscs <- MEMLOG.abort lxp mscs;
+    rx (mscs, false)
   }.
 
-Definition write_block T lxp bxp ixp inum off v rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  curlen <- BFILE.bflen lxp ixp inum ms;
+Definition write_block T lxp bxp ixp inum off v mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, curlen) <- BFILE.bflen lxp ixp inum mscs;
   If (wlt_dec off curlen) {
-    ms <- BFILE.bfwrite lxp ixp inum off v ms;
-    ok <- MEMLOG.commit lxp ms;
-    rx ok
+    mscs <- BFILE.bfwrite lxp ixp inum off v mscs;
+    let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+    rx (mscs, ok)
   } else {
-    r <- set_size_helper lxp bxp ixp inum (off ^+ $1) ms;
-    let (ok, ms) := r in
+    let2 (mscs, ok) <- set_size_helper lxp bxp ixp inum (off ^+ $1) mscs;
     If (bool_dec ok false) {
-      MEMLOG.abort lxp ms;;
-      rx false
+      mscs <- MEMLOG.abort lxp mscs;
+      rx (mscs, false)
     } else {
-      ms <- BFILE.bfwrite lxp ixp inum off v ms;
-      ok <- MEMLOG.commit lxp ms;
-      rx ok
+      mscs <- BFILE.bfwrite lxp ixp inum off v mscs;
+      let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+      rx (mscs, ok)
     }
   }.
 
-Definition readdir T lxp ixp dnum rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  files <- SDIR.dslist lxp ixp dnum ms;
-  _ <- MEMLOG.commit lxp ms;
-  rx files.
+Definition readdir T lxp ixp dnum mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, files) <- SDIR.dslist lxp ixp dnum mscs;
+  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  rx (mscs, files).
 
-Definition link T lxp bxp ixp dnum name inum rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  r <- SDIR.dslink lxp bxp ixp dnum name inum ms;
-  let (ok, ms) := r in
+Definition link T lxp bxp ixp dnum name inum mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, ok) <- SDIR.dslink lxp bxp ixp dnum name inum mscs;
   If (bool_dec ok false) {
-    MEMLOG.abort lxp ms;;
-    rx false
+    mscs <- MEMLOG.abort lxp mscs;
+    rx (mscs, false)
   } else {
-    ok <- MEMLOG.commit lxp ms;
-    rx ok
+    let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+    rx (mscs, ok)
   }.
 
-Definition unlink T lxp bxp ixp dnum name rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  ms <- SDIR.dsunlink lxp bxp ixp dnum name ms;
-  ok <- MEMLOG.commit lxp ms;
-  rx ok.
+Definition unlink T lxp bxp ixp dnum name mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  mscs <- SDIR.dsunlink lxp bxp ixp dnum name mscs;
+  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  rx (mscs, ok).
 
-Definition lookup T lxp bxp ixp dnum name rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  r <- SDIR.dslookup lxp bxp ixp dnum name ms;
-  _ <- MEMLOG.commit lxp ms;
-  rx r.
+Definition lookup T lxp bxp ixp dnum name mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  let2 (mscs, r) <- SDIR.dslookup lxp bxp ixp dnum name mscs;
+  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  rx (mscs, r).

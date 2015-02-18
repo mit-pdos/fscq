@@ -202,38 +202,39 @@ Qed.
 
 Module SDIR.
 
-  Definition dslookup T lxp bxp ixp dnum name ms rx : prog T :=
-    r <- DIR.dlookup lxp bxp ixp dnum (string2name 16 name) ms;
-    rx r.
+  Definition dslookup T lxp bxp ixp dnum name mscs rx : prog T :=
+    let2 (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (string2name 16 name) mscs;
+    rx (mscs, r).
 
-  Definition dsunlink T lxp bxp ixp dnum name ms rx : prog T :=
-    r <- DIR.dunlink lxp bxp ixp dnum (string2name 16 name) ms;
-    rx r.
+  Definition dsunlink T lxp bxp ixp dnum name mscs rx : prog T :=
+    let2 (mscs, r) <- DIR.dunlink lxp bxp ixp dnum (string2name 16 name) mscs;
+    rx (mscs, r).
 
-  Definition dslink T lxp bxp ixp dnum name inum ms rx : prog T :=
-    r <- DIR.dlink lxp bxp ixp dnum (string2name 16 name) inum ms;
-    rx r.
+  Definition dslink T lxp bxp ixp dnum name inum mscs rx : prog T :=
+    let2 (mscs, r) <- DIR.dlink lxp bxp ixp dnum (string2name 16 name) inum mscs;
+    rx (mscs, r).
 
-  Definition dslist T lxp ixp dnum ms rx : prog T :=
-    r <- DIR.dlist lxp ixp dnum ms;
-    rx (List.map (fun di => (name2string 16 (fst di), snd di)) r).
+  Definition dslist T lxp ixp dnum mscs rx : prog T :=
+    let2 (mscs, r) <- DIR.dlist lxp ixp dnum mscs;
+    rx (mscs, List.map (fun di => (name2string 16 (fst di), snd di)) r).
 
   Definition rep (dsmap : @mem string string_dec addr) := (exists dmap, DIR.rep dmap *
     [[ True ]])%pred.
   (* XXX should figure out how to really relate [dsmap] to [dmap] *)
 
-  Theorem dslookup_ok : forall lxp bxp ixp dnum name ms,
+  Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m flist f dsmap,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
            [[ (rep dsmap) (list2nmem (BFILE.BFData f)) ]]
-    POST:r MEMLOG.rep lxp (ActiveTxn mbase m) ms *
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            ((exists inum DF, [[ r = Some inum ]] *
              [[ (DF * name |-> inum)%pred dsmap ]]) \/
             ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dsmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
-    >} dslookup lxp bxp ixp dnum name ms.
+    >} dslookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dslookup, rep.
     hoare.

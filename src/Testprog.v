@@ -9,79 +9,79 @@ Require Import Pred.
 Set Implicit Arguments.
 
 
-Definition copy_block T xp (a b : addr) ms rx : prog T :=
-  v <- MEMLOG.read xp a ms;
-  ms' <- MEMLOG.write xp b v ms;
-  rx ms'.
+Definition copy_block T xp (a b : addr) mscs rx : prog T :=
+  let2 (mscs, v) <- MEMLOG.read xp a mscs;
+  mscs <- MEMLOG.write xp b v mscs;
+  rx mscs.
 
-Fixpoint copy_many T xp (count : nat) (src dst : addr) ms rx : prog T :=
+Fixpoint copy_many T xp (count : nat) (src dst : addr) mscs rx : prog T :=
   match count with
   | O =>
-    rx ms
+    rx mscs
   | S c =>
-    ms' <- copy_block xp (src ^+ $ c) (dst ^+ $ c) ms;
-    copy_many T xp c src dst ms' rx
+    mscs <- copy_block xp (src ^+ $ c) (dst ^+ $ c) mscs;
+    copy_many T xp c src dst mscs rx
   end.
 
 Definition testcopy T xp rx : prog T :=
-  MEMLOG.init xp ;;
-  ms <- MEMLOG.begin xp ;
-  ms' <- copy_many xp 200 $100 $500 ms ;
-  ok <- MEMLOG.commit xp ms' ;
+  mscs <- MEMLOG.init xp ;
+  mscs <- MEMLOG.begin xp mscs ;
+  mscs <- copy_many xp 200 $100 $500 mscs ;
+  let2 (mscs, ok) <- MEMLOG.commit xp mscs ;
   rx ok.
 
 Definition testalloc T lxp bxp rx : prog T :=
-  MEMLOG.init lxp ;;
-  ms <- MEMLOG.begin lxp ;
-  b_ms' <- BALLOC.alloc lxp bxp ms ;
-  let (b, ms') := b_ms' in
+  mscs <- MEMLOG.init lxp ;
+  mscs <- MEMLOG.begin lxp mscs ;
+  let2 (mscs, b) <- BALLOC.alloc lxp bxp mscs ;
   match b with
   | None =>
-    MEMLOG.abort lxp ms' ;;
+    mscs <- MEMLOG.abort lxp mscs ;
     rx None
   | Some bn =>
-    ms'' <- MEMLOG.write lxp $0 (addr2valu bn) ms' ;
-    ok <- MEMLOG.commit lxp ms'' ;
+    mscs <- MEMLOG.write lxp $0 (addr2valu bn) mscs ;
+    let2 (mscs, ok) <- MEMLOG.commit lxp mscs ;
     rx (Some bn)
   end.
 
-Definition test_bfile T lxp bxp ixp v rx : prog T :=
-  ms <- MEMLOG.begin lxp ;
-  r <- BFILE.bfgrow lxp bxp ixp $3 ms ;
-  let (ok, ms) := r in
+Definition test_bfile T lxp bxp ixp v mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs ;
+  let2 (mscs, ok) <- BFILE.bfgrow lxp bxp ixp $3 mscs ;
   match ok with
-  | false => MEMLOG.abort lxp ms ;; rx None
+  | false =>
+    mscs <- MEMLOG.abort lxp mscs ;
+    rx (mscs, None)
   | true =>
-    ms <- BFILE.bfwrite lxp ixp $3 $0 v ms ;
-    ok <- MEMLOG.commit lxp ms ;
+    mscs <- BFILE.bfwrite lxp ixp $3 $0 v mscs ;
+    let2 (mscs, ok) <- MEMLOG.commit lxp mscs ;
 
     match ok with
-    | false => rx None
+    | false => rx (mscs, None)
     | true =>
-      ms <- MEMLOG.begin lxp ;
-      b <- BFILE.bfread lxp ixp $3 $0 ms ;
-      ms <- BFILE.bfshrink lxp bxp ixp $3 ms ;
-      ok <- MEMLOG.commit lxp ms ;
+      mscs <- MEMLOG.begin lxp mscs ;
+      let2 (mscs, b) <- BFILE.bfread lxp ixp $3 $0 mscs ;
+      mscs <- BFILE.bfshrink lxp bxp ixp $3 mscs ;
+      let2 (mscs, ok) <- MEMLOG.commit lxp mscs ;
       match ok with
-      | false => rx None
-      | true => rx (Some b)
+      | false => rx (mscs, None)
+      | true => rx (mscs, Some b)
       end
     end
   end.
 
-Definition test_bfile_bulkwrite T lxp ixp v nblocks rx : prog T :=
-  ms <- MEMLOG.begin lxp;
-  ms <- For block < nblocks
-    Loopvar ms <- ms
+Definition test_bfile_bulkwrite T lxp ixp v nblocks mscs rx : prog T :=
+  mscs <- MEMLOG.begin lxp mscs;
+  mscs <- For block < nblocks
+    Loopvar mscs <- mscs
     Continuation lrx
     Invariant emp
     OnCrash emp
     Begin
-      ms <- BFILE.bfwrite lxp ixp $3 block v ms;
-      lrx ms
+      mscs <- BFILE.bfwrite lxp ixp $3 block v mscs;
+      lrx mscs
   Rof;
-  ok <- MEMLOG.commit lxp ms;
-  rx ok.
+  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  rx (mscs, ok).
 
 (* Why does this seemingly simple function take forever to compile?? *)
 (*
