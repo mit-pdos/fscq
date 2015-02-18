@@ -197,14 +197,95 @@ Module BALLOC.
   Hint Extern 1 ({{_}} progseq (alloc' _ _ _) _) => apply alloc'_ok : prog.
 
   (* Different names just so that we can state another theorem about them *)
-  Definition alloc := alloc'.
-  Definition free := free'.
+  Definition alloc_gen := alloc'.
+  Definition free_gen := free'.
 
-  Definition rep xp (freeblocks : list addr) :=
+  Definition rep_gen V xp (freeblocks : list addr) (genpred : @pred _ (@weq addrlen) V) :=
     (exists bmap,
      rep' xp bmap *
      [[ forall a, In a freeblocks <-> bmap a = Avail ]] *
-     listpred (fun a => a |->?) freeblocks)%pred.
+     [[ genpred = listpred (fun a => a |->?) freeblocks ]])%pred.
+
+  Theorem alloc_gen_ok : forall V lxp xp mscs,
+    {< Fm mbase m freeblocks genpred,
+    PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+                   [[ (Fm * @rep_gen V xp freeblocks genpred)%pred (list2mem m) ]]
+    POST:(mscs',r) [[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' \/
+                   exists bn m' freeblocks' genpred', [[ r = Some bn ]] *
+                   MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+                   [[ (Fm * @rep_gen V xp freeblocks' genpred')%pred (list2mem m') ]] *
+                   [[ genpred =p=> genpred' * bn |->? ]] *
+                   [[ valid_block xp bn ]]
+    CRASH          MEMLOG.log_intact lxp mbase
+    >} alloc_gen lxp xp mscs.
+  Proof.
+    unfold alloc_gen.
+    intros.
+    eapply pimpl_ok2. apply alloc'_ok.
+    unfold rep_gen, rep'.
+    cancel.
+    step.
+    apply pimpl_or_r. right.
+    norm. (* We can't just [cancel] here because it introduces evars too early *)
+    cancel.
+    intuition.
+
+    pred_apply.
+    cancel.
+
+    assert (a a3 = Avail) as Ha by ( apply H8; eapply remove_still_In; eauto ).
+    rewrite <- Ha.
+    apply fupd_other.
+    eapply remove_still_In_ne; eauto.
+
+    assert (a0 <> a3).
+    intro He. subst. rewrite fupd_same in *. discriminate. trivial.
+    rewrite fupd_other in * by assumption.
+    apply remove_other_In. assumption.
+    rewrite H8; assumption.
+
+    erewrite listpred_remove with (dec := @weq addrlen). cancel.
+    apply ptsto_conflict.
+    rewrite H8; assumption.
+  Qed.
+
+  Theorem free_gen_ok : forall V lxp xp bn mscs,
+    {< Fm mbase m freeblocks genpred,
+    PRE        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+               [[ (Fm * @rep_gen V xp freeblocks genpred)%pred (list2mem m) ]] *
+               [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+    POST:mscs' exists m' genpred', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+               [[ (Fm * @rep_gen V xp (bn :: freeblocks) genpred')%pred (list2mem m') ]] *
+               [[ bn |->? * genpred =p=> genpred' ]]
+    CRASH      MEMLOG.log_intact lxp mbase
+    >} free_gen lxp xp bn mscs.
+  Proof.
+    unfold free_gen.
+    intros.
+    eapply pimpl_ok2. apply free'_ok.
+    unfold rep_gen, rep'.
+    cancel.
+    step.
+    subst; apply fupd_same; trivial.
+    rewrite H9 in H3.
+    destruct (weq bn a1).
+    subst; apply fupd_same; trivial.
+    rewrite <- H3; apply fupd_other; assumption.
+    destruct (weq bn a1).
+    left. auto.
+    right. rewrite fupd_other in H0 by assumption. apply H9; assumption.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (BALLOC.alloc_gen _ _ _) _) => apply BALLOC.alloc_gen_ok : prog.
+  Hint Extern 1 ({{_}} progseq (BALLOC.free_gen _ _ _ _) _) => apply BALLOC.free_gen_ok : prog.
+  Hint Extern 0 (okToUnify (rep_gen _ _ _) (rep_gen _ _ _)) => constructor : okToUnify.
+
+  (* Different names for actual on-disk-block allocation *)
+  Definition alloc := alloc_gen.
+  Definition free := free_gen.
+
+  Definition rep xp (freeblocks : list addr) :=
+    (exists genpred, genpred * rep_gen xp freeblocks genpred)%pred.
 
   Theorem alloc_ok : forall lxp xp mscs,
     {< Fm mbase m freeblocks,
@@ -217,36 +298,15 @@ Module BALLOC.
     CRASH          MEMLOG.log_intact lxp mbase
     >} alloc lxp xp mscs.
   Proof.
-    unfold alloc.
+    unfold alloc, rep.
     intros.
-    eapply pimpl_ok2. apply alloc'_ok.
-    unfold rep, rep'.
+    eapply pimpl_ok2. apply alloc_gen_ok.
     cancel.
     step.
+    rewrite H9 in H0.
     apply pimpl_or_r. right.
-    norm. (* We can't just [cancel] here because it introduces evars too early *)
     cancel.
-    intuition.
-
-    pred_apply.
-    (* instantiate (a1 := remove (@weq addrlen) a0 l). *)
-    erewrite listpred_remove with (dec := @weq addrlen). cancel.
-    assert (a a3 = Avail) as Ha.
-    apply H8.
-    eapply remove_still_In; eauto.
-    rewrite <- Ha.
-    apply fupd_other.
-    eapply remove_still_In_ne; eauto.
-    assert (a0 <> a3).
-    intro He. subst. rewrite fupd_same in *. discriminate. trivial.
-    rewrite fupd_other in * by assumption.
-    apply remove_other_In. assumption.
-    rewrite H8; assumption.
-    apply ptsto_conflict.
-    rewrite H8; assumption.
   Qed.
-
-
 
   Theorem free_ok : forall lxp xp bn mscs,
     {< Fm mbase m freeblocks,
@@ -258,27 +318,15 @@ Module BALLOC.
     CRASH      MEMLOG.log_intact lxp mbase
     >} free lxp xp bn mscs.
   Proof.
-    unfold free.
+    unfold free, rep.
     intros.
-    eapply pimpl_ok2. apply free'_ok.
-    unfold rep, rep'.
+    eapply pimpl_ok2. apply free_gen_ok.
     cancel.
     step.
-    subst; apply fupd_same; trivial.
-    rewrite H10 in H3.
-    destruct (weq bn a1).
-    subst; apply fupd_same; trivial.
-    rewrite <- H3; apply fupd_other; assumption.
-    destruct (weq bn a1).
-    left. auto.
-    right. rewrite fupd_other in H0 by assumption. apply H10; assumption.
   Qed.
-
-
-  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
   Hint Extern 1 ({{_}} progseq (BALLOC.alloc _ _ _) _) => apply BALLOC.alloc_ok : prog.
   Hint Extern 1 ({{_}} progseq (BALLOC.free _ _ _ _) _) => apply BALLOC.free_ok : prog.
-
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
 End BALLOC.
