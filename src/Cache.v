@@ -14,47 +14,57 @@ Module Map := FMapAVL.Make(Addr_as_OT).
 Import ListNotations.
 Set Implicit Arguments.
 
-Definition cachestate := Map.t valu.
+Definition cachestate := (Map.t valu * addr)%type.
+(* The [addr] stores the current number of items, for efficient capacity checks *)
 
 Record xparams := {
-  MaxCacheBlocks : addr
+  MaxCacheBlocks : addr;
+  MaxCacheBlocksOK : MaxCacheBlocks <> $0
 }.
 
 Module BUFCACHE.
 
   Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) valuset) :=
-    (diskIs m * [[ forall a v, Map.MapsTo a v cs -> exists old, m a = Some (v, old) ]])%pred.
+    (diskIs m *
+     [[ Map.cardinal (fst cs) = # (snd cs) ]] *
+     [[ forall a v, Map.MapsTo a v (fst cs) -> exists old, m a = Some (v, old) ]])%pred.
 
   Definition trim T xp (cs : cachestate) rx : prog T :=
-    If (wlt_dec $ (Map.cardinal cs) (MaxCacheBlocks xp)) {
+    let (cmap, cnum) := cs in
+    If (wlt_dec cnum (MaxCacheBlocks xp)) {
       rx cs
     } else {
-      match (Map.elements cs) with
-      | nil => rx cs
-      | (a,v) :: tl => rx (Map.remove a cs)
+      match (Map.elements cmap) with
+      | nil => rx (cmap, cnum)
+      | (a,v) :: tl => rx (Map.remove a cmap, cnum ^- $1)
       end
     }.
 
   Definition read T xp a (cs : cachestate) rx : prog T :=
     cs <- trim xp cs;
-    match Map.find a cs with
+    match Map.find a (fst cs) with
     | Some v => rx (cs, v)
     | None =>
       v <- Read a;
-      rx (Map.add a v cs, v)
+      rx ((Map.add a v (fst cs), snd cs ^+ $1), v)
     end.
 
   Definition write T xp a v (cs : cachestate) rx : prog T :=
     cs <- trim xp cs;
     Write a v;;
-    rx (Map.add a v cs).
+    match Map.find a (fst cs) with
+    | Some v =>
+      rx (Map.add a v (fst cs), snd cs)
+    | None =>
+      rx (Map.add a v (fst cs), snd cs ^+ $1)
+    end.
 
   Definition sync T (xp : xparams) a (cs : cachestate) rx : prog T :=
     Sync a;;
     rx cs.
 
-  Definition init T (xp : xparams) rx : prog T :=
-    rx (Map.empty valu).
+  Definition init T (xp : xparams) (rx : cachestate -> prog T) : prog T :=
+    rx (Map.empty valu, $0).
 
   Definition read_array T xp a i cs rx : prog T :=
     r <- read xp (a ^+ i ^* $1) cs;
@@ -68,7 +78,7 @@ Module BUFCACHE.
     cs <- sync xp (a ^+ i ^* $1) cs;
     rx cs.
 
-  Lemma mapsto_add : forall a v v' (m : cachestate),
+  Lemma mapsto_add : forall a v v' (m : Map.t valu),
     Map.MapsTo a v (Map.add a v' m) -> v' = v.
   Proof.
     intros.
