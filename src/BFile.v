@@ -41,12 +41,17 @@ Module BFILE.
     rx (mscs, ok).
 
   Definition bfgrow T lxp bxp ixp inum mscs rx : prog T :=
+    let2 (mscs, len) <- INODE.ilen lxp ixp inum mscs;
     let2 (mscs, bn) <- BALLOC.alloc lxp bxp mscs;
     match bn with
     | None => rx (mscs, false)
     | Some bnum =>
-        let2 (mscs, ok) <- INODE.igrow lxp bxp ixp inum bnum mscs;
-        rx (mscs, ok)
+        If (wlt_dec len (natToWord addrlen INODE.blocks_per_inode)) {
+          let2 (mscs, ok) <- INODE.igrow lxp bxp ixp inum bnum mscs;
+          rx (mscs, ok)
+        } else {
+          rx (mscs, false)
+        }
     end.
 
   Definition bfshrink T lxp bxp ixp inum mscs rx : prog T :=
@@ -117,7 +122,7 @@ Module BFILE.
   Theorem bfdata_bound : forall F m bxp ixp l i,
     (F * rep bxp ixp l)%pred m
     -> wordToNat i < length l
-    -> length (BFData (sel l i bfile0)) <= wordToNat (natToWord addrlen INODE.blocks_per_inode).
+    -> length (BFData (sel l i bfile0)) <= INODE.blocks_per_inode.
   Proof.
     unfold rep, sel; intros.
     destruct_lift H.
@@ -126,8 +131,11 @@ Module BFILE.
     unfold file_match at 2, listmatch at 2 in H.
     destruct_lift H.
     rewrite H2.
+    erewrite <- wordToNat_natToWord_bound with (sz := addrlen).
     eapply INODE.blocks_bound with (m := m).
     pred_apply; cancel.
+    instantiate (bound := INODE.wnr_direct ^+ INODE.wnr_indirect).
+    auto.
   Qed.
 
 
@@ -257,11 +265,18 @@ Module BFILE.
     unfold MEMLOG.log_intact; cancel.
   Qed.
 
+  Lemma helper_wlt_lt_blocks_per_inode : forall n (b : addr),
+    n <= wordToNat b
+    -> ((natToWord addrlen n) < (natToWord addrlen INODE.blocks_per_inode))%word
+    -> n < INODE.blocks_per_inode.
+  Proof.
+    intros; apply wlt_lt in H0.
+    erewrite wordToNat_natToWord_bound in H0; eauto.
+  Qed.
 
   Theorem bfgrow_ok : forall lxp bxp ixp inum mscs,
     {< F A B mbase m flist f,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ length (BFData f) < INODE.blocks_per_inode ]] *
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ B %pred (list2nmem (BFData f)) ]]
@@ -276,15 +291,18 @@ Module BFILE.
     >} bfgrow lxp bxp ixp inum mscs.
   Proof.
     unfold bfgrow, rep.
+    step.
+    list2nmem_ptsto_cancel; file_bounds.
     hoare.
 
     destruct_listmatch_n.
-    destruct b0; subst; simpl.
+    destruct b2; subst; simpl.
+    step; inversion H3; subst.
 
     step.
-
-    2: list2nmem_ptsto_cancel; file_bounds.
     rewrite_list2nmem_pred; unfold file_match in *; file_bounds.
+    2: list2nmem_ptsto_cancel; file_bounds.
+    eapply helper_wlt_lt_blocks_per_inode; file_bounds.
     eapply list2nmem_array; file_bounds.
 
     eapply pimpl_ok2; eauto with prog.
@@ -292,7 +310,7 @@ Module BFILE.
     eapply pimpl_or_r; left; cancel.
     eapply pimpl_or_r; right; cancel.
 
-    instantiate (a2 := Build_bfile (BFData b ++ [w0])).
+    instantiate (a0 := Build_bfile (BFData b ++ [w0])).
     2: simpl; eapply list2nmem_upd; eauto.
 
     rewrite_list2nmem_pred_upd H16; file_bounds.
@@ -308,13 +326,8 @@ Module BFILE.
     unfold data_match; cancel.
 
     apply list2nmem_app; eauto.
-
     step.
-
-    Grab Existential Variables.
-    exact emp.
-    exact emp.
-    exact INODE.inode0.
+    step.
   Qed.
 
 
