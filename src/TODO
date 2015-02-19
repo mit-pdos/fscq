@@ -1,12 +1,13 @@
 FUNCTIONALITY
 
-- allocate/deallocate inodes (create/delete files)
+- byte-level file length field
 - maybe doubly-indirect blocks?
 
 PROOFS/SPECS
 
 - memlog proofs
 - directory proofs
+- create/delete files (DirAlloc.v)
 - end-to-end theorems in FS
 
 EXPERIMENTS
@@ -16,4 +17,4 @@ EXPERIMENTS
 
 NOT GOING TO HAPPEN / NICE TO HAVE
 
-- byte-level read/write
+- byte-level read/write in Coq

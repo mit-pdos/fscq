@@ -206,10 +206,12 @@ i2bs i = BSI.create 512 $ i2buf i
 
 fscqRead :: FSrunner -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
 fscqRead fr _ inum byteCount offset = do
-  -- Ignore the count and offset for now..
-  (W w) <- fr $ FS.read_block lxp ixp inum (W 0)
+  wlen <- fr $ FS.file_len lxp ixp inum
+  len <- return $ fromIntegral $ wordToNat 64 wlen
+  byteCount <- return $ max 0 (min (fromIntegral byteCount) (len - (fromIntegral offset)))
+  (W w) <- fr $ FS.read_block lxp ixp inum (W64 $ fromIntegral $ offset `div` 512)
   bs <- i2bs w
-  return $ Right $ BS.take (fromIntegral byteCount) $ BS.drop (fromIntegral offset) bs
+  return $ Right $ BS.take (fromIntegral byteCount) $ BS.drop (fromIntegral $ offset `mod` 512) bs
 
 fscqWrite :: FSrunner -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 fscqWrite fr _ inum bs offset = do
