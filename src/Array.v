@@ -57,6 +57,42 @@ Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
 Notation "l $[ i ]" := (sel l i _) (at level 56, left associativity).
 Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
 
+(* list population *)
+Fixpoint repeat T (v : T) (n : nat) :=
+  match n with
+  | O => nil
+  | S n' => cons v (repeat v n')
+  end.
+
+Arguments repeat : simpl never.
+
+Lemma repeat_length: forall T n (v : T),
+  length (repeat v n) = n.
+Proof.
+  induction n; firstorder.
+  simpl; rewrite IHn; auto.
+Qed.
+
+Lemma repeat_selN : forall T i n (v def : T),
+  i < n
+  -> selN (repeat v n) i def = v.
+Proof.
+  induction i; destruct n; firstorder; inversion H.
+Qed.
+
+Lemma repeat_sel : forall T i n (v def : T),
+  wordToNat i < n
+  -> sel (repeat v n) i def = v.
+Proof.
+  unfold sel; intros; apply repeat_selN; auto.
+Qed.
+
+Lemma length_nil : forall A (l : list A),
+  length l = 0 -> l = nil.
+Proof.
+  induction l; firstorder.
+  inversion H.
+Qed.
 
 (** XXX use [nth] everywhere *)
 Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.

@@ -255,38 +255,7 @@ Module INODE.
   Hint Resolve wle_le.
   Hint Rewrite removeN_updN : core.
 
-
-  (* list population *)
-  Fixpoint repeat T (v : T) (n : nat) :=
-    match n with
-    | O => nil
-    | S n' => cons v (repeat v n')
-    end.
-
-  Arguments repeat : simpl never.
-
   Definition indlist0 := repeat (natToWord inditemsz 0) nr_indirect.
-
-  Lemma repeat_length: forall T n (v : T),
-    length (repeat v n) = n.
-  Proof.
-    induction n; firstorder.
-    simpl; rewrite IHn; auto.
-  Qed.
-
-  Lemma repeat_selN : forall T i n (v def : T),
-    i < n
-    -> selN (repeat v n) i def = v.
-  Proof.
-    induction i; destruct n; firstorder; inversion H.
-  Qed.
-
-  Lemma length_nil : forall A (l : list A),
-    length l = 0 -> l = nil.
-  Proof.
-    induction l; firstorder.
-    inversion H.
-  Qed.
 
   Theorem ind_ptsto : forall bxp a vs,
     indrep bxp a vs
