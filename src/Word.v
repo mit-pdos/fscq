@@ -353,6 +353,81 @@ Proof.
     inversion H0. apply eqb_false_iff in H. congruence. }
 Qed.    
 
+(** * Dependent type helpers *)
+
+Theorem eq_rect_nat_double : forall T (a b c : nat) x ab bc,
+  eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
+Proof.
+  intros.
+  destruct ab.
+  destruct bc.
+  rewrite (UIP_dec eq_nat_dec (eq_trans eq_refl eq_refl) eq_refl).
+  simpl.
+  auto.
+Qed.
+
+Lemma eq_rect_word_offset_helper : forall a b c,
+  a = b -> c + a = c + b.
+Proof.
+  intros; omega.
+Qed.
+
+Theorem eq_rect_word_offset : forall n n' offset w Heq,
+  eq_rect n (fun n => word (offset + n)) w n' Heq =
+  eq_rect (offset + n) (fun n => word n) w (offset + n') (eq_rect_word_offset_helper _ Heq).
+Proof.
+  intros.
+  destruct Heq.
+  rewrite (UIP_dec eq_nat_dec (eq_rect_word_offset_helper offset eq_refl) eq_refl).
+  reflexivity.
+Qed.
+
+Theorem eq_rect_word_match : forall n n' (w : word n) (H : n = n'),
+  match H in (_ = N) return (word N) with
+  | eq_refl => w
+  end = eq_rect n (fun n => word n) w n' H.
+Proof.
+  intros.
+  destruct H.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem whd_match : forall n n' (w : word (S n)) (Heq : S n = S n'),
+  whd w = whd (match Heq in (_ = N) return (word N) with
+               | eq_refl => w
+               end).
+Proof.
+  intros.
+  rewrite eq_rect_word_match.
+  generalize dependent w.
+  remember Heq as Heq'. clear HeqHeq'.
+  generalize dependent Heq'.
+  replace (n') with (n) by omega.
+  intros. rewrite <- (eq_rect_eq_dec eq_nat_dec). reflexivity.
+Qed.
+
+Theorem wtl_match : forall n n' (w : word (S n)) (Heq : S n = S n') (Heq' : n = n'),
+  (match Heq' in (_ = N) return (word N) with
+   | eq_refl => wtl w
+   end) = wtl (match Heq in (_ = N) return (word N) with
+               | eq_refl => w
+               end).
+Proof.
+  intros.
+  repeat match goal with
+           | [ |- context[match ?pf with refl_equal => _ end] ] => generalize pf
+         end.
+  generalize dependent w; clear.
+  intros.
+  generalize Heq Heq'.
+  subst.
+  intros.
+  rewrite (UIP_dec eq_nat_dec Heq' (refl_equal _)).
+  rewrite (UIP_dec eq_nat_dec Heq0 (refl_equal _)).
+  reflexivity.
+Qed.
+
 (** * Combining and splitting *)
 
 Fixpoint combine (sz1 : nat) (w : word sz1) : forall sz2, word sz2 -> word (sz1 + sz2) :=
@@ -417,6 +492,22 @@ Proof.
   reflexivity.
 Qed.
 
+Theorem split1_iter : forall n1 n2 n3 Heq w,
+  split1 n1 n2 (split1 (n1 + n2) n3 w)
+  = split1 n1 (n2 + n3) (match Heq in _ = N return word N with
+                           | refl_equal => w
+                         end).
+Proof.
+  induction n1; simpl; intuition.
+
+  f_equal.
+  apply whd_match.
+  assert (n1 + n2 + n3 = n1 + (n2 + n3)) as Heq' by omega.
+  rewrite IHn1 with (Heq:=Heq').
+  f_equal.
+  apply wtl_match.
+Qed.
+
 Theorem split2_iter : forall n1 n2 n3 Heq w,
   split2 n2 n3 (split2 n1 (n2 + n3) w)
   = split2 (n1 + n2) n3 (match Heq in _ = N return word N with
@@ -429,20 +520,7 @@ Proof.
 
   rewrite (IHn1 _ _ (plus_assoc _ _ _)).
   f_equal.
-  repeat match goal with
-           | [ |- context[match ?pf with refl_equal => _ end] ] => generalize pf
-         end.
-  generalize dependent w.
-  simpl.
-  fold plus.
-  generalize (n1 + (n2 + n3)); clear.
-  intros.
-  generalize Heq e.
-  subst.
-  intros.
-  rewrite (UIP_dec eq_nat_dec e (refl_equal _)).
-  rewrite (UIP_dec eq_nat_dec Heq0 (refl_equal _)).
-  reflexivity.
+  apply wtl_match.
 Qed.
 
 Theorem combine_end : forall n1 n2 n3 Heq w,

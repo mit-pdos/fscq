@@ -118,17 +118,6 @@ Section RECARRAY.
   Definition rep_block (b : block) : valu := wreclen_to_valu (Rec.to_word b).
   Definition valu_to_block (v : valu) : block := Rec.of_word (valu_to_wreclen v).
 
-  Theorem eq_rect_nat_double: forall T (a b c : nat) x ab bc,
-    eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
-  Proof.
-    intros.
-    destruct ab.
-    destruct bc.
-    rewrite (UIP_dec eq_nat_dec (eq_trans eq_refl eq_refl) eq_refl).
-    simpl.
-    auto.
-  Qed.
-
   Lemma valu_wreclen_id : forall w, valu_to_wreclen (wreclen_to_valu w) = w.
   Proof.
     unfold valu_to_wreclen, wreclen_to_valu, eq_rec, eq_rec_r.
