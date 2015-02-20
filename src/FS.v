@@ -38,7 +38,7 @@ Definition file_len T lxp ixp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin lxp mscs;
   let2 (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
   let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
-  rx (mscs, len ^* $512).
+  rx (mscs, len ^* $ (valulen / 8)).
 
 Definition read_block T lxp ixp inum off mscs rx : prog T :=
   mscs <- MEMLOG.begin lxp mscs;

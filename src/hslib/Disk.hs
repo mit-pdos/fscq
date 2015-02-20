@@ -34,11 +34,11 @@ debugmsg s =
 
 buf2i :: Ptr Word8 -> IO Integer
 buf2i (GHC.Exts.Ptr a) = do
-  GMPI.importIntegerFromAddr a 512## 0#
+  GMPI.importIntegerFromAddr a 4096## 0#
 
 i2buf :: Integer -> Ptr Word8 -> IO ()
 i2buf i (GHC.Exts.Ptr a) = do
-  _ <- BSI.memset (GHC.Exts.Ptr a) 0 512
+  _ <- BSI.memset (GHC.Exts.Ptr a) 0 4096
   _ <- GMPI.exportIntegerToAddr i a 0#
   return ()
 
@@ -46,10 +46,10 @@ read_disk :: Fd -> Coq_word -> IO Coq_word
 read_disk fd (W a) = read_disk fd (W64 $ fromIntegral a)
 read_disk fd (W64 a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
-  allocaBytes 512 $ \buf -> do
-    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 512*a
-    cc <- fdReadBuf fd buf 512
-    if cc == 512 then
+  allocaBytes 4096 $ \buf -> do
+    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
+    cc <- fdReadBuf fd buf 4096
+    if cc == 4096 then
       do
         i <- buf2i buf
         return $ W i
@@ -63,11 +63,11 @@ write_disk _ (W64 _) (W64 _) = error "write_disk: short value"
 write_disk fd (W64 a) (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
-  allocaBytes 512 $ \buf -> do
-    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 512*a
+  allocaBytes 4096 $ \buf -> do
+    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
     i2buf v buf
-    cc <- fdWriteBuf fd buf 512
-    if cc == 512 then
+    cc <- fdWriteBuf fd buf 4096
+    if cc == 4096 then
       return ()
     else
       do

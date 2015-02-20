@@ -12,7 +12,7 @@ Set Implicit Arguments.
 
 (** * The programming language *)
 
-Notation "'valulen_real'" := (512 * 8)%nat. (* 512 bytes *)
+Notation "'valulen_real'" := (4096 * 8)%nat. (* 4KB *)
 
 Module Type VALULEN.
   Parameter valulen : nat.
