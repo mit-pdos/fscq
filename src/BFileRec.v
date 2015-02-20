@@ -134,7 +134,7 @@ Section RECBFILE.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
-    instantiate (def := $0).
+    instantiate (y := $0).
 
     unfold sel, upd; autorewrite with core.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
