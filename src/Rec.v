@@ -2,6 +2,7 @@ Require Import Arith List String Omega Bool.
 Require Import Word.
 Require Import Eqdep_dec.
 Require Import Array.
+Require Import Psatz.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -346,15 +347,58 @@ Module Rec.
     induction l; intros; try omega.
     unfold of_word in *; fold (@of_word ft) in *.
     destruct idx; simpl.
-    - f_equal.
-      unfold word_selN, middle; simpl.
-      admit.  (* XXX dependent type mess.. *)
+    - f_equal. clear IHl.
+      unfold word_selN, middle.
+
+      destruct (lt_dec 0 (S l)); [|omega].
+      generalize (word_selN_helper (len ft) l0).
+      replace (S l * len ft - len ft - 0 * len ft) with (l * len ft) by lia.
+      simpl; intros.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
+
     - rewrite <- IHl by omega; clear IHl.
       f_equal.
-      unfold word_selN; simpl.
+      unfold word_selN.
       destruct (lt_dec (S idx) (S l)); try omega.
       destruct (lt_dec idx l); try omega.
-      admit.  (* XXX dependent type mess.. *)
+
+      unfold middle.
+
+      generalize (word_selN_helper (len ft) l0).
+      generalize (word_selN_helper (len ft) l1).
+      replace (S l * len ft - len ft - S idx * len ft)
+        with (l * len ft - len ft - idx * len ft) by lia.
+      generalize (l * len ft - len ft - idx * len ft).
+
+      intros.
+      f_equal.
+      generalize dependent e0.
+      generalize dependent e.
+      generalize (len ft + n); clear n.
+      generalize dependent w; simpl.
+      generalize (idx * len ft).
+      generalize (l * len ft); clear H l0 l1 l def idx.
+      generalize (len ft); clear ft.
+      intros.
+
+      assert (n + n0 = n + (n1 + n2)) as e0' by omega.
+      replace ((eq_rec (n + n0) (fun n => word n) w (n + n1 + n2) e0))
+        with (match plus_assoc _ _ _ in _ = N return word N with
+              | refl_equal => (eq_rec (n+n0) (fun n => word n) w (n+(n1+n2)) e0')
+              end).
+
+      rewrite <- split2_iter.
+      f_equal.
+      generalize dependent e0'; clear e0.
+      rewrite <- e; intros.
+      repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
+
+      destruct (Nat.add_assoc n n1 n2).
+      destruct e0.
+      repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
   Qed.
 
 
@@ -384,7 +428,9 @@ Module Rec.
 
   Theorem word_updN_equiv : forall ft l idx w v, idx < l ->
     @word_updN ft l idx w (to_word v) = @to_word (ArrayF ft l) (updN (of_word w) idx v).
-  Admitted.
+  Proof.
+    admit.
+  Qed.
 
 End Rec.
 
