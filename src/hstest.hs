@@ -57,7 +57,7 @@ main = do
   -- (s, r) <- repf 10000 (Just (W 123)) s
   --     (\s x -> case x of
   --         Nothing -> return (s, Nothing)
-  --         Just xv -> I.run fd $ Testprog.test_bfile lxp bxp ixp xv s)
+  --         Just xv -> I.run fd $ Testprog.test_bfile lxp dbxp ixp xv s)
 
   (s, setok) <- I.run fd $ FS.set_size lxp dbxp ixp (W 3) (W 68) s
   putStrLn $ "set_size: " ++ (show setok)
