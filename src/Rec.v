@@ -402,34 +402,207 @@ Module Rec.
   Qed.
 
 
+  Lemma word_updN_helper1 : forall idx l lenft, idx < l ->
+    lenft + (l * lenft - idx * lenft - lenft) = l * lenft - idx * lenft.
+  Proof.
+    intros.
+
+    rewrite Nat.add_sub_assoc. rewrite plus_comm. rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.sub_diag. omega.
+
+    rewrite <- Nat.mul_sub_distr_r. replace (lenft) with (1 * lenft) at 1 by omega.
+    apply Nat.mul_le_mono_r; omega.
+  Qed.
+
+  Lemma word_updN_helper2 : forall idx l lenft, idx < l ->
+    idx * lenft + (l * lenft - idx * lenft) = l * lenft.
+  Proof.
+    intros.
+
+    rewrite Nat.add_sub_assoc. rewrite plus_comm. rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.sub_diag. omega.
+
+    apply Nat.mul_le_mono_r; omega.
+  Qed.
+
   Definition word_updN {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l)))
                                              (v : word (len ft)) : word (len (ArrayF ft l)).
     refine (if lt_dec idx l then _ else $0); simpl in *.
-    replace (l * len ft) with (idx * len ft + (l * len ft - idx * len ft)) in *.
+
+    replace (l * len ft) with (idx * len ft + (l * len ft - idx * len ft))
+      in * by (apply word_updN_helper2; assumption).
     remember (split1 (idx * len ft) (l * len ft - idx * len ft) w) as low; clear Heqlow.
-    remember (split2 (idx * len ft) (l * len ft - idx * len ft) w) as midhi; clear Heqmidhi.
-    replace (l * len ft - idx * len ft) with (len ft + (l * len ft - idx * len ft - len ft)) in *.
-    remember (split1 (len ft) (l * len ft - idx * len ft - len ft) midhi) as mid; clear Heqmid.
-    remember (split2 (len ft) (l * len ft - idx * len ft - len ft) midhi) as hi; clear Heqhi.
     refine (combine low _).
+
+    replace (l * len ft - idx * len ft) with (len ft + (l * len ft - idx * len ft - len ft))
+      in * by (apply word_updN_helper1; assumption).
+    rewrite plus_assoc in *.
+
+    remember (split2 (idx * len ft + len ft) (l * len ft - idx * len ft - len ft) w) as hi; clear Heqhi.
     refine (combine v hi).
-
-    rewrite Nat.add_sub_assoc. rewrite plus_comm. rewrite <- Nat.add_sub_assoc by omega.
-    rewrite Nat.sub_diag. omega.
-
-    rewrite <- Nat.mul_sub_distr_r. replace (len ft) with (1 * len ft) at 1 by omega.
-    apply Nat.mul_le_mono_r; omega.
-
-    rewrite Nat.add_sub_assoc. rewrite plus_comm. rewrite <- Nat.add_sub_assoc by omega.
-    rewrite Nat.sub_diag. omega.
-
-    apply Nat.mul_le_mono_r; omega.
   Defined.
 
   Theorem word_updN_equiv : forall ft l idx w v, idx < l ->
     @word_updN ft l idx w (to_word v) = @to_word (ArrayF ft l) (updN (of_word w) idx v).
   Proof.
-    admit.
+    simpl; intros.
+    unfold word_updN.
+    destruct (lt_dec idx l); try omega; clear H.
+
+    unfold eq_rec_r, eq_rec.
+    rewrite eq_rect_word_offset.
+    repeat rewrite eq_rect_nat_double.
+
+    generalize (word_updN_helper1 (len ft) l0).
+    generalize (word_updN_helper2 (len ft) l0).
+
+    generalize dependent l.
+    induction idx; simpl; intros.
+    - destruct l; try omega.
+      unfold of_word; fold (@of_word ft).
+      unfold to_word; fold (@to_word ft).
+      replace ((fix word2arrayf (n : nat) (w0 : word (n * len ft)) {struct n} : 
+         list (data ft) :=
+           match n as n0 return (word (len (ArrayF ft n0)) -> data (ArrayF ft n0)) with
+           | 0 => fun _ : word (len (ArrayF ft 0)) => []
+           | S n' =>
+               fun w1 : word (len (ArrayF ft (S n'))) =>
+               of_word (split1 (len ft) (n' * len ft) w1)
+               :: word2arrayf n' (split2 (len ft) (n' * len ft) w1)
+           end w0) l (split2 (len ft) (l * len ft) w))
+        with (@of_word (ArrayF ft l) (split2 (len ft) (l * len ft) w)) by reflexivity.
+      simpl.
+
+      repeat rewrite eq_rect_nat_double.
+      rewrite eq_rect_combine.
+      f_equal.
+      rewrite eq_rect_split2.
+      rewrite eq_rect_nat_double.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      match goal with
+      | [ |- _ = ?r ] =>
+        replace (r)
+          with (@to_word (ArrayF ft l) (of_word (split2 (len ft) (len (ArrayF ft l)) w)))
+          by reflexivity
+      end.
+      rewrite to_of_id.
+      reflexivity.
+
+    - destruct l; try omega.
+      unfold of_word; fold (@of_word ft).
+      unfold to_word; fold (@to_word ft).
+      replace ((fix word2arrayf (n : nat) (w0 : word (n * len ft)) {struct n} : 
+         list (data ft) :=
+           match n as n0 return (word (len (ArrayF ft n0)) -> data (ArrayF ft n0)) with
+           | 0 => fun _ : word (len (ArrayF ft 0)) => []
+           | S n' =>
+               fun w1 : word (len (ArrayF ft (S n'))) =>
+               of_word (split1 (len ft) (n' * len ft) w1)
+               :: word2arrayf n' (split2 (len ft) (n' * len ft) w1)
+           end w0) l (split2 (len ft) (l * len ft) w))
+        with (@of_word (ArrayF ft l) (split2 (len ft) (l * len ft) w)) by reflexivity.
+      simpl.
+
+      rewrite to_of_id.
+      assert (idx < l) as Hidx by omega.
+      specialize (IHidx l (split2 (len ft) (l * len ft) w) Hidx).
+      clear l0.
+
+      generalize dependent e; generalize dependent e0. simpl.
+      replace (len ft + l * len ft - (len ft + idx * len ft))
+        with (len ft + (l * len ft - len ft - idx * len ft)) by
+        ( rewrite Nat.sub_add_distr;
+          rewrite minus_plus;
+          rewrite <- word_updN_helper1 by omega;
+          lia ).
+      intros.
+      rewrite eq_rect_combine.
+      rewrite eq_rect_split2.
+      repeat rewrite eq_rect_nat_double.
+
+      repeat match goal with
+      | [ |- context[(eq_trans ?a ?b)] ] =>
+        generalize (eq_trans a b); intros
+      end.
+      clear e0.
+
+      rewrite <- combine_split with (sz1:=len ft) (sz2:=idx * len ft)
+        (w:=(split1 (len ft + idx * len ft) (len ft + (l * len ft - len ft - idx * len ft))
+        (eq_rect (len ft + l * len ft) (fun y : nat => word y) w
+           (len ft + idx * len ft + (len ft + (l * len ft - len ft - idx * len ft))) 
+           (eq_sym e)))).
+      assert (len ft + (idx * len ft + (len ft + (l * len ft - len ft - idx * len ft))) =
+              len ft + idx * len ft + (len ft + (l * len ft - len ft - idx * len ft)))
+        as Hassoc by lia.
+      rewrite (combine_assoc _ _ _ Hassoc).
+      rewrite eq_rect_word_match.
+      rewrite eq_rect_nat_double.
+      rewrite eq_rect_combine.
+      f_equal.
+
+      rewrite split1_iter with (Heq:=eq_sym Hassoc).
+      rewrite eq_rect_word_match.
+      rewrite eq_rect_nat_double.
+      generalize dependent (eq_trans (eq_sym e) (eq_sym Hassoc)).
+      replace (idx * len ft + (len ft + (l * len ft - len ft - idx * len ft)))
+        with (l * len ft) by lia.
+      intros.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec). reflexivity.
+
+      unfold to_word in IHidx; fold (@to_word ft) in IHidx; simpl in IHidx.
+      erewrite <- IHidx; clear IHidx.
+
+      repeat rewrite eq_rect_split2.
+      assert (len ft + (idx * len ft + len ft + (l * len ft - idx * len ft - len ft)) =
+        len ft + (idx * len ft + len ft) + (l * len ft - idx * len ft - len ft))
+        as Hs2iter by lia.
+      rewrite split2_iter with (Heq:=Hs2iter).
+      rewrite eq_rect_word_match.
+      rewrite eq_rect_nat_double.
+
+      rewrite <- eq_rect_combine.
+      rewrite eq_rect_nat_double.
+
+      repeat match goal with
+      | [ |- context[eq_sym ?a] ] => generalize (eq_sym a); intros
+      | [ |- context[eq_trans ?a ?b] ] => generalize (eq_trans a b); intros
+      | [ |- context[eq_rect_split2_helper ?a ?b] ] => generalize (eq_rect_split2_helper a b); intros
+      end; clear.
+
+      generalize dependent idx; intro idx.
+      replace (l * len ft - idx * len ft - len ft)
+        with (l * len ft - len ft - idx * len ft) by lia.
+      intros.
+      f_equal; clear.
+      f_equal; clear.
+
+      erewrite split1_split2.
+      rewrite eq_rect_word_match.
+      rewrite eq_rect_nat_double.
+      f_equal; clear.
+
+      assert (len ft + (l * len ft - len ft - idx * len ft) = l * len ft - idx * len ft)
+        as Hr by lia.
+      generalize dependent e0; generalize dependent e7.
+      rewrite Hr.
+      intros.
+      f_equal; clear.
+      f_equal; clear.
+      apply UIP_dec; exact eq_nat_dec.
+
+      f_equal; clear.
+      generalize dependent idx; intro idx.
+      replace (len ft + (idx * len ft + len ft))
+        with (len ft + idx * len ft + len ft) by lia.
+      intros.
+      f_equal; clear.
+      f_equal; clear.
+      apply UIP_dec; exact eq_nat_dec.
+      apply UIP_dec; exact eq_nat_dec.
+      Grab Existential Variables.
+      lia.
+      lia.
+      lia.
   Qed.
 
 End Rec.
