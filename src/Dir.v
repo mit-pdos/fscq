@@ -35,9 +35,10 @@ Module DIR.
   Definition dirent_zero := @Rec.of_word dirent_type $0.
 
   Definition itemsz := Rec.len dirent_type.
-  Definition items_per_valu : addr := $16.
+  Definition items_per_valu : addr := $ (valulen / itemsz).
   Theorem itemsz_ok : valulen = wordToNat items_per_valu * itemsz.
   Proof.
+    unfold items_per_valu; simpl.
     rewrite valulen_is; auto.
   Qed.
 

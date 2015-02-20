@@ -49,9 +49,10 @@ Module INODE.
   Definition irec0 := @Rec.of_word inodetype $0.
 
   Definition itemsz := Rec.len inodetype.
-  Definition items_per_valu : addr := $8.
+  Definition items_per_valu : addr := $ (valulen / itemsz).
   Theorem itemsz_ok : valulen = wordToNat items_per_valu * itemsz.
   Proof.
+    unfold items_per_valu; simpl.
     rewrite valulen_is; auto.
   Qed.
 
@@ -128,7 +129,7 @@ Module INODE.
   Definition indblk := Rec.data indtype.
   Definition ind0 := @Rec.of_word indtype $0.
 
-  Definition nr_indirect := 64.
+  Definition nr_indirect := Eval compute in valulen_real / addrlen.
   Definition wnr_indirect : addr := natToWord addrlen nr_indirect.
   Definition inditemsz := Rec.len indtype.
 
@@ -162,10 +163,26 @@ Module INODE.
     destruct_lift H; auto.
   Qed.
 
+  Theorem wordToNat_wnr_indirect : # wnr_indirect = nr_indirect.
+  Proof.
+    unfold wnr_indirect.
+    erewrite wordToNat_natToWord_bound with (bound:=$ valulen).
+    reflexivity.
+    unfold nr_indirect.
+    apply Nat.sub_0_le.
+    rewrite valulen_is.
+    compute.
+    reflexivity.
+  Qed.
+
+  Opaque wnr_indirect.
+
   Theorem indirect_bound : forall F bxp bn l m,
     (F * indrep bxp bn l)%pred m -> length l <= wordToNat wnr_indirect.
   Proof.
-    intros; erewrite indirect_length; eauto.
+    rewrite wordToNat_wnr_indirect.
+    intros.
+    erewrite indirect_length; eauto.
   Qed.
 
   Theorem indget_ok : forall lxp bxp a off mscs,
@@ -184,9 +201,11 @@ Module INODE.
     rewrite wmult_unit.
     eapply lt_wlt.
     apply list2nmem_inbound in H4.
+    rewrite wordToNat_wnr_indirect.
     rewrite H7 in H4; auto.
-    subst.
-    eapply list2nmem_sel with (def:=$0) in H4; auto.
+
+    eapply list2nmem_sel with (def:=item_zero indtype) in H4.
+    unfold sel in *. congruence.
   Qed.
 
 
@@ -206,6 +225,7 @@ Module INODE.
 
     rewrite wmult_unit; eapply lt_wlt.
     apply list2nmem_inbound in H4.
+    rewrite wordToNat_wnr_indirect.
     rewrite H7 in H4; auto.
     eapply list2nmem_upd; eauto.
   Qed.
@@ -220,6 +240,7 @@ Module INODE.
 
   Fact nr_indirect_bound : nr_indirect <= wordToNat wnr_indirect.
   Proof.
+    rewrite wordToNat_wnr_indirect.
     auto.
   Qed.
 
@@ -293,6 +314,7 @@ Module INODE.
     rewrite indsz_ok; auto.
 
     unfold block_zero.
+    rewrite wordToNat_wnr_indirect. unfold nr_indirect.
     rewrite Forall_forall.
     intuition.
     simpl in H; intuition; subst; auto.

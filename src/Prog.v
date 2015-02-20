@@ -12,14 +12,16 @@ Set Implicit Arguments.
 
 (** * The programming language *)
 
+Notation "'valulen_real'" := (512 * 8)%nat. (* 512 bytes *)
+
 Module Type VALULEN.
   Parameter valulen : nat.
-  Axiom valulen_is: valulen = 4096. (* 512 bytes *)
+  Axiom valulen_is: valulen = valulen_real.
 End VALULEN.
 
 Module Valulen : VALULEN.
-  Definition valulen := 4096.
-  Theorem valulen_is: valulen = 4096.
+  Definition valulen := valulen_real.
+  Theorem valulen_is: valulen = valulen_real.
   Proof.
     auto.
   Qed.
@@ -32,6 +34,13 @@ Notation "'valulen_is'" := (Valulen.valulen_is).
 Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).
 Definition addr_eq_dec := @weq addrlen.
+
+Theorem valulen_wordToNat_natToWord : # (natToWord addrlen valulen) = valulen.
+Proof.
+  rewrite valulen_is.
+  compute.
+  reflexivity.
+Qed.
 
 
 Definition wringaddr := wring addrlen.
