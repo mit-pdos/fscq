@@ -339,17 +339,6 @@ Module INODE.
       rx (mscs, v)
     }.
 
-  Definition iput T lxp xp inum off a mscs rx : prog T := Eval compute_rec in
-    let2 (mscs, i) <- irget lxp xp inum mscs ;
-    If (wlt_dec off wnr_direct) {
-      let i' := i :=> "blocks" := (upd (i :-> "blocks") off a) in
-      mscs <- irput lxp xp inum i' mscs;
-      rx mscs
-    } else {
-      mscs <- indput lxp (i :-> "indptr") (off ^- wnr_direct) a mscs;
-      rx mscs
-    }.
-
   Definition igrow_alloc T lxp bxp xp (i0 : irec) inum a mscs rx : prog T := Eval compute_rec in
     let off := i0 :-> "len" in
     let i := i0 :=> "len" := (off ^+ $1) in
@@ -836,25 +825,6 @@ Module INODE.
     erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
     apply wle_le in H11; auto.
     pred_apply; cancel.
-  Qed.
-
-
-  (* unused *)
-  Theorem iput_ok : forall lxp bxp xp inum off a mscs,
-    {< F A B mbase m ilist ino,
-    PRE        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-               [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
-               [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]] *
-               [[ (B * #off |->?)%pred (list2nmem (IBlocks ino)) ]]
-    POST:mscs' exists m' ilist' ino',
-               MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-               [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
-               [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-               [[ (B * #off |-> a)%pred (list2nmem (IBlocks ino')) ]]
-    CRASH      MEMLOG.log_intact lxp mbase
-    >} iput lxp xp inum off a mscs.
-  Proof.
-     admit.
   Qed.
 
 
@@ -1460,7 +1430,6 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (igetsz _ _ _ _) _) => apply igetsz_ok : prog.
   Hint Extern 1 ({{_}} progseq (isetsz _ _ _ _ _) _) => apply isetsz_ok : prog.
   Hint Extern 1 ({{_}} progseq (iget _ _ _ _ _) _) => apply iget_ok : prog.
-  Hint Extern 1 ({{_}} progseq (iput _ _ _ _ _ _) _) => apply iput_ok : prog.
   Hint Extern 1 ({{_}} progseq (igrow _ _ _ _ _ _) _) => apply igrow_ok : prog.
   Hint Extern 1 ({{_}} progseq (ishrink _ _ _ _ _) _) => apply ishrink_ok : prog.
 
