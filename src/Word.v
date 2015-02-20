@@ -473,6 +473,64 @@ Proof.
   reflexivity.
 Qed.
 
+Theorem eq_rect_combine : forall n1 n2 n2' (w1 : word n1) (w2 : word n2') Heq,
+  eq_rect (n1 + n2') (fun n => word n)
+    (combine w1 w2) (n1 + n2) Heq =
+  combine w1 (eq_rect n2' (fun n => word n) w2 n2 (plus_reg_l _ _ _ Heq)).
+Proof.
+  intros.
+  generalize (plus_reg_l n2' n2 n1 Heq); intros.
+  generalize dependent Heq.
+  generalize dependent w2.
+  rewrite e; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Lemma eq_rect_split2_helper : forall a b c,
+  a = b -> c + a = c + b.
+Proof.
+  intros; omega.
+Qed.
+
+Theorem eq_rect_split2 : forall n1 n2 n2' (w : word (n1 + n2')) Heq,
+  eq_rect n2' (fun n => word n)
+    (split2 n1 n2' w) n2 Heq =
+  split2 n1 n2 (eq_rect (n1+n2') (fun n => word n) w (n1+n2) (eq_rect_split2_helper _ Heq)).
+Proof.
+  intros.
+  generalize (eq_rect_split2_helper n1 Heq); intros.
+  generalize dependent Heq.
+  generalize dependent w.
+  assert (n2' = n2) as H' by omega.
+  generalize dependent e.
+  rewrite H'; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Lemma eq_rect_split1_helper : forall a b c,
+  a = b -> a + c = b + c.
+Proof.
+  intros; omega.
+Qed.
+
+Theorem eq_rect_split1 : forall n1 n1' n2 (w : word (n1' + n2)) Heq,
+  eq_rect n1' (fun n => word n)
+    (split1 n1' n2 w) n1 Heq =
+  split1 n1 n2 (eq_rect (n1'+n2) (fun n => word n) w (n1+n2) (eq_rect_split1_helper _ Heq)).
+Proof.
+  intros.
+  generalize (eq_rect_split1_helper n2 Heq); intros.
+  generalize dependent Heq.
+  generalize dependent w.
+  assert (n1' = n1) as H' by omega.
+  generalize dependent e.
+  rewrite H'; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
 
 (** * Extension operators *)
 
