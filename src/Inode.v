@@ -296,7 +296,6 @@ Module INODE.
     unfold indlist0; apply repeat_length.
   Qed.
 
-  Hint Resolve repeat_length.
   Hint Resolve indlist0_length.
 
   (* separation logic based theorems *)
@@ -1199,9 +1198,6 @@ Module INODE.
 
     (* XXX: so many unused existentials ! *)
     Grab Existential Variables.
-    exact True.
-    exact True.
-    constructor.
     exact $0.
     exact emp.
   Qed.
