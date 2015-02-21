@@ -1084,7 +1084,7 @@ Module MEMLOG.
     equal_unless_in (map fst (Map.elements ms)) a b def -> replay ms (map fst a) = replay ms (map fst b).
   Proof. admit. Qed.
   Lemma equal_unless_in_replay_eq'': forall ms (a b: list valu) def,
-    replay ms a = replay ms b -> equal_unless_in (map fst (Map.elements ms)) (List.combine a (repeat (length a) (@nil valu))) (List.combine b (repeat (length b) (@nil valu))) def.
+    replay ms a = replay ms b -> equal_unless_in (map fst (Map.elements ms)) (List.combine a (repeat (@nil valu) (length a))) (List.combine b (repeat (@nil valu) (length b))) def.
   Proof. admit. Qed.
 
   Lemma map_fst_combine: forall A B (a: list A) (b: list B),
