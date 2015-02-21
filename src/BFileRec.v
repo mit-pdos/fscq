@@ -108,22 +108,24 @@ Section RECBFILE.
 
   Theorem array_item_pairs_app: forall blocks fdata b v,
     array_item_pairs blocks (list2nmem fdata)
-    -> length blocks = length fdata
     -> b = valu_to_block v
+    -> Rec.well_formed b
     -> (array_item_pairs (blocks ++ b :: nil))%pred (list2nmem (fdata ++ v :: nil)).
   Proof.
     unfold array_item_pairs; intros.
     destruct_lift H.
     rewrite map_app; simpl.
     rewrite listapp_progupd.
-    eapply arrayN_app_progupd with (v := v) in H.
-    rewrite map_length in H.
-    rewrite <- H0.
+    eapply arrayN_app_progupd with (v := v) in H as Hx.
+    rewrite map_length in Hx.
+    replace (length fdata) with (length blocks).
     pred_apply; cancel.
     unfold rep_block, valu_to_block.
     rewrite valu_rep_id; auto.
     apply Forall_app; auto.
-    admit. (* well-formed *)
+    apply list2nmem_array_eq in H.
+    rewrite H.
+    rewrite map_length; auto.
   Qed.
 
   Lemma fold_right_app_init : forall A l a,
@@ -199,7 +201,7 @@ Section RECBFILE.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
-    instantiate (y := $0).
+    instantiate (def := $0).
 
     unfold sel, upd; autorewrite with core.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
@@ -384,6 +386,7 @@ Section RECBFILE.
     rewrite Rec.of_to_id.
     f_equal.
     admit. (* well-formed *)
+    admit.
 
     rewrite fold_right_app; simpl; rewrite app_nil_r.
     rewrite fold_right_app_init; f_equal; auto.
