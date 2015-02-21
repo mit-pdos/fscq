@@ -309,7 +309,7 @@ Module MEMLOG.
     cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
     rx (ms_empty, cs).
 
-  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, valid_size, synced_list.
+  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_unsynced, valid_size, synced_list.
 
   Hint Extern 0 (okToUnify (log_rep _ _ _) (log_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
@@ -711,6 +711,7 @@ Module MEMLOG.
     POST:mscs' rep xp (FlushedUnsyncTxn m1 m2) mscs'
     CRASH      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush_unsync xp mscs.
+  Proof.
     admit.
   Qed.
 
@@ -723,6 +724,7 @@ Module MEMLOG.
     POST:mscs' rep xp (FlushedTxn m1 m2) mscs'
     CRASH      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush_sync xp mscs.
+  Proof.
     admit.
   Qed.
 
