@@ -138,6 +138,18 @@ Module BFILE.
     auto.
   Qed.
 
+  Theorem bfdata_bound' : forall F m bxp ixp l i,
+    (F * rep bxp ixp l)%pred m
+    -> wordToNat i < length l
+    -> length (BFData (sel l i bfile0)) <= wordToNat (natToWord addrlen INODE.blocks_per_inode).
+  Proof.
+    intros.
+    erewrite wordToNat_natToWord_bound.
+    eapply bfdata_bound; eauto.
+    instantiate (bound := INODE.wnr_direct ^+ INODE.wnr_indirect).
+    auto.
+  Qed.
+
 
   (* correctness theorems *)
 

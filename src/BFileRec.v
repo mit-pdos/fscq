@@ -69,15 +69,80 @@ Section RECBFILE.
      [[ array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) ]] *
      [[ vs = fold_right (@app _) nil vs_nested ]])%pred.
 
+
+  Definition item0_list := valu_to_block $0.
+
+  Lemma valu_to_block_zero:
+    block_zero = valu_to_block $0.
+  Proof.
+    unfold block_zero, valu_to_block.
+    unfold RecArray.valu_to_block, valu_to_wreclen.
+    f_equal.
+    rewrite blocksz_ok.
+    simpl; auto.
+  Qed.
+
+  Lemma item0_list_block_zero:
+    block_zero = item0_list.
+  Proof.
+    unfold item0_list.
+    apply valu_to_block_zero.
+  Qed.
+
+  Hint Resolve valu_to_block_zero.
+  Hint Resolve item0_list_block_zero.
+
+  Theorem array_item_pairs_app_eq: forall blocks fdata newfd v,
+    (array_item_pairs blocks)%pred (list2nmem fdata)
+    -> (array_item_pairs blocks * (length fdata) |-> v)%pred (list2nmem newfd)
+    -> newfd = fdata ++ v :: nil.
+  Proof.
+    unfold array_item_pairs.
+    intros.
+    eapply list2nmem_array_app_eq.
+    pred_apply; cancel.
+    destruct_lift H.
+    apply list2nmem_array_eq in H.
+    subst; auto.
+  Qed.
+
+  Theorem array_item_pairs_app: forall blocks fdata b v,
+    array_item_pairs blocks (list2nmem fdata)
+    -> length blocks = length fdata
+    -> b = valu_to_block v
+    -> (array_item_pairs (blocks ++ b :: nil))%pred (list2nmem (fdata ++ v :: nil)).
+  Proof.
+    unfold array_item_pairs; intros.
+    destruct_lift H.
+    rewrite map_app; simpl.
+    rewrite listapp_progupd.
+    eapply arrayN_app_progupd with (v := v) in H.
+    rewrite map_length in H.
+    rewrite <- H0.
+    pred_apply; cancel.
+    unfold rep_block, valu_to_block.
+    rewrite valu_rep_id; auto.
+    apply Forall_app; auto.
+    admit. (* well-formed *)
+  Qed.
+
+  Lemma fold_right_app_init : forall A l a,
+    (fold_right (app (A:=A)) nil l) ++ a  = fold_right (app (A:=A)) a l.
+  Proof.
+    induction l; firstorder; simpl.
+    rewrite <- IHl with (a := a0).
+    rewrite app_assoc; auto.
+  Qed.
+
   Hint Rewrite map_length.
   Hint Rewrite seq_length.
   Hint Resolve wlt_lt.
   Hint Rewrite sel_map_seq using auto.
   Hint Rewrite rep_valu_id.
 
-
   Ltac rec_bounds := autorewrite with defaults core; eauto;
-                     try list2nmem_bound; try solve_length_eq; eauto.
+                     try list2nmem_bound;
+                     try solve_length_eq; eauto.
 
   Theorem bf_get_pair_ok : forall lxp bxp ixp inum mscs block_ix pos,
     {< F A mbase m flist f ilistlist,
@@ -161,6 +226,8 @@ Section RECBFILE.
   Hint Extern 1 ({{_}} progseq (bf_get_pair _ _ _ _ _ _) _) => apply bf_get_pair_ok : prog.
   Hint Extern 1 ({{_}} progseq (bf_put_pair _ _ _ _ _ _ _) _) => apply bf_put_pair_ok : prog.
 
+
+
   Definition bf_get T lxp ixp inum idx mscs rx : prog T :=
     let2 (mscs, i) <- bf_get_pair lxp ixp inum (idx ^/ items_per_valu)
                                                (idx ^% items_per_valu) mscs;
@@ -171,6 +238,22 @@ Section RECBFILE.
                                      (idx ^% items_per_valu) v mscs;
     rx mscs.
 
+  Definition bf_getlen T lxp ixp inum mscs rx : prog T :=
+    let2 (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
+    let r := (len ^* items_per_valu)%word in
+    rx (mscs, r).
+
+  (* extending one block and put v at the first entry *)
+  Definition bf_extend T lxp bxp ixp inum v mscs rx : prog T :=
+    let2 (mscs1, off) <- BFILE.bflen lxp ixp inum mscs;
+    let2 (mscs2, r) <- BFILE.bfgrow lxp bxp ixp inum mscs1;
+    If (Bool.bool_dec r true) {
+      let ib := rep_block (upd (valu_to_block $0) $0 v) in
+      mscs3 <- BFILE.bfwrite lxp ixp inum off ib mscs2;
+      rx (mscs3, true)
+    } else {
+      rx (mscs2, false)
+    }.
 
   Lemma helper_wlt_wmult_wdiv_lt: forall sz (a b : word sz) (c : nat),
     wordToNat b <> 0 -> (a < ($ c ^* b))%word
@@ -262,12 +345,70 @@ Section RECBFILE.
     pred_apply; cancel.
   Qed.
 
+  Theorem bf_extend_ok : forall lxp bxp ixp inum v mscs,
+    {< F A mbase m flist f ilist,
+    PRE   MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+          array_item_file f ilist *
+          [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+          [[ Rec.well_formed v ]]
+    POST: (mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+          ([[ r = false ]] \/
+           [[ r = true ]] * exists flist' f',
+           array_item_file f' (ilist ++ (upd item0_list $0 v)) *
+           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] )
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} bf_extend lxp bxp ixp inum v mscs.
+  Proof.
+    unfold bf_extend, array_item_file.
+    step.
+    step.
+    step; [ step | step | | step ].
+    eapply pimpl_ok2; eauto with prog; intros.
+    erewrite wordToNat_natToWord_bound.
+    cancel.
+    step.
+    eapply pimpl_or_r; right.
+    norm; [ cancel | intuition ].
+    4: eauto.
+    4: eauto.
+
+    instantiate (a7 := l1 ++ (upd item0_list $0 v) :: nil).
+    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b4); eauto.
+    repeat rewrite app_length; rec_bounds.
+    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b4); eauto.
+    apply array_item_pairs_app; auto.
+    unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
+    rewrite valu_wreclen_id.
+    rewrite Rec.of_to_id.
+    f_equal.
+    admit. (* well-formed *)
+
+    rewrite fold_right_app; simpl; rewrite app_nil_r.
+    rewrite fold_right_app_init; f_equal; auto.
+    cancel.
+    repeat rewrite_list2nmem_pred.
+    eapply BFILE.bfdata_bound'; eauto.
+
+    Grab Existential Variables.
+    exact $0.
+    exact emp.
+    exact BFILE.bfile0.
+    exact emp.
+    exact nil.
+    exact emp.
+    exact bxp.
+  Qed.
+
+
+
 
 End RECBFILE.
 
 Hint Extern 1 ({{_}} progseq (bf_get _ _ _ _ _ _ _ _) _) => apply bf_get_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
-
+Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 
 (* Two BFileRec arrays should always be equal *)
 Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>

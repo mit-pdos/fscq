@@ -274,6 +274,23 @@ Proof.
   subst. assumption.
 Qed.
 
+Lemma Forall_app: forall A f l (a : A),
+  Forall f l -> f a -> Forall f (l ++ a :: nil).
+Proof.
+  intros.
+  rewrite Forall_forall.
+  rewrite Forall_forall in H.
+  intros.
+  apply in_app_or in H1.
+  destruct H1.
+  apply H; auto.
+  simpl in H1.
+  destruct H1.
+  subst; auto.
+  exfalso; auto.
+Qed.
+
+
 Lemma updN_selN_eq : forall T (l : list T) ix default,
   updN l ix (selN l ix default) = l.
 Proof.

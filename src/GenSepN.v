@@ -340,7 +340,7 @@ Proof.
 Qed.
 
 
-Theorem list2nmem_array_app_eq: forall A V (F : @pred _ eq_nat_dec V) (l l' : list A) a,
+Theorem list2nmem_array_app_eq: forall A (l l' : list A) a,
   (arrayN 0 l * (length l) |-> a)%pred (list2nmem l')
   -> l' = (l ++ a :: nil).
 Proof.

@@ -108,7 +108,7 @@ Section RECARRAY.
   Qed.
 
   Definition valu_to_wreclen (v : valu) : word (Rec.len blocktype).
-    rewrite blocksz_ok in v. refine v.
+    rewrite blocksz_ok in v.  refine v.
   Defined.
 
   Definition wreclen_to_valu (v : word (Rec.len blocktype)) : valu.
@@ -134,6 +134,26 @@ Section RECARRAY.
     intros.
     rewrite valu_wreclen_id.
     apply Rec.of_to_id; assumption.
+  Qed.
+
+  Lemma wreclen_valu_id : forall v,
+    wreclen_to_valu (valu_to_wreclen v) = v.
+  Proof.
+    unfold valu_to_wreclen, wreclen_to_valu, eq_rec, eq_rec_r.
+    intros.
+    rewrite eq_rect_nat_double.
+    rewrite <- eq_rect_eq_dec; [| apply eq_nat_dec ].
+    reflexivity.
+  Qed.
+
+  Lemma valu_rep_id : forall v,
+    rep_block (valu_to_block v) = v.
+  Proof.
+    unfold valu_to_block, rep_block.
+    unfold eq_rec_r, eq_rec.
+    intros.
+    rewrite Rec.to_of_id.
+    rewrite wreclen_valu_id; auto.
   Qed.
 
   Definition array_item_pairs (xp : xparams) (vs : list block) : pred :=
