@@ -14,6 +14,7 @@ Require Import Inode.
 Require Import List.
 Require Import Balloc.
 Require Import DirAlloc.
+Require Import Arith.
 
 Set Implicit Arguments.
 Import ListNotations.
