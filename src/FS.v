@@ -8,6 +8,7 @@ Require Import Pred.
 Require Import DirName.
 Require Import Hoare.
 Require Import GenSep.
+Require Import GenSepN.
 Require Import SepAuto.
 Require Import Idempotent.
 Require Import Inode.
@@ -51,8 +52,8 @@ Theorem read_block_ok : forall lxp bxp ixp inum off mscs,
   {< m F flist A f B v,
   PRE    MEMLOG.rep lxp (NoTransaction m) mscs *
          [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-         [[ (A * inum |-> f)%pred (list2mem flist) ]] *
-         [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f)) ]]
+         [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+         [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST:(mscs',r)
          MEMLOG.rep lxp (NoTransaction m) mscs' *
          [[ r = v ]]
@@ -77,8 +78,8 @@ Theorem read_block_recover_ok : forall lxp bxp ixp inum off mscs,
   {< m F flist A f B v,
   PRE     MEMLOG.rep lxp (NoTransaction m) mscs *
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-          [[ (A * inum |-> f)%pred (list2mem flist) ]] *
-          [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f)) ]]
+          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST:(mscs',r)
           MEMLOG.rep lxp (NoTransaction m) mscs' *
           [[ r = v ]]
@@ -117,20 +118,20 @@ Theorem write_block_inbounds_ok : forall lxp bxp ixp inum off v mscs,
   {< m F flist A f B v0,
   PRE     MEMLOG.rep lxp (NoTransaction m) mscs *
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-          [[ (A * inum |-> f)%pred (list2mem flist) ]] *
-          [[ (B * off |-> v0)%pred (list2mem (BFILE.BFData f)) ]]
+          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+          [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
   POST:(mscs',ok)
           [[ ok = false ]] * MEMLOG.rep lxp (NoTransaction m) mscs' \/
           [[ ok = true ]] * exists m' flist' f',
           MEMLOG.rep lxp (NoTransaction m') mscs' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-          [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-          [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
   CRASH   MEMLOG.log_intact lxp m \/ exists m' flist' f',
           MEMLOG.log_intact lxp m' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-          [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-          [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
   >} write_block_inbounds lxp ixp inum off v mscs.
 Proof.
   unfold write_block_inbounds.
@@ -144,21 +145,21 @@ Theorem write_block_inbounds_recover_ok : forall lxp bxp ixp inum off v mscs,
   {< m F flist A f B v0,
   PRE     MEMLOG.rep lxp (NoTransaction m) mscs *
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-          [[ (A * inum |-> f)%pred (list2mem flist) ]] *
-          [[ (B * off |-> v0)%pred (list2mem (BFILE.BFData f)) ]]
+          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+          [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
   POST:(mscs',ok)
           [[ ok = false ]] * MEMLOG.rep lxp (NoTransaction m) mscs' \/
           [[ ok = true ]] * exists m' flist' f',
           MEMLOG.rep lxp (NoTransaction m') mscs' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-          [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-          [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
   CRASH:mscs'
           MEMLOG.rep lxp (NoTransaction m) mscs' \/ exists m' flist' f',
           MEMLOG.rep lxp (NoTransaction m') mscs' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-          [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-          [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]]
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
   >} write_block_inbounds lxp ixp inum off v mscs >> MEMLOG.recover lxp.
 Proof.
   intros.
@@ -166,8 +167,8 @@ Proof.
   exists (MEMLOG.log_intact lxp m \/ exists m' flist' f',
           MEMLOG.log_intact lxp m' *
           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-          [[ (A * inum |-> f')%pred (list2mem flist') ]] *
-          [[ (B * off |-> v)%pred (list2mem (BFILE.BFData f')) ]])%pred.
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred.
 
   intros.
   eapply pimpl_ok3.
@@ -251,13 +252,13 @@ Theorem set_size_helper_ok : forall lxp bxp ixp inum size mscs,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ # size <= INODE.blocks_per_inode ]] *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * inum |-> f)%pred (list2mem flist) ]]
+             [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST:(mscs',r)
              [[ r = false ]] * MEMLOG.log_intact lxp mbase \/
              [[ r = true ]] * exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-             [[ (A * inum |-> f')%pred (list2mem flist') ]] *
+             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ BFILE.BFData f' = (firstn #size (BFILE.BFData f)) ++
                                   (MEMLOG.repeat (#size - length (BFILE.BFData f)) $0) ]]
     CRASH    MEMLOG.log_intact lxp mbase
