@@ -16,6 +16,7 @@ Require Import List.
 Require Import Balloc.
 Require Import DirAlloc.
 Require Import Arith.
+Require Import Array.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -260,7 +261,7 @@ Theorem set_size_helper_ok : forall lxp bxp ixp inum size mscs,
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ BFILE.BFData f' = (firstn #size (BFILE.BFData f)) ++
-                                  (MEMLOG.repeat (#size - length (BFILE.BFData f)) $0) ]]
+                                  (repeat $0 (#size - length (BFILE.BFData f))) ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} set_size_helper lxp bxp ixp inum size mscs.
 Proof.

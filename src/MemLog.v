@@ -190,18 +190,7 @@ Module MEMLOG.
     cancel.
   Qed.
 
-  Fixpoint repeat T n (t: T) :=
-    match n with
-    | 0 => nil
-    | S n' => t :: repeat n' t
-    end.
-
-  Lemma repeat_length: forall T n t, length (@repeat T n t) = n.
-  Proof.
-    induction n; intros; simpl; auto.
-  Qed.
-
-  Definition synced_list m: list valuset := List.combine m (repeat (length m) nil).
+  Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
 
   Definition data_rep (xp: xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
     array $0 m $1.
@@ -1156,8 +1145,8 @@ Module MEMLOG.
   Hint Resolve crash_invariant_emp.
 
   Lemma crash_invariant_synced_array: forall l start stride,
-    crash_xform (array start (List.combine l (repeat (length l) nil)) stride) =p=>
-    array start (List.combine l (repeat (length l) nil)) stride.
+    crash_xform (array start (List.combine l (repeat nil (length l))) stride) =p=>
+    array start (List.combine l (repeat nil (length l))) stride.
   Proof.
     unfold array.
     induction l; intros; simpl; auto.
