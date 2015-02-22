@@ -303,31 +303,92 @@ Section RECBFILE.
   Hint Resolve wmod_upper_bound.
   Hint Resolve upd_divmod.
 
+  Lemma block_length_is : forall x (vs : list block),
+    Forall Rec.well_formed vs
+    -> In x vs
+    -> length x = # items_per_valu.
+  Proof.
+    intros.
+    rewrite Forall_forall in H.
+    apply H in H0.
+    apply H0.
+  Qed.
+
+  Lemma fold_right_add_const : forall (vs : list block),
+    Forall Rec.well_formed vs ->
+    fold_right Nat.add 0 (map (length (A:=item)) vs) = length vs * #items_per_valu.
+  Proof.
+    induction vs; intros; simpl; auto.
+    erewrite IHvs; auto.
+    simpl in H. 
+    f_equal.
+    eapply block_length_is; eauto.
+    simpl; left; auto.
+    rewrite Forall_forall in *.
+    intros; apply H; auto.
+    simpl; right; auto.
+  Qed.
+
+  Lemma block_length_fold_right : forall (bl : list block),
+    Forall Rec.well_formed bl
+    -> $ (length (fold_right (app (A:=item)) nil bl)) 
+       = ($ (length bl) ^* items_per_valu)%word.
+  Proof.
+    intros.
+    rewrite concat_length.
+    rewrite fold_right_add_const by auto.
+    word2nat_auto.
+  Qed.
+
+  Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
+    {< F A mbase m flist f ilist,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           array_item_file f ilist *
+           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+           [[ r = $ (length ilist) ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} bf_getlen lxp ixp inum mscs.
+  Proof.
+    unfold bf_getlen, array_item_file.
+    hoare.
+    unfold array_item_pairs in H8.
+    destruct_lift H8.
+    rewrite block_length_fold_right by auto.
+    subst; rec_bounds.
+  Qed.
+
   Theorem bf_get_ok : forall lxp bxp ixp inum idx mscs,
     {< F A mbase m flist f ilist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            array_item_file f ilist *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ (idx < $ (length (BFILE.BFData f)) ^* items_per_valu)%word ]]
+           [[ (idx < $ (length ilist))%word ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = sel ilist idx item_zero ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bf_get lxp ixp inum idx mscs.
   Proof.
-    unfold bf_get, array_item_file.
+    unfold bf_get, array_item_file, array_item_pairs.
     intros; eapply pimpl_ok2; eauto with prog; intros.
     norm.
     cancel.
     repeat rewrite_list2nmem_pred.
+    unfold array_item_pairs.
     intuition; try (eauto; pred_apply; cancel).
 
+    apply helper_wlt_wmult_wdiv_lt; auto.
+    subst; rewrite <- H7.
+    rewrite <- block_length_fold_right; auto.
+
     step.
-    subst; unfold array_item_pairs, rep_block in H9.
-    destruct_lift H9.
+    subst; unfold rep_block in H.
     apply nested_sel_divmod_concat; auto.
-    eapply Forall_impl; [ | apply H8 ].
+    eapply Forall_impl; [ | apply H9 ].
     unfold Rec.well_formed.
     simpl; intuition.
   Qed.
@@ -338,7 +399,7 @@ Section RECBFILE.
              array_item_file f ilist *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-             [[ (idx < $ (length (BFILE.BFData f)) ^* items_per_valu)%word ]] *
+             [[ (idx < $ (length ilist))%word ]] *
              [[ Rec.well_formed v ]]
     POST:mscs' exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
@@ -354,6 +415,10 @@ Section RECBFILE.
     repeat rewrite_list2nmem_pred.
     unfold array_item_pairs.
     intuition; try (eauto; pred_apply; cancel).
+
+    apply helper_wlt_wmult_wdiv_lt; auto.
+    subst; rewrite <- H8.
+    rewrite <- block_length_fold_right; auto.
 
     eapply pimpl_ok2; eauto with prog; intros.
     norm. cancel.
@@ -421,14 +486,18 @@ Section RECBFILE.
   Qed.
 
 
-
-
 End RECBFILE.
 
+Check bf_getlen.
+
+Hint Extern 1 ({{_}} progseq (bf_getlen _ _ _ _ _) _) => apply bf_getlen_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_get _ _ _ _ _ _ _ _) _) => apply bf_get_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
-Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 
 (* Two BFileRec arrays should always be equal *)
 Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>
   unfold okToUnify; constructor : okToUnify.
+
+
+
