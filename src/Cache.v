@@ -339,7 +339,7 @@ Module BUFCACHE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync_array _ _ _ _) _) => apply sync_array_ok : prog.
-
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 End BUFCACHE.
 
 Global Opaque BUFCACHE.init.
