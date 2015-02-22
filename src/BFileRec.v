@@ -92,6 +92,23 @@ Section RECBFILE.
   Hint Resolve valu_to_block_zero.
   Hint Resolve item0_list_block_zero.
 
+  Lemma block_upd_well_formed: forall (v : item) (b : block) i,
+    Rec.well_formed v
+    -> Rec.well_formed b
+    -> @Rec.well_formed blocktype (upd b i v).
+  Proof.
+    intros.
+    split.
+    destruct H0.
+    rewrite length_upd; auto.
+    apply Forall_upd.
+    apply H0.
+    apply H.
+  Qed.
+
+  Hint Resolve block_upd_well_formed.
+  Hint Resolve Rec.of_word_length.
+
   Theorem array_item_pairs_app_eq: forall blocks fdata newfd v,
     (array_item_pairs blocks)%pred (list2nmem fdata)
     -> (array_item_pairs blocks * (length fdata) |-> v)%pred (list2nmem newfd)
@@ -383,10 +400,9 @@ Section RECBFILE.
     apply array_item_pairs_app; auto.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
     rewrite valu_wreclen_id.
-    rewrite Rec.of_to_id.
+    rewrite Rec.of_to_id by auto.
     f_equal.
-    admit. (* well-formed *)
-    admit.
+    apply block_upd_well_formed; auto; apply Rec.of_word_length.
 
     rewrite fold_right_app; simpl; rewrite app_nil_r.
     rewrite fold_right_app_init; f_equal; auto.
