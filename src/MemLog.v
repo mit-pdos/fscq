@@ -3,6 +3,7 @@ Require Import Bool.
 Require Import List.
 Require Import FMapAVL.
 Require Import FMapFacts.
+Require Import Classes.SetoidTactics.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Pred.
@@ -225,7 +226,7 @@ Module MEMLOG.
     forall a, ~ In a ms -> sel l a nil = nil.
 
   Definition equal_unless_in T (ms: list addr) (m1: list T) (m2: list T) (def: T) :=
-    forall a, ~ In a ms -> sel m1 a def = sel m2 a def.
+    length m1 = length m2 /\ forall n, (~ goodSize addrlen n \/ ~ In ($ n) ms) -> selN m1 n def = selN m2 n def.
 
   Definition rep_inner xp (st: logstate) (ms: memstate) :=
     (* For now, support just one descriptor block, at the start of the log. *)
@@ -332,9 +333,7 @@ Module MEMLOG.
     >} init_cs xp cs.
   Proof.
     unfold init_cs, log_uninitialized; log_unfold.
-    intros.
     hoare.
-    pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init_cs _ _) _) => apply init_cs_ok : prog.
@@ -372,8 +371,6 @@ Module MEMLOG.
   Proof.
     unfold begin; log_unfold.
     hoare.
-
-    pred_apply; cancel.
     unfold valid_entries; intuition; inversion H.
   Qed.
 
@@ -394,7 +391,6 @@ Module MEMLOG.
     unfold abort; log_unfold.
     destruct mscs as [ms cs].
     hoare.
-    pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
@@ -428,11 +424,6 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Ltac inv_pair_eq :=
-    match goal with
-    | [ H: (?a, ?b) = (?c, ?d) |- _ ] => inversion H; clear H
-    end.
-
   Theorem write_ok : forall xp mscs a v,
     {< m1 m2 F' v0,
     PRE        rep xp (ActiveTxn m1 m2) mscs * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
@@ -443,10 +434,8 @@ Module MEMLOG.
   Proof.
     unfold write; log_unfold.
     destruct mscs as [ms cs].
-    hoare; repeat inv_pair_eq; subst.
+    hoare.
 
-    cancel.
-    pred_apply; cancel.
     apply valid_entries_add; eauto.
     unfold indomain'.
     erewrite <- replay_length.
@@ -491,10 +480,25 @@ Module MEMLOG.
 
   Ltac solve_lengths' :=
     repeat (progress (autorewrite with lengths; repeat rewrite Nat.min_l by solve_lengths'; repeat rewrite Nat.min_r by solve_lengths'));
-    repeat rewrite Map.cardinal_1 in *;
     simpl; try word2nat_solve.
 
-  Ltac solve_lengths := intros; word2nat_clear; simpl; word2nat_simpl; word2nat_rewrites; unfold valuset in *; solve_lengths'.
+  Ltac solve_lengths_prepare :=
+    intros; word2nat_clear; simpl;
+    (* Stupidly, this is like 5x faster than [rewrite Map.cardinal_1 in *] ... *)
+    repeat match goal with
+    | [ H : context[Map.cardinal] |- _ ] => rewrite Map.cardinal_1 in H
+    | [ |- context[Map.cardinal] ] => rewrite Map.cardinal_1
+    end.
+
+  Ltac solve_lengths_prepped :=
+    try (match goal with
+      | [ |- context[{{ _ }} _] ] => fail 1
+      | [ |- _ =p=> _ ] => fail 1
+      | _ => idtac
+      end;
+      unfold valuset in *; word2nat_clear; word2nat_simpl; word2nat_rewrites; solve_lengths').
+
+  Ltac solve_lengths := solve_lengths_prepare; solve_lengths_prepped.
 
   Lemma upd_prepend_length: forall l a v, length (upd_prepend l a v) = length l.
   Proof.
@@ -515,9 +519,7 @@ Module MEMLOG.
     unfold read; log_unfold.
     destruct mscs as [ms cs]; simpl; intros.
 
-    case_eq (Map.find a ms); hoare; repeat inv_pair_eq; subst.
-    cancel.
-    pred_apply; cancel.
+    case_eq (Map.find a ms); hoare.
 
     eapply list2mem_sel with (def := $0) in H1.
     apply Map.find_2 in H.
@@ -528,7 +530,6 @@ Module MEMLOG.
     unfold valid_entries in *.
     eauto.
 
-    pred_apply; cancel.
     solve_lengths.
     erewrite <- replay_length.
     eapply list2mem_inbound; eauto.
@@ -570,7 +571,7 @@ Module MEMLOG.
           * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i))%pred d' ]]
     OnCrash crash
     Begin
-      cs <- BUFCACHE.write (LogCache xp) (LogData xp ^+ i)
+      cs <- BUFCACHE.write_array (LogCache xp) (LogData xp ^+ i) $0
         (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
@@ -596,7 +597,7 @@ Module MEMLOG.
           * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms))%pred d' ]]
     OnCrash crash
     Begin
-      cs <- BUFCACHE.sync (LogCache xp) (LogData xp ^+ i) cs;
+      cs <- BUFCACHE.sync_array (LogCache xp) (LogData xp ^+ i) $0 cs;
       lrx cs
     Rof;
     rx (ms, cs).
@@ -661,6 +662,10 @@ Module MEMLOG.
   Ltac array_sort' :=
     eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
     repeat rewrite <- sep_star_assoc;
+    match goal with
+    | [ |- ?p =p=> ?p ] => fail 1
+    | _ => idtac
+    end;
     repeat match goal with
     | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
       assert_lte a2 a1;
@@ -668,15 +673,27 @@ Module MEMLOG.
       rewrite (sep_star_assoc p (array a1 l1 s));
       rewrite (sep_star_comm (array a1 l1 s)); rewrite <- (sep_star_assoc p (array a2 l2 s))
     end;
+    (* make sure we can prove it's sorted *)
+    match goal with
+    | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
+      (assert_lte a1 a2; fail 1) || fail 2
+    | _ => idtac
+    end;
     eapply pimpl_trans; rewrite <- emp_star; [ apply pimpl_refl |].
 
   Ltac array_sort :=
     word2nat_clear; word2nat_auto; [ array_sort' | .. ].
 
   Lemma singular_array: forall T a (v: T),
-    a |-> v =p=> array a [v] $1.
+    a |-> v <=p=> array a [v] $1.
   Proof.
-    intros. cancel.
+    intros. split; cancel.
+  Qed.
+
+  Lemma equal_arrays: forall T (l1 l2: list T) a1 a2,
+    a1 = a2 -> l1 = l2 -> array a1 l1 $1 =p=> array a2 l2 $1.
+  Proof.
+    cancel.
   Qed.
 
   Lemma array_app: forall T (l1 l2: list T) a1 a2,
@@ -684,35 +701,64 @@ Module MEMLOG.
     array a1 l1 $1 * array a2 l2 $1 <=p=> array a1 (l1 ++ l2) $1.
   Proof.
     induction l1.
-    (* XXX make word2nat_auto handle all these *)
-    intros; word2nat_auto; simpl in *; rewrite Nat.add_0_r in *; word2nat_auto; split; cancel.
+    intros; word2nat_auto; split; cancel; apply equal_arrays; word2nat_auto.
     intros; simpl; rewrite sep_star_assoc. rewrite IHl1. auto.
-    word2nat_auto; simpl in *; word2nat_auto.
+    simpl in *.
+    word2nat_simpl. rewrite <- plus_assoc. auto.
   Qed.
 
-  Lemma equal_arrays: forall T (l1 l2: list T) a,
-    l1 = l2 -> array a l1 $1 =p=> array a l2 $1.
-  Proof.
-    cancel.
-  Qed.
+  Ltac rewrite_singular_array :=
+    repeat match goal with
+    | [ |- context[@ptsto addr (@weq addrlen) ?V ?a ?v] ] =>
+      setoid_replace (@ptsto addr (@weq addrlen) V a v)%pred
+      with (array a [v] $1) by (apply singular_array)
+    end.
+
+  Definition hidden_array := @array (valu * list valu).
+
+  Ltac array_cancel_trivial :=
+    unfold hidden_array in *;
+    match goal with
+    | [ |- _ =p=> ?x * array _ _ _ ] => first [ is_evar x | is_var x ]; solve [ cancel ]
+    | [ |- _ =p=> array _ _ _ * ?x ] => first [ is_evar x | is_var x ]; solve [ cancel ]
+    end.
 
   Ltac array_match :=
-    repeat rewrite singular_array;
+    unfold hidden_array in *;
+    match goal with (* early out *)
+    | [ |- _ =p=> _ * array _ _ _ ] => idtac
+    | [ |- _ =p=> _ * _ |-> _ ] => idtac
+    | [ |- _ =p=> array _ _ _ ] => idtac
+    end;
+    solve_lengths_prepare;
+    rewrite_singular_array;
     array_sort;
-    repeat (rewrite array_app; [ | solve_lengths ]); [ repeat rewrite <- app_assoc | .. ];
+    repeat (rewrite array_app; [ | solve_lengths_prepped ]); [ repeat rewrite <- app_assoc | .. ];
     try apply pimpl_refl;
-    try apply equal_arrays.
-
+    try (apply equal_arrays; [ solve_lengths_prepped | try reflexivity ]).
 
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2,
     PRE        rep xp (ActiveTxn m1 m2) mscs *
-               [[ wordToNat (LogLen xp) <= Map.cardinal (fst mscs) ]]
+               [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
     POST:mscs' rep xp (FlushedUnsyncTxn m1 m2) mscs'
     CRASH      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush_unsync xp mscs.
   Proof.
-    admit.
+    unfold flush_unsync; log_unfold; unfold avail_region.
+    destruct mscs as [ms cs].
+    intros.
+    solve_lengths_prepare.
+    Ltac solver := try (array_cancel_trivial || array_match); solve_lengths_prepped.
+    step_with idtac solver.
+    step_with idtac solver.
+    step_with idtac solver.
+    instantiate (a3 := nil); auto.
+    fold hidden_array in *.
+    step_with idtac solver.
+    step_with idtac solver.
+    6: fold hidden_array in *; step_with idtac solver.
+
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
@@ -720,7 +766,7 @@ Module MEMLOG.
   Theorem flush_sync_ok : forall xp mscs,
     {< m1 m2,
     PRE        rep xp (FlushedUnsyncTxn m1 m2) mscs *
-               [[ wordToNat (LogLen xp) <= Map.cardinal (fst mscs) ]]
+               [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
     POST:mscs' rep xp (FlushedTxn m1 m2) mscs'
     CRASH      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush_sync xp mscs.
@@ -1067,8 +1113,6 @@ Module MEMLOG.
   (** The log is in a valid state with (after recovery) represents either disk state [old] or [cur] *)
   Definition would_recover_either xp old cur :=
     (would_recover_old xp old \/ might_recover_cur xp old cur)%pred.
-
-  Definition hidden_array := @array valuset.
 
   Ltac or_r := apply pimpl_or_r; right.
   Ltac or_l := apply pimpl_or_r; left.
