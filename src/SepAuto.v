@@ -433,7 +433,15 @@ Proof.
 Qed.
 
 Ltac cancel' := repeat (cancel_one || delay_one);
-                try solve [ unfold stars at 2 3; simpl; apply finish_frame ].
+                try solve [ unfold stars at 2 3; simpl;
+                  match goal with
+                  | [ |- stars nil * ?P =p=> ?Q] =>
+                    match P with
+                    | context[sep_star] => match Q with context[sep_star] => fail 2 end
+                    | _ => idtac
+                    end;
+                    apply finish_frame
+                  end ].
 
 Theorem split_or_one : forall AT AEQ V (q : @pred AT AEQ V) pa pb ps F,
   stars (pa :: ps) * F =p=> q
@@ -736,8 +744,13 @@ Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
 
 Create HintDb false_precondition_hint.
 
+Ltac inv_pair_eq :=
+  match goal with
+  | [ H: (?a, ?b) = (?c, ?d) |- _ ] => inversion H; clear H
+  end.
+
 Ltac norm := unfold pair_args_helper;
-             norm'l; repeat deex; repeat destruct_type valuset;
+             norm'l; repeat deex; repeat destruct_type valuset; repeat inv_pair_eq; subst;
              (* Each iteration of [split_or_l] reverses the list of predicates
               * inside [stars].  To allow [progress] to detect when there's
               * nothing left to split, reverse the list twice.
@@ -763,11 +776,11 @@ Ltac cancel_with t :=
   intuition;
   try ( pred_apply; cancel_with t );
   try congruence;
-  try t;
   unfold stars; simpl;
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
-  end.
+  end;
+  try t.
 
 Ltac cancel := cancel_with idtac.
 
