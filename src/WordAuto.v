@@ -242,19 +242,30 @@ Ltac autorewrite_fast :=
   | [ |- _ ] => autorewrite_fast_goal
   end.
 
+Ltac goodsizes := idtac;
+  repeat match goal with
+  | [ w: word ?sz |- _ ] =>
+    match goal with
+    | [ H: goodSize sz (wordToNat w) |- _ ] => fail 1
+    | _ => idtac
+    end;
+    assert (goodSize sz (wordToNat w)) by (apply wordToNat_bound)
+  end.
+
 Ltac word2nat_simpl :=
-  try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in); (* XXX still causes hangs: simpl; *)
+  try (apply nat_of_N_eq || apply Nneq_in || apply Nlt_in || apply Nge_in || apply N2Nat.inj || apply wordToNat_inj); (* XXX still causes hangs: simpl; *)
   unfold wplus, wminus, wmult, wdiv, wmod, wordBin in *;
   repeat match goal with
   | [ H : _ <> _ |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); nsimp H
   | [ H : _ = _ -> False |- _ ] => (apply Nneq_out in H || apply Wneq_out in H); nsimp H
-  | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal wordToNat) in H
+  | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal (@wordToNat _)) in H
              || apply Nlt_out in H || apply Nge_out in H); nsimp H
   end;
   try autorewrite_fast;
   repeat match goal with
   | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
-  end.
+  end;
+  goodsizes.
 
 Ltac word2nat_solve := unfold goodSize in *; subst;
   (omega ||
@@ -289,7 +300,10 @@ with word2nat_rewrites :=
   || rewrite Ninj_mod); word2nat_simpl)
 
 with word2nat_auto :=
-  intros; word2nat_simpl; word2nat_rewrites; try word2nat_solve.
+  intros; word2nat_simpl; word2nat_rewrites; try word2nat_solve;
+  repeat match goal with
+  | [ H : _ |- _ ] => apply wordToNat_inj in H
+  end.
 
 Lemma wdiv_lt_upper_bound :
   forall sz (a b c:word sz), b <> $0 -> (a < b ^* c)%word -> (a ^/ b < c)%word.
@@ -305,6 +319,11 @@ Qed.
 
 Lemma wlt_mult_inj : forall sz (a b c:word sz),
   (a < b ^* c)%word -> wordToNat a < wordToNat b * wordToNat c.
+Proof.
+  word2nat_auto.
+Qed.
+
+Lemma test_1: forall sz (a: word sz), a = a ^+ $ 0.
 Proof.
   word2nat_auto.
 Qed.
