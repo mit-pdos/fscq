@@ -184,36 +184,33 @@ Module DIR.
        [[ listpred dmatch delist dmap ]] 
     )%pred.
 
-
-  Definition dlookup T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
+  Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T := Eval compute_rec in
     let2 (mscs, n) <- delen lxp ixp dnum mscs;
-    mscs <- For i < n
+    let2 (mscs, s) <- For i < n
       Ghost mbase m F A dmap delist
-      Loopvar mscs <- mscs
+      Loopvar mscs_s <- (mscs, s0)
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
         derep F A m bxp ixp dnum delist *
-        [[ listpred dmatch delist dmap ]] *
-        exists dmap',
-        [[ listpred dmatch (firstn #i delist) dmap' ]] *
-        [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap' ]]
+        [[ listpred dmatch delist dmap ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
+        let (mscs, s) := (mscs_s : memstate * cachestate * S) in
         let2 (mscs, de) <- deget lxp ixp dnum i mscs;
-        If (weq (de :-> "valid") $0) {
-          lrx mscs
-        } else {
-          If (weq (de :-> "name") name) {
-            rx (mscs, Some (de :-> "inum"))
-          } else {
-            lrx mscs
-          }
-        }
+        let s := f s de in
+        lrx (mscs, s)
       Rof;
-    rx (mscs, None).
+    rx (mscs, s).
 
+  Definition dlookup_f name (s : option addr) (de : dent) : option addr :=
+    if (weq (de :-> "valid") $0) then s else
+    if (weq (de :-> "name") name) then (Some (de :-> "inum")) else s.
+
+  Definition dlookup T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
+    let2 (mscs, s) <- dfold lxp bxp ixp dnum (dlookup_f name) None mscs;
+    rx (mscs, s).
 
   Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dmap,
