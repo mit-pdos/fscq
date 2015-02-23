@@ -167,9 +167,11 @@ Module BUFCACHE.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
 
+    admit.
+
     destruct (weq a a0); subst.
-    apply mapsto_add in H0; subst; eauto.
-    edestruct H8. eauto. eexists; eauto.
+    apply mapsto_add in H; subst; eauto.
+    edestruct H9. eauto. eexists; eauto.
 
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
   Qed.
@@ -189,14 +191,29 @@ Module BUFCACHE.
     hoare_unfold unfold_rep.
 
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
+    destruct (Map.find a (fst r_)); hoare.
+
     rewrite <- diskIs_combine_upd with (m:=m); try pred_apply; cancel.
+    admit.
     destruct (weq a a0); subst.
-    apply mapsto_add in H0; subst.
+    apply mapsto_add in H; subst.
     rewrite upd_eq by auto. eauto.
-    apply Map.add_3 in H0; auto.
+    apply Map.add_3 in H; auto.
     rewrite upd_ne by auto. auto.
 
-    apply sep_star_comm; apply sep_star_comm in H.
+    apply sep_star_comm; apply sep_star_comm in H3.
+    eapply ptsto_upd; pred_apply; cancel.
+
+    rewrite <- diskIs_combine_upd with (m:=m); cancel.
+    admit.
+
+    destruct (weq a a0); subst.
+    apply mapsto_add in H; subst.
+    rewrite upd_eq by auto. eauto.
+    apply Map.add_3 in H; auto.
+    rewrite upd_ne by auto. auto.
+
+    apply sep_star_comm; apply sep_star_comm in H3.
     eapply ptsto_upd; pred_apply; cancel.
 
     cancel.
@@ -205,6 +222,7 @@ Module BUFCACHE.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
 
     apply pimpl_or_r. left. cancel.
+    eauto.
     eauto.
   Qed.
 
@@ -226,16 +244,17 @@ Module BUFCACHE.
     instantiate (a := Prog.upd m a (w, [])); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=m); cancel.
     intuition.
-    apply H5 in H0; deex.
+    apply H5 in H; deex.
     destruct (weq a a0); subst.
-    apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H0. inversion H0. subst.
+    apply sep_star_comm in H3; apply ptsto_valid in H3.
+    rewrite H3 in H. inversion H. subst.
     rewrite upd_eq by auto. eexists. eauto.
     rewrite upd_ne by auto. eexists. eauto.
     apply sep_star_comm. eapply ptsto_upd. apply sep_star_comm. eauto.
     cancel.
     apply pimpl_or_r; left.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
+    eauto.
     eauto.
   Qed.
 
@@ -255,14 +274,14 @@ Module BUFCACHE.
     simpl; intros.
 
     (* XXX is there a way to avoid this whole hack? *)
-    remember (exists d : @mem addr _ valuset,
-       diskIs d *
-       [[forall (a : Map.key) (v : valu),
-         Map.MapsTo a v r_ -> exists old : list valu, d a = Some (v, old)]] * 
-       [[p d]])%pred.
+    match goal with
+    | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
+      remember (E)
+    end.
     norm; cancel'; intuition.
     unfold stars; subst; simpl; rewrite star_emp_pimpl.
     unfold pimpl; intros; exists m.
+    apply sep_star_lift_apply'; eauto.
     apply sep_star_lift_apply'; eauto.
     apply sep_star_lift_apply'; eauto.
     congruence.
