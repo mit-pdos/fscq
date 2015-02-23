@@ -42,6 +42,15 @@ Proof.
   reflexivity.
 Qed.
 
+(* tight bound for valulen *)
+Theorem valulen_bound : valulen < pow2 16.
+Proof.
+  eapply Nat.lt_le_trans with (m := pow2 15 + 1).
+  rewrite valulen_is.
+  compute; auto.
+  apply pow2_le_S.
+Qed.
+
 
 Definition wringaddr := wring addrlen.
 Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]).

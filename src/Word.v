@@ -144,6 +144,84 @@ Fixpoint pow2 (n : nat) : nat :=
     | S n' => 2 * pow2 n'
   end.
 
+Lemma pow2_add_mul: forall a b,
+  pow2 (a + b) = (pow2 a) * (pow2 b).
+Proof.
+  induction a; destruct b; firstorder; simpl.
+  repeat rewrite Nat.add_0_r.
+  rewrite Nat.mul_1_r; auto.
+  repeat rewrite Nat.add_0_r.
+  rewrite IHa.
+  simpl.
+  repeat rewrite Nat.add_0_r.
+  rewrite Nat.mul_add_distr_r; auto.
+Qed.
+
+Lemma mult_pow2_bound: forall a b x y,
+  x < pow2 a -> y < pow2 b -> x * y < pow2 (a + b).
+Proof.
+  intros.
+  rewrite pow2_add_mul.
+  apply Nat.mul_lt_mono_nonneg; omega.
+Qed.
+
+Lemma mult_pow2_bound_ex: forall a c x y,
+  x < pow2 a -> y < pow2 (c - a) -> c >= a -> x * y < pow2 c.
+Proof.
+  intros.
+  replace c with (a + (c - a)) by omega.
+  apply mult_pow2_bound; auto.
+Qed.
+
+Lemma lt_mul_mono' : forall c a b,
+  a < b -> a < b * (S c).
+Proof.
+  induction c; intros.
+  rewrite Nat.mul_1_r; auto.
+  rewrite Nat.mul_succ_r.
+  apply lt_plus_trans.
+  apply IHc; auto.
+Qed.
+
+Lemma lt_mul_mono : forall a b c,
+  c <> 0 -> a < b -> a < b * c.
+Proof.
+  intros.
+  replace c with (S (c - 1)) by omega.
+  apply lt_mul_mono'; auto.
+Qed.
+
+Lemma zero_lt_pow2 : forall sz, 0 < pow2 sz.
+Proof.
+  induction sz; simpl; omega.
+Qed.
+
+Lemma mul2_add : forall n, n * 2 = n + n.
+Proof.
+  induction n; firstorder.
+Qed.
+
+Lemma pow2_le_S : forall sz, (pow2 sz) + 1 <= pow2 (sz + 1).
+Proof.
+  induction sz; simpl; auto.
+  repeat rewrite Nat.add_0_r.
+  rewrite pow2_add_mul.
+  repeat rewrite mul2_add.
+  pose proof (zero_lt_pow2 sz).
+  omega.
+Qed.
+
+Lemma pow2_bound_mono: forall a b x,
+  x < pow2 a -> a <= b -> x < pow2 b.
+Proof.
+  intros.
+  replace b with (a + (b - a)) by omega.
+  rewrite pow2_add_mul.
+  apply lt_mul_mono; auto.
+  pose proof (zero_lt_pow2 (b - a)).
+  omega.
+Qed.
+
 
 Theorem roundTrip_0 : forall sz, wordToNat (natToWord sz 0) = 0.
 Proof.

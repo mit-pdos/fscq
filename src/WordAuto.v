@@ -225,11 +225,6 @@ Proof.
 Qed.
 
 
-Lemma zero_lt_pow2 : forall sz, 0 < pow2 sz.
-Proof.
-  induction sz; simpl; omega.
-Qed.
-
 Ltac autorewrite_fast_goal :=
   (rewrite_strat (topdown (hints W2Nat)));
   try autorewrite_fast_goal.

@@ -36,6 +36,18 @@ Section RECBFILE.
     apply wordToNat_inj; auto.
   Qed.
 
+  Theorem itemlen_not_0 : Rec.len itemtype <> 0.
+  Proof.
+    intro H.
+    unfold blocktype in blocksz_ok.
+    simpl in blocksz_ok.
+    rewrite H in blocksz_ok.
+    rewrite valulen_is in blocksz_ok.
+    rewrite <- mult_n_O in blocksz_ok.
+    discriminate.
+  Qed.
+
+  Hint Resolve itemlen_not_0.
   Hint Resolve items_per_valu_not_0.
   Hint Resolve items_per_valu_not_0'.
 
@@ -108,6 +120,7 @@ Section RECBFILE.
 
   Hint Resolve block_upd_well_formed.
   Hint Resolve Rec.of_word_length.
+
 
   Theorem array_item_pairs_app_eq: forall blocks fdata newfd v,
     (array_item_pairs blocks)%pred (list2nmem fdata)
@@ -340,6 +353,55 @@ Section RECBFILE.
     word2nat_auto.
   Qed.
 
+  Lemma lt_div_mono : forall a b c,
+    b <> 0 -> a < c -> a / b < c.
+  Proof.
+    intros.
+    replace b with (S (b - 1)) by omega.
+    apply Nat.div_lt_upper_bound; auto.
+    simpl.
+    apply le_plus_trans; auto.
+  Qed.
+
+  Lemma helper_item_index_valid: forall F m bxp ixp inum i fl (bl : list block),
+    length bl = length (BFILE.BFData (sel fl inum BFILE.bfile0))
+    -> Forall Rec.well_formed bl
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> # inum < length fl
+    -> # i < length (fold_right (app (A:=Rec.data itemtype)) nil bl)
+    -> # (i ^/ items_per_valu) < length (BFILE.BFData (sel fl inum BFILE.bfile0)).
+  Proof.
+    intros.
+    apply helper_wlt_wmult_wdiv_lt; auto.
+    rewrite <- H.
+    rewrite <- block_length_fold_right by auto.
+    apply lt_wlt; erewrite wordToNat_natToWord_bound.
+    subst; auto.
+
+    erewrite wordToNat_natToWord_idempotent'.
+    instantiate (Goal0 := INODE.blocks_per_inode * # items_per_valu).
+    subst; rewrite concat_length.
+    rewrite fold_right_add_const; auto.
+    apply mult_le_compat_r.
+    rewrite H.
+    eapply BFILE.bfdata_bound; eauto.
+
+    unfold goodSize.
+    assert (X := blocksz_ok).
+    unfold blocktype in X; simpl in X.
+    rewrite Nat.mul_comm in X.
+    apply Nat.div_unique_exact in X; auto.
+    rewrite X.
+
+    unfold addrlen.
+    eapply mult_pow2_bound_ex with (a := 10); try omega.
+    compute; omega.
+    apply lt_div_mono; auto.
+    eapply pow2_bound_mono.
+    apply valulen_bound.
+    omega.
+  Qed.
+
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m flist f ilist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -366,7 +428,7 @@ Section RECBFILE.
            array_item_file f ilist *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ (idx < $ (length ilist))%word ]]
+           [[ wordToNat idx < length ilist ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = sel ilist idx item_zero ]]
@@ -380,10 +442,7 @@ Section RECBFILE.
     repeat rewrite_list2nmem_pred.
     unfold array_item_pairs.
     intuition; try (eauto; pred_apply; cancel).
-
-    apply helper_wlt_wmult_wdiv_lt; auto.
-    subst; rewrite <- H7.
-    rewrite <- block_length_fold_right; auto.
+    eapply helper_item_index_valid; subst; eauto.
 
     step.
     subst; unfold rep_block in H.
@@ -399,7 +458,7 @@ Section RECBFILE.
              array_item_file f ilist *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-             [[ (idx < $ (length ilist))%word ]] *
+             [[ wordToNat idx < length ilist ]] *
              [[ Rec.well_formed v ]]
     POST:mscs' exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
@@ -415,10 +474,7 @@ Section RECBFILE.
     repeat rewrite_list2nmem_pred.
     unfold array_item_pairs.
     intuition; try (eauto; pred_apply; cancel).
-
-    apply helper_wlt_wmult_wdiv_lt; auto.
-    subst; rewrite <- H8.
-    rewrite <- block_length_fold_right; auto.
+    eapply helper_item_index_valid; subst; eauto.
 
     eapply pimpl_ok2; eauto with prog; intros.
     norm. cancel.
@@ -488,7 +544,6 @@ Section RECBFILE.
 
 End RECBFILE.
 
-Check bf_getlen.
 
 Hint Extern 1 ({{_}} progseq (bf_getlen _ _ _ _ _) _) => apply bf_getlen_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_get _ _ _ _ _ _ _ _) _) => apply bf_get_ok : prog.
