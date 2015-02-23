@@ -50,8 +50,9 @@ coq: Makefile.coq
 	$(MAKE) -f Makefile.coq
 
 ## To do the parallel proofs, we need to build the proof-stripped version
-## first (compile_parallel.py calls coqtop with -R coqbuild Fscq).
-proof: coq Makefile.coqproof
+## first (compile_parallel.py calls coqtop with -R coqbuild Fscq).  If we
+## go back to using compile_parallel.py, add "coq" to the deps list here.
+proof: Makefile.coqproof
 	@mkdir -p codegen
 	@ln -sf ../coqproof codegen
 	$(MAKE) -f Makefile.coqproof
