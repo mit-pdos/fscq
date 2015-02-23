@@ -28,13 +28,13 @@ Definition filename_len := (256 - addrlen - addrlen).
 Definition filename := word filename_len.
 
 Module DIR.
-  Definition dirent_type : Rec.type := Rec.RecF ([("name", Rec.WordF filename_len);
-                                                  ("inum", Rec.WordF addrlen);
-                                                  ("valid", Rec.WordF addrlen)]).
-  Definition dirent := Rec.data dirent_type.
-  Definition dirent_zero := @Rec.of_word dirent_type $0.
+  Definition dent_type : Rec.type := Rec.RecF ([("name", Rec.WordF filename_len);
+                                                ("inum", Rec.WordF addrlen);
+                                                ("valid", Rec.WordF addrlen)]).
+  Definition dent := Rec.data dent_type.
+  Definition dent0 := @Rec.of_word dent_type $0.
 
-  Definition itemsz := Rec.len dirent_type.
+  Definition itemsz := Rec.len dent_type.
   Definition items_per_valu : addr := $ (valulen / itemsz).
   Theorem itemsz_ok : valulen = wordToNat items_per_valu * itemsz.
   Proof.
@@ -42,10 +42,127 @@ Module DIR.
     rewrite valulen_is; auto.
   Qed.
 
-  Definition rep' f (delist : list dirent) :=
-    BFileRec.array_item_file dirent_type items_per_valu itemsz_ok f delist.
+  Definition derep F1 F2 m bxp ixp (inum : addr) (delist : list dent) :=
+    ( exists flist f,
+      BFileRec.array_item_file dent_type items_per_valu itemsz_ok f delist *
+      [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+      [[ (F2 * #inum |-> f)%pred (list2nmem flist) ]] )%pred.
 
-  Definition dmatch (de: dirent) : @pred filename (@weq filename_len) addr :=
+  Definition delen T lxp ixp inum mscs rx : prog T :=
+    r <- BFileRec.bf_getlen items_per_valu lxp ixp inum mscs;
+    rx r.
+
+  Definition deget T lxp ixp inum idx mscs rx : prog T :=
+    r <- BFileRec.bf_get dent_type items_per_valu itemsz_ok
+         lxp ixp inum idx mscs;
+    rx r.
+
+  Definition deput T lxp ixp inum idx ent mscs rx : prog T :=
+    r <- BFileRec.bf_put dent_type items_per_valu itemsz_ok
+         lxp ixp inum idx ent mscs;
+    rx r.
+
+  Definition deext T lxp bxp ixp inum ent mscs rx : prog T :=
+    r <- BFileRec.bf_extend dent_type items_per_valu itemsz_ok
+         lxp bxp ixp inum ent mscs;
+    rx r.
+
+  Fact resolve_sel_dent0 : forall l i (d : dent),
+    d = dent0 -> sel l i d = sel l i dent0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_dent0 : forall l i (d : dent),
+    d = dent0 -> selN l i d = selN l i dent0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Hint Rewrite resolve_sel_dent0  using reflexivity : defaults.
+  Hint Rewrite resolve_selN_dent0 using reflexivity : defaults.
+
+  Theorem delen_ok : forall lxp bxp ixp inum mscs,
+    {< F A mbase m delist,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           derep F A m bxp ixp inum delist
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+           [[ r = $ (length delist) ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} delen lxp ixp inum mscs.
+  Proof.
+    unfold delen, derep.
+    hoare.
+  Qed.
+
+
+  Theorem deget_ok : forall lxp bxp ixp inum idx mscs,
+    {< F A B mbase m delist e,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           derep F A m bxp ixp inum delist *
+           [[ (B * #idx |-> e)%pred (list2nmem delist) ]]
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+           [[ r = e ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} deget lxp ixp inum idx mscs.
+  Proof.
+    unfold deget, derep.
+    hoare.
+    list2nmem_bound.
+    repeat rewrite_list2nmem_pred; auto.
+  Qed.
+
+  Theorem deput_ok : forall lxp bxp ixp inum idx e mscs,
+    {< F A B mbase m delist e0,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           derep F A m bxp ixp inum delist *
+           [[ Rec.well_formed e ]] *
+           [[ (B * #idx |-> e0)%pred (list2nmem delist) ]]
+    POST:mscs' exists m' delist',
+           MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+           derep F A m' bxp ixp inum delist' *
+           [[ (B * #idx |-> e)%pred (list2nmem delist') ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} deput lxp ixp inum idx e mscs.
+  Proof.
+    unfold deput, derep.
+    hoare.
+    list2nmem_bound.
+    eapply list2nmem_upd; eauto.
+  Qed.
+
+
+  Theorem deext_ok : forall lxp bxp ixp inum e mscs,
+    {< F A B mbase m delist,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           derep F A m bxp ixp inum delist *
+           [[ Rec.well_formed e ]] *
+           [[ B (list2nmem delist) ]]
+    POST:(mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+          ([[ r = false ]] \/
+           [[ r = true  ]] * exists delist' B',
+           derep F A m' bxp ixp inum delist' *
+           [[ (B * B' * (length delist) |-> e)%pred (list2nmem delist') ]] )
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} deext lxp bxp ixp inum e mscs.
+  Proof.
+    unfold deext, derep.
+    hoare.
+    apply pimpl_or_r; right; cancel.
+    admit.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (delen _ _ _ _) _) => apply delen_ok : prog.
+  Hint Extern 1 ({{_}} progseq (deget _ _ _ _ _) _) => apply deget_ok : prog.
+  Hint Extern 1 ({{_}} progseq (deput _ _ _ _ _ _) _) => apply deput_ok : prog.
+  Hint Extern 1 ({{_}} progseq (deext _ _ _ _ _ _) _) => apply deext_ok : prog.
+
+
+
+  Definition dmatch (de: dent) : @pred filename (@weq filename_len) addr :=
     if weq (de :-> "valid") $0 then
       emp
     else
@@ -61,33 +178,30 @@ Module DIR.
 
   Hint Resolve dmatch_complete.
 
-  Definition rep f (dmap : @mem filename (@weq filename_len) addr) :=
+  Definition rep F1 F2 m bxp ixp inum (dmap : @mem filename (@weq filename_len) addr) :=
     (exists delist,
-       rep' f delist *
+       derep F1 F2 m bxp ixp inum delist *
        [[ listpred dmatch delist dmap ]] 
     )%pred.
 
-  Definition dlookup T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
-                       (dnum : addr) (name : word filename_len) (mscs : memstate * cachestate)
-                       (rx : memstate * cachestate * option addr -> prog T) : prog T := Eval compute_rec in
-    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
-    mscs <- For dpos < dlen ^* items_per_valu
-      Ghost mbase m F A flist f dmap delist
+
+  Definition dlookup T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
+    let2 (mscs, n) <- delen lxp ixp dnum mscs;
+    mscs <- For i < n
+      Ghost mbase m F A dmap delist
       Loopvar mscs <- mscs
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-        rep' f delist *
-        [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-        [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+        derep F A m bxp ixp dnum delist *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
-        [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
+        [[ listpred dmatch (firstn #i delist) dmap' ]] *
         [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap' ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
+        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
         If (weq (de :-> "valid") $0) {
           lrx mscs
         } else {
@@ -100,15 +214,14 @@ Module DIR.
       Rof;
     rx (mscs, None).
 
+
   Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
-    {< F A mbase m flist f dmap,
+    {< F A mbase m dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           rep f dmap *
-           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-           [[ (A * dnum |-> f)%pred (list2mem flist) ]]
+           rep F A m bxp ixp dnum dmap
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           ((exists inum DF, [[ r = Some inum ]] *
+           ((exists inum DF, [[ r = Some dnum ]] *
              [[ (DF * name |-> inum)%pred dmap ]]) \/
             ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
@@ -178,27 +291,26 @@ Module DIR.
     unfold MEMLOG.log_intact; cancel.
   Qed.
 
-  Definition dunlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
-                       (dnum : addr) (name : word filename_len) (mscs : memstate * cachestate)
-                       (rx : memstate * cachestate -> prog T) : prog T := Eval compute_rec in
-    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
-    mscs <- For dpos < dlen ^* items_per_valu
-      Ghost mbase m
+
+  Definition dunlink T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
+    let2 (mscs, n) <- delen lxp ixp dnum mscs;
+    mscs <- For i < n
+      Ghost mbase m F A delist
       Loopvar mscs <- mscs
       Continuation lrx
       Invariant
         (* Need an invariant saying the name is not found in any earlier dirent *)
-        MEMLOG.rep lxp (ActiveTxn mbase m) mscs
+        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+        derep F A m bxp ixp dnum delist
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
+        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
         If (weq (de :-> "valid") $0) {
           lrx mscs
         } else {
           If (weq (de :-> "name") name) {
-            mscs <- bf_put dirent_type items_per_valu itemsz_ok
-                           lxp ixp dnum dpos (de :=> "valid" := $0) mscs;
+            mscs <- deput lxp ixp dnum i (de :=> "valid" := $0) mscs;
             rx mscs
           } else {
             lrx mscs
@@ -207,18 +319,15 @@ Module DIR.
       Rof;
     rx mscs.
 
+
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
-    {< F A mbase m flist f dmap DF,
+    {< F A mbase m dmap DF,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             rep f dmap *
-             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+             rep F A m bxp ixp dnum dmap *
              [[ (DF * name |->?)%pred dmap ]]
-    POST:mscs' exists m' flist' f' dmap',
+    POST:mscs' exists m' dmap',
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-             rep f' dmap' *
-             [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-             [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
+             rep F A m' bxp ixp dnum dmap' *
              [[ (DF) dmap' ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} dunlink lxp bxp ixp dnum name mscs.
@@ -226,52 +335,41 @@ Module DIR.
     admit.
   Qed.
 
-  Definition dlink T (lxp : MemLog.xparams) (bxp : Balloc.xparams) (ixp : Inode.xparams)
-                     (dnum : addr) (name : word filename_len) (inum : addr) (mscs : memstate * cachestate)
-                     (rx : (memstate * cachestate * bool) -> prog T) : prog T := Eval compute_rec in
-    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
-    mscs <- For dpos < dlen ^* items_per_valu
-      Ghost mbase m
+  Definition dlink T lxp bxp ixp dnum name inum mscs rx : prog T := Eval compute_rec in
+    let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) in
+    let2 (mscs, n) <- delen lxp ixp dnum mscs;
+    mscs <- For i < n
+      Ghost mbase m F A delist
       Loopvar mscs <- mscs
       Continuation lrx
       Invariant
         (* Need an invariant saying the name is not found in any earlier dirent *)
-        MEMLOG.rep lxp (ActiveTxn mbase m) mscs
+        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+        derep F A m bxp ixp dnum delist
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
+        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
         If (weq (de :-> "valid") $0) {
-          mscs <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos
-            (de :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) mscs;
+          mscs <- deput lxp ixp dnum i newde mscs;
           rx (mscs, true)
         } else {
           lrx mscs
         }
       Rof;
-    let2 (mscs, ok) <- BFILE.bfgrow lxp bxp ixp dnum mscs;
-    If (bool_dec ok true) {
-      mscs <- bf_put dirent_type items_per_valu itemsz_ok lxp ixp dnum (dlen ^* items_per_valu)
-        (dirent_zero :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) mscs;
-      rx (mscs, true)
-    } else {
-      rx (mscs, false)
-    }.
+    let2 (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
+    rx (mscs, ok).
 
   Theorem dlink_ok : forall lxp bxp ixp dnum name inum mscs,
-    {< F A mbase m flist f dmap DF,
+    {< F A mbase m dmap DF,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             rep f dmap *
-             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+             rep F A m bxp ixp dnum dmap *
              [[ (DF) dmap ]] *
              [[ exists dmap', (DF * name |->?)%pred dmap' ]]
     POST:(mscs',r)
-             ([[ r = true ]] * exists m' flist' f' dmap',
+             ([[ r = true ]] * exists m' dmap',
               MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-              rep f' dmap' *
-              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-              [[ (A * dnum |-> f')%pred (list2mem flist') ]] *
+              rep F A m' bxp ixp dnum dmap' *
               [[ (DF * name |-> inum)%pred dmap' ]]) \/
              ([[ r = false ]] * exists m',
               MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
@@ -284,28 +382,24 @@ Module DIR.
   Definition diritem := (filename * addr)%type.
   Definition diritemmatch (de: diritem) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
 
-  Definition dlist T (lxp : MemLog.xparams) (ixp : Inode.xparams)
-                     (dnum : addr) (mscs : memstate * cachestate)
-                     (rx : (memstate * cachestate * list diritem) -> prog T) : prog T := Eval compute_rec in
-    let2 (mscs, dlen) <- BFILE.bflen lxp ixp dnum mscs;
-    let2 (mscs, res) <- For dpos < dlen ^* items_per_valu
-      Ghost mbase m bxp F A flist f dmap delist
+  Definition dlist T lxp bxp ixp dnum mscs rx : prog T := Eval compute_rec in
+    let2 (mscs, n) <- delen lxp ixp dnum mscs;
+    let2 (mscs, res) <- For i < n
+      Ghost mbase m F A dmap delist
       Loopvar mscs_res <- (mscs, [])
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_res) *
-        rep' f delist *
-        [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-        [[ (A * dnum |-> f)%pred (list2mem flist) ]] *
+        derep F A m bxp ixp dnum delist *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
-        [[ listpred dmatch (firstn #dpos delist) dmap' ]] *
+        [[ listpred dmatch (firstn #i delist) dmap' ]] *
         [[ listpred diritemmatch (snd mscs_res) dmap' ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
         let (mscs, res) := (mscs_res : memstate * cachestate * list diritem) in
-        let2 (mscs, de) <- bf_get dirent_type items_per_valu itemsz_ok lxp ixp dnum dpos mscs;
+        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
         If (weq (de :-> "valid") $0) {
           lrx (mscs, res)
         } else {
@@ -315,16 +409,14 @@ Module DIR.
     rx (mscs, res).
 
   Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
-    {< F A mbase m flist f dmap,
+    {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             rep f dmap *
-             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-             [[ (A * dnum |-> f)%pred (list2mem flist) ]]
+             rep F A m bxp ixp dnum dmap
     POST:(mscs',res)
              MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ listpred diritemmatch res dmap ]]
     CRASH    MEMLOG.log_intact lxp mbase
-    >} dlist lxp ixp dnum mscs.
+    >} dlist lxp bxp ixp dnum mscs.
   Proof.
     unfold dlist, rep.
     step.
@@ -366,6 +458,6 @@ Module DIR.
   Hint Extern 1 ({{_}} progseq (dlookup _ _ _ _ _ _) _) => apply dlookup_ok : prog.
   Hint Extern 1 ({{_}} progseq (dunlink _ _ _ _ _ _) _) => apply dunlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dlist _ _ _ _) _) => apply dlist_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dlist _ _ _ _ _) _) => apply dlist_ok : prog.
 
 End DIR.

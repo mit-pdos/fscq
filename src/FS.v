@@ -298,9 +298,9 @@ Definition write_block T lxp bxp ixp inum off v mscs rx : prog T :=
     }
   }.
 
-Definition readdir T lxp ixp dnum mscs rx : prog T :=
+Definition readdir T lxp bxp ixp dnum mscs rx : prog T :=
   mscs <- MEMLOG.begin lxp mscs;
-  let2 (mscs, files) <- SDIR.dslist lxp ixp dnum mscs;
+  let2 (mscs, files) <- SDIR.dslist lxp bxp ixp dnum mscs;
   let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
   rx (mscs, files).
 
