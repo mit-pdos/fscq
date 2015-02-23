@@ -550,7 +550,7 @@ Module Rec.
       rewrite <- (eq_rect_eq_dec eq_nat_dec). reflexivity.
 
       unfold to_word in IHidx; fold (@to_word ft) in IHidx; simpl in IHidx.
-      erewrite <- IHidx; clear IHidx.
+      erewrite <- IHidx.
 
       repeat rewrite eq_rect_split2.
       assert (len ft + (idx * len ft + len ft + (l * len ft - idx * len ft - len ft)) =
@@ -600,7 +600,7 @@ Module Rec.
       apply UIP_dec; exact eq_nat_dec.
       apply UIP_dec; exact eq_nat_dec.
       Grab Existential Variables.
-      lia.
+      rewrite plus_assoc; reflexivity.
       lia.
       lia.
   Qed.
