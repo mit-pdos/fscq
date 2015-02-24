@@ -245,7 +245,7 @@ Module DIR.
     unfold MEMLOG.log_intact; cancel.
   Qed.
 
-  Definition dlookup_f name (s : option addr) (de : dent) : option addr :=
+  Definition dlookup_f name (s : option addr) (de : dent) : option addr := Eval compute_rec in
     if (weq (de :-> "valid") $0) then s else
     if (weq (de :-> "name") name) then (Some (de :-> "inum")) else s.
 
