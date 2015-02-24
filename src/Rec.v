@@ -297,6 +297,37 @@ Module Rec.
     apply IHt. apply IHt0.
   Qed.
 
+  Lemma combine_zeroes: forall sz1 sz2 w,
+    w = natToWord sz2 0 -> combine (natToWord sz1 0) w = natToWord (sz1 + sz2) 0.
+  Proof.
+    induction sz1.
+    intros; auto.
+    intros; simpl. rewrite IHsz1; auto.
+  Qed.
+
+  Theorem to_word_append_any: forall sz l n l2,
+    Datatypes.length l > n -> @to_word (ArrayF (WordF sz) n) (app l l2) = @to_word (ArrayF (WordF sz) n) l.
+  Proof.
+    simpl.
+    induction l; simpl; induction n; intros; auto; try omega.
+    f_equal.
+    apply IHl.
+    omega.
+  Qed.
+
+  Theorem to_word_append_zeroes: forall sz l n m,
+    @to_word (ArrayF (WordF sz) n) (app l (repeat $0 m)) = @to_word (ArrayF (WordF sz) n) l.
+  Proof.
+    simpl.
+    induction l; simpl; induction n; intros; auto.
+    + destruct m; simpl; auto.
+      rewrite combine_zeroes; auto.
+      fold repeat.
+      induction n; auto.
+    + f_equal.
+      apply IHl.
+  Qed.
+
   Arguments of_word : simpl never.
   Arguments to_word : simpl never.
 
