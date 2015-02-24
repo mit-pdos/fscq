@@ -22,6 +22,7 @@ Require Import WordAuto.
 Require Import Cache.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
+Module MapFacts := WFacts_fun Addr_as_OT Map.
 
 Import ListNotations.
 Set Implicit Arguments.
