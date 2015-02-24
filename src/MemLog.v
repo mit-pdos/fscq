@@ -159,6 +159,17 @@ Module MEMLOG.
     apply Rec.of_to_id; auto.
   Qed.
 
+  Lemma descriptor_to_valu_zeroes: forall l n,
+    descriptor_to_valu (l ++ repeat $0 n) = descriptor_to_valu l.
+  Proof.
+    unfold descriptor_to_valu.
+    unfold eq_rec_r, eq_rec.
+    intros.
+    rewrite descriptor_sz_ok.
+    do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
+    apply Rec.to_word_append_zeroes.
+  Qed.
+
   Definition indomain' (a : addr) (m : diskstate) := wordToNat a < length m.
 
   (* Check that the state is well-formed *)
@@ -215,7 +226,9 @@ Module MEMLOG.
       exists rest,
       (LogDescriptor xp) |~> (descriptor_to_valu (map fst (Map.elements ms) ++ rest)) *
       [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]] *
-      exists unsynced, array (LogData xp) (List.combine (map snd (Map.elements ms)) unsynced) $1 *
+      exists unsynced,
+      array (LogData xp) (List.combine (map snd (Map.elements ms)) unsynced) $1 *
+      [[ length unsynced = Map.cardinal ms ]] *
       avail_region (LogData xp ^+ $ (Map.cardinal ms))
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
@@ -316,6 +329,9 @@ Module MEMLOG.
   Hint Extern 0 (okToUnify (log_rep _ _ _) (log_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (data_rep _ _) (data_rep _)) => constructor : okToUnify.
+
+  (* XXX actually okay? *)
+  Local Hint Extern 0 (okToUnify (array (DataStart _) _ _) (array (DataStart _) _ _)) => constructor : okToUnify.
 
   Definition log_uninitialized xp old :=
     ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
@@ -477,7 +493,14 @@ Module MEMLOG.
     | [ H : _ =p=> _ |- _ ] => clear H
     end.
 
-  Hint Rewrite app_length firstn_length skipn_length combine_length map_length replay_length repeat_length length_upd : lengths.
+  Lemma skipn_1_length': forall T (l: list T),
+    length (match l with [] => [] | _ :: l' => l' end) = length l - 1.
+  Proof.
+    destruct l; simpl; omega.
+  Qed.
+
+  Hint Rewrite app_length firstn_length skipn_length combine_length map_length replay_length repeat_length length_upd
+    skipn_1_length' : lengths.
 
   Ltac solve_lengths' :=
     repeat (progress (autorewrite with lengths; repeat rewrite Nat.min_l by solve_lengths'; repeat rewrite Nat.min_r by solve_lengths'));
@@ -591,7 +614,8 @@ Module MEMLOG.
       [[ ((LogCommit xp) |=> $0
           * data_rep xp (synced_list old)
           * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
-          * (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms))
+          * exists rest, (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms) ++ rest)
+          * [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]]
           * array (LogData xp) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
           * exists l', [[ length l' = Map.cardinal ms - # i ]]
           * array (LogData xp ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
@@ -633,29 +657,6 @@ Module MEMLOG.
   Proof.
     intros; auto.
   Qed.
-
-  (* XXX sometimes [step] instantiates too many evars *)
-  Ltac step' :=
-    intros;
-    try cancel;
-    remember_xform;
-    ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
-     || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
-     || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
-     || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ])
-     || (eapply pimpl_ok2; [
-          match goal with
-          | [ |- {{ _ }} ?a _ ] => is_var a
-          end; solve [ eapply nop_ok ] | ]));
-    intros; subst;
-    repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
-    try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
-    apply_xform cancel;
-(*  try cancel; try autorewrite_fast; *)
-(*  intuition eauto; *)
-    try omega;
-    try congruence.
-(*  eauto. *)
 
   Ltac assert_lte a b := let H := fresh in assert (a <= b)%word as H by
       (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve); clear H.
@@ -745,9 +746,6 @@ Module MEMLOG.
 
   Ltac try_arrays_lengths := try (array_cancel_trivial || array_match); solve_lengths_prepped.
 
-  (* XXX actually okay? *)
-  Local Hint Extern 0 (okToUnify (array (DataStart _) _ _) (array (DataStart _) _ _)) => constructor : okToUnify.
-
   (* Slightly different from CPDT [equate] *)
   Ltac equate x y :=
     let tx := type of x in
@@ -810,8 +808,15 @@ Module MEMLOG.
     simpl; rewrite IHl; rewrite <- surjective_pairing; auto.
   Qed.
 
+  Lemma skipn_skipn: forall A n m (l: list A),
+    skipn n (skipn m l) = skipn (n + m) l.
+  Proof.
+    admit.
+  Qed.
+
+
   Hint Rewrite firstn_combine_comm skipn_combine_comm selN_combine
-    removeN_combine List.combine_split combine_nth combine_one updN_0_skip_1 : lists.
+    removeN_combine List.combine_split combine_nth combine_one updN_0_skip_1 skipn_selN : lists.
   Hint Rewrite <- combine_updN combine_upd combine_app : lists.
 
   Ltac split_pair_list_vars :=
@@ -827,17 +832,11 @@ Module MEMLOG.
     subst_evars.
 
   Ltac split_lists :=
-    unfold upd_prepend;
+    unfold upd_prepend, upd_sync;
     unfold sel, upd;
     repeat split_pair_list_evar;
     split_pair_list_vars;
     autorewrite with lists; [ f_equal | .. ].
-
-  Lemma descriptor_to_valu_zeroes: forall l n,
-    descriptor_to_valu (l ++ repeat $0 n) = descriptor_to_valu l.
-  Proof.
-    admit.
-  Qed.
 
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2,
@@ -851,12 +850,8 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     intros.
     solve_lengths_prepare.
-    step_with idtac try_arrays_lengths.
-    step_with idtac try_arrays_lengths.
-    step_with idtac try_arrays_lengths.
+    hoare_with idtac try_arrays_lengths.
     instantiate (a3 := nil); auto.
-    step_with idtac try_arrays_lengths.
-    step_with idtac try_arrays_lengths.
     split_lists.
     rewrite cons_app.
     rewrite app_assoc.
@@ -866,7 +861,7 @@ Module MEMLOG.
     simpl.
     erewrite firstn_plusone_selN.
     rewrite <- app_assoc.
-    instantiate (a3 := l2 ++ [valuset_list (selN l3 0 ($0, nil))]).
+    instantiate (a4 := l2 ++ [valuset_list (selN l3 0 ($0, nil))]).
     simpl.
     rewrite firstn_app_l by solve_lengths.
     repeat erewrite selN_map by solve_lengths.
@@ -887,7 +882,6 @@ Module MEMLOG.
     solve_lengths.
     case_eq l3; intros; subst; word2nat_clear; simpl in *; solve_lengths.
 
-    step_with idtac try_arrays_lengths.
     solve_lengths_prepare.
     instantiate (a2 := repeat $0 (addr_per_block - length (Map.elements ms))).
     rewrite descriptor_to_valu_zeroes.
@@ -897,6 +891,7 @@ Module MEMLOG.
     solve_lengths.
     solve_lengths.
     rewrite Forall_forall; intuition.
+    solve_lengths.
     solve_lengths.
     instantiate (a0 := m); pred_apply; cancel.
     Unshelve.
@@ -914,7 +909,48 @@ Module MEMLOG.
     CRASH      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush_sync xp mscs.
   Proof.
-    admit.
+    unfold flush_sync; log_unfold; unfold avail_region.
+    destruct mscs as [ms cs].
+    intros.
+    solve_lengths_prepare.
+    hoare_with ltac:(unfold upd_sync) try_arrays_lengths.
+    split_lists.
+    rewrite skipn_skipn.
+    rewrite (plus_comm 1).
+    rewrite Nat.add_0_r.
+    erewrite firstn_plusone_selN.
+    rewrite <- app_assoc.
+    reflexivity.
+    solve_lengths.
+    erewrite firstn_plusone_selN.
+    rewrite <- app_assoc.
+    rewrite repeat_selN.
+    reflexivity.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths_prepare.
+    rewrite skipn_oob by solve_lengths.
+    rewrite firstn_oob by solve_lengths.
+    cancel.
+    solve_lengths.
+    solve_lengths.
+    instantiate (a0 := m); pred_apply; cancel.
+    array_match.
+    solve_lengths.
+    Unshelve.
+    auto.
+    constructor.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
