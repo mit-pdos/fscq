@@ -231,7 +231,6 @@ Section RECBFILE.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
-    instantiate (y := $0).
 
     unfold sel, upd; autorewrite with core.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
@@ -252,6 +251,8 @@ Section RECBFILE.
     apply Hx; apply in_sel; rec_bounds.
     apply Forall_upd; auto.
     apply Hx; apply in_sel; rec_bounds.
+    Grab Existential Variables.
+    exact $0.
   Qed.
 
 
