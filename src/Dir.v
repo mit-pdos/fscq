@@ -179,21 +179,20 @@ Module DIR.
   Hint Resolve dmatch_complete.
 
   Definition rep F1 F2 m bxp ixp inum (dmap : @mem filename (@weq filename_len) addr) :=
-    (exists delist,
-       derep F1 F2 m bxp ixp inum delist *
-       [[ listpred dmatch delist dmap ]] 
-    )%pred.
+    exists delist,
+    derep F1 F2 m bxp ixp inum delist /\
+    listpred dmatch delist dmap.
 
   Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T := Eval compute_rec in
     let2 (mscs, n) <- delen lxp ixp dnum mscs;
     let2 (mscs, s) <- For i < n
-      Ghost mbase m F A dmap delist
+      Ghost mbase m F A delist
       Loopvar mscs_s <- (mscs, s0)
       Continuation lrx
       Invariant
-        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-        derep F A m bxp ixp dnum delist *
-        [[ listpred dmatch delist dmap ]]
+        MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_s) *
+        [[ derep F A m bxp ixp dnum delist ]] *
+        [[ snd mscs_s = fold_left f (firstn #i delist) s0 ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
@@ -203,6 +202,48 @@ Module DIR.
         lrx (mscs, s)
       Rof;
     rx (mscs, s).
+
+  Theorem dfold_ok : forall lxp bxp ixp dnum S f (s0 : S) mscs,
+    {< mbase m F A delist,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ derep F A m bxp ixp dnum delist ]]
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+           [[ r = fold_left f delist s0 ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} dfold lxp bxp ixp dnum f s0 mscs.
+  Proof.
+    unfold dfold, derep.
+    step.
+    unfold derep; eauto.
+    step.
+    step.
+    unfold derep; eauto.
+    list2nmem_ptsto_cancel.
+
+    (* XXX length? *)
+    admit.
+
+    step.
+    replace (# (m0 ^+ $1)) with (#m0 + 1).
+    rewrite firstn_plusone_selN with (def:=dent0).
+    rewrite fold_left_app; simpl.
+    subst; reflexivity.
+
+    (* XXX length? *)
+    admit.
+
+    (* XXX overflow? *)
+    admit.
+
+    step.
+    rewrite firstn_oob; eauto.
+
+    (* XXX overflow? *)
+    admit.
+
+    unfold MEMLOG.log_intact; cancel.
+  Qed.
 
   Definition dlookup_f name (s : option addr) (de : dent) : option addr :=
     if (weq (de :-> "valid") $0) then s else
@@ -215,7 +256,7 @@ Module DIR.
   Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           rep F A m bxp ixp dnum dmap
+           [[ rep F A m bxp ixp dnum dmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            ((exists inum DF, [[ r = Some dnum ]] *
