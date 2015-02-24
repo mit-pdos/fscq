@@ -748,6 +748,97 @@ Module MEMLOG.
   (* XXX actually okay? *)
   Local Hint Extern 0 (okToUnify (array (DataStart _) _ _) (array (DataStart _) _ _)) => constructor : okToUnify.
 
+  (* Slightly different from CPDT [equate] *)
+  Ltac equate x y :=
+    let tx := type of x in
+    let ty := type of y in
+    let H := fresh in
+    assert (x = y) as H by reflexivity; clear H.
+
+  Ltac split_pair_list_evar :=
+    match goal with
+    | [ |- context [ ?l ] ] =>
+      is_evar l;
+      match type of l with
+      | list (?A * ?B) =>
+        let l0 := fresh in
+        let l1 := fresh in
+        evar (l0 : list A); evar (l1 : list B);
+        let l0' := eval unfold l0 in l0 in
+        let l1' := eval unfold l1 in l1 in
+        equate l (@List.combine A B l0' l1');
+        clear l0; clear l1
+      end
+    end.
+
+  Theorem combine_upd: forall A B i a b (va: A) (vb: B),
+    List.combine (upd a i va) (upd b i vb) = upd (List.combine a b) i (va, vb).
+  Proof.
+    unfold upd; intros.
+    apply combine_updN.
+  Qed.
+
+  Lemma updN_0_skip_1: forall A l (a: A),
+    length l > 0 -> updN l 0 a = a :: skipn 1 l .
+  Proof.
+    intros; destruct l.
+    simpl in H. omega.
+    reflexivity.
+  Qed.
+
+  Lemma cons_app: forall A l (a: A),
+    a :: l = [a] ++ l.
+  Proof.
+    auto.
+  Qed.
+
+  Lemma firstn_app_l: forall A (al ar: list A) n,
+    n <= length al ->
+    firstn n (al ++ ar) = firstn n al.
+  Proof.
+    induction al.
+    intros; simpl in *. inversion H. auto.
+    intros; destruct n; simpl in *; auto.
+    rewrite IHal by omega; auto.
+  Qed.
+
+  Lemma combine_map_fst_snd: forall A B (l: list (A * B)),
+    List.combine (map fst l) (map snd l) = l.
+  Proof.
+    induction l.
+    auto.
+    simpl; rewrite IHl; rewrite <- surjective_pairing; auto.
+  Qed.
+
+  Hint Rewrite firstn_combine_comm skipn_combine_comm selN_combine
+    removeN_combine List.combine_split combine_nth combine_one updN_0_skip_1 : lists.
+  Hint Rewrite <- combine_updN combine_upd combine_app : lists.
+
+  Ltac split_pair_list_vars :=
+    set_evars;
+    repeat match goal with
+    | [ H : list (?A * ?B) |- _ ] =>
+      match goal with
+      | |- context[ List.combine (map fst H) (map snd H) ] => fail 1
+      | _ => idtac
+      end;
+      rewrite <- combine_map_fst_snd with (l := H)
+    end;
+    subst_evars.
+
+  Ltac split_lists :=
+    unfold upd_prepend;
+    unfold sel, upd;
+    repeat split_pair_list_evar;
+    split_pair_list_vars;
+    autorewrite with lists; [ f_equal | .. ].
+
+  Lemma descriptor_to_valu_zeroes: forall l n,
+    descriptor_to_valu (l ++ repeat $0 n) = descriptor_to_valu l.
+  Proof.
+    admit.
+  Qed.
+
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2,
     PRE        rep xp (ActiveTxn m1 m2) mscs *
@@ -766,8 +857,52 @@ Module MEMLOG.
     instantiate (a3 := nil); auto.
     step_with idtac try_arrays_lengths.
     step_with idtac try_arrays_lengths.
+    split_lists.
+    rewrite cons_app.
+    rewrite app_assoc.
+    erewrite firstn_plusone_selN.
+    reflexivity.
+    solve_lengths.
+    simpl.
+    erewrite firstn_plusone_selN.
+    rewrite <- app_assoc.
+    instantiate (a3 := l2 ++ [valuset_list (selN l3 0 ($0, nil))]).
+    simpl.
+    rewrite firstn_app_l by solve_lengths.
+    repeat erewrite selN_map by solve_lengths.
+    rewrite <- surjective_pairing.
+    rewrite selN_app2.
+    rewrite H18.
+    rewrite Nat.sub_diag.
+    reflexivity.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    case_eq l3; intros; subst; word2nat_clear; simpl in *; solve_lengths.
 
-Qed.
+    step_with idtac try_arrays_lengths.
+    solve_lengths_prepare.
+    instantiate (a2 := repeat $0 (addr_per_block - length (Map.elements ms))).
+    rewrite descriptor_to_valu_zeroes.
+    rewrite firstn_oob by solve_lengths.
+    fold unifiable_array.
+    cancel.
+    solve_lengths.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    solve_lengths.
+    instantiate (a0 := m); pred_apply; cancel.
+    Unshelve.
+    auto.
+    constructor.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
 
