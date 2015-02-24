@@ -62,7 +62,7 @@ Notation "'let3' ( a , b , c ) <- p1 ; p2" := (progseq p1 (fun y => let (x, c) :
 
 Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.
 
-Definition valuset := (valu * list valu)%type.
+Notation "'valuset'" := (valu * list valu)%type.
 Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 
 Definition mem {A : Type} {eq : DecEq A} {V: Type} := A -> option V.
