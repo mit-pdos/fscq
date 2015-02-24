@@ -43,10 +43,10 @@ Module DIR.
   Qed.
 
   Definition derep F1 F2 m bxp ixp (inum : addr) (delist : list dent) :=
-    ( exists flist f,
-      BFileRec.array_item_file dent_type items_per_valu itemsz_ok f delist *
-      [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
-      [[ (F2 * #inum |-> f)%pred (list2nmem flist) ]] )%pred.
+    exists flist f,
+    BFileRec.array_item_file dent_type items_per_valu itemsz_ok f delist /\
+    (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
+    (F2 * #inum |-> f)%pred (list2nmem flist).
 
   Definition delen T lxp ixp inum mscs rx : prog T :=
     r <- BFileRec.bf_getlen items_per_valu lxp ixp inum mscs;
@@ -85,7 +85,7 @@ Module DIR.
   Theorem delen_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           derep F A m bxp ixp inum delist
+           [[ derep F A m bxp ixp inum delist ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = $ (length delist) ]]
@@ -100,7 +100,7 @@ Module DIR.
   Theorem deget_ok : forall lxp bxp ixp inum idx mscs,
     {< F A B mbase m delist e,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           derep F A m bxp ixp inum delist *
+           [[ derep F A m bxp ixp inum delist ]] *
            [[ (B * #idx |-> e)%pred (list2nmem delist) ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
@@ -117,12 +117,12 @@ Module DIR.
   Theorem deput_ok : forall lxp bxp ixp inum idx e mscs,
     {< F A B mbase m delist e0,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           derep F A m bxp ixp inum delist *
+           [[ derep F A m bxp ixp inum delist ]] *
            [[ Rec.well_formed e ]] *
            [[ (B * #idx |-> e0)%pred (list2nmem delist) ]]
     POST:mscs' exists m' delist',
            MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-           derep F A m' bxp ixp inum delist' *
+           [[ derep F A m' bxp ixp inum delist' ]] *
            [[ (B * #idx |-> e)%pred (list2nmem delist') ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} deput lxp ixp inum idx e mscs.
@@ -137,13 +137,13 @@ Module DIR.
   Theorem deext_ok : forall lxp bxp ixp inum e mscs,
     {< F A B mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           derep F A m bxp ixp inum delist *
+           [[ derep F A m bxp ixp inum delist ]] *
            [[ Rec.well_formed e ]] *
            [[ B (list2nmem delist) ]]
     POST:(mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
           ([[ r = false ]] \/
            [[ r = true  ]] * exists delist' B',
-           derep F A m' bxp ixp inum delist' *
+           [[ derep F A m' bxp ixp inum delist' ]] *
            [[ (B * B' * (length delist) |-> e)%pred (list2nmem delist') ]] )
     CRASH  MEMLOG.log_intact lxp mbase
     >} deext lxp bxp ixp inum e mscs.

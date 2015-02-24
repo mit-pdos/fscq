@@ -75,12 +75,11 @@ Section RECBFILE.
     ([[ Forall Rec.well_formed vs ]] *
      arrayN 0 (map rep_block vs))%pred.
 
-  Definition array_item_file file (vs : list item) : @pred _ (@weq addrlen) valuset :=
-    (exists vs_nested,
-     [[ length vs_nested = length (BFILE.BFData file) ]] *
-     [[ array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) ]] *
-     [[ vs = fold_right (@app _) nil vs_nested ]])%pred.
-
+  Definition array_item_file file (vs : list item) : Prop :=
+    exists vs_nested,
+    length vs_nested = length (BFILE.BFData file) /\
+    array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
+    vs = fold_right (@app _) nil vs_nested.
 
   Definition item0_list := valu_to_block $0.
 
@@ -406,7 +405,7 @@ Section RECBFILE.
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m flist f ilist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           array_item_file f ilist *
+           [[ array_item_file f ilist ]] *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST:(mscs',r)
@@ -417,8 +416,8 @@ Section RECBFILE.
   Proof.
     unfold bf_getlen, array_item_file.
     hoare.
-    unfold array_item_pairs in H8.
-    destruct_lift H8.
+    unfold array_item_pairs in *.
+    destruct_lift H.
     rewrite block_length_fold_right by auto.
     subst; rec_bounds.
   Qed.
@@ -426,7 +425,7 @@ Section RECBFILE.
   Theorem bf_get_ok : forall lxp bxp ixp inum idx mscs,
     {< F A mbase m flist f ilist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           array_item_file f ilist *
+           [[ array_item_file f ilist ]] *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ wordToNat idx < length ilist ]]
@@ -444,11 +443,13 @@ Section RECBFILE.
     unfold array_item_pairs.
     intuition; try (eauto; pred_apply; cancel).
     eapply helper_item_index_valid; subst; eauto.
+    destruct_lift H0; eauto.
 
     step.
     subst; unfold rep_block in H.
     apply nested_sel_divmod_concat; auto.
-    eapply Forall_impl; [ | apply H9 ].
+    destruct_lift H0.
+    eapply Forall_impl; [ | apply H7 ].
     unfold Rec.well_formed.
     simpl; intuition.
   Qed.
@@ -456,14 +457,14 @@ Section RECBFILE.
   Theorem bf_put_ok : forall lxp bxp ixp inum idx v mscs,
     {< F A mbase m flist f ilist,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             array_item_file f ilist *
+             [[ array_item_file f ilist ]] *
              [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ wordToNat idx < length ilist ]] *
              [[ Rec.well_formed v ]]
     POST:mscs' exists m' flist' f',
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-             array_item_file f' (upd ilist idx v) *
+             [[ array_item_file f' (upd ilist idx v) ]] *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]]
     CRASH  MEMLOG.log_intact lxp mbase
@@ -476,27 +477,29 @@ Section RECBFILE.
     unfold array_item_pairs.
     intuition; try (eauto; pred_apply; cancel).
     eapply helper_item_index_valid; subst; eauto.
+    destruct_lift H; eauto.
 
     eapply pimpl_ok2; eauto with prog; intros.
     norm. cancel.
     subst; repeat rewrite_list2nmem_pred; subst.
+    destruct_lift H.
     intuition; try (pred_apply; cancel).
-    apply list2nmem_array_eq in H15 as Heq.
+    eexists; intuition; try (pred_apply; cancel).
+    apply list2nmem_array_eq in H13 as Heq.
     rewrite Heq; autorewrite with core; auto.
-    pred_apply; cancel.
   Qed.
 
   Theorem bf_extend_ok : forall lxp bxp ixp inum v mscs,
     {< F A mbase m flist f ilist,
     PRE   MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-          array_item_file f ilist *
+          [[ array_item_file f ilist ]] *
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
           [[ Rec.well_formed v ]]
     POST: (mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
           ([[ r = false ]] \/
            [[ r = true ]] * exists flist' f',
-           array_item_file f' (ilist ++ (upd item0_list $0 v)) *
+           [[ array_item_file f' (ilist ++ (upd item0_list $0 v)) ]] *
            [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] )
     CRASH  MEMLOG.log_intact lxp mbase
@@ -512,10 +515,11 @@ Section RECBFILE.
     step.
     eapply pimpl_or_r; right.
     norm; [ cancel | intuition ].
-    4: eauto.
-    4: eauto.
+    2: eauto.
+    2: eauto.
 
-    instantiate (a7 := l1 ++ (upd item0_list $0 v) :: nil).
+    eexists; intuition.
+    instantiate (vs_nested := x ++ (upd item0_list $0 v) :: nil).
     erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b4); eauto.
     repeat rewrite app_length; rec_bounds.
     erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b4); eauto.
