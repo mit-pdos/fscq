@@ -829,7 +829,7 @@ Ltac autorewrite_fast :=
 
 Ltac step_with unfolder t :=
   intros;
-  try cancel;
+  try (unfolder; cancel);
   remember_xform;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])

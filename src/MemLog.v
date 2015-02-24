@@ -64,7 +64,7 @@ Inductive logstate :=
 Record xparams := {
   LogCache : Cache.xparams;
 
-  (* The actual data region is everything that's not described here *)
+  DataStart : addr;
   LogHeader : addr; (* Store the header here *)
   LogCommit : addr; (* Store true to apply after crash. *)
 
@@ -193,7 +193,7 @@ Module MEMLOG.
   Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
 
   Definition data_rep (xp: xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
-    array $0 m $1.
+    array (DataStart xp) m $1.
 
   (** On-disk representation of the log *)
   Definition log_rep xp m (ms : memstate) : @pred addr (@weq addrlen) valuset :=
@@ -456,7 +456,7 @@ Module MEMLOG.
     | Some v =>
       rx ((ms, cs), v)
     | None =>
-      let2 (cs, v) <- BUFCACHE.read_array (LogCache xp) $0 a cs;
+      let2 (cs, v) <- BUFCACHE.read_array (LogCache xp) (DataStart xp) a cs;
       rx ((ms, cs), v)
     end.
 
@@ -497,7 +497,7 @@ Module MEMLOG.
       | [ |- _ =p=> _ ] => fail 1
       | _ => idtac
       end;
-      unfold valuset in *; word2nat_clear; word2nat_simpl; word2nat_rewrites; solve_lengths').
+      word2nat_clear; word2nat_simpl; word2nat_rewrites; solve_lengths').
 
   Ltac solve_lengths := solve_lengths_prepare; solve_lengths_prepped.
 
@@ -535,7 +535,7 @@ Module MEMLOG.
     erewrite <- replay_length.
     eapply list2mem_inbound; eauto.
 
-    unfold sel. unfold valuset. rewrite selN_combine.
+    unfold sel. rewrite selN_combine.
     simpl.
     eapply list2mem_sel with (def := $0) in H1.
     rewrite H1.
@@ -715,17 +715,22 @@ Module MEMLOG.
       with (array a [v] $1) by (apply singular_array)
     end.
 
-  Definition hidden_array := @array (valu * list valu).
+  Lemma make_unifiable: forall a l s,
+    array a l s <=p=> unifiable_array a l s.
+  Proof.
+    split; cancel.
+  Qed.
 
   Ltac array_cancel_trivial :=
-    unfold hidden_array in *;
+    fold unifiable_array;
     match goal with
-    | [ |- _ =p=> ?x * array _ _ _ ] => first [ is_evar x | is_var x ]; solve [ cancel ]
-    | [ |- _ =p=> array _ _ _ * ?x ] => first [ is_evar x | is_var x ]; solve [ cancel ]
-    end.
+    | [ |- _ =p=> ?x * unifiable_array ?a ?l ?s ] => first [ is_evar x | is_var x ]; unfold unifiable_array; rewrite (make_unifiable a l s)
+    | [ |- _ =p=> unifiable_array ?a ?l ?s * ?x ] => first [ is_evar x | is_var x ]; unfold unifiable_array; rewrite (make_unifiable a l s)
+    end;
+    solve [ cancel ].
 
   Ltac array_match :=
-    unfold hidden_array in *;
+    unfold unifiable_array in *;
     match goal with (* early out *)
     | [ |- _ =p=> _ * array _ _ _ ] => idtac
     | [ |- _ =p=> _ * _ |-> _ ] => idtac
@@ -737,6 +742,11 @@ Module MEMLOG.
     repeat (rewrite array_app; [ | solve_lengths_prepped ]); [ repeat rewrite <- app_assoc | .. ];
     try apply pimpl_refl;
     try (apply equal_arrays; [ solve_lengths_prepped | try reflexivity ]).
+
+  Ltac try_arrays_lengths := try (array_cancel_trivial || array_match); solve_lengths_prepped.
+
+  (* XXX actually okay? *)
+  Local Hint Extern 0 (okToUnify (array (DataStart _) _ _) (array (DataStart _) _ _)) => constructor : okToUnify.
 
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2,
@@ -750,17 +760,14 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     intros.
     solve_lengths_prepare.
-    Ltac solver := try (array_cancel_trivial || array_match); solve_lengths_prepped.
-    step_with idtac solver.
-    step_with idtac solver.
-    step_with idtac solver.
+    step_with idtac try_arrays_lengths.
+    step_with idtac try_arrays_lengths.
+    step_with idtac try_arrays_lengths.
     instantiate (a3 := nil); auto.
-    fold hidden_array in *.
-    step_with idtac solver.
-    step_with idtac solver.
-    6: fold hidden_array in *; step_with idtac solver.
+    step_with idtac try_arrays_lengths.
+    step_with idtac try_arrays_lengths.
 
-  Qed.
+Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
 
@@ -973,7 +980,7 @@ Module MEMLOG.
     OnCrash
       exists mscs', rep xp (CommittedTxn cur) mscs'
     Begin
-      cs <- BUFCACHE.write_array (LogCache xp) $0
+      cs <- BUFCACHE.write_array (LogCache xp) (DataStart xp)
         (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
@@ -1022,7 +1029,7 @@ Module MEMLOG.
     OnCrash
       exists mscs', rep xp (AppliedUnsyncTxn cur) mscs'
     Begin
-      cs <- BUFCACHE.sync_array (LogCache xp) $0 (sel (map fst (Map.elements ms)) i $0) cs;
+      cs <- BUFCACHE.sync_array (LogCache xp) (DataStart xp) (sel (map fst (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
     cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $0 cs;
