@@ -72,6 +72,9 @@ Definition sep_star_impl (p1: pred) (p2: pred) : pred :=
 Definition indomain (a: AT) (m: @mem AT AEQ V) :=
   exists (v:V), m a = Some v.
 
+Definition notindomain (a : AT) (m : @mem AT AEQ V) :=
+  m a = None.
+
 Definition diskIs (m : @mem AT AEQ V) : pred :=
   fun m' => m = m'.
 
@@ -87,6 +90,7 @@ Arguments pimpl {AT AEQ V} _ _.
 Arguments piff {AT AEQ V} _ _.
 Arguments sep_star_impl {AT AEQ V} _ _ _.
 Arguments indomain {AT AEQ V} _ _.
+Arguments notindomain {AT AEQ V} _ _.
 Arguments diskIs {AT AEQ V} _ _.
 
 Hint Unfold pimpl.
@@ -902,6 +906,22 @@ Proof.
   unfold empty_mem, ptsto.
   intuition discriminate.
 Qed.
+
+Theorem notindomain_empty_mem : forall a,
+  notindomain a (@empty_mem AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Theorem notindomain_indomain_conflict : forall a (m : @mem AT AEQ V),
+  notindomain a m -> indomain a m -> False.
+Proof.
+  unfold notindomain, indomain.
+  firstorder.
+  rewrite H in H0.
+  inversion H0.
+Qed.
+
 
 End GenPredThm.
 
