@@ -939,7 +939,7 @@ Module MEMLOG.
     abstract solve_lengths.
     abstract solve_lengths.
     abstract solve_lengths.
-    abstract solve_lengths_prepare.
+    solve_lengths_prepare.
     rewrite skipn_oob by solve_lengths.
     rewrite firstn_oob by solve_lengths.
     cancel.
@@ -1404,12 +1404,74 @@ Module MEMLOG.
   Qed.
   Hint Rewrite crash_invariant_synced_array : crash_xform.
 
+  Lemma crash_xform_ptsto: forall AT AEQ (a: AT) v,
+    crash_xform (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * (@ptsto AT AEQ valuset a (v', nil)).
+  Proof.
+    unfold crash_xform, possible_crash, ptsto, pimpl; intros.
+    repeat deex; destruct (H1 a).
+    intuition; congruence.
+    repeat deex; rewrite H in H3; inversion H3; subst.
+    repeat eexists.
+    apply lift_impl.
+    intros; eauto.
+    split; auto.
+    intros.
+    destruct (H1 a').
+    intuition.
+    repeat deex.
+    specialize (H2 a' H4).
+    congruence.
+  Qed.
+  Hint Rewrite crash_xform_ptsto : crash_xform.
+
+  Definition possible_crash_list (l: list valuset) (l': list valu) :=
+    length l = length l' /\ forall i, i < length l -> In (selN l' i $0) (valuset_list (selN l i ($0, nil))).
+
+  Lemma crash_xform_array: forall l start stride,
+    crash_xform (array start l stride) =p=>
+      exists l', [[ possible_crash_list l l' ]] * array start (List.combine l' (repeat nil (length l'))) stride.
+  Proof.
+    unfold array, possible_crash_list.
+    induction l; intros.
+    cancel.
+    instantiate (a := nil).
+    simpl; auto.
+    auto.
+    autorewrite with crash_xform.
+    rewrite IHl.
+    cancel; [ instantiate (a := w :: l0) | .. ]; simpl; auto; fold repeat; try cancel;
+      destruct i; simpl; auto;
+      destruct (H4 i); try omega; simpl; auto.
+  Qed.
+
+  Lemma crash_invariant_avail_region: forall start len,
+    crash_xform (avail_region start len) =p=> avail_region start len.
+  Proof.
+    unfold avail_region.
+    intros.
+    autorewrite with crash_xform.
+    norm'l.
+    unfold stars; simpl.
+    autorewrite with crash_xform.
+    rewrite crash_xform_array.
+    unfold possible_crash_list.
+    cancel.
+    solve_lengths.
+  Qed.
+  Hint Rewrite crash_invariant_avail_region : crash_xform.
+
   Ltac log_intact_unfold := unfold MEMLOG.would_recover_either, MEMLOG.would_recover_old, MEMLOG.might_recover_cur.
 
   Ltac word_discriminate :=
     match goal with [ H: $ _ = $ _ |- _ ] => solve [
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
     ] end.
+
+  Lemma pred_apply_crash_xform: forall AT AEQ (P Q: @pred AT AEQ valuset) m m',
+    possible_crash m m' -> P m -> crash_xform P =p=> Q -> Q m'.
+  Proof.
+    unfold pimpl, crash_xform; eauto.
+  Qed.
 
   Theorem recover_ok: forall xp,
     {< m1 m2,
@@ -1421,25 +1483,48 @@ Module MEMLOG.
     unfold recover; log_intact_unfold; log_unfold.
     intros.
     autorewrite with crash_xform.
-    step_with ltac:(log_unfold; autorewrite with crash_xform) ltac:(eauto with replay).
     eapply pimpl_ok2; [ eauto with prog | ].
     intros; simpl.
     norm'l.
     unfold stars; simpl.
     rewrite sep_star_comm. rewrite <- emp_star.
     autorewrite with crash_xform.
-    rewrite sep_star_comm.
     repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; try word_discriminate;
       unfold stars; simpl; autorewrite with crash_xform.
     rewrite sep_star_comm. rewrite <- emp_star.
     repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; try word_discriminate;
       unfold stars; simpl; autorewrite with crash_xform.
-    rewrite sep_star_comm; rewrite <- emp_star.
-    + norm.
-      cancel'.
-      intuition.
-      pred_apply.
-      
+
+    cancel.
+    rewrite BUFCACHE.crash_xform_rep.
+    instantiate (a0 := p).
+    rewrite sep_star_comm.
+    apply pimpl_refl.
+    Ltac cancel_pred_crash :=
+      eapply pred_apply_crash_xform; eauto;
+      autorewrite with crash_xform;
+      cancel; subst; cancel.
+
+    eapply pimpl_ok2; [ eauto with prog | ].
+    intros; simpl.
+    norm'l.
+    unfold BUFCACHE.rep, diskIs in H7.
+    destruct_lift H7; subst.
+    (* XXX have to destruct exis in crash_transform'd H4 before evars get made *)
+    norm'r.
+    cancel'.
+    intuition.
+    eapply pred_apply_crash_xform; eauto.
+    autorewrite with crash_xform.
+
+    pimpl_crash.
+    cancel.
+    or_l; cancel.
+    or_l.
+    norm. cancel'.
+    intuition.
+    cancel_pred_crash.
+
       - step; step; try word_discriminate.
         rewrite crash_invariant_avail_region.
         or_l; cancel.
