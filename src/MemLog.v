@@ -870,17 +870,17 @@ Module MEMLOG.
     rewrite H18.
     rewrite Nat.sub_diag.
     reflexivity.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    case_eq l3; intros; subst; word2nat_clear; simpl in *; solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract (case_eq l3; intros; subst; word2nat_clear; simpl in *; solve_lengths).
 
     solve_lengths_prepare.
     instantiate (a2 := repeat $0 (addr_per_block - length (Map.elements ms))).
@@ -891,8 +891,8 @@ Module MEMLOG.
     solve_lengths.
     solve_lengths.
     rewrite Forall_forall; intuition.
-    solve_lengths.
-    solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
     instantiate (a0 := m); pred_apply; cancel.
     Unshelve.
     auto.
@@ -926,20 +926,20 @@ Module MEMLOG.
     rewrite <- app_assoc.
     rewrite repeat_selN.
     reflexivity.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths_prepare.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths_prepare.
     rewrite skipn_oob by solve_lengths.
     rewrite firstn_oob by solve_lengths.
     cancel.
@@ -947,7 +947,7 @@ Module MEMLOG.
     solve_lengths.
     instantiate (a0 := m); pred_apply; cancel.
     array_match.
-    solve_lengths.
+    abstract solve_lengths.
     Unshelve.
     auto.
     constructor.
@@ -966,11 +966,177 @@ Module MEMLOG.
     unfold flush; log_unfold.
     destruct mscs as [ms cs].
     intros.
-    hoare_unfold log_unfold.
+    abstract hoare_unfold log_unfold.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
 
+  Lemma equal_unless_in_trans: forall T m a b c (def: T),
+    equal_unless_in m a b def -> equal_unless_in m b c def -> equal_unless_in m a c def.
+  Proof.
+    unfold equal_unless_in; intuition.
+    rewrite H2 by auto. apply H3; auto.
+    rewrite H2 by auto. apply H3; auto.
+  Qed.
+
+  Lemma equal_unless_in_comm: forall T m a b (def: T),
+    equal_unless_in m a b def -> equal_unless_in m b a def.
+  Proof.
+    unfold equal_unless_in; intuition. rewrite H1 by auto; reflexivity.
+    rewrite H1 by auto; reflexivity.
+  Qed.
+
+  Lemma In_MapIn: forall V a (ms: Map.t V), In a (map fst (Map.elements ms)) <-> Map.In a ms.
+    intuition.
+    apply MapFacts.elements_in_iff.
+    apply in_map_iff in H.
+    destruct H.
+    intuition; subst.
+    eexists.
+    apply InA_alt.
+    eexists.
+    intuition; eauto.
+    constructor; simpl; auto.
+
+    apply MapFacts.elements_in_iff in H.
+    apply in_map_iff.
+    destruct H.
+    apply InA_alt in H.
+    destruct H.
+    intuition.
+    eexists.
+    intuition; eauto.
+    destruct x0; inversion H0; auto.
+  Qed.
+
+  Lemma replay'_length : forall V (l:list (addr * V)) (m:list V),
+      length m = length (replay' l m).
+    induction l; [trivial|]; intro.
+    unfold replay'; simpl.
+    rewrite length_upd.
+    eapply IHl.
+  Qed.
+
+  Lemma replay_sel_invalid : forall a ms m def,
+    ~ goodSize addrlen a -> selN (replay ms m) a def = selN m a def.
+  Proof.
+    intros; unfold goodSize in *.
+    destruct (lt_dec a (length m)); [|
+      repeat (rewrite selN_oob); unfold replay;
+        try match goal with [H: _ |- length (replay' _ _) <= a]
+            => rewrite <- replay'_length end;
+        auto; omega].
+    unfold replay, replay'.
+    induction (Map.elements ms); [reflexivity|].
+    rewrite <- IHl0; clear IHl0; simpl.
+    unfold upd.
+    rewrite selN_updN_ne.
+  Qed.
+
+  Lemma equal_unless_in_replay_eq: forall ms a b def,
+    replay ms a = replay ms b <-> equal_unless_in (map fst (Map.elements ms)) a b def.
+  Proof.
+    unfold equal_unless_in, sel.
+    intuition.
+    {
+    erewrite <- replay_length with (m := a).
+    erewrite <- replay_length with (m := b).
+    f_equal; eauto.
+    }
+    {
+      erewrite <- replay_sel_invalid with (m := a).
+      erewrite <- replay_sel_invalid with (m := b).
+      f_equal; eauto.
+      word2nat_auto.
+      word2nat_auto.
+    }
+    {
+    destruct (lt_dec n (pow2 addrlen)).
+    - (* [pos] is a valid address *)
+      replace n with (wordToNat (natToWord addrlen (n))) by word2nat_auto.
+      erewrite <- replay_sel_other.
+      erewrite <- replay_sel_other with (m := b).
+      f_equal; eauto.
+      intro Hi; apply In_MapIn in Hi; tauto.
+      intro Hi; apply In_MapIn in Hi; tauto.
+    - erewrite <- replay_sel_invalid with (m := a).
+      erewrite <- replay_sel_invalid with (m := b).
+      f_equal; eauto.
+      word2nat_auto.
+      word2nat_auto.
+    }
+    {
+    eapply list_selN_ext.
+    repeat rewrite replay_length; auto.
+    intros.
+    destruct (lt_dec pos (pow2 addrlen)).
+    - (* [pos] is a valid address *)
+      replace pos with (wordToNat (natToWord addrlen (pos))) by word2nat_auto.
+      case_eq (Map.find $ pos ms).
+      + intros w Hf. apply replay_sel_in. apply Map.find_2 in Hf.
+        erewrite replay_sel_in; eauto.
+      + intros Hf. repeat erewrite replay_sel_other.
+        apply H1.
+        right.
+        word2nat_rewrites; try word2nat_solve.
+        intro HIn.
+        apply MapFacts.not_find_in_iff in Hf.
+        apply In_MapIn in HIn. tauto.
+        apply MapFacts.not_find_in_iff; auto.
+        apply MapFacts.not_find_in_iff; auto.
+    - repeat rewrite replay_sel_invalid by auto.
+      apply H1.
+      left.
+      word2nat_auto.
+    }
+  Qed.
+
+  Lemma f_equal_unless_in: forall A B (f: A -> B) l a b def def',
+    equal_unless_in l a b def -> equal_unless_in l (map f a) (map f b) def'.
+  Proof.
+    unfold equal_unless_in; split.
+    repeat rewrite map_length; intuition.
+    intros.
+    destruct H.
+    destruct (lt_dec n (length b)).
+    repeat rewrite selN_map with (default' := def) by congruence.
+    f_equal. intuition.
+    repeat rewrite selN_oob by (rewrite map_length; omega); trivial.
+  Qed.
+
+  Lemma equal_unless_in_replay_eq': forall ms (a b: list valuset) def,
+    equal_unless_in (map fst (Map.elements ms)) a b def -> replay ms (map fst a) = replay ms (map fst b).
+  Proof.
+    intros.
+    apply equal_unless_in_replay_eq with (def := fst def).
+    eapply f_equal_unless_in; eauto.
+  Qed.
+
+  Lemma combine_repeat_map: forall A B (v: B) (l: list A),
+    List.combine l (repeat v (length l)) = map (fun x => (x, v)) l.
+  Proof.
+    induction l; simpl; auto.
+    fold repeat; rewrite IHl; auto.
+  Qed.
+
+  Lemma equal_unless_in_replay_eq'': forall ms (a b: list valu) def,
+    replay ms a = replay ms b -> equal_unless_in (map fst (Map.elements ms)) (List.combine a (repeat (@nil valu) (length a))) (List.combine b (repeat (@nil valu) (length b))) def.
+  Proof.
+    intros.
+    repeat rewrite combine_repeat_map.
+    eapply f_equal_unless_in.
+    apply equal_unless_in_replay_eq with (def := fst def); auto.
+  Qed.
+
+
+  Lemma map_fst_combine: forall A B (a: list A) (b: list B),
+    length a = length b -> map fst (List.combine a b) = a.
+  Proof.
+    unfold map, List.combine; induction a; intros; auto.
+    destruct b; try discriminate; simpl in *.
+    rewrite IHa; [ auto | congruence ].
+  Qed.
+  Hint Resolve equal_unless_in_trans equal_unless_in_comm equal_unless_in_replay_eq equal_unless_in_replay_eq'' : replay.
 
   Definition apply_unsync T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
@@ -1004,19 +1170,16 @@ Module MEMLOG.
   Proof.
     unfold apply_unsync; log_unfold.
     destruct mscs as [ms cs]; simpl.
-    hoare.
+    hoare_with log_unfold ltac:(eauto with replay).
     admit.
     admit.
     admit.
     admit.
-    rewrite <- H26.
     admit.
     admit.
     admit.
     admit.
-    assert (goodSize addrlen (# (LogLen xp))) by (apply wordToNat_bound).
-    rewrite skipn_oob in H23 by solve_lengths.
-    rewrite skipn_oob in H24 by solve_lengths.
+    admit.
     admit.
     admit.
   Qed.
@@ -1133,148 +1296,7 @@ Module MEMLOG.
 
   Ltac or_r := apply pimpl_or_r; right.
   Ltac or_l := apply pimpl_or_r; left.
-  Lemma equal_unless_in_trans: forall T m a b c (def: T),
-    equal_unless_in m a b def -> equal_unless_in m b c def -> equal_unless_in m a c def.
-  Proof.
-    unfold equal_unless_in; intuition.
-    rewrite H2 by auto. apply H3; auto.
-    rewrite H2 by auto. apply H3; auto.
-  Qed.
 
-  Lemma equal_unless_in_comm: forall T m a b (def: T),
-    equal_unless_in m a b def -> equal_unless_in m b a def.
-  Proof.
-    unfold equal_unless_in; intuition. rewrite H1 by auto; reflexivity.
-    rewrite H1 by auto; reflexivity.
-  Qed.
-
-  Lemma In_MapIn: forall V a (ms: Map.t V), In a (map fst (Map.elements ms)) <-> Map.In a ms.
-    intuition.
-    apply MapFacts.elements_in_iff.
-    apply in_map_iff in H.
-    destruct H.
-    intuition; subst.
-    eexists.
-    apply InA_alt.
-    eexists.
-    intuition; eauto.
-    constructor; simpl; auto.
-
-    apply MapFacts.elements_in_iff in H.
-    apply in_map_iff.
-    destruct H.
-    apply InA_alt in H.
-    destruct H.
-    intuition.
-    eexists.
-    intuition; eauto.
-    destruct x0; inversion H0; auto.
-  Qed.
-
-  Lemma equal_unless_in_replay_eq: forall ms a b def,
-    replay ms a = replay ms b <-> equal_unless_in (map fst (Map.elements ms)) a b def.
-  Proof.
-    unfold equal_unless_in, sel.
-    intuition.
-    {
-    erewrite <- replay_length with (m := a).
-    erewrite <- replay_length with (m := b).
-    f_equal; eauto.
-    }
-    {
-      erewrite <- replay_sel_invalid with (m := a).
-      erewrite <- replay_sel_invalid with (m := b).
-      f_equal; eauto.
-      word2nat_auto.
-      word2nat_auto.
-    }
-    {
-    destruct (lt_dec n (pow2 addrlen)).
-    - (* [pos] is a valid address *)
-      replace n with (wordToNat (natToWord addrlen (n))) by word2nat_auto.
-      erewrite <- replay_sel_other.
-      erewrite <- replay_sel_other with (m := b).
-      f_equal; eauto.
-      intro Hi; apply In_MapIn in Hi; tauto.
-      intro Hi; apply In_MapIn in Hi; tauto.
-    - erewrite <- replay_sel_invalid with (m := a).
-      erewrite <- replay_sel_invalid with (m := b).
-      f_equal; eauto.
-      word2nat_auto.
-      word2nat_auto.
-    }
-    {
-    eapply list_selN_ext.
-    repeat rewrite replay_length; auto.
-    intros.
-    destruct (lt_dec pos (pow2 addrlen)).
-    - (* [pos] is a valid address *)
-      replace pos with (wordToNat (natToWord addrlen (pos))) by word2nat_auto.
-      case_eq (Map.find $ pos ms).
-      + intros w Hf. apply replay_sel_in. apply Map.find_2 in Hf.
-        erewrite replay_sel_in; eauto.
-      + intros Hf. repeat erewrite replay_sel_other.
-        apply H1.
-        right.
-        word2nat_rewrites; try word2nat_solve.
-        intro HIn.
-        apply MapFacts.not_find_in_iff in Hf.
-        apply In_MapIn in HIn. tauto.
-        apply MapFacts.not_find_in_iff; auto.
-        apply MapFacts.not_find_in_iff; auto.
-    - repeat rewrite replay_sel_invalid by auto.
-      apply H1.
-      left.
-      word2nat_auto.
-    }
-  Qed.
-
-  Lemma f_equal_unless_in: forall A B (f: A -> B) l a b def def',
-    equal_unless_in l a b def -> equal_unless_in l (map f a) (map f b) def'.
-  Proof.
-    unfold equal_unless_in; split.
-    repeat rewrite map_length; intuition.
-    intros.
-    destruct H.
-    destruct (lt_dec n (length b)).
-    repeat rewrite selN_map with (default' := def) by congruence.
-    f_equal. intuition.
-    repeat rewrite selN_oob by (rewrite map_length; omega); trivial.
-  Qed.
-
-  Lemma equal_unless_in_replay_eq': forall ms (a b: list valuset) def,
-    equal_unless_in (map fst (Map.elements ms)) a b def -> replay ms (map fst a) = replay ms (map fst b).
-  Proof.
-    intros.
-    apply equal_unless_in_replay_eq with (def := fst def).
-    eapply f_equal_unless_in; eauto.
-  Qed.
-
-  Lemma combine_repeat_map: forall A B (v: B) (l: list A),
-    List.combine l (repeat v (length l)) = map (fun x => (x, v)) l.
-  Proof.
-    induction l; simpl; auto.
-    fold repeat; rewrite IHl; auto.
-  Qed.
-
-  Lemma equal_unless_in_replay_eq'': forall ms (a b: list valu) def,
-    replay ms a = replay ms b -> equal_unless_in (map fst (Map.elements ms)) (List.combine a (repeat (@nil valu) (length a))) (List.combine b (repeat (@nil valu) (length b))) def.
-  Proof.
-    intros.
-    repeat rewrite combine_repeat_map.
-    eapply f_equal_unless_in.
-    apply equal_unless_in_replay_eq with (def := fst def); auto.
-  Qed.
-
-
-  Lemma map_fst_combine: forall A B (a: list A) (b: list B),
-    length a = length b -> map fst (List.combine a b) = a.
-  Proof.
-    unfold map, List.combine; induction a; intros; auto.
-    destruct b; try discriminate; simpl in *.
-    rewrite IHa; [ auto | congruence ].
-  Qed.
-  Hint Resolve equal_unless_in_trans equal_unless_in_comm equal_unless_in_replay_eq equal_unless_in_replay_eq'' : replay.
   Theorem commit_ok: forall xp mscs,
     {< m1 m2,
      PRE            rep xp (ActiveTxn m1 m2) mscs
@@ -1399,17 +1421,25 @@ Module MEMLOG.
     unfold recover; log_intact_unfold; log_unfold.
     intros.
     autorewrite with crash_xform.
+    step_with ltac:(log_unfold; autorewrite with crash_xform) ltac:(eauto with replay).
     eapply pimpl_ok2; [ eauto with prog | ].
     intros; simpl.
     norm'l.
     unfold stars; simpl.
     rewrite sep_star_comm. rewrite <- emp_star.
     autorewrite with crash_xform.
+    rewrite sep_star_comm.
+    repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; try word_discriminate;
+      unfold stars; simpl; autorewrite with crash_xform.
+    rewrite sep_star_comm. rewrite <- emp_star.
     repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; try word_discriminate;
       unfold stars; simpl; autorewrite with crash_xform.
     rewrite sep_star_comm; rewrite <- emp_star.
-    repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; unfold stars; simpl; autorewrite with crash_xform.
-    + cancel.
+    + norm.
+      cancel'.
+      intuition.
+      pred_apply.
+      
       - step; step; try word_discriminate.
         rewrite crash_invariant_avail_region.
         or_l; cancel.
