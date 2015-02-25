@@ -907,6 +907,12 @@ Proof.
   intuition discriminate.
 Qed.
 
+Theorem emp_empty_mem :
+  emp (@empty_mem AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
 Theorem notindomain_empty_mem : forall a,
   notindomain a (@empty_mem AT AEQ V).
 Proof.

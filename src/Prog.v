@@ -77,6 +77,8 @@ Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 Definition mem {A : Type} {eq : DecEq A} {V: Type} := A -> option V.
 Definition upd {A : Type} {eq : DecEq A} {V: Type} (m : @mem A eq V) (a : A) (v : V) : @mem A eq V :=
   fun a' => if eq a' a then Some v else m a'.
+Definition upd_none {A : Type} {eq : DecEq A} {V : Type} (m : @mem A eq V) (a : A) : @mem A eq V :=
+  fun a' => if eq a' a then None else m a'.
 
 
 Inductive outcome (T: Type) :=
