@@ -259,7 +259,7 @@ Module DIR.
            [[ rep F A m bxp ixp dnum dmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           ((exists inum DF, [[ r = Some dnum ]] *
+           ((exists inum DF, [[ r = Some inum ]] *
              [[ (DF * name |-> inum)%pred dmap ]]) \/
             ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
@@ -337,9 +337,10 @@ Module DIR.
       Loopvar mscs <- mscs
       Continuation lrx
       Invariant
-        (* Need an invariant saying the name is not found in any earlier dirent *)
-        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-        derep F A m bxp ixp dnum delist
+        exists dmap, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+        [[ derep F A m bxp ixp dnum delist ]] *
+        [[ listpred dmatch (firstn #i delist) dmap ]] *
+        [[ notindomain name dmap ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
@@ -349,27 +350,64 @@ Module DIR.
         } else {
           If (weq (de :-> "name") name) {
             mscs <- deput lxp ixp dnum i (de :=> "valid" := $0) mscs;
-            rx mscs
+            rx (mscs, true)
           } else {
             lrx mscs
           }
         }
       Rof;
-    rx mscs.
+    rx (mscs, false).
 
 
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
-    {< F A mbase m dmap DF,
+    {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             rep F A m bxp ixp dnum dmap *
-             [[ (DF * name |->?)%pred dmap ]]
-    POST:mscs' exists m' dmap',
+             [[ rep F A m bxp ixp dnum dmap ]]
+    POST:(mscs',r)
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+             [[ notindomain name dmap ]]) \/
+            ([[ r = true ]] * exists m' dmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-             rep F A m' bxp ixp dnum dmap' *
-             [[ (DF) dmap' ]]
+             [[ rep F A m' bxp ixp dnum dmap' ]] *
+             [[ (DF * name |->?)%pred dmap ]] *
+             [[ (DF) dmap' ]])
     CRASH    MEMLOG.log_intact lxp mbase
     >} dunlink lxp bxp ixp dnum name mscs.
   Proof.
+    unfold dunlink, rep.
+    step.
+    step.
+    apply emp_empty_mem.
+    apply notindomain_empty_mem.
+    step.
+    list2nmem_ptsto_cancel.
+    admit.
+    step.
+    step.
+    replace (# (m1 ^+ $1)) with (#m1 + 1).
+    rewrite firstn_plusone_selN with (def:=dent0).
+    apply listpred_app.
+    unfold dmatch at 2; rec_simpl; simpl.
+    unfold dent in *; simpl in *; rewrite H9.
+    destruct (weq (natToWord addrlen 0) $0); try congruence.
+    clear H10. pred_apply; cancel.
+    admit.
+    admit.
+    step.
+    step.
+    unfold Rec.well_formed; simpl; intuition.
+    list2nmem_ptsto_cancel.
+    admit.
+    step.
+    apply pimpl_or_r; right. cancel.
+    eexists; intuition eauto.
+    instantiate (a0 := upd_none m (fst (selN x #m1 dent0))).
+    admit.
+    
+    (* XXX need to compute dmap *)
+    admit.
+    admit.
+    ad
     admit.
   Qed.
 
