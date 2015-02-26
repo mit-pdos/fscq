@@ -23,6 +23,7 @@ Require Import Cache.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
 Module MapFacts := WFacts_fun Addr_as_OT Map.
+Module MapProperties := WProperties_fun Addr_as_OT Map.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -181,7 +182,7 @@ Module MEMLOG.
 
   (* Replay the state in memory *)
   Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
-    fold_left (fun m' p => upd m' (fst p) (snd p)) l m.
+    fold_right (fun p m' => upd m' (fst p) (snd p)) m l.
 
   Definition replay (ms : memstate) (m : diskstate) : diskstate :=
     replay' (Map.elements ms) m.
@@ -412,17 +413,268 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
 
+  Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
+    | [ H : forall _, {{ _ }} _ |- _ ] => clear H
+    | [ H : _ =p=> _ |- _ ] => clear H
+    end.
+
+  Lemma skipn_1_length': forall T (l: list T),
+    length (match l with [] => [] | _ :: l' => l' end) = length l - 1.
+  Proof.
+    destruct l; simpl; omega.
+  Qed.
+
+  Hint Rewrite app_length firstn_length skipn_length combine_length map_length repeat_length length_upd
+    skipn_1_length' : lengths.
+
+  Ltac solve_lengths' :=
+    repeat (progress (autorewrite with lengths; repeat rewrite Nat.min_l by solve_lengths'; repeat rewrite Nat.min_r by solve_lengths'));
+    simpl; try word2nat_solve.
+
+  Ltac solve_lengths_prepare :=
+    intros; word2nat_clear; simpl;
+    (* Stupidly, this is like 5x faster than [rewrite Map.cardinal_1 in *] ... *)
+    repeat match goal with
+    | [ H : context[Map.cardinal] |- _ ] => rewrite Map.cardinal_1 in H
+    | [ |- context[Map.cardinal] ] => rewrite Map.cardinal_1
+    end.
+
+  Ltac solve_lengths_prepped :=
+    try (match goal with
+      | [ |- context[{{ _ }} _] ] => fail 1
+      | [ |- _ =p=> _ ] => fail 1
+      | _ => idtac
+      end;
+      word2nat_clear; word2nat_simpl; word2nat_rewrites; solve_lengths').
+
+  Ltac solve_lengths := solve_lengths_prepare; solve_lengths_prepped.
+
+
+  Definition KIn V := InA (@Map.eq_key V).
+  Definition KNoDup V := NoDupA (@Map.eq_key V).
+
+  Lemma replay_sel_other : forall a ms m def,
+    ~ Map.In a ms -> selN (replay ms m) (wordToNat a) def = selN m (wordToNat a) def.
+  Proof.
+    (* intros; rename a into a'; remember (wordToNat a') as a. *)
+    intros a ms m def HnotIn.
+    destruct (MapFacts.elements_in_iff ms a) as [_ Hr].
+    assert (not (exists e : valu, InA (Map.eq_key_elt (elt:=valu))
+      (a, e) (Map.elements ms))) as HnotElem by auto; clear Hr HnotIn.
+    remember (Map.eq_key_elt (elt:=valu)) as eq in *.
+    unfold replay, replay'.
+    remember (Map.elements ms) as elems in *.
+    assert (forall x y, InA eq (x,y) elems -> x <> a) as Hneq. {
+      intros x y Hin.
+      destruct (Addr_as_OT.eq_dec a x); [|intuition].
+      destruct HnotElem; exists y; subst; auto.
+    }
+    clear Heqelems HnotElem.
+    induction elems as [|p]; [reflexivity|].
+    rewrite <- IHelems; clear IHelems; [|intros; eapply Hneq; right; eauto].
+    destruct p as [x y]; simpl.
+    assert (x <> a) as Hsep. {
+      apply (Hneq x y); left; subst eq. 
+      apply Equivalence.equiv_reflexive_obligation_1.
+      apply MapProperties.eqke_equiv.
+    }
+    eapply (selN_updN_ne _ y);
+      unfold not; intros; destruct Hsep; apply wordToNat_inj; trivial.
+  Qed.
+
+  Lemma replay'_length : forall V (l:list (addr * V)) (m:list V),
+      length m = length (replay' l m).
+    induction l; [trivial|]; intro.
+    unfold replay'; simpl.
+    rewrite length_upd.
+    eapply IHl.
+  Qed.
+  Hint Rewrite replay'_length : lengths.
+
+  Lemma InA_NotInA_neq : forall T eq, Equivalence eq -> forall l (x y:T),
+      InA eq x l -> ~ (InA eq y l) -> ~ eq x y.
+    intros until 0; intros Eqeq; intros until 0; intros HIn HnotIn.
+    rewrite InA_altdef, Exists_exists in *.
+    intro Hcontra; apply HnotIn; clear HnotIn.
+    elim HIn; clear HIn; intros until 0; intros HIn.
+    destruct HIn as [HIn Heq_x_x0].
+    exists x0. split; [apply HIn|].
+    etransitivity; eauto; symmetry; auto.
+  Qed.
+
+  Lemma replay'_sel : forall V a (v: V) l m def,
+    KNoDup l -> In (a, v) l -> wordToNat a < length m -> sel (replay' l m) a def = v.
+  Proof.
+    intros until 0; intros HNoDup HIn Hbounds.
+
+    induction l as [|p]; [inversion HIn|]; destruct p as [x y]; simpl.
+    destruct HIn. {
+      clear IHl.
+      injection H; clear H;
+        intro H; rewrite H in *; clear H;
+        intro H; rewrite H in *; clear H.
+      apply selN_updN_eq. rewrite <- replay'_length; assumption.
+    } {
+      assert (x <> a) as Hneq. {
+        inversion HNoDup. 
+        assert (InA eq (a,v) l). {
+          apply In_InA; subst; eauto using MapProperties.eqk_equiv.
+        }
+      remember (Map.eq_key (elt:=V)) as eq_key in *.
+      assert (forall a b, eq a b -> eq_key a b) as Heq_eqk by (
+        intros; subst; apply MapProperties.eqk_equiv).
+      assert (forall a l, InA eq a l -> InA eq_key a l) as HIn_eq_eqk by (
+        intros until 0; intro HInAeq; induction HInAeq; [subst|right]; auto).
+      assert (@Equivalence (Map.key*V) eq_key) as Eqeq by (
+        subst eq_key; apply MapProperties.eqk_equiv).
+      intro Hcontra; destruct
+        (@InA_NotInA_neq (Map.key*V) eq_key Eqeq l (a,v) (x,y) (HIn_eq_eqk _ _ H4) H2).
+      subst; unfold Map.eq_key; reflexivity.
+      }
+      unfold sel, upd in *.
+      rewrite selN_updN_ne, IHl;
+        try trivial;
+        match goal with
+          | [ H: KNoDup (?a::?l) |- KNoDup ?l ] => inversion H; assumption
+          | [ Hneq: ?a<>?b |- wordToNat ?a <> wordToNat ?b] =>
+            unfold not; intro Hcontra; destruct (Hneq (wordToNat_inj _  _ Hcontra))
+        end.
+    }
+  Qed.
+
+  Lemma InA_eqke_In : forall V a v l,
+    InA (Map.eq_key_elt (elt:=V)) (a, v) l -> In (a, v) l.
+  Proof.
+    intros.
+    induction l.
+    inversion H.
+    inversion H.
+    inversion H1.
+    destruct a0; simpl in *; subst.
+    left; trivial.
+    simpl.
+    right.
+    apply IHl; auto.
+  Qed.
+
+  Lemma mapsto_In : forall V a (v: V) ms,
+    Map.MapsTo a v ms -> In (a, v) (Map.elements ms).
+  Proof.
+    intros.
+    apply Map.elements_1 in H.
+    apply InA_eqke_In; auto.
+  Qed.
+
+  Lemma replay_sel_in : forall a v ms m def,
+    # a < length m -> Map.MapsTo a v ms -> selN (replay ms m) (wordToNat a) def = v.
+  Proof.
+    intros.
+    apply mapsto_In in H0.
+    unfold replay.
+    apply replay'_sel.
+    apply Map.elements_3w.
+    auto.
+    auto.
+  Qed.
+
+  Lemma replay_sel_invalid : forall a ms m def,
+    ~ goodSize addrlen a -> selN (replay ms m) a def = selN m a def.
+  Proof.
+    intros; unfold goodSize in *.
+    destruct (lt_dec a (length m)); [|
+      repeat (rewrite selN_oob); unfold replay;
+        try match goal with [H: _ |- length (replay' _ _) <= a]
+            => rewrite <- replay'_length end;
+        auto; omega].
+    unfold replay, replay'.
+    induction (Map.elements ms); [reflexivity|].
+    rewrite <- IHl0; clear IHl0; simpl.
+    unfold upd.
+    rewrite selN_updN_ne.
+    trivial.
+    destruct a0.
+    unfold Map.key in k.
+    intro Hf.
+    word2nat_auto.
+  Qed.
+
+  Lemma replay_length : forall ms m,
+    length (replay ms m) = length m.
+  Proof.
+    intros.
+    unfold replay.
+    rewrite <- replay'_length.
+    trivial.
+  Qed.
+  Hint Rewrite replay_length : lengths.
+
   Lemma replay_add : forall a v ms m,
     replay (Map.add a v ms) m = upd (replay ms m) a v.
   Proof.
     intros.
-    (* XXX move proof from Scratch.v *)
-    admit.
-  Qed.
+    (* Let's show that the lists are equal because [sel] at any index [pos] gives the same valu *)
+    eapply list_selN_ext.
+    rewrite length_upd.
+    repeat rewrite replay_len.
+    trivial.
+    solve_lengths.
+    intros.
+    destruct (lt_dec pos (pow2 addrlen)).
+    - (* [pos] is a valid address *)
+      replace pos with (wordToNat (natToWord addrlen (pos))) by word2nat_auto.
+      destruct (weq ($ pos) a).
+      + (* [pos] is [a], the address we're updating *)
+        erewrite replay_sel_in.
+        reflexivity.
+        autorewrite with lengths in *.
+        solve_lengths.
+        instantiate (default := $0).
+        subst.
+        unfold upd.
+        rewrite selN_updN_eq.
+        apply Map.add_1.
+        trivial.
+        rewrite replay_length in *.
+        word2nat_auto.
 
-  Definition write T (xp : xparams) a v (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
-    rx (Map.add a v ms, cs).
+      + (* [pos] is another address *)
+        unfold upd.
+        rewrite selN_updN_ne by word2nat_auto.
+
+        case_eq (Map.find $ pos ms).
+
+        (* [pos] is in the transaction *)
+        intros w Hf.
+        autorewrite with lengths in *.
+        erewrite replay_sel_in.
+        reflexivity.
+        solve_lengths.
+        apply Map.find_2 in Hf.
+        erewrite replay_sel_in.
+        apply Map.add_2.
+        unfold not in *; intros; solve [auto].
+        eauto.
+        solve_lengths.
+        eauto.
+
+        (* [pos] is not in the transaction *)
+        Ltac wneq H := intro HeqContra; symmetry in HeqContra; apply H; auto.
+        intro Hf; 
+          repeat (erewrite replay_sel_other);
+          try trivial;
+          intro HIn; destruct HIn as [x HIn];
+          try apply Map.add_3 in HIn;
+          try apply Map.find_1 in HIn;
+          try wneq n;
+          replace (Map.find $ (pos) ms) with (Some x) in Hf; inversion Hf.
+    - (* [pos] is an invalid address *)
+      rewrite replay_sel_invalid by auto.
+      unfold upd.
+      rewrite selN_updN_ne by (
+        generalize (wordToNat_bound a); intro Hb;
+        omega).
+      rewrite replay_sel_invalid by auto; trivial.
+  Qed.
 
   Lemma valid_entries_add : forall a v ms m,
     valid_entries m ms -> indomain' a m -> valid_entries m (Map.add a v ms).
@@ -435,11 +687,17 @@ Module MEMLOG.
     eapply Map.add_3; eauto.
   Qed.
 
-  Lemma replay_length : forall ms m,
-    length (replay ms m) = length m.
+
+  Lemma upd_prepend_length: forall l a v, length (upd_prepend l a v) = length l.
   Proof.
-    admit.
+    intros; unfold upd_prepend.
+    solve_lengths.
   Qed.
+  Hint Rewrite upd_prepend_length : lengths.
+
+  Definition write T (xp : xparams) a v (mscs : memstate * cachestate) rx : prog T :=
+    let (ms, cs) := mscs in
+    rx (Map.add a v ms, cs).
 
   Theorem write_ok : forall xp mscs a v,
     {< m1 m2 F' v0,
@@ -476,60 +734,6 @@ Module MEMLOG.
       rx ((ms, cs), v)
     end.
 
-  Lemma replay_sel : forall a v ms m def,
-    indomain' a m -> Map.MapsTo a v ms -> sel (replay ms m) a def = v.
-  Proof.
-    admit.
-  Qed.
-
-  Lemma replay_sel_other : forall a ms m def,
-    ~ Map.In a ms -> selN (replay ms m) (wordToNat a) def = selN m (wordToNat a) def.
-  Proof.
-    admit.
-  Qed.
-
-  Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
-    | [ H : forall _, {{ _ }} _ |- _ ] => clear H
-    | [ H : _ =p=> _ |- _ ] => clear H
-    end.
-
-  Lemma skipn_1_length': forall T (l: list T),
-    length (match l with [] => [] | _ :: l' => l' end) = length l - 1.
-  Proof.
-    destruct l; simpl; omega.
-  Qed.
-
-  Hint Rewrite app_length firstn_length skipn_length combine_length map_length replay_length repeat_length length_upd
-    skipn_1_length' : lengths.
-
-  Ltac solve_lengths' :=
-    repeat (progress (autorewrite with lengths; repeat rewrite Nat.min_l by solve_lengths'; repeat rewrite Nat.min_r by solve_lengths'));
-    simpl; try word2nat_solve.
-
-  Ltac solve_lengths_prepare :=
-    intros; word2nat_clear; simpl;
-    (* Stupidly, this is like 5x faster than [rewrite Map.cardinal_1 in *] ... *)
-    repeat match goal with
-    | [ H : context[Map.cardinal] |- _ ] => rewrite Map.cardinal_1 in H
-    | [ |- context[Map.cardinal] ] => rewrite Map.cardinal_1
-    end.
-
-  Ltac solve_lengths_prepped :=
-    try (match goal with
-      | [ |- context[{{ _ }} _] ] => fail 1
-      | [ |- _ =p=> _ ] => fail 1
-      | _ => idtac
-      end;
-      word2nat_clear; word2nat_simpl; word2nat_rewrites; solve_lengths').
-
-  Ltac solve_lengths := solve_lengths_prepare; solve_lengths_prepped.
-
-  Lemma upd_prepend_length: forall l a v, length (upd_prepend l a v) = length l.
-  Proof.
-    intros; unfold upd_prepend.
-    solve_lengths.
-  Qed.
-  Hint Rewrite upd_prepend_length : lengths.
 
   Theorem read_ok: forall xp mscs a,
     {< m1 m2 v,
@@ -547,7 +751,7 @@ Module MEMLOG.
 
     eapply list2mem_sel with (def := $0) in H1.
     apply Map.find_2 in H.
-    eapply replay_sel in H.
+    eapply replay_sel_in in H.
     rewrite <- H.
     rewrite H1.
     reflexivity.
@@ -555,8 +759,8 @@ Module MEMLOG.
     eauto.
 
     solve_lengths.
-    erewrite <- replay_length.
-    eapply list2mem_inbound; eauto.
+    unfold indomain' in *.
+    eauto.
 
     unfold sel. rewrite selN_combine.
     simpl.
@@ -814,7 +1018,6 @@ Module MEMLOG.
     admit.
   Qed.
 
-
   Hint Rewrite firstn_combine_comm skipn_combine_comm selN_combine
     removeN_combine List.combine_split combine_nth combine_one updN_0_skip_1 skipn_selN : lists.
   Hint Rewrite <- combine_updN combine_upd combine_app : lists.
@@ -1009,30 +1212,6 @@ Module MEMLOG.
     destruct x0; inversion H0; auto.
   Qed.
 
-  Lemma replay'_length : forall V (l:list (addr * V)) (m:list V),
-      length m = length (replay' l m).
-    induction l; [trivial|]; intro.
-    unfold replay'; simpl.
-    rewrite length_upd.
-    eapply IHl.
-  Qed.
-
-  Lemma replay_sel_invalid : forall a ms m def,
-    ~ goodSize addrlen a -> selN (replay ms m) a def = selN m a def.
-  Proof.
-    intros; unfold goodSize in *.
-    destruct (lt_dec a (length m)); [|
-      repeat (rewrite selN_oob); unfold replay;
-        try match goal with [H: _ |- length (replay' _ _) <= a]
-            => rewrite <- replay'_length end;
-        auto; omega].
-    unfold replay, replay'.
-    induction (Map.elements ms); [reflexivity|].
-    rewrite <- IHl0; clear IHl0; simpl.
-    unfold upd.
-    rewrite selN_updN_ne.
-  Qed.
-
   Lemma equal_unless_in_replay_eq: forall ms a b def,
     replay ms a = replay ms b <-> equal_unless_in (map fst (Map.elements ms)) a b def.
   Proof.
@@ -1073,8 +1252,12 @@ Module MEMLOG.
     - (* [pos] is a valid address *)
       replace pos with (wordToNat (natToWord addrlen (pos))) by word2nat_auto.
       case_eq (Map.find $ pos ms).
-      + intros w Hf. apply replay_sel_in. apply Map.find_2 in Hf.
+      + intros w Hf. apply Map.find_2 in Hf. apply replay_sel_in.
+        autorewrite with lengths in *.
+        solve_lengths.
         erewrite replay_sel_in; eauto.
+        autorewrite with lengths in *.
+        solve_lengths.
       + intros Hf. repeat erewrite replay_sel_other.
         apply H1.
         right.
@@ -1468,7 +1651,7 @@ Module MEMLOG.
     ] end.
 
   Lemma pred_apply_crash_xform: forall AT AEQ (P Q: @pred AT AEQ valuset) m m',
-    possible_crash m m' -> P m -> crash_xform P =p=> Q -> Q m'.
+    possible_crash m m' -> P m -> (crash_xform P) m'.
   Proof.
     unfold pimpl, crash_xform; eauto.
   Qed.
@@ -1519,6 +1702,7 @@ Module MEMLOG.
 
     pimpl_crash.
     cancel.
+
     or_l; cancel.
     or_l.
     norm. cancel'.
