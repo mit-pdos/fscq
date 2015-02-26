@@ -20,17 +20,13 @@ Require Import RecArray.
 Require Import ListPred.
 Require Import GenSep.
 Require Import WordAuto.
+Require Import FSLayout.
 
 
 Set Implicit Arguments.
 
 
 (* Block allocator *)
-
-Record xparams := {
-  BmapStart : addr;
-  BmapNBlocks : addr
-}.
 
 Module BALLOC.
 

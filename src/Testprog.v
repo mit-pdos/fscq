@@ -5,7 +5,7 @@ Require Import Balloc.
 Require Import BFile.
 Require Import BasicProg.
 Require Import Pred.
-Require Import FS.
+Require Import FSLayout.
 
 Set Implicit Arguments.
 

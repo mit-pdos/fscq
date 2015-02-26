@@ -19,6 +19,7 @@ Require Import Eqdep_dec.
 Require Import GenSep.
 Require Import WordAuto.
 Require Import Cache.
+Require Import FSLayout.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
 
@@ -60,18 +61,6 @@ Inductive logstate :=
 
 | AppliedTxn (cur : diskstate)
 (* A transaction has been committed, applied, and flushed. *).
-
-Record xparams := {
-  LogCache : Cache.xparams;
-
-  (* The actual data region is everything that's not described here *)
-  LogHeader : addr; (* Store the header here *)
-  LogCommit : addr; (* Store true to apply after crash. *)
-
-  LogDescriptor : addr; (* Start of descriptor region in log *)
-  LogData : addr; (* Start of data region in log *)
-  LogLen : addr  (* Maximum number of entries in log; length but still use addr type *)
-}.
 
 
 Module MEMLOG.
@@ -192,7 +181,7 @@ Module MEMLOG.
 
   Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
 
-  Definition data_rep (xp: xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
+  Definition data_rep (xp: memlog_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
     array $0 m $1.
 
   (** On-disk representation of the log *)
@@ -406,7 +395,7 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Definition write T (xp : xparams) a v (mscs : memstate * cachestate) rx : prog T :=
+  Definition write T (xp : memlog_xparams) a v (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
     rx (Map.add a v ms, cs).
 
@@ -459,7 +448,7 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Definition read T (xp: xparams) a (mscs : memstate * cachestate) rx : prog T :=
+  Definition read T (xp: memlog_xparams) a (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
     match Map.find a ms with
     | Some v =>
@@ -1078,7 +1067,7 @@ Module MEMLOG.
 
   Module MapProperties := WProperties Map.
 
-  Definition read_log T (xp : xparams) cs rx : prog T :=
+  Definition read_log T (xp : memlog_xparams) cs rx : prog T :=
     let2 (cs, d) <- BUFCACHE.read (LogCache xp) (LogDescriptor xp) cs;
     let desc := valu_to_descriptor d in
     let2 (cs, h) <- BUFCACHE.read (LogCache xp) (LogHeader xp) cs;

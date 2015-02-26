@@ -10,6 +10,7 @@ Require Import SepAuto.
 Require Import BasicProg.
 Require Import WordAuto.
 Require Import Omega.
+Require Import FSLayout.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
 
@@ -18,11 +19,6 @@ Set Implicit Arguments.
 
 Definition cachestate := (Map.t valu * addr)%type.
 (* The [addr] stores the current number of items, for efficient capacity checks *)
-
-Record xparams := {
-  MaxCacheBlocks : addr;
-  MaxCacheBlocksOK : MaxCacheBlocks <> $0
-}.
 
 Module BUFCACHE.
 
@@ -61,11 +57,11 @@ Module BUFCACHE.
       rx (Map.add a v (fst cs), snd cs ^+ $1)
     end.
 
-  Definition sync T (xp : xparams) a (cs : cachestate) rx : prog T :=
+  Definition sync T (xp : cache_xparams) a (cs : cachestate) rx : prog T :=
     Sync a;;
     rx cs.
 
-  Definition init T (xp : xparams) (rx : cachestate -> prog T) : prog T :=
+  Definition init T (xp : cache_xparams) (rx : cachestate -> prog T) : prog T :=
     rx (Map.empty valu, $0).
 
   Definition read_array T xp a i cs rx : prog T :=

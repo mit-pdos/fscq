@@ -19,6 +19,7 @@ import Data.IORef
 import Interpreter as I
 import qualified FS
 import qualified MemLog
+import FSLayout
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
@@ -41,7 +42,7 @@ nDataBitmaps = W 1
 nInodeBitmaps :: Coq_word
 nInodeBitmaps = W 1
 
-fsxp :: FS.Coq_xparams
+fsxp :: Coq_fs_xparams
 fsxp = FS.compute_xparams nCache nDataBitmaps nInodeBitmaps
 
 type MSCS = (MemLog.Coq_memstate, Cache.Coq_cachestate)
@@ -61,12 +62,12 @@ main = do
   s <- if fileExists
   then
     do
-      putStrLn $ "Recovering file system, " ++ (show $ FS.coq_FSXPMaxBlock fsxp) ++ " blocks"
-      I.run fd $ MemLog._MEMLOG__recover (FS.coq_FSXPMemLog fsxp)
+      putStrLn $ "Recovering file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
+      I.run fd $ MemLog._MEMLOG__recover (coq_FSXPMemLog fsxp)
   else
     do
-      putStrLn $ "Initializing file system, " ++ (show $ FS.coq_FSXPMaxBlock fsxp) ++ " blocks"
-      I.run fd $ MemLog._MEMLOG__init (FS.coq_FSXPMemLog fsxp)
+      putStrLn $ "Initializing file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
+      I.run fd $ MemLog._MEMLOG__init (coq_FSXPMemLog fsxp)
   putStrLn "Starting file system.."
   ref <- newIORef s
   fuseMain (fscqFSOps (doFScall fd ref)) defaultExceptionHandler

@@ -17,17 +17,10 @@ Require Import Balloc.
 Require Import DirAlloc.
 Require Import Arith.
 Require Import Array.
+Require Import FSLayout.
 
 Set Implicit Arguments.
 Import ListNotations.
-
-Record xparams := {
-  FSXPMemLog : MemLog.xparams;
-  FSXPInode : Inode.xparams;
-  FSXPInodeAlloc : Balloc.xparams;
-  FSXPBlockAlloc : Balloc.xparams;
-  FSXPMaxBlock : addr
-}.
 
 Definition compute_xparams (cache_blocks data_bitmaps inode_bitmaps : addr) cache_blocks_ok :=
   let data_blocks := data_bitmaps ^* BALLOC.items_per_valu in
@@ -37,12 +30,12 @@ Definition compute_xparams (cache_blocks data_bitmaps inode_bitmaps : addr) cach
   let log_base := balloc_base ^+ data_bitmaps in
   let log_size := $ MEMLOG.addr_per_block in
   let max_addr := log_base ^+ $4 ^+ log_size in
-  (Build_xparams
-   (MemLog.Build_xparams (@Cache.Build_xparams cache_blocks cache_blocks_ok)
+  (Build_fs_xparams
+   (Build_memlog_xparams (Build_cache_xparams cache_blocks cache_blocks_ok)
                          log_base (log_base ^+ $1) (log_base ^+ $2) (log_base ^+ $3) log_size)
-   (Inode.Build_xparams inode_base inode_blocks)
-   (Balloc.Build_xparams (inode_base ^+ inode_blocks) inode_bitmaps)
-   (Balloc.Build_xparams balloc_base data_bitmaps)
+   (Build_inode_xparams inode_base inode_blocks)
+   (Build_balloc_xparams (inode_base ^+ inode_blocks) inode_bitmaps)
+   (Build_balloc_xparams balloc_base data_bitmaps)
    max_addr).
 
 Definition file_len T fsxp inum mscs rx : prog T :=

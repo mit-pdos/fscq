@@ -20,6 +20,7 @@ Require Import GenSep.
 Require Import GenSepN.
 Require Import Balloc.
 Require Import ListPred.
+Require Import FSLayout.
 
 Import ListNotations.
 
@@ -27,11 +28,6 @@ Set Implicit Arguments.
 
 
 (* Inode layout *)
-
-Record xparams := {
-  IXStart : addr;
-  IXLen : addr
-}.
 
 Module INODE.
 

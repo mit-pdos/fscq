@@ -7,6 +7,7 @@ import qualified Interpreter as I
 import qualified System.Directory
 import qualified Testprog
 import qualified FS
+import FSLayout
 
 disk_fn :: String
 disk_fn = "disk.img"
@@ -43,12 +44,12 @@ main = do
   s <- if fileExists
   then
     do
-      putStrLn $ "Recovering file system, " ++ (show $ FS.coq_FSXPMaxBlock fsxp) ++ " blocks"
-      I.run fd $ _MEMLOG__recover (FS.coq_FSXPMemLog fsxp)
+      putStrLn $ "Recovering file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
+      I.run fd $ _MEMLOG__recover (coq_FSXPMemLog fsxp)
   else
     do
-      putStrLn $ "Initializing file system, " ++ (show $ FS.coq_FSXPMaxBlock fsxp) ++ " blocks"
-      I.run fd $ _MEMLOG__init (FS.coq_FSXPMemLog fsxp)
+      putStrLn $ "Initializing file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
+      I.run fd $ _MEMLOG__init (coq_FSXPMemLog fsxp)
   putStrLn "Running program.."
   -- r <- I.run fd $ the_prog lxp
   -- r <- I.run fd $ Testprog.testcopy lxp
