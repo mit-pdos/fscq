@@ -9,7 +9,7 @@ Require Import Structures.OrderedTypeEx.
 Require Import Pred.
 Require Import Prog.
 Require Import Hoare.
-Require Import SepAuto.
+Require Import SepAuto2.
 Require Import BasicProg.
 Require Import FunctionalExtensionality.
 Require Import Omega.
