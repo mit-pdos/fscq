@@ -1,6 +1,8 @@
 Require Import DirName.
 Require Import Balloc.
 Require Import Prog.
+Require Import BasicProg.
+Require Import Bool.
 
 Set Implicit Arguments.
 
@@ -23,9 +25,13 @@ Module DIRALLOC.
     match oi with
     | None => rx (mscs, false)
     | Some inum =>
-      mscs <- SDIR.dsunlink lxp dbxp ixp dnum name mscs;
-      mscs <- BALLOC.free_gen lxp ibxp inum mscs;
-      rx (mscs, true)
+      let2 (mscs, ok) <- SDIR.dsunlink lxp dbxp ixp dnum name mscs;
+      If (bool_dec ok true) {
+        mscs <- BALLOC.free_gen lxp ibxp inum mscs;
+        rx (mscs, true)
+      } else {
+        rx (mscs, false)
+      }
     end.
 
   (* XXX what should the rep invariant look like? *)

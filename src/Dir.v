@@ -421,7 +421,7 @@ Module DIR.
       Invariant
         (* Need an invariant saying the name is not found in any earlier dirent *)
         MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-        derep F A m bxp ixp dnum delist
+        [[ derep F A m bxp ixp dnum delist ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
@@ -439,13 +439,13 @@ Module DIR.
   Theorem dlink_ok : forall lxp bxp ixp dnum name inum mscs,
     {< F A mbase m dmap DF,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             rep F A m bxp ixp dnum dmap *
+             [[ rep F A m bxp ixp dnum dmap ]] *
              [[ (DF) dmap ]] *
              [[ exists dmap', (DF * name |->?)%pred dmap' ]]
     POST:(mscs',r)
              ([[ r = true ]] * exists m' dmap',
               MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-              rep F A m' bxp ixp dnum dmap' *
+              [[ rep F A m' bxp ixp dnum dmap' ]] *
               [[ (DF * name |-> inum)%pred dmap' ]]) \/
              ([[ r = false ]] * exists m',
               MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
@@ -466,7 +466,7 @@ Module DIR.
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_res) *
-        derep F A m bxp ixp dnum delist *
+        [[ derep F A m bxp ixp dnum delist ]] *
         [[ listpred dmatch delist dmap ]] *
         exists dmap',
         [[ listpred dmatch (firstn #i delist) dmap' ]] *
@@ -487,7 +487,7 @@ Module DIR.
   Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             rep F A m bxp ixp dnum dmap
+             [[ rep F A m bxp ixp dnum dmap ]]
     POST:(mscs',res)
              MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ listpred diritemmatch res dmap ]]
