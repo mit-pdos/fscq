@@ -2,8 +2,14 @@ Require Import Prog.
 Require Import Word.
 Require Import Rec.
 Require Import List.
+Require Import Pred.
+Require Import Eqdep_dec.
+Require Import Arith.
+Require Import Hoare.
+Require Import SepAuto.
 
 Import ListNotations.
+Set Implicit Arguments.
 
 Record cache_xparams := {
   MaxCacheBlocks : addr;
@@ -61,7 +67,7 @@ Definition superblock_type : Rec.type := Rec.RecF ([
 
 Definition superblock_padded : Rec.type := Rec.RecF ([
     ("sb", superblock_type);
-    ("pad", Rec.ArrayF (Rec.WordF 1) (valulen - (Rec.len superblock_type)))
+    ("pad", Rec.WordF (valulen - (Rec.len superblock_type)))
   ]).
 
 Theorem superblock_padded_len :
@@ -70,10 +76,10 @@ Proof.
   simpl. rewrite valulen_is. compute. reflexivity.
 Qed.
 
-Definition superblock0 := @Rec.of_word superblock_type $0.
-Definition superblock_pad0 := @Rec.of_word superblock_padded $0.
+Definition superblock0 := @Rec.of_word superblock_type (wzero _).
+Definition superblock_pad0 := @Rec.of_word superblock_padded (wzero _).
 
-Definition pickle_superblock (fsxp : fs_xparams) : Rec.data superblock_padded :=
+Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padded) :=
   let (lxp, ixp, ibxp, dbxp, maxblock) := fsxp in
   let sb := superblock0
     :=> "log_header"  := (LogHeader lxp)
@@ -88,10 +94,10 @@ Definition pickle_superblock (fsxp : fs_xparams) : Rec.data superblock_padded :=
     :=> "iastart"     := (BmapStart ibxp)
     :=> "ianblocks"   := (BmapNBlocks ibxp)
     :=> "maxblock"    := maxblock
-  in (superblock_pad0 :=> "sb" := sb).
+  in Rec.to_word (superblock_pad0 :=> "sb" := sb).
 
-Definition unpickle_superblock (sbp : Rec.data superblock_padded) (cxp : cache_xparams) : fs_xparams :=
-  let sb := (sbp :-> "sb") in
+Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) (cxp : cache_xparams) : fs_xparams :=
+  let sb := ((Rec.of_word sbp) :-> "sb") in
   let lxp := Build_memlog_xparams cxp
     (sb :-> "log_header") (sb :-> "log_commit") (sb :-> "log_descr")
     (sb :-> "log_data") (sb :-> "log_len") in
@@ -107,13 +113,78 @@ Definition unpickle_superblock (sbp : Rec.data superblock_padded) (cxp : cache_x
 Theorem pickle_unpickle_superblock : forall fsxp,
   unpickle_superblock (pickle_superblock fsxp) (LogCache (FSXPMemLog fsxp)) = fsxp.
 Proof.
+  unfold pickle_superblock, unpickle_superblock.
   destruct fsxp.
+  repeat rewrite Rec.of_to_id.
   destruct FSXPMemLog0.
   destruct FSXPInode0.
   destruct FSXPInodeAlloc0.
   destruct FSXPBlockAlloc0.
-  unfold unpickle_superblock.
   unfold Rec.recget', Rec.recset'.
   simpl.
   reflexivity.
+
+  unfold Rec.well_formed.
+  simpl.
+  intuition.
+Qed.
+
+Definition v_pickle_superblock (fsxp : fs_xparams) : valu.
+  remember (pickle_superblock fsxp) as sb; clear Heqsb.
+  rewrite superblock_padded_len in *.
+  exact sb.
+Defined.
+
+Definition v_unpickle_superblock (v : valu) (cxp : cache_xparams) : fs_xparams.
+  rewrite <- superblock_padded_len in *.
+  exact (unpickle_superblock v cxp).
+Defined.
+
+Theorem v_pickle_unpickle_superblock : forall fsxp,
+  v_unpickle_superblock (v_pickle_superblock fsxp) (LogCache (FSXPMemLog fsxp)) = fsxp.
+Proof.
+  intros.
+  unfold v_pickle_superblock, v_unpickle_superblock.
+  unfold eq_rec_r, eq_rec.
+  rewrite eq_rect_nat_double.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  apply pickle_unpickle_superblock.
+Qed.
+
+Definition sb_rep (fsxp : fs_xparams) : @pred _ (@weq addrlen) _ :=
+  ($0 |=> v_pickle_superblock fsxp)%pred.
+
+Definition sb_load T cxp rx : prog T :=
+  v <- Read $0;
+  rx (v_unpickle_superblock v cxp).
+
+Theorem sb_load_ok : forall cxp,
+  {< fsxp,
+  PRE    sb_rep fsxp
+  POST:r sb_rep fsxp * [[ r = fsxp ]]
+  CRASH  sb_rep fsxp
+  >} sb_load cxp.
+Proof.
+  unfold sb_load.
+  hoare.
+  subst.
+  (* XXX cache config is somewhat annoying *)
+  (* rewrite v_pickle_unpickle_superblock. *)
+  admit.
+Qed.
+
+Definition sb_init T fsxp rx : prog T :=
+  Write $0 (v_pickle_superblock fsxp);;
+  Sync $0;;
+  rx tt.
+
+Theorem sb_init_ok : forall fsxp,
+  {< _:unit,
+  PRE    $0 |->?
+  POST:_ sb_rep fsxp
+  CRASH  $0 |->?
+  >} sb_init fsxp.
+Proof.
+  unfold sb_rep, sb_init.
+  hoare.
 Qed.
