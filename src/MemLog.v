@@ -1117,15 +1117,17 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
 
-  Definition recover T xp cachesize rx : prog T :=
+  Definition recover T cachesize rx : prog T :=
     cs <- BUFCACHE.init cachesize;
+    let2 (cs, fsxp) <- sb_load cs;
+    let xp := (FSXPMemLog fsxp) in
     let2 (cs, v) <- BUFCACHE.read (LogCommit xp) cs;
     If (weq v $1) {
       let2 (ms, cs) <- read_log xp cs;
       let2 (ms, cs) <- apply xp (ms, cs);
-      rx (ms, cs)
+      rx ((ms, cs), fsxp)
     } else {
-      rx (ms_empty, cs)
+      rx ((ms_empty, cs), fsxp)
     }.
 
   Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty 
@@ -1152,12 +1154,13 @@ Module MEMLOG.
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
     ] end.
 
-  Theorem recover_ok: forall xp cachesize,
-    {< m1 m2,
+  Theorem recover_ok: forall cachesize,
+    {< m1 m2 xp,
     PRE       crash_xform (would_recover_either xp m1 m2)
-    POST:mscs rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
+    POST:(mscs,fsxp)
+              rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
     CRASH     would_recover_either xp m1 m2
-    >} recover xp cachesize.
+    >} recover cachesize.
   Proof.
     unfold recover; log_intact_unfold; log_unfold.
     intros.
