@@ -1,5 +1,9 @@
 Require Import Prog.
 Require Import Word.
+Require Import Rec.
+Require Import List.
+
+Import ListNotations.
 
 Record cache_xparams := {
   MaxCacheBlocks : addr;
@@ -35,3 +39,81 @@ Record fs_xparams := {
   FSXPBlockAlloc : balloc_xparams;
   FSXPMaxBlock : addr
 }.
+
+Definition superblock_type : Rec.type := Rec.RecF ([
+    ("log_header",  Rec.WordF addrlen);
+    ("log_commit",  Rec.WordF addrlen);
+    ("log_descr",   Rec.WordF addrlen);
+    ("log_data",    Rec.WordF addrlen);
+    ("log_len",     Rec.WordF addrlen);
+
+    ("ixstart",     Rec.WordF addrlen);
+    ("ixlen",       Rec.WordF addrlen);
+
+    ("bastart",     Rec.WordF addrlen);
+    ("banblocks",   Rec.WordF addrlen);
+
+    ("iastart",     Rec.WordF addrlen);
+    ("ianblocks",   Rec.WordF addrlen);
+
+    ("maxblock",    Rec.WordF addrlen)
+  ]).
+
+Definition superblock_padded : Rec.type := Rec.RecF ([
+    ("sb", superblock_type);
+    ("pad", Rec.ArrayF (Rec.WordF 1) (valulen - (Rec.len superblock_type)))
+  ]).
+
+Theorem superblock_padded_len :
+  Rec.len superblock_padded = valulen.
+Proof.
+  simpl. rewrite valulen_is. compute. reflexivity.
+Qed.
+
+Definition superblock0 := @Rec.of_word superblock_type $0.
+Definition superblock_pad0 := @Rec.of_word superblock_padded $0.
+
+Definition pickle_superblock (fsxp : fs_xparams) : Rec.data superblock_padded :=
+  let (lxp, ixp, ibxp, dbxp, maxblock) := fsxp in
+  let sb := superblock0
+    :=> "log_header"  := (LogHeader lxp)
+    :=> "log_commit"  := (LogCommit lxp)
+    :=> "log_descr"   := (LogDescriptor lxp)
+    :=> "log_data"    := (LogData lxp)
+    :=> "log_len"     := (LogLen lxp)
+    :=> "ixstart"     := (IXStart ixp)
+    :=> "ixlen"       := (IXLen ixp)
+    :=> "bastart"     := (BmapStart dbxp)
+    :=> "banblocks"   := (BmapNBlocks dbxp)
+    :=> "iastart"     := (BmapStart ibxp)
+    :=> "ianblocks"   := (BmapNBlocks ibxp)
+    :=> "maxblock"    := maxblock
+  in (superblock_pad0 :=> "sb" := sb).
+
+Definition unpickle_superblock (sbp : Rec.data superblock_padded) (cxp : cache_xparams) : fs_xparams :=
+  let sb := (sbp :-> "sb") in
+  let lxp := Build_memlog_xparams cxp
+    (sb :-> "log_header") (sb :-> "log_commit") (sb :-> "log_descr")
+    (sb :-> "log_data") (sb :-> "log_len") in
+  let ixp := Build_inode_xparams
+    (sb :-> "ixstart") (sb :-> "ixlen") in
+  let dbxp := Build_balloc_xparams
+    (sb :-> "bastart") (sb :-> "banblocks") in
+  let ibxp := Build_balloc_xparams
+    (sb :-> "iastart") (sb :-> "ianblocks") in
+  let maxblock := (sb :-> "maxblock") in
+  Build_fs_xparams lxp ixp ibxp dbxp maxblock.
+
+Theorem pickle_unpickle_superblock : forall fsxp,
+  unpickle_superblock (pickle_superblock fsxp) (LogCache (FSXPMemLog fsxp)) = fsxp.
+Proof.
+  destruct fsxp.
+  destruct FSXPMemLog0.
+  destruct FSXPInode0.
+  destruct FSXPInodeAlloc0.
+  destruct FSXPBlockAlloc0.
+  unfold unpickle_superblock.
+  unfold Rec.recget', Rec.recset'.
+  simpl.
+  reflexivity.
+Qed.
