@@ -19,8 +19,6 @@ import Data.IORef
 import Interpreter as I
 import qualified FS
 import qualified MemLog
-import qualified Balloc
-import qualified Inode
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
@@ -43,23 +41,8 @@ nDataBitmaps = W 1
 nInodeBitmaps :: Coq_word
 nInodeBitmaps = W 1
 
-xps :: ((((MemLog.Coq_xparams, Inode.Coq_xparams), Balloc.Coq_xparams), Balloc.Coq_xparams), Coq_word)
-xps = FS.compute_xparams nCache nDataBitmaps nInodeBitmaps
-
-lxp :: MemLog.Coq_xparams
-lxp = case xps of ((((l, _), _), _), _) -> l
-
-ixp :: Inode.Coq_xparams
-ixp = case xps of ((((_, i), _), _), _) -> i
-
-ibxp :: Balloc.Coq_xparams
-ibxp = case xps of ((((_, _), ib), _)) -> ib
-
-dbxp :: Balloc.Coq_xparams
-dbxp = case xps of ((((_, _), _), db), _) -> db
-
-maxaddr :: Coq_word
-maxaddr = case xps of ((((_, _), _), _), m) -> m
+fsxp :: FS.Coq_xparams
+fsxp = FS.compute_xparams nCache nDataBitmaps nInodeBitmaps
 
 type MSCS = (MemLog.Coq_memstate, Cache.Coq_cachestate)
 type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
@@ -78,12 +61,12 @@ main = do
   s <- if fileExists
   then
     do
-      putStrLn $ "Recovering file system, " ++ (show maxaddr) ++ " blocks"
-      I.run fd $ MemLog._MEMLOG__recover lxp
+      putStrLn $ "Recovering file system, " ++ (show $ FS.coq_FSXPMaxBlock fsxp) ++ " blocks"
+      I.run fd $ MemLog._MEMLOG__recover (FS.coq_FSXPMemLog fsxp)
   else
     do
-      putStrLn $ "Initializing file system, " ++ (show maxaddr) ++ " blocks"
-      I.run fd $ MemLog._MEMLOG__init lxp
+      putStrLn $ "Initializing file system, " ++ (show $ FS.coq_FSXPMaxBlock fsxp) ++ " blocks"
+      I.run fd $ MemLog._MEMLOG__init (FS.coq_FSXPMemLog fsxp)
   putStrLn "Starting file system.."
   ref <- newIORef s
   fuseMain (fscqFSOps (doFScall fd ref)) defaultExceptionHandler
@@ -148,11 +131,11 @@ fscqGetFileStat _ "/" = do
   ctx <- getFuseContext
   return $ Right $ dirStat ctx
 fscqGetFileStat fr (_:path) = do
-  r <- fr $ FS.lookup lxp dbxp ixp rootDir path
+  r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
     Just inum -> do
-      len <- fr $ FS.file_len lxp ixp inum
+      len <- fr $ FS.file_len fsxp inum
       ctx <- getFuseContext
       return $ Right $ fileStat ctx $ fromIntegral $ wordToNat 64 len
 fscqGetFileStat _ _ = return $ Left eNOENT
@@ -164,8 +147,8 @@ fscqOpenDirectory _   = return eNOENT
 fscqReadDirectory :: FSrunner -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 fscqReadDirectory fr "/" = do
   ctx <- getFuseContext
-  files <- fr $ FS.readdir lxp ixp rootDir
-  len <- fr $ FS.file_len lxp ixp rootDir -- should actually stat the right file
+  files <- fr $ FS.readdir fsxp rootDir
+  len <- fr $ FS.file_len fsxp rootDir -- should actually stat the right file
   return $ Right $ [(".",          dirStat ctx)
                    ,("..",         dirStat ctx)
                    ] ++ map (\(fn, inum) -> (fn, fileStat ctx 0)) files
@@ -173,7 +156,7 @@ fscqReadDirectory _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr (_:path) mode flags = do
-  r <- fr $ FS.lookup lxp dbxp ixp rootDir path
+  r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
     Just inum -> return $ Right $ inum
@@ -181,7 +164,7 @@ fscqOpen _ _ _ _ = return $ Left eIO
 
 fscqCreate :: FSrunner -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr (_:path) RegularFile _ _ = do
-  r <- fr $ FS.create lxp ibxp dbxp ixp rootDir path
+  r <- fr $ FS.create fsxp rootDir path
   putStrLn $ "create: " ++ (show r)
   case r of
     Nothing -> return eNOSPC
@@ -190,7 +173,7 @@ fscqCreate _ _ _ _ _ = return eOPNOTSUPP
 
 fscqUnlink :: FSrunner -> FilePath -> IO Errno
 fscqUnlink fr (_:path) = do
-  r <- fr $ FS.delete lxp ibxp dbxp ixp rootDir path
+  r <- fr $ FS.delete fsxp rootDir path
   case r of
     True -> return eOK
     False -> return eIO
@@ -206,10 +189,10 @@ i2bs i = BSI.create 512 $ i2buf i
 
 fscqRead :: FSrunner -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
 fscqRead fr _ inum byteCount offset = do
-  wlen <- fr $ FS.file_len lxp ixp inum
+  wlen <- fr $ FS.file_len fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   byteCount <- return $ max 0 (min (fromIntegral byteCount) (len - (fromIntegral offset)))
-  (W w) <- fr $ FS.read_block lxp ixp inum (W64 $ fromIntegral $ offset `div` 512)
+  (W w) <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral $ offset `div` 512)
   bs <- i2bs w
   return $ Right $ BS.take (fromIntegral byteCount) $ BS.drop (fromIntegral $ offset `mod` 512) bs
 
@@ -217,7 +200,7 @@ fscqWrite :: FSrunner -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Ei
 fscqWrite fr _ inum bs offset = do
   -- Ignore the offset for now..
   w <- bs2i bs_pad
-  ok <- fr $ FS.write_block lxp dbxp ixp inum (W 0) (W w)
+  ok <- fr $ FS.write_block fsxp inum (W 0) (W w)
   if ok then
     return $ Right $ fromIntegral bs_len
   else

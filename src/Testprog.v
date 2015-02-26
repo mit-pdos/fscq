@@ -5,6 +5,7 @@ Require Import Balloc.
 Require Import BFile.
 Require Import BasicProg.
 Require Import Pred.
+Require Import FS.
 
 Set Implicit Arguments.
 
@@ -44,24 +45,24 @@ Definition testalloc T lxp bxp rx : prog T :=
     rx (Some bn)
   end.
 
-Definition test_bfile T lxp bxp ixp v mscs rx : prog T :=
-  mscs <- MEMLOG.begin lxp mscs ;
-  let2 (mscs, ok) <- BFILE.bfgrow lxp bxp ixp $3 mscs ;
+Definition test_bfile T fsxp v mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs ;
+  let2 (mscs, ok) <- BFILE.bfgrow (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) $3 mscs ;
   match ok with
   | false =>
-    mscs <- MEMLOG.abort lxp mscs ;
+    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs ;
     rx (mscs, None)
   | true =>
-    mscs <- BFILE.bfwrite lxp ixp $3 $0 v mscs ;
-    let2 (mscs, ok) <- MEMLOG.commit lxp mscs ;
+    mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) $3 $0 v mscs ;
+    let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs ;
 
     match ok with
     | false => rx (mscs, None)
     | true =>
-      mscs <- MEMLOG.begin lxp mscs ;
-      let2 (mscs, b) <- BFILE.bfread lxp ixp $3 $0 mscs ;
-      mscs <- BFILE.bfshrink lxp bxp ixp $3 mscs ;
-      let2 (mscs, ok) <- MEMLOG.commit lxp mscs ;
+      mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs ;
+      let2 (mscs, b) <- BFILE.bfread (FSXPMemLog fsxp) (FSXPInode fsxp) $3 $0 mscs ;
+      mscs <- BFILE.bfshrink (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) $3 mscs ;
+      let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs ;
       match ok with
       | false => rx (mscs, None)
       | true => rx (mscs, Some b)
@@ -69,18 +70,18 @@ Definition test_bfile T lxp bxp ixp v mscs rx : prog T :=
     end
   end.
 
-Definition test_bfile_bulkwrite T lxp ixp v nblocks mscs rx : prog T :=
-  mscs <- MEMLOG.begin lxp mscs;
+Definition test_bfile_bulkwrite T fsxp v nblocks mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   mscs <- For block < nblocks
     Loopvar mscs <- mscs
     Continuation lrx
     Invariant emp
     OnCrash emp
     Begin
-      mscs <- BFILE.bfwrite lxp ixp $3 block v mscs;
+      mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) $3 block v mscs;
       lrx mscs
   Rof;
-  let2 (mscs, ok) <- MEMLOG.commit lxp mscs;
+  let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx (mscs, ok).
 
 (* Why does this seemingly simple function take forever to compile?? *)
