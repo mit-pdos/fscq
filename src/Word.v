@@ -1625,6 +1625,16 @@ Proof.
   intros. rewrite <- H. rewrite natToWord_wordToNat. auto.
 Qed.
 
+Lemma wlt_lt_bound: forall sz (a : word sz) (b bound : nat),
+  (a < natToWord sz b)%word
+  -> (b <= wordToNat (natToWord sz bound))%nat
+  -> (wordToNat a < b)%nat.
+Proof.
+  intros.
+  apply wlt_lt in H.
+  erewrite wordToNat_natToWord_bound in H; eauto.
+Qed.
+
 Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat ->
   n < m.
 Proof.

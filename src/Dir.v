@@ -220,27 +220,23 @@ Module DIR.
     step.
     unfold derep; eauto.
     list2nmem_ptsto_cancel.
-
-    (* XXX length? *)
-    admit.
+    eapply wlt_lt_bound; eauto.
+    eapply bfrec_bound; eauto.
 
     step.
     replace (# (m0 ^+ $1)) with (#m0 + 1).
     rewrite firstn_plusone_selN with (def:=dent0).
     rewrite fold_left_app; simpl.
     subst; reflexivity.
-
-    (* XXX length? *)
-    admit.
-
-    (* XXX overflow? *)
-    admit.
+    eapply wlt_lt_bound; eauto.
+    eapply bfrec_bound; eauto.
+    erewrite wordToNat_plusone with (w' := $ (length l)) by auto.
+    omega.
 
     step.
     rewrite firstn_oob; eauto.
-
-    (* XXX overflow? *)
-    admit.
+    erewrite wordToNat_natToWord_bound; auto.
+    eapply bfrec_bound; eauto.
 
     unfold MEMLOG.log_intact; cancel.
   Qed.

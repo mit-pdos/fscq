@@ -363,23 +363,17 @@ Section RECBFILE.
     apply le_plus_trans; auto.
   Qed.
 
-  Lemma helper_item_index_valid: forall F m bxp ixp inum i fl (bl : list block),
+
+  Lemma bfrec_bound' : forall F m bxp ixp (inum : addr) (bl : list block) fl,
     length bl = length (BFILE.BFData (sel fl inum BFILE.bfile0))
     -> Forall Rec.well_formed bl
     -> (F * BFILE.rep bxp ixp fl)%pred m
     -> # inum < length fl
-    -> # i < length (fold_right (app (A:=Rec.data itemtype)) nil bl)
-    -> # (i ^/ items_per_valu) < length (BFILE.BFData (sel fl inum BFILE.bfile0)).
+    -> length (fold_right (app (A:=Rec.data itemtype)) nil bl) 
+          <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
   Proof.
     intros.
-    apply helper_wlt_wmult_wdiv_lt; auto.
-    rewrite <- H.
-    rewrite <- block_length_fold_right by auto.
-    apply lt_wlt; erewrite wordToNat_natToWord_bound.
-    subst; auto.
-
     erewrite wordToNat_natToWord_idempotent'.
-    instantiate (Goal0 := INODE.blocks_per_inode * # items_per_valu).
     subst; rewrite concat_length.
     rewrite fold_right_add_const; auto.
     apply mult_le_compat_r.
@@ -400,6 +394,36 @@ Section RECBFILE.
     eapply pow2_bound_mono.
     apply valulen_bound.
     omega.
+  Qed.
+
+  Lemma bfrec_bound : forall F A m bxp ixp (inum : addr) fl f l,
+    array_item_file f l
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> (A * # inum |-> f)%pred (list2nmem fl)
+    -> length l <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
+  Proof.
+    unfold array_item_file, array_item_pairs; intros.
+    repeat deex.
+    destruct_lift' H.
+    rewrite_list2nmem_pred.
+    eapply bfrec_bound'; eauto.
+  Qed.
+
+  Lemma helper_item_index_valid: forall F m bxp ixp inum i fl (bl : list block),
+    length bl = length (BFILE.BFData (sel fl inum BFILE.bfile0))
+    -> Forall Rec.well_formed bl
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> # inum < length fl
+    -> # i < length (fold_right (app (A:=Rec.data itemtype)) nil bl)
+    -> # (i ^/ items_per_valu) < length (BFILE.BFData (sel fl inum BFILE.bfile0)).
+  Proof.
+    intros.
+    apply helper_wlt_wmult_wdiv_lt; auto.
+    rewrite <- H.
+    rewrite <- block_length_fold_right by auto.
+    apply lt_wlt; erewrite wordToNat_natToWord_bound.
+    subst; auto.
+    eapply bfrec_bound'; eauto.
   Qed.
 
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
