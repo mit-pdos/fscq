@@ -22,7 +22,7 @@ Require Import FSLayout.
 Set Implicit Arguments.
 Import ListNotations.
 
-Definition compute_xparams (cache_blocks data_bitmaps inode_bitmaps : addr) cache_blocks_ok :=
+Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   let data_blocks := data_bitmaps ^* BALLOC.items_per_valu in
   let inode_blocks := inode_bitmaps ^* BALLOC.items_per_valu ^/ INODE.items_per_valu in
   let inode_base := data_blocks in
@@ -31,8 +31,7 @@ Definition compute_xparams (cache_blocks data_bitmaps inode_bitmaps : addr) cach
   let log_size := $ MEMLOG.addr_per_block in
   let max_addr := log_base ^+ $4 ^+ log_size in
   (Build_fs_xparams
-   (Build_memlog_xparams (Build_cache_xparams cache_blocks cache_blocks_ok)
-                         log_base (log_base ^+ $1) (log_base ^+ $2) (log_base ^+ $3) log_size)
+   (Build_memlog_xparams log_base (log_base ^+ $1) (log_base ^+ $2) (log_base ^+ $3) log_size)
    (Build_inode_xparams inode_base inode_blocks)
    (Build_balloc_xparams (inode_base ^+ inode_blocks) inode_bitmaps)
    (Build_balloc_xparams balloc_base data_bitmaps)
@@ -76,7 +75,7 @@ Proof.
   unfold MEMLOG.log_intact; cancel.
 Qed.
 
-Theorem read_block_recover_ok : forall fsxp inum off mscs,
+Theorem read_block_recover_ok : forall fsxp inum off mscs cachesize,
   {< m F flist A f B v,
   PRE     MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs *
           [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
@@ -86,7 +85,7 @@ Theorem read_block_recover_ok : forall fsxp inum off mscs,
           MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs' *
           [[ r = v ]]
   CRASH:mscs' MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs'
-  >} read_block fsxp inum off mscs >> MEMLOG.recover (FSXPMemLog fsxp).
+  >} read_block fsxp inum off mscs >> MEMLOG.recover cachesize.
 Proof.
   intros.
   unfold forall_helper; intros m F flist A f B v.

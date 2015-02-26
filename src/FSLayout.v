@@ -7,18 +7,12 @@ Require Import Eqdep_dec.
 Require Import Arith.
 Require Import Hoare.
 Require Import SepAuto.
+Require Import Cache.
 
 Import ListNotations.
 Set Implicit Arguments.
 
-Record cache_xparams := {
-  MaxCacheBlocks : addr;
-  MaxCacheBlocksOK : MaxCacheBlocks <> $0
-}.
-
 Record memlog_xparams := {
-  LogCache : cache_xparams;
-
   (* The actual data region is everything that's not described here *)
   LogHeader : addr; (* Store the header here *)
   LogCommit : addr; (* Store true to apply after crash. *)
@@ -96,9 +90,9 @@ Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padd
     :=> "maxblock"    := maxblock
   in Rec.to_word (superblock_pad0 :=> "sb" := sb).
 
-Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) (cxp : cache_xparams) : fs_xparams :=
+Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) : fs_xparams :=
   let sb := ((Rec.of_word sbp) :-> "sb") in
-  let lxp := Build_memlog_xparams cxp
+  let lxp := Build_memlog_xparams
     (sb :-> "log_header") (sb :-> "log_commit") (sb :-> "log_descr")
     (sb :-> "log_data") (sb :-> "log_len") in
   let ixp := Build_inode_xparams
@@ -111,7 +105,7 @@ Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) (cxp : c
   Build_fs_xparams lxp ixp ibxp dbxp maxblock.
 
 Theorem pickle_unpickle_superblock : forall fsxp,
-  unpickle_superblock (pickle_superblock fsxp) (LogCache (FSXPMemLog fsxp)) = fsxp.
+  unpickle_superblock (pickle_superblock fsxp) = fsxp.
 Proof.
   unfold pickle_superblock, unpickle_superblock.
   destruct fsxp.
@@ -135,13 +129,13 @@ Definition v_pickle_superblock (fsxp : fs_xparams) : valu.
   exact sb.
 Defined.
 
-Definition v_unpickle_superblock (v : valu) (cxp : cache_xparams) : fs_xparams.
+Definition v_unpickle_superblock (v : valu) : fs_xparams.
   rewrite <- superblock_padded_len in *.
-  exact (unpickle_superblock v cxp).
+  exact (unpickle_superblock v).
 Defined.
 
 Theorem v_pickle_unpickle_superblock : forall fsxp,
-  v_unpickle_superblock (v_pickle_superblock fsxp) (LogCache (FSXPMemLog fsxp)) = fsxp.
+  v_unpickle_superblock (v_pickle_superblock fsxp) = fsxp.
 Proof.
   intros.
   unfold v_pickle_superblock, v_unpickle_superblock.
@@ -154,36 +148,35 @@ Qed.
 Definition sb_rep (fsxp : fs_xparams) : @pred _ (@weq addrlen) _ :=
   ($0 |=> v_pickle_superblock fsxp)%pred.
 
-Definition sb_load T cxp rx : prog T :=
-  v <- Read $0;
-  rx (v_unpickle_superblock v cxp).
+Definition sb_load T cs rx : prog T :=
+  let2 (cs, v) <- BUFCACHE.read $0 cs;
+  rx (cs, v_unpickle_superblock v).
 
-Theorem sb_load_ok : forall cxp,
-  {< fsxp,
-  PRE    sb_rep fsxp
-  POST:r sb_rep fsxp * [[ r = fsxp ]]
-  CRASH  sb_rep fsxp
-  >} sb_load cxp.
+Theorem sb_load_ok : forall cs,
+  {< m F fsxp,
+  PRE    BUFCACHE.rep cs m * [[ (F * sb_rep fsxp)%pred m ]]
+  POST:(cs',r)
+         BUFCACHE.rep cs' m * [[ r = fsxp ]]
+  CRASH  exists cs', BUFCACHE.rep cs' m
+  >} sb_load cs.
 Proof.
-  unfold sb_load.
+  unfold sb_load, sb_rep.
   hoare.
-  subst.
-  (* XXX cache config is somewhat annoying *)
-  (* rewrite v_pickle_unpickle_superblock. *)
-  admit.
+  pred_apply; cancel.
+  subst; apply v_pickle_unpickle_superblock.
 Qed.
 
-Definition sb_init T fsxp rx : prog T :=
-  Write $0 (v_pickle_superblock fsxp);;
-  Sync $0;;
-  rx tt.
+Definition sb_init T fsxp cs rx : prog T :=
+  cs <- BUFCACHE.write $0 (v_pickle_superblock fsxp) cs;
+  cs <- BUFCACHE.sync $0 cs;
+  rx cs.
 
-Theorem sb_init_ok : forall fsxp,
-  {< _:unit,
-  PRE    $0 |->?
-  POST:_ sb_rep fsxp
-  CRASH  $0 |->?
-  >} sb_init fsxp.
+Theorem sb_init_ok : forall fsxp cs,
+  {< m F,
+  PRE      BUFCACHE.rep cs m * [[ (F * $0 |->?)%pred m ]]
+  POST:cs' exists m', BUFCACHE.rep cs' m' * [[ (F * sb_rep fsxp)%pred m' ]]
+  CRASH    exists cs' m', BUFCACHE.rep cs' m' * [[ (F * $0 |->?)%pred m' ]]
+  >} sb_init fsxp cs.
 Proof.
   unfold sb_rep, sb_init.
   hoare.

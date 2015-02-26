@@ -291,8 +291,8 @@ Module MEMLOG.
     BUFCACHE.rep (snd mscs) d * [[ rep_inner xp st (fst mscs) d ]])%pred.
 
   Definition init_cs T xp cs rx : prog T :=
-    cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $0 cs;
-    cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+    cs <- BUFCACHE.write (LogCommit xp) $0 cs;
+    cs <- BUFCACHE.sync (LogCommit xp) cs;
     rx (ms_empty, cs).
 
   Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, valid_size, synced_list.
@@ -325,18 +325,18 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (init_cs _ _) _) => apply init_cs_ok : prog.
 
-  Definition init T xp rx : prog T :=
-    cs <- BUFCACHE.init (LogCache xp);
+  Definition init T xp cachesize rx : prog T :=
+    cs <- BUFCACHE.init cachesize;
     let2 (ms, cs) <- init_cs xp cs;
     rx (ms, cs).
 
-  Theorem init_ok : forall xp,
+  Theorem init_ok : forall xp cachesize,
     {< old,
     PRE       log_uninitialized xp old
     POST:mscs rep xp (NoTransaction old) mscs
     CRASH     log_uninitialized xp old \/
               (exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]])
-    >} init xp.
+    >} init xp cachesize.
   Proof.
     unfold init.
     (* XXX the hoare triple for [BUFCACHE.init] needs to be "frameless" *)
@@ -347,7 +347,7 @@ Module MEMLOG.
 
   Definition begin T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    cs <- BUFCACHE.write (LogCache xp) (LogHeader xp) (header_to_valu (mk_header 0)) cs;
+    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx (ms_empty, cs).
 
   Theorem begin_ok: forall xp mscs,
@@ -369,7 +369,7 @@ Module MEMLOG.
 
   Definition abort T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    cs <- BUFCACHE.write (LogCache xp) (LogHeader xp) (header_to_valu (mk_header 0)) cs;
+    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx (ms_empty, cs).
 
   Theorem abort_ok : forall xp mscs,
@@ -454,7 +454,7 @@ Module MEMLOG.
     | Some v =>
       rx ((ms, cs), v)
     | None =>
-      let2 (cs, v) <- BUFCACHE.read_array (LogCache xp) $0 a cs;
+      let2 (cs, v) <- BUFCACHE.read_array $0 a cs;
       rx ((ms, cs), v)
     end.
 
@@ -522,9 +522,9 @@ Module MEMLOG.
       rx ((ms, cs), false)
     } else {
       (* Write... *)
-      cs <- BUFCACHE.write (LogCache xp) (LogHeader xp)
+      cs <- BUFCACHE.write (LogHeader xp)
         (header_to_valu (mk_header (Map.cardinal ms))) cs;
-      cs <- BUFCACHE.write (LogCache xp) (LogDescriptor xp)
+      cs <- BUFCACHE.write (LogDescriptor xp)
         (descriptor_to_valu (map fst (Map.elements ms))) cs;
       cs <- For i < $ (Map.cardinal ms)
       Ghost old crash
@@ -541,14 +541,14 @@ Module MEMLOG.
             * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i))%pred d' ]]
       OnCrash crash
       Begin
-        cs <- BUFCACHE.write (LogCache xp) (LogData xp ^+ i)
+        cs <- BUFCACHE.write (LogData xp ^+ i)
           (sel (map snd (Map.elements ms)) i $0) cs;
         lrx cs
       Rof;
 
       (* ... and sync *)
-      cs <- BUFCACHE.sync (LogCache xp) (LogHeader xp) cs;
-      cs <- BUFCACHE.sync (LogCache xp) (LogDescriptor xp) cs;
+      cs <- BUFCACHE.sync (LogHeader xp) cs;
+      cs <- BUFCACHE.sync (LogDescriptor xp) cs;
       cs <- For i < $ (Map.cardinal ms)
       Ghost old crash
       Loopvar cs <- cs
@@ -565,7 +565,7 @@ Module MEMLOG.
             * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms))%pred d' ]]
       OnCrash crash
       Begin
-        cs <- BUFCACHE.sync (LogCache xp) (LogData xp ^+ i) cs;
+        cs <- BUFCACHE.sync (LogData xp ^+ i) cs;
         lrx cs
       Rof;
       rx ((ms, cs), true)
@@ -887,7 +887,7 @@ Module MEMLOG.
     OnCrash
       exists mscs', rep xp (CommittedTxn cur) mscs'
     Begin
-      cs <- BUFCACHE.write_array (LogCache xp) $0
+      cs <- BUFCACHE.write_array $0
         (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
@@ -936,10 +936,10 @@ Module MEMLOG.
     OnCrash
       exists mscs', rep xp (AppliedUnsyncTxn cur) mscs'
     Begin
-      cs <- BUFCACHE.sync_array (LogCache xp) $0 (sel (map fst (Map.elements ms)) i $0) cs;
+      cs <- BUFCACHE.sync_array $0 (sel (map fst (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
-    cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $0 cs;
+    cs <- BUFCACHE.write (LogCommit xp) $0 cs;
     rx (ms, cs).
 
   Theorem apply_sync_ok: forall xp mscs,
@@ -974,7 +974,7 @@ Module MEMLOG.
     let (ms, cs) := mscs in
     let2 (ms, cs) <- apply_unsync xp (ms, cs);
     let2 (ms, cs) <- apply_sync xp (ms, cs);
-    cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+    cs <- BUFCACHE.sync (LogCommit xp) cs;
     rx (ms, cs).
 
   Theorem apply_ok: forall xp mscs,
@@ -1005,8 +1005,8 @@ Module MEMLOG.
     let (ms, cs) := mscs in
     let3 (ms, cs, ok) <- flush xp (ms, cs);
     If (bool_dec ok true) {
-      cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $1 cs;
-      cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+      cs <- BUFCACHE.write (LogCommit xp) $1 cs;
+      cs <- BUFCACHE.sync (LogCommit xp) cs;
       let2 (ms, cs) <- apply xp (ms, cs);
       rx (ms, cs, true)
     } else {
@@ -1068,9 +1068,9 @@ Module MEMLOG.
   Module MapProperties := WProperties Map.
 
   Definition read_log T (xp : memlog_xparams) cs rx : prog T :=
-    let2 (cs, d) <- BUFCACHE.read (LogCache xp) (LogDescriptor xp) cs;
+    let2 (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
     let desc := valu_to_descriptor d in
-    let2 (cs, h) <- BUFCACHE.read (LogCache xp) (LogHeader xp) cs;
+    let2 (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
     let len := (valu_to_header h) :-> "length" in
     let2 (cs, log) <- For i < len
     Ghost cur log_on_disk
@@ -1089,7 +1089,7 @@ Module MEMLOG.
       exists mscs, rep xp (CommittedTxn cur) mscs
     Begin
       let (cs, log_prefix) := (cs_log_prefix : cachestate * list (addr * valu)) in
-      let2 (cs, v) <- BUFCACHE.read_array (LogCache xp) (LogData xp) i cs;
+      let2 (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
       lrx (cs, log_prefix ++ [(sel desc i $0, v)])
     Rof;
     rx (MapProperties.of_list log, cs).
@@ -1117,9 +1117,9 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
 
-  Definition recover T xp rx : prog T :=
-    cs <- BUFCACHE.init (LogCache xp);
-    let2 (cs, v) <- BUFCACHE.read (LogCache xp) (LogCommit xp) cs;
+  Definition recover T xp cachesize rx : prog T :=
+    cs <- BUFCACHE.init cachesize;
+    let2 (cs, v) <- BUFCACHE.read (LogCommit xp) cs;
     If (weq v $1) {
       let2 (ms, cs) <- read_log xp cs;
       let2 (ms, cs) <- apply xp (ms, cs);
@@ -1152,12 +1152,12 @@ Module MEMLOG.
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
     ] end.
 
-  Theorem recover_ok: forall xp,
+  Theorem recover_ok: forall xp cachesize,
     {< m1 m2,
     PRE       crash_xform (would_recover_either xp m1 m2)
     POST:mscs rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
     CRASH     would_recover_either xp m1 m2
-    >} recover xp.
+    >} recover xp cachesize.
   Proof.
     unfold recover; log_intact_unfold; log_unfold.
     intros.
