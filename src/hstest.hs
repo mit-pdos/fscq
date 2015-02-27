@@ -35,21 +35,24 @@ repf2 n _ s f = do
   (s, rr) <- repf2 (n-1) r s f
   return (s, rr)
 
+cachesize :: Coq_word
+cachesize = W64 1000
+
 main :: IO ()
 main = do
-  fsxp <- return $ FS.compute_xparams (W 1000) (W 1) (W 1)
   -- This is racy (stat'ing the file first and opening it later)
   fileExists <- System.Directory.doesFileExist disk_fn
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
-  s <- if fileExists
+  (s, fsxp) <- if fileExists
   then
     do
-      putStrLn $ "Recovering file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
-      I.run fd $ _MEMLOG__recover (coq_FSXPMemLog fsxp)
+      putStrLn $ "Recovering file system"
+      I.run fd $ _MEMLOG__recover cachesize
   else
     do
-      putStrLn $ "Initializing file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
-      I.run fd $ _MEMLOG__init (coq_FSXPMemLog fsxp)
+      putStrLn $ "Initializing file system"
+      I.run fd $ FS.mkfs (W 1) (W 1) cachesize
+  putStrLn $ "File system mounted, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   putStrLn "Running program.."
   -- r <- I.run fd $ the_prog lxp
   -- r <- I.run fd $ Testprog.testcopy lxp

@@ -290,7 +290,7 @@ Module MEMLOG.
   Definition rep xp st mscs := (exists d,
     BUFCACHE.rep (snd mscs) d * [[ rep_inner xp st (fst mscs) d ]])%pred.
 
-  Definition init_cs T xp cs rx : prog T :=
+  Definition init T xp cs rx : prog T :=
     cs <- BUFCACHE.write (LogCommit xp) $0 cs;
     cs <- BUFCACHE.sync (LogCommit xp) cs;
     rx (ms_empty, cs).
@@ -310,40 +310,20 @@ Module MEMLOG.
      (LogDescriptor xp) |->? *
      (LogHeader xp) |->?)%pred.
 
-  Theorem init_cs_ok : forall xp cs,
+  Theorem init_ok : forall xp cs,
     {< old d,
     PRE       BUFCACHE.rep cs d * [[ (log_uninitialized xp old) d ]]
     POST:mscs rep xp (NoTransaction old) mscs
     CRASH     exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]]
-    >} init_cs xp cs.
+    >} init xp cs.
   Proof.
-    unfold init_cs, log_uninitialized; log_unfold.
+    unfold init, log_uninitialized; log_unfold.
     intros.
     hoare.
     pred_apply; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (init_cs _ _) _) => apply init_cs_ok : prog.
-
-  Definition init T xp cachesize rx : prog T :=
-    cs <- BUFCACHE.init cachesize;
-    let2 (ms, cs) <- init_cs xp cs;
-    rx (ms, cs).
-
-  Theorem init_ok : forall xp cachesize,
-    {< old,
-    PRE       log_uninitialized xp old
-    POST:mscs rep xp (NoTransaction old) mscs
-    CRASH     log_uninitialized xp old \/
-              (exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]])
-    >} init xp cachesize.
-  Proof.
-    unfold init.
-    (* XXX the hoare triple for [BUFCACHE.init] needs to be "frameless" *)
-    admit.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
 
   Definition begin T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
