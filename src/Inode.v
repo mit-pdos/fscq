@@ -303,15 +303,15 @@ Module INODE.
 
   Definition inode0 := Build_inode nil $0.
 
-  Definition ilen T lxp xp inum mscs rx : prog T := Eval compute_rec in
+  Definition ilen T lxp xp inum mscs (rx : (_ * addr) -> _) : prog T := Eval compute_rec in
     let2 (mscs, i) <- irget lxp xp inum mscs;
     rx (mscs, (i :-> "len")).
 
-  Definition igetsz T lxp xp inum mscs rx : prog T := Eval compute_rec in
+  Definition igetsz T lxp xp inum mscs (rx : (_ * addr) -> _) : prog T := Eval compute_rec in
     let2 (mscs, i) <- irget lxp xp inum mscs;
     rx (mscs, (i :-> "size")).
 
-  Definition isetsz T lxp xp inum sz mscs rx : prog T := Eval compute_rec in
+  Definition isetsz T lxp xp inum (sz : addr) mscs rx : prog T := Eval compute_rec in
     let2 (mscs, i) <- irget lxp xp inum mscs;
     mscs <- irput lxp xp inum (i :=> "size" := sz) mscs;
     rx mscs.
