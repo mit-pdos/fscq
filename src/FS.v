@@ -47,11 +47,23 @@ Definition mkfs T (data_bitmaps inode_bitmaps cachesize : addr) rx : prog T :=
   mscs <- INODE.init (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) mscs;
   rx (mscs, fsxp).
 
-Definition file_len T fsxp inum mscs rx : prog T :=
+Definition file_nblocks T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   let2 (mscs, len) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
   let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-  rx (mscs, len ^* $ (valulen / 8)).
+  rx (mscs, len).
+
+Definition file_get_sz T fsxp inum mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  let2 (mscs, sz) <- BFILE.bfgetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  rx (mscs, sz).
+
+Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- BFILE.bfsetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum sz mscs;
+  let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  rx (mscs, ok).
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;

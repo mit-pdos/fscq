@@ -133,7 +133,7 @@ fscqGetFileStat fr fsxp (_:path) = do
   case r of
     Nothing -> return $ Left eNOENT
     Just inum -> do
-      len <- fr $ FS.file_len fsxp inum
+      len <- fr $ FS.file_get_sz fsxp inum
       ctx <- getFuseContext
       return $ Right $ fileStat ctx $ fromIntegral $ wordToNat 64 len
 fscqGetFileStat _ _ _ = return $ Left eNOENT
@@ -146,10 +146,12 @@ fscqReadDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno 
 fscqReadDirectory fr fsxp "/" = do
   ctx <- getFuseContext
   files <- fr $ FS.readdir fsxp rootDir
-  len <- fr $ FS.file_len fsxp rootDir -- should actually stat the right file
+  files_stat <- mapM (\(fn, inum) -> do
+    len <- fr $ FS.file_get_sz fsxp inum
+    return $ (fn, fileStat ctx $ fromIntegral $ wordToNat 64 len)) files
   return $ Right $ [(".",          dirStat ctx)
                    ,("..",         dirStat ctx)
-                   ] ++ map (\(fn, inum) -> (fn, fileStat ctx 0)) files
+                   ] ++ files_stat
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
@@ -187,7 +189,7 @@ i2bs i = BSI.create 512 $ i2buf i
 
 fscqRead :: FSrunner -> Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
 fscqRead fr fsxp _ inum byteCount offset = do
-  wlen <- fr $ FS.file_len fsxp inum
+  wlen <- fr $ FS.file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   byteCount <- return $ max 0 (min (fromIntegral byteCount) (len - (fromIntegral offset)))
   (W w) <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral $ offset `div` 512)
