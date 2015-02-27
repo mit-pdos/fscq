@@ -43,6 +43,8 @@ Definition mkfs T (data_bitmaps inode_bitmaps cachesize : addr) rx : prog T :=
   cs <- BUFCACHE.init cachesize;
   cs <- sb_init fsxp cs;
   mscs <- MEMLOG.init (FSXPMemLog fsxp) cs;
+  mscs <- BALLOC.init' (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
+  mscs <- INODE.init (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) mscs;
   rx (mscs, fsxp).
 
 Definition file_len T fsxp inum mscs rx : prog T :=

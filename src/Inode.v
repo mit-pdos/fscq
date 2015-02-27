@@ -1416,6 +1416,25 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (igrow _ _ _ _ _ _) _) => apply igrow_ok : prog.
   Hint Extern 1 ({{_}} progseq (ishrink _ _ _ _ _) _) => apply ishrink_ok : prog.
 
+  Definition init T lxp ibxp (ixp : inode_xparams) mscs rx : prog T :=
+    mscs <- BALLOC.init' lxp ibxp mscs;
+    rx mscs.
+
+  Theorem init_ok : forall lxp ibxp ixp mscs,
+    {< F mbase m,
+    PRE      exists ai ab, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ (F * array (IXStart ixp) ai $1 * array (BmapStart ibxp) ab $1)%pred (list2mem m) ]] *
+             [[ length ai = # (IXLen ixp) ]] *
+             [[ length ab = # (BmapNBlocks ibxp) ]]
+    POST:mscs' exists m' ilist freelist,
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             [[ (F * rep ibxp ixp ilist * BALLOC.rep ibxp freelist)%pred (list2mem m') ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} init lxp ibxp ixp mscs.
+  Proof.
+    admit.
+  Qed.
+
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
 End INODE.
