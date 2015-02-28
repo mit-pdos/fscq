@@ -32,7 +32,7 @@ Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   let log_size := $ MEMLOG.addr_per_block in
   let max_addr := log_base ^+ $4 ^+ log_size in
   (Build_fs_xparams
-   (Build_memlog_xparams log_base (log_base ^+ $1) (log_base ^+ $2) (log_base ^+ $3) log_size)
+   (Build_memlog_xparams max_addr log_base (log_base ^+ $1) (log_base ^+ $2) (log_base ^+ $3) log_size)
    (Build_inode_xparams inode_base inode_blocks)
    (Build_balloc_xparams (inode_base ^+ inode_blocks) inode_bitmaps)
    (Build_balloc_xparams balloc_base data_bitmaps)
@@ -218,6 +218,7 @@ Proof.
   apply pimpl_or_r; left. cancel.
 
   instantiate (a0:=m). cancel.
+
   apply pimpl_or_r; left. cancel.
 
   cancel. apply pimpl_or_r; left.

@@ -13,7 +13,7 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Record memlog_xparams := {
-  (* The actual data region is everything that's not described here *)
+  DataStart : addr; (* Where the actual data section starts *)
   LogHeader : addr; (* Store the header here *)
   LogCommit : addr; (* Store true to apply after crash. *)
 
@@ -41,6 +41,7 @@ Record fs_xparams := {
 }.
 
 Definition superblock_type : Rec.type := Rec.RecF ([
+    ("data_start",  Rec.WordF addrlen);
     ("log_header",  Rec.WordF addrlen);
     ("log_commit",  Rec.WordF addrlen);
     ("log_descr",   Rec.WordF addrlen);
@@ -76,6 +77,7 @@ Definition superblock_pad0 := @Rec.of_word superblock_padded (wzero _).
 Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padded) :=
   let (lxp, ixp, ibxp, dbxp, maxblock) := fsxp in
   let sb := superblock0
+    :=> "data_start"  := (DataStart lxp)
     :=> "log_header"  := (LogHeader lxp)
     :=> "log_commit"  := (LogCommit lxp)
     :=> "log_descr"   := (LogDescriptor lxp)
@@ -93,8 +95,8 @@ Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padd
 Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) : fs_xparams :=
   let sb := ((Rec.of_word sbp) :-> "sb") in
   let lxp := Build_memlog_xparams
-    (sb :-> "log_header") (sb :-> "log_commit") (sb :-> "log_descr")
-    (sb :-> "log_data") (sb :-> "log_len") in
+    (sb :-> "data_start") (sb :-> "log_header") (sb :-> "log_commit")
+    (sb :-> "log_descr") (sb :-> "log_data") (sb :-> "log_len") in
   let ixp := Build_inode_xparams
     (sb :-> "ixstart") (sb :-> "ixlen") in
   let dbxp := Build_balloc_xparams
@@ -162,7 +164,6 @@ Theorem sb_load_ok : forall cs,
 Proof.
   unfold sb_load, sb_rep.
   hoare.
-  pred_apply; cancel.
   subst; apply v_pickle_unpickle_superblock.
 Qed.
 

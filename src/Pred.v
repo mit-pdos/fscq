@@ -928,6 +928,42 @@ Proof.
   inversion H0.
 Qed.
 
+Theorem notindomain_mem_except : forall a a' (m : @mem AT AEQ V),
+  a <> a'
+  -> notindomain a (mem_except m a')
+  -> notindomain a m.
+Proof.
+  unfold notindomain, mem_except; intros.
+  destruct (AEQ a a'); firstorder.
+Qed.
+
+Theorem indomain_mem_except : forall a a' v (m : @mem AT AEQ V),
+  a <> a'
+  -> (mem_except m a') a = Some v
+  -> m a = Some v.
+Proof.
+  unfold mem_except; intros.
+  destruct (AEQ a a'); firstorder.
+Qed.
+
+
+Theorem ptsto_mem_except : forall F a v (m : @mem AT AEQ V),
+  (a |-> v * F)%pred m -> F (mem_except m a).
+Proof.
+  unfold ptsto; unfold_sep_star.
+  intuition; repeat deex.
+  replace ((mem_except (mem_union x x0) a)) with x0; auto.
+
+  unfold mem_except.
+  apply functional_extensionality; intro.
+  destruct (AEQ x1 a); subst.
+  eapply mem_disjoint_either; eauto.
+
+  unfold mem_union.
+  pose proof (H4 x1); intuition.
+  rewrite H1; simpl; auto.
+Qed.
+
 
 End GenPredThm.
 
