@@ -16,68 +16,71 @@ Module Map := FMapAVL.Make(Addr_as_OT).
 Import ListNotations.
 Set Implicit Arguments.
 
-Definition cachestate := (Map.t valu * addr)%type.
-(* The [addr] stores the current number of items, for efficient capacity checks *)
-
-Record xparams := {
-  MaxCacheBlocks : addr;
-  MaxCacheBlocksOK : MaxCacheBlocks <> $0
+Record cachestate := {
+  CSMap : Map.t valu;
+  CSCount : addr;  (* current number of items, for efficient capacity checks *)
+  CSMaxCount : addr
 }.
 
 Module BUFCACHE.
 
   Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) valuset) :=
     (diskIs m *
-     [[ Map.cardinal (fst cs) = # (snd cs) ]] *
-     [[ forall a v, Map.MapsTo a v (fst cs) -> exists old, m a = Some (v, old) ]])%pred.
+     [[ Map.cardinal (CSMap cs) = # (CSCount cs) ]] *
+     [[ (CSCount cs <= CSMaxCount cs)%word ]] *
+     [[ CSMaxCount cs <> $0 ]] *
+     [[ forall a v, Map.MapsTo a v (CSMap cs) -> exists old, m a = Some (v, old) ]])%pred.
 
-  Definition trim T xp (cs : cachestate) rx : prog T :=
-    let (cmap, cnum) := cs in
-    If (wlt_dec cnum (MaxCacheBlocks xp)) {
+  Definition trim T (cs : cachestate) rx : prog T :=
+    If (wlt_dec (CSCount cs) (CSMaxCount cs)) {
       rx cs
     } else {
-      match (Map.elements cmap) with
-      | nil => rx (cmap, cnum)
-      | (a,v) :: tl => rx (Map.remove a cmap, cnum ^- $1)
+      match (Map.elements (CSMap cs)) with
+      | nil => rx cs
+      | (a,v) :: tl => rx (Build_cachestate (Map.remove a (CSMap cs)) (CSCount cs ^- $1) (CSMaxCount cs))
       end
     }.
 
-  Definition read T xp a (cs : cachestate) rx : prog T :=
-    cs <- trim xp cs;
-    match Map.find a (fst cs) with
+  Definition read T a (cs : cachestate) rx : prog T :=
+    cs <- trim cs;
+    match Map.find a (CSMap cs) with
     | Some v => rx (cs, v)
     | None =>
       v <- Read a;
-      rx ((Map.add a v (fst cs), snd cs ^+ $1), v)
+      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs ^+ $1) (CSMaxCount cs), v)
     end.
 
-  Definition write T xp a v (cs : cachestate) rx : prog T :=
-    cs <- trim xp cs;
+  Definition write T a v (cs : cachestate) rx : prog T :=
+    cs <- trim cs;
     Write a v;;
-    match Map.find a (fst cs) with
+    match Map.find a (CSMap cs) with
     | Some _ =>
-      rx (Map.add a v (fst cs), snd cs)
+      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs) (CSMaxCount cs))
     | None =>
-      rx (Map.add a v (fst cs), snd cs ^+ $1)
+      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs ^+ $1) (CSMaxCount cs))
     end.
 
-  Definition sync T (xp : xparams) a (cs : cachestate) rx : prog T :=
+  Definition sync T a (cs : cachestate) rx : prog T :=
     Sync a;;
     rx cs.
 
-  Definition init T (xp : xparams) (rx : cachestate -> prog T) : prog T :=
-    rx (Map.empty valu, $0).
+  Definition init T (cachesize : addr) (rx : cachestate -> prog T) : prog T :=
+    If (weq cachesize $0) {
+      rx (Build_cachestate (Map.empty valu) $0 $1)
+    } else {
+      rx (Build_cachestate (Map.empty valu) $0 cachesize)
+    }.
 
-  Definition read_array T xp a i cs rx : prog T :=
-    r <- read xp (a ^+ i ^* $1) cs;
+  Definition read_array T a i cs rx : prog T :=
+    r <- read (a ^+ i ^* $1) cs;
     rx r.
 
-  Definition write_array T xp a i v cs rx : prog T :=
-    cs <- write xp (a ^+ i ^* $1) v cs;
+  Definition write_array T a i v cs rx : prog T :=
+    cs <- write (a ^+ i ^* $1) v cs;
     rx cs.
 
-  Definition sync_array T xp a i cs rx : prog T :=
-    cs <- sync xp (a ^+ i ^* $1) cs;
+  Definition sync_array T a i cs rx : prog T :=
+    cs <- sync (a ^+ i ^* $1) cs;
     rx cs.
 
   Lemma mapsto_add : forall a v v' (m : Map.t valu),
@@ -118,12 +121,12 @@ Module BUFCACHE.
 
   Ltac unfold_rep := unfold rep.
 
-  Theorem trim_ok : forall xp cs,
+  Theorem trim_ok : forall cs,
     {< d,
     PRE      rep cs d
     POST:cs' rep cs' d
     CRASH    exists cs', rep cs' d
-    >} trim xp cs.
+    >} trim cs.
   Proof.
     unfold trim, rep; hoare.
     destruct cs as [cmap cnum].
@@ -147,14 +150,14 @@ Module BUFCACHE.
     congruence.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (trim _ _) _) => apply trim_ok : prog.
+  Hint Extern 1 ({{_}} progseq (trim _) _) => apply trim_ok : prog.
 
-  Theorem read_ok : forall xp cs a,
+  Theorem read_ok : forall cs a,
     {< d F v,
     PRE          rep cs d * [[ (F * a |~> v)%pred d ]]
     POST:(cs',r) rep cs' d * [[ r = v ]]
     CRASH        exists cs', rep cs' d
-    >} read xp a cs.
+    >} read a cs.
   Proof.
     unfold read.
     hoare_unfold unfold_rep.
@@ -176,16 +179,16 @@ Module BUFCACHE.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
 
-  Theorem write_ok : forall xp cs a v,
+  Theorem write_ok : forall cs a v,
     {< d F v0,
     PRE      rep cs d * [[ (F * a |-> v0)%pred d ]]
     POST:cs' exists d',
              rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
     CRASH    exists cs', rep cs' d \/
              exists d', rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
-    >} write xp a v cs.
+    >} write a v cs.
   Proof.
     unfold write.
     hoare_unfold unfold_rep.
@@ -226,15 +229,15 @@ Module BUFCACHE.
     eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
 
-  Theorem sync_ok : forall xp a cs,
+  Theorem sync_ok : forall a cs,
     {< d F v,
     PRE      rep cs d * [[ (F * a |-> v)%pred d ]]
     POST:cs' exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
     CRASH    exists cs', rep cs' d \/
              exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
-    >} sync xp a cs.
+    >} sync a cs.
   Proof.
     unfold sync, rep.
     step.
@@ -258,14 +261,14 @@ Module BUFCACHE.
     eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (sync _ _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
 
-  Theorem init_ok : forall xp,
+  Theorem init_ok : forall cachesize,
     {< F,
     PRE      F
     POST:cs  exists d, rep cs d * [[ F d ]]
     CRASH    F
-    >} init xp.
+    >} init cachesize.
   Proof.
     unfold init, rep.
     step.
@@ -291,12 +294,12 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
 
-  Theorem read_array_ok : forall xp a i cs,
+  Theorem read_array_ok : forall a i cs,
     {< d F vs,
     PRE          rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
     POST:(cs',v) rep cs' d * [[ v = fst (sel vs i ($0, nil)) ]]
     CRASH        exists cs', rep cs' d
-    >} read_array xp a i cs.
+    >} read_array a i cs.
   Proof.
     unfold read_array.
     hoare.
@@ -305,16 +308,16 @@ Module BUFCACHE.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
 
-  Theorem write_array_ok : forall xp a i v cs,
+  Theorem write_array_ok : forall a i v cs,
     {< d F vs,
     PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
     POST:cs' exists d', rep cs' d' *
              [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
     CRASH    exists cs', rep cs' d \/
              exists d', rep cs' d' * [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
-    >} write_array xp a i v cs.
+    >} write_array a i v cs.
   Proof.
     unfold write_array, upd_prepend.
     hoare.
@@ -331,16 +334,16 @@ Module BUFCACHE.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
 
-  Theorem sync_array_ok : forall xp a i cs,
+  Theorem sync_array_ok : forall a i cs,
     {< d F vs,
     PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
     POST:cs' exists d', rep cs' d' *
              [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
     CRASH    exists cs', rep cs' d \/
              exists d', rep cs' d' * [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
-    >} sync_array xp a i cs.
+    >} sync_array a i cs.
   Proof.
     unfold sync_array, upd_sync.
     hoare.
@@ -357,7 +360,7 @@ Module BUFCACHE.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (sync_array _ _ _ _) _) => apply sync_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
   Lemma crash_xform_diskIs: forall (m: @mem addr (@weq addrlen) valuset),
     crash_xform (diskIs m) =p=> exists m', [[ possible_crash m m' ]] * diskIs m'.

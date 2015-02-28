@@ -20,6 +20,7 @@ Require Import Eqdep_dec.
 Require Import GenSep.
 Require Import WordAuto.
 Require Import Cache.
+Require Import FSLayout.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
 Module MapFacts := WFacts_fun Addr_as_OT Map.
@@ -61,18 +62,6 @@ Inductive logstate :=
 
 | AppliedTxn (cur : diskstate)
 (* A transaction has been committed, applied, and flushed. *).
-
-Record xparams := {
-  LogCache : Cache.xparams;
-
-  DataStart : addr;
-  LogHeader : addr; (* Store the header here *)
-  LogCommit : addr; (* Store true to apply after crash. *)
-
-  LogDescriptor : addr; (* Start of descriptor region in log *)
-  LogData : addr; (* Start of data region in log *)
-  LogLen : addr  (* Maximum number of entries in log; length but still use addr type *)
-}.
 
 
 Module MEMLOG.
@@ -204,7 +193,7 @@ Module MEMLOG.
 
   Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
 
-  Definition data_rep (xp: xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
+  Definition data_rep (xp: memlog_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
     array (DataStart xp) m $1.
 
   (** On-disk representation of the log *)
@@ -310,19 +299,9 @@ Module MEMLOG.
   Definition rep xp st mscs := (exists d,
     BUFCACHE.rep (snd mscs) d * [[ rep_inner xp st (fst mscs) d ]])%pred.
 
-  (** The log is in a valid state which (after recovery) represents disk state [m] *)
-  (* (Only states relevant for the public interface are included *)
-  (* XXX remove, since [recover] deals with [would_recover_either] instead? *)
-  Definition log_intact xp m :=
-    (exists mscs,
-     (rep xp (NoTransaction m) mscs) \/
-     (exists m', rep xp (ActiveTxn m m') mscs) \/
-     (rep xp (CommittedTxn m) mscs) \/
-     (rep xp (AppliedTxn m) mscs))%pred.
-
-  Definition init_cs T xp cs rx : prog T :=
-    cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $0 cs;
-    cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+  Definition init T xp cs rx : prog T :=
+    cs <- BUFCACHE.write (LogCommit xp) $0 cs;
+    cs <- BUFCACHE.sync (LogCommit xp) cs;
     rx (ms_empty, cs).
 
   Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_unsynced, valid_size, synced_list.
@@ -350,51 +329,33 @@ Module MEMLOG.
 
   Hint Extern 0 (okToUnify (unifiable_array _ _ _) (unifiable_array _ _ _)) => constructor : okToUnify.
 
-  Theorem init_cs_ok : forall xp cs,
+  Theorem init_ok : forall xp cs,
     {< old d,
     PRE       BUFCACHE.rep cs d * [[ (log_uninitialized xp old) d ]]
     POST:mscs rep xp (NoTransaction old) mscs
     CRASH     exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]]
-    >} init_cs xp cs.
+    >} init xp cs.
   Proof.
-    unfold init_cs, log_uninitialized; log_unfold.
+    unfold init, log_uninitialized; log_unfold.
     hoare.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (init_cs _ _) _) => apply init_cs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
 
-  Definition init T xp rx : prog T :=
-    cs <- BUFCACHE.init (LogCache xp);
-    let2 (ms, cs) <- init_cs xp cs;
-    rx (ms, cs).
-
-  Theorem init_ok : forall xp,
-    {< old,
-    PRE       log_uninitialized xp old
-    POST:mscs rep xp (NoTransaction old) mscs
-    CRASH     log_uninitialized xp old \/
-              (exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]])
-    >} init xp.
-  Proof.
-    unfold init.
-    (* XXX the hoare triple for [BUFCACHE.init] needs to be "frameless" *)
-    admit.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (init _) _) => apply init_ok : prog.
-
-  Definition begin T xp (cs : cachestate) rx : prog T :=
-    cs <- BUFCACHE.write (LogCache xp) (LogHeader xp) (header_to_valu (mk_header 0)) cs;
+  Definition begin T xp (mscs : memstate * cachestate) rx : prog T :=
+    let (ms, cs) := mscs in
+    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx (ms_empty, cs).
 
-  Theorem begin_ok: forall xp cs,
+  Theorem begin_ok: forall xp mscs,
     {< m,
-    PRE    rep xp (NoTransaction m) (ms_empty, cs)
+    PRE    rep xp (NoTransaction m) mscs
     POST:r rep xp (ActiveTxn m m) r
     CRASH  exists mscs', rep xp (NoTransaction m) mscs' \/ rep xp (ActiveTxn m m) mscs'
-    >} begin xp cs.
+    >} begin xp mscs.
   Proof.
     unfold begin; log_unfold.
+    destruct mscs as [ms cs].
     hoare.
     unfold valid_entries; intuition; inversion H.
   Qed.
@@ -403,7 +364,7 @@ Module MEMLOG.
 
   Definition abort T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    cs <- BUFCACHE.write (LogCache xp) (LogHeader xp) (header_to_valu (mk_header 0)) cs;
+    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx (ms_empty, cs).
 
   Theorem abort_ok : forall xp mscs,
@@ -702,7 +663,7 @@ Module MEMLOG.
   Qed.
   Hint Rewrite upd_prepend_length : lengths.
 
-  Definition write T (xp : xparams) a v (mscs : memstate * cachestate) rx : prog T :=
+  Definition write T (xp : memlog_xparams) a v (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
     rx (Map.add a v ms, cs).
 
@@ -731,13 +692,13 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Definition read T (xp: xparams) a (mscs : memstate * cachestate) rx : prog T :=
+  Definition read T (xp: memlog_xparams) a (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
     match Map.find a ms with
     | Some v =>
       rx ((ms, cs), v)
     | None =>
-      let2 (cs, v) <- BUFCACHE.read_array (LogCache xp) (DataStart xp) a cs;
+      let2 (cs, v) <- BUFCACHE.read_array (DataStart xp) a cs;
       rx ((ms, cs), v)
     end.
 
@@ -787,9 +748,9 @@ Module MEMLOG.
 
   Definition flush_unsync T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    cs <- BUFCACHE.write (LogCache xp) (LogHeader xp)
+    cs <- BUFCACHE.write (LogHeader xp)
       (header_to_valu (mk_header (Map.cardinal ms))) cs;
-    cs <- BUFCACHE.write (LogCache xp) (LogDescriptor xp)
+    cs <- BUFCACHE.write (LogDescriptor xp)
       (descriptor_to_valu (map fst (Map.elements ms))) cs;
     cs <- For i < $ (Map.cardinal ms)
     Ghost old crash
@@ -806,7 +767,7 @@ Module MEMLOG.
           * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i))%pred d' ]]
     OnCrash crash
     Begin
-      cs <- BUFCACHE.write_array (LogCache xp) (LogData xp ^+ i) $0
+      cs <- BUFCACHE.write_array (LogData xp ^+ i) $0
         (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
@@ -814,8 +775,8 @@ Module MEMLOG.
 
   Definition flush_sync T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    cs <- BUFCACHE.sync (LogCache xp) (LogHeader xp) cs;
-    cs <- BUFCACHE.sync (LogCache xp) (LogDescriptor xp) cs;
+    cs <- BUFCACHE.sync (LogHeader xp) cs;
+    cs <- BUFCACHE.sync (LogDescriptor xp) cs;
     cs <- For i < $ (Map.cardinal ms)
     Ghost old crash
     Loopvar cs <- cs
@@ -833,7 +794,7 @@ Module MEMLOG.
           * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms))%pred d' ]]
     OnCrash crash
     Begin
-      cs <- BUFCACHE.sync_array (LogCache xp) (LogData xp ^+ i) $0 cs;
+      cs <- BUFCACHE.sync_array (LogData xp ^+ i) $0 cs;
       lrx cs
     Rof;
     rx (ms, cs).
@@ -1345,7 +1306,7 @@ Module MEMLOG.
     OnCrash
       exists mscs', rep xp (CommittedTxn cur) mscs'
     Begin
-      cs <- BUFCACHE.write_array (LogCache xp) (DataStart xp)
+      cs <- BUFCACHE.write_array (DataStart xp)
         (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
@@ -1391,10 +1352,10 @@ Module MEMLOG.
     OnCrash
       exists mscs', rep xp (AppliedUnsyncTxn cur) mscs'
     Begin
-      cs <- BUFCACHE.sync_array (LogCache xp) (DataStart xp) (sel (map fst (Map.elements ms)) i $0) cs;
+      cs <- BUFCACHE.sync_array (DataStart xp) (sel (map fst (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
-    cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $0 cs;
+    cs <- BUFCACHE.write (LogCommit xp) $0 cs;
     rx (ms, cs).
 
   Theorem apply_sync_ok: forall xp mscs,
@@ -1429,7 +1390,7 @@ Module MEMLOG.
     let (ms, cs) := mscs in
     let2 (ms, cs) <- apply_unsync xp (ms, cs);
     let2 (ms, cs) <- apply_sync xp (ms, cs);
-    cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+    cs <- BUFCACHE.sync (LogCommit xp) cs;
     rx (ms, cs).
 
   Theorem apply_ok: forall xp mscs,
@@ -1460,8 +1421,8 @@ Module MEMLOG.
     let (ms, cs) := mscs in
     let3 (ms, cs, ok) <- flush xp (ms, cs);
     If (bool_dec ok true) {
-      cs <- BUFCACHE.write (LogCache xp) (LogCommit xp) $1 cs;
-      cs <- BUFCACHE.sync (LogCache xp) (LogCommit xp) cs;
+      cs <- BUFCACHE.write (LogCommit xp) $1 cs;
+      cs <- BUFCACHE.sync (LogCommit xp) cs;
       let2 (ms, cs) <- apply xp (ms, cs);
       rx (ms, cs, true)
     } else {
@@ -1469,6 +1430,13 @@ Module MEMLOG.
       rx (ms, cs, false)
     }.
 
+  (** XXX get rid of this *)
+  Definition log_intact xp m :=
+    (exists mscs,
+     (rep xp (NoTransaction m) mscs) \/
+     (exists m', rep xp (ActiveTxn m m') mscs) \/
+     (rep xp (CommittedTxn m) mscs) \/
+     (rep xp (AppliedTxn m) mscs))%pred.
 
   Definition would_recover_old xp old :=
     (exists mscs, (rep xp (NoTransaction old) mscs) \/
@@ -1516,10 +1484,10 @@ Module MEMLOG.
 
   Module MapProperties := WProperties Map.
 
-  Definition read_log T (xp : xparams) cs rx : prog T :=
-    let2 (cs, d) <- BUFCACHE.read (LogCache xp) (LogDescriptor xp) cs;
+  Definition read_log T (xp : memlog_xparams) cs rx : prog T :=
+    let2 (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
     let desc := valu_to_descriptor d in
-    let2 (cs, h) <- BUFCACHE.read (LogCache xp) (LogHeader xp) cs;
+    let2 (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
     let len := (valu_to_header h) :-> "length" in
     let2 (cs, log) <- For i < len
     Ghost cur log_on_disk
@@ -1538,7 +1506,7 @@ Module MEMLOG.
       exists mscs, rep xp (CommittedTxn cur) mscs
     Begin
       let (cs, log_prefix) := (cs_log_prefix : cachestate * list (addr * valu)) in
-      let2 (cs, v) <- BUFCACHE.read_array (LogCache xp) (LogData xp) i cs;
+      let2 (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
       lrx (cs, log_prefix ++ [(sel desc i $0, v)])
     Rof;
     rx (MapProperties.of_list log, cs).
@@ -1566,15 +1534,17 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
 
-  Definition recover T xp rx : prog T :=
-    cs <- BUFCACHE.init (LogCache xp);
-    let2 (cs, v) <- BUFCACHE.read (LogCache xp) (LogCommit xp) cs;
+  Definition recover T cachesize rx : prog T :=
+    cs <- BUFCACHE.init cachesize;
+    let2 (cs, fsxp) <- sb_load cs;
+    let xp := (FSXPMemLog fsxp) in
+    let2 (cs, v) <- BUFCACHE.read (LogCommit xp) cs;
     If (weq v $1) {
       let2 (ms, cs) <- read_log xp cs;
       let2 (ms, cs) <- apply xp (ms, cs);
-      rx (ms, cs)
+      rx ((ms, cs), fsxp)
     } else {
-      rx (ms_empty, cs)
+      rx ((ms_empty, cs), fsxp)
     }.
 
   Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty
@@ -1663,12 +1633,13 @@ Module MEMLOG.
     unfold pimpl, crash_xform; eauto.
   Qed.
 
-  Theorem recover_ok: forall xp,
-    {< m1 m2,
+  Theorem recover_ok: forall cachesize,
+    {< m1 m2 xp,
     PRE       crash_xform (would_recover_either xp m1 m2)
-    POST:mscs rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
+    POST:(mscs,fsxp)
+              rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
     CRASH     would_recover_either xp m1 m2
-    >} recover xp.
+    >} recover cachesize.
   Proof.
     unfold recover; log_intact_unfold; log_unfold.
     intros.

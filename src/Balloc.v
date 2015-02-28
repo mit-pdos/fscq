@@ -20,17 +20,13 @@ Require Import RecArray.
 Require Import ListPred.
 Require Import GenSep.
 Require Import WordAuto.
+Require Import FSLayout.
 
 
 Set Implicit Arguments.
 
 
 (* Block allocator *)
-
-Record xparams := {
-  BmapStart : addr;
-  BmapNBlocks : addr
-}.
 
 Module BALLOC.
 
@@ -195,6 +191,59 @@ Module BALLOC.
 
 
   Hint Extern 1 ({{_}} progseq (alloc' _ _ _) _) => apply alloc'_ok : prog.
+
+
+  Definition init' T lxp xp mscs rx : prog T :=
+    mscs <- For i < (BmapNBlocks xp ^* $ (valulen))
+      Ghost mbase F
+      Loopvar mscs <- mscs
+      Continuation lrx
+      Invariant
+        exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+        [[ goodSize addrlen (wordToNat i * valulen) ]] *
+        [[ (F * RecArray.array_item itemtype items_per_valu blocksz
+                (RecArray.Build_xparams (BmapStart xp) i)
+                (map (fun _ => $0) (seq 0 (wordToNat i * valulen))))%pred (list2mem m') ]]
+      OnCrash
+        MEMLOG.log_intact lxp mbase
+      Begin
+        mscs <- MEMLOG.write_array lxp (BmapStart xp) i $1 $0 mscs;
+        lrx mscs
+      Rof;
+    rx mscs.
+
+  Definition bmap0 : addr -> alloc_state :=
+    fun _ => Avail.
+
+  Theorem init'_ok : forall lxp xp mscs,
+    {< mbase m F,
+    PRE         exists a, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+                [[ (F * array (BmapStart xp) a $1)%pred (list2mem m) ]] *
+                [[ length a = # (BmapNBlocks xp) ]]
+    POST:mscs'  exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+                [[ (F * rep' xp bmap0)%pred (list2mem m') ]]
+    CRASH       MEMLOG.log_intact lxp mbase
+    >} init' lxp xp mscs.
+  Proof.
+    unfold init', rep'.
+    step.
+    rewrite <- roundTrip_0 with (sz:=addrlen); apply wordToNat_good.
+    unfold array_item; cancel.
+    instantiate (a:=nil); unfold array_item_pairs; cancel.
+    reflexivity.
+    step.
+    admit.
+    step.
+    admit.
+    admit.
+    unfold MEMLOG.log_intact; cancel.
+    step.
+    admit.
+    admit.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (init' _ _ _) _) => apply init'_ok : prog.
+
 
   (* Different names just so that we can state another theorem about them *)
   Definition alloc_gen := alloc'.

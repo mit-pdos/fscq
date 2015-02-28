@@ -218,15 +218,15 @@ Module SDIR.
     let2 (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
     rx (mscs, List.map (fun di => (name2string 16 (fst di), snd di)) r).
 
-  Definition rep F1 F2 m bxp ixp inum (dsmap : @mem string string_dec addr) :=
-   (exists dmap, DIR.rep F1 F2 m bxp ixp inum dmap *
-    [[ True ]])%pred.
+  Definition rep F1 F2 m bxp ixp inum (dsmap : @mem string string_dec addr) : Prop :=
+   exists dmap,
+   DIR.rep F1 F2 m bxp ixp inum dmap.
   (* XXX should figure out how to really relate [dsmap] to [dmap] *)
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dsmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           rep F A m bxp ixp dnum dsmap
+           [[ rep F A m bxp ixp dnum dsmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            ((exists inum DF, [[ r = Some inum ]] *

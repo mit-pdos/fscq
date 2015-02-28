@@ -7,6 +7,7 @@ import qualified Interpreter as I
 import qualified System.Directory
 import qualified Testprog
 import qualified FS
+import FSLayout
 
 disk_fn :: String
 disk_fn = "disk.img"
@@ -34,21 +35,24 @@ repf2 n _ s f = do
   (s, rr) <- repf2 (n-1) r s f
   return (s, rr)
 
+cachesize :: Coq_word
+cachesize = W64 1000
+
 main :: IO ()
 main = do
-  ((((lxp, ixp), ibxp), dbxp), maxaddr) <- return $ FS.compute_xparams (W 1000) (W 1) (W 1)
   -- This is racy (stat'ing the file first and opening it later)
   fileExists <- System.Directory.doesFileExist disk_fn
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
-  s <- if fileExists
+  (s, fsxp) <- if fileExists
   then
     do
-      putStrLn $ "Recovering file system, " ++ (show maxaddr) ++ " blocks"
-      I.run fd $ _MEMLOG__recover lxp
+      putStrLn $ "Recovering file system"
+      I.run fd $ _MEMLOG__recover cachesize
   else
     do
-      putStrLn $ "Initializing file system, " ++ (show maxaddr) ++ " blocks"
-      I.run fd $ _MEMLOG__init lxp
+      putStrLn $ "Initializing file system"
+      I.run fd $ FS.mkfs (W 1) (W 1) cachesize
+  putStrLn $ "File system mounted, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   putStrLn "Running program.."
   -- r <- I.run fd $ the_prog lxp
   -- r <- I.run fd $ Testprog.testcopy lxp
@@ -57,11 +61,11 @@ main = do
   -- (s, r) <- repf 10000 (Just (W 123)) s
   --     (\s x -> case x of
   --         Nothing -> return (s, Nothing)
-  --         Just xv -> I.run fd $ Testprog.test_bfile lxp dbxp ixp xv s)
+  --         Just xv -> I.run fd $ Testprog.test_bfile fsxp xv s)
 
-  (s, setok) <- I.run fd $ FS.set_size lxp dbxp ixp (W 3) (W 68) s
+  (s, setok) <- I.run fd $ FS.set_size fsxp (W 3) (W 68) s
   putStrLn $ "set_size: " ++ (show setok)
-  (s, r) <- repf2 1000 False s $ \s -> I.run fd $ Testprog.test_bfile_bulkwrite lxp ixp (W 99) (W 64) s
+  (s, r) <- repf2 1000 False s $ \s -> I.run fd $ Testprog.test_bfile_bulkwrite fsxp (W 99) (W 64) s
 
   closeFd fd
   putStrLn $ "Done: " ++ (show r)
