@@ -142,9 +142,9 @@ int
 sys_readdirent(void *fh, struct dirent *e, off_t off)
 {
   struct file *f = (struct file *) fh;
-  if ((f == 0) || (f->type != T_DIR))
+  if ((f == 0) || (f->ip->type != T_DIR))
     return -1;
-  cprintf("sys_readdir: %d %ld", f->ip->size, off);
+  cprintf("sys_readdirent: %d %ld\n", f->ip->size, off);
   if (off >= f->ip->size)
     return 0;
   f->off = off;

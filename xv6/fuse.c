@@ -1,3 +1,6 @@
+#define FUSE_USE_VERSION 26
+#include <fuse.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
@@ -9,10 +12,7 @@
 #include <unistd.h>
 #include <sys/dir.h>
 
-#define FUSE_USE_VERSION 26
-#include <fuse.h>
-
-#define FUSE
+#define FUSE  1
 
 #include "stat.h"
 #include "fs.h"
@@ -27,7 +27,6 @@ int sys_readdirent(void *fh, struct xv6dirent *e, off_t off);
 
 void panic(char *s)
 {
-
   printf("PANIC: %s\n", s);
   exit(-1);
 }
@@ -75,24 +74,18 @@ static int
 fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	     off_t offset, struct fuse_file_info *fi)
 {
-  printf("fuse_readir: %s\n", path);
+  printf("fuse_readdir: %s\n", path);
   void  *fh = sys_open((char *) path, fi->flags);
   if (fh == 0)
     return -1;
   off_t xv6off = 0;
-  off_t off = 0;
   struct xv6dirent xv6e;
   int r;
-  int i;
   while ((r = sys_readdirent(fh, &xv6e, xv6off)) > 0) {
     xv6off += sizeof(xv6e);
-    struct dirent *e = buf + off;
-    e->d_fileno = xv6e.inum;
-    for (i = 0; i < XV6DIRSIZ && xv6e.name[i] != '\0'; i++) {
-      e->d_name[i] = xv6e.name[i];
-    }
-    e->d_name[i] = '\0';
-    off += sizeof(*e);
+    if(xv6e.inum == 0)
+      continue;
+    filler(buf, xv6e.name, NULL, 0);
   }
   (void) sys_fileclose(fh);
   return r;

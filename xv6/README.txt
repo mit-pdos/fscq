@@ -8,7 +8,9 @@ ls -l /tmp/xv6fs/hello.txt
 cat /tmp/xv6fs/hello.txt
 echo hello > /tmp/xv6fs/x.txt
 cat /tmp/xv6fs/x.txt
+ls /tmp/xv6fs
+ls -l /tmp/xv6fs
 
 Unmount:
 
-umount /tmp/xv6fs
+fusermount -u /tmp/xv6fs1
