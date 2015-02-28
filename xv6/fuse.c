@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
-#include <sys/dir.h>
 
 #define FUSE  1
 
@@ -23,7 +22,7 @@ int sys_write(char *path, char *buf, size_t sz, off_t off);
 void *sys_open(char *path, int omode);
 void *sys_create(char *path, int omode);
 int sys_fileclose(void *fh);
-int sys_readdirent(void *fh, struct xv6dirent *e, off_t off);
+int sys_readdirent(void *fh, struct dirent *e, off_t off);
 
 void panic(char *s)
 {
@@ -79,7 +78,7 @@ fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   if (fh == 0)
     return -1;
   off_t xv6off = 0;
-  struct xv6dirent xv6e;
+  struct dirent xv6e;
   int r;
   while ((r = sys_readdirent(fh, &xv6e, xv6off)) > 0) {
     xv6off += sizeof(xv6e);

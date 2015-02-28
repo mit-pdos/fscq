@@ -45,15 +45,6 @@ struct dinode {
 // Block containing bit for block b
 #define BBLOCK(b, ninodes) (b/BPB + (ninodes)/IPB + 3)
 
-#ifdef FUSE
-// Directory is a file containing a sequence of dirent structures.
-#define XV6DIRSIZ 14
-
-struct xv6dirent {
-  ushort inum;
-  char name[XV6DIRSIZ];
-};
-#else
 // Directory is a file containing a sequence of dirent structures.
 #define DIRSIZ 14
 
@@ -61,6 +52,5 @@ struct dirent {
   ushort inum;
   char name[DIRSIZ];
 };
-#endif
 
 
