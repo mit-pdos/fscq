@@ -1,0 +1,4 @@
+*.o
+fs.img
+mkfs
+xv6fs

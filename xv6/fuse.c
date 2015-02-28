@@ -1,7 +1,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-#include <fuse.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -9,6 +8,9 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <sys/dir.h>
+
+#define FUSE_USE_VERSION 26
+#include <fuse.h>
 
 #define FUSE
 
@@ -23,6 +25,12 @@ void *sys_create(char *path, int omode);
 int sys_fileclose(void *fh);
 int sys_readdirent(void *fh, struct xv6dirent *e, off_t off);
 
+void panic(char *s)
+{
+
+  printf("PANIC: %s\n", s);
+  exit(-1);
+}
 
 static int
 fuse_getattr(const char *path, struct stat *stbuf)
@@ -51,14 +59,14 @@ fuse_open(const char *path, struct fuse_file_info *fi)
   printf("fuse_open: %s flags %d\n", path, fi->flags);
   void  *r = sys_open((char *) path, fi->flags);
   fi->fh = (uint64_t) r;
-  printf("fuse_open: returns fh %lld\n", fi->fh);
+  printf("fuse_open: returns fh %ld\n", fi->fh);
   return (r == 0) ? -1 : 0;
 }
 
 static int
 fuse_release(const char *path, struct fuse_file_info *fi)
 {
-  printf("fuse_release: %s fh %lld\n", path, fi->fh);
+  printf("fuse_release: %s fh %ld\n", path, fi->fh);
   int r = sys_fileclose((void *) fi->fh);
   return r;
 }
@@ -84,7 +92,6 @@ fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
       e->d_name[i] = xv6e.name[i];
     }
     e->d_name[i] = '\0';
-    e->d_namlen = i+1;
     off += sizeof(*e);
   }
   (void) sys_fileclose(fh);
@@ -95,7 +102,7 @@ static int
 fuse_read(const char *path, char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
-  printf("fuse_read: %s %ld %lld %lld\n", path, size, offset, fi->fh);
+  printf("fuse_read: %s %ld %ld %ld\n", path, size, offset, fi->fh);
   size = sys_read((char *) fi->fh, buf, size, offset);
   return size;
 }
@@ -104,7 +111,7 @@ static int
 fuse_write(const char *path, const char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
-  printf("fuse_write: %s %ld %lld %lld\n", path, size, offset, fi->fh);
+  printf("fuse_write: %s %ld %ld %ld\n", path, size, offset, fi->fh);
   size = sys_write((char *) fi->fh, (char *) buf, size, offset);
   return size;
 }
