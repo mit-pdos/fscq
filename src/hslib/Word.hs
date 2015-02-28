@@ -80,6 +80,10 @@ wordToNat :: Int -> Coq_word -> Int
 wordToNat _ (W x) = fromIntegral x
 wordToNat _ (W64 x) = fromIntegral x
 
+wzero :: Int -> Coq_word
+wzero 64 = W64 0
+wzero _ = W 0
+
 zext :: Int -> Coq_word -> Int -> Coq_word
 zext _ (W w) _ = W w
 zext _ (W64 w) _ = W $ fromIntegral w

@@ -61,20 +61,30 @@ Module BFILE.
     mscs <- INODE.ishrink lxp bxp ixp inum mscs;
     rx mscs.
 
+  Definition bfgetsz T lxp ixp inum mscs rx : prog T :=
+    let2 (mscs, n) <- INODE.igetsz lxp ixp inum mscs;
+    rx (mscs, n).
+
+  Definition bfsetsz T lxp ixp inum sz mscs rx : prog T :=
+    mscs <- INODE.isetsz lxp ixp inum sz mscs;
+    rx mscs.
+
 
   (* representation invariants *)
 
   Record bfile := {
-    BFData : list valu
+    BFData : list valu;
+    BFSize : addr
   }.
 
-  Definition bfile0 := Build_bfile nil.
+  Definition bfile0 := Build_bfile nil $0.
 
   Definition data_match bxp (v : valu) a : @pred _ (@weq addrlen) _ :=
     (a |-> v * [[ BALLOC.valid_block bxp a ]])%pred.
 
   Definition file_match bxp f i :=
-    listmatch (data_match bxp) (BFData f) (INODE.IBlocks i).
+    (listmatch (data_match bxp) (BFData f) (INODE.IBlocks i) *
+     [[ BFSize f = INODE.ISize i ]])%pred.
 
   Definition rep bxp ixp (flist : list bfile) :=
     (exists freeblocks ilist,
@@ -130,7 +140,7 @@ Module BFILE.
     autorewrite with defaults in *.
     unfold file_match at 2, listmatch at 2 in H.
     destruct_lift H.
-    rewrite H2.
+    rewrite H6.
     erewrite <- wordToNat_natToWord_bound with (sz := addrlen).
     eapply INODE.blocks_bound with (m := m).
     pred_apply; cancel.
@@ -435,12 +445,59 @@ Module BFILE.
     unfold sel; shrink_bounds.
   Qed.
 
+  Theorem bfgetsz_ok : forall lxp bxp ixp inum mscs,
+    {< F A mbase m flist f,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+           [[ r = BFSize f ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} bfgetsz lxp ixp inum mscs.
+  Proof.
+    unfold bfgetsz, rep.
+    hoare.
+    list2nmem_ptsto_cancel; file_bounds.
+
+    rewrite_list2nmem_pred.
+    destruct_listmatch_n.
+    congruence.
+  Qed.
+
+  Theorem bfsetsz_ok : forall lxp bxp ixp inum sz mscs,
+    {< F A mbase m flist f,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST:mscs'
+           exists m' flist' f',
+           MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+           [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ BFSize f' = sz ]] *
+           [[ BFData f' = BFData f ]]
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} bfsetsz lxp ixp inum sz mscs.
+  Proof.
+    unfold bfsetsz, rep.
+    hoare.
+    list2nmem_ptsto_cancel; file_bounds.
+
+    admit.
+    rewrite_list2nmem_pred.
+    rewrite_list2nmem_pred.
+    destruct_listmatch_n.
+    admit.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (bflen _ _ _ _) _) => apply bflen_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfread _ _ _ _ _) _) => apply bfread_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfwrite _ _ _ _ _ _) _) => apply bfwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfgrow _ _ _ _ _) _) => apply bfgrow_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfshrink _ _ _ _ _) _) => apply bfshrink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfgetsz _ _ _ _) _) => apply bfgetsz_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfsetsz _ _ _ _ _) _) => apply bfsetsz_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
