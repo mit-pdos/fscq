@@ -160,13 +160,9 @@ Module DIR.
   Hint Extern 1 ({{_}} progseq (deput _ _ _ _ _ _) _) => apply deput_ok : prog.
   Hint Extern 1 ({{_}} progseq (deext _ _ _ _ _ _) _) => apply deext_ok : prog.
 
-
-
   Definition dmatch (de: dent) : @pred filename (@weq filename_len) addr :=
-    if weq (de :-> "valid") $0 then
-      emp
-    else
-      (de :-> "name") |-> (de :-> "inum").
+    if weq (de :-> "valid") $0 then emp
+    else (de :-> "name") |-> (de :-> "inum").
 
   Theorem dmatch_complete : forall de m1 m2, dmatch de m1 -> dmatch de m2 -> m1 = m2.
   Proof.
@@ -241,6 +237,9 @@ Module DIR.
     unfold MEMLOG.log_intact; cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (dfold _ _ _ _ _ _ _) _) => apply dfold_ok : prog.
+
+
   Definition dlookup_f name (s : option addr) (de : dent) : option addr := Eval compute_rec in
     if (weq (de :-> "valid") $0) then s else
     if (weq (de :-> "name") name) then (Some (de :-> "inum")) else s.
@@ -249,80 +248,170 @@ Module DIR.
     let2 (mscs, s) <- dfold lxp bxp ixp dnum (dlookup_f name) None mscs;
     rx (mscs, s).
 
+
+  Lemma fold_dlookup_mono: forall l name v,
+      fold_left (dlookup_f name) l (Some v) <> None.
+  Proof.
+    induction l; firstorder; simpl.
+    unfold dlookup_f at 2.
+    destruct (weq (fst (snd (snd a))) $0).
+    apply IHl.
+    destruct (weq (fst a) name); apply IHl.
+  Qed.
+
+
+  Lemma fold_dlookup_unique : forall l m name v w,
+    fold_left (dlookup_f name) l (Some v) = Some w
+    -> (name |-> v * listpred dmatch l)%pred m
+    -> v = w.
+  Proof.
+    induction l; simpl; intros.
+    inversion H; auto.
+
+    unfold dlookup_f at 2 in H.
+    unfold dmatch at 1 in H0; rec_simpl.
+    destruct (weq (fst (snd (snd a))) $0).
+    eapply IHl with (m := m); eauto.
+    pred_apply; cancel.
+
+    destruct (weq (fst a) name).
+    contradict H0.
+    unfold_sep_star; intuition; repeat deex.
+    apply mem_disjoint_comm in H0.
+    rewrite mem_union_comm in H0 by auto.
+    apply mem_disjoint_union in H0.
+    unfold mem_disjoint in H0.
+    apply H0; exists (fst a); exists (fst (snd a)); exists v.
+    unfold ptsto in *; intuition.
+
+    eapply IHl with (m := mem_except m (fst a)); eauto.
+    eapply ptsto_mem_except.
+    pred_apply; cancel.
+  Qed.
+
+
+  Lemma dlookup_fold_listpred_none': forall l name m,
+    fold_left (dlookup_f name) l None = None
+    -> listpred dmatch l m
+    -> notindomain name m.
+  Proof.
+    induction l; simpl.
+    firstorder.
+
+    unfold dmatch at 1.
+    unfold dlookup_f at 2.
+    destruct (weq (a :-> "valid") $0) eqn:HV; rec_simpl; intros.
+    rewrite HV in H.
+    apply emp_star in H0; auto.
+
+    rewrite HV in H.
+    destruct (weq (a :-> "name") name) eqn:HN; rec_simpl; intros.
+    setoid_rewrite HN in H; simpl in H.
+    contradict H.
+    apply fold_dlookup_mono.
+
+    setoid_rewrite HN in H; simpl in H.
+    apply notindomain_mem_except with (a' := fst a); auto.
+    apply IHl; auto.
+    eapply ptsto_mem_except; eauto.
+  Qed.
+
+  Lemma dlookup_fold_listpred_none: forall l name,
+    fold_left (dlookup_f name) l None = None
+    -> listpred dmatch l =p=> notindomain name.
+  Proof.
+    unfold pimpl; intros.
+    eapply dlookup_fold_listpred_none'; eauto.
+  Qed.
+
+  Lemma dlookup_fold_listpred_some': forall l m name w,
+    fold_left (dlookup_f name) l None = Some w
+    -> listpred dmatch l m
+    -> m name = Some w.
+  Proof.
+    induction l; simpl; intros.
+    inversion H.
+
+    unfold dmatch at 1 in H0.
+    unfold dlookup_f at 2 in H.
+    destruct (weq (a :-> "valid") $0) eqn:HV; intros;
+      rec_simpl; rewrite HV in H; simpl in H.
+    apply star_emp_pimpl in H0.
+    apply IHl; auto.
+
+    destruct (weq (a :-> "name") name) eqn:HN; intros;
+      setoid_rewrite HN in H; simpl in H.
+    rec_simpl; rewrite e in H0.
+    replace w with (fst (snd a)).
+    eapply ptsto_valid; eauto.
+    eapply fold_dlookup_unique; eauto.
+
+    eapply indomain_mem_except with (a' := (a :-> "name")); auto.
+    apply IHl; auto.
+    eapply ptsto_mem_except; eauto.
+  Qed.
+
+  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) addr :=
+    if (weq (de :-> "name") name) then emp
+    else dmatch de.
+
+  Lemma helper_emp_pimpl: forall AT AEQ V (A B : @pred AT AEQ V),
+    (A * B)%pred =p=> (A * (emp * B)).
+  Proof.
+    intros; cancel.
+  Qed.
+
+  Lemma dmatch_ex_dmatch : forall l m name v,
+    listpred dmatch l m
+    -> m name = Some v
+    -> (name |-> v * listpred (dmatch_ex name) l)%pred m.
+  Proof.
+    induction l; simpl; intros.
+    pose proof (H name).
+    rewrite H0 in H1; inversion H1.
+
+    unfold dmatch at 1 in H.
+    unfold dmatch_ex at 1; unfold dmatch at 1.
+    destruct (weq (a :-> "valid") $0) eqn:HV; 
+      destruct (weq (a :-> "name") name) eqn:HN;
+      rec_simpl; intros; try apply helper_emp_pimpl.
+
+    apply star_emp_pimpl in H; apply IHl; auto.
+    apply star_emp_pimpl in H; apply IHl; auto.
+
+    admit.
+    admit.
+  Qed.
+
+  Lemma dlookup_fold_listpred_some: forall l name w,
+    fold_left (dlookup_f name) l None = Some w
+    -> listpred dmatch l =p=> (listpred (dmatch_ex name) l * name |-> w).
+  Proof.
+    unfold pimpl; intros.
+    apply sep_star_comm.
+    apply dmatch_ex_dmatch; eauto.
+    eapply dlookup_fold_listpred_some'; eauto.
+  Qed.
+
   Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ rep F A m bxp ixp dnum dmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           ((exists inum DF, [[ r = Some inum ]] *
-             [[ (DF * name |-> inum)%pred dmap ]]) \/
-            ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dmap ]]))
+           ((exists inum DF,
+             [[ r = Some inum /\ (DF * name |-> inum)%pred dmap ]]) \/
+            ([[ r = None /\ notindomain name dmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
     >} dlookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dlookup, rep.
     step.
     step.
-
-    instantiate (a8:=empty_mem); unfold emp; auto. (* dmap' *)
-
-    repeat deex.
-    (* prove entry into loop invariant: no names are found in an empty dmap' *)
-    apply sep_star_empty_mem in H; destruct H.
-    apply ptsto_empty_mem in H0; auto.
-
-    step.
-    step.
-    step.
-
-    (* valid=0 dentry: dmap' stays the same across loop iterations *)
-    admit.
-
-    step.
-    step.
-
-    (* the name does exist *)
-    apply pimpl_or_r; left.
-    cancel.
-
-    (* need to extract the [m0]th element out of [l] *)
-    rewrite listpred_fwd with (i:=#m0) (def:=item_zero dirent_type).
-    unfold dmatch at 2; rec_simpl; simpl.
-    unfold sel in H16. rewrite <- H16. simpl.
-    destruct (weq a1 $0); [ intuition | cancel ].
-    (* some length constraint.. *)
-    admit.
-
-    (* unification mismatch: it assumes dmap' stays the same across loop iterations,
-     * which is not true for this case (valid=1, name not equal).
-     *)
-    eapply pimpl_ok2; eauto.
-    intros; norm.
-    cancel.
-    intuition try congruence; subst.
-    unfold Rec.recget' in *; simpl in *.
-    instantiate (a:=Prog.upd m1 a a0).
-    admit.
-    repeat deex. apply H21. repeat eexists.
-    apply sep_star_comm. apply sep_star_comm in H6. eapply ptsto_upd_bwd; eauto.
-
-    (* Did not find the name anywhere *)
-    step.
-    eapply pimpl_or_r. right. cancel. repeat deex.
-    assert (m = m0); [| subst; eauto ].
-    (* Need to prove that the [dmap] in the postcondition, [m], is the same
-     * as the [dmap'] from exiting the loop invariant, [m'].  This is not so
-     * straightforward: we only know that [m] and [m'] satisfy similar-looking
-     * [listpred dmatch] predicates.
-     *)
-    rewrite firstn_oob in H17.
-    eapply listpred_eq; eauto.
-
-    (* Need some extra theorem about lengths from BFileRec.. *)
-    admit.
-
-    unfold MEMLOG.log_intact; cancel.
+    apply pimpl_or_r.
+    destruct (fold_left (dlookup_f name) x None) eqn: Heq; [left | right]; cancel.
+    apply dlookup_fold_listpred_some; auto.
+    apply dlookup_fold_listpred_none; auto.
   Qed.
 
 
@@ -403,8 +492,9 @@ Module DIR.
     (* XXX need to compute dmap *)
     admit.
     admit.
-    ad
     admit.
+    admit.
+    unfold MEMLOG.log_intact; cancel.
   Qed.
 
   Definition dlink T lxp bxp ixp dnum name inum mscs rx : prog T := Eval compute_rec in
