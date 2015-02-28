@@ -152,6 +152,17 @@ sys_readdirent(void *fh, struct dirent *e, off_t off)
   return r;
 }
 
+int
+sys_truncate(char *path) {
+  struct file *f = sys_open(path, O_RDWR);
+  if (f == 0) return -1;
+  begin_op();
+  itrunc(f->ip);
+  end_op();
+  fileclose(f);
+  return 0;
+}
+
 /*
 
 // Create the path new as a link to the same inode as old.

@@ -1,3 +1,8 @@
+Init:
+
+make all
+make fs.img
+
 Run:
 
 ./xv6fs -f -d -s /tmp/xv6fs

@@ -23,6 +23,7 @@ void *sys_open(char *path, int omode);
 void *sys_create(char *path, int omode);
 int sys_fileclose(void *fh);
 int sys_readdirent(void *fh, struct dirent *e, off_t off);
+int sys_truncate(char *path);
 
 void panic(char *s)
 {
@@ -117,14 +118,23 @@ fuse_create(const char *path, mode_t m, struct fuse_file_info *fi)
     return (r == 0) ? -1 : 0;
 }
 
+static int
+fuse_truncate(const char *path, off_t off)
+{
+    printf("fuse_truncate: %s %ld\n", path, off);
+    if (off != 0) return -1;
+    return sys_truncate((char *) path);
+}
+
 static struct fuse_operations fuse_filesystem_operations = {
-  .getattr = fuse_getattr, /* To provide size, permissions, etc. */
-  .open    = fuse_open,    /* To acquire fh                      */
-  .release = fuse_release, /* To release fh                      */
-  .read    = fuse_read,    /* To provide file content.           */
-  .write   = fuse_write,   /* To write file content.             */
-  .create  = fuse_create,  /* To create a file.                  */
-  .readdir = fuse_readdir, /* To provide directory listing.      */
+  .getattr = fuse_getattr,
+  .open    = fuse_open,
+  .release = fuse_release,
+  .read    = fuse_read,
+  .write   = fuse_write,
+  .create  = fuse_create,
+  .readdir = fuse_readdir,
+  .truncate = fuse_truncate,
 };
 
 void
