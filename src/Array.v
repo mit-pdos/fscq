@@ -1057,7 +1057,7 @@ Definition ArraySync T a i stride rx : prog T :=
 
 (** * Hoare rules *)
 
-Local Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
 
 Theorem read_ok:
   forall T (a i stride:addr) (rx:valu->prog T),
@@ -1088,8 +1088,6 @@ Theorem write_ok:
 Proof.
   unfold ArrayWrite.
   hoare.
-  rewrite <- surjective_pairing; cancel.
-  rewrite <- surjective_pairing; cancel.
 Qed.
 
 Theorem sync_ok:
@@ -1113,6 +1111,9 @@ Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _ _) _) => apply write_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArraySync _ _ _) _) => apply sync_ok : prog.
 
+Hint Extern 0 (okToUnify (array ?base ?l ?stride) (array ?base ?r ?stride)) =>
+  unfold okToUnify; constructor : okToUnify.
+
 
 (** * Some test cases *)
 
@@ -1134,6 +1135,8 @@ Theorem read_back_ok : forall T a (rx : _ -> prog T),
   }} read_back a rx.
 Proof.
   unfold read_back; hoare_unfold unfold_prepend.
+  autorewrite with core; omega.
+  autorewrite with core; auto.
 Qed.
 
 Definition swap T a i j rx : prog T :=
@@ -1344,7 +1347,3 @@ Proof.
   clear Heq.
   unfold piff; split; cancel.
 Qed.
-
-Definition unifiable_array := @array valuset.
-
-Hint Extern 0 (okToUnify (unifiable_array _ _ _) (unifiable_array _ _ _)) => constructor : okToUnify.

@@ -343,6 +343,13 @@ Module MEMLOG.
      (LogDescriptor xp) |->? *
      (LogHeader xp) |->?)%pred.
 
+  (* XXX remove once SepAuto and SepAuto2 are unified *)
+  Hint Extern 0 (okToUnify (BUFCACHE.rep _ _) (BUFCACHE.rep _ _)) => constructor : okToUnify.
+
+  Definition unifiable_array := @array valuset.
+
+  Hint Extern 0 (okToUnify (unifiable_array _ _ _) (unifiable_array _ _ _)) => constructor : okToUnify.
+
   Theorem init_cs_ok : forall xp cs,
     {< old d,
     PRE       BUFCACHE.rep cs d * [[ (log_uninitialized xp old) d ]]
@@ -1862,6 +1869,9 @@ Module MEMLOG.
   Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _ _) _) => apply write_array_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
+
+  (* XXX remove once SepAuto and SepAuto2 are unified *)
+  Hint Extern 0 (SepAuto.okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
 
 End MEMLOG.
 
