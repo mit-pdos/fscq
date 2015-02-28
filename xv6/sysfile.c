@@ -98,22 +98,31 @@ sys_open(char *path, int omode)
 }
 
 int
-sys_read(char *path, char *buf, size_t sz, off_t off)
+sys_fileclose(void *fh)
 {
-  struct file *f = sys_open(path, O_RDONLY);
+  struct file *f = (struct file *) fh;
+  fileclose(f);
+  return 0;
+}
+
+
+int
+sys_read(void *fh, char *buf, size_t sz, off_t off)
+{
+  struct file *f = (struct file *) fh;
   if (f == 0)
     return -1;
-  /* lseek */
+  f->off = off;
   return fileread(f, buf, sz);
 }
 
 int
-sys_write(char *path, char *buf, size_t sz, off_t off)
+sys_write(void *fh, char *buf, size_t sz, off_t off)
 {
-  struct file *f = sys_open(path, O_WRONLY);
+  struct file *f = (struct file *) fh;
   if (f == 0)
     return -1;
-  /* lseek */
+  f->off = off;
   return filewrite(f, buf, sz);
 }
 
@@ -124,7 +133,23 @@ sys_fstat(char *path, void *buf)
   struct file *f = sys_open(path, O_RDONLY);
   if (f == 0)
     return -1;
-  return filestat(f, (struct stat *)buf);
+  int r = filestat(f, (struct stat *)buf);
+  fileclose(f);
+  return r;
+}
+
+int
+sys_readdirent(void *fh, struct dirent *e, off_t off)
+{
+  struct file *f = (struct file *) fh;
+  if ((f == 0) || (f->type != T_DIR))
+    return -1;
+  cprintf("sys_readdir: %d %ld", f->ip->size, off);
+  if (off >= f->ip->size)
+    return 0;
+  f->off = off;
+  int r = fileread(f, (char *) e, sizeof(*e));
+  return r;
 }
 
 /*

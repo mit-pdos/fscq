@@ -8,22 +8,21 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
-
-//
-// XXX use file handle instead of pathname for read/write
-// XXX deal with offset in read/write (implement seek in xv6?)
-// XXX modes
-//
+#include <sys/dir.h>
 
 #define FUSE
 
 #include "stat.h"
+#include "fs.h"
 
 int sys_fstat(const char *path, void *buf);
-int sys_read(char *path, char *buf, size_t sz, off_t off);
+int sys_read(void *fh, char *buf, size_t sz, off_t off);
 int sys_write(char *path, char *buf, size_t sz, off_t off);
 void *sys_open(char *path, int omode);
 void *sys_create(char *path, int omode);
+int sys_fileclose(void *fh);
+int sys_readdirent(void *fh, struct xv6dirent *e, off_t off);
+
 
 static int
 fuse_getattr(const char *path, struct stat *stbuf)
@@ -50,8 +49,18 @@ static int
 fuse_open(const char *path, struct fuse_file_info *fi)
 {
   printf("fuse_open: %s flags %d\n", path, fi->flags);
-  void  *r = sys_open((char *) path, 1);
+  void  *r = sys_open((char *) path, fi->flags);
+  fi->fh = (uint64_t) r;
+  printf("fuse_open: returns fh %lld\n", fi->fh);
   return (r == 0) ? -1 : 0;
+}
+
+static int
+fuse_release(const char *path, struct fuse_file_info *fi)
+{
+  printf("fuse_release: %s fh %lld\n", path, fi->fh);
+  int r = sys_fileclose((void *) fi->fh);
+  return r;
 }
 
 static int
@@ -59,16 +68,35 @@ fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	     off_t offset, struct fuse_file_info *fi)
 {
   printf("fuse_readir: %s\n", path);
-      
-  return -ENOENT;
+  void  *fh = sys_open((char *) path, fi->flags);
+  if (fh == 0)
+    return -1;
+  off_t xv6off = 0;
+  off_t off = 0;
+  struct xv6dirent xv6e;
+  int r;
+  int i;
+  while ((r = sys_readdirent(fh, &xv6e, xv6off)) > 0) {
+    xv6off += sizeof(xv6e);
+    struct dirent *e = buf + off;
+    e->d_fileno = xv6e.inum;
+    for (i = 0; i < XV6DIRSIZ && xv6e.name[i] != '\0'; i++) {
+      e->d_name[i] = xv6e.name[i];
+    }
+    e->d_name[i] = '\0';
+    e->d_namlen = i+1;
+    off += sizeof(*e);
+  }
+  (void) sys_fileclose(fh);
+  return r;
 }
 
 static int
 fuse_read(const char *path, char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
-  printf("fuse_read: %s %ld %lld\n", path, size, offset);
-  size = sys_read((char *) path, buf, size, offset);
+  printf("fuse_read: %s %ld %lld %lld\n", path, size, offset, fi->fh);
+  size = sys_read((char *) fi->fh, buf, size, offset);
   return size;
 }
 
@@ -76,8 +104,8 @@ static int
 fuse_write(const char *path, const char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
-  printf("fuse_read: %s %ld %lld\n", path, size, offset);
-  size = sys_write((char *) path, (char *) buf, size, offset);
+  printf("fuse_write: %s %ld %lld %lld\n", path, size, offset, fi->fh);
+  size = sys_write((char *) fi->fh, (char *) buf, size, offset);
   return size;
 }
 
@@ -85,13 +113,15 @@ static int
 fuse_create(const char *path, mode_t m, struct fuse_file_info *fi)
 {
     printf("fuse_create: %s %x\n", path, m);
-    void *r = sys_open((char *) path, 0x200);  /* O_CREATE */
+    void *r = sys_open((char *) path, fi->flags);
+    fi->fh = (uint64_t) r;
     return (r == 0) ? -1 : 0;
 }
 
 static struct fuse_operations fuse_filesystem_operations = {
   .getattr = fuse_getattr, /* To provide size, permissions, etc. */
-  .open    = fuse_open,    /* To enforce read-only access.       */
+  .open    = fuse_open,    /* To acquire fh                      */
+  .release = fuse_release, /* To release fh                      */
   .read    = fuse_read,    /* To provide file content.           */
   .write   = fuse_write,   /* To write file content.             */
   .create  = fuse_create,  /* To create a file.                  */
