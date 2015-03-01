@@ -27,6 +27,16 @@ int sys_truncate(char *path);
 int sys_mkdir(char *path);
 int sys_unlink(char *path);
 
+// Special file for statistics.  cat /stats returns the results and
+// resets the counters to 0.
+char *stats = "/stats";
+struct stats {
+  long nread;
+  long nwrite;
+  long nflush;
+} fsstats;
+char statsbuf[1024];
+
 void panic(char *s)
 {
   printf("PANIC: %s\n", s);
@@ -40,6 +50,14 @@ fuse_getattr(const char *path, struct stat *stbuf)
   memset(stbuf, 0, sizeof(struct stat));
   memset(&st, 0, sizeof(struct xv6stat));
 
+  if (strcmp(path, stats) == 0) {
+    sprintf(statsbuf, "nread %ld nwrite %ld nflush %ld\n", fsstats.nread,
+	    fsstats.nwrite, fsstats.nflush);
+    stbuf->st_mode = S_IFREG | 0444;
+    stbuf->st_nlink = 1;
+    stbuf->st_size = strlen(statsbuf);
+    return 0;
+  }
   int r = sys_fstat(path, (char *) &st);
   printf("sys_fstat: %d %d %d %d\n", r, st.type, st.nlink, st.size);
   if (r >= 0) {
@@ -55,6 +73,9 @@ fuse_getattr(const char *path, struct stat *stbuf)
 static int
 fuse_open(const char *path, struct fuse_file_info *fi)
 {
+  if (strcmp(path, stats) == 0) {
+    return 0;
+  }
   printf("fuse_open: %s flags %d\n", path, fi->flags);
   void  *r = sys_open((char *) path, fi->flags);
   fi->fh = (uint64_t) r;
@@ -65,6 +86,9 @@ fuse_open(const char *path, struct fuse_file_info *fi)
 static int
 fuse_release(const char *path, struct fuse_file_info *fi)
 {
+  if (strcmp(path, stats) == 0) {
+    return 0;
+  }
   printf("fuse_release: %s fh %ld\n", path, fi->fh);
   int r = sys_fileclose((void *) fi->fh);
   return r;
@@ -95,6 +119,18 @@ static int
 fuse_read(const char *path, char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
+  if (strcmp(path, stats) == 0) {
+    int len = strlen(statsbuf);
+    if (offset < len) {
+      if (offset + size > len)
+	size = len - offset;
+      memcpy(buf, statsbuf + offset, size);
+    } else
+      size = 0;
+    // Reset counters:
+    fsstats.nread = fsstats.nwrite = fsstats.nflush = 0;
+    return size;
+  }
   size = sys_read((char *) fi->fh, buf, size, offset);
   return size;
 }
@@ -190,6 +226,7 @@ unix_read(int sector, unsigned char *buf, int sz)
     perror("pread failed\n");
     exit(-1);
   }
+  fsstats.nread++;
 }
 
 void
@@ -200,6 +237,7 @@ unix_write(int sector, unsigned char *buf, int sz)
     perror("pwrite failed\n");
     exit(-1);
   }
+  fsstats.nwrite++;
 }
 
 void
@@ -210,6 +248,7 @@ unix_flush(void)
     perror("fsync failed\n");
     exit(-1);
   }
+  fsstats.nflush++;
 }
 
 void binit();
