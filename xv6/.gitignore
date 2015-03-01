@@ -1,4 +1,5 @@
 *.o
+*.d
 fs.img
 mkfs
 xv6fs

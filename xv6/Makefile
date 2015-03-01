@@ -1,7 +1,7 @@
 TARGETS = xv6fs mkfs
 CC = gcc
 PKGFLAGS =`pkg-config fuse --cflags --libs`
-CFLAGS_EXTRA = -DFUSEFS -Wall -g $(PKGFLAGS)
+CFLAGS_EXTRA = -DFUSEFS -MD -Wall -g $(PKGFLAGS)
 
 all: $(TARGETS)
 
