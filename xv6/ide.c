@@ -4,6 +4,7 @@
 
 void unix_read(int sector, unsigned char *buf, int sz);
 void unix_write(int sector, unsigned char *buf, int sz);
+void unix_flush(void);
 
 void iderw(struct buf *b) {
   if(!(b->flags & B_BUSY))
@@ -18,4 +19,8 @@ void iderw(struct buf *b) {
     unix_read(b->sector, b->data, 512);
     b->flags |= B_VALID;
   }
+}
+
+void ideflush() {
+  unix_flush();
 }

@@ -64,6 +64,7 @@ void            ideintr(void);
 #endif
 void            ideinit(void);
 void            iderw(struct buf*);
+void            ideflush(void);
 
 #ifndef FUSEFS
 

@@ -112,6 +112,7 @@ write_head(void)
     hb->sector[i] = thelog.lh.sector[i];
   }
   bwrite(buf);
+  ideflush();   // flush this and all preceding writes to disk
   brelse(buf);
 }
 

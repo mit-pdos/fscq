@@ -202,6 +202,16 @@ unix_write(int sector, unsigned char *buf, int sz)
   }
 }
 
+void
+unix_flush(void) 
+{
+  int r = fsync(fsimg_fd);
+  if (r != 0) {
+    perror("fsync failed\n");
+    exit(-1);
+  }
+}
+
 void binit();
 void fileinit();
 void initlog();
