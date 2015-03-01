@@ -24,6 +24,8 @@ void *sys_create(char *path, int omode);
 int sys_fileclose(void *fh);
 int sys_readdirent(void *fh, struct dirent *e, off_t off);
 int sys_truncate(char *path);
+int sys_mkdir(char *path);
+int sys_unlink(char *path);
 
 void panic(char *s)
 {
@@ -37,8 +39,6 @@ fuse_getattr(const char *path, struct stat *stbuf)
   struct xv6stat st;
   memset(stbuf, 0, sizeof(struct stat));
   memset(&st, 0, sizeof(struct xv6stat));
-
-  printf("fuse_getattr: %s\n", path);
 
   int r = sys_fstat(path, (char *) &st);
   printf("sys_fstat: %d %d %d %d\n", r, st.type, st.nlink, st.size);
@@ -95,7 +95,6 @@ static int
 fuse_read(const char *path, char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
-  printf("fuse_read: %s %ld %ld %ld\n", path, size, offset, fi->fh);
   size = sys_read((char *) fi->fh, buf, size, offset);
   return size;
 }
@@ -104,7 +103,6 @@ static int
 fuse_write(const char *path, const char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
-  printf("fuse_write: %s %ld %ld %ld\n", path, size, offset, fi->fh);
   size = sys_write((char *) fi->fh, (char *) buf, size, offset);
   return size;
 }
@@ -126,6 +124,30 @@ fuse_truncate(const char *path, off_t off)
     return sys_truncate((char *) path);
 }
 
+static int
+fuse_mkdir(const char *path, mode_t m)
+{
+  printf("fuse_mkdir: %s %x\n", path, m);
+  int r = sys_mkdir((char *)path);
+  return r;
+}
+
+static int
+fuse_rmdir(const char *path)
+{
+  printf("fuse_rmdir: %s\n", path);
+  int r = sys_unlink((char *)path);
+  return r;
+}
+
+static int
+fuse_unlink(const char *path)
+{
+  printf("fuse_rmdir: %s\n", path);
+  int r = sys_unlink((char *)path);
+  return r;
+}
+
 static struct fuse_operations fuse_filesystem_operations = {
   .getattr = fuse_getattr,
   .open    = fuse_open,
@@ -135,6 +157,9 @@ static struct fuse_operations fuse_filesystem_operations = {
   .create  = fuse_create,
   .readdir = fuse_readdir,
   .truncate = fuse_truncate,
+  .mkdir = fuse_mkdir,
+  .unlink = fuse_unlink,
+  .rmdir = fuse_rmdir,
 };
 
 void

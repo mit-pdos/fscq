@@ -365,7 +365,6 @@ bmap(struct inode *ip, uint bn)
   uint addr, *a;
   struct buf *bp;
 
-  cprintf("allocate %d\n", bn);
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
       ip->addrs[bn] = addr = balloc(ip->dev);
