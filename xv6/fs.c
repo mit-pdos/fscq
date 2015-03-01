@@ -365,6 +365,7 @@ bmap(struct inode *ip, uint bn)
   uint addr, *a;
   struct buf *bp;
 
+  cprintf("allocate %d\n", bn);
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
       ip->addrs[bn] = addr = balloc(ip->dev);
@@ -385,7 +386,35 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
-
+#ifdef HWBIGF
+  if (bn < MAXFILE-NDIRECT) {
+    int bni;
+    bn -= NINDIRECT;
+    if((addr = ip->addrs[NDIRECT+1]) == 0) {
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);   // allocate double indirect block
+      cprintf("allocate DOUBLE");
+    }    
+    bp = bread(ip->dev, addr);  
+    a = (uint*)bp->data;
+    bni = bn / NINDIRECT;
+    if((addr = a[bni]) == 0){
+      a[bni] = addr = balloc(ip->dev);   // allocate indirect block
+      log_write(bp);
+    }
+    brelse(bp);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    bni = bn % NINDIRECT;
+    if((addr = a[bni]) == 0){
+      a[bni] = addr = balloc(ip->dev);   // allocate block
+      log_write(bp);
+    }
+    brelse(bp);
+    bp = bread(ip->dev, addr);
+    brelse(bp);
+    return addr;
+  }
+#endif
   panic("bmap: out of range");
 }
 

@@ -27,4 +27,3 @@ fs.img: mkfs $(FILES)
 
 clean:
 	rm -f $(TARGETS) *.o *.d
-	rm -rf *.dSYM
