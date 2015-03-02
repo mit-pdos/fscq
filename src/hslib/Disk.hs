@@ -12,6 +12,7 @@ import qualified GHC.Integer.GMP.Internals as GMPI
 import GHC.Exts
 import Foreign.Marshal.Alloc
 import Data.Word
+import Data.IORef
 
 verbose :: Bool
 verbose = False
@@ -22,6 +23,28 @@ debugmsg s =
     putStrLn s
   else
     return ()
+
+-- DiskStats counts the number of reads, writes, and syncs
+data DiskStats =
+  Stats !Word !Word !Word
+
+data DiskState =
+  S !Fd !(IORef DiskStats)
+
+bumpRead :: IORef DiskStats -> IO ()
+bumpRead sr = do
+  Stats r w s <- readIORef sr
+  writeIORef sr $ Stats (r+1) w s
+
+bumpWrite :: IORef DiskStats -> IO ()
+bumpWrite sr = do
+  Stats r w s <- readIORef sr
+  writeIORef sr $ Stats r (w+1) s
+
+bumpSync :: IORef DiskStats -> IO ()
+bumpSync sr = do
+  Stats r w s <- readIORef sr
+  writeIORef sr $ Stats r w (s+1)
 
 -- For a more efficient array implementation, perhaps worth checking out:
 -- http://www.macs.hw.ac.uk/~hwloidl/hackspace/ghc-6.12-eden-gumsmp-MSA-IFL13/libraries/dph/dph-base/Data/Array/Parallel/Arr/BUArr.hs
@@ -42,10 +65,11 @@ i2buf i (GHC.Exts.Ptr a) = do
   _ <- GMPI.exportIntegerToAddr i a 0#
   return ()
 
-read_disk :: Fd -> Coq_word -> IO Coq_word
-read_disk fd (W a) = read_disk fd (W64 $ fromIntegral a)
-read_disk fd (W64 a) = do
+read_disk :: DiskState -> Coq_word -> IO Coq_word
+read_disk ds (W a) = read_disk ds (W64 $ fromIntegral a)
+read_disk (S fd sr) (W64 a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
+  bumpRead sr
   allocaBytes 4096 $ \buf -> do
     _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
     cc <- fdReadBuf fd buf 4096
@@ -57,12 +81,13 @@ read_disk fd (W64 a) = do
       do
         error "read_disk: short read"
 
-write_disk :: Fd -> Coq_word -> Coq_word -> IO ()
-write_disk fd (W a) v = write_disk fd (W64 $ fromIntegral a) v
+write_disk :: DiskState -> Coq_word -> Coq_word -> IO ()
+write_disk ds (W a) v = write_disk ds (W64 $ fromIntegral a) v
 write_disk _ (W64 _) (W64 _) = error "write_disk: short value"
-write_disk fd (W64 a) (W v) = do
+write_disk (S fd sr) (W64 a) (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
+  bumpWrite sr
   allocaBytes 4096 $ \buf -> do
     _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
     i2buf v buf
@@ -73,8 +98,33 @@ write_disk fd (W64 a) (W v) = do
       do
         error "write_disk: short write"
 
-sync_disk :: Fd -> IO ()
-sync_disk fd = do
+sync_disk :: DiskState -> IO ()
+sync_disk (S fd sr) = do
   debugmsg $ "sync()"
+  bumpSync sr
   -- fileSynchroniseDataOnly fd
   return ()
+
+get_stats :: DiskState -> IO DiskStats
+get_stats (S _ sr) = do
+  s <- readIORef sr
+  return s
+
+init_disk :: FilePath -> IO DiskState
+init_disk disk_fn = do
+  fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
+  sr <- newIORef $ Stats 0 0 0
+  return $ S fd sr
+
+close_disk :: DiskState -> IO DiskStats
+close_disk (S fd sr) = do
+  closeFd fd
+  s <- readIORef sr
+  return s
+
+print_stats :: DiskStats -> IO ()
+print_stats (Stats r w s) = do
+  putStrLn $ "Disk I/O stats:"
+  putStrLn $ "Reads:  " ++ (show r)
+  putStrLn $ "Writes: " ++ (show w)
+  putStrLn $ "Syncs:  " ++ (show s)

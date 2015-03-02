@@ -45,30 +45,31 @@ nInodeBitmaps = W64 1
 type MSCS = (MemLog.Coq_memstate, Cache.Coq_cachestate)
 type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
-doFScall :: Fd -> IORef MSCS -> FSrunner
-doFScall fd ref f = do
+doFScall :: DiskState -> IORef MSCS -> FSrunner
+doFScall ds ref f = do
   s <- readIORef ref
-  (s', r) <- I.run fd $ f s
+  (s', r) <- I.run ds $ f s
   writeIORef ref s'
   return r
 
 main :: IO ()
 main = do
   fileExists <- System.Directory.doesFileExist disk_fn
-  fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
+  ds <- init_disk disk_fn
   (s, fsxp) <- if fileExists
   then
     do
       putStrLn $ "Recovering file system"
-      I.run fd $ MemLog._MEMLOG__recover cachesize
+      I.run ds $ MemLog._MEMLOG__recover cachesize
   else
     do
       putStrLn $ "Initializing file system"
-      I.run fd $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
-  fuseMain (fscqFSOps (doFScall fd ref) fsxp) defaultExceptionHandler
-  closeFd fd
+  fuseMain (fscqFSOps (doFScall ds ref) fsxp) defaultExceptionHandler
+  stats <- close_disk ds
+  print_stats stats
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html

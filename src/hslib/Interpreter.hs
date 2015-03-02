@@ -1,8 +1,7 @@
 module Interpreter where
 
-import System.Posix.Types
 import Prog
-import qualified Disk
+import Disk
 -- import qualified System.Exit
 -- import qualified System.Random
 
@@ -21,11 +20,11 @@ import qualified Disk
 --   else
 --     return ()
 
-run_dcode :: Fd -> Prog.Coq_prog a -> IO a
+run_dcode :: DiskState -> Prog.Coq_prog a -> IO a
 run_dcode _ (Done r) = return r
-run_dcode fd (Read a rx) = do val <- Disk.read_disk fd a; run_dcode fd $ rx val
-run_dcode fd (Write a v rx) = do Disk.write_disk fd a v; run_dcode fd $ rx ()
-run_dcode fd (Sync _ rx) = do Disk.sync_disk fd; run_dcode fd $ rx ()
+run_dcode ds (Read a rx) = do val <- Disk.read_disk ds a; run_dcode ds $ rx val
+run_dcode ds (Write a v rx) = do Disk.write_disk ds a v; run_dcode ds $ rx ()
+run_dcode ds (Sync _ rx) = do Disk.sync_disk ds; run_dcode ds $ rx ()
 
-run :: Fd -> ((a -> Prog.Coq_prog a) -> Prog.Coq_prog a) -> IO a
-run fd p = run_dcode fd $ p (\x -> Prog.Done x)
+run :: DiskState -> ((a -> Prog.Coq_prog a) -> Prog.Coq_prog a) -> IO a
+run ds p = run_dcode ds $ p (\x -> Prog.Done x)
