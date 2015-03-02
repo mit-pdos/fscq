@@ -329,7 +329,7 @@ Definition readdir T fsxp dnum mscs rx : prog T :=
 
 Definition create T fsxp dnum name mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let2 (mscs, oi) <- DIRALLOC.dacreate (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
+  let2 (mscs, oi) <- DIRALLOC.dacreate (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
   match oi with
   | None =>
     mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
@@ -344,7 +344,7 @@ Definition create T fsxp dnum name mscs rx : prog T :=
 
 Definition delete T fsxp dnum name mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let2 (mscs, ok) <- DIRALLOC.dadelete (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
+  let2 (mscs, ok) <- DIRALLOC.dadelete (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
   If (bool_dec ok true) {
     let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
     rx (mscs, ok)
