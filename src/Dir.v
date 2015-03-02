@@ -179,7 +179,7 @@ Module DIR.
     derep F1 F2 m bxp ixp inum delist /\
     listpred dmatch delist dmap.
 
-  Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T := Eval compute_rec in
+  Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T :=
     let2 (mscs, n) <- delen lxp ixp dnum mscs;
     let2 (mscs, s) <- For i < n
       Ghost mbase m F A delist
@@ -240,15 +240,383 @@ Module DIR.
   Hint Extern 1 ({{_}} progseq (dfold _ _ _ _ _ _ _) _) => apply dfold_ok : prog.
 
 
-  Definition dlookup_f name (s : option addr) (de : dent) : option addr := Eval compute_rec in
-    if (weq (de :-> "valid") $0) then s else
-    if (weq (de :-> "name") name) then (Some (de :-> "inum")) else s.
+  Definition dfindp_f (f : dent -> bool) (s : bool * addr) (e : dent) :=
+    let (found, idx) := s in
+      if found then (true, idx) else
+      if (f e) then (true, idx) else (false, (idx ^+ $1)).
+
+  Definition dfindp T lxp bxp ixp dnum (f : dent -> bool) mscs rx : prog T :=
+    let2 (mscs, r) <- dfold lxp bxp ixp dnum (dfindp_f f) (false, $0) mscs;
+    match r with
+    | (true, pos) => rx (mscs, Some pos)
+    | (false,  _) => rx (mscs, None)
+    end.
+
+  Definition dfindpN_f (f : dent -> bool) (s : bool * nat) (e : dent) :=
+    let (found, idx) := s in
+      if found then (true, idx) else
+      if (f e) then (true, idx) else (false, (idx + 1)).
+
+  Lemma fold_dfindp_true_eq : forall l s s' f,
+    fold_left (dfindp_f f) l (true, s) = (true, s')
+    -> s = s'.
+  Proof.
+    induction l; simpl; intros.
+    inversion H; auto.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma fold_dfindpN_true_eq : forall l s s' f,
+    fold_left (dfindpN_f f) l (true, s) = (true, s')
+    -> s = s'.
+  Proof.
+    induction l; simpl; intros.
+    inversion H; auto.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma fold_dfindpN_true : forall l s f,
+    fold_left (dfindpN_f f) l (true, s) = (true, s).
+  Proof.
+    induction l; firstorder.
+  Qed.
+
+  Lemma fold_dfindpN_found_mono' : forall l s s' f,
+    s' <= s ->
+    fold_left (dfindpN_f f) l (false, s + 1) = (true, s') -> False.
+  Proof.
+    induction l; simpl; intros.
+    inversion H0.
+    destruct (f a).
+    apply fold_dfindpN_true_eq in H0; omega.
+    eapply IHl with (s := s + 1) (s' := s'); eauto.
+    omega.
+  Qed.
+
+  Lemma fold_dfindpN_found_mono : forall l s f,
+    fold_left (dfindpN_f f) l (false, s + 1) = (true, s) -> False.
+  Proof.
+    intros. 
+    eapply fold_dfindpN_found_mono' with (s' := s); eauto.
+  Qed.
+
+  Lemma fold_left_split : forall A B (l : list A) s f (init : B),
+    fold_left f l init = fold_left f (skipn s l) (fold_left f (firstn s l) init).
+  Proof.
+    intros.
+    rewrite <- fold_left_app.
+    rewrite firstn_skipn; auto.
+  Qed.
+
+  Lemma fold_dfindpN_length_ok' : forall l i s (f : dent -> bool),
+    fold_left (dfindpN_f f) l (false, s) = (true, i)
+    -> i < s + length l.
+  Proof.
+    induction l; simpl; intuition.
+    inversion H.
+    destruct (f a).
+    apply fold_dfindpN_true_eq in H; omega.
+    replace (s + S (length l)) with (s + 1 + length l) by omega.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma fold_dfindpN_ok' : forall l s i def (f : dent -> bool),
+    i >= s
+    -> fold_left (dfindpN_f f) l (false, s) = (true, i)
+    -> f (selN l (i - s) def) = true.
+  Proof.
+    induction l.
+    simpl; intros; inversion H0.
+    intros.
+    simpl in H0.
+    destruct (f a) eqn:Heq.
+    apply fold_dfindpN_true_eq in H0; subst.
+    replace (i - i) with 0 by omega.
+    simpl; auto.
+    destruct (i - s) eqn:Hx.
+    assert (i = s) by omega; subst.
+    apply fold_dfindpN_found_mono in H0; auto.
+    simpl.
+    replace n with (i - (s + 1)) by omega.
+    apply IHl; auto.
+    omega.
+  Qed.
+
+  Lemma fold_dfindpN_ok : forall l i def (f : dent -> bool),
+    fold_left (dfindpN_f f) l (false, 0) = (true, i)
+    -> f (selN l i def) = true /\ i < length l.
+  Proof.
+    intros; split.
+    replace i with (i - 0) by omega.
+    eapply fold_dfindpN_ok'; auto; omega.
+    replace (length l) with (0 + length l) by omega.
+    eapply fold_dfindpN_length_ok'; eauto.
+  Qed.
+
+
+  Lemma dfindp_dfindpN_ok': forall l i s f (b : addr),
+    fold_left (dfindp_f f) l (false, $ s) = (true, i)
+    -> s + length l < # b -> s < # b
+    -> fold_left (dfindpN_f f) l (false, s) = (true, # i).
+  Proof.
+    induction l; simpl; intros.
+    inversion H.
+    destruct (f a).
+    apply fold_dfindp_true_eq in H; subst.
+    erewrite wordToNat_natToWord_bound with (bound := b).
+    apply fold_dfindpN_true.
+    omega.
+    eapply IHl with (b := b); eauto; try omega.
+    replace ($ (s + 1)) with ($ s ^+ (natToWord addrlen 1)); auto.
+    words.
+  Qed.
+
+  Lemma dfindp_dfindpN_ok: forall l f i (b : addr),
+    length l < # b
+    -> fold_left (dfindp_f f) l (false, $0) = (true, i)
+    -> fold_left (dfindpN_f f) l (false, 0) = (true, # i).
+  Proof.
+    intros.
+    erewrite <- roundTrip_0 with (sz := addrlen).
+    eapply dfindp_dfindpN_ok'; eauto.
+    rewrite roundTrip_0.
+    omega.
+  Qed.
+
+  Lemma fold_dfindp_ok : forall l i (b : addr) def (f : dent -> bool),
+    length l < # b
+    -> fold_left (dfindp_f f) l (false, $0) = (true, i)
+    -> f (sel l i def) = true /\ wordToNat i < length l.
+  Proof.
+    unfold sel; intros.
+    apply fold_dfindpN_ok.
+    apply dfindp_dfindpN_ok with (b := b); auto.
+  Qed.
+
+  Lemma fold_dfindp_true_false : forall l s s' f,
+    fold_left (dfindp_f f) l (true, s) = (false, s') -> False.
+  Proof.
+    induction l; simpl; firstorder; inversion H.
+  Qed.
+
+  Lemma fold_dfindp_nf' : forall l s i (f : dent -> bool),
+    fold_left (dfindp_f f) l (false, s) = (false, i)
+    -> Forall (fun e => f e = false) l.
+  Proof.
+    induction l.
+    firstorder.
+    simpl; intros.
+    destruct (f a) eqn:Heq; auto.
+    apply fold_dfindp_true_false in H; exfalso; auto.
+    apply Forall_cons; auto.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma fold_dfindp_nf : forall l i (b : addr) (f : dent -> bool),
+    fold_left (dfindp_f f) l (false, $0) = (false, i)
+    -> Forall (fun e => f e = false) l.
+  Proof.
+    intros; eapply fold_dfindp_nf'; eauto.
+  Qed.
+
+  Theorem dfindp_ok : forall lxp bxp ixp dnum (f : dent -> bool) mscs,
+    {< F A mbase m delist,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ derep F A m bxp ixp dnum delist ]]
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+          ((exists B idx e,
+             [[ r = Some idx ]] *
+             [[ (B * #idx |-> e)%pred (list2nmem delist) ]] *
+             [[ f e = true ]])
+       \/  ( [[ r = None ]] *
+             [[ Forall (fun e => f e = false) delist ]]))
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} dfindp lxp bxp ixp dnum f mscs.
+  Proof.
+    unfold dfindp, derep.
+    hoare.
+    unfold derep; eauto.
+    destruct a; step.
+
+    apply pimpl_or_r; left; cancel.
+    list2nmem_ptsto_cancel.
+    eapply fold_dfindp_ok; eauto; try exact dent0.
+    eapply bfrec_bound_lt; eauto.
+    eapply fold_dfindp_ok; eauto.
+    eapply bfrec_bound_lt; eauto.
+
+    apply pimpl_or_r; right; cancel.
+    eapply fold_dfindp_nf; eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (dfindp _ _ _ _ _ _) _) => apply dfindp_ok : prog.
+
+  Definition dlookup_f name (de : dent) : bool := Eval compute_rec in
+    if (weq (de :-> "valid") $0) then false else
+    if (weq (de :-> "name") name) then true else false.
 
   Definition dlookup T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
-    let2 (mscs, s) <- dfold lxp bxp ixp dnum (dlookup_f name) None mscs;
-    rx (mscs, s).
+    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
+    match r with
+    | None => rx (mscs, None)
+    | Some i =>
+        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
+        rx (mscs, Some (de :-> "inum"))
+    end.
+
+  Lemma dlookup_f_ok: forall name de,
+    dlookup_f name de = true
+    -> de :-> "valid" <> $0 /\ de :-> "name" = name.
+  Proof.
+    unfold dlookup_f; rec_simpl; intros.
+    destruct (weq (fst (snd (snd de))) $ (0)).
+    inversion H.
+    split; auto.
+    destruct (weq (fst de) name); auto.
+    inversion H.
+  Qed.
+
+  Lemma dlookup_f_nf: forall name de,
+    dlookup_f name de = false
+    -> de :-> "valid" = $0 \/ de :-> "name" <> name.
+  Proof.
+    unfold dlookup_f; rec_simpl; intros.
+    destruct (weq (fst (snd (snd de))) $ (0)); auto.
+    destruct (weq (fst de) name); auto.
+    inversion H.
+  Qed.
+
+  Lemma Forall_cons2 : forall A (l : list A) a f,
+    Forall f (a :: l) -> Forall f l.
+  Proof.
+    intros.
+    rewrite Forall_forall in *; intros.
+    apply H.
+    apply in_cons; auto.
+  Qed.
+
+  Lemma dlookup_notindomain: forall l name,
+    Forall (fun e => (dlookup_f name) e = false) l
+    -> listpred dmatch l =p=> notindomain name.
+  Proof.
+    induction l; unfold pimpl; simpl; intros.
+    replace m with (@empty_mem filename (@weq filename_len) addr).
+    apply notindomain_empty_mem.
+    apply emp_complete; auto.
+    apply emp_empty_mem.
+
+    apply Forall_inv in H as Ha.
+    apply dlookup_f_nf in Ha.
+    unfold dmatch at 1 in H0.
+
+    destruct (weq (a :-> "valid") $0) eqn:HV; rec_simpl; intros.
+    apply IHl.
+    apply Forall_cons2 in H; auto.
+    pred_apply; apply star_emp_pimpl. (* cancel doesn't work ? *)
+
+    destruct Ha.
+    contradict H1; auto.
+    apply notindomain_mem_except with (a' := fst a); auto.
+    apply IHl; auto.
+    apply Forall_cons2 in H; auto.
+    eapply ptsto_mem_except; eauto.
+  Qed.
 
 
+  Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
+    {< F A mbase m dmap,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ rep F A m bxp ixp dnum dmap ]]
+    POST:(mscs',r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+           ((exists inum DF,
+             [[ r = Some inum /\ (DF * name |-> inum)%pred dmap ]]) \/
+            ([[ r = None /\ notindomain name dmap ]]))
+    CRASH  MEMLOG.log_intact lxp mbase
+    >} dlookup lxp bxp ixp dnum name mscs.
+  Proof.
+    unfold dlookup, rep.
+    step.
+    destruct b; step.
+    inversion H8; subst; eauto.
+    step.
+    apply pimpl_or_r; left; cancel.
+    admit.
+    apply pimpl_or_r; right; cancel.
+    apply dlookup_notindomain; auto.
+  Qed.
+
+
+
+  Definition dunlink T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
+    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
+    match r with
+    | None => rx (mscs, false)
+    | Some i =>
+        mscs <- deput lxp ixp dnum i dent0 mscs;
+        rx (mscs, true)
+    end.
+
+
+  Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
+    {< F A mbase m dmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ rep F A m bxp ixp dnum dmap ]]
+    POST:(mscs',r)
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+             [[ notindomain name dmap ]]) \/
+            ([[ r = true ]] * exists m' dmap' DF,
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             [[ rep F A m' bxp ixp dnum dmap' ]] *
+             [[ (DF * name |->?)%pred dmap ]] *
+             [[ (DF) dmap' ]])
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dunlink lxp bxp ixp dnum name mscs.
+  Proof.
+    unfold dunlink, rep.
+    step.
+    destruct b; step.
+    admit. (* well-formed *)
+    inversion H8; subst; eauto.
+    step.
+    apply pimpl_or_r; right.
+    admit.
+    apply pimpl_or_r; left; cancel.
+    apply dlookup_notindomain; auto.
+  Qed.
+
+
+
+  Definition dlink_f name (de : dent) : bool := Eval compute_rec in
+    if (weq (de :-> "valid") $0) then true else
+    if (weq (de :-> "name") name) then true else false.
+
+
+  Definition dlink T lxp bxp ixp dnum name inum mscs rx : prog T := Eval compute_rec in
+    let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) in
+    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlink_f name) mscs;
+    match r with
+    | Some i =>
+        mscs <- deput lxp ixp dnum i newde mscs;
+        rx (mscs, true)
+    | None =>
+        let2 (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
+        rx (mscs, ok)
+    end.
+
+
+  Definition dlist_f (s : list (filename * addr)) (de : dent) := Eval compute_rec in
+    if (weq (de :-> "valid") $0) then s
+    else (de :-> "name", de :-> "inum") :: s.
+
+  Definition dlist T lxp bxp ixp dnum mscs rx : prog T :=
+    let2 (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
+    rx (mscs, r).
+
+
+
+(*
   Lemma fold_dlookup_mono: forall l name v,
       fold_left (dlookup_f name) l (Some v) <> None.
   Proof.
@@ -617,9 +985,11 @@ Module DIR.
     admit.
   Qed.
 
+
   Hint Extern 1 ({{_}} progseq (dlookup _ _ _ _ _ _) _) => apply dlookup_ok : prog.
   Hint Extern 1 ({{_}} progseq (dunlink _ _ _ _ _ _) _) => apply dunlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlist _ _ _ _ _) _) => apply dlist_ok : prog.
+*)
 
 End DIR.

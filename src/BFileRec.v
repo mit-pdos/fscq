@@ -351,6 +351,7 @@ Section RECBFILE.
     rewrite concat_length.
     rewrite fold_right_add_const by auto.
     word2nat_auto.
+    admit. (* used to work *)
   Qed.
 
   Lemma lt_div_mono : forall a b c,
@@ -407,6 +408,20 @@ Section RECBFILE.
     destruct_lift' H.
     rewrite_list2nmem_pred.
     eapply bfrec_bound'; eauto.
+  Qed.
+
+  Lemma bfrec_bound_lt : forall F A m bxp ixp (inum : addr) fl f l,
+    array_item_file f l
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> (A * # inum |-> f)%pred (list2nmem fl)
+    -> length l < # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu) ^+ $1).
+  Proof.
+    intros.
+    erewrite wordToNat_plusone.
+    apply le_lt_n_Sm.
+    eapply bfrec_bound; eauto.
+    word2nat_auto.
+    admit. admit.
   Qed.
 
   Lemma helper_item_index_valid: forall F m bxp ixp inum i fl (bl : list block),
