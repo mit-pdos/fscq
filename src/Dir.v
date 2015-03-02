@@ -724,21 +724,26 @@ Module DIR.
 
 
 
-  Definition dlink_f name (de : dent) : bool := Eval compute_rec in
-    if (weq (de :-> "valid") $0) then true else
-    if (weq (de :-> "name") name) then true else false.
-
+  Definition dlink_f (de : dent) : bool := Eval compute_rec in
+    if (weq (de :-> "valid") $0) then true else false.
 
   Definition dlink T lxp bxp ixp dnum name inum mscs rx : prog T := Eval compute_rec in
     let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) in
-    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlink_f name) mscs;
+    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
     | Some i =>
         mscs <- deput lxp ixp dnum i newde mscs;
         rx (mscs, true)
     | None =>
-        let2 (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
-        rx (mscs, ok)
+        let2 (mscs, r) <- dfindp lxp bxp ixp dnum dlink_f mscs;
+        match r with
+        | Some i =>
+            mscs <- deput lxp ixp dnum i newde mscs;
+            rx (mscs, true)
+        | None =>
+            let2 (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
+            rx (mscs, ok)
+        end
     end.
 
 
@@ -750,6 +755,21 @@ Module DIR.
     let2 (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
     rx (mscs, r).
 
+  Definition diritem := (filename * addr)%type.
+  Definition diritemmatch (de: diritem) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
+
+  Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
+    {< F A mbase m dmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ rep F A m bxp ixp dnum dmap ]]
+    POST:(mscs',res)
+             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+             [[ listpred diritemmatch res dmap ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dlist lxp bxp ixp dnum mscs.
+  Proof.
+    admit.
+  Qed.
 
 
 (*
