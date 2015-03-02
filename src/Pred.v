@@ -820,6 +820,16 @@ Proof.
   auto.
 Qed.
 
+Lemma sep_star_ptsto_some_eq : forall (m : @mem AT AEQ V) F a v v',
+  (a |-> v * F)%pred m -> m a = Some v' -> v = v'.
+Proof.
+  intros.
+  apply sep_star_ptsto_some in H.
+  rewrite H in H0.
+  inversion H0; auto.
+Qed.
+
+
 Theorem sep_star_ptsto_indomain : forall a v F (m : @mem AT AEQ V),
   (a |-> v * F)%pred m -> indomain a m.
 Proof.
@@ -917,6 +927,20 @@ Theorem notindomain_empty_mem : forall a,
   notindomain a (@empty_mem AT AEQ V).
 Proof.
   firstorder.
+Qed.
+
+Theorem emp_notindomain : forall a (m : @mem AT AEQ V),
+  emp m -> notindomain a m.
+Proof.
+  intros; unfold notindomain.
+  pose proof (H a); auto.
+Qed.
+
+Theorem emp_pimpl_notindomain : forall a,
+  emp =p=> (@notindomain AT AEQ V) a.
+Proof.
+  unfold pimpl; intros.
+  apply emp_notindomain; auto.
 Qed.
 
 Theorem notindomain_indomain_conflict : forall a (m : @mem AT AEQ V),
