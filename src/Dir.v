@@ -741,8 +741,8 @@ Module DIR.
     match r with
     | None => rx (mscs, false)
     | Some i =>
-        mscs' <- deput lxp ixp dnum i dent0 mscs;
-        rx (mscs', true)
+        mscs <- deput lxp ixp dnum i dent0 mscs;
+        rx (mscs, true)
     end.
 
   Lemma dmatch_ex_mem_except : forall l name m,
@@ -861,17 +861,17 @@ Module DIR.
     let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
     | Some i =>
-        mscs' <- deput lxp ixp dnum i newde mscs;
-        rx (mscs', true)
+        mscs <- deput lxp ixp dnum i newde mscs;
+        rx (mscs, true)
     | None =>
         let2 (mscs, r) <- dfindp lxp bxp ixp dnum dlink_f mscs;
         match r with
         | Some i =>
-            mscs' <- deput lxp ixp dnum i newde mscs;
-            rx (mscs', true)
+            mscs <- deput lxp ixp dnum i newde mscs;
+            rx (mscs, true)
         | None =>
-            let2 (mscs', ok) <- deext lxp bxp ixp dnum newde mscs;
-            rx (mscs', ok)
+            let2 (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
+            rx (mscs, ok)
         end
     end.
 
