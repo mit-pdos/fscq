@@ -674,6 +674,68 @@ Module DIR.
   Qed.
 
 
+  Definition dlistent := (filename * addr)%type.
+  Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
+
+  Definition dlist_f (s : list dlistent) (de : dent) := Eval compute_rec in
+    if (weq (de :-> "valid") $0) then s
+    else (de :-> "name", de :-> "inum") :: s.
+
+  Definition dlist T lxp bxp ixp dnum mscs rx : prog T :=
+    let2 (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
+    rx (mscs, r).
+
+  Lemma dlist_fold_listpred' : forall AT AEQ V l l0 a (fm : _ -> @pred AT AEQ V ),
+    (listpred fm (a :: fold_left dlist_f l l0))
+    <=p=> listpred fm (fold_left dlist_f l (a :: l0)).
+  Proof.
+    induction l; simpl; intros.
+    split; cancel.
+    simpl in IHl.
+    unfold dlist_f at 2 4.
+    destruct (weq (fst (snd (snd a))) $0) eqn:HV.
+    apply IHl.
+    repeat rewrite <- IHl.
+    split; cancel.
+  Qed.
+
+  Lemma dlist_fold_listpred : forall (l : list dent) (a : dent),
+    (dmatch a * listpred dlmatch (fold_left dlist_f l nil))%pred
+    =p=> listpred dlmatch (fold_left dlist_f l (dlist_f nil a)).
+  Proof.
+    intros.
+    unfold dmatch at 1; unfold dlist_f at 3; rec_simpl.
+    destruct (weq (fst (snd (snd a))) $0) eqn:HV.
+    rewrite star_emp_pimpl; auto.
+    pose proof (dlist_fold_listpred' l nil (fst a, fst (snd a)) dlmatch).
+    simpl in H; apply H.
+  Qed.
+
+  Lemma dlist_f_ok : forall l,
+    listpred dmatch l =p=> listpred dlmatch (fold_left dlist_f l nil).
+  Proof.
+    induction l; simpl; auto.
+    rewrite IHl.
+    apply dlist_fold_listpred.
+  Qed.
+
+  Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
+    {< F A mbase m dmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ rep F A m bxp ixp dnum dmap ]]
+    POST:(mscs',res)
+             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+             [[ listpred dlmatch res dmap ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dlist lxp bxp ixp dnum mscs.
+  Proof.
+    unfold dlist, rep.
+    step.
+    step.
+    apply dlist_f_ok.
+  Qed.
+
+
   Definition dunlink T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
     let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
@@ -723,7 +785,6 @@ Module DIR.
   Qed.
 
 
-
   Definition dlink_f (de : dent) : bool := Eval compute_rec in
     if (weq (de :-> "valid") $0) then true else false.
 
@@ -747,400 +808,7 @@ Module DIR.
     end.
 
 
-  Definition dlistent := (filename * addr)%type.
-  Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
-
-  Definition dlist_f (s : list dlistent) (de : dent) := Eval compute_rec in
-    if (weq (de :-> "valid") $0) then s
-    else (de :-> "name", de :-> "inum") :: s.
-
-  Definition dlist T lxp bxp ixp dnum mscs rx : prog T :=
-    let2 (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
-    rx (mscs, r).
-
-  Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
-    {< F A mbase m dmap,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep F A m bxp ixp dnum dmap ]]
-    POST:(mscs',res)
-             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-             [[ listpred dlmatch res dmap ]]
-    CRASH    MEMLOG.log_intact lxp mbase
-    >} dlist lxp bxp ixp dnum mscs.
-  Proof.
-    admit.
-  Qed.
-
-
 (*
-  Lemma fold_dlookup_mono: forall l name v,
-      fold_left (dlookup_f name) l (Some v) <> None.
-  Proof.
-    induction l; firstorder; simpl.
-    unfold dlookup_f at 2.
-    destruct (weq (fst (snd (snd a))) $0).
-    apply IHl.
-    destruct (weq (fst a) name); apply IHl.
-  Qed.
-
-
-  Lemma fold_dlookup_unique : forall l m name v w,
-    fold_left (dlookup_f name) l (Some v) = Some w
-    -> (name |-> v * listpred dmatch l)%pred m
-    -> v = w.
-  Proof.
-    induction l; simpl; intros.
-    inversion H; auto.
-
-    unfold dlookup_f at 2 in H.
-    unfold dmatch at 1 in H0; rec_simpl.
-    destruct (weq (fst (snd (snd a))) $0).
-    eapply IHl with (m := m); eauto.
-    pred_apply; cancel.
-
-    destruct (weq (fst a) name).
-    contradict H0.
-    unfold_sep_star; intuition; repeat deex.
-    apply mem_disjoint_comm in H0.
-    rewrite mem_union_comm in H0 by auto.
-    apply mem_disjoint_union in H0.
-    unfold mem_disjoint in H0.
-    apply H0; exists (fst a); exists (fst (snd a)); exists v.
-    unfold ptsto in *; intuition.
-
-    eapply IHl with (m := mem_except m (fst a)); eauto.
-    eapply ptsto_mem_except.
-    pred_apply; cancel.
-  Qed.
-
-
-  Lemma dlookup_fold_listpred_none': forall l name m,
-    fold_left (dlookup_f name) l None = None
-    -> listpred dmatch l m
-    -> notindomain name m.
-  Proof.
-    induction l; simpl.
-    firstorder.
-
-    unfold dmatch at 1.
-    unfold dlookup_f at 2.
-    destruct (weq (a :-> "valid") $0) eqn:HV; rec_simpl; intros.
-    rewrite HV in H.
-    apply emp_star in H0; auto.
-
-    rewrite HV in H.
-    destruct (weq (a :-> "name") name) eqn:HN; rec_simpl; intros.
-    setoid_rewrite HN in H; simpl in H.
-    contradict H.
-    apply fold_dlookup_mono.
-
-    setoid_rewrite HN in H; simpl in H.
-    apply notindomain_mem_except with (a' := fst a); auto.
-    apply IHl; auto.
-    eapply ptsto_mem_except; eauto.
-  Qed.
-
-  Lemma dlookup_fold_listpred_none: forall l name,
-    fold_left (dlookup_f name) l None = None
-    -> listpred dmatch l =p=> notindomain name.
-  Proof.
-    unfold pimpl; intros.
-    eapply dlookup_fold_listpred_none'; eauto.
-  Qed.
-
-  Lemma dlookup_fold_listpred_some': forall l m name w,
-    fold_left (dlookup_f name) l None = Some w
-    -> listpred dmatch l m
-    -> m name = Some w.
-  Proof.
-    induction l; simpl; intros.
-    inversion H.
-
-    unfold dmatch at 1 in H0.
-    unfold dlookup_f at 2 in H.
-    destruct (weq (a :-> "valid") $0) eqn:HV; intros;
-      rec_simpl; rewrite HV in H; simpl in H.
-    apply star_emp_pimpl in H0.
-    apply IHl; auto.
-
-    destruct (weq (a :-> "name") name) eqn:HN; intros;
-      setoid_rewrite HN in H; simpl in H.
-    rec_simpl; rewrite e in H0.
-    replace w with (fst (snd a)).
-    eapply ptsto_valid; eauto.
-    eapply fold_dlookup_unique; eauto.
-
-    eapply indomain_mem_except with (a' := (a :-> "name")); auto.
-    apply IHl; auto.
-    eapply ptsto_mem_except; eauto.
-  Qed.
-
-  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) addr :=
-    if (weq (de :-> "name") name) then emp
-    else dmatch de.
-
-  Lemma helper_emp_pimpl: forall AT AEQ V (A B : @pred AT AEQ V),
-    (A * B)%pred =p=> (A * (emp * B)).
-  Proof.
-    intros; cancel.
-  Qed.
-
-  Lemma dmatch_ex_dmatch : forall l m name v,
-    listpred dmatch l m
-    -> m name = Some v
-    -> (name |-> v * listpred (dmatch_ex name) l)%pred m.
-  Proof.
-    induction l; simpl; intros.
-    pose proof (H name).
-    rewrite H0 in H1; inversion H1.
-
-    unfold dmatch at 1 in H.
-    unfold dmatch_ex at 1; unfold dmatch at 1.
-    destruct (weq (a :-> "valid") $0) eqn:HV; 
-      destruct (weq (a :-> "name") name) eqn:HN;
-      rec_simpl; intros; try apply helper_emp_pimpl.
-
-    apply star_emp_pimpl in H; apply IHl; auto.
-    apply star_emp_pimpl in H; apply IHl; auto.
-
-    admit.
-    admit.
-  Qed.
-
-  Lemma dlookup_fold_listpred_some: forall l name w,
-    fold_left (dlookup_f name) l None = Some w
-    -> listpred dmatch l =p=> (listpred (dmatch_ex name) l * name |-> w).
-  Proof.
-    unfold pimpl; intros.
-    apply sep_star_comm.
-    apply dmatch_ex_dmatch; eauto.
-    eapply dlookup_fold_listpred_some'; eauto.
-  Qed.
-
-  Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
-    {< F A mbase m dmap,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ rep F A m bxp ixp dnum dmap ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           ((exists inum DF,
-             [[ r = Some inum /\ (DF * name |-> inum)%pred dmap ]]) \/
-            ([[ r = None /\ notindomain name dmap ]]))
-    CRASH  MEMLOG.log_intact lxp mbase
-    >} dlookup lxp bxp ixp dnum name mscs.
-  Proof.
-    unfold dlookup, rep.
-    step.
-    step.
-    apply pimpl_or_r.
-    destruct (fold_left (dlookup_f name) x None) eqn: Heq; [left | right]; cancel.
-    apply dlookup_fold_listpred_some; auto.
-    apply dlookup_fold_listpred_none; auto.
-  Qed.
-
-
-  Definition dunlink T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
-    let2 (mscs, n) <- delen lxp ixp dnum mscs;
-    mscs <- For i < n
-      Ghost mbase m F A delist
-      Loopvar mscs <- mscs
-      Continuation lrx
-      Invariant
-        exists dmap, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-        [[ derep F A m bxp ixp dnum delist ]] *
-        [[ listpred dmatch (firstn #i delist) dmap ]] *
-        [[ notindomain name dmap ]]
-      OnCrash
-        exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
-      Begin
-        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
-        If (weq (de :-> "valid") $0) {
-          lrx mscs
-        } else {
-          If (weq (de :-> "name") name) {
-            mscs <- deput lxp ixp dnum i (de :=> "valid" := $0) mscs;
-            rx (mscs, true)
-          } else {
-            lrx mscs
-          }
-        }
-      Rof;
-    rx (mscs, false).
-
-
-  Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
-    {< F A mbase m dmap,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep F A m bxp ixp dnum dmap ]]
-    POST:(mscs',r)
-            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-             [[ notindomain name dmap ]]) \/
-            ([[ r = true ]] * exists m' dmap' DF,
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-             [[ rep F A m' bxp ixp dnum dmap' ]] *
-             [[ (DF * name |->?)%pred dmap ]] *
-             [[ (DF) dmap' ]])
-    CRASH    MEMLOG.log_intact lxp mbase
-    >} dunlink lxp bxp ixp dnum name mscs.
-  Proof.
-    unfold dunlink, rep.
-    step.
-    step.
-    apply emp_empty_mem.
-    apply notindomain_empty_mem.
-    step.
-    list2nmem_ptsto_cancel.
-    admit.
-    step.
-    step.
-    replace (# (m1 ^+ $1)) with (#m1 + 1).
-    rewrite firstn_plusone_selN with (def:=dent0).
-    apply listpred_app.
-    unfold dmatch at 2; rec_simpl; simpl.
-    unfold dent in *; simpl in *; rewrite H9.
-    destruct (weq (natToWord addrlen 0) $0); try congruence.
-    clear H10. pred_apply; cancel.
-    admit.
-    admit.
-    step.
-    step.
-    unfold Rec.well_formed; simpl; intuition.
-    list2nmem_ptsto_cancel.
-    admit.
-    step.
-    apply pimpl_or_r; right. cancel.
-    eexists; intuition eauto.
-    instantiate (a0 := upd_none m (fst (selN x #m1 dent0))).
-    admit.
-    
-    (* XXX need to compute dmap *)
-    admit.
-    admit.
-    admit.
-    admit.
-    unfold MEMLOG.log_intact; cancel.
-  Qed.
-
-  Definition dlink T lxp bxp ixp dnum name inum mscs rx : prog T := Eval compute_rec in
-    let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) in
-    let2 (mscs, n) <- delen lxp ixp dnum mscs;
-    mscs <- For i < n
-      Ghost mbase m F A delist
-      Loopvar mscs <- mscs
-      Continuation lrx
-      Invariant
-        (* Need an invariant saying the name is not found in any earlier dirent *)
-        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-        [[ derep F A m bxp ixp dnum delist ]]
-      OnCrash
-        exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
-      Begin
-        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
-        If (weq (de :-> "valid") $0) {
-          mscs <- deput lxp ixp dnum i newde mscs;
-          rx (mscs, true)
-        } else {
-          lrx mscs
-        }
-      Rof;
-    let2 (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
-    rx (mscs, ok).
-
-  Theorem dlink_ok : forall lxp bxp ixp dnum name inum mscs,
-    {< F A mbase m dmap DF,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep F A m bxp ixp dnum dmap ]] *
-             [[ (DF) dmap ]] *
-             [[ exists dmap', (DF * name |->?)%pred dmap' ]]
-    POST:(mscs',r)
-             ([[ r = true ]] * exists m' dmap',
-              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-              [[ rep F A m' bxp ixp dnum dmap' ]] *
-              [[ (DF * name |-> inum)%pred dmap' ]]) \/
-             ([[ r = false ]] * exists m',
-              MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
-    CRASH    MEMLOG.log_intact lxp mbase
-    >} dlink lxp bxp ixp dnum name inum mscs.
-  Proof.
-    admit.
-  Qed.
-
-  Definition diritem := (filename * addr)%type.
-  Definition diritemmatch (de: diritem) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
-
-  Definition dlist T lxp bxp ixp dnum mscs rx : prog T := Eval compute_rec in
-    let2 (mscs, n) <- delen lxp ixp dnum mscs;
-    let2 (mscs, res) <- For i < n
-      Ghost mbase m F A dmap delist
-      Loopvar mscs_res <- (mscs, [])
-      Continuation lrx
-      Invariant
-        MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_res) *
-        [[ derep F A m bxp ixp dnum delist ]] *
-        [[ listpred dmatch delist dmap ]] *
-        exists dmap',
-        [[ listpred dmatch (firstn #i delist) dmap' ]] *
-        [[ listpred diritemmatch (snd mscs_res) dmap' ]]
-      OnCrash
-        exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
-      Begin
-        let (mscs, res) := (mscs_res : memstate * cachestate * list diritem) in
-        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
-        If (weq (de :-> "valid") $0) {
-          lrx (mscs, res)
-        } else {
-          lrx (mscs, (de :-> "name", de :-> "inum") :: res)
-        }
-      Rof;
-    rx (mscs, res).
-
-  Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
-    {< F A mbase m dmap,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep F A m bxp ixp dnum dmap ]]
-    POST:(mscs',res)
-             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-             [[ listpred diritemmatch res dmap ]]
-    CRASH    MEMLOG.log_intact lxp mbase
-    >} dlist lxp bxp ixp dnum mscs.
-  Proof.
-    unfold dlist, rep.
-    step.
-    step.
-
-    instantiate (a9:=empty_mem); unfold emp; auto. (* dmap' *)
-    unfold emp; auto.
-
-    3: unfold MEMLOG.log_intact; cancel.
-
-    step.
-    step.
-    step.
-
-    (* valid=0 entry, skip it in [res] *)
-    admit.
-
-    step.
-    instantiate (a:=Prog.upd m1 a a0).
-    admit.
-    unfold diritemmatch at 1; simpl.
-    apply sep_star_comm. apply ptsto_upd_disjoint; eauto.
-    (* We are adding one more name to the result list, but to do this, we
-     * have to show that it isn't already there (otherwise sep_star would
-     * no longer be disjoint)..
-     *)
-    admit.
-
-    step.
-    intros m' Hm.
-    erewrite listpred_eq with (l:=l) (m1:=m') (m2:=m); eauto.
-    rewrite firstn_oob in H17.
-    erewrite listpred_eq with (l:=l) (m1:=m) (m2:=m0); eauto.
-
-    (* Need some extra theorem about lengths from BFileRec.. *)
-    admit.
-  Qed.
-
 
   Hint Extern 1 ({{_}} progseq (dlookup _ _ _ _ _ _) _) => apply dlookup_ok : prog.
   Hint Extern 1 ({{_}} progseq (dunlink _ _ _ _ _ _) _) => apply dunlink_ok : prog.
