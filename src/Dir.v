@@ -800,16 +800,14 @@ Module DIR.
     rewrite listpred_isolate with (i := i) (def := dent0) by list2nmem_bound.
     rewrite dmatch_dent0_is_emp.
 
-    (* FIXME: cancel doesn't work *)
-    setoid_rewrite sep_star_comm at 2.
-    rewrite <- sep_star_assoc_2.
-    rewrite <- helper_emp_pimpl'.
-    cancel_exact.
+    unfold dent.
+    cancel.
 
     rewrite_list2nmem_pred.
     unfold dmatch.
     destruct (weq ((selN a i dent0) :-> "valid") $0) eqn: HV; rec_simpl; auto.
     rewrite e in *; firstorder.
+    setoid_rewrite HV. cancel.
   Qed.
 
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
