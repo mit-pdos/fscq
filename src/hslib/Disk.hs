@@ -80,7 +80,7 @@ read_disk (S fd sr) (W64 a) = do
         return $ W i
     else
       do
-        error "read_disk: short read"
+        error $ "read_disk: short read: " ++ (show cc) ++ " @ " ++ (show a)
 
 write_disk :: DiskState -> Coq_word -> Coq_word -> IO ()
 write_disk ds (W a) v = write_disk ds (W64 $ fromIntegral a) v
@@ -97,7 +97,7 @@ write_disk (S fd sr) (W64 a) (W v) = do
       return ()
     else
       do
-        error "write_disk: short write"
+        error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
 sync_disk :: DiskState -> IO ()
 sync_disk (S fd sr) = do
