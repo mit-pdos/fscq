@@ -501,10 +501,7 @@ Module DIR.
     -> listpred dmatch l =p=> notindomain name.
   Proof.
     induction l; unfold pimpl; simpl; intros.
-    replace m with (@empty_mem filename (@weq filename_len) addr).
-    apply notindomain_empty_mem.
-    apply emp_complete; auto.
-    apply emp_empty_mem.
+    apply emp_notindomain; auto.
 
     apply Forall_inv in H as Ha.
     apply dlookup_f_nf in Ha.
@@ -524,6 +521,131 @@ Module DIR.
   Qed.
 
 
+  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) addr :=
+    if (weq (de :-> "name") name) then emp
+    else dmatch de.
+
+  (* use these helpers because `cancel` doesn't work in context *)
+  Lemma helper_emp_pimpl: forall AT AEQ V (A B : @pred AT AEQ V),
+    (A * B)%pred <=p=> (A * (emp * B)).
+  Proof.
+    intros; split; cancel.
+  Qed.
+
+  Lemma helper_emp_pimpl': forall AT AEQ V (A B : @pred AT AEQ V),
+    (A * B)%pred =p=> (A * (emp * B)).
+  Proof.
+    intros; cancel.
+  Qed.
+
+  Lemma helper_cancel_middle : forall AT AEQ V (a : @pred AT AEQ V) b c a' c',
+    (a * c =p=> a' * c')%pred
+    -> (a * (b * c) =p=> a' * (b * c'))%pred.
+  Proof.
+    intros; cancel.
+    rewrite sep_star_comm; auto.
+  Qed.
+
+  Lemma helper_sep_star_comm_middle : forall AT AEQ V (m : @mem AT AEQ V) a b c,
+    (b * (a * c))%pred m -> (a * (b * c))%pred m.
+  Proof.
+    intros; pred_apply; cancel.
+  Qed.
+
+  Lemma helper_ptsto_conflict : forall AT AEQ V a v v' F (m : @mem AT AEQ V),
+    (a |-> v * (a |-> v' * F))%pred m -> False.
+  Proof.
+    intros.
+    apply sep_star_assoc in H.
+    generalize H.
+    unfold_sep_star.
+    firstorder.
+  Qed.
+
+  Lemma helper_ptsto_either: forall AT AEQ V (m1 : @mem AT AEQ V) m2 a1 a2 v1 v2,
+    a1 <> a2
+    -> (a1 |-> v1)%pred m1
+    -> (mem_union m1 m2) a2 = Some v2
+    -> m2 a2 = Some v2.
+  Proof.
+    unfold mem_union, ptsto.
+    intuition.
+    destruct (m1 a2) eqn:Heq; auto.
+    inversion H2; subst.
+    apply H3 in H.
+    rewrite Heq in H.
+    inversion H.
+  Qed.
+
+  Lemma dmatch_ex_ptsto : forall l name v,
+    (name |-> v * listpred dmatch l) 
+    =p=> (name |-> v * listpred (dmatch_ex name) l).
+  Proof.
+    induction l; simpl; intros; auto.
+    unfold dmatch_ex at 1; unfold dmatch at 1; unfold dmatch at 2.
+    destruct (weq (a :-> "valid") $0) eqn:HV;
+      destruct (weq (a :-> "name") name) eqn:HN; rec_simpl.
+    repeat rewrite <- helper_emp_pimpl; apply IHl.
+    repeat rewrite <- helper_emp_pimpl; apply IHl.
+    rewrite e; unfold pimpl; intros.
+    exfalso; eapply helper_ptsto_conflict; eauto.
+    apply helper_cancel_middle.
+    apply IHl.
+  Qed.
+
+  Lemma dmatch_ex_dmatch : forall l m name v,
+    listpred dmatch l m
+    -> m name = Some v
+    -> (name |-> v * listpred (dmatch_ex name) l)%pred m.
+  Proof.
+    induction l; simpl; intros.
+    pose proof (H name).
+    rewrite H0 in H1; inversion H1.
+
+    unfold dmatch at 1 in H.
+    unfold dmatch_ex at 1; unfold dmatch at 1.
+    destruct (weq (a :-> "valid") $0) eqn:HV; 
+      destruct (weq (a :-> "name") name) eqn:HN;
+      rec_simpl; intros; try apply helper_emp_pimpl'.
+
+    apply star_emp_pimpl in H; apply IHl; auto.
+    apply star_emp_pimpl in H; apply IHl; auto.
+
+    rewrite e in *.
+    eapply sep_star_ptsto_some_eq in H0; eauto.
+    rewrite H0 in *.
+    eapply dmatch_ex_ptsto; eauto.
+
+    (* very messy: looking into sep_star *)
+    apply helper_sep_star_comm_middle.
+    generalize H; unfold_sep_star.
+    intro; repeat deex.
+    exists x; exists x0; intuition.
+    assert (x0 name = Some v) as Hx.
+    eapply helper_ptsto_either; eauto.
+    pose proof (IHl x0 name v H5 Hx).
+    generalize H2; unfold_sep_star; auto.
+  Qed.
+
+  Lemma dlookup_ptsto: forall F l name a (de : dent),
+    dlookup_f name de = true
+    -> (F * a |-> de)%pred (list2nmem l)
+    -> listpred dmatch l =p=> (name |-> (de :-> "inum") * listpred (dmatch_ex name) l).
+  Proof.
+    unfold pimpl; intros.
+    apply dlookup_f_ok in H; destruct H.
+    apply dmatch_ex_dmatch; auto.
+    rewrite_list2nmem_pred.
+    eapply listpred_isolate with (i := a) (def := dent0) in H1; auto.
+    unfold dmatch at 2 in H1.
+    destruct (weq ((selN l a dent0) :-> "valid") $0) eqn:HV; 
+      destruct (weq ((selN l a dent0) :-> "name") name) eqn:HN;
+      rec_simpl; intuition.
+    apply ptsto_valid' in H1.
+    rewrite e in *; auto.
+    exfalso; apply n0; auto.
+  Qed.
+
   Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -542,11 +664,14 @@ Module DIR.
     inversion H8; subst; eauto.
     step.
     apply pimpl_or_r; left; cancel.
-    admit.
+    rewrite sep_star_comm.
+    eapply dlookup_ptsto; eauto.
     apply pimpl_or_r; right; cancel.
     apply dlookup_notindomain; auto.
-  Qed.
 
+    Grab Existential Variables.
+    exact dent0. exact emp. exact nil. exact emp. exact emp.
+  Qed.
 
 
   Definition dunlink T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
