@@ -745,6 +745,72 @@ Module DIR.
         rx (mscs', true)
     end.
 
+  Lemma dmatch_ex_mem_except : forall l name m,
+    listpred dmatch l m 
+    -> listpred (dmatch_ex name) l (mem_except m name).
+  Proof.
+    induction l; simpl; intros.
+    apply emp_mem_except; auto.
+
+    unfold dmatch_ex at 1; unfold dmatch at 1; unfold dmatch at 1 in H.
+    destruct (weq (a :-> "valid") $0) eqn:HV; 
+      destruct (weq (a :-> "name") name) eqn:HN;
+      rec_simpl; try apply pimpl_star_emp.
+
+    apply IHl; pred_apply; rewrite star_emp_pimpl; auto.
+    apply IHl; pred_apply; rewrite star_emp_pimpl; auto.
+
+    rewrite <- mem_except_double.
+    apply IHl; rewrite e in *.
+    eapply ptsto_mem_except; eauto.
+
+    generalize H; unfold_sep_star.
+    intro; repeat deex.
+    exists x; exists (mem_except x0 name); intuition.
+    eapply mem_except_union_comm; eauto.
+    apply mem_disjoint_mem_except; auto.
+  Qed.
+
+  Lemma dmatch_dent0_is_emp :  dmatch dent0 = emp.
+  Proof.
+    unfold dmatch, dent0.
+    destruct (weq (@Rec.of_word dent_type $ (0) :-> "valid") $0); auto.
+    contradict n.
+    compute; auto.
+  Qed.
+
+  Lemma dent0_well_formed : Rec.well_formed dent0.
+  Proof.
+    unfold dent0.
+    apply Rec.of_word_length.
+  Qed.
+
+  Lemma ptsto_dent0_mem_except : forall F m i v a b,
+    listpred dmatch a m
+    -> (F * i |-> v)%pred (list2nmem a)
+    -> (F * i |-> dent0)%pred (list2nmem b)
+    -> v :-> "valid" <> $0
+    -> listpred dmatch b (mem_except m (v :-> "name")).
+  Proof.
+    intros.
+    eapply ptsto_mem_except with (v := v :-> "inum").
+    erewrite list2nmem_updN_eq with (l := a) (l' := b) by eauto.
+    pred_apply.
+    erewrite listpred_updN by list2nmem_bound.
+    rewrite listpred_isolate with (i := i) (def := dent0) by list2nmem_bound.
+    rewrite dmatch_dent0_is_emp.
+
+    (* FIXME: cancel doesn't work *)
+    setoid_rewrite sep_star_comm at 2.
+    rewrite <- sep_star_assoc_2.
+    rewrite <- helper_emp_pimpl'.
+    cancel_exact.
+
+    rewrite_list2nmem_pred.
+    unfold dmatch.
+    destruct (weq ((selN a i dent0) :-> "valid") $0) eqn: HV; rec_simpl; auto.
+    rewrite e in *; firstorder.
+  Qed.
 
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dmap,
@@ -764,19 +830,21 @@ Module DIR.
     unfold dunlink, rep.
     step.
     destruct b; step.
-    admit. (* well-formed *)
+    apply dent0_well_formed.
     inversion H8; subst; eauto.
     step.
 
-    apply pimpl_or_r; right; cancel.
     inversion H8; subst.
+    apply pimpl_or_r; right; cancel.
     exists l; split; auto.
     instantiate (a0 := mem_except m name).
-    admit.
+    apply dlookup_f_ok in H10.
+    destruct H10 as [HA HN]; rewrite <- HN.
+    eapply ptsto_dent0_mem_except; eauto.
+
     rewrite sep_star_comm.
     eapply dlookup_ptsto; eauto.
-    admit.
-
+    apply dmatch_ex_mem_except; auto.
     apply pimpl_or_r; left; cancel.
     apply dlookup_notindomain; auto.
 

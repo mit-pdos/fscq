@@ -95,7 +95,6 @@ Proof.
   eapply list2nmem_inbound; eauto.
 Qed.
 
-
 Theorem listapp_progupd: forall A l (a : A),
   list2nmem (l ++ a :: nil) = Prog.upd (list2nmem l) (length l) a.
 Proof.
@@ -355,6 +354,15 @@ Proof.
   instantiate (1:=a).
   rewrite selN_last by auto.
   cancel.
+Qed.
+
+
+Theorem list2nmem_updN_eq: forall A F (l l' : list A) i v0 v,
+  (F * i |-> v0)%pred (list2nmem l)
+  -> (F * i |-> v)%pred (list2nmem l')
+  -> l' = updN l i v.
+Proof.
+  admit.
 Qed.
 
 
