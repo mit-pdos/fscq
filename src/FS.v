@@ -353,7 +353,7 @@ Definition delete T fsxp dnum name mscs rx : prog T :=
     rx (mscs, false)
   }.
 
-Definition lookup T fsxp dnum name mscs rx : prog T :=
+Definition lookup T fsxp dnum name mscs (rx : (_ * option addr) -> _) : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   let2 (mscs, r) <- SDIR.dslookup (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
   let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
