@@ -738,11 +738,11 @@ Create HintDb false_precondition_hint.
 
 Ltac norm := unfold pair_args_helper;
              norm'l; repeat deex; repeat destruct_type valuset;
-             (* Each iteration of [split_or_l] reverses the list of predicates
-              * inside [stars].  To allow [progress] to detect when there's
-              * nothing left to split, reverse the list twice.
+             (* To check whether [split_or_l] succeeded, we require that it
+              * produce at least 2 subgoals.  Also, because [split_or_l] reverses
+              * the list of predicates, we run it twice to preserve the order.
               *)
-             repeat ( progress ( split_or_l; split_or_l ); unfold stars; simpl; norm'l );
+             repeat ( split_or_l; [ | | .. ]; split_or_l; unfold stars; simpl; norm'l );
              set_norm_goal;
              repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
              solve [ exfalso ; auto with false_precondition_hint ] ||
