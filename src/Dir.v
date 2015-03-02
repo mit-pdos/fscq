@@ -425,9 +425,9 @@ Module DIR.
            [[ derep F A m bxp ixp dnum delist ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-          ((exists B idx e,
+          ((exists idx e,
              [[ r = Some idx ]] *
-             [[ (B * #idx |-> e)%pred (list2nmem delist) ]] *
+             [[ (arrayN_ex delist #idx * #idx |-> e)%pred (list2nmem delist) ]] *
              [[ f e = true ]])
        \/  ( [[ r = None ]] *
              [[ Forall (fun e => f e = false) delist ]]))
