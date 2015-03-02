@@ -65,7 +65,9 @@ main = do
   else
     do
       putStrLn $ "Initializing file system"
-      I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      (s, fsxp) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
+      return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
   fuseMain (fscqFSOps (doFScall ds ref) fsxp) defaultExceptionHandler

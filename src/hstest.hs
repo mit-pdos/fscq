@@ -52,7 +52,9 @@ main = do
   else
     do
       putStrLn $ "Initializing file system"
-      I.run ds $ FS.mkfs (W 1) (W 1) cachesize
+      (s, fsxp) <- I.run ds $ FS.mkfs (W 1) (W 1) cachesize
+      set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
+      return (s, fsxp)
   putStrLn $ "File system mounted, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   putStrLn "Running program.."
   -- r <- I.run ds $ the_prog lxp

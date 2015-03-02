@@ -6,6 +6,7 @@ import System.IO
 import System.Posix.Types
 import System.Posix.IO
 import System.Posix.Unistd
+import System.Posix.Files
 import Word
 import qualified Data.ByteString.Internal as BSI
 import qualified GHC.Integer.GMP.Internals as GMPI
@@ -115,6 +116,11 @@ init_disk disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
   return $ S fd sr
+
+set_nblocks_disk :: DiskState -> Int -> IO ()
+set_nblocks_disk (S fd _) nblocks = do
+  setFdSize fd $ fromIntegral $ nblocks * 4096
+  return ()
 
 close_disk :: DiskState -> IO DiskStats
 close_disk (S fd sr) = do
