@@ -42,8 +42,9 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/time.h>
 
-#include "ASSERT.h"
+#include "stats.h"
 
 void usage();
 int seq_read(), seq_write(), rand_read(), rand_write();
@@ -140,6 +141,7 @@ char *argv[];
 		     (after.tv_usec - before.tv_usec);
     timer_overhead /= NTEST;
 
+    printstats(argv[0], 1);
 
     /*
      * Now we just do the tests in sequence, printing out the timing 
@@ -149,7 +151,7 @@ char *argv[];
     fflush ( stdout );
     system ( "date" );
     printf ( "Running largefile test on %s\n", argv[0] );
-    printf ( "File Size = %d bytes\n", fileSize );
+    printf ( "File Size = %ld bytes\n", fileSize );
     printf ( "IO Size = %d bytes\n\n", ioSize );
     printf ( "Test		Time(sec)	KB/sec\n" );
     printf ( "----		---------	------\n" );
@@ -159,6 +161,8 @@ char *argv[];
     throughput = ((float) fileSize / sec) / (float) ONE_KB;
     printf ( "seq_write\t%7.3f\t\t%7.3f\n", sec, throughput );
     fflush ( stdout );
+
+    printstats(argv[0], 0);
 
     usec = seq_read ( fd, fileSize, ioSize );
     sec = (float) usec / 1000000.0;
