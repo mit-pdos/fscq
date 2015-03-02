@@ -705,10 +705,21 @@ Module DIR.
     admit. (* well-formed *)
     inversion H8; subst; eauto.
     step.
-    apply pimpl_or_r; right.
+
+    apply pimpl_or_r; right; cancel.
+    inversion H8; subst.
+    exists l; split; auto.
+    instantiate (a0 := mem_except m name).
     admit.
+    rewrite sep_star_comm.
+    eapply dlookup_ptsto; eauto.
+    admit.
+
     apply pimpl_or_r; left; cancel.
     apply dlookup_notindomain; auto.
+
+    Grab Existential Variables.
+    exact dent0. exact emp. exact nil. exact emp. exact emp.
   Qed.
 
 
