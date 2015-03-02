@@ -34,6 +34,17 @@ struct stats {
   long nread;
   long nwrite;
   long nflush;
+  long ngetattr;
+  long nopen;
+  long nrelease;
+  long nreaddir;
+  long nfuse_read;
+  long nfuse_write;
+  long ncreate;
+  long ntrunc;
+  long nmkdir;
+  long nrmdir;
+  long nunlink;
 } fsstats;
 char statsbuf[1024];
 
@@ -51,15 +62,18 @@ fuse_getattr(const char *path, struct stat *stbuf)
   memset(&st, 0, sizeof(struct xv6stat));
 
   if (strcmp(path, stats) == 0) {
-    sprintf(statsbuf, "nread %ld nwrite %ld nflush %ld\n", fsstats.nread,
-	    fsstats.nwrite, fsstats.nflush);
+    sprintf(statsbuf, "nread %ld\nnwrite %ld\nnflush %ld\nngetattr %ld\nnopen %ld\nnrelease %ld\nnreadir %ld\nnfuse_read %ld\nnfuse_write %ld\nncreate %ld\nntrunc %ld\nnmkdir %ld\nnrmdir %ld\nnunlink %ld\n", fsstats.nread, 
+	    fsstats.nwrite, fsstats.nflush, fsstats.ngetattr, fsstats.nopen,
+	    fsstats.nrelease, fsstats.nreaddir, fsstats.nfuse_read,
+	    fsstats.nfuse_write, fsstats.ncreate, fsstats.ntrunc,
+	    fsstats.nmkdir,  fsstats.nrmdir, fsstats.nunlink);
     stbuf->st_mode = S_IFREG | 0444;
     stbuf->st_nlink = 1;
     stbuf->st_size = strlen(statsbuf);
     return 0;
   }
+  fsstats.ngetattr++;
   int r = sys_fstat(path, (char *) &st);
-  printf("sys_fstat: %d %d %d %d\n", r, st.type, st.nlink, st.size);
   if (r >= 0) {
     stbuf->st_mode = (st.type == T_DIR) ? S_IFDIR | 0777 : S_IFREG | 0666;
     stbuf->st_nlink = st.nlink;
@@ -76,10 +90,9 @@ fuse_open(const char *path, struct fuse_file_info *fi)
   if (strcmp(path, stats) == 0) {
     return 0;
   }
-  printf("fuse_open: %s flags %d\n", path, fi->flags);
+  fsstats.nopen++;
   void  *r = sys_open((char *) path, fi->flags);
   fi->fh = (uint64_t) r;
-  printf("fuse_open: returns fh %ld\n", fi->fh);
   return (r == 0) ? -1 : 0;
 }
 
@@ -89,7 +102,7 @@ fuse_release(const char *path, struct fuse_file_info *fi)
   if (strcmp(path, stats) == 0) {
     return 0;
   }
-  printf("fuse_release: %s fh %ld\n", path, fi->fh);
+  fsstats.nrelease++;
   int r = sys_fileclose((void *) fi->fh);
   return r;
 }
@@ -98,7 +111,7 @@ static int
 fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	     off_t offset, struct fuse_file_info *fi)
 {
-  printf("fuse_readdir: %s\n", path);
+  fsstats.nreaddir++;
   void  *fh = sys_open((char *) path, fi->flags);
   if (fh == 0)
     return -1;
@@ -127,10 +140,11 @@ fuse_read(const char *path, char *buf, size_t size, off_t offset,
       memcpy(buf, statsbuf + offset, size);
     } else
       size = 0;
-    // Reset counters:
-    fsstats.nread = fsstats.nwrite = fsstats.nflush = 0;
+    bzero(&fsstats, sizeof(fsstats));  // reset counters
+
     return size;
   }
+  fsstats.nfuse_read++;
   size = sys_read((char *) fi->fh, buf, size, offset);
   return size;
 }
@@ -139,6 +153,7 @@ static int
 fuse_write(const char *path, const char *buf, size_t size, off_t offset,
 	  struct fuse_file_info *fi)
 {
+  fsstats.nfuse_write++;
   size = sys_write((char *) fi->fh, (char *) buf, size, offset);
   return size;
 }
@@ -146,7 +161,7 @@ fuse_write(const char *path, const char *buf, size_t size, off_t offset,
 static int
 fuse_create(const char *path, mode_t m, struct fuse_file_info *fi)
 {
-    printf("fuse_create: %s %x\n", path, m);
+    fsstats.ncreate++;
     void *r = sys_open((char *) path, fi->flags);
     fi->fh = (uint64_t) r;
     return (r == 0) ? -1 : 0;
@@ -155,7 +170,7 @@ fuse_create(const char *path, mode_t m, struct fuse_file_info *fi)
 static int
 fuse_truncate(const char *path, off_t off)
 {
-    printf("fuse_truncate: %s %ld\n", path, off);
+    fsstats.ntrunc++;
     if (off != 0) return -1;
     return sys_truncate((char *) path);
 }
@@ -163,7 +178,7 @@ fuse_truncate(const char *path, off_t off)
 static int
 fuse_mkdir(const char *path, mode_t m)
 {
-  printf("fuse_mkdir: %s %x\n", path, m);
+  fsstats.nmkdir++;
   int r = sys_mkdir((char *)path);
   return r;
 }
@@ -171,7 +186,7 @@ fuse_mkdir(const char *path, mode_t m)
 static int
 fuse_rmdir(const char *path)
 {
-  printf("fuse_rmdir: %s\n", path);
+  fsstats.nrmdir++;
   int r = sys_unlink((char *)path);
   return r;
 }
@@ -179,7 +194,7 @@ fuse_rmdir(const char *path)
 static int
 fuse_unlink(const char *path)
 {
-  printf("fuse_rmdir: %s\n", path);
+  fsstats.nunlink++;
   int r = sys_unlink((char *)path);
   return r;
 }
@@ -209,10 +224,10 @@ cprintf(char *fmt, ...)
 
 static int fsimg_fd;
 
-void ideinit()
+void ideinit(char *disk)
 {
-  if ((fsimg_fd = open("fs.img", O_RDWR)) < 0) {
-    perror("failed to open fs.img");
+  if ((fsimg_fd = open(disk, O_RDWR)) < 0) {
+    perror("failed to open disk");
     exit(-1);
   }
   printf("xv6fs: opened fs.img\n");
@@ -258,11 +273,21 @@ void initlog();
 int
 main(int argc, char **argv)
 {
+  
+  if (argc < 2) {
+    printf("%s disk-file fuse-args\n", argv[0]);
+    exit(1);
+  }
   printf("init xv6\n");
   binit();
   fileinit();
-  ideinit();
+  ideinit(argv[1]);
   initlog();
   printf("init xv6 done\n");
+  int i;
+  for (i = 2; i < argc; i++) {
+    argv[i-1] = argv[i];
+  }
+  argc--;
   return fuse_main(argc, argv, &fuse_filesystem_operations, NULL);
 }
