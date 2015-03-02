@@ -1030,6 +1030,19 @@ Proof.
   rewrite H1; simpl; auto.
 Qed.
 
+Theorem ptsto_mem_except_F : forall (F F' : @pred AT AEQ V) a a' v (m : @mem AT AEQ V),
+  (a |-> v * F)%pred m
+  -> a <> a'
+  -> (forall m', F m' -> F' (mem_except m' a'))
+  -> (a |-> v * F')%pred (mem_except m a').
+Proof.
+  unfold_sep_star.
+  intros; repeat deex.
+  exists x; exists (mem_except x0 a'); intuition.
+  eapply mem_except_union_comm; eauto.
+  apply mem_disjoint_mem_except; auto.
+Qed.
+
 
 End GenPredThm.
 

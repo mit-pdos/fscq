@@ -763,12 +763,7 @@ Module DIR.
     rewrite <- mem_except_double.
     apply IHl; rewrite e in *.
     eapply ptsto_mem_except; eauto.
-
-    generalize H; unfold_sep_star.
-    intro; repeat deex.
-    exists x; exists (mem_except x0 name); intuition.
-    eapply mem_except_union_comm; eauto.
-    apply mem_disjoint_mem_except; auto.
+    eapply ptsto_mem_except_F; eauto.
   Qed.
 
   Lemma dmatch_dent0_is_emp :  dmatch dent0 = emp.
