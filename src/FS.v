@@ -36,9 +36,9 @@ Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   let balloc_base := inode_base ^+ inode_blocks ^+ inode_bitmaps in
   let log_base := $1 ^+ balloc_base ^+ data_bitmaps in
   let log_size := $ MEMLOG.addr_per_block in
-  let max_addr := log_base ^+ $4 ^+ log_size in
+  let max_addr := log_base ^+ $3 ^+ log_size in
   (Build_fs_xparams
-   (Build_memlog_xparams $1 log_base (log_base ^+ $1) (log_base ^+ $2) (log_base ^+ $3) log_size)
+   (Build_memlog_xparams $1 log_base (log_base ^+ $1) (log_base ^+ $2) log_size)
    (Build_inode_xparams inode_base inode_blocks)
    (Build_balloc_xparams (inode_base ^+ inode_blocks) inode_bitmaps)
    (Build_balloc_xparams balloc_base data_bitmaps)
