@@ -342,9 +342,8 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
 
-  Definition begin T xp (mscs : memstate * cachestate) rx : prog T :=
+  Definition begin T (xp : memlog_xparams) (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx (ms_empty, cs).
 
   Theorem begin_ok: forall xp mscs,
@@ -362,9 +361,8 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
 
-  Definition abort T xp (mscs : memstate * cachestate) rx : prog T :=
+  Definition abort T (xp : memlog_xparams) (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx (ms_empty, cs).
 
   Theorem abort_ok : forall xp mscs,
@@ -1419,15 +1417,19 @@ Module MEMLOG.
 
   Definition commit T xp (mscs : memstate * cachestate) rx : prog T :=
     let (ms, cs) := mscs in
-    let3 (ms, cs, ok) <- flush xp (ms, cs);
-    If (bool_dec ok true) {
-      cs <- BUFCACHE.write (LogCommit xp) $1 cs;
-      cs <- BUFCACHE.sync (LogCommit xp) cs;
-      let2 (ms, cs) <- apply xp (ms, cs);
+    If (bool_dec (Map.is_empty ms) true) {
       rx (ms, cs, true)
     } else {
-      let2 (ms, cs) <- abort xp (ms, cs);
-      rx (ms, cs, false)
+      let3 (ms, cs, ok) <- flush xp (ms, cs);
+      If (bool_dec ok true) {
+        cs <- BUFCACHE.write (LogCommit xp) $1 cs;
+        cs <- BUFCACHE.sync (LogCommit xp) cs;
+        let2 (ms, cs) <- apply xp (ms, cs);
+        rx (ms, cs, true)
+      } else {
+        let2 (ms, cs) <- abort xp (ms, cs);
+        rx (ms, cs, false)
+      }
     }.
 
   (** XXX get rid of this *)
