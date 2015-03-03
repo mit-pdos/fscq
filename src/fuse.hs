@@ -284,15 +284,7 @@ fscqWrite fr fsxp _ inum bs offset = do
                        $ BS.append piece_bs
                        $ BS.drop (off + cnt) old_bs
       wnew <- bs2i new_bs
-      ok <- fr $ FS.write_block fsxp inum (W64 $ fromIntegral blk) (W wnew)
-      ok <-
-        if ok then
-          if blk*blocksize + off + cnt <= init_len then
-            return True
-          else
-            fr $ FS.file_set_sz fsxp inum (W64 $ fromIntegral $ blk*blocksize + off + cnt)
-        else
-          return False
+      ok <- fr $ FS.write_block fsxp inum (W64 $ fromIntegral blk) (W wnew) (W64 $ fromIntegral $ blk*blocksize + off + cnt)
       if ok then
         return $ WriteOK (c + (fromIntegral cnt))
       else
