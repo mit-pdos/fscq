@@ -3,6 +3,7 @@
 module Main where
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.ByteString.Internal as BSI
 import qualified System.Directory
 import Foreign.C.Error
@@ -65,30 +66,35 @@ main = do
   else
     do
       putStrLn $ "Initializing file system"
-      (s, fsxp) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      (s, (fsxp, ok)) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      if ok == False then error $ "mkfs failed" else return ()
       set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
       return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
-  fuseMain (fscqFSOps (doFScall ds ref) fsxp) defaultExceptionHandler
-  stats <- close_disk ds
-  print_stats stats
+  fuseMain (fscqFSOps ds (doFScall ds ref) fsxp) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: FSrunner -> Coq_fs_xparams -> FuseOperations HT
-fscqFSOps fr fsxp = defaultFuseOps
+fscqFSOps :: DiskState -> FSrunner -> Coq_fs_xparams -> FuseOperations HT
+fscqFSOps ds fr fsxp = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fr fsxp
   , fuseOpen = fscqOpen fr fsxp
   , fuseCreateDevice = fscqCreate fr fsxp
   , fuseRemoveLink = fscqUnlink fr fsxp
-  , fuseRead = fscqRead fr fsxp
+  , fuseRead = fscqRead ds fr fsxp
   , fuseWrite = fscqWrite fr fsxp
   , fuseSetFileSize = fscqSetFileSize fr fsxp
   , fuseOpenDirectory = fscqOpenDirectory
   , fuseReadDirectory = fscqReadDirectory fr fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats
+  , fuseDestroy = fscqDestroy ds
   }
+
+fscqDestroy :: DiskState -> IO ()
+fscqDestroy ds = do
+  stats <- close_disk ds
+  print_stats stats
 
 dirStat :: FuseContext -> FileStat
 dirStat ctx = FileStat
@@ -132,7 +138,11 @@ fscqGetFileStat :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno Fi
 fscqGetFileStat _ _ "/" = do
   ctx <- getFuseContext
   return $ Right $ dirStat ctx
-fscqGetFileStat fr fsxp (_:path) = do
+fscqGetFileStat fr fsxp (_:path)
+  | path == "stats" = do
+    ctx <- getFuseContext
+    return $ Right $ fileStat ctx 1024
+  | otherwise = do
   r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
@@ -159,7 +169,9 @@ fscqReadDirectory fr fsxp "/" = do
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen fr fsxp (_:path) mode flags = do
+fscqOpen fr fsxp (_:path) mode flags
+  | path == "stats" = return $ Right $ W 0
+  | otherwise = do
   r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
@@ -169,7 +181,6 @@ fscqOpen _ _ _ _ _ = return $ Left eIO
 fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr fsxp (_:path) RegularFile _ _ = do
   r <- fr $ FS.create fsxp rootDir path
-  putStrLn $ "create: " ++ (show r)
   case r of
     Nothing -> return eNOSPC
     Just _ -> return eOK
@@ -203,14 +214,23 @@ compute_ranges_int off count = map mkrange $ zip3 blocknums startoffs endoffs
     mkrange (blk, startoff, endoff) = BR blk startoff (endoff-startoff)
     blocknums = [off `div` blocksize .. (off + count) `div` blocksize]
     startoffs = [off `mod` blocksize] ++ replicate (length blocknums - 1) 0
-    endoffs = replicate (length blocknums - 1) blocksize ++ [count `mod` blocksize]
+    endoffs = replicate (length blocknums - 1) blocksize ++ [(off + count) `mod` blocksize]
 
 compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
 compute_ranges off count =
   compute_ranges_int (fromIntegral off) (fromIntegral count)
 
-fscqRead :: FSrunner -> Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
-fscqRead fr fsxp _ inum byteCount offset = do
+fscqRead :: DiskState -> FSrunner -> Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
+fscqRead ds fr fsxp (_:path) inum byteCount offset
+  | path == "stats" = do
+    Stats r w s <- get_stats ds
+    clear_stats ds
+    statbuf <- return $ BSC8.pack $
+      "Reads:  " ++ (show r) ++ "\n" ++
+      "Writes: " ++ (show w) ++ "\n" ++
+      "Syncs:  " ++ (show s) ++ "\n"
+    return $ Right statbuf
+  | otherwise = do
   wlen <- fr $ FS.file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   offset <- return $ min offset len
@@ -223,6 +243,9 @@ fscqRead fr fsxp _ inum byteCount offset = do
       W w <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
       bs <- i2bs w
       return $ BS.take count $ BS.drop off bs
+
+fscqRead _ _ _ [] _ _ _ = do
+  return $ Left $ eIO
 
 compute_range_pieces :: FileOffset -> BS.ByteString -> [(BlockRange, BS.ByteString)]
 compute_range_pieces off buf = zip ranges pieces
@@ -252,7 +275,10 @@ fscqWrite fr fsxp _ inum bs offset = do
   where
     write_piece _ (WriteErr c) _ = return $ WriteErr c
     write_piece init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
-      W w <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
+      W w <- if blk*blocksize < init_len then
+          fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
+        else
+          return $ W 0
       old_bs <- i2bs w
       new_bs <- return $ BS.append (BS.take off old_bs)
                        $ BS.append piece_bs
@@ -288,11 +314,11 @@ fscqSetFileSize _ _ _ _ = return eIO
 fscqGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
 fscqGetFileSystemStats _ =
   return $ Right $ FileSystemStats
-    { fsStatBlockSize = 512
+    { fsStatBlockSize = 4096
     , fsStatBlockCount = 1
     , fsStatBlocksFree = 1
     , fsStatBlocksAvailable = 1
     , fsStatFileCount = 5
     , fsStatFilesFree = 10
-    , fsStatMaxNameLength = 255
+    , fsStatMaxNameLength = 16
     }

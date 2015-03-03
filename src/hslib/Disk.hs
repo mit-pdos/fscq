@@ -106,6 +106,10 @@ sync_disk (S fd sr) = do
   -- fileSynchroniseDataOnly fd
   return ()
 
+clear_stats :: DiskState -> IO ()
+clear_stats (S _ sr) = do
+  writeIORef sr $ Stats 0 0 0
+
 get_stats :: DiskState -> IO DiskStats
 get_stats (S _ sr) = do
   s <- readIORef sr

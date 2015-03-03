@@ -943,6 +943,48 @@ Proof.
   apply emp_notindomain; auto.
 Qed.
 
+Theorem emp_mem_except : forall (m : @mem AT AEQ V) a,
+  emp m -> emp (mem_except m a).
+Proof.
+  unfold emp, mem_except; intros.
+  destruct (AEQ a0 a); auto.
+Qed.
+
+Theorem mem_except_double : forall (m : @mem AT AEQ V) a,
+  mem_except (mem_except m a) a = mem_except m a.
+Proof.
+  unfold mem_except; intros.
+  apply functional_extensionality; intros.
+  destruct (AEQ x a); auto.
+Qed.
+
+Lemma mem_except_union_comm: forall (m1 : @mem AT AEQ V) m2 a1 a2 v1,
+  a1 <> a2
+  -> (a1 |-> v1)%pred m1
+  -> mem_except (mem_union m1 m2) a2 = mem_union m1 (mem_except m2 a2).
+Proof.
+  unfold mem_union, mem_except, ptsto.
+  intuition.
+  apply functional_extensionality; intros.
+  destruct (AEQ x a2) eqn:Heq; auto.
+  destruct (m1 x) eqn:Hx; auto; subst.
+  pose proof (H2 a2 H) as Hy.
+  rewrite Hx in Hy.
+  inversion Hy.
+Qed.
+
+Lemma mem_disjoint_mem_except : forall (m1 : @mem AT AEQ V) m2 a,
+  mem_disjoint m1 m2
+  -> mem_disjoint m1 (mem_except m2 a).
+Proof.
+  unfold mem_disjoint, mem_except; intuition.
+  repeat deex.
+  destruct (AEQ x a).
+  inversion H2.
+  apply H.
+  firstorder.
+Qed.
+
 Theorem notindomain_indomain_conflict : forall a (m : @mem AT AEQ V),
   notindomain a m -> indomain a m -> False.
 Proof.
@@ -986,6 +1028,19 @@ Proof.
   unfold mem_union.
   pose proof (H4 x1); intuition.
   rewrite H1; simpl; auto.
+Qed.
+
+Theorem ptsto_mem_except_F : forall (F F' : @pred AT AEQ V) a a' v (m : @mem AT AEQ V),
+  (a |-> v * F)%pred m
+  -> a <> a'
+  -> (forall m', F m' -> F' (mem_except m' a'))
+  -> (a |-> v * F')%pred (mem_except m a').
+Proof.
+  unfold_sep_star.
+  intros; repeat deex.
+  exists x; exists (mem_except x0 a'); intuition.
+  eapply mem_except_union_comm; eauto.
+  apply mem_disjoint_mem_except; auto.
 Qed.
 
 

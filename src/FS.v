@@ -24,11 +24,17 @@ Set Implicit Arguments.
 Import ListNotations.
 
 Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
+  (* Block $0 stores the superblock (layout information).
+   * The other block numbers, except for MemLog, are relative to
+   * the MemLog data area, which starts at $1.
+   * To account for this, we bump [log_base] by $1, to ensure that
+   * the data area does not run into the logging structures.
+   *)
   let data_blocks := data_bitmaps ^* BALLOC.items_per_valu in
   let inode_blocks := inode_bitmaps ^* BALLOC.items_per_valu ^/ INODE.items_per_valu in
-  let inode_base := $1 ^+ data_blocks in
+  let inode_base := data_blocks in
   let balloc_base := inode_base ^+ inode_blocks ^+ inode_bitmaps in
-  let log_base := balloc_base ^+ data_bitmaps in
+  let log_base := $1 ^+ balloc_base ^+ data_bitmaps in
   let log_size := $ MEMLOG.addr_per_block in
   let max_addr := log_base ^+ $4 ^+ log_size in
   (Build_fs_xparams
@@ -43,9 +49,11 @@ Definition mkfs T (data_bitmaps inode_bitmaps cachesize : addr) rx : prog T :=
   cs <- BUFCACHE.init cachesize;
   cs <- sb_init fsxp cs;
   mscs <- MEMLOG.init (FSXPMemLog fsxp) cs;
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   mscs <- BALLOC.init' (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
   mscs <- INODE.init (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) mscs;
-  rx (mscs, fsxp).
+  let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  rx (mscs, (fsxp, ok)).
 
 Definition file_nblocks T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
@@ -329,7 +337,7 @@ Definition readdir T fsxp dnum mscs rx : prog T :=
 
 Definition create T fsxp dnum name mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let2 (mscs, oi) <- DIRALLOC.dacreate (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
+  let2 (mscs, oi) <- DIRALLOC.dacreate (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
   match oi with
   | None =>
     mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
@@ -344,7 +352,7 @@ Definition create T fsxp dnum name mscs rx : prog T :=
 
 Definition delete T fsxp dnum name mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let2 (mscs, ok) <- DIRALLOC.dadelete (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
+  let2 (mscs, ok) <- DIRALLOC.dadelete (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum name mscs;
   If (bool_dec ok true) {
     let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
     rx (mscs, ok)

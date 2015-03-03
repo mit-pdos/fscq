@@ -1,7 +1,7 @@
 FUNCTIONALITY
 
-- byte-level file length field
 - maybe doubly-indirect blocks?
+- deleting a file does not free its disk blocks
 
 PROOFS/SPECS
 

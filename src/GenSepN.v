@@ -95,7 +95,6 @@ Proof.
   eapply list2nmem_inbound; eauto.
 Qed.
 
-
 Theorem listapp_progupd: forall A l (a : A),
   list2nmem (l ++ a :: nil) = Prog.upd (list2nmem l) (length l) a.
 Proof.

@@ -194,7 +194,7 @@ Module BALLOC.
 
 
   Definition init' T lxp xp mscs rx : prog T :=
-    mscs <- For i < (BmapNBlocks xp ^* $ (valulen))
+    mscs <- For i < (BmapNBlocks xp)
       Ghost mbase F
       Loopvar mscs <- mscs
       Continuation lrx
