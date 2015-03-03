@@ -24,11 +24,17 @@ Set Implicit Arguments.
 Import ListNotations.
 
 Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
+  (* Block $0 stores the superblock (layout information).
+   * The other block numbers, except for MemLog, are relative to
+   * the MemLog data area, which starts at $1.
+   * To account for this, we bump [log_base] by $1, to ensure that
+   * the data area does not run into the logging structures.
+   *)
   let data_blocks := data_bitmaps ^* BALLOC.items_per_valu in
   let inode_blocks := inode_bitmaps ^* BALLOC.items_per_valu ^/ INODE.items_per_valu in
-  let inode_base := $1 ^+ data_blocks in
+  let inode_base := data_blocks in
   let balloc_base := inode_base ^+ inode_blocks ^+ inode_bitmaps in
-  let log_base := balloc_base ^+ data_bitmaps in
+  let log_base := $1 ^+ balloc_base ^+ data_bitmaps in
   let log_size := $ MEMLOG.addr_per_block in
   let max_addr := log_base ^+ $4 ^+ log_size in
   (Build_fs_xparams
