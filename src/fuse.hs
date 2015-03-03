@@ -3,6 +3,7 @@
 module Main where
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.ByteString.Internal as BSI
 import qualified System.Directory
 import Foreign.C.Error
@@ -81,7 +82,7 @@ fscqFSOps ds fr fsxp = defaultFuseOps
   , fuseOpen = fscqOpen fr fsxp
   , fuseCreateDevice = fscqCreate fr fsxp
   , fuseRemoveLink = fscqUnlink fr fsxp
-  , fuseRead = fscqRead fr fsxp
+  , fuseRead = fscqRead ds fr fsxp
   , fuseWrite = fscqWrite fr fsxp
   , fuseSetFileSize = fscqSetFileSize fr fsxp
   , fuseOpenDirectory = fscqOpenDirectory
@@ -137,7 +138,11 @@ fscqGetFileStat :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno Fi
 fscqGetFileStat _ _ "/" = do
   ctx <- getFuseContext
   return $ Right $ dirStat ctx
-fscqGetFileStat fr fsxp (_:path) = do
+fscqGetFileStat fr fsxp (_:path)
+  | path == "stats" = do
+    ctx <- getFuseContext
+    return $ Right $ fileStat ctx 1024
+  | otherwise = do
   r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
@@ -164,7 +169,9 @@ fscqReadDirectory fr fsxp "/" = do
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen fr fsxp (_:path) mode flags = do
+fscqOpen fr fsxp (_:path) mode flags
+  | path == "stats" = return $ Right $ W 0
+  | otherwise = do
   r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
@@ -213,8 +220,16 @@ compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
 compute_ranges off count =
   compute_ranges_int (fromIntegral off) (fromIntegral count)
 
-fscqRead :: FSrunner -> Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
-fscqRead fr fsxp _ inum byteCount offset = do
+fscqRead :: DiskState -> FSrunner -> Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
+fscqRead ds fr fsxp (_:path) inum byteCount offset
+  | path == "stats" = do
+    Stats r w s <- get_stats ds
+    statbuf <- return $ BSC8.pack $
+      "Reads:  " ++ (show r) ++ "\n" ++
+      "Writes: " ++ (show w) ++ "\n" ++
+      "Syncs:  " ++ (show s) ++ "\n"
+    return $ Right statbuf
+  | otherwise = do
   wlen <- fr $ FS.file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   offset <- return $ min offset len
@@ -227,6 +242,9 @@ fscqRead fr fsxp _ inum byteCount offset = do
       W w <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
       bs <- i2bs w
       return $ BS.take count $ BS.drop off bs
+
+fscqRead _ _ _ [] _ _ _ = do
+  return $ Left $ eIO
 
 compute_range_pieces :: FileOffset -> BS.ByteString -> [(BlockRange, BS.ByteString)]
 compute_range_pieces off buf = zip ranges pieces
