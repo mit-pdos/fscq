@@ -224,6 +224,7 @@ fscqRead :: DiskState -> FSrunner -> Coq_fs_xparams -> FilePath -> HT -> ByteCou
 fscqRead ds fr fsxp (_:path) inum byteCount offset
   | path == "stats" = do
     Stats r w s <- get_stats ds
+    clear_stats ds
     statbuf <- return $ BSC8.pack $
       "Reads:  " ++ (show r) ++ "\n" ++
       "Writes: " ++ (show w) ++ "\n" ++
