@@ -1635,6 +1635,11 @@ Module MEMLOG.
     unfold pimpl, crash_xform; eauto.
   Qed.
 
+  Ltac cancel_pred_crash :=
+    eapply pred_apply_crash_xform; eauto;
+    autorewrite with crash_xform;
+    cancel; subst; cancel.
+
   Theorem recover_ok: forall cachesize,
     {< m1 m2 xp,
     PRE       crash_xform (would_recover_either xp m1 m2)
@@ -1663,10 +1668,6 @@ Module MEMLOG.
     instantiate (a0 := p).
     rewrite sep_star_comm.
     apply pimpl_refl.
-    Ltac cancel_pred_crash :=
-      eapply pred_apply_crash_xform; eauto;
-      autorewrite with crash_xform;
-      cancel; subst; cancel.
 
     eapply pimpl_ok2; [ eauto with prog | ].
     intros; simpl.
