@@ -250,7 +250,7 @@ Module BFILE.
     eapply pimpl_ok2; eauto with prog.
     intros; cancel.
 
-    instantiate (a1 := Build_bfile (upd (BFData b) off v)).
+    instantiate (a1 := Build_bfile (upd (BFData b) off v) (BFSize b)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_upd; eauto.
 
@@ -265,24 +265,18 @@ Module BFILE.
       autorewrite with defaults; autorewrite with core; file_bounds.
     unfold upd; autorewrite with core; simpl; rewrite length_updN; file_bounds.
     erewrite listmatch_extract with (i := wordToNat inum) in H3; file_bounds.
-    destruct_lift H3; file_bounds.
+    unfold file_match in H3; destruct_lift H3; file_bounds.
 
     unfold sel, upd; unfold data_match at 3.
     simpl; rewrite removeN_updN, selN_updN_eq; file_bounds.
-    cancel.
-
-    (* extract BALLOC.valid_block out of [listmatch (file_match bxp)] *)
     erewrite listmatch_extract with (i := # inum) in H3 by file_bounds.
-    autorewrite with defaults in *.
     unfold file_match at 2 in H3.
-    destruct_lift H3.
-    setoid_rewrite listmatch_extract with (i := # off) at 2 in H3.
-    autorewrite with defaults in *.
+    (* extract BALLOC.valid_block out of [listmatch (file_match bxp)] *)
+    setoid_rewrite listmatch_extract with (i := # off) at 2  in H3; file_bounds.
     unfold data_match in H3.
     autorewrite with defaults in H3.
     destruct_lift H3.
-    eauto.
-    file_bounds.
+    cancel.
 
     unfold MEMLOG.log_intact; cancel.
   Qed.
@@ -332,20 +326,25 @@ Module BFILE.
     eapply pimpl_or_r; left; cancel.
     eapply pimpl_or_r; right; cancel.
 
-    instantiate (a0 := Build_bfile (BFData b ++ [w0])).
+    instantiate (a0 := Build_bfile (BFData b ++ [w0]) (BFSize b)).
     2: simpl; eapply list2nmem_upd; eauto.
 
-    rewrite_list2nmem_pred_upd H16; file_bounds.
+    rewrite_list2nmem_pred_upd H17; file_bounds.
     subst; unfold upd.
     eapply listmatch_updN_selN_r; autorewrite with defaults; file_bounds.
-    unfold file_match; cancel_exact; simpl.
-
-    eapply list2nmem_array_app_eq in H17 as Heq; eauto.
+    unfold file_match; simpl.
+    repeat rewrite_list2nmem_pred.
+    cancel.
+    rewrite sep_star_comm.
+    eapply list2nmem_array_app_eq in H18 as Heq; eauto.
     rewrite Heq; clear Heq.
-    rewrite_list2nmem_pred_sel H5; subst b.
-    eapply listmatch_app_r; file_bounds.
-    INODE.inv_option_eq; subst.
+    eapply listmatch_app_r.
+    file_bounds.
+
+    eapply list2nmem_array_app_eq in H18 as Heq; eauto.
+    rewrite <- Heq; clear Heq.
     unfold data_match; cancel.
+    admit.
 
     apply list2nmem_app; eauto.
     step.
@@ -424,7 +423,8 @@ Module BFILE.
     intros; cancel.
 
     instantiate (a1 := Build_bfile 
-      (removelast (BFData (selN l1 (wordToNat inum) bfile0)))).
+      (removelast (BFData (selN l1 (wordToNat inum) bfile0)))
+                  (BFSize (selN l1 (wordToNat inum) bfile0))).
     2: simpl; eapply list2nmem_upd; eauto.
 
     erewrite list2nmem_array_upd with (nl := l2); file_bounds.
