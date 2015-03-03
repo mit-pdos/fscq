@@ -100,9 +100,9 @@ write_disk (S fd sr dirty) (W64 a) (W v) = do
       do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
-sync_disk :: DiskState -> IO ()
-sync_disk (S fd sr dirty) = do
-  debugmsg $ "sync()"
+sync_disk :: DiskState -> Coq_word -> IO ()
+sync_disk (S fd sr dirty) a = do
+  debugmsg $ "sync(" ++ (show a) ++ ")"
   isdirty <- readIORef dirty
   if isdirty then do
     bumpSync sr
