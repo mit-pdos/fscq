@@ -853,9 +853,7 @@ Module DIR.
     let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) in
     let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
-    | Some i =>
-        mscs <- deput lxp ixp dnum i newde mscs;
-        rx (mscs, true)
+    | Some i => rx (mscs, false)
     | None =>
         let2 (mscs, r) <- dfindp lxp bxp ixp dnum dlink_f mscs;
         match r with
@@ -878,28 +876,15 @@ Module DIR.
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ rep F A m' bxp ixp dnum dmap' ]] *
              [[ (DF * name |-> inum)%pred dmap' ]] *
-             [[ (DF dmap /\ notindomain name dmap) \/ (DF * name |->?)%pred dmap ]])
+             [[ (DF dmap /\ notindomain name dmap) ]])
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlink lxp bxp ixp dnum name inum mscs.
   Proof.
     unfold dlink, rep.
     step.
-
-    (* case 1 : overwrite existing *)
     destruct b; step.
-    admit. (* well-formed *)
-    inversion H8; subst.
-    list2nmem_ptsto_cancel; list2nmem_bound.
-    step.
 
-    inversion H8; subst.
-    apply pimpl_or_r; right; cancel.
-    exists l; split; auto.
-    admit. (* a0 := Prog.upd... *)
-    admit.
-    admit.
-
-    (* case 2 : creating new *)
+    (* case 1 : use an existing avail entry *)
     destruct b; step.
     admit. (* well-formed *)
     inversion H9; subst.
@@ -912,7 +897,7 @@ Module DIR.
     admit.
     admit.
 
-    (* case 3 : extending *)
+    (* case 2 : extending entries *)
     admit. (* well-formed *)
     admit.
     step.
