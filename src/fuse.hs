@@ -174,7 +174,6 @@ fscqOpen _ _ _ _ _ = return $ Left eIO
 fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr fsxp (_:path) RegularFile _ _ = do
   r <- fr $ FS.create fsxp rootDir path
-  putStrLn $ "create: " ++ (show r)
   case r of
     Nothing -> return eNOSPC
     Just _ -> return eOK
