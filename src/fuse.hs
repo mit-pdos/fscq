@@ -257,7 +257,10 @@ fscqWrite fr fsxp _ inum bs offset = do
   where
     write_piece _ (WriteErr c) _ = return $ WriteErr c
     write_piece init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
-      W w <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
+      W w <- if blk*blocksize < init_len then
+          fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
+        else
+          return $ W 0
       old_bs <- i2bs w
       new_bs <- return $ BS.append (BS.take off old_bs)
                        $ BS.append piece_bs
