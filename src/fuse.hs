@@ -65,7 +65,8 @@ main = do
   else
     do
       putStrLn $ "Initializing file system"
-      (s, fsxp) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      (s, (fsxp, ok)) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      if ok == False then error $ "mkfs failed" else return ()
       set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
       return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
