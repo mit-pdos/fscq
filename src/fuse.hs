@@ -71,14 +71,12 @@ main = do
       return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
-  fuseMain (fscqFSOps (doFScall ds ref) fsxp) defaultExceptionHandler
-  stats <- close_disk ds
-  print_stats stats
+  fuseMain (fscqFSOps ds (doFScall ds ref) fsxp) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: FSrunner -> Coq_fs_xparams -> FuseOperations HT
-fscqFSOps fr fsxp = defaultFuseOps
+fscqFSOps :: DiskState -> FSrunner -> Coq_fs_xparams -> FuseOperations HT
+fscqFSOps ds fr fsxp = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fr fsxp
   , fuseOpen = fscqOpen fr fsxp
   , fuseCreateDevice = fscqCreate fr fsxp
@@ -89,7 +87,13 @@ fscqFSOps fr fsxp = defaultFuseOps
   , fuseOpenDirectory = fscqOpenDirectory
   , fuseReadDirectory = fscqReadDirectory fr fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats
+  , fuseDestroy = fscqDestroy ds
   }
+
+fscqDestroy :: DiskState -> IO ()
+fscqDestroy ds = do
+  stats <- close_disk ds
+  print_stats stats
 
 dirStat :: FuseContext -> FileStat
 dirStat ctx = FileStat
@@ -289,11 +293,11 @@ fscqSetFileSize _ _ _ _ = return eIO
 fscqGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
 fscqGetFileSystemStats _ =
   return $ Right $ FileSystemStats
-    { fsStatBlockSize = 512
+    { fsStatBlockSize = 4096
     , fsStatBlockCount = 1
     , fsStatBlocksFree = 1
     , fsStatBlocksAvailable = 1
     , fsStatFileCount = 5
     , fsStatFilesFree = 10
-    , fsStatMaxNameLength = 255
+    , fsStatMaxNameLength = 16
     }
