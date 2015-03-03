@@ -204,7 +204,7 @@ compute_ranges_int off count = map mkrange $ zip3 blocknums startoffs endoffs
     mkrange (blk, startoff, endoff) = BR blk startoff (endoff-startoff)
     blocknums = [off `div` blocksize .. (off + count) `div` blocksize]
     startoffs = [off `mod` blocksize] ++ replicate (length blocknums - 1) 0
-    endoffs = replicate (length blocknums - 1) blocksize ++ [count `mod` blocksize]
+    endoffs = replicate (length blocknums - 1) blocksize ++ [(off + count) `mod` blocksize]
 
 compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
 compute_ranges off count =
