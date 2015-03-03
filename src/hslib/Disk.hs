@@ -30,7 +30,7 @@ data DiskStats =
   Stats !Word !Word !Word
 
 data DiskState =
-  S !Fd !(IORef DiskStats)
+  S !Fd !(IORef DiskStats) !(IORef Bool)
 
 bumpRead :: IORef DiskStats -> IO ()
 bumpRead sr = do
@@ -68,7 +68,7 @@ i2buf i (GHC.Exts.Ptr a) = do
 
 read_disk :: DiskState -> Coq_word -> IO Coq_word
 read_disk ds (W a) = read_disk ds (W64 $ fromIntegral a)
-read_disk (S fd sr) (W64 a) = do
+read_disk (S fd sr _) (W64 a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
@@ -85,10 +85,11 @@ read_disk (S fd sr) (W64 a) = do
 write_disk :: DiskState -> Coq_word -> Coq_word -> IO ()
 write_disk ds (W a) v = write_disk ds (W64 $ fromIntegral a) v
 write_disk _ (W64 _) (W64 _) = error "write_disk: short value"
-write_disk (S fd sr) (W64 a) (W v) = do
+write_disk (S fd sr dirty) (W64 a) (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   bumpWrite sr
+  writeIORef dirty True
   allocaBytes 4096 $ \buf -> do
     _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
     i2buf v buf
@@ -100,18 +101,22 @@ write_disk (S fd sr) (W64 a) (W v) = do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
 sync_disk :: DiskState -> IO ()
-sync_disk (S fd sr) = do
+sync_disk (S fd sr dirty) = do
   debugmsg $ "sync()"
-  bumpSync sr
-  -- fileSynchroniseDataOnly fd
-  return ()
+  isdirty <- readIORef dirty
+  if isdirty then do
+    bumpSync sr
+    -- fileSynchroniseDataOnly fd
+    writeIORef dirty False
+  else
+    return ()
 
 clear_stats :: DiskState -> IO ()
-clear_stats (S _ sr) = do
+clear_stats (S _ sr _) = do
   writeIORef sr $ Stats 0 0 0
 
 get_stats :: DiskState -> IO DiskStats
-get_stats (S _ sr) = do
+get_stats (S _ sr _) = do
   s <- readIORef sr
   return s
 
@@ -119,15 +124,16 @@ init_disk :: FilePath -> IO DiskState
 init_disk disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
-  return $ S fd sr
+  dirty <- newIORef False
+  return $ S fd sr dirty
 
 set_nblocks_disk :: DiskState -> Int -> IO ()
-set_nblocks_disk (S fd _) nblocks = do
+set_nblocks_disk (S fd _ _) nblocks = do
   setFdSize fd $ fromIntegral $ nblocks * 4096
   return ()
 
 close_disk :: DiskState -> IO DiskStats
-close_disk (S fd sr) = do
+close_disk (S fd sr _) = do
   closeFd fd
   s <- readIORef sr
   return s
