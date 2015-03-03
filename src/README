@@ -42,4 +42,8 @@ To see stats:
 
   cat /tmp/fscq/stats
 
+To unmount:
+
+  fusermount -u /tmp/fscq
+
 To run benchmarks, see bench/
