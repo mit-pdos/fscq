@@ -357,15 +357,6 @@ Proof.
 Qed.
 
 
-Theorem list2nmem_updN_eq: forall A F (l l' : list A) i v0 v,
-  (F * i |-> v0)%pred (list2nmem l)
-  -> (F * i |-> v)%pred (list2nmem l')
-  -> l' = updN l i v.
-Proof.
-  admit.
-Qed.
-
-
 Definition arrayN_ex A (vs : list A) i :=
   (arrayN 0 (firstn i vs) * arrayN (i + 1) (skipn (S i) vs))%pred.
 

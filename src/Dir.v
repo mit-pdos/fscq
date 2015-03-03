@@ -780,29 +780,29 @@ Module DIR.
     apply Rec.of_word_length.
   Qed.
 
-  Lemma ptsto_dent0_mem_except : forall F m i v a b,
+  Lemma ptsto_dent0_mem_except : forall m i v a b,
     listpred dmatch a m
-    -> (F * i |-> v)%pred (list2nmem a)
-    -> (F * i |-> dent0)%pred (list2nmem b)
+    -> (arrayN_ex a i * i |-> v)%pred (list2nmem a)
+    -> (arrayN_ex a i * i |-> dent0)%pred (list2nmem b)
     -> v :-> "valid" <> $0
     -> listpred dmatch b (mem_except m (v :-> "name")).
   Proof.
     intros.
     eapply ptsto_mem_except with (v := v :-> "inum").
-    erewrite list2nmem_updN_eq with (l := a) (l' := b) by eauto.
+    erewrite <- list2nmem_array_updN with (ol := a) (nl := b); eauto.
     pred_apply.
     erewrite listpred_updN by list2nmem_bound.
     rewrite listpred_isolate with (i := i) (def := dent0) by list2nmem_bound.
     rewrite dmatch_dent0_is_emp.
-
-    unfold dent.
     cancel.
 
-    rewrite_list2nmem_pred.
+    repeat rewrite_list2nmem_pred.
     unfold dmatch.
-    destruct (weq ((selN a i dent0) :-> "valid") $0) eqn: HV; rec_simpl; auto.
+    destruct (weq ((selN a i dent0) :-> "valid") $0) eqn: HV;
+       rec_simpl; eauto.
     rewrite e in *; firstorder.
-    setoid_rewrite HV. cancel.
+    list2nmem_bound.
+    list2nmem_bound.
   Qed.
 
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
