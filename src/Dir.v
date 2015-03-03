@@ -868,13 +868,66 @@ Module DIR.
         end
     end.
 
+  Theorem dlink_ok : forall lxp bxp ixp dnum name inum mscs,
+    {< F A mbase m dmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ rep F A m bxp ixp dnum dmap ]]
+    POST:(mscs',r) exists m',
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
+        \/  ([[ r = true ]] * exists dmap' DF,
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             [[ rep F A m' bxp ixp dnum dmap' ]] *
+             [[ (DF * name |-> inum)%pred dmap' ]] *
+             [[ (DF dmap /\ notindomain name dmap) \/ (DF * name |->?)%pred dmap ]])
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dlink lxp bxp ixp dnum name inum mscs.
+  Proof.
+    unfold dlink, rep.
+    step.
 
-(*
+    (* case 1 : overwrite existing *)
+    destruct b; step.
+    admit. (* well-formed *)
+    inversion H8; subst.
+    list2nmem_ptsto_cancel; list2nmem_bound.
+    step.
+
+    inversion H8; subst.
+    apply pimpl_or_r; right; cancel.
+    exists l; split; auto.
+    admit. (* a0 := Prog.upd... *)
+    admit.
+    admit.
+
+    (* case 2 : creating new *)
+    destruct b; step.
+    admit. (* well-formed *)
+    inversion H9; subst.
+    list2nmem_ptsto_cancel; list2nmem_bound.
+    step.
+
+    apply pimpl_or_r; right; cancel.
+    exists l; split; auto.
+    admit. (* a4 := Prog.upd... *)
+    admit.
+    admit.
+
+    (* case 3 : extending *)
+    admit. (* well-formed *)
+    admit.
+    step.
+    apply pimpl_or_r; right; cancel.
+    exists l; split; auto.
+    admit. (* a := Prog.upd... *)
+    admit.
+    admit.
+  Qed.
+
+
 
   Hint Extern 1 ({{_}} progseq (dlookup _ _ _ _ _ _) _) => apply dlookup_ok : prog.
   Hint Extern 1 ({{_}} progseq (dunlink _ _ _ _ _ _) _) => apply dunlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlist _ _ _ _ _) _) => apply dlist_ok : prog.
-*)
 
 End DIR.
