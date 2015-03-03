@@ -212,9 +212,9 @@ compute_ranges_int :: Int -> Int -> [BlockRange]
 compute_ranges_int off count = map mkrange $ zip3 blocknums startoffs endoffs
   where
     mkrange (blk, startoff, endoff) = BR blk startoff (endoff-startoff)
-    blocknums = [off `div` blocksize .. (off + count) `div` blocksize]
+    blocknums = [off `div` blocksize .. (off + count - 1) `div` blocksize]
     startoffs = [off `mod` blocksize] ++ replicate (length blocknums - 1) 0
-    endoffs = replicate (length blocknums - 1) blocksize ++ [(off + count) `mod` blocksize]
+    endoffs = replicate (length blocknums - 1) blocksize ++ [(off + count - 1) `mod` blocksize + 1]
 
 compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
 compute_ranges off count =
@@ -274,9 +274,7 @@ fscqWrite fr fsxp _ inum bs offset = do
 
   where
     write_piece _ (WriteErr c) _ = return $ WriteErr c
-    write_piece init_len (WriteOK c) (BR blk off cnt, piece_bs)
-      | cnt == 0 = return $ WriteOK c
-      | otherwise = do
+    write_piece init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
       W w <- if blk*blocksize < init_len then
           fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
         else
