@@ -104,6 +104,7 @@ read_head(void)
 static void
 write_head(void)
 {
+  ideflush();   // flush all preceding writes to disk
   struct buf *buf = bread(thelog.dev, thelog.start);
   struct logheader *hb = (struct logheader *) (buf->data);
   int i;
@@ -112,7 +113,7 @@ write_head(void)
     hb->sector[i] = thelog.lh.sector[i];
   }
   bwrite(buf);
-  ideflush();   // flush this and all preceding writes to disk
+  ideflush();   // flush head
   brelse(buf);
 }
 
