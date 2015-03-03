@@ -26,3 +26,20 @@ You also need to install HFuse:
   PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs configure -p --user
   PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs build
   PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs install
+
+To run the fuse fscq:
+
+  mkdir /tmp/fscq
+  ./fuse -d -s -f /tmp/fscq  &
+
+Use use fscq:
+  echo hello > /tmp/fscq/h.txt
+  cat h.txt
+  ls /tmp/fscq/
+  etc.
+
+To see stats:
+
+  cat /tmp/fscq/stats
+
+To run benchmarks, see bench/
