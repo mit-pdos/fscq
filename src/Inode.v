@@ -1096,12 +1096,6 @@ Module INODE.
   Qed.
 
   Ltac resolve_length_eq := try solve [erewrite weq_eq; eauto; try omega; eauto].
-  Ltac inv_option_eq := repeat match goal with
-    | [ H: None = None |- _ ] => clear H
-    | [ H: None = Some _ |- _ ] => inversion H
-    | [ H: Some _ = None |- _ ] => inversion H
-    | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
-    end.
 
   Theorem igrow_alloc_ok : forall lxp bxp xp (i0 : irec) inum a mscs,
     {< F A B mbase m ilist (reclist : list irec) freelist ino,

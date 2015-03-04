@@ -786,6 +786,15 @@ Ltac cancel_exact := repeat match goal with
         rewrite sep_star_assoc_1
 end.
 
+Ltac inv_option_eq' := repeat match goal with
+  | [ H: None = None |- _ ] => clear H
+  | [ H: None = Some _ |- _ ] => inversion H
+  | [ H: Some _ = None |- _ ] => inversion H
+  | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
+  end.
+
+Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
+
 Theorem nop_ok :
   forall T A v (rx : A -> prog T),
   {{ fun done_ crash_ => exists F, F * [[ forall r_,

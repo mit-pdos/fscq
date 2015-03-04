@@ -925,13 +925,11 @@ Module DIR.
     unfold dunlink, rep_macro, rep.
     step.
     unfold derep_macro; eauto.
-    destruct b; step.
+    destruct b; step; inv_option_eq.
     unfold derep_macro; eauto.
     apply dent0_well_formed.
-    inversion H10; subst; eauto.
     step.
 
-    inversion H10; subst.
     unfold derep_macro in *; repeat deex.
     apply pimpl_or_r; right; cancel.
     exists x2, x3; intuition.
@@ -989,15 +987,13 @@ Module DIR.
     unfold dlink, rep_macro, rep.
     step.
     unfold derep_macro; eauto.
-    destruct b; step.
+    destruct b; step; inv_option_eq.
     unfold derep_macro; eauto.
 
     (* case 1 : use an existing avail entry *)
-    destruct b; step.
+    destruct b; step; inv_option_eq.
     unfold derep_macro; eauto.
     admit. (* well-formed *)
-    inversion H11; subst.
-    list2nmem_ptsto_cancel; list2nmem_bound.
     step.
 
     apply pimpl_or_r; right; cancel.
