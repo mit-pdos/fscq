@@ -421,3 +421,99 @@ Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Inv
    g1 binder, g2 binder,
    lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
+
+
+Fixpoint ForEach_ (T: Type) (ITEM : Type)
+                (L : Type) (G : Type) (f : ITEM -> L -> (L -> prog T) -> prog T)
+                (lst : list ITEM) (l : L)
+                (nocrash : G -> list ITEM -> L -> @pred addr (@weq addrlen) valuset)
+                (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (rx: L -> prog T) : prog T :=
+  match lst with
+  | nil => rx l
+  | elem :: lst' =>
+    l' <- f elem l;
+    ForEach_ f lst' l' nocrash crashed rx
+  end.
+
+Theorem foreach_ok:
+  forall T ITEM (lst : list ITEM)
+         (L : Type) (G : Type)
+         f (rx: _ -> prog T)
+         (nocrash : G -> list ITEM -> L -> pred)
+         (crashed : G -> pred)
+         (li : L),
+  {{ fun done crash => exists F (g:G), F * nocrash g lst li
+   * [[forall elem lst' lm rxm,
+      (forall lSm,
+       {{ fun done' crash' => F * nocrash g lst' lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rxm lSm) ->
+      {{ fun done' crash' => F * nocrash g (elem :: lst') lm * [[ done' = done ]] * [[ crash' = crash ]]
+      }} f elem lm rxm]]
+   * [[forall lfinal,
+       {{ fun done' crash' => F * nocrash g nil lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx lfinal]]
+   * [[F * crashed g =p=> crash]]
+  }} ForEach_ f lst li nocrash crashed rx.
+Proof.
+  intros T ITEM.
+  induction lst; intros;
+    apply corr2_exists; intros;
+    apply corr2_exists; intros.
+
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
+    + simpl.
+      unfold pimpl, lift; intros.
+      eapply pimpl_ok2; eauto.
+      intros.
+      apply pimpl_refl.
+    + cancel.
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
+    + simpl.
+      unfold pimpl, lift; intros.
+      eapply pimpl_ok2.
+      apply H1.
+      intros.
+      eapply pimpl_ok2.
+      apply IHlst.
+      cancel.
+      instantiate (lst' := lst).
+      instantiate (a0 := a1).
+      cancel.
+      eapply pimpl_ok2.
+      apply H1.
+      intros.
+      eapply pimpl_ok2.
+      apply H3.
+      cancel.
+      cancel.
+      eapply pimpl_ok2.
+      apply H0.
+      cancel.
+      cancel.
+
+      intros.
+      apply pimpl_refl.
+    + cancel.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
+Notation "'ForEach' elem lst 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun elem l lrx => body)
+        lst l0
+        (fun (_:unit) elem l => nocrash%pred)
+        (fun (_:unit) => crashed%pred))
+  (at level 9, elem at level 0, lrx at level 0, l at level 0, l0 at level 0,
+   body at level 9).
+
+Notation "'ForEach' elem lst 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun elem l lrx => body)
+        lst l0
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun elem l => nocrash%pred)) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         crashed%pred)) .. )))
+  (at level 9, elem at level 0,
+   g1 binder, g2 binder,
+   lrx at level 0, l at level 0, l0 at level 0,
+   body at level 9).
