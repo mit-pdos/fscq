@@ -824,9 +824,17 @@ Ltac autorewrite_fast :=
   | [ |- _ ] => autorewrite_fast_goal
   end.
 
+Ltac destruct_branch :=
+    match goal with
+    | [ |- {{ _ }} match ?v with | Some _ => _ | None => _ end ] => destruct v
+    | [ |- {{ _ }} match ?v with | None => _ | Some _ => _ end ] => destruct v
+    | [ |- {{ _ }} if ?v then _ else _ ] => destruct v
+    end.
+
 Ltac step_unfold unfolder :=
   intros;
   try autounfold with hoare_unfold in *;
+  try destruct_branch;
   try cancel;
   remember_xform;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])

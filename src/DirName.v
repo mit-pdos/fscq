@@ -243,20 +243,7 @@ Module SDIR.
     >} dslookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dslookup, rep_macro, rep.
-    hoare.
-
-  Hint Local Unfold DIR.rep_macro : hoare_unfold.
-  autounfold with hoare_unfold in *.
-  eauto.
-
-    eapply pimpl_or_r; left. cancel.
     admit.
-
-    eapply pimpl_or_r; right. cancel.
-    admit.
-
-    Grab Existential Variables.
-    exact emp.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (dslookup _ _ _ _ _ _) _) => apply dslookup_ok : prog.
