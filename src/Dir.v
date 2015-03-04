@@ -759,8 +759,10 @@ Module DIR.
   Proof.
     unfold dlookup, rep_macro, rep.
     step.
+    unfold derep_macro; eauto.
     destruct b; step.
-    inversion H8; subst; eauto.
+    unfold derep_macro; eauto.
+    inversion H10; subst; eauto.
     step.
     apply pimpl_or_r; left; cancel.
     rewrite sep_star_comm.
@@ -831,6 +833,7 @@ Module DIR.
   Proof.
     unfold dlist, rep_macro, rep.
     step.
+    unfold derep_macro; eauto.
     step.
     apply dlist_f_ok.
   Qed.
@@ -888,7 +891,7 @@ Module DIR.
     -> listpred dmatch b (mem_except m (v :-> "name")).
   Proof.
     intros.
-    eapply ptsto_mem_except with (v := v :-> "inum").
+    eapply ptsto_mem_except with (v := (v :-> "inum", v :-> "isdir")).
     erewrite <- list2nmem_array_updN with (ol := a) (nl := b); eauto.
     pred_apply.
     erewrite listpred_updN by list2nmem_bound.
@@ -922,17 +925,21 @@ Module DIR.
   Proof.
     unfold dunlink, rep_macro, rep.
     step.
+    unfold derep_macro; eauto.
     destruct b; step.
+    unfold derep_macro; eauto.
     apply dent0_well_formed.
-    inversion H8; subst; eauto.
+    inversion H10; subst; eauto.
     step.
 
-    inversion H8; subst.
+    inversion H10; subst.
+    unfold derep_macro in *; repeat deex.
     apply pimpl_or_r; right; cancel.
+    exists x2, x3; intuition.
     exists l; split; auto.
     instantiate (a0 := mem_except m name).
-    apply dlookup_f_ok in H10.
-    destruct H10 as [HA HN]; rewrite <- HN.
+    apply dlookup_f_ok in H12.
+    destruct H12 as [HA HN]; rewrite <- HN.
     eapply ptsto_dent0_mem_except; eauto.
 
     rewrite sep_star_comm.
@@ -982,26 +989,34 @@ Module DIR.
   Proof.
     unfold dlink, rep_macro, rep.
     step.
+    unfold derep_macro; eauto.
     destruct b; step.
+    unfold derep_macro; eauto.
 
     (* case 1 : use an existing avail entry *)
     destruct b; step.
+    unfold derep_macro; eauto.
     admit. (* well-formed *)
-    inversion H9; subst.
+    inversion H11; subst.
     list2nmem_ptsto_cancel; list2nmem_bound.
     step.
 
     apply pimpl_or_r; right; cancel.
+    unfold derep_macro in *; repeat deex.
+    exists x2, x3; intuition.
     exists l; split; auto.
-    admit. (* a4 := Prog.upd... *)
+    admit. (* a3 := Prog.upd... *)
     admit.
     admit.
 
     (* case 2 : extending entries *)
+    unfold derep_macro; eauto.
     admit. (* well-formed *)
     admit.
     step.
     apply pimpl_or_r; right; cancel.
+    unfold derep_macro in *; repeat deex.
+    exists x2, x3; intuition.
     exists l; split; auto.
     admit. (* a := Prog.upd... *)
     admit.
