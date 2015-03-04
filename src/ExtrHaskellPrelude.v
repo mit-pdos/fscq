@@ -36,6 +36,7 @@ Extract Inductive nat => "Prelude.Int" [ "0" "Prelude.succ" ]
   "(\fO fS n -> if n Prelude.== 0 then fO () else fS (n Prelude.- 1))".
 Extract Inlined Constant Nat.add => "(Prelude.+)".
 Extract Inlined Constant Nat.mul => "(Prelude.*)".
+Extract Inlined Constant Nat.div => "Prelude.div".
 Extract Inlined Constant Init.Nat.add => "(Prelude.+)".
 Extract Inlined Constant Init.Nat.mul => "(Prelude.*)".
 Extract Inlined Constant Compare_dec.lt_dec => "(Prelude.<)".
