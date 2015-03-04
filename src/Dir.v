@@ -43,9 +43,12 @@ Module DIR.
     rewrite valulen_is; auto.
   Qed.
 
-  Definition derep F1 F2 m bxp ixp (inum : addr) (delist : list dent) :=
+  Definition derep f (delist : list dent) :=
+    BFileRec.array_item_file dent_type items_per_valu itemsz_ok f delist.
+
+  Definition derep_macro F1 F2 m bxp ixp (inum : addr) (delist : list dent) :=
     exists flist f,
-    BFileRec.array_item_file dent_type items_per_valu itemsz_ok f delist /\
+    derep f delist /\
     (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
     (F2 * #inum |-> f)%pred (list2nmem flist).
 
@@ -86,14 +89,14 @@ Module DIR.
   Theorem delen_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ derep F A m bxp ixp inum delist ]]
+           [[ derep_macro F A m bxp ixp inum delist ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = $ (length delist) ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} delen lxp ixp inum mscs.
   Proof.
-    unfold delen, derep.
+    unfold delen, derep_macro, derep.
     hoare.
   Qed.
 
@@ -101,7 +104,7 @@ Module DIR.
   Theorem deget_ok : forall lxp bxp ixp inum idx mscs,
     {< F A B mbase m delist e,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ derep F A m bxp ixp inum delist ]] *
+           [[ derep_macro F A m bxp ixp inum delist ]] *
            [[ (B * #idx |-> e)%pred (list2nmem delist) ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
@@ -109,7 +112,7 @@ Module DIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} deget lxp ixp inum idx mscs.
   Proof.
-    unfold deget, derep.
+    unfold deget, derep_macro, derep.
     hoare.
     list2nmem_bound.
     repeat rewrite_list2nmem_pred; auto.
@@ -118,17 +121,17 @@ Module DIR.
   Theorem deput_ok : forall lxp bxp ixp inum idx e mscs,
     {< F A B mbase m delist e0,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ derep F A m bxp ixp inum delist ]] *
+           [[ derep_macro F A m bxp ixp inum delist ]] *
            [[ Rec.well_formed e ]] *
            [[ (B * #idx |-> e0)%pred (list2nmem delist) ]]
     POST:mscs' exists m' delist',
            MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-           [[ derep F A m' bxp ixp inum delist' ]] *
+           [[ derep_macro F A m' bxp ixp inum delist' ]] *
            [[ (B * #idx |-> e)%pred (list2nmem delist') ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} deput lxp ixp inum idx e mscs.
   Proof.
-    unfold deput, derep.
+    unfold deput, derep_macro, derep.
     hoare.
     list2nmem_bound.
     eapply list2nmem_upd; eauto.
@@ -138,18 +141,18 @@ Module DIR.
   Theorem deext_ok : forall lxp bxp ixp inum e mscs,
     {< F A B mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ derep F A m bxp ixp inum delist ]] *
+           [[ derep_macro F A m bxp ixp inum delist ]] *
            [[ Rec.well_formed e ]] *
            [[ B (list2nmem delist) ]]
     POST:(mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
           ([[ r = false ]] \/
            [[ r = true  ]] * exists delist' B',
-           [[ derep F A m' bxp ixp inum delist' ]] *
+           [[ derep_macro F A m' bxp ixp inum delist' ]] *
            [[ (B * B' * (length delist) |-> e)%pred (list2nmem delist') ]] )
     CRASH  MEMLOG.log_intact lxp mbase
     >} deext lxp bxp ixp inum e mscs.
   Proof.
-    unfold deext, derep.
+    unfold deext, derep_macro, derep.
     hoare.
     apply pimpl_or_r; right; cancel.
     admit.
@@ -175,10 +178,14 @@ Module DIR.
 
   Hint Resolve dmatch_complete.
 
-  Definition rep F1 F2 m bxp ixp inum (dmap : @mem filename (@weq filename_len) (addr * addr)) :=
-    exists delist,
-    derep F1 F2 m bxp ixp inum delist /\
-    listpred dmatch delist dmap.
+  Definition rep f dmap :=
+    exists delist, derep f delist /\ listpred dmatch delist dmap.
+
+  Definition rep_macro F1 F2 m bxp ixp (inum : addr) (dmap : @mem filename (@weq filename_len) (addr * addr)) :=
+    exists flist f,
+    rep f dmap /\
+    (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
+    (F2 * #inum |-> f)%pred (list2nmem flist).
 
   Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T :=
     let2 (mscs, n) <- delen lxp ixp dnum mscs;
@@ -188,7 +195,7 @@ Module DIR.
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_s) *
-        [[ derep F A m bxp ixp dnum delist ]] *
+        [[ derep_macro F A m bxp ixp dnum delist ]] *
         [[ snd mscs_s = fold_left f (firstn #i delist) s0 ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
@@ -203,19 +210,19 @@ Module DIR.
   Theorem dfold_ok : forall lxp bxp ixp dnum S f (s0 : S) mscs,
     {< mbase m F A delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ derep F A m bxp ixp dnum delist ]]
+           [[ derep_macro F A m bxp ixp dnum delist ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            [[ r = fold_left f delist s0 ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} dfold lxp bxp ixp dnum f s0 mscs.
   Proof.
-    unfold dfold, derep.
+    unfold dfold, derep_macro, derep.
     step.
-    unfold derep; eauto.
+    unfold derep_macro, derep; eauto.
     step.
     step.
-    unfold derep; eauto.
+    unfold derep_macro, derep; eauto.
     list2nmem_ptsto_cancel.
     eapply wlt_lt_bound; eauto.
     eapply bfrec_bound; eauto.
@@ -423,7 +430,7 @@ Module DIR.
   Theorem dfindp_ok : forall lxp bxp ixp dnum (f : dent -> bool) mscs,
     {< F A mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ derep F A m bxp ixp dnum delist ]]
+           [[ derep_macro F A m bxp ixp dnum delist ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
           ((exists idx e,
@@ -435,9 +442,9 @@ Module DIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} dfindp lxp bxp ixp dnum f mscs.
   Proof.
-    unfold dfindp, derep.
+    unfold dfindp, derep_macro, derep.
     hoare.
-    unfold derep; eauto.
+    unfold derep_macro, derep; eauto.
     destruct a; step.
 
     apply pimpl_or_r; left; cancel.
@@ -650,7 +657,7 @@ Module DIR.
   Theorem dlookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ rep F A m bxp ixp dnum dmap ]]
+           [[ rep_macro F A m bxp ixp dnum dmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            ((exists inum isdir DF,
@@ -659,7 +666,7 @@ Module DIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} dlookup lxp bxp ixp dnum name mscs.
   Proof.
-    unfold dlookup, rep.
+    unfold dlookup, rep_macro, rep.
     step.
     destruct b; step.
     inversion H8; subst; eauto.
@@ -724,14 +731,14 @@ Module DIR.
   Theorem dlist_ok : forall lxp bxp ixp dnum mscs,
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep F A m bxp ixp dnum dmap ]]
+             [[ rep_macro F A m bxp ixp dnum dmap ]]
     POST:(mscs',res)
              MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ listpred dlmatch res dmap ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlist lxp bxp ixp dnum mscs.
   Proof.
-    unfold dlist, rep.
+    unfold dlist, rep_macro, rep.
     step.
     step.
     apply dlist_f_ok.
@@ -810,19 +817,19 @@ Module DIR.
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep F A m bxp ixp dnum dmap ]]
+             [[ rep_macro F A m bxp ixp dnum dmap ]]
     POST:(mscs',r)
             ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ notindomain name dmap ]]) \/
             ([[ r = true ]] * exists m' dmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-             [[ rep F A m' bxp ixp dnum dmap' ]] *
+             [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
              [[ (DF * name |->?)%pred dmap ]] *
              [[ (DF) dmap' ]])
     CRASH    MEMLOG.log_intact lxp mbase
     >} dunlink lxp bxp ixp dnum name mscs.
   Proof.
-    unfold dunlink, rep.
+    unfold dunlink, rep_macro, rep.
     step.
     destruct b; step.
     apply dent0_well_formed.
@@ -871,18 +878,18 @@ Module DIR.
   Theorem dlink_ok : forall lxp bxp ixp dnum name inum isdir mscs,
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep F A m bxp ixp dnum dmap ]]
+             [[ rep_macro F A m bxp ixp dnum dmap ]]
     POST:(mscs',r) exists m',
             ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
         \/  ([[ r = true ]] * exists dmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-             [[ rep F A m' bxp ixp dnum dmap' ]] *
+             [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
              [[ (DF * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (DF dmap /\ notindomain name dmap) ]])
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlink lxp bxp ixp dnum name inum isdir mscs.
   Proof.
-    unfold dlink, rep.
+    unfold dlink, rep_macro, rep.
     step.
     destruct b; step.
 

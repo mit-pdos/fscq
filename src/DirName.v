@@ -221,15 +221,19 @@ Module SDIR.
     let2 (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
     rx (mscs, List.map (fun di => (name2string namelen di.(fst).(fst), di.(fst).(snd), di.(snd))) r).
 
-  Definition rep F1 F2 m bxp ixp inum (dsmap : @mem string string_dec (addr * addr)) : Prop :=
-   exists dmap,
-   DIR.rep F1 F2 m bxp ixp inum dmap /\
-   mem_trans_a (name2string namelen) dmap dsmap.
+  Definition rep f (dsmap : @mem string string_dec (addr * addr)) : Prop :=
+    exists dmap, DIR.rep f dmap /\ mem_trans_a (name2string namelen) dmap dsmap.
+
+  Definition rep_macro F1 F2 m bxp ixp (inum : addr) dsmap : Prop :=
+    exists flist f,
+    (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
+    (F2 * #inum |-> f)%pred (list2nmem flist) /\
+    rep f dsmap.
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dsmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ rep F A m bxp ixp dnum dsmap ]]
+           [[ rep_macro F A m bxp ixp dnum dsmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
            ((exists inum isdir DF, [[ r = Some (inum, isdir) ]] *
@@ -238,7 +242,7 @@ Module SDIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} dslookup lxp bxp ixp dnum name mscs.
   Proof.
-    unfold dslookup, rep.
+    unfold dslookup, rep_macro, rep.
     hoare.
 
     eapply pimpl_or_r; left. cancel.
