@@ -3,6 +3,7 @@ Require Import Balloc.
 Require Import Prog.
 Require Import BasicProg.
 Require Import Bool.
+Require Import Word.
 
 Set Implicit Arguments.
 
@@ -13,7 +14,7 @@ Module DIRALLOC.
     match oi with
     | None => rx (mscs, None)
     | Some inum =>
-      let2 (mscs, ok) <- SDIR.dslink lxp dbxp ixp dnum name inum mscs;
+      let2 (mscs, ok) <- SDIR.dslink lxp dbxp ixp dnum name inum $0 mscs;
       match ok with
       | true => rx (mscs, Some inum)
       | false => rx (mscs, None)
@@ -24,7 +25,7 @@ Module DIRALLOC.
     let2 (mscs, oi) <- SDIR.dslookup lxp dbxp ixp dnum name mscs;
     match oi with
     | None => rx (mscs, false)
-    | Some inum =>
+    | Some (inum, isdir) =>
       let2 (mscs, ok) <- SDIR.dsunlink lxp dbxp ixp dnum name mscs;
       If (bool_dec ok true) {
         mscs <- BALLOC.free_gen lxp ibxp inum mscs;

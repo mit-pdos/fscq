@@ -202,23 +202,25 @@ Qed.
 
 Module SDIR.
 
+  Definition namelen := Dir.filename_len / 8.
+
   Definition dslookup T lxp bxp ixp dnum name mscs rx : prog T :=
-    let2 (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (string2name 16 name) mscs;
+    let2 (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (string2name namelen name) mscs;
     rx (mscs, r).
 
   Definition dsunlink T lxp bxp ixp dnum name mscs rx : prog T :=
-    let2 (mscs, r) <- DIR.dunlink lxp bxp ixp dnum (string2name 16 name) mscs;
+    let2 (mscs, r) <- DIR.dunlink lxp bxp ixp dnum (string2name namelen name) mscs;
     rx (mscs, r).
 
-  Definition dslink T lxp bxp ixp dnum name inum mscs rx : prog T :=
-    let2 (mscs, r) <- DIR.dlink lxp bxp ixp dnum (string2name 16 name) inum mscs;
+  Definition dslink T lxp bxp ixp dnum name inum isdir mscs rx : prog T :=
+    let2 (mscs, r) <- DIR.dlink lxp bxp ixp dnum (string2name namelen name) inum isdir mscs;
     rx (mscs, r).
 
   Definition dslist T lxp bxp ixp dnum mscs rx : prog T :=
     let2 (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
-    rx (mscs, List.map (fun di => (name2string 16 (fst di), snd di)) r).
+    rx (mscs, List.map (fun di => (name2string namelen di.(fst).(fst), di.(fst).(snd), di.(snd))) r).
 
-  Definition rep F1 F2 m bxp ixp inum (dsmap : @mem string string_dec addr) : Prop :=
+  Definition rep F1 F2 m bxp ixp inum (dsmap : @mem string string_dec (addr * addr)) : Prop :=
    exists dmap,
    DIR.rep F1 F2 m bxp ixp inum dmap.
   (* XXX should figure out how to really relate [dsmap] to [dmap] *)
@@ -229,8 +231,8 @@ Module SDIR.
            [[ rep F A m bxp ixp dnum dsmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           ((exists inum DF, [[ r = Some inum ]] *
-             [[ (DF * name |-> inum)%pred dsmap ]]) \/
+           ((exists inum isdir DF, [[ r = Some (inum, isdir) ]] *
+             [[ (DF * name |-> (inum, isdir))%pred dsmap ]]) \/
             ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dsmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
     >} dslookup lxp bxp ixp dnum name mscs.

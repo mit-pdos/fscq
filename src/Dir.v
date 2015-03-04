@@ -24,13 +24,14 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-Definition filename_len := (256 - addrlen - addrlen).
+Definition filename_len := (512 - addrlen - addrlen - addrlen).
 Definition filename := word filename_len.
 
 Module DIR.
-  Definition dent_type : Rec.type := Rec.RecF ([("name", Rec.WordF filename_len);
-                                                ("inum", Rec.WordF addrlen);
-                                                ("valid", Rec.WordF addrlen)]).
+  Definition dent_type : Rec.type := Rec.RecF ([("name",  Rec.WordF filename_len);
+                                                ("inum",  Rec.WordF addrlen);
+                                                ("valid", Rec.WordF addrlen);
+                                                ("isdir", Rec.WordF addrlen)]).
   Definition dent := Rec.data dent_type.
   Definition dent0 := @Rec.of_word dent_type $0.
 
@@ -160,9 +161,9 @@ Module DIR.
   Hint Extern 1 ({{_}} progseq (deput _ _ _ _ _ _) _) => apply deput_ok : prog.
   Hint Extern 1 ({{_}} progseq (deext _ _ _ _ _ _) _) => apply deext_ok : prog.
 
-  Definition dmatch (de: dent) : @pred filename (@weq filename_len) addr :=
+  Definition dmatch (de: dent) : @pred filename (@weq filename_len) (addr * addr) :=
     if weq (de :-> "valid") $0 then emp
-    else (de :-> "name") |-> (de :-> "inum").
+    else (de :-> "name") |-> (de :-> "inum", de :-> "isdir").
 
   Theorem dmatch_complete : forall de m1 m2, dmatch de m1 -> dmatch de m2 -> m1 = m2.
   Proof.
@@ -174,7 +175,7 @@ Module DIR.
 
   Hint Resolve dmatch_complete.
 
-  Definition rep F1 F2 m bxp ixp inum (dmap : @mem filename (@weq filename_len) addr) :=
+  Definition rep F1 F2 m bxp ixp inum (dmap : @mem filename (@weq filename_len) (addr * addr)) :=
     exists delist,
     derep F1 F2 m bxp ixp inum delist /\
     listpred dmatch delist dmap.
@@ -462,7 +463,7 @@ Module DIR.
     | None => rx (mscs, None)
     | Some i =>
         let2 (mscs, de) <- deget lxp ixp dnum i mscs;
-        rx (mscs, Some (de :-> "inum"))
+        rx (mscs, Some (de :-> "inum", de :-> "isdir"))
     end.
 
   Lemma dlookup_f_ok: forall name de,
@@ -521,7 +522,7 @@ Module DIR.
   Qed.
 
 
-  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) addr :=
+  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) (addr * addr) :=
     if (weq (de :-> "name") name) then emp
     else dmatch de.
 
@@ -630,7 +631,7 @@ Module DIR.
   Lemma dlookup_ptsto: forall F l name a (de : dent),
     dlookup_f name de = true
     -> (F * a |-> de)%pred (list2nmem l)
-    -> listpred dmatch l =p=> (name |-> (de :-> "inum") * listpred (dmatch_ex name) l).
+    -> listpred dmatch l =p=> (name |-> (de :-> "inum", de :-> "isdir") * listpred (dmatch_ex name) l).
   Proof.
     unfold pimpl; intros.
     apply dlookup_f_ok in H; destruct H.
@@ -652,8 +653,8 @@ Module DIR.
            [[ rep F A m bxp ixp dnum dmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           ((exists inum DF,
-             [[ r = Some inum /\ (DF * name |-> inum)%pred dmap ]]) \/
+           ((exists inum isdir DF,
+             [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dmap ]]) \/
             ([[ r = None /\ notindomain name dmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
     >} dlookup lxp bxp ixp dnum name mscs.
@@ -674,12 +675,13 @@ Module DIR.
   Qed.
 
 
-  Definition dlistent := (filename * addr)%type.
-  Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) _ := fst de |-> snd de.
+  Definition dlistent := (filename * addr * addr)%type.
+  Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) _ :=
+    de.(fst).(fst) |-> (de.(fst).(snd), de.(snd)).
 
   Definition dlist_f (s : list dlistent) (de : dent) := Eval compute_rec in
     if (weq (de :-> "valid") $0) then s
-    else (de :-> "name", de :-> "inum") :: s.
+    else (de :-> "name", de :-> "inum", de :-> "isdir") :: s.
 
   Definition dlist T lxp bxp ixp dnum mscs rx : prog T :=
     let2 (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
@@ -707,7 +709,7 @@ Module DIR.
     unfold dmatch at 1; unfold dlist_f at 3; rec_simpl.
     destruct (weq (fst (snd (snd a))) $0) eqn:HV.
     rewrite star_emp_pimpl; auto.
-    pose proof (dlist_fold_listpred' l nil (fst a, fst (snd a)) dlmatch).
+    pose proof (dlist_fold_listpred' l nil (fst a, fst (snd a), fst (snd (snd (snd a)))) dlmatch).
     simpl in H; apply H.
   Qed.
 
@@ -849,8 +851,8 @@ Module DIR.
   Definition dlink_f (de : dent) : bool := Eval compute_rec in
     if (weq (de :-> "valid") $0) then true else false.
 
-  Definition dlink T lxp bxp ixp dnum name inum mscs rx : prog T := Eval compute_rec in
-    let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum) in
+  Definition dlink T lxp bxp ixp dnum name inum isdir mscs rx : prog T := Eval compute_rec in
+    let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum :=> "isdir" := isdir) in
     let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
     | Some i => rx (mscs, false)
@@ -866,7 +868,7 @@ Module DIR.
         end
     end.
 
-  Theorem dlink_ok : forall lxp bxp ixp dnum name inum mscs,
+  Theorem dlink_ok : forall lxp bxp ixp dnum name inum isdir mscs,
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ rep F A m bxp ixp dnum dmap ]]
@@ -875,10 +877,10 @@ Module DIR.
         \/  ([[ r = true ]] * exists dmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ rep F A m' bxp ixp dnum dmap' ]] *
-             [[ (DF * name |-> inum)%pred dmap' ]] *
+             [[ (DF * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (DF dmap /\ notindomain name dmap) ]])
     CRASH    MEMLOG.log_intact lxp mbase
-    >} dlink lxp bxp ixp dnum name inum mscs.
+    >} dlink lxp bxp ixp dnum name inum isdir mscs.
   Proof.
     unfold dlink, rep.
     step.

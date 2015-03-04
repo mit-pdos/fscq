@@ -22,6 +22,7 @@ import qualified FS
 import qualified MemLog
 import FSLayout
 import Control.Monad
+import qualified DirName
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
@@ -146,10 +147,14 @@ fscqGetFileStat fr fsxp (_:path)
   r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
-    Just inum -> do
-      len <- fr $ FS.file_get_sz fsxp inum
-      ctx <- getFuseContext
-      return $ Right $ fileStat ctx $ fromIntegral $ wordToNat 64 len
+    Just (inum, isdir)
+      | wordToNat 64 isdir == 0 -> do
+        len <- fr $ FS.file_get_sz fsxp inum
+        ctx <- getFuseContext
+        return $ Right $ fileStat ctx $ fromIntegral $ wordToNat 64 len
+      | otherwise -> do
+        ctx <- getFuseContext
+        return $ Right $ dirStat ctx
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FilePath -> IO Errno
@@ -160,12 +165,17 @@ fscqReadDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno 
 fscqReadDirectory fr fsxp "/" = do
   ctx <- getFuseContext
   files <- fr $ FS.readdir fsxp rootDir
-  files_stat <- mapM (\(fn, inum) -> do
-    len <- fr $ FS.file_get_sz fsxp inum
-    return $ (fn, fileStat ctx $ fromIntegral $ wordToNat 64 len)) files
+  files_stat <- mapM (mkstat ctx) files
   return $ Right $ [(".",          dirStat ctx)
                    ,("..",         dirStat ctx)
                    ] ++ files_stat
+  where
+    mkstat ctx ((fn, inum), isdir)
+      | wordToNat 64 isdir == 0 = do
+        len <- fr $ FS.file_get_sz fsxp inum
+        return $ (fn, fileStat ctx $ fromIntegral $ wordToNat 64 len)
+      | otherwise = return $ (fn, dirStat ctx)
+
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
 fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
@@ -175,7 +185,11 @@ fscqOpen fr fsxp (_:path) mode flags
   r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return $ Left eNOENT
-    Just inum -> return $ Right $ inum
+    Just (inum, isdir) ->
+      if wordToNat 64 isdir == 0 then
+        return $ Right $ inum
+      else
+        return $ Left eISDIR
 fscqOpen _ _ _ _ _ = return $ Left eIO
 
 fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
@@ -295,12 +309,14 @@ fscqSetFileSize fr fsxp (_:path) size = do
   r <- fr $ FS.lookup fsxp rootDir path
   case r of
     Nothing -> return eNOENT
-    Just inum -> do
-      ok <- fr $ FS.file_set_sz fsxp inum (W64 $ fromIntegral size)
-      if ok then
-        return eOK
-      else
-        return eIO
+    Just (inum, isdir)
+      | wordToNat 64 isdir == 0 -> do
+        ok <- fr $ FS.file_set_sz fsxp inum (W64 $ fromIntegral size)
+        if ok then
+          return eOK
+        else
+          return eIO
+      | otherwise -> return eISDIR
 fscqSetFileSize _ _ _ _ = return eIO
 
 fscqGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
@@ -312,5 +328,5 @@ fscqGetFileSystemStats _ =
     , fsStatBlocksAvailable = 1
     , fsStatFileCount = 5
     , fsStatFilesFree = 10
-    , fsStatMaxNameLength = 16
+    , fsStatMaxNameLength = fromIntegral DirName._SDIR__namelen
     }
