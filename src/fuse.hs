@@ -131,15 +131,13 @@ fileStat ctx len = FileStat
   }
 
 fscqGetFileStat :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
-fscqGetFileStat _ _ "/" = do
-  ctx <- getFuseContext
-  return $ Right $ dirStat ctx
 fscqGetFileStat fr fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
     return $ Right $ fileStat ctx 1024
   | otherwise = do
-  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) [path]
+  nameparts <- return $ splitDirectories path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   case r of
     Nothing -> return $ Left eNOENT
     Just (inum, isdir)
@@ -191,38 +189,61 @@ fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags 
 fscqOpen fr fsxp (_:path) mode flags
   | path == "stats" = return $ Right $ W 0
   | otherwise = do
-  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) [path]
+  nameparts <- return $ splitDirectories path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   case r of
     Nothing -> return $ Left eNOENT
-    Just (inum, isdir) ->
-      if wordToNat 64 isdir == 0 then
-        return $ Right $ inum
-      else
-        return $ Left eISDIR
+    Just (inum, isdir)
+      | wordToNat 64 isdir == 0 -> return $ Right $ inum
+      | otherwise -> return $ Left eISDIR
 fscqOpen _ _ _ _ _ = return $ Left eIO
 
 fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr fsxp (_:path) RegularFile _ _ = do
-  r <- fr $ FS.create fsxp (coq_FSXPRootInum fsxp) path
-  case r of
-    Nothing -> return eNOSPC
-    Just _ -> return eOK
+  (dirpath, filename) <- return $ splitFileName path
+  dirparts <- return $ splitDirectories dirpath
+  rd <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  case rd of
+    Nothing -> return eNOENT
+    Just (dnum, isdir)
+      | wordToNat 64 isdir == 0 -> return eNOTDIR
+      | otherwise -> do
+        r <- fr $ FS.create fsxp dnum filename
+        case r of
+          Nothing -> return eNOSPC
+          Just _ -> return eOK
 fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
 
 fscqCreateDir :: FSrunner -> Coq_fs_xparams -> FilePath -> FileMode -> IO Errno
 fscqCreateDir fr fsxp (_:path) _ = do
-  r <- fr $ FS.mkdir fsxp (coq_FSXPRootInum fsxp) path
-  case r of
-    Nothing -> return eNOSPC
-    Just _ -> return eOK
+  (dirpath, filename) <- return $ splitFileName path
+  dirparts <- return $ splitDirectories dirpath
+  rd <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  case rd of
+    Nothing -> return eNOENT
+    Just (dnum, isdir)
+      | wordToNat 64 isdir == 0 -> return eNOTDIR
+      | otherwise -> do
+        r <- fr $ FS.mkdir fsxp dnum filename
+        case r of
+          Nothing -> return eNOSPC
+          Just _ -> return eOK
 fscqCreateDir _ _ _ _ = return eOPNOTSUPP
 
 fscqUnlink :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
 fscqUnlink fr fsxp (_:path) = do
-  r <- fr $ FS.delete fsxp (coq_FSXPRootInum fsxp) path
-  case r of
-    True -> return eOK
-    False -> return eIO
+  (dirpath, filename) <- return $ splitFileName path
+  dirparts <- return $ splitDirectories dirpath
+  rd <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  case rd of
+    Nothing -> return eNOENT
+    Just (dnum, isdir)
+      | wordToNat 64 isdir == 0 -> return eNOTDIR
+      | otherwise -> do
+        r <- fr $ FS.delete fsxp dnum filename
+        case r of
+          True -> return eOK
+          False -> return eIO
 fscqUnlink _ _ _ = return eOPNOTSUPP
 
 -- Wrappers for converting Coq_word to/from ByteString, with
@@ -323,7 +344,8 @@ fscqWrite fr fsxp _ inum bs offset = do
 
 fscqSetFileSize :: FSrunner -> Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr fsxp (_:path) size = do
-  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) [path]
+  nameparts <- return $ splitDirectories path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   case r of
     Nothing -> return eNOENT
     Just (inum, isdir)
