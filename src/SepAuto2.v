@@ -8,8 +8,6 @@ Require Import Word.
 
 Set Implicit Arguments.
 
-Notation "'valuset'" := (valu * list valu)%type.
-
 (* Helpers for existential variables *)
 
 Ltac set_evars :=
