@@ -123,6 +123,14 @@ Section LISTPRED.
     cancel.
   Qed.
 
+  Theorem listpred_isolate_fwd : forall l i def,
+    i < length l ->
+    listpred l =p=> listpred (removeN l i) * prd (selN l i def).
+  Proof.
+    intros.
+    apply listpred_isolate; auto.
+  Qed.
+
   Theorem listpred_updN : forall l i v,
     i < length l ->
     listpred (updN l i v) <=p=> listpred (removeN l i) * prd v.

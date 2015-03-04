@@ -161,16 +161,6 @@ Module DIR.
     auto.
   Qed.
 
-  Lemma skipn_repeat : forall A (v : A) m n,
-    n <= m -> skipn n (repeat v m) = repeat v (m - n).
-  Proof.
-    induction m; simpl; intros.
-    inversion H; subst; simpl; auto.
-    destruct n; auto.
-    rewrite <- IHm; auto.
-    omega.
-  Qed.
-
   Lemma list2nmem_arrayN_app : forall A l (l0 : list A)(F : pred),
     F (list2nmem l0)
     -> (F * arrayN (length l0) l)%pred (list2nmem (l0 ++ l)).
@@ -202,17 +192,16 @@ Module DIR.
   Lemma helper_deext_ok' : forall (F : pred) l v,
     F (list2nmem l)
     -> (F * arrayN (length l) (updN (repeat dent0 (# items_per_valu)) 0 v))%pred
-        (list2nmem (l ++ updN (item0_list dent_type items_per_valu itemsz_ok) 0 v)).
+        (list2nmem (l ++ updN (repeat dent0 (# items_per_valu)) 0 v)).
   Proof.
     intros.
-    rewrite item0_list_dent0.
     apply list2nmem_arrayN_app; auto.
   Qed.
 
   Lemma helper_deext_ok : forall (F : pred) l v,
     F (list2nmem l)
     -> (F * length l |-> v * deext_tail (length l))%pred
-        (list2nmem (l ++ upd (item0_list dent_type items_per_valu itemsz_ok) $0 v)).
+        (list2nmem (l ++ updN (repeat dent0 (# items_per_valu)) 0 v)).
   Proof.
     intros; unfold deext_tail.
     pose proof (helper_deext_ok' F l v H).
@@ -237,6 +226,7 @@ Module DIR.
           ([[ r = false ]] \/
            [[ r = true  ]] * exists delist',
            [[ derep_macro F A m' bxp ixp inum delist' ]] *
+           [[ delist' = delist ++ (updN (repeat dent0 (# items_per_valu)) 0 e) ]] *
            [[ (B * (length delist) |-> e
                  * deext_tail (length delist))%pred (list2nmem delist') ]] )
     CRASH  MEMLOG.log_intact lxp mbase
@@ -245,7 +235,9 @@ Module DIR.
     unfold deext, derep_macro, derep.
     hoare.
     apply pimpl_or_r; right; cancel.
-    eauto.
+    exists l0, b1; split; eauto.
+    setoid_rewrite <- item0_list_dent0.
+    unfold upd in *; rewrite roundTrip_0 in *; auto.
     apply helper_deext_ok; auto.
   Qed.
 
@@ -586,14 +578,6 @@ Module DIR.
     inversion H.
   Qed.
 
-  Lemma Forall_cons2 : forall A (l : list A) a f,
-    Forall f (a :: l) -> Forall f l.
-  Proof.
-    intros.
-    rewrite Forall_forall in *; intros.
-    apply H.
-    apply in_cons; auto.
-  Qed.
 
   Lemma dlookup_notindomain: forall l name,
     Forall (fun e => (dlookup_f name) e = false) l
@@ -970,6 +954,98 @@ Module DIR.
         end
     end.
 
+  Lemma dlookup_nf_dmatch_emp : forall l a i,
+    Forall (fun e => dlookup_f a e = false) l
+    -> i < length l
+    -> dlink_f (selN l i dent0) = true
+    -> listpred dmatch l =p=> listpred dmatch (removeN l i).
+  Proof.
+    unfold pimpl; intros.
+    pose proof (@dlookup_notindomain l a H m H2); auto.
+    rewrite Forall_forall in H.
+    eapply listpred_isolate_fwd with (i := i) in H2; auto.
+
+    assert (dlookup_f a (selN l i dent0) = false) as Hx.
+    apply H; apply in_selN; auto.
+    apply dlookup_f_nf in Hx.
+
+    unfold dmatch at 2 in H2.
+    unfold dlink_f in H1.
+    destruct (weq ((selN l i dent0) :-> "valid") $0) eqn:HV; auto.
+    setoid_rewrite HV in H2; simpl in H2.
+    pred_apply; cancel.
+
+    setoid_rewrite HV in H1; simpl in H1.
+    inversion H1.
+  Qed.
+
+  Lemma helper_dlink_ok_avail : forall l l' m i v0 name inum isdir,
+    Forall (fun e => dlookup_f name e = false) l
+    -> listpred dmatch l m
+    -> (arrayN_ex l i * i |-> v0)%pred (list2nmem l)
+    -> (arrayN_ex l i * i |-> (name, (inum, ($1, (isdir, tt)))))%pred (list2nmem l')
+    -> dlink_f v0 = true
+    -> listpred dmatch l' (Prog.upd m name (inum, isdir)).
+  Proof.
+    intros.
+    rewrite_list2nmem_pred_sel H1; try list2nmem_bound.
+    rewrite_list2nmem_pred_upd H2; try list2nmem_bound.
+    apply list2nmem_inbound in H1 as Hb.
+    subst l'; clear H1 H2.
+
+    pose proof (@dlookup_notindomain l name H m H0); auto.
+    apply listpred_updN; auto.
+    unfold dmatch at 2; rec_simpl; simpl.
+    apply ptsto_upd_disjoint; auto.
+
+    subst.
+    eapply dlookup_nf_dmatch_emp; eauto.
+  Qed.
+
+  Lemma listpred_dmatch_dent0_emp : forall n,
+     emp =p=> listpred dmatch (repeat dent0 n).
+  Proof.
+    induction n; intros; auto.
+    simpl; fold repeat.
+    rewrite dmatch_dent0_is_emp.
+    rewrite <- IHn.
+    clear; cancel.
+  Qed.
+
+
+  Lemma helper_dlink_ok_ext : forall l m name inum isdir,
+    Forall (fun e => dlookup_f name e = false) l
+    -> Forall (fun e => dlink_f e = false) l
+    -> listpred dmatch l m
+    -> listpred dmatch (l ++ (updN (repeat dent0 # (items_per_valu)) 0
+           (name, (inum, ($1, (isdir, tt)))))) (Prog.upd m name (inum, isdir)).
+  Proof.
+    intros.
+    pose proof (items_per_valu_not_0' items_per_valu).
+    replace 0 with (length l - length l) at 1 by omega.
+    rewrite <- updN_app2 by auto.
+    apply listpred_updN.
+    rewrite app_length.
+    rewrite repeat_length; try omega.
+
+    unfold dmatch at 2; rec_simpl.
+    destruct (weq (fst (snd (snd (name, (inum, ($1, (isdir, tt)))))))
+         (natToWord addrlen 0)); simpl.
+    contradict e; discriminate.
+    apply ptsto_upd_disjoint.
+
+    replace (length l) with (length l + 0) by omega.
+    rewrite removeN_app_r; auto.
+    apply listpred_app.
+    pred_apply; cancel.
+
+    rewrite removeN_repeat by omega.
+    apply listpred_dmatch_dent0_emp.
+    apply dlookup_notindomain in H.
+    apply H; auto.
+  Qed.
+
+
   Theorem dlink_ok : forall lxp bxp ixp dnum name inum isdir mscs,
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -993,29 +1069,38 @@ Module DIR.
     (* case 1 : use an existing avail entry *)
     destruct b; step; inv_option_eq.
     unfold derep_macro; eauto.
-    admit. (* well-formed *)
+    unfold Rec.well_formed; simpl; auto.
     step.
 
     apply pimpl_or_r; right; cancel.
     unfold derep_macro in *; repeat deex.
     exists x2, x3; intuition.
     exists l; split; auto.
-    admit. (* a3 := Prog.upd... *)
-    admit.
-    admit.
+    2: eapply ptsto_upd_disjoint with (m := m); auto.
+    eapply helper_dlink_ok_avail; eauto.
+    eapply dlookup_notindomain; eauto.
+    unfold pimpl; intros.
+    eapply dlookup_notindomain; eauto.
 
     (* case 2 : extending entries *)
     unfold derep_macro; eauto.
-    admit. (* well-formed *)
-    admit.
+    unfold Rec.well_formed; simpl; auto.
+    apply list2nmem_array.
     step.
     apply pimpl_or_r; right; cancel.
     unfold derep_macro in *; repeat deex.
     exists x2, x3; intuition.
-    exists l; split; auto.
-    admit. (* a := Prog.upd... *)
-    admit.
-    admit.
+    2: eapply ptsto_upd_disjoint with (m := m); auto.
+    eexists; split; eauto.
+    eapply helper_dlink_ok_ext; eauto.
+    eapply dlookup_notindomain; eauto.
+    unfold pimpl; intros.
+    eapply dlookup_notindomain; eauto.
+
+    Grab Existential Variables.
+    exact emp. exact nil. exact emp. exact emp. exact dent0.
+    exact emp. exact nil. exact emp. exact emp. exact nil.
+    exact emp. exact emp. exact nil.
   Qed.
 
 

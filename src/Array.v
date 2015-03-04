@@ -66,6 +66,9 @@ Fixpoint repeat T (v : T) (n : nat) :=
 
 Arguments repeat : simpl never.
 
+Definition removeN {V} (l : list V) i :=
+   (firstn i l) ++ (skipn (S i) l).
+
 Lemma repeat_length: forall T n (v : T),
   length (repeat v n) = n.
 Proof.
@@ -290,6 +293,14 @@ Proof.
   exfalso; auto.
 Qed.
 
+Lemma Forall_cons2 : forall A (l : list A) a f,
+  Forall f (a :: l) -> Forall f l.
+Proof.
+  intros.
+  rewrite Forall_forall in *; intros.
+  apply H.
+  apply in_cons; auto.
+Qed.
 
 Lemma updN_selN_eq : forall T (l : list T) ix default,
   updN l ix (selN l ix default) = l.
@@ -1037,6 +1048,143 @@ Proof.
 Qed.
 
 
+
+Lemma firstn_nil : forall A n,
+  firstn n nil = @nil A.
+Proof.
+  induction n; firstorder.
+Qed.
+
+Lemma firstn_cons : forall A n (a : A) l,
+  firstn (S n) (a :: l) = a :: firstn n l.
+Proof.
+  induction n; intros.
+  simpl; auto.
+  simpl; f_equal.
+Qed.
+
+Lemma skipn_nil : forall A n,
+  skipn n nil = @nil A.
+Proof.
+  induction n; firstorder.
+Qed.
+
+Lemma removeN_nil : forall A n,
+  removeN nil n = (@nil A).
+Proof.
+  induction n; firstorder.
+Qed.
+
+Lemma cons_nil_app : forall A l r (a : A),
+  (l ++ (a :: nil)) ++ r = l ++ a :: r.
+Proof.
+  intros.
+  rewrite app_assoc_reverse.
+  simpl; auto.
+Qed.
+
+Hint Resolve cons_nil_app.
+
+Lemma firstn_app_r : forall T i (b a : list T),
+  firstn (length a + i) (a ++ b) = a ++ (firstn i b).
+Proof.
+  induction i; firstorder.
+  rewrite firstn_app by omega.
+  simpl; rewrite app_nil_r; auto.
+
+  destruct b.
+  simpl; rewrite app_nil_r.
+  rewrite firstn_oob; auto; omega.
+  rewrite firstn_cons.
+  replace (length a + S i) with (length (a ++ (t :: nil)) + i).
+  replace (a ++ t :: b) with ((a ++ (t :: nil)) ++ b) by auto.
+  rewrite IHi; auto.
+  rewrite app_length; simpl; omega.
+Qed.
+
+Lemma skipn_app : forall T (a b : list T),
+  skipn (length a) (a ++ b) = b.
+Proof.
+  induction a; firstorder.
+Qed.
+
+Lemma skipn_app_r : forall T i (b a : list T),
+  skipn (length a + i) (a ++ b) = skipn i b.
+Proof.
+  induction i; firstorder.
+  replace (length a + 0) with (length a) by omega.
+  rewrite skipn_app; simpl; auto.
+
+  destruct a; destruct b; simpl; firstorder.
+  rewrite app_nil_r.
+  rewrite skipn_oob; auto; omega.
+  rewrite <- IHi with (a := a ++ (t0 :: nil)).
+  rewrite cons_nil_app.
+  f_equal.
+  rewrite app_length; simpl; omega.
+Qed.
+
+
+Lemma removeN_app_r : forall T (b a : list T) i,
+  removeN (a ++ b) (length a + i) = a ++ (removeN b i).
+Proof.
+  unfold removeN; intros.
+  rewrite firstn_app_r.
+  replace (S (length a + i)) with (length a + (S i)) by omega.
+  rewrite skipn_app_r.
+  apply app_assoc_reverse.
+Qed.
+
+Lemma firstn_repeat : forall T m n (v : T),
+  n <= m -> firstn n (repeat v m) = repeat v n.
+Proof.
+  induction m; simpl; intros.
+  replace n with 0 by omega.
+  firstorder.
+
+  unfold repeat at 1; fold repeat.
+  destruct n.
+  unfold repeat; simpl; auto.
+
+  rewrite firstn_cons.
+  unfold repeat at 2; fold repeat.
+  rewrite IHm by omega; auto.
+Qed.
+
+Lemma skipn_repeat : forall A (v : A) m n,
+  n <= m -> skipn n (repeat v m) = repeat v (m - n).
+Proof.
+  induction m; simpl; intros.
+  inversion H; subst; simpl; auto.
+  destruct n; auto.
+  rewrite <- IHm; auto.
+  omega.
+Qed.
+
+Lemma app_repeat : forall T m n (v : T),
+  repeat v m ++ repeat v n = repeat v (m + n).
+Proof.
+  induction m; unfold repeat; firstorder; fold repeat.
+  rewrite <- app_comm_cons.
+  rewrite IHm.
+  replace (S m + n) with (S (m + n)) by omega.
+  unfold repeat at 2; fold repeat; auto.
+Qed.
+
+
+Lemma removeN_repeat : forall T n i (e : T),
+   n > 0 -> i < n
+   -> removeN (repeat e n) i = repeat e (n - 1).
+Proof.
+  intros.
+  unfold removeN.
+  rewrite firstn_repeat by omega.
+  rewrite skipn_repeat by omega.
+  rewrite app_repeat.
+  f_equal; omega.
+Qed.
+
+
 (** * Operations for array accesses, to guide automation *)
 
 Definition ArrayRead T a i stride rx : prog T :=
@@ -1195,10 +1343,6 @@ Proof.
   f_equal.
   apply IHal; omega.
 Qed.
-
-
-Definition removeN {V} (l : list V) i :=
-   (firstn i l) ++ (skipn (S i) l).
 
 Theorem removeN_updN : forall V l i (v : V),
    removeN (updN l i v) i = removeN l i.

@@ -1003,6 +1003,14 @@ Proof.
   destruct (AEQ a a'); firstorder.
 Qed.
 
+Theorem notindomain_mem_eq : forall a (m : @mem AT AEQ V),
+  notindomain a m -> m = mem_except m a.
+Proof.
+  unfold notindomain, mem_except; intros.
+  apply functional_extensionality; intros.
+  destruct (AEQ x a); subst; auto.
+Qed.
+
 Theorem indomain_mem_except : forall a a' v (m : @mem AT AEQ V),
   a <> a'
   -> (mem_except m a') a = Some v
