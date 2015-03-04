@@ -138,6 +138,95 @@ Module DIR.
   Qed.
 
 
+  Definition deext_tail len:=
+    (arrayN (len + 1) (repeat dent0 (# items_per_valu - 1)))%pred.
+
+
+  Lemma item0_list_dent0 :
+    item0_list dent_type items_per_valu itemsz_ok = repeat dent0 (# items_per_valu).
+  Proof.
+    unfold item0_list, valu_to_block, RecArray.valu_to_block.
+    unfold RecArray.valu_to_wreclen, RecArray.blocktype.
+    unfold eq_rec, eq_rect.
+    generalize itemsz_ok.
+    generalize valulen.
+    generalize (# items_per_valu).
+    intros.
+    rewrite e; clear e.
+    induction n.
+    reflexivity.
+    unfold repeat; fold repeat.
+    unfold Rec.of_word; fold (@Rec.of_word (Rec.ArrayF dent_type n)).
+    f_equal.
+    auto.
+  Qed.
+
+  Lemma skipn_repeat : forall A (v : A) m n,
+    n <= m -> skipn n (repeat v m) = repeat v (m - n).
+  Proof.
+    induction m; simpl; intros.
+    inversion H; subst; simpl; auto.
+    destruct n; auto.
+    rewrite <- IHm; auto.
+    omega.
+  Qed.
+
+  Lemma list2nmem_arrayN_app : forall A l (l0 : list A)(F : pred),
+    F (list2nmem l0)
+    -> (F * arrayN (length l0) l)%pred (list2nmem (l0 ++ l)).
+  Proof.
+    induction l; simpl; intros.
+    rewrite app_nil_r.
+    pred_apply; cancel.
+    replace (S (length l0)) with (length (l0 ++ [a])).
+    replace (l0 ++ a :: l) with ((l0 ++ [a]) ++ l).
+    apply sep_star_assoc_1.
+    apply IHl.
+    apply list2nmem_app; auto.
+    rewrite <- app_assoc.
+    rewrite <- app_comm_cons.
+    simpl; auto.
+    rewrite app_length; simpl; omega.
+  Qed.
+
+  Lemma arrayN_updN_0 : forall A l s (v : A),
+    length l > 0
+    -> arrayN s (updN l 0 v) =p=> (s |-> v * (arrayN (s + 1) (skipn 1 l)))%pred.
+  Proof.
+    intros.
+    rewrite arrayN_isolate_upd by auto.
+    replace (s + 0) with s by omega.
+    cancel.
+  Qed.
+
+  Lemma helper_deext_ok' : forall (F : pred) l v,
+    F (list2nmem l)
+    -> (F * arrayN (length l) (updN (repeat dent0 (# items_per_valu)) 0 v))%pred
+        (list2nmem (l ++ updN (item0_list dent_type items_per_valu itemsz_ok) 0 v)).
+  Proof.
+    intros.
+    rewrite item0_list_dent0.
+    apply list2nmem_arrayN_app; auto.
+  Qed.
+
+  Lemma helper_deext_ok : forall (F : pred) l v,
+    F (list2nmem l)
+    -> (F * length l |-> v * deext_tail (length l))%pred
+        (list2nmem (l ++ upd (item0_list dent_type items_per_valu itemsz_ok) $0 v)).
+  Proof.
+    intros; unfold deext_tail.
+    pose proof (helper_deext_ok' F l v H).
+    pred_apply; cancel.
+    rewrite <- skipn_repeat.
+    rewrite <- arrayN_updN_0; auto.
+    rewrite repeat_length.
+    pose proof (items_per_valu_not_0' items_per_valu); omega.
+    unfold items_per_valu.
+    rewrite valulen_is.
+    compute; omega.
+  Qed.
+
+
   Theorem deext_ok : forall lxp bxp ixp inum e mscs,
     {< F A B mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -146,16 +235,18 @@ Module DIR.
            [[ B (list2nmem delist) ]]
     POST:(mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
           ([[ r = false ]] \/
-           [[ r = true  ]] * exists delist' B',
+           [[ r = true  ]] * exists delist',
            [[ derep_macro F A m' bxp ixp inum delist' ]] *
-           [[ (B * B' * (length delist) |-> e)%pred (list2nmem delist') ]] )
+           [[ (B * (length delist) |-> e
+                 * deext_tail (length delist))%pred (list2nmem delist') ]] )
     CRASH  MEMLOG.log_intact lxp mbase
     >} deext lxp bxp ixp inum e mscs.
   Proof.
     unfold deext, derep_macro, derep.
     hoare.
     apply pimpl_or_r; right; cancel.
-    admit.
+    eauto.
+    apply helper_deext_ok; auto.
   Qed.
 
 
