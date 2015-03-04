@@ -892,20 +892,19 @@ Module DIR.
   Proof.
     intros.
     eapply ptsto_mem_except with (v := (v :-> "inum", v :-> "isdir")).
-    erewrite <- list2nmem_array_updN with (ol := a) (nl := b); eauto.
+    erewrite <- list2nmem_array_updN with (nl := b); eauto; try list2nmem_bound.
     pred_apply.
     erewrite listpred_updN by list2nmem_bound.
     rewrite listpred_isolate with (i := i) (def := dent0) by list2nmem_bound.
     rewrite dmatch_dent0_is_emp.
-    cancel.
+    unfold dent; cancel.
 
-    repeat rewrite_list2nmem_pred.
+    repeat rewrite_list2nmem_pred; try list2nmem_bound.
     unfold dmatch.
     destruct (weq ((selN a i dent0) :-> "valid") $0) eqn: HV;
        rec_simpl; eauto.
     rewrite e in *; firstorder.
-    list2nmem_bound.
-    list2nmem_bound.
+    setoid_rewrite HV; auto.
   Qed.
 
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
