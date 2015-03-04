@@ -30,13 +30,6 @@ type HT = Coq_word
 disk_fn :: String
 disk_fn = "disk.img"
 
--- Special inode numbers
-rootDir :: Coq_word
-rootDir = W 4090
--- we stick the root directory towards the end because we don't currently
--- have a way of marking it as in-use by the allocator, so we just hope the
--- allocator never picks this number for now..
-
 -- File system configuration
 cachesize :: Coq_word
 cachesize = W64 1000
@@ -144,7 +137,7 @@ fscqGetFileStat fr fsxp (_:path)
     ctx <- getFuseContext
     return $ Right $ fileStat ctx 1024
   | otherwise = do
-  r <- fr $ FS.lookup fsxp rootDir path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) path
   case r of
     Nothing -> return $ Left eNOENT
     Just (inum, isdir)
@@ -164,7 +157,7 @@ fscqOpenDirectory _   = return eNOENT
 fscqReadDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 fscqReadDirectory fr fsxp "/" = do
   ctx <- getFuseContext
-  files <- fr $ FS.readdir fsxp rootDir
+  files <- fr $ FS.readdir fsxp (coq_FSXPRootInum fsxp)
   files_stat <- mapM (mkstat ctx) files
   return $ Right $ [(".",          dirStat ctx)
                    ,("..",         dirStat ctx)
@@ -182,7 +175,7 @@ fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags 
 fscqOpen fr fsxp (_:path) mode flags
   | path == "stats" = return $ Right $ W 0
   | otherwise = do
-  r <- fr $ FS.lookup fsxp rootDir path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) path
   case r of
     Nothing -> return $ Left eNOENT
     Just (inum, isdir) ->
@@ -194,7 +187,7 @@ fscqOpen _ _ _ _ _ = return $ Left eIO
 
 fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr fsxp (_:path) RegularFile _ _ = do
-  r <- fr $ FS.create fsxp rootDir path
+  r <- fr $ FS.create fsxp (coq_FSXPRootInum fsxp) path
   case r of
     Nothing -> return eNOSPC
     Just _ -> return eOK
@@ -202,7 +195,7 @@ fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
 
 fscqUnlink :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
 fscqUnlink fr fsxp (_:path) = do
-  r <- fr $ FS.delete fsxp rootDir path
+  r <- fr $ FS.delete fsxp (coq_FSXPRootInum fsxp) path
   case r of
     True -> return eOK
     False -> return eIO
@@ -306,7 +299,7 @@ fscqWrite fr fsxp _ inum bs offset = do
 
 fscqSetFileSize :: FSrunner -> Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr fsxp (_:path) size = do
-  r <- fr $ FS.lookup fsxp rootDir path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) path
   case r of
     Nothing -> return eNOENT
     Just (inum, isdir)

@@ -42,7 +42,17 @@ Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
    (Build_inode_xparams inode_base inode_blocks)
    (Build_balloc_xparams (inode_base ^+ inode_blocks) inode_bitmaps)
    (Build_balloc_xparams balloc_base data_bitmaps)
+   $0
    max_addr).
+
+Definition set_root_inode fsxp rootinum :=
+  Build_fs_xparams
+    fsxp.(FSXPMemLog)
+    fsxp.(FSXPInode)
+    fsxp.(FSXPInodeAlloc)
+    fsxp.(FSXPBlockAlloc)
+    rootinum
+    fsxp.(FSXPMaxBlock).
 
 Definition mkfs T (data_bitmaps inode_bitmaps cachesize : addr) rx : prog T :=
   let fsxp := compute_xparams data_bitmaps inode_bitmaps in
@@ -52,8 +62,16 @@ Definition mkfs T (data_bitmaps inode_bitmaps cachesize : addr) rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   mscs <- BALLOC.init' (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
   mscs <- INODE.init (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) mscs;
-  let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-  rx (mscs, (fsxp, ok)).
+  let2 (mscs, r) <- BALLOC.alloc_gen (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+  match r with
+  | None =>
+    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    rx (mscs, (fsxp, false))
+  | Some inum =>
+    let fsxp' := set_root_inode fsxp inum in
+    let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    rx (mscs, (fsxp, ok))
+  end.
 
 Definition file_nblocks T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;

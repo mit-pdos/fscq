@@ -36,6 +36,7 @@ Record fs_xparams := {
   FSXPInode : inode_xparams;
   FSXPInodeAlloc : balloc_xparams;
   FSXPBlockAlloc : balloc_xparams;
+  FSXPRootInum : addr;
   FSXPMaxBlock : addr
 }.
 
@@ -55,6 +56,7 @@ Definition superblock_type : Rec.type := Rec.RecF ([
     ("iastart",     Rec.WordF addrlen);
     ("ianblocks",   Rec.WordF addrlen);
 
+    ("root_inum",   Rec.WordF addrlen);
     ("maxblock",    Rec.WordF addrlen)
   ]).
 
@@ -73,7 +75,7 @@ Definition superblock0 := @Rec.of_word superblock_type (wzero _).
 Definition superblock_pad0 := @Rec.of_word superblock_padded (wzero _).
 
 Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padded) :=
-  let (lxp, ixp, ibxp, dbxp, maxblock) := fsxp in
+  let (lxp, ixp, ibxp, dbxp, rootinum, maxblock) := fsxp in
   let sb := superblock0
     :=> "data_start"  := (DataStart lxp)
     :=> "log_header"  := (LogHeader lxp)
@@ -86,6 +88,7 @@ Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padd
     :=> "banblocks"   := (BmapNBlocks dbxp)
     :=> "iastart"     := (BmapStart ibxp)
     :=> "ianblocks"   := (BmapNBlocks ibxp)
+    :=> "root_inum"   := rootinum
     :=> "maxblock"    := maxblock
   in Rec.to_word (superblock_pad0 :=> "sb" := sb).
 
@@ -100,8 +103,9 @@ Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) : fs_xpa
     (sb :-> "bastart") (sb :-> "banblocks") in
   let ibxp := Build_balloc_xparams
     (sb :-> "iastart") (sb :-> "ianblocks") in
+  let rootinum := (sb :-> "root_inum") in
   let maxblock := (sb :-> "maxblock") in
-  Build_fs_xparams lxp ixp ibxp dbxp maxblock.
+  Build_fs_xparams lxp ixp ibxp dbxp rootinum maxblock.
 
 Theorem pickle_unpickle_superblock : forall fsxp,
   unpickle_superblock (pickle_superblock fsxp) = fsxp.
