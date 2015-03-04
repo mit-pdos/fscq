@@ -78,6 +78,7 @@ fscqFSOps ds fr fsxp = defaultFuseOps
   , fuseCreateDevice = fscqCreate fr fsxp
   , fuseCreateDirectory = fscqCreateDir fr fsxp
   , fuseRemoveLink = fscqUnlink fr fsxp
+  , fuseRemoveDirectory = fscqUnlink fr fsxp
   , fuseRead = fscqRead ds fr fsxp
   , fuseWrite = fscqWrite fr fsxp
   , fuseSetFileSize = fscqSetFileSize fr fsxp
