@@ -11,6 +11,7 @@ Require Import MemLog.
 Require Import BFile.
 Require Import GenSep.
 Require Import GenSepN.
+Require Import ListPred.
 Require List.
 
 Set Implicit Arguments.
@@ -222,8 +223,8 @@ Module SDIR.
 
   Definition rep F1 F2 m bxp ixp inum (dsmap : @mem string string_dec (addr * addr)) : Prop :=
    exists dmap,
-   DIR.rep F1 F2 m bxp ixp inum dmap.
-  (* XXX should figure out how to really relate [dsmap] to [dmap] *)
+   DIR.rep F1 F2 m bxp ixp inum dmap /\
+   mem_trans_a (name2string namelen) dmap dsmap.
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dsmap,
