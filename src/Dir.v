@@ -1060,7 +1060,6 @@ Module DIR.
     unfold Rec.well_formed; simpl; auto.
     apply list2nmem_array.
     apply pimpl_or_r; right; cancel.
-    unfold derep_macro in *; repeat deex.
     exists x2, x3; intuition.
     2: eapply ptsto_upd_disjoint with (m := m); auto.
     eexists; split; eauto.
@@ -1079,7 +1078,7 @@ Module DIR.
 
   Hint Extern 1 ({{_}} progseq (dlookup _ _ _ _ _ _) _) => apply dlookup_ok : prog.
   Hint Extern 1 ({{_}} progseq (dunlink _ _ _ _ _ _) _) => apply dunlink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlist _ _ _ _ _) _) => apply dlist_ok : prog.
 
 End DIR.
