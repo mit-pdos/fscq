@@ -499,7 +499,7 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
 Notation "'ForEach' elem lst 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (For_ (fun elem l lrx => body)
+  (ForEach_ (fun elem l lrx => body)
         lst l0
         (fun (_:unit) elem l => nocrash%pred)
         (fun (_:unit) => crashed%pred))
@@ -507,7 +507,7 @@ Notation "'ForEach' elem lst 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' no
    body at level 9).
 
 Notation "'ForEach' elem lst 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (For_ (fun elem l lrx => body)
+  (ForEach_ (fun elem l lrx => body)
         lst l0
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun elem l => nocrash%pred)) .. ))
