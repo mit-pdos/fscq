@@ -314,33 +314,26 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   let2 (mscs, oldsz) <- BFILE.bfgetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
   let2 (mscs, curlen) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
-  If (wlt_dec off curlen) {
-    mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
-    If (wlt_dec oldsz newsz) {
-      mscs <- BFILE.bfsetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum newsz mscs;
-      let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-      rx (mscs, ok)
-    } else {
-      let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-      rx (mscs, ok)
-    }
+  mscs <- IfRx irx (wlt_dec off curlen) {
+    irx mscs
   } else {
     let2 (mscs, ok) <- set_size_helper fsxp inum (off ^+ $1) mscs;
-    If (bool_dec ok false) {
+    If (bool_dec ok true) {
+      irx mscs
+    } else {
       mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
       rx (mscs, false)
-    } else {
-      mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
-      If (wlt_dec oldsz newsz) {
-        mscs <- BFILE.bfsetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum newsz mscs;
-        let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-        rx (mscs, ok)
-      } else {
-        let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-        rx (mscs, ok)
-      }
     }
-  }.
+  };
+  mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  mscs <- IfRx irx (wlt_dec oldsz newsz) {
+    mscs <- BFILE.bfsetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum newsz mscs;
+    irx mscs
+  } else {
+    irx mscs
+  };
+  let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  rx (mscs, ok).
 
 Definition readdir T fsxp dnum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;

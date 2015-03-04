@@ -144,6 +144,24 @@ Qed.
 Hint Extern 1 ({{_}} If_ _ _ _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
+Definition IfRx_ T P Q R (b : {P} + {Q}) (p1 p2 : (R -> prog T) -> prog T) (rx : R -> prog T) : prog T :=
+  If_ b (p1 rx) (p2 rx).
+
+Theorem ifrx_ok:
+  forall T P Q R (b : {P}+{Q}) (p1 p2 : (R -> prog T) -> prog T) rx,
+  {{ fun done crash => exists pre, pre
+   * [[ {{ fun done' crash' => pre * [[P]] * [[ done' = done ]] * [[ crash' = crash ]] }} p1 rx ]]
+   * [[ {{ fun done' crash' => pre * [[Q]] * [[ done' = done ]] * [[ crash' = crash ]] }} p2 rx ]]
+  }} IfRx_ b p1 p2 rx.
+Proof.
+  unfold IfRx_; intros.
+  apply if_ok.
+Qed.
+
+Hint Extern 1 ({{_}} IfRx_ _ _ _) => apply ifrx_ok : prog.
+Notation "'IfRx' rx b { p1 } 'else' { p2 }" :=
+  (IfRx_ b (fun rx => p1) (fun rx => p2)) (at level 9, rx at level 0, b at level 0).
+
 Record For_args (L : Type) := {
   For_args_i : addr;
   For_args_n : addr;
