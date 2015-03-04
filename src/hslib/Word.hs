@@ -90,13 +90,18 @@ zext _ (W64 w) _ = W $ fromIntegral w
 
 split1 :: Int -> Int -> Coq_word -> Coq_word
 split1 sz1 _ (W (Jp# (BN# ba)))
-  | sz1 > 8 * I# (sizeofByteArray# ba) = W $ Jp# $ BN# ba
+  | sz1 >= 8 * I# (sizeofByteArray# ba) = W $ Jp# $ BN# ba
   | sz1 `rem` 8 == 0 = case sz1 `quot` 8 of
     (I# sz1#) -> W $ importIntegerFromByteArray ba 0## (int2Word# sz1#) 0#
 split1 sz1 _ (W w) = wrap sz1 w
 split1 sz1 sz2 (W64 w) = split1 sz1 sz2 (W $ fromIntegral w)
 
 split2 :: Int -> Int -> Coq_word -> Coq_word
+-- split2 sz1 sz2 (W (Jp# (BN# ba)))
+--   | sz1 >= 8 * I# (sizeofByteArray# ba) = W 0
+--   | sz1 `rem` 8 == 0 && sz2 `rem` 8 == 0 = case sz1 `quot` 8 of
+--     (I# sz1#) -> case sz2 `quot` 8 of
+--       (I# sz2#) -> W $ importIntegerFromByteArray ba (int2Word# sz1#) (int2Word# sz2#) 0#
 split2 sz1 _ (W w) = W $ w `Data.Bits.shiftR` (fromIntegral sz1)
 split2 sz1 sz2 (W64 w) = split2 sz1 sz2 (W $ fromIntegral w)
 
