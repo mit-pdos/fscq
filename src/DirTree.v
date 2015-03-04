@@ -19,26 +19,21 @@ Set Implicit Arguments.
 
 Module DIRTREE.
 
-  (**
-   * XXX slightly awkward: we have to specify a tree depth ahead of time,
-   * since otherwise Coq will not let us construct a tree of possibly-infinite
-   * depth..
-   *)
-  Fixpoint dirtree depth : Type :=
-    match depth with
-    | O => unit
-    | S depth' => @mem string string_dec (addr * (BFILE.bfile + dirtree depth'))%type
-    end.
+  Inductive dir_item :=
+  | DirFile : BFILE.bfile -> dir_item
+  | DirSubdir : @mem string string_dec (addr * dir_item) -> dir_item.
 
-  Definition tree_dir_pred {depth} (tree : dirtree depth) : @pred _ eq_nat_dec BFILE.bfile.
+  Definition dirtree := @mem string string_dec (addr * dir_item).
+
+  Definition tree_dir_pred (tree : dirtree) : @pred _ eq_nat_dec BFILE.bfile.
     admit.
   Defined.
 
-  Definition tree_file_pred {depth} (tree : dirtree depth) : @pred _ eq_nat_dec BFILE.bfile.
+  Definition tree_file_pred (tree : dirtree) : @pred _ eq_nat_dec BFILE.bfile.
     admit.
   Defined.
 
-  Definition rep fsxp {depth} (tree : dirtree depth) :=
+  Definition rep fsxp tree :=
     (exists bflist freeinodes freeinode_pred_unused freeinode_pred,
      BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
      BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred *
