@@ -75,6 +75,7 @@ fscqFSOps ds fr fsxp = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fr fsxp
   , fuseOpen = fscqOpen fr fsxp
   , fuseCreateDevice = fscqCreate fr fsxp
+  , fuseCreateDirectory = fscqCreateDir fr fsxp
   , fuseRemoveLink = fscqUnlink fr fsxp
   , fuseRead = fscqRead ds fr fsxp
   , fuseWrite = fscqWrite fr fsxp
@@ -192,6 +193,14 @@ fscqCreate fr fsxp (_:path) RegularFile _ _ = do
     Nothing -> return eNOSPC
     Just _ -> return eOK
 fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
+
+fscqCreateDir :: FSrunner -> Coq_fs_xparams -> FilePath -> FileMode -> IO Errno
+fscqCreateDir fr fsxp (_:path) _ = do
+  r <- fr $ FS.mkdir fsxp (coq_FSXPRootInum fsxp) path
+  case r of
+    Nothing -> return eNOSPC
+    Just _ -> return eOK
+fscqCreateDir _ _ _ _ = return eOPNOTSUPP
 
 fscqUnlink :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
 fscqUnlink fr fsxp (_:path) = do

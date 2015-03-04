@@ -374,6 +374,21 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     end
   end.
 
+Definition mkdir T fsxp dnum name mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  let2 (mscs, oi) <- DIRTREE.mkdir fsxp dnum name mscs;
+  match oi with
+  | None =>
+    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    rx (mscs, None)
+  | Some inum =>
+    let2 (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    match ok with
+    | true => rx (mscs, Some inum)
+    | false => rx (mscs, None)
+    end
+  end.
+
 Definition delete T fsxp dnum name mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   let2 (mscs, ok) <- DIRTREE.delete fsxp dnum name mscs;
