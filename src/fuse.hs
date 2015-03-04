@@ -12,6 +12,7 @@ import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
 import System.Fuse
+import System.FilePath.Posix
 import Word
 import Disk
 import Cache
@@ -80,7 +81,7 @@ fscqFSOps ds fr fsxp = defaultFuseOps
   , fuseRead = fscqRead ds fr fsxp
   , fuseWrite = fscqWrite fr fsxp
   , fuseSetFileSize = fscqSetFileSize fr fsxp
-  , fuseOpenDirectory = fscqOpenDirectory
+  , fuseOpenDirectory = fscqOpenDirectory fr fsxp
   , fuseReadDirectory = fscqReadDirectory fr fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats
   , fuseDestroy = fscqDestroy ds
@@ -138,7 +139,7 @@ fscqGetFileStat fr fsxp (_:path)
     ctx <- getFuseContext
     return $ Right $ fileStat ctx 1024
   | otherwise = do
-  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) [path]
   case r of
     Nothing -> return $ Left eNOENT
     Just (inum, isdir)
@@ -151,18 +152,32 @@ fscqGetFileStat fr fsxp (_:path)
         return $ Right $ dirStat ctx
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
-fscqOpenDirectory :: FilePath -> IO Errno
-fscqOpenDirectory "/" = return eOK
-fscqOpenDirectory _   = return eNOENT
+fscqOpenDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
+fscqOpenDirectory fr fsxp (_:path) = do
+  nameparts <- return $ splitDirectories path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  case r of
+    Nothing -> return eNOENT
+    Just (inum, isdir)
+      | wordToNat 64 isdir == 0 -> return eNOTDIR
+      | otherwise -> return eOK
+fscqOpenDirectory _ _ "" = return eNOENT
 
 fscqReadDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fr fsxp "/" = do
+fscqReadDirectory fr fsxp (_:path) = do
   ctx <- getFuseContext
-  files <- fr $ FS.readdir fsxp (coq_FSXPRootInum fsxp)
-  files_stat <- mapM (mkstat ctx) files
-  return $ Right $ [(".",          dirStat ctx)
-                   ,("..",         dirStat ctx)
-                   ] ++ files_stat
+  nameparts <- return $ splitDirectories path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  case r of
+    Nothing -> return $ Left $ eNOENT
+    Just (dnum, isdir)
+      | wordToNat 64 isdir == 0 -> return $ Left $ eNOTDIR
+      | otherwise -> do
+        files <- fr $ FS.readdir fsxp dnum
+        files_stat <- mapM (mkstat ctx) files
+        return $ Right $ [(".",          dirStat ctx)
+                         ,("..",         dirStat ctx)
+                         ] ++ files_stat
   where
     mkstat ctx ((fn, inum), isdir)
       | wordToNat 64 isdir == 0 = do
@@ -176,7 +191,7 @@ fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags 
 fscqOpen fr fsxp (_:path) mode flags
   | path == "stats" = return $ Right $ W 0
   | otherwise = do
-  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) [path]
   case r of
     Nothing -> return $ Left eNOENT
     Just (inum, isdir) ->
@@ -308,7 +323,7 @@ fscqWrite fr fsxp _ inum bs offset = do
 
 fscqSetFileSize :: FSrunner -> Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr fsxp (_:path) size = do
-  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) path
+  r <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) [path]
   case r of
     Nothing -> return eNOENT
     Just (inum, isdir)
