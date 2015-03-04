@@ -1,0 +1,13 @@
+--- a/plugins/extraction/haskell.ml
++++ b/plugins/extraction/haskell.ml
+@@ -101,8 +101,8 @@ let rec pp_type par vl t =
+     | Tarr (t1,t2) ->
+ 	pp_par par
+ 	  (pp_rec true t1 ++ spc () ++ str "->" ++ spc () ++ pp_rec false t2)
+-    | Tdummy _ -> str "()"
+-    | Tunknown -> str "()"
++    | Tdummy _ -> str "GHC.Prim.Any"
++    | Tunknown -> str "GHC.Prim.Any"
+     | Taxiom -> str "() -- AXIOM TO BE REALIZED\n"
+  in
+   hov 0 (pp_rec par t)

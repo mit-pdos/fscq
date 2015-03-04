@@ -8,6 +8,7 @@ import os, sys
 imports = """
 import qualified Data.Bits
 import qualified Data.Char
+import qualified GHC.Prim
 """
 
 filename = sys.argv[2]
