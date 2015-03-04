@@ -270,6 +270,8 @@ Module DIR.
     (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
     (F2 * #inum |-> f)%pred (list2nmem flist).
 
+  Local Hint Unfold derep_macro derep rep_macro rep: hoare_unfold.
+
   Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T :=
     let2 (mscs, n) <- delen lxp ixp dnum mscs;
     let2 (mscs, s) <- For i < n
@@ -300,17 +302,12 @@ Module DIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} dfold lxp bxp ixp dnum f s0 mscs.
   Proof.
-    unfold dfold, derep_macro, derep.
-    step.
-    unfold derep_macro, derep; eauto.
-    step.
-    step.
-    unfold derep_macro, derep; eauto.
+    unfold dfold.
+    hoare.
     list2nmem_ptsto_cancel.
     eapply wlt_lt_bound; eauto.
     eapply bfrec_bound; eauto.
 
-    step.
     replace (# (m0 ^+ $1)) with (#m0 + 1).
     rewrite firstn_plusone_selN with (def:=dent0).
     rewrite fold_left_app; simpl.
@@ -320,7 +317,6 @@ Module DIR.
     erewrite wordToNat_plusone with (w' := $ (length l)) by auto.
     omega.
 
-    step.
     rewrite firstn_oob; eauto.
     erewrite wordToNat_natToWord_bound; auto.
     eapply bfrec_bound; eauto.
@@ -525,9 +521,8 @@ Module DIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} dfindp lxp bxp ixp dnum f mscs.
   Proof.
-    unfold dfindp, derep_macro, derep.
+    unfold dfindp.
     hoare.
-    unfold derep_macro, derep; eauto.
     destruct a; step.
 
     apply pimpl_or_r; left; cancel.
@@ -593,7 +588,7 @@ Module DIR.
     destruct (weq (a :-> "valid") $0) eqn:HV; rec_simpl; intros.
     apply IHl.
     apply Forall_cons2 in H; auto.
-    pred_apply; apply star_emp_pimpl. (* cancel doesn't work ? *)
+    pred_apply; cancel.
 
     destruct Ha.
     contradict H1; auto.
@@ -741,13 +736,9 @@ Module DIR.
     CRASH  MEMLOG.log_intact lxp mbase
     >} dlookup lxp bxp ixp dnum name mscs.
   Proof.
-    unfold dlookup, rep_macro, rep.
-    step.
-    unfold derep_macro; eauto.
-    destruct b; step.
-    unfold derep_macro; eauto.
-    inversion H10; subst; eauto.
-    step.
+    unfold dlookup.
+    hoare.
+    destruct b; hoare.
     apply pimpl_or_r; left; cancel.
     rewrite sep_star_comm.
     eapply dlookup_ptsto; eauto.
@@ -755,7 +746,7 @@ Module DIR.
     apply dlookup_notindomain; auto.
 
     Grab Existential Variables.
-    exact dent0. exact emp. exact nil. exact emp. exact emp.
+    exact dent0. exact emp. exact emp. exact emp. exact nil.
   Qed.
 
 
@@ -815,10 +806,8 @@ Module DIR.
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlist lxp bxp ixp dnum mscs.
   Proof.
-    unfold dlist, rep_macro, rep.
-    step.
-    unfold derep_macro; eauto.
-    step.
+    unfold dlist.
+    hoare.
     apply dlist_f_ok.
   Qed.
 
@@ -906,15 +895,12 @@ Module DIR.
     CRASH    MEMLOG.log_intact lxp mbase
     >} dunlink lxp bxp ixp dnum name mscs.
   Proof.
-    unfold dunlink, rep_macro, rep.
-    step.
-    unfold derep_macro; eauto.
-    destruct b; step; inv_option_eq.
-    unfold derep_macro; eauto.
-    apply dent0_well_formed.
-    step.
+    unfold dunlink.
+    hoare.
 
-    unfold derep_macro in *; repeat deex.
+    destruct b; hoare.
+    apply dent0_well_formed.
+
     apply pimpl_or_r; right; cancel.
     exists x2, x3; intuition.
     exists l; split; auto.
@@ -930,7 +916,7 @@ Module DIR.
     apply dlookup_notindomain; auto.
 
     Grab Existential Variables.
-    exact dent0. exact emp. exact nil. exact emp. exact emp.
+    exact dent0. exact emp. exact emp. exact emp. exact nil.
   Qed.
 
 
@@ -1060,15 +1046,13 @@ Module DIR.
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlink lxp bxp ixp dnum name inum isdir mscs.
   Proof.
-    unfold dlink, rep_macro, rep.
-    step.
-    unfold derep_macro; eauto.
-    destruct b; step; inv_option_eq.
-    unfold derep_macro; eauto.
+    unfold dlink.
+    hoare.
+
+    destruct b; hoare.
 
     (* case 1 : use an existing avail entry *)
-    destruct b; step; inv_option_eq.
-    unfold derep_macro; eauto.
+    destruct b; hoare.
     unfold Rec.well_formed; simpl; auto.
     step.
 

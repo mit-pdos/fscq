@@ -245,6 +245,10 @@ Module SDIR.
     unfold dslookup, rep_macro, rep.
     hoare.
 
+  Hint Local Unfold DIR.rep_macro : hoare_unfold.
+  autounfold with hoare_unfold in *.
+  eauto.
+
     eapply pimpl_or_r; left. cancel.
     admit.
 

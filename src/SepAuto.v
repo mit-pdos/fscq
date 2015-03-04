@@ -749,6 +749,15 @@ Ltac norm := unfold pair_args_helper;
              ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] );
              repeat clear_norm_goal.
 
+Ltac inv_option_eq' := repeat match goal with
+  | [ H: None = None |- _ ] => clear H
+  | [ H: None = Some _ |- _ ] => inversion H
+  | [ H: Some _ = None |- _ ] => inversion H
+  | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
+  end.
+
+Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
+
 Ltac cancel_with t :=
   intros;
   unfold stars; simpl; subst;
@@ -764,7 +773,7 @@ Ltac cancel_with t :=
   try ( pred_apply; cancel_with t );
   try congruence;
   try t;
-  unfold stars; simpl;
+  unfold stars; simpl; inv_option_eq;
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
@@ -786,14 +795,6 @@ Ltac cancel_exact := repeat match goal with
         rewrite sep_star_assoc_1
 end.
 
-Ltac inv_option_eq' := repeat match goal with
-  | [ H: None = None |- _ ] => clear H
-  | [ H: None = Some _ |- _ ] => inversion H
-  | [ H: Some _ = None |- _ ] => inversion H
-  | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
-  end.
-
-Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
 
 Theorem nop_ok :
   forall T A v (rx : A -> prog T),
@@ -825,6 +826,7 @@ Ltac autorewrite_fast :=
 
 Ltac step_unfold unfolder :=
   intros;
+  try autounfold with hoare_unfold in *;
   try cancel;
   remember_xform;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
@@ -837,7 +839,7 @@ Ltac step_unfold unfolder :=
         end; solve [ eapply nop_ok ] | ]));
   intros; subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
-  unfolder;
+  try autounfold with hoare_unfold in *; unfolder; eauto;
   try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
   apply_xform cancel;
   try cancel; try autorewrite_fast;
