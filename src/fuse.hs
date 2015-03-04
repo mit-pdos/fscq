@@ -198,10 +198,13 @@ fscqOpen fr fsxp (_:path) mode flags
       | otherwise -> return $ Left eISDIR
 fscqOpen _ _ _ _ _ = return $ Left eIO
 
+splitDirsFile :: String -> ([String], String)
+splitDirsFile path = (init parts, last parts)
+  where parts = splitDirectories path
+
 fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
 fscqCreate fr fsxp (_:path) RegularFile _ _ = do
-  (dirpath, filename) <- return $ splitFileName path
-  dirparts <- return $ splitDirectories dirpath
+  (dirparts, filename) <- return $ splitDirsFile path
   rd <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   case rd of
     Nothing -> return eNOENT
@@ -216,8 +219,7 @@ fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
 
 fscqCreateDir :: FSrunner -> Coq_fs_xparams -> FilePath -> FileMode -> IO Errno
 fscqCreateDir fr fsxp (_:path) _ = do
-  (dirpath, filename) <- return $ splitFileName path
-  dirparts <- return $ splitDirectories dirpath
+  (dirparts, filename) <- return $ splitDirsFile path
   rd <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   case rd of
     Nothing -> return eNOENT
@@ -232,8 +234,7 @@ fscqCreateDir _ _ _ _ = return eOPNOTSUPP
 
 fscqUnlink :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
 fscqUnlink fr fsxp (_:path) = do
-  (dirpath, filename) <- return $ splitFileName path
-  dirparts <- return $ splitDirectories dirpath
+  (dirparts, filename) <- return $ splitDirsFile path
   rd <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   case rd of
     Nothing -> return eNOENT
