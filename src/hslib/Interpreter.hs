@@ -1,7 +1,7 @@
 module Interpreter where
 
 import Prog
-import Disk
+import qualified Disk
 -- import qualified System.Exit
 -- import qualified System.Random
 
@@ -20,11 +20,32 @@ import Disk
 --   else
 --     return ()
 
-run_dcode :: DiskState -> Prog.Coq_prog a -> IO a
-run_dcode _ (Done r) = return r
-run_dcode ds (Read a rx) = do val <- Disk.read_disk ds a; run_dcode ds $ rx val
-run_dcode ds (Write a v rx) = do Disk.write_disk ds a v; run_dcode ds $ rx ()
-run_dcode ds (Sync a rx) = do Disk.sync_disk ds a; run_dcode ds $ rx ()
+verbose :: Bool
+verbose = False
 
-run :: DiskState -> ((a -> Prog.Coq_prog a) -> Prog.Coq_prog a) -> IO a
+debugmsg :: String -> IO ()
+debugmsg s =
+  if verbose then
+    putStrLn s
+  else
+    return ()
+
+run_dcode :: Disk.DiskState -> Prog.Coq_prog a -> IO a
+run_dcode _ (Done r) = do
+  debugmsg $ "Done"
+  return r
+run_dcode ds (Read a rx) = do
+  debugmsg $ "Read " ++ (show a)
+  val <- Disk.read_disk ds a
+  run_dcode ds $ rx val
+run_dcode ds (Write a v rx) = do
+  debugmsg $ "Write " ++ (show a) ++ " " ++ (show v)
+  Disk.write_disk ds a v
+  run_dcode ds $ rx ()
+run_dcode ds (Sync a rx) = do
+  debugmsg $ "Sync " ++ (show a)
+  Disk.sync_disk ds a
+  run_dcode ds $ rx ()
+
+run :: Disk.DiskState -> ((a -> Prog.Coq_prog a) -> Prog.Coq_prog a) -> IO a
 run ds p = run_dcode ds $ p (\x -> Prog.Done x)
