@@ -444,27 +444,3 @@ Ltac extract_listmatch_at ix :=
             destruct_lift H
   end.
 
-
-Section MEMMATCH.
-
-  Variable AT1 : Type.
-  Variable AEQ1 : DecEq AT1.
-  Variable V1 : Type.
-  Variable AT2 : Type.
-  Variable AEQ2 : DecEq AT2.
-  Variable V2 : Type.
-  Variable trans_a : AT1 -> AT2.
-  Variable prd_v : V1 -> V2 -> Prop.
-
-  Definition mem_trans_a (m1 : @mem AT1 AEQ1 V1) (m2 : @mem AT2 AEQ2 V1) :=
-    forall a1, m1 a1 = m2 (trans_a a1).
-
-  Definition mem_match_v (m1 : @mem AT1 AEQ1 V1) (m2 : @mem AT1 AEQ1 V2) :=
-    forall a, (m1 a = None /\ m2 a = None) \/
-              (exists v1 v2, m1 a = Some v1 /\ m2 a = Some v2 /\ prd_v v1 v2).
-
-  (**
-   * XXX fill in theorems as needed..
-   *)
-
-End MEMMATCH.
