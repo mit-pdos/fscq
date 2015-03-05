@@ -44,6 +44,13 @@ Section BIJECTION.
     eapply right_inv_surj; eauto.
   Qed.
 
+  Lemma bij2inj f a b :
+    bijective f -> f a = f b -> a = b.
+  Proof.
+    intros.
+    apply X; auto.
+  Qed.
+
 End BIJECTION.
 
 
@@ -56,16 +63,16 @@ Section MEMMATCH.
   Variable AT2 : Type.
   Variable AEQ2 : DecEq AT2.
   Variable V2 : Type.
-  Variable trans_a : AT1 -> AT2.
-  Variable prd_v : V1 -> V2 -> Prop.
-  Hypothesis trans_a_bijective : bijective trans_a.
+  Variable atrans : AT1 -> AT2.
+  Variable vprd : V1 -> V2 -> Prop.
+  Hypothesis atrans_bijective : bijective atrans.
 
   Definition mem_trans_a (m1 : @mem AT1 AEQ1 V1) (m2 : @mem AT2 AEQ2 V1) :=
-    forall a1, m1 a1 = m2 (trans_a a1).
+    forall a1, m1 a1 = m2 (atrans a1).
 
   Definition mem_match_v (m1 : @mem AT1 AEQ1 V1) (m2 : @mem AT1 AEQ1 V2) :=
     forall a, (m1 a = None /\ m2 a = None) \/
-              (exists v1 v2, m1 a = Some v1 /\ m2 a = Some v2 /\ prd_v v1 v2).
+              (exists v1 v2, m1 a = Some v1 /\ m2 a = Some v2 /\ vprd v1 v2).
 
   (**
    * XXX fill in theorems as needed..
