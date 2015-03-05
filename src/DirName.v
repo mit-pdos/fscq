@@ -12,6 +12,8 @@ Require Import BFile.
 Require Import GenSep.
 Require Import GenSepN.
 Require Import ListPred.
+Require Import MemMatch.
+Require Import ProofIrrelevance.
 Require List.
 
 Set Implicit Arguments.
@@ -201,9 +203,131 @@ Proof.
   apply name2padstring_length.
 Qed.
 
+Lemma zerostring_pad_empty : forall n,
+  zerostring (string_pad n EmptyString).
+Proof.
+  induction n; simpl; intros; constructor; auto.
+Qed.
+
+Lemma stringpad_wellformed : forall s nbytes,
+  length s <= nbytes
+  -> nozero s
+  -> wellformedpadstring (string_pad nbytes s).
+Proof.
+  induction s; destruct nbytes eqn:Hn; simpl; intros.
+  repeat constructor.
+  repeat constructor.
+  apply zerostring_pad_empty.
+  repeat constructor.
+  apply WFScons.
+  apply IHs.
+  omega.
+  inversion H0; auto.
+  inversion H0; auto.
+Qed.
+
+
+Lemma wellformedpadstring_inv : forall c s,
+  wellformedpadstring (String c s)
+  -> c <> zero
+  -> wellformedpadstring s.
+Proof.
+  intros.
+  inversion H; auto.
+  exfalso; apply H0.
+  inversion H1; auto.
+Qed.
+
+Lemma wellformed_nozero : forall nbytes s,
+  wellformedpadstring (name2padstring nbytes s)
+  -> nozero (string_unpad (name2padstring nbytes s)).
+Proof.
+  induction nbytes; intros.
+  constructor.
+  simpl.
+  destruct (ascii_dec (byte2ascii (split1 8 (nbytes * 8) s)) zero) eqn:Heq.
+  constructor.
+  apply NoZeroCons; auto.
+  apply IHnbytes.
+  simpl in H.
+  eapply wellformedpadstring_inv; eauto.
+Qed.
+
+Lemma string_unpad_length : forall s,
+  length (string_unpad s) <= length s.
+Proof.
+  induction s; simpl; firstorder.
+  destruct (ascii_dec a zero); simpl; omega.
+Qed.
+
+Lemma name2padstring_unpad_length : forall nbytes s,
+  length (string_unpad (name2padstring nbytes s)) <= nbytes.
+Proof.
+  intros.
+  erewrite <- name2padstring_length with (name := s).
+  apply string_unpad_length.
+Qed.
+
+
 Module SDIR.
 
   Definition namelen := Dir.filename_len / 8.
+
+  Definition wname := {w: filename | wellformedpadstring (name2padstring namelen w)}.
+  Definition sname := {s:   string | length s <= namelen /\ nozero s}.
+
+  Definition sname2wname (x : sname) : wname.
+    destruct x.
+    exists (string2name namelen x).
+    unfold string2name.
+    rewrite padstring2name2padstring by apply string_pad_length.
+    apply stringpad_wellformed; tauto.
+  Defined.
+
+  Definition wname2sname (x : wname) : sname.
+    destruct x.
+    exists (name2string namelen x); unfold name2string.
+    split.
+    apply name2padstring_unpad_length.
+    apply wellformed_nozero; auto.
+  Defined.
+
+  Lemma sname2wname2sname : forall x,
+    wname2sname (sname2wname x) = x.
+  Proof.
+    intros.
+    unfold wname2sname, sname2wname.
+    destruct x.
+    apply subset_eq_compat.
+    setoid_rewrite string2name2string; tauto.
+  Qed.
+
+  Lemma wname2sname2wname : forall x,
+    sname2wname (wname2sname x) = x.
+  Proof.
+    intros.
+    unfold wname2sname, sname2wname.
+    destruct x.
+    apply subset_eq_compat.
+    setoid_rewrite name2string2name; auto.
+  Qed.
+
+  Theorem sname2wname_bijective : bijective sname2wname.
+  Proof.
+    apply inv2bij with (f' := wname2sname).
+    split; intro.
+    apply sname2wname2sname.
+    apply wname2sname2wname.
+  Qed.
+
+  Theorem wname2sname_bijective : bijective wname2sname.
+  Proof.
+    apply inv2bij with (f' := sname2wname).
+    split; intro.
+    apply wname2sname2wname.
+    apply sname2wname2sname.
+  Qed.
+
 
   Definition dslookup T lxp bxp ixp dnum name mscs rx : prog T :=
     let2 (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (string2name namelen name) mscs;
@@ -220,6 +344,7 @@ Module SDIR.
   Definition dslist T lxp bxp ixp dnum mscs rx : prog T :=
     let2 (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
     rx (mscs, List.map (fun di => (name2string namelen di.(fst).(fst), di.(fst).(snd), di.(snd))) r).
+
 
   Definition rep f (dsmap : @mem string string_dec (addr * addr)) : Prop :=
     exists dmap, DIR.rep f dmap /\ mem_trans_a (name2string namelen) dmap dsmap.
