@@ -28,7 +28,9 @@ You also need to install HFuse:
   apt-get install libfuse-dev
   git clone https://github.com/m15k/hfuse
   cd hfuse
-  PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs configure -p --user
+  ## edit HFuse.cabal, add "ghc-prof-options: -fprof-auto"
+  ## right after "CC-Options: ...".
+  PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs configure -p -O2 --user
   PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs build
   PATH=/opt/ghc/7.10.1/bin:$PATH ./Setup.lhs install
 
