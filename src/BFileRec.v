@@ -57,17 +57,16 @@ Section RECBFILE.
   Definition rep_valu_id := RecArray.rep_valu_id blocksz_ok.
 
   (** Get the [pos]'th item in the [block_ix]'th block of inode [inum] *)
-  Definition bf_get_pair T lxp ixp inum block_ix pos mscs rx : prog T :=
+  Definition bf_get_pair T lxp ixp inum block_ix (pos : addr) mscs rx : prog T :=
     let2 (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
-    let ib := valu_to_block v in
-    let i := sel ib pos item_zero in
+    let i := Rec.of_word (Rec.word_selN #pos (valu_to_wreclen itemtype items_per_valu blocksz_ok v)) in
     rx (mscs, i).
 
   (** Update the [pos]'th item in the [block_ix]'th block of inode [inum] to [i] *)
-  Definition bf_put_pair T lxp ixp inum block_ix pos i mscs rx : prog T :=
+  Definition bf_put_pair T lxp ixp inum block_ix (pos : addr) i mscs rx : prog T :=
     let2 (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
-    let ib' := upd (valu_to_block v) pos i in
-    let v' := rep_block ib' in
+    let v' := wreclen_to_valu itemtype items_per_valu blocksz_ok
+              (Rec.word_updN #pos (valu_to_wreclen itemtype items_per_valu blocksz_ok v) (Rec.to_word i)) in
     mscs <- BFILE.bfwrite lxp ixp inum block_ix v' mscs;
     rx mscs.
 
@@ -196,6 +195,7 @@ Section RECBFILE.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
 
     subst.
+    rewrite Rec.word_selN_equiv with (def:=item_zero) by rec_bounds.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block, sel, upd.
     erewrite selN_map by rec_bounds.
     rewrite valu_wreclen_id; rewrite Rec.of_to_id; auto.
@@ -231,6 +231,7 @@ Section RECBFILE.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
 
+    rewrite Rec.word_updN_equiv by rec_bounds.
     unfold sel, upd; autorewrite with core.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
     rewrite arrayN_ex_updN_eq.

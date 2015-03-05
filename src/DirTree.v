@@ -126,4 +126,41 @@ Module DIRTREE.
       }
     end.
 
+  (**
+   * XXX later we should probably implement some checks in [rename] to maintain
+   * the directory structure as a tree (without loops).
+   *)
+  Definition rename T fsxp dsrc srcname ddst dstname mscs rx : prog T :=
+    let2 (mscs, osrc) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                       dsrc srcname mscs;
+    match osrc with
+    | None => rx (mscs, false)
+    | Some (inum, isdir) =>
+      let2 (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                       dsrc srcname mscs;
+      let2 (mscs, odst) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                         ddst dstname mscs;
+      match odst with
+      | None =>
+        let2 (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                       ddst dstname inum isdir mscs;
+        rx (mscs, ok)
+      | Some (inum', isdir') =>
+        let2 (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                         ddst dstname mscs;
+        let2 (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                       ddst dstname inum isdir mscs;
+        If (weq isdir' $0) {
+          rx (mscs, ok)
+        } else {
+          let2 (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                        inum' mscs;
+          match l with
+          | nil => rx (mscs, ok)
+          | a::b => rx (mscs, false)
+          end
+        }
+      end
+    end.
+
 End DIRTREE.

@@ -190,7 +190,6 @@ ialloc(uint dev, short type)
     bp = bread(dev, IBLOCK(inum));
     dip = (struct dinode*)bp->data + inum%IPB;
     if(dip->type == 0){  // a free inode
-      cprintf("allocate inode %d\n", inum);
       memset(dip, 0, sizeof(*dip));
       dip->type = type;
       log_write(bp);   // mark it allocated on the disk

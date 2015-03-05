@@ -523,7 +523,6 @@ Module DIR.
   Proof.
     unfold dfindp.
     hoare.
-    destruct a; step.
 
     apply pimpl_or_r; left; cancel.
     list2nmem_ptsto_cancel.
@@ -738,7 +737,6 @@ Module DIR.
   Proof.
     unfold dlookup.
     hoare.
-    destruct b; hoare.
     apply pimpl_or_r; left; cancel.
     rewrite sep_star_comm.
     eapply dlookup_ptsto; eauto.
@@ -898,9 +896,7 @@ Module DIR.
     unfold dunlink.
     hoare.
 
-    destruct b; hoare.
     apply dent0_well_formed.
-
     apply pimpl_or_r; right; cancel.
     exists x2, x3; intuition.
     exists l; split; auto.
@@ -1049,15 +1045,9 @@ Module DIR.
     unfold dlink.
     hoare.
 
-    destruct b; hoare.
-
     (* case 1 : use an existing avail entry *)
-    destruct b; hoare.
     unfold Rec.well_formed; simpl; auto.
-    step.
-
     apply pimpl_or_r; right; cancel.
-    unfold derep_macro in *; repeat deex.
     exists x2, x3; intuition.
     exists l; split; auto.
     2: eapply ptsto_upd_disjoint with (m := m); auto.
@@ -1067,12 +1057,9 @@ Module DIR.
     eapply dlookup_notindomain; eauto.
 
     (* case 2 : extending entries *)
-    unfold derep_macro; eauto.
     unfold Rec.well_formed; simpl; auto.
     apply list2nmem_array.
-    step.
     apply pimpl_or_r; right; cancel.
-    unfold derep_macro in *; repeat deex.
     exists x2, x3; intuition.
     2: eapply ptsto_upd_disjoint with (m := m); auto.
     eexists; split; eauto.
@@ -1082,16 +1069,16 @@ Module DIR.
     eapply dlookup_notindomain; eauto.
 
     Grab Existential Variables.
-    exact emp. exact nil. exact emp. exact emp. exact dent0.
-    exact emp. exact nil. exact emp. exact emp. exact nil.
-    exact emp. exact emp. exact nil.
+    exact emp. exact emp. exact emp. exact nil. exact dent0.
+    exact emp. exact emp. exact emp. exact nil. exact emp.
+    exact emp. exact nil. exact nil.
   Qed.
 
 
 
   Hint Extern 1 ({{_}} progseq (dlookup _ _ _ _ _ _) _) => apply dlookup_ok : prog.
   Hint Extern 1 ({{_}} progseq (dunlink _ _ _ _ _ _) _) => apply dunlink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlist _ _ _ _ _) _) => apply dlist_ok : prog.
 
 End DIR.

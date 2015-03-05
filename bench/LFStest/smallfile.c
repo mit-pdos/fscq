@@ -82,7 +82,7 @@ creat_test(int n, int size)
 
   }
   long time = stop();
-  printf("%s: creat took %ld sec\n", prog_name, time);
+  printf("%s: creat took %ld usec\n", prog_name, time);
 }
 
 
@@ -148,7 +148,7 @@ read_test(int n, int size)
   }
 
   long time = stop();
-  printf("%s: read took %ld sec\n", prog_name, time);
+  printf("%s: read took %ld usec\n", prog_name, time);
 }
 
 void 
@@ -172,7 +172,7 @@ delete_test(int n)
   }
 
   long time = stop();
-  printf("%s: unlink took %ld sec\n", prog_name, time);
+  printf("%s: unlink took %ld usec\n", prog_name, time);
 }
 
 

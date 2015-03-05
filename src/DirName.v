@@ -230,35 +230,115 @@ Module SDIR.
     (F2 * #inum |-> f)%pred (list2nmem flist) /\
     rep f dsmap.
 
+  Local Hint Unfold rep rep_macro DIR.rep_macro: hoare_unfold.
+
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dsmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ rep_macro F A m bxp ixp dnum dsmap ]]
     POST:(mscs',r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-           ((exists inum isdir DF, [[ r = Some (inum, isdir) ]] *
-             [[ (DF * name |-> (inum, isdir))%pred dsmap ]]) \/
-            ([[ r = None ]] * [[ ~ exists inum DF, (DF * name |-> inum)%pred dsmap ]]))
+           ((exists inum isdir DF,
+             [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dsmap ]]) \/
+            ([[ r = None /\ notindomain name dsmap ]]))
     CRASH  MEMLOG.log_intact lxp mbase
     >} dslookup lxp bxp ixp dnum name mscs.
   Proof.
-    unfold dslookup, rep_macro, rep.
+    unfold dslookup.
     hoare.
-
-  Hint Local Unfold DIR.rep_macro : hoare_unfold.
-  autounfold with hoare_unfold in *.
-  eauto.
-
-    eapply pimpl_or_r; left. cancel.
+    apply pimpl_or_r; left; cancel.
     admit.
-
-    eapply pimpl_or_r; right. cancel.
+    apply pimpl_or_r; right; cancel.
     admit.
 
     Grab Existential Variables.
     exact emp.
   Qed.
 
+
+
+  Definition dslistent := (string * addr * addr)%type.
+  Definition dslmatch (de: dslistent) : @pred _ (string_dec) _ :=
+    de.(fst).(fst) |-> (de.(fst).(snd), de.(snd)).
+
+
+  Theorem dslist_ok : forall lxp bxp ixp dnum mscs,
+    {< F A mbase m dsmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ rep_macro F A m bxp ixp dnum dsmap ]]
+    POST:(mscs',res)
+             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+             [[ listpred dslmatch res dsmap ]]
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dslist lxp bxp ixp dnum mscs.
+  Proof.
+    unfold dslist.
+    hoare.
+    admit.
+  Qed.
+
+
+  Theorem dsunlink_ok : forall lxp bxp ixp dnum name mscs,
+    {< F A mbase m dsmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ rep_macro F A m bxp ixp dnum dsmap ]]
+    POST:(mscs',r)
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+             [[ notindomain name dsmap ]]) \/
+            ([[ r = true ]] * exists m' dsmap' DF,
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
+             [[ (DF * name |->?)%pred dsmap ]] *
+             [[ (DF) dsmap' ]])
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dsunlink lxp bxp ixp dnum name mscs.
+  Proof.
+    unfold dsunlink.
+    hoare.
+
+    apply pimpl_or_r; left; cancel.
+    admit.
+    apply pimpl_or_r; right; cancel.
+    exists x2, x3; repeat split; eauto.
+    exists m1; split; eauto.
+    admit.
+    admit.
+    admit.
+  Qed.
+
+
+  Theorem dslink_ok : forall lxp bxp ixp dnum name inum isdir mscs,
+    {< F A mbase m dsmap,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ rep_macro F A m bxp ixp dnum dsmap ]]
+    POST:(mscs',r) exists m',
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
+        \/  ([[ r = true ]] * exists dsmap' DF,
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
+             [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
+             [[ (DF dsmap /\ notindomain name dsmap) ]])
+    CRASH    MEMLOG.log_intact lxp mbase
+    >} dslink lxp bxp ixp dnum name inum isdir mscs.
+  Proof.
+    unfold dslink.
+    hoare.
+
+    apply pimpl_or_r; right; cancel.
+    exists x2, x3; repeat split; eauto.
+    exists m1; split; eauto.
+    admit.
+    admit.
+    admit.
+  Qed.
+
+
+
+
   Hint Extern 1 ({{_}} progseq (dslookup _ _ _ _ _ _) _) => apply dslookup_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsunlink _ _ _ _ _ _) _) => apply dsunlink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dslink _ _ _ _ _ _ _ _) _) => apply dslink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dslist _ _ _ _ _) _) => apply dslist_ok : prog.
+
 
 End SDIR.

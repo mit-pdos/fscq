@@ -2,6 +2,8 @@ FUNCTIONALITY
 
 - maybe doubly-indirect blocks?
 - deleting a file does not free its disk blocks
+- reused inodes have old file contents in them
+  (at least we should zero out the "sz" field)
 
 PROOFS/SPECS
 
