@@ -65,19 +65,16 @@ sys_open(char *path, int omode)
   if(omode & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
-      cprintf("create failed\n");
       end_op();
       return 0;
     }
   } else {
     if((ip = namei(path)) == 0){
-      cprintf("open nami failed\n");
       end_op();
       return 0;
     }
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
-      cprintf("open check failed\n");
       iunlockput(ip);
       end_op();
       return 0;
@@ -197,17 +194,18 @@ isdirempty(struct inode *dp)
   return 1;
 }
 
+#define ENOENT (-2)
+
 int
-sys_unlink(char *path)
+sys_dounlink(char *path)
 {
   struct inode *ip, *dp;
   struct dirent de;
   char name[DIRSIZ];
   uint off;
+  int r = -1;
 
-  begin_op();
   if((dp = nameiparent(path, name)) == 0){
-    end_op();
     return -1;
   }
 
@@ -217,12 +215,16 @@ sys_unlink(char *path)
   if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
     goto bad;
 
-  if((ip = dirlookup(dp, name, &off)) == 0)
+  if((ip = dirlookup(dp, name, &off)) == 0) {
+    r = ENOENT;
     goto bad;
+  }
+
   ilock(ip);
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
+
   if(ip->type == T_DIR && !isdirempty(ip)){
     iunlockput(ip);
     goto bad;
@@ -241,29 +243,30 @@ sys_unlink(char *path)
   iupdate(ip);
   iunlockput(ip);
 
-  end_op();
-
   return 0;
 
 bad:
   iunlockput(dp);
-  end_op();
   return -1;
 }
 
-/*
+int
+sys_unlink(char *path)
+{
+  int r;
+  begin_op();
+  r = sys_dounlink(path);
+  end_op();
+  return r;
+}
 
 // Create the path new as a link to the same inode as old.
 int
-sys_link(void)
+sys_dolink(char *old, char *new)
 {
-  char name[DIRSIZ], *new, *old;
   struct inode *dp, *ip;
+  char name[DIRSIZ];
 
-  if(argstr(0, &old) < 0 || argstr(1, &new) < 0)
-    return -1;
-
-  begin_op();
   if((ip = namei(old)) == 0){
     end_op();
     return -1;
@@ -290,8 +293,6 @@ sys_link(void)
   iunlockput(dp);
   iput(ip);
 
-  end_op();
-
   return 0;
 
 bad:
@@ -299,13 +300,29 @@ bad:
   ip->nlink--;
   iupdate(ip);
   iunlockput(ip);
-  end_op();
   return -1;
 }
 
+int
+sys_rename(char *path1, char *path2)
+{
+  int r = -1;
+
+  begin_op();
+  cprintf("sys_rename %s %s\n", path1, path2);
+  r = sys_dounlink(path2);
+  if ((r == 0) || (r == ENOENT)) {
+    r = sys_dolink(path1, path2);
+    if (r == 0) {
+      r = sys_dounlink(path1);
+    }
+  }
+  end_op();
+  return r;
+}
 
 
-
+/*
 int
 sys_chdir(void)
 {

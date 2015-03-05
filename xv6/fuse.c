@@ -27,6 +27,7 @@ int sys_readdirent(void *fh, struct dirent *e, off_t off);
 int sys_truncate(char *path);
 int sys_mkdir(char *path);
 int sys_unlink(char *path);
+int sys_rename(char *path1, char *path2);
 
 // Special file for statistics.  cat /stats returns the results and
 // resets the counters to 0.
@@ -213,8 +214,9 @@ fuse_unlink(const char *path)
   return r;
 }
 
-static int(const char *path1, const char *path2) {
-  return -1;
+static int
+fuse_rename(const char *path1, const char *path2) {
+  return sys_rename((char *) path1, (char *)path2);
 }
 
 static struct fuse_operations fuse_filesystem_operations = {
