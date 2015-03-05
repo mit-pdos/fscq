@@ -550,6 +550,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
       panic("dirlink read");
     if(de.inum == 0)
       continue;
+
     if(namecmp(name, de.name) == 0){
       // entry matches path element
       if(poff)

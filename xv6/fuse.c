@@ -15,6 +15,7 @@
 
 #include "stat.h"
 #include "fs.h"
+#include "fcntl.h"
 
 int sys_fstat(const char *path, void *buf);
 int sys_read(void *fh, char *buf, size_t sz, off_t off);
@@ -162,7 +163,20 @@ static int
 fuse_create(const char *path, mode_t m, struct fuse_file_info *fi)
 {
     fsstats.ncreate++;
-    void *r = sys_open((char *) path, fi->flags);
+    int omode = 0;
+    if (fi->flags & O_CREAT) {
+      omode |= XV6_O_CREATE;
+    }
+    if (fi->flags & O_RDWR) {
+      omode |= XV6_O_RDWR;
+    }
+    if (fi->flags & O_WRONLY) {
+      omode |= XV6_O_WRONLY;
+    }
+    if (fi->flags & O_RDONLY) {
+      omode |= XV6_O_RDONLY;
+    }
+    void *r = sys_open((char *) path, omode);
     fi->fh = (uint64_t) r;
     return (r == 0) ? -1 : 0;
 }
@@ -199,6 +213,10 @@ fuse_unlink(const char *path)
   return r;
 }
 
+static int(const char *path1, const char *path2) {
+  return -1;
+}
+
 static struct fuse_operations fuse_filesystem_operations = {
   .getattr = fuse_getattr,
   .open    = fuse_open,
@@ -211,6 +229,7 @@ static struct fuse_operations fuse_filesystem_operations = {
   .mkdir = fuse_mkdir,
   .unlink = fuse_unlink,
   .rmdir = fuse_rmdir,
+  .rename = fuse_rename,
 };
 
 void

@@ -7,7 +7,6 @@
 #include "fcntl.h"
 
 #include <string.h>
-#include <sys/types.h>
 
 static struct inode*
 create(char *path, short type, short major, short minor)
@@ -18,8 +17,9 @@ create(char *path, short type, short major, short minor)
 
   if((dp = nameiparent(path, name)) == 0)
     return 0;
-  ilock(dp);
 
+  ilock(dp);
+  
   if((ip = dirlookup(dp, name, &off)) != 0){
     iunlockput(dp);
     ilock(ip);
@@ -65,16 +65,19 @@ sys_open(char *path, int omode)
   if(omode & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
+      cprintf("create failed\n");
       end_op();
       return 0;
     }
   } else {
     if((ip = namei(path)) == 0){
+      cprintf("open nami failed\n");
       end_op();
       return 0;
     }
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
+      cprintf("open check failed\n");
       iunlockput(ip);
       end_op();
       return 0;
@@ -109,7 +112,7 @@ sys_fileclose(void *fh)
 
 
 int
-sys_read(void *fh, char *buf, size_t sz, off_t off)
+sys_read(void *fh, char *buf, size_t sz, uint off)
 {
   struct file *f = (struct file *) fh;
   if (f == 0)
@@ -119,7 +122,7 @@ sys_read(void *fh, char *buf, size_t sz, off_t off)
 }
 
 int
-sys_write(void *fh, char *buf, size_t sz, off_t off)
+sys_write(void *fh, char *buf, size_t sz, uint off)
 {
   struct file *f = (struct file *) fh;
   if (f == 0)
@@ -141,7 +144,7 @@ sys_fstat(char *path, void *buf)
 }
 
 int
-sys_readdirent(void *fh, struct dirent *e, off_t off)
+sys_readdirent(void *fh, struct dirent *e, uint off)
 {
   struct file *f = (struct file *) fh;
   if ((f == 0) || (f->ip->type != T_DIR))
