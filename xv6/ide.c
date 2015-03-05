@@ -1,5 +1,6 @@
 #include "types.h"
 #include "defs.h"
+#include "fs.h"
 #include "buf.h"
 
 void unix_read(int sector, unsigned char *buf, int sz);
@@ -13,10 +14,10 @@ void iderw(struct buf *b) {
     panic("iderw: nothing to do");
 
   if (b->flags & B_DIRTY) {
-    unix_write(b->sector, b->data, 512);
+    unix_write(b->sector, b->data, BSIZE);
     b->flags &= ~B_DIRTY;
   } else {
-    unix_read(b->sector, b->data, 512);
+    unix_read(b->sector, b->data, BSIZE);
     b->flags |= B_VALID;
   }
 }

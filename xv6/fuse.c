@@ -236,7 +236,7 @@ void ideinit(char *disk)
 void
 unix_read(int sector, unsigned char *buf, int sz)
 {
-  ssize_t n = pread(fsimg_fd, buf, sz, sector*512);
+  ssize_t n = pread(fsimg_fd, buf, sz, sector*BSIZE);
   if (n != sz) {
     perror("pread failed\n");
     exit(-1);
@@ -247,7 +247,7 @@ unix_read(int sector, unsigned char *buf, int sz)
 void
 unix_write(int sector, unsigned char *buf, int sz)
 {
-  ssize_t n = pwrite(fsimg_fd, buf, sz, sector*512);
+  ssize_t n = pwrite(fsimg_fd, buf, sz, sector*BSIZE);
   if (n != sz) {
     perror("pwrite failed\n");
     exit(-1);
