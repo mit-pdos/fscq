@@ -86,6 +86,9 @@ fscqFSOps ds fr fsxp = defaultFuseOps
   , fuseReadDirectory = fscqReadDirectory fr fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats
   , fuseDestroy = fscqDestroy ds
+  , fuseSetFileTimes = fscqSetFileTimes
+  , fuseRename = fscqRename fr fsxp
+  , fuseSetFileMode = fscqChmod
   }
 
 fscqDestroy :: DiskState -> IO ()
@@ -371,3 +374,29 @@ fscqGetFileSystemStats _ =
     , fsStatFilesFree = 10
     , fsStatMaxNameLength = fromIntegral DirName._SDIR__namelen
     }
+
+fscqSetFileTimes :: FilePath -> EpochTime -> EpochTime -> IO Errno
+fscqSetFileTimes _ _ _ = do
+  return eOK
+
+fscqRename :: FSrunner -> Coq_fs_xparams -> FilePath -> FilePath -> IO Errno
+fscqRename fr fsxp (_:src) (_:dst) = do
+  (srcparts, srcname) <- return $ splitDirsFile src
+  (dstparts, dstname) <- return $ splitDirsFile dst
+  rsrc <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) srcparts
+  rdst <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dstparts
+  case (rsrc, rdst) of
+    (Just (dsrc, isdirsrc), Just (ddst, isdirdst))
+      | wordToNat 64 isdirsrc == 0 || wordToNat 64 isdirdst == 0 ->
+        return eNOTDIR
+      | otherwise -> do
+        r <- fr $ FS.rename fsxp dsrc srcname ddst dstname
+        case r of
+          True -> return eOK
+          False -> return eIO
+    _ -> return eNOENT
+fscqRename _ _ _ _ = return eIO
+
+fscqChmod :: FilePath -> FileMode -> IO Errno
+fscqChmod _ _ = do
+  return eOK
