@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include "stats.h"
 
 static char buf[40960];
 static char name[100];
@@ -195,8 +196,13 @@ int main(int argc, char *argv[])
   printf("%s %d %d %s\n", prog_name, n, size, topdir);
 
   creat_dir();
-
+  
+  printstats(topdir, 1);
+  
   creat_test(n, size);
+  
+  printstats(topdir, 0);
+
   read_test(n, size);
   delete_test(n);
 
