@@ -33,7 +33,7 @@ disk_fn = "disk.img"
 
 -- File system configuration
 cachesize :: Coq_word
-cachesize = W64 1000
+cachesize = W64 10000
 nDataBitmaps :: Coq_word
 nDataBitmaps = W64 1
 nInodeBitmaps :: Coq_word
