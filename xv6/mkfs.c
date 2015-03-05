@@ -16,8 +16,8 @@
 #ifdef HWBIGF
 int nblocks = 21049;
 int nlog = LOGSIZE;
-int ninodes = 200;
-int size = 21113;
+int ninodes = 4000;
+int size = 21588;
 #else
 //int nblocks = 985;
 int nblocks = (995-LOGSIZE);
