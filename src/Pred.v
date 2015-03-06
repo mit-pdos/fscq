@@ -1064,6 +1064,19 @@ Proof.
   apply mem_disjoint_mem_except; auto.
 Qed.
 
+Theorem ptsto_mem_except_exF : forall (F : @pred AT AEQ V) a a' v (m : @mem AT AEQ V),
+  (a |-> v * F)%pred m
+  -> a <> a'
+  -> (a |-> v * (exists F', F'))%pred (mem_except m a').
+Proof.
+  unfold_sep_star.
+  intros; repeat deex.
+  exists x; exists (mem_except x0 a'); intuition.
+  eapply mem_except_union_comm; eauto.
+  apply mem_disjoint_mem_except; auto.
+  exists (diskIs (mem_except x0 a')). firstorder.
+Qed.
+
 
 End GenPredThm.
 
