@@ -1016,6 +1016,14 @@ Proof.
   destruct (AEQ a a'); firstorder.
 Qed.
 
+Theorem notindomain_mem_except' : forall a a' (m : @mem AT AEQ V),
+  notindomain a m
+  -> notindomain a (mem_except m a').
+Proof.
+  unfold notindomain, mem_except; intros.
+  destruct (AEQ a a'); firstorder.
+Qed.
+
 Theorem notindomain_mem_eq : forall a (m : @mem AT AEQ V),
   notindomain a m -> m = mem_except m a.
 Proof.
@@ -1031,6 +1039,15 @@ Theorem indomain_mem_except : forall a a' v (m : @mem AT AEQ V),
 Proof.
   unfold mem_except; intros.
   destruct (AEQ a a'); firstorder.
+Qed.
+
+Theorem notindomain_not_indomain : forall a (m : @mem AT AEQ V),
+  notindomain a m <-> ~ indomain a m.
+Proof.
+  unfold notindomain, indomain; split; intros; destruct (m a);
+    try congruence.
+  destruct 1; discriminate.
+  exfalso; eauto.
 Qed.
 
 

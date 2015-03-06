@@ -26,19 +26,22 @@ Module DIRTREE.
 
   Definition dirtree := list (string * addr * dir_item).
 
-  Fixpoint find_name (tree : dirtree) (fnlist : list string) (inum : addr) (isdir : addr) :=
+  Definition find_name_helper (rec : dirtree -> addr -> addr -> option (addr * addr)) name
+                              (arg : string * addr * dir_item) (accum : option (addr * addr)) :=
+    let '(name', inum', item') := arg in
+    if string_dec name' name then
+    match item' with
+    | DirFile _ => rec nil inum' $0
+    | DirSubdir tree' => rec tree' inum' $1
+    end
+    else accum.
+
+  Fixpoint find_name (fnlist : list string) (tree : dirtree) (inum : addr) (isdir : addr) :=
     match fnlist with
     | nil => Some (inum, isdir)
     | name :: rest =>
       if weq isdir $0 then None else
-      fold_left (fun accum (arg : string * addr * dir_item) =>
-                 let '(name', inum', item') := arg in
-                                  if string_dec name' name then
-                                  match item' with
-                                  | DirFile _ => find_name nil rest inum' $0
-                                  | DirSubdir tree' => find_name tree' rest inum' $1
-                                  end
-                                  else accum) tree None
+      fold_right (find_name_helper (find_name rest) name) None tree
     end.
 
   Fixpoint tree_dir_names_pred' (dirlist : dirtree) : @pred _ string_dec (addr * addr) :=
@@ -112,6 +115,66 @@ Module DIRTREE.
           pred_apply; cancel.
   Qed.
 
+  Lemma find_name_file : forall tree rec name inum F dmap,
+    (F * name |-> (inum, $0))%pred dmap
+    -> tree_dir_names_pred' tree dmap
+    -> fold_right (find_name_helper rec name) None tree = rec nil inum $0.
+  Proof.
+    induction tree; simpl; intros.
+    - eapply emp_complete in H0; [| apply emp_empty_mem ]; subst.
+      apply sep_star_empty_mem in H; intuition.
+      exfalso. eapply ptsto_empty_mem; eauto.
+    - destruct a. destruct p. unfold find_name_helper; fold (find_name_helper rec name).
+      destruct (string_dec s name); subst.
+      + apply ptsto_valid' in H. destruct d.
+        * apply ptsto_valid in H0. rewrite H in H0. inversion H0; eauto.
+        * apply ptsto_valid in H0. rewrite H in H0. discriminate.
+      + eapply IHtree.
+        apply sep_star_comm. eapply ptsto_mem_except_exF. apply sep_star_comm; eauto.
+        instantiate (1:=s); eauto.
+        destruct d; apply ptsto_mem_except in H0; eauto.
+  Qed.
+
+  Lemma find_name_subdir : forall tree rec name inum subtree isdir F dmap,
+    (F * name |-> (inum, isdir))%pred dmap
+    -> tree_dir_names_pred' tree dmap
+    -> isdir <> $0
+    -> fold_right (find_name_helper rec name) None tree = rec subtree inum isdir.
+  Proof.
+    induction tree; simpl; intros.
+    - eapply emp_complete in H0; [| apply emp_empty_mem ]; subst.
+      apply sep_star_empty_mem in H; intuition.
+      exfalso. eapply ptsto_empty_mem; eauto.
+    - destruct a. destruct p. unfold find_name_helper; fold (find_name_helper rec name).
+      destruct (string_dec s name); subst.
+      + apply ptsto_valid' in H. destruct d.
+        * apply ptsto_valid in H0. rewrite H in H0. inversion H0; subst. congruence.
+        * apply ptsto_valid in H0. rewrite H in H0. inversion H0; subst.
+          (* pin down what subtree refers to.. *)
+          admit.
+      + eapply IHtree.
+        apply sep_star_comm. eapply ptsto_mem_except_exF. apply sep_star_comm; eauto.
+        instantiate (1:=s); eauto.
+        destruct d; apply ptsto_mem_except in H0; eauto.
+        eauto.
+  Qed.
+
+  Lemma find_name_none : forall tree rec name dmap,
+    notindomain name dmap
+    -> tree_dir_names_pred' tree dmap
+    -> fold_right (find_name_helper rec name) None tree = None.
+  Proof.
+    induction tree; simpl; intros; try reflexivity.
+    destruct a. destruct p.
+    unfold find_name_helper; fold (find_name_helper rec name).
+    destruct (string_dec s name); subst.
+    - exfalso. eapply notindomain_not_indomain; eauto.
+      destruct d; apply ptsto_valid in H0; firstorder.
+    - eapply notindomain_mem_except' in H.
+      destruct d; apply ptsto_mem_except in H0;
+        eapply IHtree; eauto.
+  Qed.
+
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let3 (mscs, inum, isdir) <- ForEach fn fnlist
       Ghost mbase m F treetop bflist
@@ -124,7 +187,7 @@ Module DIRTREE.
         [[ mscs_inum_isdir.(snd) <> $0 ->
            (exists F', tree_dir_names_pred mscs_inum_isdir.(fst).(snd) tree *
             tree_pred tree * F')%pred (list2nmem bflist) ]] *
-        [[ find_name treetop fnlist dnum $1 = find_name tree fn mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
+        [[ find_name fnlist treetop dnum $1 = find_name fn tree mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
       OnCrash
         MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
       Begin
@@ -146,7 +209,7 @@ Module DIRTREE.
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
            [[ (F * rep fsxp dnum tree)%pred (list2mem m) ]]
     POST:(mscs,r)
-           [[ r = find_name tree fnlist dnum $1 ]] *
+           [[ r = find_name fnlist tree dnum $1 ]] *
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs
     CRASH  MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
     >} namei fsxp dnum fnlist mscs.
@@ -185,26 +248,19 @@ Module DIRTREE.
     destruct (weq a2 $0).
     cancel.
 
-    (* extract a DirFile from the [fold_left] *)
-    admit.
+    eapply find_name_file; eauto.
 
     rewrite tree_dir_extract in H0 by eauto. destruct_lift H0.
     cancel.
-    instantiate (a0 := d3). cancel.
+    instantiate (a := d3). cancel.
 
-    (* extract a DirSubdir from the [fold_left] *)
-    admit.
+    eapply find_name_subdir; eauto.
 
     step.
     rewrite H10; clear H10. destruct (weq b $0); try congruence.
-
-    (* extract a non-existent element [elem] out of the [fold_left] to produce [None] *)
-    admit.
+    erewrite find_name_none; eauto.
 
     step.
-
-    Grab Existential Variables.
-    exact nil.
   Qed.
 
   Definition mknod T fsxp dnum name isdir mscs rx : prog T :=
