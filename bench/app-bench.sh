@@ -1,4 +1,11 @@
 #!/bin/sh
+
+if [ $# -eq 0 ]  
+ then
+    echo "$0 top-dir"
+    exit 1
+fi
+
 echo "=== app-bench $1 ==="
 cd $1
 

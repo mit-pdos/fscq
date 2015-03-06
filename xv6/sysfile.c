@@ -312,7 +312,6 @@ sys_rename(char *path1, char *path2)
   int r = -1;
 
   begin_op();
-  cprintf("sys_rename %s %s\n", path1, path2);
   r = sys_dounlink(path2);
   if ((r == 0) || (r == ENOENT)) {
     r = sys_dolink(path1, path2);
@@ -321,7 +320,6 @@ sys_rename(char *path1, char *path2)
     }
   }
   end_op();
-  cprintf("rename -> %d\n", r);
   return r;
 }
 
