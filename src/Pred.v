@@ -878,6 +878,19 @@ Proof.
   erewrite H2; eauto.
 Qed.
 
+Theorem ptsto_diff_ne : forall a0 a1 v0 v1 F0 F1 (m : @mem AT AEQ V),
+  (a0 |-> v0 * F0)%pred m ->
+  (a1 |-> v1 * F1)%pred m ->
+  v0 <> v1 ->
+  a0 <> a1.
+Proof.
+  unfold not; intros.
+  subst.
+  apply sep_star_ptsto_some in H.
+  apply sep_star_ptsto_some in H0.
+  congruence.
+Qed.
+
 Theorem emp_complete : forall m1 m2,
   (@emp AT AEQ V) m1 -> emp m2 -> m1 = m2.
 Proof.
