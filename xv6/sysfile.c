@@ -247,7 +247,7 @@ sys_dounlink(char *path)
 
 bad:
   iunlockput(dp);
-  return -1;
+  return r;
 }
 
 int
@@ -318,6 +318,7 @@ sys_rename(char *path1, char *path2)
     }
   }
   end_op();
+  cprintf("rename -> %d\n", r);
   return r;
 }
 
