@@ -140,6 +140,10 @@ Module DIRTREE.
     -> (exists F, F * tree_dir_names_pred inum b)%pred bfmem
     -> find_name reclst a inum $1 = find_name reclst b inum $1.
   Proof.
+    unfold tree_dir_names_pred; intros.
+    destruct_lift H. destruct_lift H0.
+    apply ptsto_valid' in H. apply ptsto_valid' in H0.
+    rewrite H in H0; inversion H0; subst. clear H H0 bfmem.
     admit.
   Qed.
 
