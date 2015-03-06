@@ -878,6 +878,19 @@ Proof.
   erewrite H2; eauto.
 Qed.
 
+Theorem ptsto_diff_ne : forall a0 a1 v0 v1 F0 F1 (m : @mem AT AEQ V),
+  (a0 |-> v0 * F0)%pred m ->
+  (a1 |-> v1 * F1)%pred m ->
+  v0 <> v1 ->
+  a0 <> a1.
+Proof.
+  unfold not; intros.
+  subst.
+  apply sep_star_ptsto_some in H.
+  apply sep_star_ptsto_some in H0.
+  congruence.
+Qed.
+
 Theorem emp_complete : forall m1 m2,
   (@emp AT AEQ V) m1 -> emp m2 -> m1 = m2.
 Proof.
@@ -1003,6 +1016,14 @@ Proof.
   destruct (AEQ a a'); firstorder.
 Qed.
 
+Theorem notindomain_mem_except' : forall a a' (m : @mem AT AEQ V),
+  notindomain a m
+  -> notindomain a (mem_except m a').
+Proof.
+  unfold notindomain, mem_except; intros.
+  destruct (AEQ a a'); firstorder.
+Qed.
+
 Theorem notindomain_mem_eq : forall a (m : @mem AT AEQ V),
   notindomain a m -> m = mem_except m a.
 Proof.
@@ -1018,6 +1039,15 @@ Theorem indomain_mem_except : forall a a' v (m : @mem AT AEQ V),
 Proof.
   unfold mem_except; intros.
   destruct (AEQ a a'); firstorder.
+Qed.
+
+Theorem notindomain_not_indomain : forall a (m : @mem AT AEQ V),
+  notindomain a m <-> ~ indomain a m.
+Proof.
+  unfold notindomain, indomain; split; intros; destruct (m a);
+    try congruence.
+  destruct 1; discriminate.
+  exfalso; eauto.
 Qed.
 
 
@@ -1049,6 +1079,19 @@ Proof.
   exists x; exists (mem_except x0 a'); intuition.
   eapply mem_except_union_comm; eauto.
   apply mem_disjoint_mem_except; auto.
+Qed.
+
+Theorem ptsto_mem_except_exF : forall (F : @pred AT AEQ V) a a' v (m : @mem AT AEQ V),
+  (a |-> v * F)%pred m
+  -> a <> a'
+  -> (a |-> v * (exists F', F'))%pred (mem_except m a').
+Proof.
+  unfold_sep_star.
+  intros; repeat deex.
+  exists x; exists (mem_except x0 a'); intuition.
+  eapply mem_except_union_comm; eauto.
+  apply mem_disjoint_mem_except; auto.
+  exists (diskIs (mem_except x0 a')). firstorder.
 Qed.
 
 

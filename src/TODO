@@ -15,9 +15,6 @@ PROOFS/SPECS
 EXPERIMENTS
 
 - performance
-- buffer cache: LRU eviction
-  (implement LRU eviction in unproven code; have Cache.v simply check
-   that the evicted block is in the buffer cache.)
 
 NOT GOING TO HAPPEN / NICE TO HAVE
 

@@ -12,34 +12,50 @@
 char buf[BUFSIZE];
 char name[BUFSIZE];
 
+#define NITER 100
+#define DOSTATS 0
+
 int main(int argc, char **argv)
 {
   int fd;
   int r;
   int i;
+  int iter;
 
   sprintf(name, "%s/write1", argv[1]);
 
   printf("name %s\n", name);
 
-  if((fd = open(name, O_CREAT | O_TRUNC | O_RDWR, 0666)) < 0) {
-    perror("open");
-    exit(1);
-  }
+  for (iter = 0; iter < NITER; iter++) {
 
-  printstats(argv[1], 1);
+    if((fd = open(name, O_CREAT | O_TRUNC | O_RDWR, 0666)) < 0) {
+      perror("open");
+      exit(1);
+    }
 
-  for (i = 0; i < BUFSIZE; i++) buf[i] = 'a';
+#if DOSTATS
+    printstats(argv[1], 1);
+#endif
 
-  if ((r = write(fd, buf, BUFSIZE)) < 0) {
-    perror("write");
-    exit(1);
-  }
+    for (i = 0; i < BUFSIZE; i++) buf[i] = 'a';
 
-  printstats(argv[1], 0);
+    if ((r = write(fd, buf, BUFSIZE)) < 0) {
+      perror("write");
+      exit(1);
+    }
 
-  if ((r = close(fd)) < 0) {
-    perror("close");
+#if DOSTATS
+    printstats(argv[1], 0);
+#endif
+
+    if ((r = close(fd)) < 0) {
+      perror("close");
+    }
+
+    if ((r = unlink(name)) < 0) {
+      perror("unlink");
+    }
+
   }
 
   return 0;

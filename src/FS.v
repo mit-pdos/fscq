@@ -54,7 +54,7 @@ Definition set_root_inode fsxp rootinum :=
     rootinum
     fsxp.(FSXPMaxBlock).
 
-Definition mkfs T (data_bitmaps inode_bitmaps cachesize : addr) rx : prog T :=
+Definition mkfs T data_bitmaps inode_bitmaps cachesize rx : prog T :=
   let fsxp := compute_xparams data_bitmaps inode_bitmaps in
   cs <- BUFCACHE.init cachesize;
   cs <- sb_init fsxp cs;

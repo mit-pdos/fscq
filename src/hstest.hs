@@ -36,8 +36,8 @@ repf2 n _ s f = do
   (s, rr) <- repf2 (n-1) r s f
   return (s, rr)
 
-cachesize :: Coq_word
-cachesize = W64 1000
+cachesize :: Int
+cachesize = 1000
 
 main :: IO ()
 main = do
