@@ -10,15 +10,15 @@ echo "=== app-bench $1 ==="
 cd $1
 
 echo "=== git clone ==="
-time git clone git@g.csail.mit.edu:fscq
+time -p git clone git@g.csail.mit.edu:fscq
 
 echo "=== compile xv6 ==="
 cd fscq/xv6
-time make
+time -p make
 
 echo "=== compile lfs bench ==="
 cd ../bench/LFStest
-time make
+time -p make
 
 echo "=== run lfs large ==="
 ./largefile -f 1 -i 1 $1
@@ -26,4 +26,4 @@ echo "=== run lfs large ==="
 echo "=== cleanup ==="
 
 cd $1
-time rm -rf *
+time -p rm -rf *
