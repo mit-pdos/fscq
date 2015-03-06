@@ -825,11 +825,11 @@ Ltac autorewrite_fast :=
   end.
 
 Ltac destruct_branch :=
-    match goal with
-    | [ |- {{ _ }} match ?v with | Some _ => _ | None => _ end ] => destruct v
-    | [ |- {{ _ }} match ?v with | None => _ | Some _ => _ end ] => destruct v
-    | [ |- {{ _ }} if ?v then _ else _ ] => destruct v
-    end.
+  match goal with
+  | [ |- {{ _ }} match ?v with | Some _ => _ | None => _ end ] => case_eq v; intros ?case
+  | [ |- {{ _ }} match ?v with | None => _ | Some _ => _ end ] => case_eq v; intros ?case
+  | [ |- {{ _ }} if ?v then _ else _ ] => case_eq v; intros ?case
+  end.
 
 Ltac step_unfold unfolder :=
   intros;
