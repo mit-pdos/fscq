@@ -36,6 +36,7 @@ create(char *path, short type, short major, short minor)
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
+  ip->atime = ip->mtime = ip->ctime = unix_time();
   iupdate(ip);
 
   if(type == T_DIR){  // Create . and .. entries.
@@ -126,7 +127,7 @@ sys_write(void *fh, char *buf, size_t sz, uint off)
     return -1;
   f->off = off;
   int r = filewrite(f, buf, sz);
-  cprintf("write %d sz at off %d -> %d\n", sz, off, r);
+  // cprintf("write %d sz at off %d -> %d\n", sz, off, r);
   return r;
 }
 

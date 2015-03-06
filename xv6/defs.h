@@ -9,6 +9,8 @@ struct spinlock;
 struct stat;
 struct superblock;
 
+int             unix_time(void);
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -58,7 +60,6 @@ int             readi(struct inode*, char*, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, char*, uint, uint);
 void            zeroi(struct inode *ip, uint off, uint n);
-
 
 #ifndef FUSEFS
 // ide.c

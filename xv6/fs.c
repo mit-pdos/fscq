@@ -215,6 +215,9 @@ iupdate(struct inode *ip)
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
   dip->size = ip->size;
+  dip->atime = ip->atime;
+  dip->ctime = ip->ctime;
+  dip->mtime = ip->mtime;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
   log_write(bp);
   brelse(bp);
@@ -292,6 +295,9 @@ ilock(struct inode *ip)
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
     ip->size = dip->size;
+    ip->mtime = dip->mtime;
+    ip->atime = dip->atime;
+    ip->ctime = dip->ctime;
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
     brelse(bp);
     ip->flags |= I_VALID;
@@ -461,6 +467,9 @@ stati(struct inode *ip, struct stat *st)
   st->type = ip->type;
   st->nlink = ip->nlink;
   st->size = ip->size;
+  st->mtime = ip->mtime;
+  st->ctime = ip->ctime;
+  st->atime = ip->atime;
 }
 
 //PAGEBREAK!
@@ -505,6 +514,7 @@ zeroi(struct inode *ip, uint off, uint n)
     brelse(bp);
   }
   ip->size = off;
+  ip->mtime = unix_time();
   iupdate(ip);
 }
 
@@ -541,6 +551,7 @@ writei(struct inode *ip, char *src, uint off, uint n)
 
   if(n > 0 && off > ip->size){
     ip->size = off;
+    ip->mtime = unix_time();
     iupdate(ip);
   }
   return n;

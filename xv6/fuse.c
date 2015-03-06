@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <time.h>
 
 #define FUSE  1
 
@@ -80,6 +81,9 @@ fuse_getattr(const char *path, struct stat *stbuf)
     stbuf->st_mode = (st.type == T_DIR) ? S_IFDIR | 0777 : S_IFREG | 0777;
     stbuf->st_nlink = st.nlink;
     stbuf->st_size = st.size;
+    stbuf->st_atime = st.atime;
+    stbuf->st_ctime = st.ctime;
+    stbuf->st_mtime = st.mtime;
   } else {
     r = -ENOENT;
   }
@@ -285,6 +289,13 @@ unix_flush(void)
     exit(-1);
   }
   fsstats.nflush++;
+}
+
+int 
+unix_time(void) {
+  time_t t;
+  t = time(0);
+  return (int) t;
 }
 
 void binit();

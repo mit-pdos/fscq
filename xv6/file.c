@@ -137,7 +137,6 @@ filewrite(struct file *f, char *addr, int n)
     if (f->off > f->ip->size) {  // fill in hole
       // XXX break up writing hole if off- ip->size > max
       int n =  f->off - f->ip->size;
-      cprintf("zeroi: %d %d\n", f->ip->size, n);
       begin_op();
       ilock(f->ip);
       zeroi(f->ip, f->ip->size, n);
