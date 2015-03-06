@@ -11,6 +11,10 @@ Require Import Pred.
 Require Import Arith.
 Require Import GenSepN.
 Require Import List.
+Require Import Hoare.
+Require Import MemLog.
+Require Import GenSep.
+Require Import SepAuto.
 
 Set Implicit Arguments.
 
@@ -21,6 +25,21 @@ Module DIRTREE.
   | DirSubdir : list (string * addr * dir_item) -> dir_item.
 
   Definition dirtree := list (string * addr * dir_item).
+
+  Fixpoint find_name (tree : dirtree) (fnlist : list string) (inum : addr) (isdir : addr) :=
+    match fnlist with
+    | nil => Some (inum, isdir)
+    | name :: rest =>
+      if weq isdir $0 then None else
+      fold_left (fun accum (arg : string * addr * dir_item) =>
+                 let '(name', inum', item') := arg in
+                                  if string_dec name' name then
+                                  match item' with
+                                  | DirFile _ => find_name nil rest inum' $0
+                                  | DirSubdir tree' => find_name tree' rest inum' $1
+                                  end
+                                  else accum) tree None
+    end.
 
   Fixpoint tree_dir_names_pred' (dirlist : dirtree) : @pred _ string_dec (addr * addr) :=
     match dirlist with
@@ -35,19 +54,26 @@ Module DIRTREE.
     [[ SDIR.rep f dsmap ]] *
     [[ tree_dir_names_pred' dirlist dsmap ]])%pred.
 
-  (**
-   * XXX how can we get Coq to accept this as terminating?
-   *)
-  (*
-  Fixpoint tree_pred (dirlist : dirtree) {struct dirlist} : @pred _ eq_nat_dec _ := (
+  Section DIRITEM.
+
+  Variable F : addr -> dir_item -> @pred nat eq_nat_dec BFILE.bfile.
+
+  Fixpoint tree_pred' (dirlist : dirtree) : @pred _ eq_nat_dec _ := (
     match dirlist with
     | nil => emp
-    | (name, inum, DirFile f) :: dirlist' => #inum |-> f * tree_pred dirlist'
-    | (name, inum, DirSubdir s) :: dirlist' =>
-      tree_dir_names_pred inum s * tree_pred s * tree_pred dirlist'
+    | (_, inum, dir_item) :: dirlist' => F inum dir_item * tree_pred' dirlist'
     end)%pred.
-  *)
-  Parameter tree_pred : dirtree -> @pred nat eq_nat_dec BFILE.bfile.
+
+  End DIRITEM.
+
+  Fixpoint diritem_pred inum diritem := (
+    match diritem with
+    | DirFile f => #inum |-> f
+    | DirSubdir s => tree_dir_names_pred inum s * tree_pred' diritem_pred s
+    end)%pred.
+
+  Definition tree_pred (dirlist : dirtree) :=
+    tree_pred' diritem_pred dirlist.
 
   Definition rep fsxp tree :=
     (exists bflist freeinodes freeinode_pred_unused freeinode_pred,
@@ -58,15 +84,21 @@ Module DIRTREE.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let3 (mscs, inum, isdir) <- ForEach fn fnlist
+      Ghost mbase m F treetop bflist
       Loopvar mscs_inum_isdir <- (mscs, dnum, $1)
       Continuation lrx
       Invariant
-        any
+        MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs_inum_isdir.(fst).(fst) *
+        exists tree,
+        [[ (F * rep fsxp treetop)%pred (list2mem m) ]] *
+        [[ (exists F', tree_dir_names_pred fsxp.(FSXPRootInum) tree *
+            tree_pred tree * F')%pred (list2nmem bflist) ]] *
+        [[ find_name treetop fnlist dnum $1 = find_name tree fn mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
       OnCrash
-        any
+        MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
       Begin
         If (weq mscs_inum_isdir.(snd) $0) {
-          rx (mscs, None)
+          rx (mscs_inum_isdir.(fst).(fst), None)
         } else {
           let2 (mscs, r) <- SDIR.dslookup (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
                                           mscs_inum_isdir.(fst).(snd) fn mscs_inum_isdir.(fst).(fst);
@@ -77,6 +109,27 @@ Module DIRTREE.
         }
     Rof;
     rx (mscs, Some (inum, isdir)).
+
+  Theorem namei_ok : forall fsxp dnum fnlist mscs,
+    {< F mbase m tree,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+           [[ (F * rep fsxp tree)%pred (list2mem m) ]]
+    POST:(mscs,r)
+           [[ r = find_name tree fnlist dnum $1 ]] *
+           MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs
+    CRASH  MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
+    >} namei fsxp dnum fnlist mscs.
+  Proof.
+    unfold namei, rep.
+    step.
+    instantiate (a4 := l).
+    pred_apply. cancel.
+    step.
+    step.
+    destruct (weq b $0); congruence.
+    admit.
+    step.
+  Qed.
 
   Definition mknod T fsxp dnum name isdir mscs rx : prog T :=
     let2 (mscs, oi) <- BALLOC.alloc_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) mscs;
