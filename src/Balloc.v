@@ -219,7 +219,8 @@ Module BALLOC.
     {< mbase m F,
     PRE         exists a, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
                 [[ (F * array (BmapStart xp) a $1)%pred (list2mem m) ]] *
-                [[ length a = # (BmapNBlocks xp) ]]
+                [[ length a = # (BmapNBlocks xp) ]] *
+                [[ goodSize addrlen (# (BmapNBlocks xp) * valulen) ]]
     POST:mscs'  exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
                 [[ (F * rep' xp bmap0)%pred (list2mem m') ]]
     CRASH       MEMLOG.log_intact lxp mbase
@@ -232,7 +233,7 @@ Module BALLOC.
     instantiate (a:=nil); unfold array_item_pairs; cancel.
     reflexivity.
     step.
-    admit.
+    rewrite H5. apply wlt_lt. auto.
     step.
     admit.
     admit.
