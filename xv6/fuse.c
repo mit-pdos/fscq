@@ -77,7 +77,7 @@ fuse_getattr(const char *path, struct stat *stbuf)
   fsstats.ngetattr++;
   int r = sys_fstat(path, (char *) &st);
   if (r >= 0) {
-    stbuf->st_mode = (st.type == T_DIR) ? S_IFDIR | 0777 : S_IFREG | 0666;
+    stbuf->st_mode = (st.type == T_DIR) ? S_IFDIR | 0777 : S_IFREG | 0777;
     stbuf->st_nlink = st.nlink;
     stbuf->st_size = st.size;
   } else {

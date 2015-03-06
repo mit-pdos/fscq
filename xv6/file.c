@@ -118,8 +118,10 @@ filewrite(struct file *f, char *addr, int n)
 {
   int r;
 
-  if(f->writable == 0)
+  if(f->writable == 0) {
+    cprintf("not writeable\n");
     return -1;
+  }
   if(f->type == FD_PIPE)
     return pipewrite(f->pipe, addr, n);
   if(f->type == FD_INODE){
@@ -129,7 +131,20 @@ filewrite(struct file *f, char *addr, int n)
     // and 2 blocks of slop for non-aligned writes.
     // this really belongs lower down, since writei()
     // might be writing a device like the console.
+
     int max = ((LOGSIZE-1-1-2) / 2) * 512;
+
+    if (f->off > f->ip->size) {  // fill in hole
+      // XXX break up writing hole if off- ip->size > max
+      int n =  f->off - f->ip->size;
+      cprintf("zeroi: %d %d\n", f->ip->size, n);
+      begin_op();
+      ilock(f->ip);
+      zeroi(f->ip, f->ip->size, n);
+      iunlock(f->ip);
+      end_op();
+    }
+
     int i = 0;
     while(i < n){
       int n1 = n - i;

@@ -125,7 +125,9 @@ sys_write(void *fh, char *buf, size_t sz, uint off)
   if (f == 0)
     return -1;
   f->off = off;
-  return filewrite(f, buf, sz);
+  int r = filewrite(f, buf, sz);
+  cprintf("write %d sz at off %d -> %d\n", sz, off, r);
+  return r;
 }
 
 

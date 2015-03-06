@@ -491,6 +491,23 @@ readi(struct inode *ip, char *dst, uint off, uint n)
   return n;
 }
 
+void
+zeroi(struct inode *ip, uint off, uint n)
+{
+  uint tot, m;
+  struct buf *bp;
+
+  for(tot=0; tot<n; tot+=m, off+=m){
+    bp = bread(ip->dev, bmap(ip, off/BSIZE));
+    m = min(n - tot, BSIZE - off%BSIZE);
+    memset(bp->data + off % BSIZE, 0, m);
+    log_write(bp);
+    brelse(bp);
+  }
+  ip->size = off;
+  iupdate(ip);
+}
+
 // PAGEBREAK!
 // Write data to inode.
 int
@@ -505,10 +522,14 @@ writei(struct inode *ip, char *src, uint off, uint n)
     return devsw[ip->major].write(ip, src, n);
   }
 
-  if(off > ip->size || off + n < off)
+  if((off > ip->size) || (off + n < off)) {
+    cprintf("bad n\n");
     return -1;
-  if(off + n > MAXFILE*BSIZE)
+  }
+  if(off + n > MAXFILE*BSIZE) {
+    cprintf("too big\n");
     return -1;
+  }
 
   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
     bp = bread(ip->dev, bmap(ip, off/BSIZE));
