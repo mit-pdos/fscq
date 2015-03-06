@@ -135,28 +135,43 @@ Module DIRTREE.
         destruct d; apply ptsto_mem_except in H0; eauto.
   Qed.
 
-  Lemma find_name_subdir : forall tree rec name inum subtree isdir F dmap,
+  Lemma find_name_subdir_helper : forall reclst inum a b bfmem,
+       (exists F, F * tree_dir_names_pred inum a)%pred bfmem
+    -> (exists F, F * tree_dir_names_pred inum b)%pred bfmem
+    -> find_name reclst a inum $1 = find_name reclst b inum $1.
+  Proof.
+    admit.
+  Qed.
+
+  Lemma find_name_subdir : forall tree reclst name inum subtree isdir F dmap bfmem,
     (F * name |-> (inum, isdir))%pred dmap
     -> tree_dir_names_pred' tree dmap
     -> isdir <> $0
-    -> fold_right (find_name_helper rec name) None tree = rec subtree inum isdir.
+    -> (exists F, F * tree_dir_names_pred inum subtree)%pred bfmem
+    -> (exists F, F * tree_pred tree)%pred bfmem
+    -> fold_right (find_name_helper (find_name reclst) name) None tree =
+       find_name reclst subtree inum isdir.
   Proof.
     induction tree; simpl; intros.
     - eapply emp_complete in H0; [| apply emp_empty_mem ]; subst.
       apply sep_star_empty_mem in H; intuition.
       exfalso. eapply ptsto_empty_mem; eauto.
-    - destruct a. destruct p. unfold find_name_helper; fold (find_name_helper rec name).
+    - destruct a. destruct p. unfold find_name_helper; fold (find_name_helper (find_name reclst) name).
       destruct (string_dec s name); subst.
       + apply ptsto_valid' in H. destruct d.
         * apply ptsto_valid in H0. rewrite H in H0. inversion H0; subst. congruence.
         * apply ptsto_valid in H0. rewrite H in H0. inversion H0; subst.
-          (* pin down what subtree refers to.. *)
-          admit.
+          simpl in *.
+          eapply find_name_subdir_helper.
+          eapply pimpl_apply; [| apply H3 ]. cancel.
+          eapply pimpl_apply; [| apply H2 ]. cancel.
       + eapply IHtree.
         apply sep_star_comm. eapply ptsto_mem_except_exF. apply sep_star_comm; eauto.
         instantiate (1:=s); eauto.
         destruct d; apply ptsto_mem_except in H0; eauto.
         eauto.
+        eauto.
+        eapply pimpl_apply; [| apply H3 ]. cancel.
   Qed.
 
   Lemma find_name_none : forall tree rec name dmap,
@@ -255,6 +270,8 @@ Module DIRTREE.
     instantiate (a := d3). cancel.
 
     eapply find_name_subdir; eauto.
+    eapply pimpl_apply; [| apply H0 ]; cancel.
+    eapply pimpl_apply; [| apply H4 ]; cancel.
 
     step.
     rewrite H10; clear H10. destruct (weq b $0); try congruence.
