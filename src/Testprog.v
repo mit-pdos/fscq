@@ -26,7 +26,7 @@ Fixpoint copy_many T xp (count : nat) (src dst : addr) mscs rx : prog T :=
   end.
 
 Definition testcopy T xp rx : prog T :=
-  cs <- BUFCACHE.init $1000 ;
+  cs <- BUFCACHE.init 1000 ;
   mscs <- MEMLOG.init xp cs ;
   mscs <- MEMLOG.begin xp mscs ;
   mscs <- copy_many xp 200 $100 $500 mscs ;
@@ -34,7 +34,7 @@ Definition testcopy T xp rx : prog T :=
   rx ok.
 
 Definition testalloc T lxp bxp rx : prog T :=
-  cs <- BUFCACHE.init $1000 ;
+  cs <- BUFCACHE.init 1000 ;
   mscs <- MEMLOG.init lxp cs ;
   mscs <- MEMLOG.begin lxp mscs ;
   let2 (mscs, b) <- BALLOC.alloc lxp bxp mscs ;

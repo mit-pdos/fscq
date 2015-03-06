@@ -16,28 +16,43 @@ Module Map := FMapAVL.Make(Addr_as_OT).
 Import ListNotations.
 Set Implicit Arguments.
 
+Parameter eviction_state : Type.
+Parameter eviction_init : eviction_state.
+Parameter eviction_update : eviction_state -> addr -> eviction_state.
+Parameter eviction_choose : eviction_state -> (addr * eviction_state).
+
 Record cachestate := {
   CSMap : Map.t valu;
-  CSCount : addr;  (* current number of items, for efficient capacity checks *)
-  CSMaxCount : addr
+  CSCount : nat;
+  CSMaxCount : nat;
+  CSEvict : eviction_state
 }.
 
 Module BUFCACHE.
 
   Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) valuset) :=
     (diskIs m *
-     [[ Map.cardinal (CSMap cs) = # (CSCount cs) ]] *
-     [[ (CSCount cs <= CSMaxCount cs)%word ]] *
-     [[ CSMaxCount cs <> $0 ]] *
+     [[ Map.cardinal (CSMap cs) = CSCount cs ]] *
+     [[ CSCount cs <= CSMaxCount cs ]] *
+     [[ CSMaxCount cs <> 0 ]] *
      [[ forall a v, Map.MapsTo a v (CSMap cs) -> exists old, m a = Some (v, old) ]])%pred.
 
   Definition trim T (cs : cachestate) rx : prog T :=
-    If (wlt_dec (CSCount cs) (CSMaxCount cs)) {
+    If (lt_dec (CSCount cs) (CSMaxCount cs)) {
       rx cs
     } else {
-      match (Map.elements (CSMap cs)) with
-      | nil => rx cs
-      | (a,v) :: tl => rx (Build_cachestate (Map.remove a (CSMap cs)) (CSCount cs ^- $1) (CSMaxCount cs))
+      let (victim, evictor) := eviction_choose (CSEvict cs) in
+      match (Map.find victim (CSMap cs)) with
+      | Some v => rx (Build_cachestate (Map.remove victim (CSMap cs))
+                                       (CSCount cs - 1)
+                                       (CSMaxCount cs) evictor)
+      | None => (* evictor failed, evict first block *)
+        match (Map.elements (CSMap cs)) with
+        | nil => rx cs
+        | (a,v) :: tl => rx (Build_cachestate (Map.remove a (CSMap cs))
+                                              (CSCount cs - 1)
+                                              (CSMaxCount cs) (CSEvict cs))
+        end
       end
     }.
 
@@ -47,7 +62,8 @@ Module BUFCACHE.
     | Some v => rx (cs, v)
     | None =>
       v <- Read a;
-      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs ^+ $1) (CSMaxCount cs), v)
+      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs + 1)
+                           (CSMaxCount cs) (eviction_update (CSEvict cs) a), v)
     end.
 
   Definition write T a v (cs : cachestate) rx : prog T :=
@@ -55,21 +71,19 @@ Module BUFCACHE.
     Write a v;;
     match Map.find a (CSMap cs) with
     | Some _ =>
-      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs) (CSMaxCount cs))
+      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs)
+                           (CSMaxCount cs) (eviction_update (CSEvict cs) a))
     | None =>
-      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs ^+ $1) (CSMaxCount cs))
+      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs + 1)
+                           (CSMaxCount cs) (eviction_update (CSEvict cs) a))
     end.
 
   Definition sync T a (cs : cachestate) rx : prog T :=
     Sync a;;
     rx cs.
 
-  Definition init T (cachesize : addr) (rx : cachestate -> prog T) : prog T :=
-    If (weq cachesize $0) {
-      rx (Build_cachestate (Map.empty valu) $0 $1)
-    } else {
-      rx (Build_cachestate (Map.empty valu) $0 cachesize)
-    }.
+  Definition init T (cachesize : nat) (rx : cachestate -> prog T) : prog T :=
+    rx (Build_cachestate (Map.empty valu) 0 cachesize eviction_init).
 
   Definition read_array T a i cs rx : prog T :=
     r <- read (a ^+ i ^* $1) cs;
@@ -92,14 +106,28 @@ Module BUFCACHE.
     congruence.
   Qed.
 
-  Lemma map_remove_cardinal : forall V (m : Map.t V) k, Map.In k m ->
+  Lemma map_remove_cardinal : forall (m : Map.t valu) k, (exists v, Map.MapsTo k v m) ->
     Map.cardinal (Map.remove k m) = Map.cardinal m - 1.
+  Proof.
+    admit.
+(*
+    intros.
+    repeat rewrite Map.cardinal_1.
+    erewrite filter_split with (l:=Map.elements m);
+      try apply Map.elements_3.
+    instantiate (f := fun e => if weq k (fst e) then true else false).
+    rewrite app_length.
+*)
+  Qed.
+
+  Lemma map_add_cardinal : forall V (m : Map.t V) k v, ~ (exists v, Map.MapsTo k v m) ->
+    Map.cardinal (Map.add k v m) = Map.cardinal m + 1.
   Proof.
     admit.
   Qed.
 
-  Lemma map_add_cardinal : forall V (m : Map.t V) k v, ~ Map.In k m ->
-    Map.cardinal (Map.add k v m) = Map.cardinal m + 1.
+  Lemma map_add_dup_cardinal : forall V (m : Map.t V) k v, (exists v, Map.MapsTo k v m) ->
+    Map.cardinal (Map.add k v m) = Map.cardinal m.
   Proof.
     admit.
   Qed.
@@ -117,6 +145,7 @@ Module BUFCACHE.
 
   Hint Resolve Map.remove_3.
   Hint Resolve Map.add_3.
+  Hint Resolve Map.find_2.
   Hint Resolve mapsto_add.
 
   Ltac unfold_rep := unfold rep.
@@ -124,30 +153,24 @@ Module BUFCACHE.
   Theorem trim_ok : forall cs,
     {< d,
     PRE      rep cs d
-    POST:cs' rep cs' d
+    POST:cs  rep cs d *
+             [[ CSCount cs < CSMaxCount cs ]]
     CRASH    exists cs', rep cs' d
     >} trim cs.
   Proof.
     unfold trim, rep; hoare.
-    destruct cs as [cmap cnum].
-    case_eq (Map.elements cmap); hoare.
+    destruct (eviction_choose (CSEvict cs)).
 
-    rewrite map_remove_cardinal by (eapply map_elements_hd_in; eauto).
-    rewrite H6.
-    destruct xp; simpl in *.
+    case_eq (Map.find w (CSMap cs)); hoare.
+    rewrite map_remove_cardinal; eauto.
 
-    rewrite wminus_Alt. rewrite wminus_Alt2. unfold wordBinN.
-    erewrite wordToNat_natToWord_bound with (bound:=cnum).
-    reflexivity.
-    omega.
-    intro; apply H8; clear H8.
-    apply lt_wlt.
-    apply wlt_lt in H0.
-    simpl in *.
-    case_eq (#MaxCacheBlocks0); intros; try omega.
-    rewrite <- H1 in MaxCacheBlocksOK0.
-    rewrite natToWord_wordToNat in MaxCacheBlocksOK0.
-    congruence.
+    case_eq (Map.elements (CSMap cs)); hoare.
+    replace (CSCount cs) with (CSMaxCount cs) in * by omega.
+    rewrite Map.cardinal_1 in *. rewrite H in *; clear H.
+    simpl in *; omega.
+
+    destruct p0; hoare.
+    rewrite map_remove_cardinal by (eapply map_elements_hd_in; eauto); eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (trim _) _) => apply trim_ok : prog.
@@ -155,26 +178,26 @@ Module BUFCACHE.
   Theorem read_ok : forall cs a,
     {< d F v,
     PRE          rep cs d * [[ (F * a |~> v)%pred d ]]
-    POST:(cs',r) rep cs' d * [[ r = v ]]
+    POST:(cs,r)  rep cs d * [[ r = v ]]
     CRASH        exists cs', rep cs' d
     >} read a cs.
   Proof.
     unfold read.
     hoare_unfold unfold_rep.
 
-    apply sep_star_comm in H3.
-    apply ptsto_valid in H3 as H'.
-    destruct (Map.find a (fst r_)) eqn:Hfind; hoare.
+    apply ptsto_valid' in H3 as H'.
+    destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
 
-    apply Map.find_2 in Hfind. apply H9 in Hfind. rewrite H' in Hfind. deex; congruence.
+    apply Map.find_2 in Hfind. apply H12 in Hfind. rewrite H' in Hfind. deex; congruence.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
 
-    admit.
+    rewrite map_add_cardinal; auto.
+    intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
     destruct (weq a a0); subst.
     apply mapsto_add in H; subst; eauto.
-    edestruct H9. eauto. eexists; eauto.
+    edestruct H12. eauto. eexists; eauto.
 
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
   Qed.
@@ -184,8 +207,8 @@ Module BUFCACHE.
   Theorem write_ok : forall cs a v,
     {< d F v0,
     PRE      rep cs d * [[ (F * a |-> v0)%pred d ]]
-    POST:cs' exists d',
-             rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
+    POST:cs  exists d',
+             rep cs d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
     CRASH    exists cs', rep cs' d \/
              exists d', rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
     >} write a v cs.
@@ -194,10 +217,10 @@ Module BUFCACHE.
     hoare_unfold unfold_rep.
 
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
-    destruct (Map.find a (fst r_)); hoare.
+    destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
 
     rewrite <- diskIs_combine_upd with (m:=m); try pred_apply; cancel.
-    admit.
+    rewrite map_add_dup_cardinal; eauto.
     destruct (weq a a0); subst.
     apply mapsto_add in H; subst.
     rewrite upd_eq by auto. eauto.
@@ -208,7 +231,8 @@ Module BUFCACHE.
     eapply ptsto_upd; pred_apply; cancel.
 
     rewrite <- diskIs_combine_upd with (m:=m); cancel.
-    admit.
+    rewrite map_add_cardinal; eauto.
+    intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
     destruct (weq a a0); subst.
     apply mapsto_add in H; subst.
@@ -224,9 +248,7 @@ Module BUFCACHE.
     apply pimpl_or_r. left. cancel.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
 
-    apply pimpl_or_r. left. cancel.
-    eauto.
-    eauto.
+    apply pimpl_or_r. left. cancel; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
@@ -234,7 +256,7 @@ Module BUFCACHE.
   Theorem sync_ok : forall a cs,
     {< d F v,
     PRE      rep cs d * [[ (F * a |-> v)%pred d ]]
-    POST:cs' exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
+    POST:cs  exists d', rep cs d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
     CRASH    exists cs', rep cs' d \/
              exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
     >} sync a cs.
@@ -259,13 +281,15 @@ Module BUFCACHE.
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
     eauto.
     eauto.
+    eauto.
+    eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
 
   Theorem init_ok : forall cachesize,
     {< F,
-    PRE      F
+    PRE      F * [[ cachesize <> 0 ]]
     POST:cs  exists d, rep cs d * [[ F d ]]
     CRASH    F
     >} init cachesize.
@@ -287,7 +311,10 @@ Module BUFCACHE.
     apply sep_star_lift_apply'; eauto.
     apply sep_star_lift_apply'; eauto.
     apply sep_star_lift_apply'; eauto.
+    apply sep_star_lift_apply'; eauto.
+    apply sep_star_lift_apply'; eauto.
     congruence.
+    omega.
     intros.
     contradict H0; apply Map.empty_1.
   Qed.
@@ -387,12 +414,15 @@ Module BUFCACHE.
     rewrite crash_xform_diskIs.
     repeat rewrite crash_xform_lift_empty.
     cancel.
-    instantiate (a0 := (Map.empty valu, $0)).
+    instantiate (a0 := Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) (CSEvict cs)).
     auto.
+    simpl; omega.
+    simpl in *; omega.
     inversion H.
   Qed.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+
 End BUFCACHE.
 
 Global Opaque BUFCACHE.init.
