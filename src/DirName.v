@@ -458,7 +458,7 @@ Module SDIR.
     }.
 
   Definition dslist_trans (di : DIR.dlistent) :=
-    (wname2sname di.(fst).(fst), di.(fst).(snd), di.(snd)).
+    (wname2sname (fst di), snd di).
 
   Definition dslist T lxp bxp ixp dnum mscs rx : prog T :=
     let2 (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
@@ -510,9 +510,9 @@ Module SDIR.
   Qed.
 
 
-  Definition dslistent := (string * addr * addr)%type.
+  Definition dslistent := (string * (addr * addr))%type.
   Definition dslmatch (de: dslistent) : @pred _ (string_dec) _ :=
-    de.(fst).(fst) |-> (de.(fst).(snd), de.(snd)).
+    fst de |-> snd de.
 
 
   Theorem dslist_ok : forall lxp bxp ixp dnum mscs,

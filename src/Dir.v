@@ -748,13 +748,13 @@ Module DIR.
   Qed.
 
 
-  Definition dlistent := (filename * addr * addr)%type.
+  Definition dlistent := (filename * (addr * addr))%type.
   Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) _ :=
-    de.(fst).(fst) |-> (de.(fst).(snd), de.(snd)).
+    fst de |-> snd de.
 
   Definition dlist_f (s : list dlistent) (de : dent) := Eval compute_rec in
     if (weq (de :-> "valid") $0) then s
-    else (de :-> "name", de :-> "inum", de :-> "isdir") :: s.
+    else (de :-> "name", (de :-> "inum", de :-> "isdir")) :: s.
 
   Definition dlist T lxp bxp ixp dnum mscs rx : prog T :=
     let2 (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
@@ -782,7 +782,7 @@ Module DIR.
     unfold dmatch at 1; unfold dlist_f at 3; rec_simpl.
     destruct (weq (fst (snd (snd a))) $0) eqn:HV.
     rewrite star_emp_pimpl; auto.
-    pose proof (dlist_fold_listpred' l nil (fst a, fst (snd a), fst (snd (snd (snd a)))) dlmatch).
+    pose proof (dlist_fold_listpred' l nil (fst a, (fst (snd a), fst (snd (snd (snd a))))) dlmatch).
     simpl in H; apply H.
   Qed.
 
