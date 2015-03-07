@@ -24,8 +24,6 @@ int main(int argc, char **argv)
 
   sprintf(name, "%s/write1", argv[1]);
 
-  printf("name %s\n", name);
-
   for (iter = 0; iter < NITER; iter++) {
 
     if((fd = open(name, O_CREAT | O_TRUNC | O_RDWR, 0666)) < 0) {

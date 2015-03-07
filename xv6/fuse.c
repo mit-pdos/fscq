@@ -29,6 +29,7 @@ int sys_truncate(char *path);
 int sys_mkdir(char *path);
 int sys_unlink(char *path);
 int sys_rename(char *path1, char *path2);
+int sys_utime(char *path, int time);
 
 // Special file for statistics.  cat /stats returns the results and
 // resets the counters to 0.
@@ -223,6 +224,12 @@ fuse_rename(const char *path1, const char *path2) {
   return sys_rename((char *) path1, (char *)path2);
 }
 
+static int
+fuse_utimens(const char *path, const struct timespec tv[2])
+{
+  return sys_utime((char *) path, tv[2].tv_sec);
+}
+
 static struct fuse_operations fuse_filesystem_operations = {
   .getattr = fuse_getattr,
   .open    = fuse_open,
@@ -236,6 +243,7 @@ static struct fuse_operations fuse_filesystem_operations = {
   .unlink = fuse_unlink,
   .rmdir = fuse_rmdir,
   .rename = fuse_rename,
+  .utimens = fuse_utimens,
 };
 
 void

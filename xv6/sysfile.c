@@ -323,6 +323,21 @@ sys_rename(char *path1, char *path2)
   return r;
 }
 
+int 
+sys_utime(char *path, int time)
+{
+  struct file *f = sys_open(path, O_WRONLY);
+  if (f == 0)
+    return -1;
+  begin_op();
+  ilock(f->ip);
+  f->ip->mtime = time;
+  iupdate(f->ip);
+  iunlock(f->ip);
+  end_op();
+  fileclose(f);
+  return 0;
+}
 
 /*
 int
