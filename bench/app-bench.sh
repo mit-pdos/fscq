@@ -1,17 +1,16 @@
 #!/bin/sh
 
-if [ $# -eq 0 ]  
+if [ $# -ne 2 ]  
  then
-    echo "$0 top-dir"
+    echo "$0 fscq-repo top-dir"
     exit 1
 fi
 
-echo "=== app-bench $1 ==="
-cd $1
+echo "=== app-bench $1 $2 ==="
+cd $2
 
 echo "=== git clone ==="
-# time -p git clone git@g.csail.mit.edu:fscq
-time -p git clone ~/fscq
+time -p git clone $1
 
 echo "=== compile xv6 ==="
 cd fscq/xv6
@@ -22,9 +21,9 @@ cd ../bench/LFStest
 time -p make
 
 echo "=== run lfs large ==="
-./largefile -f 1 -i 1 $1
+./largefile -f 1 -i 1 $2
 
 echo "=== cleanup ==="
 
-#cd $1
-#time -p rm -rf *
+cd $2
+time -p rm -rf fscq/*
