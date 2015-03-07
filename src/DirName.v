@@ -274,101 +274,55 @@ Module SDIR.
 
   Definition namelen := Dir.filename_len / 8.
 
-  Inductive wname_valid : filename -> Prop :=
-    | WNameValid : forall w, wellformedpadstring (name2padstring namelen w) -> wname_valid w.
+  Definition wname := filename.
+  Definition sname := string.
 
-  Inductive sname_valid : string -> Prop :=
-    | SNameValid : forall s, length s <= namelen -> nozero s -> sname_valid s
+  Inductive wname_valid : wname -> Prop :=
+    | WNameValid : forall w, 
+        wellformedpadstring (name2padstring namelen w) -> wname_valid w.
+
+  Inductive sname_valid : sname -> Prop :=
+    | SNameValid : forall s, 
+        length s <= namelen -> nozero s -> sname_valid s
     .
 
-  Definition wname := {w: filename | wname_valid w}.
-  Definition sname := {s:   string | sname_valid s}.
+  Definition sname2wname := string2name namelen.
+  Definition wname2sname := name2string namelen.
 
-
-  Theorem sig_sumbool : forall T P (dec : forall a b : T, {a = b} + {a <> b}),
-    forall a' b' : {x: T | P x }, {a' = b'} + {a' <> b'}.
+  Lemma wname_valid_sname_valid : forall x,
+    wname_valid x -> sname_valid (wname2sname x).
   Proof.
-    intros.
-    destruct a', b'.
-    destruct (dec x x0).
-    left.
-    apply subset_eq_compat; auto.
-    right; intuition.
-    inversion H; auto.
-  Qed.
-
-  Theorem sname_dec : forall (s1 s2 : sname), {s1 = s2} + {s1 <> s2}.
-  Proof.
-    intros.
-    apply sig_sumbool.
-    apply string_dec.
-  Qed.
-
-  Theorem wname_dec : forall (s1 s2 : wname), {s1 = s2} + {s1 <> s2}.
-  Proof.
-    intros.
-    apply sig_sumbool.
-    apply weq.
-  Qed.
-
-  Definition sname2wname (x : sname) : wname.
-    destruct x.
-    exists (string2name namelen x).
-    unfold string2name.
+    intros; inversion H.
     constructor.
-    rewrite padstring2name2padstring by apply string_pad_length.
-    inversion s.
-    apply stringpad_wellformed; tauto.
-  Defined.
-
-  Definition wname2sname (x : wname) : sname.
-    destruct x.
-    exists (name2string namelen x); unfold name2string.
-    split.
     apply name2padstring_unpad_length.
-    inversion w.
     apply wellformed_nozero; auto.
-  Defined.
-
-  Lemma sname2wname2sname : forall x,
-    wname2sname (sname2wname x) = x.
-  Proof.
-    intros.
-    unfold wname2sname, sname2wname.
-    destruct x.
-    apply subset_eq_compat.
-    inversion s.
-    setoid_rewrite string2name2string; tauto.
   Qed.
 
-  Lemma wname2sname2wname : forall x,
-    sname2wname (wname2sname x) = x.
+  Lemma sname_valid_wname_valid : forall x,
+    sname_valid x -> wname_valid (sname2wname x).
   Proof.
-    intros.
-    unfold wname2sname, sname2wname.
-    destruct x.
-    apply subset_eq_compat.
-    inversion w.
-    setoid_rewrite name2string2name; auto.
+    intros; inversion H.
+    constructor.
+    unfold sname2wname, string2name.
+    rewrite padstring2name2padstring.
+    apply stringpad_wellformed; auto.
+    apply string_pad_length.
   Qed.
 
-  Theorem sname2wname_bijective : bijective sname2wname.
+  Theorem dirname_cond_inverse :
+    cond_inverse wname2sname wname_valid sname_valid sname2wname.
   Proof.
-    apply inv2bij with (f' := wname2sname).
-    split; intro.
-    apply sname2wname2sname.
-    apply wname2sname2wname.
+    split; [split | split ].
+    apply wname_valid_sname_valid; auto.
+    apply name2string2name.
+    inversion H; auto.
+    apply sname_valid_wname_valid; auto.
+    inversion H.
+    apply string2name2string; auto.
   Qed.
 
-  Theorem wname2sname_bijective : bijective wname2sname.
-  Proof.
-    apply inv2bij with (f' := sname2wname).
-    split; intro.
-    apply wname2sname2wname.
-    apply sname2wname2sname.
-  Qed.
+  Hint Resolve dirname_cond_inverse.
 
-  (* sig-type casting *)
 
   Fixpoint is_nozero (s : string) : bool :=
     match s with
@@ -412,24 +366,6 @@ Module SDIR.
     apply is_nozero_nozero; auto.
     destruct (le_dec (length s) namelen); simpl; try congruence.
   Qed.
-
-  Definition string2sname (s : string) : option sname.
-    destruct (is_valid_sname s) eqn:H.
-    refine (Some _); exists s.
-    apply is_valid_sname_valid; auto.
-    exact None.
-  Defined.
-
-  Definition sname2string (s : sname) : string.
-    destruct s; exact x.
-  Defined.
-
-  Definition string2wname (s : string) : option wname :=
-    match (string2sname s) with
-    | Some x => Some (sname2wname x)
-    | None => None
-    end.
-
 
   Fixpoint is_zerostring (s : string) : bool :=
     match s with
@@ -487,26 +423,19 @@ Module SDIR.
     inversion H; apply is_valid_wname_valid'; auto.
   Qed.
 
-  Definition filename2wname (w : filename) : option wname.
-    destruct (is_valid_wname (name2padstring namelen w)) eqn:H.
-    refine (Some _); exists w.
-    apply is_valid_wname_valid; auto.
-    exact None.
-  Defined.
-
-  Definition wname2filename (w : wname) : filename.
-    destruct w; exact x.
-  Defined.
-
-  Definition filename2sname (w : filename) : option sname :=
-    match (filename2wname w) with
-    | Some x => Some (wname2sname x)
-    | None => None
+  Ltac resolve_valid_preds :=
+    match goal with
+    | [ H: is_valid_wname _ = true |- _ ] => apply is_valid_wname_valid in H
+    | [ H: is_valid_sname _ = true |- _ ] => apply is_valid_sname_valid in H
+    | [ H: is_valid_wname _ = true -> False |- _ ] =>
+         rewrite is_valid_wname_valid in H
+    | [ H: is_valid_sname _ = true -> False |- _ ] =>
+         rewrite is_valid_sname_valid in H
     end.
 
   Definition dslookup T lxp bxp ixp dnum name mscs rx : prog T :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let2 (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (string2name namelen name) mscs;
+      let2 (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (sname2wname name) mscs;
       rx (mscs, r)
     } else {
       rx (mscs, None)
@@ -514,7 +443,7 @@ Module SDIR.
 
   Definition dsunlink T lxp bxp ixp dnum name mscs rx : prog T :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let2 (mscs, r) <- DIR.dunlink lxp bxp ixp dnum (string2name namelen name) mscs;
+      let2 (mscs, r) <- DIR.dunlink lxp bxp ixp dnum (sname2wname name) mscs;
       rx (mscs, r)
     } else {
       rx (mscs, false)
@@ -522,22 +451,23 @@ Module SDIR.
 
   Definition dslink T lxp bxp ixp dnum name inum isdir mscs rx : prog T :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let2 (mscs, r) <- DIR.dlink lxp bxp ixp dnum (string2name namelen name) inum isdir mscs;
+      let2 (mscs, r) <- DIR.dlink lxp bxp ixp dnum (sname2wname name) inum isdir mscs;
       rx (mscs, r)
     } else {
       rx (mscs, false)
     }.
 
   Definition dslist_trans (di : DIR.dlistent) :=
-    (name2string namelen di.(fst).(fst), di.(fst).(snd), di.(snd)).
+    (wname2sname di.(fst).(fst), di.(fst).(snd), di.(snd)).
 
   Definition dslist T lxp bxp ixp dnum mscs rx : prog T :=
     let2 (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
     rx (mscs, List.map dslist_trans r).
 
   Definition rep f (dsmap : @mem string string_dec (addr * addr)) : Prop :=
-    exists dmap, DIR.rep f dmap /\ mem_atrans (name2string namelen) dmap dsmap.
-
+    exists dmap, DIR.rep f dmap 
+    /\ (forall x, indomain x dsmap -> sname_valid x)
+    /\ mem_atrans wname2sname dmap dsmap.
 
   Definition rep_macro F1 F2 m bxp ixp (inum : addr) dsmap : Prop :=
     exists flist f,
@@ -546,6 +476,9 @@ Module SDIR.
     rep f dsmap.
 
   Local Hint Unfold rep rep_macro DIR.rep_macro: hoare_unfold.
+
+  Ltac cancel_liftemp :=
+    cancel'; unfold pimpl, lift_empty; intuition.
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dsmap,
@@ -561,20 +494,20 @@ Module SDIR.
   Proof.
     unfold dslookup.
     hoare.
+
     apply pimpl_or_r; left; cancel.
-    apply is_valid_sname_valid in H9.
+    resolve_valid_preds.
     unfold pimpl; intros.
     eapply mem_atrans_inv_ptsto; eauto.
 
-    admit.
-    apply pimpl_or_r; right; cancel.
-    admit.
-    apply pimpl_or_r; right; cancel.
-    admit.
-    Grab Existential Variables.
-    exact emp.
-  Qed.
+    apply pimpl_or_r; right; cancel_liftemp.
+    resolve_valid_preds.
+    eapply mem_atrans_inv_notindomain; eauto.
 
+    apply pimpl_or_r; right; cancel_liftemp.
+    apply notindomain_not_indomain; intro.
+    resolve_valid_preds; auto.
+  Qed.
 
 
   Definition dslistent := (string * addr * addr)%type.

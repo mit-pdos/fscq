@@ -146,47 +146,70 @@ Section MEMMATCH.
   Variable AP1 : AT1 -> Prop.
   Variable AP2 : AT2 -> Prop.
 
-  Variable AT1_ok : forall (a : AT1), indomain a m1 -> AP1 a.
-  Variable AT2_ok : forall (a : AT2), indomain a m2 -> AP2 a.
-
   Definition mem_atrans :=
     forall a1, m1 a1 = m2 (atrans a1).
 
-  Lemma mem_atrans_some : forall a1 v, 
+  Lemma mem_atrans_any : forall a1 x, 
     mem_atrans
-    -> m1 a1 = Some v
-    -> m2 (atrans a1) = Some v.
+    -> m1 a1 = x
+    -> m2 (atrans a1) = x.
   Proof.
     intros.
     rewrite <- (H a1); auto.
   Qed.
 
-  Lemma mem_ainv_some : forall ainv a2 v, 
+  Lemma mem_atrans_indomain : forall a1,
     mem_atrans
-    -> cond_inverse atrans AP1 AP2 ainv
-    -> AP2 a2
-    -> m1 (ainv a2) = Some v
-    -> m2 a2 = Some v.
+    -> indomain a1 m1
+    -> indomain (atrans a1) m2.
+  Proof.
+    unfold indomain; intros.
+    rewrite <- (H a1); auto.
+  Qed.
+
+  Lemma mem_atrans_notindomain : forall a1,
+    mem_atrans
+    -> notindomain a1 m1
+    -> notindomain (atrans a1) m2.
+  Proof.
+    unfold notindomain; intros.
+    apply mem_atrans_any; auto.
+  Qed.
+
+  Lemma mem_ainv_any : forall ainv a2 x
+    (HInv   : cond_inverse atrans AP1 AP2 ainv)
+    (HTrans : mem_atrans)
+    (HAP    : AP2 a2)
+    (HM1    : m1 (ainv a2) = x),
+    m2 a2 = x.
   Proof.
     intros.
     replace a2 with (atrans (ainv a2)).
-    rewrite <- (H (ainv a2)); auto.
-    apply H0; auto.
+    rewrite <- (HTrans (ainv a2)); auto.
+    apply HInv; auto.
   Qed.
 
   Lemma mem_atrans_inv_ptsto : forall F ainv (a : AT2) v,
-    mem_atrans
-    -> cond_inverse atrans AP1 AP2 ainv
+    cond_inverse atrans AP1 AP2 ainv
     -> AP2 a
     -> (F * (ainv a) |-> v)%pred m1
-    -> (any * a |-> v)%pred m2.
+    -> mem_atrans -> (any * a |-> v)%pred m2.
   Proof.
     intros.
     apply any_sep_star_ptsto.
-    eapply mem_ainv_some; eauto.
+    eapply mem_ainv_any; eauto.
     eapply ptsto_valid'; eauto.
   Qed.
 
+  Lemma mem_atrans_inv_notindomain : forall ainv (a : AT2),
+    cond_inverse atrans AP1 AP2 ainv
+    -> AP2 a
+    -> notindomain (ainv a) m1
+    -> mem_atrans -> notindomain a m2.
+  Proof.
+    unfold notindomain; intros.
+    eapply mem_ainv_any; eauto.
+  Qed.
 
 End MEMMATCH.
 
