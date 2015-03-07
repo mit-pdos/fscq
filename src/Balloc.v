@@ -203,7 +203,7 @@ Module BALLOC.
         [[ goodSize addrlen (wordToNat i * valulen) ]] *
         [[ (F * RecArray.array_item itemtype items_per_valu blocksz
                 (RecArray.Build_xparams (BmapStart xp) i)
-                (map (fun _ => $0) (seq 0 (wordToNat i * valulen))))%pred (list2mem m') ]]
+                (map (fun _ => $0) (seq 0 (#i * valulen))))%pred (list2mem m') ]]
       OnCrash
         MEMLOG.log_intact lxp mbase
       Begin
@@ -232,14 +232,21 @@ Module BALLOC.
     unfold array_item; cancel.
     instantiate (a:=nil); unfold array_item_pairs; cancel.
     reflexivity.
+
     step.
     rewrite H5. apply wlt_lt. auto.
     step.
-    admit.
+
+    apply wlt_lt in H.
+    unfold goodSize in *. eapply le_lt_trans; [|apply H4].
+    replace (#(m0 ^+ $1)) with (#m0 + 1).
+    apply mult_le_compat_r. omega.
+    rewrite wplus_alt. unfold wplusN, wordBinN; simpl.
+    erewrite wordToNat_natToWord_bound with (bound:=BmapNBlocks xp); omega.
+
     admit.
     unfold MEMLOG.log_intact; cancel.
     step.
-    admit.
     admit.
   Qed.
 

@@ -818,7 +818,12 @@ Module MEMLOG.
     intros; auto.
   Qed.
 
-  Ltac assert_lte a b := let H := fresh in assert (a <= b)%word as H by
+  Definition emp_star_r' : forall V AT AEQ P, P * (emp (V:=V) (AT:=AT) (AEQ:=AEQ)) =p=> P.
+  Proof.
+    cancel.
+  Qed.
+
+  Ltac word_assert P := let H := fresh in assert P as H by
       (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve); clear H.
 
   Ltac array_sort' :=
@@ -830,15 +835,26 @@ Module MEMLOG.
     end;
     repeat match goal with
     | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
-      assert_lte a2 a1;
-      try (assert_lte a1 a2; fail 1); (* don't swap forever if two terms are equal *)
-      rewrite (sep_star_assoc p (array a1 l1 s));
-      rewrite (sep_star_comm (array a1 l1 s)); rewrite <- (sep_star_assoc p (array a2 l2 s))
+      word_assert (a2 <= a1)%word;
+      first [
+        (* if two arrays start in the same place, try to prove one of them is empty and eliminate it *)
+        word_assert (a1 = a2)%word;
+        first [
+          let H := fresh in assert (length l1 = 0) by solve_lengths;
+          apply length_nil in H; try rewrite H; clear H; simpl; rewrite emp_star_r'
+        | let H := fresh in assert (length l2 = 0) by solve_lengths;
+          apply length_nil in H; try rewrite H; clear H; simpl; rewrite emp_star_r'
+        | fail 2
+        ]
+      | (* otherwise, just swap *)
+        rewrite (sep_star_assoc p (array a1 l1 s));
+        rewrite (sep_star_comm (array a1 l1 s)); rewrite <- (sep_star_assoc p (array a2 l2 s))
+      ]
     end;
     (* make sure we can prove it's sorted *)
     match goal with
     | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
-      (assert_lte a1 a2; fail 1) || fail 2
+      (word_assert (a1 <= a2)%word; fail 1) || fail 2
     | _ => idtac
     end;
     eapply pimpl_trans; rewrite <- emp_star; [ apply pimpl_refl |].
@@ -1010,7 +1026,7 @@ Module MEMLOG.
     intros.
     solve_lengths_prepare.
     hoare_with idtac try_arrays_lengths.
-    instantiate (a3 := nil); auto.
+    instantiate (a2 := nil); auto.
     split_lists.
     rewrite cons_app.
     rewrite app_assoc.
@@ -1020,13 +1036,13 @@ Module MEMLOG.
     simpl.
     erewrite firstn_plusone_selN.
     rewrite <- app_assoc.
-    instantiate (a4 := l2 ++ [valuset_list (selN l3 0 ($0, nil))]).
+    instantiate (a3 := l1 ++ [valuset_list (selN l2 0 ($0, nil))]).
     simpl.
     rewrite firstn_app_l by solve_lengths.
     repeat erewrite selN_map by solve_lengths.
     rewrite <- surjective_pairing.
     rewrite selN_app2.
-    rewrite H18.
+    rewrite H17.
     rewrite Nat.sub_diag.
     reflexivity.
     abstract solve_lengths.
@@ -1039,10 +1055,10 @@ Module MEMLOG.
     abstract solve_lengths.
     abstract solve_lengths.
     abstract solve_lengths.
-    abstract (case_eq l3; intros; subst; word2nat_clear; simpl in *; solve_lengths).
+    abstract (case_eq l2; intros; subst; word2nat_clear; simpl in *; solve_lengths).
 
     solve_lengths_prepare.
-    instantiate (a2 := repeat $0 (addr_per_block - length (Map.elements ms))).
+    instantiate (a1 := repeat $0 (addr_per_block - length (Map.elements ms))).
     rewrite descriptor_to_valu_zeroes.
     rewrite firstn_oob by solve_lengths.
     fold unifiable_array.
@@ -1098,10 +1114,7 @@ Module MEMLOG.
     abstract solve_lengths.
     abstract solve_lengths.
     abstract solve_lengths.
-    solve_lengths_prepare.
-    rewrite skipn_oob by solve_lengths.
-    rewrite firstn_oob by solve_lengths.
-    cancel.
+    rewrite firstn_oob by solve_lengths; auto.
     solve_lengths.
     solve_lengths.
     instantiate (a0 := m); pred_apply; cancel.

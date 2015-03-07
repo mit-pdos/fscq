@@ -721,6 +721,31 @@ Proof.
     firstorder.
 Qed.
 
+Lemma any_sep_star_ptsto : forall a v (m : @mem AT AEQ V),
+  m a = Some v -> (any * a |-> v)%pred m.
+Proof.
+  intros.
+  unfold_sep_star; unfold ptsto.
+  exists (mem_except m a).
+  exists (fun a' => if (AEQ a' a) then Some v else None).
+  split; [ | split ].
+
+  apply functional_extensionality; intros; auto.
+  unfold mem_union, mem_except.
+  destruct (AEQ x a); subst; auto.
+  destruct (m x); auto.
+
+  unfold mem_disjoint, mem_except.
+  intuition; repeat deex.
+  destruct (AEQ x a); subst; auto.
+  inversion H1.
+  inversion H2.
+
+  unfold any, mem_except; intuition.
+  destruct (AEQ a a); intuition.
+  destruct (AEQ a' a); intuition.
+  contradict H0; auto.
+ Qed.
 
 Lemma ptsto_eq : forall (p1 p2 : @pred AT AEQ V) m a v1 v2,
   p1 m -> p2 m ->
