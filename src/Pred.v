@@ -1075,6 +1075,15 @@ Proof.
   exfalso; eauto.
 Qed.
 
+Theorem indomain_dec : forall a (m : @mem AT AEQ V),
+  {indomain a m} + {notindomain a m}.
+Proof.
+  unfold notindomain, indomain.
+  intros; destruct (m a) eqn:Heq.
+  left; exists v; auto.
+  right; auto.
+Qed.
+
 
 Theorem ptsto_mem_except : forall F a v (m : @mem AT AEQ V),
   (a |-> v * F)%pred m -> F (mem_except m a).
