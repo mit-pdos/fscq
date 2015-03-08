@@ -508,7 +508,7 @@ Module SDIR.
     exists dmap, DIR.rep f dmap
     /\ (forall w, indomain w dmap -> wname_valid w)
     /\ (forall s, indomain s dsmap -> sname_valid s)
-    /\ mem_atrans wname2sname dmap dsmap.
+    /\ mem_atrans wname2sname dmap dsmap tt.
 
   Definition rep_macro F1 F2 m bxp ixp (inum : addr) dsmap : Prop :=
     exists flist f,
@@ -517,9 +517,6 @@ Module SDIR.
     rep f dsmap.
 
   Local Hint Unfold rep rep_macro DIR.rep_macro: hoare_unfold.
-
-  Ltac cancel_liftemp :=
-    cancel'; unfold pimpl, lift_empty; intuition.
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dsmap,
@@ -541,11 +538,11 @@ Module SDIR.
     unfold pimpl; intros.
     eapply mem_atrans_inv_ptsto; eauto.
 
-    apply pimpl_or_r; right; cancel_liftemp.
+    apply pimpl_or_r; right; cancel.
     resolve_valid_preds.
     eapply mem_atrans_inv_notindomain; eauto.
 
-    apply pimpl_or_r; right; cancel_liftemp.
+    apply pimpl_or_r; right; cancel.
     apply notindomain_not_indomain; intro.
     resolve_valid_preds; auto.
   Qed.
@@ -557,7 +554,7 @@ Module SDIR.
 
   Lemma helper_atrans_dslist : forall l m1 m2
     (LP : listpred DIR.dlmatch l m1)
-    (MT  : mem_atrans wname2sname m1 m2)
+    (MT  : mem_atrans wname2sname m1 m2 tt)
     (OK : forall w, indomain w m1 -> wname_valid w),
     listpred dslmatch (List.map dslist_trans l) m2.
   Proof.
@@ -591,9 +588,7 @@ Module SDIR.
     >} dslist lxp bxp ixp dnum mscs.
   Proof.
     unfold dslist.
-    step.
-    eapply pimpl_ok2; eauto with prog; intros.
-    norm; [ cancel | intuition ].
+    hoare.
     eapply helper_atrans_dslist; eauto.
   Qed.
 

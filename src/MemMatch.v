@@ -102,10 +102,10 @@ Section MEMMATCH.
   Variable AP1_ok : forall a1, indomain a1 m1 -> AP1 a1.
   Variable AP2_ok : forall a2, indomain a2 m2 -> AP2 a2.
 
-  Definition mem_atrans f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) :=
+  Definition mem_atrans f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) (_ : unit) :=
     forall a, m a = m' (f a).
 
-  Variable MTrans : mem_atrans atrans m1 m2.
+  Variable MTrans : mem_atrans atrans m1 m2 tt.
 
   Lemma mem_atrans_any : forall a1 x, 
     m1 a1 = x -> m2 (atrans a1) = x.
@@ -130,7 +130,7 @@ Section MEMMATCH.
 
   Lemma mem_atrans_mem_except : forall a (ap : AP1 a),
     cond_bijective atrans AP1 AP2 ->
-    mem_atrans atrans (mem_except m1 a) (mem_except m2 (atrans a)).
+    mem_atrans atrans (mem_except m1 a) (mem_except m2 (atrans a)) tt.
   Proof.
     intros; unfold mem_atrans, mem_except; intro x.
     destruct (AEQ1 x a); destruct (AEQ2 (atrans x) (atrans a));
