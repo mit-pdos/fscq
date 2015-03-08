@@ -1,63 +1,12 @@
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
 Require Import FunctionalExtensionality.
-Require Import ProofIrrelevance.
+Require Import ListPred.
 
 Set Implicit Arguments.
 
-Section BIJECTION.
-
-  Variables A B : Type.
-  Definition injective (f : A -> B) := forall x y : A, f x = f y -> x = y.
-  Definition surjective (f : A -> B) := forall y : B, {x : A | f x = y}.
-
-  Inductive bijective (f : A -> B) : Type :=
-    is_bijective : injective f -> surjective f -> bijective f.
-
-  Definition left_inverse (f : A -> B) (f' : B -> A) := 
-    forall x : A, f' (f x) = x.
-
-  Definition right_inverse (f : A -> B) (f' : B -> A) := 
-    forall y : B, f (f' y) = y.
-
-  Definition inverse f f' := 
-    left_inverse f f' /\ right_inverse f f'.
-
-  Lemma left_inv_inj f f' : left_inverse f f' -> injective f.
-  Proof.
-    intros H x y H0.
-    rewrite <- (H x).
-    rewrite H0.
-    apply H.
-  Qed.
-
-  Lemma right_inv_surj f f' : right_inverse f f' -> surjective f.
-  Proof.
-    intros H y.
-    rewrite <- (H y).
-    exists (f' y); auto.
-  Qed.
-
-  Lemma inv2bij f f' : inverse f f' -> bijective f.
-  Proof.
-    intros [H1 H2].
-    constructor.
-    eapply left_inv_inj; eauto.
-    eapply right_inv_surj; eauto.
-  Qed.
-
-  Lemma bij2inj f a b :
-    bijective f -> f a = f b -> a = b.
-  Proof.
-    intros.
-    apply X; auto.
-  Qed.
-
-End BIJECTION.
-
-
 (* bijection on restricted domain *)
 
-Section BIJECTION_SIG.
+Section BIJECTION.
 
   Variables A B : Type.
   Variable f : A -> B.
@@ -126,7 +75,7 @@ Section BIJECTION_SIG.
 
   End BIJECTION_INVERSION.
 
-End BIJECTION_SIG.
+End BIJECTION.
 
 
 Section MEMMATCH.
@@ -141,77 +90,105 @@ Section MEMMATCH.
   Variable m1 : @mem AT1 AEQ1 V.
   Variable m2 : @mem AT2 AEQ2 V.
 
-
   (* restrictions on atrans' domain and codomain *)
   Variable AP1 : AT1 -> Prop.
   Variable AP2 : AT2 -> Prop.
 
-  Definition mem_atrans :=
-    forall a1, m1 a1 = m2 (atrans a1).
+  (* decidablity of subdomain *)
+  Variable AP1_dec : forall a1, {AP1 a1} + {~ AP1 a1}.
+  Variable AP2_dec : forall a2, {AP2 a2} + {~ AP2 a2}.
+
+  (* well-formedness of memory addresses *)
+  Variable AP1_ok : forall a1, indomain a1 m1 -> AP1 a1.
+  Variable AP2_ok : forall a2, indomain a2 m2 -> AP2 a2.
+
+  Definition mem_atrans f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) :=
+    forall a, m a = m' (f a).
+
+  Variable MTrans : mem_atrans atrans m1 m2.
 
   Lemma mem_atrans_any : forall a1 x, 
-    mem_atrans
-    -> m1 a1 = x
-    -> m2 (atrans a1) = x.
+    m1 a1 = x -> m2 (atrans a1) = x.
   Proof.
     intros.
-    rewrite <- (H a1); auto.
+    rewrite <- (MTrans a1); auto.
   Qed.
 
   Lemma mem_atrans_indomain : forall a1,
-    mem_atrans
-    -> indomain a1 m1
-    -> indomain (atrans a1) m2.
+    indomain a1 m1 -> indomain (atrans a1) m2.
   Proof.
     unfold indomain; intros.
-    rewrite <- (H a1); auto.
+    rewrite <- (MTrans a1); auto.
   Qed.
 
   Lemma mem_atrans_notindomain : forall a1,
-    mem_atrans
-    -> notindomain a1 m1
-    -> notindomain (atrans a1) m2.
+    notindomain a1 m1 -> notindomain (atrans a1) m2.
   Proof.
     unfold notindomain; intros.
     apply mem_atrans_any; auto.
   Qed.
 
-  Lemma mem_ainv_any : forall ainv a2 x
-    (HInv   : cond_inverse atrans AP1 AP2 ainv)
-    (HTrans : mem_atrans)
-    (HAP    : AP2 a2)
-    (HM1    : m1 (ainv a2) = x),
-    m2 a2 = x.
+  Lemma mem_atrans_mem_except : forall a (ap : AP1 a),
+    cond_bijective atrans AP1 AP2 ->
+    mem_atrans atrans (mem_except m1 a) (mem_except m2 (atrans a)).
   Proof.
-    intros.
-    replace a2 with (atrans (ainv a2)).
-    rewrite <- (HTrans (ainv a2)); auto.
-    apply HInv; auto.
+    intros; unfold mem_atrans, mem_except; intro x.
+    destruct (AEQ1 x a); destruct (AEQ2 (atrans x) (atrans a));
+      subst; auto; try tauto.
+    destruct (indomain_dec x m1); auto.
+    contradict n.
+    apply X; auto.
   Qed.
 
-  Lemma mem_atrans_inv_ptsto : forall F ainv (a : AT2) v,
-    cond_inverse atrans AP1 AP2 ainv
-    -> AP2 a
-    -> (F * (ainv a) |-> v)%pred m1
-    -> mem_atrans -> (any * a |-> v)%pred m2.
-  Proof.
-    intros.
-    apply any_sep_star_ptsto.
-    eapply mem_ainv_any; eauto.
-    eapply ptsto_valid'; eauto.
-  Qed.
+  Section MEMMATCH_INVERSION.
 
-  Lemma mem_atrans_inv_notindomain : forall ainv (a : AT2),
-    cond_inverse atrans AP1 AP2 ainv
-    -> AP2 a
-    -> notindomain (ainv a) m1
-    -> mem_atrans -> notindomain a m2.
-  Proof.
-    unfold notindomain; intros.
-    eapply mem_ainv_any; eauto.
-  Qed.
+    Variable ainv : AT2 -> AT1.
+    Variable HInv : cond_inverse atrans AP1 AP2 ainv.
+
+    Lemma mem_ainv_any : forall a (ap : AP2 a) x,
+      m1 (ainv a) = x -> m2 a = x.
+    Proof.
+      intros.
+      replace a with (atrans (ainv a)).
+      rewrite <- (MTrans (ainv a)); auto.
+      apply HInv; auto.
+    Qed.
+
+    Lemma mem_atrans_inv_ptsto : forall a (ap : AP2 a) F v,
+      (F * (ainv a) |-> v)%pred m1
+      -> (any * a |-> v)%pred m2.
+    Proof.
+      intros.
+      apply any_sep_star_ptsto.
+      eapply mem_ainv_any; eauto.
+      eapply ptsto_valid'; eauto.
+    Qed.
+
+    Lemma mem_atrans_inv_notindomain : forall a (ap : AP2 a),
+      notindomain (ainv a) m1 -> notindomain a m2.
+    Proof.
+      unfold notindomain; intros.
+      eapply mem_ainv_any; eauto.
+    Qed.
+
+    Lemma mem_atrans_emp :
+      emp m1 -> emp m2.
+    Proof.
+      unfold emp; intros.
+      destruct (AP2_dec a).
+
+      replace a with (atrans (ainv a)).
+      apply mem_ainv_any; auto.
+      replace (atrans (ainv a)) with a; auto.
+      apply eq_sym; apply HInv; auto.
+      apply HInv; auto.
+
+      destruct (indomain_dec a m2); auto.
+      contradict n.
+      apply AP2_ok; auto.
+    Qed.
+
+  End MEMMATCH_INVERSION.
 
 End MEMMATCH.
-
-
 

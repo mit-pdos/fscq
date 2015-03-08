@@ -19,7 +19,8 @@ Require List.
 
 Set Implicit Arguments.
 
-Definition ifw {len} (b : bool) (bitpos : word len) : word len := if b then wbit _ bitpos else $0.
+Definition ifw {len} (b : bool) (bitpos : word len) : word len :=
+  if b then wbit _ bitpos else $0.
 
 Definition ascii2byte (a : ascii) : word 8 :=
   match a with
@@ -47,14 +48,16 @@ Definition byte2ascii (b : word 8) : ascii :=
         (wbitset $6 b)
         (wbitset $7 b).
 
-Theorem ascii2byte2ascii : forall a, byte2ascii (ascii2byte a) = a.
+Theorem ascii2byte2ascii : forall a,
+  byte2ascii (ascii2byte a) = a.
 Proof.
   destruct a.
   destruct b; destruct b0; destruct b1; destruct b2;
   destruct b3; destruct b4; destruct b5; destruct b6; reflexivity.
 Qed.
 
-Theorem byte2ascii2byte : forall b, ascii2byte (byte2ascii b) = b.
+Theorem byte2ascii2byte : forall b,
+  ascii2byte (byte2ascii b) = b.
 Proof.
   intros.
   shatter_word b.
@@ -153,10 +156,12 @@ Inductive zerostring : string -> Prop :=
 
 Inductive wellformedpadstring : string -> Prop :=
   | WFSzero : forall s, zerostring s -> wellformedpadstring s
-  | WFScons : forall s c, wellformedpadstring s -> c <> zero -> wellformedpadstring (String c s).
+  | WFScons : forall s c, wellformedpadstring s -> c <> zero
+                       -> wellformedpadstring (String c s).
 
-Theorem pad_zero_string : forall s, wellformedpadstring (String zero s) ->
-  s = string_pad (length s) EmptyString.
+Theorem pad_zero_string : forall s, 
+  wellformedpadstring (String zero s)
+  -> s = string_pad (length s) EmptyString.
 Proof.
   intros.
   inversion H; clear H; try congruence.
@@ -169,8 +174,10 @@ Proof.
   apply IHs; auto.
 Qed.
 
-Theorem string_unpad_pad : forall s nbytes, length s = nbytes ->
-  wellformedpadstring s -> string_pad nbytes (string_unpad s) = s.
+Theorem string_unpad_pad : forall s nbytes,
+  length s = nbytes
+  -> wellformedpadstring s
+  -> string_pad nbytes (string_unpad s) = s.
 Proof.
   induction s; intros; subst; simpl in *.
   reflexivity.
@@ -185,8 +192,10 @@ Qed.
 Definition string2name nbytes s := padstring2name nbytes (string_pad nbytes s).
 Definition name2string nbytes name := string_unpad (name2padstring nbytes name).
 
-Theorem string2name2string : forall nbytes s, length s <= nbytes -> nozero s ->
-  name2string nbytes (string2name nbytes s) = s.
+Theorem string2name2string : forall nbytes s,
+  length s <= nbytes
+  -> nozero s
+  -> name2string nbytes (string2name nbytes s) = s.
 Proof.
   unfold string2name, name2string.
   intros.
@@ -194,7 +203,8 @@ Proof.
   rewrite string_pad_unpad; eauto.
 Qed.
 
-Theorem name2string2name : forall nbytes name, wellformedpadstring (name2padstring nbytes name)
+Theorem name2string2name : forall nbytes name,
+  wellformedpadstring (name2padstring nbytes name)
   -> string2name nbytes (name2string nbytes name) = name.
 Proof.
   unfold string2name, name2string.
@@ -226,7 +236,6 @@ Proof.
   inversion H0; auto.
   inversion H0; auto.
 Qed.
-
 
 Lemma wellformedpadstring_inv : forall c s,
   wellformedpadstring (String c s)
@@ -321,7 +330,15 @@ Module SDIR.
     apply string2name2string; auto.
   Qed.
 
-  Hint Resolve dirname_cond_inverse.
+  Local Hint Resolve dirname_cond_inverse.
+
+  Theorem wname2sname_bijective :
+    cond_bijective wname2sname wname_valid sname_valid.
+  Proof.
+    eapply cond_inv2bij; eauto.
+  Qed.
+
+  Local Hint Resolve wname2sname_bijective.
 
 
   Fixpoint is_nozero (s : string) : bool :=
@@ -443,6 +460,8 @@ Module SDIR.
     apply is_valid_sname_valid in H; congruence.
   Qed.
 
+  Local Hint Resolve wname_valid_dec.
+  Local Hint Resolve sname_valid_dec.
 
   Ltac resolve_valid_preds :=
     match goal with
@@ -486,8 +505,9 @@ Module SDIR.
     rx (mscs, List.map dslist_trans r).
 
   Definition rep f (dsmap : @mem string string_dec (addr * addr)) : Prop :=
-    exists dmap, DIR.rep f dmap 
-    /\ (forall x, indomain x dsmap -> sname_valid x)
+    exists dmap, DIR.rep f dmap
+    /\ (forall w, indomain w dmap -> wname_valid w)
+    /\ (forall s, indomain s dsmap -> sname_valid s)
     /\ mem_atrans wname2sname dmap dsmap.
 
   Definition rep_macro F1 F2 m bxp ixp (inum : addr) dsmap : Prop :=
@@ -535,6 +555,30 @@ Module SDIR.
   Definition dslmatch (de: dslistent) : @pred _ (string_dec) _ :=
     fst de |-> snd de.
 
+  Lemma helper_atrans_dslist : forall l m1 m2
+    (LP : listpred DIR.dlmatch l m1)
+    (MT  : mem_atrans wname2sname m1 m2)
+    (OK : forall w, indomain w m1 -> wname_valid w),
+    listpred dslmatch (List.map dslist_trans l) m2.
+  Proof.
+    induction l; simpl; intros.
+    eapply mem_atrans_emp; eauto.
+
+    unfold dslmatch at 1, dslist_trans at 1; simpl.
+    apply mem_except_ptsto; auto.
+    eapply mem_atrans_any; eauto.
+    eapply ptsto_valid; eauto.
+
+    apply sep_star_ptsto_indomain in LP as Hx.
+    eapply ptsto_mem_except in LP.
+    eapply IHl; eauto.
+    apply OK in Hx.
+    eapply mem_atrans_mem_except; eauto.
+
+    intros; apply OK.
+    eapply indomain_mem_except_indomain; eauto.
+  Qed.
+
 
   Theorem dslist_ok : forall lxp bxp ixp dnum mscs,
     {< F A mbase m dsmap,
@@ -547,9 +591,10 @@ Module SDIR.
     >} dslist lxp bxp ixp dnum mscs.
   Proof.
     unfold dslist.
-    hoare.
-    unfold pimpl; intros.
-    eapply mem_atrans_listpred_ptsto_pair; eauto.
+    step.
+    eapply pimpl_ok2; eauto with prog; intros.
+    norm; [ cancel | intuition ].
+    eapply helper_atrans_dslist; eauto.
   Qed.
 
 

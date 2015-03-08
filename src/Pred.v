@@ -1102,6 +1102,42 @@ Proof.
   rewrite H1; simpl; auto.
 Qed.
 
+
+Theorem mem_except_ptsto : forall (F : @pred AT AEQ V) a v m,
+  m a = Some v
+  -> F (mem_except m a)
+  -> (a |-> v * F)%pred m.
+Proof.
+  unfold indomain, ptsto; unfold_sep_star; intros.
+  exists (fun a' => if (AEQ a' a) then Some v else None).
+  exists (mem_except m a).
+  split; [ | split].
+
+  apply functional_extensionality; intro.
+  unfold mem_union, mem_except.
+  destruct (AEQ x a); subst; auto.
+
+  unfold mem_disjoint, mem_except; intuition; repeat deex.
+  destruct (AEQ x a); congruence.
+
+  intuition.
+  destruct (AEQ a a); subst; try congruence.
+  destruct (AEQ a' a); subst; try congruence.
+Qed.
+
+
+Theorem indomain_mem_except_indomain : forall (m : @mem AT AEQ V) a a',
+  indomain a (mem_except m a') -> indomain a m.
+Proof.
+  unfold indomain; intros.
+  destruct H; exists x.
+  destruct (AEQ a a'); subst.
+  unfold mem_except in H.
+  destruct (AEQ a' a'); congruence.
+  eapply indomain_mem_except; eauto.
+Qed.
+
+
 Theorem ptsto_mem_except_F : forall (F F' : @pred AT AEQ V) a a' v (m : @mem AT AEQ V),
   (a |-> v * F)%pred m
   -> a <> a'
