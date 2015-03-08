@@ -200,7 +200,7 @@ Module DIRTREE.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let3 (mscs, inum, isdir) <- ForEach fn fnlist
-      Ghost mbase m F Ftop treetop bflist
+      Ghost mbase m F Ftop treetop bflist freeinode_pred
       Loopvar mscs_inum_isdir <- (mscs, dnum, $1)
       Continuation lrx
       Invariant
@@ -208,8 +208,8 @@ Module DIRTREE.
         exists tree,
         [[ (F * rep fsxp Ftop dnum treetop)%pred (list2mem m) ]] *
         [[ mscs_inum_isdir.(snd) <> $0 ->
-           (exists F', tree_dir_names_pred mscs_inum_isdir.(fst).(snd) tree *
-            tree_pred tree * F')%pred (list2nmem bflist) ]] *
+           (exists Fsub, Fsub * tree_dir_names_pred mscs_inum_isdir.(fst).(snd) tree *
+            tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
         [[ find_name fnlist treetop dnum $1 = find_name fn tree mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
       OnCrash
         MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
@@ -233,6 +233,8 @@ Module DIRTREE.
            [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
     POST:(mscs,r)
            [[ r = find_name fnlist tree dnum $1 ]] *
+           [[ exists inum Fsub subtree, r = Some (inum, $1) ->
+              (F * rep fsxp Fsub inum subtree)%pred (list2mem m) ]] *
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs
     CRASH  MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
     >} namei fsxp dnum fnlist mscs.
