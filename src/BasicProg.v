@@ -498,22 +498,22 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
-Notation "'ForEach' elem lst 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'ForEach' elem rest lst 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem l lrx => body)
         lst l0
-        (fun (_:unit) elem l => nocrash%pred)
+        (fun (_:unit) rest l => nocrash%pred)
         (fun (_:unit) => crashed%pred))
   (at level 9, elem at level 0, lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).
 
-Notation "'ForEach' elem lst 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'ForEach' elem rest lst 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem l lrx => body)
         lst l0
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun elem l => nocrash%pred)) .. ))
+         fun rest l => nocrash%pred)) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          crashed%pred)) .. )))
-  (at level 9, elem at level 0,
+  (at level 9, elem at level 0, rest at level 0,
    g1 binder, g2 binder,
    lrx at level 0, l at level 0, l0 at level 0,
    body at level 9).

@@ -199,7 +199,7 @@ Module DIRTREE.
   Qed.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
-    let3 (mscs, inum, isdir) <- ForEach fn fnlist
+    let3 (mscs, inum, isdir) <- ForEach fn fnrest fnlist
       Ghost mbase m F Ftop treetop bflist freeinode_pred
       Loopvar mscs_inum_isdir <- (mscs, dnum, $1)
       Continuation lrx
@@ -210,7 +210,7 @@ Module DIRTREE.
         [[ mscs_inum_isdir.(snd) <> $0 ->
            (exists Fsub, Fsub * tree_dir_names_pred mscs_inum_isdir.(fst).(snd) tree *
             tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
-        [[ find_name fnlist treetop dnum $1 = find_name fn tree mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
+        [[ find_name fnlist treetop dnum $1 = find_name fnrest tree mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
       OnCrash
         MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
       Begin
