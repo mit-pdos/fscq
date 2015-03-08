@@ -240,8 +240,10 @@ Module DIRTREE.
     unfold namei, rep.
     step.
 
-    instantiate (a4 := l).
-    pred_apply. cancel.
+    match goal with
+    | [ H: _ (list2nmem _) |- _ ] => pred_apply' H
+    end.
+    cancel.
 
     step.
     step.
@@ -261,7 +263,7 @@ Module DIRTREE.
     eauto.
 
     destruct b3.
-    destruct p6.
+    destruct p7.
     eapply pimpl_ok2; eauto.
     intros; norm'l; split_or_l; unfold stars; simpl;
       norm'l; unfold stars; simpl; inv_option_eq.

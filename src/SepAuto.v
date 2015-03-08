@@ -27,8 +27,10 @@ Ltac set_evars_in H :=
 
 (** * Separation logic proof automation *)
 
+Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
+
 Ltac pred_apply := match goal with
-  | [ H: _ ?m |- _ ?m ] => eapply pimpl_apply; [ | exact H ]
+  | [ H: _ ?m |- _ ?m ] => pred_apply' H
   | [ |- exists _, _ ] => eexists; pred_apply
   end.
 
