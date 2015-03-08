@@ -78,11 +78,15 @@ Module DIRTREE.
   Definition tree_pred (dirlist : dirtree) :=
     tree_pred' diritem_pred dirlist.
 
-  Definition rep fsxp rootinum tree :=
+  (**
+   * [F] represents the other parts of the file system above [rootinum],
+   * in cases where [rootinum] is a subdirectory somewhere in the tree.
+   *)
+  Definition rep fsxp F rootinum tree :=
     (exists bflist freeinodes freeinode_pred_unused freeinode_pred,
      BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
      BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred *
-     [[ (tree_dir_names_pred rootinum tree * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]]
+     [[ (F * tree_dir_names_pred rootinum tree * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
   Lemma tree_dir_extract : forall d F dmap name inum isdir,
@@ -196,13 +200,13 @@ Module DIRTREE.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let3 (mscs, inum, isdir) <- ForEach fn fnlist
-      Ghost mbase m F treetop bflist
+      Ghost mbase m F Ftop treetop bflist
       Loopvar mscs_inum_isdir <- (mscs, dnum, $1)
       Continuation lrx
       Invariant
         MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs_inum_isdir.(fst).(fst) *
         exists tree,
-        [[ (F * rep fsxp dnum treetop)%pred (list2mem m) ]] *
+        [[ (F * rep fsxp Ftop dnum treetop)%pred (list2mem m) ]] *
         [[ mscs_inum_isdir.(snd) <> $0 ->
            (exists F', tree_dir_names_pred mscs_inum_isdir.(fst).(snd) tree *
             tree_pred tree * F')%pred (list2nmem bflist) ]] *
@@ -224,9 +228,9 @@ Module DIRTREE.
     rx (mscs, Some (inum, isdir)).
 
   Theorem namei_ok : forall fsxp dnum fnlist mscs,
-    {< F mbase m tree,
+    {< F mbase m Ftop tree,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp dnum tree)%pred (list2mem m) ]]
+           [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
     POST:(mscs,r)
            [[ r = find_name fnlist tree dnum $1 ]] *
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs
