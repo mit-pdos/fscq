@@ -831,13 +831,14 @@ Ltac destruct_branch :=
   | [ |- {{ _ }} match ?v with | Some _ => _ | None => _ end ] => destruct v eqn:?
   | [ |- {{ _ }} match ?v with | None => _ | Some _ => _ end ] => destruct v eqn:?
   | [ |- {{ _ }} if ?v then _ else _ ] => destruct v eqn:?
+  | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
   end.
 
 Ltac step_unfold unfolder :=
   intros;
   try autounfold with hoare_unfold in *;
-  try destruct_branch;
   try cancel;
+  repeat destruct_branch;
   remember_xform;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])

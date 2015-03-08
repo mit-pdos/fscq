@@ -171,15 +171,15 @@ Module DIRTREE.
         * apply ptsto_valid in H0. rewrite H in H0. inversion H0; subst.
           simpl in *.
           eapply find_name_subdir_helper.
-          eapply pimpl_apply; [| apply H3 ]. cancel.
-          eapply pimpl_apply; [| apply H2 ]. cancel.
+          pred_apply' H3. cancel.
+          pred_apply' H2. cancel.
       + eapply IHtree.
         apply sep_star_comm. eapply ptsto_mem_except_exF. apply sep_star_comm; eauto.
         instantiate (1:=s); eauto.
         destruct d; apply ptsto_mem_except in H0; eauto.
         eauto.
         eauto.
-        eapply pimpl_apply; [| apply H3 ]. cancel.
+        pred_apply' H3. cancel.
   Qed.
 
   Lemma find_name_none : forall tree rec name dmap,
@@ -258,12 +258,11 @@ Module DIRTREE.
     cancel.
     unfold SDIR.rep_macro. do 2 eexists. intuition.
     (* Be careful which [list2mem] we pick! *)
-    eapply pimpl_apply; [ | exact H3 ]. cancel.
-    eapply pimpl_apply; [ | exact H0 ]. cancel.
+    pred_apply' H3. cancel.
+    pred_apply' H0. cancel.
     eauto.
 
-    destruct b3.
-    destruct p7.
+    repeat destruct_branch.
     eapply pimpl_ok2; eauto.
     intros; norm'l; split_or_l; unfold stars; simpl;
       norm'l; unfold stars; simpl; inv_option_eq.
@@ -280,8 +279,8 @@ Module DIRTREE.
     instantiate (a := d3). cancel.
 
     eapply find_name_subdir; eauto.
-    eapply pimpl_apply; [| apply H0 ]; cancel.
-    eapply pimpl_apply; [| apply H4 ]; cancel.
+    pred_apply' H0. cancel.
+    pred_apply' H4. cancel.
 
     step.
     rewrite H10; clear H10. destruct (weq b $0); try congruence.
