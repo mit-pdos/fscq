@@ -423,6 +423,27 @@ Module SDIR.
     inversion H; apply is_valid_wname_valid'; auto.
   Qed.
 
+  Lemma wname_valid_dec : forall w,
+    {wname_valid w} + {~ wname_valid w}.
+  Proof.
+    intros.
+    destruct (is_valid_wname (name2padstring namelen w)) eqn:Heq.
+    left; apply is_valid_wname_valid; auto.
+    right; intro; contradict Heq.
+    apply is_valid_wname_valid in H; congruence.
+  Qed.
+
+  Lemma sname_valid_dec : forall s,
+    {sname_valid s} + {~ sname_valid s}.
+  Proof.
+    intros.
+    destruct (is_valid_sname s) eqn:Heq.
+    left; apply is_valid_sname_valid; auto.
+    right; intro; contradict Heq.
+    apply is_valid_sname_valid in H; congruence.
+  Qed.
+
+
   Ltac resolve_valid_preds :=
     match goal with
     | [ H: is_valid_wname _ = true |- _ ] => apply is_valid_wname_valid in H
@@ -527,7 +548,8 @@ Module SDIR.
   Proof.
     unfold dslist.
     hoare.
-    admit.
+    unfold pimpl; intros.
+    eapply mem_atrans_listpred_ptsto_pair; eauto.
   Qed.
 
 
