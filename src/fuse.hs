@@ -119,9 +119,9 @@ fileStat :: FuseContext -> FileOffset -> FileStat
 fileStat ctx len = FileStat
   { statEntryType = RegularFile
   , statFileMode = foldr1 unionFileModes
-                     [ ownerReadMode, ownerWriteMode
-                     , groupReadMode, groupWriteMode
-                     , otherReadMode, otherWriteMode
+                     [ ownerReadMode, ownerWriteMode, ownerExecuteMode
+                     , groupReadMode, groupWriteMode, groupExecuteMode
+                     , otherReadMode, otherWriteMode, otherExecuteMode
                      ]
   , statLinkCount = 1
   , statFileOwner = fuseCtxUserID ctx
