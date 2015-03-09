@@ -735,6 +735,28 @@ Module INODE.
   Qed.
 
 
+  Lemma iattr_match_unpack : forall ia iar,
+    iattr_match ia iar
+    -> unpack_attr iar = ia.
+  Proof.
+    unfold iattr_match, unpack_attr; rec_simpl.
+    intros ia iar H; destruct H; destruct ia.
+    repeat match goal with
+    | [ H : ?a = ?b |- context [ ?b ] ] => rewrite <- H
+    end.
+    simpl; auto.
+  Qed.
+
+  Lemma iattr_match_pack : forall ia,
+    iattr_match ia (pack_attr ia).
+  Proof.
+    unfold iattr_match, pack_attr; intros.
+    rec_simpl; simpl; auto.
+  Qed.
+
+  Local Hint Resolve iattr_match_unpack.
+  Local Hint Resolve iattr_match_pack.
+
   Theorem igetattr_ok : forall lxp bxp xp inum mscs,
     {< F A mbase m ilist ino,
     PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -751,9 +773,7 @@ Module INODE.
 
     rewrite_list2nmem_pred.
     destruct_listmatch_n.
-    unfold unpack_attr.
-    subst; auto.
-    admit.
+    rec_simpl; subst; auto.
   Qed.
 
   Theorem isetattr_ok : forall lxp bxp xp inum attr mscs,
@@ -766,34 +786,22 @@ Module INODE.
                MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
                [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
                [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-               [[ IAttr ino' = attr ]] *
-               [[ IBlocks ino' = IBlocks ino ]]
+               [[ ino' = Build_inode (IBlocks ino) attr ]]
     CRASH      MEMLOG.would_recover_old lxp mbase
     >} isetattr lxp xp inum attr mscs.
   Proof.
     unfold isetattr, rep.
-    step.
+    hoare.
+
     list2nmem_ptsto_cancel; list2nmem_bound.
-    step.
     list2nmem_ptsto_cancel; list2nmem_bound.
     irec_well_formed.
-
-    eapply pimpl_ok2; eauto with prog.
-    intros; cancel.
-
-    (* XXX this instantiate doesn't seem to work in Coq 53bfe9cf *)
-    (* instantiate (a1 := Build_inode (IBlocks i) sz). *)
     2: eapply list2nmem_upd; eauto.
 
     repeat rewrite_list2nmem_pred; try list2nmem_bound.
-    destruct_listmatch_n.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
-    unfold sel, upd; unfold inode_match; intros.
-
-    rec_simpl.
+    unfold inode_match; rec_simpl.
     cancel.
-    admit.
-    admit.
   Qed.
 
 
