@@ -93,7 +93,7 @@ Module DIR.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = $ (length delist) ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} delen lxp ixp inum mscs.
   Proof.
     unfold delen, derep_macro, derep.
@@ -109,7 +109,7 @@ Module DIR.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = e ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} deget lxp ixp inum idx mscs.
   Proof.
     unfold deget, derep_macro, derep.
@@ -129,7 +129,7 @@ Module DIR.
            MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
            [[ derep_macro F A m' bxp ixp inum delist' ]] *
            [[ (B * #idx |-> e)%pred (list2nmem delist') ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} deput lxp ixp inum idx e mscs.
   Proof.
     unfold deput, derep_macro, derep.
@@ -231,7 +231,7 @@ Module DIR.
            [[ delist' = delist ++ (updN (repeat dent0 (# items_per_valu)) 0 e) ]] *
            [[ (B * (length delist) |-> e
                  * deext_tail (length delist))%pred (list2nmem delist') ]] )
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} deext lxp bxp ixp inum e mscs.
   Proof.
     unfold deext, derep_macro, derep.
@@ -300,7 +300,7 @@ Module DIR.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = fold_left f delist s0 ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} dfold lxp bxp ixp dnum f s0 mscs.
   Proof.
     unfold dfold.
@@ -322,7 +322,7 @@ Module DIR.
     erewrite wordToNat_natToWord_bound; auto.
     eapply bfrec_bound; eauto.
 
-    unfold MEMLOG.log_intact; cancel.
+    unfold MEMLOG.would_recover_old; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (dfold _ _ _ _ _ _ _) _) => apply dfold_ok : prog.
@@ -519,7 +519,7 @@ Module DIR.
              [[ f e = true ]])
        \/  ( [[ r = None ]] *
              [[ Forall (fun e => f e = false) delist ]]))
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} dfindp lxp bxp ixp dnum f mscs.
   Proof.
     unfold dfindp.
@@ -733,7 +733,7 @@ Module DIR.
            ((exists inum isdir DF,
              [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dmap ]]) \/
             ([[ r = None /\ notindomain name dmap ]]))
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} dlookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dlookup.
@@ -802,7 +802,7 @@ Module DIR.
     POST RET:^(mscs,res)
              MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ listpred dlmatch res dmap ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} dlist lxp bxp ixp dnum mscs.
   Proof.
     unfold dlist.
@@ -891,7 +891,7 @@ Module DIR.
              [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
              [[ (DF * name |->?)%pred dmap ]] *
              [[ (DF) dmap' ]])
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} dunlink lxp bxp ixp dnum name mscs.
   Proof.
     unfold dunlink.
@@ -1040,7 +1040,7 @@ Module DIR.
              [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
              [[ (DF * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (DF dmap /\ notindomain name dmap) ]])
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} dlink lxp bxp ixp dnum name inum isdir mscs.
   Proof.
     unfold dlink.

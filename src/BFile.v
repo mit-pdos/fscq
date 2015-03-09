@@ -171,7 +171,7 @@ Module BFILE.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = $ (length (BFData f)) ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bflen lxp ixp inum mscs.
   Proof.
     unfold bflen, rep.
@@ -194,7 +194,7 @@ Module BFILE.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = v ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bfread lxp ixp inum off mscs.
   Proof.
     unfold bfread, rep.
@@ -213,7 +213,7 @@ Module BFILE.
     unfold data_match, sel; autorewrite with defaults.
     cancel.
 
-    unfold MEMLOG.log_intact; cancel.
+    unfold MEMLOG.would_recover_old; cancel.
   Qed.
 
 
@@ -229,7 +229,7 @@ Module BFILE.
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ (B * #off |-> v)%pred (list2nmem (BFData f')) ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bfwrite lxp ixp inum off v mscs.
   Proof.
     unfold bfwrite, rep.
@@ -279,7 +279,7 @@ Module BFILE.
     destruct_lift H3.
     cancel.
 
-    unfold MEMLOG.log_intact; cancel.
+    unfold MEMLOG.would_recover_old; cancel.
   Qed.
 
   Lemma helper_wlt_lt_blocks_per_inode : forall n (b : addr),
@@ -304,7 +304,7 @@ Module BFILE.
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ (B * length (BFData f) |-> v)%pred (list2nmem (BFData f')) ]] )
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} bfgrow lxp bxp ixp inum mscs.
   Proof.
     unfold bfgrow, rep.
@@ -387,7 +387,7 @@ Module BFILE.
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ B %pred (list2nmem (BFData f')) ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} bfshrink lxp bxp ixp inum mscs.
   Proof.
     unfold bfshrink, rep.
@@ -455,7 +455,7 @@ Module BFILE.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = BFSize f ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bfgetsz lxp ixp inum mscs.
   Proof.
     unfold bfgetsz, rep.
@@ -479,7 +479,7 @@ Module BFILE.
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ BFSize f' = sz ]] *
            [[ BFData f' = BFData f ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bfsetsz lxp ixp inum sz mscs.
   Proof.
     unfold bfsetsz, rep.

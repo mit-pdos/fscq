@@ -20,6 +20,7 @@ Require Import Eqdep_dec.
 Require Import GenSep.
 Require Import WordAuto.
 Require Import Cache.
+Require Import Idempotent.
 Require Import FSLayout.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
@@ -1470,43 +1471,40 @@ Module MEMLOG.
       }
     }.
 
-  (** XXX get rid of this *)
-  Definition log_intact xp m :=
-    (exists mscs,
-     (rep xp (NoTransaction m) mscs) \/
-     (exists m', rep xp (ActiveTxn m m') mscs) \/
-     (rep xp (CommittedTxn m) mscs) \/
-     (rep xp (AppliedTxn m) mscs))%pred.
-
   Definition would_recover_old xp old :=
     (exists mscs, (rep xp (NoTransaction old) mscs) \/
      (exists cur, rep xp (ActiveTxn old cur) mscs))%pred.
 
-  Definition might_recover_cur xp old cur :=
+  Definition would_recover_either xp old cur :=
     (exists mscs, rep xp (CommittedUnsyncTxn old cur) mscs \/
       rep xp (CommittedTxn cur) mscs \/
       rep xp (AppliedTxn cur) mscs \/
       rep xp (NoTransaction cur) mscs)%pred.
 
   (** The log is in a valid state with (after recovery) represents either disk state [old] or [cur] *)
-  Definition would_recover_either xp old cur :=
-    (would_recover_old xp old \/ might_recover_cur xp old cur)%pred.
+  Definition log_intact xp old cur :=
+    (would_recover_old xp old \/ would_recover_either xp old cur)%pred.
+
+  Hint Extern 0 (okToUnify (log_intact _ _ _) (log_intact _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (SepAuto.okToUnify (log_intact _ _ _) (log_intact _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (would_recover_old _ _) (would_recover_old _ _)) => constructor : okToUnify.
+  Hint Extern 0 (SepAuto.okToUnify (would_recover_old _ _) (would_recover_old _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (would_recover_either _ _ _) (would_recover_either _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (SepAuto.okToUnify (would_recover_either _ _ _) (would_recover_either _ _ _)) => constructor : okToUnify.
 
   Ltac or_r := apply pimpl_or_r; right.
   Ltac or_l := apply pimpl_or_r; left.
 
   Theorem commit_ok: forall xp mscs,
     {< m1 m2,
-     PRE
-       rep xp (ActiveTxn m1 m2) mscs
+     PRE            rep xp (ActiveTxn m1 m2) mscs
      POST RET:^(mscs,r)
-       ([[ r = true ]] * rep xp (NoTransaction m2) mscs) \/
-       ([[ r = false ]] * rep xp (NoTransaction m1) mscs)
-     CRASH
-       would_recover_either xp m1 m2
+                    ([[ r = true ]] * rep xp (NoTransaction m2) mscs) \/
+                    ([[ r = false ]] * rep xp (NoTransaction m1) mscs)
+     CRASH          log_intact xp m1 m2
     >} commit xp mscs.
   Proof.
-    unfold commit, would_recover_either, would_recover_old, might_recover_cur.
+    unfold commit, log_intact, would_recover_old, would_recover_either.
     hoare_with log_unfold ltac:(info_eauto with replay).
     cancel_with ltac:(info_eauto with replay).
     or_r; cancel.
@@ -1660,7 +1658,7 @@ Module MEMLOG.
   Qed.
   Hint Rewrite crash_invariant_avail_region : crash_xform.
 
-  Ltac log_intact_unfold := unfold MEMLOG.would_recover_either, MEMLOG.would_recover_old, MEMLOG.might_recover_cur.
+  Ltac log_intact_unfold := unfold log_intact, would_recover_old, would_recover_either.
 
   Ltac word_discriminate :=
     match goal with [ H: $ _ = $ _ |- _ ] => solve [
@@ -1678,15 +1676,27 @@ Module MEMLOG.
     autorewrite with crash_xform;
     cancel; subst; cancel.
 
-  Theorem recover_ok: forall cachesize,
-    {< m1 m2 xp,
-    PRE
-      crash_xform (would_recover_either xp m1 m2)
-    POST RET:^(mscs,fsxp)
-      rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
-    CRASH
-      would_recover_either xp m1 m2
-    >} recover cachesize.
+  Theorem recover_ok: forall cachesize T rx,
+    {{fun done_ crash_ =>
+      exists m1 xp F,
+        (F * [[ cachesize <> 0 ]] * crash_xform (would_recover_old xp m1) *
+          [[forall r_,
+            let '^(mscs, fsxp) := r_ in
+            {{fun (done'_ : donecond T) (crash'_ : pred) =>
+              F *
+              (rep (FSXPMemLog fsxp) (NoTransaction m1) mscs) * 
+              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] * 
+          [[F * would_recover_old xp m1 =p=> crash_]]) \/
+        exists m2, (F * [[ cachesize <> 0 ]] * crash_xform (would_recover_either xp m1 m2) *
+          [[forall r_,
+            let '^(mscs, fsxp) := r_ in
+            {{fun (done'_ : donecond T) (crash'_ : pred) =>
+              F *
+              (rep (FSXPMemLog fsxp) (NoTransaction m1) mscs \/
+               rep (FSXPMemLog fsxp) (NoTransaction m2) mscs) * 
+              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] * 
+          [[F * would_recover_either xp m1 m2 =p=> crash_]])
+    }} recover cachesize rx.
   Proof.
     unfold recover; log_intact_unfold; log_unfold.
     intros.
@@ -1709,124 +1719,10 @@ Module MEMLOG.
     rewrite sep_star_comm.
     apply pimpl_refl.
 
-    eapply pimpl_ok2; [ eauto with prog | ].
-    intros; simpl.
-    norm'l.
-    unfold BUFCACHE.rep, diskIs in H7.
-    destruct_lift H7; subst.
-    (* XXX have to destruct exis in crash_transform'd H4 before evars get made *)
-    norm'r.
-    cancel'.
-    intuition.
-    eapply pred_apply_crash_xform; eauto.
-    autorewrite with crash_xform.
-
-    pimpl_crash.
-    cancel.
-
-    or_l; cancel.
-    or_l.
-    norm. cancel'.
-    intuition.
-    cancel_pred_crash.
-
-      - step; step; try word_discriminate.
-        rewrite crash_invariant_avail_region.
-        or_l; cancel.
-        autorewrite with crash_xform.
-      - cancel.
-        or_l; cancel.
-      - step; step; try word_discriminate.
-      - cancel.
-        or_l; cancel.
-    + cancel.
-      - step; step; try word_discriminate.
-        autorewrite with crash_xform.
-        or_l; cancel.
-      - cancel.
-        autorewrite with crash_xform.
-        or_l; cancel.
-    + autorewrite with crash_xform.
-      norm'l; unfold stars; simpl.
-      autorewrite with crash_xform.
-      cancel.
-      - step.
-        { eapply pimpl_ok2; [ eauto with prog | ]; intros.
-          norm'l; unfold stars; simpl.
-          autorewrite with crash_xform.
-          log_unfold; rewrite crash_xform_array; cancel.
-          + subst; cancel.
-          + unfold equal_unless_in; intuition.
-          + admit.
-          + auto.
-          + auto.
-          + step_unfold log_unfold.
-            - subst; eauto.
-            - subst; eauto.
-            - step.
-              or_l; cancel.
-              admit. (* by [possible_crash_list], [equal_unless_in], and [replay _ _ = replay _ _] hyps *)
-            - or_l; cancel.
-              or_r; or_r; or_l; cancel; auto.
-              admit.
-            - or_l; cancel.
-              or_r; or_r; or_r; cancel; auto.
-              admit.
-            - or_l; cancel.
-              or_l; cancel.
-              admit.
-          + cancel.
-            or_l; cancel.
-            or_r; or_r; or_l; cancel; auto.
-            admit.
-        }
-        { step. }
-      - autorewrite with crash_xform.
-        cancel.
-        or_l; cancel.
-        rewrite crash_xform_array.
-        or_r; or_r; or_l; cancel; auto.
-        admit.
-    + norm'l; unfold stars; simpl.
-      autorewrite with crash_xform.
-      cancel.
-      - step; step; try word_discriminate.
-        or_l; cancel.
-        admit.
-      - cancel.
-        or_l; cancel.
-        or_l; cancel.
-        admit.
-      - step; step_unfold log_unfold; try word_discriminate.
-        { admit. }
-        { step_unfold log_unfold; subst; eauto.
-          + step.
-            or_l; cancel.
-            admit.
-          + or_l; cancel.
-            or_r; or_r; or_l; cancel; auto.
-            admit.
-          + or_l; cancel.
-            or_r; or_r; or_r; cancel; auto.
-            rewrite H16; auto.
-          + or_l; cancel.
-            or_l; cancel.
-            rewrite H16; auto.
-        }
-        { or_l; cancel.
-          or_r; or_r; or_l; cancel; auto.
-          admit.
-        }
-      - cancel.
-        or_l; cancel.
-        or_r; or_r; or_l; cancel; auto.
-        admit.
-    + norm'l; unfold stars; simpl.
-      autorewrite with crash_xform.
-      cancel.
-      - step; step; try word_discriminate.
-
-    (* Switched from Admitted to Qed to make CoqIDE's async proofs happy *)
+    admit.
+    admit.
+    admit.
+    admit.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
@@ -1888,6 +1784,85 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _ _) _) => apply write_array_ok : prog.
+
+  Section RECOVER_CORR3.
+
+  Variable main_prog : forall T, memstate_cachestate ->
+                                 ((memstate_cachestate * (bool * unit)) -> prog T) -> prog T.
+
+  Theorem recover_corr2_to_corr3: forall mscs (pre post: pred) xp cachesize,
+    {< mbase,
+    PRE             rep xp (NoTransaction mbase) mscs * 
+                    [[ pre (list2mem mbase)]]
+    POST RET:^(mscs, r)
+                    [[ r = false ]] * rep xp (NoTransaction mbase) mscs \/
+                    [[ r = true ]] * exists m', rep xp (NoTransaction m') mscs *
+                    [[ post (list2mem m') ]]
+    CRASH           would_recover_old xp mbase \/
+                    exists m', would_recover_either xp mbase m' *
+                    [[ post (list2mem m') ]]
+    >} main_prog mscs ->
+    {<< mbase,
+    PRE             [[ cachesize <> 0 ]] *
+                    rep xp (NoTransaction mbase) mscs * 
+                    [[ pre (list2mem mbase)]]
+    POST RET:^(mscs, r)
+                    [[ r = false ]] * rep xp (NoTransaction mbase) mscs \/
+                    [[ r = true ]] * exists m', rep xp (NoTransaction m') mscs *
+                    [[ post (list2mem m') ]]
+    REC RET:^(mscs, fsxp)
+                    (rep fsxp.(FSXPMemLog) (NoTransaction mbase) mscs \/
+                    exists m', rep fsxp.(FSXPMemLog) (NoTransaction m') mscs *
+                    [[ post (list2mem m') ]])
+    >>} main_prog mscs >> recover cachesize.
+  Proof.
+    intros.
+    unfold forall_helper; intros mbase.
+    exists (would_recover_old xp mbase \/
+            exists m', (would_recover_either xp mbase m') *
+            [[ post (list2mem m') ]])%pred; intros.
+
+    eapply pimpl_ok3.
+    eapply corr3_from_corr2.
+    eauto.
+    eapply recover_ok.
+    simpl.
+    cancel.
+    instantiate (a1 := p).
+    cancel.
+    eauto.
+    step.
+    auto.
+    unfold log_intact.
+    autorewrite with crash_xform.
+    rewrite sep_star_or_distr.
+    apply pimpl_or_l.
+    cancel.
+    autorewrite with crash_xform.
+    apply pimpl_or_r; left; cancel.
+    instantiate (p := crash_xform p); cancel.
+
+    step.
+    rewrite sep_star_or_distr.
+    apply pimpl_or_r; left; cancel.
+    rewrite H4; auto.
+    rewrite H4; cancel.
+    apply pimpl_or_r; left; cancel.
+
+    rewrite H4; cancel.
+    apply pimpl_or_r; right; cancel.
+    autorewrite with crash_xform.
+    instantiate (p := (p * [[post (list2mem d)]])%pred).
+    cancel.
+
+    step.
+    cancel.
+    apply pimpl_or_r; right; cancel.
+  Qed.
+
+  End RECOVER_CORR3.
+
+
   Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
 
   (* XXX remove once SepAuto and SepAuto2 are unified *)

@@ -186,7 +186,7 @@ Section RECBFILE.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_get_pair lxp ixp inum block_ix pos mscs.
   Proof.
     unfold bf_get_pair.
@@ -222,7 +222,7 @@ Section RECBFILE.
              [[ array_item_pairs (upd ilistlist block_ix 
                                      (upd (sel ilistlist block_ix nil) pos i))
                                  (list2nmem (BFILE.BFData f')) ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} bf_put_pair lxp ixp inum block_ix pos i mscs.
   Proof.
     unfold bf_put_pair.
@@ -452,7 +452,7 @@ Section RECBFILE.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = $ (length ilist) ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_getlen lxp ixp inum mscs.
   Proof.
     unfold bf_getlen, array_item_file.
@@ -473,7 +473,7 @@ Section RECBFILE.
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = sel ilist idx item_zero ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_get lxp ixp inum idx mscs.
   Proof.
     unfold bf_get, array_item_file, array_item_pairs.
@@ -509,7 +509,7 @@ Section RECBFILE.
              [[ array_item_file f' (upd ilist idx v) ]] *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]]
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_put lxp ixp inum idx v mscs.
   Proof.
     unfold bf_put, array_item_file, array_item_pairs.
@@ -545,7 +545,7 @@ Section RECBFILE.
            [[ array_item_file f' (ilist ++ (upd item0_list $0 v)) ]] *
            [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] )
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_extend lxp bxp ixp inum v mscs.
   Proof.
     unfold bf_extend, array_item_file.
