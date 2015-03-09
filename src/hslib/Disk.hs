@@ -22,7 +22,7 @@ crashtest :: Bool
 crashtest = False
 
 reallySync :: Bool
-reallySync = False
+reallySync = True
 
 debugmsg :: String -> IO ()
 debugmsg s =
