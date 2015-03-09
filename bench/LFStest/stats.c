@@ -20,7 +20,7 @@ void printstats(char *fs, int reset)
   sprintf(name, "%s/stats", fs);
   if((fd = open(name, O_RDONLY)) < 0) {
     perror("open stats");
-    exit(1);
+    return;
   }
 
   bzero(buf, BUFSIZE);
