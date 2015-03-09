@@ -6,10 +6,11 @@ How to run the app-bench.sh benchmark:
   FSCQ
 
     cd ../src
+    dd if=/dev/zero of=/dev/sda3 bs=4096 count=34310
     ./mkfs /dev/sda3
     ./fuse /dev/sda3 -s -f /tmp/ft
 
-    time ./app-bench.sh /tmp/fscq-clean /tmp/ft
+    script app-bench-fscq.out -c './app-bench.sh /tmp/fscq-clean /tmp/ft'
 
   xv6
 
@@ -17,7 +18,7 @@ How to run the app-bench.sh benchmark:
     ./mkfs /dev/sda3
     ./xv6fs /dev/sda3 -s -f /tmp/ft
 
-    time ./app-bench.sh /tmp/fscq-clean /tmp/ft
+    script app-bench-xv6.out -c './app-bench.sh /tmp/fscq-clean /tmp/ft'
 
   Linux
 
@@ -25,4 +26,4 @@ How to run the app-bench.sh benchmark:
     mount /dev/sda3 /tmp/ft -o data=journal,sync
     chmod 777 /tmp/ft
 
-    time ./app-bench.sh /tmp/fscq-clean /tmp/ft
+    script app-bench-ext3.out -c './app-bench.sh /tmp/fscq-clean /tmp/ft'

@@ -5,7 +5,6 @@ FUNCTIONALITY
 - reused inodes have old file contents in them
   (at least we should zero out the "sz" field)
 - mkfs should zero out the first inode
-- zero out newly created files/subdirectories
 
 PROOFS/SPECS
 
