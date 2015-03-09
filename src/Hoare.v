@@ -65,7 +65,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 
-Notation "{<< e1 .. e2 , 'PRE' pre , 'POST' post 'REC' crash >>} p1 >> p2" :=
+Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    exists idemcrash,
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
