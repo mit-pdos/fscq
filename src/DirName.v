@@ -657,6 +657,7 @@ Module SDIR.
         \/  ([[ r = true ]] * exists dsmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
+             [[ dsmap' = Prog.upd dsmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
              [[ (DF dsmap /\ notindomain name dsmap) ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
@@ -665,12 +666,22 @@ Module SDIR.
     unfold dslink.
     hoare.
 
-    apply pimpl_or_r; right; cancel.
+    apply pimpl_or_r; right; resolve_valid_preds; cancel.
     exists x2, x3; repeat split; eauto.
-    exists m1; split; eauto.
-    admit.
-    admit.
-    admit.
+    eexists; split; eauto.
+    split; [ | split ]; [ intros ? Hx | intros ? Hx | ].
+
+    destruct (weq w (sname2wname name)); subst.
+    eapply cond_inv_domain_right with (PA := wname_valid); eauto.
+    apply indomain_upd_ne in Hx; auto.
+    destruct (string_dec s name); subst; auto.
+    apply indomain_upd_ne in Hx; auto.
+
+    eapply mem_ainv_mem_upd; eauto.
+    apply any_sep_star_ptsto.
+    apply upd_eq; auto.
+    unfold any; auto.
+    eapply mem_atrans_inv_notindomain; eauto.
   Qed.
 
 

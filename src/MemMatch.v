@@ -232,6 +232,15 @@ Section MEMMATCH.
       apply HInv; auto.
     Qed.
 
+    Lemma mem_ainv_mem_upd : forall a v (ap : AP2 a),
+      mem_atrans atrans (Prog.upd m1 (ainv a) v) (Prog.upd m2 a v) tt.
+    Proof.
+      intros; unfold mem_atrans, Prog.upd; intro x.
+      destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a); auto.
+      contradict n; subst.
+      apply HInv; auto.
+      admit.
+    Qed.
 
   End MEMMATCH_INVERSION.
 

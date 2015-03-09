@@ -1037,6 +1037,7 @@ Module DIR.
         \/  ([[ r = true ]] * exists dmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
+             [[ dmap' = Prog.upd dmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (DF dmap /\ notindomain name dmap) ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
