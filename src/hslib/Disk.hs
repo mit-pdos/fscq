@@ -19,7 +19,7 @@ verbose :: Bool
 verbose = False
 
 crashtest :: Bool
-crashtest = True
+crashtest = False
 
 reallySync :: Bool
 reallySync = False
