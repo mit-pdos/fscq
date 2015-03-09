@@ -524,7 +524,7 @@ Module SDIR.
     exists dmap, DIR.rep f dmap
     /\ (forall w, indomain w dmap -> wname_valid w)
     /\ (forall s, indomain s dsmap -> sname_valid s)
-    /\ mem_atrans wname2sname dmap dsmap tt.
+    /\ mem_atrans wname2sname dmap dsmap wname_valid.
 
   Definition rep_macro F1 F2 m bxp ixp (inum : addr) dsmap : Prop :=
     exists flist f,
@@ -570,7 +570,7 @@ Module SDIR.
 
   Lemma helper_atrans_dslist : forall l m1 m2
     (LP : listpred DIR.dlmatch l m1)
-    (MT  : mem_atrans wname2sname m1 m2 tt)
+    (MT  : mem_atrans wname2sname m1 m2 wname_valid)
     (OK : forall w, indomain w m1 -> wname_valid w),
     listpred dslmatch (List.map dslist_trans l) m2.
   Proof.
@@ -579,7 +579,8 @@ Module SDIR.
 
     unfold dslmatch at 1, dslist_trans at 1; simpl.
     apply mem_except_ptsto; auto.
-    eapply mem_atrans_any; eauto.
+    eapply mem_atrans_indomain; eauto.
+    eapply sep_star_ptsto_indomain; eauto.
     eapply ptsto_valid; eauto.
 
     apply sep_star_ptsto_indomain in LP as Hx.

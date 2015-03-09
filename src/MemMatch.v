@@ -1,6 +1,5 @@
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
 Require Import FunctionalExtensionality.
-Require Import ListPred.
 
 Set Implicit Arguments.
 
@@ -131,35 +130,23 @@ Section MEMMATCH.
   Variable AP2_ok : forall a2, indomain a2 m2 -> AP2 a2.
 
   Definition mem_atrans AT1 AEQ1 V AT2 AEQ2
-    f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) (_ : unit) :=
-    forall a, m a = m' (f a).
+    f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) (P : AT1 -> Prop) :=
+    forall a, P a -> m a = m' (f a).
 
-  Variable MTrans : mem_atrans atrans m1 m2 tt.
+  Variable MTrans : mem_atrans atrans m1 m2 AP1.
 
-  Lemma mem_atrans_any : forall a1 x, 
+  Lemma mem_atrans_indomain : forall a1 x,
+    indomain a1 m1 ->
     m1 a1 = x -> m2 (atrans a1) = x.
   Proof.
     intros.
-    rewrite <- (MTrans a1); auto.
-  Qed.
-
-  Lemma mem_atrans_indomain : forall a1,
-    indomain a1 m1 -> indomain (atrans a1) m2.
-  Proof.
-    unfold indomain; intros.
-    rewrite <- (MTrans a1); auto.
-  Qed.
-
-  Lemma mem_atrans_notindomain : forall a1,
-    notindomain a1 m1 -> notindomain (atrans a1) m2.
-  Proof.
-    unfold notindomain; intros.
-    apply mem_atrans_any; auto.
+    apply AP1_ok in H.
+    rewrite <- (MTrans H); auto.
   Qed.
 
   Lemma mem_atrans_mem_except : forall a (ap : AP1 a),
     cond_bijective atrans AP1 AP2 ->
-    mem_atrans atrans (mem_except m1 a) (mem_except m2 (atrans a)) tt.
+    mem_atrans atrans (mem_except m1 a) (mem_except m2 (atrans a)) AP1.
   Proof.
     intros; unfold mem_atrans, mem_except; intro x.
     destruct (AEQ1 x a); destruct (AEQ2 (atrans x) (atrans a));
@@ -178,9 +165,9 @@ Section MEMMATCH.
       m1 (ainv a) = x -> m2 a = x.
     Proof.
       intros.
-      replace a with (atrans (ainv a)).
-      rewrite <- (MTrans (ainv a)); auto.
-      apply HInv; auto.
+      replace a with (atrans (ainv a)) by (apply HInv; auto).
+      assert (AP1 (ainv a)) as Hx by (apply HInv; auto).
+      rewrite <- (MTrans Hx); auto.
     Qed.
 
     Lemma mem_atrans_inv_ptsto : forall a (ap : AP2 a) F v,
@@ -218,7 +205,7 @@ Section MEMMATCH.
     Qed.
 
     Lemma mem_ainv_mem_except : forall a (ap : AP2 a),
-      mem_atrans atrans (mem_except m1 (ainv a)) (mem_except m2 a) tt.
+      mem_atrans atrans (mem_except m1 (ainv a)) (mem_except m2 a) AP1.
     Proof.
       intros; unfold mem_atrans, mem_except; intro x.
       destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a);
@@ -233,13 +220,16 @@ Section MEMMATCH.
     Qed.
 
     Lemma mem_ainv_mem_upd : forall a v (ap : AP2 a),
-      mem_atrans atrans (Prog.upd m1 (ainv a) v) (Prog.upd m2 a v) tt.
+      mem_atrans atrans (Prog.upd m1 (ainv a) v) (Prog.upd m2 a v) AP1.
     Proof.
       intros; unfold mem_atrans, Prog.upd; intro x.
       destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a); auto.
       contradict n; subst.
       apply HInv; auto.
-      admit.
+
+      intros; subst.
+      contradict n.
+      erewrite cond_inv_rewrite_left; eauto.
     Qed.
 
   End MEMMATCH_INVERSION.
