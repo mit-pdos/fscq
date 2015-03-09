@@ -380,7 +380,6 @@ Module MEMLOG.
     >} abort xp mscs.
   Proof.
     unfold abort; log_unfold.
-    destruct mscs as [ms cs].
     hoare.
   Qed.
 
@@ -684,7 +683,6 @@ Module MEMLOG.
     >} write xp a v mscs.
   Proof.
     unfold write; log_unfold.
-    destruct mscs as [ms cs].
     hoare.
 
     apply valid_entries_add; eauto.
@@ -696,6 +694,7 @@ Module MEMLOG.
 
     rewrite replay_add.
     eapply list2mem_upd; eauto.
+      
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
