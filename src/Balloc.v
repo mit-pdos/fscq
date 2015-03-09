@@ -256,6 +256,28 @@ Module BALLOC.
   Hint Extern 1 ({{_}} progseq (init' _ _ _) _) => apply init'_ok : prog.
 
 
+  Definition numfree T lxp xp mscs rx : prog T :=
+    let^ (mscs, count) <- For i < (BmapNBlocks xp ^* $ (valulen))
+      Ghost [ mbase m ]
+      Loopvar [ mscs count ]
+      Continuation lrx
+      Invariant
+        MEMLOG.rep lxp (ActiveTxn mbase m) mscs
+      OnCrash
+        MEMLOG.would_recover_old lxp mbase
+      Begin
+        let^ (mscs, bit) <- RecArray.get itemtype items_per_valu blocksz
+          lxp (xp_to_raxp xp) i mscs;
+        let state := bit_to_alloc_state bit in
+        If (alloc_state_dec state Avail) {
+          lrx ^(mscs, count ^+ $1)
+        } else {
+          lrx ^(mscs, count)
+        }
+      Rof ^(mscs, ($0 : addr));
+    rx ^(mscs, count).
+
+
   (* Different names just so that we can state another theorem about them *)
   Definition alloc_gen := alloc'.
   Definition free_gen := free'.
