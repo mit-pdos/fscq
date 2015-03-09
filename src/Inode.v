@@ -281,10 +281,10 @@ Module INODE.
     auto.
   Qed.
 
-  Hint Resolve nr_indirect_bound.
-  Hint Resolve nr_direct_bound.
-  Hint Resolve wlt_lt.
-  Hint Resolve wle_le.
+  Local Hint Resolve nr_indirect_bound.
+  Local Hint Resolve nr_direct_bound.
+  Local Hint Resolve wlt_lt.
+  Local Hint Resolve wle_le.
   Hint Rewrite removeN_updN : core.
 
   Definition indlist0 := repeat (natToWord inditemsz 0) nr_indirect.
@@ -328,7 +328,7 @@ Module INODE.
     unfold indlist0; apply repeat_length.
   Qed.
 
-  Hint Resolve indlist0_length.
+  Local Hint Resolve indlist0_length.
 
   (* separation logic based theorems *)
 
@@ -928,7 +928,7 @@ Module INODE.
     simpl; auto.
   Qed.
 
-  Hint Resolve len_plus_one_eq1.
+  Local Hint Resolve len_plus_one_eq1.
 
   Lemma firstn_plusone_app_selN: forall T n a b (def : T),
     n = length a -> length b > 0
@@ -1052,8 +1052,8 @@ Module INODE.
     omega.
   Qed.
 
-  Hint Resolve wlt_lt_nr_direct.
-  Hint Resolve gt_plusone_gt.
+  Local Hint Resolve wlt_lt_nr_direct.
+  Local Hint Resolve gt_plusone_gt.
 
   Ltac resolve_length_bound := try solve [
     repeat match goal with
@@ -1333,12 +1333,12 @@ Module INODE.
     apply le_wle; auto.
   Qed.
 
-  Hint Resolve length_not_nil.
-  Hint Resolve length_not_nil'.
-  Hint Resolve wordnat_minus1_eq.
-  Hint Resolve wordToNat_neq_inj.
-  Hint Resolve gt0_wneq0.
-  Hint Resolve neq0_wneq0.
+  Local Hint Resolve length_not_nil.
+  Local Hint Resolve length_not_nil'.
+  Local Hint Resolve wordnat_minus1_eq.
+  Local Hint Resolve wordToNat_neq_inj.
+  Local Hint Resolve gt0_wneq0.
+  Local Hint Resolve neq0_wneq0.
 
   Theorem ishrink_ok : forall lxp bxp xp inum mscs,
     {< F A B mbase m ilist bn ino freelist,
