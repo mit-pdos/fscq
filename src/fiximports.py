@@ -9,6 +9,7 @@ imports = """
 import qualified Data.Bits
 import qualified Data.Char
 import qualified GHC.Prim
+import qualified Evict
 """
 
 filename = sys.argv[2]
