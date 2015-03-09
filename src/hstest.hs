@@ -71,6 +71,9 @@ main = do
   putStrLn $ "set_size: " ++ (show setok)
   (s, (r, ())) <- repf2 1000 False s $ \s -> I.run ds $ Testprog.test_bfile_bulkwrite fsxp (W 99) (W 64) s
 
+  flushlog <- get_flush_log ds
+  putStrLn $ "Flush log: " ++ (show $ length flushlog)
+
   stats <- close_disk ds
   print_stats stats
   putStrLn $ "Done: " ++ (show r)

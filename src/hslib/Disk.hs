@@ -18,6 +18,12 @@ import Data.IORef
 verbose :: Bool
 verbose = False
 
+crashtest :: Bool
+crashtest = True
+
+reallySync :: Bool
+reallySync = False
+
 debugmsg :: String -> IO ()
 debugmsg s =
   if verbose then
@@ -29,8 +35,14 @@ debugmsg s =
 data DiskStats =
   Stats !Word !Word !Word
 
+-- FlushLog is used to track writes for empirical crash recovery testing
+data FlushLog =
+  FL ![(Word64, Coq_word)] ![[(Word64, Coq_word)]]
+  -- The first list is the list of writes since the last flush
+  -- The second list is the list of previous flushed write groups
+
 data DiskState =
-  S !Fd !(IORef DiskStats) !(IORef Bool)
+  S !Fd !(IORef DiskStats) !(IORef Bool) !(IORef FlushLog)
 
 bumpRead :: IORef DiskStats -> IO ()
 bumpRead sr = do
@@ -46,6 +58,22 @@ bumpSync :: IORef DiskStats -> IO ()
 bumpSync sr = do
   Stats r w s <- readIORef sr
   writeIORef sr $ Stats r w (s+1)
+
+logWrite :: IORef FlushLog -> Word64 -> Coq_word -> IO ()
+logWrite fl a v =
+  if crashtest then do
+    FL writes flushed <- readIORef fl
+    writeIORef fl $ FL ((a, v) : writes) flushed
+  else
+    return ()
+
+logFlush :: IORef FlushLog -> IO ()
+logFlush fl =
+  if crashtest then do
+    FL writes flushed <- readIORef fl
+    writeIORef fl $ FL [] (writes : flushed)
+  else
+    return ()
 
 -- For a more efficient array implementation, perhaps worth checking out:
 -- http://www.macs.hw.ac.uk/~hwloidl/hackspace/ghc-6.12-eden-gumsmp-MSA-IFL13/libraries/dph/dph-base/Data/Array/Parallel/Arr/BUArr.hs
@@ -68,7 +96,7 @@ i2buf i (GHC.Exts.Ptr a) = do
 
 read_disk :: DiskState -> Coq_word -> IO Coq_word
 read_disk ds (W a) = read_disk ds (W64 $ fromIntegral a)
-read_disk (S fd sr _) (W64 a) = do
+read_disk (S fd sr _ _) (W64 a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
@@ -85,11 +113,12 @@ read_disk (S fd sr _) (W64 a) = do
 write_disk :: DiskState -> Coq_word -> Coq_word -> IO ()
 write_disk ds (W a) v = write_disk ds (W64 $ fromIntegral a) v
 write_disk _ (W64 _) (W64 _) = error "write_disk: short value"
-write_disk (S fd sr dirty) (W64 a) (W v) = do
+write_disk (S fd sr dirty fl) (W64 a) (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   bumpWrite sr
   writeIORef dirty True
+  logWrite fl a (W v)
   allocaBytes 4096 $ \buf -> do
     _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
     i2buf v buf
@@ -101,22 +130,26 @@ write_disk (S fd sr dirty) (W64 a) (W v) = do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
 sync_disk :: DiskState -> Coq_word -> IO ()
-sync_disk (S fd sr dirty) a = do
+sync_disk (S fd sr dirty fl) a = do
   debugmsg $ "sync(" ++ (show a) ++ ")"
   isdirty <- readIORef dirty
   if isdirty then do
     bumpSync sr
-    -- fileSynchroniseDataOnly fd
+    logFlush fl
+    if reallySync then
+      fileSynchroniseDataOnly fd
+    else
+      return ()
     writeIORef dirty False
   else
     return ()
 
 clear_stats :: DiskState -> IO ()
-clear_stats (S _ sr _) = do
+clear_stats (S _ sr _ _) = do
   writeIORef sr $ Stats 0 0 0
 
 get_stats :: DiskState -> IO DiskStats
-get_stats (S _ sr _) = do
+get_stats (S _ sr _ _) = do
   s <- readIORef sr
   return s
 
@@ -125,18 +158,24 @@ init_disk disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
   dirty <- newIORef False
-  return $ S fd sr dirty
+  fl <- newIORef $ FL [] []
+  return $ S fd sr dirty fl
 
 set_nblocks_disk :: DiskState -> Int -> IO ()
-set_nblocks_disk (S fd _ _) nblocks = do
+set_nblocks_disk (S fd _ _ _) nblocks = do
   setFdSize fd $ fromIntegral $ nblocks * 4096
   return ()
 
 close_disk :: DiskState -> IO DiskStats
-close_disk (S fd sr _) = do
+close_disk (S fd sr _ _) = do
   closeFd fd
   s <- readIORef sr
   return s
+
+get_flush_log :: DiskState -> IO [[(Word64, Coq_word)]]
+get_flush_log (S _ _ _ fl) = do
+  FL writes flushes <- readIORef fl
+  return (writes : flushes)
 
 print_stats :: DiskStats -> IO ()
 print_stats (Stats r w s) = do
