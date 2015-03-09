@@ -63,18 +63,17 @@ Inductive prog (T: Type) :=
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
-Notation "^( a )" := (pair a I).
-Notation "^( a , .. , b )" := (pair a .. (pair b I) ..).
+Notation "^( a , b , .. , c )" := (pair b .. (pair c a) .. ).
 
 Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right associativity).
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
-Notation "'let^' ( a , .. , b ) <- p1 ; p2" :=
+Notation "'let^' ( a , b , .. , c ) <- p1 ; p2" :=
   (progseq p1
-    (pair_args_helper (fun a => ..
-      (pair_args_helper (fun b (_:True) => p2))
+    (pair_args_helper (fun b => ..
+      (pair_args_helper (fun c a => p2))
     ..))
   )
-  (at level 60, right associativity, a closed binder, b closed binder).
+  (at level 60, right associativity, b closed binder, c closed binder).
 
 
 Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.

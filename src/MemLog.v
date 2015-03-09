@@ -31,7 +31,7 @@ Set Implicit Arguments.
 
 Definition memstate := Map.t valu.
 Definition ms_empty := Map.empty valu.
-Definition memstate_cachestate := (memstate * (cachestate * True))%type.
+Definition memstate_cachestate := (cachestate * memstate)%type.
 
 Definition diskstate := list valu.
 
@@ -1031,9 +1031,9 @@ Module MEMLOG.
 
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2,
-    PRE 
+    PRE
       rep xp (ActiveTxn m1 m2) mscs *
-      [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
+      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     POST RET:mscs
       rep xp (FlushedUnsyncTxn m1 m2) mscs
     CRASH
@@ -1099,7 +1099,7 @@ Module MEMLOG.
     {< m1 m2,
     PRE
       rep xp (FlushedUnsyncTxn m1 m2) mscs *
-      [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
+      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     POST RET:mscs
       rep xp (FlushedTxn m1 m2) mscs
     CRASH
@@ -1900,4 +1900,4 @@ End MEMLOG.
 
 
 Global Opaque MEMLOG.write.
-
+Arguments MEMLOG.rep : simpl never.

@@ -120,12 +120,15 @@ Module BALLOC.
 
   Theorem free'_ok : forall lxp xp mscs bn,
     {< Fm mbase m bmap,
-    PRE        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-               [[ (Fm * rep' xp bmap)%pred (list2mem m) ]] *
-               [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
-    POST:mscs' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-               [[ (Fm * rep' xp (fupd bmap bn Avail))%pred (list2mem m') ]]
-    CRASH      MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ (Fm * rep' xp bmap)%pred (list2mem m) ]] *
+      [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+    POST RET:mscs
+      exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (Fm * rep' xp (fupd bmap bn Avail))%pred (list2mem m') ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} free' lxp xp bn mscs.
   Proof.
     unfold free', rep', valid_block, MEMLOG.log_intact.
@@ -148,18 +151,18 @@ Module BALLOC.
       OnCrash
         MEMLOG.log_intact lxp mbase
       Begin
-        let2 (mscs, bit) <- RecArray.get itemtype items_per_valu blocksz
+        let^ (mscs, bit) <- RecArray.get itemtype items_per_valu blocksz
           lxp (xp_to_raxp xp) i mscs;
         let state := bit_to_alloc_state bit in
         If (alloc_state_dec state Avail) {
           mscs <- RecArray.put itemtype items_per_valu blocksz
             lxp (xp_to_raxp xp) i (alloc_state_to_bit InUse) mscs;
-          rx (mscs, Some i)
+          rx ^(mscs, Some i)
         } else {
           lrx mscs
         }
       Rof;
-    rx (mscs, None).
+    rx ^(mscs, None).
 
   Hint Rewrite natToWord_wordToNat selN_map_seq.
 
@@ -167,13 +170,16 @@ Module BALLOC.
 
   Theorem alloc'_ok: forall lxp xp mscs,
     {< Fm mbase m bmap,
-    PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs * [[ (Fm * rep' xp bmap)%pred (list2mem m) ]]
-    POST:(mscs',r) [[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' \/
-                   exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
-                   MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-                   [[ (Fm * rep' xp (fupd bmap bn InUse))%pred (list2mem m') ]] *
-                   [[ valid_block xp bn ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs * [[ (Fm * rep' xp bmap)%pred (list2mem m) ]]
+    POST RET:^(mscs,r)
+      [[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs \/
+      exists bn m', [[ r = Some bn ]] * [[ bmap bn = Avail ]] *
+      MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (Fm * rep' xp (fupd bmap bn InUse))%pred (list2mem m') ]] *
+      [[ valid_block xp bn ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} alloc' lxp xp mscs.
   Proof.
     unfold alloc', rep'.
@@ -217,13 +223,16 @@ Module BALLOC.
 
   Theorem init'_ok : forall lxp xp mscs,
     {< mbase m F,
-    PRE         exists a, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-                [[ (F * array (BmapStart xp) a $1)%pred (list2mem m) ]] *
-                [[ length a = # (BmapNBlocks xp) ]] *
-                [[ goodSize addrlen (# (BmapNBlocks xp) * valulen) ]]
-    POST:mscs'  exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-                [[ (F * rep' xp bmap0)%pred (list2mem m') ]]
-    CRASH       MEMLOG.log_intact lxp mbase
+    PRE
+      exists a, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ (F * array (BmapStart xp) a $1)%pred (list2mem m) ]] *
+      [[ length a = # (BmapNBlocks xp) ]] *
+      [[ goodSize addrlen (# (BmapNBlocks xp) * valulen) ]]
+    POST RET:mscs
+      exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (F * rep' xp bmap0)%pred (list2mem m') ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} init' lxp xp mscs.
   Proof.
     unfold init', rep'.
@@ -268,16 +277,19 @@ Module BALLOC.
 
   Theorem alloc_gen_ok : forall V lxp xp mscs,
     {< Fm mbase m freeblocks genpred genpredn,
-    PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-                   [[ (Fm * @rep_gen V xp freeblocks genpred genpredn)%pred (list2mem m) ]]
-    POST:(mscs',r) [[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' \/
-                   exists bn m' freeblocks' genpred' genpredn', [[ r = Some bn ]] *
-                   MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-                   [[ (Fm * @rep_gen V xp freeblocks' genpred' genpredn')%pred (list2mem m') ]] *
-                   [[ genpred =p=> genpred' * bn |->? ]] *
-                   [[ genpredn =p=> genpredn' * #bn |->? ]] *
-                   [[ valid_block xp bn ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ (Fm * @rep_gen V xp freeblocks genpred genpredn)%pred (list2mem m) ]]
+    POST RET:^(mscs,r)
+      [[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs \/
+      exists bn m' freeblocks' genpred' genpredn', [[ r = Some bn ]] *
+      MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (Fm * @rep_gen V xp freeblocks' genpred' genpredn')%pred (list2mem m') ]] *
+      [[ genpred =p=> genpred' * bn |->? ]] *
+      [[ genpredn =p=> genpredn' * #bn |->? ]] *
+      [[ valid_block xp bn ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} alloc_gen lxp xp mscs.
   Proof.
     unfold alloc_gen.
@@ -294,12 +306,12 @@ Module BALLOC.
     pred_apply.
     cancel.
 
-    assert (a a3 = Avail) as Ha by ( apply H9; eapply remove_still_In; eauto ).
+    assert (a a0 = Avail) as Ha by ( apply H9; eapply remove_still_In; eauto ).
     rewrite <- Ha.
     apply fupd_other.
     eapply remove_still_In_ne; eauto.
 
-    assert (a0 <> a3).
+    assert (a2 <> a0).
     intro He. subst. rewrite fupd_same in *. discriminate. trivial.
     rewrite fupd_other in * by assumption.
     apply remove_other_In. assumption.
@@ -316,14 +328,17 @@ Module BALLOC.
 
   Theorem free_gen_ok : forall V lxp xp bn mscs,
     {< Fm mbase m freeblocks genpred genpredn,
-    PRE        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-               [[ (Fm * @rep_gen V xp freeblocks genpred genpredn)%pred (list2mem m) ]] *
-               [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
-    POST:mscs' exists m' genpred' genpredn', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-               [[ (Fm * @rep_gen V xp (bn :: freeblocks) genpred' genpredn')%pred (list2mem m') ]] *
-               [[ bn |->? * genpred =p=> genpred' ]] *
-               [[ #bn |->? * genpredn =p=> genpredn' ]]
-    CRASH      MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ (Fm * @rep_gen V xp freeblocks genpred genpredn)%pred (list2mem m) ]] *
+      [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+    POST RET:mscs
+      exists m' genpred' genpredn', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (Fm * @rep_gen V xp (bn :: freeblocks) genpred' genpredn')%pred (list2mem m') ]] *
+      [[ bn |->? * genpred =p=> genpred' ]] *
+      [[ #bn |->? * genpredn =p=> genpredn' ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} free_gen lxp xp bn mscs.
   Proof.
     unfold free_gen.
@@ -355,13 +370,16 @@ Module BALLOC.
 
   Theorem alloc_ok : forall lxp xp mscs,
     {< Fm mbase m freeblocks,
-    PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs * [[ (Fm * rep xp freeblocks)%pred (list2mem m) ]]
-    POST:(mscs',r) [[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' \/
-                   exists bn m' freeblocks', [[ r = Some bn ]] *
-                   MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-                   [[ (Fm * bn |->? * rep xp freeblocks')%pred (list2mem m') ]] *
-                   [[ valid_block xp bn ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs * [[ (Fm * rep xp freeblocks)%pred (list2mem m) ]]
+    POST RET:^(mscs,r)
+      [[ r = None ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs \/
+      exists bn m' freeblocks', [[ r = Some bn ]] *
+      MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (Fm * bn |->? * rep xp freeblocks')%pred (list2mem m') ]] *
+      [[ valid_block xp bn ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} alloc lxp xp mscs.
   Proof.
     unfold alloc, rep.
@@ -376,12 +394,15 @@ Module BALLOC.
 
   Theorem free_ok : forall lxp xp bn mscs,
     {< Fm mbase m freeblocks,
-    PRE        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-               [[ (Fm * rep xp freeblocks * bn |->?)%pred (list2mem m) ]] *
-               [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
-    POST:mscs' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-               [[ (Fm * rep xp (bn :: freeblocks))%pred (list2mem m') ]]
-    CRASH      MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ (Fm * rep xp freeblocks * bn |->?)%pred (list2mem m) ]] *
+      [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
+    POST RET:mscs
+      exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (Fm * rep xp (bn :: freeblocks))%pred (list2mem m') ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} free lxp xp bn mscs.
   Proof.
     unfold free, rep.

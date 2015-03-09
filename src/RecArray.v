@@ -293,8 +293,8 @@ Section RECARRAY.
   Hint Extern 1 ({{_}} progseq (put_pair _ _ _ _ _ _) _) => apply put_pair_ok : prog.
 
   Definition get T lxp xp inum mscs rx : prog T :=
-    let2 (mscs, i) <- get_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) mscs;
-    rx (mscs, i).
+    let^ (mscs, i) <- get_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) mscs;
+    rx ^(mscs, i).
 
   Definition put T lxp xp inum i mscs rx : prog T :=
     mscs <- put_pair lxp xp (inum ^/ items_per_valu) (inum ^% items_per_valu) i mscs;
@@ -302,12 +302,15 @@ Section RECARRAY.
 
   Theorem get_ok : forall lxp xp mscs inum,
     {< F mbase m ilist,
-    PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-                   [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
-                   [[ (inum < RALen xp ^* items_per_valu)%word ]]
-    POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
-                   [[ r = sel ilist inum item_zero ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
+      [[ (inum < RALen xp ^* items_per_valu)%word ]]
+    POST RET:^(mscs,r)
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ r = sel ilist inum item_zero ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} get lxp xp inum mscs.
   Proof.
     unfold get, array_item.
@@ -348,13 +351,16 @@ Section RECARRAY.
 
   Theorem put_ok : forall lxp xp inum i mscs,
     {< F mbase m ilist,
-    PRE        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-               [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
-               [[ (inum < RALen xp ^* items_per_valu)%word ]] *
-               [[ Rec.well_formed i ]]
-    POST:mscs' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
-               [[ (F * array_item xp (upd ilist inum i))%pred (list2mem m') ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    PRE
+      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+      [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
+      [[ (inum < RALen xp ^* items_per_valu)%word ]] *
+      [[ Rec.well_formed i ]]
+    POST RET:mscs
+      exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+      [[ (F * array_item xp (upd ilist inum i))%pred (list2mem m') ]]
+    CRASH
+      MEMLOG.log_intact lxp mbase
     >} put lxp xp inum i mscs.
   Proof.
     unfold put, array_item.
