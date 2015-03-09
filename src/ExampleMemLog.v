@@ -8,6 +8,7 @@ Require Import MemLog.
 Require Import Bool.
 Require Import GenSep.
 Require Import Idempotent.
+Require Import FSLayout.
 
 Set Implicit Arguments.
 
@@ -21,7 +22,8 @@ Definition inc_two T s0 s1 rx : prog T :=
 Theorem inc_two_ok: forall s0 s1,
   {< v0 v1,
   PRE    s0 |~> v0 * s1 |~> v1
-  POST:r s0 |~> (v0 ^+ $1) * s1 |~> (v1 ^+ $1)
+  POST RET:r
+         s0 |~> (v0 ^+ $1) * s1 |~> (v1 ^+ $1)
   CRASH  s0 |~> v0 * s1 |~> v1 \/
          s0 |~> (v0 ^+ $1) * s1 |~> v1 \/
          s0 |~> (v0 ^+ $1) * s1 |~> (v1 ^+ $1)
@@ -32,30 +34,31 @@ Proof.
 Qed.
 
 
-Definition log_inc_two T xp s0 s1 cs rx : prog T :=
-  mscs <- MEMLOG.begin xp cs;
-  let2 (mscs, v0) <- MEMLOG.read xp s0 mscs;
+Definition log_inc_two T xp s0 s1 mscs rx : prog T :=
+  mscs <- MEMLOG.begin xp mscs;
+  let^ (mscs, v0) <- MEMLOG.read xp s0 mscs;
   mscs <- MEMLOG.write xp s0 (v0 ^+ $1) mscs;
-  let2 (mscs, v1) <- MEMLOG.read xp s1 mscs;
+  let^ (mscs, v1) <- MEMLOG.read xp s1 mscs;
   mscs <- MEMLOG.write xp s1 (v1 ^+ $1) mscs;
-  let2 (mscs, ok) <- MEMLOG.commit xp mscs;
+  let^ (mscs, ok) <- MEMLOG.commit xp mscs;
   If (bool_dec ok true) {
-    rx (mscs, ok)
+    rx ^(mscs, ok)
   } else {
-    rx (mscs, false)
+    rx ^(mscs, false)
   }.
 
-Theorem log_inc_two_ok: forall xp s0 s1 cs,
+Theorem log_inc_two_ok: forall xp s0 s1 mscs,
   {< mbase v0 v1 F,
-  PRE             MEMLOG.rep xp (NoTransaction mbase) (ms_empty, cs) * 
+  PRE             MEMLOG.rep xp (NoTransaction mbase) mscs * 
                   [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
-  POST:(mscs', r) [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) mscs' \/
-                  [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') mscs' *
+  POST RET:^(mscs, r)
+                  [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) mscs \/
+                  [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') mscs *
                   [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
   CRASH           MEMLOG.would_recover_old xp mbase \/
                   exists m', MEMLOG.might_recover_cur xp mbase m' *
                   [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  >} log_inc_two xp s0 s1 cs.
+  >} log_inc_two xp s0 s1 mscs.
 Proof.
   unfold log_inc_two.
   hoare_unfold MEMLOG.log_intact_unfold.
@@ -70,7 +73,7 @@ Definition nop {T} rx : prog T := rx tt.
 Theorem nop_ok:
   {< (_: unit),
   PRE    emp
-  POST:r emp
+  POST RET:r emp
   CRASH  emp
   >} nop.
 Proof.
@@ -79,11 +82,11 @@ Proof.
 Qed.
 
 Theorem test_corr3:
-  {< (_: unit),
+  {<< (_: unit),
   PRE     emp
-  POST:r  emp
-  CRASH:r emp
-  >} nop >> nop.
+  POST RET:r  emp
+  REC RET:r emp
+  >>} nop >> nop.
 Proof.
   intros.
   unfold forall_helper; intros.
@@ -106,17 +109,19 @@ Proof.
   cancel.
 Qed.
 
-Theorem log_inc_two_recover_ok: forall xp s0 s1 cs,
-  {< mbase v0 v1 F,
-  PRE             MEMLOG.rep xp (NoTransaction mbase) (ms_empty, cs) * 
+Theorem log_inc_two_recover_ok: forall xp s0 s1 mscs cachesize,
+  {<< mbase v0 v1 F,
+  PRE             MEMLOG.rep xp (NoTransaction mbase) mscs * 
                   [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
-  POST:(mscs', r) [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) mscs' \/
-                  [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') mscs' *
+  POST RET:^(mscs, r)
+                  [[ r = false ]] * MEMLOG.rep xp (NoTransaction mbase) mscs \/
+                  [[ r = true ]] * exists m', MEMLOG.rep xp (NoTransaction m') mscs *
                   [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  CRASH:r         exists mscs', MEMLOG.rep xp (NoTransaction mbase) mscs' \/
-                  exists m', MEMLOG.rep xp (NoTransaction m') mscs' *
+  REC RET:^(mscs, fsxp)
+                  MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction mbase) mscs \/
+                  exists m', MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m') mscs *
                   [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  >} log_inc_two xp s0 s1 cs >> MEMLOG.recover xp.
+  >>} log_inc_two xp s0 s1 mscs >> MEMLOG.recover cachesize.
 Proof.
   intros.
   unfold forall_helper; intros mbase v0 v1 F.
