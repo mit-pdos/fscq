@@ -425,15 +425,15 @@ Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation'
 
 Fixpoint ForEach_ (T: Type) (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> (L -> prog T) -> prog T)
-                (lst : list ITEM) (l : L)
+                (lst : list ITEM)
                 (nocrash : G -> list ITEM -> L -> @pred addr (@weq addrlen) valuset)
                 (crashed : G -> @pred addr (@weq addrlen) valuset)
-                (rx: L -> prog T) : prog T :=
+                (l : L) (rx: L -> prog T) : prog T :=
   match lst with
   | nil => rx l
   | elem :: lst' =>
     l' <- f elem l;
-    ForEach_ f lst' l' nocrash crashed rx
+    ForEach_ f lst' nocrash crashed l' rx
   end.
 
 Theorem foreach_ok:
@@ -454,7 +454,7 @@ Theorem foreach_ok:
        {{ fun done' crash' => F * nocrash g nil lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[F * crashed g =p=> crash]]
-  }} ForEach_ f lst li nocrash crashed rx.
+  }} ForEach_ f lst nocrash crashed li rx.
 Proof.
   intros T ITEM.
   induction lst; intros;

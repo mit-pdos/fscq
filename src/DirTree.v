@@ -199,39 +199,39 @@ Module DIRTREE.
   Qed.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
-    let3 (mscs, inum, isdir) <- ForEach fn fnrest fnlist
-      Ghost mbase m F Ftop treetop bflist freeinode_pred
-      Loopvar mscs_inum_isdir <- (mscs, dnum, $1)
+    let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
+      Ghost [ mbase m F Ftop treetop bflist freeinode_pred ]
+      Loopvar [ mscs inum isdir ]
       Continuation lrx
       Invariant
-        MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs_inum_isdir.(fst).(fst) *
+        MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
         exists tree,
         [[ (F * rep fsxp Ftop dnum treetop)%pred (list2mem m) ]] *
-        [[ mscs_inum_isdir.(snd) <> $0 ->
-           (exists Fsub, Fsub * tree_dir_names_pred mscs_inum_isdir.(fst).(snd) tree *
+        [[ isdir <> $0 ->
+           (exists Fsub, Fsub * tree_dir_names_pred inum tree *
             tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
-        [[ find_name fnlist treetop dnum $1 = find_name fnrest tree mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
+        [[ find_name fnlist treetop dnum $1 = find_name fnrest tree inum isdir ]]
       OnCrash
         MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
       Begin
-        If (weq mscs_inum_isdir.(snd) $0) {
-          rx (mscs_inum_isdir.(fst).(fst), None)
+        If (weq isdir $0) {
+          rx ^(mscs, None)
         } else {
-          let2 (mscs, r) <- SDIR.dslookup (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
-                                          mscs_inum_isdir.(fst).(snd) fn mscs_inum_isdir.(fst).(fst);
+          let^ (mscs, r) <- SDIR.dslookup (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
+                                          inum fn mscs;
           match r with
-          | None => rx (mscs, None)
-          | Some (inum, isdir) => lrx (mscs, inum, isdir)
+          | None => rx ^(mscs, None)
+          | Some (inum, isdir) => lrx ^(mscs, inum, isdir)
           end
         }
-    Rof;
-    rx (mscs, Some (inum, isdir)).
+    Rof ^(mscs, dnum, $1);
+    rx ^(mscs, Some (inum, isdir)).
 
   Theorem namei_ok : forall fsxp dnum fnlist mscs,
     {< F mbase m Ftop tree,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
            [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
-    POST:(mscs,r)
+    POST RET:^(mscs,r)
            [[ r = find_name fnlist tree dnum $1 ]] *
            [[ exists inum Fsub subtree, r = Some (inum, $1) ->
               (F * rep fsxp Fsub inum subtree)%pred (list2mem m) ]] *
@@ -292,50 +292,50 @@ Module DIRTREE.
   Qed.
 
   Definition mknod T fsxp dnum name isdir mscs rx : prog T :=
-    let2 (mscs, oi) <- BALLOC.alloc_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) mscs;
+    let^ (mscs, oi) <- BALLOC.alloc_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) mscs;
     match oi with
-    | None => rx (mscs, None)
+    | None => rx ^(mscs, None)
     | Some inum =>
-      let2 (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+      let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name inum isdir mscs;
       If (bool_dec ok true) {
-        rx (mscs, Some inum)
+        rx ^(mscs, Some inum)
       } else {
-        rx (mscs, None)
+        rx ^(mscs, None)
       }
     end.
 
   Definition mkfile T fsxp dnum name mscs rx : prog T :=
-    let2 (mscs, r) <- mknod fsxp dnum name $0 mscs;
-    rx (mscs, r).
+    let^ (mscs, r) <- mknod fsxp dnum name $0 mscs;
+    rx ^(mscs, r).
 
   Definition mkdir T fsxp dnum name mscs rx : prog T :=
-    let2 (mscs, r) <- mknod fsxp dnum name $1 mscs;
-    rx (mscs, r).
+    let^ (mscs, r) <- mknod fsxp dnum name $1 mscs;
+    rx ^(mscs, r).
 
   Definition delete T fsxp dnum name mscs rx : prog T :=
-    let2 (mscs, oi) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+    let^ (mscs, oi) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name mscs;
     match oi with
-    | None => rx (mscs, false)
+    | None => rx ^(mscs, false)
     | Some (inum, isdir) =>
       mscs <- IfRx irx (weq isdir $0) {
         irx mscs
       } else {
-        let2 (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+        let^ (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                       inum mscs;
         match l with
         | nil => irx mscs
-        | a::b => rx (mscs, false)
+        | a::b => rx ^(mscs, false)
         end
       };
-      let2 (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+      let^ (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                        dnum name mscs;
       If (bool_dec ok true) {
         mscs <- BALLOC.free_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) inum mscs;
-        rx (mscs, true)
+        rx ^(mscs, true)
       } else {
-        rx (mscs, false)
+        rx ^(mscs, false)
       }
     end.
 
@@ -344,33 +344,33 @@ Module DIRTREE.
    * the directory structure as a tree (without loops).
    *)
   Definition rename T fsxp dsrc srcname ddst dstname mscs rx : prog T :=
-    let2 (mscs, osrc) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+    let^ (mscs, osrc) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                        dsrc srcname mscs;
     match osrc with
-    | None => rx (mscs, false)
+    | None => rx ^(mscs, false)
     | Some (inum, isdir) =>
-      let2 (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+      let^ (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                        dsrc srcname mscs;
-      let2 (mscs, odst) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+      let^ (mscs, odst) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                          ddst dstname mscs;
       match odst with
       | None =>
-        let2 (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+        let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                        ddst dstname inum isdir mscs;
-        rx (mscs, ok)
+        rx ^(mscs, ok)
       | Some (inum', isdir') =>
-        let2 (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+        let^ (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                          ddst dstname mscs;
-        let2 (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+        let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                        ddst dstname inum isdir mscs;
         If (weq isdir' $0) {
-          rx (mscs, ok)
+          rx ^(mscs, ok)
         } else {
-          let2 (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+          let^ (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                         inum' mscs;
           match l with
-          | nil => rx (mscs, ok)
-          | a::b => rx (mscs, false)
+          | nil => rx ^(mscs, ok)
+          | a::b => rx ^(mscs, false)
           end
         }
       end
