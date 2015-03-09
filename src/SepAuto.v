@@ -370,7 +370,13 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
-Ltac pick := solve [ repeat ((apply PickFirst; solve [ trivial with okToUnify ])
+Lemma crash_xform_okToUnify : forall V AEQ (P Q: @pred V AEQ _),
+  okToUnify P Q -> okToUnify (crash_xform P) (crash_xform Q).
+Proof.
+  intros. unfold okToUnify in *. congruence.
+Qed.
+
+Ltac pick := solve [ repeat ((apply PickFirst; solve [ try apply crash_xform_okToUnify; trivial with okToUnify ])
                                || apply PickLater) ].
 
 Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,

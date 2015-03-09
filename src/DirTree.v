@@ -212,7 +212,7 @@ Module DIRTREE.
             tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
         [[ find_name fnlist treetop dnum $1 = find_name fnrest tree mscs_inum_isdir.(fst).(snd) mscs_inum_isdir.(snd) ]]
       OnCrash
-        MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
+        MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
       Begin
         If (weq mscs_inum_isdir.(snd) $0) {
           rx (mscs_inum_isdir.(fst).(fst), None)
@@ -236,7 +236,7 @@ Module DIRTREE.
            [[ exists inum Fsub subtree, r = Some (inum, $1) ->
               (F * rep fsxp Fsub inum subtree)%pred (list2mem m) ]] *
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs
-    CRASH  MEMLOG.log_intact fsxp.(FSXPMemLog) mbase
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} namei fsxp dnum fnlist mscs.
   Proof.
     unfold namei, rep.

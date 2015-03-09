@@ -530,7 +530,7 @@ Module SDIR.
            ((exists inum isdir DF,
              [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dsmap ]]) \/
             ([[ r = None /\ notindomain name dsmap ]]))
-    CRASH  MEMLOG.log_intact lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp mbase
     >} dslookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dslookup.
@@ -587,7 +587,7 @@ Module SDIR.
     POST:(mscs',res)
              MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ listpred dslmatch res dsmap ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} dslist lxp bxp ixp dnum mscs.
   Proof.
     unfold dslist.
@@ -610,7 +610,7 @@ Module SDIR.
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
              [[ (DF * name |->?)%pred dsmap ]] *
              [[ (DF) dsmap' ]])
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} dsunlink lxp bxp ixp dnum name mscs.
   Proof.
     unfold dsunlink.
@@ -638,7 +638,7 @@ Module SDIR.
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
              [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
              [[ (DF dsmap /\ notindomain name dsmap) ]])
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} dslink lxp bxp ixp dnum name inum isdir mscs.
   Proof.
     unfold dslink.

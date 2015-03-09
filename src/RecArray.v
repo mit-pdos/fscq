@@ -209,7 +209,7 @@ Section RECARRAY.
                    [[ (pos < items_per_valu)%word ]]
     POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
                    [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    CRASH          MEMLOG.would_recover_old lxp mbase
     >} get_pair lxp xp block_ix pos mscs.
   Proof.
     unfold get_pair.
@@ -225,7 +225,7 @@ Section RECARRAY.
     rewrite Forall_forall in *. apply H10. apply in_selN. abstract word2nat_auto.
     abstract word2nat_auto.
     abstract word2nat_auto.
-    unfold MEMLOG.log_intact. cancel.
+    unfold MEMLOG.would_recover_old. cancel.
   Qed.
 
   Theorem put_pair_ok : forall lxp xp mscs block_ix pos i,
@@ -237,7 +237,7 @@ Section RECARRAY.
                [[ Rec.well_formed i ]]
     POST:mscs' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
                [[ (array_item_pairs xp (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i)) * F)%pred (list2mem m') ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} put_pair lxp xp block_ix pos i mscs.
   Proof.
     unfold put_pair.
@@ -275,10 +275,10 @@ Section RECARRAY.
     rewrite Forall_forall in *.
     auto.
     cancel.
-    unfold MEMLOG.log_intact.
+    unfold MEMLOG.would_recover_old.
     cancel.
     cancel.
-    unfold MEMLOG.log_intact.
+    unfold MEMLOG.would_recover_old.
     cancel.
   Qed.
 
@@ -301,7 +301,7 @@ Section RECARRAY.
                    [[ (inum < RALen xp ^* items_per_valu)%word ]]
     POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
                    [[ r = sel ilist inum item_zero ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    CRASH          MEMLOG.would_recover_old lxp mbase
     >} get lxp xp inum mscs.
   Proof.
     unfold get, array_item.
@@ -348,7 +348,7 @@ Section RECARRAY.
                [[ Rec.well_formed i ]]
     POST:mscs' exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
                [[ (F * array_item xp (upd ilist inum i))%pred (list2mem m') ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} put lxp xp inum i mscs.
   Proof.
     unfold put, array_item.

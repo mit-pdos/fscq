@@ -106,26 +106,18 @@ Theorem read_block_ok : forall fsxp inum off mscs,
   POST:(mscs',r)
          MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs' *
          [[ r = v ]]
-  CRASH  MEMLOG.log_intact (FSXPMemLog fsxp) m
+  CRASH  MEMLOG.log_intact (FSXPMemLog fsxp) m m
   >} read_block fsxp inum off mscs.
 Proof.
-(* XXX why doesn't this proof, which unfolds MEM.log_intact first, go through?
-  unfold read_block, MEMLOG.log_intact.
-  hoare.
-  admit.
-  unfold MEMLOG.log_intact; cancel.
-*)
-
   unfold read_block.
-  hoare.
-  admit.
-  unfold MEMLOG.log_intact; cancel.
-  unfold MEMLOG.log_intact; cancel.
+  hoare_unfold MEMLOG.log_intact_unfold.
 Qed.
+
 
 Theorem read_block_recover_ok : forall fsxp inum off mscs cachesize,
   {< m F flist A f B v,
-  PRE     MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs *
+  PRE     [[ cachesize <> 0 ]] *
+          MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs *
           [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
@@ -137,7 +129,7 @@ Theorem read_block_recover_ok : forall fsxp inum off mscs cachesize,
 Proof.
   intros.
   unfold forall_helper; intros m F flist A f B v.
-  exists (MEMLOG.log_intact (FSXPMemLog fsxp) m).
+  exists (MEMLOG.log_intact (FSXPMemLog fsxp) m m).
 
   intros.
   eapply pimpl_ok3.
@@ -149,12 +141,25 @@ Proof.
   step.
   cancel.
   cancel.
-  rewrite crash_xform_sep_star_dist.
-  instantiate (a:=m). instantiate (a0:=m).
-  admit.
+  unfold MEMLOG.log_intact.
+  autorewrite with crash_xform.
+  rewrite sep_star_or_distr.
+  apply pimpl_or_l.
+  cancel.
+  autorewrite with crash_xform.
+  rewrite sep_star_comm.
+  apply pimpl_or_r; left; cancel.
 
+  unfold MEMLOG.log_intact in *.
   step.
-  admit.
+  rewrite H3; cancel.
+  cancel.
+
+  unfold MEMLOG.log_intact in *.
+  apply pimpl_or_r; right; cancel.
+  step.
+  rewrite H3; cancel.
+  cancel.
 Qed.
 
 Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
@@ -176,45 +181,54 @@ Theorem write_block_inbounds_ok : forall fsxp inum off v mscs,
           [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
-  CRASH   MEMLOG.log_intact (FSXPMemLog fsxp) m \/ exists m' flist' f',
-          MEMLOG.log_intact (FSXPMemLog fsxp) m' *
+  CRASH   MEMLOG.would_recover_old (FSXPMemLog fsxp) m \/ exists m' flist' f',
+          MEMLOG.would_recover_either (FSXPMemLog fsxp) m m' *
           [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
   >} write_block_inbounds fsxp inum off v mscs.
 Proof.
   unfold write_block_inbounds.
-  hoare.
-  admit.
-  unfold MEMLOG.log_intact; cancel.
-  unfold MEMLOG.log_intact; cancel.
+  hoare_unfold MEMLOG.log_intact_unfold.
 Qed.
 
+Definition write_block_inbounds' fsxp inum off v T := @write_block_inbounds T fsxp inum off v.
+
 Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
-  {< m F flist A f B v0,
-  PRE     MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs *
-          [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
+  {< flist A f B v0 F m,
+  PRE     [[ cachesize <> 0 ]] *
+          MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs *
+          [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist *
+            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+            [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]])%pred (list2mem m) ]]
   POST:(mscs',ok)
           [[ ok = false ]] * MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m) mscs' \/
-          [[ ok = true ]] * exists m' flist' f',
+          [[ ok = true ]] * exists m',
           MEMLOG.rep (FSXPMemLog fsxp) (NoTransaction m') mscs' *
-          [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
+          [[ (exists flist' f', F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
+            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
   CRASH:r
-          MEMLOG.rep (FSXPMemLog (snd r)) (NoTransaction m) (fst r) \/ exists m' flist' f',
+          MEMLOG.rep (FSXPMemLog (snd r)) (NoTransaction m) (fst r) \/ exists m',
           MEMLOG.rep (FSXPMemLog (snd r)) (NoTransaction m') (fst r) *
-          [[ (F * BFILE.rep (FSXPBlockAlloc (snd r)) (FSXPInode (snd r)) flist')%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
+          [[ (exists flist' f', F * BFILE.rep (FSXPBlockAlloc (snd r)) (FSXPInode (snd r)) flist' *
+            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
   >} write_block_inbounds fsxp inum off v mscs >> MEMLOG.recover cachesize.
 Proof.
   intros.
-  unfold forall_helper; intros m F flist A f B v0.
-  exists (MEMLOG.log_intact (FSXPMemLog fsxp) m \/ exists m' flist' f',
-          MEMLOG.log_intact (FSXPMemLog fsxp) m' *
+  (*unfold forall_helper at 1 2 3 4 5; intros flist A f B v0 F.
+  Check (MEMLOG.recover_corr2_to_corr3 (write_block_inbounds' fsxp inum off v)
+    (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist *
+            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+            [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]] )
+    (exists flist' f', F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
+            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred).*)
+
+  unfold forall_helper; intros flist A f B v0 F m.
+  exists (MEMLOG.would_recover_old (FSXPMemLog fsxp) m \/ exists m' flist' f',
+          MEMLOG.would_recover_either (FSXPMemLog fsxp) m m' *
           [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred.
@@ -229,39 +243,53 @@ Proof.
   step.
   cancel.
   cancel.
-
+  auto.
+  unfold MEMLOG.log_intact.
+  autorewrite with crash_xform.
+  rewrite sep_star_or_distr.
+  apply pimpl_or_l.
   cancel.
-  cancel.
-  cancel.
-
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_or_dist.
-  cancel.
-  admit.
-  step.
-
-  instantiate (p:=p). instantiate (a:=m). cancel.
-  apply pimpl_or_r; left. cancel.
-
-  instantiate (a0:=m). cancel.
-
-  apply pimpl_or_r; left. cancel.
-
-  cancel. apply pimpl_or_r; left.
-  admit.
-
-  admit.
+  autorewrite with crash_xform.
+  apply pimpl_or_r; left; cancel.
 
   step.
+  rewrite sep_star_or_distr.
+  apply pimpl_or_r; left; cancel.
+  rewrite H3; auto.
+  rewrite H3; cancel.
+  apply pimpl_or_r; left; cancel.
 
-  instantiate (p:=p).
-  instantiate (a2:=m). cancel.
-  apply pimpl_or_r; left. cancel.
-
-  instantiate (a3:=m). cancel.
-  apply pimpl_or_r; left. cancel.
-
+  rewrite H3.
+  autorewrite with crash_xform.
+  norm'l; unfold stars; simpl.
+  autorewrite with crash_xform.
+  norm'l; unfold stars; simpl.
+  autorewrite with crash_xform.
+  norm'l; unfold stars; simpl.
+  autorewrite with crash_xform.
   cancel.
+  apply pimpl_or_r; right.
+  norm.
+  (* XXX do this without the instantiate *)
+  instantiate (p := (p * [[(F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) l)%pred (list2mem d)]] *
+    [[(A * # (inum) |-> b)%pred (list2nmem l)]] * [[(B * # (off) |-> v)%pred (list2nmem (BFILE.BFData b))]])%pred).
+  cancel.
+  intuition.
+
+  eapply pimpl_ok2; [ eauto |].
+  intros; norm.
+  unfold stars; simpl.
+  cancel.
+  cancel.
+  intuition.
+  subst.
+  auto.
+  unfold stars; simpl.
+  cancel.
+  apply pimpl_or_r; right.
+  (* XXX don't know that fsxp = b0 *)
+  admit.
+  admit.
   admit.
 Qed.
 
@@ -304,14 +332,14 @@ Theorem set_size_helper_ok : forall fsxp inum size mscs,
              [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST:(mscs',r)
-             [[ r = false ]] * MEMLOG.log_intact (FSXPMemLog fsxp) mbase \/
+             [[ r = false ]] * MEMLOG.would_recover_old (FSXPMemLog fsxp) mbase \/
              [[ r = true ]] * exists m' flist' f',
              MEMLOG.rep (FSXPMemLog fsxp) (ActiveTxn mbase m') mscs' *
              [[ (F * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ BFILE.BFData f' = (firstn #size (BFILE.BFData f)) ++
                                   (repeat $0 (#size - length (BFILE.BFData f))) ]]
-    CRASH    MEMLOG.log_intact (FSXPMemLog fsxp) mbase
+    CRASH    MEMLOG.would_recover_old (FSXPMemLog fsxp) mbase
     >} set_size_helper fsxp inum size mscs.
 Proof.
   admit.

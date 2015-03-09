@@ -54,7 +54,7 @@ Proof.
     repeat inv_option. eauto.
   - right. eexists; intuition eauto.
 Qed.
-
+Check read_ok.
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 
 Theorem write_ok:

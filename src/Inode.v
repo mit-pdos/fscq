@@ -75,7 +75,7 @@ Module INODE.
                    [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]]
     POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
                    [[ r = ino ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    CRASH          MEMLOG.would_recover_old lxp mbase
     >} irget lxp xp inum mscs.
   Proof.
     unfold irget, irrep; intros.
@@ -99,7 +99,7 @@ Module INODE.
     POST:mscs' exists m' ilist', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
                [[ (F * irrep xp ilist')%pred (list2mem m') ]] *
                [[ (A * #inum |-> i)%pred (list2nmem ilist')]]
-    CRASH      MEMLOG.log_intact lxp mbase
+    CRASH      MEMLOG.would_recover_old lxp mbase
     >} irput lxp xp inum i mscs.
   Proof.
     unfold irput, irrep.
@@ -188,7 +188,7 @@ Module INODE.
                    [[ (A * #off |-> bn)%pred (list2nmem blist) ]]
     POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
                    [[ r = bn ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    CRASH          MEMLOG.would_recover_old lxp mbase
     >} indget lxp a off mscs.
   Proof.
     unfold indget, indrep, indxp; intros.
@@ -213,7 +213,7 @@ Module INODE.
     POST:mscs' exists m' blist', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
                [[ (F * indrep bxp a blist')%pred (list2mem m') ]] *
                [[ (A * #off |-> bn)%pred (list2nmem blist')]]
-    CRASH      MEMLOG.log_intact lxp mbase
+    CRASH      MEMLOG.would_recover_old lxp mbase
     >} indput lxp a off bn mscs.
   Proof.
     unfold indput, indrep, indxp; intros.
@@ -693,7 +693,7 @@ Module INODE.
                    [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
                    [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]]
     POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' * [[ r = $ (length (IBlocks ino)) ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    CRASH          MEMLOG.would_recover_old lxp mbase
     >} ilen lxp xp inum mscs.
   Proof.
     unfold ilen, rep.
@@ -714,7 +714,7 @@ Module INODE.
                    [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
                    [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]]
     POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' * [[ r = ISize ino ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    CRASH          MEMLOG.would_recover_old lxp mbase
     >} igetsz lxp xp inum mscs.
   Proof.
     unfold igetsz, rep.
@@ -737,7 +737,7 @@ Module INODE.
                [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
                [[ ISize ino' = sz ]] *
                [[ IBlocks ino' = IBlocks ino ]]
-    CRASH      MEMLOG.log_intact lxp mbase
+    CRASH      MEMLOG.would_recover_old lxp mbase
     >} isetsz lxp xp inum sz mscs.
   Proof.
     unfold isetsz, rep.
@@ -773,7 +773,7 @@ Module INODE.
                    [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]] *
                    [[ (B * #off |-> a)%pred (list2nmem (IBlocks ino)) ]]
     POST:(mscs',r) MEMLOG.rep lxp (ActiveTxn mbase m) mscs' * [[ r = a ]]
-    CRASH          MEMLOG.log_intact lxp mbase
+    CRASH          MEMLOG.would_recover_old lxp mbase
     >} iget lxp xp inum off mscs.
   Proof.
     unfold iget, rep.
@@ -915,7 +915,7 @@ Module INODE.
              [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
              [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow_direct lxp xp i0 inum a mscs.
   Proof.
     unfold igrow_direct, rep.
@@ -1025,7 +1025,7 @@ Module INODE.
              [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
              [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow_indirect lxp xp i0 inum a mscs.
   Proof.
     unfold igrow_indirect, rep.
@@ -1114,7 +1114,7 @@ Module INODE.
              [[ (F * rep bxp xp ilist' * BALLOC.rep bxp freelist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
              [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]])
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow_alloc lxp bxp xp i0 inum a mscs.
   Proof.
     unfold igrow_alloc, rep.
@@ -1184,7 +1184,7 @@ Module INODE.
     rewrite H6; resolve_length_eq.
     pred_apply; cancel.
 
-    unfold MEMLOG.log_intact; cancel.
+    unfold MEMLOG.would_recover_old; cancel.
 
     (* CASE 2: indirect block allocation failed *)
     step; inv_option_eq; subst; try cancel.
@@ -1216,7 +1216,7 @@ Module INODE.
              [[ (F * rep bxp xp ilist' * BALLOC.rep bxp freelist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
              [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]])
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow lxp bxp xp inum a mscs.
   Proof.
     unfold igrow, rep.
@@ -1299,7 +1299,7 @@ Module INODE.
              [[ (F * rep bxp xp ilist' * BALLOC.rep bxp freelist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
              [[  B (list2nmem (IBlocks ino')) ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} ishrink lxp bxp xp inum mscs.
   Proof.
     unfold ishrink, rep.
@@ -1426,7 +1426,7 @@ Module INODE.
     POST:mscs' exists m' ilist freelist,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ (F * rep ibxp ixp ilist * BALLOC.rep ibxp freelist)%pred (list2mem m') ]]
-    CRASH    MEMLOG.log_intact lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp mbase
     >} init lxp ibxp ixp mscs.
   Proof.
     admit.
