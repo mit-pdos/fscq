@@ -61,30 +61,55 @@ Module BFILE.
     mscs <- INODE.ishrink lxp bxp ixp inum mscs;
     rx mscs.
 
-  Definition bfgetsz T lxp ixp inum mscs rx : prog T :=
-    let^ (mscs, n) <- INODE.igetsz lxp ixp inum mscs;
+  Definition bfgetattr T lxp ixp inum mscs rx : prog T :=
+    let^ (mscs, n) <- INODE.igetattr lxp ixp inum mscs;
     rx ^(mscs, n).
 
-  Definition bfsetsz T lxp ixp inum sz mscs rx : prog T :=
-    mscs <- INODE.isetsz lxp ixp inum sz mscs;
+  Definition bfsetattr T lxp ixp inum sz mscs rx : prog T :=
+    mscs <- INODE.isetattr lxp ixp inum sz mscs;
     rx mscs.
 
+  (* define per-attribute getter/setter for compatibility.
+     TODO: replace them with generalized getter/setter *)
+
+  Definition bfgetsz T lxp ixp inum mscs rx : prog T :=
+    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
+    rx ^(mscs, INODE.ISize n).
+
+  Definition bfsetsz T lxp ixp inum sz mscs rx : prog T :=
+    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
+    let attr := INODE.Build_iattr sz (INODE.IMTime n) in
+    mscs <- bfsetattr lxp ixp inum attr mscs;
+    rx mscs.
+
+  Definition bfgetmtime T lxp ixp inum mscs rx : prog T :=
+    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
+    rx ^(mscs, INODE.IMTime n).
+
+  Definition bfsetmtime T lxp ixp inum ts mscs rx : prog T :=
+    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
+    let attr := INODE.Build_iattr (INODE.ISize n) ts in
+    mscs <- bfsetattr lxp ixp inum attr mscs;
+    rx mscs.
 
   (* representation invariants *)
 
+  Definition bfattr := INODE.iattr.
+  Definition bfattr0 := INODE.iattr0.
+
   Record bfile := {
     BFData : list valu;
-    BFSize : addr
+    BFAttr : bfattr
   }.
 
-  Definition bfile0 := Build_bfile nil $0.
+  Definition bfile0 := Build_bfile nil bfattr0.
 
   Definition data_match bxp (v : valu) a : @pred _ (@weq addrlen) _ :=
     (a |-> v * [[ BALLOC.valid_block bxp a ]])%pred.
 
   Definition file_match bxp f i :=
     (listmatch (data_match bxp) (BFData f) (INODE.IBlocks i) *
-     [[ BFSize f = INODE.ISize i ]])%pred.
+     [[ BFAttr f = INODE.IAttr i ]])%pred.
 
   Definition rep bxp ixp (flist : list bfile) :=
     (exists freeblocks ilist,
@@ -447,18 +472,18 @@ Module BFILE.
     unfold sel; shrink_bounds.
   Qed.
 
-  Theorem bfgetsz_ok : forall lxp bxp ixp inum mscs,
+  Theorem bfgetattr_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m flist f,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST RET:^(mscs,r)
            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ r = BFSize f ]]
+           [[ r = BFAttr f ]]
     CRASH  MEMLOG.would_recover_old lxp mbase
-    >} bfgetsz lxp ixp inum mscs.
+    >} bfgetattr lxp ixp inum mscs.
   Proof.
-    unfold bfgetsz, rep.
+    unfold bfgetattr, rep.
     hoare.
     list2nmem_ptsto_cancel; file_bounds.
 
@@ -467,7 +492,7 @@ Module BFILE.
     congruence.
   Qed.
 
-  Theorem bfsetsz_ok : forall lxp bxp ixp inum sz mscs,
+  Theorem bfsetattr_ok : forall lxp bxp ixp inum attr mscs,
     {< F A mbase m flist f,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
@@ -477,18 +502,17 @@ Module BFILE.
            MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
            [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ BFSize f' = sz ]] *
+           [[ BFAttr f' = attr ]] *
            [[ BFData f' = BFData f ]]
     CRASH  MEMLOG.would_recover_old lxp mbase
-    >} bfsetsz lxp ixp inum sz mscs.
+    >} bfsetattr lxp ixp inum attr mscs.
   Proof.
-    unfold bfsetsz, rep.
+    unfold bfsetattr, rep.
     hoare.
     list2nmem_ptsto_cancel; file_bounds.
 
     admit.
-    rewrite_list2nmem_pred.
-    rewrite_list2nmem_pred.
+    repeat rewrite_list2nmem_pred.
     destruct_listmatch_n.
     admit.
   Qed.
@@ -498,8 +522,8 @@ Module BFILE.
   Hint Extern 1 ({{_}} progseq (bfwrite _ _ _ _ _ _) _) => apply bfwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfgrow _ _ _ _ _) _) => apply bfgrow_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfshrink _ _ _ _ _) _) => apply bfshrink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfgetsz _ _ _ _) _) => apply bfgetsz_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfsetsz _ _ _ _ _) _) => apply bfsetsz_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfgetattr _ _ _ _) _) => apply bfgetattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfsetattr _ _ _ _ _) _) => apply bfsetattr_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 

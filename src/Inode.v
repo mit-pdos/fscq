@@ -33,11 +33,30 @@ Module INODE.
 
   (* on-disk representation of inode *)
 
-  Definition nr_direct := 5.
+  Definition iattrtype : Rec.type := Rec.RecF ([
+    ("size",   Rec.WordF addrlen) ;   (* file size in bytes *)
+    ("mtime",  Rec.WordF addrlen)]).  (* last modify time *)
+
+  Definition iarec  := Rec.data iattrtype.
+  Definition iarec0 := @Rec.of_word iattrtype $0.
+
+  Record iattr := {
+    ISize : addr;
+    IMTime : addr
+  }.
+
+  Definition pack_attr (ia : iattr) := Eval compute_rec in
+    iarec0 :=> "size" := (ISize ia) :=> "mtime" := (IMTime ia).
+
+  Definition unpack_attr (iar : iarec) := Eval compute_rec in
+    Build_iattr (iar :-> "size") (iar :-> "mtime").
+
+  Definition nr_direct := 12.
   Definition wnr_direct := natToWord addrlen nr_direct.
+
   Definition inodetype : Rec.type := Rec.RecF ([
     ("len", Rec.WordF addrlen);     (* number of blocks *)
-    ("size", Rec.WordF addrlen);    (* file size in bytes *)
+    ("attr", iattrtype);            (* file attributes *)
     ("indptr", Rec.WordF addrlen);  (* indirect block pointer *)
     ("blocks", Rec.ArrayF (Rec.WordF addrlen) nr_direct)]).
 
@@ -45,6 +64,7 @@ Module INODE.
   Definition irec0 := @Rec.of_word inodetype $0.
 
   Definition itemsz := Rec.len inodetype.
+  Eval compute in itemsz.
   Definition items_per_valu : addr := $ (valulen / itemsz).
   Theorem itemsz_ok : valulen = wordToNat items_per_valu * itemsz.
   Proof.
@@ -302,22 +322,23 @@ Module INODE.
 
   Record inode := {
     IBlocks : list addr;
-    ISize : addr
+    IAttr : iattr
   }.
 
-  Definition inode0 := Build_inode nil $0.
+  Definition iattr0 := Build_iattr $0 $0.
+  Definition inode0 := Build_inode nil iattr0.
 
   Definition ilen T lxp xp inum mscs rx : prog T := Eval compute_rec in
     let^ (mscs, (i : irec)) <- irget lxp xp inum mscs;
     rx ^(mscs, (i :-> "len") : addr).
 
-  Definition igetsz T lxp xp inum mscs rx : prog T := Eval compute_rec in
+  Definition igetattr T lxp xp inum mscs rx : prog T := Eval compute_rec in
     let^ (mscs, (i : irec)) <- irget lxp xp inum mscs;
-    rx ^(mscs, (i :-> "size") : addr).
+    rx ^(mscs, unpack_attr (i :-> "attr")).
 
-  Definition isetsz T lxp xp inum (sz : addr) mscs rx : prog T := Eval compute_rec in
+  Definition isetattr T lxp xp inum attr mscs rx : prog T := Eval compute_rec in
     let^ (mscs, (i : irec)) <- irget lxp xp inum mscs;
-    mscs <- irput lxp xp inum (i :=> "size" := sz) mscs;
+    mscs <- irput lxp xp inum (i :=> "attr" := pack_attr attr) mscs;
     rx mscs.
 
   Definition iget T lxp xp inum off mscs rx : prog T := Eval compute_rec in
@@ -437,13 +458,15 @@ Module INODE.
     omega.
   Qed.
 
+  Definition iattr_match ia (rec : iarec) : Prop :=
+    ISize ia = rec :-> "size" /\ IMTime ia = rec :-> "mtime".
 
-  Definition inode_match bxp ino (ino' : irec) : @pred addr (@weq addrlen) valu := (
-    [[ length (IBlocks ino) = wordToNat (ino' :-> "len") ]] *
-    [[ ISize ino = ino' :-> "size" ]] *
+  Definition inode_match bxp ino (rec : irec) : @pred addr (@weq addrlen) valu := (
+    [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
     [[ length (IBlocks ino) <= blocks_per_inode ]] *
-    exists blist, indirect_valid bxp (length (IBlocks ino)) (ino' :-> "indptr") blist *
-    [[ IBlocks ino = firstn (length (IBlocks ino)) ((ino' :-> "blocks") ++ blist) ]]
+    [[ iattr_match (IAttr ino) (rec :-> "attr") ]] *
+    exists blist, indirect_valid bxp (length (IBlocks ino)) (rec :-> "indptr") blist *
+    [[ IBlocks ino = firstn (length (IBlocks ino)) ((rec :-> "blocks") ++ blist) ]]
     )%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
@@ -452,7 +475,7 @@ Module INODE.
 
   Definition inode_match_direct ino (rec : irec) : @pred addr (@weq addrlen) valu := (
     [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
-    [[ ISize ino = rec :-> "size" ]] *
+    [[ iattr_match (IAttr ino) (rec :-> "attr") ]] *
     [[ length (IBlocks ino) <= nr_direct ]] *
     [[ IBlocks ino = firstn (length (IBlocks ino)) (rec :-> "blocks") ]]
     )%pred.
@@ -713,26 +736,28 @@ Module INODE.
   Qed.
 
 
-  Theorem igetsz_ok : forall lxp bxp xp inum mscs,
+  Theorem igetattr_ok : forall lxp bxp xp inum mscs,
     {< F A mbase m ilist ino,
     PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
                    [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
                    [[ (A * #inum |-> ino)%pred (list2nmem ilist) ]]
     POST RET:^(mscs,r)
-                   MEMLOG.rep lxp (ActiveTxn mbase m) mscs * [[ r = ISize ino ]]
+                   MEMLOG.rep lxp (ActiveTxn mbase m) mscs * [[ r = IAttr ino ]]
     CRASH          MEMLOG.would_recover_old lxp mbase
-    >} igetsz lxp xp inum mscs.
+    >} igetattr lxp xp inum mscs.
   Proof.
-    unfold igetsz, rep.
+    unfold igetattr, rep.
     hoare.
     list2nmem_ptsto_cancel; list2nmem_bound.
 
     rewrite_list2nmem_pred.
     destruct_listmatch_n.
+    unfold unpack_attr.
     subst; auto.
+    admit.
   Qed.
 
-  Theorem isetsz_ok : forall lxp bxp xp inum sz mscs,
+  Theorem isetattr_ok : forall lxp bxp xp inum attr mscs,
     {< F A mbase m ilist ino,
     PRE        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
                [[ (F * rep bxp xp ilist)%pred (list2mem m) ]] *
@@ -742,12 +767,12 @@ Module INODE.
                MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
                [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
                [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-               [[ ISize ino' = sz ]] *
+               [[ IAttr ino' = attr ]] *
                [[ IBlocks ino' = IBlocks ino ]]
     CRASH      MEMLOG.would_recover_old lxp mbase
-    >} isetsz lxp xp inum sz mscs.
+    >} isetattr lxp xp inum attr mscs.
   Proof.
-    unfold isetsz, rep.
+    unfold isetattr, rep.
     step.
     list2nmem_ptsto_cancel; list2nmem_bound.
     step.
@@ -1413,8 +1438,8 @@ Module INODE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (ilen _ _ _ _) _) => apply ilen_ok : prog.
-  Hint Extern 1 ({{_}} progseq (igetsz _ _ _ _) _) => apply igetsz_ok : prog.
-  Hint Extern 1 ({{_}} progseq (isetsz _ _ _ _ _) _) => apply isetsz_ok : prog.
+  Hint Extern 1 ({{_}} progseq (igetattr _ _ _ _) _) => apply igetattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (isetattr _ _ _ _ _) _) => apply isetattr_ok : prog.
   Hint Extern 1 ({{_}} progseq (iget _ _ _ _ _) _) => apply iget_ok : prog.
   Hint Extern 1 ({{_}} progseq (igrow _ _ _ _ _ _) _) => apply igrow_ok : prog.
   Hint Extern 1 ({{_}} progseq (ishrink _ _ _ _ _) _) => apply ishrink_ok : prog.
