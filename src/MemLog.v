@@ -109,6 +109,7 @@ Module MEMLOG.
     simpl; destruct h; tauto.
   Qed.
 
+  
   Definition addr_per_block := valulen / addrlen.
   Definition descriptor_type := Rec.ArrayF (Rec.WordF addrlen) addr_per_block.
   Definition descriptor := Rec.data descriptor_type.
@@ -359,7 +360,8 @@ Module MEMLOG.
     unfold begin; log_unfold.
     destruct mscs as [ms cs].
     hoare.
-    unfold valid_entries; intuition; inversion H.
+    unfold valid_entries; intuition.
+    inversion H.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
@@ -740,18 +742,33 @@ Module MEMLOG.
     unfold indomain' in *.
     eauto.
 
-    unfold sel. rewrite selN_combine.
+    unfold sel.
+    rewrite combine_length_eq.
+    apply list2mem_ptsto_bounds in H1.
+    rewrite replay_length in *.
+    eauto.
+    rewrite repeat_length.
+    eauto.
+    
     simpl.
     eapply list2mem_sel with (def := $0) in H1.
     rewrite H1.
     unfold sel.
     rewrite replay_sel_other. trivial.
     intuition.
+    subst.
+    rewrite selN_combine.
+    simpl.
+    eauto.
+
+    rewrite repeat_length.
+    eauto.
+
+    intro.
     hnf in H4.
     destruct H4.
     apply Map.find_1 in H4.
     congruence.
-    rewrite repeat_length; auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
@@ -816,10 +833,15 @@ Module MEMLOG.
       rx ^(^(ms, cs), true)
     }.
 
-  Theorem firstn_map : forall A B l n (f: A -> B),
+  Theorem firstn_map : forall A B n l (f: A -> B),
     firstn n (map f l) = map f (firstn n l).
   Proof.
-    admit.
+    induction n; simpl; intros.
+    reflexivity.
+    destruct l; simpl.
+    reflexivity.
+    f_equal.
+    eauto.
   Qed.
 
   Lemma array_inc_firstn : forall a (l: list valuset) (i: addr) x,
