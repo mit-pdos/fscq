@@ -309,6 +309,8 @@ Module DIRTREE.
       let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name inum $0 mscs;
       If (bool_dec ok true) {
+        mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                              inum mscs;
         rx ^(mscs, Some inum)
       } else {
         rx ^(mscs, None)
@@ -343,19 +345,22 @@ Module DIRTREE.
     step.
     step.
     step.
+
+    repeat deex.
+    rewrite H12 in H0. destruct_lift H0.
     step.
+    step.
+
     apply pimpl_or_r; right. cancel.
-
     unfold tree_dir_names_pred; cancel; eauto.
-    rewrite H12. (* from BALLOC.alloc_gen *)
-    cancel.
-    (* XXX the new file is not initialized to empty! *)
-    admit.
-
     apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
     step.
     Grab Existential Variables.
+    exact BFILE.bfile0.
+    exact emp.
+    exact nil.
+    exact emp.
     exact empty_mem.
     exact emp.
     exact emp.
@@ -369,6 +374,8 @@ Module DIRTREE.
       let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name inum $1 mscs;
       If (bool_dec ok true) {
+        mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                              inum mscs;
         rx ^(mscs, Some inum)
       } else {
         rx ^(mscs, None)
@@ -399,22 +406,25 @@ Module DIRTREE.
     step.
     step.
     step.
+
+    repeat deex.
+    rewrite H12 in H0. destruct_lift H0.
+    step.
     step.
     apply pimpl_or_r; right. cancel.
 
     unfold tree_dir_names_pred at 1. cancel; eauto.
     unfold tree_dir_names_pred; cancel.
-    instantiate (a1 := BFILE.bfile0).
-    rewrite H12. cancel.
-    (* XXX need to initialize the directory to empty *)
-    admit.
-
-    instantiate (a2 := empty_mem). apply SDIR.bfile0_empty.
+    apply SDIR.bfile0_empty.
     apply emp_empty_mem.
     apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
     step.
     Grab Existential Variables.
+    exact BFILE.bfile0.
+    exact emp.
+    exact nil.
+    exact emp.
     exact empty_mem.
     exact emp.
     exact emp.
