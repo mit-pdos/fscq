@@ -12,6 +12,7 @@ _build
 /fstest
 /hstest
 /fuse
+/mkfs
 /coqbuild
 /coqproof
 /#*#
