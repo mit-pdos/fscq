@@ -1073,6 +1073,16 @@ Proof.
   exfalso; eauto.
 Qed.
 
+Lemma indomain_upd_ne : forall (m : @mem AT AEQ V) a a' v,
+  indomain a (upd m a' v)
+  -> a <> a' -> indomain a m.
+Proof.
+  unfold indomain; intros.
+  destruct H.
+  rewrite upd_ne in H; auto.
+  eexists; eauto.
+Qed.
+
 Theorem indomain_dec : forall a (m : @mem AT AEQ V),
   {indomain a m} + {notindomain a m}.
 Proof.
@@ -1122,7 +1132,6 @@ Proof.
   destruct (AEQ a a); subst; try congruence.
   destruct (AEQ a' a); subst; try congruence.
 Qed.
-
 
 Theorem indomain_mem_except_indomain : forall (m : @mem AT AEQ V) a a',
   indomain a (mem_except m a') -> indomain a m.

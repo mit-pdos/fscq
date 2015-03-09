@@ -330,15 +330,31 @@ Module SDIR.
     apply string2name2string; auto.
   Qed.
 
-  Local Hint Resolve dirname_cond_inverse.
+  Theorem dirname_cond_inverse' :
+    cond_inverse sname2wname sname_valid wname_valid wname2sname.
+  Proof.
+    apply cond_inverse_sym.
+    apply dirname_cond_inverse.
+  Qed.
 
   Theorem wname2sname_bijective :
     cond_bijective wname2sname wname_valid sname_valid.
   Proof.
-    eapply cond_inv2bij; eauto.
+    eapply cond_inv2bij.
+    apply dirname_cond_inverse.
   Qed.
 
+  Theorem sname2wname_bijective :
+    cond_bijective sname2wname sname_valid wname_valid.
+  Proof.
+    eapply cond_inv2bij.
+    apply dirname_cond_inverse'.
+  Qed.
+
+  Local Hint Resolve dirname_cond_inverse.
+  Local Hint Resolve dirname_cond_inverse'.
   Local Hint Resolve wname2sname_bijective.
+  Local Hint Resolve sname2wname_bijective.
 
 
   Fixpoint is_nozero (s : string) : bool :=
@@ -508,7 +524,7 @@ Module SDIR.
     exists dmap, DIR.rep f dmap
     /\ (forall w, indomain w dmap -> wname_valid w)
     /\ (forall s, indomain s dsmap -> sname_valid s)
-    /\ mem_atrans wname2sname dmap dsmap.
+    /\ mem_atrans wname2sname dmap dsmap wname_valid.
 
   Definition rep_macro F1 F2 m bxp ixp (inum : addr) dsmap : Prop :=
     exists flist f,
@@ -517,9 +533,6 @@ Module SDIR.
     rep f dsmap.
 
   Local Hint Unfold rep rep_macro DIR.rep_macro: hoare_unfold.
-
-  Ltac cancel_liftemp :=
-    cancel'; unfold pimpl, lift_empty; intuition.
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F A mbase m dsmap,
@@ -541,11 +554,11 @@ Module SDIR.
     unfold pimpl; intros.
     eapply mem_atrans_inv_ptsto; eauto.
 
-    apply pimpl_or_r; right; cancel_liftemp.
+    apply pimpl_or_r; right; cancel.
     resolve_valid_preds.
     eapply mem_atrans_inv_notindomain; eauto.
 
-    apply pimpl_or_r; right; cancel_liftemp.
+    apply pimpl_or_r; right; cancel.
     apply notindomain_not_indomain; intro.
     resolve_valid_preds; auto.
   Qed.
@@ -557,7 +570,7 @@ Module SDIR.
 
   Lemma helper_atrans_dslist : forall l m1 m2
     (LP : listpred DIR.dlmatch l m1)
-    (MT  : mem_atrans wname2sname m1 m2)
+    (MT  : mem_atrans wname2sname m1 m2 wname_valid)
     (OK : forall w, indomain w m1 -> wname_valid w),
     listpred dslmatch (List.map dslist_trans l) m2.
   Proof.
@@ -566,7 +579,8 @@ Module SDIR.
 
     unfold dslmatch at 1, dslist_trans at 1; simpl.
     apply mem_except_ptsto; auto.
-    eapply mem_atrans_any; eauto.
+    eapply mem_atrans_indomain; eauto.
+    eapply sep_star_ptsto_indomain; eauto.
     eapply ptsto_valid; eauto.
 
     apply sep_star_ptsto_indomain in LP as Hx.
@@ -591,9 +605,7 @@ Module SDIR.
     >} dslist lxp bxp ixp dnum mscs.
   Proof.
     unfold dslist.
-    step.
-    eapply pimpl_ok2; eauto with prog; intros.
-    norm; [ cancel | intuition ].
+    hoare.
     eapply helper_atrans_dslist; eauto.
   Qed.
 
@@ -605,10 +617,11 @@ Module SDIR.
     POST RET:^(mscs,r)
             ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ notindomain name dsmap ]]) \/
-            ([[ r = true ]] * exists m' dsmap' DF,
+            ([[ r = true ]] * exists m' dsmap' v0 DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
-             [[ (DF * name |->?)%pred dsmap ]] *
+             [[ dsmap' = mem_except dsmap name ]] *
+             [[ (DF * name |-> v0)%pred dsmap ]] *
              [[ (DF) dsmap' ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} dsunlink lxp bxp ixp dnum name mscs.
@@ -617,13 +630,22 @@ Module SDIR.
     hoare.
 
     apply pimpl_or_r; left; cancel.
-    admit.
-    apply pimpl_or_r; right; cancel.
+    resolve_valid_preds.
+    eapply mem_atrans_inv_notindomain; eauto.
+
+    apply pimpl_or_r; right; cancel; resolve_valid_preds.
     exists x2, x3; repeat split; eauto.
-    exists m1; split; eauto.
-    admit.
-    admit.
-    admit.
+    eexists; split; eauto.
+    split; [ | split ]; [ intros ? Hx | intros ? Hx | ].
+    apply indomain_mem_except_indomain in Hx; auto.
+    apply indomain_mem_except_indomain in Hx; auto.
+    eapply mem_ainv_mem_except; eauto.
+    eapply mem_atrans_inv_ptsto; eauto.
+    unfold any; auto.
+
+    apply pimpl_or_r; left; cancel.
+    apply notindomain_not_indomain; intro.
+    resolve_valid_preds; auto.
   Qed.
 
 
@@ -637,6 +659,7 @@ Module SDIR.
         \/  ([[ r = true ]] * exists dsmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
+             [[ dsmap' = Prog.upd dsmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
              [[ (DF dsmap /\ notindomain name dsmap) ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
@@ -645,12 +668,22 @@ Module SDIR.
     unfold dslink.
     hoare.
 
-    apply pimpl_or_r; right; cancel.
+    apply pimpl_or_r; right; resolve_valid_preds; cancel.
     exists x2, x3; repeat split; eauto.
-    exists m1; split; eauto.
-    admit.
-    admit.
-    admit.
+    eexists; split; eauto.
+    split; [ | split ]; [ intros ? Hx | intros ? Hx | ].
+
+    destruct (weq w (sname2wname name)); subst.
+    eapply cond_inv_domain_right with (PA := wname_valid); eauto.
+    apply indomain_upd_ne in Hx; auto.
+    destruct (string_dec s name); subst; auto.
+    apply indomain_upd_ne in Hx; auto.
+
+    eapply mem_ainv_mem_upd; eauto.
+    apply any_sep_star_ptsto.
+    apply upd_eq; auto.
+    unfold any; auto.
+    eapply mem_atrans_inv_notindomain; eauto.
   Qed.
 
 

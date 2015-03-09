@@ -889,6 +889,7 @@ Module DIR.
             ([[ r = true ]] * exists m' dmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
+             [[ dmap' = mem_except dmap name ]] *
              [[ (DF * name |->?)%pred dmap ]] *
              [[ (DF) dmap' ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
@@ -901,7 +902,6 @@ Module DIR.
     apply pimpl_or_r; right; cancel.
     exists x2, x3; intuition.
     exists l; split; auto.
-    instantiate (a0 := mem_except m name).
     apply dlookup_f_ok in H12.
     destruct H12 as [HA HN]; rewrite <- HN.
     eapply ptsto_dent0_mem_except; eauto.
@@ -1038,6 +1038,7 @@ Module DIR.
         \/  ([[ r = true ]] * exists dmap' DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
+             [[ dmap' = Prog.upd dmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (DF dmap /\ notindomain name dmap) ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
@@ -1066,6 +1067,7 @@ Module DIR.
     eexists; split; eauto.
     eapply helper_dlink_ok_ext; eauto.
     eapply dlookup_notindomain; eauto.
+
     unfold pimpl; intros.
     eapply dlookup_notindomain; eauto.
 
