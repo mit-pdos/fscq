@@ -66,11 +66,11 @@ Definition mkfs T data_bitmaps inode_bitmaps cachesize rx : prog T :=
   match r with
   | None =>
     mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
-    rx ^(mscs, (fsxp, false))
+    rx ^(mscs, fsxp, false)
   | Some inum =>
     let fsxp' := set_root_inode fsxp inum in
     let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-    rx ^(mscs, (fsxp, ok))
+    rx ^(mscs, fsxp, ok)
   end.
 
 Definition file_nblocks T fsxp inum mscs rx : prog T :=

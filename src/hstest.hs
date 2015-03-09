@@ -29,12 +29,12 @@ repf n x s f = do
   (s, z) <- repf (n-1) y s f
   return (s, z)
 
-repf2 :: Integer -> r -> s -> (s -> IO (s, r)) -> IO (s, r)
-repf2 0 r s _ = return (s, r)
+repf2 :: Integer -> r -> s -> (s -> IO (s, (r, ()))) -> IO (s, (r, ()))
+repf2 0 r s _ = return (s, (r, ()))
 repf2 n _ s f = do
-  (s, r) <- f s
-  (s, rr) <- repf2 (n-1) r s f
-  return (s, rr)
+  (s, (r, ())) <- f s
+  (s, (rr, ())) <- repf2 (n-1) r s f
+  return (s, (rr, ()))
 
 cachesize :: Int
 cachesize = 1000
@@ -48,11 +48,12 @@ main = do
   then
     do
       putStrLn $ "Recovering file system"
-      I.run ds $ _MEMLOG__recover cachesize
+      (s, (fsxp, ())) <- I.run ds $ _MEMLOG__recover cachesize
+      return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      (s, (fsxp, ok)) <- I.run ds $ FS.mkfs (W 1) (W 1) cachesize
+      (s, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs (W 1) (W 1) cachesize
       if ok == False then error $ "mkfs failed" else return ()
       set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
       return (s, fsxp)
