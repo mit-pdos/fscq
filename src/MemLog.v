@@ -759,9 +759,9 @@ Module MEMLOG.
     let '^(ms, cs) := mscs in
     cs <- BUFCACHE.write (LogDescriptor xp)
       (descriptor_to_valu (map fst (Map.elements ms))) cs;
-    cs <- For i < $ (Map.cardinal ms)
-    Ghost old crash
-    Loopvar cs
+    let^ (cs) <- For i < $ (Map.cardinal ms)
+    Ghost [ old crash ]
+    Loopvar [ cs ]
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -775,16 +775,16 @@ Module MEMLOG.
     Begin
       cs <- BUFCACHE.write_array (LogData xp ^+ i) $0
         (sel (map snd (Map.elements ms)) i $0) cs;
-      lrx cs
-    Rof cs;
+      lrx ^(cs)
+    Rof ^(cs);
     rx ^(ms, cs).
 
   Definition flush_sync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     cs <- BUFCACHE.sync (LogDescriptor xp) cs;
-    cs <- For i < $ (Map.cardinal ms)
-    Ghost old crash
-    Loopvar cs
+    let^ (cs) <- For i < $ (Map.cardinal ms)
+    Ghost [ old crash ]
+    Loopvar [ cs ]
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -799,8 +799,8 @@ Module MEMLOG.
     OnCrash crash
     Begin
       cs <- BUFCACHE.sync_array (LogData xp ^+ i) $0 cs;
-      lrx cs
-    Rof cs;
+      lrx ^(cs)
+    Rof ^(cs);
     rx ^(ms, cs).
 
   Definition flush T xp (mscs : memstate_cachestate) rx : prog T :=
@@ -1317,9 +1317,9 @@ Module MEMLOG.
 
   Definition apply_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
-    cs <- For i < $ (Map.cardinal ms)
-    Ghost cur
-    Loopvar cs
+    let^ (cs) <- For i < $ (Map.cardinal ms)
+    Ghost [ cur ]
+    Loopvar [ cs ]
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -1334,8 +1334,8 @@ Module MEMLOG.
     Begin
       cs <- BUFCACHE.write_array (DataStart xp)
         (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
-      lrx cs
-    Rof cs;
+      lrx ^(cs)
+    Rof ^(cs);
     rx ^(ms, cs).
 
   Theorem apply_unsync_ok: forall xp mscs,
@@ -1368,9 +1368,9 @@ Module MEMLOG.
 
   Definition apply_sync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
-    cs <- For i < $ (Map.cardinal ms)
-    Ghost cur
-    Loopvar cs
+    let^ (cs) <- For i < $ (Map.cardinal ms)
+    Ghost [ cur ]
+    Loopvar [ cs ]
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -1382,8 +1382,8 @@ Module MEMLOG.
       exists mscs', rep xp (AppliedUnsyncTxn cur) mscs'
     Begin
       cs <- BUFCACHE.sync_array (DataStart xp) (sel (map fst (Map.elements ms)) i $0) cs;
-      lrx cs
-    Rof cs;
+      lrx ^(cs)
+    Rof ^(cs);
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx ^(ms, cs).
 
@@ -1532,27 +1532,25 @@ Module MEMLOG.
     let desc := valu_to_descriptor d in
     let^ (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
     let len := (valu_to_header h) :-> "length" in
-    cs_log_prefix <- For i < len
-    Ghost cur log_on_disk
-    Loopvar cs_log_prefix
+    let^ (cs, log) <- For i < len
+    Ghost [ cur log_on_disk ]
+    Loopvar [ cs log_prefix ]
     Continuation lrx
     Invariant
-      exists d', BUFCACHE.rep (fst cs_log_prefix) d' *
+      exists d', BUFCACHE.rep cs d' *
       [[ ((LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal log_on_disk))
           * exists old d, data_rep xp d
           * cur_rep old log_on_disk cur
           * log_rep xp old log_on_disk
             (* If something's in the transaction, it doesn't matter what state it's in on disk *)
           * [[ equal_unless_in (map fst (Map.elements log_on_disk)) (synced_list old) d ($0, nil) ]]
-          * [[ snd cs_log_prefix = firstn (wordToNat i) (Map.elements log_on_disk) ]])%pred d' ]]
+          * [[ log_prefix = firstn (wordToNat i) (Map.elements log_on_disk) ]])%pred d' ]]
     OnCrash
       exists mscs, rep xp (CommittedTxn cur) mscs
     Begin
-      let (cs, log_prefix) := (cs_log_prefix : cachestate * list (addr * valu)) in
       let^ (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
-      lrx (cs, log_prefix ++ [(sel desc i $0, v)])
-    Rof (cs, []);
-    let (cs, log) := cs_log_prefix in
+      lrx ^(cs, log_prefix ++ [(sel desc i $0, v)])
+    Rof ^(cs, []);
     rx ^(MapProperties.of_list log, cs).
 
   Theorem read_log_ok: forall xp cs,

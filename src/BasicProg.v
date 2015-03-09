@@ -403,24 +403,23 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _) => apply for_ok : prog.
-Notation "'For' i < n 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (For_ (fun i l lrx => body)
-        $0 n
-        (fun (_:unit) i l => nocrash%pred)
-        (fun (_:unit) => crashed%pred))
-  (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0,
-   body at level 9).
 
-Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (For_ (fun i l lrx => body)
+Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => (fun lrx => body)))
+          ..)))
         $0 n
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun i l => nocrash%pred)) .. ))
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => nocrash%pred)) ..))
+        )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          crashed%pred)) .. )))
   (at level 9, i at level 0, n at level 0,
-   g1 binder, g2 binder,
-   lrx at level 0, l at level 0,
+   g1 closed binder, g2 closed binder,
+   lrx at level 0,
+   l1 closed binder, l2 closed binder,
    body at level 9).
 
 
@@ -498,23 +497,15 @@ Proof.
     + cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
-Notation "'ForEach' elem rest lst 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (ForEach_ (fun elem l lrx => body)
-        lst
-        (fun (_:unit) rest l => nocrash%pred)
-        (fun (_:unit) => crashed%pred))
-  (at level 9, elem at level 0, lrx at level 0, l at level 0,
-   body at level 9).
-
-Notation "'ForEach' elem rest lst 'Ghost' g1 .. g2 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (ForEach_ (fun elem l lrx => body)
+Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => (fun lrx => body))) ..)))
         lst
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun rest l => nocrash%pred)) .. ))
+         fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => nocrash%pred)) ..))  )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          crashed%pred)) .. )))
   (at level 9, elem at level 0, rest at level 0,
-   g1 binder, g2 binder,
-   lrx at level 0, l at level 0,
+   g1 closed binder, g2 closed binder,
+   lrx at level 0,
+   l1 closed binder, l2 closed binder,
    body at level 9).

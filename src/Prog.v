@@ -68,6 +68,11 @@ Notation "^( a , .. , b )" := (pair a .. (pair b tt) .. ).
 
 Notation "p1 ;; p2" := (progseq p1 (fun _: unit => p2)) (at level 60, right associativity).
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2)) (at level 60, right associativity).
+Notation "'let^' ( a ) <- p1 ; p2" :=
+  (progseq p1
+    (pair_args_helper (fun a (_:unit) => p2))
+  )
+  (at level 60, right associativity, a ident).
 Notation "'let^' ( a , .. , b ) <- p1 ; p2" :=
   (progseq p1
     (pair_args_helper (fun a => ..
