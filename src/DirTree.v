@@ -420,6 +420,61 @@ Module DIRTREE.
     exact emp.
   Qed.
 
+
+  Definition dir_updater := dirtree -> dirtree.
+
+  Definition update_tree_helper (rec : dirtree -> dirtree) name
+                                (arg : string * addr * dir_item)
+                                (accum : dirtree) :=
+    let '(name', inum', item') := arg in
+    if string_dec name' name then
+    match item' with
+    | DirFile _ => arg :: accum
+    | DirSubdir tree' => (name', inum', DirSubdir (rec tree')) :: accum
+    end
+    else arg :: accum.
+
+  Fixpoint update_tree (fnlist : list string) (updater : dir_updater) (tree : dirtree) :=
+    match fnlist with
+    | nil => updater tree
+    | name :: rest =>
+      fold_right (update_tree_helper (update_tree rest updater) name) nil tree
+    end.
+
+  Definition add_to_dir (dir : dirtree) (name : string) (inum : addr) (newitem : dir_item) :=
+    (name, inum, newitem) :: dir.
+
+  Fixpoint delete_from_dir (dir : dirtree) (name : string) :=
+    match dir with
+    | nil => nil
+    | hd :: rest =>
+      let '(name', _, _) := hd in
+      if string_dec name' name then
+        delete_from_dir rest name
+      else
+        hd :: delete_from_dir rest name
+    end.
+
+
+  Theorem update_subtree : forall fsxp fnlist treetop m F Ftop itop
+                                  Fsub isub treesub
+                                  m' updater,
+    (F * rep fsxp Ftop itop treetop)%pred (list2mem m) ->
+    find_name fnlist treetop itop $1 = Some (isub, $1) ->
+    (F * rep fsxp Fsub isub treesub)%pred (list2mem m) ->
+    (F * rep fsxp Fsub isub (updater treesub))%pred (list2mem m') ->
+    (F * rep fsxp Ftop itop (update_tree fnlist updater treetop))%pred (list2mem m').
+  Proof.
+    induction fnlist; simpl.
+    intros.
+    inversion H0; subst. pred_apply. unfold rep. cancel. admit.
+    induction treetop; simpl; intros.
+    discriminate.
+    pred_apply. cancel.
+    admit.
+  Qed.
+
+
   Definition delete T fsxp dnum name mscs rx : prog T :=
     let^ (mscs, oi) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name mscs;
