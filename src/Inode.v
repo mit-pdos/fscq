@@ -677,6 +677,7 @@ Module INODE.
   Ltac destruct_irec' x :=
     match type of x with
     | irec => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
+    | (Rec.data iattrtype) => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
     | prod _ _ => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
     | _ => idtac
     end.
@@ -689,13 +690,16 @@ Module INODE.
     | _ => destruct_irec' x; simpl
     end.
 
+  Ltac smash_rec_well_formed' :=
+    match goal with
+    | [ |- Rec.well_formed ?x ] => destruct_irec x
+    end.
+
   Ltac smash_rec_well_formed :=
     unfold sel, upd; autorewrite with core;
-    match goal with
-    | [ |- Rec.well_formed ?x ] =>
-      destruct_irec x; unfold Rec.well_formed; simpl;
-      try rewrite Forall_forall; intuition
-    end.
+    repeat smash_rec_well_formed';
+    unfold Rec.well_formed; simpl;
+    try rewrite Forall_forall; intuition.
 
   Ltac irec_well_formed :=
     smash_rec_well_formed;
@@ -965,7 +969,7 @@ Module INODE.
     irec_well_formed.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
-    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
+    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (IAttr i)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
@@ -1086,7 +1090,7 @@ Module INODE.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
     (* constructing the new inode *)
-    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
+    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (IAttr i)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
@@ -1186,7 +1190,7 @@ Module INODE.
     eapply pimpl_or_r; right; cancel.
 
     (* constructing the new inode *)
-    instantiate (a0 := Build_inode ((IBlocks i) ++ [a]) (ISize i)).
+    instantiate (a0 := Build_inode ((IBlocks i) ++ [a]) (IAttr i)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
@@ -1366,7 +1370,7 @@ Module INODE.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
     (* constructing the new inode *)
-    instantiate (a1 := Build_inode (removelast (IBlocks i)) (ISize i)).
+    instantiate (a1 := Build_inode (removelast (IBlocks i)) (IAttr i)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_removelast; eauto.
 
@@ -1416,7 +1420,7 @@ Module INODE.
     eapply pimpl_ok2; eauto with prog; intros; cancel.
 
     (* constructing the new inode *)
-    instantiate (a1 := Build_inode (removelast (IBlocks i)) (ISize i)).
+    instantiate (a1 := Build_inode (removelast (IBlocks i)) (IAttr i)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_removelast; eauto.
 
