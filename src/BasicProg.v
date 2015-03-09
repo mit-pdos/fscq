@@ -35,9 +35,9 @@ Ltac inv_exec :=
 Theorem read_ok:
   forall (a:addr),
   {< v,
-  PRE    a |-> v
-  POST:r a |-> v * [[ r = (fst v) ]]
-  CRASH  a |-> v
+  PRE        a |-> v
+  POST RET:r a |-> v * [[ r = (fst v) ]]
+  CRASH      a |-> v
   >} Read a.
 Proof.
   unfold corr2, exis; intros; repeat deex.
@@ -60,9 +60,9 @@ Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
-  PRE    a |-> v0
-  POST:r a |-> (v, valuset_list v0)
-  CRASH  a |-> v0
+  PRE        a |-> v0
+  POST RET:r a |-> (v, valuset_list v0)
+  CRASH      a |-> v0
   >} Write a v.
 Proof.
   unfold corr2, exis; intros; repeat deex.
@@ -91,9 +91,9 @@ Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
 Theorem sync_ok:
   forall (a:addr),
   {< v,
-  PRE    a |-> v
-  POST:r a |-> (fst v, nil)
-  CRASH  a |-> v
+  PRE        a |-> v
+  POST RET:r a |-> (fst v, nil)
+  CRASH      a |-> v
   >} Sync a.
 Proof.
   unfold corr2, exis; intros; repeat deex.

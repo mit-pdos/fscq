@@ -152,15 +152,17 @@ Definition sb_rep (fsxp : fs_xparams) : @pred _ (@weq addrlen) _ :=
   ($0 |=> v_pickle_superblock fsxp)%pred.
 
 Definition sb_load T cs rx : prog T :=
-  let2 (cs, v) <- BUFCACHE.read $0 cs;
-  rx (cs, v_unpickle_superblock v).
+  let^ (cs, v) <- BUFCACHE.read $0 cs;
+  rx ^(cs, v_unpickle_superblock v).
 
 Theorem sb_load_ok : forall cs,
   {< m F fsxp,
-  PRE    BUFCACHE.rep cs m * [[ (F * sb_rep fsxp)%pred m ]]
-  POST:(cs',r)
-         BUFCACHE.rep cs' m * [[ r = fsxp ]]
-  CRASH  exists cs', BUFCACHE.rep cs' m
+  PRE
+    BUFCACHE.rep cs m * [[ (F * sb_rep fsxp)%pred m ]]
+  POST RET:^(cs',r)
+    BUFCACHE.rep cs' m * [[ r = fsxp ]]
+  CRASH
+    exists cs', BUFCACHE.rep cs' m
   >} sb_load cs.
 Proof.
   unfold sb_load, sb_rep.
@@ -175,9 +177,13 @@ Definition sb_init T fsxp cs rx : prog T :=
 
 Theorem sb_init_ok : forall fsxp cs,
   {< m F,
-  PRE      BUFCACHE.rep cs m * [[ (F * $0 |->?)%pred m ]]
-  POST:cs' exists m', BUFCACHE.rep cs' m' * [[ (F * sb_rep fsxp)%pred m' ]]
-  CRASH    exists cs' m', BUFCACHE.rep cs' m' * [[ (F * $0 |->?)%pred m' ]]
+  PRE
+    BUFCACHE.rep cs m * [[ (F * $0 |->?)%pred m ]]
+  POST RET:cs
+    exists m',
+    BUFCACHE.rep cs m' * [[ (F * sb_rep fsxp)%pred m' ]]
+  CRASH
+    exists cs' m', BUFCACHE.rep cs' m' * [[ (F * $0 |->?)%pred m' ]]
   >} sb_init fsxp cs.
 Proof.
   unfold sb_rep, sb_init.

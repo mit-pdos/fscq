@@ -31,6 +31,7 @@ Set Implicit Arguments.
 
 Definition memstate := Map.t valu.
 Definition ms_empty := Map.empty valu.
+Definition memstate_cachestate := (memstate * (cachestate * True))%type.
 
 Definition diskstate := list valu.
 
@@ -292,13 +293,13 @@ Module MEMLOG.
 
     end)%pred.
 
-  Definition rep xp st mscs := (exists d,
-    BUFCACHE.rep (snd mscs) d * [[ rep_inner xp st (fst mscs) d ]])%pred.
+  Definition rep xp st mscs := let '^(ms, cs) := mscs in (exists d,
+    BUFCACHE.rep cs d * [[ rep_inner xp st ms d ]])%pred.
 
   Definition init T xp cs rx : prog T :=
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     cs <- BUFCACHE.sync (LogHeader xp) cs;
-    rx (ms_empty, cs).
+    rx ^(ms_empty, cs).
 
   Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_unsynced, valid_size, synced_list.
 
@@ -326,9 +327,12 @@ Module MEMLOG.
 
   Theorem init_ok : forall xp cs,
     {< old d,
-    PRE       BUFCACHE.rep cs d * [[ (log_uninitialized xp old) d ]]
-    POST:mscs rep xp (NoTransaction old) mscs
-    CRASH     exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]]
+    PRE
+      BUFCACHE.rep cs d * [[ (log_uninitialized xp old) d ]]
+    POST RET:mscs
+      rep xp (NoTransaction old) mscs
+    CRASH
+      exists cs' d', BUFCACHE.rep cs' d' * [[ log_uninitialized xp old d' ]]
     >} init xp cs.
   Proof.
     unfold init, log_uninitialized; log_unfold.
@@ -337,15 +341,18 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
 
-  Definition begin T (xp : memlog_xparams) (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
-    rx (ms_empty, cs).
+  Definition begin T (xp : memlog_xparams) (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
+    rx ^(ms_empty, cs).
 
   Theorem begin_ok: forall xp mscs,
     {< m,
-    PRE    rep xp (NoTransaction m) mscs
-    POST:r rep xp (ActiveTxn m m) r
-    CRASH  exists mscs', rep xp (NoTransaction m) mscs' \/ rep xp (ActiveTxn m m) mscs'
+    PRE
+      rep xp (NoTransaction m) mscs
+    POST RET:r
+      rep xp (ActiveTxn m m) r
+    CRASH
+      exists mscs', rep xp (NoTransaction m) mscs' \/ rep xp (ActiveTxn m m) mscs'
     >} begin xp mscs.
   Proof.
     unfold begin; log_unfold.
@@ -356,15 +363,18 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
 
-  Definition abort T (xp : memlog_xparams) (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
-    rx (ms_empty, cs).
+  Definition abort T (xp : memlog_xparams) (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
+    rx ^(ms_empty, cs).
 
   Theorem abort_ok : forall xp mscs,
     {< m1 m2,
-    PRE    rep xp (ActiveTxn m1 m2) mscs
-    POST:r rep xp (NoTransaction m1) r
-    CRASH  exists mscs', rep xp (ActiveTxn m1 m2) mscs' \/ rep xp (NoTransaction m1) mscs'
+    PRE
+      rep xp (ActiveTxn m1 m2) mscs
+    POST RET:r
+      rep xp (NoTransaction m1) r
+    CRASH
+      exists mscs', rep xp (ActiveTxn m1 m2) mscs' \/ rep xp (NoTransaction m1) mscs'
     >} abort xp mscs.
   Proof.
     unfold abort; log_unfold.
@@ -656,16 +666,19 @@ Module MEMLOG.
   Qed.
   Hint Rewrite upd_prepend_length : lengths.
 
-  Definition write T (xp : memlog_xparams) a v (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
-    rx (Map.add a v ms, cs).
+  Definition write T (xp : memlog_xparams) a v (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
+    rx ^(Map.add a v ms, cs).
 
   Theorem write_ok : forall xp mscs a v,
     {< m1 m2 F' v0,
-    PRE        rep xp (ActiveTxn m1 m2) mscs * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
-    POST:mscs' exists m', rep xp (ActiveTxn m1 m') mscs' *
-               [[(F' * a |-> v)%pred (list2mem m') ]]
-    CRASH      exists m' mscs', rep xp (ActiveTxn m1 m') mscs'
+    PRE
+      rep xp (ActiveTxn m1 m2) mscs * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
+    POST RET:mscs
+      exists m', rep xp (ActiveTxn m1 m') mscs *
+      [[ (F' * a |-> v)%pred (list2mem m') ]]
+    CRASH
+      exists m' mscs', rep xp (ActiveTxn m1 m') mscs'
     >} write xp a v mscs.
   Proof.
     unfold write; log_unfold.
@@ -685,24 +698,27 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Definition read T (xp: memlog_xparams) a (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
+  Definition read T (xp: memlog_xparams) a (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
     match Map.find a ms with
     | Some v =>
-      rx ((ms, cs), v)
+      rx ^(^(ms, cs), v)
     | None =>
-      let2 (cs, v) <- BUFCACHE.read_array (DataStart xp) a cs;
-      rx ((ms, cs), v)
+      let^ (cs, v) <- BUFCACHE.read_array (DataStart xp) a cs;
+      rx ^(^(ms, cs), v)
     end.
 
 
   Theorem read_ok: forall xp mscs a,
     {< m1 m2 v,
-    PRE            rep xp (ActiveTxn m1 m2) mscs *
-                   [[ exists F, (F * a |-> v) (list2mem m2) ]]
-    POST:(mscs',r) rep xp (ActiveTxn m1 m2) mscs' *
-                   [[ r = v ]]
-    CRASH          exists mscs', rep xp (ActiveTxn m1 m2) mscs'
+    PRE
+      rep xp (ActiveTxn m1 m2) mscs *
+      [[ exists F, (F * a |-> v) (list2mem m2) ]]
+    POST RET:^(mscs,r)
+      rep xp (ActiveTxn m1 m2) mscs *
+      [[ r = v ]]
+    CRASH
+      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} read xp a mscs.
   Proof.
     unfold read; log_unfold.
@@ -739,8 +755,8 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
 
-  Definition flush_unsync T xp (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
+  Definition flush_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
     cs <- BUFCACHE.write (LogDescriptor xp)
       (descriptor_to_valu (map fst (Map.elements ms))) cs;
     cs <- For i < $ (Map.cardinal ms)
@@ -761,10 +777,10 @@ Module MEMLOG.
         (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
-    rx (ms, cs).
+    rx ^(ms, cs).
 
-  Definition flush_sync T xp (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
+  Definition flush_sync T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
     cs <- BUFCACHE.sync (LogDescriptor xp) cs;
     cs <- For i < $ (Map.cardinal ms)
     Ghost old crash
@@ -785,18 +801,18 @@ Module MEMLOG.
       cs <- BUFCACHE.sync_array (LogData xp ^+ i) $0 cs;
       lrx cs
     Rof;
-    rx (ms, cs).
+    rx ^(ms, cs).
 
-  Definition flush T xp (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
+  Definition flush T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
     If (lt_dec (wordToNat (LogLen xp)) (Map.cardinal ms)) {
-      rx ((ms, cs), false)
+      rx ^(^(ms, cs), false)
     } else {
       (* Write... *)
-      let2 (ms, cs) <- flush_unsync xp (ms, cs);
+      let^ (ms, cs) <- flush_unsync xp ^(ms, cs);
       (* ... and sync *)
-      let2 (ms, cs) <- flush_sync xp (ms, cs);
-      rx ((ms, cs), true)
+      let^ (ms, cs) <- flush_sync xp ^(ms, cs);
+      rx ^(^(ms, cs), true)
     }.
 
   Theorem firstn_map : forall A B l n (f: A -> B),
@@ -1015,10 +1031,13 @@ Module MEMLOG.
 
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2,
-    PRE        rep xp (ActiveTxn m1 m2) mscs *
-               [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
-    POST:mscs' rep xp (FlushedUnsyncTxn m1 m2) mscs'
-    CRASH      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
+    PRE 
+      rep xp (ActiveTxn m1 m2) mscs *
+      [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
+    POST RET:mscs
+      rep xp (FlushedUnsyncTxn m1 m2) mscs
+    CRASH
+      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush_unsync xp mscs.
   Proof.
     unfold flush_unsync; log_unfold; unfold avail_region.
@@ -1078,10 +1097,13 @@ Module MEMLOG.
 
   Theorem flush_sync_ok : forall xp mscs,
     {< m1 m2,
-    PRE        rep xp (FlushedUnsyncTxn m1 m2) mscs *
-               [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
-    POST:mscs' rep xp (FlushedTxn m1 m2) mscs'
-    CRASH      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
+    PRE
+      rep xp (FlushedUnsyncTxn m1 m2) mscs *
+      [[ Map.cardinal (fst mscs) <= wordToNat (LogLen xp) ]]
+    POST RET:mscs
+      rep xp (FlushedTxn m1 m2) mscs
+    CRASH
+      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush_sync xp mscs.
   Proof.
     unfold flush_sync; log_unfold; unfold avail_region.
@@ -1129,10 +1151,13 @@ Module MEMLOG.
 
   Theorem flush_ok : forall xp mscs,
     {< m1 m2,
-    PRE            rep xp (ActiveTxn m1 m2) mscs
-    POST:(mscs',r) ([[ r = true ]] * rep xp (FlushedTxn m1 m2) mscs') \/
-                   ([[ r = false ]] * rep xp (ActiveTxn m1 m2) mscs')
-    CRASH          exists mscs', rep xp (ActiveTxn m1 m2) mscs'
+    PRE
+      rep xp (ActiveTxn m1 m2) mscs
+    POST RET:^(mscs,r)
+      ([[ r = true ]] * rep xp (FlushedTxn m1 m2) mscs) \/
+      ([[ r = false ]] * rep xp (ActiveTxn m1 m2) mscs)
+    CRASH
+      exists mscs', rep xp (ActiveTxn m1 m2) mscs'
     >} flush xp mscs.
   Proof.
     unfold flush; log_unfold.
@@ -1290,8 +1315,8 @@ Module MEMLOG.
   Qed.
   Hint Resolve equal_unless_in_trans equal_unless_in_comm equal_unless_in_replay_eq equal_unless_in_replay_eq'' : replay.
 
-  Definition apply_unsync T xp (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
+  Definition apply_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
     cs <- For i < $ (Map.cardinal ms)
     Ghost cur
     Loopvar cs <- cs
@@ -1311,13 +1336,16 @@ Module MEMLOG.
         (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
     Rof;
-    rx (ms, cs).
+    rx ^(ms, cs).
 
   Theorem apply_unsync_ok: forall xp mscs,
     {< m,
-    PRE        rep xp (CommittedTxn m) mscs
-    POST:mscs' rep xp (AppliedUnsyncTxn m) mscs'
-    CRASH      exists mscs', rep xp (CommittedTxn m) mscs'
+    PRE
+      rep xp (CommittedTxn m) mscs
+    POST RET:mscs
+      rep xp (AppliedUnsyncTxn m) mscs
+    CRASH
+      exists mscs', rep xp (CommittedTxn m) mscs'
     >} apply_unsync xp mscs.
   Proof.
     unfold apply_unsync; log_unfold.
@@ -1338,8 +1366,8 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
 
-  Definition apply_sync T xp (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
+  Definition apply_sync T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
     cs <- For i < $ (Map.cardinal ms)
     Ghost cur
     Loopvar cs <- cs
@@ -1357,13 +1385,16 @@ Module MEMLOG.
       lrx cs
     Rof;
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
-    rx (ms, cs).
+    rx ^(ms, cs).
 
   Theorem apply_sync_ok: forall xp mscs,
     {< m,
-    PRE        rep xp (AppliedUnsyncTxn m) mscs
-    POST:mscs' rep xp (AppliedTxn m) mscs'
-    CRASH      exists mscs', rep xp (AppliedUnsyncTxn m) mscs' \/ rep xp (AppliedTxn m) mscs'
+    PRE
+      rep xp (AppliedUnsyncTxn m) mscs
+    POST RET:mscs
+      rep xp (AppliedTxn m) mscs
+    CRASH
+      exists mscs', rep xp (AppliedUnsyncTxn m) mscs' \/ rep xp (AppliedTxn m) mscs'
     >} apply_sync xp mscs.
   Proof.
     unfold apply_sync; log_unfold.
@@ -1387,20 +1418,23 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
 
-  Definition apply T xp (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
-    let2 (ms, cs) <- apply_unsync xp (ms, cs);
-    let2 (ms, cs) <- apply_sync xp (ms, cs);
+  Definition apply T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
+    let^ (ms, cs) <- apply_unsync xp ^(ms, cs);
+    let^ (ms, cs) <- apply_sync xp ^(ms, cs);
     cs <- BUFCACHE.sync (LogHeader xp) cs;
-    rx (ms, cs).
+    rx ^(ms, cs).
 
   Theorem apply_ok: forall xp mscs,
     {< m,
-    PRE        rep xp (CommittedTxn m) mscs
-    POST:mscs' rep xp (NoTransaction m) mscs'
-    CRASH      exists mscs', rep xp (CommittedTxn m) mscs' \/
-                             rep xp (AppliedTxn m) mscs' \/
-                             rep xp (NoTransaction m) mscs'
+    PRE
+      rep xp (CommittedTxn m) mscs
+    POST RET:mscs
+      rep xp (NoTransaction m) mscs
+    CRASH
+      exists mscs', rep xp (CommittedTxn m) mscs' \/
+                    rep xp (AppliedTxn m) mscs' \/
+                    rep xp (NoTransaction m) mscs'
     >} apply xp mscs.
   Proof.
     unfold apply; log_unfold.
@@ -1418,20 +1452,21 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
 
-  Definition commit T xp (mscs : memstate * cachestate) rx : prog T :=
-    let (ms, cs) := mscs in
+  Definition commit T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
     If (bool_dec (Map.is_empty ms) true) {
-      rx (ms, cs, true)
+      rx ^(^(ms, cs), true)
     } else {
-      let3 (ms, cs, ok) <- flush xp (ms, cs);
+      let^ (mscs, ok) <- flush xp ^(ms, cs);
+      let '^(ms, cs) := mscs in
       If (bool_dec ok true) {
         cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms))) cs;
         cs <- BUFCACHE.sync (LogHeader xp) cs;
-        let2 (ms, cs) <- apply xp (ms, cs);
-        rx (ms, cs, true)
+        let^ (ms, cs) <- apply xp ^(ms, cs);
+        rx ^(^(ms, cs), true)
       } else {
-        let2 (ms, cs) <- abort xp (ms, cs);
-        rx (ms, cs, false)
+        let^ (ms, cs) <- abort xp ^(ms, cs);
+        rx ^(^(ms, cs), false)
       }
     }.
 
@@ -1462,10 +1497,13 @@ Module MEMLOG.
 
   Theorem commit_ok: forall xp mscs,
     {< m1 m2,
-     PRE            rep xp (ActiveTxn m1 m2) mscs
-     POST:(mscs',r) ([[ r = true ]] * rep xp (NoTransaction m2) mscs') \/
-                    ([[ r = false ]] * rep xp (NoTransaction m1) mscs')
-     CRASH          would_recover_either xp m1 m2
+     PRE
+       rep xp (ActiveTxn m1 m2) mscs
+     POST RET:^(mscs,r)
+       ([[ r = true ]] * rep xp (NoTransaction m2) mscs) \/
+       ([[ r = false ]] * rep xp (NoTransaction m1) mscs)
+     CRASH
+       would_recover_either xp m1 m2
     >} commit xp mscs.
   Proof.
     unfold commit, would_recover_either, would_recover_old, might_recover_cur.
@@ -1490,11 +1528,11 @@ Module MEMLOG.
   Module MapProperties := WProperties Map.
 
   Definition read_log T (xp : memlog_xparams) cs rx : prog T :=
-    let2 (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
+    let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
     let desc := valu_to_descriptor d in
-    let2 (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
+    let^ (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
     let len := (valu_to_header h) :-> "length" in
-    let2 (cs, log) <- For i < len
+    cs_log_prefix <- For i < len
     Ghost cur log_on_disk
     Loopvar cs_log_prefix <- (cs, [])
     Continuation lrx
@@ -1511,16 +1549,20 @@ Module MEMLOG.
       exists mscs, rep xp (CommittedTxn cur) mscs
     Begin
       let (cs, log_prefix) := (cs_log_prefix : cachestate * list (addr * valu)) in
-      let2 (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
+      let^ (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
       lrx (cs, log_prefix ++ [(sel desc i $0, v)])
     Rof;
-    rx (MapProperties.of_list log, cs).
+    let (cs, log) := cs_log_prefix in
+    rx ^(MapProperties.of_list log, cs).
 
   Theorem read_log_ok: forall xp cs,
     {< m ms,
-    PRE          rep xp (CommittedTxn m) (ms, cs)
-    POST:(r,cs') [[ r = ms ]] * rep xp (CommittedTxn m) (ms, cs)
-    CRASH        exists mscs', rep xp (CommittedTxn m) mscs'
+    PRE
+      rep xp (CommittedTxn m) ^(ms, cs)
+    POST RET:^(r,cs)
+      [[ r = ms ]] * rep xp (CommittedTxn m) ^(ms, cs)
+    CRASH
+      exists mscs', rep xp (CommittedTxn m) mscs'
     >} read_log xp cs.
   Proof.
     unfold read_log; log_unfold.
@@ -1541,11 +1583,11 @@ Module MEMLOG.
 
   Definition recover T cachesize rx : prog T :=
     cs <- BUFCACHE.init cachesize;
-    let2 (cs, fsxp) <- sb_load cs;
+    let^ (cs, fsxp) <- sb_load cs;
     let xp := (FSXPMemLog fsxp) in
-    let2 (ms, cs) <- read_log xp cs;
-    let2 (ms, cs) <- apply xp (ms, cs);
-    rx ((ms, cs), fsxp).
+    let^ (ms, cs) <- read_log xp cs;
+    let^ (ms, cs) <- apply xp ^(ms, cs);
+    rx ^(^(ms, cs), fsxp).
 
   Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty
     crash_invariant_ptsto : crash_xform.
@@ -1640,10 +1682,12 @@ Module MEMLOG.
 
   Theorem recover_ok: forall cachesize,
     {< m1 m2 xp,
-    PRE       crash_xform (would_recover_either xp m1 m2)
-    POST:(mscs,fsxp)
-              rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
-    CRASH     would_recover_either xp m1 m2
+    PRE
+      crash_xform (would_recover_either xp m1 m2)
+    POST RET:^(mscs,fsxp)
+      rep xp (NoTransaction m1) mscs \/ rep xp (NoTransaction m2) mscs
+    CRASH
+      would_recover_either xp m1 m2
     >} recover cachesize.
   Proof.
     unfold recover; log_intact_unfold; log_unfold.
@@ -1790,8 +1834,8 @@ Module MEMLOG.
   Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
   Definition read_array T xp a i stride mscs rx : prog T :=
-    let2 (mscs, r) <- read xp (a ^+ i ^* stride) mscs;
-    rx (mscs, r).
+    let^ (mscs, r) <- read xp (a ^+ i ^* stride) mscs;
+    rx ^(mscs, r).
 
   Definition write_array T xp a i stride v mscs rx : prog T :=
     mscs <- write xp (a ^+ i ^* stride) v mscs;
@@ -1799,11 +1843,14 @@ Module MEMLOG.
 
   Theorem read_array_ok : forall xp mscs a i stride,
     {< mbase m vs,
-    PRE            rep xp (ActiveTxn mbase m) mscs *
-                   [[ exists F', (array a vs stride * F')%pred (list2mem m) ]] *
-                   [[ wordToNat i < length vs ]]
-    POST:(mscs',r) [[ r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m) mscs'
-    CRASH          exists mscs', rep xp (ActiveTxn mbase m) mscs'
+    PRE
+      rep xp (ActiveTxn mbase m) mscs *
+      [[ exists F', (array a vs stride * F')%pred (list2mem m) ]] *
+      [[ wordToNat i < length vs ]]
+    POST RET:^(mscs,r)
+      [[ r = sel vs i $0 ]] * rep xp (ActiveTxn mbase m) mscs
+    CRASH
+      exists mscs', rep xp (ActiveTxn mbase m) mscs'
     >} read_array xp a i stride mscs.
   Proof.
     unfold read_array.
@@ -1816,12 +1863,15 @@ Module MEMLOG.
 
   Theorem write_array_ok : forall xp a i stride v mscs,
     {< mbase m vs F',
-    PRE        rep xp (ActiveTxn mbase m) mscs
-                * [[ (array a vs stride * F')%pred (list2mem m) ]]
-                * [[ wordToNat i < length vs ]]
-    POST:mscs' exists m', rep xp (ActiveTxn mbase m') mscs'
-                * [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
-    CRASH      exists m' mscs', rep xp (ActiveTxn mbase m') mscs'
+    PRE
+      rep xp (ActiveTxn mbase m) mscs *
+      [[ (array a vs stride * F')%pred (list2mem m) ]] *
+      [[ wordToNat i < length vs ]]
+    POST RET:mscs
+      exists m', rep xp (ActiveTxn mbase m') mscs *
+      [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
+    CRASH
+      exists m' mscs', rep xp (ActiveTxn mbase m') mscs'
     >} write_array xp a i stride v mscs.
   Proof.
     unfold write_array.

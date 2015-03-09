@@ -503,11 +503,6 @@ Ltac destruct_prod :=
   | [ H: (?a * ?b)%type |- _ ] => destruct H
   end.
 
-Ltac clear_type T :=
-  match goal with
-  | [ H: T |- _ ] => clear H
-  end.
-
 Ltac destruct_type T :=
   match goal with
   | [ H: T |- _ ] => destruct H
@@ -551,13 +546,13 @@ Ltac destruct_lift' H :=
   end.
 
 (* XXX it could be faster to avoid [simpl in *] by explicitly doing
- * destruct_prod / clear_type / destruct_type in each case of [destruct_lift']
+ * destruct_prod / destruct_type in each case of [destruct_lift']
  * and then doing [simpl in H] on specific hypotheses. *)
 Ltac destruct_lift H :=
   destruct_lift' H;
   repeat destruct_prod;
   simpl in *;
-  repeat clear_type True;
+  repeat destruct_type True;
   repeat destruct_type unit.
 
 Lemma eexists_pair: forall A B p,

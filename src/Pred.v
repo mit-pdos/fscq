@@ -863,8 +863,6 @@ Proof.
   repeat deex; eexists; eauto.
 Qed.
 
-Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
-
 Theorem sep_star_or_distr : forall (a b c : @pred AT AEQ V),
   (a * (b \/ c))%pred <=p=> (a * b \/ a * c)%pred.
 Proof.

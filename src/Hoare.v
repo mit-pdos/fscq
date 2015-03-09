@@ -31,39 +31,41 @@ Definition corr3 (TF TR: Type) (pre: donecond TF -> donecond TR -> pred)
 Notation "{{ pre }} p1 >> p2" := (corr3 pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
 
+Notation "'RET' : r post" :=
+  (fun F =>
+    (fun r => (F * post)%pred)
+  )%pred
+  (at level 0, post at level 90, r at level 0, only parsing).
 
-Notation "{< e1 .. e2 , 'PRE' pre 'POST' : r post 'CRASH' crash >} p1" :=
+Notation "'RET' : ^( ra , .. , rb ) post" :=
+  (fun F =>
+    (pair_args_helper (fun ra => ..
+      (pair_args_helper (fun rb (_:True) => (F * post)%pred))
+    ..))
+  )%pred
+  (at level 0, post at level 90, ra closed binder, rb closed binder, only parsing).
+
+Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
    (fun done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F,
      F * pre *
      [[ forall r_,
-        {{ fun done'_ crash'_ => (fun r => F * post) r_ * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
-        }} rx r_ ]] * [[ (F * crash)%pred =p=> crash_ ]]
+        {{ fun done'_ crash'_ =>
+           post F r_ *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
+        }} rx r_ ]] *
+     [[ (F * crash)%pred =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
-  (at level 0, p1 at level 60, e1 binder, e2 binder, r at level 0).
-
-Notation "{< e1 .. e2 , 'PRE' pre 'POST' : ( r1 , r2 ) post 'CRASH' crash >} p1" :=
-  (forall T (rx: _ -> prog T), corr2
-   (fun done_ crash_ =>
-    (exis (fun e1 => .. (exis (fun e2 =>
-     exists F,
-     F * pre *
-     [[ forall r_,
-        {{ fun done'_ crash'_ => (fun r1 r2 => F * post) (fst r_) (snd r_) * [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
-        }} rx r_ ]] * [[ (F * crash)%pred =p=> crash_ ]]
-     )) .. ))
-   )%pred
-   (p1 rx)%pred)
-  (at level 0, p1 at level 60, e1 binder, e2 binder, r1 at level 0, r2 at level 0).
+  (at level 0, p1 at level 60, e1 binder, e2 binder).
 
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 
-Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash >} p1 >> p2" :=
+Notation "{<< e1 .. e2 , 'PRE' pre , 'POST' post 'REC' crash >>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    exists idemcrash,
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
@@ -73,39 +75,18 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' : rp post 'CRASH' : rc crash >} p1 >> p
      F * pre *
      [[ crash_xform F =p=> F ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => (fun rp => F * post) r_ *
+        {{ fun done'_ crash'_ => post F r_ *
                                  [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => (fun rc => F * crash) r_ *
+        {{ fun done'_ crash'_ => crash F r_ *
                                  [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
    (p1 rxOK)%pred
    (p2 rxREC)%pred)) .. ))
-  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder, rp at level 0, rc at level 0).
-
-Notation "{< e1 .. e2 , 'PRE' pre 'POST' : ( rp1 , rp2 ) post 'CRASH' : rc crash >} p1 >> p2" :=
-  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
-   exists idemcrash,
-   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
-   corr3
-   (fun done_ crashdone_ =>
-     exists F,
-     F * pre *
-     [[ crash_xform F =p=> F ]] *
-     [[ forall r_,
-        {{ fun done'_ crash'_ => (fun rp1 rp2 => F * post) (fst r_) (snd r_) *
-                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
-        }} rxOK r_ ]] *
-     [[ forall r_,
-        {{ fun done'_ crash'_ => (fun rc => F * crash) r_ *
-                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
-        }} rxREC r_ ]]
-   )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
-  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder, rp1 at level 0, rp2 at level 0, rc at level 0).
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   post at level 1, crash at level 1).
 
 
 Theorem pimpl_ok2:

@@ -59,11 +59,11 @@ Module BUFCACHE.
   Definition read T a (cs : cachestate) rx : prog T :=
     cs <- trim cs;
     match Map.find a (CSMap cs) with
-    | Some v => rx (cs, v)
+    | Some v => rx ^(cs, v)
     | None =>
       v <- Read a;
-      rx (Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs + 1)
-                           (CSMaxCount cs) (eviction_update (CSEvict cs) a), v)
+      rx ^(Build_cachestate (Map.add a v (CSMap cs)) (CSCount cs + 1)
+                            (CSMaxCount cs) (eviction_update (CSEvict cs) a), v)
     end.
 
   Definition write T a v (cs : cachestate) rx : prog T :=
@@ -152,10 +152,12 @@ Module BUFCACHE.
 
   Theorem trim_ok : forall cs,
     {< d,
-    PRE      rep cs d
-    POST:cs  rep cs d *
-             [[ CSCount cs < CSMaxCount cs ]]
-    CRASH    exists cs', rep cs' d
+    PRE
+      rep cs d
+    POST RET:cs
+      rep cs d * [[ CSCount cs < CSMaxCount cs ]]
+    CRASH
+      exists cs', rep cs' d
     >} trim cs.
   Proof.
     unfold trim, rep; hoare.
@@ -169,9 +171,12 @@ Module BUFCACHE.
 
   Theorem read_ok : forall cs a,
     {< d F v,
-    PRE          rep cs d * [[ (F * a |~> v)%pred d ]]
-    POST:(cs,r)  rep cs d * [[ r = v ]]
-    CRASH        exists cs', rep cs' d
+    PRE
+      rep cs d * [[ (F * a |~> v)%pred d ]]
+    POST RET:^(cs, r)
+      rep cs d * [[ r = v ]]
+    CRASH
+      exists cs', rep cs' d
     >} read a cs.
   Proof.
     unfold read.
@@ -199,11 +204,14 @@ Module BUFCACHE.
 
   Theorem write_ok : forall cs a v,
     {< d F v0,
-    PRE      rep cs d * [[ (F * a |-> v0)%pred d ]]
-    POST:cs  exists d',
-             rep cs d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
-    CRASH    exists cs', rep cs' d \/
-             exists d', rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
+    PRE
+      rep cs d * [[ (F * a |-> v0)%pred d ]]
+    POST RET:cs
+      exists d',
+      rep cs d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d \/
+      exists d', rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
     >} write a v cs.
   Proof.
     unfold write.
@@ -248,10 +256,13 @@ Module BUFCACHE.
 
   Theorem sync_ok : forall a cs,
     {< d F v,
-    PRE      rep cs d * [[ (F * a |-> v)%pred d ]]
-    POST:cs  exists d', rep cs d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
-    CRASH    exists cs', rep cs' d \/
-             exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
+    PRE
+      rep cs d * [[ (F * a |-> v)%pred d ]]
+    POST RET:cs
+      exists d', rep cs d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d \/
+      exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
     >} sync a cs.
   Proof.
     unfold sync, rep.
@@ -282,9 +293,12 @@ Module BUFCACHE.
 
   Theorem init_ok : forall cachesize,
     {< F,
-    PRE      F * [[ cachesize <> 0 ]]
-    POST:cs  exists d, rep cs d * [[ F d ]]
-    CRASH    F
+    PRE
+      F * [[ cachesize <> 0 ]]
+    POST RET:cs
+      exists d, rep cs d * [[ F d ]]
+    CRASH
+      F
     >} init cachesize.
   Proof.
     unfold init, rep.
@@ -316,9 +330,12 @@ Module BUFCACHE.
 
   Theorem read_array_ok : forall a i cs,
     {< d F vs,
-    PRE          rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
-    POST:(cs',v) rep cs' d * [[ v = fst (sel vs i ($0, nil)) ]]
-    CRASH        exists cs', rep cs' d
+    PRE
+      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST RET:^(cs, v)
+      rep cs d * [[ v = fst (sel vs i ($0, nil)) ]]
+    CRASH
+      exists cs', rep cs' d
     >} read_array a i cs.
   Proof.
     unfold read_array.
@@ -332,11 +349,14 @@ Module BUFCACHE.
 
   Theorem write_array_ok : forall a i v cs,
     {< d F vs,
-    PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
-    POST:cs' exists d', rep cs' d' *
-             [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
-    CRASH    exists cs', rep cs' d \/
-             exists d', rep cs' d' * [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
+    PRE
+      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
+    CRASH
+      exists cs', rep cs' d \/
+      exists d', rep cs' d' * [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
     >} write_array a i v cs.
   Proof.
     unfold write_array, upd_prepend.
@@ -358,11 +378,14 @@ Module BUFCACHE.
 
   Theorem sync_array_ok : forall a i cs,
     {< d F vs,
-    PRE      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
-    POST:cs' exists d', rep cs' d' *
-             [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
-    CRASH    exists cs', rep cs' d \/
-             exists d', rep cs' d' * [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
+    PRE
+      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
+    CRASH
+      exists cs', rep cs' d \/
+      exists d', rep cs' d' * [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
     >} sync_array a i cs.
   Proof.
     unfold sync_array, upd_sync.
