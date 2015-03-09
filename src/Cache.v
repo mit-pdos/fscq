@@ -159,17 +159,9 @@ Module BUFCACHE.
     >} trim cs.
   Proof.
     unfold trim, rep; hoare.
-    destruct (eviction_choose (CSEvict cs)).
-
-    case_eq (Map.find w (CSMap cs)); hoare.
     rewrite map_remove_cardinal; eauto.
-
-    case_eq (Map.elements (CSMap cs)); hoare.
     replace (CSCount cs) with (CSMaxCount cs) in * by omega.
-    rewrite Map.cardinal_1 in *. rewrite H in *; clear H.
-    simpl in *; omega.
-
-    destruct p0; hoare.
+    rewrite Map.cardinal_1 in *. rewrite Heql in *; simpl in *; omega.
     rewrite map_remove_cardinal by (eapply map_elements_hd_in; eauto); eauto.
   Qed.
 
@@ -186,15 +178,16 @@ Module BUFCACHE.
     hoare_unfold unfold_rep.
 
     apply ptsto_valid' in H3 as H'.
-    destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
+    apply Map.find_2 in Heqo. apply H12 in Heqo. rewrite H' in Heqo. deex; congruence.
 
-    apply Map.find_2 in Hfind. apply H12 in Hfind. rewrite H' in Hfind. deex; congruence.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
+
     rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
 
     rewrite map_add_cardinal; auto.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
+    apply ptsto_valid' in H3 as H'.
     destruct (weq a a0); subst.
     apply mapsto_add in H; subst; eauto.
     edestruct H12. eauto. eexists; eauto.
@@ -351,7 +344,7 @@ Module BUFCACHE.
 
     pred_apply.
     rewrite isolate_fwd with (i:=i) by auto.
-    cancel.
+    rewrite <- surjective_pairing. cancel.
 
     rewrite <- isolate_bwd_upd by auto.
     cancel.
@@ -377,7 +370,7 @@ Module BUFCACHE.
 
     pred_apply.
     rewrite isolate_fwd with (i:=i) by auto.
-    cancel.
+    rewrite <- surjective_pairing. cancel.
 
     rewrite <- isolate_bwd_upd by auto.
     cancel.
