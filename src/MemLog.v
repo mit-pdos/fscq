@@ -761,7 +761,7 @@ Module MEMLOG.
       (descriptor_to_valu (map fst (Map.elements ms))) cs;
     cs <- For i < $ (Map.cardinal ms)
     Ghost old crash
-    Loopvar cs <- cs
+    Loopvar cs
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -776,7 +776,7 @@ Module MEMLOG.
       cs <- BUFCACHE.write_array (LogData xp ^+ i) $0
         (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
-    Rof;
+    Rof cs;
     rx ^(ms, cs).
 
   Definition flush_sync T xp (mscs : memstate_cachestate) rx : prog T :=
@@ -784,7 +784,7 @@ Module MEMLOG.
     cs <- BUFCACHE.sync (LogDescriptor xp) cs;
     cs <- For i < $ (Map.cardinal ms)
     Ghost old crash
-    Loopvar cs <- cs
+    Loopvar cs
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -800,7 +800,7 @@ Module MEMLOG.
     Begin
       cs <- BUFCACHE.sync_array (LogData xp ^+ i) $0 cs;
       lrx cs
-    Rof;
+    Rof cs;
     rx ^(ms, cs).
 
   Definition flush T xp (mscs : memstate_cachestate) rx : prog T :=
@@ -1319,7 +1319,7 @@ Module MEMLOG.
     let '^(ms, cs) := mscs in
     cs <- For i < $ (Map.cardinal ms)
     Ghost cur
-    Loopvar cs <- cs
+    Loopvar cs
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -1335,7 +1335,7 @@ Module MEMLOG.
       cs <- BUFCACHE.write_array (DataStart xp)
         (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
       lrx cs
-    Rof;
+    Rof cs;
     rx ^(ms, cs).
 
   Theorem apply_unsync_ok: forall xp mscs,
@@ -1370,7 +1370,7 @@ Module MEMLOG.
     let '^(ms, cs) := mscs in
     cs <- For i < $ (Map.cardinal ms)
     Ghost cur
-    Loopvar cs <- cs
+    Loopvar cs
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
@@ -1383,7 +1383,7 @@ Module MEMLOG.
     Begin
       cs <- BUFCACHE.sync_array (DataStart xp) (sel (map fst (Map.elements ms)) i $0) cs;
       lrx cs
-    Rof;
+    Rof cs;
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx ^(ms, cs).
 
@@ -1534,7 +1534,7 @@ Module MEMLOG.
     let len := (valu_to_header h) :-> "length" in
     cs_log_prefix <- For i < len
     Ghost cur log_on_disk
-    Loopvar cs_log_prefix <- (cs, [])
+    Loopvar cs_log_prefix
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep (fst cs_log_prefix) d' *
@@ -1551,7 +1551,7 @@ Module MEMLOG.
       let (cs, log_prefix) := (cs_log_prefix : cachestate * list (addr * valu)) in
       let^ (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
       lrx (cs, log_prefix ++ [(sel desc i $0, v)])
-    Rof;
+    Rof (cs, []);
     let (cs, log) := cs_log_prefix in
     rx ^(MapProperties.of_list log, cs).
 

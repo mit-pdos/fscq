@@ -179,9 +179,10 @@ Qed.
 
 Definition For_ (T: Type)
                 (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
-                (i n : addr) (l : L)
+                (i n : addr)
                 (nocrash : G -> addr -> L -> @pred addr (@weq addrlen) valuset)
                 (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (l : L)
                 (rx: L -> prog T) : prog T.
   refine (Fix (@for_args_wf L) (fun _ => prog T)
           (fun args For_ => _)
@@ -222,14 +223,14 @@ Definition For_ (T: Type)
 Defined.
 
 Lemma For_step: forall T L G f i n l nocrash crashed (rx: _ -> prog T),
-  @For_ T L G f i n l nocrash crashed rx =
+  @For_ T L G f i n nocrash crashed l rx =
     if weq n $0
     then rx l
     else l' <- (f i l);
          @For_ T L G f
                (i ^+ $1)
                (n ^- $1)
-               l' nocrash crashed rx.
+               nocrash crashed l' rx.
 Proof.
   intros.
   unfold For_.
@@ -274,7 +275,7 @@ Theorem for_ok':
        }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
    * [[F * crashed g =p=> crash]]
-  }} (For_ f i n li nocrash crashed rx).
+  }} (For_ f i n nocrash crashed li rx).
 Proof.
   intro T.
   wlt_ind.
@@ -389,7 +390,7 @@ Theorem for_ok:
        {{ fun done' crash' => F * nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[F * crashed g =p=> crash]]
-  }} For_ f $0 n li nocrash crashed rx.
+  }} For_ f $0 n nocrash crashed li rx.
 Proof.
   intros.
   eapply pimpl_ok2.
@@ -402,24 +403,24 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _) => apply for_ok : prog.
-Notation "'For' i < n 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'For' i < n 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
-        $0 n l0
+        $0 n
         (fun (_:unit) i l => nocrash%pred)
         (fun (_:unit) => crashed%pred))
-  (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0, l0 at level 0,
+  (at level 9, i at level 0, n at level 0, lrx at level 0, l at level 0,
    body at level 9).
 
-Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'For' i < n 'Ghost' g1 .. g2 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i l lrx => body)
-        $0 n l0
+        $0 n
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i l => nocrash%pred)) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          crashed%pred)) .. )))
   (at level 9, i at level 0, n at level 0,
    g1 binder, g2 binder,
-   lrx at level 0, l at level 0, l0 at level 0,
+   lrx at level 0, l at level 0,
    body at level 9).
 
 
@@ -498,22 +499,22 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
-Notation "'ForEach' elem rest lst 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'ForEach' elem rest lst 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem l lrx => body)
-        lst l0
+        lst
         (fun (_:unit) rest l => nocrash%pred)
         (fun (_:unit) => crashed%pred))
-  (at level 9, elem at level 0, lrx at level 0, l at level 0, l0 at level 0,
+  (at level 9, elem at level 0, lrx at level 0, l at level 0,
    body at level 9).
 
-Notation "'ForEach' elem rest lst 'Ghost' g1 .. g2 'Loopvar' l <- l0 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'ForEach' elem rest lst 'Ghost' g1 .. g2 'Loopvar' l 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem l lrx => body)
-        lst l0
+        lst
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun rest l => nocrash%pred)) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          crashed%pred)) .. )))
   (at level 9, elem at level 0, rest at level 0,
    g1 binder, g2 binder,
-   lrx at level 0, l at level 0, l0 at level 0,
+   lrx at level 0, l at level 0,
    body at level 9).
