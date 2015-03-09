@@ -73,10 +73,38 @@ Section BIJECTION.
       intros; apply H; auto.
     Qed.
 
+    Lemma cond_inv_domain_right : forall y,
+      cond_inverse -> PB y -> PA (f' y).
+    Proof.
+      intros; apply H; auto.
+    Qed.
+
+    Lemma cond_inv_domain_left : forall x,
+      cond_inverse -> PA x -> PB (f x).
+    Proof.
+      intros; apply H; auto.
+    Qed.
+
   End BIJECTION_INVERSION.
 
 End BIJECTION.
 
+
+Theorem cond_inverse_sym : forall A B PA PB (f : A -> B) (f' : B -> A),
+  cond_inverse f PA PB f'
+  -> cond_inverse f' PB PA f.
+Proof.
+  firstorder.
+Qed.
+
+Theorem cond_inv2bij_inv : forall A B PA PB (f : A -> B) (f' : B -> A),
+  cond_inverse f PA PB f'
+  -> cond_bijective f' PB PA.
+Proof.
+  intros.
+  eapply cond_inv2bij.
+  apply cond_inverse_sym; eauto.
+Qed.
 
 Section MEMMATCH.
 
@@ -102,7 +130,8 @@ Section MEMMATCH.
   Variable AP1_ok : forall a1, indomain a1 m1 -> AP1 a1.
   Variable AP2_ok : forall a2, indomain a2 m2 -> AP2 a2.
 
-  Definition mem_atrans f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) (_ : unit) :=
+  Definition mem_atrans AT1 AEQ1 V AT2 AEQ2
+    f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) (_ : unit) :=
     forall a, m a = m' (f a).
 
   Variable MTrans : mem_atrans atrans m1 m2 tt.
@@ -187,6 +216,22 @@ Section MEMMATCH.
       contradict n.
       apply AP2_ok; auto.
     Qed.
+
+    Lemma mem_ainv_mem_except : forall a (ap : AP2 a),
+      mem_atrans atrans (mem_except m1 (ainv a)) (mem_except m2 a) tt.
+    Proof.
+      intros; unfold mem_atrans, mem_except; intro x.
+      destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a);
+        try subst; auto; try tauto.
+
+      contradict n.
+      apply HInv; auto.
+      destruct (indomain_dec x m1); auto.
+      contradict n.
+      apply eq_sym.
+      apply HInv; auto.
+    Qed.
+
 
   End MEMMATCH_INVERSION.
 

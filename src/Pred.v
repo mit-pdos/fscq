@@ -1125,7 +1125,6 @@ Proof.
   destruct (AEQ a' a); subst; try congruence.
 Qed.
 
-
 Theorem indomain_mem_except_indomain : forall (m : @mem AT AEQ V) a a',
   indomain a (mem_except m a') -> indomain a m.
 Proof.

@@ -330,15 +330,31 @@ Module SDIR.
     apply string2name2string; auto.
   Qed.
 
-  Local Hint Resolve dirname_cond_inverse.
+  Theorem dirname_cond_inverse' :
+    cond_inverse sname2wname sname_valid wname_valid wname2sname.
+  Proof.
+    apply cond_inverse_sym.
+    apply dirname_cond_inverse.
+  Qed.
 
   Theorem wname2sname_bijective :
     cond_bijective wname2sname wname_valid sname_valid.
   Proof.
-    eapply cond_inv2bij; eauto.
+    eapply cond_inv2bij.
+    apply dirname_cond_inverse.
   Qed.
 
+  Theorem sname2wname_bijective :
+    cond_bijective sname2wname sname_valid wname_valid.
+  Proof.
+    eapply cond_inv2bij.
+    apply dirname_cond_inverse'.
+  Qed.
+
+  Local Hint Resolve dirname_cond_inverse.
+  Local Hint Resolve dirname_cond_inverse'.
   Local Hint Resolve wname2sname_bijective.
+  Local Hint Resolve sname2wname_bijective.
 
 
   Fixpoint is_nozero (s : string) : bool :=
@@ -600,10 +616,11 @@ Module SDIR.
     POST:(mscs',r)
             ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
              [[ notindomain name dsmap ]]) \/
-            ([[ r = true ]] * exists m' dsmap' DF,
+            ([[ r = true ]] * exists m' dsmap' v0 DF,
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
-             [[ (DF * name |->?)%pred dsmap ]] *
+             [[ dsmap' = mem_except dsmap name ]] *
+             [[ (DF * name |-> v0)%pred dsmap ]] *
              [[ (DF) dsmap' ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} dsunlink lxp bxp ixp dnum name mscs.
@@ -612,13 +629,22 @@ Module SDIR.
     hoare.
 
     apply pimpl_or_r; left; cancel.
-    admit.
-    apply pimpl_or_r; right; cancel.
+    resolve_valid_preds.
+    eapply mem_atrans_inv_notindomain; eauto.
+
+    apply pimpl_or_r; right; cancel; resolve_valid_preds.
     exists x2, x3; repeat split; eauto.
-    exists m1; split; eauto.
-    admit.
-    admit.
-    admit.
+    eexists; split; eauto.
+    split; [ | split ]; [ intros ? Hx | intros ? Hx | ].
+    apply indomain_mem_except_indomain in Hx; auto.
+    apply indomain_mem_except_indomain in Hx; auto.
+    eapply mem_ainv_mem_except; eauto.
+    eapply mem_atrans_inv_ptsto; eauto.
+    unfold any; auto.
+
+    apply pimpl_or_r; left; cancel.
+    apply notindomain_not_indomain; intro.
+    resolve_valid_preds; auto.
   Qed.
 
 
