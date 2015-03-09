@@ -23,12 +23,10 @@ import qualified MemLog
 import FSLayout
 import Control.Monad
 import qualified DirName
+import System.Environment
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
-
-disk_fn :: String
-disk_fn = "disk.img"
 
 -- File system configuration
 cachesize :: Int
@@ -50,6 +48,13 @@ doFScall ds ref f = do
 
 main :: IO ()
 main = do
+  args <- getArgs
+  case args of
+    fn:rest -> run_fuse fn rest
+    _ -> putStrLn $ "Usage: fuse disk -f /tmp/ft"
+
+run_fuse :: String -> [String] -> IO()
+run_fuse disk_fn fuse_args = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- init_disk disk_fn
   (s, fsxp) <- if fileExists
@@ -67,7 +72,7 @@ main = do
       return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
-  fuseMain (fscqFSOps ds (doFScall ds ref) fsxp) defaultExceptionHandler
+  fuseRun "fscq" fuse_args (fscqFSOps ds (doFScall ds ref) fsxp) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
