@@ -315,19 +315,46 @@ Module DIRTREE.
       }
     end.
 
-  Theorem mknod_ok : forall fsxp dnum name mscs,
+  Theorem mkfile_ok : forall fsxp dnum name mscs,
     {< F mbase m Ftop tree,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
            [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
     POST RET:^(mscs,r)
-           [[ r = None ]] * MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs \/
-           exists m' inum, MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
-           [[ r = Some inum ]] *
-           [[ (F * rep fsxp Ftop dnum ((name, inum, DirFile BFILE.bfile0) :: tree))%pred (list2mem m) ]]
+           (* We always modify the memory, because we might allocate the file,
+            * but then fail to link it into the directory..  When we return
+            * None, the overall transaction should be aborted.
+            *)
+           exists m', MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
+           ([[ r = None ]] \/
+            exists inum, [[ r = Some inum ]] *
+            [[ (F * rep fsxp Ftop dnum ((name, inum, DirFile BFILE.bfile0) :: tree))%pred (list2mem m') ]])
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} mkfile fsxp dnum name mscs.
   Proof.
+    unfold mkfile, rep.
+    step.
+    unfold tree_dir_names_pred in H5. destruct_lift H5.
+    step.
+    unfold SDIR.rep_macro. do 2 eexists. intuition.
+    pred_apply. cancel.
+    pred_apply. cancel.
+    eauto.
+    unfold SDIR.rep_macro.
+    step.
+    step.
+    step.
+    step.
+    apply pimpl_or_r; right. cancel.
+
+    unfold tree_dir_names_pred; cancel; eauto.
     admit.
+    admit.
+
+    step.
+    Grab Existential Variables.
+    exact empty_mem.
+    exact emp.
+    exact emp.
   Qed.
 
   Definition mkdir T fsxp dnum name mscs rx : prog T :=
@@ -349,14 +376,40 @@ Module DIRTREE.
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
            [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
     POST RET:^(mscs,r)
-           [[ r = None ]] * MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs \/
-           exists m' inum, MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
-           [[ r = Some inum ]] *
-           [[ (F * rep fsxp Ftop dnum ((name, inum, DirSubdir nil) :: tree))%pred (list2mem m) ]]
+           exists m', MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
+           ([[ r = None ]] \/
+            exists inum, [[ r = Some inum ]] *
+            [[ (F * rep fsxp Ftop dnum ((name, inum, DirSubdir nil) :: tree))%pred (list2mem m') ]])
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} mkdir fsxp dnum name mscs.
   Proof.
+    unfold mkdir, rep.
+    step.
+    unfold tree_dir_names_pred in H5. destruct_lift H5.
+    step.
+    unfold SDIR.rep_macro. do 2 eexists. intuition.
+    pred_apply. cancel.
+    pred_apply. cancel.
+    eauto.
+    unfold SDIR.rep_macro.
+    step.
+    step.
+    step.
+    step.
+    apply pimpl_or_r; right. cancel.
+
+    unfold tree_dir_names_pred at 1. cancel; eauto.
+    unfold tree_dir_names_pred; cancel.
+    instantiate (a1 := BFILE.bfile0). admit.
+    instantiate (a2 := empty_mem). admit.
+    apply emp_empty_mem.
     admit.
+
+    step.
+    Grab Existential Variables.
+    exact empty_mem.
+    exact emp.
+    exact emp.
   Qed.
 
   Definition delete T fsxp dnum name mscs rx : prog T :=
