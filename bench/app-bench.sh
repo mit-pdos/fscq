@@ -24,7 +24,7 @@ echo "=== run lfs large ==="
 ./largefile -f 1 -i 1 $2
 
 echo "=== run lfs small ==="
-./smallfile 2000 1024 $2
+./smallfile 1000 1024 $2
 
 echo "=== cleanup ==="
 
