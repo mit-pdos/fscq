@@ -1,6 +1,5 @@
 module Main where
 
-import System.Posix.IO
 import MemLog
 import Word
 import qualified Interpreter as I
