@@ -301,7 +301,7 @@ Section RECARRAY.
     PRE            MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
                    [[ (F * array_item xp ilist)%pred (list2mem m) ]] *
                    [[ (inum < RALen xp ^* items_per_valu)%word ]]
-    POST RET:^(mscs',r)
+    POST RET:^(mscs,r)
                    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
                    [[ r = sel ilist inum item_zero ]]
     CRASH          MEMLOG.would_recover_old lxp mbase
