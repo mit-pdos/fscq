@@ -142,9 +142,9 @@ Module BALLOC.
   Hint Extern 1 ({{_}} progseq (free' _ _ _ _) _) => apply free'_ok : prog.
 
   Definition alloc' T lxp xp mscs rx : prog T :=
-    mscs <- For i < (BmapNBlocks xp ^* $ (valulen))
-      Ghost mbase m
-      Loopvar mscs
+    let^ (mscs) <- For i < (BmapNBlocks xp ^* $ (valulen))
+      Ghost [ mbase m ]
+      Loopvar [ mscs ]
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) mscs
@@ -159,9 +159,9 @@ Module BALLOC.
             lxp (xp_to_raxp xp) i (alloc_state_to_bit InUse) mscs;
           rx ^(mscs, Some i)
         } else {
-          lrx mscs
+          lrx ^(mscs)
         }
-      Rof mscs;
+      Rof ^(mscs);
     rx ^(mscs, None).
 
   Hint Rewrite natToWord_wordToNat selN_map_seq.
@@ -200,9 +200,9 @@ Module BALLOC.
 
 
   Definition init' T lxp xp mscs rx : prog T :=
-    mscs <- For i < (BmapNBlocks xp)
-      Ghost mbase F
-      Loopvar mscs
+    let^ (mscs) <- For i < (BmapNBlocks xp)
+      Ghost [ mbase F ]
+      Loopvar [ mscs ]
       Continuation lrx
       Invariant
         exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
@@ -214,8 +214,8 @@ Module BALLOC.
         MEMLOG.log_intact lxp mbase
       Begin
         mscs <- MEMLOG.write_array lxp (BmapStart xp) i $1 $0 mscs;
-        lrx mscs
-      Rof mscs;
+        lrx ^(mscs)
+      Rof ^(mscs);
     rx mscs.
 
   Definition bmap0 : addr -> alloc_state :=

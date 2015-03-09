@@ -27,43 +27,43 @@ Module BFILE.
   (* interface implementation *)
 
   Definition bflen T lxp ixp inum mscs rx : prog T :=
-    let2 (mscs, n) <- INODE.ilen lxp ixp inum mscs;
-    rx (mscs, n).
+    let^ (mscs, n) <- INODE.ilen lxp ixp inum mscs;
+    rx ^(mscs, n).
 
   Definition bfread T lxp ixp inum off mscs rx : prog T :=
-    let2 (mscs, b) <-INODE.iget lxp ixp inum off mscs;
-    let2 (mscs, fblock) <- MEMLOG.read lxp b mscs;
-    rx (mscs, fblock).
+    let^ (mscs, b) <-INODE.iget lxp ixp inum off mscs;
+    let^ (mscs, fblock) <- MEMLOG.read lxp b mscs;
+    rx ^(mscs, fblock).
 
   Definition bfwrite T lxp ixp inum off v mscs rx : prog T :=
-    let2 (mscs, b) <-INODE.iget lxp ixp inum off mscs;
-    let2 (mscs, ok) <- MEMLOG.write lxp b v mscs;
-    rx (mscs, ok).
+    let^ (mscs, b) <-INODE.iget lxp ixp inum off mscs;
+    let^ (mscs, ok) <- MEMLOG.write lxp b v mscs;
+    rx ^(mscs, ok).
 
   Definition bfgrow T lxp bxp ixp inum mscs rx : prog T :=
-    let2 (mscs, len) <- INODE.ilen lxp ixp inum mscs;
-    let2 (mscs, bn) <- BALLOC.alloc lxp bxp mscs;
+    let^ (mscs, len) <- INODE.ilen lxp ixp inum mscs;
+    let^ (mscs, bn) <- BALLOC.alloc lxp bxp mscs;
     match bn with
-    | None => rx (mscs, false)
+    | None => rx ^(mscs, false)
     | Some bnum =>
         If (wlt_dec len (natToWord addrlen INODE.blocks_per_inode)) {
-          let2 (mscs, ok) <- INODE.igrow lxp bxp ixp inum bnum mscs;
-          rx (mscs, ok)
+          let^ (mscs, ok) <- INODE.igrow lxp bxp ixp inum bnum mscs;
+          rx ^(mscs, ok)
         } else {
-          rx (mscs, false)
+          rx ^(mscs, false)
         }
     end.
 
   Definition bfshrink T lxp bxp ixp inum mscs rx : prog T :=
-    let2 (mscs, n) <- INODE.ilen lxp ixp inum mscs;
-    let2 (mscs, b) <- INODE.iget lxp ixp inum (n ^- $1) mscs;
+    let^ (mscs, n) <- INODE.ilen lxp ixp inum mscs;
+    let^ (mscs, b) <- INODE.iget lxp ixp inum (n ^- $1) mscs;
     mscs <- BALLOC.free lxp bxp b mscs;
     mscs <- INODE.ishrink lxp bxp ixp inum mscs;
     rx mscs.
 
   Definition bfgetsz T lxp ixp inum mscs rx : prog T :=
-    let2 (mscs, n) <- INODE.igetsz lxp ixp inum mscs;
-    rx (mscs, n).
+    let^ (mscs, n) <- INODE.igetsz lxp ixp inum mscs;
+    rx ^(mscs, n).
 
   Definition bfsetsz T lxp ixp inum sz mscs rx : prog T :=
     mscs <- INODE.isetsz lxp ixp inum sz mscs;
@@ -168,8 +168,8 @@ Module BFILE.
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = $ (length (BFData f)) ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bflen lxp ixp inum mscs.
@@ -191,8 +191,8 @@ Module BFILE.
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFData f)) ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = v ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bfread lxp ixp inum off mscs.
@@ -223,8 +223,9 @@ Module BFILE.
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ (B * #off |-> v0)%pred (list2nmem (BFData f)) ]]
-    POST:mscs' exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:mscs
+             exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ (B * #off |-> v)%pred (list2nmem (BFData f')) ]]
@@ -296,8 +297,8 @@ Module BFILE.
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ B %pred (list2nmem (BFData f)) ]]
-    POST:(mscs',r)
-            exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:^(mscs,r)
+            exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
             ([[ r = false ]] \/ 
              [[ r = true ]] * exists flist' f' v,
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
@@ -380,8 +381,9 @@ Module BFILE.
              [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ (B * ((length (BFData f)) - 1) |-> v)%pred (list2nmem (BFData f)) ]]
-    POST:mscs' exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:mscs
+             exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ B %pred (list2nmem (BFData f')) ]]
@@ -450,8 +452,8 @@ Module BFILE.
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = BFSize f ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bfgetsz lxp ixp inum mscs.
@@ -470,9 +472,9 @@ Module BFILE.
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST:mscs'
+    POST RET:mscs
            exists m' flist' f',
-           MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+           MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
            [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ BFSize f' = sz ]] *

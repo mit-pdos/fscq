@@ -90,8 +90,8 @@ Module DIR.
     {< F A mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ derep_macro F A m bxp ixp inum delist ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = $ (length delist) ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} delen lxp ixp inum mscs.
@@ -106,8 +106,8 @@ Module DIR.
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ derep_macro F A m bxp ixp inum delist ]] *
            [[ (B * #idx |-> e)%pred (list2nmem delist) ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = e ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} deget lxp ixp inum idx mscs.
@@ -124,8 +124,9 @@ Module DIR.
            [[ derep_macro F A m bxp ixp inum delist ]] *
            [[ Rec.well_formed e ]] *
            [[ (B * #idx |-> e0)%pred (list2nmem delist) ]]
-    POST:mscs' exists m' delist',
-           MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:mscs
+           exists m' delist',
+           MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
            [[ derep_macro F A m' bxp ixp inum delist' ]] *
            [[ (B * #idx |-> e)%pred (list2nmem delist') ]]
     CRASH  MEMLOG.log_intact lxp mbase
@@ -222,7 +223,8 @@ Module DIR.
            [[ derep_macro F A m bxp ixp inum delist ]] *
            [[ Rec.well_formed e ]] *
            [[ B (list2nmem delist) ]]
-    POST:(mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:^(mscs, r)
+          exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
           ([[ r = false ]] \/
            [[ r = true  ]] * exists delist',
            [[ derep_macro F A m' bxp ixp inum delist' ]] *
@@ -235,7 +237,7 @@ Module DIR.
     unfold deext, derep_macro, derep.
     hoare.
     apply pimpl_or_r; right; cancel.
-    exists l0, b1; split; eauto.
+    exists l0, b; split; eauto.
     setoid_rewrite <- item0_list_dent0.
     unfold upd in *; rewrite roundTrip_0 in *; auto.
     apply helper_deext_ok; auto.
@@ -273,31 +275,30 @@ Module DIR.
   Local Hint Unfold derep_macro derep rep_macro rep: hoare_unfold.
 
   Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T :=
-    let2 (mscs, n) <- delen lxp ixp dnum mscs;
-    let2 (mscs, s) <- For i < n
-      Ghost mbase m F A delist
-      Loopvar mscs_s <- (mscs, s0)
+    let^ (mscs, n) <- delen lxp ixp dnum mscs;
+    let^ (mscs, s) <- For i < n
+      Ghost [ mbase m F A delist ]
+      Loopvar [ mscs s ]
       Continuation lrx
       Invariant
-        MEMLOG.rep lxp (ActiveTxn mbase m) (fst mscs_s) *
+        MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
         [[ derep_macro F A m bxp ixp dnum delist ]] *
-        [[ snd mscs_s = fold_left f (firstn #i delist) s0 ]]
+        [[ s = fold_left f (firstn #i delist) s0 ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp (ActiveTxn mbase m) mscs'
       Begin
-        let (mscs, s) := (mscs_s : memstate * cachestate * S) in
-        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
+        let^ (mscs, de) <- deget lxp ixp dnum i mscs;
         let s := f s de in
-        lrx (mscs, s)
-      Rof;
-    rx (mscs, s).
+        lrx ^(mscs, s)
+      Rof ^(mscs, s0);
+    rx ^(mscs, s).
 
   Theorem dfold_ok : forall lxp bxp ixp dnum S f (s0 : S) mscs,
     {< mbase m F A delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ derep_macro F A m bxp ixp dnum delist ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = fold_left f delist s0 ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} dfold lxp bxp ixp dnum f s0 mscs.
@@ -333,10 +334,10 @@ Module DIR.
       if (f e) then (true, idx) else (false, (idx ^+ $1)).
 
   Definition dfindp T lxp bxp ixp dnum (f : dent -> bool) mscs rx : prog T :=
-    let2 (mscs, r) <- dfold lxp bxp ixp dnum (dfindp_f f) (false, $0) mscs;
+    let^ (mscs, r) <- dfold lxp bxp ixp dnum (dfindp_f f) (false, $0) mscs;
     match r with
-    | (true, pos) => rx (mscs, Some pos)
-    | (false,  _) => rx (mscs, None)
+    | (true, pos) => rx ^(mscs, Some pos)
+    | (false,  _) => rx ^(mscs, None)
     end.
 
   Definition dfindpN_f (f : dent -> bool) (s : bool * nat) (e : dent) :=
@@ -510,8 +511,8 @@ Module DIR.
     {< F A mbase m delist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ derep_macro F A m bxp ixp dnum delist ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
           ((exists idx e,
              [[ r = Some idx ]] *
              [[ (arrayN_ex delist #idx * #idx |-> e)%pred (list2nmem delist) ]] *
@@ -542,12 +543,12 @@ Module DIR.
     if (weq (de :-> "name") name) then true else false.
 
   Definition dlookup T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
-    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
+    let^ (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
-    | None => rx (mscs, None)
+    | None => rx ^(mscs, None)
     | Some i =>
-        let2 (mscs, de) <- deget lxp ixp dnum i mscs;
-        rx (mscs, Some (de :-> "inum", de :-> "isdir"))
+        let^ (mscs, de) <- deget lxp ixp dnum i mscs;
+        rx ^(mscs, Some (de :-> "inum", de :-> "isdir"))
     end.
 
   Lemma dlookup_f_ok: forall name de,
@@ -727,8 +728,8 @@ Module DIR.
     {< F A mbase m dmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ rep_macro F A m bxp ixp dnum dmap ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            ((exists inum isdir DF,
              [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dmap ]]) \/
             ([[ r = None /\ notindomain name dmap ]]))
@@ -757,8 +758,8 @@ Module DIR.
     else (de :-> "name", (de :-> "inum", de :-> "isdir")) :: s.
 
   Definition dlist T lxp bxp ixp dnum mscs rx : prog T :=
-    let2 (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
-    rx (mscs, r).
+    let^ (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
+    rx ^(mscs, r).
 
   Lemma dlist_fold_listpred' : forall AT AEQ V l l0 a (fm : _ -> @pred AT AEQ V ),
     (listpred fm (a :: fold_left dlist_f l l0))
@@ -798,8 +799,8 @@ Module DIR.
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ rep_macro F A m bxp ixp dnum dmap ]]
-    POST:(mscs',res)
-             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,res)
+             MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ listpred dlmatch res dmap ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} dlist lxp bxp ixp dnum mscs.
@@ -811,12 +812,12 @@ Module DIR.
 
 
   Definition dunlink T lxp bxp ixp dnum name mscs rx : prog T := Eval compute_rec in
-    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
+    let^ (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
-    | None => rx (mscs, false)
+    | None => rx ^(mscs, false)
     | Some i =>
         mscs <- deput lxp ixp dnum i dent0 mscs;
-        rx (mscs, true)
+        rx ^(mscs, true)
     end.
 
   Lemma dmatch_ex_mem_except : forall l name m,
@@ -882,11 +883,11 @@ Module DIR.
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ rep_macro F A m bxp ixp dnum dmap ]]
-    POST:(mscs',r)
-            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ notindomain name dmap ]]) \/
             ([[ r = true ]] * exists m' dmap' DF,
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
              [[ (DF * name |->?)%pred dmap ]] *
              [[ (DF) dmap' ]])
@@ -921,18 +922,18 @@ Module DIR.
 
   Definition dlink T lxp bxp ixp dnum name inum isdir mscs rx : prog T := Eval compute_rec in
     let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum :=> "isdir" := isdir) in
-    let2 (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
+    let^ (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
-    | Some i => rx (mscs, false)
+    | Some i => rx ^(mscs, false)
     | None =>
-        let2 (mscs, r) <- dfindp lxp bxp ixp dnum dlink_f mscs;
+        let^ (mscs, r) <- dfindp lxp bxp ixp dnum dlink_f mscs;
         match r with
         | Some i =>
             mscs <- deput lxp ixp dnum i newde mscs;
-            rx (mscs, true)
+            rx ^(mscs, true)
         | None =>
-            let2 (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
-            rx (mscs, ok)
+            let^ (mscs, ok) <- deext lxp bxp ixp dnum newde mscs;
+            rx ^(mscs, ok)
         end
     end.
 
@@ -1032,10 +1033,10 @@ Module DIR.
     {< F A mbase m dmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ rep_macro F A m bxp ixp dnum dmap ]]
-    POST:(mscs',r) exists m',
-            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
+    POST RET:^(mscs,r) exists m',
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs)
         \/  ([[ r = true ]] * exists dmap' DF,
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dmap' ]] *
              [[ (DF * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (DF dmap /\ notindomain name dmap) ]])

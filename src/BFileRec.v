@@ -58,13 +58,13 @@ Section RECBFILE.
 
   (** Get the [pos]'th item in the [block_ix]'th block of inode [inum] *)
   Definition bf_get_pair T lxp ixp inum block_ix (pos : addr) mscs rx : prog T :=
-    let2 (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
+    let^ (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
     let i := Rec.of_word (Rec.word_selN #pos (valu_to_wreclen itemtype items_per_valu blocksz_ok v)) in
-    rx (mscs, i).
+    rx ^(mscs, i).
 
   (** Update the [pos]'th item in the [block_ix]'th block of inode [inum] to [i] *)
   Definition bf_put_pair T lxp ixp inum block_ix (pos : addr) i mscs rx : prog T :=
-    let2 (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
+    let^ (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
     let v' := wreclen_to_valu itemtype items_per_valu blocksz_ok
               (Rec.word_updN #pos (valu_to_wreclen itemtype items_per_valu blocksz_ok v) (Rec.to_word i)) in
     mscs <- BFILE.bfwrite lxp ixp inum block_ix v' mscs;
@@ -183,8 +183,8 @@ Section RECBFILE.
            [[ length ilistlist = length (BFILE.BFData f) ]] *
            [[ wordToNat block_ix < length (BFILE.BFData f) ]] *
            [[ (pos < items_per_valu)%word ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bf_get_pair lxp ixp inum block_ix pos mscs.
@@ -214,8 +214,9 @@ Section RECBFILE.
              [[ wordToNat block_ix < length (BFILE.BFData f) ]] *
              [[ (pos < items_per_valu)%word ]] *
              [[ Rec.well_formed i ]]
-    POST:mscs' exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:mscs
+             exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * # inum |-> f')%pred (list2nmem flist') ]] *
              [[ array_item_pairs (upd ilistlist block_ix 
@@ -262,9 +263,9 @@ Section RECBFILE.
 
 
   Definition bf_get T lxp ixp inum idx mscs rx : prog T :=
-    let2 (mscs, i) <- bf_get_pair lxp ixp inum (idx ^/ items_per_valu)
+    let^ (mscs, i) <- bf_get_pair lxp ixp inum (idx ^/ items_per_valu)
                                                (idx ^% items_per_valu) mscs;
-    rx (mscs, i).
+    rx ^(mscs, i).
 
   Definition bf_put T lxp ixp inum idx v mscs rx : prog T :=
     mscs <- bf_put_pair lxp ixp inum (idx ^/ items_per_valu)
@@ -272,20 +273,20 @@ Section RECBFILE.
     rx mscs.
 
   Definition bf_getlen T lxp ixp inum mscs rx : prog T :=
-    let2 (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
+    let^ (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
     let r := (len ^* items_per_valu)%word in
-    rx (mscs, r).
+    rx ^(mscs, r).
 
   (* extending one block and put v at the first entry *)
   Definition bf_extend T lxp bxp ixp inum v mscs rx : prog T :=
-    let2 (mscs1, off) <- BFILE.bflen lxp ixp inum mscs;
-    let2 (mscs2, r) <- BFILE.bfgrow lxp bxp ixp inum mscs1;
+    let^ (mscs, off) <- BFILE.bflen lxp ixp inum mscs;
+    let^ (mscs, r) <- BFILE.bfgrow lxp bxp ixp inum mscs;
     If (Bool.bool_dec r true) {
       let ib := rep_block (upd (valu_to_block $0) $0 v) in
-      mscs3 <- BFILE.bfwrite lxp ixp inum off ib mscs2;
-      rx (mscs3, true)
+      mscs <- BFILE.bfwrite lxp ixp inum off ib mscs;
+      rx ^(mscs, true)
     } else {
-      rx (mscs2, false)
+      rx ^(mscs, false)
     }.
 
   Lemma helper_wlt_wmult_wdiv_lt: forall sz (a b : word sz) (c : nat),
@@ -448,8 +449,8 @@ Section RECBFILE.
            [[ array_item_file f ilist ]] *
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = $ (length ilist) ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bf_getlen lxp ixp inum mscs.
@@ -469,8 +470,8 @@ Section RECBFILE.
            [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ wordToNat idx < length ilist ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ r = sel ilist idx item_zero ]]
     CRASH  MEMLOG.log_intact lxp mbase
     >} bf_get lxp ixp inum idx mscs.
@@ -502,8 +503,9 @@ Section RECBFILE.
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ wordToNat idx < length ilist ]] *
              [[ Rec.well_formed v ]]
-    POST:mscs' exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:mscs
+             exists m' flist' f',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ array_item_file f' (upd ilist idx v) ]] *
              [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]]
@@ -536,7 +538,8 @@ Section RECBFILE.
           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
           [[ Rec.well_formed v ]]
-    POST: (mscs', r) exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+    POST RET:^(mscs, r)
+          exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
           ([[ r = false ]] \/
            [[ r = true ]] * exists flist' f',
            [[ array_item_file f' (ilist ++ (upd item0_list $0 v)) ]] *
@@ -560,9 +563,9 @@ Section RECBFILE.
 
     eexists; intuition.
     instantiate (vs_nested := x ++ (upd item0_list $0 v) :: nil).
-    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b4); eauto.
+    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b1); eauto.
     repeat rewrite app_length; rec_bounds.
-    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b4); eauto.
+    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b1); eauto.
     apply array_item_pairs_app; auto.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
     rewrite valu_wreclen_id.
@@ -598,6 +601,3 @@ Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend
 (* Two BFileRec arrays should always be equal *)
 Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>
   unfold okToUnify; constructor : okToUnify.
-
-
-

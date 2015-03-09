@@ -475,34 +475,34 @@ Module SDIR.
 
   Definition dslookup T lxp bxp ixp dnum name mscs rx : prog T :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let2 (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (sname2wname name) mscs;
-      rx (mscs, r)
+      let^ (mscs, r) <- DIR.dlookup lxp bxp ixp dnum (sname2wname name) mscs;
+      rx ^(mscs, r)
     } else {
-      rx (mscs, None)
+      rx ^(mscs, None)
     }.
 
   Definition dsunlink T lxp bxp ixp dnum name mscs rx : prog T :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let2 (mscs, r) <- DIR.dunlink lxp bxp ixp dnum (sname2wname name) mscs;
-      rx (mscs, r)
+      let^ (mscs, r) <- DIR.dunlink lxp bxp ixp dnum (sname2wname name) mscs;
+      rx ^(mscs, r)
     } else {
-      rx (mscs, false)
+      rx ^(mscs, false)
     }.
 
   Definition dslink T lxp bxp ixp dnum name inum isdir mscs rx : prog T :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let2 (mscs, r) <- DIR.dlink lxp bxp ixp dnum (sname2wname name) inum isdir mscs;
-      rx (mscs, r)
+      let^ (mscs, r) <- DIR.dlink lxp bxp ixp dnum (sname2wname name) inum isdir mscs;
+      rx ^(mscs, r)
     } else {
-      rx (mscs, false)
+      rx ^(mscs, false)
     }.
 
   Definition dslist_trans (di : DIR.dlistent) :=
     (wname2sname (fst di), snd di).
 
   Definition dslist T lxp bxp ixp dnum mscs rx : prog T :=
-    let2 (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
-    rx (mscs, List.map dslist_trans r).
+    let^ (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
+    rx ^(mscs, List.map dslist_trans r).
 
   Definition rep f (dsmap : @mem string string_dec (addr * addr)) : Prop :=
     exists dmap, DIR.rep f dmap
@@ -525,8 +525,8 @@ Module SDIR.
     {< F A mbase m dsmap,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            [[ rep_macro F A m bxp ixp dnum dsmap ]]
-    POST:(mscs',r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
            ((exists inum isdir DF,
              [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dsmap ]]) \/
             ([[ r = None /\ notindomain name dsmap ]]))
@@ -584,8 +584,8 @@ Module SDIR.
     {< F A mbase m dsmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ rep_macro F A m bxp ixp dnum dsmap ]]
-    POST:(mscs',res)
-             MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,res)
+             MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ listpred dslmatch res dsmap ]]
     CRASH    MEMLOG.log_intact lxp mbase
     >} dslist lxp bxp ixp dnum mscs.
@@ -602,11 +602,11 @@ Module SDIR.
     {< F A mbase m dsmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ rep_macro F A m bxp ixp dnum dsmap ]]
-    POST:(mscs',r)
-            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs' *
+    POST RET:^(mscs,r)
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ notindomain name dsmap ]]) \/
             ([[ r = true ]] * exists m' dsmap' DF,
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
              [[ (DF * name |->?)%pred dsmap ]] *
              [[ (DF) dsmap' ]])
@@ -631,10 +631,11 @@ Module SDIR.
     {< F A mbase m dsmap,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
              [[ rep_macro F A m bxp ixp dnum dsmap ]]
-    POST:(mscs',r) exists m',
-            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs')
+    POST RET:^(mscs,r)
+            exists m',
+            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs)
         \/  ([[ r = true ]] * exists dsmap' DF,
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs' *
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
              [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
              [[ (DF dsmap /\ notindomain name dsmap) ]])
