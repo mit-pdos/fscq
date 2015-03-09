@@ -347,8 +347,12 @@ Module DIRTREE.
     apply pimpl_or_r; right. cancel.
 
     unfold tree_dir_names_pred; cancel; eauto.
+    rewrite H12. (* from BALLOC.alloc_gen *)
+    cancel.
+    (* XXX the new file is not initialized to empty! *)
     admit.
-    admit.
+
+    apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
     step.
     Grab Existential Variables.
@@ -400,10 +404,14 @@ Module DIRTREE.
 
     unfold tree_dir_names_pred at 1. cancel; eauto.
     unfold tree_dir_names_pred; cancel.
-    instantiate (a1 := BFILE.bfile0). admit.
+    instantiate (a1 := BFILE.bfile0).
+    rewrite H12. cancel.
+    (* XXX need to initialize the directory to empty *)
+    admit.
+
     instantiate (a2 := empty_mem). admit.
     apply emp_empty_mem.
-    admit.
+    apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
     step.
     Grab Existential Variables.
