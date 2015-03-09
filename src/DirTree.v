@@ -301,13 +301,13 @@ Module DIRTREE.
     instantiate (subtree := d2). cancel.
   Qed.
 
-  Definition mknod T fsxp dnum name isdir mscs rx : prog T :=
+  Definition mkfile T fsxp dnum name mscs rx : prog T :=
     let^ (mscs, oi) <- BALLOC.alloc_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) mscs;
     match oi with
     | None => rx ^(mscs, None)
     | Some inum =>
       let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                     dnum name inum isdir mscs;
+                                     dnum name inum $0 mscs;
       If (bool_dec ok true) {
         rx ^(mscs, Some inum)
       } else {
@@ -315,13 +315,49 @@ Module DIRTREE.
       }
     end.
 
-  Definition mkfile T fsxp dnum name mscs rx : prog T :=
-    let^ (mscs, r) <- mknod fsxp dnum name $0 mscs;
-    rx ^(mscs, r).
+  Theorem mknod_ok : forall fsxp dnum name mscs,
+    {< F mbase m Ftop tree,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+           [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
+    POST RET:^(mscs,r)
+           [[ r = None ]] * MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs \/
+           exists m' inum, MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
+           [[ r = Some inum ]] *
+           [[ (F * rep fsxp Ftop dnum ((name, inum, DirFile BFILE.bfile0) :: tree))%pred (list2mem m) ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+    >} mkfile fsxp dnum name mscs.
+  Proof.
+    admit.
+  Qed.
 
   Definition mkdir T fsxp dnum name mscs rx : prog T :=
-    let^ (mscs, r) <- mknod fsxp dnum name $1 mscs;
-    rx ^(mscs, r).
+    let^ (mscs, oi) <- BALLOC.alloc_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) mscs;
+    match oi with
+    | None => rx ^(mscs, None)
+    | Some inum =>
+      let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+                                     dnum name inum $1 mscs;
+      If (bool_dec ok true) {
+        rx ^(mscs, Some inum)
+      } else {
+        rx ^(mscs, None)
+      }
+    end.
+
+  Theorem mkdir_ok : forall fsxp dnum name mscs,
+    {< F mbase m Ftop tree,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+           [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
+    POST RET:^(mscs,r)
+           [[ r = None ]] * MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs \/
+           exists m' inum, MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
+           [[ r = Some inum ]] *
+           [[ (F * rep fsxp Ftop dnum ((name, inum, DirSubdir nil) :: tree))%pred (list2mem m) ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+    >} mkdir fsxp dnum name mscs.
+  Proof.
+    admit.
+  Qed.
 
   Definition delete T fsxp dnum name mscs rx : prog T :=
     let^ (mscs, oi) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
