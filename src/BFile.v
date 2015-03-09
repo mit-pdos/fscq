@@ -517,6 +517,42 @@ Module BFILE.
     admit.
   Qed.
 
+  Definition bftrunc T lxp bxp ixp inum mscs rx : prog T :=
+    let^ (mscs, n) <- bflen lxp ixp inum mscs;
+    let^ (mscs) <- For i < n
+      Ghost [ mbase F A ]
+      Loopvar [ mscs ]
+      Continuation lrx
+      Invariant
+        exists m flist f, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+        [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ length (BFData f) = # (n ^- i) ]]
+      OnCrash
+        MEMLOG.would_recover_old lxp mbase
+      Begin
+        mscs <- bfshrink lxp bxp ixp inum mscs;
+        lrx ^(mscs)
+      Rof ^(mscs);
+    mscs <- bfsetattr lxp ixp inum bfattr0 mscs;
+    rx mscs.
+
+  Theorem bftrunc_ok : forall lxp bxp ixp inum mscs,
+    {< F A mbase m flist f,
+    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST RET:mscs
+             exists m' flist',
+             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+             [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * #inum |-> bfile0)%pred (list2nmem flist') ]]
+    CRASH    MEMLOG.would_recover_old lxp mbase
+    >} bftrunc lxp bxp ixp inum mscs.
+  Proof.
+    admit.
+  Qed.
+
   Hint Extern 1 ({{_}} progseq (bflen _ _ _ _) _) => apply bflen_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfread _ _ _ _ _) _) => apply bfread_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfwrite _ _ _ _ _ _) _) => apply bfwrite_ok : prog.
@@ -524,6 +560,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} progseq (bfshrink _ _ _ _ _) _) => apply bfshrink_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfgetattr _ _ _ _) _) => apply bfgetattr_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfsetattr _ _ _ _ _) _) => apply bfsetattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bftrunc _ _ _ _ _) _) => apply bftrunc_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
