@@ -249,7 +249,7 @@ Module DIRTREE.
 
     step.
     step.
-    destruct (weq b $0); congruence.
+    destruct (weq a1 $0); congruence.
 
     (* destruct some [exists] terms before creating evars.. *)
     eapply pimpl_ok2; [ eauto with prog |].
