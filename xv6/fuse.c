@@ -230,6 +230,12 @@ fuse_utimens(const char *path, const struct timespec tv[2])
   return sys_utime((char *) path, tv[2].tv_sec);
 }
 
+static int
+fuse_chmod(const char *path, mode_t mode)
+{
+  return 0;
+}
+
 static struct fuse_operations fuse_filesystem_operations = {
   .getattr = fuse_getattr,
   .open    = fuse_open,
@@ -244,6 +250,7 @@ static struct fuse_operations fuse_filesystem_operations = {
   .rmdir = fuse_rmdir,
   .rename = fuse_rename,
   .utimens = fuse_utimens,
+  .chmod = fuse_chmod,
 };
 
 void
