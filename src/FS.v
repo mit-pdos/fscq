@@ -447,3 +447,10 @@ Definition rename T fsxp dsrc srcname ddst dstname mscs rx : prog T :=
     mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
     rx ^(mscs, false)
   }.
+
+Definition statfs T fsxp mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
+  let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  rx ^(mscs, free_blocks, free_inodes).

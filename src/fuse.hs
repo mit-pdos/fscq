@@ -84,7 +84,7 @@ fscqFSOps ds fr fsxp = defaultFuseOps
   , fuseSetFileSize = fscqSetFileSize fr fsxp
   , fuseOpenDirectory = fscqOpenDirectory fr fsxp
   , fuseReadDirectory = fscqReadDirectory fr fsxp
-  , fuseGetFileSystemStats = fscqGetFileSystemStats
+  , fuseGetFileSystemStats = fscqGetFileSystemStats fr fsxp
   , fuseDestroy = fscqDestroy ds
   , fuseSetFileTimes = fscqSetFileTimes
   , fuseRename = fscqRename fr fsxp
@@ -363,15 +363,18 @@ fscqSetFileSize fr fsxp (_:path) size = do
       | otherwise -> return eISDIR
 fscqSetFileSize _ _ _ _ = return eIO
 
-fscqGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-fscqGetFileSystemStats _ =
+fscqGetFileSystemStats :: FSrunner -> Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
+fscqGetFileSystemStats fr fsxp _ = do
+  (freeblocks, (freeinodes, ())) <- fr $ FS.statfs fsxp
+  block_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPBlockAlloc fsxp
+  inode_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPInodeAlloc fsxp
   return $ Right $ FileSystemStats
     { fsStatBlockSize = 4096
-    , fsStatBlockCount = 1
-    , fsStatBlocksFree = 1
-    , fsStatBlocksAvailable = 1
-    , fsStatFileCount = 5
-    , fsStatFilesFree = 10
+    , fsStatBlockCount = 8 * 4096 * (fromIntegral $ wordToNat 64 block_bitmaps)
+    , fsStatBlocksFree = fromIntegral $ wordToNat 64 freeblocks
+    , fsStatBlocksAvailable = fromIntegral $ wordToNat 64 freeblocks
+    , fsStatFileCount = 8 * 4096 * (fromIntegral $ wordToNat 64 inode_bitmaps)
+    , fsStatFilesFree = fromIntegral $ wordToNat 64 freeinodes
     , fsStatMaxNameLength = fromIntegral DirName._SDIR__namelen
     }
 
