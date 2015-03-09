@@ -64,7 +64,6 @@ Module INODE.
   Definition irec0 := @Rec.of_word inodetype $0.
 
   Definition itemsz := Rec.len inodetype.
-  Eval compute in itemsz.
   Definition items_per_valu : addr := $ (valulen / itemsz).
   Theorem itemsz_ok : valulen = wordToNat items_per_valu * itemsz.
   Proof.
