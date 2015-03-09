@@ -144,7 +144,7 @@ Module BALLOC.
   Definition alloc' T lxp xp mscs rx : prog T :=
     mscs <- For i < (BmapNBlocks xp ^* $ (valulen))
       Ghost mbase m
-      Loopvar mscs <- mscs
+      Loopvar mscs
       Continuation lrx
       Invariant
         MEMLOG.rep lxp (ActiveTxn mbase m) mscs
@@ -161,7 +161,7 @@ Module BALLOC.
         } else {
           lrx mscs
         }
-      Rof;
+      Rof mscs;
     rx ^(mscs, None).
 
   Hint Rewrite natToWord_wordToNat selN_map_seq.
@@ -202,7 +202,7 @@ Module BALLOC.
   Definition init' T lxp xp mscs rx : prog T :=
     mscs <- For i < (BmapNBlocks xp)
       Ghost mbase F
-      Loopvar mscs <- mscs
+      Loopvar mscs
       Continuation lrx
       Invariant
         exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
@@ -215,7 +215,7 @@ Module BALLOC.
       Begin
         mscs <- MEMLOG.write_array lxp (BmapStart xp) i $1 $0 mscs;
         lrx mscs
-      Rof;
+      Rof mscs;
     rx mscs.
 
   Definition bmap0 : addr -> alloc_state :=
@@ -311,7 +311,7 @@ Module BALLOC.
     apply fupd_other.
     eapply remove_still_In_ne; eauto.
 
-    assert (a2 <> a0).
+    assert (a3 <> a0).
     intro He. subst. rewrite fupd_same in *. discriminate. trivial.
     rewrite fupd_other in * by assumption.
     apply remove_other_In. assumption.

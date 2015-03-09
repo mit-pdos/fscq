@@ -37,13 +37,13 @@ Notation "'RET' : r post" :=
   )%pred
   (at level 0, post at level 90, r at level 0, only parsing).
 
-Notation "'RET' : ^( ra , rb , .. , rc ) post" :=
+Notation "'RET' : ^( ra , .. , rb ) post" :=
   (fun F =>
-    (pair_args_helper (fun rb => ..
-      (pair_args_helper (fun rc ra => (F * post)%pred))
+    (pair_args_helper (fun ra => ..
+      (pair_args_helper (fun rb (_:unit) => (F * post)%pred))
     ..))
   )%pred
-  (at level 0, post at level 90, rb closed binder, rc closed binder, only parsing).
+  (at level 0, post at level 90, ra closed binder, rb closed binder, only parsing).
 
 Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2

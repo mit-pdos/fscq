@@ -31,7 +31,7 @@ Set Implicit Arguments.
 
 Definition memstate := Map.t valu.
 Definition ms_empty := Map.empty valu.
-Definition memstate_cachestate := (cachestate * memstate)%type.
+Definition memstate_cachestate := (memstate * (cachestate * unit))%type.
 
 Definition diskstate := list valu.
 
