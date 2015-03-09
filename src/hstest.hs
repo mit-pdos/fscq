@@ -67,9 +67,9 @@ main = do
   --         Nothing -> return (s, Nothing)
   --         Just xv -> I.run ds $ Testprog.test_bfile fsxp xv s)
 
-  (s, setok) <- I.run ds $ FS.set_size fsxp (W 3) (W 68) s
+  (s, (setok, ())) <- I.run ds $ FS.set_size fsxp (W 3) (W 68) s
   putStrLn $ "set_size: " ++ (show setok)
-  (s, r) <- repf2 1000 False s $ \s -> I.run ds $ Testprog.test_bfile_bulkwrite fsxp (W 99) (W 64) s
+  (s, (r, ())) <- repf2 1000 False s $ \s -> I.run ds $ Testprog.test_bfile_bulkwrite fsxp (W 99) (W 64) s
 
   stats <- close_disk ds
   print_stats stats

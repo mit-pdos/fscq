@@ -28,8 +28,8 @@ all: hstest fuse
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
-	$(GHC) $(GHCARGS) -Wall $(HSLIB_POST) -ihslib -icodegen
-	$(GHC) $(GHCARGS) -Wall $< -ihslib -icodegen -o $@
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
 
 coqbuild/%.v: %.v strip-proofs.py
 	@mkdir -p coqbuild
