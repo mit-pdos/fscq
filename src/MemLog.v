@@ -358,7 +358,6 @@ Module MEMLOG.
     >} begin xp mscs.
   Proof.
     unfold begin; log_unfold.
-    destruct mscs as [ms cs].
     hoare.
     unfold valid_entries; intuition.
     inversion H.
