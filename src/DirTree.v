@@ -200,13 +200,17 @@ Module DIRTREE.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
-      Ghost [ mbase m F Ftop treetop bflist freeinode_pred ]
+      Ghost [ mbase m F Ftop treetop bflist freeinodes freeinode_pred_unused freeinode_pred ]
       Loopvar [ mscs inum isdir ]
       Continuation lrx
       Invariant
         MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
         exists tree,
-        [[ (F * rep fsxp Ftop dnum treetop)%pred (list2mem m) ]] *
+        [[ (F * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
+            BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred)%pred
+           (list2mem m) ]] *
+        [[ (Ftop * tree_dir_names_pred dnum treetop *
+            tree_pred treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
         [[ isdir <> $0 ->
            (exists Fsub, Fsub * tree_dir_names_pred inum tree *
             tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
@@ -241,15 +245,11 @@ Module DIRTREE.
   Proof.
     unfold namei, rep.
     step.
-
-    match goal with
-    | [ H: _ (list2nmem _) |- _ ] => pred_apply' H
-    end.
-    cancel.
-
     step.
     step.
+
     destruct (weq a1 $0); congruence.
+    exists $0. exists emp. exists nil. intros; discriminate.
 
     (* destruct some [exists] terms before creating evars.. *)
     eapply pimpl_ok2; [ eauto with prog |].
@@ -269,9 +269,9 @@ Module DIRTREE.
     intros; norm'l; split_or_l; unfold stars; simpl;
       norm'l; unfold stars; simpl; inv_option_eq.
 
-    rewrite H10; clear H10. destruct (weq b $0); try congruence.
+    rewrite H10; clear H10. destruct (weq a1 $0); try congruence.
     (* check whether, for the next loop iteration, [isdir] is $0 or $1 *)
-    destruct (weq a2 $0).
+    destruct (weq a6 $0).
     cancel.
 
     eapply find_name_file; eauto.
@@ -285,10 +285,20 @@ Module DIRTREE.
     pred_apply' H4. cancel.
 
     step.
-    rewrite H10; clear H10. destruct (weq b $0); try congruence.
+    rewrite H10; clear H10. destruct (weq a1 $0); try congruence.
     erewrite find_name_none; eauto.
 
+    exists $0. exists emp. exists nil. intros; discriminate.
+
     step.
+
+    destruct (weq a1 $0) as [Ha1|Ha1].
+    exists $0; exists emp; exists nil; subst. inversion 1.
+    apply H10 in Ha1. destruct_lift Ha1.
+
+    exists a0; do 2 eexists; intro Heq; inversion Heq; subst.
+    pred_apply' H3. clear H5. cancel.
+    instantiate (subtree := d2). cancel.
   Qed.
 
   Definition mknod T fsxp dnum name isdir mscs rx : prog T :=
