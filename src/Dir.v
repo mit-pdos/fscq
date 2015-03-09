@@ -1084,4 +1084,15 @@ Module DIR.
   Hint Extern 1 ({{_}} progseq (dlink _ _ _ _ _ _ _ _) _) => apply dlink_ok : prog.
   Hint Extern 1 ({{_}} progseq (dlist _ _ _ _ _) _) => apply dlist_ok : prog.
 
+
+  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Proof.
+    unfold rep, derep.
+    exists nil.
+    intuition.
+    apply BFileRec.bfile0_empty.
+    firstorder.
+  Qed.
+
+
 End DIR.

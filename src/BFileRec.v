@@ -590,6 +590,16 @@ Section RECBFILE.
   Qed.
 
 
+  Theorem bfile0_empty : array_item_file BFILE.bfile0 nil.
+  Proof.
+    unfold array_item_file, array_item_pairs.
+    exists nil; intuition.
+    unfold BFILE.bfile0; simpl.
+    assert (emp (list2nmem (@nil valu))) by firstorder.
+    pred_apply. cancel.
+  Qed.
+
+
 End RECBFILE.
 
 

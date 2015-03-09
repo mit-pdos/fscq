@@ -695,4 +695,16 @@ Module SDIR.
   Hint Extern 1 ({{_}} progseq (dslist _ _ _ _ _) _) => apply dslist_ok : prog.
 
 
+  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Proof.
+    unfold rep.
+    exists empty_mem.
+    intuition.
+    apply DIR.bfile0_empty.
+    inversion H; discriminate.
+    inversion H; discriminate.
+    firstorder.
+  Qed.
+
+
 End SDIR.

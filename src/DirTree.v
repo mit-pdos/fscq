@@ -409,7 +409,7 @@ Module DIRTREE.
     (* XXX need to initialize the directory to empty *)
     admit.
 
-    instantiate (a2 := empty_mem). admit.
+    instantiate (a2 := empty_mem). apply SDIR.bfile0_empty.
     apply emp_empty_mem.
     apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
