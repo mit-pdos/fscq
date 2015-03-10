@@ -311,7 +311,7 @@ Module DIRTREE.
       If (bool_dec ok true) {
         mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                               inum mscs;
-        rx ^(mscs, Some inum)
+        rx ^(mscs, Some (inum : addr))
       } else {
         rx ^(mscs, None)
       }
@@ -376,7 +376,7 @@ Module DIRTREE.
       If (bool_dec ok true) {
         mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                               inum mscs;
-        rx ^(mscs, Some inum)
+        rx ^(mscs, Some (inum : addr))
       } else {
         rx ^(mscs, None)
       }
