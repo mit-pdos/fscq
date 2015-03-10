@@ -413,6 +413,8 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
+    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+                            (INODE.Build_iattr $0 $0 $0) mscs;
     let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
