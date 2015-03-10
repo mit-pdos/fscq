@@ -516,6 +516,16 @@ Module BFILE.
     unfold rep; pred_apply; cancel.
   Qed.
 
+  Ltac bftrunc_bfdata_bound :=
+    match goal with
+    | [ H1 : context [ listmatch (file_match _) ?ll _ ],
+        H2 : (_ * _ |-> ?ff)%pred (list2nmem ?ll)
+           |- length (BFData ?ff) <= _ ] =>
+      eapply sep_star_bfdata_bound with (f := ff) (l1 := ll); eauto
+    end.
+
+  Local Hint Extern 1 (length (BFData _) <= _) => bftrunc_bfdata_bound.
+
   Lemma helper_wordToNat_wminus_0 : forall n (b : addr),
     n <= #b -> n = # ((natToWord addrlen n) ^- $0).
   Proof.
@@ -524,11 +534,48 @@ Module BFILE.
     erewrite wordToNat_natToWord_bound; eauto.
   Qed.
 
-  Local Hint Resolve helper_wordToNat_wminus_0.
-  Local Hint Extern 1 (length (BFData _) <= wordToNat _) =>
-        solve [ eapply sep_star_bfdata_bound; eauto ] : core.
-  Local Hint Unfold rep : hoare_unfold.
+  Lemma helper_bfdata_length_gt0 : forall (m : addr) n n0 (b : addr),
+    n0 = # ($ n ^- m)%word
+    -> (m < $ n)%word
+    -> n <= # b -> n0 <= #b
+    -> n0 > 0.
+  Proof.
+    intros.
+    apply wlt_lt in H0.
+    destruct n eqn: Heq.
+    contradict H0; simpl; omega.
+    rewrite wminus_minus in H.
+    erewrite wordToNat_natToWord_bound in * by eauto.
+    omega.
+    apply le_wle; omega.
+  Qed.
 
+  Lemma wlt_wle_incl : forall sz (a b : word sz),
+    (a < b)%word -> (a <= b)%word.
+  Proof.
+    intros.
+    apply wlt_lt in H.
+    apply le_wle.
+    omega.
+  Qed.
+
+  Lemma helper_sub1_wplus1_eq : forall n (m b : addr),
+    (m < $ n)%word  -> n <= # b
+    -> # ($ n ^- m ) - 1 = # ($ n ^- (m ^+ $1)).
+  Proof.
+    intros.
+    repeat erewrite wminus_minus.
+    erewrite wordToNat_natToWord_bound in * by eauto.
+    erewrite wordToNat_plusone by eauto; omega.
+    apply le_wle.
+    erewrite wordToNat_plusone; eauto.
+    apply wlt_lt in H; omega.
+    apply wlt_wle_incl; auto.
+  Qed.
+
+  Local Hint Resolve wlt_wle_incl.
+  Local Hint Resolve helper_wordToNat_wminus_0.
+  Local Hint Unfold rep : hoare_unfold.
 
   Theorem bftrunc_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m flist f,
@@ -547,9 +594,22 @@ Module BFILE.
     step.
     step.
     subst; eauto.
+    step.
 
-    (* XXX *)
-    admit.
+    eapply helper_bfdata_length_gt0; eauto.
+    list2nmem_ptsto_cancel. eauto.
+    apply helper_minus_one_lt; eauto.
+    eapply helper_bfdata_length_gt0; eauto.
+
+    (* Coq bug: do the rewrite first so that `step` won't get stuck *)
+    rewrite wminus_minus in H10 by auto.
+    step; subst; simpl.
+    rewrite <- wminus_minus in H10 by auto.
+    rewrite length_removelast.
+    rewrite H10.
+    eapply helper_sub1_wplus1_eq; eauto.
+    apply length_not_nil.
+    eapply helper_bfdata_length_gt0; eauto.
 
     step.
     step.
