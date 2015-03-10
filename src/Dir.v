@@ -249,9 +249,12 @@ Module DIR.
   Hint Extern 1 ({{_}} progseq (deput _ _ _ _ _ _) _) => apply deput_ok : prog.
   Hint Extern 1 ({{_}} progseq (deext _ _ _ _ _ _) _) => apply deext_ok : prog.
 
-  Definition dmatch (de: dent) : @pred filename (@weq filename_len) (addr * addr) :=
+  Definition isdir2bool (isdir : addr) := if weq isdir $0 then false else true.
+  Definition bool2isdir (isdir : bool) : addr := if isdir then $1 else $0.
+
+  Definition dmatch (de: dent) : @pred filename (@weq filename_len) (addr * bool) :=
     if weq (de :-> "valid") $0 then emp
-    else (de :-> "name") |-> (de :-> "inum", de :-> "isdir").
+    else (de :-> "name") |-> (de :-> "inum", isdir2bool (de :-> "isdir")).
 
   Theorem dmatch_complete : forall de m1 m2, dmatch de m1 -> dmatch de m2 -> m1 = m2.
   Proof.
@@ -266,7 +269,7 @@ Module DIR.
   Definition rep f dmap :=
     exists delist, derep f delist /\ listpred dmatch delist dmap.
 
-  Definition rep_macro F1 F2 m bxp ixp (inum : addr) (dmap : @mem filename (@weq filename_len) (addr * addr)) :=
+  Definition rep_macro F1 F2 m bxp ixp (inum : addr) (dmap : @mem filename (@weq filename_len) (addr * bool)) :=
     exists flist f,
     rep f dmap /\
     (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
@@ -547,8 +550,8 @@ Module DIR.
     match r with
     | None => rx ^(mscs, None)
     | Some i =>
-        let^ (mscs, de) <- deget lxp ixp dnum i mscs;
-        rx ^(mscs, Some (de :-> "inum", de :-> "isdir"))
+        let^ (mscs, (de : dent)) <- deget lxp ixp dnum i mscs;
+        rx ^(mscs, Some (de :-> "inum", isdir2bool (de :-> "isdir")))
     end.
 
   Lemma dlookup_f_ok: forall name de,
@@ -599,7 +602,7 @@ Module DIR.
   Qed.
 
 
-  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) (addr * addr) :=
+  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) (addr * bool) :=
     if (weq (de :-> "name") name) then emp
     else dmatch de.
 
@@ -708,7 +711,8 @@ Module DIR.
   Lemma dlookup_ptsto: forall F l name a (de : dent),
     dlookup_f name de = true
     -> (F * a |-> de)%pred (list2nmem l)
-    -> listpred dmatch l =p=> (name |-> (de :-> "inum", de :-> "isdir") * listpred (dmatch_ex name) l).
+    -> listpred dmatch l =p=>
+       (name |-> (de :-> "inum", isdir2bool (de :-> "isdir")) * listpred (dmatch_ex name) l).
   Proof.
     unfold pimpl; intros.
     apply dlookup_f_ok in H; destruct H.
@@ -749,13 +753,13 @@ Module DIR.
   Qed.
 
 
-  Definition dlistent := (filename * (addr * addr))%type.
+  Definition dlistent := (filename * (addr * bool))%type.
   Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) _ :=
     fst de |-> snd de.
 
   Definition dlist_f (s : list dlistent) (de : dent) := Eval compute_rec in
     if (weq (de :-> "valid") $0) then s
-    else (de :-> "name", (de :-> "inum", de :-> "isdir")) :: s.
+    else (de :-> "name", (de :-> "inum", isdir2bool (de :-> "isdir"))) :: s.
 
   Definition dlist T lxp bxp ixp dnum mscs rx : prog T :=
     let^ (mscs, r) <- dfold lxp bxp ixp dnum dlist_f nil mscs;
@@ -783,7 +787,7 @@ Module DIR.
     unfold dmatch at 1; unfold dlist_f at 3; rec_simpl.
     destruct (weq (fst (snd (snd a))) $0) eqn:HV.
     rewrite star_emp_pimpl; auto.
-    pose proof (dlist_fold_listpred' l nil (fst a, (fst (snd a), fst (snd (snd (snd a))))) dlmatch).
+    pose proof (dlist_fold_listpred' l nil (fst a, (fst (snd a), isdir2bool (fst (snd (snd (snd a)))))) dlmatch).
     simpl in H; apply H.
   Qed.
 
@@ -863,7 +867,7 @@ Module DIR.
     -> listpred dmatch b (mem_except m (v :-> "name")).
   Proof.
     intros.
-    eapply ptsto_mem_except with (v := (v :-> "inum", v :-> "isdir")).
+    eapply ptsto_mem_except with (v := (v :-> "inum", isdir2bool (v :-> "isdir"))).
     erewrite <- list2nmem_array_updN with (nl := b); eauto; try list2nmem_bound.
     pred_apply.
     erewrite listpred_updN by list2nmem_bound.
@@ -921,7 +925,10 @@ Module DIR.
     if (weq (de :-> "valid") $0) then true else false.
 
   Definition dlink T lxp bxp ixp dnum name inum isdir mscs rx : prog T := Eval compute_rec in
-    let newde := (dent0 :=> "valid" := $1 :=> "name" := name :=> "inum" := inum :=> "isdir" := isdir) in
+    let newde := (dent0 :=> "valid" := $1
+                        :=> "name" := name
+                        :=> "inum" := inum
+                        :=> "isdir" := bool2isdir isdir) in
     let^ (mscs, r) <- dfindp lxp bxp ixp dnum (dlookup_f name) mscs;
     match r with
     | Some i => rx ^(mscs, false)
@@ -968,7 +975,7 @@ Module DIR.
     -> (arrayN_ex l i * i |-> v0)%pred (list2nmem l)
     -> (arrayN_ex l i * i |-> (name, (inum, ($1, (isdir, tt)))))%pred (list2nmem l')
     -> dlink_f v0 = true
-    -> listpred dmatch l' (Prog.upd m name (inum, isdir)).
+    -> listpred dmatch l' (Prog.upd m name (inum, isdir2bool isdir)).
   Proof.
     intros.
     rewrite_list2nmem_pred_sel H1; try list2nmem_bound.
@@ -1001,7 +1008,7 @@ Module DIR.
     -> Forall (fun e => dlink_f e = false) l
     -> listpred dmatch l m
     -> listpred dmatch (l ++ (updN (repeat dent0 # (items_per_valu)) 0
-           (name, (inum, ($1, (isdir, tt)))))) (Prog.upd m name (inum, isdir)).
+           (name, (inum, ($1, (isdir, tt)))))) (Prog.upd m name (inum, isdir2bool isdir)).
   Proof.
     intros.
     pose proof (items_per_valu_not_0' items_per_valu).
