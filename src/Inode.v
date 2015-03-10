@@ -970,7 +970,8 @@ Module INODE.
              [[ r = true ]] *
              [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]]
+             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]] *
+             [[ ino' = Build_inode ((IBlocks ino) ++ [a]) (IAttr ino) ]]
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow_direct lxp xp i0 inum a mscs.
   Proof.
@@ -979,9 +980,7 @@ Module INODE.
 
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
-    eapply pimpl_ok2; eauto with prog; intros; cancel.
-
-    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (IAttr i)).
+    step.
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
@@ -1080,7 +1079,8 @@ Module INODE.
              [[ r = true ]] *
              [[ (F * rep bxp xp ilist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]]
+             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]] *
+             [[ ino' = Build_inode ((IBlocks ino) ++ [a]) (IAttr ino) ]]
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow_indirect lxp xp i0 inum a mscs.
   Proof.
@@ -1099,10 +1099,7 @@ Module INODE.
     step.
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
-    eapply pimpl_ok2; eauto with prog; intros; cancel.
-
-    (* constructing the new inode *)
-    instantiate (a1 := Build_inode ((IBlocks i) ++ [a]) (IAttr i)).
+    step.
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
@@ -1169,7 +1166,8 @@ Module INODE.
              [[ r = true ]] * exists ilist' ino' freelist',
              [[ (F * rep bxp xp ilist' * BALLOC.rep bxp freelist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]])
+             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]] *
+             [[ ino' = Build_inode ((IBlocks ino) ++ [a]) (IAttr ino) ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow_alloc lxp bxp xp i0 inum a mscs.
   Proof.
@@ -1200,9 +1198,6 @@ Module INODE.
     irec_well_formed.
     step.
     eapply pimpl_or_r; right; cancel.
-
-    (* constructing the new inode *)
-    instantiate (a0 := Build_inode ((IBlocks i) ++ [a]) (IAttr i)).
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
@@ -1271,7 +1266,8 @@ Module INODE.
              [[ r = true ]] * exists ilist' ino' freelist',
              [[ (F * rep bxp xp ilist' * BALLOC.rep bxp freelist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]])
+             [[ (B * length (IBlocks ino) |-> a)%pred (list2nmem (IBlocks ino')) ]] *
+             [[ ino' = Build_inode ((IBlocks ino) ++ [a]) (IAttr ino) ]])
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} igrow lxp bxp xp inum a mscs.
   Proof.
@@ -1281,10 +1277,10 @@ Module INODE.
     destruct_listmatch_n.
     list2nmem_ptsto_cancel; inode_bounds.
 
-    unfold rep in H0; destruct_lift H0.
+    unfold rep in H10; destruct_lift H10.
     eapply pimpl_or_r; right; cancel; eauto.
 
-    unfold rep in H0; destruct_lift H0.
+    unfold rep in H11; destruct_lift H11.
     eapply pimpl_or_r; right; cancel; eauto.
   Qed.
 
@@ -1352,7 +1348,8 @@ Module INODE.
              MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
              [[ (F * rep bxp xp ilist' * BALLOC.rep bxp freelist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> ino')%pred (list2nmem ilist') ]] *
-             [[  B (list2nmem (IBlocks ino')) ]]
+             [[  B (list2nmem (IBlocks ino')) ]] *
+             [[ ino' = Build_inode (removelast (IBlocks ino)) (IAttr ino) ]]
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} ishrink lxp bxp xp inum mscs.
   Proof.
@@ -1379,10 +1376,7 @@ Module INODE.
 
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
-    eapply pimpl_ok2; eauto with prog; intros; cancel.
-
-    (* constructing the new inode *)
-    instantiate (a1 := Build_inode (removelast (IBlocks i)) (IAttr i)).
+    step.
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_removelast; eauto.
 
@@ -1429,10 +1423,7 @@ Module INODE.
     step.
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
-    eapply pimpl_ok2; eauto with prog; intros; cancel.
-
-    (* constructing the new inode *)
-    instantiate (a1 := Build_inode (removelast (IBlocks i)) (IAttr i)).
+    step.
     2: eapply list2nmem_upd; eauto.
     2: simpl; eapply list2nmem_removelast; eauto.
 
