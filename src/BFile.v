@@ -188,6 +188,53 @@ Module BFILE.
   Qed.
 
 
+  Theorem bfgetattr_ok : forall lxp bxp ixp inum mscs,
+    {< F A mbase m flist f,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ r = BFAttr f ]]
+    CRASH  MEMLOG.would_recover_old lxp mbase
+    >} bfgetattr lxp ixp inum mscs.
+  Proof.
+    unfold bfgetattr, rep.
+    hoare.
+    list2nmem_ptsto_cancel; file_bounds.
+
+    rewrite_list2nmem_pred.
+    destruct_listmatch_n.
+    congruence.
+  Qed.
+
+  Theorem bfsetattr_ok : forall lxp bxp ixp inum attr mscs,
+    {< F A mbase m flist f,
+    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST RET:mscs
+           exists m' flist' f',
+           MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+           [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ f' = Build_bfile (BFData f) attr ]]
+    CRASH  MEMLOG.would_recover_old lxp mbase
+    >} bfsetattr lxp ixp inum attr mscs.
+  Proof.
+    unfold bfsetattr, rep.
+    hoare.
+    list2nmem_ptsto_cancel; file_bounds.
+    2: eapply list2nmem_upd; eauto.
+
+    repeat rewrite_list2nmem_pred; file_bounds.
+    destruct_listmatch_n.
+    eapply listmatch_updN_selN; file_bounds.
+    autorewrite with defaults; unfold file_match.
+    cancel.
+  Qed.
+
+
   Theorem bfread_ok : forall lxp bxp ixp inum off mscs,
     {<F A B mbase m flist f v,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -450,50 +497,6 @@ Module BFILE.
     unfold sel; shrink_bounds.
   Qed.
 
-  Theorem bfgetattr_ok : forall lxp bxp ixp inum mscs,
-    {< F A mbase m flist f,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
-           [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ r = BFAttr f ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
-    >} bfgetattr lxp ixp inum mscs.
-  Proof.
-    unfold bfgetattr, rep.
-    hoare.
-    list2nmem_ptsto_cancel; file_bounds.
-
-    rewrite_list2nmem_pred.
-    destruct_listmatch_n.
-    congruence.
-  Qed.
-
-  Theorem bfsetattr_ok : forall lxp bxp ixp inum attr mscs,
-    {< F A mbase m flist f,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
-           [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST RET:mscs
-           exists m' flist' f',
-           MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-           [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
-           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ BFAttr f' = attr ]] *
-           [[ BFData f' = BFData f ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
-    >} bfsetattr lxp ixp inum attr mscs.
-  Proof.
-    unfold bfsetattr, rep.
-    hoare.
-    list2nmem_ptsto_cancel; file_bounds.
-
-    admit.
-    repeat rewrite_list2nmem_pred.
-    destruct_listmatch_n.
-    admit.
-  Qed.
 
   Definition bftrunc T lxp bxp ixp inum mscs rx : prog T :=
     let^ (mscs, n) <- bflen lxp ixp inum mscs;
