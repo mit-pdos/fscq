@@ -44,6 +44,25 @@ Module DIRTREE.
       fold_right (find_name_helper (find_name rest) name) None tree
     end.
 
+  Definition find_file_helper (rec : dirtree -> option (BFILE.bfile * addr) -> option (BFILE.bfile * addr))
+                              name
+                              (arg : string * addr * dir_item)
+                              (accum : option (BFILE.bfile * addr)) :=
+    let '(name', inum', item') := arg in
+    if string_dec name' name then
+    match item' with
+    | DirFile f => rec nil (Some (f, inum'))
+    | DirSubdir tree' => rec tree' None
+    end
+    else accum.
+
+  Fixpoint find_file (fnlist : list string) (tree : dirtree) (ret : option (BFILE.bfile * addr)) :=
+    match fnlist with
+    | nil => ret
+    | name :: rest =>
+      fold_right (find_file_helper (find_file rest) name) None tree
+    end.
+
   Fixpoint tree_dir_names_pred' (dirlist : dirtree) : @pred _ string_dec (addr * addr) :=
     match dirlist with
     | nil => emp
@@ -430,8 +449,8 @@ Module DIRTREE.
     exact emp.
   Qed.
 
-
-  Definition dir_updater := dirtree -> dirtree.
+(*
+  Definition dir_updater := dir_item -> dir_item.
 
   Definition update_tree_helper (rec : dirtree -> dirtree) name
                                 (arg : string * addr * dir_item)
@@ -483,7 +502,7 @@ Module DIRTREE.
     pred_apply. cancel.
     admit.
   Qed.
-
+*)
 
   Definition delete T fsxp dnum name mscs rx : prog T :=
     let^ (mscs, oi) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
@@ -547,5 +566,47 @@ Module DIRTREE.
         }
       end
     end.
+
+  Definition read T fsxp inum off mscs rx : prog T :=
+    let^ (mscs, v) <- BFILE.bfread (FSXPMemLog fsxp) (FSXPInode fsxp) inum off mscs;
+    rx ^(mscs, v).
+
+  Definition write T fsxp inum off v mscs rx : prog T :=
+    mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
+    rx mscs.
+
+  Theorem read_ok : forall fsxp inum off mscs,
+    {< F mbase m rootdnum pathname Ftop tree f B v,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+           [[ (F * rep fsxp Ftop rootdnum tree)%pred (list2mem m) ]] *
+           [[ find_file pathname tree None = Some (f, inum) ]] *
+           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
+    POST RET:^(mscs,r)
+           MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+           [[ r = v ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+    >} read fsxp inum off mscs.
+  Proof.
+    admit.
+  Qed.
+
+  Theorem write_ok : forall fsxp inum off v mscs,
+    {< F mbase m rootdnum pathname Ftop tree f B v0,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+           [[ (F * rep fsxp Ftop rootdnum tree)%pred (list2mem m) ]] *
+           [[ find_file pathname tree None = Some (f, inum) ]] *
+           [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
+    POST RET:mscs
+           exists m' tree' f',
+           MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
+           [[ (F * rep fsxp Ftop rootdnum tree')%pred (list2mem m') ]] *
+           (* [[ tree' = update tree pathname f' ]] * *)
+           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]] *
+           [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+    >} write fsxp inum off v mscs.
+  Proof.
+    admit.
+  Qed.
 
 End DIRTREE.
