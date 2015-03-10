@@ -454,42 +454,49 @@ Module DIRTREE.
     exact emp.
   Qed.
 
-(*
-  Definition dir_updater := dir_item -> dir_item.
+  Definition dir_updater := dirtree -> dirtree.
 
-  Definition update_tree_helper (rec : dirtree -> dirtree) name
-                                (arg : string * addr * dir_item)
-                                (accum : dirtree) :=
-    let '(name', inum', item') := arg in
-    if string_dec name' name then
-    match item' with
-    | DirFile _ => arg :: accum
-    | DirSubdir tree' => (name', inum', DirSubdir (rec tree')) :: accum
-    end
-    else arg :: accum.
+  Definition update_tree_helper (rec : dirtree -> dirtree)
+                                name
+                                (dirent : string * dirtree) :=
+    let (ent_name, ent_tree) := dirent in
+    if string_dec ent_name name then (ent_name, rec ent_tree) else dirent.
 
   Fixpoint update_tree (fnlist : list string) (updater : dir_updater) (tree : dirtree) :=
     match fnlist with
     | nil => updater tree
     | name :: rest =>
-      fold_right (update_tree_helper (update_tree rest updater) name) nil tree
+      match tree with
+      | TreeFile _ _ => tree
+      | TreeDir inum ents =>
+        TreeDir inum (map (update_tree_helper (update_tree rest updater) name) ents)
+      end
     end.
 
-  Definition add_to_dir (dir : dirtree) (name : string) (inum : addr) (newitem : dir_item) :=
-    (name, inum, newitem) :: dir.
+  Definition add_to_dir (name : string) (newitem : dirtree) tree :=
+    match tree with
+    | TreeFile _ _ => tree
+    | TreeDir inum ents => TreeDir inum ((name, newitem) :: ents)
+    end.
 
-  Fixpoint delete_from_dir (dir : dirtree) (name : string) :=
-    match dir with
+  Fixpoint delete_from_list (name : string) (ents : list (string * dirtree)) :=
+    match ents with
     | nil => nil
     | hd :: rest =>
-      let '(name', _, _) := hd in
-      if string_dec name' name then
-        delete_from_dir rest name
+      let (ent_name, ent_item) := hd in
+      if string_dec ent_name name then
+        rest
       else
-        hd :: delete_from_dir rest name
+        hd :: rest
     end.
 
+  Definition delete_from_dir (name : string) tree :=
+    match tree with
+    | TreeFile _ _ => tree
+    | TreeDir inum ents => TreeDir inum (delete_from_list name ents)
+    end.
 
+(*
   Theorem update_subtree : forall fsxp fnlist treetop m F Ftop itop
                                   Fsub isub treesub
                                   m' updater,
@@ -596,6 +603,8 @@ Module DIRTREE.
     admit.
   Qed.
 
+  Definition set_file (f : dirtree) (oldtree : dirtree) := f.
+
   Theorem write_ok : forall fsxp inum off v mscs,
     {< F mbase m rootdnum pathname Ftop tree f B v0,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
@@ -607,7 +616,7 @@ Module DIRTREE.
            exists m' tree' f',
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
            [[ (F * rep fsxp Ftop tree')%pred (list2mem m') ]] *
-           (* [[ tree' = update tree pathname f' ]] * *)
+           [[ tree' = update_tree pathname (set_file (TreeFile inum f')) tree ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]] *
            [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
