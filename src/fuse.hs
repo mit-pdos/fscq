@@ -24,6 +24,7 @@ import FSLayout
 import Control.Monad
 import qualified DirName
 import System.Environment
+import Inode
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
@@ -120,9 +121,14 @@ dirStat ctx = FileStat
   , statStatusChangeTime = 0
   }
 
-fileStat :: FuseContext -> FileOffset -> FileStat
-fileStat ctx len = FileStat
-  { statEntryType = RegularFile
+attrToType :: INODE__Coq_iattr -> EntryType
+attrToType attr =
+  if t == 0 then RegularFile else Socket
+  where t = wordToNat 32 $ _INODE__coq_IType attr
+
+fileStat :: FuseContext -> INODE__Coq_iattr -> FileStat
+fileStat ctx attr = FileStat
+  { statEntryType = attrToType attr
   , statFileMode = foldr1 unionFileModes
                      [ ownerReadMode, ownerWriteMode, ownerExecuteMode
                      , groupReadMode, groupWriteMode, groupExecuteMode
@@ -132,10 +138,10 @@ fileStat ctx len = FileStat
   , statFileOwner = fuseCtxUserID ctx
   , statFileGroup = fuseCtxGroupID ctx
   , statSpecialDeviceID = 0
-  , statFileSize = len
+  , statFileSize = fromIntegral $ wordToNat 64 $ _INODE__coq_ISize attr
   , statBlocks = 1
   , statAccessTime = 0
-  , statModificationTime = 0
+  , statModificationTime = fromIntegral $ wordToNat 32 $ _INODE__coq_IMTime attr
   , statStatusChangeTime = 0
   }
 
@@ -143,7 +149,7 @@ fscqGetFileStat :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno Fi
 fscqGetFileStat fr fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
-    return $ Right $ fileStat ctx 1024
+    return $ Right $ fileStat ctx (INODE__Build_iattr (W 1024) (W 0) (W 0))
   | otherwise = do
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
@@ -151,9 +157,9 @@ fscqGetFileStat fr fsxp (_:path)
     Nothing -> return $ Left eNOENT
     Just (inum, isdir)
       | wordToNat 64 isdir == 0 -> do
-        (len, ()) <- fr $ FS.file_get_sz fsxp inum
+        (attr, ()) <- fr $ FS.file_get_attr fsxp inum
         ctx <- getFuseContext
-        return $ Right $ fileStat ctx $ fromIntegral $ wordToNat 64 len
+        return $ Right $ fileStat ctx attr
       | otherwise -> do
         ctx <- getFuseContext
         return $ Right $ dirStat ctx
@@ -188,8 +194,8 @@ fscqReadDirectory fr fsxp (_:path) = do
   where
     mkstat ctx (fn, (inum, isdir))
       | wordToNat 64 isdir == 0 = do
-        (len, ()) <- fr $ FS.file_get_sz fsxp inum
-        return $ (fn, fileStat ctx $ fromIntegral $ wordToNat 64 len)
+        (attr, ()) <- fr $ FS.file_get_attr fsxp inum
+        return $ (fn, fileStat ctx attr)
       | otherwise = return $ (fn, dirStat ctx)
 
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
@@ -212,7 +218,7 @@ splitDirsFile path = (init parts, last parts)
   where parts = splitDirectories path
 
 fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
-fscqCreate fr fsxp (_:path) RegularFile _ _ = do
+fscqCreate fr fsxp (_:path) entrytype _ _ = do
   (dirparts, filename) <- return $ splitDirsFile path
   (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   case rd of
@@ -220,7 +226,10 @@ fscqCreate fr fsxp (_:path) RegularFile _ _ = do
     Just (dnum, isdir)
       | wordToNat 64 isdir == 0 -> return eNOTDIR
       | otherwise -> do
-        (r, ()) <- fr $ FS.create fsxp dnum filename
+        (r, ()) <- case entrytype of
+          RegularFile -> fr $ FS.create fsxp dnum filename
+          Socket -> fr $ FS.mksock fsxp dnum filename
+          _ -> return (Nothing, ())
         case r of
           Nothing -> return eNOSPC
           Just _ -> return eOK

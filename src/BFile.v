@@ -69,28 +69,6 @@ Module BFILE.
     mscs <- INODE.isetattr lxp ixp inum sz mscs;
     rx mscs.
 
-  (* define per-attribute getter/setter for compatibility.
-     TODO: replace them with generalized getter/setter *)
-
-  Definition bfgetsz T lxp ixp inum mscs rx : prog T :=
-    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
-    rx ^(mscs, INODE.ISize n).
-
-  Definition bfsetsz T lxp ixp inum sz mscs rx : prog T :=
-    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
-    let attr := INODE.Build_iattr sz (INODE.IMTime n) in
-    mscs <- bfsetattr lxp ixp inum attr mscs;
-    rx mscs.
-
-  Definition bfgetmtime T lxp ixp inum mscs rx : prog T :=
-    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
-    rx ^(mscs, INODE.IMTime n).
-
-  Definition bfsetmtime T lxp ixp inum ts mscs rx : prog T :=
-    let^ (mscs, n) <- bfgetattr lxp ixp inum mscs;
-    let attr := INODE.Build_iattr (INODE.ISize n) ts in
-    mscs <- bfsetattr lxp ixp inum attr mscs;
-    rx mscs.
 
   (* representation invariants *)
 

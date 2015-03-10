@@ -35,21 +35,34 @@ Module INODE.
 
   Definition iattrtype : Rec.type := Rec.RecF ([
     ("size",   Rec.WordF addrlen) ;   (* file size in bytes *)
-    ("mtime",  Rec.WordF addrlen)]).  (* last modify time *)
+    ("mtime",  Rec.WordF 32) ;        (* last modify time *)
+    ("itype",  Rec.WordF 32)          (* type, used to represent Unix domain sockets *)
+  ]).
 
   Definition iarec  := Rec.data iattrtype.
   Definition iarec0 := @Rec.of_word iattrtype $0.
 
   Record iattr := {
     ISize : addr;
-    IMTime : addr
+    IMTime : word 32;
+    IType : word 32
   }.
 
+  Definition iattr0 := Build_iattr $0 $0 $0.
+
   Definition pack_attr (ia : iattr) := Eval compute_rec in
-    iarec0 :=> "size" := (ISize ia) :=> "mtime" := (IMTime ia).
+    iarec0 :=> "size" := (ISize ia)
+           :=> "mtime" := (IMTime ia)
+           :=> "itype" := (IType ia).
 
   Definition unpack_attr (iar : iarec) := Eval compute_rec in
-    Build_iattr (iar :-> "size") (iar :-> "mtime").
+    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype").
+
+  Definition iattr_match ia (rec : iarec) : Prop :=
+    ISize ia = rec :-> "size" /\
+    IMTime ia = rec :-> "mtime" /\
+    IType ia = rec :-> "itype".
+
 
   Definition nr_direct := 12.
   Definition wnr_direct := natToWord addrlen nr_direct.
@@ -324,7 +337,6 @@ Module INODE.
     IAttr : iattr
   }.
 
-  Definition iattr0 := Build_iattr $0 $0.
   Definition inode0 := Build_inode nil iattr0.
 
   Definition ilen T lxp xp inum mscs rx : prog T := Eval compute_rec in
@@ -456,9 +468,6 @@ Module INODE.
     unfold blocks_per_inode in H1.
     omega.
   Qed.
-
-  Definition iattr_match ia (rec : iarec) : Prop :=
-    ISize ia = rec :-> "size" /\ IMTime ia = rec :-> "mtime".
 
   Definition inode_match bxp ino (rec : irec) : @pred addr (@weq addrlen) valu := (
     [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
@@ -744,7 +753,10 @@ Module INODE.
     -> unpack_attr iar = ia.
   Proof.
     unfold iattr_match, unpack_attr; rec_simpl.
-    intros ia iar H; destruct H; destruct ia.
+    intros ia iar H; destruct ia.
+    repeat match goal with
+    | [ H : _ /\ _ |- _ ] => destruct H
+    end.
     repeat match goal with
     | [ H : ?a = ?b |- context [ ?b ] ] => rewrite <- H
     end.

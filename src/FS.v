@@ -79,15 +79,26 @@ Definition file_nblocks T fsxp inum mscs rx : prog T :=
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, len).
 
+Definition file_get_attr T fsxp inum mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  rx ^(mscs, attr).
+
 Definition file_get_sz T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, sz) <- BFILE.bfgetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-  rx ^(mscs, sz).
+  rx ^(mscs, INODE.ISize attr).
 
 Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  mscs <- BFILE.bfsetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum sz mscs;
+  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+                          (INODE.Build_iattr sz
+                                             (INODE.IMTime attr)
+                                             (INODE.IType attr))
+                          mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, ok).
 
@@ -361,7 +372,7 @@ Definition set_size T fsxp inum size mscs rx : prog T :=
 
 Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, oldsz) <- BFILE.bfgetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
   let^ (mscs, curlen) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
   mscs <- IfRx irx (wlt_dec off curlen) {
     irx mscs
@@ -375,8 +386,12 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
     }
   };
   mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
-  mscs <- IfRx irx (wlt_dec oldsz newsz) {
-    mscs <- BFILE.bfsetsz (FSXPMemLog fsxp) (FSXPInode fsxp) inum newsz mscs;
+  mscs <- IfRx irx (wlt_dec (INODE.ISize oldattr) newsz) {
+    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+                            (INODE.Build_iattr newsz
+                                               (INODE.IMTime oldattr)
+                                               (INODE.IType oldattr))
+                            mscs;
     irx mscs
   } else {
     irx mscs
@@ -398,6 +413,23 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
+    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    match ok with
+    | true => rx ^(mscs, Some inum)
+    | false => rx ^(mscs, None)
+    end
+  end.
+
+Definition mksock T fsxp dnum name mscs rx : prog T :=
+  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  let^ (mscs, oi) <- DIRTREE.mkfile fsxp dnum name mscs;
+  match oi with
+  | None =>
+    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    rx ^(mscs, None)
+  | Some inum =>
+    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+                            (INODE.Build_iattr $0 $0 $1) mscs;
     let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
