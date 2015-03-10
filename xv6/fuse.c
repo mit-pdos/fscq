@@ -30,6 +30,7 @@ int sys_mkdir(char *path);
 int sys_unlink(char *path);
 int sys_rename(char *path1, char *path2);
 int sys_utime(char *path, int time);
+int sys_mksock(char *path);
 
 // Special file for statistics.  cat /stats returns the results and
 // resets the counters to 0.
@@ -79,7 +80,13 @@ fuse_getattr(const char *path, struct stat *stbuf)
   fsstats.ngetattr++;
   int r = sys_fstat(path, (char *) &st);
   if (r >= 0) {
-    stbuf->st_mode = (st.type == T_DIR) ? S_IFDIR | 0777 : S_IFREG | 0777;
+    stbuf->st_mode = 0777;
+    if (st.type == T_DIR)
+      stbuf->st_mode |= S_IFDIR;
+    else if (st.type == T_SOCK)
+      stbuf->st_mode |= S_IFSOCK;
+    else
+      stbuf->st_mode |= S_IFREG;
     stbuf->st_nlink = st.nlink;
     stbuf->st_size = st.size;
     stbuf->st_atime = st.atime;
@@ -236,6 +243,14 @@ fuse_chmod(const char *path, mode_t mode)
   return 0;
 }
 
+static int
+fuse_mknod(const char *path, mode_t m, dev_t d)
+{
+  if (!S_ISSOCK(m))
+    return -1;
+  return sys_mksock((char*) path);
+}
+
 static struct fuse_operations fuse_filesystem_operations = {
   .getattr = fuse_getattr,
   .open    = fuse_open,
@@ -251,6 +266,7 @@ static struct fuse_operations fuse_filesystem_operations = {
   .rename = fuse_rename,
   .utimens = fuse_utimens,
   .chmod = fuse_chmod,
+  .mknod = fuse_mknod,
 };
 
 void

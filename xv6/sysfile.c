@@ -181,6 +181,20 @@ sys_mkdir(char *path) {
   return 0;
 }
 
+int
+sys_mksock(char *path) {
+  struct inode *ip;
+
+  begin_op();
+  if((ip = create(path, T_SOCK, 0, 0)) == 0){
+    end_op();
+    return -1;
+  }
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
 // Is the directory dp empty except for "." and ".." ?
 static int
 isdirempty(struct inode *dp)
