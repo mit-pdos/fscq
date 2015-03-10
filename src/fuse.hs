@@ -25,12 +25,13 @@ import Control.Monad
 import qualified DirName
 import System.Environment
 import Inode
+import Control.Concurrent.MVar
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
 
 verboseFuse :: Bool
-verboseFuse = True
+verboseFuse = False
 
 debug :: String -> IO ()
 debug msg =
@@ -89,27 +90,28 @@ run_fuse disk_fn fuse_args = do
       return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
-  fuseRun "fscq" fuse_args (fscqFSOps ds (doFScall ds ref) fsxp) defaultExceptionHandler
+  m_fsxp <- newMVar fsxp
+  fuseRun "fscq" fuse_args (fscqFSOps ds (doFScall ds ref) m_fsxp) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: DiskState -> FSrunner -> Coq_fs_xparams -> FuseOperations HT
-fscqFSOps ds fr fsxp = defaultFuseOps
-  { fuseGetFileStat = fscqGetFileStat fr fsxp
-  , fuseOpen = fscqOpen fr fsxp
-  , fuseCreateDevice = fscqCreate fr fsxp
-  , fuseCreateDirectory = fscqCreateDir fr fsxp
-  , fuseRemoveLink = fscqUnlink fr fsxp
-  , fuseRemoveDirectory = fscqUnlink fr fsxp
-  , fuseRead = fscqRead ds fr fsxp
-  , fuseWrite = fscqWrite fr fsxp
-  , fuseSetFileSize = fscqSetFileSize fr fsxp
-  , fuseOpenDirectory = fscqOpenDirectory fr fsxp
-  , fuseReadDirectory = fscqReadDirectory fr fsxp
-  , fuseGetFileSystemStats = fscqGetFileSystemStats fr fsxp
+fscqFSOps :: DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
+fscqFSOps ds fr m_fsxp = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat fr m_fsxp
+  , fuseOpen = fscqOpen fr m_fsxp
+  , fuseCreateDevice = fscqCreate fr m_fsxp
+  , fuseCreateDirectory = fscqCreateDir fr m_fsxp
+  , fuseRemoveLink = fscqUnlink fr m_fsxp
+  , fuseRemoveDirectory = fscqUnlink fr m_fsxp
+  , fuseRead = fscqRead ds fr m_fsxp
+  , fuseWrite = fscqWrite fr m_fsxp
+  , fuseSetFileSize = fscqSetFileSize fr m_fsxp
+  , fuseOpenDirectory = fscqOpenDirectory fr m_fsxp
+  , fuseReadDirectory = fscqReadDirectory fr m_fsxp
+  , fuseGetFileSystemStats = fscqGetFileSystemStats fr m_fsxp
   , fuseDestroy = fscqDestroy ds
   , fuseSetFileTimes = fscqSetFileTimes
-  , fuseRename = fscqRename fr fsxp
+  , fuseRename = fscqRename fr m_fsxp
   , fuseSetFileMode = fscqChmod
   }
 
@@ -161,12 +163,12 @@ fileStat ctx attr = FileStat
   , statStatusChangeTime = 0
   }
 
-fscqGetFileStat :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
-fscqGetFileStat fr fsxp (_:path)
+fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat fr m_fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
     return $ Right $ fileStat ctx (INODE__Build_iattr (W 1024) (W 0) (W 0))
-  | otherwise = do
+  | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
@@ -183,8 +185,8 @@ fscqGetFileStat fr fsxp (_:path)
         return $ Right $ fileStat ctx attr
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
-fscqOpenDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
-fscqOpenDirectory fr fsxp (_:path) = do
+fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO Errno
+fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPENDIR" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
@@ -196,8 +198,8 @@ fscqOpenDirectory fr fsxp (_:path) = do
       | otherwise -> return eNOTDIR
 fscqOpenDirectory _ _ "" = return eNOENT
 
-fscqReadDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fr fsxp (_:path) = do
+fscqReadDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "READDIR" path
   ctx <- getFuseContext
   nameparts <- return $ splitDirectories path
@@ -208,13 +210,13 @@ fscqReadDirectory fr fsxp (_:path) = do
     Just (dnum, isdir)
       | isdir -> do
         (files, ()) <- fr $ FS.readdir fsxp dnum
-        files_stat <- mapM (mkstat ctx) files
+        files_stat <- mapM (mkstat fsxp ctx) files
         return $ Right $ [(".",          dirStat ctx)
                          ,("..",         dirStat ctx)
                          ] ++ files_stat
       | otherwise -> return $ Left $ eNOTDIR
   where
-    mkstat ctx (fn, (inum, isdir))
+    mkstat fsxp ctx (fn, (inum, isdir))
       | isdir = return $ (fn, dirStat ctx)
       | otherwise = do
         (attr, ()) <- fr $ FS.file_get_attr fsxp inum
@@ -222,10 +224,10 @@ fscqReadDirectory fr fsxp (_:path) = do
 
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
-fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen fr fsxp (_:path) _ _
+fscqOpen :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqOpen fr m_fsxp (_:path) _ _
   | path == "stats" = return $ Right $ W 0
-  | otherwise = do
+  | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPEN" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
@@ -241,8 +243,8 @@ splitDirsFile :: String -> ([String], String)
 splitDirsFile path = (init parts, last parts)
   where parts = splitDirectories path
 
-fscqCreate :: FSrunner -> Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
-fscqCreate fr fsxp (_:path) entrytype _ _ = do
+fscqCreate :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
+fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
   debugStart "CREATE" path
   (dirparts, filename) <- return $ splitDirsFile path
   (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
@@ -262,8 +264,8 @@ fscqCreate fr fsxp (_:path) entrytype _ _ = do
       | otherwise -> return eNOTDIR
 fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
 
-fscqCreateDir :: FSrunner -> Coq_fs_xparams -> FilePath -> FileMode -> IO Errno
-fscqCreateDir fr fsxp (_:path) _ = do
+fscqCreateDir :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileMode -> IO Errno
+fscqCreateDir fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
   debugStart "MKDIR" path
   (dirparts, filename) <- return $ splitDirsFile path
   (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
@@ -280,8 +282,8 @@ fscqCreateDir fr fsxp (_:path) _ = do
       | otherwise -> return eNOTDIR
 fscqCreateDir _ _ _ _ = return eOPNOTSUPP
 
-fscqUnlink :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
-fscqUnlink fr fsxp (_:path) = do
+fscqUnlink :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO Errno
+fscqUnlink fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "UNLINK" path
   (dirparts, filename) <- return $ splitDirsFile path
   (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
@@ -324,8 +326,8 @@ compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
 compute_ranges off count =
   compute_ranges_int (fromIntegral off) (fromIntegral count)
 
-fscqRead :: DiskState -> FSrunner -> Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
-fscqRead ds fr fsxp (_:path) inum byteCount offset
+fscqRead :: DiskState -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
+fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   | path == "stats" = do
     Stats r w s <- get_stats ds
     clear_stats ds
@@ -334,16 +336,16 @@ fscqRead ds fr fsxp (_:path) inum byteCount offset
       "Writes: " ++ (show w) ++ "\n" ++
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
-  | otherwise = do
+  | otherwise = withMVar m_fsxp $ \fsxp -> do
   (wlen, ()) <- fr $ FS.file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   offset' <- return $ min offset len
   byteCount' <- return $ min byteCount $ (fromIntegral len) - (fromIntegral offset')
-  pieces <- mapM read_piece $ compute_ranges offset' byteCount'
+  pieces <- mapM (read_piece fsxp) $ compute_ranges offset' byteCount'
   return $ Right $ BS.concat pieces
 
   where
-    read_piece (BR blk off count) = do
+    read_piece fsxp (BR blk off count) = do
       (W w, ()) <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
       bs <- i2bs w
       return $ BS.take count $ BS.drop off bs
@@ -363,12 +365,12 @@ data WriteState =
    WriteOK !ByteCount
  | WriteErr !ByteCount
 
-fscqWrite :: FSrunner -> Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
-fscqWrite fr fsxp path inum bs offset = do
+fscqWrite :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
+fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   debugStart "WRITE" (path, inum)
   (wlen, ()) <- fr $ FS.file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
-  r <- foldM (write_piece len) (WriteOK 0) (compute_range_pieces offset bs)
+  r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
   case r of
     WriteOK c -> return $ Right c
     WriteErr c ->
@@ -378,8 +380,8 @@ fscqWrite fr fsxp path inum bs offset = do
         return $ Right c
 
   where
-    write_piece _ (WriteErr c) _ = return $ WriteErr c
-    write_piece init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
+    write_piece _ _ (WriteErr c) _ = return $ WriteErr c
+    write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
       (W w, ()) <- if blk*blocksize < init_len then
           fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
         else
@@ -395,8 +397,8 @@ fscqWrite fr fsxp path inum bs offset = do
       else
         return $ WriteErr c
 
-fscqSetFileSize :: FSrunner -> Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
-fscqSetFileSize fr fsxp (_:path) size = do
+fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
+fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
   debugStart "SETSIZE" (path, size)
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
@@ -413,8 +415,8 @@ fscqSetFileSize fr fsxp (_:path) size = do
           return eIO
 fscqSetFileSize _ _ _ _ = return eIO
 
-fscqGetFileSystemStats :: FSrunner -> Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
-fscqGetFileSystemStats fr fsxp _ = do
+fscqGetFileSystemStats :: FSrunner -> MVar Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
+fscqGetFileSystemStats fr m_fsxp _ = withMVar m_fsxp $ \fsxp -> do
   (freeblocks, (freeinodes, ())) <- fr $ FS.statfs fsxp
   block_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPBlockAlloc fsxp
   inode_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPInodeAlloc fsxp
@@ -432,8 +434,8 @@ fscqSetFileTimes :: FilePath -> EpochTime -> EpochTime -> IO Errno
 fscqSetFileTimes _ _ _ = do
   return eOK
 
-fscqRename :: FSrunner -> Coq_fs_xparams -> FilePath -> FilePath -> IO Errno
-fscqRename fr fsxp (_:src) (_:dst) = do
+fscqRename :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FilePath -> IO Errno
+fscqRename fr m_fsxp (_:src) (_:dst) = withMVar m_fsxp $ \fsxp -> do
   debugStart "RENAME" (src, dst)
   (srcparts, srcname) <- return $ splitDirsFile src
   (dstparts, dstname) <- return $ splitDirsFile dst
