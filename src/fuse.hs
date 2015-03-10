@@ -156,13 +156,13 @@ fscqGetFileStat fr fsxp (_:path)
   case r of
     Nothing -> return $ Left eNOENT
     Just (inum, isdir)
-      | wordToNat 64 isdir == 0 -> do
+      | isdir -> do
+        ctx <- getFuseContext
+        return $ Right $ dirStat ctx
+      | otherwise -> do
         (attr, ()) <- fr $ FS.file_get_attr fsxp inum
         ctx <- getFuseContext
         return $ Right $ fileStat ctx attr
-      | otherwise -> do
-        ctx <- getFuseContext
-        return $ Right $ dirStat ctx
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
@@ -172,8 +172,8 @@ fscqOpenDirectory fr fsxp (_:path) = do
   case r of
     Nothing -> return eNOENT
     Just (_, isdir)
-      | wordToNat 64 isdir == 0 -> return eNOTDIR
-      | otherwise -> return eOK
+      | isdir -> return eOK
+      | otherwise -> return eNOTDIR
 fscqOpenDirectory _ _ "" = return eNOENT
 
 fscqReadDirectory :: FSrunner -> Coq_fs_xparams -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
@@ -184,19 +184,19 @@ fscqReadDirectory fr fsxp (_:path) = do
   case r of
     Nothing -> return $ Left $ eNOENT
     Just (dnum, isdir)
-      | wordToNat 64 isdir == 0 -> return $ Left $ eNOTDIR
-      | otherwise -> do
+      | isdir -> do
         (files, ()) <- fr $ FS.readdir fsxp dnum
         files_stat <- mapM (mkstat ctx) files
         return $ Right $ [(".",          dirStat ctx)
                          ,("..",         dirStat ctx)
                          ] ++ files_stat
+      | otherwise -> return $ Left $ eNOTDIR
   where
     mkstat ctx (fn, (inum, isdir))
-      | wordToNat 64 isdir == 0 = do
+      | isdir = return $ (fn, dirStat ctx)
+      | otherwise = do
         (attr, ()) <- fr $ FS.file_get_attr fsxp inum
         return $ (fn, fileStat ctx attr)
-      | otherwise = return $ (fn, dirStat ctx)
 
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
@@ -209,8 +209,8 @@ fscqOpen fr fsxp (_:path) _ _
   case r of
     Nothing -> return $ Left eNOENT
     Just (inum, isdir)
-      | wordToNat 64 isdir == 0 -> return $ Right $ inum
-      | otherwise -> return $ Left eISDIR
+      | isdir -> return $ Left eISDIR
+      | otherwise -> return $ Right $ inum
 fscqOpen _ _ _ _ _ = return $ Left eIO
 
 splitDirsFile :: String -> ([String], String)
@@ -224,8 +224,7 @@ fscqCreate fr fsxp (_:path) entrytype _ _ = do
   case rd of
     Nothing -> return eNOENT
     Just (dnum, isdir)
-      | wordToNat 64 isdir == 0 -> return eNOTDIR
-      | otherwise -> do
+      | isdir -> do
         (r, ()) <- case entrytype of
           RegularFile -> fr $ FS.create fsxp dnum filename
           Socket -> fr $ FS.mksock fsxp dnum filename
@@ -233,6 +232,7 @@ fscqCreate fr fsxp (_:path) entrytype _ _ = do
         case r of
           Nothing -> return eNOSPC
           Just _ -> return eOK
+      | otherwise -> return eNOTDIR
 fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
 
 fscqCreateDir :: FSrunner -> Coq_fs_xparams -> FilePath -> FileMode -> IO Errno
@@ -242,12 +242,12 @@ fscqCreateDir fr fsxp (_:path) _ = do
   case rd of
     Nothing -> return eNOENT
     Just (dnum, isdir)
-      | wordToNat 64 isdir == 0 -> return eNOTDIR
-      | otherwise -> do
+      | isdir -> do
         (r, ()) <- fr $ FS.mkdir fsxp dnum filename
         case r of
           Nothing -> return eNOSPC
           Just _ -> return eOK
+      | otherwise -> return eNOTDIR
 fscqCreateDir _ _ _ _ = return eOPNOTSUPP
 
 fscqUnlink :: FSrunner -> Coq_fs_xparams -> FilePath -> IO Errno
@@ -257,12 +257,12 @@ fscqUnlink fr fsxp (_:path) = do
   case rd of
     Nothing -> return eNOENT
     Just (dnum, isdir)
-      | wordToNat 64 isdir == 0 -> return eNOTDIR
-      | otherwise -> do
+      | isdir -> do
         (r, ()) <- fr $ FS.delete fsxp dnum filename
         case r of
           True -> return eOK
           False -> return eIO
+      | otherwise -> return eNOTDIR
 fscqUnlink _ _ _ = return eOPNOTSUPP
 
 -- Wrappers for converting Coq_word to/from ByteString, with
@@ -368,13 +368,13 @@ fscqSetFileSize fr fsxp (_:path) size = do
   case r of
     Nothing -> return eNOENT
     Just (inum, isdir)
-      | wordToNat 64 isdir == 0 -> do
+      | isdir -> return eISDIR
+      | otherwise -> do
         (ok, ()) <- fr $ FS.file_set_sz fsxp inum (W64 $ fromIntegral size)
         if ok then
           return eOK
         else
           return eIO
-      | otherwise -> return eISDIR
 fscqSetFileSize _ _ _ _ = return eIO
 
 fscqGetFileSystemStats :: FSrunner -> Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
@@ -404,13 +404,12 @@ fscqRename fr fsxp (_:src) (_:dst) = do
   (rdst, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dstparts
   case (rsrc, rdst) of
     (Just (dsrc, isdirsrc), Just (ddst, isdirdst))
-      | wordToNat 64 isdirsrc == 0 || wordToNat 64 isdirdst == 0 ->
-        return eNOTDIR
-      | otherwise -> do
+      | isdirsrc && isdirdst -> do
         (r, ()) <- fr $ FS.rename fsxp dsrc srcname ddst dstname
         case r of
           True -> return eOK
           False -> return eIO
+      | otherwise -> return eNOTDIR
     _ -> return eNOENT
 fscqRename _ _ _ _ = return eIO
 
