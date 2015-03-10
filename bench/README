@@ -1,29 +1,7 @@
-How to run the app-bench.sh benchmark:
+How to run the benchmarks:
 
-  1. Make a copy of the fscq repo, without doc or wiki, and make a
-     fresh git commit, placing the resulting repo in /tmp/fscq-clean.
+  Make a copy of the fscq repo, without doc or wiki, and make a
+  fresh git commit, placing the resulting repo in /tmp/fscq-clean.
 
-  FSCQ
-
-    cd ../src
-    dd if=/dev/zero of=/dev/sda3 bs=4096 count=34310
-    ./mkfs /dev/sda3
-    ./fuse /dev/sda3 -s -f /tmp/ft
-
-    script app-bench-fscq.out -c './app-bench.sh /tmp/fscq-clean /tmp/ft'
-
-  xv6
-
-    cd ../xv6
-    ./mkfs /dev/sda3
-    ./xv6fs /dev/sda3 -s -f /tmp/ft
-
-    script app-bench-xv6.out -c './app-bench.sh /tmp/fscq-clean /tmp/ft'
-
-  Linux
-
-    mke2fs -j /dev/sda3
-    mount /dev/sda3 /tmp/ft -o data=journal,sync
-    chmod 777 /tmp/ft
-
-    script app-bench-ext3.out -c './app-bench.sh /tmp/fscq-clean /tmp/ft'
+  ./run-bench.sh app-bench './app-bench.sh /tmp/fscq-clean /tmp/ft'
+  ./run-bench.sh mailbench './mailbench.sh ~/proj/sv6 /tmp/ft'
