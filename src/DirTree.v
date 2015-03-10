@@ -20,97 +20,97 @@ Set Implicit Arguments.
 
 Module DIRTREE.
 
-  Inductive dir_item :=
-  | DirFile : BFILE.bfile -> dir_item
-  | DirSubdir : list (string * addr * dir_item) -> dir_item.
+  Inductive dirtree :=
+  | TreeFile : addr -> BFILE.bfile -> dirtree
+  | TreeDir  : addr -> list (string * dirtree) -> dirtree.
 
-  Definition dirtree := list (string * addr * dir_item).
-
-  Definition find_name_helper (rec : dirtree -> addr -> addr -> option (addr * addr)) name
-                              (arg : string * addr * dir_item) (accum : option (addr * addr)) :=
-    let '(name', inum', item') := arg in
-    if string_dec name' name then
-    match item' with
-    | DirFile _ => rec nil inum' $0
-    | DirSubdir tree' => rec tree' inum' $1
-    end
-    else accum.
-
-  Fixpoint find_name (fnlist : list string) (tree : dirtree) (inum : addr) (isdir : addr) :=
-    match fnlist with
-    | nil => Some (inum, isdir)
-    | name :: rest =>
-      if weq isdir $0 then None else
-      fold_right (find_name_helper (find_name rest) name) None tree
+  Definition dirtree_inum (dt : dirtree) :=
+    match dt with
+    | TreeFile inum _ => inum
+    | TreeDir  inum _ => inum
     end.
 
-  Definition find_file_helper (rec : dirtree -> option (BFILE.bfile * addr) -> option (BFILE.bfile * addr))
-                              name
-                              (arg : string * addr * dir_item)
-                              (accum : option (BFILE.bfile * addr)) :=
-    let '(name', inum', item') := arg in
-    if string_dec name' name then
-    match item' with
-    | DirFile f => rec nil (Some (f, inum'))
-    | DirSubdir tree' => rec tree' None
-    end
-    else accum.
+  Definition find_name_helper {T} (rec : dirtree -> option T) name
+                              (dirent : string * dirtree)
+                              (accum : option T) :=
+    let (ent_name, ent_item) := dirent in
+    if string_dec ent_name name then rec ent_item else accum.
 
-  Fixpoint find_file (fnlist : list string) (tree : dirtree) (ret : option (BFILE.bfile * addr)) :=
+  Fixpoint find_name (fnlist : list string) (tree : dirtree) :=
     match fnlist with
-    | nil => ret
+    | nil =>
+      match tree with
+      | TreeFile inum _ => Some (inum, false)
+      | TreeDir inum _ => Some (inum, true)
+      end
     | name :: rest =>
-      fold_right (find_file_helper (find_file rest) name) None tree
+      match tree with
+      | TreeFile _ _ => None
+      | TreeDir _ dirents =>
+        fold_right (find_name_helper (find_name rest) name) None dirents
+      end
     end.
 
-  Fixpoint tree_dir_names_pred' (dirlist : dirtree) : @pred _ string_dec (addr * addr) :=
-    match dirlist with
+  Fixpoint find_file (fnlist : list string) (tree : dirtree) :=
+    match fnlist with
+    | nil =>
+      match tree with
+      | TreeFile inum f => Some (inum, f)
+      | TreeDir _ _ => None
+      end
+    | name :: rest =>
+      match tree with
+      | TreeFile _ _ => None
+      | TreeDir _ dirents =>
+        fold_right (find_name_helper (find_file rest) name) None dirents
+      end
+    end.
+
+  Fixpoint tree_dir_names_pred' (dirents : list (string * dirtree)) : @pred _ string_dec (addr * bool) :=
+    match dirents with
     | nil => emp
-    | (name, inum, DirFile f) :: dirlist' => name |-> (inum, $0) * tree_dir_names_pred' dirlist'
-    | (name, inum, DirSubdir s) :: dirlist' => name |-> (inum, $1) * tree_dir_names_pred' dirlist'
+    | (name, TreeFile inum f) :: dirlist' => name |-> (inum, false) * tree_dir_names_pred' dirlist'
+    | (name, TreeDir  inum s) :: dirlist' => name |-> (inum, true)  * tree_dir_names_pred' dirlist'
     end.
 
-  Definition tree_dir_names_pred (dir_inum : addr) (dirlist : dirtree) : @pred _ eq_nat_dec _ := (
+  Definition tree_dir_names_pred (dir_inum : addr) (dirents : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
     exists f dsmap,
     #dir_inum |-> f *
     [[ SDIR.rep f dsmap ]] *
-    [[ tree_dir_names_pred' dirlist dsmap ]])%pred.
+    [[ tree_dir_names_pred' dirents dsmap ]])%pred.
 
   Section DIRITEM.
 
-  Variable F : addr -> dir_item -> @pred nat eq_nat_dec BFILE.bfile.
+  Variable F : dirtree -> @pred nat eq_nat_dec BFILE.bfile.
 
-  Fixpoint tree_pred' (dirlist : dirtree) : @pred _ eq_nat_dec _ := (
+  Fixpoint dirlist_pred' (dirlist : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
     match dirlist with
     | nil => emp
-    | (_, inum, dir_item) :: dirlist' => F inum dir_item * tree_pred' dirlist'
+    | (_, e) :: dirlist' => F e * dirlist_pred' dirlist'
     end)%pred.
 
   End DIRITEM.
 
-  Fixpoint diritem_pred inum diritem := (
-    match diritem with
-    | DirFile f => #inum |-> f
-    | DirSubdir s => tree_dir_names_pred inum s * tree_pred' diritem_pred s
+  Fixpoint tree_pred e := (
+    match e with
+    | TreeFile inum f => #inum |-> f
+    | TreeDir inum s => tree_dir_names_pred inum s * dirlist_pred' tree_pred s
     end)%pred.
 
-  Definition tree_pred (dirlist : dirtree) :=
-    tree_pred' diritem_pred dirlist.
-
   (**
-   * [F] represents the other parts of the file system above [rootinum],
-   * in cases where [rootinum] is a subdirectory somewhere in the tree.
+   * [F] represents the other parts of the file system above [tree],
+   * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
-  Definition rep fsxp F rootinum tree :=
+  Definition rep fsxp F tree :=
     (exists bflist freeinodes freeinode_pred_unused freeinode_pred,
      BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
      BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred *
-     [[ (F * tree_dir_names_pred rootinum tree * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]]
+     [[ (F * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
-  Lemma tree_dir_extract : forall d F dmap name inum isdir,
-    (F * name |-> (inum, isdir))%pred dmap
-    -> isdir <> $0
+(*
+  Lemma tree_dir_extract : forall d F dmap name inum,
+    (F * name |-> (inum, true))%pred dmap
     -> tree_dir_names_pred' d dmap
     -> tree_pred d =p=> exists F s, F * tree_dir_names_pred inum s * tree_pred s.
   Proof.
@@ -216,6 +216,7 @@ Module DIRTREE.
       destruct d; apply ptsto_mem_except in H0;
         eapply IHtree; eauto.
   Qed.
+*)
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
@@ -228,16 +229,16 @@ Module DIRTREE.
         [[ (F * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
             BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred)%pred
            (list2mem m) ]] *
-        [[ (Ftop * tree_dir_names_pred dnum treetop *
-            tree_pred treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
-        [[ isdir <> $0 ->
-           (exists Fsub, Fsub * tree_dir_names_pred inum tree *
-            tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
-        [[ find_name fnlist treetop dnum $1 = find_name fnrest tree inum isdir ]]
+        [[ (Ftop * tree_pred treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
+        [[ isdir = true ->
+           (exists Fsub, Fsub * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
+        [[ dnum = dirtree_inum treetop ]] *
+        [[ inum = dirtree_inum tree ]] *
+        [[ find_name fnlist treetop = find_name fnrest tree ]]
       OnCrash
         MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
       Begin
-        If (weq isdir $0) {
+        If (bool_dec isdir false) {
           rx ^(mscs, None)
         } else {
           let^ (mscs, r) <- SDIR.dslookup (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
@@ -247,17 +248,19 @@ Module DIRTREE.
           | Some (inum, isdir) => lrx ^(mscs, inum, isdir)
           end
         }
-    Rof ^(mscs, dnum, $1);
+    Rof ^(mscs, dnum, true);
     rx ^(mscs, Some (inum, isdir)).
 
   Theorem namei_ok : forall fsxp dnum fnlist mscs,
     {< F mbase m Ftop tree,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
+           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ dnum = dirtree_inum tree ]]
     POST RET:^(mscs,r)
-           [[ r = find_name fnlist tree dnum $1 ]] *
-           [[ exists inum Fsub subtree, r = Some (inum, $1) ->
-              (F * rep fsxp Fsub inum subtree)%pred (list2mem m) ]] *
+           [[ r = find_name fnlist tree ]] *
+           [[ exists Fsub subtree,
+              r = Some (dirtree_inum subtree, true) ->
+              (F * rep fsxp Fsub subtree)%pred (list2mem m) ]] *
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} namei fsxp dnum fnlist mscs.
@@ -326,7 +329,7 @@ Module DIRTREE.
     | None => rx ^(mscs, None)
     | Some inum =>
       let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                     dnum name inum $0 mscs;
+                                     dnum name inum false mscs;
       If (bool_dec ok true) {
         mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                               inum mscs;
@@ -337,9 +340,10 @@ Module DIRTREE.
     end.
 
   Theorem mkfile_ok : forall fsxp dnum name mscs,
-    {< F mbase m Ftop tree,
+    {< F mbase m Ftop tree tree_elem,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
+           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ tree = TreeDir dnum tree_elem ]]
     POST RET:^(mscs,r)
            (* We always modify the memory, because we might allocate the file,
             * but then fail to link it into the directory..  When we return
@@ -348,7 +352,7 @@ Module DIRTREE.
            exists m', MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
            ([[ r = None ]] \/
             exists inum, [[ r = Some inum ]] *
-            [[ (F * rep fsxp Ftop dnum ((name, inum, DirFile BFILE.bfile0) :: tree))%pred (list2mem m') ]])
+            [[ (F * rep fsxp Ftop (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)))%pred (list2mem m') ]])
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} mkfile fsxp dnum name mscs.
   Proof.
@@ -391,7 +395,7 @@ Module DIRTREE.
     | None => rx ^(mscs, None)
     | Some inum =>
       let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                     dnum name inum $1 mscs;
+                                     dnum name inum true mscs;
       If (bool_dec ok true) {
         mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                               inum mscs;
@@ -402,14 +406,15 @@ Module DIRTREE.
     end.
 
   Theorem mkdir_ok : forall fsxp dnum name mscs,
-    {< F mbase m Ftop tree,
+    {< F mbase m Ftop tree tree_elem,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop dnum tree)%pred (list2mem m) ]]
+           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ tree = TreeDir dnum tree_elem ]]
     POST RET:^(mscs,r)
            exists m', MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
            ([[ r = None ]] \/
             exists inum, [[ r = Some inum ]] *
-            [[ (F * rep fsxp Ftop dnum ((name, inum, DirSubdir nil) :: tree))%pred (list2mem m') ]])
+            [[ (F * rep fsxp Ftop (TreeDir dnum ((name, TreeDir inum nil) :: tree_elem)))%pred (list2mem m') ]])
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} mkdir fsxp dnum name mscs.
   Proof.
@@ -510,7 +515,7 @@ Module DIRTREE.
     match oi with
     | None => rx ^(mscs, false)
     | Some (inum, isdir) =>
-      mscs <- IfRx irx (weq isdir $0) {
+      mscs <- IfRx irx (bool_dec isdir false) {
         irx mscs
       } else {
         let^ (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
@@ -554,7 +559,7 @@ Module DIRTREE.
                                          ddst dstname mscs;
         let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                        ddst dstname inum isdir mscs;
-        If (weq isdir' $0) {
+        If (bool_dec isdir' false) {
           rx ^(mscs, ok)
         } else {
           let^ (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
@@ -578,8 +583,9 @@ Module DIRTREE.
   Theorem read_ok : forall fsxp inum off mscs,
     {< F mbase m rootdnum pathname Ftop tree f B v,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop rootdnum tree)%pred (list2mem m) ]] *
-           [[ find_file pathname tree None = Some (f, inum) ]] *
+           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ rootdnum = dirtree_inum tree ]] *
+           [[ find_file pathname tree = Some (inum, f) ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET:^(mscs,r)
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
@@ -593,13 +599,14 @@ Module DIRTREE.
   Theorem write_ok : forall fsxp inum off v mscs,
     {< F mbase m rootdnum pathname Ftop tree f B v0,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop rootdnum tree)%pred (list2mem m) ]] *
-           [[ find_file pathname tree None = Some (f, inum) ]] *
+           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ rootdnum = dirtree_inum tree ]] *
+           [[ find_file pathname tree = Some (inum, f) ]] *
            [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET:mscs
            exists m' tree' f',
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
-           [[ (F * rep fsxp Ftop rootdnum tree')%pred (list2mem m') ]] *
+           [[ (F * rep fsxp Ftop tree')%pred (list2mem m') ]] *
            (* [[ tree' = update tree pathname f' ]] * *)
            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]] *
            [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
