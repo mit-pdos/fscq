@@ -476,6 +476,14 @@ Module BFILE.
   Qed.
 
 
+  Hint Extern 1 ({{_}} progseq (bflen _ _ _ _) _) => apply bflen_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfread _ _ _ _ _) _) => apply bfread_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfwrite _ _ _ _ _ _) _) => apply bfwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfgrow _ _ _ _ _) _) => apply bfgrow_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfshrink _ _ _ _ _) _) => apply bfshrink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfgetattr _ _ _ _) _) => apply bfgetattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfsetattr _ _ _ _ _) _) => apply bfsetattr_ok : prog.
+
   Definition bftrunc T lxp bxp ixp inum mscs rx : prog T :=
     let^ (mscs, n) <- bflen lxp ixp inum mscs;
     let^ (mscs) <- For i < n
@@ -496,6 +504,32 @@ Module BFILE.
     mscs <- bfsetattr lxp ixp inum bfattr0 mscs;
     rx mscs.
 
+
+  Lemma sep_star_bfdata_bound : forall F A bxp ixp l l0 l1 (inum : addr) f m,
+    (F * BALLOC.rep bxp l * INODE.rep bxp ixp l0 * listmatch (file_match bxp) l1 l0)%pred m
+    -> (A * # inum |-> f)%pred (list2nmem l1)
+    ->  length (BFData f) <= wordToNat (natToWord addrlen INODE.blocks_per_inode).
+  Proof.
+    intros.
+    rewrite_list2nmem_pred.
+    eapply bfdata_bound' with (m := m); auto.
+    unfold rep; pred_apply; cancel.
+  Qed.
+
+  Lemma helper_wordToNat_wminus_0 : forall n (b : addr),
+    n <= #b -> n = # ((natToWord addrlen n) ^- $0).
+  Proof.
+    intros.
+    ring_simplify ((natToWord addrlen n) ^- (natToWord addrlen 0)).
+    erewrite wordToNat_natToWord_bound; eauto.
+  Qed.
+
+  Local Hint Resolve helper_wordToNat_wminus_0.
+  Local Hint Extern 1 (length (BFData _) <= wordToNat _) =>
+        solve [ eapply sep_star_bfdata_bound; eauto ] : core.
+  Local Hint Unfold rep : hoare_unfold.
+
+
   Theorem bftrunc_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m flist f,
     PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -509,19 +543,24 @@ Module BFILE.
     CRASH    MEMLOG.would_recover_old lxp mbase
     >} bftrunc lxp bxp ixp inum mscs.
   Proof.
+    unfold bftrunc.
+    step.
+    step.
+    subst; eauto.
+
+    (* XXX *)
     admit.
+
+    step.
+    step.
+    replace (BFData b0) with (@nil valu).
+    unfold bfile0; auto.
+    apply eq_sym; apply length_nil.
+    erewrite <- INODE.weq_wminus_0; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (bflen _ _ _ _) _) => apply bflen_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfread _ _ _ _ _) _) => apply bfread_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfwrite _ _ _ _ _ _) _) => apply bfwrite_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfgrow _ _ _ _ _) _) => apply bfgrow_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfshrink _ _ _ _ _) _) => apply bfshrink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfgetattr _ _ _ _) _) => apply bfgetattr_ok : prog.
-  Hint Extern 1 ({{_}} progseq (bfsetattr _ _ _ _ _) _) => apply bfsetattr_ok : prog.
+
   Hint Extern 1 ({{_}} progseq (bftrunc _ _ _ _ _) _) => apply bftrunc_ok : prog.
-
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
-
 
 End BFILE.
