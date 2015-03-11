@@ -1430,22 +1430,45 @@ Module MEMLOG.
     >} apply_sync xp mscs.
   Proof.
     unfold apply_sync; log_unfold.
-    destruct mscs as [ms cs]; simpl.
-    hoare.
+    step.
+    step.
+    (* address passed to [sync_array] is in-bounds *)
+    admit.
+    step.
+    instantiate (1 := upd l1 (map fst (Map.elements m) $[ m1 ]) nil).
+    (* updating the (List.combine cur cur_unflushed) *)
+    admit.
+    (* nil_unless_in for one less item *)
+    admit.
+
+    (* crash condition *)
+    apply pimpl_or_r; left. cancel; auto.
+
+    (* nil_unless_in *)
+    admit.
+
+    (* crash condition *)
+    apply pimpl_or_r; left. cancel; auto.
+    cancel.
+    instantiate (1 := upd l1 (map fst (Map.elements m) $[ m1 ]) nil).
     admit.
     admit.
-    instantiate (a0 := upd l1 (map fst (Map.elements ms) $[ m]) nil).
+
+    step.
+    step.
+
+    admit.
+
     admit.
     admit.
-    admit.
+
+    apply pimpl_or_r; left. cancel; eauto.
+(*
     rewrite skipn_oob in H22 by solve_lengths.
-    instantiate (y := $0).
-    admit.
-    apply pimpl_or_r; left; cancel.
-    admit.
-    admit.
-    apply pimpl_or_r; left; cancel.
-    admit.
+*)
+
+    Grab Existential Variables.
+    all: eauto.
  Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
