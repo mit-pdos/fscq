@@ -829,15 +829,15 @@ Module DIRTREE.
     rx mscs.
 
   Theorem read_ok : forall fsxp inum off mscs,
-    {< F mbase m pathname Ftop tree f B v,
-    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+    {< F mbase m pathname Fm Ftop tree f B v,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
            [[ r = v ]]
-    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} read fsxp inum off mscs.
   Proof.
     unfold read, rep.
@@ -847,19 +847,19 @@ Module DIRTREE.
   Qed.
 
   Theorem write_ok : forall fsxp inum off v mscs,
-    {< F mbase m pathname Ftop tree f B v0,
-    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+    {< F mbase m pathname Fm Ftop tree f B v0,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET:mscs
            exists m' tree' f',
-           MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
-           [[ (F * rep fsxp Ftop tree')%pred (list2mem m') ]] *
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+           [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]] *
            [[ f' = BFILE.Build_bfile (Array.upd (BFILE.BFData f) off v) (BFILE.BFAttr f) ]]
-    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} write fsxp inum off v mscs.
   Proof.
     unfold write, rep.
