@@ -104,7 +104,7 @@ Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, b) <- BFILE.bfread (FSXPMemLog fsxp) (FSXPInode fsxp) inum off mscs;
+  let^ (mscs, b) <- DIRTREE.read fsxp inum off mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, b).
 
@@ -176,7 +176,7 @@ Qed.
 
 Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  mscs <- DIRTREE.write fsxp inum off v mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, ok).
 
@@ -385,7 +385,7 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
       rx ^(mscs, false)
     }
   };
-  mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  mscs <- DIRTREE.write fsxp inum off v mscs;
   mscs <- IfRx irx (wlt_dec (INODE.ISize oldattr) newsz) {
     mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
                             (INODE.Build_iattr newsz
