@@ -1659,6 +1659,14 @@ Proof.
   auto.
 Qed.
 
+Lemma wlt_wle_incl : forall sz (a b : word sz),
+  (a < b)%word -> (a <= b)%word.
+Proof.
+  intros.
+  apply wlt_lt in H.
+  apply le_wle.
+  omega.
+Qed.
 
 Lemma wminus_Alt2: forall sz x y, y <= x ->
   @wminusN sz x y = wordBinN minus x y.

@@ -343,6 +343,13 @@ Proof.
   rewrite IHl; auto with arith.
 Qed.
 
+Lemma updN_app_tail : forall T (l : list T) a v,
+  updN (l ++ (a :: nil)) (length l) v = l ++ (v :: nil).
+Proof.
+  induction l; simpl; firstorder.
+  rewrite IHl; auto.
+Qed.
+
 Lemma updN_concat : forall t a b m l (v:t), b < m ->
   Forall (fun sl => length sl = m) l ->
   updN (fold_right (@app _) nil l) (b + a * m) v =

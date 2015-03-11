@@ -163,6 +163,15 @@ Module BFILE.
     auto.
   Qed.
 
+  Theorem bfdata_bound_ptsto : forall F A m bxp ixp l (i : addr) f,
+    (F * rep bxp ixp l)%pred m
+    -> (A * # i |-> f)%pred (list2nmem l)
+    -> length (BFData f) <= wordToNat (natToWord addrlen INODE.blocks_per_inode).
+  Proof.
+    intros.
+    rewrite_list2nmem_pred.
+    eapply bfdata_bound'; eauto.
+  Qed.
 
   (* correctness theorems *)
 
@@ -548,15 +557,6 @@ Module BFILE.
     erewrite wordToNat_natToWord_bound in * by eauto.
     omega.
     apply le_wle; omega.
-  Qed.
-
-  Lemma wlt_wle_incl : forall sz (a b : word sz),
-    (a < b)%word -> (a <= b)%word.
-  Proof.
-    intros.
-    apply wlt_lt in H.
-    apply le_wle.
-    omega.
   Qed.
 
   Lemma helper_sub1_wplus1_eq : forall n (m b : addr),

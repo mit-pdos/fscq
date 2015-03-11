@@ -531,6 +531,9 @@ Section RECBFILE.
     rewrite Heq; autorewrite with core; auto.
   Qed.
 
+  Local Hint Resolve Rec.of_word_length.
+  Local Hint Resolve BFILE.bfdata_bound_ptsto.
+
   Theorem bf_extend_ok : forall lxp bxp ixp inum v mscs,
     {< F A mbase m flist f ilist,
     PRE   MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -552,6 +555,7 @@ Section RECBFILE.
     step.
     step.
     step; [ step | step | | step ].
+
     eapply pimpl_ok2; eauto with prog; intros.
     erewrite wordToNat_natToWord_bound.
     cancel.
@@ -561,23 +565,23 @@ Section RECBFILE.
     2: eauto.
     2: eauto.
 
-    eexists; intuition.
+    eexists; intuition; simpl.
     instantiate (vs_nested := x ++ (upd item0_list $0 v) :: nil).
-    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b1); eauto.
-    repeat rewrite app_length; rec_bounds.
-    erewrite array_item_pairs_app_eq with (newfd := BFILE.BFData b1); eauto.
+    repeat (rewrite app_length; autorewrite with core); rec_bounds.
+    unfold upd at 2; erewrite wordToNat_natToWord_bound.
+
+    rewrite updN_app_tail.
     apply array_item_pairs_app; auto.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
     rewrite valu_wreclen_id.
-    rewrite Rec.of_to_id by auto.
-    f_equal.
+    rewrite Rec.of_to_id; auto.
     apply block_upd_well_formed; auto; apply Rec.of_word_length.
+    eapply BFILE.bfdata_bound_ptsto with (m := list2mem d0); eauto.
 
     rewrite fold_right_app; simpl; rewrite app_nil_r.
     rewrite fold_right_app_init; f_equal; auto.
     cancel.
-    repeat rewrite_list2nmem_pred.
-    eapply BFILE.bfdata_bound'; eauto.
+    eapply BFILE.bfdata_bound_ptsto with (m := list2mem d0); eauto.
 
     Grab Existential Variables.
     exact $0.
