@@ -581,6 +581,17 @@ Module MEMLOG.
   Qed.
   Hint Rewrite replay_length : lengths.
 
+  Lemma valid_entries_replay : forall m d,
+    valid_entries d m ->
+    valid_entries (replay m d) m.
+  Proof.
+    unfold valid_entries, indomain', replay. intros.
+    apply H in H0.
+    rewrite <- replay'_length.
+    auto.
+  Qed.
+  Hint Resolve valid_entries_replay.
+
   Lemma replay_add : forall a v ms m,
     replay (Map.add a v ms) m = upd (replay ms m) a v.
   Proof.
