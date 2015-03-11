@@ -66,18 +66,6 @@ Module DIRTREE.
       end
     end.
 
-  Definition find_file (fnlist : list string) (tree : dirtree) :=
-    match find_subtree fnlist tree with
-    | None => None
-    | Some subtree =>
-      match subtree with
-      | TreeFile inum f => Some (inum, f)
-      | TreeDir _ _ => None
-      end
-    end.
-
-  Definition dir_updater := dirtree -> dirtree.
-
   Definition update_subtree_helper (rec : dirtree -> dirtree)
                                    name
                                    (dirent : string * dirtree) :=
@@ -801,11 +789,10 @@ Module DIRTREE.
     rx mscs.
 
   Theorem read_ok : forall fsxp inum off mscs,
-    {< F mbase m rootdnum pathname Ftop tree f B v,
+    {< F mbase m pathname Ftop tree f B v,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
            [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-           [[ rootdnum = dirtree_inum tree ]] *
-           [[ find_file pathname tree = Some (inum, f) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET:^(mscs,r)
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
@@ -813,27 +800,33 @@ Module DIRTREE.
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} read fsxp inum off mscs.
   Proof.
-    admit.
+    unfold read, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
   Qed.
 
   Theorem write_ok : forall fsxp inum off v mscs,
-    {< F mbase m rootdnum pathname Ftop tree f B v0,
+    {< F mbase m pathname Ftop tree f B v0,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
            [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-           [[ rootdnum = dirtree_inum tree ]] *
-           [[ find_file pathname tree = Some (inum, f) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET:mscs
            exists m' tree' f',
            MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
            [[ (F * rep fsxp Ftop tree')%pred (list2mem m') ]] *
-           [[ tree' = update_tree pathname (set_file (TreeFile inum f')) tree ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]] *
-           [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
+           [[ f' = BFILE.Build_bfile (Array.upd (BFILE.BFData f) off v) (BFILE.BFAttr f) ]]
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
     >} write fsxp inum off v mscs.
   Proof.
-    admit.
+    unfold write, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+    rewrite <- subtree_absorb; eauto.
   Qed.
 
 End DIRTREE.
