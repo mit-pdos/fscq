@@ -1025,10 +1025,74 @@ Module MEMLOG.
     simpl; rewrite IHl; rewrite <- surjective_pairing; auto.
   Qed.
 
+  Definition skip1 A := @skipn A 1.
+
+  Lemma fold_skip1 : forall A B (f: list A -> B) l x,
+    x = f [] ->
+    match l with
+    | [] => x
+    | _ :: l' => f l'
+    end = f (skip1 l).
+  Proof.
+    intros.
+    destruct l; auto.
+  Qed.
+
+  Fixpoint iterate A f (x: A) n :=
+    match n with
+    | O => x
+    | S n' => f (iterate f x n')
+    end.
+
+  Lemma iterate_S_i : forall A f (x: A) n,
+    iterate f (f x) n = iterate f x (S n).
+  Proof.
+    intros.
+    induction n; auto.
+    simpl.
+    rewrite IHn.
+    auto.
+  Qed.
+
+  Lemma iterate_add : forall A f (x: A) n m,
+    iterate f (iterate f x m) n = iterate f x (n + m).
+  Proof.
+    induction n.
+    auto.
+    intros.
+    simpl.
+    rewrite IHn.
+    auto.
+  Qed.
+
+  Lemma skipn_nil : forall A n,
+    skipn n (@nil A) = [].
+  Proof.
+    induction n; auto.
+  Qed.
+
+  Lemma skipn_iterate : forall A n (l: list A),
+    skipn n l = iterate (@skip1 A) l n.
+  Proof.
+    induction n.
+    auto.
+    intros.
+    simpl.
+    replace [] with (@skipn A n []).
+    rewrite fold_skip1.
+    rewrite IHn.
+    rewrite iterate_S_i.
+    auto.
+    auto.
+    apply skipn_nil.
+  Qed.
+
   Lemma skipn_skipn: forall A n m (l: list A),
     skipn n (skipn m l) = skipn (n + m) l.
   Proof.
-    admit.
+    intros.
+    repeat rewrite skipn_iterate.
+    apply iterate_add.
   Qed.
 
   Hint Rewrite firstn_combine_comm skipn_combine_comm selN_combine
