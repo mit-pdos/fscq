@@ -443,6 +443,18 @@ Section RECBFILE.
     eapply bfrec_bound'; eauto.
   Qed.
 
+
+  Ltac bf_extend_bfdata_bound :=
+    match goal with
+    | [ H1 : context [ BFILE.rep _ _ ?ll ],
+        H2 : (_ * _ |-> ?ff)%pred (list2nmem ?ll)
+           |- length (BFILE.BFData ?ff) <= _ ] =>
+      eapply BFILE.bfdata_bound_ptsto with (f := ff) (l := ll); eauto
+    end.
+
+  Local Hint Extern 1 (length (BFILE.BFData _) <= _) => bf_extend_bfdata_bound.
+  Local Hint Unfold array_item_file array_item_pairs : hoare_unfold.
+
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
     {< F A mbase m flist f ilist,
     PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
@@ -455,13 +467,13 @@ Section RECBFILE.
     CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_getlen lxp ixp inum mscs.
   Proof.
-    unfold bf_getlen, array_item_file.
+    unfold bf_getlen.
     hoare.
-    unfold array_item_pairs in *.
     destruct_lift H.
     rewrite block_length_fold_right by auto.
     subst; rec_bounds.
   Qed.
+
 
   Theorem bf_get_ok : forall lxp bxp ixp inum idx mscs,
     {< F A mbase m flist f ilist,
@@ -476,21 +488,17 @@ Section RECBFILE.
     CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_get lxp ixp inum idx mscs.
   Proof.
-    unfold bf_get, array_item_file, array_item_pairs.
-    intros; eapply pimpl_ok2; eauto with prog; intros.
-    norm.
-    cancel.
+    unfold bf_get.
+    hoare.
+
     repeat rewrite_list2nmem_pred.
-    unfold array_item_pairs.
-    intuition; try (eauto; pred_apply; cancel).
     eapply helper_item_index_valid; subst; eauto.
     destruct_lift H0; eauto.
 
-    step.
     subst; unfold rep_block in H.
     apply nested_sel_divmod_concat; auto.
     destruct_lift H0.
-    eapply Forall_impl; [ | apply H7 ].
+    eapply Forall_impl; eauto.
     unfold Rec.well_formed.
     simpl; intuition.
   Qed.
@@ -512,27 +520,21 @@ Section RECBFILE.
     CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_put lxp ixp inum idx v mscs.
   Proof.
-    unfold bf_put, array_item_file, array_item_pairs.
-    intros; eapply pimpl_ok2; eauto with prog; intros; norm.
-    cancel.
+    unfold bf_put.
+    hoare.
+
     repeat rewrite_list2nmem_pred.
-    unfold array_item_pairs.
-    intuition; try (eauto; pred_apply; cancel).
     eapply helper_item_index_valid; subst; eauto.
     destruct_lift H; eauto.
 
-    eapply pimpl_ok2; eauto with prog; intros.
-    norm. cancel.
     subst; repeat rewrite_list2nmem_pred; subst.
     destruct_lift H.
-    intuition; try (pred_apply; cancel).
     eexists; intuition; try (pred_apply; cancel).
-    apply list2nmem_array_eq in H13 as Heq.
+    apply list2nmem_array_eq in H12 as Heq.
     rewrite Heq; autorewrite with core; auto.
   Qed.
 
   Local Hint Resolve Rec.of_word_length.
-  Local Hint Resolve BFILE.bfdata_bound_ptsto.
 
   Theorem bf_extend_ok : forall lxp bxp ixp inum v mscs,
     {< F A mbase m flist f ilist,
@@ -551,24 +553,15 @@ Section RECBFILE.
     CRASH  MEMLOG.would_recover_old lxp mbase
     >} bf_extend lxp bxp ixp inum v mscs.
   Proof.
-    unfold bf_extend, array_item_file.
-    step.
-    step.
-    step; [ step | step | | step ].
-
-    eapply pimpl_ok2; eauto with prog; intros.
-    erewrite wordToNat_natToWord_bound.
-    cancel.
-    step.
-    eapply pimpl_or_r; right.
-    norm; [ cancel | intuition ].
-    2: eauto.
-    2: eauto.
+    unfold bf_extend.
+    hoare.
+    erewrite wordToNat_natToWord_bound; eauto.
+    eapply pimpl_or_r; right; cancel.
 
     eexists; intuition; simpl.
     instantiate (vs_nested := x ++ (upd item0_list $0 v) :: nil).
     repeat (rewrite app_length; autorewrite with core); rec_bounds.
-    unfold upd at 2; erewrite wordToNat_natToWord_bound.
+    unfold upd at 3; erewrite wordToNat_natToWord_bound; eauto.
 
     rewrite updN_app_tail.
     apply array_item_pairs_app; auto.
@@ -576,21 +569,13 @@ Section RECBFILE.
     rewrite valu_wreclen_id.
     rewrite Rec.of_to_id; auto.
     apply block_upd_well_formed; auto; apply Rec.of_word_length.
-    eapply BFILE.bfdata_bound_ptsto with (m := list2mem d0); eauto.
 
     rewrite fold_right_app; simpl; rewrite app_nil_r.
     rewrite fold_right_app_init; f_equal; auto.
-    cancel.
-    eapply BFILE.bfdata_bound_ptsto with (m := list2mem d0); eauto.
 
     Grab Existential Variables.
-    exact $0.
-    exact emp.
-    exact BFILE.bfile0.
-    exact emp.
-    exact nil.
-    exact emp.
-    exact bxp.
+    exact $0. exact emp. exact BFILE.bfile0.
+    exact emp. exact nil. exact emp. exact bxp.
   Qed.
 
 
