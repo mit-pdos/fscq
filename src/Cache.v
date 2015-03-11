@@ -12,6 +12,8 @@ Require Import WordAuto.
 Require Import Omega.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
+Module MapFacts := WFacts_fun Addr_as_OT Map.
+Module MapProperties := WProperties_fun Addr_as_OT Map.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -106,30 +108,66 @@ Module BUFCACHE.
     congruence.
   Qed.
 
-  Lemma map_remove_cardinal : forall (m : Map.t valu) k, (exists v, Map.MapsTo k v m) ->
+  Lemma map_remove_cardinal : forall V (m : Map.t V) k, (exists v, Map.MapsTo k v m) ->
     Map.cardinal (Map.remove k m) = Map.cardinal m - 1.
   Proof.
-    admit.
-(*
-    intros.
-    repeat rewrite Map.cardinal_1.
-    erewrite filter_split with (l:=Map.elements m);
-      try apply Map.elements_3.
-    instantiate (f := fun e => if weq k (fst e) then true else false).
-    rewrite app_length.
-*)
+    intros; deex.
+    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m) (m':=m) (x:=k) (e:=x).
+    omega.
+    apply Map.remove_1; auto.
+    intro.
+    destruct (Addr_as_OT.eq_dec k y); subst.
+    - rewrite MapFacts.add_eq_o; auto.
+      erewrite Map.find_1; eauto.
+    - rewrite MapFacts.add_neq_o; auto.
+      rewrite MapFacts.remove_neq_o; auto.
   Qed.
 
   Lemma map_add_cardinal : forall V (m : Map.t V) k v, ~ (exists v, Map.MapsTo k v m) ->
     Map.cardinal (Map.add k v m) = Map.cardinal m + 1.
   Proof.
-    admit.
+    intros.
+    erewrite MapProperties.cardinal_2 with (m:=m).
+    omega.
+    eauto.
+    intro.
+    reflexivity.
+  Qed.
+
+  Lemma map_add_dup_cardinal' : forall V (m : Map.t V) k v, (exists v, Map.MapsTo k v m) ->
+    Map.cardinal (Map.add k v m) = Map.cardinal (Map.remove k m) + 1.
+  Proof.
+    intros; deex.
+    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m).
+    omega.
+    apply Map.remove_1; auto.
+    intro.
+    destruct (Addr_as_OT.eq_dec k y); subst.
+    - rewrite MapFacts.add_eq_o; auto.
+      rewrite MapFacts.add_eq_o; auto.
+    - rewrite MapFacts.add_neq_o; auto.
+      rewrite MapFacts.add_neq_o; auto.
+      rewrite MapFacts.remove_neq_o; auto.
   Qed.
 
   Lemma map_add_dup_cardinal : forall V (m : Map.t V) k v, (exists v, Map.MapsTo k v m) ->
     Map.cardinal (Map.add k v m) = Map.cardinal m.
   Proof.
-    admit.
+    intros.
+    replace (Map.cardinal m) with ((Map.cardinal m - 1) + 1).
+    erewrite <- map_remove_cardinal; eauto.
+    apply map_add_dup_cardinal'; auto.
+    deex.
+    assert (Map.cardinal m <> 0); try omega.
+    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m).
+    omega.
+    apply Map.remove_1; reflexivity.
+    intro.
+    destruct (Addr_as_OT.eq_dec k y); subst.
+    - rewrite MapFacts.add_eq_o; auto.
+      erewrite Map.find_1; eauto.
+    - rewrite MapFacts.add_neq_o; auto.
+      rewrite MapFacts.remove_neq_o; auto.
   Qed.
 
   Lemma map_elements_hd_in : forall V (m : Map.t V) k w l,
