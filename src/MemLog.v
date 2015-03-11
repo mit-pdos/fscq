@@ -694,7 +694,8 @@ Module MEMLOG.
 
     rewrite replay_add.
     eapply list2mem_upd; eauto.
-      
+    cancel.
+    eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
