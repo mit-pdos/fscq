@@ -969,13 +969,21 @@ Module DIR.
     inversion H1.
   Qed.
 
+  Lemma isdir2bool2isdir : forall x,
+    isdir2bool (bool2isdir x) = x.
+  Proof.
+    unfold isdir2bool, bool2isdir.
+    destruct x; auto.
+  Qed.
+
+
   Lemma helper_dlink_ok_avail : forall l l' m i v0 name inum isdir,
     Forall (fun e => dlookup_f name e = false) l
     -> listpred dmatch l m
     -> (arrayN_ex l i * i |-> v0)%pred (list2nmem l)
-    -> (arrayN_ex l i * i |-> (name, (inum, ($1, (isdir, tt)))))%pred (list2nmem l')
+    -> (arrayN_ex l i * i |-> (name, (inum, ($1, (bool2isdir isdir, tt)))))%pred (list2nmem l')
     -> dlink_f v0 = true
-    -> listpred dmatch l' (Prog.upd m name (inum, isdir2bool isdir)).
+    -> listpred dmatch l' (Prog.upd m name (inum, isdir)).
   Proof.
     intros.
     rewrite_list2nmem_pred_sel H1; try list2nmem_bound.
@@ -986,6 +994,7 @@ Module DIR.
     pose proof (@dlookup_notindomain l name H m H0); auto.
     apply listpred_updN; auto.
     unfold dmatch at 2; rec_simpl; simpl.
+    rewrite isdir2bool2isdir.
     apply ptsto_upd_disjoint; auto.
 
     subst.
@@ -1008,7 +1017,7 @@ Module DIR.
     -> Forall (fun e => dlink_f e = false) l
     -> listpred dmatch l m
     -> listpred dmatch (l ++ (updN (repeat dent0 # (items_per_valu)) 0
-           (name, (inum, ($1, (isdir, tt)))))) (Prog.upd m name (inum, isdir2bool isdir)).
+           (name, (inum, ($1, (bool2isdir isdir, tt)))))) (Prog.upd m name (inum, isdir)).
   Proof.
     intros.
     pose proof (items_per_valu_not_0' items_per_valu).
@@ -1022,6 +1031,7 @@ Module DIR.
     destruct (weq (fst (snd (snd (name, (inum, ($1, (isdir, tt)))))))
          (natToWord addrlen 0)); simpl.
     contradict e; discriminate.
+    rewrite isdir2bool2isdir.
     apply ptsto_upd_disjoint.
 
     replace (length l) with (length l + 0) by omega.
