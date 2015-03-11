@@ -1183,7 +1183,7 @@ Module INODE.
     step.
 
     (* constructing new indirect list *)
-    instantiate (a5 := indlist0).
+    instantiate (a6 := indlist0).
     unfold indrep.
     rewrite ind_ptsto_zero.
     cancel. eauto.
