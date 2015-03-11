@@ -763,6 +763,12 @@ Proof.
   congruence.
 Qed.
 
+Lemma ptsto_value_eq : forall a v1 v2,
+  v1 = v2 -> (@pimpl AT AEQ V) (a |-> v1)%pred (a |-> v2)%pred.
+Proof.
+  intros; subst; cancel.
+Qed.
+
 Lemma pimpl_and_split:
   forall (a b c : @pred AT AEQ V),
   (a =p=> b)

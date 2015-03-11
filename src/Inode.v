@@ -1024,14 +1024,6 @@ Module INODE.
     simpl; auto.
   Qed.
 
-  Lemma firstn_length_l : forall A (l : list A) n,
-    n <= length l -> length (firstn n l) = n.
-  Proof.
-    intros.
-    rewrite firstn_length.
-    rewrite Nat.min_l; auto.
-  Qed.
-
   Lemma gt_plusone_gt: forall n c,
     n > c -> n + 1 > c.
   Proof.

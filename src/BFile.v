@@ -493,26 +493,50 @@ Module BFILE.
   Hint Extern 1 ({{_}} progseq (bfgetattr _ _ _ _) _) => apply bfgetattr_ok : prog.
   Hint Extern 1 ({{_}} progseq (bfsetattr _ _ _ _ _) _) => apply bfsetattr_ok : prog.
 
-  Definition bftrunc T lxp bxp ixp inum mscs rx : prog T :=
+  Definition bftrunc_shrink T lxp bxp ixp inum newsz mscs rx : prog T :=
     let^ (mscs, n) <- bflen lxp ixp inum mscs;
-    let^ (mscs) <- For i < n
-      Ghost [ mbase F Fm A ]
+    let^ (mscs) <- For i < (n ^- newsz)
+      Ghost [ mbase F Fm A f ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
-        exists m flist f, MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
-        [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
-        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-        [[ length (BFData f) = # (n ^- i) ]]
+        exists m' flist' f',
+        MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+        [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+        [[ f' = Build_bfile (firstn (# (n ^- i)) (BFData f)) (BFAttr f) ]]
       OnCrash
         MEMLOG.would_recover_old lxp F mbase
       Begin
         mscs <- bfshrink lxp bxp ixp inum mscs;
         lrx ^(mscs)
       Rof ^(mscs);
-    mscs <- bfsetattr lxp ixp inum bfattr0 mscs;
     rx mscs.
 
+  Definition bftrunc_grow T lxp bxp ixp inum newsz mscs rx : prog T :=
+    let^ (mscs, n) <- bflen lxp ixp inum mscs;
+    let^ (mscs) <- For i < (newsz ^- n)
+      Ghost [ mbase F Fm A f ]
+      Loopvar [ mscs ]
+      Continuation lrx
+      Invariant
+        exists m' flist' f',
+        MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+        [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+        [[ f' = Build_bfile ((BFData f) ++ (repeat $0 #i)) (BFAttr f) ]]
+      OnCrash
+        MEMLOG.would_recover_old lxp F mbase
+      Begin
+        let^ (mscs, ok) <- bfgrow lxp bxp ixp inum mscs;
+        If (bool_dec ok true) {
+          mscs <- bfwrite lxp ixp inum (n ^+ i) $0 mscs;
+          lrx ^(mscs)
+        } else {
+          rx ^(mscs, false)
+        }
+      Rof ^(mscs);
+    rx ^(mscs, true).
 
   Lemma sep_star_bfdata_bound : forall F A bxp ixp l l0 l1 (inum : addr) f m,
     (F * BALLOC.rep bxp l * INODE.rep bxp ixp l0 * listmatch (file_match bxp) l1 l0)%pred m
@@ -531,8 +555,13 @@ Module BFILE.
         H2 : (_ * _ |-> ?ff)%pred (list2nmem ?ll)
            |- length (BFData ?ff) <= _ ] =>
       eapply sep_star_bfdata_bound with (f := ff) (l1 := ll); eauto
+    | [ H1 : context [ listmatch (file_match _) ?ll _ ],
+        H2 : (_ * (# ?ix) |-> {| BFData := ?fdata ; BFAttr := _ |})%pred (list2nmem ?ll)
+           |- length ?fdata <= _ ] => let Hx := fresh in
+        pose proof (sep_star_bfdata_bound ix H1 H2) as Hx; simpl in Hx; apply Hx
     end.
 
+  Local Arguments wordToNat : simpl never.
   Local Hint Extern 1 (length (BFData _) <= _) => bftrunc_bfdata_bound.
 
   Lemma helper_wordToNat_wminus_0 : forall n (b : addr),
@@ -543,41 +572,153 @@ Module BFILE.
     erewrite wordToNat_natToWord_bound; eauto.
   Qed.
 
-  Lemma helper_bfdata_length_gt0 : forall (m : addr) n n0 (b : addr),
-    n0 = # ($ n ^- m)%word
-    -> (m < $ n)%word
-    -> n <= # b -> n0 <= #b
-    -> n0 > 0.
+  Lemma helper_bfdata_length : forall (m sz bound : addr) n,
+    (m < $ n ^- sz)%word -> # sz <= n -> n <= # bound
+    -> # ($ n ^- m) > 0 /\ # ($ n ^- m) <= n.
   Proof.
-    intros.
-    apply wlt_lt in H0.
-    destruct n eqn: Heq.
-    contradict H0; simpl; omega.
-    rewrite wminus_minus in H.
-    erewrite wordToNat_natToWord_bound in * by eauto.
-    omega.
-    apply le_wle; omega.
+    intros; apply wlt_lt in H.
+    rewrite wminus_minus in *; try apply le_wle;
+    erewrite wordToNat_natToWord_bound in *; eauto; try omega.
   Qed.
 
-  Lemma helper_sub1_wplus1_eq : forall n (m b : addr),
-    (m < $ n)%word  -> n <= # b
+
+  Lemma helper_sub_1_wplus_1_eq : forall n (m sz bound : addr),
+    (m < $ n ^- sz)%word -> # sz <= n -> n <= # bound
     -> # ($ n ^- m ) - 1 = # ($ n ^- (m ^+ $1)).
   Proof.
-    intros.
-    repeat erewrite wminus_minus.
-    erewrite wordToNat_natToWord_bound in * by eauto.
-    erewrite wordToNat_plusone by eauto; omega.
-    apply le_wle.
-    erewrite wordToNat_plusone; eauto.
-    apply wlt_lt in H; omega.
-    apply wlt_wle_incl; auto.
+    intros; apply wlt_lt in H as Hx.
+    rewrite wminus_minus in *; try apply le_wle;
+      erewrite wordToNat_natToWord_bound in *; eauto; try omega.
+    rewrite wminus_minus; try apply le_wle;
+      try erewrite wordToNat_plusone by eauto;
+      erewrite wordToNat_natToWord_bound by eauto; omega.
   Qed.
 
   Local Hint Resolve wlt_wle_incl.
   Local Hint Resolve helper_wordToNat_wminus_0.
   Local Hint Unfold rep : hoare_unfold.
 
-  Theorem bftrunc_ok : forall lxp bxp ixp inum mscs,
+  Theorem bftrunc_shrink_ok : forall lxp bxp ixp inum sz mscs,
+    {< F Fm A mbase m flist f,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+             [[ # sz <= length (BFData f) ]]
+    POST RET:mscs
+             exists m' flist' f',
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+             [[ f' = Build_bfile (firstn (# sz) (BFData f)) (BFAttr f) ]]
+    CRASH    MEMLOG.would_recover_old lxp F mbase
+    >} bftrunc_shrink lxp bxp ixp inum sz mscs.
+  Proof.
+    unfold bftrunc_shrink.
+    step.
+    step.
+
+    ring_simplify (a ^- $ (0)).
+    instantiate (a4 := b); subst.
+    erewrite wordToNat_natToWord_bound; eauto.
+    rewrite firstn_oob by omega.
+    destruct b; pred_apply; cancel.
+
+    step.
+    subst; simpl; rewrite firstn_length_l;
+      eapply helper_bfdata_length; eauto.
+    list2nmem_ptsto_cancel.
+    apply helper_minus_one_lt; eauto.
+    subst; simpl; rewrite firstn_length_l;
+      eapply helper_bfdata_length; eauto.
+
+    step.
+    apply ptsto_value_eq; f_equal.
+    rewrite removelast_firstn_sub;
+    try eapply helper_bfdata_length; eauto; f_equal.
+    eapply helper_sub_1_wplus_1_eq; eauto.
+
+    step.
+    apply ptsto_value_eq; repeat f_equal; ring.
+  Qed.
+
+
+  Lemma helper_wplus_length_app_repeat : forall (l : list valu) (bound m : addr),
+    (length (l ++ repeat $0 (# m))) <= # bound
+    -> # ($ (length l) ^+ m) = length (l ++ repeat $0 (# m)).
+  Proof.
+    intros.
+    rewrite app_length in *; rewrite repeat_length in *.
+    word2nat_auto.
+  Qed.
+
+  Theorem bftrunc_grow_ok : forall lxp bxp ixp inum sz mscs,
+    {< F Fm A mbase m flist f,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+             [[ # sz >= length (BFData f) ]]
+    POST RET:^(mscs, r)
+             exists m', MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+            ([[ r = false ]] \/
+             [[ r = true  ]] * exists flist' f',
+             [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+             [[ f' = Build_bfile ((BFData f) ++
+                                  (repeat $0 (#sz - (length (BFData f))))) (BFAttr f) ]])
+    CRASH    MEMLOG.would_recover_old lxp F mbase
+    >} bftrunc_grow lxp bxp ixp inum sz mscs.
+  Proof.
+    unfold bftrunc_grow.
+    step.
+    step.
+
+    instantiate (a4 := b); subst.
+    unfold repeat; rewrite app_nil_r.
+    destruct b; pred_apply; eauto.
+
+    step; subst; simpl.
+    apply list2nmem_array.
+    step; subst; step; simpl.
+    erewrite helper_wplus_length_app_repeat by bftrunc_bfdata_bound.
+    pred_apply; cancel.
+
+    step.
+    apply ptsto_value_eq; unfold upd; f_equal.
+    erewrite wordToNat_plusone; eauto.
+    rewrite repeat_app_tail; rewrite app_assoc.
+    erewrite helper_wplus_length_app_repeat by bftrunc_bfdata_bound.
+    apply updN_app_tail.
+
+    step.
+    apply pimpl_or_r; right; cancel.
+    apply ptsto_value_eq.
+    rewrite wminus_minus; try apply le_wle;
+      erewrite wordToNat_natToWord_bound; eauto.
+
+    Grab Existential Variables.
+    all: try exact nil; try exact $0; try exact emp.
+    exact bfile0. exact bxp.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (bftrunc_shrink _ _ _ _ _ _) _) => apply bftrunc_shrink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bftrunc_grow   _ _ _ _ _ _) _) => apply bftrunc_grow_ok : prog.
+
+  Definition bfreset T lxp bxp ixp inum mscs rx : prog T :=
+    mscs <- bftrunc_shrink lxp bxp ixp inum $0 mscs;
+    mscs <- bfsetattr lxp ixp inum bfattr0 mscs;
+    rx mscs.
+
+  Definition bftrunc T lxp bxp ixp inum newsz mscs rx : prog T :=
+    let^ (mscs, n) <- bflen lxp ixp inum mscs;
+    If (wlt_dec newsz n) {
+      mscs <- bftrunc_shrink lxp bxp ixp inum newsz mscs;
+      rx ^(mscs, true)
+    } else {
+      let^ (mscs, ok) <- bftrunc_grow lxp bxp ixp inum newsz mscs;
+      rx ^(mscs, ok)
+    }.
+
+  Theorem bfreset_ok : forall lxp bxp ixp inum mscs,
     {< F Fm A mbase m flist f,
     PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
@@ -588,39 +729,52 @@ Module BFILE.
              [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> bfile0)%pred (list2nmem flist') ]]
     CRASH    MEMLOG.would_recover_old lxp F mbase
-    >} bftrunc lxp bxp ixp inum mscs.
+    >} bfreset lxp bxp ixp inum mscs.
   Proof.
-    unfold bftrunc.
-    step.
-    step.
-    subst; eauto.
-    step.
+    unfold bfreset.
+    hoare.
+  Qed.
 
-    eapply helper_bfdata_length_gt0; eauto.
-    list2nmem_ptsto_cancel. eauto.
-    apply helper_minus_one_lt; eauto.
-    eapply helper_bfdata_length_gt0; eauto.
+  Theorem bftrunc_ok : forall lxp bxp ixp inum newsz mscs,
+    {< F Fm A mbase m flist f,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST RET:^(mscs, r)
+             exists m', MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+            ([[ r = false ]] \/
+             [[ r = true  ]] * exists flist' f',
+             [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+             [[ f' = Build_bfile (setlen (BFData f) #newsz $0) (BFAttr f) ]])
+    CRASH    MEMLOG.would_recover_old lxp F mbase
+    >} bftrunc lxp bxp ixp inum newsz mscs.
+  Proof.
+    unfold bftrunc, setlen.
+    hoare.
 
-    (* Coq bug: do the rewrite first so that `step` won't get stuck *)
-    rewrite wminus_minus in H10 by auto.
-    step; subst; simpl.
-    rewrite <- wminus_minus in H10 by auto.
-    rewrite length_removelast.
-    rewrite H10.
-    eapply helper_sub1_wplus1_eq; eauto.
-    apply length_not_nil.
-    eapply helper_bfdata_length_gt0; eauto.
+    (* case 1 : shrinking *)
+    word2nat_auto.
+    apply pimpl_or_r; right; cancel.
+    apply ptsto_value_eq; f_equal.
+    rewrite repeat_is_nil.
+    rewrite app_nil_r; auto.
+    apply Nat.sub_0_le; word2nat_auto.
 
-    step.
-    step.
-    replace (BFData b0) with (@nil valu).
-    unfold bfile0; auto.
-    apply eq_sym; apply length_nil.
-    erewrite <- INODE.weq_wminus_0; eauto.
+    (* case 2 : growing *)
+    erewrite <- wordToNat_natToWord_bound; eauto.
+    apply wle_le; auto.
+    apply pimpl_or_r; right; cancel.
+    apply ptsto_value_eq; f_equal.
+
+    rewrite firstn_oob; auto.
+    erewrite <- wordToNat_natToWord_bound; eauto.
+    apply wle_le; auto.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (bftrunc _ _ _ _ _) _) => apply bftrunc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bfreset _ _ _ _ _) _) => apply bfreset_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bftrunc _ _ _ _ _ _) _) => apply bftrunc_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
 End BFILE.

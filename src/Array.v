@@ -1088,6 +1088,22 @@ Proof.
   simpl; f_equal.
 Qed.
 
+Lemma firstn_length_l : forall A (l : list A) n,
+  n <= length l -> length (firstn n l) = n.
+Proof.
+  intros.
+  rewrite firstn_length.
+  rewrite Nat.min_l; auto.
+Qed.
+
+Lemma firstn_length_r : forall A (l : list A) n,
+  n >= length l -> length (firstn n l) = length l.
+Proof.
+  intros.
+  rewrite firstn_length.
+  rewrite Nat.min_r; auto.
+Qed.
+
 Lemma skipn_nil : forall A n,
   skipn n nil = @nil A.
 Proof.
@@ -1196,6 +1212,14 @@ Proof.
   unfold repeat at 2; fold repeat; auto.
 Qed.
 
+Lemma repeat_app_tail : forall T n (a : T),
+  repeat a (S n) = repeat a n ++ (a :: nil).
+Proof.
+  induction n; intros; simpl; auto.
+  unfold repeat; fold repeat; f_equal.
+  rewrite <- IHn.
+  unfold repeat at 2; auto.
+Qed.
 
 Lemma removeN_repeat : forall T n i (e : T),
    n > 0 -> i < n
@@ -1516,3 +1540,26 @@ Proof.
   clear Heq.
   unfold piff; split; cancel.
 Qed.
+
+Definition setlen A l n (def : A) :=
+  firstn n l ++ (repeat def (n - length l)).
+
+Lemma repeat_is_nil : forall T (v : T) n,
+  n = 0 -> repeat v n = nil.
+Proof.
+  intros; subst; unfold repeat; auto.
+Qed.
+
+Lemma setlen_length : forall A l n (def : A),
+  length (setlen l n def) = n.
+Proof.
+  unfold setlen; intros.
+  rewrite app_length.
+  rewrite repeat_length.
+  destruct (le_lt_dec n (length l)).
+  apply Nat.sub_0_le in l0 as Heq; rewrite Heq.
+  rewrite firstn_length_l; auto.
+  rewrite firstn_length_r; omega.
+Qed.
+
+

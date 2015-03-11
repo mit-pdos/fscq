@@ -551,7 +551,7 @@ Module DIRTREE.
       let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name inum false mscs;
       If (bool_dec ok true) {
-        mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+        mscs <- BFILE.bfreset fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                               inum mscs;
         rx ^(mscs, Some (inum : addr))
       } else {
@@ -617,7 +617,7 @@ Module DIRTREE.
       let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name inum true mscs;
       If (bool_dec ok true) {
-        mscs <- BFILE.bftrunc fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
+        mscs <- BFILE.bfreset fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                               inum mscs;
         rx ^(mscs, Some (inum : addr))
       } else {

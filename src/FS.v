@@ -305,70 +305,12 @@ Proof.
   admit.
 Qed.
 
-Definition set_size_helper T fsxp inum size mscs rx : prog T :=
-  let^ (mscs, curlen) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
-  If (wlt_dec curlen size) {
-    let^ (mscs) <- For n < (size ^- curlen)
-      Ghost [ (_:unit) ]
-      Loopvar [ mscs ]
-      Continuation lrx
-      Invariant emp
-      OnCrash emp
-      Begin
-        let^ (mscs, ok) <- BFILE.bfgrow (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum mscs;
-        If (bool_dec ok false) {
-          rx ^(mscs, false)
-        } else {
-          lrx ^(mscs)
-        }
-    Rof ^(mscs);
-
-    rx ^(mscs, true)
-  } else {
-    let^ (mscs) <- For n < (curlen ^- size)
-      Ghost [ (_:unit) ]
-      Loopvar [ mscs ]
-      Continuation lrx
-      Invariant emp
-      OnCrash emp
-      Begin
-        mscs <- BFILE.bfshrink (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum mscs;
-        lrx ^(mscs)
-    Rof ^(mscs);
-
-    rx ^(mscs, true)
-  }.
-
-Theorem set_size_helper_ok : forall fsxp inum size mscs,
-    {< F F1 A mbase m flist f,
-    PRE      MEMLOG.rep (FSXPMemLog fsxp) F (ActiveTxn mbase m) mscs *
-             [[ # size <= INODE.blocks_per_inode ]] *
-             [[ (F1 * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-             [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
-    POST RET:^(mscs,r)
-             [[ r = false ]] * MEMLOG.would_recover_old (FSXPMemLog fsxp) F mbase \/
-             [[ r = true ]] * exists m' flist' f',
-             MEMLOG.rep (FSXPMemLog fsxp) F (ActiveTxn mbase m') mscs *
-             [[ (F1 * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-             [[ BFILE.BFData f' = (firstn #size (BFILE.BFData f)) ++
-                                  (repeat $0 (#size - length (BFILE.BFData f))) ]]
-    CRASH    MEMLOG.would_recover_old (FSXPMemLog fsxp) F mbase
-    >} set_size_helper fsxp inum size mscs.
-Proof.
-  admit.
-Qed.
 
 Definition set_size T fsxp inum size mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, ok) <- set_size_helper fsxp inum size mscs;
-  If (bool_dec ok true) {
-    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
-    rx ^(mscs, ok)
-  } else {
-    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
-    rx ^(mscs, false)
-  }.
+  let^ (mscs, ok) <- BFILE.bftrunc (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
+  rx ^(mscs, ok).
+
 
 Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
@@ -377,7 +319,7 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   mscs <- IfRx irx (wlt_dec off curlen) {
     irx mscs
   } else {
-    let^ (mscs, ok) <- set_size_helper fsxp inum (off ^+ $1) mscs;
+    let^ (mscs, ok) <- BFILE.bftrunc (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum (off ^+ $1) mscs;
     If (bool_dec ok true) {
       irx mscs
     } else {
