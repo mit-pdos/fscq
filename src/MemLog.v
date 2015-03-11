@@ -880,7 +880,9 @@ Module MEMLOG.
 
   Ltac array_sort' :=
     eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
+    set_evars;
     repeat rewrite <- sep_star_assoc;
+    subst_evars;
     match goal with
     | [ |- ?p =p=> ?p ] => fail 1
     | _ => idtac
