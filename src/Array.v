@@ -174,6 +174,24 @@ Qed.
 
 Hint Rewrite firstn_updN firstn_upd using omega.
 
+Lemma skipn_skipn': forall A n m (l: list A),
+  skipn n (skipn m l) = skipn (m + n) l.
+Proof.
+  intros until m.
+  induction m; intros; simpl; auto.
+  destruct l.
+  destruct n; auto.
+  apply IHm.
+Qed.
+
+Lemma skipn_skipn: forall A n m (l: list A),
+  skipn n (skipn m l) = skipn (n + m) l.
+Proof.
+  intros.
+  rewrite Nat.add_comm.
+  apply skipn_skipn'.
+Qed.
+
 Lemma skipn_selN : forall T i j vs (def: T),
   selN (skipn i vs) j def = selN vs (i + j) def.
 Proof.
