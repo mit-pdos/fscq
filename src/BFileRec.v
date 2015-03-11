@@ -175,18 +175,18 @@ Section RECBFILE.
                      try solve_length_eq; eauto.
 
   Theorem bf_get_pair_ok : forall lxp bxp ixp inum mscs block_ix pos,
-    {< F A mbase m flist f ilistlist,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F F1 A mbase m flist f ilistlist,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
            [[ array_item_pairs ilistlist (list2nmem (BFILE.BFData f)) ]] *
            [[ length ilistlist = length (BFILE.BFData f) ]] *
            [[ wordToNat block_ix < length (BFILE.BFData f) ]] *
            [[ (pos < items_per_valu)%word ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bf_get_pair lxp ixp inum block_ix pos mscs.
   Proof.
     unfold bf_get_pair.
@@ -205,9 +205,9 @@ Section RECBFILE.
 
 
   Theorem bf_put_pair_ok : forall lxp bxp ixp inum mscs block_ix pos i,
-    {< F A mbase m flist f ilistlist,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F F1 A mbase m flist f ilistlist,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
              [[ array_item_pairs ilistlist (list2nmem (BFILE.BFData f)) ]] *
              [[ length ilistlist = length (BFILE.BFData f) ]] *
@@ -216,13 +216,13 @@ Section RECBFILE.
              [[ Rec.well_formed i ]]
     POST RET:mscs
              exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-             [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             [[ (F1 * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * # inum |-> f')%pred (list2nmem flist') ]] *
              [[ array_item_pairs (upd ilistlist block_ix 
                                      (upd (sel ilistlist block_ix nil) pos i))
                                  (list2nmem (BFILE.BFData f')) ]]
-    CRASH    MEMLOG.would_recover_old lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp F mbase
     >} bf_put_pair lxp ixp inum block_ix pos i mscs.
   Proof.
     unfold bf_put_pair.
@@ -493,15 +493,15 @@ Section RECBFILE.
   Local Hint Unfold array_item_file array_item_pairs : hoare_unfold.
 
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
-    {< F A mbase m flist f ilist,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+    {< F F1 A mbase m flist f ilist,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ array_item_file f ilist ]] *
-           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ r = $ (length ilist) ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bf_getlen lxp ixp inum mscs.
   Proof.
     unfold bf_getlen.
@@ -513,16 +513,16 @@ Section RECBFILE.
 
 
   Theorem bf_get_ok : forall lxp bxp ixp inum idx mscs,
-    {< F A mbase m flist f ilist,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+    {< F F1 A mbase m flist f ilist,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ array_item_file f ilist ]] *
-           [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ wordToNat idx < length ilist ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ r = sel ilist idx item_zero ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bf_get lxp ixp inum idx mscs.
   Proof.
     unfold bf_get.
@@ -541,20 +541,20 @@ Section RECBFILE.
   Qed.
 
   Theorem bf_put_ok : forall lxp bxp ixp inum idx v mscs,
-    {< F A mbase m flist f ilist,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+    {< F F1 A mbase m flist f ilist,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ array_item_file f ilist ]] *
-             [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ wordToNat idx < length ilist ]] *
              [[ Rec.well_formed v ]]
     POST RET:mscs
              exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ array_item_file f' (upd ilist idx v) ]] *
-             [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (F1 * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bf_put lxp ixp inum idx v mscs.
   Proof.
     unfold bf_put.
@@ -574,20 +574,20 @@ Section RECBFILE.
   Local Hint Resolve Rec.of_word_length.
 
   Theorem bf_extend_ok : forall lxp bxp ixp inum v mscs,
-    {< F A mbase m flist f ilist,
-    PRE   MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+    {< F F1 A mbase m flist f ilist,
+    PRE   MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
           [[ array_item_file f ilist ]] *
-          [[ (F * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+          [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
           [[ Rec.well_formed v ]]
     POST RET:^(mscs, r)
-          exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+          exists m', MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
           ([[ r = false ]] \/
            [[ r = true ]] * exists flist' f',
            [[ array_item_file f' (ilist ++ (upd item0_list $0 v)) ]] *
-           [[ (F * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+           [[ (F1 * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] )
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bf_extend lxp bxp ixp inum v mscs.
   Proof.
     unfold bf_extend.

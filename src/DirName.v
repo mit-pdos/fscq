@@ -535,15 +535,15 @@ Module SDIR.
   Local Hint Unfold rep rep_macro DIR.rep_macro: hoare_unfold.
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
-    {< F A mbase m dsmap,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ rep_macro F A m bxp ixp dnum dsmap ]]
+    {< F F1 A mbase m dsmap,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            ((exists inum isdir DF,
              [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dsmap ]]) \/
             ([[ r = None /\ notindomain name dsmap ]]))
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} dslookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dslookup.
@@ -595,13 +595,13 @@ Module SDIR.
 
 
   Theorem dslist_ok : forall lxp bxp ixp dnum mscs,
-    {< F A mbase m dsmap,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep_macro F A m bxp ixp dnum dsmap ]]
+    {< F F1 A mbase m dsmap,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,res)
-             MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+             MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ listpred dslmatch res dsmap ]]
-    CRASH    MEMLOG.would_recover_old lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp F mbase
     >} dslist lxp bxp ixp dnum mscs.
   Proof.
     unfold dslist.
@@ -611,19 +611,19 @@ Module SDIR.
 
 
   Theorem dsunlink_ok : forall lxp bxp ixp dnum name mscs,
-    {< F A mbase m dsmap,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep_macro F A m bxp ixp dnum dsmap ]]
+    {< F F1 A mbase m dsmap,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,r)
-            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+            ([[ r = false ]] * MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ notindomain name dsmap ]]) \/
             ([[ r = true ]] * exists m' dsmap' v0 DF,
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-             [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             [[ rep_macro F1 A m' bxp ixp dnum dsmap' ]] *
              [[ dsmap' = mem_except dsmap name ]] *
              [[ (DF * name |-> v0)%pred dsmap ]] *
              [[ (DF) dsmap' ]])
-    CRASH    MEMLOG.would_recover_old lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp F mbase
     >} dsunlink lxp bxp ixp dnum name mscs.
   Proof.
     unfold dsunlink.
@@ -650,19 +650,19 @@ Module SDIR.
 
 
   Theorem dslink_ok : forall lxp bxp ixp dnum name inum isdir mscs,
-    {< F A mbase m dsmap,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ rep_macro F A m bxp ixp dnum dsmap ]]
+    {< F F1 A mbase m dsmap,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,r)
             exists m',
-            ([[ r = false ]] * MEMLOG.rep lxp (ActiveTxn mbase m') mscs)
+            ([[ r = false ]] * MEMLOG.rep lxp F (ActiveTxn mbase m') mscs)
         \/  ([[ r = true ]] * exists dsmap' DF,
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-             [[ rep_macro F A m' bxp ixp dnum dsmap' ]] *
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             [[ rep_macro F1 A m' bxp ixp dnum dsmap' ]] *
              [[ dsmap' = Prog.upd dsmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
              [[ (DF dsmap /\ notindomain name dsmap) ]])
-    CRASH    MEMLOG.would_recover_old lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp F mbase
     >} dslink lxp bxp ixp dnum name inum isdir mscs.
   Proof.
     unfold dslink.

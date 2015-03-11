@@ -176,14 +176,14 @@ Module BFILE.
   (* correctness theorems *)
 
   Theorem bflen_ok : forall lxp bxp ixp inum mscs,
-    {< F A mbase m flist f,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F Fm A mbase m flist f,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ r = $ (length (BFData f)) ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bflen lxp ixp inum mscs.
   Proof.
     unfold bflen, rep.
@@ -198,14 +198,14 @@ Module BFILE.
 
 
   Theorem bfgetattr_ok : forall lxp bxp ixp inum mscs,
-    {< F A mbase m flist f,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F Fm A mbase m flist f,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ r = BFAttr f ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bfgetattr lxp ixp inum mscs.
   Proof.
     unfold bfgetattr, rep.
@@ -218,17 +218,17 @@ Module BFILE.
   Qed.
 
   Theorem bfsetattr_ok : forall lxp bxp ixp inum attr mscs,
-    {< F A mbase m flist f,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F Fm A mbase m flist f,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST RET:mscs
            exists m' flist' f',
-           MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-           [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+           MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+           [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ f' = Build_bfile (BFData f) attr ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bfsetattr lxp ixp inum attr mscs.
   Proof.
     unfold bfsetattr, rep.
@@ -245,15 +245,15 @@ Module BFILE.
 
 
   Theorem bfread_ok : forall lxp bxp ixp inum off mscs,
-    {<F A B mbase m flist f v,
-    PRE    MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-           [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F Fm A B mbase m flist f v,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ (B * #off |-> v)%pred (list2nmem (BFData f)) ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ r = v ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bfread lxp ixp inum off mscs.
   Proof.
     unfold bfread, rep.
@@ -277,19 +277,19 @@ Module BFILE.
 
 
   Lemma bfwrite_ok : forall lxp bxp ixp inum off v mscs,
-    {<F A B mbase m flist f v0,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F Fm A B mbase m flist f v0,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ (B * #off |-> v0)%pred (list2nmem (BFData f)) ]]
     POST RET:mscs
              exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-             [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ (B * #off |-> v)%pred (list2nmem (BFData f')) ]] *
              [[ f' = Build_bfile (upd (BFData f) off v) (BFAttr f) ]]
-    CRASH  MEMLOG.would_recover_old lxp mbase
+    CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bfwrite lxp ixp inum off v mscs.
   Proof.
     unfold bfwrite, rep.
@@ -350,20 +350,20 @@ Module BFILE.
   Qed.
 
   Theorem bfgrow_ok : forall lxp bxp ixp inum mscs,
-    {< F A B mbase m flist f,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F Fm A B mbase m flist f,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ B %pred (list2nmem (BFData f)) ]]
     POST RET:^(mscs,r)
-            exists m', MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
+            exists m', MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
             ([[ r = false ]] \/ 
              [[ r = true ]] * exists flist' f' v,
-             [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+             [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ (B * length (BFData f) |-> v)%pred (list2nmem (BFData f')) ]] *
              [[ f' = Build_bfile (BFData f ++ [v]) (BFAttr f) ]])
-    CRASH    MEMLOG.would_recover_old lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp F mbase
     >} bfgrow lxp bxp ixp inum mscs.
   Proof.
     unfold bfgrow, rep.
@@ -416,20 +416,20 @@ Module BFILE.
 
 
   Theorem bfshrink_ok : forall lxp bxp ixp inum mscs,
-    {< F A B mbase m flist f v,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
+    {< F Fm A B mbase m flist f v,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ length (BFData f) > 0 ]] *
-             [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+             [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
              [[ (B * ((length (BFData f)) - 1) |-> v)%pred (list2nmem (BFData f)) ]]
     POST RET:mscs
              exists m' flist' f',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-             [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
              [[ B %pred (list2nmem (BFData f')) ]] *
              [[ f' = Build_bfile (removelast (BFData f)) (BFAttr f) ]]
-    CRASH    MEMLOG.would_recover_old lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp F mbase
     >} bfshrink lxp bxp ixp inum mscs.
   Proof.
     unfold bfshrink, rep.
@@ -496,16 +496,16 @@ Module BFILE.
   Definition bftrunc T lxp bxp ixp inum mscs rx : prog T :=
     let^ (mscs, n) <- bflen lxp ixp inum mscs;
     let^ (mscs) <- For i < n
-      Ghost [ mbase F A ]
+      Ghost [ mbase F Fm A ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
-        exists m flist f, MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-        [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+        exists m flist f, MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+        [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
         [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
         [[ length (BFData f) = # (n ^- i) ]]
       OnCrash
-        MEMLOG.would_recover_old lxp mbase
+        MEMLOG.would_recover_old lxp F mbase
       Begin
         mscs <- bfshrink lxp bxp ixp inum mscs;
         lrx ^(mscs)
@@ -578,16 +578,16 @@ Module BFILE.
   Local Hint Unfold rep : hoare_unfold.
 
   Theorem bftrunc_ok : forall lxp bxp ixp inum mscs,
-    {< F A mbase m flist f,
-    PRE      MEMLOG.rep lxp (ActiveTxn mbase m) mscs *
-             [[ (F * rep bxp ixp flist)%pred (list2mem m) ]] *
+    {< F Fm A mbase m flist f,
+    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (Fm * rep bxp ixp flist)%pred (list2mem m) ]] *
              [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
     POST RET:mscs
              exists m' flist',
-             MEMLOG.rep lxp (ActiveTxn mbase m') mscs *
-             [[ (F * rep bxp ixp flist')%pred (list2mem m') ]] *
+             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             [[ (Fm * rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * #inum |-> bfile0)%pred (list2nmem flist') ]]
-    CRASH    MEMLOG.would_recover_old lxp mbase
+    CRASH    MEMLOG.would_recover_old lxp F mbase
     >} bftrunc lxp bxp ixp inum mscs.
   Proof.
     unfold bftrunc.

@@ -1054,7 +1054,6 @@ Module MEMLOG.
     split_pair_list_vars;
     autorewrite with lists; [ f_equal | .. ].
 
-(*
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2 F,
     PRE
@@ -1174,7 +1173,7 @@ Module MEMLOG.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
-*)
+
   Theorem flush_ok : forall xp mscs,
     {< m1 m2 F,
     PRE
@@ -1900,10 +1899,10 @@ Module MEMLOG.
   End RECOVER_CORR3.
 
 
-  Hint Extern 0 (okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
 
   (* XXX remove once SepAuto and SepAuto2 are unified *)
-  Hint Extern 0 (SepAuto.okToUnify (rep _ _ ?a) (rep _ _ ?a)) => constructor : okToUnify.
+  Hint Extern 0 (SepAuto.okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
 
 End MEMLOG.
 

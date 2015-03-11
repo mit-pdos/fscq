@@ -440,13 +440,13 @@ Module DIRTREE.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
-      Ghost [ mbase m F Ftop treetop bflist freeinodes freeinode_pred_unused freeinode_pred ]
+      Ghost [ mbase m F Fm Ftop treetop bflist freeinodes freeinode_pred_unused freeinode_pred ]
       Loopvar [ mscs inum isdir ]
       Continuation lrx
       Invariant
-        MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
+        MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
         exists tree,
-        [[ (F * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
+        [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
             BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred)%pred
            (list2mem m) ]] *
         [[ (Ftop * tree_pred treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
@@ -456,7 +456,7 @@ Module DIRTREE.
         [[ inum = dirtree_inum tree ]] *
         [[ find_name fnlist treetop = find_name fnrest tree ]]
       OnCrash
-        MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+        MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
       Begin
         If (bool_dec isdir false) {
           rx ^(mscs, None)
@@ -472,17 +472,17 @@ Module DIRTREE.
     rx ^(mscs, Some (inum, isdir)).
 
   Theorem namei_ok : forall fsxp dnum fnlist mscs,
-    {< F mbase m Ftop tree,
-    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+    {< F mbase m Fm Ftop tree,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
            [[ dnum = dirtree_inum tree ]]
     POST RET:^(mscs,r)
            [[ r = find_name fnlist tree ]] *
            [[ exists Fsub subtree,
               r = Some (dirtree_inum subtree, true) ->
-              (F * rep fsxp Fsub subtree)%pred (list2mem m) ]] *
-           MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs
-    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+              (Fm * rep fsxp Fsub subtree)%pred (list2mem m) ]] *
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} namei fsxp dnum fnlist mscs.
   Proof.
     unfold namei, rep.
@@ -560,20 +560,20 @@ Module DIRTREE.
     end.
 
   Theorem mkfile_ok : forall fsxp dnum name mscs,
-    {< F mbase m Ftop tree tree_elem,
-    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+    {< F mbase m Fm Ftop tree tree_elem,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
            [[ tree = TreeDir dnum tree_elem ]]
     POST RET:^(mscs,r)
            (* We always modify the memory, because we might allocate the file,
             * but then fail to link it into the directory..  When we return
             * None, the overall transaction should be aborted.
             *)
-           exists m', MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
+           exists m', MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
            ([[ r = None ]] \/
             exists inum, [[ r = Some inum ]] *
-            [[ (F * rep fsxp Ftop (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)))%pred (list2mem m') ]])
-    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+            [[ (Fm * rep fsxp Ftop (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)))%pred (list2mem m') ]])
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} mkfile fsxp dnum name mscs.
   Proof.
     unfold mkfile, rep.
@@ -626,16 +626,16 @@ Module DIRTREE.
     end.
 
   Theorem mkdir_ok : forall fsxp dnum name mscs,
-    {< F mbase m Ftop tree tree_elem,
-    PRE    MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m) mscs *
-           [[ (F * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+    {< F mbase m Fm Ftop tree tree_elem,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
            [[ tree = TreeDir dnum tree_elem ]]
     POST RET:^(mscs,r)
-           exists m', MEMLOG.rep fsxp.(FSXPMemLog) (ActiveTxn mbase m') mscs *
+           exists m', MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
            ([[ r = None ]] \/
             exists inum, [[ r = Some inum ]] *
-            [[ (F * rep fsxp Ftop (TreeDir dnum ((name, TreeDir inum nil) :: tree_elem)))%pred (list2mem m') ]])
-    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) mbase
+            [[ (Fm * rep fsxp Ftop (TreeDir dnum ((name, TreeDir inum nil) :: tree_elem)))%pred (list2mem m') ]])
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} mkdir fsxp dnum name mscs.
   Proof.
     unfold mkdir, rep.
