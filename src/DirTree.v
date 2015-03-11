@@ -24,48 +24,74 @@ Module DIRTREE.
   | TreeFile : addr -> BFILE.bfile -> dirtree
   | TreeDir  : addr -> list (string * dirtree) -> dirtree.
 
+  (**
+   * Helpers for looking up names in a tree, and for updating trees.
+   *)
   Definition dirtree_inum (dt : dirtree) :=
     match dt with
     | TreeFile inum _ => inum
     | TreeDir  inum _ => inum
     end.
 
-  Definition find_name_helper {T} (rec : dirtree -> option T) name
-                              (dirent : string * dirtree)
-                              (accum : option T) :=
+  Definition find_subtree_helper {T} (rec : dirtree -> option T) name
+                                 (dirent : string * dirtree)
+                                 (accum : option T) :=
     let (ent_name, ent_item) := dirent in
     if string_dec ent_name name then rec ent_item else accum.
 
-  Fixpoint find_name (fnlist : list string) (tree : dirtree) :=
+  Fixpoint find_subtree (fnlist : list string) (tree : dirtree) :=
     match fnlist with
-    | nil =>
+    | nil => Some tree
+    | name :: suffix =>
       match tree with
+      | TreeFile _ _ => None
+      | TreeDir _ dirents =>
+        fold_right (find_subtree_helper (find_subtree suffix) name) None dirents
+      end
+    end.
+
+  Definition find_name (fnlist : list string) (tree : dirtree) :=
+    match find_subtree fnlist tree with
+    | None => None
+    | Some subtree =>
+      match subtree with
       | TreeFile inum _ => Some (inum, false)
       | TreeDir inum _ => Some (inum, true)
       end
-    | name :: rest =>
-      match tree with
-      | TreeFile _ _ => None
-      | TreeDir _ dirents =>
-        fold_right (find_name_helper (find_name rest) name) None dirents
-      end
     end.
 
-  Fixpoint find_file (fnlist : list string) (tree : dirtree) :=
-    match fnlist with
-    | nil =>
-      match tree with
+  Definition find_file (fnlist : list string) (tree : dirtree) :=
+    match find_subtree fnlist tree with
+    | None => None
+    | Some subtree =>
+      match subtree with
       | TreeFile inum f => Some (inum, f)
       | TreeDir _ _ => None
       end
+    end.
+
+  Definition dir_updater := dirtree -> dirtree.
+
+  Definition update_tree_helper (rec : dirtree -> dirtree)
+                                name
+                                (dirent : string * dirtree) :=
+    let (ent_name, ent_tree) := dirent in
+    if string_dec ent_name name then (ent_name, rec ent_tree) else dirent.
+
+  Fixpoint update_tree (fnlist : list string) (updater : dir_updater) (tree : dirtree) :=
+    match fnlist with
+    | nil => updater tree
     | name :: rest =>
       match tree with
-      | TreeFile _ _ => None
-      | TreeDir _ dirents =>
-        fold_right (find_name_helper (find_file rest) name) None dirents
+      | TreeFile _ _ => tree
+      | TreeDir inum ents =>
+        TreeDir inum (map (update_tree_helper (update_tree rest updater) name) ents)
       end
     end.
 
+  (**
+   * Predicates capturing the representation invariant of a directory tree.
+   *)
   Fixpoint tree_dir_names_pred' (dirents : list (string * dirtree)) : @pred _ string_dec (addr * bool) :=
     match dirents with
     | nil => emp
@@ -81,20 +107,39 @@ Module DIRTREE.
 
   Section DIRITEM.
 
-  Variable F : dirtree -> @pred nat eq_nat_dec BFILE.bfile.
+    Variable F : dirtree -> @pred nat eq_nat_dec BFILE.bfile.
+    Variable Fexcept : dirtree -> @pred nat eq_nat_dec BFILE.bfile.
 
-  Fixpoint dirlist_pred' (dirlist : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
-    match dirlist with
-    | nil => emp
-    | (_, e) :: dirlist' => F e * dirlist_pred' dirlist'
-    end)%pred.
+    Fixpoint dirlist_pred (dirlist : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
+      match dirlist with
+      | nil => emp
+      | (_, e) :: dirlist' => F e * dirlist_pred dirlist'
+      end)%pred.
+
+    Fixpoint dirlist_pred_except (name : string) (dirlist : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
+      match dirlist with
+      | nil => emp
+      | (ename, e) :: dirlist' =>
+        (if string_dec ename name then Fexcept e else F e) * dirlist_pred_except name dirlist'
+      end)%pred.
 
   End DIRITEM.
 
   Fixpoint tree_pred e := (
     match e with
     | TreeFile inum f => #inum |-> f
-    | TreeDir inum s => tree_dir_names_pred inum s * dirlist_pred' tree_pred s
+    | TreeDir inum s => tree_dir_names_pred inum s * dirlist_pred tree_pred s
+    end)%pred.
+
+  Fixpoint tree_pred_except (fnlist : list string) e {struct fnlist} :=  (
+    match fnlist with
+    | nil => emp
+    | fn :: suffix =>
+      match e with
+      | TreeFile inum f => #inum |-> f
+      | TreeDir inum s => tree_dir_names_pred inum s *
+                          dirlist_pred_except (tree_pred) (tree_pred_except suffix) fn s
+      end
     end)%pred.
 
   (**
@@ -107,6 +152,80 @@ Module DIRTREE.
      BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred *
      [[ (F * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
+
+  (**
+   * Theorems about extracting and folding back subtrees from a tree.
+   *)
+  Lemma dirlist_pred_except_notfound : forall l fnlist name,
+    ~ In name (map fst l) ->
+    dirlist_pred tree_pred l =p=> dirlist_pred_except tree_pred (tree_pred_except fnlist) name l.
+  Proof.
+    induction l; simpl; intros.
+    cancel.
+    destruct a. destruct (string_dec s name); subst.
+    - edestruct H. eauto.
+    - cancel. eauto.
+  Qed.
+
+  Lemma tree_dir_names_pred'_app : forall l1 l2,
+    tree_dir_names_pred' (l1 ++ l2) =p=> tree_dir_names_pred' l1 * tree_dir_names_pred' l2.
+  Proof.
+    induction l1; simpl; intros.
+    cancel.
+    destruct a; destruct d; cancel; eauto.
+  Qed.
+
+  Lemma dir_names_distinct' : forall l m F,
+    (F * tree_dir_names_pred' l)%pred m ->
+    NoDup (map fst l).
+  Proof.
+    induction l; simpl; intros.
+    constructor.
+    destruct a; simpl in *.
+    destruct d.
+    - constructor; [| eapply IHl; pred_apply' H; cancel ].
+      intro Hin.
+      apply in_map_iff in Hin. repeat deex. destruct x.
+      apply in_split in H2. repeat deex.
+      eapply ptsto_conflict_F with (a := s). pred_apply' H.
+      rewrite tree_dir_names_pred'_app. simpl.
+      destruct d; cancel.
+    - constructor; [| eapply IHl; pred_apply' H; cancel ].
+      intro Hin.
+      apply in_map_iff in Hin. repeat deex. destruct x.
+      apply in_split in H2. repeat deex.
+      eapply ptsto_conflict_F with (a := s). pred_apply' H.
+      rewrite tree_dir_names_pred'_app. simpl.
+      destruct d; cancel.
+  Qed.
+
+  Lemma dir_names_distinct : forall l w,
+    tree_dir_names_pred w l =p=> tree_dir_names_pred w l * [[ NoDup (map fst l) ]].
+  Proof.
+    unfold tree_dir_names_pred; intros.
+    cancel; eauto.
+    eapply dir_names_distinct'.
+    pred_apply' H1. cancel.
+  Qed.
+
+  Theorem subtree_extract : forall fnlist tree subtree,
+    find_subtree fnlist tree = Some subtree ->
+    tree_pred tree =p=> tree_pred_except fnlist tree * tree_pred subtree.
+  Proof.
+    induction fnlist; simpl; intros.
+    - inversion H; subst. cancel.
+    - destruct tree; try discriminate; simpl.
+      rewrite dir_names_distinct at 1. cancel.
+      induction l; simpl in *; try discriminate.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst.
+      + rewrite IHfnlist; eauto.
+        cancel.
+        apply dirlist_pred_except_notfound.
+        inversion H3; eauto.
+      + cancel.
+        inversion H3; eauto.
+  Qed.
 
 (*
   Lemma tree_dir_extract : forall d F dmap name inum,

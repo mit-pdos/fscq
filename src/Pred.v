@@ -891,6 +891,12 @@ Proof.
   unfold_sep_star; firstorder discriminate.
 Qed.
 
+Lemma ptsto_conflict_F : forall a F (m : @mem AT AEQ V),
+  ~ (a |->? * a |->? * F)%pred m.
+Proof.
+  unfold_sep_star; firstorder discriminate.
+Qed.
+
 Theorem ptsto_complete : forall a v (m1 m2 : @mem AT AEQ V),
   (a |-> v)%pred m1 -> (a |-> v)%pred m2 -> m1 = m2.
 Proof.
