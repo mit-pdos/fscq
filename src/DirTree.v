@@ -33,6 +33,12 @@ Module DIRTREE.
     | TreeDir  inum _ => inum
     end.
 
+  Definition dirtree_isdir (dt : dirtree) :=
+    match dt with
+    | TreeFile _ _ => false
+    | TreeDir  _ _ => true
+    end.
+
   Definition find_subtree_helper {T} (rec : dirtree -> option T) name
                                  (dirent : string * dirtree)
                                  (accum : option T) :=
@@ -72,20 +78,20 @@ Module DIRTREE.
 
   Definition dir_updater := dirtree -> dirtree.
 
-  Definition update_tree_helper (rec : dirtree -> dirtree)
-                                name
-                                (dirent : string * dirtree) :=
+  Definition update_subtree_helper (rec : dirtree -> dirtree)
+                                   name
+                                   (dirent : string * dirtree) :=
     let (ent_name, ent_tree) := dirent in
     if string_dec ent_name name then (ent_name, rec ent_tree) else dirent.
 
-  Fixpoint update_tree (fnlist : list string) (updater : dir_updater) (tree : dirtree) :=
+  Fixpoint update_subtree (fnlist : list string) (subtree : dirtree) (tree : dirtree) :=
     match fnlist with
-    | nil => updater tree
+    | nil => subtree
     | name :: rest =>
       match tree with
       | TreeFile _ _ => tree
       | TreeDir inum ents =>
-        TreeDir inum (map (update_tree_helper (update_tree rest updater) name) ents)
+        TreeDir inum (map (update_subtree_helper (update_subtree rest subtree) name) ents)
       end
     end.
 
@@ -95,8 +101,7 @@ Module DIRTREE.
   Fixpoint tree_dir_names_pred' (dirents : list (string * dirtree)) : @pred _ string_dec (addr * bool) :=
     match dirents with
     | nil => emp
-    | (name, TreeFile inum f) :: dirlist' => name |-> (inum, false) * tree_dir_names_pred' dirlist'
-    | (name, TreeDir  inum s) :: dirlist' => name |-> (inum, true)  * tree_dir_names_pred' dirlist'
+    | (name, subtree) :: dirlist' => name |-> (dirtree_inum subtree, dirtree_isdir subtree) * tree_dir_names_pred' dirlist'
     end.
 
   Definition tree_dir_names_pred (dir_inum : addr) (dirents : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
@@ -215,7 +220,7 @@ Module DIRTREE.
     induction fnlist; simpl; intros.
     - inversion H; subst. cancel.
     - destruct tree; try discriminate; simpl.
-      rewrite dir_names_distinct at 1. cancel.
+      rewrite dir_names_distinct at 1; cancel.
       induction l; simpl in *; try discriminate.
       destruct a0; simpl in *.
       destruct (string_dec s a); subst.
@@ -225,6 +230,114 @@ Module DIRTREE.
         inversion H3; eauto.
       + cancel.
         inversion H3; eauto.
+  Qed.
+
+  Theorem tree_dir_names_pred_update' : forall fnlist subtree subtree' d,
+    find_subtree fnlist d = Some subtree ->
+    dirtree_inum subtree = dirtree_inum subtree' ->
+    dirtree_isdir subtree = dirtree_isdir subtree' ->
+    (dirtree_inum d, dirtree_isdir d) =
+    (dirtree_inum (update_subtree fnlist subtree' d),
+     dirtree_isdir (update_subtree fnlist subtree' d)).
+  Proof.
+    destruct fnlist; simpl; intros.
+    congruence.
+    destruct d; auto.
+  Qed.
+
+  Lemma tree_dir_names_pred'_distinct : forall l,
+    tree_dir_names_pred' l =p=> tree_dir_names_pred' l * [[ NoDup (map fst l) ]].
+  Proof.
+    unfold pimpl; intros.
+    assert ((emp * tree_dir_names_pred' l)%pred m) by (pred_apply; cancel).
+    apply dir_names_distinct' in H0 as Hnodup.
+    clear H0. pred_apply; cancel.
+  Qed.
+
+  Theorem tree_dir_names_pred_notfound : forall l fnlist subtree' name,
+    ~ In name (map fst l) ->
+    tree_dir_names_pred' l =p=>
+    tree_dir_names_pred' (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
+  Proof.
+    induction l; simpl; intros.
+    cancel.
+    destruct a; simpl.
+    destruct (string_dec s name); subst; try intuition.
+    cancel.
+    eauto.
+  Qed.
+
+  Theorem tree_dir_names_pred'_update : forall l fnlist subtree subtree' name,
+    fold_right (find_subtree_helper (find_subtree fnlist) name) None l = Some subtree ->
+    dirtree_inum subtree = dirtree_inum subtree' ->
+    dirtree_isdir subtree = dirtree_isdir subtree' ->
+    tree_dir_names_pred' l =p=>
+    tree_dir_names_pred' (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
+  Proof.
+    intros; rewrite tree_dir_names_pred'_distinct; cancel.
+    induction l; simpl; intros.
+    cancel.
+
+    destruct a.
+    case_eq (update_subtree_helper (update_subtree fnlist subtree') name (s, d)); intros.
+    unfold update_subtree_helper in H2.
+    simpl in *.
+    destruct (string_dec s name); subst.
+    - inversion H2; clear H2; subst; simpl in *.
+      erewrite <- tree_dir_names_pred_update'; eauto. cancel.
+      apply tree_dir_names_pred_notfound. inversion H4; eauto.
+    - inversion H2; clear H2; subst; simpl in *.
+      cancel. apply H2. inversion H4; eauto.
+  Qed.
+
+  Theorem tree_dir_names_pred_update : forall w l fnlist subtree subtree' name,
+    fold_right (find_subtree_helper (find_subtree fnlist) name) None l = Some subtree ->
+    dirtree_inum subtree = dirtree_inum subtree' ->
+    dirtree_isdir subtree = dirtree_isdir subtree' ->
+    tree_dir_names_pred w l =p=>
+    tree_dir_names_pred w (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
+  Proof.
+    unfold tree_dir_names_pred; intros; cancel; eauto.
+    pred_apply.
+    eapply tree_dir_names_pred'_update; eauto.
+  Qed.
+
+  Lemma dirlist_pred_except_notfound' : forall l fnlist name subtree',
+    ~ In name (map fst l) ->
+    dirlist_pred_except tree_pred (tree_pred_except fnlist) name l =p=>
+    dirlist_pred tree_pred (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
+  Proof.
+    induction l; simpl; intros.
+    cancel.
+    destruct a; simpl. destruct (string_dec s name); subst.
+    - edestruct H. eauto.
+    - cancel. eauto.
+  Qed.
+
+  Theorem subtree_absorb : forall fnlist tree subtree subtree',
+    find_subtree fnlist tree = Some subtree ->
+    dirtree_inum subtree = dirtree_inum subtree' ->
+    dirtree_isdir subtree = dirtree_isdir subtree' ->
+    tree_pred_except fnlist tree * tree_pred subtree' =p=>
+    tree_pred (update_subtree fnlist subtree' tree).
+  Proof.
+    induction fnlist; simpl; intros.
+    - inversion H; subst. cancel.
+    - destruct tree; try discriminate; simpl.
+      rewrite dir_names_distinct at 1; cancel.
+      rewrite tree_dir_names_pred_update; eauto.
+      cancel.
+
+      induction l; simpl in *; intros; try congruence.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst.
+      + rewrite <- IHfnlist; eauto. cancel.
+        inversion H6.
+        apply dirlist_pred_except_notfound'; eauto.
+      + cancel.
+        inversion H6.
+        rewrite <- H2; eauto.
+        cancel.
   Qed.
 
 (*
@@ -573,25 +686,6 @@ Module DIRTREE.
     exact emp.
   Qed.
 
-  Definition dir_updater := dirtree -> dirtree.
-
-  Definition update_tree_helper (rec : dirtree -> dirtree)
-                                name
-                                (dirent : string * dirtree) :=
-    let (ent_name, ent_tree) := dirent in
-    if string_dec ent_name name then (ent_name, rec ent_tree) else dirent.
-
-  Fixpoint update_tree (fnlist : list string) (updater : dir_updater) (tree : dirtree) :=
-    match fnlist with
-    | nil => updater tree
-    | name :: rest =>
-      match tree with
-      | TreeFile _ _ => tree
-      | TreeDir inum ents =>
-        TreeDir inum (map (update_tree_helper (update_tree rest updater) name) ents)
-      end
-    end.
-
   Definition add_to_dir (name : string) (newitem : dirtree) tree :=
     match tree with
     | TreeFile _ _ => tree
@@ -721,8 +815,6 @@ Module DIRTREE.
   Proof.
     admit.
   Qed.
-
-  Definition set_file (f : dirtree) (oldtree : dirtree) := f.
 
   Theorem write_ok : forall fsxp inum off v mscs,
     {< F mbase m rootdnum pathname Ftop tree f B v0,
