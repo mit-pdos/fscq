@@ -1,5 +1,22 @@
 Require Import Arith Omega NArith Nomega Word Prog.
 
+
+Ltac set_evars :=
+  repeat match goal with
+              | [ |- context[?e] ] => is_evar e; let H := fresh in set (H := e)
+            end.
+
+Ltac subst_evars :=
+  repeat match goal with
+              | [ H := ?e |- _ ] => is_evar e; subst H
+            end.
+
+Ltac set_evars_in H :=
+  repeat match type of H with
+              | context[?e] => is_evar e; let E := fresh in set (E := e) in H
+            end.
+
+
 Theorem f_neq : forall {A B : Type} (f : A -> B) x y, f x <> f y -> x <> y.
 Proof.
   intros. unfold not. intro He. rewrite He in H. auto.
@@ -226,13 +243,13 @@ Qed.
 
 
 Ltac autorewrite_fast_goal :=
-  (rewrite_strat (topdown (hints W2Nat)));
+  set_evars; (rewrite_strat (topdown (hints W2Nat))); subst_evars;
   try autorewrite_fast_goal.
 
 Ltac autorewrite_fast :=
   match goal with
   | [ H: _ |- _ ] =>
-    (rewrite_strat (topdown (hints W2Nat)) in H);
+    set_evars_in H; (rewrite_strat (topdown (hints W2Nat)) in H); subst_evars;
     [ try autorewrite_fast | try autorewrite_fast_goal .. ]
   | [ |- _ ] => autorewrite_fast_goal
   end.
