@@ -970,9 +970,11 @@ Module MEMLOG.
     solve_lengths_prepare;
     rewrite_singular_array;
     array_sort;
+    set_evars;
     repeat (rewrite array_app; [ | solve_lengths_prepped ]); [ repeat rewrite <- app_assoc | .. ];
     try apply pimpl_refl;
-    try (apply equal_arrays; [ solve_lengths_prepped | try reflexivity ]).
+    try (apply equal_arrays; [ solve_lengths_prepped | try reflexivity ]);
+    subst_evars.
 
   Ltac try_arrays_lengths := try (array_cancel_trivial || array_match); solve_lengths_prepped.
 
