@@ -544,6 +544,8 @@ Module DIRTREE.
     instantiate (subtree := d2). cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (namei _ _ _ _) _) => apply namei_ok : prog.
+
   Definition mkfile T fsxp dnum name mscs rx : prog T :=
     let^ (mscs, oi) <- BALLOC.alloc_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) mscs;
     match oi with
@@ -674,6 +676,9 @@ Module DIRTREE.
     exact emp.
     exact emp.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
+  Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _) _) => apply mkdir_ok : prog.
 
   Definition add_to_dir (name : string) (newitem : dirtree) tree :=
     match tree with
@@ -966,5 +971,12 @@ Module DIRTREE.
     step.
     rewrite <- subtree_absorb; eauto.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (truncate _ _ _ _) _) => apply truncate_ok : prog.
+  Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
+  Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (setattr _ _ _ _) _) => apply setattr_ok : prog.
 
 End DIRTREE.
