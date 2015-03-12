@@ -163,6 +163,8 @@ Proof.
   hoare_unfold MEMLOG.log_intact_unfold.
 Qed.
 
+Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
+
 Theorem read_block_recover_ok : forall fsxp inum off mscs,
   {<< m F Fm Ftop tree pathname f B v,
   PRE    MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
@@ -182,9 +184,7 @@ Proof.
 
   intros.
   eapply pimpl_ok3.
-  eapply corr3_from_corr2.
-  eapply read_block_ok.
-  eapply MEMLOG.recover_ok.
+  eapply corr3_from_corr2_rx; eauto with prog.
 
   cancel.
   step.
