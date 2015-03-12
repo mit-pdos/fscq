@@ -47,8 +47,6 @@ debugMore :: Show a => a -> IO ()
 debugMore msg = debug $ " .. " ++ (show msg)
 
 -- File system configuration
-cachesize :: Int
-cachesize = 10000
 nDataBitmaps :: Coq_word
 nDataBitmaps = W64 1
 nInodeBitmaps :: Coq_word
@@ -79,12 +77,12 @@ run_fuse disk_fn fuse_args = do
   then
     do
       putStrLn $ "Recovering file system"
-      (s, (fsxp, ())) <- I.run ds $ MemLog._MEMLOG__recover cachesize
+      (s, (fsxp, ())) <- I.run ds $ FS.recover
       return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      (s, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps cachesize
+      (s, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps
       if ok == False then error $ "mkfs failed" else return ()
       set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
       return (s, fsxp)
