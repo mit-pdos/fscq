@@ -1558,6 +1558,16 @@ Proof.
 Qed.
 
 
+Hint Rewrite crash_xform_sep_star_dist : crash_xform.
+Hint Rewrite crash_xform_or_dist : crash_xform.
+Hint Rewrite crash_xform_exists_comm : crash_xform.
+Hint Rewrite crash_xform_lift_empty : crash_xform.
+Hint Rewrite crash_xform_ptsto : crash_xform.
+Hint Rewrite crash_invariant_ptsto : crash_xform.
+
+Hint Resolve crash_invariant_emp.
+
+
 Theorem diskIs_extract : forall AT AEQ V a v (m : @mem AT AEQ V),
   (exists F, F * a |-> v)%pred m
   -> (diskIs m =p=> diskIs (mem_except m a) * a |-> v).
