@@ -329,6 +329,26 @@ Module DIRTREE.
         cancel.
   Qed.
 
+  (**
+   * Helpers for higher levels that need to reason about updated trees.
+   *)
+
+  Theorem find_update_subtree : forall fnlist tree subtree subtree0,
+    find_subtree fnlist tree = Some subtree0 ->
+    dirtree_inum subtree0 = dirtree_inum subtree ->
+    find_subtree fnlist (update_subtree fnlist subtree tree) = Some subtree.
+  Proof.
+    induction fnlist; simpl; try congruence; intros.
+    destruct tree; try congruence.
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst; simpl.
+    - destruct (string_dec a a); try congruence; eauto.
+    - destruct (string_dec s a); try congruence; eauto.
+  Qed.
+
+  Hint Resolve find_update_subtree.
+
 (*
   Lemma tree_dir_extract : forall d F dmap name inum,
     (F * name |-> (inum, true))%pred dmap
