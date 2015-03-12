@@ -7,9 +7,6 @@ import FSLayout
 import Disk
 import System.Environment
 
-cachesize :: Int
-cachesize = 1000
-
 main :: IO ()
 main = do
   args <- getArgs
@@ -18,7 +15,7 @@ main = do
     [fn] -> do
       ds <- init_disk fn
       putStrLn $ "Initializing file system"
-      (_, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs (W 1) (W 1) cachesize
+      (_, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs (W 1) (W 1)
       if ok == False then
         error $ "mkfs failed"
       else

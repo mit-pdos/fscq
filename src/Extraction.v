@@ -13,6 +13,7 @@ Extract Inlined Constant Cache.eviction_state  => "Evict.EvictionState".
 Extract Inlined Constant Cache.eviction_init   => "Evict.eviction_init".
 Extract Inlined Constant Cache.eviction_update => "Evict.eviction_update".
 Extract Inlined Constant Cache.eviction_choose => "Evict.eviction_choose".
+Extract Constant FS.cachesize => "10000".
 
 Cd "codegen".
 Recursive Extraction Library FS.

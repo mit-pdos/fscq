@@ -35,9 +35,6 @@ repf2 n _ s f = do
   (s, (rr, ())) <- repf2 (n-1) r s f
   return (s, (rr, ()))
 
-cachesize :: Int
-cachesize = 1000
-
 main :: IO ()
 main = do
   -- This is racy (stat'ing the file first and opening it later)
@@ -47,12 +44,12 @@ main = do
   then
     do
       putStrLn $ "Recovering file system"
-      (s, (fsxp, ())) <- I.run ds $ _MEMLOG__recover cachesize
+      (s, (fsxp, ())) <- I.run ds $ FS.recover
       return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      (s, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs (W 1) (W 1) cachesize
+      (s, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs (W 1) (W 1)
       if ok == False then error $ "mkfs failed" else return ()
       set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
       return (s, fsxp)

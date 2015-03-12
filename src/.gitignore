@@ -1,8 +1,6 @@
 *.mli
 *.hi
 *.o
-.*.aux
-.coq-native
 /lia.cache
 /codegen
 _build
