@@ -1869,7 +1869,7 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
   Definition read_array T xp a i stride mscs rx : prog T :=
     let^ (mscs, r) <- read xp (a ^+ i ^* stride) mscs;
