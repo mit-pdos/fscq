@@ -23,6 +23,9 @@ Require Import Cache.
 Set Implicit Arguments.
 Import ListNotations.
 
+Parameter cachesize : nat.
+Axiom cachesize_nonzero : cachesize <> 0.
+
 Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   (* Block $0 stores the superblock (layout information).
    * The other block numbers, except for MemLog, are relative to
@@ -73,27 +76,65 @@ Definition mkfs T data_bitmaps inode_bitmaps cachesize rx : prog T :=
     rx ^(mscs, fsxp, ok)
   end.
 
+Definition recover {T} rx : prog T :=
+  cs <- BUFCACHE.init cachesize;
+  let^ (cs, fsxp) <- sb_load cs;
+  mscs <- MEMLOG.recover (FSXPMemLog fsxp) cs;
+  rx ^(mscs, fsxp).
+
+Theorem recover_ok : forall T rx,
+  {{fun done_ crash_ =>
+    exists m1 xp F0 F,
+      (F0 * crash_xform (MEMLOG.would_recover_old xp F m1) *
+        [[forall r_,
+          let '^(mscs, fsxp) := r_ in
+          {{fun (done'_ : donecond T) (crash'_ : pred) =>
+            F0 *
+            (MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m1) mscs) *
+            [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] *
+        [[F0 * MEMLOG.would_recover_old xp F m1 =p=> crash_]]) \/
+      exists m2, (F0 * crash_xform (MEMLOG.would_recover_either xp F m1 m2) *
+        [[forall r_,
+          let '^(mscs, fsxp) := r_ in
+          {{fun (done'_ : donecond T) (crash'_ : pred) =>
+            F0 *
+            (MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m1) mscs \/
+             MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m2) mscs) *
+            [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] *
+        [[F0 * MEMLOG.would_recover_either xp F m1 m2 =p=> crash_]])
+  }} recover rx.
+Proof.
+  unfold recover; intros.
+  step.
+  eapply pimpl_or_r; left. cancel. apply cachesize_nonzero; auto.
+  destruct b1. specialize (H3 ^((a0, (a1, b)), a)). eauto.
+  eapply pimpl_or_r; right. cancel. apply cachesize_nonzero; auto.
+  destruct b1. specialize (H3 ^((a1, (a2, b)), a0)). eauto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
+
 Definition file_nblocks T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, len) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, len) <- DIRTREE.getlen fsxp inum mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, len).
 
 Definition file_get_attr T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, attr).
 
 Definition file_get_sz T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, INODE.ISize attr).
 
 Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
                           (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
@@ -104,15 +145,15 @@ Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, b) <- BFILE.bfread (FSXPMemLog fsxp) (FSXPInode fsxp) inum off mscs;
+  let^ (mscs, b) <- DIRTREE.read fsxp inum off mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, b).
 
 Theorem read_block_ok : forall fsxp inum off mscs,
-  {< m F Fm flist A f B v,
+  {< m F Fm Ftop tree pathname f B v,
   PRE    MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
-         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-         [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST RET:^(mscs,r)
          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
@@ -124,34 +165,34 @@ Proof.
   hoare_unfold MEMLOG.log_intact_unfold.
 Qed.
 
+Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
 
-Theorem read_block_recover_ok : forall fsxp inum off mscs cachesize,
-  {<< m F Fm flist A f B v,
-  PRE     [[ cachesize <> 0 ]] *
-          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
+Theorem read_block_recover_ok : forall fsxp inum off mscs,
+  {<< m F Fm Ftop tree pathname f B v,
+  PRE    MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST RET:^(mscs,r)
-          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
-          [[ r = v ]]
+         MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
+         [[ r = v ]]
   REC RET:^(mscs,fsxp)
-          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs
-  >>} read_block fsxp inum off mscs >> MEMLOG.recover cachesize.
+         MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs
+  >>} read_block fsxp inum off mscs >> recover.
 Proof.
   intros.
-  unfold forall_helper; intros m F Fm flist A f B v.
+  unfold forall_helper; intros m F Fm Ftop tree pathname f B v.
   exists (MEMLOG.log_intact (FSXPMemLog fsxp) F m m).
 
   intros.
   eapply pimpl_ok3.
-  eapply corr3_from_corr2.
-  eapply read_block_ok.
-  eapply MEMLOG.recover_ok.
+  eapply corr3_from_corr2_rx; eauto with prog.
 
   cancel.
   step.
-  cancel.
+  eauto.
+  eauto.
+  step.
   cancel.
   unfold MEMLOG.log_intact.
   autorewrite with crash_xform.
@@ -163,12 +204,15 @@ Proof.
   apply pimpl_or_r; left; cancel.
 
   unfold MEMLOG.log_intact in *.
+  destruct b1.
   step.
   rewrite H3; cancel.
   cancel.
 
   unfold MEMLOG.log_intact in *.
+  cancel.
   apply pimpl_or_r; right; cancel.
+  destruct b1.
   step.
   rewrite H3; cancel.
   cancel.
@@ -226,7 +270,7 @@ Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
           [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
             [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
-  >>} write_block_inbounds fsxp inum off v mscs >> MEMLOG.recover cachesize.
+  >>} write_block_inbounds fsxp inum off v mscs >> recover.
 Proof.
   intros.
   (*unfold forall_helper at 1 2 3 4 5; intros flist A f B v0 F.

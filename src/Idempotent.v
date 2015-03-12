@@ -115,3 +115,16 @@ Proof.
     right. exists m''; exists v. intuition.
     eapply corr3_from_corr2_recovered; eauto.
 Qed.
+
+Theorem corr3_from_corr2_rx :
+  forall TF TR RF RR (p: _ -> prog TF) (r: _ -> prog TR)
+         (rxp : RF -> prog TF) (rxr : RR -> prog TR)
+         ppre rpre,
+  {{ ppre }} progseq p rxp
+  -> {{ rpre }} progseq r rxr
+  -> {{ fun done crashdone => exists crash,
+        ppre done crash * [[ crash_xform crash =p=> rpre crashdone crash ]] }} p rxp >> r rxr.
+Proof.
+  unfold progseq; intros.
+  apply corr3_from_corr2; eauto.
+Qed.

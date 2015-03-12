@@ -15,6 +15,7 @@ Require Import Hoare.
 Require Import MemLog.
 Require Import GenSep.
 Require Import SepAuto.
+Require Import Array.
 
 Set Implicit Arguments.
 
@@ -328,6 +329,42 @@ Module DIRTREE.
         cancel.
   Qed.
 
+  (**
+   * Helpers for higher levels that need to reason about updated trees.
+   *)
+
+  Theorem find_update_subtree : forall fnlist tree subtree subtree0,
+    find_subtree fnlist tree = Some subtree0 ->
+    dirtree_inum subtree0 = dirtree_inum subtree ->
+    find_subtree fnlist (update_subtree fnlist subtree tree) = Some subtree.
+  Proof.
+    induction fnlist; simpl; try congruence; intros.
+    destruct tree; try congruence.
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst; simpl.
+    - destruct (string_dec a a); try congruence; eauto.
+    - destruct (string_dec s a); try congruence; eauto.
+  Qed.
+
+  Hint Resolve find_update_subtree.
+
+  (**
+   * XXX
+   * Might be useful to have another theorem about how pathname-to-inode mappings
+   * are preserved across [update_subtree] for other paths.  In particular, if we
+   * do an [update_subtree] for some path [p] to a new subtree [subtree], then
+   * paths that do not start with [p] should not be affected.  Furthermore, paths
+   * [p' = p ++ suffix] should also be unaffected if:
+   *
+   *   find_subtree suffix subtree = find_subtree p' tree
+   *
+   * However, it's not clear yet who needs this kind of theorem.  This might be
+   * necessary for applications above FS.v, because they will have to prove that
+   * their file descriptors / inode numbers remain valid after they performed
+   * some operation on the tree.
+   *)
+
 (*
   Lemma tree_dir_extract : forall d F dmap name inum,
     (F * name |-> (inum, true))%pred dmap
@@ -543,6 +580,8 @@ Module DIRTREE.
     instantiate (subtree := d2). cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (namei _ _ _ _) _) => apply namei_ok : prog.
+
   Definition mkfile T fsxp dnum name mscs rx : prog T :=
     let^ (mscs, oi) <- BALLOC.alloc_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) mscs;
     match oi with
@@ -673,6 +712,9 @@ Module DIRTREE.
     exact emp.
     exact emp.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
+  Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _) _) => apply mkdir_ok : prog.
 
   Definition add_to_dir (name : string) (newitem : dirtree) tree :=
     match tree with
@@ -828,6 +870,23 @@ Module DIRTREE.
     mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
     rx mscs.
 
+  Definition truncate T fsxp inum nblocks mscs rx : prog T :=
+    let^ (mscs, ok) <- BFILE.bftrunc (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
+                                     inum nblocks mscs;
+    rx ^(mscs, ok).
+
+  Definition getlen T fsxp inum mscs rx : prog T :=
+    let^ (mscs, len) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+    rx ^(mscs, len).
+
+  Definition getattr T fsxp inum mscs rx : prog T :=
+    let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+    rx ^(mscs, attr).
+
+  Definition setattr T fsxp inum attr mscs rx : prog T :=
+    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum attr mscs;
+    rx mscs.
+
   Theorem read_ok : forall fsxp inum off mscs,
     {< F mbase m pathname Fm Ftop tree f B v,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
@@ -868,5 +927,92 @@ Module DIRTREE.
     step.
     rewrite <- subtree_absorb; eauto.
   Qed.
+
+  Theorem truncate_ok : forall fsxp inum nblocks mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:^(mscs, ok)
+           exists m',
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+          ([[ ok = false ]] \/
+           [[ ok = true ]] *
+           exists tree' f',
+           [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+           [[ f' = BFILE.Build_bfile (setlen (BFILE.BFData f) #nblocks $0) (BFILE.BFAttr f) ]])
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} truncate fsxp inum nblocks mscs.
+  Proof.
+    unfold truncate, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+    apply pimpl_or_r; right. cancel.
+    rewrite <- subtree_absorb; eauto. cancel.
+  Qed.
+
+  Theorem getlen_ok : forall fsxp inum mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:^(mscs,r)
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ r = $ (length (BFILE.BFData f)) ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} getlen fsxp inum mscs.
+  Proof.
+    unfold getlen, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+  Qed.
+
+  Theorem getattr_ok : forall fsxp inum mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:^(mscs,r)
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ r = BFILE.BFAttr f ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} getattr fsxp inum mscs.
+  Proof.
+    unfold getattr, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+  Qed.
+
+  Theorem setattr_ok : forall fsxp inum attr mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:mscs
+           exists m' tree' f',
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+           [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+           [[ f' = BFILE.Build_bfile (BFILE.BFData f) attr ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} setattr fsxp inum attr mscs.
+  Proof.
+    unfold setattr, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+    rewrite <- subtree_absorb; eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (truncate _ _ _ _) _) => apply truncate_ok : prog.
+  Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
+  Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (setattr _ _ _ _) _) => apply setattr_ok : prog.
 
 End DIRTREE.
