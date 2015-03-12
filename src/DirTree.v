@@ -365,14 +365,14 @@ Module DIRTREE.
    * some operation on the tree.
    *)
 
-(*
-  Lemma tree_dir_extract : forall d F dmap name inum,
+  Lemma tree_dir_extract_subdir : forall dlist F dmap name inum,
     (F * name |-> (inum, true))%pred dmap
-    -> tree_dir_names_pred' d dmap
-    -> tree_pred d =p=> exists F s, F * tree_dir_names_pred inum s * tree_pred s.
+    -> tree_dir_names_pred' dlist dmap
+    -> dirlist_pred tree_pred dlist =p=>
+       exists F s, F * tree_dir_names_pred inum s * tree_pred (TreeDir inum s).
   Proof.
     admit.
-    
+(*
     induction d; intros.
     - simpl in *. eapply emp_complete in H1; [| apply emp_empty_mem ]; subst.
       apply sep_star_empty_mem in H; intuition.
@@ -395,13 +395,27 @@ Module DIRTREE.
           2: eauto. 2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
           pred_apply; cancel.
+*)
   Qed.
 
-  Lemma find_name_file : forall tree rec name inum F dmap,
-    (F * name |-> (inum, $0))%pred dmap
-    -> tree_dir_names_pred' tree dmap
-    -> fold_right (find_name_helper rec name) None tree = rec nil inum $0.
+  Lemma tree_dir_extract_file : forall dlist F dmap name inum,
+    (F * name |-> (inum, false))%pred dmap
+    -> tree_dir_names_pred' dlist dmap
+    -> dirlist_pred tree_pred dlist =p=>
+       exists F bfile, F * tree_pred (TreeFile inum bfile).
   Proof.
+    admit.
+  Qed.
+
+  Lemma find_name_file : forall name inum F dmap bfmem reclst isub dlist bfsub,
+    (F * name |-> (isub, false))%pred dmap
+    -> tree_dir_names_pred' dlist dmap
+    -> (exists F, F * tree_pred (TreeFile isub bfsub))%pred bfmem
+    -> (exists F, F * tree_pred (TreeDir inum dlist))%pred bfmem
+    -> find_name (name :: reclst) (TreeDir inum dlist) = find_name reclst (TreeFile isub bfsub).
+  Proof.
+    admit.
+(*
     induction tree; simpl; intros.
     - eapply emp_complete in H0; [| apply emp_empty_mem ]; subst.
       apply sep_star_empty_mem in H; intuition.
@@ -415,8 +429,10 @@ Module DIRTREE.
         apply sep_star_comm. eapply ptsto_mem_except_exF. apply sep_star_comm; eauto.
         instantiate (1:=s); eauto.
         destruct d; apply ptsto_mem_except in H0; eauto.
+*)
   Qed.
 
+(*
   Lemma find_name_subdir_helper : forall reclst inum a b bfmem,
        (exists F, F * tree_dir_names_pred inum a)%pred bfmem
     -> (exists F, F * tree_dir_names_pred inum b)%pred bfmem
@@ -428,16 +444,17 @@ Module DIRTREE.
     rewrite H in H0; inversion H0; subst. clear H H0 bfmem.
     admit.
   Qed.
+*)
 
-  Lemma find_name_subdir : forall tree reclst name inum subtree isdir F dmap bfmem,
-    (F * name |-> (inum, isdir))%pred dmap
-    -> tree_dir_names_pred' tree dmap
-    -> isdir <> $0
-    -> (exists F, F * tree_dir_names_pred inum subtree)%pred bfmem
-    -> (exists F, F * tree_pred tree)%pred bfmem
-    -> fold_right (find_name_helper (find_name reclst) name) None tree =
-       find_name reclst subtree inum isdir.
+  Lemma find_name_subdir : forall reclst name inum dlist dlsub isub F dmap bfmem,
+    (F * name |-> (isub, true))%pred dmap
+    -> tree_dir_names_pred' dlist dmap
+    -> (exists F, F * tree_dir_names_pred isub dlsub)%pred bfmem
+    -> (exists F, F * tree_pred (TreeDir inum dlist))%pred bfmem
+    -> find_name (name :: reclst) (TreeDir inum dlist) = find_name reclst (TreeDir isub dlsub).
   Proof.
+    admit.
+(*
     induction tree; simpl; intros.
     - eapply emp_complete in H0; [| apply emp_empty_mem ]; subst.
       apply sep_star_empty_mem in H; intuition.
@@ -458,13 +475,16 @@ Module DIRTREE.
         eauto.
         eauto.
         pred_apply' H3. cancel.
+*)
   Qed.
 
-  Lemma find_name_none : forall tree rec name dmap,
+  Lemma find_name_none : forall dlist dmap name fnlist dnum,
     notindomain name dmap
-    -> tree_dir_names_pred' tree dmap
-    -> fold_right (find_name_helper rec name) None tree = None.
+    -> tree_dir_names_pred' dlist dmap
+    -> find_name (name :: fnlist) (TreeDir dnum dlist) = None.
   Proof.
+    admit.
+(*
     induction tree; simpl; intros; try reflexivity.
     destruct a. destruct p.
     unfold find_name_helper; fold (find_name_helper rec name).
@@ -474,8 +494,8 @@ Module DIRTREE.
     - eapply notindomain_mem_except' in H.
       destruct d; apply ptsto_mem_except in H0;
         eapply IHtree; eauto.
-  Qed.
 *)
+  Qed.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
@@ -558,15 +578,6 @@ Module DIRTREE.
       norm'l; unfold stars; simpl; inv_option_eq.
 
 
-  Lemma tree_dir_extract_subdir : forall dlist F dmap name inum,
-    (F * name |-> (inum, true))%pred dmap
-    -> tree_dir_names_pred' dlist dmap
-    -> dirlist_pred tree_pred dlist =p=>
-       exists F s, F * tree_dir_names_pred inum s * tree_pred (TreeDir inum s).
-  Proof.
-    admit.
-  Qed.
-
     destruct a4.
     assert (Hx := H0).
     rewrite tree_dir_extract_subdir in H0 by eauto. destruct_lift H0.
@@ -576,29 +587,10 @@ Module DIRTREE.
     auto.
     auto.
 
-  Lemma find_name_subdir : forall reclst name inum dlist dlsub isub F dmap bfmem,
-    (F * name |-> (isub, true))%pred dmap
-    -> tree_dir_names_pred' dlist dmap
-    -> (exists F, F * tree_dir_names_pred isub dlsub)%pred bfmem
-    -> (exists F, F * tree_pred (TreeDir inum dlist))%pred bfmem
-    -> find_name (name :: reclst) (TreeDir inum dlist) = find_name reclst (TreeDir isub dlsub).
-  Proof.
-    admit.
-  Qed.
-
     erewrite <- find_name_subdir; eauto.
     pred_apply' H0; cancel. simpl. 
     unfold tree_dir_names_pred.
     pred_apply' Hx; cancel. eauto. eauto.
-
- Lemma tree_dir_extract_file : forall dlist F dmap name inum,
-    (F * name |-> (inum, false))%pred dmap
-    -> tree_dir_names_pred' dlist dmap
-    -> dirlist_pred tree_pred dlist =p=>
-       exists F bfile, F * tree_pred (TreeFile inum bfile).
-  Proof.
-    admit.
-  Qed.
 
     assert (Hx := H0).
     rewrite tree_dir_extract_file in H0. destruct_lift H0.
@@ -606,30 +598,12 @@ Module DIRTREE.
     instantiate (a := (TreeFile a3 b0)).
     auto. auto.
 
-  Lemma find_name_file : forall name inum F dmap bfmem reclst isub dlist bfsub,
-    (F * name |-> (isub, false))%pred dmap
-    -> tree_dir_names_pred' dlist dmap
-    -> (exists F, F * tree_pred (TreeFile isub bfsub))%pred bfmem
-    -> (exists F, F * tree_pred (TreeDir inum dlist))%pred bfmem
-    -> find_name (name :: reclst) (TreeDir inum dlist) = find_name reclst (TreeFile isub bfsub).
-  Proof.
-    admit.
-  Qed.
-
     erewrite <- find_name_file; eauto.
     pred_apply' H0; cancel.
     simpl. unfold tree_dir_names_pred.
     pred_apply' Hx; cancel. eauto. eauto. eauto. eauto.
 
     step.
-
-  Lemma find_name_none : forall dlist dmap name fnlist dnum,
-    notindomain name dmap
-    -> tree_dir_names_pred' dlist dmap
-    -> find_name (name :: fnlist) (TreeDir dnum dlist) = None.
-  Proof.
-    admit.
-  Qed.
 
     erewrite <- find_name_none. eauto. eauto. eauto.
     exists emp. exists (TreeFile $0 BFILE.bfile0).
