@@ -1291,7 +1291,13 @@ Proof.
   reflexivity.
 Qed.
 
-Instance exists_proper {AT AEQ V} {A : Type} :
+Instance exists_proper_piff {AT AEQ V} {A : Type} :
+  Proper (pointwise_relation A piff ==> piff) (@exis AT AEQ V A).
+Proof.
+  firstorder.
+Qed.
+
+Instance exists_proper_pimpl {AT AEQ V} {A : Type} :
   Proper (pointwise_relation A pimpl ==> pimpl) (@exis AT AEQ V A).
 Proof.
   firstorder.
@@ -1310,7 +1316,7 @@ Qed.
  * an [exis] is applied to a [mem], and [setoid_rewrite] tries to rewrite the
  * term that appears under [exis].
  *)
-Instance exists_proper_impl {AT AEQ V} {A : Type} :
+Instance exists_proper_pimpl_impl {AT AEQ V} {A : Type} :
   Proper (pointwise_relation A piff ==> eq ==> iff) (@exis AT AEQ V A).
 Proof.
   intros a b Hab m1 m2 Hm.
@@ -1517,6 +1523,13 @@ Instance crash_xform_pimpl_proper {AT AEQ} :
 Proof.
   intros p q Hp.
   apply crash_xform_pimpl; auto.
+Qed.
+
+Instance crash_xform_piff_proper {AT AEQ} :
+  Proper (piff ==> piff) (@crash_xform AT AEQ).
+Proof.
+  intros p q Hp.
+  destruct Hp; split; apply crash_xform_pimpl; auto.
 Qed.
 
 Theorem crash_invariant_emp: forall AT AEQ,
