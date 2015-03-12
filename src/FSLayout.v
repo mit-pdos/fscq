@@ -192,3 +192,13 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (sb_load _) _) => apply sb_load_ok : prog.
 Hint Extern 1 ({{_}} progseq (sb_init _ _) _) => apply sb_init_ok : prog.
+
+Theorem crash_xform_sb_rep : forall fsxp,
+  crash_xform (sb_rep fsxp) =p=> sb_rep fsxp.
+Proof.
+  unfold sb_rep; intros.
+  autorewrite with crash_xform.
+  cancel.
+Qed.
+
+Hint Rewrite crash_xform_sb_rep : crash_xform.
