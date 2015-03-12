@@ -15,6 +15,7 @@ Require Import Hoare.
 Require Import MemLog.
 Require Import GenSep.
 Require Import SepAuto.
+Require Import Array.
 
 Set Implicit Arguments.
 
@@ -828,6 +829,23 @@ Module DIRTREE.
     mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
     rx mscs.
 
+  Definition truncate T fsxp inum nblocks mscs rx : prog T :=
+    let^ (mscs, ok) <- BFILE.bftrunc (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
+                                     inum nblocks mscs;
+    rx ^(mscs, ok).
+
+  Definition getlen T fsxp inum mscs rx : prog T :=
+    let^ (mscs, len) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+    rx ^(mscs, len).
+
+  Definition getattr T fsxp inum mscs rx : prog T :=
+    let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+    rx ^(mscs, attr).
+
+  Definition setattr T fsxp inum attr mscs rx : prog T :=
+    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum attr mscs;
+    rx mscs.
+
   Theorem read_ok : forall fsxp inum off mscs,
     {< F mbase m pathname Fm Ftop tree f B v,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
@@ -863,6 +881,86 @@ Module DIRTREE.
     >} write fsxp inum off v mscs.
   Proof.
     unfold write, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+    rewrite <- subtree_absorb; eauto.
+  Qed.
+
+  Theorem truncate_ok : forall fsxp inum nblocks mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:^(mscs, ok)
+           exists m',
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+          ([[ ok = false ]] \/
+           [[ ok = true ]] *
+           exists tree' f',
+           [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+           [[ f' = BFILE.Build_bfile (setlen (BFILE.BFData f) #nblocks $0) (BFILE.BFAttr f) ]])
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} truncate fsxp inum nblocks mscs.
+  Proof.
+    unfold truncate, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+    apply pimpl_or_r; right. cancel.
+    rewrite <- subtree_absorb; eauto. cancel.
+  Qed.
+
+  Theorem getlen_ok : forall fsxp inum mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:^(mscs,r)
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ r = $ (length (BFILE.BFData f)) ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} getlen fsxp inum mscs.
+  Proof.
+    unfold getlen, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+  Qed.
+
+  Theorem getattr_ok : forall fsxp inum mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:^(mscs,r)
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ r = BFILE.BFAttr f ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} getattr fsxp inum mscs.
+  Proof.
+    unfold getattr, rep.
+    step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+  Qed.
+
+  Theorem setattr_ok : forall fsxp inum attr mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:mscs
+           exists m' tree' f',
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+           [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+           [[ f' = BFILE.Build_bfile (BFILE.BFData f) attr ]]
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} setattr fsxp inum attr mscs.
+  Proof.
+    unfold setattr, rep.
     step.
     rewrite subtree_extract; eauto. cancel.
     step.
