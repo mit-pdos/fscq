@@ -1479,6 +1479,13 @@ Proof.
   repeat deex; repeat eexists; intuition eauto.
 Qed.
 
+Theorem crash_xform_forall_comm : forall AT AEQ T (p : T -> @pred AT AEQ _),
+  crash_xform (foral x, p x) =p=> foral x, crash_xform (p x).
+Proof.
+  unfold crash_xform, foral_, pimpl; intros.
+  repeat deex; repeat eexists; intuition eauto.
+Qed.
+
 Theorem crash_xform_ptsto: forall AT AEQ a v,
   (@crash_xform AT AEQ) (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
 Proof.
@@ -1576,6 +1583,7 @@ Qed.
 Hint Rewrite crash_xform_sep_star_dist : crash_xform.
 Hint Rewrite crash_xform_or_dist : crash_xform.
 Hint Rewrite crash_xform_exists_comm : crash_xform.
+Hint Rewrite crash_xform_forall_comm : crash_xform.
 Hint Rewrite crash_xform_lift_empty : crash_xform.
 Hint Rewrite crash_xform_ptsto : crash_xform.
 Hint Rewrite crash_xform_diskIs : crash_xform.
