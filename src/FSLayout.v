@@ -202,3 +202,5 @@ Proof.
 Qed.
 
 Hint Rewrite crash_xform_sb_rep : crash_xform.
+
+Hint Extern 0 (okToUnify (sb_rep _) (sb_rep _)) => constructor : okToUnify.
