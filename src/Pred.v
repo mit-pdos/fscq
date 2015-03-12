@@ -1557,12 +1557,28 @@ Proof.
   apply mem_union_addr; eauto.
 Qed.
 
+Lemma crash_xform_diskIs: forall (m: @mem addr (@weq addrlen) valuset),
+  crash_xform (diskIs m) =p=> exists m', [[ possible_crash m m' ]] * diskIs m'.
+Proof.
+  unfold crash_xform, pimpl, diskIs.
+  intros.
+  destruct H; intuition; subst.
+  exists m0.
+  unfold_sep_star.
+  exists (fun a => None).
+  exists m0.
+  intuition.
+  unfold mem_disjoint; intuition.
+  repeat deex; discriminate.
+  unfold lift_empty; intuition.
+Qed.
 
 Hint Rewrite crash_xform_sep_star_dist : crash_xform.
 Hint Rewrite crash_xform_or_dist : crash_xform.
 Hint Rewrite crash_xform_exists_comm : crash_xform.
 Hint Rewrite crash_xform_lift_empty : crash_xform.
 Hint Rewrite crash_xform_ptsto : crash_xform.
+Hint Rewrite crash_xform_diskIs : crash_xform.
 Hint Rewrite crash_invariant_ptsto : crash_xform.
 
 Hint Resolve crash_invariant_emp.
