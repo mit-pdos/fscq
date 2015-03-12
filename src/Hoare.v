@@ -62,6 +62,26 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
    (p1 rx)%pred)
   (at level 0, p1 at level 60, e1 binder, e2 binder).
 
+(**
+ * The {!< .. >!} notation is the same as above, except it lacks a frame
+ * predicate.  This is useful for bootstrapping-style programs.
+ *)
+Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
+  (forall T (rx: _ -> prog T), corr2
+   (fun done_ crash_ =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     pre *
+     [[ forall r_,
+        {{ fun done'_ crash'_ =>
+           post emp r_ *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
+        }} rx r_ ]] *
+     [[ crash =p=> crash_ ]]
+     )) .. ))
+   )%pred
+   (p1 rx)%pred)
+  (at level 0, p1 at level 60, e1 binder, e2 binder).
+
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 

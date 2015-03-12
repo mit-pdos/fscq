@@ -340,20 +340,20 @@ Module BUFCACHE.
   Definition init_recover := init.
 
   (**
-   * [init_load_ok] has a manually-constructed Hoare precondition because we
-   * need it to be "frameless"; otherwise the {< .. >} notation adds an
+   * [init_load_ok] uses the {!< .. >!} variant of the Hoare statement, as
+   * we need it to be "frameless"; otherwise the {< .. >} notation adds an
    * extra frame around the whole thing, which looks exactly like our own
    * frame [F], and makes it difficult to use automation.
    *)
-  Theorem init_load_ok : forall T cachesize rx,
-    {{fun (done_ : donecond T) (crash_ : pred) =>
-      exists F : pred,
-        (F * [[cachesize <> 0]]) *
-        [[forall r_ : cachestate,
-          {{fun (done'_ : donecond T) (crash'_ : pred) =>
-            (fun (cs : cachestate) => (exists d : mem, rep cs d * [[F d]])) r_ *
-            [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] * [[F =p=> crash_]]
-    }} init_load cachesize rx.
+  Theorem init_load_ok : forall cachesize,
+    {!< F,
+    PRE
+      F * [[cachesize <> 0]]
+    POST RET:cs
+      exists d, rep cs d * [[ F d ]]
+    CRASH
+      F
+    >!} init_load cachesize.
   Proof.
     unfold init_load, init, rep.
     step.
@@ -366,7 +366,7 @@ Module BUFCACHE.
      * from the base memory to a virtual memory.
      *)
     match goal with
-    | [ |- _ =p=> ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
+    | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
       remember (E)
     end.
     norm; cancel'; intuition.
