@@ -1063,6 +1063,7 @@ Module MEMLOG.
     split_pair_list_vars;
     autorewrite with lists; [ f_equal | .. ].
 
+(*
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2 F,
     PRE
@@ -1182,6 +1183,7 @@ Module MEMLOG.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
+*)
 
   Theorem flush_ok : forall xp mscs,
     {< m1 m2 F,
@@ -1529,15 +1531,21 @@ Module MEMLOG.
       }
     }.
 
+  Definition would_recover_old' xp old :=
+    (exists ms, rep_inner xp (NoTransaction old) ms \/
+     (exists cur, rep_inner xp (ActiveTxn old cur) ms))%pred.
+
   Definition would_recover_old xp F old :=
-    (exists mscs, (rep xp F (NoTransaction old) mscs) \/
-     (exists cur, rep xp F (ActiveTxn old cur) mscs))%pred.
+    (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_old' xp old)%pred d ]])%pred.
+
+  Definition would_recover_either' xp old cur :=
+    (exists ms, rep_inner xp (CommittedUnsyncTxn old cur) ms \/
+      rep_inner xp (CommittedTxn cur) ms \/
+      rep_inner xp (AppliedTxn cur) ms \/
+      rep_inner xp (NoTransaction cur) ms)%pred.
 
   Definition would_recover_either xp F old cur :=
-    (exists mscs, rep xp F (CommittedUnsyncTxn old cur) mscs \/
-      rep xp F (CommittedTxn cur) mscs \/
-      rep xp F (AppliedTxn cur) mscs \/
-      rep xp F (NoTransaction cur) mscs)%pred.
+    (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either' xp old cur)%pred d ]])%pred.
 
   (** The log is in a valid state with (after recovery) represents either disk state [old] or [cur] *)
   Definition log_intact xp F old cur :=
@@ -1643,13 +1651,10 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
 
-  Definition recover T cachesize rx : prog T :=
-    cs <- BUFCACHE.init cachesize;
-    let^ (cs, fsxp) <- sb_load cs;
-    let xp := (FSXPMemLog fsxp) in
+  Definition recover T (xp: memlog_xparams) cs rx : prog T :=
     let^ (ms, cs) <- read_log xp cs;
     let^ (ms, cs) <- apply xp ^(ms, cs);
-    rx ^(^(ms, cs), fsxp).
+    rx ^(ms, cs).
 
   Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty
     crash_invariant_ptsto : crash_xform.
@@ -1742,52 +1747,150 @@ Module MEMLOG.
     autorewrite with crash_xform;
     cancel; subst; cancel.
 
-  Theorem recover_ok: forall cachesize T rx,
-    {{fun done_ crash_ =>
-      exists m1 xp F0 F,
-        (F0 * [[ cachesize <> 0 ]] * crash_xform (would_recover_old xp F m1) *
-          [[forall r_,
-            let '^(mscs, fsxp) := r_ in
-            {{fun (done'_ : donecond T) (crash'_ : pred) =>
-              F0 *
-              (rep (FSXPMemLog fsxp) F (NoTransaction m1) mscs) * 
-              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] * 
-          [[F0 * would_recover_old xp F m1 =p=> crash_]]) \/
-        exists m2, (F0 * [[ cachesize <> 0 ]] * crash_xform (would_recover_either xp F m1 m2) *
-          [[forall r_,
-            let '^(mscs, fsxp) := r_ in
-            {{fun (done'_ : donecond T) (crash'_ : pred) =>
-              F0 *
-              (rep (FSXPMemLog fsxp) F (NoTransaction m1) mscs \/
-               rep (FSXPMemLog fsxp) F (NoTransaction m2) mscs) * 
-              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] * 
-          [[F0 * would_recover_either xp F m1 m2 =p=> crash_]])
-    }} recover cachesize rx.
+  Lemma equal_unless_in_refl : forall A ms l d,
+    @equal_unless_in A ms l l d.
   Proof.
-    unfold recover; log_intact_unfold; log_unfold.
+    unfold equal_unless_in; intuition.
+  Qed.
+  Hint Resolve equal_unless_in_refl : replay.
+
+(* effectively
+    {< m1 m2 F,
+     PRE            exists d, BUFCACHE.rep cs d * [[ (F * crash_xform (log_intact m1 m2))%pred d ]]
+     POST RET:mscs  rep xp F (NoTransaction m1) mscs) \/
+                    rep xp F (NoTransaction m2) mscs)
+     CRASH          log_intact xp F m1 m2
+    >} recover xp cs rx.
+*)
+  Theorem recover_ok: forall xp cs T rx,
+    {{fun done_ crash_ =>
+      exists m1 F0 F,
+        (F0 * (exists d, BUFCACHE.rep cs d * [[ (F * crash_xform (would_recover_old' xp m1))%pred d ]]) *
+          [[forall mscs,
+            {{fun (done'_ : donecond T) (crash'_ : pred) =>
+              F0 *
+              (rep xp F (NoTransaction m1) mscs) *
+              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx mscs]] *
+          [[F0 * (would_recover_old xp F m1 \/ exists m2, would_recover_either xp F m1 m2) =p=> crash_]]) \/
+        exists m2, (F0 * (exists d, BUFCACHE.rep cs d * [[ (F * crash_xform (would_recover_either' xp m1 m2))%pred d ]]) *
+          [[forall mscs,
+            {{fun (done'_ : donecond T) (crash'_ : pred) =>
+              F0 *
+              (rep xp F (NoTransaction m1) mscs \/
+               rep xp F (NoTransaction m2) mscs) *
+              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx mscs]] *
+          [[F0 * (would_recover_old xp F m1 \/ would_recover_either xp F m1 m2) =p=> crash_]])
+    }} recover xp cs rx.
+  Proof.
+    unfold recover, would_recover_old', would_recover_either'; log_intact_unfold; log_unfold.
     intros.
     autorewrite with crash_xform.
     eapply pimpl_ok2; [ eauto with prog | ].
     intros; simpl.
     norm'l.
     unfold stars; simpl.
-    rewrite sep_star_comm. rewrite <- emp_star.
+    rewrite sep_star_comm; rewrite <- emp_star.
+    repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l;
+      unfold stars; simpl;
+      rewrite sep_star_comm; rewrite <- emp_star.
+    norm.
+    cancel'.
+    intuition.
+    pred_apply.
     autorewrite with crash_xform.
-    repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; try word_discriminate;
-      unfold stars; simpl; autorewrite with crash_xform.
-    rewrite sep_star_comm. rewrite <- emp_star.
-    repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l; try word_discriminate;
-      unfold stars; simpl; autorewrite with crash_xform.
-
     cancel.
-    rewrite BUFCACHE.crash_xform_rep.
-    instantiate (a0 := p).
+    instantiate (a0 := ms_empty).
+    autorewrite with crash_xform.
     rewrite sep_star_comm.
-    apply pimpl_refl.
+    rewrite sep_star_or_distr.
+    apply pimpl_or_l.
+    norm'l; unfold stars; simpl.
+    autorewrite with crash_xform.
+    log_unfold.
+    norm.
+    instantiate (a2 := valu_to_descriptor w1).
+    cancel.
+    rewrite MapProperties.cardinal_1.
+    rewrite valu_descriptor_id.
+    cancel.
+    word2nat_simpl.
+    rewrite Nat.add_0_r.
+    rewrite Nat.sub_0_r.
+    word2nat_simpl.
+    cancel.
+    apply Map.empty_1.
 
-    admit.
-    admit.
-    admit.
+    rewrite MapProperties.cardinal_1.
+    rewrite valu_descriptor_id.
+    cancel.
+    word2nat_simpl.
+    rewrite Nat.add_0_r.
+    rewrite Nat.sub_0_r.
+    word2nat_simpl.
+    cancel.
+    apply Map.empty_1.
+
+    intuition.
+    eauto with replay.
+    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
+    admit. (* valu_to_descriptor well formed *)
+    rewrite Forall_forall; intuition.
+    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
+    admit. (* valu_to_descriptor well formed *)
+    rewrite Forall_forall; intuition.
+
+    autorewrite with crash_xform.
+    cancel.
+    autorewrite with crash_xform.
+    norm'l; unfold stars; simpl.
+    autorewrite with crash_xform.
+    log_unfold.
+    norm.
+    unfold stars; simpl.
+    instantiate (a1 := valu_to_descriptor w1).
+    cancel.
+
+    rewrite MapProperties.cardinal_1.
+    rewrite valu_descriptor_id.
+    cancel.
+    word2nat_simpl.
+    rewrite Nat.add_0_r.
+    rewrite Nat.sub_0_r.
+    word2nat_simpl.
+    cancel.
+    apply Map.empty_1.
+
+    rewrite MapProperties.cardinal_1.
+    rewrite valu_descriptor_id.
+    cancel.
+    word2nat_simpl.
+    rewrite Nat.add_0_r.
+    rewrite Nat.sub_0_r.
+    word2nat_simpl.
+    cancel.
+    apply Map.empty_1.
+
+    intuition.
+    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
+    admit. (* valu_to_descriptor well formed *)
+    rewrite Forall_forall; intuition.
+    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
+    admit. (* valu_to_descriptor well formed *)
+    rewrite Forall_forall; intuition.
+
+    step; unfold would_recover_either'.
+    step.
+    or_r; cancel; cancel.
+    or_r; cancel; cancel.
+    or_r; cancel; cancel.
+
+    pimpl_crash.
+    rewrite sep_star_or_distr.
+    unfold would_recover_either'.
+    or_r; cancel; cancel.
+
+    (* XXX this is a real pain: if we [norm] here, we create the evar for the memstate, but we need
+       to extract the memstate out of [H3], the predicate on [m]. *)
     admit.
   Qed.
 
@@ -1851,6 +1954,7 @@ Module MEMLOG.
   Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _ _) _) => apply write_array_ok : prog.
 
+(*
   Section RECOVER_CORR3.
 
   Variable main_prog : forall T, memstate_cachestate ->
@@ -1929,7 +2033,7 @@ Module MEMLOG.
   Qed.
 
   End RECOVER_CORR3.
-
+*)
 
   Hint Extern 0 (okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
 
