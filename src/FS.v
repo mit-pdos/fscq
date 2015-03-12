@@ -75,25 +75,25 @@ Definition mkfs T data_bitmaps inode_bitmaps cachesize rx : prog T :=
 
 Definition file_nblocks T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, len) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, len) <- DIRTREE.getlen fsxp inum mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, len).
 
 Definition file_get_attr T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, attr).
 
 Definition file_get_sz T fsxp inum mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, INODE.ISize attr).
 
 Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, attr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
                           (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
@@ -104,15 +104,15 @@ Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, b) <- BFILE.bfread (FSXPMemLog fsxp) (FSXPInode fsxp) inum off mscs;
+  let^ (mscs, b) <- DIRTREE.read fsxp inum off mscs;
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, b).
 
 Theorem read_block_ok : forall fsxp inum off mscs,
-  {< m F Fm flist A f B v,
+  {< m F Fm Ftop tree pathname f B v,
   PRE    MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
-         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-         [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST RET:^(mscs,r)
          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
@@ -124,23 +124,22 @@ Proof.
   hoare_unfold MEMLOG.log_intact_unfold.
 Qed.
 
-
 Theorem read_block_recover_ok : forall fsxp inum off mscs cachesize,
-  {<< m F Fm flist A f B v,
-  PRE     [[ cachesize <> 0 ]] *
-          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
+  {<< m F Fm Ftop tree pathname f B v,
+  PRE    [[ cachesize <> 0 ]] *
+         MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST RET:^(mscs,r)
-          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
-          [[ r = v ]]
+         MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
+         [[ r = v ]]
   REC RET:^(mscs,fsxp)
-          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs
+         MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs
   >>} read_block fsxp inum off mscs >> MEMLOG.recover cachesize.
 Proof.
   intros.
-  unfold forall_helper; intros m F Fm flist A f B v.
+  unfold forall_helper; intros m F Fm Ftop tree pathname f B v.
   exists (MEMLOG.log_intact (FSXPMemLog fsxp) F m m).
 
   intros.
@@ -151,7 +150,9 @@ Proof.
 
   cancel.
   step.
-  cancel.
+  eauto.
+  eauto.
+  step.
   cancel.
   unfold MEMLOG.log_intact.
   autorewrite with crash_xform.
@@ -163,12 +164,15 @@ Proof.
   apply pimpl_or_r; left; cancel.
 
   unfold MEMLOG.log_intact in *.
+  destruct b1.
   step.
   rewrite H3; cancel.
   cancel.
 
   unfold MEMLOG.log_intact in *.
+  cancel.
   apply pimpl_or_r; right; cancel.
+  destruct b1.
   step.
   rewrite H3; cancel.
   cancel.
