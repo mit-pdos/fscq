@@ -189,3 +189,6 @@ Proof.
   unfold sb_rep, sb_init.
   hoare.
 Qed.
+
+Hint Extern 1 ({{_}} progseq (sb_load _) _) => apply sb_load_ok : prog.
+Hint Extern 1 ({{_}} progseq (sb_init _ _) _) => apply sb_init_ok : prog.
