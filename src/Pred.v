@@ -766,7 +766,8 @@ Qed.
 Lemma ptsto_value_eq : forall a v1 v2,
   v1 = v2 -> (@pimpl AT AEQ V) (a |-> v1)%pred (a |-> v2)%pred.
 Proof.
-  intros; subst; cancel.
+  intros; subst.
+  apply pimpl_refl.
 Qed.
 
 Lemma pimpl_and_split:
