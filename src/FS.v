@@ -77,7 +77,9 @@ Definition mkfs T data_bitmaps inode_bitmaps cachesize rx : prog T :=
   end.
 
 Definition recover {T} rx : prog T :=
-  let^ (mscs, fsxp) <- MEMLOG.recover cachesize;
+  cs <- BUFCACHE.init cachesize;
+  let^ (cs, fsxp) <- sb_load cs;
+  mscs <- MEMLOG.recover (FSXPMemLog fsxp) cs;
   rx ^(mscs, fsxp).
 
 Theorem recover_ok : forall T rx,
@@ -268,7 +270,7 @@ Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
           [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
             [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
-  >>} write_block_inbounds fsxp inum off v mscs >> MEMLOG.recover cachesize.
+  >>} write_block_inbounds fsxp inum off v mscs >> recover.
 Proof.
   intros.
   (*unfold forall_helper at 1 2 3 4 5; intros flist A f B v0 F.
