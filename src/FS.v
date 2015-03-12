@@ -76,7 +76,7 @@ Definition mkfs T data_bitmaps inode_bitmaps cachesize rx : prog T :=
     rx ^(mscs, fsxp, ok)
   end.
 
-Definition recover T rx : prog T :=
+Definition recover {T} rx : prog T :=
   let^ (mscs, fsxp) <- MEMLOG.recover cachesize;
   rx ^(mscs, fsxp).
 
