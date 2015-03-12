@@ -349,6 +349,22 @@ Module DIRTREE.
 
   Hint Resolve find_update_subtree.
 
+  (**
+   * XXX
+   * Might be useful to have another theorem about how pathname-to-inode mappings
+   * are preserved across [update_subtree] for other paths.  In particular, if we
+   * do an [update_subtree] for some path [p] to a new subtree [subtree], then
+   * paths that do not start with [p] should not be affected.  Furthermore, paths
+   * [p' = p ++ suffix] should also be unaffected if:
+   *
+   *   find_subtree suffix subtree = find_subtree p' tree
+   *
+   * However, it's not clear yet who needs this kind of theorem.  This might be
+   * necessary for applications above FS.v, because they will have to prove that
+   * their file descriptors / inode numbers remain valid after they performed
+   * some operation on the tree.
+   *)
+
 (*
   Lemma tree_dir_extract : forall d F dmap name inum,
     (F * name |-> (inum, true))%pred dmap
