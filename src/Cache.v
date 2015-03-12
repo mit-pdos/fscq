@@ -329,15 +329,21 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
 
-  Theorem init_ok : forall cachesize,
-    {< F,
-    PRE
-      F * [[ cachesize <> 0 ]]
-    POST RET:cs
-      exists d, rep cs d * [[ F d ]]
-    CRASH
-      F
-    >} init cachesize.
+  (**
+   * [init_ok] has a manually-constructed Hoare precondition because we
+   * need it to be "frameless"; otherwise the {< .. >} notation adds an
+   * extra frame around the whole thing, which looks exactly like our own
+   * frame [F], and makes it difficult to use automation.
+   *)
+  Theorem init_ok : forall T cachesize rx,
+    {{fun (done_ : donecond T) (crash_ : pred) =>
+      exists F : pred,
+        (F * [[cachesize <> 0]]) *
+        [[forall r_ : cachestate,
+          {{fun (done'_ : donecond T) (crash'_ : pred) =>
+            (fun (cs : cachestate) => (exists d : mem, rep cs d * [[F d]])) r_ *
+            [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] * [[F =p=> crash_]]
+    }} init cachesize rx.
   Proof.
     unfold init, rep.
     step.
@@ -345,9 +351,12 @@ Module BUFCACHE.
     eapply pimpl_ok2; eauto.
     simpl; intros.
 
-    (* XXX is there a way to avoid this whole hack? *)
+    (**
+     * Special-case for initialization, because we are moving a predicate [F]
+     * from the base memory to a virtual memory.
+     *)
     match goal with
-    | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
+    | [ |- _ =p=> ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
       remember (E)
     end.
     norm; cancel'; intuition.
