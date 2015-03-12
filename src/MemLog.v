@@ -1656,11 +1656,6 @@ Module MEMLOG.
     let^ (ms, cs) <- apply xp ^(ms, cs);
     rx ^(ms, cs).
 
-  Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_comm crash_xform_lift_empty
-    crash_invariant_ptsto : crash_xform.
-
-  Hint Resolve crash_invariant_emp.
-
   Lemma crash_invariant_synced_array: forall l start stride,
     crash_xform (array start (List.combine l (repeat nil (length l))) stride) =p=>
     array start (List.combine l (repeat nil (length l))) stride.
@@ -1672,26 +1667,6 @@ Module MEMLOG.
     auto.
   Qed.
   Hint Rewrite crash_invariant_synced_array : crash_xform.
-
-  Lemma crash_xform_ptsto: forall AT AEQ (a: AT) v,
-    crash_xform (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * (@ptsto AT AEQ valuset a (v', nil)).
-  Proof.
-    unfold crash_xform, possible_crash, ptsto, pimpl; intros.
-    repeat deex; destruct (H1 a).
-    intuition; congruence.
-    repeat deex; rewrite H in H3; inversion H3; subst.
-    repeat eexists.
-    apply lift_impl.
-    intros; eauto.
-    split; auto.
-    intros.
-    destruct (H1 a').
-    intuition.
-    repeat deex.
-    specialize (H2 a' H4).
-    congruence.
-  Qed.
-  Hint Rewrite crash_xform_ptsto : crash_xform.
 
   Definition possible_crash_list (l: list valuset) (l': list valu) :=
     length l = length l' /\ forall i, i < length l -> In (selN l' i $0) (valuset_list (selN l i ($0, nil))).
@@ -1894,7 +1869,7 @@ Module MEMLOG.
     admit.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
   Definition read_array T xp a i stride mscs rx : prog T :=
     let^ (mscs, r) <- read xp (a ^+ i ^* stride) mscs;

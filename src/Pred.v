@@ -766,7 +766,8 @@ Qed.
 Lemma ptsto_value_eq : forall a v1 v2,
   v1 = v2 -> (@pimpl AT AEQ V) (a |-> v1)%pred (a |-> v2)%pred.
 Proof.
-  intros; subst; cancel.
+  intros; subst.
+  apply pimpl_refl.
 Qed.
 
 Lemma pimpl_and_split:
@@ -1478,6 +1479,13 @@ Proof.
   repeat deex; repeat eexists; intuition eauto.
 Qed.
 
+Theorem crash_xform_forall_comm : forall AT AEQ T (p : T -> @pred AT AEQ _),
+  crash_xform (foral x, p x) =p=> foral x, crash_xform (p x).
+Proof.
+  unfold crash_xform, foral_, pimpl; intros.
+  repeat deex; repeat eexists; intuition eauto.
+Qed.
+
 Theorem crash_xform_ptsto: forall AT AEQ a v,
   (@crash_xform AT AEQ) (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
 Proof.
@@ -1555,6 +1563,33 @@ Proof.
   exists x1.
   apply mem_union_addr; eauto.
 Qed.
+
+Lemma crash_xform_diskIs: forall (m: @mem addr (@weq addrlen) valuset),
+  crash_xform (diskIs m) =p=> exists m', [[ possible_crash m m' ]] * diskIs m'.
+Proof.
+  unfold crash_xform, pimpl, diskIs.
+  intros.
+  destruct H; intuition; subst.
+  exists m0.
+  unfold_sep_star.
+  exists (fun a => None).
+  exists m0.
+  intuition.
+  unfold mem_disjoint; intuition.
+  repeat deex; discriminate.
+  unfold lift_empty; intuition.
+Qed.
+
+Hint Rewrite crash_xform_sep_star_dist : crash_xform.
+Hint Rewrite crash_xform_or_dist : crash_xform.
+Hint Rewrite crash_xform_exists_comm : crash_xform.
+Hint Rewrite crash_xform_forall_comm : crash_xform.
+Hint Rewrite crash_xform_lift_empty : crash_xform.
+Hint Rewrite crash_xform_ptsto : crash_xform.
+Hint Rewrite crash_xform_diskIs : crash_xform.
+Hint Rewrite crash_invariant_ptsto : crash_xform.
+
+Hint Resolve crash_invariant_emp.
 
 
 Theorem diskIs_extract : forall AT AEQ V a v (m : @mem AT AEQ V),

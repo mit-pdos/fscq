@@ -507,22 +507,6 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
-  Lemma crash_xform_diskIs: forall (m: @mem addr (@weq addrlen) valuset),
-    crash_xform (diskIs m) =p=> exists m', [[ possible_crash m m' ]] * diskIs m'.
-  Proof.
-    unfold crash_xform, pimpl, diskIs.
-    intros.
-    destruct H; intuition; subst.
-    exists m0.
-    unfold_sep_star.
-    exists (fun a => None).
-    exists m0.
-    intuition.
-    unfold mem_disjoint; intuition.
-    repeat deex; discriminate.
-    unfold lift_empty; intuition.
-  Qed.
-
   Lemma crash_xform_rep: forall cs m,
     crash_xform (rep cs m) =p=> exists m' cs', [[ possible_crash m m' ]] * rep cs' m'.
   Proof.
@@ -538,6 +522,8 @@ Module BUFCACHE.
     simpl in *; omega.
     inversion H.
   Qed.
+
+  Hint Rewrite crash_xform_rep : crash_xform.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
