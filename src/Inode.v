@@ -1455,6 +1455,30 @@ Module INODE.
     mscs <- RecArray.init inodetype items_per_valu itemsz_ok lxp (xp_to_raxp ixp) mscs;
     rx mscs.
 
+  Theorem listmatch_inode0 : forall xp l,
+    Forall (fun i => i = item_zero inodetype) l ->
+    emp =p=> listmatch (inode_match xp) (repeat inode0 (length l)) l.
+  Proof.
+    unfold listmatch; cancel; try rewrite repeat_length; auto.
+    induction l.
+    cancel.
+    simpl; fold repeat.
+    rewrite Forall_forall in H.
+    assert (H' := H).
+    specialize (H' a). specialize (H' (@in_eq _ _ _)).
+    simpl in *. subst.
+    rewrite IHl. cancel.
+    unfold inode_match.
+    simpl.
+    cancel.
+    instantiate (a := nil). unfold indirect_valid. unfold indrep. unfold array_item.
+    cancel.
+    unfold iattr_match. intuition.
+    rewrite Forall_forall in *; intros.
+    apply H.
+    eauto.
+  Qed.
+
   Theorem init_ok : forall lxp ibxp ixp mscs,
     {< F Fm mbase m,
     PRE      exists ai ab, MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
@@ -1476,6 +1500,8 @@ Module INODE.
     step.
     unfold rep, irrep. cancel.
     instantiate (a := l1); cancel.
+    instantiate (a0 := (repeat inode0 (length l1))).
+    rewrite <- listmatch_inode0; eauto.
     admit.
     word2nat_auto.
   Qed.
