@@ -196,8 +196,7 @@ Module BALLOC.
 
 
   Definition init' T lxp xp mscs rx : prog T :=
-    mscs <- RecArray.init itemtype items_per_valu blocksz lxp
-                          (RecArray.Build_xparams (BmapStart xp) (BmapNBlocks xp)) mscs;
+    mscs <- RecArray.init itemtype items_per_valu blocksz lxp (xp_to_raxp xp) mscs;
     rx mscs.
 
   Definition bmap0 : addr -> alloc_state :=

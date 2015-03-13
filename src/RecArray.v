@@ -315,8 +315,6 @@ Section RECARRAY.
     admit.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (init _ _ _) _) => apply init_ok : prog.
-
   (** Get the [pos]'th item in the [block_ix]'th block *)
   Definition get_pair T lxp xp block_ix (pos : addr) mscs rx : prog T :=
     let^ (mscs, v) <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 mscs;
@@ -516,6 +514,7 @@ Section RECARRAY.
 
 End RECARRAY.
 
+Hint Extern 1 ({{_}} progseq (init _ _ _ _ _ _) _) => apply init_ok : prog.
 Hint Extern 1 ({{_}} progseq (get _ _ _ _ _ _ _) _) => apply get_ok : prog.
 Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _ _ _) _) => apply put_ok : prog.
 
