@@ -181,6 +181,47 @@ Section RECARRAY.
     intros. apply lift_impl. apply array_item_well_formed.
   Qed.
 
+  Lemma block_length_is : forall x (vs : list block),
+    Forall Rec.well_formed vs
+    -> In x vs
+    -> length x = # items_per_valu.
+  Proof.
+    intros.
+    rewrite Forall_forall in H.
+    apply H in H0.
+    apply H0.
+  Qed.
+
+  Lemma well_formed_valu_to_block : forall v,
+    Rec.well_formed (valu_to_block v).
+  Proof.
+    unfold blocktype, valu_to_block; intuition.
+    apply Rec.of_word_length.
+  Qed.
+
+  Lemma well_formed_valu_to_block_list : forall l,
+    Forall Rec.well_formed (map valu_to_block l).
+  Proof.
+    intros; rewrite Forall_forall; intros.
+    apply in_map_iff in H. deex.
+    apply well_formed_valu_to_block.
+  Qed.
+
+  Lemma fold_right_add_const : forall (vs : list block),
+    Forall Rec.well_formed vs ->
+    fold_right Nat.add 0 (map (length (A:=item)) vs) = length vs * #items_per_valu.
+  Proof.
+    induction vs; intros; simpl; auto.
+    erewrite IHvs; auto.
+    simpl in H.
+    f_equal.
+    eapply block_length_is; eauto.
+    simpl; left; auto.
+    rewrite Forall_forall in *.
+    intros; apply H; auto.
+    simpl; right; auto.
+  Qed.
+
   Definition init T lxp xp mscs rx : prog T :=
     let^ (mscs) <- For i < (RALen xp)
       Ghost [ mbase F Fm ]
@@ -232,27 +273,36 @@ Section RECARRAY.
     pose proof (@Rec.of_word_length blocktype (valu_to_wreclen x0)) as Hlen.
     destruct Hlen. auto.
     apply in_map_iff in H. deex.
-    pose proof (@Rec.of_word_length blocktype (valu_to_wreclen x0)) as Hlen.
-    destruct Hlen. auto.
+    apply well_formed_valu_to_block.
 
     rewrite concat_length.
-    admit.
+    rewrite fold_right_add_const. rewrite map_length. auto.
+    apply well_formed_valu_to_block_list.
 
     unfold array_item, array_item_pairs.
     step.
     rewrite map_length. apply wlt_lt in H. congruence.
 
-    step.
-    unfold array_item, array_item_pairs. norm.
+    eapply pimpl_ok2; eauto with prog.
+    intros; norm. cancel.
+    intuition.
+    pred_apply; unfold array_item, array_item_pairs; norm.
     instantiate (a := (upd l0 m0 (valu_to_block $0))).
     rewrite map_upd. rewrite valu_rep_id. cancel.
     intuition.
 
     rewrite length_upd. auto.
+    apply Forall_upd.
+    intuition.
+    split; try apply well_formed_valu_to_block.
 
     admit.
-    admit.
-    admit.
+    rewrite concat_length.
+    rewrite fold_right_add_const. f_equal.
+    rewrite length_upd. auto.
+    apply Forall_upd.
+    intuition.
+    split; try apply well_formed_valu_to_block.
 
     unfold MEMLOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
 
@@ -264,6 +314,8 @@ Section RECARRAY.
 
     admit.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (init _ _ _) _) => apply init_ok : prog.
 
   (** Get the [pos]'th item in the [block_ix]'th block *)
   Definition get_pair T lxp xp block_ix (pos : addr) mscs rx : prog T :=
@@ -464,7 +516,6 @@ Section RECARRAY.
 
 End RECARRAY.
 
-Hint Extern 1 ({{_}} progseq (init _ _ _ _ _ _) _) => apply init_ok : prog.
 Hint Extern 1 ({{_}} progseq (get _ _ _ _ _ _ _) _) => apply get_ok : prog.
 Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _ _ _) _) => apply put_ok : prog.
 
