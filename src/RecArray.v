@@ -181,6 +181,90 @@ Section RECARRAY.
     intros. apply lift_impl. apply array_item_well_formed.
   Qed.
 
+  Definition init T lxp xp mscs rx : prog T :=
+    let^ (mscs) <- For i < (RALen xp)
+      Ghost [ mbase F Fm ]
+      Loopvar [ mscs ]
+      Continuation lrx
+      Invariant
+        exists m' l, MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+        [[ (Fm * array_item xp l)%pred (list2mem m') ]] *
+        [[ forall idx, idx < (#i * #items_per_valu) -> selN l idx item_zero = item_zero ]] *
+        [[ length l = (# (RALen xp) * #items_per_valu)%nat ]]
+      OnCrash
+        MEMLOG.would_recover_old lxp F mbase
+      Begin
+        mscs <- MEMLOG.write_array lxp (RAStart xp) i $1 $0 mscs;
+        lrx ^(mscs)
+      Rof ^(mscs);
+    rx mscs.
+
+  Theorem init_ok : forall lxp xp mscs,
+    {< mbase m F Fm,
+    PRE         exists a, MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+                [[ (Fm * array (RAStart xp) a $1)%pred (list2mem m) ]] *
+                [[ length a = # (RALen xp) ]] *
+                [[ goodSize addrlen (# (RALen xp) * #items_per_valu) ]]
+    POST RET:mscs
+                exists m' l, MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+                [[ (Fm * array_item xp l)%pred (list2mem m') ]] *
+                [[ length l = (# (RALen xp) * #items_per_valu)%nat ]] *
+                [[ Forall (fun i => i = item_zero) l ]]
+    CRASH       MEMLOG.would_recover_old lxp F mbase
+    >} init lxp xp mscs.
+  Proof.
+    unfold init.
+    step.
+
+    unfold array_item, array_item_pairs. norm.
+    instantiate (a := map valu_to_block l).
+    rewrite map_map.
+    rewrite map_ext with (g:=id).
+    rewrite map_id.
+    cancel.
+    intros. rewrite valu_rep_id. reflexivity.
+
+    intuition.
+    rewrite map_length. auto.
+    rewrite Forall_forall.
+    intuition.
+    apply in_map_iff in H. deex.
+    pose proof (@Rec.of_word_length blocktype (valu_to_wreclen x0)) as Hlen.
+    destruct Hlen. auto.
+    apply in_map_iff in H. deex.
+    pose proof (@Rec.of_word_length blocktype (valu_to_wreclen x0)) as Hlen.
+    destruct Hlen. auto.
+
+    rewrite concat_length.
+    admit.
+
+    unfold array_item, array_item_pairs.
+    step.
+    rewrite map_length. apply wlt_lt in H. congruence.
+
+    step.
+    unfold array_item, array_item_pairs. norm.
+    instantiate (a := (upd l0 m0 (valu_to_block $0))).
+    rewrite map_upd. rewrite valu_rep_id. cancel.
+    intuition.
+
+    rewrite length_upd. auto.
+
+    admit.
+    admit.
+    admit.
+
+    unfold MEMLOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
+
+    eapply pimpl_ok2; eauto with prog.
+    intros; norm.
+    cancel.
+    instantiate (a0 := l0). intuition.
+    rewrite Forall_forall; intros.
+
+    admit.
+  Qed.
+
   (** Get the [pos]'th item in the [block_ix]'th block *)
   Definition get_pair T lxp xp block_ix (pos : addr) mscs rx : prog T :=
     let^ (mscs, v) <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 mscs;
@@ -380,6 +464,7 @@ Section RECARRAY.
 
 End RECARRAY.
 
+Hint Extern 1 ({{_}} progseq (init _ _ _ _ _ _) _) => apply init_ok : prog.
 Hint Extern 1 ({{_}} progseq (get _ _ _ _ _ _ _) _) => apply get_ok : prog.
 Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _ _ _) _) => apply put_ok : prog.
 

@@ -196,22 +196,8 @@ Module BALLOC.
 
 
   Definition init' T lxp xp mscs rx : prog T :=
-    let^ (mscs) <- For i < (BmapNBlocks xp)
-      Ghost [ mbase F Fm ]
-      Loopvar [ mscs ]
-      Continuation lrx
-      Invariant
-        exists m', MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
-        [[ goodSize addrlen (wordToNat i * valulen) ]] *
-        [[ (Fm * RecArray.array_item itemtype items_per_valu blocksz
-                (RecArray.Build_xparams (BmapStart xp) i)
-                (map (fun _ => $0) (seq 0 (#i * valulen))))%pred (list2mem m') ]]
-      OnCrash
-        MEMLOG.would_recover_old lxp F mbase
-      Begin
-        mscs <- MEMLOG.write_array lxp (BmapStart xp) i $1 $0 mscs;
-        lrx ^(mscs)
-      Rof ^(mscs);
+    mscs <- RecArray.init itemtype items_per_valu blocksz lxp
+                          (RecArray.Build_xparams (BmapStart xp) (BmapNBlocks xp)) mscs;
     rx mscs.
 
   Definition bmap0 : addr -> alloc_state :=
@@ -231,26 +217,25 @@ Module BALLOC.
   Proof.
     unfold init', rep'.
     step.
-    rewrite <- roundTrip_0 with (sz:=addrlen); apply wordToNat_good.
-    unfold array_item; cancel.
-    instantiate (a:=nil); unfold array_item_pairs; cancel.
-    reflexivity.
+
+    unfold items_per_valu. rewrite valulen_wordToNat_natToWord. auto.
 
     step.
-    rewrite H5. apply wlt_lt. auto.
-    step.
+    cut (l0 = bmap_bits xp bmap0).
+    intros; subst. unfold xp_to_raxp; destruct xp; simpl in *. cancel.
 
-    apply wlt_lt in H.
-    unfold goodSize in *. eapply le_lt_trans; [|apply H4].
-    replace (#(m0 ^+ $1)) with (#m0 + 1).
-    apply mult_le_compat_r. omega.
-    rewrite wplus_alt. unfold wplusN, wordBinN; simpl.
-    erewrite wordToNat_natToWord_bound with (bound:=BmapNBlocks xp); omega.
+    unfold bmap_bits.
+    apply list_selN_ext with (default := $0).
+    rewrite map_length. rewrite seq_length.
+    unfold items_per_valu in *. rewrite valulen_wordToNat_natToWord in *. auto.
 
-    admit.
-    unfold MEMLOG.would_recover_old; cancel.
-    step.
-    admit.
+    intros.
+    rewrite selN_map with (default' := 0). simpl.
+    rewrite Forall_forall in H9.
+    pose proof (@in_selN _ pos l0 $0 H).
+    apply H9 in H0. rewrite H0. reflexivity.
+    rewrite seq_length.
+    unfold items_per_valu in *. rewrite valulen_wordToNat_natToWord in *. congruence.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init' _ _ _) _) => apply init'_ok : prog.
