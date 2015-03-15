@@ -898,7 +898,7 @@ Module DIRTREE.
         let^ (mscs, l) <- SDIR.dslist lxp bxp ixp inum mscs;
         match l with
         | nil => irx mscs
-        | a::b => rx ^(mscs, false)
+        | _ => rx ^(mscs, false)
         end
       };
       let^ (mscs, ok) <- SDIR.dsunlink lxp bxp ixp dnum name mscs;
@@ -909,6 +909,75 @@ Module DIRTREE.
         rx ^(mscs, false)
       }
     end.
+
+
+  Theorem delete_ok' : forall fsxp dnum name mscs,
+    {< F mbase m Fm Ftop tree tree_elem,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ tree = TreeDir dnum tree_elem ]]
+    POST RET:^(mscs,r)
+           exists m', MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+           ([[ r = false ]] \/
+            [[ r = true  ]] *
+            [[ (Fm * rep fsxp Ftop (delete_from_dir name tree))%pred (list2mem m') ]])
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} delete fsxp dnum name mscs.
+  Proof.
+    unfold delete, rep.
+    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    subst; simpl in *.
+    hypmatch tree_dir_names_pred as Hx;
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    cancel.
+    unfold SDIR.rep_macro.
+    do 2 eexists. intuition.
+    pred_apply. cancel.
+    pred_apply. cancel.
+    eauto.
+
+    step.
+    step.
+    do 2 eexists. intuition.
+    pred_apply. cancel.
+    pred_apply. cancel.
+    eauto.
+
+    step.
+    step.
+    step.
+    step.
+    admit.
+
+    step.
+    apply pimpl_or_r; right; cancel.
+    admit.
+
+    step.
+    step.
+    do 2 eexists. intuition.
+    pred_apply. cancel.
+    admit.
+    admit.
+
+    step.
+    do 2 eexists. intuition.
+    pred_apply. cancel.
+    admit. admit.
+
+    step.
+    step.
+    step.
+    step.
+    admit.
+    step.
+    apply pimpl_or_r; right; cancel.
+    admit.
+
+    step.
+  Qed.
+
+
 
   Definition rename T fsxp dsrc srcname ddst dstname mscs rx : prog T :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPMemLog fsxp), (FSXPBlockAlloc fsxp),
@@ -932,7 +1001,7 @@ Module DIRTREE.
           let^ (mscs, l) <- SDIR.dslist lxp bxp ixp inum' mscs;
           match l with
           | nil => rx ^(mscs, ok)
-          | a::b => rx ^(mscs, false)
+          | _ => rx ^(mscs, false)
           end
         }
       end
@@ -964,7 +1033,7 @@ Module DIRTREE.
               let^ (mscs, l) <- SDIR.dslist lxp bxp ixp dst_inum mscs;
               match l with
               | nil => irx mscs
-              | a::b => rx ^(mscs, false)
+              | _ => rx ^(mscs, false)
               end
             } else {
               irx mscs
