@@ -520,8 +520,7 @@ Module DIRTREE.
     unfold find_name.
     unfold find_subtree; fold find_subtree.
     induction dlist; simpl; intros.
-    pose proof (emp_complete H0 (@emp_empty_mem _ _ _)); subst;
-      unfold empty_mem in *; congruence.
+    congruence.
     destruct a. unfold find_subtree_helper at 1.
     destruct (string_dec s name); subst.
     - destruct d; simpl in *.
