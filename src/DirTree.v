@@ -454,6 +454,17 @@ Module DIRTREE.
     erewrite find_subtree_file; eauto.
   Qed.
 
+  Lemma find_subtree_eq' : forall p a b inum m,
+    tree_dir_names_pred' a m
+    -> tree_dir_names_pred' b m
+    -> find_subtree p (TreeDir inum a) = find_subtree p (TreeDir inum b).
+  Proof.
+    induction p; simpl; intros; auto.
+    (* XXX: too bad. this is incorrect, any permutation of list a and b
+       can yield the same tree_dir_names_pred *)
+    admit.
+    admit.
+  Qed.
 
   Lemma find_subtree_eq : forall l l' fnlist inum A B m,
     (A * tree_dir_names_pred inum l)%pred m
@@ -464,7 +475,9 @@ Module DIRTREE.
     destruct_lift H; destruct_lift H0.
     apply ptsto_valid' in H. apply ptsto_valid' in H0.
     rewrite H in H0; inversion H0; subst.
-    admit.
+    eapply find_subtree_eq'; eauto.
+    replace m0 with m1; eauto.
+    eapply SDIR.rep_mem_eq; eauto.
   Qed.
 
   Lemma find_subtree_subdir : forall dlist name inum F A B dmap reclst isub bfmem dlsub,
@@ -518,6 +531,15 @@ Module DIRTREE.
     eapply notindomain_mem_except' in H.
     apply ptsto_mem_except in H0.
     simpl in *. eapply IHdlist; eauto.
+  Qed.
+
+  Lemma find_name_none : forall dlist dmap fnlist dnum name,
+    notindomain name dmap
+    -> tree_dir_names_pred' dlist dmap
+    -> find_name (name :: fnlist) (TreeDir dnum dlist) = None.
+  Proof.
+    unfold find_name; intros.
+    erewrite find_subtree_none; eauto.
   Qed.
 
 

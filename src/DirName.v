@@ -14,7 +14,7 @@ Require Import GenSep.
 Require Import GenSepN.
 Require Import ListPred.
 Require Import MemMatch.
-Require Import ProofIrrelevance.
+Require Import FunctionalExtensionality.
 Require List.
 
 Set Implicit Arguments.
@@ -531,6 +531,30 @@ Module SDIR.
     (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
     (F2 * #inum |-> f)%pred (list2nmem flist) /\
     rep f dsmap.
+
+  Lemma rep_mem_eq : forall f m1 m2,
+    rep f m1 -> rep f m2 -> m1 = m2.
+  Proof.
+    unfold rep, mem_atrans; intros.
+    repeat deex.
+    pose proof (DIR.rep_mem_eq H1 H3); subst.
+    apply functional_extensionality; intro s.
+    destruct (sname_valid_dec s).
+
+    replace s with (wname2sname (sname2wname s)).
+    rewrite <- H7. rewrite <- H4. auto.
+    eapply cond_inv_domain_right with (f' := sname2wname); eauto.
+    eapply cond_inv_domain_right with (f' := sname2wname); eauto.
+    eapply cond_inv_rewrite_right; eauto.
+
+    assert (notindomain s m1).
+    destruct (indomain_dec s m1); eauto.
+    apply H5 in i; congruence.
+    assert (notindomain s m2).
+    destruct (indomain_dec s m2); eauto.
+    apply H2 in i; congruence.
+    congruence.
+  Qed.
 
   Local Hint Unfold rep rep_macro DIR.rep_macro: hoare_unfold.
 

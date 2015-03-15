@@ -4,6 +4,7 @@ Require Import BFile RecArray Inode.
 Require Import GenSep.
 Require Import GenSepN.
 Require Import ListPred.
+Require Import MemMatch.
 
 Set Implicit Arguments.
 
@@ -79,6 +80,47 @@ Section RECBFILE.
     length vs_nested = length (BFILE.BFData file) /\
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
     vs = fold_right (@app _) nil vs_nested.
+
+  Lemma map_rep_valu_id : forall x,
+    Forall Rec.well_formed x ->
+    map valu_to_block (map rep_block x) = x.
+  Proof.
+    induction x; simpl; intros; auto.
+    rewrite rep_valu_id. f_equal.
+    apply IHx.
+    eapply Forall_cons2; eauto.
+    eapply Forall_inv; eauto.
+  Qed.
+
+  Lemma map_repblock_injective :
+    cond_injective (map rep_block) (Forall Rec.well_formed).
+  Proof.
+    eapply cond_left_inv_inj with (f' := map valu_to_block) (PB := fun _ => True).
+    unfold cond_left_inverse; intuition.
+    apply map_rep_valu_id; auto.
+  Qed.
+
+  Lemma array_item_pairs_eq : forall vs1 vs2 m,
+    array_item_pairs vs1 m
+    -> array_item_pairs vs2 m
+    -> vs1 = vs2.
+  Proof.
+    unfold array_item_pairs; intros.
+    destruct_lift H. destruct_lift H0.
+    apply map_repblock_injective; auto.
+    eapply arrayN_list_eq; eauto.
+  Qed.
+
+  Lemma array_item_file_eq : forall f vs1 vs2,
+    array_item_file f vs1
+    -> array_item_file f vs2
+    -> vs1 = vs2.
+  Proof.
+    unfold array_item_file; intros.
+    repeat deex.
+    f_equal.
+    eapply array_item_pairs_eq; eauto.
+  Qed.
 
   Definition item0_list := valu_to_block $0.
 

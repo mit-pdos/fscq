@@ -275,6 +275,36 @@ Module DIR.
     (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
     (F2 * #inum |-> f)%pred (list2nmem flist).
 
+  Lemma derep_list_eq : forall f l l',
+    derep f l -> derep f l' -> l = l'.
+  Proof.
+    unfold derep; intros.
+    eapply array_item_file_eq; eauto.
+  Qed.
+
+  Lemma listpred_dmatch_eq : forall l m1 m2,
+    listpred dmatch l m1
+    -> listpred dmatch l m2
+    -> m1 = m2.
+  Proof.
+    induction l; simpl; auto.
+    apply emp_complete; auto.
+    intros m1 m2.
+    unfold_sep_star; intuition.
+    repeat deex; f_equal.
+    eapply dmatch_complete; eauto.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma rep_mem_eq : forall f m1 m2,
+    rep f m1 -> rep f m2 -> m1 = m2.
+  Proof.
+    unfold rep; intros.
+    repeat deex.
+    pose proof (derep_list_eq H1 H0); subst.
+    eapply listpred_dmatch_eq; eauto.
+  Qed.
+
   Local Hint Unfold derep_macro derep rep_macro rep: hoare_unfold.
 
   Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T :=

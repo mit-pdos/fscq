@@ -5,7 +5,7 @@ Set Implicit Arguments.
 
 (* bijection on restricted domain *)
 
-Section BIJECTION.
+Section COND_BIJECTION.
 
   Variables A B : Type.
   Variable f : A -> B.
@@ -86,7 +86,7 @@ Section BIJECTION.
 
   End BIJECTION_INVERSION.
 
-End BIJECTION.
+End COND_BIJECTION.
 
 
 Theorem cond_inverse_sym : forall A B PA PB (f : A -> B) (f' : B -> A),
