@@ -46,11 +46,11 @@ Theorem log_inc_two_body_ok: forall xp s0 s1 mscs,
                   [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem m)]]
   POST RET:mscs   exists m', MEMLOG.rep xp Fm (ActiveTxn mbase m') mscs *
                   [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  CRASH           MEMLOG.would_recover_old xp Fm mbase
+  CRASH           exists m' mscs', MEMLOG.rep xp Fm (ActiveTxn mbase m') mscs'
   >} log_inc_two_body xp s0 s1 mscs.
 Proof.
   unfold log_inc_two_body.
-  hoare_unfold MEMLOG.log_intact_unfold.
+  hoare.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (log_inc_two_body _ _ _ _) _) => apply log_inc_two_body_ok : prog.
@@ -78,8 +78,8 @@ Theorem log_inc_two_ok: forall xp s0 s1 mscs,
                   [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
   >} log_inc_two xp s0 s1 mscs.
 Proof.
-  unfold log_inc_two.
-  hoare_unfold MEMLOG.log_intact_unfold.
+  unfold log_inc_two, MEMLOG.would_recover_old.
+  hoare.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (log_inc_two _ _ _ _) _) => apply log_inc_two_ok : prog.
