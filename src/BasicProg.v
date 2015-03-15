@@ -158,7 +158,8 @@ Proof.
   apply if_ok.
 Qed.
 
-Hint Extern 1 ({{_}} IfRx_ _ _ _) => apply ifrx_ok : prog.
+Hint Extern 1 ({{_}} progseq (IfRx_ _ _ _) _) => apply ifrx_ok : prog.
+
 Notation "'IfRx' rx b { p1 } 'else' { p2 }" :=
   (IfRx_ b (fun rx => p1) (fun rx => p2)) (at level 9, rx at level 0, b at level 0).
 
