@@ -365,260 +365,263 @@ Module DIRTREE.
    * some operation on the tree.
    *)
 
-  Lemma tree_dir_extract_subdir : forall dlist F dmap name inum,
+  Lemma tree_dir_extract_subdir : forall l F dmap name inum,
     (F * name |-> (inum, true))%pred dmap
-    -> tree_dir_names_pred' dlist dmap
-    -> dirlist_pred tree_pred dlist =p=>
-       exists F s, F * tree_dir_names_pred inum s * tree_pred (TreeDir inum s).
+    -> tree_dir_names_pred' l dmap
+    -> dirlist_pred tree_pred l =p=>
+       exists F s, F * tree_pred (TreeDir inum s).
   Proof.
-    admit.
-(*
-    induction d; intros.
-    - simpl in *. eapply emp_complete in H1; [| apply emp_empty_mem ]; subst.
-      apply sep_star_empty_mem in H; intuition.
-      exfalso. eapply ptsto_empty_mem. eauto.
-    - destruct a. destruct p. destruct d0; simpl in *.
-      + apply ptsto_mem_except in H1 as H1'.
-        rewrite IHd. cancel. cancel.
-        2: eauto. 2: eauto.
+    induction l; intros.
+    - simpl in *. apply ptsto_valid' in H. congruence.
+    - destruct a. destruct d. simpl in *.
+      + apply ptsto_mem_except in H0 as H0'.
+        rewrite IHl. cancel. cancel. 2: eauto.
         apply sep_star_comm in H.
-        pose proof (ptsto_diff_ne H1 H).
-        destruct (string_dec name s). exfalso. apply H2; eauto.
-        destruct (weq isdir $0); try congruence.
+        pose proof (ptsto_diff_ne H0 H).
+        destruct (string_dec name s). exfalso. apply H1; eauto.
+        congruence.
         apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
       + destruct (string_dec name s); subst.
-        * apply ptsto_valid in H1. apply ptsto_valid' in H.
-          rewrite H in H1. inversion H1. subst.
-          cancel. unfold tree_pred. instantiate (a0:=l). cancel.
-        * apply ptsto_mem_except in H1.
-          rewrite IHd. cancel. cancel.
-          2: eauto. 2: eauto.
+        * apply ptsto_valid in H0. apply ptsto_valid' in H.
+          rewrite H in H0. inversion H0. subst.
+          cancel. instantiate (a0 := l0). cancel.
+        * apply ptsto_mem_except in H0. simpl.
+          rewrite IHl. cancel. cancel. 2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
           pred_apply; cancel.
-*)
   Qed.
 
-  Lemma tree_dir_extract_file : forall dlist F dmap name inum,
+  Lemma tree_dir_extract_file : forall l F dmap name inum,
     (F * name |-> (inum, false))%pred dmap
-    -> tree_dir_names_pred' dlist dmap
-    -> dirlist_pred tree_pred dlist =p=>
+    -> tree_dir_names_pred' l dmap
+    -> dirlist_pred tree_pred l =p=>
        exists F bfile, F * tree_pred (TreeFile inum bfile).
   Proof.
-    admit.
+    induction l; intros.
+    - simpl in *. apply ptsto_valid' in H. congruence.
+    - destruct a. destruct d; simpl in *.
+      + destruct (string_dec name s); subst.
+        * apply ptsto_valid in H0. apply ptsto_valid' in H.
+          rewrite H in H0; inversion H0. subst. cancel.
+        * apply ptsto_mem_except in H0.
+          rewrite IHl. cancel. 2: eauto.
+          apply sep_star_comm. eapply ptsto_mem_except_exF.
+          pred_apply; cancel. auto.
+      + apply ptsto_mem_except in H0 as H0'.
+        rewrite IHl. cancel. 2: eauto.
+        apply sep_star_comm in H.
+        pose proof (ptsto_diff_ne H0 H).
+        destruct (string_dec name s). exfalso. apply H1; eauto.
+        congruence.
+        apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
   Qed.
 
-  Lemma find_name_file : forall name inum F dmap bfmem reclst isub dlist bfsub,
+  Lemma find_subtree_file : forall dlist name inum F A B dmap reclst isub bfmem bfsub,
     (F * name |-> (isub, false))%pred dmap
     -> tree_dir_names_pred' dlist dmap
-    -> (exists F, F * tree_pred (TreeFile isub bfsub))%pred bfmem
-    -> (exists F, F * tree_pred (TreeDir inum dlist))%pred bfmem
+    -> (B * dirlist_pred tree_pred dlist)%pred bfmem
+    -> (A * tree_pred (TreeFile isub bfsub))%pred bfmem
+    -> find_subtree (name :: reclst) (TreeDir inum dlist) 
+                   = find_subtree reclst (TreeFile isub bfsub).
+  Proof.
+    induction dlist; simpl; intros.
+    apply ptsto_valid' in H. congruence.
+    destruct a. unfold find_subtree_helper at 1.
+    destruct (string_dec s name); subst.
+    - apply ptsto_valid' in H. apply ptsto_valid in H0.
+      rewrite H in H0; inversion H0.
+      destruct d. simpl in *; subst; f_equal.
+      apply sep_star_comm in H1; apply sep_star_assoc_1 in H1.
+      apply ptsto_valid in H1. apply ptsto_valid' in H2.
+      rewrite H1 in H2. inversion H2. subst; auto.
+      simpl in H0; congruence.
+    - simpl in *.
+      eapply IHdlist. exact inum.
+      apply sep_star_comm. eapply ptsto_mem_except_exF.
+      apply sep_star_comm; eauto. eauto.
+      apply ptsto_mem_except in H0; eauto. 2: eauto.
+      pred_apply' H1; cancel.
+  Qed.
+
+  Lemma find_name_file : forall dlist name inum F A B dmap reclst isub bfmem bfsub,
+    (F * name |-> (isub, false))%pred dmap
+    -> tree_dir_names_pred' dlist dmap
+    -> (B * dirlist_pred tree_pred dlist)%pred bfmem
+    -> (A * tree_pred (TreeFile isub bfsub))%pred bfmem
     -> find_name (name :: reclst) (TreeDir inum dlist) = find_name reclst (TreeFile isub bfsub).
   Proof.
-    admit.
-(*
-    induction tree; simpl; intros.
-    - eapply emp_complete in H0; [| apply emp_empty_mem ]; subst.
-      apply sep_star_empty_mem in H; intuition.
-      exfalso. eapply ptsto_empty_mem; eauto.
-    - destruct a. destruct p. unfold find_name_helper; fold (find_name_helper rec name).
-      destruct (string_dec s name); subst.
-      + apply ptsto_valid' in H. destruct d.
-        * apply ptsto_valid in H0. rewrite H in H0. inversion H0; eauto.
-        * apply ptsto_valid in H0. rewrite H in H0. discriminate.
-      + eapply IHtree.
-        apply sep_star_comm. eapply ptsto_mem_except_exF. apply sep_star_comm; eauto.
-        instantiate (1:=s); eauto.
-        destruct d; apply ptsto_mem_except in H0; eauto.
-*)
+    intros; unfold find_name.
+    erewrite find_subtree_file; eauto.
   Qed.
 
-(*
-  Lemma find_name_subdir_helper : forall reclst inum a b bfmem,
-       (exists F, F * tree_dir_names_pred inum a)%pred bfmem
-    -> (exists F, F * tree_dir_names_pred inum b)%pred bfmem
-    -> find_name reclst a inum $1 = find_name reclst b inum $1.
+
+  Lemma find_subtree_eq : forall l l' fnlist inum A B m,
+    (A * tree_dir_names_pred inum l)%pred m
+    -> (B * tree_dir_names_pred inum l')%pred m
+    -> find_subtree fnlist (TreeDir inum l) = find_subtree fnlist (TreeDir inum l').
   Proof.
     unfold tree_dir_names_pred; intros.
-    destruct_lift H. destruct_lift H0.
+    destruct_lift H; destruct_lift H0.
     apply ptsto_valid' in H. apply ptsto_valid' in H0.
-    rewrite H in H0; inversion H0; subst. clear H H0 bfmem.
+    rewrite H in H0; inversion H0; subst.
     admit.
   Qed.
-*)
 
-  Lemma find_name_subdir : forall reclst name inum dlist dlsub isub F dmap bfmem,
+  Lemma find_subtree_subdir : forall dlist name inum F A B dmap reclst isub bfmem dlsub,
     (F * name |-> (isub, true))%pred dmap
     -> tree_dir_names_pred' dlist dmap
-    -> (exists F, F * tree_dir_names_pred isub dlsub)%pred bfmem
-    -> (exists F, F * tree_pred (TreeDir inum dlist))%pred bfmem
-    -> find_name (name :: reclst) (TreeDir inum dlist) = find_name reclst (TreeDir isub dlsub).
+    -> (B * dirlist_pred tree_pred dlist)%pred bfmem
+    -> (A * tree_pred (TreeDir isub dlsub))%pred bfmem
+    -> find_subtree (name :: reclst) (TreeDir inum dlist) 
+                   = find_subtree reclst (TreeDir isub dlsub).
   Proof.
-    admit.
-(*
-    induction tree; simpl; intros.
-    - eapply emp_complete in H0; [| apply emp_empty_mem ]; subst.
-      apply sep_star_empty_mem in H; intuition.
-      exfalso. eapply ptsto_empty_mem; eauto.
-    - destruct a. destruct p. unfold find_name_helper; fold (find_name_helper (find_name reclst) name).
-      destruct (string_dec s name); subst.
-      + apply ptsto_valid' in H. destruct d.
-        * apply ptsto_valid in H0. rewrite H in H0. inversion H0; subst. congruence.
-        * apply ptsto_valid in H0. rewrite H in H0. inversion H0; subst.
-          simpl in *.
-          eapply find_name_subdir_helper.
-          pred_apply' H3. cancel.
-          pred_apply' H2. cancel.
-      + eapply IHtree.
-        apply sep_star_comm. eapply ptsto_mem_except_exF. apply sep_star_comm; eauto.
-        instantiate (1:=s); eauto.
-        destruct d; apply ptsto_mem_except in H0; eauto.
-        eauto.
-        eauto.
-        pred_apply' H3. cancel.
-*)
+    induction dlist; simpl; intros.
+    apply ptsto_valid' in H. congruence.
+    destruct a. unfold find_subtree_helper at 1.
+    destruct (string_dec s name); subst.
+    - apply ptsto_valid' in H. apply ptsto_valid in H0.
+      rewrite H in H0; inversion H0.
+      destruct d. simpl in H0. congruence.
+      simpl in *; subst.
+      eapply find_subtree_eq with (inum := w) (m :=bfmem).
+      pred_apply' H1; cancel.
+      pred_apply' H2; cancel.
+    - simpl in *.
+      eapply IHdlist. exact inum.
+      apply sep_star_comm. eapply ptsto_mem_except_exF.
+      apply sep_star_comm; eauto. eauto.
+      apply ptsto_mem_except in H0; eauto. 2: eauto.
+      pred_apply' H1; cancel.
   Qed.
 
-  Lemma find_name_none : forall dlist dmap name fnlist dnum,
+  Lemma find_name_subdir : forall dlist name inum F A B dmap reclst isub bfmem dlsub,
+    (F * name |-> (isub, true))%pred dmap
+    -> tree_dir_names_pred' dlist dmap
+    -> (B * dirlist_pred tree_pred dlist)%pred bfmem
+    -> (A * tree_pred (TreeDir isub dlsub))%pred bfmem
+    -> find_name (name :: reclst) (TreeDir inum dlist) 
+                   = find_name reclst (TreeDir isub dlsub).
+  Proof.
+    intros; unfold find_name.
+    erewrite find_subtree_subdir; eauto.
+  Qed.
+
+  Lemma find_subtree_none : forall dlist dmap name fnlist dnum,
     notindomain name dmap
     -> tree_dir_names_pred' dlist dmap
-    -> find_name (name :: fnlist) (TreeDir dnum dlist) = None.
+    -> find_subtree (name :: fnlist) (TreeDir dnum dlist) = None.
   Proof.
-    admit.
-(*
-    induction tree; simpl; intros; try reflexivity.
-    destruct a. destruct p.
-    unfold find_name_helper; fold (find_name_helper rec name).
+    induction dlist; simpl; intros; auto.
+    destruct a. unfold find_subtree_helper at 1.
     destruct (string_dec s name); subst.
-    - exfalso. eapply notindomain_not_indomain; eauto.
-      destruct d; apply ptsto_valid in H0; firstorder.
-    - eapply notindomain_mem_except' in H.
-      destruct d; apply ptsto_mem_except in H0;
-        eapply IHtree; eauto.
-*)
+    apply ptsto_valid in H0. congruence.
+    eapply notindomain_mem_except' in H.
+    apply ptsto_mem_except in H0.
+    simpl in *. eapply IHdlist; eauto.
   Qed.
 
+
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
+    let '(lxp, bxp, ibxp, ixp) := ((FSXPMemLog fsxp), (FSXPBlockAlloc fsxp),
+                                   (FSXPInodeAlloc fsxp), (FSXPInode fsxp)) in
     let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
-      Ghost [ mbase m F Fm Ftop treetop bflist freeinodes freeinode_pred_unused freeinode_pred ]
+      Ghost [ mbase m F Fm Ftop treetop bflist freeinodes unused freeinode_pred ]
       Loopvar [ mscs inum isdir ]
       Continuation lrx
       Invariant
         MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
         exists tree,
-        [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
-            BALLOC.rep_gen fsxp.(FSXPInodeAlloc) freeinodes freeinode_pred_unused freeinode_pred)%pred
+        [[ (Fm * BFILE.rep bxp ixp bflist *
+            BALLOC.rep_gen ibxp freeinodes unused freeinode_pred)%pred
            (list2mem m) ]] *
         [[ (Ftop * tree_pred treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
-        [[ isdir = true ->
-           (exists Fsub, Fsub * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]] *
         [[ dnum = dirtree_inum treetop ]] *
         [[ inum = dirtree_inum tree ]] *
         [[ isdir = dirtree_isdir tree ]] *
-        [[ find_name fnlist treetop = find_name fnrest tree ]]
+        [[ find_name fnlist treetop = find_name fnrest tree ]] *
+        [[ isdir = true -> (exists Fsub, 
+                   Fsub * tree_pred tree * freeinode_pred)%pred (list2nmem bflist) ]]
       OnCrash
         MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
       Begin
-        If (bool_dec isdir false) {
-          rx ^(mscs, None)
-        } else {
-          let^ (mscs, r) <- SDIR.dslookup (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
-                                          inum fn mscs;
+        If (bool_dec isdir true) {
+          let^ (mscs, r) <- SDIR.dslookup lxp bxp ixp inum fn mscs;
           match r with
-          | None => rx ^(mscs, None)
           | Some (inum, isdir) => lrx ^(mscs, inum, isdir)
+          | None => rx ^(mscs, None)
           end
+        } else {
+          rx ^(mscs, None)
         }
     Rof ^(mscs, dnum, true);
     rx ^(mscs, Some (inum, isdir)).
+
+   Local Hint Unfold SDIR.rep_macro rep : hoare_unfold.
 
   Theorem namei_ok : forall fsxp dnum fnlist mscs,
     {< F mbase m Fm Ftop tree,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
            [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-           [[ dnum = dirtree_inum tree ]] * [[ dirtree_isdir tree = true ]]
+           [[ dnum = dirtree_inum tree ]] *
+           [[ dirtree_isdir tree = true ]]
     POST RET:^(mscs,r)
-           [[ r = find_name fnlist tree ]] *
-           [[ exists Fsub subtree,
-              r = Some (dirtree_inum subtree, true) ->
-              (Fm * rep fsxp Fsub subtree)%pred (list2mem m) ]] *
-           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs
+           MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ r = find_name fnlist tree ]]
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} namei fsxp dnum fnlist mscs.
   Proof.
-    unfold namei, rep.
+    unfold namei.
     step.
     step.
+
+    (* isdir = true *)
+    destruct d2; simpl in *; subst; intuition.
     step.
-
-    destruct d2; simpl in *.
-    unfold find_name in *; simpl in *; auto.
-    congruence.
-
-    exists emp. exists (TreeFile $0 BFILE.bfile0). intros; discriminate.
-
-    (* destruct some [exists] terms before creating evars.. *)
-    eapply pimpl_ok2; [ eauto with prog |].
-    intros; norm'l; unfold stars; simpl.
-    destruct a1; intuition.
-
-    destruct d2; simpl in *; try congruence; subst.
-    destruct_lift H0.
-    unfold tree_dir_names_pred in H0; destruct_lift H0.
-
-    cancel.
-    unfold SDIR.rep_macro. do 2 eexists. intuition.
-    (* Be careful which [list2mem] we pick! *)
-    pred_apply' H3. cancel.
-    pred_apply' H0. cancel.
-    eauto.
-
-    repeat destruct_branch.
-    eapply pimpl_ok2; eauto.
-    intros; norm'l; split_or_l; unfold stars; simpl;
-      norm'l; unfold stars; simpl; inv_option_eq.
-
-
-    destruct a4.
-    assert (Hx := H0).
-    rewrite tree_dir_extract_subdir in H0 by eauto. destruct_lift H0.
-    cancel.
-    instantiate (a := (TreeDir a3 l2)).
-    cancel.
-    auto.
-    auto.
-
-    erewrite <- find_name_subdir; eauto.
-    pred_apply' H0; cancel. simpl. 
-    unfold tree_dir_names_pred.
-    pred_apply' Hx; cancel. eauto. eauto.
-
-    assert (Hx := H0).
-    rewrite tree_dir_extract_file in H0. destruct_lift H0.
-    cancel.
-    instantiate (a := (TreeFile a3 b0)).
-    auto. auto.
-
-    erewrite <- find_name_file; eauto.
+    hypmatch (tree_dir_names_pred) as Hx.
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    step.
+    do 2 eexists; intuition; eauto.
+    pred_apply; cancel.
     pred_apply' H0; cancel.
-    simpl. unfold tree_dir_names_pred.
-    pred_apply' Hx; cancel. eauto. eauto. eauto. eauto.
+    destruct a0.
 
+    (* dslookup = Some _: extract subtree before [cancel] *)
+    hypmatch (dirlist_pred) as Hx; assert (Horig := Hx).
+    destruct_branch; eapply pimpl_ok2; eauto with prog; intros.
+    norm'l; split_or_l; unfold stars; simpl;
+    norm'l; unfold stars; inv_option_eq; simpl.
+    destruct a3.
+
+    (* subtree is a directory *)
+    rewrite tree_dir_extract_subdir in Hx by eauto; destruct_lift Hx.
+    cancel; try instantiate (1 := (TreeDir a0 l2)); eauto; try cancel.
+    erewrite <- find_name_subdir; eauto.
+    pred_apply' Horig; cancel.
+    hypmatch l2 as Hx; pred_apply' Hx; cancel.
+
+    (* subtree is a file *)
+    rewrite tree_dir_extract_file in Hx by eauto; destruct_lift Hx.
+    cancel; try instantiate (1 := (TreeFile a0 b0)); eauto; try cancel.
+    erewrite <- find_name_file; eauto.
+    pred_apply' Horig; cancel.
+    hypmatch b0 as Hx; pred_apply' Hx; cancel.
+
+    (* dslookup = None *)
     step.
+    erewrite <- find_name_none; eauto.
 
-    erewrite <- find_name_none. eauto. eauto. eauto.
-    exists emp. exists (TreeFile $0 BFILE.bfile0).
-    discriminate.
-
+    (* rx : isdir = false *)
     step.
-    destruct d2; unfold find_name in *; simpl in *; subst; eauto.
-    destruct a1. intuition. destruct_lift H.
-    clear H7 H9. repeat eexists.
-    intro Heq; inversion Heq; subst.
-    pred_apply.
-    instantiate (subtree := d2). cancel.
+    hypmatch (find_name) as Hx; rewrite Hx.
+    unfold find_name; destruct d2; simpl in *; auto; congruence.
 
-    exists emp. exists (TreeFile $0 BFILE.bfile0).
-    intros; discriminate.
+    (* rx : isdir = true *)
+    step.
+    hypmatch (find_name) as Hx; rewrite Hx.
+    unfold find_name; destruct d2; simpl in *; subst; auto.
+
+    Grab Existential Variables.
+    all: try exact emp; try exact empty_mem.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (namei _ _ _ _) _) => apply namei_ok : prog.
