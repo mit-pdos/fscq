@@ -1539,7 +1539,10 @@ Module MEMLOG.
     (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_old' xp old)%pred d ]])%pred.
 
   Definition would_recover_either' xp old cur :=
-    (exists ms, rep_inner xp (CommittedUnsyncTxn old cur) ms \/
+    (exists ms,
+      rep_inner xp (NoTransaction old) ms \/
+      (exists x, rep_inner xp (ActiveTxn old x) ms) \/
+      rep_inner xp (CommittedUnsyncTxn old cur) ms \/
       rep_inner xp (CommittedTxn cur) ms \/
       rep_inner xp (AppliedTxn cur) ms \/
       rep_inner xp (NoTransaction cur) ms)%pred.
@@ -1547,12 +1550,6 @@ Module MEMLOG.
   Definition would_recover_either xp F old cur :=
     (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either' xp old cur)%pred d ]])%pred.
 
-  (** The log is in a valid state with (after recovery) represents either disk state [old] or [cur] *)
-  Definition log_intact xp F old cur :=
-    (would_recover_old xp F old \/ would_recover_either xp F old cur)%pred.
-
-  Hint Extern 0 (okToUnify (log_intact _ _ _) (log_intact _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (SepAuto.okToUnify (log_intact _ _ _) (log_intact _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (SepAuto.okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (would_recover_either _ _ _ _) (would_recover_either _ _ _ _)) => constructor : okToUnify.
@@ -1567,10 +1564,10 @@ Module MEMLOG.
      POST RET:^(mscs,r)
                     ([[ r = true ]] * rep xp F (NoTransaction m2) mscs) \/
                     ([[ r = false ]] * rep xp F (NoTransaction m1) mscs)
-     CRASH          log_intact xp F m1 m2
+     CRASH          would_recover_either xp F m1 m2
     >} commit xp mscs.
   Proof.
-    unfold commit, log_intact, would_recover_old, would_recover_either.
+    unfold commit, would_recover_either.
     hoare_with log_unfold ltac:(info_eauto with replay).
     cancel_with ltac:(info_eauto with replay).
     admit.
@@ -1704,8 +1701,6 @@ Module MEMLOG.
   Qed.
   Hint Rewrite crash_invariant_avail_region : crash_xform.
 
-  Ltac log_intact_unfold := unfold log_intact, would_recover_old, would_recover_either.
-
   Ltac word_discriminate :=
     match goal with [ H: $ _ = $ _ |- _ ] => solve [
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
@@ -1728,6 +1723,16 @@ Module MEMLOG.
     unfold equal_unless_in; intuition.
   Qed.
   Hint Resolve equal_unless_in_refl : replay.
+
+  Lemma would_recover_old_either : forall xp F old,
+    would_recover_old xp F old =p=> would_recover_either xp F old old.
+  Proof.
+    unfold would_recover_old, would_recover_old',
+           would_recover_either, would_recover_either'.
+    cancel.
+    cancel.
+    cancel.
+  Qed.
 
 (* effectively
     {< m1 m2 F,
