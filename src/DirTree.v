@@ -858,26 +858,6 @@ Module DIRTREE.
     | TreeDir inum ents => TreeDir inum (delete_from_list name ents)
     end.
 
-(*
-  Theorem update_subtree : forall fsxp fnlist treetop m F Ftop itop
-                                  Fsub isub treesub
-                                  m' updater,
-    (F * rep fsxp Ftop itop treetop)%pred (list2mem m) ->
-    find_name fnlist treetop itop $1 = Some (isub, $1) ->
-    (F * rep fsxp Fsub isub treesub)%pred (list2mem m) ->
-    (F * rep fsxp Fsub isub (updater treesub))%pred (list2mem m') ->
-    (F * rep fsxp Ftop itop (update_tree fnlist updater treetop))%pred (list2mem m').
-  Proof.
-    induction fnlist; simpl.
-    intros.
-    inversion H0; subst. pred_apply. unfold rep. cancel. admit.
-    induction treetop; simpl; intros.
-    discriminate.
-    pred_apply. cancel.
-    admit.
-  Qed.
-*)
-
   Definition delete T fsxp dnum name mscs rx : prog T :=
     let^ (mscs, oi) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
                                      dnum name mscs;
