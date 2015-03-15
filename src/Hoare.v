@@ -108,6 +108,33 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    post at level 1, crash at level 1).
 
+Inductive corr3_result {A B : Type} :=
+  | OK : A -> corr3_result
+  | Recover : B -> corr3_result.
+
+Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   exists idemcrash,
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3
+   (fun done_ crashdone_ =>
+     exists F,
+     F * pre *
+     [[ crash_xform F =p=> F ]] *
+     [[ forall r_,
+        {{ fun done'_ crash'_ => post F (OK r_) *
+                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+        }} rxOK r_ ]] *
+     [[ forall r_,
+        {{ fun done'_ crash'_ => post F (Recover r_) *
+                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+        }} rxREC r_ ]]
+   )%pred
+   (p1 rxOK)%pred
+   (p2 rxREC)%pred)) .. ))
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   post at level 1).
+
 
 Theorem pimpl_ok2:
   forall T pre pre' (pr: prog T),

@@ -88,20 +88,18 @@ Hint Rewrite crash_xform_sep_star_dist crash_xform_or_dist crash_xform_exists_co
 
 Definition i2 xp s0 s1 T := @log_inc_two T xp s0 s1.
 
-Theorem log_inc_two_recover_ok: forall xp s0 s1 mscs cachesize,
-  {<< v0 v1 F Fm mbase,
-  PRE             [[ cachesize <> 0 ]] *
-                  MEMLOG.rep xp Fm (NoTransaction mbase) mscs * 
-                  [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
-  POST RET:^(mscs, r)
-                  [[ r = false ]] * MEMLOG.rep xp Fm (NoTransaction mbase) mscs \/
-                  [[ r = true ]] * exists m', MEMLOG.rep xp Fm (NoTransaction m') mscs *
-                  [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  REC RET:mscs
-                  MEMLOG.rep xp Fm (NoTransaction mbase) mscs \/
-                  exists m', MEMLOG.rep xp Fm (NoTransaction m') mscs *
-                  [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  >>} log_inc_two xp s0 s1 mscs >> MEMLOG.recover xp (fst (snd mscs)).
+Theorem log_inc_two_recover_ok: forall xp s0 s1 mscs,
+  {<<< v0 v1 F Fm mbase,
+  PRE
+    MEMLOG.rep xp Fm (NoTransaction mbase) mscs *
+    [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem mbase)]]
+  POST RET:rr
+    exists mscs,
+   ([[ rr = OK ^(mscs, false) \/ rr = Recover mscs ]] * MEMLOG.rep xp Fm (NoTransaction mbase) mscs \/
+    exists m',
+    [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]] *
+    [[ rr = OK ^(mscs, true) \/ rr = Recover mscs ]] * MEMLOG.rep xp Fm (NoTransaction m') mscs)
+  >>>} log_inc_two xp s0 s1 mscs >> MEMLOG.recover xp (fst (snd mscs)).
 Proof.
   intros.
   unfold forall_helper at 1 2; intros v0 v1 F.
