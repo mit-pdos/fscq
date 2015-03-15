@@ -886,25 +886,24 @@ Module DIRTREE.
     end.
 
   Definition delete T fsxp dnum name mscs rx : prog T :=
-    let^ (mscs, oi) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                     dnum name mscs;
+    let '(lxp, bxp, ibxp, ixp) := ((FSXPMemLog fsxp), (FSXPBlockAlloc fsxp),
+                                   (FSXPInodeAlloc fsxp), (FSXPInode fsxp)) in
+    let^ (mscs, oi) <- SDIR.dslookup lxp bxp ixp dnum name mscs;
     match oi with
     | None => rx ^(mscs, false)
     | Some (inum, isdir) =>
       mscs <- IfRx irx (bool_dec isdir false) {
         irx mscs
       } else {
-        let^ (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                      inum mscs;
+        let^ (mscs, l) <- SDIR.dslist lxp bxp ixp inum mscs;
         match l with
         | nil => irx mscs
         | a::b => rx ^(mscs, false)
         end
       };
-      let^ (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                       dnum name mscs;
+      let^ (mscs, ok) <- SDIR.dsunlink lxp bxp ixp dnum name mscs;
       If (bool_dec ok true) {
-        mscs <- BALLOC.free_gen fsxp.(FSXPMemLog) fsxp.(FSXPInodeAlloc) inum mscs;
+        mscs <- BALLOC.free_gen lxp ibxp inum mscs;
         rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
@@ -912,30 +911,25 @@ Module DIRTREE.
     end.
 
   Definition rename T fsxp dsrc srcname ddst dstname mscs rx : prog T :=
-    let^ (mscs, osrc) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                       dsrc srcname mscs;
+    let '(lxp, bxp, ibxp, ixp) := ((FSXPMemLog fsxp), (FSXPBlockAlloc fsxp),
+                                   (FSXPInodeAlloc fsxp), (FSXPInode fsxp)) in
+    let^ (mscs, osrc) <- SDIR.dslookup lxp bxp ixp dsrc srcname mscs;
     match osrc with
     | None => rx ^(mscs, false)
     | Some (inum, isdir) =>
-      let^ (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                       dsrc srcname mscs;
-      let^ (mscs, odst) <- SDIR.dslookup fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                         ddst dstname mscs;
+      let^ (mscs, ok) <- SDIR.dsunlink lxp bxp ixp dsrc srcname mscs;
+      let^ (mscs, odst) <- SDIR.dslookup lxp bxp ixp ddst dstname mscs;
       match odst with
       | None =>
-        let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                       ddst dstname inum isdir mscs;
+        let^ (mscs, ok) <- SDIR.dslink lxp bxp ixp ddst dstname inum isdir mscs;
         rx ^(mscs, ok)
       | Some (inum', isdir') =>
-        let^ (mscs, ok) <- SDIR.dsunlink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                         ddst dstname mscs;
-        let^ (mscs, ok) <- SDIR.dslink fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                       ddst dstname inum isdir mscs;
+        let^ (mscs, ok) <- SDIR.dsunlink lxp bxp ixp ddst dstname mscs;
+        let^ (mscs, ok) <- SDIR.dslink lxp bxp ixp ddst dstname inum isdir mscs;
         If (bool_dec isdir' false) {
           rx ^(mscs, ok)
         } else {
-          let^ (mscs, l) <- SDIR.dslist fsxp.(FSXPMemLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode)
-                                        inum' mscs;
+          let^ (mscs, l) <- SDIR.dslist lxp bxp ixp inum' mscs;
           match l with
           | nil => rx ^(mscs, ok)
           | a::b => rx ^(mscs, false)
