@@ -862,6 +862,27 @@ Module DIRTREE.
   Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
   Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _) _) => apply mkdir_ok : prog.
 
+  Lemma false_False_true : forall x,
+    (x = false -> False) -> x = true.
+  Proof.
+    destruct x; tauto.
+  Qed.
+
+  Lemma true_False_false : forall x,
+    (x = true -> False) -> x = false.
+  Proof.
+    destruct x; tauto.
+  Qed.
+
+  Ltac subst_bool :=
+    repeat match goal with
+    | [ H : ?x = true |- _ ] => is_var x; subst x
+    | [ H : ?x = false |- _ ] => is_var x; subst x
+    | [ H : ?x = false -> False  |- _ ] => is_var x; apply false_False_true in H; subst x
+    | [ H : ?x = true -> False   |- _ ] => is_var x; apply true_False_false in H; subst x
+    end.
+
+
   Definition add_to_dir (name : string) (newitem : dirtree) tree :=
     match tree with
     | TreeFile _ _ => tree
@@ -910,6 +931,37 @@ Module DIRTREE.
       }
     end.
 
+  Lemma dir_names_delete : forall name dnum dfile dmap dlist,
+    tree_dir_names_pred' dlist dmap
+    -> SDIR.rep dfile (mem_except dmap name)
+    -> (# dnum |-> dfile) =p=> tree_dir_names_pred dnum (delete_from_list name dlist).
+  Proof.
+    admit.
+  Qed.
+
+  Lemma dirlist_delete_file : forall F name inum dmap dlist,
+    tree_dir_names_pred' dlist dmap
+    -> (F * name |-> (inum, false))%pred dmap
+    -> dirlist_pred tree_pred dlist =p=>
+        (# inum |->?) * dirlist_pred tree_pred (delete_from_list name dlist).
+  Proof.
+    admit.
+  Qed.
+
+
+  Lemma dirlist_delete_empty_dir : forall F A name inum dmap dlist
+                                         (m :@mem _ Nat.eq_dec _) submap subdir,
+    tree_dir_names_pred' dlist dmap
+    -> (F * name |-> (inum, true))%pred dmap
+    -> (A * # inum |-> subdir)%pred m
+    -> SDIR.rep subdir submap
+    -> emp submap
+    -> dirlist_pred tree_pred dlist =p=>
+        (# inum |-> subdir) * dirlist_pred tree_pred (delete_from_list name dlist).
+  Proof.
+    admit.
+  Qed.
+
 
   Theorem delete_ok' : forall fsxp dnum name mscs,
     {< F mbase m Fm Ftop tree tree_elem,
@@ -947,33 +999,46 @@ Module DIRTREE.
     step.
     step.
     step.
-    admit.
+    admit. (* need to stick valid_block in tree_pred *)
 
     step.
     apply pimpl_or_r; right; cancel.
-    admit.
+    hypmatch p0 as Hx; rewrite <- Hx.
 
+    rewrite dir_names_delete; eauto.
+    rewrite dirlist_delete_file; eauto.
+    cancel.
     step.
+
+    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    hypmatch dirlist_pred as Hx; assert (Horig := Hx); subst_bool.
+    rewrite tree_dir_extract_subdir in Hx; eauto; simpl in Hx.
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    cancel.
+    do 2 eexists. intuition.
+    pred_apply; cancel.
+    pred_apply; cancel.
+    eauto.
+
     step.
     do 2 eexists. intuition.
-    pred_apply. cancel.
-    admit.
-    admit.
-
-    step.
-    do 2 eexists. intuition.
-    pred_apply. cancel.
-    admit. admit.
+    pred_apply; cancel.
+    pred_apply' Horig; cancel.
+    eauto.
 
     step.
     step.
     step.
     step.
-    admit.
+    admit. (* need to stick valid_block in tree_pred *)
+
     step.
     apply pimpl_or_r; right; cancel.
-    admit.
-
+    hypmatch p0 as Hx; rewrite <- Hx.
+    rewrite dir_names_delete with (dmap := m0); eauto.
+    rewrite dirlist_delete_empty_dir with (m := (list2nmem l)) (submap := m1); eauto.
+    cancel.
+    pred_apply; cancel.
     step.
   Qed.
 
