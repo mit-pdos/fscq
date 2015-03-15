@@ -1562,4 +1562,17 @@ Proof.
   rewrite firstn_length_r; omega.
 Qed.
 
+Theorem arrayN_list_eq : forall A (vs1 vs2 : list A) s m,
+  arrayN s vs1 m -> arrayN s vs2 m -> vs1 = vs2.
+Proof.
+  induction vs1; destruct vs2; simpl; intros; auto.
+  apply ptsto_valid in H0; congruence.
+  apply ptsto_valid in H; congruence.
+  apply ptsto_valid in H as Hx.
+  apply ptsto_valid in H0 as Hy.
+  rewrite Hx in Hy; inversion Hy; subst; clear Hx Hy; f_equal.
+  apply ptsto_mem_except in H.
+  apply ptsto_mem_except in H0.
+  eapply IHvs1; eauto.
+Qed.
 

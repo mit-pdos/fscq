@@ -757,9 +757,13 @@ Ltac inv_option_eq' := repeat match goal with
   | [ H: None = Some _ |- _ ] => inversion H
   | [ H: Some _ = None |- _ ] => inversion H
   | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
+  | [ H: (_, _) = (_, _) |- _ ] => inversion H; clear H
   end.
 
 Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
+
+Tactic Notation "hypmatch" constr(pattern) "as" ident(n) :=
+  match goal with | [ H: context [ pattern ] |- _ ] => rename H into n end.
 
 Ltac cancel_with t :=
   intros;
