@@ -694,7 +694,7 @@ Module DIRTREE.
       }
     end.
 
-  Theorem mkfile_ok : forall fsxp dnum name mscs,
+  Theorem mkfile_ok' : forall fsxp dnum name mscs,
     {< F mbase m Fm Ftop tree tree_elem,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
            [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
@@ -713,19 +713,18 @@ Module DIRTREE.
   Proof.
     unfold mkfile, rep.
     step.
-    unfold tree_dir_names_pred in H5. destruct_lift H5.
+    subst. simpl in *. unfold tree_dir_names_pred in H6. destruct_lift H6.
     step.
     unfold SDIR.rep_macro. do 2 eexists. intuition.
     pred_apply. cancel.
     pred_apply. cancel.
     eauto.
-    unfold SDIR.rep_macro.
     step.
     step.
     step.
 
     repeat deex.
-    rewrite H12 in H0. destruct_lift H0.
+    rewrite H12 in H3. destruct_lift H3.
     step.
     step.
 
@@ -735,13 +734,37 @@ Module DIRTREE.
 
     step.
     Grab Existential Variables.
-    exact BFILE.bfile0.
-    exact emp.
-    exact nil.
-    exact emp.
-    exact empty_mem.
-    exact emp.
-    exact emp.
+    all: try exact emp.
+    all: try exact BFILE.bfile0.
+    all: try exact nil.
+    all: try exact empty_mem.
+  Qed.
+
+  Theorem mkfile_ok : forall fsxp dnum name mscs,
+    {< F mbase m pathname Fm Ftop tree tree_elem,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+    POST RET:^(mscs,r)
+           (* We always modify the memory, because we might allocate the file,
+            * but then fail to link it into the directory..  When we return
+            * None, the overall transaction should be aborted.
+            *)
+           exists m', MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+           ([[ r = None ]] \/
+            exists inum tree', [[ r = Some inum ]] *
+            [[ tree' = update_subtree pathname (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
+            [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]])
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} mkfile fsxp dnum name mscs.
+  Proof.
+    intros; eapply pimpl_ok2; [ apply mkfile_ok' | ].
+    unfold rep; cancel.
+    rewrite subtree_extract; eauto. simpl. instantiate (a5:=l2). cancel.
+    step.
+    apply pimpl_or_r; right. cancel.
+    rewrite <- subtree_absorb; eauto.
+    cancel.
   Qed.
 
   Definition mkdir T fsxp dnum name mscs rx : prog T :=
