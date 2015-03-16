@@ -271,8 +271,7 @@ Module BFILE.
     erewrite listmatch_isolate with (prd := data_match bxp) (i := wordToNat off) by file_bounds.
     unfold data_match, sel; autorewrite with defaults.
     cancel.
-
-    unfold MEMLOG.would_recover_old; cancel.
+    rewrite MEMLOG.activetxn_would_recover_old; cancel.
   Qed.
 
 
