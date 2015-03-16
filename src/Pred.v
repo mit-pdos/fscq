@@ -1336,10 +1336,43 @@ Qed.
  * The following instance is needed to make [setoid_rewrite] fast on terms
  * that involve [lift_empty].  Otherwise, typeclass search takes forever.
  *)
-Instance lift_empty_proper {AT AEQ V} :
+Instance lift_empty_proper_iff {AT AEQ V} :
   Proper (iff ==> @piff _ _ _) (@lift_empty AT AEQ V).
 Proof.
   firstorder.
+Qed.
+
+(**
+ * The following instances are needed to rewrite under [lift_empty].
+ *)
+Instance lift_empty_proper_impl {AT AEQ V} :
+  Proper (Basics.impl ==> @pimpl _ _ _) (@lift_empty AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance lift_empty_proper_expanded_impl {AT AEQ V} :
+  Proper (Basics.impl ==> eq ==> Basics.impl) (@lift_empty AT AEQ V).
+Proof.
+  unfold lift_empty.
+  intros a b Hab m1 m2 Hm H; subst.
+  intuition.
+Qed.
+
+Instance lift_empty_proper_expanded_flipimpl {AT AEQ V} :
+  Proper (Basics.flip Basics.impl ==> eq ==> Basics.flip Basics.impl) (@lift_empty AT AEQ V).
+Proof.
+  unfold lift_empty.
+  intros a b Hab m1 m2 Hm H; subst.
+  intuition.
+Qed.
+
+Instance lift_empty_proper_expanded_iff {AT AEQ V} :
+  Proper (iff ==> eq ==> iff) (@lift_empty AT AEQ V).
+Proof.
+  unfold lift_empty.
+  intros a b Hab m1 m2 Hm; subst.
+  intuition.
 Qed.
 
 
