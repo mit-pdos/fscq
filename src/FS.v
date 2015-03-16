@@ -77,39 +77,56 @@ Definition mkfs T data_bitmaps inode_bitmaps rx : prog T :=
   end.
 
 Definition recover {T} rx : prog T :=
-  cs <- BUFCACHE.init cachesize;
+  cs <- BUFCACHE.init_recover cachesize;
   let^ (cs, fsxp) <- sb_load cs;
   mscs <- MEMLOG.recover (FSXPMemLog fsxp) cs;
   rx ^(mscs, fsxp).
 
-Theorem recover_ok : forall T rx,
-  {{fun done_ crash_ =>
-    exists m1 xp F0 F,
-      (F0 * crash_xform (MEMLOG.would_recover_old xp F m1) *
-        [[forall r_,
-          let '^(mscs, fsxp) := r_ in
-          {{fun (done'_ : donecond T) (crash'_ : pred) =>
-            F0 *
-            (MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m1) mscs) *
-            [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] *
-        [[F0 * MEMLOG.would_recover_old xp F m1 =p=> crash_]]) \/
-      exists m2, (F0 * crash_xform (MEMLOG.would_recover_either xp F m1 m2) *
-        [[forall r_,
-          let '^(mscs, fsxp) := r_ in
-          {{fun (done'_ : donecond T) (crash'_ : pred) =>
-            F0 *
-            (MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m1) mscs \/
-             MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m2) mscs) *
-            [[done'_ = done_]] * [[crash'_ = crash_]]}} rx r_]] *
-        [[F0 * MEMLOG.would_recover_either xp F m1 m2 =p=> crash_]])
-  }} recover rx.
+Local Opaque BUFCACHE.rep.
+
+Theorem recover_ok :
+  {< fsxp old new,
+  PRE
+    crash_xform (MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) old new)
+  POST RET:^(mscs, fsxp)
+    MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
+    MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs
+  CRASH
+    MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) old new
+  >} recover.
 Proof.
-  unfold recover; intros.
+  unfold recover, MEMLOG.would_recover_either; intros.
+  pose proof cachesize_nonzero.
+
+  eapply pimpl_ok2; eauto with prog.
+  intros. norm'l. unfold stars; simpl.
+  repeat ( setoid_rewrite crash_xform_exists_comm ||
+           setoid_rewrite crash_xform_sep_star_dist ||
+           setoid_rewrite crash_xform_lift_empty ).
+  cancel.
+
   step.
-  eapply pimpl_or_r; left. cancel. apply cachesize_nonzero; auto.
-  destruct b1. specialize (H3 ^((a0, (a1, b)), a)). eauto.
-  eapply pimpl_or_r; right. cancel. apply cachesize_nonzero; auto.
-  destruct b1. specialize (H3 ^((a1, (a2, b)), a0)). eauto.
+  autorewrite with crash_xform. cancel.
+
+  eapply pimpl_ok2; eauto with prog.
+  unfold MEMLOG.would_recover_either.
+  cancel.
+
+  rewrite crash_xform_sep_star_dist.
+  rewrite crash_xform_sep_star_dist.
+  cancel.
+
+  step.
+  unfold MEMLOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
+  unfold MEMLOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
+  subst. pimpl_crash. cancel. autorewrite with crash_xform. cancel.
+
+  autorewrite with crash_xform. cancel.
+
+  pimpl_crash. norm'l; unfold stars; simpl. autorewrite with crash_xform.
+  norm. cancel. intuition.
+  eapply pred_apply_crash_xform_pimpl; eauto.
+  autorewrite with crash_xform. cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
@@ -158,7 +175,7 @@ Theorem read_block_ok : forall fsxp inum off mscs,
   POST RET:^(mscs,r)
          MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
          [[ r = v ]]
-  CRASH  MEMLOG.log_intact (FSXPMemLog fsxp) F m m
+  CRASH  MEMLOG.would_recover_either (FSXPMemLog fsxp) F m m
   >} read_block fsxp inum off mscs.
 Proof.
   unfold read_block.
