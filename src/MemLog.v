@@ -1947,7 +1947,15 @@ Module MEMLOG.
     would_recover_either_pred' fsxp old curpred.
   Proof.
     unfold after_crash_pred', would_recover_either_pred'.
-    admit.
+    intros; norm'l; unfold stars; simpl.
+    rewrite sep_star_comm. rewrite star_emp_pimpl.
+    repeat apply pimpl_or_l.
+    cancel.
+    cancel.
+    cancel.
+    (* the automated search takes too long to get to the 8th OR branch.. *)
+    norm; unfold stars; simpl; auto.
+    repeat or_r. cancel.
   Qed.
 
   Theorem recover_ok: forall xp cs,
