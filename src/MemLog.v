@@ -214,15 +214,22 @@ Module MEMLOG.
   Definition log_rep_unsynced xp m (ms : memstate) : @pred addr (@weq addrlen) valuset :=
      ([[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
-      exists rest,
-      (LogDescriptor xp) |~> (descriptor_to_valu (map fst (Map.elements ms) ++ rest)) *
+      exists rest others,
+      (LogDescriptor xp) |-> (descriptor_to_valu (map fst (Map.elements ms) ++ rest),
+                              map descriptor_to_valu others) *
       [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]] *
       exists unsynced,
       array (LogData xp) (List.combine (map snd (Map.elements ms)) unsynced) $1 *
       [[ length unsynced = Map.cardinal ms ]] *
       avail_region (LogData xp ^+ $ (Map.cardinal ms))
-                         (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
+                         (wordToNat (LogLen xp) - Map.cardinal ms) *
+      [[ Forall (@Rec.well_formed descriptor_type) others ]])%pred.
 
+  Definition log_rep_empty xp : @pred addr (@weq addrlen) valuset :=
+     (exists rest,
+      (LogDescriptor xp) |=> (descriptor_to_valu rest) *
+      [[ @Rec.well_formed descriptor_type (rest) ]] *
+      avail_region (LogData xp) (wordToNat (LogLen xp)))%pred.
 
   Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addr (@weq addrlen) valuset :=
     [[ cur = replay ms old ]]%pred.
@@ -243,14 +250,12 @@ Module MEMLOG.
       (LogHeader xp) |=> (header_to_valu (mk_header 0))
     * [[ ms = ms_empty ]]
     * data_rep xp (synced_list m)
-    * (LogDescriptor xp) |->?
-    * avail_region (LogData xp) (wordToNat (LogLen xp))
+    * log_rep_empty xp
 
     | ActiveTxn old cur =>
       (LogHeader xp) |=> (header_to_valu (mk_header 0))
     * data_rep xp (synced_list old) (* Transactions are always completely buffered in memory. *)
-    * (LogDescriptor xp) |->?
-    * avail_region (LogData xp) (wordToNat (LogLen xp))
+    * log_rep_empty xp
     * cur_rep old ms cur
     * [[ valid_entries old ms ]]
 
