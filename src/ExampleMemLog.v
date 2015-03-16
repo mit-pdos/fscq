@@ -46,7 +46,7 @@ Theorem log_inc_two_body_ok: forall xp s0 s1 mscs,
                   [[ (s0 |-> v0 * s1 |-> v1 * F)%pred (list2mem m)]]
   POST RET:mscs   exists m', MEMLOG.rep xp Fm (ActiveTxn mbase m') mscs *
                   [[ (s0 |-> (v0 ^+ $1) * s1 |-> (v1 ^+ $1) * F)%pred (list2mem m') ]]
-  CRASH           exists m' mscs', MEMLOG.rep xp Fm (ActiveTxn mbase m') mscs'
+  CRASH           MEMLOG.would_recover_old xp Fm mbase.
   >} log_inc_two_body xp s0 s1 mscs.
 Proof.
   unfold log_inc_two_body.
