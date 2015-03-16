@@ -1571,6 +1571,8 @@ Module MEMLOG.
     (exists ms,
       rep_inner xp (NoTransaction old) ms \/
       (exists x, rep_inner xp (ActiveTxn old x) ms) \/
+      rep_inner xp (CommittedTxn old) ms \/
+      rep_inner xp (AppliedTxn old) ms \/
       rep_inner xp (CommittedUnsyncTxn old cur) ms \/
       rep_inner xp (CommittedTxn cur) ms \/
       rep_inner xp (AppliedTxn cur) ms \/
@@ -1763,35 +1765,113 @@ Module MEMLOG.
     cancel.
   Qed.
 
-(* effectively
+  Theorem recover_ok: forall xp cs,
     {< m1 m2 F,
-     PRE            exists d, BUFCACHE.rep cs d * [[ (F * crash_xform (log_intact m1 m2))%pred d ]]
-     POST RET:mscs  rep xp F (NoTransaction m1) mscs) \/
-                    rep xp F (NoTransaction m2) mscs)
-     CRASH          log_intact xp F m1 m2
-    >} recover xp cs rx.
-*)
-  Theorem recover_ok: forall xp cs T rx,
-    {{fun done_ crash_ =>
-      exists m1 F0 F,
-        (F0 * (exists d, BUFCACHE.rep cs d * [[ (F * crash_xform (would_recover_old' xp m1))%pred d ]]) *
-          [[forall mscs,
-            {{fun (done'_ : donecond T) (crash'_ : pred) =>
-              F0 *
-              (rep xp F (NoTransaction m1) mscs) *
-              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx mscs]] *
-          [[F0 * (would_recover_old xp F m1 \/ exists m2, would_recover_either xp F m1 m2) =p=> crash_]]) \/
-        exists m2, (F0 * (exists d, BUFCACHE.rep cs d * [[ (F * crash_xform (would_recover_either' xp m1 m2))%pred d ]]) *
-          [[forall mscs,
-            {{fun (done'_ : donecond T) (crash'_ : pred) =>
-              F0 *
-              (rep xp F (NoTransaction m1) mscs \/
-               rep xp F (NoTransaction m2) mscs) *
-              [[done'_ = done_]] * [[crash'_ = crash_]]}} rx mscs]] *
-          [[F0 * (would_recover_old xp F m1 \/ would_recover_either xp F m1 m2) =p=> crash_]])
-    }} recover xp cs rx.
+    PRE
+      exists d, BUFCACHE.rep cs d *
+      [[ crash_xform (F * would_recover_either' xp m1 m2)%pred d ]]
+    POST RET:mscs
+      rep xp (crash_xform F) (NoTransaction m1) mscs \/
+      rep xp (crash_xform F) (NoTransaction m2) mscs
+    CRASH
+      would_recover_either xp (crash_xform F) m1 m2
+    >} recover xp cs.
   Proof.
-    unfold recover, would_recover_old', would_recover_either'; log_intact_unfold; log_unfold.
+    unfold recover, would_recover_either, would_recover_either'.
+    intros.
+    eapply pimpl_ok2; eauto with prog.
+    intros. norm'l. unfold stars; simpl.
+
+    (* We need to split up all of the possible [rep] preconditions, because
+     * we need to get at the [crash_xform] of the [CommittedUnsyncTxn] state
+     * and determine which way it went.  This will decide what disk image to
+     * use for instantiating our evars.
+     *)
+    (* XXX an odd setoid_rewrite issue: can't rewrite the top-level term? *)
+    apply crash_xform_sep_star_dist in H4.
+    setoid_rewrite crash_xform_exists_comm in H4. simpl in H4.
+    repeat setoid_rewrite crash_xform_or_dist in H4.
+    setoid_rewrite crash_xform_exists_comm in H4. simpl in H4.
+    destruct_lift H4.
+    repeat ( apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H;
+      destruct_lift H ).
+
+    - (* NoTransaction *)
+      cancel. instantiate (1:=ms_empty).
+      unfold rep_inner, data_rep, synced_list. autorewrite with crash_xform.
+      cancel.
+      unfold log_rep_empty, log_rep, cur_rep. autorewrite with crash_xform.
+      setoid_rewrite crash_xform_sep_star_dist.
+      norm'l; unfold stars; simpl. autorewrite with crash_xform.
+      rewrite MapProperties.cardinal_1 by apply Map.empty_1.
+      rewrite Nat.sub_0_r. ring_simplify (LogData xp ^+ $0).
+      cancel.
+
+      autorewrite with core.
+      step.
+      step.
+      instantiate (1 := m2); cancel.
+      instantiate (1 := m2); cancel.
+      instantiate (1 := m2); cancel.
+      autorewrite with core. cancel.
+      instantiate (1 := m1); cancel.
+
+    - (* ActiveTxn *)
+      cancel. instantiate (1:=ms_empty).
+      unfold rep_inner, data_rep, synced_list. autorewrite with crash_xform.
+      cancel.
+      unfold log_rep_empty, log_rep, cur_rep. autorewrite with crash_xform.
+      setoid_rewrite crash_xform_sep_star_dist.
+      norm'l; unfold stars; simpl. autorewrite with crash_xform.
+      rewrite MapProperties.cardinal_1 by apply Map.empty_1.
+      rewrite Nat.sub_0_r. ring_simplify (LogData xp ^+ $0).
+      cancel.
+
+      autorewrite with core.
+      step.
+      step.
+      instantiate (1 := m2); cancel.
+      instantiate (1 := m2); cancel.
+      instantiate (1 := m2); cancel.
+      autorewrite with core. cancel.
+      instantiate (1 := m1); cancel.
+
+    - (* CommittedTxn old *)
+      cancel. instantiate (1:=m0).
+      unfold rep_inner, data_rep, synced_list. autorewrite with crash_xform.
+      cancel.
+      unfold log_rep, cur_rep. autorewrite with crash_xform.
+      setoid_rewrite crash_xform_sep_star_dist.
+      norm'l; unfold stars; simpl. autorewrite with crash_xform.
+      admit.
+      admit.
+      admit.
+
+    - (* AppliedTxn old *)
+      admit.
+
+    - (* CommittedUnsyncTxn *)
+      unfold rep_inner in H.
+      autorewrite with crash_xform in H. destruct_lift H.
+      intuition; subst.
+      + (* As if we committed successfully. *)
+        admit.
+
+      + (* As if we failed to commit. *)
+        admit.
+
+    - (* CommittedTxn new *)
+      admit.
+
+    - (* AppliedTxn new *)
+      admit.
+
+    - (* NoTransaction new *)
+      admit.
+  Qed.
+
+(* Pieces of the old [recover_ok] proof:
+
     intros.
     autorewrite with crash_xform.
     eapply pimpl_ok2; [ eauto with prog | ].
@@ -1901,7 +1981,7 @@ Module MEMLOG.
     (* XXX this is a real pain: if we [norm] here, we create the evar for the memstate, but we need
        to extract the memstate out of [H3], the predicate on [m]. *)
     admit.
-  Qed.
+*)
 
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
@@ -2011,7 +2091,6 @@ Module MEMLOG.
     auto.
     cancel.
     cancel.
-    unfold log_intact.
     autorewrite with crash_xform.
     rewrite sep_star_or_distr.
     apply pimpl_or_l.
