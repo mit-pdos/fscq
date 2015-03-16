@@ -1570,22 +1570,25 @@ Qed.
 Theorem crash_xform_pimpl : forall AT AEQ (p q : @pred AT AEQ _), p =p=>q
   -> crash_xform p =p=> crash_xform q.
 Proof.
-  unfold crash_xform, pimpl; intros.
-  repeat deex; eexists; intuition eauto.
+  firstorder.
 Qed.
 
 Instance crash_xform_pimpl_proper {AT AEQ} :
   Proper (pimpl ==> pimpl) (@crash_xform AT AEQ).
 Proof.
-  intros p q Hp.
-  apply crash_xform_pimpl; auto.
+  firstorder.
+Qed.
+
+Instance crash_xform_flip_pimpl_proper {AT AEQ} :
+  Proper (Basics.flip pimpl ==> Basics.flip pimpl) (@crash_xform AT AEQ).
+Proof.
+  firstorder.
 Qed.
 
 Instance crash_xform_piff_proper {AT AEQ} :
   Proper (piff ==> piff) (@crash_xform AT AEQ).
 Proof.
-  intros p q Hp.
-  destruct Hp; split; apply crash_xform_pimpl; auto.
+  firstorder.
 Qed.
 
 Theorem crash_invariant_emp: forall AT AEQ,
