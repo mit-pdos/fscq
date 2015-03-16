@@ -1578,13 +1578,29 @@ Module MEMLOG.
       rep_inner xp (AppliedTxn cur) ms \/
       rep_inner xp (NoTransaction cur) ms)%pred.
 
+  Definition would_recover_either_pred' xp old curpred :=
+    (exists ms,
+      rep_inner xp (NoTransaction old) ms \/
+      (exists x, rep_inner xp (ActiveTxn old x) ms) \/
+      rep_inner xp (CommittedTxn old) ms \/
+      rep_inner xp (AppliedTxn old) ms \/
+      (exists cur, rep_inner xp (CommittedUnsyncTxn old cur) ms * [[ curpred (list2mem cur) ]]) \/
+      (exists cur, rep_inner xp (CommittedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
+      (exists cur, rep_inner xp (AppliedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
+      (exists cur, rep_inner xp (NoTransaction cur) ms * [[ curpred (list2mem cur) ]]))%pred.
+
   Definition would_recover_either xp F old cur :=
     (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either' xp old cur)%pred d ]])%pred.
+
+  Definition would_recover_either_pred xp F old curpred :=
+    (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either_pred' xp old curpred)%pred d ]])%pred.
 
   Hint Extern 0 (okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (SepAuto.okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (would_recover_either _ _ _ _) (would_recover_either _ _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (SepAuto.okToUnify (would_recover_either _ _ _ _) (would_recover_either _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (would_recover_either_pred _ _ _ _) (would_recover_either_pred _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (SepAuto.okToUnify (would_recover_either_pred _ _ _ _) (would_recover_either_pred _ _ _ _)) => constructor : okToUnify.
 
   Ltac or_r := apply pimpl_or_r; right.
   Ltac or_l := apply pimpl_or_r; left.
@@ -1756,6 +1772,23 @@ Module MEMLOG.
            would_recover_either, would_recover_either'.
     cancel.
     cancel.
+    cancel.
+  Qed.
+
+  Lemma would_recover_either_pred_pimpl : forall xp F old new,
+    would_recover_either xp F old new =p=> would_recover_either_pred xp F old (diskIs (list2mem new)).
+  Proof.
+    unfold would_recover_either, would_recover_either',
+           would_recover_either_pred, would_recover_either_pred'.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+    repeat (apply pimpl_or_r; right).
     cancel.
   Qed.
 
