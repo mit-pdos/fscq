@@ -238,6 +238,42 @@ Qed.
 
 Hint Rewrite skipn_updN skipn_upd using omega.
 
+Lemma updN_twice : forall T (l : list T) a v,
+  updN (updN l a v) a v = updN l a v.
+Proof.
+  induction l; simpl; intros; auto.
+  destruct a0; auto; simpl.
+  rewrite IHl; auto.
+Qed.
+
+Lemma upd_twice : forall T (l : list T) a v,
+  upd (upd l a v) a v = upd l a v.
+Proof.
+  unfold upd; intros.
+  apply updN_twice.
+Qed.
+
+Hint Rewrite updN_twice upd_twice.
+
+Lemma updN_comm : forall T (l : list T) a0 v0 a1 v1,
+  a0 <> a1 ->
+  updN (updN l a0 v0) a1 v1 = updN (updN l a1 v1) a0 v0.
+Proof.
+  induction l; simpl; intros; auto.
+  destruct a0; destruct a1; simpl in *; try congruence.
+  rewrite IHl by omega. auto.
+Qed.
+
+Lemma upd_comm : forall T (l : list T) a0 v0 a1 v1,
+  a0 <> a1 ->
+  upd (upd l a0 v0) a1 v1 = upd (upd l a1 v1) a0 v0.
+Proof.
+  unfold upd; intros.
+  apply updN_comm.
+  contradict H.
+  apply wordToNat_inj; auto.
+Qed.
+
 Theorem list_selN_ext' : forall len T (a b : list T) default,
   length a = len
   -> length b = len
