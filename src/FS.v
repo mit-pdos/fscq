@@ -85,18 +85,19 @@ Definition recover {T} rx : prog T :=
 Local Opaque BUFCACHE.rep.
 
 Theorem recover_ok :
-  {< fsxp old new,
+  {< fsxp old newpred,
   PRE
-    crash_xform (MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) old new)
+    crash_xform (MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) old newpred)
   POST RET:^(mscs, fsxp')
     [[ fsxp' = fsxp ]] *
     (MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
-     MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs)
+     exists new, MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs *
+     [[ newpred (list2mem new) ]])
   CRASH
-    MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) old new
+    MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) old newpred
   >} recover.
 Proof.
-  unfold recover, MEMLOG.would_recover_either; intros.
+  unfold recover, MEMLOG.would_recover_either_pred; intros.
   pose proof cachesize_nonzero.
 
   eapply pimpl_ok2; eauto with prog.
@@ -110,11 +111,11 @@ Proof.
   autorewrite with crash_xform. cancel.
 
   eapply pimpl_ok2; eauto with prog.
-  unfold MEMLOG.would_recover_either.
+  unfold MEMLOG.would_recover_either_pred.
   cancel.
 
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_sep_star_dist.
+  set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
+  set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
   cancel.
 
   step.
@@ -122,12 +123,16 @@ Proof.
   unfold MEMLOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
   subst. pimpl_crash. cancel. autorewrite with crash_xform. cancel.
 
-  autorewrite with crash_xform. cancel.
+  autorewrite with crash_xform.
+  rewrite MEMLOG.after_crash_pred'_would_recover_either_pred'.
+  cancel.
 
   pimpl_crash. norm'l; unfold stars; simpl. autorewrite with crash_xform.
   norm. cancel. intuition.
   eapply pred_apply_crash_xform_pimpl; eauto.
-  autorewrite with crash_xform. cancel.
+  autorewrite with crash_xform.
+  rewrite MEMLOG.after_crash_pred'_would_recover_either_pred'.
+  cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
