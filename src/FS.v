@@ -88,9 +88,10 @@ Theorem recover_ok :
   {< fsxp old new,
   PRE
     crash_xform (MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) old new)
-  POST RET:^(mscs, fsxp)
-    MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
-    MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs
+  POST RET:^(mscs, fsxp')
+    [[ fsxp' = fsxp ]] *
+    (MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
+     MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs)
   CRASH
     MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) old new
   >} recover.
@@ -266,10 +267,10 @@ Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
           [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
             [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
-  REC RET:^(mscs,fsxp')
-          MEMLOG.rep (FSXPMemLog fsxp') (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
-          MEMLOG.rep (FSXPMemLog fsxp') (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp') (FSXPInode fsxp') flist' *
+  REC RET:^(mscs,fsxp)
+          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
+          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
             [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
   >>} write_block_inbounds fsxp inum off v mscs >> recover.
@@ -304,8 +305,10 @@ Proof.
   autorewrite with crash_xform.
   cancel.
 
-  admit.
-  admit.
+  step.
+  rewrite H3. cancel. cancel.
+  rewrite H3. cancel. cancel.
+  rewrite H3. cancel.
 Qed.
 
 
