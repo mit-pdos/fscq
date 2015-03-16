@@ -1792,58 +1792,184 @@ Module MEMLOG.
     cancel.
   Qed.
 
-  Lemma crash_xform_would_recover_either' : forall fsxp old cur,
-    crash_xform (MEMLOG.would_recover_either' fsxp old cur) =p=>
-    MEMLOG.would_recover_either' fsxp old cur.
+  (**
+   * [after_crash_pred'] is similar to [would_recover_either_pred'] but describes
+   * states after a crash (i.e., after [crash_xform]).  This is a smaller set of
+   * different states that we have to consider.
+   *)
+  Definition after_crash_pred' xp old curpred :=
+    (exists ms,
+      rep_inner xp (NoTransaction old) ms \/
+      rep_inner xp (CommittedTxn old) ms \/
+      (exists cur, rep_inner xp (CommittedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
+      (exists cur, rep_inner xp (NoTransaction cur) ms * [[ curpred (list2mem cur) ]]))%pred.
+
+  Lemma crash_xform_would_recover_either_pred' : forall fsxp old curpred,
+    crash_xform (would_recover_either_pred' fsxp old curpred) =p=>
+    after_crash_pred' fsxp old curpred.
   Proof.
     intros.
-    unfold MEMLOG.would_recover_either'.
+    unfold would_recover_either_pred', after_crash_pred'.
     autorewrite with crash_xform.
     repeat setoid_rewrite crash_xform_or_dist.
     setoid_rewrite crash_xform_exists_comm.
+    norm'l; unfold stars; simpl.
+    rewrite sep_star_comm. rewrite star_emp_pimpl.
+    repeat apply pimpl_or_l; unfold rep_inner at 1;
+      unfold data_rep, log_rep, log_rep_empty, synced_list, cur_rep.
+
+    - (* NoTransaction old *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. cancel.
+
+      or_l.
+      unfold rep_inner, data_rep, log_rep_empty. cancel.
+
+    - (* ActiveTxn old *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. cancel.
+
+      or_l.
+      unfold rep_inner, data_rep, log_rep_empty. cancel.
+
+    - (* CommittedTxn old *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. cancel.
+
+      or_r. or_l.
+      unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
+      admit.
+
+    - (* AppliedTxn old *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. intuition.
+
+      + (* Header change applied too *)
+        cancel.
+        or_l.
+        unfold rep_inner, data_rep, log_rep_empty. cancel.
+        admit.
+
+      + (* Header change was lost *)
+        cancel.
+        or_r. or_l.
+        unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
+        cancel. cancel.
+        admit.
+
+    - (* CommittedUnsyncTxn old new *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. intuition.
+
+      + (* Commit bit applied *)
+        cancel.
+        or_r. or_r. or_l.
+        unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
+        cancel. cancel.
+
+      + (* Commit bit lost *)
+        cancel.
+        or_l.
+        unfold rep_inner, data_rep, log_rep_empty. cancel.
+        admit.
+
+    - (* CommittedTxn new *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. cancel.
+
+      or_r. or_r. or_l.
+      unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
+      admit.
+
+    - (* AppliedTxn new *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. intuition.
+
+      + (* Header change applied too *)
+        autorewrite with crash_xform. norm'l; unfold stars; simpl.
+        autorewrite with crash_xform. cancel.
+
+        or_r. or_r. or_r.
+        unfold rep_inner, data_rep, log_rep_empty. cancel.
+        admit.
+
+      + (* Header change was lost *)
+        autorewrite with crash_xform. norm'l; unfold stars; simpl.
+        autorewrite with crash_xform. cancel.
+
+        or_r. or_r. or_l.
+        unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
+        cancel. cancel.
+        admit.
+
+    - (* NoTransaction new *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. cancel.
+
+      or_r. or_r. or_r.
+      unfold rep_inner, data_rep, log_rep_empty. cancel.
+
+    Grab Existential Variables.
+    all: eauto.
+  Qed.
+
+  Hint Rewrite crash_xform_would_recover_either_pred' : crash_xform.
+
+  Lemma after_crash_pred'_would_recover_either_pred' : forall fsxp old curpred,
+    after_crash_pred' fsxp old curpred =p=>
+    would_recover_either_pred' fsxp old curpred.
+  Proof.
+    unfold after_crash_pred', would_recover_either_pred'.
     admit.
   Qed.
 
-  Hint Rewrite crash_xform_would_recover_either' : crash_xform.
-
   Theorem recover_ok: forall xp cs,
-    {< m1 m2 F,
+    {< m1 m2pred F,
     PRE
       exists d, BUFCACHE.rep cs d *
-      [[ crash_xform (F * would_recover_either' xp m1 m2)%pred d ]]
+      [[ crash_xform (F * would_recover_either_pred' xp m1 m2pred)%pred d ]]
     POST RET:mscs
       rep xp (crash_xform F) (NoTransaction m1) mscs \/
-      rep xp (crash_xform F) (NoTransaction m2) mscs
+      exists m2,
+      rep xp (crash_xform F) (NoTransaction m2) mscs * [[ m2pred (list2mem m2) ]]
     CRASH
-      would_recover_either xp (crash_xform F) m1 m2
+      would_recover_either_pred xp (crash_xform F) m1 m2pred
     >} recover xp cs.
   Proof.
-    unfold recover, would_recover_either, would_recover_either'.
+    unfold recover, would_recover_either_pred.
     intros.
     eapply pimpl_ok2; eauto with prog.
     intros. norm'l. unfold stars; simpl.
 
     (* We need to split up all of the possible [rep] preconditions, because
-     * we need to get at the [crash_xform] of the [CommittedUnsyncTxn] state
-     * and determine which way it went.  This will decide what disk image to
-     * use for instantiating our evars.
+     * this will decide what disk image to use for instantiating our evars.
+     * We convert [crash_xform would_recover_either_pred'] into [after_crash_pred'],
+     * which has fewer distinct states.
      *)
+
     (* XXX an odd setoid_rewrite issue: can't rewrite the top-level term? *)
     apply crash_xform_sep_star_dist in H4.
-    setoid_rewrite crash_xform_exists_comm in H4. simpl in H4.
-    repeat setoid_rewrite crash_xform_or_dist in H4.
-    setoid_rewrite crash_xform_exists_comm in H4. simpl in H4.
+    autorewrite with crash_xform in H4.
+    unfold after_crash_pred' in H4.
     destruct_lift H4.
     repeat ( apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H;
       destruct_lift H ).
 
-    - (* NoTransaction *)
+    - (* NoTransaction old *)
       cancel. instantiate (1:=ms_empty).
-      unfold rep_inner, data_rep, synced_list. autorewrite with crash_xform.
+      unfold rep_inner, data_rep, synced_list.
       cancel.
-      unfold log_rep_empty, log_rep, cur_rep. autorewrite with crash_xform.
-      setoid_rewrite crash_xform_sep_star_dist.
-      norm'l; unfold stars; simpl. autorewrite with crash_xform.
+      unfold log_rep_empty, log_rep, cur_rep.
       rewrite MapProperties.cardinal_1 by apply Map.empty_1.
       rewrite Nat.sub_0_r. ring_simplify (LogData xp ^+ $0).
       cancel.
@@ -1851,178 +1977,50 @@ Module MEMLOG.
       autorewrite with core.
       step.
       step.
-      instantiate (1 := m2); cancel.
-      instantiate (1 := m2); cancel.
-      instantiate (1 := m2); cancel.
-      autorewrite with core. cancel.
-      instantiate (1 := m1); cancel.
-
-    - (* ActiveTxn *)
-      cancel. instantiate (1:=ms_empty).
-      unfold rep_inner, data_rep, synced_list. autorewrite with crash_xform.
-      cancel.
-      unfold log_rep_empty, log_rep, cur_rep. autorewrite with crash_xform.
-      setoid_rewrite crash_xform_sep_star_dist.
-      norm'l; unfold stars; simpl. autorewrite with crash_xform.
-      rewrite MapProperties.cardinal_1 by apply Map.empty_1.
-      rewrite Nat.sub_0_r. ring_simplify (LogData xp ^+ $0).
-      cancel.
-
-      autorewrite with core.
-      step.
-      step.
-      instantiate (1 := m2); cancel.
-      instantiate (1 := m2); cancel.
-      instantiate (1 := m2); cancel.
-      autorewrite with core. cancel.
-      instantiate (1 := m1); cancel.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel.
+      autorewrite with core; cancel.
+      unfold would_recover_either_pred'; cancel.
 
     - (* CommittedTxn old *)
-      cancel. instantiate (1:=m0).
-      unfold rep_inner, data_rep, synced_list. autorewrite with crash_xform.
       cancel.
-      unfold log_rep, cur_rep. autorewrite with crash_xform.
-      setoid_rewrite crash_xform_sep_star_dist.
-      norm'l; unfold stars; simpl. autorewrite with crash_xform.
-      admit.
-      admit.
-      admit.
-
-    - (* AppliedTxn old *)
-      admit.
-
-    - (* CommittedUnsyncTxn *)
-      unfold rep_inner in H.
-      autorewrite with crash_xform in H. destruct_lift H.
-      intuition; subst.
-      + (* As if we committed successfully. *)
-        admit.
-
-      + (* As if we failed to commit. *)
-        admit.
+      step.
+      step.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel.
+      cancel.
+      unfold would_recover_either_pred'; cancel.
 
     - (* CommittedTxn new *)
-      admit.
-
-    - (* AppliedTxn new *)
-      admit.
+      cancel.
+      step.
+      step.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'. norm; unfold stars; simpl; auto. repeat or_r. cancel.
+      cancel.
+      unfold would_recover_either_pred'; cancel.
 
     - (* NoTransaction new *)
-      admit.
+      cancel. instantiate (1:=ms_empty).
+      unfold rep_inner, data_rep, synced_list.
+      cancel.
+      unfold log_rep_empty, log_rep, cur_rep.
+      rewrite MapProperties.cardinal_1 by apply Map.empty_1.
+      rewrite Nat.sub_0_r. ring_simplify (LogData xp ^+ $0).
+      cancel.
+
+      autorewrite with core.
+      step.
+      step.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'. norm; unfold stars; simpl; auto. repeat or_r. cancel.
+      autorewrite with core; cancel.
+      unfold would_recover_either_pred'; cancel.
   Qed.
-
-(* Pieces of the old [recover_ok] proof:
-
-    intros.
-    autorewrite with crash_xform.
-    eapply pimpl_ok2; [ eauto with prog | ].
-    intros; simpl.
-    norm'l.
-    unfold stars; simpl.
-    rewrite sep_star_comm; rewrite <- emp_star.
-    repeat rewrite sep_star_or_distr; repeat apply pimpl_or_l; norm'l;
-      unfold stars; simpl;
-      rewrite sep_star_comm; rewrite <- emp_star.
-    norm.
-    cancel'.
-    intuition.
-    pred_apply.
-    autorewrite with crash_xform.
-    cancel.
-    instantiate (a0 := ms_empty).
-    autorewrite with crash_xform.
-    rewrite sep_star_comm.
-    rewrite sep_star_or_distr.
-    apply pimpl_or_l.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
-    log_unfold.
-    norm.
-    instantiate (a2 := valu_to_descriptor w1).
-    cancel.
-    rewrite MapProperties.cardinal_1.
-    rewrite valu_descriptor_id.
-    cancel.
-    word2nat_simpl.
-    rewrite Nat.add_0_r.
-    rewrite Nat.sub_0_r.
-    word2nat_simpl.
-    cancel.
-    apply Map.empty_1.
-
-    rewrite MapProperties.cardinal_1.
-    rewrite valu_descriptor_id.
-    cancel.
-    word2nat_simpl.
-    rewrite Nat.add_0_r.
-    rewrite Nat.sub_0_r.
-    word2nat_simpl.
-    cancel.
-    apply Map.empty_1.
-
-    intuition.
-    eauto with replay.
-    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
-    admit. (* valu_to_descriptor well formed *)
-    rewrite Forall_forall; intuition.
-    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
-    admit. (* valu_to_descriptor well formed *)
-    rewrite Forall_forall; intuition.
-
-    autorewrite with crash_xform.
-    cancel.
-    autorewrite with crash_xform.
-    norm'l; unfold stars; simpl.
-    autorewrite with crash_xform.
-    log_unfold.
-    norm.
-    unfold stars; simpl.
-    instantiate (a1 := valu_to_descriptor w1).
-    cancel.
-
-    rewrite MapProperties.cardinal_1.
-    rewrite valu_descriptor_id.
-    cancel.
-    word2nat_simpl.
-    rewrite Nat.add_0_r.
-    rewrite Nat.sub_0_r.
-    word2nat_simpl.
-    cancel.
-    apply Map.empty_1.
-
-    rewrite MapProperties.cardinal_1.
-    rewrite valu_descriptor_id.
-    cancel.
-    word2nat_simpl.
-    rewrite Nat.add_0_r.
-    rewrite Nat.sub_0_r.
-    word2nat_simpl.
-    cancel.
-    apply Map.empty_1.
-
-    intuition.
-    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
-    admit. (* valu_to_descriptor well formed *)
-    rewrite Forall_forall; intuition.
-    unfold valid_entries; intuition; match goal with [ H: Map.MapsTo _ _ _ |- _ ] => inversion H end.
-    admit. (* valu_to_descriptor well formed *)
-    rewrite Forall_forall; intuition.
-
-    step; unfold would_recover_either'.
-    step.
-    or_r; cancel; cancel.
-    or_r; cancel; cancel.
-    or_r; cancel; cancel.
-
-    pimpl_crash.
-    rewrite sep_star_or_distr.
-    unfold would_recover_either'.
-    or_r; cancel; cancel.
-
-    (* XXX this is a real pain: if we [norm] here, we create the evar for the memstate, but we need
-       to extract the memstate out of [H3], the predicate on [m]. *)
-    admit.
-*)
 
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
