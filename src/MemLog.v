@@ -203,9 +203,23 @@ Module MEMLOG.
 
   Hint Rewrite replay_empty.
 
+  Lemma replay'_upd : forall l d a (v : valu),
+    upd (replay' l (upd d a v)) a v = upd (replay' l d) a v.
+  Proof.
+    induction l; simpl; intros.
+    autorewrite with core; auto.
+    destruct (weq a0 (fst a)); subst.
+    - repeat rewrite upd_twice. rewrite IHl. auto.
+    - rewrite upd_comm by auto. rewrite IHl. rewrite upd_comm by auto. auto.
+  Qed.
+
   Theorem replay_twice : forall m d, replay m (replay m d) = replay m d.
   Proof.
-    admit.
+    unfold replay.
+    intro m; generalize (Map.elements m); clear m.
+    induction l; simpl; auto; intros.
+    rewrite replay'_upd.
+    rewrite IHl. auto.
   Qed.
 
   Definition avail_region start len : @pred addr (@weq addrlen) valuset :=

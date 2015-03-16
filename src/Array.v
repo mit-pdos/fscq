@@ -238,16 +238,16 @@ Qed.
 
 Hint Rewrite skipn_updN skipn_upd using omega.
 
-Lemma updN_twice : forall T (l : list T) a v,
-  updN (updN l a v) a v = updN l a v.
+Lemma updN_twice : forall T (l : list T) a v v',
+  updN (updN l a v') a v = updN l a v.
 Proof.
   induction l; simpl; intros; auto.
   destruct a0; auto; simpl.
   rewrite IHl; auto.
 Qed.
 
-Lemma upd_twice : forall T (l : list T) a v,
-  upd (upd l a v) a v = upd l a v.
+Lemma upd_twice : forall T (l : list T) a v v',
+  upd (upd l a v') a v = upd l a v.
 Proof.
   unfold upd; intros.
   apply updN_twice.
