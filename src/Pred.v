@@ -802,6 +802,13 @@ Proof.
   firstorder.
 Qed.
 
+Lemma pimpl_or_apply : forall (a b : @pred AT AEQ V) m,
+  (a \/ b)%pred m ->
+  a m \/ b m.
+Proof.
+  firstorder.
+Qed.
+
 Lemma pimpl_any :
   forall (p : @pred AT AEQ V),
   p =p=> any.
