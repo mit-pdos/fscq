@@ -203,6 +203,11 @@ Module MEMLOG.
 
   Hint Rewrite replay_empty.
 
+  Theorem replay_twice : forall m d, replay m (replay m d) = replay m d.
+  Proof.
+    admit.
+  Qed.
+
   Definition avail_region start len : @pred addr (@weq addrlen) valuset :=
     (exists l, [[ length l = len ]] * array start l $1)%pred.
 
@@ -216,6 +221,18 @@ Module MEMLOG.
     norm'l; unfold stars; simpl.
     destruct l; simpl in *; try congruence.
     cancel.
+  Qed.
+
+  Lemma avail_region_grow_all : forall fsxp m,
+    valid_size fsxp m ->
+    array (LogData fsxp)
+      (List.combine (map snd (Map.elements (elt:=valu) m))
+         (repeat [] (length (map snd (Map.elements (elt:=valu) m))))) $ (1) *
+    avail_region (LogData fsxp ^+ $ (Map.cardinal (elt:=valu) m))
+      (# (LogLen fsxp) - Map.cardinal (elt:=valu) m) =p=>
+    avail_region (LogData fsxp) # (LogLen fsxp).
+  Proof.
+    admit.
   Qed.
 
   Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
@@ -1852,14 +1869,14 @@ Module MEMLOG.
         cancel.
         or_l.
         unfold rep_inner, data_rep, log_rep_empty. cancel.
-        admit.
+        apply avail_region_grow_all; auto.
 
       + (* Header change was lost *)
         cancel.
         or_r. or_l.
         unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
         cancel. cancel.
-        admit.
+        rewrite replay_twice; auto.
 
     - (* CommittedUnsyncTxn old new *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -1876,7 +1893,7 @@ Module MEMLOG.
         cancel.
         or_l.
         unfold rep_inner, data_rep, log_rep_empty. cancel.
-        admit.
+        apply avail_region_grow_all; auto.
 
     - (* CommittedTxn new *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -1900,7 +1917,7 @@ Module MEMLOG.
 
         or_r. or_r. or_r.
         unfold rep_inner, data_rep, log_rep_empty. cancel.
-        admit.
+        apply avail_region_grow_all; auto.
 
       + (* Header change was lost *)
         autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -1909,7 +1926,7 @@ Module MEMLOG.
         or_r. or_r. or_l.
         unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
         cancel. cancel.
-        admit.
+        rewrite replay_twice; eauto.
 
     - (* NoTransaction new *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
