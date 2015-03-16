@@ -1785,6 +1785,36 @@ Module MEMLOG.
     rewrite <- H; eauto.
   Qed.
 
+  Lemma possible_crash_equal_unless_in : forall l0 l1 l2 (m: memstate),
+    equal_unless_in (map fst (Map.elements m)) (List.combine l0 (repeat [] (length l0))) l1 ($0, nil) ->
+    possible_crash_list l1 l2 ->
+    equal_unless_in (map fst (Map.elements m)) l0 l2 $0.
+  Proof.
+    unfold equal_unless_in, possible_crash_list.
+    intros.
+    assert (length l0 = length l1).
+    autorewrite with lengths in *.
+    rewrite Nat.min_r in * by auto.
+    intuition.
+    split.
+    intuition.
+    intros.
+    destruct (lt_dec n (length l0)).
+    destruct H.
+    destruct H0.
+    specialize (H3 n).
+    specialize (H4 n).
+    autorewrite with lists in *.
+    rewrite repeat_selN in * by auto.
+    rewrite <- H3 in H4.
+    simpl in H4.
+    elim H4; intuition.
+    intuition.
+    solve_lengths.
+    repeat rewrite selN_oob by omega.
+    auto.
+  Qed.
+
   Ltac word_discriminate :=
     match goal with [ H: $ _ = $ _ |- _ ] => solve [
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
@@ -1927,7 +1957,8 @@ Module MEMLOG.
       autorewrite with lengths in H1.
       rewrite Nat.min_l in H1 by auto.
       eapply valid_entries_lengths_eq; [ | eauto ]. congruence.
-      admit.
+      eapply equal_unless_in_replay_eq.
+      eapply possible_crash_equal_unless_in; eauto.
 
     - (* AppliedTxn old *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -1981,7 +2012,10 @@ Module MEMLOG.
       autorewrite with lengths in H1.
       rewrite Nat.min_l in H1 by auto.
       eapply valid_entries_lengths_eq; [ | eauto ]. congruence.
-      admit.
+      assert (replay m l = replay m l2).
+      eapply equal_unless_in_replay_eq.
+      eapply possible_crash_equal_unless_in; eauto.
+      congruence.
 
     - (* AppliedTxn new *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
