@@ -1239,6 +1239,15 @@ Proof.
   apply pimpl_sep_star; assumption.
 Qed.
 
+Instance sep_star_apply_pimpl_proper' {AT AEQ V} :
+  Proper (Basics.flip pimpl ==> Basics.flip pimpl ==> eq ==> Basics.flip Basics.impl) (@sep_star AT AEQ V).
+Proof.
+  intros p p' Hp q q' Hq m m' Hm H.
+  subst.
+  eapply pimpl_apply; [| eassumption ].
+  apply pimpl_sep_star; assumption.
+Qed.
+
 
 Instance sep_star_apply_piff_proper {AT AEQ V} :
   Proper (piff ==> piff ==> eq ==> Basics.impl) (@sep_star AT AEQ V).
@@ -1261,6 +1270,13 @@ Qed.
 
 Instance sep_star_pimpl_proper {AT AEQ V} :
   Proper (pimpl ==> pimpl ==> pimpl) (@sep_star AT AEQ V).
+Proof.
+  intros a b H c d H'.
+  apply pimpl_sep_star; assumption.
+Qed.
+
+Instance sep_star_pimpl_proper' {AT AEQ V} :
+  Proper (Basics.flip pimpl ==> Basics.flip pimpl ==> Basics.flip pimpl) (@sep_star AT AEQ V).
 Proof.
   intros a b H c d H'.
   apply pimpl_sep_star; assumption.
