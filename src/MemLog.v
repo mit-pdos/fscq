@@ -1852,17 +1852,15 @@ Module MEMLOG.
   Lemma notxn_would_recover_old : forall xp F old mscs,
     rep xp F (NoTransaction old) mscs =p=> would_recover_old xp F old.
   Proof.
-    unfold rep, would_recover_old, would_recover_old'.
+    unfold would_recover_old, would_recover_old'.
     cancel. cancel.
   Qed.
 
   Lemma activetxn_would_recover_old : forall xp F old new mscs,
     rep xp F (ActiveTxn old new) mscs =p=> would_recover_old xp F old.
   Proof.
-     (* unfold rep, would_recover_old, would_recover_old'.
-     cancel. cancel. *)
-    (* this shorter version is likely to proof: *)
-    unfold MEMLOG.would_recover_old; cancel.
+    unfold would_recover_old, would_recover_old'.
+    cancel. cancel.
   Qed.
 
   (**
