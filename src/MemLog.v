@@ -172,6 +172,21 @@ Module MEMLOG.
   Definition valid_size xp (ms : memstate) :=
     Map.cardinal ms <= wordToNat (LogLen xp).
 
+  Theorem valid_entries_empty : forall m, valid_entries m ms_empty.
+  Proof.
+    unfold valid_entries; intros.
+    apply MapFacts.empty_mapsto_iff in H. intuition.
+  Qed.
+
+  Theorem valid_size_empty : forall xp, valid_size xp ms_empty.
+  Proof.
+    unfold valid_size; intros.
+    rewrite MapProperties.cardinal_1 by apply Map.empty_1. omega.
+  Qed.
+
+  Hint Resolve valid_entries_empty.
+  Hint Resolve valid_size_empty.
+
   (* Replay the state in memory *)
   Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
     fold_right (fun p m' => upd m' (fst p) (snd p)) m l.
