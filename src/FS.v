@@ -240,14 +240,18 @@ Theorem write_block_inbounds_ok : forall fsxp inum off v mscs,
           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
-  CRASH   exists m' flist' f',
-          MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) m m' *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+  CRASH   MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) m (
+          exists flist' f',
+          (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred
   >} write_block_inbounds fsxp inum off v mscs.
 Proof.
   unfold write_block_inbounds.
+  hoare.
+  rewrite <- MEMLOG.would_recover_either_pred_pimpl. cancel.
+  admit.
+  admit.
   admit.
 Qed.
 

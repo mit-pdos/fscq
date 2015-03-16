@@ -1806,8 +1806,8 @@ Module MEMLOG.
     cancel.
   Qed.
 
-  Lemma would_recover_either_pred_pimpl : forall xp F old new,
-    would_recover_either xp F old new =p=> would_recover_either_pred xp F old (diskIs (list2mem new)).
+  Lemma would_recover_either_pred_pimpl : forall xp F old new p,
+    would_recover_either xp F old new * [[ p (list2mem new) ]] =p=> would_recover_either_pred xp F old p.
   Proof.
     unfold would_recover_either, would_recover_either',
            would_recover_either_pred, would_recover_either_pred'.
