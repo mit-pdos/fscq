@@ -194,6 +194,15 @@ Module MEMLOG.
   Definition replay (ms : memstate) (m : diskstate) : diskstate :=
     replay' (Map.elements ms) m.
 
+  Theorem replay_empty : forall d, replay ms_empty d = d.
+  Proof.
+    unfold replay.
+    rewrite MapProperties.elements_empty.
+    reflexivity.
+  Qed.
+
+  Hint Rewrite replay_empty.
+
   Definition avail_region start len : @pred addr (@weq addrlen) valuset :=
     (exists l, [[ length l = len ]] * array start l $1)%pred.
 
