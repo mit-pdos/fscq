@@ -250,9 +250,11 @@ Proof.
   unfold write_block_inbounds.
   hoare.
   rewrite <- MEMLOG.would_recover_either_pred_pimpl. cancel.
-  admit.
-  admit.
-  admit.
+  rewrite <- MEMLOG.would_recover_old_either_pred. cancel.
+  rewrite <- MEMLOG.would_recover_old_either_pred.
+  unfold MEMLOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
+  rewrite <- MEMLOG.would_recover_old_either_pred.
+  unfold MEMLOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.

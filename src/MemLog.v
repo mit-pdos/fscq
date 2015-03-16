@@ -1806,6 +1806,16 @@ Module MEMLOG.
     cancel.
   Qed.
 
+  Lemma would_recover_old_either_pred : forall xp F old p,
+    would_recover_old xp F old =p=> would_recover_either_pred xp F old p.
+  Proof.
+    unfold would_recover_old, would_recover_old',
+           would_recover_either_pred, would_recover_either_pred'.
+    cancel.
+    cancel.
+    cancel.
+  Qed.
+
   Lemma would_recover_either_pred_pimpl : forall xp F old new p,
     would_recover_either xp F old new * [[ p (list2mem new) ]] =p=> would_recover_either_pred xp F old p.
   Proof.
