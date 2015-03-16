@@ -1777,6 +1777,14 @@ Module MEMLOG.
   Qed.
   Hint Rewrite crash_invariant_avail_region : crash_xform.
 
+  Lemma valid_entries_lengths_eq : forall l1 l2 m,
+    length l1 = length l2 -> valid_entries l1 m -> valid_entries l2 m.
+  Proof.
+    unfold valid_entries, indomain'.
+    intuition.
+    rewrite <- H; eauto.
+  Qed.
+
   Ltac word_discriminate :=
     match goal with [ H: $ _ = $ _ |- _ ] => solve [
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
@@ -1908,10 +1916,17 @@ Module MEMLOG.
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. cancel.
+      autorewrite with crash_xform. rewrite crash_xform_array. cancel.
 
       or_r. or_l.
       unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
+      cancel; auto.
+      unfold possible_crash_list in *.
+      unfold equal_unless_in in H7.
+      intuition.
+      autorewrite with lengths in H1.
+      rewrite Nat.min_l in H1 by auto.
+      eapply valid_entries_lengths_eq; [ | eauto ]. congruence.
       admit.
 
     - (* AppliedTxn old *)
@@ -1954,10 +1969,13 @@ Module MEMLOG.
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. cancel.
+      autorewrite with crash_xform. rewrite crash_xform_array. cancel.
 
       or_r. or_r. or_l.
       unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
+      cancel.
+      cancel.
+      admit.
       admit.
 
     - (* AppliedTxn new *)
