@@ -1975,7 +1975,12 @@ Module MEMLOG.
       unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
       cancel.
       cancel.
-      admit.
+      unfold possible_crash_list in *.
+      unfold equal_unless_in in H8.
+      intuition.
+      autorewrite with lengths in H1.
+      rewrite Nat.min_l in H1 by auto.
+      eapply valid_entries_lengths_eq; [ | eauto ]. congruence.
       admit.
 
     - (* AppliedTxn new *)
