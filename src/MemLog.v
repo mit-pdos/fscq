@@ -1759,6 +1759,20 @@ Module MEMLOG.
     cancel.
   Qed.
 
+  Lemma crash_xform_would_recover_either' : forall fsxp old cur,
+    crash_xform (MEMLOG.would_recover_either' fsxp old cur) =p=>
+    MEMLOG.would_recover_either' fsxp old cur.
+  Proof.
+    intros.
+    unfold MEMLOG.would_recover_either'.
+    autorewrite with crash_xform.
+    repeat setoid_rewrite crash_xform_or_dist.
+    setoid_rewrite crash_xform_exists_comm.
+    admit.
+  Qed.
+
+  Hint Rewrite crash_xform_would_recover_either' : crash_xform.
+
   Theorem recover_ok: forall xp cs,
     {< m1 m2 F,
     PRE
