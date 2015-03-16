@@ -360,7 +360,7 @@ Section RECARRAY.
     rewrite Forall_forall in *. apply H10. apply in_selN. abstract word2nat_auto.
     abstract word2nat_auto.
     abstract word2nat_auto.
-    unfold MEMLOG.would_recover_old. cancel.
+    apply MEMLOG.activetxn_would_recover_old.
   Qed.
 
   Local Hint Extern 0 (okToUnify (array (RAStart _) _ _) (array (RAStart _) _ _)) => constructor : okToUnify.
@@ -413,11 +413,9 @@ Section RECARRAY.
     rewrite Forall_forall in *.
     auto.
     cancel.
-    unfold MEMLOG.would_recover_old.
+    apply MEMLOG.activetxn_would_recover_old.
     cancel.
-    cancel.
-    unfold MEMLOG.would_recover_old.
-    cancel.
+    apply MEMLOG.activetxn_would_recover_old.
   Qed.
 
 
