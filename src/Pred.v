@@ -1644,6 +1644,20 @@ Hint Rewrite crash_invariant_ptsto : crash_xform.
 
 Hint Resolve crash_invariant_emp.
 
+Lemma pred_apply_crash_xform : forall AT AEQ (p : @pred AT AEQ valuset) m m',
+  possible_crash m m' -> p m -> (crash_xform p) m'.
+Proof.
+  unfold pimpl, crash_xform; eauto.
+Qed.
+
+Lemma pred_apply_crash_xform_pimpl : forall AT AEQ (p q : @pred AT AEQ valuset) m m',
+  possible_crash m m' -> p m -> crash_xform p =p=> q -> q m'.
+Proof.
+  intros.
+  apply H1.
+  eapply pred_apply_crash_xform; eauto.
+Qed.
+
 
 Theorem diskIs_extract : forall AT AEQ V a v (m : @mem AT AEQ V),
   (exists F, F * a |-> v)%pred m

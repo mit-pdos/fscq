@@ -1737,12 +1737,6 @@ Module MEMLOG.
       apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
     ] end.
 
-  Lemma pred_apply_crash_xform: forall AT AEQ (P Q: @pred AT AEQ valuset) m m',
-    possible_crash m m' -> P m -> (crash_xform P) m'.
-  Proof.
-    unfold pimpl, crash_xform; eauto.
-  Qed.
-
   Ltac cancel_pred_crash :=
     eapply pred_apply_crash_xform; eauto;
     autorewrite with crash_xform;
