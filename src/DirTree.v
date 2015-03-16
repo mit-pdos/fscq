@@ -897,7 +897,7 @@ Module DIRTREE.
       if string_dec ent_name name then
         rest
       else
-        hd :: rest
+        hd :: delete_from_list name rest
     end.
 
   Definition delete_from_dir (name : string) tree :=
@@ -931,35 +931,93 @@ Module DIRTREE.
       }
     end.
 
-  Lemma dir_names_delete : forall name dnum dfile dmap dlist,
+
+  Lemma dir_names_pred_delete' : forall l name m,
+    tree_dir_names_pred' l m
+    -> tree_dir_names_pred' (delete_from_list name l) (mem_except m name).
+  Proof.
+    induction l; simpl; intros; auto.
+    apply emp_mem_except; auto.
+    destruct a.
+    destruct (string_dec s name); subst.
+    apply ptsto_mem_except in H; auto.
+    simpl.
+    eapply ptsto_mem_except_F; eauto.
+  Qed.
+
+  Lemma dir_names_delete : forall dlist name dnum dfile dmap,
     tree_dir_names_pred' dlist dmap
     -> SDIR.rep dfile (mem_except dmap name)
     -> (# dnum |-> dfile) =p=> tree_dir_names_pred dnum (delete_from_list name dlist).
   Proof.
-    admit.
+    destruct dlist; simpl; intros; auto.
+    unfold tree_dir_names_pred.
+    cancel; eauto.
+    apply emp_mem_except; eauto.
+
+    destruct p.
+    destruct (string_dec s name); subst.
+    apply ptsto_mem_except in H.
+    unfold tree_dir_names_pred.
+    cancel; eauto.
+
+    unfold tree_dir_names_pred; simpl.
+    cancel; eauto.
+    eapply ptsto_mem_except_F; eauto; intros.
+    apply dir_names_pred_delete'; auto.
   Qed.
 
-  Lemma dirlist_delete_file : forall F name inum dmap dlist,
+  Lemma dirlist_delete_file : forall dlist name inum dmap,
     tree_dir_names_pred' dlist dmap
-    -> (F * name |-> (inum, false))%pred dmap
+    -> (name |-> (inum, false) * exists F, F)%pred dmap
     -> dirlist_pred tree_pred dlist =p=>
         (# inum |->?) * dirlist_pred tree_pred (delete_from_list name dlist).
   Proof.
-    admit.
+    induction dlist; simpl; intros; auto.
+    destruct_lift H0.
+    apply ptsto_valid in H0; congruence.
+
+    destruct a.
+    destruct (string_dec s name); subst.
+    destruct_lift H0.
+    apply ptsto_valid in H.
+    apply ptsto_valid in H0.
+    rewrite H in H0; inversion H0.
+    destruct d; simpl in *; try congruence.
+    cancel.
+
+    simpl.
+    apply ptsto_mem_except in H.
+    rewrite <- sep_star_assoc.
+    rewrite IHdlist; eauto.
+    cancel.
+    eapply ptsto_mem_except_exF; eauto.
   Qed.
 
 
-  Lemma dirlist_delete_empty_dir : forall F A name inum dmap dlist
+  Lemma dirlist_delete_empty_dir : forall dlist F name inum dmap 
                                          (m :@mem _ Nat.eq_dec _) submap subdir,
     tree_dir_names_pred' dlist dmap
-    -> (F * name |-> (inum, true))%pred dmap
-    -> (A * # inum |-> subdir)%pred m
+    -> (name |-> (inum, true) * exists F, F)%pred dmap
+    -> (F * # inum |-> subdir)%pred m
     -> SDIR.rep subdir submap
     -> emp submap
     -> dirlist_pred tree_pred dlist =p=>
         (# inum |-> subdir) * dirlist_pred tree_pred (delete_from_list name dlist).
   Proof.
-    admit.
+    induction dlist; simpl; intros; auto.
+    destruct_lift H0.
+    apply ptsto_valid in H0; congruence.
+
+    destruct a.
+    destruct (string_dec s name); subst.
+    destruct_lift H0.
+    apply ptsto_valid in H.
+    apply ptsto_valid in H0.
+    rewrite H in H0; inversion H0.
+
+    destruct d; subst; simpl in *; try congruence.
+    admit. admit.
   Qed.
 
 
@@ -1008,6 +1066,8 @@ Module DIRTREE.
     rewrite dir_names_delete; eauto.
     rewrite dirlist_delete_file; eauto.
     cancel.
+    hypmatch (a, false) as Hc.
+    pred_apply' Hc; cancel.
     step.
 
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
@@ -1036,8 +1096,20 @@ Module DIRTREE.
     apply pimpl_or_r; right; cancel.
     hypmatch p0 as Hx; rewrite <- Hx.
     rewrite dir_names_delete with (dmap := m0); eauto.
+
+    (* XXX:
+       sadly, dirlist_delete_empty_dir is not true.
+       dsunlink turns the file list from
+          l : (F * # dnum |-> b)    into    x : (F * # dnum |-> x0)
+       But we know only in the original file list l that the sub
+       directory [a] is empty.  i.e.,
+          l : (# a |-> b0)  /\ SDIR.rep b0 m1  /\ emp m1
+       How do we tell that [a] is also an empty directory in [x]?
+    *)
     rewrite dirlist_delete_empty_dir with (m := (list2nmem l)) (submap := m1); eauto.
     cancel.
+    hypmatch (a, true) as Hc.
+    pred_apply' Hc; cancel.
     pred_apply; cancel.
     step.
   Qed.
