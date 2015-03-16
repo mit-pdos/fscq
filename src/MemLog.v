@@ -1796,41 +1796,73 @@ Module MEMLOG.
   Qed.
   Hint Resolve equal_unless_in_refl : replay.
 
+  Lemma would_recover_old'_either' : forall xp old,
+    would_recover_old' xp old =p=> would_recover_either' xp old old.
+  Proof.
+    unfold would_recover_old', would_recover_either'.
+    cancel.
+  Qed.
+
   Lemma would_recover_old_either : forall xp F old,
     would_recover_old xp F old =p=> would_recover_either xp F old old.
   Proof.
-    unfold would_recover_old, would_recover_old',
-           would_recover_either, would_recover_either'.
+    unfold would_recover_old, would_recover_either.
     cancel.
-    cancel.
+    apply would_recover_old'_either'.
+  Qed.
+
+  Lemma would_recover_old'_either_pred' : forall xp old p,
+    would_recover_old' xp old =p=> would_recover_either_pred' xp old p.
+  Proof.
+    unfold would_recover_old', would_recover_either_pred'.
     cancel.
   Qed.
 
   Lemma would_recover_old_either_pred : forall xp F old p,
     would_recover_old xp F old =p=> would_recover_either_pred xp F old p.
   Proof.
-    unfold would_recover_old, would_recover_old',
-           would_recover_either_pred, would_recover_either_pred'.
+    unfold would_recover_old, would_recover_either_pred.
+    cancel.
+    apply would_recover_old'_either_pred'.
+  Qed.
+
+  Lemma would_recover_either'_pred'_pimpl : forall xp old new p,
+    would_recover_either' xp old new * [[ p (list2mem new) ]] =p=> would_recover_either_pred' xp old p.
+  Proof.
+    unfold would_recover_either', would_recover_either_pred'.
+    (* split up manually because the automated search takes too long to find the 8th OR *)
+    intros; norm; intuition; unfold stars; simpl.
     cancel.
     cancel.
     cancel.
+    cancel.
+    do 4 or_r. or_l. cancel.
+    do 5 or_r. or_l. cancel.
+    do 6 or_r. or_l. cancel.
+    repeat or_r. cancel.
   Qed.
 
   Lemma would_recover_either_pred_pimpl : forall xp F old new p,
     would_recover_either xp F old new * [[ p (list2mem new) ]] =p=> would_recover_either_pred xp F old p.
   Proof.
-    unfold would_recover_either, would_recover_either',
-           would_recover_either_pred, would_recover_either_pred'.
+    unfold would_recover_either, would_recover_either_pred.
     cancel.
+    rewrite <- would_recover_either'_pred'_pimpl.
     cancel.
-    cancel.
-    cancel.
-    cancel.
-    cancel.
-    cancel.
-    cancel.
-    repeat (apply pimpl_or_r; right).
-    cancel.
+  Qed.
+
+  Lemma notxn_would_recover_old : forall xp F old mscs,
+    rep xp F (NoTransaction old) mscs =p=> would_recover_old xp F old.
+  Proof.
+    unfold rep, would_recover_old, would_recover_old'.
+    cancel. cancel.
+  Qed.
+
+  Lemma activetxn_would_recover_old : forall xp F old new mscs,
+    rep xp F (ActiveTxn old new) mscs =p=> would_recover_old xp F old.
+  Proof.
+    unfold rep, would_recover_old, would_recover_old'.
+    cancel. cancel.
   Qed.
 
   (**
