@@ -1321,6 +1321,8 @@ Theorem write_ok:
 Proof.
   unfold ArrayWrite.
   hoare.
+  rewrite <- surjective_pairing; cancel.
+  rewrite <- surjective_pairing; cancel.
 Qed.
 
 Theorem sync_ok:
@@ -1368,8 +1370,6 @@ Theorem read_back_ok : forall T a (rx : _ -> prog T),
   }} read_back a rx.
 Proof.
   unfold read_back; hoare_unfold unfold_prepend.
-  autorewrite with core; omega.
-  autorewrite with core; auto.
 Qed.
 
 Definition swap T a i j rx : prog T :=
