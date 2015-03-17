@@ -59,6 +59,7 @@ End Valu_as_OT.
 Module Map := FMapAVL.Make(Addr_as_OT).
 Module MapFacts := WFacts_fun Addr_as_OT Map.
 Module MapProperties := WProperties_fun Addr_as_OT Map.
+Module MapOrdProperties := OrdProperties Map.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -407,7 +408,15 @@ Module MEMLOG.
   Lemma mapeq_elements : forall V m1 m2,
     @Map.Equal V m1 m2 -> Map.elements m1 = Map.elements m2.
   Proof.
-    admit.
+    intros.
+    apply MapOrdProperties.elements_Equal_eqlistA in H.
+    generalize dependent (Map.elements m2).
+    generalize dependent (Map.elements m1).
+    induction l.
+    - intros. inversion H. reflexivity.
+    - intros. destruct l0; inversion H.
+      inversion H3. destruct a; destruct p; simpl in *; subst.
+      f_equal; eauto.
   Qed.
 
   Create HintDb mapeq.
