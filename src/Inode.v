@@ -1227,7 +1227,7 @@ Module INODE.
     rewrite H6; resolve_length_eq.
     pred_apply; cancel.
 
-    unfold MEMLOG.would_recover_old; cancel.
+    apply MEMLOG.activetxn_would_recover_old.
 
     (* CASE 2: indirect block allocation failed *)
     step; inv_option_eq; subst; try cancel.
