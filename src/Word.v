@@ -706,6 +706,17 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma split1_zero : forall sz1 sz2, split1 sz1 sz2 (natToWord _ O) = natToWord _ O.
+Proof.
+  induction sz1; auto; simpl; intros.
+  f_equal. eauto.
+Qed.
+
+Lemma split2_zero : forall sz1 sz2, split2 sz1 sz2 (natToWord _ O) = natToWord _ O.
+Proof.
+  induction sz1; auto.
+Qed.
+
 
 (** * Extension operators *)
 
