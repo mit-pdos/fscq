@@ -187,6 +187,14 @@ Section MEMMATCH.
       eapply mem_ainv_any; eauto.
     Qed.
 
+    Lemma mem_atrans_inv_indomain : forall a (ap : AP2 a),
+      indomain (ainv a) m1 -> indomain a m2.
+    Proof.
+      unfold indomain; intros.
+      destruct H; eexists.
+      eapply mem_ainv_any; eauto.
+    Qed.
+
     Lemma mem_atrans_emp :
       emp m1 -> emp m2.
     Proof.

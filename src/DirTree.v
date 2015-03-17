@@ -1159,8 +1159,6 @@ Module DIRTREE.
 
     step.
     step.
-    step.
-    step.
 
     hypmatch p3 as Hx.
     erewrite dirlist_extract with (inum := a) in Hx; eauto.
@@ -1198,9 +1196,7 @@ Module DIRTREE.
     step.
     step.
     step.
-    step.
 
-    step.
     apply pimpl_or_r; right; cancel.
     hypmatch p0 as Hx; rewrite <- Hx.
     erewrite dlist_is_nil with (l := l2) (m := m1); eauto.
@@ -1404,6 +1400,16 @@ Module DIRTREE.
     let new := add_to_dir dstname subtree (TreeDir dnum dents) in
     update_subtree dstpath new tree.
 
+  Lemma find_name_exists : forall path tree inum isdir,
+    find_name path tree = Some (inum, isdir)
+    -> exists subtree, find_subtree path tree = Some subtree
+        /\ dirtree_inum subtree = inum /\ dirtree_isdir subtree = isdir.
+  Proof.
+    unfold find_name; intros.
+    destruct (find_subtree path tree); try destruct d;
+      inversion H; subst; eauto.
+  Qed.
+
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< F mbase m Fm Ftop tree tree_elem,
     PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
@@ -1423,19 +1429,74 @@ Module DIRTREE.
     >} rename_correct fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
     unfold rename_correct, rep.
+
+    (* isolate root tree file before cancel *)
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
     subst; simpl in *.
-    hypmatch tree_dir_names_pred as Hx;
+    hypmatch tree_dir_names_pred as Hx; assert (Horig := Hx).
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     cancel.  instantiate (a4 := TreeDir dnum l1).
     unfold rep; simpl.
     unfold tree_dir_names_pred; cancel.
     all: eauto.
 
-    step.
-    do 2 eexists. intuition.
+    (* isolate src directory before cancel *)
+    destruct_branch; [ | step ].
+    destruct_branch; destruct_branch; [ | step ].
+    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+
+    hypmatch find_name as Htree.
+    apply eq_sym in Htree.
+    apply find_name_exists in Htree.
+    destruct Htree. intuition.
+
+    hypmatch find_subtree as Htree; assert (Hx := Htree).
+    apply subtree_extract with (xp := (FSXPInodeAlloc fsxp)) in Hx.
+    assert (Hsub := Horig); rewrite Hx in Hsub; clear Hx.
+    destruct x; simpl in *; subst; try congruence.
+    unfold tree_dir_names_pred in Hsub.
+    destruct_lift Hsub.
+    hypmatch (# w)%pred as Hsub.
+
+    cancel.
+    do 2 eexists; intuition.
     pred_apply; cancel.
-    all: admit.
+    pred_apply' Hsub; cancel.
+    eauto.
+
+    (* unlink src *)
+    step.
+    do 2 eexists; intuition.
+    pred_apply; cancel.
+    pred_apply' Hsub; cancel.
+    eauto.
+
+    (* namei for dst *)
+    step.
+    (* XXX: absorb the updated subtree ... *)
+    admit. admit. admit.
+
+    (* lookup in dst *)
+    step.
+    admit.
+
+    destruct_branch. destruct_branch. destruct_branch.
+    step.
+
+    (* dst is some file *)
+    step.
+    admit.
+    step.
+    step.
+    apply pimpl_or_r; right; cancel.
+    admit. admit. admit. admit.
+
+    (* dst is None *)
+    step.
+    admit.
+    step.
+    apply pimpl_or_r; right; cancel.
+    admit. admit. admit. admit.
   Qed.
 
 

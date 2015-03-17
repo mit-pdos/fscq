@@ -638,41 +638,31 @@ Module SDIR.
     {< F F1 A mbase m dsmap,
     PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
-    POST RET:^(mscs,r)
-            ([[ r = false ]] * MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
-             [[ rep_macro F1 A m bxp ixp dnum dsmap ]] *
-             [[ notindomain name dsmap ]]) \/
-            ([[ r = true ]] * exists m' dsmap' v0 DF,
+    POST RET:^(mscs,r) exists m' dsmap',
              MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ rep_macro F1 A m' bxp ixp dnum dsmap' ]] *
              [[ dsmap' = mem_except dsmap name ]] *
-             [[ (DF * name |-> v0)%pred dsmap ]] *
-             [[ (DF) dsmap' ]])
+             [[ notindomain name dsmap' ]] *
+             [[ r = true -> indomain name dsmap ]]
     CRASH    MEMLOG.would_recover_old lxp F mbase
     >} dsunlink lxp bxp ixp dnum name mscs.
   Proof.
     unfold dsunlink.
-    hoare.
+    hoare; resolve_valid_preds.
 
-    apply pimpl_or_r; left; cancel.
-    do 2 eexists; intuition; eauto.
-    resolve_valid_preds.
-    eapply mem_atrans_inv_notindomain; eauto.
-
-    apply pimpl_or_r; right; cancel; resolve_valid_preds.
     exists x2, x3; repeat split; eauto.
     eexists; split; eauto.
     split; [ | split ]; [ intros ? Hx | intros ? Hx | ].
     apply indomain_mem_except_indomain in Hx; auto.
     apply indomain_mem_except_indomain in Hx; auto.
     eapply mem_ainv_mem_except; eauto.
-    eapply mem_atrans_inv_ptsto; eauto.
-    unfold any; auto.
+    apply mem_except_notindomain.
+    eapply mem_atrans_inv_indomain; eauto.
 
-    apply pimpl_or_r; left; cancel.
-    do 2 eexists; intuition; eauto.
-    apply notindomain_not_indomain; intro.
-    resolve_valid_preds; auto.
+    rewrite <- notindomain_mem_eq.
+    exists x, x0; repeat split; eauto.
+    apply notindomain_not_indomain; eauto.
+    apply mem_except_notindomain.
   Qed.
 
 
