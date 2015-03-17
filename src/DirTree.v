@@ -1308,7 +1308,8 @@ Module DIRTREE.
     let^ (mscs, osrcdir) <- namei fsxp dnum srcpath mscs;
     match osrcdir with
     | None => rx ^(mscs, false)
-    | Some (dsrc, isdir) => if (isdir : bool) then rx ^(mscs, false) else
+    | Some (_, false) => rx ^(mscs, false)
+    | Some (dsrc, true) =>
       let^ (mscs, osrc) <- SDIR.dslookup lxp bxp ixp dsrc srcname mscs;
       match osrc with
       | None => rx ^(mscs, false)
@@ -1317,7 +1318,8 @@ Module DIRTREE.
         let^ (mscs, odstdir) <- namei fsxp dnum dstpath mscs;
         match odstdir with
         | None => rx ^(mscs, false)
-        | Some (ddst, isdir) => if (isdir : bool) then rx ^(mscs, false) else
+        | Some (_, false) => rx ^(mscs, false)
+        | Some (ddst, true) =>
           let^ (mscs, odst) <- SDIR.dslookup lxp bxp ixp ddst dstname mscs;
           match odst with
           | None =>
@@ -1413,7 +1415,20 @@ Module DIRTREE.
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} rename_correct fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
-    admit.
+    unfold rename_correct, rep.
+    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    subst; simpl in *.
+    hypmatch tree_dir_names_pred as Hx;
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    cancel.  instantiate (a4 := TreeDir dnum l1).
+    unfold rep; simpl.
+    unfold tree_dir_names_pred; cancel.
+    all: eauto.
+
+    step.
+    do 2 eexists. intuition.
+    pred_apply. cancel.
+    all: admit.
   Qed.
 
 
