@@ -501,6 +501,49 @@ Proof.
   intros; pred_apply; cancel.
 Qed.
 
+Theorem list2mem_inj' : forall V (a b : list V) (bound_a bound_b bound_off : addr) off,
+  length a <= #bound_a ->
+  length b <= #bound_b ->
+  length a + off <= # bound_off ->
+  list2mem_fix off a = list2mem_fix off b ->
+  a = b.
+Proof.
+  induction a; intros.
+  - destruct b; auto; simpl in *.
+    apply equal_f with (x:=$ off) in H2.
+    erewrite wordToNat_natToWord_bound in H2 by eauto.
+    destruct (eq_nat_dec off off); congruence.
+  - destruct b; simpl in *.
+    replace (S (length a0 + off)) with (S (length a0) + off) in * by omega.
+    + apply equal_f with (x:=$ off) in H2.
+      erewrite wordToNat_natToWord_bound with (bound:=bound_off) in H2 by omega.
+      destruct (eq_nat_dec off off); congruence.
+    + apply equal_f with (x:=$ off) in H2 as H2'.
+      erewrite wordToNat_natToWord_bound with (bound:=bound_off) in H2' by omega.
+      destruct (eq_nat_dec off off); try congruence.
+      inversion H2'. f_equal.
+      eapply IHa with (bound_a:=bound_a) (bound_b:=bound_b) (bound_off:=bound_off) (off:=S off); try omega.
+      apply functional_extensionality; intro x'.
+      apply equal_f with (x:=x') in H2.
+      destruct (eq_nat_dec (# x') off); auto.
+      rewrite list2mem_fix_below by omega.
+      rewrite list2mem_fix_below by omega.
+      auto.
+Qed.
+
+Theorem list2mem_inj : forall V (a b : list V) (bound_a bound_b : addr),
+  length a <= #bound_a ->
+  length b <= #bound_b ->
+  list2mem a = list2mem b ->
+  a = b.
+Proof.
+  intros.
+  erewrite list2mem_fix_eq in H1; eauto.
+  erewrite list2mem_fix_eq in H1; eauto.
+  eapply list2mem_inj' with (bound_off:=bound_a); eauto.
+  omega.
+Qed.
+
 
 (* Ltacs *)
 
