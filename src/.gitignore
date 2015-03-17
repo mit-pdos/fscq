@@ -13,4 +13,5 @@ _build
 /mkfs
 /coqbuild
 /coqproof
+/coqparproof
 /#*#

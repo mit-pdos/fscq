@@ -44,6 +44,16 @@ coqproof/%.v: %.v
 	@touch -r $< $@.new
 	@mv $@.new $@
 
+coqparproof/%.v: %.v
+	@mkdir -p coqparproof
+	cat $< > $@.new
+	@touch -r $< $@.new
+	@ln -sf ../coqparproof codegen
+	@mv $@.new $@
+
+coqparproof/%.vo: coqparproof/%.v
+	coqc -q -R coqbuild Fscq $<
+
 coq: Makefile.coq
 	@mkdir -p codegen
 	@ln -sf ../coqbuild codegen
@@ -57,6 +67,8 @@ proof: Makefile.coqproof
 	@ln -sf ../coqproof codegen
 	$(MAKE) -f Makefile.coqproof
 
+parproof: coq $(patsubst %,coqparproof/%.vo,$(MODULES))
+
 Makefile.coq: Makefile $(VS_BUILD)
 	coq_makefile -R coqbuild Fscq $(VS_BUILD) -o Makefile.coq
 
@@ -68,3 +80,9 @@ clean:: Makefile.coq Makefile.coqproof
 	$(MAKE) -f Makefile.coqproof clean
 	rm -f Makefile.coq
 	rm -rf codegen coqbuild coqproof _build fstest hstest disk.img
+
+.PHONY: coq
+.PHONY: proof
+.PHONY: parproof
+.PRECIOUS: coqparproof/%.v
+.PRECIOUS: coqparproof/%.vo
