@@ -222,6 +222,57 @@ Section RECARRAY.
     simpl; right; auto.
   Qed.
 
+  Lemma selN_zero : forall idx,
+    selN (Rec.of_word (valu_to_wreclen $0)) idx item_zero = item_zero.
+  Proof.
+    unfold valu_to_wreclen, blocktype, item_zero.
+    generalize blocksz_ok; rewrite blocksz_ok; intros. simpl.
+    unfold eq_rec. rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    generalize (wordToNat items_per_valu).
+    induction idx; simpl; intros.
+    + destruct n; auto.
+      unfold Rec.of_word; simpl. rewrite split1_zero.
+      destruct itemtype; auto.
+    + destruct n; auto.
+      simpl. rewrite split2_zero; simpl. eauto.
+  Qed.
+
+  Lemma init_helper : forall l m idx,
+    (forall idx, idx < m * # (items_per_valu) ->
+      selN (fold_right (@app _) nil l) idx item_zero = item_zero)
+    -> idx < (m + 1) * # (items_per_valu)
+    -> m < length l
+    -> Forall (fun v => length v = # (items_per_valu) /\ Forall Rec.well_formed v) l
+    -> selN (fold_right (@app _) nil (updN l m (valu_to_block $0))) idx item_zero = item_zero.
+  Proof.
+    pose proof (Rec.of_word_length blocktype (valu_to_wreclen $0)) as H'.
+    destruct H'. unfold valu_to_block.
+
+    induction l; simpl; intros.
+    - auto.
+    - destruct m; simpl.
+      + rewrite selN_app1 by omega.
+        apply selN_zero.
+      + assert (length a = #items_per_valu).
+        rewrite Forall_forall in H4. destruct (H4 a). constructor; auto. auto.
+
+        destruct (lt_dec idx #items_per_valu).
+        * rewrite selN_app1 by omega.
+          specialize (H1 idx).
+          rewrite selN_app1 in H1 by omega. apply H1. simpl.
+          apply lt_plus_trans; eauto.
+        * rewrite selN_app2 by omega. rewrite H5 in *.
+          apply IHl.
+          intros. specialize (H1 (#items_per_valu+idx0)).
+          rewrite selN_app2 in H1. rewrite H5 in *. rewrite minus_plus in *.
+          apply H1. simpl. omega.
+          rewrite H5. omega.
+          replace (S m + 1) with (S (m + 1)) in * by omega. simpl in *.
+          omega.
+          omega.
+          inversion H4; eauto.
+  Qed.
+
   Definition init T lxp xp mscs rx : prog T :=
     let^ (mscs) <- For i < (RALen xp)
       Ghost [ mbase F Fm ]
@@ -296,7 +347,14 @@ Section RECARRAY.
     intuition.
     split; try apply well_formed_valu_to_block.
 
-    admit.
+    unfold upd. apply wlt_lt in H.
+    replace (# (m0 ^+ $1)) with (# (m0) + 1) in *.
+    erewrite init_helper; eauto.
+    rewrite <- H14 in H. auto.
+    rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
+    rewrite wordToNat_natToWord_bound with (bound:=RALen xp); auto.
+    omega.
+
     rewrite concat_length.
     rewrite fold_right_add_const. f_equal.
     rewrite length_upd. auto.
