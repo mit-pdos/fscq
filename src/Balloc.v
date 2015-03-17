@@ -295,6 +295,7 @@ Module BALLOC.
     eapply pimpl_ok2. apply alloc'_ok.
     unfold rep_gen, rep'.
     cancel.
+    cancel.
     step.
     apply pimpl_or_r. right.
     norm. (* We can't just [cancel] here because it introduces evars too early *)
@@ -342,13 +343,14 @@ Module BALLOC.
     eapply pimpl_ok2. apply free'_ok.
     unfold rep_gen, rep'.
     cancel.
+    cancel.
     step.
     subst; apply fupd_same; trivial.
     rewrite H10 in H3.
-    destruct (weq bn a1).
+    destruct (weq bn a2).
     subst; apply fupd_same; trivial.
     rewrite <- H3; apply fupd_other; assumption.
-    destruct (weq bn a1).
+    destruct (weq bn a2).
     left. auto.
     right. rewrite fupd_other in H0 by assumption. apply H10; assumption.
   Qed.
