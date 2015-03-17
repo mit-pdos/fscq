@@ -1260,6 +1260,15 @@ Proof.
   apply Hq.
 Qed.
 
+Instance sep_star_apply_piff_proper' {AT AEQ V} :
+  Proper (piff ==> piff ==> eq ==> iff) (@sep_star AT AEQ V).
+Proof.
+  intros p p' Hp q q' Hq m m' Hm.
+  subst; split; intros.
+  - eapply pimpl_apply; [| eassumption ]. apply pimpl_sep_star. apply Hp. apply Hq.
+  - eapply pimpl_apply; [| eassumption ]. apply pimpl_sep_star. apply Hp. apply Hq.
+Qed.
+
 
 Instance sep_star_piff_proper {AT AEQ V} :
   Proper (piff ==> piff ==> piff) (@sep_star AT AEQ V).
