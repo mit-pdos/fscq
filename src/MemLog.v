@@ -279,7 +279,18 @@ Module MEMLOG.
       (# (LogLen fsxp) - Map.cardinal (elt:=valu) m) =p=>
     avail_region (LogData fsxp) # (LogLen fsxp).
   Proof.
-    admit.
+    unfold valid_size, avail_region.
+    intros; norm; unfold stars; simpl.
+    instantiate (a := (List.combine (map snd (Map.elements m))
+                        (repeat [] (length (map snd (Map.elements m))))) ++ l).
+    rewrite <- array_app.
+    cancel.
+    rewrite combine_length. rewrite repeat_length. rewrite Nat.min_idempotent.
+    rewrite map_length. rewrite Map.cardinal_1. auto.
+    intuition.
+    rewrite app_length. rewrite map_length. rewrite combine_length.
+    rewrite repeat_length. rewrite map_length. rewrite Nat.min_idempotent.
+    rewrite Map.cardinal_1 in *. omega.
   Qed.
 
   Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
@@ -1057,17 +1068,6 @@ Module MEMLOG.
     a1 = a2 -> l1 = l2 -> array a1 l1 $1 =p=> array a2 l2 $1.
   Proof.
     cancel.
-  Qed.
-
-  Lemma array_app: forall T (l1 l2: list T) a1 a2,
-    a2 = a1 ^+ $ (length l1) ->
-    array a1 l1 $1 * array a2 l2 $1 <=p=> array a1 (l1 ++ l2) $1.
-  Proof.
-    induction l1.
-    intros; word2nat_auto; split; cancel; apply equal_arrays; word2nat_auto.
-    intros; simpl; rewrite sep_star_assoc. rewrite IHl1. auto.
-    simpl in *.
-    word2nat_simpl. rewrite <- plus_assoc. auto.
   Qed.
 
   Ltac rewrite_singular_array :=

@@ -1,5 +1,6 @@
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg.
 Require Import FunctionalExtensionality.
+Require Import WordAuto.
 
 Set Implicit Arguments.
 
@@ -918,6 +919,17 @@ Proof.
   intros.
   replace i with (0 + i) by omega.
   eapply arrayN_oob'; eauto.
+Qed.
+
+Lemma array_app: forall T (l1 l2: list T) a1 a2,
+  a2 = a1 ^+ $ (length l1) ->
+  array a1 l1 $1 * array a2 l2 $1 <=p=> array a1 (l1 ++ l2) $1.
+Proof.
+  induction l1.
+  intros; word2nat_auto; split; cancel; apply equal_arrays; word2nat_auto.
+  intros; simpl; rewrite sep_star_assoc. rewrite IHl1. auto.
+  simpl in *.
+  word2nat_simpl. rewrite <- plus_assoc. auto.
 Qed.
 
 
