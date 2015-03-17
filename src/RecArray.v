@@ -312,7 +312,8 @@ Section RECARRAY.
     instantiate (a0 := l0). intuition.
     rewrite Forall_forall; intros.
 
-    admit.
+    eapply In_nth in H. destruct H as [inidx H']; destruct H' as [Hlen Hnth].
+    rewrite <- Hnth. rewrite <- nth_selN_eq. apply H10. rewrite <- H9. auto.
   Qed.
 
   (** Get the [pos]'th item in the [block_ix]'th block *)
