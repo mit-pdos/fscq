@@ -455,7 +455,9 @@ Module MEMLOG.
 
   Definition init T xp cs rx : prog T :=
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
+    cs <- BUFCACHE.write (LogDescriptor xp) (descriptor_to_valu (repeat $0 addr_per_block)) cs;
     cs <- BUFCACHE.sync (LogHeader xp) cs;
+    cs <- BUFCACHE.sync (LogDescriptor xp) cs;
     rx ^(ms_empty, cs).
 
 
@@ -494,7 +496,9 @@ Module MEMLOG.
   Proof.
     unfold init, log_uninitialized; log_unfold.
     hoare.
-    admit.
+    unfold log_rep_empty. cancel.
+    rewrite repeat_length; auto.
+    rewrite Forall_forall; intuition.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
