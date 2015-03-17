@@ -1347,6 +1347,7 @@ Module DIRTREE.
         (ent_name, ent_item) :: add_to_list name item rest
     end.
 
+
   (** add or update ([name], [item]) in directory node [tree]
    *)
   Definition add_to_dir (name : string) (item : dirtree) tree :=
@@ -1355,6 +1356,7 @@ Module DIRTREE.
     | TreeDir inum ents => TreeDir inum (add_to_list name item ents)
     end.
 
+(*
   (** remove [path]/[name] from [tree]
    *)
   Definition tree_prune path name tree := 
@@ -1392,7 +1394,15 @@ Module DIRTREE.
         let pruned := tree_prune srcpath srcname tree in
         tree_graft subtree dstpath dstname pruned
     end.
+*)
 
+  Definition tree_prune snum sents srcpath srcname tree :=
+    let new := delete_from_dir srcname (TreeDir snum sents) in
+    update_subtree srcpath new tree.
+
+  Definition tree_graft dnum dents dstpath dstname subtree tree :=
+    let new := add_to_dir dstname subtree (TreeDir dnum dents) in
+    update_subtree dstpath new tree.
 
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< F mbase m Fm Ftop tree tree_elem,
@@ -1402,8 +1412,13 @@ Module DIRTREE.
     POST RET:^(mscs,r)
            exists m', MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
            ([[ r = false ]] \/
-            [[ r = true  ]] *
-            [[ (Fm * rep fsxp Ftop (tree_move srcpath srcname dstpath dstname tree))%pred (list2mem m') ]])
+            [[ r = true  ]] * exists snum sents dnum dents subtree pruned tree',
+            [[ find_subtree srcpath tree = Some (TreeDir snum sents) ]] *
+            [[ pruned = tree_prune snum sents srcpath srcname tree ]] *
+            [[ find_subtree dstpath pruned = Some (TreeDir dnum dents) ]] *
+            [[ find_subtree (srcname :: srcpath) tree = Some subtree ]] *
+            [[ tree' = tree_graft dnum dents dstpath dstname subtree pruned ]] *
+            [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]])
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
     >} rename_correct fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
