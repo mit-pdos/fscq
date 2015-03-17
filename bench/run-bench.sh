@@ -15,6 +15,7 @@ fi
 ## Just in case..
 fusermount -u $MOUNT
 mkdir -p $MOUNT
+mkdir -p $MOUNT.real
 
 ## fscq
 dd if=/dev/zero of=$DEV bs=4096 count=$FSCQBLOCKS
@@ -38,10 +39,22 @@ fusermount -u $MOUNT
 sleep 1
 
 ## ext3
-mke2fs -j $DEV
+yes | mke2fs -j $DEV
 sudo mount $DEV $MOUNT -o data=journal,sync
 sudo chmod 777 $MOUNT
 
 script $SCRIPTPREFIX-ext3.out -c "$CMD"
 
 sudo umount $MOUNT
+
+## ext3fuse
+yes | mke2fs -j $DEV
+sudo mount $DEV $MOUNT.real -o data=journal,sync
+sudo chmod 777 $MOUNT.real
+fusexmp $MOUNT -o modules=subdir,subdir=$MOUNT.real
+sleep 1
+
+script $SCRIPTPREFIX-ext3fuse.out -c "$CMD"
+
+fusermount -u $MOUNT
+sudo umount $MOUNT.real
