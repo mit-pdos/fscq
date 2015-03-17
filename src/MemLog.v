@@ -1012,14 +1012,6 @@ Module MEMLOG.
     eauto.
   Qed.
 
-  Lemma array_inc_firstn : forall a (l: list valuset) (i: addr) x,
-    $ (a + # i) |-> x * array ($ a) (firstn (# i) l) $1 =p=>
-    array ($ a) (firstn (# i + 1) (firstn (# i) l ++ [x])) $1.
-  Proof.
-    intros.
-    admit.
-  Qed.
-
   Lemma combine_one: forall A B (a: A) (b: B), [(a, b)] = List.combine [a] [b].
   Proof.
     intros; auto.
