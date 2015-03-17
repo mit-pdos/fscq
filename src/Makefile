@@ -51,7 +51,7 @@ coqparproof/%.v: %.v
 	@ln -sf ../coqparproof codegen
 	@mv $@.new $@
 
-coqparproof/%.vo: coqparproof/%.v
+coqparproof/%.vo: coqparproof/%.v coq
 	coqc -q -R coqbuild Fscq $<
 
 coq: Makefile.coq
