@@ -304,7 +304,7 @@ Section RECARRAY.
     intuition.
     split; try apply well_formed_valu_to_block.
 
-    unfold MEMLOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
+    apply MEMLOG.activetxn_would_recover_old.
 
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
