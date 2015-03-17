@@ -1983,6 +1983,31 @@ Module MEMLOG.
     apply would_recover_old'_either_pred'.
   Qed.
 
+  Lemma would_recover_either'_pred'_diskIs : forall xp old new,
+    would_recover_either' xp old new =p=> would_recover_either_pred' xp old (diskIs (list2mem new)).
+  Proof.
+    unfold would_recover_either', would_recover_either_pred'.
+    (* split up manually because the automated search takes too long to find the 8th OR *)
+    intros; norm; intuition; unfold stars; simpl.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+    do 4 or_r. or_l. cancel.
+    do 5 or_r. or_l. cancel.
+    do 6 or_r. or_l. cancel.
+    repeat or_r. cancel.
+  Qed.
+
+  Lemma would_recover_either_pred_diskIs : forall xp F old new,
+    would_recover_either xp F old new =p=> would_recover_either_pred xp F old (diskIs (list2mem new)).
+  Proof.
+    unfold would_recover_either, would_recover_either_pred.
+    cancel.
+    rewrite would_recover_either'_pred'_diskIs.
+    cancel.
+  Qed.
+
   Lemma would_recover_either'_pred'_pimpl : forall xp old new p,
     would_recover_either' xp old new * [[ p (list2mem new) ]] =p=> would_recover_either_pred' xp old p.
   Proof.
