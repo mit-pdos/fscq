@@ -1075,6 +1075,13 @@ Proof.
   destruct (AEQ x a); subst; auto.
 Qed.
 
+Theorem mem_except_notindomain : forall a (m : @mem AT AEQ V),
+  notindomain a (mem_except m a).
+Proof.
+  unfold notindomain, mem_except; intros.
+  destruct (AEQ a a); congruence.
+Qed.
+
 Theorem indomain_mem_except : forall a a' v (m : @mem AT AEQ V),
   a <> a'
   -> (mem_except m a') a = Some v

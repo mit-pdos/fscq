@@ -355,7 +355,7 @@ Module DIR.
     erewrite wordToNat_natToWord_bound; auto.
     eapply bfrec_bound; eauto.
 
-    unfold MEMLOG.would_recover_old; cancel.
+    apply MEMLOG.activetxn_would_recover_old.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (dfold _ _ _ _ _ _ _) _) => apply dfold_ok : prog.
@@ -913,41 +913,51 @@ Module DIR.
     setoid_rewrite HV; auto.
   Qed.
 
+  Lemma dmatch_notfound_mem_except : forall l m name,
+    Forall (fun e => dlookup_f name e = false) l
+    -> listpred dmatch l m
+    -> m = mem_except m name.
+  Proof.
+    intros.
+    apply notindomain_mem_eq.
+    eapply dlookup_notindomain; eauto.
+  Qed.
+
   Theorem dunlink_ok : forall lxp bxp ixp dnum name mscs,
     {< F F1 A mbase m dmap,
     PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ rep_macro F1 A m bxp ixp dnum dmap ]]
-    POST RET:^(mscs,r)
-            ([[ r = false ]] * MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
-             [[ rep_macro F1 A m bxp ixp dnum dmap ]] *
-             [[ notindomain name dmap ]]) \/
-            ([[ r = true ]] * exists m' dmap' DF,
+    POST RET:^(mscs,r) exists m' dmap',
              MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ rep_macro F1 A m' bxp ixp dnum dmap' ]] *
              [[ dmap' = mem_except dmap name ]] *
-             [[ (DF * name |->?)%pred dmap ]] *
-             [[ (DF) dmap' ]])
+             [[ notindomain name dmap' ]] *
+             [[ r = true -> indomain name dmap ]]
     CRASH    MEMLOG.would_recover_old lxp F mbase
     >} dunlink lxp bxp ixp dnum name mscs.
   Proof.
     unfold dunlink.
-    hoare.
+    step.
+    step.
 
     apply dent0_well_formed.
-    apply pimpl_or_r; right; cancel.
+    hypmatch dlookup_f as Hx; assert (Horig := Hx).
+    apply dlookup_f_ok in Hx; destruct Hx as [HA HN].
+    step.
+
     exists x2, x3; intuition.
     exists l; split; auto.
-    apply dlookup_f_ok in H12.
-    destruct H12 as [HA HN]; rewrite <- HN.
     eapply ptsto_dent0_mem_except; eauto.
+    apply mem_except_notindomain.
 
-    rewrite sep_star_comm.
-    eapply dlookup_ptsto; eauto.
-    apply dmatch_ex_mem_except; auto.
-    apply pimpl_or_r; left; cancel.
+    unfold pimpl; intros m1 Hx.
+    pose proof (dlookup_ptsto _ Horig H0 m1 Hx).
+    eapply sep_star_ptsto_indomain.
+    pred_apply; cancel.
 
     do 4 eexists; intuition; eauto.
-    apply dlookup_notindomain; auto.
+    erewrite <- dmatch_notfound_mem_except; eauto.
+    apply mem_except_notindomain; auto.
 
     Grab Existential Variables.
     all: try exact emp; try exact dent0; try exact nil.
