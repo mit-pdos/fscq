@@ -23,6 +23,39 @@ Require Import Cache.
 Require Import Idempotent.
 Require Import FSLayout.
 
+Module Valu_as_OT <: UsualOrderedType.
+  Definition t := valu.
+  Definition eq := @eq t.
+  Definition eq_refl := @eq_refl t.
+  Definition eq_sym := @eq_sym t.
+  Definition eq_trans := @eq_trans t.
+  Definition lt := @wlt valulen.
+
+  Lemma lt_trans: forall x y z : t, lt x y -> lt y z -> lt x z.
+  Proof.
+    unfold lt; intros.
+    apply wlt_lt in H; apply wlt_lt in H0.
+    apply lt_wlt.
+    omega.
+  Qed.
+
+  Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
+  Proof.
+    unfold lt, eq; intros.
+    apply wlt_lt in H.
+    intro He; subst; omega.
+  Qed.
+
+  Definition compare x y : Compare lt eq x y.
+    unfold lt, eq.
+    destruct (wlt_dec x y); [ apply LT; auto | ].
+    destruct (weq x y); [ apply EQ; auto | ].
+    apply GT. apply le_neq_lt; auto.
+  Defined.
+
+  Definition eq_dec := @weq valulen.
+End Valu_as_OT.
+
 Module Map := FMapAVL.Make(Addr_as_OT).
 Module MapFacts := WFacts_fun Addr_as_OT Map.
 Module MapProperties := WProperties_fun Addr_as_OT Map.
@@ -31,7 +64,7 @@ Import ListNotations.
 Set Implicit Arguments.
 
 Definition memstate := Map.t valu.
-Definition ms_empty := Map.empty valu.
+Definition ms_empty : memstate := Map.empty valu.
 Definition memstate_cachestate := (memstate * (cachestate * unit))%type.
 
 Definition diskstate := list valu.
@@ -303,7 +336,7 @@ Module MEMLOG.
     match st with
     | NoTransaction m =>
       (LogHeader xp) |=> (header_to_valu (mk_header 0))
-    * [[ ms = ms_empty ]]
+    * [[ Map.Equal ms ms_empty ]]
     * data_rep xp (synced_list m)
     * log_rep_empty xp
 
@@ -358,12 +391,53 @@ Module MEMLOG.
   Definition rep xp F st mscs := let '^(ms, cs) := mscs in (exists d,
     BUFCACHE.rep cs d * [[ (F * rep_inner xp st ms)%pred d ]])%pred.
 
+  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_unsynced, valid_size, synced_list.
+
+  Lemma mapeq_elements : forall V m1 m2,
+    @Map.Equal V m1 m2 -> Map.elements m1 = Map.elements m2.
+  Proof.
+    admit.
+  Qed.
+
+  Create HintDb mapeq.
+
+  Lemma mapeq_replay_eq : forall m1 m2 l,
+    Map.Equal m1 m2 -> replay m1 l = replay m2 l.
+  Proof.
+    unfold replay, replay'.
+    intros.
+    erewrite mapeq_elements; eauto.
+  Qed.
+  Hint Resolve mapeq_replay_eq : mapeq.
+
+  Lemma valid_entries_mapeq : forall m1 m2 l,
+    Map.Equal m1 m2 -> valid_entries l m1 -> valid_entries l m2.
+  Proof.
+    unfold valid_entries.
+    intros.
+    eapply MapFacts.Equal_mapsto_iff in H.
+    eapply H0.
+    eapply H; eauto.
+  Qed.
+  Hint Resolve valid_entries_mapeq : mapeq.
+
+  Lemma mapeq_rep : forall xp s m1 m2,
+    Map.Equal m2 m1 -> rep_inner xp s m1 =p=> rep_inner xp s m2.
+  Proof.
+    intros; log_unfold.
+    apply MapFacts.Equal_sym in H.
+    generalize H; intro He.
+    apply mapeq_elements in He.
+    repeat rewrite Map.cardinal_1.
+    rewrite He.
+    case s; cancel; eauto with mapeq.
+  Qed.
+
   Definition init T xp cs rx : prog T :=
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     cs <- BUFCACHE.sync (LogHeader xp) cs;
     rx ^(ms_empty, cs).
 
-  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_unsynced, valid_size, synced_list.
 
   Hint Extern 0 (okToUnify (log_rep _ _ _) (log_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
@@ -1120,7 +1194,6 @@ Module MEMLOG.
     split_pair_list_vars;
     autorewrite with lists; [ f_equal | .. ].
 
-(*
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2 F,
     PRE
@@ -1240,7 +1313,6 @@ Module MEMLOG.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
-*)
 
   Theorem flush_ok : forall xp mscs,
     {< m1 m2 F,
@@ -1669,7 +1741,15 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
 
-  Module MapProperties := WProperties Map.
+  Definition firstn_plusone_selN' : forall A n l (x: A) def,
+    x = selN l n def ->
+    n < length l ->
+    firstn (n + 1) l = firstn n l ++ [x].
+  Proof.
+    intros.
+    rewrite H.
+    apply firstn_plusone_selN; auto.
+  Qed.
 
   Definition read_log T (xp : memlog_xparams) cs rx : prog T :=
     let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
@@ -1703,23 +1783,58 @@ Module MEMLOG.
     PRE
       rep xp F (CommittedTxn m) ^(ms, cs)
     POST RET:^(r,cs)
-      [[ r = ms ]] * rep xp F (CommittedTxn m) ^(ms, cs)
+      [[ Map.Equal r ms ]] * rep xp F (CommittedTxn m) ^(ms, cs)
     CRASH
       exists mscs', rep xp F (CommittedTxn m) mscs'
     >} read_log xp cs.
   Proof.
     unfold read_log; log_unfold.
     hoare.
-    rewrite header_valu_id in H. unfold mk_header, Rec.recget' in H. simpl in H.
+    instantiate (1 := (List.combine (map snd (Map.elements (elt:=valu) m))
+     (repeat [] (length (map snd (Map.elements (elt:=valu) m)))))).
+    cancel.
+    rewrite header_valu_id in *.
+    rec_simpl.
+    simpl in H.
     solve_lengths.
-    (* true by [equal_unless_in _ ...d... l2] and [replay m l = replay m d] *) admit.
-    rewrite header_valu_id in H. unfold mk_header, Rec.recget' in H. simpl in H.
-    rewrite descriptor_valu_id. admit.
-    hnf. intuition.
-    admit.
-    rewrite header_valu_id in *. unfold mk_header in *. admit.
-    admit.
-    admit.
+    eauto with replay.
+    rewrite header_valu_id in *.
+    rec_simpl.
+    assert (# m1 < length (Map.elements m)).
+    solve_lengths.
+    replace (# (m1 ^+ $ 1)) with (# m1 + 1).
+    erewrite firstn_plusone_selN'.
+    eauto.
+    rewrite descriptor_valu_id.
+    unfold sel.
+    rewrite selN_app1 by solve_lengths.
+    autorewrite with lists.
+    repeat erewrite selN_map by auto.
+    simpl.
+    rewrite <- surjective_pairing.
+    auto.
+    solve_lengths.
+    unfold Rec.well_formed; simpl.
+    intuition.
+    auto.
+    word2nat_clear.
+    word2nat_auto.
+    cancel.
+    eauto with replay.
+    eauto.
+    rewrite header_valu_id.
+    rewrite firstn_oob.
+    apply MapProperties.of_list_3.
+    rec_simpl.
+    simpl.
+    solve_lengths.
+    eauto with replay.
+    cancel.
+    auto.
+    cancel.
+    auto.
+    Unshelve.
+    repeat constructor. exact $0.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
@@ -1933,6 +2048,7 @@ Module MEMLOG.
 
       or_l.
       unfold rep_inner, data_rep, log_rep_empty. cancel.
+      eauto.
 
     - (* ActiveTxn old *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -1941,6 +2057,7 @@ Module MEMLOG.
 
       or_l.
       unfold rep_inner, data_rep, log_rep_empty. cancel.
+      eapply MapFacts.Equal_refl.
 
     - (* CommittedTxn old *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -1970,6 +2087,7 @@ Module MEMLOG.
         or_l.
         unfold rep_inner, data_rep, log_rep_empty. cancel.
         apply avail_region_grow_all; auto.
+        eapply MapFacts.Equal_refl.
 
       + (* Header change was lost *)
         cancel.
@@ -1994,6 +2112,7 @@ Module MEMLOG.
         or_l.
         unfold rep_inner, data_rep, log_rep_empty. cancel.
         apply avail_region_grow_all; auto.
+        eapply MapFacts.Equal_refl.
 
     - (* CommittedTxn new *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -2029,6 +2148,7 @@ Module MEMLOG.
         or_r. or_r. or_r.
         unfold rep_inner, data_rep, log_rep_empty. cancel.
         apply avail_region_grow_all; auto.
+        eapply MapFacts.Equal_refl.
 
       + (* Header change was lost *)
         autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -2046,9 +2166,8 @@ Module MEMLOG.
 
       or_r. or_r. or_r.
       unfold rep_inner, data_rep, log_rep_empty. cancel.
+      eapply MapFacts.Equal_refl.
 
-    Grab Existential Variables.
-    all: eauto.
   Qed.
 
   Hint Rewrite crash_xform_would_recover_either_pred' : crash_xform.
@@ -2068,6 +2187,7 @@ Module MEMLOG.
     norm; unfold stars; simpl; auto.
     repeat or_r. cancel.
   Qed.
+
 
   Theorem recover_ok: forall xp cs,
     {< m1 m2pred F,
@@ -2112,30 +2232,44 @@ Module MEMLOG.
 
       autorewrite with core.
       step.
+      rewrite mapeq_rep.
+      cancel.
+      auto.
       step.
+      unfold would_recover_either_pred'; cancel. cancel.
+      unfold would_recover_either_pred'; cancel. cancel.
       unfold would_recover_either_pred'; cancel.
-      unfold would_recover_either_pred'; cancel.
-      unfold would_recover_either_pred'; cancel.
-      autorewrite with core; cancel.
+      autorewrite with core; cancel. cancel.
       unfold would_recover_either_pred'; cancel.
 
     - (* CommittedTxn old *)
       cancel.
       step.
+      rewrite mapeq_rep.
+      cancel.
+      auto.
       step.
-      unfold would_recover_either_pred'; cancel.
-      unfold would_recover_either_pred'; cancel.
-      unfold would_recover_either_pred'; cancel.
+
+      unfold would_recover_either_pred'; cancel. cancel.
+      unfold would_recover_either_pred'; cancel. cancel.
+      unfold would_recover_either_pred'; cancel. cancel.
       cancel.
       unfold would_recover_either_pred'; cancel.
 
     - (* CommittedTxn new *)
       cancel.
       step.
+      rewrite mapeq_rep.
+      cancel.
+      auto.
       step.
-      unfold would_recover_either_pred'; cancel.
-      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel. cancel.
+      unfold would_recover_either_pred'; cancel. cancel.
       unfold would_recover_either_pred'. norm; unfold stars; simpl; auto. repeat or_r. cancel.
+      (* [cancel] takes forever here *)
+      repeat (apply pimpl_or_r; right).
+      cancel.
+      intuition.
       cancel.
       unfold would_recover_either_pred'; cancel.
 
@@ -2150,10 +2284,15 @@ Module MEMLOG.
 
       autorewrite with core.
       step.
+      rewrite mapeq_rep.
+      cancel.
+      auto.
       step.
-      unfold would_recover_either_pred'; cancel.
-      unfold would_recover_either_pred'; cancel.
+      unfold would_recover_either_pred'; cancel. cancel.
+      unfold would_recover_either_pred'; cancel. cancel.
       unfold would_recover_either_pred'. norm; unfold stars; simpl; auto. repeat or_r. cancel.
+      repeat (apply pimpl_or_r; right).
+      cancel.
       autorewrite with core; cancel.
       unfold would_recover_either_pred'; cancel.
   Qed.
