@@ -892,12 +892,6 @@ Module DIRTREE.
     end.
 
 
-  Definition add_to_dir (name : string) (newitem : dirtree) tree :=
-    match tree with
-    | TreeFile _ _ => tree
-    | TreeDir inum ents => TreeDir inum ((name, newitem) :: ents)
-    end.
-
   Fixpoint delete_from_list (name : string) (ents : list (string * dirtree)) :=
     match ents with
     | nil => nil
@@ -1346,6 +1340,82 @@ Module DIRTREE.
         end
       end
     end.
+
+  (** add or update ([name], [item]) in directory entry list [ents]
+   *)
+  Fixpoint add_to_list (name : string) (item : dirtree) (ents : list (string * dirtree)) :=
+    match ents with
+    | nil => (name, item) :: nil
+    | (ent_name, ent_item) :: rest =>
+      if string_dec ent_name name then
+        (name, item) :: rest
+      else
+        (ent_name, ent_item) :: add_to_list name item rest
+    end.
+
+  (** add or update ([name], [item]) in directory node [tree]
+   *)
+  Definition add_to_dir (name : string) (item : dirtree) tree :=
+    match tree with
+    | TreeFile _ _ => tree
+    | TreeDir inum ents => TreeDir inum (add_to_list name item ents)
+    end.
+
+  (** remove [path]/[name] from [tree]
+   *)
+  Definition tree_prune path name tree := 
+    match find_subtree path tree with
+    | None => tree
+    | Some dir =>
+      match dir with
+      | TreeFile _ _ => tree
+      | TreeDir _ _ =>
+          let newdir := delete_from_dir name dir in
+          update_subtree path newdir tree
+      end
+    end.
+
+  (** graft [subtree] onto [path]/[name] in [tree]
+   *)
+  Definition tree_graft subtree path name tree := 
+    match find_subtree path tree with
+    | None => tree
+    | Some dir =>
+      match dir with
+      | TreeFile _ _ => tree
+      | TreeDir _ _ =>
+          let newdir := add_to_dir name subtree dir in
+          update_subtree path newdir tree
+      end
+    end.
+
+  (** move subtree from [srcpath]/[srcname] to [dstpath]/[dstname] in [tree]
+    *)
+  Definition tree_move srcpath srcname dstpath dstname tree :=
+    match find_subtree (srcname :: srcpath) tree with
+    | None => tree
+    | Some subtree =>
+        let pruned := tree_prune srcpath srcname tree in
+        tree_graft subtree dstpath dstname pruned
+    end.
+
+
+  Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
+    {< F mbase m Fm Ftop tree tree_elem,
+    PRE    MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ tree = TreeDir dnum tree_elem ]]
+    POST RET:^(mscs,r)
+           exists m', MEMLOG.rep fsxp.(FSXPMemLog) F (ActiveTxn mbase m') mscs *
+           ([[ r = false ]] \/
+            [[ r = true  ]] *
+            [[ (Fm * rep fsxp Ftop (tree_move srcpath srcname dstpath dstname tree))%pred (list2mem m') ]])
+    CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
+    >} rename_correct fsxp dnum srcpath srcname dstpath dstname mscs.
+  Proof.
+    admit.
+  Qed.
+
 
   Definition read T fsxp inum off mscs rx : prog T :=
     let^ (mscs, v) <- BFILE.bfread (FSXPMemLog fsxp) (FSXPInode fsxp) inum off mscs;
