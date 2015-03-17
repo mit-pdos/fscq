@@ -1314,7 +1314,7 @@ Module DIRTREE.
       match osrc with
       | None => rx ^(mscs, false)
       | Some (inum, inum_isdir) =>
-        let^ (mscs, ok) <- SDIR.dsunlink lxp bxp ixp dsrc srcname mscs;
+        let^ (mscs, _) <- SDIR.dsunlink lxp bxp ixp dsrc srcname mscs;
         let^ (mscs, odstdir) <- namei fsxp dnum dstpath mscs;
         match odstdir with
         | None => rx ^(mscs, false)
@@ -1325,17 +1325,9 @@ Module DIRTREE.
           | None =>
             let^ (mscs, ok) <- SDIR.dslink lxp bxp ixp ddst dstname inum inum_isdir mscs;
             rx ^(mscs, ok)
-          | Some (dst_inum, dst_isdir) =>
-            mscs <- IfRx irx (bool_dec dst_isdir true) {
-              let^ (mscs, l) <- SDIR.dslist lxp bxp ixp dst_inum mscs;
-              match l with
-              | nil => irx mscs
-              | _ => rx ^(mscs, false)
-              end
-            } else {
-              irx mscs
-            };
-            let^ (mscs, ok) <- SDIR.dsunlink lxp bxp ixp ddst dstname mscs;
+          | Some (_, true) => rx ^(mscs, false)
+          | Some (_, false) =>
+            let^ (mscs, _) <- SDIR.dsunlink lxp bxp ixp ddst dstname mscs;
             let^ (mscs, ok) <- SDIR.dslink lxp bxp ixp ddst dstname inum inum_isdir mscs;
             rx ^(mscs, ok)
           end
@@ -1427,7 +1419,7 @@ Module DIRTREE.
 
     step.
     do 2 eexists. intuition.
-    pred_apply. cancel.
+    pred_apply; cancel.
     all: admit.
   Qed.
 
