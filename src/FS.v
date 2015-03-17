@@ -189,8 +189,8 @@ Proof.
   unfold read_block.
   hoare.
   apply MEMLOG.would_recover_old_either.
-  unfold MEMLOG.rep, MEMLOG.would_recover_either, MEMLOG.would_recover_either'. cancel. cancel.
-  unfold MEMLOG.rep, MEMLOG.would_recover_either, MEMLOG.would_recover_either'. cancel. cancel.
+  rewrite MEMLOG.notxn_would_recover_old. apply MEMLOG.would_recover_old_either.
+  rewrite MEMLOG.activetxn_would_recover_old. apply MEMLOG.would_recover_old_either.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
