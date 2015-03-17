@@ -336,7 +336,7 @@ Module BFILE.
     unfold data_match in H3; destruct_lift H3.
     cancel.
 
-    unfold MEMLOG.would_recover_old; cancel.
+    apply MEMLOG.activetxn_would_recover_old.
   Qed.
 
   Lemma helper_wlt_lt_blocks_per_inode : forall n (b : addr),
