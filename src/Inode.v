@@ -1450,8 +1450,7 @@ Module INODE.
   Hint Extern 1 ({{_}} progseq (igrow _ _ _ _ _ _) _) => apply igrow_ok : prog.
   Hint Extern 1 ({{_}} progseq (ishrink _ _ _ _ _) _) => apply ishrink_ok : prog.
 
-  Definition init T lxp ibxp ixp mscs rx : prog T :=
-    mscs <- BALLOC.init' lxp ibxp mscs;
+  Definition init T lxp (ibxp : balloc_xparams) ixp mscs rx : prog T :=
     mscs <- RecArray.init inodetype items_per_valu itemsz_ok lxp (xp_to_raxp ixp) mscs;
     rx mscs.
 
@@ -1481,28 +1480,24 @@ Module INODE.
 
   Theorem init_ok : forall lxp ibxp ixp mscs,
     {< F Fm mbase m,
-    PRE      exists ai ab, MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
-             [[ (Fm * array (IXStart ixp) ai $1 * array (BmapStart ibxp) ab $1)%pred (list2mem m) ]] *
+    PRE      exists ai, MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ (Fm * array (IXStart ixp) ai $1)%pred (list2mem m) ]] *
              [[ length ai = # (IXLen ixp) ]] *
-             [[ length ab = # (BmapNBlocks ibxp) ]] *
-             [[ goodSize addrlen (# (BmapNBlocks ibxp) * valulen) ]] *
              [[ goodSize addrlen (# (IXLen ixp) * # (items_per_valu)) ]]
     POST RET:mscs
-             exists m' ilist freelist,
+             exists m' ilist,
              MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
-             [[ (Fm * rep ibxp ixp ilist * BALLOC.rep ibxp freelist)%pred (list2mem m') ]]
+             [[ (Fm * rep ibxp ixp ilist)%pred (list2mem m') ]]
     CRASH    MEMLOG.would_recover_old lxp F mbase
     >} init lxp ibxp ixp mscs.
   Proof.
     unfold init.
     step.
     step.
-    step.
     unfold rep, irrep. cancel.
-    instantiate (a := l1); cancel.
-    instantiate (a0 := (repeat inode0 (length l1))).
+    instantiate (a := l0); cancel.
+    instantiate (a0 := (repeat inode0 (length l0))).
     rewrite <- listmatch_inode0; eauto.
-    admit.
     word2nat_auto.
   Qed.
 

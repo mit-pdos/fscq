@@ -64,7 +64,8 @@ Definition mkfs T data_bitmaps inode_bitmaps rx : prog T :=
   mscs <- MEMLOG.init (FSXPMemLog fsxp) cs;
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   mscs <- BALLOC.init' (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
-  mscs <- INODE.init (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) (FSXPInode fsxp) mscs;
+  mscs <- BALLOC.init' (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+  mscs <- INODE.init (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) mscs;
   let^ (mscs, r) <- BALLOC.alloc_gen (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) mscs;
   match r with
   | None =>
