@@ -1414,9 +1414,9 @@ Module DIRTREE.
            ([[ r = false ]] \/
             [[ r = true  ]] * exists snum sents dnum dents subtree pruned tree',
             [[ find_subtree srcpath tree = Some (TreeDir snum sents) ]] *
+            [[ find_dirlist srcname sents = Some subtree ]] *
             [[ pruned = tree_prune snum sents srcpath srcname tree ]] *
             [[ find_subtree dstpath pruned = Some (TreeDir dnum dents) ]] *
-            [[ find_subtree (srcname :: srcpath) tree = Some subtree ]] *
             [[ tree' = tree_graft dnum dents dstpath dstname subtree pruned ]] *
             [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]])
     CRASH  MEMLOG.would_recover_old fsxp.(FSXPMemLog) F mbase
