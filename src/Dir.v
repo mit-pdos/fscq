@@ -919,6 +919,7 @@ Module DIR.
              [[ rep_macro F1 A m bxp ixp dnum dmap ]]
     POST RET:^(mscs,r)
             ([[ r = false ]] * MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ rep_macro F1 A m bxp ixp dnum dmap ]] *
              [[ notindomain name dmap ]]) \/
             ([[ r = true ]] * exists m' dmap' DF,
              MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
@@ -944,10 +945,12 @@ Module DIR.
     eapply dlookup_ptsto; eauto.
     apply dmatch_ex_mem_except; auto.
     apply pimpl_or_r; left; cancel.
+
+    do 4 eexists; intuition; eauto.
     apply dlookup_notindomain; auto.
 
     Grab Existential Variables.
-    exact dent0. exact emp. exact emp. exact emp. exact nil.
+    all: try exact emp; try exact dent0; try exact nil.
   Qed.
 
 

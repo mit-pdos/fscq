@@ -640,6 +640,7 @@ Module SDIR.
              [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,r)
             ([[ r = false ]] * MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             [[ rep_macro F1 A m bxp ixp dnum dsmap ]] *
              [[ notindomain name dsmap ]]) \/
             ([[ r = true ]] * exists m' dsmap' v0 DF,
              MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
@@ -654,6 +655,7 @@ Module SDIR.
     hoare.
 
     apply pimpl_or_r; left; cancel.
+    do 2 eexists; intuition; eauto.
     resolve_valid_preds.
     eapply mem_atrans_inv_notindomain; eauto.
 
@@ -668,6 +670,7 @@ Module SDIR.
     unfold any; auto.
 
     apply pimpl_or_r; left; cancel.
+    do 2 eexists; intuition; eauto.
     apply notindomain_not_indomain; intro.
     resolve_valid_preds; auto.
   Qed.
