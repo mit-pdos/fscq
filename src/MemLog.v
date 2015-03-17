@@ -487,7 +487,8 @@ Module MEMLOG.
     unfold begin; log_unfold.
     hoare.
     apply pimpl_or_r; left.
-    cancel. eauto.
+    cancel.
+    eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
