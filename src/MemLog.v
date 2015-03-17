@@ -519,6 +519,8 @@ Module MEMLOG.
   Proof.
     unfold begin; log_unfold.
     hoare.
+    apply pimpl_or_r; left.
+    cancel. eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
@@ -1205,7 +1207,8 @@ Module MEMLOG.
       rep xp F (ActiveTxn m1 m2) mscs *
       [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     POST RET:mscs
-      rep xp F (FlushedUnsyncTxn m1 m2) mscs
+      rep xp F (FlushedUnsyncTxn m1 m2) mscs *
+      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     CRASH
       exists mscs', rep xp F (ActiveTxn m1 m2) mscs'
     >} flush_unsync xp mscs.
@@ -1271,7 +1274,8 @@ Module MEMLOG.
       rep xp F (FlushedUnsyncTxn m1 m2) mscs *
       [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     POST RET:mscs
-      rep xp F (FlushedTxn m1 m2) mscs
+      rep xp F (FlushedTxn m1 m2) mscs *
+      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     CRASH
       exists mscs', rep xp F (ActiveTxn m1 m2) mscs'
     >} flush_sync xp mscs.
@@ -1330,11 +1334,8 @@ Module MEMLOG.
       exists mscs', rep xp F (ActiveTxn m1 m2) mscs'
     >} flush xp mscs.
   Proof.
-    unfold flush; log_unfold.
-    destruct mscs as [ms cs].
-    intros.
-    admit. (* abstract hoare_unfold log_unfold. *)
-    
+    unfold flush.
+    hoare.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
