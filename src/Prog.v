@@ -259,6 +259,22 @@ Proof.
   apply split1_combine.
 Qed.
 
+Lemma addr2valu_inj : forall a b,
+  addr2valu a = addr2valu b ->
+  a = b.
+Proof.
+  unfold valu2addr, addr2valu.
+  unfold eq_rec_r, eq_rec.
+  rewrite <- addrlen_valulen.
+  intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec) in H.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec) in H.
+  unfold zext in *.
+  apply combine_inj in H.
+  intuition.
+Qed.
+
+
 Global Opaque addr2valu.
 Global Opaque valu2addr.
 (* Once this bug is fixed:

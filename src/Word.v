@@ -387,6 +387,11 @@ Qed.
 
 Hint Resolve shatter_word_0.
 
+Theorem word0: forall (w : word 0), w = WO.
+Proof.
+  firstorder.
+Qed.
+
 Definition weq : forall sz (x y : word sz), {x = y} + {x <> y}.
   refine (fix weq sz (x : word sz) : forall y : word sz, {x = y} + {x <> y} :=
     match x in word sz return forall y : word sz, {x = y} + {x <> y} with
@@ -715,6 +720,24 @@ Qed.
 Lemma split2_zero : forall sz1 sz2, split2 sz1 sz2 (natToWord _ O) = natToWord _ O.
 Proof.
   induction sz1; auto.
+Qed.
+
+Theorem combine_inj : forall sz1 sz2 a b c d,
+  @combine sz1 a sz2 b = @combine sz1 c sz2 d -> a = c /\ b = d.
+Proof.
+  induction sz1; simpl; intros.
+  - rewrite (word0 a) in *.
+    rewrite (word0 c) in *.
+    simpl in *.
+    intuition.
+  - rewrite (shatter_word a) in *.
+    rewrite (shatter_word c) in *.
+    simpl in *.
+    inversion H.
+    apply (inj_pair2_eq_dec _ eq_nat_dec) in H2.
+    destruct (IHsz1 _ _ _ _ _ H2).
+    intuition.
+    f_equal; auto.
 Qed.
 
 
@@ -1747,11 +1770,6 @@ Ltac wlt_ind :=
   | [ |- forall (n: word ?len), ?P ] =>
     refine (well_founded_ind (@wlt_wf len) (fun n => P) _)
   end.
-
-Theorem word0: forall (w : word 0), w = WO.
-Proof.
-  firstorder.
-Qed.
 
 Theorem wordToNat_plusone: forall sz w w', w < w' ->
   wordToNat (w ^+ natToWord sz 1) = S (wordToNat w).
