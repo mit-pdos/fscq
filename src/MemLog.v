@@ -153,6 +153,18 @@ Module MEMLOG.
     apply Rec.of_to_id; auto.
   Qed.
 
+  Theorem valu_to_descriptor_length : forall v,
+    length (valu_to_descriptor v) = addr_per_block.
+  Proof.
+    unfold valu_to_descriptor.
+    intros.
+    pose proof (@Rec.of_word_length descriptor_type).
+    unfold Rec.well_formed in H.
+    simpl in H.
+    apply H.
+  Qed.
+  Hint Resolve valu_to_descriptor_length.
+
   Lemma descriptor_to_valu_zeroes: forall l n,
     descriptor_to_valu (l ++ repeat $0 n) = descriptor_to_valu l.
   Proof.
@@ -1697,6 +1709,7 @@ Module MEMLOG.
       (exists x, rep_inner xp (ActiveTxn old x) ms) \/
       rep_inner xp (CommittedTxn old) ms \/
       rep_inner xp (AppliedTxn old) ms \/
+      rep_inner xp (FlushedUnsyncTxn old cur) ms \/
       rep_inner xp (CommittedUnsyncTxn old cur) ms \/
       rep_inner xp (CommittedTxn cur) ms \/
       rep_inner xp (AppliedTxn cur) ms \/
@@ -1708,6 +1721,7 @@ Module MEMLOG.
       (exists x, rep_inner xp (ActiveTxn old x) ms) \/
       rep_inner xp (CommittedTxn old) ms \/
       rep_inner xp (AppliedTxn old) ms \/
+      (exists cur, rep_inner xp (FlushedUnsyncTxn old cur) ms * [[ curpred (list2mem cur) ]]) \/
       (exists cur, rep_inner xp (CommittedUnsyncTxn old cur) ms * [[ curpred (list2mem cur) ]]) \/
       (exists cur, rep_inner xp (CommittedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
       (exists cur, rep_inner xp (AppliedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
@@ -2085,7 +2099,7 @@ Module MEMLOG.
     norm'l; unfold stars; simpl.
     rewrite sep_star_comm. rewrite star_emp_pimpl.
     repeat apply pimpl_or_l; unfold rep_inner at 1;
-      unfold data_rep, log_rep, log_rep_empty, synced_list, cur_rep.
+      unfold data_rep, log_rep, log_rep_empty, log_rep_unsynced, synced_list, cur_rep.
 
     - (* NoTransaction old *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -2140,6 +2154,39 @@ Module MEMLOG.
         unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
         cancel. cancel.
         rewrite replay_twice; auto.
+
+    - (* FlushedUnsyncTxn old new *)
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      autorewrite with crash_xform. norm'l; unfold stars; simpl.
+      rewrite crash_xform_array. norm'r; [ | intuition ].
+      or_l.
+      log_unfold. unfold avail_region, valid_size in *.
+      norm'l.
+      match goal with
+      | [ H : possible_crash_list _ _ |- _ ] =>
+        unfold possible_crash_list in H; destruct H as [H ?];
+        autorewrite with lengths in H; rewrite Nat.min_r in H by solve_lengths
+      end.
+      norm'r; [ cancel' | intuition idtac ].
+      rewrite valu_descriptor_id.
+      (* XXX calling [cancel] here gives an anomaly... *)
+      instantiate (2 := w).
+      rewrite sep_star_comm; cancel'.
+      unfold stars; simpl.
+      rewrite array_app.
+      cancel.
+      solve_lengths.
+      apply MapFacts.Equal_refl.
+      auto.
+      rewrite Forall_forall; intuition.
+      solve_lengths.
+      apply MapFacts.Equal_refl.
+      auto.
+      rewrite Forall_forall; intuition.
+      solve_lengths.
 
     - (* CommittedUnsyncTxn old new *)
       autorewrite with crash_xform. norm'l; unfold stars; simpl.
@@ -2368,7 +2415,6 @@ Module MEMLOG.
     unfold read_array.
     hoare.
 
-    pred_apply.
     rewrite isolate_fwd with (i:=i) by auto.
     cancel.
   Qed.
