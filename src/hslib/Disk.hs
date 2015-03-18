@@ -18,9 +18,6 @@ import Data.IORef
 verbose :: Bool
 verbose = False
 
-crashtest :: Bool
-crashtest = False
-
 reallySync :: Bool
 reallySync = True
 
@@ -42,7 +39,7 @@ data FlushLog =
   -- The second list is the list of previous flushed write groups
 
 data DiskState =
-  S !Fd !(IORef DiskStats) !(IORef Bool) !(IORef FlushLog)
+  S !Fd !(IORef DiskStats) !(IORef Bool) !(Maybe (IORef FlushLog))
 
 bumpRead :: IORef DiskStats -> IO ()
 bumpRead sr = do
@@ -59,21 +56,17 @@ bumpSync sr = do
   Stats r w s <- readIORef sr
   writeIORef sr $ Stats r w (s+1)
 
-logWrite :: IORef FlushLog -> Word64 -> Coq_word -> IO ()
-logWrite fl a v =
-  if crashtest then do
-    FL writes flushed <- readIORef fl
-    writeIORef fl $ FL ((a, v) : writes) flushed
-  else
-    return ()
+logWrite :: Maybe (IORef FlushLog) -> Word64 -> Coq_word -> IO ()
+logWrite Nothing _ _ = return ()
+logWrite (Just fl) a v = do
+  FL writes flushed <- readIORef fl
+  writeIORef fl $ FL ((a, v) : writes) flushed
 
-logFlush :: IORef FlushLog -> IO ()
-logFlush fl =
-  if crashtest then do
-    FL writes flushed <- readIORef fl
-    writeIORef fl $ FL [] (writes : flushed)
-  else
-    return ()
+logFlush :: Maybe (IORef FlushLog) -> IO ()
+logFlush Nothing = return ()
+logFlush (Just fl) = do
+  FL writes flushed <- readIORef fl
+  writeIORef fl $ FL [] (writes : flushed)
 
 -- For a more efficient array implementation, perhaps worth checking out:
 -- http://www.macs.hw.ac.uk/~hwloidl/hackspace/ghc-6.12-eden-gumsmp-MSA-IFL13/libraries/dph/dph-base/Data/Array/Parallel/Arr/BUArr.hs
@@ -158,8 +151,15 @@ init_disk disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
   dirty <- newIORef False
+  return $ S fd sr dirty Nothing
+
+init_disk_crashlog :: FilePath -> IO DiskState
+init_disk_crashlog disk_fn = do
+  fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
+  sr <- newIORef $ Stats 0 0 0
+  dirty <- newIORef False
   fl <- newIORef $ FL [] []
-  return $ S fd sr dirty fl
+  return $ S fd sr dirty $ Just fl
 
 set_nblocks_disk :: DiskState -> Int -> IO ()
 set_nblocks_disk (S fd _ _ _) nblocks = do
@@ -173,8 +173,16 @@ close_disk (S fd sr _ _) = do
   return s
 
 get_flush_log :: DiskState -> IO [[(Word64, Coq_word)]]
-get_flush_log (S _ _ _ fl) = do
+get_flush_log (S _ _ _ Nothing) = return []
+get_flush_log (S _ _ _ (Just fl)) = do
   FL writes flushes <- readIORef fl
+  return (writes : flushes)
+
+clear_flush_log :: DiskState -> IO [[(Word64, Coq_word)]]
+clear_flush_log (S _ _ _ Nothing) = return []
+clear_flush_log (S _ _ _ (Just fl)) = do
+  FL writes flushes <- readIORef fl
+  writeIORef fl $ FL [] []
   return (writes : flushes)
 
 print_stats :: DiskStats -> IO ()
