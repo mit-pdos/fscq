@@ -15,3 +15,5 @@ _build
 /coqproof
 /coqparproof
 /#*#
+*.vo
+*.glob
