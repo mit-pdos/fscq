@@ -10,4 +10,4 @@ TOP="$2"
 
 cd $SV6/o.linux/bin
 ./mailbench $TOP 1
-
+cat $TOP/stats
