@@ -293,10 +293,9 @@ Module MEMLOG.
       [[ Forall (@Rec.well_formed descriptor_type) others ]])%pred.
 
   Definition log_rep_empty xp : @pred addr (@weq addrlen) valuset :=
-     (exists rest others,
-      (LogDescriptor xp) |-> (descriptor_to_valu rest, map descriptor_to_valu others) *
+     (exists rest,
+      (LogDescriptor xp) |=> descriptor_to_valu rest *
       [[ @Rec.well_formed descriptor_type (rest) ]] *
-      [[ Forall (@Rec.well_formed descriptor_type) others ]] *
       avail_region (LogData xp) (wordToNat (LogLen xp)))%pred.
 
   Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addr (@weq addrlen) valuset :=
@@ -371,7 +370,7 @@ Module MEMLOG.
   Definition rep xp F st mscs := let '^(ms, cs) := mscs in (exists d,
     BUFCACHE.rep cs d * [[ (F * rep_inner xp st ms)%pred d ]])%pred.
 
-  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_unsynced, valid_size, synced_list.
+  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_empty, log_rep_unsynced, valid_size, synced_list.
 
   Lemma mapeq_elements : forall V m1 m2,
     @Map.Equal V m1 m2 -> Map.elements m1 = Map.elements m2.
@@ -912,8 +911,6 @@ Module MEMLOG.
 
   Definition flush_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
-    cs <- BUFCACHE.write (LogDescriptor xp)
-      (descriptor_to_valu (map fst (Map.elements ms))) cs;
     let^ (cs) <- For i < $ (Map.cardinal ms)
     Ghost [ old crash F ]
     Loopvar [ cs ]
@@ -923,10 +920,8 @@ Module MEMLOG.
       [[ (F
           * (LogHeader xp) |=> header_to_valu (mk_header 0)
           * data_rep xp (synced_list old)
-          * exists rest others, (LogDescriptor xp) |->
-              (descriptor_to_valu (map fst (Map.elements ms) ++ rest), map descriptor_to_valu others)
-          * [[ Forall (@Rec.well_formed descriptor_type) others ]]
-          * [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]]
+          * exists rest, (LogDescriptor xp) |=> descriptor_to_valu rest
+          * [[ @Rec.well_formed descriptor_type rest ]]
           * exists l', [[ length l' = # i ]]
           * array (LogData xp) (firstn (# i) (List.combine (map snd (Map.elements ms)) l')) $1
           * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i))%pred d' ]]
@@ -936,6 +931,8 @@ Module MEMLOG.
         (sel (map snd (Map.elements ms)) i $0) cs;
       lrx ^(cs)
     Rof ^(cs);
+    cs <- BUFCACHE.write (LogDescriptor xp)
+      (descriptor_to_valu (map fst (Map.elements ms))) cs;
     rx ^(ms, cs).
 
   Definition flush_sync T xp (mscs : memstate_cachestate) rx : prog T :=
@@ -1173,6 +1170,10 @@ Module MEMLOG.
     split_pair_list_vars;
     autorewrite with lists; [ f_equal | .. ].
 
+  Ltac or_r := apply pimpl_or_r; right.
+  Ltac or_l := apply pimpl_or_r; left.
+
+
   Theorem flush_unsync_ok : forall xp mscs,
     {< m1 m2 F,
     PRE
@@ -1182,7 +1183,7 @@ Module MEMLOG.
       rep xp F (FlushedUnsyncTxn m1 m2) mscs *
       [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs'
+      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/ rep xp F (FlushedUnsyncTxn m1 m2) mscs'
     >} flush_unsync xp mscs.
   Proof.
     unfold flush_unsync; log_unfold; unfold avail_region, log_rep_empty.
@@ -1190,25 +1191,12 @@ Module MEMLOG.
     intros.
     solve_lengths_prepare.
     step_with ltac:(unfold avail_region) try_arrays_lengths.
-    (* Annoyingly, [intuition] just incorrectly applies [Forall_nil] in one place, so we can't use [step] *)
-    eapply pimpl_ok2; [ eauto with prog | ].
-    intros; norm; [ cancel' | intuition].
-    pred_apply.
-    norm; [ cancel' | intuition idtac ].
-    unfold stars; simpl.
-    ring_simplify (LogData xp ^+ $ (0)).
-    instantiate (2 := (d :: l)).
-    instantiate (1 := l0).
-    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
+    ring_simplify (# (LogData xp) + 0).
+    word2nat_simpl.
+    instantiate (1 := l).
     cancel.
-    auto.
-    solve_lengths.
-    rewrite Forall_forall.
-    intuition.
     instantiate (1 := nil); auto.
     solve_lengths.
-    split_lists.
-
     step_with ltac:(unfold avail_region) try_arrays_lengths.
     step_with ltac:(unfold avail_region, upd_prepend) try_arrays_lengths.
     split_lists.
@@ -1219,13 +1207,13 @@ Module MEMLOG.
     erewrite firstn_plusone_selN.
     rewrite <- app_assoc.
     simpl.
-    instantiate (3 := l3 ++ [valuset_list (selN l4 0 ($0, nil))]).
+    instantiate (3 := l0 ++ [valuset_list (selN l1 0 ($0, nil))]).
     simpl.
     rewrite firstn_app_l by solve_lengths.
     repeat erewrite selN_map by solve_lengths.
     rewrite <- surjective_pairing.
     rewrite selN_app2.
-    rewrite H23.
+    rewrite H21.
     rewrite Nat.sub_diag.
     reflexivity.
     abstract solve_lengths.
@@ -1240,38 +1228,57 @@ Module MEMLOG.
     abstract solve_lengths.
     abstract (case_eq l1; intros; subst; word2nat_clear; simpl in *; solve_lengths).
 
-    cancel.
+    or_l. cancel.
     array_match.
     reflexivity.
     solve_lengths.
-    cancel.
+    or_l. cancel.
     array_match.
     reflexivity.
     solve_lengths.
-    step_with ltac:(unfold avail_region, upd_prepend) try_arrays_lengths.
-    split_lists.
-    rewrite firstn_oob by solve_lengths.
-    reflexivity.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    cancel.
-    cancel.
-    norm; [ cancel' | intuition idtac ].
+    step_with ltac:(unfold avail_region) try_arrays_lengths.
+    (* Annoyingly, [intuition] just incorrectly applies [Forall_nil] in one place, so we can't use [step] *)
+    eapply pimpl_ok2; [ eauto with prog | ].
+    intros; norm; [ cancel' | intuition idtac ].
     pred_apply; norm; [ cancel' | intuition idtac ].
-    instantiate (1 := l0).
-    instantiate (1 := (d :: l)).
+    rewrite firstn_oob by solve_lengths.
+    rewrite Map.cardinal_1.
+    unfold valuset_list.
+    instantiate (2 := l0).
+    instantiate (2 := [d1]).
     rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
     cancel.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    rewrite Forall_forall; intuition.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    intuition.
+    abstract solve_lengths.
+    or_l. cancel.
+    rewrite firstn_oob by solve_lengths.
+    array_match.
+    reflexivity.
+    abstract solve_lengths.
+
+    or_r.
+    norm; [ cancel' | intuition idtac ].
+    pred_apply; norm; [ cancel' | intuition idtac ].
+    rewrite firstn_oob by solve_lengths.
+    rewrite Map.cardinal_1.
+    unfold valuset_list.
+    instantiate (2 := l0).
+    instantiate (2 := [d1]).
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
+    cancel.
+    eauto.
+    abstract solve_lengths.
     solve_lengths.
     rewrite Forall_forall; intuition.
-    auto.
     abstract solve_lengths.
+    abstract solve_lengths.
+    intuition.
+
     Unshelve.
     all: auto.
   Qed.
@@ -1718,9 +1725,6 @@ Module MEMLOG.
   Hint Extern 0 (SepAuto.okToUnify (would_recover_either _ _ _ _) (would_recover_either _ _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (would_recover_either_pred _ _ _ _) (would_recover_either_pred _ _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (SepAuto.okToUnify (would_recover_either_pred _ _ _ _) (would_recover_either_pred _ _ _ _)) => constructor : okToUnify.
-
-  Ltac or_r := apply pimpl_or_r; right.
-  Ltac or_l := apply pimpl_or_r; left.
 
   Theorem commit_ok: forall xp mscs,
     {< m1 m2 F,
@@ -2272,6 +2276,7 @@ Module MEMLOG.
       cancel.
 
       autorewrite with core.
+
       step.
       rewrite mapeq_rep.
       cancel.
