@@ -1516,6 +1516,18 @@ Module DIRTREE.
     destruct tree; firstorder.
   Qed.
 
+  (* ugly lemmas for reordering sep_stars in the hypothesis *)
+  Lemma helper_reorder_sep_star_1 : forall AT AEQ V (a b c d e : @pred AT AEQ V),
+    a * b * c * d * e =p=> (b * c * d * e) * a.
+  Proof.
+    intros; cancel.
+  Qed.
+
+  Lemma helper_reorder_sep_star_2 : forall AT AEQ V (a b c d : @pred AT AEQ V),
+    a * b * c * d =p=> a * c * d * b.
+  Proof.
+    intros; cancel.
+  Qed.
 
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< F mbase m Fm Ftop tree tree_elem,
@@ -1537,7 +1549,7 @@ Module DIRTREE.
   Proof.
     unfold rename_correct, rep.
 
-    (* isolate root tree file before cancel *)
+    (* namei srcpath, isolate root tree file before cancel *)
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
     subst; simpl in *.
     hypmatch tree_dir_names_pred as Hx; assert (Horig := Hx).
@@ -1547,7 +1559,7 @@ Module DIRTREE.
     unfold tree_dir_names_pred; cancel.
     all: eauto.
 
-    (* isolate src directory before cancel *)
+    (* lookup srcname, isolate src directory before cancel *)
     destruct_branch; [ | step ].
     destruct_branch; destruct_branch; [ | step ].
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
@@ -1578,7 +1590,7 @@ Module DIRTREE.
     pred_apply' Hsub; cancel.
     eauto.
 
-    (* namei for dst, find out pruning subtree before step *)
+    (* namei for dstpath, find out pruning subtree before step *)
     hypmatch (tree_dir_names_pred' l2 m1) as Hx1.
     hypmatch ((a, a4)) as Hx2.
     pose proof (ptsto_subtree_exists _ w Hx1 Hx2) as Hx.
@@ -1590,16 +1602,50 @@ Module DIRTREE.
     rewrite update_subtree_delete_preserve_inum; auto.
     rewrite update_subtree_delete_preserve_isdir; auto.
 
-    (* lookup in dst *)
-    step.
-    admit.
+    (* fold back predicate for the pruned tree in hypothesis as well  *)
 
+    hypmatch (list2nmem x0) as Hinterm.
+    apply helper_reorder_sep_star_1 in Hinterm.
+    erewrite subtree_prune_absorb in Hinterm; eauto.
+    2: apply dir_names_pred_delete'; auto.
+    apply helper_reorder_sep_star_2 in Hinterm.
+    rename x into mvtree.
+
+    (* lookup dstname *)
+    destruct_branch; [ | step ].
+    destruct_branch; destruct_branch; [ | step ].
+    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+
+    hypmatch find_name as Hpruned.
+    apply eq_sym in Hpruned.
+    apply find_name_exists in Hpruned.
+    destruct Hpruned. intuition.
+
+    hypmatch find_subtree as Hpruned; assert (Hx := Hpruned).
+    apply subtree_extract with (xp := (FSXPInodeAlloc fsxp)) in Hx.
+    assert (Hdst := Hinterm); rewrite Hx in Hdst; clear Hx.
+    destruct x; simpl in *; subst; try congruence; inv_option_eq.
+    unfold tree_dir_names_pred in Hdst.
+    destruct_lift Hdst.
+    hypmatch (# w0)%pred as Hdst.
+
+    cancel.
+    do 2 eexists; intuition.
+    pred_apply; cancel.
+    pred_apply' Hdst; cancel.
+    eauto.
+
+    (* now, grafting back *)
     destruct_branch. destruct_branch. destruct_branch.
     step.
 
     (* dst is some file *)
     step.
-    admit.
+    do 2 eexists; intuition.
+    pred_apply; cancel.
+    pred_apply' Hdst; cancel.
+    eauto.
+
     step.
     step.
     apply pimpl_or_r; right; cancel.
@@ -1607,7 +1653,11 @@ Module DIRTREE.
 
     (* dst is None *)
     step.
-    admit.
+    do 2 eexists; intuition.
+    pred_apply; cancel.
+    pred_apply' Hdst; cancel.
+    eauto.
+
     step.
     apply pimpl_or_r; right; cancel.
     admit. admit. admit. admit.
