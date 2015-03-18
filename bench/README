@@ -1,9 +1,7 @@
 How to run the benchmarks:
 
-  Make a copy of the fscq repo, without doc or wiki, and make a
-  fresh git commit, placing the resulting repo in /tmp/fscq-clean.
-
-  ./run-bench.sh app-bench './app-bench.sh /tmp/fscq-clean /tmp/ft'
+  ./make-git-repo.sh /tmp/fscq-bench
+  ./run-bench.sh app-bench './app-bench.sh /tmp/fscq-bench /tmp/ft'
   ./run-bench.sh mailbench './mailbench.sh ~/proj/sv6 /tmp/ft'
 
 Install fusexmp from fuse-2.9.3/example.
