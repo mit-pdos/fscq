@@ -300,6 +300,44 @@ Proof.
   eassumption.
 Qed.
 
+Local Opaque pow2.
+
+Theorem list2mem_fix_off_eq' : forall A (l : list A) n sz,
+  length l + n <= pow2 sz -> sz = addrlen -> list2mem_off n l = list2mem_fix n l.
+Proof.
+  induction l; intros; subst; apply functional_extensionality; intros.
+  unfold list2mem_off; destruct (lt_dec (wordToNat x) n); auto.
+
+  unfold list2mem_off; simpl in *.
+
+  destruct (lt_dec (wordToNat x) n).
+  destruct (eq_nat_dec (wordToNat x) n); [omega |].
+  rewrite list2mem_fix_below by omega.
+  auto.
+
+  destruct (eq_nat_dec (wordToNat x) n).
+  rewrite e; replace (n-n) with (0) by omega; auto.
+
+  assert (wordToNat x - n <> 0) by omega.
+  destruct (wordToNat x - n) eqn:Hxn; try congruence.
+
+  rewrite <- IHl with (sz:=addrlen) by omega.
+  unfold list2mem_off.
+
+  destruct (lt_dec (wordToNat x) (S n)); [omega |].
+  f_equal; omega.
+Qed.
+
+Theorem list2mem_fix_eq' : forall A (l : list A) sz,
+  length l <= pow2 sz -> sz = addrlen -> list2mem l = list2mem_fix 0 l.
+Proof.
+  intros; subst.
+  rewrite list2mem_off_eq.
+  eapply list2mem_fix_off_eq' with (sz:=addrlen); auto.
+  rewrite <- plus_n_O.
+  eassumption.
+Qed.
+
 
 Lemma list2mem_nil_array : forall A (l : list A) start,
   array $ start l $1 (list2mem nil) -> l = nil.
@@ -501,28 +539,33 @@ Proof.
   intros; pred_apply; cancel.
 Qed.
 
-Theorem list2mem_inj' : forall V (a b : list V) (bound_a bound_b bound_off : addr) off,
-  length a <= #bound_a ->
-  length b <= #bound_b ->
-  length a + off <= # bound_off ->
+Theorem list2mem_inj' : forall V (a b : list V) off sz,
+  length a + off <= pow2 sz ->
+  length b + off <= pow2 sz ->
+  sz = addrlen ->
   list2mem_fix off a = list2mem_fix off b ->
   a = b.
 Proof.
-  induction a; intros.
+  induction a; intros; subst.
   - destruct b; auto; simpl in *.
     apply equal_f with (x:=$ off) in H2.
-    erewrite wordToNat_natToWord_bound in H2 by eauto.
+    destruct (eq_nat_dec off (pow2 addrlen)).
+    subst; omega.
+    erewrite wordToNat_natToWord_idempotent' in H2.
     destruct (eq_nat_dec off off); congruence.
-  - destruct b; simpl in *.
+    unfold goodSize. omega.
+  - destruct (eq_nat_dec off (pow2 addrlen)). subst; simpl in *; omega.
+    assert (off < pow2 addrlen) by omega.
+    destruct b; simpl in *.
     replace (S (length a0 + off)) with (S (length a0) + off) in * by omega.
     + apply equal_f with (x:=$ off) in H2.
-      erewrite wordToNat_natToWord_bound with (bound:=bound_off) in H2 by omega.
+      erewrite wordToNat_natToWord_idempotent' in H2 by auto.
       destruct (eq_nat_dec off off); congruence.
     + apply equal_f with (x:=$ off) in H2 as H2'.
-      erewrite wordToNat_natToWord_bound with (bound:=bound_off) in H2' by omega.
+      erewrite wordToNat_natToWord_idempotent' in H2' by auto.
       destruct (eq_nat_dec off off); try congruence.
       inversion H2'. f_equal.
-      eapply IHa with (bound_a:=bound_a) (bound_b:=bound_b) (bound_off:=bound_off) (off:=S off); try omega.
+      eapply IHa with (off:=S off) (sz:=addrlen); try omega.
       apply functional_extensionality; intro x'.
       apply equal_f with (x:=x') in H2.
       destruct (eq_nat_dec (# x') off); auto.
@@ -531,17 +574,17 @@ Proof.
       auto.
 Qed.
 
-Theorem list2mem_inj : forall V (a b : list V) (bound_a bound_b : addr),
-  length a <= #bound_a ->
-  length b <= #bound_b ->
+Theorem list2mem_inj : forall V (a b : list V) sz,
+  length a <= pow2 sz ->
+  length b <= pow2 sz ->
+  sz = addrlen ->
   list2mem a = list2mem b ->
   a = b.
 Proof.
-  intros.
-  erewrite list2mem_fix_eq in H1; eauto.
-  erewrite list2mem_fix_eq in H1; eauto.
-  eapply list2mem_inj' with (bound_off:=bound_a); eauto.
-  omega.
+  intros; subst.
+  erewrite list2mem_fix_eq' in H2; eauto.
+  erewrite list2mem_fix_eq' in H2; eauto.
+  eapply list2mem_inj' with (sz:=addrlen); eauto; omega.
 Qed.
 
 
