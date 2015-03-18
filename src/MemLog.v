@@ -475,7 +475,6 @@ Module MEMLOG.
   Proof.
     unfold init, log_uninitialized; log_unfold.
     hoare.
-    unfold log_rep_empty. cancel.
     rewrite repeat_length; auto.
     rewrite Forall_forall; intuition.
   Qed.
@@ -1360,7 +1359,7 @@ Module MEMLOG.
       ([[ r = true ]] * rep xp F (FlushedTxn m1 m2) mscs) \/
       ([[ r = false ]] * rep xp F (ActiveTxn m1 m2) mscs)
     CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs'
+      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/ rep xp F (FlushedUnsyncTxn m1 m2) mscs'
     >} flush xp mscs.
   Proof.
     unfold flush.
@@ -2024,6 +2023,7 @@ Module MEMLOG.
     do 4 or_r. or_l. cancel.
     do 5 or_r. or_l. cancel.
     do 6 or_r. or_l. cancel.
+    do 7 or_r. or_l. cancel.
     repeat or_r. cancel.
   Qed.
 
@@ -2049,6 +2049,7 @@ Module MEMLOG.
     do 4 or_r. or_l. cancel.
     do 5 or_r. or_l. cancel.
     do 6 or_r. or_l. cancel.
+    do 7 or_r. or_l. cancel.
     repeat or_r. cancel.
   Qed.
 
