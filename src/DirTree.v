@@ -16,6 +16,7 @@ Require Import MemLog.
 Require Import GenSep.
 Require Import SepAuto.
 Require Import Array.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
@@ -1409,10 +1410,10 @@ Module DIRTREE.
       inversion H; subst; eauto.
   Qed.
 
-  Lemma ptsto_subtree_exists' : forall name ents dmap inum dnum isdir,
+  Lemma ptsto_subtree_exists' : forall name ents dmap inum isdir,
     tree_dir_names_pred' ents dmap
     -> (name |-> (inum, isdir) * exists F, F)%pred dmap
-    -> exists subtree, find_subtree (name :: nil) (TreeDir dnum ents) = Some subtree
+    -> exists subtree, find_dirlist name ents = Some subtree
          /\ inum = dirtree_inum subtree /\ isdir = dirtree_isdir subtree.
   Proof.
     induction ents; simpl; intros; auto.
@@ -1429,10 +1430,10 @@ Module DIRTREE.
     eapply ptsto_mem_except_exF; eauto.
   Qed.
 
-  Lemma ptsto_subtree_exists : forall F name ents dmap inum dnum isdir,
+  Lemma ptsto_subtree_exists : forall F name ents dmap inum isdir,
     tree_dir_names_pred' ents dmap
     -> (F * name |-> (inum, isdir))%pred dmap
-    -> exists subtree, find_subtree (name :: nil) (TreeDir dnum ents) = Some subtree
+    -> exists subtree, find_dirlist name ents = Some subtree
          /\ inum = dirtree_inum subtree /\ isdir = dirtree_isdir subtree.
   Proof.
     intros.
@@ -1451,8 +1452,8 @@ Module DIRTREE.
     cancel; eauto.
   Qed.
 
-  Lemma dirlist_pred_extract : forall xp ents name inum subtree,
-    find_subtree (name :: nil) (TreeDir inum ents) = Some subtree
+  Lemma dirlist_pred_extract : forall xp ents name subtree,
+    find_dirlist name ents = Some subtree
     -> NoDup (delete_from_list name ents)
     -> dirlist_pred (tree_pred xp) ents =p=>
        tree_pred xp subtree * dirlist_pred (tree_pred xp) (delete_from_list name ents).
@@ -1478,42 +1479,50 @@ Module DIRTREE.
 
   Lemma subtree_prune_absorb : forall F xp inum ents ri re f path name dsmap subtree,
     find_subtree path (TreeDir ri re) = Some (TreeDir inum ents)
-    -> find_subtree (name :: nil) (TreeDir inum ents) = Some subtree
+    -> find_dirlist name ents = Some subtree
     -> tree_dir_names_pred' (delete_from_list name ents) dsmap
     -> SDIR.rep f dsmap
     -> BALLOC.valid_block xp inum
     -> dirlist_pred (tree_pred xp) ents *
        tree_pred_except xp path (TreeDir ri re) * F * # inum |-> f
-    =p=> (tree_pred xp subtree * F) * tree_pred xp
-         (update_subtree path (delete_from_dir name (TreeDir inum ents)) (TreeDir ri re)).
+    =p=> (tree_pred xp subtree * F) *
+          tree_pred xp (tree_prune inum ents path name (TreeDir ri re)).
   Proof.
-    intros.
+    intros; unfold tree_prune.
     erewrite <- subtree_absorb; eauto.
     cancel.
     unfold tree_dir_names_pred.
     cancel; eauto.
-    eapply dirlist_pred_extract with (inum := $0); eauto.
+    eapply dirlist_pred_extract; eauto.
     eapply tree_dir_names_pred_nodup; eauto.
   Qed.
 
-  Lemma update_subtree_delete_preserve_inum : forall path name tree subtree,
-    find_subtree path tree = Some subtree
-    -> dirtree_inum (update_subtree path (delete_from_dir name subtree) tree) = dirtree_inum tree.
+  Lemma tree_prune_preserve_inum : forall path name tree inum ents,
+    find_subtree path tree = Some (TreeDir inum ents)
+    -> dirtree_inum (tree_prune inum ents path name tree) = dirtree_inum tree.
   Proof.
     induction path; intros; auto.
     inversion H; subst.
-    destruct subtree; firstorder.
+    firstorder.
     destruct tree; firstorder.
   Qed.
 
-  Lemma update_subtree_delete_preserve_isdir : forall path name tree subtree,
-    find_subtree path tree = Some subtree
-    -> dirtree_isdir (update_subtree path (delete_from_dir name subtree) tree) = dirtree_isdir tree.
+  Lemma tree_prune_preserve_isdir : forall path name tree inum ents,
+    find_subtree path tree = Some (TreeDir inum ents)
+    -> dirtree_isdir (tree_prune inum ents path name tree) = dirtree_isdir tree.
   Proof.
     induction path; intros; auto.
     inversion H; subst.
-    destruct subtree; firstorder.
+    firstorder.
     destruct tree; firstorder.
+  Qed.
+
+  Lemma find_subtree_dirlist : forall name inum ents,
+    find_subtree (name :: nil) (TreeDir inum ents) = find_dirlist name ents.
+  Proof.
+    induction ents; simpl; intros; auto.
+    destruct a; simpl.
+    destruct (string_dec s name); subst; auto.
   Qed.
 
   (* ugly lemmas for reordering sep_stars in the hypothesis *)
@@ -1527,6 +1536,100 @@ Module DIRTREE.
     a * b * c * d =p=> a * c * d * b.
   Proof.
     intros; cancel.
+  Qed.
+
+  Lemma notindomain_not_in_dirents : forall ents name dsmap,
+    tree_dir_names_pred' ents dsmap
+    -> notindomain name dsmap
+    -> ~ In name (map fst ents).
+  Proof.
+    induction ents; simpl; intros; auto.
+    destruct a; simpl in *; intuition.
+    apply ptsto_valid in H; congruence.
+    apply ptsto_mem_except in H.
+    eapply IHents; eauto.
+    apply notindomain_mem_except'; auto.
+  Qed.
+
+  Lemma dirlist_pred_absorb_notin' : forall xp ents name subtree,
+    ~ In name (map fst ents)
+    -> NoDup ents
+    -> tree_pred xp subtree * dirlist_pred (tree_pred xp) ents =p=>
+       dirlist_pred (tree_pred xp) (add_to_list name subtree ents).
+  Proof.
+    induction ents; simpl; intros; auto.
+    destruct a; intuition.
+    destruct (string_dec s name); subst; simpl in *.
+    inversion H0; subst; cancel.
+    inversion H0; subst.
+    rewrite <- IHents; eauto.
+    cancel.
+  Qed.
+
+  Lemma dirlist_pred_absorb_notin : forall xp ents name dsmap subtree,
+    tree_dir_names_pred' ents dsmap
+    -> notindomain name dsmap
+    -> tree_pred xp subtree * dirlist_pred (tree_pred xp) ents =p=>
+       dirlist_pred (tree_pred xp) (add_to_list name subtree ents).
+  Proof.
+    intros.
+    apply dirlist_pred_absorb_notin'; auto.
+    eapply notindomain_not_in_dirents; eauto.
+    eapply tree_dir_names_pred_nodup; eauto.
+  Qed.
+
+  Lemma dir_names_pred_add' : forall l m name subtree,
+    tree_dir_names_pred' l m
+    -> tree_dir_names_pred' (add_to_list name subtree l)
+          (Prog.upd m name (dirtree_inum subtree, dirtree_isdir subtree)).
+  Proof.
+    induction l; simpl; intros; auto.
+    apply sep_star_comm.
+    apply ptsto_upd_disjoint; auto.
+
+    destruct a.
+    destruct (string_dec s name); subst; simpl.
+    eapply ptsto_upd; eauto.
+
+    generalize H.
+    unfold_sep_star; intuition.
+    repeat deex. exists x. eexists.
+    intuition.
+    3: eapply IHl; eauto.
+
+    apply functional_extensionality; intro.
+    unfold Prog.upd, mem_union.
+    destruct (string_dec x1 name); subst; auto.
+    destruct (x name) eqn: Hx; auto.
+    unfold ptsto in H2; intuition.
+    pose proof (H3 _ n); congruence.
+
+    unfold mem_disjoint, Prog.upd.
+    intuition; repeat deex.
+    destruct (string_dec x1 name); subst; auto.
+    unfold ptsto in H2; intuition.
+    pose proof (H6 _ n); congruence.
+    unfold mem_disjoint in H0; repeat deex.
+    firstorder.
+  Qed.
+
+  Lemma subtree_graft_absorb : forall xp inum ents root f path name dsmap subtree,
+    SDIR.rep f (Prog.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
+    -> find_subtree path root = Some (TreeDir inum ents)
+    -> tree_dir_names_pred' ents dsmap
+    -> notindomain name dsmap
+    -> BALLOC.valid_block xp inum
+    -> # inum |-> f * tree_pred xp subtree *
+       tree_pred_except xp path root * dirlist_pred (tree_pred xp) ents
+    =p=> tree_pred xp (tree_graft inum ents path name subtree root).
+  Proof.
+    intros; unfold tree_graft.
+    erewrite <- subtree_absorb; eauto.
+    cancel.
+    unfold tree_dir_names_pred.
+    cancel; eauto.
+    eapply dirlist_pred_absorb_notin; eauto.
+    apply dir_names_pred_add'; auto.
   Qed.
 
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
@@ -1593,17 +1696,16 @@ Module DIRTREE.
     (* namei for dstpath, find out pruning subtree before step *)
     hypmatch (tree_dir_names_pred' l2 m1) as Hx1.
     hypmatch ((a, a4)) as Hx2.
-    pose proof (ptsto_subtree_exists _ w Hx1 Hx2) as Hx.
+    pose proof (ptsto_subtree_exists _ Hx1 Hx2) as Hx.
     destruct Hx; intuition.
 
     step.
     eapply subtree_prune_absorb; eauto.
     apply dir_names_pred_delete'; auto.
-    rewrite update_subtree_delete_preserve_inum; auto.
-    rewrite update_subtree_delete_preserve_isdir; auto.
+    rewrite tree_prune_preserve_inum; auto.
+    rewrite tree_prune_preserve_isdir; auto.
 
     (* fold back predicate for the pruned tree in hypothesis as well  *)
-
     hypmatch (list2nmem x0) as Hinterm.
     apply helper_reorder_sep_star_1 in Hinterm.
     erewrite subtree_prune_absorb in Hinterm; eauto.
@@ -1645,11 +1747,16 @@ Module DIRTREE.
     pred_apply; cancel.
     pred_apply' Hdst; cancel.
     eauto.
+    hypmatch (tree_dir_names_pred' l3 m2) as Hx3.
+    hypmatch ((a, false)) as Hx4.
+    pose proof (ptsto_subtree_exists _ Hx3 Hx4) as Hx.
+    destruct Hx; intuition.
 
     step.
     step.
-    apply pimpl_or_r; right; cancel.
-    admit. admit. admit. admit.
+    apply pimpl_or_r; right; cancel; eauto.
+    eapply subtree_graft_absorb; eauto.
+    admit.
 
     (* dst is None *)
     step.
@@ -1659,8 +1766,11 @@ Module DIRTREE.
     eauto.
 
     step.
-    apply pimpl_or_r; right; cancel.
-    admit. admit. admit. admit.
+    apply pimpl_or_r; right; cancel; eauto.
+    eapply subtree_graft_absorb; eauto.
+
+    Grab Existential Variables.
+    all: try exact emp; try exact empty_mem.
   Qed.
 
 
