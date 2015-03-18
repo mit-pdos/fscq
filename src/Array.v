@@ -921,15 +921,25 @@ Proof.
   eapply arrayN_oob'; eauto.
 Qed.
 
-Lemma array_app: forall T (l1 l2: list T) a1 a2,
-  a2 = a1 ^+ $ (length l1) ->
-  array a1 l1 $1 * array a2 l2 $1 <=p=> array a1 (l1 ++ l2) $1.
+Lemma array_app_stride : forall T (l1 l2: list T) a1 a2 stride,
+  a2 = a1 ^+ $ (length l1) ^* stride ->
+  array a1 l1 stride * array a2 l2 stride <=p=> array a1 (l1 ++ l2) stride.
 Proof.
   induction l1.
   intros; word2nat_auto; split; cancel; apply equal_arrays; word2nat_auto.
   intros; simpl; rewrite sep_star_assoc. rewrite IHl1. auto.
   simpl in *.
   word2nat_simpl. rewrite <- plus_assoc. auto.
+Qed.
+
+Lemma array_app : forall T (l1 l2: list T) a1 a2,
+  a2 = a1 ^+ $ (length l1) ->
+  array a1 l1 $1 * array a2 l2 $1 <=p=> array a1 (l1 ++ l2) $1.
+Proof.
+  intros.
+  apply array_app_stride.
+  subst.
+  ring.
 Qed.
 
 
@@ -1279,6 +1289,51 @@ Proof.
   rewrite skipn_repeat by omega.
   rewrite app_repeat.
   f_equal; omega.
+Qed.
+
+Local Opaque pow2.
+
+Lemma firstn_nonnil : forall T (l : list T) n, 0 < n -> l <> nil ->
+  exists e l', firstn n l = e :: l'.
+Proof.
+  destruct l; simpl; intros; try congruence.
+  destruct n; simpl; try omega.
+  eauto.
+Qed.
+
+Lemma skipn_nonnil : forall T (l : list T) n, n < length l ->
+  exists e l', skipn n l = e :: l'.
+Proof.
+  induction l; simpl; intros; try omega.
+  destruct n.
+  exists a; exists l; eauto.
+  destruct (IHl n); try omega.
+  destruct H0.
+  eauto.
+Qed.
+
+Theorem array_max_length : forall T (l : list T) m start stride,
+  array start l stride m -> length l <= pow2 addrlen.
+Proof.
+  intros.
+  setoid_rewrite <- (firstn_skipn (pow2 addrlen)) in H.
+  pose proof (@array_app_stride T (firstn (pow2 addrlen) l)
+                                  (skipn (pow2 addrlen) l)
+                                  start
+                                  (start ^+ $ (pow2 addrlen) ^* stride)
+                                  stride).
+  destruct (le_dec (length l) (pow2 addrlen)); auto.
+  destruct H0.
+  rewrite firstn_length. rewrite Min.min_l by omega. auto.
+  apply H1 in H. clear H0 H1.
+  rewrite natToWord_pow2 in *. ring_simplify (start ^+ $0 ^* stride) in H.
+  edestruct firstn_nonnil with (l:=l) (n:=pow2 addrlen).
+  apply zero_lt_pow2. destruct l; simpl in *; try omega; discriminate.
+  edestruct skipn_nonnil with (l:=l) (n:=pow2 addrlen).
+  omega.
+  repeat deex.
+  rewrite H0 in H. rewrite H1 in H. simpl in H.
+  exfalso. eapply ptsto_conflict_F with (a:=start). pred_apply' H. cancel.
 Qed.
 
 
