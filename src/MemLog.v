@@ -275,6 +275,13 @@ Module MEMLOG.
 
   Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
 
+  Lemma length_synced_list : forall l,
+    length (synced_list l) = length l.
+  Proof.
+    unfold synced_list; intros.
+    rewrite combine_length. rewrite repeat_length. rewrite Nat.min_idempotent. auto.
+  Qed.
+
   Definition data_rep (xp: memlog_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
     array (DataStart xp) m $1.
 
@@ -2060,6 +2067,65 @@ Module MEMLOG.
     cancel.
     rewrite would_recover_either'_pred'_diskIs.
     cancel.
+  Qed.
+
+  Lemma would_recover_either_pred'_diskIs_rev : forall xp old new,
+    goodSizeEq addrlen (length new) ->
+    would_recover_either_pred' xp old (diskIs (list2mem new)) =p=>
+    would_recover_either' xp old new.
+  Proof.
+    unfold would_recover_either_pred', would_recover_either'.
+    intros; norm; intuition; unfold stars; simpl; unfold diskIs in *.
+    - cancel.
+    - cancel.
+    - cancel.
+    - cancel.
+    - do 4 or_r. or_l.
+      unfold rep_inner, data_rep, cur_rep.
+      setoid_rewrite array_max_length_pimpl at 1.
+      cancel.
+      eapply list2mem_inj; eauto.
+      rewrite replay_length. rewrite length_synced_list in *. auto.
+    - do 5 or_r. or_l.
+      unfold rep_inner, data_rep, cur_rep.
+      setoid_rewrite array_max_length_pimpl at 1.
+      cancel.
+      eapply list2mem_inj; eauto.
+      rewrite replay_length. rewrite length_synced_list in *. auto.
+    - do 6 or_r. or_l.
+      unfold rep_inner, data_rep, cur_rep.
+      setoid_rewrite array_max_length_pimpl at 1.
+      cancel.
+      unfold equal_unless_in in *; intuition.
+      eapply list2mem_inj; eauto.
+      rewrite replay_length. rewrite length_synced_list in *. rewrite H0 in *. auto.
+    - do 7 or_r. or_l.
+      unfold rep_inner, data_rep, cur_rep.
+      setoid_rewrite array_max_length_pimpl at 1.
+      cancel.
+      replace (replay m d) with (new); try cancel.
+      eapply list2mem_inj; eauto.
+      rewrite length_synced_list in *. rewrite replay_length in *. auto.
+      eapply list2mem_inj; eauto.
+      rewrite length_synced_list in *. rewrite replay_length in *. auto.
+    - repeat or_r.
+      unfold rep_inner, data_rep, cur_rep.
+      setoid_rewrite array_max_length_pimpl at 1.
+      cancel.
+      replace (a) with (new); try cancel.
+      eapply list2mem_inj; eauto.
+      rewrite length_synced_list in *. auto.
+      eauto.
+  Qed.
+
+  Lemma would_recover_either_pred_diskIs_rev : forall xp F old new,
+    goodSizeEq addrlen (length new) ->
+    would_recover_either_pred xp F old (diskIs (list2mem new)) =p=>
+    would_recover_either xp F old new.
+  Proof.
+    unfold would_recover_either_pred, would_recover_either.
+    intros; cancel.
+    apply would_recover_either_pred'_diskIs_rev; auto.
   Qed.
 
   Lemma would_recover_either'_pred'_pimpl : forall xp old new p,

@@ -1344,6 +1344,14 @@ Proof.
   eauto.
 Qed.
 
+Theorem array_max_length_pimpl : forall T (l : list T) start stride,
+  array start l stride =p=> array start l stride * [[ goodSizeEq addrlen (length l) ]].
+Proof.
+  unfold pimpl; intros.
+  pred_apply; cancel.
+  eapply array_max_length; eauto.
+Qed.
+
 
 (** * Operations for array accesses, to guide automation *)
 
