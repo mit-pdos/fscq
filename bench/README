@@ -5,3 +5,7 @@ How to run the benchmarks:
   ./run-bench.sh mailbench './mailbench.sh ~/proj/sv6 /tmp/ft'
 
 Install fusexmp from fuse-2.9.3/example.
+
+For crash testing:
+
+  ./crashtest.sh ./crash-setup.sh ./crash-check.sh
