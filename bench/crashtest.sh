@@ -23,7 +23,7 @@ for CRASHDISK in /tmp/crashlog-*.img; do
   FUSEPID=$!
   sleep 1
 
-  $CHECK /tmp/ft
+  $CHECK /tmp/ft >$CRASHDISK.out 2>&1
   fusermount -u /tmp/ft
   wait $FUSEPID
 done
