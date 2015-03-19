@@ -2565,5 +2565,8 @@ End MEMLOG.
 
 
 
+Global Opaque MEMLOG.begin.
+Global Opaque MEMLOG.abort.
 Global Opaque MEMLOG.write.
+Global Opaque MEMLOG.write_array.
 Arguments MEMLOG.rep : simpl never.
