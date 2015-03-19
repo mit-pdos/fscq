@@ -252,15 +252,14 @@ Module DIRTREE.
 
   Theorem tree_dir_names_pred_notfound : forall l fnlist subtree' name,
     ~ In name (map fst l) ->
-    tree_dir_names_pred' l =p=>
+    tree_dir_names_pred' l <=p=>
     tree_dir_names_pred' (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
   Proof.
     induction l; simpl; intros.
-    cancel.
+    auto.
     destruct a; simpl.
     destruct (string_dec s name); subst; try intuition.
-    cancel.
-    eauto.
+    split; cancel; apply IHl; eauto.
   Qed.
 
   Theorem tree_dir_names_pred'_update : forall l fnlist subtree subtree' name,
@@ -286,29 +285,66 @@ Module DIRTREE.
       cancel. apply H2. inversion H4; eauto.
   Qed.
 
+  Lemma update_subtree_preserve_name : forall l fnlist s subtree,
+    map fst (map (update_subtree_helper (update_subtree fnlist subtree) s) l) = map fst l.
+  Proof.
+    induction l; simpl; intros; auto.
+    unfold update_subtree_helper at 1.
+    destruct a. destruct (string_dec s0 s); subst; auto.
+    rewrite IHl. f_equal.
+    rewrite IHl; auto.
+  Qed.
+
+  Theorem tree_dir_names_pred'_update_inv : forall l fnlist subtree subtree' name,
+    fold_right (find_subtree_helper (find_subtree fnlist) name) None l = Some subtree ->
+    dirtree_inum subtree = dirtree_inum subtree' ->
+    dirtree_isdir subtree = dirtree_isdir subtree' ->
+    tree_dir_names_pred' (map (update_subtree_helper (update_subtree fnlist subtree') name) l)
+    =p=> tree_dir_names_pred' l.
+  Proof.
+    intros; rewrite tree_dir_names_pred'_distinct; cancel.
+    induction l; simpl; intros.
+    cancel.
+
+    destruct a.
+    case_eq (update_subtree_helper (update_subtree fnlist subtree') name (s, d)); intros.
+    unfold update_subtree_helper in H2.
+    simpl in *.
+    destruct (string_dec s name); subst.
+    - inversion H2; clear H2; subst; simpl in *.
+      erewrite <- tree_dir_names_pred_update'; eauto. cancel.
+      apply tree_dir_names_pred_notfound. inversion H4; eauto.
+      erewrite <- update_subtree_preserve_name; eauto.
+    - inversion H2; clear H2; subst; simpl in *.
+      cancel. apply H2. inversion H4; eauto.
+  Qed.
+
   Theorem tree_dir_names_pred_update : forall xp w l fnlist subtree subtree' name,
     fold_right (find_subtree_helper (find_subtree fnlist) name) None l = Some subtree ->
     dirtree_inum subtree = dirtree_inum subtree' ->
     dirtree_isdir subtree = dirtree_isdir subtree' ->
-    tree_dir_names_pred xp w l =p=>
+    tree_dir_names_pred xp w l <=p=>
     tree_dir_names_pred xp w (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
   Proof.
-    unfold tree_dir_names_pred; intros; cancel; eauto.
+    unfold tree_dir_names_pred; intros; split; cancel; eauto.
     pred_apply.
     eapply tree_dir_names_pred'_update; eauto.
+    pred_apply.
+    eapply tree_dir_names_pred'_update_inv; eauto.
   Qed.
 
   Lemma dirlist_pred_except_notfound' : forall xp l fnlist name subtree',
     ~ In name (map fst l) ->
-    dirlist_pred_except (tree_pred xp) (tree_pred_except xp fnlist) name l =p=>
+    dirlist_pred_except (tree_pred xp) (tree_pred_except xp fnlist) name l <=p=>
     dirlist_pred (tree_pred xp) (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
   Proof.
     induction l; simpl; intros.
-    cancel.
+    auto.
     destruct a; simpl. destruct (string_dec s name); subst.
     - edestruct H. eauto.
-    - cancel. eauto.
+    - split; cancel; apply IHl; eauto.
   Qed.
+
 
   Theorem subtree_absorb : forall xp fnlist tree subtree subtree',
     find_subtree fnlist tree = Some subtree ->
@@ -1592,18 +1628,6 @@ Module DIRTREE.
     eapply notindomain_mem_union; eauto.
   Qed.
 
-  Lemma tree_pred_except_update_same : forall xp path tree subtree,
-    tree_pred_except xp path (update_subtree path subtree tree)
-    =p=> tree_pred_except xp path tree.
-  Proof.
-    induction path; intros; eauto.
-    destruct tree.
-    simpl; cancel.
-    simpl.
-    admit.
-  Qed.
-
-
   Lemma dirlist_pred_add_notin: forall xp ents name subtree,
     ~ In name (map fst ents)
     -> NoDup (map fst ents)
@@ -1634,6 +1658,35 @@ Module DIRTREE.
     inversion H; auto.
   Qed.
 
+  Lemma tree_pred_except_update : forall xp path inum ents l tree,
+    find_subtree path tree = Some (TreeDir inum ents)
+    -> tree_pred_except xp path (update_subtree path (TreeDir inum l) tree)
+    =p=> tree_pred_except xp path tree.
+  Proof.
+    induction path; intros; eauto.
+    destruct tree; simpl in *.
+    cancel.
+    rewrite <- tree_dir_names_pred_update; eauto.
+    rewrite dir_names_distinct at 1; cancel.
+
+    induction l0; simpl in *; intros; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst.
+    destruct (string_dec a a); try congruence.
+
+    inversion H3; subst.
+    rewrite <- dirlist_pred_except_notfound; auto.
+    rewrite <- dirlist_pred_except_notfound'; auto.
+    cancel.
+    eapply IHpath; eauto.
+    contradict H2.
+    erewrite <- update_subtree_preserve_name; eauto.
+
+    destruct (string_dec s a); subst; try congruence.
+    cancel.
+    inversion H3; eauto.
+  Qed.
+
   Lemma subtree_graft_absorb_delete : forall xp inum ents root f path name dsmap dsmap' subtree x,
     SDIR.rep f (Prog.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
     -> find_subtree path root = Some (TreeDir inum ents)
@@ -1652,7 +1705,7 @@ Module DIRTREE.
     cancel.
     unfold tree_dir_names_pred.
     cancel; eauto.
-    rewrite tree_pred_except_update_same; cancel.
+    rewrite tree_pred_except_update; eauto; cancel.
     rewrite sep_star_comm.
     rewrite dirlist_pred_absorb_notin; eauto.
     apply dirlist_pred_add_delete.
