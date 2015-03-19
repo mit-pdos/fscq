@@ -1041,6 +1041,17 @@ Proof.
   firstorder.
 Qed.
 
+Theorem notindomain_mem_union : forall a (m1 m2 : @mem AT AEQ V),
+  notindomain a (mem_union m1 m2)
+  <-> notindomain a m1 /\ notindomain a m2.
+Proof.
+  unfold notindomain, mem_union; split; intros; intuition.
+  destruct (m1 a); auto.
+  destruct (m1 a); auto.
+  inversion H.
+  rewrite H0; auto.
+Qed.
+
 Theorem notindomain_indomain_conflict : forall a (m : @mem AT AEQ V),
   notindomain a m -> indomain a m -> False.
 Proof.
