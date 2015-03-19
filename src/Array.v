@@ -934,7 +934,7 @@ Proof.
   intros; word2nat_auto; split; cancel; apply equal_arrays; word2nat_auto.
   intros; simpl; rewrite sep_star_assoc. rewrite IHl1. auto.
   simpl in *.
-  word2nat_simpl. rewrite <- plus_assoc. auto.
+  subst. words.
 Qed.
 
 Lemma array_app : forall T (l1 l2: list T) a1 a2,
