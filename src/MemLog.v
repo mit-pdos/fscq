@@ -1748,28 +1748,54 @@ Module MEMLOG.
      CRASH          would_recover_either xp F m1 m2
     >} commit xp mscs.
   Proof.
-    unfold commit, would_recover_either.
-    hoare_with log_unfold ltac:(info_eauto with replay).
-    cancel_with ltac:(info_eauto with replay).
-    admit.
-    or_r; cancel.
-    or_r; or_l; cancel_with auto.
-    eauto.
-    eauto.
-    admit.
-    admit.
-    admit.
-(*
-    or_l; cancel.
-    or_l; cancel.
-    unfold avail_region.
-    norm.
-    unfold stars; simpl.
-    rewrite sep_star_comm.
-    eapply pimpl_trans. rewrite <- emp_star. apply pimpl_refl.
-    array_match.
-    intuition.
-    solve_lengths.*)
+    unfold commit, would_recover_either, would_recover_either'.
+    hoare_with log_unfold ltac:(eauto with replay).
+    + or_l.
+      cancel_with ltac:(eauto with replay).
+      apply Map.is_empty_2 in H10.
+      unfold replay, replay'.
+      destruct (MapProperties.elements_Empty m) as [He ?].
+      rewrite He by auto.
+      auto.
+      apply Map.is_empty_2 in H10.
+      pose proof (@Map.empty_1 valu).
+      unfold ms_empty.
+      hnf. intros.
+      hnf in H10.
+      eapply eq_trans.
+      apply MapFacts.not_find_in_iff.
+      intro Hi.
+      hnf in Hi.
+      destruct Hi as [v ?].
+      eapply H10; eauto.
+      apply eq_sym.
+      apply MapFacts.not_find_in_iff.
+      intro Hi.
+      hnf in Hi.
+      destruct Hi as [v ?].
+      eapply H; eauto.
+    + or_r; or_r; or_r; or_r; or_r; or_r.
+      or_l. cancel. cancel.
+      eauto with replay.
+      eauto.
+      congruence.
+    + or_r; or_r; or_r; or_r; or_r; or_r; or_r.
+      or_l. cancel. cancel.
+      rewrite H18. cancel.
+      eauto.
+      congruence.
+    + repeat or_r. cancel.
+      rewrite H18. cancel.
+      eauto.
+    + or_r. or_l.
+      unfold avail_region.
+      cancel.
+      array_match.
+      reflexivity.
+      solve_lengths.
+    + or_r; or_r; or_r; or_r.
+      or_l. cancel. cancel.
+      solve_lengths.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
