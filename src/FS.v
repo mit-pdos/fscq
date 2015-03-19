@@ -479,6 +479,55 @@ Proof.
   cancel.
 Qed.
 
+Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
+
+Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
+  {<< m Ftop tree cwd tree_elem,
+  PRE     MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
+          [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs,ok)
+          [[ ok = false ]] * MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
+          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+          [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
+          [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
+          [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
+          [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
+          [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
+          [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
+  REC RET:^(mscs,fsxp)
+          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
+          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+          [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
+          [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
+          [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
+          [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
+          [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
+          [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
+  >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
+Proof.
+  unfold forall_helper; intros.
+  eexists.
+
+  intros.
+  eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx; eauto with prog.
+
+  cancel.
+  eauto.
+  step.
+  apply pimpl_refl.
+
+  autorewrite with crash_xform.
+  rewrite H3.
+  cancel.
+  step.
+Qed.
+
 Definition statfs T fsxp mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
