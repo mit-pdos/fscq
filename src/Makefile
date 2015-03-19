@@ -67,7 +67,7 @@ proof: Makefile.coqproof
 	@ln -sf ../coqproof codegen
 	$(MAKE) -f Makefile.coqproof
 
-parproof: coq $(patsubst %,coqparproof/%.vo,$(MODULES))
+parproof: $(patsubst %,coqparproof/%.vo,$(MODULES))
 
 Makefile.coq: Makefile $(VS_BUILD)
 	coq_makefile -R coqbuild Fscq $(VS_BUILD) -o Makefile.coq
