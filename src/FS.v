@@ -432,9 +432,9 @@ Definition lookup T fsxp dnum names mscs rx : prog T :=
   let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
   rx ^(mscs, r).
 
-Definition rename T fsxp dsrc srcname ddst dstname mscs rx : prog T :=
+Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, r) <- DIRTREE.rename fsxp dsrc srcname ddst dstname mscs;
+  let^ (mscs, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname mscs;
   If (bool_dec r true) {
     let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
     rx ^(mscs, ok)

@@ -437,20 +437,11 @@ fscqRename fr m_fsxp (_:src) (_:dst) = withMVar m_fsxp $ \fsxp -> do
   debugStart "RENAME" (src, dst)
   (srcparts, srcname) <- return $ splitDirsFile src
   (dstparts, dstname) <- return $ splitDirsFile dst
-  (rsrc, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) srcparts
-  (rdst, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dstparts
-  debugMore rsrc
-  debugMore rdst
-  case (rsrc, rdst) of
-    (Just (dsrc, isdirsrc), Just (ddst, isdirdst))
-      | isdirsrc && isdirdst -> do
-        (r, ()) <- fr $ FS.rename fsxp dsrc srcname ddst dstname
-        debugMore r
-        case r of
-          True -> return eOK
-          False -> return eIO
-      | otherwise -> return eNOTDIR
-    _ -> return eNOENT
+  (r, ()) <- fr $ FS.rename fsxp (coq_FSXPRootInum fsxp) srcparts srcname dstparts dstname
+  debugMore r
+  case r of
+    True -> return eOK
+    False -> return eIO
 fscqRename _ _ _ _ = return eIO
 
 fscqChmod :: FilePath -> FileMode -> IO Errno
