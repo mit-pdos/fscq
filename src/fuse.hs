@@ -26,6 +26,9 @@ import qualified DirName
 import System.Environment
 import Inode
 import Control.Concurrent.MVar
+import Data.Word
+import Text.Printf
+import qualified System.Process
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
@@ -72,7 +75,9 @@ main = do
 run_fuse :: String -> [String] -> IO()
 run_fuse disk_fn fuse_args = do
   fileExists <- System.Directory.doesFileExist disk_fn
-  ds <- init_disk disk_fn
+  ds <- case disk_fn of
+    "/tmp/crashlog.img" -> init_disk_crashlog disk_fn
+    _ -> init_disk disk_fn
   (s, fsxp) <- if fileExists
   then
     do
@@ -89,12 +94,12 @@ run_fuse disk_fn fuse_args = do
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
   m_fsxp <- newMVar fsxp
-  fuseRun "fscq" fuse_args (fscqFSOps ds (doFScall ds ref) m_fsxp) defaultExceptionHandler
+  fuseRun "fscq" fuse_args (fscqFSOps disk_fn ds (doFScall ds ref) m_fsxp) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
-fscqFSOps ds fr m_fsxp = defaultFuseOps
+fscqFSOps :: String -> DiskState -> FSrunner -> MVar Coq_fs_xparams -> FuseOperations HT
+fscqFSOps fn ds fr m_fsxp = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fr m_fsxp
   , fuseOpen = fscqOpen fr m_fsxp
   , fuseCreateDevice = fscqCreate fr m_fsxp
@@ -107,16 +112,55 @@ fscqFSOps ds fr m_fsxp = defaultFuseOps
   , fuseOpenDirectory = fscqOpenDirectory fr m_fsxp
   , fuseReadDirectory = fscqReadDirectory fr m_fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats fr m_fsxp
-  , fuseDestroy = fscqDestroy ds
+  , fuseDestroy = fscqDestroy ds fn
   , fuseSetFileTimes = fscqSetFileTimes
   , fuseRename = fscqRename fr m_fsxp
   , fuseSetFileMode = fscqChmod
   }
 
-fscqDestroy :: DiskState -> IO ()
-fscqDestroy ds = do
+applyFlushgroup :: DiskState -> [(Word64, Coq_word)] -> IO ()
+applyFlushgroup _ [] = return ()
+applyFlushgroup ds ((a, v) : rest) = do
+  applyFlushgroup ds rest
+  write_disk ds (W64 a) v
+
+applyFlushgroups :: DiskState -> [[(Word64, Coq_word)]] -> IO ()
+applyFlushgroups _ [] = return ()
+applyFlushgroups ds (flushgroup : rest) = do
+  applyFlushgroups ds rest
+  applyFlushgroup ds flushgroup
+
+materializeFlushgroups :: IORef Integer -> [[(Word64, Coq_word)]] -> IO ()
+materializeFlushgroups idxref groups = do
+  idx <- readIORef idxref
+  writeIORef idxref (idx+1)
+  _ <- System.Process.system $ printf "cp --sparse=always /tmp/crashlog.img /tmp/crashlog-%06d.img" idx
+  ds <- init_disk $ printf "/tmp/crashlog-%06d.img" idx
+  applyFlushgroups ds groups
+
+writeSubsets :: [a] -> [[a]]
+writeSubsets [] = [[]]
+writeSubsets (hd : tl) = tailsubsets ++ map (\x -> hd : x) tailsubsets
+  where tailsubsets = writeSubsets tl
+
+materializeCrashes :: IORef Integer -> [[(Word64, Coq_word)]] -> IO ()
+materializeCrashes idxref [] = materializeFlushgroups idxref []
+materializeCrashes idxref (lastgroup : othergroups) = do
+  materializeCrashes idxref othergroups
+  mapM_ (\lastsubset -> materializeFlushgroups idxref (lastsubset : othergroups)) $ writeSubsets lastgroup
+
+fscqDestroy :: DiskState -> String -> IO ()
+fscqDestroy ds disk_fn = do
   stats <- close_disk ds
   print_stats stats
+  case disk_fn of
+    "/tmp/crashlog.img" -> do
+      flushgroups <- get_flush_log ds
+      putStrLn $ "Number of flush groups: " ++ (show (length flushgroups))
+      putStrLn $ show flushgroups
+      idxref <- newIORef 0
+      materializeCrashes idxref flushgroups
+    _ -> return ()
 
 dirStat :: FuseContext -> FileStat
 dirStat ctx = FileStat
