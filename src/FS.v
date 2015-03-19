@@ -208,8 +208,7 @@ Theorem read_block_recover_ok : forall fsxp inum off mscs,
          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} read_block fsxp inum off mscs >> recover.
 Proof.
-  intros.
-  unfold forall_helper; intros m Fm Ftop tree pathname f B v.
+  unfold forall_helper; intros.
   eexists.
 
   intros.
@@ -226,7 +225,7 @@ Proof.
   step.
 
   rewrite MEMLOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
-  replace (m) with (a2) by ( eapply list2mem_inj; eauto ). cancel.
+  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.
   rewrite H3. rewrite MEMLOG.would_recover_either_pred_diskIs_rev by auto. cancel.
 Qed.
 
@@ -290,40 +289,20 @@ Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
             [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
   >>} write_block_inbounds fsxp inum off v mscs >> recover.
 Proof.
-  intros.
-  unfold forall_helper; intros flist A f B v0 Fm m.
-  exists (exists m' flist' f',
-          MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) m m' *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred.
+  unfold forall_helper; intros.
+  eexists.
 
   intros.
   eapply pimpl_ok3.
   eapply corr3_from_corr2_rx; eauto with prog.
 
-  cancel.
-  eapply pimpl_ok2; eauto with prog.
-  cancel.
-  cancel.
-  subst. apply pimpl_refl.
-  cancel.
-  subst. apply pimpl_refl.
-  apply pimpl_refl.
-
-  autorewrite with crash_xform.
-  norm'l. unfold stars; simpl.
-  autorewrite with crash_xform.
-  norm'l. unfold stars; simpl.
-  autorewrite with crash_xform.
-  norm'l. unfold stars; simpl.
-  autorewrite with crash_xform.
-  cancel.
-
+  cancel; eauto.
   step.
-  rewrite H3. cancel. cancel.
-  rewrite H3. cancel. cancel.
-  rewrite H3. cancel.
+
+  autorewrite with crash_xform.
+  rewrite H3.
+  cancel.
+  step.
 Qed.
 
 
@@ -519,10 +498,8 @@ Proof.
   eapply pimpl_ok3.
   eapply corr3_from_corr2_rx; eauto with prog.
 
-  cancel.
-  eauto.
+  cancel; eauto.
   step.
-  apply pimpl_refl.
 
   autorewrite with crash_xform.
   rewrite H3.
