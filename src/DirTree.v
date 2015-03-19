@@ -1592,7 +1592,7 @@ Module DIRTREE.
     eapply notindomain_mem_union; eauto.
   Qed.
 
-  Lemma pred_except_update : forall xp path tree subtree,
+  Lemma tree_pred_except_update_same : forall xp path tree subtree,
     tree_pred_except xp path (update_subtree path subtree tree)
     =p=> tree_pred_except xp path tree.
   Proof.
@@ -1603,10 +1603,42 @@ Module DIRTREE.
     admit.
   Qed.
 
-  Lemma subtree_graft_absorb_delete : forall xp inum ents root f path name dsmap subtree x,
+
+  Lemma dirlist_pred_add_notin: forall xp ents name subtree,
+    ~ In name (map fst ents)
+    -> NoDup (map fst ents)
+    -> dirlist_pred (tree_pred xp) (add_to_list name subtree ents)
+       =p=> tree_pred xp subtree * dirlist_pred (tree_pred xp) ents.
+  Proof.
+    induction ents; intros; simpl; auto.
+    destruct a. destruct (string_dec s name); subst; simpl.
+    cancel.
+    cancel.
+    inversion H0.
+    apply IHents; auto.
+  Qed.
+
+  Lemma dirlist_pred_add_delete : forall xp ents name subtree,
+    NoDup (map fst ents)
+    -> dirlist_pred (tree_pred xp) (add_to_list name subtree (delete_from_list name ents))
+       =p=> dirlist_pred (tree_pred xp) (add_to_list name subtree ents).
+  Proof.
+    induction ents; simpl; intros; auto.
+    destruct a.
+    destruct (string_dec s name); subst; simpl.
+    inversion H; subst.
+    apply dirlist_pred_add_notin; auto.
+    destruct (string_dec s name); subst; simpl.
+    congruence.
+    cancel; apply IHents.
+    inversion H; auto.
+  Qed.
+
+  Lemma subtree_graft_absorb_delete : forall xp inum ents root f path name dsmap dsmap' subtree x,
     SDIR.rep f (Prog.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
     -> find_subtree path root = Some (TreeDir inum ents)
     -> tree_dir_names_pred' (delete_from_list name ents) dsmap
+    -> tree_dir_names_pred' ents dsmap'
     -> notindomain name dsmap
     -> find_dirlist name ents = Some x
     -> BALLOC.valid_block xp inum
@@ -1620,7 +1652,12 @@ Module DIRTREE.
     cancel.
     unfold tree_dir_names_pred.
     cancel; eauto.
-    admit.
+    rewrite tree_pred_except_update_same; cancel.
+    rewrite sep_star_comm.
+    rewrite dirlist_pred_absorb_notin; eauto.
+    apply dirlist_pred_add_delete.
+    eapply dir_names_distinct' with (m := dsmap').
+    pred_apply; cancel.
     apply dir_names_pred_add_delete; auto.
   Qed.
 
