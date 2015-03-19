@@ -447,11 +447,11 @@ Module DIRTREE.
         * apply ptsto_valid in H0. apply ptsto_valid' in H.
           rewrite H in H0; inversion H0. subst. cancel.
         * apply ptsto_mem_except in H0.
-          rewrite IHl. cancel. 2: eauto.
+          rewrite IHl with (inum:=inum). cancel. 2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF.
           pred_apply; cancel. auto.
       + apply ptsto_mem_except in H0 as H0'.
-        rewrite IHl. cancel. 2: eauto.
+        rewrite IHl with (inum:=inum). cancel. 2: eauto.
         apply sep_star_comm in H.
         pose proof (ptsto_diff_ne H0 H).
         destruct (string_dec name s). exfalso. apply H1; eauto.
@@ -1030,7 +1030,7 @@ Module DIRTREE.
     simpl.
     apply ptsto_mem_except in H.
     rewrite <- sep_star_assoc.
-    rewrite IHdlist; eauto.
+    rewrite IHdlist with (inum:=inum); eauto.
     cancel.
     eapply ptsto_mem_except_exF; eauto.
   Qed.
