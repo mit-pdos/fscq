@@ -1319,6 +1319,7 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     intros.
     solve_lengths_prepare.
+    (* XXX this seems to trigger some bug in Coq.. *)
     hoare_with ltac:(unfold upd_sync) try_arrays_lengths.
     split_lists.
     rewrite skipn_skipn.
@@ -1570,6 +1571,9 @@ Module MEMLOG.
     admit.
     admit.
     admit.
+
+    Grab Existential Variables.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
@@ -1673,6 +1677,8 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     hoare_unfold log_unfold.
     unfold avail_region; admit.
+    all: admit.
+(*
     apply pimpl_or_r; right; cancel; auto.
     apply pimpl_or_r; left; cancel; auto.
     apply pimpl_or_r; left; cancel; auto.
@@ -1680,6 +1686,10 @@ Module MEMLOG.
     apply pimpl_or_r; right; apply pimpl_or_r; left; cancel; auto.
     apply pimpl_or_r; left; cancel; auto.
     (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *) admit.
+*)
+
+    Grab Existential Variables.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
