@@ -2102,6 +2102,21 @@ Module MEMLOG.
     cancel. cancel.
   Qed.
 
+  Lemma notxn_bounded_length : forall xp F old mscs,
+    rep xp F (NoTransaction old) mscs =p=>
+    rep xp F (NoTransaction old) mscs * [[ goodSizeEq addrlen (length old) ]].
+  Proof.
+    unfold rep; cancel.
+    unfold rep_inner, data_rep, synced_list in H0.
+    assert (goodSizeEq addrlen (length (List.combine old (repeat (@nil valu) (length old))))).
+    eapply array_max_length_F with (start:=DataStart _).
+    pred_apply' H0. cancel.
+    rewrite combine_length in *.
+    rewrite repeat_length in *.
+    rewrite Nat.min_idempotent in *.
+    auto.
+  Qed.
+
   (**
    * [after_crash_pred'] is similar to [would_recover_either_pred'] but describes
    * states after a crash (i.e., after [crash_xform]).  This is a smaller set of
