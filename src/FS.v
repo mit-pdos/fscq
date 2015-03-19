@@ -443,6 +443,42 @@ Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :
     rx ^(mscs, false)
   }.
 
+Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
+  {< m Ftop tree cwd tree_elem,
+  PRE     MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
+          [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs,ok)
+          [[ ok = false ]] * MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
+          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+          [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
+          [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
+          [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
+          [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
+          [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
+          [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
+  CRASH   MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) m (
+          exists srcnum srcents dstnum dstents subtree pruned renamed tree',
+          (DIRTREE.rep fsxp Ftop tree')%pred *
+          [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
+          [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
+          [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
+          [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
+          [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
+          [[ tree' = DIRTREE.update_subtree cwd renamed tree ]])
+  >} rename fsxp dnum srcpath srcname dstpath dstname mscs.
+Proof.
+  unfold rename.
+  hoare.
+  all: try rewrite MEMLOG.activetxn_would_recover_old.
+  all: try rewrite MEMLOG.notxn_would_recover_old.
+  all: try apply MEMLOG.would_recover_old_either_pred.
+  rewrite <- MEMLOG.would_recover_either_pred_pimpl.
+  cancel.
+Qed.
+
 Definition statfs T fsxp mscs rx : prog T :=
   mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
   let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
