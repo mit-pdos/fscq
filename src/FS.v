@@ -210,22 +210,24 @@ Theorem read_block_recover_ok : forall fsxp inum off mscs,
 Proof.
   intros.
   unfold forall_helper; intros m Fm Ftop tree pathname f B v.
-  exists (MEMLOG.would_recover_either (FSXPMemLog fsxp) (sb_rep fsxp) m m).
+  eexists.
 
   intros.
-  eapply pimpl_ok3.
+  eapply pimpl_ok3; intros.
   eapply corr3_from_corr2_rx; eauto with prog.
 
-  cancel.
-  cancel.
-  eauto.
-  eauto.
+  setoid_rewrite MEMLOG.notxn_bounded_length at 1.
+  cancel; eauto.
   step.
-  eauto.
+
   autorewrite with crash_xform.
+  rewrite MEMLOG.would_recover_either_pred_diskIs.
   cancel.
   step.
-  rewrite H3. cancel.
+
+  rewrite MEMLOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
+  replace (m) with (a2) by ( eapply list2mem_inj; eauto ). cancel.
+  rewrite H3. rewrite MEMLOG.would_recover_either_pred_diskIs_rev by auto. cancel.
 Qed.
 
 Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
