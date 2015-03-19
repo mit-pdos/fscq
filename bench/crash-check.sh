@@ -2,7 +2,7 @@
 
 DIR="$1"
 
-ls -la $DIR
+ls -l $DIR
 cat $DIR/*
 df -k $DIR
 df -i $DIR
