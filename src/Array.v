@@ -1313,9 +1313,9 @@ Proof.
 Qed.
 
 Theorem array_max_length : forall T (l : list T) m start stride,
-  array start l stride m -> length l <= pow2 addrlen.
+  array start l stride m -> goodSizeEq addrlen (length l).
 Proof.
-  intros.
+  unfold goodSizeEq; intros.
   setoid_rewrite <- (firstn_skipn (pow2 addrlen)) in H.
   pose proof (@array_app_stride T (firstn (pow2 addrlen) l)
                                   (skipn (pow2 addrlen) l)
@@ -1334,6 +1334,14 @@ Proof.
   repeat deex.
   rewrite H0 in H. rewrite H1 in H. simpl in H.
   exfalso. eapply ptsto_conflict_F with (a:=start). pred_apply' H. cancel.
+Qed.
+
+Theorem array_max_length_F : forall T (l : list T) m start stride F,
+  (F * array start l stride)%pred m -> goodSizeEq addrlen (length l).
+Proof.
+  unfold_sep_star. intros. repeat deex.
+  eapply array_max_length.
+  eauto.
 Qed.
 
 

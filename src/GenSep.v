@@ -574,16 +574,15 @@ Proof.
       auto.
 Qed.
 
-Theorem list2mem_inj : forall V (a b : list V) sz,
-  length a <= pow2 sz ->
-  length b <= pow2 sz ->
-  sz = addrlen ->
+Theorem list2mem_inj : forall V (a b : list V),
+  goodSizeEq addrlen (length a) ->
+  goodSizeEq addrlen (length b) ->
   list2mem a = list2mem b ->
   a = b.
 Proof.
-  intros; subst.
-  erewrite list2mem_fix_eq' in H2; eauto.
-  erewrite list2mem_fix_eq' in H2; eauto.
+  unfold goodSizeEq; intros; subst.
+  erewrite list2mem_fix_eq' in H1; eauto.
+  erewrite list2mem_fix_eq' in H1; eauto.
   eapply list2mem_inj' with (sz:=addrlen); eauto; omega.
 Qed.
 

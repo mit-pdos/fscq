@@ -1143,6 +1143,9 @@ Qed.
 Definition goodSize sz n := n < pow2 sz.
 Arguments goodSize : simpl never.
 
+Definition goodSizeEq sz n := n <= pow2 sz.
+Arguments goodSizeEq : simpl never.
+
 Theorem wordToNat_good : forall sz (w : word sz), goodSize sz (wordToNat w).
 Proof.
   apply wordToNat_bound.
