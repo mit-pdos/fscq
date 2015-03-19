@@ -157,7 +157,6 @@ fscqDestroy ds disk_fn = do
     "/tmp/crashlog.img" -> do
       flushgroups <- get_flush_log ds
       putStrLn $ "Number of flush groups: " ++ (show (length flushgroups))
-      putStrLn $ show flushgroups
       idxref <- newIORef 0
       materializeCrashes idxref flushgroups
     _ -> return ()
