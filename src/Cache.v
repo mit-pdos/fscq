@@ -225,7 +225,7 @@ Module BUFCACHE.
 
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
 
-    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
+    rewrite <- diskIs_combine_same with (m:=m) (a:=a); try pred_apply; cancel.
 
     rewrite map_add_cardinal; auto.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
@@ -258,7 +258,7 @@ Module BUFCACHE.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
 
-    rewrite <- diskIs_combine_upd with (m:=m); try pred_apply; cancel.
+    rewrite <- diskIs_combine_upd with (m:=m) (a:=a); try pred_apply; cancel.
     rewrite map_add_dup_cardinal; eauto.
     destruct (weq a a0); subst.
     apply mapsto_add in H; subst.
@@ -269,7 +269,7 @@ Module BUFCACHE.
     apply sep_star_comm; apply sep_star_comm in H3.
     eapply ptsto_upd; pred_apply; cancel.
 
-    rewrite <- diskIs_combine_upd with (m:=m); cancel.
+    rewrite <- diskIs_combine_upd with (m:=m) (a:=a); cancel.
     rewrite map_add_cardinal; eauto.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
@@ -320,7 +320,7 @@ Module BUFCACHE.
     apply sep_star_comm. eapply ptsto_upd. apply sep_star_comm. eauto.
     cancel.
     apply pimpl_or_r; left.
-    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
+    rewrite <- diskIs_combine_same with (m:=m) (a:=a); try pred_apply; cancel.
     eauto.
     eauto.
     eauto.
