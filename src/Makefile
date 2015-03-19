@@ -79,7 +79,7 @@ clean:: Makefile.coq Makefile.coqproof
 	$(MAKE) -f Makefile.coq clean
 	$(MAKE) -f Makefile.coqproof clean
 	rm -f Makefile.coq
-	rm -rf codegen coqbuild coqproof _build fstest hstest disk.img
+	rm -rf codegen coqbuild coqproof coqparproof _build fstest hstest disk.img
 
 .PHONY: coq
 .PHONY: proof
