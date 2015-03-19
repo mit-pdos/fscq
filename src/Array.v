@@ -834,6 +834,11 @@ Proof.
 Qed.
 
 
+Hint Extern 0 (okToUnify (?a |-> _) (($0 ^+ ?a ^* $1) |-> _)) =>
+  unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
+Hint Extern 0 (okToUnify (($0 ^+ ?a ^* $1) |-> _) (?a |-> _)) =>
+  unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
+
 Theorem array_progupd : forall V l off (v : V) m (default : V),
   array $0 l $1 m
   -> wordToNat off < length l
