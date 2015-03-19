@@ -6,13 +6,6 @@ FUNCTIONALITY
 PROOFS/SPECS
 
 - memlog proofs
-- directory proofs
-- create/delete files (DirAlloc.v)
-- end-to-end theorems in FS
-
-EXPERIMENTS
-
-- performance
 
 NOT GOING TO HAPPEN / NICE TO HAVE
 
