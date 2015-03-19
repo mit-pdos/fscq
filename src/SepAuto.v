@@ -352,9 +352,6 @@ Ltac wordcmp_one :=
 
 Ltac wordcmp := repeat wordcmp_one.
 
-Hint Extern 0 (okToUnify (?a |-> _) (?b |-> _)) =>
-  unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
-
 Inductive pick {AT AEQ V} (lhs : pred) : list (@pred AT AEQ V) -> list pred -> Prop :=
 | PickFirst : forall p ps,
   okToUnify lhs p
