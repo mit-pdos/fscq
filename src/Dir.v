@@ -239,7 +239,10 @@ Module DIR.
     apply pimpl_or_r; right; cancel.
     exists l0, b; split; eauto.
     setoid_rewrite <- item0_list_dent0.
-    unfold upd in *; rewrite roundTrip_0 in *; auto.
+    (* XXX the following line causes coqtop to use up ~infinite memory at Qed.
+     * putting [abstract] around the entire line seems to do the same..  why?
+     *)
+    unfold upd in *; abstract ( simpl in *; auto ).
     apply helper_deext_ok; auto.
   Qed.
 
