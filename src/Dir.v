@@ -238,11 +238,26 @@ Module DIR.
     hoare.
     apply pimpl_or_r; right; cancel.
     exists l0, b; split; eauto.
-    setoid_rewrite <- item0_list_dent0.
-    (* XXX the following line causes coqtop to use up ~infinite memory at Qed.
-     * putting [abstract] around the entire line seems to do the same..  why?
+
+    (**
+     * The theorem [item0_list_dent0] talks about [@repeat (Rec.data dent_type)],
+     * but our subgoal has expanded out the value of [Rec.data dent_type].  To
+     * be able to use the theorem, we have to expand out [Rec.data dent_type] in
+     * its type..  Not doing this causes [rewrite] to fail, and [setoid_rewrite]
+     * to take a long time.
      *)
-    unfold upd in *; abstract ( simpl in *; auto ).
+    pose proof item0_list_dent0 as item0_list_dent0'.
+    simpl in *.
+    rewrite <- item0_list_dent0'.
+
+    (**
+     * If we leave [items_per_valu] as-is, Coq will apparently try to expand
+     * it out at [Qed], which uses up a lot of memory and eventually crashes.
+     * Lose the information about the exact value of [items_per_valu] before
+     * finishing this subgoal.
+     *)
+    generalize dependent itemsz_ok. generalize dependent items_per_valu. intros.
+    abstract ( unfold upd in *; auto ).
     apply helper_deext_ok; auto.
   Qed.
 

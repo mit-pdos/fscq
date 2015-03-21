@@ -123,6 +123,12 @@ Proof.
   induction vs; destruct n; simpl; intuition; omega.
 Qed.
 
+Lemma selN_updN_eq_default : forall V vs n (v : V),
+  selN (updN vs n v) n v = v.
+Proof.
+  induction vs; destruct n; simpl; intuition; omega.
+Qed.
+
 Lemma selN_updN_ne : forall V vs n n' v (default : V),
   n <> n'
   -> selN (updN vs n v) n' default = selN vs n' default.
@@ -146,7 +152,31 @@ Proof.
   apply wordToNat_inj; auto.
 Qed.
 
+Lemma selN_eq_updN_eq : forall A (l : list A) i a def,
+  a = selN l i def
+  -> updN l i a = l.
+Proof.
+  induction l; destruct i; simpl; firstorder.
+  f_equal; auto.
+  erewrite IHl; eauto.
+Qed.
+
+
 Hint Rewrite selN_updN_eq sel_upd_eq using (simpl; omega).
+
+Lemma in_skipn_S : forall A l n (a : A) def,
+  selN l n def <> a
+  -> In a (skipn n l)
+  -> In a (skipn (S n) l).
+Proof.
+  induction l; destruct n; simpl; firstorder.
+Qed.
+
+Lemma in_skipn_in : forall A l n (a : A),
+  In a (skipn n l) -> In a l.
+Proof.
+  induction l; destruct n; simpl; firstorder.
+Qed.
 
 Lemma firstn_updN : forall T (v : T) vs i j,
   i <= j
@@ -510,6 +540,14 @@ Proof.
   intros.
   unfold sel.
   apply selN_map; auto.
+Qed.
+
+Lemma in_selN_map : forall A B (l : list (A*B)) i def1 def2,
+  i < length l
+  -> In (selN (map fst l) i def1, selN (map snd l) i def2) l.
+Proof.
+  induction l; destruct i; simpl; firstorder.
+  left; destruct a; auto.
 Qed.
 
 Theorem updN_map_seq_app_eq : forall T (f : nat -> T) len start (v : T) x,
@@ -1506,6 +1544,16 @@ Proof.
   rewrite combine_length.
   rewrite H; intuition.
 Qed.
+
+Lemma combine_length_eq2: forall A B (a : list A) (b : list B),
+  length a = length b
+  -> length (List.combine a b) = length b.
+Proof.
+  intros.
+  rewrite combine_length.
+  rewrite H; intuition.
+Qed.
+
 
 Theorem combine_app: forall A B (al ar : list A) (bl br: list B),
   length al = length bl

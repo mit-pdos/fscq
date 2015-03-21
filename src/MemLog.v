@@ -374,6 +374,7 @@ Module MEMLOG.
     | AppliedUnsyncTxn cur =>
       (LogHeader xp) |=> (header_to_valu (mk_header (Map.cardinal ms)))
     * exists old old_unflushed, data_rep xp (List.combine cur old_unflushed)
+    * [[ length cur = length old_unflushed ]]
     * [[ nil_unless_in (map fst (Map.elements ms)) old_unflushed ]]
     * log_rep xp old ms
     * cur_rep old ms cur
@@ -1319,7 +1320,6 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     intros.
     solve_lengths_prepare.
-    (* XXX this seems to trigger some bug in Coq.. *)
     hoare_with ltac:(unfold upd_sync) try_arrays_lengths.
     split_lists.
     rewrite skipn_skipn.
@@ -1571,9 +1571,6 @@ Module MEMLOG.
     admit.
     admit.
     admit.
-
-    Grab Existential Variables.
-    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
@@ -1590,6 +1587,7 @@ Module MEMLOG.
           * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
           * log_rep xp cur ms
           * exists cur_unflushed, data_rep xp (List.combine cur cur_unflushed)
+          * [[ length cur = length cur_unflushed ]]
           * [[ nil_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur_unflushed ]])%pred d' ]]
     OnCrash
       exists mscs', rep xp F (AppliedUnsyncTxn cur) mscs'
@@ -1599,6 +1597,106 @@ Module MEMLOG.
     Rof ^(cs);
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx ^(ms, cs).
+
+  Lemma valid_entries_addr_valid : forall i m d def,
+    (i < $ (Map.cardinal m))%word
+    -> valid_entries (replay m d) m
+    -> # (sel (map fst (Map.elements m)) i def) < length (replay m d).
+  Proof.
+    intros.
+    eapply H0.
+    apply MapFacts.elements_mapsto_iff.
+    apply In_InA.
+    apply MapProperties.eqke_equiv.
+    apply in_selN_map.
+    solve_lengths.
+    Grab Existential Variables.
+    exact $0.
+  Qed.
+
+  Lemma nil_unless_in_S : forall n l ms,
+    nil_unless_in (skipn n ms) l
+    -> nil_unless_in (skipn (S n) ms) (upd l (selN ms n $0) nil).
+  Proof.
+    unfold nil_unless_in, upd, sel; intros.
+    destruct (Nat.eq_dec (# (selN ms n $0)) (# a)).
+    rewrite e; rewrite selN_updN_eq_default; auto.
+    rewrite selN_updN_ne; auto.
+    apply H. contradict H0.
+    eapply in_skipn_S; eauto.
+    apply wordToNat_neq_inj; eauto.
+  Qed.
+
+  Lemma nil_unless_in_bwd : forall n l ms,
+    nil_unless_in (skipn n ms) l
+    -> nil_unless_in ms l.
+  Proof.
+    unfold nil_unless_in, sel, upd; intros.
+    apply H.
+    contradict H0.
+    eapply in_skipn_in; eauto.
+  Qed.
+
+  Lemma helper_upd_sync_pimpl : forall m d l ms s a,
+    length (replay m d) = length l
+    -> array s (upd_sync (List.combine (replay m d) l) (sel ms a $0) ($0, nil)) $1
+    =p=> array s (List.combine (replay m d) (upd l (sel ms a $0) nil)) $1.
+  Proof.
+    intros.
+    apply equal_arrays; auto; unfold upd_sync.
+    rewrite <- combine_upd; f_equal.
+    eapply selN_eq_updN_eq; unfold sel.
+    rewrite selN_combine; simpl; eauto.
+  Qed.
+
+  Lemma repeat_selN_is : forall A l (a def : A),
+    (forall i, selN l i def = a)
+    -> l = repeat a (length l).
+  Proof.
+    induction l; intros; auto.
+    erewrite <- (H 0). simpl.
+    unfold repeat; fold repeat.
+    f_equal.
+    pose proof (H 0); simpl in H0; subst.
+    eapply IHl with (def := def); intro.
+    rewrite <- (H (S i)).
+    simpl; auto.
+  Qed.
+
+  Lemma nil_unless_in_oob' : forall n l n' ms,
+    nil_unless_in (skipn n ms) l
+    -> goodSizeEq addrlen (length l)
+    -> n = length ms
+    -> n' = length l
+    -> l = repeat nil n'.
+  Proof.
+    intros; subst.
+    rewrite skipn_oob in H by auto.
+    unfold nil_unless_in, sel in *.
+    apply repeat_selN_is with (def := nil); intro.
+    destruct (lt_dec i (pow2 addrlen)).
+    erewrite <- (H (natToWord addrlen i)) at 2; auto.
+    f_equal.
+    erewrite wordToNat_natToWord_idempotent'; eauto.
+    rewrite selN_oob; auto.
+    unfold goodSizeEq in H0.
+    omega.
+  Qed.
+
+  Lemma nil_unless_in_oob : forall n l n' ms F xp l' d m ,
+    nil_unless_in (skipn n ms) l
+    -> n = length ms
+    -> n' = length l
+    -> (F * array xp (List.combine (replay l' d) l) $ (1))%pred m
+    -> length (replay l' d) = length l
+    -> l = repeat nil n'.
+  Proof.
+    intros.
+    eapply nil_unless_in_oob'; eauto.
+    rewrite array_max_length_pimpl in H2.
+    destruct_lift H2.
+    erewrite <- combine_length_eq2; eauto.
+  Qed.
 
   Theorem apply_sync_ok: forall xp mscs,
     {< m F,
@@ -1613,43 +1711,49 @@ Module MEMLOG.
     unfold apply_sync; log_unfold.
     step.
     step.
+
     (* address passed to [sync_array] is in-bounds *)
-    admit.
-    step.
-    instantiate (1 := upd l1 (map fst (Map.elements m) $[ m1 ]) nil).
+    rewrite combine_length_eq by auto.
+    apply valid_entries_addr_valid; auto.
+
     (* updating the (List.combine cur cur_unflushed) *)
-    admit.
+    (* cannot [step], it will unify length _ = length _ *)
+    eapply pimpl_ok2; eauto with prog; intros; cancel.
+    apply helper_upd_sync_pimpl; auto.
+    rewrite length_upd; auto.
+
     (* nil_unless_in for one less item *)
-    admit.
+    erewrite wordToNat_plusone; eauto.
+    apply nil_unless_in_S; auto.
 
     (* crash condition *)
-    apply pimpl_or_r; left. cancel; auto.
+    or_l; cancel; auto.
+    eapply nil_unless_in_bwd; eauto.
 
-    (* nil_unless_in *)
-    admit.
-
-    (* crash condition *)
-    apply pimpl_or_r; left. cancel; auto.
+    or_l; cancel; auto.
     cancel.
-    instantiate (1 := upd l1 (map fst (Map.elements m) $[ m1 ]) nil).
-    admit.
-    admit.
+    apply helper_upd_sync_pimpl; auto.
+    rewrite length_upd; auto.
+    eapply nil_unless_in_bwd.
+    eapply nil_unless_in_S; eauto.
 
     step.
     step.
 
-    admit.
+    apply equal_arrays; auto; f_equal.
+    eapply nil_unless_in_oob; eauto.
+    abstract solve_lengths.
 
-    admit.
-    admit.
+    or_l; cancel; auto.
+    eapply nil_unless_in_bwd; eauto.
 
-    apply pimpl_or_r; left. cancel; eauto.
-(*
-    rewrite skipn_oob in H22 by solve_lengths.
-*)
+    or_r; cancel; auto.
+    cancel.
+    apply equal_arrays; auto; f_equal.
+    eapply nil_unless_in_oob; eauto.
+    abstract solve_lengths.
 
-    Grab Existential Variables.
-    all: eauto.
+    or_l; cancel; eauto.
  Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
@@ -1676,20 +1780,18 @@ Module MEMLOG.
     unfold apply; log_unfold.
     destruct mscs as [ms cs].
     hoare_unfold log_unfold.
-    unfold avail_region; admit.
-    all: admit.
-(*
-    apply pimpl_or_r; right; cancel; auto.
-    apply pimpl_or_r; left; cancel; auto.
-    apply pimpl_or_r; left; cancel; auto.
-    (* true by [nil_unless_in _ l4] *) admit.
-    apply pimpl_or_r; right; apply pimpl_or_r; left; cancel; auto.
-    apply pimpl_or_r; left; cancel; auto.
-    (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *) admit.
-*)
-
-    Grab Existential Variables.
-    all: eauto.
+    unfold avail_region; admit. admit.
+    or_r; cancel; auto.
+    or_l; cancel; eauto.
+    or_l; cancel; auto.
+    cancel.
+    (* true by [nil_unless_in _ l4] *) admit. admit. admit.
+    or_r; or_l; cancel; eauto.
+    admit.
+    or_l; cancel; eauto.
+    (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *)
+    admit. admit. admit.
+    or_l; cancel; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
