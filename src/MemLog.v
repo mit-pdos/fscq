@@ -1614,7 +1614,7 @@ Module MEMLOG.
     exact $0.
   Qed.
 
-  Lemma nil_unless_in_ext : forall n l ms,
+  Lemma nil_unless_in_S : forall n l ms,
     nil_unless_in (skipn n ms) l
     -> nil_unless_in (skipn (S n) ms) (upd l (selN ms n $0) nil).
   Proof.
@@ -1623,8 +1623,18 @@ Module MEMLOG.
     rewrite e; rewrite selN_updN_eq_default; auto.
     rewrite selN_updN_ne; auto.
     apply H. contradict H0.
-    eapply in_skipn; eauto.
+    eapply in_skipn_S; eauto.
     apply wordToNat_neq_inj; eauto.
+  Qed.
+
+  Lemma nil_unless_in_bwd : forall n l ms,
+    nil_unless_in (skipn n ms) l
+    -> nil_unless_in ms l.
+  Proof.
+    unfold nil_unless_in, sel, upd; intros.
+    apply H.
+    contradict H0.
+    eapply in_skipn_in; eauto.
   Qed.
 
   Lemma helper_upd_sync_pimpl : forall m d l ms s a,
@@ -1665,32 +1675,30 @@ Module MEMLOG.
 
     (* nil_unless_in for one less item *)
     erewrite wordToNat_plusone; eauto.
-    apply nil_unless_in_ext; auto.
+    apply nil_unless_in_S; auto.
 
     (* crash condition *)
-    apply pimpl_or_r; left; cancel; auto.
+    or_l; cancel; auto.
+    eapply nil_unless_in_bwd; eauto.
 
-    (* nil_unless_in *)
-    admit.
-
-    (* crash condition *)
-    apply pimpl_or_r; left; cancel; auto.
+    or_l; cancel; auto.
     cancel.
-
     apply helper_upd_sync_pimpl; auto.
     rewrite length_upd; auto.
-    admit.
+    eapply nil_unless_in_bwd.
+    eapply nil_unless_in_S; eauto.
 
     step.
     step.
 
-    admit.
-    apply pimpl_or_r; left; cancel; auto.
-    admit.
+    apply equal_arrays; auto; f_equal. admit.
 
-    apply pimpl_or_r; right; cancel; auto.
+    or_l; cancel; auto.
+    eapply nil_unless_in_bwd; eauto.
+
+    or_r; cancel; auto.
     cancel.
-    admit.
+    apply equal_arrays; auto; f_equal. admit.
 
     or_l; cancel; eauto.
  Qed.

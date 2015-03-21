@@ -164,10 +164,16 @@ Qed.
 
 Hint Rewrite selN_updN_eq sel_upd_eq using (simpl; omega).
 
-Lemma in_skipn : forall A l n (a : A) def,
+Lemma in_skipn_S : forall A l n (a : A) def,
   selN l n def <> a
   -> In a (skipn n l)
   -> In a (skipn (S n) l).
+Proof.
+  induction l; destruct n; simpl; firstorder.
+Qed.
+
+Lemma in_skipn_in : forall A l n (a : A),
+  In a (skipn n l) -> In a l.
 Proof.
   induction l; destruct n; simpl; firstorder.
 Qed.
