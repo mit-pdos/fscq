@@ -1627,6 +1627,17 @@ Module MEMLOG.
     apply wordToNat_neq_inj; eauto.
   Qed.
 
+  Lemma helper_upd_sync_pimpl : forall m d l ms s a,
+    length (replay m d) = length l
+    -> array s (upd_sync (List.combine (replay m d) l) (sel ms a $0) ($0, nil)) $1
+    =p=> array s (List.combine (replay m d) (upd l (sel ms a $0) nil)) $1.
+  Proof.
+    intros.
+    apply equal_arrays; auto; unfold upd_sync.
+    rewrite <- combine_upd; f_equal.
+    eapply selN_eq_updN_eq; unfold sel.
+    rewrite selN_combine; simpl; eauto.
+  Qed.
 
   Theorem apply_sync_ok: forall xp mscs,
     {< m F,
@@ -1649,11 +1660,7 @@ Module MEMLOG.
     (* updating the (List.combine cur cur_unflushed) *)
     (* cannot [step], it will unify length _ = length _ *)
     eapply pimpl_ok2; eauto with prog; intros; cancel.
-    instantiate (1 := upd l1 (sel (map fst (Map.elements m)) m1 $0) nil).
-    array_match; unfold upd_sync.
-    rewrite <- combine_upd; f_equal.
-    eapply selN_eq_updN_eq; unfold sel.
-    rewrite selN_combine; simpl; eauto.
+    apply helper_upd_sync_pimpl; auto.
     rewrite length_upd; auto.
 
     (* nil_unless_in for one less item *)
@@ -1667,27 +1674,25 @@ Module MEMLOG.
     admit.
 
     (* crash condition *)
-    apply pimpl_or_r; left. cancel; auto.
+    apply pimpl_or_r; left; cancel; auto.
     cancel.
-    instantiate (1 := upd l1 (map fst (Map.elements m) $[ m1 ]) nil).
-    admit.
+
+    apply helper_upd_sync_pimpl; auto.
+    rewrite length_upd; auto.
     admit.
 
     step.
     step.
 
     admit.
-    apply pimpl_or_r; left. cancel.
-    admit. admit.
-    apply pimpl_or_r; right. cancel.
+    apply pimpl_or_r; left; cancel; auto.
+    admit.
+
+    apply pimpl_or_r; right; cancel; auto.
     cancel.
-    admit. admit.
-    or_l.
-    cancel. eauto. eauto.
+    admit.
 
-
-    Grab Existential Variables.
-    all: eauto.
+    or_l; cancel; eauto.
  Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
