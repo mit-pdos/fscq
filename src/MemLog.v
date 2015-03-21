@@ -1727,14 +1727,18 @@ Module MEMLOG.
     unfold apply; log_unfold.
     destruct mscs as [ms cs].
     hoare_unfold log_unfold.
-    unfold avail_region; admit.
-    apply pimpl_or_r; right; cancel; auto.
-    apply pimpl_or_r; left; cancel; auto.
-    apply pimpl_or_r; left; cancel; auto.
-    (* true by [nil_unless_in _ l4] *) admit.
-    apply pimpl_or_r; right; apply pimpl_or_r; left; cancel; auto.
-    apply pimpl_or_r; left; cancel; auto.
-    (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *) admit.
+    unfold avail_region; admit. admit.
+    or_r; cancel; auto.
+    or_l; cancel; eauto.
+    or_l; cancel; auto.
+    cancel.
+    (* true by [nil_unless_in _ l4] *) admit. admit. admit.
+    or_r; or_l; cancel; eauto.
+    admit.
+    or_l; cancel; eauto.
+    (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *)
+    admit. admit. admit.
+    or_l; cancel; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
