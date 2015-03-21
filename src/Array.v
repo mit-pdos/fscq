@@ -123,6 +123,12 @@ Proof.
   induction vs; destruct n; simpl; intuition; omega.
 Qed.
 
+Lemma selN_updN_eq_default : forall V vs n (v : V),
+  selN (updN vs n v) n v = v.
+Proof.
+  induction vs; destruct n; simpl; intuition; omega.
+Qed.
+
 Lemma selN_updN_ne : forall V vs n n' v (default : V),
   n <> n'
   -> selN (updN vs n v) n' default = selN vs n' default.
@@ -146,7 +152,25 @@ Proof.
   apply wordToNat_inj; auto.
 Qed.
 
+Lemma selN_eq_updN_eq : forall A (l : list A) i a def,
+  a = selN l i def
+  -> updN l i a = l.
+Proof.
+  induction l; destruct i; simpl; firstorder.
+  f_equal; auto.
+  erewrite IHl; eauto.
+Qed.
+
+
 Hint Rewrite selN_updN_eq sel_upd_eq using (simpl; omega).
+
+Lemma in_skipn : forall A l n (a : A) def,
+  selN l n def <> a
+  -> In a (skipn n l)
+  -> In a (skipn (S n) l).
+Proof.
+  induction l; destruct n; simpl; firstorder.
+Qed.
 
 Lemma firstn_updN : forall T (v : T) vs i j,
   i <= j

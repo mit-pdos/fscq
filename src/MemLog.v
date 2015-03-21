@@ -1614,6 +1614,20 @@ Module MEMLOG.
     exact $0.
   Qed.
 
+  Lemma nil_unless_in_ext : forall n l ms,
+    nil_unless_in (skipn n ms) l
+    -> nil_unless_in (skipn (S n) ms) (upd l (selN ms n $0) nil).
+  Proof.
+    unfold nil_unless_in, upd, sel; intros.
+    destruct (Nat.eq_dec (# (selN ms n $0)) (# a)).
+    rewrite e; rewrite selN_updN_eq_default; auto.
+    rewrite selN_updN_ne; auto.
+    apply H. contradict H0.
+    eapply in_skipn; eauto.
+    apply wordToNat_neq_inj; eauto.
+  Qed.
+
+
   Theorem apply_sync_ok: forall xp mscs,
     {< m F,
     PRE
@@ -1632,18 +1646,22 @@ Module MEMLOG.
     rewrite combine_length_eq by auto.
     apply valid_entries_addr_valid; auto.
 
-    step.
-    instantiate (1 := upd l1 (map fst (Map.elements m) $[ m1 ]) nil).
-    unfold upd_sync.
-    array_match.
-    split_lists. 2: solve_lengths. admit.
     (* updating the (List.combine cur cur_unflushed) *)
-    admit.
+    (* cannot [step], it will unify length _ = length _ *)
+    eapply pimpl_ok2; eauto with prog; intros; cancel.
+    instantiate (1 := upd l1 (sel (map fst (Map.elements m)) m1 $0) nil).
+    array_match; unfold upd_sync.
+    rewrite <- combine_upd; f_equal.
+    eapply selN_eq_updN_eq; unfold sel.
+    rewrite selN_combine; simpl; eauto.
+    rewrite length_upd; auto.
+
     (* nil_unless_in for one less item *)
-    admit.
+    erewrite wordToNat_plusone; eauto.
+    apply nil_unless_in_ext; auto.
 
     (* crash condition *)
-    apply pimpl_or_r; left. cancel; auto.
+    apply pimpl_or_r; left; cancel; auto.
 
     (* nil_unless_in *)
     admit.
