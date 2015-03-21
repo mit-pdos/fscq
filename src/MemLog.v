@@ -374,6 +374,7 @@ Module MEMLOG.
     | AppliedUnsyncTxn cur =>
       (LogHeader xp) |=> (header_to_valu (mk_header (Map.cardinal ms)))
     * exists old old_unflushed, data_rep xp (List.combine cur old_unflushed)
+    * [[ length cur = length old_unflushed ]]
     * [[ nil_unless_in (map fst (Map.elements ms)) old_unflushed ]]
     * log_rep xp old ms
     * cur_rep old ms cur
@@ -1319,7 +1320,6 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     intros.
     solve_lengths_prepare.
-    (* XXX this seems to trigger some bug in Coq.. *)
     hoare_with ltac:(unfold upd_sync) try_arrays_lengths.
     split_lists.
     rewrite skipn_skipn.
@@ -1571,9 +1571,6 @@ Module MEMLOG.
     admit.
     admit.
     admit.
-
-    Grab Existential Variables.
-    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
@@ -1590,6 +1587,7 @@ Module MEMLOG.
           * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
           * log_rep xp cur ms
           * exists cur_unflushed, data_rep xp (List.combine cur cur_unflushed)
+          * [[ length cur = length cur_unflushed ]]
           * [[ nil_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur_unflushed ]])%pred d' ]]
     OnCrash
       exists mscs', rep xp F (AppliedUnsyncTxn cur) mscs'
@@ -1599,6 +1597,22 @@ Module MEMLOG.
     Rof ^(cs);
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx ^(ms, cs).
+
+  Lemma valid_entries_addr_valid : forall i m d def,
+    (i < $ (Map.cardinal m))%word
+    -> valid_entries (replay m d) m
+    -> # (sel (map fst (Map.elements m)) i def) < length (replay m d).
+  Proof.
+    intros.
+    eapply H0.
+    apply MapFacts.elements_mapsto_iff.
+    apply In_InA.
+    apply MapProperties.eqke_equiv.
+    apply in_selN_map.
+    solve_lengths.
+    Grab Existential Variables.
+    exact $0.
+  Qed.
 
   Theorem apply_sync_ok: forall xp mscs,
     {< m F,
@@ -1613,10 +1627,16 @@ Module MEMLOG.
     unfold apply_sync; log_unfold.
     step.
     step.
+
     (* address passed to [sync_array] is in-bounds *)
-    admit.
+    rewrite combine_length_eq by auto.
+    apply valid_entries_addr_valid; auto.
+
     step.
     instantiate (1 := upd l1 (map fst (Map.elements m) $[ m1 ]) nil).
+    unfold upd_sync.
+    array_match.
+    split_lists. 2: solve_lengths. admit.
     (* updating the (List.combine cur cur_unflushed) *)
     admit.
     (* nil_unless_in for one less item *)
@@ -1639,14 +1659,14 @@ Module MEMLOG.
     step.
 
     admit.
+    apply pimpl_or_r; left. cancel.
+    admit. admit.
+    apply pimpl_or_r; right. cancel.
+    cancel.
+    admit. admit.
+    or_l.
+    cancel. eauto. eauto.
 
-    admit.
-    admit.
-
-    apply pimpl_or_r; left. cancel; eauto.
-(*
-    rewrite skipn_oob in H22 by solve_lengths.
-*)
 
     Grab Existential Variables.
     all: eauto.
@@ -1677,8 +1697,6 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     hoare_unfold log_unfold.
     unfold avail_region; admit.
-    all: admit.
-(*
     apply pimpl_or_r; right; cancel; auto.
     apply pimpl_or_r; left; cancel; auto.
     apply pimpl_or_r; left; cancel; auto.
@@ -1686,10 +1704,6 @@ Module MEMLOG.
     apply pimpl_or_r; right; apply pimpl_or_r; left; cancel; auto.
     apply pimpl_or_r; left; cancel; auto.
     (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *) admit.
-*)
-
-    Grab Existential Variables.
-    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.

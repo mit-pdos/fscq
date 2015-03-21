@@ -512,6 +512,14 @@ Proof.
   apply selN_map; auto.
 Qed.
 
+Lemma in_selN_map : forall A B (l : list (A*B)) i def1 def2,
+  i < length l
+  -> In (selN (map fst l) i def1, selN (map snd l) i def2) l.
+Proof.
+  induction l; destruct i; simpl; firstorder.
+  left; destruct a; auto.
+Qed.
+
 Theorem updN_map_seq_app_eq : forall T (f : nat -> T) len start (v : T) x,
   updN (map f (seq start len) ++ (x :: nil)) len v =
   map f (seq start len) ++ (v :: nil).
@@ -1506,6 +1514,16 @@ Proof.
   rewrite combine_length.
   rewrite H; intuition.
 Qed.
+
+Lemma combine_length_eq2: forall A B (a : list A) (b : list B),
+  length a = length b
+  -> length (List.combine a b) = length b.
+Proof.
+  intros.
+  rewrite combine_length.
+  rewrite H; intuition.
+Qed.
+
 
 Theorem combine_app: forall A B (al ar : list A) (bl br: list B),
   length al = length bl
