@@ -1649,6 +1649,55 @@ Module MEMLOG.
     rewrite selN_combine; simpl; eauto.
   Qed.
 
+  Lemma repeat_selN_is : forall A l (a def : A),
+    (forall i, selN l i def = a)
+    -> l = repeat a (length l).
+  Proof.
+    induction l; intros; auto.
+    erewrite <- (H 0). simpl.
+    unfold repeat; fold repeat.
+    f_equal.
+    pose proof (H 0); simpl in H0; subst.
+    eapply IHl with (def := def); intro.
+    rewrite <- (H (S i)).
+    simpl; auto.
+  Qed.
+
+  Lemma nil_unless_in_oob' : forall n l n' ms,
+    nil_unless_in (skipn n ms) l
+    -> goodSizeEq addrlen (length l)
+    -> n = length ms
+    -> n' = length l
+    -> l = repeat nil n'.
+  Proof.
+    intros; subst.
+    rewrite skipn_oob in H by auto.
+    unfold nil_unless_in, sel in *.
+    apply repeat_selN_is with (def := nil); intro.
+    destruct (lt_dec i (pow2 addrlen)).
+    erewrite <- (H (natToWord addrlen i)) at 2; auto.
+    f_equal.
+    erewrite wordToNat_natToWord_idempotent'; eauto.
+    rewrite selN_oob; auto.
+    unfold goodSizeEq in H0.
+    omega.
+  Qed.
+
+  Lemma nil_unless_in_oob : forall n l n' ms F xp l' d m ,
+    nil_unless_in (skipn n ms) l
+    -> n = length ms
+    -> n' = length l
+    -> (F * array xp (List.combine (replay l' d) l) $ (1))%pred m
+    -> length (replay l' d) = length l
+    -> l = repeat nil n'.
+  Proof.
+    intros.
+    eapply nil_unless_in_oob'; eauto.
+    rewrite array_max_length_pimpl in H2.
+    destruct_lift H2.
+    erewrite <- combine_length_eq2; eauto.
+  Qed.
+
   Theorem apply_sync_ok: forall xp mscs,
     {< m F,
     PRE
@@ -1691,14 +1740,18 @@ Module MEMLOG.
     step.
     step.
 
-    apply equal_arrays; auto; f_equal. admit.
+    apply equal_arrays; auto; f_equal.
+    eapply nil_unless_in_oob; eauto.
+    abstract solve_lengths.
 
     or_l; cancel; auto.
     eapply nil_unless_in_bwd; eauto.
 
     or_r; cancel; auto.
     cancel.
-    apply equal_arrays; auto; f_equal. admit.
+    apply equal_arrays; auto; f_equal.
+    eapply nil_unless_in_oob; eauto.
+    abstract solve_lengths.
 
     or_l; cancel; eauto.
  Qed.
