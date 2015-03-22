@@ -1505,7 +1505,9 @@ Module MEMLOG.
   Qed.
 
   Lemma equal_unless_in_replay_eq'': forall ms (a b: list valu) def,
-    replay ms a = replay ms b -> equal_unless_in (map fst (Map.elements ms)) (List.combine a (repeat (@nil valu) (length a))) (List.combine b (repeat (@nil valu) (length b))) def.
+    replay ms a = replay ms b -> equal_unless_in (map fst (Map.elements ms))
+            (List.combine a (repeat (@nil valu) (length a))) 
+            (List.combine b (repeat (@nil valu) (length b))) def.
   Proof.
     intros.
     repeat rewrite combine_repeat_map.
@@ -1521,7 +1523,106 @@ Module MEMLOG.
     destruct b; try discriminate; simpl in *.
     rewrite IHa; [ auto | congruence ].
   Qed.
+
   Hint Resolve equal_unless_in_trans equal_unless_in_comm equal_unless_in_replay_eq equal_unless_in_replay_eq'' : replay.
+
+  Lemma valid_entries_replay' : forall l l' ms def,
+    equal_unless_in (map fst (Map.elements ms))
+                    (List.combine l (repeat (@nil valu) (length l))) l' def
+    -> valid_entries l ms
+    -> valid_entries (replay' (Map.elements ms) (map fst l')) ms.
+  Proof.
+    intros.
+    pose proof (equal_unless_in_replay_eq' _ H) as Heq.
+    unfold replay in Heq; rewrite <- Heq; clear Heq.
+    rewrite map_fst_combine by solve_lengths.
+    eapply (@valid_entries_replay ms l); auto.
+  Qed.
+
+  Lemma nil_combine_nil_unless_in : forall A (l : list A) l' msa def,
+    equal_unless_in msa (List.combine l (repeat (@nil valu) (length l))) l' def
+    -> nil_unless_in msa (map snd l').
+  Proof.
+    unfold equal_unless_in, nil_unless_in; intros.
+    destruct H; unfold sel.
+    pose proof (H1 (# a)) as Hx; intuition.
+    destruct (lt_dec (# a) (length l')).
+    erewrite selN_map with (default' := def); eauto.
+    rewrite <- H3.
+    destruct def; erewrite selN_combine by solve_lengths; simpl.
+    rewrite repeat_selN; auto.
+    rewrite combine_length_eq in H by solve_lengths.
+    rewrite H; auto.
+    word2nat_auto.
+    rewrite selN_oob; solve_lengths.
+  Qed.
+
+  Lemma nil_unless_in_bwd : forall n l ms,
+    nil_unless_in (skipn n ms) l
+    -> nil_unless_in ms l.
+  Proof.
+    unfold nil_unless_in, sel, upd; intros.
+    apply H.
+    contradict H0.
+    eapply in_skipn_in; eauto.
+  Qed.
+
+  Lemma valid_entries_addr_valid : forall (i : addr) m l def,
+    (i < $ (Map.cardinal m))%word
+    -> valid_entries l m
+    -> # (sel (map fst (Map.elements m)) i def) < length l.
+  Proof.
+    intros.
+    eapply H0.
+    apply MapFacts.elements_mapsto_iff.
+    apply In_InA.
+    apply MapProperties.eqke_equiv.
+    apply in_selN_map.
+    solve_lengths.
+    Grab Existential Variables.
+    exact $0.
+  Qed.
+
+  Lemma helper_valid_entries_addr_valid : forall i ls log (l l' : list valuset) ms def,
+    valid_entries log ms
+    -> (i < $ (Map.cardinal ms))%word
+    -> equal_unless_in ls log (map fst l') $0
+    -> # (sel (map fst (Map.elements ms)) i def) < length l'.
+  Proof.
+    unfold equal_unless_in, valid_entries; intros.
+    destruct H1.
+    rewrite map_length in H1.
+    rewrite <- H1.
+    apply valid_entries_addr_valid; auto.
+  Qed.
+
+
+Lemma fold_right_skipn_S : forall A B l i def a (f : B -> A -> A),
+  i < length l
+  -> fold_right f (f (selN l i def) a) (skipn (S i) l)
+   = fold_right f a (skipn i l).
+Proof.
+  intros.
+  all: admit.
+Qed.
+
+Lemma replay_skipn_progress : forall i (log : list (addr * valu)) l,
+  i < length log
+  -> replay' (skipn (S i) log) (upd l (selN (map fst log) i $0) (selN (map snd log) i $0)) 
+   = replay' (skipn i log) l.
+Proof.
+  intros.
+  repeat erewrite selN_map with (default' := ($0, $0)); eauto.
+  unfold replay'.
+  remember (fun p m' => upd m' (fst p) (snd p)) as f.
+  replace (upd l (fst (selN log i ($0, $0))) (snd (selN log i ($0, $0))))
+      with (f (selN log i ($0, $0)) l).
+  rewrite fold_right_skipn_S; auto.
+  subst; auto.
+Qed.
+
+
+
 
   Definition apply_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
@@ -1558,19 +1659,43 @@ Module MEMLOG.
     >} apply_unsync xp mscs.
   Proof.
     unfold apply_unsync; log_unfold.
-    destruct mscs as [ms cs]; simpl.
-    hoare_with log_unfold ltac:(eauto with replay).
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
+
+    step.
+    eapply valid_entries_replay'; eauto.
+    apply equal_unless_in_replay_eq.
+    pose proof (replay_twice) as Hx; unfold replay at 2 in Hx.
+    rewrite Hx; auto.
+    eapply nil_combine_nil_unless_in; eauto.
+
+    step.
+    eapply helper_valid_entries_addr_valid; eauto.
+
+    step.
+
+Lemma fst_upd_prepend : forall vs a v,
+  map fst (upd_prepend vs a v) = upd (map fst vs) a v.
+Proof.
+  unfold upd_prepend; intros.
+  rewrite map_upd; auto.
+Qed.
+
+    rewrite fst_upd_prepend.
+    remember (Map.elements (elt:=valu) m) as L.
+    erewrite wordToNat_plusone by eauto.
+
+Check fold_right.
+
+
+    rewrite replay_skipn_progress.
+
+    admit. admit. admit.
+    cancel. admit. admit.
+    cancel. admit. admit.
+    step.
+    admit. admit.
+    cancel. admit. admit. admit.
+    Grab Existential Variables.
+    exact nil.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
@@ -1598,22 +1723,6 @@ Module MEMLOG.
     cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
     rx ^(ms, cs).
 
-  Lemma valid_entries_addr_valid : forall i m d def,
-    (i < $ (Map.cardinal m))%word
-    -> valid_entries (replay m d) m
-    -> # (sel (map fst (Map.elements m)) i def) < length (replay m d).
-  Proof.
-    intros.
-    eapply H0.
-    apply MapFacts.elements_mapsto_iff.
-    apply In_InA.
-    apply MapProperties.eqke_equiv.
-    apply in_selN_map.
-    solve_lengths.
-    Grab Existential Variables.
-    exact $0.
-  Qed.
-
   Lemma nil_unless_in_S : forall n l ms,
     nil_unless_in (skipn n ms) l
     -> nil_unless_in (skipn (S n) ms) (upd l (selN ms n $0) nil).
@@ -1625,16 +1734,6 @@ Module MEMLOG.
     apply H. contradict H0.
     eapply in_skipn_S; eauto.
     apply wordToNat_neq_inj; eauto.
-  Qed.
-
-  Lemma nil_unless_in_bwd : forall n l ms,
-    nil_unless_in (skipn n ms) l
-    -> nil_unless_in ms l.
-  Proof.
-    unfold nil_unless_in, sel, upd; intros.
-    apply H.
-    contradict H0.
-    eapply in_skipn_in; eauto.
   Qed.
 
   Lemma helper_upd_sync_pimpl : forall m d l ms s a,
