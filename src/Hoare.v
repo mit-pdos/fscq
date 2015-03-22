@@ -109,7 +109,7 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
    post at level 1, crash at level 1).
 
 Inductive corr3_result {A B : Type} :=
-  | OK : A -> corr3_result
+  | Complete : A -> corr3_result
   | Recover : B -> corr3_result.
 
 Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
@@ -122,7 +122,7 @@ Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
      F * pre *
      [[ crash_xform F =p=> F ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => post F (OK r_) *
+        {{ fun done'_ crash'_ => post F (Complete r_) *
                                  [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
