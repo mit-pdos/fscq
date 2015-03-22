@@ -24,7 +24,7 @@ mkdir -p $MOUNT.real
 ## fscq
 dd if=/dev/zero of=$DEV bs=4096 count=$FSCQBLOCKS
 ../src/mkfs $DEV
-../src/fuse $DEV -s -f $MOUNT &
+../src/fuse $DEV -s -f $MOUNT +RTS -N4 &
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
