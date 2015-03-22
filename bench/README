@@ -2,7 +2,7 @@ How to run the benchmarks:
 
   ./make-git-repo.sh /tmp/fscq-bench
   ./run-bench.sh app-bench './app-bench.sh /tmp/fscq-bench /tmp/ft'
-  ./run-bench.sh mailbench './mailbench.sh ~/proj/sv6 /tmp/ft'
+  ./run-bench.sh mailbench './mailbench.sh /home/nickolai/proj/sv6 /tmp/ft'
 
 Install fusexmp from fuse-2.9.3/example.
 

@@ -21,6 +21,12 @@ mkdir -p $MOUNT.real
 ## Ensure sudo works first
 ( sudo true ) || exit 1
 
+## Do a priming run on whatever the native /tmp file system is..
+mkdir -p $MOUNT
+$CMD
+rm -rf $MOUNT
+mkdir -p $MOUNT
+
 ## fscq
 dd if=/dev/zero of=$DEV bs=4096 count=$FSCQBLOCKS
 ../src/mkfs $DEV
