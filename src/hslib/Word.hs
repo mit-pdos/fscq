@@ -9,7 +9,7 @@ import GHC.Types
 import GHC.Integer.GMP.Internals
 
 data Coq_word =
-    W !Integer
+    W Integer
   | W64 !Word64
 
 -- Memoize bitmasks for wrap
