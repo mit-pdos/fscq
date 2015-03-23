@@ -1453,8 +1453,8 @@ Module MEMLOG.
     f_equal; eauto.
     }
     {
-      erewrite <- replay_sel_invalid with (m := a).
-      erewrite <- replay_sel_invalid with (m := b).
+      erewrite <- replay_sel_invalid with (d := a).
+      erewrite <- replay_sel_invalid with (d := b).
       f_equal; eauto.
       word2nat_auto.
       word2nat_auto.
@@ -1468,8 +1468,8 @@ Module MEMLOG.
       f_equal; eauto.
       intro Hi; apply In_MapIn in Hi; tauto.
       intro Hi; apply In_MapIn in Hi; tauto.
-    - erewrite <- replay_sel_invalid with (m := a).
-      erewrite <- replay_sel_invalid with (m := b).
+    - erewrite <- replay_sel_invalid with (d := a).
+      erewrite <- replay_sel_invalid with (d := b).
       f_equal; eauto.
       word2nat_auto.
       word2nat_auto.
@@ -1864,6 +1864,86 @@ Module MEMLOG.
     solve_lengths.
   Qed.
 
+  Lemma equal_unless_in_upd_in : forall (n : addr) log l l' def m,
+    equal_unless_in (map fst log) l l' def
+    -> (n < $ (Map.cardinal m))%word
+    -> valid_entries l m
+    -> log = Map.elements m
+    -> goodSizeEq addrlen (length l')
+    -> equal_unless_in (map fst log) l
+       (upd l' (selN (map fst log) (# n) $0) (selN (map snd log) (# n) def)) def.
+  Proof.
+    unfold equal_unless_in, upd, sel; intros.
+    destruct H; split; intros.
+    rewrite length_updN; auto.
+
+    destruct (Nat.eq_dec n0 (# (selN (map fst log) (# n) $0))); subst.
+    intuition.
+    rewrite H4 by auto.
+    destruct (lt_dec # (selN (map fst (Map.elements m)) (# n) $0) (length l'));
+    unfold goodSize, goodSizeEq, Map.key in *.
+    contradict H2; omega.
+    rewrite selN_oob by omega.
+    rewrite selN_oob; auto.
+    rewrite length_updN; omega.
+
+    contradict H2.
+    rewrite natToWord_wordToNat.
+    apply in_selN;  solve_lengths.
+
+    rewrite selN_updN_ne by auto.
+    apply H4; auto.
+  Qed.
+
+  Lemma equal_unless_in_trans_upd_in : forall (n : addr) log l (l1 : list valuset) l2 m,
+    equal_unless_in (map fst log) (List.combine l (repeat nil (length l))) l1 ($0, nil)
+    -> equal_unless_in (skipn (# n) (map fst log)) (replay' log (map fst l1)) l2 $0
+    -> (n < $ (Map.cardinal m))%word
+    -> valid_entries l m
+    -> log = Map.elements m
+    -> goodSizeEq addrlen (length l2)
+    -> equal_unless_in (map fst log) l
+       (upd l2 (selN (map fst log) (# n) $0) (selN (map snd log) (# n) $0)) $0.
+  Proof.
+    intros.
+    apply equal_unless_in_split in H; destruct H; simpl in *.
+    eapply equal_unless_in_bwd in H0; eauto.
+    subst; eapply equal_unless_in_replay' in H0.
+    eapply equal_unless_in_upd_in; eauto.
+    eapply equal_unless_in_trans; eauto.
+    solve_lengths.
+  Qed.
+
+  Lemma replay'_terminate_replay : forall (m : memstate) l (l1 : list valuset) l2 (bound : addr),
+    equal_unless_in (map fst (Map.elements m)) (List.combine l (repeat nil (length l))) l1 ($0, nil)
+    -> replay' (skipn # (natToWord addrlen (Map.cardinal m)) (Map.elements m)) l2
+       = replay' (Map.elements m) (map fst l1)
+    -> Map.cardinal m <= # bound
+    -> l2 = replay m l.
+  Proof.
+    intros.
+    rewrite skipn_oob in H0; simpl in H0.
+    rewrite H0.
+    apply equal_unless_in_split in H; destruct H.
+    apply equal_unless_in_replay_eq in H.
+    rewrite H; auto.
+    solve_lengths.
+    erewrite wordToNat_natToWord_bound; eauto.
+    solve_lengths.
+  Qed.
+
+  Lemma replay_unsync_crash : forall (m m' : memstate) l (l1 : list valuset) l2,
+    equal_unless_in (map fst (Map.elements m)) (List.combine l (repeat nil (length l))) l1 ($0, nil)
+    -> replay' (Map.elements m) (map fst l1) = replay m' l2
+    -> replay m l = replay m' l2.
+  Proof.
+    intros.
+    apply equal_unless_in_split in H; destruct H.
+    apply equal_unless_in_replay_eq in H.
+    rewrite H; auto.
+    solve_lengths.
+  Qed.
+
   Definition apply_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     let^ (cs) <- For i < $ (Map.cardinal ms)
@@ -1936,19 +2016,30 @@ Module MEMLOG.
     cancel; auto.
     apply equal_unless_in_combine.
     rewrite fst_upd_prepend.
-    admit. admit.
+    eapply equal_unless_in_trans_upd_in; eauto.
+    hypmatch (array (DataStart xp) l2) as Hx.
+    setoid_rewrite array_max_length_pimpl with (l := l2) in Hx.
+    destruct_lift Hx; rewrite map_length; auto.
 
-    step.
-    admit.
+    apply nil_unless_in_equal_unless_in.
+    apply nil_unless_in_prepend; auto.
+    apply in_sel; solve_lengths.
+    rewrite map_length; rewrite upd_prepend_length.
+    abstract solve_equal_unless_in_length.
+    hypmatch (array (DataStart xp) l2) as Hx.
+    setoid_rewrite array_max_length_pimpl with (l := l2) in Hx.
+    destruct_lift Hx; replace (length l) with (length l2); auto.
     abstract solve_equal_unless_in_length.
 
-    cancel.
-    admit.
-    admit.
-    admit.
+    step.
+    apply equal_arrays; auto.
+    rewrite <- combine_map_fst_snd at 1.
+    f_equal.
+    eapply replay'_terminate_replay; eauto.
+    abstract solve_equal_unless_in_length.
 
-    Grab Existential Variables.
-    exact nil.
+    cancel; eauto.
+    eapply replay_unsync_crash; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
