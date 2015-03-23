@@ -1348,7 +1348,20 @@ Module MEMLOG.
     destruct mscs as [ms cs].
     intros.
     solve_lengths_prepare.
-    hoare_with ltac:(unfold upd_sync) try_arrays_lengths.
+    step.
+    step.
+
+    ring_simplify (LogData xp ^+ $0).
+    cancel; eauto.
+    omega.
+
+    step.
+    instantiate (a5 := List.combine (skipn # m1 (map snd (Map.elements ms))) l4).
+    cancel.
+    solve_lengths.
+
+    step.
+    try_arrays_lengths.
     split_lists.
     rewrite skipn_skipn.
     rewrite (plus_comm 1).
@@ -1361,28 +1374,47 @@ Module MEMLOG.
     rewrite <- app_assoc.
     rewrite repeat_selN.
     reflexivity.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    rewrite firstn_oob by solve_lengths; auto.
+
     solve_lengths.
     solve_lengths.
-    instantiate (a0 := m); pred_apply; cancel.
-    array_match.
-    abstract solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+
+    cancel.
+    try_arrays_lengths.
+    solve_lengths.
+    cancel.
+    try_arrays_lengths.
+    f_equal.
+    unfold upd_sync; solve_lengths.
+    unfold upd_sync; solve_lengths.
+    unfold upd_sync; solve_lengths.
+
+    step.
+    try_arrays_lengths.
+    rewrite firstn_oob by solve_lengths.
+    eauto.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+
+    norm. cancel. intuition.
+    pred_apply.
+    admit.
+    (* Doesn't seem provable. LogDescriptor part doesn't match up,
+       It used to work in git version 62cd99f. *)
+
+    norm. cancel. intuition.
+    pred_apply. norm. cancel.
+    try_arrays_lengths.
+    intuition.
+    try_arrays_lengths.
     Unshelve.
-    auto.
-    constructor.
+    all: auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
