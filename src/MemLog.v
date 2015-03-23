@@ -1552,6 +1552,15 @@ Module MEMLOG.
     rewrite IHa; [ auto | congruence ].
   Qed.
 
+  Lemma map_snd_combine: forall A B (a: list A) (b: list B),
+    length a = length b -> map snd (List.combine a b) = b.
+  Proof.
+    unfold map, List.combine.
+    induction a; destruct b; simpl; auto; try discriminate.
+    intros; rewrite IHa; eauto.
+  Qed.
+
+
   Hint Resolve equal_unless_in_trans equal_unless_in_comm equal_unless_in_replay_eq equal_unless_in_replay_eq'' : replay.
 
   Lemma valid_entries_replay' : forall l l' ms def,
@@ -2220,34 +2229,37 @@ Module MEMLOG.
                     rep xp F (NoTransaction m) mscs'
     >} apply xp mscs.
   Proof.
-    unfold apply; log_unfold.
-    destruct mscs as [ms cs].
-    hoare_unfold log_unfold.
-    unfold avail_region.
-    admit.
-    or_r; cancel; auto.
-    or_l; cancel; eauto.
-    or_l; cancel; auto.
+    unfold apply.
+    step; try cancel.
+    step; try solve [ cancel ].
+
+    unfold rep_inner.
+    step.
+    step.
+    log_unfold.
     cancel.
+    rewrite <- avail_region_grow_all by eauto.
+    cancel; eauto.
 
+    unfold rep_inner.
+    cancel.
+    or_r; or_r.
+    cancel.
+    log_unfold.
+    cancel.
+    rewrite <- avail_region_grow_all by eauto.
+    cancel; eauto.
+    apply MapFacts.Equal_refl.
+
+    or_l.
+    cancel.
+    log_unfold.
+    cancel; auto.
+    apply equal_unless_in_combine.
+    rewrite map_fst_combine by auto.
     admit.
-    hypmatch (replay a1 d0) as Hx; rewrite Hx.
-    apply valid_entries_replay; auto.
-    hypmatch (replay a1 d0) as Hx; rewrite Hx.
-    rewrite replay_twice; auto.
-
-    or_r; or_l; cancel; eauto.
+    rewrite map_snd_combine by auto.
     admit.
-
-    or_l; cancel; eauto.
-    admit.
-
-    hypmatch (replay m1 d0) as Hx; rewrite Hx.
-    apply valid_entries_replay; auto.
-    hypmatch (replay m1 d0) as Hx; rewrite Hx.
-    rewrite replay_twice; auto.
-
-    or_l; cancel; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
