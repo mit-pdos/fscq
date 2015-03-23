@@ -2206,7 +2206,7 @@ Module MEMLOG.
     let^ (ms, cs) <- apply_unsync xp ^(ms, cs);
     let^ (ms, cs) <- apply_sync xp ^(ms, cs);
     cs <- BUFCACHE.sync (LogHeader xp) cs;
-    rx ^(ms, cs).
+    rx ^(ms_empty, cs).
 
   Theorem apply_ok: forall xp mscs,
     {< m F,
