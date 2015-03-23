@@ -2225,7 +2225,6 @@ Module MEMLOG.
     hoare_unfold log_unfold.
     unfold avail_region.
     admit.
-    admit. (* how can I tell [a1] is ms_empty? *)
     or_r; cancel; auto.
     or_l; cancel; eauto.
     or_l; cancel; auto.
