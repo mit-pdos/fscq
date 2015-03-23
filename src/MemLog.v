@@ -202,7 +202,7 @@ Module MEMLOG.
 
   (* Replay the state in memory *)
   Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
-    fold_right (fun p m' => upd m' (fst p) (snd p)) m l.
+    fold_left (fun m' p => upd m' (fst p) (snd p)) l m.
 
   Definition replay (ms : memstate) (m : diskstate) : diskstate :=
     replay' (Map.elements ms) m.
@@ -216,14 +216,35 @@ Module MEMLOG.
 
   Hint Rewrite replay_empty.
 
-  Lemma replay'_upd : forall l d a (v : valu),
+  Lemma replay'_upd : forall V l d a (v : V),
     upd (replay' l (upd d a v)) a v = upd (replay' l d) a v.
   Proof.
     induction l; simpl; intros.
     autorewrite with core; auto.
     destruct (weq a0 (fst a)); subst.
-    - repeat rewrite upd_twice. rewrite IHl. auto.
-    - rewrite upd_comm by auto. rewrite IHl. rewrite upd_comm by auto. auto.
+    - repeat rewrite upd_twice. auto.
+    - rewrite upd_comm by auto. rewrite IHl. auto.
+  Qed.
+
+  Lemma replay'_upd_elim : forall V l d a (v : V),
+    In a (map fst l)
+    -> replay' l (upd d a v) = replay' l d.
+  Proof.
+    induction l; simpl; intuition.
+    rewrite H0; autorewrite with core; auto.
+    simpl; destruct (weq a a0); subst.
+    rewrite upd_twice; auto.
+    rewrite upd_comm by auto.
+    erewrite IHl; eauto.
+  Qed.
+
+  Lemma replay'_upd_comm : forall V l d a (v : V),
+    ~ In a (map fst l)
+    -> replay' l (upd d a v) = upd (replay' l d) a v.
+  Proof.
+    induction l; simpl; intuition; simpl in *.
+    rewrite upd_comm by auto.
+    apply IHl; auto.
   Qed.
 
   Theorem replay_twice : forall m d, replay m (replay m d) = replay m d.
@@ -231,8 +252,12 @@ Module MEMLOG.
     unfold replay.
     intro m; generalize (Map.elements m); clear m.
     induction l; simpl; auto; intros.
-    rewrite replay'_upd.
-    rewrite IHl. auto.
+    destruct (In_dec (@weq addrlen) (fst a) (map fst l)).
+    repeat rewrite replay'_upd_elim by auto.
+    apply IHl.
+    rewrite <- replay'_upd_comm by auto.
+    rewrite upd_twice.
+    apply IHl.
   Qed.
 
   Definition avail_region start len : @pred addr (@weq addrlen) valuset :=
@@ -572,149 +597,124 @@ Module MEMLOG.
   Definition KIn V := InA (@Map.eq_key V).
   Definition KNoDup V := NoDupA (@Map.eq_key V).
 
-  Lemma replay_sel_other : forall a ms m def,
-    ~ Map.In a ms -> selN (replay ms m) (wordToNat a) def = selN m (wordToNat a) def.
+  Lemma replay'_sel_other : forall l d a (def : valu),
+    ~ In a (map fst l)
+    -> NoDup (map fst l)
+    -> sel (replay' l d) a def = sel d a def.
   Proof.
-    (* intros; rename a into a'; remember (wordToNat a') as a. *)
-    intros a ms m def HnotIn.
-    destruct (MapFacts.elements_in_iff ms a) as [_ Hr].
-    assert (not (exists e : valu, InA (Map.eq_key_elt (elt:=valu))
-      (a, e) (Map.elements ms))) as HnotElem by auto; clear Hr HnotIn.
-    remember (Map.eq_key_elt (elt:=valu)) as eq in *.
-    unfold replay, replay'.
-    remember (Map.elements ms) as elems in *.
-    assert (forall x y, InA eq (x,y) elems -> x <> a) as Hneq. {
-      intros x y Hin.
-      destruct (Addr_as_OT.eq_dec a x); [|intuition].
-      destruct HnotElem; exists y; subst; auto.
-    }
-    clear Heqelems HnotElem.
-    induction elems as [|p]; [reflexivity|].
-    rewrite <- IHelems; clear IHelems; [|intros; eapply Hneq; right; eauto].
-    destruct p as [x y]; simpl.
-    assert (x <> a) as Hsep. {
-      apply (Hneq x y); left; subst eq. 
-      apply Equivalence.equiv_reflexive_obligation_1.
-      apply MapProperties.eqke_equiv.
-    }
-    eapply (selN_updN_ne _ y);
-      unfold not; intros; destruct Hsep; apply wordToNat_inj; trivial.
+    induction l; simpl; intuition; simpl in *.
+    inversion H0; subst; auto.
+    rewrite replay'_upd_comm by auto.
+    rewrite sel_upd_ne by auto.
+    apply IHl; auto.
+  Qed.
+
+  Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
+    In a (map fst l) -> exists b, In (a, b) l.
+  Proof.
+    induction l; simpl; firstorder.
+    destruct a; simpl in *; subst; eauto.
+  Qed.
+
+  Local Hint Resolve MapProperties.eqke_equiv.
+
+  Lemma KNoDup_NoDup: forall V (l : list (addr * V)),
+    KNoDup l -> NoDup (map fst l).
+  Proof.
+    induction l; simpl; intros; constructor.
+    inversion H; subst.
+    contradict H2.
+    apply in_map_fst_exists_snd in H2; destruct H2.
+    apply InA_alt.
+    exists (fst a, x); intuition.
+    destruct a; simpl in *.
+    cbv; auto.
+    inversion H; subst.
+    apply IHl; auto.
+  Qed.
+
+  Lemma map_fst_nodup: forall (ms : memstate),
+    NoDup (map fst (Map.elements ms)).
+  Proof.
+    intros.
+    apply KNoDup_NoDup.
+    apply Map.elements_3w.
+  Qed.
+
+  Local Hint Resolve map_fst_nodup.
+
+  Lemma replay_sel_other : forall a ms m def,
+    ~ Map.In a ms
+    -> selN (replay ms m) (wordToNat a) def = selN m (wordToNat a) def.
+  Proof.
+    intros.
+    apply replay'_sel_other; auto.
+    contradict H.
+    erewrite MapFacts.elements_in_iff.
+    apply in_map_fst_exists_snd in H; destruct H.
+    eexists; apply In_InA; eauto.
   Qed.
 
   Lemma replay'_length : forall V (l:list (addr * V)) (m:list V),
-      length m = length (replay' l m).
-    induction l; [trivial|]; intro.
-    unfold replay'; simpl.
+    length (replay' l m) = length m.
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct (In_dec (@weq addrlen) (fst a) (map fst l)).
+    rewrite replay'_upd_elim by auto.
+    apply IHl; auto.
+    rewrite replay'_upd_comm by auto.
     rewrite length_upd.
-    eapply IHl.
+    apply IHl; auto.
   Qed.
+
   Hint Rewrite replay'_length : lengths.
 
-  Lemma InA_NotInA_neq : forall T eq, Equivalence eq -> forall l (x y:T),
-      InA eq x l -> ~ (InA eq y l) -> ~ eq x y.
-    intros until 0; intros Eqeq; intros until 0; intros HIn HnotIn.
-    rewrite InA_altdef, Exists_exists in *.
-    intro Hcontra; apply HnotIn; clear HnotIn.
-    elim HIn; clear HIn; intros until 0; intros HIn.
-    destruct HIn as [HIn Heq_x_x0].
-    exists x0. split; [apply HIn|].
-    etransitivity; eauto; symmetry; auto.
-  Qed.
-
-  Lemma replay'_sel : forall V a (v: V) l m def,
-    KNoDup l -> In (a, v) l -> wordToNat a < length m -> sel (replay' l m) a def = v.
+  Lemma replay'_sel_in' : forall V l d a (v def : V),
+    In (a, v) l -> NoDup (map fst l) -> # a < length d
+    -> sel (replay' l d) a def = v.
   Proof.
-    intros until 0; intros HNoDup HIn Hbounds.
-
-    induction l as [|p]; [inversion HIn|]; destruct p as [x y]; simpl.
-    destruct HIn. {
-      clear IHl.
-      injection H; clear H;
-        intro H; rewrite H in *; clear H;
-        intro H; rewrite H in *; clear H.
-      apply selN_updN_eq. rewrite <- replay'_length; assumption.
-    } {
-      assert (x <> a) as Hneq. {
-        inversion HNoDup. 
-        assert (InA eq (a,v) l). {
-          apply In_InA; subst; eauto using MapProperties.eqk_equiv.
-        }
-      remember (Map.eq_key (elt:=V)) as eq_key in *.
-      assert (forall a b, eq a b -> eq_key a b) as Heq_eqk by (
-        intros; subst; apply MapProperties.eqk_equiv).
-      assert (forall a l, InA eq a l -> InA eq_key a l) as HIn_eq_eqk by (
-        intros until 0; intro HInAeq; induction HInAeq; [subst|right]; auto).
-      assert (@Equivalence (Map.key*V) eq_key) as Eqeq by (
-        subst eq_key; apply MapProperties.eqk_equiv).
-      intro Hcontra; destruct
-        (@InA_NotInA_neq (Map.key*V) eq_key Eqeq l (a,v) (x,y) (HIn_eq_eqk _ _ H4) H2).
-      subst; unfold Map.eq_key; reflexivity.
-      }
-      unfold sel, upd in *.
-      rewrite selN_updN_ne, IHl;
-        try trivial;
-        match goal with
-          | [ H: KNoDup (?a::?l) |- KNoDup ?l ] => inversion H; assumption
-          | [ Hneq: ?a<>?b |- wordToNat ?a <> wordToNat ?b] =>
-            unfold not; intro Hcontra; destruct (Hneq (wordToNat_inj _  _ Hcontra))
-        end.
-    }
+    induction l; simpl; intros; auto.
+    inversion H.
+    inversion H0; subst.
+    destruct a; intuition; simpl.
+    inversion H2; subst.
+    rewrite replay'_upd_comm by auto.
+    rewrite sel_upd_eq; auto.
+    erewrite replay'_length; auto.
+    simpl in *.
+    apply IHl; auto.
+    rewrite length_upd; auto.
   Qed.
+
+  Lemma replay'_sel_in : forall V a (v: V) l m def,
+    KNoDup l -> In (a, v) l -> # a < length m
+    -> sel (replay' l m) a def = v.
+  Proof.
+    intros.
+    eapply replay'_sel_in'; eauto.
+    apply KNoDup_NoDup; auto.
+  Qed.
+
 
   Lemma InA_eqke_In : forall V a v l,
     InA (Map.eq_key_elt (elt:=V)) (a, v) l -> In (a, v) l.
   Proof.
-    intros.
-    induction l.
-    inversion H.
-    inversion H.
+    induction l; intros; auto; inversion H; subst.
     inversion H1.
-    destruct a0; simpl in *; subst.
-    left; trivial.
-    simpl.
-    right.
+    destruct a0; simpl in *; subst; auto.
+    simpl. right.
     apply IHl; auto.
   Qed.
 
-  Lemma mapsto_In : forall V a (v: V) ms,
-    Map.MapsTo a v ms -> In (a, v) (Map.elements ms).
-  Proof.
-    intros.
-    apply Map.elements_1 in H.
-    apply InA_eqke_In; auto.
-  Qed.
-
   Lemma replay_sel_in : forall a v ms m def,
-    # a < length m -> Map.MapsTo a v ms -> selN (replay ms m) (wordToNat a) def = v.
+    # a < length m -> Map.MapsTo a v ms
+    -> selN (replay ms m) (wordToNat a) def = v.
   Proof.
     intros.
-    apply mapsto_In in H0.
-    unfold replay.
-    apply replay'_sel.
+    apply replay'_sel_in; auto.
     apply Map.elements_3w.
-    auto.
-    auto.
-  Qed.
-
-  Lemma replay_sel_invalid : forall a ms m def,
-    ~ goodSize addrlen a -> selN (replay ms m) a def = selN m a def.
-  Proof.
-    intros; unfold goodSize in *.
-    destruct (lt_dec a (length m)); [|
-      repeat (rewrite selN_oob); unfold replay;
-        try match goal with [H: _ |- length (replay' _ _) <= a]
-            => rewrite <- replay'_length end;
-        auto; omega].
-    unfold replay, replay'.
-    induction (Map.elements ms); [reflexivity|].
-    rewrite <- IHl0; clear IHl0; simpl.
-    unfold upd.
-    rewrite selN_updN_ne.
-    trivial.
-    destruct a0.
-    unfold Map.key in k.
-    intro Hf.
-    word2nat_auto.
+    apply InA_eqke_In.
+    apply MapFacts.elements_mapsto_iff; auto.
   Qed.
 
   Lemma replay_length : forall ms m,
@@ -722,10 +722,30 @@ Module MEMLOG.
   Proof.
     intros.
     unfold replay.
-    rewrite <- replay'_length.
-    trivial.
+    rewrite replay'_length; auto.
   Qed.
+
   Hint Rewrite replay_length : lengths.
+
+  Lemma replay_sel_invalid : forall a ms d def,
+    ~ goodSize addrlen a
+    -> selN (replay ms d) a def = selN d a def.
+  Proof.
+    intros; unfold goodSize in *.
+    destruct (lt_dec a (length d)).
+
+    unfold replay, replay'.
+    revert d l.
+    induction (Map.elements ms); simpl; intros; auto.
+    destruct a0; simpl.
+    rewrite IHl.
+    unfold upd; rewrite selN_updN_ne; auto.
+    contradict H.
+    word2nat_auto.
+    rewrite length_upd; auto.
+    repeat rewrite (selN_oob); auto; try omega.
+    rewrite replay_length; omega.
+  Qed.
 
   Lemma valid_entries_replay : forall m d,
     valid_entries d m ->
@@ -733,9 +753,9 @@ Module MEMLOG.
   Proof.
     unfold valid_entries, indomain', replay. intros.
     apply H in H0.
-    rewrite <- replay'_length.
-    auto.
+    rewrite replay'_length; auto.
   Qed.
+
   Hint Resolve valid_entries_replay.
 
   Lemma replay_add : forall a v ms m,
@@ -1596,33 +1616,40 @@ Module MEMLOG.
     apply valid_entries_addr_valid; auto.
   Qed.
 
+  Lemma fold_left_skipn_S : forall A B l (f : A -> B -> A) i a def,
+    i < length l
+    -> fold_left f (skipn (S i) l) (f a (selN l i def))
+     = fold_left f (skipn i l) a.
+  Proof.
+    induction l; simpl; intros; auto.
+    inversion H.
+    destruct i.
+    simpl; auto.
+    apply IHl.
+    omega.
+  Qed.
 
-Lemma fold_right_skipn_S : forall A B l i def a (f : B -> A -> A),
-  i < length l
-  -> fold_right f (f (selN l i def) a) (skipn (S i) l)
-   = fold_right f a (skipn i l).
-Proof.
-  intros.
-  all: admit.
-Qed.
+  Lemma replay_skipn_progress : forall i (log : list (addr * valu)) l,
+    i < length log
+    -> replay' (skipn (S i) log) (upd l (selN (map fst log) i $0) (selN (map snd log) i $0)) 
+     = replay' (skipn i log) l.
+  Proof.
+    intros.
+    repeat erewrite selN_map with (default' := ($0, $0)); eauto.
+    unfold replay'.
+    remember (fun m' p => upd m' (fst p) (snd p)) as f.
+    replace (upd l (fst (selN log i ($0, $0))) (snd (selN log i ($0, $0))))
+        with (f l (selN log i ($0, $0)) ).
+    rewrite fold_left_skipn_S; auto.
+    subst; auto.
+  Qed.
 
-Lemma replay_skipn_progress : forall i (log : list (addr * valu)) l,
-  i < length log
-  -> replay' (skipn (S i) log) (upd l (selN (map fst log) i $0) (selN (map snd log) i $0)) 
-   = replay' (skipn i log) l.
-Proof.
-  intros.
-  repeat erewrite selN_map with (default' := ($0, $0)); eauto.
-  unfold replay'.
-  remember (fun p m' => upd m' (fst p) (snd p)) as f.
-  replace (upd l (fst (selN log i ($0, $0))) (snd (selN log i ($0, $0))))
-      with (f (selN log i ($0, $0)) l).
-  rewrite fold_right_skipn_S; auto.
-  subst; auto.
-Qed.
-
-
-
+  Lemma fst_upd_prepend : forall vs a v,
+    map fst (upd_prepend vs a v) = upd (map fst vs) a v.
+  Proof.
+    unfold upd_prepend; intros.
+    rewrite map_upd; auto.
+  Qed.
 
   Definition apply_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
@@ -1672,23 +1699,12 @@ Qed.
 
     step.
 
-Lemma fst_upd_prepend : forall vs a v,
-  map fst (upd_prepend vs a v) = upd (map fst vs) a v.
-Proof.
-  unfold upd_prepend; intros.
-  rewrite map_upd; auto.
-Qed.
-
     rewrite fst_upd_prepend.
-    remember (Map.elements (elt:=valu) m) as L.
     erewrite wordToNat_plusone by eauto.
+    rewrite replay_skipn_progress; auto.
+    abstract solve_lengths.
+    admit. admit.
 
-Check fold_right.
-
-
-    rewrite replay_skipn_progress.
-
-    admit. admit. admit.
     cancel. admit. admit.
     cancel. admit. admit.
     step.
