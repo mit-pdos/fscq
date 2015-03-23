@@ -2223,17 +2223,31 @@ Module MEMLOG.
     unfold apply; log_unfold.
     destruct mscs as [ms cs].
     hoare_unfold log_unfold.
-    unfold avail_region; admit. admit.
+    unfold avail_region.
+    admit.
+    admit. (* how can I tell [a1] is ms_empty? *)
     or_r; cancel; auto.
     or_l; cancel; eauto.
     or_l; cancel; auto.
     cancel.
-    (* true by [nil_unless_in _ l4] *) admit. admit. admit.
+
+    admit.
+    hypmatch (replay a1 d0) as Hx; rewrite Hx.
+    apply valid_entries_replay; auto.
+    hypmatch (replay a1 d0) as Hx; rewrite Hx.
+    rewrite replay_twice; auto.
+
     or_r; or_l; cancel; eauto.
     admit.
+
     or_l; cancel; eauto.
-    (* true by [equal_unless in _ ...l2... l3] and [replay ms l = replay ms l2] *)
-    admit. admit. admit.
+    admit.
+
+    hypmatch (replay m1 d0) as Hx; rewrite Hx.
+    apply valid_entries_replay; auto.
+    hypmatch (replay m1 d0) as Hx; rewrite Hx.
+    rewrite replay_twice; auto.
+
     or_l; cancel; eauto.
   Qed.
 
@@ -3098,7 +3112,6 @@ Module MEMLOG.
     unfold write_array.
     hoare.
 
-    pred_apply.
     rewrite isolate_fwd with (i:=i) by auto.
     cancel.
 
