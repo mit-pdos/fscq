@@ -727,16 +727,16 @@ Module MEMLOG.
 
   Hint Rewrite replay_length : lengths.
 
-  Lemma replay_sel_invalid : forall a ms d def,
+  Lemma replay'_sel_invalid : forall V a (l : list (addr * V)) d def,
     ~ goodSize addrlen a
-    -> selN (replay ms d) a def = selN d a def.
+    -> selN (replay' l d) a def = selN d a def.
   Proof.
     intros; unfold goodSize in *.
     destruct (lt_dec a (length d)).
 
-    unfold replay, replay'.
-    revert d l.
-    induction (Map.elements ms); simpl; intros; auto.
+    unfold replay'.
+    revert d l0.
+    induction l; simpl; intros; auto.
     destruct a0; simpl.
     rewrite IHl.
     unfold upd; rewrite selN_updN_ne; auto.
@@ -744,7 +744,15 @@ Module MEMLOG.
     word2nat_auto.
     rewrite length_upd; auto.
     repeat rewrite (selN_oob); auto; try omega.
-    rewrite replay_length; omega.
+    rewrite replay'_length; omega.
+  Qed.
+
+  Lemma replay_sel_invalid : forall a ms d def,
+    ~ goodSize addrlen a
+    -> selN (replay ms d) a def = selN d a def.
+  Proof.
+    unfold replay; intros.
+    apply replay'_sel_invalid; auto.
   Qed.
 
   Lemma valid_entries_replay : forall m d,
@@ -1651,6 +1659,211 @@ Module MEMLOG.
     rewrite map_upd; auto.
   Qed.
 
+
+  Lemma equal_unless_in_bwd : forall A n l l' (def : A) ms,
+    equal_unless_in (skipn n ms) l l' def
+    -> equal_unless_in ms l l' def.
+  Proof.
+    unfold equal_unless_in, sel, upd; intros.
+    destruct H.
+    split; auto;intuition.
+    apply H0. right.
+    contradict H2.
+    eapply in_skipn_in; eauto.
+  Qed.
+
+  Lemma valid_entries_replay'_rev : forall l m,
+    valid_entries (replay' (Map.elements m) l) m
+    -> valid_entries l m.
+  Proof.
+    unfold valid_entries, indomain'; intros.
+    apply H in H0.
+    rewrite replay'_length in H0; auto.
+  Qed.
+
+  Lemma replay'_sel_fst_eq_snd : forall V n (log : list (addr * V)) l ad vd,
+    KNoDup log
+    -> n < length log
+    -> # (selN (map fst log) n ad) < length l
+    -> sel (replay' log l) (selN (map fst log) n ad) vd
+                          = selN (map snd log) n vd.
+  Proof.
+    intros.
+    erewrite replay'_sel_in; eauto.
+    apply in_selN_map; auto.
+  Qed.
+
+  Lemma equal_unless_in_S : forall (n : addr) (log : list (addr * valu)) l l' def m,
+    equal_unless_in (skipn (# n) (map fst log)) (replay' log l) l' def
+    -> (n < $ (Map.cardinal m))%word
+    -> valid_entries (replay' log l) m
+    -> log = Map.elements m
+    -> equal_unless_in (skipn (S (# n)) (map fst log)) (replay' log l)
+       (upd l' (selN (map fst log) (# n) $0) (selN (map snd log) (# n) def)) def.
+  Proof.
+    unfold equal_unless_in, upd, sel; intros.
+    assert (length l = length l') as Heq.
+    rewrite replay'_length in H; apply H.
+
+    destruct H; split; intros.
+    rewrite replay'_length; rewrite length_updN; auto.
+
+    destruct (Nat.eq_dec n0 (# (selN (map fst log) (# n) $0))); subst.
+    rewrite selN_updN_eq.
+    apply replay'_sel_fst_eq_snd.
+    apply Map.elements_3w.
+    solve_lengths.
+    apply valid_entries_addr_valid; auto.
+    apply valid_entries_replay'_rev; auto.
+
+    rewrite <- Heq.
+    apply valid_entries_addr_valid; auto.
+    apply valid_entries_replay'_rev; auto.
+
+    rewrite selN_updN_ne by auto.
+    apply H3.
+    destruct (lt_dec n0 (pow2 addrlen)); inversion H4; auto.
+    right; contradict H2.
+    eapply in_skipn_S; auto.
+    apply wordToNat_neq_inj.
+    rewrite wordToNat_natToWord_idempotent'; eauto.
+  Qed.
+
+  Lemma nil_unless_in_prepend : forall l d a v,
+    nil_unless_in l (map snd d) -> In a l
+    -> nil_unless_in l (map snd (upd_prepend d a v)).
+  Proof.
+    unfold nil_unless_in, upd_prepend; intros.
+    destruct (weq a a0); try congruence.
+    destruct (lt_dec (# a0) (length d)).
+    erewrite sel_map.
+    rewrite sel_upd_ne by auto.
+    erewrite <- H by eauto.
+    erewrite sel_map; eauto.
+    rewrite length_upd; eauto.
+    unfold sel; rewrite selN_oob; eauto.
+    solve_lengths.
+    Grab Existential Variables.
+    exact ($0, nil).
+  Qed.
+
+  Ltac solve_equal_unless_in_length :=
+    repeat match goal with
+    | [ H : equal_unless_in _ ?l1 ?l2 _ |- _ ] =>
+      let Hx := fresh in
+      unfold equal_unless_in in H; destruct H as [Hx ?];
+      autorewrite with lengths in Hx;
+      try rewrite Nat.min_id in Hx
+    | [ |- length _ = length _ ] => progress autorewrite with lengths
+    | [ H : length ?a = length ?b |- context [length ?a ] ] => rewrite H
+    end; auto.
+
+  Lemma equal_unless_in_replay' : forall (ms : memstate) l l' def,
+    equal_unless_in (map fst (Map.elements ms)) (replay' (Map.elements ms) l) l' def
+    -> equal_unless_in (map fst (Map.elements ms)) l l' def.
+  Proof.
+    intros.
+    apply equal_unless_in_replay_eq.
+    rewrite <- replay_twice.
+    apply <- equal_unless_in_replay_eq; eauto.
+  Qed.
+
+  Lemma pair_selN_map : forall A B (l : list (A * B)) n ad bd,
+    (selN (map fst l) n ad, selN (map snd l) n bd) = selN l n (ad, bd).
+  Proof.
+    induction l; destruct n; simpl; firstorder.
+    destruct a; auto.
+  Qed.
+
+  Lemma equal_unless_in_combine : forall A B log (l : list (A * B)) a b ad bd,
+    equal_unless_in log a (map fst l) ad
+    -> equal_unless_in log b (map snd l) bd
+    -> equal_unless_in log (List.combine a b) l (ad, bd).
+  Proof.
+    unfold equal_unless_in; intros.
+    assert (length a = length b).
+    rewrite map_length in *; solve_lengths.
+
+    destruct H; destruct H0.
+    split; intros.
+    rewrite map_length in *.
+    rewrite combine_length_eq; auto; solve_lengths.
+
+    rewrite selN_combine by auto.
+    rewrite H2 by auto.
+    rewrite H3 by auto.
+    apply pair_selN_map.
+  Qed.
+
+  Lemma equal_unless_in_split : forall A B log (l : list (A * B)) a b def,
+    equal_unless_in log (List.combine a b) l def
+    -> length a = length b
+    -> equal_unless_in log a (map fst l) (fst def) /\
+       equal_unless_in log b (map snd l) (snd def).
+  Proof.
+    unfold equal_unless_in; intros.
+    destruct H.
+    rewrite combine_length_eq in H by auto.
+    split; split; try solve_lengths.
+
+    destruct (lt_dec n (length l)).
+    erewrite selN_map by auto.
+    rewrite <- H1 by auto.
+    destruct def.
+    rewrite selN_combine by auto.
+    simpl; auto.
+    rewrite selN_oob by omega.
+    rewrite selN_oob; auto.
+    rewrite map_length; omega.
+
+    destruct (lt_dec n (length l)).
+    erewrite selN_map by auto.
+    rewrite <- H1 by auto.
+    destruct def.
+    rewrite selN_combine by auto.
+    simpl; auto.
+    rewrite selN_oob by omega.
+    rewrite selN_oob; auto.
+    rewrite map_length; omega.
+  Qed.
+
+  Lemma nil_unless_in_equal_unless_in : forall log n l,
+    nil_unless_in log l
+    -> n = length l
+    -> goodSizeEq addrlen n
+    -> equal_unless_in log (repeat nil n) l nil.
+  Proof.
+    unfold nil_unless_in, equal_unless_in; intros.
+    split; solve_lengths.
+    destruct (lt_dec n0 n).
+
+    rewrite repeat_selN by auto.
+    destruct (lt_dec n0 (pow2 addrlen)).
+    intuition.
+    erewrite <- H at 1; eauto.
+    unfold sel.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+
+    intuition; unfold goodSize, goodSizeEq in *; omega.
+    repeat rewrite selN_oob; solve_lengths.
+  Qed.
+
+  Lemma equal_unless_in_trans_nil : forall log l (l1 : list valuset) l2,
+    equal_unless_in log (List.combine l (repeat nil (length l))) l1 ($0, nil)
+    -> equal_unless_in log (map fst l1) (map fst l2) $0
+    -> nil_unless_in log (map snd l2)
+    -> goodSizeEq addrlen (length l)
+    -> equal_unless_in log (List.combine l (repeat nil (length l))) l2 ($0, nil).
+  Proof.
+    intros.
+    apply equal_unless_in_split in H; destruct H; simpl in *.
+    eapply equal_unless_in_combine.
+    eapply equal_unless_in_trans; eauto.
+    apply nil_unless_in_equal_unless_in; auto.
+    solve_equal_unless_in_length.
+    solve_lengths.
+  Qed.
+
   Definition apply_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     let^ (cs) <- For i < $ (Map.cardinal ms)
@@ -1698,18 +1911,42 @@ Module MEMLOG.
     eapply helper_valid_entries_addr_valid; eauto.
 
     step.
-
     rewrite fst_upd_prepend.
     erewrite wordToNat_plusone by eauto.
     rewrite replay_skipn_progress; auto.
     abstract solve_lengths.
+
+    rewrite fst_upd_prepend.
+    erewrite wordToNat_plusone by eauto.
+    eapply equal_unless_in_S; eauto.
+
+    apply nil_unless_in_prepend; auto.
+    apply in_sel.
+    abstract solve_lengths.
+
+    cancel; auto.
+    eapply equal_unless_in_trans_nil; eauto.
+    eapply equal_unless_in_replay'.
+    eapply equal_unless_in_bwd; eauto.
+    hypmatch (array (DataStart xp) l2) as Hx.
+    setoid_rewrite array_max_length_pimpl with (l := l2) in Hx.
+    destruct_lift Hx; replace (length l) with (length l2); auto.
+    abstract solve_equal_unless_in_length.
+
+    cancel; auto.
+    apply equal_unless_in_combine.
+    rewrite fst_upd_prepend.
     admit. admit.
 
-    cancel. admit. admit.
-    cancel. admit. admit.
     step.
-    admit. admit.
-    cancel. admit. admit. admit.
+    admit.
+    abstract solve_equal_unless_in_length.
+
+    cancel.
+    admit.
+    admit.
+    admit.
+
     Grab Existential Variables.
     exact nil.
   Qed.
