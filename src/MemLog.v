@@ -2210,6 +2210,17 @@ Module MEMLOG.
 
   Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
 
+  Lemma helper_apply_goodSize : forall F xp d ms m,
+    (F * rep_inner xp (AppliedUnsyncTxn (replay ms d)) ms)%pred m
+    -> goodSizeEq addrlen (length d).
+  Proof.
+    log_unfold; intros.
+    setoid_rewrite array_max_length_pimpl in H.
+    destruct_lift H.
+    erewrite <- replay_length.
+    erewrite <- combine_length_eq; eauto.
+  Qed.
+
   Definition apply T xp (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     let^ (ms, cs) <- apply_unsync xp ^(ms, cs);
@@ -2255,11 +2266,16 @@ Module MEMLOG.
     cancel.
     log_unfold.
     cancel; auto.
+
     apply equal_unless_in_combine.
     rewrite map_fst_combine by auto.
-    admit.
+    apply equal_unless_in_replay_eq.
+    rewrite replay_twice; auto.
+
     rewrite map_snd_combine by auto.
-    admit.
+    apply nil_unless_in_equal_unless_in; auto.
+    erewrite <- replay_length; eauto.
+    eapply helper_apply_goodSize; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
