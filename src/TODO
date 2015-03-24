@@ -14,3 +14,5 @@
 - better automation support for words
 - better automation support for stopping at well-defined points
 - integrate error codes (Errno.v)
+- combine Verdi's Paxos with FSCQ for stable storage, prove end-to-end theorem
+  under both network and node failures (how to combine different spec styles??)
