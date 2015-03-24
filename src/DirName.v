@@ -595,7 +595,8 @@ Module SDIR.
   Lemma helper_atrans_dslist : forall l m1 m2
     (LP : listpred DIR.dlmatch l m1)
     (MT  : mem_atrans wname2sname m1 m2 wname_valid)
-    (OK : forall w, indomain w m1 -> wname_valid w),
+    (OK  : forall w, indomain w m1 -> wname_valid w)
+    (OK2 : forall s, indomain s m2 -> sname_valid s),
     listpred dslmatch (List.map dslist_trans l) m2.
   Proof.
     induction l; simpl; intros.
@@ -614,6 +615,8 @@ Module SDIR.
     eapply mem_atrans_mem_except; eauto.
 
     intros; apply OK.
+    eapply indomain_mem_except_indomain; eauto.
+    intros; apply OK2.
     eapply indomain_mem_except_indomain; eauto.
   Qed.
 
