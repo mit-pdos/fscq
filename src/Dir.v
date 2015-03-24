@@ -210,7 +210,7 @@ Module DIR.
     rewrite <- skipn_repeat.
     rewrite <- arrayN_updN_0; auto.
     rewrite repeat_length.
-    pose proof (items_per_valu_not_0' items_per_valu); omega.
+    pose proof (items_per_valu_not_0' _ _ itemsz_ok); omega.
     unfold items_per_valu.
     rewrite valulen_is.
     compute; omega.
@@ -1081,7 +1081,7 @@ Module DIR.
            (name, (inum, ($1, (bool2isdir isdir, tt)))))) (Prog.upd m name (inum, isdir)).
   Proof.
     intros.
-    pose proof (items_per_valu_not_0' items_per_valu).
+    pose proof (items_per_valu_not_0' _ _ itemsz_ok).
     replace 0 with (length l - length l) at 1 by omega.
     rewrite <- updN_app2 by auto.
     apply listpred_updN.
