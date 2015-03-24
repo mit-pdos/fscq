@@ -7,6 +7,7 @@
 - non-journaled data writes (file fsync)
 - asynchronous metadata updates (directory fsync)
 - extraction without Haskell
+- integrate into MirageOS unikernel by extracting to OCaml
 - migrate to Coq 8.5
 - better syntax for predicates (from paper)
 - better automation support for words
