@@ -1341,7 +1341,8 @@ Module MEMLOG.
       rep xp F (FlushedTxn m1 m2) mscs *
       [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
     CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs'
+      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/
+                    rep xp F (FlushedUnsyncTxn m1 m2) mscs'
     >} flush_sync xp mscs.
   Proof.
     unfold flush_sync; log_unfold; unfold avail_region.
@@ -1349,6 +1350,16 @@ Module MEMLOG.
     intros.
     solve_lengths_prepare.
     step.
+
+Focus 2.
+
+or_r. cancel.
+all: rewrite Map.cardinal_1.
+cancel. apply pimpl_refl.
+auto.
+auto.
+auto.
+
     step.
 
     ring_simplify (LogData xp ^+ $0).
@@ -1404,9 +1415,6 @@ Module MEMLOG.
 
     norm. cancel. intuition.
     pred_apply.
-    admit.
-    (* Doesn't seem provable. LogDescriptor part doesn't match up,
-       It used to work in git version 62cd99f. *)
 
     norm. cancel. intuition.
     pred_apply. norm. cancel.
