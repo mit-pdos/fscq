@@ -1350,16 +1350,6 @@ Module MEMLOG.
     intros.
     solve_lengths_prepare.
     step.
-
-Focus 2.
-
-or_r. cancel.
-all: rewrite Map.cardinal_1.
-cancel. apply pimpl_refl.
-auto.
-auto.
-auto.
-
     step.
 
     ring_simplify (LogData xp ^+ $0).
@@ -1395,12 +1385,12 @@ auto.
     solve_lengths.
     solve_lengths.
 
-    cancel.
+    or_l. cancel.
     try_arrays_lengths.
     solve_lengths.
-    cancel.
+
+    or_l. cancel.
     try_arrays_lengths.
-    f_equal.
     unfold upd_sync; solve_lengths.
     unfold upd_sync; solve_lengths.
     unfold upd_sync; solve_lengths.
@@ -1413,14 +1403,16 @@ auto.
     solve_lengths.
     solve_lengths.
 
-    norm. cancel. intuition.
-    pred_apply.
+    or_r. cancel.
+    try_arrays_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
 
-    norm. cancel. intuition.
-    pred_apply. norm. cancel.
+    or_l. cancel.
     try_arrays_lengths.
-    intuition.
-    try_arrays_lengths.
+    solve_lengths.
+
     Unshelve.
     all: auto.
   Qed.
