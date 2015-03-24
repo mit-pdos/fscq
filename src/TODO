@@ -1,14 +1,14 @@
-FUNCTIONALITY
-
-- maybe doubly-indirect blocks?
-- direct data writes
-
-PROOFS/SPECS
-
-- memlog proofs
-
-NOT GOING TO HAPPEN / NICE TO HAVE
-
-- byte-level read/write in Coq
-- deleting a file does not free its disk blocks
-- mkfs should zero out the first inode
+- factor out on-disk list code from MemLog
+- bigger log (more than one descriptor block)
+- prove end-to-end theorem about mkfs
+- double-indirect blocks
+- byte-level read/write
+- deleting a file should free its data blocks
+- non-journaled data writes (file fsync)
+- asynchronous metadata updates (directory fsync)
+- extraction without Haskell
+- migrate to Coq 8.5
+- better syntax for predicates (from paper)
+- better automation support for words
+- better automation support for stopping at well-defined points
+- integrate error codes (Errno.v)
