@@ -29,6 +29,7 @@ import Control.Concurrent.MVar
 import Data.Word
 import Text.Printf
 import qualified System.Process
+import qualified Data.List
 
 -- Handle type for open files; we will use the inode number
 type HT = Coq_word
@@ -138,10 +139,18 @@ materializeFlushgroups idxref groups = do
   ds <- init_disk $ printf "/tmp/crashlog-%06d.img" idx
   applyFlushgroups ds groups
 
-writeSubsets :: [a] -> [[a]]
-writeSubsets [] = [[]]
-writeSubsets (hd : tl) = tailsubsets ++ map (\x -> hd : x) tailsubsets
-  where tailsubsets = writeSubsets tl
+writeSubsets' :: [[(Word64, a)]] -> [[(Word64, a)]]
+writeSubsets' [] = [[]]
+writeSubsets' (heads : tails) =
+    tailsubsets ++ (concat $ map (\ts -> map (\hd -> hd : ts) heads) tailsubsets)
+  where
+    tailsubsets = writeSubsets' tails
+
+writeSubsets :: [(Word64, a)] -> [[(Word64, a)]]
+writeSubsets writes = writeSubsets' addrWrites
+  where
+    addrWrites = Data.List.groupBy sameaddr writes
+    sameaddr (x, _) (y, _) = (x == y)
 
 materializeCrashes :: IORef Integer -> [[(Word64, Coq_word)]] -> IO ()
 materializeCrashes idxref [] = materializeFlushgroups idxref []
