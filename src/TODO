@@ -1,15 +1,17 @@
-- factor out on-disk list code from MemLog
-- bigger log (more than one descriptor block)
-- prove end-to-end theorem about mkfs
 - double-indirect blocks
 - byte-level read/write
+- factor out on-disk list code from MemLog
+- bigger log (more than one descriptor block)
 - deleting a file should free its data blocks
+- prove end-to-end theorem about mkfs
 - non-journaled data writes (file fsync)
 - asynchronous metadata updates (directory fsync)
+- migrate to Coq 8.5
+
 - extraction without Haskell
 - integrate into MirageOS unikernel by extracting to OCaml
 - extraction into Go to combine with Biscuit
-- migrate to Coq 8.5
+
 - better syntax for predicates (from paper)
 - better automation support for words
 - better automation support for stopping at well-defined points
