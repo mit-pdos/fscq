@@ -16,3 +16,5 @@
 - integrate error codes (Errno.v)
 - combine Verdi's Paxos with FSCQ for stable storage, prove end-to-end theorem
   under both network and node failures (how to combine different spec styles??)
+- add security to fscq specs (something better than ACLs; maybe capsicum?)
+- provably secure sandbox on top of fscq
