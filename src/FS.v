@@ -24,7 +24,6 @@ Set Implicit Arguments.
 Import ListNotations.
 
 Parameter cachesize : nat.
-Axiom cachesize_nonzero : cachesize <> 0.
 
 Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   (* Block $0 stores the superblock (layout information).
@@ -79,7 +78,7 @@ Definition mkfs T data_bitmaps inode_bitmaps rx : prog T :=
   end.
 
 Definition recover {T} rx : prog T :=
-  cs <- BUFCACHE.init_recover cachesize;
+  cs <- BUFCACHE.init_recover (if eq_nat_dec cachesize 0 then 1 else cachesize);
   let^ (cs, fsxp) <- sb_load cs;
   mscs <- MEMLOG.recover (FSXPMemLog fsxp) cs;
   rx ^(mscs, fsxp).
@@ -100,7 +99,6 @@ Theorem recover_ok :
   >} recover.
 Proof.
   unfold recover, MEMLOG.would_recover_either_pred; intros.
-  pose proof cachesize_nonzero.
 
   eapply pimpl_ok2; eauto with prog.
   intros. norm'l. unfold stars; simpl.
@@ -108,6 +106,8 @@ Proof.
            setoid_rewrite crash_xform_sep_star_dist ||
            setoid_rewrite crash_xform_lift_empty ).
   cancel.
+
+  destruct (eq_nat_dec cachesize 0); congruence.
 
   step.
   autorewrite with crash_xform. cancel.
