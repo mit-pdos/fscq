@@ -59,23 +59,11 @@ Notation "l $[ i ]" := (sel l i _) (at level 56, left associativity).
 Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
 
 (* list population *)
-Fixpoint repeat T (v : T) (n : nat) :=
-  match n with
-  | O => nil
-  | S n' => cons v (repeat v n')
-  end.
 
 Arguments repeat : simpl never.
 
 Definition removeN {V} (l : list V) i :=
    (firstn i l) ++ (skipn (S i) l).
-
-Lemma repeat_length: forall T n (v : T),
-  length (repeat v n) = n.
-Proof.
-  induction n; firstorder.
-  simpl; rewrite IHn; auto.
-Qed.
 
 Lemma repeat_selN : forall T i n (v def : T),
   i < n
@@ -1289,7 +1277,6 @@ Proof.
   unfold repeat; simpl; auto.
 
   rewrite firstn_cons.
-  unfold repeat at 2; fold repeat.
   rewrite IHm by omega; auto.
 Qed.
 
@@ -1310,7 +1297,7 @@ Proof.
   rewrite <- app_comm_cons.
   rewrite IHm.
   replace (S m + n) with (S (m + n)) by omega.
-  unfold repeat at 2; fold repeat; auto.
+  auto.
 Qed.
 
 Lemma repeat_app_tail : forall T n (a : T),
@@ -1319,7 +1306,7 @@ Proof.
   induction n; intros; simpl; auto.
   unfold repeat; fold repeat; f_equal.
   rewrite <- IHn.
-  unfold repeat at 2; auto.
+  auto.
 Qed.
 
 Lemma removeN_repeat : forall T n i (e : T),
