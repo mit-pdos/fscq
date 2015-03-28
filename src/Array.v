@@ -60,8 +60,6 @@ Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
 
 (* list population *)
 
-Arguments repeat : simpl never.
-
 Definition removeN {V} (l : list V) i :=
    (firstn i l) ++ (skipn (S i) l).
 
