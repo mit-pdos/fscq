@@ -32,7 +32,7 @@ Record inode_xparams := {
 }.
 
 Record fs_xparams := {
-  FSXPMemLog : memlog_xparams;
+  FSXPLog : memlog_xparams;
   FSXPInode : inode_xparams;
   FSXPInodeAlloc : balloc_xparams;
   FSXPBlockAlloc : balloc_xparams;
@@ -113,7 +113,7 @@ Proof.
   unfold pickle_superblock, unpickle_superblock.
   destruct fsxp.
   repeat rewrite Rec.of_to_id.
-  destruct FSXPMemLog0.
+  destruct FSXPLog0.
   destruct FSXPInode0.
   destruct FSXPInodeAlloc0.
   destruct FSXPBlockAlloc0.

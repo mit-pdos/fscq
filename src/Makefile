@@ -4,7 +4,7 @@ MODULES    := Nomega Word WordAuto \
 	      Prog Pred Hoare SepAuto SepAuto2 Idempotent \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache FSLayout \
-	      MemLog Balloc Inode BFile BFileRec Dir \
+	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree FS Testprog \
 	      ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)

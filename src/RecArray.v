@@ -1,5 +1,5 @@
 Require Import Eqdep_dec Arith Omega List.
-Require Import Word WordAuto Pred GenSep Rec Prog BasicProg Hoare SepAuto2 Array MemLog.
+Require Import Word WordAuto Pred GenSep Rec Prog BasicProg Hoare SepAuto2 Array Log.
 
 Set Implicit Arguments.
 
@@ -279,30 +279,30 @@ Section RECARRAY.
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
-        exists m' l, MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+        exists m' l, LOG.rep lxp F (ActiveTxn mbase m') mscs *
         [[ (Fm * array_item xp l)%pred (list2mem m') ]] *
         [[ forall idx, idx < (#i * #items_per_valu) -> selN l idx item_zero = item_zero ]] *
         [[ length l = (# (RALen xp) * #items_per_valu)%nat ]]
       OnCrash
-        MEMLOG.would_recover_old lxp F mbase
+        LOG.would_recover_old lxp F mbase
       Begin
-        mscs <- MEMLOG.write_array lxp (RAStart xp) i $1 $0 mscs;
+        mscs <- LOG.write_array lxp (RAStart xp) i $1 $0 mscs;
         lrx ^(mscs)
       Rof ^(mscs);
     rx mscs.
 
   Theorem init_ok : forall lxp xp mscs,
     {< mbase m F Fm,
-    PRE         exists a, MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE         exists a, LOG.rep lxp F (ActiveTxn mbase m) mscs *
                 [[ (Fm * array (RAStart xp) a $1)%pred (list2mem m) ]] *
                 [[ length a = # (RALen xp) ]] *
                 [[ goodSize addrlen (# (RALen xp) * #items_per_valu) ]]
     POST RET:mscs
-                exists m' l, MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+                exists m' l, LOG.rep lxp F (ActiveTxn mbase m') mscs *
                 [[ (Fm * array_item xp l)%pred (list2mem m') ]] *
                 [[ length l = (# (RALen xp) * #items_per_valu)%nat ]] *
                 [[ Forall (fun i => i = item_zero) l ]]
-    CRASH       MEMLOG.would_recover_old lxp F mbase
+    CRASH       LOG.would_recover_old lxp F mbase
     >} init lxp xp mscs.
   Proof.
     unfold init.
@@ -362,7 +362,7 @@ Section RECARRAY.
     intuition.
     split; try apply well_formed_valu_to_block.
 
-    apply MEMLOG.activetxn_would_recover_old.
+    apply LOG.activetxn_would_recover_old.
 
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
@@ -376,15 +376,15 @@ Section RECARRAY.
 
   (** Get the [pos]'th item in the [block_ix]'th block *)
   Definition get_pair T lxp xp block_ix (pos : addr) mscs rx : prog T :=
-    let^ (mscs, v) <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 mscs;
+    let^ (mscs, v) <- LOG.read_array lxp (RAStart xp) block_ix $1 mscs;
     let i := Rec.of_word (Rec.word_selN #pos (valu_to_wreclen v)) in
     rx ^(mscs, i).
 
   (** Update the [pos]'th item in the [block_ix]'th block to [i] *)
   Definition put_pair T lxp xp block_ix (pos : addr) (i : item) mscs rx : prog T :=
-    let^ (mscs, v) <- MEMLOG.read_array lxp (RAStart xp) block_ix $1 mscs;
+    let^ (mscs, v) <- LOG.read_array lxp (RAStart xp) block_ix $1 mscs;
     let v' := wreclen_to_valu (Rec.word_updN #pos (valu_to_wreclen v) (Rec.to_word i)) in
-    mscs <- MEMLOG.write_array lxp (RAStart xp) block_ix $1 v' mscs;
+    mscs <- LOG.write_array lxp (RAStart xp) block_ix $1 v' mscs;
     rx mscs.
 
   Hint Rewrite map_length.
@@ -396,14 +396,14 @@ Section RECARRAY.
 
   Theorem get_pair_ok : forall lxp xp mscs block_ix pos,
     {< F F' mbase m ilistlist,
-    PRE            MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE            LOG.rep lxp F (ActiveTxn mbase m) mscs *
                    [[ (array_item_pairs xp ilistlist * F')%pred (list2mem m) ]] *
                    [[ (block_ix < RALen xp)%word ]] *
                    [[ (pos < items_per_valu)%word ]]
     POST RET:^(mscs,r)
-                   MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+                   LOG.rep lxp F (ActiveTxn mbase m) mscs *
                    [[ r = sel (sel ilistlist block_ix nil) pos item_zero ]]
-    CRASH          MEMLOG.would_recover_old lxp F mbase
+    CRASH          LOG.would_recover_old lxp F mbase
     >} get_pair lxp xp block_ix pos mscs.
   Proof.
     unfold get_pair.
@@ -419,22 +419,22 @@ Section RECARRAY.
     rewrite Forall_forall in *. apply H10. apply in_selN. abstract word2nat_auto.
     abstract word2nat_auto.
     abstract word2nat_auto.
-    apply MEMLOG.activetxn_would_recover_old.
+    apply LOG.activetxn_would_recover_old.
   Qed.
 
   Local Hint Extern 0 (okToUnify (array (RAStart _) _ _) (array (RAStart _) _ _)) => constructor : okToUnify.
 
   Theorem put_pair_ok : forall lxp xp mscs block_ix pos i,
     {< F Fm mbase m ilistlist,
-    PRE        MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE        LOG.rep lxp F (ActiveTxn mbase m) mscs *
                [[ (array_item_pairs xp ilistlist * Fm)%pred (list2mem m) ]] *
                [[ (block_ix < RALen xp)%word ]] *
                [[ (pos < items_per_valu)%word ]] *
                [[ Rec.well_formed i ]]
     POST RET:mscs
-               exists m', MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+               exists m', LOG.rep lxp F (ActiveTxn mbase m') mscs *
                [[ (array_item_pairs xp (upd ilistlist block_ix (upd (sel ilistlist block_ix nil) pos i)) * Fm)%pred (list2mem m') ]]
-    CRASH    MEMLOG.would_recover_old lxp F mbase
+    CRASH    LOG.would_recover_old lxp F mbase
     >} put_pair lxp xp block_ix pos i mscs.
   Proof.
     unfold put_pair.
@@ -472,9 +472,9 @@ Section RECARRAY.
     rewrite Forall_forall in *.
     auto.
     cancel.
-    apply MEMLOG.activetxn_would_recover_old.
+    apply LOG.activetxn_would_recover_old.
     cancel.
-    apply MEMLOG.activetxn_would_recover_old.
+    apply LOG.activetxn_would_recover_old.
   Qed.
 
 
@@ -493,13 +493,13 @@ Section RECARRAY.
 
   Theorem get_ok : forall lxp xp mscs inum,
     {< F F' mbase m ilist,
-    PRE            MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE            LOG.rep lxp F (ActiveTxn mbase m) mscs *
                    [[ (F' * array_item xp ilist)%pred (list2mem m) ]] *
                    [[ (inum < RALen xp ^* items_per_valu)%word ]]
     POST RET:^(mscs,r)
-                   MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+                   LOG.rep lxp F (ActiveTxn mbase m) mscs *
                    [[ r = sel ilist inum item_zero ]]
-    CRASH          MEMLOG.would_recover_old lxp F mbase
+    CRASH          LOG.would_recover_old lxp F mbase
     >} get lxp xp inum mscs.
   Proof.
     unfold get, array_item.
@@ -540,14 +540,14 @@ Section RECARRAY.
 
   Theorem put_ok : forall lxp xp inum i mscs,
     {< F F' mbase m ilist,
-    PRE        MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE        LOG.rep lxp F (ActiveTxn mbase m) mscs *
                [[ (F' * array_item xp ilist)%pred (list2mem m) ]] *
                [[ (inum < RALen xp ^* items_per_valu)%word ]] *
                [[ Rec.well_formed i ]]
     POST RET:mscs
-               exists m', MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+               exists m', LOG.rep lxp F (ActiveTxn mbase m') mscs *
                [[ (F' * array_item xp (upd ilist inum i))%pred (list2mem m') ]]
-    CRASH    MEMLOG.would_recover_old lxp F mbase
+    CRASH    LOG.would_recover_old lxp F mbase
     >} put lxp xp inum i mscs.
   Proof.
     unfold put, array_item.

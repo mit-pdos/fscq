@@ -8,7 +8,7 @@ Require Import BasicProg.
 Require Import Pred.
 Require Import Hoare.
 Require Import SepAuto.
-Require Import MemLog.
+Require Import Log.
 Require Import BFile.
 Require Import GenSep.
 Require Import GenSepN.
@@ -560,14 +560,14 @@ Module SDIR.
 
   Theorem dslookup_ok : forall lxp bxp ixp dnum name mscs,
     {< F F1 A mbase m dsmap,
-    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,r)
-           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           LOG.rep lxp F (ActiveTxn mbase m) mscs *
            ((exists inum isdir DF,
              [[ r = Some (inum, isdir) /\ (DF * name |-> (inum, isdir))%pred dsmap ]]) \/
             ([[ r = None /\ notindomain name dsmap ]]))
-    CRASH  MEMLOG.would_recover_old lxp F mbase
+    CRASH  LOG.would_recover_old lxp F mbase
     >} dslookup lxp bxp ixp dnum name mscs.
   Proof.
     unfold dslookup.
@@ -623,12 +623,12 @@ Module SDIR.
 
   Theorem dslist_ok : forall lxp bxp ixp dnum mscs,
     {< F F1 A mbase m dsmap,
-    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,res)
-             MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+             LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ listpred dslmatch res dsmap ]]
-    CRASH    MEMLOG.would_recover_old lxp F mbase
+    CRASH    LOG.would_recover_old lxp F mbase
     >} dslist lxp bxp ixp dnum mscs.
   Proof.
     unfold dslist.
@@ -639,15 +639,15 @@ Module SDIR.
 
   Theorem dsunlink_ok : forall lxp bxp ixp dnum name mscs,
     {< F F1 A mbase m dsmap,
-    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,r) exists m' dsmap',
-             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             LOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ rep_macro F1 A m' bxp ixp dnum dsmap' ]] *
              [[ dsmap' = mem_except dsmap name ]] *
              [[ notindomain name dsmap' ]] *
              [[ r = true -> indomain name dsmap ]]
-    CRASH    MEMLOG.would_recover_old lxp F mbase
+    CRASH    LOG.would_recover_old lxp F mbase
     >} dsunlink lxp bxp ixp dnum name mscs.
   Proof.
     unfold dsunlink.
@@ -671,18 +671,18 @@ Module SDIR.
 
   Theorem dslink_ok : forall lxp bxp ixp dnum name inum isdir mscs,
     {< F F1 A mbase m dsmap,
-    PRE      MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+    PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ rep_macro F1 A m bxp ixp dnum dsmap ]]
     POST RET:^(mscs,r)
             exists m',
-            ([[ r = false ]] * MEMLOG.rep lxp F (ActiveTxn mbase m') mscs)
+            ([[ r = false ]] * LOG.rep lxp F (ActiveTxn mbase m') mscs)
         \/  ([[ r = true ]] * exists dsmap' DF,
-             MEMLOG.rep lxp F (ActiveTxn mbase m') mscs *
+             LOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ rep_macro F1 A m' bxp ixp dnum dsmap' ]] *
              [[ dsmap' = Prog.upd dsmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
              [[ (DF dsmap /\ notindomain name dsmap) ]])
-    CRASH    MEMLOG.would_recover_old lxp F mbase
+    CRASH    LOG.would_recover_old lxp F mbase
     >} dslink lxp bxp ixp dnum name inum isdir mscs.
   Proof.
     unfold dslink.

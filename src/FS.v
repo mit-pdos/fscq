@@ -1,5 +1,5 @@
 Require Import Prog.
-Require Import MemLog.
+Require Import Log.
 Require Import BFile.
 Require Import Word.
 Require Import BasicProg.
@@ -27,8 +27,8 @@ Parameter cachesize : nat.
 
 Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   (* Block $0 stores the superblock (layout information).
-   * The other block numbers, except for MemLog, are relative to
-   * the MemLog data area, which starts at $1.
+   * The other block numbers, except for Log, are relative to
+   * the Log data area, which starts at $1.
    * To account for this, we bump [log_base] by $1, to ensure that
    * the data area does not run into the logging structures.
    *)
@@ -37,7 +37,7 @@ Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   let inode_base := data_blocks in
   let balloc_base := inode_base ^+ inode_blocks ^+ inode_bitmaps in
   let log_base := $1 ^+ balloc_base ^+ data_bitmaps in
-  let log_size := $ MEMLOG.addr_per_block in
+  let log_size := $ LOG.addr_per_block in
   let max_addr := log_base ^+ $3 ^+ log_size in
   (Build_fs_xparams
    (Build_memlog_xparams $1 log_base (log_base ^+ $1) (log_base ^+ $2) log_size)
@@ -49,7 +49,7 @@ Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
 
 Definition set_root_inode fsxp rootinum :=
   Build_fs_xparams
-    fsxp.(FSXPMemLog)
+    fsxp.(FSXPLog)
     fsxp.(FSXPInode)
     fsxp.(FSXPInodeAlloc)
     fsxp.(FSXPBlockAlloc)
@@ -60,27 +60,27 @@ Definition mkfs T data_bitmaps inode_bitmaps rx : prog T :=
   let fsxp := compute_xparams data_bitmaps inode_bitmaps in
   cs <- BUFCACHE.init cachesize;
   cs <- sb_init fsxp cs;
-  mscs <- MEMLOG.init (FSXPMemLog fsxp) cs;
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  mscs <- BALLOC.init' (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
-  mscs <- BALLOC.init' (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+  mscs <- LOG.init (FSXPLog fsxp) cs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  mscs <- BALLOC.init' (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
+  mscs <- BALLOC.init' (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
   (* XXX this overflows the transaction and makes it impossible for mkfs to succeed *)
-  (* mscs <- INODE.init (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) mscs; *)
-  let^ (mscs, r) <- BALLOC.alloc_gen (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+  (* mscs <- INODE.init (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) mscs; *)
+  let^ (mscs, r) <- BALLOC.alloc_gen (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
   match r with
   | None =>
-    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, fsxp, false)
   | Some inum =>
     let fsxp' := set_root_inode fsxp inum in
-    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     rx ^(mscs, fsxp, ok)
   end.
 
 Definition recover {T} rx : prog T :=
   cs <- BUFCACHE.init_recover (if eq_nat_dec cachesize 0 then 1 else cachesize);
   let^ (cs, fsxp) <- sb_load cs;
-  mscs <- MEMLOG.recover (FSXPMemLog fsxp) cs;
+  mscs <- LOG.recover (FSXPLog fsxp) cs;
   rx ^(mscs, fsxp).
 
 Local Opaque BUFCACHE.rep.
@@ -88,17 +88,17 @@ Local Opaque BUFCACHE.rep.
 Theorem recover_ok :
   {< fsxp old newpred,
   PRE
-    crash_xform (MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) old newpred)
+    crash_xform (LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred)
   POST RET:^(mscs, fsxp')
     [[ fsxp' = fsxp ]] *
-    (MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
-     exists new, MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs *
+    (LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
+     exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs *
      [[ newpred (list2mem new) ]])
   CRASH
-    MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) old newpred
+    LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred
   >} recover.
 Proof.
-  unfold recover, MEMLOG.would_recover_either_pred; intros.
+  unfold recover, LOG.would_recover_either_pred; intros.
 
   eapply pimpl_ok2; eauto with prog.
   intros. norm'l. unfold stars; simpl.
@@ -113,7 +113,7 @@ Proof.
   autorewrite with crash_xform. cancel.
 
   eapply pimpl_ok2; eauto with prog.
-  unfold MEMLOG.would_recover_either_pred.
+  unfold LOG.would_recover_either_pred.
   cancel.
 
   set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
@@ -121,91 +121,91 @@ Proof.
   cancel.
 
   step.
-  unfold MEMLOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
-  unfold MEMLOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
+  unfold LOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
+  unfold LOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
   subst. pimpl_crash. cancel. autorewrite with crash_xform. cancel.
 
   autorewrite with crash_xform.
-  rewrite MEMLOG.after_crash_pred'_would_recover_either_pred'.
+  rewrite LOG.after_crash_pred'_would_recover_either_pred'.
   cancel.
 
   pimpl_crash. norm'l; unfold stars; simpl. autorewrite with crash_xform.
   norm. cancel. intuition.
   eapply pred_apply_crash_xform_pimpl; eauto.
   autorewrite with crash_xform.
-  rewrite MEMLOG.after_crash_pred'_would_recover_either_pred'.
+  rewrite LOG.after_crash_pred'_would_recover_either_pred'.
   cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
 
 Definition file_nblocks T fsxp inum mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, len) <- DIRTREE.getlen fsxp inum mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, len).
 
 Definition file_get_attr T fsxp inum mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, attr).
 
 Definition file_get_sz T fsxp inum mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, INODE.ISize attr).
 
 Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-  mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+  mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
                           (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
                                              (INODE.IType attr))
                           mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, b) <- DIRTREE.read fsxp inum off mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, b).
 
 Theorem read_block_ok : forall fsxp inum off mscs,
   {< m F Fm Ftop tree pathname f B v,
-  PRE    MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
+  PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST RET:^(mscs,r)
-         MEMLOG.rep (FSXPMemLog fsxp) F (NoTransaction m) mscs *
+         LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
          [[ r = v ]]
-  CRASH  MEMLOG.would_recover_either (FSXPMemLog fsxp) F m m
+  CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
   >} read_block fsxp inum off mscs.
 Proof.
   unfold read_block.
   hoare.
-  apply MEMLOG.would_recover_old_either.
-  rewrite MEMLOG.notxn_would_recover_old. apply MEMLOG.would_recover_old_either.
-  rewrite MEMLOG.activetxn_would_recover_old. apply MEMLOG.would_recover_old_either.
+  apply LOG.would_recover_old_either.
+  rewrite LOG.notxn_would_recover_old. apply MEMLOG.would_recover_old_either.
+  rewrite LOG.activetxn_would_recover_old. apply MEMLOG.would_recover_old_either.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
 
 Theorem read_block_recover_ok : forall fsxp inum off mscs,
   {<< m Fm Ftop tree pathname f B v,
-  PRE    MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
   POST RET:^(mscs,r)
-         MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
          [[ r = v ]]
   REC RET:^(mscs,fsxp)
-         MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} read_block fsxp inum off mscs >> recover.
 Proof.
   unfold forall_helper; intros.
@@ -215,40 +215,40 @@ Proof.
   eapply pimpl_ok3; intros.
   eapply corr3_from_corr2_rx; eauto with prog.
 
-  setoid_rewrite MEMLOG.notxn_bounded_length at 1.
+  setoid_rewrite LOG.notxn_bounded_length at 1.
   cancel; eauto.
   step.
 
   autorewrite with crash_xform.
-  rewrite MEMLOG.would_recover_either_pred_diskIs.
+  rewrite LOG.would_recover_either_pred_diskIs.
   cancel.
   step.
 
-  rewrite MEMLOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
+  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
   replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.
-  rewrite H3. rewrite MEMLOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
 Qed.
 
 Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
 
 Theorem write_block_inbounds_ok : forall fsxp inum off v mscs,
   {< m Fm flist A f B v0,
-  PRE     MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
           [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
   POST RET:^(mscs,ok)
-          [[ ok = false ]] * MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           [[ ok = true ]] * exists m' flist' f',
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
-  CRASH   MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) m (
+  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
           exists flist' f',
           (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
@@ -257,12 +257,12 @@ Theorem write_block_inbounds_ok : forall fsxp inum off v mscs,
 Proof.
   unfold write_block_inbounds.
   hoare.
-  rewrite <- MEMLOG.would_recover_either_pred_pimpl. cancel.
-  rewrite <- MEMLOG.would_recover_old_either_pred. cancel.
-  rewrite <- MEMLOG.would_recover_old_either_pred.
-  unfold MEMLOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
-  rewrite <- MEMLOG.would_recover_old_either_pred.
-  unfold MEMLOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
+  rewrite <- LOG.would_recover_either_pred_pimpl. cancel.
+  rewrite <- LOG.would_recover_old_either_pred. cancel.
+  rewrite <- LOG.would_recover_old_either_pred.
+  unfold LOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
+  rewrite <- LOG.would_recover_old_either_pred.
+  unfold LOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.
@@ -270,20 +270,20 @@ Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_
 Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
   {<< flist A f B v0 Fm m,
   PRE     [[ cachesize <> 0 ]] *
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist *
             [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
             [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]])%pred (list2mem m) ]]
   POST RET:^(mscs,ok)
-          [[ ok = false ]] * MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           [[ ok = true ]] * exists m',
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
           [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
             [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
   REC RET:^(mscs,fsxp)
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
           [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
             [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
@@ -307,29 +307,29 @@ Qed.
 
 
 Definition set_size T fsxp inum size mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, ok) <- BFILE.bftrunc (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
   rx ^(mscs, ok).
 
 
 Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
-  let^ (mscs, curlen) <- BFILE.bflen (FSXPMemLog fsxp) (FSXPInode fsxp) inum mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, curlen) <- BFILE.bflen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
   mscs <- IfRx irx (wlt_dec off curlen) {
     irx mscs
   } else {
-    let^ (mscs, ok) <- BFILE.bftrunc (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum (off ^+ $1) mscs;
+    let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum (off ^+ $1) mscs;
     If (bool_dec ok true) {
       irx mscs
     } else {
-      mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+      mscs <- LOG.abort (FSXPLog fsxp) mscs;
       rx ^(mscs, false)
     }
   };
-  mscs <- BFILE.bfwrite (FSXPMemLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
   mscs <- IfRx irx (wlt_dec (INODE.ISize oldattr) newsz) {
-    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
                             (INODE.Build_iattr newsz
                                                (INODE.IMTime oldattr)
                                                (INODE.IType oldattr))
@@ -338,26 +338,26 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   } else {
     irx mscs
   };
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
 
 Definition readdir T fsxp dnum mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, files) <- SDIR.dslist (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  let^ (mscs, files) <- SDIR.dslist (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, files).
 
 Definition create T fsxp dnum name mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, oi) <- DIRTREE.mkfile fsxp dnum name mscs;
   match oi with
   | None =>
-    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
                             (INODE.Build_iattr $0 $0 $0) mscs;
-    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
     | false => rx ^(mscs, None)
@@ -365,16 +365,16 @@ Definition create T fsxp dnum name mscs rx : prog T :=
   end.
 
 Definition mksock T fsxp dnum name mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, oi) <- DIRTREE.mkfile fsxp dnum name mscs;
   match oi with
   | None =>
-    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    mscs <- BFILE.bfsetattr (FSXPMemLog fsxp) (FSXPInode fsxp) inum
+    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
                             (INODE.Build_iattr $0 $0 $1) mscs;
-    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
     | false => rx ^(mscs, None)
@@ -382,14 +382,14 @@ Definition mksock T fsxp dnum name mscs rx : prog T :=
   end.
 
 Definition mkdir T fsxp dnum name mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, oi) <- DIRTREE.mkdir fsxp dnum name mscs;
   match oi with
   | None =>
-    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
     | false => rx ^(mscs, None)
@@ -397,42 +397,42 @@ Definition mkdir T fsxp dnum name mscs rx : prog T :=
   end.
 
 Definition delete T fsxp dnum name mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, ok) <- DIRTREE.delete fsxp dnum name mscs;
   If (bool_dec ok true) {
-    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     rx ^(mscs, ok)
   } else {
-    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, false)
   }.
 
 Definition lookup T fsxp dnum names mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, r) <- DIRTREE.namei fsxp dnum names mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, r).
 
 Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname mscs;
   If (bool_dec r true) {
-    let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     rx ^(mscs, ok)
   } else {
-    mscs <- MEMLOG.abort (FSXPMemLog fsxp) mscs;
+    mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, false)
   }.
 
 Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
   {< m Ftop tree cwd tree_elem,
-  PRE     MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
           [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
           [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
   POST RET:^(mscs,ok)
-          [[ ok = false ]] * MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
           [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
           [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
@@ -440,7 +440,7 @@ Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
           [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
           [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
           [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
-  CRASH   MEMLOG.would_recover_either_pred (FSXPMemLog fsxp) (sb_rep fsxp) m (
+  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
           exists srcnum srcents dstnum dstents subtree pruned renamed tree',
           (DIRTREE.rep fsxp Ftop tree')%pred *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
@@ -453,10 +453,10 @@ Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
 Proof.
   unfold rename.
   hoare.
-  all: try rewrite MEMLOG.activetxn_would_recover_old.
-  all: try rewrite MEMLOG.notxn_would_recover_old.
-  all: try apply MEMLOG.would_recover_old_either_pred.
-  rewrite <- MEMLOG.would_recover_either_pred_pimpl.
+  all: try rewrite LOG.activetxn_would_recover_old.
+  all: try rewrite LOG.notxn_would_recover_old.
+  all: try apply LOG.would_recover_old_either_pred.
+  rewrite <- LOG.would_recover_either_pred_pimpl.
   cancel.
 Qed.
 
@@ -464,13 +464,13 @@ Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog
 
 Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
   {<< m Ftop tree cwd tree_elem,
-  PRE     MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
           [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
           [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
   POST RET:^(mscs,ok)
-          [[ ok = false ]] * MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
           [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
           [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
@@ -479,9 +479,9 @@ Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname msc
           [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
           [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
   REC RET:^(mscs,fsxp)
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
-          MEMLOG.rep (FSXPMemLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
           [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
           [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
@@ -508,8 +508,8 @@ Proof.
 Qed.
 
 Definition statfs T fsxp mscs rx : prog T :=
-  mscs <- MEMLOG.begin (FSXPMemLog fsxp) mscs;
-  let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPMemLog fsxp) (FSXPBlockAlloc fsxp) mscs;
-  let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPMemLog fsxp) (FSXPInodeAlloc fsxp) mscs;
-  let^ (mscs, ok) <- MEMLOG.commit (FSXPMemLog fsxp) mscs;
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
+  let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, free_blocks, free_inodes).

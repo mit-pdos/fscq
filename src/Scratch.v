@@ -58,7 +58,7 @@ Module addr_as_OT <: UsualOrderedType.
   Definition eq_dec := @weq WIDTH.
 End addr_as_OT.
 
-Module MEMLOG (Map:FMapInterface.WSfun addr_as_OT).
+Module LOG (Map:FMapInterface.WSfun addr_as_OT).
   Definition memstate := Map.t valu.
   Definition ms_empty := Map.empty valu : memstate.
   Definition diskstate := list valu.
