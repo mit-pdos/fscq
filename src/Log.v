@@ -67,7 +67,7 @@ Inductive logstate :=
 (* A transaction has been committed, applied, and flushed. *).
 
 
-Module MEMLOG.
+Module LOG.
 
   Definition header_type := Rec.RecF ([("length", Rec.WordF addrlen)]).
   Definition header := Rec.data header_type.
@@ -3189,12 +3189,12 @@ Module MEMLOG.
   (* XXX remove once SepAuto and SepAuto2 are unified *)
   Hint Extern 0 (SepAuto.okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
 
-End MEMLOG.
+End LOG.
 
 
 
-Global Opaque MEMLOG.begin.
-Global Opaque MEMLOG.abort.
-Global Opaque MEMLOG.write.
-Global Opaque MEMLOG.write_array.
-Arguments MEMLOG.rep : simpl never.
+Global Opaque LOG.begin.
+Global Opaque LOG.abort.
+Global Opaque LOG.write.
+Global Opaque LOG.write_array.
+Arguments LOG.rep : simpl never.
