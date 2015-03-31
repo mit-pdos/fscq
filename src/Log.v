@@ -307,7 +307,7 @@ Module LOG.
     rewrite combine_length. rewrite repeat_length. rewrite Nat.min_idempotent. auto.
   Qed.
 
-  Definition data_rep (xp: memlog_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
+  Definition data_rep (xp: log_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
     array (DataStart xp) m $1.
 
   (** On-disk representation of the log *)
@@ -514,7 +514,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
 
-  Definition begin T (xp : memlog_xparams) (mscs : memstate_cachestate) rx : prog T :=
+  Definition begin T (xp : log_xparams) (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     rx ^(ms_empty, cs).
 
@@ -537,7 +537,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
 
-  Definition abort T (xp : memlog_xparams) (mscs : memstate_cachestate) rx : prog T :=
+  Definition abort T (xp : log_xparams) (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     rx ^(ms_empty, cs).
 
@@ -853,7 +853,7 @@ Module LOG.
   Qed.
   Hint Rewrite upd_prepend_length : lengths.
 
-  Definition write T (xp : memlog_xparams) a v (mscs : memstate_cachestate) rx : prog T :=
+  Definition write T (xp : log_xparams) a v (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     rx ^(Map.add a v ms, cs).
 
@@ -884,7 +884,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Definition read T (xp: memlog_xparams) a (mscs : memstate_cachestate) rx : prog T :=
+  Definition read T (xp: log_xparams) a (mscs : memstate_cachestate) rx : prog T :=
     let '^(ms, cs) := mscs in
     match Map.find a ms with
     | Some v =>
@@ -2445,7 +2445,7 @@ Module LOG.
     apply firstn_plusone_selN; auto.
   Qed.
 
-  Definition read_log T (xp : memlog_xparams) cs rx : prog T :=
+  Definition read_log T (xp : log_xparams) cs rx : prog T :=
     let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
     let desc := valu_to_descriptor d in
     let^ (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
@@ -2533,7 +2533,7 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
 
-  Definition recover T (xp: memlog_xparams) cs rx : prog T :=
+  Definition recover T (xp: log_xparams) cs rx : prog T :=
     let^ (ms, cs) <- read_log xp cs;
     let^ (ms, cs) <- apply xp ^(ms, cs);
     rx ^(ms, cs).

@@ -40,7 +40,7 @@ Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   let log_size := $ LOG.addr_per_block in
   let max_addr := log_base ^+ $3 ^+ log_size in
   (Build_fs_xparams
-   (Build_memlog_xparams $1 log_base (log_base ^+ $1) (log_base ^+ $2) log_size)
+   (Build_log_xparams $1 log_base (log_base ^+ $1) (log_base ^+ $2) log_size)
    (Build_inode_xparams inode_base inode_blocks)
    (Build_balloc_xparams (inode_base ^+ inode_blocks) inode_bitmaps)
    (Build_balloc_xparams balloc_base data_bitmaps)
@@ -189,8 +189,8 @@ Proof.
   unfold read_block.
   hoare.
   apply LOG.would_recover_old_either.
-  rewrite LOG.notxn_would_recover_old. apply MEMLOG.would_recover_old_either.
-  rewrite LOG.activetxn_would_recover_old. apply MEMLOG.would_recover_old_either.
+  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
+  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
@@ -260,9 +260,9 @@ Proof.
   rewrite <- LOG.would_recover_either_pred_pimpl. cancel.
   rewrite <- LOG.would_recover_old_either_pred. cancel.
   rewrite <- LOG.would_recover_old_either_pred.
-  unfold LOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
+  unfold LOG.rep, LOG.would_recover_old, LOG.would_recover_old'. cancel. cancel.
   rewrite <- LOG.would_recover_old_either_pred.
-  unfold LOG.rep, MEMLOG.would_recover_old, MEMLOG.would_recover_old'. cancel. cancel.
+  unfold LOG.rep, LOG.would_recover_old, LOG.would_recover_old'. cancel. cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.

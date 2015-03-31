@@ -12,7 +12,7 @@ Require Import Cache.
 Import ListNotations.
 Set Implicit Arguments.
 
-Record memlog_xparams := {
+Record log_xparams := {
   DataStart : addr; (* Where the actual data section starts *)
   LogHeader : addr; (* Store the header here *)
 
@@ -32,7 +32,7 @@ Record inode_xparams := {
 }.
 
 Record fs_xparams := {
-  FSXPLog : memlog_xparams;
+  FSXPLog : log_xparams;
   FSXPInode : inode_xparams;
   FSXPInodeAlloc : balloc_xparams;
   FSXPBlockAlloc : balloc_xparams;
@@ -94,7 +94,7 @@ Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padd
 
 Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) : fs_xparams :=
   let sb := ((Rec.of_word sbp) :-> "sb") in
-  let lxp := Build_memlog_xparams
+  let lxp := Build_log_xparams
     (sb :-> "data_start") (sb :-> "log_header")
     (sb :-> "log_descr") (sb :-> "log_data") (sb :-> "log_len") in
   let ixp := Build_inode_xparams
