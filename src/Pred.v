@@ -81,6 +81,8 @@ Definition diskIs (m : @mem AT AEQ V) : pred :=
 Definition mem_except (m: @mem AT AEQ V) (a: AT) : @mem AT AEQ V :=
   fun a' => if AEQ a' a then None else m a'.
 
+Definition pred_apply (m : @mem AT AEQ V) (p : pred) := p m.
+
 End GenPredDef.
 
 Arguments pred {AT AEQ V}.
@@ -92,6 +94,7 @@ Arguments sep_star_impl {AT AEQ V} _ _ _.
 Arguments indomain {AT AEQ V} _ _.
 Arguments notindomain {AT AEQ V} _ _.
 Arguments diskIs {AT AEQ V} _ _.
+Arguments pred_apply {AT AEQ V} _ _.
 
 Hint Unfold pimpl.
 Hint Unfold piff.
@@ -111,6 +114,7 @@ Notation "[ P ]" := (lift P) : pred_scope.
 Notation "[[ P ]]" := (lift_empty P) : pred_scope.
 Notation "p =p=> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
 Notation "p <=p=> q" := (piff p%pred q%pred) (at level 90).
+Notation "m :: p" := (pred_apply m p%pred).
 
 
 Module Type SEP_STAR.
@@ -1230,6 +1234,18 @@ Proof.
   exact (@pimpl_trans AT AEQ V).
 Qed.
 
+Instance piff_pimpl_subrelation {AT AEQ V} :
+  subrelation (@piff AT AEQ V) (@pimpl AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance piff_flip_pimpl_subrelation {AT AEQ V} :
+  subrelation (@piff AT AEQ V) (Basics.flip (@pimpl AT AEQ V)).
+Proof.
+  firstorder.
+Qed.
+
 Instance pimpl_piff_proper {AT AEQ V} :
   Proper (piff ==> piff ==> Basics.flip Basics.impl) (@pimpl AT AEQ V).
 Proof.
@@ -1416,6 +1432,42 @@ Proof.
   unfold lift_empty.
   intros a b Hab m1 m2 Hm; subst.
   intuition.
+Qed.
+
+Instance pred_apply_pimpl_proper {AT AEQ V} :
+  Proper (eq ==> pimpl ==> Basics.impl) (@pred_apply AT AEQ V).
+Proof.
+  unfold pred_apply.
+  intros ma mb Hmab p q Hpq H.
+  subst.
+  auto.
+Qed.
+
+Instance pred_apply_pimpl_flip_proper {AT AEQ V} :
+  Proper (eq ==> Basics.flip pimpl ==> Basics.flip Basics.impl) (@pred_apply AT AEQ V).
+Proof.
+  unfold pred_apply.
+  intros ma mb Hmab p q Hpq H.
+  subst.
+  auto.
+Qed.
+
+Instance pred_apply_piff_proper {AT AEQ V} :
+  Proper (eq ==> piff ==> iff) (@pred_apply AT AEQ V).
+Proof.
+  unfold pred_apply.
+  intros ma mb Hmab p q Hpq.
+  subst. destruct Hpq.
+  intuition.
+Qed.
+
+
+Example pred_apply_rewrite : forall AT AEQ V p q (m : @mem AT AEQ V),
+  m :: p*q -> m :: q*p.
+Proof.
+  intros.
+  rewrite sep_star_comm1 in H.
+  auto.
 Qed.
 
 
