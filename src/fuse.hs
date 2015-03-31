@@ -19,7 +19,7 @@ import Prog
 import Data.IORef
 import Interpreter as I
 import qualified FS
-import qualified MemLog
+import qualified Log
 import FSLayout
 import Control.Monad
 import qualified DirName
@@ -56,7 +56,7 @@ nDataBitmaps = W64 1
 nInodeBitmaps :: Coq_word
 nInodeBitmaps = W64 1
 
-type MSCS = MemLog.Coq_memstate_cachestate
+type MSCS = Log.Coq_memstate_cachestate
 type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner

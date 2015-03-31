@@ -1,6 +1,5 @@
 module Main where
 
-import MemLog
 import Word
 import qualified Interpreter as I
 import qualified System.Directory
