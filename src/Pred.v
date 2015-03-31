@@ -114,7 +114,7 @@ Notation "[ P ]" := (lift P) : pred_scope.
 Notation "[[ P ]]" := (lift_empty P) : pred_scope.
 Notation "p =p=> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
 Notation "p <=p=> q" := (piff p%pred q%pred) (at level 90).
-Notation "m :: p" := (pred_apply m p%pred).
+Notation "m ## p" := (pred_apply m p%pred) (at level 90).
 
 
 Module Type SEP_STAR.
@@ -1463,7 +1463,7 @@ Qed.
 
 
 Example pred_apply_rewrite : forall AT AEQ V p q (m : @mem AT AEQ V),
-  m :: p*q -> m :: q*p.
+  m ## p*q -> m ## q*p.
 Proof.
   intros.
   rewrite sep_star_comm1 in H.
