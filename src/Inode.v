@@ -58,6 +58,18 @@ Module INODE.
   Definition unpack_attr (iar : iarec) := Eval compute_rec in
     Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype").
 
+  Theorem unpack_pack_attr : forall a, unpack_attr (pack_attr a) = a.
+  Proof.
+    destruct a.
+    reflexivity.
+  Qed.
+
+  Theorem pack_unpack_attr : forall a, pack_attr (unpack_attr a) = a.
+  Proof.
+    unfold pack_attr, unpack_attr.
+    repeat ( destruct a as [? a]; simpl; try reflexivity ).
+  Qed.
+
   Definition iattr_match ia (rec : iarec) : Prop :=
     ISize ia = rec :-> "size" /\
     IMTime ia = rec :-> "mtime" /\
@@ -470,11 +482,10 @@ Module INODE.
   Qed.
 
   Definition inode_match bxp ino (rec : irec) : @pred addr (@weq addrlen) valu := (
-    [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
-    [[ length (IBlocks ino) <= blocks_per_inode ]] *
-    [[ iattr_match (IAttr ino) (rec :-> "attr") ]] *
-    exists blist, indirect_valid bxp (length (IBlocks ino)) (rec :-> "indptr") blist *
-    [[ IBlocks ino = firstn (length (IBlocks ino)) ((rec :-> "blocks") ++ blist) ]]
+    exists blist, indirect_valid bxp (# (rec :-> "len")) (rec :-> "indptr") blist *
+    [[ # (rec :-> "len") <= blocks_per_inode ]] *
+    [[ ino = Build_inode (firstn (# (rec :-> "len")) ((rec :-> "blocks") ++ blist))
+                         (unpack_attr (rec :-> "attr")) ]]
     )%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
@@ -742,9 +753,12 @@ Module INODE.
 
     rewrite_list2nmem_pred.
     destruct_listmatch_n.
-    subst; apply wordToNat_inj.
-    erewrite wordToNat_natToWord_bound by inode_bounds.
-    auto.
+    rec_simpl.
+    subst. rewrite H14. simpl.
+    rewrite firstn_length.
+    rewrite min_l. rewrite natToWord_wordToNat; auto.
+    (* need to derive the fact that RHS is blocks_per_inode *)
+    admit.
   Qed.
 
 
@@ -789,7 +803,8 @@ Module INODE.
 
     rewrite_list2nmem_pred.
     destruct_listmatch_n.
-    rec_simpl; subst; auto.
+    rec_simpl; subst.
+    rewrite H14. simpl. auto.
   Qed.
 
   Theorem isetattr_ok : forall lxp bxp xp inum attr mscs,
@@ -818,6 +833,8 @@ Module INODE.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold inode_match; rec_simpl.
     cancel.
+    rewrite H9. simpl.
+    rewrite unpack_pack_attr. auto.
   Qed.
 
 
