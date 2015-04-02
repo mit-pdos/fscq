@@ -4,18 +4,12 @@ building Coq from source:
 
   git clone https://github.com/coq/coq.git
 
-As one reference point, commit 53bfe9cf seems to produce a working
-version of Coq that builds fscq.
+As one reference point, commit 6950837d (on the v8.5 branch)
+seems to produce a working version of Coq that builds fscq.
 
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
 processes and setting the right logical-to-physical path mappings.
-
-To avoid crashes in extracted Haskell code, apply the following patches
-when building Coq:
-
-  ../src/haskell-coerce.patch
-  ../src/haskell-singleton.patch
 
 Use GHC 7.10.1 to build the Haskell-extracted code.  On Ubuntu, this
 means running this as root:
