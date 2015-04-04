@@ -11,8 +11,10 @@ VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
 GHC        := /opt/ghc/7.10.1/bin/ghc
-GHCARGS    := -O2 -threaded #-prof -fprof-auto -rtsopts
-HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs
+GHCARGS    := -O2 -threaded
+		# -prof -fprof-auto -rtsopts
+		# -eventlog
+HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
 .PHONY: coq proof clean
