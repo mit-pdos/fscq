@@ -58,6 +58,14 @@ Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
 Notation "l $[ i ]" := (sel l i _) (at level 56, left associativity).
 Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
 
+(* rewrite hints for various List facts *)
+
+Hint Rewrite combine_length.
+Hint Rewrite repeat_length.
+Hint Rewrite map_length.
+Hint Rewrite app_length.
+Hint Rewrite Nat.min_idempotent.
+
 (* list population *)
 
 Definition removeN {V} (l : list V) i :=
