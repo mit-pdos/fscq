@@ -7,6 +7,8 @@ import Debug.Trace
 doTraceFile :: String -> Bool
 doTraceFile "codegen/FS.hs" = True
 doTraceFile "codegen/DirTree.hs" = True
+doTraceFile "codegen/DirName.hs" = True
+doTraceFile "codegen/Dir.hs" = True
 doTraceFile _ = False
 
 progseq :: String -> Int -> (b -> a) -> b -> a
