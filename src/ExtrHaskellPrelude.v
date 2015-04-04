@@ -81,10 +81,5 @@ Extract Inductive ascii => "Prelude.Char"
               (Data.Bits.testBit (Data.Char.ord a) 7))".
 Extract Inlined Constant Ascii.ascii_dec => "(Prelude.==)".
 
-Extract Inductive string => "Prelude.String"
-  [ "[]" "(\hd tl -> [hd] Prelude.++ tl)" ]
-  "(\fE fS s -> case s of {
-    [] -> fE ();
-    (c:cs) -> fS c cs
-   } )".
+Extract Inductive string => "Prelude.String" [ "([])" "(:)" ].
 Extract Inlined Constant String.string_dec => "(Prelude.==)".
