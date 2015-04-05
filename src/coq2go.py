@@ -186,6 +186,10 @@ def gen_header(d):
   s += 'import . "gocoq"\n'
   for modname in d['used_modules']:
     s += 'import "%s%s"\n' % (import_prefix, modname)
+  s += 'var Coq2go_unused bool = true'
+  for modname in d['used_modules']:
+    s += ' && %s.Coq2go_unused' % modname
+  s += '\n'
   return s
 
 def gen_ind(dec):
