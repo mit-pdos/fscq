@@ -2,20 +2,35 @@
 
 import json
 import sys
+import os
 
 (_, fn) = sys.argv
 
 ## Coq can produce very deep JSON data structures..
 sys.setrecursionlimit(10000)
 
-pkgname = 'main'
+## XXX hack for now
+import_prefix = 'codegen/'
+
+this_pkgname = None
 
 with open(fn) as f:
   s = f.read()
   d = json.loads(s)
 
+def coqname_in_mod(s):
+  return 'Coq_' + s.replace("'", "_prime").replace(".", "_")
+
 def coqname(s):
-  return 'Coq_' + s.replace("'", "_prime")
+  global this_pkgname
+  if '.' in s:
+    (mod, rest) = s.split('.', 1)
+    if mod == this_pkgname:
+      return coqname_in_mod(rest)
+    else:
+      return '%s.%s' % (mod, coqname_in_mod(rest))
+  else:
+    return coqname_in_mod(s)
 
 varname_ctr = 0
 def varname():
@@ -76,7 +91,7 @@ def gen_expr_assign(e, retname):
       if pat['what'] == 'pat:constructor':
         s += 'case *%s:\n' % coqname(pat['name'])
         for idx, argname in enumerate(pat['argnames']):
-          s += 'var %s CoqT = __typesw.a%d\n' % (coqname(argname), idx)
+          s += 'var %s CoqT = __typesw.A%d\n' % (coqname(argname), idx)
           s += 'var _ = %s\n' % coqname(argname)
         s += body
 
@@ -163,9 +178,14 @@ def gen_expr_assign(e, retname):
   return s
 
 def gen_header(d):
+  global this_pkgname
+  this_pkgname = d['name']
+
   s = ''
-  s += 'package %s\n' % pkgname
+  s += 'package %s\n' % d['name']
   s += 'import . "gocoq"\n'
+  for modname in d['used_modules']:
+    s += 'import "%s%s"\n' % (import_prefix, modname)
   return s
 
 def gen_ind(dec):
@@ -173,7 +193,7 @@ def gen_ind(dec):
   for c in dec['constructors']:
     s += 'type %s struct {\n' % coqname(c['name'])
     for idx, typ in enumerate(c['argtypes']):
-      s += '  a%d CoqT\n' % idx
+      s += '  A%d CoqT\n' % idx
     s += '}\n'
   return s
 
