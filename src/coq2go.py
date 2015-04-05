@@ -213,8 +213,18 @@ def gen_term(dec):
   return 'var %s CoqT = %s\n' % (coqname(dec['name']), s)
 
 def gen_fix(dec):
-  e = gen_fix_expr([dec['name']], [dec['value']])
-  return 'var %s CoqT = %s\n' % (coqname(dec['name']), e)
+  ## For a group of N mutually-recursive fixpoints, we generate N
+  ## copies of each of the N functions.  This is because Go prohibits
+  ## loops during global variable initialization.
+  r = ''
+  names = [x['name'] for x in dec['fixlist']]
+  values = [x['value'] for x in dec['fixlist']]
+  for i in range(0, len(dec['fixlist'])):
+    rot_names = names[i:] + names[:i]
+    rot_values = values[i:] + values[:i]
+    e = gen_fix_expr(rot_names, rot_values)
+    r += 'var %s CoqT = %s\n' % (coqname(rot_names[-1]), e)
+  return r
 
 print(gen_header(d))
 
@@ -223,7 +233,7 @@ for dec in d['declarations']:
     pass
   elif dec['what'] == 'decl:term':
     print(gen_term(dec))
-  elif dec['what'] == 'decl:fix':
+  elif dec['what'] == 'decl:fixgroup':
     print(gen_fix(dec))
   elif dec['what'] == 'decl:ind':
     print(gen_ind(dec))
