@@ -18,7 +18,7 @@ Section COND_BIJECTION.
   Definition cond_surjective :=
     forall y : B, PB y -> {x : A | PA x /\ f x = y}.
 
-  Inductive cond_bijective :=
+  Inductive cond_bijective : Prop :=
     CondBijective : cond_injective -> cond_surjective -> cond_bijective.
 
   Section BIJECTION_INVERSION.
@@ -153,7 +153,7 @@ Section MEMMATCH.
       subst; auto; try tauto.
     destruct (indomain_dec x m1); auto.
     contradict n.
-    apply X; auto.
+    apply H; auto.
   Qed.
 
   Section MEMMATCH_INVERSION.
