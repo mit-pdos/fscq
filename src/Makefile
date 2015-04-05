@@ -84,8 +84,7 @@ Makefile.coqproof: Makefile $(VS_PROOF)
 	mv $(patsubst %/main.go,%/temp.go,$@) $@
 
 go: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
-	GOPATH=$(shell cd .. && pwd):${GOPATH} go build \
-		$(patsubst %.json,%,$(wildcard codegen/*.json))
+	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
 clean:: Makefile.coq Makefile.coqproof
 	$(MAKE) -f Makefile.coq clean
