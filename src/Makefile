@@ -77,6 +77,13 @@ Makefile.coq: Makefile $(VS_BUILD)
 Makefile.coqproof: Makefile $(VS_PROOF)
 	coq_makefile -R coqproof Fscq $(VS_PROOF) -o Makefile.coqproof
 
+%.go: %.json coq2go.py
+	./coq2go.py $< > $(patsubst %.go,%.temp.go,$@)
+	go fmt $(patsubst %.go,%.temp.go,$@)
+	mv $(patsubst %.go,%.temp.go,$@) $@
+
+go: $(patsubst %.json,%.go,$(wildcard codegen/*.json))
+
 clean:: Makefile.coq Makefile.coqproof
 	$(MAKE) -f Makefile.coq clean
 	$(MAKE) -f Makefile.coqproof clean

@@ -6,6 +6,6 @@ Extraction Language JSON.
 (* Optimize away [progseq]. *)
 Extraction Inline Prog.progseq.
 
-Cd "json".
+Cd "codegen".
 Recursive Extraction Library FS.
 Recursive Extraction Library Testprog.
