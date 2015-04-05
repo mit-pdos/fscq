@@ -2903,13 +2903,7 @@ Module MEMLOG.
       end.
       norm'r; [ cancel' | intuition idtac ].
       rewrite valu_descriptor_id.
-      (* XXX calling [cancel] here gives an anomaly... *)
-      instantiate (2 := w).
-      rewrite sep_star_comm; cancel'.
-      unfold stars; simpl.
-      rewrite array_app.
-      cancel.
-      solve_lengths.
+      cancel; rewrite array_app by solve_lengths; cancel.
       apply MapFacts.Equal_refl.
       auto.
       rewrite Forall_forall; intuition.
