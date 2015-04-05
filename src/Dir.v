@@ -71,6 +71,11 @@ Module DIR.
          lxp bxp ixp inum ent mscs;
     rx r.
 
+  Definition delist T lxp ixp inum mscs rx : prog T :=
+    r <- BFileRec.bf_get_all dent_type items_per_valu itemsz_ok
+         lxp ixp inum mscs;
+    rx r.
+
   Fact resolve_sel_dent0 : forall l i (d : dent),
     d = dent0 -> sel l i d = sel l i dent0.
   Proof.
@@ -136,6 +141,20 @@ Module DIR.
     hoare.
     list2nmem_bound.
     eapply list2nmem_upd; eauto.
+  Qed.
+
+  Theorem delist_ok : forall lxp bxp ixp inum mscs,
+    {< F F1 A mbase m delist,
+    PRE    MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ derep_macro F1 A m bxp ixp inum delist ]]
+    POST RET:^(mscs,r)
+           MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ r = delist ]]
+    CRASH  MEMLOG.would_recover_old lxp F mbase
+    >} delist lxp ixp inum mscs.
+  Proof.
+    unfold delist, derep_macro, derep.
+    hoare.
   Qed.
 
 
@@ -266,6 +285,7 @@ Module DIR.
   Hint Extern 1 ({{_}} progseq (deget _ _ _ _ _) _) => apply deget_ok : prog.
   Hint Extern 1 ({{_}} progseq (deput _ _ _ _ _ _) _) => apply deput_ok : prog.
   Hint Extern 1 ({{_}} progseq (deext _ _ _ _ _ _) _) => apply deext_ok : prog.
+  Hint Extern 1 ({{_}} progseq (delist _ _ _ _) _) => apply delist_ok : prog.
 
   Definition isdir2bool (isdir : addr) := if weq isdir $0 then false else true.
   Definition bool2isdir (isdir : bool) : addr := if isdir then $1 else $0.
@@ -326,22 +346,21 @@ Module DIR.
   Local Hint Unfold derep_macro derep rep_macro rep: hoare_unfold.
 
   Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T :=
-    let^ (mscs, n) <- delen lxp ixp dnum mscs;
-    let^ (mscs, s) <- For i < n
+    let^ (mscs, l) <- delist lxp ixp dnum mscs;
+    let^ (s) <- ForEach de derest l
       Ghost [ mbase m F F1 A delist ]
-      Loopvar [ mscs s ]
+      Loopvar [ s ]
       Continuation lrx
       Invariant
         MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
         [[ derep_macro F1 A m bxp ixp dnum delist ]] *
-        [[ s = fold_left f (firstn #i delist) s0 ]]
+        [[ fold_left f derest s = fold_left f delist s0 ]]
       OnCrash
         exists mscs', MEMLOG.rep lxp F (ActiveTxn mbase m) mscs'
       Begin
-        let^ (mscs, de) <- deget lxp ixp dnum i mscs;
         let s := f s de in
-        lrx ^(mscs, s)
-      Rof ^(mscs, s0);
+        lrx ^(s)
+      Rof ^(s0);
     rx ^(mscs, s).
 
   Theorem dfold_ok : forall lxp bxp ixp dnum S f (s0 : S) mscs,
@@ -356,23 +375,8 @@ Module DIR.
   Proof.
     unfold dfold.
     hoare.
-    list2nmem_ptsto_cancel.
-    eapply wlt_lt_bound; eauto.
-    eapply bfrec_bound; eauto.
 
-    replace (# (m0 ^+ $1)) with (#m0 + 1).
-    rewrite firstn_plusone_selN with (def:=dent0).
-    rewrite fold_left_app; simpl.
-    subst; reflexivity.
-    eapply wlt_lt_bound; eauto.
-    eapply bfrec_bound; eauto.
-    erewrite wordToNat_plusone with (w' := $ (length l)) by auto.
-    omega.
-
-    rewrite firstn_oob; eauto.
-    erewrite wordToNat_natToWord_bound; auto.
-    eapply bfrec_bound; eauto.
-
+    subst. do 2 eexists. intuition eauto.
     apply MEMLOG.activetxn_would_recover_old.
   Qed.
 
