@@ -352,13 +352,17 @@ Section RECBFILE.
   Definition bf_get_all T lxp ixp inum mscs rx : prog T :=
     let^ (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
     let^ (mscs, l) <- For i < len
-      Ghost [ mbase m F ]
+      Ghost [ mbase m F F1 bxp flist A f ilistlist ]
       Loopvar [ mscs l ]
       Continuation lrx
       Invariant
-        MEMLOG.rep lxp F (ActiveTxn mbase m) mscs
+        MEMLOG.rep lxp F (ActiveTxn mbase m) mscs *
+        [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+        [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
+        [[ array_item_pairs ilistlist (list2nmem (BFILE.BFData f)) ]] *
+        [[ l = fold_left (@app _) (firstn #i ilistlist) nil ]]
       OnCrash
-        exists mscs', MEMLOG.rep lxp F (ActiveTxn mbase m) mscs'
+        MEMLOG.would_recover_old lxp F mbase
       Begin
         let^ (mscs, blocklist) <- bf_get_entire_block lxp ixp inum i mscs;
         lrx ^(mscs, l ++ blocklist)
@@ -645,7 +649,28 @@ Section RECBFILE.
     CRASH  MEMLOG.would_recover_old lxp F mbase
     >} bf_get_all lxp ixp inum mscs.
   Proof.
-  Admitted.
+    unfold bf_get_all.
+    hoare.
+
+    apply wlt_lt in H4.
+    erewrite wordToNat_natToWord_bound in H4; auto.
+
+    erewrite wordToNat_plusone by eauto.
+    replace (S #m0) with (#m0 + 1) by omega.
+    erewrite firstn_plusone_selN.
+    rewrite fold_left_app. subst. simpl. unfold sel. auto.
+    apply wlt_lt in H4.
+    erewrite wordToNat_natToWord_bound in H4; auto.
+    apply list2nmem_array_eq in H13. rewrite H13 in H4. autorewrite_fast. auto.
+
+    subst.
+    rewrite <- fold_symmetric.
+    f_equal.
+    rewrite firstn_oob; auto.
+    erewrite wordToNat_natToWord_bound; auto. omega.
+    intros; apply app_assoc.
+    intros; rewrite app_nil_l; rewrite app_nil_r; auto.
+  Qed.
 
   Theorem bf_put_ok : forall lxp bxp ixp inum idx v mscs,
     {< F F1 A mbase m flist f ilist,
