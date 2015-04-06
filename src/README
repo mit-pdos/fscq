@@ -3,12 +3,8 @@ building Coq from source:
 
   git clone -b v8.5 https://github.com/coq/coq.git
 
-As one reference point, commit 6950837d seems to produce a working
+As one reference point, commit ee9d9415 seems to produce a working
 version of Coq that builds fscq.
-
-To fix some bugs, apply the following patches when building Coq:
-
-  ../coq/rewrite-meta-numbering.patch
 
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
