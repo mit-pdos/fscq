@@ -33,13 +33,12 @@ all: hstest fuse mkfs
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
 
 coq: Makefile.coq
-	@mkdir -p codegen
-	@ln -sf ../coqbuild codegen
 	$(MAKE) -f Makefile.coq quick
 
+checkproofs: Makefile.coq
+	$(MAKE) -f Makefile.coq checkproofs J=$(J)
+
 proof: Makefile.coq
-	@mkdir -p codegen
-	@ln -sf ../coqbuild codegen
 	$(MAKE) -f Makefile.coq
 
 coqbuild/%.v: %.v
@@ -47,6 +46,8 @@ coqbuild/%.v: %.v
 	ln -s ../$< $@
 
 Makefile.coq: Makefile $(VS_BUILD)
+	@mkdir -p codegen
+	@ln -sf ../coqbuild codegen
 	coq_makefile -R coqbuild Fscq $(VS_BUILD) -o Makefile.coq
 
 %/main.go: %.json coq2go.py
