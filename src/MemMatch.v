@@ -122,8 +122,8 @@ Section MEMMATCH.
   Variable AP2 : AT2 -> Prop.
 
   (* decidablity of subdomain *)
-  Variable AP1_dec : forall a1, {AP1 a1} + {~ AP1 a1}.
-  Variable AP2_dec : forall a2, {AP2 a2} + {~ AP2 a2}.
+  Variable AP1_dec : forall a1, AP1 a1 \/ ~ AP1 a1.
+  Variable AP2_dec : forall a2, AP2 a2 \/ ~ AP2 a2.
 
   (* well-formedness of memory addresses *)
   Variable AP1_ok : forall a1, indomain a1 m1 -> AP1 a1.
@@ -208,7 +208,7 @@ Section MEMMATCH.
       apply HInv; auto.
 
       destruct (indomain_dec a m2); auto.
-      contradict n.
+      contradict H0.
       apply AP2_ok; auto.
     Qed.
 
