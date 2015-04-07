@@ -6,6 +6,10 @@ building Coq from source:
 As one reference point, commit ee9d9415 seems to produce a working
 version of Coq that builds fscq.
 
+To speed up Haskell builds, apply this patch to Coq:
+
+  ../coq/haskell-ascii.patch
+
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
 processes and setting the right logical-to-physical path mappings.
