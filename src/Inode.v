@@ -482,10 +482,11 @@ Module INODE.
   Qed.
 
   Definition inode_match bxp ino (rec : irec) : @pred addr (@weq addrlen) valu := (
-    exists blist, indirect_valid bxp (# (rec :-> "len")) (rec :-> "indptr") blist *
-    [[ # (rec :-> "len") <= blocks_per_inode ]] *
-    [[ ino = Build_inode (firstn (# (rec :-> "len")) ((rec :-> "blocks") ++ blist))
-                         (unpack_attr (rec :-> "attr")) ]]
+    [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
+    [[ length (IBlocks ino) <= blocks_per_inode ]] *
+    [[ iattr_match (IAttr ino) (rec :-> "attr") ]] *
+    exists blist, indirect_valid bxp (length (IBlocks ino)) (rec :-> "indptr") blist *
+    [[ IBlocks ino = firstn (length (IBlocks ino)) ((rec :-> "blocks") ++ blist) ]]
     )%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
@@ -753,12 +754,9 @@ Module INODE.
 
     rewrite_list2nmem_pred.
     destruct_listmatch_n.
-    rec_simpl.
-    subst. rewrite H14. simpl.
-    rewrite firstn_length.
-    rewrite min_l. rewrite natToWord_wordToNat; auto.
-    (* need to derive the fact that RHS is blocks_per_inode *)
-    admit.
+    subst; apply wordToNat_inj.
+    erewrite wordToNat_natToWord_bound by inode_bounds.
+    auto.
   Qed.
 
 
@@ -803,8 +801,7 @@ Module INODE.
 
     rewrite_list2nmem_pred.
     destruct_listmatch_n.
-    rec_simpl; subst.
-    rewrite H14. simpl. auto.
+    rec_simpl; subst; auto.
   Qed.
 
   Theorem isetattr_ok : forall lxp bxp xp inum attr mscs,
@@ -833,8 +830,6 @@ Module INODE.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
     unfold inode_match; rec_simpl.
     cancel.
-    rewrite H9. simpl.
-    rewrite unpack_pack_attr. auto.
   Qed.
 
 
