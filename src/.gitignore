@@ -6,15 +6,12 @@
 _build
 /disk.img
 /Makefile.coq
-/Makefile.coqproof
 /fstest
 /hstest
 /gotest
 /fuse
 /mkfs
 /coqbuild
-/coqproof
-/coqparproof
 /#*#
 *.vo
 *.glob
