@@ -1642,7 +1642,6 @@ Proof.
   intros; simpl; intuition;
   rewrite removelast_app; pred;
   simpl; rewrite app_nil_r;
-  rewrite app_length in H; simpl in H;
   rewrite selN_app; firstorder.
 Qed.
 
