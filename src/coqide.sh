@@ -8,5 +8,4 @@
 #
 exec coqide -async-proofs-j ${COQIDE_JOBS:-1} \
             -async-proofs-tac-j ${COQIDE_JOBS:-1} \
-            -async-proofs-always-delegate \
             -R coqbuild Fscq "$@"
