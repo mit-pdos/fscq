@@ -9,6 +9,7 @@ _build
 /Makefile.coqproof
 /fstest
 /hstest
+/gotest
 /fuse
 /mkfs
 /coqbuild

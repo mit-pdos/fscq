@@ -11,8 +11,10 @@ VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_PROOF   := $(patsubst %.v,coqproof/%.v,$(VS))
 GHC        := /opt/ghc/7.10.1/bin/ghc
-GHCARGS    := -O2 -threaded #-prof -fprof-auto -rtsopts
-HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs
+GHCARGS    := -O2 -threaded
+		# -prof -fprof-auto -rtsopts
+		# -eventlog
+HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
 .PHONY: coq proof clean
@@ -74,6 +76,15 @@ Makefile.coq: Makefile $(VS_BUILD)
 
 Makefile.coqproof: Makefile $(VS_PROOF)
 	coq_makefile -R coqproof Fscq $(VS_PROOF) -o Makefile.coqproof
+
+%/main.go: %.json coq2go.py
+	@mkdir -p $(@D)
+	./coq2go.py $< > $(patsubst %/main.go,%/temp.go,$@)
+	go fmt $(patsubst %/main.go,%/temp.go,$@)
+	mv $(patsubst %/main.go,%/temp.go,$@) $@
+
+go: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
+	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
 clean:: Makefile.coq Makefile.coqproof
 	$(MAKE) -f Makefile.coq clean

@@ -1,21 +1,14 @@
-To build fscq, use a version of Coq more recent than 8.4 (it has at
-least one bug that's tickled by our code).  For now, this seems to mean
+To build fscq, use a version of Coq v8.5; for now, this seems to mean
 building Coq from source:
 
-  git clone https://github.com/coq/coq.git
+  git clone -b v8.5 https://github.com/coq/coq.git
 
-As one reference point, commit 53bfe9cf seems to produce a working
+As one reference point, commit ee9d9415 seems to produce a working
 version of Coq that builds fscq.
 
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
 processes and setting the right logical-to-physical path mappings.
-
-To avoid crashes in extracted Haskell code, apply the following patches
-when building Coq:
-
-  ../src/haskell-coerce.patch
-  ../src/haskell-singleton.patch
 
 Use GHC 7.10.1 to build the Haskell-extracted code.  On Ubuntu, this
 means running this as root:

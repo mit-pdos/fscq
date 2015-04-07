@@ -63,6 +63,12 @@ Section RECBFILE.
     let i := Rec.of_word (Rec.word_selN #pos (valu_to_wreclen itemtype items_per_valu blocksz_ok v)) in
     rx ^(mscs, i).
 
+  (** Get all items in the [block_ix]'th block of inode [inum] *)
+  Definition bf_get_entire_block T lxp ixp inum block_ix mscs rx : prog T :=
+    let^ (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
+    let ii := Rec.of_word (valu_to_wreclen itemtype items_per_valu blocksz_ok v) in
+    rx ^(mscs, ii).
+
   (** Update the [pos]'th item in the [block_ix]'th block of inode [inum] to [i] *)
   Definition bf_put_pair T lxp ixp inum block_ix (pos : addr) i mscs rx : prog T :=
     let^ (mscs, v) <- BFILE.bfread lxp ixp inum block_ix mscs;
@@ -246,6 +252,34 @@ Section RECBFILE.
   Qed.
 
 
+  Theorem bf_get_entire_block_ok : forall lxp bxp ixp inum mscs block_ix,
+    {< F F1 A mbase m flist f ilistlist,
+    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
+           [[ array_item_pairs ilistlist (list2nmem (BFILE.BFData f)) ]] *
+           [[ length ilistlist = length (BFILE.BFData f) ]] *
+           [[ wordToNat block_ix < length (BFILE.BFData f) ]]
+    POST RET:^(mscs,r)
+           LOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ r = sel ilistlist block_ix nil ]]
+    CRASH  LOG.would_recover_old lxp F mbase
+    >} bf_get_entire_block lxp ixp inum block_ix mscs.
+  Proof.
+    unfold bf_get_entire_block.
+    unfold array_item_pairs.
+    hoare.
+    erewrite arrayN_except with (i := #block_ix); rec_bounds.
+
+    subst.
+    unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block, sel, upd.
+    erewrite selN_map by rec_bounds.
+    rewrite valu_wreclen_id; rewrite Rec.of_to_id; auto.
+    rewrite Forall_forall in *; apply H11.
+    apply in_selN; rec_bounds.
+  Qed.
+
+
   Theorem bf_put_pair_ok : forall lxp bxp ixp inum mscs block_ix pos i,
     {< F F1 A mbase m flist f ilistlist,
     PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
@@ -300,6 +334,7 @@ Section RECBFILE.
 
 
   Hint Extern 1 ({{_}} progseq (bf_get_pair _ _ _ _ _ _) _) => apply bf_get_pair_ok : prog.
+  Hint Extern 1 ({{_}} progseq (bf_get_entire_block _ _ _ _ _) _) => apply bf_get_entire_block_ok : prog.
   Hint Extern 1 ({{_}} progseq (bf_put_pair _ _ _ _ _ _ _) _) => apply bf_put_pair_ok : prog.
 
 
@@ -313,6 +348,26 @@ Section RECBFILE.
     mscs <- bf_put_pair lxp ixp inum (idx ^/ items_per_valu)
                                      (idx ^% items_per_valu) v mscs;
     rx mscs.
+
+  Definition bf_get_all T lxp ixp inum mscs rx : prog T :=
+    let^ (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
+    let^ (mscs, l) <- For i < len
+      Ghost [ mbase m F F1 bxp flist A f ilistlist ]
+      Loopvar [ mscs l ]
+      Continuation lrx
+      Invariant
+        LOG.rep lxp F (ActiveTxn mbase m) mscs *
+        [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+        [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
+        [[ array_item_pairs ilistlist (list2nmem (BFILE.BFData f)) ]] *
+        [[ l = fold_left (@app _) (firstn #i ilistlist) nil ]]
+      OnCrash
+        LOG.would_recover_old lxp F mbase
+      Begin
+        let^ (mscs, blocklist) <- bf_get_entire_block lxp ixp inum i mscs;
+        lrx ^(mscs, l ++ blocklist)
+      Rof ^(mscs, nil);
+    rx ^(mscs, l).
 
   Definition bf_getlen T lxp ixp inum mscs rx : prog T :=
     let^ (mscs, len) <- BFILE.bflen lxp ixp inum mscs;
@@ -582,6 +637,41 @@ Section RECBFILE.
     simpl; intuition.
   Qed.
 
+  Theorem bf_get_all_ok : forall lxp bxp ixp inum mscs,
+    {< F F1 A mbase m flist f ilist,
+    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+           [[ (A * # inum |-> f)%pred (list2nmem flist) ]] *
+           [[ array_item_file f ilist ]]
+    POST RET:^(mscs,r)
+           LOG.rep lxp F (ActiveTxn mbase m) mscs *
+           [[ r = ilist ]]
+    CRASH  LOG.would_recover_old lxp F mbase
+    >} bf_get_all lxp ixp inum mscs.
+  Proof.
+    unfold bf_get_all.
+    hoare.
+
+    apply wlt_lt in H4.
+    erewrite wordToNat_natToWord_bound in H4; auto.
+
+    erewrite wordToNat_plusone by eauto.
+    replace (S #m0) with (#m0 + 1) by omega.
+    erewrite firstn_plusone_selN.
+    rewrite fold_left_app. subst. simpl. unfold sel. auto.
+    apply wlt_lt in H4.
+    erewrite wordToNat_natToWord_bound in H4; auto.
+    apply list2nmem_array_eq in H13. rewrite H13 in H4. autorewrite_fast. auto.
+
+    subst.
+    rewrite <- fold_symmetric.
+    f_equal.
+    rewrite firstn_oob; auto.
+    erewrite wordToNat_natToWord_bound; auto. omega.
+    intros; apply app_assoc.
+    intros; rewrite app_nil_l; rewrite app_nil_r; auto.
+  Qed.
+
   Theorem bf_put_ok : forall lxp bxp ixp inum idx v mscs,
     {< F F1 A mbase m flist f ilist,
     PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
@@ -673,6 +763,7 @@ End RECBFILE.
 
 Hint Extern 1 ({{_}} progseq (bf_getlen _ _ _ _ _) _) => apply bf_getlen_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_get _ _ _ _ _ _ _ _) _) => apply bf_get_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_get_all _ _ _ _ _ _ _) _) => apply bf_get_all_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 

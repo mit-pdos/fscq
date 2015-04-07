@@ -10,6 +10,7 @@ import qualified Data.Bits
 import qualified Data.Char
 import qualified GHC.Prim
 import qualified Evict
+import qualified Profile
 """
 
 filename = sys.argv[2]
@@ -19,5 +20,7 @@ for n, line in enumerate(open(filename), 1):
 	if line.strip() == "import qualified Prelude":
 		out.write(imports)
 		out.write("{-# LINE %d \"%s\" #-}\n" % (n, filename))
+	line = line.replace('__FILE__', '"%s"' % sys.argv[2])
+	line = line.replace('__LINE__', '%d' % n)
 	out.write(line)
 out.close()

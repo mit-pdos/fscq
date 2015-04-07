@@ -103,9 +103,8 @@ Module LOG.
     unfold eq_rec_r, eq_rec.
     intros.
     rewrite <- plus_minus_header.
-    do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
     unfold zext.
-    rewrite split1_combine.
+    autorewrite with core.
     apply Rec.of_to_id.
     simpl; destruct h; tauto.
   Qed.
@@ -116,7 +115,7 @@ Module LOG.
   Definition descriptor := Rec.data descriptor_type.
   Theorem descriptor_sz_ok : valulen = Rec.len descriptor_type.
   Proof.
-    simpl. unfold addr_per_block. rewrite valulen_is. reflexivity.
+    simpl. unfold addr_per_block. rewrite valulen_is. vm_compute. reflexivity.
   Qed.
 
   Definition descriptor_to_valu (d : descriptor) : valu.
@@ -138,7 +137,7 @@ Module LOG.
     intros.
     rewrite Rec.to_of_id.
     rewrite <- descriptor_sz_ok.
-    do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
+    autorewrite with core.
     trivial.
   Qed.
 
@@ -149,7 +148,7 @@ Module LOG.
     unfold eq_rec_r, eq_rec.
     intros.
     rewrite descriptor_sz_ok.
-    do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
+    autorewrite with core.
     apply Rec.of_to_id; auto.
   Qed.
 
@@ -172,7 +171,7 @@ Module LOG.
     unfold eq_rec_r, eq_rec.
     intros.
     rewrite descriptor_sz_ok.
-    do 2 rewrite <- eq_rect_eq_dec by (apply eq_nat_dec).
+    autorewrite with core.
     apply Rec.to_word_append_zeroes.
   Qed.
 
@@ -290,11 +289,10 @@ Module LOG.
                         (repeat [] (length (map snd (Map.elements m))))) ++ l).
     rewrite <- array_app.
     cancel.
-    rewrite combine_length. rewrite repeat_length. rewrite Nat.min_idempotent.
-    rewrite map_length. rewrite Map.cardinal_1. auto.
+    autorewrite with core.
+    rewrite Map.cardinal_1. auto.
     intuition.
-    rewrite app_length. rewrite map_length. rewrite combine_length.
-    rewrite repeat_length. rewrite map_length. rewrite Nat.min_idempotent.
+    autorewrite with core.
     rewrite Map.cardinal_1 in *. omega.
   Qed.
 
@@ -304,7 +302,7 @@ Module LOG.
     length (synced_list l) = length l.
   Proof.
     unfold synced_list; intros.
-    rewrite combine_length. rewrite repeat_length. rewrite Nat.min_idempotent. auto.
+    autorewrite with core. auto.
   Qed.
 
   Definition data_rep (xp: log_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
@@ -772,9 +770,7 @@ Module LOG.
     intros.
     (* Let's show that the lists are equal because [sel] at any index [pos] gives the same valu *)
     eapply list_selN_ext.
-    rewrite length_upd.
-    repeat rewrite replay_len.
-    trivial.
+    autorewrite with core.
     solve_lengths.
     intros.
     destruct (lt_dec pos (pow2 addrlen)).
@@ -2908,13 +2904,7 @@ Module LOG.
       end.
       norm'r; [ cancel' | intuition idtac ].
       rewrite valu_descriptor_id.
-      (* XXX calling [cancel] here gives an anomaly... *)
-      instantiate (2 := w).
-      rewrite sep_star_comm; cancel'.
-      unfold stars; simpl.
-      rewrite array_app.
-      cancel.
-      solve_lengths.
+      cancel; rewrite array_app by solve_lengths; cancel.
       apply MapFacts.Equal_refl.
       auto.
       rewrite Forall_forall; intuition.

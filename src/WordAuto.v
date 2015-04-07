@@ -242,16 +242,16 @@ Proof.
 Qed.
 
 
-Ltac autorewrite_fast_goal :=
+Ltac autorewrite_fast_goal_w2nat :=
   set_evars; (rewrite_strat (topdown (hints W2Nat))); subst_evars;
-  try autorewrite_fast_goal.
+  try autorewrite_fast_goal_w2nat.
 
-Ltac autorewrite_fast :=
+Ltac autorewrite_fast_w2nat :=
   match goal with
   | [ H: _ |- _ ] =>
     set_evars_in H; (rewrite_strat (topdown (hints W2Nat)) in H); subst_evars;
-    [ try autorewrite_fast | try autorewrite_fast_goal .. ]
-  | [ |- _ ] => autorewrite_fast_goal
+    [ try autorewrite_fast_w2nat | try autorewrite_fast_goal_w2nat .. ]
+  | [ |- _ ] => autorewrite_fast_goal_w2nat
   end.
 
 Ltac goodsizes := idtac;
@@ -273,7 +273,7 @@ Ltac word2nat_simpl :=
   | [ H : _ |- _ ] => (apply (f_equal nat_of_N) in H || apply (f_equal (@wordToNat _)) in H
              || apply Nlt_out in H || apply Nge_out in H); nsimp H
   end;
-  try autorewrite_fast;
+  try autorewrite_fast_w2nat;
   repeat match goal with
   | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
   end;

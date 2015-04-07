@@ -244,6 +244,8 @@ Module Rec.
     rewrite IHt. rewrite IHt0. apply combine_split.
   Qed.
 
+  Hint Rewrite to_of_id.
+
   Theorem of_to_id : forall ft v, well_formed v -> of_word (@to_word ft v) = v.
   Proof.
     einduction ft using type_rect_nest.

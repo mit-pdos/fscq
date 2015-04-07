@@ -1,0 +1,25 @@
+Here are some ways to profile the CPU usage of Haskell code; in all cases,
+it's probably worth setting reallySync=False in hslib/Disk.hs.
+
+1) GHC's built-in profiling.
+
+  Add the "-prof -fprof-auto -rtsopts" GHC arguments in Makefile.
+  Run "./fuse .. +RTS -p".
+  Run some workload, then unmount the file system.
+  Look at the profile in ./fuse.prof.
+
+2) Eventlog.
+
+  Install ghc-events:
+    % apt-get install libghc-ghc-events-dev
+  Add the "-eventlog" GHC argument in Makefile.
+  Uncomment the Profile.progseq line in Extraction.v.
+  Edit hslib/Profile.hs to specify which files to profile.
+    Profiling all files is costly enough to strongly skew the results.
+  Run "./fuse .. +RTS -l-agu".
+  Run some workload, then unmount the file system.
+  Analyze the eventlog:
+    % ghc-events show fuse.eventlog | ./analyze-events.py | sort -n
+
+  See http://www.well-typed.com/blog/86/ and
+      https://ghc.haskell.org/trac/ghc/wiki/EventLog

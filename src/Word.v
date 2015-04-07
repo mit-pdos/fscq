@@ -449,6 +449,9 @@ Proof.
   auto.
 Qed.
 
+Hint Rewrite eq_rect_nat_double.
+Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec).
+
 Lemma eq_rect_word_offset_helper : forall a b c,
   a = b -> c + a = c + b.
 Proof.
@@ -553,6 +556,10 @@ Theorem split2_combine : forall sz1 sz2 (w : word sz1) (z : word sz2),
 Proof.
   induction sz1; shatterer.
 Qed.
+
+Hint Rewrite combine_split.
+Hint Rewrite split1_combine.
+Hint Rewrite split2_combine.
 
 Theorem combine_assoc : forall n1 (w1 : word n1) n2 n3 (w2 : word n2) (w3 : word n3) Heq,
   combine (combine w1 w2) w3
