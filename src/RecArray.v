@@ -88,6 +88,8 @@ Section RECARRAY.
     apply IHls in H. destruct H. exists x0. tauto.
   Qed.
 
+  Set Default Proof Using "All".
+
   Variable itemtype : Rec.type.
   Variable items_per_valu : addr.
   Definition item := Rec.data itemtype.
