@@ -10,7 +10,6 @@
   delay applying log to disk
   batch transactions 
   checksum of log in header
-- migrate to Coq 8.5
 
 - extraction without Haskell
 - integrate into MirageOS unikernel by extracting to OCaml
