@@ -506,7 +506,6 @@ Module LOG.
   Proof.
     unfold init, log_uninitialized; log_unfold.
     hoare.
-    rewrite repeat_length; auto.
     rewrite Forall_forall; intuition.
   Qed.
 
@@ -922,14 +921,10 @@ Module LOG.
     eauto.
 
     unfold sel.
-    rewrite combine_length_eq.
     apply list2mem_ptsto_bounds in H1.
     rewrite replay_length in *.
     eauto.
-    rewrite repeat_length.
-    eauto.
-    
-    simpl.
+
     eapply list2mem_sel with (def := $0) in H1.
     rewrite H1.
     unfold sel.

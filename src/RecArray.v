@@ -332,7 +332,7 @@ Section RECARRAY.
 
     unfold array_item, array_item_pairs.
     step.
-    rewrite map_length. apply wlt_lt in H. congruence.
+    apply wlt_lt in H. congruence.
 
     eapply pimpl_ok2; eauto with prog.
     intros; norm. cancel.
