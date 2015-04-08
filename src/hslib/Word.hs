@@ -72,6 +72,12 @@ wand _ (W x) (W64 y) = W64 $ (Data.Bits..&.) (fromIntegral x) y
 wand _ (W64 x) (W y) = W64 $ (Data.Bits..&.) x (fromIntegral y)
 wand _ (W64 x) (W64 y) = W64 $ (Data.Bits..&.) x y
 
+wor :: Int -> Coq_word -> Coq_word -> Coq_word
+wor _ (W x) (W y) = W $ (Data.Bits..|.) x y
+wor _ (W x) (W64 y) = W64 $ (Data.Bits..|.) (fromIntegral x) y
+wor _ (W64 x) (W y) = W64 $ (Data.Bits..|.) x (fromIntegral y)
+wor _ (W64 x) (W64 y) = W64 $ (Data.Bits..|.) x y
+
 natToWord :: Int -> Int -> Coq_word
 natToWord _ 0 = W 0
 natToWord n x = wrap n $ fromIntegral x

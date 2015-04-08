@@ -25,13 +25,13 @@ Definition ifw {len} (b : bool) (bitpos : word len) : word len :=
 Definition ascii2byte (a : ascii) : word 8 :=
   match a with
   | Ascii a1 a2 a3 a4 a5 a6 a7 a8 =>
-    ifw a1 $0 ^+
-    ifw a2 $1 ^+
-    ifw a3 $2 ^+
-    ifw a4 $3 ^+
-    ifw a5 $4 ^+
-    ifw a6 $5 ^+
-    ifw a7 $6 ^+
+    ifw a1 $0 ^|
+    ifw a2 $1 ^|
+    ifw a3 $2 ^|
+    ifw a4 $3 ^|
+    ifw a5 $4 ^|
+    ifw a6 $5 ^|
+    ifw a7 $6 ^|
     ifw a8 $7
   end.
 
