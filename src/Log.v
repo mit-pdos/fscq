@@ -2070,7 +2070,6 @@ Module LOG.
     eapply replay'_terminate_replay; eauto.
     abstract solve_equal_unless_in_length.
 
-    cancel; eauto.
     eapply replay_unsync_crash; eauto.
   Qed.
 
