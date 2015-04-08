@@ -31,7 +31,8 @@ You also need to install HFuse:
 To run the fuse fscq:
 
   mkdir /tmp/fscq
-  ./fuse -d -s -f /tmp/fscq  &
+  ./mkfs disk.img
+  ./fuse disk.img -f /tmp/fscq &
 
 To use fscq:
 
