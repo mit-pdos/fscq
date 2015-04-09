@@ -13,10 +13,15 @@ sys.setrecursionlimit(10000)
 import_prefix = 'codegen/'
 
 remap = {
-  'Cache.eviction_init': 'nil',
-  'Cache.eviction_update': 'nil',
-  'Cache.eviction_choose': 'nil',
-  'FS.cachesize': 'nil',
+  'Cache': {
+    'eviction_init':   'var Coq_eviction_init   CoqT = nil',
+    'eviction_update': 'var Coq_eviction_update CoqT = nil',
+    'eviction_choose': 'var Coq_eviction_choose CoqT = nil',
+  },
+
+  'FS': {
+    'cachesize': 'var Coq_cachesize CoqT = nil',
+  },
 }
 
 this_pkgname = None
@@ -226,13 +231,12 @@ def gen_ind(dec):
   return s
 
 def gen_term(dec):
+  if this_pkgname in remap and dec['name'] in remap[this_pkgname]:
+    return []
+
   s = []
   s.append('func () CoqT {')
-  qualname = '%s.%s' % (this_pkgname, dec['name'])
-  if qualname in remap:
-    v = remap[qualname]
-  else:
-    v = gen_expr_assign(dec['value'], s)
+  v = gen_expr_assign(dec['value'], s)
   s.append('  return %s' % v)
   s.append('} ()')
 
@@ -269,3 +273,7 @@ for dec in d['declarations']:
     print_lines(gen_ind(dec))
   else:
     assert False, dec
+
+if this_pkgname in remap:
+  for (_, defn) in remap[this_pkgname].items():
+    print(defn)
