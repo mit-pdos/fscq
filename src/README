@@ -53,3 +53,8 @@ To unmount:
   fusermount -u /tmp/fscq
 
 To run benchmarks, see bench/
+
+To produce Go code, use Go 1.4+ (it's faster and has a better GC) and
+cherry-pick the JSON extraction patches for Coq from:
+
+  https://github.com/zeldovich/coq/tree/json
