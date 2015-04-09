@@ -12,6 +12,13 @@ sys.setrecursionlimit(10000)
 ## XXX hack for now
 import_prefix = 'codegen/'
 
+remap = {
+  'Cache.eviction_init': 'nil',
+  'Cache.eviction_update': 'nil',
+  'Cache.eviction_choose': 'nil',
+  'FS.cachesize': 'nil',
+}
+
 this_pkgname = None
 
 with open(fn) as f:
@@ -221,7 +228,11 @@ def gen_ind(dec):
 def gen_term(dec):
   s = []
   s.append('func () CoqT {')
-  v = gen_expr_assign(dec['value'], s)
+  qualname = '%s.%s' % (this_pkgname, dec['name'])
+  if qualname in remap:
+    v = remap[qualname]
+  else:
+    v = gen_expr_assign(dec['value'], s)
   s.append('  return %s' % v)
   s.append('} ()')
 
