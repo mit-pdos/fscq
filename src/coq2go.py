@@ -39,203 +39,213 @@ def varname():
   return "__v_%d" % varname_ctr
 
 def gen_fix_expr(names, lambdas):
-  s = ''
-  s += 'func (__fixarg CoqT) CoqT {\n'
+  s = []
+  s.append('func (__fixarg CoqT) CoqT {')
 
   for name in names:
-    s += '  var %s CoqT\n' % coqname(name)
+    s.append('  var %s CoqT' % coqname(name))
 
   for (name, lambd) in zip(names, lambdas):
-    s += gen_expr_assign(lambd, coqname(name))
+    lvar = gen_expr_assign(lambd, s)
+    s.append('  %s = %s' % (coqname(name), lvar))
 
-  s += '  return %s.(func (CoqT) CoqT)(__fixarg)\n' % coqname(names[-1])
-  s += '}\n'
-  return s
+  s.append('  return CoqApply(%s, __fixarg)' % coqname(names[-1]))
+  s.append('}')
+  return '\n'.join(s)
 
-def gen_expr_assign(e, retname):
-  s = ''
-
+def gen_expr_assign(e, s):
   if e['what'] == 'expr:lambda':
-    lambda_name = retname
+    res = []
 
-    closure_vars = []
+    first = True
     for argname in e['argnames']:
-      closure_var = varname()
-      closure_vars = [closure_var] + closure_vars
-      s += '%s = func (%s CoqT) CoqT {\n' % (lambda_name, coqname(argname))
-      s += '  var %s CoqT\n' % closure_var
-      lambda_name = closure_var
+      if first:
+        res.append('func (%s CoqT) CoqT {' % coqname(argname))
+      else:
+        res.append('return func (%s CoqT) CoqT {' % coqname(argname))
+      first = False
 
-    s += gen_expr_assign(e['body'], lambda_name)
+    if first:
+      ## This is a lambda but there are no arguments..  They were
+      ## probably [Prop]s that got eliminated at extraction time.
+      retvar = gen_expr_assign(e['body'], s)
+      return retvar
+    else:
+      retvar = gen_expr_assign(e['body'], res)
+      res.append('return %s' % retvar)
 
-    for closure_var in closure_vars:
-      s += '  return %s\n' % closure_var
-      s += '}\n'
+    for argname in e['argnames']:
+      res.append('}')
+
+    return '\n'.join(res)
 
   elif e['what'] == 'expr:fix':
     fixnames = [x['name'] for x in e['funcs']]
     fixlambdas = [x['body'] for x in e['funcs']]
-    s += '%s = %s\n' % (retname, gen_fix_expr(fixnames, fixlambdas))
+    return gen_fix_expr(fixnames, fixlambdas)
 
   elif e['what'] == 'expr:case':
-    switchvar = varname()
-    s += 'var %s CoqT\n' % switchvar
-    s += gen_expr_assign(e['expr'], switchvar)
-    s += 'switch __typesw := (%s).(type) {\n' % switchvar
+    resvar = varname()
+    s.append('var %s CoqT' % resvar)
+
+    switchvar = gen_expr_assign(e['expr'], s)
+    s.append('switch __typesw := (%s).(type) {' % switchvar)
 
     have_default = False
     for case in e['cases']:
-      body = gen_expr_assign(case['body'], retname)
       pat = case['pat']
 
       if pat['what'] == 'pat:constructor':
-        s += 'case *%s:\n' % coqname(pat['name'])
+        s.append('case *%s:' % coqname(pat['name']))
         for idx, argname in enumerate(pat['argnames']):
-          s += 'var %s CoqT = __typesw.A%d\n' % (coqname(argname), idx)
-          s += 'var _ = %s\n' % coqname(argname)
-        s += body
+          s.append('  var %s CoqT = __typesw.A%d' % (coqname(argname), idx))
+          s.append('  var _ = %s' % coqname(argname))
+        body = gen_expr_assign(case['body'], s)
+        s.append('  %s = %s' % (resvar, body))
 
       elif pat['what'] == 'pat:wild':
-        s += 'default:\n'
-        s += '  var _ = __typesw\n'
-        s += body
+        s.append('default:')
+        s.append('  var _ = __typesw')
+        body = gen_expr_assign(case['body'], s)
+        s.append('  %s = %s' % (resvar, body))
         have_default = True
 
       elif pat['what'] == 'pat:rel':
-        s += 'default:\n'
-        s += '  var _ = __typesw\n'
-        s += '  var %s CoqT\n' % coqname(pat['name'])
-        s += '  %s = %s\n' % (coqname(pat['name']), switchvar)
-        s += body
+        s.append('default:')
+        s.append('  var _ = __typesw')
+        s.append('  var %s CoqT\n' % coqname(pat['name']))
+        s.append('  %s = %s\n' % (coqname(pat['name']), switchvar))
+        body = gen_expr_assign(case['body'], s)
+        s.append('  %s = %s' % (resvar, body))
         have_default = True
 
       else:
-        s += 'UNKNOWN PAT %s' % pat['what']
+        s.append('UNKNOWN PAT %s' % pat['what'])
 
     if not have_default:
-      s += 'default:\n'
-      s += '  var _ = __typesw\n'
-      s += '  %s = nil\n' % retname
-      s += '  panic("switch returned")\n'
-    s += '}\n'
+      s.append('default:')
+      s.append('  var _ = __typesw')
+      s.append('  %s = nil\n' % resvar)
+      s.append('  panic("no matching switch type")')
+
+    s.append('}')
+    return resvar
 
   elif e['what'] == 'expr:rel':
-    s += '%s = %s\n' % (retname, coqname(e['name']))
+    return coqname(e['name'])
 
   elif e['what'] == 'expr:global':
-    s += '%s = %s\n' % (retname, coqname(e['name']))
+    return coqname(e['name'])
 
   elif e['what'] == 'expr:constructor':
     arg_vars = []
     for a in e['args']:
-      argvar = varname()
+      argvar = gen_expr_assign(a, s)
       arg_vars.append(argvar)
-      s += 'var %s CoqT\n' % argvar
-      s += gen_expr_assign(a, argvar)
 
-    s += '%s = &%s{ %s }\n' % (retname, coqname(e['name']), ', '.join(arg_vars))
+    return '&%s{ %s }' % (coqname(e['name']), ', '.join(arg_vars))
 
   elif e['what'] == 'expr:exception':
-    s += '%s = nil\n' % retname
-    s += 'panic("%s")\n' % e['msg']
+    s.append('panic("%s")' % e['msg'])
+    return 'nil'
 
   elif e['what'] == 'expr:apply':
-    funvar = varname()
-    s += 'var %s CoqT\n' % funvar
-    s += gen_expr_assign(e['func'], funvar)
+    funvar = gen_expr_assign(e['func'], s)
 
     arg_vars = []
     for a in e['args']:
-      argvar = varname()
+      argvar = gen_expr_assign(a, s)
       arg_vars.append(argvar)
-      s += 'var %s CoqT\n' % argvar
-      s += gen_expr_assign(a, argvar)
 
     apply_expr = funvar
     for arg in arg_vars:
-      apply_expr = '(%s).(func (CoqT) CoqT)(%s)' % (apply_expr, arg)
+      apply_expr = 'CoqApply(%s, %s)' % (apply_expr, arg)
 
-    s += '%s = %s\n' % (retname, apply_expr)
+    ## Save the result in a temporary variable, to avoid re-computing
+    res = varname()
+    s.append('var %s CoqT = %s' % (res, apply_expr))
+    return res
 
   elif e['what'] == 'expr:dummy':
-    s += '%s = CoqDummy\n' % retname
+    return 'CoqDummy'
 
   elif e['what'] == 'expr:let':
-    s += 'var %s CoqT\n' % coqname(e['name'])
-    s += gen_expr_assign(e['nameval'], coqname(e['name']))
-    s += gen_expr_assign(e['body'], retname)
+    v = gen_expr_assign(e['nameval'], s)
+    s.append('var %s CoqT = %s' % (coqname(e['name']), v))
+    return gen_expr_assign(e['body'], s)
 
   elif e['what'] == 'expr:axiom':
-    s += '%s = nil\n' % retname
-    s += 'panic("Axiom not realized")\n'
+    s.append('panic("Axiom not realized")')
+    return 'nil'
 
   elif e['what'] == 'expr:coerce':
-    s += gen_expr_assign(e['value'], retname)
+    return gen_expr_assign(e['value'], s)
 
   else:
-    s += 'UNKNOWN EXPR %s\n' % e['what']
-
-  return s
+    s.append('UNKNOWN EXPR %s' % e['what'])
+    return 'nil'
 
 def gen_header(d):
   global this_pkgname
   this_pkgname = d['name']
 
-  s = ''
-  s += 'package %s\n' % d['name']
-  s += 'import . "gocoq"\n'
+  s = []
+  s.append('package %s' % d['name'])
+  s.append('import . "gocoq"')
   for modname in d['used_modules']:
-    s += 'import "%s%s"\n' % (import_prefix, modname)
-  s += 'var Coq2go_unused bool = true'
+    s.append('import "%s%s"' % (import_prefix, modname))
+  s.append('var Coq2go_unused bool = true &&')
   for modname in d['used_modules']:
-    s += ' && %s.Coq2go_unused' % modname
-  s += '\n'
+    s.append('  %s.Coq2go_unused &&' % modname)
+  s.append('  true')
   return s
 
 def gen_ind(dec):
-  s = ''
+  s = []
   for c in dec['constructors']:
-    s += 'type %s struct {\n' % coqname(c['name'])
+    s.append('type %s struct {' % coqname(c['name']))
     for idx, typ in enumerate(c['argtypes']):
-      s += '  A%d CoqT\n' % idx
-    s += '}\n'
+      s.append('  A%d CoqT' % idx)
+    s.append('}')
   return s
 
 def gen_term(dec):
-  v = varname()
-  s = ''
-  s += 'func () CoqT {\n'
-  s += '  var %s CoqT\n' % v
-  s += gen_expr_assign(dec['value'], v)
-  s += '  return %s\n' % v
-  s += '} ()'
+  s = []
+  s.append('func () CoqT {')
+  v = gen_expr_assign(dec['value'], s)
+  s.append('  return %s' % v)
+  s.append('} ()')
 
-  return 'var %s CoqT = %s\n' % (coqname(dec['name']), s)
+  return ['var %s CoqT = %s\n' % (coqname(dec['name']), '\n'.join(s))]
 
 def gen_fix(dec):
   ## For a group of N mutually-recursive fixpoints, we generate N
   ## copies of each of the N functions.  This is because Go prohibits
   ## loops during global variable initialization.
-  r = ''
+  r = []
   names = [x['name'] for x in dec['fixlist']]
   values = [x['value'] for x in dec['fixlist']]
   for i in range(0, len(dec['fixlist'])):
     rot_names = names[i:] + names[:i]
     rot_values = values[i:] + values[:i]
     e = gen_fix_expr(rot_names, rot_values)
-    r += 'var %s CoqT = %s\n' % (coqname(rot_names[-1]), e)
+    r.append('var %s CoqT = %s' % (coqname(rot_names[-1]), e))
   return r
 
-print(gen_header(d))
+def print_lines(lines):
+  for l in lines:
+    print(l)
+
+print_lines(gen_header(d))
 
 for dec in d['declarations']:
   if dec['what'] == 'decl:type':
     pass
   elif dec['what'] == 'decl:term':
-    print(gen_term(dec))
+    print_lines(gen_term(dec))
   elif dec['what'] == 'decl:fixgroup':
-    print(gen_fix(dec))
+    print_lines(gen_fix(dec))
   elif dec['what'] == 'decl:ind':
-    print(gen_ind(dec))
+    print_lines(gen_ind(dec))
   else:
     assert False, dec
