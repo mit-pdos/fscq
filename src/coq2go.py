@@ -206,6 +206,7 @@ def gen_header(d):
   for modname in d['used_modules']:
     s.append('  %s.Coq2go_unused &&' % modname)
   s.append('  true')
+  s.append('')
   return s
 
 def gen_ind(dec):
