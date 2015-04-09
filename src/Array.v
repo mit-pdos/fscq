@@ -457,12 +457,6 @@ Proof.
   nth_selN app_nth2.
 Qed.
 
-Lemma map_ext_in : forall A B (f g : A -> B) l, (forall a, In a l -> f a = g a)
-  -> map f l = map g l.
-Proof.
-  induction l; auto; simpl; intros; f_equal; auto.
-Qed.
-
 Theorem seq_right : forall b a, seq a (S b) = seq a b ++ (a + b :: nil).
 Proof.
   induction b; simpl; intros.

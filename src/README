@@ -3,12 +3,8 @@ building Coq from source:
 
   git clone -b v8.5 https://github.com/coq/coq.git
 
-As one reference point, commit ee9d9415 seems to produce a working
+As one reference point, commit eaa3f971 seems to produce a working
 version of Coq that builds fscq.
-
-To speed up Haskell builds, apply this patch to Coq:
-
-  ../coq/haskell-ascii.patch
 
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
@@ -54,7 +50,4 @@ To unmount:
 
 To run benchmarks, see bench/
 
-To produce Go code, use Go 1.4+ (it's faster and has a better GC) and
-cherry-pick the JSON extraction patches for Coq from:
-
-  https://github.com/zeldovich/coq/tree/json
+To produce Go code, use Go 1.4+ (it's faster and has a better GC).

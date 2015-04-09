@@ -6,7 +6,7 @@ MODULES    := Nomega Word WordAuto \
 	      GenSep GenSepN ListPred Cache FSLayout \
 	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree FS Testprog \
-	      ExtrHaskellPrelude Extraction
+	      ExtrHaskellPrelude Extraction ExtractJSON
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 GHC        := /opt/ghc/7.10.1/bin/ghc
