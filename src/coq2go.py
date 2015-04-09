@@ -54,6 +54,15 @@ def gen_fix_expr(names, lambdas):
   return '\n'.join(s)
 
 def gen_expr_assign(e, s):
+  r = gen_expr_assign_real(e, s)
+  if len(r) < 1000:
+    return r
+  else:
+    v = varname()
+    s.append('  var %s CoqT = %s' % (v, r))
+    return v
+
+def gen_expr_assign_real(e, s):
   if e['what'] == 'expr:lambda':
     res = []
 
@@ -113,8 +122,7 @@ def gen_expr_assign(e, s):
       elif pat['what'] == 'pat:rel':
         s.append('default:')
         s.append('  var _ = __typesw')
-        s.append('  var %s CoqT\n' % coqname(pat['name']))
-        s.append('  %s = %s\n' % (coqname(pat['name']), switchvar))
+        s.append('  var %s CoqT = %s\n' % (coqname(pat['name']), switchvar))
         body = gen_expr_assign(case['body'], s)
         s.append('  %s = %s' % (resvar, body))
         have_default = True
