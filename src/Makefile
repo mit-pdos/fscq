@@ -1,6 +1,6 @@
 OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
-MODULES    := Nomega Word WordAuto \
+MODULES    := Lock Nomega Word WordAuto \
 	      Prog Pred Hoare SepAuto SepAuto2 Idempotent \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache FSLayout \

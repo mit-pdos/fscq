@@ -7,6 +7,7 @@ Definition locked {A} := let 'tt := master_key in fun x : A => x.
 Lemma lock A (x : A) : x = locked x.
 Proof. unfold locked; case master_key; reflexivity. Qed.
 
+(*
 Definition sz1 := 64.
 Definition sz2 := locked 64.
 
@@ -19,15 +20,4 @@ Proof.
   rewrite <- lock.
   reflexivity.
 Qed.
-
-Theorem t1: x1 = eq_rect sz2 (fun n => word n) x2 sz1 sz2sz1.
-Proof.
-  generalize sz2sz1.
-Abort.
-
-Theorem t2: wordToNat (natToWord sz2 5) = 5.
-Proof.
-  unfold sz2.
-  rewrite <- lock.
-  reflexivity.
-Qed.
+*)
