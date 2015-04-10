@@ -22,6 +22,44 @@ remap = {
   'FS': {
     'cachesize': 'var Coq_cachesize CoqT = nil',
   },
+
+  'Nat': {
+    'int2nat': '''
+      func int2nat(n int) CoqT {
+        var res CoqT = Datatypes.Coq_O{}
+        for (n > 0) {
+          res = Datatypes.Coq_S{res}
+          n -= 1
+        }
+        return res
+      }''',
+
+    'nat2int': '''
+      func nat2int(n CoqT) int {
+        sum := 0
+        for {
+          switch t := n.(type) {
+          case *Datatypes.Coq_O:
+            return sum
+          case *Datatypes.Coq_S:
+            sum += 1
+            n = t.A0
+          default:
+            panic("unknown nat constructor")
+            return -1
+          }
+        }
+      }''',
+
+#    'add': '''
+#      var Coq_add CoqT = func(Coq_n CoqT) CoqT {
+#        return func(Coq_m CoqT) CoqT {
+#          n := nat2int(Coq_n)
+#          m := nat2int(Coq_m)
+#          return int2nat(n + m)
+#        }
+#      }''',
+  },
 }
 
 this_pkgname = None
@@ -252,6 +290,9 @@ def gen_fix(dec):
   for i in range(0, len(dec['fixlist'])):
     rot_names = names[i:] + names[:i]
     rot_values = values[i:] + values[:i]
+    if this_pkgname in remap and rot_names[-1] in remap[this_pkgname]:
+      continue
+
     e = gen_fix_expr(rot_names, rot_values)
     r.append('var %s CoqT = %s' % (coqname(rot_names[-1]), e))
   return r
