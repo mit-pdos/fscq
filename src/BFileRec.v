@@ -23,7 +23,7 @@ Section RECBFILE.
 
 
   Theorem items_per_valu_not_0 : items_per_valu <> $0.
-  Proof. (* DO NOT ADMIT *)
+  Proof.
     intro H.
     unfold blocktype in blocksz_ok.
     rewrite H in blocksz_ok.
@@ -33,7 +33,7 @@ Section RECBFILE.
   Qed.
 
   Theorem items_per_valu_not_0' : wordToNat items_per_valu <> 0.
-  Proof. (* DO NOT ADMIT *)
+  Proof.
     intros H.
     apply items_per_valu_not_0.
     apply wordToNat_inj; auto.
