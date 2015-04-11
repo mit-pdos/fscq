@@ -25,6 +25,12 @@ Ltac set_evars_in H :=
               | context[?e] => is_evar e; let E := fresh in set (E := e) in H
             end.
 
+(** * Helpers for keeping track of variable names *)
+
+Definition varname_type (_ : unit) := unit.
+Definition varname_val (_ : unit) := tt.
+Notation "'VARNAME' ( varname )" := (forall (varname : unit), varname_type varname).
+
 (** * Separation logic proof automation *)
 
 Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
@@ -247,19 +253,21 @@ Proof.
     apply flatten_star'; apply piff_refl.
 Qed.
 
-Lemma flatten_exists: forall AT AEQ V T PT (p : _ -> @pred AT AEQ V) ps P,
-  (forall (a:T), (p a <=p=> exists (x:PT), stars (ps a x) * [[P a x]]))
-  -> (exists (a:T), p a) <=p=>
-      (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
+Lemma flatten_exists : forall AT AEQ V T PT (p : _ -> @pred AT AEQ V) ps P,
+  (forall ( a : T ), (p a <=p=> exists ( x : PT ), stars (ps a x) * [[ P a x ]]))
+  -> (exists ( a : T ), p a) <=p=>
+      (exists ( x : ( (VARNAME(dummy)*T) * PT ) ),
+       stars (ps (snd (fst x)) (snd x)) *
+       [[ P (snd (fst x)) (snd x) ]]).
 Proof.
   intros; split.
   - apply pimpl_exists_l; intro eT.
     eapply pimpl_trans; [apply H|].
     apply pimpl_exists_l; intro ePT.
-    apply pimpl_exists_r. exists (eT, ePT).
+    apply pimpl_exists_r. exists (varname_val, eT, ePT).
     apply pimpl_refl.
   - apply pimpl_exists_l; intro e.
-    apply pimpl_exists_r. exists (fst e).
+    apply pimpl_exists_r. exists (snd (fst e)).
     eapply pimpl_trans; [|apply H].
     apply pimpl_exists_r. exists (snd e).
     apply pimpl_refl.
@@ -273,16 +281,25 @@ Proof.
   - apply pimpl_exists_l; intros. apply emp_star.
 Qed.
 
-Ltac flatten := repeat match goal with
-                       | [ |- emp <=p=> _ ] => apply flatten_emp
-                       | [ |- _ * _ <=p=> _ ] =>
-                         eapply piff_trans; [ apply flatten_star | apply piff_refl ]
-                       | [ |- (exists _, _)%pred <=p=> _ ] =>
-                         eapply piff_trans; [ apply flatten_exists | apply piff_refl ]; intros
-                       | [ |- [[_]] <=p=> _ ] =>
-                         eapply piff_trans; [ apply flatten_lift_empty | apply piff_refl ]
-                       | _ => apply flatten_default
-                       end.
+Ltac flatten_assign_name good_name :=
+  match goal with
+  | [ |- (exists lv : (VARNAME(dummy) * ?T) * ?PT, ?body) <=p=> _ ] =>
+    set (LHS := (exists lv : (VARNAME(good_name) * T) * PT, body)%pred);
+    subst LHS;
+    apply piff_refl
+  end.
+
+Ltac flatten :=
+  repeat match goal with
+  | [ |- emp <=p=> _ ] => apply flatten_emp
+  | [ |- _ * _ <=p=> _ ] =>
+    eapply piff_trans; [ apply flatten_star | apply piff_refl ]
+  | [ |- (exists (varname : _), _)%pred <=p=> _ ] =>
+    eapply piff_trans; [ apply flatten_exists | flatten_assign_name varname ]; intros ?varname
+  | [ |- [[_]] <=p=> _ ] =>
+    eapply piff_trans; [ apply flatten_lift_empty | apply piff_refl ]
+  | _ => apply flatten_default
+  end.
 
 Definition okToUnify {AT AEQ V} (p1 p2 : @pred AT AEQ V) := p1 = p2.
 
