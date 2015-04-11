@@ -60,7 +60,6 @@ Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
 
 (* rewrite hints for various List facts *)
 
-Hint Rewrite combine_length.
 Hint Rewrite repeat_length.
 Hint Rewrite map_length.
 Hint Rewrite app_length.

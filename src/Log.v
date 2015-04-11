@@ -289,10 +289,10 @@ Module LOG.
                         (repeat [] (length (map snd (Map.elements m))))) ++ l).
     rewrite <- array_app.
     cancel.
-    autorewrite with core.
+    rewrite combine_length. autorewrite with core.
     rewrite Map.cardinal_1. auto.
     intuition.
-    autorewrite with core.
+    autorewrite with core. rewrite combine_length. autorewrite with core.
     rewrite Map.cardinal_1 in *. omega.
   Qed.
 
@@ -302,7 +302,7 @@ Module LOG.
     length (synced_list l) = length l.
   Proof.
     unfold synced_list; intros.
-    autorewrite with core. auto.
+    rewrite combine_length. autorewrite with core. auto.
   Qed.
 
   Definition data_rep (xp: log_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
@@ -921,6 +921,7 @@ Module LOG.
     eauto.
 
     unfold sel.
+    rewrite combine_length; autorewrite_fast.
     apply list2mem_ptsto_bounds in H1.
     rewrite replay_length in *.
     eauto.
@@ -2226,9 +2227,7 @@ Module LOG.
     apply equal_arrays; auto; f_equal.
     eapply nil_unless_in_oob; eauto.
     abstract solve_lengths.
-
-    or_l; cancel; eauto.
- Qed.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
 
@@ -2476,7 +2475,7 @@ Module LOG.
     hoare.
     instantiate (1 := (List.combine (map snd (Map.elements (elt:=valu) m))
      (repeat [] (length (map snd (Map.elements (elt:=valu) m)))))).
-    cancel.
+    autorewrite_fast. cancel.
     rewrite header_valu_id in *.
     rec_simpl.
     simpl in H.
@@ -2513,8 +2512,6 @@ Module LOG.
     simpl.
     solve_lengths.
     eauto with replay.
-    cancel.
-    auto.
     cancel.
     auto.
     Unshelve.
