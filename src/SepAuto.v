@@ -114,24 +114,29 @@ Ltac sep_imply :=
   | [ |- _ _ _ ?m ] => sep_imply' m
   end.
 
-Theorem start_normalizing : forall AT AEQ V PT QT (p : @pred AT AEQ V) q ps qs P Q,
+Theorem start_normalizing_left : forall AT AEQ V PT (p : @pred AT AEQ V) q ps P,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
-  -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
-  -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) =p=>
-      (exists (x:QT), stars (qs x) * [[Q x]]))
+  -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) =p=> q)
   -> p =p=> q.
 Proof.
   unfold stars; simpl; intros.
-  eapply pimpl_trans; [apply H|].
+  rewrite <- H0.
+  rewrite H.
   eapply pimpl_exists_l; intro eP.
-  eapply pimpl_trans; [eapply pimpl_trans; [|apply H1]|].
   eapply pimpl_exists_r; exists eP.
   eapply pimpl_trans; [apply pimpl_star_emp|].
   eapply pimpl_trans; [apply sep_star_assoc|].
   apply piff_star_r. apply sep_star_comm.
-  eapply pimpl_exists_l; intro eQ.
-  eapply pimpl_trans; [|apply H0].
-  eapply pimpl_exists_r; exists eQ.
+Qed.
+
+Theorem start_normalizing_right : forall AT AEQ V QT (p : @pred AT AEQ V) q qs Q,
+  q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
+  -> (p =p=> (exists (x:QT), stars (qs x) * [[Q x]]))
+  -> p =p=> q.
+Proof.
+  unfold stars; simpl; intros.
+  rewrite H0.
+  rewrite <- H.
   apply pimpl_refl.
 Qed.
 
@@ -759,12 +764,13 @@ Ltac replace_right := eapply replace_right;
  * a bit buggy in Coq..
  *)
 
-Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
+Ltac norm'l := eapply start_normalizing_left; [ flatten | ];
                eapply pimpl_exists_l; intros;
                apply sep_star_lift_l; let Hlift:=fresh in intro Hlift;
                destruct_lift Hlift.
 
-Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
+Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
+               eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
                simpl in *.
 
