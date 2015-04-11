@@ -162,6 +162,8 @@ Ltac unfold_sep_star :=
 
 Section GenPredThm.
 
+Set Default Proof Using "Type".
+
 Variable AT : Type.
 Variable AEQ : DecEq AT.
 Variable V : Type.

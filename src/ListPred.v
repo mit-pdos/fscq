@@ -51,6 +51,8 @@ Qed.
 
 Section LISTPRED.
 
+  Set Default Proof Using "Type".
+
   Variable T : Type.
   Variable AT : Type.
   Variable AEQ : DecEq AT.
@@ -266,6 +268,8 @@ End LISTPRED.
 (* predicate over a pair of lists *)
 
 Section LISTMATCH.
+
+  Set Default Proof Using "Type".
 
   Variable A : Type.
   Variable B : Type.
