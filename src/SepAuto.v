@@ -31,6 +31,17 @@ Definition varname_type (_ : unit) := unit.
 Definition varname_val (_ : unit) := tt.
 Notation "'VARNAME' ( varname )" := (forall (varname : unit), varname_type varname).
 
+Ltac clear_varname :=
+  match goal with
+  | [ H: VARNAME(vn) |- _ ] => clear H
+  end.
+
+Ltac destruct_prod :=
+  match goal with
+  | [ H: (VARNAME(vn) * ?b)%type |- _ ] => destruct H as [? ?vn]
+  | [ H: (?a * ?b)%type |- _ ] => destruct H
+  end.
+
 (** * Separation logic proof automation *)
 
 Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
@@ -518,11 +529,6 @@ Proof.
   firstorder.
 Qed.
 
-Ltac destruct_prod :=
-  match goal with
-  | [ H: (?a * ?b)%type |- _ ] => destruct H
-  end.
-
 Ltac destruct_type T :=
   match goal with
   | [ H: T |- _ ] => destruct H
@@ -573,7 +579,8 @@ Ltac destruct_lift H :=
   repeat destruct_prod;
   simpl in *;
   repeat destruct_type True;
-  repeat destruct_type unit.
+  repeat destruct_type unit;
+  repeat clear_varname.
 
 Lemma eexists_pair: forall A B p,
   (exists (a:A) (b:B), p (a, b))
