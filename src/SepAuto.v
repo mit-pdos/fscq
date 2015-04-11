@@ -38,6 +38,10 @@ Ltac clear_varname :=
 
 Ltac destruct_prod :=
   match goal with
+  | [ v: valuset |- _ ] =>
+    let v0 := fresh v "_cur" in
+    let v1 := fresh v "_old" in
+    destruct v as [v0 v1]
   | [ H: (VARNAME(vn) * ?b)%type |- _ ] => destruct H as [? ?vn]
   | [ H: (?a * ?b)%type |- _ ] => destruct H
   end.
