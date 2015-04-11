@@ -1305,6 +1305,18 @@ Proof.
   - eapply pimpl_apply; [| eassumption ]. apply pimpl_sep_star. apply Hp. apply Hq.
 Qed.
 
+Instance sep_star_apply_eq_proper {AT AEQ V} :
+  Proper (eq ==> eq ==> eq ==> eq) (@sep_star AT AEQ V).
+Proof.
+  congruence.
+Qed.
+
+
+Instance sep_star_eq_proper {AT AEQ V} :
+  Proper (eq ==> eq ==> eq) (@sep_star AT AEQ V).
+Proof.
+  congruence.
+Qed.
 
 Instance sep_star_piff_proper {AT AEQ V} :
   Proper (piff ==> piff ==> piff) (@sep_star AT AEQ V).
@@ -1327,6 +1339,12 @@ Proof.
   apply pimpl_sep_star; assumption.
 Qed.
 
+Instance and_eq_proper {AT AEQ V} :
+  Proper (eq ==> eq ==> eq) (@and AT AEQ V).
+Proof.
+  congruence.
+Qed.
+
 Instance and_piff_proper {AT AEQ V} :
   Proper (piff ==> piff ==> piff) (@and AT AEQ V).
 Proof.
@@ -1337,6 +1355,12 @@ Instance and_pimpl_proper {AT AEQ V} :
   Proper (pimpl ==> pimpl ==> pimpl) (@and AT AEQ V).
 Proof.
   firstorder.
+Qed.
+
+Instance or_eq_proper {AT AEQ V} :
+  Proper (eq ==> eq ==> eq) (@or AT AEQ V).
+Proof.
+  congruence.
 Qed.
 
 Instance or_piff_proper {AT AEQ V} :
@@ -1356,6 +1380,14 @@ Example pimpl_rewrite : forall AT AEQ V a b (p : @pred AT AEQ V) q x y, p =p=> q
 Proof.
   intros.
   rewrite H.
+  reflexivity.
+Qed.
+
+Instance exists_proper_eq {AT AEQ V} {A : Type} :
+  Proper (pointwise_relation A eq ==> eq) (@exis AT AEQ V A).
+Proof.
+  intros pf qf Heq.
+  assert (pf = qf) by (apply functional_extensionality; congruence); subst.
   reflexivity.
 Qed.
 
@@ -1412,6 +1444,12 @@ Proof.
   firstorder.
 Qed.
 
+Instance lift_empty_proper_eq {AT AEQ V} :
+  Proper (eq ==> eq) (@lift_empty AT AEQ V).
+Proof.
+  congruence.
+Qed.
+
 Instance lift_empty_proper_expanded_impl {AT AEQ V} :
   Proper (Basics.impl ==> eq ==> Basics.impl) (@lift_empty AT AEQ V).
 Proof.
@@ -1435,6 +1473,25 @@ Proof.
   intros a b Hab m1 m2 Hm; subst.
   intuition.
 Qed.
+
+
+(**
+ * This instance in effect tells [setoid_rewrite] about functional extensionality.
+ *)
+Instance funext_subrelation {A f R} {subf : subrelation R eq}:
+  subrelation (@pointwise_relation A f R) eq.
+Proof.
+  unfold pointwise_relation.
+  intros a b Hab.
+  apply functional_extensionality; auto.
+Qed.
+
+(**
+ * This helps rewrite using [eq] under deep predicates, [prog]s, etc.
+ * See https://coq.inria.fr/bugs/show_bug.cgi?id=3795
+ *)
+Global Program Instance eq_equivalence {A} : Equivalence (@eq A) | 0.
+
 
 Instance pred_apply_pimpl_proper {AT AEQ V} :
   Proper (eq ==> pimpl ==> Basics.impl) (@pred_apply AT AEQ V).
