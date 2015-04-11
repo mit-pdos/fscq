@@ -49,14 +49,14 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
    (fun done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
-     exists F,
-     F * pre *
+     exists F_,
+     F_ * pre *
      [[ forall r_,
         {{ fun done'_ crash'_ =>
-           post F r_ *
+           post F_ r_ *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
-     [[ (F * crash)%pred =p=> crash_ ]]
+     [[ (F_ * crash)%pred =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -91,16 +91,16 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
    corr3
    (fun done_ crashdone_ =>
-     exists F,
-     F * pre *
-     [[ crash_xform F =p=> F ]] *
+     exists F_,
+     F_ * pre *
+     [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => post F r_ *
-                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+        {{ fun done'_ crash'_ => post F_ r_ *
+                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => crash F r_ *
-                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+        {{ fun done'_ crash'_ => crash F_ r_ *
+                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
    (p1 rxOK)%pred
@@ -118,16 +118,16 @@ Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
    corr3
    (fun done_ crashdone_ =>
-     exists F,
-     F * pre *
-     [[ crash_xform F =p=> F ]] *
+     exists F_,
+     F_ * pre *
+     [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => post F (Complete r_) *
-                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+        {{ fun done'_ crash'_ => post F_ (Complete r_) *
+                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => post F (Recover r_) *
-                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F * idemcrash ]]
+        {{ fun done'_ crash'_ => post F_ (Recover r_) *
+                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
    (p1 rxOK)%pred

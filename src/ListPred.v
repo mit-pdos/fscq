@@ -257,8 +257,8 @@ Section LISTPRED.
     - apply emp_complete; eauto.
     - unfold sep_star in *; rewrite sep_star_is in *; unfold sep_star_impl in *.
       repeat deex.
-      assert (x0 = x2) by eauto; subst.
-      assert (x1 = x) by eauto; subst.
+      assert (m2 = m0) by eauto; subst.
+      assert (m4 = m3) by eauto; subst.
       reflexivity.
   Qed.
 

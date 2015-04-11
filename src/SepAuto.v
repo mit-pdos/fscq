@@ -25,6 +25,50 @@ Ltac set_evars_in H :=
               | context[?e] => is_evar e; let E := fresh in set (E := e) in H
             end.
 
+(** * Helpers for keeping track of variable names *)
+
+Definition varname_type (_ : unit) := unit.
+Definition varname_val (_ : unit) := tt.
+Notation "'VARNAME' ( varname )" := (forall (varname : unit), varname_type varname).
+
+Ltac clear_varname :=
+  match goal with
+  | [ H: VARNAME(vn) |- _ ] => clear H
+  end.
+
+Ltac destruct_prod :=
+  match goal with
+  | [ v: valuset |- _ ] =>
+    let v0 := fresh v "_cur" in
+    let v1 := fresh v "_old" in
+    destruct v as [v0 v1]
+  | [ H: (VARNAME(vn) * ?b)%type |- _ ] => destruct H as [? ?vn]
+  | [ H: (?a * ?b)%type |- _ ] => destruct H
+  end.
+
+Lemma eexists_pair: forall A B p,
+  (exists (a:A) (b:B), p (a, b))
+  -> (exists (e:A*B), p e).
+Proof.
+  intros.
+  destruct H as [a H].
+  destruct H as [b H].
+  exists (a, b); auto.
+Qed.
+
+Ltac eexists_one :=
+  match goal with
+  | [ |- exists (_ : unit), _ ] => exists tt
+  | [ |- exists (_ : VARNAME(vn) * ?T * _), _ ] =>
+    let ev := fresh vn in
+    evar (ev : T);
+    apply eexists_pair; apply eexists_pair;
+    exists varname_val; exists ev;
+    unfold ev in *; clear ev
+  | [ |- exists (_ : (_*_)), _ ] => apply eexists_pair
+  | [ |- exists _, _ ] => eexists
+  end.
+
 (** * Separation logic proof automation *)
 
 Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
@@ -70,24 +114,29 @@ Ltac sep_imply :=
   | [ |- _ _ _ ?m ] => sep_imply' m
   end.
 
-Theorem start_normalizing : forall AT AEQ V PT QT (p : @pred AT AEQ V) q ps qs P Q,
+Theorem start_normalizing_left : forall AT AEQ V PT (p : @pred AT AEQ V) q ps P,
   p <=p=> (exists (x:PT), stars (ps x) * [[P x]])%pred
-  -> q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
-  -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) =p=>
-      (exists (x:QT), stars (qs x) * [[Q x]]))
+  -> ((exists (x:PT), stars (ps x) * stars nil * [[P x]]) =p=> q)
   -> p =p=> q.
 Proof.
   unfold stars; simpl; intros.
-  eapply pimpl_trans; [apply H|].
+  rewrite <- H0.
+  rewrite H.
   eapply pimpl_exists_l; intro eP.
-  eapply pimpl_trans; [eapply pimpl_trans; [|apply H1]|].
   eapply pimpl_exists_r; exists eP.
   eapply pimpl_trans; [apply pimpl_star_emp|].
   eapply pimpl_trans; [apply sep_star_assoc|].
   apply piff_star_r. apply sep_star_comm.
-  eapply pimpl_exists_l; intro eQ.
-  eapply pimpl_trans; [|apply H0].
-  eapply pimpl_exists_r; exists eQ.
+Qed.
+
+Theorem start_normalizing_right : forall AT AEQ V QT (p : @pred AT AEQ V) q qs Q,
+  q <=p=> (exists (x:QT), stars (qs x) * [[Q x]])%pred
+  -> (p =p=> (exists (x:QT), stars (qs x) * [[Q x]]))
+  -> p =p=> q.
+Proof.
+  unfold stars; simpl; intros.
+  rewrite H0.
+  rewrite <- H.
   apply pimpl_refl.
 Qed.
 
@@ -247,19 +296,21 @@ Proof.
     apply flatten_star'; apply piff_refl.
 Qed.
 
-Lemma flatten_exists: forall AT AEQ V T PT (p : _ -> @pred AT AEQ V) ps P,
-  (forall (a:T), (p a <=p=> exists (x:PT), stars (ps a x) * [[P a x]]))
-  -> (exists (a:T), p a) <=p=>
-      (exists (x:(T*PT)), stars (ps (fst x) (snd x)) * [[P (fst x) (snd x)]]).
+Lemma flatten_exists : forall AT AEQ V T PT (p : _ -> @pred AT AEQ V) ps P,
+  (forall ( a : T ), (p a <=p=> exists ( x : PT ), stars (ps a x) * [[ P a x ]]))
+  -> (exists ( a : T ), p a) <=p=>
+      (exists ( x : ( (VARNAME(dummy)*T) * PT ) ),
+       stars (ps (snd (fst x)) (snd x)) *
+       [[ P (snd (fst x)) (snd x) ]]).
 Proof.
   intros; split.
   - apply pimpl_exists_l; intro eT.
     eapply pimpl_trans; [apply H|].
     apply pimpl_exists_l; intro ePT.
-    apply pimpl_exists_r. exists (eT, ePT).
+    apply pimpl_exists_r. exists (varname_val, eT, ePT).
     apply pimpl_refl.
   - apply pimpl_exists_l; intro e.
-    apply pimpl_exists_r. exists (fst e).
+    apply pimpl_exists_r. exists (snd (fst e)).
     eapply pimpl_trans; [|apply H].
     apply pimpl_exists_r. exists (snd e).
     apply pimpl_refl.
@@ -273,16 +324,25 @@ Proof.
   - apply pimpl_exists_l; intros. apply emp_star.
 Qed.
 
-Ltac flatten := repeat match goal with
-                       | [ |- emp <=p=> _ ] => apply flatten_emp
-                       | [ |- _ * _ <=p=> _ ] =>
-                         eapply piff_trans; [ apply flatten_star | apply piff_refl ]
-                       | [ |- (exists _, _)%pred <=p=> _ ] =>
-                         eapply piff_trans; [ apply flatten_exists | apply piff_refl ]; intros
-                       | [ |- [[_]] <=p=> _ ] =>
-                         eapply piff_trans; [ apply flatten_lift_empty | apply piff_refl ]
-                       | _ => apply flatten_default
-                       end.
+Ltac flatten_assign_name good_name :=
+  match goal with
+  | [ |- (exists lv : (VARNAME(dummy) * ?T) * ?PT, ?body) <=p=> _ ] =>
+    set (LHS := (exists lv : (VARNAME(good_name) * T) * PT, body)%pred);
+    unfold LHS in *; clear LHS;
+    apply piff_refl
+  end.
+
+Ltac flatten :=
+  repeat match goal with
+  | [ |- emp <=p=> _ ] => apply flatten_emp
+  | [ |- _ * _ <=p=> _ ] =>
+    eapply piff_trans; [ apply flatten_star | apply piff_refl ]
+  | [ |- (exists (varname : _), _)%pred <=p=> _ ] =>
+    eapply piff_trans; [ apply flatten_exists | flatten_assign_name varname ]; intros ?varname
+  | [ |- [[_]] <=p=> _ ] =>
+    eapply piff_trans; [ apply flatten_lift_empty | apply piff_refl ]
+  | _ => apply flatten_default
+  end.
 
 Definition okToUnify {AT AEQ V} (p1 p2 : @pred AT AEQ V) := p1 = p2.
 
@@ -501,11 +561,6 @@ Proof.
   firstorder.
 Qed.
 
-Ltac destruct_prod :=
-  match goal with
-  | [ H: (?a * ?b)%type |- _ ] => destruct H
-  end.
-
 Ltac destruct_type T :=
   match goal with
   | [ H: T |- _ ] => destruct H
@@ -556,24 +611,8 @@ Ltac destruct_lift H :=
   repeat destruct_prod;
   simpl in *;
   repeat destruct_type True;
-  repeat destruct_type unit.
-
-Lemma eexists_pair: forall A B p,
-  (exists (a:A) (b:B), p (a, b))
-  -> (exists (e:A*B), p e).
-Proof.
-  intros.
-  destruct H as [a H].
-  destruct H as [b H].
-  exists (a, b); auto.
-Qed.
-
-Ltac eexists_one :=
-  match goal with
-  | [ |- exists (_:unit), _ ] => exists tt
-  | [ |- exists (_:(_*_)), _ ] => apply eexists_pair
-  | [ |- exists _, _ ] => eexists
-  end.
+  repeat destruct_type unit;
+  repeat clear_varname.
 
 Definition norm_goal (T: Type) (g: T) := True.
 Theorem norm_goal_ok: forall T g, @norm_goal T g. Proof. firstorder. Qed.
@@ -725,12 +764,13 @@ Ltac replace_right := eapply replace_right;
  * a bit buggy in Coq..
  *)
 
-Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
+Ltac norm'l := eapply start_normalizing_left; [ flatten | ];
                eapply pimpl_exists_l; intros;
                apply sep_star_lift_l; let Hlift:=fresh in intro Hlift;
                destruct_lift Hlift.
 
-Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
+Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
+               eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
                simpl in *.
 

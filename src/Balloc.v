@@ -220,7 +220,7 @@ Module BALLOC.
     unfold items_per_valu. rewrite valulen_wordToNat_natToWord. auto.
 
     step.
-    cut (l0 = bmap_bits xp bmap0).
+    cut (l = bmap_bits xp bmap0).
     intros; subst. unfold xp_to_raxp; destruct xp; simpl in *. cancel.
 
     unfold bmap_bits.
@@ -231,7 +231,7 @@ Module BALLOC.
     intros.
     rewrite selN_map with (default' := 0). simpl.
     rewrite Forall_forall in H9.
-    pose proof (@in_selN _ pos l0 $0 H).
+    pose proof (@in_selN _ pos l $0 H).
     apply H9 in H0. rewrite H0. reflexivity.
     rewrite seq_length.
     unfold items_per_valu in *. rewrite valulen_wordToNat_natToWord in *. congruence.
@@ -305,12 +305,12 @@ Module BALLOC.
     pred_apply.
     cancel.
 
-    assert (a a0 = Avail) as Ha by ( apply H9; eapply remove_still_In; eauto ).
+    assert (bmap a = Avail) as Ha by ( apply H9; eapply remove_still_In; eauto ).
     rewrite <- Ha.
     apply fupd_other.
     eapply remove_still_In_ne; eauto.
 
-    assert (a3 <> a0).
+    assert (a2 <> a).
     intro He. subst. rewrite fupd_same in *. discriminate. trivial.
     rewrite fupd_other in * by assumption.
     apply remove_other_In. assumption.
@@ -347,10 +347,10 @@ Module BALLOC.
     step.
     subst; apply fupd_same; trivial.
     rewrite H10 in H3.
-    destruct (weq bn a2).
+    destruct (weq bn a1).
     subst; apply fupd_same; trivial.
     rewrite <- H3; apply fupd_other; assumption.
-    destruct (weq bn a2).
+    destruct (weq bn a1).
     left. auto.
     right. rewrite fupd_other in H0 by assumption. apply H10; assumption.
   Qed.

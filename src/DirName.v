@@ -653,7 +653,7 @@ Module SDIR.
     unfold dsunlink.
     hoare; resolve_valid_preds.
 
-    exists x2, x3; repeat split; eauto.
+    do 2 eexists; repeat split; eauto.
     eexists; split; eauto.
     split; [ | split ]; [ intros ? Hx | intros ? Hx | ].
     apply indomain_mem_except_indomain in Hx; auto.
@@ -663,7 +663,7 @@ Module SDIR.
     eapply mem_atrans_inv_indomain; eauto.
 
     rewrite <- notindomain_mem_eq.
-    exists x, x0; repeat split; eauto.
+    do 2 eexists; repeat split; eauto.
     apply notindomain_not_indomain; eauto.
     apply mem_except_notindomain.
   Qed.
@@ -689,7 +689,7 @@ Module SDIR.
     hoare.
 
     apply pimpl_or_r; right; resolve_valid_preds; cancel.
-    exists x2, x3; repeat split; eauto.
+    do 2 eexists; repeat split; eauto.
     eexists; split; eauto.
     split; [ | split ]; [ intros ? Hx | intros ? Hx | ].
 
