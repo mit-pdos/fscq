@@ -543,8 +543,8 @@ Module DIRTREE.
     apply ptsto_valid' in H. apply ptsto_valid' in H0.
     rewrite H in H0; inversion H0; subst.
     pose proof (SDIR.rep_mem_eq H6 H9); subst.
-    edestruct (find_subtree_helper_dec xp _ a) with (F:=A) (rec:=find_subtree fnlist) as [HA|HA'];
-      edestruct (find_subtree_helper_dec xp _ a) with (F:=B) (rec:=find_subtree fnlist) as [HB|HB']; eauto;
+    edestruct (find_subtree_helper_dec xp l0 a) with (F:=A) (rec:=find_subtree fnlist) as [HA|HA'];
+      edestruct (find_subtree_helper_dec xp l1 a) with (F:=B) (rec:=find_subtree fnlist) as [HB|HB']; eauto;
       try destruct HA'; try destruct HB'; repeat deex; intuition; try congruence.
     - rewrite H1; rewrite H3. auto.
     - rewrite H4; rewrite H11.
