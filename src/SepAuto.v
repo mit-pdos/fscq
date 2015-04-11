@@ -42,6 +42,29 @@ Ltac destruct_prod :=
   | [ H: (?a * ?b)%type |- _ ] => destruct H
   end.
 
+Lemma eexists_pair: forall A B p,
+  (exists (a:A) (b:B), p (a, b))
+  -> (exists (e:A*B), p e).
+Proof.
+  intros.
+  destruct H as [a H].
+  destruct H as [b H].
+  exists (a, b); auto.
+Qed.
+
+Ltac eexists_one :=
+  match goal with
+  | [ |- exists (_ : unit), _ ] => exists tt
+  | [ |- exists (_ : VARNAME(vn) * ?T * _), _ ] =>
+    let ev := fresh vn in
+    evar (ev : T);
+    apply eexists_pair; apply eexists_pair;
+    exists varname_val; exists ev;
+    unfold ev in *; clear ev
+  | [ |- exists (_ : (_*_)), _ ] => apply eexists_pair
+  | [ |- exists _, _ ] => eexists
+  end.
+
 (** * Separation logic proof automation *)
 
 Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
@@ -296,7 +319,7 @@ Ltac flatten_assign_name good_name :=
   match goal with
   | [ |- (exists lv : (VARNAME(dummy) * ?T) * ?PT, ?body) <=p=> _ ] =>
     set (LHS := (exists lv : (VARNAME(good_name) * T) * PT, body)%pred);
-    subst LHS;
+    unfold LHS in *; clear LHS;
     apply piff_refl
   end.
 
@@ -581,23 +604,6 @@ Ltac destruct_lift H :=
   repeat destruct_type True;
   repeat destruct_type unit;
   repeat clear_varname.
-
-Lemma eexists_pair: forall A B p,
-  (exists (a:A) (b:B), p (a, b))
-  -> (exists (e:A*B), p e).
-Proof.
-  intros.
-  destruct H as [a H].
-  destruct H as [b H].
-  exists (a, b); auto.
-Qed.
-
-Ltac eexists_one :=
-  match goal with
-  | [ |- exists (_:unit), _ ] => exists tt
-  | [ |- exists (_:(_*_)), _ ] => apply eexists_pair
-  | [ |- exists _, _ ] => eexists
-  end.
 
 Definition norm_goal (T: Type) (g: T) := True.
 Theorem norm_goal_ok: forall T g, @norm_goal T g. Proof. firstorder. Qed.
