@@ -211,16 +211,16 @@ Theorem list2mem_removelast: forall A F (l : list A) v (b : addr),
   -> F (list2mem (removelast l)).
 Proof.
   unfold_sep_star; unfold ptsto; intuition; repeat deex.
-  assert (x = list2mem (removelast l)); subst; auto.
+  assert (m1 = list2mem (removelast l)); subst; auto.
   apply functional_extensionality; intros.
   rewrite list2mem_removelast_list2mem with (b:=b); auto.
 
-  destruct (weq x1 $ (length l - 1)); subst.
+  destruct (weq x $ (length l - 1)); subst.
   apply mem_disjoint_comm in H1. 
   eapply mem_disjoint_either; eauto.
 
   rewrite H2; unfold mem_union.
-  destruct (x x1); subst; simpl; auto.
+  destruct (m1 x); subst; simpl; auto.
   apply eq_sym; apply H6; auto.
 Qed.
 
@@ -386,12 +386,12 @@ Proof.
         destruct (eq_nat_dec start start); congruence.
       * apply IHl' with (b:=b) (start:=S start); eauto; try omega.
         replace ($ start ^+ $1) with (natToWord addrlen (S start)) in H5 by words.
-        assert (x0 = list2mem_fix (S start) l'); subst; auto.
+        assert (m2 = list2mem_fix (S start) l'); subst; auto.
 
         apply functional_extensionality; intros.
         unfold mem_union in H2.
-        apply equal_f with x1 in H2.
-        destruct (eq_nat_dec (wordToNat x1) start).
+        apply equal_f with x in H2.
+        destruct (eq_nat_dec (wordToNat x) start).
 
         rewrite list2mem_fix_below by omega.
         eapply mem_disjoint_either.

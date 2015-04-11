@@ -112,7 +112,7 @@ Module BUFCACHE.
     Map.cardinal (Map.remove k m) = Map.cardinal m - 1.
   Proof.
     intros; deex.
-    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m) (m':=m) (x:=k) (e:=x).
+    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m) (m':=m) (x:=k) (e:=v).
     omega.
     apply Map.remove_1; auto.
     intro.
@@ -225,7 +225,7 @@ Module BUFCACHE.
 
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
 
-    rewrite <- diskIs_combine_same with (m:=m) (a:=a); try pred_apply; cancel.
+    rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
 
     rewrite map_add_cardinal; auto.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
@@ -234,8 +234,9 @@ Module BUFCACHE.
     destruct (weq a a0); subst.
     apply mapsto_add in H; subst; eauto.
     edestruct H12. eauto. eexists; eauto.
+    simpl in *; auto.
 
-    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
+    rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
@@ -258,7 +259,7 @@ Module BUFCACHE.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
 
-    rewrite <- diskIs_combine_upd with (m:=m) (a:=a); try pred_apply; cancel.
+    rewrite <- diskIs_combine_upd with (m:=d) (a:=a); try pred_apply; cancel.
     rewrite map_add_dup_cardinal; eauto.
     destruct (weq a a0); subst.
     apply mapsto_add in H; subst.
@@ -269,7 +270,7 @@ Module BUFCACHE.
     apply sep_star_comm; apply sep_star_comm in H3.
     eapply ptsto_upd; pred_apply; cancel.
 
-    rewrite <- diskIs_combine_upd with (m:=m) (a:=a); cancel.
+    rewrite <- diskIs_combine_upd with (m:=d) (a:=a); cancel.
     rewrite map_add_cardinal; eauto.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
@@ -283,9 +284,9 @@ Module BUFCACHE.
     eapply ptsto_upd; pred_apply; cancel.
 
     cancel.
-    instantiate (a2 := r_).
+    instantiate (cs' := r_).
     apply pimpl_or_r. left. cancel.
-    rewrite <- diskIs_combine_same with (m:=m); try pred_apply; cancel.
+    rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
 
     apply pimpl_or_r. left. cancel; eauto.
   Qed.
@@ -308,8 +309,8 @@ Module BUFCACHE.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
-    instantiate (a := Prog.upd m a (w, [])); unfold stars; simpl.
-    rewrite <- diskIs_combine_upd with (m:=m); cancel.
+    instantiate (d' := Prog.upd d a (v2_cur, [])); unfold stars; simpl.
+    rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     apply H5 in H; deex.
     destruct (weq a a0); subst.
@@ -320,7 +321,7 @@ Module BUFCACHE.
     apply sep_star_comm. eapply ptsto_upd. apply sep_star_comm. eauto.
     cancel.
     apply pimpl_or_r; left.
-    rewrite <- diskIs_combine_same with (m:=m) (a:=a); try pred_apply; cancel.
+    rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
     eauto.
     eauto.
     eauto.
@@ -412,7 +413,7 @@ Module BUFCACHE.
     end.
     norm; cancel'; intuition.
     unfold stars; subst; simpl; rewrite star_emp_pimpl.
-    unfold crash_xform. unfold pimpl; intros; repeat deex. exists m0.
+    unfold crash_xform. unfold pimpl; intros; repeat deex. exists m.
     apply sep_star_lift_apply'; eauto.
     apply sep_star_lift_apply'; eauto.
     apply sep_star_lift_apply'; eauto.
@@ -424,7 +425,7 @@ Module BUFCACHE.
     contradict H; apply Map.empty_1.
     destruct_lift H0.
     unfold diskIs in *; subst.
-    exists x.
+    exists m'.
     intuition.
   Qed.
 
@@ -465,8 +466,7 @@ Module BUFCACHE.
     hoare.
 
     pred_apply.
-    rewrite isolate_fwd with (i:=i) by auto.
-    rewrite <- surjective_pairing. cancel.
+    rewrite isolate_fwd with (i:=i) by auto. cancel.
 
     rewrite <- isolate_bwd_upd by auto.
     cancel.
@@ -494,8 +494,7 @@ Module BUFCACHE.
     hoare.
 
     pred_apply.
-    rewrite isolate_fwd with (i:=i) by auto.
-    rewrite <- surjective_pairing. cancel.
+    rewrite isolate_fwd with (i:=i) by auto. cancel.
 
     rewrite <- isolate_bwd_upd by auto.
     cancel.
@@ -516,7 +515,7 @@ Module BUFCACHE.
     rewrite crash_xform_diskIs.
     repeat rewrite crash_xform_lift_empty.
     cancel.
-    instantiate (a0 := Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) (CSEvict cs)).
+    instantiate (cs' := Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) (CSEvict cs)).
     auto.
     simpl; omega.
     simpl in *; omega.

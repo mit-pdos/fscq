@@ -187,16 +187,16 @@ Theorem list2nmem_removelast: forall A F (l : list A) v,
   -> F (list2nmem (removelast l)).
 Proof.
   unfold_sep_star; unfold ptsto; intuition; repeat deex.
-  assert (x = list2nmem (removelast l)); subst; auto.
+  assert (m1 = list2nmem (removelast l)); subst; auto.
   apply functional_extensionality; intros.
   rewrite list2nmem_removelast_list2nmem; auto.
 
-  destruct (eq_nat_dec x1 (length l - 1)); subst.
+  destruct (eq_nat_dec x (length l - 1)); subst.
   apply mem_disjoint_comm in H0. 
   eapply mem_disjoint_either; eauto.
 
   rewrite H1; unfold mem_union.
-  destruct (x x1); subst; simpl; auto.
+  destruct (m1 x); subst; simpl; auto.
   apply eq_sym; apply H5; auto.
 Qed.
 
@@ -313,12 +313,12 @@ Proof.
         rewrite H1 in H0'.
         destruct (eq_nat_dec start start); congruence.
       * apply IHl' with (start:=S start); eauto; try omega.
-        assert (x0 = list2nmem_fix (S start) l'); subst; auto.
+        assert (m2 = list2nmem_fix (S start) l'); subst; auto.
 
         apply functional_extensionality; intros.
         unfold mem_union in H0.
-        apply equal_f with x1 in H0.
-        destruct (eq_nat_dec x1 start).
+        apply equal_f with x in H0.
+        destruct (eq_nat_dec x start).
 
         rewrite list2nmem_fix_below by omega.
         eapply mem_disjoint_either.

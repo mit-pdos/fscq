@@ -479,7 +479,7 @@ Proof.
       apply IHlst.
       cancel.
       instantiate (lst' := lst).
-      instantiate (a0 := a1).
+      instantiate (g := a1).
       cancel.
       eapply pimpl_ok2.
       apply H1.
