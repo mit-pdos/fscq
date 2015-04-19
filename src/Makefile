@@ -41,6 +41,9 @@ checkproofs: Makefile.coq
 proof: Makefile.coq
 	$(MAKE) -f Makefile.coq
 
+parproof: coq
+	$(MAKE) -f Makefile.coq vio2vo J=$(J)
+
 coqbuild/%.v: %.v
 	@mkdir -p coqbuild
 	ln -s ../$< $@
