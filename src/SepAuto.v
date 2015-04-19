@@ -498,7 +498,15 @@ Proof.
 Qed.
 
 Ltac cancel' := repeat (cancel_one || delay_one);
-                try solve [ unfold stars at 2 3; simpl; apply finish_frame ].
+                try solve [ unfold stars at 2 3; simpl;
+                  match goal with
+                  | [ |- stars nil * ?P =p=> ?Q] =>
+                    match P with
+                    | context[sep_star] => match Q with context[sep_star] => fail 2 end
+                    | _ => idtac
+                    end;
+                    apply finish_frame
+                  end ].
 
 Theorem split_or_one : forall AT AEQ V (q : @pred AT AEQ V) pa pb ps F,
   stars (pa :: ps) * F =p=> q
