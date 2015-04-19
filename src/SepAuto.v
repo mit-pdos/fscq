@@ -876,7 +876,7 @@ Ltac destruct_branch :=
   | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
   end.
 
-Ltac step_unfold unfolder :=
+Ltac step_with unfolder t :=
   intros;
   try autounfold with hoare_unfold in *;
   try cancel;
@@ -893,15 +893,18 @@ Ltac step_unfold unfolder :=
   intros; subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try autounfold with hoare_unfold in *; unfolder; eauto;
-  try ( cancel ; try ( progress autorewrite_fast ; cancel ) );
+  try ( cancel_with t ; try ( progress autorewrite_fast ; cancel_with t ) );
   apply_xform cancel;
-  try cancel; try autorewrite_fast;
-  intuition eauto;
+  try cancel_with t; try autorewrite_fast;
+  intuition t;
   try omega;
   try congruence;
-  eauto.
+  try t.
+
+Ltac step_unfold unfolder := step_with unfolder eauto.
 
 Ltac step := step_unfold idtac.
 
 Ltac hoare := repeat step.
 Ltac hoare_unfold unfolder := unfolder; repeat (step_unfold unfolder).
+Ltac hoare_with unfolder t := unfolder; repeat (step_with unfolder t).
