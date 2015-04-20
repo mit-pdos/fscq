@@ -105,12 +105,38 @@ Module INODE.
     )%pred.
 
   Definition irget T lxp xp inum mscs rx : prog T :=
-    RecArray.get inodetype items_per_valu itemsz_ok
-      lxp (xp_to_raxp xp) inum mscs rx.
+    v <- RecArray.get inodetype items_per_valu itemsz_ok
+      lxp (xp_to_raxp xp) inum mscs;
+    rx v.
 
   Definition irput T lxp xp inum i mscs rx : prog T :=
-    RecArray.put inodetype items_per_valu itemsz_ok
-      lxp (xp_to_raxp xp) inum i mscs rx.
+    v <- RecArray.put inodetype items_per_valu itemsz_ok
+      lxp (xp_to_raxp xp) inum i mscs;
+    rx v.
+
+  Lemma lt_wordToNat_len : forall T (l : list T) x len (w : word len),
+    length l = # w
+    -> x < length l
+    -> x < # w.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma list2nmem_sel_for_eauto : forall V A i (v v' : V) l def,
+    (A * #i |-> v)%pred (list2nmem l)
+    -> v' = sel l i def
+    -> v' = v.
+  Proof.
+    unfold sel; intros.
+    apply list2nmem_sel with (def:=def) in H.
+    congruence.
+  Qed.
+
+  Hint Resolve list2nmem_inbound.
+  Hint Resolve lt_wlt.
+  Hint Resolve lt_wordToNat_len.
+  Hint Resolve list2nmem_sel_for_eauto.
+  Hint Resolve list2nmem_upd.
 
   Theorem irget_ok : forall lxp xp inum mscs,
     {< F Fm A mbase m ilist ino,
@@ -123,16 +149,8 @@ Module INODE.
     CRASH          LOG.would_recover_old lxp F mbase
     >} irget lxp xp inum mscs.
   Proof.
-    unfold irget, irrep; intros.
-    eapply pimpl_ok2. 
-    eapply RecArray.get_ok; word_neq.
-    intros; norm.
-    cancel.
-    intuition; eauto.
-    apply list2nmem_inbound in H4.
-    apply lt_wlt; omega.
-    apply list2nmem_sel with (def:=irec0) in H4.
-    step.
+    unfold irget, irrep.
+    hoare.
   Qed.
 
   Theorem irput_ok : forall lxp xp inum i mscs,
@@ -149,14 +167,7 @@ Module INODE.
     >} irput lxp xp inum i mscs.
   Proof.
     unfold irput, irrep.
-    intros. eapply pimpl_ok2. eapply RecArray.put_ok; word_neq.
-    intros; norm.
-    cancel.
-    intuition; eauto.
-    apply list2nmem_inbound in H5.
-    apply lt_wlt; omega.
-    apply list2nmem_sel with (def:=irec0) in H5 as H5'.
-    step.
+    hoare.
     autorewrite with core; auto.
     eapply list2nmem_upd; eauto.
   Qed.
