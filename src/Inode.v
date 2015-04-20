@@ -137,6 +137,7 @@ Module INODE.
   Hint Resolve lt_wordToNat_len.
   Hint Resolve list2nmem_sel_for_eauto.
   Hint Resolve list2nmem_upd.
+  Hint Resolve list2nmem_updN.
 
   Theorem irget_ok : forall lxp xp inum mscs,
     {< F Fm A mbase m ilist ino,
@@ -168,8 +169,7 @@ Module INODE.
   Proof.
     unfold irput, irrep.
     hoare.
-    autorewrite with core; auto.
-    eapply list2nmem_updN; eauto.
+    autorewrite with core; auto.  (* Coq bug 4197 *)
   Qed.
 
   Hint Extern 1 ({{_}} progseq (irget _ _ _ _) _) => apply irget_ok : prog.
