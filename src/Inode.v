@@ -249,17 +249,8 @@ Module INODE.
     CRASH          LOG.would_recover_old lxp F mbase
     >} indget lxp a off mscs.
   Proof.
-    unfold indget, indrep, indxp; intros.
+    unfold indget, indrep, indxp.
     hoare.
-
-    rewrite wmult_unit.
-    eapply lt_wlt.
-    apply list2nmem_inbound in H4.
-    rewrite wordToNat_wnr_indirect.
-    rewrite H7 in H4; auto.
-
-    eapply list2nmem_sel with (def:=item_zero indtype) in H4.
-    unfold sel in *. congruence.
   Qed.
 
 
@@ -275,14 +266,8 @@ Module INODE.
     CRASH      LOG.would_recover_old lxp F mbase
     >} indput lxp a off bn mscs.
   Proof.
-    unfold indput, indrep, indxp; intros.
+    unfold indput, indrep, indxp.
     hoare.
-
-    rewrite wmult_unit; eapply lt_wlt.
-    apply list2nmem_inbound in H4.
-    rewrite wordToNat_wnr_indirect.
-    rewrite H7 in H4; auto.
-    eapply list2nmem_updN; eauto.
   Qed.
 
 
@@ -318,8 +303,8 @@ Module INODE.
   Proof.
     unfold indrep, array_item, array_item_pairs, indxp.
     cancel.
-    destruct l; inversion H0.
-    pose proof (length_nil l) as Hx.
+    destruct vs_nested; inversion H0.
+    pose proof (length_nil vs_nested) as Hx.
     apply Hx in H4; subst; simpl in *.
     rewrite app_nil_r; subst.
     cancel.
@@ -332,7 +317,7 @@ Module INODE.
     intros.
     unfold array_item, array_item_pairs, indxp.
     norm.
-    instantiate (a := [ RecArray.block_zero indtype wnr_indirect ]).
+    instantiate (vs_nested := [ RecArray.block_zero indtype wnr_indirect ]).
     unfold rep_block, block_zero, wreclen_to_valu; simpl.
     rewrite Rec.to_of_id.
     rewrite indsz_ok; auto.
@@ -603,7 +588,7 @@ Module INODE.
     eapply wle_eq_le; eauto; simpl; auto.
 
     cancel.
-    instantiate (a := nil).
+    instantiate (blist := nil).
     rewrite indirect_valid_l; auto.
     unfold blocks_per_inode; omega.
     rewrite app_nil_r; auto.
