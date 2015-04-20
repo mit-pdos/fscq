@@ -169,7 +169,7 @@ Module INODE.
     unfold irput, irrep.
     hoare.
     autorewrite with core; auto.
-    eapply list2nmem_upd; eauto.
+    eapply list2nmem_updN; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (irget _ _ _ _) _) => apply irget_ok : prog.
@@ -282,7 +282,7 @@ Module INODE.
     apply list2nmem_inbound in H4.
     rewrite wordToNat_wnr_indirect.
     rewrite H7 in H4; auto.
-    eapply list2nmem_upd; eauto.
+    eapply list2nmem_updN; eauto.
   Qed.
 
 
@@ -835,7 +835,7 @@ Module INODE.
     list2nmem_ptsto_cancel; list2nmem_bound.
     list2nmem_ptsto_cancel; list2nmem_bound.
     irec_well_formed.
-    2: eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
 
     repeat rewrite_list2nmem_pred; try list2nmem_bound.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
@@ -1004,7 +1004,7 @@ Module INODE.
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
     step.
-    2: eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
     repeat rewrite_list2nmem_pred; inode_bounds.
@@ -1115,7 +1115,7 @@ Module INODE.
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
     step.
-    2: eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
     (* prove representation invariant *)
@@ -1213,7 +1213,7 @@ Module INODE.
     irec_well_formed.
     step.
     eapply pimpl_or_r; right; cancel.
-    2: eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
     (* prove representation invariant *)
@@ -1392,7 +1392,7 @@ Module INODE.
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
     step.
-    2: eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
     2: simpl; eapply list2nmem_removelast; eauto.
 
     repeat rewrite_list2nmem_pred; unfold upd; inode_bounds.
@@ -1439,7 +1439,7 @@ Module INODE.
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
     step.
-    2: eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
     2: simpl; eapply list2nmem_removelast; eauto.
 
     repeat rewrite_list2nmem_pred; unfold upd; inode_bounds.

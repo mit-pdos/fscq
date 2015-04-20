@@ -83,7 +83,7 @@ Proof.
   erewrite selN_updN_ne; auto.
 Qed.
 
-Theorem list2nmem_upd: forall A F (l: list A) i x y,
+Theorem list2nmem_updN: forall A F (l: list A) i x y,
   (F * i |-> x)%pred (list2nmem l)
   -> (F * i |-> y)%pred (list2nmem (updN l i y)).
 Proof.
@@ -93,6 +93,15 @@ Proof.
   apply sep_star_comm in H.
   eapply ptsto_upd; eauto.
   eapply list2nmem_inbound; eauto.
+Qed.
+
+Theorem list2nmem_upd: forall A F (l: list A) i x y,
+  (F * #i |-> x)%pred (list2nmem l)
+  -> (F * #i |-> y)%pred (list2nmem (upd l i y)).
+Proof.
+  unfold upd; intros.
+  eapply list2nmem_updN.
+  eauto.
 Qed.
 
 Theorem listapp_progupd: forall A l (a : A),

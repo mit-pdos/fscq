@@ -140,7 +140,7 @@ Module DIR.
     unfold deput, derep_macro, derep.
     hoare.
     list2nmem_bound.
-    eapply list2nmem_upd; eauto.
+    eapply list2nmem_updN; eauto.
   Qed.
 
   Theorem delist_ok : forall lxp bxp ixp inum mscs,

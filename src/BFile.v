@@ -234,7 +234,7 @@ Module BFILE.
     unfold bfsetattr, rep.
     hoare.
     list2nmem_ptsto_cancel; file_bounds.
-    2: eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
 
     repeat rewrite_list2nmem_pred; file_bounds.
     destruct_listmatch_n.
@@ -308,8 +308,8 @@ Module BFILE.
     cancel.
 
     step.
-    2: eapply list2nmem_upd; eauto.
-    2: simpl; eapply list2nmem_upd; eauto.
+    2: eapply list2nmem_updN; eauto.
+    2: simpl; eapply list2nmem_updN; eauto.
 
     eapply pimpl_trans2.
     erewrite listmatch_isolate with (i := wordToNat inum);
@@ -376,7 +376,7 @@ Module BFILE.
     eapply list2nmem_array; file_bounds.
 
     eapply pimpl_or_r; right; cancel.
-    2: simpl; eapply list2nmem_upd; eauto.
+    2: simpl; eapply list2nmem_updN; eauto.
     instantiate (a1 := w0).
 
     erewrite listmatch_extract with (i := # inum) in H3 by file_bounds;
@@ -462,7 +462,7 @@ Module BFILE.
     2: list2nmem_ptsto_cancel; file_bounds.
     file_bounds.
     step.
-    2: simpl; eapply list2nmem_upd; eauto.
+    2: simpl; eapply list2nmem_updN; eauto.
 
     erewrite list2nmem_array_upd with (nl := l2); [ | file_bounds ..].
     unfold upd, sel.
