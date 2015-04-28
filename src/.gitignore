@@ -13,5 +13,3 @@ _build
 /mkfs
 /coqbuild
 /#*#
-*.vo
-*.glob

@@ -454,6 +454,25 @@ Proof.
 Qed.
 
 
+Lemma list2nmem_ptsto_cancel : forall V i (def : V) l, #i < length l ->
+  (arrayN_ex l #i * #i |-> sel l i def)%pred (list2nmem l).
+Proof.
+  intros.
+  assert (arrayN 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
+  pred_apply; erewrite arrayN_except; eauto.
+Qed.
+
+Lemma list2nmem_sel_for_eauto : forall V A i (v v' : V) l def,
+  (A * #i |-> v)%pred (list2nmem l)
+  -> v' = sel l i def
+  -> v' = v.
+Proof.
+  unfold sel; intros.
+  apply list2nmem_sel with (def:=def) in H.
+  congruence.
+Qed.
+
+
 (* Ltacs *)
 
 Ltac rewrite_list2nmem_pred_bound H :=
@@ -514,7 +533,7 @@ Ltac list2nmem_cancel :=
 
 
 Ltac list2nmem_bound :=
-   match goal with
+  match goal with
     | [ H : ( _ * ?p |-> ?i)%pred (list2nmem ?l) |- ?p < length ?l' ] =>
           let Ha := fresh in assert (length l = length l') by solve_length_eq;
           let Hb := fresh in apply list2nmem_inbound in H as Hb;
