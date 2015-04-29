@@ -14,10 +14,13 @@
 - extraction without Haskell
 - integrate into MirageOS unikernel by extracting to OCaml
 - extraction into Go to combine with Biscuit
+- explore Mtac as an alternative to Ltac
 
 - better syntax for predicates (from paper)
 - better automation support for words
 - better automation support for stopping at well-defined points
+- use http://why.lri.fr/ or http://why3.lri.fr/ to integrate Z3 into Coq
+- use Canonical Structure for defaults
 - integrate error codes (Errno.v)
 - k/v store, on-disk hash table (stephanie)
 - db transaction system (abort)
