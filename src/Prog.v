@@ -1,5 +1,6 @@
 Require Import Arith.
 Require Import Word.
+Require Import Bytes.
 Require Import FunctionalExtensionality.
 Require Import Eqdep_dec.
 Require Import Structures.OrderedType.
@@ -12,16 +13,24 @@ Set Implicit Arguments.
 
 (** * The programming language *)
 
-Notation "'valulen_real'" := (4096 * 8)%nat. (* 4KB *)
+Notation "'valubytes_real'" := 4096. (* 4KB *)
+Notation "'valulen_real'" := (valubytes_real * 8)%nat.
 
 Module Type VALULEN.
   Parameter valulen : nat.
-  Axiom valulen_is: valulen = valulen_real.
+  Parameter valubytes : nat.
+  Axiom valulen_is : valulen = valulen_real.
+  Axiom valubytes_is : valubytes = valubytes_real.
 End VALULEN.
 
 Module Valulen : VALULEN.
   Definition valulen := valulen_real.
+  Definition valubytes := valubytes_real.
   Theorem valulen_is: valulen = valulen_real.
+  Proof.
+    auto.
+  Qed.
+  Theorem valubytes_is: valubytes = valubytes_real.
   Proof.
     auto.
   Qed.
@@ -29,11 +38,53 @@ End Valulen.
 
 Definition addrlen := 64.
 Notation "'valulen'" := (Valulen.valulen).
+Notation "'valubytes'" := (Valulen.valubytes).
 Notation "'valulen_is'" := (Valulen.valulen_is).
+Notation "'valubytes_is'" := (Valulen.valubytes_is).
 
 Notation "'addr'" := (word addrlen).
 Notation "'valu'" := (word valulen).
 Definition addr_eq_dec := @weq addrlen.
+
+Definition valu2bytes (v : valu) : bytes valubytes.
+  refine (@word2bytes valulen valubytes _ v).
+  rewrite valulen_is. rewrite valubytes_is. reflexivity.
+Defined.
+
+Definition bytes2valu (v : bytes valubytes) : valu.
+  rewrite valulen_is.
+  unfold bytes in *.
+  rewrite valubytes_is in *.
+  exact v.
+Defined.
+
+Theorem valu2bytes2valu : forall v, valu2bytes (bytes2valu v) = v.
+Proof.
+  unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
+  intros.
+  rewrite eq_rect_word_mult.
+  rewrite eq_rect_nat_double.
+  generalize dependent v.
+  rewrite valubytes_is.
+  rewrite valulen_is.
+  intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem bytes2valu2bytes : forall v, bytes2valu (valu2bytes v) = v.
+Proof.
+  unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
+  intros.
+  rewrite eq_rect_word_mult.
+  rewrite eq_rect_nat_double.
+  generalize dependent v.
+  rewrite valubytes_is.
+  rewrite valulen_is.
+  intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
 
 Theorem valulen_wordToNat_natToWord : # (natToWord addrlen valulen) = valulen.
 Proof.

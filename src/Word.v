@@ -455,7 +455,7 @@ Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec).
 Lemma eq_rect_word_offset_helper : forall a b c,
   a = b -> c + a = c + b.
 Proof.
-  intros; omega.
+  intros; congruence.
 Qed.
 
 Theorem eq_rect_word_offset : forall n n' offset w Heq,
@@ -465,6 +465,22 @@ Proof.
   intros.
   destruct Heq.
   rewrite (UIP_dec eq_nat_dec (eq_rect_word_offset_helper offset eq_refl) eq_refl).
+  reflexivity.
+Qed.
+
+Lemma eq_rect_word_mult_helper : forall a b c,
+  a = b -> a * c = b * c.
+Proof.
+  intros; congruence.
+Qed.
+
+Theorem eq_rect_word_mult : forall n n' scale w Heq,
+  eq_rect n (fun n => word (n * scale)) w n' Heq =
+  eq_rect (n * scale) (fun n => word n) w (n' * scale) (eq_rect_word_mult_helper _ Heq).
+Proof.
+  intros.
+  destruct Heq.
+  rewrite (UIP_dec eq_nat_dec (eq_rect_word_mult_helper scale eq_refl) eq_refl).
   reflexivity.
 Qed.
 
