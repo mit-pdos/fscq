@@ -244,7 +244,19 @@ Module BYTEFILE.
     admit.
   Admitted.
 
-  Definition write_byte T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
+  Hint Resolve boff_valubytes_boff : bytechunk.
+  Hint Resolve bend_valubytes_bend : bytechunk.
+  Hint Resolve bend_boff_lenleft_bend_boff : bytechunk.
+  Hint Resolve boff_bend_boff_valubytes_bend : bytechunk.
+  Local Obligation Tactic := eauto with bytechunk.
+
+  Definition bsplit1_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz1 :=
+    bsplit1 sz1 sz2 (eq_rect sz bytes v _ H).
+
+  Definition bsplit2_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz2 :=
+    bsplit2 sz1 sz2 (eq_rect sz bytes v _ H).
+
+  Program Definition write_byte T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
     let^ (mscs, _) <- ForEach ck ckrest (chunkList (((len - # off)/valulen)+1) len (# off))
       Ghost [ mbase m F ]
       Loopvar [ mscs dataleft' ]
@@ -262,22 +274,17 @@ Module BYTEFILE.
         let bend := chunk_bend ck in
         let boffProof := chunk_boff_proof ck in
         let bendProof := chunk_bend_proof ck in
-        let boffendProof := chunk_boff_bend_proof ck in
+        let boffbendProof := chunk_boff_bend_proof ck in
         let^ (mscs, ok) <- grow_if_needed fsxp inum b mscs;
         If (bool_dec ok true) {
           let^ (mscs, v) <- BFILE.bfread  (FSXPLog fsxp) (FSXPInode fsxp) inum b mscs;
           let vb := valu2bytes v in
-          let v_boff := eq_rect valubytes bytes vb (boff1 + (valubytes-boff1)) (@boff_valubytes_boff boff1 boffProof) in
-          let v_bend := eq_rect valubytes bytes vb (bend + (valubytes - bend)) (@bend_valubytes_bend bend bendProof) in
-          let x := bsplit1 (boff1) (valubytes - boff1) v_boff in
-          let y := bsplit2 bend (valubytes - bend) v_bend in
-          let dataleft_cast := eq_rect _ bytes dataleft
-            (bend - boff1 + (lenleft - (bend - boff1))) (bend_boff_lenleft_bend_boff bend boff1 _) in
-          let z := bsplit1 (bend-boff1) (lenleft-(bend-boff1)) dataleft_cast in
-          let z_rest := bsplit2 (bend-boff1) (lenleft-(bend-boff1)) dataleft_cast in
+          let x := bsplit1_dep boff1 (valubytes - boff1) vb _ in
+          let y := bsplit2_dep bend (valubytes - bend) vb _ in
+          let z := bsplit1_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
+          let z_rest := bsplit2_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
           let v' := bcombine x (bcombine z y) in
-          let v'' := eq_rect _ bytes v' valubytes
-            (@boff_bend_boff_valubytes_bend boff1 bend boffendProof bendProof) in
+          let v'' := eq_rect _ bytes v' valubytes _ in
           mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum b (bytes2valu v'') mscs;
           lrx ^(mscs, (Build_len_bytes z_rest))
         } else {
