@@ -23,49 +23,47 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-Definition byte_bits := 8.
-Definition byte := word byte_bits.
+Definition bbits := 8.
+Definition byte := word bbits.
 
 Module BYTEFILE.
 
-  Definition block_bytes := valulen / byte_bits.
+  Definition block_bytes := valulen / bbits.
 
-  Fixpoint list2word (l : list byte) : word (length l * byte_bits).
+  Fixpoint list2word elen (l : list (word elen)) : word (length l * elen).
     refine
       match l with
       | nil => $0
       | x :: l' => _
       end.
-    exact (Word.combine x (list2word l')).
+    exact (Word.combine x (list2word elen l')).
   Defined.
 
-  Fixpoint word2list nbytes (w : word (nbytes * byte_bits)) : list byte.
+  Fixpoint word2list elen nelem (w : word (nelem * elen)) : list (word elen).
     refine
-     (match nbytes as n' return (nbytes = n' -> list byte) with
+     (match nelem as n' return (nelem = n' -> list (word elen)) with
       | 0 => fun _ => nil
-      | S nbytes' => _
+      | S nelem' => _
       end eq_refl).
     intros; subst.
-    refine (split1 byte_bits (nbytes' * byte_bits) w :: _).
-    exact (word2list nbytes' (split2 byte_bits (nbytes' * byte_bits) w)).
+    refine (split1 elen (nelem' * elen) w :: _).
+    exact (word2list elen nelem' (split2 elen (nelem' * elen) w)).
   Defined.
 
-  Theorem length_word2list : forall nbytes (w : word (nbytes * byte_bits)),
-    length (word2list nbytes w) = nbytes.
+  Theorem length_word2list : forall elen nelem (w : word (nelem * elen)),
+    length (word2list elen nelem w) = nelem.
   Proof.
-    induction nbytes; simpl; auto.
+    induction nelem; simpl; auto.
   Qed.
 
-  Theorem length_word2list_8 : forall nbytes (w : word (nbytes * byte_bits)),
-    nbytes * byte_bits = length (word2list nbytes w) * byte_bits.
+  Theorem length_word2list_mult : forall elen nelem (w : word (nelem * elen)),
+    nelem * elen = length (word2list elen nelem w) * elen.
   Proof.
     intros; rewrite length_word2list; auto.
   Qed.
 
-  Opaque byte_bits.
-
-  Theorem list2word2list : forall l,
-    word2list (length l) (list2word l) = l.
+  Theorem list2word2list : forall elen l,
+    word2list elen (length l) (list2word l) = l.
   Proof.
     unfold word2list, list2word, eq_rec_r, eq_rec.
     induction l.
@@ -76,16 +74,20 @@ Module BYTEFILE.
     rewrite split2_combine; auto.
   Qed.
 
-  Theorem word2list2word : forall nbytes (w : word (nbytes * byte_bits)),
-    list2word (word2list nbytes w) =
-    eq_rect (nbytes*byte_bits) word w (length (word2list nbytes w) * byte_bits) (length_word2list_8 _ _).
+  Require Import Eqdep_dec.
+  Require Import EqdepFacts.
+
+  Theorem word2list2word : forall elen nelem (w : word (nelem * elen)),
+    list2word (word2list elen nelem w) =
+    eq_rect (nelem*elen) word w (length (word2list elen nelem w) * elen) (length_word2list_mult _ _ _).
   Proof.
-    induction nbytes; simpl; intros.
+    induction nelem; simpl; intros.
     rewrite word0; reflexivity.
-    rewrite IHnbytes; clear IHnbytes.
-    rewrite eq_rect_split2.
-    admit.
-  Admitted.
+    rewrite IHnelem; clear IHnelem.
+    rewrite combine_split_eq_rect2.
+    f_equal.
+    apply (UIP_dec eq_nat_dec).
+  Qed.
 
   Lemma block_byte_match_1 :
     forall x,
@@ -125,7 +127,7 @@ Module BYTEFILE.
       (split1 (this_block_bytes*8) ((block_bytes - this_block_bytes)*8) b_split =
        split1 (this_block_bytes*8) ((length bytes - this_block_bytes)*8) bytes_split) /\
       block_byte_match blocks'
-      (word2list (length bytes - this_block_bytes) (split2 (this_block_bytes*8) ((length bytes - this_block_bytes)*8) bytes_split))
+      (word2list bbits (length bytes - this_block_bytes) (split2 (this_block_bytes*8) ((length bytes - this_block_bytes)*8) bytes_split))
     end.
 
   Definition rep (bytes : list byte) (bfattr : BFILE.bfattr) : @pred nat eq_nat_dec valu :=

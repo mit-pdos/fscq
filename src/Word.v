@@ -696,6 +696,22 @@ Proof.
   reflexivity.
 Qed.
 
+Theorem combine_split_eq_rect2 : forall n1 n2 n2' (w : word (n1 + n2)) Heq,
+  combine (split1 n1 n2 w)
+          (eq_rect n2 (fun n => word n) (split2 n1 n2 w)
+                   n2' Heq) =
+  eq_rect (n1 + n2) (fun n => word n) w
+          (n1 + n2') (eq_rect_split2_helper _ Heq).
+Proof.
+  intros.
+  assert (n2 = n2') by omega.
+  generalize dependent Heq.
+  generalize dependent w.
+  rewrite <- H; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  apply combine_split.
+Qed.
+
 Lemma eq_rect_split1_helper : forall a b c,
   a = b -> a + c = b + c.
 Proof.
