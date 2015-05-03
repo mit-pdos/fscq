@@ -173,7 +173,7 @@ Module BYTEFILE.
     match b with
       | O => nil   (* XXX maybe the last chunk: [(off, sz)] *)
       | S b' =>
-        let blk := off / valubytes in   (* XXX blk should be addr, very slow! *)
+        let blk := off / valubytes in
         let boff := off mod valubytes in
         let bend := Nat.min (boff + sz) valubytes in
         let bsz := bend - boff in
@@ -215,13 +215,6 @@ Module BYTEFILE.
     intros. omega.
   Qed.
 
-(*
-  Theorem boff_bend_boff_valulen_bend :
-    forall boff bend,
-      
-(boff + (bend - boff + (valulen - bend)))
-*)
-
   Record len_bytes := {
     len_bytes_len : nat;
     len_bytes_data : bytes len_bytes_len
@@ -241,6 +234,7 @@ Module BYTEFILE.
     forall bend boff lenleft,
       lenleft = bend - boff + (lenleft - (bend - boff)).
   Proof.
+    intros.
     admit.
   Admitted.
 
@@ -256,6 +250,26 @@ Module BYTEFILE.
   Definition bsplit2_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz2 :=
     bsplit2 sz1 sz2 (eq_rect sz bytes v _ H).
 
+  Program Definition write_chunk T fsxp inum (off: addr) len (data : bytes len) dataleft' (ck: chunk) mscs rx : prog T :=
+    let lenleft := len_bytes_len dataleft' in
+    let dataleft := len_bytes_data dataleft' in
+    let b := chunk_block ck in
+    let boff1 := chunk_boff ck in
+    let bend := chunk_bend ck in
+    let boffProof := chunk_boff_proof ck in
+    let bendProof := chunk_bend_proof ck in
+    let boffbendProof := chunk_boff_bend_proof ck in
+    let^ (mscs, v) <- BFILE.bfread  (FSXPLog fsxp) (FSXPInode fsxp) inum b mscs;
+    let vb := valu2bytes v in
+    let x := bsplit1_dep boff1 (valubytes - boff1) vb _ in
+    let y := bsplit2_dep bend (valubytes - bend) vb _ in
+    let z := bsplit1_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
+    let z_rest := bsplit2_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
+    let v' := bcombine x (bcombine z y) in
+    let v'' := eq_rect _ bytes v' valubytes _ in
+    mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum b (bytes2valu v'') mscs;
+    rx ^(mscs, z_rest).
+
   Program Definition write_byte T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
     let^ (mscs, _) <- ForEach ck ckrest (chunkList (((len - # off)/valulen)+1) len (# off))
       Ghost [ mbase m F ]
@@ -267,25 +281,9 @@ Module BYTEFILE.
       OnCrash
         LOG.would_recover_old fsxp.(FSXPLog) F mbase
       Begin
-        let lenleft := len_bytes_len dataleft' in
-        let dataleft := len_bytes_data dataleft' in
-        let b := chunk_block ck in
-        let boff1 := chunk_boff ck in
-        let bend := chunk_bend ck in
-        let boffProof := chunk_boff_proof ck in
-        let bendProof := chunk_bend_proof ck in
-        let boffbendProof := chunk_boff_bend_proof ck in
-        let^ (mscs, ok) <- grow_if_needed fsxp inum b mscs;
+        let^ (mscs, ok) <- grow_if_needed fsxp inum (chunk_block ck) mscs;
         If (bool_dec ok true) {
-          let^ (mscs, v) <- BFILE.bfread  (FSXPLog fsxp) (FSXPInode fsxp) inum b mscs;
-          let vb := valu2bytes v in
-          let x := bsplit1_dep boff1 (valubytes - boff1) vb _ in
-          let y := bsplit2_dep bend (valubytes - bend) vb _ in
-          let z := bsplit1_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
-          let z_rest := bsplit2_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
-          let v' := bcombine x (bcombine z y) in
-          let v'' := eq_rect _ bytes v' valubytes _ in
-          mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum b (bytes2valu v'') mscs;
+          let^ (mscs, z_rest) <- write_chunk fsxp inum off data dataleft' ck mscs;
           lrx ^(mscs, (Build_len_bytes z_rest))
         } else {
           mscs <- LOG.abort (FSXPLog fsxp) mscs;
