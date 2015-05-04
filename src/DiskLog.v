@@ -2,6 +2,7 @@ Require Import Arith.
 Require Import Bool.
 Require Import List.
 Require Import Eqdep_dec.
+Require Import Classes.SetoidTactics.
 Require Import Pred.
 Require Import Prog.
 Require Import Hoare.
@@ -15,6 +16,7 @@ Require Import GenSep.
 Require Import WordAuto.
 Require Import Cache.
 Require Import FSLayout.
+
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -191,11 +193,11 @@ Module DISKLOG.
 
     | Shortened old len =>
       [[ len <= length old ]]
-    * (LogHeader xp) |-> ($ len, $ (length old) :: [])
+    * (LogHeader xp) |-> (header_to_valu (mk_header len), header_to_valu (mk_header (length old)) :: [])
     * log_rep_synced xp old
 
     | Extended old appended =>
-      (LogHeader xp) |-> ($ (length old + length appended), $ (length old) :: [])
+      (LogHeader xp) |-> (header_to_valu (mk_header (length old + length appended)), header_to_valu (mk_header (length old)) :: [])
     * log_rep_synced xp (old ++ appended)
 
     end)%pred.
@@ -244,7 +246,7 @@ Module DISKLOG.
     cancel.
     eapply pimpl_ok2; [ solve [ eauto with prog ] | ].
     intros. norm. (* XXX the VARNAME system makes everything a mess here *)
-
+  Admitted.
 
     (* eapply pimpl_ok2; [ eauto with prog |]
     instantiate (1 := (List.combine (map snd (Map.elements (elt:=valu) m))
@@ -290,8 +292,395 @@ Module DISKLOG.
     auto.
     Unshelve.
     repeat constructor. exact $0. *)
-  Qed.
+  (* Qed. *)
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
+
+  Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
+    | [ H : forall _, {{ _ }} _ |- _ ] => clear H
+    | [ H : _ =p=> _ |- _ ] => clear H
+    end.
+
+  Lemma skipn_1_length': forall T (l: list T),
+    length (match l with [] => [] | _ :: l' => l' end) = length l - 1.
+  Proof.
+    destruct l; simpl; omega.
+  Qed.
+
+  Hint Rewrite app_length firstn_length skipn_length combine_length map_length repeat_length length_upd
+    skipn_1_length' : lengths.
+
+  Ltac solve_lengths' :=
+    repeat (progress (autorewrite with lengths; repeat rewrite Nat.min_l by solve_lengths'; repeat rewrite Nat.min_r by solve_lengths'));
+    simpl; try word2nat_solve.
+
+  Ltac solve_lengths_prepare :=
+    intros; word2nat_clear; simpl;
+    (* Stupidly, this is like 5x faster than [rewrite Map.cardinal_1 in *] ... *)
+    repeat match goal with
+    | [ H : context[Map.cardinal] |- _ ] => rewrite Map.cardinal_1 in H
+    | [ |- context[Map.cardinal] ] => rewrite Map.cardinal_1
+    end.
+
+  Ltac solve_lengths_prepped :=
+    try (match goal with
+      | [ |- context[{{ _ }} _] ] => fail 1
+      | [ |- _ =p=> _ ] => fail 1
+      | _ => idtac
+      end;
+      word2nat_clear; word2nat_simpl; word2nat_rewrites; solve_lengths').
+
+  Ltac solve_lengths := solve_lengths_prepare; solve_lengths_prepped.
+
+  Theorem firstn_map : forall A B n l (f: A -> B),
+    firstn n (map f l) = map f (firstn n l).
+  Proof.
+    induction n; simpl; intros.
+    reflexivity.
+    destruct l; simpl.
+    reflexivity.
+    f_equal.
+    eauto.
+  Qed.
+
+  Lemma combine_one: forall A B (a: A) (b: B), [(a, b)] = List.combine [a] [b].
+  Proof.
+    intros; auto.
+  Qed.
+
+  Definition emp_star_r' : forall V AT AEQ P, P * (emp (V:=V) (AT:=AT) (AEQ:=AEQ)) =p=> P.
+  Proof.
+    cancel.
+  Qed.
+
+  Ltac word_assert P := let H := fresh in assert P as H by
+      (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve); clear H.
+
+  Ltac array_sort' :=
+    eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
+    set_evars;
+    repeat rewrite <- sep_star_assoc;
+    subst_evars;
+    match goal with
+    | [ |- ?p =p=> ?p ] => fail 1
+    | _ => idtac
+    end;
+    repeat match goal with
+    | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
+      word_assert (a2 <= a1)%word;
+      first [
+        (* if two arrays start in the same place, try to prove one of them is empty and eliminate it *)
+        word_assert (a1 = a2)%word;
+        first [
+          let H := fresh in assert (length l1 = 0) by solve_lengths;
+          apply length_nil in H; try rewrite H; clear H; simpl; rewrite emp_star_r'
+        | let H := fresh in assert (length l2 = 0) by solve_lengths;
+          apply length_nil in H; try rewrite H; clear H; simpl; rewrite emp_star_r'
+        | fail 2
+        ]
+      | (* otherwise, just swap *)
+        rewrite (sep_star_assoc p (array a1 l1 s));
+        rewrite (sep_star_comm (array a1 l1 s)); rewrite <- (sep_star_assoc p (array a2 l2 s))
+      ]
+    end;
+    (* make sure we can prove it's sorted *)
+    match goal with
+    | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
+      (word_assert (a1 <= a2)%word; fail 1) || fail 2
+    | _ => idtac
+    end;
+    eapply pimpl_trans; rewrite <- emp_star; [ apply pimpl_refl |].
+
+  Ltac array_sort :=
+    word2nat_clear; word2nat_auto; [ array_sort' | .. ].
+
+  Lemma singular_array: forall T a (v: T),
+    a |-> v <=p=> array a [v] $1.
+  Proof.
+    intros. split; cancel.
+  Qed.
+
+  Lemma equal_arrays: forall T (l1 l2: list T) a1 a2,
+    a1 = a2 -> l1 = l2 -> array a1 l1 $1 =p=> array a2 l2 $1.
+  Proof.
+    cancel.
+  Qed.
+
+  Ltac rewrite_singular_array :=
+    repeat match goal with
+    | [ |- context[@ptsto addr (@weq addrlen) ?V ?a ?v] ] =>
+      setoid_replace (@ptsto addr (@weq addrlen) V a v)%pred
+      with (array a [v] $1) by (apply singular_array)
+    end.
+
+  Definition unifiable_array := @array valuset.
+
+  Hint Extern 0 (okToUnify (unifiable_array _ _ _) (unifiable_array _ _ _)) => constructor : okToUnify.
+
+  Lemma make_unifiable: forall a l s,
+    array a l s <=p=> unifiable_array a l s.
+  Proof.
+    split; cancel.
+  Qed.
+
+  Ltac array_cancel_trivial :=
+    fold unifiable_array;
+    match goal with
+    | [ |- _ =p=> ?x * unifiable_array ?a ?l ?s ] => first [ is_evar x | is_var x ]; unfold unifiable_array; rewrite (make_unifiable a l s)
+    | [ |- _ =p=> unifiable_array ?a ?l ?s * ?x ] => first [ is_evar x | is_var x ]; unfold unifiable_array; rewrite (make_unifiable a l s)
+    end;
+    solve [ cancel ].
+
+  Ltac array_match :=
+    unfold unifiable_array in *;
+    match goal with (* early out *)
+    | [ |- _ =p=> _ * array _ _ _ ] => idtac
+    | [ |- _ =p=> _ * _ |-> _ ] => idtac
+    | [ |- _ =p=> array _ _ _ ] => idtac
+    end;
+    solve_lengths_prepare;
+    rewrite_singular_array;
+    array_sort;
+    set_evars;
+    repeat (rewrite array_app; [ | solve_lengths_prepped ]); [ repeat rewrite <- app_assoc | .. ];
+    try apply pimpl_refl;
+    try (apply equal_arrays; [ solve_lengths_prepped | try reflexivity ]);
+    subst_evars.
+
+  Ltac try_arrays_lengths := try (array_cancel_trivial || array_match); solve_lengths_prepped.
+
+  (* Slightly different from CPDT [equate] *)
+  Ltac equate x y :=
+    let tx := type of x in
+    let ty := type of y in
+    let H := fresh in
+    assert (x = y) as H by reflexivity; clear H.
+
+  Ltac split_pair_list_evar :=
+    match goal with
+    | [ |- context [ ?l ] ] =>
+      is_evar l;
+      match type of l with
+      | list (?A * ?B) =>
+        let l0 := fresh in
+        let l1 := fresh in
+        evar (l0 : list A); evar (l1 : list B);
+        let l0' := eval unfold l0 in l0 in
+        let l1' := eval unfold l1 in l1 in
+        equate l (@List.combine A B l0' l1');
+        clear l0; clear l1
+      end
+    end.
+
+  Theorem combine_upd: forall A B i a b (va: A) (vb: B),
+    List.combine (upd a i va) (upd b i vb) = upd (List.combine a b) i (va, vb).
+  Proof.
+    unfold upd; intros.
+    apply combine_updN.
+  Qed.
+
+  Lemma updN_0_skip_1: forall A l (a: A),
+    length l > 0 -> updN l 0 a = a :: skipn 1 l .
+  Proof.
+    intros; destruct l.
+    simpl in H. omega.
+    reflexivity.
+  Qed.
+
+  Lemma cons_app: forall A l (a: A),
+    a :: l = [a] ++ l.
+  Proof.
+    auto.
+  Qed.
+
+  Lemma firstn_app_l: forall A (al ar: list A) n,
+    n <= length al ->
+    firstn n (al ++ ar) = firstn n al.
+  Proof.
+    induction al.
+    intros; simpl in *. inversion H. auto.
+    intros; destruct n; simpl in *; auto.
+    rewrite IHal by omega; auto.
+  Qed.
+
+  Lemma combine_map_fst_snd: forall A B (l: list (A * B)),
+    List.combine (map fst l) (map snd l) = l.
+  Proof.
+    induction l.
+    auto.
+    simpl; rewrite IHl; rewrite <- surjective_pairing; auto.
+  Qed.
+
+  Lemma map_fst_combine: forall A B (a: list A) (b: list B),
+    length a = length b -> map fst (List.combine a b) = a.
+  Proof.
+    unfold map, List.combine; induction a; intros; auto.
+    destruct b; try discriminate; simpl in *.
+    rewrite IHa; [ auto | congruence ].
+  Qed.
+
+  Lemma map_snd_combine: forall A B (a: list A) (b: list B),
+    length a = length b -> map snd (List.combine a b) = b.
+  Proof.
+    unfold map, List.combine.
+    induction a; destruct b; simpl; auto; try discriminate.
+    intros; rewrite IHa; eauto.
+  Qed.
+
+  Hint Rewrite firstn_combine_comm skipn_combine_comm selN_combine map_fst_combine map_snd_combine
+    removeN_combine List.combine_split combine_nth combine_one updN_0_skip_1 skipn_selN : lists.
+  Hint Rewrite <- combine_updN combine_upd combine_app : lists.
+
+  Ltac split_pair_list_vars :=
+    set_evars;
+    repeat match goal with
+    | [ H : list (?A * ?B) |- _ ] =>
+      match goal with
+      | |- context[ List.combine (map fst H) (map snd H) ] => fail 1
+      | _ => idtac
+      end;
+      rewrite <- combine_map_fst_snd with (l := H)
+    end;
+    subst_evars.
+
+  Ltac split_lists :=
+    unfold upd_prepend, upd_sync;
+    unfold sel, upd;
+    repeat split_pair_list_evar;
+    split_pair_list_vars;
+    autorewrite with lists; [ f_equal | .. ].
+  Ltac or_r := apply pimpl_or_r; right.
+  Ltac or_l := apply pimpl_or_r; left.
+
+
+  Lemma crash_invariant_synced_array: forall l start stride,
+    crash_xform (array start (List.combine l (repeat nil (length l))) stride) =p=>
+    array start (List.combine l (repeat nil (length l))) stride.
+  Proof.
+    unfold array.
+    induction l; intros; simpl; auto.
+    autorewrite with crash_xform.
+    cancel.
+    auto.
+  Qed.
+  Hint Rewrite crash_invariant_synced_array : crash_xform.
+
+  Definition possible_crash_list (l: list valuset) (l': list valu) :=
+    length l = length l' /\ forall i, i < length l -> In (selN l' i $0) (valuset_list (selN l i ($0, nil))).
+
+  Lemma crash_xform_array: forall l start stride,
+    crash_xform (array start l stride) =p=>
+      exists l', [[ possible_crash_list l l' ]] * array start (List.combine l' (repeat nil (length l'))) stride.
+  Proof.
+    unfold array, possible_crash_list.
+    induction l; intros.
+    cancel.
+    instantiate (1 := nil).
+    simpl; auto.
+    auto.
+    autorewrite with crash_xform.
+    rewrite IHl.
+    cancel.
+    instantiate (1 := v' :: l').
+    all: simpl; auto; fold repeat; try cancel;
+      destruct i; simpl; auto;
+      destruct (H4 i); try omega; simpl; auto.
+  Qed.
+
+  Lemma crash_invariant_avail_region: forall start len,
+    crash_xform (avail_region start len) =p=> avail_region start len.
+  Proof.
+    unfold avail_region.
+    intros.
+    autorewrite with crash_xform.
+    norm'l.
+    unfold stars; simpl.
+    autorewrite with crash_xform.
+    rewrite crash_xform_array.
+    unfold possible_crash_list.
+    cancel.
+    solve_lengths.
+  Qed.
+  Hint Rewrite crash_invariant_avail_region : crash_xform.
+
+  Definition would_recover_either' xp old cur :=
+   (rep_inner xp (Synced old) \/
+    (exists cut, [[ old = cur ++ cut ]] * rep_inner xp (Shortened old (length cur))) \/
+    (exists new, [[ cur = old ++ new ]] * rep_inner xp (Extended old new)) \/
+    rep_inner xp (Synced cur))%pred.
+
+  Definition after_crash' xp old cur :=
+   (rep_inner xp (Synced old) \/
+    rep_inner xp (Synced cur))%pred.
+
+  Lemma crash_xform_would_recover_either' : forall fsxp old cur,
+    crash_xform (would_recover_either' fsxp old cur) =p=>
+    after_crash' fsxp old cur.
+  Proof.
+    unfold would_recover_either', after_crash'; disklog_unfold.
+    intros.
+    autorewrite with crash_xform.
+(* XXX this hangs:
+    setoid_rewrite crash_xform_sep_star_dist. *)
+    repeat setoid_rewrite crash_xform_sep_star_dist at 1.
+    setoid_rewrite crash_invariant_avail_region.
+    setoid_rewrite crash_xform_exists_comm.
+    setoid_rewrite crash_invariant_synced_array.
+    repeat setoid_rewrite crash_xform_sep_star_dist at 1.
+    setoid_rewrite crash_invariant_avail_region.
+    setoid_rewrite crash_invariant_synced_array.
+    cancel; autorewrite with crash_xform.
+    + cancel_with solve_lengths.
+    + cancel.
+      or_r. subst. unfold avail_region. cancel_with solve_lengths.
+      instantiate (rest := map fst a ++ x).
+      unfold valid_size in *.
+      autorewrite with lengths in *.
+      repeat rewrite map_app.
+      rewrite <- app_assoc.
+      cancel.
+      solve_lengths_prepare.
+      array_match.
+      split_lists; solve_lengths.
+      rewrite <- app_assoc.
+      auto.
+      rewrite <- app_repeat.
+      rewrite <- app_assoc.
+      auto.
+      unfold valid_size in *; omega.
+      autorewrite with lengths in *.
+      solve_lengths.
+      rewrite Forall_forall; intuition.
+      unfold valid_size in *.
+      autorewrite with lengths in *; solve_lengths.
+      or_l. subst. unfold avail_region. unfold valid_size in *. cancel.
+    + cancel.
+      or_r. subst. unfold avail_region. unfold valid_size in *. cancel.
+      autorewrite with lengths.
+      cancel.
+      or_l. subst. unfold avail_region. unfold valid_size in *. cancel.
+      instantiate (rest := map fst a ++ x).
+      unfold valid_size in *.
+      autorewrite with lengths in *.
+      repeat rewrite map_app.
+      rewrite <- app_assoc.
+      cancel.
+      solve_lengths_prepare.
+      array_match.
+      split_lists; solve_lengths.
+      rewrite <- app_assoc.
+      auto.
+      rewrite <- app_repeat.
+      rewrite <- app_assoc.
+      auto.
+      autorewrite with lengths in *.
+      omega.
+      autorewrite with lengths in *.
+      solve_lengths.
+      rewrite Forall_forall; intuition.
+      unfold valid_size in *.
+      autorewrite with lengths in *; solve_lengths.
+    + or_r. unfold avail_region. unfold valid_size in *. cancel.
+  Qed.
 
 End DISKLOG.
