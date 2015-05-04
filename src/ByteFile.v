@@ -171,7 +171,7 @@ Module BYTEFILE.
   (* fix point for computing list of byte chunks to write, one entry per block *)
   Fixpoint chunkList (b : nat) (sz : nat) (off : nat) : list chunk :=
     match b with
-      | O => nil   (* XXX maybe the last chunk: [(off, sz)] *)
+      | O => nil
       | S b' =>
         let blk := off / valubytes in
         let boff := off mod valubytes in
@@ -183,8 +183,7 @@ Module BYTEFILE.
         ) :: chunkList b' (sz - bsz) (off+boff)
      end.
 
-  Eval compute in chunkList 0 10 10.
-  (* Eval compute in chunkList 1 4096 100. *)
+  (* Eval compute in chunkList 1 10 10. *)
 
   Definition grow_if_needed T fsxp inum b mscs rx : prog T := 
     let^ (mscs, len) <- BFILE.bflen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
@@ -232,6 +231,10 @@ Module BYTEFILE.
 
   Theorem bend_boff_lenleft_bend_boff :
     forall bend boff lenleft,
+      (*
+      boff <= bend ->
+      bend - boff < lenleft ->
+      *)
       lenleft = bend - boff + (lenleft - (bend - boff)).
   Proof.
     intros.
@@ -250,25 +253,57 @@ Module BYTEFILE.
   Definition bsplit2_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz2 :=
     bsplit2 sz1 sz2 (eq_rect sz bytes v _ H).
 
-  Program Definition write_chunk T fsxp inum (off: addr) len (data : bytes len) dataleft' (ck: chunk) mscs rx : prog T :=
+  (* Update a range of bytes in a block. z (boff, bend) is the part that we are
+  replacing with data bytes, * x is the left of the block that isn't updated,
+  and z is the right end. z_rest id the remainder of dataleft' *)
+  Program Definition update_block v dataleft' (ck:chunk) : (valu * _) :=
     let lenleft := len_bytes_len dataleft' in
     let dataleft := len_bytes_data dataleft' in
-    let b := chunk_block ck in
-    let boff1 := chunk_boff ck in
+    let boff := chunk_boff ck in
     let bend := chunk_bend ck in
     let boffProof := chunk_boff_proof ck in
     let bendProof := chunk_bend_proof ck in
     let boffbendProof := chunk_boff_bend_proof ck in
-    let^ (mscs, v) <- BFILE.bfread  (FSXPLog fsxp) (FSXPInode fsxp) inum b mscs;
     let vb := valu2bytes v in
-    let x := bsplit1_dep boff1 (valubytes - boff1) vb _ in
+    let x := bsplit1_dep boff (valubytes - boff) vb _ in
     let y := bsplit2_dep bend (valubytes - bend) vb _ in
-    let z := bsplit1_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
-    let z_rest := bsplit2_dep (bend-boff1) (lenleft-(bend-boff1)) dataleft _ in
+    let z := bsplit1_dep (bend-boff) (lenleft-(bend-boff)) dataleft _ in
+    let z_rest := bsplit2_dep (bend-boff) (lenleft-(bend-boff)) dataleft _ in
     let v' := bcombine x (bcombine z y) in
     let v'' := eq_rect _ bytes v' valubytes _ in
+    (v'', z_rest).
+  Next Obligation.
+    admit.
+  Admitted.
+  
+  Program Definition write_chunk T fsxp inum (off: addr) dataleft' (ck: chunk) mscs rx : prog T :=
+    let b := chunk_block ck in
+    let^ (mscs, v) <- BFILE.bfread  (FSXPLog fsxp) (FSXPInode fsxp) inum b mscs;
+    let (v'', z_rest) := update_block v dataleft' ck in
     mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum b (bytes2valu v'') mscs;
-    rx ^(mscs, z_rest).
+      rx ^(mscs, z_rest).
+    Next Obligation.
+      admit.
+    Admitted.
+
+    (* some conditions on off and dataleft'? v is the new value, something block_byte_match *)
+   Theorem write_chunk_ok: forall fsxp inum off dataleft' ck mscs,
+      {< m mbase F Fm A B flist f v0,
+       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+           [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
+       POST RET:^(mscs, z_rest)
+             exists m' flist' f' v,
+          LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]] *
+          [[ update_block v0 dataleft' ck = (v, z_rest) ]]
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+      >} write_chunk fsxp inum off dataleft' ck mscs.
+   Proof.
+   Admitted.
 
   Program Definition write_byte T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
     let^ (mscs, _) <- ForEach ck ckrest (chunkList (((len - # off)/valulen)+1) len (# off))
@@ -283,7 +318,7 @@ Module BYTEFILE.
       Begin
         let^ (mscs, ok) <- grow_if_needed fsxp inum (chunk_block ck) mscs;
         If (bool_dec ok true) {
-          let^ (mscs, z_rest) <- write_chunk fsxp inum off data dataleft' ck mscs;
+          let^ (mscs, z_rest) <- write_chunk fsxp inum off dataleft' ck mscs;
           lrx ^(mscs, (Build_len_bytes z_rest))
         } else {
           mscs <- LOG.abort (FSXPLog fsxp) mscs;
@@ -297,5 +332,7 @@ Module BYTEFILE.
                                                (INODE.IType oldattr))
                             mscs;
     rx ^(mscs, true).
+
+       
 
 End BYTEFILE.
