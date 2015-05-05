@@ -294,26 +294,57 @@ Module BYTEFILE.
     mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum b (bytes2valu v') mscs;
     rx ^(mscs, dataleft').
 
-   Theorem write_chunk_ok: forall fsxp inum dataleft' ck mscs,
+   Theorem write_chunk_ok: forall fsxp inum dataleft ck mscs,
      {< m mbase F Fm A B flist f v0,
      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ (B * #(chunk_block ck) |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
-     POST RET:^(mscs, z_rest)
+     POST RET:^(mscs, dataleft')
              exists m' flist' f' v,
           LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ (B * #(chunk_block ck) |-> v)%pred (list2nmem (BFILE.BFData f')) ]] *
-          [[ update_block v0 dataleft' ck = (v, z_rest) ]]
+          [[ update_block v0 dataleft ck = (v, dataleft') ]]
      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-     >} write_chunk fsxp inum dataleft' ck mscs.
+     >} write_chunk fsxp inum dataleft ck mscs.
    Proof.
      unfold write_chunk.
      hoare.
-     admit.
-   Admitted.
+     unfold bytes2valu.
+     unfold eq_rec_r.
+     unfold eq_rec.
+     repeat rewrite eq_rect_nat_double.
+
+     
+     generalize (update_block_obligation_1 v8 dataleft ck).
+     generalize  (update_block_obligation_3 v8 dataleft ck).
+     generalize  (update_block_obligation_2 v8 dataleft ck).
+     generalize (eq_trans (update_block_obligation_5 v8 dataleft ck) valubytes_is).
+     generalize  (eq_sym valulen_is).
+     generalize (update_block_obligation_5 v8 dataleft ck).
+     generalize (update_block_obligation_6 v8 dataleft ck).
+
+     unfold valu2bytes.
+
+     generalize valubytes_is.
+     generalize valulen_is.
+     
+     generalize (chunk_boff_proof ck).
+     generalize chunk_bend_proof ck.
+
+     
+     rewrite valubytes_is.
+     intros.
+
+     Require Import ProofIrrelevance.
+     replace e1 with e3.
+     replace e2 with e4.
+     apply pimpl_refl.
+     apply proof_irrelevance.
+     apply proof_irrelevance.
+  Qed.
 
   Program Definition write_bytes T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
     let^ (mscs, _) <- ForEach ck ckrest (chunkList (((len - # off)/valulen)+1) len (# off))
@@ -334,33 +365,38 @@ Module BYTEFILE.
           rx ^(mscs, false)
         }
       Rof ^(mscs, Build_len_bytes data);
+
+    (*
     let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
                             (INODE.Build_iattr (off ^+ ($ len))
                                                (INODE.IMTime oldattr)
                                                (INODE.IType oldattr))
-                            mscs;
+                            mscs; *)
     rx ^(mscs, true).
 
-  Theorem write_bytes_ok: forall fsxp inum off data rx mscs,
-      {< m mbase F Fm A B flist f bytes,
+  Theorem write_bytes_ok: forall fsxp inum off len data mscs,
+      {< m mbase F Fm A flist f bytes data0 Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           rep bytes (BFILE.BFAttr f)   (* XXX shouldn't this be the datablocks of f? *)
-           (* bytes -> X * Y * Z *)
-           (* Yoff = off, Ylen = len data *)    
+           [[ rep bytes (BFILE.BFAttr f) (list2nmem (BFILE.BFData f)) ]] *
+           [[ (Fx * array off data0 $1)%pred (list2mem bytes) ]] *
+           [[ length data0 = len ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
            [[ ok = true ]] * exists flist' f' bytes',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           (* bytes'-> X * array data * Z *)
-           [[ rep bytes' (BFILE.BFAttr f')]])
+           [[ rep bytes' (BFILE.BFAttr f') (list2nmem (BFILE.BFData f')) ]] *
+           [[ (Fx * array off (word2list 8 len data) $1)%pred (list2mem bytes') ]] *
+           [[ BFILE.BFAttr f = BFILE.BFAttr f' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} write_bytes fsxp inum off data mscs.
-   Proof.
+  Proof.
+    unfold write_bytes.
+    hoare.
      admit.
    Admitted.
          
