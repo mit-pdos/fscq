@@ -56,15 +56,41 @@ Proof.
   exists (a, b); auto.
 Qed.
 
+(**
+ * These "anon" names will currently show up for ghost variables inside for loops..
+ *)
+Lemma eexists_varname_pair : forall A B p,
+  (exists (a:VARNAME(anon) * A) (b:VARNAME(anon) * B), p (varname_val, (snd a, snd b)))
+  -> (exists (e:VARNAME(any) * (A*B)), p e).
+Proof.
+  intros.
+  destruct H as [a H].
+  destruct H as [b H].
+  exists (varname_val, (snd a, snd b)); auto.
+Qed.
+
+Lemma eexists_varname_one : forall A p,
+  (exists (a : A), p (varname_val, a))
+  -> (exists (e : VARNAME(foo) * A), p e).
+Proof.
+  intros.
+  destruct H as [a H].
+  exists (varname_val, a); auto.
+Qed.
+
 Ltac eexists_one :=
   match goal with
   | [ |- exists (_ : unit), _ ] => exists tt
-  | [ |- exists (_ : VARNAME(vn) * ?T * _), _ ] =>
+  | [ |- exists (_ : VARNAME(vn) * (?TA * ?TB)), _ ] =>
+    apply eexists_varname_pair
+  | [ |- exists (_ : VARNAME(vn) * ?T), _ ] =>
     let ev := fresh vn in
     evar (ev : T);
-    apply eexists_pair; apply eexists_pair;
-    exists varname_val; exists ev;
+    apply eexists_varname_one;
+    exists ev;
     unfold ev in *; clear ev
+  | [ |- exists (_ : VARNAME(vn) * _ * _), _ ] =>
+    apply eexists_pair
   | [ |- exists (_ : (_*_)), _ ] => apply eexists_pair
   | [ |- exists _, _ ] => eexists
   end.
