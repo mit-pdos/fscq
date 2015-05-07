@@ -59,6 +59,9 @@ Qed.
 Ltac eexists_one :=
   match goal with
   | [ |- exists (_ : unit), _ ] => exists tt
+  | [ |- exists (_ : VARNAME(vn) * (_*_) * _), _ ] =>
+    apply eexists_pair; apply eexists_pair;
+    exists varname_val
   | [ |- exists (_ : VARNAME(vn) * ?T * _), _ ] =>
     let ev := fresh vn in
     evar (ev : T);
