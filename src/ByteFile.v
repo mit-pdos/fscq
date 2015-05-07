@@ -30,14 +30,11 @@ Import ListNotations.
 
 Module BYTEFILE.
 
-  Fixpoint list2word elen (l : list (word elen)) : word (length l * elen).
-    refine
+  Fixpoint list2word elen (l : list (word elen)) : word (length l * elen) :=
       match l with
       | nil => $0
-      | x :: l' => _
+      | x :: l' => (Word.combine x (list2word l'))
       end.
-    exact (Word.combine x (list2word elen l')).
-  Defined.
 
   Fixpoint word2list elen nelem (w : word (nelem * elen)) : list (word elen).
     refine
@@ -49,6 +46,8 @@ Module BYTEFILE.
     refine (split1 elen (nelem' * elen) w :: _).
     exact (word2list elen nelem' (split2 elen (nelem' * elen) w)).
   Defined.
+
+  Print word2list.
 
   Theorem length_word2list : forall elen nelem (w : word (nelem * elen)),
     length (word2list elen nelem w) = nelem.
@@ -211,8 +210,6 @@ Module BYTEFILE.
     admit.
   Admitted.
 
-  (* Eval compute in chunkList 1 10 10. *)
-
   Definition grow_if_needed T fsxp inum b mscs rx : prog T := 
     let^ (mscs, len) <- BFILE.bflen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     If (wlt_dec len b) {
@@ -248,27 +245,15 @@ Module BYTEFILE.
   }.
 
   Theorem xlen_ylen_zlen_valulen :
-    forall boff bend ylen,
-      boff <= bend ->
+    forall xlen bend ylen,
+      xlen <= bend ->
       bend <= valubytes ->
-      ylen = bend - boff ->
-      boff + (ylen + (valubytes - bend)) = valubytes.
+      ylen = bend - xlen ->
+      xlen + (ylen + (valubytes - bend)) = valubytes.
   Proof.
     intros.
     omega.
   Qed.
-
-  Theorem ylen_lenleft_ylen :
-    forall ylen lenleft,
-      (*
-      boff <= bend ->
-      bend - boff < lenleft ->
-      *)
-      lenleft = ylen + (lenleft - ylen).
-  Proof.
-    intros.
-    admit.
-  Admitted.
 
   Theorem valubytes_valulen:
       valubytes * 8 = valulen.
@@ -280,11 +265,9 @@ Module BYTEFILE.
 
   Hint Resolve boff_valubytes_boff : bytechunk.
   Hint Resolve bend_valubytes_bend : bytechunk.
-  Hint Resolve ylen_lenleft_ylen : bytechunk.
   Hint Resolve xlen_ylen_zlen_valulen: bytechunk.
   Hint Resolve valubytes_valulen : bytechunk.
   Local Obligation Tactic := eauto with bytechunk.
-
 
 
   (* Update the range (boff, bend) of bytes in v. It is replaced with chunk
@@ -367,18 +350,11 @@ Module BYTEFILE.
      Print eq_rect.
 *)
      admit.
-  Admitted.
+   Admitted.
 
-
-   Axiom a:
-     False.
-
-   Local Obligation Tactic := destruct a.
-
-   Require Import Wf.
-
-   Print upd.
    
+
+
    Fixpoint apply_chunk (bytelist : list byte) (b:addr) (boff bend : nat) (data: bytes (bend-boff)) (pf : boff <= bend) : list byte.
      refine
      (match bend as X return bend = X -> list byte with
@@ -418,13 +394,16 @@ Module BYTEFILE.
       OnCrash
         LOG.would_recover_old fsxp.(FSXPLog) F mbase
       Begin
-        let^ (mscs, ok) <- grow_if_needed fsxp inum (chunk_block ck) mscs;
+       (* let^ (mscs, ok) <- grow_if_needed fsxp inum (chunk_block ck) mscs; 
         If (bool_dec ok true) {
           mscs <- write_chunk fsxp inum ck mscs;
           lrx ^(mscs)
         } else {
           rx ^(mscs, false)
         }
+*)
+          mscs <- write_chunk fsxp inum ck mscs;
+          lrx ^(mscs)
       Rof ^(mscs);
 
     (*
@@ -436,7 +415,8 @@ Module BYTEFILE.
                             mscs; *)
     rx ^(mscs, true).
 
-  
+  Hint Extern 1 ({{_}} progseq (write_chunk _ _ _ _ _ _) _) => apply write_chunk_ok : prog.
+
   Theorem write_bytes_ok: forall fsxp inum off len data mscs,
       {< m mbase F Fm A flist f bytes data0 Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -458,10 +438,26 @@ Module BYTEFILE.
       >} write_bytes fsxp inum off data mscs.
   Proof.
     unfold write_bytes.
-    hoare.
+    step.
+    instantiate (m' := m).
+                  
+    admit.
+    pred_apply.
+
+    instantiate (flist' := flist).
+    admit.
+
+    pred_apply.
+    instantiate (f' := f).
+    admit.
+
+    pred_apply.
+    admit.
+
+    step.
     
-    
-     admit.
+
+    admit.
    Admitted.
          
        
