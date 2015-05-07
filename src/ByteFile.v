@@ -415,7 +415,7 @@ Module BYTEFILE.
                             mscs; *)
     rx ^(mscs, true).
 
-  Hint Extern 1 ({{_}} progseq (write_chunk _ _ _ _ _ _) _) => apply write_chunk_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_chunk _ _ _ _) _) => apply write_chunk_ok : prog.
 
   Theorem write_bytes_ok: forall fsxp inum off len data mscs,
       {< m mbase F Fm A flist f bytes data0 Fx,
