@@ -207,95 +207,6 @@ Module DISKLOG.
 
   Ltac disklog_unfold := unfold rep, rep_inner, valid_xp, log_rep_synced, synced_list.
 
-  Definition read_log T (xp : log_xparams) cs rx : prog T :=
-    let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
-    let desc := valu_to_descriptor d in
-    let^ (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
-    let len := (valu_to_header h) :-> "length" in
-    let^ (cs, log) <- For i < len
-    Ghost [ cur log_on_disk F ]
-    Loopvar [ cs log_prefix ]
-    Continuation lrx
-    Invariant
-      rep xp F (Synced log_on_disk) cs
-    * [[ log_prefix = firstn (# i) log_on_disk ]]
-    OnCrash
-      exists cs, rep xp F (Synced cur) cs
-    Begin
-      let^ (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
-      lrx ^(cs, log_prefix ++ [(sel desc i $0, v)])
-    Rof ^(cs, []);
-    rx ^(log, cs).
-
-  Theorem read_log_ok: forall xp cs,
-    {< l F,
-    PRE
-      rep xp F (Synced l) cs
-    POST RET:^(r,cs)
-      [[ r = l ]] * rep xp F (Synced l) cs
-    CRASH
-      exists cs', rep xp F (Synced l) cs'
-    >} read_log xp cs.
-  Proof.
-    unfold read_log; disklog_unfold.
-    intros.
-    eapply pimpl_ok2; [ solve [ eauto with prog ] | ].
-    intros. (* XXX this hangs: autorewrite_fast_goal. *)
-    cancel.
-    eapply pimpl_ok2; [ solve [ eauto with prog ] | ].
-    cancel.
-    eapply pimpl_ok2; [ solve [ eauto with prog ] | ].
-    intros. norm. (* XXX the VARNAME system makes everything a mess here *)
-  Admitted.
-
-    (* eapply pimpl_ok2; [ eauto with prog |]
-    instantiate (1 := (List.combine (map snd (Map.elements (elt:=valu) m))
-     (repeat [] (length (map snd (Map.elements (elt:=valu) m)))))).
-    autorewrite_fast. cancel.
-    rewrite header_valu_id in *.
-    rec_simpl.
-    simpl in H.
-    solve_lengths.
-    eauto with replay.
-    rewrite header_valu_id in *.
-    rec_simpl.
-    assert (# m1 < length (Map.elements m)).
-    solve_lengths.
-    replace (# (m1 ^+ $ 1)) with (# m1 + 1).
-    erewrite firstn_plusone_selN'.
-    eauto.
-    rewrite descriptor_valu_id.
-    unfold sel.
-    rewrite selN_app1 by solve_lengths.
-    autorewrite with lists.
-    repeat erewrite selN_map by auto.
-    simpl.
-    rewrite <- surjective_pairing.
-    auto.
-    solve_lengths.
-    unfold Rec.well_formed; simpl.
-    intuition.
-    auto.
-    word2nat_clear.
-    word2nat_auto.
-    cancel.
-    eauto with replay.
-    eauto.
-    rewrite header_valu_id.
-    rewrite firstn_oob.
-    apply MapProperties.of_list_3.
-    rec_simpl.
-    simpl.
-    solve_lengths.
-    eauto with replay.
-    cancel.
-    auto.
-    Unshelve.
-    repeat constructor. exact $0. *)
-  (* Qed. *)
-
-  Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
-
   Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
     | [ H : forall _, {{ _ }} _ |- _ ] => clear H
     | [ H : _ =p=> _ |- _ ] => clear H
@@ -352,6 +263,18 @@ Module DISKLOG.
   Proof.
     cancel.
   Qed.
+
+
+  Definition unifiable_array := @array valuset.
+
+  Hint Extern 0 (okToUnify (unifiable_array _ _ _) (unifiable_array _ _ _)) => constructor : okToUnify.
+
+  Lemma make_unifiable: forall a l s,
+    array a l s <=p=> unifiable_array a l s.
+  Proof.
+    split; cancel.
+  Qed.
+
 
   Ltac word_assert P := let H := fresh in assert P as H by
       (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve); clear H.
@@ -412,16 +335,6 @@ Module DISKLOG.
       setoid_replace (@ptsto addr (@weq addrlen) V a v)%pred
       with (array a [v] $1) by (apply singular_array)
     end.
-
-  Definition unifiable_array := @array valuset.
-
-  Hint Extern 0 (okToUnify (unifiable_array _ _ _) (unifiable_array _ _ _)) => constructor : okToUnify.
-
-  Lemma make_unifiable: forall a l s,
-    array a l s <=p=> unifiable_array a l s.
-  Proof.
-    split; cancel.
-  Qed.
 
   Ltac array_cancel_trivial :=
     fold unifiable_array;
@@ -553,6 +466,413 @@ Module DISKLOG.
   Ltac or_l := apply pimpl_or_r; left.
 
 
+
+
+  Definition read_log T (xp : log_xparams) cs rx : prog T :=
+    let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
+    let desc := valu_to_descriptor d in
+    let^ (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
+    let len := (valu_to_header h) :-> "length" in
+    let^ (cs, log) <- For i < len
+    Ghost [ cur log_on_disk F ]
+    Loopvar [ cs log_prefix ]
+    Continuation lrx
+    Invariant
+      rep xp F (Synced log_on_disk) cs
+    * [[ log_prefix = firstn (# i) log_on_disk ]]
+    OnCrash
+      exists cs, rep xp F (Synced cur) cs
+    Begin
+      let^ (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
+      lrx ^(cs, log_prefix ++ [(sel desc i $0, v)])
+    Rof ^(cs, []);
+    rx ^(log, cs).
+
+
+  Theorem read_log_ok: forall xp cs,
+    {< l F,
+    PRE
+      rep xp F (Synced l) cs
+    POST RET:^(r,cs)
+      [[ r = l ]] * rep xp F (Synced l) cs
+    CRASH
+      exists cs', rep xp F (Synced l) cs'
+    >} read_log xp cs.
+  Proof.
+    unfold read_log; disklog_unfold.
+    intros. (* XXX this hangs: autorewrite_fast_goal *)
+    eapply pimpl_ok2; [ eauto with prog | ].
+    unfold valid_size.
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    unfold valid_size.
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    unfold valid_size.
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    unfold valid_size.
+    cancel.
+    fold unifiable_array; cancel_with solve_lengths.
+    (* XXX the VARNAME system makes everything a mess here *)
+  Admitted.
+
+    (* eapply pimpl_ok2; [ eauto with prog |]
+    instantiate (1 := (List.combine (map snd (Map.elements (elt:=valu) m))
+     (repeat [] (length (map snd (Map.elements (elt:=valu) m)))))).
+    autorewrite_fast. cancel.
+    rewrite header_valu_id in *.
+    rec_simpl.
+    simpl in H.
+    solve_lengths.
+    eauto with replay.
+    rewrite header_valu_id in *.
+    rec_simpl.
+    assert (# m1 < length (Map.elements m)).
+    solve_lengths.
+    replace (# (m1 ^+ $ 1)) with (# m1 + 1).
+    erewrite firstn_plusone_selN'.
+    eauto.
+    rewrite descriptor_valu_id.
+    unfold sel.
+    rewrite selN_app1 by solve_lengths.
+    autorewrite with lists.
+    repeat erewrite selN_map by auto.
+    simpl.
+    rewrite <- surjective_pairing.
+    auto.
+    solve_lengths.
+    unfold Rec.well_formed; simpl.
+    intuition.
+    auto.
+    word2nat_clear.
+    word2nat_auto.
+    cancel.
+    eauto with replay.
+    eauto.
+    rewrite header_valu_id.
+    rewrite firstn_oob.
+    apply MapProperties.of_list_3.
+    rec_simpl.
+    simpl.
+    solve_lengths.
+    eauto with replay.
+    cancel.
+    auto.
+    Unshelve.
+    repeat constructor. exact $0. *)
+  (* Qed. *)
+
+  Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
+
+
+  Definition extend_unsync T xp (cs: cachestate) (old: log_contents) (oldlen: addr) (new: log_contents) rx : prog T :=
+    let^ (cs) <- For i < $ (length new)
+    Ghost [ crash F ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', BUFCACHE.rep cs d' *
+      [[ (F
+          (* exists rest, (LogDescriptor xp) |=> descriptor_to_valu rest
+          * [[ @Rec.well_formed descriptor_type rest ]] *)
+          * exists l', [[ length l' = # i ]]
+          * array (LogData xp ^+ $ (length old)) (List.combine (firstn (# i) (map snd new)) l') $1
+          * avail_region (LogData xp ^+ $ (length old) ^+ i) (# (LogLen xp) - length old - # i))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- BUFCACHE.write_array (LogData xp ^+ oldlen ^+ i) $0
+        (sel (map snd new) i $0) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    cs <- BUFCACHE.write (LogDescriptor xp)
+      (descriptor_to_valu (map fst (old ++ new))) cs;
+    rx ^(cs).
+
+(*
+  Definition extend_sync T xp (mscs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
+    cs <- BUFCACHE.sync (LogDescriptor xp) cs;
+    let^ (cs) <- For i < $ (Map.cardinal ms)
+    Ghost [ crash F ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', BUFCACHE.rep cs d' *
+      [[ (F
+          * exists rest, (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms) ++ rest)
+          * [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]]
+          * array (LogData xp) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
+          * exists l', [[ length l' = Map.cardinal ms - # i ]]
+          * array (LogData xp ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
+          * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- BUFCACHE.sync_array (LogData xp ^+ i) $0 cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx ^(ms, cs).
+
+  Definition extend T xp (cs : memstate_cachestate) rx : prog T :=
+    let '^(ms, cs) := mscs in
+    If (lt_dec (wordToNat (LogLen xp)) (Map.cardinal ms)) {
+      rx ^(^(ms, cs), false)
+    } else {
+      (* Write... *)
+      let^ (ms, cs) <- flush_unsync xp ^(ms, cs);
+      (* ... and sync *)
+      let^ (ms, cs) <- flush_sync xp ^(ms, cs);
+      rx ^(^(ms, cs), true)
+    }.
+*)
+
+  (** On-disk representation of the log *)
+  Definition extended_unsynced xp (old: log_contents) (new: log_contents) : @pred addr (@weq addrlen) valuset :=
+     ([[ valid_size xp (old ++ new) ]] *
+      exists rest others,
+      (LogDescriptor xp) |-> (descriptor_to_valu (map fst (old ++ new) ++ rest),
+                              map descriptor_to_valu others) *
+      [[ @Rec.well_formed descriptor_type (map fst (old ++ new) ++ rest) ]] *
+      [[ Forall (@Rec.well_formed descriptor_type) others ]] *
+      array (LogData xp) (synced_list (map snd old)) $1 *
+      exists unsynced, (* XXX unsynced is the wrong word for the old values *)
+      array (LogData xp ^+ $ (length old)) (List.combine (map snd new) unsynced) $1 *
+      avail_region (LogData xp ^+ $ (length old) ^+ $ (length new))
+                         (# (LogLen xp) - length old - length new))%pred.
+
+  Theorem extend_unsync_ok : forall xp cs old oldlen new,
+    {< F,
+    PRE
+      [[ # oldlen = length old ]] *
+      rep xp F (Synced old) cs
+    POST RET:mscs
+      exists d, BUFCACHE.rep cs d *
+      [[ (F * extended_unsynced xp old new)%pred d ]]
+    CRASH
+      exists cs' : cachestate,
+      rep xp F (Synced old) cs'
+    >} extend_unsync xp cs old oldlen new.
+  Proof.
+    unfold extend_unsync; disklog_unfold; unfold avail_region, extended_unsynced.
+    intros.
+    solve_lengths_prepare.
+    step.
+    
+    step_with ltac:(unfold avail_region) try_arrays_lengths.
+    ring_simplify (# (LogData xp) + 0).
+    word2nat_simpl.
+    instantiate (1 := l).
+    cancel.
+    instantiate (1 := nil); auto.
+    solve_lengths.
+    step_with ltac:(unfold avail_region) try_arrays_lengths.
+    step_with ltac:(unfold avail_region, upd_prepend) try_arrays_lengths.
+    split_lists.
+    erewrite firstn_plusone_selN.
+    rewrite <- app_assoc.
+    reflexivity.
+    solve_lengths.
+    erewrite firstn_plusone_selN.
+    rewrite <- app_assoc.
+    simpl.
+    instantiate (3 := l0 ++ [valuset_list (selN l1 0 ($0, nil))]).
+    simpl.
+    rewrite firstn_app_l by solve_lengths.
+    repeat erewrite selN_map by solve_lengths.
+    rewrite <- surjective_pairing.
+    rewrite selN_app2.
+    rewrite H19.
+    rewrite Nat.sub_diag.
+    reflexivity.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    abstract (case_eq l1; intros; subst; word2nat_clear; simpl in *; solve_lengths).
+
+    or_l. cancel.
+    array_match.
+    reflexivity.
+    solve_lengths.
+    or_l. cancel.
+    array_match.
+    reflexivity.
+    solve_lengths.
+    step_with ltac:(unfold avail_region) try_arrays_lengths.
+    (* Annoyingly, [intuition] just incorrectly applies [Forall_nil] in one place, so we can't use [step] *)
+    eapply pimpl_ok2; [ eauto with prog | ].
+    intros; norm; [ cancel' | intuition idtac ].
+    pred_apply; norm; [ cancel' | intuition idtac ].
+    rewrite firstn_oob by solve_lengths.
+    rewrite Map.cardinal_1.
+    unfold valuset_list.
+    instantiate (2 := l0).
+    instantiate (2 := [d1]).
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
+    cancel.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    rewrite Forall_forall; intuition.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    intuition.
+    abstract solve_lengths.
+    or_l. cancel.
+    rewrite firstn_oob by solve_lengths.
+    array_match.
+    reflexivity.
+    abstract solve_lengths.
+
+    or_r.
+    norm; [ cancel' | intuition idtac ].
+    pred_apply; norm; [ cancel' | intuition idtac ].
+    rewrite firstn_oob by solve_lengths.
+    rewrite Map.cardinal_1.
+    unfold valuset_list.
+    instantiate (3 := l0).
+    instantiate (4 := [d1]).
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
+    cancel.
+    eauto.
+    abstract solve_lengths.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    abstract solve_lengths.
+    abstract solve_lengths.
+    intuition.
+
+    Unshelve.
+    all: auto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
+
+  Theorem flush_sync_ok : forall xp mscs,
+    {< m F,
+    PRE
+      [[ valid_xp xp ]] *
+      let '^(ms, cs) := mscs in
+      exists d, BUFCACHE.rep cs d * 
+      [[ (F * log_rep_unsynced xp m ms)%pred d ]] *
+      [[ Map.cardinal ms <= wordToNat (LogLen xp) ]] *
+      [[ valid_entries m ms ]]
+    POST RET:mscs'
+      let '^(ms, cs) := mscs in
+      let '^(ms', cs') := mscs' in
+      [[ ms = ms' ]] *
+      exists d, BUFCACHE.rep cs' d *
+      [[ (F * log_rep xp m ms')%pred d ]] *
+      [[ Map.cardinal ms' <= wordToNat (LogLen xp) ]]
+    CRASH
+      exists mscs' : memstate_cachestate,
+      exists d,
+      let '^(ms, cs) := mscs in
+      (BUFCACHE.rep cs d * [[ (F * log_rep_empty xp)%pred d ]] \/
+       BUFCACHE.rep cs d * [[ (F * log_rep_unsynced xp m ms)%pred d ]])
+    >} flush_sync xp mscs.
+  Proof.
+    unfold flush_sync; log_unfold; unfold avail_region, memstate_cachestate.
+    destruct mscs as [ms cs].
+    intros.
+    solve_lengths_prepare.
+    step.
+    step.
+
+    ring_simplify (LogData xp ^+ $0).
+    cancel; eauto.
+    omega.
+
+    step.
+    instantiate (1 := List.combine (skipn # m1 (map snd (Map.elements ms))) l4).
+    cancel.
+    solve_lengths.
+
+    step.
+    try_arrays_lengths.
+    split_lists.
+    rewrite skipn_skipn.
+    rewrite (plus_comm 1).
+    rewrite Nat.add_0_r.
+    erewrite firstn_plusone_selN.
+    rewrite <- app_assoc.
+    reflexivity.
+    solve_lengths.
+    erewrite firstn_plusone_selN.
+    rewrite <- app_assoc.
+    rewrite repeat_selN.
+    reflexivity.
+
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+
+    or_l. cancel.
+    try_arrays_lengths.
+    solve_lengths.
+
+    or_l. cancel.
+    try_arrays_lengths.
+    unfold upd_sync; solve_lengths.
+    unfold upd_sync; solve_lengths.
+    unfold upd_sync; solve_lengths.
+
+    step.
+    try_arrays_lengths.
+    rewrite firstn_oob by solve_lengths.
+    eauto.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+
+    or_r. cancel.
+    try_arrays_lengths.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+
+    or_l. cancel.
+    try_arrays_lengths.
+    solve_lengths.
+
+    Unshelve.
+    all: auto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
+
+  Theorem flush_ok : forall xp mscs,
+    {< m1 m2 F,
+    PRE
+      rep xp F (ActiveTxn m1 m2) mscs
+    POST RET:^(mscs,r)
+      ([[ r = true ]] * rep xp F (FlushedTxn m1 m2) mscs) \/
+      ([[ r = false ]] * rep xp F (ActiveTxn m1 m2) mscs)
+    CRASH
+      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/ rep xp F (FlushedUnsyncTxn m1 m2) mscs'
+    >} flush xp mscs.
+  Proof.
+    unfold flush, rep, rep_inner.
+    step.
+    step.
+    step.
+    step.
+    step.
+    or_l. cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
+
   Lemma crash_invariant_synced_array: forall l start stride,
     crash_xform (array start (List.combine l (repeat nil (length l))) stride) =p=>
     array start (List.combine l (repeat nil (length l))) stride.
@@ -617,7 +937,7 @@ Module DISKLOG.
     crash_xform (would_recover_either' fsxp old cur) =p=>
     after_crash' fsxp old cur.
   Proof.
-    unfold would_recover_either', after_crash'; disklog_unfold.
+    unfold would_recover_either', after_crash'; disklog_unfold; unfold avail_region, valid_size.
     intros.
     autorewrite with crash_xform.
 (* XXX this hangs:
