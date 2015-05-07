@@ -210,10 +210,17 @@ Module BYTEFILE.
         ) :: @chunkList (sz - bsz) (bsplit2_dep bsz (sz-bsz) data (bsz_ok (bsz_le_sz _ _))) (off+boff) 
      end.
   Proof.
-    intros.
-    rewrite <- teq.
-    admit.
-  Admitted.
+    unfold id; intros.
+    assert (Nat.min (off mod valubytes + S sz') valubytes - off mod valubytes > 0).
+    destruct (le_dec (off mod valubytes + S sz') valubytes).
+    rewrite Nat.min_l by assumption. omega.
+    rewrite Nat.min_r by omega.
+    assert (off mod valubytes < valubytes).
+    apply Nat.mod_upper_bound.
+    rewrite valubytes_is; discriminate.
+    omega.
+    omega.
+  Qed.
 
   Definition grow_if_needed T fsxp inum b mscs rx : prog T := 
     let^ (mscs, len) <- BFILE.bflen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
