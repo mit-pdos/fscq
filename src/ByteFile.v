@@ -188,8 +188,12 @@ Module BYTEFILE.
       (Nat.min ((off mod valubytes) + sz) valubytes) - (off mod valubytes) <= sz.
   Proof.
     intros.
-    admit.
-  Admitted.
+    destruct (le_dec (off mod valubytes + sz) valubytes).
+    rewrite Nat.min_l by assumption.
+    omega.
+    rewrite Nat.min_r by omega.
+    omega.
+  Qed.
 
   (* fix point for computing list of byte chunks to write, one entry per block *)
   Function chunkList (sz : nat) (data: bytes sz) (off : nat) {measure id sz} : list chunk :=
