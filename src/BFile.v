@@ -308,8 +308,6 @@ Module BFILE.
     cancel.
 
     step.
-    2: eapply list2nmem_updN; eauto.
-    2: simpl; eapply list2nmem_updN; eauto.
 
     eapply pimpl_trans2.
     erewrite listmatch_isolate with (i := wordToNat inum);
