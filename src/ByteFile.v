@@ -185,8 +185,9 @@ Module BYTEFILE.
 
   Theorem bsz_le_sz:
     forall off sz,
-      Nat.min ((off mod valubytes) + sz) valubytes - (off mod valubytes) <= sz.
+      (Nat.min ((off mod valubytes) + sz) valubytes) - (off mod valubytes) <= sz.
   Proof.
+    intros.
     admit.
   Admitted.
 
@@ -205,6 +206,8 @@ Module BYTEFILE.
         ) :: @chunkList (sz - bsz) (bsplit2_dep bsz (sz-bsz) data (bsz_ok (bsz_le_sz _ _))) (off+boff) 
      end.
   Proof.
+    intros.
+    rewrite <- teq.
     admit.
   Admitted.
 
@@ -284,11 +287,9 @@ Module BYTEFILE.
 
 
 
-  (* Update a range of bytes in v. y (boff, bend) is the new part that consists
-  of bend-off bytes from dataleft. x is the left of the block that isn't
-  updated, and z is the right end. the new block is v' = xyz. dataleft' is
-  dataleft, without y *)
-
+  (* Update the range (boff, bend) of bytes in v. It is replaced with chunk
+   data. x is the left of the block that isn't updated (< boff), and z is the
+   right end (> bend). the new block is v' = x * chunk_data * z. *)
   Program Definition update_block v (ck:chunk) : valu :=
     let boff := chunk_boff ck in
     let bend := chunk_bend ck in
@@ -359,37 +360,60 @@ Module BYTEFILE.
 
      Require Import ProofIrrelevance.
      replace e1 with e2 by apply proof_irrelevance.
+
+     SearchAbout eq_rect.
+     Print eq_rect_r.
+     Print eq_rect.
+
      admit.
   Admitted.
 
-        
-  Program Fixpoint apply_chunk bytelist (b:addr) boff bend (data: bytes (bend-boff)) (pf : boff <= bend) :=
-     if lt_dec boff bend then
-       let bytelist' := @apply_chunk bytelist b boff (bend-1) (bsplit1_dep (bend-1-boff) 1 data _) _ in
-       upd bytelist' ((b ^* ($ valubytes)) ^+ ($ bend) ^- $1) (bsplit2_dep (bend-boff-1) 1 data _)
-     else
-       bytelist.
-   Next Obligation.
-   Admitted.  
+
+   Axiom a:
+     False.
+
+   Local Obligation Tactic := destruct a.
+
+   Require Import Wf.
+
+   Print upd.
    
+   Fixpoint apply_chunk (bytelist : list byte) (b:addr) (boff bend : nat) (data: bytes (bend-boff)) (pf : boff <= bend) : list byte.
+     refine
+     (match bend as X return bend = X -> list byte with
+       | O => fun pf => bytelist
+       | S bend' => fun pf => 
+     if lt_dec boff bend then
+       let bytelist' := @apply_chunk bytelist b boff bend' (bsplit1_dep (bend'-boff) 1 data _) _ in
+       @upd byte bytelist' ((b ^* ($ valubytes)) ^+ ($ bend) ^- $1) (bsplit2_dep (bend-boff-1) 1 data _)
+     else
+       bytelist
+     end (refl_equal _)).
+     omega.
+     omega.
+     omega.
+   Defined.
   
-   Fixpoint apply_chunks bytelist cklist :=
+   Fixpoint apply_chunks (bytelist : list byte) cklist :=
      match cklist with
        | nil => nil
        | ck :: cklist' => let bytelist' := apply_chunks bytelist cklist' in
-                      apply_chunk bytelist' (chunk_block ck) (chunk_boff ck) (chunk_bend ck) (chunk_data ck) (chunk_boff_bend_proof ck)
+                      @apply_chunk bytelist' (chunk_block ck) (chunk_boff ck) (chunk_bend ck) (chunk_data ck) (chunk_boff_bend_proof ck)
      end.
 
    Program Definition write_bytes T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
-    let^ (mscs, _) <- ForEach ck ckrest (chunkList data (# off))
-      Ghost [ mbase m F ]
+    let chunkList' := chunkList data (# off) in
+    let^ (mscs, _) <- ForEach ck ckrest chunkList'
+      Ghost [ mbase m F Fm A ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
-        exists m',
-        LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
-        
-        (* XXX n bytes written, n + dataleft = sz *)
+        exists m' flist' f' bytes',
+          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
+          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ rep bytes' (BFILE.BFAttr f') (list2nmem (BFILE.BFData f')) ]] *
+          [[ apply_chunks bytes' ckrest = apply_chunks bytes chunkList' ]]
       OnCrash
         LOG.would_recover_old fsxp.(FSXPLog) F mbase
       Begin
