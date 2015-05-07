@@ -24,6 +24,7 @@ Require Import RecArray.
 Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Bytes.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -311,49 +312,28 @@ Module BYTEFILE.
      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} write_chunk fsxp inum ck mscs.
    Proof.
-     (*
      unfold write_chunk.
      hoare.
      unfold update_block.
      unfold bytes2valu.
      unfold eq_rec_r.
      unfold eq_rec.
+     rewrite eq_rect_word_mult.
      repeat rewrite eq_rect_nat_double.
-
      generalize (update_block_obligation_1 v8 ck).
-
-     
      generalize  (update_block_obligation_3 v8 ck).
      generalize  (update_block_obligation_2 v8 ck).
-     
-     generalize (eq_trans (update_block_obligation_4 v8 ck)  (write_chunk_obligation_1 fsxp inum ck ^( m0, c) rx ^( a0, a1) v8 tt)).
+     generalize ((eq_trans (update_block_obligation_4 v8 ck)
+            (eq_trans
+               (write_chunk_obligation_1 fsxp inum ck 
+                  ^( m0, c) rx ^( a0, a1) v8 tt)
+               (eq_trans (eq_rect_word_mult_helper 8 valubytes_is)
+                  (eq_sym valulen_is))))).
      generalize (update_block_obligation_4 v8 ck).
-     generalize  (eq_sym valulen_is).
-     
-     unfold valu2bytes.
-
-     generalize valubytes_is.
-     generalize valulen_is.
-     
-     generalize (chunk_boff_proof ck).
-     generalize chunk_bend_proof ck.
-
-     
-     rewrite valubytes_is.
      intros.
-
-     Require Import ProofIrrelevance.
-     replace e1 with e2 by apply proof_irrelevance.
-
-     SearchAbout eq_rect.
-     Print eq_rect_r.
-     Print eq_rect.
-*)
-     admit.
-   Admitted.
-
-   
-
+     replace e with e0 by apply proof_irrelevance.
+     apply pimpl_refl.
+   Qed.
 
    Fixpoint apply_chunk (bytelist : list byte) (b:addr) (boff bend : nat) (data: bytes (bend-boff)) (pf : boff <= bend) : list byte.
      refine
@@ -439,25 +419,32 @@ Module BYTEFILE.
   Proof.
     unfold write_bytes.
     step.
-    instantiate (m' := m).
-                  
-    admit.
-    pred_apply.
+    step.
+    unfold rep.
+    cancel.
 
-    instantiate (flist' := flist).
-    admit.
-
-    pred_apply.
-    instantiate (f' := f).
-    admit.
-
-    pred_apply.
     admit.
 
     step.
-    
 
     admit.
+
+    rewrite <- H11.
+
+    admit.  
+
+    step.
+    
+    apply pimpl_or_r.
+
+    right.
+
+    cancel.   (*  unification problem *)
+
+    admit.
+
+    admit.
+
    Admitted.
          
        
