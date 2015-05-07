@@ -328,6 +328,7 @@ Module BYTEFILE.
      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} write_chunk fsxp inum ck mscs.
    Proof.
+     (*
      unfold write_chunk.
      hoare.
      unfold update_block.
@@ -364,7 +365,7 @@ Module BYTEFILE.
      SearchAbout eq_rect.
      Print eq_rect_r.
      Print eq_rect.
-
+*)
      admit.
   Admitted.
 
@@ -401,10 +402,10 @@ Module BYTEFILE.
                       @apply_chunk bytelist' (chunk_block ck) (chunk_boff ck) (chunk_bend ck) (chunk_data ck) (chunk_boff_bend_proof ck)
      end.
 
-   Program Definition write_bytes T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
+   Definition write_bytes T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
     let chunkList' := chunkList data (# off) in
-    let^ (mscs, _) <- ForEach ck ckrest chunkList'
-      Ghost [ mbase m F Fm A ]
+    let^ (mscs) <- ForEach ck ckrest chunkList'
+      Ghost [ mbase F Fm A bytes ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
@@ -424,7 +425,7 @@ Module BYTEFILE.
         } else {
           rx ^(mscs, false)
         }
-      Rof ^(mscs)
+      Rof ^(mscs);
 
     (*
     let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
