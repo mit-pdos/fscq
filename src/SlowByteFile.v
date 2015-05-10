@@ -66,7 +66,8 @@ Module SLOWBYTEFILE.
           [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ bytes_rep f' allbytes' ]] *
-          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]]
+          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]] *
+          [[ Rec.well_formed (@Rec.of_word byte_type $0) ]]   (* XXX b, but cannot refer to it? *)
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -121,40 +122,21 @@ Module SLOWBYTEFILE.
   Proof.
     unfold write_bytes.
     step.   (* step into loop *)
+
     instantiate (allbytes' := bytes).
     unfold rep in H6.
+    
     admit.
 
+    admit.  (* Rec.well_formed *)
     step.  (* bf_getlen *)
     step.   (* if *)
-    step.   (* bf_put *)
+    step.   (* bf_put *) 
 
+    admit.  (* H15 *)
+q
+    (* step out of loop and prove post condition? *)
     
-    
-    unfold rep.
-    cancel.
-
-    admit.
-
-    step.
-
-    admit.
-
-    rewrite <- H11.
-
-    admit.  
-
-    step.
-    
-    apply pimpl_or_r.
-
-    right.
-
-    cancel.   (*  unification problem *)
-
-    admit.
-
-    admit.
 
    Admitted.
          
