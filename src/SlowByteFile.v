@@ -104,7 +104,7 @@ Module SLOWBYTEFILE.
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ rep bytes (BFILE.BFAttr f) (list2nmem (BFILE.BFData f)) ]] *
+           [[ rep bytes f ]] *
            [[ (Fx * array off data0 $1)%pred (list2mem bytes) ]] *
            [[ length data0 = len ]]
       POST RET:^(mscs, ok)
@@ -113,15 +113,24 @@ Module SLOWBYTEFILE.
            [[ ok = true ]] * exists flist' f' bytes',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ rep bytes' (BFILE.BFAttr f') (list2nmem (BFILE.BFData f')) ]] *
-           [[ (Fx * array off (word2list 8 len data) $1)%pred (list2mem bytes') ]] *
+           [[ rep bytes' f' ]] *
+           [[ (Fx * array off data $1)%pred (list2mem bytes') ]] *
            [[ BFILE.BFAttr f = BFILE.BFAttr f' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} write_bytes fsxp inum off data mscs.
   Proof.
     unfold write_bytes.
-    step.
-    step.
+    step.   (* step into loop *)
+    instantiate (allbytes' := bytes).
+    unfold rep in H6.
+    admit.
+
+    step.  (* bf_getlen *)
+    step.   (* if *)
+    step.   (* bf_put *)
+
+    
+    
     unfold rep.
     cancel.
 

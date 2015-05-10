@@ -369,6 +369,15 @@ Module BYTEFILE.
                       @apply_chunk bytelist' (chunk_block ck) (chunk_boff ck) (chunk_bend ck) (chunk_data ck) (chunk_boff_bend_proof ck)
      end.
 
+   (*
+   Lemma apply_chunk_ok:
+      forall bytes bytes' cklist ck cklist',
+        cklist = ck :: cklist' ->
+        bytes' = (chunk_data ck) :: bytes ->
+        apply_chunks bytes cklist = apply_chunk (apply_chunks bytes' cklist') (chunk_block ck) (chunk_data ck) (chunk_boff_bend_proof ck).
+    Proof.
+    *)
+
    Definition write_bytes T fsxp inum (off : addr) len (data : bytes len) mscs rx : prog T :=
     let chunkList' := chunkList data (# off) in
     let^ (mscs) <- ForEach ck ckrest chunkList'
@@ -406,7 +415,17 @@ Module BYTEFILE.
                             mscs; *)
     rx ^(mscs, true).
 
+       
   Hint Extern 1 ({{_}} progseq (write_chunk _ _ _ _) _) => apply write_chunk_ok : prog.
+
+   (* XXX maybe off instead of b? *)
+   Lemma array_valu_exists:
+     forall f b,
+       arrayN 0 (BFILE.BFData f) =p=>
+       exists v, (b |-> v)%pred.
+   Proof.
+     admit.
+   Admitted.
 
   Theorem write_bytes_ok: forall fsxp inum off len data mscs,
       {< m mbase F Fm A flist f bytes data0 Fx,
@@ -429,35 +448,53 @@ Module BYTEFILE.
       >} write_bytes fsxp inum off data mscs.
   Proof.
     unfold write_bytes.
-    step.
-    step.
+
+    step.  (* step into loop invariant: pre condition implies loop invariant *)
+    step.  (* exit out of loop: loop invariant implies post condition of write_bytes *)
+
+    (* prove that loop invariant implies pre condition of write_ok *)
     unfold rep.
     cancel.
-
+    (* rewrite array_valu_exists.*)
     admit.
 
-    step.
+    step.   (* perform write_ok *)
+
+    (* prove post condition of write_ok implies rep of loop invariant *)
+    unfold rep.
+    cancel.
+    
+    (* construct array: old array plus b's entry updated; 
+     * maybe update write_chunk spec to state array in post condition? *)
+
+
+    admit. 
+    admit.
 
     admit.
 
     rewrite <- H11.
+    (* rewrite apply_chunk_ok *)
+    
+    admit.
+    
+    step.  (* step out of loop *)
 
-    admit.  
-
-    step.
+    (* loop invariant implies return condition *)
     
     apply pimpl_or_r.
 
     right.
+    
+    cancel.  
 
-    cancel.   (*  unification problem *)
+    admit. (* unification  problem: f has been replaced by f' *)
 
-    admit.
+    subst.
+      
+    admit. (* data0 has been replaced by data *)
 
-    admit.
-
+    
    Admitted.
          
-       
-
 End BYTEFILE.
