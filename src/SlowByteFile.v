@@ -42,7 +42,8 @@ Module SLOWBYTEFILE.
   Qed.
 
   Definition bytes_rep f (allbytes : list byte) :=
-    BFileRec.array_item_file byte_type items_per_valu itemsz_ok f allbytes.
+    BFileRec.array_item_file byte_type items_per_valu itemsz_ok f allbytes /\
+    # (natToWord addrlen (length allbytes)) = length allbytes.
 
   Definition rep (bytes : list byte) (f : BFILE.bfile) :=
     exists allbytes,
@@ -66,8 +67,7 @@ Module SLOWBYTEFILE.
           [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ bytes_rep f' allbytes' ]] *
-          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]] *
-          [[ Rec.well_formed (@Rec.of_word byte_type $0) ]]   (* XXX b, but cannot refer to it? *)
+          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -120,26 +120,48 @@ Module SLOWBYTEFILE.
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} write_bytes fsxp inum off data mscs.
   Proof.
-    unfold write_bytes.
+    unfold write_bytes, rep, bytes_rep.
     step.   (* step into loop *)
-
-    instantiate (allbytes' := bytes).
-    unfold rep in H6.
-    
-    admit.
-
-    admit.  (* Rec.well_formed *)
-    step.  (* bf_getlen *)
+    step.   (* bf_getlen *)
     step.   (* if *)
     step.   (* bf_put *) 
 
-    admit.  (* H15 *)
-q
-    (* step out of loop and prove post condition? *)
-    
+    apply wlt_lt in H13. unfold byte in *. omega.
+    constructor.
 
-   Admitted.
-         
-       
+    step.   (* loop around, on the true if branch *)
+
+    rewrite length_upd. auto.   (* length of allbytes still inbounds *)
+    rewrite <- H12. admit.      (* something about apply_bytes *)
+
+    step.   (* bf_extend *)
+    constructor.
+    step.   (* if *)
+    step.   (* impossible subgoal *)
+    step.   (* return, on the false-false path *)
+    step.   (* loop around, on the false-true path *)
+    admit.  (* extending keeps length of allbytes inbounds *)
+    admit.  (* something about apply_bytes when extending *)
+
+    step.   (* impossible subgoal *)
+    (* out of the for loop! *)
+    step.   (* bfgetattr *)
+    step.   (* if *)
+    step.   (* bfsetattr *)
+    step.   (* return *)
+
+    apply pimpl_or_r. right. cancel.
+    admit.  (* some unification problem *)
+    admit.  (* new allbytes *)
+    admit.  (* new allbytes matches array pred *)
+
+    step.   (* return *)
+    apply pimpl_or_r. right. cancel.
+    admit.  (* some unification problem *)
+    admit.  (* new allbytes *)
+    admit.  (* new allbytes matches array pred *)
+
+    apply LOG.activetxn_would_recover_old.
+  Admitted.
 
 End SLOWBYTEFILE.
