@@ -56,6 +56,14 @@ Module SLOWBYTEFILE.
     | b :: rest => upd (apply_bytes allbytes (off^+$1) rest) off b
     end.
 
+  Lemma apply_bytes_upd_comm:
+    forall allbytes b rest off,
+      apply_bytes (upd allbytes off b) (off^+$1) rest = upd (apply_bytes allbytes (off^+$1) rest) off b.
+  Proof.
+    intros.
+    admit.
+  Admitted.
+
   Definition write_bytes T fsxp inum (off : addr) (data : list byte) mscs rx : prog T :=
     let^ (mscs, finaloff) <- ForEach b rest data
       Ghost [ mbase F Fm A allbytes ]
@@ -132,7 +140,7 @@ Module SLOWBYTEFILE.
     step.   (* loop around, on the true if branch *)
 
     rewrite length_upd. auto.   (* length of allbytes still inbounds *)
-    rewrite <- H12. admit.      (* something about apply_bytes *)
+    rewrite <- H12.  apply apply_bytes_upd_comm.
 
     step.   (* bf_extend *)
     constructor.
