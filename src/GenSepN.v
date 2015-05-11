@@ -366,6 +366,48 @@ Proof.
 Qed.
 
 
+Lemma list2nmem_ptsto_bound' : forall A (m : list A) start off a,
+  list2nmem_fix start m off = Some a
+  -> off + 1 <= start + length m.
+Proof.
+  induction m; simpl; intros.
+  congruence.
+  destruct (Nat.eq_dec off start).
+  omega.
+  replace (start + S (length m)) with (S start + length m) by omega.
+  eapply IHm.
+  eauto.
+Qed.
+
+Lemma list2nmem_ptsto_bound : forall A (m : list A) off a,
+  list2nmem m off = Some a
+  -> off + 1 <= length m.
+Proof.
+  intros.
+  rewrite list2nmem_fix_eq in H.
+  apply list2nmem_ptsto_bound' in H.
+  omega.
+Qed.
+
+Theorem list2nmem_arrayN_bound : forall A (l m : list A) off F,
+  (F * arrayN off l)%pred (list2nmem m)
+  -> l = nil \/ off + length l <= length m.
+Proof.
+  induction l; simpl; intros.
+  intuition.
+  right.
+  apply sep_star_assoc in H as H'.
+  apply IHl in H'.
+  intuition.
+  subst. simpl.
+  apply sep_star_comm in H.
+  apply sep_star_assoc in H.
+  apply ptsto_valid in H.
+  apply list2nmem_ptsto_bound in H.
+  omega.
+Qed.
+
+
 Definition arrayN_ex A (vs : list A) i :=
   (arrayN 0 (firstn i vs) * arrayN (i + 1) (skipn (S i) vs))%pred.
 
