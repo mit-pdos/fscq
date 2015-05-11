@@ -56,13 +56,43 @@ Module SLOWBYTEFILE.
     | b :: rest => upd (apply_bytes allbytes (off^+$1) rest) off b
     end.
 
+
+  Lemma apply_bytes_upd:
+    forall allbytes off b rest,
+      (wordToNat off) < # (natToWord addrlen (length allbytes)) ->
+      apply_bytes allbytes off (b::rest) = upd (apply_bytes allbytes (off^+$1) rest) off b.
+  Proof.
+    intros.
+    induction rest.
+    simpl. reflexivity.
+    admit. (* apply IHrest *)
+  Admitted.
+
+
+  Lemma upd_apply_bytes:
+    forall allbytes off b rest,
+      (wordToNat off) < # (natToWord addrlen (length allbytes)) ->
+      apply_bytes allbytes off (b::rest) = apply_bytes (upd allbytes off b) (off^+$1) rest.
+  Proof.
+    intros.
+    induction rest.
+    simpl. reflexivity.
+    admit. (* apply IHrest *)
+  Admitted.
+
   Lemma apply_bytes_upd_comm:
-    forall allbytes b rest off,
+    forall allbytes off data b rest,
+      (wordToNat off) < # (natToWord addrlen (length allbytes)) ->
+      data = b :: rest ->
       apply_bytes (upd allbytes off b) (off^+$1) rest = upd (apply_bytes allbytes (off^+$1) rest) off b.
   Proof.
     intros.
-    admit.
-  Admitted.
+    rewrite <- apply_bytes_upd.
+    rewrite <- upd_apply_bytes.
+    reflexivity.
+    assumption.
+    assumption.
+  Qed.
 
   Definition write_bytes T fsxp inum (off : addr) (data : list byte) mscs rx : prog T :=
     let^ (mscs, finaloff) <- ForEach b rest data
@@ -140,9 +170,8 @@ Module SLOWBYTEFILE.
     step.   (* loop around, on the true if branch *)
 
     rewrite length_upd. auto.   (* length of allbytes still inbounds *)
-    rewrite <- H12.  apply apply_bytes_upd_comm.
-
-    step.   (* bf_extend *)
+    rewrite <- H12.  eapply apply_bytes_upd_comm.  (* bf_extend *)
+    
     constructor.
     step.   (* if *)
     step.   (* impossible subgoal *)
