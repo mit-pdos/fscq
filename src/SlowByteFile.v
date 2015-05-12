@@ -50,8 +50,8 @@ Module SLOWBYTEFILE.
     bytes_rep f allbytes /\
     firstn (# (f.(BFILE.BFAttr).(INODE.ISize))) allbytes = bytes.
 
-  Fixpoint apply_bytes (allbytes : list byte) (off : nat) (data : list byte) :=
-    match data with
+  Fixpoint apply_bytes (allbytes : list byte) (off : nat) (newdata : list byte) :=
+    match newdata with
     | nil => allbytes
     | b :: rest => updN (apply_bytes allbytes (off+1) rest) off b
     end.
@@ -82,8 +82,8 @@ Module SLOWBYTEFILE.
     omega.
   Qed.
 
-  Definition update_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
-    let^ (mscs, finaloff) <- ForEach b rest data
+  Definition update_bytes T fsxp inum (off : nat) (newdata : list byte) mscs rx : prog T :=
+    let^ (mscs, finaloff) <- ForEach b rest newdata
       Ghost [ mbase F Fm A allbytes ]
       Loopvar [ mscs boff ]
       Continuation lrx
@@ -93,9 +93,8 @@ Module SLOWBYTEFILE.
           [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist')%pred (list2mem m') ]] *
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ bytes_rep f' allbytes' ]] *
-          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]] *
-          [[ boff <= off + length data ]] *
-          [[ length allbytes = length allbytes' ]]
+          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off newdata ]] *
+          [[ boff <= length newdata ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -106,16 +105,17 @@ Module SLOWBYTEFILE.
       Rof ^(mscs, off);
       rx ^(mscs, true).
 
-  Theorem update_bytes_ok: forall fsxp inum off len data mscs,
-      {< m mbase F Fm A flist f bytes data0 Fx,
+  Theorem update_bytes_ok: forall fsxp inum off len newdata mscs,
+      {< m mbase F Fm A flist f bytes olddata Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ (Fx * arrayN off data0)%pred (list2nmem bytes) ]] *
-           [[ length data0 = len ]] *
-           [[ length data = len ]] *
-           [[ off + len <= length bytes ]]
+           [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+           [[ length olddata = len ]] *
+           [[ length newdata = len ]] *
+           [[ off <= length newdata ]] *
+           [[ off + len <= length bytes ]] 
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -123,21 +123,27 @@ Module SLOWBYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off data)%pred (list2nmem bytes') ]] *
+           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
            [[ BFILE.BFAttr f = BFILE.BFAttr f' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
-      >} update_bytes fsxp inum off data mscs.
+      >} update_bytes fsxp inum off newdata mscs.
   Proof.
     unfold update_bytes, rep, bytes_rep.
     step.   (* step into loop *)
-    idtac.
-    step.
+    step.   (* bf_put *)
+
     admit.  (*  # ($ (a0)) < length allbytes' *)
+    (* rewrite <- H15.  H16 implies a0 < len data. H4: len data < length allbytes *)
+
     constructor.
     step.
-    admit.    (*  BFileRec.array_item_file byte_type items_per_valu itemsz_ok f'0 allbytes *)
-    admit.    (*  apply_bytes allbytes (a0 + 1) lst' = apply_bytes allbytes off data *)
-    admit.    (*  a0 + 1 <= off + length data *)
+    admit.    (*  # ($ (length (allbytes' $[ $ (a0) := elem]))) = length (allbytes' $[ $ (a0) := elem]) *)
+    rewrite <- H16.
+    rewrite <- apply_bytes_upd_comm by omega.
+    unfold upd.  
+    admit.    (* # ($ (a0)) = a0 *)
+    idtac.
+    admit.    (*  a0 + 1 <= off + length newdata; implied by the fact we entered loop ?*)
     step.
     apply pimpl_or_r. right. cancel.
     admit.  (* some unification problem *)
@@ -146,7 +152,7 @@ Module SLOWBYTEFILE.
     apply LOG.activetxn_would_recover_old.
   Admitted.
 
-    Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
+  Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
     let^ (mscs, finaloff) <- ForEach b rest data
       Ghost [ mbase F Fm A allbytes ]
       Loopvar [ mscs boff ]
