@@ -94,7 +94,7 @@ Module SLOWBYTEFILE.
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ bytes_rep f' allbytes' ]] *
           [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off newdata ]] *
-          [[ boff <= length newdata ]]
+          [[ boff <= length allbytes' ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -114,7 +114,6 @@ Module SLOWBYTEFILE.
            [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
            [[ length olddata = len ]] *
            [[ length newdata = len ]] *
-           [[ off <= length newdata ]] *
            [[ off + len <= length bytes ]] 
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -130,20 +129,23 @@ Module SLOWBYTEFILE.
   Proof.
     unfold update_bytes, rep, bytes_rep.
     step.   (* step into loop *)
+
+    idtac.
+    admit.  (* off <= length allbytes, by H4 *)
+    
     step.   (* bf_put *)
-
-    admit.  (*  # ($ (a0)) < length allbytes' *)
-    (* rewrite <- H15.  H16 implies a0 < len data. H4: len data < length allbytes *)
-
+    
+    admit.  (*   off <= length allbytes, by H4 *)
+    
     constructor.
     step.
     admit.    (*  # ($ (length (allbytes' $[ $ (a0) := elem]))) = length (allbytes' $[ $ (a0) := elem]) *)
-    rewrite <- H16.
+    rewrite <- H15.
     rewrite <- apply_bytes_upd_comm by omega.
     unfold upd.  
     admit.    (* # ($ (a0)) = a0 *)
     idtac.
-    admit.    (*  a0 + 1 <= off + length newdata; implied by the fact we entered loop ?*)
+    admit.    (*  a0 + 1 <= length (allbytes' $[ $ (a0) := elem]) ; implied by the fact we entered loop ?*)
     step.
     apply pimpl_or_r. right. cancel.
     admit.  (* some unification problem *)
