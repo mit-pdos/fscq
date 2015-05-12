@@ -56,7 +56,6 @@ Module SLOWBYTEFILE.
     | b :: rest => updN (apply_bytes allbytes (off+1) rest) off b
     end.
 
-
   (*
   Lemma apply_bytes_upd:
     forall allbytes off b rest,
@@ -95,7 +94,8 @@ Module SLOWBYTEFILE.
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ bytes_rep f' allbytes' ]] *
           [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]] *
-          [[ boff <= off + length data ]]
+          [[ boff <= off + length data ]] *
+          [[ length allbytes = length allbytes' ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -136,7 +136,8 @@ Module SLOWBYTEFILE.
            [[ rep bytes f ]] *
            [[ (Fx * arrayN off data0)%pred (list2nmem bytes) ]] *
            [[ length data0 = len ]] *
-           [[ length data = len ]]
+           [[ length data = len ]] *
+           [[ off + len <= length bytes ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -155,15 +156,29 @@ Module SLOWBYTEFILE.
     step.   (* if *)
     step.   (* bf_put *) 
 
+    apply wlt_lt in H17. unfold byte in *.  omega.
     
-    apply wlt_lt in H15. unfold byte in *. omega.
     constructor.
 
     step.   (* loop around, on the true if branch *)
 
-    rewrite length_upd. auto.   (* length of allbytes still inbounds *)
+    admit.
 
-    rewrite <- H14.
+    
+    rewrite <- H16.
+
+
+    rewrite <- apply_bytes_upd_comm by omega.
+
+    unfold upd.
+    
+    admit.
+
+
+    
+    step.
+    
+    rewrite <- H17.
     rewrite <- apply_bytes_upd_comm by omega.
     unfold upd.
 
