@@ -82,7 +82,71 @@ Module SLOWBYTEFILE.
     omega.
   Qed.
 
-  Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
+  Definition update_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
+    let^ (mscs, finaloff) <- ForEach b rest data
+      Ghost [ mbase F Fm A allbytes ]
+      Loopvar [ mscs boff ]
+      Continuation lrx
+      Invariant
+        exists m' flist' f' allbytes',
+          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
+          [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist')%pred (list2mem m') ]] *
+          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+          [[ bytes_rep f' allbytes' ]] *
+          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]] *
+          [[ boff <= off + length data ]] *
+          [[ length allbytes = length allbytes' ]]
+      OnCrash
+        exists m',
+          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
+      Begin
+         mscs <- BFileRec.bf_put byte_type items_per_valu itemsz_ok
+            fsxp.(FSXPLog) fsxp.(FSXPInode) inum ($ boff) b mscs;
+          lrx ^(mscs, boff + 1)
+      Rof ^(mscs, off);
+      rx ^(mscs, true).
+
+  Theorem update_bytes_ok: forall fsxp inum off len data mscs,
+      {< m mbase F Fm A flist f bytes data0 Fx,
+       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+           [[ rep bytes f ]] *
+           [[ (Fx * arrayN off data0)%pred (list2nmem bytes) ]] *
+           [[ length data0 = len ]] *
+           [[ length data = len ]] *
+           [[ off + len <= length bytes ]]
+      POST RET:^(mscs, ok)
+           exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+           ([[ ok = false ]] \/
+           [[ ok = true ]] * exists flist' f' bytes',
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ rep bytes' f' ]] *
+           [[ (Fx * arrayN off data)%pred (list2nmem bytes') ]] *
+           [[ BFILE.BFAttr f = BFILE.BFAttr f' ]])
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
+      >} update_bytes fsxp inum off data mscs.
+  Proof.
+    unfold update_bytes, rep, bytes_rep.
+    step.   (* step into loop *)
+    idtac.
+    step.
+    admit.  (*  # ($ (a0)) < length allbytes' *)
+    constructor.
+    step.
+    admit.    (*  BFileRec.array_item_file byte_type items_per_valu itemsz_ok f'0 allbytes *)
+    admit.    (*  apply_bytes allbytes (a0 + 1) lst' = apply_bytes allbytes off data *)
+    admit.    (*  a0 + 1 <= off + length data *)
+    step.
+    apply pimpl_or_r. right. cancel.
+    admit.  (* some unification problem *)
+    admit.  (* new allbytes *)
+    admit.  (* new allbytes matches array pred *)
+    apply LOG.activetxn_would_recover_old.
+  Admitted.
+
+    Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
     let^ (mscs, finaloff) <- ForEach b rest data
       Ghost [ mbase F Fm A allbytes ]
       Loopvar [ mscs boff ]
@@ -128,7 +192,7 @@ Module SLOWBYTEFILE.
       rx ^(mscs, true)
     }.
 
-  Theorem write_bytes_ok: forall fsxp inum off len data mscs,
+    Theorem update_bytes_ok: forall fsxp inum off len data mscs,
       {< m mbase F Fm A flist f bytes data0 Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
@@ -172,36 +236,14 @@ Module SLOWBYTEFILE.
 
     unfold upd.
     
-    admit.
+    admit.   (* apply_bytes allbytes (a0 + 1) lst' = apply_bytes (allbytes' [a0 := elem]) (a0 + 1) lst' *)
 
-
-    
-    step.
-    
-    rewrite <- H17.
-    rewrite <- apply_bytes_upd_comm by omega.
-    unfold upd.
-
-    erewrite wordToNat_natToWord_bound. reflexivity.
-
-    apply list2nmem_arrayN_bound in H6.
-    intuition.
-    admit.  (* fix foreach loop: add fact elem in list, then contradiction *)
-    eapply le_trans.
-    apply H13.
-    rewrite H4.
-    eapply le_trans.
-    apply H5.
-    rewrite firstn_length.
-    apply Nat.le_min_l.
-    
-    admit.
-    
-    admit.
-    
+    admit.   (*  a0 + 1 <= off + length data *)
+      
     step.  (* bf_extend *)
-    
+
     constructor.
+    
     step.   (* if *)
     step.   (* impossible subgoal *)
     step.   (* return, on the false-false path *)
