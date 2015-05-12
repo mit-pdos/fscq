@@ -103,7 +103,7 @@ Module SLOWBYTEFILE.
             fsxp.(FSXPLog) fsxp.(FSXPInode) inum ($ boff) b mscs;
           lrx ^(mscs, boff + 1)
       Rof ^(mscs, off);
-      rx ^(mscs, true).
+      rx mscs.
 
   Theorem update_bytes_ok: forall fsxp inum off len newdata mscs,
       {< m mbase F Fm A flist f bytes olddata Fx,
@@ -115,15 +115,14 @@ Module SLOWBYTEFILE.
            [[ length olddata = len ]] *
            [[ length newdata = len ]] *
            [[ off + len <= length bytes ]] 
-      POST RET:^(mscs, ok)
+      POST RET:mscs
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-           ([[ ok = false ]] \/
-           [[ ok = true ]] * exists flist' f' bytes',
+           exists flist' f' bytes',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
            [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-           [[ BFILE.BFAttr f = BFILE.BFAttr f' ]])
+           [[ BFILE.BFAttr f = BFILE.BFAttr f' ]]
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} update_bytes fsxp inum off newdata mscs.
   Proof.
@@ -147,52 +146,20 @@ Module SLOWBYTEFILE.
     idtac.
     admit.    (*  a0 + 1 <= length (allbytes' $[ $ (a0) := elem]) ; implied by the fact we entered loop ?*)
     step.
-    apply pimpl_or_r. right. cancel.
+    
     admit.  (* some unification problem *)
     admit.  (* new allbytes *)
-    admit.  (* new allbytes matches array pred *)
     apply LOG.activetxn_would_recover_old.
   Admitted.
 
-  Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
-    let^ (mscs, finaloff) <- ForEach b rest data
-      Ghost [ mbase F Fm A allbytes ]
-      Loopvar [ mscs boff ]
-      Continuation lrx
-      Invariant
-        exists m' flist' f' allbytes',
-          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
-          [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist')%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ bytes_rep f' allbytes' ]] *
-          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off data ]] *
-          [[ boff <= off + length data ]] *
-          [[ length allbytes = length allbytes' ]]
-      OnCrash
-        exists m',
-          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
-      Begin
-        let^ (mscs, curlen) <- BFileRec.bf_getlen
-          items_per_valu fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
-        If (wlt_dec ($ boff) curlen) {
-          mscs <- BFileRec.bf_put byte_type items_per_valu itemsz_ok
-            fsxp.(FSXPLog) fsxp.(FSXPInode) inum ($ boff) b mscs;
-          lrx ^(mscs, boff + 1)
-        } else {
-          let^ (mscs, ok) <- BFileRec.bf_extend
-            byte_type items_per_valu itemsz_ok
-            fsxp.(FSXPLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) inum b mscs;
-          If (bool_dec ok true) {
-            lrx ^(mscs, boff + 1)
-          } else {
-            rx ^(mscs, false)
-          }
-        }
-      Rof ^(mscs, off);
+
+  (* XXX grow file in addition to updating attributes may fail?*)
+  Definition grow_file T fsxp inum off len mscs rx : prog T :=
+    let newsize := off + len in
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
-    If (wlt_dec ($ finaloff) oldattr.(INODE.ISize)) {
+    If (wlt_dec ($ newsize) oldattr.(INODE.ISize)) {
       mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
-                              (INODE.Build_iattr ($ finaloff)
+                              (INODE.Build_iattr ($ newsize)
                                                  (INODE.IMTime oldattr)
                                                  (INODE.IType oldattr)) mscs;
       rx ^(mscs, true)
@@ -200,7 +167,17 @@ Module SLOWBYTEFILE.
       rx ^(mscs, true)
     }.
 
-    Theorem update_bytes_ok: forall fsxp inum off len data mscs,
+  Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
+    let^ (mscs, ok) <- grow_file fsxp inum off (length data) mscs;
+    If (bool_dec ok true) {
+         mscs <- update_bytes fsxp inum off data mscs;
+         rx ^(mscs, ok)
+    } else {
+         rx ^(mscs, false)
+    }.
+       
+
+    Theorem write_bytes_ok: forall fsxp inum off len data mscs,
       {< m mbase F Fm A flist f bytes data0 Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
@@ -223,60 +200,6 @@ Module SLOWBYTEFILE.
       >} write_bytes fsxp inum off data mscs.
   Proof.
     unfold write_bytes, rep, bytes_rep.
-    step.   (* step into loop *)
-    step.   (* bf_getlen *)
-    step.   (* if *)
-    step.   (* bf_put *) 
-
-    apply wlt_lt in H17. unfold byte in *.  omega.
-    
-    constructor.
-
-    step.   (* loop around, on the true if branch *)
-
-    admit.
-
-    
-    rewrite <- H16.
-
-
-    rewrite <- apply_bytes_upd_comm by omega.
-
-    unfold upd.
-    
-    admit.   (* apply_bytes allbytes (a0 + 1) lst' = apply_bytes (allbytes' [a0 := elem]) (a0 + 1) lst' *)
-
-    admit.   (*  a0 + 1 <= off + length data *)
-      
-    step.  (* bf_extend *)
-
-    constructor.
-    
-    step.   (* if *)
-    step.   (* impossible subgoal *)
-    step.   (* return, on the false-false path *)
-    step.   (* loop around, on the false-true path *)
-
-    admit.  (* extending keeps length of allbytes inbounds *)
-    admit.  (* something about apply_bytes when extending *)
-
-    step.   (* impossible subgoal *)
-    (* out of the for loop! *)
-    step.   (* bfgetattr *)
-    step.   (* if *)
-    step.   (* bfsetattr *)
-    step.   (* return *)
-
-    apply pimpl_or_r. right. cancel.
-    admit.  (* some unification problem *)
-    admit.  (* new allbytes *)
-    admit.  (* new allbytes matches array pred *)
-
-    step.   (* return *)
-    apply pimpl_or_r. right. cancel.
-    admit.  (* some unification problem *)
-    admit.  (* new allbytes *)
-    admit.  (* new allbytes matches array pred *)
 
     apply LOG.activetxn_would_recover_old.
   Admitted.
