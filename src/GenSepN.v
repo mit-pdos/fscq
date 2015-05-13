@@ -366,7 +366,7 @@ Proof.
 Qed.
 
 
-Lemma list2nmem_ptsto_bound' : forall A (m : list A) start off a,
+Lemma list2nmem_some_bound' : forall A (m : list A) start off a,
   list2nmem_fix start m off = Some a
   -> off + 1 <= start + length m.
 Proof.
@@ -379,13 +379,13 @@ Proof.
   eauto.
 Qed.
 
-Lemma list2nmem_ptsto_bound : forall A (m : list A) off a,
+Lemma list2nmem_some_bound : forall A (m : list A) off a,
   list2nmem m off = Some a
   -> off + 1 <= length m.
 Proof.
   intros.
   rewrite list2nmem_fix_eq in H.
-  apply list2nmem_ptsto_bound' in H.
+  apply list2nmem_some_bound' in H.
   omega.
 Qed.
 
@@ -403,8 +403,19 @@ Proof.
   apply sep_star_comm in H.
   apply sep_star_assoc in H.
   apply ptsto_valid in H.
-  apply list2nmem_ptsto_bound in H.
+  apply list2nmem_some_bound in H.
   omega.
+Qed.
+
+Theorem list2nmem_ptsto_bound : forall A (l : list A) off v F,
+  (F * off |-> v)%pred (list2nmem l)
+  -> off < length l.
+Proof.
+  intros.
+  assert ((F * arrayN off (v :: nil))%pred (list2nmem l)).
+  pred_apply; cancel.
+  apply list2nmem_arrayN_bound in H0. intuition; try congruence.
+  simpl in *; omega.
 Qed.
 
 
