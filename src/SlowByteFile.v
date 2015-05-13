@@ -109,6 +109,14 @@ Module SLOWBYTEFILE.
       Rof ^(mscs, off);
       rx mscs.
 
+  Lemma bound_helper : forall a b,
+    # (natToWord addrlen b) = b -> a <= b -> a <= # (natToWord addrlen b).
+  Proof.
+    intuition.
+  Qed.
+
+  Hint Resolve bound_helper.
+
   Theorem update_bytes_ok: forall fsxp inum off len newdata mscs,
       {< m mbase F Fm A flist f bytes olddata Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -140,28 +148,24 @@ Module SLOWBYTEFILE.
 
     step.   (* bf_put *)
 
+    erewrite wordToNat_natToWord_bound by eauto.
     rewrite H5 in H16. rewrite H16 in H4.
-    erewrite wordToNat_natToWord_bound.
     eapply le_trans. eapply le_trans; [ | apply H4 ]. omega.
     rewrite firstn_length. rewrite H15. apply Min.le_min_r.
 
-    rewrite <- H26 in H17. apply H17.
-
     constructor.
+
     step.
     rewrite length_upd. auto.
     rewrite <- H18.
     rewrite <- apply_bytes_upd_comm by omega.
     unfold upd.
 
-    rewrite H5 in H16. rewrite H16 in H4.
-    erewrite wordToNat_natToWord_bound.
+    erewrite wordToNat_natToWord_bound by eauto.
     auto.
-    rewrite <- H26 in H17. apply H17.
 
     rewrite length_upd.
-    rewrite H5 in H16.
-    rewrite H16 in H4.
+    rewrite H5 in H16. rewrite H16 in H4.
     eapply le_trans. eapply le_trans; [ | apply H4 ].
     omega.
     rewrite firstn_length.
