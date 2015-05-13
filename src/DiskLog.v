@@ -74,6 +74,7 @@ Module DISKLOG.
     apply Rec.of_to_id.
     simpl; destruct h; tauto.
   Qed.
+  Hint Rewrite header_valu_id.
 
   Definition addr_per_block := valulen / addrlen.
   Definition descriptor_type := Rec.ArrayF (Rec.WordF addrlen) addr_per_block.
@@ -105,6 +106,7 @@ Module DISKLOG.
     autorewrite with core.
     trivial.
   Qed.
+  Hint Rewrite valu_descriptor_id.
 
   Theorem descriptor_valu_id : forall d,
     Rec.well_formed d -> valu_to_descriptor (descriptor_to_valu d) = d.
@@ -116,6 +118,7 @@ Module DISKLOG.
     autorewrite with core.
     apply Rec.of_to_id; auto.
   Qed.
+  Hint Rewrite descriptor_valu_id.
 
   Theorem valu_to_descriptor_length : forall v,
     length (valu_to_descriptor v) = addr_per_block.
@@ -512,56 +515,42 @@ Module DISKLOG.
     cancel.
     eapply pimpl_ok2; [ eauto with prog | ].
     unfold valid_size.
+    subst.
+    rewrite header_valu_id in *.
+    rec_simpl.
     cancel.
     fold unifiable_array; cancel_with solve_lengths.
-    (* XXX the VARNAME system makes everything a mess here *)
-  Admitted.
-
-    (* eapply pimpl_ok2; [ eauto with prog |]
-    instantiate (1 := (List.combine (map snd (Map.elements (elt:=valu) m))
-     (repeat [] (length (map snd (Map.elements (elt:=valu) m)))))).
-    autorewrite_fast. cancel.
-    rewrite header_valu_id in *.
-    rec_simpl.
-    simpl in H.
     solve_lengths.
-    eauto with replay.
-    rewrite header_valu_id in *.
-    rec_simpl.
-    assert (# m1 < length (Map.elements m)).
-    solve_lengths.
-    replace (# (m1 ^+ $ 1)) with (# m1 + 1).
-    erewrite firstn_plusone_selN'.
-    eauto.
-    rewrite descriptor_valu_id.
-    unfold sel.
-    rewrite selN_app1 by solve_lengths.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    autorewrite with core.
+    word2nat_clear.
+    replace (# (m ^+ $ 1)) with (# m + 1) by word2nat_auto.
+    erewrite firstn_plusone_selN by solve_lengths.
+    subst.
+    unfold sel; rewrite selN_app1 by solve_lengths.
     autorewrite with lists.
-    repeat erewrite selN_map by auto.
+    repeat erewrite selN_map by solve_lengths.
     simpl.
     rewrite <- surjective_pairing.
-    auto.
+    trivial.
     solve_lengths.
     unfold Rec.well_formed; simpl.
     intuition.
-    auto.
-    word2nat_clear.
-    word2nat_auto.
     cancel.
-    eauto with replay.
-    eauto.
-    rewrite header_valu_id.
-    rewrite firstn_oob.
-    apply MapProperties.of_list_3.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    subst.
+    autorewrite with core.
     rec_simpl.
-    simpl.
-    solve_lengths.
-    eauto with replay.
+    rewrite firstn_oob by solve_lengths.
+    trivial.
     cancel.
-    auto.
+    cancel.
+    cancel.
     Unshelve.
-    repeat constructor. exact $0. *)
-  (* Qed. *)
+    intuition. exact $0.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
 
