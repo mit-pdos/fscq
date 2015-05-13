@@ -115,7 +115,32 @@ Module SLOWBYTEFILE.
     intuition.
   Qed.
 
+  Lemma boff_le_length : forall T boff (l l' : list T) off x y z q,
+    off + x = boff + S z ->
+    off + y <= length (firstn q l') ->
+    hidden (length l' = length l) ->
+    x = y ->
+    boff + 1 <= length l.
+  Proof.
+    intros.
+    subst.
+    rewrite firstn_length in *.
+    eapply le_trans. eapply le_trans; [ | apply H0 ].
+    omega.
+    rewrite H1.
+    apply Min.le_min_r.
+  Qed.
+
+  Lemma le_lt_S : forall a b,
+    a + 1 <= b ->
+    a < b.
+  Proof.
+    intros; omega.
+  Qed.
+
   Hint Resolve bound_helper.
+  Hint Resolve boff_le_length.
+  Hint Resolve le_lt_S.
 
   Theorem update_bytes_ok: forall fsxp inum off len newdata mscs,
       {< m mbase F Fm A flist f bytes olddata Fx,
@@ -149,10 +174,7 @@ Module SLOWBYTEFILE.
     step.   (* bf_put *)
 
     erewrite wordToNat_natToWord_bound by eauto.
-    rewrite H5 in H16. rewrite H16 in H4.
-    eapply le_trans. eapply le_trans; [ | apply H4 ]. omega.
-    rewrite firstn_length. rewrite H15. apply Min.le_min_r.
-
+    eauto.
     constructor.
 
     step.
@@ -165,17 +187,9 @@ Module SLOWBYTEFILE.
     auto.
 
     rewrite length_upd.
-    rewrite H5 in H16. rewrite H16 in H4.
-    eapply le_trans. eapply le_trans; [ | apply H4 ].
-    omega.
-    rewrite firstn_length.
+    eauto.
 
-    Transparent hidden.
-    unfold hidden in H15.
-    rewrite H15.
-    apply Min.le_min_r.
-
-    unfold hidden. rewrite H15. rewrite length_upd. auto.
+    rewrite H15. rewrite length_upd. constructor.
 
     step.
 
