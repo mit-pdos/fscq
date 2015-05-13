@@ -14,7 +14,6 @@ Require Import Idempotent.
 Require Import Inode.
 Require Import List.
 Require Import Balloc.
-Require Import DirTree.
 Require Import Arith.
 Require Import Array.
 Require Import FSLayout.
@@ -82,6 +81,9 @@ Module SLOWBYTEFILE.
     omega.
   Qed.
 
+  Definition hidden (P : Prop) : Prop := P.
+  Opaque hidden.
+
   Definition update_bytes T fsxp inum (off : nat) (newdata : list byte) mscs rx : prog T :=
     let^ (mscs, finaloff) <- ForEach b rest newdata
       Ghost [ mbase F Fm A allbytes ]
@@ -94,7 +96,9 @@ Module SLOWBYTEFILE.
           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
           [[ bytes_rep f' allbytes' ]] *
           [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off newdata ]] *
-          [[ boff <= length allbytes' ]]
+          [[ boff <= length allbytes' ]] *
+          [[ off + length newdata = boff + length rest ]] *
+          [[ hidden (length allbytes = length allbytes') ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -127,26 +131,50 @@ Module SLOWBYTEFILE.
       >} update_bytes fsxp inum off newdata mscs.
   Proof.
     unfold update_bytes, rep, bytes_rep.
+
     step.   (* step into loop *)
 
-    idtac.
-    admit.  (* off <= length allbytes, by H4 *)
-    
+    rewrite firstn_length in *.
+    eapply le_trans. eapply le_plus_l. eapply le_trans. apply H4.
+    apply Min.le_min_r.
+
     step.   (* bf_put *)
-    
-    admit.  (*   off <= length allbytes, by H4 *)
-    
+
+    rewrite H5 in H16. rewrite H16 in H4.
+    erewrite wordToNat_natToWord_bound.
+    eapply le_trans. eapply le_trans; [ | apply H4 ]. omega.
+    rewrite firstn_length. rewrite H15. apply Min.le_min_r.
+
+    rewrite <- H26 in H17. apply H17.
+
     constructor.
     step.
-    admit.    (*  # ($ (length (allbytes' $[ $ (a0) := elem]))) = length (allbytes' $[ $ (a0) := elem]) *)
-    rewrite <- H15.
+    rewrite length_upd. auto.
+    rewrite <- H18.
     rewrite <- apply_bytes_upd_comm by omega.
-    unfold upd.  
-    admit.    (* # ($ (a0)) = a0 *)
-    idtac.
-    admit.    (*  a0 + 1 <= length (allbytes' $[ $ (a0) := elem]) ; implied by the fact we entered loop ?*)
+    unfold upd.
+
+    rewrite H5 in H16. rewrite H16 in H4.
+    erewrite wordToNat_natToWord_bound.
+    auto.
+    rewrite <- H26 in H17. apply H17.
+
+    rewrite length_upd.
+    rewrite H5 in H16.
+    rewrite H16 in H4.
+    eapply le_trans. eapply le_trans; [ | apply H4 ].
+    omega.
+    rewrite firstn_length.
+
+    Transparent hidden.
+    unfold hidden in H15.
+    rewrite H15.
+    apply Min.le_min_r.
+
+    unfold hidden. rewrite H15. rewrite length_upd. auto.
+
     step.
-    
+
     admit.  (* some unification problem *)
     admit.  (* new allbytes *)
     apply LOG.activetxn_would_recover_old.
