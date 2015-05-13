@@ -188,8 +188,7 @@ Proof.
 Qed.
 
 Theorem updN_firstn_comm : forall T (v : T) vs i j,
-  j < i
-  -> firstn i (updN vs j v) = updN (firstn i vs) j v.
+  firstn i (updN vs j v) = updN (firstn i vs) j v.
 Proof.
   induction vs; destruct i, j; simpl; intuition.
   rewrite IHvs by omega.
