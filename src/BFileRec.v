@@ -293,13 +293,14 @@ Section RECBFILE.
              [[ (pos < items_per_valu)%word ]] *
              [[ Rec.well_formed i ]]
     POST RET:mscs
-             exists m' flist' f',
+             exists m' flist' f' fdata',
              LOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ (F1 * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
              [[ (A * # inum |-> f')%pred (list2nmem flist') ]] *
              [[ array_item_pairs (upd ilistlist block_ix 
                                      (upd (sel ilistlist block_ix nil) pos i))
-                                 (list2nmem (BFILE.BFData f')) ]]
+                                 (list2nmem (BFILE.BFData f')) ]] *
+             [[ f' = BFILE.Build_bfile fdata' (BFILE.BFAttr f) ]]
     CRASH    LOG.would_recover_old lxp F mbase
     >} bf_put_pair lxp ixp inum block_ix pos i mscs.
   Proof.
@@ -310,6 +311,8 @@ Section RECBFILE.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
     erewrite arrayN_except with (i := #block_ix); rec_bounds.
 
+    subst; simpl in *. pred_apply.
+
     rewrite Rec.word_updN_equiv by rec_bounds.
     unfold sel, upd; autorewrite with core.
     unfold valu_to_block, RecArray.valu_to_block, rep_block, RecArray.rep_block.
@@ -317,21 +320,19 @@ Section RECBFILE.
     rewrite selN_updN_eq by rec_bounds.
     erewrite selN_map by rec_bounds.
     rewrite valu_wreclen_id; rewrite Rec.of_to_id; auto.
+    2: rewrite Forall_forall in *; apply H13;
+       apply in_selN; rec_bounds.
     cancel.
-    rewrite Forall_forall in *; apply H13.
-    apply in_selN; rec_bounds.
 
     assert (Hx := H13).
     apply Forall_upd; auto.
     rewrite Forall_forall in Hx.
     unfold Rec.well_formed in Hx; simpl in Hx.
     unfold Rec.well_formed; simpl.
-    rewrite length_upd; intuition.
+    rewrite length_updN; intuition.
     apply Hx; apply in_sel; rec_bounds.
     apply Forall_upd; auto.
     apply Hx; apply in_sel; rec_bounds.
-    Grab Existential Variables.
-    exact $0.
   Qed.
 
 
@@ -683,11 +684,12 @@ Section RECBFILE.
              [[ wordToNat idx < length ilist ]] *
              [[ Rec.well_formed v ]]
     POST RET:mscs
-             exists m' flist' f',
+             exists m' flist' f' fdata',
              LOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ array_item_file f' (upd ilist idx v) ]] *
              [[ (F1 * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-             [[ (A * #inum |-> f')%pred (list2nmem flist') ]]
+             [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+             [[ f' = BFILE.Build_bfile fdata' (BFILE.BFAttr f) ]]
     CRASH  LOG.would_recover_old lxp F mbase
     >} bf_put lxp ixp inum idx v mscs.
   Proof.
@@ -698,10 +700,12 @@ Section RECBFILE.
     eapply helper_item_index_valid; subst; eauto.
     destruct_lift H; eauto.
 
+    subst; simpl in *.
+
     subst; repeat rewrite_list2nmem_pred; subst.
     destruct_lift H.
     eexists; intuition; try (pred_apply; cancel).
-    apply list2nmem_array_eq in H12 as Heq.
+    apply list2nmem_array_eq in H13 as Heq.
     rewrite Heq; autorewrite with core; auto.
   Qed.
 
@@ -717,10 +721,11 @@ Section RECBFILE.
     POST RET:^(mscs, r)
           exists m', LOG.rep lxp F (ActiveTxn mbase m') mscs *
           ([[ r = false ]] \/
-           [[ r = true ]] * exists flist' f',
+           [[ r = true ]] * exists flist' f' fdata',
            [[ array_item_file f' (ilist ++ (upd item0_list $0 v)) ]] *
            [[ (F1 * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] )
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ f' = BFILE.Build_bfile fdata' (BFILE.BFAttr f) ]] )
     CRASH  LOG.would_recover_old lxp F mbase
     >} bf_extend lxp bxp ixp inum v mscs.
   Proof.
@@ -730,7 +735,7 @@ Section RECBFILE.
     eapply pimpl_or_r; right; cancel.
 
     eexists; intuition; simpl.
-    instantiate (vs_nested := x ++ (upd item0_list $0 v) :: nil).
+    instantiate (vs_nested := vs_nested ++ (upd item0_list $0 v) :: nil).
     repeat (rewrite app_length; autorewrite with core); rec_bounds.
     unfold upd at 3; erewrite wordToNat_natToWord_bound; eauto.
 
