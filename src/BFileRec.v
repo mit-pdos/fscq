@@ -659,7 +659,7 @@ Section RECBFILE.
     erewrite wordToNat_natToWord_bound in H4; auto.
 
     erewrite wordToNat_plusone by eauto.
-    replace (S #m0) with (#m0 + 1) by omega.
+    replace (S #m1) with (#m1 + 1) by omega.
     erewrite firstn_plusone_selN.
     rewrite fold_left_app. subst. simpl. unfold sel. auto.
     apply wlt_lt in H4.
@@ -673,6 +673,9 @@ Section RECBFILE.
     erewrite wordToNat_natToWord_bound; auto. omega.
     intros; apply app_assoc.
     intros; rewrite app_nil_l; rewrite app_nil_r; auto.
+
+    Grab Existential Variables.
+    exact tt.
   Qed.
 
   Theorem bf_put_ok : forall lxp bxp ixp inum idx v mscs,
