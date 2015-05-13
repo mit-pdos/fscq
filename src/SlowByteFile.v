@@ -5,7 +5,6 @@ Require Import Word.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred.
-Require Import DirName.
 Require Import Hoare.
 Require Import GenSep.
 Require Import GenSepN.
@@ -24,6 +23,7 @@ Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Bytes.
 Require Import ProofIrrelevance.
+Require Import BFileRec.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -55,15 +55,12 @@ Module SLOWBYTEFILE.
     | b :: rest => updN (apply_bytes allbytes (off+1) rest) off b
     end.
 
-  (*
-  Lemma apply_bytes_upd:
-    forall allbytes off b rest,
-      (wordToNat off) < # (natToWord addrlen (length allbytes)) ->
-      apply_bytes allbytes off (b::rest) = upd (apply_bytes allbytes (off^+$1) rest) off b.
+  Lemma apply_bytes_length : forall newdata allbytes off,
+    length (apply_bytes allbytes off newdata) = length allbytes.
   Proof.
-    simpl. reflexivity.
+    induction newdata; simpl; intros; auto.
+    rewrite length_updN. eauto.
   Qed.
-*)
 
   Lemma apply_bytes_upd_comm:
     forall rest allbytes off off' b, 
@@ -86,7 +83,7 @@ Module SLOWBYTEFILE.
 
   Definition update_bytes T fsxp inum (off : nat) (newdata : list byte) mscs rx : prog T :=
     let^ (mscs, finaloff) <- ForEach b rest newdata
-      Ghost [ mbase F Fm A allbytes ]
+      Ghost [ mbase F Fm A f allbytes ]
       Loopvar [ mscs boff ]
       Continuation lrx
       Invariant
@@ -98,7 +95,8 @@ Module SLOWBYTEFILE.
           [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off newdata ]] *
           [[ boff <= length allbytes' ]] *
           [[ off + length newdata = boff + length rest ]] *
-          [[ hidden (length allbytes = length allbytes') ]]
+          [[ hidden (length allbytes = length allbytes') ]] *
+          [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -142,6 +140,33 @@ Module SLOWBYTEFILE.
   Hint Resolve boff_le_length.
   Hint Resolve le_lt_S.
 
+  Lemma apply_bytes_arrayN : forall olddata newdata oldbytes newbytes off F x,
+    newbytes = apply_bytes oldbytes off newdata ->
+    length newdata = length olddata ->
+    (F * arrayN off olddata)%pred (list2nmem (firstn x oldbytes)) ->
+    (F * arrayN off newdata)%pred (list2nmem (firstn x newbytes)).
+  Proof.
+    induction olddata; simpl; intros.
+    - destruct newdata; simpl in *; try omega.
+      congruence.
+    - destruct newdata; simpl in *; try omega.
+      subst.
+      rewrite updN_firstn_comm.
+      rewrite listupd_progupd.
+      apply sep_star_comm. apply sep_star_assoc.
+      eapply ptsto_upd.
+      apply sep_star_assoc. apply sep_star_comm. apply sep_star_assoc.
+      replace (off + 1) with (S off) by omega.
+      eapply IHolddata; eauto.
+      apply sep_star_assoc. apply H1.
+
+      rewrite firstn_length.
+      rewrite apply_bytes_length.
+      apply sep_star_assoc in H1. apply sep_star_comm in H1. apply sep_star_assoc in H1.
+      apply list2nmem_ptsto_bound in H1. rewrite firstn_length in H1. auto.
+  Qed.
+
+
   Theorem update_bytes_ok: forall fsxp inum off len newdata mscs,
       {< m mbase F Fm A flist f bytes olddata Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -159,7 +184,7 @@ Module SLOWBYTEFILE.
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
            [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-           [[ BFILE.BFAttr f = BFILE.BFAttr f' ]]
+           [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} update_bytes fsxp inum off newdata mscs.
   Proof.
@@ -171,6 +196,8 @@ Module SLOWBYTEFILE.
     eapply le_trans. eapply le_plus_l. eapply le_trans. apply H4.
     apply Min.le_min_r.
 
+    constructor.
+
     step.   (* bf_put *)
 
     erewrite wordToNat_natToWord_bound by eauto.
@@ -179,7 +206,7 @@ Module SLOWBYTEFILE.
 
     step.
     rewrite length_upd. auto.
-    rewrite <- H18.
+    rewrite <- H19.
     rewrite <- apply_bytes_upd_comm by omega.
     unfold upd.
 
@@ -189,14 +216,18 @@ Module SLOWBYTEFILE.
     rewrite length_upd.
     eauto.
 
-    rewrite H15. rewrite length_upd. constructor.
+    rewrite H16. rewrite length_upd. constructor.
+    subst; simpl; auto.
 
     step.
 
-    admit.  (* some unification problem *)
-    admit.  (* new allbytes *)
+    rewrite <- H13.
+    eapply apply_bytes_arrayN; eauto.
     apply LOG.activetxn_would_recover_old.
-  Admitted.
+
+    Grab Existential Variables.
+    exact tt.
+  Qed.
 
   Definition grow_blocks T fsxp inum cursize newsize mscs rx : prog T :=
     let curblocks := (cursize ^/ ($ valulen)) ^+ $ 1 in
