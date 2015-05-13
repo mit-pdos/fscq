@@ -449,7 +449,9 @@ Theorem foreach_ok:
       (forall lSm,
        {{ fun done' crash' => F * nocrash g lst' lSm * [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun done' crash' => F * nocrash g (elem :: lst') lm * [[ done' = done ]] * [[ crash' = crash ]]
+      {{ fun done' crash' => F * nocrash g (elem :: lst') lm *
+         [[ exists prefix, prefix ++ elem :: lst' = lst ]] *
+         [[ done' = done ]] * [[ crash' = crash ]]
       }} f elem lm rxm]]
    * [[forall lfinal,
        {{ fun done' crash' => F * nocrash g nil lfinal * [[ done' = done ]] * [[ crash' = crash ]]
@@ -488,6 +490,7 @@ Proof.
       apply H3.
       cancel.
       cancel.
+      exists (a :: prefix); auto.
       eapply pimpl_ok2.
       apply H0.
       cancel.
@@ -496,6 +499,7 @@ Proof.
       intros.
       apply pimpl_refl.
     + cancel.
+      exists nil; auto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
