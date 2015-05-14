@@ -230,24 +230,24 @@ Module SLOWBYTEFILE.
   Qed.
 
   Definition grow_blocks T fsxp inum cursize newsize mscs rx : prog T :=
-    let curblocks := (cursize ^/ ($ valulen)) ^+ $ 1 in
-    let newblocks := (newsize ^/ ($ valulen)) ^+ $ 1 in
+    let curblocks := (cursize ^+ ($ valubytes) ^- $1) ^/ ($ valubytes)  in
+    let newblocks := (newsize ^+ ($ valubytes) ^- $1) ^/ ($ valubytes) in
     let nblock := newblocks ^- curblocks in
     let^ (mscs) <- For i < nblock
-      Ghost [ mbase F Fm A ]
+      Ghost [ mbase F Fm A f ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
-         exists m' flist f,
+      exists m' flist f',
          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
           [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist)%pred (list2mem m') ]] *
           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ length (BFILE.BFData f) + # nblock - # i = # newblocks ]]
+          [[ f' = BFILE.Build_bfile (firstn (# (nblock ^- i)) (BFILE.BFData f))  (BFILE.BFAttr f) ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
       Begin
-       let^ (mscs, ok) <- BFILE.bfgrow fsxp.(FSXPLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) inum mscs;
+       let^ (mscs, ok) <- BFileRec.bf_extend byte_type items_per_valu itemsz_ok fsxp.(FSXPLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) inum $0 mscs;
        If (bool_dec ok true) {
           lrx ^(mscs)
        } else {
@@ -270,11 +270,15 @@ Module SLOWBYTEFILE.
            [[ ok = true ]] * exists flist' f',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (length (BFILE.BFData f')) * valulen >= newsize ]] *
+           [[ f' = BFILE.Build_bfile (firstn newsize (BFILE.BFData f)) (BFILE.BFAttr f) ]] *
            [[ rep bytes f' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
        >} grow_blocks fsxp inum ($ cursize) ($ newsize) mscs.
-   Proof.
-     admit.
+  Proof.
+    unfold grow_blocks, rep, bytes_rep.
+    step.  (* step into loop *)
+    
+      admit.
    Admitted.
 
    Definition grow_file T fsxp inum off len mscs rx : prog T :=
