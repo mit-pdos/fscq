@@ -193,6 +193,8 @@ Module SLOWBYTEFILE.
     step.   (* step into loop *)
 
     rewrite firstn_length in *.
+    Check le_trans.
+    
     eapply le_trans. eapply le_plus_l. eapply le_trans. apply H4.
     apply Min.le_min_r.
 
@@ -232,16 +234,16 @@ Module SLOWBYTEFILE.
 
   Definition grow_blocks T fsxp inum nblock mscs rx : prog T :=
     let^ (mscs) <- For i < nblock
-      Ghost [ mbase F Fm A f ]
+      Ghost [ mbase F Fm A f bytes ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
-      exists m' flist f' bytes,
+      exists m' flist f',
          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
           [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist)%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ rep bytes f' ]] *
-          [[ f' = BFILE.Build_bfile ((BFILE.BFData f) ++ (repeat $0 #i)) (BFILE.BFAttr f) ]]
+          [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+          [[ bytes_rep f' (bytes ++ (repeat $0 (#i * valubytes)))  ]] *
+          [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -255,42 +257,57 @@ Module SLOWBYTEFILE.
     Rof ^(mscs);
     rx ^(mscs, true).
 
+  Lemma item0_upd:
+    (upd (item0_list byte_type items_per_valu itemsz_ok) $0 $0) = 
+      repeat $0 valubytes.
+  Proof.
+    generalize itemsz_ok.
+    unfold items_per_valu.
+    unfold item0_list.
+    generalize valubytes.
+    intros.
+    induction n.
+    admit.
+  Admitted.
+
    Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
-      {< m mbase F Fm flist f A B bytes,
+      {< m mbase F Fm flist f A bytes,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ B %pred (list2nmem (BFILE.BFData f)) ]] *
-           [[ rep bytes f ]]
+           [[ bytes_rep f bytes ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
             ([[ ok = false ]] \/      
            [[ ok = true ]] * exists flist' f',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ f' = BFILE.Build_bfile ((BFILE.BFData f)++ (repeat $0 nblock)) (BFILE.BFAttr f) ]] *
-           [[ rep bytes f' ]])
+           [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]] *
+           [[ bytes_rep f' (bytes ++ (repeat $0 (# nblock * valubytes))) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
-       >} grow_blocks fsxp inum ($ nblock) mscs.
+       >} grow_blocks fsxp inum nblock mscs.
   Proof.
     unfold grow_blocks, rep, bytes_rep.
     step. (* step into loop *)
-    idtac.
-    admit.  (*  instantiate (allbytes0 := bytes) *)
+    rewrite app_nil_r.
+    eauto.
+    rewrite app_nil_r.
+    admit.
+    constructor.
     step. (* bf_extend *)
     constructor.
+    step. (* if statement *)
+    step.
+    step.
+    (* true branch *)
     step.
     admit.
-    admit.
-    admit.
-    admit.
-
     step.
-
+    step.
     eapply pimpl_or_r; right; cancel.
-
-    (* admit. existential problem *).
-    (* coq spins admit.  (* re-enter loop through true branch; allbytes1 = allbytes0 = allbytes *)
+    eauto.
+    admit.
+    apply LOG.activetxn_would_recover_old.
    Admitted.
 
    Definition grow_file T fsxp inum off len mscs rx : prog T :=
