@@ -229,20 +229,19 @@ Module SLOWBYTEFILE.
     exact tt.
   Qed.
 
-  Definition grow_blocks T fsxp inum cursize newsize mscs rx : prog T :=
-    let curblocks := (cursize ^+ ($ valubytes) ^- $1) ^/ ($ valubytes)  in
-    let newblocks := (newsize ^+ ($ valubytes) ^- $1) ^/ ($ valubytes) in
-    let nblock := newblocks ^- curblocks in
+
+  Definition grow_blocks T fsxp inum nblock mscs rx : prog T :=
     let^ (mscs) <- For i < nblock
       Ghost [ mbase F Fm A f ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant
-      exists m' flist f',
+      exists m' flist f' bytes,
          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
           [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist)%pred (list2mem m') ]] *
           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ f' = BFILE.Build_bfile (firstn (# (nblock ^- i)) (BFILE.BFData f))  (BFILE.BFAttr f) ]]
+          [[ rep bytes f' ]] *
+          [[ f' = BFILE.Build_bfile ((BFILE.BFData f) ++ (repeat $0 #i)) (BFILE.BFAttr f) ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -256,36 +255,52 @@ Module SLOWBYTEFILE.
     Rof ^(mscs);
     rx ^(mscs, true).
 
-  Theorem grow_blocks_ok: forall fsxp inum cursize newsize mscs,
+   Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
       {< m mbase F Fm flist f A B bytes,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ B %pred (list2nmem (BFILE.BFData f)) ]] *
-           [[ cursize < newsize ]] *
            [[ rep bytes f ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
             ([[ ok = false ]] \/      
            [[ ok = true ]] * exists flist' f',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-           [[ (length (BFILE.BFData f')) * valulen >= newsize ]] *
-           [[ f' = BFILE.Build_bfile (firstn newsize (BFILE.BFData f)) (BFILE.BFAttr f) ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ f' = BFILE.Build_bfile ((BFILE.BFData f)++ (repeat $0 nblock)) (BFILE.BFAttr f) ]] *
            [[ rep bytes f' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
-       >} grow_blocks fsxp inum ($ cursize) ($ newsize) mscs.
+       >} grow_blocks fsxp inum ($ nblock) mscs.
   Proof.
     unfold grow_blocks, rep, bytes_rep.
-    step.  (* step into loop *)
-    
-      admit.
+    step. (* step into loop *)
+    idtac.
+    admit.  (*  instantiate (allbytes0 := bytes) *)
+    step. (* bf_extend *)
+    constructor.
+    step.
+    admit.
+    admit.
+    admit.
+    admit.
+
+    step.
+
+    eapply pimpl_or_r; right; cancel.
+
+    (* admit. existential problem *).
+    (* coq spins admit.  (* re-enter loop through true branch; allbytes1 = allbytes0 = allbytes *)
    Admitted.
 
    Definition grow_file T fsxp inum off len mscs rx : prog T :=
     let newsize := off + len in
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     If (wlt_dec oldattr.(INODE.ISize) ($ newsize)) {
-      let^ (mscs, ok) <- grow_blocks fsxp inum oldattr.(INODE.ISize) ($ newsize) mscs;
+      let curblocks := (cursize ^+ ($ valubytes) ^- $1) ^/ ($ valubytes)  in
+      let newblocks := (newsize ^+ ($ valubytes) ^- $1) ^/ ($ valubytes) in
+      let nblock := newblocks ^- curblocks in
+      let^ (mscs, ok) <- grow_blocks fsxp inum oldattr.(INODE.ISize) ($ nblock) mscs;
       If (bool_dec ok true) {
            mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
                               (INODE.Build_iattr ($ newsize)
