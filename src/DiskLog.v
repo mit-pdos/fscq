@@ -464,11 +464,24 @@ Module DISKLOG.
     unfold sel, upd;
     repeat split_pair_list_evar;
     split_pair_list_vars;
-    autorewrite with lists; [ f_equal | .. ].
+    autorewrite with lists; [
+      match goal with
+      | [ |- ?f _ = ?f _ ] => f_equal
+      | [ |- ?f _ _ = ?f _ _ ] => f_equal
+      | _ => idtac
+      end | .. ].
+
+  Ltac lists_eq :=
+    subst; autorewrite with core; rec_simpl;
+    word2nat_clear; word2nat_auto;
+    autorewrite with lengths in *;
+    split_lists; solve_lengths;
+    unfold sel; repeat (rewrite selN_app1 by solve_lengths || rewrite selN_app2 by solve_lengths);
+    repeat rewrite firstn_oob by solve_lengths;
+    repeat erewrite firstn_plusone_selN by solve_lengths; intuition eauto.
+
   Ltac or_r := apply pimpl_or_r; right.
   Ltac or_l := apply pimpl_or_r; left.
-
-
 
 
   Definition read_log T (xp : log_xparams) cs rx : prog T :=
@@ -523,33 +536,15 @@ Module DISKLOG.
     solve_lengths.
     eapply pimpl_ok2; [ eauto with prog | ].
     cancel.
-    autorewrite with core.
-    word2nat_clear.
-    replace (# (m ^+ $ 1)) with (# m + 1) by word2nat_auto.
-    erewrite firstn_plusone_selN by solve_lengths.
-    subst.
-    unfold sel; rewrite selN_app1 by solve_lengths.
-    autorewrite with lists.
-    repeat erewrite selN_map by solve_lengths.
-    simpl.
-    rewrite <- surjective_pairing.
-    trivial.
-    solve_lengths.
-    unfold Rec.well_formed; simpl.
-    intuition.
+    unfold log_contents in *.
+    lists_eq.
     cancel.
     eapply pimpl_ok2; [ eauto with prog | ].
     cancel.
-    subst.
-    autorewrite with core.
-    rec_simpl.
-    rewrite firstn_oob by solve_lengths.
-    trivial.
+    lists_eq.
     cancel.
     cancel.
     cancel.
-    Unshelve.
-    intuition. exact $0.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
