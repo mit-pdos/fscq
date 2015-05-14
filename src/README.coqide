@@ -1,0 +1,74 @@
+Compile and install trunk CoqIDE on Mac
+==============================================
+
+- Download and install XQuartz:
+
+  http://xquartz.macosforge.org/landing/
+
+  Log out or restart as instructed by the installer.
+
+- Install OCaml using opam:
+
+  -- Using homebrew
+  $ brew install opam
+  -- Using port
+  $ sudo port install opam
+
+  $ opam init
+  $ opam config env
+
+- Install lablgtk2 and gtksourceview
+
+  -- Using homebrew
+  $ brew install lablgtk
+  $ brew install gtksourceview
+  -- Using port
+  $ sudo port install lablgtk2 +gtksourceview2
+
+  $ opam install lablgtk-extras
+
+- Build and install coqide
+
+  $ git clone https://github.com/coq/coq coq
+  $ cd coq
+  $ ./configure
+  $ make
+  $ sudo make install
+
+  If you didn't see the following after "./configure":
+
+    LablGtk2 found (via ocamlfind), with native threads:
+    => native CoqIde will be built.
+
+  Then probably gtksourceview OCaml library is not properly installed.
+  Check the following:
+
+  - Check ocamlfind works:
+
+    $ which ocamlfind
+
+    If failed, make sure opam env is configured for current shell,
+    and ocamlfind library is installed:
+
+    $ . ~/.opam/opam-init/init.sh
+    $ opam config env
+    $ opam install ocamlfind
+
+  - Check ocamlfind can locate sourceview2:
+
+    $ ocamlfind query lablgtk2.sourceview2
+
+  - Check gSourceView2.cmi exists:
+
+    $ ll ~/.opam/system/lib/lablgtk2/gSourceView*.cmi
+
+    If not, properly "opam install lablgtk-extras" doesn't work properly.
+    Try install lablgtk manually: http://lablgtk.forge.ocamlcore.org/
+
+
+- Additional reference:
+
+  http://www.cs.ru.nl/~jherold/BuildCoq.html
+  http://comments.gmane.org/gmane.comp.lang.why3.user/117
+  http://opam.ocaml.org/doc/Install.html
+
