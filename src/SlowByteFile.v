@@ -265,16 +265,11 @@ Check BFileRec.bf_getlen.
   Lemma item0_upd:
     (upd (item0_list byte_type items_per_valu itemsz_ok) $0 $0) = repeat $0 valubytes.
   Proof.
-    generalize itemsz_ok.
-    unfold items_per_valu.
-    unfold item0_list.
-    generalize valubytes.
-    intros.
-    induction n.
-    reflexivity.
-    admit.
-  Admitted.
-
+    rewrite BFileRec.item0_list_repeat.
+    unfold items_per_valu. replace (# ($ valubytes)) with (valubytes).
+    destruct valubytes; reflexivity.
+    rewrite valubytes_is; reflexivity.
+  Qed.
 
   Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
       {< m mbase F Fm flist f A bytes,

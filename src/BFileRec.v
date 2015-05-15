@@ -152,6 +152,16 @@ Section RECBFILE.
   Hint Resolve valu_to_block_zero.
   Hint Resolve item0_list_block_zero.
 
+  Lemma item0_list_repeat :
+    item0_list = repeat item_zero (# items_per_valu).
+  Proof.
+    unfold item0_list, valu_to_block, RecArray.valu_to_block, RecArray.blocktype.
+    unfold valu_to_wreclen.
+    rewrite blocksz_ok. simpl.
+    rewrite Rec.of_word_zero_list.
+    reflexivity.
+  Qed.
+
   Lemma block_upd_well_formed: forall (v : item) (b : block) i,
     Rec.well_formed v
     -> Rec.well_formed b

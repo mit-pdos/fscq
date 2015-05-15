@@ -638,6 +638,18 @@ Module Rec.
       lia.
   Qed.
 
+
+  Theorem of_word_zero_list : forall ft n,
+    @Rec.of_word (ArrayF ft n) $0 = repeat (Rec.of_word $0) n.
+  Proof.
+    induction n; simpl; auto.
+    rewrite <- IHn; clear IHn.
+    unfold of_word at 1 3.
+    rewrite split1_zero.
+    rewrite split2_zero.
+    reflexivity.
+  Qed.
+
 End Rec.
 
 Notation "r :-> n" := (Rec.recget' n r) (at level 20).
