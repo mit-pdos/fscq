@@ -230,6 +230,8 @@ Module SLOWBYTEFILE.
     exact tt.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
+  
   Definition grow_blocks T fsxp inum nblock mscs rx : prog T := 
     let^ (mscs) <- For i < nblock
       Ghost [ mbase F Fm A f bytes ]
@@ -412,18 +414,20 @@ Module SLOWBYTEFILE.
     let newlen := off + length data in
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let curlen := oldattr.(INODE.ISize) in      
-    If (wlt_dec curlen newlen) {
+    If (wlt_dec curlen ($ newlen)) {
          let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
          If (bool_dec ok true) {
            mscs <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
         } else {
-          rx ^(mscs, false)
+             rx ^(mscs, false)
+        }
     } else {
         mscs <- update_bytes fsxp inum off data mscs;
-        rx ^(mscs, ok)
-    }
-       
+        rx ^(mscs, true)
+    }.
+
+  (* XXX data0 and data can be of different length *)
   Theorem write_bytes_ok: forall fsxp inum off len data mscs,
     {< m mbase F Fm A flist f bytes data0 Fx,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -432,8 +436,7 @@ Module SLOWBYTEFILE.
            [[ rep bytes f ]] *
            [[ (Fx * arrayN off data0)%pred (list2nmem bytes) ]] *
            [[ length data0 = len ]] *
-           [[ length data = len ]] *
-           [[ off + len <= length bytes ]]
+           [[ length data = len ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -441,14 +444,11 @@ Module SLOWBYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off data)%pred (list2nmem bytes') ]] *
-           [[ BFILE.BFAttr f = BFILE.BFAttr f' ]])
+           [[ (Fx * arrayN off data)%pred (list2nmem bytes') ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} write_bytes fsxp inum off data mscs.
   Proof.
     unfold write_bytes, rep, bytes_rep.
-
-    apply LOG.activetxn_would_recover_old.
   Admitted.
 
 End SLOWBYTEFILE.
