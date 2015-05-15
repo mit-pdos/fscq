@@ -193,8 +193,7 @@ Module SLOWBYTEFILE.
     step.   (* step into loop *)
 
     rewrite firstn_length in *.
-    Check le_trans.
-    
+
     eapply le_trans. eapply le_plus_l. eapply le_trans. apply H4.
     apply Min.le_min_r.
 
@@ -231,8 +230,9 @@ Module SLOWBYTEFILE.
     exact tt.
   Qed.
 
+Check BFileRec.bf_getlen.
 
-  Definition grow_blocks T fsxp inum nblock mscs rx : prog T :=
+  Definition grow_blocks T fsxp inum nblock mscs rx : prog T := 
     let^ (mscs) <- For i < nblock
       Ghost [ mbase F Fm A f bytes ]
       Loopvar [ mscs ]
@@ -248,18 +248,22 @@ Module SLOWBYTEFILE.
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
       Begin
-       let^ (mscs, ok) <- BFileRec.bf_extend byte_type items_per_valu itemsz_ok fsxp.(FSXPLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) inum $0 mscs;
-       If (bool_dec ok true) {
-          lrx ^(mscs)
+       let^ (mscs, n) <- BFileRec.bf_getlen items_per_valu fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
+       If (wlt_dec n (natToWord addrlen INODE.blocks_per_inode ^* items_per_valu)) {
+         let^ (mscs, ok) <- BFileRec.bf_extend byte_type items_per_valu itemsz_ok fsxp.(FSXPLog) fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) inum $0 mscs;
+         If (bool_dec ok true) {
+           lrx ^(mscs)
+         } else {
+           rx ^(mscs, false)
+         }
        } else {
-          rx ^(mscs, false)
+         rx ^(mscs, false)
        }
     Rof ^(mscs);
     rx ^(mscs, true).
 
   Lemma item0_upd:
-    (upd (item0_list byte_type items_per_valu itemsz_ok) $0 $0) = 
-      repeat $0 valubytes.
+    (upd (item0_list byte_type items_per_valu itemsz_ok) $0 $0) = repeat $0 valubytes.
   Proof.
     generalize itemsz_ok.
     unfold items_per_valu.
@@ -267,10 +271,12 @@ Module SLOWBYTEFILE.
     generalize valubytes.
     intros.
     induction n.
+    reflexivity.
     admit.
   Admitted.
 
-   Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
+
+  Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
       {< m mbase F Fm flist f A bytes,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
@@ -292,8 +298,10 @@ Module SLOWBYTEFILE.
     rewrite app_nil_r.
     eauto.
     rewrite app_nil_r.
-    admit.
+    rewrite H11; eauto.
     constructor.
+    step. (* getlen *)
+    step. (* if *)
     step. (* bf_extend *)
     constructor.
     step. (* if statement *)
@@ -301,12 +309,44 @@ Module SLOWBYTEFILE.
     step.
     (* true branch *)
     step.
+    
+    pose proof item0_upd.
+    simpl in H6.
+    rewrite H6 in H16.
+    
+    rewrite <- app_assoc in H16.
+    rewrite repeat_app in H16.
+    replace (# (m1 ^+ $ (1)) * valubytes) with (# (m1) * valubytes + valubytes).
+    auto.
+
+    replace (# (m1 ^+ $1)) with (#m1 + 1).
+    rewrite Nat.mul_add_distr_r.
+    omega.
+
     admit.
+
+    replace (# (m1 ^+ $1)) with (#m1 + 1).
+
+    rewrite Nat.mul_add_distr_r.
+
+    simpl.
+
+ rewrite <- repeat_app.
+
+  repeat rewrite app_length.
+  repeat rewrite repeat_length.
+    
+
+    admit.
+    admit.
+
+    step.
     step.
     step.
     eapply pimpl_or_r; right; cancel.
     eauto.
-    admit.
+    rewrite app_length in H18.
+    eapply H18.
     apply LOG.activetxn_would_recover_old.
    Admitted.
 
