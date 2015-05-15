@@ -65,6 +65,13 @@ Compile and install trunk CoqIDE on Mac
     If not, properly "opam install lablgtk-extras" doesn't work properly.
     Try install lablgtk manually: http://lablgtk.forge.ocamlcore.org/
 
+- Keybindings on Mac
+
+  crtl-downarrow/ctrl-uparrow is intercepted by macos.
+
+  change it to alt-downarrow/alt-uparrow:
+    In preferences/Shortcuts, for "Allowed modifiers", check "<alt>" button
+    X11's preferences, check "Option keys send Alt_L and Alt_R".
 
 - Additional reference:
 
