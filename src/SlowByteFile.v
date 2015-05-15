@@ -318,7 +318,10 @@ Check BFileRec.bf_getlen.
     rewrite Nat.mul_add_distr_r.
     omega.
 
-    admit.
+    rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
+    erewrite wordToNat_natToWord_bound. reflexivity.
+    apply wlt_lt in H.
+    instantiate (bound:=nblock). omega.
 
     replace (# (m1 ^+ $1)) with (#m1 + 1).
 
@@ -326,14 +329,23 @@ Check BFileRec.bf_getlen.
 
     simpl.
 
- rewrite <- repeat_app.
+    rewrite <- repeat_app.
+    repeat rewrite app_length.
+    repeat rewrite repeat_length.
 
-  repeat rewrite app_length.
-  repeat rewrite repeat_length.
-    
+    erewrite wordToNat_natToWord_bound. reflexivity.
+    apply wlt_lt in H13.
+    rewrite app_length in H20. rewrite repeat_length in H20. rewrite H20 in H13.
+    instantiate (bound := $ (INODE.blocks_per_inode) ^* items_per_valu ^+ items_per_valu ^+ items_per_valu).
+    unfold INODE.blocks_per_inode in *. unfold INODE.nr_direct, INODE.nr_indirect in *.
+    unfold items_per_valu in *. rewrite valubytes_is. rewrite valubytes_is in H13.
+    apply le_trans with (4097 + # ($ (12 + 512) ^* natToWord addrlen 4096)). omega.
+    admit.
 
-    admit.
-    admit.
+    rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
+    erewrite wordToNat_natToWord_bound. reflexivity.
+    apply wlt_lt in H.
+    instantiate (bound:=nblock). omega.
 
     step.
     step.
