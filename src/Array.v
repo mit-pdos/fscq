@@ -84,6 +84,13 @@ Proof.
   unfold sel; intros; apply repeat_selN; auto.
 Qed.
 
+Lemma repeat_app : forall T i j (x : T),
+  repeat x i ++ repeat x j = repeat x (i + j).
+Proof.
+  induction i; simpl; intros; auto.
+  f_equal; eauto.
+Qed.
+
 Lemma length_nil : forall A (l : list A),
   length l = 0 -> l = nil.
 Proof.
