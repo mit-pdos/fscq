@@ -30,6 +30,9 @@ Inductive state :=
 | Shortened (old: log_contents) (new_length: nat)
 (* The log has been shortened; the contents are still synced but the length is potentially unsynced *)
 
+| ExtendedDescriptor (old: log_contents)
+(* The log is being extended; only the descriptor has been updated (unsynced) *)
+
 | Extended (old: log_contents) (appended: log_contents).
 (* The log has been extended; the new contents are synced but the length is potentially unsynced *)
 
@@ -184,13 +187,21 @@ Module DISKLOG.
       avail_region (LogData xp ^+ $ (length l))
                          (wordToNat (LogLen xp) - length l))%pred.
 
+  Definition log_rep_extended_descriptor xp (l: log_contents) : @pred addr (@weq addrlen) valuset :=
+     ([[ valid_size xp l ]] *
+      exists rest rest2,
+      (LogDescriptor xp) |-> (descriptor_to_valu (map fst l ++ rest), [descriptor_to_valu (map fst l ++ rest2)]) *
+      [[ @Rec.well_formed descriptor_type (map fst l ++ rest) ]] *
+      array (LogData xp) (synced_list (map snd l)) $1 *
+      avail_region (LogData xp ^+ $ (length l))
+                         (wordToNat (LogLen xp) - length l))%pred.
 
   Definition rep_inner xp (st: state) :=
     (* For now, support just one descriptor block, at the start of the log. *)
     ([[ valid_xp xp ]] *
     match st with
     | Synced l =>
-      (LogHeader xp) |=> (header_to_valu (mk_header (length l)))
+      (LogHeader xp) |=> header_to_valu (mk_header (length l))
     * log_rep_synced xp l
 
     | Shortened old len =>
@@ -198,16 +209,20 @@ Module DISKLOG.
     * (LogHeader xp) |-> (header_to_valu (mk_header len), header_to_valu (mk_header (length old)) :: [])
     * log_rep_synced xp old
 
-    | Extended old appended =>
-      (LogHeader xp) |-> (header_to_valu (mk_header (length old + length appended)), header_to_valu (mk_header (length old)) :: [])
-    * log_rep_synced xp (old ++ appended)
+    | ExtendedDescriptor old =>
+      (LogHeader xp) |=> header_to_valu (mk_header (length old))
+    * log_rep_extended_descriptor xp old
+
+    | Extended old new =>
+      (LogHeader xp) |-> (header_to_valu (mk_header (length old + length new)), header_to_valu (mk_header (length old)) :: [])
+    * log_rep_synced xp (old ++ new)
 
     end)%pred.
 
   Definition rep xp F st cs := (exists d,
     BUFCACHE.rep cs d * [[ (F * rep_inner xp st)%pred d ]])%pred.
 
-  Ltac disklog_unfold := unfold rep, rep_inner, valid_xp, log_rep_synced, synced_list.
+  Ltac disklog_unfold := unfold rep, rep_inner, valid_xp, log_rep_synced, log_rep_extended_descriptor, valid_size, synced_list.
 
   Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
     | [ H : forall _, {{ _ }} _ |- _ ] => clear H
@@ -604,6 +619,8 @@ Module DISKLOG.
 
 
   Definition extend_unsync T xp (cs: cachestate) (old: log_contents) (oldlen: addr) (new: log_contents) rx : prog T :=
+    cs <- BUFCACHE.write (LogDescriptor xp)
+      (descriptor_to_valu (map fst (old ++ new))) cs;
     let^ (cs) <- For i < $ (length new)
     Ghost [ crash F ]
     Loopvar [ cs ]
@@ -611,8 +628,6 @@ Module DISKLOG.
     Invariant
       exists d', BUFCACHE.rep cs d' *
       [[ (F
-          (* exists rest, (LogDescriptor xp) |=> descriptor_to_valu rest
-          * [[ @Rec.well_formed descriptor_type rest ]] *)
           * exists l', [[ length l' = # i ]]
           * array (LogData xp ^+ $ (length old)) (List.combine (firstn (# i) (map snd new)) l') $1
           * avail_region (LogData xp ^+ $ (length old) ^+ i) (# (LogLen xp) - length old - # i))%pred d' ]]
@@ -622,8 +637,6 @@ Module DISKLOG.
         (sel (map snd new) i $0) cs;
       lrx ^(cs)
     Rof ^(cs);
-    cs <- BUFCACHE.write (LogDescriptor xp)
-      (descriptor_to_valu (map fst (old ++ new))) cs;
     rx ^(cs).
 
 (*
@@ -663,9 +676,9 @@ Module DISKLOG.
     }.
 *)
 
-  (** On-disk representation of the log *)
   Definition extended_unsynced xp (old: log_contents) (new: log_contents) : @pred addr (@weq addrlen) valuset :=
      ([[ valid_size xp (old ++ new) ]] *
+      (LogHeader xp) |=> (header_to_valu (mk_header (length old))) *
       exists rest others,
       (LogDescriptor xp) |-> (descriptor_to_valu (map fst (old ++ new) ++ rest),
                               map descriptor_to_valu others) *
@@ -683,12 +696,12 @@ Module DISKLOG.
       [[ # oldlen = length old ]] *
       [[ valid_size xp (old ++ new) ]] *
       rep xp F (Synced old) cs
-    POST RET:mscs
+    POST RET:^(cs)
       exists d, BUFCACHE.rep cs d *
       [[ (F * extended_unsynced xp old new)%pred d ]]
     CRASH
       exists cs' : cachestate,
-      rep xp F (Synced old) cs'
+      rep xp F (Synced old) cs' \/ rep xp F (ExtendedDescriptor old) cs'
     >} extend_unsync xp cs old oldlen new.
   Proof.
     unfold extend_unsync; disklog_unfold; unfold avail_region, extended_unsynced.
@@ -697,7 +710,8 @@ Module DISKLOG.
     (* step. (* XXX takes a very long time *) *)
     eapply pimpl_ok2; [ eauto with prog | ].
     cancel.
-    unfold valid_size in *.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
     word2nat_clear.
     autorewrite with lengths in *.
     word2nat_auto.
@@ -706,7 +720,6 @@ Module DISKLOG.
     cancel.
     instantiate (1 := nil); auto.
     solve_lengths.
-    unfold valid_size in *.
     autorewrite with lengths in *.
     (* step. *)
     eapply pimpl_ok2; [ eauto with prog | ].
@@ -723,9 +736,22 @@ Module DISKLOG.
     solve_lengths.
     solve_lengths.
     cancel.
+    or_r; cancel.
+    unfold valuset_list; simpl; rewrite map_app.
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
+    rewrite <- app_assoc.
+    word2nat_clear.
+    cancel.
     array_match.
     solve_lengths.
+    rewrite Forall_forall; intuition.
     solve_lengths.
+    or_r; cancel.
+    unfold valuset_list; simpl; rewrite map_app.
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
+    rewrite <- app_assoc.
+    cancel.
+    (* unpack [array_match] due to "variable H4 unbound" anomaly *)
     array_match_prepare.
     chop_shortest_suffix.
     chop_shortest_suffix.
@@ -734,17 +760,74 @@ Module DISKLOG.
     all: subst_evars.
     array_match_goal.
     2: array_match_goal.
-    Focus 3.
-    (* lists_eq *)
-    subst; autorewrite with core; rec_simpl.
+    3: reflexivity.
+    solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    unfold upd_prepend.
+    solve_lengths.
+    (* step. *)
+    eapply pimpl_ok2; [ eauto with prog | ].
     word2nat_clear.
-    (* word2nat_auto *)
+    autorewrite with lengths in *.
+    word2nat_auto.
+    (* XXX once again we have to unpack [cancel] because otherwise [Forall_nil] gets incorrectly applied *)
+    intros. norm. cancel'.
+    unfold avail_region.
+    intuition. pred_apply.
+    norm. cancel'. unfold stars; simpl; eapply pimpl_trans; [ apply star_emp_pimpl |].
+    instantiate (others := [_]).
+    unfold valuset_list.
+    simpl.
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
+    cancel.
+    unfold synced_list.
+    array_match.
+    intuition.
+    unfold valid_size; solve_lengths.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    rewrite Forall_forall; intuition.
+  Lemma in_1 : forall T (x y: T), In x [y] -> x = y.
     intros.
-    (* word2nat_simpl *)
-    (* omitted some parts *)
-    (* autorewrite_fast_goal_w2nat *)
-    (* Here's the anomaly, in set_evars: *)
-    set (H2 := ?l2).
+    inversion H.
+    congruence.
+    inversion H0.
+  Qed.
+    match goal with
+    | [ H: _ |- _] => apply in_1 in H
+    end.
+    subst.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    congruence.
+    congruence.
+    autorewrite with lengths in *.
+    cancel.
+    or_r; cancel. (* this is a strange goal *)
+    instantiate (m := d').
+    pred_apply.
+    cancel.
+    unfold valuset_list.
+    simpl.
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
+    rewrite map_app; rewrite app_assoc.
+    (* This give us "Uncaught exception Not_found" *)
+    cancel.
+    word2nat_clear.
+    array_match.
+    solve_lengths.
+    solve_lengths.
+    or_r.
+    intros. norm. cancel'.
+    unfold avail_region.
+    intuition. pred_apply.
+    norm. cancel'; unfold stars; simpl; eapply pimpl_trans; [ apply star_emp_pimpl |].
+    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
+    rewrite map_app.
+    rewrite <- app_assoc.
+    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
