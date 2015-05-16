@@ -726,8 +726,25 @@ Module DISKLOG.
     array_match.
     solve_lengths.
     solve_lengths.
-    array_match.
-    
+    array_match_prepare.
+    chop_shortest_suffix.
+    chop_shortest_suffix.
+    chop_shortest_suffix.
+    apply pimpl_refl.
+    all: subst_evars.
+    array_match_goal.
+    2: array_match_goal.
+    Focus 3.
+    (* lists_eq *)
+    subst; autorewrite with core; rec_simpl.
+    word2nat_clear.
+    (* word2nat_auto *)
+    intros.
+    (* word2nat_simpl *)
+    (* omitted some parts *)
+    (* autorewrite_fast_goal_w2nat *)
+    (* Here's the anomaly, in set_evars: *)
+    set (H2 := ?l2).
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
