@@ -118,7 +118,6 @@ Module DISKLOG.
     autorewrite with core.
     apply Rec.of_to_id; auto.
   Qed.
-  Hint Rewrite descriptor_valu_id.
 
   Theorem valu_to_descriptor_length : forall v,
     length (valu_to_descriptor v) = addr_per_block.
@@ -213,6 +212,10 @@ Module DISKLOG.
   Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
     | [ H : forall _, {{ _ }} _ |- _ ] => clear H
     | [ H : _ =p=> _ |- _ ] => clear H
+    | [ H: ?a ?b |- _ ] =>
+      match type of a with
+      | pred => clear H
+      end
     end.
 
   Lemma skipn_1_length': forall T (l: list T),
@@ -347,23 +350,6 @@ Module DISKLOG.
     end;
     solve [ cancel ].
 
-  Ltac array_match :=
-    unfold unifiable_array in *;
-    match goal with (* early out *)
-    | [ |- _ =p=> _ * array _ _ _ ] => idtac
-    | [ |- _ =p=> _ * _ |-> _ ] => idtac
-    | [ |- _ =p=> array _ _ _ ] => idtac
-    end;
-    solve_lengths_prepare;
-    rewrite_singular_array;
-    array_sort;
-    set_evars;
-    repeat (rewrite array_app; [ | solve_lengths_prepped ]); [ repeat rewrite <- app_assoc | .. ];
-    try apply pimpl_refl;
-    try (apply equal_arrays; [ solve_lengths_prepped | try reflexivity ]);
-    subst_evars.
-
-  Ltac try_arrays_lengths := try (array_cancel_trivial || array_match); solve_lengths_prepped.
 
   (* Slightly different from CPDT [equate] *)
   Ltac equate x y :=
@@ -460,25 +446,85 @@ Module DISKLOG.
     subst_evars.
 
   Ltac split_lists :=
-    unfold upd_prepend, upd_sync;
+    unfold upd_prepend, upd_sync, valuset_list;
     unfold sel, upd;
     repeat split_pair_list_evar;
     split_pair_list_vars;
     autorewrite with lists; [
       match goal with
-      | [ |- ?f _ = ?f _ ] => f_equal
-      | [ |- ?f _ _ = ?f _ _ ] => f_equal
+      | [ |- ?f _ = ?f _ ] => set_evars; f_equal; subst_evars
+      | [ |- ?f _ _ = ?f _ _ ] => set_evars; f_equal; subst_evars
       | _ => idtac
-      end | .. ].
+      end | solve_lengths .. ].
 
   Ltac lists_eq :=
     subst; autorewrite with core; rec_simpl;
     word2nat_clear; word2nat_auto;
     autorewrite with lengths in *;
-    split_lists; solve_lengths;
-    unfold sel; repeat (rewrite selN_app1 by solve_lengths || rewrite selN_app2 by solve_lengths);
-    repeat rewrite firstn_oob by solve_lengths;
-    repeat erewrite firstn_plusone_selN by solve_lengths; intuition eauto.
+    solve_lengths_prepare;
+    split_lists;
+    repeat rewrite firstn_oob by solve_lengths_prepped;
+    repeat erewrite firstn_plusone_selN by solve_lengths_prepped;
+    unfold sel; repeat rewrite selN_app1 by solve_lengths_prepped; repeat rewrite selN_app2 by solve_lengths_prepped.
+    (* intuition. *) (* XXX sadly, sometimes evars are instantiated the wrong way *)
+
+  Ltac log_simp :=
+    repeat rewrite descriptor_valu_id by (hnf; intuition; solve_lengths).
+
+  Ltac chop_arrays a1 l1 a2 l2 s := idtac;
+    match type of l1 with
+     | list ?T =>
+       let l1a' := fresh in evar (l1a' : list T); let l1a := eval unfold l1a' in l1a' in
+       let l1b' := fresh in evar (l1b' : list T); let l1b := eval unfold l1b' in l1b' in
+       clear l1a'; clear l1b';
+       let H := fresh in
+       cut (l1 = l1a ++ l1b); [
+         intro H; replace (array a1 l1 s) with (array a1 (l1a ++ l1b) s) by (rewrite H; trivial); clear H;
+         rewrite <- (@array_app T l1a l1b a1 a2); [
+           rewrite <- sep_star_assoc; apply pimpl_sep_star; [ | apply equal_arrays; [ try reflexivity | ] ]
+         | ]
+       | eauto ]
+     end.
+
+  Lemma cons_app1 : forall T (x: T) xs, x :: xs = [x] ++ xs. trivial. Qed.
+
+  Ltac array_match' :=
+    unfold unifiable_array in *;
+    match goal with (* early out *)
+    | [ |- _ =p=> _ * array _ _ _ ] => idtac
+    | [ |- _ =p=> _ * _ |-> _ ] => idtac
+    | [ |- _ =p=> array _ _ _ ] => idtac
+    end;
+    solve_lengths_prepare;
+    rewrite_singular_array;
+    array_sort;
+    eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
+    set_evars; repeat rewrite <- sep_star_assoc; subst_evars;
+    repeat match goal with
+    | [ |- _ * array ?a1 ?l1 ?s =p=> _ * array ?a2 ?l2 ?s ] =>
+      (let H := fresh in assert (a1 = a2)%word as H by
+        (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve);
+       apply pimpl_sep_star; [ | apply equal_arrays; [ try rewrite H; trivial | eauto ] ]) ||
+      (word_assert (a1 <= a2)%word; chop_arrays a1 l1 a2 l2 s) ||
+      (word_assert (a2 <= a1)%word; chop_arrays a2 l2 a1 l1 s)
+    end; [ apply pimpl_refl | .. ].
+
+  Ltac array_match_goal :=
+      match goal with
+      | [ |- @eq ?T ?a ?b ] =>
+        match T with
+        | list ?X =>
+          (is_evar a; is_evar b; fail 1) || (* XXX this works around a Coq anomaly... *)
+          lists_eq; auto; repeat match goal with
+          | [ |- context[?a :: ?b] ] => match b with | nil => fail 1 | _ => idtac end; rewrite (cons_app1 a b); auto
+          end
+        | _ => idtac
+        end
+      | _ => idtac
+      end.
+
+  Ltac array_match :=
+    array_match'; array_match_goal; solve_lengths.
 
   Ltac or_r := apply pimpl_or_r; right.
   Ltac or_l := apply pimpl_or_r; left.
@@ -537,11 +583,12 @@ Module DISKLOG.
     eapply pimpl_ok2; [ eauto with prog | ].
     cancel.
     unfold log_contents in *.
-    lists_eq.
+    log_simp.
+    lists_eq; reflexivity.
     cancel.
     eapply pimpl_ok2; [ eauto with prog | ].
     cancel.
-    lists_eq.
+    lists_eq; reflexivity.
     cancel.
     cancel.
     cancel.
@@ -628,6 +675,7 @@ Module DISKLOG.
     {< F,
     PRE
       [[ # oldlen = length old ]] *
+      [[ valid_size xp (old ++ new) ]] *
       rep xp F (Synced old) cs
     POST RET:mscs
       exists d, BUFCACHE.rep cs d *
@@ -640,99 +688,67 @@ Module DISKLOG.
     unfold extend_unsync; disklog_unfold; unfold avail_region, extended_unsynced.
     intros.
     solve_lengths_prepare.
-    step.
-    
-    step_with ltac:(unfold avail_region) try_arrays_lengths.
-    ring_simplify (# (LogData xp) + 0).
-    word2nat_simpl.
-    instantiate (1 := l).
+    (* step. (* XXX takes a very long time *) *)
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    unfold valid_size in *.
+    word2nat_clear.
+    autorewrite with lengths in *.
+    word2nat_auto.
+    rewrite Nat.add_0_r.
+    fold unifiable_array.
     cancel.
     instantiate (1 := nil); auto.
     solve_lengths.
-    step_with ltac:(unfold avail_region) try_arrays_lengths.
-    step_with ltac:(unfold avail_region, upd_prepend) try_arrays_lengths.
-    split_lists.
-    erewrite firstn_plusone_selN.
-    rewrite <- app_assoc.
-    reflexivity.
-    solve_lengths.
-    erewrite firstn_plusone_selN.
-    rewrite <- app_assoc.
-    simpl.
-    instantiate (3 := l0 ++ [valuset_list (selN l1 0 ($0, nil))]).
-    simpl.
-    rewrite firstn_app_l by solve_lengths.
-    repeat erewrite selN_map by solve_lengths.
-    rewrite <- surjective_pairing.
-    rewrite selN_app2.
-    rewrite H19.
-    rewrite Nat.sub_diag.
-    reflexivity.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract (case_eq l1; intros; subst; word2nat_clear; simpl in *; solve_lengths).
-
-    or_l. cancel.
-    array_match.
-    reflexivity.
-    solve_lengths.
-    or_l. cancel.
-    array_match.
-    reflexivity.
-    solve_lengths.
-    step_with ltac:(unfold avail_region) try_arrays_lengths.
-    (* Annoyingly, [intuition] just incorrectly applies [Forall_nil] in one place, so we can't use [step] *)
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    (* step. *)
     eapply pimpl_ok2; [ eauto with prog | ].
-    intros; norm; [ cancel' | intuition idtac ].
-    pred_apply; norm; [ cancel' | intuition idtac ].
-    rewrite firstn_oob by solve_lengths.
-    rewrite Map.cardinal_1.
-    unfold valuset_list.
-    instantiate (2 := l0).
-    instantiate (2 := [d1]).
-    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
     cancel.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    rewrite Forall_forall; intuition.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    intuition.
-    abstract solve_lengths.
-    or_l. cancel.
-    rewrite firstn_oob by solve_lengths.
-    array_match.
-    reflexivity.
-    abstract solve_lengths.
-
-    or_r.
-    norm; [ cancel' | intuition idtac ].
-    pred_apply; norm; [ cancel' | intuition idtac ].
-    rewrite firstn_oob by solve_lengths.
-    rewrite Map.cardinal_1.
-    unfold valuset_list.
-    instantiate (3 := l0).
-    instantiate (4 := [d1]).
-    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
-    cancel.
-    eauto.
-    abstract solve_lengths.
+    word2nat_clear; word2nat_auto.
+    fold unifiable_array; cancel.
     solve_lengths.
-    rewrite Forall_forall; intuition.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    intuition.
-
-    Unshelve.
-    all: auto.
+    (* step. *)
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    word2nat_clear; word2nat_auto.
+    cancel.
+    array_match'; array_match_goal; array_match_goal; solve_lengths.
+    solve_lengths.
+    solve_lengths.
+    cancel.
+    unfold unifiable_array in *;
+    match goal with (* early out *)
+    | [ |- _ =p=> _ * array _ _ _ ] => idtac
+    | [ |- _ =p=> _ * _ |-> _ ] => idtac
+    | [ |- _ =p=> array _ _ _ ] => idtac
+    end;
+    solve_lengths_prepare;
+    rewrite_singular_array;
+    array_sort;
+    eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
+    set_evars; repeat rewrite <- sep_star_assoc.
+    (* XXX the code is wrong when dealing with evars anyway, but here it gives an anomaly! *)
+    match goal with
+    | [ |- _ * array ?a1 ?l1 ?s =p=> _ * array ?a2 ?l2 ?s ] =>
+      (let H := fresh in assert (a1 = a2)%word as H by
+        (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve);
+       apply pimpl_sep_star; [ | apply equal_arrays; [ try rewrite H; trivial | eauto ] ]) ||
+      (word_assert (a1 <= a2)%word; chop_arrays a1 l1 a2 l2 s) ||
+      (word_assert (a2 <= a1)%word; idtac a2 l2 a1 l1 s;     match type of l2 with
+     | list ?T =>
+       let l1a' := fresh in evar (l1a' : list T); let l1a := eval unfold l1a' in l1a' in
+       let l1b' := fresh in evar (l1b' : list T); let l1b := eval unfold l1b' in l1b' in
+       clear l1a'; clear l1b';
+       let H := fresh in
+       cut (l2 = l1a ++ l1b); [
+         intro H; idtac a2 l2 s; replace (array a2 l2 s) with (array a2 (l1a ++ l1b) s) by (rewrite H; trivial); clear H;
+         rewrite <- (@array_app T l1a l1b a2 a1); [
+           rewrite <- sep_star_assoc; apply pimpl_sep_star; [ | apply equal_arrays; [ | ] ]
+         | ]
+       | eauto ]
+     end)
+    end.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.

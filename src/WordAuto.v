@@ -254,6 +254,14 @@ Ltac autorewrite_fast_w2nat :=
   | [ |- _ ] => autorewrite_fast_goal_w2nat
   end.
 
+(* Do some substitutions [subst] won't. XXX: this doesn't seem very principled; I should think it through *)
+Ltac nat_subst :=
+  repeat match goal with
+  | [ H: # _ = # _ |- _ ] => idtac
+  | [ H: # _ = _ |- _ ] => rewrite H
+  | [ H: _ = # _ |- _ ] => rewrite <- H
+  end.
+
 Ltac goodsizes := idtac;
   repeat match goal with
   | [ w: word ?sz |- _ ] =>
@@ -277,6 +285,7 @@ Ltac word2nat_simpl :=
   repeat match goal with
   | [ H : _ < _ |- _ ] => apply lt_ovf in H; destruct H
   end;
+  nat_subst;
   goodsizes.
 
 Ltac word2nat_solve := unfold goodSize in *; subst;
