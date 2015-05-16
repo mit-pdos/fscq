@@ -428,27 +428,29 @@ Module SLOWBYTEFILE.
     }.
 
   (* XXX data0 and data can be of different length *)
-  Theorem write_bytes_ok: forall fsxp inum off len data mscs,
-    {< m mbase F Fm A flist f bytes data0 Fx,
+  Theorem write_bytes_ok: forall fsxp inum (off:nat) (data: list byte) mscs,
+    {< m mbase F Fm A flist f bytes datax datay dataz,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ (Fx * arrayN off data0)%pred (list2nmem bytes) ]] *
-           [[ length data0 = len ]] *
-           [[ length data = len ]]
+           [[ bytes = datax ++ datay ++ dataz ]] *
+           [[ length datax = off ]] *
+           [[ length dataz = length bytes - (length data+off)  ]]  (* xxx MAX with 0? *)
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
            [[ ok = true ]] * exists flist' f' bytes',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off data)%pred (list2nmem bytes') ]])
+           [[ bytes' = datax ++ data ++ dataz ]] *
+           [[ rep bytes' f' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} write_bytes fsxp inum off data mscs.
   Proof.
     unfold write_bytes, rep, bytes_rep.
+    step.
+    
   Admitted.
 
 End SLOWBYTEFILE.
