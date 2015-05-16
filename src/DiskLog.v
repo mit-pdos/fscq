@@ -472,23 +472,32 @@ Module DISKLOG.
     repeat rewrite descriptor_valu_id by (hnf; intuition; solve_lengths).
 
   Ltac chop_arrays a1 l1 a2 l2 s := idtac;
-    match type of l1 with
+    match type of l2 with
      | list ?T =>
-       let l1a' := fresh in evar (l1a' : list T); let l1a := eval unfold l1a' in l1a' in
-       let l1b' := fresh in evar (l1b' : list T); let l1b := eval unfold l1b' in l1b' in
-       clear l1a'; clear l1b';
+       let l1a := fresh in evar (l1a : list T);
+       let l1b := fresh in evar (l1b : list T);
        let H := fresh in
        cut (l1 = l1a ++ l1b); [
          intro H; replace (array a1 l1 s) with (array a1 (l1a ++ l1b) s) by (rewrite H; trivial); clear H;
          rewrite <- (@array_app T l1a l1b a1 a2); [
-           rewrite <- sep_star_assoc; apply pimpl_sep_star; [ | apply equal_arrays; [ try reflexivity | ] ]
+           rewrite <- sep_star_assoc; apply pimpl_sep_star; [ | apply equal_arrays ]
          | ]
        | eauto ]
      end.
 
   Lemma cons_app1 : forall T (x: T) xs, x :: xs = [x] ++ xs. trivial. Qed.
 
-  Ltac array_match' :=
+  Ltac chop_shortest_suffix := idtac;
+    match goal with
+    | [ |- _ * array ?a1 ?l1 ?s =p=> _ * array ?a2 ?l2 ?s ] =>
+      (let H := fresh in assert (a1 = a2)%word as H by
+        (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve);
+       apply pimpl_sep_star; [ | apply equal_arrays; [ try rewrite H; trivial | eauto ] ]) ||
+      (word_assert (a1 <= a2)%word; chop_arrays a1 l1 a2 l2 s) ||
+      (word_assert (a2 <= a1)%word; chop_arrays a2 l2 a1 l1 s)
+    end.
+
+  Ltac array_match_prepare :=
     unfold unifiable_array in *;
     match goal with (* early out *)
     | [ |- _ =p=> _ * array _ _ _ ] => idtac
@@ -499,15 +508,12 @@ Module DISKLOG.
     rewrite_singular_array;
     array_sort;
     eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
-    set_evars; repeat rewrite <- sep_star_assoc; subst_evars;
-    repeat match goal with
-    | [ |- _ * array ?a1 ?l1 ?s =p=> _ * array ?a2 ?l2 ?s ] =>
-      (let H := fresh in assert (a1 = a2)%word as H by
-        (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve);
-       apply pimpl_sep_star; [ | apply equal_arrays; [ try rewrite H; trivial | eauto ] ]) ||
-      (word_assert (a1 <= a2)%word; chop_arrays a1 l1 a2 l2 s) ||
-      (word_assert (a2 <= a1)%word; chop_arrays a2 l2 a1 l1 s)
-    end; [ apply pimpl_refl | .. ].
+    set_evars; repeat rewrite <- sep_star_assoc.
+
+  Ltac array_match' :=
+    array_match_prepare;
+    repeat (progress chop_shortest_suffix);
+    subst_evars; [ apply pimpl_refl | .. ].
 
   Ltac array_match_goal :=
       match goal with
@@ -524,7 +530,7 @@ Module DISKLOG.
       end.
 
   Ltac array_match :=
-    array_match'; array_match_goal; solve_lengths.
+    array_match'; array_match_goal; array_match_goal; solve_lengths.
 
   Ltac or_r := apply pimpl_or_r; right.
   Ltac or_l := apply pimpl_or_r; left.
@@ -713,42 +719,15 @@ Module DISKLOG.
     cancel.
     word2nat_clear; word2nat_auto.
     cancel.
-    array_match'; array_match_goal; array_match_goal; solve_lengths.
+    array_match.
     solve_lengths.
     solve_lengths.
     cancel.
-    unfold unifiable_array in *;
-    match goal with (* early out *)
-    | [ |- _ =p=> _ * array _ _ _ ] => idtac
-    | [ |- _ =p=> _ * _ |-> _ ] => idtac
-    | [ |- _ =p=> array _ _ _ ] => idtac
-    end;
-    solve_lengths_prepare;
-    rewrite_singular_array;
-    array_sort;
-    eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
-    set_evars; repeat rewrite <- sep_star_assoc.
-    (* XXX the code is wrong when dealing with evars anyway, but here it gives an anomaly! *)
-    match goal with
-    | [ |- _ * array ?a1 ?l1 ?s =p=> _ * array ?a2 ?l2 ?s ] =>
-      (let H := fresh in assert (a1 = a2)%word as H by
-        (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve);
-       apply pimpl_sep_star; [ | apply equal_arrays; [ try rewrite H; trivial | eauto ] ]) ||
-      (word_assert (a1 <= a2)%word; chop_arrays a1 l1 a2 l2 s) ||
-      (word_assert (a2 <= a1)%word; idtac a2 l2 a1 l1 s;     match type of l2 with
-     | list ?T =>
-       let l1a' := fresh in evar (l1a' : list T); let l1a := eval unfold l1a' in l1a' in
-       let l1b' := fresh in evar (l1b' : list T); let l1b := eval unfold l1b' in l1b' in
-       clear l1a'; clear l1b';
-       let H := fresh in
-       cut (l2 = l1a ++ l1b); [
-         intro H; idtac a2 l2 s; replace (array a2 l2 s) with (array a2 (l1a ++ l1b) s) by (rewrite H; trivial); clear H;
-         rewrite <- (@array_app T l1a l1b a2 a1); [
-           rewrite <- sep_star_assoc; apply pimpl_sep_star; [ | apply equal_arrays; [ | ] ]
-         | ]
-       | eauto ]
-     end)
-    end.
+    array_match.
+    solve_lengths.
+    solve_lengths.
+    array_match.
+    
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
