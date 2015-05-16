@@ -812,22 +812,25 @@ Module DISKLOG.
     unfold valuset_list.
     simpl.
     rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
-    rewrite map_app; rewrite app_assoc.
-    (* This give us "Uncaught exception Not_found" *)
+    rewrite map_app; rewrite <- app_assoc.
     cancel.
-    word2nat_clear.
-    array_match.
     solve_lengths.
+    rewrite Forall_forall; intuition.
     solve_lengths.
-    or_r.
-    intros. norm. cancel'.
-    unfold avail_region.
-    intuition. pred_apply.
-    norm. cancel'; unfold stars; simpl; eapply pimpl_trans; [ apply star_emp_pimpl |].
+    cancel.
+    cancel.
+    or_r; cancel.
+    unfold valuset_list.
+    simpl.
     rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
-    rewrite map_app.
-    rewrite <- app_assoc.
+    rewrite map_app; rewrite <- app_assoc.
     cancel.
+    word2nat_clear; autorewrite with lengths in *.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    solve_lengths.
+    Unshelve.
+    all: eauto; constructor.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
