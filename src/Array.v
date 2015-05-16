@@ -1408,7 +1408,7 @@ Definition ArraySync T a i stride rx : prog T :=
 
 (** * Hoare rules *)
 
-Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
+Local Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
 
 Theorem read_ok:
   forall T (a i stride:addr) (rx:valu->prog T),
@@ -1454,10 +1454,6 @@ Qed.
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _ _) _) => apply write_ok : prog.
 Hint Extern 1 ({{_}} progseq (ArraySync _ _ _) _) => apply sync_ok : prog.
-
-Hint Extern 0 (okToUnify (array ?base ?l ?stride) (array ?base ?r ?stride)) =>
-  unfold okToUnify; constructor : okToUnify.
-
 
 (** * Some test cases *)
 
