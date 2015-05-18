@@ -699,17 +699,17 @@ Module DIRTREE.
 
     (* subtree is a directory *)
     rewrite tree_dir_extract_subdir in Hx by eauto; destruct_lift Hx.
-    cancel; try instantiate (1 := (TreeDir a0 l2)); eauto; try cancel.
+    cancel; try instantiate (1 := (TreeDir a0 s)); eauto; try cancel.
     erewrite <- find_name_subdir with (xp := (FSXPInodeAlloc fsxp)); eauto.
     pred_apply' Horig; cancel.
-    hypmatch l2 as Hx; pred_apply' Hx; cancel.
+    hypmatch s as Hx; pred_apply' Hx; cancel.
 
     (* subtree is a file *)
     rewrite tree_dir_extract_file in Hx by eauto. destruct_lift Hx.
-    cancel; try instantiate (1 := (TreeFile a0 b0)); eauto; try cancel.
+    cancel; try instantiate (1 := (TreeFile a0 bfile)); eauto; try cancel.
     erewrite <- find_name_file with (xp := (FSXPInodeAlloc fsxp)); eauto.
     pred_apply' Horig; cancel.
-    hypmatch b0 as Hx; pred_apply' Hx; cancel.
+    hypmatch bfile as Hx; pred_apply' Hx; cancel.
 
     (* dslookup = None *)
     step.
@@ -718,15 +718,15 @@ Module DIRTREE.
     (* rx : isdir = false *)
     step.
     hypmatch (find_name) as Hx; rewrite Hx.
-    unfold find_name; destruct d2; simpl in *; auto; congruence.
+    unfold find_name; destruct tree0; simpl in *; auto; congruence.
 
     (* rx : isdir = true *)
     step.
     hypmatch (find_name) as Hx; rewrite Hx.
-    unfold find_name; destruct d2; simpl in *; subst; auto.
+    unfold find_name; destruct tree0; simpl in *; subst; auto.
 
     Grab Existential Variables.
-    all: try exact emp; try exact empty_mem.
+    all: try exact emp; try exact empty_mem; try exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (namei _ _ _ _) _) => apply namei_ok : prog.
@@ -1220,7 +1220,7 @@ Module DIRTREE.
     pred_apply' Hc; cancel.
     step.
 
-    (* XXX: eauto with prog super slow! *)
+    (* XXX: 'eauto with prog' super slow! *)
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
     hypmatch dirlist_pred as Hx; subst_bool.
     rewrite dirlist_extract_subdir in Hx; eauto; simpl in Hx.
