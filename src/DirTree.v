@@ -780,7 +780,7 @@ Module DIRTREE.
     step.
 
     repeat deex.
-    hypmatch dirlist_pred as Hx; hypmatch (pimpl p0) as Hy;
+    hypmatch dirlist_pred as Hx; hypmatch (pimpl freeinode_pred) as Hy;
     rewrite Hy in Hx; destruct_lift Hx.
     step.
     step.
@@ -818,7 +818,7 @@ Module DIRTREE.
   Proof.
     intros; eapply pimpl_ok2. apply mkfile_ok'.
     unfold rep; cancel.
-    rewrite subtree_extract; eauto. simpl. instantiate (a5:=l2). cancel.
+    rewrite subtree_extract; eauto. simpl. instantiate (tree_elem0:=tree_elem). cancel.
     step.
     apply pimpl_or_r; right. cancel.
     rewrite <- subtree_absorb; eauto.
@@ -870,7 +870,7 @@ Module DIRTREE.
     step.
 
     repeat deex.
-    hypmatch dirlist_pred as Hx; hypmatch (pimpl p0) as Hy;
+    hypmatch dirlist_pred as Hx; hypmatch (pimpl freeinode_pred) as Hy;
     rewrite Hy in Hx; destruct_lift Hx.
     step.
     step.
@@ -905,7 +905,7 @@ Module DIRTREE.
   Proof.
     intros; eapply pimpl_ok2. apply mkdir_ok'.
     unfold rep; cancel.
-    rewrite subtree_extract; eauto. simpl. instantiate (a5:=l2). cancel.
+    rewrite subtree_extract; eauto. simpl. instantiate (tree_elem0 := tree_elem). cancel.
     step.
     apply pimpl_or_r; right. cancel.
     rewrite <- subtree_absorb; eauto.
@@ -1162,9 +1162,9 @@ Module DIRTREE.
     unfold pimpl; intros.
     pose proof (dirlist_extract xp l H H0 m0 H1).
     destruct_lift H2.
-    destruct d; simpl in *; subst; try congruence.
+    destruct sub; simpl in *; subst; try congruence.
     pred_apply; cancel.
-    instantiate (a := l0); cancel.
+    instantiate (s := l0); cancel.
   Qed.
 
 
@@ -1203,23 +1203,24 @@ Module DIRTREE.
     step.
     step.
 
-    hypmatch p3 as Hx.
+    hypmatch freeinode_pred as Hx.
     erewrite dirlist_extract with (inum := a) in Hx; eauto.
     destruct_lift Hx.
-    destruct d2; simpl in *; try congruence; subst.
+    destruct sub; simpl in *; try congruence; subst.
     hypmatch dirlist_pred_except as Hx; destruct_lift Hx; auto.
 
     step.
     apply pimpl_or_r; right; cancel.
-    hypmatch p0 as Hx; rewrite <- Hx.
+    hypmatch freeinode_pred as Hx; rewrite <- Hx.
 
     rewrite dir_names_delete; eauto.
     rewrite dirlist_delete_file; eauto.
-    cancel.
+    instantiate (w := a); cancel.
     hypmatch (a, false) as Hc.
     pred_apply' Hc; cancel.
     step.
 
+    (* XXX: eauto with prog super slow! *)
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
     hypmatch dirlist_pred as Hx; subst_bool.
     rewrite dirlist_extract_subdir in Hx; eauto; simpl in Hx.
@@ -1241,9 +1242,9 @@ Module DIRTREE.
     step.
 
     apply pimpl_or_r; right; cancel.
-    hypmatch p0 as Hx; rewrite <- Hx.
-    erewrite dlist_is_nil with (l := l2) (m := m1); eauto.
-    rewrite dir_names_delete with (dmap := m0); eauto.
+    hypmatch freeinode_pred as Hx; rewrite <- Hx.
+    erewrite dlist_is_nil with (l := s) (m := dsmap0); eauto.
+    rewrite dir_names_delete with (dmap := dsmap); eauto.
     rewrite dirlist_pred_except_delete; eauto.
     cancel.
     step.
@@ -1266,7 +1267,7 @@ Module DIRTREE.
   Proof.
     intros; eapply pimpl_ok2. apply delete_ok'.
     unfold rep; cancel.
-    rewrite subtree_extract; eauto. simpl. instantiate (a5:=l2). cancel.
+    rewrite subtree_extract; eauto. simpl. instantiate (tree_elem0:=tree_elem). cancel.
     step.
     apply pimpl_or_r; right. cancel.
     rewrite <- subtree_absorb; eauto.
@@ -1559,20 +1560,20 @@ Module DIRTREE.
 
     generalize H.
     unfold_sep_star; intuition.
-    repeat deex. exists x. eexists.
+    repeat deex. exists m1. eexists.
     intuition.
     3: eapply IHl; eauto.
 
     apply functional_extensionality; intro.
     unfold Prog.upd, mem_union.
-    destruct (string_dec x1 name); subst; auto.
-    destruct (x name) eqn: Hx; auto.
+    destruct (string_dec x name); subst; auto.
+    destruct (m1 name) eqn: Hx; auto.
     unfold ptsto in H2; intuition.
     pose proof (H3 _ n); congruence.
 
     unfold mem_disjoint, Prog.upd.
     intuition; repeat deex.
-    destruct (string_dec x1 name); subst; auto.
+    destruct (string_dec a name); subst; auto.
     unfold ptsto in H2; intuition.
     pose proof (H6 _ n); congruence.
     unfold mem_disjoint in H0; repeat deex.
@@ -1615,19 +1616,19 @@ Module DIRTREE.
 
     generalize H.
     unfold_sep_star; intros; repeat deex.
-    exists x; eexists; intuition.
+    exists m1; eexists; intuition.
     3: eapply IHl; eauto.
 
     apply functional_extensionality; intro.
     unfold Prog.upd, mem_union.
-    destruct (string_dec x1 name); subst; auto.
-    destruct (x name) eqn: Hx; auto.
+    destruct (string_dec x name); subst; auto.
+    destruct (m1 name) eqn: Hx; auto.
     unfold ptsto in H3; intuition.
     pose proof (H4 _ n); congruence.
 
     unfold mem_disjoint, Prog.upd.
     intuition; repeat deex.
-    destruct (string_dec x1 name); subst; auto.
+    destruct (string_dec a name); subst; auto.
     unfold ptsto in H3; intuition.
     pose proof (H7 _ n); congruence.
     unfold mem_disjoint in H1; repeat deex.
@@ -1747,7 +1748,7 @@ Module DIRTREE.
     subst; simpl in *.
     hypmatch tree_dir_names_pred as Hx; assert (Horig := Hx).
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    cancel.  instantiate (a4 := TreeDir dnum l1).
+    cancel.  instantiate (tree := TreeDir dnum tree_elem).
     unfold rep; simpl.
     unfold tree_dir_names_pred; cancel.
     all: eauto.
@@ -1784,7 +1785,7 @@ Module DIRTREE.
     eauto.
 
     (* namei for dstpath, find out pruning subtree before step *)
-    hypmatch (tree_dir_names_pred' l2 m1) as Hx1.
+    hypmatch (tree_dir_names_pred' l dsmap0) as Hx1.
     hypmatch ((a, a4)) as Hx2.
     pose proof (ptsto_subtree_exists _ Hx1 Hx2) as Hx.
     destruct Hx; intuition.
@@ -1796,7 +1797,7 @@ Module DIRTREE.
     rewrite tree_prune_preserve_isdir; auto.
 
     (* fold back predicate for the pruned tree in hypothesis as well  *)
-    hypmatch (list2nmem x0) as Hinterm.
+    hypmatch (list2nmem flist) as Hinterm.
     apply helper_reorder_sep_star_1 in Hinterm.
     erewrite subtree_prune_absorb in Hinterm; eauto.
     2: apply dir_names_pred_delete'; auto.
@@ -1833,7 +1834,7 @@ Module DIRTREE.
     (* case 1: dst exists, try delete *)
     eapply pimpl_ok2. apply delete_ok. intros; norm'l.
     split_or_l; [ unfold stars; simpl; norm'l; inv_option_eq | step ].
-    hypmatch (tree_dir_names_pred' l3 m2) as Hx3.
+    hypmatch (tree_dir_names_pred' l0 dsmap1) as Hx3.
     hypmatch ((a12, a13)) as Hx4.
     pose proof (ptsto_subtree_exists _ Hx3 Hx4) as Hx.
     destruct Hx; intuition.
@@ -1842,13 +1843,13 @@ Module DIRTREE.
        the root tree node.  have to do this manually *)
     unfold rep; norm. cancel. intuition.
     pred_apply; norm. cancel. intuition.
-    instantiate (a9 := (tree_prune w l2 srcpath srcname (TreeDir dnum l1))).
+    instantiate (tree0 := (tree_prune w l srcpath srcname (TreeDir dnum tree_elem))).
     pred_apply' Hinterm; cancel. eauto.
 
     (* now, get ready for link *)
     step; try solve [ step ].
-    hypmatch d3 as Hx. assert (Hdel := Hx).
-    erewrite subtree_extract with (tree := d3) in Hx; eauto.
+    hypmatch tree' as Hx. assert (Hdel := Hx).
+    erewrite subtree_extract with (tree := tree') in Hx; eauto.
     2: subst; eapply find_update_subtree; eauto.
     simpl in Hx; unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     hypmatch (# w0) as Hx.
@@ -1875,7 +1876,7 @@ Module DIRTREE.
     eapply subtree_graft_absorb; eauto.
 
     Grab Existential Variables.
-    all: try exact emp; try exact empty_mem; try exact nil.
+    all: try exact emp; try exact empty_mem; try exact nil; try exact mvtree.
   Qed.
 
 
@@ -1900,7 +1901,7 @@ Module DIRTREE.
   Proof.
     intros; eapply pimpl_ok2. apply rename_ok'.
     unfold rep; cancel.
-    rewrite subtree_extract; eauto. simpl. instantiate (a5:=l2). cancel.
+    rewrite subtree_extract; eauto. simpl. instantiate (tree_elem0:=tree_elem). cancel.
     step.
     apply pimpl_or_r; right. cancel; eauto.
     rewrite <- subtree_absorb; eauto.
