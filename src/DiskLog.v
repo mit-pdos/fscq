@@ -192,6 +192,7 @@ Module DISKLOG.
       exists rest rest2,
       (LogDescriptor xp) |-> (descriptor_to_valu (map fst l ++ rest), [descriptor_to_valu (map fst l ++ rest2)]) *
       [[ @Rec.well_formed descriptor_type (map fst l ++ rest) ]] *
+      [[ @Rec.well_formed descriptor_type (map fst l ++ rest2) ]] *
       array (LogData xp) (synced_list (map snd l)) $1 *
       avail_region (LogData xp ^+ $ (length l))
                          (wordToNat (LogLen xp) - length l))%pred.
@@ -278,6 +279,11 @@ Module DISKLOG.
   Lemma combine_one: forall A B (a: A) (b: B), [(a, b)] = List.combine [a] [b].
   Proof.
     intros; auto.
+  Qed.
+
+  Lemma cons_combine : forall A B (a: A) (b: B) x y,
+    (a, b) :: List.combine x y = List.combine (a :: x) (b :: y).
+    trivial.
   Qed.
 
   Definition emp_star_r' : forall V AT AEQ P, P * (emp (V:=V) (AT:=AT) (AEQ:=AEQ)) =p=> P.
@@ -445,7 +451,7 @@ Module DISKLOG.
   Qed.
 
   Hint Rewrite firstn_combine_comm skipn_combine_comm selN_combine map_fst_combine map_snd_combine
-    removeN_combine List.combine_split combine_nth combine_one updN_0_skip_1 skipn_selN : lists.
+    removeN_combine List.combine_split combine_nth combine_one cons_combine updN_0_skip_1 skipn_selN : lists.
   Hint Rewrite <- combine_updN combine_upd combine_app : lists.
 
   Ltac split_pair_list_vars :=
@@ -639,56 +645,61 @@ Module DISKLOG.
     Rof ^(cs);
     rx ^(cs).
 
-(*
-  Definition extend_sync T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
+  Definition extend_sync T xp (cs: cachestate) (old: log_contents) (oldlen: addr) (new: log_contents) rx : prog T :=
     cs <- BUFCACHE.sync (LogDescriptor xp) cs;
-    let^ (cs) <- For i < $ (Map.cardinal ms)
+    let^ (cs) <- For i < $ (length new)
     Ghost [ crash F ]
     Loopvar [ cs ]
     Continuation lrx
     Invariant
       exists d', BUFCACHE.rep cs d' *
       [[ (F
-          * exists rest, (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms) ++ rest)
-          * [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]]
-          * array (LogData xp) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
-          * exists l', [[ length l' = Map.cardinal ms - # i ]]
-          * array (LogData xp ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
-          * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms))%pred d' ]]
+          * array (LogData xp ^+ $ (length old)) (firstn (# i) (synced_list (map snd new))) $1
+          * exists l', [[ length l' = length new - # i ]]
+          * array (LogData xp ^+ $ (length old) ^+ i) (List.combine (skipn (# i) (map snd new)) l') $1
+          * avail_region (LogData xp ^+ $ (length old) ^+ $ (length new)) (# (LogLen xp) - length old - length new))%pred d' ]]
     OnCrash crash
     Begin
-      cs <- BUFCACHE.sync_array (LogData xp ^+ i) $0 cs;
+      cs <- BUFCACHE.sync_array (LogData xp ^+ oldlen ^+ i) $0 cs;
       lrx ^(cs)
     Rof ^(cs);
-    rx ^(ms, cs).
+    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header (length old + length new))) cs;
+    cs <- BUFCACHE.sync (LogHeader xp) cs;
+    rx ^(cs).
 
-  Definition extend T xp (cs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    If (lt_dec (wordToNat (LogLen xp)) (Map.cardinal ms)) {
-      rx ^(^(ms, cs), false)
+  Definition extend T xp (cs: cachestate) (old: log_contents) (oldlen: addr) (new: log_contents) rx : prog T :=
+    If (lt_dec (wordToNat (LogLen xp)) (length old + length new)) {
+      rx ^(^(cs), false)
     } else {
       (* Write... *)
-      let^ (ms, cs) <- flush_unsync xp ^(ms, cs);
+      let^ (cs) <- extend_unsync xp cs old oldlen new;
       (* ... and sync *)
-      let^ (ms, cs) <- flush_sync xp ^(ms, cs);
-      rx ^(^(ms, cs), true)
+      let^ (cs) <- extend_sync xp cs old oldlen new;
+      rx ^(^(cs), true)
     }.
-*)
 
   Definition extended_unsynced xp (old: log_contents) (new: log_contents) : @pred addr (@weq addrlen) valuset :=
      ([[ valid_size xp (old ++ new) ]] *
       (LogHeader xp) |=> (header_to_valu (mk_header (length old))) *
-      exists rest others,
+      exists rest rest2,
       (LogDescriptor xp) |-> (descriptor_to_valu (map fst (old ++ new) ++ rest),
-                              map descriptor_to_valu others) *
+                              [descriptor_to_valu (map fst old ++ rest2)]) *
       [[ @Rec.well_formed descriptor_type (map fst (old ++ new) ++ rest) ]] *
-      [[ Forall (@Rec.well_formed descriptor_type) others ]] *
+      [[ @Rec.well_formed descriptor_type (map fst old ++ rest2) ]] *
       array (LogData xp) (synced_list (map snd old)) $1 *
       exists unsynced, (* XXX unsynced is the wrong word for the old values *)
+      [[ length unsynced = length new ]] *
       array (LogData xp ^+ $ (length old)) (List.combine (map snd new) unsynced) $1 *
       avail_region (LogData xp ^+ $ (length old) ^+ $ (length new))
                          (# (LogLen xp) - length old - length new))%pred.
+
+  Lemma in_1 : forall T (x y: T), In x [y] -> x = y.
+    intros.
+    inversion H.
+    congruence.
+    inversion H0.
+  Qed.
+
 
   Theorem extend_unsync_ok : forall xp cs old oldlen new,
     {< F,
@@ -746,6 +757,9 @@ Module DISKLOG.
     solve_lengths.
     rewrite Forall_forall; intuition.
     solve_lengths.
+    rewrite Forall_forall; intuition.
+    solve_lengths.
+
     or_r; cancel.
     unfold valuset_list; simpl; rewrite map_app.
     rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
@@ -767,6 +781,10 @@ Module DISKLOG.
     rewrite Forall_forall; intuition.
     unfold upd_prepend.
     solve_lengths.
+    rewrite Forall_forall; intuition.
+    unfold upd_prepend.
+    solve_lengths.
+
     (* step. *)
     eapply pimpl_ok2; [ eauto with prog | ].
     word2nat_clear.
@@ -777,7 +795,6 @@ Module DISKLOG.
     unfold avail_region.
     intuition. pred_apply.
     norm. cancel'. unfold stars; simpl; eapply pimpl_trans; [ apply star_emp_pimpl |].
-    instantiate (others := [_]).
     unfold valuset_list.
     simpl.
     rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - length old - length new).
@@ -788,19 +805,7 @@ Module DISKLOG.
     unfold valid_size; solve_lengths.
     solve_lengths.
     rewrite Forall_forall; intuition.
-    rewrite Forall_forall; intuition.
-  Lemma in_1 : forall T (x y: T), In x [y] -> x = y.
-    intros.
-    inversion H.
-    congruence.
-    inversion H0.
-  Qed.
-    match goal with
-    | [ H: _ |- _] => apply in_1 in H
-    end.
-    subst.
     solve_lengths.
-    rewrite Forall_forall; intuition.
     congruence.
     congruence.
     autorewrite with lengths in *.
@@ -817,6 +822,8 @@ Module DISKLOG.
     solve_lengths.
     rewrite Forall_forall; intuition.
     solve_lengths.
+    rewrite Forall_forall; intuition.
+    solve_lengths.
     cancel.
     cancel.
     or_r; cancel.
@@ -828,123 +835,376 @@ Module DISKLOG.
     word2nat_clear; autorewrite with lengths in *.
     solve_lengths.
     rewrite Forall_forall; intuition.
+    word2nat_clear; autorewrite with lengths in *.
     solve_lengths.
+    rewrite Forall_forall; intuition.
+    solve_lengths.
+
     Unshelve.
     all: eauto; constructor.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (extend_unsync _ _) _) => apply extend_unsync_ok : prog.
 
-  Theorem flush_sync_ok : forall xp mscs,
-    {< m F,
+
+  Theorem extend_sync_ok : forall xp cs old oldlen new,
+    {< F,
     PRE
+      [[ # oldlen = length old ]] *
       [[ valid_xp xp ]] *
-      let '^(ms, cs) := mscs in
-      exists d, BUFCACHE.rep cs d * 
-      [[ (F * log_rep_unsynced xp m ms)%pred d ]] *
-      [[ Map.cardinal ms <= wordToNat (LogLen xp) ]] *
-      [[ valid_entries m ms ]]
-    POST RET:mscs'
-      let '^(ms, cs) := mscs in
-      let '^(ms', cs') := mscs' in
-      [[ ms = ms' ]] *
-      exists d, BUFCACHE.rep cs' d *
-      [[ (F * log_rep xp m ms')%pred d ]] *
-      [[ Map.cardinal ms' <= wordToNat (LogLen xp) ]]
+      [[ valid_size xp (old ++ new) ]] *
+      exists d, BUFCACHE.rep cs d *
+      [[ (F * extended_unsynced xp old new)%pred d ]]
+    POST RET:^(cs')
+      rep xp F (Synced (old ++ new)) cs'
     CRASH
-      exists mscs' : memstate_cachestate,
-      exists d,
-      let '^(ms, cs) := mscs in
-      (BUFCACHE.rep cs d * [[ (F * log_rep_empty xp)%pred d ]] \/
-       BUFCACHE.rep cs d * [[ (F * log_rep_unsynced xp m ms)%pred d ]])
-    >} flush_sync xp mscs.
+      exists cs' : cachestate,
+      rep xp F (ExtendedDescriptor old) cs' \/ rep xp F (Synced old) cs' \/ rep xp F (Extended old new) cs' \/ rep xp F (Synced (old ++ new)) cs'
+    >} extend_sync xp cs old oldlen new.
   Proof.
-    unfold flush_sync; log_unfold; unfold avail_region, memstate_cachestate.
-    destruct mscs as [ms cs].
+    unfold extend_sync; disklog_unfold; unfold avail_region, extended_unsynced.
     intros.
     solve_lengths_prepare.
-    step.
-    step.
-
-    ring_simplify (LogData xp ^+ $0).
-    cancel; eauto.
-    omega.
-
-    step.
-    instantiate (1 := List.combine (skipn # m1 (map snd (Map.elements ms))) l4).
+    (* step. (* XXX takes a very long time *) *)
+    eapply pimpl_ok2; [ eauto with prog | ].
     cancel.
-    solve_lengths.
-
-    step.
-    try_arrays_lengths.
-    split_lists.
-    rewrite skipn_skipn.
-    rewrite (plus_comm 1).
+    eapply pimpl_ok2; [ eauto with prog | ].
+    unfold avail_region.
+    cancel.
+    word2nat_clear; word2nat_auto.
     rewrite Nat.add_0_r.
-    erewrite firstn_plusone_selN.
-    rewrite <- app_assoc.
+    fold unifiable_array; cancel.
+    solve_lengths.
+    solve_lengths.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    word2nat_clear; word2nat_auto.
+    fold unifiable_array; cancel.
+    solve_lengths.
+    unfold valid_size in *.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    word2nat_clear.
+    autorewrite with lengths in *.
+    word2nat_auto.
+    array_match_prepare.
+    repeat chop_shortest_suffix.
+    auto.
+    (* subst_evars here would cause an anomaly trying to instantiate H14 *)
+    subst H14.
     reflexivity.
+    auto.
+    subst_evars; reflexivity.
+    subst H14.
     solve_lengths.
-    erewrite firstn_plusone_selN.
+    (* XXX revise once the anomalies are fixed *)
+    subst H14 H19.
+    erewrite firstn_plusone_selN by solve_lengths.
+    trivial.
+    trivial.
+    subst H12; trivial.
+    subst H11.
+    solve_lengths.
+    unfold upd_sync.
+    subst H11 H12.
+    unfold sel, upd; simpl.
+    instantiate (l'0 := skipn 1 l').
+    subst H4.
+    repeat rewrite selN_combine.
+    lists_eq.
+    subst H6.
+    trivial.
+    solve_lengths.
+    autorewrite with lengths in *.
+    solve_lengths.
+    solve_lengths.
+    cancel.
+    or_r; or_l. norm. cancel'.
+    repeat constructor. pred_apply.
+
+    rewrite map_app.
     rewrite <- app_assoc.
-    rewrite repeat_selN.
+    cancel.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    array_match.
+    unfold synced_list. autorewrite with lengths. trivial.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    solve_lengths.
+
+    or_r; or_l; cancel.
+    rewrite map_app.
+    rewrite <- app_assoc.
+    cancel.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    array_match.
+    unfold synced_list. autorewrite with lengths. trivial.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+    unfold upd_sync.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    word2nat_clear.
+    autorewrite with lengths in *.
+    rewrite map_app.
+    cancel.
+    unfold synced_list.
+    array_match_prepare.
+    repeat chop_shortest_suffix.
+    auto.
+    subst_evars.
     reflexivity.
-
+    reflexivity.
+    subst H6. (* subst_evars here leads to an anomaly *)
+    reflexivity.
+    subst H4.
     solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-
-    or_l. cancel.
-    try_arrays_lengths.
-    solve_lengths.
-
-    or_l. cancel.
-    try_arrays_lengths.
-    unfold upd_sync; solve_lengths.
-    unfold upd_sync; solve_lengths.
-    unfold upd_sync; solve_lengths.
-
-    step.
-    try_arrays_lengths.
-    rewrite firstn_oob by solve_lengths.
-    eauto.
-    solve_lengths.
-    solve_lengths.
+    subst H4 H6.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    lists_eq.
+    trivial.
+    rewrite app_repeat.
+    trivial.
+    subst_evars.
+    trivial.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
     solve_lengths.
 
-    or_r. cancel.
-    try_arrays_lengths.
-    solve_lengths.
-    solve_lengths.
+    cancel.
+    or_r; or_r; or_l; cancel.
+    word2nat_clear. unfold valid_size in *. autorewrite with lengths in *.
+    unfold synced_list.
+    array_match_prepare.
+    repeat chop_shortest_suffix.
+    auto.
+    subst_evars. reflexivity.
+    reflexivity.
+    (* subst_evars here gives an anomaly *) subst H6. reflexivity.
+    subst H4. solve_lengths.
+    subst H4 H6. lists_eq.
+    trivial.
+    rewrite app_repeat. trivial.
+    subst H1. reflexivity.
+    word2nat_clear. unfold valid_size in *. autorewrite with lengths in *.
     solve_lengths.
 
-    or_l. cancel.
-    try_arrays_lengths.
+    or_r; or_r; or_r; cancel.
+    word2nat_clear. unfold valid_size in *. autorewrite with lengths in *.
+    unfold synced_list.
+    cancel.
+    array_match_prepare.
+    repeat chop_shortest_suffix.
+    auto.
+    subst_evars. reflexivity.
+    reflexivity.
+    (* subst_evars here gives an anomaly *) subst H6. reflexivity.
+    subst H4. solve_lengths.
+    subst H4 H6. lists_eq.
+    trivial.
+    rewrite app_repeat. trivial.
+    subst H1. reflexivity.
+    word2nat_clear. unfold valid_size in *. autorewrite with lengths in *.
+    solve_lengths.
+
+    cancel.
+    or_r; or_l; cancel.
+    rewrite map_app.
+    rewrite <- app_assoc.
+    cancel.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    array_match.
+    unfold synced_list. autorewrite with lengths. trivial.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+    unfold upd_sync.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+
+    cancel.
+    or_r; or_r; or_l; cancel.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold synced_list.
+    array_match_prepare.
+    repeat chop_shortest_suffix.
+    auto.
+    subst_evars. reflexivity.
+    reflexivity.
+    (* subst_evars here gives an anomaly *) subst H6. reflexivity.
+    subst H4. solve_lengths.
+    subst H4 H6. lists_eq.
+    trivial.
+    rewrite app_repeat. trivial.
+    subst H1. reflexivity.
+    word2nat_clear. unfold valid_size in *. autorewrite with lengths in *.
+    solve_lengths.
+
+    cancel.
+    or_r; or_l; cancel.
+    instantiate (1 := d').
+    pred_apply. cancel.
+    rewrite map_app.
+    rewrite <- app_assoc.
+    cancel.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    array_match.
+    unfold synced_list. autorewrite with lengths. trivial.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+    unfold upd_sync.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+
+    cancel.
+    rewrite map_app.
+    rewrite <- app_assoc.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    cancel.
+    array_match.
+    unfold synced_list. autorewrite with lengths. trivial.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
+    solve_lengths.
+    unfold upd_sync.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    solve_lengths.
+    rewrite Forall_forall; intuition.
+    word2nat_clear.
+    unfold valid_size in *.
+    autorewrite with lengths in *.
+    unfold upd_sync.
     solve_lengths.
 
     Unshelve.
     all: auto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
 
-  Theorem flush_ok : forall xp mscs,
-    {< m1 m2 F,
+  Hint Extern 1 ({{_}} progseq (extend_sync _ _) _) => apply extend_sync_ok : prog.
+
+  Theorem extend_ok : forall xp cs old new rx,
+    {< F,
     PRE
-      rep xp F (ActiveTxn m1 m2) mscs
-    POST RET:^(mscs,r)
-      ([[ r = true ]] * rep xp F (FlushedTxn m1 m2) mscs) \/
-      ([[ r = false ]] * rep xp F (ActiveTxn m1 m2) mscs)
+      rep xp F (Synced old) cs
+    POST RET:^(cs,r)
+      ([[ r = true ]] * rep xp F (Synced new) cs \/
+      ([[ r = false ]] * rep xp F (Synced old) cs
     CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/ rep xp F (FlushedUnsyncTxn m1 m2) mscs'
-    >} flush xp mscs.
+      exists cs' : cachestate,
+      rep xp F (ExtendedDescriptor old) cs' \/ rep xp F (Synced old) cs' \/ rep xp F (Extended old new) cs' \/ rep xp F (Synced (old ++ new)) cs'
+    >} extend xp old new cs.
   Proof.
-    unfold flush, rep, rep_inner.
+    unfold extend.
     step.
     step.
     step.
