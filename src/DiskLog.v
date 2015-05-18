@@ -1275,6 +1275,27 @@ Module DISKLOG.
    (rep_inner xp (Synced old) \/
     rep_inner xp (Synced cur))%pred.
 
+  Lemma sep_star_or_distr_r: forall AT AEQ V (a b c: @pred AT AEQ V),
+    (a \/ b) * c <=p=> a * c \/ b * c.
+  Proof.
+    intros.
+    rewrite sep_star_comm.
+    rewrite sep_star_or_distr.
+    split; cancel.
+  Qed.
+
+  Lemma or_exists_distr : forall T AT AEQ V (P Q: T -> @pred AT AEQ V),
+    (exists t: T, P t \/ Q t) =p=> (exists t: T, P t) \/ (exists t: T, Q t).
+  Proof.
+    firstorder.
+  Qed.
+
+  Lemma lift_or : forall AT AEQ V P Q,
+    @lift_empty AT AEQ V (P \/ Q) =p=> [[ P ]] \/ [[ Q ]].
+  Proof.
+    firstorder.
+  Qed.
+
   Lemma crash_xform_would_recover_either' : forall fsxp old cur,
     crash_xform (would_recover_either' fsxp old cur) =p=>
     after_crash' fsxp old cur.
@@ -1292,57 +1313,71 @@ Module DISKLOG.
     setoid_rewrite crash_invariant_avail_region.
     setoid_rewrite crash_invariant_synced_array.
     cancel; autorewrite with crash_xform.
-    + cancel_with solve_lengths.
+    + unfold avail_region; cancel_with solve_lengths.
     + cancel.
       or_r. subst. unfold avail_region. cancel_with solve_lengths.
-      instantiate (rest := map fst a ++ x).
-      unfold valid_size in *.
-      autorewrite with lengths in *.
       repeat rewrite map_app.
       rewrite <- app_assoc.
       cancel.
-      solve_lengths_prepare.
-      array_match.
-      split_lists; solve_lengths.
-      rewrite <- app_assoc.
+      autorewrite with lengths in *.
+      array_match_prepare.
+      repeat chop_shortest_suffix.
       auto.
-      rewrite <- app_repeat.
-      rewrite <- app_assoc.
-      auto.
-      unfold valid_size in *; omega.
+      all: subst_evars.
+      all: try reflexivity.
+      solve_lengths.
+      lists_eq.
+      reflexivity.
+      rewrite repeat_app.
+      reflexivity.
+      solve_lengths.
+      autorewrite with lengths in *.
+      solve_lengths.
       autorewrite with lengths in *.
       solve_lengths.
       rewrite Forall_forall; intuition.
-      unfold valid_size in *.
-      autorewrite with lengths in *; solve_lengths.
+      autorewrite with lengths in *.
+      solve_lengths.
+      exact (fun x => None).
       or_l. subst. unfold avail_region. unfold valid_size in *. cancel.
+    + or_l. unfold avail_region. unfold valid_size in *.
+      simpl.
+      setoid_rewrite lift_or.
+      repeat setoid_rewrite sep_star_or_distr_r.
+      setoid_rewrite or_exists_distr.
+      cancel.
+      subst; cancel.
+      all: trivial.
+      subst; cancel.
+      all: trivial.
+    + cancel; subst.
+      or_r. autorewrite with lengths. unfold avail_region. cancel.
+      autorewrite with lengths in *. trivial.
+      or_l. unfold avail_region. cancel.
+      repeat rewrite map_app.
+      rewrite <- app_assoc.
+      cancel.
+      autorewrite with lengths in *.
+      array_match_prepare.
+      repeat chop_shortest_suffix.
+      auto.
+      all: subst_evars.
+      all: try reflexivity.
+      solve_lengths.
+      lists_eq.
+      reflexivity.
+      rewrite repeat_app.
+      reflexivity.
+      solve_lengths.
+      autorewrite with lengths in *.
+      solve_lengths.
+      autorewrite with lengths in *.
+      solve_lengths.
+      rewrite Forall_forall; intuition.
+      autorewrite with lengths in *.
+      solve_lengths.
     + cancel.
       or_r. subst. unfold avail_region. unfold valid_size in *. cancel.
-      autorewrite with lengths.
-      cancel.
-      or_l. subst. unfold avail_region. unfold valid_size in *. cancel.
-      instantiate (rest := map fst a ++ x).
-      unfold valid_size in *.
-      autorewrite with lengths in *.
-      repeat rewrite map_app.
-      rewrite <- app_assoc.
-      cancel.
-      solve_lengths_prepare.
-      array_match.
-      split_lists; solve_lengths.
-      rewrite <- app_assoc.
-      auto.
-      rewrite <- app_repeat.
-      rewrite <- app_assoc.
-      auto.
-      autorewrite with lengths in *.
-      omega.
-      autorewrite with lengths in *.
-      solve_lengths.
-      rewrite Forall_forall; intuition.
-      unfold valid_size in *.
-      autorewrite with lengths in *; solve_lengths.
-    + or_r. unfold avail_region. unfold valid_size in *. cancel.
   Qed.
 
 End DISKLOG.
