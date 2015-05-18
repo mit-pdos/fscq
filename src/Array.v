@@ -1421,6 +1421,9 @@ Theorem read_ok:
 Proof.
   unfold ArrayRead.
   hoare.
+  rewrite <- surjective_pairing. cancel.
+  rewrite <- surjective_pairing. cancel.
+  rewrite <- surjective_pairing. cancel.
 Qed.
 
 Theorem write_ok:
@@ -1435,6 +1438,8 @@ Theorem write_ok:
 Proof.
   unfold ArrayWrite.
   hoare.
+  rewrite <- surjective_pairing. cancel.
+  rewrite <- surjective_pairing. cancel.
 Qed.
 
 Theorem sync_ok:
@@ -1449,6 +1454,8 @@ Theorem sync_ok:
 Proof.
   unfold ArraySync.
   hoare.
+  rewrite <- surjective_pairing. cancel.
+  rewrite <- surjective_pairing. cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
