@@ -191,6 +191,7 @@ Module DIRTREE.
       eapply ptsto_conflict_F with (a := s). pred_apply' H.
       rewrite tree_dir_names_pred'_app. simpl.
       destruct d; cancel.
+      cancel.
     - constructor; [| eapply IHl; pred_apply' H; cancel ].
       intro Hin.
       apply in_map_iff in Hin. repeat deex. destruct x.
@@ -198,6 +199,7 @@ Module DIRTREE.
       eapply ptsto_conflict_F with (a := s). pred_apply' H.
       rewrite tree_dir_names_pred'_app. simpl.
       destruct d; cancel.
+      cancel.
   Qed.
 
   Lemma dir_names_distinct : forall xp l w,
@@ -449,7 +451,7 @@ Module DIRTREE.
         * apply ptsto_mem_except in H0.
           rewrite IHl with (inum:=inum). cancel. 2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF.
-          pred_apply; cancel. auto.
+          pred_apply; cancel. apply pimpl_refl. auto.
       + apply ptsto_mem_except in H0 as H0'.
         rewrite IHl with (inum:=inum). cancel. 2: eauto.
         apply sep_star_comm in H.
