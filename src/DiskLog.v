@@ -844,7 +844,7 @@ Module DISKLOG.
     all: eauto; constructor.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (extend_unsync _ _) _) => apply extend_unsync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (extend_unsync _ _ _ _ _) _) => apply extend_unsync_ok : prog.
 
 
   Theorem extend_sync_ok : forall xp cs old oldlen new,
@@ -1190,7 +1190,7 @@ Module DISKLOG.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (extend_sync _ _) _) => apply extend_sync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (extend_sync _ _ _ _ _) _) => apply extend_sync_ok : prog.
 
   Theorem extend_ok : forall xp cs old new rx,
     {< F,
@@ -1213,7 +1213,142 @@ Module DISKLOG.
     or_l. cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
+  Hint Extern 1 ({{_}} progseq (extend _ _ _ _) _) => apply extend_ok : prog.
+
+
+  Definition shorten T xp newlen cs rx : prog T :=
+    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header newlen)) cs;
+    cs <- BUFCACHE.sync (LogHeader xp) cs;
+    rx ^(cs).
+
+  Theorem shorten_ok: forall xp newlen cs,
+    {< F old,
+    PRE
+      [[ newlen <= length old ]] *
+      rep xp F (Synced old) cs
+    POST RET:^(cs)
+      exists new cut,
+      [[ old = new ++ cut ]] *
+      [[ length new = newlen ]] *
+      rep xp F (Synced new) cs
+    CRASH
+      exists cs' : cachestate,
+      rep xp F (Synced old) cs' \/ rep xp F (Shortened old newlen) cs' \/
+      exists new cut,
+      [[ old = new ++ cut ]] *
+      [[ length new = newlen ]] *
+      rep xp F (Synced new) cs'
+    >} shorten xp newlen cs.
+  Proof.
+    unfold shorten; disklog_unfold; unfold avail_region, valid_size.
+    intros.
+    solve_lengths_prepare.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    cancel.
+    eapply pimpl_ok2; [ eauto with prog | ].
+    intros. norm.
+    cancel'. repeat constructor.
+    (* XXX this looks rather hard to automate *)
+    rewrite (firstn_skipn newlen).
+    trivial.
+    solve_lengths.
+    pred_apply.
+    cancel.
+    (* XXX this is also hard to automate *)
+    replace (map fst old) with (map fst (firstn newlen old ++ skipn newlen old)).
+    rewrite map_app. rewrite <- app_assoc.
+    autorewrite with lengths.
+    rewrite Nat.min_l by auto.
+    cancel.
+    array_match_prepare.
+    repeat chop_shortest_suffix.
+    auto.
+    subst_evars. reflexivity.
+    reflexivity.
+    subst_evars. reflexivity.
+    subst H3. solve_lengths.
+    subst H3 H4. lists_eq. rewrite firstn_skipn. trivial.
+    rewrite app_repeat. (* XXX solve_lengths here gives an anomaly *)
+    autorewrite with lengths. rewrite Nat.min_r by auto.
+    (* XXX also not sure how to automate this *)
+    instantiate (1 := length old - newlen).
+    rewrite le_plus_minus_r by auto.
+    trivial.
+    trivial.
+    subst_evars. trivial.
+    subst_evars. solve_lengths.
+    subst H1. solve_lengths.
+    subst H1. solve_lengths.
+    subst H0 H1 H2. trivial.
+    rewrite firstn_skipn. trivial.
+    solve_lengths.
+    word2nat_clear. autorewrite with lengths in *.
+    solve_lengths.
+    trivial.
+    rewrite Forall_forall; intuition.
+    word2nat_clear. autorewrite with lengths in *.
+    solve_lengths.
+    solve_lengths.
+    congruence.
+    congruence.
+
+    cancel.
+    or_r; or_l; cancel.
+    or_r; or_r.
+    norm. cancel'.
+    constructor. (* [intuition] screws up here... *)
+    word2nat_clear. unfold valid_size in *. autorewrite with lengths in *.
+    constructor.
+    rewrite (firstn_skipn newlen).
+    trivial.
+    solve_lengths.
+    intuition.
+    pred_apply.
+    cancel.
+    replace (map fst old) with (map fst (firstn newlen old ++ skipn newlen old)).
+    rewrite map_app. rewrite <- app_assoc.
+    autorewrite with lengths.
+    rewrite Nat.min_l by auto.
+    cancel.
+    array_match_prepare.
+    repeat chop_shortest_suffix.
+    auto.
+    subst_evars. reflexivity.
+    reflexivity.
+    subst_evars. reflexivity.
+    subst H3. solve_lengths.
+    subst H3 H4. lists_eq. rewrite firstn_skipn. trivial.
+    rewrite app_repeat. (* XXX solve_lengths here gives an anomaly *)
+    autorewrite with lengths. rewrite Nat.min_r by auto.
+    (* XXX also not sure how to automate this *)
+    instantiate (1 := length old - newlen).
+    rewrite le_plus_minus_r by auto.
+    trivial.
+    trivial.
+    subst_evars. trivial.
+    subst_evars. solve_lengths.
+    subst H1. solve_lengths.
+    subst H1. solve_lengths.
+    subst H0 H1 H2. trivial.
+    rewrite firstn_skipn. trivial.
+    solve_lengths.
+    word2nat_clear. autorewrite with lengths in *.
+    solve_lengths.
+    trivial.
+    rewrite Forall_forall; intuition.
+    word2nat_clear. autorewrite with lengths in *.
+    solve_lengths.
+    solve_lengths.
+
+    cancel.
+    or_l; cancel.
+    or_r; or_l; cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (shorten _ _ _ _) _) => apply shorten_ok : prog.
+
 
   Lemma crash_invariant_synced_array: forall l start stride,
     crash_xform (array start (List.combine l (repeat nil (length l))) stride) =p=>
