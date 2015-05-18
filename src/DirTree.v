@@ -420,18 +420,23 @@ Module DIRTREE.
     - simpl in *. apply ptsto_valid' in H. congruence.
     - destruct a. destruct d. simpl in *.
       + apply ptsto_mem_except in H0 as H0'.
-        rewrite IHl. cancel. cancel. 2: eauto.
+        rewrite IHl. cancel.
+        instantiate (s1 := s0); instantiate (w := inum); cancel.
+        2: eauto.
         apply sep_star_comm in H.
         pose proof (ptsto_diff_ne H0 H).
         destruct (string_dec name s). exfalso. apply H1; eauto.
         congruence.
-        apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
+        apply sep_star_comm.
+        eapply ptsto_mem_except_exF; eauto.
       + destruct (string_dec name s); subst.
         * apply ptsto_valid in H0. apply ptsto_valid' in H.
           rewrite H in H0. inversion H0. subst.
-          cancel. instantiate (a0 := l0). cancel.
+          cancel. instantiate (s0 := l0). cancel.
         * apply ptsto_mem_except in H0. simpl.
-          rewrite IHl. cancel. cancel. 2: eauto.
+          rewrite IHl. cancel.
+          instantiate (s1 := s0); instantiate (w := inum); cancel.
+          2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
           pred_apply; cancel.
   Qed.
@@ -527,7 +532,7 @@ Module DIRTREE.
           pred_apply. cancel.
       + apply ptsto_mem_except in H0.
         edestruct IHl with (m:=m) (rec:=rec) (name:=name); eauto.
-        pred_apply. cancel.
+        pred_apply. cancel. instantiate (F := F'). cancel.
         * left. intuition. unfold mem_except in *. destruct (string_dec name s); congruence.
         * right. unfold mem_except in *. destruct (string_dec name s); congruence.
   Qed.
@@ -675,7 +680,7 @@ Module DIRTREE.
     step.
 
     (* isdir = true *)
-    destruct d2; simpl in *; subst; intuition.
+    destruct tree0; simpl in *; subst; intuition.
     step.
     hypmatch (tree_dir_names_pred) as Hx.
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
