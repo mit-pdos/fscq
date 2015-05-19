@@ -90,6 +90,7 @@ Section LISTPRED.
     cancel.
     eapply pimpl_trans; [| apply IHl ].
     cancel.
+    apply pimpl_refl.
     omega.
   Qed.
 
