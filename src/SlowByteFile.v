@@ -423,7 +423,7 @@ Module SLOWBYTEFILE.
     admit.
     admit.  (* H17 *)
     admit.  (* bound on length, so conversion is ok *)
-    admit.  (* newlen = len (bytes ++ repeat $ (0) (newlen - length bytes) *)
+    admit.  (* newlen = len (bytes ++ repeat $ (0) ((length (BFILE.BFData f')) * valubytes))  *)
     step.
    Admitted.
 
@@ -485,14 +485,14 @@ Module SLOWBYTEFILE.
     }.
 
 
-  (* XXX length olddata = min (length data) ((length bytes - off)) *)
+
   Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
     {< m mbase F Fm Fx A flist f bytes olddata,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ length olddata <= length newdata ]] *
+           [[ length olddata = Nat.min (length newdata) ((length bytes - off)) ]] *
            [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
