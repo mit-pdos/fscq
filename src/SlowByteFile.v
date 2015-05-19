@@ -391,6 +391,7 @@ Module SLOWBYTEFILE.
            [[ ok = true ]] * exists flist' f' bytes',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ (length (BFILE.BFData f')) * valubytes >= newlen ]] *
            [[ bytes' = (bytes ++ (repeat $0 (((length (BFILE.BFData f')) * valubytes) -curlen))) ]] *
            [[ rep bytes' f']])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
@@ -408,6 +409,8 @@ Module SLOWBYTEFILE.
      step.
      step.
      eapply pimpl_or_r; right; cancel.
+
+     admit. (* H14 *)
 
      eexists.
      instantiate (allbytes :=  bytes ++ repeat $ (0) ((length (BFILE.BFData f')) * valubytes)).
@@ -517,7 +520,7 @@ Module SLOWBYTEFILE.
     step.  (* write_bytes_in_bound  *)
     step.  
     step.  (* write_bytes_in_bound, a = true *)
-    admit. (* H16, H4, something about growing memories *)
+    admit. (* H18, but some unification problem, newdata should be olddata' *)
     step.  (* return *)
     step.  (* return *)
     step.  (* write_bytes_in_bound on false branch *)
