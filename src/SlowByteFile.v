@@ -384,16 +384,18 @@ Module SLOWBYTEFILE.
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ bytes_rep f bytes  ]] *
            [[ curlen = length bytes ]] *
+           [[ curlen = # (f.(BFILE.BFAttr).(INODE.ISize)) ]] *
            [[ curlen < newlen ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
-           [[ ok = true ]] * exists flist' f' bytes',
+           [[ ok = true ]] * exists flist' f' bytes' fdata' attr,
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ (length (BFILE.BFData f')) * valubytes >= newlen ]] *
-           [[ bytes' = (bytes ++ (repeat $0 (((length (BFILE.BFData f')) * valubytes) -curlen))) ]] *
-           [[ rep bytes' f']])
+           [[ bytes' = (bytes ++ (repeat $0 (newlen - curlen))) ]] *
+           [[ rep bytes' f']] *
+           [[ attr = INODE.Build_iattr ($ newlen) (f.(BFILE.BFAttr).(INODE.IMTime)) (f.(BFILE.BFAttr).(INODE.IType))]] *
+           [[ f' = BFILE.Build_bfile fdata' attr]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
      >} grow_file fsxp inum newlen mscs.
    Proof.
@@ -410,24 +412,29 @@ Module SLOWBYTEFILE.
      step.
      eapply pimpl_or_r; right; cancel.
 
-     admit. (* H14 *)
-
+     (* bytes_rep f': *)
+     (* 1. array_item_file: *)
      eexists.
-     instantiate (allbytes :=  bytes ++ repeat $ (0) ((length (BFILE.BFData f')) * valubytes)).
+     instantiate (allbytes := (bytes ++ repeat $ (0)
+           (# ($
+               ((newlen + valubytes - 1) / valubytes -
+                (# (INODE.ISize (BFILE.BFAttr f)) + valubytes - 1) / valubytes)) *
+            valubytes))).
+
+     destruct H15.
      intuition.
-     unfold bytes_rep in H14.
-     destruct H14.
-     replace {|
-        BFILE.BFData := BFILE.BFData f';
-        BFILE.BFAttr := {|
-                  INODE.ISize := $ (newlen);
-                  INODE.IMTime := INODE.IMTime (BFILE.BFAttr f);
-                  INODE.IType := INODE.IType (BFILE.BFAttr f) |} |} with f' in *.
-    admit.
-    admit.  (* H17 *)
-    admit.  (* bound on length, so conversion is ok *)
-    admit.  (* newlen = len (bytes ++ repeat $ (0) ((length (BFILE.BFData f')) * valubytes))  *)
-    step.
+     unfold array_item_file in *.
+     eapply a5.
+
+     (* 2. bounds *)
+     admit.  (* bound on length *)
+
+     (* 3. firstn *)
+     rewrite <- H5.
+     admit. (* bytes are equal and newlen > length bytes;   newlen - bytes <  ((newlen + valubytes - 1) / valubytes -
+          (length bytes + valubytes - 1) / valubytes)) * valubytes *)
+
+     step.
    Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
@@ -437,12 +444,14 @@ Module SLOWBYTEFILE.
     rx mscs.
    
   Theorem write_bytes_in_bound_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
-    {< m mbase F Fm Fx A flist f bytes olddata,
+    {< m mbase F Fm Fx A flist f bytes olddata len,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ length olddata = length newdata ]] *
+           [[ len = length newdata ]] *
+           [[ len = length olddata ]] *
+           [[ off + len <= length bytes ]] *
            [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]]
        POST RET:mscs
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -450,22 +459,18 @@ Module SLOWBYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]]
+           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
+           [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} write_bytes_in_bound fsxp inum off newdata mscs.
   Proof.
     unfold write_bytes_in_bound, bytes_rep, rep.
     step. (* update_bytes *)
-    instantiate (bytes := allbytes).
     unfold rep.
     eexists.
-    intuition.
     instantiate (allbytes := allbytes).
-    assumption.
-    admit.
-    admit.
-    admit.
-    step.  (* return *)
+    intuition.
+    admit. (* XXX unification problem? *)
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (write_bytes_in_bound _ _ _ _ _) _) => apply write_bytes_in_bound_ok : prog.
@@ -515,15 +520,18 @@ Module SLOWBYTEFILE.
     instantiate (bytes := allbytes).
     unfold bytes_rep.
     intuition.
-    admit.  (* H12. length(datax) = off, on the grow true branch *)
+    admit. (* unification problem? *)
+    admit. (* H11 and H. length(datax) = off, on the grow true branch *)
     step.  (* If *)
     step.  (* write_bytes_in_bound  *)
     step.  
     step.  (* write_bytes_in_bound, a = true *)
+    admit.
     admit. (* H18, but some unification problem, newdata should be olddata' *)
     step.  (* return *)
     step.  (* return *)
     step.  (* write_bytes_in_bound on false branch *)
+    admit.
     admit.
     admit.
     step.  (* return *)
