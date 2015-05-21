@@ -361,28 +361,6 @@ Module SLOWBYTEFILE.
 
    Definition nunit_roundup (n: nat) (unitsz:nat) : nat := (n + unitsz - 1) / unitsz.
 
-
-  Lemma firstn_allbytes:
-     forall (bytes: list byte) (allbytes: list byte) (oldlen:addr) (newlen:nat) nblock,
-       newlen > (# oldlen) ->
-       length bytes = (# oldlen) ->
-       (nunit_roundup (# oldlen) valubytes) * valubytes = length allbytes ->
-       allbytes = bytes ++ (@repeat (word 8) $0 ((length allbytes) - (# oldlen))) ->
-       nblock = (nunit_roundup newlen valubytes) - (nunit_roundup (# oldlen) valubytes) ->
-       @firstn byte newlen (allbytes ++ 
-          (@repeat (word 8) $0 ((@wordToNat addrlen ($ nblock)) * valubytes))) = 
-         (@firstn byte (# oldlen) allbytes) ++ (@repeat (word 8) $0 (newlen - (# oldlen))).
-   Proof.
-     intros.
-     rewrite H2.
-     rewrite app_assoc_reverse.
-     rewrite app_repeat. 
-     rewrite <- H0.
-     rewrite firstn_app with (n := length bytes).
-     (* rewrite newlen as oldlen + n *)
-     admit.
-   Admitted.
-
    Definition grow_file T fsxp inum newlen mscs rx : prog T :=
      let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
      let curlen := oldattr.(INODE.ISize) in
@@ -400,7 +378,34 @@ Module SLOWBYTEFILE.
        rx ^(mscs, false)
      }.
 
-    
+   (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
+   (*           <-- bytes-->                                        *)
+   (*           <-------- allbytes-->                               *)
+   (* newlen is larger than oldlen, and perhaps larger than boundary *)
+   (* lemma says that extending bytes with 0s to newlen is the same as  *)
+   (* extending allbytes with with nblock 0s and taking firstn newlen. *)
+   Lemma eq_bytes_allbytes_ext0_to_newlen:
+     forall (bytes: list byte) (allbytes: list byte) (oldlen:nat) (newlen:nat) nblock,
+       oldlen > newlen ->
+       length bytes = oldlen ->
+       (nunit_roundup oldlen valubytes) * valubytes = length allbytes ->
+       allbytes = bytes ++ repeat $0 ((length allbytes) - oldlen) ->
+       nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes) ->
+       firstn newlen (allbytes ++ (repeat $0 (nblock * valubytes))) = 
+         (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
+   Proof.
+     intros.
+     rewrite H2.
+     rewrite app_assoc_reverse.
+     rewrite app_repeat. 
+     rewrite <- H0.
+     rewrite firstn_app with (n := length bytes).
+
+     (* rewrite newlen as oldlen + n *)
+     admit.
+     reflexivity.
+   Admitted.
+
    Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes curlen,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -448,15 +453,15 @@ Module SLOWBYTEFILE.
      replace (# ($ (newlen))) with newlen.
 
      (* 3. firstn *)
-     eapply firstn_allbytes with (oldlen := (INODE.ISize (BFILE.BFAttr f))) (newlen := newlen).
+     eapply eq_bytes_allbytes_ext0_to_newlen. 
 
-     admit.
-     admit.
-     admit.
-     admit.
-     reflexivity.
-     admit. (* bound *)
-
+     admit. (* unification problem? *)
+     admit. (* bytes := bytes, lost some facts? *)
+     admit. (* some new lemma; do we need some facts between block list and ISize? *)
+     admit. (* should we maintain this fact? maybe adjust firstn_allbytes? *)
+     admit. (* bound on (nunit_roundup newlen valubytes - 
+        nunit_roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *)
+     admit. (* is newlen bounded? need check argument off + length(data) *)
      step.
    Admitted.
 
