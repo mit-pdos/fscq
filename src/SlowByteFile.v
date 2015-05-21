@@ -359,11 +359,35 @@ Module SLOWBYTEFILE.
 
    Hint Extern 1 ({{_}} progseq (grow_blocks _ _ _ _) _) => apply grow_blocks_ok : prog.
 
+   Definition nunit_roundup (n: nat) (unitsz:nat) : nat := (n + unitsz - 1) / unitsz.
+
+
+  Lemma firstn_allbytes:
+     forall (bytes: list byte) (allbytes: list byte) (oldlen:addr) (newlen:nat) nblock,
+       newlen > (# oldlen) ->
+       length bytes = (# oldlen) ->
+       (nunit_roundup (# oldlen) valubytes) * valubytes = length allbytes ->
+       allbytes = bytes ++ (@repeat (word 8) $0 ((length allbytes) - (# oldlen))) ->
+       nblock = (nunit_roundup newlen valubytes) - (nunit_roundup (# oldlen) valubytes) ->
+       @firstn byte newlen (allbytes ++ 
+          (@repeat (word 8) $0 ((@wordToNat addrlen ($ nblock)) * valubytes))) = 
+         (@firstn byte (# oldlen) allbytes) ++ (@repeat (word 8) $0 (newlen - (# oldlen))).
+   Proof.
+     intros.
+     rewrite H2.
+     rewrite app_assoc_reverse.
+     rewrite app_repeat. 
+     rewrite <- H0.
+     rewrite firstn_app with (n := length bytes).
+     (* rewrite newlen as oldlen + n *)
+     admit.
+   Admitted.
+
    Definition grow_file T fsxp inum newlen mscs rx : prog T :=
      let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
      let curlen := oldattr.(INODE.ISize) in
-     let curblocks := (#curlen + valubytes - 1) / valubytes  in
-     let newblocks := (newlen + valubytes - 1) / valubytes in
+     let curblocks := nunit_roundup #curlen valubytes  in
+     let newblocks := nunit_roundup newlen valubytes in
      let nblock := newblocks - curblocks in
      let^ (mscs, ok) <- grow_blocks fsxp inum ($ nblock) mscs;
      If (bool_dec ok true) {
@@ -382,8 +406,7 @@ Module SLOWBYTEFILE.
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ bytes_rep f bytes  ]] *
-           [[ curlen = length bytes ]] *
+           [[ rep bytes f ]] *
            [[ curlen = # (f.(BFILE.BFAttr).(INODE.ISize)) ]] *
            [[ curlen < newlen ]]
       POST RET:^(mscs, ok)
@@ -402,10 +425,10 @@ Module SLOWBYTEFILE.
      unfold grow_file, rep, bytes_rep.
      step.  (* getattr *)
      step.  (* grow blocks *)
-     instantiate (bytes0 := bytes).
+     instantiate (bytes := allbytes).
      unfold bytes_rep.
      intuition.
-     step.  
+     step.
      step.
      step.
      step.
@@ -415,24 +438,24 @@ Module SLOWBYTEFILE.
      (* bytes_rep f': *)
      (* 1. array_item_file: *)
      eexists.
-     instantiate (allbytes := (bytes ++ repeat $ (0)
-           (# ($
-               ((newlen + valubytes - 1) / valubytes -
-                (# (INODE.ISize (BFILE.BFAttr f)) + valubytes - 1) / valubytes)) *
-            valubytes))).
-
-     destruct H15.
      intuition.
-     unfold array_item_file in *.
+     destruct H14.
      eapply a5.
 
-     (* 2. bounds *)
-     admit.  (* bound on length *)
+     (* bound on length *)
+     admit.
+
+     replace (# ($ (newlen))) with newlen.
 
      (* 3. firstn *)
-     rewrite <- H5.
-     admit. (* bytes are equal and newlen > length bytes;   newlen - bytes <  ((newlen + valubytes - 1) / valubytes -
-          (length bytes + valubytes - 1) / valubytes)) * valubytes *)
+     eapply firstn_allbytes with (oldlen := (INODE.ISize (BFILE.BFAttr f))) (newlen := newlen).
+
+     admit.
+     admit.
+     admit.
+     admit.
+     reflexivity.
+     admit. (* bound *)
 
      step.
    Admitted.
