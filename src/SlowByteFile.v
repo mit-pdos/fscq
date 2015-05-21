@@ -271,7 +271,6 @@ Module SLOWBYTEFILE.
     rewrite valubytes_is; reflexivity.
   Qed.
 
-
   Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
       {< m mbase F Fm flist f A bytes,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -281,12 +280,11 @@ Module SLOWBYTEFILE.
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
             ([[ ok = false ]] \/      
-           [[ ok = true ]] * exists flist' f' newbytes,
+           [[ ok = true ]] * exists flist' f',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]] *
-           [[ bytes_rep f' (bytes ++ newbytes) ]] *
-           [[ length newbytes = Nat.mul (# nblock)  valubytes ]])
+           [[ bytes_rep f' (bytes ++ (repeat $0 (# nblock * valubytes))) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
        >} grow_blocks fsxp inum nblock mscs.
   Proof.
@@ -356,7 +354,6 @@ Module SLOWBYTEFILE.
     eauto.
     rewrite app_length in H18.
     eapply H18.
-    admit. (* length_repeat *)
     apply LOG.activetxn_would_recover_old.
    Admitted.
 
@@ -381,16 +378,6 @@ Module SLOWBYTEFILE.
        rx ^(mscs, false)
      }.
 
-   Lemma lt_rewrite_eq: 
-    forall m n,
-      m < n  -> exists i, m + i = n.
-   Proof.
-      intros.
-      admit.
-   Admitted.
-
-   (* XXX who cares the bytes are 0?  maybe state that the bytes till newlen exist *)
-
    (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
    (*           <-- bytes-->                                        *)
    (*           <-------- allbytes-->                               *)
@@ -399,7 +386,7 @@ Module SLOWBYTEFILE.
    (* extending allbytes with with nblock 0s and taking firstn newlen. *)
    Lemma eq_bytes_allbytes_ext0_to_newlen:
      forall (bytes: list byte) (allbytes: list byte) (oldlen:nat) (newlen:nat) nblock,
-       oldlen < newlen ->
+       oldlen > newlen ->
        length bytes = oldlen ->
        (nunit_roundup oldlen valubytes) * valubytes = length allbytes ->
        allbytes = bytes ++ repeat $0 ((length allbytes) - oldlen) ->
@@ -413,13 +400,8 @@ Module SLOWBYTEFILE.
      rewrite app_repeat. 
      rewrite <- H0.
      rewrite firstn_app with (n := length bytes).
-     eapply lt_rewrite_eq in H.
-     destruct H.
-     rewrite <- H.
-     rewrite <- H0.
-     rewrite firstn_app_r.
-     rewrite minus_plus.
-     (*  length allbytes - length bytes + nblock * valubytes = x *)
+
+     (* rewrite newlen as oldlen + n *)
      admit.
      reflexivity.
    Admitted.
@@ -435,11 +417,10 @@ Module SLOWBYTEFILE.
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
-           [[ ok = true ]] * exists flist' f' bytes' fdata' attr newbytes,
+           [[ ok = true ]] * exists flist' f' bytes' fdata' attr,
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ bytes' = bytes ++ newbytes ]] *
-           [[ length newbytes = newlen - curlen ]] *
+           [[ bytes' = (bytes ++ (repeat $0 (newlen - curlen))) ]] *
            [[ rep bytes' f']] *
            [[ attr = INODE.Build_iattr ($ newlen) (f.(BFILE.BFAttr).(INODE.IMTime)) (f.(BFILE.BFAttr).(INODE.IType))]] *
            [[ f' = BFILE.Build_bfile fdata' attr]])
@@ -457,23 +438,29 @@ Module SLOWBYTEFILE.
      step.
      step.
      step.
-     eapply pimpl_or_r; right; cancel.(* here unification problem materializes: f is chosen for f'0 *)
-     admit.
+     eapply pimpl_or_r; right; cancel.
 
      (* bytes_rep f': *)
      (* 1. array_item_file: *)
      eexists.
      intuition.
-     destruct H15.
+     destruct H14.
      eapply a5.
 
-     (* 2: bound on allbytes ++ newbytes *)
+     (* bound on length *)
      admit.
 
-     (* 3. firstn *)
      replace (# ($ (newlen))) with newlen.
-     admit. (* some unification problem? f -> f'? *) 
 
+     (* 3. firstn *)
+     eapply eq_bytes_allbytes_ext0_to_newlen. 
+
+     admit. (* unification problem? *)
+     admit. (* bytes := bytes, lost some facts? *)
+     admit. (* some new lemma; do we need some facts between block list and ISize? *)
+     admit. (* should we maintain this fact? maybe adjust firstn_allbytes? *)
+     admit. (* bound on (nunit_roundup newlen valubytes - 
+        nunit_roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *)
      admit. (* is newlen bounded? need check argument off + length(data) *)
      step.
    Admitted.
