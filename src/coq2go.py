@@ -17,12 +17,6 @@ extra_imports = {
 }
 
 remap = {
-  'Cache': {
-    'eviction_init':   'var Coq_eviction_init   CoqT = nil',
-    'eviction_update': 'var Coq_eviction_update CoqT = nil',
-    'eviction_choose': 'var Coq_eviction_choose CoqT = nil',
-  },
-
   'FS': {
     'cachesize': 'var Coq_cachesize CoqT = Nat.Int2nat(100)',
   },
