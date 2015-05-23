@@ -250,7 +250,7 @@ Module SLOWBYTEFILE.
     apply LOG.activetxn_would_recover_old.
     Grab Existential Variables.
     exact tt. 
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
   
@@ -362,7 +362,9 @@ Module SLOWBYTEFILE.
     unfold INODE.blocks_per_inode in *. unfold INODE.nr_direct, INODE.nr_indirect in *.
     unfold items_per_valu in *. rewrite valubytes_is. rewrite valubytes_is in H13.
     apply le_trans with (4097 + # ($ (12 + 512) ^* natToWord addrlen 4096)). omega.
-    admit.
+    
+    admit.  (* 4097 + # ($ (12 + 512) ^* $ (4096)) <=
+# ($ (12 + 512) ^* $ (4096) ^+ $ (4096) ^+ $ (4096)) *)
 
     rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
     erewrite wordToNat_natToWord_bound. reflexivity.
@@ -400,6 +402,15 @@ Module SLOWBYTEFILE.
        rx ^(mscs, false)
      }.
 
+   Lemma le_rewrite_eq: 
+    forall m n,
+      m <= n  -> exists i, m + i = n.
+   Proof.
+     intros.
+     eexists (n-m).
+     omega.
+   Qed.
+
    Lemma lt_rewrite_eq: 
     forall m n,
       m < n  -> exists i, m + i = n.
@@ -407,7 +418,36 @@ Module SLOWBYTEFILE.
      intros.
      eexists (n-m).
      omega.
-   Admitted.
+   Qed.
+
+    Lemma roundup_ok:
+      forall x,
+        (nunit_roundup x valubytes) * valubytes >= x.
+    Proof.
+      intros.
+      unfold nunit_roundup.
+      admit.
+    Admitted.
+
+    Lemma nblock_ok:
+      forall oldlen newlen boundary nblock,
+        newlen > oldlen ->
+        boundary = (nunit_roundup oldlen valubytes) * valubytes ->
+        nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes)->
+        newlen - oldlen <= boundary - oldlen + nblock * valubytes.
+      intros.
+      rewrite H0.
+      rewrite H1.
+      rewrite Nat.mul_sub_distr_r.
+      rewrite Nat.add_sub_assoc.
+      rewrite Nat.add_sub_swap.
+      (* x - p - x + y = - p + y*)
+
+      admit.
+    Admitted.
+
+
+    (*  length allbytes - length bytes + nblock * valubytes >= x *)
 
    (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
    (*           <-- bytes-->                                        *)
@@ -433,16 +473,37 @@ Module SLOWBYTEFILE.
      rewrite firstn_app with (n := length bytes).
 
 
-     eapply lt_rewrite_eq in H.
-     destruct H.
-     rewrite <- H.
+     eapply lt_rewrite_eq in H as H'.
+     destruct H'.
+     rewrite <- H4.
      rewrite <- H0.
      rewrite firstn_app_r.
-     rewrite minus_plus. 
-    (*  length allbytes - length bytes + nblock * valubytes = x *)
-     admit.
+     rewrite minus_plus.
+
+     rewrite  H0.
+     edestruct le_rewrite_eq with (n := (length allbytes - oldlen + nblock * valubytes)) (m := x).
+     remember H4.
+     clear Heqe.
+     rewrite plus_comm in H4.
+     apply Nat.add_sub_eq_r in H4.
+     rewrite <- H4.
+     apply nblock_ok.
+     eauto.
+     eauto.
+     eauto.
+     
+     rewrite <- H5.
+     rewrite <- app_repeat.
+     rewrite <- firstn_app_r.
+  
+     rewrite app_assoc.
+     rewrite firstn_app with (l1 := bytes ++ repeat $ (0) x) (n := length bytes + x).
      reflexivity.
-   Admitted.
+     rewrite app_length.
+     rewrite repeat_length.
+     reflexivity.
+     reflexivity.
+   Qed.
 
    Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes curlen,
