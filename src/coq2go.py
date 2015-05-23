@@ -12,6 +12,10 @@ sys.setrecursionlimit(10000)
 ## XXX hack for now
 import_prefix = 'codegen/'
 
+extra_imports = {
+  'FS': ['Nat',],
+}
+
 remap = {
   'Cache': {
     'eviction_init':   'var Coq_eviction_init   CoqT = nil',
@@ -20,12 +24,12 @@ remap = {
   },
 
   'FS': {
-    'cachesize': 'var Coq_cachesize CoqT = nil',
+    'cachesize': 'var Coq_cachesize CoqT = Nat.Int2nat(100)',
   },
 
   'Nat': {
     'int2nat': '''
-      func int2nat(n int) CoqT {
+      func Int2nat(n int) CoqT {
         var res CoqT = &Datatypes.Coq_O{}
         for (n > 0) {
           res = &Datatypes.Coq_S{res}
@@ -35,7 +39,7 @@ remap = {
       }''',
 
     'nat2int': '''
-      func nat2int(n CoqT) int {
+      func Nat2int(n CoqT) int {
         sum := 0
         for {
           switch t := n.(type) {
@@ -54,9 +58,9 @@ remap = {
     'add': '''
       var Coq_add CoqT = func(Coq_n CoqT) CoqT {
         return func(Coq_m CoqT) CoqT {
-          n := nat2int(Coq_n)
-          m := nat2int(Coq_m)
-          return int2nat(n + m)
+          n := Nat2int(Coq_n)
+          m := Nat2int(Coq_m)
+          return Int2nat(n + m)
         }
       }''',
   },
@@ -247,13 +251,15 @@ def gen_header(d):
   global this_pkgname
   this_pkgname = d['name']
 
+  usedmods = d['used_modules'] + extra_imports.get(this_pkgname, [])
+
   s = []
   s.append('package %s' % d['name'])
   s.append('import . "gocoq"')
-  for modname in d['used_modules']:
+  for modname in usedmods:
     s.append('import "%s%s"' % (import_prefix, modname))
   s.append('var Coq2go_unused bool = true &&')
-  for modname in d['used_modules']:
+  for modname in usedmods:
     s.append('  %s.Coq2go_unused &&' % modname)
   s.append('  true')
   s.append('')

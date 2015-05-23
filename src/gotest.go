@@ -1,7 +1,6 @@
 package main
 
 import . "gocoq"
-import "codegen/Datatypes"
 import "codegen/Word"
 import "codegen/Prog"
 import "codegen/FS"
@@ -22,30 +21,6 @@ func run_dprog(p CoqT) CoqT {
     return nil
   default:
     panic("bad type")
-  }
-}
-
-func int2nat(n int) CoqT {
-  if (n <= 0) {
-    return &Datatypes.Coq_O{}
-  } else {
-    return &Datatypes.Coq_S{int2nat(n-1)}
-  }
-}
-
-func nat2int(n CoqT) int {
-  sum := 0
-  for {
-    switch t := n.(type) {
-    case *Datatypes.Coq_O:
-      return sum
-    case *Datatypes.Coq_S:
-      sum += 1
-      n = t.A0
-    default:
-      panic("unknown nat constructor")
-      return -1
-    }
   }
 }
 
