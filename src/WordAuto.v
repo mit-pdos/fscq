@@ -58,9 +58,31 @@ Qed.
 Theorem plus_ovf_r : forall sz x y, $ (x + wordToNat (natToWord sz y)) = natToWord sz (x + y).
 Proof.
   intros.
-  destruct (wordToNat_natToWord sz y) as [? [Heq ?]]; rewrite Heq.
-  replace (x + (y - x0 * pow2 sz)) with (x + y - x0 * pow2 sz) by omega.
-  apply drop_sub; omega.
+  rewrite plus_comm.
+  rewrite plus_ovf_l.
+  rewrite plus_comm.
+  auto.
+Qed.
+
+Theorem plus_ovf_lN : forall sz x y, NToWord sz (wordToN (NToWord sz x) + y) = NToWord sz (x + y).
+Proof.
+  intros.
+  repeat rewrite NToWord_nat.
+  repeat rewrite wordToN_nat.
+  rewrite <- (N2Nat.id y) at 1.
+  rewrite <- Nat2N.inj_add.
+  rewrite Nat2N.id.
+  rewrite N2Nat.inj_add.
+  apply plus_ovf_l.
+Qed.
+
+Theorem plus_ovf_rN : forall sz x y, NToWord sz (x + wordToN (NToWord sz y)) = NToWord sz (x + y).
+Proof.
+  intros.
+  rewrite N.add_comm.
+  rewrite plus_ovf_lN.
+  rewrite N.add_comm.
+  auto.
 Qed.
 
 Hint Rewrite plus_ovf_l plus_ovf_r : W2Nat.
@@ -75,15 +97,35 @@ Proof.
   replace (x0 * y * pow2 sz) with (x0 * pow2 sz * y) by ring.
   apply mult_le_compat_r; auto.
 Qed.
+
 Theorem mul_ovf_r : forall sz x y, $ (x * wordToNat (natToWord sz y)) = natToWord sz (x * y).
 Proof.
   intros.
-  destruct (wordToNat_natToWord sz y) as [? [Heq ?]]; rewrite Heq.
-  rewrite Nat.mul_sub_distr_l.
-  rewrite mult_assoc.
-  apply drop_sub.
-  rewrite <- mult_assoc.
-  apply mult_le_compat_l; auto.
+  rewrite mult_comm.
+  rewrite mul_ovf_l.
+  rewrite mult_comm.
+  auto.
+Qed.
+
+Theorem mul_ovf_lN : forall sz x y, NToWord sz (wordToN (NToWord sz x) * y) = NToWord sz (x * y).
+Proof.
+  intros.
+  repeat rewrite NToWord_nat.
+  repeat rewrite wordToN_nat.
+  rewrite <- (N2Nat.id y) at 1.
+  rewrite <- Nat2N.inj_mul.
+  rewrite Nat2N.id.
+  rewrite N2Nat.inj_mul.
+  apply mul_ovf_l.
+Qed.
+
+Theorem mul_ovf_rN : forall sz x y, NToWord sz (x * wordToN (NToWord sz y)) = NToWord sz (x * y).
+Proof.
+  intros.
+  rewrite N.mul_comm.
+  rewrite mul_ovf_lN.
+  rewrite N.mul_comm.
+  auto.
 Qed.
 
 Hint Rewrite mul_ovf_l mul_ovf_r : W2Nat.

@@ -18,10 +18,10 @@ Module MapProperties := WProperties_fun Addr_as_OT Map.
 Import ListNotations.
 Set Implicit Arguments.
 
-Parameter eviction_state : Type.
-Parameter eviction_init : eviction_state.
-Parameter eviction_update : eviction_state -> addr -> eviction_state.
-Parameter eviction_choose : eviction_state -> (addr * eviction_state).
+Definition eviction_state : Type := unit.
+Definition eviction_init : eviction_state := tt.
+Definition eviction_update (s : eviction_state) (a : addr) := s.
+Definition eviction_choose (s : eviction_state) : (addr * eviction_state) := ($0, s).
 
 Record cachestate := {
   CSMap : Map.t valu;
