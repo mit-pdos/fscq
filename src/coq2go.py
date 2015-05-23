@@ -26,9 +26,9 @@ remap = {
   'Nat': {
     'int2nat': '''
       func int2nat(n int) CoqT {
-        var res CoqT = Datatypes.Coq_O{}
+        var res CoqT = &Datatypes.Coq_O{}
         for (n > 0) {
-          res = Datatypes.Coq_S{res}
+          res = &Datatypes.Coq_S{res}
           n -= 1
         }
         return res
@@ -51,14 +51,14 @@ remap = {
         }
       }''',
 
-#    'add': '''
-#      var Coq_add CoqT = func(Coq_n CoqT) CoqT {
-#        return func(Coq_m CoqT) CoqT {
-#          n := nat2int(Coq_n)
-#          m := nat2int(Coq_m)
-#          return int2nat(n + m)
-#        }
-#      }''',
+    'add': '''
+      var Coq_add CoqT = func(Coq_n CoqT) CoqT {
+        return func(Coq_m CoqT) CoqT {
+          n := nat2int(Coq_n)
+          m := nat2int(Coq_m)
+          return int2nat(n + m)
+        }
+      }''',
   },
 }
 
