@@ -12,18 +12,130 @@ sys.setrecursionlimit(10000)
 ## XXX hack for now
 import_prefix = 'codegen/'
 
-extra_imports = {
+extra_mods = {
   'FS': ['Nat',],
 }
 
+extra_imports = {
+  'Word': ['math/big',],
+}
+
 remap = {
+  'Word': {
+    'wrap': '''
+      func wrap(x *big.Int, nbits uint) *big.Int {
+        one := big.NewInt(1)
+        mask := big.NewInt(0)
+        mask.Lsh(one, nbits)
+        mask.Sub(mask, one)
+
+        r := big.NewInt(0)
+        return r.And(x, mask)
+      }''',
+
+    'split1': '''
+      var Coq_split1 CoqT = func(sz1 CoqT) CoqT {
+        return func(sz2 CoqT) CoqT {
+          return func(x CoqT) CoqT {
+            xb := x.(*big.Int)
+            return wrap(xb, Nat.Nat2uint(sz1))
+          }
+        }
+      }''',
+
+    'split2': '''
+      var Coq_split2 CoqT = func(sz1 CoqT) CoqT {
+        return func(sz2 CoqT) CoqT {
+          return func(x CoqT) CoqT {
+            xb := x.(*big.Int)
+
+            r := big.NewInt(0)
+            return r.Rsh(xb, Nat.Nat2uint(sz1))
+          }
+        }
+      }''',
+
+    'combine': '''
+      var Coq_combine CoqT = func(sz1 CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(sz2 CoqT) CoqT {
+            return func(y CoqT) CoqT {
+              xb := x.(*big.Int)
+              yb := y.(*big.Int)
+
+              yshifted := big.NewInt(0)
+              yshifted.Lsh(yb, Nat.Nat2uint(sz1))
+
+              r := big.NewInt(0)
+              return r.Or(xb, yshifted)
+            }
+          }
+        }
+      }''',
+
+    'wordToNat': '''
+      var Coq_wordToNat CoqT = func(sz CoqT) CoqT {
+        return func(w CoqT) CoqT {
+          b := w.(*big.Int)
+          return Nat.Uint2nat(uint(b.Uint64()))
+        }
+      }''',
+
+    'natToWord': '''
+      var Coq_natToWord CoqT = func(sz CoqT) CoqT {
+        return func(n CoqT) CoqT {
+          i := Nat.Nat2uint(n)
+          r := big.NewInt(int64(i))
+          return wrap(r, Nat.Nat2uint(sz))
+        }
+      }''',
+
+    'wplus': '''
+      var Coq_wplus CoqT = func(sz CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(y CoqT) CoqT {
+            xb := x.(*big.Int)
+            yb := y.(*big.Int)
+            r := big.NewInt(0)
+            r.Add(xb, yb)
+            return wrap(r, Nat.Nat2uint(sz))
+          }
+        }
+      }''',
+
+    'wmult': '''
+      var Coq_wmult CoqT = func(sz CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(y CoqT) CoqT {
+            xb := x.(*big.Int)
+            yb := y.(*big.Int)
+            r := big.NewInt(0)
+            r.Mul(xb, yb)
+            return wrap(r, Nat.Nat2uint(sz))
+          }
+        }
+      }''',
+
+    'wdiv': '''
+      var Coq_wdiv CoqT = func(sz CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(y CoqT) CoqT {
+            xb := x.(*big.Int)
+            yb := y.(*big.Int)
+            r := big.NewInt(0)
+            return r.Div(xb, yb)
+          }
+        }
+      }''',
+  },
+
   'FS': {
-    'cachesize': 'var Coq_cachesize CoqT = Nat.Int2nat(100)',
+    'cachesize': 'var Coq_cachesize CoqT = Nat.Uint2nat(100)',
   },
 
   'Nat': {
-    'int2nat': '''
-      func Int2nat(n int) CoqT {
+    'uint2nat': '''
+      func Uint2nat(n uint) CoqT {
         var res CoqT = &Datatypes.Coq_O{}
         for (n > 0) {
           res = &Datatypes.Coq_S{res}
@@ -32,9 +144,9 @@ remap = {
         return res
       }''',
 
-    'nat2int': '''
-      func Nat2int(n CoqT) int {
-        sum := 0
+    'nat2uint': '''
+      func Nat2uint(n CoqT) uint {
+        var sum uint = 0
         for {
           switch t := n.(type) {
           case *Datatypes.Coq_O:
@@ -44,7 +156,7 @@ remap = {
             n = t.A0
           default:
             panic("unknown nat constructor")
-            return -1
+            return 0
           }
         }
       }''',
@@ -52,9 +164,18 @@ remap = {
     'add': '''
       var Coq_add CoqT = func(Coq_n CoqT) CoqT {
         return func(Coq_m CoqT) CoqT {
-          n := Nat2int(Coq_n)
-          m := Nat2int(Coq_m)
-          return Int2nat(n + m)
+          n := Nat2uint(Coq_n)
+          m := Nat2uint(Coq_m)
+          return Uint2nat(n + m)
+        }
+      }''',
+
+    'mul': '''
+      var Coq_mul CoqT = func(Coq_n CoqT) CoqT {
+        return func(Coq_m CoqT) CoqT {
+          n := Nat2uint(Coq_n)
+          m := Nat2uint(Coq_m)
+          return Uint2nat(n * m)
         }
       }''',
   },
@@ -245,13 +366,15 @@ def gen_header(d):
   global this_pkgname
   this_pkgname = d['name']
 
-  usedmods = d['used_modules'] + extra_imports.get(this_pkgname, [])
+  usedmods = d['used_modules'] + extra_mods.get(this_pkgname, [])
 
   s = []
   s.append('package %s' % d['name'])
   s.append('import . "gocoq"')
   for modname in usedmods:
     s.append('import "%s%s"' % (import_prefix, modname))
+  for modname in extra_imports.get(this_pkgname, []):
+    s.append('import "%s"' % modname)
   s.append('var Coq2go_unused bool = true &&')
   for modname in usedmods:
     s.append('  %s.Coq2go_unused &&' % modname)
