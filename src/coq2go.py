@@ -103,6 +103,25 @@ remap = {
         }
       }''',
 
+    'wminus': '''
+      var Coq_wminus CoqT = func(sz CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(y CoqT) CoqT {
+            xb := x.(*big.Int)
+            yb := y.(*big.Int)
+
+            nbits := Nat.Nat2uint(sz)
+
+            r := big.NewInt(1)
+            r.Lsh(r, nbits)
+            r.Add(r, xb)
+            r.Sub(r, yb)
+
+            return wrap(r, nbits)
+          }
+        }
+      }''',
+
     'wmult': '''
       var Coq_wmult CoqT = func(sz CoqT) CoqT {
         return func(x CoqT) CoqT {
@@ -124,6 +143,50 @@ remap = {
             yb := y.(*big.Int)
             r := big.NewInt(0)
             return r.Div(xb, yb)
+          }
+        }
+      }''',
+
+    'wmod': '''
+      var Coq_wmod CoqT = func(sz CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(y CoqT) CoqT {
+            xb := x.(*big.Int)
+            yb := y.(*big.Int)
+            r := big.NewInt(0)
+            return r.Mod(xb, yb)
+          }
+        }
+      }''',
+
+    'wlt_dec': '''
+      var Coq_wlt_dec CoqT = func(sz CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(y CoqT) CoqT {
+            xb := x.(*big.Int)
+            yb := y.(*big.Int)
+            r := xb.Cmp(yb)
+            if r < 0 {
+              return &Specif.Coq_Coq_left{}
+            } else {
+              return &Specif.Coq_Coq_right{}
+            }
+          }
+        }
+      }''',
+
+    'weq': '''
+      var Coq_weq CoqT = func(sz CoqT) CoqT {
+        return func(x CoqT) CoqT {
+          return func(y CoqT) CoqT {
+            xb := x.(*big.Int)
+            yb := y.(*big.Int)
+            r := xb.Cmp(yb)
+            if r == 0 {
+              return &Specif.Coq_Coq_left{}
+            } else {
+              return &Specif.Coq_Coq_right{}
+            }
           }
         }
       }''',

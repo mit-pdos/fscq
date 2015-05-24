@@ -4,21 +4,40 @@ import . "gocoq"
 import "codegen/Word"
 import "codegen/Prog"
 import "codegen/FS"
+import "codegen/Datatypes"
+import "codegen/Nat"
 import "fmt"
+
+var tt CoqT = &Datatypes.Coq_Coq_tt{}
 
 func run_dprog(p CoqT) CoqT {
   switch t := p.(type) {
   case *Prog.Coq_Done:
     return t.A0
+
   case *Prog.Coq_Read:
-    fmt.Println("Read..")
-    return nil
+    read_addr := t.A0
+    rx := t.A1
+    fmt.Printf("Read (%v)..\n", read_addr)
+
+    // XXX synthesizing garbage..
+    data := CoqApply(Word.Coq_natToWord, Nat.Uint2nat(0))
+
+    return run_dprog(CoqApply(rx, data))
+
   case *Prog.Coq_Write:
-    fmt.Println("Write..")
-    return nil
+    write_addr := t.A0
+    write_data := t.A1
+    rx := t.A2
+    fmt.Printf("Write (%v, %v)..\n", write_addr, write_data)
+    return run_dprog(CoqApply(rx, tt))
+
   case *Prog.Coq_Sync:
-    fmt.Println("Sync..")
-    return nil
+    sync_addr := t.A0
+    rx := t.A1
+    fmt.Printf("Sync (%v)..\n", sync_addr)
+    return run_dprog(CoqApply(rx, tt))
+
   default:
     panic("bad type")
   }
