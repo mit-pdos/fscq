@@ -13,11 +13,12 @@ sys.setrecursionlimit(10000)
 import_prefix = 'codegen/'
 
 extra_mods = {
-  'FS': ['Nat',],
+  'FS':           ['Nat',],
+  'Compare_dec':  ['Nat',],
 }
 
 extra_imports = {
-  'Word': ['math/big',],
+  'Word':         ['math/big',],
 }
 
 remap = {
@@ -194,6 +195,21 @@ remap = {
 
   'FS': {
     'cachesize': 'var Coq_cachesize CoqT = Nat.Uint2nat(100)',
+  },
+
+  'Compare_dec': {
+    'lt_dec': '''
+      var Coq_lt_dec CoqT = func(a CoqT) CoqT {
+        return func(b CoqT) CoqT {
+          ai := Nat.Nat2uint(a)
+          bi := Nat.Nat2uint(b)
+          if ai < bi {
+            return &Specif.Coq_Coq_left{}
+          } else {
+            return &Specif.Coq_Coq_right{}
+          }
+        }
+      }''',
   },
 
   'Nat': {
