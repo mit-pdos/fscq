@@ -526,6 +526,23 @@ Proof.
 Qed.
 
 
+Lemma arrayN_split : forall A off (l : list A) start,
+  off <= length l ->
+  arrayN start (firstn off l) * arrayN (start + off) (skipn off l) <=p=>
+  arrayN start l.
+Proof.
+  induction off; simpl; intros.
+  - replace (start + 0) with start by omega.
+    split; cancel.
+  - destruct l; simpl in *; try omega.
+    replace (start + S off) with (S start + off) by omega.
+    rewrite sep_star_assoc.
+    apply piff_star_l.
+    apply IHoff.
+    omega.
+Qed.
+
+
 (* Ltacs *)
 
 Ltac rewrite_list2nmem_pred_bound H :=
