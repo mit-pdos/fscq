@@ -542,6 +542,26 @@ Proof.
     omega.
 Qed.
 
+Lemma arrayN_combine' : forall A (a b : list A) start,
+  arrayN start a * arrayN (start + length a) b <=p=> arrayN start (a ++ b).
+Proof.
+  induction a; simpl; intros.
+  - replace (start + 0) with start by omega.
+    split; cancel.
+  - rewrite sep_star_assoc.
+    apply piff_star_l.
+    replace (start + S (length a0)) with (S start + length a0) by omega.
+    apply IHa.
+Qed.
+
+Lemma arrayN_combine : forall A (a b : list A) start off,
+  off = start + length a ->
+  arrayN start a * arrayN off b <=p=> arrayN start (a ++ b).
+Proof.
+  intros; subst.
+  apply arrayN_combine'.
+Qed.
+
 
 (* Ltacs *)
 
