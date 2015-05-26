@@ -424,14 +424,40 @@ Module SLOWBYTEFILE.
      omega.
    Qed.
 
-    Lemma roundup_ok:
-      forall x,
-        (nunit_roundup x valubytes) * valubytes >= x.
-    Proof.
-      intros.
-      unfold nunit_roundup.
-      admit.
-    Admitted.
+  Lemma roundup_ok:
+    forall x,
+      (nunit_roundup x valubytes) * valubytes >= x.
+  Proof.
+    unfold nunit_roundup; intros.
+    rewrite (Nat.div_mod x valubytes) at 1 by ( rewrite valubytes_is; auto ).
+    rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
+    rewrite <- plus_assoc.
+    rewrite (mult_comm valubytes).
+    rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
+
+    case_eq (x mod valubytes); intros.
+    - rewrite (Nat.div_mod x valubytes) at 2 by ( rewrite valubytes_is; auto ).
+      rewrite valubytes_is at 2 3. simpl.
+      replace (x / valubytes + 0) with (x / valubytes) by omega.
+      rewrite (mult_comm valubytes).
+      omega.
+
+    - rewrite Nat.mul_add_distr_r.
+      replace (S n + (valubytes - 1)) with (valubytes + n) by ( rewrite valubytes_is; omega ).
+      replace (valubytes) with (1 * valubytes) at 3 by omega.
+      rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
+      rewrite (Nat.div_mod x valubytes) at 2 by ( rewrite valubytes_is; auto ).
+      assert (x mod valubytes < valubytes).
+      apply Nat.mod_bound_pos; try rewrite valubytes_is; omega.
+      rewrite Nat.mul_add_distr_r; simpl.
+      unfold ge.
+      eapply le_trans with (valubytes * (x / valubytes) + valubytes).
+      omega.
+      replace (valubytes + 0) with (valubytes) by omega.
+      rewrite plus_assoc.
+      rewrite mult_comm.
+      apply le_plus_l.
+  Qed.
 
     Lemma nblock_ok:
       forall oldlen newlen boundary nblock,
