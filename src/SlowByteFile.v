@@ -358,13 +358,13 @@ Module SLOWBYTEFILE.
     erewrite wordToNat_natToWord_bound. reflexivity.
     apply wlt_lt in H13.
     rewrite app_length in H20. rewrite repeat_length in H20. rewrite H20 in H13.
-    instantiate (bound := $ (INODE.blocks_per_inode) ^* items_per_valu ^+ items_per_valu ^+ items_per_valu).
+    instantiate (bound := $ (INODE.blocks_per_inode) ^* items_per_valu ^+ items_per_valu ^+ $1).
     unfold INODE.blocks_per_inode in *. unfold INODE.nr_direct, INODE.nr_indirect in *.
     unfold items_per_valu in *. rewrite valubytes_is. rewrite valubytes_is in H13.
     apply le_trans with (4097 + # ($ (12 + 512) ^* natToWord addrlen 4096)). omega.
-    
-    admit.  (* 4097 + # ($ (12 + 512) ^* $ (4096)) <=
-# ($ (12 + 512) ^* $ (4096) ^+ $ (4096) ^+ $ (4096)) *)
+
+    apply Nat.eq_le_incl.
+    reflexivity.
 
     rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
     erewrite wordToNat_natToWord_bound. reflexivity.
@@ -379,9 +379,9 @@ Module SLOWBYTEFILE.
     rewrite app_length in H18.
     eapply H18.
     apply LOG.activetxn_would_recover_old.
-   Admitted.
+  Qed.
 
-   Hint Extern 1 ({{_}} progseq (grow_blocks _ _ _ _) _) => apply grow_blocks_ok : prog.
+  Hint Extern 1 ({{_}} progseq (grow_blocks _ _ _ _) _) => apply grow_blocks_ok : prog.
 
 
    Definition grow_file T fsxp inum newlen mscs rx : prog T :=
