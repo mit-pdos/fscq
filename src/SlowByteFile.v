@@ -358,13 +358,13 @@ Module SLOWBYTEFILE.
     erewrite wordToNat_natToWord_bound. reflexivity.
     apply wlt_lt in H13.
     rewrite app_length in H20. rewrite repeat_length in H20. rewrite H20 in H13.
-    instantiate (bound := $ (INODE.blocks_per_inode) ^* items_per_valu ^+ items_per_valu ^+ $1).
+    instantiate (bound := $ (INODE.blocks_per_inode) ^* items_per_valu ^+ items_per_valu ^+ items_per_valu).
     unfold INODE.blocks_per_inode in *. unfold INODE.nr_direct, INODE.nr_indirect in *.
     unfold items_per_valu in *. rewrite valubytes_is. rewrite valubytes_is in H13.
     apply le_trans with (4097 + # ($ (12 + 512) ^* natToWord addrlen 4096)). omega.
-
-    apply Nat.eq_le_incl.
-    reflexivity.
+    
+    admit.  (* 4097 + # ($ (12 + 512) ^* $ (4096)) <=
+# ($ (12 + 512) ^* $ (4096) ^+ $ (4096) ^+ $ (4096)) *)
 
     rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
     erewrite wordToNat_natToWord_bound. reflexivity.
@@ -379,11 +379,7 @@ Module SLOWBYTEFILE.
     rewrite app_length in H18.
     eapply H18.
     apply LOG.activetxn_would_recover_old.
-
-    Grab Existential Variables.
-    all: eauto.
-    exact tt.
-  Qed.
+   Admitted.
 
    Hint Extern 1 ({{_}} progseq (grow_blocks _ _ _ _) _) => apply grow_blocks_ok : prog.
 
@@ -394,6 +390,10 @@ Module SLOWBYTEFILE.
      let curblocks := nunit_roundup #curlen valubytes  in
      let newblocks := nunit_roundup newlen valubytes in
      let nblock := newblocks - curblocks in
+     mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
+                              (INODE.Build_iattr ($ (curblocks*valubytes))
+                                                 (INODE.IMTime oldattr)
+                                                 (INODE.IType oldattr)) mscs;
      mscs <- update_bytes fsxp inum #curlen (repeat $0 (curblocks*valubytes-#curlen)) mscs;
      let^ (mscs, ok) <- grow_blocks fsxp inum ($ nblock) mscs;
      If (bool_dec ok true) {
@@ -531,16 +531,34 @@ Module SLOWBYTEFILE.
    Proof.
      unfold grow_file, rep, bytes_rep.
      step.  (* getattr *)
-     step.  (* update bytes *)
-
+     step.  (* set attributes *)
+     step.  (* uppdate bytes *)
      unfold rep, bytes_rep.
      eexists.
+     instantiate (allbytes := allbytes).
      intuition eauto.
-     admit.  (* need lemma *)
-     subst.
-     admit.  (* roundup should make this true. *)
+
+     unfold array_item_file in *.
+     subst; simpl in *.
+     eauto.
+     subst; simpl.
+     rewrite firstn_length.
+     rewrite Nat.min_l.
+     eauto.
+     admit.  (* in rep invariant? *)
+     admit.  (* in rep invariant *)
+     instantiate (olddata := skipn # (INODE.ISize (BFILE.BFAttr f)) allbytes).
+     instantiate (Fx := arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes)).
+     replace (# (INODE.ISize (BFILE.BFAttr f))) with (0 + # (INODE.ISize (BFILE.BFAttr f))) at 2 by omega.
+     apply arrayN_split.
+     admit. (* by H5 *)
+
+
+     admit.  (* hidden length *)
+     admit. (* some length roundup *)
+
      unfold rep.
-     
+
      step.  (* grow blocks *)
      step.
      step.
@@ -548,21 +566,16 @@ Module SLOWBYTEFILE.
      step.
      step.
      eapply pimpl_or_r; right; cancel.
-
-     (* bytes_rep f': *)
-     (* 1. array_item_file: *)
+     
      eexists.
-     intuition.
      unfold bytes_rep in H23.
      destruct H23.
+     intuition.
      eapply a7.
-
-     (* bound on length *)
-     admit.
-
+     eapply e.
      replace (# ($ (newlen))) with newlen.
 
-     (* 3. firstn *)
+     (* what is allbytes0? bytes + 0s until boundary *)
      admit.  (* need to update lemma: eapply eq_bytes_allbytes_ext0_to_newlen. *)
 
      admit. (* bound on newlen *)
