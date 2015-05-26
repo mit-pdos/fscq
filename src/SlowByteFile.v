@@ -463,6 +463,15 @@ Module SLOWBYTEFILE.
       apply le_plus_l.
   Qed.
 
+    Lemma roundup_roundup_eq:
+      forall x,
+        nunit_roundup ((nunit_roundup x valubytes)*valubytes) valubytes * valubytes =
+        (nunit_roundup x valubytes) * valubytes.
+    Proof.
+      intros.
+      admit.
+    Admitted.
+
     Lemma nblock_ok:
       forall oldlen newlen boundary nblock,
         newlen > oldlen ->
@@ -481,8 +490,6 @@ Module SLOWBYTEFILE.
     Admitted.
 
 
-    (*  length allbytes - length bytes + nblock * valubytes >= x *)
-
    (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
    (*           <-- bytes-->                                        *)
    (*           <-------- allbytes-->                               *)
@@ -490,15 +497,16 @@ Module SLOWBYTEFILE.
    (* lemma says that extending bytes with 0s to newlen is the same as  *)
    (* extending allbytes with with nblock 0s and taking firstn newlen. *)
    Lemma eq_bytes_allbytes_ext0_to_newlen:
-     forall (bytes: list byte) (allbytes: list byte) (oldlen:nat) (newlen:nat) nblock,
+     forall (allbytes: list byte) (oldlen:nat) (newlen:nat) bytes nbytes nblock,
        oldlen < newlen ->
-       length bytes = oldlen ->
        (nunit_roundup oldlen valubytes) * valubytes = length allbytes ->
-       allbytes = bytes ++ repeat $0 ((length allbytes) - oldlen) ->
+       bytes = firstn oldlen allbytes ->
+       nbytes = (length allbytes) - oldlen ->
        nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes) ->
-       firstn newlen (allbytes ++ (repeat $0 (nblock * valubytes))) = 
+       firstn newlen (bytes ++ (repeat $0 (nbytes + (nblock * valubytes)))) = 
          (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
    Proof.
+    (*
      intros.
      rewrite H2.
      rewrite app_assoc_reverse.
@@ -537,7 +545,8 @@ Module SLOWBYTEFILE.
      rewrite repeat_length.
      reflexivity.
      reflexivity.
-   Qed.
+*)
+   Admitted.
 
    Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes curlen,
@@ -582,7 +591,19 @@ Module SLOWBYTEFILE.
      replace (# (INODE.ISize (BFILE.BFAttr f))) with (0 + # (INODE.ISize (BFILE.BFAttr f))) at 2 by omega.
      apply arrayN_split.
      admit. (* by H5 *)
+     rewrite firstn_oob.
+     apply list2nmem_array.
+     subst; simpl.
+     eapply le_trans.
 
+     Focus 2. 
+     erewrite wordToNat_natToWord_bound.
+     eapply roundup_ok.
+    
+     instantiate (bound := $ ( (nunit_roundup # (INODE.ISize (BFILE.BFAttr f))
+  valubytes) * valubytes)).
+     admit. (* bound *)
+     admit. (* H14 *)
 
      admit.  (* hidden length *)
      admit. (* some length roundup *)
@@ -599,14 +620,23 @@ Module SLOWBYTEFILE.
      
      eexists.
      unfold bytes_rep in H23.
-     destruct H23.
+     destruct H25.
      intuition.
-     eapply a7.
+     eapply a9.
      eapply e.
      replace (# ($ (newlen))) with newlen.
-
-     (* what is allbytes0? bytes + 0s until boundary *)
-     admit.  (* need to update lemma: eapply eq_bytes_allbytes_ext0_to_newlen. *)
+     eapply arrayN_combine in H17.
+     apply list2nmem_array_eq in H17.
+     rewrite <- H16 in H20.
+     simpl in *.
+     erewrite wordToNat_natToWord_bound in H20.
+     rewrite roundup_roundup_eq in H20.
+     rewrite firstn_oob in H17.
+     rewrite H17.
+     rewrite <- app_assoc.
+     rewrite repeat_app.
+     erewrite eq_bytes_allbytes_ext0_to_newlen with (oldlen := # (INODE.ISize (BFILE.BFAttr f))) (bytes := (firstn # (INODE.ISize (BFILE.BFAttr f) ))).
+     
 
      admit. (* bound on newlen *)
      admit.
