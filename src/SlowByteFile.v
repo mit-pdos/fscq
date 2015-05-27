@@ -490,22 +490,24 @@ Module SLOWBYTEFILE.
     omega.
   Qed.
 
-    Lemma nblock_ok:
-      forall oldlen newlen boundary nblock,
-        newlen > oldlen ->
-        boundary = (nunit_roundup oldlen valubytes) * valubytes ->
-        nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes)->
-        newlen - oldlen <= boundary - oldlen + nblock * valubytes.
-      intros.
-      rewrite H0.
-      rewrite H1.
-      rewrite Nat.mul_sub_distr_r.
-      rewrite Nat.add_sub_assoc.
-      rewrite Nat.add_sub_swap.
-      (* x - p - x + y = - p + y*)
-
-      admit.
-    Admitted.
+  Lemma nblock_ok:
+    forall oldlen newlen boundary nblock,
+      newlen > oldlen ->
+      boundary = (nunit_roundup oldlen valubytes) * valubytes ->
+      nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes)->
+      newlen - oldlen <= boundary - oldlen + nblock * valubytes.
+  Proof.
+    intros; subst.
+    rewrite Nat.mul_sub_distr_r.
+    rewrite <- Nat.add_sub_swap by apply roundup_ok.
+    apply Nat.sub_le_mono_r.
+    rewrite Nat.add_sub_assoc by ( apply le_roundup; omega ).
+    rewrite plus_comm.
+    rewrite <- Nat.add_sub_assoc by reflexivity.
+    rewrite <- minus_diag_reverse.
+    rewrite <- plus_n_O.
+    apply roundup_ok.
+  Qed.
 
 
    (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
