@@ -463,14 +463,20 @@ Module SLOWBYTEFILE.
       apply le_plus_l.
   Qed.
 
-    Lemma roundup_roundup_eq:
-      forall x,
-        (nunit_roundup ((nunit_roundup x valubytes)*valubytes) valubytes) * valubytes =
-        (nunit_roundup x valubytes) * valubytes.
-    Proof.
-      intros.
-      admit.
-    Admitted.
+  Lemma roundup_roundup_eq:
+    forall x,
+      (nunit_roundup ((nunit_roundup x valubytes)*valubytes) valubytes) * valubytes =
+      (nunit_roundup x valubytes) * valubytes.
+  Proof.
+    unfold nunit_roundup; intros.
+    rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
+    rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
+    rewrite Nat.mul_add_distr_r.
+    replace ((valubytes - 1) / valubytes * valubytes) with 0. omega.
+    rewrite valubytes_is.
+    compute.
+    auto.
+  Qed.
 
     Lemma le_roundup:
       forall m n,
