@@ -492,7 +492,7 @@ Module SLOWBYTEFILE.
 
   Lemma nblock_ok:
     forall oldlen newlen boundary nblock,
-      newlen > oldlen ->
+      oldlen <= newlen ->
       boundary = (nunit_roundup oldlen valubytes) * valubytes ->
       nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes)->
       newlen - oldlen <= boundary - oldlen + nblock * valubytes.
@@ -509,64 +509,61 @@ Module SLOWBYTEFILE.
     apply roundup_ok.
   Qed.
 
+  Lemma firstn_app : forall A (a b : list A) n,
+    length a <= n ->
+    firstn n (a ++ b) = a ++ firstn (n - length a) b.
+  Proof.
+    induction a; simpl; intros.
+    rewrite <- minus_n_O; auto.
+    destruct n; try omega; simpl.
+    f_equal.
+    apply IHa.
+    omega.
+  Qed.
 
-   (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
-   (*           <-- bytes-->                                        *)
-   (*           <-------- allbytes-->                               *)
-   (* newlen is larger than oldlen, and perhaps larger than boundary *)
-   (* lemma says that extending bytes with 0s to newlen is the same as  *)
-   (* extending allbytes with with nblock 0s and taking firstn newlen. *)
-   Lemma eq_bytes_allbytes_ext0_to_newlen:
-     forall (allbytes: list byte) (oldlen:nat) (newlen:nat) bytes nbytes nblock,
-       oldlen <= newlen ->
-       (nunit_roundup oldlen valubytes) * valubytes = length allbytes ->
-       bytes = firstn oldlen allbytes ->
-       nbytes = (length allbytes) - oldlen ->
-       nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes) ->
-       firstn newlen (bytes ++ (repeat $0 (nbytes + (nblock * valubytes)))) = 
-         (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
-   Proof.
-    (*
-     intros.
-     rewrite H2.
-     rewrite app_assoc_reverse.
-     rewrite app_repeat. 
-     rewrite <- H0.
-     rewrite firstn_app with (n := length bytes).
+  Lemma firstn_repeat_le : forall n m A (x : A),
+    n <= m ->
+    firstn n (repeat x m) = repeat x n.
+  Proof.
+    induction n; simpl; intros; auto.
+    destruct m; try omega; simpl.
+    f_equal.
+    apply IHn.
+    omega.
+  Qed.
 
+  (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
+  (*           <-- bytes-->                                        *)
+  (*           <-------- allbytes-->                               *)
+  (* newlen is larger than oldlen, and perhaps larger than boundary *)
+  (* lemma says that extending bytes with 0s to newlen is the same as  *)
+  (* extending allbytes with with nblock 0s and taking firstn newlen. *)
+  Lemma eq_bytes_allbytes_ext0_to_newlen:
+    forall (allbytes: list byte) (oldlen:nat) (newlen:nat) bytes nbytes nblock,
+      oldlen <= newlen ->
+      (nunit_roundup oldlen valubytes) * valubytes = length allbytes ->
+      bytes = firstn oldlen allbytes ->
+      nbytes = (length allbytes) - oldlen ->
+      nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes) ->
+      firstn newlen (bytes ++ (repeat $0 (nbytes + (nblock * valubytes)))) = 
+        (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
+  Proof.
+    intros.
 
-     eapply lt_rewrite_eq in H as H'.
-     destruct H'.
-     rewrite <- H4.
-     rewrite <- H0.
-     rewrite firstn_app_r.
-     rewrite minus_plus.
+    assert (length bytes = oldlen).
+    subst. rewrite firstn_length. apply Nat.min_l.
+    rewrite <- H0.
+    apply roundup_ok.
 
-     rewrite  H0.
-     edestruct le_rewrite_eq with (n := (length allbytes - oldlen + nblock * valubytes)) (m := x).
-     remember H4.
-     clear Heqe.
-     rewrite plus_comm in H4.
-     apply Nat.add_sub_eq_r in H4.
-     rewrite <- H4.
-     apply nblock_ok.
-     eauto.
-     eauto.
-     eauto.
-     
-     rewrite <- H5.
-     rewrite <- app_repeat.
-     rewrite <- firstn_app_r.
-  
-     rewrite app_assoc.
-     rewrite firstn_app with (l1 := bytes ++ repeat $ (0) x) (n := length bytes + x).
-     reflexivity.
-     rewrite app_length.
-     rewrite repeat_length.
-     reflexivity.
-     reflexivity.
-*)
-   Admitted.
+    rewrite firstn_app by omega.
+    f_equal; auto.
+    rewrite H4.
+    rewrite firstn_repeat_le; auto.
+
+    rewrite H2.
+    rewrite <- H0.
+    apply nblock_ok; auto.
+  Qed.
 
    Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
