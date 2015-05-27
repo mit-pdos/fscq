@@ -465,11 +465,19 @@ Module SLOWBYTEFILE.
 
     Lemma roundup_roundup_eq:
       forall x,
-        nunit_roundup ((nunit_roundup x valubytes)*valubytes) valubytes * valubytes =
+        (nunit_roundup ((nunit_roundup x valubytes)*valubytes) valubytes) * valubytes =
         (nunit_roundup x valubytes) * valubytes.
     Proof.
       intros.
       admit.
+    Admitted.
+
+    Lemma le_roundup:
+      forall m n,
+       m <= n ->
+        (nunit_roundup m valubytes) * valubytes <= (nunit_roundup n valubytes) * valubytes.
+    Proof.
+      intros.
     Admitted.
 
     Lemma nblock_ok:
@@ -498,7 +506,7 @@ Module SLOWBYTEFILE.
    (* extending allbytes with with nblock 0s and taking firstn newlen. *)
    Lemma eq_bytes_allbytes_ext0_to_newlen:
      forall (allbytes: list byte) (oldlen:nat) (newlen:nat) bytes nbytes nblock,
-       oldlen < newlen ->
+       oldlen <= newlen ->
        (nunit_roundup oldlen valubytes) * valubytes = length allbytes ->
        bytes = firstn oldlen allbytes ->
        nbytes = (length allbytes) - oldlen ->
@@ -549,19 +557,19 @@ Module SLOWBYTEFILE.
    Admitted.
 
    Theorem grow_file_ok: forall fsxp inum newlen mscs,
-    {< m mbase F Fm A flist f bytes curlen,
+    {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ curlen < newlen ]]
+           [[ (# (INODE.ISize (BFILE.BFAttr f))) <= newlen ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
            [[ ok = true ]] * exists flist' f' bytes' fdata' attr,
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ bytes' = (bytes ++ (repeat $0 (newlen - curlen))) ]] *
+           [[ bytes' = (bytes ++ (repeat $0 (newlen -  (# (INODE.ISize (BFILE.BFAttr f)))))) ]] *
            [[ rep bytes' f']] *
            [[ attr = INODE.Build_iattr ($ newlen) (f.(BFILE.BFAttr).(INODE.IMTime)) (f.(BFILE.BFAttr).(INODE.IType))]] *
            [[ f' = BFILE.Build_bfile fdata' attr]])
@@ -577,6 +585,7 @@ Module SLOWBYTEFILE.
      instantiate (allbytes := allbytes).
      intuition eauto.
 
+     (* establish rep for f', the file updated by update_bytes *)
      unfold array_item_file in *.
      subst; simpl in *.
      eauto.
@@ -584,28 +593,35 @@ Module SLOWBYTEFILE.
      rewrite firstn_length.
      rewrite Nat.min_l.
      eauto.
-     admit.  (* in rep invariant? *)
-     admit.  (* in rep invariant *)
+     rewrite H9.
+     rewrite H7.
+     eauto.
+     subst; simpl in *.
+     erewrite wordToNat_natToWord_bound.
+     rewrite roundup_roundup_eq with (x := # (INODE.ISize (BFILE.BFAttr f))).
+     rewrite H9.
+     eauto.
+     instantiate (bound := $ ( (nunit_roundup # (INODE.ISize (BFILE.BFAttr f))
+  valubytes) * valubytes)).
+     rewrite H9.
+     eauto.
+
+     (* establish arrayN precondition for updates_bytes *)
      instantiate (olddata := skipn # (INODE.ISize (BFILE.BFAttr f)) allbytes).
      instantiate (Fx := arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes)).
      replace (# (INODE.ISize (BFILE.BFAttr f))) with (0 + # (INODE.ISize (BFILE.BFAttr f))) at 2 by omega.
      apply arrayN_split.
-     admit. (* by H5 *)
+     admit. (* by H9 and roundup_ok *)
      rewrite firstn_oob.
      apply list2nmem_array.
      subst; simpl.
-     eapply le_trans.
-
-     Focus 2. 
-     erewrite wordToNat_natToWord_bound.
-     eapply roundup_ok.
+     rewrite H9.
+     eauto.
     
-     instantiate (bound := $ ( (nunit_roundup # (INODE.ISize (BFILE.BFAttr f))
-  valubytes) * valubytes)).
-     admit. (* bound *)
-     admit. (* H14 *)
-
+     (* establish hidden length old = length new of update_bytes *)
      admit.  (* hidden length *)
+
+     (* establish off + length newdata <= length bytes  *)
      admit. (* some length roundup *)
 
      unfold rep.
@@ -635,12 +651,64 @@ Module SLOWBYTEFILE.
      rewrite H17.
      rewrite <- app_assoc.
      rewrite repeat_app.
-     erewrite eq_bytes_allbytes_ext0_to_newlen with (oldlen := # (INODE.ISize (BFILE.BFAttr f))) (bytes := (firstn # (INODE.ISize (BFILE.BFAttr f) ))).
-     
+     erewrite eq_bytes_allbytes_ext0_to_newlen with (oldlen := # (INODE.ISize (BFILE.BFAttr f))) (bytes := (firstn (# (INODE.ISize (BFILE.BFAttr f))) allbytes)).
+     instantiate (allbytes := allbytes).
+     eauto.
+     eauto.
+     eauto.
+     eauto.
+     rewrite H9.
+     eauto.
+     erewrite wordToNat_natToWord_bound.
+     eauto.
+     admit.  (* need bound on newlen *)
+
+
+     rewrite <- H20.
+     rewrite <- H16.
+     simpl.
+     erewrite wordToNat_natToWord_bound.
+     eauto.
+     admit.  (* roundup bound *)
+     admit.  (* roundup bound *)
+     simpl.
+     eauto.
 
      admit. (* bound on newlen *)
+
+     rewrite app_length.
+     rewrite repeat_length.
+     rewrite firstn_length.
+     rewrite Nat.min_l.
+     rewrite plus_comm.
+     rewrite Nat.sub_add.
+     admit. (* bound on newlen *)
+     eauto.
+     rewrite <- H9.
+     apply roundup_ok.
+
+     rewrite app_length.
+     rewrite <- H20.
+     rewrite repeat_length.
+     rewrite <- H16.
+     simpl.
+     erewrite wordToNat_natToWord_bound.
+     erewrite wordToNat_natToWord_bound.
+     rewrite roundup_roundup_eq.
+     erewrite wordToNat_natToWord_bound.
+     rewrite Nat.mul_sub_distr_r.
+     rewrite le_plus_minus_r.
+     eauto.
+
+
+     eapply le_roundup.
+     eauto.
+     instantiate (bound4 := $ (nunit_roundup newlen valubytes)).
      admit.
-     admit.
+     instantiate (bound3 := $ ((nunit_roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
+     rewrite H9.
+     eauto.
+     admit. (* bound on newlen *)
      step.
    Admitted.
 
