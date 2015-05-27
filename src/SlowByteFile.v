@@ -478,13 +478,17 @@ Module SLOWBYTEFILE.
     auto.
   Qed.
 
-    Lemma le_roundup:
-      forall m n,
-       m <= n ->
-        (nunit_roundup m valubytes) * valubytes <= (nunit_roundup n valubytes) * valubytes.
-    Proof.
-      intros.
-    Admitted.
+  Lemma le_roundup:
+    forall m n,
+      m <= n ->
+      (nunit_roundup m valubytes) * valubytes <= (nunit_roundup n valubytes) * valubytes.
+  Proof.
+    unfold nunit_roundup; intros.
+    apply Nat.mul_le_mono_r.
+    apply Nat.div_le_mono.
+    rewrite valubytes_is; auto.
+    omega.
+  Qed.
 
     Lemma nblock_ok:
       forall oldlen newlen boundary nblock,
