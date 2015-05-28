@@ -725,7 +725,7 @@ Module SLOWBYTEFILE.
 
 
   Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
-    {< m mbase F Fm Fx A flist f bytes,
+    {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
@@ -733,7 +733,7 @@ Module SLOWBYTEFILE.
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
-           [[ ok = true ]] * exists flist' f' bytes',
+           [[ ok = true ]] * exists flist' f' bytes' Fx,
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
@@ -753,7 +753,7 @@ Module SLOWBYTEFILE.
 
     step.
 
-    instantiate (Fx1 := arrayN 0 (firstn off (bytes ++
+    instantiate (Fx0 := arrayN 0 (firstn off (bytes ++
       repeat $ (0)
         (off + length newdata -
          # (INODE.ISize (BFILE.BFAttr f)))))).
@@ -762,32 +762,29 @@ Module SLOWBYTEFILE.
         (off + length newdata -
          # (INODE.ISize (BFILE.BFAttr f))))).
     apply arrayN_split.
-    admit. (* off <= *)
+
+    (* XXX there are a number of conclusions that we can draw from rep *)
+    admit. (* off <= H11 *)
     eapply list2nmem_array.
-    admit. (* H15 *)
-    admit.
+    admit. (* H11 *)
+    admit.  (* H11 *)
     
 
     step.
-    eapply pimpl_or_r; right; cancel.
-    instantiate (bytes'0 := bytes').
-    eauto.
-    admit.  (* H14 *)
-
-    step.  (* return *)
+    step.
     step.
 
     (* false branch *)
     (* establish Fx * arrayN for update_bytes *)
-    instantiate (Fx1 := arrayN 0 (firstn off bytes)).
+    instantiate (Fx0 := arrayN 0 (firstn off bytes)).
     instantiate (olddata0 := skipn off bytes).
-    eapply arrayN_combine.  (* repeat parts of the script above *)
+    eapply arrayN_combine.  
     rewrite firstn_length.
     rewrite Nat.min_l.
     eauto.
     admit. (* H8 *)
     rewrite firstn_skipn.
-    admit. (* list2nmem_array_eq. *)
+    apply list2nmem_array. (* list2nmem_array_eq. *)
 
     Transparent hidden.
     unfold hidden.
@@ -795,11 +792,6 @@ Module SLOWBYTEFILE.
     admit.  (* H8 *)
 
     step. (* return *)
-
-    eapply pimpl_or_r; right; cancel.
-    instantiate (bytes'0 := bytes').
-    eauto.
-    admit. (* H12 *)
 
   Admitted.
 
