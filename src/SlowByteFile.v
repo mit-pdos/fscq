@@ -782,14 +782,27 @@ Module SLOWBYTEFILE.
     rewrite firstn_length.
     rewrite Nat.min_l.
     eauto.
-    admit. (* H8 *)
-    rewrite firstn_skipn.
-    apply list2nmem_array. (* list2nmem_array_eq. *)
 
-    Transparent hidden.
-    unfold hidden.
+    apply wle_le in H8.
+    unfold rep in H4.  
+    destruct H4.
+    destruct H.
+    destruct H0.
+    destruct H4.
+    rewrite H4.
+    erewrite wordToNat_natToWord_bound in H8.
+    eapply le_trans.
+    instantiate (m := off + length newdata).
+    omega.
+    eauto.
+    admit. (* bound on newdata *)
+    rewrite firstn_skipn.
+    apply list2nmem_array.
+
+    (* several conclusions from rep and H8, as above *)
+    (* rep has been folded up again *)
     admit.
-    admit.  (* H8 *)
+    admit.
 
     step. (* return *)
 
