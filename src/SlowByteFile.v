@@ -751,51 +751,31 @@ Module SLOWBYTEFILE.
     step.
     step.
 
-    (* work around unification problem *)
-    eapply pimpl_ok2; eauto with prog.
-    unfold rep, bytes_rep in *.
-    cancel.
-    eexists.
-    intuition.
-    instantiate (allbytes := allbytes).
-    apply H.
-    simpl.
-    auto.
-    rewrite firstn_length.
-    rewrite Nat.min_l.
-    eauto.
-    admit. (* bound on off + length newdata *)
+    step.
 
-    rewrite <- H14.
-    eauto.
-
-
-    (* establish Fx * arrayN for update_bytes *)
-    instantiate (Fx1 := arrayN 0 (firstn off allbytes)).
-    instantiate (olddata0 := skipn off allbytes).
-    eapply arrayN_combine.
-    rewrite firstn_length.
-    rewrite Nat.min_l.
-    eauto.
-    admit. (* H14 *)
-    admit. (* apply list2nmem_array_eq. *)
+    instantiate (Fx1 := arrayN 0 (firstn off (bytes ++
+      repeat $ (0)
+        (off + length newdata -
+         # (INODE.ISize (BFILE.BFAttr f)))))).
+    instantiate (olddata0 := skipn off (bytes ++
+      repeat $ (0)
+        (off + length newdata -
+         # (INODE.ISize (BFILE.BFAttr f))))).
+    apply arrayN_split.
+    admit. (* off <= *)
+    eapply list2nmem_array.
+    admit. (* H15 *)
     admit.
-    admit.
+    
 
     step.
     eapply pimpl_or_r; right; cancel.
-    eexists.
-    intuition.
-    instantiate (allbytes := allbytes1).
+    instantiate (bytes'0 := bytes').
     eauto.
-    eauto.
-    eauto.
-    admit. (* roundup reasoning *)
+    admit.  (* H14 *)
 
-    admit. (* Fx newdata; arrayN combine in H23 *)
+    step.  (* return *)
     step.
-    step.
-
 
     (* false branch *)
     (* establish Fx * arrayN for update_bytes *)
@@ -817,17 +797,10 @@ Module SLOWBYTEFILE.
     step. (* return *)
 
     eapply pimpl_or_r; right; cancel.
-    eexists.
-    intuition.
-    instantiate (allbytes := bytes').
-    unfold rep in H13.
-    destruct H13.
-    destruct H.
-    admit.
-    admit.
-    admit.
-    admit. (* arrayN combine in H12. *)
-    
+    instantiate (bytes'0 := bytes').
+    eauto.
+    admit. (* H12 *)
+
   Admitted.
 
 End SLOWBYTEFILE.
