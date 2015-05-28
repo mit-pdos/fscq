@@ -410,24 +410,6 @@ Module SLOWBYTEFILE.
        rx ^(mscs, false)
      }.
 
-   Lemma le_rewrite_eq: 
-    forall m n,
-      m <= n  -> exists i, m + i = n.
-   Proof.
-     intros.
-     eexists (n-m).
-     omega.
-   Qed.
-
-   Lemma lt_rewrite_eq: 
-    forall m n,
-      m < n  -> exists i, m + i = n.
-   Proof.
-     intros.
-     eexists (n-m).
-     omega.
-   Qed.
-
   Lemma roundup_ok:
     forall x,
       (nunit_roundup x valubytes) * valubytes >= x.
@@ -743,13 +725,11 @@ Module SLOWBYTEFILE.
 
 
   Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
-    {< m mbase F Fm Fx A flist f bytes olddata,
+    {< m mbase F Fm Fx A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ rep bytes f ]] *
-           [[ length olddata = Nat.min (length newdata) ((length bytes - off)) ]] *
-           [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]]
+           [[ rep bytes f ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -765,8 +745,8 @@ Module SLOWBYTEFILE.
     step.  (* bfgetattr *)
     step.  (* If *)
     step.  (* grow_file *)
-    instantiate (curlen := (# (INODE.ISize (BFILE.BFAttr f)))).
-    admit.
+
+    admit. (* bound on off + length newdata; must come from spec *)
     step.
     step.
     step.
@@ -783,54 +763,70 @@ Module SLOWBYTEFILE.
     auto.
     rewrite firstn_length.
     rewrite Nat.min_l.
-    admit.
-    admit.
-    admit.
-    admit. (* H? *)
+    eauto.
+    admit. (* bound on off + length newdata *)
+
+    rewrite <- H14.
+    eauto.
+
+
+    (* establish Fx * arrayN for update_bytes *)
+    instantiate (Fx1 := arrayN 0 (firstn off allbytes)).
+    instantiate (olddata0 := skipn off allbytes).
+    eapply arrayN_combine.
     rewrite firstn_length.
     rewrite Nat.min_l.
+    eauto.
+    admit. (* H14 *)
+    admit. (* apply list2nmem_array_eq. *)
     admit.
     admit.
-    admit.
+
     step.
     eapply pimpl_or_r; right; cancel.
     eexists.
     intuition.
     instantiate (allbytes := allbytes1).
-    apply H8.
-    apply H26.
-    apply H23.
-    admit. (* round up *)
-    apply H25.
+    eauto.
+    eauto.
+    eauto.
+    admit. (* roundup reasoning *)
+
+    admit. (* Fx newdata; arrayN combine in H23 *)
+    step.
     step.
 
 
     (* false branch *)
-    eapply pimpl_ok2; eauto with prog.
-    unfold rep, bytes_rep in *.
-    cancel.
-    eexists.
-    instantiate (allbytes := allbytes).
-    intuition.
-    instantiate (olddata1 := olddata).
-    apply H4.
-    rewrite H5.
+    (* establish Fx * arrayN for update_bytes *)
+    instantiate (Fx1 := arrayN 0 (firstn off bytes)).
+    instantiate (olddata0 := skipn off bytes).
+    eapply arrayN_combine.  (* repeat parts of the script above *)
+    rewrite firstn_length.
+    rewrite Nat.min_l.
+    eauto.
+    admit. (* H8 *)
+    rewrite firstn_skipn.
+    admit. (* list2nmem_array_eq. *)
+
     Transparent hidden.
     unfold hidden.
-    admit. (* H10 *)
-    admit. (* H10 *)
+    admit.
+    admit.  (* H8 *)
 
-    step.  (* return *)
+    step. (* return *)
 
     eapply pimpl_or_r; right; cancel.
     eexists.
     intuition.
-    instantiate (allbytes := allbytes0).
-    apply H0.
-    apply H18.
-    apply H15.
-    admit. (* roundup *)
-    eapply H17.
+    instantiate (allbytes := bytes').
+    unfold rep in H13.
+    destruct H13.
+    destruct H.
+    admit.
+    admit.
+    admit.
+    admit. (* arrayN combine in H12. *)
     
   Admitted.
 
