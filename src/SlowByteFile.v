@@ -841,8 +841,8 @@ Module SLOWBYTEFILE.
     (* false branch *)
     (* establish Fx * arrayN for update_bytes *)
     (* how do i to say? 
-       instantiate (Fx0 := arrayN 0 (firstn off bytes) * 
-                           arrayN (off length newdata) (skipn (off_length bytes))) *)
+      instantiate (Fx0 := arrayN 0 (firstn off bytes) * arrayN (off + (length newdata)) (skipn (off+(length newdata)) bytes)).
+    *)
 
     instantiate (Fx0 := arrayN 0 (firstn off bytes)).
     instantiate (olddata0 := firstn (length newdata) (skipn off bytes)).
