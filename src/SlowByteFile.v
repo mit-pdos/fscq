@@ -723,6 +723,52 @@ Module SLOWBYTEFILE.
         rx ^(mscs, true)
     }.
 
+  Lemma off_in_bounds_ext:
+    forall off f bytes (newdata: list byte),
+      rep bytes f ->
+        off <= length (bytes ++ repeat $ (0) (off + length newdata - # (INODE.ISize (BFILE.BFAttr f)))).
+  Proof.
+    intros.
+    rewrite app_length.
+    rewrite repeat_length.
+    unfold rep in H.
+    destruct H.
+    destruct H.
+    destruct H0.
+    destruct H1.
+    rewrite H1.
+    omega.
+  Qed.
+
+  Lemma off_in_bounds:
+    forall off f bytes (newdata: list byte),
+      rep bytes f ->
+      off + length newdata <= # (INODE.ISize (BFILE.BFAttr f)) ->
+      off <= length bytes.
+  Proof.
+    intros.
+    unfold rep in H.
+    destruct H.
+    destruct H.
+    destruct H1.
+    destruct H2.
+    rewrite H2.
+    omega.
+  Qed.
+
+  Lemma length_rep:
+    forall f bytes,
+      rep bytes f -> length bytes = # (INODE.ISize (BFILE.BFAttr f)).
+  Proof.
+    intros.
+    unfold rep in H.
+    destruct H.
+    destruct H.
+    destruct H0.
+    destruct H1.
+    rewrite H1.
+    reflexivity.
+  Qed.
 
   Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
     {< m mbase F Fm A flist f bytes,
@@ -763,12 +809,30 @@ Module SLOWBYTEFILE.
          # (INODE.ISize (BFILE.BFAttr f))))).
     apply arrayN_split.
 
-    (* XXX there are a number of conclusions that we can draw from rep *)
-    admit. (* off <= H11 *)
+    apply off_in_bounds_ext.
+    eauto.
     eapply list2nmem_array.
-    admit. (* H11 *)
-    admit.  (* H11 *)
-    
+
+    (* length (skipn off(bytes ++
+         repeat $ (0)(off + length newdata - # (INODE.ISize (BFILE.BFAttr f))))) = length newdata) *)
+    rewrite skipn_length.
+    rewrite app_length.
+    rewrite repeat_length.
+    erewrite length_rep with (f := f).
+    Transparent hidden.
+    unfold hidden.
+    admit.  (* shoudn't omega just solve this? *)
+    eauto.
+
+    apply off_in_bounds_ext.
+    eauto.
+
+    (* off + length newdata <= length bytes + length (repeat $ (0)
+     (off + length newdata - # (INODE.ISize (BFILE.BFAttr f)))) *)
+    rewrite repeat_length.
+    erewrite length_rep with (bytes := bytes) (f := f).
+    omega.
+    eauto.
 
     step.
     step.
@@ -784,25 +848,32 @@ Module SLOWBYTEFILE.
     eauto.
 
     apply wle_le in H8.
-    unfold rep in H4.  
-    destruct H4.
-    destruct H.
-    destruct H0.
-    destruct H4.
-    rewrite H4.
+    apply off_in_bounds with (f := f) (newdata := newdata).
+    eauto.
     erewrite wordToNat_natToWord_bound in H8.
-    eapply le_trans.
-    instantiate (m := off + length newdata).
-    omega.
     eauto.
     admit. (* bound on newdata *)
     rewrite firstn_skipn.
     apply list2nmem_array.
 
-    (* several conclusions from rep and H8, as above *)
-    (* rep has been folded up again *)
-    admit.
-    admit.
+    rewrite skipn_length.
+    rewrite length_rep with (f := f).
+    admit. (* XXX not really true, update spec of update_bytes? *)
+    eauto.
+    
+    apply off_in_bounds with (f := f) (newdata := newdata).
+    eauto.
+    apply wle_le in H8.
+    erewrite wordToNat_natToWord_bound in H8.
+    eauto.
+    admit. (* bound on newdata *)
+
+    rewrite length_rep with (f := f) (bytes := bytes).
+    apply wle_le in H8.
+    erewrite wordToNat_natToWord_bound in H8.
+    eauto.
+    admit. (* bound on newdata *)
+    eauto.
 
     step. (* return *)
 
