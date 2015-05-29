@@ -783,7 +783,7 @@ Module SLOWBYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]])
+           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes')]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
       >} write_bytes fsxp inum off newdata mscs.
   Proof.
@@ -840,8 +840,12 @@ Module SLOWBYTEFILE.
 
     (* false branch *)
     (* establish Fx * arrayN for update_bytes *)
+    (* how do i to say? 
+       instantiate (Fx0 := arrayN 0 (firstn off bytes) * 
+                           arrayN (off length newdata) (skipn (off_length bytes))) *)
+
     instantiate (Fx0 := arrayN 0 (firstn off bytes)).
-    instantiate (olddata0 := skipn off bytes).
+    instantiate (olddata0 := firstn (length newdata) (skipn off bytes)).
     eapply arrayN_combine.  
     rewrite firstn_length.
     rewrite Nat.min_l.
@@ -853,12 +857,21 @@ Module SLOWBYTEFILE.
     erewrite wordToNat_natToWord_bound in H8.
     eauto.
     admit. (* bound on newdata *)
-    rewrite firstn_skipn.
-    apply list2nmem_array.
+    admit. (* fix FX, then rewrite firstn_skipn, apply list2nmem_array. *)
 
+    rewrite firstn_length.
+    rewrite Nat.min_l.
+    Transparent hidden.
+    unfold hidden.
+    eauto.
     rewrite skipn_length.
-    rewrite length_rep with (f := f).
-    admit. (* XXX not really true, update spec of update_bytes? *)
+    rewrite length_rep with (f := f) (bytes := bytes).
+    apply wle_le in H8.
+    erewrite wordToNat_natToWord_bound in H8.
+    erewrite plus_le_reg_l with (p := off) (m := # (INODE.ISize (BFILE.BFAttr f)) - off).
+    omega.
+    omega.
+    admit. (* bound on newdata *)
     eauto.
     
     apply off_in_bounds with (f := f) (newdata := newdata).
