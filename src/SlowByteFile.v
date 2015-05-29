@@ -844,7 +844,8 @@ Module SLOWBYTEFILE.
        instantiate (Fx0 := arrayN 0 (firstn off bytes) * 
                            arrayN (off length newdata) (skipn (off_length bytes))) *)
 
-    instantiate (Fx0 := arrayN 0 (firstn off bytes)).
+    instantiate (Fx0 := (arrayN 0 (firstn off bytes) *
+                         arrayN off (skipn off bytes))%pred).
     instantiate (olddata0 := firstn (length newdata) (skipn off bytes)).
     eapply arrayN_combine.  
     rewrite firstn_length.
