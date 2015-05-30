@@ -770,6 +770,12 @@ Module SLOWBYTEFILE.
     reflexivity.
   Qed.
 
+  Lemma helper_sep_star_comm_middle : forall AT AEQ V (m : @mem AT AEQ V) a b c,
+    ((a * b) * c)%pred m -> (a * c * b)%pred m.
+  Proof.
+    intros; pred_apply; cancel.
+  Qed.
+
   Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
     {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -840,24 +846,26 @@ Module SLOWBYTEFILE.
 
     (* false branch *)
     (* establish Fx * arrayN for update_bytes *)
-    (* how do i to say? 
-      instantiate (Fx0 := arrayN 0 (firstn off bytes) * arrayN (off + (length newdata)) (skipn (off+(length newdata)) bytes)).
-    *)
-
     instantiate (Fx0 := (arrayN 0 (firstn off bytes) *
-                         arrayN off (skipn off bytes))%pred).
+                         arrayN (off+(length newdata)) (skipn (off+(length newdata)) bytes))%pred).
     instantiate (olddata0 := firstn (length newdata) (skipn off bytes)).
-    eapply arrayN_combine.  
+    apply helper_sep_star_comm_middle.
+    rewrite arrayN_combine.  
+    apply arrayN_combine.
+    rewrite app_length.
     rewrite firstn_length.
     rewrite Nat.min_l.
+    rewrite firstn_length.
+    rewrite Nat.min_l.
+    omega.
+    rewrite skipn_length.
+    admit.  (* proven below *)
+    rewrite length_rep with (f := f) (bytes := bytes).
+    admit.  (* follows from H8 *)
     eauto.
-
-    apply wle_le in H8.
-    apply off_in_bounds with (f := f) (newdata := newdata).
+    rewrite length_rep with (f := f) (bytes := bytes).
+    admit.  (* follows from H8 *)
     eauto.
-    erewrite wordToNat_natToWord_bound in H8.
-    eauto.
-    admit. (* bound on newdata *)
     admit. (* fix FX, then rewrite firstn_skipn, apply list2nmem_array. *)
 
     rewrite firstn_length.
@@ -865,10 +873,21 @@ Module SLOWBYTEFILE.
     Transparent hidden.
     unfold hidden.
     eauto.
-    rewrite skipn_length.
-    rewrite length_rep with (f := f) (bytes := bytes).
+    apply off_in_bounds with (f := f) (newdata := newdata).
+    eauto.
+
     apply wle_le in H8.
     erewrite wordToNat_natToWord_bound in H8.
+    eauto.
+    admit. (* bound on newdata *)
+    
+    rewrite firstn_length.
+    rewrite Nat.min_l.
+    Transparent hidden.
+    unfold hidden.
+    eauto.
+
+    rewrite skipn_length.
     erewrite plus_le_reg_l with (p := off) (m := # (INODE.ISize (BFILE.BFAttr f)) - off).
     omega.
     omega.
