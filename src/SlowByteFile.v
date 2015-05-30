@@ -847,7 +847,7 @@ Module SLOWBYTEFILE.
     (* false branch *)
     (* establish Fx * arrayN for update_bytes *)
     instantiate (Fx0 := (arrayN 0 (firstn off bytes) *
-                         arrayN (off+(length newdata)) (skipn (off+(length newdata)) bytes))%pred).
+                         arrayN (off+(length newdata)) (skipn (length newdata) (skipn off bytes)))%pred).
     instantiate (olddata0 := firstn (length newdata) (skipn off bytes)).
     apply helper_sep_star_comm_middle.
     rewrite arrayN_combine.  
@@ -859,14 +859,28 @@ Module SLOWBYTEFILE.
     rewrite Nat.min_l.
     omega.
     rewrite skipn_length.
-    admit.  (* proven below *)
+    erewrite plus_le_reg_l with (p := off) (m := (length bytes - off)). 
+    omega.
+    admit.  (* omega should solve this *)
     rewrite length_rep with (f := f) (bytes := bytes).
-    admit.  (* follows from H8 *)
+    apply wle_le in H8.
+    erewrite wordToNat_natToWord_bound in H8.
+    omega.
+    admit.  (* bound on newdata *)
     eauto.
+
     rewrite length_rep with (f := f) (bytes := bytes).
-    admit.  (* follows from H8 *)
+    apply wle_le in H8.
+    erewrite wordToNat_natToWord_bound in H8.
+    omega.
+    admit.  (* bound on newdata *)
     eauto.
-    admit. (* fix FX, then rewrite firstn_skipn, apply list2nmem_array. *)
+
+    Check firstn_skipn.
+    rewrite <- app_assoc.
+    rewrite firstn_skipn.
+    rewrite firstn_skipn.
+    apply list2nmem_array.
 
     rewrite firstn_length.
     rewrite Nat.min_l.
@@ -888,12 +902,12 @@ Module SLOWBYTEFILE.
     eauto.
 
     rewrite skipn_length.
+    rewrite length_rep with (f := f) (bytes := bytes).
     erewrite plus_le_reg_l with (p := off) (m := # (INODE.ISize (BFILE.BFAttr f)) - off).
     omega.
-    omega.
-    admit. (* bound on newdata *)
+    admit. (* why can't omega solve this? *)
     eauto.
-    
+  
     apply off_in_bounds with (f := f) (newdata := newdata).
     eauto.
     apply wle_le in H8.
