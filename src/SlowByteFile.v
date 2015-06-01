@@ -116,6 +116,11 @@ Module SLOWBYTEFILE.
       Rof ^(mscs, off);
       rx mscs.
 
+  Definition read_byte T fsxp inum (off:nat) mscs rx : prog T :=
+  let^ (mscs, b) <- BFileRec.bf_get byte_type items_per_valu itemsz_ok
+     fsxp.(FSXPLog) fsxp.(FSXPInode) inum ($ off) mscs;
+     rx ^(mscs, b).
+
   Lemma bound_helper : forall a b,
     # (natToWord addrlen b) = b -> a <= b -> a <= # (natToWord addrlen b).
   Proof.
@@ -173,6 +178,46 @@ Module SLOWBYTEFILE.
       rewrite apply_bytes_length.
       apply sep_star_assoc in H1. apply sep_star_comm in H1. apply sep_star_assoc in H1.
       apply list2nmem_ptsto_bound in H1. rewrite firstn_length in H1. auto.
+  Qed.
+
+  Theorem read_byte_ok: forall fsxp inum off mscs,
+    {< m mbase F Fx Fm A flist f bytes v,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+          [[ rep bytes f ]] *
+          [[ (Fx * off |-> v)%pred (list2nmem bytes) ]]
+    POST RET:^(mscs, b)
+          LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+          [[ b = v ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+     >} read_byte fsxp inum off mscs.
+  Proof.
+    unfold read_byte.
+    unfold rep, bytes_rep.
+    step.
+    apply list2nmem_ptsto_bound in H4.
+    rewrite firstn_length in H4.
+    apply Nat.min_glb_lt_iff in H4. destruct H4.
+    erewrite wordToNat_natToWord_bound.
+    assumption.
+    apply Nat.lt_le_incl. eassumption.
+    step.
+    Search ptsto list2nmem selN.
+    eapply list2nmem_sel in H4 as H4'.
+
+    apply list2nmem_ptsto_bound in H4.
+    rewrite firstn_length in H4.
+    Search lt Init.Nat.min.
+    apply Nat.min_glb_lt_iff in H4. destruct H4.
+
+    rewrite selN_firstn in H4' by eauto.
+    unfold sel in H13.
+    erewrite wordToNat_natToWord_bound in H13.
+    rewrite H13.
+    rewrite H4'.
+    reflexivity.
+    apply Nat.lt_le_incl. eassumption.
   Qed.
 
 
