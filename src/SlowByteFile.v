@@ -331,6 +331,9 @@ Module SLOWBYTEFILE.
     omega.
   Qed.
 
+
+Hint Resolve bytes_grow_oneblock_ok.
+
   Lemma length_grow_oneblock_ok:
     forall (bytes: list byte) (nblock:addr) (bound:addr),
       (nblock < bound) % word ->
@@ -361,6 +364,7 @@ Module SLOWBYTEFILE.
     instantiate (bound:=bound); eauto.
   Qed.
 
+Hint Resolve length_grow_oneblock_ok.
 
   Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
       {< m mbase F Fm flist f A bytes,
@@ -395,14 +399,10 @@ Module SLOWBYTEFILE.
     step.
     (* true branch *)
     step.
-
-    eapply bytes_grow_oneblock_ok; eauto.
-
-    eapply length_grow_oneblock_ok; eauto.
-
     step.
     step.
     step.
+   
     eapply pimpl_or_r; right; cancel.
     eauto.
     rewrite app_length in H18.
@@ -834,7 +834,8 @@ Module SLOWBYTEFILE.
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ rep bytes f ]]
+           [[ rep bytes f ]] *
+           [[ goodSize addrlen (off+length newdata) ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -916,17 +917,17 @@ Module SLOWBYTEFILE.
     omega.
     admit.  (* omega should solve this *)
     rewrite length_rep with (f := f) (bytes := bytes).
-    apply wle_le in H8.
-    erewrite wordToNat_natToWord_bound in H8.
+    apply wle_le in H9.
+    erewrite wordToNat_natToWord_idempotent' in H9.
     omega.
-    admit.  (* bound on newdata *)
+    eauto.
     eauto.
 
     rewrite length_rep with (f := f) (bytes := bytes).
-    apply wle_le in H8.
-    erewrite wordToNat_natToWord_bound in H8.
+    apply wle_le in H9.
+    erewrite wordToNat_natToWord_idempotent' in H9.
     omega.
-    admit.  (* bound on newdata *)
+    eauto.
     eauto.
 
     Check firstn_skipn.
