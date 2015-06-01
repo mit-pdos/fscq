@@ -40,7 +40,12 @@ Module SLOWBYTEFILE.
     reflexivity.
   Qed.
 
-  Definition nunit_roundup (n: nat) (unitsz:nat) : nat := (n + unitsz - 1) / unitsz.
+  Definition roundup (n: nat) (unitsz:nat) : nat := (n + unitsz - 1) / unitsz.
+
+  (* The bytes of a file are mapped onto a list of blocks:   *)
+  (*   [ block 0 ... block n]                                *)
+  (*   <-- allbytes      -->                                 *)
+  (*   <-- bytes     -->                                     *)
 
   Definition bytes_rep f (allbytes : list byte) :=
     BFileRec.array_item_file byte_type items_per_valu itemsz_ok f allbytes /\
@@ -51,7 +56,7 @@ Module SLOWBYTEFILE.
     bytes_rep f allbytes /\
     firstn (# (f.(BFILE.BFAttr).(INODE.ISize))) allbytes = bytes /\
     length bytes = (# (f.(BFILE.BFAttr).(INODE.ISize))) /\
-    nunit_roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes.
+    roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes.
 
   Fixpoint apply_bytes (allbytes : list byte) (off : nat) (newdata : list byte) :=
     match newdata with
@@ -293,6 +298,70 @@ Module SLOWBYTEFILE.
     rewrite valubytes_is; reflexivity.
   Qed.
 
+  Lemma natplus1_wordplus1_eq:
+    forall (a:addr) (bound:addr),
+      (a < bound)%word ->
+      # (a) + 1 = # (a ^+ $ (1)).
+  Proof.
+    intros.
+    rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
+    erewrite wordToNat_natToWord_bound. reflexivity.
+    apply wlt_lt in H.
+    instantiate (bound:=bound). omega.
+  Qed.
+
+  Lemma bytes_grow_oneblock_ok:
+    forall bytes nblock f,
+    array_item_file byte_type items_per_valu itemsz_ok f 
+       ((bytes ++ repeat $ (0) (@wordToNat addrlen (nblock) * valubytes)) ++ 
+        (upd (item0_list byte_type items_per_valu itemsz_ok) $0 $0)) ->
+    array_item_file byte_type items_per_valu itemsz_ok f 
+       (bytes ++ repeat $ (0) (@wordToNat addrlen (nblock ^+ $ (1)) * valubytes)).
+  Proof.
+    intros.
+    pose proof item0_upd.
+    rewrite  H0 in H.
+    rewrite <- app_assoc in H.
+    rewrite repeat_app in H.
+    replace (# (nblock ^+ $ (1)) * valubytes) with (# (nblock) * valubytes + valubytes).
+    auto.
+
+    replace (# (nblock ^+ $1)) with (#nblock + 1).
+    rewrite Nat.mul_add_distr_r.
+    omega.
+  Qed.
+
+  Lemma length_grow_oneblock_ok:
+    forall (bytes: list byte) (nblock:addr) (bound:addr),
+      (nblock < bound) % word ->
+      ($ (length bytes + # (nblock) * valubytes) <
+         $ (INODE.blocks_per_inode) ^* items_per_valu)%word ->
+      @wordToNat addrlen ($ (length (bytes ++ repeat $ (0) (# (nblock) * valubytes)))) =
+         length (bytes ++ repeat $ (0) (# (nblock) * valubytes))  ->
+      @wordToNat addrlen ($ (length (bytes ++ repeat $ (0) (# (nblock ^+ $ (1)) * valubytes)))) =
+      length (bytes ++ repeat $ (0) (# (nblock ^+ $ (1)) * valubytes)).
+  Proof.
+    intros.
+    replace (# (nblock ^+ $1)) with (#nblock + 1).
+    rewrite Nat.mul_add_distr_r.
+    simpl.
+    rewrite <- repeat_app.
+    repeat rewrite app_length.
+    repeat rewrite repeat_length.
+    erewrite wordToNat_natToWord_bound. reflexivity.
+    apply wlt_lt in H0.
+    rewrite app_length in H1. rewrite repeat_length in H1. rewrite H1 in H0.
+    instantiate (bound := $ (INODE.blocks_per_inode) ^* items_per_valu ^+ items_per_valu ^+ $1).
+    unfold INODE.blocks_per_inode in *. unfold INODE.nr_direct, INODE.nr_indirect in *.
+    unfold items_per_valu in *. rewrite valubytes_is. rewrite valubytes_is in H0.
+    apply le_trans with (4097 + # ($ (12 + 512) ^* natToWord addrlen 4096)). omega.
+    apply Nat.eq_le_incl.
+    reflexivity.
+    eapply natplus1_wordplus1_eq.
+    instantiate (bound:=bound); eauto.
+  Qed.
+
+
   Theorem grow_blocks_ok: forall fsxp inum nblock mscs,
       {< m mbase F Fm flist f A bytes,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -315,7 +384,7 @@ Module SLOWBYTEFILE.
     rewrite app_nil_r.
     eauto.
     rewrite app_nil_r.
-    rewrite H11; eauto.
+    eauto.
     constructor.
     step. (* getlen *)
     step. (* if *)
@@ -326,50 +395,10 @@ Module SLOWBYTEFILE.
     step.
     (* true branch *)
     step.
-    
-    pose proof item0_upd.
-    simpl in H6.
-    rewrite H6 in H16.
-    
-    rewrite <- app_assoc in H16.
-    rewrite repeat_app in H16.
-    replace (# (m1 ^+ $ (1)) * valubytes) with (# (m1) * valubytes + valubytes).
-    auto.
 
-    replace (# (m1 ^+ $1)) with (#m1 + 1).
-    rewrite Nat.mul_add_distr_r.
-    omega.
+    eapply bytes_grow_oneblock_ok; eauto.
 
-    rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
-    erewrite wordToNat_natToWord_bound. reflexivity.
-    apply wlt_lt in H.
-    instantiate (bound:=nblock). omega.
-
-    replace (# (m1 ^+ $1)) with (#m1 + 1).
-
-    rewrite Nat.mul_add_distr_r.
-
-    simpl.
-
-    rewrite <- repeat_app.
-    repeat rewrite app_length.
-    repeat rewrite repeat_length.
-
-    erewrite wordToNat_natToWord_bound. reflexivity.
-    apply wlt_lt in H13.
-    rewrite app_length in H20. rewrite repeat_length in H20. rewrite H20 in H13.
-    instantiate (bound := $ (INODE.blocks_per_inode) ^* items_per_valu ^+ items_per_valu ^+ $1).
-    unfold INODE.blocks_per_inode in *. unfold INODE.nr_direct, INODE.nr_indirect in *.
-    unfold items_per_valu in *. rewrite valubytes_is. rewrite valubytes_is in H13.
-    apply le_trans with (4097 + # ($ (12 + 512) ^* natToWord addrlen 4096)). omega.
-
-    apply Nat.eq_le_incl.
-    reflexivity.
-
-    rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
-    erewrite wordToNat_natToWord_bound. reflexivity.
-    apply wlt_lt in H.
-    instantiate (bound:=nblock). omega.
+    eapply length_grow_oneblock_ok; eauto.
 
     step.
     step.
@@ -391,8 +420,8 @@ Module SLOWBYTEFILE.
    Definition grow_file T fsxp inum newlen mscs rx : prog T :=
      let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
      let curlen := oldattr.(INODE.ISize) in
-     let curblocks := nunit_roundup #curlen valubytes  in
-     let newblocks := nunit_roundup newlen valubytes in
+     let curblocks := roundup #curlen valubytes  in
+     let newblocks := roundup newlen valubytes in
      let nblock := newblocks - curblocks in
      mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
                               (INODE.Build_iattr ($ (curblocks*valubytes))
@@ -412,9 +441,9 @@ Module SLOWBYTEFILE.
 
   Lemma roundup_ok:
     forall x,
-      (nunit_roundup x valubytes) * valubytes >= x.
+      (roundup x valubytes) * valubytes >= x.
   Proof.
-    unfold nunit_roundup; intros.
+    unfold roundup; intros.
     rewrite (Nat.div_mod x valubytes) at 1 by ( rewrite valubytes_is; auto ).
     rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
     rewrite <- plus_assoc.
@@ -447,10 +476,10 @@ Module SLOWBYTEFILE.
 
   Lemma roundup_roundup_eq:
     forall x,
-      (nunit_roundup ((nunit_roundup x valubytes)*valubytes) valubytes) * valubytes =
-      (nunit_roundup x valubytes) * valubytes.
+      (roundup ((roundup x valubytes)*valubytes) valubytes) * valubytes =
+      (roundup x valubytes) * valubytes.
   Proof.
-    unfold nunit_roundup; intros.
+    unfold roundup; intros.
     rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
     rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
     rewrite Nat.mul_add_distr_r.
@@ -463,9 +492,9 @@ Module SLOWBYTEFILE.
   Lemma le_roundup:
     forall m n,
       m <= n ->
-      (nunit_roundup m valubytes) * valubytes <= (nunit_roundup n valubytes) * valubytes.
+      (roundup m valubytes) * valubytes <= (roundup n valubytes) * valubytes.
   Proof.
-    unfold nunit_roundup; intros.
+    unfold roundup; intros.
     apply Nat.mul_le_mono_r.
     apply Nat.div_le_mono.
     rewrite valubytes_is; auto.
@@ -475,8 +504,8 @@ Module SLOWBYTEFILE.
   Lemma nblock_ok:
     forall oldlen newlen boundary nblock,
       oldlen <= newlen ->
-      boundary = (nunit_roundup oldlen valubytes) * valubytes ->
-      nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes)->
+      boundary = (roundup oldlen valubytes) * valubytes ->
+      nblock = (roundup newlen valubytes) - (roundup oldlen valubytes)->
       newlen - oldlen <= boundary - oldlen + nblock * valubytes.
   Proof.
     intros; subst.
@@ -523,10 +552,10 @@ Module SLOWBYTEFILE.
   Lemma eq_bytes_allbytes_ext0_to_newlen:
     forall (allbytes: list byte) (oldlen:nat) (newlen:nat) bytes nbytes nblock,
       oldlen <= newlen ->
-      (nunit_roundup oldlen valubytes) * valubytes = length allbytes ->
+      (roundup oldlen valubytes) * valubytes = length allbytes ->
       bytes = firstn oldlen allbytes ->
       nbytes = (length allbytes) - oldlen ->
-      nblock = (nunit_roundup newlen valubytes) - (nunit_roundup oldlen valubytes) ->
+      nblock = (roundup newlen valubytes) - (roundup oldlen valubytes) ->
       firstn newlen (bytes ++ (repeat $0 (nbytes + (nblock * valubytes)))) = 
         (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
   Proof.
@@ -592,7 +621,7 @@ Module SLOWBYTEFILE.
      rewrite roundup_roundup_eq with (x := # (INODE.ISize (BFILE.BFAttr f))).
      rewrite H9.
      eauto.
-     instantiate (bound := $ ( (nunit_roundup # (INODE.ISize (BFILE.BFAttr f))
+     instantiate (bound := $ ( (roundup # (INODE.ISize (BFILE.BFAttr f))
   valubytes) * valubytes)).
      rewrite H9.
      eauto.
@@ -633,7 +662,7 @@ Module SLOWBYTEFILE.
      rewrite H9.
      erewrite wordToNat_natToWord_bound.
      eauto.
-     instantiate (bound := $ (nunit_roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+     instantiate (bound := $ (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
      valubytes)).
      rewrite H9.
      eauto.
@@ -718,9 +747,9 @@ Module SLOWBYTEFILE.
 
      eapply le_roundup.
      eauto.
-     instantiate (bound4 := $ (nunit_roundup newlen valubytes)).
+     instantiate (bound4 := $ (roundup newlen valubytes)).
      admit.
-     instantiate (bound3 := $ ((nunit_roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
+     instantiate (bound3 := $ ((roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
      rewrite H9.
      eauto.
      admit. (* bound on newlen *)
