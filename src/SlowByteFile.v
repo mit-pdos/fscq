@@ -602,18 +602,41 @@ Module SLOWBYTEFILE.
      instantiate (Fx := arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes)).
      replace (# (INODE.ISize (BFILE.BFAttr f))) with (0 + # (INODE.ISize (BFILE.BFAttr f))) at 2 by omega.
      apply arrayN_split.
-     admit. (* by H9 and roundup_ok *)
+
+     rewrite <- H9.
+     apply roundup_ok.
+
      rewrite firstn_oob.
      apply list2nmem_array.
      subst; simpl.
      rewrite H9.
      eauto.
     
-     (* establish hidden length old = length new of update_bytes *)
-     admit.  (* hidden length *)
+     rewrite skipn_length.
+     rewrite repeat_length.
+     rewrite H9.
+     Transparent hidden.
+     unfold hidden.
+     eauto.
 
-     (* establish off + length newdata <= length bytes  *)
-     admit. (* some length roundup *)
+     rewrite <- H9.
+     apply roundup_ok.
+
+
+     rewrite repeat_length.
+     rewrite H9.
+     subst; simpl.
+     rewrite firstn_length.
+     rewrite Nat.min_l.
+     rewrite <- H9.
+     admit.  (* why cannot omega solve this? *)
+     rewrite H9.
+     erewrite wordToNat_natToWord_bound.
+     eauto.
+     instantiate (bound := $ (nunit_roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+     valubytes)).
+     rewrite H9.
+     eauto.
 
      unfold rep.
 
@@ -660,6 +683,7 @@ Module SLOWBYTEFILE.
      simpl.
      erewrite wordToNat_natToWord_bound.
      eauto.
+
      admit.  (* roundup bound *)
      admit.  (* roundup bound *)
      simpl.
