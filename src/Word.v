@@ -1670,6 +1670,33 @@ Proof.
   auto.
 Qed.
 
+Lemma lt_word_lt_nat : forall (sz:nat) (n:word sz) (m:nat),
+  (n < (natToWord sz m))%word ->
+  (wordToNat n < m)%nat.
+Proof.
+  intros.
+  apply wlt_lt in H.
+  destruct (wordToNat_natToWord' sz m).
+  rewrite <- H0.
+  apply lt_plus_trans with (p := x * pow2 sz).
+  assumption.
+Qed.
+
+(* Chain [lt_word_lt_nat] and [Nat.lt_le_incl]
+    Avoids using [Hint Resolve Nat.lt_le_incl] for this specific lemma,
+    though this may be a premature optimization. *)
+Lemma lt_word_le_nat : forall (sz:nat) (n:word sz) (m:nat),
+  (n < (natToWord sz m))%word ->
+  (wordToNat n <= m)%nat.
+Proof.
+  intros.
+  apply lt_word_lt_nat in H.
+  apply Nat.lt_le_incl.
+  assumption.
+Qed.
+
+Hint Resolve lt_word_le_nat.
+
 Lemma wordToNat_natToWord_idempotent' : forall sz n,
   goodSize sz n
   -> wordToNat (natToWord sz n) = n.

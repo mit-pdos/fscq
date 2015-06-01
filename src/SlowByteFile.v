@@ -852,7 +852,6 @@ Hint Resolve length_grow_oneblock_ok.
     step.  (* If *)
     step.  (* grow_file *)
 
-    admit. (* bound on off + length newdata; must come from spec *)
     step.
     step.
     step.
@@ -944,8 +943,8 @@ Hint Resolve length_grow_oneblock_ok.
     apply off_in_bounds with (f := f) (newdata := newdata).
     eauto.
 
-    apply wle_le in H8.
-    erewrite wordToNat_natToWord_bound in H8.
+    apply wle_le in H9.
+    erewrite wordToNat_natToWord_bound in H9.
     eauto.
     admit. (* bound on newdata *)
     
@@ -964,14 +963,14 @@ Hint Resolve length_grow_oneblock_ok.
   
     apply off_in_bounds with (f := f) (newdata := newdata).
     eauto.
-    apply wle_le in H8.
-    erewrite wordToNat_natToWord_bound in H8.
+    apply wle_le in H9.
+    erewrite wordToNat_natToWord_bound in H9.
     eauto.
     admit. (* bound on newdata *)
 
     rewrite length_rep with (f := f) (bytes := bytes).
-    apply wle_le in H8.
-    erewrite wordToNat_natToWord_bound in H8.
+    apply wle_le in H9.
+    erewrite wordToNat_natToWord_bound in H9.
     eauto.
     admit. (* bound on newdata *)
     eauto.
