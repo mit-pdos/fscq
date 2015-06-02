@@ -882,6 +882,70 @@ Hint Resolve length_grow_oneblock_ok.
        apply roundup_ok.
   Admitted.
 
+   (* XXX want to say rep list-of-bytes f'', but i need to fold things back into a rep
+    * before i am able to call this lemma. how do do this? *)
+   Lemma grow_to_newlen_ok:
+      forall f f'' (bytes: list byte) (allbytes: list byte) newlen,
+         roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+         goodSize addrlen newlen ->
+         bytes_rep f'' ((firstn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes ++
+          repeat $ (0)
+            (roundup (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) valubytes * valubytes -
+             (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))))) ++
+          repeat $ (0)
+           (@wordToNat addrlen ($
+               (roundup newlen valubytes -
+                roundup (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) valubytes)) *
+            valubytes)) ->
+
+        exists allbytes0 : list byte,
+         (array_item_file byte_type items_per_valu itemsz_ok
+          {|
+            BFILE.BFData := BFILE.BFData f'';
+            BFILE.BFAttr := {|
+                     INODE.ISize := $ (newlen);
+                     INODE.IMTime := INODE.IMTime (BFILE.BFAttr f);
+                     INODE.IType := INODE.IType (BFILE.BFAttr f) |} |}
+          allbytes0 /\ (@wordToNat addrlen ($ (length allbytes0))) = length allbytes0) /\
+        firstn (@wordToNat addrlen ($ (newlen))) allbytes0 =
+        firstn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes ++
+        repeat $ (0) (newlen - (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f)))) /\
+       length
+       (firstn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes ++
+         repeat $ (0) (newlen - (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))))) =
+      (@wordToNat addrlen ($ (newlen))) /\
+        roundup (@wordToNat addrlen ($ (newlen))) valubytes * valubytes = length allbytes0.
+  Proof.
+    intros.
+    eexists.
+    instantiate (allbytes0 := ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes ++
+          repeat $ (0)
+            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+             valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ++
+         repeat $ (0)
+           (# ($
+               (roundup newlen valubytes -
+                roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
+            valubytes))).
+    intuition.
+     unfold bytes_rep in H1.
+     intuition.
+     subst.
+     eauto.
+     unfold bytes_rep in H1.
+     destruct H1.
+     eauto. 
+     erewrite eq_bytes_allbytes_ext0_to_newlen with (allbytes := allbytes) (oldlen := # (INODE.ISize (BFILE.BFAttr f))).
+     erewrite wordToNat_natToWord_bound.
+     eauto.
+     admit. (* by H *)
+     admit.
+     eauto.
+     eauto.
+     admit.  (* omega *)
+     admit.  (* xxx omega *)
+  Admitted.
+
 
   Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
@@ -924,9 +988,18 @@ Hint Resolve length_grow_oneblock_ok.
 
      step.  (* grow blocks *)
 
-     instantiate (bytes := 
-     eapply grow_to_block_ok with (bytes' := bytes') (f := f).
-     instantiate (bytes := allbytes).
+     
+     (* grown file to newlen with 0 bytes *)
+     instantiate (allbytes := ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes ++
+          repeat $ (0)
+            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+             valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ++
+         repeat $ (0)
+           (# ($
+               (roundup newlen valubytes -
+                roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
+            valubytes))).
+     eapply grow_to_block_ok with (bytes' := bytes').
      eauto.
      eauto.
      eauto.
@@ -938,34 +1011,12 @@ Hint Resolve length_grow_oneblock_ok.
      step.
      eapply pimpl_or_r; right; cancel.
      
-     eexists.
-
-     (* grown file to newlen with 0 bytes *)
-     instantiate (allbytes := ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes ++
-          repeat $ (0)
-            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
-             valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ++
-         repeat $ (0)
-           (# ($
-               (roundup newlen valubytes -
-                roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
-            valubytes))).
-
-     unfold bytes_rep in H24.
-     intuition.
-     subst; simpl.
-     eauto.
-     omega.
-     erewrite eq_bytes_allbytes_ext0_to_newlen with (allbytes := allbytes) (oldlen := # (INODE.ISize (BFILE.BFAttr f))).
-     erewrite wordToNat_natToWord_bound.
-     eauto.
-     admit. (* by H4 *)
+     eapply grow_to_newlen_ok.
      admit.
      eauto.
+     admit.
      eauto.
-     admit.  (* omega *)
-     admit.  (* xxx omega *)
-
+     step.
    Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
