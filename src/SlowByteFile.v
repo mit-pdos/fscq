@@ -556,9 +556,10 @@ Hint Resolve length_grow_oneblock_ok.
       bytes = firstn oldlen allbytes ->
       nbytes = (length allbytes) - oldlen ->
       nblock = (roundup newlen valubytes) - (roundup oldlen valubytes) ->
-      firstn newlen (bytes ++ (repeat $0 (nbytes + (nblock * valubytes)))) = 
+      firstn newlen ((bytes ++ (repeat $0 nbytes)) ++ repeat $0 (nblock * valubytes)) = 
         (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
   Proof.
+(*
     intros.
 
     assert (length bytes = oldlen).
@@ -575,14 +576,97 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite <- H0.
     apply nblock_ok; auto.
   Qed.
+*)
+  Admitted.
 
-   Theorem grow_file_ok: forall fsxp inum newlen mscs,
+  Lemma grow_to_end_of_block_ok:
+    forall f f' allbytes,
+      array_item_file byte_type items_per_valu itemsz_ok f allbytes ->
+      @wordToNat addrlen ($ (length allbytes)) = length allbytes ->
+      roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+      f' =
+      {|
+      BFILE.BFData := BFILE.BFData f;
+      BFILE.BFAttr := {|
+                      INODE.ISize := $
+                                     (roundup # (INODE.ISize (BFILE.BFAttr f))
+                                        valubytes * valubytes);
+                      INODE.IMTime := INODE.IMTime (BFILE.BFAttr f);
+                      INODE.IType := INODE.IType (BFILE.BFAttr f) |} |} ->
+      rep allbytes f'.
+   Proof.
+    intros.
+    unfold rep, bytes_rep in *.
+    eexists.
+    instantiate (allbytes := allbytes).
+    intuition eauto.
+    unfold array_item_file in *.
+    subst; simpl in *.
+    eauto.
+    rewrite H2.
+    simpl.
+    rewrite H1.
+    rewrite firstn_oob; eauto.
+    subst; simpl.
+    rewrite H1.
+    eauto.
+    subst; simpl.
+     erewrite wordToNat_natToWord_bound.
+    rewrite roundup_roundup_eq with (x := # (INODE.ISize (BFILE.BFAttr f))).
+    rewrite H1.
+    instantiate (bound := $ ( (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
+    eauto.
+    rewrite H1.
+    eauto.
+  Qed.
+
+  Hint Resolve grow_to_end_of_block_ok.
+
+   
+  Lemma olddata_exists:
+        forall f (allbytes: list byte),
+        roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+        @wordToNat addrlen ($ (length allbytes)) = length allbytes ->
+        (arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) *
+          arrayN # (INODE.ISize (BFILE.BFAttr f))
+           (skipn # (INODE.ISize (BFILE.BFAttr f)) allbytes))%pred (list2nmem allbytes).
+  Proof.
+       intros.
+       replace (# (INODE.ISize (BFILE.BFAttr f))) with (0 + # (INODE.ISize (BFILE.BFAttr f))) at 2 by omega.
+       apply arrayN_split.
+       rewrite <- H.
+       apply roundup_ok.
+       apply list2nmem_array.
+  Qed.
+
+  Hint Resolve olddata_exists.
+
+  Lemma length_updatebytes_ok:
+      forall f (allbytes: list byte),
+        @wordToNat addrlen ($ (length allbytes)) = length allbytes ->
+        roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+          length (skipn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes) =
+          length (repeat (@natToWord addrlen 0) ((roundup (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) valubytes) * valubytes 
+                                 - (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))))).
+  Proof.
+      intros.
+      rewrite skipn_length.
+      rewrite repeat_length.
+      eauto.
+      rewrite <- H0.
+      apply roundup_ok.
+  Qed.
+
+  Hint Resolve length_updatebytes_ok.
+
+  Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ (# (INODE.ISize (BFILE.BFAttr f))) <= newlen ]]
+           [[ (# (INODE.ISize (BFILE.BFAttr f))) <= newlen ]] *
+           [[ goodSize addrlen newlen ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -599,77 +683,45 @@ Hint Resolve length_grow_oneblock_ok.
      unfold grow_file, rep, bytes_rep.
      step.  (* getattr *)
      step.  (* set attributes *)
-     step.  (* uppdate bytes *)
-     unfold rep, bytes_rep.
-     eexists.
-     instantiate (allbytes := allbytes).
-     intuition eauto.
+     step.  (* update bytes *)
 
-     (* establish rep for f', the file updated by update_bytes *)
-     unfold array_item_file in *.
-     subst; simpl in *.
-     eauto.
-     subst; simpl.
-     rewrite firstn_length.
-     rewrite Nat.min_l.
-     eauto.
-     rewrite H9.
-     rewrite H7.
-     eauto.
-     subst; simpl in *.
-     erewrite wordToNat_natToWord_bound.
-     rewrite roundup_roundup_eq with (x := # (INODE.ISize (BFILE.BFAttr f))).
-     rewrite H9.
-     eauto.
-     instantiate (bound := $ ( (roundup # (INODE.ISize (BFILE.BFAttr f))
-  valubytes) * valubytes)).
-     rewrite H9.
-     eauto.
-
-     (* establish arrayN precondition for updates_bytes *)
-     instantiate (olddata := skipn # (INODE.ISize (BFILE.BFAttr f)) allbytes).
-     instantiate (Fx := arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes)).
-     replace (# (INODE.ISize (BFILE.BFAttr f))) with (0 + # (INODE.ISize (BFILE.BFAttr f))) at 2 by omega.
-     apply arrayN_split.
-
-     rewrite <- H9.
-     apply roundup_ok.
-
-     rewrite firstn_oob.
-     apply list2nmem_array.
-     subst; simpl.
-     rewrite H9.
-     eauto.
-    
-     rewrite skipn_length.
-     rewrite repeat_length.
-     rewrite H9.
      Transparent hidden.
      unfold hidden.
+     rewrite length_updatebytes_ok.
+     repeat rewrite repeat_length.
      eauto.
-
-     rewrite <- H9.
-     apply roundup_ok.
-
+     eauto.
+     eauto.
 
      rewrite repeat_length.
-     rewrite H9.
+     rewrite H10.
      subst; simpl.
-     rewrite firstn_length.
-     rewrite Nat.min_l.
-     rewrite <- H9.
      admit.  (* why cannot omega solve this? *)
-     rewrite H9.
-     erewrite wordToNat_natToWord_bound.
-     eauto.
-     instantiate (bound := $ (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
-     valubytes)).
-     rewrite H9.
-     eauto.
-
-     unfold rep.
 
      step.  (* grow blocks *)
+
+     instantiate (bytes := (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
+            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+             valubytes - # (INODE.ISize (BFILE.BFAttr f))))).
+
+     (* prove byte_rep f' *)
+     unfold rep in *.
+     destruct H19.
+     intuition.
+     apply arrayN_combine with (off := # (INODE.ISize (BFILE.BFAttr f))) in H18.
+     eapply list2nmem_array_eq in H18.
+     rewrite <- H16 in H0.
+     rewrite firstn_oob in H0.
+     rewrite H0 in H9.
+     rewrite H18 in H9.
+     eauto.
+     admit. (* xxx lost x = bytes' *)
+     rewrite firstn_length.
+     rewrite Nat.min_l.
+     eauto.
+     rewrite <- H10.
+     apply roundup_ok.
+
      step.
      step.
      step.
@@ -678,82 +730,33 @@ Hint Resolve length_grow_oneblock_ok.
      eapply pimpl_or_r; right; cancel.
      
      eexists.
-     unfold bytes_rep in H23.
-     destruct H25.
+
+     (* grown file to newlen with 0 bytes *)
+     instantiate (allbytes := ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes ++
+          repeat $ (0)
+            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+             valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ++
+         repeat $ (0)
+           (# ($
+               (roundup newlen valubytes -
+                roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
+            valubytes))).
+
+     unfold bytes_rep in H24.
      intuition.
-     eapply a9.
-     eapply e.
-     replace (# ($ (newlen))) with newlen.
-     eapply arrayN_combine in H17.
-     apply list2nmem_array_eq in H17.
-     rewrite <- H16 in H20.
-     simpl in *.
-     erewrite wordToNat_natToWord_bound in H20.
-     rewrite roundup_roundup_eq in H20.
-     rewrite firstn_oob in H17.
-     rewrite H17.
-     rewrite <- app_assoc.
-     rewrite repeat_app.
-     erewrite eq_bytes_allbytes_ext0_to_newlen with (oldlen := # (INODE.ISize (BFILE.BFAttr f))) (bytes := (firstn (# (INODE.ISize (BFILE.BFAttr f))) allbytes)).
-     instantiate (allbytes := allbytes).
+     subst; simpl.
      eauto.
-     eauto.
-     eauto.
-     eauto.
-     rewrite H9.
-     eauto.
+     omega.
+     erewrite eq_bytes_allbytes_ext0_to_newlen with (allbytes := allbytes) (oldlen := # (INODE.ISize (BFILE.BFAttr f))).
      erewrite wordToNat_natToWord_bound.
      eauto.
-     admit.  (* need bound on newlen *)
-
-
-     rewrite <- H20.
-     rewrite <- H16.
-     simpl.
-     erewrite wordToNat_natToWord_bound.
-     eauto.
-
-     admit.  (* roundup bound *)
-     admit.  (* roundup bound *)
-     simpl.
-     eauto.
-
-     admit. (* bound on newlen *)
-
-     rewrite app_length.
-     rewrite repeat_length.
-     rewrite firstn_length.
-     rewrite Nat.min_l.
-     rewrite plus_comm.
-     rewrite Nat.sub_add.
-     admit. (* bound on newlen *)
-     eauto.
-     rewrite <- H9.
-     apply roundup_ok.
-
-     rewrite app_length.
-     rewrite <- H20.
-     rewrite repeat_length.
-     rewrite <- H16.
-     simpl.
-     erewrite wordToNat_natToWord_bound.
-     erewrite wordToNat_natToWord_bound.
-     rewrite roundup_roundup_eq.
-     erewrite wordToNat_natToWord_bound.
-     rewrite Nat.mul_sub_distr_r.
-     rewrite le_plus_minus_r.
-     eauto.
-
-
-     eapply le_roundup.
-     eauto.
-     instantiate (bound4 := $ (roundup newlen valubytes)).
+     admit. (* by H4 *)
      admit.
-     instantiate (bound3 := $ ((roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
-     rewrite H9.
      eauto.
-     admit. (* bound on newlen *)
-     step.
+     eauto.
+     admit.  (* omega *)
+     admit.  (* xxx omega *)
+
    Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
