@@ -382,16 +382,20 @@ Module SLOWBYTEFILE.
       eassumption.
     step.
 
-    (* no lemma available, but consequence of:
-    arrayN off allbytes ->
-    off < length allbytes ->
-    len = length v9 ->
-    firstn len (skipn off allbytes) = v9
-    (with many details left out) *)
-    admit.
+    apply arrayN_list2nmem in H5.
+    symmetry.
+    rewrite <- H6.
+    apply H5.
+    (* Using arrayN_list2nmem requires a default value, which is never used,
+        so we have to provide some value of type byte.
+        This is seems like a bug in arrayN_list2nmem. *)
+    apply (WS false (WS false (WS false (WS false (WS false (WS false (WS false (WS false (WO))))))))).
 
     apply LOG.activetxn_would_recover_old.
-  Admitted.
+
+    Grab Existential Variables.
+    exact tt.
+  Qed.
 
 
   Theorem update_bytes_ok: forall fsxp inum off newdata mscs,
