@@ -857,10 +857,9 @@ Hint Resolve length_grow_oneblock_ok.
                     # (INODE.ISize (BFILE.BFAttr f)))))%pred (list2nmem bytes') ->
           roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
           rep bytes' f' ->
-          allbytes = (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
+          bytes_rep f' ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
             (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
-             valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ->
-          bytes_rep f' allbytes.
+             valubytes - # (INODE.ISize (BFILE.BFAttr f))))).
   Proof.
        intros.
        unfold rep in *.
@@ -868,11 +867,10 @@ Hint Resolve length_grow_oneblock_ok.
        intuition.
        apply arrayN_combine with (off := # (INODE.ISize (BFILE.BFAttr f))) in H.
        eapply list2nmem_array_eq in H.
-       rewrite <- H4 in H1.
+       rewrite <- H3 in H1.
        rewrite firstn_oob in H1.
-       rewrite H1 in H3.
-       rewrite H in H3.
-       rewrite H2.
+       rewrite H1 in H2.
+       rewrite H in H2.
        eauto.
        admit. (* lost x = bytes' *)
        rewrite firstn_length.
@@ -881,6 +879,7 @@ Hint Resolve length_grow_oneblock_ok.
        rewrite <- H0.
        apply roundup_ok.
   Admitted.
+
 
    (* XXX want to say rep list-of-bytes f'', but i need to fold things back into a rep
     * before i am able to call this lemma. how do do this? *)
@@ -989,16 +988,11 @@ Hint Resolve length_grow_oneblock_ok.
      step.  (* grow blocks *)
 
      
-     (* grown file to newlen with 0 bytes *)
-     instantiate (allbytes := ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes ++
-          repeat $ (0)
+     instantiate (bytes := (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
             (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
-             valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ++
-         repeat $ (0)
-           (# ($
-               (roundup newlen valubytes -
-                roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
-            valubytes))).
+             valubytes - # (INODE.ISize (BFILE.BFAttr f))))).
+
+
      eapply grow_to_block_ok with (bytes' := bytes').
      eauto.
      eauto.
