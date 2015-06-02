@@ -659,6 +659,41 @@ Hint Resolve length_grow_oneblock_ok.
 
   Hint Resolve length_updatebytes_ok.
 
+  Lemma grow_to_block_ok:
+        forall f f' (bytes' : list byte) (allbytes: list byte),
+          (arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) *
+            arrayN # (INODE.ISize (BFILE.BFAttr f))
+             (repeat $ (0)
+                (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes -
+                    # (INODE.ISize (BFILE.BFAttr f)))))%pred (list2nmem bytes') ->
+          roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+          rep bytes' f' ->
+          allbytes = (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
+            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+             valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ->
+          bytes_rep f' allbytes.
+  Proof.
+       intros.
+       unfold rep in *.
+       destruct H1.
+       intuition.
+       apply arrayN_combine with (off := # (INODE.ISize (BFILE.BFAttr f))) in H.
+       eapply list2nmem_array_eq in H.
+       rewrite <- H4 in H1.
+       rewrite firstn_oob in H1.
+       rewrite H1 in H3.
+       rewrite H in H3.
+       rewrite H2.
+       eauto.
+       admit. (* lost x = bytes' *)
+       rewrite firstn_length.
+       rewrite Nat.min_l.
+       eauto.
+       rewrite <- H0.
+       apply roundup_ok.
+  Admitted.
+
+
   Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -700,28 +735,13 @@ Hint Resolve length_grow_oneblock_ok.
 
      step.  (* grow blocks *)
 
-     instantiate (bytes := (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
-            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
-             valubytes - # (INODE.ISize (BFILE.BFAttr f))))).
-
-     (* prove byte_rep f' *)
-     unfold rep in *.
-     destruct H19.
-     intuition.
-     apply arrayN_combine with (off := # (INODE.ISize (BFILE.BFAttr f))) in H18.
-     eapply list2nmem_array_eq in H18.
-     rewrite <- H16 in H0.
-     rewrite firstn_oob in H0.
-     rewrite H0 in H9.
-     rewrite H18 in H9.
+     instantiate (bytes := 
+     eapply grow_to_block_ok with (bytes' := bytes') (f := f).
+     instantiate (bytes := allbytes).
      eauto.
-     admit. (* xxx lost x = bytes' *)
-     rewrite firstn_length.
-     rewrite Nat.min_l.
      eauto.
-     rewrite <- H10.
-     apply roundup_ok.
-
+     eauto.
+   
      step.
      step.
      step.
