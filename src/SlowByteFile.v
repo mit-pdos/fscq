@@ -382,7 +382,7 @@ Module SLOWBYTEFILE.
     (* Using arrayN_list2nmem requires a default value, which is never used,
         so we have to provide some value of type byte.
         This is seems like a bug in arrayN_list2nmem. *)
-    apply (WS false (WS false (WS false (WS false (WS false (WS false (WS false (WS false (WO))))))))).
+    apply ($ 0).
 
     apply LOG.activetxn_would_recover_old.
 
