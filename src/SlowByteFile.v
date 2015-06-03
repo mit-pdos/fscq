@@ -1147,6 +1147,23 @@ Hint Resolve length_grow_oneblock_ok.
     intros; pred_apply; cancel.
   Qed.
 
+  Lemma len_olddata_newdata_grown_eq:
+      forall f (newdata: list byte) (bytes: list byte) off,
+        rep bytes f ->
+        length (skipn off (bytes ++ 
+            repeat $ (0) (off + length newdata - # (INODE.ISize (BFILE.BFAttr f))))) =
+          length newdata.
+  Proof.
+      intros.
+      rewrite skipn_length.
+      rewrite app_length.
+      rewrite repeat_length.
+      rewrite length_rep with (f := f); eauto.
+      admit. (* easy *)
+      apply off_in_bounds_ext.
+      eauto.
+  Qed.
+
   Lemma olddata_exists_in_grown_file:
        forall f (newdata: list byte) (bytes: list byte) off,
         rep bytes f ->
@@ -1254,26 +1271,14 @@ Hint Resolve length_grow_oneblock_ok.
     apply olddata_exists_in_grown_file.
     eauto.
 
-    (* length (skipn off(bytes ++
-         repeat $ (0)(off + length newdata - # (INODE.ISize (BFILE.BFAttr f))))) = length newdata) *)
-    rewrite skipn_length.
-    rewrite app_length.
-    rewrite repeat_length.
-    erewrite length_rep with (f := f).
-    Transparent hidden.
-    unfold hidden.
-    admit.  (* shoudn't omega just solve this? *)
-    eauto.
+    apply len_olddata_newdata_grown_eq; eauto.
 
-    apply off_in_bounds_ext.
-    eauto.
 
     (* off + length newdata <= length bytes + length (repeat $ (0)
      (off + length newdata - # (INODE.ISize (BFILE.BFAttr f)))) *)
     rewrite repeat_length.
-    erewrite length_rep with (bytes := bytes) (f := f).
+    erewrite length_rep with (bytes := bytes) (f := f); eauto.
     omega.
-    eauto.
 
     step.
     step.
@@ -1290,7 +1295,7 @@ Hint Resolve length_grow_oneblock_ok.
     apply off_in_bounds with (f := f) (newdata := newdata); eauto.
     admit. (* use goodSize *)
 
-    rewrite len_olddata_newdata_eq with (f := f); eauto.
+    erewrite len_olddata_newdata_eq with (f := f); eauto.
     Transparent hidden.
     unfold hidden.
     eauto.
