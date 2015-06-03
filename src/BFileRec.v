@@ -5,6 +5,8 @@ Require Import GenSep.
 Require Import GenSepN.
 Require Import ListPred.
 Require Import MemMatch.
+Require Import FSLayout.
+Require Import Bool.
 
 Set Implicit Arguments.
 
@@ -78,6 +80,134 @@ Section RECBFILE.
               (Rec.word_updN #pos (valu_to_wreclen itemtype items_per_valu blocksz_ok v) (Rec.to_word i)) in
     mscs <- BFILE.bfwrite lxp ixp inum block_ix v' mscs;
     rx mscs.
+
+  Definition itemsize := Rec.len itemtype.
+  Definition blocksize := Rec.len blocktype.
+  (** analogous to Bytes.bytes, an [items count] is a word with enough bits to hold [count] items. **)
+  Definition items count := word (itemsize * count).
+
+  Theorem blocksize_not_0 : blocksize <> 0.
+  Proof.
+    unfold blocksize.
+    rewrite <- blocksz_ok.
+    rewrite valulen_is.
+    intro H.
+    discriminate.
+  Qed.
+
+  (** splitting of items mirrors splitting of bytes defined in Bytes **)
+  Definition isplit1 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz1.
+  Proof.
+    unfold items in *.
+    rewrite Nat.mul_add_distr_l in is.
+    exact (split1 _ _ is).
+  Defined.
+
+  Definition isplit2 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz2.
+  Proof.
+    unfold items in *.
+    rewrite Nat.mul_add_distr_l in is.
+    exact (split2 _ _ is).
+  Defined.
+
+  Definition isplit1_dep sz sz1 sz2 (v : items sz) (H : sz = sz1 + sz2) : items sz1 :=
+    isplit1 sz1 sz2 (eq_rect sz items v _ H).
+
+  Definition isplit2_dep sz sz1 sz2 (v : items sz) (H : sz = sz1 + sz2) : items sz2 :=
+    isplit2 sz1 sz2 (eq_rect sz items v _ H).
+
+  (** helper theorems bsz_ok and bsz_le_sz are copied from ByteFile **)
+ Theorem bsz_ok:
+    forall sz bsz,
+      bsz <= sz -> sz = bsz + (sz - bsz).
+  Proof.
+    intros.
+    omega.
+  Qed.
+
+  Theorem bsz_le_sz:
+    forall off sz,
+      (Nat.min ((off mod blocksize) + sz) blocksize) - (off mod blocksize) <= sz.
+  Proof.
+    intros.
+    destruct (le_dec (off mod blocksize + sz) blocksize).
+    rewrite Nat.min_l by assumption.
+    omega.
+    rewrite Nat.min_r by omega.
+    omega.
+  Qed.
+
+  Record chunk := {
+    chunk_blocknum : addr;
+    chunk_boff : nat;
+    chunk_bend : nat;
+    (** chunk_data is a word that can hold chunk_bend - chunk_off items **)
+    chunk_data: items (chunk_bend - chunk_boff)
+  }.
+
+  (** TODO: replace bytes chunk_boff through chunk_bend within v
+  (also a word, but of a potentially larger size) with the data in chunk_data **)
+  Definition update_chunk v (ck:chunk) : valu := v.
+
+  (** Read/modify/write a chunk in place. **)
+  Definition bf_put_chunk T lxp ixp inum (ck:chunk) mscs rx : prog T :=
+    let^ (mscs, v) <- BFILE.bfread lxp ixp inum (chunk_blocknum ck) mscs;
+    let v' := update_chunk v ck in
+    mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v mscs;
+    rx mscs.
+
+  (** split w into a list of chunks **)
+  Function chunkList off (count:nat) (w: items count) {measure id count} : list chunk :=
+    match count with
+    | 0 => nil
+    | S count' =>
+      let blocknum := off / blocksize in
+      let boff := off mod blocksize in
+      let bend := Nat.min (boff + count) blocksize in
+      let bsize := bend - boff in
+      let bsize_ok := bsz_ok (bsz_le_sz _ _) in
+      @Build_chunk ($ blocknum) boff bend (isplit1_dep bsize (count-bsize) w bsize_ok) ::
+        chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w bsize_ok)
+    end.
+  (** prove that chunkList is actually decreasing on count (as promised with {measure id count}),
+      so that function provably terminates. **)
+  Proof.
+    unfold id; intros.
+    assert (Nat.min (off mod blocksize + S count') blocksize - off mod blocksize > 0).
+    destruct (le_dec (off mod blocksize + S count') blocksize).
+    rewrite Nat.min_l by assumption. omega.
+    apply not_le in n.
+    rewrite Nat.min_r by omega.
+    assert (blocksize > off mod blocksize).
+    apply Nat.mod_upper_bound.
+    apply blocksize_not_0.
+    omega.
+    omega.
+  Qed.
+
+  (** Increase the size of the BFILE at inode [inum] if necessary, using BFILE.bftrunc. **)
+  Definition bf_resize T fsxp inum count_items mscs rx : prog T :=
+      let size := count_items in (** TODO: divide rounding up (eg, roundup from SlowByteFile) **)
+      let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
+      rx ^(mscs, ok).
+
+  (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
+  Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
+    let chunks := chunkList off w in
+    let^ (mscs) <- ForEach ck rest chunks
+      Ghost [ F mbase m ]
+      Loopvar [ mscs ]
+      Continuation lrx
+      Invariant LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs
+      (** TODO: loop invariants **)
+      OnCrash
+        exists m',
+          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
+      Begin
+        mscs <- bf_put_chunk (FSXPLog fsxp) (FSXPInode fsxp) inum ck mscs;
+        lrx ^(mscs)
+      Rof ^(mscs);
+    rx ^(mscs).
 
   Definition array_item_pairs (vs : list block) : pred :=
     ([[ Forall Rec.well_formed vs ]] *
