@@ -931,10 +931,12 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite Nat.mul_sub_distr_r.
     repeat rewrite Nat.add_sub_assoc.
     admit.
-    admit. (* roundup_ok switched *)
+    apply roundup_ok; omega.
     apply le_roundup; auto.
     admit.
-    admit.
+    eapply le_trans.
+    apply roundup_ok.
+    omega.
    Admitted.
 
    (* XXX want to say rep list-of-bytes f'', but i need to fold things back into a rep
@@ -1039,7 +1041,10 @@ Hint Resolve length_grow_oneblock_ok.
      rewrite repeat_length.
      rewrite H10.
      subst; simpl.
-     admit.  (* why cannot omega solve this? *)
+     rewrite le_plus_minus_r; try omega.
+     eapply le_trans.
+     apply roundup_ok.
+     omega.
 
      step.  (* grow blocks *)
 
