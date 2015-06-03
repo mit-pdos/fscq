@@ -277,14 +277,6 @@ Module SLOWBYTEFILE.
     apply Nat.lt_le_incl. eassumption.
   Qed.
 
-  Lemma app_prefix_eq : forall T (l: list T) x y,
-    x = y -> l ++ [x] = l ++ [y].
-  Proof.
-    intros.
-    subst.
-    reflexivity.
-  Qed.
-
   Lemma selN_skip_first : forall T (l:list T) n m p def,
     n + m < p ->
     selN l (n + m) def = selN (skipn n (firstn p l)) m def.
@@ -352,7 +344,7 @@ Module SLOWBYTEFILE.
       assumption.
     replace (# (m1 ^+ $ (1))) with (# (m1) + 1).
     erewrite firstn_plusone_selN.
-    apply app_prefix_eq.
+    f_equal.
     rewrite <- H16.
     unfold sel.
 
