@@ -345,6 +345,7 @@ Module SLOWBYTEFILE.
     replace (# (m1 ^+ $ (1))) with (# (m1) + 1).
     erewrite firstn_plusone_selN.
     f_equal.
+    f_equal.
     rewrite <- H16.
     unfold sel.
 
