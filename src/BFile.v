@@ -37,8 +37,8 @@ Module BFILE.
 
   Definition bfwrite T lxp ixp inum off v mscs rx : prog T :=
     let^ (mscs, b) <-INODE.iget lxp ixp inum off mscs;
-    let^ (mscs, ok) <- LOG.write lxp b v mscs;
-    rx ^(mscs, ok).
+    mscs <- LOG.write lxp b v mscs;
+    rx mscs.
 
   Definition bfgrow T lxp bxp ixp inum mscs rx : prog T :=
     let^ (mscs, len) <- INODE.ilen lxp ixp inum mscs;
