@@ -1199,6 +1199,21 @@ Hint Resolve length_grow_oneblock_ok.
     assumption.
    Qed.
 
+   Lemma len_olddata_newdata_eq:
+      forall f (newdata: list byte) off (bytes: list byte),
+      off + length newdata <= length bytes ->
+      rep bytes f ->
+      length (firstn (length newdata) (skipn off bytes)) = length newdata.
+    Proof.
+      intros.
+      rewrite firstn_length.
+      rewrite Nat.min_l.
+      eauto.
+      rewrite skipn_length.
+      admit.  (* add off on both sides *)
+      admit. (* H *)
+    Admitted.
+
   Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
     {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -1275,46 +1290,13 @@ Hint Resolve length_grow_oneblock_ok.
     apply off_in_bounds with (f := f) (newdata := newdata); eauto.
     admit. (* use goodSize *)
 
-    Check firstn_skipn.
-    rewrite firstn_length.
-    rewrite Nat.min_l.
-    Transparent hidden.
-    unfold hidden.
-    eauto.
-    apply off_in_bounds with (f := f) (newdata := newdata).
-    eauto.
-
-    apply wle_le in H9.
-    erewrite wordToNat_natToWord_bound in H9.
-    eauto.
-    admit. (* bound on newdata *)
-    
-    rewrite firstn_length.
-    rewrite Nat.min_l.
+    rewrite len_olddata_newdata_eq with (f := f); eauto.
     Transparent hidden.
     unfold hidden.
     eauto.
 
-    rewrite skipn_length.
-    rewrite length_rep with (f := f) (bytes := bytes).
-    erewrite plus_le_reg_l with (p := off) (m := # (INODE.ISize (BFILE.BFAttr f)) - off).
-    omega.
-    admit. (* why can't omega solve this? *)
-    eauto.
-  
-    apply off_in_bounds with (f := f) (newdata := newdata).
-    eauto.
-    apply wle_le in H9.
-    erewrite wordToNat_natToWord_bound in H9.
-    eauto.
-    admit. (* bound on newdata *)
-
-    rewrite length_rep with (f := f) (bytes := bytes).
-    apply wle_le in H9.
-    erewrite wordToNat_natToWord_bound in H9.
-    eauto.
-    admit. (* bound on newdata *)
-    eauto.
+    admit. (* we proved above *)
+    admit.
 
     step. (* return *)
 
