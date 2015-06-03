@@ -871,6 +871,23 @@ Hint Resolve length_grow_oneblock_ok.
        apply roundup_ok.
   Admitted.
 
+   Lemma roundup_goodSize:
+    forall (a: addr),
+      goodSize addrlen (roundup #a valubytes).
+   Proof.
+    intros.
+    unfold goodSize, roundup.
+    admit.
+   Admitted.
+
+   Lemma lt_minus:
+    forall a b c,
+      a < c -> a - b < c.
+   Proof.
+    intros.
+    omega.
+   Admitted.
+
    Lemma after_grow_rep_ok:
       forall f f'' (bytes: list byte) (allbytes: list byte) newlen oldlen,
          roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
@@ -908,9 +925,14 @@ Hint Resolve length_grow_oneblock_ok.
     subst; eauto.
     eauto.
     subst; eauto.
-    erewrite wordToNat_natToWord_bound.
+    erewrite wordToNat_natToWord_idempotent'.
     eauto.
-    admit.
+
+    unfold goodSize.
+    apply lt_minus.
+    subst.
+    apply roundup_goodSize.
+
     rewrite app_length.
     rewrite firstn_length.
     rewrite repeat_length.
@@ -925,7 +947,7 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite Nat.min_l.
     repeat rewrite <- H0.
     repeat rewrite <- H1.
-    erewrite wordToNat_natToWord_bound.
+    erewrite wordToNat_natToWord_idempotent'.
     rewrite Nat.mul_sub_distr_r.
     repeat rewrite Nat.add_sub_assoc.
     admit.  (* roundup_ok, the other way *)
@@ -1004,8 +1026,8 @@ Hint Resolve length_grow_oneblock_ok.
     
     step.
     Grab Existential Variables.
-    all: eauto.
-    (* one balloc_xparam left *)
+    all: eauto. 
+    exact (FSXPBlockAlloc fsxp).
    Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
@@ -1194,16 +1216,7 @@ Hint Resolve length_grow_oneblock_ok.
 
     step.
 
-    instantiate (Fx0 := arrayN 0 (firstn off (bytes ++
-      repeat $ (0)
-        (off + length newdata -
-         # (INODE.ISize (BFILE.BFAttr f)))))).
-    instantiate (olddata0 := skipn off (bytes ++
-      repeat $ (0)
-        (off + length newdata -
-         # (INODE.ISize (BFILE.BFAttr f))))).
-    apply olddata_exists_in_grown_file.
-    eauto.
+    apply olddata_exists_in_grown_file; eauto.
 
     apply len_olddata_newdata_grown_eq; eauto.
 
@@ -1219,21 +1232,15 @@ Hint Resolve length_grow_oneblock_ok.
     step.
 
     (* false branch *)
-    (* establish Fx * arrayN for update_bytes *)
-    instantiate (Fx0 := (arrayN 0 (firstn off bytes) *
-                         arrayN (off+(length newdata)) (skipn (length newdata) (skipn off bytes)))%pred).
-    instantiate (olddata0 := firstn (length newdata) (skipn off bytes)).
     apply olddata_exists_in_file with (f := f); eauto.
+    assert (off <= length bytes) as Hoff.
     apply wle_le in H9.
-    erewrite wordToNat_natToWord_bound in H9.  (* XXX remember this fact *)
+    erewrite wordToNat_natToWord_idempotent' in H9 by auto.
     apply off_in_bounds with (f := f) (newdata := newdata); eauto.
-    admit. (* use goodSize *)
-
-    erewrite len_olddata_newdata_eq with (f := f); eauto.
-    Transparent hidden.
-    unfold hidden.
     eauto.
 
+    erewrite len_olddata_newdata_eq with (f := f); eauto.
+    constructor.
     admit. (* we proved above *)
     admit.
 
