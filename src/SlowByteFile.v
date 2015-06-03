@@ -748,24 +748,21 @@ Hint Resolve length_grow_oneblock_ok.
       firstn newlen ((bytes ++ (repeat $0 nbytes)) ++ repeat $0 (nblock * valubytes)) = 
         (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
   Proof.
-(*
     intros.
-
     assert (length bytes = oldlen).
     subst. rewrite firstn_length. apply Nat.min_l.
     rewrite <- H0.
     apply roundup_ok.
-
+    rewrite <- app_assoc.
     rewrite firstn_app by omega.
     f_equal; auto.
+    rewrite repeat_app.
+    rewrite firstn_repeat_le.
     rewrite H4.
-    rewrite firstn_repeat_le; auto.
-
+    eauto.
+    rewrite H4.
     rewrite H2.
-    rewrite <- H0.
     apply nblock_ok; auto.
-  Qed.
-*)
   Admitted.
 
   Lemma grow_to_end_of_block_ok:
@@ -800,7 +797,7 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite H1.
     eauto.
     subst; simpl.
-     erewrite wordToNat_natToWord_bound.
+    erewrite wordToNat_natToWord_bound.
     rewrite roundup_roundup_eq with (x := # (INODE.ISize (BFILE.BFAttr f))).
     rewrite H1.
     instantiate (bound := $ ( (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
@@ -927,22 +924,22 @@ Hint Resolve length_grow_oneblock_ok.
                 roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
             valubytes))).
     intuition.
-     unfold bytes_rep in H1.
-     intuition.
-     subst.
-     eauto.
-     unfold bytes_rep in H1.
-     destruct H1.
-     eauto. 
-     erewrite eq_bytes_allbytes_ext0_to_newlen with (allbytes := allbytes) (oldlen := # (INODE.ISize (BFILE.BFAttr f))).
-     erewrite wordToNat_natToWord_bound.
-     eauto.
-     admit. (* by H *)
-     admit.
-     eauto.
-     eauto.
-     admit.  (* omega *)
-     admit.  (* xxx omega *)
+    unfold bytes_rep in H1.
+    intuition.
+    subst.
+    eauto.
+    unfold bytes_rep in H1.
+    destruct H1.
+    eauto. 
+    erewrite eq_bytes_allbytes_ext0_to_newlen with (allbytes := allbytes) (oldlen := # (INODE.ISize (BFILE.BFAttr f))).
+    erewrite wordToNat_natToWord_bound.
+    eauto.
+    admit. (* by H *)
+    admit.
+    eauto.
+    eauto.
+    admit.  (* omega *)
+    admit.  (* xxx omega *)
   Admitted.
 
 
@@ -987,16 +984,13 @@ Hint Resolve length_grow_oneblock_ok.
 
      step.  (* grow blocks *)
 
-     
      instantiate (bytes := (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
             (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
              valubytes - # (INODE.ISize (BFILE.BFAttr f))))).
 
 
-     eapply grow_to_block_ok with (bytes' := bytes').
-     eauto.
-     eauto.
-     eauto.
+     eapply grow_to_block_ok with (bytes' := bytes'); eauto.
+    
    
      step.
      step.
