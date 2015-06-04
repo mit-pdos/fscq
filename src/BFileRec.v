@@ -124,6 +124,16 @@ Section RECBFILE.
     discriminate.
   Qed.
 
+  Definition array_item_pairs (vs : list block) : pred :=
+    ([[ Forall Rec.well_formed vs ]] *
+     arrayN 0 (map rep_block vs))%pred.
+
+  Definition array_item_file file (vs : list item) : Prop :=
+    exists vs_nested,
+    length vs_nested = length (BFILE.BFData file) /\
+    array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
+    vs = fold_right (@app _) nil vs_nested.
+
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
   Definition isplit1 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz1.
   Proof.
@@ -238,15 +248,6 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
-  Definition array_item_pairs (vs : list block) : pred :=
-    ([[ Forall Rec.well_formed vs ]] *
-     arrayN 0 (map rep_block vs))%pred.
-
-  Definition array_item_file file (vs : list item) : Prop :=
-    exists vs_nested,
-    length vs_nested = length (BFILE.BFData file) /\
-    array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
-    vs = fold_right (@app _) nil vs_nested.
 
   Lemma map_rep_valu_id : forall x,
     Forall Rec.well_formed x ->
