@@ -113,7 +113,7 @@ Section RECBFILE.
   Definition itemsize := Rec.len itemtype.
   Definition blocksize := Rec.len blocktype.
   (** analogous to Bytes.bytes, an [items count] is a word with enough bits to hold [count] items. **)
-  Definition items count := word (itemsize * count).
+  Definition items count := word (count * itemsize).
 
   Theorem blocksize_not_0 : blocksize <> 0.
   Proof.
@@ -138,14 +138,14 @@ Section RECBFILE.
   Definition isplit1 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz1.
   Proof.
     unfold items in *.
-    rewrite Nat.mul_add_distr_l in is.
+    rewrite Nat.mul_add_distr_r in is.
     exact (split1 _ _ is).
   Defined.
 
   Definition isplit2 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz2.
   Proof.
     unfold items in *.
-    rewrite Nat.mul_add_distr_l in is.
+    rewrite Nat.mul_add_distr_r in is.
     exact (split2 _ _ is).
   Defined.
 
@@ -158,7 +158,7 @@ Section RECBFILE.
   Definition single_item (w: items 1) : word itemsize.
   Proof.
     unfold items in w.
-    rewrite Nat.mul_1_r in w.
+    rewrite Nat.mul_1_l in w.
     exact w.
   Qed.
 
@@ -266,24 +266,29 @@ Section RECBFILE.
       let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
       rx ^(mscs, ok).
 
+  (** TODO: split bf_resize into shrink/expand and give them different specs **)
+
   Theorem bf_resize_ok : forall fsxp inum count_items mscs,
-  {< mbase m F Fm A f flist,
+  {< mbase m F Fm A f flist ilist,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
     [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-    [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ array_item_file f ilist ]]
     POST RET: ^(mscs, ok)
-    exists m' f' newsize,
+    exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
       ( [[ ok = false ]] \/
+      exists f' ilist',
       [[ ok = true ]] *
       [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
-      [[ f' =  BFILE.Build_bfile (setlen (BFILE.BFData f) newsize $0) (BFILE.BFAttr f) ]] *
-      [[ newsize * blocksize >= count_items ]] )
+      [[ array_item_file f' ilist' ]] *
+      [[ length ilist' >= count_items ]] *
+      (** TODO: need predicate saying one of ilist, ilist' is a prefix of the other **)
+      [[ firstn (length ilist) ilist' = ilist ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_resize fsxp inum count_items mscs.
   Proof.
     unfold bf_resize.
-    step. (* bftrunc *)
   Admitted.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
@@ -304,24 +309,22 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
-  Definition items_from_words (l : list (word itemsize)) : list item :=
-    map (@Rec.of_word itemtype) l.
-
   Theorem bf_update_range_ok : forall fsxp inum off count (w: items count) mscs,
-  {< mbase m F Fm A flist ilist f ,
+  {< mbase m F Fm Fx A flist ilist f olddata newdata,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
     [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ array_item_file f ilist ]] *
-    (** update requires you have enough space; this is one way to require it in PRE,
-        but might be better to reference size of f **)
-    [[ length ilist >= off + count ]]
+    [[ (Fx * arrayN off olddata)%pred (list2nmem ilist) ]] *
+    [[ length olddata = count ]] *
+    [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]]
     POST RET: ^(mscs)
-      exists m' f',
+      exists m' f' ilist',
         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
-        [[ array_item_file f' (firstn off ilist ++ items_from_words (isplit_list w) ++ skipn (off + count) ilist) ]]
+        [[ array_item_file f' ilist' ]] *
+        [[ (Fx * arrayN off newdata)%pred (list2nmem ilist') ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_update_range fsxp inum off w mscs.
   Proof.
