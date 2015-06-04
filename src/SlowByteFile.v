@@ -516,6 +516,7 @@ Module SLOWBYTEFILE.
     replace (# (nblock ^+ $1)) with (#nblock + 1).
     rewrite Nat.mul_add_distr_r.
     omega.
+    admit. (* need nblock doesn't overflow *)
   Qed.
 
 
@@ -847,23 +848,83 @@ Hint Resolve length_grow_oneblock_ok.
        apply divup_ok.
   Qed.
 
+  Lemma lt_minus:
+    forall a b c,
+      a < c -> a - b < c.
+   Proof.
+    intros.
+    omega.
+   Qed.
+
+   Lemma natToWord_goodSize:
+    forall sz (w:word sz),
+     goodSize sz (wordToNat w).
+   Proof.
+    intros.
+    unfold goodSize.
+    induction sz.
+    shatterer.
+    simpl.
+    shatterer.
+    specialize (IHsz (wtl w)).
+    destruct (whd w).
+    simpl.
+    omega.
+    simpl.
+    omega.
+   Qed.
+
+   Lemma one_lt_pow2:
+    forall n,
+      1 < pow2 (S n).
+   Proof.
+    intros.
+    induction n.
+    simpl; omega.
+    remember (S n); simpl.
+    omega.
+   Qed.
+
    Lemma divup_goodSize:
     forall (a: addr),
       goodSize addrlen (divup #a valubytes).
    Proof.
     intros.
     unfold goodSize, divup.
-    admit.
-   Admitted.
+    apply Nat.div_lt_upper_bound.
+    rewrite valubytes_is; auto.
+    apply lt_minus.
+    unfold addrlen.
+    rewrite valubytes_is.
+    replace (4096) with (pow2 12).
+    rewrite <- pow2_add_mul.
+    simpl (12+64).
+    replace (pow2 76) with (pow2 75 + pow2 75).
+    Search lt plus.
+    apply plus_lt_compat.
+    eapply lt_trans.
+    apply natToWord_goodSize.
+  
+    replace (75) with (64+11) by omega.
+    replace (pow2 64) with ((pow2 64)*1) by omega.
+    Search pow2 mult.
+    rewrite pow2_add_mul.
+    Search lt mult.
+    apply mult_lt_compat_l.
+    compute; omega.
+    apply zero_lt_pow2.
 
-   Lemma lt_minus:
-    forall a b c,
-      a < c -> a - b < c.
-   Proof.
-    intros.
+    replace (75) with (12+63) by omega.
+    replace (pow2 12) with ((pow2 12)*1) by omega.
+    rewrite pow2_add_mul.
+    apply mult_lt_compat_l.
+    apply one_lt_pow2.
+    apply zero_lt_pow2.
+    remember 75.
+    simpl.
     omega.
-   Admitted.
-
+    reflexivity.
+   Qed.
     
   Lemma divup_newlen_minus_oldlen_goodSize:
     forall oldlen newlen a,
@@ -1004,8 +1065,16 @@ Hint Resolve length_grow_oneblock_ok.
 
      eapply after_grow_to_block_bytes_rep_ok with (bytes' := bytes'); eauto.
 
-     admit. (* Transparent hidden in H17, etc. *)
-   
+     rewrite <- H17.
+     simpl.
+
+     unfold rep, bytes_rep in *.
+     deex.
+
+     eapply bfrec_bound in H0; eauto.
+     rewrite H10.
+     erewrite wordToNat_natToWord_bound; eauto.
+
      step.
      step.
      step.
@@ -1082,6 +1151,7 @@ Hint Resolve length_grow_oneblock_ok.
 
   Lemma len_olddata_newdata_grown_eq:
       forall f (newdata: list byte) (bytes: list byte) off,
+        goodSize addrlen (off + length newdata) ->
         rep bytes f ->
         (INODE.ISize (BFILE.BFAttr f) < $ (off + length newdata))%word ->
         length (skipn off (bytes ++ 
@@ -1092,18 +1162,21 @@ Hint Resolve length_grow_oneblock_ok.
       rewrite skipn_length.
       rewrite app_length.
       rewrite repeat_length.
-      unfold rep in H.
-      destruct H.
+      unfold rep in H0.
+      destruct H0.
       intuition.
-      rewrite H2.
+      rewrite H3.
       rewrite Nat.add_sub_assoc.
       rewrite minus_plus.
       rewrite minus_plus.
       eauto.
-      admit. (* by H0 *)
+      apply wlt_lt in H1.
+      erewrite wordToNat_natToWord_idempotent' in H1 by eauto.
+      apply Nat.lt_le_incl. 
+      eauto.
       apply off_in_bounds_ext.
       eauto.
-  Admitted.
+  Qed.
 
   Lemma olddata_exists_in_grown_file:
        forall f (newdata: list byte) (bytes: list byte) off,
@@ -1255,6 +1328,10 @@ Hint Resolve length_grow_oneblock_ok.
   
     step. (* return *)
 
-  Admitted.
+    Grab Existential Variables.
+    all: eauto. 
+    exact emp.
+
+  Qed.
 
 End SLOWBYTEFILE.
