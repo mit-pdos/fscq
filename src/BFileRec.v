@@ -253,6 +253,26 @@ Section RECBFILE.
       let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
       rx ^(mscs, ok).
 
+  Theorem bf_resize_ok : forall fsxp inum count_items mscs,
+  {< mbase m F Fm A f flist,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST RET: ^(mscs, ok)
+    exists m' f' newsize,
+    LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+      ( [[ ok = false ]] \/
+      [[ ok = true ]] *
+      [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+      [[ f' =  BFILE.Build_bfile (setlen (BFILE.BFData f) newsize $0) (BFILE.BFAttr f) ]] *
+      [[ newsize * blocksize >= count_items ]] )
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+  >} bf_resize fsxp inum count_items mscs.
+  Proof.
+    unfold bf_resize.
+    step. (* bftrunc *)
+  Admitted.
+
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
     let chunks := chunkList off w in
