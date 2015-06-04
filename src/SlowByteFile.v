@@ -498,7 +498,8 @@ Module SLOWBYTEFILE.
   Qed.
 
   Lemma bytes_grow_oneblock_ok:
-    forall bytes nblock f,
+    forall bytes nblock f (bound:addr),
+    (nblock < bound) % word ->
     array_item_file byte_type items_per_valu itemsz_ok f 
        ((bytes ++ repeat $ (0) (@wordToNat addrlen (nblock) * valubytes)) ++ 
         (upd (item0_list byte_type items_per_valu itemsz_ok) $0 $0)) ->
@@ -507,16 +508,17 @@ Module SLOWBYTEFILE.
   Proof.
     intros.
     pose proof item0_upd.
-    rewrite  H0 in H.
-    rewrite <- app_assoc in H.
-    rewrite repeat_app in H.
+    rewrite  H1 in H0.
+    rewrite <- app_assoc in H0.
+    rewrite repeat_app in H0.
     replace (# (nblock ^+ $ (1)) * valubytes) with (# (nblock) * valubytes + valubytes).
     auto.
 
     replace (# (nblock ^+ $1)) with (#nblock + 1).
     rewrite Nat.mul_add_distr_r.
     omega.
-    admit. (* need nblock doesn't overflow *)
+    eapply natplus1_wordplus1_eq.
+    instantiate (bound:=bound); eauto.
   Qed.
 
 
@@ -1098,7 +1100,7 @@ Hint Resolve length_grow_oneblock_ok.
     Grab Existential Variables.
     all: eauto. 
     exact (FSXPBlockAlloc fsxp).
-   Admitted.
+   Qed.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
 
