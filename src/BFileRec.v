@@ -195,6 +195,29 @@ Section RECBFILE.
     mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v mscs;
     rx mscs.
 
+  Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
+  {< m mbase F Fm Fx A f flist v,
+    PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ (Fx * # (chunk_blocknum ck) |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
+    POST RET: mscs
+      exists m' flist' v',
+        LOG.rep lxp F (ActiveTxn mbase m') mscs *
+        [[ (Fm * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f)) ]] *
+        [[ v' = update_chunk v ck ]]
+    CRASH LOG.would_recover_old lxp F mbase
+  >} bf_put_chunk lxp ixp inum ck mscs.
+  Proof.
+    unfold bf_put_chunk.
+
+    step. (* bf_read *)
+    step. (* bf_write *)
+    step. (* return *)
+  Qed.
+
   (** split w into a list of chunks **)
   Function chunkList off (count:nat) (w: items count) {measure id count} : list chunk :=
     match count with
