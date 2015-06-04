@@ -124,6 +124,16 @@ Section RECBFILE.
     discriminate.
   Qed.
 
+  Definition array_item_pairs (vs : list block) : pred :=
+    ([[ Forall Rec.well_formed vs ]] *
+     arrayN 0 (map rep_block vs))%pred.
+
+  Definition array_item_file file (vs : list item) : Prop :=
+    exists vs_nested,
+    length vs_nested = length (BFILE.BFData file) /\
+    array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
+    vs = fold_right (@app _) nil vs_nested.
+
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
   Definition isplit1 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz1.
   Proof.
@@ -144,6 +154,21 @@ Section RECBFILE.
 
   Definition isplit2_dep sz sz1 sz2 (v : items sz) (H : sz = sz1 + sz2) : items sz2 :=
     isplit2 sz1 sz2 (eq_rect sz items v _ H).
+
+  Definition single_item (w: items 1) : word itemsize.
+  Proof.
+    unfold items in w.
+    rewrite Nat.mul_1_r in w.
+    exact w.
+  Qed.
+
+  Definition isplit_list count (w: items count) : list (word itemsize). Admitted.
+  (** this definition is close, but not sure how to supply the proof that count = 1 + count'
+  Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
+    match count with
+    | O => nil
+    | S count' => (single_item (isplit1_dep 1 count' w _)) :: isplit_list (isplit2_dep 1 count' w _)
+    end. **)
 
   (** helper theorems bsz_ok and bsz_le_sz are copied from ByteFile **)
  Theorem bsz_ok:
@@ -185,6 +210,29 @@ Section RECBFILE.
     mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v mscs;
     rx mscs.
 
+  Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
+  {< m mbase F Fm Fx A f flist v,
+    PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ (Fx * # (chunk_blocknum ck) |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
+    POST RET: mscs
+      exists m' flist' v',
+        LOG.rep lxp F (ActiveTxn mbase m') mscs *
+        [[ (Fm * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f)) ]] *
+        [[ v' = update_chunk v ck ]]
+    CRASH LOG.would_recover_old lxp F mbase
+  >} bf_put_chunk lxp ixp inum ck mscs.
+  Proof.
+    unfold bf_put_chunk.
+
+    step. (* bf_read *)
+    step. (* bf_write *)
+    step. (* return *)
+  Qed.
+
   (** split w into a list of chunks **)
   Function chunkList off (count:nat) (w: items count) {measure id count} : list chunk :=
     match count with
@@ -216,9 +264,29 @@ Section RECBFILE.
 
   (** Increase the size of the BFILE at inode [inum] if necessary, using BFILE.bftrunc. **)
   Definition bf_resize T fsxp inum count_items mscs rx : prog T :=
-      let size := count_items in (** TODO: divide rounding up (eg, roundup from SlowByteFile) **)
-      let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
+      let size := divup count_items blocksize in
+      let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
       rx ^(mscs, ok).
+
+  Theorem bf_resize_ok : forall fsxp inum count_items mscs,
+  {< mbase m F Fm A f flist,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]]
+    POST RET: ^(mscs, ok)
+    exists m' f' newsize,
+    LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+      ( [[ ok = false ]] \/
+      [[ ok = true ]] *
+      [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+      [[ f' =  BFILE.Build_bfile (setlen (BFILE.BFData f) newsize $0) (BFILE.BFAttr f) ]] *
+      [[ newsize * blocksize >= count_items ]] )
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+  >} bf_resize fsxp inum count_items mscs.
+  Proof.
+    unfold bf_resize.
+    step. (* bftrunc *)
+  Admitted.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
@@ -238,15 +306,29 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
-  Definition array_item_pairs (vs : list block) : pred :=
-    ([[ Forall Rec.well_formed vs ]] *
-     arrayN 0 (map rep_block vs))%pred.
+  Definition items_from_words (l : list (word itemsize)) : list item :=
+    map (@Rec.of_word itemtype) l.
 
-  Definition array_item_file file (vs : list item) : Prop :=
-    exists vs_nested,
-    length vs_nested = length (BFILE.BFData file) /\
-    array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
-    vs = fold_right (@app _) nil vs_nested.
+  Theorem bf_update_range_ok : forall fsxp inum off count (w: items count) mscs,
+  {< mbase m F Fm A flist ilist f ,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ array_item_file f ilist ]] *
+    (** update requires you have enough space; this is one way to require it in PRE,
+        but might be better to reference size of f **)
+    [[ length ilist >= off + count ]]
+    POST RET: ^(mscs)
+      exists m' f',
+        LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+        [[ array_item_file f' (firstn off ilist ++ items_from_words (isplit_list w) ++ skipn (off + count) ilist) ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+  >} bf_update_range fsxp inum off w mscs.
+  Proof.
+    unfold bf_update_range.
+  Admitted.
 
   Lemma map_rep_valu_id : forall x,
     Forall Rec.well_formed x ->
