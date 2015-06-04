@@ -1081,9 +1081,9 @@ Hint Resolve length_grow_oneblock_ok.
   Qed.
 
   Lemma len_olddata_newdata_grown_eq:
-      forall f' f (newdata: list byte) (bytes: list byte) (bytes': list byte) off,
-        bytes' = bytes ++ repeat $ (0) (off + length newdata - # (INODE.ISize (BFILE.BFAttr f))) ->
-        rep bytes' f' ->
+      forall f (newdata: list byte) (bytes: list byte) off,
+        rep bytes f ->
+        (INODE.ISize (BFILE.BFAttr f) < $ (off + length newdata))%word ->
         length (skipn off (bytes ++ 
             repeat $ (0) (off + length newdata - # (INODE.ISize (BFILE.BFAttr f))))) =
           length newdata.
@@ -1092,8 +1092,15 @@ Hint Resolve length_grow_oneblock_ok.
       rewrite skipn_length.
       rewrite app_length.
       rewrite repeat_length.
-      rewrite length_rep with (f := f') (bytes := bytes'); eauto.
-      admit. (* need fact about size f' *)
+      unfold rep in H.
+      destruct H.
+      intuition.
+      rewrite H2.
+      rewrite Nat.add_sub_assoc.
+      rewrite minus_plus.
+      rewrite minus_plus.
+      eauto.
+      admit. (* by H0 *)
       apply off_in_bounds_ext.
       eauto.
   Admitted.
@@ -1176,15 +1183,18 @@ Hint Resolve length_grow_oneblock_ok.
       rewrite off_le_bytes with (len := length newdata) (lenbytes := length bytes); eauto.
     Qed.
 
-  Lemma xxx:
+  Lemma off_length_in_bounds:
     forall f off (bytes: list byte) (newdata: list byte),
+      goodSize addrlen (off+length newdata) ->
       rep bytes f ->
-      (INODE.ISize (BFILE.BFAttr f) < $ (off + length newdata))%word = False ->
+      ((INODE.ISize (BFILE.BFAttr f) < $ (off + length newdata))%word -> False) ->
       off + length newdata <= length bytes.
   Proof.
     intros.
-    apply wle_le in H0.
-  Admitted.
+    apply wle_le in H1.
+    erewrite wordToNat_natToWord_idempotent' in H1 by auto.
+    rewrite length_rep with (f := f) (bytes := bytes); eauto.
+  Qed.
 
   Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
     {< m mbase F Fm A flist f bytes,
@@ -1222,7 +1232,6 @@ Hint Resolve length_grow_oneblock_ok.
 
     apply len_olddata_newdata_grown_eq; eauto.
 
-
     (* off + length newdata <= length bytes + length (repeat $ (0)
      (off + length newdata - # (INODE.ISize (BFILE.BFAttr f)))) *)
     rewrite repeat_length.
@@ -1236,22 +1245,13 @@ Hint Resolve length_grow_oneblock_ok.
     (* false branch *)
     apply olddata_exists_in_file with (f := f) (newdata := newdata); eauto.
 
-    (* XXX use lemma xxx *)
-    apply wle_le in H9.
-    erewrite wordToNat_natToWord_idempotent' in H9 by auto.
-    rewrite length_rep with (f := f) (bytes := bytes); eauto.
-   
+    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
+
     erewrite len_olddata_newdata_eq with (f := f); eauto.
     constructor.
 
-    apply wle_le in H9.
-    erewrite wordToNat_natToWord_idempotent' in H9 by auto.
-    rewrite length_rep with (f := f) (bytes := bytes); eauto.
-
-    apply wle_le in H9.
-    erewrite wordToNat_natToWord_idempotent' in H9 by auto.
-    rewrite length_rep with (f := f) (bytes := bytes); eauto.
-
+    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
+    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
   
     step. (* return *)
 
