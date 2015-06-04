@@ -155,6 +155,21 @@ Section RECBFILE.
   Definition isplit2_dep sz sz1 sz2 (v : items sz) (H : sz = sz1 + sz2) : items sz2 :=
     isplit2 sz1 sz2 (eq_rect sz items v _ H).
 
+  Definition single_item (w: items 1) : word itemsize.
+  Proof.
+    unfold items in w.
+    rewrite Nat.mul_1_r in w.
+    exact w.
+  Qed.
+
+  Definition isplit_list count (w: items count) : list (word itemsize). Admitted.
+  (** this definition is close, but not sure how to supply the proof that count = 1 + count'
+  Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
+    match count with
+    | O => nil
+    | S count' => (single_item (isplit1_dep 1 count' w _)) :: isplit_list (isplit2_dep 1 count' w _)
+    end. **)
+
   (** helper theorems bsz_ok and bsz_le_sz are copied from ByteFile **)
  Theorem bsz_ok:
     forall sz bsz,
@@ -291,6 +306,29 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
+  Definition items_from_words (l : list (word itemsize)) : list item :=
+    map (@Rec.of_word itemtype) l.
+
+  Theorem bf_update_range_ok : forall fsxp inum off count (w: items count) mscs,
+  {< mbase m F Fm A flist ilist f ,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ array_item_file f ilist ]] *
+    (** update requires you have enough space; this is one way to require it in PRE,
+        but might be better to reference size of f **)
+    [[ length ilist >= off + count ]]
+    POST RET: ^(mscs)
+      exists m' f',
+        LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+        [[ array_item_file f' (firstn off ilist ++ items_from_words (isplit_list w) ++ skipn (off + count) ilist) ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+  >} bf_update_range fsxp inum off w mscs.
+  Proof.
+    unfold bf_update_range.
+  Admitted.
 
   Lemma map_rep_valu_id : forall x,
     Forall Rec.well_formed x ->
