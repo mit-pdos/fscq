@@ -2,6 +2,7 @@
 *.hi
 *.o
 /lia.cache
+/nlia.cache
 /codegen
 _build
 /disk.img
