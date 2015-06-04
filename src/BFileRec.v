@@ -162,13 +162,11 @@ Section RECBFILE.
     exact w.
   Qed.
 
-  Definition isplit_list count (w: items count) : list (word itemsize). Admitted.
-  (** this definition is close, but not sure how to supply the proof that count = 1 + count'
-  Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
+  Program Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
     match count with
     | O => nil
     | S count' => (single_item (isplit1_dep 1 count' w _)) :: isplit_list (isplit2_dep 1 count' w _)
-    end. **)
+    end.
 
   (** helper theorems bsz_ok and bsz_le_sz are copied from ByteFile **)
  Theorem bsz_ok:
