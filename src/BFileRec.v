@@ -226,8 +226,8 @@ Section RECBFILE.
 
   (** Increase the size of the BFILE at inode [inum] if necessary, using BFILE.bftrunc. **)
   Definition bf_resize T fsxp inum count_items mscs rx : prog T :=
-      let size := count_items in (** TODO: divide rounding up (eg, roundup from SlowByteFile) **)
-      let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
+      let size := divup count_items blocksize in
+      let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
       rx ^(mscs, ok).
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
