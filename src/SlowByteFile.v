@@ -40,8 +40,6 @@ Module SLOWBYTEFILE.
     reflexivity.
   Qed.
 
-  Definition roundup (n: nat) (unitsz:nat) : nat := (n + unitsz - 1) / unitsz.
-
   (* The bytes of a file are mapped onto a list of blocks:   *)
   (*   [ block 0 ... block n]                                *)
   (*   <-- allbytes      -->                                 *)
@@ -56,7 +54,7 @@ Module SLOWBYTEFILE.
     bytes_rep f allbytes /\
     firstn (# (f.(BFILE.BFAttr).(INODE.ISize))) allbytes = bytes /\
     length bytes = (# (f.(BFILE.BFAttr).(INODE.ISize))) /\
-    roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes.
+    divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes.
 
   Fixpoint apply_bytes (allbytes : list byte) (off : nat) (newdata : list byte) :=
     match newdata with
@@ -202,39 +200,13 @@ Module SLOWBYTEFILE.
   Qed.
 
 
- Lemma roundup_ok:
+ Lemma divup_ok:
     forall x,
-      (roundup x valubytes) * valubytes >= x.
+      divup x valubytes * valubytes >= x.
   Proof.
-    unfold roundup; intros.
-    rewrite (Nat.div_mod x valubytes) at 1 by ( rewrite valubytes_is; auto ).
-    rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
-    rewrite <- plus_assoc.
-    rewrite (mult_comm valubytes).
-    rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
-
-    case_eq (x mod valubytes); intros.
-    - rewrite (Nat.div_mod x valubytes) at 2 by ( rewrite valubytes_is; auto ).
-      rewrite valubytes_is at 2 3. simpl.
-      replace (x / valubytes + 0) with (x / valubytes) by omega.
-      rewrite (mult_comm valubytes).
-      omega.
-
-    - rewrite Nat.mul_add_distr_r.
-      replace (S n + (valubytes - 1)) with (valubytes + n) by ( rewrite valubytes_is; omega ).
-      replace (valubytes) with (1 * valubytes) at 3 by omega.
-      rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
-      rewrite (Nat.div_mod x valubytes) at 2 by ( rewrite valubytes_is; auto ).
-      assert (x mod valubytes < valubytes).
-      apply Nat.mod_bound_pos; try rewrite valubytes_is; omega.
-      rewrite Nat.mul_add_distr_r; simpl.
-      unfold ge.
-      eapply le_trans with (valubytes * (x / valubytes) + valubytes).
-      omega.
-      replace (valubytes + 0) with (valubytes) by omega.
-      rewrite plus_assoc.
-      rewrite mult_comm.
-      apply le_plus_l.
+    intros.
+    apply roundup_ge.
+    rewrite valubytes_is; omega.
   Qed.
 
   Theorem read_byte_ok: forall fsxp inum off mscs,
@@ -316,7 +288,7 @@ Module SLOWBYTEFILE.
       m1 < off -> m1 < len
       -> off + m1 < off + len
       off + len < min( f.isize, length allbytes ) (firstn_length)
-      length allbytes0 >= f.isize (from roundup_ok)
+      length allbytes0 >= f.isize (from divup_ok)
       -> off + len < f.isize <= length allbytes0
       -> off + m1 < length allbytes0 *)
     apply le_trans with (off + #(len)).
@@ -325,7 +297,7 @@ Module SLOWBYTEFILE.
     apply Nat.min_glb_l in H4.
     apply le_trans with (# (INODE.ISize (BFILE.BFAttr f))). assumption.
     rewrite <- H22.
-    apply roundup_ok.
+    apply divup_ok.
     erewrite wordToNat_natToWord_bound.
     apply Hoffm1.
     instantiate (bound := $ (length allbytes0)).
@@ -635,8 +607,8 @@ Hint Resolve length_grow_oneblock_ok.
    Definition grow_file T fsxp inum newlen mscs rx : prog T :=
      let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
      let curlen := oldattr.(INODE.ISize) in
-     let curblocks := roundup #curlen valubytes  in
-     let newblocks := roundup newlen valubytes in
+     let curblocks := divup #curlen valubytes  in
+     let newblocks := divup newlen valubytes in
      let nblock := newblocks - curblocks in
      mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
                               (INODE.Build_iattr ($ (curblocks*valubytes))
@@ -656,12 +628,12 @@ Hint Resolve length_grow_oneblock_ok.
 
 
 
-  Lemma roundup_roundup_eq:
+  Lemma divup_divup_eq:
     forall x,
-      (roundup ((roundup x valubytes)*valubytes) valubytes) * valubytes =
-      (roundup x valubytes) * valubytes.
+      (divup ((divup x valubytes)*valubytes) valubytes) * valubytes =
+      (divup x valubytes) * valubytes.
   Proof.
-    unfold roundup; intros.
+    unfold divup; intros.
     rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
     rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
     rewrite Nat.mul_add_distr_r.
@@ -671,12 +643,12 @@ Hint Resolve length_grow_oneblock_ok.
     auto.
   Qed.
 
-  Lemma le_roundup:
+  Lemma le_divup:
     forall m n,
       m <= n ->
-      (roundup m valubytes) * valubytes <= (roundup n valubytes) * valubytes.
+      (divup m valubytes) * valubytes <= (divup n valubytes) * valubytes.
   Proof.
-    unfold roundup; intros.
+    unfold divup; intros.
     apply Nat.mul_le_mono_r.
     apply Nat.div_le_mono.
     rewrite valubytes_is; auto.
@@ -686,20 +658,20 @@ Hint Resolve length_grow_oneblock_ok.
   Lemma nblock_ok:
     forall oldlen newlen boundary nblock,
       oldlen <= newlen ->
-      boundary = (roundup oldlen valubytes) * valubytes ->
-      nblock = (roundup newlen valubytes) - (roundup oldlen valubytes)->
+      boundary = (divup oldlen valubytes) * valubytes ->
+      nblock = (divup newlen valubytes) - (divup oldlen valubytes)->
       newlen - oldlen <= boundary - oldlen + nblock * valubytes.
   Proof.
     intros; subst.
     rewrite Nat.mul_sub_distr_r.
-    rewrite <- Nat.add_sub_swap by apply roundup_ok.
+    rewrite <- Nat.add_sub_swap by apply divup_ok.
     apply Nat.sub_le_mono_r.
-    rewrite Nat.add_sub_assoc by ( apply le_roundup; omega ).
+    rewrite Nat.add_sub_assoc by ( apply le_divup; omega ).
     rewrite plus_comm.
     rewrite <- Nat.add_sub_assoc by reflexivity.
     rewrite <- minus_diag_reverse.
     rewrite <- plus_n_O.
-    apply roundup_ok.
+    apply divup_ok.
   Qed.
 
   Lemma firstn_app : forall A (a b : list A) n,
@@ -734,10 +706,10 @@ Hint Resolve length_grow_oneblock_ok.
   Lemma eq_bytes_allbytes_ext0_to_newlen:
     forall (allbytes: list byte) (oldlen:nat) (newlen:nat) bytes nbytes nblock,
       oldlen <= newlen ->
-      (roundup oldlen valubytes) * valubytes = length allbytes ->
+      (divup oldlen valubytes) * valubytes = length allbytes ->
       bytes = firstn oldlen allbytes ->
       nbytes = (length allbytes) - oldlen ->
-      nblock = (roundup newlen valubytes) - (roundup oldlen valubytes) ->
+      nblock = (divup newlen valubytes) - (divup oldlen valubytes) ->
       firstn newlen ((bytes ++ (repeat $0 nbytes)) ++ repeat $0 (nblock * valubytes)) = 
         (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
   Proof.
@@ -745,7 +717,7 @@ Hint Resolve length_grow_oneblock_ok.
     assert (length bytes = oldlen).
     subst. rewrite firstn_length. apply Nat.min_l.
     rewrite <- H0.
-    apply roundup_ok.
+    apply divup_ok.
     rewrite <- app_assoc.
     rewrite firstn_app by omega.
     f_equal; auto.
@@ -762,13 +734,13 @@ Hint Resolve length_grow_oneblock_ok.
     forall f f' allbytes,
       array_item_file byte_type items_per_valu itemsz_ok f allbytes ->
       @wordToNat addrlen ($ (length allbytes)) = length allbytes ->
-      roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+      divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
       f' =
       {|
       BFILE.BFData := BFILE.BFData f;
       BFILE.BFAttr := {|
                       INODE.ISize := $
-                                     (roundup # (INODE.ISize (BFILE.BFAttr f))
+                                     (divup # (INODE.ISize (BFILE.BFAttr f))
                                         valubytes * valubytes);
                       INODE.IMTime := INODE.IMTime (BFILE.BFAttr f);
                       INODE.IType := INODE.IType (BFILE.BFAttr f) |} |} ->
@@ -791,9 +763,9 @@ Hint Resolve length_grow_oneblock_ok.
     eauto.
     subst; simpl.
     erewrite wordToNat_natToWord_bound.
-    rewrite roundup_roundup_eq with (x := # (INODE.ISize (BFILE.BFAttr f))).
+    rewrite divup_divup_eq with (x := # (INODE.ISize (BFILE.BFAttr f))).
     rewrite H1.
-    instantiate (bound := $ ( (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
+    instantiate (bound := $ ( (divup # (INODE.ISize (BFILE.BFAttr f)) valubytes) * valubytes)).
     eauto.
     rewrite H1.
     eauto.
@@ -804,7 +776,7 @@ Hint Resolve length_grow_oneblock_ok.
    
   Lemma olddata_exists_in_block:
         forall f (allbytes: list byte),
-        roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+        divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
         @wordToNat addrlen ($ (length allbytes)) = length allbytes ->
         (arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) *
           arrayN # (INODE.ISize (BFILE.BFAttr f))
@@ -814,7 +786,7 @@ Hint Resolve length_grow_oneblock_ok.
        replace (# (INODE.ISize (BFILE.BFAttr f))) with (0 + # (INODE.ISize (BFILE.BFAttr f))) at 2 by omega.
        apply arrayN_split.
        rewrite <- H.
-       apply roundup_ok.
+       apply divup_ok.
        apply list2nmem_array.
   Qed.
 
@@ -823,9 +795,9 @@ Hint Resolve length_grow_oneblock_ok.
   Lemma length_updatebytes_ok:
       forall f (allbytes: list byte),
         @wordToNat addrlen ($ (length allbytes)) = length allbytes ->
-        roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+        divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
           length (skipn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes) =
-          length (repeat (@natToWord addrlen 0) ((roundup (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) valubytes) * valubytes 
+          length (repeat (@natToWord addrlen 0) ((divup (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) valubytes) * valubytes 
                                  - (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))))).
   Proof.
       intros.
@@ -833,7 +805,7 @@ Hint Resolve length_grow_oneblock_ok.
       rewrite repeat_length.
       eauto.
       rewrite <- H0.
-      apply roundup_ok.
+      apply divup_ok.
   Qed.
 
   Hint Resolve length_updatebytes_ok.
@@ -843,13 +815,13 @@ Hint Resolve length_grow_oneblock_ok.
           (arrayN 0 (firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) *
             arrayN # (INODE.ISize (BFILE.BFAttr f))
              (repeat $ (0)
-                (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes -
+                (divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes -
                     # (INODE.ISize (BFILE.BFAttr f)))))%pred (list2nmem bytes') ->
-          roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+          divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
           rep bytes' f' ->
-          # (INODE.ISize (BFILE.BFAttr f')) = roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes ->
+          # (INODE.ISize (BFILE.BFAttr f')) = divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes ->
           bytes_rep f' ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes) ++ (repeat $ (0)
-            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+            (divup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
              valubytes - # (INODE.ISize (BFILE.BFAttr f))))).
   Proof.
        intros.
@@ -866,21 +838,21 @@ Hint Resolve length_grow_oneblock_ok.
        rewrite <- H6.
        rewrite  H4.
        rewrite H2.
-       rewrite roundup_roundup_eq.
+       rewrite divup_divup_eq.
        omega.
        rewrite firstn_length.
        rewrite Nat.min_l.
        eauto.
        rewrite <- H0.
-       apply roundup_ok.
+       apply divup_ok.
   Qed.
 
-   Lemma roundup_goodSize:
+   Lemma divup_goodSize:
     forall (a: addr),
-      goodSize addrlen (roundup #a valubytes).
+      goodSize addrlen (divup #a valubytes).
    Proof.
     intros.
-    unfold goodSize, roundup.
+    unfold goodSize, divup.
     admit.
    Admitted.
 
@@ -893,25 +865,25 @@ Hint Resolve length_grow_oneblock_ok.
    Admitted.
 
     
-  Lemma roundup_newlen_minus_oldlen_goodSize:
+  Lemma divup_newlen_minus_oldlen_goodSize:
     forall oldlen newlen a,
       newlen = @wordToNat addrlen a ->
-      goodSize addrlen (roundup newlen valubytes - roundup oldlen valubytes).
+      goodSize addrlen (divup newlen valubytes - divup oldlen valubytes).
   Proof.
     intros.
     unfold goodSize.
     apply lt_minus.
     subst.
-    apply roundup_goodSize.
+    apply divup_goodSize.
   Qed.
 
   
   Lemma len_oldlenext_newlen_eq:
     forall oldlen newlen,
-      roundup newlen valubytes * valubytes =
-       oldlen + roundup oldlen valubytes * valubytes - oldlen +
-        roundup newlen valubytes * valubytes -
-        roundup oldlen valubytes * valubytes.
+      divup newlen valubytes * valubytes =
+       oldlen + divup oldlen valubytes * valubytes - oldlen +
+        divup newlen valubytes * valubytes -
+        divup oldlen valubytes * valubytes.
   Proof.
     intros.
     rewrite minus_plus.
@@ -921,14 +893,14 @@ Hint Resolve length_grow_oneblock_ok.
 
    Lemma after_grow_rep_ok:
       forall f f'' (bytes: list byte) (allbytes: list byte) newlen oldlen,
-         roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
+         divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
          newlen = # (INODE.ISize (BFILE.BFAttr f'')) ->
          oldlen = # (INODE.ISize (BFILE.BFAttr f)) ->
          oldlen <= newlen ->
          bytes_rep f'' ((firstn oldlen allbytes ++
-          repeat $ (0) (roundup oldlen valubytes * valubytes - oldlen)) ++
-          repeat $ (0) (@wordToNat addrlen ($ (roundup newlen valubytes -
-                     roundup oldlen valubytes)) * valubytes)) -> 
+          repeat $ (0) (divup oldlen valubytes * valubytes - oldlen)) ++
+          repeat $ (0) (@wordToNat addrlen ($ (divup newlen valubytes -
+                     divup oldlen valubytes)) * valubytes)) -> 
           rep (firstn oldlen allbytes ++ repeat $ (0) (newlen - oldlen)) f''.
    Proof.
      intros.
@@ -936,12 +908,12 @@ Hint Resolve length_grow_oneblock_ok.
      eexists.
      instantiate (allbytes := ((firstn # (INODE.ISize (BFILE.BFAttr f)) allbytes ++
           repeat $ (0)
-            (roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
+            (divup # (INODE.ISize (BFILE.BFAttr f)) valubytes *
              valubytes - # (INODE.ISize (BFILE.BFAttr f)))) ++
          repeat $ (0)
            (# ($
-               (roundup newlen valubytes -
-                roundup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
+               (divup newlen valubytes -
+                divup # (INODE.ISize (BFILE.BFAttr f)) valubytes)) *
             valubytes))).
     intuition.
     eauto.
@@ -958,7 +930,7 @@ Hint Resolve length_grow_oneblock_ok.
     subst; eauto.
     erewrite wordToNat_natToWord_idempotent'.
     eauto.
-    eapply roundup_newlen_minus_oldlen_goodSize with (a := (INODE.ISize (BFILE.BFAttr f''))); eauto.
+    eapply divup_newlen_minus_oldlen_goodSize with (a := (INODE.ISize (BFILE.BFAttr f''))); eauto.
     rewrite app_length.
     rewrite firstn_length.
     rewrite repeat_length.
@@ -966,7 +938,7 @@ Hint Resolve length_grow_oneblock_ok.
     omega.
     rewrite <- H.
     subst.
-    apply roundup_ok.
+    apply divup_ok.
     repeat rewrite app_length.
     rewrite firstn_length.
     repeat rewrite repeat_length.
@@ -978,11 +950,11 @@ Hint Resolve length_grow_oneblock_ok.
     repeat rewrite Nat.add_sub_assoc.
     apply len_oldlenext_newlen_eq.
     unfold ge.
-    apply roundup_ok.
-    apply le_roundup; eauto.
-    eapply roundup_newlen_minus_oldlen_goodSize with (a := (INODE.ISize (BFILE.BFAttr f''))); eauto.
+    apply divup_ok.
+    apply le_divup; eauto.
+    eapply divup_newlen_minus_oldlen_goodSize with (a := (INODE.ISize (BFILE.BFAttr f''))); eauto.
     eapply le_trans.
-    apply roundup_ok.
+    apply divup_ok.
     omega.
    Qed.
 
@@ -1025,7 +997,7 @@ Hint Resolve length_grow_oneblock_ok.
      subst; simpl.
      rewrite le_plus_minus_r; try omega.
      eapply le_trans.
-     apply roundup_ok.
+     apply divup_ok.
      omega.
 
      step.  (* grow blocks *)

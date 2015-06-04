@@ -7,8 +7,37 @@ Require Import ListPred.
 Require Import MemMatch.
 Require Import FSLayout.
 Require Import Bool.
+Require Import Psatz.
 
 Set Implicit Arguments.
+
+Definition divup (n unitsz : nat) : nat := (n + unitsz - 1) / unitsz.
+Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
+
+ Lemma roundup_ge: forall x sz,
+      sz > 0 ->
+      roundup x sz >= x.
+  Proof.
+    unfold roundup, divup; intros.
+    rewrite (Nat.div_mod x sz) at 1 by omega.
+    rewrite <- Nat.add_sub_assoc by omega.
+    rewrite <- plus_assoc.
+    rewrite (mult_comm sz).
+    rewrite Nat.div_add_l by omega.
+
+    case_eq (x mod sz); intros.
+    - rewrite (Nat.div_mod x sz) at 2 by omega.
+       nia.
+
+    - rewrite Nat.mul_add_distr_r.
+      replace (S n + (sz - 1)) with (sz + n) by omega.
+      replace (sz) with (1 * sz) at 3 by omega.
+      rewrite Nat.div_add_l by omega.
+      rewrite (Nat.div_mod x sz) at 2 by omega.
+      assert (x mod sz < sz).
+      apply Nat.mod_bound_pos; omega.
+      nia.
+  Qed.
 
 Section RECBFILE.
 
