@@ -88,6 +88,8 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     forall (a: addr),
       goodSize addrlen (divup #a valubytes).
   Proof.
+    assert (addrlen > 1) by ( unfold addrlen ; omega ).
+    generalize dependent addrlen.
     intros.
     unfold goodSize, divup.
     apply Nat.div_lt_upper_bound.
@@ -95,24 +97,20 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     apply lt_minus'.
     unfold addrlen.
     rewrite valubytes_is.
-    replace (4096) with (pow2 12).
+    replace (4096) with (pow2 12) by reflexivity.
     rewrite <- pow2_add_mul.
-    simpl (12+64).
-    replace (pow2 76) with (pow2 75 + pow2 75).
-    Search lt plus.
+    replace (pow2 (12 + n)) with (pow2 (11 + n) + pow2 (11 + n)).
     apply plus_lt_compat.
     eapply lt_trans.
     apply natToWord_goodSize.
     apply pow2_inc; omega.
     apply pow2_inc; omega.
-    Search pow2.
-    replace (76) with (75+1) by omega.
-    rewrite pow2_add_mul.
+    replace (12 + n) with ((11 + n) + 1) by omega.
+    rewrite (pow2_add_mul (11+n) 1).
     simpl (pow2 1).
     omega.
-    reflexivity.
   Qed.
-    
+
 Section RECBFILE.
 
   Set Default Proof Using "All".
