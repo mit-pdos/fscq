@@ -8,6 +8,7 @@ Require Import MemMatch.
 Require Import FSLayout.
 Require Import Bool.
 Require Import Psatz.
+Require Import Program.Wf.
 
 Set Implicit Arguments.
 
@@ -196,6 +197,12 @@ Section RECBFILE.
     discriminate.
   Qed.
 
+  Corollary blocksize_gt_0 : blocksize > 0.
+  Proof.
+    apply Nat.neq_0_lt_0.
+    apply blocksize_not_0.
+  Qed.
+
   Definition array_item_pairs (vs : list block) : pred :=
     ([[ Forall Rec.well_formed vs ]] *
      arrayN 0 (map rep_block vs))%pred.
@@ -266,12 +273,70 @@ Section RECBFILE.
     chunk_boff : nat;
     chunk_bend : nat;
     (** chunk_data is a word that can hold chunk_bend - chunk_off items **)
-    chunk_data: items (chunk_bend - chunk_boff)
+    chunk_data: items (chunk_bend - chunk_boff);
+
+    chunk_bend_ok : chunk_bend <= blocksize;
+    chunk_size_ok : chunk_boff < chunk_bend
   }.
+
+  (** if you want this fact, you can produce its proof with this function *)
+  Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) < blocksize.
+  Proof.
+    apply le_trans with (chunk_bend ck).
+    apply (chunk_size_ok ck).
+    apply (chunk_bend_ok ck).
+  Qed.
 
   (** TODO: replace bytes chunk_boff through chunk_bend within v
   (also a word, but of a potentially larger size) with the data in chunk_data **)
   Definition update_chunk v (ck:chunk) : valu := v.
+
+  Lemma boff_mod_ok : forall off,
+    off mod blocksize < blocksize.
+  Proof.
+    intros.
+    apply Nat.mod_bound_pos.
+    omega.
+    apply blocksize_gt_0.
+  Qed.
+
+  (** split w into a list of chunks **)
+  Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
+    match count with
+    | 0 => nil
+    | S count' =>
+      let blocknum := off / blocksize in
+      let boff := off mod blocksize in
+      let bend := Nat.min (boff + count) blocksize in
+      let bsize := bend - boff in
+      let bsize_ok := bsz_ok (bsz_le_sz _ _) in
+      @Build_chunk ($ blocknum) boff bend
+        (isplit1_dep bsize (count-bsize) w bsize_ok) _ _ ::
+        chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w bsize_ok)
+    end.
+  Obligation 1.
+    destruct (Nat.min_spec (off mod blocksize + S count') (blocksize)); omega.
+  Qed.
+  Obligation 2.
+    apply Nat.min_glb_lt_iff.
+    split.
+      - omega.
+      - apply boff_mod_ok.
+  Qed.
+  (** decreasing obligation produced by [{measure count}] *)
+  Obligation 3.
+    assert (Nat.min (off mod blocksize + S count') blocksize - off mod blocksize > 0).
+    destruct (le_dec (off mod blocksize + S count') blocksize).
+    rewrite Nat.min_l by assumption. omega.
+    apply not_le in n.
+    rewrite Nat.min_r by omega.
+    assert (blocksize > off mod blocksize).
+    apply Nat.mod_upper_bound.
+    apply blocksize_not_0.
+    omega.
+    omega.
+  Qed.
+
 
   (** Read/modify/write a chunk in place. **)
   Definition bf_put_chunk T lxp ixp inum (ck:chunk) mscs rx : prog T :=
@@ -301,35 +366,6 @@ Section RECBFILE.
     step. (* bf_read *)
     step. (* bf_write *)
     step. (* return *)
-  Qed.
-
-  (** split w into a list of chunks **)
-  Function chunkList off (count:nat) (w: items count) {measure id count} : list chunk :=
-    match count with
-    | 0 => nil
-    | S count' =>
-      let blocknum := off / blocksize in
-      let boff := off mod blocksize in
-      let bend := Nat.min (boff + count) blocksize in
-      let bsize := bend - boff in
-      let bsize_ok := bsz_ok (bsz_le_sz _ _) in
-      @Build_chunk ($ blocknum) boff bend (isplit1_dep bsize (count-bsize) w bsize_ok) ::
-        chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w bsize_ok)
-    end.
-  (** prove that chunkList is actually decreasing on count (as promised with {measure id count}),
-      so that function provably terminates. **)
-  Proof.
-    unfold id; intros.
-    assert (Nat.min (off mod blocksize + S count') blocksize - off mod blocksize > 0).
-    destruct (le_dec (off mod blocksize + S count') blocksize).
-    rewrite Nat.min_l by assumption. omega.
-    apply not_le in n.
-    rewrite Nat.min_r by omega.
-    assert (blocksize > off mod blocksize).
-    apply Nat.mod_upper_bound.
-    apply blocksize_not_0.
-    omega.
-    omega.
   Qed.
 
   (** Increase the size of the BFILE at inode [inum] if necessary, using BFILE.bftrunc. **)
