@@ -1675,6 +1675,40 @@ Proof.
   rewrite app_nil_r; auto.
 Qed.
 
+Lemma firstn_app_le : forall A (a b : list A) n,
+  length a <= n ->
+    firstn n (a ++ b) = a ++ firstn (n - length a) b.
+Proof.
+  induction a; simpl; intros.
+  rewrite <- minus_n_O; auto.
+  destruct n; try omega; simpl.
+  f_equal.
+  apply IHa.
+  omega.
+Qed.
+
+Lemma firstn_repeat_le : forall n m A (x : A),
+  n <= m ->
+    firstn n (repeat x m) = repeat x n.
+Proof.
+  induction n; simpl; intros; auto.
+  destruct m; try omega; simpl.
+  f_equal.
+  apply IHn.
+  omega.
+Qed.
+
+Lemma selN_skip_first : forall T (l:list T) n m p def,
+  n + m < p ->
+    selN l (n + m) def = selN (skipn n (firstn p l)) m def.
+Proof.
+  intros.
+  rewrite skipn_selN.
+  rewrite selN_firstn.
+  reflexivity.
+  assumption.
+Qed.
+
 
 Lemma isolate_last: forall A l (a : A) (b:addr),
   length l <= wordToNat b ->

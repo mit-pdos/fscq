@@ -240,17 +240,6 @@ Module SLOWBYTEFILE.
     apply Nat.lt_le_incl. eassumption.
   Qed.
 
-  Lemma selN_skip_first : forall T (l:list T) n m p def,
-    n + m < p ->
-    selN l (n + m) def = selN (skipn n (firstn p l)) m def.
-   Proof.
-    intros.
-    rewrite skipn_selN.
-    rewrite selN_firstn.
-    reflexivity.
-    assumption.
-  Qed.
-
   Theorem read_bytes_ok: forall fsxp inum off len mscs,
   {< m mbase F Fx Fm A flist f bytes v,
   PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -641,29 +630,6 @@ Hint Resolve length_grow_oneblock_ok.
     apply divup_ok.
   Qed.
 
-  Lemma firstn_app : forall A (a b : list A) n,
-    length a <= n ->
-    firstn n (a ++ b) = a ++ firstn (n - length a) b.
-  Proof.
-    induction a; simpl; intros.
-    rewrite <- minus_n_O; auto.
-    destruct n; try omega; simpl.
-    f_equal.
-    apply IHa.
-    omega.
-  Qed.
-
-  Lemma firstn_repeat_le : forall n m A (x : A),
-    n <= m ->
-    firstn n (repeat x m) = repeat x n.
-  Proof.
-    induction n; simpl; intros; auto.
-    destruct m; try omega; simpl.
-    f_equal.
-    apply IHn.
-    omega.
-  Qed.
-
   (* layout is [0 .. oldlen ...0... boundary ... nblock 0s ... ) *)
   (*           <-- bytes-->                                        *)
   (*           <-------- allbytes-->                               *)
@@ -686,7 +652,7 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite <- H0.
     apply divup_ok.
     rewrite <- app_assoc.
-    rewrite firstn_app by omega.
+    rewrite firstn_app_le by omega.
     f_equal; auto.
     rewrite repeat_app.
     rewrite firstn_repeat_le.
