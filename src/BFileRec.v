@@ -287,7 +287,7 @@ Section RECBFILE.
     apply (chunk_bend_ok ck).
   Qed.
 
-  (** TODO: replace bytes chunk_boff through chunk_bend within v
+  (** TODO: replace bits chunk_boff through chunk_bend within v
   (also a word, but of a potentially larger size) with the data in chunk_data **)
   Definition update_chunk v (ck:chunk) : valu := v.
 
