@@ -234,7 +234,7 @@ Section RECBFILE.
     unfold items in w.
     rewrite Nat.mul_1_l in w.
     exact w.
-  Qed.
+  Defined.
 
   Program Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
     match count with
