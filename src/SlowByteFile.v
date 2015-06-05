@@ -887,6 +887,26 @@ Hint Resolve length_grow_oneblock_ok.
     omega.
    Qed.
 
+   Lemma pow2_inc : forall n m,
+    0 < n -> n < m ->
+    pow2 n < pow2 m.
+   Proof.
+    intros.
+    generalize dependent n; intros.
+    induction m; simpl.
+    intros. inversion H0.
+    unfold lt in H0.
+    rewrite Nat.add_0_r.
+    inversion H0.
+    apply Nat.lt_add_pos_r.
+    apply zero_lt_pow2.
+    apply Nat.lt_trans with (pow2 m).
+    apply IHm.
+    exact H2.
+    apply Nat.lt_add_pos_r.
+    apply zero_lt_pow2.
+   Qed.
+
    Lemma divup_goodSize:
     forall (a: addr),
       goodSize addrlen (divup #a valubytes).
@@ -906,28 +926,16 @@ Hint Resolve length_grow_oneblock_ok.
     apply plus_lt_compat.
     eapply lt_trans.
     apply natToWord_goodSize.
-  
-    replace (75) with (64+11) by omega.
-    replace (pow2 64) with ((pow2 64)*1) by omega.
-    Search pow2 mult.
+    apply pow2_inc; omega.
+    apply pow2_inc; omega.
+    Search pow2.
+    replace (76) with (75+1) by omega.
     rewrite pow2_add_mul.
-    Search lt mult.
-    apply mult_lt_compat_l.
-    compute; omega.
-    apply zero_lt_pow2.
-
-    replace (75) with (12+63) by omega.
-    replace (pow2 12) with ((pow2 12)*1) by omega.
-    rewrite pow2_add_mul.
-    apply mult_lt_compat_l.
-    apply one_lt_pow2.
-    apply zero_lt_pow2.
-    remember 75.
-    simpl.
+    simpl (pow2 1).
     omega.
     reflexivity.
    Qed.
-    
+
   Lemma divup_newlen_minus_oldlen_goodSize:
     forall oldlen newlen a,
       newlen = @wordToNat addrlen a ->
