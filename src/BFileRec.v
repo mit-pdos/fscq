@@ -84,26 +84,6 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     omega.
   Qed.
 
-  Lemma pow2_inc : forall n m,
-    0 < n -> n < m ->
-    pow2 n < pow2 m.
-  Proof.
-    intros.
-    generalize dependent n; intros.
-    induction m; simpl.
-    intros. inversion H0.
-    unfold lt in H0.
-    rewrite Nat.add_0_r.
-    inversion H0.
-    apply Nat.lt_add_pos_r.
-    apply zero_lt_pow2.
-    apply Nat.lt_trans with (pow2 m).
-    apply IHm.
-    exact H2.
-    apply Nat.lt_add_pos_r.
-    apply zero_lt_pow2.
-  Qed.
-
   Lemma divup_goodSize:
     forall (a: addr),
       goodSize addrlen (divup #a valubytes).
