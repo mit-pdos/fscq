@@ -342,12 +342,26 @@ Section RECBFILE.
 
   (** TODO: split bf_resize into shrink/expand and give them different specs **)
 
-  Theorem bf_resize_ok : forall fsxp inum count_items mscs,
-  {< mbase m F Fm A f flist ilist,
+  (* Note: these functions are the same but have distinct nice names
+     in the context of shrinking/expanding *)
+  (** When the file is shrunk to hold count_items,
+      how many items do we actually retain? *)
+  Definition kept_items count_items : nat := roundup count_items (# items_per_valu).
+  (** When the file is expanded to hold count_items,
+      how many items do we actually allocate space for? *)
+  Definition alloc_items count_items : nat := roundup count_items (# items_per_valu).
+
+  Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
+  {< mbase m F Fm A Fi f flist ilist deleted,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
     [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-    [[ array_item_file f ilist ]]
+    [[ array_item_file f ilist ]] *
+    (* split items into preserved [Fi] and [deleted] items *)
+    (* this also ensures count_items < length ilist and this is a shrink *)
+    [[ (Fi * arrayN (kept_items count_items) deleted)%pred (list2nmem ilist) ]] *
+    (* the [deleted] list is actually the rest of [ilist], not some strict prefix *)
+    [[ length deleted + kept_items count_items = length ilist ]]
     POST RET: ^(mscs, ok)
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -356,9 +370,37 @@ Section RECBFILE.
       [[ ok = true ]] *
       [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
       [[ array_item_file f' ilist' ]] *
-      [[ length ilist' >= count_items ]] *
-      (** TODO: need predicate saying one of ilist, ilist' is a prefix of the other **)
-      [[ firstn (length ilist) ilist' = ilist ]] )
+      (* preserves any predicate regarding the non-deleted items *)
+      (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
+      [[ Fi%pred (list2nmem ilist') ]] )
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+  >} bf_resize fsxp inum count_items mscs.
+  Proof.
+    unfold bf_resize.
+  Admitted.
+
+  Theorem bf_expand_ok : forall fsxp inum count_items mscs,
+  {< mbase m F Fm Fi A f flist ilist,
+   PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ array_item_file f ilist ]] *
+    [[ Fi%pred (list2nmem ilist) ]] *
+    (* require that this is an expand since postcondition implies all of ilist
+       is preserved  *)
+    [[ count_items >= length ilist ]]
+    POST RET: ^(mscs, ok)
+    exists m',
+    LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+      ( [[ ok = false ]] \/
+      exists f' ilist' newitems,
+      [[ ok = true ]] *
+      [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+      [[ array_item_file f' ilist' ]] *
+      (* we don't mess with ilist ([Fi] still holds) *)
+      [[ (Fi * arrayN (length ilist) newitems)%pred (list2nmem ilist') ]] *
+      (* [length ilist' >= length ilist] is implied by setting [Fi] appropriately *)
+      [[ length newitems = alloc_items count_items - length ilist ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_resize fsxp inum count_items mscs.
   Proof.
