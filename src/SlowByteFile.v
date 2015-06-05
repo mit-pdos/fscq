@@ -200,15 +200,6 @@ Module SLOWBYTEFILE.
   Qed.
 
 
- Lemma divup_ok:
-    forall x,
-      divup x valubytes * valubytes >= x.
-  Proof.
-    intros.
-    apply roundup_ge.
-    rewrite valubytes_is; omega.
-  Qed.
-
   Theorem read_byte_ok: forall fsxp inum off mscs,
     {< m mbase F Fx Fm A flist f bytes v,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -631,33 +622,6 @@ Hint Resolve length_grow_oneblock_ok.
 
 
 
-  Lemma divup_divup_eq:
-    forall x,
-      (divup ((divup x valubytes)*valubytes) valubytes) * valubytes =
-      (divup x valubytes) * valubytes.
-  Proof.
-    unfold divup; intros.
-    rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
-    rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
-    rewrite Nat.mul_add_distr_r.
-    replace ((valubytes - 1) / valubytes * valubytes) with 0. omega.
-    rewrite valubytes_is.
-    compute.
-    auto.
-  Qed.
-
-  Lemma le_divup:
-    forall m n,
-      m <= n ->
-      (divup m valubytes) * valubytes <= (divup n valubytes) * valubytes.
-  Proof.
-    unfold divup; intros.
-    apply Nat.mul_le_mono_r.
-    apply Nat.div_le_mono.
-    rewrite valubytes_is; auto.
-    omega.
-  Qed.
-
   Lemma nblock_ok:
     forall oldlen newlen boundary nblock,
       oldlen <= newlen ->
@@ -850,84 +814,6 @@ Hint Resolve length_grow_oneblock_ok.
        apply divup_ok.
   Qed.
 
-  Lemma lt_minus:
-    forall a b c,
-      a < c -> a - b < c.
-   Proof.
-    intros.
-    omega.
-   Qed.
-
-   Lemma natToWord_goodSize:
-    forall sz (w:word sz),
-     goodSize sz (wordToNat w).
-   Proof.
-    intros.
-    unfold goodSize.
-    induction sz.
-    shatterer.
-    simpl.
-    shatterer.
-    specialize (IHsz (wtl w)).
-    destruct (whd w).
-    simpl.
-    omega.
-    simpl.
-    omega.
-   Qed.
-
-   Lemma one_lt_pow2:
-    forall n,
-      1 < pow2 (S n).
-   Proof.
-    intros.
-    induction n.
-    simpl; omega.
-    remember (S n); simpl.
-    omega.
-   Qed.
-
-   Lemma divup_goodSize:
-    forall (a: addr),
-      goodSize addrlen (divup #a valubytes).
-   Proof.
-    intros.
-    unfold goodSize, divup.
-    apply Nat.div_lt_upper_bound.
-    rewrite valubytes_is; auto.
-    apply lt_minus.
-    unfold addrlen.
-    rewrite valubytes_is.
-    replace (4096) with (pow2 12).
-    rewrite <- pow2_add_mul.
-    simpl (12+64).
-    replace (pow2 76) with (pow2 75 + pow2 75).
-    Search lt plus.
-    apply plus_lt_compat.
-    eapply lt_trans.
-    apply natToWord_goodSize.
-  
-    replace (75) with (64+11) by omega.
-    replace (pow2 64) with ((pow2 64)*1) by omega.
-    Search pow2 mult.
-    rewrite pow2_add_mul.
-    Search lt mult.
-    apply mult_lt_compat_l.
-    compute; omega.
-    apply zero_lt_pow2.
-
-    replace (75) with (12+63) by omega.
-    replace (pow2 12) with ((pow2 12)*1) by omega.
-    rewrite pow2_add_mul.
-    apply mult_lt_compat_l.
-    apply one_lt_pow2.
-    apply zero_lt_pow2.
-    remember 75.
-    simpl.
-    omega.
-    reflexivity.
-   Qed.
-    
   Lemma divup_newlen_minus_oldlen_goodSize:
     forall oldlen newlen a,
       newlen = @wordToNat addrlen a ->
@@ -935,7 +821,7 @@ Hint Resolve length_grow_oneblock_ok.
   Proof.
     intros.
     unfold goodSize.
-    apply lt_minus.
+    apply lt_minus'.
     subst.
     apply divup_goodSize.
   Qed.

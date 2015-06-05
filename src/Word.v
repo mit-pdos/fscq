@@ -196,6 +196,17 @@ Proof.
   induction sz; simpl; omega.
 Qed.
 
+Lemma one_lt_pow2:
+  forall n,
+    1 < pow2 (S n).
+Proof.
+  intros.
+  induction n.
+  simpl; omega.
+  remember (S n); simpl.
+  omega.
+Qed.
+
 Lemma mul2_add : forall n, n * 2 = n + n.
 Proof.
   induction n; firstorder.
@@ -1188,6 +1199,24 @@ Arguments goodSizeEq : simpl never.
 Theorem wordToNat_good : forall sz (w : word sz), goodSize sz (wordToNat w).
 Proof.
   apply wordToNat_bound.
+Qed.
+
+Theorem natToWord_goodSize:
+  forall sz (w:word sz),
+  goodSize sz (wordToNat w).
+Proof.
+  intros.
+  unfold goodSize.
+  induction sz.
+  shatterer.
+  simpl.
+  shatterer.
+  specialize (IHsz (wtl w)).
+  destruct (whd w).
+  simpl.
+  omega.
+  simpl.
+  omega.
 Qed.
 
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
