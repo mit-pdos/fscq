@@ -350,7 +350,7 @@ Module FASTBYTEFILE.
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes, rep, bytes_rep.
-    (* XXX: step fails here for some reason *)
+    step.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
