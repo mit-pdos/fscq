@@ -1220,8 +1220,12 @@ Module DIRTREE.
     pred_apply' Hc; cancel.
     step.
 
-    (* XXX: 'eauto with prog' super slow! *)
-    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    eapply pimpl_ok2.
+    (* XXX: [eauto], or even [apply SDIR.dslist_ok] without explicitly
+       specifying at least one of [lxp], [bxp] and [ixp]. *)
+    apply SDIR.dslist_ok with
+      (lxp:=FSXPLog fsxp) (bxp:=FSXPBlockAlloc fsxp) (ixp:=FSXPInode fsxp).
+    intros; norm'l.
     hypmatch dirlist_pred as Hx; subst_bool.
     rewrite dirlist_extract_subdir in Hx; eauto; simpl in Hx.
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
