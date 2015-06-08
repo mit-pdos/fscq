@@ -1011,7 +1011,7 @@ Hint Resolve length_grow_oneblock_ok.
            [[ rep bytes' f' ]] *
            [[ newdata = bsplit_list newbytes ]] *
            [[ (F1 * zeros * arrayN off newdata * F2)%pred (list2nmem bytes')]] *
-           [[ zeros = arrayN 0 (repeat $0 (off - len)) ]])
+           [[ zeros = arrayN len (repeat $0 (off - len)) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} write_bytes fsxp inum off newbytes mscs.
   Proof.
