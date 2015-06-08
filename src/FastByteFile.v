@@ -1069,69 +1069,33 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite length_rep with (f := f) (bytes := bytes); eauto.
   Qed.
 
-  Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
-    {< m mbase F Fm A flist f bytes,
+  Theorem write_bytes_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
+    {< m mbase F Fm F1 F2 A flist f bytes newdata wend,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ goodSize addrlen (off+length newdata) ]]
+           (* write goes from off to wend in new file *)
+           [[ wend = off + len ]] *
+           [[ F1%pred (list2nmem (firstn off bytes)) ]] *
+           [[ F2%pred (list2nmem (skipn wend bytes)) ]] *
+           [[ goodSize addrlen wend ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
-           [[ ok = true ]] * exists flist' f' bytes' Fx,
+           [[ ok = true ]] * exists flist' f' bytes' zeros,
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes')]])
+           [[ newdata = bsplit_list newbytes ]] *
+           [[ (F1 * zeros * arrayN off newdata * F2)%pred (list2nmem bytes')]] *
+           [[ zeros = arrayN 0 (repeat $0 (off - len)) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-      >} write_bytes fsxp inum off newdata mscs.
+      >} write_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold write_bytes. (* rep, bytes_rep. *)
     step.  (* bfgetattr *)
     step.  (* If *)
-    step.  (* grow_file *)
-
-    step.
-    step.
-    step.
-
-    step.
-
-    apply olddata_exists_in_grown_file; eauto.
-
-    Transparent hidden.
-    unfold hidden.
-
-    apply len_olddata_newdata_grown_eq; eauto.
-
-    (* off + length newdata <= length bytes + length (repeat $ (0)
-     (off + length newdata - # (INODE.ISize (BFILE.BFAttr f)))) *)
-    rewrite repeat_length.
-    erewrite length_rep with (bytes := bytes) (f := f); eauto.
-    omega.
-
-    step.
-    step.
-    step.
-
-    (* false branch *)
-    apply olddata_exists_in_file with (f := f) (newdata := newdata); eauto.
-
-    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
-
-    erewrite len_olddata_newdata_eq with (f := f); eauto.
-    constructor.
-
-    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
-    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
-
-    step. (* return *)
-
-    Grab Existential Variables.
-    all: eauto.
-    exact emp.
-
-  Qed.
+  Admitted.
 
 End FASTBYTEFILE.
