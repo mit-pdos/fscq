@@ -519,8 +519,7 @@ Hint Resolve length_grow_oneblock_ok.
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let oldlen := oldattr.(INODE.ISize) in
     If (wlt_dec oldlen ($ newlen)) {
-      (* TODO: this bf_resize is actually bf_expand (should use that spec) *)
-      let^ (mscs, ok) <- bf_resize byte_type items_per_valu fsxp inum newlen mscs;
+      let^ (mscs, ok) <- bf_expand byte_type items_per_valu fsxp inum newlen mscs;
       If (bool_dec ok true) {
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
            fsxp inum #oldlen (@natToWord (newlen*8) 0) mscs;
@@ -818,6 +817,7 @@ Hint Resolve length_grow_oneblock_ok.
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
+     step.
      step.
      step.
   Admitted.

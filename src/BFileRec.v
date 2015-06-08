@@ -346,13 +346,22 @@ Section RECBFILE.
     step. (* return *)
   Qed.
 
-  (** Increase the size of the BFILE at inode [inum] if necessary, using BFILE.bftrunc. **)
+  (** Resize the file at [inum] to hold count_items (rounded up to fit
+  a whole number of blocks) using BFILE.bftrunc. **)
   Definition bf_resize T fsxp inum count_items mscs rx : prog T :=
       let size := divup count_items blocksize in
       let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
       rx ^(mscs, ok).
 
-  (** TODO: split bf_resize into shrink/expand and give them different specs **)
+  (** Alias for bf_resize where spec requires the new size to be
+  smaller than the old. *)
+  Definition bf_shrink T fsxp inum count_items mscs rx : prog T :=
+    bf_resize fsxp inum count_items mscs rx.
+
+  (** Alias for bf_resize where spec requires the new size to be
+  larger than the old. *)
+  Definition bf_expand T fsxp inum count_items mscs rx : prog T :=
+    bf_resize fsxp inum count_items mscs rx.
 
   (* Note: these functions are the same but have distinct nice names
      in the context of shrinking/expanding *)
@@ -386,9 +395,9 @@ Section RECBFILE.
       (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
       [[ Fi%pred (list2nmem ilist') ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_resize fsxp inum count_items mscs.
+  >} bf_shrink fsxp inum count_items mscs.
   Proof.
-    unfold bf_resize.
+    unfold bf_shrink, bf_resize.
   Admitted.
 
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
@@ -414,9 +423,9 @@ Section RECBFILE.
       (* [length ilist' >= length ilist] is implied by setting [Fi] appropriately *)
       [[ length newitems = alloc_items count_items - length ilist ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_resize fsxp inum count_items mscs.
+  >} bf_expand fsxp inum count_items mscs.
   Proof.
-    unfold bf_resize.
+    unfold bf_expand, bf_resize.
   Admitted.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
@@ -1157,6 +1166,8 @@ Hint Extern 1 ({{_}} progseq (bf_get_all _ _ _ _ _ _ _) _) => apply bf_get_all_o
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_update_range _ _ _ _ _ _ _) _) => apply bf_update_range_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_shrink _ _ _ _ _ _) _) => apply bf_shrink_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_expand _ _ _ _ _ _) _) => apply bf_expand_ok : prog.
 
 (* Two BFileRec arrays should always be equal *)
 Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>
