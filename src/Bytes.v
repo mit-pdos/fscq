@@ -66,3 +66,9 @@ Proof.
   autorewrite with bytehints.
   reflexivity.
 Qed.
+
+Program Fixpoint bsplit_list sz (w: bytes sz) : list byte :=
+    match sz with
+    | O => nil
+    | S sz => bsplit1_dep 1 sz w _ :: bsplit_list (bsplit2_dep 1 sz w _)
+    end.
