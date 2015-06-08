@@ -172,11 +172,7 @@ Module BYTEFILE.
     rewrite valubytes_is; omega.
   Qed.
 
-  Definition bsplit1_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz1 :=
-    bsplit1 sz1 sz2 (eq_rect sz bytes v _ H).
 
-  Definition bsplit2_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz2 :=
-    bsplit2 sz1 sz2 (eq_rect sz bytes v _ H).
 
   Theorem bsz_ok:
     forall sz bsz,
