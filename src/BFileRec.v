@@ -112,6 +112,8 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     omega.
   Qed.
 
+(** BFileRec implements a record-based abstraction on top of a BFILE. Records
+must be sized so that a whole number fit into a block. *)
 Section RECBFILE.
 
   Set Default Proof Using "All".
@@ -247,27 +249,6 @@ Section RECBFILE.
     | S count' => (single_item (isplit1_dep 1 count' w _)) :: isplit_list (isplit2_dep 1 count' w _)
     end.
 
-  (** helper theorems bsz_ok and bsz_le_sz are copied from ByteFile **)
- Theorem bsz_ok:
-    forall sz bsz,
-      bsz <= sz -> sz = bsz + (sz - bsz).
-  Proof.
-    intros.
-    omega.
-  Qed.
-
-  Theorem bsz_le_sz:
-    forall off sz,
-      (Nat.min ((off mod blocksize) + sz) blocksize) - (off mod blocksize) <= sz.
-  Proof.
-    intros.
-    destruct (le_dec (off mod blocksize + sz) blocksize).
-    rewrite Nat.min_l by assumption.
-    omega.
-    rewrite Nat.min_r by omega.
-    omega.
-  Qed.
-
   Record chunk := {
     chunk_blocknum : addr;
     chunk_boff : nat;
@@ -300,6 +281,16 @@ Section RECBFILE.
     apply blocksize_gt_0.
   Qed.
 
+  Section chunking.
+
+  Local Ltac min_cases :=
+    edestruct Nat.min_spec as [Hminspec|Hminspec];
+    inversion Hminspec as [Hlt Hmineq];
+    erewrite Hmineq;
+    try omega.
+
+  Local Obligation Tactic := Tactics.program_simpl; min_cases.
+
   (** split w into a list of chunks **)
   Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
     match count with
@@ -309,33 +300,20 @@ Section RECBFILE.
       let boff := off mod blocksize in
       let bend := Nat.min (boff + count) blocksize in
       let bsize := bend - boff in
-      let bsize_ok := bsz_ok (bsz_le_sz _ _) in
       @Build_chunk ($ blocknum) boff bend
-        (isplit1_dep bsize (count-bsize) w bsize_ok) _ _ ::
-        chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w bsize_ok)
+        (isplit1_dep bsize (count-bsize) w _) _ _ ::
+        chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w _)
     end.
-  Obligation 1.
-    destruct (Nat.min_spec (off mod blocksize + S count') (blocksize)); omega.
-  Qed.
-  Obligation 2.
-    apply Nat.min_glb_lt_iff.
-    split.
-      - omega.
-      - apply boff_mod_ok.
-  Qed.
+  Next Obligation.
+    apply boff_mod_ok.
+  Defined.
   (** decreasing obligation produced by [{measure count}] *)
-  Obligation 3.
-    assert (Nat.min (off mod blocksize + S count') blocksize - off mod blocksize > 0).
-    destruct (le_dec (off mod blocksize + S count') blocksize).
-    rewrite Nat.min_l by assumption. omega.
-    apply not_le in n.
-    rewrite Nat.min_r by omega.
-    assert (blocksize > off mod blocksize).
-    apply Nat.mod_upper_bound.
-    apply blocksize_not_0.
+  Next Obligation.
+    assert (off mod blocksize < blocksize) by (apply boff_mod_ok).
     omega.
-    omega.
-  Qed.
+  Defined.
+
+  End chunking.
 
 
   (** Read/modify/write a chunk in place. **)

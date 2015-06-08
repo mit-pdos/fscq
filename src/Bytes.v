@@ -28,6 +28,12 @@ Definition bsplit2 (sz1 sz2 : nat) (bs : bytes (sz1 + sz2)) : bytes sz2.
   exact (split2 _ _ bs).
 Defined.
 
+Definition bsplit1_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz1 :=
+  bsplit1 sz1 sz2 (eq_rect sz bytes v _ H).
+
+Definition bsplit2_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz2 :=
+  bsplit2 sz1 sz2 (eq_rect sz bytes v _ H).
+
 Hint Rewrite combine_split : bytehints.
 Hint Rewrite split1_combine : bytehints.
 Hint Rewrite split2_combine : bytehints.
@@ -60,3 +66,9 @@ Proof.
   autorewrite with bytehints.
   reflexivity.
 Qed.
+
+Program Fixpoint bsplit_list sz (w: bytes sz) : list byte :=
+    match sz with
+    | O => nil
+    | S sz => bsplit1_dep 1 sz w _ :: bsplit_list (bsplit2_dep 1 sz w _)
+    end.

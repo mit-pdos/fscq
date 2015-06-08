@@ -28,12 +28,13 @@ Require Import BFileRec.
 Set Implicit Arguments.
 Import ListNotations.
 
-(** SlowByteFile is built on top of BFileRec using bytes as the records.
-It provides a byte abstraction to a BFILE by looping over single-byte
-operations in BFileRec. Read and write take lists of bytes as inputs.
-The "slow" part comes from doing operations byte at a time instead of
-block at a time, as well as from using lists instead of words as input. *)
-Module SLOWBYTEFILE.
+(** A byte-based interface to a BFileRec. Fast because it uses the range
+update operation in BFileRec to do writes, and exposes an API that uses
+[byte count]s rather than [list byte]s as inputs.
+
+tchajed: This is a copy of SlowByteFile that I'm in the process of making fast.
+*)
+Module FASTBYTEFILE.
 
   Definition byte_type := Rec.WordF 8.
   Definition itemsz := Rec.len byte_type.
@@ -75,7 +76,7 @@ Module SLOWBYTEFILE.
   Qed.
 
   Lemma apply_bytes_upd_comm:
-    forall rest allbytes off off' b, 
+    forall rest allbytes off off' b,
       off < off' ->
       apply_bytes (updN allbytes off b) off' rest = updN (apply_bytes allbytes off' rest) off b.
   Proof.
@@ -93,31 +94,10 @@ Module SLOWBYTEFILE.
   Definition hidden (P : Prop) : Prop := P.
   Opaque hidden.
 
-  Definition update_bytes T fsxp inum (off : nat) (newdata : list byte) mscs rx : prog T :=
-    let^ (mscs, finaloff) <- ForEach b rest newdata
-      Ghost [ mbase F Fm A f allbytes ]
-      Loopvar [ mscs boff ]
-      Continuation lrx
-      Invariant
-        exists m' flist' f' allbytes',
-          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs  *
-          [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist')%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ bytes_rep f' allbytes' ]] *
-          [[ apply_bytes allbytes' boff rest = apply_bytes allbytes off newdata ]] *
-          [[ boff <= length allbytes' ]] *
-          [[ off + length newdata = boff + length rest ]] *
-          [[ hidden (length allbytes = length allbytes') ]] *
-          [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
-      OnCrash
-        exists m',
-          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
-      Begin
-         mscs <- BFileRec.bf_put byte_type items_per_valu itemsz_ok
-            fsxp.(FSXPLog) fsxp.(FSXPInode) inum ($ boff) b mscs;
-          lrx ^(mscs, boff + 1)
-      Rof ^(mscs, off);
-      rx mscs.
+  Definition update_bytes T fsxp inum (off : nat) len (newbytes : bytes len) mscs rx : prog T :=
+    let^ (mscs) <- BFileRec.bf_update_range items_per_valu itemsz_ok
+      fsxp inum off newbytes mscs;
+    rx ^(mscs).
 
   Definition read_byte T fsxp inum (off:nat) mscs rx : prog T :=
   let^ (mscs, b) <- BFileRec.bf_get byte_type items_per_valu itemsz_ok
@@ -348,16 +328,17 @@ Module SLOWBYTEFILE.
   Qed.
 
 
-  Theorem update_bytes_ok: forall fsxp inum off newdata mscs,
-      {< m mbase F Fm A flist f bytes olddata Fx,
+  Theorem update_bytes_ok: forall fsxp inum off len (newbytes : bytes len) mscs,
+      {< m mbase F Fm A flist f bytes olddata newdata Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
            [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+           [[ newdata = bsplit_list newbytes ]] *
            [[ hidden (length olddata = length newdata) ]] *
            [[ off + length newdata <= length bytes ]]
-      POST RET:mscs
+      POST RET: ^(mscs)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            exists flist' f' bytes',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
@@ -365,73 +346,16 @@ Module SLOWBYTEFILE.
            [[ rep bytes' f' ]] *
            [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
            [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
-       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
-      >} update_bytes fsxp inum off newdata mscs.
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+      >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes, rep, bytes_rep.
-
-    step.   (* step into loop *)
-
-    rewrite firstn_length in *.
-
-    eapply le_trans. eapply le_plus_l. eapply le_trans. apply H4.
-
-    apply Min.le_min_r.
-
-    constructor.
-
-    step.   (* bf_put *)
-
-    erewrite wordToNat_natToWord_bound by eauto.
-    eauto.
-
-    constructor.
-
-
-    step.
-    rewrite length_upd. auto.
-    rewrite <- H21.
-    rewrite <- apply_bytes_upd_comm by omega.
-    unfold upd.
-
-    erewrite wordToNat_natToWord_bound by eauto.
-    auto.
-
-    rewrite length_upd.
-    eauto.
-
-    rewrite H18. rewrite length_upd. constructor.
-    subst; simpl; auto.
-
-    step.
-
-    eexists.
-    intuition.
-    eauto.
-    eauto.
-    rewrite <- H15.
-    rewrite firstn_length in *.
-    rewrite <- H16.
-    eauto.
-
-    rewrite <- H15.
-    rewrite <- H16.
-    eauto.
-
-    rewrite <- H15.
-    eapply apply_bytes_arrayN. eauto.
-    instantiate (olddata := olddata).
-    eauto.
-    eauto.
-
-    apply LOG.activetxn_would_recover_old.
-    Grab Existential Variables.
-    exact tt. 
-  Qed.
+    (* XXX: step fails here for some reason *)
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
-  
-  Definition grow_blocks T fsxp inum nblock mscs rx : prog T := 
+
+  Definition grow_blocks T fsxp inum nblock mscs rx : prog T :=
     let^ (mscs) <- For i < nblock
       Ghost [ mbase F Fm A f bytes ]
       Loopvar [ mscs ]
@@ -485,10 +409,10 @@ Module SLOWBYTEFILE.
   Lemma bytes_grow_oneblock_ok:
     forall bytes nblock f (bound:addr),
     (nblock < bound) % word ->
-    array_item_file byte_type items_per_valu itemsz_ok f 
-       ((bytes ++ repeat $ (0) (@wordToNat addrlen (nblock) * valubytes)) ++ 
+    array_item_file byte_type items_per_valu itemsz_ok f
+       ((bytes ++ repeat $ (0) (@wordToNat addrlen (nblock) * valubytes)) ++
         (upd (item0_list byte_type items_per_valu itemsz_ok) $0 $0)) ->
-    array_item_file byte_type items_per_valu itemsz_ok f 
+    array_item_file byte_type items_per_valu itemsz_ok f
        (bytes ++ repeat $ (0) (@wordToNat addrlen (nblock ^+ $ (1)) * valubytes)).
   Proof.
     intros.
@@ -549,13 +473,13 @@ Hint Resolve length_grow_oneblock_ok.
            [[ bytes_rep f bytes ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-            ([[ ok = false ]] \/      
+            ([[ ok = false ]] \/
            [[ ok = true ]] * exists flist' f',
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]] *
            [[ bytes_rep f' (bytes ++ (repeat $0 (# nblock * valubytes))) ]])
-       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
        >} grow_blocks fsxp inum nblock mscs.
   Proof.
     unfold grow_blocks, rep, bytes_rep.
@@ -577,7 +501,7 @@ Hint Resolve length_grow_oneblock_ok.
     step.
     step.
     step.
-   
+
     eapply pimpl_or_r; right; cancel.
     eauto.
     rewrite app_length in H18.
@@ -591,29 +515,22 @@ Hint Resolve length_grow_oneblock_ok.
 
   Hint Extern 1 ({{_}} progseq (grow_blocks _ _ _ _) _) => apply grow_blocks_ok : prog.
 
-
    Definition grow_file T fsxp inum newlen mscs rx : prog T :=
-     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
-     let curlen := oldattr.(INODE.ISize) in
-     let curblocks := divup #curlen valubytes  in
-     let newblocks := divup newlen valubytes in
-     let nblock := newblocks - curblocks in
-     mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
-                              (INODE.Build_iattr ($ (curblocks*valubytes))
-                                                 (INODE.IMTime oldattr)
-                                                 (INODE.IType oldattr)) mscs;
-     mscs <- update_bytes fsxp inum #curlen (repeat $0 (curblocks*valubytes-#curlen)) mscs;
-     let^ (mscs, ok) <- grow_blocks fsxp inum ($ nblock) mscs;
-     If (bool_dec ok true) {
-       mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
-                              (INODE.Build_iattr ($ newlen)
-                                                 (INODE.IMTime oldattr)
-                                                 (INODE.IType oldattr)) mscs;
-       rx ^(mscs, true)
-     } else {
-       rx ^(mscs, false)
-     }.
-
+    let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
+    let oldlen := oldattr.(INODE.ISize) in
+    If (wlt_dec oldlen ($ newlen)) {
+      (* TODO: this bf_resize is actually bf_expand (should use that spec) *)
+      let^ (mscs, ok) <- bf_resize byte_type items_per_valu fsxp inum newlen mscs;
+      If (bool_dec ok true) {
+        let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
+           fsxp inum #oldlen (@natToWord (newlen*8) 0) mscs;
+        rx ^(mscs, true)
+      } else {
+        rx ^(mscs, false)
+      }
+    } else {
+      rx ^(mscs, true)
+    }.
 
 
   Lemma nblock_ok:
@@ -648,7 +565,7 @@ Hint Resolve length_grow_oneblock_ok.
       bytes = firstn oldlen allbytes ->
       nbytes = (length allbytes) - oldlen ->
       nblock = (divup newlen valubytes) - (divup oldlen valubytes) ->
-      firstn newlen ((bytes ++ (repeat $0 nbytes)) ++ repeat $0 (nblock * valubytes)) = 
+      firstn newlen ((bytes ++ (repeat $0 nbytes)) ++ repeat $0 (nblock * valubytes)) =
         (firstn oldlen allbytes) ++ (repeat $0 (newlen - oldlen)).
   Proof.
     intros.
@@ -711,7 +628,7 @@ Hint Resolve length_grow_oneblock_ok.
 
   Hint Resolve grow_to_end_of_block_ok.
 
-   
+
   Lemma olddata_exists_in_block:
         forall f (allbytes: list byte),
         divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
@@ -735,7 +652,7 @@ Hint Resolve length_grow_oneblock_ok.
         @wordToNat addrlen ($ (length allbytes)) = length allbytes ->
         divup # (INODE.ISize (BFILE.BFAttr f)) valubytes * valubytes = length allbytes ->
           length (skipn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes) =
-          length (repeat (@natToWord addrlen 0) ((divup (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) valubytes) * valubytes 
+          length (repeat (@natToWord addrlen 0) ((divup (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) valubytes) * valubytes
                                  - (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))))).
   Proof.
       intros.
@@ -797,7 +714,7 @@ Hint Resolve length_grow_oneblock_ok.
     apply divup_goodSize.
   Qed.
 
-  
+
   Lemma len_oldlenext_newlen_eq:
     forall oldlen newlen,
       divup newlen valubytes * valubytes =
@@ -820,7 +737,7 @@ Hint Resolve length_grow_oneblock_ok.
          bytes_rep f'' ((firstn oldlen allbytes ++
           repeat $ (0) (divup oldlen valubytes * valubytes - oldlen)) ++
           repeat $ (0) (@wordToNat addrlen ($ (divup newlen valubytes -
-                     divup oldlen valubytes)) * valubytes)) -> 
+                     divup oldlen valubytes)) * valubytes)) ->
           rep (firstn oldlen allbytes ++ repeat $ (0) (newlen - oldlen)) f''.
    Proof.
      intros.
@@ -897,85 +814,31 @@ Hint Resolve length_grow_oneblock_ok.
            [[ rep bytes' f']] *
            [[ attr = INODE.Build_iattr ($ newlen) (f.(BFILE.BFAttr).(INODE.IMTime)) (f.(BFILE.BFAttr).(INODE.IType))]] *
            [[ f' = BFILE.Build_bfile fdata' attr]])
-       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
-     step.  (* getattr *)
-     step.  (* set attributes *)
-     step.  (* update bytes *)
-
-     rewrite length_updatebytes_ok.
-     repeat rewrite repeat_length.
-     constructor; eauto.
-     eauto.
-     eauto.
-     eauto.
-
-     rewrite repeat_length.
-     rewrite H10.
-     subst; simpl.
-     rewrite le_plus_minus_r; try omega.
-     eapply le_trans.
-     apply divup_ok.
-     omega.
-
-     step.  (* grow blocks *)
-
-     eapply after_grow_to_block_bytes_rep_ok with (bytes' := bytes'); eauto.
-
-     rewrite <- H17.
-     simpl.
-
-     unfold rep, bytes_rep in *.
-     deex.
-
-     eapply bfrec_bound in H0; eauto.
-     rewrite H10.
-     erewrite wordToNat_natToWord_bound; eauto.
-
      step.
      step.
-     step.
-     step.
-     step.
-     eapply pimpl_or_r; right; cancel.
-
-     assert (rep (firstn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes ++
-         repeat $ (0) (newlen - (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))))) 
-           {|
-           BFILE.BFData := BFILE.BFData f'0;
-           BFILE.BFAttr := {|
-                         INODE.ISize := $ (newlen);
-                         INODE.IMTime := INODE.IMTime (BFILE.BFAttr f);
-                         INODE.IType := INODE.IType (BFILE.BFAttr f) |} |} ) as Hrep 
-      by (eapply after_grow_rep_ok; eauto; simpl; rewrite wordToNat_natToWord_idempotent'; eauto).
-    unfold rep in Hrep.
-    intuition; eauto.
-
-    step.
-    Grab Existential Variables.
-    all: eauto. 
-    exact (FSXPBlockAlloc fsxp).
-   Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
 
-  
-  Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
-    let newlen := off + length data in
+
+  Definition write_bytes T fsxp inum (off : nat) len (data : bytes len) mscs rx : prog T :=
+    let newlen := off + len in
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
-    let curlen := oldattr.(INODE.ISize) in      
+    let curlen := oldattr.(INODE.ISize) in
     If (wlt_dec curlen ($ newlen)) {
          let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
          If (bool_dec ok true) {
-           mscs <-  update_bytes fsxp inum off data mscs;
+           let^ (mscs) <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
         } else {
            rx ^(mscs, false)
         }
     } else {
-        mscs <-  update_bytes fsxp inum off data mscs;
+        let^ (mscs) <- update_bytes fsxp inum off data mscs;
         rx ^(mscs, true)
     }.
 
@@ -1013,7 +876,7 @@ Hint Resolve length_grow_oneblock_ok.
         goodSize addrlen (off + length newdata) ->
         rep bytes f ->
         (INODE.ISize (BFILE.BFAttr f) < $ (off + length newdata))%word ->
-        length (skipn off (bytes ++ 
+        length (skipn off (bytes ++
             repeat $ (0) (off + length newdata - # (INODE.ISize (BFILE.BFAttr f))))) =
           length newdata.
   Proof.
@@ -1031,7 +894,7 @@ Hint Resolve length_grow_oneblock_ok.
       eauto.
       apply wlt_lt in H1.
       erewrite wordToNat_natToWord_idempotent' in H1 by eauto.
-      apply Nat.lt_le_incl. 
+      apply Nat.lt_le_incl.
       eauto.
       apply off_in_bounds_ext.
       eauto.
@@ -1073,7 +936,7 @@ Hint Resolve length_grow_oneblock_ok.
    Proof.
     intros.
     apply helper_sep_star_comm_middle.
-    rewrite arrayN_combine.  
+    rewrite arrayN_combine.
     apply arrayN_combine.
     rewrite app_length.
     rewrite firstn_length.
@@ -1082,7 +945,7 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite Nat.min_l.
     omega.
     rewrite skipn_length.
-    erewrite plus_le_reg_l with (p := off) (m := (length bytes - off)). 
+    erewrite plus_le_reg_l with (p := off) (m := (length bytes - off)).
     omega.
     rewrite Nat.add_sub_assoc.
     rewrite minus_plus.
@@ -1128,69 +991,33 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite length_rep with (f := f) (bytes := bytes); eauto.
   Qed.
 
-  Theorem write_bytes_ok: forall fsxp inum (off:nat) (newdata: list byte) mscs,
-    {< m mbase F Fm A flist f bytes,
+  Theorem write_bytes_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
+    {< m mbase F Fm F1 F2 A flist f bytes newdata wend,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ goodSize addrlen (off+length newdata) ]]
+           (* write goes from off to wend in new file *)
+           [[ wend = off + len ]] *
+           [[ F1%pred (list2nmem (firstn off bytes)) ]] *
+           [[ F2%pred (list2nmem (skipn wend bytes)) ]] *
+           [[ goodSize addrlen wend ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
-           [[ ok = true ]] * exists flist' f' bytes' Fx,
+           [[ ok = true ]] * exists flist' f' bytes' zeros,
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes')]])
-       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase 
-      >} write_bytes fsxp inum off newdata mscs.
+           [[ newdata = bsplit_list newbytes ]] *
+           [[ (F1 * zeros * arrayN off newdata * F2)%pred (list2nmem bytes')]] *
+           [[ zeros = arrayN 0 (repeat $0 (off - len)) ]])
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+      >} write_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold write_bytes. (* rep, bytes_rep. *)
     step.  (* bfgetattr *)
     step.  (* If *)
-    step.  (* grow_file *)
+  Admitted.
 
-    step.
-    step.
-    step.
-
-    step.
-
-    apply olddata_exists_in_grown_file; eauto.
-
-    Transparent hidden.
-    unfold hidden.
-
-    apply len_olddata_newdata_grown_eq; eauto.
-
-    (* off + length newdata <= length bytes + length (repeat $ (0)
-     (off + length newdata - # (INODE.ISize (BFILE.BFAttr f)))) *)
-    rewrite repeat_length.
-    erewrite length_rep with (bytes := bytes) (f := f); eauto.
-    omega.
-
-    step.
-    step.
-    step.
-
-    (* false branch *)
-    apply olddata_exists_in_file with (f := f) (newdata := newdata); eauto.
-
-    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
-
-    erewrite len_olddata_newdata_eq with (f := f); eauto.
-    constructor.
-
-    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
-    rewrite off_length_in_bounds with (bytes := bytes) (newdata := newdata); eauto.
-  
-    step. (* return *)
-
-    Grab Existential Variables.
-    all: eauto. 
-    exact emp.
-
-  Qed.
-
-End SLOWBYTEFILE.
+End FASTBYTEFILE.

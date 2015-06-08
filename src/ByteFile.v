@@ -29,6 +29,9 @@ Require Import ProofIrrelevance.
 Set Implicit Arguments.
 Import ListNotations.
 
+(** A first attempt at a byte-level interface to a BFILE. Successfully
+implements a write chunking mechanism, but does not have a complete write
+operation (or any read). *)
 Module BYTEFILE.
 
   Fixpoint list2word elen (l : list (word elen)) : word (length l * elen) :=
@@ -169,11 +172,7 @@ Module BYTEFILE.
     rewrite valubytes_is; omega.
   Qed.
 
-  Definition bsplit1_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz1 :=
-    bsplit1 sz1 sz2 (eq_rect sz bytes v _ H).
 
-  Definition bsplit2_dep sz sz1 sz2 (v : bytes sz) (H : sz = sz1 + sz2) : bytes sz2 :=
-    bsplit2 sz1 sz2 (eq_rect sz bytes v _ H).
 
   Theorem bsz_ok:
     forall sz bsz,
