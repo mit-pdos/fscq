@@ -526,7 +526,7 @@ Hint Resolve length_grow_oneblock_ok.
                               (INODE.Build_iattr ($ (curblocks*valubytes))
                                                  (INODE.IMTime oldattr)
                                                  (INODE.IType oldattr)) mscs;
-     mscs <- update_bytes fsxp inum #curlen (repeat $0 (curblocks*valubytes-#curlen)) mscs;
+     (* don't zero out rest of block; new update_range API makes this hard *)
      let^ (mscs, ok) <- grow_blocks fsxp inum ($ nblock) mscs;
      If (bool_dec ok true) {
        mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
@@ -538,6 +538,22 @@ Hint Resolve length_grow_oneblock_ok.
        rx ^(mscs, false)
      }.
 
+   Definition grow_file_fast T fsxp inum newlen mscs rx : prog T :=
+    let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
+    let oldlen := oldattr.(INODE.ISize) in
+    If (wlt_dec oldlen ($ newlen)) {
+      (* TODO: this bf_resize is actually bf_expand (should use that spec) *)
+      let^ (mscs, ok) <- bf_resize byte_type items_per_valu fsxp inum newlen mscs;
+      If (bool_dec ok true) {
+        let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
+           fsxp inum #oldlen (@natToWord (newlen*8) 0) mscs;
+        rx ^(mscs, true)
+      } else {
+        rx ^(mscs, false)
+      }
+    } else {
+      rx ^(mscs, true)
+    }.
 
 
   Lemma nblock_ok:
@@ -803,6 +819,7 @@ Hint Resolve length_grow_oneblock_ok.
    Qed.
 
 
+  (* TODO: prove this spec for grow_file_fast as grow_file_fast_ok *)
   Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
