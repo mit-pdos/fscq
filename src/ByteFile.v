@@ -29,6 +29,9 @@ Require Import ProofIrrelevance.
 Set Implicit Arguments.
 Import ListNotations.
 
+(** A first attempt at a byte-level interface to a BFILE. Successfully
+implements a write chunking mechanism, but does not have a complete write
+operation (or any read). *)
 Module BYTEFILE.
 
   Fixpoint list2word elen (l : list (word elen)) : word (length l * elen) :=

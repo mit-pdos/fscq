@@ -28,6 +28,11 @@ Require Import BFileRec.
 Set Implicit Arguments.
 Import ListNotations.
 
+(** SlowByteFile is built on top of BFileRec using bytes as the records.
+It provides a byte abstraction to a BFILE by looping over single-byte
+operations in BFileRec. Read and write take lists of bytes as inputs.
+The "slow" part comes from doing operations byte at a time instead of
+block at a time, as well as from using lists instead of words as input. *)
 Module SLOWBYTEFILE.
 
   Definition byte_type := Rec.WordF 8.

@@ -22,6 +22,10 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
+(** BFILE is a block-based file implemented on top of the log and the
+inode representation. The API provides reading/writing single blocks,
+changing the size of the file, and managing file attributes (which are
+the same as the inode attributes). *)
 Module BFILE.
 
   (* interface implementation *)

@@ -112,6 +112,8 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     omega.
   Qed.
 
+(** BFileRec implements a record-based abstraction on top of a BFILE. Records
+must be sized so that a whole number fit into a block. *)
 Section RECBFILE.
 
   Set Default Proof Using "All".
