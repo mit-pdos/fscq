@@ -903,20 +903,20 @@ Hint Resolve length_grow_oneblock_ok.
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
 
 
-  Definition write_bytes T fsxp inum (off : nat) (data : list byte) mscs rx : prog T :=
-    let newlen := off + length data in
+  Definition write_bytes T fsxp inum (off : nat) len (data : bytes len) mscs rx : prog T :=
+    let newlen := off + len in
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let curlen := oldattr.(INODE.ISize) in
     If (wlt_dec curlen ($ newlen)) {
-         let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
+         let^ (mscs, ok) <- grow_file_fast fsxp inum newlen mscs;
          If (bool_dec ok true) {
-           mscs <-  update_bytes fsxp inum off data mscs;
+           let^ (mscs) <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
         } else {
            rx ^(mscs, false)
         }
     } else {
-        mscs <-  update_bytes fsxp inum off data mscs;
+        let^ (mscs) <- update_bytes fsxp inum off data mscs;
         rx ^(mscs, true)
     }.
 
