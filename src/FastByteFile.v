@@ -515,30 +515,7 @@ Hint Resolve length_grow_oneblock_ok.
 
   Hint Extern 1 ({{_}} progseq (grow_blocks _ _ _ _) _) => apply grow_blocks_ok : prog.
 
-
    Definition grow_file T fsxp inum newlen mscs rx : prog T :=
-     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
-     let curlen := oldattr.(INODE.ISize) in
-     let curblocks := divup #curlen valubytes  in
-     let newblocks := divup newlen valubytes in
-     let nblock := newblocks - curblocks in
-     mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
-                              (INODE.Build_iattr ($ (curblocks*valubytes))
-                                                 (INODE.IMTime oldattr)
-                                                 (INODE.IType oldattr)) mscs;
-     (* don't zero out rest of block; new update_range API makes this hard *)
-     let^ (mscs, ok) <- grow_blocks fsxp inum ($ nblock) mscs;
-     If (bool_dec ok true) {
-       mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
-                              (INODE.Build_iattr ($ newlen)
-                                                 (INODE.IMTime oldattr)
-                                                 (INODE.IType oldattr)) mscs;
-       rx ^(mscs, true)
-     } else {
-       rx ^(mscs, false)
-     }.
-
-   Definition grow_file_fast T fsxp inum newlen mscs rx : prog T :=
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let oldlen := oldattr.(INODE.ISize) in
     If (wlt_dec oldlen ($ newlen)) {
@@ -819,7 +796,6 @@ Hint Resolve length_grow_oneblock_ok.
    Qed.
 
 
-  (* TODO: prove this spec for grow_file_fast as grow_file_fast_ok *)
   Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -842,63 +818,9 @@ Hint Resolve length_grow_oneblock_ok.
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
-     step.  (* getattr *)
-     step.  (* set attributes *)
-     step.  (* update bytes *)
-
-     rewrite length_updatebytes_ok.
-     repeat rewrite repeat_length.
-     constructor; eauto.
-     eauto.
-     eauto.
-     eauto.
-
-     rewrite repeat_length.
-     rewrite H10.
-     subst; simpl.
-     rewrite le_plus_minus_r; try omega.
-     eapply le_trans.
-     apply divup_ok.
-     omega.
-
-     step.  (* grow blocks *)
-
-     eapply after_grow_to_block_bytes_rep_ok with (bytes' := bytes'); eauto.
-
-     rewrite <- H17.
-     simpl.
-
-     unfold rep, bytes_rep in *.
-     deex.
-
-     eapply bfrec_bound in H0; eauto.
-     rewrite H10.
-     erewrite wordToNat_natToWord_bound; eauto.
-
      step.
      step.
-     step.
-     step.
-     step.
-     eapply pimpl_or_r; right; cancel.
-
-     assert (rep (firstn (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f))) allbytes ++
-         repeat $ (0) (newlen - (@wordToNat addrlen (INODE.ISize (BFILE.BFAttr f)))))
-           {|
-           BFILE.BFData := BFILE.BFData f'0;
-           BFILE.BFAttr := {|
-                         INODE.ISize := $ (newlen);
-                         INODE.IMTime := INODE.IMTime (BFILE.BFAttr f);
-                         INODE.IType := INODE.IType (BFILE.BFAttr f) |} |} ) as Hrep
-      by (eapply after_grow_rep_ok; eauto; simpl; rewrite wordToNat_natToWord_idempotent'; eauto).
-    unfold rep in Hrep.
-    intuition; eauto.
-
-    step.
-    Grab Existential Variables.
-    all: eauto.
-    exact (FSXPBlockAlloc fsxp).
-   Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
 
@@ -908,7 +830,7 @@ Hint Resolve length_grow_oneblock_ok.
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let curlen := oldattr.(INODE.ISize) in
     If (wlt_dec curlen ($ newlen)) {
-         let^ (mscs, ok) <- grow_file_fast fsxp inum newlen mscs;
+         let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
          If (bool_dec ok true) {
            let^ (mscs) <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
