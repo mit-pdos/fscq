@@ -519,7 +519,7 @@ Hint Resolve length_grow_oneblock_ok.
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let oldlen := oldattr.(INODE.ISize) in
     If (wlt_dec oldlen ($ newlen)) {
-      let^ (mscs, ok) <- bf_expand byte_type items_per_valu fsxp inum newlen mscs;
+      let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
       If (bool_dec ok true) {
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
            fsxp inum #oldlen (@natToWord (newlen*8) 0) mscs;
@@ -836,8 +836,12 @@ Hint Resolve length_grow_oneblock_ok.
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let curlen := oldattr.(INODE.ISize) in
     If (wlt_dec curlen ($ newlen)) {
-         let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
+         let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
          If (bool_dec ok true) {
+           (* zero the hole (if there is one) *)
+           let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
+             fsxp inum #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
+           (* write the new bytes *)
            let^ (mscs) <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
         } else {
