@@ -350,7 +350,7 @@ Module FASTBYTEFILE.
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes, rep, bytes_rep.
-    (* XXX: step fails here for some reason *)
+    step.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
@@ -519,8 +519,7 @@ Hint Resolve length_grow_oneblock_ok.
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let oldlen := oldattr.(INODE.ISize) in
     If (wlt_dec oldlen ($ newlen)) {
-      (* TODO: this bf_resize is actually bf_expand (should use that spec) *)
-      let^ (mscs, ok) <- bf_resize byte_type items_per_valu fsxp inum newlen mscs;
+      let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
       If (bool_dec ok true) {
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
            fsxp inum #oldlen (@natToWord (newlen*8) 0) mscs;
@@ -820,18 +819,29 @@ Hint Resolve length_grow_oneblock_ok.
      unfold grow_file, rep, bytes_rep.
      step.
      step.
+     step.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
 
+  (** Write bytes follows POSIX, which is overloaded to do two things:
+  (1) if the write falls within the bounds of the file, update those bytes
+  (2) otherwise, grow the file and update the new file (any grown bytes not
+  updated are zeroed).
 
+  We provide APIs for the two cases with separate specs: [update_bytes]
+  and [overwrite_append]. *)
   Definition write_bytes T fsxp inum (off : nat) len (data : bytes len) mscs rx : prog T :=
     let newlen := off + len in
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let curlen := oldattr.(INODE.ISize) in
     If (wlt_dec curlen ($ newlen)) {
-         let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
+         let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
          If (bool_dec ok true) {
+           (* zero the hole (if there is one) *)
+           let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
+             fsxp inum #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
+           (* write the new bytes *)
            let^ (mscs) <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
         } else {
@@ -841,6 +851,13 @@ Hint Resolve length_grow_oneblock_ok.
         let^ (mscs) <- update_bytes fsxp inum off data mscs;
         rx ^(mscs, true)
     }.
+
+  (** Case (2) of [write_bytes] above, where the file must be grown.
+
+  This is an alias for [write_bytes] since [write_bytes] already handles
+  all the cases, but has its own idiosyncratic spec. *)
+  Definition overwrite_append T fsxp inum (off:nat) len (data : bytes len) mscs rx : prog T :=
+    write_bytes fsxp inum off data mscs rx.
 
   Lemma off_in_bounds_ext:
     forall off f bytes (newdata: list byte),
@@ -1011,13 +1028,45 @@ Hint Resolve length_grow_oneblock_ok.
            [[ rep bytes' f' ]] *
            [[ newdata = bsplit_list newbytes ]] *
            [[ (F1 * zeros * arrayN off newdata * F2)%pred (list2nmem bytes')]] *
-           [[ zeros = arrayN 0 (repeat $0 (off - len)) ]])
+           [[ zeros = arrayN len (repeat $0 (off - len)) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} write_bytes fsxp inum off newbytes mscs.
   Proof.
-    unfold write_bytes. (* rep, bytes_rep. *)
+    unfold write_bytes.
     step.  (* bfgetattr *)
     step.  (* If *)
   Admitted.
+
+  Hint Extern 1 ({{_}} progseq (write_bytes _ _ _ _ _) _) => apply write_bytes_ok : prog.
+
+  Theorem overwrite_append_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
+    {< m mbase F Fm Fi A flist f bytes newdata wend,
+      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+           [[ rep bytes f ]] *
+           (* write goes from off to wend in new file *)
+           [[ wend = off + len ]] *
+           [[ Fi%pred (list2nmem (firstn off bytes)) ]] *
+           [[ goodSize addrlen wend ]]
+       POST RET:^(mscs, ok)
+           exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+           ([[ ok = false ]] \/
+           [[ ok = true ]] * exists flist' f' bytes' zeros,
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ rep bytes' f' ]] *
+           [[ newdata = bsplit_list newbytes ]] *
+           [[ (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
+           [[ zeros = arrayN len (repeat $0 (off - len)) ]])
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+      >} overwrite_append fsxp inum off newbytes mscs.
+  Proof.
+    unfold overwrite_append.
+    (* TODO: prove, probably based on write_bytes_ok itself,
+    where F2 is vacuously true. *)
+  Admitted.
+
+  Hint Extern 1 ({{_}} progseq (overwrite_append _ _ _ _ _) _) => apply overwrite_append_ok : prog.
 
 End FASTBYTEFILE.

@@ -186,23 +186,14 @@ Section RECBFILE.
     rx mscs.
 
   Definition itemsize := Rec.len itemtype.
-  Definition blocksize := Rec.len blocktype.
+  Definition block_items := # items_per_valu.
   (** analogous to Bytes.bytes, an [items count] is a word with enough bits to hold [count] items. **)
   Definition items count := word (count * itemsize).
 
-  Theorem blocksize_not_0 : blocksize <> 0.
-  Proof.
-    unfold blocksize.
-    rewrite <- blocksz_ok.
-    rewrite valulen_is.
-    intro H.
-    discriminate.
-  Qed.
-
-  Corollary blocksize_gt_0 : blocksize > 0.
+  Corollary block_items_gt_0 : block_items > 0.
   Proof.
     apply Nat.neq_0_lt_0.
-    apply blocksize_not_0.
+    apply items_per_valu_not_0'.
   Qed.
 
   Definition array_item_pairs (vs : list block) : pred :=
@@ -216,6 +207,13 @@ Section RECBFILE.
     vs = fold_right (@app _) nil vs_nested.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
+
+  Definition icombine sz1 (is1:items sz1) sz2 (is2:items sz2) : items (sz1+sz2).
+    unfold items in *.
+    rewrite Nat.mul_add_distr_r.
+    exact (combine is1 is2).
+  Defined.
+
   Definition isplit1 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz1.
   Proof.
     unfold items in *.
@@ -243,6 +241,12 @@ Section RECBFILE.
     exact w.
   Defined.
 
+  Definition valu2items (v:valu) : items block_items.
+    unfold items, itemsize.
+    rewrite blocksz_ok in v.
+    exact v.
+  Defined.
+
   Program Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
     match count with
     | O => nil
@@ -256,29 +260,26 @@ Section RECBFILE.
     (** chunk_data is a word that can hold chunk_bend - chunk_off items **)
     chunk_data: items (chunk_bend - chunk_boff);
 
-    chunk_bend_ok : chunk_bend <= blocksize;
+    chunk_bend_ok : chunk_bend <= block_items;
     chunk_size_ok : chunk_boff < chunk_bend
   }.
 
   (** if you want this fact, you can produce its proof with this function *)
-  Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) < blocksize.
+  Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) < block_items.
   Proof.
     apply le_trans with (chunk_bend ck).
     apply (chunk_size_ok ck).
     apply (chunk_bend_ok ck).
   Qed.
 
-  (** TODO: replace bits chunk_boff through chunk_bend within v
-  (also a word, but of a potentially larger size) with the data in chunk_data **)
-  Definition update_chunk v (ck:chunk) : valu := v.
 
   Lemma boff_mod_ok : forall off,
-    off mod blocksize < blocksize.
+    off mod block_items < block_items.
   Proof.
     intros.
     apply Nat.mod_bound_pos.
     omega.
-    apply blocksize_gt_0.
+    apply block_items_gt_0.
   Qed.
 
   Section chunking.
@@ -289,16 +290,16 @@ Section RECBFILE.
     erewrite Hmineq;
     try omega.
 
-  Local Obligation Tactic := Tactics.program_simpl; min_cases.
+  Local Obligation Tactic := Tactics.program_simpl; try min_cases.
 
   (** split w into a list of chunks **)
   Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
     match count with
     | 0 => nil
     | S count' =>
-      let blocknum := off / blocksize in
-      let boff := off mod blocksize in
-      let bend := Nat.min (boff + count) blocksize in
+      let blocknum := off / block_items in
+      let boff := off mod block_items in
+      let bend := Nat.min (boff + count) block_items in
       let bsize := bend - boff in
       @Build_chunk ($ blocknum) boff bend
         (isplit1_dep bsize (count-bsize) w _) _ _ ::
@@ -309,9 +310,40 @@ Section RECBFILE.
   Defined.
   (** decreasing obligation produced by [{measure count}] *)
   Next Obligation.
-    assert (off mod blocksize < blocksize) by (apply boff_mod_ok).
+    assert (off mod block_items < block_items) by (apply boff_mod_ok).
     omega.
   Defined.
+
+  Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
+  let v_items := valu2items v in
+  let boff := chunk_boff ck in
+  let bend := chunk_bend ck in
+  let sz := bend - boff in
+  let x := isplit1_dep boff (block_items - boff) v_items _ in
+  let z := isplit2_dep (boff + sz) (block_items - (boff + sz)) v_items _ in
+  icombine (icombine x (chunk_data ck)) z.
+  Next Obligation.
+    assert (Hboff := chunk_boff_ok ck).
+    omega.
+  Qed.
+  Next Obligation.
+    assert (Hboff := chunk_boff_ok ck).
+    assert (Hbend := chunk_bend_ok ck).
+    omega.
+  Qed.
+  Next Obligation.
+    assert (Hboff := chunk_boff_ok ck).
+    assert (Hbend := chunk_bend_ok ck).
+    assert (Hsz := chunk_size_ok ck).
+    (* why was omega not able to construct this argument,
+    but manages the above ones? *)
+    replace (chunk_boff ck + (chunk_bend ck - chunk_boff ck))
+      with (chunk_bend ck) by omega.
+    replace (chunk_bend ck + (block_items - chunk_bend ck))
+      with block_items by omega.
+    rewrite blocksz_ok.
+    reflexivity.
+  Qed.
 
   End chunking.
 
@@ -320,7 +352,7 @@ Section RECBFILE.
   Definition bf_put_chunk T lxp ixp inum (ck:chunk) mscs rx : prog T :=
     let^ (mscs, v) <- BFILE.bfread lxp ixp inum (chunk_blocknum ck) mscs;
     let v' := update_chunk v ck in
-    mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v mscs;
+    mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v' mscs;
     rx mscs.
 
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
@@ -330,11 +362,11 @@ Section RECBFILE.
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ (Fx * # (chunk_blocknum ck) |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET: mscs
-      exists m' flist' v',
+      exists m' f' flist' v',
         LOG.rep lxp F (ActiveTxn mbase m') mscs *
         [[ (Fm * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-        [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f)) ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+        [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f')) ]] *
         [[ v' = update_chunk v ck ]]
     CRASH LOG.would_recover_old lxp F mbase
   >} bf_put_chunk lxp ixp inum ck mscs.
@@ -346,22 +378,31 @@ Section RECBFILE.
     step. (* return *)
   Qed.
 
-  (** Increase the size of the BFILE at inode [inum] if necessary, using BFILE.bftrunc. **)
+  (** Resize the file at [inum] to hold count_items (rounded up to fit
+  a whole number of blocks) using BFILE.bftrunc. **)
   Definition bf_resize T fsxp inum count_items mscs rx : prog T :=
-      let size := divup count_items blocksize in
+      let size := divup count_items block_items in
       let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
       rx ^(mscs, ok).
 
-  (** TODO: split bf_resize into shrink/expand and give them different specs **)
+  (** Alias for bf_resize where spec requires the new size to be
+  smaller than the old. *)
+  Definition bf_shrink T fsxp inum count_items mscs rx : prog T :=
+    bf_resize fsxp inum count_items mscs rx.
+
+  (** Alias for bf_resize where spec requires the new size to be
+  larger than the old. *)
+  Definition bf_expand T fsxp inum count_items mscs rx : prog T :=
+    bf_resize fsxp inum count_items mscs rx.
 
   (* Note: these functions are the same but have distinct nice names
      in the context of shrinking/expanding *)
   (** When the file is shrunk to hold count_items,
       how many items do we actually retain? *)
-  Definition kept_items count_items : nat := roundup count_items (# items_per_valu).
+  Definition kept_items count_items : nat := roundup count_items block_items.
   (** When the file is expanded to hold count_items,
       how many items do we actually allocate space for? *)
-  Definition alloc_items count_items : nat := roundup count_items (# items_per_valu).
+  Definition alloc_items count_items : nat := roundup count_items block_items.
 
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm A Fi f flist ilist deleted,
@@ -386,9 +427,9 @@ Section RECBFILE.
       (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
       [[ Fi%pred (list2nmem ilist') ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_resize fsxp inum count_items mscs.
+  >} bf_shrink fsxp inum count_items mscs.
   Proof.
-    unfold bf_resize.
+    unfold bf_shrink, bf_resize.
   Admitted.
 
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
@@ -414,9 +455,9 @@ Section RECBFILE.
       (* [length ilist' >= length ilist] is implied by setting [Fi] appropriately *)
       [[ length newitems = alloc_items count_items - length ilist ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_resize fsxp inum count_items mscs.
+  >} bf_expand fsxp inum count_items mscs.
   Proof.
-    unfold bf_resize.
+    unfold bf_expand, bf_resize.
   Admitted.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
@@ -1156,6 +1197,9 @@ Hint Extern 1 ({{_}} progseq (bf_get _ _ _ _ _ _ _ _) _) => apply bf_get_ok : pr
 Hint Extern 1 ({{_}} progseq (bf_get_all _ _ _ _ _ _ _) _) => apply bf_get_all_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_update_range _ _ _ _ _ _ _) _) => apply bf_update_range_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_shrink _ _ _ _ _ _) _) => apply bf_shrink_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_expand _ _ _ _ _ _) _) => apply bf_expand_ok : prog.
 
 (* Two BFileRec arrays should always be equal *)
 Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>
