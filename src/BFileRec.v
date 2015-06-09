@@ -207,6 +207,13 @@ Section RECBFILE.
     vs = fold_right (@app _) nil vs_nested.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
+
+  Definition icombine sz1 (is1:items sz1) sz2 (is2:items sz2) : items (sz1+sz2).
+    unfold items in *.
+    rewrite Nat.mul_add_distr_r.
+    exact (combine is1 is2).
+  Defined.
+
   Definition isplit1 (sz1 sz2:nat) (is: items (sz1+sz2)) : items sz1.
   Proof.
     unfold items in *.
@@ -234,6 +241,12 @@ Section RECBFILE.
     exact w.
   Defined.
 
+  Definition valu2items (v:valu) : items block_items.
+    unfold items, itemsize.
+    rewrite blocksz_ok in v.
+    exact v.
+  Defined.
+
   Program Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
     match count with
     | O => nil
@@ -259,9 +272,6 @@ Section RECBFILE.
     apply (chunk_bend_ok ck).
   Qed.
 
-  (** TODO: replace bits chunk_boff through chunk_bend within v
-  (also a word, but of a potentially larger size) with the data in chunk_data **)
-  Definition update_chunk v (ck:chunk) : valu := v.
 
   Lemma boff_mod_ok : forall off,
     off mod block_items < block_items.
@@ -280,7 +290,7 @@ Section RECBFILE.
     erewrite Hmineq;
     try omega.
 
-  Local Obligation Tactic := Tactics.program_simpl; min_cases.
+  Local Obligation Tactic := Tactics.program_simpl; try min_cases.
 
   (** split w into a list of chunks **)
   Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
@@ -303,6 +313,37 @@ Section RECBFILE.
     assert (off mod block_items < block_items) by (apply boff_mod_ok).
     omega.
   Defined.
+
+  Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
+  let v_items := valu2items v in
+  let boff := chunk_boff ck in
+  let bend := chunk_bend ck in
+  let sz := bend - boff in
+  let x := isplit1_dep boff (block_items - boff) v_items _ in
+  let z := isplit2_dep (boff + sz) (block_items - (boff + sz)) v_items _ in
+  icombine (icombine x (chunk_data ck)) z.
+  Next Obligation.
+    assert (Hboff := chunk_boff_ok ck).
+    omega.
+  Qed.
+  Next Obligation.
+    assert (Hboff := chunk_boff_ok ck).
+    assert (Hbend := chunk_bend_ok ck).
+    omega.
+  Qed.
+  Next Obligation.
+    assert (Hboff := chunk_boff_ok ck).
+    assert (Hbend := chunk_bend_ok ck).
+    assert (Hsz := chunk_size_ok ck).
+    (* why was omega not able to construct this argument,
+    but manages the above ones? *)
+    replace (chunk_boff ck + (chunk_bend ck - chunk_boff ck))
+      with (chunk_bend ck) by omega.
+    replace (chunk_bend ck + (block_items - chunk_bend ck))
+      with block_items by omega.
+    rewrite blocksz_ok.
+    reflexivity.
+  Qed.
 
   End chunking.
 
