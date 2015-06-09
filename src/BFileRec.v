@@ -352,7 +352,7 @@ Section RECBFILE.
   Definition bf_put_chunk T lxp ixp inum (ck:chunk) mscs rx : prog T :=
     let^ (mscs, v) <- BFILE.bfread lxp ixp inum (chunk_blocknum ck) mscs;
     let v' := update_chunk v ck in
-    mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v mscs;
+    mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v' mscs;
     rx mscs.
 
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
@@ -362,11 +362,11 @@ Section RECBFILE.
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ (Fx * # (chunk_blocknum ck) |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
     POST RET: mscs
-      exists m' flist' v',
+      exists m' f' flist' v',
         LOG.rep lxp F (ActiveTxn mbase m') mscs *
         [[ (Fm * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
-        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-        [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f)) ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+        [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f')) ]] *
         [[ v' = update_chunk v ck ]]
     CRASH LOG.would_recover_old lxp F mbase
   >} bf_put_chunk lxp ixp inum ck mscs.
