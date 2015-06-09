@@ -496,7 +496,9 @@ Section RECBFILE.
     eassumption.
     admit. (* array_item_file f ilist -> array_item_file
       (f with length increased) (ilist ++ newitems) *)
-    admit.
+    apply list2nmem_arrayN_app; assumption.
+    instantiate (newitems := repeat item_zero (alloc_items count_items - length ilist)).
+    apply repeat_length.
   Admitted.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
