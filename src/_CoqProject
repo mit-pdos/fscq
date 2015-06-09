@@ -1,1 +1,1 @@
--async-proofs-j 4 -async-proofs-tac-j 4 -R coqbuild Fscq
+-R coqbuild Fscq
