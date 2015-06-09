@@ -345,6 +345,9 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
+  (** TODO: prove update_chunk_ok: something in separation logic about what
+  update_chunk does to the item lists *)
+
   End chunking.
 
 
@@ -404,6 +407,8 @@ Section RECBFILE.
       how many items do we actually allocate space for? *)
   Definition alloc_items count_items : nat := roundup count_items block_items.
 
+  (** TODO: bf_shrink should not promise to make number of items
+  exactly count_items, only roundup countitems block_items *)
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm A Fi f flist ilist deleted,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -419,10 +424,11 @@ Section RECBFILE.
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
       ( [[ ok = false ]] \/
-      exists f' ilist',
+      exists f' ilist' flist',
       [[ ok = true ]] *
-      [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+      [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
       [[ array_item_file f' ilist' ]] *
+      [[ ilist' = firstn count_items ilist ]] *
       (* preserves any predicate regarding the non-deleted items *)
       (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
       [[ Fi%pred (list2nmem ilist') ]] )
@@ -430,8 +436,30 @@ Section RECBFILE.
   >} bf_shrink fsxp inum count_items mscs.
   Proof.
     unfold bf_shrink, bf_resize.
+
+    step.
+    step.
+
+    (* prove truncating the file with setlen applies to array_item_file *)
+    assert (array_item_file
+      {|
+      BFILE.BFData := setlen (BFILE.BFData f)
+                        (# (natToWord addrlen (divup count_items block_items)))
+                        (natToWord valulen O);
+      BFILE.BFAttr := BFILE.BFAttr f |} (firstn count_items ilist)) as Hf'.
+    admit.
+
+    apply pimpl_or_r; right; cancel.
+    eassumption.
+    exact Hf'.
+
+    admit. (* [[ Fi * deleted]] is true on ilist (H5, precondition);
+    via array_item_file on (f with attributes modified), this implies
+    Fi is true in (firstn count_items ilist) *)
   Admitted.
 
+  (** TODO: bf_expand should not promise to make number of items
+  exactly count_items, only roundup countitems block_items *)
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm Fi A f flist ilist,
    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -446,10 +474,11 @@ Section RECBFILE.
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
       ( [[ ok = false ]] \/
-      exists f' ilist' newitems,
+      exists f' ilist' flist' newitems,
       [[ ok = true ]] *
-      [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+      [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
       [[ array_item_file f' ilist' ]] *
+      [[ ilist' = ilist ++ newitems ]] *
       (* we don't mess with ilist ([Fi] still holds) *)
       [[ (Fi * arrayN (length ilist) newitems)%pred (list2nmem ilist') ]] *
       (* [length ilist' >= length ilist] is implied by setting [Fi] appropriately *)
@@ -458,6 +487,16 @@ Section RECBFILE.
   >} bf_expand fsxp inum count_items mscs.
   Proof.
     unfold bf_expand, bf_resize.
+
+    step.
+    step.
+
+    apply pimpl_or_r; right; cancel.
+    instantiate (flist'0 := flist').
+    eassumption.
+    admit. (* array_item_file f ilist -> array_item_file
+      (f with length increased) (ilist ++ newitems) *)
+    admit.
   Admitted.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
