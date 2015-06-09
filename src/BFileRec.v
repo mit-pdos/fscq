@@ -186,23 +186,14 @@ Section RECBFILE.
     rx mscs.
 
   Definition itemsize := Rec.len itemtype.
-  Definition blocksize := Rec.len blocktype.
+  Definition block_items := # items_per_valu.
   (** analogous to Bytes.bytes, an [items count] is a word with enough bits to hold [count] items. **)
   Definition items count := word (count * itemsize).
 
-  Theorem blocksize_not_0 : blocksize <> 0.
-  Proof.
-    unfold blocksize.
-    rewrite <- blocksz_ok.
-    rewrite valulen_is.
-    intro H.
-    discriminate.
-  Qed.
-
-  Corollary blocksize_gt_0 : blocksize > 0.
+  Corollary block_items_gt_0 : block_items > 0.
   Proof.
     apply Nat.neq_0_lt_0.
-    apply blocksize_not_0.
+    apply items_per_valu_not_0'.
   Qed.
 
   Definition array_item_pairs (vs : list block) : pred :=
@@ -256,12 +247,12 @@ Section RECBFILE.
     (** chunk_data is a word that can hold chunk_bend - chunk_off items **)
     chunk_data: items (chunk_bend - chunk_boff);
 
-    chunk_bend_ok : chunk_bend <= blocksize;
+    chunk_bend_ok : chunk_bend <= block_items;
     chunk_size_ok : chunk_boff < chunk_bend
   }.
 
   (** if you want this fact, you can produce its proof with this function *)
-  Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) < blocksize.
+  Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) < block_items.
   Proof.
     apply le_trans with (chunk_bend ck).
     apply (chunk_size_ok ck).
@@ -273,12 +264,12 @@ Section RECBFILE.
   Definition update_chunk v (ck:chunk) : valu := v.
 
   Lemma boff_mod_ok : forall off,
-    off mod blocksize < blocksize.
+    off mod block_items < block_items.
   Proof.
     intros.
     apply Nat.mod_bound_pos.
     omega.
-    apply blocksize_gt_0.
+    apply block_items_gt_0.
   Qed.
 
   Section chunking.
@@ -296,9 +287,9 @@ Section RECBFILE.
     match count with
     | 0 => nil
     | S count' =>
-      let blocknum := off / blocksize in
-      let boff := off mod blocksize in
-      let bend := Nat.min (boff + count) blocksize in
+      let blocknum := off / block_items in
+      let boff := off mod block_items in
+      let bend := Nat.min (boff + count) block_items in
       let bsize := bend - boff in
       @Build_chunk ($ blocknum) boff bend
         (isplit1_dep bsize (count-bsize) w _) _ _ ::
@@ -309,7 +300,7 @@ Section RECBFILE.
   Defined.
   (** decreasing obligation produced by [{measure count}] *)
   Next Obligation.
-    assert (off mod blocksize < blocksize) by (apply boff_mod_ok).
+    assert (off mod block_items < block_items) by (apply boff_mod_ok).
     omega.
   Defined.
 
@@ -349,7 +340,7 @@ Section RECBFILE.
   (** Resize the file at [inum] to hold count_items (rounded up to fit
   a whole number of blocks) using BFILE.bftrunc. **)
   Definition bf_resize T fsxp inum count_items mscs rx : prog T :=
-      let size := divup count_items blocksize in
+      let size := divup count_items block_items in
       let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
       rx ^(mscs, ok).
 
@@ -367,10 +358,10 @@ Section RECBFILE.
      in the context of shrinking/expanding *)
   (** When the file is shrunk to hold count_items,
       how many items do we actually retain? *)
-  Definition kept_items count_items : nat := roundup count_items (# items_per_valu).
+  Definition kept_items count_items : nat := roundup count_items block_items.
   (** When the file is expanded to hold count_items,
       how many items do we actually allocate space for? *)
-  Definition alloc_items count_items : nat := roundup count_items (# items_per_valu).
+  Definition alloc_items count_items : nat := roundup count_items block_items.
 
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm A Fi f flist ilist deleted,
