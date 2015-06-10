@@ -1238,11 +1238,11 @@ Section RECBFILE.
   Proof.
     intros.
     assert (block_zero = repeat item_zero block_items).
-    admit. (* the crucial bit: block_zero is repeated item_zero *)
+    apply Rec.of_word_zero_list.
     rewrite H.
     rewrite Nat.mul_comm.
     apply repeat_repeat_concat.
-  Admitted.
+  Qed.
 
   Lemma rep_expand_file : forall f count_items ilist,
   count_items >= length ilist ->
