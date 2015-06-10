@@ -91,6 +91,16 @@ Proof.
   f_equal; eauto.
 Qed.
 
+Lemma repeat_map : forall A B (f:A -> B) x n,
+  map f (repeat x n) = repeat (f x) n.
+Proof.
+  intros.
+  induction n; simpl.
+  reflexivity.
+  rewrite IHn.
+  reflexivity.
+Qed.
+
 Lemma length_nil : forall A (l : list A),
   length l = 0 -> l = nil.
 Proof.
@@ -375,6 +385,18 @@ Proof.
   destruct H1.
   subst; auto.
   exfalso; auto.
+Qed.
+
+Lemma Forall_append: forall A f (l1 l2:list A),
+  Forall f l1 -> Forall f l2 -> Forall f (l1 ++ l2).
+Proof.
+  intros.
+  rewrite Forall_forall in *.
+  intros.
+  apply in_app_or in H1.
+  destruct H1.
+  apply H; assumption.
+  apply H0; assumption.
 Qed.
 
 Lemma Forall_cons2 : forall A (l : list A) a f,

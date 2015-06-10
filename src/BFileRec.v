@@ -1172,6 +1172,74 @@ Section RECBFILE.
     Fi is true in (firstn count_items ilist) *)
   Admitted.
 
+  Lemma array_item_app_repeated_0 : forall vs_nested l n,
+    array_item_pairs vs_nested (list2nmem l) ->
+    array_item_pairs (vs_nested ++ (repeat block_zero n))
+      (list2nmem (l ++ repeat ($ (0)) n)).
+  Proof.
+    intros.
+    unfold array_item_pairs in *.
+    destruct_lift H.
+    assert (Forall Rec.well_formed (vs_nested ++ repeat block_zero n)).
+    apply Forall_append.
+    assumption.
+    unfold block_zero, blocktype.
+    induction n; simpl.
+    auto.
+    apply Forall_cons; auto.
+    assert (arrayN 0 (map rep_block (vs_nested ++ repeat block_zero n))%pred
+      (list2nmem (l ++ repeat ($ (0)) n))).
+    rewrite map_app.
+    rewrite repeat_map.
+    assert (repeat (rep_block block_zero) n = repeat ($ (0)) n).
+    f_equal.
+    (* turn off notation to see what this is doing *)
+    unfold rep_block, block_zero, block_items.
+    unfold blocktype.
+    simpl.
+    admit. (* this is a bizarre statement, where I can't rewrite blocksz_ok *)
+    apply list2nmem_array_eq in H.
+    rewrite H.
+    rewrite H2.
+    apply list2nmem_array.
+    (* apply sep_star_and2lift. *)
+    (* combine everything *)
+  Admitted.
+
+  Lemma concat_eq_fold_right : forall A l,
+    fold_right (app (A:=A)) nil l = concat l.
+  Proof.
+    intros.
+    reflexivity.
+  Qed.
+
+  Lemma repeat_repeat_concat : forall A (a:A) n k,
+    concat (repeat (repeat a k) n) = repeat a (k*n).
+  Proof.
+    intros.
+    induction n; simpl.
+    rewrite Nat.mul_0_r.
+    reflexivity.
+    replace (k * S n) with (k + k*n).
+    rewrite <- repeat_app.
+    f_equal.
+    assumption.
+    replace (S n) with (1 + n) by omega.
+    rewrite Nat.mul_add_distr_l.
+    omega.
+  Qed.
+
+  Lemma repeated_blocks_are_items : forall n,
+    concat (repeat block_zero n) = repeat item_zero (n * block_items).
+  Proof.
+    intros.
+    assert (block_zero = repeat item_zero block_items).
+    admit. (* the crucial bit: block_zero is repeated item_zero *)
+    rewrite H.
+    rewrite Nat.mul_comm.
+    apply repeat_repeat_concat.
+  Admitted.
+
   Lemma rep_expand_file : forall f count_items ilist,
   count_items >= length ilist ->
   goodSize addrlen count_items ->
@@ -1183,18 +1251,13 @@ Section RECBFILE.
   array_item_file f' (ilist ++ newdata).
   Proof.
     intros.
-    inversion H1.
-    inversion H2.
+    inversion H1 as [vs_nested Hrep123].
+    inversion Hrep123 as [Hrep1 Hrep23]; clear Hrep123.
+    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
     unfold array_item_file.
     simpl.
     rewrite setlen_length.
-    exists (x ++ repeat block_zero (newlen - (length (BFILE.BFData f))));
-      split; [|split].
-    (* length of file = length vs *)
-    rewrite app_length.
-    rewrite H3.
-    rewrite repeat_length.
-    assert (newlen >= length (BFILE.BFData f)).
+    assert (newlen >= length (BFILE.BFData f)) as Hexpand.
       unfold newlen.
       replace (length (BFILE.BFData f)) with (divup (length ilist) block_items).
       rewrite wordToNat_natToWord_idempotent'.
@@ -1205,10 +1268,37 @@ Section RECBFILE.
       apply divup_lt_arg.
       assumption.
       symmetry; apply array_items_num_blocks; assumption.
+    exists (vs_nested ++ repeat block_zero (newlen - (length (BFILE.BFData f))));
+      split; [|split].
+    (* length of file = length vs *)
+    rewrite app_length.
+    rewrite Hrep1.
+    rewrite repeat_length.
     omega.
 
     (* array_item_pairs *)
-  Admitted.
+    unfold setlen.
+    rewrite firstn_oob by assumption.
+    apply array_item_app_repeated_0; assumption.
+    rewrite concat_eq_fold_right.
+    rewrite concat_app.
+    f_equal.
+    apply Hrep3.
+    rewrite repeated_blocks_are_items.
+    unfold newdata.
+    f_equal.
+    rewrite Nat.mul_sub_distr_r.
+    unfold alloc_items, roundup.
+    unfold newlen.
+    rewrite wordToNat_natToWord_idempotent'.
+    f_equal.
+    symmetry; apply array_items_block_sized.
+    assumption.
+    unfold goodSize.
+    apply le_lt_trans with count_items.
+    apply divup_lt_arg.
+    apply H0.
+  Qed.
 
   (** TODO: bf_expand should not promise to make number of items
   exactly count_items, only roundup countitems block_items *)
