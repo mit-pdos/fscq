@@ -1,6 +1,7 @@
 *.mli
 *.hi
 *.o
+*.aux
 /lia.cache
 /nlia.cache
 /codegen
@@ -14,3 +15,5 @@ _build
 /mkfs
 /coqbuild
 /#*#
+/.coq-native
+Makefile.coqproof
