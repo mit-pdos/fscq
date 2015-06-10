@@ -1316,7 +1316,7 @@ Section RECBFILE.
     (* require that this is an expand since postcondition implies all of ilist
        is preserved  *)
     [[ count_items >= length ilist ]] *
-    [[ goodSize count_items valulen ]]
+    [[ goodSize addrlen count_items ]]
     POST RET: ^(mscs, ok)
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -1343,8 +1343,11 @@ Section RECBFILE.
 
     apply pimpl_or_r; right; cancel.
     eassumption.
-    instantiate (newitems := repeat item_zero (alloc_items count_items - length ilist)).
-    apply rep_expand_file; assumption.
+    apply rep_expand_file.
+    assumption.
+    assumption.
+    unfold array_item_file; exists vs_nested.
+    split; [assumption | split; auto].
     apply list2nmem_arrayN_app; assumption.
     apply repeat_length.
   Qed.
