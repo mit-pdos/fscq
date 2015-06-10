@@ -305,6 +305,34 @@ Section RECBFILE.
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
     vs = fold_right (@app _) nil vs_nested.
 
+  Lemma array_items_block_sized : forall f vs,
+    array_item_file f vs ->
+    length (BFILE.BFData f) = divup (length vs) block_items.
+  Proof.
+    intros.
+    inversion H.
+    generalize dependent f.
+    generalize dependent vs.
+    induction x;
+      intros;
+      inversion H0; clear H0;
+      inversion H2; clear H2;
+      simpl in *;
+      rewrite <- H1.
+      rewrite H3;
+      simpl.
+    symmetry; apply divup_0.
+    rewrite H3.
+    rewrite app_length.
+    unfold block in a.
+    unfold blocktype in a.
+    unfold array_item_pairs in H3.
+    assert (length a = # items_per_valu) as Hblock_len.
+    admit.
+    rewrite Hblock_len.
+    rewrite concat_length.
+  Admitted.
+
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
 
   Definition icombine sz1 (is1:items sz1) sz2 (is2:items sz2) : items (sz1+sz2).
@@ -557,6 +585,44 @@ Section RECBFILE.
     Fi is true in (firstn count_items ilist) *)
   Admitted.
 
+  Lemma rep_expand_file : forall f count_items ilist,
+  count_items >= length ilist ->
+  goodSize addrlen count_items ->
+  array_item_file f ilist ->
+  let newlen := # (natToWord addrlen (divup count_items block_items)) in
+  let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
+               BFILE.BFAttr := BFILE.BFAttr f |} in
+  let newdata := repeat item_zero (alloc_items count_items - length ilist) in
+  array_item_file f' (ilist ++ newdata).
+  Proof.
+    intros.
+    inversion H1.
+    inversion H2.
+    unfold array_item_file.
+    simpl.
+    rewrite setlen_length.
+    exists (x ++ repeat block_zero (newlen - (length (BFILE.BFData f))));
+      split; [|split].
+    (* length of file = length vs *)
+    rewrite app_length.
+    rewrite H3.
+    rewrite repeat_length.
+    assert (newlen >= length (BFILE.BFData f)).
+      unfold newlen.
+      replace (length (BFILE.BFData f)) with (divup (length ilist) block_items).
+      rewrite wordToNat_natToWord_idempotent'.
+      apply divup_mono. (* divup is increasing *)
+      omega.
+      unfold goodSize.
+      apply le_lt_trans with count_items.
+      apply divup_lt_arg.
+      assumption.
+      admit. (* the rep lemma above *)
+    omega.
+
+    (* array_item_pairs *)
+  Admitted.
+
   (** TODO: bf_expand should not promise to make number of items
   exactly count_items, only roundup countitems block_items *)
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
@@ -568,7 +634,8 @@ Section RECBFILE.
     [[ Fi%pred (list2nmem ilist) ]] *
     (* require that this is an expand since postcondition implies all of ilist
        is preserved  *)
-    [[ count_items >= length ilist ]]
+    [[ count_items >= length ilist ]] *
+    [[ goodSize count_items valulen ]]
     POST RET: ^(mscs, ok)
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -581,6 +648,9 @@ Section RECBFILE.
       (* we don't mess with ilist ([Fi] still holds) *)
       [[ (Fi * arrayN (length ilist) newitems)%pred (list2nmem ilist') ]] *
       (* [length ilist' >= length ilist] is implied by setting [Fi] appropriately *)
+      (* this is a weak postcondition (in reality newitems consists of repeated zeros
+        due to bftrunc); this allows bf_expand to eventually leave junk data with
+        the same spec *)
       [[ length newitems = alloc_items count_items - length ilist ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_expand fsxp inum count_items mscs.
@@ -591,14 +661,12 @@ Section RECBFILE.
     step.
 
     apply pimpl_or_r; right; cancel.
-    instantiate (flist'0 := flist').
     eassumption.
-    admit. (* array_item_file f ilist -> array_item_file
-      (f with length increased) (ilist ++ newitems) *)
-    apply list2nmem_arrayN_app; assumption.
     instantiate (newitems := repeat item_zero (alloc_items count_items - length ilist)).
+    apply rep_expand_file; assumption.
+    apply list2nmem_arrayN_app; assumption.
     apply repeat_length.
-  Admitted.
+  Qed.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
