@@ -1121,6 +1121,55 @@ Section RECBFILE.
       how many items do we actually allocate space for? *)
   Definition alloc_items count_items : nat := roundup count_items block_items.
 
+  Lemma goodSize_items_blocks : forall n wsz bsz,
+    goodSize wsz n -> goodSize wsz (divup n bsz).
+  Proof.
+    intros.
+    unfold goodSize in *.
+    apply le_lt_trans with n.
+    apply divup_lt_arg.
+    apply H.
+  Qed.
+
+  Lemma rep_shrink_file : forall f count_items ilist,
+  count_items <= length ilist ->
+  goodSize addrlen count_items ->
+  array_item_file f ilist ->
+  let newlen := # (natToWord addrlen (divup count_items block_items)) in
+  let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
+               BFILE.BFAttr := BFILE.BFAttr f |} in
+  array_item_file f' (firstn count_items ilist).
+  Proof.
+    intros.
+    inversion H1 as [vs_nested Hrep123].
+    inversion Hrep123 as [Hrep1 Hrep23]; clear Hrep123.
+    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
+    unfold array_item_file.
+    simpl.
+    rewrite setlen_length.
+    exists (firstn (divup count_items block_items) vs_nested).
+    split; [|split].
+
+    (* length file = length vs_nested *)
+    unfold newlen.
+    rewrite wordToNat_natToWord_idempotent' by
+      (apply goodSize_items_blocks; assumption).
+    apply firstn_length_l.
+    unfold array_item_pairs in Hrep2.
+    destruct_lift Hrep2.
+    assert (Hl := array_items_num_blocks H1).
+    rewrite Hrep1.
+    apply le_trans with (divup (length ilist) block_items).
+    apply divup_mono; assumption.
+    omega.
+
+    (* array_item_pairs *)
+    admit.
+
+    (* vs_nested fold *)
+    admit.
+  Admitted.
+
   (** TODO: bf_shrink should not promise to make number of items
   exactly count_items, only roundup countitems block_items *)
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
@@ -1133,7 +1182,7 @@ Section RECBFILE.
     (* this also ensures count_items < length ilist and this is a shrink *)
     [[ (Fi * arrayN (kept_items count_items) deleted)%pred (list2nmem ilist) ]] *
     (* the [deleted] list is actually the rest of [ilist], not some strict prefix *)
-    [[ length deleted + kept_items count_items = length ilist ]]
+    [[ length ilist = length deleted + kept_items count_items ]]
     POST RET: ^(mscs, ok)
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -1154,18 +1203,18 @@ Section RECBFILE.
     step.
     step.
 
-    (* prove truncating the file with setlen applies to array_item_file *)
-    assert (array_item_file
-      {|
-      BFILE.BFData := setlen (BFILE.BFData f)
-                        (# (natToWord addrlen (divup count_items block_items)))
-                        (natToWord valulen O);
-      BFILE.BFAttr := BFILE.BFAttr f |} (firstn count_items ilist)) as Hf'.
-    admit.
-
     apply pimpl_or_r; right; cancel.
     eassumption.
-    exact Hf'.
+    apply rep_shrink_file.
+    apply le_trans with (kept_items count_items).
+    unfold kept_items.
+    apply roundup_ge.
+    apply block_items_gt_0.
+    rewrite H4.
+    omega.
+    admit. (* count_items <= length ilist, which should be goodSize *)
+    split with vs_nested.
+    split; [assumption | split; auto].
 
     admit. (* [[ Fi * deleted]] is true on ilist (H5, precondition);
     via array_item_file on (f with attributes modified), this implies
@@ -1267,10 +1316,7 @@ Section RECBFILE.
       rewrite wordToNat_natToWord_idempotent'.
       apply divup_mono. (* divup is increasing *)
       omega.
-      unfold goodSize.
-      apply le_lt_trans with count_items.
-      apply divup_lt_arg.
-      assumption.
+      apply goodSize_items_blocks; assumption.
       symmetry; apply array_items_num_blocks; assumption.
     exists (vs_nested ++ repeat block_zero (newlen - (length (BFILE.BFData f))));
       split; [|split].
@@ -1298,10 +1344,7 @@ Section RECBFILE.
     f_equal.
     symmetry; apply array_items_block_sized.
     assumption.
-    unfold goodSize.
-    apply le_lt_trans with count_items.
-    apply divup_lt_arg.
-    apply H0.
+    apply goodSize_items_blocks; assumption.
   Qed.
 
   (** TODO: bf_expand should not promise to make number of items
