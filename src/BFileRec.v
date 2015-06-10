@@ -49,6 +49,17 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     rewrite valubytes_is; omega.
   Qed.
 
+  Lemma divup_0:
+    forall x,
+    divup 0 x = 0.
+  Proof.
+    intros.
+    case_eq x; intros.
+    reflexivity.
+    apply Nat.div_small.
+    omega.
+  Qed.
+
   Lemma divup_divup_eq:
     forall x,
       (divup ((divup x valubytes)*valubytes) valubytes) * valubytes =
@@ -64,16 +75,104 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     auto.
   Qed.
 
+  Lemma divup_lt_arg: forall x sz,
+    divup x sz <= x.
+  Proof.
+    intros.
+    case_eq sz; intros.
+    (* sz = 0 *)
+    simpl. omega.
+    case_eq x; intros.
+    (* x = 0 *)
+    rewrite divup_0; constructor.
+    unfold divup.
+    (* sz > 0, x > 0 *)
+    rewrite Nat.div_mod with (y := S n) by omega.
+    rewrite <- H.
+    rewrite <- H0.
+    apply le_trans with (sz * x / sz).
+    apply Nat.div_le_mono.
+    omega.
+    replace (sz) with (1 + (sz - 1)) at 2 by omega.
+    rewrite Nat.mul_add_distr_r.
+    rewrite Nat.mul_1_l.
+    replace (x + sz - 1) with (x + (sz - 1)).
+    apply plus_le_compat_l.
+    replace x with (n0 + 1) by omega.
+    rewrite Nat.mul_add_distr_l.
+    rewrite plus_comm.
+    rewrite Nat.mul_1_r.
+    apply le_plus_l.
+    omega.
+    rewrite mult_comm.
+    rewrite Nat.div_mul by omega.
+    apply Nat.eq_le_incl.
+    apply Nat.div_mod.
+    omega.
+  Qed.
+
+  Lemma divup_mono: forall m n sz,
+    m <= n -> divup m sz <= divup n sz.
+  Proof.
+    intros.
+    case_eq sz; intros.
+    reflexivity.
+    apply Nat.div_le_mono.
+    auto.
+    omega.
+  Qed.
+
+  Definition divup' x m :=
+  match (x mod m) with
+  | O => x / m
+  | S _ => x / m + 1
+  end.
+
+  Theorem divup_eq_divup' : forall x m,
+    m <> 0 ->
+    divup x m = divup' x m.
+  Proof.
+    intros.
+    unfold divup, divup'.
+    case_eq (x mod m); intros.
+    assert (Hxm := Nat.div_mod x m H).
+    rewrite H0 in Hxm.
+    symmetry.
+    apply Nat.div_unique with (m - 1).
+    omega.
+    omega.
+    assert (Hxm := Nat.div_mod x m H).
+    symmetry.
+    apply Nat.div_unique with (r := x mod m - 1).
+    apply lt_trans with (x mod m).
+    omega.
+    apply Nat.mod_upper_bound; assumption.
+    replace (x + m - 1) with (x + (m - 1)) by omega.
+    rewrite Hxm at 1.
+    rewrite Nat.mul_add_distr_l.
+    rewrite Nat.mul_1_r.
+    assert (x mod m + (m - 1) = m + (x mod m - 1)).
+    omega.
+    omega.
+  Qed.
+
   Lemma le_divup:
     forall m n,
       m <= n ->
-      (divup m valubytes) * valubytes <= (divup n valubytes) * valubytes.
+      divup m valubytes <= divup n valubytes.
   Proof.
-    unfold divup; intros.
+    intros.
+    apply divup_mono; assumption.
+  Qed.
+
+  Lemma le_roundup:
+    forall m n,
+      m <= n ->
+      roundup m valubytes <= roundup n valubytes.
+  Proof.
+    unfold roundup, divup; intros.
     apply Nat.mul_le_mono_r.
-    apply Nat.div_le_mono.
-    rewrite valubytes_is; auto.
-    omega.
+    apply le_divup; assumption.
   Qed.
 
   (* slightly different from the one in Word.v *)
