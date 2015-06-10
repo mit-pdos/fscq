@@ -128,7 +128,7 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
   | S _ => x / m + 1
   end.
 
-  Theorem divup_eq_divup' : forall x m,
+  Theorem divup_eq_divup'_m_nonzero : forall x m,
     m <> 0 ->
     divup x m = divup' x m.
   Proof.
@@ -154,6 +154,29 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     assert (x mod m + (m - 1) = m + (x mod m - 1)).
     omega.
     omega.
+  Qed.
+
+  Theorem divup_eq_divup' : forall x m,
+    divup x m = divup' x m.
+  Proof.
+    intros.
+    case_eq m; intros.
+    unfold divup, divup'.
+    reflexivity.
+    apply divup_eq_divup'_m_nonzero.
+    omega.
+  Qed.
+
+  Lemma divup_mul : forall x m,
+    m <> 0 ->
+    divup (x*m) m = x.
+  Proof.
+    intros.
+    rewrite divup_eq_divup'.
+    unfold divup'.
+    rewrite Nat.mod_mul by assumption.
+    apply Nat.div_mul.
+    assumption.
   Qed.
 
   Lemma le_divup:
@@ -304,34 +327,6 @@ Section RECBFILE.
     length vs_nested = length (BFILE.BFData file) /\
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
     vs = fold_right (@app _) nil vs_nested.
-
-  Lemma array_items_block_sized : forall f vs,
-    array_item_file f vs ->
-    length (BFILE.BFData f) = divup (length vs) block_items.
-  Proof.
-    intros.
-    inversion H.
-    generalize dependent f.
-    generalize dependent vs.
-    induction x;
-      intros;
-      inversion H0; clear H0;
-      inversion H2; clear H2;
-      simpl in *;
-      rewrite <- H1.
-      rewrite H3;
-      simpl.
-    symmetry; apply divup_0.
-    rewrite H3.
-    rewrite app_length.
-    unfold block in a.
-    unfold blocktype in a.
-    unfold array_item_pairs in H3.
-    assert (length a = # items_per_valu) as Hblock_len.
-    admit.
-    rewrite Hblock_len.
-    rewrite concat_length.
-  Admitted.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
 
@@ -617,7 +612,7 @@ Section RECBFILE.
       apply le_lt_trans with count_items.
       apply divup_lt_arg.
       assumption.
-      admit. (* the rep lemma above *)
+      admit. (* the rep lemma below *)
     omega.
 
     (* array_item_pairs *)
@@ -1073,16 +1068,54 @@ Section RECBFILE.
     simpl; right; auto.
   Qed.
 
+  Lemma block_length_fold_right_nat : forall (bl : list block),
+    Forall Rec.well_formed bl ->
+    length (fold_right (app (A:=item)) nil bl) =
+      (length bl) * block_items.
+  Proof.
+    intros.
+    rewrite concat_length.
+    rewrite fold_right_add_const by auto.
+    auto.
+  Qed.
+
   Lemma block_length_fold_right : forall (bl : list block),
     Forall Rec.well_formed bl
     -> $ (length (fold_right (app (A:=item)) nil bl)) 
        = ($ (length bl) ^* items_per_valu)%word.
   Proof.
     intros.
-    rewrite concat_length.
-    rewrite fold_right_add_const by auto.
+    rewrite block_length_fold_right_nat by assumption.
     rewrite natToWord_mult.
-    rewrite natToWord_wordToNat; auto.
+    unfold block_items.
+    rewrite natToWord_wordToNat; reflexivity.
+  Qed.
+
+  Lemma array_items_block_sized : forall f vs,
+    array_item_file f vs ->
+    length (BFILE.BFData f) * block_items = length vs.
+  Proof.
+    intros.
+    inversion H.
+    inversion H0; clear H0. inversion H2; clear H2.
+    unfold array_item_pairs in H0.
+    assert (length vs = length x * block_items).
+    rewrite H3.
+    destruct_lift H0.
+    apply block_length_fold_right_nat; assumption.
+    rewrite <- H1.
+    rewrite H2.
+    reflexivity.
+  Qed.
+
+  Corollary array_items_num_blocks : forall f vs,
+    array_item_file f vs ->
+    length (BFILE.BFData f) = divup (length vs) block_items.
+  Proof.
+    intros.
+    rewrite <- (array_items_block_sized H).
+    symmetry; apply divup_mul.
+    apply items_per_valu_not_0'.
   Qed.
 
   Lemma lt_div_mono : forall a b c,
