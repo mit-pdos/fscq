@@ -1,3 +1,8 @@
+(**
+ * Loosely motivating example: bug 4 in section 2.2 of this paper:
+ * http://www.cs.columbia.edu/~nieh/pubs/sosp2011_racepro.pdf
+ *)
+
 Require Import Arith.
 Require Import List.
 
