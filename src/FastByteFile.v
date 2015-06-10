@@ -543,7 +543,7 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite Nat.mul_sub_distr_r.
     rewrite <- Nat.add_sub_swap by apply divup_ok.
     apply Nat.sub_le_mono_r.
-    rewrite Nat.add_sub_assoc by ( apply le_divup; omega ).
+    rewrite Nat.add_sub_assoc by ( apply le_roundup; omega ).
     rewrite plus_comm.
     rewrite <- Nat.add_sub_assoc by reflexivity.
     rewrite <- minus_diag_reverse.
@@ -787,7 +787,7 @@ Hint Resolve length_grow_oneblock_ok.
     apply len_oldlenext_newlen_eq.
     unfold ge.
     apply divup_ok.
-    apply le_divup; eauto.
+    apply le_roundup; eauto.
     eapply divup_newlen_minus_oldlen_goodSize with (a := (INODE.ISize (BFILE.BFAttr f''))); eauto.
     eapply le_trans.
     apply divup_ok.

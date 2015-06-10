@@ -49,6 +49,17 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     rewrite valubytes_is; omega.
   Qed.
 
+  Lemma divup_0:
+    forall x,
+    divup 0 x = 0.
+  Proof.
+    intros.
+    case_eq x; intros.
+    reflexivity.
+    apply Nat.div_small.
+    omega.
+  Qed.
+
   Lemma divup_divup_eq:
     forall x,
       (divup ((divup x valubytes)*valubytes) valubytes) * valubytes =
@@ -64,16 +75,104 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     auto.
   Qed.
 
+  Lemma divup_lt_arg: forall x sz,
+    divup x sz <= x.
+  Proof.
+    intros.
+    case_eq sz; intros.
+    (* sz = 0 *)
+    simpl. omega.
+    case_eq x; intros.
+    (* x = 0 *)
+    rewrite divup_0; constructor.
+    unfold divup.
+    (* sz > 0, x > 0 *)
+    rewrite Nat.div_mod with (y := S n) by omega.
+    rewrite <- H.
+    rewrite <- H0.
+    apply le_trans with (sz * x / sz).
+    apply Nat.div_le_mono.
+    omega.
+    replace (sz) with (1 + (sz - 1)) at 2 by omega.
+    rewrite Nat.mul_add_distr_r.
+    rewrite Nat.mul_1_l.
+    replace (x + sz - 1) with (x + (sz - 1)).
+    apply plus_le_compat_l.
+    replace x with (n0 + 1) by omega.
+    rewrite Nat.mul_add_distr_l.
+    rewrite plus_comm.
+    rewrite Nat.mul_1_r.
+    apply le_plus_l.
+    omega.
+    rewrite mult_comm.
+    rewrite Nat.div_mul by omega.
+    apply Nat.eq_le_incl.
+    apply Nat.div_mod.
+    omega.
+  Qed.
+
+  Lemma divup_mono: forall m n sz,
+    m <= n -> divup m sz <= divup n sz.
+  Proof.
+    intros.
+    case_eq sz; intros.
+    reflexivity.
+    apply Nat.div_le_mono.
+    auto.
+    omega.
+  Qed.
+
+  Definition divup' x m :=
+  match (x mod m) with
+  | O => x / m
+  | S _ => x / m + 1
+  end.
+
+  Theorem divup_eq_divup' : forall x m,
+    m <> 0 ->
+    divup x m = divup' x m.
+  Proof.
+    intros.
+    unfold divup, divup'.
+    case_eq (x mod m); intros.
+    assert (Hxm := Nat.div_mod x m H).
+    rewrite H0 in Hxm.
+    symmetry.
+    apply Nat.div_unique with (m - 1).
+    omega.
+    omega.
+    assert (Hxm := Nat.div_mod x m H).
+    symmetry.
+    apply Nat.div_unique with (r := x mod m - 1).
+    apply lt_trans with (x mod m).
+    omega.
+    apply Nat.mod_upper_bound; assumption.
+    replace (x + m - 1) with (x + (m - 1)) by omega.
+    rewrite Hxm at 1.
+    rewrite Nat.mul_add_distr_l.
+    rewrite Nat.mul_1_r.
+    assert (x mod m + (m - 1) = m + (x mod m - 1)).
+    omega.
+    omega.
+  Qed.
+
   Lemma le_divup:
     forall m n,
       m <= n ->
-      (divup m valubytes) * valubytes <= (divup n valubytes) * valubytes.
+      divup m valubytes <= divup n valubytes.
   Proof.
-    unfold divup; intros.
+    intros.
+    apply divup_mono; assumption.
+  Qed.
+
+  Lemma le_roundup:
+    forall m n,
+      m <= n ->
+      roundup m valubytes <= roundup n valubytes.
+  Proof.
+    unfold roundup, divup; intros.
     apply Nat.mul_le_mono_r.
-    apply Nat.div_le_mono.
-    rewrite valubytes_is; auto.
-    omega.
+    apply le_divup; assumption.
   Qed.
 
   (* slightly different from the one in Word.v *)
@@ -205,6 +304,34 @@ Section RECBFILE.
     length vs_nested = length (BFILE.BFData file) /\
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
     vs = fold_right (@app _) nil vs_nested.
+
+  Lemma array_items_block_sized : forall f vs,
+    array_item_file f vs ->
+    length (BFILE.BFData f) = divup (length vs) block_items.
+  Proof.
+    intros.
+    inversion H.
+    generalize dependent f.
+    generalize dependent vs.
+    induction x;
+      intros;
+      inversion H0; clear H0;
+      inversion H2; clear H2;
+      simpl in *;
+      rewrite <- H1.
+      rewrite H3;
+      simpl.
+    symmetry; apply divup_0.
+    rewrite H3.
+    rewrite app_length.
+    unfold block in a.
+    unfold blocktype in a.
+    unfold array_item_pairs in H3.
+    assert (length a = # items_per_valu) as Hblock_len.
+    admit.
+    rewrite Hblock_len.
+    rewrite concat_length.
+  Admitted.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
 
@@ -345,6 +472,9 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
+  (** TODO: prove update_chunk_ok: something in separation logic about what
+  update_chunk does to the item lists *)
+
   End chunking.
 
 
@@ -404,6 +534,8 @@ Section RECBFILE.
       how many items do we actually allocate space for? *)
   Definition alloc_items count_items : nat := roundup count_items block_items.
 
+  (** TODO: bf_shrink should not promise to make number of items
+  exactly count_items, only roundup countitems block_items *)
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm A Fi f flist ilist deleted,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -419,10 +551,11 @@ Section RECBFILE.
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
       ( [[ ok = false ]] \/
-      exists f' ilist',
+      exists f' ilist' flist',
       [[ ok = true ]] *
-      [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+      [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
       [[ array_item_file f' ilist' ]] *
+      [[ ilist' = firstn count_items ilist ]] *
       (* preserves any predicate regarding the non-deleted items *)
       (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
       [[ Fi%pred (list2nmem ilist') ]] )
@@ -430,8 +563,68 @@ Section RECBFILE.
   >} bf_shrink fsxp inum count_items mscs.
   Proof.
     unfold bf_shrink, bf_resize.
+
+    step.
+    step.
+
+    (* prove truncating the file with setlen applies to array_item_file *)
+    assert (array_item_file
+      {|
+      BFILE.BFData := setlen (BFILE.BFData f)
+                        (# (natToWord addrlen (divup count_items block_items)))
+                        (natToWord valulen O);
+      BFILE.BFAttr := BFILE.BFAttr f |} (firstn count_items ilist)) as Hf'.
+    admit.
+
+    apply pimpl_or_r; right; cancel.
+    eassumption.
+    exact Hf'.
+
+    admit. (* [[ Fi * deleted]] is true on ilist (H5, precondition);
+    via array_item_file on (f with attributes modified), this implies
+    Fi is true in (firstn count_items ilist) *)
   Admitted.
 
+  Lemma rep_expand_file : forall f count_items ilist,
+  count_items >= length ilist ->
+  goodSize addrlen count_items ->
+  array_item_file f ilist ->
+  let newlen := # (natToWord addrlen (divup count_items block_items)) in
+  let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
+               BFILE.BFAttr := BFILE.BFAttr f |} in
+  let newdata := repeat item_zero (alloc_items count_items - length ilist) in
+  array_item_file f' (ilist ++ newdata).
+  Proof.
+    intros.
+    inversion H1.
+    inversion H2.
+    unfold array_item_file.
+    simpl.
+    rewrite setlen_length.
+    exists (x ++ repeat block_zero (newlen - (length (BFILE.BFData f))));
+      split; [|split].
+    (* length of file = length vs *)
+    rewrite app_length.
+    rewrite H3.
+    rewrite repeat_length.
+    assert (newlen >= length (BFILE.BFData f)).
+      unfold newlen.
+      replace (length (BFILE.BFData f)) with (divup (length ilist) block_items).
+      rewrite wordToNat_natToWord_idempotent'.
+      apply divup_mono. (* divup is increasing *)
+      omega.
+      unfold goodSize.
+      apply le_lt_trans with count_items.
+      apply divup_lt_arg.
+      assumption.
+      admit. (* the rep lemma above *)
+    omega.
+
+    (* array_item_pairs *)
+  Admitted.
+
+  (** TODO: bf_expand should not promise to make number of items
+  exactly count_items, only roundup countitems block_items *)
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm Fi A f flist ilist,
    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -441,24 +634,39 @@ Section RECBFILE.
     [[ Fi%pred (list2nmem ilist) ]] *
     (* require that this is an expand since postcondition implies all of ilist
        is preserved  *)
-    [[ count_items >= length ilist ]]
+    [[ count_items >= length ilist ]] *
+    [[ goodSize count_items valulen ]]
     POST RET: ^(mscs, ok)
     exists m',
     LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
       ( [[ ok = false ]] \/
-      exists f' ilist' newitems,
+      exists f' ilist' flist' newitems,
       [[ ok = true ]] *
-      [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+      [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
       [[ array_item_file f' ilist' ]] *
+      [[ ilist' = ilist ++ newitems ]] *
       (* we don't mess with ilist ([Fi] still holds) *)
       [[ (Fi * arrayN (length ilist) newitems)%pred (list2nmem ilist') ]] *
       (* [length ilist' >= length ilist] is implied by setting [Fi] appropriately *)
+      (* this is a weak postcondition (in reality newitems consists of repeated zeros
+        due to bftrunc); this allows bf_expand to eventually leave junk data with
+        the same spec *)
       [[ length newitems = alloc_items count_items - length ilist ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_expand fsxp inum count_items mscs.
   Proof.
     unfold bf_expand, bf_resize.
-  Admitted.
+
+    step.
+    step.
+
+    apply pimpl_or_r; right; cancel.
+    eassumption.
+    instantiate (newitems := repeat item_zero (alloc_items count_items - length ilist)).
+    apply rep_expand_file; assumption.
+    apply list2nmem_arrayN_app; assumption.
+    apply repeat_length.
+  Qed.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=

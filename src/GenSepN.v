@@ -141,6 +141,27 @@ Proof.
   omega.
 Qed.
 
+Theorem list2nmem_arrayN_app: forall A (F : @pred _ _ A) l l',
+  F (list2nmem l) -> (F * arrayN (length l) l') %pred (list2nmem (l ++ l')).
+Proof.
+  intros.
+  generalize dependent F.
+  generalize dependent l.
+  induction l'; intros; simpl.
+  - rewrite app_nil_r.
+    apply emp_star_r.
+    apply H.
+  - apply sep_star_assoc.
+    assert (Happ := list2nmem_app F l a H).
+    assert (IHla := IHl' (l ++ a :: nil) (sep_star F (ptsto (length l) a)) Happ).
+    replace (length (l ++ a :: nil)) with (S (length l)) in IHla.
+    replace ((l ++ a :: nil) ++ l') with (l ++ a :: l') in IHla.
+    apply IHla.
+    rewrite <- app_assoc; reflexivity.
+    rewrite app_length; simpl.
+    symmetry; apply Nat.add_1_r.
+Qed.
+
 
 Theorem list2nmem_removelast_is : forall A l (def : A),
   l <> nil
