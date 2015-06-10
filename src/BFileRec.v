@@ -1196,15 +1196,19 @@ Section RECBFILE.
     (* turn off notation to see what this is doing *)
     unfold rep_block, block_zero, block_items.
     unfold blocktype.
+    unfold RecArray.rep_block.
+    unfold wreclen_to_valu.
+    rewrite Rec.to_of_id.
     simpl.
-    admit. (* this is a bizarre statement, where I can't rewrite blocksz_ok *)
+    rewrite blocksz_ok.
+    reflexivity.
     apply list2nmem_array_eq in H.
     rewrite H.
     rewrite H2.
     apply list2nmem_array.
-    (* apply sep_star_and2lift. *)
-    (* combine everything *)
-  Admitted.
+    pred_apply.
+    cancel.
+  Qed.
 
   Lemma concat_eq_fold_right : forall A l,
     fold_right (app (A:=A)) nil l = concat l.
