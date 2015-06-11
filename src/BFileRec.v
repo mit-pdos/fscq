@@ -318,6 +318,12 @@ Section RECBFILE.
     apply items_per_valu_not_0'.
   Qed.
 
+  Corollary block_items_S_n : block_items = S (block_items - 1).
+  Proof.
+    assert (H := block_items_gt_0).
+    omega.
+  Qed.
+
   Definition array_item_pairs (vs : list block) : pred :=
     ([[ Forall Rec.well_formed vs ]] *
      arrayN 0 (map rep_block vs))%pred.
@@ -383,11 +389,11 @@ Section RECBFILE.
     chunk_data: items (chunk_bend - chunk_boff);
 
     chunk_bend_ok : chunk_bend <= block_items;
-    chunk_size_ok : chunk_boff < chunk_bend
+    chunk_size_ok : chunk_boff <= chunk_bend
   }.
 
   (** if you want this fact, you can produce its proof with this function *)
-  Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) < block_items.
+  Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) <= block_items.
   Proof.
     apply le_trans with (chunk_bend ck).
     apply (chunk_size_ok ck).
@@ -407,6 +413,9 @@ Section RECBFILE.
   Section chunking.
 
   Local Ltac min_cases :=
+    let Hminspec := fresh "Hminspec" in
+    let Hlt := fresh "Hlt" in
+    let Hmineq := fresh "Hmineq" in
     edestruct Nat.min_spec as [Hminspec|Hminspec];
     inversion Hminspec as [Hlt Hmineq];
     erewrite Hmineq;
@@ -428,13 +437,137 @@ Section RECBFILE.
         chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w _)
     end.
   Next Obligation.
+    apply Nat.lt_le_incl.
     apply boff_mod_ok.
   Defined.
   (** decreasing obligation produced by [{measure count}] *)
   Next Obligation.
-    assert (off mod block_items < block_items) by (apply boff_mod_ok).
+    assert (Hblock := boff_mod_ok off).
     omega.
   Defined.
+
+  Program Definition preamble (off count:nat) (w: items count) : chunk :=
+  let blocknum := off / block_items in
+  let boff := off mod block_items in
+  let bend := Nat.min (boff + count) (if (eq_nat_dec boff 0) then 0 else block_items) in
+  let bsize := bend - boff in
+  @Build_chunk ($ blocknum) boff bend
+    (isplit1_dep bsize (count-bsize) w _) _ _.
+  Next Obligation.
+    all: case_eq (off mod block_items); intros;
+      rewrite H in *;
+      simpl in *;
+      try omega.
+  Defined.
+  Next Obligation.
+    assert (Hblock := boff_mod_ok off).
+    case_eq (off mod block_items); intros;
+      try rewrite H in *;
+      simpl in *;
+      try omega.
+  Qed.
+
+  (** says that the chunk covers items [istart, end) *)
+  Definition covers (ck:chunk) istart iend : Prop :=
+  let blockstart := (# (chunk_blocknum ck)) * block_items in
+  let boff := chunk_boff ck in
+  let bend := chunk_bend ck in
+  blockstart + boff = istart /\ blockstart + bend = iend.
+
+  Theorem preamble_covers : forall off count (w: items count),
+    goodSize addrlen off ->
+    count >= block_items ->
+    covers (preamble off w) off (roundup off block_items).
+  Proof.
+    intros.
+    unfold covers, preamble.
+    simpl.
+    rewrite wordToNat_natToWord_idempotent'.
+    split.
+    symmetry.
+    rewrite Nat.mul_comm.
+    apply Nat.div_mod.
+    apply items_per_valu_not_0'.
+    unfold roundup.
+    rewrite divup_eq_divup'.
+    unfold divup'.
+    case_eq (off mod block_items); intro; simpl.
+    rewrite Nat.mul_comm.
+    replace (block_items * (off / block_items)) with off.
+      rewrite Nat.min_0_r.
+      omega.
+      apply Nat.div_exact.
+        apply items_per_valu_not_0'.
+        assumption.
+    intros.
+    assert (Hblock := block_items_gt_0).
+      (* simplify the match *)
+      rewrite -> block_items_S_n.
+      rewrite <- block_items_S_n.
+    rewrite Nat.min_r.
+    ring_simplify.
+    rewrite <- plus_assoc.
+    rewrite Nat.add_cancel_l.
+    omega.
+    omega.
+    eapply goodSize_trans.
+    apply div_le; auto.
+    assumption.
+  Qed.
+
+  (* min_cases is very slow, and proofs are better with some simplification
+     before applying min_cases *)
+  Local Obligation Tactic := Tactics.program_simpl.
+
+  Program Definition postscript (off count:nat) (w: items count) : chunk :=
+  let wend := off + count in
+  let blocknum := wend / block_items in
+  let boff := 0 in
+  let bend := Nat.min (wend - (wend / block_items * block_items)) count in
+  let bsize := bend - boff in
+  @Build_chunk ($ blocknum) boff bend
+    (isplit1_dep bsize (count-bsize) w _) _ _.
+  Next Obligation.
+    rewrite Nat.sub_0_r.
+    min_cases.
+  Defined.
+  Next Obligation.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.mod_eq by auto.
+    assert ((off + count) mod block_items < block_items).
+    apply Nat.mod_upper_bound.
+    apply items_per_valu_not_0'.
+    min_cases.
+  Defined.
+  Next Obligation.
+    omega.
+  Defined.
+
+  Theorem postscript_covers : forall off count (w: items count),
+  let wend := off + count in
+    goodSize addrlen (off+count) ->
+    count >= block_items ->
+    covers (postscript off w) ((wend / block_items) * block_items) wend.
+  Proof.
+    intros.
+    unfold covers, postscript.
+    simpl.
+    rewrite wordToNat_natToWord_idempotent'.
+    split.
+    rewrite Nat.add_0_r.
+    reflexivity.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.mod_eq by auto.
+    rewrite Nat.min_l.
+    unfold wend.
+    symmetry; apply Nat.div_mod; auto.
+    eapply Nat.le_trans.
+    apply Nat.lt_le_incl. apply Nat.mod_upper_bound; auto.
+    assumption.
+    eapply goodSize_trans.
+    apply div_le; auto.
+    eassumption.
+  Qed.
 
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
   let v_items := valu2items v in
@@ -508,11 +641,14 @@ Section RECBFILE.
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
     let chunks := chunkList off w in
     let^ (mscs) <- ForEach ck rest chunks
-      Ghost [ F mbase m ]
+      Ghost [ F mbase Fm A ]
       Loopvar [ mscs ]
       Continuation lrx
-      Invariant LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs
-      (** TODO: loop invariants **)
+      Invariant exists m' flist' f' ilist',
+        LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+        [[ array_item_file f' ilist' ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
