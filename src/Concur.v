@@ -16,35 +16,37 @@ Inductive prog :=
 | Write (file : filename) (data : filedata) (rx : prog)
 | Exit.
 
-Definition file_state := filename -> filedata.
-Definition pid := nat.
-Record state := {
-  StateFS : file_state;
-  StateProcs : list (pid * prog);
-  StateDone : list pid
-}.
+Inductive proc_state :=
+| NeverRan
+| Running (p : prog)
+| Exited.
 
-Definition upd (m : file_state) (a : filename) (v : filedata) :=
+Definition f_state := filename -> filedata.
+Definition pid := nat.
+Definition p_state := pid -> proc_state.
+Definition sys_state := (f_state * p_state)%type.
+
+Definition upd {V : Type} (m : nat -> V) (a : nat) (v : V) :=
   fun a' => if eq_nat_dec a a' then v else m a.
 
-Lemma upd_eq : forall m a v,
+Lemma upd_eq : forall V m a (v : V),
   upd m a v a = v.
 Proof.
   unfold upd; intros.
   destruct (eq_nat_dec a a); congruence.
 Qed.
 
-Inductive exec : state -> state -> Prop :=
+Inductive exec : sys_state -> sys_state -> Prop :=
 | ExecWrite :
-  forall pid file data rx a b fs finished,
-  exec (Build_state fs (a ++ (pid, Write file data rx) :: b) finished)
-       (Build_state (upd fs file data) (a ++ (pid, rx) :: b) finished)
+  forall pid file data rx fs ps,
+  ps pid = Running (Write file data rx) ->
+  exec (fs, ps) (upd fs file data, upd ps pid (Running rx))
 | ExecExit :
-  forall pid a b fs finished,
-  exec (Build_state fs (a ++ (pid, Exit) :: b) finished)
-       (Build_state fs (a ++ b) (pid :: finished)).
+  forall pid fs ps,
+  ps pid = Running Exit ->
+  exec (fs, ps) (fs, upd ps pid Exited).
 
-Inductive execstar : state -> state -> Prop :=
+Inductive execstar : sys_state -> sys_state -> Prop :=
 | ExecStarRefl :
   forall s, execstar s s
 | ExecStarStep :
@@ -62,59 +64,18 @@ Proof.
   congruence.
 Qed.
 
-Lemma in_singleton_list : forall A (a c : list A) (b d : A),
-  a ++ b :: c = d :: nil ->
-  a = nil /\ b = d /\ c = nil.
-Proof.
-  destruct a; simpl; intros.
-  intuition congruence.
-  inversion H.
-  apply (apply_eq (@length A)) in H2.
-  rewrite app_length in *; simpl in *.
-  omega.
-Qed.
+Inductive will_not_write_to_file : filename -> prog -> Prop :=
+| WNWTF_exit : forall f, will_not_write_to_file f Exit
+| WNWTF_write : forall f f' data rx, f <> f' ->
+  will_not_write_to_file f rx ->
+  will_not_write_to_file f (Write f' data rx).
 
-Lemma in_nil_list : forall A (a c : list A) (b : A),
-  a ++ b :: c = nil ->
-  False.
+Theorem write_to_file_works_easy : forall fs ps fs' ps' newpid fn data,
+  (forall pid, exists p, ps pid = Running p -> will_not_write_to_file fn p) ->
+  ps newpid = NeverRan ->
+  execstar (fs, upd ps newpid (Running (write_to_file fn data))) (fs', ps') ->
+  ps' newpid = Exited ->
+  fs' fn = data.
 Proof.
   intros.
-  apply (apply_eq (@length A)) in H.
-  rewrite app_length in *; simpl in *.
-  omega.
-Qed.
-
-Hint Resolve in_nil_list.
-
-Theorem write_to_file_works_easy : forall s s' newpid f d,
-  StateProcs s = nil ->
-  ~ (In newpid (StateDone s)) ->
-  execstar (Build_state (StateFS s)
-                        ((newpid, write_to_file f d) :: (StateProcs s))
-                        (StateDone s)) s' ->
-  In newpid (StateDone s') ->
-  StateFS s' f = d.
-Proof.
-  unfold write_to_file; intros.
-  rewrite H in *.
-
-  inversion H1; clear H1; subst; simpl in *; try congruence.
-  inversion H3; clear H3; subst; simpl in *.
-
-  apply in_singleton_list in H6. destruct H6. destruct H3. subst; simpl in *.
-  inversion H4; clear H4; subst; simpl in *; try congruence.
-  inversion H3; clear H3; subst; simpl in *.
-  inversion H1; clear H1; subst; simpl in *.
-
-  apply in_singleton_list in H6. destruct H6. destruct H3. inversion H3; congruence.
-  apply in_singleton_list in H6. destruct H6. destruct H3. subst; simpl in *.
-
-  inversion H5; clear H5; subst; simpl in *.
-  rewrite upd_eq; auto.
-
-  inversion H1; clear H1.
-  exfalso; eauto.
-  exfalso; eauto.
-
-  apply in_singleton_list in H6. destruct H6. destruct H3. inversion H3.
-Qed.
+Admitted.
