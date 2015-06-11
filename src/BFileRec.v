@@ -1125,10 +1125,9 @@ Section RECBFILE.
     goodSize wsz n -> goodSize wsz (divup n bsz).
   Proof.
     intros.
-    unfold goodSize in *.
-    apply le_lt_trans with n.
+    apply goodSize_trans with n.
     apply divup_lt_arg.
-    apply H.
+    assumption.
   Qed.
 
   Lemma rep_shrink_file : forall f count_items ilist,

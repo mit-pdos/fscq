@@ -1239,6 +1239,14 @@ Proof.
   omega.
 Qed.
 
+Theorem goodSize_trans: forall sz n1 n2,
+  n1 <= n2 -> goodSize sz n2 -> goodSize sz n1.
+Proof.
+  intros.
+  unfold goodSize in *.
+  apply le_lt_trans with n2; omega.
+Qed.
+
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
 Proof.
   induction sz; simpl; intuition.
