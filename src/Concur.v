@@ -6,6 +6,7 @@
 Require Import Arith.
 Require Import List.
 Require Import Omega.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
@@ -42,6 +43,15 @@ Lemma upd_ne : forall V m a (v : V) a',
 Proof.
   unfold upd; intros.
   destruct (eq_nat_dec a a'); congruence.
+Qed.
+
+Lemma upd_ne_comm : forall V m a a' (v v' : V),
+  a <> a' ->
+  upd (upd m a v) a' v' = upd (upd m a' v') a v.
+Proof.
+  unfold upd; intros.
+  apply functional_extensionality; intros.
+  destruct (eq_nat_dec a x); destruct (eq_nat_dec a' x); subst; congruence.
 Qed.
 
 Inductive step_pid : file_map -> proc_state -> file_map -> proc_state -> Prop :=
@@ -87,10 +97,10 @@ Inductive will_not_write_to_file : filenameT -> progT -> Prop :=
 Definition wnwtf_except (pid : pidT) (fn : filenameT) (pmap : proc_map) :=
   forall pid' p, pid' <> pid -> pmap pid' = Running p -> will_not_write_to_file fn p.
 
-Lemma wnwtf_monotonic : forall pid fn fs ps fs' ps',
-  step (fs, ps) (fs', ps') ->
-  wnwtf_except pid fn ps ->
-  wnwtf_except pid fn ps'.
+Lemma wnwtf_monotonic : forall pid fn fmap pmap fmap' pmap',
+  step (fmap, pmap) (fmap', pmap') ->
+  wnwtf_except pid fn pmap ->
+  wnwtf_except pid fn pmap'.
 Proof.
   inversion 1.
   destruct (eq_nat_dec pid pid0); subst; unfold wnwtf_except; intros.
@@ -126,12 +136,50 @@ Proof.
 Qed.
 
 Theorem write_to_file_works : forall fmap pmap fmap' pmap' newpid fn data,
-  pmap newpid = NeverRan ->
+  pmap newpid = Running (write_to_file fn data) ->
   wnwtf_except newpid fn pmap ->
-  star (fmap, upd pmap newpid (Running (write_to_file fn data)))
+  star (fmap, pmap)
        (fmap', pmap') ->
   pmap' newpid = Exited ->
   fmap' fn = data.
 Proof.
   intros.
+  generalize dependent H0.
+  remember (fmap, pmap); remember (fmap', pmap').
+  generalize dependent pmap. generalize dependent fmap.
+  induction H1; intros; subst; try congruence.
+
+  destruct s1.
+  destruct (skip_other_pids H H3).
+
+  (* case 1: some other PID ran.. *)
+  destruct H4.
+  eapply IHstar. reflexivity. 2: reflexivity. congruence. eapply wnwtf_monotonic. eauto. eauto.
+
+  (* case 2: our PID ran! *)
+  clear IHstar.
+  destruct H4. destruct H4. destruct H4. destruct H5.
+
+  rewrite <- H4 in H6; clear H4. rewrite H0 in H6; clear H0.
+  unfold write_to_file in *.
+  inversion H6; try congruence.
+  inversion H0; clear H0; subst.
+
+  (* done with one step, now need to do the same for the Exit step.. *)
+  assert (upd fmap file data0 file = data0) by (rewrite upd_eq; auto).
+  remember (upd fmap file data0 : file_map) as fmap_d. clear Heqfmap_d.
+
+  remember (fmap_d, upd pmap newpid (Running Exit) : proc_map).
+  remember (fmap', pmap').
+  generalize dependent fmap_d.
+  induction H1; intros; subst; try congruence.
+
+  destruct s1.
+  eapply wnwtf_monotonic in H; eauto.
+  destruct (skip_other_pids H0 H).
+
+  (* case 1: some other PID ran.. *)
+  destruct H4.
+  (* XXX something is broken about IHstar.. *)
+
 Admitted.
