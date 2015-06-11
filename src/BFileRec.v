@@ -600,11 +600,33 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
+  Definition items_to_list count (w: items count) : list item :=
+    map Rec.of_word (isplit_list w).
+
   (** TODO: prove update_chunk_ok: something in separation logic about what
   update_chunk does to the item lists *)
 
+  Definition apply_chunk (ck:chunk) (ilist: list item) : list item :=
+  let blocknum := # (chunk_blocknum ck) in
+  let ck_start := blocknum*block_items + chunk_boff ck in
+  let ck_end := blocknum*block_items + chunk_bend ck in
+  let data := items_to_list (chunk_data ck) in
+  (firstn ck_start ilist) ++ data ++ (skipn ck_end ilist).
+
+  Fixpoint apply_chunks (chunks: list chunk) (ilist: list item) : list item :=
+  match chunks with
+  | nil => ilist
+  | ck :: xs => let ilist' := apply_chunks xs ilist in
+    apply_chunk ck ilist'
+  end.
+
   End chunking.
 
+  Definition valu2block (v:valu) :  block.
+    unfold block.
+    rewrite blocksz_ok in v.
+    apply (@Rec.of_word blocktype v).
+  Defined.
 
   (** Read/modify/write a chunk in place. **)
   Definition bf_put_chunk T lxp ixp inum (ck:chunk) mscs rx : prog T :=
@@ -614,18 +636,20 @@ Section RECBFILE.
     rx mscs.
 
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
-  {< m mbase F Fm Fx A f flist v,
+  {< m mbase F Fm A f flist Fx v ilist,
     PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
     [[ (Fm * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-    [[ (Fx * # (chunk_blocknum ck) |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
+    [[ (Fx * # (chunk_blocknum ck) |-> v)%pred (list2nmem (BFILE.BFData f)) ]] *
+    [[ array_item_file f ilist ]]
     POST RET: mscs
-      exists m' f' flist' v',
+      exists m' f' flist' ilist' v',
         LOG.rep lxp F (ActiveTxn mbase m') mscs *
         [[ (Fm * BFILE.rep bxp ixp flist')%pred (list2mem m') ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f')) ]] *
-        [[ v' = update_chunk v ck ]]
+        [[ array_item_file f' ilist' ]] *
+        [[ ilist' = apply_chunk ck ilist ]]
     CRASH LOG.would_recover_old lxp F mbase
   >} bf_put_chunk lxp ixp inum ck mscs.
   Proof.
@@ -634,7 +658,42 @@ Section RECBFILE.
     step. (* bf_read *)
     step. (* bf_write *)
     step. (* return *)
-  Qed.
+
+    inversion H4 as [vs_nested Hrep].
+    inversion Hrep as [Hrep1 Hrep23]; clear Hrep.
+    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
+    unfold array_item_pairs in Hrep2.
+    destruct_lift Hrep2.
+    unfold array_item_file.
+    exists (updN vs_nested
+      (# (chunk_blocknum ck))
+      (valu2block (update_chunk v8 ck))).
+    subst; simpl.
+    split; [|split].
+    (* length *)
+    rewrite length_updN.
+    rewrite length_upd.
+    assumption.
+
+    (* array_item_pairs *)
+    unfold array_item_pairs.
+    rewrite map_updN.
+    pred_apply; cancel.
+    assert (update_chunk v8 ck = rep_block (valu2block (update_chunk  v8 ck))).
+    unfold rep_block, valu2block.
+    unfold RecArray.rep_block.
+    rewrite Rec.to_of_id.
+    admit.
+    admit.
+    apply Forall_upd.
+    assumption.
+    (* valu2block is basically Rec.of_word, with some dependent-type proofs *)
+    unfold valu2block.
+    apply Rec.of_word_length.
+
+    (* ilist' = concat vs_nested' *)
+    unfold apply_chunk.
+  Admitted.
 
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
