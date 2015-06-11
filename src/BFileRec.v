@@ -678,18 +678,33 @@ Section RECBFILE.
     (* array_item_pairs *)
     unfold array_item_pairs.
     rewrite map_updN.
-    pred_apply; cancel.
     assert (update_chunk v8 ck = rep_block (valu2block (update_chunk  v8 ck))).
-    unfold rep_block, valu2block.
-    unfold RecArray.rep_block.
-    rewrite Rec.to_of_id.
-    admit.
-    admit.
-    apply Forall_upd.
-    assumption.
-    (* valu2block is basically Rec.of_word, with some dependent-type proofs *)
-    unfold valu2block.
-    apply Rec.of_word_length.
+      unfold rep_block, valu2block.
+      unfold RecArray.rep_block.
+      rewrite Rec.to_of_id.
+      unfold wreclen_to_valu.
+      unfold eq_rec_r.
+      rewrite eq_rect_nat_double.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
+    rewrite <- H7.
+    apply list2nmem_array_eq in H3.
+    rewrite H3.
+    assert (Forall Rec.well_formed
+      (updN
+        vs_nested
+        (# (chunk_blocknum ck))
+        (valu2block (update_chunk v8 ck)))).
+      apply Forall_upd.
+      assumption.
+      (* valu2block is basically Rec.of_word, with some dependent-type proofs *)
+      unfold valu2block.
+      apply Rec.of_word_length.
+    assert (Hmaprep := list2nmem_array
+      (updN (map rep_block vs_nested)
+        (# (chunk_blocknum ck))
+        (update_chunk v8 ck))).
+    pred_apply; cancel.
 
     (* ilist' = concat vs_nested' *)
     unfold apply_chunk.
