@@ -314,6 +314,22 @@ Proof.
   apply wordToNat_inj; auto.
 Qed.
 
+Lemma updN_firstn_skipn : forall T (l:list T) n v,
+  n < length l ->
+  updN l n v = firstn n l ++ v::nil ++ skipn (n+1) l.
+Proof.
+  intros.
+  generalize dependent n.
+  induction l; intros; simpl.
+  inversion H.
+  induction n; simpl.
+  reflexivity.
+  f_equal.
+  apply IHl.
+  simpl in H.
+  omega.
+Qed.
+
 Theorem list_selN_ext' : forall len T (a b : list T) default,
   length a = len
   -> length b = len
