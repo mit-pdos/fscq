@@ -332,7 +332,7 @@ Section RECBFILE.
     exists vs_nested,
     length vs_nested = length (BFILE.BFData file) /\
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
-    vs = fold_right (@app _) nil vs_nested.
+    vs = concat vs_nested.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
 
@@ -678,18 +678,33 @@ Section RECBFILE.
     (* array_item_pairs *)
     unfold array_item_pairs.
     rewrite map_updN.
-    pred_apply; cancel.
     assert (update_chunk v8 ck = rep_block (valu2block (update_chunk  v8 ck))).
-    unfold rep_block, valu2block.
-    unfold RecArray.rep_block.
-    rewrite Rec.to_of_id.
-    admit.
-    admit.
-    apply Forall_upd.
-    assumption.
-    (* valu2block is basically Rec.of_word, with some dependent-type proofs *)
-    unfold valu2block.
-    apply Rec.of_word_length.
+      unfold rep_block, valu2block.
+      unfold RecArray.rep_block.
+      rewrite Rec.to_of_id.
+      unfold wreclen_to_valu.
+      unfold eq_rec_r.
+      rewrite eq_rect_nat_double.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
+    rewrite <- H7.
+    apply list2nmem_array_eq in H3.
+    rewrite H3.
+    assert (Forall Rec.well_formed
+      (updN
+        vs_nested
+        (# (chunk_blocknum ck))
+        (valu2block (update_chunk v8 ck)))).
+      apply Forall_upd.
+      assumption.
+      (* valu2block is basically Rec.of_word, with some dependent-type proofs *)
+      unfold valu2block.
+      apply Rec.of_word_length.
+    assert (Hmaprep := list2nmem_array
+      (updN (map rep_block vs_nested)
+        (# (chunk_blocknum ck))
+        (update_chunk v8 ck))).
+    pred_apply; cancel.
 
     (* ilist' = concat vs_nested' *)
     unfold apply_chunk.
@@ -866,12 +881,15 @@ Section RECBFILE.
     rewrite map_length; auto.
   Qed.
 
-  Lemma fold_right_app_init : forall A l a,
-    (fold_right (app (A:=A)) nil l) ++ a  = fold_right (app (A:=A)) a l.
+  Lemma concat_app_nil : forall A (l : list (list A)) (v: list A),
+    concat l ++ v = concat (l ++ v :: nil).
   Proof.
-    induction l; firstorder; simpl.
-    rewrite <- IHl with (a := a0).
-    rewrite app_assoc; auto.
+    intros.
+    induction l; simpl.
+    symmetry; apply app_nil_r.
+    rewrite app_assoc_reverse.
+    rewrite IHl.
+    reflexivity.
   Qed.
 
   Hint Rewrite map_length.
@@ -1062,8 +1080,8 @@ Section RECBFILE.
 
   Theorem upd_divmod : forall (l : list block) (pos : addr) (v : item),
     Forall Rec.well_formed l
-    -> upd (fold_right (@app _) nil l) pos v =
-       fold_right (@app _) nil (upd l (pos ^/ items_per_valu)
+    -> upd (concat l) pos v =
+       concat (upd l (pos ^/ items_per_valu)
          (upd (sel l (pos ^/ items_per_valu) nil) (pos ^% items_per_valu) v)).
   Proof.
     pose proof items_per_valu_not_0.
@@ -1106,7 +1124,7 @@ Section RECBFILE.
 
   Lemma block_length_fold_right_nat : forall (bl : list block),
     Forall Rec.well_formed bl ->
-    length (fold_right (app (A:=item)) nil bl) =
+    length (concat bl) =
       (length bl) * block_items.
   Proof.
     intros.
@@ -1117,7 +1135,7 @@ Section RECBFILE.
 
   Lemma block_length_fold_right : forall (bl : list block),
     Forall Rec.well_formed bl
-    -> $ (length (fold_right (app (A:=item)) nil bl)) 
+    -> $ (length (concat bl))
        = ($ (length bl) ^* items_per_valu)%word.
   Proof.
     intros.
@@ -1188,7 +1206,7 @@ Section RECBFILE.
     -> Forall Rec.well_formed bl
     -> (F * BFILE.rep bxp ixp fl)%pred m
     -> # inum < length fl
-    -> length (fold_right (app (A:=Rec.data itemtype)) nil bl) 
+    -> length (concat bl)
           <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
   Proof.
     intros.
@@ -1266,7 +1284,7 @@ Section RECBFILE.
     -> Forall Rec.well_formed bl
     -> (F * BFILE.rep bxp ixp fl)%pred m
     -> # inum < length fl
-    -> # i < length (fold_right (app (A:=Rec.data itemtype)) nil bl)
+    -> # i < length (concat bl)
     -> # (i ^/ items_per_valu) < length (BFILE.BFData (sel fl inum BFILE.bfile0)).
   Proof.
     intros.
@@ -1453,13 +1471,6 @@ Section RECBFILE.
     cancel.
   Qed.
 
-  Lemma concat_eq_fold_right : forall A l,
-    fold_right (app (A:=A)) nil l = concat l.
-  Proof.
-    intros.
-    reflexivity.
-  Qed.
-
   Lemma repeat_repeat_concat : forall A (a:A) n k,
     concat (repeat (repeat a k) n) = repeat a (k*n).
   Proof.
@@ -1524,7 +1535,6 @@ Section RECBFILE.
     unfold setlen.
     rewrite firstn_oob by assumption.
     apply array_item_app_repeated_0; assumption.
-    rewrite concat_eq_fold_right.
     rewrite concat_app.
     f_equal.
     apply Hrep3.
@@ -1637,6 +1647,13 @@ Section RECBFILE.
     simpl; intuition.
   Qed.
 
+  Lemma concat_eq_fold_right : forall A (l:list (list A)),
+    concat l = fold_right (@app A) nil l.
+  Proof.
+    intros.
+    reflexivity.
+  Qed.
+
   Theorem bf_get_all_ok : forall lxp bxp ixp inum mscs,
     {< F F1 A mbase m flist f ilist,
     PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
@@ -1664,6 +1681,7 @@ Section RECBFILE.
     apply list2nmem_array_eq in H13. rewrite H13 in H4. autorewrite_fast. auto.
 
     subst.
+    rewrite concat_eq_fold_right.
     rewrite <- fold_symmetric.
     f_equal.
     rewrite firstn_oob; auto.
@@ -1746,8 +1764,7 @@ Section RECBFILE.
     rewrite Rec.of_to_id; auto.
     apply block_upd_well_formed; auto; apply Rec.of_word_length.
 
-    rewrite fold_right_app; simpl; rewrite app_nil_r.
-    rewrite fold_right_app_init; f_equal; auto.
+    apply concat_app_nil.
 
     Grab Existential Variables.
     exact $0. exact emp. exact BFILE.bfile0.

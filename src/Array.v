@@ -458,8 +458,8 @@ Qed.
 
 Lemma updN_concat : forall t a b m l (v:t), b < m ->
   Forall (fun sl => length sl = m) l ->
-  updN (fold_right (@app _) nil l) (b + a * m) v =
-    fold_right (@app _) nil (updN l a (updN (selN l a nil) b v)).
+  updN (concat l) (b + a * m) v =
+    concat (updN l a (updN (selN l a nil) b v)).
 Proof.
   (* XXX this is almost exactly the same as selN_concat *)
   induction a; intros; destruct l; simpl; inversion H0.
