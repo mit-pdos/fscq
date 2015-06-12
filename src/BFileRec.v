@@ -722,8 +722,7 @@ Section RECBFILE.
   Fixpoint apply_chunks (chunks: list chunk) (ilist: list item) : list item :=
   match chunks with
   | nil => ilist
-  | ck :: xs => let ilist' := apply_chunks xs ilist in
-    apply_chunk ck ilist'
+  | ck :: xs => apply_chunks xs (apply_chunk ck ilist)
   end.
 
   End chunking.
