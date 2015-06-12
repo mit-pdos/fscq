@@ -412,6 +412,19 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
   >>} create fsxp dnum name mscs >> recover.
 Proof.
   unfold forall_helper; intros.
+  eexists.
+  intros.
+  eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx; eauto with prog.
+
+  cancel; eauto.
+  step.
+  autorewrite with crash_xform.
+  rewrite H3.
+  cancel.
+  step.
+  left.
+  (* is a2 = v? *)
 Admitted.
 
 Definition mksock T fsxp dnum name mscs rx : prog T :=
