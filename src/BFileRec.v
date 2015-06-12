@@ -635,6 +635,107 @@ Section RECBFILE.
     mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v' mscs;
     rx mscs.
 
+  (* several facts about concat on lists of equally-sized
+     (homogeneous) lists *)
+  Lemma concat_hom_length : forall A (lists: list (list A)) k,
+    Forall (fun sublist => length sublist = k) lists ->
+    length (concat lists) = (length lists) * k.
+  Proof.
+    intros.
+    induction lists.
+    rewrite concat_nil.
+    simpl; reflexivity.
+    rewrite concat_cons.
+    rewrite app_length.
+    simpl.
+    rewrite IHlists.
+    rewrite Forall_forall in H.
+    replace k with (length a).
+    reflexivity.
+    apply H.
+    unfold In. left; reflexivity.
+    apply Forall_cons2 with a.
+    assumption.
+  Qed.
+
+  Lemma concat_hom_firstn : forall A (lists: list (list A)) n k,
+    Forall (fun sublist => length sublist = k) lists ->
+    firstn (n * k) (concat lists) = concat (firstn n lists).
+  Proof.
+    intros.
+    generalize dependent n.
+    induction lists; intros; simpl.
+    repeat (rewrite firstn_nil).
+    reflexivity.
+    case_eq n; intros.
+     + reflexivity.
+     + rewrite firstn_cons.
+       rewrite concat_cons.
+       assert (H' := H).
+       rewrite Forall_forall in H'.
+       assert (length a = k) as Hk.
+       apply H'. left; reflexivity.
+       replace (S n0 * k) with (k + n0 * k).
+       rewrite <- Hk.
+       rewrite firstn_app_r.
+       f_equal.
+       rewrite Hk.
+       apply IHlists.
+       apply Forall_cons2 in H.
+       assumption.
+       ring_simplify; reflexivity.
+  Qed.
+
+  (* copied concat_hom_firstn proof, s/firstn/skipn/
+     (except for firstn_cons, that becomes simpl) *)
+  Lemma concat_hom_skipn : forall A (lists: list (list A)) n k,
+    Forall (fun sublist => length sublist = k) lists ->
+    skipn (n * k) (concat lists) = concat (skipn n lists).
+  Proof.
+    intros.
+    generalize dependent n.
+    induction lists; intros; simpl.
+    repeat (rewrite skipn_nil).
+    reflexivity.
+    case_eq n; intros.
+     + reflexivity.
+     + simpl.
+       assert (H' := H).
+       rewrite Forall_forall in H'.
+       assert (length a = k) as Hk.
+       apply H'. left; reflexivity.
+       replace (S n0 * k) with (k + n0 * k).
+       rewrite <- Hk.
+       rewrite skipn_app_r.
+       f_equal.
+       rewrite Hk.
+       apply IHlists.
+       apply Forall_cons2 in H.
+       assumption.
+       ring_simplify; reflexivity.
+  Qed.
+
+  Lemma concat_hom_updN_first_skip : forall A n k (lists: list (list A)) (l: list A),
+    Forall (fun sublist => length sublist = k) lists ->
+    n < length lists ->
+    firstn (n * k) (concat lists) ++ l ++
+    skipn (n * k + k) (concat lists) = concat (updN lists n l).
+  Proof.
+    intros.
+    rewrite updN_firstn_skipn by assumption.
+    rewrite concat_app.
+    rewrite concat_cons.
+    rewrite concat_app.
+    rewrite concat_nil.
+    rewrite app_nil_l.
+    f_equal.
+    apply concat_hom_firstn; assumption.
+    f_equal.
+    replace (n * k + k) with ((n + 1) * k).
+    apply concat_hom_skipn; assumption.
+    ring_simplify; reflexivity.
+  Qed.
+
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
   {< m mbase F Fm A f flist Fx v ilist,
     PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
