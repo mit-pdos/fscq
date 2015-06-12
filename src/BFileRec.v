@@ -1095,6 +1095,20 @@ Section RECBFILE.
   >} bf_update_range fsxp inum off w mscs.
   Proof.
     unfold bf_update_range.
+    hoare.
+
+    admit. (* just need chunk blocknum to be inbounds (in BFData), presumably *)
+
+    admit. (* the big connection: need arrayN off newdata in memory formed by
+            apply_chunks (chunkList off newdata) ilist *)
+    apply LOG.activetxn_would_recover_old.
+
+    Grab Existential Variables.
+    (* two admits above *)
+    admit. admit.
+    exact $0.
+    exact emp.
+    exact tt.
   Admitted.
 
   Lemma map_rep_valu_id : forall x,
