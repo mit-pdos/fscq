@@ -23,7 +23,7 @@ Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Bytes.
 Require Import ProofIrrelevance.
-Require Import BFileRec.
+Require Import BFileRec Rounding.
 
 Set Implicit Arguments.
 Import ListNotations.
