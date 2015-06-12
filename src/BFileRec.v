@@ -1051,19 +1051,21 @@ Section RECBFILE.
     exact ($ 0).
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (bf_put_chunk _ _ _ _ _) _) => apply bf_put_chunk_ok : prog.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
     let chunks := chunkList off w in
     let^ (mscs) <- ForEach ck rest chunks
-      Ghost [ F mbase Fm A ]
+      Ghost [ F mbase Fm A ilist ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant exists m' flist' f' ilist',
         LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-        [[ array_item_file f' ilist' ]]
+        [[ array_item_file f' ilist' ]] *
+        [[ apply_chunks rest ilist' = apply_chunks chunks ilist ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -1083,10 +1085,10 @@ Section RECBFILE.
     [[ length olddata = count ]] *
     [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]]
     POST RET: ^(mscs)
-      exists m' f' ilist',
+      exists m' f' flist' ilist',
         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-        [[ (A * #inum |-> f')%pred (list2nmem flist) ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ array_item_file f' ilist' ]] *
         [[ (Fx * arrayN off newdata)%pred (list2nmem ilist') ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
