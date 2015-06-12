@@ -462,12 +462,12 @@ Section RECBFILE.
   Next Obligation.
     apply Nat.lt_le_incl.
     apply boff_mod_ok.
-  Defined.
+  Qed.
   (** decreasing obligation produced by [{measure count}] *)
   Next Obligation.
     assert (Hblock := boff_mod_ok off).
     omega.
-  Defined.
+  Qed.
 
   Program Definition preamble (off count:nat) (w: items count) : chunk :=
   let blocknum := off / block_items in
@@ -481,7 +481,7 @@ Section RECBFILE.
       rewrite H in *;
       simpl in *;
       try omega.
-  Defined.
+  Qed.
   Next Obligation.
     assert (Hblock := boff_mod_ok off).
     case_eq (off mod block_items); intros;
@@ -553,7 +553,7 @@ Section RECBFILE.
   Next Obligation.
     rewrite Nat.sub_0_r.
     min_cases.
-  Defined.
+  Qed.
   Next Obligation.
     rewrite Nat.mul_comm.
     rewrite <- Nat.mod_eq by auto.
@@ -561,10 +561,10 @@ Section RECBFILE.
     apply Nat.mod_upper_bound.
     apply items_per_valu_not_0'.
     min_cases.
-  Defined.
+  Qed.
   Next Obligation.
     omega.
-  Defined.
+  Qed.
 
   Theorem postscript_covers : forall off count (w: items count),
   let wend := off + count in
