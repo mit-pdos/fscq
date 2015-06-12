@@ -364,6 +364,56 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     end
   end.
 
+Theorem create_ok : forall fsxp dnum name mscs,
+  {< m pathname Fm Ftop tree tree_elem,
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs,r)
+          [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+           (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+            exists inum tree', [[ r = Some inum ]] *
+            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
+                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+            exists m' inum tree',
+            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
+                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+  >} create fsxp dnum name mscs.
+Proof.
+  unfold create.
+  hoare.
+Admitted.
+
+Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
+
+Theorem create_recover_ok : forall fsxp dnum name mscs,
+  {<< F mbase m pathname Fm Ftop tree tree_elem,
+  PRE     [[ cachesize <> 0 ]] *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs,r)
+          [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+            exists inum tree', [[ r = Some inum ]] *
+            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
+                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+  REC RET:^(mscs,fsxp)
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+           exists inum tree' inum,
+            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
+                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m) ]]
+  >>} create fsxp dnum name mscs >> recover.
+Proof.
+  unfold forall_helper; intros.
+Admitted.
+
 Definition mksock T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, oi) <- DIRTREE.mkfile fsxp dnum name mscs;
