@@ -398,6 +398,31 @@ Section RECBFILE.
     exact v.
   Defined.
 
+  Definition valu2block (v:valu) :  block.
+    unfold block.
+    rewrite blocksz_ok in v.
+    apply (@Rec.of_word blocktype v).
+  Defined.
+
+  Definition block2valu (b:block) : valu.
+    unfold block in b.
+    rewrite blocksz_ok.
+    apply (Rec.to_word b).
+  Defined.
+
+  Lemma block_valu_inv : forall v,
+    block2valu (valu2block v) = v.
+  Proof.
+    intros.
+    unfold block2valu, valu2block.
+    rewrite Rec.to_of_id.
+    unfold eq_rec_r.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    reflexivity.
+  Qed.
+
   Program Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
     match count with
     | O => nil
@@ -626,6 +651,64 @@ Section RECBFILE.
   Definition items_to_list count (w: items count) : list item :=
     map Rec.of_word (isplit_list w).
 
+  Definition update_block_chunk (b:block) (ck:chunk) : block :=
+  let boff := chunk_boff ck in
+  let bend := chunk_bend ck in
+  let sz := bend - boff in
+  let x := firstn boff b in
+  let z := skipn bend b in
+  x ++ items_to_list (chunk_data ck) ++ z.
+
+  Lemma isplit1_firstn : forall (b:block) n n2 H,
+    items_to_list (isplit1_dep n n2 (valu2items (rep_block b)) H) = firstn n b.
+  Proof.
+    intros.
+    unfold items_to_list, isplit1_dep.
+    generalize dependent n2.
+    generalize dependent b.
+    induction n; intros; simpl.
+    - reflexivity.
+    - replace (S (n + n2)) with (n + S n2) by omega.
+      assert (block_items = n + S n2) as Hn2 by omega.
+
+      destruct b.
+      admit.
+      assert (IHn2 := IHn b (S n2) Hn2).
+      rewrite <- IHn2.
+      f_equal.
+      admit.
+  Admitted.
+
+  Lemma isplit2_skipn : forall (b:block) n n2 H,
+    items_to_list (isplit2_dep n n2 (valu2items (rep_block b)) H) = skipn n b.
+  Proof.
+    intros.
+  Admitted.
+
+  Lemma icombine_app : forall n1 n2 (is1 : items n1) (is2 : items n2),
+    items_to_list (icombine is1 is2) = items_to_list is1 ++ items_to_list is2.
+  Proof.
+    intros.
+    unfold icombine.
+    unfold items_to_list.
+    rewrite <- map_app.
+    f_equal.
+    generalize dependent n2.
+    induction n1; intros; simpl.
+  Admitted.
+
+  Lemma update_chunk_valu_block : forall b ck,
+    update_block_chunk b ck =
+    valu2block (update_chunk (rep_block b) ck).
+  Proof.
+    intros.
+    unfold rep_block.
+    unfold RecArray.rep_block.
+    unfold wreclen_to_valu.
+    unfold valu2block.
+    unfold eq_rec.
+  Admitted.
+
   (** TODO: prove update_chunk_ok: something in separation logic about what
   update_chunk does to the item lists *)
 
@@ -645,11 +728,6 @@ Section RECBFILE.
 
   End chunking.
 
-  Definition valu2block (v:valu) :  block.
-    unfold block.
-    rewrite blocksz_ok in v.
-    apply (@Rec.of_word blocktype v).
-  Defined.
 
   (** Read/modify/write a chunk in place. **)
   Definition bf_put_chunk T lxp ixp inum (ck:chunk) mscs rx : prog T :=
@@ -759,6 +837,124 @@ Section RECBFILE.
     ring_simplify; reflexivity.
   Qed.
 
+  Lemma firstn_sum_split : forall A n off (l: list A),
+    firstn (n+off) l = firstn n l ++ firstn off (skipn n l).
+  Proof.
+    intros.
+    generalize dependent l.
+    induction n; intros; simpl.
+    - reflexivity.
+    - induction l; simpl.
+      + rewrite firstn_nil.
+        reflexivity.
+      + f_equal.
+        apply IHn.
+  Qed.
+
+  Lemma skipn_sum_split : forall A n k (l: list A),
+    skipn n l = firstn k (skipn n l) ++ skipn (n+k) l.
+  Proof.
+    intros.
+    generalize dependent l.
+    induction n; intros; simpl.
+    - symmetry; apply firstn_skipn.
+    - induction l; simpl.
+      + rewrite firstn_nil.
+        reflexivity.
+      + rewrite <- skipn_skipn'.
+        symmetry; apply firstn_skipn.
+  Qed.
+
+  Lemma skipn_sum_split' : forall A n off1 off2 (l: list A),
+    off1 <= off2 ->
+    skipn (n+off1) l =
+      firstn (off2 - off1) (skipn (n+off1) l) ++ skipn (n+off2) l.
+  Proof.
+    intros.
+    replace (n+off2) with (n+off1 + (off2 - off1)) by omega.
+    apply skipn_sum_split.
+  Qed.
+
+  Lemma concat_hom_subselect_firstn : forall A n off k (l: list (list A)) (def: list A),
+    Forall (fun sublist => length sublist = k) l ->
+    off <= k ->
+    n < length l ->
+    firstn off (selN l n def) = firstn off (concat (skipn n l)).
+  Proof.
+    intros.
+    generalize dependent off.
+    generalize dependent l.
+    induction n; intros; simpl.
+    induction l; simpl.
+    inversion H1. (* impossible *)
+    rewrite Forall_forall in H.
+    assert (length a = k).
+    apply H.
+    left; reflexivity.
+    (* TODO: firstn_app_l should be in Array.v, not Log.v *)
+    symmetry; apply LOG.firstn_app_l.
+    rewrite H2.
+    assumption.
+    destruct l; simpl.
+    inversion H1. (* impossible *)
+    apply IHn; firstorder.
+    eapply Forall_cons2; eassumption.
+  Qed.
+
+  Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: list A),
+    Forall (fun sublist => length sublist = k) l ->
+    off <= k ->
+    n < length l ->
+    skipn off (selN l n def) =
+      firstn (k - off) (skipn off (concat (skipn n l))).
+   Proof.
+    intros.
+    generalize dependent off.
+    generalize dependent l.
+    induction n; intros; simpl.
+    induction l; simpl.
+    inversion H1. (* impossible *)
+    rewrite Forall_forall in H.
+    assert (length a = k).
+    apply H.
+    left; reflexivity.
+    rewrite skipn_app_l by omega.
+    rewrite firstn_app.
+    reflexivity.
+    rewrite skipn_length; omega.
+    destruct l; simpl.
+    inversion H1. (* impossible *)
+    apply IHn; firstorder.
+    eapply Forall_cons2; eassumption.
+  Qed.
+
+  Lemma update_chunk_parts : forall (ck:chunk) (vs_nested: list block) def,
+    Forall (fun sublist => length sublist = block_items) vs_nested ->
+    let blocknum := # (chunk_blocknum ck) in
+    blocknum < length vs_nested ->
+    let boff := chunk_boff ck in
+    let bend := chunk_bend ck in
+    let data := chunk_data ck in
+    valu2block (update_chunk (rep_block (selN vs_nested blocknum def)) ck) =
+    firstn boff (skipn (blocknum*block_items) (concat vs_nested)) ++
+    items_to_list data ++
+    firstn (block_items - bend) (skipn (blocknum*block_items + bend) (concat vs_nested)).
+  Proof.
+    intros.
+    rewrite <- skipn_skipn'.
+    rewrite concat_hom_skipn by assumption.
+    rewrite <- update_chunk_valu_block.
+    unfold update_block_chunk.
+    f_equal.
+    unfold boff.
+    apply concat_hom_subselect_firstn with (k := block_items); try assumption.
+      apply (chunk_boff_ok ck).
+    f_equal.
+    unfold bend.
+    apply concat_hom_subselect_skipn with (k := block_items); try assumption.
+      apply (chunk_bend_ok ck).
+  Qed.
+
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
   {< m mbase F Fm A f flist Fx v ilist,
     PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
@@ -802,7 +998,7 @@ Section RECBFILE.
     (* array_item_pairs *)
     unfold array_item_pairs.
     rewrite map_updN.
-    assert (update_chunk v8 ck = rep_block (valu2block (update_chunk  v8 ck))).
+    assert (update_chunk v8 ck = rep_block (valu2block (update_chunk v8 ck))).
       unfold rep_block, valu2block.
       unfold RecArray.rep_block.
       rewrite Rec.to_of_id.
@@ -832,7 +1028,30 @@ Section RECBFILE.
 
     (* ilist' = concat vs_nested' *)
     unfold apply_chunk.
-  Admitted.
+    assert (# (chunk_blocknum ck) < length vs_nested) as Hblocknum_bound.
+    rewrite Hrep1.
+    eapply list2nmem_inbound.
+    eassumption.
+    apply well_formed_length in H13.
+    rewrite <- concat_hom_updN_first_skip with (k := block_items) by assumption.
+    rewrite firstn_sum_split.
+    rewrite skipn_sum_split' with (off2 := block_items) by (apply (chunk_bend_ok ck)).
+    repeat (rewrite app_assoc).
+    f_equal.
+    repeat (rewrite app_assoc_reverse).
+    f_equal.
+    assert (v8 = rep_block (selN vs_nested (# (chunk_blocknum ck)) (valu2block ($ 0)))).
+    apply list2nmem_array_eq in H3.
+    rewrite H3 in H5.
+    eapply list2nmem_sel in H5.
+    erewrite selN_map in H5 by assumption.
+    apply H5.
+    rewrite H7.
+    symmetry; apply update_chunk_parts; assumption.
+
+    Grab Existential Variables.
+    exact ($ 0).
+  Qed.
 
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)

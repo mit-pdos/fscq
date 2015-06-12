@@ -1297,6 +1297,16 @@ Proof.
   rewrite app_length; simpl; omega.
 Qed.
 
+Lemma skipn_app_l : forall T i (a b : list T),
+  i <= length a ->
+  skipn i (a ++ b) = (skipn i a) ++ b.
+Proof.
+  intros.
+  generalize dependent a.
+  induction i; intros; firstorder.
+  induction a; simpl; firstorder.
+  inversion H.
+Qed.
 
 Lemma removeN_app_r : forall T (b a : list T) i,
   removeN (a ++ b) (length a + i) = a ++ (removeN b i).
