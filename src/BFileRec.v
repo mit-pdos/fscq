@@ -334,6 +334,29 @@ Section RECBFILE.
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
     vs = concat vs_nested.
 
+  Lemma well_formed_length : forall (vs : list block),
+    Forall Rec.well_formed vs ->
+    Forall (fun sublist => length sublist = block_items) vs.
+  Proof.
+    intros.
+    rewrite Forall_forall.
+    intros.
+    rewrite Forall_forall in H.
+    apply H in H0.
+    apply H0.
+  Qed.
+
+  Corollary block_length_is : forall x (vs : list block),
+    Forall Rec.well_formed vs
+    -> In x vs
+    -> length x = # items_per_valu.
+  Proof.
+    intros.
+    apply well_formed_length in H.
+    rewrite Forall_forall in H.
+    apply H; assumption.
+  Qed.
+
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
 
   Definition icombine sz1 (is1:items sz1) sz2 (is2:items sz2) : items (sz1+sz2).
@@ -1197,16 +1220,7 @@ Section RECBFILE.
   Hint Resolve wmod_upper_bound.
   Hint Resolve upd_divmod.
 
-  Lemma block_length_is : forall x (vs : list block),
-    Forall Rec.well_formed vs
-    -> In x vs
-    -> length x = # items_per_valu.
-  Proof.
-    intros.
-    rewrite Forall_forall in H.
-    apply H in H0.
-    apply H0.
-  Qed.
+
 
   Lemma fold_right_add_const : forall (vs : list block),
     Forall Rec.well_formed vs ->
