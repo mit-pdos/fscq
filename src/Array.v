@@ -1275,6 +1275,16 @@ Proof.
   rewrite app_length; simpl; omega.
 Qed.
 
+Lemma firstn_app_l: forall A (a b: list A) n,
+  n <= length a ->
+  firstn n (a ++ b) = firstn n a.
+Proof.
+  induction a; intros; simpl in *.
+  inversion H. auto.
+  destruct n; simpl in *; auto.
+  rewrite IHa by omega; auto.
+Qed.
+
 Lemma skipn_app : forall T (a b : list T),
   skipn (length a) (a ++ b) = b.
 Proof.

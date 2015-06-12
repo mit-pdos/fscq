@@ -1168,16 +1168,6 @@ Module LOG.
     auto.
   Qed.
 
-  Lemma firstn_app_l: forall A (al ar: list A) n,
-    n <= length al ->
-    firstn n (al ++ ar) = firstn n al.
-  Proof.
-    induction al.
-    intros; simpl in *. inversion H. auto.
-    intros; destruct n; simpl in *; auto.
-    rewrite IHal by omega; auto.
-  Qed.
-
   Lemma combine_map_fst_snd: forall A B (l: list (A * B)),
     List.combine (map fst l) (map snd l) = l.
   Proof.

@@ -891,8 +891,7 @@ Section RECBFILE.
     assert (length a = k).
     apply H.
     left; reflexivity.
-    (* TODO: firstn_app_l should be in Array.v, not Log.v *)
-    symmetry; apply LOG.firstn_app_l.
+    symmetry; apply firstn_app_l.
     rewrite H2.
     assumption.
     destruct l; simpl.
