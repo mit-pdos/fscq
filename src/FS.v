@@ -390,7 +390,7 @@ Admitted.
 Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
 
 Theorem create_recover_ok : forall fsxp dnum name mscs,
-  {<< F mbase m pathname Fm Ftop tree tree_elem,
+  {<< m pathname Fm Ftop tree tree_elem,
   PRE     [[ cachesize <> 0 ]] *
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
           [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
@@ -405,7 +405,7 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
   REC RET:^(mscs,fsxp)
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-           exists inum tree' inum,
+           exists inum tree',
             [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
                        ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m) ]]
