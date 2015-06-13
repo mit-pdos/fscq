@@ -874,25 +874,32 @@ Section RECBFILE.
 
     apply list2nmem_array_pick.
     set (w := @Rec.to_word (Rec.ArrayF itemtype count) newdata) in *.
-    assert (In elem (chunkList off w)).
-    rewrite <- H3.
-    apply in_app_middle.
-    unfold array_item_file in H14.
     inversion H14 as [vs_nested Hrep].
     inversion Hrep as [Hrep1 Hrep23]; clear Hrep.
     inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
-    (* need to prove all outputs of chunkList satisfy some bound on blocknum *)
-    admit.
+    eapply le_lt_trans.
+    assert (Hbound := @chunk_blocknum_bound off count w).
+    rewrite Forall_forall in Hbound.
+    apply Hbound.
+    admit. (* off appears in arrayN on ilist, whose length is the length of a file
+          -> off is goodSized since files are of bounded length *)
+    rewrite <- H3.
+    apply in_app_middle.
+    admit. (* arrayN off newdata holds in ilist', so
+              off + count < length ilist', and
+              (length ilist') * block_items = length (BFILE.BFData f')
+                due to rep function *)
 
     admit. (* the big connection: need arrayN off newdata in memory formed by
             apply_chunks (chunkList off newdata) ilist *)
     apply LOG.activetxn_would_recover_old.
 
     Grab Existential Variables.
-    (* two admits above *)
+    (* two of the above admits *)
     admit. admit.
     exact $0.
-    exact emp.
+    (* the last above admit *)
+    admit.
     exact tt.
   Admitted.
 
