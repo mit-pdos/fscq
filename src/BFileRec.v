@@ -112,6 +112,8 @@ Section RECBFILE.
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
     vs = concat vs_nested.
 
+  Section RepImplications.
+
   Lemma well_formed_length : forall (vs : list block),
     Forall Rec.well_formed vs ->
     Forall (fun sublist => length sublist = block_items) vs.
@@ -134,6 +136,72 @@ Section RECBFILE.
     rewrite Forall_forall in H.
     apply H; assumption.
   Qed.
+
+  Lemma fold_right_add_const : forall (vs : list block),
+    Forall Rec.well_formed vs ->
+    fold_right Nat.add 0 (map (length (A:=item)) vs) = length vs * #items_per_valu.
+  Proof.
+    induction vs; intros; simpl; auto.
+    erewrite IHvs; auto.
+    simpl in H.
+    f_equal.
+    eapply block_length_is; eauto.
+    apply in_cons_head.
+    eapply Forall_cons2.
+    eassumption.
+  Qed.
+
+  Lemma block_length_fold_right_nat : forall (bl : list block),
+    Forall Rec.well_formed bl ->
+    length (concat bl) =
+      (length bl) * block_items.
+  Proof.
+    intros.
+    rewrite concat_length.
+    rewrite fold_right_add_const by auto.
+    auto.
+  Qed.
+
+  Lemma block_length_fold_right : forall (bl : list block),
+    Forall Rec.well_formed bl
+    -> $ (length (concat bl))
+       = ($ (length bl) ^* items_per_valu)%word.
+  Proof.
+    intros.
+    rewrite block_length_fold_right_nat by assumption.
+    rewrite natToWord_mult.
+    unfold block_items.
+    rewrite natToWord_wordToNat; reflexivity.
+  Qed.
+
+  Lemma array_items_block_sized : forall f vs,
+    array_item_file f vs ->
+    length (BFILE.BFData f) * block_items = length vs.
+  Proof.
+    intros.
+    inversion H.
+    inversion H0; clear H0. inversion H2; clear H2.
+    unfold array_item_pairs in H0.
+    assert (length vs = length x * block_items).
+    rewrite H3.
+    destruct_lift H0.
+    apply block_length_fold_right_nat; assumption.
+    rewrite <- H1.
+    rewrite H2.
+    reflexivity.
+  Qed.
+
+  Corollary array_items_num_blocks : forall f vs,
+    array_item_file f vs ->
+    length (BFILE.BFData f) = divup (length vs) block_items.
+  Proof.
+    intros.
+    rewrite <- (array_items_block_sized H).
+    symmetry; apply divup_mul.
+    apply items_per_valu_not_0'.
+  Qed.
+
+  End RepImplications.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
 
@@ -1228,69 +1296,7 @@ Section RECBFILE.
 
 
 
-  Lemma fold_right_add_const : forall (vs : list block),
-    Forall Rec.well_formed vs ->
-    fold_right Nat.add 0 (map (length (A:=item)) vs) = length vs * #items_per_valu.
-  Proof.
-    induction vs; intros; simpl; auto.
-    erewrite IHvs; auto.
-    simpl in H. 
-    f_equal.
-    eapply block_length_is; eauto.
-    apply in_cons_head.
-    eapply Forall_cons2.
-    eassumption.
-  Qed.
 
-  Lemma block_length_fold_right_nat : forall (bl : list block),
-    Forall Rec.well_formed bl ->
-    length (concat bl) =
-      (length bl) * block_items.
-  Proof.
-    intros.
-    rewrite concat_length.
-    rewrite fold_right_add_const by auto.
-    auto.
-  Qed.
-
-  Lemma block_length_fold_right : forall (bl : list block),
-    Forall Rec.well_formed bl
-    -> $ (length (concat bl))
-       = ($ (length bl) ^* items_per_valu)%word.
-  Proof.
-    intros.
-    rewrite block_length_fold_right_nat by assumption.
-    rewrite natToWord_mult.
-    unfold block_items.
-    rewrite natToWord_wordToNat; reflexivity.
-  Qed.
-
-  Lemma array_items_block_sized : forall f vs,
-    array_item_file f vs ->
-    length (BFILE.BFData f) * block_items = length vs.
-  Proof.
-    intros.
-    inversion H.
-    inversion H0; clear H0. inversion H2; clear H2.
-    unfold array_item_pairs in H0.
-    assert (length vs = length x * block_items).
-    rewrite H3.
-    destruct_lift H0.
-    apply block_length_fold_right_nat; assumption.
-    rewrite <- H1.
-    rewrite H2.
-    reflexivity.
-  Qed.
-
-  Corollary array_items_num_blocks : forall f vs,
-    array_item_file f vs ->
-    length (BFILE.BFData f) = divup (length vs) block_items.
-  Proof.
-    intros.
-    rewrite <- (array_items_block_sized H).
-    symmetry; apply divup_mul.
-    apply items_per_valu_not_0'.
-  Qed.
 
   Lemma lt_div_mono : forall a b c,
     b <> 0 -> a < c -> a / b < c.
