@@ -530,10 +530,9 @@ Section RECBFILE.
     rewrite Forall_forall in H.
     replace k with (length a).
     reflexivity.
-    apply H.
-    unfold In. left; reflexivity.
-    apply Forall_cons2 with a.
-    assumption.
+    apply H; apply in_cons_head.
+    eapply Forall_cons2.
+    eassumption.
   Qed.
 
   Lemma concat_hom_firstn : forall A (lists: list (list A)) n k,
@@ -552,16 +551,15 @@ Section RECBFILE.
        assert (H' := H).
        rewrite Forall_forall in H'.
        assert (length a = k) as Hk.
-       apply H'. left; reflexivity.
-       replace (S n0 * k) with (k + n0 * k).
+       apply H'; apply in_cons_head.
+       replace (S n0 * k) with (k + n0 * k) by auto.
        rewrite <- Hk.
        rewrite firstn_app_r.
        f_equal.
        rewrite Hk.
        apply IHlists.
-       apply Forall_cons2 in H.
-       assumption.
-       ring_simplify; reflexivity.
+       eapply Forall_cons2.
+       eassumption.
   Qed.
 
   (* copied concat_hom_firstn proof, s/firstn/skipn/
@@ -582,15 +580,14 @@ Section RECBFILE.
        rewrite Forall_forall in H'.
        assert (length a = k) as Hk.
        apply H'. left; reflexivity.
-       replace (S n0 * k) with (k + n0 * k).
+       replace (S n0 * k) with (k + n0 * k) by auto.
        rewrite <- Hk.
        rewrite skipn_app_r.
        f_equal.
        rewrite Hk.
        apply IHlists.
-       apply Forall_cons2 in H.
-       assumption.
-       ring_simplify; reflexivity.
+       eapply Forall_cons2.
+       eassumption.
   Qed.
 
   Lemma concat_hom_updN_first_skip : forall A n k (lists: list (list A)) (l: list A),
@@ -666,8 +663,7 @@ Section RECBFILE.
     inversion H1. (* impossible *)
     rewrite Forall_forall in H.
     assert (length a = k).
-    apply H.
-    left; reflexivity.
+    apply H; apply in_cons_head.
     symmetry; apply firstn_app_l.
     rewrite H2.
     assumption.
@@ -692,8 +688,7 @@ Section RECBFILE.
     inversion H1. (* impossible *)
     rewrite Forall_forall in H.
     assert (length a = k).
-    apply H.
-    left; reflexivity.
+    apply H; apply in_cons_head.
     rewrite skipn_app_l by omega.
     rewrite firstn_app.
     reflexivity.
@@ -1242,10 +1237,9 @@ Section RECBFILE.
     simpl in H. 
     f_equal.
     eapply block_length_is; eauto.
-    simpl; left; auto.
-    rewrite Forall_forall in *.
-    intros; apply H; auto.
-    simpl; right; auto.
+    apply in_cons_head.
+    eapply Forall_cons2.
+    eassumption.
   Qed.
 
   Lemma block_length_fold_right_nat : forall (bl : list block),

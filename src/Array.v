@@ -188,6 +188,14 @@ Proof.
   induction l; destruct n; simpl; firstorder.
 Qed.
 
+Lemma in_cons_head : forall A l (a:A),
+  In a (a :: l).
+Proof.
+  intros.
+  constructor.
+  reflexivity.
+Qed.
+
 Lemma firstn_updN : forall T (v : T) vs i j,
   i <= j
   -> firstn i (updN vs j v) = firstn i vs.
