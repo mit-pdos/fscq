@@ -17,8 +17,9 @@ Record log_xparams := {
   LogHeader : addr; (* Store the header here *)
 
   LogDescriptor : addr; (* Start of descriptor region in log *)
-  LogData : addr; (* Start of data region in log *)
-  LogLen : addr  (* Maximum number of entries in log; length but still use addr type *)
+  LogDescLen : addr; (* Number of descriptor blocks *)
+  LogData : addr;    (* Start of data region in log *)
+  LogLen : addr      (* Maximum number of entries in log; length but still use addr type *)
 }.
 
 Record balloc_xparams := {
@@ -44,6 +45,7 @@ Definition superblock_type : Rec.type := Rec.RecF ([
     ("data_start",  Rec.WordF addrlen);
     ("log_header",  Rec.WordF addrlen);
     ("log_descr",   Rec.WordF addrlen);
+    ("log_descrlen",   Rec.WordF addrlen);
     ("log_data",    Rec.WordF addrlen);
     ("log_len",     Rec.WordF addrlen);
 
@@ -96,7 +98,8 @@ Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) : fs_xpa
   let sb := ((Rec.of_word sbp) :-> "sb") in
   let lxp := Build_log_xparams
     (sb :-> "data_start") (sb :-> "log_header")
-    (sb :-> "log_descr") (sb :-> "log_data") (sb :-> "log_len") in
+    (sb :-> "log_descr") (sb :-> "log_descrlen")
+    (sb :-> "log_data") (sb :-> "log_len") in
   let ixp := Build_inode_xparams
     (sb :-> "ixstart") (sb :-> "ixlen") in
   let dbxp := Build_balloc_xparams
