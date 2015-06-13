@@ -317,6 +317,19 @@ Section RECBFILE.
 
   Local Obligation Tactic := Tactics.program_simpl; try min_cases.
 
+  Program Definition preamble (off count':nat) (w: items (S count')) : chunk :=
+    let count := count' + 1 in
+    let blocknum := off / block_items in
+    let boff := off mod block_items in
+    let bend := Nat.min (boff + count) block_items in
+    let bsize := bend - boff in
+    @Build_chunk ($ blocknum) boff bend
+      (isplit1_dep bsize (count-bsize) w _) _ _.
+  Next Obligation.
+    apply Nat.lt_le_incl.
+    apply boff_mod_ok.
+  Qed.
+
   (** split w into a list of chunks **)
   Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
     match count with
@@ -326,19 +339,61 @@ Section RECBFILE.
       let boff := off mod block_items in
       let bend := Nat.min (boff + count) block_items in
       let bsize := bend - boff in
-      @Build_chunk ($ blocknum) boff bend
-        (isplit1_dep bsize (count-bsize) w _) _ _ ::
+      @preamble off count' w ::
         chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w _)
     end.
-  Next Obligation.
-    apply Nat.lt_le_incl.
-    apply boff_mod_ok.
-  Qed.
   (** decreasing obligation produced by [{measure count}] *)
   Next Obligation.
     assert (Hblock := boff_mod_ok off).
     omega.
+  Defined.
+
+  Lemma chunkList_0 : forall off (w: items 0),
+    chunkList off w = nil.
+  Proof.
+    intros.
+    reflexivity.
   Qed.
+
+  Lemma chunkList_head : forall off count (w: items (S count)) ck l,
+    ck :: l = chunkList off w ->
+    ck = preamble off w.
+  Proof.
+    intros.
+    (* this proof seems to be correct, but CoqIDE gets out of sync
+    and coqtop crashes
+    inversion H.
+    rewrite H1.
+    reflexivity.
+    *)
+  Admitted.
+
+  Theorem chunk_blocknum_bound : forall off count (w: items count),
+    goodSize addrlen off ->
+    let bound := (off + count) / block_items in
+    Forall (fun ck => # (chunk_blocknum ck) <= bound) (chunkList off w).
+  Proof.
+    intros.
+    rewrite Forall_forall; intros.
+    remember (chunkList off w) as chunks.
+    destruct chunks.
+    inversion H0.
+    induction count. (* really need strong induction *)
+    rewrite chunkList_0 in Heqchunks.
+    inversion Heqchunks.
+    apply chunkList_head in Heqchunks.
+    subst.
+    inversion H0.
+    rewrite <- H1.
+    simpl.
+    rewrite wordToNat_natToWord_idempotent'.
+    unfold bound.
+    apply Nat.div_le_mono; auto.
+    omega.
+    apply goodSize_trans with off.
+    apply div_le; auto.
+    assumption.
+  Admitted.
 
   Program Definition preamble (off count:nat) (w: items count) : chunk :=
   let blocknum := off / block_items in
@@ -923,8 +978,10 @@ Section RECBFILE.
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ array_item_file f ilist ]] *
     [[ (Fx * arrayN off olddata)%pred (list2nmem ilist) ]] *
-    [[ length olddata = count ]] *
-    [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]]
+    [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]] *
+    (* automation maintains this fact properly, and length newdata
+       is easily count from its construction from w *)
+    [[ length olddata = length newdata ]]
     POST RET: ^(mscs)
       exists m' f' flist' ilist',
         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -938,7 +995,17 @@ Section RECBFILE.
     unfold bf_update_range.
     hoare.
 
-    admit. (* just need chunk blocknum to be inbounds (in BFData), presumably *)
+    apply list2nmem_array_pick.
+    set (w := @Rec.to_word (Rec.ArrayF itemtype count) newdata) in *.
+    assert (In elem (chunkList off w)).
+    rewrite <- H3.
+    apply in_app_middle.
+    unfold array_item_file in H14.
+    inversion H14 as [vs_nested Hrep].
+    inversion Hrep as [Hrep1 Hrep23]; clear Hrep.
+    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
+    (* need to prove all outputs of chunkList satisfy some bound on blocknum *)
+    admit.
 
     admit. (* the big connection: need arrayN off newdata in memory formed by
             apply_chunks (chunkList off newdata) ilist *)

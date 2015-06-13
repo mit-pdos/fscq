@@ -196,6 +196,13 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma in_app_middle : forall A l1 l2 (a:A),
+  In a (l1 ++ a :: l2).
+Proof.
+  intros.
+  induction l1; simpl; auto.
+Qed.
+
 Lemma firstn_updN : forall T (v : T) vs i j,
   i <= j
   -> firstn i (updN vs j v) = firstn i vs.
