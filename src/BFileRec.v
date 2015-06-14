@@ -201,6 +201,66 @@ Section RECBFILE.
     apply items_per_valu_not_0'.
   Qed.
 
+  Lemma lt_div_mono : forall a b c,
+    b <> 0 -> a < c -> a / b < c.
+  Proof.
+    intros.
+    replace b with (S (b - 1)) by omega.
+    apply Nat.div_lt_upper_bound; auto.
+    simpl.
+    apply le_plus_trans; auto.
+  Qed.
+
+  Lemma bfrec_bound_goodSize :
+    goodSize addrlen (INODE.blocks_per_inode * #items_per_valu).
+  Proof.
+    unfold goodSize.
+    assert (X := blocksz_ok).
+    unfold blocktype in X; simpl in X.
+    rewrite Nat.mul_comm in X.
+    apply Nat.div_unique_exact in X; auto.
+    rewrite X.
+
+    unfold addrlen.
+    eapply mult_pow2_bound_ex with (a := 10); try omega.
+    compute; omega.
+    apply lt_div_mono; auto.
+    eapply pow2_bound_mono.
+    apply valulen_bound.
+    omega.
+  Qed.
+
+  Lemma bfrec_bound' : forall F m bxp ixp (inum : addr) (bl : list block) fl,
+    length bl = length (BFILE.BFData (sel fl inum BFILE.bfile0))
+    -> Forall Rec.well_formed bl
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> # inum < length fl
+    -> length (concat bl)
+          <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
+  Proof.
+    intros.
+    erewrite wordToNat_natToWord_idempotent'.
+    subst; rewrite concat_length.
+    rewrite fold_right_add_const; auto.
+    apply mult_le_compat_r.
+    rewrite H.
+    eapply BFILE.bfdata_bound; eauto.
+    apply bfrec_bound_goodSize.
+  Qed.
+
+  Lemma bfrec_bound : forall F A m bxp ixp (inum : addr) fl f l,
+    array_item_file f l
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> (A * # inum |-> f)%pred (list2nmem fl)
+    -> length l <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
+  Proof.
+    unfold array_item_file, array_item_pairs; intros.
+    repeat deex.
+    destruct_lift' H.
+    rewrite_list2nmem_pred.
+    eapply bfrec_bound'; eauto.
+  Qed.
+
   End RepImplications.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
@@ -1249,65 +1309,7 @@ Section RECBFILE.
 
 
 
-  Lemma lt_div_mono : forall a b c,
-    b <> 0 -> a < c -> a / b < c.
-  Proof.
-    intros.
-    replace b with (S (b - 1)) by omega.
-    apply Nat.div_lt_upper_bound; auto.
-    simpl.
-    apply le_plus_trans; auto.
-  Qed.
 
-  Lemma bfrec_bound_goodSize :
-    goodSize addrlen (INODE.blocks_per_inode * #items_per_valu).
-  Proof.
-    unfold goodSize.
-    assert (X := blocksz_ok).
-    unfold blocktype in X; simpl in X.
-    rewrite Nat.mul_comm in X.
-    apply Nat.div_unique_exact in X; auto.
-    rewrite X.
-
-    unfold addrlen.
-    eapply mult_pow2_bound_ex with (a := 10); try omega.
-    compute; omega.
-    apply lt_div_mono; auto.
-    eapply pow2_bound_mono.
-    apply valulen_bound.
-    omega.
-  Qed.
-
-  Lemma bfrec_bound' : forall F m bxp ixp (inum : addr) (bl : list block) fl,
-    length bl = length (BFILE.BFData (sel fl inum BFILE.bfile0))
-    -> Forall Rec.well_formed bl
-    -> (F * BFILE.rep bxp ixp fl)%pred m
-    -> # inum < length fl
-    -> length (concat bl)
-          <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
-  Proof.
-    intros.
-    erewrite wordToNat_natToWord_idempotent'.
-    subst; rewrite concat_length.
-    rewrite fold_right_add_const; auto.
-    apply mult_le_compat_r.
-    rewrite H.
-    eapply BFILE.bfdata_bound; eauto.
-    apply bfrec_bound_goodSize.
-  Qed.
-
-  Lemma bfrec_bound : forall F A m bxp ixp (inum : addr) fl f l,
-    array_item_file f l
-    -> (F * BFILE.rep bxp ixp fl)%pred m
-    -> (A * # inum |-> f)%pred (list2nmem fl)
-    -> length l <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
-  Proof.
-    unfold array_item_file, array_item_pairs; intros.
-    repeat deex.
-    destruct_lift' H.
-    rewrite_list2nmem_pred.
-    eapply bfrec_bound'; eauto.
-  Qed.
 
   Lemma S_lt_add_1 : forall m n, m > 0 ->
     S n < m <-> n < m - 1.
