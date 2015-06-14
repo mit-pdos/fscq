@@ -942,7 +942,8 @@ Section RECBFILE.
     rewrite Forall_forall in Hbound.
     apply Hbound.
     admit. (* off appears in arrayN on ilist, whose length is the length of a file
-          -> off is goodSized since files are of bounded length *)
+          -> off is goodSized since files are of bounded length
+          use list2nmem_arrayN_bound and bfrec_bound   *)
     rewrite <- H3.
     apply in_app_middle.
     admit. (* arrayN off newdata holds in ilist', so
