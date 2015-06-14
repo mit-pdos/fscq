@@ -908,6 +908,35 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
+  Lemma applying_chunks_is_replace : forall off count newdata ilist,
+    (* it seems like this is implied by the types, but if so,
+       I'm not sure how to get access to it in the proof *)
+    length newdata = count ->
+    let chunks := chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata) in
+    apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
+  Proof.
+    intros.
+    induction count.
+    destruct newdata.
+    simpl.
+    rewrite Nat.add_0_r.
+    symmetry; apply firstn_skipn.
+    inversion H. (* impossible *)
+    unfold chunks.
+  Admitted.
+
+  Lemma applying_chunks_is_update : forall Fx off count olddata newdata ilist ilist',
+    length newdata = count ->
+    (Fx * arrayN off olddata)%pred (list2nmem ilist) ->
+    length olddata = length newdata ->
+    ilist' = apply_chunks (chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata)) ilist ->
+    (Fx * arrayN off newdata)%pred (list2nmem ilist').
+  Proof.
+    intros.
+    rewrite applying_chunks_is_replace in H2 by assumption.
+    replace ilist'.
+  Admitted.
+
   Theorem bf_update_range_ok : forall fsxp inum off count (w: items count) mscs,
   {< mbase m F Fm Fx A flist ilist f olddata newdata,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -916,8 +945,10 @@ Section RECBFILE.
     [[ array_item_file f ilist ]] *
     [[ (Fx * arrayN off olddata)%pred (list2nmem ilist) ]] *
     [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]] *
-    (* automation maintains this fact properly, and length newdata
-       is easily count from its construction from w *)
+    (* automation seems to substitute away equalities where one side
+       is a variable, so we can't state length oldata = count or
+       length newdata = count, but these facts are necessary for
+       the proof... *)
     [[ length olddata = length newdata ]]
     POST RET: ^(mscs)
       exists m' f' flist' ilist',
@@ -950,9 +981,8 @@ Section RECBFILE.
               off + count < length ilist', and
               (length ilist') * block_items = length (BFILE.BFData f')
                 due to rep function *)
-
-    admit. (* the big connection: need arrayN off newdata in memory formed by
-            apply_chunks (chunkList off newdata) ilist *)
+    eapply applying_chunks_is_update; try eassumption.
+    admit. (* length newdata, which automation seems to substitute away *)
     apply LOG.activetxn_would_recover_old.
 
     Grab Existential Variables.
