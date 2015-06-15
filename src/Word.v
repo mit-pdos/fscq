@@ -765,6 +765,12 @@ Proof.
   intros; omega.
 Qed.
 
+Lemma eq_rect_split1_eq2_helper : forall a b c,
+  a = b -> c + a = c + b.
+Proof.
+  intros; omega.
+Qed.
+
 Theorem eq_rect_split1 : forall n1 n1' n2 (w : word (n1' + n2)) Heq,
   eq_rect n1' (fun n => word n)
     (split1 n1' n2 w) n1 Heq =
@@ -778,6 +784,20 @@ Proof.
   generalize dependent e.
   rewrite H'; intros.
   repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem eq_rect_split1_eq2 : forall n1 n2 n2' (w: word (n1 + n2)) Heq,
+     split1 n1 n2 w = split1 n1 n2'
+        (eq_rect (n1 + n2) (fun y : nat => word y) w
+     (n1 + n2') Heq).
+Proof.
+  intros.
+  assert (n2 = n2') as H' by omega.
+  generalize dependent w.
+  generalize dependent Heq.
+  rewrite H'; intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
   reflexivity.
 Qed.
 
