@@ -355,7 +355,7 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
+    mscs <- DIRTREE.setattr fsxp inum
                             (INODE.Build_iattr $0 $0 $0) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
@@ -373,19 +373,45 @@ Theorem create_ok : forall fsxp dnum name mscs,
           [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
            (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
             exists inum tree', [[ r = Some inum ]] *
-            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
-                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
+            [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
+                         (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
   CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-            exists m' inum tree',
-            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
-                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
-            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+            exists inum tree',
+            (Fm * DIRTREE.rep fsxp Ftop tree') *
+            [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
+                         (DIRTREE.TreeFile inum BFILE.bfile0) tree ]])
   >} create fsxp dnum name mscs.
 Proof.
   unfold create.
-  hoare.
-Admitted.
+  step.
+  step.
+  step.
+
+  erewrite DIRTREE.find_subtree_tree_graft by eauto.
+  reflexivity.
+  step.
+  step.
+
+  eapply pimpl_or_r; right; cancel.
+  rewrite DIRTREE.update_subtree_tree_graft by eauto.
+  reflexivity.
+
+  all: try rewrite LOG.activetxn_would_recover_old.
+  all: try rewrite LOG.notxn_would_recover_old.
+  all: try apply LOG.would_recover_old_either_pred.
+  rewrite <- LOG.would_recover_either_pred_pimpl.
+  cancel.
+
+  rewrite DIRTREE.update_subtree_tree_graft by eauto.
+  reflexivity.
+
+  step.
+
+  Grab Existential Variables.
+  all: eauto.
+  exact BFILE.bfile0.
+Qed.
 
 Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
 
@@ -399,16 +425,16 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
           [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
             exists inum tree', [[ r = Some inum ]] *
-            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
-                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
+            [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
+                         (DIRTREE.TreeFile inum BFILE.bfile0) tree  ]] *
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
   REC RET:^(mscs,fsxp)
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
            exists inum tree',
-            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum 
-                       ((name, DIRTREE.TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
-            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m) ]]
+            [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
+                         (DIRTREE.TreeFile inum BFILE.bfile0) tree  ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} create fsxp dnum name mscs >> recover.
 Proof.
   unfold forall_helper; intros.
@@ -423,9 +449,7 @@ Proof.
   rewrite H3.
   cancel.
   step.
-  left.
-  (* is a2 = v? *)
-Admitted.
+Qed.
 
 Definition mksock T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
