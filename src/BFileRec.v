@@ -406,12 +406,12 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
-  Program Definition chunk_list (off count:nat) (w: items count) : list chunk :=
+  Program Definition chunkList (off count:nat) (w: items count) : list chunk :=
     let blocknum := off / block_items in
     let boff := off mod block_items in
     let bend := Nat.min (boff + count) block_items in
     let bsize := bend - boff in
-    let num_chunks := divup (off - boff) block_items in
+    let num_chunks := (count - bsize) / block_items in
     @Build_chunk ($ blocknum) boff bend
       (isplit1_dep bsize (count-bsize) w _) _ _ ::
       build_chunks num_chunks (blocknum+1)
@@ -421,69 +421,41 @@ Section RECBFILE.
     apply boff_mod_ok.
   Qed.
 
-  (** split w into a list of chunks **)
-  Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
-    match count with
-    | 0 => nil
-    | S count' =>
-      let blocknum := off / block_items in
-      let boff := off mod block_items in
-      let bend := Nat.min (boff + count) block_items in
-      let bsize := bend - boff in
-      @preamble off count' w ::
-        chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w _)
-    end.
-  (** decreasing obligation produced by [{measure count}] *)
-  Next Obligation.
-    assert (Hblock := boff_mod_ok off).
-    omega.
-  Defined.
-
-  Lemma chunkList_0 : forall off (w: items 0),
-    chunkList off w = nil.
+  Lemma build_chunk_blocknum_bound : forall num_chunks blocknum count (w: items count),
+    let bound := blocknum + num_chunks in
+    forall ck, In ck (build_chunks num_chunks blocknum w) ->
+      # (chunk_blocknum ck) <= bound.
   Proof.
     intros.
-    reflexivity.
-  Qed.
-
-  Lemma cons_eq : forall A a b (tl1 tl2:list A),
-    a :: tl1 = b :: tl2 -> a = b /\ tl1 = tl2.
-  Proof.
-    intros.
-    inversion H.
-    auto.
-  Qed.
-
-  Lemma chunkList_head : forall off count (w: items (S count)) ck l,
-    ck :: l = chunkList off w ->
-    ck = preamble off w.
-  Proof.
-    intros.
-    unfold chunkList, chunkList_func in H.
-    rewrite fix_sub_eq in H.
+    generalize dependent blocknum.
+    generalize dependent count.
+    induction num_chunks; intros; simpl.
     simpl in H.
-    eapply cons_eq.
+    inversion H.
+
+    simpl in H.
+    inversion H.
+    rewrite <- H0; simpl.
+    unfold bound.
+    apply le_trans with blocknum; try omega.
+    admit. (* # ($ n) <= n *)
+    unfold bound.
+    replace (blocknum + S num_chunks) with ((blocknum + 1) + num_chunks) by omega.
+    eapply IHnum_chunks.
     eassumption.
+  Admitted.
 
+  Lemma build_chunks_num_chunks : forall num_chunks blocknum count (w: items count) ck,
+    In ck (build_chunks num_chunks blocknum w) ->
+    num_chunks > 0.
+  Proof.
     intros.
-    destruct x.
-    destruct s.
-    simpl.
-
-    match goal with
-    | [ |- context[match ?x with _ => _ end] ] =>
-       destruct x; f_equal
-    end.
-
-    apply H0.
+    destruct num_chunks.
+    inversion H.
+    omega.
   Qed.
 
-  Theorem strong_induction:
-  forall P : nat -> Prop,
-  (forall n : nat, (forall k : nat, (k < n -> P k)) -> P n) ->
-  forall n : nat, P n.
-  Proof.
-  Admitted.
+  Require Import Psatz.
 
   Theorem chunk_blocknum_bound : forall off count (w: items count),
     goodSize addrlen off ->
@@ -492,21 +464,9 @@ Section RECBFILE.
   Proof.
     intros.
     rewrite Forall_forall; intros.
-    destruct count.
-    rewrite chunkList_0 in H0.
+    unfold chunkList in H0.
     inversion H0.
-    generalize dependent count.
-    generalize dependent off.
-    generalize dependent x.
-    induction count using strong_induction; intros.
-    remember (chunkList off w) as chunks.
-    destruct chunks.
-    inversion H1.
-
-    inversion H1.
-    apply chunkList_head in Heqchunks.
-    subst.
-    rewrite <- H2.
+    rewrite <- H1.
     simpl.
     rewrite wordToNat_natToWord_idempotent'.
     unfold bound.
@@ -515,6 +475,17 @@ Section RECBFILE.
     apply goodSize_trans with off.
     apply div_le; auto.
     assumption.
+
+    assert (Hbuild_bound := build_chunk_blocknum_bound _ _ _ x H1).
+    eapply le_trans.
+    eassumption.
+    apply build_chunks_num_chunks in H1.
+    unfold bound.
+    min_cases.
+    rewrite Hmineq in H1.
+    rewrite Nat.div_small in H1 by omega.
+    inversion H1.
+    rewrite Hmineq in H1.
   Admitted.
 
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
