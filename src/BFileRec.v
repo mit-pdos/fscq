@@ -415,17 +415,43 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
+  Lemma cons_eq : forall A a b (tl1 tl2:list A),
+    a :: tl1 = b :: tl2 -> a = b /\ tl1 = tl2.
+  Proof.
+    intros.
+    inversion H.
+    auto.
+  Qed.
+
   Lemma chunkList_head : forall off count (w: items (S count)) ck l,
     ck :: l = chunkList off w ->
     ck = preamble off w.
   Proof.
     intros.
-    (* this proof seems to be correct, but CoqIDE gets out of sync
-    and coqtop crashes
-    inversion H.
-    rewrite H1.
-    reflexivity.
-    *)
+    unfold chunkList, chunkList_func in H.
+    rewrite fix_sub_eq in H.
+    simpl in H.
+    eapply cons_eq.
+    eassumption.
+
+    intros.
+    destruct x.
+    destruct s.
+    simpl.
+
+    match goal with
+    | [ |- context[match ?x with _ => _ end] ] =>
+       destruct x; f_equal
+    end.
+
+    apply H0.
+  Qed.
+
+  Theorem strong_induction:
+  forall P : nat -> Prop,
+  (forall n : nat, (forall k : nat, (k < n -> P k)) -> P n) ->
+  forall n : nat, P n.
+  Proof.
   Admitted.
 
   Theorem chunk_blocknum_bound : forall off count (w: items count),
@@ -435,16 +461,21 @@ Section RECBFILE.
   Proof.
     intros.
     rewrite Forall_forall; intros.
+    destruct count.
+    rewrite chunkList_0 in H0.
+    inversion H0.
+    generalize dependent count.
+    generalize dependent off.
+    generalize dependent x.
+    induction count using strong_induction; intros.
     remember (chunkList off w) as chunks.
     destruct chunks.
-    inversion H0.
-    induction count. (* really need strong induction *)
-    rewrite chunkList_0 in Heqchunks.
-    inversion Heqchunks.
+    inversion H1.
+
+    inversion H1.
     apply chunkList_head in Heqchunks.
     subst.
-    inversion H0.
-    rewrite <- H1.
+    rewrite <- H2.
     simpl.
     rewrite wordToNat_natToWord_idempotent'.
     unfold bound.
