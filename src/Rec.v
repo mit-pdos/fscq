@@ -3,6 +3,7 @@ Require Import Word.
 Require Import Eqdep_dec.
 Require Import Array.
 Require Import Psatz.
+Require Import ProofIrrelevance.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -648,6 +649,152 @@ Module Rec.
     rewrite split1_zero.
     rewrite split2_zero.
     reflexivity.
+  Qed.
+
+  Lemma len_add' : forall t n m,
+    len (ArrayF t n) + len (ArrayF t m) = len (ArrayF t (n+m)).
+  Proof.
+    intros.
+    simpl.
+    nia.
+  Qed.
+
+  Lemma combine_0 : forall (v: word 0) n (w: word n),
+    combine v w = w.
+  Proof.
+    intros.
+    shatterer.
+  Qed.
+
+  Definition len_add {t n m}
+    (v:word (len (ArrayF t n) + len (ArrayF t m))) : word (len (ArrayF t (n+m))).
+    rewrite len_add' in v.
+    exact v.
+  Defined.
+
+  Definition len_split {t n m}
+    (v:word (len (ArrayF t (n+m)))) : word (len (ArrayF t n) + len (ArrayF t m)).
+    rewrite <- len_add' in v.
+    exact v.
+  Defined.
+
+  Lemma of_word_cons : forall t n (w: word (len (ArrayF t (S n)))),
+    of_word w = (of_word (split1 (len t) (n * len t) w)) ::
+      (@of_word (ArrayF t n) (split2 (len t) (n * len t) w)).
+  Proof.
+    intros.
+    reflexivity.
+  Qed.
+
+  Theorem combine_app : forall (t:type) (n m:nat)
+    (v : word (len (ArrayF t n))) (w : word (len (ArrayF t m))),
+    app (of_word v) (of_word w) = of_word (len_add (combine v w)).
+  Proof.
+    intros.
+    unfold len_add.
+    induction n.
+    simpl.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    rewrite combine_0; reflexivity.
+    simpl len in *.
+    rewrite of_word_cons.
+    simpl.
+    rewrite IHn.
+    rewrite of_word_cons.
+
+    rewrite <- combine_split with (sz1:=len t) (sz2:=n * len t) (w := v).
+    f_equal.
+    rewrite split1_combine.
+    erewrite combine_assoc.
+    rewrite eq_rect_word_match.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite eq_rect_combine.
+    rewrite split1_combine.
+    reflexivity.
+
+    rewrite split2_combine.
+    erewrite combine_assoc.
+    rewrite eq_rect_word_match.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite eq_rect_combine.
+    rewrite split2_combine.
+    f_equal.
+    f_equal.
+    apply proof_irrelevance.
+
+    Grab Existential Variables.
+    all: omega.
+  Qed.
+
+  Theorem split1_firstn : forall t n m
+    (w: word (len (ArrayF t (n+m)))),
+    firstn n (of_word w) =
+      of_word (split1 (len (ArrayF t n)) (len (ArrayF t m)) (len_split w)).
+  Proof.
+    intros.
+    unfold len_split.
+    induction n.
+    simpl.
+    reflexivity.
+
+    simpl plus in *.
+    rewrite of_word_cons.
+    simpl.
+    rewrite of_word_cons.
+    unfold eq_rec_r in *.
+    f_equal.
+    erewrite split1_iter.
+    rewrite eq_rect_word_match.
+    rewrite eq_rect_nat_double.
+    simpl in *.
+    f_equal.
+    erewrite eq_rect_split1_eq2.
+    f_equal.
+    rewrite IHn.
+    rewrite eq_rect_split2.
+    erewrite split1_split2.
+    repeat f_equal.
+    rewrite eq_rect_word_match.
+    rewrite eq_rect_nat_double.
+    unfold eq_rec.
+    f_equal.
+    apply proof_irrelevance.
+
+    Grab Existential Variables.
+    all: omega.
+  Qed.
+
+  Theorem split2_skipn : forall t n m
+    (w: word (len (ArrayF t (n+m)))),
+    skipn n (of_word w) =
+      of_word (split2 (len (ArrayF t n)) (len (ArrayF t m)) (len_split w)).
+  Proof.
+    intros.
+    unfold len_split.
+    induction n.
+    simpl.
+    unfold eq_rec_r.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    reflexivity.
+
+    simpl plus in *.
+    rewrite of_word_cons.
+    simpl.
+
+    unfold eq_rec_r in *.
+    rewrite IHn.
+    rewrite eq_rect_split2.
+    erewrite split2_iter.
+    rewrite eq_rect_word_match.
+    rewrite eq_rect_nat_double.
+    unfold eq_rec.
+    repeat f_equal.
+    apply proof_irrelevance.
+
+    Grab Existential Variables.
+    all: omega.
   Qed.
 
 End Rec.

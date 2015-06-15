@@ -201,6 +201,66 @@ Section RECBFILE.
     apply items_per_valu_not_0'.
   Qed.
 
+  Lemma lt_div_mono : forall a b c,
+    b <> 0 -> a < c -> a / b < c.
+  Proof.
+    intros.
+    replace b with (S (b - 1)) by omega.
+    apply Nat.div_lt_upper_bound; auto.
+    simpl.
+    apply le_plus_trans; auto.
+  Qed.
+
+  Lemma bfrec_bound_goodSize :
+    goodSize addrlen (INODE.blocks_per_inode * #items_per_valu).
+  Proof.
+    unfold goodSize.
+    assert (X := blocksz_ok).
+    unfold blocktype in X; simpl in X.
+    rewrite Nat.mul_comm in X.
+    apply Nat.div_unique_exact in X; auto.
+    rewrite X.
+
+    unfold addrlen.
+    eapply mult_pow2_bound_ex with (a := 10); try omega.
+    compute; omega.
+    apply lt_div_mono; auto.
+    eapply pow2_bound_mono.
+    apply valulen_bound.
+    omega.
+  Qed.
+
+  Lemma bfrec_bound' : forall F m bxp ixp (inum : addr) (bl : list block) fl,
+    length bl = length (BFILE.BFData (sel fl inum BFILE.bfile0))
+    -> Forall Rec.well_formed bl
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> # inum < length fl
+    -> length (concat bl)
+          <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
+  Proof.
+    intros.
+    erewrite wordToNat_natToWord_idempotent'.
+    subst; rewrite concat_length.
+    rewrite fold_right_add_const; auto.
+    apply mult_le_compat_r.
+    rewrite H.
+    eapply BFILE.bfdata_bound; eauto.
+    apply bfrec_bound_goodSize.
+  Qed.
+
+  Lemma bfrec_bound : forall F A m bxp ixp (inum : addr) fl f l,
+    array_item_file f l
+    -> (F * BFILE.rep bxp ixp fl)%pred m
+    -> (A * # inum |-> f)%pred (list2nmem fl)
+    -> length l <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
+  Proof.
+    unfold array_item_file, array_item_pairs; intros.
+    repeat deex.
+    destruct_lift' H.
+    rewrite_list2nmem_pred.
+    eapply bfrec_bound'; eauto.
+  Qed.
+
   End RepImplications.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
@@ -330,43 +390,72 @@ Section RECBFILE.
     apply boff_mod_ok.
   Qed.
 
-  (** split w into a list of chunks **)
-  Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
-    match count with
-    | 0 => nil
-    | S count' =>
-      let blocknum := off / block_items in
-      let boff := off mod block_items in
-      let bend := Nat.min (boff + count) block_items in
-      let bsize := bend - boff in
-      @preamble off count' w ::
-        chunkList (off+boff+bsize) (isplit2_dep bsize (count-bsize) w _)
-    end.
-  (** decreasing obligation produced by [{measure count}] *)
+  Program Fixpoint build_chunks num_chunks blocknum count (w: items count) : list chunk :=
+  match num_chunks with
+  | 0 => nil
+  | S num_chunks' => let bend := Nat.min count block_items in
+    @Build_chunk ($ blocknum) 0 bend
+      (isplit1_dep bend (count-bend) w _) _ _ ::
+    build_chunks num_chunks' (blocknum+1)
+        (isplit2_dep bend (count-bend) w _)
+  end.
   Next Obligation.
-    assert (Hblock := boff_mod_ok off).
-    omega.
-  Defined.
-
-  Lemma chunkList_0 : forall off (w: items 0),
-    chunkList off w = nil.
-  Proof.
-    intros.
+    rewrite Nat.sub_0_r.
+    reflexivity.
+    rewrite Nat.sub_0_r.
     reflexivity.
   Qed.
 
-  Lemma chunkList_head : forall off count (w: items (S count)) ck l,
-    ck :: l = chunkList off w ->
-    ck = preamble off w.
+  Program Definition chunkList (off count:nat) (w: items count) : list chunk :=
+    let blocknum := off / block_items in
+    let boff := off mod block_items in
+    let bend := Nat.min (boff + count) block_items in
+    let bsize := bend - boff in
+    let num_chunks := (count - bsize) / block_items in
+    @Build_chunk ($ blocknum) boff bend
+      (isplit1_dep bsize (count-bsize) w _) _ _ ::
+      build_chunks num_chunks (blocknum+1)
+      (isplit2_dep bsize (count-bsize) w _).
+  Next Obligation.
+    apply Nat.lt_le_incl.
+    apply boff_mod_ok.
+  Qed.
+
+  Lemma build_chunk_blocknum_bound : forall num_chunks blocknum count (w: items count),
+    let bound := blocknum + num_chunks in
+    forall ck, In ck (build_chunks num_chunks blocknum w) ->
+      # (chunk_blocknum ck) <= bound.
   Proof.
     intros.
-    (* this proof seems to be correct, but CoqIDE gets out of sync
-    and coqtop crashes
+    generalize dependent blocknum.
+    generalize dependent count.
+    induction num_chunks; intros; simpl.
+    simpl in H.
     inversion H.
-    rewrite H1.
-    reflexivity.
-    *)
+
+    simpl in H.
+    inversion H.
+    rewrite <- H0; simpl.
+    unfold bound.
+    apply le_trans with blocknum; try omega.
+    admit. (* # ($ n) <= n *)
+    unfold bound.
+    replace (blocknum + S num_chunks) with ((blocknum + 1) + num_chunks) by omega.
+    eapply IHnum_chunks.
+    eassumption.
   Admitted.
+
+  Lemma build_chunks_num_chunks : forall num_chunks blocknum count (w: items count) ck,
+    In ck (build_chunks num_chunks blocknum w) ->
+    num_chunks > 0.
+  Proof.
+    intros.
+    destruct num_chunks.
+    inversion H.
+    omega.
+  Qed.
+
+  Require Import Psatz.
 
   Theorem chunk_blocknum_bound : forall off count (w: items count),
     goodSize addrlen off ->
@@ -375,14 +464,7 @@ Section RECBFILE.
   Proof.
     intros.
     rewrite Forall_forall; intros.
-    remember (chunkList off w) as chunks.
-    destruct chunks.
-    inversion H0.
-    induction count. (* really need strong induction *)
-    rewrite chunkList_0 in Heqchunks.
-    inversion Heqchunks.
-    apply chunkList_head in Heqchunks.
-    subst.
+    unfold chunkList in H0.
     inversion H0.
     rewrite <- H1.
     simpl.
@@ -393,6 +475,17 @@ Section RECBFILE.
     apply goodSize_trans with off.
     apply div_le; auto.
     assumption.
+
+    assert (Hbuild_bound := build_chunk_blocknum_bound _ _ _ x H1).
+    eapply le_trans.
+    eassumption.
+    apply build_chunks_num_chunks in H1.
+    unfold bound.
+    min_cases.
+    rewrite Hmineq in H1.
+    rewrite Nat.div_small in H1 by omega.
+    inversion H1.
+    rewrite Hmineq in H1.
   Admitted.
 
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
@@ -848,6 +941,147 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
+  Lemma applying_chunks_is_replace : forall off count newdata ilist,
+    (* it seems like this is implied by the types, but if so,
+       I'm not sure how to get access to it in the proof *)
+    length newdata = count ->
+    let chunks := chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata) in
+    apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
+  Proof.
+    intros.
+    induction count.
+    destruct newdata.
+    simpl.
+    rewrite Nat.add_0_r.
+    symmetry; apply firstn_skipn.
+    inversion H. (* impossible *)
+    unfold chunks.
+  Admitted.
+
+  Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
+    (F * arrayN off data)%pred (list2nmem l) ->
+    (F * arrayN off data)%pred (list2nmem (
+      firstn off l ++ data ++ skipn (off + length data) l)).
+  Proof.
+    induction data; intros; simpl in *.
+    rewrite Nat.add_0_r.
+    rewrite firstn_skipn.
+    assumption.
+
+    assert ((F * arrayN (S off) data * off |-> a)%pred (list2nmem l)).
+    pred_apply; cancel.
+    assert ((F * off |-> a * arrayN (S off) data)%pred (list2nmem l)).
+    pred_apply; cancel.
+    assert (IHa := IHdata (F * off |-> a)%pred (S off) (updN l off a)).
+    assert (Habound := H0).
+    apply list2nmem_inbound in Habound.
+    eapply list2nmem_sel in H0.
+    assert (Hasel := H0).
+    apply selN_eq_updN_eq in H0.
+    rewrite H0 in IHa.
+    assert (IHa' := IHa H1).
+    replace (firstn (S off) l) with (firstn off l ++ a :: nil) in IHa'.
+    replace (S off + length data) with (off + S (length data)) in IHa'.
+    rewrite cons_nil_app in IHa'.
+    (* cancel tries to do some substitution that doesn't work,
+       so manually call assoc lemma *)
+    pred_apply; apply sep_star_assoc.
+    omega.
+    replace (S off) with (off + 1) by omega.
+    symmetry; eapply LOG.firstn_plusone_selN'.
+    eassumption.
+    assumption.
+
+    Grab Existential Variables.
+    exact def.
+  Qed.
+
+  Lemma arrayN_newlist' : forall A (def:A) n F off (l:list A) olddata newdata,
+    length olddata = length newdata ->
+    (F * arrayN off olddata)%pred (list2nmem l) ->
+    (F * arrayN off (firstn n newdata) * arrayN (off+n) (skipn n olddata))%pred
+      (list2nmem (firstn off l ++
+        firstn n newdata ++ skipn n olddata ++
+        skipn (off+length olddata) l)).
+  Proof.
+    induction n; intros; simpl.
+    rewrite Nat.add_0_r.
+    assert (Hsplit := arrayN_xyz def olddata off H0).
+    pred_apply; cancel.
+    destruct newdata; destruct olddata; simpl; auto; try inversion H.
+    rewrite Nat.add_0_r.
+    rewrite firstn_skipn.
+    pred_apply; cancel.
+    replace (off + S n) with (S off + n) by omega.
+    replace (off + S (length olddata)) with (S off + length olddata) by omega.
+    assert (IHn' := IHn (F * off |-> a)%pred (S off) (updN l off a) _ _ H2).
+    simpl in H0.
+    (* there are many asserts here because I don't know of a way to use
+       sep_star_assoc to rewrite separation logic propositions other than
+       pred_apply; cancel, and pred_apply requires that a hypothesis regarding
+       the same memory.
+
+       What I really want is pred_rewrite H, where H is a pimpl or pimpl_iff. *)
+    assert ((F * arrayN (S off) olddata * off |-> a)%pred
+      (list2nmem (updN l off a))) as Hupdl.
+    eapply list2nmem_updN.
+    pred_apply; cancel.
+    assert ((F * off |-> a * arrayN (S off) olddata)%pred
+      (list2nmem (updN l off a))).
+    pred_apply; cancel.
+    assert (IHn'' := IHn' H1).
+    replace (firstn (S off) (updN l off a)) with (firstn off l ++ a :: nil) in IHn''.
+    rewrite cons_nil_app in IHn''.
+    rewrite skipN_updN' in IHn'' by omega.
+    pred_apply; cancel.
+    replace (S off) with (off + 1) by omega.
+    assert (off < length l) as Hoffbound.
+    eapply list2nmem_inbound.
+    pred_apply; cancel.
+    erewrite LOG.firstn_plusone_selN' with (x := a).
+    rewrite firstn_updN_oob.
+    auto.
+    auto.
+    symmetry; apply selN_updN_eq.
+    assumption.
+    rewrite length_updN; assumption.
+
+    Grab Existential Variables.
+    exact def.
+  Qed.
+
+  Lemma arrayN_newlist : forall A (def:A) F off (l:list A) olddata newdata,
+    length olddata = length newdata ->
+    (F * arrayN off olddata)%pred (list2nmem l) ->
+    (F * arrayN off newdata)%pred
+      (list2nmem (firstn off l ++
+        newdata ++
+        skipn (off+length olddata) l)).
+  Proof.
+    intros.
+    assert (Hnewlist := arrayN_newlist' def (length newdata) _ _ _ H H0).
+    rewrite firstn_oob in Hnewlist by omega.
+    rewrite skipn_oob in Hnewlist by omega.
+    simpl in Hnewlist.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma applying_chunks_is_update : forall Fx off count olddata newdata ilist ilist',
+    length newdata = count ->
+    (Fx * arrayN off olddata)%pred (list2nmem ilist) ->
+    length olddata = length newdata ->
+    ilist' = apply_chunks (chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata)) ilist ->
+    (Fx * arrayN off newdata)%pred (list2nmem ilist').
+  Proof.
+    intros.
+    rewrite applying_chunks_is_replace in H2 by assumption.
+    replace ilist'.
+    replace count with (length olddata) by omega.
+    apply arrayN_newlist; try assumption.
+
+    exact (Rec.of_word $0).
+  Qed.
+
   Theorem bf_update_range_ok : forall fsxp inum off count (w: items count) mscs,
   {< mbase m F Fm Fx A flist ilist f olddata newdata,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -856,8 +1090,10 @@ Section RECBFILE.
     [[ array_item_file f ilist ]] *
     [[ (Fx * arrayN off olddata)%pred (list2nmem ilist) ]] *
     [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]] *
-    (* automation maintains this fact properly, and length newdata
-       is easily count from its construction from w *)
+    (* automation seems to substitute away equalities where one side
+       is a variable, so we can't state length oldata = count or
+       length newdata = count, but these facts are necessary for
+       the proof... *)
     [[ length olddata = length newdata ]]
     POST RET: ^(mscs)
       exists m' f' flist' ilist',
@@ -882,24 +1118,22 @@ Section RECBFILE.
     rewrite Forall_forall in Hbound.
     apply Hbound.
     admit. (* off appears in arrayN on ilist, whose length is the length of a file
-          -> off is goodSized since files are of bounded length *)
+          -> off is goodSized since files are of bounded length
+          use list2nmem_arrayN_bound and bfrec_bound   *)
     rewrite <- H3.
     apply in_app_middle.
     admit. (* arrayN off newdata holds in ilist', so
               off + count < length ilist', and
               (length ilist') * block_items = length (BFILE.BFData f')
                 due to rep function *)
-
-    admit. (* the big connection: need arrayN off newdata in memory formed by
-            apply_chunks (chunkList off newdata) ilist *)
+    eapply applying_chunks_is_update; try eassumption.
+    admit. (* length newdata, which automation seems to substitute away *)
     apply LOG.activetxn_would_recover_old.
 
     Grab Existential Variables.
-    (* two of the above admits *)
-    admit. admit.
+    (* the above admits *)
+    admit. admit. admit.
     exact $0.
-    (* the last above admit *)
-    admit.
     exact tt.
   Admitted.
 
@@ -1249,65 +1483,7 @@ Section RECBFILE.
 
 
 
-  Lemma lt_div_mono : forall a b c,
-    b <> 0 -> a < c -> a / b < c.
-  Proof.
-    intros.
-    replace b with (S (b - 1)) by omega.
-    apply Nat.div_lt_upper_bound; auto.
-    simpl.
-    apply le_plus_trans; auto.
-  Qed.
 
-  Lemma bfrec_bound_goodSize :
-    goodSize addrlen (INODE.blocks_per_inode * #items_per_valu).
-  Proof.
-    unfold goodSize.
-    assert (X := blocksz_ok).
-    unfold blocktype in X; simpl in X.
-    rewrite Nat.mul_comm in X.
-    apply Nat.div_unique_exact in X; auto.
-    rewrite X.
-
-    unfold addrlen.
-    eapply mult_pow2_bound_ex with (a := 10); try omega.
-    compute; omega.
-    apply lt_div_mono; auto.
-    eapply pow2_bound_mono.
-    apply valulen_bound.
-    omega.
-  Qed.
-
-  Lemma bfrec_bound' : forall F m bxp ixp (inum : addr) (bl : list block) fl,
-    length bl = length (BFILE.BFData (sel fl inum BFILE.bfile0))
-    -> Forall Rec.well_formed bl
-    -> (F * BFILE.rep bxp ixp fl)%pred m
-    -> # inum < length fl
-    -> length (concat bl)
-          <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
-  Proof.
-    intros.
-    erewrite wordToNat_natToWord_idempotent'.
-    subst; rewrite concat_length.
-    rewrite fold_right_add_const; auto.
-    apply mult_le_compat_r.
-    rewrite H.
-    eapply BFILE.bfdata_bound; eauto.
-    apply bfrec_bound_goodSize.
-  Qed.
-
-  Lemma bfrec_bound : forall F A m bxp ixp (inum : addr) fl f l,
-    array_item_file f l
-    -> (F * BFILE.rep bxp ixp fl)%pred m
-    -> (A * # inum |-> f)%pred (list2nmem fl)
-    -> length l <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
-  Proof.
-    unfold array_item_file, array_item_pairs; intros.
-    repeat deex.
-    destruct_lift' H.
-    rewrite_list2nmem_pred.
-    eapply bfrec_bound'; eauto.
-  Qed.
 
   Lemma S_lt_add_1 : forall m n, m > 0 ->
     S n < m <-> n < m - 1.
