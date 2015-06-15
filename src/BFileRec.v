@@ -390,6 +390,37 @@ Section RECBFILE.
     apply boff_mod_ok.
   Qed.
 
+  Program Fixpoint build_chunks num_chunks blocknum count (w: items count) : list chunk :=
+  match num_chunks with
+  | 0 => nil
+  | S num_chunks' => let bend := Nat.min count block_items in
+    @Build_chunk ($ blocknum) 0 bend
+      (isplit1_dep bend (count-bend) w _) _ _ ::
+    build_chunks num_chunks' (blocknum+1)
+        (isplit2_dep bend (count-bend) w _)
+  end.
+  Next Obligation.
+    rewrite Nat.sub_0_r.
+    reflexivity.
+    rewrite Nat.sub_0_r.
+    reflexivity.
+  Qed.
+
+  Program Definition chunk_list (off count:nat) (w: items count) : list chunk :=
+    let blocknum := off / block_items in
+    let boff := off mod block_items in
+    let bend := Nat.min (boff + count) block_items in
+    let bsize := bend - boff in
+    let num_chunks := divup (off - boff) block_items in
+    @Build_chunk ($ blocknum) boff bend
+      (isplit1_dep bsize (count-bsize) w _) _ _ ::
+      build_chunks num_chunks (blocknum+1)
+      (isplit2_dep bsize (count-bsize) w _).
+  Next Obligation.
+    apply Nat.lt_le_incl.
+    apply boff_mod_ok.
+  Qed.
+
   (** split w into a list of chunks **)
   Program Fixpoint chunkList (off count:nat) (w: items count) {measure count} : list chunk :=
     match count with
