@@ -17,6 +17,7 @@ Require Import GenSep.
 Require Import SepAuto.
 Require Import Array.
 Require Import FunctionalExtensionality.
+Import ListNotations.
 
 Set Implicit Arguments.
 
@@ -378,6 +379,7 @@ Module DIRTREE.
    * Helpers for higher levels that need to reason about updated trees.
    *)
 
+  (* XXX second premise is unnecessary *)
   Theorem find_update_subtree : forall fnlist tree subtree subtree0,
     find_subtree fnlist tree = Some subtree0 ->
     dirtree_inum subtree0 = dirtree_inum subtree ->
@@ -393,6 +395,14 @@ Module DIRTREE.
   Qed.
 
   Hint Resolve find_update_subtree.
+
+  Theorem find_update_subtree' : forall prefix fn tree subtree dnum tree_elem,
+    find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
+    find_subtree (prefix++[fn]) (update_subtree (prefix++[fn]) subtree tree) = Some subtree.
+  Proof.
+    induction prefix; simpl; try congruence; intros.
+  
+  Admitted.
 
   (**
    * XXX
@@ -747,84 +757,7 @@ Module DIRTREE.
       }
     end.
 
-  Theorem mkfile_ok' : forall fsxp dnum name mscs,
-    {< F mbase m Fm Ftop tree tree_elem,
-    PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-           [[ tree = TreeDir dnum tree_elem ]]
-    POST RET:^(mscs,r)
-           (* We always modify the memory, because we might allocate the file,
-            * but then fail to link it into the directory..  When we return
-            * None, the overall transaction should be aborted.
-            *)
-           exists m', LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
-           ([[ r = None ]] \/
-            exists inum, [[ r = Some inum ]] *
-            [[ (Fm * rep fsxp Ftop (TreeDir dnum 
-                     ((name, TreeFile inum BFILE.bfile0) :: tree_elem)))%pred (list2mem m') ]])
-    CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
-    >} mkfile fsxp dnum name mscs.
-  Proof.
-    unfold mkfile, rep.
-    step.
-    subst; simpl in *.
-    hypmatch tree_dir_names_pred as Hx;
-    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    step.
-    unfold SDIR.rep_macro. do 2 eexists. intuition.
-    pred_apply. cancel.
-    pred_apply. cancel.
-    eauto.
-    step.
-    step.
-    step.
-
-    repeat deex.
-    hypmatch dirlist_pred as Hx; hypmatch (pimpl freeinode_pred) as Hy;
-    rewrite Hy in Hx; destruct_lift Hx.
-    step.
-    step.
-
-    apply pimpl_or_r; right. cancel.
-    unfold tree_dir_names_pred; cancel; eauto.
-    apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
-
-    step.
-    Grab Existential Variables.
-    all: try exact emp.
-    all: try exact BFILE.bfile0.
-    all: try exact nil.
-    all: try exact empty_mem.
-  Qed.
-
-  Theorem mkfile_ok : forall fsxp dnum name mscs,
-    {< F mbase m pathname Fm Ftop tree tree_elem,
-    PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
-    POST RET:^(mscs,r)
-           (* We always modify the memory, because we might allocate the file,
-            * but then fail to link it into the directory..  When we return
-            * None, the overall transaction should be aborted.
-            *)
-           exists m', LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
-           ([[ r = None ]] \/
-            exists inum tree', [[ r = Some inum ]] *
-            [[ tree' = update_subtree pathname (TreeDir dnum 
-                       ((name, TreeFile inum BFILE.bfile0) :: tree_elem)) tree ]] *
-            [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]])
-    CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
-    >} mkfile fsxp dnum name mscs.
-  Proof.
-    intros; eapply pimpl_ok2. apply mkfile_ok'.
-    unfold rep; cancel.
-    rewrite subtree_extract; eauto. simpl. instantiate (tree_elem0:=tree_elem). cancel.
-    step.
-    apply pimpl_or_r; right. cancel.
-    rewrite <- subtree_absorb; eauto.
-    cancel.
-  Qed.
-
+ 
   Definition mkdir T fsxp dnum name mscs rx : prog T :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    (FSXPInodeAlloc fsxp), (FSXPInode fsxp)) in
@@ -912,7 +845,7 @@ Module DIRTREE.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
+
   Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _) _) => apply mkdir_ok : prog.
 
   Lemma false_False_true : forall x,
@@ -2087,5 +2020,79 @@ Module DIRTREE.
   Hint Extern 1 ({{_}} progseq (setattr _ _ _ _) _) => apply setattr_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
+
+
+  Theorem mkfile_ok : forall fsxp dnum name mscs,
+    {< F mbase m pathname Fm Ftop tree tree_elem,
+    PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+    POST RET:^(mscs,r)
+           (* We always modify the memory, because we might allocate the file,
+            * but then fail to link it into the directory..  When we return
+            * None, the overall transaction should be aborted.
+            *)
+           exists m', LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
+           ([[ r = None ]] \/
+            exists inum, [[ r = Some inum ]] *
+            [[ (Fm * rep fsxp Ftop (tree_graft dnum tree_elem pathname name 
+                         (TreeFile inum BFILE.bfile0) tree))%pred (list2mem m') ]])
+    CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
+    >} mkfile fsxp dnum name mscs.
+  Proof.
+    unfold mkfile, rep.
+    step. 
+    subst; simpl in *.
+
+    rewrite subtree_extract in H6; eauto.
+    simpl in *.
+
+    hypmatch tree_dir_names_pred as Hx;
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    step.
+    unfold SDIR.rep_macro. do 2 eexists. intuition.
+    pred_apply. cancel.
+    pred_apply. cancel.
+    eauto.
+    step.
+    step.
+    step.
+
+    repeat deex.
+    hypmatch dirlist_pred as Hx; hypmatch (pimpl freeinode_pred) as Hy;
+    rewrite Hy in Hx; destruct_lift Hx.
+    step.
+    step.
+
+    apply pimpl_or_r; right. cancel.
+
+    rewrite <- subtree_graft_absorb; eauto. cancel.
+   
+    step.
+    Grab Existential Variables.
+    all: try exact emp.
+    all: try exact BFILE.bfile0.
+    all: try exact nil.
+    all: try exact empty_mem.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
+
+  Theorem find_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree,
+    find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
+    find_subtree (prefix++[name]) (tree_graft dnum tree_elem prefix name subtree tree) = Some subtree.
+  Proof.
+    induction prefix; simpl; intros.
+
+  Admitted.
+
+  Theorem update_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree subtree',
+    find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
+    update_subtree (prefix++[name]) subtree' (tree_graft dnum tree_elem prefix name subtree tree) = 
+          (tree_graft dnum tree_elem prefix name subtree' tree).
+  Proof.
+    induction prefix; simpl; intros.
+
+  Admitted.
 
 End DIRTREE.
