@@ -1191,21 +1191,75 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
+  Lemma isplit1_firstn : forall count data n n2 H,
+    map Rec.of_word (isplit_list (isplit1_dep
+      n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H)) = firstn n data.
+  Proof.
+    intros.
+    generalize dependent n2.
+    generalize dependent data.
+    induction n; intros; simpl in *.
+    - reflexivity.
+  Admitted.
+
+  Lemma isplit1_refold : forall n1 n2 Heq Heq_trivial w,
+       split1 (n1*itemsize) (n2*itemsize)
+           (eq_rect ((n1 + n2) * itemsize)
+              (fun n : nat => word n) w (n1*itemsize + n2*itemsize) Heq) =
+       isplit1_dep n1 n2 w Heq_trivial.
+  Proof.
+    intros.
+    unfold isplit1_dep, isplit1.
+    unfold eq_rec.
+    repeat f_equal.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    reflexivity.
+    apply proof_irrelevance.
+  Qed.
+
+  Lemma apply_build_chunks : forall num_chunks blocknum newdata ilist,
+    let off := blocknum * block_items in
+    let count := num_chunks * block_items in
+    let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
+    let chunks := build_chunks num_chunks blocknum w in
+    length newdata = count ->
+    apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
+  Proof.
+    intros.
+    generalize dependent ilist.
+    generalize dependent blocknum.
+    induction num_chunks; intros; simpl.
+    simpl in count.
+    unfold count in H.
+    destruct newdata; simpl.
+    rewrite Nat.add_0_r.
+    symmetry; apply firstn_skipn.
+    inversion H.
+    unfold apply_chunk; simpl.
+    unfold items_to_list.
+    unfold isplit1_dep, isplit1.
+    erewrite eq_rect_split1_eq1.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite isplit1_refold.
+
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     (* it seems like this is implied by the types, but if so,
        I'm not sure how to get access to it in the proof *)
     length newdata = count ->
+    goodSize addrlen off ->
     let chunks := chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata) in
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
     intros.
-    induction count.
-    destruct newdata.
-    simpl.
-    rewrite Nat.add_0_r.
-    symmetry; apply firstn_skipn.
-    inversion H. (* impossible *)
-    unfold chunks.
+    unfold chunkList in chunks.
+    unfold chunks; simpl.
+    unfold apply_chunk; simpl.
+    unfold items_to_list.
+    rewrite wordToNat_natToWord_idempotent'.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.div_mod by auto.
+    rewrite isplit1_firstn.
   Admitted.
 
   Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
@@ -1318,13 +1372,14 @@ Section RECBFILE.
 
   Lemma applying_chunks_is_update : forall Fx off count olddata newdata ilist ilist',
     length newdata = count ->
+    goodSize addrlen off ->
     (Fx * arrayN off olddata)%pred (list2nmem ilist) ->
     length olddata = length newdata ->
     ilist' = apply_chunks (chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata)) ilist ->
     (Fx * arrayN off newdata)%pred (list2nmem ilist').
   Proof.
     intros.
-    rewrite applying_chunks_is_replace in H2 by assumption.
+    rewrite applying_chunks_is_replace in H3 by assumption.
     replace ilist'.
     replace count with (length olddata) by omega.
     apply arrayN_newlist; try assumption.
