@@ -743,6 +743,35 @@ Proof.
   reflexivity.
 Qed.
 
+Theorem eq_rect_split2_eq2 : forall n1 n2 n2' (w : word (n1 + n2)) Heq Heq2,
+  eq_rect n2 (fun n => word n)
+    (split2 n1 n2 w) n2' Heq =
+  split2 n1 n2' (eq_rect (n1+n2) (fun n => word n) w (n1+n2') Heq2).
+Proof.
+  intros.
+  assert (H' := Heq).
+  generalize dependent w.
+  generalize dependent Heq.
+  generalize dependent Heq2.
+  rewrite H'; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem eq_rect_split2_eq1 : forall n1 n1' n2 (w: word (n1 + n2)) Heq,
+     split2 n1 n2 w = split2 n1' n2
+        (eq_rect (n1 + n2) (fun y : nat => word y) w
+     (n1' + n2) Heq).
+Proof.
+  intros.
+  assert (n1 = n1') as H' by omega.
+  generalize dependent w.
+  generalize dependent Heq.
+  rewrite H'; intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
 Theorem combine_split_eq_rect2 : forall n1 n2 n2' (w : word (n1 + n2)) Heq,
   combine (split1 n1 n2 w)
           (eq_rect n2 (fun n => word n) (split2 n1 n2 w)
@@ -783,6 +812,19 @@ Proof.
   assert (n1' = n1) as H' by omega.
   generalize dependent e.
   rewrite H'; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem eq_rect_split1_eq1 : forall n1 n1' n2 (w : word (n1 + n2)) Heq Heq1,
+  eq_rect n1 (fun n => word n)
+    (split1 n1 n2 w) n1' Heq =
+  split1 n1' n2 (eq_rect (n1+n2) (fun n => word n) w (n1'+n2) Heq1).
+Proof.
+  intros.
+  generalize dependent w.
+  generalize dependent Heq1.
+  rewrite Heq; intros.
   repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
   reflexivity.
 Qed.
