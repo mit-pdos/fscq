@@ -384,15 +384,9 @@ Theorem create_ok : forall fsxp dnum name mscs,
   >} create fsxp dnum name mscs.
 Proof.
   unfold create.
-  step.
-  step.
-  step.
-
+  hoare.
   erewrite DIRTREE.find_subtree_tree_graft by eauto.
   reflexivity.
-  step.
-  step.
-
   eapply pimpl_or_r; right; cancel.
   rewrite DIRTREE.update_subtree_tree_graft by eauto.
   reflexivity.
@@ -405,8 +399,6 @@ Proof.
 
   rewrite DIRTREE.update_subtree_tree_graft by eauto.
   reflexivity.
-
-  step.
 
   Grab Existential Variables.
   all: eauto.
