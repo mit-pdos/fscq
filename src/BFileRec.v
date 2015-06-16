@@ -10,6 +10,7 @@ Require Import Bool.
 Require Import Rounding.
 Require Import Program.Wf.
 Require Import Psatz.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
@@ -647,6 +648,166 @@ Section RECBFILE.
   let z := skipn bend b in
   x ++ items_to_list (chunk_data ck) ++ z.
 
+  Theorem eq_rect_items : forall n n' H H' w,
+    eq_rect (n*itemsize) word w (n'*itemsize) H =
+    eq_rect n items w n' H'.
+  intros.
+    unfold items.
+    rewrite eq_rect_word_mult.
+    f_equal.
+    apply proof_irrelevance.
+  Qed.
+
+  Theorem icombine_app : forall (n m count:nat) H
+    (v : items n) (w : items m),
+    (@Rec.of_word (Rec.ArrayF itemtype n) v) ++
+        (@Rec.of_word (Rec.ArrayF itemtype m) w) =
+    @Rec.of_word (Rec.ArrayF itemtype count) (eq_rect (n + m) items (icombine v w)
+                         count H).
+  Proof.
+    intros.
+    induction n.
+    - simpl.
+      unfold icombine, eq_rec_r, eq_rec.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      rewrite Rec.combine_0.
+      admit.
+
+    - simpl Rec.len in *.
+      rewrite Rec.of_word_cons.
+      simpl.
+      erewrite IHn.
+      unfold icombine.
+      unfold eq_rec_r, eq_rec.
+      simpl.
+      rewrite <- combine_split with (sz1:=itemsize) (sz2:=n * itemsize) (w := v).
+      f_equal.
+      rewrite split1_combine.
+      erewrite combine_assoc.
+      rewrite eq_rect_word_match.
+      unfold eq_rec.
+      rewrite eq_rect_nat_double.
+      rewrite eq_rect_combine.
+      shatterer.
+
+      rewrite split2_combine.
+      admit.
+
+    Grab Existential Variables.
+    all: try omega.
+  Admitted.
+
+  Theorem icombine_app' : forall (n m:nat)
+    (v : items n) (w : items m),
+    (@Rec.of_word (Rec.ArrayF itemtype n) v) ++
+        (@Rec.of_word (Rec.ArrayF itemtype m) w) =
+    @Rec.of_word (Rec.ArrayF itemtype (n+m)) (icombine v w).
+  Proof.
+    intros.
+    assert (n+m = n+m) as H by reflexivity.
+    replace (icombine v w) with (eq_rect (n + m) items (icombine v w) (n+m) H).
+    apply icombine_app.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    reflexivity.
+  Qed.
+
+  Lemma isplit10 : forall n (w: items n) H,
+    isplit1 n 0 (eq_rect n items w (n+0) H) = w.
+  Proof.
+    intros.
+    generalize dependent H.
+    generalize dependent w.
+    intros.
+  Admitted.
+
+  Lemma items_Sn_cons : forall n (w: items (S n)),
+    @Rec.of_word (Rec.ArrayF itemtype _) w =
+      (@Rec.of_word itemtype (single_item (isplit1 1 n w))) ::
+      (@Rec.of_word (Rec.ArrayF itemtype _) (isplit2 1 n w)).
+  Proof.
+    intros.
+    unfold single_item.
+    unfold eq_rec.
+    simpl.
+    induction n.
+    unfold itemsize.
+  Admitted.
+
+  Theorem isplit1_firstn' : forall (n m:nat)
+    (w : items (n+m)),
+    firstn n (@Rec.of_word (Rec.ArrayF itemtype (n+m)) w) =
+    @Rec.of_word (Rec.ArrayF itemtype n) (isplit1 n m w).
+  Proof.
+    intros.
+    induction n.
+    - compute.
+      reflexivity.
+    - simpl plus in *.
+      rewrite items_Sn_cons.
+      simpl.
+      rewrite IHn.
+      rewrite items_Sn_cons.
+
+      f_equal.
+      * unfold isplit1, eq_rec.
+        simpl.
+        rewrite eq_rect_split1.
+
+        rewrite eq_rect_nat_double.
+        erewrite split1_iter.
+        f_equal.
+        f_equal.
+        repeat rewrite eq_rect_word_match.
+        repeat rewrite eq_rect_nat_double.
+        admit.
+      * unfold isplit1, isplit2, eq_rec.
+        simpl.
+        rewrite eq_rect_split2.
+        rewrite eq_rect_split1.
+        repeat rewrite eq_rect_nat_double.
+        erewrite split1_split2.
+        rewrite eq_rect_word_match.
+        rewrite eq_rect_nat_double.
+        f_equal.
+        f_equal.
+        f_equal.
+        f_equal.
+        apply proof_irrelevance.
+
+        Grab Existential Variables.
+        all: try omega.
+  Admitted.
+
+  Theorem isplit2_skipn' : forall (n m:nat)
+    (w : items (n+m)),
+    skipn n (@Rec.of_word (Rec.ArrayF itemtype (n+m)) w) =
+    @Rec.of_word (Rec.ArrayF itemtype m) (isplit2 n m w).
+    intros.
+    induction n.
+    - simpl.
+      unfold isplit2.
+      simpl.
+      unfold eq_rec.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
+    - simpl plus in *.
+      rewrite items_Sn_cons.
+      simpl.
+      rewrite IHn.
+      unfold isplit2, eq_rec.
+      rewrite eq_rect_split2.
+      rewrite eq_rect_nat_double.
+      simpl.
+      erewrite split2_iter.
+      rewrite eq_rect_word_match.
+      rewrite eq_rect_nat_double.
+      f_equal.
+      admit.
+
+      Grab Existential Variables.
+      all: try omega.
+  Admitted.
+
   Lemma update_chunk_valu_block : forall b ck,
     update_block_chunk b ck =
     valu2block (update_chunk (rep_block b) ck).
@@ -656,14 +817,19 @@ Section RECBFILE.
     unfold RecArray.rep_block.
     unfold valu2block.
     unfold update_chunk.
-    unfold isplit1_dep, isplit2_dep, isplit1, isplit2.
-    unfold icombine.
-    unfold eq_rec_r, eq_rec.
+    unfold isplit1_dep, isplit2_dep.
+    unfold update_block_chunk.
+    unfold eq_rec.
     rewrite eq_rect_nat_double.
-    rewrite eq_rect_nat_double.
-    unfold block_items, items.
+    unfold blocktype.
     simpl.
-    repeat rewrite eq_rect_word_mult.
+    fold itemsize.
+    erewrite eq_rect_items.
+    rewrite <- icombine_app.
+    rewrite <- icombine_app'.
+    rewrite <- isplit1_firstn'.
+
+    unfold valu2items, wreclen_to_valu, eq_rec_r, eq_rec.
     repeat rewrite eq_rect_nat_double.
   Admitted.
 
