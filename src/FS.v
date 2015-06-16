@@ -139,6 +139,8 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
 
+
+(* XXX unused? *)
 Definition file_nblocks T fsxp inum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, len) <- DIRTREE.getlen fsxp inum mscs;
@@ -305,11 +307,17 @@ Proof.
   step.
 Qed.
 
-
+(* XXX old one missed commmit, but maybe unnecessary *)
 Definition set_size T fsxp inum size mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
-  rx ^(mscs, ok).
+  If (bool_dec ok true) {
+      let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+      rx ^(mscs, ok)
+  } else {
+      mscs <- LOG.abort (FSXPLog fsxp) mscs;
+      rx ^(mscs, false)
+  }.
 
 
 Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
@@ -536,6 +544,63 @@ Definition delete T fsxp dnum name mscs rx : prog T :=
     mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, false)
   }.
+
+
+Theorem delete_ok: forall fsxp dnum name mscs,
+  {< m pathname Fm Ftop tree tree_elem,
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs, ok)
+          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+           (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+            exists tree', [[ ok = true ]] *
+            [[ tree' =   DIRTREE.update_subtree pathname
+                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree  ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+            exists tree',
+            (Fm * DIRTREE.rep fsxp Ftop tree') *
+            [[ tree' =  DIRTREE.update_subtree pathname
+                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]])
+  >} delete fsxp dnum name mscs.
+Proof.
+  unfold delete.
+  hoare.
+  all: try rewrite LOG.activetxn_would_recover_old.
+  all: try rewrite LOG.notxn_would_recover_old.
+  all: try apply LOG.would_recover_old_either_pred.
+  rewrite <- LOG.would_recover_either_pred_pimpl.
+  cancel.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (delete _ _ _ _ ) _) => apply delete_ok : prog. 
+
+Theorem delete_recover_ok : forall fsxp dnum name mscs,
+  {<< m pathname Fm Ftop tree tree_elem,
+  PRE     [[ cachesize <> 0 ]] *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs, ok)
+          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+            exists tree', [[ ok = true ]] *
+            [[ tree' =   DIRTREE.update_subtree pathname
+                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+  REC RET:^(mscs,fsxp)
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+           exists tree',
+            [[ tree' = DIRTREE.update_subtree pathname
+                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
+  >>} delete fsxp dnum name mscs >> recover.
+Proof.
+  prove_recover_ok.
+Qed.
+
 
 Definition lookup T fsxp dnum names mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
