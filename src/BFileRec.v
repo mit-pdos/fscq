@@ -647,44 +647,6 @@ Section RECBFILE.
   let z := skipn bend b in
   x ++ items_to_list (chunk_data ck) ++ z.
 
-  Lemma isplit1_firstn : forall (b:block) n n2 H,
-    items_to_list (isplit1_dep n n2 (valu2items (rep_block b)) H) = firstn n b.
-  Proof.
-    intros.
-    unfold items_to_list, isplit1_dep.
-    generalize dependent n2.
-    generalize dependent b.
-    induction n; intros; simpl.
-    - reflexivity.
-    - replace (S (n + n2)) with (n + S n2) by omega.
-      assert (block_items = n + S n2) as Hn2 by omega.
-
-      destruct b.
-      admit.
-      assert (IHn2 := IHn b (S n2) Hn2).
-      rewrite <- IHn2.
-      f_equal.
-      admit.
-  Admitted.
-
-  Lemma isplit2_skipn : forall (b:block) n n2 H,
-    items_to_list (isplit2_dep n n2 (valu2items (rep_block b)) H) = skipn n b.
-  Proof.
-    intros.
-  Admitted.
-
-  Lemma icombine_app : forall n1 n2 (is1 : items n1) (is2 : items n2),
-    items_to_list (icombine is1 is2) = items_to_list is1 ++ items_to_list is2.
-  Proof.
-    intros.
-    unfold icombine.
-    unfold items_to_list.
-    rewrite <- map_app.
-    f_equal.
-    generalize dependent n2.
-    induction n1; intros; simpl.
-  Admitted.
-
   Lemma update_chunk_valu_block : forall b ck,
     update_block_chunk b ck =
     valu2block (update_chunk (rep_block b) ck).
@@ -704,9 +666,6 @@ Section RECBFILE.
     repeat rewrite eq_rect_word_mult.
     repeat rewrite eq_rect_nat_double.
   Admitted.
-
-  (** TODO: prove update_chunk_ok: something in separation logic about what
-  update_chunk does to the item lists *)
 
   Definition apply_chunk (ck:chunk) (ilist: list item) : list item :=
   let blocknum := # (chunk_blocknum ck) in
