@@ -9,6 +9,7 @@ Require Import FSLayout.
 Require Import Bool.
 Require Import Rounding.
 Require Import Program.Wf.
+Require Import Psatz.
 
 Set Implicit Arguments.
 
@@ -455,7 +456,41 @@ Section RECBFILE.
     omega.
   Qed.
 
-  Require Import Psatz.
+  Lemma rounddown_eq : forall x y,
+    0 < y -> y * (x / y) = x - x mod y.
+  Proof.
+    intros.
+    rewrite Nat.div_mod with (x := x) (y := y) at 2 by omega.
+    rewrite <- Nat.add_sub_assoc by omega.
+    omega.
+  Qed.
+
+  Lemma minus_distr_minus : forall a b c,
+    b <= a -> c <= b -> a - (b - c) = a - b + c.
+  Proof.
+    intros.
+    lia.
+  Qed.
+
+  Lemma minus_distr_minus' : forall a b c,
+    b <= a + c -> c <= b -> a - (b - c) = a + c - b.
+  Proof.
+    intros.
+    lia.
+  Qed.
+
+  Lemma mod_spec : forall a b m,
+    a < m -> b < m -> a mod m = b mod m -> a = b.
+  Proof.
+    intros.
+    (* use Nat.mod_unique *)
+  Admitted.
+
+  Lemma mod_plus_le : forall a b m,
+    (a + b) mod m <= a mod m + b mod m.
+  Proof.
+    intros.
+  Admitted.
 
   Theorem chunk_blocknum_bound : forall off count (w: items count),
     goodSize addrlen off ->
@@ -486,7 +521,78 @@ Section RECBFILE.
     rewrite Nat.div_small in H1 by omega.
     inversion H1.
     rewrite Hmineq in H1.
-  Admitted.
+    rewrite Nat.mul_le_mono_pos_l with (p := block_items).
+    assert (Hboff := boff_mod_ok off).
+    rewrite Nat.mul_add_distr_l.
+    rewrite Nat.mul_add_distr_l.
+    repeat rewrite rounddown_eq.
+    rewrite Nat.mul_1_r.
+    rewrite <- Nat.mod_add with (b := 1) (a := count - (block_items - off mod block_items)).
+    rewrite Nat.mul_1_l.
+    replace (count - (block_items - off mod block_items) + block_items) with
+      (count + block_items - (block_items - off mod block_items)) by omega.
+    replace (count + block_items - (block_items - off mod block_items)) with
+      (count + off mod block_items) by omega.
+    all: try apply block_items_gt_0.
+    all: try apply items_per_valu_not_0'.
+    destruct (lt_dec count block_items).
+    assert (Hoffbound := Nat.mod_le off block_items).
+    rewrite Nat.add_mod_idemp_r.
+    replace (count + off) with (off + count) by omega.
+    replace ((off + count) mod block_items) with (off mod block_items + count - block_items).
+    replace (off + count - (off mod block_items + count - block_items)) with
+      (off + count - (off mod block_items + count) + block_items).
+    rewrite minus_distr_minus' by omega.
+    omega.
+    symmetry; apply minus_distr_minus.
+
+    omega.
+    omega.
+    eapply mod_spec with (m := block_items).
+    omega.
+    apply boff_mod_ok.
+    rewrite <- Nat.mod_add with (b := 1).
+    simpl.
+    rewrite Nat.add_0_r.
+    rewrite <- Nat.add_sub_swap by omega.
+    rewrite <- Nat.add_sub_assoc by omega.
+    rewrite minus_diag.
+    rewrite Nat.add_0_r.
+    rewrite Nat.add_mod_idemp_l.
+    rewrite Nat.mod_mod.
+    reflexivity.
+    all: try apply items_per_valu_not_0'.
+    all: try apply block_items_gt_0.
+
+    assert (block_items <= count) by omega.
+    rewrite Nat.add_mod_idemp_r by auto.
+(*     rewrite <- Nat.mod_add with (b := 1) (a := count - (block_items - off mod block_items)).
+    simpl.
+    rewrite Nat.add_0_r.
+    replace (count - block_items + off + block_items) with (count + off) by omega. *)
+    rewrite Nat.add_sub_assoc.
+    rewrite Nat.add_sub_assoc by omega.
+    replace (off - off mod block_items + block_items + count) with
+      (off - off mod block_items + count + block_items) by omega.
+    rewrite minus_distr_minus by omega.
+    rewrite Nat.add_sub.
+    replace (off - off mod block_items + count + off mod block_items) with
+      (off - off mod block_items + off mod block_items + count) by omega.
+    rewrite Nat.sub_add.
+    rewrite plus_comm.
+    omega.
+    apply Nat.mod_le.
+    all: try apply items_per_valu_not_0'.
+    eapply le_trans.
+    apply mod_plus_le.
+    replace count with (count - block_items + 1*block_items) at 1.
+    rewrite Nat.mod_add by omega.
+    rewrite minus_distr_minus by omega.
+    apply plus_le_compat_r.
+    apply Nat.mod_le.
+    auto.
+    omega.
+  Qed.
 
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
   let v_items := valu2items v in
