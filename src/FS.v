@@ -118,7 +118,7 @@ Proof.
 
   set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
   set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
-  cancel.
+  cancel; eauto.
 
   step.
   unfold LOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
@@ -407,6 +407,12 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
 
+Ltac prove_recover_ok := unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
+  [eapply corr3_from_corr2_rx; eauto with prog | idtac ];
+  cancel; eauto; [ step | autorewrite with crash_xform ];
+  match goal with H: crash_xform _ =p=> _ |- crash_xform _ * _ =p=> _ => rewrite H end; cancel; step.
+
+
 Theorem create_recover_ok : forall fsxp dnum name mscs,
   {<< m pathname Fm Ftop tree tree_elem,
   PRE     [[ cachesize <> 0 ]] *
@@ -429,20 +435,7 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} create fsxp dnum name mscs >> recover.
 Proof.
-
-  unfold forall_helper; intros.
-  eexists.
-  intros.
-  eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx; eauto with prog.
-
-  cancel; eauto.
-  step.
-  autorewrite with crash_xform.
-  rewrite H3.
-  cancel.
-  step.
-
+  prove_recover_ok.
 Qed.
 
 Definition mksock T fsxp dnum name mscs rx : prog T :=
@@ -505,7 +498,33 @@ Proof.
   cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _ ) _) => apply mkdir_ok : prog.
+Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _ ) _) => apply mkdir_ok : prog. 
+
+Theorem mkdir_recover_ok : forall fsxp dnum name mscs,
+  {<< m pathname Fm Ftop tree tree_elem,
+  PRE     [[ cachesize <> 0 ]] *
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs,r)
+          [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+          (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+            exists inum tree', [[ r = Some inum ]] *
+            [[ tree' =   DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum
+                      ((name, DIRTREE.TreeDir inum nil) :: tree_elem)) tree]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+  REC RET:^(mscs,fsxp)
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
+          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+           exists inum tree',
+            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum
+                      ((name, DIRTREE.TreeDir inum nil) :: tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
+  >>} mkdir fsxp dnum name mscs >> recover.
+Proof.
+  prove_recover_ok.
+Qed.
+
 
 Definition delete T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -602,20 +621,7 @@ Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname msc
           [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
   >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
 Proof.
-  unfold forall_helper; intros.
-  eexists.
-
-  intros.
-  eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx; eauto with prog.
-
-  cancel; eauto.
-  step.
-
-  autorewrite with crash_xform.
-  rewrite H3.
-  cancel.
-  step.
+  prove_recover_ok.
 Qed.
 
 Definition statfs T fsxp mscs rx : prog T :=
