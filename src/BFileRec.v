@@ -575,9 +575,17 @@ Section RECBFILE.
     intros.
     unfold rep_block.
     unfold RecArray.rep_block.
-    unfold wreclen_to_valu.
     unfold valu2block.
-    unfold eq_rec.
+    unfold update_chunk.
+    unfold isplit1_dep, isplit2_dep, isplit1, isplit2.
+    unfold icombine.
+    unfold eq_rec_r, eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite eq_rect_nat_double.
+    unfold block_items, items.
+    simpl.
+    repeat rewrite eq_rect_word_mult.
+    repeat rewrite eq_rect_nat_double.
   Admitted.
 
   (** TODO: prove update_chunk_ok: something in separation logic about what
