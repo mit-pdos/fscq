@@ -1798,6 +1798,18 @@ Proof.
   apply wordToNat_bound.
 Qed.
 
+Lemma wordToNat_natToWord_le : forall sz n,
+  (wordToNat (natToWord sz n) <= n)%nat.
+Proof.
+  intros.
+  case_eq (lt_dec n (pow2 sz)); intros.
+  rewrite wordToNat_natToWord_idempotent'; auto.
+  eapply le_trans.
+  apply Nat.lt_le_incl.
+  apply wordToNat_bound.
+  omega.
+Qed.
+
 Lemma wordToNat_eq_natToWord : forall sz (w : word sz) n,
   wordToNat w = n
   -> w = natToWord sz n.

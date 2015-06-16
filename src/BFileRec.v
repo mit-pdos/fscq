@@ -448,12 +448,12 @@ Section RECBFILE.
     rewrite <- H0; simpl.
     unfold bound.
     apply le_trans with blocknum; try omega.
-    admit. (* # ($ n) <= n *)
+    apply wordToNat_natToWord_le.
     unfold bound.
     replace (blocknum + S num_chunks) with ((blocknum + 1) + num_chunks) by omega.
     eapply IHnum_chunks.
     eassumption.
-  Admitted.
+  Qed.
 
   Lemma build_chunks_num_chunks : forall num_chunks blocknum count (w: items count) ck,
     In ck (build_chunks num_chunks blocknum w) ->
@@ -492,14 +492,24 @@ Section RECBFILE.
     a < m -> b < m -> a mod m = b mod m -> a = b.
   Proof.
     intros.
-    (* use Nat.mod_unique *)
-  Admitted.
+    assert (a = a mod m).
+    apply Nat.mod_unique with (q := 0); omega.
+    assert (b = b mod m).
+    apply Nat.mod_unique with (q := 0); omega.
+    omega.
+  Qed.
 
   Lemma mod_plus_le : forall a b m,
     (a + b) mod m <= a mod m + b mod m.
   Proof.
     intros.
-  Admitted.
+    (* will need m <> 0, so handle m = 0 separately *)
+    case_eq m; intros.
+    - auto.
+    - rewrite Nat.add_mod by auto.
+      apply Nat.mod_le.
+      auto.
+  Qed.
 
   Theorem chunk_blocknum_bound : forall off count (w: items count),
     goodSize addrlen off ->
