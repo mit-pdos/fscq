@@ -429,6 +429,7 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} create fsxp dnum name mscs >> recover.
 Proof.
+
   unfold forall_helper; intros.
   eexists.
   intros.
@@ -441,6 +442,7 @@ Proof.
   rewrite H3.
   cancel.
   step.
+
 Qed.
 
 Definition mksock T fsxp dnum name mscs rx : prog T :=
@@ -474,6 +476,36 @@ Definition mkdir T fsxp dnum name mscs rx : prog T :=
     | false => rx ^(mscs, None)
     end
   end.
+
+Theorem mkdir_ok: forall fsxp dnum name mscs,
+  {< m pathname Fm Ftop tree tree_elem,
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+  POST RET:^(mscs,r)
+          [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+           (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+            exists inum tree', [[ r = Some inum ]] *
+            [[ tree' =  DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum
+                      ((name, DIRTREE.TreeDir inum nil) :: tree_elem)) tree ]] *
+            [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+            exists inum tree',
+            (Fm * DIRTREE.rep fsxp Ftop tree') *
+            [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeDir dnum
+                      ((name, DIRTREE.TreeDir inum nil) :: tree_elem)) tree ]])
+  >} mkdir fsxp dnum name mscs.
+Proof.
+  unfold mkdir.
+  hoare.
+  all: try rewrite LOG.activetxn_would_recover_old.
+  all: try rewrite LOG.notxn_would_recover_old.
+  all: try apply LOG.would_recover_old_either_pred.
+  rewrite <- LOG.would_recover_either_pred_pimpl.
+  cancel.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _ ) _) => apply mkdir_ok : prog.
 
 Definition delete T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
