@@ -381,6 +381,7 @@ Section RECBFILE.
     let Hmineq := fresh "Hmineq" in
     edestruct Nat.min_spec as [Hminspec|Hminspec];
     inversion Hminspec as [Hlt Hmineq];
+    clear Hminspec;
     erewrite Hmineq;
     try omega.
 
