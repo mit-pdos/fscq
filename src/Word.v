@@ -721,25 +721,6 @@ Proof.
   reflexivity.
 Qed.
 
-Theorem eq_rect_combine2 : forall n1 n2  (w1: word n1) (w2: word n2) Heq Heq1 Heq2,
-  eq_rect (n1 + n2) (fun n => word n)
-    (combine w1 w2) (n1' + n2') Heq =
-  combine (eq_rect n1 (fun n => word n) w1 n1' Heq1)
-          (eq_rect n2 (fun n => word n) w2 n2' Heq2).
-Proof.
-  intros.
-  generalize dependent w1.
-  generalize dependent w2.
-  generalize Heq1.
-  generalize Heq2.
-  generalize Heq.
-  rewrite Heq1.
-  rewrite Heq2.
-  intros.
-  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
-  reflexivity.
-Qed.
-
 Lemma eq_rect_split2_helper : forall a b c,
   a = b -> c + a = c + b.
 Proof.
