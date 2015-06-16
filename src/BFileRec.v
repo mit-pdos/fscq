@@ -97,6 +97,14 @@ Section RECBFILE.
     apply items_per_valu_not_0'.
   Qed.
 
+  Corollary block_items_0_lt : 0 < block_items.
+  Proof.
+    apply block_items_gt_0.
+  Qed.
+
+  Hint Resolve block_items_gt_0.
+  Hint Resolve block_items_0_lt.
+
   Corollary block_items_S_n : block_items = S (block_items - 1).
   Proof.
     assert (H := block_items_gt_0).
@@ -517,81 +525,73 @@ Section RECBFILE.
     apply build_chunks_num_chunks in H1.
     unfold bound.
     min_cases.
-    rewrite Hmineq in H1.
-    rewrite Nat.div_small in H1 by omega.
-    inversion H1.
-    rewrite Hmineq in H1.
-    rewrite Nat.mul_le_mono_pos_l with (p := block_items).
-    assert (Hboff := boff_mod_ok off).
-    rewrite Nat.mul_add_distr_l.
-    rewrite Nat.mul_add_distr_l.
-    repeat rewrite rounddown_eq.
-    rewrite Nat.mul_1_r.
-    rewrite <- Nat.mod_add with (b := 1) (a := count - (block_items - off mod block_items)).
-    rewrite Nat.mul_1_l.
-    replace (count - (block_items - off mod block_items) + block_items) with
-      (count + block_items - (block_items - off mod block_items)) by omega.
-    replace (count + block_items - (block_items - off mod block_items)) with
-      (count + off mod block_items) by omega.
-    all: try apply block_items_gt_0.
-    all: try apply items_per_valu_not_0'.
-    destruct (lt_dec count block_items).
-    assert (Hoffbound := Nat.mod_le off block_items).
-    rewrite Nat.add_mod_idemp_r.
-    replace (count + off) with (off + count) by omega.
-    replace ((off + count) mod block_items) with (off mod block_items + count - block_items).
-    replace (off + count - (off mod block_items + count - block_items)) with
-      (off + count - (off mod block_items + count) + block_items).
-    rewrite minus_distr_minus' by omega.
-    omega.
-    symmetry; apply minus_distr_minus.
+    - rewrite Hmineq in H1.
+      rewrite Nat.div_small in H1 by omega.
+      inversion H1.
+    - rewrite Hmineq in H1.
+      (* instantiate these for omega/lia's benefit *)
+      assert (Hboff := boff_mod_ok off).
+      assert (off mod block_items <= off) as Hoffbound.
+      apply Nat.mod_le; auto.
+      rewrite Nat.mul_le_mono_pos_l with (p := block_items) by auto.
+      repeat rewrite Nat.mul_add_distr_l.
+      repeat rewrite rounddown_eq by auto.
+      rewrite Nat.mul_1_r.
+      rewrite <- Nat.mod_add with (b := 1)
+        (* select correct mod *)
+        (a := count - (block_items - off mod block_items)) by auto.
+      rewrite Nat.mul_1_l.
+      replace (count - (block_items - off mod block_items) + block_items) with
+        (count + block_items - (block_items - off mod block_items)) by omega.
+      replace (count + block_items - (block_items - off mod block_items)) with
+        (count + off mod block_items) by omega.
+      destruct (lt_dec count block_items).
+      * rewrite Nat.add_mod_idemp_r by auto.
+        rewrite Nat.add_comm with count off.
+        (* non-trivial replacement *)
+        replace ((off + count) mod block_items) with
+          (off mod block_items + count - block_items).
+        replace (off + count - (off mod block_items + count - block_items)) with
+          (off + count - (off mod block_items + count) + block_items) by omega.
+        rewrite minus_distr_minus' by omega.
+        (* this miraculously works *)
+        omega.
 
-    omega.
-    omega.
-    eapply mod_spec with (m := block_items).
-    omega.
-    apply boff_mod_ok.
-    rewrite <- Nat.mod_add with (b := 1).
-    simpl.
-    rewrite Nat.add_0_r.
-    rewrite <- Nat.add_sub_swap by omega.
-    rewrite <- Nat.add_sub_assoc by omega.
-    rewrite minus_diag.
-    rewrite Nat.add_0_r.
-    rewrite Nat.add_mod_idemp_l.
-    rewrite Nat.mod_mod.
-    reflexivity.
-    all: try apply items_per_valu_not_0'.
-    all: try apply block_items_gt_0.
-
-    assert (block_items <= count) by omega.
-    rewrite Nat.add_mod_idemp_r by auto.
-(*     rewrite <- Nat.mod_add with (b := 1) (a := count - (block_items - off mod block_items)).
-    simpl.
-    rewrite Nat.add_0_r.
-    replace (count - block_items + off + block_items) with (count + off) by omega. *)
-    rewrite Nat.add_sub_assoc.
-    rewrite Nat.add_sub_assoc by omega.
-    replace (off - off mod block_items + block_items + count) with
-      (off - off mod block_items + count + block_items) by omega.
-    rewrite minus_distr_minus by omega.
-    rewrite Nat.add_sub.
-    replace (off - off mod block_items + count + off mod block_items) with
-      (off - off mod block_items + off mod block_items + count) by omega.
-    rewrite Nat.sub_add.
-    rewrite plus_comm.
-    omega.
-    apply Nat.mod_le.
-    all: try apply items_per_valu_not_0'.
-    eapply le_trans.
-    apply mod_plus_le.
-    replace count with (count - block_items + 1*block_items) at 1.
-    rewrite Nat.mod_add by omega.
-    rewrite minus_distr_minus by omega.
-    apply plus_le_compat_r.
-    apply Nat.mod_le.
-    auto.
-    omega.
+        (* return to the replacement *)
+        eapply mod_spec with (m := block_items).
+        omega.
+        apply boff_mod_ok.
+        rewrite <- Nat.mod_add with (b := 1) by auto.
+        rewrite Nat.mul_1_l.
+        rewrite <- Nat.add_sub_swap by omega.
+        rewrite Nat.add_sub.
+        rewrite Nat.add_mod_idemp_l by auto.
+        rewrite Nat.mod_mod by auto.
+        reflexivity.
+      * assert (block_items <= count) by omega.
+        rewrite Nat.add_mod_idemp_r by auto.
+        (* we will prove the inequality later *)
+        rewrite Nat.add_sub_assoc.
+        rewrite Nat.add_sub_assoc by omega.
+        replace (off - off mod block_items + block_items + count) with
+          (off - off mod block_items + count + block_items) by omega.
+        rewrite minus_distr_minus by omega.
+        rewrite Nat.add_sub.
+        replace (off - off mod block_items + count + off mod block_items) with
+          (off - off mod block_items + off mod block_items + count) by omega.
+        rewrite Nat.sub_add.
+        rewrite plus_comm.
+        omega.
+        apply Nat.mod_le; auto.
+        (* only the inequality above is left *)
+        eapply le_trans.
+        apply mod_plus_le.
+        (* 1*block_items will be canceled out by mod_add *)
+        replace count with (count - block_items + 1*block_items) at 1 by omega.
+        rewrite Nat.mod_add by omega.
+        rewrite minus_distr_minus by omega.
+        apply plus_le_compat_r.
+        apply Nat.mod_le; auto.
   Qed.
 
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
