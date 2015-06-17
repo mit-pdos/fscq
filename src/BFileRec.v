@@ -733,16 +733,10 @@ Section RECBFILE.
       repeat rewrite eq_rect_word_mult.
       rewrite eq_rect_nat_double.
       assert (count = n + m) as Hcount by omega.
-      generalize dependent v.
-      generalize dependent w.
-      generalize dependent H.
+      repeat generalize_proof.
       rewrite Hcount; intros.
-      rewrite <- (eq_rect_eq_dec eq_nat_dec).
-      assert ((n + m) * itemsize = n * itemsize + m * itemsize) by nia.
-      generalize_proof.
-      generalize_proof.
+      eq_rect_simpl.
       rewrite combine_split.
-      intros.
       rewrite Rec.of_word_cons.
       fold itemsize.
       f_equal.
