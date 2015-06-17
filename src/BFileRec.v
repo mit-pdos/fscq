@@ -663,6 +663,36 @@ Section RECBFILE.
     apply proof_irrelevance.
   Qed.
 
+  Lemma split1_eq : forall n1 n2 n2'
+    count (w: word count) Heq Heq',
+    split1 n1 n2
+      (eq_rect _ word w _ Heq) =
+    split1 n1 n2'
+      (eq_rect _ word w _ Heq').
+  Proof.
+    intros.
+    assert (n2 = n2') by omega.
+    generalize dependent Heq.
+    rewrite H; intros.
+    repeat f_equal.
+    apply proof_irrelevance.
+  Qed.
+
+  Lemma split2_eq : forall n1 n1' n2
+    count (w: word count) Heq Heq',
+    split2 n1 n2
+      (eq_rect _ word w _ Heq) =
+    split2 n1' n2
+      (eq_rect _ word w _ Heq').
+  Proof.
+    intros.
+    assert (n1 = n1') by omega.
+    generalize dependent Heq.
+    rewrite H; intros.
+    repeat f_equal.
+    apply proof_irrelevance.
+  Qed.
+
   Theorem icombine_app : forall (n m count:nat) H
     (v : items n) (w : items m),
     (@Rec.of_word (Rec.ArrayF itemtype n) v) ++
@@ -709,12 +739,25 @@ Section RECBFILE.
       rewrite Hcount; intros.
       rewrite <- (eq_rect_eq_dec eq_nat_dec).
       assert ((n + m) * itemsize = n * itemsize + m * itemsize) by nia.
-      generalize dependent v.
-      generalize dependent w.
-      generalize dependent (Nat.mul_add_distr_r n m itemsize).
-      rewrite H0.
-      admit.
-
+      generalize_proof.
+      generalize_proof.
+      rewrite combine_split.
+      intros.
+      rewrite Rec.of_word_cons.
+      fold itemsize.
+      f_equal.
+      * f_equal.
+        rewrite <- split1_combine with (w := v) (z := w) at 1.
+        erewrite split1_iter.
+        rewrite eq_rect_word_match.
+        apply split1_eq.
+      * f_equal.
+        generalize_proof.
+        generalize_proof.
+        clear e e0 e1.
+        clear Hcount.
+        intros.
+        admit.
     Grab Existential Variables.
     all: try omega.
   Admitted.
@@ -746,20 +789,6 @@ Section RECBFILE.
     unfold itemsize.
   Admitted.
 
-  Lemma split1_eq : forall n1 n2 n2'
-    count (w: word count) Heq Heq',
-    split1 n1 n2
-      (eq_rect _ word w _ Heq) =
-    split1 n1 n2'
-      (eq_rect _ word w _ Heq').
-  Proof.
-    intros.
-    assert (n2 = n2') by omega.
-    generalize dependent Heq.
-    rewrite H; intros.
-    repeat f_equal.
-    apply proof_irrelevance.
-  Qed.
 
   Theorem isplit1_firstn' : forall (n m:nat)
     (w : items (n+m)),
@@ -804,21 +833,6 @@ Section RECBFILE.
 
         Grab Existential Variables.
         all: omega.
-  Qed.
-
-  Lemma split2_eq : forall n1 n1' n2
-    count (w: word count) Heq Heq',
-    split2 n1 n2
-      (eq_rect _ word w _ Heq) =
-    split2 n1' n2
-      (eq_rect _ word w _ Heq').
-  Proof.
-    intros.
-    assert (n1 = n1') by omega.
-    generalize dependent Heq.
-    rewrite H; intros.
-    repeat f_equal.
-    apply proof_irrelevance.
   Qed.
 
   Theorem isplit2_skipn' : forall (n m:nat)
