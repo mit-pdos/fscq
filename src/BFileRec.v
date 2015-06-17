@@ -785,10 +785,22 @@ Section RECBFILE.
     unfold single_item.
     unfold eq_rec.
     simpl.
-    induction n.
-    unfold itemsize.
-  Admitted.
-
+    generalize_proof; intros.
+    rewrite Rec.of_word_cons.
+    f_equal.
+    - f_equal.
+      unfold isplit1.
+      rewrite eq_rect_split1.
+      eq_rect_simpl.
+      reflexivity.
+    - f_equal.
+      unfold isplit2.
+      simpl in *. fold itemsize.
+      eq_rect_simpl.
+      replace w with (eq_rect _ word w _ eq_refl) at 1.
+      apply split2_eq.
+      reflexivity.
+  Qed.
 
   Theorem isplit1_firstn' : forall (n m:nat)
     (w : items (n+m)),
@@ -1283,14 +1295,41 @@ Section RECBFILE.
     rx ^(mscs).
 
   Lemma isplit1_firstn : forall count data n n2 H,
-    map Rec.of_word (isplit_list (isplit1_dep
-      n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H)) = firstn n data.
+    length data = count ->
+    @Rec.of_word (Rec.ArrayF itemtype _) (isplit1_dep
+      n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H) = firstn n data.
   Proof.
     intros.
     generalize dependent n2.
     generalize dependent data.
+    generalize dependent count.
     induction n; intros; simpl in *.
     - reflexivity.
+    - destruct data.
+      exfalso.
+      rewrite <- H0 in H.
+      inversion H.
+      simpl in H0.
+      assert (length data = n + n2) by omega.
+      destruct count.
+      inversion H.
+      inversion H.
+      rewrite <- IHn with (H := H3) by omega.
+      rewrite Rec.of_word_cons.
+      fold itemsize.
+      unfold isplit1_dep, isplit1.
+      erewrite split1_iter.
+      rewrite eq_rect_word_match.
+      unfold items.
+      rewrite eq_rect_word_mult.
+      eq_rect_simpl.
+      repeat generalize_proof.
+      rewrite H3.
+      simpl in *.
+      intros.
+      eq_rect_simpl.
+
+      f_equal.
   Admitted.
 
   Lemma isplit1_refold : forall n1 n2 Heq Heq_trivial w,
