@@ -686,6 +686,48 @@ Module Rec.
     reflexivity.
   Qed.
 
+  Theorem combine_app' : forall (t:type) (n m:nat) H
+    (v : word (len (ArrayF t n))) (w : word (len (ArrayF t m))),
+    app (of_word v) (of_word w) = of_word (eq_rect (len (ArrayF t n) + len (ArrayF t m))
+      (fun n => word n)
+      (combine v w)
+      (len (ArrayF t (n+m))) H).
+  Proof.
+    intros.
+    induction n.
+    simpl.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    rewrite combine_0; reflexivity.
+    simpl len in *.
+    rewrite of_word_cons.
+    simpl.
+    erewrite IHn.
+    rewrite of_word_cons.
+
+    rewrite <- combine_split with (sz1:=len t) (sz2:=n * len t) (w := v).
+    f_equal.
+    rewrite split1_combine.
+    erewrite combine_assoc.
+    rewrite eq_rect_word_match.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite eq_rect_combine.
+    rewrite split1_combine.
+    reflexivity.
+
+    rewrite split2_combine.
+    erewrite combine_assoc.
+    rewrite eq_rect_word_match.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite eq_rect_combine.
+    rewrite split2_combine.
+    f_equal.
+
+    Grab Existential Variables.
+    all: omega.
+  Qed.
+
   Theorem combine_app : forall (t:type) (n m:nat)
     (v : word (len (ArrayF t n))) (w : word (len (ArrayF t m))),
     app (of_word v) (of_word w) = of_word (len_add (combine v w)).

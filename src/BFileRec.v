@@ -10,6 +10,7 @@ Require Import Bool.
 Require Import Rounding.
 Require Import Program.Wf.
 Require Import Psatz.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
@@ -647,42 +648,164 @@ Section RECBFILE.
   let z := skipn bend b in
   x ++ items_to_list (chunk_data ck) ++ z.
 
-  Lemma isplit1_firstn : forall (b:block) n n2 H,
-    items_to_list (isplit1_dep n n2 (valu2items (rep_block b)) H) = firstn n b.
+  Theorem eq_rect_items : forall n n' H H' w,
+    eq_rect (n*itemsize) word w (n'*itemsize) H =
+    eq_rect n items w n' H'.
+  intros.
+    unfold items.
+    rewrite eq_rect_word_mult.
+    f_equal.
+    apply proof_irrelevance.
+  Qed.
+
+  Theorem icombine_app : forall (n m count:nat) H
+    (v : items n) (w : items m),
+    (@Rec.of_word (Rec.ArrayF itemtype n) v) ++
+        (@Rec.of_word (Rec.ArrayF itemtype m) w) =
+    @Rec.of_word (Rec.ArrayF itemtype count) (eq_rect (n + m) items (icombine v w)
+                         count H).
   Proof.
     intros.
-    unfold items_to_list, isplit1_dep.
-    generalize dependent n2.
-    generalize dependent b.
-    induction n; intros; simpl.
-    - reflexivity.
-    - replace (S (n + n2)) with (n + S n2) by omega.
-      assert (block_items = n + S n2) as Hn2 by omega.
-
-      destruct b.
+    induction n.
+    - simpl.
+      unfold icombine, eq_rec_r, eq_rec.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      rewrite Rec.combine_0.
       admit.
-      assert (IHn2 := IHn b (S n2) Hn2).
-      rewrite <- IHn2.
+
+    - simpl Rec.len in *.
+      rewrite Rec.of_word_cons.
+      simpl.
+      erewrite IHn.
+      unfold icombine.
+      unfold eq_rec_r, eq_rec.
+      simpl.
+      rewrite <- combine_split with (sz1:=itemsize) (sz2:=n * itemsize) (w := v).
+      f_equal.
+      rewrite split1_combine.
+      erewrite combine_assoc.
+      rewrite eq_rect_word_match.
+      unfold eq_rec.
+      rewrite eq_rect_nat_double.
+      rewrite eq_rect_combine.
+      shatterer.
+
+      rewrite split2_combine.
+      admit.
+
+    Grab Existential Variables.
+    all: try omega.
+  Admitted.
+
+  Theorem icombine_app' : forall (n m:nat)
+    (v : items n) (w : items m),
+    (@Rec.of_word (Rec.ArrayF itemtype n) v) ++
+        (@Rec.of_word (Rec.ArrayF itemtype m) w) =
+    @Rec.of_word (Rec.ArrayF itemtype (n+m)) (icombine v w).
+  Proof.
+    intros.
+    assert (n+m = n+m) as H by reflexivity.
+    replace (icombine v w) with (eq_rect (n + m) items (icombine v w) (n+m) H).
+    apply icombine_app.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    reflexivity.
+  Qed.
+
+  Lemma isplit10 : forall n (w: items n) H,
+    isplit1 n 0 (eq_rect n items w (n+0) H) = w.
+  Proof.
+    intros.
+    generalize dependent H.
+    generalize dependent w.
+    intros.
+  Admitted.
+
+  Lemma items_Sn_cons : forall n (w: items (S n)),
+    @Rec.of_word (Rec.ArrayF itemtype _) w =
+      (@Rec.of_word itemtype (single_item (isplit1 1 n w))) ::
+      (@Rec.of_word (Rec.ArrayF itemtype _) (isplit2 1 n w)).
+  Proof.
+    intros.
+    unfold single_item.
+    unfold eq_rec.
+    simpl.
+    induction n.
+    unfold itemsize.
+  Admitted.
+
+  Theorem isplit1_firstn' : forall (n m:nat)
+    (w : items (n+m)),
+    firstn n (@Rec.of_word (Rec.ArrayF itemtype (n+m)) w) =
+    @Rec.of_word (Rec.ArrayF itemtype n) (isplit1 n m w).
+  Proof.
+    intros.
+    induction n.
+    - compute.
+      reflexivity.
+    - simpl plus in *.
+      rewrite items_Sn_cons.
+      simpl.
+      rewrite IHn.
+      rewrite items_Sn_cons.
+
+      f_equal.
+      * unfold isplit1, eq_rec.
+        simpl.
+        rewrite eq_rect_split1.
+
+        rewrite eq_rect_nat_double.
+        erewrite split1_iter.
+        f_equal.
+        f_equal.
+        repeat rewrite eq_rect_word_match.
+        repeat rewrite eq_rect_nat_double.
+        admit.
+      * unfold isplit1, isplit2, eq_rec.
+        simpl.
+        rewrite eq_rect_split2.
+        rewrite eq_rect_split1.
+        repeat rewrite eq_rect_nat_double.
+        erewrite split1_split2.
+        rewrite eq_rect_word_match.
+        rewrite eq_rect_nat_double.
+        f_equal.
+        f_equal.
+        f_equal.
+        f_equal.
+        apply proof_irrelevance.
+
+        Grab Existential Variables.
+        all: try omega.
+  Admitted.
+
+  Theorem isplit2_skipn' : forall (n m:nat)
+    (w : items (n+m)),
+    skipn n (@Rec.of_word (Rec.ArrayF itemtype (n+m)) w) =
+    @Rec.of_word (Rec.ArrayF itemtype m) (isplit2 n m w).
+    intros.
+    induction n.
+    - simpl.
+      unfold isplit2.
+      simpl.
+      unfold eq_rec.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
+    - simpl plus in *.
+      rewrite items_Sn_cons.
+      simpl.
+      rewrite IHn.
+      unfold isplit2, eq_rec.
+      rewrite eq_rect_split2.
+      rewrite eq_rect_nat_double.
+      simpl.
+      erewrite split2_iter.
+      rewrite eq_rect_word_match.
+      rewrite eq_rect_nat_double.
       f_equal.
       admit.
-  Admitted.
 
-  Lemma isplit2_skipn : forall (b:block) n n2 H,
-    items_to_list (isplit2_dep n n2 (valu2items (rep_block b)) H) = skipn n b.
-  Proof.
-    intros.
-  Admitted.
-
-  Lemma icombine_app : forall n1 n2 (is1 : items n1) (is2 : items n2),
-    items_to_list (icombine is1 is2) = items_to_list is1 ++ items_to_list is2.
-  Proof.
-    intros.
-    unfold icombine.
-    unfold items_to_list.
-    rewrite <- map_app.
-    f_equal.
-    generalize dependent n2.
-    induction n1; intros; simpl.
+      Grab Existential Variables.
+      all: try omega.
   Admitted.
 
   Lemma update_chunk_valu_block : forall b ck,
@@ -694,19 +817,21 @@ Section RECBFILE.
     unfold RecArray.rep_block.
     unfold valu2block.
     unfold update_chunk.
-    unfold isplit1_dep, isplit2_dep, isplit1, isplit2.
-    unfold icombine.
-    unfold eq_rec_r, eq_rec.
+    unfold isplit1_dep, isplit2_dep.
+    unfold update_block_chunk.
+    unfold eq_rec.
     rewrite eq_rect_nat_double.
-    rewrite eq_rect_nat_double.
-    unfold block_items, items.
+    unfold blocktype.
     simpl.
-    repeat rewrite eq_rect_word_mult.
+    fold itemsize.
+    erewrite eq_rect_items.
+    rewrite <- icombine_app.
+    rewrite <- icombine_app'.
+    rewrite <- isplit1_firstn'.
+
+    unfold valu2items, wreclen_to_valu, eq_rec_r, eq_rec.
     repeat rewrite eq_rect_nat_double.
   Admitted.
-
-  (** TODO: prove update_chunk_ok: something in separation logic about what
-  update_chunk does to the item lists *)
 
   Definition apply_chunk (ck:chunk) (ilist: list item) : list item :=
   let blocknum := # (chunk_blocknum ck) in
@@ -1066,21 +1191,75 @@ Section RECBFILE.
       Rof ^(mscs);
     rx ^(mscs).
 
+  Lemma isplit1_firstn : forall count data n n2 H,
+    map Rec.of_word (isplit_list (isplit1_dep
+      n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H)) = firstn n data.
+  Proof.
+    intros.
+    generalize dependent n2.
+    generalize dependent data.
+    induction n; intros; simpl in *.
+    - reflexivity.
+  Admitted.
+
+  Lemma isplit1_refold : forall n1 n2 Heq Heq_trivial w,
+       split1 (n1*itemsize) (n2*itemsize)
+           (eq_rect ((n1 + n2) * itemsize)
+              (fun n : nat => word n) w (n1*itemsize + n2*itemsize) Heq) =
+       isplit1_dep n1 n2 w Heq_trivial.
+  Proof.
+    intros.
+    unfold isplit1_dep, isplit1.
+    unfold eq_rec.
+    repeat f_equal.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    reflexivity.
+    apply proof_irrelevance.
+  Qed.
+
+  Lemma apply_build_chunks : forall num_chunks blocknum newdata ilist,
+    let off := blocknum * block_items in
+    let count := num_chunks * block_items in
+    let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
+    let chunks := build_chunks num_chunks blocknum w in
+    length newdata = count ->
+    apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
+  Proof.
+    intros.
+    generalize dependent ilist.
+    generalize dependent blocknum.
+    induction num_chunks; intros; simpl.
+    simpl in count.
+    unfold count in H.
+    destruct newdata; simpl.
+    rewrite Nat.add_0_r.
+    symmetry; apply firstn_skipn.
+    inversion H.
+    unfold apply_chunk; simpl.
+    unfold items_to_list.
+    unfold isplit1_dep, isplit1.
+    erewrite eq_rect_split1_eq1.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite isplit1_refold.
+
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     (* it seems like this is implied by the types, but if so,
        I'm not sure how to get access to it in the proof *)
     length newdata = count ->
+    goodSize addrlen off ->
     let chunks := chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata) in
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
     intros.
-    induction count.
-    destruct newdata.
-    simpl.
-    rewrite Nat.add_0_r.
-    symmetry; apply firstn_skipn.
-    inversion H. (* impossible *)
-    unfold chunks.
+    unfold chunkList in chunks.
+    unfold chunks; simpl.
+    unfold apply_chunk; simpl.
+    unfold items_to_list.
+    rewrite wordToNat_natToWord_idempotent'.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.div_mod by auto.
+    rewrite isplit1_firstn.
   Admitted.
 
   Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
@@ -1193,13 +1372,14 @@ Section RECBFILE.
 
   Lemma applying_chunks_is_update : forall Fx off count olddata newdata ilist ilist',
     length newdata = count ->
+    goodSize addrlen off ->
     (Fx * arrayN off olddata)%pred (list2nmem ilist) ->
     length olddata = length newdata ->
     ilist' = apply_chunks (chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata)) ilist ->
     (Fx * arrayN off newdata)%pred (list2nmem ilist').
   Proof.
     intros.
-    rewrite applying_chunks_is_replace in H2 by assumption.
+    rewrite applying_chunks_is_replace in H3 by assumption.
     replace ilist'.
     replace count with (length olddata) by omega.
     apply arrayN_newlist; try assumption.
