@@ -638,7 +638,7 @@ Section RECBFILE.
   Qed.
 
   Definition items_to_list count (w: items count) : list item :=
-    map Rec.of_word (isplit_list w).
+    @Rec.of_word (Rec.ArrayF itemtype count) w.
 
   Definition update_block_chunk (b:block) (ck:chunk) : block :=
   let boff := chunk_boff ck in
@@ -711,15 +711,6 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
-  Lemma isplit10 : forall n (w: items n) H,
-    isplit1 n 0 (eq_rect n items w (n+0) H) = w.
-  Proof.
-    intros.
-    generalize dependent H.
-    generalize dependent w.
-    intros.
-  Admitted.
-
   Lemma items_Sn_cons : forall n (w: items (S n)),
     @Rec.of_word (Rec.ArrayF itemtype _) w =
       (@Rec.of_word itemtype (single_item (isplit1 1 n w))) ::
@@ -732,6 +723,21 @@ Section RECBFILE.
     induction n.
     unfold itemsize.
   Admitted.
+
+  Lemma split1_eq : forall n1 n2 n2'
+    count (w: word count) Heq Heq',
+    split1 n1 n2
+      (eq_rect _ word w _ Heq) =
+    split1 n1 n2'
+      (eq_rect _ word w _ Heq').
+  Proof.
+    intros.
+    assert (n2 = n2') by omega.
+    generalize dependent Heq.
+    rewrite H; intros.
+    repeat f_equal.
+    apply proof_irrelevance.
+  Qed.
 
   Theorem isplit1_firstn' : forall (n m:nat)
     (w : items (n+m)),
@@ -759,7 +765,7 @@ Section RECBFILE.
         f_equal.
         repeat rewrite eq_rect_word_match.
         repeat rewrite eq_rect_nat_double.
-        admit.
+        apply split1_eq.
       * unfold isplit1, isplit2, eq_rec.
         simpl.
         rewrite eq_rect_split2.
@@ -775,8 +781,23 @@ Section RECBFILE.
         apply proof_irrelevance.
 
         Grab Existential Variables.
-        all: try omega.
-  Admitted.
+        all: omega.
+  Qed.
+
+  Lemma split2_eq : forall n1 n1' n2
+    count (w: word count) Heq Heq',
+    split2 n1 n2
+      (eq_rect _ word w _ Heq) =
+    split2 n1' n2
+      (eq_rect _ word w _ Heq').
+  Proof.
+    intros.
+    assert (n1 = n1') by omega.
+    generalize dependent Heq.
+    rewrite H; intros.
+    repeat f_equal.
+    apply proof_irrelevance.
+  Qed.
 
   Theorem isplit2_skipn' : forall (n m:nat)
     (w : items (n+m)),
@@ -802,11 +823,11 @@ Section RECBFILE.
       rewrite eq_rect_word_match.
       rewrite eq_rect_nat_double.
       f_equal.
-      admit.
+      apply split2_eq.
 
       Grab Existential Variables.
-      all: try omega.
-  Admitted.
+      all: omega.
+  Qed.
 
   Lemma update_chunk_valu_block : forall b ck,
     update_block_chunk b ck =
@@ -828,9 +849,34 @@ Section RECBFILE.
     rewrite <- icombine_app.
     rewrite <- icombine_app'.
     rewrite <- isplit1_firstn'.
+    rewrite <- isplit2_skipn'.
+    rewrite app_assoc_reverse.
+    f_equal; [| f_equal].
 
-    unfold valu2items, wreclen_to_valu, eq_rec_r, eq_rec.
-    repeat rewrite eq_rect_nat_double.
+    - f_equal.
+      unfold valu2items, wreclen_to_valu, eq_rec_r, eq_rec.
+      unfold items.
+      rewrite eq_rect_word_mult.
+      repeat rewrite eq_rect_nat_double.
+      (* need Rec.of_to_id with an eq_rect in between *)
+      admit.
+    - f_equal.
+      assert (Hsize := chunk_size_ok ck).
+      omega.
+      unfold valu2items, wreclen_to_valu, eq_rec_r, eq_rec.
+      unfold items.
+      rewrite eq_rect_word_mult.
+      repeat rewrite eq_rect_nat_double.
+      (* need Rec.of_to_id with an eq_rect in between *)
+      admit.
+
+      Grab Existential Variables.
+      (* above admits *)
+      admit. admit.
+      assert (Hsize := chunk_size_ok ck).
+      assert (Hbend := chunk_bend_ok ck).
+      unfold block_items in *.
+      omega.
   Admitted.
 
   Definition apply_chunk (ck:chunk) (ilist: list item) : list item :=
