@@ -110,7 +110,8 @@ Inductive prog (T: Type) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
 | Write (a: addr) (v: valu) (rx: unit -> prog T)
-| Sync (a: addr) (rx: unit -> prog T).
+| Sync (a: addr) (rx: unit -> prog T)
+| Trim (a: addr) (rx: unit -> prog T).
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
@@ -168,6 +169,11 @@ Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
 | XSyncOK : forall m a v l rx out, m a = Some (v, l)
   -> exec (upd m a (v, nil)) (rx tt) out
   -> exec m (Sync a rx) out
+| XTrimFail : forall m a rx, m a = None
+  -> exec m (Trim a rx) (Failed T)
+| XTrimOK : forall m a vs vs' rx out, m a = Some vs
+  -> exec (upd m a vs') (rx tt) out
+  -> exec m (Trim a rx) out
 | XCrash : forall m p, exec m p (Crashed T m)
 | XDone : forall m v, exec m (Done v) (Finished m v).
 

@@ -120,6 +120,37 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Sync _) _) => apply sync_ok : prog.
 
+Theorem trim_ok:
+  forall (a:addr),
+  {< v0,
+  PRE        a |-> v0
+  POST RET:r a |->?
+  CRASH      a |->?
+  >} Trim a.
+Proof.
+  unfold corr2; intros; repeat deex.
+  destruct_lift H.
+  inv_exec.
+  - apply sep_star_comm in H; apply ptsto_valid in H.
+    repeat deex.
+    congruence.
+  - eapply H4; eauto.
+    apply sep_star_and2lift; split; firstorder.
+    apply sep_star_and2lift; split; firstorder.
+    apply sep_star_comm.
+    apply sep_star_comm in H as H'.
+
+    assert ((a |-> vs' * F_)%pred (upd m a vs')).
+    eapply ptsto_upd; eauto.
+    pred_apply. cancel.
+  - right. eexists; intuition eauto.
+    apply H3.
+    pred_apply.
+    cancel.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (Trim _) _) => apply trim_ok : prog.
+
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
 

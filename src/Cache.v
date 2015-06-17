@@ -39,7 +39,7 @@ Module BUFCACHE.
      [[ CSMaxCount cs <> 0 ]] *
      [[ forall a v, Map.MapsTo a v (CSMap cs) -> exists old, m a = Some (v, old) ]])%pred.
 
-  Definition trim T (cs : cachestate) rx : prog T :=
+  Definition maybe_evict T (cs : cachestate) rx : prog T :=
     If (lt_dec (CSCount cs) (CSMaxCount cs)) {
       rx cs
     } else {
@@ -59,7 +59,7 @@ Module BUFCACHE.
     }.
 
   Definition read T a (cs : cachestate) rx : prog T :=
-    cs <- trim cs;
+    cs <- maybe_evict cs;
     match Map.find a (CSMap cs) with
     | Some v => rx ^(cs, v)
     | None =>
@@ -69,7 +69,7 @@ Module BUFCACHE.
     end.
 
   Definition write T a v (cs : cachestate) rx : prog T :=
-    cs <- trim cs;
+    cs <- maybe_evict cs;
     Write a v;;
     match Map.find a (CSMap cs) with
     | Some _ =>
@@ -84,6 +84,16 @@ Module BUFCACHE.
     Sync a;;
     rx cs.
 
+  Definition trim T a (cs : cachestate) rx : prog T :=
+    Trim a;;
+    match Map.find a (CSMap cs) with
+    | Some _ =>
+      rx (Build_cachestate (Map.remove a (CSMap cs))
+                           (CSCount cs - 1) (CSMaxCount cs) (CSEvict cs))
+    | None =>
+      rx cs
+    end.
+
   Definition init T (cachesize : nat) (rx : cachestate -> prog T) : prog T :=
     rx (Build_cachestate (Map.empty valu) 0 cachesize eviction_init).
 
@@ -97,6 +107,10 @@ Module BUFCACHE.
 
   Definition sync_array T a i cs rx : prog T :=
     cs <- sync (a ^+ i ^* $1) cs;
+    rx cs.
+
+  Definition trim_array T a i cs rx : prog T :=
+    cs <- trim (a ^+ i ^* $1) cs;
     rx cs.
 
   Lemma mapsto_add : forall a v v' (m : Map.t valu),
@@ -188,7 +202,7 @@ Module BUFCACHE.
 
   Ltac unfold_rep := unfold rep.
 
-  Theorem trim_ok : forall cs,
+  Theorem maybe_evict_ok : forall cs,
     {< d,
     PRE
       rep cs d
@@ -196,16 +210,16 @@ Module BUFCACHE.
       rep cs d * [[ CSCount cs < CSMaxCount cs ]]
     CRASH
       exists cs', rep cs' d
-    >} trim cs.
+    >} maybe_evict cs.
   Proof.
-    unfold trim, rep; hoare.
+    unfold maybe_evict, rep; hoare.
     rewrite map_remove_cardinal; eauto.
     replace (CSCount cs) with (CSMaxCount cs) in * by omega.
     rewrite Map.cardinal_1 in *. rewrite Heql in *; simpl in *; omega.
     rewrite map_remove_cardinal by (eapply map_elements_hd_in; eauto); eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (trim _) _) => apply trim_ok : prog.
+  Hint Extern 1 ({{_}} progseq (maybe_evict _) _) => apply maybe_evict_ok : prog.
 
   Theorem read_ok : forall cs a,
     {< d F v,
@@ -329,6 +343,68 @@ Module BUFCACHE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
+
+  Theorem trim_ok : forall a cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * a |-> vs)%pred d ]]
+    POST RET:cs
+      exists d', rep cs d' * [[ (F * a |->?)%pred d' ]]
+    CRASH
+      exists cs' d', rep cs' d' * [[ (F * a |->?)%pred d' ]]
+    >} trim a cs.
+  Proof.
+    unfold trim, rep.
+    intros; eapply pimpl_ok2; eauto with prog.
+    intros; norm.
+    unfold stars; simpl.
+    rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
+    intuition.
+
+    case_eq (Map.find a (CSMap cs)); intros.
+    eapply pimpl_ok2; eauto with prog.
+    intros; norm.
+    instantiate (d' := Prog.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    rewrite <- diskIs_combine_upd with (m:=d); cancel.
+    intuition.
+    rewrite map_remove_cardinal. eauto. eauto.
+    destruct (weq a a0).
+    apply MapFacts.remove_mapsto_iff in H0. intuition.
+    rewrite upd_ne by eauto. eauto.
+
+    assert ((a |-> (v0_cur, v0_old) * F)%pred (Prog.upd d a (v0_cur, v0_old))).
+    eapply ptsto_upd. pred_apply; cancel.
+    pred_apply; cancel.
+
+    eapply pimpl_ok2; eauto with prog.
+    intros; norm.
+    instantiate (d' := Prog.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    rewrite <- diskIs_combine_upd with (m:=d); cancel.
+    intuition.
+
+    destruct (weq a a0).
+    apply MapProperties.F.find_mapsto_iff in H0. congruence.
+    rewrite upd_ne by eauto. eauto.
+
+    assert ((a |-> (v0_cur, v0_old) * F)%pred (Prog.upd d a (v0_cur, v0_old))).
+    eapply ptsto_upd. pred_apply; cancel.
+    pred_apply; cancel.
+
+    pimpl_crash. norm.
+    instantiate (d' := Prog.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    rewrite <- diskIs_combine_upd with (m:=d); cancel.
+
+    intuition.
+    instantiate (cs' := Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) eviction_init).
+    all: simpl in *; eauto; try omega.
+    apply MapProperties.F.empty_mapsto_iff in H; exfalso; eauto.
+
+    assert ((a |-> (v0_cur, v0_old) * F)%pred (Prog.upd d a (v0_cur, v0_old))).
+    eapply ptsto_upd. pred_apply; cancel.
+    pred_apply; cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (trim _ _) _) => apply trim_ok : prog.
 
   (**
    * We have two versions of [init].  [init_load] will have a theorem that
@@ -505,6 +581,38 @@ Module BUFCACHE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
+
+  Theorem trim_array_ok : forall a i cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+    POST RET:cs
+      exists d' v', rep cs d' *
+      [[ (F * array a (upd vs i v') $1)%pred d' ]]
+    CRASH
+      exists cs' d' v', rep cs' d' *
+      [[ (F * array a (upd vs i v') $1)%pred d' ]]
+    >} trim_array a i cs.
+  Proof.
+    unfold trim_array, upd_sync.
+    hoare.
+
+    pred_apply.
+    rewrite <- surjective_pairing.
+    rewrite isolate_fwd with (i:=i) by auto. cancel.
+
+    rewrite <- isolate_bwd_upd by auto.
+    cancel.
+
+    pred_apply. cancel.
+    rewrite <- isolate_bwd_upd by auto.
+    cancel.
+
+    Grab Existential Variables.
+    exact ($0, nil).
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (trim_array _ _ _) _) => apply trim_array_ok : prog.
 
   Lemma crash_xform_rep: forall cs m,
     crash_xform (rep cs m) =p=> exists m' cs', [[ possible_crash m m' ]] * rep cs' m'.
