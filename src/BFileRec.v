@@ -356,14 +356,19 @@ Section RECBFILE.
     chunk_size_ok : chunk_boff <= chunk_bend
   }.
 
+  (* TODO: find ck in goal automatically *)
+  Ltac ck_omega ck :=
+    let Hsize := fresh "Hsize" in
+    let Hbend := fresh "Hbend" in
+    assert (Hsize := chunk_size_ok ck);
+    assert (Hbend := chunk_bend_ok ck);
+    omega.
+
   (** if you want this fact, you can produce its proof with this function *)
   Definition chunk_boff_ok (ck:chunk) : (chunk_boff ck) <= block_items.
   Proof.
-    apply le_trans with (chunk_bend ck).
-    apply (chunk_size_ok ck).
-    apply (chunk_bend_ok ck).
+    ck_omega ck.
   Qed.
-
 
   Lemma boff_mod_ok : forall off,
     off mod block_items < block_items.
@@ -847,6 +852,7 @@ Section RECBFILE.
   Qed.
 
   Lemma update_chunk_valu_block : forall b ck,
+    Rec.well_formed b ->
     update_block_chunk b ck =
     valu2block (update_chunk (rep_block b) ck).
   Proof.
@@ -857,8 +863,7 @@ Section RECBFILE.
     unfold update_chunk.
     unfold isplit1_dep, isplit2_dep.
     unfold update_block_chunk.
-    unfold eq_rec.
-    rewrite eq_rect_nat_double.
+    eq_rect_simpl.
     unfold blocktype.
     simpl.
     fold itemsize.
@@ -868,33 +873,36 @@ Section RECBFILE.
     rewrite <- isplit1_firstn'.
     rewrite <- isplit2_skipn'.
     rewrite app_assoc_reverse.
+    unfold valu2items, wreclen_to_valu.
+    unfold items.
+    repeat rewrite eq_rect_word_mult.
+    unfold RecArray.blocktype.
+    eq_rect_simpl.
     f_equal; [| f_equal].
 
     - f_equal.
-      unfold valu2items, wreclen_to_valu, eq_rec_r, eq_rec.
-      unfold items.
-      rewrite eq_rect_word_mult.
-      repeat rewrite eq_rect_nat_double.
-      (* need Rec.of_to_id with an eq_rect in between *)
-      admit.
+      assert (chunk_boff ck + (block_items - chunk_boff ck) = block_items)
+        as Hck by (ck_omega ck).
+      generalize_proof.
+      rewrite Hck; intros.
+      eq_rect_simpl.
+      rewrite Rec.of_to_id; auto.
     - f_equal.
       assert (Hsize := chunk_size_ok ck).
       omega.
-      unfold valu2items, wreclen_to_valu, eq_rec_r, eq_rec.
-      unfold items.
-      rewrite eq_rect_word_mult.
-      repeat rewrite eq_rect_nat_double.
-      (* need Rec.of_to_id with an eq_rect in between *)
-      admit.
+      simpl.
+      generalize_proof.
+      assert ((chunk_boff ck + (chunk_bend ck - chunk_boff ck) +
+       (block_items - (chunk_boff ck + (chunk_bend ck - chunk_boff ck)))) =
+       block_items) as Hck by (ck_omega ck).
+      rewrite Hck; intros.
+      eq_rect_simpl.
+      rewrite Rec.of_to_id; auto.
 
       Grab Existential Variables.
-      (* above admits *)
-      admit. admit.
-      assert (Hsize := chunk_size_ok ck).
-      assert (Hbend := chunk_bend_ok ck).
-      unfold block_items in *.
-      omega.
-  Admitted.
+      fold block_items.
+      ck_omega ck.
+  Qed.
 
   Definition apply_chunk (ck:chunk) (ilist: list item) : list item :=
   let blocknum := # (chunk_blocknum ck) in

@@ -483,6 +483,16 @@ Qed.
 Hint Rewrite eq_rect_nat_double.
 Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec).
 
+Ltac generalize_proof :=
+    match goal with
+    | [ |- context[eq_rect _ _ _ _ ?H ] ] => generalize H
+    end.
+
+Ltac eq_rect_simpl :=
+  unfold eq_rec_r, eq_rec;
+  repeat rewrite eq_rect_nat_double;
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+
 Lemma eq_rect_word_offset_helper : forall a b c,
   a = b -> c + a = c + b.
 Proof.
