@@ -1129,6 +1129,7 @@ Section RECBFILE.
 
   Lemma update_chunk_parts : forall (ck:chunk) (vs_nested: list block) def,
     Forall (fun sublist => length sublist = block_items) vs_nested ->
+    Forall Rec.well_formed vs_nested ->
     let blocknum := # (chunk_blocknum ck) in
     blocknum < length vs_nested ->
     let boff := chunk_boff ck in
@@ -1152,6 +1153,9 @@ Section RECBFILE.
     unfold bend.
     apply concat_hom_subselect_skipn with (k := block_items); try assumption.
       apply (chunk_bend_ok ck).
+    rewrite Forall_forall in H0.
+    apply H0.
+    apply in_selN; assumption.
   Qed.
 
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
@@ -1231,6 +1235,8 @@ Section RECBFILE.
     rewrite Hrep1.
     eapply list2nmem_inbound.
     eassumption.
+    (* backup H13 *)
+    assert (H13' := H13).
     apply well_formed_length in H13.
     rewrite <- concat_hom_updN_first_skip with (k := block_items) by assumption.
     rewrite firstn_sum_split.
@@ -1246,7 +1252,7 @@ Section RECBFILE.
     erewrite selN_map in H5 by assumption.
     apply H5.
     rewrite H7.
-    symmetry; apply update_chunk_parts; assumption.
+    symmetry; apply update_chunk_parts; try assumption.
 
     Grab Existential Variables.
     exact ($ 0).
