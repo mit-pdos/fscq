@@ -1348,6 +1348,7 @@ Section RECBFILE.
     let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
     let chunks := build_chunks num_chunks blocknum w in
     length newdata = count ->
+    off + count < length ilist ->
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
     intros.
@@ -1372,20 +1373,54 @@ Section RECBFILE.
           (build_chunks_obligation_5 blocknum w eq_refl)))
             (ft := Rec.ArrayF itemtype (count - Nat.min count block_items)).
       assert (Nat.min count block_items = block_items).
-      apply Nat.min_r.
+        apply Nat.min_r.
+        unfold count.
+        simpl.
+        lia.
+      unfold isplit2_dep.
+      simpl in *.
+      repeat generalize_proof.
+      rewrite H2.
+      assert (count - block_items = num_chunks * block_items).
       unfold count.
-      simpl.
-      lia.
-      generalize dependent newdata.
-      generalize dependent ilist.
-      generalize dependent off.
-      generalize dependent H.
-      generalize dependent IHnum_chunks.
-      generalize dependent blocknum.
-      simpl.
-      (* this doesn't work, but would make progress toward applying IHnum_chunks *)
-      rewrite H1.
+      apply minus_plus.
+      unfold count in *.
+      rewrite H3.
+      intros.
       rewrite IHnum_chunks.
+      eq_rect_simpl.
+      replace ((blocknum + 1) * block_items) with (off + block_items) at 1.
+      rewrite firstn_sum_split.
+      rewrite app_assoc_reverse.
+      f_equal.
+      unfold off.
+      apply firstn_app.
+      rewrite firstn_length_l.
+      reflexivity.
+      fold off.
+      omega.
+      assert (length (firstn (blocknum * block_items) ilist) = off).
+      rewrite firstn_length_l.
+      reflexivity.
+      fold off.
+      omega.
+      rewrite <- H4 at 1.
+      rewrite skipn_app.
+      admit.
+
+      rewrite Nat.mul_add_distr_r.
+      unfold off.
+      omega.
+
+      apply Rec.array_of_word_length.
+      admit.
+      rewrite app_length.
+      rewrite app_length.
+      unfold item.
+      rewrite Rec.array_of_word_length.
+      rewrite firstn_length_l.
+      rewrite Nat.mul_add_distr_r.
+      simpl.
   Admitted.
 
   Lemma applying_chunks_is_replace : forall off count newdata ilist,

@@ -300,6 +300,15 @@ Module Rec.
     apply IHt. apply IHt0.
   Qed.
 
+  Theorem array_of_word_length : forall ft n w,
+    List.length (@of_word (ArrayF ft n) w) = n.
+  Proof.
+    induction n; intros; simpl.
+    reflexivity.
+    f_equal.
+    apply IHn.
+  Qed.
+
   Lemma combine_zeroes: forall sz1 sz2 w,
     w = natToWord sz2 0 -> combine (natToWord sz1 0) w = natToWord (sz1 + sz2) 0.
   Proof.
