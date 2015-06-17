@@ -666,31 +666,48 @@ Section RECBFILE.
                          count H).
   Proof.
     intros.
-    induction n.
+    generalize dependent H.
+    generalize dependent count.
+    generalize dependent m.
+    induction n; intros.
     - simpl.
       unfold icombine, eq_rec_r, eq_rec.
       rewrite <- (eq_rect_eq_dec eq_nat_dec).
       rewrite Rec.combine_0.
-      admit.
+      assert (m = count) as Heq by omega.
+      generalize dependent H.
+      generalize dependent w.
+      rewrite Heq; intros.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      reflexivity.
 
     - simpl Rec.len in *.
+      destruct count.
+      inversion H.
       rewrite Rec.of_word_cons.
       simpl.
-      erewrite IHn.
+      erewrite IHn with (count := count).
       unfold icombine.
       unfold eq_rec_r, eq_rec.
       simpl.
       rewrite <- combine_split with (sz1:=itemsize) (sz2:=n * itemsize) (w := v).
       f_equal.
       rewrite split1_combine.
-      erewrite combine_assoc.
-      rewrite eq_rect_word_match.
       unfold eq_rec.
+      unfold items.
+      repeat rewrite eq_rect_word_mult.
       rewrite eq_rect_nat_double.
-      rewrite eq_rect_combine.
-      shatterer.
-
-      rewrite split2_combine.
+      assert (count = n + m) as Hcount by omega.
+      generalize dependent v.
+      generalize dependent w.
+      generalize dependent H.
+      rewrite Hcount; intros.
+      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      assert ((n + m) * itemsize = n * itemsize + m * itemsize) by nia.
+      generalize dependent v.
+      generalize dependent w.
+      generalize dependent (Nat.mul_add_distr_r n m itemsize).
+      rewrite H0.
       admit.
 
     Grab Existential Variables.
