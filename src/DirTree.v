@@ -2078,12 +2078,56 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
 
+  Lemma lookup_name: forall name dir subtree dnum tree_elem tree,
+    dir = (TreeDir dnum tree_elem) ->
+    find_subtree [name] (update_subtree [] (add_to_dir name subtree dir) tree) = Some subtree.
+  Proof.
+  Admitted.
+
+  Lemma lookup_firstelem: forall a prefix f tree,
+    find_subtree (a::prefix) tree = Some f ->
+    exists d, find_subtree [a] tree = Some d /\ find_subtree prefix d = Some f.
+  Proof.
+  Admitted.
+
+  Lemma consume_firstelem: forall  a postfix name subtree tree dir childdir,
+      find_subtree [a] tree = Some childdir ->
+      find_subtree ((a :: postfix) ++ [name]) (update_subtree (a :: postfix) (add_to_dir name subtree dir) tree) =
+      find_subtree (postfix ++ [name]) (update_subtree postfix (add_to_dir name subtree dir) childdir).
+  Proof.
+  Admitted.
+
+  Lemma lookup_path: forall prefix name subtree dir tree dnum tree_elem,
+    dir = (TreeDir dnum tree_elem) ->
+    find_subtree prefix tree = Some dir ->
+    find_subtree (prefix ++ [name]) (update_subtree prefix (add_to_dir name subtree dir) tree)
+        = Some subtree.
+  Proof.
+    induction prefix; intros.
+    - rewrite app_nil_l. erewrite lookup_name by eauto.
+      eauto.
+    - edestruct lookup_firstelem; eauto.
+      intuition.
+      erewrite consume_firstelem by eauto.
+      erewrite IHprefix by eauto.
+      reflexivity.
+  Qed.
+
   Theorem find_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree,
     find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
     find_subtree (prefix++[name]) (tree_graft dnum tree_elem prefix name subtree tree) = Some subtree.
   Proof.
-    induction prefix; simpl; intros.
+    intros.
+    unfold tree_graft.
+    erewrite lookup_path with (dnum := dnum) (tree_elem := tree_elem) by eauto.
+    reflexivity.
+  Qed.
 
+  Lemma update_path: forall prefix name subtree subtree' dir tree dnum tree_elem,
+    dir = (TreeDir dnum tree_elem) ->
+    update_subtree (prefix ++ [name]) subtree' (update_subtree prefix (add_to_dir name subtree dir) tree)
+        = update_subtree prefix (add_to_dir name subtree' (TreeDir dnum tree_elem)) tree.
+  Proof.
   Admitted.
 
   Theorem update_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree subtree',
@@ -2091,8 +2135,11 @@ Module DIRTREE.
     update_subtree (prefix++[name]) subtree' (tree_graft dnum tree_elem prefix name subtree tree) = 
           (tree_graft dnum tree_elem prefix name subtree' tree).
   Proof.
-    induction prefix; simpl; intros.
+    intros.
+    unfold tree_graft.
+    erewrite update_path with (dnum := dnum) (tree_elem := tree_elem) by eauto.
+    reflexivity.
+  Qed.
 
-  Admitted.
 
 End DIRTREE.
