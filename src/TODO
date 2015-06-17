@@ -3,6 +3,7 @@
 - factor out on-disk list code from MemLog
 - bigger log (more than one descriptor block)
 - deleting a file should free its data blocks
+- TRIM support (TRIM opcode randomizes block contents)
 - prove end-to-end theorem about mkfs
 - non-journaled data writes (file fsync)
 - asynchronous metadata updates (directory fsync)
