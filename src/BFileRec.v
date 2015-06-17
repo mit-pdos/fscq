@@ -1281,6 +1281,7 @@ Section RECBFILE.
   Qed.
 
   Lemma apply_build_chunks : forall num_chunks blocknum newdata ilist,
+    goodSize addrlen blocknum ->
     let off := blocknum * block_items in
     let count := num_chunks * block_items in
     let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
@@ -1292,19 +1293,39 @@ Section RECBFILE.
     generalize dependent ilist.
     generalize dependent blocknum.
     induction num_chunks; intros; simpl.
-    simpl in count.
-    unfold count in H.
-    destruct newdata; simpl.
-    rewrite Nat.add_0_r.
-    symmetry; apply firstn_skipn.
-    inversion H.
-    unfold apply_chunk; simpl.
-    unfold items_to_list.
-    unfold isplit1_dep, isplit1.
-    erewrite eq_rect_split1_eq1.
-    unfold eq_rec.
-    rewrite eq_rect_nat_double.
-    rewrite isplit1_refold.
+    - simpl in count.
+      unfold count in H.
+      destruct newdata; simpl.
+      rewrite Nat.add_0_r.
+      symmetry; apply firstn_skipn.
+      inversion H0.
+    - unfold apply_chunk; simpl.
+      unfold items_to_list.
+      unfold isplit1_dep, isplit1.
+      erewrite eq_rect_split1_eq1.
+      unfold eq_rec.
+      rewrite eq_rect_nat_double.
+      rewrite wordToNat_natToWord_idempotent' by assumption.
+      rewrite Nat.add_0_r.
+      rewrite <- Rec.to_of_id with (w := (isplit2_dep (Nat.min count block_items) (count - Nat.min count block_items) w
+          (build_chunks_obligation_5 blocknum w eq_refl)))
+            (ft := Rec.ArrayF itemtype (count - Nat.min count block_items)).
+      assert (Nat.min count block_items = block_items).
+      apply Nat.min_r.
+      unfold count.
+      simpl.
+      lia.
+      generalize dependent newdata.
+      generalize dependent ilist.
+      generalize dependent off.
+      generalize dependent H.
+      generalize dependent IHnum_chunks.
+      generalize dependent blocknum.
+      simpl.
+      (* this doesn't work, but would make progress toward applying IHnum_chunks *)
+      rewrite H1.
+      rewrite IHnum_chunks.
+  Admitted.
 
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     (* it seems like this is implied by the types, but if so,
