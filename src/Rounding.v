@@ -176,6 +176,40 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     assumption.
   Qed.
 
+  Lemma div_le_divup : forall n sz,
+    n / sz <= divup n sz.
+  Proof.
+    intros.
+    destruct sz.
+    - simpl.
+      omega.
+    - unfold divup.
+      apply Nat.div_le_mono.
+      omega.
+      omega.
+  Qed.
+
+  Lemma div_lt_divup : forall m n sz,
+    sz <> 0 ->
+    m < n ->
+    m / sz < divup n sz.
+  Proof.
+    intros.
+    rewrite divup_eq_divup'.
+    unfold divup'.
+    case_eq (n mod sz); intros.
+    rewrite Nat.mul_lt_mono_pos_l with (p := sz) by omega.
+    replace (sz * (n / sz)) with n.
+    eapply le_lt_trans.
+    apply Nat.mul_div_le.
+    omega.
+    assumption.
+    apply Nat.div_exact; assumption.
+    apply le_lt_trans with (n / sz).
+    apply Nat.div_le_mono; omega.
+    omega.
+  Qed.
+
   Lemma le_divup:
     forall m n,
       m <= n ->

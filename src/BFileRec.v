@@ -527,8 +527,6 @@ Section RECBFILE.
   Qed.
 
   Lemma num_items : forall off count,
-    (count -
-      (block_items - off mod block_items)) / block_items > 0 ->
     block_items <= off mod block_items + count ->
     off / block_items + 1 +
     (count - (block_items - off mod block_items)) / block_items =
@@ -601,51 +599,19 @@ Section RECBFILE.
 
   Theorem chunk_blocknum_bound : forall off count (w: items count),
     goodSize addrlen off ->
-    let bound := (off + count) / block_items in
-    Forall (fun ck => # (chunk_blocknum ck) <= bound) (chunkList off w).
-  Proof.
-    intros.
-    rewrite Forall_forall; intros.
-    unfold chunkList in H0.
-    inversion H0.
-    rewrite <- H1.
-    simpl.
-    rewrite wordToNat_natToWord_idempotent'.
-    unfold bound.
-    apply Nat.div_le_mono; auto.
-    omega.
-    apply goodSize_trans with off.
-    apply div_le; auto.
-    assumption.
-
-    assert (Hbuild_bound := build_chunk_blocknum_bound _ _ _ x H1).
-    eapply le_trans.
-    apply Nat.lt_le_incl.
-    eassumption.
-    apply build_chunks_num_chunks in H1.
-    unfold bound.
-    min_cases.
-    - rewrite Hmineq in H1.
-      rewrite Nat.div_small in H1 by omega.
-      inversion H1.
-    - rewrite Hmineq in H1.
-      rewrite num_items; omega.
-  Qed.
-
-  Theorem chunk_blocknum_bound' : forall off count (w: items count),
-    goodSize addrlen off ->
-    let bound := (off + count) / block_items in
-    (off / block_items < (off + count) / block_items ->
-      Forall (fun ck => # (chunk_blocknum ck) < bound) (chunkList off w)).
+    0 < count ->
+    let bound := divup (off + count) block_items in
+    Forall (fun ck => # (chunk_blocknum ck) < bound) (chunkList off w).
   Proof.
     intros.
     rewrite Forall_forall; intros.
     unfold chunkList in H1.
-    inversion H1.
+    inversion H1; clear H1. (* clear to save space *)
     rewrite <- H2.
     simpl.
     rewrite wordToNat_natToWord_idempotent'.
     unfold bound.
+    apply div_lt_divup; auto.
     omega.
     apply goodSize_trans with off.
     apply div_le; auto.
@@ -658,10 +624,30 @@ Section RECBFILE.
     unfold bound.
     min_cases.
     - rewrite Hmineq in H2.
-      rewrite Nat.div_small in H2 by omega.
+      rewrite minus_plus in H2.
+      rewrite minus_diag in H2.
+      rewrite divup_0 in H2.
       inversion H2.
     - rewrite Hmineq in H2.
-      rewrite num_items; omega.
+      rewrite divup_eq_divup'.
+      unfold divup'.
+      case_eq ((count - (block_items - off mod block_items)) mod block_items); intros.
+      * rewrite num_items; try omega.
+      apply div_le_divup; omega.
+      * rewrite Nat.add_assoc.
+        rewrite num_items; try omega.
+        rewrite minus_distr_minus' in H1; try omega.
+        rewrite <- Nat.mod_add with (b := 1) in H1 by auto.
+        rewrite Nat.mul_1_l in H1.
+        rewrite Nat.sub_add in H1 by omega.
+        rewrite Nat.add_mod_idemp_r in H1 by auto.
+        rewrite Nat.add_comm in H1.
+        rewrite divup_eq_divup'.
+        unfold divup'.
+        rewrite H1.
+        omega.
+        apply Nat.lt_le_incl.
+        apply boff_mod_ok.
   Qed.
 
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
