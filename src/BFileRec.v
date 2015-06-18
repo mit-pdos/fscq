@@ -1391,7 +1391,7 @@ Section RECBFILE.
   Qed.
 
   Lemma apply_build_chunks : forall num_chunks blocknum newdata ilist,
-    goodSize addrlen blocknum ->
+    goodSize addrlen (blocknum+num_chunks) ->
     let off := blocknum * block_items in
     let count := num_chunks * block_items in
     let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
@@ -1417,7 +1417,7 @@ Section RECBFILE.
       erewrite eq_rect_split1_eq1.
       unfold eq_rec.
       rewrite eq_rect_nat_double.
-      rewrite wordToNat_natToWord_idempotent' by assumption.
+      rewrite wordToNat_natToWord_idempotent'.
       rewrite Nat.add_0_r.
       rewrite <- Rec.to_of_id with (w := (isplit2_dep (Nat.min count block_items) (count - Nat.min count block_items) w
           (build_chunks_obligation_5 blocknum w eq_refl)))
@@ -1437,8 +1437,10 @@ Section RECBFILE.
       unfold count in *.
       rewrite H4.
       intros.
-      rewrite IHnum_chunks.
+
+      rewrite <- isplit2_skipn'.
       eq_rect_simpl.
+      rewrite IHnum_chunks.
       replace ((blocknum + 1) * block_items) with (off + block_items) at 1.
       rewrite firstn_sum_split.
       rewrite app_assoc_reverse.
@@ -1464,20 +1466,25 @@ Section RECBFILE.
       intros.
       eq_rect_simpl.
       rewrite app_assoc.
+      f_equal.
+      rewrite Rec.split2_skipn.
       rewrite Rec.combine_app.
       unfold Rec.len_add.
-      simpl.
-      unfold isplit2.
+      unfold Rec.len_split.
       eq_rect_simpl.
       repeat generalize_proof.
       intros.
-      clear e0.
-      replace e1 with e by apply proof_irrelevance; clear e1.
+      generalize dependent (eq_sym e).
+      intros.
+      replace e1 with e0 by apply proof_irrelevance; clear e1.
+      fold itemsize.
+      simpl in *.
+      replace e2 with e0 by apply proof_irrelevance; clear e2.
       rewrite combine_split.
       eq_rect_simpl.
-      f_equal.
       unfold w.
-      apply Rec.of_to_id.
+      rewrite Rec.of_to_id.
+      reflexivity.
       assumption.
       assert ((blocknum + 1) * block_items = blocknum * block_items + block_items).
       rewrite Nat.mul_add_distr_r.
@@ -1504,18 +1511,17 @@ Section RECBFILE.
       rewrite Nat.mul_add_distr_r.
       unfold off.
       omega.
-
-      rewrite <- isplit2_skipn'.
-      unfold items.
-      rewrite eq_rect_word_mult.
-      eq_rect_simpl.
       rewrite skipn_length.
       rewrite Rec.array_of_word_length by assumption.
       omega.
       rewrite Rec.array_of_word_length by assumption.
       omega.
-      admit.
-      admit.
+      unfold w.
+      rewrite Rec.of_to_id by assumption.
+      apply Rec.skipn_well_formed.
+      assumption.
+      eapply goodSize_trans; try eassumption.
+      omega.
       rewrite app_length.
       rewrite app_length.
       unfold item.
@@ -1524,22 +1530,16 @@ Section RECBFILE.
       rewrite Nat.mul_add_distr_r.
       simpl.
       rewrite skipn_length.
-      fold off.
-      fold item.
-      omega.
-      fold off.
-      fold item.
-      omega.
-      fold off.
-      fold item.
+      all: fold off; fold item.
+      all: try omega.
+      eapply goodSize_trans; try eassumption.
       omega.
 
     Grab Existential Variables.
-    admit. admit.
     rewrite Nat.mul_sub_distr_r.
     rewrite Nat.sub_0_r.
     reflexivity.
-  Admitted.
+  Qed.
 
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     (* it seems like this is implied by the types, but if so,

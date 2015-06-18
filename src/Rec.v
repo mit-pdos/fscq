@@ -77,6 +77,38 @@ Module Rec.
         end) rt
     end.
 
+  Theorem firstn_well_formed : forall (ft:type) n1 n2 w,
+    @well_formed (ArrayF ft (n1+n2)) w ->
+    @well_formed (ArrayF ft n1) (firstn n1 w).
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H.
+    split.
+    rewrite firstn_length_l; omega.
+    rewrite Forall_forall; intros.
+    apply in_firstn_in in H2.
+    rewrite Forall_forall in H1.
+    apply H1.
+    assumption.
+  Qed.
+
+  Theorem skipn_well_formed : forall (ft:type) n1 n2 w,
+    @well_formed (ArrayF ft (n1+n2)) w ->
+    @well_formed (ArrayF ft n2) (skipn n1 w).
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H.
+    split.
+    rewrite skipn_length; omega.
+    rewrite Forall_forall; intros.
+    apply in_skipn_in in H2.
+    rewrite Forall_forall in H1.
+    apply H1.
+    assumption.
+  Qed.
+
   Inductive field_in : rectype -> string -> Prop :=
   | FE : forall t n ft, field_in ((n, ft) :: t) n
   | FS : forall t n n' ft, field_in t n -> field_in ((n', ft) :: t) n.

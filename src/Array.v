@@ -182,6 +182,12 @@ Proof.
   induction l; destruct n; simpl; firstorder.
 Qed.
 
+Lemma in_firstn_in : forall A l n (a : A),
+  In a (firstn n l) -> In a l.
+Proof.
+  induction l; destruct n; simpl; firstorder.
+Qed.
+
 Lemma in_skipn_in : forall A l n (a : A),
   In a (skipn n l) -> In a l.
 Proof.
