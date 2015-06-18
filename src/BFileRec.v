@@ -746,15 +746,25 @@ Section RECBFILE.
         rewrite eq_rect_word_match.
         apply split1_eq.
       * f_equal.
-        generalize_proof.
-        generalize_proof.
-        clear e e0 e1.
-        clear Hcount.
-        intros.
-        admit.
+          (* clean up proof terms *)
+          generalize_proof.
+          generalize_proof.
+          clear e e0 e1.
+          clear Hcount.
+          intros.
+        simpl.
+        rewrite <- combine_split with (w := v).
+        erewrite combine_assoc.
+        rewrite split2_combine.
+        rewrite eq_rect_word_match; eq_rect_simpl.
+        rewrite eq_rect_combine.
+        rewrite split2_combine.
+        f_equal.
+        apply proof_irrelevance.
+
     Grab Existential Variables.
-    all: try omega.
-  Admitted.
+    all: omega.
+  Qed.
 
   Theorem icombine_app' : forall (n m:nat)
     (v : items n) (w : items m),
