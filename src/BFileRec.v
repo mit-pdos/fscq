@@ -427,7 +427,7 @@ Section RECBFILE.
     let boff := off mod block_items in
     let bend := Nat.min (boff + count) block_items in
     let bsize := bend - boff in
-    let num_chunks := (count - bsize) / block_items in
+    let num_chunks := divup (count - bsize) block_items in
     @Build_chunk ($ blocknum) boff bend
       (isplit1_dep bsize (count-bsize) w _) _ _ ::
       build_chunks num_chunks (blocknum+1)
