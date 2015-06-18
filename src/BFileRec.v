@@ -440,7 +440,7 @@ Section RECBFILE.
   Lemma build_chunk_blocknum_bound : forall num_chunks blocknum count (w: items count),
     let bound := blocknum + num_chunks in
     forall ck, In ck (build_chunks num_chunks blocknum w) ->
-      # (chunk_blocknum ck) <= bound.
+      # (chunk_blocknum ck) < bound.
   Proof.
     intros.
     generalize dependent blocknum.
@@ -453,7 +453,8 @@ Section RECBFILE.
     inversion H.
     rewrite <- H0; simpl.
     unfold bound.
-    apply le_trans with blocknum; try omega.
+    apply le_trans with (S blocknum); try omega.
+    apply le_n_S.
     apply wordToNat_natToWord_le.
     unfold bound.
     replace (blocknum + S num_chunks) with ((blocknum + 1) + num_chunks) by omega.
