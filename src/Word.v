@@ -1319,6 +1319,17 @@ Proof.
   apply le_lt_trans with n2; omega.
 Qed.
 
+Theorem goodSize_bound: forall sz n1 bound,
+  n1 <= wordToNat (natToWord sz bound) ->
+  goodSize sz n1.
+Proof.
+  intros.
+  unfold goodSize.
+  eapply le_lt_trans.
+  eassumption.
+  apply wordToNat_bound.
+Qed.
+
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
 Proof.
   induction sz; simpl; intuition.

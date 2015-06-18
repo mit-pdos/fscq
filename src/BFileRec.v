@@ -1630,6 +1630,9 @@ Section RECBFILE.
     exact (Rec.of_word $0).
   Qed.
 
+  Definition hidden p : Prop := p.
+  Opaque hidden.
+
   Theorem bf_update_range_ok : forall fsxp inum off count (w: items count) mscs,
   {< mbase m F Fm Fx A flist ilist f olddata newdata,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -1638,11 +1641,11 @@ Section RECBFILE.
     [[ array_item_file f ilist ]] *
     [[ (Fx * arrayN off olddata)%pred (list2nmem ilist) ]] *
     [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]] *
-    (* automation seems to substitute away equalities where one side
-       is a variable, so we can't state length oldata = count or
-       length newdata = count, but these facts are necessary for
-       the proof... *)
-    [[ length olddata = length newdata ]]
+    [[ length olddata = length newdata ]] *
+    [[ hidden (length newdata = count) ]] *
+    (* count = 0 is a special case that requires some reasoning to show
+       bf_update_range does nothing. *)
+    [[ 0 < count ]]
     POST RET: ^(mscs)
       exists m' f' flist' ilist',
         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -1658,18 +1661,50 @@ Section RECBFILE.
 
     apply list2nmem_array_pick.
     set (w := @Rec.to_word (Rec.ArrayF itemtype count) newdata) in *.
-    inversion H14 as [vs_nested Hrep].
+    inversion H16 as [vs_nested Hrep].
     inversion Hrep as [Hrep1 Hrep23]; clear Hrep.
     inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
     eapply le_lt_trans.
     assert (Hbound := @chunk_blocknum_bound off count w).
     rewrite Forall_forall in Hbound.
     apply Hbound.
-    admit. (* off appears in arrayN on ilist, whose length is the length of a file
-          -> off is goodSized since files are of bounded length
-          use list2nmem_arrayN_bound and bfrec_bound   *)
+    apply list2nmem_arrayN_bound in H8.
+    inversion H8.
+      (* olddata = nil is a contradiction *)
+      Transparent hidden.
+      unfold hidden in H5.
+      subst.
+      simpl in *.
+      rewrite <- H6 in H4.
+      inversion H4.
+    apply goodSize_trans with (off + length olddata).
+    omega.
+    eapply goodSize_trans.
+    eassumption.
+    eapply goodSize_bound.
+    eapply bfrec_bound.
+    eassumption.
+    (* eassumption picks the wrong memory/flist *)
+    apply H.
+    eassumption.
     rewrite <- H3.
     apply in_app_middle.
+    rewrite Nat.mul_lt_mono_pos_l with (p := block_items) by auto.
+    eapply Nat.le_lt_trans.
+    apply Nat.mul_div_le.
+    auto.
+    apply list2nmem_arrayN_bound in H8.
+    inversion H8.
+      (* olddata = nil is a contradiction *)
+      Transparent hidden.
+      unfold hidden in H5.
+      subst.
+      simpl in *.
+      rewrite <- H6 in H4.
+      inversion H4.
+    rewrite H6 in H11.
+    rewrite H5 in H11.
+    eapply Nat.le_lt_trans.
     admit. (* arrayN off newdata holds in ilist', so
               off + count < length ilist', and
               (length ilist') * block_items = length (BFILE.BFData f')
