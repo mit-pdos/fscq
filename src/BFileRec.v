@@ -1396,21 +1396,25 @@ Section RECBFILE.
     let count := num_chunks * block_items in
     let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
     let chunks := build_chunks num_chunks blocknum w in
-    length newdata = count ->
     off + count <= length ilist ->
     Rec.well_formed newdata ->
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
-    intros.
+    intros num_chunks blocknum newdata ilist.
+    intros HgoodSz.
+    intros off count w chunks.
+    intros Hlistbound Hwellformed.
+    inversion Hwellformed as [Hdatalen _].
+    fold count in Hdatalen.
     generalize dependent ilist.
     generalize dependent blocknum.
     induction num_chunks; intros; simpl.
     - simpl in count.
-      unfold count in H.
+      unfold count in HgoodSz.
       destruct newdata; simpl.
       rewrite Nat.add_0_r.
       symmetry; apply firstn_skipn.
-      inversion H0.
+      inversion Hdatalen.
     - unfold apply_chunk; simpl.
       unfold items_to_list.
       unfold isplit1_dep, isplit1.
@@ -1422,7 +1426,7 @@ Section RECBFILE.
       rewrite <- Rec.to_of_id with (w := (isplit2_dep (Nat.min count block_items) (count - Nat.min count block_items) w
           (build_chunks_obligation_5 blocknum w eq_refl)))
             (ft := Rec.ArrayF itemtype (count - Nat.min count block_items)).
-      assert (Nat.min count block_items = block_items).
+      assert (Nat.min count block_items = block_items) as H.
         apply Nat.min_r.
         unfold count.
         simpl.
@@ -1430,12 +1434,12 @@ Section RECBFILE.
       unfold isplit2_dep.
       simpl in *.
       repeat generalize_proof.
-      rewrite H3.
-      assert (count - block_items = num_chunks * block_items).
+      rewrite H; clear H.
+      assert (count - block_items = num_chunks * block_items) as H.
       unfold count.
       apply minus_plus.
       unfold count in *.
-      rewrite H4.
+      rewrite H; clear H.
       intros.
 
       rewrite <- isplit2_skipn'.
@@ -1451,17 +1455,17 @@ Section RECBFILE.
       reflexivity.
       fold off.
       omega.
-      assert (length (firstn (blocknum * block_items) ilist) = off).
+      assert (length (firstn (blocknum * block_items) ilist) = off) as H.
       rewrite firstn_length_l.
       reflexivity.
       fold off.
       omega.
-      rewrite <- H5 at 1.
+      rewrite <- H at 1; clear H.
       rewrite skipn_app.
       rewrite firstn_app.
       repeat generalize_proof.
-      assert (block_items - 0 = block_items) by omega.
-      rewrite H6; clear H6.
+      assert (block_items - 0 = block_items) as H by omega.
+      rewrite H; clear H.
       clear e e0 e1.
       intros.
       eq_rect_simpl.
@@ -1486,10 +1490,11 @@ Section RECBFILE.
       rewrite Rec.of_to_id.
       reflexivity.
       assumption.
-      assert ((blocknum + 1) * block_items = blocknum * block_items + block_items).
+      assert ((blocknum + 1) * block_items =
+        blocknum * block_items + block_items) as H.
       rewrite Nat.mul_add_distr_r.
       omega.
-      rewrite H6.
+      rewrite H; clear H.
       fold off.
       rewrite plus_assoc_reverse.
       rewrite <- skipn_skipn'.
@@ -1511,15 +1516,14 @@ Section RECBFILE.
       rewrite Nat.mul_add_distr_r.
       unfold off.
       omega.
-      rewrite skipn_length.
-      rewrite Rec.array_of_word_length by assumption.
-      omega.
-      rewrite Rec.array_of_word_length by assumption.
-      omega.
       unfold w.
       rewrite Rec.of_to_id by assumption.
-      apply Rec.skipn_well_formed.
-      assumption.
+      apply Rec.skipn_well_formed; assumption.
+      rewrite skipn_length.
+      rewrite Rec.array_of_word_length by assumption.
+      apply minus_plus.
+      rewrite Rec.array_of_word_length by assumption.
+      apply Nat.le_add_r.
       eapply goodSize_trans; try eassumption.
       omega.
       rewrite app_length.
@@ -1532,6 +1536,9 @@ Section RECBFILE.
       rewrite skipn_length.
       all: fold off; fold item.
       all: try omega.
+      eapply le_trans; try eassumption.
+      apply plus_le_compat_l.
+      apply Nat.le_add_r.
       eapply goodSize_trans; try eassumption.
       omega.
 
