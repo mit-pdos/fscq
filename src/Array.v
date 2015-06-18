@@ -1306,6 +1306,14 @@ Proof.
   induction a; firstorder.
 Qed.
 
+Lemma skipn_app_eq : forall T (a b : list T) n,
+  length a = n -> skipn n (a ++ b) = b.
+Proof.
+  intros.
+  rewrite <- H.
+  apply skipn_app.
+Qed.
+
 Lemma skipn_app_r : forall T i (b a : list T),
   skipn (length a + i) (a ++ b) = skipn i b.
 Proof.

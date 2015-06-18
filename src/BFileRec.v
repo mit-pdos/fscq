@@ -1397,7 +1397,8 @@ Section RECBFILE.
     let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
     let chunks := build_chunks num_chunks blocknum w in
     length newdata = count ->
-    off + count < length ilist ->
+    off + count <= length ilist ->
+    Rec.well_formed newdata ->
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
     intros.
@@ -1429,12 +1430,12 @@ Section RECBFILE.
       unfold isplit2_dep.
       simpl in *.
       repeat generalize_proof.
-      rewrite H2.
+      rewrite H3.
       assert (count - block_items = num_chunks * block_items).
       unfold count.
       apply minus_plus.
       unfold count in *.
-      rewrite H3.
+      rewrite H4.
       intros.
       rewrite IHnum_chunks.
       eq_rect_simpl.
@@ -1453,15 +1454,67 @@ Section RECBFILE.
       reflexivity.
       fold off.
       omega.
-      rewrite <- H4 at 1.
+      rewrite <- H5 at 1.
       rewrite skipn_app.
-      admit.
+      rewrite firstn_app.
+      repeat generalize_proof.
+      assert (block_items - 0 = block_items) by omega.
+      rewrite H6; clear H6.
+      clear e e0 e1.
+      intros.
+      eq_rect_simpl.
+      rewrite app_assoc.
+      rewrite Rec.combine_app.
+      unfold Rec.len_add.
+      simpl.
+      unfold isplit2.
+      eq_rect_simpl.
+      repeat generalize_proof.
+      intros.
+      clear e0.
+      replace e1 with e by apply proof_irrelevance; clear e1.
+      rewrite combine_split.
+      eq_rect_simpl.
+      f_equal.
+      unfold w.
+      apply Rec.of_to_id.
+      assumption.
+      assert ((blocknum + 1) * block_items = blocknum * block_items + block_items).
+      rewrite Nat.mul_add_distr_r.
+      omega.
+      rewrite H6.
+      fold off.
+      rewrite plus_assoc_reverse.
+      rewrite <- skipn_skipn'.
+      rewrite skipn_app_eq.
+      rewrite <- skipn_skipn'.
+      rewrite skipn_app_eq by apply Rec.array_of_word_length.
+      rewrite skipn_skipn'.
+      f_equal.
+      omega.
+      apply firstn_length_l.
+      apply le_trans with (off + count).
+      omega.
+      assumption.
+      (* condition for firstn_app *)
+      unfold item.
+      rewrite Rec.array_of_word_length.
+      omega.
 
       rewrite Nat.mul_add_distr_r.
       unfold off.
       omega.
 
-      apply Rec.array_of_word_length.
+      rewrite <- isplit2_skipn'.
+      unfold items.
+      rewrite eq_rect_word_mult.
+      eq_rect_simpl.
+      rewrite skipn_length.
+      rewrite Rec.array_of_word_length by assumption.
+      omega.
+      rewrite Rec.array_of_word_length by assumption.
+      omega.
+      admit.
       admit.
       rewrite app_length.
       rewrite app_length.
@@ -1470,6 +1523,22 @@ Section RECBFILE.
       rewrite firstn_length_l.
       rewrite Nat.mul_add_distr_r.
       simpl.
+      rewrite skipn_length.
+      fold off.
+      fold item.
+      omega.
+      fold off.
+      fold item.
+      omega.
+      fold off.
+      fold item.
+      omega.
+
+    Grab Existential Variables.
+    admit. admit.
+    rewrite Nat.mul_sub_distr_r.
+    rewrite Nat.sub_0_r.
+    reflexivity.
   Admitted.
 
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
