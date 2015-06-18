@@ -780,12 +780,12 @@ Module Rec.
   Qed.
 
   Theorem split1_firstn : forall t n m
-    (w: word (len (ArrayF t (n+m)))),
+    (w: word (len (ArrayF t (n+m)))) Heq,
     firstn n (of_word w) =
-      of_word (split1 (len (ArrayF t n)) (len (ArrayF t m)) (len_split w)).
+      of_word (split1 (len (ArrayF t n)) (len (ArrayF t m))
+        (eq_rect _ word w _ Heq)).
   Proof.
     intros.
-    unfold len_split.
     induction n.
     simpl.
     reflexivity.
@@ -803,7 +803,7 @@ Module Rec.
     f_equal.
     erewrite eq_rect_split1_eq2.
     f_equal.
-    rewrite IHn.
+    erewrite IHn.
     rewrite eq_rect_split2.
     erewrite split1_split2.
     repeat f_equal.
@@ -814,7 +814,9 @@ Module Rec.
     apply proof_irrelevance.
 
     Grab Existential Variables.
-    all: omega.
+    all: try omega.
+    simpl.
+    nia.
   Qed.
 
   Theorem split2_skipn : forall t n m
