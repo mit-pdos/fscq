@@ -1650,7 +1650,7 @@ Section RECBFILE.
     inversion H16 as [vs_nested Hrep].
     inversion Hrep as [Hrep1 Hrep23]; clear Hrep.
     inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
-    eapply le_lt_trans.
+    eapply lt_le_trans.
     assert (Hbound := @chunk_blocknum_bound off count w).
     rewrite Forall_forall in Hbound.
     apply Hbound.
@@ -1673,12 +1673,9 @@ Section RECBFILE.
     (* eassumption picks the wrong memory/flist *)
     apply H.
     eassumption.
+    assumption.
     rewrite <- H3.
     apply in_app_middle.
-    rewrite Nat.mul_lt_mono_pos_l with (p := block_items) by auto.
-    eapply Nat.le_lt_trans.
-    apply Nat.mul_div_le.
-    auto.
     apply list2nmem_arrayN_bound in H8.
     inversion H8.
       (* olddata = nil is a contradiction *)
@@ -1690,18 +1687,28 @@ Section RECBFILE.
       inversion H4.
     rewrite H6 in H11.
     rewrite H5 in H11.
-    eapply Nat.le_lt_trans.
-    admit. (* arrayN off newdata holds in ilist', so
-              off + count < length ilist', and
-              (length ilist') * block_items = length (BFILE.BFData f')
-                due to rep function *)
-    eapply applying_chunks_is_update; try eassumption.
-    admit. (* length newdata, which automation seems to substitute away *)
+    eapply Nat.le_trans.
+    apply divup_mono.
+    eassumption.
+    rewrite <- array_items_num_blocks with (f := f).
+    admit. (* should have used F * arrayN off newdata in ilist' above instead
+              of H8, but this is proven next *)
+    assumption.
+    eapply applying_chunks_is_update.
+    Transparent hidden.
+    unfold hidden in H5.
+    eassumption.
+    admit. (* proven above *)
+    eassumption.
+    assumption.
+    rewrite H13.
+    simpl.
+    reflexivity.
     apply LOG.activetxn_would_recover_old.
 
     Grab Existential Variables.
     (* the above admits *)
-    admit. admit. admit.
+    admit. admit.
     exact $0.
     exact tt.
   Admitted.
