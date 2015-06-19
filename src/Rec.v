@@ -775,40 +775,7 @@ Module Rec.
   Proof.
     intros.
     unfold len_add.
-    induction n.
-    simpl.
-    rewrite <- (eq_rect_eq_dec eq_nat_dec).
-    rewrite combine_0; reflexivity.
-    simpl len in *.
-    rewrite of_word_cons.
-    simpl.
-    rewrite IHn.
-    rewrite of_word_cons.
-
-    rewrite <- combine_split with (sz1:=len t) (sz2:=n * len t) (w := v).
-    f_equal.
-    rewrite split1_combine.
-    erewrite combine_assoc.
-    rewrite eq_rect_word_match.
-    unfold eq_rec.
-    rewrite eq_rect_nat_double.
-    rewrite eq_rect_combine.
-    rewrite split1_combine.
-    reflexivity.
-
-    rewrite split2_combine.
-    erewrite combine_assoc.
-    rewrite eq_rect_word_match.
-    unfold eq_rec.
-    rewrite eq_rect_nat_double.
-    rewrite eq_rect_combine.
-    rewrite split2_combine.
-    f_equal.
-    f_equal.
-    apply proof_irrelevance.
-
-    Grab Existential Variables.
-    all: omega.
+    apply combine_app'.
   Qed.
 
   Theorem split1_firstn : forall t n m
