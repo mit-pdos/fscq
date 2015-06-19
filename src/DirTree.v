@@ -2078,24 +2078,67 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
 
-  Lemma lookup_name: forall name dir subtree dnum tree_elem tree,
-    dir = (TreeDir dnum tree_elem) ->
-    find_subtree [name] (update_subtree [] (add_to_dir name subtree dir) tree) = Some subtree.
+  Lemma lookup_name: forall tree_elem name subtree dnum tree,
+    find_subtree [name] (update_subtree [] (add_to_dir name subtree (TreeDir dnum tree_elem)) tree) = Some subtree.
   Proof.
-  Admitted.
+    unfold find_subtree, update_subtree, add_to_dir.
+    induction tree_elem; intros; subst; simpl.
+    - destruct (string_dec name name). reflexivity. exfalso. eauto.
+    - destruct a.
+      destruct (string_dec s name); subst; simpl.
+      destruct (string_dec name name). reflexivity. exfalso. eauto.
+      destruct (string_dec s name); subst; simpl.
+      congruence.
+      eauto.
+  Qed.
 
-  Lemma lookup_firstelem: forall a prefix f tree,
-    find_subtree (a::prefix) tree = Some f ->
-    exists d, find_subtree [a] tree = Some d /\ find_subtree prefix d = Some f.
+  Lemma lookup_firstelem: forall  suffix tree a f,
+    find_subtree (a::suffix) tree = Some f ->
+    exists d, find_subtree [a] tree = Some d /\ find_subtree suffix d = Some f.
   Proof.
-  Admitted.
+    intros; subst; simpl.
+    destruct tree.
+    simpl in *.
+    congruence. 
+    induction l.
+    - simpl in *. congruence.
+    - destruct a0. simpl in *.
+      destruct (string_dec s a).
+      eexists. intuition; eauto.
+      eauto.
+  Qed.
 
-  Lemma consume_firstelem: forall  a postfix name subtree tree dir childdir,
-      find_subtree [a] tree = Some childdir ->
-      find_subtree ((a :: postfix) ++ [name]) (update_subtree (a :: postfix) (add_to_dir name subtree dir) tree) =
-      find_subtree (postfix ++ [name]) (update_subtree postfix (add_to_dir name subtree dir) childdir).
+
+ Lemma lookup_firstelem_r: forall a dir name suffix subtree tree childdir,
+    find_subtree [a] tree = Some childdir /\ 
+        find_subtree (suffix ++ [name]) (update_subtree suffix (add_to_dir name subtree dir) childdir) = Some subtree ->
+    find_subtree ((a::suffix) ++ [name]) (update_subtree (a::suffix) (add_to_dir name subtree dir) tree) = Some subtree.
   Proof.
-  Admitted.
+    intros.
+    subst; simpl.
+    destruct tree.
+    simpl in *.
+    intuition.
+    congruence.
+    simpl in *.
+    unfold fold_right in H.
+    induction l.
+    - simpl in *. intuition. congruence.
+    - destruct a0. simpl in *.
+      destruct (string_dec s a).
+      simpl in *.
+      destruct (string_dec s a).
+      intuition.
+      inversion H0.
+      assumption.
+      rewrite IHl.
+      reflexivity.
+      intuition.
+      simpl in *.
+      destruct (string_dec s a).
+      congruence.
+      eauto.
+  Qed.
 
   Lemma lookup_path: forall prefix name subtree dir tree dnum tree_elem,
     dir = (TreeDir dnum tree_elem) ->
@@ -2104,11 +2147,17 @@ Module DIRTREE.
         = Some subtree.
   Proof.
     induction prefix; intros.
-    - rewrite app_nil_l. erewrite lookup_name by eauto.
-      eauto.
+    - rewrite app_nil_l.
+      inversion H. 
+      erewrite lookup_name by eauto.
+      reflexivity.
     - edestruct lookup_firstelem; eauto.
       intuition.
-      erewrite consume_firstelem by eauto.
+      erewrite lookup_firstelem_r.
+      eauto.
+      intuition.
+      instantiate (childdir :=x). 
+      assumption.
       erewrite IHprefix by eauto.
       reflexivity.
   Qed.
