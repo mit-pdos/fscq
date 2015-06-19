@@ -1500,7 +1500,7 @@ Section RECBFILE.
       eq_rect_simpl.
       rewrite app_assoc.
       f_equal.
-      rewrite Rec.split2_skipn.
+      erewrite Rec.split2_skipn.
       rewrite Rec.combine_app.
       unfold Rec.len_add.
       unfold Rec.len_split.
@@ -1512,7 +1512,6 @@ Section RECBFILE.
       replace e1 with e0 by apply proof_irrelevance; clear e1.
       fold itemsize.
       simpl in *.
-      replace e2 with e0 by apply proof_irrelevance; clear e2.
       rewrite combine_split.
       eq_rect_simpl.
       unfold w.
