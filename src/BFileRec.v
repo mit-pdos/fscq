@@ -1338,11 +1338,12 @@ Section RECBFILE.
     rx ^(mscs).
 
   Lemma isplit1_firstn : forall count data n n2 H,
-    length data = count ->
+    Rec.well_formed data ->
     @Rec.of_word (Rec.ArrayF itemtype _) (isplit1_dep
       n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H) = firstn n data.
   Proof.
     intros.
+    inversion H0.
     generalize dependent n2.
     generalize dependent data.
     generalize dependent count.
@@ -1350,14 +1351,19 @@ Section RECBFILE.
     - reflexivity.
     - destruct data.
       exfalso.
-      rewrite <- H0 in H.
+      rewrite <- H1 in H.
       inversion H.
-      simpl in H0.
+      simpl in H1.
       assert (length data = n + n2) by omega.
       destruct count.
       inversion H.
       inversion H.
-      rewrite <- IHn with (H := H3) by omega.
+      (* prove the induction hypothesis requirements first *)
+      assert (@Rec.well_formed (Rec.ArrayF itemtype count) data) as Hwell_formed.
+      eapply Rec.tl_well_formed; eassumption.
+      assert (Forall Rec.well_formed data) as Hels_well_formed.
+      eapply Forall_cons2; eassumption.
+      rewrite <- IHn with (H := H5); auto.
       rewrite Rec.of_word_cons.
       fold itemsize.
       unfold isplit1_dep, isplit1.
@@ -1367,13 +1373,36 @@ Section RECBFILE.
       rewrite eq_rect_word_mult.
       eq_rect_simpl.
       repeat generalize_proof.
-      rewrite H3.
+      rewrite H5.
       simpl in *.
       intros.
       eq_rect_simpl.
 
       f_equal.
-  Admitted.
+      (* separate d :: data *)
+      (* d part *)
+      * rewrite Rec.cons_to_word.
+        rewrite eq_rect_combine.
+        rewrite split1_combine.
+        apply Rec.of_to_id.
+        rewrite Forall_forall in H2.
+        apply H2.
+        constructor; reflexivity.
+      (* data part *)
+      * rewrite Rec.cons_to_word.
+        f_equal.
+        erewrite split2_split1.
+        rewrite eq_rect_word_match.
+        eq_rect_simpl.
+        f_equal.
+        rewrite eq_rect_combine.
+        rewrite split2_combine.
+        simpl.
+        f_equal.
+        apply proof_irrelevance.
+   Grab Existential Variables.
+   all: omega.
+  Qed.
 
   Lemma isplit1_refold : forall n1 n2 Heq Heq_trivial w,
        split1 (n1*itemsize) (n2*itemsize)

@@ -109,6 +109,21 @@ Module Rec.
     assumption.
   Qed.
 
+  Theorem tl_well_formed : forall (ft:type) n d w,
+    @well_formed (ArrayF ft (S n)) (d::w) ->
+    @well_formed (ArrayF ft n) w.
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H.
+    split.
+    simpl in *.
+    omega.
+    rewrite Forall_forall in *; intros.
+    apply H1.
+    constructor; assumption.
+  Qed.
+
   Inductive field_in : rectype -> string -> Prop :=
   | FE : forall t n ft, field_in ((n, ft) :: t) n
   | FS : forall t n n' ft, field_in t n -> field_in ((n', ft) :: t) n.
@@ -776,6 +791,15 @@ Module Rec.
     intros.
     unfold len_add.
     apply combine_app'.
+  Qed.
+
+  Theorem cons_to_word : forall (t:type) (n:nat)
+    d v,
+    @to_word (ArrayF t (S n)) (d :: v) =
+      combine (to_word d) (@to_word (ArrayF t n) v).
+  Proof.
+    intros.
+    inversion t; auto.
   Qed.
 
   Theorem split1_firstn : forall t n m

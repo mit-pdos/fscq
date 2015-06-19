@@ -689,6 +689,25 @@ Proof.
   f_equal.
 Qed.
 
+Theorem split2_split1 : forall n1 n2 n3 Heq w,
+  split2 n1 n2 (split1 (n1+n2) n3 w) =
+  split1 n2 n3 (split2 n1 (n2+n3) (match Heq in _ = N return word N with
+                                     | refl_equal => w
+                                     end)).
+Proof.
+  induction n1; simpl; intros.
+
+  rewrite (UIP_dec eq_nat_dec Heq (refl_equal _)).
+  reflexivity.
+
+  rewrite (shatter_word w).
+  simpl.
+  assert (n1 + n2 + n3 = n1 + (n2 + n3)) as Heq' by omega.
+  rewrite <- wtl_match with (Heq':=Heq').
+  rewrite <- IHn1.
+  f_equal.
+Qed.
+
 Theorem combine_end : forall n1 n2 n3 Heq w,
   combine (split1 n2 n3 (split2 n1 (n2 + n3) w))
   (split2 (n1 + n2) n3 (match Heq in _ = N return word N with
