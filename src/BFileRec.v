@@ -379,17 +379,19 @@ Section RECBFILE.
     apply block_items_gt_0.
   Qed.
 
-  Section chunking.
-
   Local Ltac min_cases :=
     let Hminspec := fresh "Hminspec" in
     let Hlt := fresh "Hlt" in
     let Hmineq := fresh "Hmineq" in
+    (* TODO: use a match/arg to find a min to destruct
+       rather than using edestruct *)
     edestruct Nat.min_spec as [Hminspec|Hminspec];
     inversion Hminspec as [Hlt Hmineq];
     clear Hminspec;
     erewrite Hmineq;
     try omega.
+
+  Section chunking.
 
   Local Obligation Tactic := Tactics.program_simpl; try min_cases.
 
