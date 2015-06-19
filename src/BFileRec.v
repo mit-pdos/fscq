@@ -1456,34 +1456,76 @@ Section RECBFILE.
     apply proof_irrelevance.
   Qed.
 
-  Lemma apply_build_chunks : forall num_chunks blocknum newdata ilist,
+  Lemma of_word_empty : forall t n w,
+    n = 0 ->
+    @Rec.of_word (Rec.ArrayF t n) w = nil.
+  Proof.
+    intros.
+    generalize w.
+    rewrite H.
+    intros.
+    simpl in w0.
+    apply length_nil.
+    reflexivity.
+  Qed.
+
+  Lemma apply_empty_chunk : forall (ck:chunk) ilist,
+    chunk_boff ck = chunk_bend ck ->
+    apply_chunk ck ilist = ilist.
+  Proof.
+    intros.
+    unfold apply_chunk.
+    unfold items_to_list.
+    assert (chunk_bend ck - chunk_boff ck = 0) by omega.
+    rewrite of_word_empty by omega.
+    simpl.
+    rewrite H.
+    apply firstn_skipn.
+  Qed.
+
+  Lemma apply_build_chunks_nodata : forall num_chunks blocknum
+    (w: items 0) ilist,
+    let chunks := build_chunks num_chunks blocknum w in
+    apply_chunks chunks ilist = ilist.
+  Proof.
+    induction num_chunks; intros; simpl.
+    - reflexivity.
+    - unfold isplit2_dep.
+      unfold isplit2.
+      rewrite split2_0.
+      eq_rect_simpl.
+      rewrite IHnum_chunks.
+      apply apply_empty_chunk.
+      reflexivity.
+  Qed.
+
+  Lemma apply_build_chunks : forall num_chunks blocknum count newdata ilist,
     goodSize addrlen (blocknum+num_chunks) ->
     let off := blocknum * block_items in
-    (* This count is actually wrong; it should be more general, allowing
-       newdata to have some data that isn't a full chunk at the end.
-       It is a necessary bound to have on the actual count, though. *)
-    let count := num_chunks * block_items in
     let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
     let chunks := build_chunks num_chunks blocknum w in
+    count <= num_chunks * block_items ->
     off + count <= length ilist ->
     Rec.well_formed newdata ->
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
-    intros num_chunks blocknum newdata ilist.
+    intros num_chunks blocknum count newdata ilist.
     intros HgoodSz.
-    intros off count w chunks.
-    intros Hlistbound Hwellformed.
+    intros off w chunks.
+    intros Hcountbound Hlistbound Hwellformed.
     inversion Hwellformed as [Hdatalen _].
-    fold count in Hdatalen.
     generalize dependent ilist.
     generalize dependent blocknum.
+    generalize dependent count.
     induction num_chunks; intros; simpl.
-    - simpl in count.
-      unfold count in HgoodSz.
-      destruct newdata; simpl.
+    - inversion Hcountbound.
+      simpl in *.
+      subst.
+      apply length_nil in H.
+      subst.
+      simpl.
       rewrite Nat.add_0_r.
       symmetry; apply firstn_skipn.
-      inversion Hdatalen.
     - unfold apply_chunk; simpl.
       unfold items_to_list.
       unfold isplit1_dep, isplit1.
@@ -1495,22 +1537,37 @@ Section RECBFILE.
       rewrite <- Rec.to_of_id with (w := (isplit2_dep (Nat.min count block_items) (count - Nat.min count block_items) w
           (build_chunks_obligation_5 blocknum w eq_refl)))
             (ft := Rec.ArrayF itemtype (count - Nat.min count block_items)).
-      assert (Nat.min count block_items = block_items) as H.
-        apply Nat.min_r.
-        unfold count.
-        simpl.
-        lia.
       unfold isplit2_dep.
       simpl in *.
       repeat generalize_proof.
-      rewrite H; clear H.
-      assert (count - block_items = num_chunks * block_items) as H.
-      unfold count.
-      apply minus_plus.
-      unfold count in *.
-      rewrite H; clear H.
-      intros.
-
+      clear chunks. (* cleanup hypotheses *)
+      min_cases.
+      (* count < block_items *)
+      * simpl.
+        rewrite minus_diag.
+        intros.
+        replace e1 with e by apply proof_irrelevance; clear e1.
+        repeat generalize_proof; clear e e0.
+        rewrite Nat.sub_0_r.
+        rewrite Nat.mul_0_l.
+        intros.
+        unfold isplit2.
+        unfold items.
+        rewrite eq_rect_word_mult.
+        eq_rect_simpl.
+        repeat generalize_proof.
+        intros.
+        replace e2 with e1 by apply proof_irrelevance; clear e2.
+        repeat generalize_proof.
+        intros.
+        rewrite split1_0.
+        fold off.
+        rewrite Rec.to_of_id.
+        clear e e0 e1.
+        unfold w.
+        rewrite Rec.of_to_id by assumption.
+        apply apply_build_chunks_nodata.
+      * intros.
       rewrite <- isplit2_skipn'.
       eq_rect_simpl.
       rewrite IHnum_chunks.
@@ -1549,12 +1606,17 @@ Section RECBFILE.
       intros.
       generalize dependent (eq_sym e).
       intros.
-      replace e1 with e0 by apply proof_irrelevance; clear e1.
-      fold itemsize.
+      replace e3 with e2 by apply proof_irrelevance; clear e3.
       simpl in *.
+      clear e e1 e0.
+      fold itemsize in *.
       rewrite combine_split.
       eq_rect_simpl.
       unfold w.
+      unfold items.
+      rewrite eq_rect_word_mult.
+      rewrite <- e2.
+      eq_rect_simpl.
       rewrite Rec.of_to_id.
       reflexivity.
       assumption.
@@ -1585,8 +1647,17 @@ Section RECBFILE.
       unfold off.
       omega.
       unfold w.
+      omega.
+      apply Rec.skipn_well_formed.
+      generalize_proof.
+      simpl.
+      replace (block_items + (count - block_items)) with count by omega.
+      intros.
+      eq_rect_simpl.
+      unfold w.
       rewrite Rec.of_to_id by assumption.
-      apply Rec.skipn_well_formed; assumption.
+      assumption.
+
       rewrite skipn_length.
       rewrite Rec.array_of_word_length by assumption.
       apply minus_plus.
@@ -1603,12 +1674,8 @@ Section RECBFILE.
       simpl.
       rewrite skipn_length.
       all: fold off; fold item.
-      all: try omega.
-      eapply le_trans; try eassumption.
-      apply plus_le_compat_l.
-      apply Nat.le_add_r.
-      eapply goodSize_trans; try eassumption.
-      omega.
+      all: omega.
+   * eapply goodSize_trans; try eassumption; omega.
 
     Grab Existential Variables.
     rewrite Nat.mul_sub_distr_r.

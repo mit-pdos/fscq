@@ -708,6 +708,26 @@ Proof.
   f_equal.
 Qed.
 
+Theorem split1_0 : forall n w Heq,
+  split1 n 0 (eq_rect _ word w _ Heq) = w.
+Proof.
+  induction n; intros.
+  shatterer.
+  destruct w.
+    shatterer.
+  simpl.
+  f_equal.
+Admitted.
+
+Theorem split2_0 : forall n w Heq,
+  split2 0 n (eq_rect _ word w _ Heq) = w.
+Proof.
+  intros.
+  simpl.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+
 Theorem combine_end : forall n1 n2 n3 Heq w,
   combine (split1 n2 n3 (split2 n1 (n2 + n3) w))
   (split2 (n1 + n2) n3 (match Heq in _ = N return word N with

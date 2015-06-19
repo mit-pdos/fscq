@@ -124,6 +124,18 @@ Module Rec.
     constructor; assumption.
   Qed.
 
+  Theorem empty_well_formed : forall (ft:type) w,
+    List.length w = 0 ->
+    @well_formed (ArrayF ft 0) w.
+  Proof.
+    intros.
+    unfold well_formed.
+    split; auto.
+    apply length_nil in H.
+    subst.
+    auto.
+  Qed.
+
   Inductive field_in : rectype -> string -> Prop :=
   | FE : forall t n ft, field_in ((n, ft) :: t) n
   | FS : forall t n n' ft, field_in t n -> field_in ((n', ft) :: t) n.
