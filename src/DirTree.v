@@ -2092,7 +2092,7 @@ Module DIRTREE.
       eauto.
   Qed.
 
-  Lemma lookup_firstelem: forall  suffix tree a f,
+  Lemma lookup_firstelem_path: forall  suffix tree a f,
     find_subtree (a::suffix) tree = Some f ->
     exists d, find_subtree [a] tree = Some d /\ find_subtree suffix d = Some f.
   Proof.
@@ -2109,7 +2109,7 @@ Module DIRTREE.
   Qed.
 
 
- Lemma lookup_firstelem_r: forall a dir name suffix subtree tree childdir,
+ Lemma lookup_firstelem_path_r: forall a dir name suffix subtree tree childdir,
     find_subtree [a] tree = Some childdir /\ 
         find_subtree (suffix ++ [name]) (update_subtree suffix (add_to_dir name subtree dir) childdir) = Some subtree ->
     find_subtree ((a::suffix) ++ [name]) (update_subtree (a::suffix) (add_to_dir name subtree dir) tree) = Some subtree.
@@ -2151,9 +2151,9 @@ Module DIRTREE.
       inversion H. 
       erewrite lookup_name by eauto.
       reflexivity.
-    - edestruct lookup_firstelem; eauto.
+    - edestruct lookup_firstelem_path; eauto.
       intuition.
-      erewrite lookup_firstelem_r.
+      erewrite lookup_firstelem_path_r.
       eauto.
       intuition.
       instantiate (childdir :=x). 
@@ -2172,12 +2172,47 @@ Module DIRTREE.
     reflexivity.
   Qed.
 
+  Lemma update_name: forall name tree subtree subtree' dir,
+    update_subtree [name] subtree' (update_subtree [] (add_to_dir name subtree dir) tree) =
+    update_subtree [] (add_to_dir name subtree' dir) tree.
+  Proof.
+  Admitted.
+
+
+  Lemma update_addelem_path: forall a prefix name tree subtree subtree' dir,
+    update_subtree (prefix ++ [name]) subtree' (update_subtree prefix (add_to_dir name subtree dir) tree) =
+    update_subtree prefix (add_to_dir name subtree' dir) tree ->
+    update_subtree ((a :: prefix) ++ [name]) subtree' (update_subtree (a :: prefix) (add_to_dir name subtree dir) tree) =
+    update_subtree (a :: prefix) (add_to_dir name subtree' dir) tree.
+  Proof.
+    intros.
+    subst; simpl.
+    destruct tree.
+    reflexivity.
+    induction l.
+    - simpl in *. reflexivity.
+    - destruct a0. simpl in *.
+      destruct (string_dec s a).
+      simpl in *.
+      destruct (string_dec s a).
+      admit.
+  Admitted.
+
   Lemma update_path: forall prefix name subtree subtree' dir tree dnum tree_elem,
     dir = (TreeDir dnum tree_elem) ->
     update_subtree (prefix ++ [name]) subtree' (update_subtree prefix (add_to_dir name subtree dir) tree)
-        = update_subtree prefix (add_to_dir name subtree' (TreeDir dnum tree_elem)) tree.
+        = update_subtree prefix (add_to_dir name subtree' dir) tree.
   Proof.
+    induction prefix; intros.
+    - rewrite app_nil_l.
+      erewrite update_name.
+      rewrite H.
+      reflexivity.
+    - eapply update_addelem_path.
+      eapply IHprefix with (dnum := dnum) (tree_elem := tree_elem).
+      eauto.
   Admitted.
+
 
   Theorem update_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree subtree',
     find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
