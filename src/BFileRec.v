@@ -1868,16 +1868,18 @@ Section RECBFILE.
   Qed.
 
   Lemma applying_chunks_is_update : forall Fx off count olddata newdata ilist ilist',
-    length newdata = count ->
-    goodSize addrlen off ->
+    @Rec.well_formed (Rec.ArrayF _ _) newdata ->
+    goodSize addrlen (off+count) ->
+    off+count < length ilist ->
     (Fx * arrayN off olddata)%pred (list2nmem ilist) ->
     length olddata = length newdata ->
     ilist' = apply_chunks (chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata)) ilist ->
     (Fx * arrayN off newdata)%pred (list2nmem ilist').
   Proof.
     intros.
-    rewrite applying_chunks_is_replace in H3 by assumption.
+    rewrite applying_chunks_is_replace in H4 by assumption.
     replace ilist'.
+    inversion H.
     replace count with (length olddata) by omega.
     apply arrayN_newlist; try assumption.
 
@@ -1963,10 +1965,10 @@ Section RECBFILE.
               of H8, but this is proven next *)
     assumption.
     eapply applying_chunks_is_update.
+    admit. (* need to get this into the hypotheses or something *)
     Transparent hidden.
     unfold hidden in H5.
-    eassumption.
-    admit. (* proven above *)
+    admit. admit. (* proven above *)
     eassumption.
     assumption.
     rewrite H13.
@@ -1976,7 +1978,7 @@ Section RECBFILE.
 
     Grab Existential Variables.
     (* the above admits *)
-    admit. admit.
+    admit. admit. admit. admit.
     exact $0.
     exact tt.
   Admitted.
