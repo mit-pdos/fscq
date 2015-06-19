@@ -1406,6 +1406,23 @@ Section RECBFILE.
    all: omega.
   Qed.
 
+  Lemma isplit2_skipn : forall count data n n2 H,
+    Rec.well_formed data ->
+    @Rec.of_word (Rec.ArrayF itemtype _) (isplit2_dep
+      n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H) = skipn n data.
+  Proof.
+    intros.
+    inversion H0.
+    rewrite <- Rec.of_to_id with (v := data) by assumption.
+    unfold isplit2_dep, isplit2.
+    eq_rect_simpl.
+    unfold items.
+    rewrite eq_rect_word_mult.
+    eq_rect_simpl.
+    generalize_proof; intros.
+    rewrite <- Rec.split2_skipn.
+  Admitted.
+
   Lemma isplit1_refold : forall n1 n2 Heq Heq_trivial w,
        split1 (n1*itemsize) (n2*itemsize)
            (eq_rect ((n1 + n2) * itemsize)
@@ -1595,6 +1612,29 @@ Section RECBFILE.
     rewrite Nat.mul_comm.
     rewrite <- Nat.div_mod by auto.
     rewrite isplit1_firstn.
+    unfold isplit2_dep.
+    unfold isplit2.
+    eq_rect_simpl.
+    unfold items.
+    rewrite eq_rect_word_mult.
+    eq_rect_simpl.
+    generalize_proof.
+    min_cases.
+    (* in this case, there's only one chunk *)
+    - rewrite minus_plus.
+      rewrite minus_diag.
+      rewrite divup_0.
+      simpl.
+      intros e; clear e.
+      f_equal; f_equal.
+      apply firstn_oob; omega.
+      f_equal.
+      rewrite Nat.add_assoc.
+      rewrite <- Nat.div_mod; auto.
+    - intros.
+      (* this is what we'd like to do to finish the proof: *)
+      rewrite Rec.split2_skipn.
+      rewrite apply_build_chunks.
   Admitted.
 
   Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
