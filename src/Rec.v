@@ -359,6 +359,60 @@ Module Rec.
     apply IHt. apply IHt0.
   Qed.
 
+  Theorem of_word_well_formed : forall (ft:type) w,
+    well_formed (@of_word ft w).
+  Proof.
+    einduction ft using type_rect_nest; intros; simpl.
+    - auto.
+    - split.
+      induction n; simpl; auto.
+      rewrite Forall_forall.
+      intros.
+      induction n; simpl; auto.
+      * inversion H.
+      * simpl in *.
+        inversion H.
+        rewrite <- H0.
+        apply IHt.
+        eapply IHn.
+        eassumption.
+    - induction rt; simpl; trivial.
+      simpl in w.
+      fold (@well_formed ft).
+      fold (@well_formed ft) in IHrt.
+      admit.
+    - instantiate (Q := fun rt => forall v,
+      (fix well_formed' {rt : rectype} : data (RecF rt) -> Prop :=
+        match rt as rt return (data (RecF rt) -> Prop) with
+        | [] => fun _ => True
+        | (_, ft) :: t' => fun r =>
+          let (r0, r') := r in well_formed r0 /\ well_formed' r'
+        end) rt v ->
+      (fix word2rec (t : rectype) (w : word (len (RecF t))) : recdata t :=
+        match t as t return word (len (RecF t)) -> recdata t with
+        | nil => fun _ => tt
+        | (_, ft) :: t' => fun w =>
+          (of_word (split1 (len ft) (len (RecF t')) w),
+           word2rec t' (split2 (len ft) (len (RecF t')) w))
+        end w)
+        rt
+        ((fix rec2word {t : rectype} (r : recdata t) : word (len (RecF t)) :=
+          match t as t return recdata t -> word (len (RecF t)) with
+          | nil => fun _ => WO
+          | (_, _) :: _ => fun r =>
+            let (v, r') := r in combine (to_word v) (rec2word r')
+          end r) rt v) = v).
+      simpl.
+      intros.
+      induction v.
+      reflexivity.
+    - intros.
+      simpl.
+      intros.
+      simpl.
+      admit.
+  Admitted.
+
   Theorem array_of_word_length : forall ft n w,
     List.length (@of_word (ArrayF ft n) w) = n.
   Proof.
