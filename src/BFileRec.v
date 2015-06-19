@@ -1408,19 +1408,37 @@ Section RECBFILE.
 
   Lemma isplit2_skipn : forall count data n n2 H,
     Rec.well_formed data ->
-    @Rec.of_word (Rec.ArrayF itemtype _) (isplit2_dep
-      n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H) = skipn n data.
+    isplit2_dep
+      n n2 (@Rec.to_word (Rec.ArrayF itemtype count) data) H =
+    @Rec.to_word (Rec.ArrayF itemtype _) (skipn n data).
   Proof.
     intros.
     inversion H0.
-    rewrite <- Rec.of_to_id with (v := data) by assumption.
     unfold isplit2_dep, isplit2.
     eq_rect_simpl.
     unfold items.
     rewrite eq_rect_word_mult.
     eq_rect_simpl.
     generalize_proof; intros.
-    rewrite <- Rec.split2_skipn.
+    generalize dependent count.
+    induction n; intros; simpl.
+    - simpl in H.
+      generalize_proof.
+      rewrite H; intros.
+      eq_rect_simpl.
+      reflexivity.
+    - destruct data.
+      simpl in H1.
+      rewrite <- H1 in H.
+      (* get rid of impossible data = nil *)
+      inversion H.
+      destruct count.
+      inversion H.
+      rewrite Rec.cons_to_word.
+      simpl.
+      assert (count = n + n2) by omega.
+      generalize_proof.
+      rewrite H3; intros.
   Admitted.
 
   Lemma isplit1_refold : forall n1 n2 Heq Heq_trivial w,
@@ -1441,6 +1459,9 @@ Section RECBFILE.
   Lemma apply_build_chunks : forall num_chunks blocknum newdata ilist,
     goodSize addrlen (blocknum+num_chunks) ->
     let off := blocknum * block_items in
+    (* This count is actually wrong; it should be more general, allowing
+       newdata to have some data that isn't a full chunk at the end.
+       It is a necessary bound to have on the actual count, though. *)
     let count := num_chunks * block_items in
     let w := @Rec.to_word (Rec.ArrayF itemtype count) newdata in
     let chunks := build_chunks num_chunks blocknum w in
@@ -1612,29 +1633,19 @@ Section RECBFILE.
     rewrite Nat.mul_comm.
     rewrite <- Nat.div_mod by auto.
     rewrite isplit1_firstn.
-    unfold isplit2_dep.
-    unfold isplit2.
-    eq_rect_simpl.
-    unfold items.
-    rewrite eq_rect_word_mult.
-    eq_rect_simpl.
-    generalize_proof.
+    rewrite isplit2_skipn.
     min_cases.
     (* in this case, there's only one chunk *)
     - rewrite minus_plus.
       rewrite minus_diag.
       rewrite divup_0.
       simpl.
-      intros e; clear e.
       f_equal; f_equal.
       apply firstn_oob; omega.
       f_equal.
       rewrite Nat.add_assoc.
       rewrite <- Nat.div_mod; auto.
-    - intros.
-      (* this is what we'd like to do to finish the proof: *)
-      rewrite Rec.split2_skipn.
-      rewrite apply_build_chunks.
+    - rewrite apply_build_chunks.
   Admitted.
 
   Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
