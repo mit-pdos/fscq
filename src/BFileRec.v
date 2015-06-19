@@ -1684,14 +1684,14 @@ Section RECBFILE.
   Qed.
 
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
-    (* it seems like this is implied by the types, but if so,
-       I'm not sure how to get access to it in the proof *)
-    length newdata = count ->
-    goodSize addrlen off ->
+    Rec.well_formed newdata ->
+    goodSize addrlen (off+count) ->
+    off+count < length ilist ->
     let chunks := chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata) in
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
     intros.
+    inversion H.
     unfold chunkList in chunks.
     unfold chunks; simpl.
     unfold apply_chunk; simpl.
@@ -1713,6 +1713,50 @@ Section RECBFILE.
       rewrite Nat.add_assoc.
       rewrite <- Nat.div_mod; auto.
     - rewrite apply_build_chunks.
+      admit. (* some scary list firstn/skipn'ing *)
+      eapply goodSize_trans; try eassumption.
+      rewrite minus_distr_minus'.
+      admit. (* need to double check, but says
+              just past last blocknum is <= last byte
+              (lhs should be rhs / block_items or something) *)
+      omega.
+      apply Nat.lt_le_incl.
+      apply boff_mod_ok.
+      apply roundup_ge; auto.
+      repeat rewrite app_length.
+      rewrite firstn_length_l by omega.
+      rewrite firstn_length_l by omega.
+      rewrite skipn_length.
+      rewrite Nat.mul_add_distr_r.
+      rewrite Nat.mul_1_l.
+      rewrite minus_distr_minus'; try omega.
+      rewrite plus_assoc_reverse.
+      rewrite Nat.mul_comm.
+      (* apply plus_le_compat. *)
+      assert (block_items * (off / block_items) <= off).
+      apply Nat.mul_div_le; auto.
+      apply plus_le_compat.
+      assumption.
+      admit. (* I think this is true, but it's a fairly
+                complicated inequality *)
+      apply Nat.lt_le_incl.
+      apply boff_mod_ok.
+      admit. (* this isn't true for general writes,
+                need to figure out what produced it *)
+      apply Rec.skipn_well_formed.
+      rewrite minus_distr_minus'; try omega.
+      assert (off mod block_items < block_items) by apply boff_mod_ok.
+      replace (block_items - off mod block_items +
+        (count + off mod block_items - block_items)) with count by omega.
+      assumption.
+      apply Nat.lt_le_incl.
+      apply boff_mod_ok.
+     - assumption.
+     - assumption.
+     - eapply goodSize_trans; try eassumption.
+       eapply le_trans.
+       apply div_le; auto.
+       omega.
   Admitted.
 
   Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
