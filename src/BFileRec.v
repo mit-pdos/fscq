@@ -1481,15 +1481,11 @@ Section RECBFILE.
     let chunks := build_chunks num_chunks blocknum w in
     apply_chunks chunks ilist = ilist.
   Proof.
-    induction num_chunks; intros; simpl.
-    - reflexivity.
-    - unfold isplit2_dep.
-      unfold isplit2.
-      rewrite split2_0.
-      eq_rect_simpl.
-      rewrite IHnum_chunks.
-      apply apply_empty_chunk.
-      reflexivity.
+    simpl.
+    induction num_chunks; intros; simpl; auto.
+    rewrite IHnum_chunks.
+    unfold apply_chunk.
+    apply firstn_skipn.
   Qed.
 
   Lemma apply_chunks_nodata : forall off (w: items 0) ilist,
