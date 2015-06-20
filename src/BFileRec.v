@@ -1727,14 +1727,10 @@ Section RECBFILE.
     - rewrite apply_build_chunks.
       clear chunks. (* clear some space in hypotheses *)
       admit. (* some scary list firstn/skipn'ing *)
+      rewrite num_items'.
       eapply goodSize_trans; try eassumption.
-      rewrite minus_distr_minus'.
-      admit. (* need to double check, but says
-              just past last blocknum is <= last byte
-              (lhs should be rhs / block_items or something) *)
+      apply divup_lt_arg.
       omega.
-      apply Nat.lt_le_incl.
-      apply boff_mod_ok.
       apply roundup_ge; auto.
       repeat rewrite app_length.
       rewrite firstn_length_l by omega.
