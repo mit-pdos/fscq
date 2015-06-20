@@ -599,6 +599,36 @@ Section RECBFILE.
       apply Nat.mod_le; auto.
   Qed.
 
+  Lemma num_items' : forall off count,
+    block_items <= off mod block_items + count ->
+    off / block_items + 1 +
+    divup (count - (block_items - off mod block_items)) block_items =
+    divup (off + count) block_items.
+  Proof.
+    intros.
+    repeat rewrite divup_eq_divup'.
+    unfold divup'.
+
+    assert (Hboff := boff_mod_ok off).
+    assert (off mod block_items <= off) as Hboff'.
+    apply Nat.mod_le; auto.
+    (* the two divup' operations match on the same mod *)
+    assert ((count - (block_items - off mod block_items)) mod block_items =
+            (off + count) mod block_items).
+    rewrite Nat.add_comm.
+    rewrite minus_distr_minus' by omega.
+    rewrite <- Nat.mod_add with (b := 1) by auto.
+    rewrite Nat.mul_1_l.
+    rewrite Nat.sub_add by omega.
+    apply Nat.add_mod_idemp_r; auto.
+
+    rewrite H0.
+    case_eq ((off + count) mod block_items); intros.
+    - rewrite num_items; omega.
+    - rewrite Nat.add_assoc.
+      rewrite num_items; omega.
+  Qed.
+
   Theorem chunk_blocknum_bound : forall off count (w: items count),
     goodSize addrlen off ->
     0 < count ->
@@ -631,25 +661,7 @@ Section RECBFILE.
       rewrite divup_0 in H2.
       inversion H2.
     - rewrite Hmineq in H2.
-      rewrite divup_eq_divup'.
-      unfold divup'.
-      case_eq ((count - (block_items - off mod block_items)) mod block_items); intros.
-      * rewrite num_items; try omega.
-      apply div_le_divup; omega.
-      * rewrite Nat.add_assoc.
-        rewrite num_items; try omega.
-        rewrite minus_distr_minus' in H1; try omega.
-        rewrite <- Nat.mod_add with (b := 1) in H1 by auto.
-        rewrite Nat.mul_1_l in H1.
-        rewrite Nat.sub_add in H1 by omega.
-        rewrite Nat.add_mod_idemp_r in H1 by auto.
-        rewrite Nat.add_comm in H1.
-        rewrite divup_eq_divup'.
-        unfold divup'.
-        rewrite H1.
-        omega.
-        apply Nat.lt_le_incl.
-        apply boff_mod_ok.
+      rewrite num_items'; omega.
   Qed.
 
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
