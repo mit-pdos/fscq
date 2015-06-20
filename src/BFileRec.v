@@ -1491,6 +1491,20 @@ Section RECBFILE.
       reflexivity.
   Qed.
 
+  Lemma apply_chunks_nodata : forall off (w: items 0) ilist,
+    let chunks := chunkList off w in
+    apply_chunks chunks ilist = ilist.
+  Proof.
+    intros.
+    unfold chunkList in chunks.
+    simpl; clear chunks.
+    rewrite apply_build_chunks_nodata.
+    apply apply_empty_chunk.
+    simpl.
+    assert (Hboff := boff_mod_ok off).
+    rewrite Nat.min_l; omega.
+  Qed.
+
   Lemma apply_build_chunks : forall num_chunks blocknum count newdata ilist,
     goodSize addrlen (blocknum+num_chunks) ->
     let off := blocknum * block_items in
@@ -1701,7 +1715,7 @@ Section RECBFILE.
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     Rec.well_formed newdata ->
     goodSize addrlen (off+count) ->
-    off+count < length ilist ->
+    off+count <= length ilist ->
     let chunks := chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata) in
     apply_chunks chunks ilist = firstn off ilist ++ newdata ++ skipn (off + count) ilist.
   Proof.
@@ -1918,20 +1932,28 @@ Section RECBFILE.
   Lemma applying_chunks_is_update : forall Fx off count olddata newdata ilist ilist',
     @Rec.well_formed (Rec.ArrayF _ _) newdata ->
     goodSize addrlen (off+count) ->
-    off+count < length ilist ->
     (Fx * arrayN off olddata)%pred (list2nmem ilist) ->
     length olddata = length newdata ->
     ilist' = apply_chunks (chunkList off (@Rec.to_word (Rec.ArrayF itemtype count) newdata)) ilist ->
     (Fx * arrayN off newdata)%pred (list2nmem ilist').
   Proof.
     intros.
-    rewrite applying_chunks_is_replace in H4 by assumption.
-    replace ilist'.
+    assert (H1' := list2nmem_arrayN_bound _ _ H1).
     inversion H.
-    replace count with (length olddata) by omega.
-    apply arrayN_newlist; try assumption.
-
-    exact (Rec.of_word $0).
+    inversion H1'.
+    (* empty write case *)
+    - rewrite H6 in *; clear H6.
+      simpl in H2; symmetry in H2; apply length_nil in H2.
+      rewrite H2 in *; clear H2.
+      replace ilist'.
+      replace count.
+      rewrite apply_chunks_nodata.
+      pred_apply; cancel.
+    - replace ilist'.
+      rewrite applying_chunks_is_replace; auto; try omega.
+      replace count with (length olddata) by omega.
+      apply arrayN_newlist; auto.
+      exact (Rec.of_word $0).
   Qed.
 
   Definition hidden p : Prop := p.
