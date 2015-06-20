@@ -1425,33 +1425,13 @@ Section RECBFILE.
     @Rec.to_word (Rec.ArrayF itemtype _) (skipn n data).
   Proof.
     intros.
-    inversion H0.
-    unfold isplit2_dep, isplit2.
-    eq_rect_simpl.
-    unfold items.
-    rewrite eq_rect_word_mult.
-    eq_rect_simpl.
-    generalize_proof; intros.
-    generalize dependent count.
-    induction n; intros; simpl.
-    - simpl in H.
-      generalize_proof.
-      rewrite H; intros.
-      eq_rect_simpl.
-      reflexivity.
-    - destruct data.
-      simpl in H1.
-      rewrite <- H1 in H.
-      (* get rid of impossible data = nil *)
-      inversion H.
-      destruct count.
-      inversion H.
-      rewrite Rec.cons_to_word.
-      simpl.
-      assert (count = n + n2) by omega.
-      generalize_proof.
-      rewrite H3; intros.
-  Admitted.
+    unfold isplit2_dep.
+    rewrite <- Rec.of_to_id with (v := data) by assumption.
+    rewrite H.
+    rewrite isplit2_skipn'.
+    repeat rewrite Rec.to_of_id.
+    reflexivity.
+  Qed.
 
   Lemma isplit1_refold : forall n1 n2 Heq Heq_trivial w,
        split1 (n1*itemsize) (n2*itemsize)
