@@ -122,6 +122,23 @@ Section RECBFILE.
     array_item_pairs vs_nested (list2nmem (BFILE.BFData file)) /\
     vs = concat vs_nested.
 
+  Ltac split_rep H :=
+    let vs_nested := fresh "vs_nested" in
+    let Hrep := fresh "Hrep" in
+    let Hrep1 := fresh "Hrep_len" in
+    let Hrep23 := fresh "Hrep23" in
+    let Hrep2 := fresh "Hrep_items" in
+    let Hrep3 := fresh "Hrep_concat" in
+    inversion H as [vs_nested Hrep];
+    inversion Hrep as [Hrep1 Hrep23];
+    inversion Hrep23 as [Hrep2 Hrep3];
+    clear Hrep Hrep23.
+
+  Ltac split_reps :=
+    match goal with
+    | [ H : array_item_file _ _ |- _ ] => split_rep H
+    end.
+
   Section RepImplications.
 
   Lemma well_formed_length : forall (vs : list block),
@@ -189,16 +206,14 @@ Section RECBFILE.
     length (BFILE.BFData f) * block_items = length vs.
   Proof.
     intros.
-    inversion H.
-    inversion H0; clear H0. inversion H2; clear H2.
-    unfold array_item_pairs in H0.
-    assert (length vs = length x * block_items).
-    rewrite H3.
-    destruct_lift H0.
+    split_reps.
+    unfold array_item_pairs in Hrep_items.
+    assert (length vs = length vs_nested * block_items).
+    rewrite Hrep_concat.
+    destruct_lift Hrep_items.
     apply block_length_fold_right_nat; assumption.
-    rewrite <- H1.
-    rewrite H2.
-    reflexivity.
+    rewrite <- Hrep_len.
+    auto.
   Qed.
 
   Corollary array_items_num_blocks : forall f vs,
@@ -2521,9 +2536,7 @@ Section RECBFILE.
   array_item_file f' (firstn count_items ilist).
   Proof.
     intros.
-    inversion H1 as [vs_nested Hrep123].
-    inversion Hrep123 as [Hrep1 Hrep23]; clear Hrep123.
-    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
+    split_reps.
     unfold array_item_file.
     simpl.
     rewrite setlen_length.
@@ -2535,10 +2548,10 @@ Section RECBFILE.
     rewrite wordToNat_natToWord_idempotent' by
       (apply goodSize_items_blocks; assumption).
     apply firstn_length_l.
-    unfold array_item_pairs in Hrep2.
-    destruct_lift Hrep2.
+    unfold array_item_pairs in Hrep_items.
+    destruct_lift Hrep_items.
     assert (Hl := array_items_num_blocks H1).
-    rewrite Hrep1.
+    rewrite Hrep_len.
     apply le_trans with (divup (length ilist) block_items).
     apply divup_mono; assumption.
     omega.
@@ -2677,9 +2690,7 @@ Section RECBFILE.
   array_item_file f' (ilist ++ newdata).
   Proof.
     intros.
-    inversion H1 as [vs_nested Hrep123].
-    inversion Hrep123 as [Hrep1 Hrep23]; clear Hrep123.
-    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
+    split_reps.
     unfold array_item_file.
     simpl.
     rewrite setlen_length.
@@ -2695,7 +2706,7 @@ Section RECBFILE.
       split; [|split].
     (* length of file = length vs *)
     rewrite app_length.
-    rewrite Hrep1.
+    rewrite Hrep_len.
     rewrite repeat_length.
     omega.
 
@@ -2705,7 +2716,7 @@ Section RECBFILE.
     apply array_item_app_repeated_0; assumption.
     rewrite concat_app.
     f_equal.
-    apply Hrep3.
+    apply Hrep_concat.
     rewrite repeated_blocks_are_items.
     unfold newdata.
     f_equal.
