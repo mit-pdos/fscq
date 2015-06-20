@@ -1733,13 +1733,11 @@ Section RECBFILE.
       rewrite minus_distr_minus'; try omega.
       rewrite plus_assoc_reverse.
       rewrite Nat.mul_comm.
-      (* apply plus_le_compat. *)
-      assert (block_items * (off / block_items) <= off).
-      apply Nat.mul_div_le; auto.
-      apply plus_le_compat.
-      assumption.
-      admit. (* I think this is true, but it's a fairly
-                complicated inequality *)
+      assert (Hboff := boff_mod_ok off).
+      assert (off mod block_items <= off).
+      apply Nat.mod_le; auto.
+      rewrite rounddown_eq by auto.
+      omega.
       apply Nat.lt_le_incl.
       apply boff_mod_ok.
       rewrite rounddown_eq by auto.
