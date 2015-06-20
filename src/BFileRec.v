@@ -1713,6 +1713,7 @@ Section RECBFILE.
       rewrite Nat.add_assoc.
       rewrite <- Nat.div_mod; auto.
     - rewrite apply_build_chunks.
+      clear chunks. (* clear some space in hypotheses *)
       admit. (* some scary list firstn/skipn'ing *)
       eapply goodSize_trans; try eassumption.
       rewrite minus_distr_minus'.
@@ -1741,9 +1742,14 @@ Section RECBFILE.
                 complicated inequality *)
       apply Nat.lt_le_incl.
       apply boff_mod_ok.
-      admit. (* this isn't true for general writes,
-                need to figure out what produced it *)
+      rewrite rounddown_eq by auto.
+      (* give omega some hints *)
+      assert (off mod block_items <= off).
+      apply Nat.mod_le; auto.
+      assert (Hboff := boff_mod_ok off).
+      omega.
       apply Rec.skipn_well_formed.
+      (* need to fix the array length to apply the assumption *)
       rewrite minus_distr_minus'; try omega.
       assert (off mod block_items < block_items) by apply boff_mod_ok.
       replace (block_items - off mod block_items +
