@@ -1726,7 +1726,23 @@ Section RECBFILE.
       rewrite <- Nat.div_mod; auto.
     - rewrite apply_build_chunks.
       clear chunks. (* clear some space in hypotheses *)
-      admit. (* some scary list firstn/skipn'ing *)
+      assert (Hboff := boff_mod_ok off).
+      assert (off mod block_items <= off).
+      apply Nat.mod_le; auto.
+      (* tame some of this arithmetic *)
+      rewrite minus_distr_minus' by omega.
+      rewrite Nat.mul_add_distr_r.
+      rewrite Nat.mul_1_l.
+      rewrite Nat.mul_comm.
+      rewrite rounddown_eq by auto.
+      replace (off - off mod block_items + block_items +
+        (count + off mod block_items - block_items))
+        with (off + count) by omega.
+      replace (off - off mod block_items + block_items) with
+        (off + (block_items - off mod block_items)) by omega.
+      assert (length (firstn off ilist) = off).
+      apply firstn_length_l; omega.
+      admit. (* a bunch of list firstn/skipn'ing *)
       rewrite num_items'.
       eapply goodSize_trans; try eassumption.
       apply divup_lt_arg.
