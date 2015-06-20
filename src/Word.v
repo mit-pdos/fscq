@@ -9,6 +9,7 @@ Require Import Program.Tactics.
 Require Import Recdef.
 Require Import Ring.
 Require Import Ring_polynom.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
@@ -708,16 +709,42 @@ Proof.
   f_equal.
 Qed.
 
+Lemma whd_eq_rect : forall n w Heq,
+  whd (eq_rect (S n) word w (S (n + 0)) Heq) =
+  whd w.
+Proof.
+  intros.
+  f_equal; try omega.
+  intros.
+  generalize_proof.
+  rewrite H; intros.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+
+Lemma wtl_eq_rect : forall n w Heq Heq',
+  wtl (eq_rect (S n) word w (S (n + 0)) Heq) =
+  eq_rect n word (wtl w) (n + 0) Heq'.
+Proof.
+  intros.
+Admitted.
+
 Theorem split1_0 : forall n w Heq,
   split1 n 0 (eq_rect _ word w _ Heq) = w.
 Proof.
+  intros.
   induction n; intros.
   shatterer.
-  destruct w.
-    shatterer.
   simpl.
-  f_equal.
-Admitted.
+  erewrite wtl_eq_rect.
+  rewrite IHn.
+  rewrite whd_eq_rect.
+  simpl.
+  shatterer.
+
+  Grab Existential Variables.
+  omega.
+Qed.
 
 Theorem split2_0 : forall n w Heq,
   split2 0 n (eq_rect _ word w _ Heq) = w.
