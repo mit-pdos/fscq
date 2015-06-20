@@ -1475,6 +1475,7 @@ Section RECBFILE.
     apply firstn_skipn.
   Qed.
 
+  (* XXX: this proof takes forever to typecheck *)
   Lemma apply_build_chunks_nodata : forall num_chunks blocknum
     (w: items 0) ilist,
     let chunks := build_chunks num_chunks blocknum w in
@@ -1505,6 +1506,7 @@ Section RECBFILE.
     rewrite Nat.min_l; omega.
   Qed.
 
+  (* XXX: this proof takes forever to typecheck *)
   Lemma apply_build_chunks : forall num_chunks blocknum count newdata ilist,
     goodSize addrlen (blocknum+num_chunks) ->
     let off := blocknum * block_items in
@@ -1712,6 +1714,7 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
+  (* XXX: this proof takes forever to type check *)
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     Rec.well_formed newdata ->
     goodSize addrlen (off+count) ->
