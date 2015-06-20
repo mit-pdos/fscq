@@ -275,8 +275,8 @@ Section RECBFILE.
 
   Lemma bfrec_bound : forall F A m bxp ixp (inum : addr) fl f l,
     array_item_file f l
-    -> (F * BFILE.rep bxp ixp fl)%pred m
     -> (A * # inum |-> f)%pred (list2nmem fl)
+    -> (F * BFILE.rep bxp ixp fl)%pred m
     -> length l <= # (natToWord addrlen (INODE.blocks_per_inode * # items_per_valu)).
   Proof.
     unfold array_item_file, array_item_pairs; intros.
@@ -1980,89 +1980,88 @@ Section RECBFILE.
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ array_item_file f ilist ]] *
     [[ (Fx * arrayN off olddata)%pred (list2nmem ilist) ]] *
-    [[  @Rec.to_word (Rec.ArrayF itemtype count) newdata = w ]] *
+    [[ newdata = @Rec.of_word (Rec.ArrayF itemtype _) w ]] *
     [[ length olddata = length newdata ]] *
-    [[ hidden (length newdata = count) ]] *
-    (* count = 0 is a special case that requires some reasoning to show
-       bf_update_range does nothing. *)
-    [[ 0 < count ]]
+    [[ count > 0 ]]
     POST RET: ^(mscs)
       exists m' f' flist' ilist',
         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-        [[ array_item_file f' ilist' ]] *
-        [[ (Fx * arrayN off newdata)%pred (list2nmem ilist') ]]
+        [[ (Fx * arrayN off newdata)%pred (list2nmem ilist') ]] *
+        [[ array_item_file f' ilist' ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_update_range fsxp inum off w mscs.
   Proof.
     unfold bf_update_range.
     hoare.
 
-    apply list2nmem_array_pick.
-    set (w := @Rec.to_word (Rec.ArrayF itemtype count) newdata) in *.
-    inversion H16 as [vs_nested Hrep].
-    inversion Hrep as [Hrep1 Hrep23]; clear Hrep.
-    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
-    eapply lt_le_trans.
-    assert (Hbound := @chunk_blocknum_bound off count w).
-    rewrite Forall_forall in Hbound.
-    apply Hbound.
-    apply list2nmem_arrayN_bound in H8.
-    inversion H8.
-      (* olddata = nil is a contradiction *)
-      Transparent hidden.
-      unfold hidden in H5.
-      subst.
-      simpl in *.
-      rewrite <- H6 in H4.
-      inversion H4.
-    apply goodSize_trans with (off + length olddata).
-    omega.
-    eapply goodSize_trans.
-    eassumption.
-    eapply goodSize_bound.
-    eapply bfrec_bound.
-    eassumption.
-    (* eassumption picks the wrong memory/flist *)
-    apply H.
-    eassumption.
-    assumption.
-    rewrite <- H3.
-    apply in_app_middle.
-    apply list2nmem_arrayN_bound in H8.
-    inversion H8.
-      (* olddata = nil is a contradiction *)
-      Transparent hidden.
-      unfold hidden in H5.
-      subst.
-      simpl in *.
-      rewrite <- H6 in H4.
-      inversion H4.
-    rewrite H6 in H11.
-    rewrite H5 in H11.
-    eapply Nat.le_trans.
-    apply divup_mono.
-    eassumption.
-    rewrite <- array_items_num_blocks with (f := f).
-    admit. (* should have used F * arrayN off newdata in ilist' above instead
-              of H8, but this is proven next *)
-    assumption.
-    eapply applying_chunks_is_update.
-    admit. (* need to get this into the hypotheses or something *)
-    Transparent hidden.
-    unfold hidden in H5.
-    admit. admit. (* proven above *)
-    eassumption.
-    assumption.
-    rewrite H13.
-    simpl.
-    reflexivity.
-    apply LOG.activetxn_would_recover_old.
+    - assert (length olddata = count) as Hlenold.
+      replace (length olddata).
+      assert (Hlen := Rec.of_word_length (Rec.ArrayF _ _) w).
+      inversion Hlen.
+      now assumption.
+      assert (olddata <> nil) as Holdnotnil.
+      intro Hnil.
+      rewrite Hnil in Hlenold.
+      simpl in Hlenold.
+      rewrite <- Hlenold in H4.
+      now inversion H4.
+      assert (off + count <= length ilist).
+      apply list2nmem_arrayN_bound in H7.
+      inversion H7.
+      contradiction.
+      now omega.
+
+      apply list2nmem_array_pick.
+      eapply lt_le_trans.
+      assert (Hbound := @chunk_blocknum_bound off count w).
+      rewrite Forall_forall in Hbound.
+      apply Hbound; auto.
+
+      apply goodSize_trans with (off + count).
+      omega.
+      eapply goodSize_trans; eauto.
+      eapply goodSize_bound.
+      eapply bfrec_bound; eauto.
+      rewrite <- H0.
+      apply in_app_middle.
+      eapply Nat.le_trans.
+      apply divup_mono; eauto.
+      replace (length ilist) with (length ilist').
+      rewrite <- array_items_num_blocks with (f := f') by auto.
+      auto.
+      admit. (* need to show apply_chunks doesn't change length *)
+    - assert (Hwellw := Rec.of_word_length (Rec.ArrayF _ _) w).
+      inversion Hwellw as [Hlen ?].
+      eapply applying_chunks_is_update.
+      apply Rec.of_word_length.
+
+      (* this was proven above; this proof is slightly longer
+         since above we had some useful asserts in scope *)
+      eapply goodSize_trans.
+      apply list2nmem_arrayN_bound in H7.
+      inversion H7.
+      subst olddata.
+      rewrite Hlen in H5.
+      rewrite <- H5 in H4.
+      now inversion H4.
+      replace count with (length olddata) by omega.
+      eassumption.
+      eapply goodSize_bound; eauto.
+      eapply bfrec_bound; eauto.
+      eassumption.
+      now omega.
+
+      replace ilist'.
+      rewrite Rec.to_of_id.
+      (* without the simpl reflexivity is very slow *)
+      simpl; reflexivity.
+    - apply LOG.activetxn_would_recover_old.
 
     Grab Existential Variables.
-    (* the above admits *)
-    admit. admit. admit. admit.
+    (* the above admit *)
+    admit.
     exact $0.
     exact tt.
   Admitted.
