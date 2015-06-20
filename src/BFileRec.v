@@ -1675,6 +1675,29 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
+  Lemma firstn_sum_app : forall A (l1 l2: list A) n1 n2,
+    n1 = length l1 ->
+    firstn (n1 + n2) (l1 ++ l2) = l1 ++ firstn n2 l2.
+  Proof.
+    intros.
+    rewrite firstn_sum_split.
+    rewrite H.
+    rewrite firstn_app by reflexivity.
+    rewrite skipn_app.
+    reflexivity.
+  Qed.
+
+  Lemma skipn_sum_app : forall A (l1 l2: list A) n1 n2,
+    n1 = length l1 ->
+    skipn (n1 + n2) (l1 ++ l2) = skipn n2 l2.
+  Proof.
+    intros.
+    rewrite H.
+    rewrite <- skipn_skipn'.
+    rewrite skipn_app.
+    reflexivity.
+  Qed.
+
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     Rec.well_formed newdata ->
     goodSize addrlen (off+count) ->
@@ -1720,9 +1743,26 @@ Section RECBFILE.
         with (off + count) by omega.
       replace (off - off mod block_items + block_items) with
         (off + (block_items - off mod block_items)) by omega.
-      assert (length (firstn off ilist) = off).
-      apply firstn_length_l; omega.
-      admit. (* a bunch of list firstn/skipn'ing *)
+      assert (off = length (firstn off ilist)).
+      rewrite firstn_length_l; omega.
+      rewrite firstn_sum_app by omega.
+      rewrite skipn_sum_app by omega.
+      rewrite app_assoc_reverse.
+      f_equal.
+      assert (block_items - off mod block_items =
+        length (firstn (block_items - off mod block_items) newdata)).
+      rewrite firstn_length_l; omega.
+      rewrite firstn_app by auto.
+      rewrite app_assoc.
+      rewrite firstn_skipn.
+      f_equal.
+      replace count with (block_items - off mod block_items + (count -
+        (block_items - off mod block_items))) at 1 by omega.
+      rewrite H6 at 1.
+      rewrite skipn_app_r.
+      rewrite skipn_skipn.
+      f_equal.
+      omega.
       rewrite num_items'.
       eapply goodSize_trans; try eassumption.
       apply divup_lt_arg.
@@ -1765,7 +1805,7 @@ Section RECBFILE.
        eapply le_trans.
        apply div_le; auto.
        omega.
-  Admitted.
+  Qed.
 
   Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
     (F * arrayN off data)%pred (list2nmem l) ->
