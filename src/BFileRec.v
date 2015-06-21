@@ -1082,11 +1082,9 @@ Section RECBFILE.
     rewrite firstn_length_l by omega.
     rewrite skipn_length by omega.
     unfold items_to_list.
-    assert (Hdatalen := Rec.of_word_length
-      (Rec.ArrayF _ _) (chunk_data ck)).
-    inversion Hdatalen.
-    fold bend boff item in H0.
-    rewrite H0.
+    unfold item.
+    rewrite Rec.array_of_word_length.
+    fold item.
     omega.
   Qed.
 
@@ -1700,9 +1698,7 @@ Section RECBFILE.
 
     - assert (length olddata = count) as Hlenold.
       replace (length olddata).
-      assert (Hlen := Rec.of_word_length (Rec.ArrayF _ _) w).
-      inversion Hlen.
-      now assumption.
+      apply Rec.array_of_word_length.
       assert (olddata <> nil) as Holdnotnil.
       intro Hnil.
       rewrite Hnil in Hlenold.
@@ -1735,9 +1731,7 @@ Section RECBFILE.
       replace (length ilist).
       erewrite <- array_items_num_blocks by eauto.
       auto.
-    - assert (Hwellw := Rec.of_word_length (Rec.ArrayF _ _) w).
-      inversion Hwellw as [Hlen ?].
-      eapply applying_chunks_is_update.
+    - eapply applying_chunks_is_update.
       apply Rec.of_word_length.
 
       (* this was proven above; this proof is slightly longer
@@ -1746,11 +1740,13 @@ Section RECBFILE.
       apply list2nmem_arrayN_bound in H7.
       inversion H7.
       subst olddata.
-      rewrite Hlen in H5.
+      rewrite Rec.array_of_word_length in H5.
       rewrite <- H5 in H4.
       now inversion H4.
-      replace count with (length olddata) by omega.
+      replace count with (length olddata).
       eassumption.
+      replace (length olddata).
+      apply Rec.array_of_word_length.
       eapply goodSize_bound; eauto.
       eapply bfrec_bound; eauto.
       eassumption.
