@@ -1231,7 +1231,9 @@ Module LOG.
     split_lists.
     erewrite firstn_plusone_selN.
     rewrite <- app_assoc.
-    reflexivity.
+    f_equal.
+    simpl.
+    repeat f_equal.
     solve_lengths.
     erewrite firstn_plusone_selN.
     rewrite <- app_assoc.
