@@ -334,13 +334,12 @@ Module FASTBYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
-           [[ newdata = bsplit_list newbytes ]] *
-           [[ hidden (length olddata = length newdata) ]] *
-           [[ off + length newdata <= length bytes ]]
+           [[ hidden ((Fx * arrayN off olddata)%pred (list2nmem bytes)) ]] *
+           [[ hidden (newdata = @Rec.of_word (Rec.ArrayF byte_type len) newbytes) ]] *
+           [[ hidden (length olddata = length newdata) ]]
       POST RET: ^(mscs)
-           exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-           exists flist' f' bytes',
+           exists m' flist' f' bytes',
+           LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
@@ -349,8 +348,17 @@ Module FASTBYTEFILE.
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
-    unfold update_bytes, rep, bytes_rep.
-    step.
+    unfold update_bytes.
+    time step.
+    Transparent hidden.
+    unfold hidden in *.
+    inversion H7.
+    inversion H0.
+    inversion H3.
+    unfold byte in x.
+    (* this will only work if the inversions are performed before
+       the evar is created *)
+    instantiate (ilist := x).
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.

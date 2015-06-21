@@ -1680,8 +1680,8 @@ Section RECBFILE.
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ array_item_file f ilist ]] *
     [[ (Fx * arrayN off olddata)%pred (list2nmem ilist) ]] *
-    [[ newdata = @Rec.of_word (Rec.ArrayF itemtype _) w ]] *
-    [[ length olddata = length newdata ]] *
+    [[ hidden (newdata = @Rec.of_word (Rec.ArrayF itemtype _) w) ]] *
+    [[ hidden (length olddata = length newdata) ]] *
     [[ count > 0 ]]
     POST RET: ^(mscs)
       exists m' f' flist' ilist',
@@ -1696,8 +1696,12 @@ Section RECBFILE.
     unfold bf_update_range.
     hoare.
 
-    - assert (length olddata = count) as Hlenold.
+
+    - Transparent hidden.
+      unfold hidden in *.
+      assert (length olddata = count) as Hlenold.
       replace (length olddata).
+      replace newdata.
       apply Rec.array_of_word_length.
       assert (olddata <> nil) as Holdnotnil.
       intro Hnil.
@@ -1731,7 +1735,10 @@ Section RECBFILE.
       replace (length ilist).
       erewrite <- array_items_num_blocks by eauto.
       auto.
-    - eapply applying_chunks_is_update.
+    - Transparent hidden.
+      unfold hidden in *.
+      subst newdata.
+      eapply applying_chunks_is_update.
       apply Rec.of_word_length.
 
       (* this was proven above; this proof is slightly longer
