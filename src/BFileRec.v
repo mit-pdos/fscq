@@ -1375,6 +1375,9 @@ Section RECBFILE.
 
   Hint Extern 1 ({{_}} progseq (bf_put_chunk _ _ _ _ _) _) => apply bf_put_chunk_ok : prog.
 
+  Definition hidden p : Prop := p.
+  Opaque hidden.
+
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
     let chunks := chunkList off w in
@@ -1387,7 +1390,8 @@ Section RECBFILE.
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ array_item_file f' ilist' ]] *
-        [[ apply_chunks rest ilist' = apply_chunks chunks ilist ]]
+        [[ apply_chunks rest ilist' = apply_chunks chunks ilist ]] *
+        [[ hidden (length ilist' = length ilist) ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -2001,9 +2005,6 @@ Section RECBFILE.
       exact (Rec.of_word $0).
   Qed.
 
-  Definition hidden p : Prop := p.
-  Opaque hidden.
-
   Theorem bf_update_range_ok : forall fsxp inum off count (w: items count) mscs,
   {< mbase m F Fm Fx A flist ilist f olddata newdata,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -2059,10 +2060,11 @@ Section RECBFILE.
       apply in_app_middle.
       eapply Nat.le_trans.
       apply divup_mono; eauto.
-      replace (length ilist) with (length ilist').
-      rewrite <- array_items_num_blocks with (f := f') by auto.
+      Transparent hidden.
+      unfold hidden in *.
+      replace (length ilist).
+      erewrite <- array_items_num_blocks by eauto.
       auto.
-      admit. (* need to show apply_chunks doesn't change length *)
     - assert (Hwellw := Rec.of_word_length (Rec.ArrayF _ _) w).
       inversion Hwellw as [Hlen ?].
       eapply applying_chunks_is_update.
@@ -2091,11 +2093,9 @@ Section RECBFILE.
     - apply LOG.activetxn_would_recover_old.
 
     Grab Existential Variables.
-    (* the above admit *)
-    admit.
     exact $0.
     exact tt.
-  Admitted.
+  Qed.
 
   Lemma map_rep_valu_id : forall x,
     Forall Rec.well_formed x ->
