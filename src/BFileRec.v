@@ -354,6 +354,17 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
+  Lemma valu_rep_id : forall v,
+    rep_block (valu2block v) = v.
+  Proof.
+    intros.
+    unfold rep_block, valu2block.
+    unfold RecArray.rep_block, wreclen_to_valu.
+    rewrite Rec.to_of_id.
+    eq_rect_simpl.
+    reflexivity.
+  Qed.
+
   Program Fixpoint isplit_list count (w: items count) : list (word itemsize) :=
     match count with
     | O => nil
@@ -1285,91 +1296,78 @@ Section RECBFILE.
   >} bf_put_chunk lxp ixp inum ck mscs.
   Proof.
     unfold bf_put_chunk.
+    hoare.
 
-    step. (* bf_read *)
-    step. (* bf_write *)
-    step. (* return *)
-
-    inversion H4 as [vs_nested Hrep].
-    inversion Hrep as [Hrep1 Hrep23]; clear Hrep.
-    inversion Hrep23 as [Hrep2 Hrep3]; clear Hrep23.
-    unfold array_item_pairs in Hrep2.
-    destruct_lift Hrep2.
+    clear H2. (* clear some space *)
+    split_reps.
+    unfold array_item_pairs in Hrep_items.
+    destruct_lift Hrep_items.
     unfold array_item_file.
     exists (updN vs_nested
       (# (chunk_blocknum ck))
       (valu2block (update_chunk v8 ck))).
     subst; simpl.
     split; [|split].
-    (* length *)
-    rewrite length_updN.
-    rewrite length_upd.
-    assumption.
-
-    (* array_item_pairs *)
-    unfold array_item_pairs.
-    rewrite map_updN.
-    assert (update_chunk v8 ck = rep_block (valu2block (update_chunk v8 ck))).
-      unfold rep_block, valu2block.
-      unfold RecArray.rep_block.
-      rewrite Rec.to_of_id.
-      unfold wreclen_to_valu.
-      unfold eq_rec_r.
-      rewrite eq_rect_nat_double.
-      rewrite <- (eq_rect_eq_dec eq_nat_dec).
-      reflexivity.
-    rewrite <- H7.
-    apply list2nmem_array_eq in H3.
-    rewrite H3.
-    assert (Forall Rec.well_formed
-      (updN
-        vs_nested
-        (# (chunk_blocknum ck))
-        (valu2block (update_chunk v8 ck)))).
-      apply Forall_upd.
+    - (* length *)
+      rewrite length_updN.
+      rewrite length_upd.
       assumption.
-      (* valu2block is basically Rec.of_word, with some dependent-type proofs *)
-      unfold valu2block.
-      apply Rec.of_word_length.
-    assert (Hmaprep := list2nmem_array
-      (updN (map rep_block vs_nested)
-        (# (chunk_blocknum ck))
-        (update_chunk v8 ck))).
-    pred_apply; cancel.
+    - (* array_item_pairs *)
+      unfold array_item_pairs.
+      rewrite map_updN.
+      rewrite valu_rep_id.
+      apply list2nmem_array_eq in H2.
+      replace (BFILE.BFData f).
+      assert (Forall Rec.well_formed
+        (updN
+          vs_nested
+          (# (chunk_blocknum ck))
+          (valu2block (update_chunk v8 ck)))).
+        apply Forall_upd.
+        assumption.
+        (* valu2block is basically Rec.of_word, with some dependent-type proofs *)
+        unfold valu2block.
+        apply Rec.of_word_length.
+      assert (Hmaprep := list2nmem_array
+        (updN (map rep_block vs_nested)
+          (# (chunk_blocknum ck))
+          (update_chunk v8 ck))).
+      pred_apply; cancel.
 
-    (* ilist' = concat vs_nested' *)
-    unfold apply_chunk.
-    assert (# (chunk_blocknum ck) < length vs_nested) as Hblocknum_bound.
-    rewrite Hrep1.
-    eapply list2nmem_inbound.
-    eassumption.
-    (* backup H13 *)
-    assert (H13' := H13).
-    apply well_formed_length in H13.
-    rewrite <- concat_hom_updN_first_skip with (k := block_items) by assumption.
-    rewrite firstn_sum_split.
-    rewrite skipn_sum_split' with (off2 := block_items) by (apply (chunk_bend_ok ck)).
-    repeat (rewrite app_assoc).
-    f_equal.
-    repeat (rewrite app_assoc_reverse).
-    f_equal.
-    assert (v8 = rep_block (selN vs_nested (# (chunk_blocknum ck)) (valu2block ($ 0)))).
-    apply list2nmem_array_eq in H3.
-    rewrite H3 in H5.
-    eapply list2nmem_sel in H5.
-    erewrite selN_map in H5 by assumption.
-    apply H5.
-    rewrite H7.
-    symmetry; apply update_chunk_parts; try assumption.
+    - (* ilist' = concat vs_nested' *)
+      unfold apply_chunk.
+      assert (# (chunk_blocknum ck) < length vs_nested) as Hblocknum_bound.
+      rewrite Hrep_len.
+      eapply list2nmem_inbound.
+      eassumption.
+      (* backup H9 *)
+      assert (H9' := H9).
+      apply well_formed_length in H9.
+      rewrite <- concat_hom_updN_first_skip with (k := block_items) by assumption.
+      rewrite firstn_sum_split.
+      rewrite skipn_sum_split' with (off2 := block_items) by (apply (chunk_bend_ok ck)).
+      repeat (rewrite app_assoc).
+      f_equal.
+      repeat (rewrite app_assoc_reverse).
+      f_equal.
+      replace v8 with (rep_block (selN vs_nested
+        (# (chunk_blocknum ck)) (valu2block ($ 0)))).
+      rewrite update_chunk_parts; auto.
+      apply list2nmem_array_eq in H2.
+      rewrite H2 in H5.
+      eapply list2nmem_sel in H5.
+      erewrite selN_map in H5 by assumption.
+      rewrite H5.
+      reflexivity.
 
-    (* prove length doesn't change *)
-    apply apply_chunk_preserves_length.
-    apply list2nmem_ptsto_bound in H5.
-    erewrite <- array_items_block_sized by eauto.
-    unfold lt in H5.
-    apply Nat.mul_le_mono_pos_r with (p := block_items) in H5; auto.
-    simpl in H5.
-    omega.
+    - (* prove length doesn't change *)
+      apply apply_chunk_preserves_length.
+      apply list2nmem_ptsto_bound in H5.
+      erewrite <- array_items_block_sized by eauto.
+      unfold lt in H5.
+      apply Nat.mul_le_mono_pos_r with (p := block_items) in H5; auto.
+      simpl in H5.
+      omega.
 
     Grab Existential Variables.
     exact ($ 0).
