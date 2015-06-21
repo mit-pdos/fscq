@@ -1242,6 +1242,29 @@ Section RECBFILE.
     apply in_selN; assumption.
   Qed.
 
+  Lemma apply_chunk_preserves_length : forall ck ilist,
+    # (chunk_blocknum ck) * block_items + block_items <= length ilist ->
+    length (apply_chunk ck ilist) = length ilist.
+  Proof.
+    intros.
+    unfold apply_chunk.
+    assert (Hbend := chunk_bend_ok ck).
+    assert (Hsize := chunk_size_ok ck).
+    set (blockoff := # (chunk_blocknum ck) * block_items) in *.
+    set (boff := chunk_boff ck) in *.
+    set (bend := chunk_bend ck) in *.
+    repeat rewrite app_length.
+    rewrite firstn_length_l by omega.
+    rewrite skipn_length by omega.
+    unfold items_to_list.
+    assert (Hdatalen := Rec.of_word_length
+      (Rec.ArrayF _ _) (chunk_data ck)).
+    inversion Hdatalen.
+    fold bend boff item in H0.
+    rewrite H0.
+    omega.
+  Qed.
+
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
   {< m mbase F Fm A f flist Fx v ilist,
     PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
@@ -1256,7 +1279,8 @@ Section RECBFILE.
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f')) ]] *
         [[ array_item_file f' ilist' ]] *
-        [[ ilist' = apply_chunk ck ilist ]]
+        [[ ilist' = apply_chunk ck ilist ]] *
+        [[ length ilist' = length ilist ]]
     CRASH LOG.would_recover_old lxp F mbase
   >} bf_put_chunk lxp ixp inum ck mscs.
   Proof.
@@ -1337,6 +1361,15 @@ Section RECBFILE.
     apply H5.
     rewrite H7.
     symmetry; apply update_chunk_parts; try assumption.
+
+    (* prove length doesn't change *)
+    apply apply_chunk_preserves_length.
+    apply list2nmem_ptsto_bound in H5.
+    erewrite <- array_items_block_sized by eauto.
+    unfold lt in H5.
+    apply Nat.mul_le_mono_pos_r with (p := block_items) in H5; auto.
+    simpl in H5.
+    omega.
 
     Grab Existential Variables.
     exact ($ 0).
