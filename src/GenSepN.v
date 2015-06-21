@@ -240,6 +240,114 @@ Proof.
   eauto.
 Qed.
 
+Lemma list2nmem_arrayN_xyz : forall A (def:A) data F off (l:list A),
+  (F * arrayN off data)%pred (list2nmem l) ->
+  (F * arrayN off data)%pred (list2nmem (
+    firstn off l ++ data ++ skipn (off + length data) l)).
+Proof.
+  induction data; intros; simpl in *.
+  rewrite Nat.add_0_r.
+  rewrite firstn_skipn.
+  assumption.
+
+  assert ((F * arrayN (S off) data * off |-> a)%pred (list2nmem l)).
+  pred_apply; cancel.
+  assert ((F * off |-> a * arrayN (S off) data)%pred (list2nmem l)).
+  pred_apply; cancel.
+  assert (IHa := IHdata (F * off |-> a)%pred (S off) (updN l off a)).
+  assert (Habound := H0).
+  apply list2nmem_inbound in Habound.
+  eapply list2nmem_sel in H0.
+  assert (Hasel := H0).
+  apply selN_eq_updN_eq in H0.
+  rewrite H0 in IHa.
+  assert (IHa' := IHa H1).
+  replace (firstn (S off) l) with (firstn off l ++ a :: nil) in IHa'.
+  replace (S off + length data) with (off + S (length data)) in IHa'.
+  rewrite cons_nil_app in IHa'.
+  (* cancel tries to do some substitution that doesn't work,
+     so manually call assoc lemma *)
+  pred_apply; apply sep_star_assoc.
+  omega.
+  replace (S off) with (off + 1) by omega.
+  symmetry; eapply firstn_plusone_selN'.
+  eassumption.
+  assumption.
+
+  Grab Existential Variables.
+  exact def.
+Qed.
+
+Lemma list2nmem_arrayN_newlist_partial : forall A (def:A) n F off (l:list A) olddata newdata,
+  length olddata = length newdata ->
+  (F * arrayN off olddata)%pred (list2nmem l) ->
+  (F * arrayN off (firstn n newdata) * arrayN (off+n) (skipn n olddata))%pred
+    (list2nmem (firstn off l ++
+      firstn n newdata ++ skipn n olddata ++
+      skipn (off+length olddata) l)).
+Proof.
+  induction n; intros; simpl.
+  rewrite Nat.add_0_r.
+  assert (Hsplit := list2nmem_arrayN_xyz def olddata off H0).
+  pred_apply; cancel.
+  destruct newdata; destruct olddata; simpl; auto; try inversion H.
+  rewrite Nat.add_0_r.
+  rewrite firstn_skipn.
+  pred_apply; cancel.
+  replace (off + S n) with (S off + n) by omega.
+  replace (off + S (length olddata)) with (S off + length olddata) by omega.
+  assert (IHn' := IHn (F * off |-> a)%pred (S off) (updN l off a) _ _ H2).
+  simpl in H0.
+  (* there are many asserts here because I don't know of a way to use
+     sep_star_assoc to rewrite separation logic propositions other than
+     pred_apply; cancel, and pred_apply requires that a hypothesis regarding
+     the same memory.
+
+     What I really want is pred_rewrite H, where H is a pimpl or pimpl_iff. *)
+  assert ((F * arrayN (S off) olddata * off |-> a)%pred
+    (list2nmem (updN l off a))) as Hupdl.
+  eapply list2nmem_updN.
+  pred_apply; cancel.
+  assert ((F * off |-> a * arrayN (S off) olddata)%pred
+    (list2nmem (updN l off a))).
+  pred_apply; cancel.
+  assert (IHn'' := IHn' H1).
+  replace (firstn (S off) (updN l off a)) with (firstn off l ++ a :: nil) in IHn''.
+  rewrite cons_nil_app in IHn''.
+  rewrite skipN_updN' in IHn'' by omega.
+  pred_apply; cancel.
+  replace (S off) with (off + 1) by omega.
+  assert (off < length l) as Hoffbound.
+  eapply list2nmem_inbound.
+  pred_apply; cancel.
+  erewrite firstn_plusone_selN' with (x := a).
+  rewrite firstn_updN_oob.
+  auto.
+  auto.
+  symmetry; apply selN_updN_eq.
+  assumption.
+  rewrite length_updN; assumption.
+
+  Grab Existential Variables.
+  exact def.
+Qed.
+
+Lemma list2nmem_arrayN_newlist : forall A (def:A) F off (l:list A) olddata newdata,
+  length olddata = length newdata ->
+  (F * arrayN off olddata)%pred (list2nmem l) ->
+  (F * arrayN off newdata)%pred
+    (list2nmem (firstn off l ++
+      newdata ++
+      skipn (off+length olddata) l)).
+Proof.
+  intros.
+  assert (Hnewlist := list2nmem_arrayN_newlist_partial def (length newdata) _ _ _ H H0).
+  rewrite firstn_oob in Hnewlist by omega.
+  rewrite skipn_oob in Hnewlist by omega.
+  simpl in Hnewlist.
+  pred_apply; cancel.
+Qed.
+
 
 (* Alternative variants of [list2nmem] that are more induction-friendly *)
 Definition list2nmem_off (A: Type) (start : nat) (l: list A) : (nat -> option A) :=
@@ -609,6 +717,8 @@ Proof.
   eapply list2nmem_ptsto_bound.
   pred_apply. cancel.
 Qed.
+
+
 
 
 (* Ltacs *)

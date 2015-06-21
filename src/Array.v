@@ -1130,6 +1130,16 @@ Proof.
   rewrite IHn with (def:=def) by omega; auto.
 Qed.
 
+Definition firstn_plusone_selN' : forall A n l (x: A) def,
+  x = selN l n def ->
+  n < length l ->
+  firstn (n + 1) l = firstn n l ++ x::nil.
+Proof.
+  intros.
+  rewrite H.
+  apply firstn_plusone_selN; auto.
+Qed.
+
 Lemma firstn_updN_oob: forall A (l : list A) n i def,
   n <= i -> firstn n (updN l i def) = firstn n l.
 Proof.
@@ -1255,6 +1265,13 @@ Proof.
   intros.
   rewrite firstn_length.
   rewrite Nat.min_r; auto.
+Qed.
+
+Lemma skipn_length: forall A n (l : list A),
+  n <= length l
+  -> length (skipn n l) = length l - n.
+Proof.
+  induction n; destruct l; intros; firstorder.
 Qed.
 
 Lemma skipn_nil : forall A n,
@@ -1432,6 +1449,217 @@ Proof.
   destruct (IHl n); try omega.
   destruct H0.
   eauto.
+Qed.
+
+Lemma firstn_sum_split : forall A n off (l: list A),
+  firstn (n+off) l = firstn n l ++ firstn off (skipn n l).
+Proof.
+  intros.
+  generalize dependent l.
+  induction n; intros; simpl.
+  - reflexivity.
+  - induction l; simpl.
+    + rewrite firstn_nil.
+      reflexivity.
+    + f_equal.
+      apply IHn.
+Qed.
+
+Lemma skipn_sum_split : forall A n k (l: list A),
+  skipn n l = firstn k (skipn n l) ++ skipn (n+k) l.
+Proof.
+  intros.
+  generalize dependent l.
+  induction n; intros; simpl.
+  - symmetry; apply firstn_skipn.
+  - induction l; simpl.
+    + rewrite firstn_nil.
+      reflexivity.
+    + rewrite <- skipn_skipn'.
+      symmetry; apply firstn_skipn.
+Qed.
+
+Lemma skipn_sum_split' : forall A n off1 off2 (l: list A),
+  off1 <= off2 ->
+  skipn (n+off1) l =
+    firstn (off2 - off1) (skipn (n+off1) l) ++ skipn (n+off2) l.
+Proof.
+  intros.
+  replace (n+off2) with (n+off1 + (off2 - off1)) by omega.
+  apply skipn_sum_split.
+Qed.
+
+Lemma firstn_sum_app : forall A (l1 l2: list A) n1 n2,
+  n1 = length l1 ->
+  firstn (n1 + n2) (l1 ++ l2) = l1 ++ firstn n2 l2.
+Proof.
+  intros.
+  rewrite firstn_sum_split.
+  rewrite H.
+  rewrite firstn_app by reflexivity.
+  rewrite skipn_app.
+  reflexivity.
+Qed.
+
+Lemma skipn_sum_app : forall A (l1 l2: list A) n1 n2,
+  n1 = length l1 ->
+  skipn (n1 + n2) (l1 ++ l2) = skipn n2 l2.
+Proof.
+  intros.
+  rewrite H.
+  rewrite <- skipn_skipn'.
+  rewrite skipn_app.
+  reflexivity.
+Qed.
+
+(* several facts about concat on lists of equally-sized
+   (homogeneous) lists *)
+Lemma concat_hom_length : forall A (lists: list (list A)) k,
+  Forall (fun sublist => length sublist = k) lists ->
+  length (concat lists) = (length lists) * k.
+Proof.
+  intros.
+  induction lists.
+  rewrite concat_nil.
+  simpl; reflexivity.
+  rewrite concat_cons.
+  rewrite app_length.
+  simpl.
+  rewrite IHlists.
+  rewrite Forall_forall in H.
+  replace k with (length a).
+  reflexivity.
+  apply H; apply in_cons_head.
+  eapply Forall_cons2.
+  eassumption.
+Qed.
+
+Lemma concat_hom_firstn : forall A (lists: list (list A)) n k,
+  Forall (fun sublist => length sublist = k) lists ->
+  firstn (n * k) (concat lists) = concat (firstn n lists).
+Proof.
+  intros.
+  generalize dependent n.
+  induction lists; intros; simpl.
+  repeat (rewrite firstn_nil).
+  reflexivity.
+  case_eq n; intros.
+   + reflexivity.
+   + rewrite firstn_cons.
+     rewrite concat_cons.
+     assert (H' := H).
+     rewrite Forall_forall in H'.
+     assert (length a = k) as Hk.
+     apply H'; apply in_cons_head.
+     replace (S n0 * k) with (k + n0 * k) by auto.
+     rewrite <- Hk.
+     rewrite firstn_app_r.
+     f_equal.
+     rewrite Hk.
+     apply IHlists.
+     eapply Forall_cons2.
+     eassumption.
+Qed.
+
+(* copied concat_hom_firstn proof, s/firstn/skipn/
+   (except for firstn_cons, that becomes simpl) *)
+Lemma concat_hom_skipn : forall A (lists: list (list A)) n k,
+  Forall (fun sublist => length sublist = k) lists ->
+  skipn (n * k) (concat lists) = concat (skipn n lists).
+Proof.
+  intros.
+  generalize dependent n.
+  induction lists; intros; simpl.
+  repeat (rewrite skipn_nil).
+  reflexivity.
+  case_eq n; intros.
+   + reflexivity.
+   + simpl.
+     assert (H' := H).
+     rewrite Forall_forall in H'.
+     assert (length a = k) as Hk.
+     apply H'. left; reflexivity.
+     replace (S n0 * k) with (k + n0 * k) by auto.
+     rewrite <- Hk.
+     rewrite skipn_app_r.
+     f_equal.
+     rewrite Hk.
+     apply IHlists.
+     eapply Forall_cons2.
+     eassumption.
+Qed.
+
+Lemma concat_hom_updN_first_skip : forall A n k (lists: list (list A)) (l: list A),
+  Forall (fun sublist => length sublist = k) lists ->
+  n < length lists ->
+  firstn (n * k) (concat lists) ++ l ++
+  skipn (n * k + k) (concat lists) = concat (updN lists n l).
+Proof.
+  intros.
+  rewrite updN_firstn_skipn by assumption.
+  rewrite concat_app.
+  rewrite concat_cons.
+  rewrite concat_app.
+  rewrite concat_nil.
+  rewrite app_nil_l.
+  f_equal.
+  apply concat_hom_firstn; assumption.
+  f_equal.
+  replace (n * k + k) with ((n + 1) * k).
+  apply concat_hom_skipn; assumption.
+  rewrite Nat.mul_add_distr_r.
+  rewrite Nat.mul_1_l.
+  reflexivity.
+Qed.
+
+Lemma concat_hom_subselect_firstn : forall A n off k (l: list (list A)) (def: list A),
+  Forall (fun sublist => length sublist = k) l ->
+  off <= k ->
+  n < length l ->
+  firstn off (selN l n def) = firstn off (concat (skipn n l)).
+Proof.
+  intros.
+  generalize dependent off.
+  generalize dependent l.
+  induction n; intros; simpl.
+  induction l; simpl.
+  inversion H1. (* impossible *)
+  rewrite Forall_forall in H.
+  assert (length a = k).
+  apply H; apply in_cons_head.
+  symmetry; apply firstn_app_l.
+  rewrite H2.
+  assumption.
+  destruct l; simpl.
+  inversion H1. (* impossible *)
+  apply IHn; firstorder.
+  eapply Forall_cons2; eassumption.
+Qed.
+
+Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: list A),
+  Forall (fun sublist => length sublist = k) l ->
+  off <= k ->
+  n < length l ->
+  skipn off (selN l n def) =
+    firstn (k - off) (skipn off (concat (skipn n l))).
+ Proof.
+  intros.
+  generalize dependent off.
+  generalize dependent l.
+  induction n; intros; simpl.
+  induction l; simpl.
+  inversion H1. (* impossible *)
+  rewrite Forall_forall in H.
+  assert (length a = k).
+  apply H; apply in_cons_head.
+  rewrite skipn_app_l by omega.
+  rewrite firstn_app.
+  reflexivity.
+  rewrite skipn_length; omega.
+  destruct l; simpl.
+  inversion H1. (* impossible *)
+  apply IHn; firstorder.
+  eapply Forall_cons2; eassumption.
 Qed.
 
 Theorem array_max_length : forall T (l : list T) m start stride,
@@ -1671,14 +1899,6 @@ Proof.
   - rewrite removeN_head.
     rewrite IHi.
     unfold removeN; firstorder.
-Qed.
-
-
-Lemma skipn_length: forall A n (l : list A),
-  n <= length l
-  -> length (skipn n l) = length l - n.
-Proof.
-  induction n; destruct l; intros; firstorder.
 Qed.
 
 Lemma removeN_length: forall A (l : list A) i,

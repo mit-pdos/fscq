@@ -1036,192 +1036,6 @@ Section RECBFILE.
     mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v' mscs;
     rx mscs.
 
-  (* several facts about concat on lists of equally-sized
-     (homogeneous) lists *)
-  Lemma concat_hom_length : forall A (lists: list (list A)) k,
-    Forall (fun sublist => length sublist = k) lists ->
-    length (concat lists) = (length lists) * k.
-  Proof.
-    intros.
-    induction lists.
-    rewrite concat_nil.
-    simpl; reflexivity.
-    rewrite concat_cons.
-    rewrite app_length.
-    simpl.
-    rewrite IHlists.
-    rewrite Forall_forall in H.
-    replace k with (length a).
-    reflexivity.
-    apply H; apply in_cons_head.
-    eapply Forall_cons2.
-    eassumption.
-  Qed.
-
-  Lemma concat_hom_firstn : forall A (lists: list (list A)) n k,
-    Forall (fun sublist => length sublist = k) lists ->
-    firstn (n * k) (concat lists) = concat (firstn n lists).
-  Proof.
-    intros.
-    generalize dependent n.
-    induction lists; intros; simpl.
-    repeat (rewrite firstn_nil).
-    reflexivity.
-    case_eq n; intros.
-     + reflexivity.
-     + rewrite firstn_cons.
-       rewrite concat_cons.
-       assert (H' := H).
-       rewrite Forall_forall in H'.
-       assert (length a = k) as Hk.
-       apply H'; apply in_cons_head.
-       replace (S n0 * k) with (k + n0 * k) by auto.
-       rewrite <- Hk.
-       rewrite firstn_app_r.
-       f_equal.
-       rewrite Hk.
-       apply IHlists.
-       eapply Forall_cons2.
-       eassumption.
-  Qed.
-
-  (* copied concat_hom_firstn proof, s/firstn/skipn/
-     (except for firstn_cons, that becomes simpl) *)
-  Lemma concat_hom_skipn : forall A (lists: list (list A)) n k,
-    Forall (fun sublist => length sublist = k) lists ->
-    skipn (n * k) (concat lists) = concat (skipn n lists).
-  Proof.
-    intros.
-    generalize dependent n.
-    induction lists; intros; simpl.
-    repeat (rewrite skipn_nil).
-    reflexivity.
-    case_eq n; intros.
-     + reflexivity.
-     + simpl.
-       assert (H' := H).
-       rewrite Forall_forall in H'.
-       assert (length a = k) as Hk.
-       apply H'. left; reflexivity.
-       replace (S n0 * k) with (k + n0 * k) by auto.
-       rewrite <- Hk.
-       rewrite skipn_app_r.
-       f_equal.
-       rewrite Hk.
-       apply IHlists.
-       eapply Forall_cons2.
-       eassumption.
-  Qed.
-
-  Lemma concat_hom_updN_first_skip : forall A n k (lists: list (list A)) (l: list A),
-    Forall (fun sublist => length sublist = k) lists ->
-    n < length lists ->
-    firstn (n * k) (concat lists) ++ l ++
-    skipn (n * k + k) (concat lists) = concat (updN lists n l).
-  Proof.
-    intros.
-    rewrite updN_firstn_skipn by assumption.
-    rewrite concat_app.
-    rewrite concat_cons.
-    rewrite concat_app.
-    rewrite concat_nil.
-    rewrite app_nil_l.
-    f_equal.
-    apply concat_hom_firstn; assumption.
-    f_equal.
-    replace (n * k + k) with ((n + 1) * k).
-    apply concat_hom_skipn; assumption.
-    ring_simplify; reflexivity.
-  Qed.
-
-  Lemma firstn_sum_split : forall A n off (l: list A),
-    firstn (n+off) l = firstn n l ++ firstn off (skipn n l).
-  Proof.
-    intros.
-    generalize dependent l.
-    induction n; intros; simpl.
-    - reflexivity.
-    - induction l; simpl.
-      + rewrite firstn_nil.
-        reflexivity.
-      + f_equal.
-        apply IHn.
-  Qed.
-
-  Lemma skipn_sum_split : forall A n k (l: list A),
-    skipn n l = firstn k (skipn n l) ++ skipn (n+k) l.
-  Proof.
-    intros.
-    generalize dependent l.
-    induction n; intros; simpl.
-    - symmetry; apply firstn_skipn.
-    - induction l; simpl.
-      + rewrite firstn_nil.
-        reflexivity.
-      + rewrite <- skipn_skipn'.
-        symmetry; apply firstn_skipn.
-  Qed.
-
-  Lemma skipn_sum_split' : forall A n off1 off2 (l: list A),
-    off1 <= off2 ->
-    skipn (n+off1) l =
-      firstn (off2 - off1) (skipn (n+off1) l) ++ skipn (n+off2) l.
-  Proof.
-    intros.
-    replace (n+off2) with (n+off1 + (off2 - off1)) by omega.
-    apply skipn_sum_split.
-  Qed.
-
-  Lemma concat_hom_subselect_firstn : forall A n off k (l: list (list A)) (def: list A),
-    Forall (fun sublist => length sublist = k) l ->
-    off <= k ->
-    n < length l ->
-    firstn off (selN l n def) = firstn off (concat (skipn n l)).
-  Proof.
-    intros.
-    generalize dependent off.
-    generalize dependent l.
-    induction n; intros; simpl.
-    induction l; simpl.
-    inversion H1. (* impossible *)
-    rewrite Forall_forall in H.
-    assert (length a = k).
-    apply H; apply in_cons_head.
-    symmetry; apply firstn_app_l.
-    rewrite H2.
-    assumption.
-    destruct l; simpl.
-    inversion H1. (* impossible *)
-    apply IHn; firstorder.
-    eapply Forall_cons2; eassumption.
-  Qed.
-
-  Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: list A),
-    Forall (fun sublist => length sublist = k) l ->
-    off <= k ->
-    n < length l ->
-    skipn off (selN l n def) =
-      firstn (k - off) (skipn off (concat (skipn n l))).
-   Proof.
-    intros.
-    generalize dependent off.
-    generalize dependent l.
-    induction n; intros; simpl.
-    induction l; simpl.
-    inversion H1. (* impossible *)
-    rewrite Forall_forall in H.
-    assert (length a = k).
-    apply H; apply in_cons_head.
-    rewrite skipn_app_l by omega.
-    rewrite firstn_app.
-    reflexivity.
-    rewrite skipn_length; omega.
-    destruct l; simpl.
-    inversion H1. (* impossible *)
-    apply IHn; firstorder.
-    eapply Forall_cons2; eassumption.
-  Qed.
-
   Lemma update_chunk_parts : forall (ck:chunk) (vs_nested: list block) def,
     Forall (fun sublist => length sublist = block_items) vs_nested ->
     Forall Rec.well_formed vs_nested ->
@@ -1498,19 +1312,6 @@ Section RECBFILE.
     apply proof_irrelevance.
   Qed.
 
-  Lemma of_word_empty : forall t n w,
-    n = 0 ->
-    @Rec.of_word (Rec.ArrayF t n) w = nil.
-  Proof.
-    intros.
-    generalize w.
-    rewrite H.
-    intros.
-    simpl in w0.
-    apply length_nil.
-    reflexivity.
-  Qed.
-
   Lemma apply_empty_chunk : forall (ck:chunk) ilist,
     chunk_boff ck = chunk_bend ck ->
     apply_chunk ck ilist = ilist.
@@ -1519,7 +1320,7 @@ Section RECBFILE.
     unfold apply_chunk.
     unfold items_to_list.
     assert (chunk_bend ck - chunk_boff ck = 0) by omega.
-    rewrite of_word_empty by omega.
+    rewrite Rec.of_word_empty by omega.
     simpl.
     rewrite H.
     apply firstn_skipn.
@@ -1737,29 +1538,6 @@ Section RECBFILE.
     reflexivity.
   Qed.
 
-  Lemma firstn_sum_app : forall A (l1 l2: list A) n1 n2,
-    n1 = length l1 ->
-    firstn (n1 + n2) (l1 ++ l2) = l1 ++ firstn n2 l2.
-  Proof.
-    intros.
-    rewrite firstn_sum_split.
-    rewrite H.
-    rewrite firstn_app by reflexivity.
-    rewrite skipn_app.
-    reflexivity.
-  Qed.
-
-  Lemma skipn_sum_app : forall A (l1 l2: list A) n1 n2,
-    n1 = length l1 ->
-    skipn (n1 + n2) (l1 ++ l2) = skipn n2 l2.
-  Proof.
-    intros.
-    rewrite H.
-    rewrite <- skipn_skipn'.
-    rewrite skipn_app.
-    reflexivity.
-  Qed.
-
   (* XXX: this proof takes forever to type check *)
   Lemma applying_chunks_is_replace : forall off count newdata ilist,
     Rec.well_formed newdata ->
@@ -1870,114 +1648,6 @@ Section RECBFILE.
        omega.
   Qed.
 
-  Lemma arrayN_xyz : forall A (def:A) data F off (l:list A),
-    (F * arrayN off data)%pred (list2nmem l) ->
-    (F * arrayN off data)%pred (list2nmem (
-      firstn off l ++ data ++ skipn (off + length data) l)).
-  Proof.
-    induction data; intros; simpl in *.
-    rewrite Nat.add_0_r.
-    rewrite firstn_skipn.
-    assumption.
-
-    assert ((F * arrayN (S off) data * off |-> a)%pred (list2nmem l)).
-    pred_apply; cancel.
-    assert ((F * off |-> a * arrayN (S off) data)%pred (list2nmem l)).
-    pred_apply; cancel.
-    assert (IHa := IHdata (F * off |-> a)%pred (S off) (updN l off a)).
-    assert (Habound := H0).
-    apply list2nmem_inbound in Habound.
-    eapply list2nmem_sel in H0.
-    assert (Hasel := H0).
-    apply selN_eq_updN_eq in H0.
-    rewrite H0 in IHa.
-    assert (IHa' := IHa H1).
-    replace (firstn (S off) l) with (firstn off l ++ a :: nil) in IHa'.
-    replace (S off + length data) with (off + S (length data)) in IHa'.
-    rewrite cons_nil_app in IHa'.
-    (* cancel tries to do some substitution that doesn't work,
-       so manually call assoc lemma *)
-    pred_apply; apply sep_star_assoc.
-    omega.
-    replace (S off) with (off + 1) by omega.
-    symmetry; eapply LOG.firstn_plusone_selN'.
-    eassumption.
-    assumption.
-
-    Grab Existential Variables.
-    exact def.
-  Qed.
-
-  Lemma arrayN_newlist' : forall A (def:A) n F off (l:list A) olddata newdata,
-    length olddata = length newdata ->
-    (F * arrayN off olddata)%pred (list2nmem l) ->
-    (F * arrayN off (firstn n newdata) * arrayN (off+n) (skipn n olddata))%pred
-      (list2nmem (firstn off l ++
-        firstn n newdata ++ skipn n olddata ++
-        skipn (off+length olddata) l)).
-  Proof.
-    induction n; intros; simpl.
-    rewrite Nat.add_0_r.
-    assert (Hsplit := arrayN_xyz def olddata off H0).
-    pred_apply; cancel.
-    destruct newdata; destruct olddata; simpl; auto; try inversion H.
-    rewrite Nat.add_0_r.
-    rewrite firstn_skipn.
-    pred_apply; cancel.
-    replace (off + S n) with (S off + n) by omega.
-    replace (off + S (length olddata)) with (S off + length olddata) by omega.
-    assert (IHn' := IHn (F * off |-> a)%pred (S off) (updN l off a) _ _ H2).
-    simpl in H0.
-    (* there are many asserts here because I don't know of a way to use
-       sep_star_assoc to rewrite separation logic propositions other than
-       pred_apply; cancel, and pred_apply requires that a hypothesis regarding
-       the same memory.
-
-       What I really want is pred_rewrite H, where H is a pimpl or pimpl_iff. *)
-    assert ((F * arrayN (S off) olddata * off |-> a)%pred
-      (list2nmem (updN l off a))) as Hupdl.
-    eapply list2nmem_updN.
-    pred_apply; cancel.
-    assert ((F * off |-> a * arrayN (S off) olddata)%pred
-      (list2nmem (updN l off a))).
-    pred_apply; cancel.
-    assert (IHn'' := IHn' H1).
-    replace (firstn (S off) (updN l off a)) with (firstn off l ++ a :: nil) in IHn''.
-    rewrite cons_nil_app in IHn''.
-    rewrite skipN_updN' in IHn'' by omega.
-    pred_apply; cancel.
-    replace (S off) with (off + 1) by omega.
-    assert (off < length l) as Hoffbound.
-    eapply list2nmem_inbound.
-    pred_apply; cancel.
-    erewrite LOG.firstn_plusone_selN' with (x := a).
-    rewrite firstn_updN_oob.
-    auto.
-    auto.
-    symmetry; apply selN_updN_eq.
-    assumption.
-    rewrite length_updN; assumption.
-
-    Grab Existential Variables.
-    exact def.
-  Qed.
-
-  Lemma arrayN_newlist : forall A (def:A) F off (l:list A) olddata newdata,
-    length olddata = length newdata ->
-    (F * arrayN off olddata)%pred (list2nmem l) ->
-    (F * arrayN off newdata)%pred
-      (list2nmem (firstn off l ++
-        newdata ++
-        skipn (off+length olddata) l)).
-  Proof.
-    intros.
-    assert (Hnewlist := arrayN_newlist' def (length newdata) _ _ _ H H0).
-    rewrite firstn_oob in Hnewlist by omega.
-    rewrite skipn_oob in Hnewlist by omega.
-    simpl in Hnewlist.
-    pred_apply; cancel.
-  Qed.
-
   Lemma applying_chunks_is_update : forall Fx off count olddata newdata ilist ilist',
     @Rec.well_formed (Rec.ArrayF _ _) newdata ->
     goodSize addrlen (off+count) ->
@@ -2001,7 +1671,7 @@ Section RECBFILE.
     - replace ilist'.
       rewrite applying_chunks_is_replace; auto; try omega.
       replace count with (length olddata) by omega.
-      apply arrayN_newlist; auto.
+      apply list2nmem_arrayN_newlist; auto.
       exact (Rec.of_word $0).
   Qed.
 

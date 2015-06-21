@@ -2416,16 +2416,6 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
 
-  Definition firstn_plusone_selN' : forall A n l (x: A) def,
-    x = selN l n def ->
-    n < length l ->
-    firstn (n + 1) l = firstn n l ++ [x].
-  Proof.
-    intros.
-    rewrite H.
-    apply firstn_plusone_selN; auto.
-  Qed.
-
   Definition read_log T (xp : log_xparams) cs rx : prog T :=
     let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
     let desc := valu_to_descriptor d in

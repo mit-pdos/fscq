@@ -343,6 +343,19 @@ Module Rec.
     rewrite IHt0 by assumption. rewrite IHt by assumption. trivial.
   Qed.
 
+  Lemma of_word_empty : forall t n w,
+    n = 0 ->
+    @of_word (ArrayF t n) w = nil.
+  Proof.
+    intros.
+    generalize w.
+    rewrite H.
+    intros.
+    simpl in w0.
+    apply length_nil.
+    reflexivity.
+  Qed.
+
   Theorem of_word_length : forall ft w, well_formed (@of_word ft w).
   Proof.
     einduction ft using type_rect_nest.
