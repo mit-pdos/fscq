@@ -943,14 +943,6 @@ Hint Resolve length_grow_oneblock_ok.
     eapply list2nmem_array.
   Qed.
 
-   Lemma off_le_bytes:
-      forall off len lenbytes,
-        off + len <= lenbytes -> off <= lenbytes.
-   Proof.
-     intros.
-     omega.
-   Qed.
-
    Lemma olddata_exists_in_file:
       forall f (newdata: list byte) (bytes: list byte) off,
         rep bytes f ->
@@ -964,28 +956,17 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite arrayN_combine.
     apply arrayN_combine.
     rewrite app_length.
-    rewrite firstn_length.
-    rewrite Nat.min_l.
-    rewrite firstn_length.
-    rewrite Nat.min_l.
+    rewrite firstn_length_l by omega.
+    rewrite firstn_length_l.
     omega.
-    rewrite skipn_length.
-    erewrite plus_le_reg_l with (p := off) (m := (length bytes - off)).
+    rewrite skipn_length by omega.
     omega.
-    rewrite Nat.add_sub_assoc.
-    rewrite minus_plus.
-    eauto.
-    rewrite off_le_bytes with (len := length newdata) (lenbytes := length bytes); eauto.
-    rewrite off_le_bytes with (len := length newdata) (lenbytes := length bytes); eauto.
-    rewrite off_le_bytes with (len := length newdata) (lenbytes := length bytes); eauto.
     rewrite <- app_assoc.
     rewrite firstn_skipn.
     rewrite firstn_skipn.
     apply list2nmem_array.
-    rewrite firstn_length.
-    rewrite Nat.min_l.
-    eauto.
-    rewrite off_le_bytes with (len := length newdata) (lenbytes := length bytes); eauto.
+    rewrite firstn_length_l by omega.
+    omega.
    Qed.
 
    Lemma len_olddata_newdata_eq:
@@ -995,12 +976,7 @@ Hint Resolve length_grow_oneblock_ok.
       length (firstn (length newdata) (skipn off bytes)) = length newdata.
     Proof.
       intros.
-      rewrite firstn_length.
-      rewrite Nat.min_l.
-      eauto.
-      rewrite skipn_length.
-      omega.
-      rewrite off_le_bytes with (len := length newdata) (lenbytes := length bytes); eauto.
+      LOG.solve_lengths.
     Qed.
 
   Lemma off_length_in_bounds:
