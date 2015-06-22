@@ -1078,6 +1078,9 @@ Section RECBFILE.
     omega.
   Qed.
 
+  Definition hidden p : Prop := p.
+  Opaque hidden.
+
   Theorem bf_put_chunk_ok : forall lxp bxp ixp inum (ck:chunk) mscs,
   {< m mbase F Fm A f flist Fx v ilist,
     PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
@@ -1093,7 +1096,8 @@ Section RECBFILE.
         [[ (Fx * # (chunk_blocknum ck) |-> v')%pred (list2nmem (BFILE.BFData f')) ]] *
         [[ array_item_file f' ilist' ]] *
         [[ ilist' = apply_chunk ck ilist ]] *
-        [[ length ilist' = length ilist ]]
+        [[ length ilist' = length ilist ]] *
+        [[ hidden (BFILE.BFAttr f' = BFILE.BFAttr f) ]]
     CRASH LOG.would_recover_old lxp F mbase
   >} bf_put_chunk lxp ixp inum ck mscs.
   Proof.
@@ -1170,6 +1174,10 @@ Section RECBFILE.
       apply Nat.mul_le_mono_pos_r with (p := block_items) in H5; auto.
       simpl in H5.
       omega.
+    - Transparent hidden.
+      unfold hidden.
+      replace f'.
+      auto.
 
     Grab Existential Variables.
     exact ($ 0).
@@ -1177,14 +1185,11 @@ Section RECBFILE.
 
   Hint Extern 1 ({{_}} progseq (bf_put_chunk _ _ _ _ _) _) => apply bf_put_chunk_ok : prog.
 
-  Definition hidden p : Prop := p.
-  Opaque hidden.
-
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
     let chunks := chunkList off w in
     let^ (mscs) <- ForEach ck rest chunks
-      Ghost [ F mbase Fm A ilist ]
+      Ghost [ F mbase Fm A ilist f ]
       Loopvar [ mscs ]
       Continuation lrx
       Invariant exists m' flist' f' ilist',
@@ -1193,7 +1198,8 @@ Section RECBFILE.
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ array_item_file f' ilist' ]] *
         [[ apply_chunks rest ilist' = apply_chunks chunks ilist ]] *
-        [[ hidden (length ilist' = length ilist) ]]
+        [[ hidden (length ilist' = length ilist) ]] *
+        [[ hidden (BFILE.BFAttr f' = BFILE.BFAttr f) ]]
       OnCrash
         exists m',
           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
@@ -1679,14 +1685,18 @@ Section RECBFILE.
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ (Fx * arrayN off newdata)%pred (list2nmem ilist') ]] *
-        [[ array_item_file f' ilist' ]]
+        [[ array_item_file f' ilist' ]] *
+        [[ hidden (length ilist' = length ilist) ]] *
+        [[ hidden (BFILE.BFAttr f' = BFILE.BFAttr f) ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_update_range fsxp inum off w mscs.
   Proof.
     unfold bf_update_range.
     hoare.
 
-
+    - Transparent hidden.
+      unfold hidden in *.
+      auto.
     - Transparent hidden.
       unfold hidden in *.
       assert (length olddata = count) as Hlenold.
