@@ -395,7 +395,7 @@ Module FASTBYTEFILE.
         apply firstn_length_l.
         replace (length ilist').
         replace (BFILE.BFAttr f').
-        apply firstn_length_l; auto.
+        apply firstn_length_l_iff; auto.
         replace (length ilist').
         replace (BFILE.BFAttr f').
         auto.
@@ -405,7 +405,7 @@ Module FASTBYTEFILE.
         rewrite <- firstn_skipn with (l := ilist') (n := flen) in H25.
         assert (length (firstn flen ilist') = flen).
         apply firstn_length_l.
-        apply firstn_length_l in H14.
+        apply firstn_length_l_iff in H14.
         omega.
         assert ((Fx * arrayN off newdata * arrayN flen (skipn flen allbytes))%pred
           (list2nmem (firstn flen ilist' ++ skipn flen ilist'))).
@@ -417,7 +417,7 @@ Module FASTBYTEFILE.
         apply list2nmem_arrayN_app_iff in H21.
         assumption.
         exact ($ 0).
-        apply firstn_length_l in H14.
+        apply firstn_length_l_iff in H14.
         repeat rewrite skipn_length; omega.
   Qed.
 
