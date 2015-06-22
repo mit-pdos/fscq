@@ -299,6 +299,15 @@ Module DIRTREE.
     cancel.
   Qed.
 
+  Lemma tree_names_distinct_head_name : forall inum name subtree rest,
+    tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
+    ~ In name (map fst rest).
+  Proof.
+    inversion 1.
+    simpl in *.
+    inversion H3; auto.
+  Qed.
+
   Theorem subtree_extract : forall xp fnlist tree subtree,
     find_subtree fnlist tree = Some subtree ->
     tree_pred xp tree =p=> tree_pred_except xp fnlist tree * tree_pred xp subtree.
@@ -350,6 +359,18 @@ Module DIRTREE.
     destruct a; simpl.
     destruct (string_dec s name); subst; try intuition.
     split; cancel; apply IHl; eauto.
+  Qed.
+
+  Lemma map_update_subtree_helper_notfound : forall f name l,
+    ~ In name (map fst l) ->
+    map (update_subtree_helper f name) l = l.
+  Proof.
+    induction l; simpl; intros; auto.
+    rewrite IHl by intuition.
+    unfold update_subtree_helper.
+    destruct a.
+    destruct (string_dec s name); subst; simpl; auto.
+    firstorder.
   Qed.
 
   Theorem tree_dir_names_pred'_update : forall l fnlist subtree subtree' name,
