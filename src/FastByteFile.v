@@ -412,10 +412,13 @@ Module FASTBYTEFILE.
         pred_apply; cancel.
         rewrite <- H16 in H21 at 1.
         assert (H21' := H21).
-        apply list2nmem_arrayN_end_eq in H21'.
+        apply list2nmem_arrayN_end_eq in H21'; auto.
         rewrite H21' in H21.
         apply list2nmem_arrayN_app_iff in H21.
         assumption.
+        exact ($ 0).
+        apply firstn_length_l in H14.
+        repeat rewrite skipn_length; omega.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.

@@ -162,18 +162,6 @@ Proof.
     symmetry; apply Nat.add_1_r.
 Qed.
 
-Theorem list2nmem_ptsto_end_eq : forall A (F : @pred _ _ A) l a a',
-  (F * (length l) |-> a)%pred (list2nmem (l ++ a' :: nil)) ->
-  a = a'.
-Proof.
-Admitted.
-
-Theorem list2nmem_arrayN_end_eq : forall A (F : @pred _ _ A) l l' l'',
-  (F * arrayN (length l) l')%pred (list2nmem (l ++ l'')) ->
-  l' = l''.
-Proof.
-Admitted.
-
 Theorem list2nmem_arrayN_app_iff : forall A (F : @pred _ _ A) l l',
   (F * arrayN (length l) l')%pred (list2nmem (l ++ l')) ->
   F (list2nmem l).
@@ -742,8 +730,28 @@ Proof.
   pred_apply. cancel.
 Qed.
 
+Theorem list2nmem_ptsto_end_eq : forall A (F : @pred _ _ A) l a a',
+  (F * (length l) |-> a)%pred (list2nmem (l ++ a' :: nil)) ->
+  a = a'.
+Proof.
+  intros.
+  apply list2nmem_sel with (def:=a) in H.
+  rewrite selN_last in H; auto.
+Qed.
 
-
+Theorem list2nmem_arrayN_end_eq : forall A (F : @pred _ _ A) l l' l'' (def:A),
+  length l' = length l'' ->
+  (F * arrayN (length l) l')%pred (list2nmem (l ++ l'')) ->
+  l' = l''.
+Proof.
+  intros.
+  apply arrayN_list2nmem in H0.
+  rewrite skipn_app in H0.
+  rewrite firstn_oob in H0.
+  auto.
+  omega.
+  exact def.
+Qed.
 
 (* Ltacs *)
 
