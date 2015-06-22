@@ -1252,11 +1252,16 @@ Proof.
 Qed.
 
 Lemma firstn_length_l : forall A (l : list A) n,
-  n <= length l -> length (firstn n l) = n.
+  n <= length l <-> length (firstn n l) = n.
 Proof.
   intros.
-  rewrite firstn_length.
-  rewrite Nat.min_l; auto.
+  split.
+  - intros.
+    rewrite firstn_length.
+    rewrite Nat.min_l; auto.
+  - intros.
+    rewrite firstn_length in H.
+    apply Nat.min_l_iff; auto.
 Qed.
 
 Lemma firstn_length_r : forall A (l : list A) n,
