@@ -336,7 +336,8 @@ Module FASTBYTEFILE.
            [[ rep bytes f ]] *
            [[ hidden ((Fx * arrayN off olddata)%pred (list2nmem bytes)) ]] *
            [[ hidden (newdata = @Rec.of_word (Rec.ArrayF byte_type len) newbytes) ]] *
-           [[ hidden (length olddata = length newdata) ]]
+           [[ hidden (length olddata = length newdata) ]] *
+           [[ 0 < len ]]
       POST RET: ^(mscs)
            exists m' flist' f' bytes',
            LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -349,16 +350,51 @@ Module FASTBYTEFILE.
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes.
-    time step.
+    intros.
+    eapply pimpl_ok2.
+    apply bf_update_range_ok.
+
+    intros; subst.
+    time norm'l.
+    inversion H8 as [allbytes].
+    inversion H.
+    inversion H0.
+    norm.
+    cancel.
+    intuition; eauto.
     Transparent hidden.
     unfold hidden in *.
-    inversion H7.
-    inversion H0.
-    inversion H3.
-    unfold byte in x.
-    (* this will only work if the inversions are performed before
-       the evar is created *)
-    instantiate (ilist := x).
+    Transparent BFileRec.hidden.
+    unfold BFileRec.hidden in *.
+
+    rewrite <- H in H7.
+    instantiate (Fx0 := (Fx * arrayN (# (INODE.ISize (BFILE.BFAttr f)))
+      (skipn (# (INODE.ISize (BFILE.BFAttr f))) allbytes))%pred).
+    rewrite <- firstn_skipn with (l := allbytes)
+      (n := # (INODE.ISize (BFILE.BFAttr f))) at 2.
+    admit. (* some slightly complicated arrayN/list2nmem
+              with modified lists business *)
+
+    step.
+    Transparent BFileRec.hidden.
+    unfold BFileRec.hidden in *.
+    unfold rep.
+    fold byte in *.
+    exists ilist'.
+    split; [|split]; eauto.
+    split; auto.
+    eapply wordToNat_natToWord_bound.
+    eapply BFileRec.bfrec_bound with (itemtype := byte_type); eauto.
+    split.
+    subst.
+    apply firstn_length_l.
+    replace (length ilist').
+    replace (BFILE.BFAttr f').
+    apply firstn_length_l; auto.
+    replace (length ilist').
+    replace (BFILE.BFAttr f').
+    auto.
+    admit. (* more arrayN/list2nmem with list modifications *)
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
@@ -1046,9 +1082,10 @@ Hint Resolve length_grow_oneblock_ok.
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} overwrite_append fsxp inum off newbytes mscs.
   Proof.
-    unfold overwrite_append.
     (* TODO: prove, probably based on write_bytes_ok itself,
     where F2 is vacuously true. *)
+    unfold overwrite_append, write_bytes.
+    hoare.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (overwrite_append _ _ _ _ _) _) => apply overwrite_append_ok : prog.
