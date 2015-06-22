@@ -1676,7 +1676,7 @@ Section RECBFILE.
     POST RET: ^(mscs)
       exists m' f' flist' ilist',
         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ (Fx * arrayN off newdata)%pred (list2nmem ilist') ]] *
         [[ array_item_file f' ilist' ]]
