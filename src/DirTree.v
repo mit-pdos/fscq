@@ -212,6 +212,42 @@ Module DIRTREE.
     pred_apply' H1. cancel.
   Qed.
 
+  Section DIRTREE_IND2.
+
+    Variable P : dirtree -> Prop.
+    Variable dirtree_ind2' : forall (t : dirtree), P t.
+    Variable dirtree_ind2_Hdir : forall inum tree_ents,
+                                 Forall P (map snd tree_ents) -> P (TreeDir inum tree_ents).
+
+    Fixpoint dirtree_ind2_list (tree_ents : list (string * dirtree)) (inum : addr) :
+                               P (TreeDir inum tree_ents).
+      apply dirtree_ind2_Hdir.
+      induction tree_ents; simpl.
+      constructor.
+      constructor.
+      apply dirtree_ind2'.
+      apply IHtree_ents.
+    Defined.
+
+  End DIRTREE_IND2.
+
+  Fixpoint dirtree_ind2 (P : dirtree -> Prop)
+                        (Hfile : forall inum bf, P (TreeFile inum bf))
+                        (Hdir : forall inum tree_ents,
+                         Forall P (map snd tree_ents) -> P (TreeDir inum tree_ents))
+                        (d : dirtree) {struct d} : P d.
+    refine
+      match d with
+      | TreeFile inum bf => _
+      | TreeDir inum tree_ents => _
+      end.
+    apply Hfile.
+    specialize (dirtree_ind2 P Hfile Hdir).
+    apply dirtree_ind2_list.
+    apply dirtree_ind2.
+    apply Hdir.
+  Defined.
+
   Theorem subtree_extract : forall xp fnlist tree subtree,
     find_subtree fnlist tree = Some subtree ->
     tree_pred xp tree =p=> tree_pred_except xp fnlist tree * tree_pred xp subtree.
