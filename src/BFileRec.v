@@ -699,26 +699,16 @@ Section RECBFILE.
   let z := isplit2_dep (boff + sz) (block_items - (boff + sz)) v_items _ in
   icombine (icombine x (chunk_data ck)) z.
   Next Obligation.
-    assert (Hboff := chunk_boff_ok ck).
-    omega.
+    ck_omega ck.
   Qed.
   Next Obligation.
-    assert (Hboff := chunk_boff_ok ck).
-    assert (Hbend := chunk_bend_ok ck).
-    omega.
+    ck_omega ck.
   Qed.
   Next Obligation.
-    assert (Hboff := chunk_boff_ok ck).
-    assert (Hbend := chunk_bend_ok ck).
-    assert (Hsz := chunk_size_ok ck).
-    (* why was omega not able to construct this argument,
-    but manages the above ones? *)
-    replace (chunk_boff ck + (chunk_bend ck - chunk_boff ck))
-      with (chunk_bend ck) by omega.
-    replace (chunk_bend ck + (block_items - chunk_bend ck))
-      with block_items by omega.
     rewrite blocksz_ok.
-    reflexivity.
+    simpl.
+    fold block_items.
+    f_equal; ck_omega ck.
   Qed.
 
   Definition items_to_list count (w: items count) : list item :=
