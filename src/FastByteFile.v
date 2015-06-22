@@ -350,52 +350,73 @@ Module FASTBYTEFILE.
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes.
+
     intros.
     eapply pimpl_ok2.
     apply bf_update_range_ok.
-
     intros; subst.
     time norm'l.
+
+    (* we've manually done what [step] does so that we can invert the
+       rep function before evars are created, so that the allbytes created
+       can be used to instantiate the evars. *)
     inversion H8 as [allbytes].
     inversion H.
     inversion H0.
+    set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
     norm.
     cancel.
     intuition; eauto.
-    Transparent hidden.
-    unfold hidden in *.
-    Transparent BFileRec.hidden.
-    unfold BFileRec.hidden in *.
+    - Transparent hidden.
+      unfold hidden in *.
 
-    rewrite <- H in H7.
-    instantiate (Fx0 := (Fx * arrayN (# (INODE.ISize (BFILE.BFAttr f)))
-      (skipn (# (INODE.ISize (BFILE.BFAttr f))) allbytes))%pred).
-    rewrite <- firstn_skipn with (l := allbytes)
-      (n := # (INODE.ISize (BFILE.BFAttr f))) at 2.
-    admit. (* some slightly complicated arrayN/list2nmem
-              with modified lists business *)
-
-    step.
-    Transparent BFileRec.hidden.
-    unfold BFileRec.hidden in *.
-    unfold rep.
-    fold byte in *.
-    exists ilist'.
-    split; [|split]; eauto.
-    split; auto.
-    eapply wordToNat_natToWord_bound.
-    eapply BFileRec.bfrec_bound with (itemtype := byte_type); eauto.
-    split.
-    subst.
-    apply firstn_length_l.
-    replace (length ilist').
-    replace (BFILE.BFAttr f').
-    apply firstn_length_l; auto.
-    replace (length ilist').
-    replace (BFILE.BFAttr f').
-    auto.
-    admit. (* more arrayN/list2nmem with list modifications *)
-  Admitted.
+      rewrite <- H in H7.
+      instantiate (Fx0 := (Fx * arrayN flen
+        (skipn flen allbytes))%pred).
+      rewrite <- firstn_skipn with (l := allbytes) (n := flen) at 2.
+      replace (firstn flen allbytes).
+      replace flen with (length bytes) at 1.
+      replace (firstn flen allbytes) in H7.
+      apply list2nmem_arrayN_app with (l' := skipn flen allbytes) in H7.
+      pred_apply; cancel.
+      cancel.
+    - Transparent BFileRec.hidden.
+      unfold BFileRec.hidden in *.
+      fold byte in *.
+      step.
+      * unfold rep.
+        exists ilist'.
+        split; [|split]; eauto.
+        split; auto.
+        eapply wordToNat_natToWord_bound.
+        eapply BFileRec.bfrec_bound with (itemtype := byte_type); eauto.
+        split.
+        subst.
+        apply firstn_length_l.
+        replace (length ilist').
+        replace (BFILE.BFAttr f').
+        apply firstn_length_l; auto.
+        replace (length ilist').
+        replace (BFILE.BFAttr f').
+        auto.
+      * replace (BFILE.BFAttr f').
+        set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
+        fold flen.
+        rewrite <- firstn_skipn with (l := ilist') (n := flen) in H25.
+        assert (length (firstn flen ilist') = flen).
+        apply firstn_length_l.
+        apply firstn_length_l in H14.
+        omega.
+        assert ((Fx * arrayN off newdata * arrayN flen (skipn flen allbytes))%pred
+          (list2nmem (firstn flen ilist' ++ skipn flen ilist'))).
+        pred_apply; cancel.
+        rewrite <- H16 in H21 at 1.
+        assert (H21' := H21).
+        apply list2nmem_arrayN_end_eq in H21'.
+        rewrite H21' in H21.
+        apply list2nmem_arrayN_app_iff in H21.
+        assumption.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
 

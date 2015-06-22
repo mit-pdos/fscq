@@ -162,6 +162,30 @@ Proof.
     symmetry; apply Nat.add_1_r.
 Qed.
 
+Theorem list2nmem_ptsto_end_eq : forall A (F : @pred _ _ A) l a a',
+  (F * (length l) |-> a)%pred (list2nmem (l ++ a' :: nil)) ->
+  a = a'.
+Proof.
+Admitted.
+
+Theorem list2nmem_arrayN_end_eq : forall A (F : @pred _ _ A) l l' l'',
+  (F * arrayN (length l) l')%pred (list2nmem (l ++ l'')) ->
+  l' = l''.
+Proof.
+Admitted.
+
+Theorem list2nmem_arrayN_app_iff : forall A (F : @pred _ _ A) l l',
+  (F * arrayN (length l) l')%pred (list2nmem (l ++ l')) ->
+  F (list2nmem l).
+Proof.
+  intros.
+  generalize dependent F.
+  generalize dependent l.
+  induction l'; intros; simpl in *.
+  - rewrite app_nil_r in H.
+    pred_apply; cancel.
+  - apply IHl'.
+Admitted.
 
 Theorem list2nmem_removelast_is : forall A l (def : A),
   l <> nil
