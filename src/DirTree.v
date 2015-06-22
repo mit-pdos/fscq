@@ -299,15 +299,6 @@ Module DIRTREE.
     cancel.
   Qed.
 
-  Lemma tree_names_distinct_head_name : forall inum name subtree rest,
-    tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
-    ~ In name (map fst rest).
-  Proof.
-    inversion 1.
-    simpl in *.
-    inversion H3; auto.
-  Qed.
-
   Theorem subtree_extract : forall xp fnlist tree subtree,
     find_subtree fnlist tree = Some subtree ->
     tree_pred xp tree =p=> tree_pred_except xp fnlist tree * tree_pred xp subtree.
@@ -359,18 +350,6 @@ Module DIRTREE.
     destruct a; simpl.
     destruct (string_dec s name); subst; try intuition.
     split; cancel; apply IHl; eauto.
-  Qed.
-
-  Lemma map_update_subtree_helper_notfound : forall f name l,
-    ~ In name (map fst l) ->
-    map (update_subtree_helper f name) l = l.
-  Proof.
-    induction l; simpl; intros; auto.
-    rewrite IHl by intuition.
-    unfold update_subtree_helper.
-    destruct a.
-    destruct (string_dec s name); subst; simpl; auto.
-    firstorder.
   Qed.
 
   Theorem tree_dir_names_pred'_update : forall l fnlist subtree subtree' name,
@@ -503,14 +482,6 @@ Module DIRTREE.
   Qed.
 
   Hint Resolve find_update_subtree.
-
-  Theorem find_update_subtree' : forall prefix fn tree subtree dnum tree_elem,
-    find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
-    find_subtree (prefix++[fn]) (update_subtree (prefix++[fn]) subtree tree) = Some subtree.
-  Proof.
-    induction prefix; simpl; try congruence; intros.
-  
-  Admitted.
 
   (**
    * XXX
@@ -2280,57 +2251,141 @@ Module DIRTREE.
     reflexivity.
   Qed.
 
-  Lemma update_name: forall name tree subtree subtree' dir,
-    update_subtree [name] subtree' (update_subtree [] (add_to_dir name subtree dir) tree) =
-    update_subtree [] (add_to_dir name subtree' dir) tree.
+  Lemma tree_names_distinct_head_name : forall inum name subtree rest,
+    tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
+    ~ In name (map fst rest).
+  Proof.
+    inversion 1.
+    simpl in *.
+    inversion H3; auto.
+  Qed.
+
+  Lemma tree_names_distinct_head_name' : forall  rest name  f,
+    map fst (map (update_subtree_helper f name) rest) = map fst rest.
+  Proof.
+    induction rest; simpl; intros.
+    auto.
+    erewrite IHrest.
+    unfold update_subtree_helper.
+    destruct a.
+    destruct (string_dec s name); eauto.
+  Qed.
+
+  Lemma map_update_subtree_helper_notfound : forall f name l,
+    ~ In name (map fst l) ->
+    map (update_subtree_helper f name) l = l.
+  Proof.
+   induction l; simpl; intros; auto.
+    rewrite IHl by intuition.
+    unfold update_subtree_helper.
+    destruct a.
+    destruct (string_dec s name); subst; simpl; auto.
+    firstorder.
+  Qed.
+
+  Lemma tree_name_distinct_rest: forall inum x l,
+        tree_names_distinct (TreeDir inum (x::l)) ->
+        tree_names_distinct (TreeDir inum l).
+  Proof.
+  Admitted.
+
+  Lemma tree_name_distinct_head: forall inum name l t,
+        tree_names_distinct (TreeDir inum ((name, t)::l)) ->
+        tree_names_distinct t.
   Proof.
   Admitted.
 
 
-  Lemma update_addelem_path: forall a prefix name tree subtree subtree' dir,
-    update_subtree (prefix ++ [name]) subtree' (update_subtree prefix (add_to_dir name subtree dir) tree) =
-    update_subtree prefix (add_to_dir name subtree' dir) tree ->
-    update_subtree ((a :: prefix) ++ [name]) subtree' (update_subtree (a :: prefix) (add_to_dir name subtree dir) tree) =
-    update_subtree (a :: prefix) (add_to_dir name subtree' dir) tree.
+  Lemma update_name_twice: forall tree_elem name tree subtree subtree' dnum,
+    tree_names_distinct
+      (update_subtree ([name]) subtree'
+         (update_subtree [] (add_to_dir name subtree (TreeDir dnum tree_elem))
+            tree)) ->
+    update_subtree [name] subtree' (update_subtree [] (add_to_dir name subtree (TreeDir dnum tree_elem)) tree) =
+    update_subtree [] (add_to_dir name subtree' (TreeDir dnum tree_elem)) tree.
   Proof.
-    intros.
-    subst; simpl.
-    destruct tree.
-    reflexivity.
-    induction l.
-    - simpl in *. reflexivity.
-    - destruct a0. simpl in *.
+    induction tree_elem; intros; subst; simpl.
+    - destruct (string_dec name name).
+      reflexivity.
+      congruence.
+    - destruct a.
+      destruct (string_dec s name); subst; simpl in *.
+      destruct (string_dec name name); try congruence.
+      rewrite map_update_subtree_helper_notfound.
+      reflexivity.
+      erewrite <- tree_names_distinct_head_name'.
+      eapply tree_names_distinct_head_name.
+      simpl in H.
+      destruct (string_dec name name); try congruence.
+      apply H.
+      destruct (string_dec s name); try congruence.
+      simpl in H.
+      apply tree_name_distinct_rest in H.
+      specialize (IHtree_elem name d subtree subtree' dnum H).
+      inversion IHtree_elem.
+      rewrite H1.
+      reflexivity.
+  Qed.
+
+
+  Lemma update_update_subtree_twice: forall prefix name subtree' subtree d dnum tree_elem,
+     tree_names_distinct 
+       (update_subtree (prefix ++ [name]) subtree'
+          (update_subtree prefix
+             (add_to_dir name subtree (TreeDir dnum tree_elem)) d)) ->
+   update_subtree (prefix ++ [name]) subtree'
+       (update_subtree prefix (add_to_dir name subtree (TreeDir dnum tree_elem)) d) =
+        update_subtree prefix (add_to_dir name subtree' (TreeDir dnum tree_elem)) d.
+  Proof.
+   induction prefix; intros.
+   - rewrite app_nil_l.
+     rewrite update_name_twice by auto.
+     reflexivity.
+   - destruct d. 
+     simpl.
+     reflexivity.
+     induction l; subst; simpl.
+     + reflexivity.
+     + destruct a0.
+      simpl in *.
       destruct (string_dec s a).
       simpl in *.
       destruct (string_dec s a).
-      admit.
-  Admitted.
-
-  Lemma update_path: forall prefix name subtree subtree' dir tree dnum tree_elem,
-    dir = (TreeDir dnum tree_elem) ->
-    update_subtree (prefix ++ [name]) subtree' (update_subtree prefix (add_to_dir name subtree dir) tree)
-        = update_subtree prefix (add_to_dir name subtree' dir) tree.
-  Proof.
-    induction prefix; intros.
-    - rewrite app_nil_l.
-      erewrite update_name.
-      rewrite H.
-      reflexivity.
-    - eapply update_addelem_path.
-      eapply IHprefix with (dnum := dnum) (tree_elem := tree_elem).
+      subst; simpl in *.
+      erewrite IHprefix.
+      apply tree_name_distinct_rest in H.
+      specialize (IHl H).
+      inversion IHl.
+      rewrite H1.
       eauto.
-  Admitted.
+      eapply tree_name_distinct_head.
+      eauto.
+      exfalso.
+      congruence.
+      simpl in *.
+      destruct (string_dec s a).
+      exfalso.
+      congruence.
+      simpl in *.
+      apply tree_name_distinct_rest in H.
+      specialize (IHl H).
+      inversion IHl.
+      rewrite H1.
+      eauto.
+  Qed.
 
-
-  Theorem update_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree subtree',
+  Theorem update_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree subtree' F Ftop m fsxp,
+    (F * rep fsxp Ftop (update_subtree (prefix++[name]) subtree' (tree_graft dnum tree_elem prefix name subtree tree)))%pred m -> 
     find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
     update_subtree (prefix++[name]) subtree' (tree_graft dnum tree_elem prefix name subtree tree) = 
-          (tree_graft dnum tree_elem prefix name subtree' tree).
+            (tree_graft dnum tree_elem prefix name subtree' tree).
   Proof.
     intros.
-    unfold tree_graft.
-    erewrite update_path with (dnum := dnum) (tree_elem := tree_elem) by eauto.
+    unfold tree_graft in *.
+    erewrite update_update_subtree_twice with (dnum := dnum) (tree_elem := tree_elem).
     reflexivity.
+    eapply rep_tree_names_distinct.
+    eauto.
   Qed.
 
 

@@ -396,6 +396,8 @@ Proof.
   erewrite DIRTREE.find_subtree_tree_graft by eauto.
   reflexivity.
   eapply pimpl_or_r; right; cancel.
+  unfold DIRTREE.rep in H7.
+  eapply DIRTREE.dir_names_distinct' in H7.
   rewrite DIRTREE.update_subtree_tree_graft by eauto.
   reflexivity.
 
