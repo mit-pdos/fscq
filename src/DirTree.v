@@ -248,6 +248,57 @@ Module DIRTREE.
     apply Hdir.
   Defined.
 
+  Lemma dirlist_pred_split : forall a b f,
+    (dirlist_pred f (a ++ b) <=p=> dirlist_pred f a * dirlist_pred f b)%pred.
+  Proof.
+    induction a; simpl; intros.
+    - split. cancel. cancel.
+    - destruct a. split.
+      cancel. apply IHa.
+      cancel. rewrite IHa. cancel.
+  Qed.
+
+  Inductive tree_names_distinct : dirtree -> Prop :=
+  | TND_file : forall inum f, tree_names_distinct (TreeFile inum f)
+  | TND_dir : forall inum tree_ents,
+    Forall tree_names_distinct (map snd tree_ents) ->
+    NoDup (map fst tree_ents) ->
+    tree_names_distinct (TreeDir inum tree_ents).
+
+  Lemma rep_tree_names_distinct' : forall tree F xp m,
+    (F * tree_pred xp tree)%pred m ->
+    tree_names_distinct tree.
+  Proof.
+    induction tree using dirtree_ind2; simpl; intros.
+    - constructor.
+    - constructor.
+      2: rewrite dir_names_distinct in H0; destruct_lift H0; eauto.
+
+      apply Forall_forall. intros.
+      rewrite Forall_forall in H.
+      specialize (H x H1).
+
+      apply in_map_iff in H1; repeat deex.
+      destruct x0; simpl in *.
+      apply in_split in H3; repeat deex.
+
+      rewrite dirlist_pred_split in H0. simpl in H0.
+      eapply H with (xp := xp).
+      pred_apply' H0.
+      cancel.
+  Qed.
+
+  Lemma rep_tree_names_distinct : forall tree F fsxp Ftop m,
+    (F * rep fsxp Ftop tree)%pred m ->
+    tree_names_distinct tree.
+  Proof.
+    unfold rep; intros.
+    destruct_lift H.
+    eapply rep_tree_names_distinct' with (xp := FSXPInodeAlloc fsxp).
+    pred_apply' H1.
+    cancel.
+  Qed.
+
   Theorem subtree_extract : forall xp fnlist tree subtree,
     find_subtree fnlist tree = Some subtree ->
     tree_pred xp tree =p=> tree_pred_except xp fnlist tree * tree_pred xp subtree.
