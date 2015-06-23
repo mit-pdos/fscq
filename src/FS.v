@@ -602,6 +602,58 @@ Definition lookup T fsxp dnum names mscs rx : prog T :=
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, r).
 
+Theorem lookup_ok: forall fsxp dnum fnlist mscs,
+  {< m Fm Ftop tree,
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+           [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ dnum = DIRTREE.dirtree_inum tree ]] *
+           [[ DIRTREE.dirtree_isdir tree = true ]]
+  POST RET:^(mscs,r)
+           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+           [[ r = DIRTREE.find_name fnlist tree ]]
+  CRASH   LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m
+  >} lookup fsxp dnum fnlist mscs.
+Proof.
+  unfold lookup.
+  hoare.
+  apply LOG.would_recover_old_either.
+  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
+  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (lookup _ _ _ _) _) => apply lookup_ok : prog.
+
+
+Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,
+  {<< m Fm Ftop tree,
+  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+           [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ dnum = DIRTREE.dirtree_inum tree ]] *
+           [[ DIRTREE.dirtree_isdir tree = true ]]
+  POST RET:^(mscs,r)
+           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+           [[ r = DIRTREE.find_name fnlist tree ]]
+  REC RET:^(mscs, fsxp)
+           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
+  >>} lookup fsxp dnum fnlist mscs >> recover.
+Proof.
+  unfold forall_helper. intros; eexists. intros. eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx; eauto with prog.
+
+  setoid_rewrite LOG.notxn_bounded_length at 1.
+  cancel; eauto.
+  step.
+
+  autorewrite with crash_xform.
+  rewrite LOG.would_recover_either_pred_diskIs.
+  cancel.
+  step.
+
+  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
+  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.
+  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+Qed.
+
 Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname mscs;
