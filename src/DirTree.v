@@ -2287,13 +2287,30 @@ Module DIRTREE.
         tree_names_distinct (TreeDir inum (x::l)) ->
         tree_names_distinct (TreeDir inum l).
   Proof.
-  Admitted.
+    intros.
+    inversion H.
+    rewrite map_cons in H2.
+    apply Forall_cons2 in H2.
+    rewrite map_cons in H3.
+    rewrite NoDup_cons_iff in H3.
+    intuition.
+    constructor; eauto.
+  Qed.
 
   Lemma tree_name_distinct_head: forall inum name l t,
         tree_names_distinct (TreeDir inum ((name, t)::l)) ->
         tree_names_distinct t.
   Proof.
-  Admitted.
+    intros.
+    destruct t.
+    constructor.
+    inversion H.
+    rewrite map_cons in H2.
+    apply Forall_inv in H2.
+    simpl in H2.
+    inversion H2.
+    constructor; eauto.
+  Qed.
 
 
   Lemma update_name_twice: forall tree_elem name tree subtree subtree' dnum,
@@ -2328,6 +2345,7 @@ Module DIRTREE.
   Qed.
 
 
+  (* XXX rewrite using the tree induction principle *)
   Lemma update_update_subtree_twice: forall prefix name subtree' subtree d dnum tree_elem,
      tree_names_distinct 
        (update_subtree (prefix ++ [name]) subtree'
