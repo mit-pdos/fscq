@@ -436,6 +436,16 @@ Proof.
   apply H0; assumption.
 Qed.
 
+Lemma Forall_repeat: forall A (f:A -> Prop) a n,
+  f a -> Forall f (repeat a n).
+Proof.
+  intros.
+  rewrite Forall_forall.
+  intros.
+  apply repeat_spec in H0.
+  congruence.
+Qed.
+
 Lemma Forall_cons2 : forall A (l : list A) a f,
   Forall f (a :: l) -> Forall f l.
 Proof.

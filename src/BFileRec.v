@@ -2449,6 +2449,7 @@ Section RECBFILE.
       ( [[ ok = false ]] \/
       exists f' ilist' flist' newitems,
       [[ ok = true ]] *
+      [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
       [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
       [[ array_item_file f' ilist' ]] *
       [[ ilist' = ilist ++ newitems ]] *
@@ -2467,15 +2468,88 @@ Section RECBFILE.
     step.
 
     apply pimpl_or_r; right; cancel.
-    eassumption.
-    apply rep_expand_file.
-    assumption.
-    assumption.
-    unfold array_item_file; exists vs_nested.
-    split; [assumption | split; auto].
+    unfold setlen.
+    rewrite wordToNat_natToWord_idempotent'.
+    instantiate (newitems := repeat item_zero
+      ((divup count_items block_items -
+        length (BFILE.BFData f))*block_items)).
+    exists (vs_nested ++ repeat block_zero
+      (divup count_items block_items -
+        length (BFILE.BFData f))).
+    assert (length (BFILE.BFData f) <= divup count_items block_items) as Hflen.
+    unfold item in H5.
+    replace (length (concat vs_nested)) with ((length (BFILE.BFData f)) * block_items) in H5.
+    unfold roundup in H5.
+    unfold ge in H5.
+    apply Nat.mul_le_mono_pos_r with block_items; auto.
+    apply array_items_block_sized.
+    exists vs_nested; auto.
+    autorewrite with lengths.
+    rewrite Nat.min_r by auto.
+    split; [|split].
+    omega.
+    assert
+      (Forall Rec.well_formed
+     (vs_nested ++
+      repeat block_zero (divup count_items block_items - length (BFILE.BFData f)))).
+    apply Forall_append.
+    destruct_lift H0.
+    auto.
+    apply Forall_repeat.
+    unfold block_zero.
+    apply Rec.of_word_length.
+    assert
+      ((arrayN 0
+      (map rep_block
+        (vs_nested ++
+         repeat block_zero (divup count_items block_items - length (BFILE.BFData f)))))%pred
+      (list2nmem
+         (firstn (divup count_items block_items) (BFILE.BFData f) ++
+          repeat $ (0) (divup count_items block_items - length (BFILE.BFData f))))).
+    unfold block_zero.
+    destruct_lift H0.
+    apply list2nmem_array_eq in H0.
+    rewrite map_app.
+    rewrite firstn_oob by auto.
+    replace (BFILE.BFData f).
+    rewrite repeat_map.
+    assert (rep_block (@Rec.of_word blocktype (natToWord (block_items*itemsize) 0)) = $ (0)).
+    unfold rep_block.
+    unfold RecArray.rep_block, wreclen_to_valu, eq_rec_r, eq_rec.
+    rewrite Rec.to_of_id.
+    generalize_proof.
+    rewrite blocksz_ok; intros.
+    eq_rect_simpl.
+    reflexivity.
+    fold itemsize.
+    fold block_items.
+    rewrite H10.
+    apply list2nmem_array.
+    pred_apply; cancel.
+    rewrite concat_app.
+    f_equal.
+    assert (block_zero = repeat item_zero block_items) as H0block.
+    unfold block_zero, block_items, item_zero.
+    simpl.
+    admit. (* of_word 0 = repeat (of_word 0) (obviously different sizes) *)
+    rewrite H0block.
+    rewrite repeat_repeat_concat.
+    f_equal.
+    apply Nat.mul_comm.
+
+    (* goodSize proof *)
+    eapply goodSize_trans; [|eauto].
+    apply divup_lt_arg.
+
     apply list2nmem_arrayN_app; assumption.
-    apply repeat_length.
-  Qed.
+    autorewrite with lengths.
+    unfold alloc_items, roundup.
+    rewrite Nat.mul_sub_distr_r.
+    f_equal.
+    apply array_items_block_sized.
+    (* have rep function, but only in its pieces *)
+    exists vs_nested; auto.
+  Admitted.
 
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
     {< F F1 A mbase m flist f ilist,
