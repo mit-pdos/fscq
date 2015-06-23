@@ -9,6 +9,7 @@ Require Import DirName.
 Require Import Hoare.
 Require Import GenSep.
 Require Import GenSepN.
+Require Import ListPred.
 Require Import SepAuto.
 Require Import Idempotent.
 Require Import Inode.
@@ -355,6 +356,51 @@ Definition readdir T fsxp dnum mscs rx : prog T :=
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, files).
 
+Theorem readdir_ok: forall fsxp dnum mscs,
+  {< F1 A m dsmap,
+  PRE      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
+           [[ SDIR.rep_macro F1 A m (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum dsmap ]]
+  POST RET:^(mscs,res)
+           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+           [[ listpred SDIR.dslmatch res dsmap ]]
+  CRASH    LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m
+  >} readdir fsxp dnum mscs.
+Proof.
+  unfold readdir.
+  hoare.
+  apply LOG.would_recover_old_either.
+  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
+  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (readdir _ _ _ ) _) => apply readdir_ok : prog.
+
+Theorem readdir_recover_ok: forall fsxp dnum mscs,
+  {<< F1 A m dsmap,
+  PRE      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
+           [[ SDIR.rep_macro F1 A m (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum dsmap ]]
+  POST RET:^(mscs,res)
+           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+           [[ listpred SDIR.dslmatch res dsmap ]]
+  REC RET:^(mscs, fsxp)
+           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
+  >>} readdir fsxp dnum mscs >> recover.
+Proof.
+  unfold forall_helper. intros; eexists. intros. eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx; eauto with prog.
+  setoid_rewrite LOG.notxn_bounded_length at 1.
+  cancel; eauto.
+  step.
+  autorewrite with crash_xform.
+  rewrite LOG.would_recover_either_pred_diskIs.
+  cancel.
+  step.
+  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
+
+  replace (v1) with (a2) by ( eapply list2mem_inj; eauto ). cancel. (* v1 instead of v *)
+  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+Qed.  
+
 Definition create T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, oi) <- DIRTREE.mkfile fsxp dnum name mscs;
@@ -650,7 +696,7 @@ Proof.
   step.
 
   rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
-  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.
+  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.  
   rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
 Qed.
 
