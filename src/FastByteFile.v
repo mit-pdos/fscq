@@ -1104,10 +1104,47 @@ Hint Resolve length_grow_oneblock_ok.
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} overwrite_append fsxp inum off newbytes mscs.
   Proof.
-    (* TODO: prove, probably based on write_bytes_ok itself,
-    where F2 is vacuously true. *)
     unfold overwrite_append, write_bytes.
-    hoare.
+    time step.
+    clear H2.
+    inversion H7 as [allbytes].
+    inversion H0; clear H0.
+    inversion H3; clear H3.
+    inversion H9; clear H9.
+    inversion H2.
+
+    time step.
+    time step.
+
+    instantiate (Fi0 :=
+      (let extraoff := Nat.min off (# (INODE.ISize (BFILE.BFAttr f))) in
+      (Fi * arrayN extraoff (skipn extraoff allbytes))%pred)).
+    simpl.
+    inversion H7.
+    inversion H0; clear H0.
+    inversion H15; clear H15.
+    inversion H16; clear H16.
+    inversion H6.
+    set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
+    rewrite firstn_firstn in H5.
+    rewrite <- firstn_skipn with (l := allbytes) (n := Nat.min off flen) at 2.
+    replace (Nat.min off flen) with (length (firstn (Nat.min off flen) allbytes)) at 1.
+    apply list2nmem_arrayN_app; auto.
+    (* solve this by case analysis on min *)
+    apply firstn_length_l_iff in H15.
+    destruct (Nat.min_spec off flen) as [Hminspec|Hminspec];
+      inversion Hminspec as [? Hmineq];
+      rewrite Hmineq;
+      rewrite firstn_length_l;
+      omega.
+    admit. (* have hypothesis in word *)
+
+    time step.
+    time step. (* very slow *)
+
+    (* step now makes no progress and just keeps creating new goals;
+       is something wrong with the return false case?
+       should I have used IfRx instead of If in write_bytes? *)
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (overwrite_append _ _ _ _ _) _) => apply overwrite_append_ok : prog.
