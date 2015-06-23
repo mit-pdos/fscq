@@ -180,15 +180,15 @@ Proof.
   - rewrite app_nil_r in H.
     pred_apply; cancel.
   - replace (l ++ a :: l') with ((l ++ a :: nil) ++ l') in H.
-    assert ((F * length l |-> a * arrayN (S (length l)) l')%pred
-      (list2nmem ((l ++ a :: nil) ++ l'))).
-    pred_apply; cancel.
-    replace (S (length l)) with (length (l ++ a :: nil)) in H0.
-    apply IHl' in H0.
-    eapply list2nmem_app_iff; eauto.
+    eapply pimpl_apply in H.
+    apply IHl' in H.
+    apply list2nmem_app_iff in H.
+    eassumption.
+    cancel.
     rewrite app_length.
     simpl.
-    omega.
+    rewrite Nat.add_1_r.
+    cancel.
     rewrite app_assoc_reverse.
     reflexivity.
 Qed.
