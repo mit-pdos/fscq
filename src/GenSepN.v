@@ -141,6 +141,13 @@ Proof.
   omega.
 Qed.
 
+Theorem list2nmem_app_iff : forall A (F : @pred _ _ A) l a,
+  (F * (length l) |-> a)%pred (list2nmem (l ++ a :: nil)) ->
+  F (list2nmem l).
+Proof.
+  intros.
+Admitted.
+
 Theorem list2nmem_arrayN_app: forall A (F : @pred _ _ A) l l',
   F (list2nmem l) -> (F * arrayN (length l) l') %pred (list2nmem (l ++ l')).
 Proof.
@@ -172,8 +179,19 @@ Proof.
   induction l'; intros; simpl in *.
   - rewrite app_nil_r in H.
     pred_apply; cancel.
-  - apply IHl'.
-Admitted.
+  - replace (l ++ a :: l') with ((l ++ a :: nil) ++ l') in H.
+    assert ((F * length l |-> a * arrayN (S (length l)) l')%pred
+      (list2nmem ((l ++ a :: nil) ++ l'))).
+    pred_apply; cancel.
+    replace (S (length l)) with (length (l ++ a :: nil)) in H0.
+    apply IHl' in H0.
+    eapply list2nmem_app_iff; eauto.
+    rewrite app_length.
+    simpl.
+    omega.
+    rewrite app_assoc_reverse.
+    reflexivity.
+Qed.
 
 Theorem list2nmem_removelast_is : forall A l (def : A),
   l <> nil

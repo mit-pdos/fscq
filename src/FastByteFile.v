@@ -395,7 +395,7 @@ Module FASTBYTEFILE.
         apply firstn_length_l.
         replace (length ilist').
         replace (BFILE.BFAttr f').
-        apply firstn_length_l; auto.
+        apply firstn_length_l_iff; auto.
         replace (length ilist').
         replace (BFILE.BFAttr f').
         auto.
@@ -405,7 +405,7 @@ Module FASTBYTEFILE.
         rewrite <- firstn_skipn with (l := ilist') (n := flen) in H25.
         assert (length (firstn flen ilist') = flen).
         apply firstn_length_l.
-        apply firstn_length_l in H14.
+        apply firstn_length_l_iff in H14.
         omega.
         assert ((Fx * arrayN off newdata * arrayN flen (skipn flen allbytes))%pred
           (list2nmem (firstn flen ilist' ++ skipn flen ilist'))).
@@ -417,7 +417,7 @@ Module FASTBYTEFILE.
         apply list2nmem_arrayN_app_iff in H21.
         assumption.
         exact ($ 0).
-        apply firstn_length_l in H14.
+        apply firstn_length_l_iff in H14.
         repeat rewrite skipn_length; omega.
   Qed.
 
@@ -590,7 +590,7 @@ Hint Resolve length_grow_oneblock_ok.
       let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
       If (bool_dec ok true) {
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
-           fsxp inum #oldlen (@natToWord (newlen*8) 0) mscs;
+           fsxp inum #oldlen (@natToWord ((newlen-#oldlen)*8) 0) mscs;
         rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
@@ -862,6 +862,7 @@ Hint Resolve length_grow_oneblock_ok.
     omega.
    Qed.
 
+  Definition filelen f := # (INODE.ISize (BFILE.BFAttr f)).
 
   Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
@@ -869,7 +870,6 @@ Hint Resolve length_grow_oneblock_ok.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ (# (INODE.ISize (BFILE.BFAttr f))) <= newlen ]] *
            [[ goodSize addrlen newlen ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -885,9 +885,34 @@ Hint Resolve length_grow_oneblock_ok.
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
+     time step. (* 25s *)
      step.
+     time step. (* 10s *)
+
+     fold (filelen f) in *.
+     instantiate (Fi := arrayN 0 allbytes).
+     apply list2nmem_array.
+     apply firstn_length_l_iff in H5.
+     unfold ge.
+     fold (filelen f) in H9.
+     fold byte.
+     replace (length allbytes).
+     fold (roundup (filelen f) valubytes).
+     replace (block_items items_per_valu) with valubytes.
+     apply roundup_mono.
+     apply Nat.lt_le_incl.
+     unfold filelen.
+     admit. (* need to translate < % word *)
+     unfold block_items.
+     unfold items_per_valu.
+     rewrite valubytes_is.
+     reflexivity.
+
      step.
+     time step. (* 60s *)
      step.
+
+     time step. (* 80s *)
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
@@ -904,11 +929,11 @@ Hint Resolve length_grow_oneblock_ok.
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let curlen := oldattr.(INODE.ISize) in
     If (wlt_dec curlen ($ newlen)) {
-         let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
+         let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
          If (bool_dec ok true) {
            (* zero the hole (if there is one) *)
-           let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
-             fsxp inum #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
+           let^ (mscs) <- update_bytes fsxp inum
+             #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
            (* write the new bytes *)
            let^ (mscs) <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
@@ -1106,10 +1131,45 @@ Hint Resolve length_grow_oneblock_ok.
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} overwrite_append fsxp inum off newbytes mscs.
   Proof.
-    (* TODO: prove, probably based on write_bytes_ok itself,
-    where F2 is vacuously true. *)
     unfold overwrite_append, write_bytes.
-    hoare.
+    time step. (* 50s *)
+    inversion H7 as [allbytes].
+    inversion H0; clear H0.
+    inversion H9; clear H9.
+    inversion H10; clear H10.
+    inversion H3.
+
+    step.
+    time step. (* 10s *)
+
+    instantiate (Fi0 :=
+      (let extraoff := Nat.min off (# (INODE.ISize (BFILE.BFAttr f))) in
+      (Fi * arrayN extraoff (skipn extraoff allbytes))%pred)).
+    simpl.
+    inversion H7.
+    inversion H0; clear H0.
+    inversion H16; clear H16.
+    inversion H17; clear H17.
+    set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
+    rewrite firstn_firstn in H5.
+    rewrite <- firstn_skipn with (l := allbytes) (n := Nat.min off flen) at 2.
+    replace (Nat.min off flen) with (length (firstn (Nat.min off flen) allbytes)) at 1.
+    apply list2nmem_arrayN_app; auto.
+    (* solve this by case analysis on min *)
+    apply firstn_length_l_iff in H9.
+    destruct (Nat.min_spec off flen) as [Hminspec|Hminspec];
+      inversion Hminspec as [? Hmineq];
+      rewrite Hmineq;
+      rewrite firstn_length_l;
+      omega.
+    admit. (* have hypothesis in word *)
+
+    step.
+    time step. (* 170s *)
+    step.
+    step.
+
+    step.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (overwrite_append _ _ _ _ _) _) => apply overwrite_append_ok : prog.

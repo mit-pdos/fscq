@@ -436,6 +436,16 @@ Proof.
   apply H0; assumption.
 Qed.
 
+Lemma Forall_repeat: forall A (f:A -> Prop) a n,
+  f a -> Forall f (repeat a n).
+Proof.
+  intros.
+  rewrite Forall_forall.
+  intros.
+  apply repeat_spec in H0.
+  congruence.
+Qed.
+
 Lemma Forall_cons2 : forall A (l : list A) a f,
   Forall f (a :: l) -> Forall f l.
 Proof.
@@ -1252,13 +1262,20 @@ Proof.
 Qed.
 
 Lemma firstn_length_l : forall A (l : list A) n,
+  n <= length l -> length (firstn n l) = n.
+Proof.
+  intros.
+  rewrite firstn_length.
+  rewrite Nat.min_l; auto.
+Qed.
+
+Lemma firstn_length_l_iff : forall A (l : list A) n,
   n <= length l <-> length (firstn n l) = n.
 Proof.
   intros.
   split.
   - intros.
-    rewrite firstn_length.
-    rewrite Nat.min_l; auto.
+    apply firstn_length_l; auto.
   - intros.
     rewrite firstn_length in H.
     apply Nat.min_l_iff; auto.

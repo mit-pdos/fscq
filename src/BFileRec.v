@@ -2383,7 +2383,7 @@ Section RECBFILE.
   Qed.
 
   Lemma rep_expand_file : forall f count_items ilist,
-  count_items >= length ilist ->
+  roundup count_items block_items >= length ilist ->
   goodSize addrlen count_items ->
   array_item_file f ilist ->
   let newlen := # (natToWord addrlen (divup count_items block_items)) in
@@ -2399,12 +2399,11 @@ Section RECBFILE.
     rewrite setlen_length.
     assert (newlen >= length (BFILE.BFData f)) as Hexpand.
       unfold newlen.
-      replace (length (BFILE.BFData f)) with (divup (length ilist) block_items).
       rewrite wordToNat_natToWord_idempotent'.
-      apply divup_mono. (* divup is increasing *)
-      omega.
+      unfold ge.
+      apply Nat.mul_le_mono_pos_r with block_items; auto.
+      erewrite array_items_block_sized; eauto.
       apply goodSize_items_blocks; assumption.
-      symmetry; apply array_items_num_blocks; assumption.
     exists (vs_nested ++ repeat block_zero (newlen - (length (BFILE.BFData f))));
       split; [|split].
     (* length of file = length vs *)
@@ -2433,8 +2432,6 @@ Section RECBFILE.
     apply goodSize_items_blocks; assumption.
   Qed.
 
-  (** TODO: bf_expand should not promise to make number of items
-  exactly count_items, only roundup countitems block_items *)
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm Fi A f flist ilist,
    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -2444,7 +2441,7 @@ Section RECBFILE.
     [[ Fi%pred (list2nmem ilist) ]] *
     (* require that this is an expand since postcondition implies all of ilist
        is preserved  *)
-    [[ count_items >= length ilist ]] *
+    [[ roundup count_items block_items >= length ilist ]] *
     [[ goodSize addrlen count_items ]]
     POST RET: ^(mscs, ok)
     exists m',
@@ -2452,12 +2449,12 @@ Section RECBFILE.
       ( [[ ok = false ]] \/
       exists f' ilist' flist' newitems,
       [[ ok = true ]] *
+      [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
       [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
       [[ array_item_file f' ilist' ]] *
       [[ ilist' = ilist ++ newitems ]] *
       (* we don't mess with ilist ([Fi] still holds) *)
       [[ (Fi * arrayN (length ilist) newitems)%pred (list2nmem ilist') ]] *
-      (* [length ilist' >= length ilist] is implied by setting [Fi] appropriately *)
       (* this is a weak postcondition (in reality newitems consists of repeated zeros
         due to bftrunc); this allows bf_expand to eventually leave junk data with
         the same spec *)
@@ -2467,19 +2464,92 @@ Section RECBFILE.
   Proof.
     unfold bf_expand, bf_resize.
 
-    step.
+    time step. (* 40s *)
     step.
 
     apply pimpl_or_r; right; cancel.
-    eassumption.
-    apply rep_expand_file.
-    assumption.
-    assumption.
-    unfold array_item_file; exists vs_nested.
-    split; [assumption | split; auto].
+    unfold setlen.
+    rewrite wordToNat_natToWord_idempotent'.
+    instantiate (newitems := repeat item_zero
+      ((divup count_items block_items -
+        length (BFILE.BFData f))*block_items)).
+    exists (vs_nested ++ repeat block_zero
+      (divup count_items block_items -
+        length (BFILE.BFData f))).
+    assert (length (BFILE.BFData f) <= divup count_items block_items) as Hflen.
+    unfold item in H5.
+    replace (length (concat vs_nested)) with ((length (BFILE.BFData f)) * block_items) in H5.
+    unfold roundup in H5.
+    unfold ge in H5.
+    apply Nat.mul_le_mono_pos_r with block_items; auto.
+    apply array_items_block_sized.
+    exists vs_nested; auto.
+    autorewrite with lengths.
+    rewrite Nat.min_r by auto.
+    split; [|split].
+    omega.
+    assert
+      (Forall Rec.well_formed
+     (vs_nested ++
+      repeat block_zero (divup count_items block_items - length (BFILE.BFData f)))).
+    apply Forall_append.
+    destruct_lift H0.
+    auto.
+    apply Forall_repeat.
+    unfold block_zero.
+    apply Rec.of_word_length.
+    assert
+      ((arrayN 0
+      (map rep_block
+        (vs_nested ++
+         repeat block_zero (divup count_items block_items - length (BFILE.BFData f)))))%pred
+      (list2nmem
+         (firstn (divup count_items block_items) (BFILE.BFData f) ++
+          repeat $ (0) (divup count_items block_items - length (BFILE.BFData f))))).
+    unfold block_zero.
+    destruct_lift H0.
+    apply list2nmem_array_eq in H0.
+    rewrite map_app.
+    rewrite firstn_oob by auto.
+    replace (BFILE.BFData f).
+    rewrite repeat_map.
+    assert (rep_block (@Rec.of_word blocktype (natToWord (block_items*itemsize) 0)) = $ (0)).
+    unfold rep_block.
+    unfold RecArray.rep_block, wreclen_to_valu, eq_rec_r, eq_rec.
+    rewrite Rec.to_of_id.
+    generalize_proof.
+    rewrite blocksz_ok; intros.
+    eq_rect_simpl.
+    reflexivity.
+    fold itemsize.
+    fold block_items.
+    rewrite H10.
+    apply list2nmem_array.
+    pred_apply; cancel.
+    rewrite concat_app.
+    f_equal.
+    assert (block_zero = repeat item_zero block_items) as H0block.
+    unfold block_zero, block_items, item_zero.
+    simpl.
+    admit. (* of_word 0 = repeat (of_word 0) (obviously different sizes) *)
+    rewrite H0block.
+    rewrite repeat_repeat_concat.
+    f_equal.
+    apply Nat.mul_comm.
+
+    (* goodSize proof *)
+    eapply goodSize_trans; [|eauto].
+    apply divup_lt_arg.
+
     apply list2nmem_arrayN_app; assumption.
-    apply repeat_length.
-  Qed.
+    autorewrite with lengths.
+    unfold alloc_items, roundup.
+    rewrite Nat.mul_sub_distr_r.
+    f_equal.
+    apply array_items_block_sized.
+    (* have rep function, but only in its pieces *)
+    exists vs_nested; auto.
+  Admitted.
 
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
     {< F F1 A mbase m flist f ilist,
@@ -2674,7 +2744,7 @@ Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : 
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_update_range _ _ _ _ _ _ _) _) => apply bf_update_range_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_shrink _ _ _ _ _ _) _) => apply bf_shrink_ok : prog.
-Hint Extern 1 ({{_}} progseq (bf_expand _ _ _ _ _ _) _) => apply bf_expand_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_expand _ _ _ _ _) _) => apply bf_expand_ok : prog.
 
 (* Two BFileRec arrays should always be equal *)
 Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>
