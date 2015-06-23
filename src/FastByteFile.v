@@ -905,8 +905,8 @@ Hint Resolve length_grow_oneblock_ok.
          let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
          If (bool_dec ok true) {
            (* zero the hole (if there is one) *)
-           let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
-             fsxp inum #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
+           let^ (mscs) <- update_bytes fsxp inum
+             #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
            (* write the new bytes *)
            let^ (mscs) <- update_bytes fsxp inum off data mscs;
            rx ^(mscs, ok)
@@ -1105,16 +1105,15 @@ Hint Resolve length_grow_oneblock_ok.
       >} overwrite_append fsxp inum off newbytes mscs.
   Proof.
     unfold overwrite_append, write_bytes.
-    time step.
-    clear H2.
+    time step. (* 50s *)
     inversion H7 as [allbytes].
     inversion H0; clear H0.
-    inversion H3; clear H3.
     inversion H9; clear H9.
-    inversion H2.
+    inversion H10; clear H10.
+    inversion H3.
 
-    time step.
-    time step.
+    step.
+    time step. (* 10s *)
 
     instantiate (Fi0 :=
       (let extraoff := Nat.min off (# (INODE.ISize (BFILE.BFAttr f))) in
@@ -1122,16 +1121,15 @@ Hint Resolve length_grow_oneblock_ok.
     simpl.
     inversion H7.
     inversion H0; clear H0.
-    inversion H15; clear H15.
     inversion H16; clear H16.
-    inversion H6.
+    inversion H17; clear H17.
     set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
     rewrite firstn_firstn in H5.
     rewrite <- firstn_skipn with (l := allbytes) (n := Nat.min off flen) at 2.
     replace (Nat.min off flen) with (length (firstn (Nat.min off flen) allbytes)) at 1.
     apply list2nmem_arrayN_app; auto.
     (* solve this by case analysis on min *)
-    apply firstn_length_l_iff in H15.
+    apply firstn_length_l_iff in H9.
     destruct (Nat.min_spec off flen) as [Hminspec|Hminspec];
       inversion Hminspec as [? Hmineq];
       rewrite Hmineq;
@@ -1139,12 +1137,12 @@ Hint Resolve length_grow_oneblock_ok.
       omega.
     admit. (* have hypothesis in word *)
 
-    time step.
-    time step. (* very slow *)
+    step.
+    time step. (* 170s *)
+    step.
+    step.
 
-    (* step now makes no progress and just keeps creating new goals;
-       is something wrong with the return false case?
-       should I have used IfRx instead of If in write_bytes? *)
+    step.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (overwrite_append _ _ _ _ _) _) => apply overwrite_append_ok : prog.
