@@ -885,9 +885,7 @@ Hint Resolve length_grow_oneblock_ok.
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
-     step.
-     step.
-     step.
+     hoare.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.

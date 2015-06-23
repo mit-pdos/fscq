@@ -2674,7 +2674,7 @@ Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : 
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_update_range _ _ _ _ _ _ _) _) => apply bf_update_range_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_shrink _ _ _ _ _ _) _) => apply bf_shrink_ok : prog.
-Hint Extern 1 ({{_}} progseq (bf_expand _ _ _ _ _ _) _) => apply bf_expand_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_expand _ _ _ _ _) _) => apply bf_expand_ok : prog.
 
 (* Two BFileRec arrays should always be equal *)
 Hint Extern 0 (okToUnify (array_item_file ?a ?b ?c ?d _) (array_item_file ?a ?b ?c ?d _)) =>
