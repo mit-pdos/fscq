@@ -590,7 +590,7 @@ Hint Resolve length_grow_oneblock_ok.
       let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
       If (bool_dec ok true) {
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
-           fsxp inum #oldlen (@natToWord (newlen*8) 0) mscs;
+           fsxp inum #oldlen (@natToWord ((newlen-#oldlen)*8) 0) mscs;
         rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
@@ -862,6 +862,7 @@ Hint Resolve length_grow_oneblock_ok.
     omega.
    Qed.
 
+  Definition filelen f := # (INODE.ISize (BFILE.BFAttr f)).
 
   Theorem grow_file_ok: forall fsxp inum newlen mscs,
     {< m mbase F Fm A flist f bytes,
@@ -869,7 +870,6 @@ Hint Resolve length_grow_oneblock_ok.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ (# (INODE.ISize (BFILE.BFAttr f))) <= newlen ]] *
            [[ goodSize addrlen newlen ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -885,7 +885,34 @@ Hint Resolve length_grow_oneblock_ok.
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
-     hoare.
+     time step. (* 25s *)
+     step.
+     time step. (* 10s *)
+
+     fold (filelen f) in *.
+     instantiate (Fi := arrayN 0 allbytes).
+     apply list2nmem_array.
+     apply firstn_length_l_iff in H5.
+     unfold ge.
+     fold (filelen f) in H9.
+     fold byte.
+     replace (length allbytes).
+     fold (roundup (filelen f) valubytes).
+     replace (block_items items_per_valu) with valubytes.
+     apply roundup_mono.
+     apply Nat.lt_le_incl.
+     unfold filelen.
+     admit. (* need to translate < % word *)
+     unfold block_items.
+     unfold items_per_valu.
+     rewrite valubytes_is.
+     reflexivity.
+
+     step.
+     time step. (* 60s *)
+     step.
+
+     time step. (* 80s *)
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
@@ -902,7 +929,7 @@ Hint Resolve length_grow_oneblock_ok.
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let curlen := oldattr.(INODE.ISize) in
     If (wlt_dec curlen ($ newlen)) {
-         let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
+         let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
          If (bool_dec ok true) {
            (* zero the hole (if there is one) *)
            let^ (mscs) <- update_bytes fsxp inum
