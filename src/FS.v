@@ -141,13 +141,6 @@ Qed.
 Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
 
 
-(* XXX unused? *)
-Definition file_nblocks T fsxp inum mscs rx : prog T :=
-  mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, len) <- DIRTREE.getlen fsxp inum mscs;
-  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, len).
-
 Definition file_get_attr T fsxp inum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
@@ -160,16 +153,139 @@ Definition file_get_sz T fsxp inum mscs rx : prog T :=
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, INODE.ISize attr).
 
+Theorem file_getattr_ok : forall fsxp inum mscs,
+  {< m pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         [[ r = BFILE.BFAttr f ]]
+  CRASH  LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m
+  >} file_get_attr fsxp inum mscs.
+Proof.
+  unfold file_get_attr.
+  hoare.
+  apply LOG.would_recover_old_either.
+  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
+  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
+
+Theorem file_getattr_recover_ok : forall fsxp inum mscs,
+  {<< m pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         [[ r = BFILE.BFAttr f ]]
+  REC RET:^(mscs, fsxp)
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs 
+  >>} file_get_attr fsxp inum mscs >> recover.
+Proof.
+  unfold forall_helper. intros; eexists. intros. eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx; eauto with prog.
+
+  setoid_rewrite LOG.notxn_bounded_length at 1.
+  cancel; eauto.
+  step.
+
+  autorewrite with crash_xform.
+  rewrite LOG.would_recover_either_pred_diskIs.
+  cancel.
+  step.
+
+  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
+  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.  
+  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+Qed.
+
+
 Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-  mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
+  mscs <- DIRTREE.setattr fsxp inum
                           (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
                                              (INODE.IType attr))
                           mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
+
+Theorem file_set_sz_ok : forall fsxp inum sz mscs,
+  {< m pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST RET:^(mscs, ok)
+         [[ ok = false ]] * LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs \/
+         (exists m', LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m') mscs * 
+          exists tree' f' attr, [[ ok = true ]] *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+         [[ attr = BFILE.BFAttr f ]] *
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
+                                             (INODE.IMTime attr)
+                                             (INODE.IType attr)) ]])
+  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+           exists tree' f' attr, 
+         (Fm * DIRTREE.rep fsxp Ftop tree')*
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+         [[ attr = BFILE.BFAttr f ]] *
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
+                                             (INODE.IMTime attr)
+                                             (INODE.IType attr)) ]])
+
+  >} file_set_sz fsxp inum sz mscs.
+Proof.
+  unfold file_set_sz.
+  hoare.
+  all: try rewrite LOG.activetxn_would_recover_old.
+  all: try rewrite LOG.notxn_would_recover_old.
+  all: try apply LOG.would_recover_old_either_pred.
+  rewrite <- LOG.would_recover_either_pred_pimpl.
+  cancel.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (file_set_sz  _ _ _ _) _) => apply file_set_sz_ok : prog.
+
+Ltac prove_recover_ok := unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
+  [eapply corr3_from_corr2_rx; eauto with prog | idtac ];
+  cancel; eauto; [ step | autorewrite with crash_xform ];
+  match goal with H: crash_xform _ =p=> _ |- crash_xform _ * _ =p=> _ => rewrite H end; cancel; step.
+
+
+Theorem file_set_sz_recover_ok : forall fsxp inum sz mscs,
+  {<< m pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST RET:^(mscs, ok)
+         [[ ok = false ]] * LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs \/
+         (exists m', LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m') mscs * 
+          exists tree' f' attr, [[ ok = true ]] *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+         [[ attr = BFILE.BFAttr f ]] *
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
+                                             (INODE.IMTime attr)
+                                             (INODE.IType attr)) ]])
+  REC RET:^(mscs, fsxp)   
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+           exists tree' f' attr,
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+         [[ attr = BFILE.BFAttr f ]] *
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
+                                             (INODE.IMTime attr)
+                                             (INODE.IType attr)) ]] *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
+  >>} file_set_sz fsxp inum sz mscs >> recover.
+Proof.
+  prove_recover_ok.
+Qed.
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -308,19 +424,6 @@ Proof.
   step.
 Qed.
 
-(* XXX old one missed commmit, but maybe unnecessary *)
-Definition set_size T fsxp inum size mscs rx : prog T :=
-  mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum size mscs;
-  If (bool_dec ok true) {
-      let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-      rx ^(mscs, ok)
-  } else {
-      mscs <- LOG.abort (FSXPLog fsxp) mscs;
-      rx ^(mscs, false)
-  }.
-
-
 Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
@@ -454,12 +557,6 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
-
-Ltac prove_recover_ok := unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
-  [eapply corr3_from_corr2_rx; eauto with prog | idtac ];
-  cancel; eauto; [ step | autorewrite with crash_xform ];
-  match goal with H: crash_xform _ =p=> _ |- crash_xform _ * _ =p=> _ => rewrite H end; cancel; step.
-
 
 Theorem create_recover_ok : forall fsxp dnum name mscs,
   {<< m pathname Fm Ftop tree tree_elem,
