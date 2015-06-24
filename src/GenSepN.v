@@ -145,6 +145,11 @@ Theorem list2nmem_app_iff : forall A (F : @pred _ _ A) l a,
   (F * (length l) |-> a)%pred (list2nmem (l ++ a :: nil)) ->
   F (list2nmem l).
 Proof.
+  unfold_sep_star.
+  intros.
+  repeat deex.
+  assert (list2nmem l = m1).
+  apply functional_extensionality.
   intros.
 Admitted.
 
@@ -268,6 +273,23 @@ Proof.
   erewrite listapp_progupd; try omega.
   eapply arrayN_app_progupd; try omega.
   eauto.
+Qed.
+
+Theorem list2nmem_arrayN_firstn_skipn: forall A (l:list A) n,
+  (arrayN 0 (firstn n l) * arrayN n (skipn n l))%pred (list2nmem l).
+Proof.
+  intros.
+  case_eq (lt_dec n (length l)); intros.
+  - rewrite <- firstn_skipn with (l := l) (n := n) at 3.
+    replace n with (length (firstn n l)) at 2.
+    apply list2nmem_arrayN_app.
+    apply list2nmem_array.
+    apply firstn_length_l; omega.
+  - rewrite firstn_oob by omega.
+    rewrite skipn_oob by omega.
+    eapply pimpl_apply.
+    cancel.
+    apply list2nmem_array.
 Qed.
 
 Lemma list2nmem_arrayN_xyz : forall A (def:A) data F off (l:list A),

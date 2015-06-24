@@ -91,6 +91,14 @@ Module FASTBYTEFILE.
     omega.
   Qed.
 
+  Lemma block_items_ok : block_items items_per_valu = valubytes.
+  Proof.
+    unfold block_items.
+    unfold items_per_valu.
+    rewrite valubytes_is.
+    reflexivity.
+  Qed.
+
   Definition hidden (P : Prop) : Prop := P.
   Opaque hidden.
 
@@ -590,12 +598,18 @@ Hint Resolve length_grow_oneblock_ok.
       let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
       If (bool_dec ok true) {
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
-           fsxp inum #oldlen (@natToWord ((newlen-#oldlen)*8) 0) mscs;
+           fsxp inum #oldlen (@natToWord ((roundup newlen valubytes-#oldlen)*8) 0) mscs;
+         mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
+                                (INODE.Build_iattr ($ newlen)
+                                                   (INODE.IMTime oldattr)
+                                                   (INODE.IType oldattr)) mscs;
         rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
       }
     } else {
+      (* TODO: this case is actually problematic,
+         since the size of the new file is not newlen *)
       rx ^(mscs, true)
     }.
 
@@ -885,7 +899,7 @@ Hint Resolve length_grow_oneblock_ok.
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
-     time step. (* 25s *)
+     time step. (* 30s *)
      step.
      time step. (* 10s *)
 
@@ -902,7 +916,7 @@ Hint Resolve length_grow_oneblock_ok.
      apply roundup_mono.
      apply Nat.lt_le_incl.
      unfold filelen.
-     admit. (* need to translate < % word *)
+     apply lt_word_lt_nat; auto.
      unfold block_items.
      unfold items_per_valu.
      rewrite valubytes_is.
@@ -913,6 +927,76 @@ Hint Resolve length_grow_oneblock_ok.
      step.
 
      time step. (* 80s *)
+     fold (filelen f) in *.
+     apply firstn_length_l_iff in H5.
+     instantiate (Fx0 := arrayN 0 (firstn (filelen f) allbytes)).
+     instantiate (olddata0 := skipn (filelen f) (allbytes ++ a7)).
+     replace (firstn (filelen f) allbytes) with
+      (firstn (filelen f) (allbytes ++ a7)) at 1.
+     apply list2nmem_arrayN_firstn_skipn.
+     apply firstn_app_l; omega.
+     reflexivity.
+     unfold BFileRec.hidden.
+     fold byte in *.
+     fold (filelen f).
+     assert (Hlen := Rec.array_of_word_length
+      byte_type (roundup newlen valubytes - filelen f) ($ 0)).
+     simpl in Hlen.
+     fold byte in Hlen.
+     rewrite Hlen.
+     rewrite skipn_length.
+     rewrite app_length.
+     fold byte in *.
+     replace (length a7).
+     unfold alloc_items.
+     rewrite block_items_ok.
+     replace (length allbytes).
+     fold (filelen f).
+     fold (roundup (filelen f) valubytes).
+     assert (newlen <= roundup newlen valubytes).
+     apply roundup_ge.
+     rewrite valubytes_is.
+     omega.
+     assert (filelen f < newlen).
+     apply lt_word_lt_nat; auto.
+     assert (roundup (filelen f) valubytes <= roundup newlen valubytes).
+     apply roundup_mono; omega.
+     omega.
+     rewrite app_length.
+     (* XXX: lots of repetition *)
+     fold byte in *.
+     replace (length a7).
+     unfold alloc_items.
+     rewrite block_items_ok.
+     replace (length allbytes).
+     fold (filelen f).
+     fold (roundup (filelen f) valubytes).
+     assert (newlen <= roundup newlen valubytes).
+     apply roundup_ge.
+     rewrite valubytes_is.
+     now omega.
+     assert (filelen f < newlen).
+     apply lt_word_lt_nat; auto.
+     assert (roundup (filelen f) valubytes <= roundup newlen valubytes).
+     apply roundup_mono; omega.
+     omega.
+     fold (filelen f).
+     assert (filelen f < newlen).
+     apply lt_word_lt_nat; auto.
+     assert (newlen <= roundup newlen valubytes).
+     apply roundup_ge.
+     rewrite valubytes_is; omega.
+     omega.
+
+     step.
+     time step. (* 15s *)
+     apply pimpl_or_r; right.
+     cancel.
+     fold (filelen f) in *.
+     rewrite wordToNat_natToWord_idempotent'; auto.
+     exists (firstn (filelen f) allbytes ++
+      repeat $0 (roundup newlen valubytes - filelen f)).
+     split; [split|split].
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
@@ -926,23 +1010,22 @@ Hint Resolve length_grow_oneblock_ok.
   and [overwrite_append]. *)
   Definition write_bytes T fsxp inum (off : nat) len (data : bytes len) mscs rx : prog T :=
     let newlen := off + len in
-    let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
-    let curlen := oldattr.(INODE.ISize) in
-    If (wlt_dec curlen ($ newlen)) {
-         let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
-         If (bool_dec ok true) {
-           (* zero the hole (if there is one) *)
-           let^ (mscs) <- update_bytes fsxp inum
-             #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
-           (* write the new bytes *)
-           let^ (mscs) <- update_bytes fsxp inum off data mscs;
-           rx ^(mscs, ok)
-        } else {
-           rx ^(mscs, false)
-        }
+    let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode)
+      inum mscs;
+    let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
+    If (bool_dec ok true) {
+      let curlen := oldattr.(INODE.ISize) in
+      mscs <- IfRx irx (wlt_dec curlen ($ off)) {
+        let^ (mscs) <- update_bytes fsxp inum
+          #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
+        irx mscs
+      } else {
+        irx mscs
+      };
+      let^ (mscs) <- update_bytes fsxp inum off data mscs;
+      rx ^(mscs, true)
     } else {
-        let^ (mscs) <- update_bytes fsxp inum off data mscs;
-        rx ^(mscs, true)
+      rx ^(mscs, false)
     }.
 
   (** Case (2) of [write_bytes] above, where the file must be grown.
