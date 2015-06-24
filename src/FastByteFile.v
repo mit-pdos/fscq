@@ -923,15 +923,25 @@ Hint Resolve length_grow_oneblock_ok.
      fold byte.
      replace (length allbytes).
      fold (roundup (filelen f) valubytes).
-     replace (block_items items_per_valu) with valubytes.
+     rewrite block_items_ok.
      apply roundup_mono.
      apply Nat.lt_le_incl.
      unfold filelen.
      apply lt_word_lt_nat; auto.
-     unfold block_items.
-     unfold items_per_valu.
-     rewrite valubytes_is.
-     reflexivity.
+
+     assert (filelen f < newlen) as Hnewlen.
+     apply lt_word_lt_nat; auto.
+     assert (Hflenround := roundup_valu_ge (filelen f)).
+     assert (Hnewlenround := roundup_valu_ge newlen).
+     assert (roundup (filelen f) valubytes <= roundup newlen valubytes) as
+      Hnewlen_round.
+     apply roundup_mono; omega.
+     assert (filelen f <= length allbytes) as Hflen_all.
+     replace (length allbytes).
+     apply roundup_valu_ge.
+     assert (Init.Nat.min (filelen f) (length allbytes) =
+      filelen f) as Hlen_all_min.
+     apply Nat.min_l; auto.
 
      step.
      time step. (* 60s *)
@@ -953,43 +963,22 @@ Hint Resolve length_grow_oneblock_ok.
      assert (Hlen := Rec.array_of_word_length
       byte_type (roundup newlen valubytes - filelen f) ($ 0)).
      simpl in Hlen.
-     fold byte in Hlen.
-     rewrite Hlen.
+     rewrite Hlen; clear Hlen.
+     fold byte in *.
+     fold (filelen f) in *.
+     assert (length (allbytes ++ a7) = roundup newlen valubytes)
+      as Hallbytes'len.
+     rewrite app_length.
+     replace (length a7).
+     unfold alloc_items.
+     rewrite block_items_ok.
+     replace (length allbytes).
+     fold (roundup (filelen f) valubytes).
+     omega.
      rewrite skipn_length.
-     rewrite app_length.
-     fold byte in *.
-     replace (length a7).
-     unfold alloc_items.
-     rewrite block_items_ok.
-     replace (length allbytes).
-     fold (filelen f).
-     fold (roundup (filelen f) valubytes).
-     assert (Hnewlen := roundup_valu_ge newlen).
-     assert (filelen f < newlen) by (apply lt_word_lt_nat; auto).
-     assert (roundup (filelen f) valubytes <= roundup newlen valubytes).
-     apply roundup_mono; omega.
      omega.
-     rewrite app_length.
-     (* XXX: lots of repetition *)
-     fold byte in *.
-     replace (length a7).
-     unfold alloc_items.
-     rewrite block_items_ok.
-     replace (length allbytes).
-     fold (filelen f).
-     fold (roundup (filelen f) valubytes).
-     assert (newlen <= roundup newlen valubytes).
-     apply roundup_valu_ge.
-     assert (filelen f < newlen).
-     apply lt_word_lt_nat; auto.
-     assert (roundup (filelen f) valubytes <= roundup newlen valubytes).
-     apply roundup_mono; omega.
      omega.
      fold (filelen f).
-     assert (filelen f < newlen).
-     apply lt_word_lt_nat; auto.
-     assert (newlen <= roundup newlen valubytes).
-     apply roundup_valu_ge.
      omega.
 
      step.
@@ -1005,59 +994,35 @@ Hint Resolve length_grow_oneblock_ok.
      apply list2nmem_array_eq in H24.
      all: swap 1 2.
      apply arrayN_combine.
-     rewrite firstn_length_l.
+     rewrite firstn_length_l by auto.
      reflexivity.
-     replace (length allbytes).
-     apply roundup_valu_ge.
      rewrite Rec.of_word_zero_list in H24.
-     replace (@Rec.of_word byte_type $0) with (natToWord 8 0) in H24.
+     replace (@Rec.of_word byte_type $0) with
+      (natToWord 8 0) in H24 by reflexivity.
      simpl in H24.
      fold byte in *.
      rewrite <- H24.
      (* we have array_item_file f' ilist', and array_item_file doesn't
         care about modified BFAttr *)
      assumption.
-     reflexivity.
      apply wordToNat_natToWord_idempotent'.
      rewrite app_length.
-     rewrite firstn_length_l.
+     rewrite firstn_length_l by auto.
      rewrite repeat_length.
      eapply goodSize_trans; try eassumption.
-     admit. (* need to assert a few things so omega can solve this *)
-     replace (length allbytes).
-     fold (roundup (filelen f) valubytes).
-     apply roundup_valu_ge.
-     (* TODO: assert the inequalities that are needed repeatedly *)
+     (* need to fix assumption to be goodSize (roundup newlen) *)
+     admit.
      replace (roundup newlen valubytes - filelen f) with
-      (newlen - filelen f + (roundup newlen valubytes - newlen)).
+      (newlen - filelen f + (roundup newlen valubytes - newlen)) by omega.
      rewrite <- repeat_app.
      rewrite app_assoc.
-     rewrite firstn_app_l.
-     rewrite firstn_oob.
+     rewrite firstn_app_l by (autorewrite with lengths; omega).
+     rewrite firstn_oob by (autorewrite with lengths; omega).
      reflexivity.
-     autorewrite with lengths.
-     rewrite Nat.min_l.
-     admit.
-     replace (length allbytes).
-     apply roundup_valu_ge.
-     autorewrite with lengths.
-     rewrite Nat.min_l.
-     admit.
-     replace (length allbytes).
-     apply roundup_valu_ge.
-     admit.
-     split.
-     autorewrite with lengths.
-     rewrite Nat.min_l.
-     admit.
-     replace (length allbytes).
-     apply roundup_valu_ge.
      fold (roundup newlen valubytes).
-     autorewrite with lengths.
-     rewrite Nat.min_l.
-     admit.
-     replace (length allbytes).
-     apply roundup_valu_ge.
+     split;
+       autorewrite with lengths;
+       omega.
 
      step.
      step.
