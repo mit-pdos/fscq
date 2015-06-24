@@ -1295,6 +1295,29 @@ Proof.
   apply functional_extensionality; intros; congruence.
 Qed.
 
+Theorem sep_star_precise_domain : forall (p q : @pred AT AEQ V),
+  precise_domain p -> precise_domain q ->
+  precise_domain (p * q)%pred.
+Proof.
+  unfold precise_domain; unfold_sep_star; unfold mem_union; intros.
+  repeat deex;
+    specialize (H _ _ H5 H6 a);
+    specialize (H0 _ _ H7 H9 a);
+    destruct (m0 a); destruct (m2 a); intuition; congruence.
+Qed.
+
+Theorem sep_star_precise : forall (p q : @pred AT AEQ V),
+  precise p -> precise q ->
+  precise (p * q)%pred.
+Proof.
+  unfold precise; unfold_sep_star; unfold mem_union; intros.
+  repeat deex.
+  specialize (H _ _ H4 H5).
+  specialize (H0 _ _ H6 H8).
+  subst.
+  eauto.
+Qed.
+
 Theorem forall_precise : forall A (a : A) (p : A -> @pred AT AEQ V),
   (forall x, precise (p x)) ->
   precise (foral x, p x).

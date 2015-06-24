@@ -2098,3 +2098,22 @@ Proof.
   eapply IHvs1; eauto.
 Qed.
 
+Theorem array_precise : forall A (vs : list A) base stride,
+  precise (array base vs stride).
+Proof.
+  induction vs; simpl; intros.
+  apply emp_precise.
+  apply sep_star_precise.
+  apply ptsto_precise.
+  eauto.
+Qed.
+
+Theorem arrayN_precise : forall A (vs : list A) base,
+  precise (arrayN base vs).
+Proof.
+  induction vs; simpl; intros.
+  apply emp_precise.
+  apply sep_star_precise.
+  apply ptsto_precise.
+  eauto.
+Qed.
