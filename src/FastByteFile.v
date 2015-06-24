@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import Prog.
 Require Import Log.
 Require Import BFile.
@@ -188,7 +189,7 @@ Module FASTBYTEFILE.
     - destruct newdata; simpl in *; try omega.
       subst.
       rewrite updN_firstn_comm.
-      rewrite listupd_progupd.
+      rewrite listupd_memupd.
       apply sep_star_comm. apply sep_star_assoc.
       eapply ptsto_upd.
       apply sep_star_assoc. apply sep_star_comm. apply sep_star_assoc.

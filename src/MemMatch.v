@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
 Require Import FunctionalExtensionality.
 
@@ -228,9 +229,9 @@ Section MEMMATCH.
     Qed.
 
     Lemma mem_ainv_mem_upd : forall a v (ap : AP2 a),
-      mem_atrans atrans (Prog.upd m1 (ainv a) v) (Prog.upd m2 a v) AP1.
+      mem_atrans atrans (Mem.upd m1 (ainv a) v) (Mem.upd m2 a v) AP1.
     Proof.
-      intros; unfold mem_atrans, Prog.upd; intro x.
+      intros; unfold mem_atrans, Mem.upd; intro x.
       destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a); auto.
       contradict n; subst.
       apply HInv; auto.

@@ -2,7 +2,7 @@ Require Import Prog.
 Require Import Word.
 Require Import Rec.
 Require Import List.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Eqdep_dec.
 Require Import Arith.
 Require Import Hoare.

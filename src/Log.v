@@ -6,7 +6,7 @@ Require Import FMapFacts.
 Require Import Classes.SetoidTactics.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Prog.
 Require Import Hoare.
 Require Import SepAuto2.

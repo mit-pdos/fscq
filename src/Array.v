@@ -1,4 +1,6 @@
-Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg.
+Require Import Mem.
+Require Import List Omega Ring Word Pred PredCrash.
+Require Import Prog Hoare SepAuto BasicProg.
 Require Import FunctionalExtensionality.
 Require Import WordAuto.
 
@@ -939,10 +941,10 @@ Hint Extern 0 (okToUnify (?a |-> _) (($0 ^+ ?a ^* $1) |-> _)) =>
 Hint Extern 0 (okToUnify (($0 ^+ ?a ^* $1) |-> _) (?a |-> _)) =>
   unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
 
-Theorem array_progupd : forall V l off (v : V) m (default : V),
+Theorem array_memupd : forall V l off (v : V) m (default : V),
   array $0 l $1 m
   -> wordToNat off < length l
-  -> array $0 (updN l (wordToNat off) v) $1 (Prog.upd m off v).
+  -> array $0 (updN l (wordToNat off) v) $1 (Mem.upd m off v).
 Proof.
   intros.
   eapply isolate_bwd with (default:=default).
@@ -1169,10 +1171,10 @@ Proof.
   rewrite length_updN; auto.
 Qed.
 
-Lemma array_app_progupd : forall V l (v : V) m (b : addr),
+Lemma array_app_memupd : forall V l (v : V) m (b : addr),
   length l <= wordToNat b
   -> array $0 l $1 m
-  -> array $0 (l ++ v :: nil) $1 (Prog.upd m $ (length l) v)%word.
+  -> array $0 (l ++ v :: nil) $1 (Mem.upd m $ (length l) v)%word.
 Proof.
   intros.
 
@@ -1193,9 +1195,9 @@ Proof.
   erewrite wordToNat_natToWord_bound; eauto.
 Qed.
 
-Lemma arrayN_app_progupd : forall V l (v : V) m,
+Lemma arrayN_app_memupd : forall V l (v : V) m,
   arrayN 0 l m
-  -> arrayN 0 (l ++ v :: nil) (Prog.upd m (length l) v).
+  -> arrayN 0 (l ++ v :: nil) (Mem.upd m (length l) v).
 Proof.
   intros.
 

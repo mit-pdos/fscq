@@ -1884,8 +1884,8 @@ Section RECBFILE.
     unfold array_item_pairs; intros.
     destruct_lift H.
     rewrite map_app; simpl.
-    rewrite listapp_progupd.
-    eapply arrayN_app_progupd with (v := v) in H as Hx.
+    rewrite listapp_memupd.
+    eapply arrayN_app_memupd with (v := v) in H as Hx.
     rewrite map_length in Hx.
     replace (length fdata) with (length blocks).
     pred_apply; cancel.

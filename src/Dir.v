@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import Prog.
 Require Import List.
 Require Import Word.
@@ -1048,7 +1049,7 @@ Module DIR.
     -> (arrayN_ex l i * i |-> v0)%pred (list2nmem l)
     -> (arrayN_ex l i * i |-> (name, (inum, ($1, (bool2isdir isdir, tt)))))%pred (list2nmem l')
     -> dlink_f v0 = true
-    -> listpred dmatch l' (Prog.upd m name (inum, isdir)).
+    -> listpred dmatch l' (Mem.upd m name (inum, isdir)).
   Proof.
     intros.
     rewrite_list2nmem_pred_sel H1; try list2nmem_bound.
@@ -1082,7 +1083,7 @@ Module DIR.
     -> Forall (fun e => dlink_f e = false) l
     -> listpred dmatch l m
     -> listpred dmatch (l ++ (updN (repeat dent0 # (items_per_valu)) 0
-           (name, (inum, ($1, (bool2isdir isdir, tt)))))) (Prog.upd m name (inum, isdir)).
+           (name, (inum, ($1, (bool2isdir isdir, tt)))))) (Mem.upd m name (inum, isdir)).
   Proof.
     intros.
     pose proof (items_per_valu_not_0' _ _ itemsz_ok).
@@ -1120,7 +1121,7 @@ Module DIR.
         \/  ([[ r = true ]] * exists dmap' DF,
              LOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ rep_macro F1 A m' bxp ixp dnum dmap' ]] *
-             [[ dmap' = Prog.upd dmap name (inum, isdir) ]] *
+             [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (DF dmap /\ notindomain name dmap) ]])
     CRASH    LOG.would_recover_old lxp F mbase

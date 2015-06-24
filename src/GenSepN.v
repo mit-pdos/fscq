@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import Prog.
 Require Import List.
 Require Import Array.
@@ -68,13 +69,13 @@ Proof.
 Qed.
 
 
-Lemma listupd_progupd: forall A l i (v : A),
+Lemma listupd_memupd: forall A l i (v : A),
   i < length l
-  -> list2nmem (updN l i v) = Prog.upd (list2nmem l) i v.
+  -> list2nmem (updN l i v) = Mem.upd (list2nmem l) i v.
 Proof.
   intros.
   apply functional_extensionality; intro.
-  unfold list2nmem, Prog.upd.
+  unfold list2nmem, Mem.upd.
   autorewrite with core.
 
   destruct (eq_nat_dec x i).
@@ -88,7 +89,7 @@ Theorem list2nmem_updN: forall A F (l: list A) i x y,
   -> (F * i |-> y)%pred (list2nmem (updN l i y)).
 Proof.
   intros.
-  rewrite listupd_progupd; auto.
+  rewrite listupd_memupd; auto.
   apply sep_star_comm.
   apply sep_star_comm in H.
   eapply ptsto_upd; eauto.
@@ -104,12 +105,12 @@ Proof.
   eauto.
 Qed.
 
-Theorem listapp_progupd: forall A l (a : A),
-  list2nmem (l ++ a :: nil) = Prog.upd (list2nmem l) (length l) a.
+Theorem listapp_memupd: forall A l (a : A),
+  list2nmem (l ++ a :: nil) = Mem.upd (list2nmem l) (length l) a.
 Proof.
   intros.
   apply functional_extensionality; intro.
-  unfold list2nmem, Prog.upd.
+  unfold list2nmem, Mem.upd.
 
   destruct (lt_dec x (length l)).
   - subst; rewrite selN_map with (default' := a).
@@ -133,7 +134,7 @@ Theorem list2nmem_app: forall A (F : @pred _ _ A) l a,
   -> (F * (length l) |-> a)%pred (list2nmem (l ++ a :: nil)).
 Proof.
   intros.
-  erewrite listapp_progupd; eauto.
+  erewrite listapp_memupd; eauto.
   apply ptsto_upd_disjoint; auto.
   unfold list2nmem, sel.
   rewrite selN_oob; auto.
@@ -270,8 +271,8 @@ Theorem list2nmem_array: forall  A (l : list A),
   arrayN 0 l (list2nmem l).
 Proof.
   induction l using rev_ind; intros; firstorder; simpl.
-  erewrite listapp_progupd; try omega.
-  eapply arrayN_app_progupd; try omega.
+  erewrite listapp_memupd; try omega.
+  eapply arrayN_app_memupd; try omega.
   eauto.
 Qed.
 

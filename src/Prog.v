@@ -7,6 +7,7 @@ Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import List.
+Require Import Mem.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -134,18 +135,9 @@ Notation "'let^' ( a , .. , b ) <- p1 ; p2" :=
   (at level 60, right associativity, a closed binder, b closed binder).
 
 
-Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.
-
-
 Notation "'valuset'" := (valu * list valu)%type.
 
 Definition valuset_list (vs : valuset) := fst vs :: snd vs.
-
-Definition mem {A : Type} {eq : DecEq A} {V: Type} := A -> option V.
-Definition upd {A : Type} {eq : DecEq A} {V: Type} (m : @mem A eq V) (a : A) (v : V) : @mem A eq V :=
-  fun a' => if eq a' a then Some v else m a'.
-Definition upd_none {A : Type} {eq : DecEq A} {V : Type} (m : @mem A eq V) (a : A) : @mem A eq V :=
-  fun a' => if eq a' a then None else m a'.
 
 
 Inductive outcome (T: Type) :=
@@ -210,48 +202,6 @@ Inductive exec_recover (TF TR: Type)
   -> exec_recover m p1 p2 (RRecovered TF m'' v).
 
 Hint Constructors exec_recover.
-
-
-Section GenMem.
-
-Variable V : Type.
-Variable A : Type.
-Variable aeq : DecEq A.
-
-Theorem upd_eq : forall m (a : A) (v:V) a',
-  a' = a
-  -> @upd A aeq V m a v a' = Some v.
-Proof.
-  intros; subst; unfold upd.
-  destruct (aeq a a); tauto.
-Qed.
-
-Theorem upd_ne : forall m (a : A) (v:V) a',
-  a' <> a
-  -> @upd A aeq V m a v a' = m a'.
-Proof.
-  intros; subst; unfold upd.
-  destruct (aeq a' a); tauto.
-Qed.
-
-Theorem upd_repeat: forall m (a : A) (v v':V),
-  upd (@upd A aeq V m a v') a v = upd m a v.
-Proof.
-  intros; apply functional_extensionality; intros.
-  case_eq (aeq a x); intros; subst.
-  repeat rewrite upd_eq; auto.
-  repeat rewrite upd_ne; auto.
-Qed.
-
-Theorem upd_comm: forall m (a0 : A) (v0:V) a1 v1, a0 <> a1
-  -> upd (@upd A aeq V m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
-Proof.
-  intros; apply functional_extensionality; intros.
-  case_eq (aeq a1 x); case_eq (aeq a0 x); intros; subst; try congruence;
-  repeat ( ( rewrite upd_ne by auto ) || ( rewrite upd_eq by auto ) ); auto.
-Qed.
-
-End GenMem.
 
 
 Module Addr_as_OT <: UsualOrderedType.
