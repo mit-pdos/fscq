@@ -2346,7 +2346,7 @@ Module DIRTREE.
   Qed.
 
 
-  (* XXX rewrite using the tree induction principle *)
+  (* Rewrite using the tree induction principle doesn't really work out *)
   Lemma update_update_subtree_twice: forall prefix name subtree' subtree d dnum tree_elem,
      tree_names_distinct 
        (update_subtree (prefix ++ [name]) subtree'
@@ -2393,19 +2393,6 @@ Module DIRTREE.
       eauto.
   Qed.
 
-  (* Lemma update_update_subtree_twice': forall prefix name subtree' subtree d dnum tree_elem,
-     tree_names_distinct 
-       (update_subtree (prefix ++ [name]) subtree'
-          (update_subtree prefix
-             (add_to_dir name subtree (TreeDir dnum tree_elem)) d)) ->
-   update_subtree (prefix ++ [name]) subtree'
-       (update_subtree prefix (add_to_dir name subtree (TreeDir dnum tree_elem)) d) =
-        update_subtree prefix (add_to_dir name subtree' (TreeDir dnum tree_elem)) d.
-  Proof.
-    induction d using dirtree_ind2; simpl; intros.
-    - admit.
-    - 
-  *)
 
   Theorem update_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree subtree' F Ftop m fsxp,
     (F * rep fsxp Ftop (update_subtree (prefix++[name]) subtree' (tree_graft dnum tree_elem prefix name subtree tree)))%pred m -> 
