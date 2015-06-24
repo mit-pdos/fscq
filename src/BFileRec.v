@@ -2458,7 +2458,8 @@ Section RECBFILE.
       (* this is a weak postcondition (in reality newitems consists of repeated zeros
         due to bftrunc); this allows bf_expand to eventually leave junk data with
         the same spec *)
-      [[ length newitems = alloc_items count_items - length ilist ]] )
+      [[ length newitems = alloc_items count_items - length ilist ]] *
+      [[ hidden (BFILE.BFAttr f' = BFILE.BFAttr f) ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_expand fsxp inum count_items mscs.
   Proof.
@@ -2549,6 +2550,8 @@ Section RECBFILE.
     apply array_items_block_sized.
     (* have rep function, but only in its pieces *)
     exists vs_nested; auto.
+
+    reflexivity.
   Qed.
 
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
