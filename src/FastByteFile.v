@@ -99,6 +99,16 @@ Module FASTBYTEFILE.
     reflexivity.
   Qed.
 
+  (* roundup_ge specialized to valubytes *)
+  Lemma roundup_valu_ge : forall n, n <= roundup n valubytes.
+  Proof.
+    intros.
+    apply roundup_ge.
+    rewrite valubytes_is.
+    (* produces a nicer proof term than omega *)
+    apply gt_Sn_O.
+  Qed.
+
   Definition hidden (P : Prop) : Prop := P.
   Opaque hidden.
 
@@ -953,12 +963,8 @@ Hint Resolve length_grow_oneblock_ok.
      replace (length allbytes).
      fold (filelen f).
      fold (roundup (filelen f) valubytes).
-     assert (newlen <= roundup newlen valubytes).
-     apply roundup_ge.
-     rewrite valubytes_is.
-     omega.
-     assert (filelen f < newlen).
-     apply lt_word_lt_nat; auto.
+     assert (Hnewlen := roundup_valu_ge newlen).
+     assert (filelen f < newlen) by (apply lt_word_lt_nat; auto).
      assert (roundup (filelen f) valubytes <= roundup newlen valubytes).
      apply roundup_mono; omega.
      omega.
@@ -972,9 +978,7 @@ Hint Resolve length_grow_oneblock_ok.
      fold (filelen f).
      fold (roundup (filelen f) valubytes).
      assert (newlen <= roundup newlen valubytes).
-     apply roundup_ge.
-     rewrite valubytes_is.
-     now omega.
+     apply roundup_valu_ge.
      assert (filelen f < newlen).
      apply lt_word_lt_nat; auto.
      assert (roundup (filelen f) valubytes <= roundup newlen valubytes).
@@ -984,8 +988,7 @@ Hint Resolve length_grow_oneblock_ok.
      assert (filelen f < newlen).
      apply lt_word_lt_nat; auto.
      assert (newlen <= roundup newlen valubytes).
-     apply roundup_ge.
-     rewrite valubytes_is; omega.
+     apply roundup_valu_ge.
      omega.
 
      step.
