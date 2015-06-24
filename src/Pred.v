@@ -1252,6 +1252,24 @@ Proof.
   congruence.
 Qed.
 
+Theorem septract_pimpl_l :
+  forall (p p' q : @pred AT AEQ V),
+  (p =p=> p') ->
+  (p --* q =p=> p' --* q).
+Proof.
+  unfold septract; unfold pimpl; intros; repeat deex.
+  eauto.
+Qed.
+
+Theorem septract_pimpl_r :
+  forall (p q q' : @pred AT AEQ V),
+  (q =p=> q') ->
+  (p --* q =p=> p --* q').
+Proof.
+  unfold septract; unfold pimpl; intros; repeat deex.
+  eauto.
+Qed.
+
 Theorem precise_to_precise_domain : forall (p : @pred AT AEQ V),
   precise p -> precise_domain p.
 Proof.
