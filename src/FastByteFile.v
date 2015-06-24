@@ -1000,6 +1000,79 @@ Hint Resolve length_grow_oneblock_ok.
      exists (firstn (filelen f) allbytes ++
       repeat $0 (roundup newlen valubytes - filelen f)).
      split; [split|split].
+     eapply pimpl_apply in H24.
+     apply list2nmem_array_eq in H24.
+     all: swap 1 2.
+     apply arrayN_combine.
+     rewrite firstn_length_l.
+     reflexivity.
+     replace (length allbytes).
+     apply roundup_valu_ge.
+     rewrite Rec.of_word_zero_list in H24.
+     replace (@Rec.of_word byte_type $0) with (natToWord 8 0) in H24.
+     simpl in H24.
+     fold byte in *.
+     rewrite <- H24.
+     (* we have array_item_file f' ilist', and array_item_file doesn't
+        care about modified BFAttr *)
+     assumption.
+     reflexivity.
+     apply wordToNat_natToWord_idempotent'.
+     rewrite app_length.
+     rewrite firstn_length_l.
+     rewrite repeat_length.
+     eapply goodSize_trans; try eassumption.
+     admit. (* need to assert a few things so omega can solve this *)
+     replace (length allbytes).
+     fold (roundup (filelen f) valubytes).
+     apply roundup_valu_ge.
+     (* TODO: assert the inequalities that are needed repeatedly *)
+     replace (roundup newlen valubytes - filelen f) with
+      (newlen - filelen f + (roundup newlen valubytes - newlen)).
+     rewrite <- repeat_app.
+     rewrite app_assoc.
+     rewrite firstn_app_l.
+     rewrite firstn_oob.
+     reflexivity.
+     autorewrite with lengths.
+     rewrite Nat.min_l.
+     admit.
+     replace (length allbytes).
+     apply roundup_valu_ge.
+     autorewrite with lengths.
+     rewrite Nat.min_l.
+     admit.
+     replace (length allbytes).
+     apply roundup_valu_ge.
+     admit.
+     split.
+     autorewrite with lengths.
+     rewrite Nat.min_l.
+     admit.
+     replace (length allbytes).
+     apply roundup_valu_ge.
+     fold (roundup newlen valubytes).
+     autorewrite with lengths.
+     rewrite Nat.min_l.
+     admit.
+     replace (length allbytes).
+     apply roundup_valu_ge.
+
+     step.
+     step.
+     apply pimpl_or_r; right.
+     cancel.
+     (* this isn't true; we can't promise the resulting ISize is newlen
+        if grow_file does nothing when the file is long enough *)
+     admit.
+     exists allbytes.
+     (* grow_file did nothing *)
+     admit.
+
+   Grab Existential Variables.
+   all: try exact nil.
+   all: try exact emp.
+   all: try exact BFILE.bfile0.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
