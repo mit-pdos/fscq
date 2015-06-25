@@ -806,7 +806,7 @@ Proof.
   eapply septract_sep_star.
   2: unfold septract; eexists; intuition.
   4: pred_apply' H; cancel.
-  apply precise_to_precise_domain; apply arrayN_precise.
+  apply strictly_exact_to_exact_domain; apply arrayN_strictly_exact.
   apply list2nmem_off_disjoint; intuition.
   apply list2nmem_off_arrayN.
 Qed.

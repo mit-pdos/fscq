@@ -85,11 +85,18 @@ Definition mem_except (m: @mem AT AEQ V) (a: AT) : @mem AT AEQ V :=
 
 Definition pred_apply (m : @mem AT AEQ V) (p : pred) := p m.
 
-Definition precise (p : pred) : Prop :=
+Definition strictly_exact (p : pred) : Prop :=
   forall m1 m2, p m1 -> p m2 -> m1 = m2.
 
-Definition precise_domain (p : pred) : Prop :=
+Definition exact_domain (p : pred) : Prop :=
   forall m1 m2, p m1 -> p m2 -> (forall a, m1 a = None <-> m2 a = None).
+
+Definition precise (p : pred) : Prop :=
+  forall m1 m1' m2 m2',
+  mem_union m1 m1' = mem_union m2 m2' ->
+  mem_disjoint m1 m1' ->
+  mem_disjoint m2 m2' ->
+  p m1 -> p m2 -> m1 = m2.
 
 End GenPredDef.
 
@@ -104,8 +111,9 @@ Arguments indomain {AT AEQ V} _ _.
 Arguments notindomain {AT AEQ V} _ _.
 Arguments diskIs {AT AEQ V} _ _.
 Arguments pred_apply {AT AEQ V} _ _.
+Arguments strictly_exact {AT AEQ V} _.
+Arguments exact_domain {AT AEQ V} _.
 Arguments precise {AT AEQ V} _.
-Arguments precise_domain {AT AEQ V} _.
 
 Hint Unfold pimpl.
 Hint Unfold piff.
@@ -1257,8 +1265,8 @@ Proof.
   exists (diskIs (mem_except m2 a')). firstorder.
 Qed.
 
-Theorem precise_domain_disjoint_union : forall (p : @pred AT AEQ V) m1 m2 m1' m2',
-  precise_domain p ->
+Theorem exact_domain_disjoint_union : forall (p : @pred AT AEQ V) m1 m2 m1' m2',
+  exact_domain p ->
   mem_union m1 m2 = mem_union m1' m2' ->
   mem_disjoint m1 m2 ->
   mem_disjoint m1' m2' ->
@@ -1266,7 +1274,7 @@ Theorem precise_domain_disjoint_union : forall (p : @pred AT AEQ V) m1 m2 m1' m2
   p m1' ->
   m1 = m1' /\ m2 = m2'.
 Proof.
-  unfold precise_domain; split; apply functional_extensionality; intros;
+  unfold exact_domain; split; apply functional_extensionality; intros;
     specialize (H m1 m1' H3 H4 x);
     unfold mem_union in H0;
     apply equal_f with (x) in H0.
@@ -1281,13 +1289,13 @@ Qed.
 
 Theorem septract_sep_star :
   forall (p q : @pred AT AEQ V),
-  precise_domain p ->
+  exact_domain p ->
   (p --* (p * q) =p=> q)%pred.
 Proof.
   unfold septract; unfold_sep_star; unfold pimpl; intros; repeat deex.
   rewrite mem_union_comm in H3 by eauto.
   apply mem_disjoint_comm in H1.
-  edestruct precise_domain_disjoint_union; try eassumption.
+  edestruct exact_domain_disjoint_union; try eassumption.
   congruence.
 Qed.
 
@@ -1309,18 +1317,24 @@ Proof.
   eauto.
 Qed.
 
-Theorem precise_to_precise_domain : forall (p : @pred AT AEQ V),
-  precise p -> precise_domain p.
+Theorem strictly_exact_to_exact_domain : forall (p : @pred AT AEQ V),
+  strictly_exact p -> exact_domain p.
 Proof.
-  unfold precise, precise_domain; intros.
+  unfold strictly_exact, exact_domain; intros.
   specialize (H m1 m2 H0 H1).
   subst; intuition.
 Qed.
 
-Theorem ptsto_precise : forall a v,
-  @precise AT AEQ V (a |-> v)%pred.
+Theorem strictly_exact_to_precise : forall (p : @pred AT AEQ V),
+  strictly_exact p -> precise p.
 Proof.
-  unfold ptsto, precise; intros.
+  unfold strictly_exact, precise; eauto.
+Qed.
+
+Theorem ptsto_strictly_exact : forall a v,
+  @strictly_exact AT AEQ V (a |-> v)%pred.
+Proof.
+  unfold ptsto, strictly_exact; intros.
   apply functional_extensionality; intros; intuition.
   destruct (AEQ a x); subst; try congruence.
   rewrite H2 by eauto.
@@ -1328,28 +1342,28 @@ Proof.
   eauto.
 Qed.
 
-Theorem emp_precise : precise (@emp AT AEQ V).
+Theorem emp_strictly_exact : strictly_exact (@emp AT AEQ V).
 Proof.
-  unfold emp, precise; intros.
+  unfold emp, strictly_exact; intros.
   apply functional_extensionality; intros; congruence.
 Qed.
 
-Theorem sep_star_precise_domain : forall (p q : @pred AT AEQ V),
-  precise_domain p -> precise_domain q ->
-  precise_domain (p * q)%pred.
+Theorem sep_star_exact_domain : forall (p q : @pred AT AEQ V),
+  exact_domain p -> exact_domain q ->
+  exact_domain (p * q)%pred.
 Proof.
-  unfold precise_domain; unfold_sep_star; unfold mem_union; intros.
+  unfold exact_domain; unfold_sep_star; unfold mem_union; intros.
   repeat deex;
     specialize (H _ _ H5 H6 a);
     specialize (H0 _ _ H7 H9 a);
     destruct (m0 a); destruct (m2 a); intuition; congruence.
 Qed.
 
-Theorem sep_star_precise : forall (p q : @pred AT AEQ V),
-  precise p -> precise q ->
-  precise (p * q)%pred.
+Theorem sep_star_strictly_exact : forall (p q : @pred AT AEQ V),
+  strictly_exact p -> strictly_exact q ->
+  strictly_exact (p * q)%pred.
 Proof.
-  unfold precise; unfold_sep_star; unfold mem_union; intros.
+  unfold strictly_exact; unfold_sep_star; unfold mem_union; intros.
   repeat deex.
   specialize (H _ _ H4 H5).
   specialize (H0 _ _ H6 H8).
@@ -1357,11 +1371,11 @@ Proof.
   eauto.
 Qed.
 
-Theorem forall_precise : forall A (a : A) (p : A -> @pred AT AEQ V),
-  (forall x, precise (p x)) ->
-  precise (foral x, p x).
+Theorem forall_strictly_exact : forall A (a : A) (p : A -> @pred AT AEQ V),
+  (forall x, strictly_exact (p x)) ->
+  strictly_exact (foral x, p x).
 Proof.
-  unfold foral_, precise; intros.
+  unfold foral_, strictly_exact; intros.
   specialize (H a).
   eauto.
 Qed.
