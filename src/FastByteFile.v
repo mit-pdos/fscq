@@ -1096,7 +1096,7 @@ Hint Resolve length_grow_oneblock_ok.
 
   This is an alias for [write_bytes] since [write_bytes] already handles
   all the cases, but has its own idiosyncratic spec. *)
-  Definition overwrite_append T fsxp inum (off:nat) len (data : bytes len) mscs rx : prog T :=
+  Definition append T fsxp inum (off:nat) len (data : bytes len) mscs rx : prog T :=
     write_bytes fsxp inum off data mscs rx.
 
   Lemma off_in_bounds_ext:
@@ -1255,16 +1255,16 @@ Hint Resolve length_grow_oneblock_ok.
 
   Hint Extern 1 ({{_}} progseq (write_bytes _ _ _ _ _) _) => apply write_bytes_ok : prog.
 
-  Theorem overwrite_append_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
-    {< m mbase F Fm Fi A flist f bytes newdata wend,
+  Theorem append_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
+    {< m mbase F Fm Fi A flist f bytes newdata,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           (* write goes from off to wend in new file *)
-           [[ wend = off + len ]] *
-           [[ Fi%pred (list2nmem (firstn off bytes)) ]] *
-           [[ goodSize addrlen wend ]]
+           [[ Fi%pred (list2nmem bytes) ]] *
+           [[ goodSize addrlen (off + len) ]] *
+           (* makes this an append *)
+           [[ filelen f <= off ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -1276,9 +1276,9 @@ Hint Resolve length_grow_oneblock_ok.
            [[ (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
            [[ zeros = arrayN len (repeat $0 (off - len)) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-      >} overwrite_append fsxp inum off newbytes mscs.
+      >} append fsxp inum off newbytes mscs.
   Proof.
-    unfold overwrite_append, write_bytes.
+    unfold append, write_bytes.
     time step. (* 50s *)
     inversion H7 as [allbytes].
     inversion H0; clear H0.
@@ -1319,6 +1319,6 @@ Hint Resolve length_grow_oneblock_ok.
     step.
   Admitted.
 
-  Hint Extern 1 ({{_}} progseq (overwrite_append _ _ _ _ _) _) => apply overwrite_append_ok : prog.
+  Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
 
 End FASTBYTEFILE.
