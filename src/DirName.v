@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import Word.
 Require Import Ascii.
 Require Import String.
@@ -679,7 +680,7 @@ Module SDIR.
         \/  ([[ r = true ]] * exists dsmap' DF,
              LOG.rep lxp F (ActiveTxn mbase m') mscs *
              [[ rep_macro F1 A m' bxp ixp dnum dsmap' ]] *
-             [[ dsmap' = Prog.upd dsmap name (inum, isdir) ]] *
+             [[ dsmap' = Mem.upd dsmap name (inum, isdir) ]] *
              [[ (DF * name |-> (inum, isdir))%pred dsmap' ]] *
              [[ (DF dsmap /\ notindomain name dsmap) ]])
     CRASH    LOG.would_recover_old lxp F mbase

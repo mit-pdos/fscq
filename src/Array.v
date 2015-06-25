@@ -1,4 +1,6 @@
-Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg.
+Require Import Mem.
+Require Import List Omega Ring Word Pred PredCrash.
+Require Import Prog Hoare SepAuto BasicProg.
 Require Import FunctionalExtensionality.
 Require Import WordAuto.
 
@@ -546,6 +548,16 @@ Proof.
   intros; rewrite seq_right; f_equal.
 Qed.
 
+Lemma selN_map_some_range : forall A (l : list A) idx a,
+  selN (map (@Some _) l) idx None = Some a ->
+  idx < length l.
+Proof.
+  induction l; simpl; intros.
+  - congruence.
+  - destruct idx; try omega.
+    apply IHl in H; omega.
+Qed.
+
 Lemma map_updN : forall T U (v : T) (f : T -> U) vs i,
   map f (updN vs i v) = updN (map f vs) i (f v).
 Proof.
@@ -939,10 +951,10 @@ Hint Extern 0 (okToUnify (?a |-> _) (($0 ^+ ?a ^* $1) |-> _)) =>
 Hint Extern 0 (okToUnify (($0 ^+ ?a ^* $1) |-> _) (?a |-> _)) =>
   unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
 
-Theorem array_progupd : forall V l off (v : V) m (default : V),
+Theorem array_memupd : forall V l off (v : V) m (default : V),
   array $0 l $1 m
   -> wordToNat off < length l
-  -> array $0 (updN l (wordToNat off) v) $1 (Prog.upd m off v).
+  -> array $0 (updN l (wordToNat off) v) $1 (Mem.upd m off v).
 Proof.
   intros.
   eapply isolate_bwd with (default:=default).
@@ -1169,10 +1181,10 @@ Proof.
   rewrite length_updN; auto.
 Qed.
 
-Lemma array_app_progupd : forall V l (v : V) m (b : addr),
+Lemma array_app_memupd : forall V l (v : V) m (b : addr),
   length l <= wordToNat b
   -> array $0 l $1 m
-  -> array $0 (l ++ v :: nil) $1 (Prog.upd m $ (length l) v)%word.
+  -> array $0 (l ++ v :: nil) $1 (Mem.upd m $ (length l) v)%word.
 Proof.
   intros.
 
@@ -1193,9 +1205,9 @@ Proof.
   erewrite wordToNat_natToWord_bound; eauto.
 Qed.
 
-Lemma arrayN_app_progupd : forall V l (v : V) m,
+Lemma arrayN_app_memupd : forall V l (v : V) m,
   arrayN 0 l m
-  -> arrayN 0 (l ++ v :: nil) (Prog.upd m (length l) v).
+  -> arrayN 0 (l ++ v :: nil) (Mem.upd m (length l) v).
 Proof.
   intros.
 
@@ -2096,3 +2108,22 @@ Proof.
   eapply IHvs1; eauto.
 Qed.
 
+Theorem array_strictly_exact : forall A (vs : list A) base stride,
+  strictly_exact (array base vs stride).
+Proof.
+  induction vs; simpl; intros.
+  apply emp_strictly_exact.
+  apply sep_star_strictly_exact.
+  apply ptsto_strictly_exact.
+  eauto.
+Qed.
+
+Theorem arrayN_strictly_exact : forall A (vs : list A) base,
+  strictly_exact (arrayN base vs).
+Proof.
+  induction vs; simpl; intros.
+  apply emp_strictly_exact.
+  apply sep_star_strictly_exact.
+  apply ptsto_strictly_exact.
+  eauto.
+Qed.

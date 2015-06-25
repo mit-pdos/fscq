@@ -1,6 +1,6 @@
 Require Import Hoare.
 Require Import Prog.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import SepAuto.
 
 Lemma corr3_from_corr2_failed:

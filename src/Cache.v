@@ -1,10 +1,11 @@
+Require Import Mem.
 Require Import List.
 Require Import Prog.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
 Require Import Array.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
@@ -323,7 +324,7 @@ Module BUFCACHE.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
-    instantiate (d' := Prog.upd d a (v2_cur, [])); unfold stars; simpl.
+    instantiate (d' := Mem.upd d a (v2_cur, [])); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     apply H5 in H; deex.
@@ -364,7 +365,7 @@ Module BUFCACHE.
     case_eq (Map.find a (CSMap cs)); intros.
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
-    instantiate (d' := Prog.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     rewrite map_remove_cardinal. eauto. eauto.
@@ -372,13 +373,13 @@ Module BUFCACHE.
     apply MapFacts.remove_mapsto_iff in H0. intuition.
     rewrite upd_ne by eauto. eauto.
 
-    assert ((a |-> (v0_cur, v0_old) * F)%pred (Prog.upd d a (v0_cur, v0_old))).
+    assert ((a |-> (v0_cur, v0_old) * F)%pred (Mem.upd d a (v0_cur, v0_old))).
     eapply ptsto_upd. pred_apply; cancel.
     pred_apply; cancel.
 
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
-    instantiate (d' := Prog.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
 
@@ -386,12 +387,12 @@ Module BUFCACHE.
     apply MapProperties.F.find_mapsto_iff in H0. congruence.
     rewrite upd_ne by eauto. eauto.
 
-    assert ((a |-> (v0_cur, v0_old) * F)%pred (Prog.upd d a (v0_cur, v0_old))).
+    assert ((a |-> (v0_cur, v0_old) * F)%pred (Mem.upd d a (v0_cur, v0_old))).
     eapply ptsto_upd. pred_apply; cancel.
     pred_apply; cancel.
 
     pimpl_crash. norm.
-    instantiate (d' := Prog.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
 
     intuition.
@@ -399,7 +400,7 @@ Module BUFCACHE.
     all: simpl in *; eauto; try omega.
     apply MapProperties.F.empty_mapsto_iff in H; exfalso; eauto.
 
-    assert ((a |-> (v0_cur, v0_old) * F)%pred (Prog.upd d a (v0_cur, v0_old))).
+    assert ((a |-> (v0_cur, v0_old) * F)%pred (Mem.upd d a (v0_cur, v0_old))).
     eapply ptsto_upd. pred_apply; cancel.
     pred_apply; cancel.
   Qed.

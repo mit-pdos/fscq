@@ -1564,7 +1564,7 @@ Module DIRTREE.
   Lemma dir_names_pred_add : forall l m name subtree,
     tree_dir_names_pred' l m
     -> tree_dir_names_pred' (add_to_list name subtree l)
-          (Prog.upd m name (dirtree_inum subtree, dirtree_isdir subtree)).
+          (Mem.upd m name (dirtree_inum subtree, dirtree_isdir subtree)).
   Proof.
     induction l; simpl; intros; auto.
     apply sep_star_comm.
@@ -1581,13 +1581,13 @@ Module DIRTREE.
     3: eapply IHl; eauto.
 
     apply functional_extensionality; intro.
-    unfold Prog.upd, mem_union.
+    unfold Mem.upd, mem_union.
     destruct (string_dec x name); subst; auto.
     destruct (m1 name) eqn: Hx; auto.
     unfold ptsto in H2; intuition.
     pose proof (H3 _ n); congruence.
 
-    unfold mem_disjoint, Prog.upd.
+    unfold mem_disjoint, Mem.upd.
     intuition; repeat deex.
     destruct (string_dec a name); subst; auto.
     unfold ptsto in H2; intuition.
@@ -1597,7 +1597,7 @@ Module DIRTREE.
   Qed.
 
   Lemma subtree_graft_absorb : forall xp inum ents root f path name dsmap subtree,
-    SDIR.rep f (Prog.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
+    SDIR.rep f (Mem.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
     -> find_subtree path root = Some (TreeDir inum ents)
     -> tree_dir_names_pred' ents dsmap
     -> notindomain name dsmap
@@ -1620,7 +1620,7 @@ Module DIRTREE.
     tree_dir_names_pred' (delete_from_list name l) m
     -> notindomain name m
     -> tree_dir_names_pred' (add_to_list name subtree l)
-          (Prog.upd m name (dirtree_inum subtree, dirtree_isdir subtree)).
+          (Mem.upd m name (dirtree_inum subtree, dirtree_isdir subtree)).
   Proof.
     induction l; simpl; intros; auto.
     apply sep_star_comm.
@@ -1636,13 +1636,13 @@ Module DIRTREE.
     3: eapply IHl; eauto.
 
     apply functional_extensionality; intro.
-    unfold Prog.upd, mem_union.
+    unfold Mem.upd, mem_union.
     destruct (string_dec x name); subst; auto.
     destruct (m1 name) eqn: Hx; auto.
     unfold ptsto in H3; intuition.
     pose proof (H4 _ n); congruence.
 
-    unfold mem_disjoint, Prog.upd.
+    unfold mem_disjoint, Mem.upd.
     intuition; repeat deex.
     destruct (string_dec a name); subst; auto.
     unfold ptsto in H3; intuition.
@@ -1712,7 +1712,7 @@ Module DIRTREE.
   Qed.
 
   Lemma subtree_graft_absorb_delete : forall xp inum ents root f path name dsmap dsmap' subtree x,
-    SDIR.rep f (Prog.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
+    SDIR.rep f (Mem.upd dsmap name (dirtree_inum subtree, dirtree_isdir subtree))
     -> find_subtree path root = Some (TreeDir inum ents)
     -> tree_dir_names_pred' (delete_from_list name ents) dsmap
     -> tree_dir_names_pred' ents dsmap'

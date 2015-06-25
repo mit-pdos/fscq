@@ -2,7 +2,7 @@ Require Import Arith.
 Require Import Omega.
 Require Import List.
 Require Import Prog.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import Word.
 

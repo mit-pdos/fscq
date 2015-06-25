@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
 Require Import FunctionalExtensionality.
 

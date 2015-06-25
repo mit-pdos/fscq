@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import Prog.
 Require Import List.
 Require Import Array.
@@ -79,13 +80,13 @@ Proof.
 Qed.
 
 
-Lemma listupd_progupd: forall A l i (v : A),
+Lemma listupd_memupd: forall A l i (v : A),
   wordToNat i < length l
-  -> list2mem (upd l i v) = Prog.upd (list2mem l) i v.
+  -> list2mem (upd l i v) = Mem.upd (list2mem l) i v.
 Proof.
   intros.
   apply functional_extensionality; intro.
-  unfold list2mem, sel, upd, Prog.upd.
+  unfold list2mem, sel, upd, Mem.upd.
   autorewrite with core.
 
   destruct (weq x i).
@@ -100,7 +101,7 @@ Theorem list2mem_upd: forall A F (l: list A) i x y,
   -> (F * i |-> y)%pred (list2mem (upd l i y)).
 Proof.
   intros.
-  rewrite listupd_progupd; auto.
+  rewrite listupd_memupd; auto.
   apply sep_star_comm.
   apply sep_star_comm in H.
   eapply ptsto_upd; eauto.
@@ -108,13 +109,13 @@ Proof.
 Qed.
 
 
-Theorem listapp_progupd: forall A l (a : A) (b : addr),
+Theorem listapp_memupd: forall A l (a : A) (b : addr),
   length l <= wordToNat b
-  -> list2mem (l ++ a :: nil) = Prog.upd (list2mem l) $ (length l) a.
+  -> list2mem (l ++ a :: nil) = Mem.upd (list2mem l) $ (length l) a.
 Proof.
   intros.
   apply functional_extensionality; intro.
-  unfold list2mem, sel, upd, Prog.upd.
+  unfold list2mem, sel, upd, Mem.upd.
 
   destruct (wlt_dec x $ (length l)).
   - apply wlt_lt in w.
@@ -150,7 +151,7 @@ Theorem list2mem_app: forall A (F : @pred addr (@weq addrlen) A) l a (b : addr),
   -> (F * $ (length l) |-> a)%pred (list2mem (l ++ a :: nil)).
 Proof.
   intros.
-  erewrite listapp_progupd; eauto.
+  erewrite listapp_memupd; eauto.
   apply ptsto_upd_disjoint; auto.
   unfold list2mem, sel.
   rewrite selN_oob; auto.
@@ -231,8 +232,8 @@ Theorem list2mem_array: forall  A (l : list A) (b : addr),
 Proof.
   induction l using rev_ind; intros; firstorder; simpl.
   rewrite app_length in H; simpl in H.
-  erewrite listapp_progupd with (b := b); try omega.
-  eapply array_app_progupd with (b := b); try omega.
+  erewrite listapp_memupd with (b := b); try omega.
+  eapply array_app_memupd with (b := b); try omega.
   apply IHl with (b := b); omega.
 Qed.
 

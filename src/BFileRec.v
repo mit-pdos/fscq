@@ -1884,8 +1884,8 @@ Section RECBFILE.
     unfold array_item_pairs; intros.
     destruct_lift H.
     rewrite map_app; simpl.
-    rewrite listapp_progupd.
-    eapply arrayN_app_progupd with (v := v) in H as Hx.
+    rewrite listapp_memupd.
+    eapply arrayN_app_memupd with (v := v) in H as Hx.
     rewrite map_length in Hx.
     replace (length fdata) with (length blocks).
     pred_apply; cancel.
@@ -2458,7 +2458,8 @@ Section RECBFILE.
       (* this is a weak postcondition (in reality newitems consists of repeated zeros
         due to bftrunc); this allows bf_expand to eventually leave junk data with
         the same spec *)
-      [[ length newitems = alloc_items count_items - length ilist ]] )
+      [[ length newitems = alloc_items count_items - length ilist ]] *
+      [[ hidden (BFILE.BFAttr f' = BFILE.BFAttr f) ]] )
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_expand fsxp inum count_items mscs.
   Proof.
@@ -2531,7 +2532,7 @@ Section RECBFILE.
     assert (block_zero = repeat item_zero block_items) as H0block.
     unfold block_zero, block_items, item_zero.
     simpl.
-    admit. (* of_word 0 = repeat (of_word 0) (obviously different sizes) *)
+    apply Rec.of_word_zero_list.
     rewrite H0block.
     rewrite repeat_repeat_concat.
     f_equal.
@@ -2549,7 +2550,9 @@ Section RECBFILE.
     apply array_items_block_sized.
     (* have rep function, but only in its pieces *)
     exists vs_nested; auto.
-  Admitted.
+
+    reflexivity.
+  Qed.
 
   Theorem bf_getlen_ok : forall lxp bxp ixp inum mscs,
     {< F F1 A mbase m flist f ilist,

@@ -343,6 +343,28 @@ Module Rec.
     rewrite IHt0 by assumption. rewrite IHt by assumption. trivial.
   Qed.
 
+  Theorem to_eq : forall ft a b,
+    @to_word ft a = @to_word ft b ->
+    well_formed a ->
+    well_formed b ->
+    a = b.
+  Proof.
+    intros.
+    rewrite <- Rec.of_to_id with (v := a) by auto.
+    rewrite <- Rec.of_to_id with (v := b) by auto.
+    congruence.
+  Qed.
+
+  Theorem of_eq : forall ft a b,
+    @of_word ft a = @of_word ft b ->
+    a = b.
+  Proof.
+    intros.
+    rewrite <- Rec.to_of_id with (w := a).
+    rewrite <- Rec.to_of_id with (w := b).
+    congruence.
+  Qed.
+
   Lemma of_word_empty : forall t n w,
     n = 0 ->
     @of_word (ArrayF t n) w = nil.
