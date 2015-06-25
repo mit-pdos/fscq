@@ -1656,6 +1656,24 @@ Definition wslt_dec : forall sz (l r : word sz), {l <s r} + {l >s= r}.
   abstract congruence.
 Defined.
 
+Lemma not_wlt_ge : forall sz (l r : word sz),
+  ((l < r) -> False) -> (r <= l).
+Proof.
+  intros.
+  case_eq (wlt_dec l r); intros;
+    try contradiction;
+    auto.
+Qed.
+
+Lemma not_wle_gt : forall sz (l r : word sz),
+  ((l <= r) -> False) -> (r < l).
+Proof.
+  intros.
+  case_eq (wlt_dec r l); intros;
+    try contradiction;
+    auto.
+Qed.
+
 (* Ordering Lemmas **)
 Lemma lt_le : forall sz (a b : word sz),
   a < b -> a <= b.
@@ -1931,6 +1949,16 @@ Proof.
   simpl in *.
   generalize dependent (x * pow2 sz).
   intros; omega.
+Qed.
+
+Lemma le_word_le_nat': forall (sz:nat) n m,
+  goodSize sz n ->
+  (natToWord sz n <= m)%word ->
+  (n <= wordToNat m)%nat.
+Proof.
+  intros.
+  apply wle_le in H0.
+  rewrite wordToNat_natToWord_idempotent' in H0; auto.
 Qed.
 
 Lemma wordToNat_natToWord_bound : forall sz n (bound : word sz),

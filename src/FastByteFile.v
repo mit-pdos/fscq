@@ -1326,49 +1326,20 @@ Hint Resolve length_grow_oneblock_ok.
 
     time step. (* 15s *)
     step.
-    time step. (* 175s *)
-    (* FIXME: this proof is duplicated for three preconditions
-       this would be fine if it were a couple lines long,
-       but better would be to do this earlier (inside the previous step),
-       or to apply these tactics to goals 1,2,3 simultaneously. *)
-    (* we will derive a contradiction with len > 0,
-       since filelen f <= off + len forces a zero-length write. *)
+    (* just the first part of step *)
+    eapply pimpl_ok2; eauto with prog.
+    intros; norm; [cancel|].
+    subst.
+    (* We will derive a contradiction with len > 0, since
+       filelen f <= off + len forces a zero-length write.
+       Doing so before intuition prevents several subgoals with
+       contradictory hypotheses. *)
     assert (filelen f >= off + len).
-    case_eq (wlt_dec (INODE.ISize (BFILE.BFAttr f)) ($ (off + len))); intros.
-    contradiction.
-    unfold filelen.
-    erewrite <- wordToNat_natToWord_idempotent'; eauto.
-    apply le_word_le_nat.
-    rewrite natToWord_wordToNat.
-    auto.
-    replace len with 0 in H4 by omega.
-    inversion H4.
-    (* we will derive a contradiction with len > 0,
-       since filelen f <= off + len forces a zero-length write. *)
-    assert (filelen f >= off + len).
-    case_eq (wlt_dec (INODE.ISize (BFILE.BFAttr f)) ($ (off + len))); intros.
-    contradiction.
-    unfold filelen.
-    erewrite <- wordToNat_natToWord_idempotent'; eauto.
-    apply le_word_le_nat.
-    rewrite natToWord_wordToNat.
-    auto.
-    replace len with 0 in H4 by omega.
-    inversion H4.
-    (* we will derive a contradiction with len > 0,
-       since filelen f <= off + len forces a zero-length write. *)
-    assert (filelen f >= off + len).
-    case_eq (wlt_dec (INODE.ISize (BFILE.BFAttr f)) ($ (off + len))); intros.
-    contradiction.
-    unfold filelen.
-    erewrite <- wordToNat_natToWord_idempotent'; eauto.
-    apply le_word_le_nat.
-    rewrite natToWord_wordToNat.
-    auto.
+    apply not_wlt_ge in H21.
+    apply le_word_le_nat'; auto.
     replace len with 0 in H4 by omega.
     inversion H4.
 
-    time step. (* 10s *)
     Grab Existential Variables.
     all: try exact emp.
     all: try exact BFILE.bfile0.
