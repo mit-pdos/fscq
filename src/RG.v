@@ -40,6 +40,9 @@ Section RGDef.
   Definition act_iff (a b : action) : Prop :=
     act_impl a b /\ act_impl b a.
 
+  Definition stable (p : @pred AT AEQ V) (a : action) : Prop :=
+    forall m1 m2, p m1 -> a m1 m2 -> p m2.
+
 End RGDef.
 
 Arguments action {AT AEQ V}.
@@ -50,6 +53,7 @@ Arguments act_exis {AT AEQ V T} _ _ _ _.
 Arguments act_emp {AT AEQ V} _ _.
 Arguments act_id_any {AT AEQ V} _ _.
 Arguments act_any {AT AEQ V} _ _.
+Arguments stable {AT AEQ V} _ _.
 
 Infix "*" := act_star : act_scope.
 Bind Scope act_scope with action.
@@ -208,6 +212,46 @@ Section RGThm.
     split.
     apply act_bow_star_dist'.
     apply act_star_bow_dist'.
+  Qed.
+
+  Example lrg_lemma_5_4_b : forall (p q r : @pred AT AEQ V),
+    (p --* r) * q =p=> r ->
+    stable r ((p ~> q) * act_id_any)%act.
+    (**
+     * XXX had to add "* act_id_any" since our separation logic always fully
+     * specifies every memory; there's no implicit frame.
+     *)
+  Proof.
+    unfold stable, septract. act_unfold. unfold act_star. unfold_sep_star. intros.
+    repeat deex.
+    apply H.
+    exists m2b. exists m2a.
+    intuition eauto.
+    rewrite mem_union_comm; auto.
+    apply mem_disjoint_comm; auto.
+    exists m1a.
+    intuition.
+    apply mem_disjoint_comm; auto.
+    rewrite mem_union_comm; auto.
+    apply mem_disjoint_comm; auto.
+  Qed.
+
+  Example lrg_lemma_5_4_c : forall (p q r : @pred AT AEQ V),
+    stable r ((p ~> q) * act_id_any)%act ->
+    (p --* r) * q =p=> r.
+  Proof.
+    unfold stable, septract, pimpl. act_unfold. unfold act_star. unfold_sep_star. intros.
+    repeat deex.
+    eapply H.
+    eauto.
+    do 4 eexists.
+    split; eauto.
+    split. unfold any; eauto.
+    split. apply mem_disjoint_comm; eauto.
+    intuition.
+    rewrite mem_union_comm; auto.
+    apply mem_disjoint_comm; auto.
+    rewrite mem_union_comm; auto.
   Qed.
 
 End RGThm.
