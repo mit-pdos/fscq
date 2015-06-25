@@ -221,6 +221,15 @@ Proof.
   apply H; exists a; destruct (m1 a); eauto.
 Qed.
 
+Theorem mem_disjoint_union_2:
+  forall (m1 m2 m3 : @mem AT AEQ V),
+  mem_disjoint m1 (mem_union m2 m3) ->
+  mem_disjoint m1 m2.
+Proof.
+  unfold mem_disjoint, mem_union; intuition; repeat deex.
+  apply H; exists a. destruct (m1 a); destruct (m2 a); try congruence; eauto.
+Qed.
+
 Theorem mem_disjoint_upd:
   forall (m1 m2 : @mem AT AEQ V) a v v0,
   m1 a = Some v0 ->
@@ -996,6 +1005,26 @@ Theorem emp_empty_mem :
   emp (@empty_mem AT AEQ V).
 Proof.
   firstorder.
+Qed.
+
+Theorem emp_empty_mem_only : forall (m : @mem AT AEQ V),
+  emp m -> m = empty_mem.
+Proof.
+  intros; apply functional_extensionality; intros.
+  firstorder.
+Qed.
+
+Lemma mem_union_empty_mem : forall (m : @mem AT AEQ V),
+  mem_union empty_mem m = m.
+Proof.
+  unfold mem_union; intros; apply functional_extensionality; intros.
+  firstorder.
+Qed.
+
+Lemma mem_disjoint_empty_mem : forall (m : @mem AT AEQ V),
+  mem_disjoint empty_mem m.
+Proof.
+  unfold mem_disjoint, empty_mem, not. intros; repeat deex. congruence.
 Qed.
 
 Theorem notindomain_empty_mem : forall a,
