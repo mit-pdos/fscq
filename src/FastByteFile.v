@@ -958,13 +958,12 @@ Hint Resolve length_grow_oneblock_ok.
      apply firstn_app_l; omega.
      reflexivity.
      unfold BFileRec.hidden.
-     fold byte in *.
      fold (filelen f).
      assert (Hlen := Rec.array_of_word_length
       byte_type (roundup newlen valubytes - filelen f) ($ 0)).
      simpl in Hlen.
-     rewrite Hlen; clear Hlen.
      fold byte in *.
+     rewrite Hlen; clear Hlen.
      fold (filelen f) in *.
      assert (length (allbytes ++ a7) = roundup newlen valubytes)
       as Hallbytes'len.
