@@ -727,7 +727,11 @@ Lemma wtl_eq_rect : forall n w Heq Heq',
   eq_rect n word (wtl w) (n + 0) Heq'.
 Proof.
   intros.
-Admitted.
+  generalize dependent Heq.
+  rewrite <- Heq'; simpl; intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
 
 Theorem split1_0 : forall n w Heq,
   split1 n 0 (eq_rect _ word w _ Heq) = w.
