@@ -1272,9 +1272,9 @@ Hint Resolve length_grow_oneblock_ok.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ newdata = bsplit_list newbytes ]] *
+           [[ hidden (newdata = @Rec.of_word (Rec.ArrayF byte_type len) newbytes) ]] *
            [[ (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-           [[ zeros = arrayN len (repeat $0 (off - len)) ]])
+           [[ zeros = arrayN (filelen f) (repeat $0 (off - len)) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} append fsxp inum off newbytes mscs.
   Proof.
@@ -1289,34 +1289,44 @@ Hint Resolve length_grow_oneblock_ok.
     step.
     time step. (* 10s *)
 
-    instantiate (Fi0 :=
-      (let extraoff := Nat.min off (# (INODE.ISize (BFILE.BFAttr f))) in
-      (Fi * arrayN extraoff (skipn extraoff allbytes))%pred)).
-    simpl.
-    inversion H7.
-    inversion H0; clear H0.
-    inversion H16; clear H16.
-    inversion H17; clear H17.
-    set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
-    rewrite firstn_firstn in H5.
-    rewrite <- firstn_skipn with (l := allbytes) (n := Nat.min off flen) at 2.
-    replace (Nat.min off flen) with (length (firstn (Nat.min off flen) allbytes)) at 1.
-    apply list2nmem_arrayN_app; auto.
-    (* solve this by case analysis on min *)
+    unfold filelen.
+    auto.
+
+    step.
+    time step. (* 180s *)
+    step.
+    time step. (* 180s *)
+
+    unfold hidden.
+    fold (filelen f) in *.
+    instantiate (Fx0 := (Fi * arrayN (filelen f) (repeat $0 (off - filelen f)))%pred).
+    instantiate (olddata0 := repeat $0 len).
+    eapply pimpl_apply with (p := (Fi *
+      arrayN (filelen f) (repeat $0 (off + len - filelen f)))%pred).
+    cancel.
+    replace (off + len - filelen f) with (off - filelen f + len) by omega.
+    rewrite <- repeat_app.
+    apply arrayN_combine.
+    rewrite repeat_length.
+    omega.
+    replace (filelen f) at 1.
+    apply list2nmem_arrayN_app.
+    auto.
+
+    reflexivity.
+    unfold hidden.
     apply firstn_length_l_iff in H9.
-    destruct (Nat.min_spec off flen) as [Hminspec|Hminspec];
-      inversion Hminspec as [? Hmineq];
-      rewrite Hmineq;
-      rewrite firstn_length_l;
-      omega.
-    admit. (* have hypothesis in word *)
+    fold (filelen f) in H9.
+    autorewrite with lengths.
+    rewrite Rec.array_of_word_length with (ft := byte_type).
+    reflexivity.
+    admit. (* need to add len > 0 to preconditions *)
 
-    step.
-    time step. (* 170s *)
-    step.
-    step.
+    time step. (* 15s *)
+    apply pimpl_or_r; right; cancel.
+    eauto.
+    admit. (* why is newdata not an evar I instantiate here? *)
 
-    step.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
