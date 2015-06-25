@@ -1256,7 +1256,7 @@ Hint Resolve length_grow_oneblock_ok.
   Hint Extern 1 ({{_}} progseq (write_bytes _ _ _ _ _) _) => apply write_bytes_ok : prog.
 
   Theorem append_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
-    {< m mbase F Fm Fi A flist f bytes newdata,
+    {< m mbase F Fm Fi A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
@@ -1264,7 +1264,8 @@ Hint Resolve length_grow_oneblock_ok.
            [[ Fi%pred (list2nmem bytes) ]] *
            [[ goodSize addrlen (off + len) ]] *
            (* makes this an append *)
-           [[ filelen f <= off ]]
+           [[ filelen f <= off ]] *
+           [[ len > 0 ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -1272,19 +1273,23 @@ Hint Resolve length_grow_oneblock_ok.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ hidden (newdata = @Rec.of_word (Rec.ArrayF byte_type len) newbytes) ]] *
-           [[ (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-           [[ zeros = arrayN (filelen f) (repeat $0 (off - len)) ]])
+           [[ let newdata := @Rec.of_word (Rec.ArrayF byte_type len) newbytes in
+              (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
+           [[ zeros = arrayN (filelen f) (repeat $0 (off - (filelen f))) ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} append fsxp inum off newbytes mscs.
   Proof.
     unfold append, write_bytes.
     time step. (* 50s *)
-    inversion H7 as [allbytes].
-    inversion H0; clear H0.
-    inversion H9; clear H9.
+    inversion H8 as [allbytes].
+    inversion H; clear H.
     inversion H10; clear H10.
-    inversion H3.
+    inversion H11; clear H11.
+    inversion H0.
+    fold (filelen f) in *.
+    assert (filelen f <= length allbytes).
+    rewrite <- H12.
+    apply roundup_valu_ge.
 
     step.
     time step. (* 10s *)
@@ -1293,9 +1298,9 @@ Hint Resolve length_grow_oneblock_ok.
     auto.
 
     step.
-    time step. (* 180s *)
+    time step. (* 165s *)
     step.
-    time step. (* 180s *)
+    time step. (* 165s *)
 
     unfold hidden.
     fold (filelen f) in *.
@@ -1315,19 +1320,60 @@ Hint Resolve length_grow_oneblock_ok.
 
     reflexivity.
     unfold hidden.
-    apply firstn_length_l_iff in H9.
-    fold (filelen f) in H9.
     autorewrite with lengths.
     rewrite Rec.array_of_word_length with (ft := byte_type).
     reflexivity.
-    admit. (* need to add len > 0 to preconditions *)
 
     time step. (* 15s *)
-    apply pimpl_or_r; right; cancel.
-    eauto.
-    admit. (* why is newdata not an evar I instantiate here? *)
+    step.
+    time step. (* 175s *)
+    (* FIXME: this proof is duplicated for three preconditions
+       this would be fine if it were a couple lines long,
+       but better would be to do this earlier (inside the previous step),
+       or to apply these tactics to goals 1,2,3 simultaneously. *)
+    (* we will derive a contradiction with len > 0,
+       since filelen f <= off + len forces a zero-length write. *)
+    assert (filelen f >= off + len).
+    case_eq (wlt_dec (INODE.ISize (BFILE.BFAttr f)) ($ (off + len))); intros.
+    contradiction.
+    unfold filelen.
+    erewrite <- wordToNat_natToWord_idempotent'; eauto.
+    apply le_word_le_nat.
+    rewrite natToWord_wordToNat.
+    auto.
+    replace len with 0 in H4 by omega.
+    inversion H4.
+    (* we will derive a contradiction with len > 0,
+       since filelen f <= off + len forces a zero-length write. *)
+    assert (filelen f >= off + len).
+    case_eq (wlt_dec (INODE.ISize (BFILE.BFAttr f)) ($ (off + len))); intros.
+    contradiction.
+    unfold filelen.
+    erewrite <- wordToNat_natToWord_idempotent'; eauto.
+    apply le_word_le_nat.
+    rewrite natToWord_wordToNat.
+    auto.
+    replace len with 0 in H4 by omega.
+    inversion H4.
+    (* we will derive a contradiction with len > 0,
+       since filelen f <= off + len forces a zero-length write. *)
+    assert (filelen f >= off + len).
+    case_eq (wlt_dec (INODE.ISize (BFILE.BFAttr f)) ($ (off + len))); intros.
+    contradiction.
+    unfold filelen.
+    erewrite <- wordToNat_natToWord_idempotent'; eauto.
+    apply le_word_le_nat.
+    rewrite natToWord_wordToNat.
+    auto.
+    replace len with 0 in H4 by omega.
+    inversion H4.
 
-  Admitted.
+    time step. (* 10s *)
+    Grab Existential Variables.
+    all: try exact emp.
+    all: try exact BFILE.bfile0.
+    all: exact nil.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
 
