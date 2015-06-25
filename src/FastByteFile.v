@@ -440,7 +440,8 @@ Module FASTBYTEFILE.
         repeat rewrite skipn_length; omega.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
+  Hint Extern 1 ({{_}} progseq (update_bytes ?fsxp ?inum ?off ?newbytes _) _) =>
+    apply update_bytes_ok with (fsxp:=fsxp) (inum:=inum) (off:=off) (newbytes:=newbytes) : prog.
 
   Definition grow_blocks T fsxp inum nblock mscs rx : prog T :=
     let^ (mscs) <- For i < nblock
@@ -1298,9 +1299,9 @@ Hint Resolve length_grow_oneblock_ok.
     auto.
 
     step.
-    time step. (* 165s *)
+    time step. (* 165s -> 7.5s !!! *)
     step.
-    time step. (* 165s *)
+    time step. (* 165s -> 13s *)
 
     unfold hidden.
     fold (filelen f) in *.
