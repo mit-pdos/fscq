@@ -226,6 +226,25 @@ Section RGThm.
     apply act_star_bow_dist'.
   Qed.
 
+  Example lrg_lemma_5_4_a : forall (p q r : @pred AT AEQ V),
+    stable r (p ~> q) <-> ((p --* r) /\ emp) * q =p=> r.
+  Proof.
+    split.
+    - act_unfold; unfold_sep_star; unfold pimpl, and, septract; intros.
+      repeat deex.
+      apply emp_empty_mem_only in H5; subst.
+      rewrite mem_union_empty_mem in *.
+      eapply H; eauto.
+    - act_unfold; unfold_sep_star; unfold pimpl, and, septract; intros.
+      eapply H.
+      exists empty_mem.
+      exists m2.
+      intuition.
+      exists m1.
+      rewrite mem_union_empty_mem.
+      intuition.
+  Qed.
+
   Example lrg_lemma_5_4_b : forall (p q r : @pred AT AEQ V),
     (p --* r) * q =p=> r ->
     stable r ((p ~> q) * act_id_any)%act.
