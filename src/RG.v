@@ -226,6 +226,54 @@ Section RGThm.
     apply act_star_bow_dist'.
   Qed.
 
+  Theorem act_bow_pimpl : forall (p p' q q' : @pred AT AEQ V),
+    p =p=> p' ->
+    q =p=> q' ->
+    (p ~> q) =a=> (p' ~> q').
+  Proof.
+    act_unfold; intuition.
+  Qed.
+
+  Theorem act_or_bow_dist_l_1 : forall (p p' q : @pred AT AEQ V),
+    (p \/ p') ~> q =a=> (p ~> q) \/ (p' ~> q).
+  Proof.
+    act_unfold; unfold or; intuition.
+  Qed.
+
+  Theorem act_or_bow_dist_l_2 : forall (p p' q : @pred AT AEQ V),
+    (p ~> q) \/ (p' ~> q) =a=> (p \/ p') ~> q.
+  Proof.
+    act_unfold; unfold or; intuition.
+  Qed.
+
+  Theorem act_or_bow_dist_l : forall (p p' q : @pred AT AEQ V),
+    (p \/ p') ~> q <=a=> (p ~> q) \/ (p' ~> q).
+  Proof.
+    split.
+    apply act_or_bow_dist_l_1.
+    apply act_or_bow_dist_l_2.
+  Qed.
+
+  Theorem act_or_bow_dist_r_1 : forall (p q q' : @pred AT AEQ V),
+    p ~> (q \/ q') =a=> (p ~> q) \/ (p ~> q').
+  Proof.
+    act_unfold; unfold or; intuition.
+  Qed.
+
+  Theorem act_or_bow_dist_r_2 : forall (p q q' : @pred AT AEQ V),
+    (p ~> q) \/ (p ~> q') =a=> p ~> (q \/ q').
+  Proof.
+    act_unfold; unfold or; intuition.
+  Qed.
+
+  Theorem act_or_bow_dist_r : forall (p q q' : @pred AT AEQ V),
+    p ~> (q \/ q') <=a=> (p ~> q) \/ (p ~> q').
+  Proof.
+    split.
+    apply act_or_bow_dist_r_1.
+    apply act_or_bow_dist_r_2.
+  Qed.
+
   Example lrg_lemma_5_4_a : forall (p q r : @pred AT AEQ V),
     stable r (p ~> q) <-> ((p --* r) /\ emp) * q =p=> r.
   Proof.
@@ -338,6 +386,8 @@ Section RGThm.
     i |> a ->
     stable (p*p') (a*a').
   Proof.
+    act_unfold; unfold pimpl; unfold_sep_star; unfold act_star; unfold precise; intros.
+    repeat deex.
   Admitted.
 
 End RGThm.
