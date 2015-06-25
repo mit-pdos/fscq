@@ -46,6 +46,11 @@ Section RGDef.
   Definition stable (p : @pred AT AEQ V) (a : action) : Prop :=
     forall m1 m2, p m1 -> a m1 m2 -> p m2.
 
+  Definition fence (i : @pred AT AEQ V) (a : action) : Prop :=
+    act_impl (act_id_pred i) a /\
+    act_impl a (act_bow i i) /\
+    precise i.
+
 End RGDef.
 
 Arguments action {AT AEQ V}.
@@ -58,6 +63,7 @@ Arguments act_emp {AT AEQ V} _ _.
 Arguments act_id_any {AT AEQ V} _ _.
 Arguments act_any {AT AEQ V} _ _.
 Arguments stable {AT AEQ V} _ _.
+Arguments fence {AT AEQ V} _ _.
 
 Infix "*" := act_star : act_scope.
 Bind Scope act_scope with action.
@@ -69,6 +75,7 @@ Infix "\/" := act_or : act_scope.
 
 Notation "a =a=> b" := (act_impl a%act b%act) (at level 90).
 Notation "a <=a=> b" := (act_iff a%act b%act) (at level 90).
+Notation "i |> a" := (fence i%pred a%act) (at level 90).
 
 Section RGThm.
 
