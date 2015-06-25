@@ -548,6 +548,16 @@ Proof.
   intros; rewrite seq_right; f_equal.
 Qed.
 
+Lemma selN_map_some_range : forall A (l : list A) idx a,
+  selN (map (@Some _) l) idx None = Some a ->
+  idx < length l.
+Proof.
+  induction l; simpl; intros.
+  - congruence.
+  - destruct idx; try omega.
+    apply IHl in H; omega.
+Qed.
+
 Lemma map_updN : forall T U (v : T) (f : T -> U) vs i,
   map f (updN vs i v) = updN (map f vs) i (f v).
 Proof.
