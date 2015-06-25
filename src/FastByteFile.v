@@ -608,8 +608,9 @@ Hint Resolve length_grow_oneblock_ok.
     If (wlt_dec oldlen ($ newlen)) {
       let^ (mscs, ok) <- bf_expand items_per_valu fsxp inum newlen mscs;
       If (bool_dec ok true) {
+        let zeros := @natToWord ((roundup newlen valubytes-#oldlen)*8) 0 in
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
-           fsxp inum #oldlen (@natToWord ((roundup newlen valubytes-#oldlen)*8) 0) mscs;
+           fsxp inum #oldlen zeros mscs;
          mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
                                 (INODE.Build_iattr ($ newlen)
                                                    (INODE.IMTime oldattr)
@@ -619,8 +620,6 @@ Hint Resolve length_grow_oneblock_ok.
         rx ^(mscs, false)
       }
     } else {
-      (* TODO: this case is actually problematic,
-         since the size of the new file is not newlen *)
       rx ^(mscs, true)
     }.
 
@@ -895,7 +894,10 @@ Hint Resolve length_grow_oneblock_ok.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ goodSize addrlen newlen ]]
+           [[ goodSize addrlen newlen ]] *
+           (* spec requires that file is growing, so that it can guarantee
+              that the new size of the file is $newlen. *)
+           [[ filelen f <= newlen ]]
       POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -917,9 +919,9 @@ Hint Resolve length_grow_oneblock_ok.
      fold (filelen f) in *.
      instantiate (Fi := arrayN 0 allbytes).
      apply list2nmem_array.
-     apply firstn_length_l_iff in H5.
+     apply firstn_length_l_iff in H6.
      unfold ge.
-     fold (filelen f) in H9.
+     fold (filelen f) in H10.
      fold byte.
      replace (length allbytes).
      fold (roundup (filelen f) valubytes).
@@ -949,7 +951,7 @@ Hint Resolve length_grow_oneblock_ok.
 
      time step. (* 80s *)
      fold (filelen f) in *.
-     apply firstn_length_l_iff in H5.
+     apply firstn_length_l_iff in H6.
      instantiate (Fx0 := arrayN 0 (firstn (filelen f) allbytes)).
      instantiate (olddata0 := skipn (filelen f) (allbytes ++ a7)).
      replace (firstn (filelen f) allbytes) with
@@ -990,9 +992,9 @@ Hint Resolve length_grow_oneblock_ok.
       repeat $0 (roundup newlen valubytes - filelen f)).
      assert (ilist' =
       firstn (filelen f) allbytes ++
-      repeat $ (0) (roundup newlen valubytes - filelen f)).
-     eapply pimpl_apply in H24.
-     eapply list2nmem_array_eq in H24.
+      repeat $ (0) (roundup newlen valubytes - filelen f)) as Hilist'.
+     eapply pimpl_apply in H25.
+     eapply list2nmem_array_eq in H25.
      replace ilist'.
      reflexivity.
      rewrite Rec.of_word_zero_list.
@@ -1004,13 +1006,10 @@ Hint Resolve length_grow_oneblock_ok.
      fold (roundup newlen valubytes).
      autorewrite with lengths.
      rewrite Hlen_all_min.
+     rewrite <- Hilist'.
      intuition.
-     rewrite <- H8.
-     (* we have array_item_file f' ilist', and array_item_file doesn't
-        care about modified BFAttr *)
-     assumption.
-     apply wordToNat_natToWord_idempotent'.
 
+     apply wordToNat_natToWord_idempotent'.
      replace (filelen f + (roundup newlen valubytes - filelen f))
       with (length ilist').
      eapply goodSize_bound.
@@ -1018,6 +1017,9 @@ Hint Resolve length_grow_oneblock_ok.
      replace ilist'.
      autorewrite with lengths.
      omega.
+     replace ilist'.
+     (* split repeat into two parts - those that bring the length up to newlen,
+        and then the rest that make it roundup newlen *)
      replace (roundup newlen valubytes - filelen f) with
       (newlen - filelen f + (roundup newlen valubytes - newlen)) by omega.
      rewrite <- repeat_app.
@@ -1028,20 +1030,39 @@ Hint Resolve length_grow_oneblock_ok.
 
      step.
      step.
+
+     assert (filelen f = newlen) as Hflen.
+     case_eq (wlt_dec (INODE.ISize (BFILE.BFAttr f)) ($ (newlen))); intros.
+     contradiction.
+     assert (filelen f >= newlen).
+     erewrite <- wordToNat_natToWord_idempotent'; eauto.
+     unfold filelen.
+     apply le_word_le_nat.
+     rewrite natToWord_wordToNat.
+     auto.
+     omega.
      apply pimpl_or_r; right.
      cancel.
-     (* this isn't true; we can't promise the resulting ISize is newlen
-        if grow_file does nothing when the file is long enough *)
-     admit.
+     unfold filelen.
+     rewrite natToWord_wordToNat.
+     instantiate (fdata' := (BFILE.BFData f)).
+     destruct f.
+     destruct BFAttr.
+     auto.
      exists allbytes.
-     (* grow_file did nothing *)
-     admit.
+     fold (filelen f).
+     rewrite minus_diag.
+     simpl.
+     rewrite app_nil_r.
+     rewrite wordToNat_natToWord_idempotent'
+      with (n := filelen f) by auto.
+     auto.
 
    Grab Existential Variables.
    all: try exact nil.
    all: try exact emp.
-   all: try exact BFILE.bfile0.
-  Admitted.
+   exact BFILE.bfile0.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
 

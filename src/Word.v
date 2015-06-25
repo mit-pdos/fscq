@@ -1892,6 +1892,18 @@ Proof.
   assumption.
 Qed.
 
+Lemma le_word_le_nat : forall (sz:nat) (n:word sz) (m:nat),
+  (n <= (natToWord sz m))%word ->
+  (wordToNat n <= m)%nat.
+Proof.
+  intros.
+  apply wle_le in H.
+  destruct (wordToNat_natToWord' sz m).
+  rewrite <- H0.
+  apply le_plus_trans with (p := x * pow2 sz).
+  assumption.
+Qed.
+
 (* Chain [lt_word_lt_nat] and [Nat.lt_le_incl]
     Avoids using [Hint Resolve Nat.lt_le_incl] for this specific lemma,
     though this may be a premature optimization. *)
