@@ -1371,6 +1371,35 @@ Proof.
   eauto.
 Qed.
 
+Hint Resolve mem_disjoint_assoc_1.
+Hint Resolve mem_disjoint_assoc_2.
+Hint Resolve mem_union_assoc.
+Hint Resolve mem_disjoint_union.
+Hint Resolve mem_disjoint_union_2.
+
+Theorem sep_star_precise : forall (p q : @pred AT AEQ V),
+  precise p -> precise q ->
+  precise (p * q)%pred.
+Proof.
+  unfold precise; unfold_sep_star; intros; repeat deex.
+  specialize (H m0 (mem_union m3 m2') m2 (mem_union m4 m1')).
+  specialize (H0 m3 (mem_union m0 m2') m4 (mem_union m2 m1')).
+  rewrite H; clear H; eauto.
+  rewrite H0; clear H0; eauto.
+  - rewrite <- mem_union_assoc; try apply mem_disjoint_comm; auto.
+    rewrite <- mem_union_assoc; try apply mem_disjoint_comm; auto.
+    rewrite <- (mem_union_comm H5).
+    rewrite <- (mem_union_comm H4).
+    auto.
+    rewrite <- (mem_union_comm H4). apply mem_disjoint_comm. eauto.
+    rewrite <- (mem_union_comm H5). apply mem_disjoint_comm. eauto.
+  - rewrite (mem_union_comm H5) in H3.
+    apply mem_disjoint_assoc_1; auto; try apply mem_disjoint_comm; auto.
+  - rewrite (mem_union_comm H4) in H2.
+    apply mem_disjoint_assoc_1; auto; try apply mem_disjoint_comm; auto.
+  - repeat rewrite <- mem_union_assoc; auto.
+Qed.
+
 Theorem forall_strictly_exact : forall A (a : A) (p : A -> @pred AT AEQ V),
   (forall x, strictly_exact (p x)) ->
   strictly_exact (foral x, p x).

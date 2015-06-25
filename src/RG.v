@@ -84,8 +84,8 @@ Section RGThm.
   Variable V : Type.
 
   Ltac act_unfold :=
-    unfold act_emp, act_any, act_id_any,
-           act_iff, act_impl, act_bow, act_id_pred, act_exis.
+    unfold fence, stable, act_emp, act_any, act_id_any,
+           act_iff, act_impl, act_or, act_bow, act_id_pred, act_exis.
 
   Theorem act_impl_id_bow : forall (p : @pred AT AEQ V),
     [p] =a=> p ~> p.
@@ -265,5 +265,60 @@ Section RGThm.
     apply mem_disjoint_comm; auto.
     rewrite mem_union_comm; auto.
   Qed.
+
+  Theorem fenced_id_pred : forall (i : @pred AT AEQ V),
+    precise i -> i |> [i].
+  Proof.
+    act_unfold; intuition congruence.
+  Qed.
+
+  Theorem fenced_bow : forall (i : @pred AT AEQ V),
+    precise i -> i |> (i ~> i).
+  Proof.
+    act_unfold; intuition congruence.
+  Qed.
+
+  Theorem fenced_or : forall (i : @pred AT AEQ V) a b,
+    i |> a ->
+    i |> b ->
+    i |> a \/ b.
+  Proof.
+    act_unfold; intuition.
+    apply H0 in H6; intuition.
+    apply H0 in H6; intuition.
+    apply H2 in H6; intuition.
+    apply H2 in H6; intuition.
+  Qed.
+
+  Hint Resolve sep_star_precise.
+
+  Theorem fenced_star : forall (i j : @pred AT AEQ V) a b,
+    i |> a ->
+    j |> b ->
+    i * j |> a * b.
+  Proof.
+    act_unfold; intuition;
+      unfold sep_star in *; rewrite sep_star_is in *; unfold sep_star_impl in *;
+      unfold act_star in *;
+      repeat deex.
+    - do 4 eexists.
+      split; eauto.
+      split; eauto.
+    - do 2 eexists.
+      edestruct H0; eauto.
+      edestruct H2; eauto.
+    - do 2 eexists.
+      edestruct H0; eauto.
+      edestruct H2; eauto.
+  Qed.
+
+  Example lrg_lemma_5_10 : forall (p p' : @pred AT AEQ V) a a' i,
+    stable p a ->
+    stable p' a' ->
+    p =p=> i ->
+    i |> a ->
+    stable (p*p') (a*a').
+  Proof.
+  Admitted.
 
 End RGThm.
