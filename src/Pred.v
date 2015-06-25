@@ -331,6 +331,16 @@ Proof.
   split; [ apply sep_star_assoc_1 | apply sep_star_assoc_2 ].
 Qed.
 
+Theorem sep_star_mem_union :
+  forall (p q : @pred AT AEQ V) mp mq,
+  mem_disjoint mp mq ->
+  p mp -> q mq ->
+  (p * q)%pred (mem_union mp mq).
+Proof.
+  unfold_sep_star; intros.
+  do 2 eexists; intuition.
+Qed.
+
 Local Hint Extern 1 =>
   match goal with
     | [ |- upd _ ?a ?v ?a = Some ?v ] => apply upd_eq; auto
