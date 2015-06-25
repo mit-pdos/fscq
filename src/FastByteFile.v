@@ -1077,21 +1077,20 @@ Hint Resolve length_grow_oneblock_ok.
     let newlen := off + len in
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode)
       inum mscs;
-    let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
-    If (bool_dec ok true) {
-      let curlen := oldattr.(INODE.ISize) in
-      mscs <- IfRx irx (wlt_dec curlen ($ off)) {
-        let^ (mscs) <- update_bytes fsxp inum
-          #curlen (@natToWord ((off-#curlen)*8) 0) mscs;
+    let curlen := oldattr.(INODE.ISize) in
+    (* should we grow the file? *)
+    mscs <- IfRx irx (wlt_dec curlen ($ newlen)) {
+      let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
+      If (bool_dec ok true) {
         irx mscs
       } else {
-        irx mscs
-      };
-      let^ (mscs) <- update_bytes fsxp inum off data mscs;
-      rx ^(mscs, true)
+        rx ^(mscs, false)
+      }
     } else {
-      rx ^(mscs, false)
-    }.
+      irx mscs
+    };
+    let^ (mscs) <- update_bytes fsxp inum off data mscs;
+    rx ^(mscs, true).
 
   (** Case (2) of [write_bytes] above, where the file must be grown.
 
