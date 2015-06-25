@@ -988,29 +988,36 @@ Hint Resolve length_grow_oneblock_ok.
      rewrite wordToNat_natToWord_idempotent'; auto.
      exists (firstn (filelen f) allbytes ++
       repeat $0 (roundup newlen valubytes - filelen f)).
-     split; [split|split].
+     assert (ilist' =
+      firstn (filelen f) allbytes ++
+      repeat $ (0) (roundup newlen valubytes - filelen f)).
      eapply pimpl_apply in H24.
-     apply list2nmem_array_eq in H24.
-     all: swap 1 2.
+     eapply list2nmem_array_eq in H24.
+     replace ilist'.
+     reflexivity.
+     rewrite Rec.of_word_zero_list.
+     replace (@Rec.of_word byte_type $0) with
+      (natToWord 8 0) by reflexivity.
      apply arrayN_combine.
      rewrite firstn_length_l by auto.
      reflexivity.
-     rewrite Rec.of_word_zero_list in H24.
-     replace (@Rec.of_word byte_type $0) with
-      (natToWord 8 0) in H24 by reflexivity.
-     simpl in H24.
-     fold byte in *.
-     rewrite <- H24.
+     fold (roundup newlen valubytes).
+     autorewrite with lengths.
+     rewrite Hlen_all_min.
+     intuition.
+     rewrite <- H8.
      (* we have array_item_file f' ilist', and array_item_file doesn't
         care about modified BFAttr *)
      assumption.
      apply wordToNat_natToWord_idempotent'.
-     rewrite app_length.
-     rewrite firstn_length_l by auto.
-     rewrite repeat_length.
-     eapply goodSize_trans; try eassumption.
-     (* need to fix assumption to be goodSize (roundup newlen) *)
-     admit.
+
+     replace (filelen f + (roundup newlen valubytes - filelen f))
+      with (length ilist').
+     eapply goodSize_bound.
+     eapply BFileRec.bfrec_bound with (itemtype := byte_type); eauto.
+     replace ilist'.
+     autorewrite with lengths.
+     omega.
      replace (roundup newlen valubytes - filelen f) with
       (newlen - filelen f + (roundup newlen valubytes - newlen)) by omega.
      rewrite <- repeat_app.
@@ -1018,10 +1025,6 @@ Hint Resolve length_grow_oneblock_ok.
      rewrite firstn_app_l by (autorewrite with lengths; omega).
      rewrite firstn_oob by (autorewrite with lengths; omega).
      reflexivity.
-     fold (roundup newlen valubytes).
-     split;
-       autorewrite with lengths;
-       omega.
 
      step.
      step.
