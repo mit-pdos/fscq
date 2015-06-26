@@ -261,6 +261,10 @@ Module FASTBYTEFILE.
     exact tt.
   Qed.
 
+  Lemma sep_star_abc_to_acb : forall AT AEQ AV (a b c : @pred AT AEQ AV),
+    (a * b * c)%pred =p=> (a * c * b).
+  Proof. cancel. Qed.
+
   Theorem update_bytes_ok: forall fsxp inum off len (newbytes : bytes len) mscs,
       {< m mbase F Fm A flist f bytes olddata Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -330,9 +334,7 @@ Module FASTBYTEFILE.
         rewrite <- firstn_skipn with (l := ilist') (n := flen) in Hilist'.
         assert (length (firstn flen ilist') = flen) as Hflen.
         apply firstn_length_l; omega.
-        Lemma sep_star_abc_to_acb : forall AT AEQ AV (a b c : @pred AT AEQ AV),
-          (a * b * c)%pred =p=> (a * c * b).
-        Proof. cancel. Qed.
+
         eapply pimpl_apply in Hilist'; [|apply sep_star_abc_to_acb].
         rewrite <- Hflen in Hilist' at 1.
         assert (Htails_eq := Hilist').
