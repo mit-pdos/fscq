@@ -257,16 +257,14 @@ Module FASTBYTEFILE.
     exact tt.
   Qed.
 
-
   Theorem update_bytes_ok: forall fsxp inum off len (newbytes : bytes len) mscs,
-      {< m mbase F Fm A flist f bytes olddata newdata Fx,
+      {< m mbase F Fm A flist f bytes olddata Fx,
        PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ hidden ((Fx * arrayN off olddata)%pred (list2nmem bytes)) ]] *
-           [[ hidden (newdata = @Rec.of_word (Rec.ArrayF byte_type len) newbytes) ]] *
-           [[ hidden (length olddata = length newdata) ]] *
+           [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+           [[ length olddata = len ]] *
            [[ 0 < len ]]
       POST RET: ^(mscs)
            exists m' flist' f' bytes',
@@ -274,7 +272,8 @@ Module FASTBYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ rep bytes' f' ]] *
-           [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
+           [[ let newdata := @Rec.of_word (Rec.ArrayF byte_type len) newbytes in
+              (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
            [[ hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
       >} update_bytes fsxp inum off newbytes mscs.
@@ -283,16 +282,16 @@ Module FASTBYTEFILE.
 
     intros.
     eapply pimpl_ok2.
-    apply bf_update_range_ok.
+    apply bf_update_range_ok with (fsxp:=fsxp) (inum:=inum) (off:=off) (w:=newbytes).
     intros; subst.
-    time norm'l.
+    time norm'l. (* 40s *)
 
     (* we've manually done what [step] does so that we can invert the
        rep function before evars are created, so that the allbytes created
        can be used to instantiate the evars. *)
-    inversion H8 as [allbytes].
-    inversion H.
-    inversion H0.
+    inversion H7 as [allbytes].
+    inversion H0; clear H0.
+    inversion H3.
     set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
     norm.
     cancel.
@@ -300,16 +299,17 @@ Module FASTBYTEFILE.
     - Transparent hidden.
       unfold hidden in *.
 
-      rewrite <- H in H7.
       instantiate (Fx0 := (Fx * arrayN flen
         (skipn flen allbytes))%pred).
       rewrite <- firstn_skipn with (l := allbytes) (n := flen) at 2.
       replace (firstn flen allbytes).
       replace flen with (length bytes) at 1.
-      replace (firstn flen allbytes) in H7.
-      apply list2nmem_arrayN_app with (l' := skipn flen allbytes) in H7.
+      apply list2nmem_arrayN_app with (l' := skipn flen allbytes) in H6.
       pred_apply; cancel.
       cancel.
+    - reflexivity.
+    - rewrite Rec.array_of_word_length with (ft := byte_type).
+      auto.
     - Transparent BFileRec.hidden.
       unfold BFileRec.hidden in *.
       fold byte in *.
@@ -332,23 +332,25 @@ Module FASTBYTEFILE.
       * replace (BFILE.BFAttr f').
         set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
         fold flen.
-        rewrite <- firstn_skipn with (l := ilist') (n := flen) in H25.
+        rewrite <- firstn_skipn with (l := ilist') (n := flen) in H19.
         assert (length (firstn flen ilist') = flen).
         apply firstn_length_l.
-        apply firstn_length_l_iff in H14.
+        apply firstn_length_l_iff in H9.
         omega.
-        assert ((Fx * arrayN off newdata * arrayN flen (skipn flen allbytes))%pred
+        assert ((Fx * arrayN off (@Rec.of_word
+          (Rec.ArrayF byte_type (length olddata)) newbytes) *
+          arrayN flen (skipn flen allbytes))%pred
           (list2nmem (firstn flen ilist' ++ skipn flen ilist'))).
         pred_apply; cancel.
-        rewrite <- H16 in H21 at 1.
-        assert (H21' := H21).
-        apply list2nmem_arrayN_end_eq in H21'; auto.
-        rewrite H21' in H21.
-        apply list2nmem_arrayN_app_iff in H21.
+        rewrite <- H11 in H15 at 1.
+        assert (H15' := H15).
+        apply list2nmem_arrayN_end_eq in H15'; auto.
+        rewrite H15' in H15.
+        apply list2nmem_arrayN_app_iff in H15.
         assumption.
         exact ($ 0).
-        apply firstn_length_l_iff in H14.
-        repeat rewrite skipn_length; omega.
+        apply firstn_length_l_iff in H9.
+        autorewrite with lengths; omega.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (update_bytes ?fsxp ?inum ?off ?newbytes _) _) =>
@@ -680,10 +682,7 @@ Module FASTBYTEFILE.
     apply list2nmem_arrayN_app.
     auto.
 
-    reflexivity.
-    unfold hidden.
     autorewrite with lengths.
-    rewrite Rec.array_of_word_length with (ft := byte_type).
     reflexivity.
 
     time step. (* 15s *)

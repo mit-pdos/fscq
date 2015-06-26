@@ -2041,10 +2041,6 @@ Module DIRTREE.
     unfold update_bytes, rep.
     time step. (* 80s *)
     rewrite subtree_extract; eauto. cancel.
-    reflexivity.
-    (* TODO: fix FastByteFile update_bytes_ok to not use newdata in this way *)
-    rewrite Rec.array_of_word_length with (ft := FASTBYTEFILE.byte_type).
-    auto.
 
     step.
     rewrite <- subtree_absorb; eauto. cancel.
