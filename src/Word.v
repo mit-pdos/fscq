@@ -2000,6 +2000,27 @@ Proof.
   erewrite wordToNat_natToWord_bound in H; eauto.
 Qed.
 
+Lemma natplus1_wordplus1_eq:
+  forall sz (a bound : word sz),
+    (0 < sz)%nat ->
+    (a < bound)%word ->
+    (wordToNat a) + 1 = wordToNat (a ^+ (natToWord sz 1)).
+Proof.
+  intros.
+  rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
+  assert (goodSize sz 1).
+  unfold goodSize.
+  inversion H.
+  simpl; auto.
+  apply one_lt_pow2.
+  erewrite wordToNat_natToWord_bound.
+  rewrite wordToNat_natToWord_idempotent' by auto.
+  reflexivity.
+  apply wlt_lt in H0.
+  rewrite wordToNat_natToWord_idempotent' by auto.
+  instantiate (bound:=bound). omega.
+Qed.
+
 Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat ->
   n < m.
 Proof.
