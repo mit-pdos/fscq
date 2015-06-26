@@ -4,7 +4,7 @@ Require Import BFile.
 Require Import Word.
 Require Import BasicProg.
 Require Import Bool.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import DirName.
 Require Import Hoare.
 Require Import GenSep.
