@@ -1943,6 +1943,10 @@ Module DIRTREE.
     mscs <- FASTBYTEFILE.update_bytes fsxp inum off data mscs;
     rx mscs.
 
+  Definition append T fsxp inum off len (data: bytes len) mscs rx : prog T :=
+    mscs <- FASTBYTEFILE.append fsxp inum off data mscs;
+    rx mscs.
+
   Definition truncate T fsxp inum nblocks mscs rx : prog T :=
     let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
                                      inum nblocks mscs;
@@ -2043,6 +2047,42 @@ Module DIRTREE.
     auto.
 
     step.
+    rewrite <- subtree_absorb; eauto. cancel.
+    eapply find_subtree_inum_valid; eauto.
+  Qed.
+
+  Theorem append_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
+    {< F mbase m pathname Fm Ftop tree Fi f bytes,
+      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+         [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+         [[ FASTBYTEFILE.rep bytes f ]] *
+         [[ Fi%pred (list2nmem bytes) ]] *
+         [[ goodSize addrlen (off + len) ]] *
+         (* makes this an append *)
+         [[ FASTBYTEFILE.filelen f <= off ]] *
+         [[ len > 0 ]]
+      POST RET:^(mscs, ok)
+         exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+         ([[ ok = false ]] \/
+         [[ ok = true ]] * exists tree' f' bytes' zeros,
+         [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
+         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+         [[ FASTBYTEFILE.rep bytes' f' ]] *
+         [[ let newdata := @Rec.of_word
+              (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+            (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
+         [[ zeros = arrayN (FASTBYTEFILE.filelen f)
+              (repeat $0 (off - (FASTBYTEFILE.filelen f))) ]])
+      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} append fsxp inum off newbytes mscs.
+  Proof.
+    unfold append, rep.
+    time step.
+    rewrite subtree_extract; eauto. cancel.
+
+    time step.
+    eapply pimpl_or_r; right; cancel; eauto.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
   Qed.
