@@ -173,22 +173,13 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
-(*
-Ltac prove_recover_ro_ok :=  unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
-  [ eapply corr3_from_corr2_rx; eauto with prog | idtac]; 
-  setoid_rewrite LOG.notxn_bounded_length at 1;
-  cancel; eauto; [step | idtac]; autorewrite with crash_xform;
-  rewrite LOG.would_recover_either_pred_diskIs; cancel; [step | idtac];
-  [rewrite LOG.notxn_bounded_length | idtac]; [rewrite H3| idtac]; cancel; unfold diskIs in *;
-  replace (v) with (a2) by ( eapply list2mem_inj; eauto ); cancel;
-  [rewrite H3 | idtac]; rewrite LOG.would_recover_either_pred_diskIs_rev by auto; cancel.
-*)
-
-Ltac prove_recover_ro_ok := intros;
+Ltac recover_ro_ok := intros;
   repeat match goal with 
   | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
   | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply corr3_from_corr2_rx; eauto with prog
-  | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3
+  | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3; intros
+  | [ |- pimpl (exis (fun F_ : pred => _ ))  _ ] =>  
+    idtac "bounded"; setoid_rewrite LOG.notxn_bounded_length at 1; cancel; eauto
   | [ |- corr2 _ _ ] => idtac "corr2"; step
   | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; autorewrite with crash_xform
   | [ |- pimpl (sep_star _ (crash_xform (LOG.would_recover_either _ _ _ _ ))) _ ] =>  
@@ -216,18 +207,7 @@ Theorem file_getattr_recover_ok : forall fsxp inum mscs,
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs 
   >>} file_get_attr fsxp inum mscs >> recover.
 Proof.
-  prove_recover_ro_ok.
-  
- (*
-  match goal with 
-   | [ |- (sep_star _ (LOG.rep _ _ (NoTransaction _) _)) _ ] =>  
-    idtac "sep_star rep"; rewrite LOG.notxn_bounded_length
-  end.
-  *)
-
-  setoid_rewrite LOG.notxn_bounded_length at 1; cancel; eauto.
-  prove_recover_ro_ok.
-  prove_recover_ro_ok.
+  recover_ro_ok.
 Qed.
 
 
@@ -279,7 +259,7 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (file_set_sz  _ _ _ _) _) => apply file_set_sz_ok : prog.
 
-Ltac prove_recover_ok := unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
+Ltac recover_rw_ok := unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
   [eapply corr3_from_corr2_rx; eauto with prog | idtac ];
   cancel; eauto; [ step | autorewrite with crash_xform ];
   match goal with H: crash_xform _ =p=> _ |- crash_xform _ * _ =p=> _ => rewrite H end; cancel; step.
@@ -312,7 +292,7 @@ Theorem file_set_sz_recover_ok : forall fsxp inum sz mscs,
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} file_set_sz fsxp inum sz mscs >> recover.
 Proof.
-  prove_recover_ok.
+  recover_rw_ok.
 Qed.
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
@@ -357,26 +337,7 @@ Theorem read_block_recover_ok : forall fsxp inum off mscs,
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} read_block fsxp inum off mscs >> recover.
 Proof.
-
-  unfold forall_helper; intros.
-  eexists.
-
-  intros.
-  eapply pimpl_ok3; intros.
-  eapply corr3_from_corr2_rx; eauto with prog.
-
-  setoid_rewrite LOG.notxn_bounded_length at 1.
-  cancel; eauto.
-  step.
-
-  autorewrite with crash_xform.
-  rewrite LOG.would_recover_either_pred_diskIs.
-  cancel.
-  step.
-
-  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
-  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.
-  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+  recover_ro_ok.
 Qed.
 
 Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
@@ -520,19 +481,7 @@ Theorem readdir_recover_ok: forall fsxp dnum mscs,
            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} readdir fsxp dnum mscs >> recover.
 Proof.
-  unfold forall_helper. intros; eexists. intros. eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx; eauto with prog.
-  setoid_rewrite LOG.notxn_bounded_length at 1.
-  cancel; eauto.
-  step.
-  autorewrite with crash_xform.
-  rewrite LOG.would_recover_either_pred_diskIs.
-  cancel.
-  step.
-  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
-
-  replace (v1) with (a2) by ( eapply list2mem_inj; eauto ). cancel. (* v1 instead of v *)
-  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+  recover_ro_ok.
 Qed.  
 
 Definition create T fsxp dnum name mscs rx : prog T :=
@@ -611,7 +560,7 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} create fsxp dnum name mscs >> recover.
 Proof.
-  prove_recover_ok.
+  recover_rw_ok.
 Qed.
 
 Definition mksock T fsxp dnum name mscs rx : prog T :=
@@ -698,7 +647,7 @@ Theorem mkdir_recover_ok : forall fsxp dnum name mscs,
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} mkdir fsxp dnum name mscs >> recover.
 Proof.
-  prove_recover_ok.
+  recover_rw_ok.
 Qed.
 
 
@@ -766,7 +715,7 @@ Theorem delete_recover_ok : forall fsxp dnum name mscs,
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} delete fsxp dnum name mscs >> recover.
 Proof.
-  prove_recover_ok.
+  recover_rw_ok.
 Qed.
 
 
@@ -811,21 +760,7 @@ Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,
            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} lookup fsxp dnum fnlist mscs >> recover.
 Proof.
-  unfold forall_helper. intros; eexists. intros. eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx; eauto with prog.
-
-  setoid_rewrite LOG.notxn_bounded_length at 1.
-  cancel; eauto.
-  step.
-
-  autorewrite with crash_xform.
-  rewrite LOG.would_recover_either_pred_diskIs.
-  cancel.
-  step.
-
-  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
-  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.  
-  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+  recover_ro_ok.
 Qed.
 
 Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :=
@@ -906,7 +841,7 @@ Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname msc
           [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
   >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
 Proof.
-  prove_recover_ok.
+  recover_rw_ok.
 Qed.
 
 Definition statfs T fsxp mscs rx : prog T :=
