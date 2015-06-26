@@ -15,7 +15,9 @@ Require Import Idempotent.
 Require Import Inode.
 Require Import List.
 Require Import Balloc.
+Require Import Bytes.
 Require Import DirTree.
+Require Import Rec FastByteFile.
 Require Import Arith.
 Require Import Array.
 Require Import FSLayout.
@@ -444,6 +446,108 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   };
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
+
+Definition update_bytes T fsxp inum off len (data:bytes len) mscs rx : prog T :=
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  let^ (mscs) <- DIRTREE.update_bytes fsxp inum off data mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+  rx ^(mscs, ok).
+
+Theorem update_bytes_ok: forall fsxp inum off len (newbytes:bytes len) mscs,
+   {< m pathname Fm Ftop tree f bytes olddata Fx,
+   PRE LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+       [[ FASTBYTEFILE.rep bytes f ]] *
+       [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+       [[ length olddata = len ]]
+   POST RET: ^(mscs, ok)
+       [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+       [[ ok = true ]] *
+       exists m' tree' f' bytes',
+       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+       [[ FASTBYTEFILE.rep bytes' f' ]] *
+       [[ let newdata := @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+          (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
+       [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+   CRASH LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+       exists tree' f' bytes',
+       (Fm * DIRTREE.rep fsxp Ftop tree') *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+       [[ FASTBYTEFILE.rep bytes' f' ]] *
+       [[ let newdata := @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+          (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
+       [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]] )
+   >} update_bytes fsxp inum off newbytes mscs.
+Proof.
+  unfold update_bytes.
+  time hoare. (* 60s *)
+  all: try rewrite LOG.activetxn_would_recover_old.
+  all: try rewrite LOG.notxn_would_recover_old.
+  all: try apply LOG.would_recover_old_either_pred.
+  rewrite <- LOG.would_recover_either_pred_pimpl.
+  cancel; eauto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
+
+Theorem update_bytes_recover_ok: forall fsxp inum off len (newbytes:bytes len) mscs,
+   {<< m pathname Fm Ftop tree f bytes olddata newdata Fx,
+   PRE LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+       [[ FASTBYTEFILE.rep bytes f ]] *
+       [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+       (* this spec uses an existential newdata since length olddata = len
+          gives dependent type issues, at least when using the automation *)
+       [[ newdata =
+            @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes ]] *
+       [[ length olddata = length newdata ]]
+   POST RET: ^(mscs, ok)
+       [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+       [[ ok = true ]] *
+       exists m' tree' f' bytes',
+       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+       [[ FASTBYTEFILE.rep bytes' f' ]] *
+       [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
+       [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+    REC RET:^(mscs,fsxp)
+      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+      exists m' tree' f' bytes',
+       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+       [[ FASTBYTEFILE.rep bytes' f' ]] *
+       [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
+       [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+   >>} update_bytes fsxp inum off newbytes mscs >> recover.
+Proof.
+  (* recover_rw_ok fails in step *)
+  (* manually begin recover_rw_ok *)
+  unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx.
+  eauto with prog.
+  eauto with prog.
+
+  (* take over for step *)
+  intros.
+  cancel; eauto.
+  - replace (length v6).
+    replace v7.
+    rewrite Rec.array_of_word_length with (ft := FASTBYTEFILE.byte_type).
+    auto.
+  - step.
+  (* resume recover_rw_ok *)
+  - autorewrite with crash_xform.
+    rewrite H3.
+    subst v7.
+    cancel.
+    step.
+Qed.
 
 Definition readdir T fsxp dnum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
