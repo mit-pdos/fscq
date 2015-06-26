@@ -293,7 +293,7 @@ Module FASTBYTEFILE.
     inversion H0; clear H0.
     inversion H3.
     set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
-    norm.
+    time norm. (* 15s *)
     cancel.
     intuition; eauto.
     - Transparent hidden.
@@ -330,26 +330,26 @@ Module FASTBYTEFILE.
         replace (BFILE.BFAttr f').
         auto.
       * replace (BFILE.BFAttr f').
+        apply firstn_length_l_iff in H9.
         set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
         fold flen.
-        rewrite <- firstn_skipn with (l := ilist') (n := flen) in H19.
-        assert (length (firstn flen ilist') = flen).
-        apply firstn_length_l.
-        apply firstn_length_l_iff in H9.
-        omega.
-        assert ((Fx * arrayN off (@Rec.of_word
-          (Rec.ArrayF byte_type (length olddata)) newbytes) *
-          arrayN flen (skipn flen allbytes))%pred
-          (list2nmem (firstn flen ilist' ++ skipn flen ilist'))).
-        pred_apply; cancel.
-        rewrite <- H11 in H15 at 1.
-        assert (H15' := H15).
-        apply list2nmem_arrayN_end_eq in H15'; auto.
-        rewrite H15' in H15.
-        apply list2nmem_arrayN_app_iff in H15.
+        match goal with
+        | [ H : _ (list2nmem ilist') |- _ ] => rename H into Hilist'
+        end.
+        rewrite <- firstn_skipn with (l := ilist') (n := flen) in Hilist'.
+        assert (length (firstn flen ilist') = flen) as Hflen.
+        apply firstn_length_l; omega.
+        Lemma sep_star_abc_to_acb : forall AT AEQ AV (a b c : @pred AT AEQ AV),
+          (a * b * c)%pred =p=> (a * c * b).
+        Proof. cancel. Qed.
+        eapply pimpl_apply in Hilist'; [|apply sep_star_abc_to_acb].
+        rewrite <- Hflen in Hilist' at 1.
+        assert (Htails_eq := Hilist').
+        apply list2nmem_arrayN_end_eq in Htails_eq; auto.
+        rewrite Htails_eq in Hilist'.
+        apply list2nmem_arrayN_app_iff in Hilist'.
         assumption.
         exact ($ 0).
-        apply firstn_length_l_iff in H9.
         autorewrite with lengths; omega.
   Qed.
 
