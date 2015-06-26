@@ -2024,8 +2024,7 @@ Module DIRTREE.
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
          [[ FASTBYTEFILE.rep bytes f ]] *
          [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
-         [[ length olddata = len ]] *
-         [[ 0 < len ]]
+         [[ length olddata = len ]]
     POST RET: ^(mscs)
          exists m' tree' f' bytes',
          LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -2056,8 +2055,7 @@ Module DIRTREE.
          [[ Fi%pred (list2nmem bytes) ]] *
          [[ goodSize addrlen (off + len) ]] *
          (* makes this an append *)
-         [[ FASTBYTEFILE.filelen f <= off ]] *
-         [[ len > 0 ]]
+         [[ FASTBYTEFILE.filelen f <= off ]]
       POST RET:^(mscs, ok)
          exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
          ([[ ok = false ]] \/
