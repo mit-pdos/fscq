@@ -85,9 +85,13 @@ Module FASTBYTEFILE.
   Opaque hidden.
 
   Definition update_bytes T fsxp inum (off : nat) len (newbytes : bytes len) mscs rx : prog T :=
+  If (lt_dec 0 len) {
     let^ (mscs) <- BFileRec.bf_update_range items_per_valu itemsz_ok
       fsxp inum off newbytes mscs;
-    rx ^(mscs).
+    rx ^(mscs)
+  } else {
+    rx ^(mscs)
+  }.
 
   Definition read_byte T fsxp inum (off:nat) mscs rx : prog T :=
   let^ (mscs, b) <- BFileRec.bf_get byte_type items_per_valu itemsz_ok
@@ -264,8 +268,7 @@ Module FASTBYTEFILE.
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
            [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
-           [[ length olddata = len ]] *
-           [[ 0 < len ]]
+           [[ length olddata = len ]]
       POST RET: ^(mscs)
            exists m' flist' f' bytes',
            LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
@@ -279,39 +282,27 @@ Module FASTBYTEFILE.
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes.
-
-    intros.
-    eapply pimpl_ok2.
-    apply bf_update_range_ok with (fsxp:=fsxp) (inum:=inum) (off:=off) (w:=newbytes).
-    intros; subst.
-    time norm'l. (* 40s *)
-
-    (* we've manually done what [step] does so that we can invert the
-       rep function before evars are created, so that the allbytes created
-       can be used to instantiate the evars. *)
-    inversion H7 as [allbytes].
-    inversion H0; clear H0.
-    inversion H3.
+    time step. (* 40s *)
+    inversion H6 as [allbytes Hrepconj].
+    inversion Hrepconj as [Hbytes_rep Hrepconj']; clear Hrepconj.
+    inversion Hbytes_rep as [Hrecrep Hallbytes_goodSize].
+    (* TODO: replace this with filelen f *)
     set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
-    time norm. (* 15s *)
-    cancel.
-    intuition; eauto.
-    - Transparent hidden.
-      unfold hidden in *.
 
-      instantiate (Fx0 := (Fx * arrayN flen
+    time step. (* 50s *)
+    - instantiate (Fx0 := (Fx * arrayN flen
         (skipn flen allbytes))%pred).
       rewrite <- firstn_skipn with (l := allbytes) (n := flen) at 2.
       replace (firstn flen allbytes).
       replace flen with (length bytes) at 1.
-      apply list2nmem_arrayN_app with (l' := skipn flen allbytes) in H6.
+      apply list2nmem_arrayN_app with (l' := skipn flen allbytes) in H5.
       pred_apply; cancel.
       cancel.
     - reflexivity.
-    - rewrite Rec.array_of_word_length with (ft := byte_type).
+    - unfold BFileRec.hidden.
+      rewrite Rec.array_of_word_length with (ft := byte_type).
       auto.
-    - Transparent BFileRec.hidden.
-      unfold BFileRec.hidden in *.
+    - unfold BFileRec.hidden in *.
       fold byte in *.
       step.
       * unfold rep.
@@ -330,8 +321,8 @@ Module FASTBYTEFILE.
         replace (BFILE.BFAttr f').
         auto.
       * replace (BFILE.BFAttr f').
-        apply firstn_length_l_iff in H9.
         set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
+        apply firstn_length_l_iff in H10.
         fold flen.
         match goal with
         | [ H : _ (list2nmem ilist') |- _ ] => rename H into Hilist'
@@ -351,6 +342,12 @@ Module FASTBYTEFILE.
         assumption.
         exact ($ 0).
         autorewrite with lengths; omega.
+    - (* no-op case len = 0 *)
+      step.
+      assert (olddata = nil) by (apply length_nil; omega).
+      subst olddata.
+      simpl.
+      pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (update_bytes ?fsxp ?inum ?off ?newbytes _) _) =>
