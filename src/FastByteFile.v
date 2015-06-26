@@ -627,8 +627,7 @@ Module FASTBYTEFILE.
            [[ Fi%pred (list2nmem bytes) ]] *
            [[ goodSize addrlen (off + len) ]] *
            (* makes this an append *)
-           [[ filelen f <= off ]] *
-           [[ len > 0 ]]
+           [[ filelen f <= off ]]
        POST RET:^(mscs, ok)
            exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
            ([[ ok = false ]] \/
@@ -644,14 +643,14 @@ Module FASTBYTEFILE.
   Proof.
     unfold append, write_bytes.
     time step. (* 50s *)
-    inversion H8 as [allbytes].
-    inversion H; clear H.
-    inversion H10; clear H10.
-    inversion H11; clear H11.
-    inversion H0.
+    inversion H7 as [allbytes Hrepconj].
+    inversion Hrepconj as [Hbytes_rep Hrepconj']; clear Hrepconj.
+    inversion Hrepconj' as [Hbytes Hrepconj'']; clear Hrepconj'.
+    inversion Hrepconj'' as [Hbyteslen Hallbyteslen]; clear Hrepconj''.
+    inversion Hbytes_rep as [Hrecrep Hallbytes_goodSize].
     fold (filelen f) in *.
     assert (filelen f <= length allbytes).
-    rewrite <- H12.
+    rewrite <- Hallbyteslen.
     apply roundup_valu_ge.
 
     step.
@@ -665,10 +664,9 @@ Module FASTBYTEFILE.
     step.
     time step. (* 165s -> 13s *)
 
-    unfold hidden.
-    fold (filelen f) in *.
     instantiate (Fx0 := (Fi * arrayN (filelen f) (repeat $0 (off - filelen f)))%pred).
     instantiate (olddata0 := repeat $0 len).
+    fold (filelen f) in *.
     eapply pimpl_apply with (p := (Fi *
       arrayN (filelen f) (repeat $0 (off + len - filelen f)))%pred).
     cancel.
@@ -690,20 +688,26 @@ Module FASTBYTEFILE.
     eapply pimpl_ok2; eauto with prog.
     intros; norm; [cancel|].
     subst.
-    (* We will derive a contradiction with len > 0, since
-       filelen f <= off + len forces a zero-length write.
-       Doing so before intuition prevents several subgoals with
-       contradictory hypotheses. *)
+    (* we derive len = 0 before step creates several subgoals. *)
     assert (filelen f >= off + len).
-    apply not_wlt_ge in H21.
+    apply not_wlt_ge in H15.
     apply le_word_le_nat'; auto.
-    replace len with 0 in H4 by omega.
-    inversion H4.
+    assert (len = 0) by omega.
+    subst len.
+    intuition; eauto.
+    instantiate (Fx0 := Fi).
+    instantiate (olddata0 := nil).
+    pred_apply; cancel.
+    auto.
+
+    time step.
+    eapply pimpl_or_r; right; cancel; eauto.
+    (* there are no zeroes, since we're appending nothing *)
+    replace (off - filelen f) with 0 by omega.
+    pred_apply; cancel.
 
     Grab Existential Variables.
-    all: try exact emp.
-    all: try exact BFILE.bfile0.
-    all: exact nil.
+    all: auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
