@@ -4,7 +4,7 @@ Require Import BFile.
 Require Import Word.
 Require Import BasicProg.
 Require Import Bool.
-Require Import Pred PredCrash.
+Require Import Pred.
 Require Import DirName.
 Require Import Hoare.
 Require Import GenSep.
@@ -173,6 +173,37 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
+(*
+Ltac prove_recover_ro_ok :=  unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
+  [ eapply corr3_from_corr2_rx; eauto with prog | idtac]; 
+  setoid_rewrite LOG.notxn_bounded_length at 1;
+  cancel; eauto; [step | idtac]; autorewrite with crash_xform;
+  rewrite LOG.would_recover_either_pred_diskIs; cancel; [step | idtac];
+  [rewrite LOG.notxn_bounded_length | idtac]; [rewrite H3| idtac]; cancel; unfold diskIs in *;
+  replace (v) with (a2) by ( eapply list2mem_inj; eauto ); cancel;
+  [rewrite H3 | idtac]; rewrite LOG.would_recover_either_pred_diskIs_rev by auto; cancel.
+*)
+
+Ltac prove_recover_ro_ok := intros;
+  repeat match goal with 
+  | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
+  | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply corr3_from_corr2_rx; eauto with prog
+  | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3
+  | [ |- corr2 _ _ ] => idtac "corr2"; step
+  | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; autorewrite with crash_xform
+  | [ |- pimpl (sep_star _ (crash_xform (LOG.would_recover_either _ _ _ _ ))) _ ] =>  
+        idtac "sep_star xform"; rewrite LOG.would_recover_either_pred_diskIs; cancel
+  | [ |- pimpl (sep_star _ (LOG.rep _ _ (NoTransaction _) _)) _ ] =>  
+    idtac "sep_star rep"; rewrite LOG.notxn_bounded_length
+  | [ H: pimpl (crash_xform _) _ |- _ ] => idtac "crash_xform2"; rewrite H; cancel
+  | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
+  | [ |- pimpl (LOG.rep _ _ (NoTransaction ?a) _) (LOG.rep _ _ (NoTransaction ?v) _) ] => idtac "rewrite";
+    replace (v) with (a) by ( eapply list2mem_inj; eauto ); cancel
+  | [ |- pimpl (LOG.would_recover_either_pred _ _ _ _ ) _ ] => idtac "would_rec";
+       rewrite LOG.would_recover_either_pred_diskIs_rev by auto; cancel
+  end.
+
+
 Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   {<< m pathname Fm Ftop tree f,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
@@ -185,21 +216,18 @@ Theorem file_getattr_recover_ok : forall fsxp inum mscs,
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs 
   >>} file_get_attr fsxp inum mscs >> recover.
 Proof.
-  unfold forall_helper. intros; eexists. intros. eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx; eauto with prog.
+  prove_recover_ro_ok.
+  
+ (*
+  match goal with 
+   | [ |- (sep_star _ (LOG.rep _ _ (NoTransaction _) _)) _ ] =>  
+    idtac "sep_star rep"; rewrite LOG.notxn_bounded_length
+  end.
+  *)
 
-  setoid_rewrite LOG.notxn_bounded_length at 1.
-  cancel; eauto.
-  step.
-
-  autorewrite with crash_xform.
-  rewrite LOG.would_recover_either_pred_diskIs.
-  cancel.
-  step.
-
-  rewrite LOG.notxn_bounded_length. rewrite H3; cancel. unfold diskIs in *.
-  replace (v) with (a2) by ( eapply list2mem_inj; eauto ). cancel.  
-  rewrite H3. rewrite LOG.would_recover_either_pred_diskIs_rev by auto. cancel.
+  setoid_rewrite LOG.notxn_bounded_length at 1; cancel; eauto.
+  prove_recover_ro_ok.
+  prove_recover_ro_ok.
 Qed.
 
 
@@ -314,6 +342,8 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
 
+
+
 Theorem read_block_recover_ok : forall fsxp inum off mscs,
   {<< m Fm Ftop tree pathname f B v,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -327,6 +357,7 @@ Theorem read_block_recover_ok : forall fsxp inum off mscs,
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} read_block fsxp inum off mscs >> recover.
 Proof.
+
   unfold forall_helper; intros.
   eexists.
 
