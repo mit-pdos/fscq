@@ -4,7 +4,7 @@ Require Import Prog.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Word.
-Require Import BFile.
+Require Import BFile Bytes Rec FastByteFile.
 Require Import String.
 Require Import FSLayout.
 Require Import Pred.
@@ -1939,6 +1939,10 @@ Module DIRTREE.
     mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     rx mscs.
 
+  Definition update_bytes T fsxp inum off len (data: bytes len) mscs rx : prog T :=
+    mscs <- FASTBYTEFILE.update_bytes fsxp inum off data mscs;
+    rx mscs.
+
   Definition truncate T fsxp inum nblocks mscs rx : prog T :=
     let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
                                      inum nblocks mscs;
@@ -2004,6 +2008,40 @@ Module DIRTREE.
     unfold write, rep.
     step.
     rewrite subtree_extract; eauto. cancel.
+    step.
+    rewrite <- subtree_absorb; eauto. cancel.
+    eapply find_subtree_inum_valid; eauto.
+  Qed.
+
+  Theorem update_bytes_ok : forall fsxp inum off len (newbytes: bytes len) mscs,
+    {< F mbase m pathname Fm Ftop tree f bytes olddata Fx,
+     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+         [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+         [[ FASTBYTEFILE.rep bytes f ]] *
+         [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+         [[ length olddata = len ]] *
+         [[ 0 < len ]]
+    POST RET: ^(mscs)
+         exists m' tree' f' bytes',
+         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+         [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
+         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+         [[ FASTBYTEFILE.rep bytes' f' ]] *
+         [[ let newdata := @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+            (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
+         [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} update_bytes fsxp inum off newbytes mscs.
+  Proof.
+    unfold update_bytes, rep.
+    time step. (* 80s *)
+    rewrite subtree_extract; eauto. cancel.
+    reflexivity.
+    (* TODO: fix FastByteFile update_bytes_ok to not use newdata in this way *)
+    rewrite Rec.array_of_word_length with (ft := FASTBYTEFILE.byte_type).
+    auto.
+
     step.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
