@@ -145,31 +145,28 @@ Inductive outcome (T: Type) :=
 | Finished (m: @mem addr (@weq addrlen) valuset) (v: T)
 | Crashed (m: @mem addr (@weq addrlen) valuset).
 
+Inductive step (T: Type) : @mem _ (@weq addrlen) _ -> prog T ->
+                           @mem _ (@weq addrlen) _ -> prog T -> Prop :=
+| StepRead : forall m a rx v x, m a = Some (v, x) ->
+  step m (Read a rx) m (rx v)
+| StepWrite : forall m a rx v v0 x, m a = Some (v0, x) ->
+  step m (Write a v rx) (upd m a (v, v0 :: x)) (rx tt)
+| StepSync : forall m a rx v l, m a = Some (v, l) ->
+  step m (Sync a rx) (upd m a (v, nil)) (rx tt)
+| StepTrim : forall m a rx vs vs', m a = Some vs ->
+  step m (Trim a rx) (upd m a vs') (rx tt).
+
 Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
-| XReadFail : forall m a rx, m a = None
-  -> exec m (Read a rx) (Failed T)
-| XReadOK : forall m a v rx out x, m a = Some (v, x)
-  -> exec m (rx v) out
-  -> exec m (Read a rx) out
-| XWriteFail : forall m a v rx, m a = None
-  -> exec m (Write a v rx) (Failed T)
-| XWriteOK : forall m a v v0 rx out x, m a = Some (v0, x)
-  -> exec (upd m a (v, v0 :: x)) (rx tt) out
-  -> exec m (Write a v rx) out
-| XSyncFail : forall m a rx, m a = None
-  -> exec m (Sync a rx) (Failed T)
-| XSyncOK : forall m a v l rx out, m a = Some (v, l)
-  -> exec (upd m a (v, nil)) (rx tt) out
-  -> exec m (Sync a rx) out
-| XTrimFail : forall m a rx, m a = None
-  -> exec m (Trim a rx) (Failed T)
-| XTrimOK : forall m a vs vs' rx out, m a = Some vs
-  -> exec (upd m a vs') (rx tt) out
-  -> exec m (Trim a rx) out
+| XStep : forall m m' p p' out, step m p m' p' ->
+  exec m' p' out ->
+  exec m p out
+| XFail : forall m p, (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
+  exec m p (Failed T)
 | XCrash : forall m p, exec m p (Crashed T m)
 | XDone : forall m v, exec m (Done v) (Finished m v).
 
 Hint Constructors exec.
+Hint Constructors step.
 
 
 Inductive recover_outcome (TF TR: Type) :=
