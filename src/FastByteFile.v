@@ -589,35 +589,6 @@ Module FASTBYTEFILE.
   Definition append T fsxp inum (off:nat) len (data : bytes len) mscs rx : prog T :=
     write_bytes fsxp inum off data mscs rx.
 
-  Theorem write_bytes_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
-    {< m mbase F Fm F1 F2 A flist f bytes newdata wend,
-      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-           [[ rep bytes f ]] *
-           (* write goes from off to wend in new file *)
-           [[ wend = off + len ]] *
-           [[ F1%pred (list2nmem (firstn off bytes)) ]] *
-           [[ F2%pred (list2nmem (skipn wend bytes)) ]] *
-           [[ goodSize addrlen wend ]]
-       POST RET:^(mscs, ok)
-           exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-           ([[ ok = false ]] \/
-           [[ ok = true ]] * exists flist' f' bytes' zeros,
-           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ rep bytes' f' ]] *
-           [[ newdata = bsplit_list newbytes ]] *
-           [[ (F1 * zeros * arrayN off newdata * F2)%pred (list2nmem bytes')]] *
-           [[ zeros = arrayN len (repeat $0 (off - len)) ]])
-       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-      >} write_bytes fsxp inum off newbytes mscs.
-  Proof.
-    unfold write_bytes.
-  Admitted.
-
-  Hint Extern 1 ({{_}} progseq (write_bytes _ _ _ _ _) _) => apply write_bytes_ok : prog.
-
   Theorem append_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
     {< m mbase F Fm Fi A flist f bytes,
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
