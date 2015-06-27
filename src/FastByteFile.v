@@ -624,7 +624,7 @@ Module FASTBYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
            [[ rep bytes f ]] *
-           [[ Fi%pred (list2nmem bytes) ]] *
+           [[ Fi (list2nmem bytes) ]] *
            [[ goodSize addrlen (off + len) ]] *
            (* makes this an append *)
            [[ filelen f <= off ]]

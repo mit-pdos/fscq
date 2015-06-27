@@ -2031,7 +2031,8 @@ Module DIRTREE.
          [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
          [[ FASTBYTEFILE.rep bytes' f' ]] *
-         [[ let newdata := @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+         [[ let newdata := @Rec.of_word
+              (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
             (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
          [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
@@ -2052,7 +2053,7 @@ Module DIRTREE.
          [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
          [[ FASTBYTEFILE.rep bytes f ]] *
-         [[ Fi%pred (list2nmem bytes) ]] *
+         [[ Fi (list2nmem bytes) ]] *
          [[ goodSize addrlen (off + len) ]] *
          (* makes this an append *)
          [[ FASTBYTEFILE.filelen f <= off ]]
@@ -2072,10 +2073,10 @@ Module DIRTREE.
     >} append fsxp inum off newbytes mscs.
   Proof.
     unfold append, rep.
-    time step.
+    time step. (* 40s *)
     rewrite subtree_extract; eauto. cancel.
 
-    time step.
+    step.
     eapply pimpl_or_r; right; cancel; eauto.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
