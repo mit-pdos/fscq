@@ -379,6 +379,18 @@ Section RGThm.
       edestruct H2; eauto.
   Qed.
 
+  Example lrg_lemma_5_8 : forall (a a' : @action AT AEQ V) (i : @pred AT AEQ V) m1 m2 m',
+    mem_disjoint m1 m2 ->
+    (a * a')%act (mem_union m1 m2) m' ->
+    i m1 ->
+    i |> a ->
+    exists ! m1' m2', mem_disjoint m1' m2' /\ m' = mem_union m1' m2' /\
+                      a m1 m1' /\ a' m2 m2'.
+  Proof.
+    unfold act_star; intros; repeat deex.
+    eexists.
+  Admitted.
+
   Example lrg_lemma_5_10 : forall (p p' : @pred AT AEQ V) a a' i,
     stable p a ->
     stable p' a' ->
