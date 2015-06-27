@@ -604,6 +604,43 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
 
+Theorem append_recover_ok: forall fsxp inum off len (newbytes:bytes len) mscs,
+   {<< m pathname Fm Ftop tree Fi f bytes,
+   PRE LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+       [[ FASTBYTEFILE.rep bytes f ]] *
+       [[ Fi (list2nmem bytes) ]] *
+       [[ goodSize addrlen (off + len) ]] *
+       (* makes this an append *)
+       [[ FASTBYTEFILE.filelen f <= off ]]
+   POST RET: ^(mscs, ok)
+       [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+       [[ ok = true ]] *
+       exists m' tree' f' bytes' zeros,
+       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+       [[ FASTBYTEFILE.rep bytes' f' ]] *
+       [[ let newdata := @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+           (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
+       [[ zeros = arrayN (FASTBYTEFILE.filelen f)
+            (repeat $0 (off - (FASTBYTEFILE.filelen f))) ]]
+   REC RET: ^(mscs,fsxp)
+      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
+      exists m' tree' f' bytes' zeros,
+       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+       [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+       [[ FASTBYTEFILE.rep bytes' f' ]] *
+       [[ let newdata := @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+            (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
+       [[ zeros = arrayN (FASTBYTEFILE.filelen f)
+          (repeat $0 (off - (FASTBYTEFILE.filelen f))) ]]
+   >>} append fsxp inum off newbytes mscs >> recover.
+Proof.
+  recover_rw_ok.
+Qed.
 
 Definition readdir T fsxp dnum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
