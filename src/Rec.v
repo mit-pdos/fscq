@@ -93,6 +93,21 @@ Module Rec.
     assumption.
   Qed.
 
+  Theorem firstn_l_well_formed : forall (ft:type) n n' w,
+    n <= n' ->
+    @well_formed (ArrayF ft n') w ->
+    @well_formed (ArrayF ft n) (firstn n w).
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H0.
+    split.
+    rewrite firstn_length_l; omega.
+    rewrite Forall_forall in *; intros.
+    eapply H2.
+    eapply in_firstn_in; eauto.
+  Qed.
+
   Theorem skipn_well_formed : forall (ft:type) n1 n2 w,
     @well_formed (ArrayF ft (n1+n2)) w ->
     @well_formed (ArrayF ft n2) (skipn n1 w).
