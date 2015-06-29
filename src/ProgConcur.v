@@ -85,8 +85,13 @@ Section ExecConcur.
     subst T.
     refine (ts tid = TRunning p -> (_ : Prop)).
     refine (pre done crash m -> (_ : Prop)).
-    refine ((forall tid' m' ts', tid' <> tid -> cstep tid' m ts m' ts' -> rely m m') /\ (_ : Prop)).
-    refine (forall m' ts', cstep tid m ts m' ts' -> (guarantee m m' /\ ts' tid <> (@TFailed (doneTs tid)))).
+    refine ((forall tid' m' ts', tid' <> tid ->
+             cstep tid' m ts m' ts' -> rely m m') /\ (_ : Prop)).
+    refine ((forall m' ts', star cstep_any m ts m' ts' ->
+             (exists p, ts' tid = TRunning p) ->
+             crash m') /\ (_ : Prop)).
+    refine (forall m' ts', cstep tid m ts m' ts' ->
+            (guarantee m m' /\ ts' tid <> (@TFailed (doneTs tid)))).
   Defined.
 
 End ExecConcur.
