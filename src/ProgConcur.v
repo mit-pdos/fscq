@@ -118,31 +118,40 @@ Section ExecConcur.
 
 End ExecConcur.
 
+Notation "{C pre C} p" := (ccorr2 pre%pred p) (at level 0, p at level 60).
 
-Definition write1 :=
+Definition write1 (rx : prog nat) :=
   Write $0 $11;;
-  Done 1.
+  rx.
 
-Definition write2 :=
+Definition write2 (rx : prog nat) :=
   Write $1 $22;;
-  Done 2.
+  rx.
 
 Ltac inv_cstep :=
   match goal with
   | [ H: cstep _ _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
-Theorem write1_ok : ccorr2
-  (fun done rely guarantee =>
-   exists F v0 vrest,
-   F * $0 |-> (v0, vrest) *
-   [[ forall F0 F1 v, rely =a=> (F0 * $0 |-> v ~> F1 * $0 |-> v) ]] *
-   [[ forall F a b, (F * $0 |-> a ~> F * $0 |-> b) =a=> guarantee ]] *
-   [[ (F * $0 |-> ($11, [v0] ++ vrest)) =p=> done 1 ]]
-  )%pred write1.
+Theorem write1_ok : forall rx,
+  {C
+    fun done rely guarantee =>
+    exists F v0 vrest,
+    F * $0 |-> (v0, vrest) *
+    [[ forall F0 F1 v, rely =a=> (F0 * $0 |-> v ~> F1 * $0 |-> v) ]] *
+    [[ forall F a b, (F * $0 |-> a ~> F * $0 |-> b) =a=> guarantee ]] *
+    [[ {C
+         fun done_rx rely_rx guarantee_rx =>
+         F * $0 |-> ($11, [v0] ++ vrest) *
+         [[ done_rx = done ]] *
+         [[ rely_rx = rely ]] *
+         [[ guarantee_rx = guarantee ]]
+       C} rx ]]
+  C} write1 rx.
 Proof.
   unfold ccorr2, write1; intros.
   destruct_lift H0.
+  induction 
   inv_cstep; rewrite H in *.
   - inversion H3. clear H3. subst.
     split.
@@ -163,13 +172,20 @@ Proof.
   - inversion H3.
 Qed.
 
-Theorem write2_ok : ccorr2
-  (fun done rely guarantee =>
-   exists F v0 vrest,
-   F * $1 |-> (v0, vrest) *
-   [[ forall F0 F1 v, rely =a=> (F0 * $1 |-> v ~> F1 * $1 |-> v) ]] *
-   [[ forall F a b, (F * $1 |-> a ~> F * $1 |-> b) =a=> guarantee ]] *
-   [[ (F * $1 |-> ($22, [v0] ++ vrest)) =p=> done 2 ]]
-  )%pred write2.
+Theorem write2_ok : forall rx,
+  {C
+    fun done rely guarantee =>
+    exists F v0 vrest,
+    F * $1 |-> (v0, vrest) *
+    [[ forall F0 F1 v, rely =a=> (F0 * $1 |-> v ~> F1 * $1 |-> v) ]] *
+    [[ forall F a b, (F * $1 |-> a ~> F * $1 |-> b) =a=> guarantee ]] *
+    [[ {C
+         fun done_rx rely_rx guarantee_rx =>
+         F * $1 |-> ($22, [v0] ++ vrest) *
+         [[ done_rx = done ]] *
+         [[ rely_rx = rely ]] *
+         [[ guarantee_rx = guarantee ]]
+       C} rx ]]
+  C} write2 rx.
 Proof.
 Admitted.
