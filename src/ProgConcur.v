@@ -76,6 +76,7 @@ Section ExecConcur.
    *)
 
   Definition cstep_any m ts m' ts' := exists tid, cstep tid m ts m' ts'.
+  Definition cstep_except tid m ts m' ts' := exists tid', tid' <> tid /\ cstep tid' m ts m' ts'.
 
   Definition ccorr2 (pre : forall (done : donecond nat),
                            forall (rely : @action addr (@weq addrlen) valuset),
@@ -136,6 +137,35 @@ Ltac inv_ts :=
   match goal with
   | [ H: TRunning _ = TRunning _ |- _ ] => inversion H; clear H; subst
   end.
+
+Lemma star_cstep_tid : forall m ts m' ts' tid,
+  star cstep_any m ts m' ts' ->
+  (star (cstep_except tid) m ts m' ts') \/
+  (exists m0 ts0 m1 ts1,
+   star (cstep_except tid) m ts m0 ts0 /\
+   cstep tid m0 ts0 m1 ts1 /\
+   star cstep_any m1 ts1 m' ts').
+Proof.
+  induction 1.
+  - left. constructor.
+  - unfold cstep_any in H. destruct H as [tid' H].
+    destruct (eq_nat_dec tid' tid); subst.
+    + right. exists s1. exists p1. do 2 eexists.
+      split; [ constructor | ].
+      split; [ eauto | ].
+      eauto.
+    + intuition.
+      * left. econstructor.
+        unfold cstep_except; eauto.
+        eauto.
+      * repeat deex.
+        right.
+        do 4 eexists.
+        intuition eauto.
+        econstructor.
+        unfold cstep_except; eauto.
+        eauto.
+Qed.
 
 Theorem write_cok : forall a vnew rx,
   {C
