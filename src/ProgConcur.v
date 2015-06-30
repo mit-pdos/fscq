@@ -79,7 +79,7 @@ Section ExecConcur.
     refine (ts tid = TRunning p -> (_ : Prop)).
     refine (pre done rely guarantee m -> (_ : Prop)).
     refine ((forall tid' m' ts', tid' <> tid ->
-             cstep tid' m ts m' ts' -> rely m m') /\ (_ : Prop)).
+             cstep tid' m ts m' ts' -> rely m m') -> (_ : Prop)).
     refine (forall m' ts', cstep tid m ts m' ts' ->
             (guarantee m m' /\ ts' tid <> TFailed)).
   Defined.
