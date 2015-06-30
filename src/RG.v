@@ -357,6 +357,26 @@ Section RGThm.
     apply H2 in H6; intuition.
   Qed.
 
+  Lemma fence_action_l : forall (i : @pred AT AEQ V) a m1 m2,
+    i |> a ->
+    a m1 m2 ->
+    i m1.
+  Proof.
+    act_unfold; intuition.
+    apply H in H0.
+    intuition.
+  Qed.
+
+  Lemma fence_action_r : forall (i : @pred AT AEQ V) a m1 m2,
+    i |> a ->
+    a m1 m2 ->
+    i m2.
+  Proof.
+    act_unfold; intuition.
+    apply H in H0.
+    intuition.
+  Qed.
+
   Hint Resolve sep_star_precise.
 
   Theorem fenced_star : forall (i j : @pred AT AEQ V) a b,
@@ -388,8 +408,32 @@ Section RGThm.
                       a m1 m1' /\ a' m2 m2'.
   Proof.
     unfold act_star; intros; repeat deex.
-    eexists.
-  Admitted.
+    inversion H2.
+    inversion H8; clear H8.
+    unfold precise in H10.
+    assert (m1a = m1).
+    eapply H10; eauto.
+    eapply fence_action_l; eauto.
+    subst.
+    assert (m1b = m2).
+    eapply mem_disjoint_union_cancel; eauto.
+    subst.
+    eexists; split; [eexists; split |]; [|intros|intros].
+    (* the automation gets a little too excited with the default
+       intuition auto with *. *)
+    intuition idtac.
+    auto.
+    intuition.
+    eapply mem_disjoint_union_cancel; eauto.
+    inversion H8 as [m2' ?].
+    inversion H11; clear H11.
+    inversion H12; clear H12.
+    inversion H14; clear H14.
+    inversion H15; clear H15.
+    eapply H10; eauto.
+    eapply fence_action_r; eauto.
+    eapply fence_action_r; eauto.
+  Qed.
 
   Example lrg_lemma_5_10 : forall (p p' : @pred AT AEQ V) a a' i,
     stable p a ->

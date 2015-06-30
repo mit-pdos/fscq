@@ -269,6 +269,29 @@ Proof.
   case_eq (m1 x); case_eq (m2 x); intros; eauto; destruct H; eauto.
 Qed.
 
+Theorem mem_disjoint_union_cancel:
+  forall (m1 m2 m2' : @mem AT AEQ V),
+  mem_disjoint m1 m2 ->
+  mem_disjoint m1 m2' ->
+  mem_union m1 m2 = mem_union m1 m2' ->
+  m2 = m2'.
+Proof.
+  intros.
+  rewrite mem_union_comm in H1 by auto.
+  replace (mem_union m1 m2') with (mem_union m2' m1) in H1 by
+    (apply mem_union_comm; apply mem_disjoint_comm; auto).
+  apply functional_extensionality; intros.
+  assert (mem_union m2 m1 x = mem_union m2' m1 x) by congruence.
+  unfold mem_disjoint, mem_union in *.
+  case_eq (m2 x); case_eq (m2' x); intros;
+    replace (m2 x) in *; replace (m2' x) in *;
+    eauto.
+  destruct H.
+  repeat eexists; eauto.
+  destruct H0.
+  repeat eexists; eauto.
+Qed.
+
 Theorem mem_union_addr:
   forall (m1 m2 : @mem AT AEQ V) a v,
   mem_disjoint m1 m2 ->
