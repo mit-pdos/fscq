@@ -144,8 +144,8 @@ Theorem write1_ok : forall rx,
          fun done_rx rely_rx guarantee_rx =>
          F * $0 |-> ($11, [v0] ++ vrest) *
          [[ done_rx = done ]] *
-         [[ rely_rx = rely ]] *
-         [[ guarantee_rx = guarantee ]]
+         [[ rely =a=> rely_rx ]] *
+         [[ guarantee_rx =a=> guarantee ]]
        C} rx ]]
   C} write1 rx.
 Proof.
@@ -183,8 +183,8 @@ Theorem write2_ok : forall rx,
          fun done_rx rely_rx guarantee_rx =>
          F * $1 |-> ($22, [v0] ++ vrest) *
          [[ done_rx = done ]] *
-         [[ rely_rx = rely ]] *
-         [[ guarantee_rx = guarantee ]]
+         [[ rely =a=> rely_rx ]] *
+         [[ guarantee_rx =a=> guarantee ]]
        C} rx ]]
   C} write2 rx.
 Proof.
