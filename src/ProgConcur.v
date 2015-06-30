@@ -90,11 +90,13 @@ Section ExecConcur.
     refine (forall (ts : threadstates), (_ : Prop)).
     refine (ts tid = TRunning p -> (_ : Prop)).
     refine (pre done rely guarantee m -> (_ : Prop)).
+    refine ((forall m' ts', star cstep_any m ts m' ts' ->
+             forall tid'' m'' ts'', tid'' <> tid ->
+             cstep tid'' m' ts' m'' ts'' -> rely m' m'') -> (_ : Prop)).
     refine (forall m' ts', star cstep_any m ts m' ts' -> (_ : Prop)).
-    refine (forall tid'' m'' ts'', cstep tid'' m' ts' m'' ts'' -> (_ : Prop)).
-    refine ((tid'' <> tid /\ rely m' m'') \/
-            (tid'' = tid /\ guarantee m' m'' /\ ts'' tid <> TFailed /\
-             (forall r, ts'' tid = TFinished r -> done r m''))).
+    refine (forall m'' ts'', cstep tid m' ts' m'' ts'' -> (_ : Prop)).
+    refine (guarantee m' m'' /\ ts'' tid <> TFailed /\
+            (forall r, ts'' tid = TFinished r -> done r m'')).
   Defined.
 
   Inductive coutcome :=
@@ -120,72 +122,60 @@ End ExecConcur.
 
 Notation "{C pre C} p" := (ccorr2 pre%pred p) (at level 0, p at level 60).
 
-Definition write1 (rx : prog nat) :=
-  Write $0 $11;;
-  rx.
-
-Definition write2 (rx : prog nat) :=
-  Write $1 $22;;
-  rx.
-
 Ltac inv_cstep :=
   match goal with
   | [ H: cstep _ _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
-Theorem write1_ok : forall rx,
+Ltac inv_step :=
+  match goal with
+  | [ H: step _ _ _ _ |- _ ] => inversion H; clear H; subst
+  end.
+
+Ltac inv_ts :=
+  match goal with
+  | [ H: TRunning _ = TRunning _ |- _ ] => inversion H; clear H; subst
+  end.
+
+Theorem write_cok : forall a vnew rx,
   {C
     fun done rely guarantee =>
     exists F v0 vrest,
-    F * $0 |-> (v0, vrest) *
-    [[ forall F0 F1 v, rely =a=> (F0 * $0 |-> v ~> F1 * $0 |-> v) ]] *
-    [[ forall F a b, (F * $0 |-> a ~> F * $0 |-> b) =a=> guarantee ]] *
+    F * a |-> (v0, vrest) *
+    [[ forall F0 F1 v, rely =a=> (F0 * a |-> v ~> F1 * a |-> v) ]] *
+    [[ forall F x y, (F * a |-> x ~> F * a |-> y) =a=> guarantee ]] *
     [[ {C
          fun done_rx rely_rx guarantee_rx =>
-         F * $0 |-> ($11, [v0] ++ vrest) *
+         F * a |-> (vnew, [v0] ++ vrest) *
          [[ done_rx = done ]] *
          [[ rely =a=> rely_rx ]] *
          [[ guarantee_rx =a=> guarantee ]]
-       C} rx ]]
-  C} write1 rx.
+       C} rx tt ]]
+  C} Write a vnew rx.
 Proof.
-  unfold ccorr2, write1; intros.
+  unfold ccorr2; intros.
   destruct_lift H0.
-  induction 
-  inv_cstep; rewrite H in *.
-  - inversion H3. clear H3. subst.
-    split.
-    + inversion H4.
-      eapply H6.
-
-      unfold act_bow. split.
-      * pred_apply' H0. cancel.
-      * apply sep_star_comm. eapply ptsto_upd. pred_apply' H0. cancel.
-
-    + rewrite upd_prog_eq. congruence.
-
-  - inversion H3. clear H3. subst.
-    exfalso. apply H4. do 2 eexists.
-    constructor.
-    apply sep_star_comm in H0.
-    apply ptsto_valid in H0. eauto.
-  - inversion H3.
-Qed.
-
-Theorem write2_ok : forall rx,
-  {C
-    fun done rely guarantee =>
-    exists F v0 vrest,
-    F * $1 |-> (v0, vrest) *
-    [[ forall F0 F1 v, rely =a=> (F0 * $1 |-> v ~> F1 * $1 |-> v) ]] *
-    [[ forall F a b, (F * $1 |-> a ~> F * $1 |-> b) =a=> guarantee ]] *
-    [[ {C
-         fun done_rx rely_rx guarantee_rx =>
-         F * $1 |-> ($22, [v0] ++ vrest) *
-         [[ done_rx = done ]] *
-         [[ rely =a=> rely_rx ]] *
-         [[ guarantee_rx =a=> guarantee ]]
-       C} rx ]]
-  C} write2 rx.
-Proof.
+  induction H2.
+  - (* Base case: we are still in the starting state. *)
+    inv_cstep.
+    + (* cstep_step *)
+      rewrite H in *. inv_ts.
+      inv_step.
+      intuition.
+      * eapply H7.
+        unfold act_bow. intuition.
+        ** pred_apply; cancel.
+        ** apply sep_star_comm. eapply ptsto_upd. pred_apply; cancel.
+      * rewrite upd_prog_eq in *; congruence.
+      * rewrite upd_prog_eq in *; congruence.
+    + (* cstep_fail *)
+      rewrite H in *. inv_ts.
+      exfalso. apply H4. do 2 eexists.
+      constructor.
+      apply sep_star_comm in H0. apply ptsto_valid in H0. eauto.
+    + (* cstep_done *)
+      congruence.
+  - (* Inductive case: we made some steps. *)
+    (* XXX should have probably strengthened the inductive hypothesis.. *)
+    admit.
 Admitted.
