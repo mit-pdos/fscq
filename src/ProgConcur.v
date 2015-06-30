@@ -90,10 +90,11 @@ Section ExecConcur.
     refine (forall (ts : threadstates), (_ : Prop)).
     refine (ts tid = TRunning p -> (_ : Prop)).
     refine (pre done rely guarantee m -> (_ : Prop)).
-    refine ((forall tid' m' ts', tid' <> tid ->
-             cstep tid' m ts m' ts' -> rely m m') -> (_ : Prop)).
-    refine (forall m' ts', cstep tid m ts m' ts' ->
-            (guarantee m m' /\ ts' tid <> TFailed)).
+    refine (forall m' ts', star cstep_any m ts m' ts' -> (_ : Prop)).
+    refine (forall tid'' m'' ts'', cstep tid'' m' ts' m'' ts'' -> (_ : Prop)).
+    refine ((tid'' <> tid /\ rely m' m'') \/
+            (tid'' = tid /\ guarantee m' m'' /\ ts'' tid <> TFailed /\
+             (forall r, ts'' tid = TFinished r -> done r m''))).
   Defined.
 
   Inductive coutcome :=
