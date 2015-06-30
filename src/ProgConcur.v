@@ -71,25 +71,24 @@ Section ExecConcur.
 
   Definition cstep_any m ts m' ts' := exists tid, cstep tid m ts m' ts'.
 
-  Definition corr4 (T : Type)
-                   (pre : donecond T -> @pred addr (@weq addrlen) valuset -> @pred addr (@weq addrlen) valuset)
-                   (rely : @action addr (@weq addrlen) valuset)
-                   (guarantee : @action addr (@weq addrlen) valuset)
-                   (p : prog T) : Prop.
+  Definition ccorr2 (T : Type)
+                    (pre : forall (done : donecond T),
+                           forall (rely : @action addr (@weq addrlen) valuset),
+                           forall (guarantee : @action addr (@weq addrlen) valuset),
+                           @pred addr (@weq addrlen) valuset)
+                    (p : prog T) : Prop.
     refine (forall (done : donecond T), (_ : Prop)).
-    refine (forall (crash : @pred addr (@weq addrlen) valuset), (_ : Prop)).
+    refine (forall (rely : @action addr (@weq addrlen) valuset), (_ : Prop)).
+    refine (forall (guarantee : @action addr (@weq addrlen) valuset), (_ : Prop)).
     refine (forall (m : @mem addr (@weq addrlen) valuset), (_ : Prop)).
     refine (forall (ts : threadstates), (_ : Prop)).
     refine (forall (tid : nat), (_ : Prop)).
     refine (forall (H : T = doneTs tid), (_ : Prop)).
     subst T.
     refine (ts tid = TRunning p -> (_ : Prop)).
-    refine (pre done crash m -> (_ : Prop)).
+    refine (pre done rely guarantee m -> (_ : Prop)).
     refine ((forall tid' m' ts', tid' <> tid ->
              cstep tid' m ts m' ts' -> rely m m') /\ (_ : Prop)).
-    refine ((forall m' ts', star cstep_any m ts m' ts' ->
-             (exists p, ts' tid = TRunning p) ->
-             crash m') /\ (_ : Prop)).
     refine (forall m' ts', cstep tid m ts m' ts' ->
             (guarantee m m' /\ ts' tid <> (@TFailed (doneTs tid)))).
   Defined.
