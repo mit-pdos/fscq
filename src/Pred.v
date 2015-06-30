@@ -135,6 +135,14 @@ Notation "p =p=> q" := (pimpl p%pred q%pred) (right associativity, at level 90).
 Notation "p <=p=> q" := (piff p%pred q%pred) (at level 90).
 Notation "m ## p" := (pred_apply m p%pred) (at level 90).
 
+Theorem exists_unique_incl_exists : forall A P,
+  (exists ! (x:A), P x) -> exists (x:A), P x.
+Proof.
+  intros.
+  inversion H.
+  inversion H0.
+  eauto.
+Qed.
 
 Module Type SEP_STAR.
   Parameter sep_star : forall {AT:Type} {AEQ:DecEq AT} {V:Type}, @pred AT AEQ V -> @pred AT AEQ V -> @pred AT AEQ V.
