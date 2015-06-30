@@ -37,11 +37,18 @@ Section ExecConcur.
   | TFailed.
 
   Definition threadstates := forall (tid : nat), threadstate (doneTs tid).
+  Definition results := forall (tid : nat), option (doneTs tid).
 
   Definition upd_prog (ap : threadstates) (tid : nat) (p : threadstate (doneTs tid)) : threadstates.
     refine (fun tid' => if eq_nat_dec tid' tid then _ else ap tid').
     rewrite e.
     exact p.
+  Defined.
+
+  Definition upd_result (ar : results) (tid : nat) (p : doneTs tid) : results.
+    refine (fun tid' => if eq_nat_dec tid' tid then _ else ar tid').
+    rewrite e.
+    exact (Some p).
   Defined.
 
   (**
@@ -77,12 +84,12 @@ Section ExecConcur.
                            forall (guarantee : @action addr (@weq addrlen) valuset),
                            @pred addr (@weq addrlen) valuset)
                     (p : prog T) : Prop.
-    refine (forall (done : donecond T), (_ : Prop)).
+    refine (forall (tid : nat), (_ : Prop)).
+    refine (forall (done : donecond (doneTs tid)), (_ : Prop)).
     refine (forall (rely : @action addr (@weq addrlen) valuset), (_ : Prop)).
     refine (forall (guarantee : @action addr (@weq addrlen) valuset), (_ : Prop)).
     refine (forall (m : @mem addr (@weq addrlen) valuset), (_ : Prop)).
     refine (forall (ts : threadstates), (_ : Prop)).
-    refine (forall (tid : nat), (_ : Prop)).
     refine (forall (H : T = doneTs tid), (_ : Prop)).
     subst T.
     refine (ts tid = TRunning p -> (_ : Prop)).
@@ -93,4 +100,55 @@ Section ExecConcur.
             (guarantee m m' /\ ts' tid <> (@TFailed (doneTs tid)))).
   Defined.
 
+  Inductive coutcome :=
+  | CFailed
+  | CFinished (m : @mem addr (@weq addrlen) valuset) (rs : results).
+
+  Inductive cexec : mem -> threadstates -> coutcome -> Prop :=
+  | CStep : forall tid ts m m' p p' out,
+    ts tid = TRunning p ->
+    step m p m' p' ->
+    cexec m' (upd_prog ts (TRunning p')) out ->
+    cexec m ts out
+  | CFail : forall tid ts m p,
+    ts tid = TRunning p ->
+    (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
+    cexec m ts CFailed
+  | CDone : forall ts m rs,
+    (forall tid, (ts tid = (@TNone (doneTs tid)) /\ rs tid = None) \/
+                 exists (r : doneTs tid), (ts tid = TRunning (Done r) /\ rs tid = Some r)) ->
+    cexec m ts (CFinished m rs).
+
 End ExecConcur.
+
+
+Definition write1 :=
+  Write $0 $11;;
+  Done 1.
+
+Definition write2 :=
+  Write $1 $22;;
+  Done 2.
+
+Theorem write1_ok : forall doneTs, ccorr2 doneTs
+  (fun done rely guarantee =>
+   exists F v0,
+   F * $0 |-> v0 *
+   [[ forall F0 F1 v, rely =a=> (F0 * $0 |-> v ~> F1 * $0 |-> v) ]] *
+   [[ forall F a b, (F * $0 |-> a ~> F * $0 |-> b) =a=> guarantee ]]
+  )%pred write1.
+Proof.
+  unfold ccorr2; intros.
+  generalize dependent done.
+  (* XXX dependent type mess with [doneTs].. *)
+Admitted.
+
+Theorem write2_ok : forall doneTs, ccorr2 doneTs
+  (fun done rely guarantee =>
+   exists F v0,
+   F * $1 |-> v0 *
+   [[ forall F0 F1 v, rely =a=> (F0 * $1 |-> v ~> F1 * $1 |-> v) ]] *
+   [[ forall F a b, (F * $1 |-> a ~> F * $1 |-> b) =a=> guarantee ]]
+  )%pred write2.
+Proof.
+Admitted.
