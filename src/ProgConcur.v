@@ -34,12 +34,12 @@ Section ExecConcur.
 
   Inductive threadstate :=
   | TNone
-  | TRunning (T : Type) (p : prog T)
-  | TFinished (T : Type) (r : T)
+  | TRunning (p : prog nat)
+  | TFinished (r : nat)
   | TFailed.
 
   Inductive some_result :=
-  | Res (T : Type) (r : T).
+  | Res (r : nat).
 
   Definition threadstates := forall (tid : nat), threadstate.
   Definition results := forall (tid : nat), option some_result.
@@ -58,15 +58,15 @@ Section ExecConcur.
   Qed.
 
   Inductive cstep : nat -> mem -> threadstates -> mem -> threadstates -> Prop :=
-  | cstep_step : forall T tid ts m (p : prog T) m' p',
+  | cstep_step : forall tid ts m (p : prog nat) m' p',
     ts tid = TRunning p ->
     step m p m' p' ->
     cstep tid m ts m' (upd_prog ts tid (TRunning p))
-  | cstep_fail : forall T tid ts m (p : prog T),
+  | cstep_fail : forall tid ts m (p : prog nat),
     ts tid = TRunning p ->
     (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
     cstep tid m ts m (upd_prog ts tid TFailed)
-  | cstep_done : forall T tid ts m (r : T),
+  | cstep_done : forall tid ts m (r : nat),
     ts tid = TRunning (Done r) ->
     cstep tid m ts m (upd_prog ts tid (TFinished r)).
 
@@ -77,14 +77,13 @@ Section ExecConcur.
 
   Definition cstep_any m ts m' ts' := exists tid, cstep tid m ts m' ts'.
 
-  Definition ccorr2 (T : Type)
-                    (pre : forall (done : donecond T),
+  Definition ccorr2 (pre : forall (done : donecond nat),
                            forall (rely : @action addr (@weq addrlen) valuset),
                            forall (guarantee : @action addr (@weq addrlen) valuset),
                            @pred addr (@weq addrlen) valuset)
-                    (p : prog T) : Prop.
+                    (p : prog nat) : Prop.
     refine (forall (tid : nat), (_ : Prop)).
-    refine (forall (done : donecond T), (_ : Prop)).
+    refine (forall (done : donecond nat), (_ : Prop)).
     refine (forall (rely : @action addr (@weq addrlen) valuset), (_ : Prop)).
     refine (forall (guarantee : @action addr (@weq addrlen) valuset), (_ : Prop)).
     refine (forall (m : @mem addr (@weq addrlen) valuset), (_ : Prop)).
@@ -102,18 +101,18 @@ Section ExecConcur.
   | CFinished (m : @mem addr (@weq addrlen) valuset) (rs : results).
 
   Inductive cexec : mem -> threadstates -> coutcome -> Prop :=
-  | CStep : forall T tid ts m m' (p : prog T) p' out,
+  | CStep : forall tid ts m m' (p : prog nat) p' out,
     ts tid = TRunning p ->
     step m p m' p' ->
     cexec m' (upd_prog ts tid (TRunning p')) out ->
     cexec m ts out
-  | CFail : forall T tid ts m (p : prog T),
+  | CFail : forall tid ts m (p : prog nat),
     ts tid = TRunning p ->
     (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
     cexec m ts CFailed
-  | CDone : forall ts m rs,
+  | CDone : forall ts m (rs : results),
     (forall tid, (ts tid = TNone /\ rs tid = None) \/
-                 exists r, (ts tid = TRunning (Done r) /\ rs tid = Some r)) ->
+                 exists r, (ts tid = TRunning (Done r) /\ rs tid = Some (Res r))) ->
     cexec m ts (CFinished m rs).
 
 End ExecConcur.
@@ -144,9 +143,24 @@ Proof.
   unfold ccorr2, write1; intros.
   destruct_lift H0.
   inv_cstep; rewrite H in *.
-  - admit.
-  - exfalso. apply H4. do 2 eexists.
-Admitted.
+  - inversion H3. clear H3. subst.
+    split.
+    + inversion H4.
+      eapply H6.
+
+      unfold act_bow. split.
+      * pred_apply' H0. cancel.
+      * apply sep_star_comm. eapply ptsto_upd. pred_apply' H0. cancel.
+
+    + rewrite upd_prog_eq. congruence.
+
+  - inversion H3. clear H3. subst.
+    exfalso. apply H4. do 2 eexists.
+    constructor.
+    apply sep_star_comm in H0.
+    apply ptsto_valid in H0. eauto.
+  - inversion H3.
+Qed.
 
 Theorem write2_ok : ccorr2
   (fun done rely guarantee =>
