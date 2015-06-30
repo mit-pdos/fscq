@@ -6,6 +6,9 @@ Require Import Pred.
 Require Import RG.
 Require Import Arith.
 Require Import SepAuto.
+Require Import List.
+
+Import ListNotations.
 
 Set Implicit Arguments.
 
@@ -43,6 +46,16 @@ Section ExecConcur.
 
   Definition upd_prog (ap : threadstates) (tid : nat) (p : threadstate) :=
     fun tid' => if eq_nat_dec tid' tid then p else ap tid'.
+
+  Lemma upd_prog_eq : forall ap tid p, upd_prog ap tid p tid = p.
+  Proof.
+    unfold upd_prog; intros; destruct (eq_nat_dec tid tid); congruence.
+  Qed.
+
+  Lemma upd_prog_ne : forall ap tid p tid', tid <> tid' -> upd_prog ap tid p tid' = ap tid'.
+  Proof.
+    unfold upd_prog; intros; destruct (eq_nat_dec tid' tid); congruence.
+  Qed.
 
   Inductive cstep : nat -> mem -> threadstates -> mem -> threadstates -> Prop :=
   | cstep_step : forall T tid ts m (p : prog T) m' p',
@@ -114,24 +127,34 @@ Definition write2 :=
   Write $1 $22;;
   Done 2.
 
+Ltac inv_cstep :=
+  match goal with
+  | [ H: cstep _ _ _ _ _ |- _ ] => inversion H; clear H; subst
+  end.
+
 Theorem write1_ok : ccorr2
   (fun done rely guarantee =>
-   exists F v0,
-   F * $0 |-> v0 *
+   exists F v0 vrest,
+   F * $0 |-> (v0, vrest) *
    [[ forall F0 F1 v, rely =a=> (F0 * $0 |-> v ~> F1 * $0 |-> v) ]] *
-   [[ forall F a b, (F * $0 |-> a ~> F * $0 |-> b) =a=> guarantee ]]
+   [[ forall F a b, (F * $0 |-> a ~> F * $0 |-> b) =a=> guarantee ]] *
+   [[ (F * $0 |-> ($11, [v0] ++ vrest)) =p=> done 1 ]]
   )%pred write1.
 Proof.
   unfold ccorr2, write1; intros.
   destruct_lift H0.
+  inv_cstep; rewrite H in *.
+  - admit.
+  - exfalso. apply H4. do 2 eexists.
 Admitted.
 
 Theorem write2_ok : ccorr2
   (fun done rely guarantee =>
-   exists F v0,
-   F * $1 |-> v0 *
+   exists F v0 vrest,
+   F * $1 |-> (v0, vrest) *
    [[ forall F0 F1 v, rely =a=> (F0 * $1 |-> v ~> F1 * $1 |-> v) ]] *
-   [[ forall F a b, (F * $1 |-> a ~> F * $1 |-> b) =a=> guarantee ]]
+   [[ forall F a b, (F * $1 |-> a ~> F * $1 |-> b) =a=> guarantee ]] *
+   [[ (F * $1 |-> ($22, [v0] ++ vrest)) =p=> done 2 ]]
   )%pred write2.
 Proof.
 Admitted.
