@@ -396,6 +396,22 @@ Section RECBFILE.
     ck_omega ck.
   Qed.
 
+  Record rchunk := {
+    rchunk_blocknum : addr;
+    rchunk_boff : nat;
+    rchunk_bend : nat;
+
+    rchunk_bend_ok : rchunk_bend <= block_items;
+    rchunk_size_ok : rchunk_boff <= rchunk_bend
+   }.
+
+  Ltac rck_omega ck :=
+    let Hsize := fresh "Hsize" in
+    let Hbend := fresh "Hbend" in
+    assert (Hsize := rchunk_size_ok ck);
+    assert (Hbend := rchunk_bend_ok ck);
+    omega.
+
   Lemma boff_mod_ok : forall off,
     off mod block_items < block_items.
   Proof.
@@ -465,6 +481,27 @@ Section RECBFILE.
     apply boff_mod_ok.
   Qed.
 
+  Program Fixpoint build_rchunks num_chunks blocknum len : list rchunk :=
+  match num_chunks with
+  | 0 => nil
+  | S num_chunks' => let bend := Nat.min len block_items in
+    @Build_rchunk ($ blocknum) 0 bend _ _ ::
+    build_rchunks num_chunks' (blocknum+1) (len-bend)
+  end.
+
+  Program Definition rchunkList (off len:nat) : list rchunk :=
+    let blocknum := off / block_items in
+    let boff := off mod block_items in
+    let bend := Nat.min (boff + len) block_items in
+    let bsize := bend - boff in
+    let num_chunks := divup (len - bsize) block_items in
+    @Build_rchunk ($ blocknum) boff bend _ _ ::
+      build_rchunks num_chunks (blocknum+1) (len-bsize).
+  Next Obligation.
+    apply Nat.lt_le_incl.
+    apply boff_mod_ok.
+  Qed.
+
   Lemma build_chunk_blocknum_bound : forall num_chunks blocknum count (w: items count),
     let bound := blocknum + num_chunks in
     forall ck, In ck (build_chunks num_chunks blocknum w) ->
@@ -473,25 +510,54 @@ Section RECBFILE.
     intros.
     generalize dependent blocknum.
     generalize dependent count.
-    induction num_chunks; intros; simpl.
-    simpl in H.
-    inversion H.
+    simpl.
+    induction num_chunks; intros; simpl in *.
+    contradiction.
 
-    simpl in H.
     inversion H.
-    rewrite <- H0; simpl.
-    unfold bound.
-    apply le_trans with (S blocknum); try omega.
-    apply le_n_S.
+    replace ck; simpl.
+    eapply le_lt_trans.
     apply wordToNat_natToWord_le.
-    unfold bound.
-    replace (blocknum + S num_chunks) with ((blocknum + 1) + num_chunks) by omega.
-    eapply IHnum_chunks.
-    eassumption.
+    omega.
+    replace (blocknum + S num_chunks) with
+      ((blocknum + 1) + num_chunks) by omega.
+    eapply IHnum_chunks; eauto.
+  Qed.
+
+  Lemma build_rchunk_blocknum_bound : forall num_chunks blocknum len,
+    let bound := blocknum + num_chunks in
+    forall ck, In ck (build_rchunks num_chunks blocknum len) ->
+      # (rchunk_blocknum ck) < bound.
+  Proof.
+    intros.
+    generalize dependent blocknum.
+    generalize dependent len.
+    simpl.
+    induction num_chunks; intros; simpl in *.
+    contradiction.
+
+    inversion H.
+    replace ck; simpl.
+    eapply le_lt_trans.
+    apply wordToNat_natToWord_le.
+    omega.
+    replace (blocknum + S num_chunks) with
+      ((blocknum + 1) + num_chunks) by omega.
+    eapply IHnum_chunks; eauto.
   Qed.
 
   Lemma build_chunks_num_chunks : forall num_chunks blocknum count (w: items count) ck,
     In ck (build_chunks num_chunks blocknum w) ->
+    num_chunks > 0.
+  Proof.
+    intros.
+    destruct num_chunks.
+    inversion H.
+    omega.
+  Qed.
+
+  Lemma build_rchunks_num_chunks : forall num_chunks blocknum len ck,
+    In ck (build_rchunks num_chunks blocknum len) ->
     num_chunks > 0.
   Proof.
     intros.
@@ -690,6 +756,41 @@ Section RECBFILE.
       rewrite num_items'; omega.
   Qed.
 
+  Theorem rchunk_blocknum_bound : forall off len,
+    goodSize addrlen off ->
+    0 < len ->
+    let bound := divup (off + len) block_items in
+    Forall (fun ck => # (rchunk_blocknum ck) < bound) (rchunkList off len).
+  Proof.
+    intros.
+    rewrite Forall_forall; intros.
+    unfold chunkList in H1.
+    inversion H1; clear H1. (* clear to save space *)
+    rewrite <- H2.
+    simpl.
+    rewrite wordToNat_natToWord_idempotent'.
+    unfold bound.
+    apply div_lt_divup; auto.
+    omega.
+    apply goodSize_trans with off.
+    apply div_le; auto.
+    assumption.
+
+    assert (Hbuild_bound := build_rchunk_blocknum_bound _ _ _ x H2).
+    eapply le_trans.
+    eassumption.
+    apply build_rchunks_num_chunks in H2.
+    unfold bound.
+    min_cases.
+    - rewrite Hmineq in H2.
+      rewrite minus_plus in H2.
+      rewrite minus_diag in H2.
+      rewrite divup_0 in H2.
+      inversion H2.
+    - rewrite Hmineq in H2.
+      rewrite num_items'; omega.
+  Qed.
+
   Program Definition update_chunk (v:valu) (ck:chunk) : valu :=
   let v_items := valu2items v in
   let boff := chunk_boff ck in
@@ -711,6 +812,22 @@ Section RECBFILE.
     f_equal; ck_omega ck.
   Qed.
 
+  Program Definition read_chunk (v:valu) (ck:rchunk) :
+    items (rchunk_bend ck - rchunk_boff ck) :=
+  let v_items := valu2items v in
+  let boff := rchunk_boff ck in
+  let bend := rchunk_bend ck in
+  let sz := bend - boff in
+  let xy := isplit1_dep bend (block_items - bend) v_items _ in
+  let y := isplit2_dep (bend - sz) sz xy _ in
+  y.
+  Next Obligation.
+    rck_omega ck.
+  Qed.
+  Next Obligation.
+    rck_omega ck.
+  Qed.
+
   Definition items_to_list count (w: items count) : list item :=
     @Rec.of_word (Rec.ArrayF itemtype count) w.
 
@@ -721,6 +838,28 @@ Section RECBFILE.
   let x := firstn boff b in
   let z := skipn bend b in
   x ++ items_to_list (chunk_data ck) ++ z.
+
+  Definition read_block_chunk (b:block) (ck:rchunk) :
+    Rec.data (Rec.ArrayF itemtype (rchunk_bend ck - rchunk_boff ck)) :=
+  let boff := rchunk_boff ck in
+  let bend := rchunk_bend ck in
+  let sz := bend - boff in
+  firstn sz (skipn boff b).
+
+  Lemma read_well_formed : forall b ck,
+    Rec.well_formed b ->
+    Rec.well_formed (read_block_chunk b ck).
+  Proof.
+    intros.
+    unfold read_block_chunk.
+    assert (@Rec.well_formed
+      (Rec.ArrayF itemtype (block_items - rchunk_boff ck))
+      (skipn (rchunk_boff ck) b)).
+    apply Rec.skipn_well_formed.
+    replace (rchunk_boff ck + (block_items - rchunk_boff ck)) with
+      block_items by (rck_omega ck).
+    auto.
+  Admitted.
 
   Theorem eq_rect_items : forall n n' H H' w,
     eq_rect (n*itemsize) word w (n'*itemsize) H =
@@ -1026,6 +1165,11 @@ Section RECBFILE.
     mscs <- BFILE.bfwrite lxp ixp  inum (chunk_blocknum ck) v' mscs;
     rx mscs.
 
+  Definition bf_read_chunk T lxp ixp inum (ck:rchunk) mscs rx : prog T :=
+    let^ (mscs, v) <- BFILE.bfread lxp ixp inum (rchunk_blocknum ck) mscs;
+    let v' := read_chunk v ck in
+    rx ^(mscs, v').
+
   Lemma update_chunk_parts : forall (ck:chunk) (vs_nested: list block) def,
     Forall (fun sublist => length sublist = block_items) vs_nested ->
     Forall Rec.well_formed vs_nested ->
@@ -1181,6 +1325,25 @@ Section RECBFILE.
 
     Grab Existential Variables.
     exact ($ 0).
+  Qed.
+
+  Theorem bf_read_chunk_ok : forall lxp bxp ixp inum (ck:rchunk) mscs,
+  {< m mbase F Fm A f flist Fx v,
+    PRE LOG.rep lxp F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ (Fx * # (rchunk_blocknum ck) |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
+    POST RET: ^(mscs, v')
+        LOG.rep lxp F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep bxp ixp flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ v' = read_chunk v ck ]]
+    CRASH LOG.would_recover_old lxp F mbase
+  >} bf_read_chunk lxp ixp inum ck mscs.
+  Proof.
+    unfold bf_read_chunk.
+    time step. (* 30s *)
+    step.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (bf_put_chunk _ _ _ _ _) _) => apply bf_put_chunk_ok : prog.
