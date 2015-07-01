@@ -317,3 +317,76 @@ Proof.
   Grab Existential Variables.
   all: eauto.
 Qed.
+
+Theorem pimpl_cok : forall pre pre' (p : prog nat),
+  {C pre' C} p ->
+  (forall done rely guarantee, pre done rely guarantee =p=> pre' done rely guarantee) ->
+  {C pre C} p.
+Proof.
+  unfold ccorr2; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
+Definition write2 a b va vb (rx : prog nat) :=
+  Write a va;;
+  Write b vb;;
+  rx.
+
+Theorem write2_cok : forall a b vanew vbnew rx,
+  {C
+    fun done rely guarantee =>
+    exists F va0 varest vb0 vbrest,
+    F * a |-> (va0, varest) * b |-> (vb0, vbrest) *
+    [[ forall F0 F1 va vb, rely =a=> (F0 * a |-> va * b |-> vb ~>
+                                      F1 * a |-> va * b |-> vb) ]] *
+    [[ forall F va va' vb vb', (F * a |-> va  * b |-> vb ~>
+                                F * a |-> va' * b |-> vb') =a=> guarantee ]] *
+    [[ {C
+         fun done_rx rely_rx guarantee_rx =>
+         exists F', F' * a |-> (vanew, [va0] ++ varest) * b |-> (vbnew, [vb0] ++ vbrest) *
+         [[ done_rx = done ]] *
+         [[ rely =a=> rely_rx ]] *
+         [[ guarantee_rx =a=> guarantee ]]
+       C} rx ]]
+  C} write2 a b vanew vbnew rx.
+Proof.
+  unfold write2; intros.
+
+  eapply pimpl_cok. apply write_cok.
+  intros. cancel.
+
+  eapply act_impl_trans; [ eapply H3 | ].
+  (* XXX need some kind of [cancel] for actions.. *)
+  admit.
+
+  eapply act_impl_trans; [ | eapply H2 ].
+  (* XXX need some kind of [cancel] for actions.. *)
+  admit.
+
+  eapply pimpl_cok. apply write_cok.
+  intros; cancel.
+
+  (* XXX hmm, the [write_cok] spec is too weak: it changes [F] in the precondition
+   * with [F'] in the postcondition, and thus loses all information about blocks
+   * other than the one being written to.  but really we should be using [rely].
+   * how to elegantly specify this in separation logic?
+   *)
+  admit.
+
+  (* XXX H5 seems backwards... *)
+  admit.
+
+  (* XXX H4 seems backwards... *)
+  admit.
+
+  eapply pimpl_cok. eauto.
+  intros; cancel.
+
+  (* XXX some other issue with losing information in [write_cok]'s [F] vs [F'].. *)
+  admit.
+
+  eapply act_impl_trans; eassumption.
+  eapply act_impl_trans; eassumption.
+Admitted.

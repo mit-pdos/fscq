@@ -87,6 +87,14 @@ Section RGThm.
     unfold fence, stable, act_emp, act_any, act_id_any,
            act_iff, act_impl, act_or, act_bow, act_id_pred, act_exis.
 
+  Theorem act_impl_trans : forall (a b c : @action AT AEQ V),
+    a =a=> b ->
+    b =a=> c ->
+    a =a=> c.
+  Proof.
+    act_unfold; intuition.
+  Qed.
+
   Theorem act_impl_id_bow : forall (p : @pred AT AEQ V),
     [p] =a=> p ~> p.
   Proof.
