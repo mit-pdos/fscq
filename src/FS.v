@@ -22,6 +22,7 @@ Require Import Arith.
 Require Import Array.
 Require Import FSLayout.
 Require Import Cache.
+Require Import Errno.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -73,11 +74,11 @@ Definition mkfs T data_bitmaps inode_bitmaps rx : prog T :=
   match r with
   | None =>
     mscs <- LOG.abort (FSXPLog fsxp) mscs;
-    rx ^(mscs, fsxp, false)
+    rx (Err ENOSPC)
   | Some inum =>
     let fsxp' := set_root_inode fsxp inum in
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-    rx ^(mscs, fsxp, ok)
+    rx (OK ^(mscs, fsxp))
   end.
 
 Definition recover {T} rx : prog T :=

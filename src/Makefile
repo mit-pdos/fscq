@@ -2,7 +2,7 @@ OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem Pred Prog PredCrash Hoare RG ProgConcur \
-	      SepAuto SepAuto2 Idempotent \
+	      SepAuto SepAuto2 Idempotent Errno \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache FSLayout \
 	      Log Balloc Inode BFile BFileRec Dir \
@@ -10,7 +10,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ExtrHaskellPrelude Extraction ExtractJSON
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
-GHC        := /opt/ghc/7.10.1/bin/ghc
+GHC        := /opt/ghc/7.10.2/bin/ghc
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog

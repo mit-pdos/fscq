@@ -219,10 +219,10 @@ Module Rec.
     induction t; intros n1 p1 n2 p2 r v neq.
     contradiction (empty_field_in p1).
     destruct a as [n0 ft0]. destruct r as [v0 r'].
-    simpl in v. simpl. destruct (string_dec n0 n2); destruct (string_dec n0 n1); subst.
-    rewrite e0 in neq. contradiction neq. trivial.
-    trivial.
-    trivial.
+    simpl in v. simpl.
+    destruct (string_dec n0 n2); destruct (string_dec n0 n1);
+      subst; trivial.
+    contradiction neq. trivial.
     apply IHt. assumption.
   Qed.
 

@@ -252,6 +252,8 @@ Module BUFCACHE.
     simpl in *; auto.
 
     rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
+    eauto.
+    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
@@ -302,6 +304,8 @@ Module BUFCACHE.
     instantiate (cs' := r_).
     apply pimpl_or_r. left. cancel.
     rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
+    eauto.
+    cancel.
 
     apply pimpl_or_r. left. cancel; eauto.
   Qed.

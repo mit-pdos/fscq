@@ -104,23 +104,16 @@ Section ExecConcur.
                            forall (rely : @action addr (@weq addrlen) valuset),
                            forall (guarantee : @action addr (@weq addrlen) valuset),
                            @pred addr (@weq addrlen) valuset)
-                    (p : prog nat) : Prop.
-    refine (forall (tid : nat), (_ : Prop)).
-    refine (forall (done : donecond nat), (_ : Prop)).
-    refine (forall (rely : @action addr (@weq addrlen) valuset), (_ : Prop)).
-    refine (forall (guarantee : @action addr (@weq addrlen) valuset), (_ : Prop)).
-    refine (forall (m : @mem addr (@weq addrlen) valuset), (_ : Prop)).
-    refine (forall (ts : threadstates), (_ : Prop)).
-    refine (ts tid = TRunning p -> (_ : Prop)).
-    refine (pre done rely guarantee m -> (_ : Prop)).
-    refine ((forall m' ts', star cstep_any m ts m' ts' ->
-             forall tid'' m'' ts'', tid'' <> tid ->
-             cstep tid'' m' ts' m'' ts'' -> rely m' m'') -> (_ : Prop)).
-    refine (forall m' ts', star cstep_any m ts m' ts' -> (_ : Prop)).
-    refine (forall m'' ts'', cstep tid m' ts' m'' ts'' -> (_ : Prop)).
-    refine (guarantee m' m'' /\ ts'' tid <> TFailed /\
-            (forall r, ts'' tid = TFinished r -> done r m'')).
-  Defined.
+                    (p : prog nat) : Prop :=
+    forall tid done rely guarantee m ts,
+    ts tid = TRunning p ->
+    pre done rely guarantee m ->
+    (forall m' ts', star cstep_any m ts m' ts' ->
+     forall tid'' m'' ts'', tid'' <> tid ->
+     cstep tid'' m' ts' m'' ts'' -> rely m' m'') ->
+    forall m' ts', star cstep_any m ts m' ts' ->
+    forall m'' ts'', cstep tid m' ts' m'' ts'' ->
+    (guarantee m' m'' /\ ts'' tid <> TFailed /\ (forall r, ts'' tid = TFinished r -> done r m'')).
 
   Inductive coutcome :=
   | CFailed
@@ -142,6 +135,61 @@ Section ExecConcur.
     cexec m ts (CFinished m rs).
 
 End ExecConcur.
+
+
+Section ExecConcur2.
+
+  Inductive c2prog : Type -> Type :=
+  | C2Prog : forall (T : Type) (p : prog T), c2prog T
+  | C2Par : forall (T1 T2 : Type) (cp1 : c2prog T1) (cp2 : c2prog T2), c2prog (T1 * T2)%type
+  | C2Fail : forall (T : Type), c2prog T
+  | C2Done : forall (T : Type) (r : T), c2prog T.
+
+  Inductive c2step : forall T, @mem addr (@weq addrlen) valuset -> c2prog T ->
+                               @mem addr (@weq addrlen) valuset -> c2prog T -> Prop :=
+  | c2step_step : forall T (p p' : prog T) m m',
+    step m p m' p' ->
+    @c2step T m (C2Prog p) m' (C2Prog p')
+
+  | c2step_fail : forall T (p : prog T) m,
+    (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
+    @c2step T m (C2Prog p) m (C2Fail T)
+
+  | c2step_done : forall T (r : T) m,
+    @c2step T m (C2Prog (Done r)) m (C2Done r)
+
+  | c2step_par_ok_l : forall T1 T2 (p1 p1' : c2prog T1) (p2 : c2prog T2) m m',
+    @c2step T1 m p1 m' p1' ->
+    @c2step (T1 * T2)%type m (C2Par p1 p2) m' (C2Par p1' p2)
+  | c2step_par_ok_r : forall T1 T2 (p1 : c2prog T1) (p2 p2' : c2prog T2) m m',
+    @c2step T2 m p2 m' p2' ->
+    @c2step (T1 * T2)%type m (C2Par p1 p2) m' (C2Par p1 p2')
+
+  | c2step_par_fail_l : forall T1 T2 (p2 : c2prog T2) m,
+    @c2step (T1 * T2)%type m (C2Par (C2Fail T1) p2) m (C2Fail (T1 * T2)%type)
+  | c2step_par_fail_r : forall T1 T2 (p1 : c2prog T1) m,
+    @c2step (T1 * T2)%type m (C2Par p1 (C2Fail T2)) m (C2Fail (T1 * T2)%type)
+
+  | c2step_par_done : forall T1 T2 (r1 : T1) (r2 : T2) m,
+    @c2step (T1 * T2)%type m (C2Par (C2Done r1) (C2Done r2)) m (C2Done (r1, r2)).
+
+  Inductive c2outcome (T : Type) :=
+  | C2Failed
+  | C2Finished (m : @mem addr (@weq addrlen) valuset) (r : T).
+
+  Inductive c2exec (T : Type) : mem -> c2prog T -> c2outcome T -> Prop :=
+  | C2XStep : forall p p' m m' out,
+    @c2step T m p m' p' ->
+    c2exec m' p' out ->
+    c2exec m p out
+  | C2XFail : forall p m m',
+    @c2step T m p m' (C2Fail T) ->
+    c2exec m p (C2Failed T)
+  | C2XDone : forall m r,
+    c2exec m (C2Done r) (C2Finished m r).
+
+End ExecConcur2.
+
 
 Notation "{C pre C} p" := (ccorr2 pre%pred p) (at level 0, p at level 60).
 
@@ -324,3 +372,76 @@ Proof.
   Grab Existential Variables.
   all: eauto.
 Qed.
+
+Theorem pimpl_cok : forall pre pre' (p : prog nat),
+  {C pre' C} p ->
+  (forall done rely guarantee, pre done rely guarantee =p=> pre' done rely guarantee) ->
+  {C pre C} p.
+Proof.
+  unfold ccorr2; intros.
+  eapply H; eauto.
+  eapply H0.
+  eauto.
+Qed.
+
+Definition write2 a b va vb (rx : prog nat) :=
+  Write a va;;
+  Write b vb;;
+  rx.
+
+Theorem write2_cok : forall a b vanew vbnew rx,
+  {C
+    fun done rely guarantee =>
+    exists F va0 varest vb0 vbrest,
+    F * a |-> (va0, varest) * b |-> (vb0, vbrest) *
+    [[ forall F0 F1 va vb, rely =a=> (F0 * a |-> va * b |-> vb ~>
+                                      F1 * a |-> va * b |-> vb) ]] *
+    [[ forall F va va' vb vb', (F * a |-> va  * b |-> vb ~>
+                                F * a |-> va' * b |-> vb') =a=> guarantee ]] *
+    [[ {C
+         fun done_rx rely_rx guarantee_rx =>
+         exists F', F' * a |-> (vanew, [va0] ++ varest) * b |-> (vbnew, [vb0] ++ vbrest) *
+         [[ done_rx = done ]] *
+         [[ rely =a=> rely_rx ]] *
+         [[ guarantee_rx =a=> guarantee ]]
+       C} rx ]]
+  C} write2 a b vanew vbnew rx.
+Proof.
+  unfold write2; intros.
+
+  eapply pimpl_cok. apply write_cok.
+  intros. cancel.
+
+  eapply act_impl_trans; [ eapply H3 | ].
+  (* XXX need some kind of [cancel] for actions.. *)
+  admit.
+
+  eapply act_impl_trans; [ | eapply H2 ].
+  (* XXX need some kind of [cancel] for actions.. *)
+  admit.
+
+  eapply pimpl_cok. apply write_cok.
+  intros; cancel.
+
+  (* XXX hmm, the [write_cok] spec is too weak: it changes [F] in the precondition
+   * with [F'] in the postcondition, and thus loses all information about blocks
+   * other than the one being written to.  but really we should be using [rely].
+   * how to elegantly specify this in separation logic?
+   *)
+  admit.
+
+  (* XXX H5 seems backwards... *)
+  admit.
+
+  (* XXX H4 seems backwards... *)
+  admit.
+
+  eapply pimpl_cok. eauto.
+  intros; cancel.
+
+  (* XXX some other issue with losing information in [write_cok]'s [F] vs [F'].. *)
+  admit.
+
+  eapply act_impl_trans; eassumption.
+  eapply act_impl_trans; eassumption.
+Admitted.

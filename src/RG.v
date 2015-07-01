@@ -87,6 +87,14 @@ Section RGThm.
     unfold fence, stable, act_emp, act_any, act_id_any,
            act_iff, act_impl, act_or, act_bow, act_id_pred, act_exis.
 
+  Theorem act_impl_trans : forall (a b c : @action AT AEQ V),
+    a =a=> b ->
+    b =a=> c ->
+    a =a=> c.
+  Proof.
+    act_unfold; intuition.
+  Qed.
+
   Theorem act_impl_id_bow : forall (p : @pred AT AEQ V),
     [p] =a=> p ~> p.
   Proof.
@@ -97,6 +105,12 @@ Section RGThm.
     [p] =a=> act_id_any.
   Proof.
     act_unfold; unfold any; intuition.
+  Qed.
+
+  Theorem act_id_any_eq : forall (m1 m2 : @mem AT AEQ V),
+    act_id_any m1 m2 -> m1 = m2.
+  Proof.
+    act_unfold; intros; intuition.
   Qed.
 
   Theorem act_impl_any : forall (a : @action AT AEQ V),
@@ -399,7 +413,8 @@ Section RGThm.
       edestruct H2; eauto.
   Qed.
 
-  Example lrg_lemma_5_8 : forall (a a' : @action AT AEQ V) (i : @pred AT AEQ V) m1 m2 m',
+  Example lrg_lemma_5_8 : forall (a a' : @action AT AEQ V)
+      (i : @pred AT AEQ V) m1 m2 m',
     mem_disjoint m1 m2 ->
     (a * a')%act (mem_union m1 m2) m' ->
     i m1 ->
@@ -435,6 +450,29 @@ Section RGThm.
     eapply fence_action_r; eauto.
   Qed.
 
+  Example lrg_corollary_5_9 : forall (a : @action AT AEQ V) (i : @pred AT AEQ V) m1 m2 m',
+    mem_disjoint m1 m2 ->
+    (a * act_id_any)%act (mem_union m1 m2) m' ->
+    i m1 ->
+    i |> a ->
+    exists m1', mem_disjoint m1' m2 /\
+      m' = mem_union m1' m2 /\
+      a m1 m1'.
+  Proof.
+    intros.
+    assert (Hlemma := lrg_lemma_5_8 H H0 H1 H2).
+    apply exists_unique_incl_exists in Hlemma.
+    inversion Hlemma.
+    exists x.
+    inversion H3.
+    inversion H4.
+    intuition.
+    apply act_id_any_eq in H10.
+    subst m2; auto.
+    apply act_id_any_eq in H10.
+    subst m2; auto.
+  Qed.
+
   Example lrg_lemma_5_10 : forall (p p' : @pred AT AEQ V) a a' i,
     stable p a ->
     stable p' a' ->
@@ -444,6 +482,19 @@ Section RGThm.
   Proof.
     act_unfold; unfold pimpl; unfold_sep_star; unfold act_star; unfold precise; intros.
     repeat deex.
-  Admitted.
+    exists m2a.
+    exists m2b.
+    (* re-fold fence *)
+    assert (i |> a).
+    act_unfold; auto.
+    assert (m1a = m1).
+    eapply H7; eauto.
+    eapply fence_action_l; eauto.
+    subst.
+    assert (m1b = m2).
+    eapply mem_disjoint_union_cancel; eauto.
+    subst.
+    intuition eauto.
+  Qed.
 
 End RGThm.

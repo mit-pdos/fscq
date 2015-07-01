@@ -5,6 +5,7 @@ import qualified Interpreter as I
 import qualified FS
 import FSLayout
 import Disk
+import Errno
 import System.Environment
 
 main :: IO ()
@@ -15,11 +16,11 @@ main = do
     [fn] -> do
       ds <- init_disk fn
       putStrLn $ "Initializing file system"
-      (_, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs (W 1) (W 1)
-      if ok == False then
-        error $ "mkfs failed"
-      else
-        putStrLn $ "Initialization OK, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
+      res <- I.run ds $ FS.mkfs (W 1) (W 1)
+      case res of
+        Err _ -> error $ "mkfs failed"
+        OK (_, (fsxp, ())) ->
+          putStrLn $ "Initialization OK, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
 
       stats <- close_disk ds
       print_stats stats
