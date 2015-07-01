@@ -465,6 +465,45 @@ Section RGThm.
     subst m2; auto.
   Qed.
 
+  Lemma fence_eq : forall (i : @pred AT AEQ V) (a : @action AT AEQ V)
+    m1 m2 m2' m3 m3',
+    i |> a ->
+    mem_disjoint m2 m3 ->
+    mem_disjoint m2' m3' ->
+    mem_union m2 m3 = mem_union m2' m3' ->
+    a m1 m2 ->
+    a m1 m2' ->
+    m2 = m2'.
+  Proof.
+    unfold fence, precise.
+    intros.
+    intuition.
+    eapply H7; eauto.
+    apply H in H3.
+    apply H3.
+    apply H in H4.
+    apply H4.
+  Qed.
+
+  Lemma fence_eq' : forall (i : @pred AT AEQ V) (a : @action AT AEQ V)
+    m1 m2 m2' m3 m3',
+    i |> a ->
+    mem_disjoint m2 m3 ->
+    mem_disjoint m2' m3' ->
+    mem_union m2 m3 = mem_union m2' m3' ->
+    a m1 m2 ->
+    a m1 m2' ->
+    m3 = m3'.
+  Proof.
+    intros.
+    assert (m2 = m2').
+    eapply fence_eq; eauto.
+    unfold fence, precise in *.
+    intuition.
+    subst.
+    eapply mem_disjoint_union_cancel; eauto.
+  Qed.
+
   Example lrg_lemma_5_10 : forall (p p' : @pred AT AEQ V) a a' i,
     stable p a ->
     stable p' a' ->
@@ -474,6 +513,37 @@ Section RGThm.
   Proof.
     act_unfold; unfold pimpl; unfold_sep_star; unfold act_star; unfold precise; intros.
     repeat deex.
-  Admitted.
+    assert ((a * a')%act (mem_union m1a m1b) (mem_union m2a m2b)).
+    repeat eexists; eauto.
+    exists m2a.
+    exists m2b.
+    assert (i |> a).
+    act_unfold; unfold precise.
+    auto.
+    assert (i m1a).
+    eapply fence_action_l; eauto.
+    assert (i m2a).
+    eapply fence_action_r; eauto.
+    assert (Hlemma := lrg_lemma_5_8 H8 H12 H15 H14).
+    inversion Hlemma as [m1' ?].
+    inversion H17.
+    inversion H18 as [m2' ?].
+    inversion H20.
+    split; auto.
+    split; auto.
+    assert (m2a = m1' /\ m2b = m2') as Heqs.
+    intuition.
+    eapply fence_eq; eauto.
+    eapply fence_eq'; eauto.
+    inversion Heqs; clear Heqs.
+    subst.
+    assert (m1a = m1).
+    eapply H7; eauto.
+    subst.
+    assert (m1b = m2).
+    eapply mem_disjoint_union_cancel; eauto.
+    subst.
+    eauto.
+  Qed.
 
 End RGThm.
