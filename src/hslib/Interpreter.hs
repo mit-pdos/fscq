@@ -46,6 +46,10 @@ run_dcode ds (Sync a rx) = do
   debugmsg $ "Sync " ++ (show a)
   Disk.sync_disk ds a
   run_dcode ds $ rx ()
+run_dcode ds (Trim a rx) = do
+  debugmsg $ "Trim " ++ (show a)
+  Disk.trim_disk ds a
+  run_dcode ds $ rx ()
 
 run :: Disk.DiskState -> ((a -> Prog.Coq_prog a) -> Prog.Coq_prog a) -> IO a
 run ds p = run_dcode ds $ p (\x -> Prog.Done x)

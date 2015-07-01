@@ -137,6 +137,11 @@ sync_disk (S fd sr dirty fl) a = do
   else
     return ()
 
+trim_disk :: DiskState -> Coq_word -> IO ()
+trim_disk _ a = do
+  debugmsg $ "trim(" ++ (show a) ++ ")"
+  return ()
+
 clear_stats :: DiskState -> IO ()
 clear_stats (S _ sr _ _) = do
   writeIORef sr $ Stats 0 0 0
