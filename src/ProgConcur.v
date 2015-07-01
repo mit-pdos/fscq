@@ -191,7 +191,8 @@ Section ExecConcur2.
 End ExecConcur2.
 
 
-Notation "{C pre C} p" := (ccorr2 pre%pred p) (at level 0, p at level 60).
+Notation "{C pre C} p" := (ccorr2 pre%pred p) (at level 0, p at level 60, format
+  "'[' '{C' '//' '['   pre ']' '//' 'C}'  p ']'").
 
 Ltac inv_cstep :=
   match goal with
