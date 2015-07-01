@@ -1,3 +1,5 @@
+Set Implicit Arguments.
+
 Inductive Errno :=
 | EINVAL
 | ENOTDIR
@@ -13,3 +15,5 @@ Inductive Errno :=
 Inductive res (T : Type) :=
 | OK : T -> res T
 | Err : Errno -> res T.
+
+Arguments Err {T} _.

@@ -16,6 +16,7 @@ import System.FilePath.Posix
 import Word
 import Disk
 import Prog
+import qualified Errno
 import Data.IORef
 import Interpreter as I
 import qualified FS
@@ -88,10 +89,12 @@ run_fuse disk_fn fuse_args = do
   else
     do
       putStrLn $ "Initializing file system"
-      (s, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps
-      if ok == False then error $ "mkfs failed" else return ()
-      set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
-      return (s, fsxp)
+      res <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps
+      case res of
+        Errno.Err _ -> error $ "mkfs failed"
+        Errno.OK (s, (fsxp, ())) -> do
+          set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
+          return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
   m_fsxp <- newMVar fsxp

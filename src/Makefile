@@ -2,7 +2,7 @@ OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem Pred Prog PredCrash Hoare RG ProgConcur \
-	      SepAuto SepAuto2 Idempotent \
+	      SepAuto SepAuto2 Idempotent Errno \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache FSLayout \
 	      Log Balloc Inode BFile BFileRec Dir \
