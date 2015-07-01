@@ -169,6 +169,17 @@ Ltac deex :=
     destruct H as [newvar ?]; intuition subst
   end.
 
+Ltac deex_unique :=
+  match goal with
+  | [ H : exists ! (varname : _), _ |- _] =>
+    let newvar := fresh varname in
+    let Hunique := fresh in
+    let Huniqueness := fresh "H" newvar "_uniq" in
+    destruct H as [newvar Hunique];
+    inversion Hunique as [? Huniqueness]; clear Hunique;
+    intuition subst
+  end.
+
 Ltac pred_unfold :=
   unfold impl, and, or, foral_, exis, uniqpred, lift in *.
 Ltac pred := pred_unfold;
