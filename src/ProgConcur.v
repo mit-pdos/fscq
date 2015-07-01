@@ -104,23 +104,16 @@ Section ExecConcur.
                            forall (rely : @action addr (@weq addrlen) valuset),
                            forall (guarantee : @action addr (@weq addrlen) valuset),
                            @pred addr (@weq addrlen) valuset)
-                    (p : prog nat) : Prop.
-    refine (forall (tid : nat), (_ : Prop)).
-    refine (forall (done : donecond nat), (_ : Prop)).
-    refine (forall (rely : @action addr (@weq addrlen) valuset), (_ : Prop)).
-    refine (forall (guarantee : @action addr (@weq addrlen) valuset), (_ : Prop)).
-    refine (forall (m : @mem addr (@weq addrlen) valuset), (_ : Prop)).
-    refine (forall (ts : threadstates), (_ : Prop)).
-    refine (ts tid = TRunning p -> (_ : Prop)).
-    refine (pre done rely guarantee m -> (_ : Prop)).
-    refine ((forall m' ts', star cstep_any m ts m' ts' ->
-             forall tid'' m'' ts'', tid'' <> tid ->
-             cstep tid'' m' ts' m'' ts'' -> rely m' m'') -> (_ : Prop)).
-    refine (forall m' ts', star cstep_any m ts m' ts' -> (_ : Prop)).
-    refine (forall m'' ts'', cstep tid m' ts' m'' ts'' -> (_ : Prop)).
-    refine (guarantee m' m'' /\ ts'' tid <> TFailed /\
-            (forall r, ts'' tid = TFinished r -> done r m'')).
-  Defined.
+                    (p : prog nat) : Prop :=
+    forall tid done rely guarantee m ts,
+    ts tid = TRunning p ->
+    pre done rely guarantee m ->
+    (forall m' ts', star cstep_any m ts m' ts' ->
+     forall tid'' m'' ts'', tid'' <> tid ->
+     cstep tid'' m' ts' m'' ts'' -> rely m' m'') ->
+    forall m' ts', star cstep_any m ts m' ts' ->
+    forall m'' ts'', cstep tid m' ts' m'' ts'' ->
+    (guarantee m' m'' /\ ts'' tid <> TFailed /\ (forall r, ts'' tid = TFinished r -> done r m'')).
 
   Inductive coutcome :=
   | CFailed
