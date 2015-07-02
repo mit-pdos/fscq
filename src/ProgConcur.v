@@ -332,6 +332,31 @@ Definition write2 a b va vb (rx : prog nat) :=
   Write b vb;;
   rx.
 
+Theorem parallel_composition : forall ts (dones : nat -> donecond nat) pres relys guars,
+  (forall tid p, ts tid = TRunning p ->
+    {C pres tid C} p) ->
+  (forall tid tid', tid <> tid' ->
+    guars tid' =a=> relys tid) ->
+  forall m,
+    (forall tid,
+    (pres tid) (dones tid) (relys tid) (guars tid) m) ->
+  forall out,
+    cexec m ts out ->
+    exists m' rs,
+      out = CFinished m' rs /\
+      forall tid, (dones tid) (rs tid) m'.
+Proof.
+  intros.
+  generalize dependent H.
+  induction H2; intros.
+  - (* CStep *)
+    admit.
+  - (* CFail *)
+    admit.
+  - (* CDone *)
+    admit.
+Admitted.
+
 Theorem write2_cok : forall a b vanew vbnew rx,
   {C
     fun done rely guarantee =>
