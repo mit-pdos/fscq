@@ -133,60 +133,6 @@ Section ExecConcur.
 End ExecConcur.
 
 
-Section ExecConcur2.
-
-  Inductive c2prog : Type -> Type :=
-  | C2Prog : forall (T : Type) (p : prog T), c2prog T
-  | C2Par : forall (T1 T2 : Type) (cp1 : c2prog T1) (cp2 : c2prog T2), c2prog (T1 * T2)%type
-  | C2Fail : forall (T : Type), c2prog T
-  | C2Done : forall (T : Type) (r : T), c2prog T.
-
-  Inductive c2step : forall T, @mem addr (@weq addrlen) valuset -> c2prog T ->
-                               @mem addr (@weq addrlen) valuset -> c2prog T -> Prop :=
-  | c2step_step : forall T (p p' : prog T) m m',
-    step m p m' p' ->
-    @c2step T m (C2Prog p) m' (C2Prog p')
-
-  | c2step_fail : forall T (p : prog T) m,
-    (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
-    @c2step T m (C2Prog p) m (C2Fail T)
-
-  | c2step_done : forall T (r : T) m,
-    @c2step T m (C2Prog (Done r)) m (C2Done r)
-
-  | c2step_par_ok_l : forall T1 T2 (p1 p1' : c2prog T1) (p2 : c2prog T2) m m',
-    @c2step T1 m p1 m' p1' ->
-    @c2step (T1 * T2)%type m (C2Par p1 p2) m' (C2Par p1' p2)
-  | c2step_par_ok_r : forall T1 T2 (p1 : c2prog T1) (p2 p2' : c2prog T2) m m',
-    @c2step T2 m p2 m' p2' ->
-    @c2step (T1 * T2)%type m (C2Par p1 p2) m' (C2Par p1 p2')
-
-  | c2step_par_fail_l : forall T1 T2 (p2 : c2prog T2) m,
-    @c2step (T1 * T2)%type m (C2Par (C2Fail T1) p2) m (C2Fail (T1 * T2)%type)
-  | c2step_par_fail_r : forall T1 T2 (p1 : c2prog T1) m,
-    @c2step (T1 * T2)%type m (C2Par p1 (C2Fail T2)) m (C2Fail (T1 * T2)%type)
-
-  | c2step_par_done : forall T1 T2 (r1 : T1) (r2 : T2) m,
-    @c2step (T1 * T2)%type m (C2Par (C2Done r1) (C2Done r2)) m (C2Done (r1, r2)).
-
-  Inductive c2outcome (T : Type) :=
-  | C2Failed
-  | C2Finished (m : @mem addr (@weq addrlen) valuset) (r : T).
-
-  Inductive c2exec (T : Type) : mem -> c2prog T -> c2outcome T -> Prop :=
-  | C2XStep : forall p p' m m' out,
-    @c2step T m p m' p' ->
-    c2exec m' p' out ->
-    c2exec m p out
-  | C2XFail : forall p m m',
-    @c2step T m p m' (C2Fail T) ->
-    c2exec m p (C2Failed T)
-  | C2XDone : forall m r,
-    c2exec m (C2Done r) (C2Finished m r).
-
-End ExecConcur2.
-
-
 Notation "{C pre C} p" := (ccorr2 pre%pred p) (at level 0, p at level 60, format
   "'[' '{C' '//' '['   pre ']' '//' 'C}'  p ']'").
 
