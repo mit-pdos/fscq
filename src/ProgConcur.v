@@ -60,11 +60,8 @@ Section ExecConcur.
   | TFinished (r : nat)
   | TFailed.
 
-  Inductive some_result :=
-  | Res (r : nat).
-
   Definition threadstates := forall (tid : nat), threadstate.
-  Definition results := forall (tid : nat), option some_result.
+  Definition results := forall (tid : nat), nat.
 
   Definition upd_prog (ap : threadstates) (tid : nat) (p : threadstate) :=
     fun tid' => if eq_nat_dec tid' tid then p else ap tid'.
@@ -130,8 +127,7 @@ Section ExecConcur.
     (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
     cexec m ts CFailed
   | CDone : forall ts m (rs : results),
-    (forall tid, (ts tid = TNone /\ rs tid = None) \/
-                 exists r, (ts tid = TRunning (Done r) /\ rs tid = Some (Res r))) ->
+    (forall tid r, ts tid = TRunning (Done r) -> rs tid = r) ->
     cexec m ts (CFinished m rs).
 
 End ExecConcur.
