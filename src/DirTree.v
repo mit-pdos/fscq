@@ -2326,6 +2326,15 @@ Module DIRTREE.
     reflexivity.
   Qed.
 
+  Theorem find_subtree_tree_graft_ne : forall prefix name name' tree dnum tree_elem subtree,
+    name <> name' ->
+    find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
+    find_subtree (prefix++[name]) (tree_graft dnum tree_elem prefix name' subtree tree) =
+      find_subtree (prefix++[name]) tree.
+  Proof.
+    admit.
+  Admitted.
+
   Lemma tree_names_distinct_head_name : forall inum name subtree rest,
     tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
     ~ In name (map fst rest).
