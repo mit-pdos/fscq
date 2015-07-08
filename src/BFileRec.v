@@ -286,6 +286,70 @@ Section RECBFILE.
     eapply bfrec_bound'; eauto.
   Qed.
 
+  Lemma rep_block_inj : forall b b',
+    Rec.well_formed b ->
+    Rec.well_formed b' ->
+    rep_block b = rep_block b' ->
+    b = b'.
+  Proof.
+    unfold rep_block, RecArray.rep_block.
+    unfold wreclen_to_valu.
+    unfold eq_rec_r, eq_rec.
+    intros.
+    rewrite <- Rec.of_to_id with (v := b) by auto.
+    rewrite <- Rec.of_to_id with (v := b') by auto.
+    f_equal.
+    simpl in H1.
+    destruct (eq_sym blocksz_ok).
+    repeat rewrite <- (eq_rect_eq_dec Nat.eq_dec) in H1.
+    auto.
+  Qed.
+
+  Lemma Forall_app_iff : forall A f (l:list A) a,
+    Forall f (a :: l) ->  f a /\ Forall f l.
+  Proof.
+    intros.
+    rewrite Forall_forall in H.
+    split.
+    intuition.
+    rewrite Forall_forall.
+    intros.
+    apply H.
+    constructor 2.
+    auto.
+  Qed.
+
+  Lemma forall_rep_block_inj : forall bs bs',
+    Forall Rec.well_formed bs ->
+    Forall Rec.well_formed bs' ->
+    map rep_block bs = map rep_block bs' ->
+    bs = bs'.
+  Proof.
+    induction bs; induction bs'; intros;
+      auto;
+      try solve [inversion H1].
+    apply Forall_app_iff in H.
+    apply Forall_app_iff in H0.
+    inversion H1.
+    f_equal; intuition.
+    apply rep_block_inj; auto.
+  Qed.
+
+  Lemma vs_nested_unique : forall f vs_nested vs_nested',
+    array_item_pairs vs_nested (list2nmem (BFILE.BFData f)) ->
+    array_item_pairs vs_nested' (list2nmem (BFILE.BFData f)) ->
+    vs_nested = vs_nested'.
+  Proof.
+    unfold array_item_pairs.
+    intros.
+    destruct_lift H.
+    destruct_lift H0.
+    apply list2nmem_array_eq in H.
+    apply list2nmem_array_eq in H0.
+    apply forall_rep_block_inj; auto.
+    congruence.
+  Qed.
+
   End RepImplications.
 
   (** splitting of items mirrors splitting of bytes defined in Bytes **)
