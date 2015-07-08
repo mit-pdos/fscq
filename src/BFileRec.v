@@ -1412,6 +1412,25 @@ Section RECBFILE.
 
   Hint Extern 1 ({{_}} progseq (bf_put_chunk _ _ _ _ _) _) => apply bf_put_chunk_ok : prog.
 
+  Definition bf_read_blocks T fsxp inum off count mscs rx : prog T :=
+    let^ (mscs, l) <- For i < ($ count)
+      Ghost [ F mbase Fm m A flist ilist f ]
+      Loopvar [mscs l ]
+      Continuation lrx
+      Invariant
+        LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ array_item_file f ilist ]] *
+        [[ l = firstn (#i * block_items) (skipn (off * block_items) ilist) ]]
+      OnCrash LOG.would_recover_old (FSXPLog fsxp) F mbase
+      Begin
+        let^ (mscs, b) <- bf_get_entire_block (FSXPLog fsxp) (FSXPInode fsxp) inum $ (off + #i) mscs;
+        lrx ^(mscs, l ++ b)
+      Rof ^(mscs, nil);
+    rx ^(mscs, l).
+
+
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
     let chunks := chunkList off w in
@@ -2963,6 +2982,100 @@ Section RECBFILE.
     pred_apply. cancel.
   Qed.
 
+  Lemma sel_eq_selN : forall A w n (l:list A) def,
+    #w = n ->
+    sel l w def = selN l n def.
+  Proof.
+    intros.
+    unfold sel.
+    congruence.
+  Qed.
+
+  Lemma skipn_length' : forall A n (l:list A),
+    length (skipn n l) = length l - n.
+  Proof.
+    intros.
+    case_eq (le_dec n (length l)); intros.
+    apply skipn_length; auto.
+    rewrite skipn_oob; simpl; omega.
+  Qed.
+
+  Lemma bf_read_blocks_ok : forall fsxp inum off count mscs,
+  {< mbase m F Fm A flist ilist f,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ array_item_file f ilist ]] *
+    [[ @wordToNat addrlen ($ (off + count)) = off + count ]] *
+    [[ off + count < length (BFILE.BFData f) ]]
+    POST RET: ^(mscs, l)
+      LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+      [[ l = firstn (count * block_items) (skipn (off * block_items) ilist) ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+  >} bf_read_blocks fsxp inum off count mscs.
+  Proof.
+    unfold bf_read_blocks.
+    time step. (* 30s *)
+    assert (Hm1bound := H6).
+    apply wlt_lt in H6.
+    rewrite wordToNat_natToWord_idempotent' in H6.
+    hoare.
+
+    - apply le_lt_trans with (off + count); auto.
+      rewrite wordToNat_natToWord_idempotent'.
+      omega.
+      apply wordToNat_natToWord_idempotent'_iff in H5.
+      apply goodSize_trans with (off + count); [|eauto]; omega.
+
+    - assert (vs_nested0 = vs_nested).
+      eapply vs_nested_unique; eauto.
+      subst.
+      replace (# (m1 ^+ $ (1))) with (#m1 + 1).
+      assert (Forall (fun sublist => length sublist = block_items)
+        vs_nested).
+      destruct_lift H10.
+      apply well_formed_length; auto.
+      assert (Forall (fun sublist => length sublist = block_items)
+        (skipn off vs_nested)).
+      rewrite Forall_forall in *; intros.
+      apply H11.
+      eapply in_skipn_in; eauto.
+
+      rewrite concat_hom_skipn by auto.
+      rewrite concat_hom_firstn by auto.
+      rewrite concat_hom_firstn by auto.
+      erewrite firstn_plusone_selN.
+      rewrite concat_app.
+      f_equal.
+      rewrite skipn_selN.
+      simpl.
+      rewrite app_nil_r.
+
+      repeat rewrite <- concat_hom_firstn by auto.
+      apply sel_eq_selN.
+      apply wordToNat_natToWord_idempotent'.
+      apply wordToNat_natToWord_idempotent'_iff in H5.
+      apply goodSize_trans with (off + count); [|eauto]; omega.
+      rewrite skipn_length'.
+      unfold block in H13.
+      simpl in H13.
+      replace (length vs_nested).
+      omega.
+      eapply natplus1_wordplus1_eq; eauto.
+      unfold addrlen.
+      omega.
+
+    - apply goodSize_trans with (off + count); [omega|].
+      apply wordToNat_natToWord_idempotent'_iff; auto.
+
+    - step.
+      rewrite wordToNat_natToWord_idempotent'; auto.
+      apply goodSize_trans with (off + count); [omega|].
+      apply wordToNat_natToWord_idempotent'_iff; auto.
+
+    Grab Existential Variables.
+    exact tt.
+  Qed.
 
 End RECBFILE.
 

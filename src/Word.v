@@ -1481,6 +1481,15 @@ Proof.
   apply wordToNat_bound.
 Qed.
 
+Lemma wordToNat_natToWord_idempotent'_iff : forall n sz,
+  @wordToNat sz (natToWord sz n) = n -> goodSize sz n.
+Proof.
+  intros.
+  eapply goodSize_bound.
+  rewrite H.
+  auto.
+Qed.
+
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
 Proof.
   induction sz; simpl; intuition.
