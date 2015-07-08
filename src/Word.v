@@ -1221,6 +1221,87 @@ Proof.
   auto.
 Qed.
 
+Lemma mod2_S_S : forall n,
+  mod2 (S (S n)) = mod2 n.
+Proof.
+  intros.
+  destruct n; auto; destruct n; auto.
+Qed.
+
+Lemma mod2_S_not : forall n,
+  mod2 (S n) = if (mod2 n) then false else true.
+Proof.
+  intros.
+  induction n; auto.
+  rewrite mod2_S_S.
+  destruct (mod2 n); replace (mod2 (S n)); auto.
+Qed.
+
+Lemma mod2_S_eq : forall n k,
+  mod2 n = mod2 k ->
+  mod2 (S n) = mod2 (S k).
+Proof.
+  intros.
+  do 2 rewrite mod2_S_not.
+  rewrite H.
+  auto.
+Qed.
+
+Theorem drop_mod2_add : forall n k,
+  mod2 (n + 2 * k) = mod2 n.
+Proof.
+  intros.
+  induction n.
+  simpl.
+  rewrite Nat.add_0_r.
+  replace (k + k) with (2 * k) by omega.
+  apply mod2_double.
+  replace (S n + 2 * k) with (S (n + 2 * k)) by omega.
+  apply mod2_S_eq; auto.
+Qed.
+
+Theorem div2_plus_2 : forall n k,
+  div2 (n + 2 * k) = div2 n + k.
+Proof.
+  induction n; intros.
+  simpl.
+  rewrite Nat.add_0_r.
+  replace (k + k) with (2 * k) by omega.
+  apply div2_double.
+  replace (S n + 2 * k) with (S (n + 2 * k)) by omega.
+  destruct (Even.even_or_odd n).
+  - rewrite <- even_div2.
+    rewrite <- even_div2 by auto.
+    apply IHn.
+    apply Even.even_even_plus; auto.
+    apply Even.even_mult_l; repeat constructor.
+
+  - rewrite <- odd_div2.
+    rewrite <- odd_div2 by auto.
+    rewrite IHn.
+    omega.
+    apply Even.odd_plus_l; auto.
+    apply Even.even_mult_l; repeat constructor.
+Qed.
+
+Theorem drop_add : forall sz n k,
+  natToWord sz (n + k * pow2 sz) = natToWord sz n.
+Proof.
+  induction sz; simpl; intuition; repeat rewrite untimes2 in *; f_equal.
+  - rewrite mult_assoc.
+    rewrite (mult_comm k).
+    rewrite <- mult_assoc.
+    apply drop_mod2_add.
+
+  - rewrite <- (IHsz (div2 n) k).
+    rewrite mult_assoc.
+    rewrite (mult_comm k).
+    rewrite <- mult_assoc.
+    rewrite div2_plus_2.
+    reflexivity.
+Qed.
+
+
 Local Hint Extern 1 (_ <= _) => omega.
 
 Theorem wplus_assoc : forall sz (x y z : word sz), x ^+ (y ^+ z) = x ^+ y ^+ z.
