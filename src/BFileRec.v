@@ -1422,19 +1422,26 @@ Section RECBFILE.
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
         [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
         [[ array_item_file f ilist ]] *
-        [[ l = firstn (#i * block_items) (skipn (off * block_items) ilist) ]]
+        (* this converts the list of blocks into a list of lists of items,
+           then concatenates them (much like bf_get_entire_block would do);
+           doing this in the proof avoids making bf_read_blocks use expensive
+           linked lists of items *)
+        [[ concat (map (fun v => Rec.of_word
+              (valu_to_wreclen itemtype items_per_valu blocksz_ok v))
+           l) = firstn (#i * block_items) (skipn (off * block_items) ilist) ]]
       OnCrash LOG.would_recover_old (FSXPLog fsxp) F mbase
       Begin
-        let^ (mscs, b) <- bf_get_entire_block (FSXPLog fsxp) (FSXPInode fsxp) inum $ (off + #i) mscs;
-        lrx ^(mscs, l ++ b)
+        let^ (mscs, v) <- BFILE.bfread (FSXPLog fsxp) (FSXPInode fsxp) inum $ (off + #i) mscs;
+        lrx ^(mscs, l ++ v::nil)
       Rof ^(mscs, nil);
     rx ^(mscs, l).
 
   Definition bf_read_range T fsxp inum off len mscs rx : prog T :=
     let bstart := off / block_items in
     let bend := divup (off+len) block_items in
-    let^ (mscs, data) <- bf_read_blocks fsxp inum bstart (bend - bstart) mscs;
-    rx ^(mscs, firstn len (skipn (off mod block_items) data)).
+    let size := bend - bstart in
+    let^ (mscs, blocks) <- bf_read_blocks fsxp inum bstart size mscs;
+    rx ^(mscs, @Rec.to_word (Rec.ArrayF (Rec.WordF valulen) size) blocks).
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
@@ -3032,7 +3039,9 @@ Section RECBFILE.
     [[ off + count < length (BFILE.BFData f) ]]
     POST RET: ^(mscs, l)
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-      [[ l = firstn (count * block_items) (skipn (off * block_items) ilist) ]]
+      [[ concat (map (fun v => Rec.of_word
+              (valu_to_wreclen itemtype items_per_valu blocksz_ok v))
+           l) = firstn (count * block_items) (skipn (off * block_items) ilist) ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_read_blocks fsxp inum off count mscs.
   Proof.
@@ -3043,59 +3052,83 @@ Section RECBFILE.
     rewrite wordToNat_natToWord_idempotent' in H6.
     hoare.
 
-    - apply le_lt_trans with (off + count); auto.
-      rewrite wordToNat_natToWord_idempotent'.
-      omega.
-      apply wordToNat_natToWord_idempotent'_iff in H5.
-      apply goodSize_trans with (off + count); [|eauto]; omega.
+    erewrite arrayN_except with (i := # ($ (off + # (m1)))); rec_bounds.
+    unfold block in H13.
+    unfold RecArray.block.
+    simpl in *.
+    replace (length vs_nested0).
+    rewrite wordToNat_natToWord_idempotent'.
+    eapply le_lt_trans; [|eauto]; omega.
+    apply wordToNat_natToWord_idempotent'_iff in H5.
+    eapply goodSize_trans; [|eauto]; omega.
 
-    - assert (vs_nested0 = vs_nested).
-      eapply vs_nested_unique; eauto.
-      subst.
-      replace (# (m1 ^+ $ (1))) with (#m1 + 1).
-      assert (Forall (fun sublist => length sublist = block_items)
-        vs_nested).
-      destruct_lift H10.
-      apply well_formed_length; auto.
-      assert (Forall (fun sublist => length sublist = block_items)
-        (skipn off vs_nested)).
-      rewrite Forall_forall in *; intros.
-      apply H11.
-      eapply in_skipn_in; eauto.
+    assert (Hoffcount := H5).
+    apply wordToNat_natToWord_idempotent'_iff in H5.
+    assert (@wordToNat addrlen ($ (off + #m1)) < length (BFILE.BFData f)).
+    rewrite wordToNat_natToWord_idempotent'.
+    omega.
+    eapply goodSize_trans; [|eauto]; omega.
+    unfold RecArray.block, block in *.
+    simpl in *.
 
-      rewrite concat_hom_skipn by auto.
-      rewrite concat_hom_firstn by auto.
-      rewrite concat_hom_firstn by auto.
-      erewrite firstn_plusone_selN.
-      rewrite concat_app.
-      f_equal.
-      rewrite skipn_selN.
-      simpl.
-      rewrite app_nil_r.
+    assert (vs_nested0 = vs_nested).
+    eapply vs_nested_unique; eauto.
+    subst.
+    rewrite map_app.
+    replace (# (m1 ^+ $ (1))) with (#m1 + 1).
+    rewrite concat_app.
+    rewrite H14.
 
-      repeat rewrite <- concat_hom_firstn by auto.
-      apply sel_eq_selN.
-      apply wordToNat_natToWord_idempotent'.
-      apply wordToNat_natToWord_idempotent'_iff in H5.
-      apply goodSize_trans with (off + count); [|eauto]; omega.
-      rewrite skipn_length'.
-      unfold block in H13.
-      simpl in H13.
-      replace (length vs_nested).
-      omega.
-      eapply natplus1_wordplus1_eq; eauto.
-      unfold addrlen.
-      omega.
+    assert (Forall (fun sublist => length sublist = block_items)
+      vs_nested).
+    destruct_lift H10.
+    apply well_formed_length; auto.
+    assert (Forall (fun sublist => length sublist = block_items)
+      (skipn off vs_nested)).
+    rewrite Forall_forall in *; intros.
+    apply H12.
+    eapply in_skipn_in; eauto.
 
-    - apply goodSize_trans with (off + count); [omega|].
-      apply wordToNat_natToWord_idempotent'_iff; auto.
+    rewrite concat_hom_skipn by auto.
+    do 2 rewrite concat_hom_firstn by auto.
+    erewrite firstn_plusone_selN.
+    rewrite concat_app.
+    f_equal.
+    rewrite skipn_selN.
+    simpl.
+    do 2 rewrite app_nil_r.
 
-    - step.
-      rewrite wordToNat_natToWord_idempotent'; auto.
-      apply goodSize_trans with (off + count); [omega|].
-      apply wordToNat_natToWord_idempotent'_iff; auto.
+    erewrite selN_map.
+    unfold rep_block, RecArray.rep_block, wreclen_to_valu, valu_to_wreclen.
+    eq_rect_simpl.
+    rewrite Rec.of_to_id.
+    rewrite wordToNat_natToWord_idempotent'.
+    auto.
+
+    eapply goodSize_trans; [|eauto]; omega.
+    destruct_lift H10.
+    rewrite Forall_forall in H18.
+    apply H18.
+    apply in_selN.
+
+    omega.
+    omega.
+    autorewrite with lengths; omega.
+    eapply natplus1_wordplus1_eq; eauto.
+    unfold addrlen; omega.
+    apply wordToNat_natToWord_idempotent'_iff in H5.
+    eapply goodSize_trans; [|eauto]; omega.
+
+    step.
+    rewrite H12.
+    f_equal.
+    rewrite wordToNat_natToWord_idempotent'.
+    auto.
+    apply wordToNat_natToWord_idempotent'_iff in H5.
+    eapply goodSize_trans; [|eauto]; omega.
 
     Grab Existential Variables.
+    exact nil.
     exact tt.
   Qed.
 
