@@ -3000,7 +3000,7 @@ Section RECBFILE.
     rewrite skipn_oob; simpl; omega.
   Qed.
 
-  Lemma bf_read_blocks_ok : forall fsxp inum off count mscs,
+  Theorem bf_read_blocks_ok : forall fsxp inum off count mscs,
   {< mbase m F Fm A flist ilist f,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
     [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
@@ -3076,6 +3076,8 @@ Section RECBFILE.
     Grab Existential Variables.
     exact tt.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (bf_read_blocks _ _ _ _ _) _) => apply bf_read_blocks_ok : prog.
 
 End RECBFILE.
 
