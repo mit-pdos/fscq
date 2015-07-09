@@ -1571,14 +1571,44 @@ Section RECBFILE.
     apply firstn_skipn.
   Qed.
 
-  (* XXX: this proof takes forever to typecheck *)
+  Lemma apply_chunks_build_chunks_S : forall num_chunks blocknum count w ilist,
+    apply_chunks (@build_chunks (S num_chunks) blocknum count w) ilist =
+    apply_chunks
+  (@build_chunks num_chunks (blocknum + 1) (count - Nat.min count block_items)
+     (@isplit2_dep count (Nat.min count block_items) (count - Nat.min count block_items) w
+        (@build_chunks_obligation_5 (S num_chunks) blocknum count w num_chunks
+           (@eq_refl nat (S num_chunks)))))
+  (apply_chunk
+     {|
+     chunk_blocknum := $ (blocknum);
+     chunk_boff := 0;
+     chunk_bend := Nat.min count block_items;
+     chunk_data := @eq_rect nat (Nat.min count block_items * itemsize) (fun H : nat => word H)
+                     (@isplit1_dep count (Nat.min count block_items)
+                        (count - Nat.min count block_items) w
+                        (@build_chunks_obligation_1 (S num_chunks) blocknum count w num_chunks
+                           (@eq_refl nat (S num_chunks))))
+                     ((Nat.min count block_items - 0) * itemsize)
+                     (@build_chunks_obligation_2 (S num_chunks) blocknum count w num_chunks
+                        (@eq_refl nat (S num_chunks)));
+     chunk_bend_ok := @build_chunks_obligation_3 (S num_chunks) blocknum count w num_chunks
+                        (@eq_refl nat (S num_chunks));
+     chunk_size_ok := @build_chunks_obligation_4 (S num_chunks) blocknum count w num_chunks
+                        (@eq_refl nat (S num_chunks)) |} ilist).
+  Proof.
+    intros.
+    unfold apply_chunks.
+    unfold build_chunks.
+    reflexivity.
+  Qed.
+
   Lemma apply_build_chunks_nodata : forall num_chunks blocknum
     (w: items 0) ilist,
-    let chunks := build_chunks num_chunks blocknum w in
-    apply_chunks chunks ilist = ilist.
+    apply_chunks (build_chunks num_chunks blocknum w) ilist = ilist.
   Proof.
-    simpl.
-    induction num_chunks; intros; simpl; auto.
+    induction num_chunks; intros.
+    abstract ( simpl; auto ).
+    rewrite apply_chunks_build_chunks_S.
     rewrite IHnum_chunks.
     unfold apply_chunk.
     apply firstn_skipn.
@@ -1598,7 +1628,6 @@ Section RECBFILE.
     rewrite Nat.min_l; omega.
   Qed.
 
-  (* XXX: this proof takes forever to typecheck *)
   Lemma apply_build_chunks : forall num_chunks blocknum count newdata ilist,
     goodSize addrlen (blocknum+num_chunks) ->
     let off := blocknum * block_items in
@@ -1617,8 +1646,9 @@ Section RECBFILE.
     generalize dependent ilist.
     generalize dependent blocknum.
     generalize dependent count.
-    induction num_chunks; intros; simpl.
-    - inversion Hcountbound.
+    induction num_chunks; intros.
+    - simpl.
+      inversion Hcountbound.
       simpl in *.
       subst.
       apply length_nil in H.
@@ -1626,7 +1656,9 @@ Section RECBFILE.
       simpl.
       rewrite Nat.add_0_r.
       symmetry; apply firstn_skipn.
-    - unfold apply_chunk; simpl.
+    - subst chunks.
+      rewrite apply_chunks_build_chunks_S.
+      unfold apply_chunk; simpl.
       unfold items_to_list.
       unfold isplit1_dep, isplit1.
       erewrite eq_rect_split1_eq1.
@@ -1640,7 +1672,6 @@ Section RECBFILE.
       unfold isplit2_dep.
       simpl in *.
       repeat generalize_proof.
-      clear chunks. (* cleanup hypotheses *)
       min_cases.
       (* count < block_items *)
       * simpl.
