@@ -2669,18 +2669,17 @@ Section RECBFILE.
   Proof.
     intros.
     split_reps.
-    unfold array_item_file.
+    exists (vs_nested ++ repeat block_zero (newlen - (length (BFILE.BFData f)))).
     simpl.
     rewrite setlen_length.
     assert (newlen >= length (BFILE.BFData f)) as Hexpand.
-      unfold newlen.
+      unfold newlen;
       rewrite wordToNat_natToWord_idempotent'.
       unfold ge.
       apply Nat.mul_le_mono_pos_r with block_items; auto.
       erewrite array_items_block_sized; eauto.
       apply goodSize_items_blocks; assumption.
-    exists (vs_nested ++ repeat block_zero (newlen - (length (BFILE.BFData f))));
-      split; [|split].
+    intuition.
     (* length of file = length vs *)
     rewrite app_length.
     rewrite Hrep_len.
@@ -2691,20 +2690,18 @@ Section RECBFILE.
     unfold setlen.
     rewrite firstn_oob by assumption.
     apply array_item_app_repeated_0; assumption.
+
     rewrite concat_app.
     f_equal.
-    apply Hrep_concat.
+    auto.
     rewrite repeated_blocks_are_items.
-    unfold newdata.
+    subst newdata newlen.
     f_equal.
-    rewrite Nat.mul_sub_distr_r.
-    unfold alloc_items, roundup.
-    unfold newlen.
     rewrite wordToNat_natToWord_idempotent'.
-    f_equal.
-    symmetry; apply array_items_block_sized.
-    assumption.
-    apply goodSize_items_blocks; assumption.
+    unfold alloc_items, roundup.
+    rewrite Nat.mul_sub_distr_r.
+    erewrite array_items_block_sized; eauto.
+    apply goodSize_items_blocks; auto.
   Qed.
 
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
