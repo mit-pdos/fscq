@@ -1546,6 +1546,31 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma firstn_double_skipn : forall A n len1 len2 (l:list A),
+  len1 + n <= len2 ->
+  firstn len1 (skipn n (firstn len2 l)) = firstn len1 (skipn n l).
+Proof.
+  intros.
+
+  case_eq (lt_dec (length l) len2); intros.
+  - rewrite firstn_oob with (n := len2) by omega.
+    auto.
+  - rewrite <- firstn_skipn with (n := len2) (l := l) at 2.
+    rewrite skipn_app_l by LOG.solve_lengths.
+    rewrite firstn_app_l by LOG.solve_lengths.
+    auto.
+Qed.
+
+Lemma firstn_skipn_subslice : forall A n1 len1 n2 len2 (l:list A),
+  len1 + n1 <= len2 ->
+  firstn len1 (skipn n1 (firstn len2 (skipn n2 l))) =
+    firstn len1 (skipn (n1+n2) l).
+Proof.
+  intros.
+  rewrite firstn_double_skipn; auto.
+  rewrite skipn_skipn; auto.
+Qed.
+
 (* several facts about concat on lists of equally-sized
    (homogeneous) lists *)
 Lemma concat_hom_length : forall A (lists: list (list A)) k,

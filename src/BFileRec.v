@@ -1430,6 +1430,11 @@ Section RECBFILE.
       Rof ^(mscs, nil);
     rx ^(mscs, l).
 
+  Definition bf_read_range T fsxp inum off len mscs rx : prog T :=
+    let bstart := off / block_items in
+    let bend := divup (off+len) block_items in
+    let^ (mscs, data) <- bf_read_blocks fsxp inum bstart (bend - bstart) mscs;
+    rx ^(mscs, firstn len (skipn (off mod block_items) data)).
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
@@ -3079,12 +3084,69 @@ Section RECBFILE.
 
   Hint Extern 1 ({{_}} progseq (bf_read_blocks _ _ _ _ _) _) => apply bf_read_blocks_ok : prog.
 
+  Theorem bf_read_range_ok : forall fsxp inum off len mscs,
+  {< mbase m F Fm A flist ilist f,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+    [[ array_item_file f ilist ]] *
+    [[ goodSize addrlen (divup (off+len) block_items) ]] *
+    [[ divup (off + len) block_items < length (BFILE.BFData f) ]]
+    POST RET: ^(mscs, data)
+      LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+      [[ data = firstn len (skipn off ilist) ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+  >} bf_read_range fsxp inum off len mscs.
+  Proof.
+    unfold bf_read_range.
+    time step. (* 20s *)
+
+    apply wordToNat_natToWord_idempotent'.
+    eapply goodSize_trans; [|eauto].
+    rewrite le_plus_minus_r.
+    omega.
+    apply le_trans with ((off+len)/block_items).
+    apply Nat.div_le_mono; auto.
+    omega.
+    apply div_le_divup.
+    rewrite le_plus_minus_r.
+    auto.
+    (* XXX: duplicates proof above *)
+    apply le_trans with ((off+len)/block_items).
+    apply Nat.div_le_mono; auto.
+    omega.
+    apply div_le_divup.
+
+    hoare.
+    subst.
+    destruct_lift H.
+    rewrite <- H0 in H4.
+    assert (Hoff := boff_mod_ok off).
+    assert (off mod block_items <= off).
+    apply Nat.mod_le; auto.
+    assert (off + len <= roundup (off + len) block_items).
+    apply roundup_ge; auto.
+    rewrite firstn_skipn_subslice.
+    f_equal.
+    f_equal.
+    rewrite plus_comm.
+    rewrite mult_comm.
+    rewrite <- Nat.div_mod; auto.
+
+    rewrite Nat.mul_sub_distr_r.
+    fold (roundup (off+len) block_items).
+    rewrite mult_comm.
+    rewrite rounddown_eq by auto.
+    omega.
+  Qed.
+
 End RECBFILE.
 
 
 Hint Extern 1 ({{_}} progseq (bf_getlen _ _ _ _ _) _) => apply bf_getlen_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_get _ _ _ _ _ _ _ _) _) => apply bf_get_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_get_all _ _ _ _ _ _ _) _) => apply bf_get_all_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_read_range _ _ _ _ _) _) => apply bf_read_range_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_update_range _ _ _ _ _ _ _) _) => apply bf_update_range_ok : prog.
