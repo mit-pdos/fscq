@@ -1571,6 +1571,13 @@ Section RECBFILE.
     apply firstn_skipn.
   Qed.
 
+  (* We don't let Coq simpl apply_chunks calls itself because it creates
+     proof terms the kernel can't handle (for reasons that aren't entirely
+     clear). Instead, we manually unfold apply_chunks when necessary or use
+     the silly-looking apply_chunks_cons lemma. *)
+
+  Arguments apply_chunks chunks ilist : simpl never.
+
   Lemma apply_chunks_cons : forall ck chunks ilist,
     apply_chunks (ck :: chunks) ilist =
     apply_chunks chunks (apply_chunk ck ilist).
@@ -1583,9 +1590,7 @@ Section RECBFILE.
     (w: items 0) ilist,
     apply_chunks (build_chunks num_chunks blocknum w) ilist = ilist.
   Proof.
-    induction num_chunks; intros.
-    simpl; auto.
-    simpl build_chunks.
+    induction num_chunks; intros; simpl; auto.
     rewrite apply_chunks_cons.
     rewrite IHnum_chunks.
     unfold apply_chunk.
@@ -1597,13 +1602,13 @@ Section RECBFILE.
     apply_chunks chunks ilist = ilist.
   Proof.
     intros.
-    assert (Hboff := boff_mod_ok off).
-    unfold chunkList in chunks.
     subst chunks.
+    unfold chunkList.
     rewrite apply_chunks_cons.
     rewrite apply_build_chunks_nodata.
     apply apply_empty_chunk.
     simpl.
+    assert (Hboff := boff_mod_ok off).
     rewrite Nat.min_l; omega.
   Qed.
 
@@ -1636,7 +1641,7 @@ Section RECBFILE.
       rewrite Nat.add_0_r.
       symmetry; apply firstn_skipn.
     - subst chunks.
-      simpl build_chunks.
+      simpl.
       rewrite apply_chunks_cons.
       unfold apply_chunk; simpl.
       unfold items_to_list.
@@ -1819,7 +1824,9 @@ Section RECBFILE.
       rewrite minus_diag.
       rewrite divup_0.
       simpl.
+      unfold apply_chunks.
       f_equal; f_equal.
+      simpl.
       apply firstn_oob; omega.
       f_equal.
       rewrite Nat.add_assoc.
