@@ -174,6 +174,14 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     omega.
   Qed.
 
+  Ltac divup_cases :=
+    rewrite divup_eq_divup';
+    match goal with
+    | [ |- context[divup' ?x ?m] ] =>
+      unfold divup';
+      case_eq (x mod m); intros
+    end.
+
   Lemma divup_mul : forall x m,
     m <> 0 ->
     divup (x*m) m = x.

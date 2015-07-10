@@ -1436,12 +1436,53 @@ Section RECBFILE.
       Rof ^(mscs, nil);
     rx ^(mscs, l).
 
-  Definition bf_read_range T fsxp inum off len mscs rx : prog T :=
+  Program Definition bf_read_range T fsxp inum off len mscs rx : prog T :=
     let bstart := off / block_items in
     let bend := divup (off+len) block_items in
     let size := bend - bstart in
     let^ (mscs, blocks) <- bf_read_blocks fsxp inum bstart size mscs;
-    rx ^(mscs, @Rec.to_word (Rec.ArrayF (Rec.WordF valulen) size) blocks).
+    let valu_array_type := Rec.ArrayF (Rec.WordF valulen) size in
+    let xyz := @Rec.to_word valu_array_type blocks in
+    let xyz' := (eq_rect _ word xyz (size * block_items * itemsize) _) in
+    let yz := isplit2_dep (off mod block_items)
+      (size * block_items - off mod block_items) xyz' _ in
+    let y := isplit1_dep len (size * block_items - off mod block_items - len) yz _ in
+    rx ^(mscs, y).
+  Next Obligation.
+    (* eq_rect to make Rec.to_word length of form count * itemsize *)
+    rewrite blocksz_ok.
+    simpl.
+    rewrite mult_assoc.
+    reflexivity.
+  Qed.
+  Next Obligation.
+    rewrite le_plus_minus_r.
+    auto.
+    destruct len.
+    rewrite Nat.add_0_r.
+    generalize (boff_mod_ok off).
+    divup_cases;
+      try rewrite minus_diag; try rewrite minus_plus;
+      omega.
+    assert (off / block_items < divup (off + S len) block_items).
+    apply div_lt_divup; auto; omega.
+    generalize (boff_mod_ok off); nia.
+  Qed.
+  Next Obligation.
+    rewrite le_plus_minus_r; auto.
+    rewrite Nat.mul_sub_distr_r.
+    fold (roundup (off + len) block_items).
+    (* setup a div_mod rewrite to produce just roundup - off *)
+    rewrite <- Nat.sub_add_distr.
+    rewrite mult_comm.
+    rewrite <- Nat.div_mod; auto.
+    generalize (roundup_ge (off + len) block_items block_items_gt_0).
+    omega.
+  Qed.
+
+  (* make len an explicit argument (otherwise it's implicitly passed in rx
+      by the usage of bf_read_range's return value, which is confusing) *)
+  Arguments bf_read_range [T] _ _ _ _ _ _.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
@@ -3141,7 +3182,7 @@ Section RECBFILE.
     [[ divup (off + len) block_items < length (BFILE.BFData f) ]]
     POST RET: ^(mscs, data)
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-      [[ data = firstn len (skipn off ilist) ]]
+      [[ @Rec.of_word (Rec.ArrayF itemtype len) data = firstn len (skipn off ilist) ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_read_range fsxp inum off len mscs.
   Proof.
@@ -3173,19 +3214,7 @@ Section RECBFILE.
     apply Nat.mod_le; auto.
     assert (off + len <= roundup (off + len) block_items).
     apply roundup_ge; auto.
-    rewrite firstn_skipn_subslice.
-    f_equal.
-    f_equal.
-    rewrite plus_comm.
-    rewrite mult_comm.
-    rewrite <- Nat.div_mod; auto.
-
-    rewrite Nat.mul_sub_distr_r.
-    fold (roundup (off+len) block_items).
-    rewrite mult_comm.
-    rewrite rounddown_eq by auto.
-    omega.
-  Qed.
+  Admitted.
 
 End RECBFILE.
 
