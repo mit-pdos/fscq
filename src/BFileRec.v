@@ -1481,6 +1481,57 @@ Section RECBFILE.
     bf_read_range's return value, which is confusing. *)
   Implicit Arguments bf_read_range [T].
 
+  Lemma to_word_cons : forall ft len a tl,
+    @Rec.to_word (Rec.ArrayF ft (S len)) (a::tl) =
+    combine (@Rec.to_word ft a) (@Rec.to_word (Rec.ArrayF ft len) tl).
+  Proof.
+    intros.
+    reflexivity.
+  Qed.
+
+  Lemma concat_of_word_eq_of_to : forall (l:list (word (Rec.len blocktype))) size H,
+    length l = size ->
+    concat (map (@Rec.of_word blocktype) l) =
+    @Rec.of_word (Rec.ArrayF itemtype (size*block_items))
+      (* H is just mult_assoc *)
+      (rew H in (@Rec.to_word (Rec.ArrayF (Rec.WordF (Rec.len blocktype)) size) l)).
+  Proof.
+    induction l; intros; simpl in *.
+    subst.
+    reflexivity.
+    erewrite IHl with (size := (Nat.pred size)).
+    - generalize ?H; intros.
+      subst size.
+      rewrite to_word_cons.
+
+      fold block_items in *.
+      simpl Rec.len.
+      set (n1 := @length (word (block_items * Rec.len itemtype)) l) in *.
+      set (n2 := block_items) in *.
+      set (n3 := Rec.len itemtype) in *.
+
+      unfold blocktype.
+      fold block_items.
+      erewrite icombine_app.
+      unfold items, icombine.
+      eq_rect_simpl.
+      (* cleans up new proof terms *)
+      repeat generalize_proof; intros.
+
+      erewrite combine_eq_rect2 with
+        (n := n1 * (n2 * n3)) (n':= n1 * n2 * n3).
+      generalize ?H1 ?H'; intros.
+      eq_rect_simpl.
+      repeat f_equal; apply proof_irrelevance.
+
+    (* other IHl obligation *)
+    - inversion H0; auto.
+
+    Grab Existential Variables.
+    (* erewrite includes hypotheses stating facts about multiplication,
+       for which nia is the most convenient tactic *)
+    all: unfold block_items; auto; nia.
+  Qed.
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=

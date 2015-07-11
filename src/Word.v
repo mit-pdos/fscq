@@ -709,6 +709,38 @@ Proof.
   f_equal.
 Qed.
 
+Theorem combine_0_n : forall sz2 (w: word 0) (v: word sz2),
+  combine w v = v.
+Proof.
+  intros.
+  replace w with WO.
+  auto.
+  rewrite word0; auto.
+Qed.
+
+Lemma WS_eq_rect : forall b n (w: word n) n' H H',
+  eq_rect _ word (@WS b n w) _ H = @WS b n' (eq_rect _ word w _ H').
+Proof.
+  destruct n; intros; subst;
+    eq_rect_simpl; auto.
+Qed.
+
+Theorem combine_eq_rect2 : forall sz n n'
+  (H: n = n') H'
+  (a: word sz) (b: word n),
+  combine a b =
+    eq_rect _ word (combine a (eq_rect _ word b _ H)) _ H'.
+Proof.
+  induction a; simpl; intros.
+  eq_rect_simpl; auto.
+  erewrite WS_eq_rect.
+  erewrite IHa.
+  auto.
+
+  Grab Existential Variables.
+  omega.
+Qed.
+
 Lemma whd_eq_rect : forall n w Heq,
   whd (eq_rect (S n) word w (S (n + 0)) Heq) =
   whd w.
