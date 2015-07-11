@@ -14,6 +14,9 @@ Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
+(* rew .. in notations for eq_rect *)
+Import EqNotations.
+
 (** BFileRec implements a record-based abstraction on top of a BFILE. Records
 must be sized so that a whole number fit into a block. *)
 Section RECBFILE.
@@ -1422,17 +1425,12 @@ Section RECBFILE.
         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
         [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
         [[ array_item_file f ilist ]] *
-        (* this converts the list of blocks into a list of lists of items,
-           then concatenates them (much like bf_get_entire_block would do);
-           doing this in the proof avoids making bf_read_blocks use expensive
-           linked lists of items *)
-        [[ concat (map (fun v => Rec.of_word
-              (valu_to_wreclen itemtype items_per_valu blocksz_ok v))
-           l) = firstn (#i * block_items) (skipn (off * block_items) ilist) ]]
+        [[ concat (map (@Rec.of_word blocktype) l) =
+            firstn (#i * block_items) (skipn (off * block_items) ilist) ]]
       OnCrash LOG.would_recover_old (FSXPLog fsxp) F mbase
       Begin
         let^ (mscs, v) <- BFILE.bfread (FSXPLog fsxp) (FSXPInode fsxp) inum $ (off + #i) mscs;
-        lrx ^(mscs, l ++ v::nil)
+        lrx ^(mscs, l ++ (rew blocksz_ok in v) :: nil)
       Rof ^(mscs, nil);
     rx ^(mscs, l).
 
@@ -1441,7 +1439,7 @@ Section RECBFILE.
     let bend := divup (off+len) block_items in
     let size := bend - bstart in
     let^ (mscs, blocks) <- bf_read_blocks fsxp inum bstart size mscs;
-    let valu_array_type := Rec.ArrayF (Rec.WordF valulen) size in
+    let valu_array_type := Rec.ArrayF (Rec.WordF (Rec.len blocktype)) size in
     let xyz := @Rec.to_word valu_array_type blocks in
     let xyz' := (eq_rect _ word xyz (size * block_items * itemsize) _) in
     let yz := isplit2_dep (off mod block_items)
@@ -1450,8 +1448,6 @@ Section RECBFILE.
     rx ^(mscs, y).
   Next Obligation.
     (* eq_rect to make Rec.to_word length of form count * itemsize *)
-    rewrite blocksz_ok.
-    simpl.
     rewrite mult_assoc.
     reflexivity.
   Qed.
@@ -1480,9 +1476,11 @@ Section RECBFILE.
     omega.
   Qed.
 
-  (* make len an explicit argument (otherwise it's implicitly passed in rx
-      by the usage of bf_read_range's return value, which is confusing) *)
-  Arguments bf_read_range [T] _ _ _ _ _ _.
+  (* Make T the only implicit argument; in particular, make len an explicit
+    argument. Otherwise it's implicitly passed in rx by the _usage_ of
+    bf_read_range's return value, which is confusing. *)
+  Implicit Arguments bf_read_range [T].
+
 
   (** Update a range of bytes in file at inode [inum]. Assumes file has been expanded already. **)
   Definition bf_update_range T fsxp inum off count (w: items count) mscs rx : prog T :=
@@ -3077,9 +3075,8 @@ Section RECBFILE.
     [[ off + count < length (BFILE.BFData f) ]]
     POST RET: ^(mscs, l)
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-      [[ concat (map (fun v => Rec.of_word
-              (valu_to_wreclen itemtype items_per_valu blocksz_ok v))
-           l) = firstn (count * block_items) (skipn (off * block_items) ilist) ]]
+      [[ concat (map (@Rec.of_word blocktype) l) =
+        firstn (count * block_items) (skipn (off * block_items) ilist) ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
   >} bf_read_blocks fsxp inum off count mscs.
   Proof.
