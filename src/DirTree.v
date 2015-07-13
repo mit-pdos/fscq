@@ -1930,10 +1930,15 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
-
   Definition read T fsxp inum off mscs rx : prog T :=
     let^ (mscs, v) <- BFILE.bfread (FSXPLog fsxp) (FSXPInode fsxp) inum off mscs;
     rx ^(mscs, v).
+
+  Definition read_bytes T fsxp inum off len mscs rx : prog T :=
+    let^ (mscs, data) <- FASTBYTEFILE.read_bytes fsxp inum off len mscs;
+    rx ^(mscs, data).
+
+  Implicit Arguments read_bytes [T].
 
   Definition write T fsxp inum off v mscs rx : prog T :=
     mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
@@ -1989,6 +1994,27 @@ Module DIRTREE.
   Proof.
     unfold read, rep.
     step.
+    rewrite subtree_extract; eauto. cancel.
+    step.
+  Qed.
+
+  Theorem read_bytes_ok : forall fsxp inum off len mscs,
+    {< F mbase m pathname Fm Ftop tree f Fx bytes olddata,
+    PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[ FASTBYTEFILE.rep bytes f ]] *
+           [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+           [[ length olddata = len ]]
+    POST RET:^(mscs,r)
+           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
+           [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type _) r = olddata  ]]
+    CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
+    >} read_bytes fsxp inum off len mscs.
+  Proof.
+    unfold read_bytes, rep.
+    time step. (* 35s *)
+
     rewrite subtree_extract; eauto. cancel.
     step.
   Qed.
@@ -2165,6 +2191,7 @@ Module DIRTREE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
