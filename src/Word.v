@@ -1502,8 +1502,8 @@ Proof.
   apply le_lt_trans with n2; omega.
 Qed.
 
-Theorem goodSize_bound: forall sz n1 bound,
-  n1 <= wordToNat (natToWord sz bound) ->
+Theorem goodSize_word_bound: forall n1 sz (bound: word sz),
+  n1 <= wordToNat bound ->
   goodSize sz n1.
 Proof.
   intros.
@@ -1511,6 +1511,15 @@ Proof.
   eapply le_lt_trans.
   eassumption.
   apply wordToNat_bound.
+Qed.
+
+
+Theorem goodSize_bound: forall n1 sz bound,
+  n1 <= wordToNat (natToWord sz bound) ->
+  goodSize sz n1.
+Proof.
+  intros.
+  eapply goodSize_word_bound; eauto.
 Qed.
 
 Lemma wordToNat_natToWord_idempotent'_iff : forall n sz,
