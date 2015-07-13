@@ -343,6 +343,54 @@ Proof.
   recover_ro_ok.
 Qed.
 
+
+Definition read_bytes T fsxp inum off len mscs rx : prog T :=
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  let^ (mscs, data) <- DIRTREE.read_bytes fsxp inum off len mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+  rx ^(mscs, data).
+
+Theorem read_bytes_ok : forall fsxp inum off len mscs,
+  {< m F Fm Ftop tree pathname f Fx bytes olddata,
+  PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ FASTBYTEFILE.rep bytes f ]] *
+         [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+         [[ length olddata = len ]]
+  POST RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
+         [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type _) r = olddata  ]]
+  CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
+  >} read_bytes fsxp inum off len mscs.
+Proof.
+  unfold read_bytes.
+  hoare.
+  apply LOG.would_recover_old_either.
+  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
+  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
+
+Theorem read_bytes_recover_ok : forall fsxp inum off len mscs,
+  {<< m Fm Ftop tree pathname f Fx bytes olddata,
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ FASTBYTEFILE.rep bytes f ]] *
+         [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
+         [[ length olddata = len ]]
+  POST RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type _) r = olddata  ]]
+  REC RET:^(mscs,fsxp)
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
+  >>} read_bytes fsxp inum off len mscs >> recover.
+Proof.
+  recover_ro_ok.
+Qed.
+
 Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
