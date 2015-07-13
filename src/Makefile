@@ -10,7 +10,11 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ExtrHaskellPrelude Extraction ExtractJSON
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
-GHC        := /opt/ghc/7.10.2/bin/ghc
+GHC 	   := ghc
+ifeq (,$(shell $(GHC) --version | grep 'version 7.10' 2>/dev/null))
+	GHC := /opt/ghc/7.10.2/bin/ghc
+endif
+
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
