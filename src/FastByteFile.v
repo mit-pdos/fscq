@@ -93,71 +93,16 @@ Module FASTBYTEFILE.
     rx ^(mscs)
   }.
 
-  Definition read_byte T fsxp inum (off:nat) mscs rx : prog T :=
-  let^ (mscs, b) <- BFileRec.bf_get byte_type items_per_valu itemsz_ok
-     fsxp.(FSXPLog) fsxp.(FSXPInode) inum ($ off) mscs;
-     rx ^(mscs, b).
-
   Definition read_bytes T fsxp inum (off:nat) len mscs rx : prog T :=
-    let^ (mscs, databytes) <- For i < len
-      Ghost [ m mbase F Fm A f flist bytes ]
-      Loopvar [ mscs l ]
-      Continuation lrx
-      Invariant
-          LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
-          [[ (Fm * BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) flist)%pred (list2mem m) ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ rep bytes f ]] *
-          [[ l = firstn #i (skipn off bytes) ]]
-     OnCrash
-      exists m',
-        LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs
-     Begin
-      let^ (mscs, b) <- BFileRec.bf_get byte_type items_per_valu itemsz_ok
-        fsxp.(FSXPLog) fsxp.(FSXPInode) inum ($ (off + #i)) mscs;
-      lrx ^(mscs, l ++ [b])
-    Rof ^(mscs, nil);
-    rx ^(mscs, databytes).
+  If (lt_dec 0 len) {
+    let^ (mscs, data) <- BFileRec.bf_read_range items_per_valu itemsz_ok
+      fsxp inum off len mscs;
+    rx ^(mscs, data)
+  } else {
+    rx ^(mscs, wzero _)
+  }.
 
-  Theorem read_byte_ok: forall fsxp inum off mscs,
-    {< m mbase F Fx Fm A flist f bytes v,
-    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ rep bytes f ]] *
-          [[ (Fx * off |-> v)%pred (list2nmem bytes) ]]
-    POST RET:^(mscs, b)
-          LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-          [[ b = v ]]
-    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-     >} read_byte fsxp inum off mscs.
-  Proof.
-    unfold read_byte.
-    unfold rep, bytes_rep.
-    step.
-    apply list2nmem_ptsto_bound in H4.
-    rewrite firstn_length in H4.
-    apply Nat.min_glb_lt_iff in H4. destruct H4.
-    erewrite wordToNat_natToWord_bound.
-    assumption.
-    apply Nat.lt_le_incl. eassumption.
-    step.
-    Search ptsto list2nmem selN.
-    eapply list2nmem_sel in H4 as H4'.
-
-    apply list2nmem_ptsto_bound in H4.
-    rewrite firstn_length in H4.
-    Search lt Init.Nat.min.
-    apply Nat.min_glb_lt_iff in H4. destruct H4.
-
-    rewrite selN_firstn in H4' by eauto.
-    unfold sel in H13.
-    erewrite wordToNat_natToWord_bound in H13.
-    rewrite H13.
-    rewrite H4'.
-    reflexivity.
-    apply Nat.lt_le_incl. eassumption.
-  Qed.
+  Implicit Arguments read_bytes [T].
 
   Theorem read_bytes_ok: forall fsxp inum off len mscs,
   {< m mbase F Fx Fm A flist f bytes v,
@@ -165,101 +110,68 @@ Module FASTBYTEFILE.
       [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
       [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
       [[ rep bytes f ]] *
-      [[ length v = #len ]] *
       [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
-      [[ off + #len <= length bytes ]]
+      [[ length v = len ]]
    POST RET:^(mscs, databytes)
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-      [[ databytes = v ]]
+      [[ @Rec.of_word (Rec.ArrayF byte_type len) databytes = v ]]
    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
    >} read_bytes fsxp inum off len mscs.
    Proof.
     unfold read_bytes, rep, bytes_rep.
 
-    step. (* enter loop *)
-    exists allbytes.
-    split;  auto.
-
-    step. (* bf_get *)
-    (* we assert and prove this lemma first because it is used twice *)
-    assert (Hoffm1: off + #(m1) < length allbytes0).
-      (* without the bounds checking, this proof goes:
-      m1 < off -> m1 < len
-      -> off + m1 < off + len
-      off + len < min( f.isize, length allbytes ) (firstn_length)
-      length allbytes0 >= f.isize (from divup_ok)
-      -> off + len < f.isize <= length allbytes0
-      -> off + m1 < length allbytes0 *)
-    apply le_trans with (off + #(len)).
-    apply plus_lt_compat_l. apply wlt_lt. assumption.
-    rewrite firstn_length in H4.
-    apply Nat.min_glb_l in H4.
-    apply le_trans with (# (INODE.ISize (BFILE.BFAttr f))). assumption.
-    rewrite <- H22.
-    apply divup_ok.
-    erewrite wordToNat_natToWord_bound.
-    apply Hoffm1.
-    instantiate (bound := $ (length allbytes0)).
-    rewrite H20.
-    omega.
-
-    step.
-    exists allbytes; split; auto.
+    time hoare. (* 30s *)
+    (* XXX: this is duplicated several times to get a bound on off + len *)
+    apply list2nmem_arrayN_bound in H5.
+    inversion H5.
+    (* contradictory case *)
     subst.
-      (* same charade as above *)
-      assert (Hoffm1: off + #(m1) < #(INODE.ISize (BFILE.BFAttr f))).
-      rewrite firstn_length in H4.
-      apply Nat.min_glb_l in H4.
-      apply le_trans with (off + #(len)).
-      apply plus_lt_compat_l. apply wlt_lt. assumption.
-      assumption.
-    replace (# (m1 ^+ $ (1))) with (# (m1) + 1).
-    erewrite firstn_plusone_selN.
-    f_equal.
-    f_equal.
-    rewrite <- H16.
-    unfold sel.
+    inversion H12.
+    rewrite H6 in H0.
+    eapply goodSize_word_bound.
+    eapply le_trans.
+    apply divup_lt_arg.
+    eauto.
 
-    erewrite wordToNat_natToWord_bound.
-    apply selN_skip_first.
-    apply Hoffm1.
-    apply Nat.lt_le_incl.
-    eassumption.
-    rewrite skipn_length.
-    apply Nat.lt_add_lt_sub_r.
-    rewrite plus_comm.
-    rewrite H18.
-    apply Hoffm1.
-    rewrite H18.
-    omega.
-    (* need to convert ^+ $(1) to +1 using bounds *)
-      rewrite wplus_alt.
-      unfold wplusN, wordBinN.
-      simpl.
-      erewrite wordToNat_natToWord_bound.
-      reflexivity.
-      (* same as H3, after some massaging *)
-      apply wlt_lt in H3.
-      unfold lt in H3.
-      instantiate (bound := len).
-      replace (# (m1) + 1) with (S # (m1)) by omega.
-      eassumption.
-    step.
+    apply list2nmem_arrayN_bound in H5.
+    inversion H5.
+    (* contradictory case *)
+    subst.
+    inversion H12.
+    rewrite H6 in H0.
+    eapply le_trans.
+    eapply le_trans; eauto.
+    apply firstn_length_l_iff in H6.
+    eapply le_trans.
+    apply divup_mono.
+    eauto.
+    unfold array_item_file in H.
+    admit. (* there's a proof just like this somewhere in update_bytes_ok *)
 
+    rewrite H14.
+    assert (H5' := H5).
     apply arrayN_list2nmem in H5.
-    symmetry.
-    rewrite <- H6.
-    apply H5.
-    (* Using arrayN_list2nmem requires a default value, which is never used,
-        so we have to provide some value of type byte.
-        This is seems like a bug in arrayN_list2nmem. *)
-    apply ($ 0).
+    rewrite H5 at 2.
+    rewrite firstn_double_skipn.
+    auto.
+    apply list2nmem_arrayN_bound in H5'.
+    inversion H5'.
+    subst.
+    inversion H12.
+    omega.
+    exact ($0).
 
-    apply LOG.activetxn_would_recover_old.
+    (* zero-length read case *)
+    assert (length v9 = 0) by omega.
+    rewrite H0.
+    simpl.
+    apply length_nil in H0.
+    subst.
+    apply Rec.of_word_empty with (t:=byte_type).
+    auto.
+  Admitted.
 
-    Grab Existential Variables.
-    exact tt.
-  Qed.
+  Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
 
   Lemma sep_star_abc_to_acb : forall AT AEQ AV (a b c : @pred AT AEQ AV),
     (a * b * c)%pred =p=> (a * c * b).
