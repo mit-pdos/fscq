@@ -3220,6 +3220,59 @@ Section RECBFILE.
 
   Hint Extern 1 ({{_}} progseq (bf_read_blocks _ _ _ _ _) _) => apply bf_read_blocks_ok : prog.
 
+  Theorem split1_firstn' : forall t n m
+    (w: word ((n+m)*Rec.len t)) Heq,
+    firstn n (@Rec.of_word (Rec.ArrayF t (n+m)) w) =
+      @Rec.of_word (Rec.ArrayF t n) (split1 (n*Rec.len t) (m*Rec.len t)
+        (eq_rect _ word w _ Heq)).
+  Proof.
+    intros.
+    apply Rec.split1_firstn.
+  Qed.
+
+  (* this is actually more general than the above split1_firstn' *)
+  Theorem split2_skipn' : forall t n m sz
+    (w: word sz) Heq Heq',
+    skipn n (@Rec.of_word (Rec.ArrayF t (n+m)) (rew Heq' in w)) =
+      @Rec.of_word (Rec.ArrayF t m) (split2 (n*Rec.len t) (m*Rec.len t)
+        (rew Heq in w)).
+  Proof.
+    intros.
+    erewrite Rec.split2_skipn.
+    eq_rect_simpl.
+    repeat f_equal; apply proof_irrelevance.
+
+    Grab Existential Variables.
+    simpl.
+    nia.
+  Qed.
+
+  Theorem of_word_rew : forall n n' t
+    (w: word (n*Rec.len t)) (H: n * Rec.len t = n' * Rec.len t),
+    Rec.len t <> 0 ->
+    @Rec.of_word (Rec.ArrayF t n')
+      (rew H in w) =
+    @Rec.of_word (Rec.ArrayF t n) w.
+  Proof.
+    intros.
+    generalize_proof.
+    replace n' with n by nia.
+    intros; eq_rect_simpl.
+    reflexivity.
+  Qed.
+
+  Lemma split_array_rew : forall n n' m t
+    (w: word (n * (m * Rec.len t)))
+    (H: n * (m * Rec.len t) = n' * Rec.len t)
+    (H1: n * (m * Rec.len t) = n * m * Rec.len t)
+    H2,
+    rew H in w = rew H2 in (rew H1 in w).
+  Proof.
+    intros.
+    eq_rect_simpl.
+    f_equal; apply proof_irrelevance.
+  Qed.
+
   Theorem bf_read_range_ok : forall fsxp inum off len mscs,
   {< mbase m F Fm A flist ilist f,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -3262,6 +3315,90 @@ Section RECBFILE.
     apply Nat.mod_le; auto.
     assert (off + len <= roundup (off + len) block_items).
     apply roundup_ge; auto.
+    generalize_proof.
+    repeat match goal with
+    | [ |- context[isplit1_dep _ _ _ ?H] ] => generalize H
+    | [ |- context[isplit2_dep _ _ _ ?H] ] => generalize H
+    end.
+    simpl.
+    intros.
+    unfold isplit1_dep, isplit1, eq_rec.
+    unfold itemsize.
+    set (num_blocks := divup (off + len) block_items - off / block_items) in *.
+    generalize_proof; intros.
+    eq_rect_simpl.
+    rewrite <- split1_firstn'.
+    unfold isplit2_dep, isplit2, items; eq_rect_simpl.
+    unfold itemsize.
+    repeat rewrite eq_rect_word_mult.
+    eq_rect_simpl.
+    repeat generalize_proof; intros.
+    clear e e0 e1 e2.
+    (* unfortunately the explicit H hint (or both n and n') is necessary *)
+    erewrite of_word_rew with (H := e4) by auto.
+    fold block_items in *.
+    erewrite <- split2_skipn'.
+    generalize ?Heq'; intros.
+    erewrite split_array_rew with (H := e).
+    generalize ?H2 ?H1; intros.
+    erewrite of_word_rew with (H := e0) by auto.
+    erewrite <- concat_of_word_eq_of_to.
+    simpl.
+    fold block_items.
+    rewrite H12.
+
+    admit. (* need to dig up old firstn skipn firstn skipn proof *)
+
+    assert (length (concat
+      (map (@Rec.of_word blocktype) a)) = length a * block_items)
+        as Hconcatmaplen.
+    rewrite concat_hom_length with (k := block_items).
+    rewrite map_length.
+    auto.
+    rewrite Forall_forall; intros.
+    rewrite in_map_iff in H10.
+    deex.
+    apply Rec.array_of_word_length.
+    simpl in *.
+    fold block_items in *.
+    apply Nat.mul_cancel_r with (p := block_items); auto.
+    rewrite <- Hconcatmaplen.
+    rewrite H12.
+    rewrite firstn_length_l; auto.
+    assert (@length item (concat vs_nested) =
+      length vs_nested * block_items) as Hconcatlen.
+    apply concat_hom_length with (k := block_items).
+    rewrite Forall_forall; intros.
+    rewrite Forall_forall in H6.
+    apply H6 in H10.
+    unfold Rec.well_formed in H10.
+    simpl in H10.
+    intuition.
+    autorewrite with lengths; rewrite Hconcatlen.
+    unfold num_blocks.
+    rewrite Nat.mul_sub_distr_r.
+    apply Nat.sub_le_mono_r.
+    apply Nat.mul_le_mono_pos_r; auto.
+    omega.
+    apply Nat.mul_le_mono_pos_r; auto.
+    apply le_trans with (divup (off + len) block_items).
+    apply le_trans with ((off + len) / block_items).
+    apply Nat.div_le_mono; [auto | omega].
+    apply div_le_divup.
+    omega.
+
+    Grab Existential Variables.
+    admit.
+    (* nia either can't handle these or is too slow *)
+    - rewrite <- mult_assoc.
+      rewrite e3.
+      rewrite Nat.mul_add_distr_r.
+      auto.
+    - apply mult_assoc.
+    - simpl.
+      rewrite e3.
+      rewrite Nat.mul_add_distr_r.
+      auto.
   Admitted.
 
 End RECBFILE.
