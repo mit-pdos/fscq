@@ -364,21 +364,6 @@ bs2i (BSI.PS fp _ _) = withForeignPtr fp buf2i
 i2bs :: Integer -> IO BS.ByteString
 i2bs i = BSI.create blocksize $ i2buf i
 
-data BlockRange =
-  BR !Int !Int !Int   -- blocknumber, offset-in-block, count-from-offset
-
-compute_ranges_int :: Int -> Int -> [BlockRange]
-compute_ranges_int off count = map mkrange $ zip3 blocknums startoffs endoffs
-  where
-    mkrange (blk, startoff, endoff) = BR blk startoff (endoff-startoff)
-    blocknums = [off `div` blocksize .. (off + count - 1) `div` blocksize]
-    startoffs = [off `mod` blocksize] ++ replicate (length blocknums - 1) 0
-    endoffs = replicate (length blocknums - 1) blocksize ++ [(off + count - 1) `mod` blocksize + 1]
-
-compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
-compute_ranges off count =
-  compute_ranges_int (fromIntegral off) (fromIntegral count)
-
 fscqRead :: DiskState -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
 fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   | path == "stats" = do
@@ -390,18 +375,11 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
   | otherwise = withMVar m_fsxp $ \fsxp -> do
-  (wlen, ()) <- fr $ FS.file_get_sz fsxp inum
-  len <- return $ fromIntegral $ wordToNat 64 wlen
-  offset' <- return $ min offset len
-  byteCount' <- return $ min byteCount $ (fromIntegral len) - (fromIntegral offset')
-  pieces <- mapM (read_piece fsxp) $ compute_ranges offset' byteCount'
-  return $ Right $ BS.concat pieces
-
-  where
-    read_piece fsxp (BR blk off count) = do
-      (W w, ()) <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
-      bs <- i2bs w
-      return $ BS.take count $ BS.drop off bs
+  off <- return $ fromIntegral offset
+  len <- return $ fromIntegral byteCount
+  (W w, ()) <- fr $ FS.read_bytes fsxp inum off len
+  wdata <- i2bs w
+  return $ Right wdata
 
 fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
