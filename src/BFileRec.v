@@ -3347,7 +3347,19 @@ Section RECBFILE.
     fold block_items.
     rewrite H12.
 
-    admit. (* need to dig up old firstn skipn firstn skipn proof *)
+    rewrite firstn_skipn_subslice.
+    f_equal.
+    f_equal.
+    rewrite plus_comm.
+    rewrite mult_comm.
+    rewrite <- Nat.div_mod; auto.
+
+    unfold num_blocks.
+    rewrite Nat.mul_sub_distr_r.
+    fold (roundup (off+len) block_items).
+    rewrite mult_comm.
+    rewrite rounddown_eq by auto.
+    omega.
 
     assert (length (concat
       (map (@Rec.of_word blocktype) a)) = length a * block_items)
@@ -3388,7 +3400,6 @@ Section RECBFILE.
     omega.
 
     Grab Existential Variables.
-    admit.
     (* nia either can't handle these or is too slow *)
     - rewrite <- mult_assoc.
       rewrite e3.
@@ -3399,7 +3410,7 @@ Section RECBFILE.
       rewrite e3.
       rewrite Nat.mul_add_distr_r.
       auto.
-  Admitted.
+  Qed.
 
 End RECBFILE.
 
