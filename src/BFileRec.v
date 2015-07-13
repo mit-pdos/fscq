@@ -3123,7 +3123,7 @@ Section RECBFILE.
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ array_item_file f ilist ]] *
     [[ @wordToNat addrlen ($ (off + count)) = off + count ]] *
-    [[ off + count < length (BFILE.BFData f) ]]
+    [[ off + count <= length (BFILE.BFData f) ]]
     POST RET: ^(mscs, l)
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
       [[ concat (map (@Rec.of_word blocktype) l) =
@@ -3144,7 +3144,7 @@ Section RECBFILE.
     simpl in *.
     replace (length vs_nested0).
     rewrite wordToNat_natToWord_idempotent'.
-    eapply le_lt_trans; [|eauto]; omega.
+    eapply lt_le_trans; [|eauto]; omega.
     apply wordToNat_natToWord_idempotent'_iff in H5.
     eapply goodSize_trans; [|eauto]; omega.
 
@@ -3280,7 +3280,7 @@ Section RECBFILE.
     [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
     [[ array_item_file f ilist ]] *
     [[ goodSize addrlen (divup (off+len) block_items) ]] *
-    [[ divup (off + len) block_items < length (BFILE.BFData f) ]]
+    [[ divup (off + len) block_items <= length (BFILE.BFData f) ]]
     POST RET: ^(mscs, data)
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
       [[ @Rec.of_word (Rec.ArrayF itemtype len) data = firstn len (skipn off ilist) ]]
@@ -3391,7 +3391,6 @@ Section RECBFILE.
     rewrite Nat.mul_sub_distr_r.
     apply Nat.sub_le_mono_r.
     apply Nat.mul_le_mono_pos_r; auto.
-    omega.
     apply Nat.mul_le_mono_pos_r; auto.
     apply le_trans with (divup (off + len) block_items).
     apply le_trans with ((off + len) / block_items).
