@@ -3413,11 +3413,12 @@ Section RECBFILE.
 
 End RECBFILE.
 
+Implicit Arguments bf_read_range [itemtype T].
 
 Hint Extern 1 ({{_}} progseq (bf_getlen _ _ _ _ _) _) => apply bf_getlen_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_get _ _ _ _ _ _ _ _) _) => apply bf_get_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_get_all _ _ _ _ _ _ _) _) => apply bf_get_all_ok : prog.
-Hint Extern 1 ({{_}} progseq (bf_read_range _ _ _ _ _) _) => apply bf_read_range_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_read_range _ _ _ _ _ _ _) _) => apply bf_read_range_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_update_range _ _ _ _ _ _ _) _) => apply bf_update_range_ok : prog.
