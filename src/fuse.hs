@@ -22,7 +22,6 @@ import Interpreter as I
 import qualified FS
 import qualified Log
 import FSLayout
-import Control.Monad
 import qualified DirName
 import System.Environment
 import Inode
