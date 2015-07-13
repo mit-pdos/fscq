@@ -406,49 +406,17 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
 fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
 
-compute_range_pieces :: FileOffset -> BS.ByteString -> [(BlockRange, BS.ByteString)]
-compute_range_pieces off buf = zip ranges pieces
-  where
-    ranges = compute_ranges_int (fromIntegral off) (BS.length buf)
-    pieces = map getpiece ranges
-    getpiece (BR blk boff bcount) = BS.take bcount $ BS.drop bufoff buf
-      where bufoff = (blk * blocksize) + boff - (fromIntegral off)
-
-data WriteState =
-   WriteOK !ByteCount
- | WriteErr !ByteCount
-
 fscqWrite :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   debugStart "WRITE" (path, inum)
-  (wlen, ()) <- fr $ FS.file_get_sz fsxp inum
-  len <- return $ fromIntegral $ wordToNat 64 wlen
-  r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
-  case r of
-    WriteOK c -> return $ Right c
-    WriteErr c ->
-      if c == 0 then
-        return $ Left eIO 
-      else
-        return $ Right c
-
-  where
-    write_piece _ _ (WriteErr c) _ = return $ WriteErr c
-    write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
-      (W w, ()) <- if blk*blocksize < init_len then
-          fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
-        else
-          return $ (W 0, ())
-      old_bs <- i2bs w
-      new_bs <- return $ BS.append (BS.take off old_bs)
-                       $ BS.append piece_bs
-                       $ BS.drop (off + cnt) old_bs
-      wnew <- bs2i new_bs
-      (ok, ()) <- fr $ FS.write_block fsxp inum (W64 $ fromIntegral blk) (W wnew) (W64 $ fromIntegral $ blk*blocksize + off + cnt)
-      if ok then
-        return $ WriteOK (c + (fromIntegral cnt))
-      else
-        return $ WriteErr c
+  off <- return $ fromIntegral offset
+  len <- return $ BS.length bs
+  wnew <- bs2i bs
+  (ok, ()) <- fr $ FS.append fsxp inum off len (W wnew)
+  if ok then
+    return $ Right (fromIntegral len)
+  else
+    return $ Left eIO
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
