@@ -126,7 +126,7 @@ Module FASTBYTEFILE.
     inversion H5.
     (* contradictory case *)
     subst.
-    inversion H12.
+    now inversion H12.
     rewrite H6 in H0.
     eapply goodSize_word_bound.
     eapply le_trans.
@@ -137,16 +137,14 @@ Module FASTBYTEFILE.
     inversion H5.
     (* contradictory case *)
     subst.
-    inversion H12.
+    now inversion H12.
     rewrite H6 in H0.
-    eapply le_trans.
-    eapply le_trans; eauto.
+
     apply firstn_length_l_iff in H6.
-    eapply le_trans.
+    erewrite BFileRec.array_items_num_blocks; eauto.
+    unfold item; simpl; fold byte.
     apply divup_mono.
-    eauto.
-    unfold array_item_file in H.
-    admit. (* there's a proof just like this somewhere in update_bytes_ok *)
+    omega.
 
     rewrite H14.
     assert (H5' := H5).
@@ -157,7 +155,7 @@ Module FASTBYTEFILE.
     apply list2nmem_arrayN_bound in H5'.
     inversion H5'.
     subst.
-    inversion H12.
+    now inversion H12.
     omega.
     exact ($0).
 
@@ -169,7 +167,7 @@ Module FASTBYTEFILE.
     subst.
     apply Rec.of_word_empty with (t:=byte_type).
     auto.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
 
