@@ -177,7 +177,7 @@ dirStat :: FuseContext -> FileStat
 dirStat ctx = FileStat
   { statEntryType = Directory
   , statFileMode = foldr1 unionFileModes
-                     [ ownerReadMode, ownerExecuteMode
+                     [ ownerReadMode, ownerWriteMode, ownerExecuteMode
                      , groupReadMode, groupExecuteMode
                      , otherReadMode, otherExecuteMode
                      ]
