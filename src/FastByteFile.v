@@ -31,10 +31,7 @@ Import ListNotations.
 
 (** A byte-based interface to a BFileRec. Fast because it uses the range
 update operation in BFileRec to do writes, and exposes an API that uses
-[byte count]s rather than [list byte]s as inputs.
-
-tchajed: This is a copy of SlowByteFile that I'm in the process of making fast.
-*)
+[byte count]s rather than [list byte]s as inputs. *)
 Module FASTBYTEFILE.
 
   Definition byte_type := Rec.WordF 8.
