@@ -7,6 +7,7 @@ Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import List.
+Require Import Mem.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -110,7 +111,8 @@ Inductive prog (T: Type) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
 | Write (a: addr) (v: valu) (rx: unit -> prog T)
-| Sync (a: addr) (rx: unit -> prog T).
+| Sync (a: addr) (rx: unit -> prog T)
+| Trim (a: addr) (rx: unit -> prog T).
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
@@ -133,18 +135,9 @@ Notation "'let^' ( a , .. , b ) <- p1 ; p2" :=
   (at level 60, right associativity, a closed binder, b closed binder).
 
 
-Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.
-
-
 Notation "'valuset'" := (valu * list valu)%type.
 
 Definition valuset_list (vs : valuset) := fst vs :: snd vs.
-
-Definition mem {A : Type} {eq : DecEq A} {V: Type} := A -> option V.
-Definition upd {A : Type} {eq : DecEq A} {V: Type} (m : @mem A eq V) (a : A) (v : V) : @mem A eq V :=
-  fun a' => if eq a' a then Some v else m a'.
-Definition upd_none {A : Type} {eq : DecEq A} {V : Type} (m : @mem A eq V) (a : A) : @mem A eq V :=
-  fun a' => if eq a' a then None else m a'.
 
 
 Inductive outcome (T: Type) :=
@@ -152,26 +145,28 @@ Inductive outcome (T: Type) :=
 | Finished (m: @mem addr (@weq addrlen) valuset) (v: T)
 | Crashed (m: @mem addr (@weq addrlen) valuset).
 
+Inductive step (T: Type) : @mem _ (@weq addrlen) _ -> prog T ->
+                           @mem _ (@weq addrlen) _ -> prog T -> Prop :=
+| StepRead : forall m a rx v x, m a = Some (v, x) ->
+  step m (Read a rx) m (rx v)
+| StepWrite : forall m a rx v v0 x, m a = Some (v0, x) ->
+  step m (Write a v rx) (upd m a (v, v0 :: x)) (rx tt)
+| StepSync : forall m a rx v l, m a = Some (v, l) ->
+  step m (Sync a rx) (upd m a (v, nil)) (rx tt)
+| StepTrim : forall m a rx vs vs', m a = Some vs ->
+  step m (Trim a rx) (upd m a vs') (rx tt).
+
 Inductive exec (T: Type) : mem -> prog T -> outcome T -> Prop :=
-| XReadFail : forall m a rx, m a = None
-  -> exec m (Read a rx) (Failed T)
-| XReadOK : forall m a v rx out x, m a = Some (v, x)
-  -> exec m (rx v) out
-  -> exec m (Read a rx) out
-| XWriteFail : forall m a v rx, m a = None
-  -> exec m (Write a v rx) (Failed T)
-| XWriteOK : forall m a v v0 rx out x, m a = Some (v0, x)
-  -> exec (upd m a (v, v0 :: x)) (rx tt) out
-  -> exec m (Write a v rx) out
-| XSyncFail : forall m a rx, m a = None
-  -> exec m (Sync a rx) (Failed T)
-| XSyncOK : forall m a v l rx out, m a = Some (v, l)
-  -> exec (upd m a (v, nil)) (rx tt) out
-  -> exec m (Sync a rx) out
+| XStep : forall m m' p p' out, step m p m' p' ->
+  exec m' p' out ->
+  exec m p out
+| XFail : forall m p, (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
+  exec m p (Failed T)
 | XCrash : forall m p, exec m p (Crashed T m)
 | XDone : forall m v, exec m (Done v) (Finished m v).
 
 Hint Constructors exec.
+Hint Constructors step.
 
 
 Inductive recover_outcome (TF TR: Type) :=
@@ -204,48 +199,6 @@ Inductive exec_recover (TF TR: Type)
   -> exec_recover m p1 p2 (RRecovered TF m'' v).
 
 Hint Constructors exec_recover.
-
-
-Section GenMem.
-
-Variable V : Type.
-Variable A : Type.
-Variable aeq : DecEq A.
-
-Theorem upd_eq : forall m (a : A) (v:V) a',
-  a' = a
-  -> @upd A aeq V m a v a' = Some v.
-Proof.
-  intros; subst; unfold upd.
-  destruct (aeq a a); tauto.
-Qed.
-
-Theorem upd_ne : forall m (a : A) (v:V) a',
-  a' <> a
-  -> @upd A aeq V m a v a' = m a'.
-Proof.
-  intros; subst; unfold upd.
-  destruct (aeq a' a); tauto.
-Qed.
-
-Theorem upd_repeat: forall m (a : A) (v v':V),
-  upd (@upd A aeq V m a v') a v = upd m a v.
-Proof.
-  intros; apply functional_extensionality; intros.
-  case_eq (aeq a x); intros; subst.
-  repeat rewrite upd_eq; auto.
-  repeat rewrite upd_ne; auto.
-Qed.
-
-Theorem upd_comm: forall m (a0 : A) (v0:V) a1 v1, a0 <> a1
-  -> upd (@upd A aeq V m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
-Proof.
-  intros; apply functional_extensionality; intros.
-  case_eq (aeq a1 x); case_eq (aeq a0 x); intros; subst; try congruence;
-  repeat ( ( rewrite upd_ne by auto ) || ( rewrite upd_eq by auto ) ); auto.
-Qed.
-
-End GenMem.
 
 
 Module Addr_as_OT <: UsualOrderedType.

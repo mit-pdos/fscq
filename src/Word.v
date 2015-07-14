@@ -9,6 +9,7 @@ Require Import Program.Tactics.
 Require Import Recdef.
 Require Import Ring.
 Require Import Ring_polynom.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
@@ -483,6 +484,16 @@ Qed.
 Hint Rewrite eq_rect_nat_double.
 Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec).
 
+Ltac generalize_proof :=
+    match goal with
+    | [ |- context[eq_rect _ _ _ _ ?H ] ] => generalize H
+    end.
+
+Ltac eq_rect_simpl :=
+  unfold eq_rec_r, eq_rec;
+  repeat rewrite eq_rect_nat_double;
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+
 Lemma eq_rect_word_offset_helper : forall a b c,
   a = b -> c + a = c + b.
 Proof.
@@ -679,6 +690,107 @@ Proof.
   f_equal.
 Qed.
 
+Theorem split2_split1 : forall n1 n2 n3 Heq w,
+  split2 n1 n2 (split1 (n1+n2) n3 w) =
+  split1 n2 n3 (split2 n1 (n2+n3) (match Heq in _ = N return word N with
+                                     | refl_equal => w
+                                     end)).
+Proof.
+  induction n1; simpl; intros.
+
+  rewrite (UIP_dec eq_nat_dec Heq (refl_equal _)).
+  reflexivity.
+
+  rewrite (shatter_word w).
+  simpl.
+  assert (n1 + n2 + n3 = n1 + (n2 + n3)) as Heq' by omega.
+  rewrite <- wtl_match with (Heq':=Heq').
+  rewrite <- IHn1.
+  f_equal.
+Qed.
+
+Theorem combine_0_n : forall sz2 (w: word 0) (v: word sz2),
+  combine w v = v.
+Proof.
+  intros.
+  replace w with WO.
+  auto.
+  rewrite word0; auto.
+Qed.
+
+Lemma WS_eq_rect : forall b n (w: word n) n' H H',
+  eq_rect _ word (@WS b n w) _ H = @WS b n' (eq_rect _ word w _ H').
+Proof.
+  destruct n; intros; subst;
+    eq_rect_simpl; auto.
+Qed.
+
+Theorem combine_eq_rect2 : forall sz n n'
+  (H: n = n') H'
+  (a: word sz) (b: word n),
+  combine a b =
+    eq_rect _ word (combine a (eq_rect _ word b _ H)) _ H'.
+Proof.
+  induction a; simpl; intros.
+  eq_rect_simpl; auto.
+  erewrite WS_eq_rect.
+  erewrite IHa.
+  auto.
+
+  Grab Existential Variables.
+  omega.
+Qed.
+
+Lemma whd_eq_rect : forall n w Heq,
+  whd (eq_rect (S n) word w (S (n + 0)) Heq) =
+  whd w.
+Proof.
+  intros.
+  f_equal; try omega.
+  intros.
+  generalize_proof.
+  rewrite H; intros.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+
+Lemma wtl_eq_rect : forall n w Heq Heq',
+  wtl (eq_rect (S n) word w (S (n + 0)) Heq) =
+  eq_rect n word (wtl w) (n + 0) Heq'.
+Proof.
+  intros.
+  generalize dependent Heq.
+  rewrite <- Heq'; simpl; intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem split1_0 : forall n w Heq,
+  split1 n 0 (eq_rect _ word w _ Heq) = w.
+Proof.
+  intros.
+  induction n; intros.
+  shatterer.
+  simpl.
+  erewrite wtl_eq_rect.
+  rewrite IHn.
+  rewrite whd_eq_rect.
+  simpl.
+  shatterer.
+
+  Grab Existential Variables.
+  omega.
+Qed.
+
+Theorem split2_0 : forall n w Heq,
+  split2 0 n (eq_rect _ word w _ Heq) = w.
+Proof.
+  intros.
+  simpl.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+
 Theorem combine_end : forall n1 n2 n3 Heq w,
   combine (split1 n2 n3 (split2 n1 (n2 + n3) w))
   (split2 (n1 + n2) n3 (match Heq in _ = N return word N with
@@ -743,6 +855,35 @@ Proof.
   reflexivity.
 Qed.
 
+Theorem eq_rect_split2_eq2 : forall n1 n2 n2' (w : word (n1 + n2)) Heq Heq2,
+  eq_rect n2 (fun n => word n)
+    (split2 n1 n2 w) n2' Heq =
+  split2 n1 n2' (eq_rect (n1+n2) (fun n => word n) w (n1+n2') Heq2).
+Proof.
+  intros.
+  assert (H' := Heq).
+  generalize dependent w.
+  generalize dependent Heq.
+  generalize dependent Heq2.
+  rewrite H'; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem eq_rect_split2_eq1 : forall n1 n1' n2 (w: word (n1 + n2)) Heq,
+     split2 n1 n2 w = split2 n1' n2
+        (eq_rect (n1 + n2) (fun y : nat => word y) w
+     (n1' + n2) Heq).
+Proof.
+  intros.
+  assert (n1 = n1') as H' by omega.
+  generalize dependent w.
+  generalize dependent Heq.
+  rewrite H'; intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
 Theorem combine_split_eq_rect2 : forall n1 n2 n2' (w : word (n1 + n2)) Heq,
   combine (split1 n1 n2 w)
           (eq_rect n2 (fun n => word n) (split2 n1 n2 w)
@@ -765,6 +906,12 @@ Proof.
   intros; omega.
 Qed.
 
+Lemma eq_rect_split1_eq2_helper : forall a b c,
+  a = b -> c + a = c + b.
+Proof.
+  intros; omega.
+Qed.
+
 Theorem eq_rect_split1 : forall n1 n1' n2 (w : word (n1' + n2)) Heq,
   eq_rect n1' (fun n => word n)
     (split1 n1' n2 w) n1 Heq =
@@ -778,6 +925,33 @@ Proof.
   generalize dependent e.
   rewrite H'; intros.
   repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem eq_rect_split1_eq1 : forall n1 n1' n2 (w : word (n1 + n2)) Heq Heq1,
+  eq_rect n1 (fun n => word n)
+    (split1 n1 n2 w) n1' Heq =
+  split1 n1' n2 (eq_rect (n1+n2) (fun n => word n) w (n1'+n2) Heq1).
+Proof.
+  intros.
+  generalize dependent w.
+  generalize dependent Heq1.
+  rewrite Heq; intros.
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem eq_rect_split1_eq2 : forall n1 n2 n2' (w: word (n1 + n2)) Heq,
+     split1 n1 n2 w = split1 n1 n2'
+        (eq_rect (n1 + n2) (fun y : nat => word y) w
+     (n1 + n2') Heq).
+Proof.
+  intros.
+  assert (n2 = n2') as H' by omega.
+  generalize dependent w.
+  generalize dependent Heq.
+  rewrite H'; intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
   reflexivity.
 Qed.
 
@@ -1079,6 +1253,87 @@ Proof.
   auto.
 Qed.
 
+Lemma mod2_S_S : forall n,
+  mod2 (S (S n)) = mod2 n.
+Proof.
+  intros.
+  destruct n; auto; destruct n; auto.
+Qed.
+
+Lemma mod2_S_not : forall n,
+  mod2 (S n) = if (mod2 n) then false else true.
+Proof.
+  intros.
+  induction n; auto.
+  rewrite mod2_S_S.
+  destruct (mod2 n); replace (mod2 (S n)); auto.
+Qed.
+
+Lemma mod2_S_eq : forall n k,
+  mod2 n = mod2 k ->
+  mod2 (S n) = mod2 (S k).
+Proof.
+  intros.
+  do 2 rewrite mod2_S_not.
+  rewrite H.
+  auto.
+Qed.
+
+Theorem drop_mod2_add : forall n k,
+  mod2 (n + 2 * k) = mod2 n.
+Proof.
+  intros.
+  induction n.
+  simpl.
+  rewrite Nat.add_0_r.
+  replace (k + k) with (2 * k) by omega.
+  apply mod2_double.
+  replace (S n + 2 * k) with (S (n + 2 * k)) by omega.
+  apply mod2_S_eq; auto.
+Qed.
+
+Theorem div2_plus_2 : forall n k,
+  div2 (n + 2 * k) = div2 n + k.
+Proof.
+  induction n; intros.
+  simpl.
+  rewrite Nat.add_0_r.
+  replace (k + k) with (2 * k) by omega.
+  apply div2_double.
+  replace (S n + 2 * k) with (S (n + 2 * k)) by omega.
+  destruct (Even.even_or_odd n).
+  - rewrite <- even_div2.
+    rewrite <- even_div2 by auto.
+    apply IHn.
+    apply Even.even_even_plus; auto.
+    apply Even.even_mult_l; repeat constructor.
+
+  - rewrite <- odd_div2.
+    rewrite <- odd_div2 by auto.
+    rewrite IHn.
+    omega.
+    apply Even.odd_plus_l; auto.
+    apply Even.even_mult_l; repeat constructor.
+Qed.
+
+Theorem drop_add : forall sz n k,
+  natToWord sz (n + k * pow2 sz) = natToWord sz n.
+Proof.
+  induction sz; simpl; intuition; repeat rewrite untimes2 in *; f_equal.
+  - rewrite mult_assoc.
+    rewrite (mult_comm k).
+    rewrite <- mult_assoc.
+    apply drop_mod2_add.
+
+  - rewrite <- (IHsz (div2 n) k).
+    rewrite mult_assoc.
+    rewrite (mult_comm k).
+    rewrite <- mult_assoc.
+    rewrite div2_plus_2.
+    reflexivity.
+Qed.
+
+
 Local Hint Extern 1 (_ <= _) => omega.
 
 Theorem wplus_assoc : forall sz (x y z : word sz), x ^+ (y ^+ z) = x ^+ y ^+ z.
@@ -1237,6 +1492,43 @@ Proof.
   omega.
   simpl.
   omega.
+Qed.
+
+Theorem goodSize_trans: forall sz n1 n2,
+  n1 <= n2 -> goodSize sz n2 -> goodSize sz n1.
+Proof.
+  intros.
+  unfold goodSize in *.
+  apply le_lt_trans with n2; omega.
+Qed.
+
+Theorem goodSize_word_bound: forall n1 sz (bound: word sz),
+  n1 <= wordToNat bound ->
+  goodSize sz n1.
+Proof.
+  intros.
+  unfold goodSize.
+  eapply le_lt_trans.
+  eassumption.
+  apply wordToNat_bound.
+Qed.
+
+
+Theorem goodSize_bound: forall n1 sz bound,
+  n1 <= wordToNat (natToWord sz bound) ->
+  goodSize sz n1.
+Proof.
+  intros.
+  eapply goodSize_word_bound; eauto.
+Qed.
+
+Lemma wordToNat_natToWord_idempotent'_iff : forall n sz,
+  @wordToNat sz (natToWord sz n) = n -> goodSize sz n.
+Proof.
+  intros.
+  eapply goodSize_bound.
+  rewrite H.
+  auto.
 Qed.
 
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
@@ -1495,6 +1787,24 @@ Definition wslt_dec : forall sz (l r : word sz), {l <s r} + {l >s= r}.
   abstract congruence.
 Defined.
 
+Lemma not_wlt_ge : forall sz (l r : word sz),
+  ((l < r) -> False) -> (r <= l).
+Proof.
+  intros.
+  case_eq (wlt_dec l r); intros;
+    try contradiction;
+    auto.
+Qed.
+
+Lemma not_wle_gt : forall sz (l r : word sz),
+  ((l <= r) -> False) -> (r < l).
+Proof.
+  intros.
+  case_eq (wlt_dec r l); intros;
+    try contradiction;
+    auto.
+Qed.
+
 (* Ordering Lemmas **)
 Lemma lt_le : forall sz (a b : word sz),
   a < b -> a <= b.
@@ -1731,6 +2041,18 @@ Proof.
   assumption.
 Qed.
 
+Lemma le_word_le_nat : forall (sz:nat) (n:word sz) (m:nat),
+  (n <= (natToWord sz m))%word ->
+  (wordToNat n <= m)%nat.
+Proof.
+  intros.
+  apply wle_le in H.
+  destruct (wordToNat_natToWord' sz m).
+  rewrite <- H0.
+  apply le_plus_trans with (p := x * pow2 sz).
+  assumption.
+Qed.
+
 (* Chain [lt_word_lt_nat] and [Nat.lt_le_incl]
     Avoids using [Hint Resolve Nat.lt_le_incl] for this specific lemma,
     though this may be a premature optimization. *)
@@ -1760,6 +2082,16 @@ Proof.
   intros; omega.
 Qed.
 
+Lemma le_word_le_nat': forall (sz:nat) n m,
+  goodSize sz n ->
+  (natToWord sz n <= m)%word ->
+  (n <= wordToNat m)%nat.
+Proof.
+  intros.
+  apply wle_le in H0.
+  rewrite wordToNat_natToWord_idempotent' in H0; auto.
+Qed.
+
 Lemma wordToNat_natToWord_bound : forall sz n (bound : word sz),
   (n <= wordToNat bound)%nat
   -> wordToNat (natToWord sz n) = n.
@@ -1768,6 +2100,18 @@ Proof.
   apply wordToNat_natToWord_idempotent'.
   eapply le_lt_trans; eauto.
   apply wordToNat_bound.
+Qed.
+
+Lemma wordToNat_natToWord_le : forall sz n,
+  (wordToNat (natToWord sz n) <= n)%nat.
+Proof.
+  intros.
+  case_eq (lt_dec n (pow2 sz)); intros.
+  rewrite wordToNat_natToWord_idempotent'; auto.
+  eapply le_trans.
+  apply Nat.lt_le_incl.
+  apply wordToNat_bound.
+  omega.
 Qed.
 
 Lemma wordToNat_eq_natToWord : forall sz (w : word sz) n,
@@ -1785,6 +2129,27 @@ Proof.
   intros.
   apply wlt_lt in H.
   erewrite wordToNat_natToWord_bound in H; eauto.
+Qed.
+
+Lemma natplus1_wordplus1_eq:
+  forall sz (a bound : word sz),
+    (0 < sz)%nat ->
+    (a < bound)%word ->
+    (wordToNat a) + 1 = wordToNat (a ^+ (natToWord sz 1)).
+Proof.
+  intros.
+  rewrite wplus_alt. unfold wplusN, wordBinN. simpl.
+  assert (goodSize sz 1).
+  unfold goodSize.
+  inversion H.
+  simpl; auto.
+  apply one_lt_pow2.
+  erewrite wordToNat_natToWord_bound.
+  rewrite wordToNat_natToWord_idempotent' by auto.
+  reflexivity.
+  apply wlt_lt in H0.
+  rewrite wordToNat_natToWord_idempotent' by auto.
+  instantiate (bound:=bound). omega.
 Qed.
 
 Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat ->

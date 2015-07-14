@@ -562,16 +562,6 @@ Module INODE.
     omega.
   Qed.
 
-  Lemma firstn_app_l: forall A n (a b : list A),
-    n <= length a
-    -> firstn n (a ++ b) = firstn n a.
-  Proof.
-    induction n; destruct a; firstorder; simpl.
-    inversion H.
-    rewrite IHn; auto.
-    simpl in H; omega.
-  Qed.
-
   Lemma inode_match_is_direct: forall bxp ino (rec : irec),
     (rec :-> "len" <= wnr_direct)%word
     -> Rec.well_formed rec

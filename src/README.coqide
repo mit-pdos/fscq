@@ -79,3 +79,38 @@ Compile and install trunk CoqIDE on Mac
   http://comments.gmane.org/gmane.comp.lang.why3.user/117
   http://opam.ocaml.org/doc/Install.html
 
+Running CoqIDE.app with trunk coqtop
+====================================
+
+While running trunk coqide is nice for getting bug fixes, the app integrates much better with OS X than an X application. Some advantages include:
+- The ability to use Command in shortcuts
+- Window resizing behaves more like OS X native apps
+- Detached windows (in particular the query pane) remember their positions, even across multiple monitors
+- Coq shows up as an app in the application switcher
+
+- Install CoqIDE 8.5 beta 2. Instructions are at <https://github.com/tchajed/dotfiles-osx/tree/master/coq>.
+
+- Compile Coq as above.
+
+  $ git clone https://github.com/coq/coq coq
+  $ cd coq
+
+  You can either install system-wide:
+
+    $ ./configure
+    $ make
+    $ sudo make install
+
+  ...or use a local install (add these to your .bashrc, where "$PWD" is the
+  directory of your Coq checkout):
+
+    $ ./configure -local
+    $ make
+    $ export COQLIB="$PWD/"
+    $ export COQBIN="$PWD/bin/"
+    $ export PATH="$COQBIN:$PATH"
+
+- Now we'll tell CoqIDE.app to use your compiled trunk coqtop rather than the
+  one provided inside the app bundle. Open CoqIDE and go to CoqIDE >
+  Preferences > Externals and change the setting for coqtop from AUTO to the full
+  path to coqtop (either $COQBIN/coqtop, or wherever you installed coqtop to).

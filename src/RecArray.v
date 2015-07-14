@@ -16,7 +16,7 @@ Section RECARRAY.
 
 
   Lemma concat_length : forall T (l : list (list T)),
-    length (fold_right (@app _) nil l) = fold_right plus 0 (map (@length _) l).
+    length (concat l) = fold_right plus 0 (map (@length _) l).
   Proof.
     induction l; auto.
     simpl; rewrite app_length; rewrite IHl; trivial.
@@ -79,7 +79,7 @@ Section RECARRAY.
   Qed.
 
   Lemma concat_In :
-    forall T ls (x : T), In x (fold_right (@app _) nil ls) -> exists l, In l ls /\ In x l.
+    forall T ls (x : T), In x (concat ls) -> exists l, In l ls /\ In x l.
   Proof.
     induction ls.
     intros. simpl in H. inversion H.
@@ -165,7 +165,7 @@ Section RECARRAY.
 
   Definition array_item (xp : xparams) (vs : list item) :=
     (exists vs_nested, array_item_pairs xp vs_nested *
-     [[ vs = fold_right (@app _) nil vs_nested ]])%pred.
+     [[ vs = concat vs_nested ]])%pred.
 
   Theorem array_item_well_formed :
     forall xp vs m, array_item xp vs m -> Forall Rec.well_formed vs.
@@ -241,11 +241,11 @@ Section RECARRAY.
 
   Lemma init_helper : forall l m idx,
     (forall idx, idx < m * # (items_per_valu) ->
-      selN (fold_right (@app _) nil l) idx item_zero = item_zero)
+      selN (concat l) idx item_zero = item_zero)
     -> idx < (m + 1) * # (items_per_valu)
     -> m < length l
     -> Forall (fun v => length v = # (items_per_valu) /\ Forall Rec.well_formed v) l
-    -> selN (fold_right (@app _) nil (updN l m (valu_to_block $0))) idx item_zero = item_zero.
+    -> selN (concat (updN l m (valu_to_block $0))) idx item_zero = item_zero.
   Proof.
     pose proof (Rec.of_word_length blocktype (valu_to_wreclen $0)) as H'.
     destruct H'. unfold valu_to_block.
@@ -529,8 +529,8 @@ Section RECARRAY.
 
   Theorem upd_divmod : forall (l : list block) (pos : addr) (v : item),
     Forall Rec.well_formed l
-    -> Array.upd (fold_right (@app _) nil l) pos v =
-       fold_right (@app _) nil (Array.upd l (pos ^/ items_per_valu)
+    -> Array.upd (concat l) pos v =
+       concat (Array.upd l (pos ^/ items_per_valu)
          (Array.upd (sel l (pos ^/ items_per_valu) nil) (pos ^% items_per_valu) v)).
   Proof.
     intros. unfold upd. pose proof items_per_valu_not_0.

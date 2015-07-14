@@ -1,3 +1,4 @@
+Require Import Mem.
 Require Import Prog.
 Require Import Log.
 Require Import BFile.
@@ -23,11 +24,16 @@ Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Bytes.
 Require Import ProofIrrelevance.
-Require Import BFileRec.
+Require Import BFileRec Rounding.
 
 Set Implicit Arguments.
 Import ListNotations.
 
+(** SlowByteFile is built on top of BFileRec using bytes as the records.
+It provides a byte abstraction to a BFILE by looping over single-byte
+operations in BFileRec. Read and write take lists of bytes as inputs.
+The "slow" part comes from doing operations byte at a time instead of
+block at a time, as well as from using lists instead of words as input. *)
 Module SLOWBYTEFILE.
 
   Definition byte_type := Rec.WordF 8.
@@ -185,7 +191,7 @@ Module SLOWBYTEFILE.
     - destruct newdata; simpl in *; try omega.
       subst.
       rewrite updN_firstn_comm.
-      rewrite listupd_progupd.
+      rewrite listupd_memupd.
       apply sep_star_comm. apply sep_star_assoc.
       eapply ptsto_upd.
       apply sep_star_assoc. apply sep_star_comm. apply sep_star_assoc.
@@ -622,7 +628,7 @@ Hint Resolve length_grow_oneblock_ok.
     rewrite Nat.mul_sub_distr_r.
     rewrite <- Nat.add_sub_swap by apply divup_ok.
     apply Nat.sub_le_mono_r.
-    rewrite Nat.add_sub_assoc by ( apply le_divup; omega ).
+    rewrite Nat.add_sub_assoc by ( apply le_roundup; omega ).
     rewrite plus_comm.
     rewrite <- Nat.add_sub_assoc by reflexivity.
     rewrite <- minus_diag_reverse.
@@ -866,7 +872,7 @@ Hint Resolve length_grow_oneblock_ok.
     apply len_oldlenext_newlen_eq.
     unfold ge.
     apply divup_ok.
-    apply le_divup; eauto.
+    apply le_roundup; eauto.
     eapply divup_newlen_minus_oldlen_goodSize with (a := (INODE.ISize (BFILE.BFAttr f''))); eauto.
     eapply le_trans.
     apply divup_ok.

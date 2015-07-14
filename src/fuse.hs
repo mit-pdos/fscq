@@ -16,12 +16,12 @@ import System.FilePath.Posix
 import Word
 import Disk
 import Prog
+import qualified Errno
 import Data.IORef
 import Interpreter as I
 import qualified FS
 import qualified Log
 import FSLayout
-import Control.Monad
 import qualified DirName
 import System.Environment
 import Inode
@@ -88,10 +88,12 @@ run_fuse disk_fn fuse_args = do
   else
     do
       putStrLn $ "Initializing file system"
-      (s, (fsxp, (ok, ()))) <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps
-      if ok == False then error $ "mkfs failed" else return ()
-      set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
-      return (s, fsxp)
+      res <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps
+      case res of
+        Errno.Err _ -> error $ "mkfs failed"
+        Errno.OK (s, (fsxp, ())) -> do
+          set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
+          return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   ref <- newIORef s
   m_fsxp <- newMVar fsxp
@@ -174,7 +176,7 @@ dirStat :: FuseContext -> FileStat
 dirStat ctx = FileStat
   { statEntryType = Directory
   , statFileMode = foldr1 unionFileModes
-                     [ ownerReadMode, ownerExecuteMode
+                     [ ownerReadMode, ownerWriteMode, ownerExecuteMode
                      , groupReadMode, groupExecuteMode
                      , otherReadMode, otherExecuteMode
                      ]
@@ -361,21 +363,6 @@ bs2i (BSI.PS fp _ _) = withForeignPtr fp buf2i
 i2bs :: Integer -> IO BS.ByteString
 i2bs i = BSI.create blocksize $ i2buf i
 
-data BlockRange =
-  BR !Int !Int !Int   -- blocknumber, offset-in-block, count-from-offset
-
-compute_ranges_int :: Int -> Int -> [BlockRange]
-compute_ranges_int off count = map mkrange $ zip3 blocknums startoffs endoffs
-  where
-    mkrange (blk, startoff, endoff) = BR blk startoff (endoff-startoff)
-    blocknums = [off `div` blocksize .. (off + count - 1) `div` blocksize]
-    startoffs = [off `mod` blocksize] ++ replicate (length blocknums - 1) 0
-    endoffs = replicate (length blocknums - 1) blocksize ++ [(off + count - 1) `mod` blocksize + 1]
-
-compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
-compute_ranges off count =
-  compute_ranges_int (fromIntegral off) (fromIntegral count)
-
 fscqRead :: DiskState -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
 fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   | path == "stats" = do
@@ -387,65 +374,26 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
   | otherwise = withMVar m_fsxp $ \fsxp -> do
-  (wlen, ()) <- fr $ FS.file_get_sz fsxp inum
-  len <- return $ fromIntegral $ wordToNat 64 wlen
-  offset' <- return $ min offset len
-  byteCount' <- return $ min byteCount $ (fromIntegral len) - (fromIntegral offset')
-  pieces <- mapM (read_piece fsxp) $ compute_ranges offset' byteCount'
-  return $ Right $ BS.concat pieces
-
-  where
-    read_piece fsxp (BR blk off count) = do
-      (W w, ()) <- fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
-      bs <- i2bs w
-      return $ BS.take count $ BS.drop off bs
+  off <- return $ fromIntegral offset
+  len <- return $ fromIntegral byteCount
+  (W w, ()) <- fr $ FS.read_bytes fsxp inum off len
+  wdata <- i2bs w
+  return $ Right wdata
 
 fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
 
-compute_range_pieces :: FileOffset -> BS.ByteString -> [(BlockRange, BS.ByteString)]
-compute_range_pieces off buf = zip ranges pieces
-  where
-    ranges = compute_ranges_int (fromIntegral off) (BS.length buf)
-    pieces = map getpiece ranges
-    getpiece (BR blk boff bcount) = BS.take bcount $ BS.drop bufoff buf
-      where bufoff = (blk * blocksize) + boff - (fromIntegral off)
-
-data WriteState =
-   WriteOK !ByteCount
- | WriteErr !ByteCount
-
 fscqWrite :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   debugStart "WRITE" (path, inum)
-  (wlen, ()) <- fr $ FS.file_get_sz fsxp inum
-  len <- return $ fromIntegral $ wordToNat 64 wlen
-  r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
-  case r of
-    WriteOK c -> return $ Right c
-    WriteErr c ->
-      if c == 0 then
-        return $ Left eIO 
-      else
-        return $ Right c
-
-  where
-    write_piece _ _ (WriteErr c) _ = return $ WriteErr c
-    write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
-      (W w, ()) <- if blk*blocksize < init_len then
-          fr $ FS.read_block fsxp inum (W64 $ fromIntegral blk)
-        else
-          return $ (W 0, ())
-      old_bs <- i2bs w
-      new_bs <- return $ BS.append (BS.take off old_bs)
-                       $ BS.append piece_bs
-                       $ BS.drop (off + cnt) old_bs
-      wnew <- bs2i new_bs
-      (ok, ()) <- fr $ FS.write_block fsxp inum (W64 $ fromIntegral blk) (W wnew) (W64 $ fromIntegral $ blk*blocksize + off + cnt)
-      if ok then
-        return $ WriteOK (c + (fromIntegral cnt))
-      else
-        return $ WriteErr c
+  off <- return $ fromIntegral offset
+  len <- return $ BS.length bs
+  wnew <- bs2i bs
+  (ok, ()) <- fr $ FS.append fsxp inum off len (W wnew)
+  if ok then
+    return $ Right (fromIntegral len)
+  else
+    return $ Left eIO
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do

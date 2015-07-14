@@ -1,16 +1,21 @@
 OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
-MODULES    := Lock Nomega Word WordAuto WordZ Bytes \
-	      Prog Pred Hoare SepAuto SepAuto2 Idempotent \
+MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
+	      Mem Pred Prog PredCrash Hoare RG ProgConcur \
+	      SepAuto SepAuto2 Idempotent Errno \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache FSLayout \
 		  DiskLog2 \
 	      Log Balloc Inode BFile BFileRec Dir \
-	      MemMatch DirName DirTree SlowByteFile FS Testprog \
+	      MemMatch DirName DirTree SlowByteFile FastByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
-GHC        := /opt/ghc/7.10.1/bin/ghc
+GHC 	   := ghc
+ifeq (,$(shell $(GHC) --version | grep 'version 7.10' 2>/dev/null))
+	GHC := /opt/ghc/7.10.2/bin/ghc
+endif
+
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog

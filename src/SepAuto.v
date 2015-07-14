@@ -2,7 +2,7 @@ Require Import Arith.
 Require Import Omega.
 Require Import List.
 Require Import Prog.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import Word.
 
@@ -838,7 +838,7 @@ Tactic Notation "hypmatch" constr(pattern) "as" ident(n) :=
 
 Ltac cancel_with t :=
   intros;
-  unfold stars; simpl; subst;
+  unfold stars; simpl; try subst;
   pimpl_crash;
   norm;
   try match goal with
@@ -924,7 +924,7 @@ Ltac step_with unfolder t :=
         match goal with
         | [ |- {{ _ }} ?a _ ] => is_var a
         end; solve [ eapply nop_ok ] | ]));
-  intros; subst;
+  intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   try autounfold with hoare_unfold in *; unfolder; eauto;
   try ( cancel_with t ; try ( progress autorewrite_fast ; cancel_with t ) );

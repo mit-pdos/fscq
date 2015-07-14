@@ -3,6 +3,7 @@ Require Import Word.
 Require Import Eqdep_dec.
 Require Import Array.
 Require Import Psatz.
+Require Import ProofIrrelevance.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -76,6 +77,80 @@ Module Rec.
         end) rt
     end.
 
+  Theorem firstn_well_formed : forall (ft:type) n1 n2 w,
+    @well_formed (ArrayF ft (n1+n2)) w ->
+    @well_formed (ArrayF ft n1) (firstn n1 w).
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H.
+    split.
+    rewrite firstn_length_l; omega.
+    rewrite Forall_forall; intros.
+    apply in_firstn_in in H2.
+    rewrite Forall_forall in H1.
+    apply H1.
+    assumption.
+  Qed.
+
+  Theorem firstn_l_well_formed : forall (ft:type) n n' w,
+    n <= n' ->
+    @well_formed (ArrayF ft n') w ->
+    @well_formed (ArrayF ft n) (firstn n w).
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H0.
+    split.
+    rewrite firstn_length_l; omega.
+    rewrite Forall_forall in *; intros.
+    eapply H2.
+    eapply in_firstn_in; eauto.
+  Qed.
+
+  Theorem skipn_well_formed : forall (ft:type) n1 n2 w,
+    @well_formed (ArrayF ft (n1+n2)) w ->
+    @well_formed (ArrayF ft n2) (skipn n1 w).
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H.
+    split.
+    rewrite skipn_length; omega.
+    rewrite Forall_forall; intros.
+    apply in_skipn_in in H2.
+    rewrite Forall_forall in H1.
+    apply H1.
+    assumption.
+  Qed.
+
+  Theorem tl_well_formed : forall (ft:type) n d w,
+    @well_formed (ArrayF ft (S n)) (d::w) ->
+    @well_formed (ArrayF ft n) w.
+  Proof.
+    intros.
+    unfold well_formed in *.
+    inversion H.
+    split.
+    simpl in *.
+    omega.
+    rewrite Forall_forall in *; intros.
+    apply H1.
+    constructor; assumption.
+  Qed.
+
+  Theorem empty_well_formed : forall (ft:type) w,
+    List.length w = 0 ->
+    @well_formed (ArrayF ft 0) w.
+  Proof.
+    intros.
+    unfold well_formed.
+    split; auto.
+    apply length_nil in H.
+    subst.
+    auto.
+  Qed.
+
   Inductive field_in : rectype -> string -> Prop :=
   | FE : forall t n ft, field_in ((n, ft) :: t) n
   | FS : forall t n n' ft, field_in t n -> field_in ((n', ft) :: t) n.
@@ -144,10 +219,10 @@ Module Rec.
     induction t; intros n1 p1 n2 p2 r v neq.
     contradiction (empty_field_in p1).
     destruct a as [n0 ft0]. destruct r as [v0 r'].
-    simpl in v. simpl. destruct (string_dec n0 n2); destruct (string_dec n0 n1); subst.
-    rewrite e0 in neq. contradiction neq. trivial.
-    trivial.
-    trivial.
+    simpl in v. simpl.
+    destruct (string_dec n0 n2); destruct (string_dec n0 n1);
+      subst; trivial.
+    contradiction neq. trivial.
     apply IHt. assumption.
   Qed.
 
@@ -283,6 +358,41 @@ Module Rec.
     rewrite IHt0 by assumption. rewrite IHt by assumption. trivial.
   Qed.
 
+  Theorem to_eq : forall ft a b,
+    @to_word ft a = @to_word ft b ->
+    well_formed a ->
+    well_formed b ->
+    a = b.
+  Proof.
+    intros.
+    rewrite <- Rec.of_to_id with (v := a) by auto.
+    rewrite <- Rec.of_to_id with (v := b) by auto.
+    congruence.
+  Qed.
+
+  Theorem of_eq : forall ft a b,
+    @of_word ft a = @of_word ft b ->
+    a = b.
+  Proof.
+    intros.
+    rewrite <- Rec.to_of_id with (w := a).
+    rewrite <- Rec.to_of_id with (w := b).
+    congruence.
+  Qed.
+
+  Lemma of_word_empty : forall t n w,
+    n = 0 ->
+    @of_word (ArrayF t n) w = nil.
+  Proof.
+    intros.
+    generalize w.
+    rewrite H.
+    intros.
+    simpl in w0.
+    apply length_nil.
+    reflexivity.
+  Qed.
+
   Theorem of_word_length : forall ft w, well_formed (@of_word ft w).
   Proof.
     einduction ft using type_rect_nest.
@@ -297,6 +407,21 @@ Module Rec.
     simpl. trivial.
     simpl. intro w. split.
     apply IHt. apply IHt0.
+  Qed.
+
+  Theorem of_word_well_formed : forall (ft:type) w,
+    well_formed (@of_word ft w).
+  Proof.
+    apply of_word_length.
+  Qed.
+
+  Theorem array_of_word_length : forall ft n w,
+    List.length (@of_word (ArrayF ft n) w) = n.
+  Proof.
+    induction n; intros; simpl.
+    reflexivity.
+    f_equal.
+    apply IHn.
   Qed.
 
   Lemma combine_zeroes: forall sz1 sz2 w,
@@ -648,6 +773,173 @@ Module Rec.
     rewrite split1_zero.
     rewrite split2_zero.
     reflexivity.
+  Qed.
+
+  Lemma len_add' : forall t n m,
+    len (ArrayF t n) + len (ArrayF t m) = len (ArrayF t (n+m)).
+  Proof.
+    intros.
+    simpl.
+    nia.
+  Qed.
+
+  Lemma combine_0 : forall (v: word 0) n (w: word n),
+    combine v w = w.
+  Proof.
+    intros.
+    shatterer.
+  Qed.
+
+  Definition len_add {t n m}
+    (v:word (len (ArrayF t n) + len (ArrayF t m))) : word (len (ArrayF t (n+m))).
+    rewrite len_add' in v.
+    exact v.
+  Defined.
+
+  Definition len_split {t n m}
+    (v:word (len (ArrayF t (n+m)))) : word (len (ArrayF t n) + len (ArrayF t m)).
+    rewrite <- len_add' in v.
+    exact v.
+  Defined.
+
+  Lemma of_word_cons : forall t n (w: word (len (ArrayF t (S n)))),
+    of_word w = (of_word (split1 (len t) (n * len t) w)) ::
+      (@of_word (ArrayF t n) (split2 (len t) (n * len t) w)).
+  Proof.
+    intros.
+    reflexivity.
+  Qed.
+
+  Theorem combine_app' : forall (t:type) (n m:nat) H
+    (v : word (len (ArrayF t n))) (w : word (len (ArrayF t m))),
+    app (of_word v) (of_word w) = of_word (eq_rect (len (ArrayF t n) + len (ArrayF t m))
+      (fun n => word n)
+      (combine v w)
+      (len (ArrayF t (n+m))) H).
+  Proof.
+    intros.
+    induction n.
+    simpl.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    rewrite combine_0; reflexivity.
+    simpl len in *.
+    rewrite of_word_cons.
+    simpl.
+    erewrite IHn.
+    rewrite of_word_cons.
+
+    rewrite <- combine_split with (sz1:=len t) (sz2:=n * len t) (w := v).
+    f_equal.
+    rewrite split1_combine.
+    erewrite combine_assoc.
+    rewrite eq_rect_word_match.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite eq_rect_combine.
+    rewrite split1_combine.
+    reflexivity.
+
+    rewrite split2_combine.
+    erewrite combine_assoc.
+    rewrite eq_rect_word_match.
+    unfold eq_rec.
+    rewrite eq_rect_nat_double.
+    rewrite eq_rect_combine.
+    rewrite split2_combine.
+    f_equal.
+
+    Grab Existential Variables.
+    all: omega.
+  Qed.
+
+  Theorem combine_app : forall (t:type) (n m:nat)
+    (v : word (len (ArrayF t n))) (w : word (len (ArrayF t m))),
+    app (of_word v) (of_word w) = of_word (len_add (combine v w)).
+  Proof.
+    intros.
+    unfold len_add.
+    apply combine_app'.
+  Qed.
+
+  Theorem cons_to_word : forall (t:type) (n:nat)
+    d v,
+    @to_word (ArrayF t (S n)) (d :: v) =
+      combine (to_word d) (@to_word (ArrayF t n) v).
+  Proof.
+    intros.
+    inversion t; auto.
+  Qed.
+
+  Theorem split1_firstn : forall t n m
+    (w: word (len (ArrayF t (n+m)))) Heq,
+    firstn n (of_word w) =
+      of_word (split1 (len (ArrayF t n)) (len (ArrayF t m))
+        (eq_rect _ word w _ Heq)).
+  Proof.
+    intros.
+    induction n.
+    simpl.
+    reflexivity.
+
+    simpl plus in *.
+    rewrite of_word_cons.
+    simpl.
+    rewrite of_word_cons.
+    unfold eq_rec_r in *.
+    f_equal.
+    erewrite split1_iter.
+    rewrite eq_rect_word_match.
+    rewrite eq_rect_nat_double.
+    simpl in *.
+    f_equal.
+    erewrite eq_rect_split1_eq2.
+    f_equal.
+    erewrite IHn.
+    rewrite eq_rect_split2.
+    erewrite split1_split2.
+    repeat f_equal.
+    rewrite eq_rect_word_match.
+    rewrite eq_rect_nat_double.
+    unfold eq_rec.
+    f_equal.
+    apply proof_irrelevance.
+
+    Grab Existential Variables.
+    all: try omega.
+    simpl.
+    nia.
+  Qed.
+
+  Theorem split2_skipn : forall t n m
+    (w: word (len (ArrayF t (n+m)))) Heq,
+    skipn n (of_word w) =
+      of_word (split2 (len (ArrayF t n)) (len (ArrayF t m))
+       (eq_rect _ word w _ Heq)).
+  Proof.
+    intros.
+    induction n.
+    simpl.
+    unfold eq_rec_r.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    reflexivity.
+
+    simpl plus in *.
+    rewrite of_word_cons.
+    simpl.
+
+    unfold eq_rec_r in *.
+    erewrite IHn.
+    rewrite eq_rect_split2.
+    erewrite split2_iter.
+    rewrite eq_rect_word_match.
+    rewrite eq_rect_nat_double.
+    unfold eq_rec.
+    repeat f_equal.
+    apply proof_irrelevance.
+
+    Grab Existential Variables.
+    omega.
+    simpl; nia.
   Qed.
 
 End Rec.

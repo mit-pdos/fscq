@@ -6,7 +6,7 @@ Require Import FMapFacts.
 Require Import Classes.SetoidTactics.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Prog.
 Require Import Hoare.
 Require Import SepAuto2.
@@ -1168,16 +1168,6 @@ Module LOG.
     auto.
   Qed.
 
-  Lemma firstn_app_l: forall A (al ar: list A) n,
-    n <= length al ->
-    firstn n (al ++ ar) = firstn n al.
-  Proof.
-    induction al.
-    intros; simpl in *. inversion H. auto.
-    intros; destruct n; simpl in *; auto.
-    rewrite IHal by omega; auto.
-  Qed.
-
   Lemma combine_map_fst_snd: forall A B (l: list (A * B)),
     List.combine (map fst l) (map snd l) = l.
   Proof.
@@ -1241,7 +1231,9 @@ Module LOG.
     split_lists.
     erewrite firstn_plusone_selN.
     rewrite <- app_assoc.
-    reflexivity.
+    f_equal.
+    simpl.
+    repeat f_equal.
     solve_lengths.
     erewrite firstn_plusone_selN.
     rewrite <- app_assoc.
@@ -2423,16 +2415,6 @@ Module LOG.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
-
-  Definition firstn_plusone_selN' : forall A n l (x: A) def,
-    x = selN l n def ->
-    n < length l ->
-    firstn (n + 1) l = firstn n l ++ [x].
-  Proof.
-    intros.
-    rewrite H.
-    apply firstn_plusone_selN; auto.
-  Qed.
 
   Definition read_log T (xp : log_xparams) cs rx : prog T :=
     let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;

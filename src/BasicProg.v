@@ -32,6 +32,11 @@ Ltac inv_exec :=
   | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
+Ltac inv_step :=
+  match goal with
+  | [ H: step _ _ _ _ |- _ ] => inversion H; clear H; subst
+  end.
+
 Theorem read_ok:
   forall (a:addr),
   {< v,
@@ -40,18 +45,19 @@ Theorem read_ok:
   CRASH      a |-> v
   >} Read a.
 Proof.
-  unfold corr2, exis; intros; repeat deex.
-  repeat ( apply sep_star_lift2and in H; destruct H ).
-  unfold lift in *; simpl in *.
+  unfold corr2; intros.
+  destruct_lift H.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_valid in H.
-    repeat deex.
-    congruence.
-  - eapply H2. repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
-    apply sep_star_assoc. apply sep_star_and2lift; split; unfold lift; eauto.
+  - inv_step.
+    eapply H4; eauto.
+    pred_apply; cancel.
     apply sep_star_comm in H; apply ptsto_valid in H.
-    repeat deex.
-    repeat inv_option. eauto.
+    congruence.
+  - exfalso.
+    apply H1. repeat eexists.
+    econstructor.
+    eapply ptsto_valid.
+    pred_apply; cancel.
   - right. eexists; intuition eauto.
 Qed.
 
@@ -65,24 +71,20 @@ Theorem write_ok:
   CRASH      a |-> v0
   >} Write a v.
 Proof.
-  unfold corr2, exis; intros; repeat deex.
-  repeat ( apply sep_star_lift2and in H; destruct H ).
-  unfold lift in *; simpl in *.
+  unfold corr2; intros.
+  destruct_lift H.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_valid in H.
-    repeat deex.
-    congruence.
-  - eapply H2; eauto.
-    repeat ( apply sep_star_and2lift; split; unfold lift; eauto ).
-    apply sep_star_comm. apply sep_star_comm in H.
-    apply ptsto_valid in H as H'.
-    rewrite H' in H8. inversion H8; subst.
-    eapply pimpl_trans; [ apply pimpl_refl | | ].
-    apply pimpl_sep_star; [ | apply pimpl_refl ].
-    unfold valuset_list; simpl.
-    apply pimpl_refl.
-    eapply ptsto_upd.
-    eauto.
+  - inv_step.
+    eapply H4; eauto.
+    eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
+    apply sep_star_comm in H; apply ptsto_valid in H.
+    rewrite H in H10; inversion H10; subst; unfold valuset_list; simpl.
+    cancel.
+  - exfalso.
+    apply H1. repeat eexists.
+    econstructor.
+    eapply ptsto_valid.
+    pred_apply; cancel.
   - right. eexists; intuition eauto.
 Qed.
 
@@ -96,29 +98,54 @@ Theorem sync_ok:
   CRASH      a |-> v
   >} Sync a.
 Proof.
-  unfold corr2, exis; intros; repeat deex.
+  unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - apply sep_star_comm in H; apply ptsto_valid in H.
-    repeat deex.
-    congruence.
-  - eapply H4; eauto.
-    apply sep_star_and2lift; split; firstorder.
-    apply sep_star_and2lift; split; firstorder.
-    apply sep_star_comm.
-
-    apply sep_star_comm in H as H'.
-    apply ptsto_valid in H'.
-    rewrite H' in H6.
-    inversion H6; simpl in *; subst.
-
-    eapply ptsto_upd.
-    apply sep_star_comm.
-    eauto.
+  - inv_step.
+    eapply H4; eauto.
+    eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
+    apply sep_star_comm in H; apply ptsto_valid in H.
+    rewrite H in H9; inversion H9; subst.
+    cancel.
+  - exfalso.
+    apply H1. repeat eexists.
+    econstructor.
+    eapply ptsto_valid.
+    pred_apply; cancel.
   - right. eexists; intuition eauto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Sync _) _) => apply sync_ok : prog.
+
+Theorem trim_ok:
+  forall (a:addr),
+  {< v0,
+  PRE        a |-> v0
+  POST RET:r a |->?
+  CRASH      a |->?
+  >} Trim a.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_step.
+    eapply H4; eauto.
+    eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
+    cancel.
+    cancel.
+  - exfalso.
+    apply H1. repeat eexists.
+    econstructor.
+    eapply ptsto_valid.
+    pred_apply; cancel.
+  - right. eexists; intuition eauto.
+    pred_apply. cancel.
+
+  Grab Existential Variables.
+  eauto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (Trim _) _) => apply trim_ok : prog.
 
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
