@@ -2100,6 +2100,9 @@ Section RECBFILE.
       replace (length ilist).
       erewrite <- array_items_num_blocks by eauto.
       auto.
+    - subst.
+      rewrite <- H17.
+      apply apply_chunks_cons.
     - Transparent hidden.
       unfold hidden in *.
       subst newdata.
@@ -2124,10 +2127,9 @@ Section RECBFILE.
       eassumption.
       now omega.
 
-      replace ilist'.
       rewrite Rec.to_of_id.
-      (* without the simpl reflexivity is very slow *)
-      simpl; reflexivity.
+      rewrite <- H15.
+      reflexivity.
     - apply LOG.activetxn_would_recover_old.
 
     Grab Existential Variables.
