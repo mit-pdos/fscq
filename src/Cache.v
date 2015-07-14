@@ -531,6 +531,10 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
 
+  Lemma ptsto_tuple : forall AT VA VB AEQ a v,
+    @pimpl AT AEQ (VA * VB) (a |-> v) (a |-> (fst v, snd v)).
+  Proof. cancel. Qed.
+
   Theorem write_array_ok : forall a i v cs,
     {< d F vs,
     PRE
@@ -548,10 +552,15 @@ Module BUFCACHE.
 
     pred_apply.
     rewrite isolate_fwd with (i:=i) by auto. cancel.
+    rewrite ptsto_tuple.
+    cancel.
 
     rewrite <- isolate_bwd_upd by auto.
     cancel.
+    cancel.
+    apply pimpl_or_r; left; cancel.
 
+    cancel.
     apply pimpl_or_r; right; cancel.
     rewrite <- isolate_bwd_upd by auto.
     cancel.
@@ -576,10 +585,15 @@ Module BUFCACHE.
 
     pred_apply.
     rewrite isolate_fwd with (i:=i) by auto. cancel.
+    rewrite ptsto_tuple.
+    cancel.
 
     rewrite <- isolate_bwd_upd by auto.
     cancel.
+    cancel.
+    apply pimpl_or_r; left; cancel.
 
+    cancel.
     apply pimpl_or_r; right; cancel.
     rewrite <- isolate_bwd_upd by auto.
     cancel.

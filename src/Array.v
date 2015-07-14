@@ -1556,9 +1556,11 @@ Proof.
   - rewrite firstn_oob with (n := len2) by omega.
     auto.
   - rewrite <- firstn_skipn with (n := len2) (l := l) at 2.
-    rewrite skipn_app_l by LOG.solve_lengths.
-    rewrite firstn_app_l by LOG.solve_lengths.
+    rewrite skipn_app_l.
+    rewrite firstn_app_l.
     auto.
+    rewrite skipn_length.
+    all: rewrite firstn_length_l; omega.
 Qed.
 
 Lemma firstn_skipn_subslice : forall A n1 len1 n2 len2 (l:list A),

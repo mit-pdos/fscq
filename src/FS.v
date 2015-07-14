@@ -770,13 +770,13 @@ Proof.
   hoare.
   erewrite DIRTREE.find_subtree_tree_graft by eauto; reflexivity.
   eapply pimpl_or_r; right; cancel.
-  rewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
+  erewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
   all: try rewrite LOG.activetxn_would_recover_old.
   all: try rewrite LOG.notxn_would_recover_old.
   all: try apply LOG.would_recover_old_either_pred.
   rewrite <- LOG.would_recover_either_pred_pimpl.
   cancel.
-  rewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
+  erewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
   Grab Existential Variables.
   all: eauto.
   exact BFILE.bfile0.

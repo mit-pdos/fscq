@@ -810,7 +810,6 @@ Module INODE.
     list2nmem_ptsto_cancel; list2nmem_bound.
     list2nmem_ptsto_cancel; list2nmem_bound.
     irec_well_formed.
-    2: eapply list2nmem_updN; eauto.
 
     repeat rewrite_list2nmem_pred; try list2nmem_bound.
     eapply listmatch_updN_selN; autorewrite with defaults; inode_bounds.
@@ -844,7 +843,7 @@ Module INODE.
     rewrite H19.
     rewrite selN_firstn by inode_bounds.
     rewrite selN_app; [ inode_bounds |].
-    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
+    erewrite inode_blocks_length with (m := list2mem m); inode_bounds.
     apply wlt_lt in H8; auto.
     pred_apply; cancel.
 
@@ -862,10 +861,10 @@ Module INODE.
     rewrite H19.
     rewrite selN_firstn; inode_bounds.
     rewrite selN_app2.
-    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
+    erewrite inode_blocks_length with (m := list2mem m); inode_bounds.
     rewrite wminus_minus; auto.
     pred_apply; cancel.
-    erewrite inode_blocks_length with (m := list2mem d0); inode_bounds.
+    erewrite inode_blocks_length with (m := list2mem m); inode_bounds.
     apply wle_le in H11; auto.
     pred_apply; cancel.
   Qed.

@@ -120,8 +120,6 @@ Module DIR.
   Proof.
     unfold deget, derep_macro, derep.
     hoare.
-    list2nmem_bound.
-    repeat rewrite_list2nmem_pred; auto.
   Qed.
 
   Theorem deput_ok : forall lxp bxp ixp inum idx e mscs,
@@ -140,8 +138,6 @@ Module DIR.
   Proof.
     unfold deput, derep_macro, derep.
     hoare.
-    list2nmem_bound.
-    eapply list2nmem_updN; eauto.
   Qed.
 
   Theorem delist_ok : forall lxp bxp ixp inum mscs,
@@ -257,7 +253,9 @@ Module DIR.
     unfold deext, derep_macro, derep.
     hoare.
     apply pimpl_or_r; right; cancel.
-    exists l0, b; split; eauto.
+    exists flist'.
+    exists {| BFILE.BFData := fdata'; BFILE.BFAttr := BFILE.BFAttr f |}.
+    split; eauto.
 
     (**
      * The theorem [item0_list_dent0] talks about [@repeat (Rec.data dent_type)],

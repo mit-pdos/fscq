@@ -189,6 +189,9 @@ Module BALLOC.
     cancel.
     auto.
     word2nat_auto.
+
+    Grab Existential Variables.
+    exact tt.
   Qed.
 
 
@@ -292,6 +295,8 @@ Module BALLOC.
   Proof.
     unfold alloc_gen.
     intros.
+    (* XXX: this proof is currently broken; cancel seems to have changed
+    sufficiently that the structure needs to be updated. *)
     eapply pimpl_ok2. apply alloc'_ok.
     unfold rep_gen, rep'.
     cancel.

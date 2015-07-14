@@ -232,7 +232,6 @@ Module FASTBYTEFILE.
         replace (BFILE.BFAttr f').
         auto.
       * replace (BFILE.BFAttr f').
-        set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
         apply firstn_length_l_iff in H10.
         fold flen.
         match goal with
