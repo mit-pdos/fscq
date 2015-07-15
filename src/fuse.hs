@@ -380,6 +380,7 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   off <- return $ fromIntegral offset
   len <- return $ fromIntegral byteCount
+  debugStart "READ" (path, inum, len)
   (W w, ()) <- fr $ FS.read_bytes fsxp inum off len
   wdata <- i2bs w len
   return $ Right wdata
