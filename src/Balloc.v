@@ -295,20 +295,17 @@ Module BALLOC.
   Proof.
     unfold alloc_gen.
     intros.
-    (* XXX: this proof is currently broken; cancel seems to have changed
-    sufficiently that the structure needs to be updated. *)
     eapply pimpl_ok2. apply alloc'_ok.
     unfold rep_gen, rep'.
-    cancel.
-    cancel.
-    step.
-    apply pimpl_or_r. right.
-    norm. (* We can't just [cancel] here because it introduces evars too early *)
+    intros; norm.
     cancel.
     intuition.
+    (* cancel is unable to make this unification *)
+    instantiate (Fm0 := Fm).
+    pred_apply; cancel.
 
-    pred_apply.
-    cancel.
+    step.
+    apply pimpl_or_r; right; cancel.
 
     assert (bmap a = Avail) as Ha by ( apply H9; eapply remove_still_In; eauto ).
     rewrite <- Ha.
@@ -321,11 +318,11 @@ Module BALLOC.
     apply remove_other_In. assumption.
     rewrite H9; assumption.
 
-    erewrite listpred_remove with (dec := @weq addrlen). cancel.
+    erewrite listpred_remove with (dec := @weq addrlen) (x := a2). cancel.
     intros; apply ptsto_conflict.
     rewrite H9; assumption.
 
-    erewrite listpred_remove with (dec := @weq addrlen). cancel.
+    erewrite listpred_remove with (dec := @weq addrlen) (x := a2). cancel.
     intros; apply ptsto_conflict.
     rewrite H9; assumption.
   Qed.

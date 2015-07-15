@@ -935,6 +935,9 @@ Module INODE.
     erewrite firstn_plusone_selN; eauto.
     rewrite firstn_app by auto.
     f_equal; subst.
+    rewrite Nat.sub_diag; simpl.
+    rewrite app_nil_r.
+    apply firstn_oob; omega.
     rewrite selN_app2; auto.
     rewrite Nat.sub_diag; auto.
     rewrite app_length; omega.
@@ -978,7 +981,6 @@ Module INODE.
     list2nmem_ptsto_cancel; inode_bounds.
     irec_well_formed.
     step.
-    2: eapply list2nmem_updN; eauto.
     2: simpl; eapply list2nmem_app; eauto.
 
     repeat rewrite_list2nmem_pred; inode_bounds.
@@ -988,14 +990,14 @@ Module INODE.
     repeat rewrite inode_match_is_direct; eauto.
     unfold inode_match_direct.
     simpl; unfold sel; autorewrite with core.
-    rewrite app_length; rewrite H10; simpl.
+    rewrite H10; simpl.
     rec_simpl; cancel.
 
     eapply wlt_plus_one_le; eauto.
     rewrite <- firstn_app_updN_eq.
     f_equal; auto.
 
-    pose proof (@inode_blocks_length (list2mem d0)) as Hibl.
+    pose proof (@inode_blocks_length (list2mem m)) as Hibl.
     cbn in Hibl.
     erewrite Hibl; inode_bounds.
     apply wlt_lt in H7; auto.
@@ -1003,13 +1005,15 @@ Module INODE.
 
     apply wlt_plus_one_wle; auto.
 
-    eapply inode_well_formed with (m := list2mem d1); eauto.
-    instantiate (def := irec0).
-    rewrite selN_updN_eq by inode_bounds; auto.
+    eapply inode_well_formed with (m := list2mem m'); eauto.
+    erewrite selN_updN_eq by inode_bounds; eauto.
 
-    eapply inode_well_formed with (m := list2mem d0) (l := l0); eauto.
+    eapply inode_well_formed with (m := list2mem m) (l := reclist); eauto.
     pred_apply; cancel.
     inode_bounds.
+
+    Grab Existential Variables.
+    exact irec0.
   Qed.
 
 

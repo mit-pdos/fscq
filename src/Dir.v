@@ -377,6 +377,9 @@ Module DIR.
 
     subst. do 2 eexists. intuition eauto.
     apply LOG.activetxn_would_recover_old.
+
+    Grab Existential Variables.
+    exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (dfold _ _ _ _ _ _ _) _) => apply dfold_ok : prog.
@@ -752,10 +755,10 @@ Module DIR.
     apply helper_sep_star_comm_middle.
     generalize H; unfold_sep_star.
     intro; repeat deex.
-    exists x; exists x0; intuition.
-    assert (x0 name = Some v) as Hx.
+    exists m1; exists m2; intuition.
+    assert (m2 name = Some v) as Hx.
     eapply helper_ptsto_either; eauto.
-    pose proof (IHl x0 name v H5 Hx).
+    pose proof (IHl m2 name v H5 Hx).
     generalize H2; unfold_sep_star; auto.
   Qed.
 
