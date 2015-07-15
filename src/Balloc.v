@@ -344,8 +344,12 @@ Module BALLOC.
     intros.
     eapply pimpl_ok2. apply free'_ok.
     unfold rep_gen, rep'.
+    intros; norm.
     cancel.
-    cancel.
+    intuition.
+    instantiate (Fm0 := Fm).
+    pred_apply; cancel.
+
     step.
     subst; apply fupd_same; trivial.
     rewrite H10 in H3.
@@ -353,7 +357,7 @@ Module BALLOC.
     subst; apply fupd_same; trivial.
     rewrite <- H3; apply fupd_other; assumption.
     destruct (weq bn a1).
-    left. auto.
+    left. trivial.
     right. rewrite fupd_other in H0 by assumption. apply H10; assumption.
   Qed.
 

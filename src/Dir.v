@@ -969,8 +969,8 @@ Module DIR.
     apply dlookup_f_ok in Hx; destruct Hx as [HA HN].
     step.
 
-    exists x2, x3; intuition.
-    exists l; split; auto.
+    exists flist0, f0; intuition.
+    exists delist'; split; auto.
     eapply ptsto_dent0_mem_except; eauto.
     apply mem_except_notindomain.
 
@@ -1134,10 +1134,10 @@ Module DIR.
     (* case 1 : use an existing avail entry *)
     unfold Rec.well_formed; simpl; auto.
     apply pimpl_or_r; right; cancel.
-    exists x2, x3; intuition.
-    exists l; split; auto.
-    2: eapply ptsto_upd_disjoint with (m := m); auto.
+    exists flist0, f0; intuition.
+    exists delist'; split; auto.
     eapply helper_dlink_ok_avail; eauto.
+    eapply ptsto_upd_disjoint; eauto.
     eapply dlookup_notindomain; eauto.
     unfold pimpl; intros.
     eapply dlookup_notindomain; eauto.
@@ -1146,19 +1146,16 @@ Module DIR.
     unfold Rec.well_formed; simpl; auto.
     apply list2nmem_array.
     apply pimpl_or_r; right; cancel.
-    exists x2, x3; intuition.
-    2: eapply ptsto_upd_disjoint with (m := m); auto.
+    exists flist0, f0; intuition.
     eexists; split; eauto.
     eapply helper_dlink_ok_ext; eauto.
+    eapply ptsto_upd_disjoint; eauto.
     eapply dlookup_notindomain; eauto.
-
     unfold pimpl; intros.
     eapply dlookup_notindomain; eauto.
 
     Grab Existential Variables.
-    exact emp. exact emp. exact emp. exact nil. exact dent0.
-    exact emp. exact emp. exact emp. exact nil. exact emp.
-    exact emp. exact nil. exact nil.
+    all: try exact emp; try exact nil; try exact dent0.
   Qed.
 
 
