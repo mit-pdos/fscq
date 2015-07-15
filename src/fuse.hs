@@ -381,7 +381,7 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   off <- return $ fromIntegral offset
   len <- return $ fromIntegral byteCount
   (W w, ()) <- fr $ FS.read_bytes fsxp inum off len
-  wdata <- i2bs w blocksize
+  wdata <- i2bs w len
   return $ Right wdata
 
 fscqRead _ _ _ [] _ _ _ = do
