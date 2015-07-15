@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, MagicHash #-}
 
 module Main where
 
@@ -358,10 +358,14 @@ blocksize :: Int
 blocksize = _Valulen__valulen `div` 8
 
 bs2i :: BS.ByteString -> IO Integer
-bs2i (BSI.PS fp _ _) = withForeignPtr fp buf2i
+bs2i (BSI.PS fp 0 len) = withForeignPtr fp $ buf2i $ fromIntegral len
+bs2i (BSI.PS _ _ _) = error "Non-zero offset not implemented"
 
-i2bs :: Integer -> IO BS.ByteString
-i2bs i = BSI.create blocksize $ i2buf i
+-- We should audit our use of [Int] vs [Word] vs [Foreign.C.Types.CSize]
+-- for possible overflows, etc..  These are possibly hiding in our uses
+-- of [fromIntegral].
+i2bs :: Integer -> Int -> IO BS.ByteString
+i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
 
 fscqRead :: DiskState -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
 fscqRead ds fr m_fsxp (_:path) inum byteCount offset
@@ -377,7 +381,7 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   off <- return $ fromIntegral offset
   len <- return $ fromIntegral byteCount
   (W w, ()) <- fr $ FS.read_bytes fsxp inum off len
-  wdata <- i2bs w
+  wdata <- i2bs w blocksize
   return $ Right wdata
 
 fscqRead _ _ _ [] _ _ _ = do
