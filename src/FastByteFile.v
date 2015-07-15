@@ -98,7 +98,7 @@ Module FASTBYTEFILE.
   | @len_bytes len _ => len
   end.
 
-  Definition buf_bytes (buf:byte_buf) : bytes (buf_len buf) :=
+  Definition buf_data (buf:byte_buf) : bytes (buf_len buf) :=
   match buf with
   | @len_bytes _ b => b
   end.
@@ -164,12 +164,15 @@ Module FASTBYTEFILE.
       [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
       [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
       [[ rep bytes f ]]
-   POST RET:^(mscs, data_buf)
+   POST RET:^(mscs, b)
       exists Fx v,
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
       [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
-      [[ @Rec.of_word (Rec.ArrayF byte_type (buf_len data_buf))
-        (buf_bytes data_buf) = v ]]
+      [[ @Rec.of_word (Rec.ArrayF byte_type (buf_len b))
+        (buf_data b) = v ]] *
+      (* non-error guarantee *)
+      [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
+         0 < buf_len b ]]
    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
    >} read_bytes fsxp inum off len mscs.
    Proof.
