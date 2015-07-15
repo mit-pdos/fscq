@@ -21,6 +21,7 @@ import Data.IORef
 import Interpreter as I
 import qualified FS
 import qualified Log
+import FastByteFile
 import FSLayout
 import qualified DirName
 import System.Environment
@@ -381,8 +382,9 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   off <- return $ fromIntegral offset
   len <- return $ fromIntegral byteCount
   debugStart "READ" (path, inum, len)
-  (W w, ()) <- fr $ FS.read_bytes fsxp inum off len
-  wdata <- i2bs w len
+  (buf, ()) <- fr $ FS.read_bytes fsxp inum off len
+  FASTBYTEFILE__Coq_len_bytes readlen (W w) <- return buf
+  wdata <- i2bs w readlen
   return $ Right wdata
 
 fscqRead _ _ _ [] _ _ _ = do
