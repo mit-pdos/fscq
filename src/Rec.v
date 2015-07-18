@@ -585,7 +585,7 @@ Module Rec.
 
   Definition word_updN {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l)))
                                              (v : word (len ft)) : word (len (ArrayF ft l)).
-    refine (if lt_dec idx l then _ else $0); simpl in *.
+    refine (if lt_dec idx l then _ else w); simpl in *.
 
     replace (l * len ft) with (idx * len ft + (l * len ft - idx * len ft))
       in * by (apply word_updN_helper2; assumption).
@@ -599,6 +599,14 @@ Module Rec.
     remember (split2 (idx * len ft + len ft) (l * len ft - idx * len ft - len ft) w) as hi; clear Heqhi.
     refine (combine v hi).
   Defined.
+
+  Theorem word_updN_oob : forall ft l idx w v, idx >= l ->
+    @word_updN ft l idx w (to_word v) = w.
+  Proof.
+    unfold word_updN; simpl; intros.
+    destruct (lt_dec idx l); auto.
+    exfalso; omega.
+  Qed.
 
   Theorem word_updN_equiv : forall ft l idx w v, idx < l ->
     @word_updN ft l idx w (to_word v) = @to_word (ArrayF ft l) (updN (of_word w) idx v).
