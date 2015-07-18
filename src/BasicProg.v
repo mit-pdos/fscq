@@ -563,7 +563,7 @@ Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation
           (pair_args_helper (fun l1 => ..
             (pair_args_helper (fun l2 (_:unit) => (fun lrx => body)))
           ..)))
-        $0 n
+        0 n
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => nocrash%pred)) ..))
