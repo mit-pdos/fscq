@@ -451,6 +451,132 @@ Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation'
    body at level 9).
 
 
+Fixpoint ForN_ (T: Type)
+                (L : Type) (G : Type) (f : nat -> L -> (L -> prog T) -> prog T)
+                (i n : nat)
+                (nocrash : G -> nat -> L -> @pred addr (@weq addrlen) valuset)
+                (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (l : L)
+                (rx: L -> prog T) : prog T :=
+  match n with
+  | 0 =>   rx l
+  | S m => l' <- f i l;  ForN_ f (S i) m nocrash crashed l' rx
+  end.
+
+
+Theorem forN_ok':
+  forall T (n i : nat)
+         (L : Type) (G : Type)
+         f (rx: _ -> prog T)
+         (nocrash : G -> nat -> L -> pred)
+         (crashed : G -> pred)
+         (li : L),
+  {{ fun done crash => exists F (g:G), F * nocrash g i li
+   * [[forall m lm rxm,
+      i <= m ->
+      m < n + i ->
+      (forall lSm,
+       {{ fun done' crash' => F * nocrash g (S m) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rxm lSm) ->
+      {{ fun done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      }} f m lm rxm]]
+   * [[forall lfinal,
+       {{ fun done' crash' => F * nocrash g (n + i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx lfinal]]
+   * [[F * crashed g =p=> crash]]
+  }} (ForN_ f i n nocrash crashed li rx).
+Proof.
+  induction n; intros;
+    apply corr2_exists; intros;
+    apply corr2_exists; intros.
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
+    + simpl.
+      unfold pimpl, lift; intros.
+      eapply pimpl_ok2; eauto.
+      intros.
+      apply pimpl_refl.
+    + cancel.
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
+    + simpl.
+      unfold pimpl, lift; intros.
+      eapply pimpl_ok2.
+      apply H1. omega. omega.
+      intros.
+      eapply pimpl_ok2.
+      eapply IHn.
+      cancel.
+      instantiate (g := a0).
+      cancel.
+      eapply pimpl_ok2.
+      apply H1. omega. omega.
+      intros.
+      eapply pimpl_ok2.
+      apply H7.
+      cancel.
+      cancel.
+      eapply pimpl_ok2.
+      apply H0.
+      replace (n + S i) with (S (n + i)) by omega.
+      cancel.
+      cancel.
+      intros.
+      apply pimpl_refl.
+    + cancel.
+Qed.
+
+Theorem forN_ok:
+  forall T (n : nat)
+         (L : Type) (G : Type)
+         f (rx: _ -> prog T)
+         (nocrash : G -> nat -> L -> pred)
+         (crashed : G -> pred)
+         (li : L),
+  {{ fun done crash => exists F (g:G), F * nocrash g 0 li
+   * [[forall m lm rxm,
+      m < n ->
+      (forall lSm,
+       {{ fun done' crash' => F * nocrash g (S m) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rxm lSm) ->
+      {{ fun done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      }} f m lm rxm]]
+   * [[forall lfinal,
+       {{ fun done' crash' => F * nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx lfinal]]
+   * [[F * crashed g =p=> crash]]
+  }} ForN_ f 0 n nocrash crashed li rx.
+Proof.
+  intros.
+  eapply pimpl_ok2.
+  apply forN_ok'.
+  cancel.
+  cancel.
+  eapply pimpl_ok2.
+  eauto.
+  cancel.
+  replace (n + 0) with n by omega; auto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (ForN_ _ _ _ _ _ _) _) => apply forN_ok : prog.
+
+Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForN_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => (fun lrx => body)))
+          ..)))
+        $0 n
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => nocrash%pred)) ..))
+        )) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         crashed%pred)) .. )))
+  (at level 9, i at level 0, n at level 0,
+   g1 closed binder, g2 closed binder,
+   lrx at level 0,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
+
 Fixpoint ForEach_ (T: Type) (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> (L -> prog T) -> prog T)
                 (lst : list ITEM)
