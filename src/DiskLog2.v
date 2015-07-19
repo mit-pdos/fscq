@@ -191,19 +191,34 @@ Module AsyncRecArray (RA : RASig).
   Definition list_chunk {A} l sz def : list (list A) :=
     list_chunk' l sz def (divup (length l) sz).
 
+  Inductive state : Type :=
+  | Synced : itemlist -> state
+  | Unsync : itemlist -> state
+  .
 
   (** a variant of array where only the latest valu in the valuset is defined *)
-  Definition asarray start l: @pred addr (@weq _) valuset :=
+  Definition unsync_array start l: @pred addr (@weq _) valuset :=
     (exists vs, [[ length vs = length l ]] *
      array start (combine l vs) $1 )%pred.
 
+  Definition synced_array start l: @pred addr (@weq _) valuset :=
+    (array start (combine l (repeat nil (length l))) $1 )%pred.
+
   (** rep invariant *)
-  Definition array_rep xp items := 
-     ([[ Forall Rec.well_formed items ]] *
-      [[ length items <= #(RALen xp) * items_per_val ]] *
-     exists vlist,
-      [[ vlist = map block2val (list_chunk items items_per_val item0) ]] *
-     asarray (RAStart xp) vlist)%pred.
+  Definition rep_common xp items vlist := 
+       Forall Rec.well_formed items
+    /\ length items <= #(RALen xp) * items_per_val
+    /\ vlist = map block2val (list_chunk items items_per_val item0).
+
+  Definition array_rep xp (st : state) :=
+   (match st with
+    | Synced items => exists vlist,
+        [[ rep_common xp items vlist ]] *
+        synced_array (RAStart xp) vlist
+    | Unsync items => exists vlist,
+        [[ rep_common xp items vlist ]] * 
+        unsync_array (RAStart xp) vlist
+    end)%pred.
 
   (** append items starting at index off, slots after items might be cleared *)
   Definition extend_range T xp off (items: itemlist) cs rx : prog T :=
@@ -239,7 +254,7 @@ Module AsyncRecArray (RA : RASig).
     Continuation lrx
     Invariant
       BUFCACHE.rep cs d *
-      [[ (F * array_rep xp items)%pred d ]] *
+      [[ (F * array_rep xp (Synced items))%pred d ]] *
       [[ let n := Nat.min (i * items_per_val)%nat count in
          firstn n pf = firstn n items /\ length pf = (i * items_per_val)%nat ]]
     OnCrash   crash
@@ -442,7 +457,7 @@ Module AsyncRecArray (RA : RASig).
 
   Definition xparams_ok xp := goodSize addrlen (#(RALen xp) * items_per_val).
 
-  Local Hint Unfold array_rep asarray sel upd xparams_ok: hoare_unfold.
+  Local Hint Unfold array_rep rep_common synced_array unsync_array sel upd item xparams_ok: hoare_unfold.
 
   Local Hint Extern 0 (okToUnify (list_chunk ?a ?b _) (list_chunk ?a ?b _)) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (list_chunk _ ?b ?c) (list_chunk _ ?b ?c)) => constructor : okToUnify.
@@ -470,8 +485,11 @@ Module AsyncRecArray (RA : RASig).
     repeat (match goal with
     | [H: goodSize _ ?a |- goodSize _ ?b ] => ((constr_eq a b; eauto) ||
       (eapply goodSize_trans; [ | eauto] ) )
-    | [H: ?a < divup ?b ?c, H2: divup ?b ?c < ?b |- context [?a] ] => fail
-    | [H: ?a < divup ?b ?c |- context [?a] ] => pose proof (divup_lt_arg b c)
+    | [H: ?a < divup ?b ?c |- context [?a] ] =>
+      match goal with
+      | [H2: divup ?b ?c <= ?b |- _ ] => idtac
+      | _ =>  pose proof (divup_lt_arg b c)
+      end
     end; simpl; eauto; try omega).
 
   (* eliminate word round trip *)
@@ -517,10 +535,10 @@ Module AsyncRecArray (RA : RASig).
     {< F d items,
     PRE            BUFCACHE.rep cs d *
                    [[ count <= length items /\ xparams_ok xp ]] *
-                   [[ (F * array_rep xp items)%pred d ]]
+                   [[ (F * array_rep xp (Synced items))%pred d ]]
     POST RET:^(cs, r)
                    BUFCACHE.rep cs d *
-                   [[ (F * array_rep xp items)%pred d ]] *
+                   [[ (F * array_rep xp (Synced items))%pred d ]] *
                    [[ r = firstn count items ]]
     CRASH  exists cs', BUFCACHE.rep cs' d
     >} read_all xp count cs.
