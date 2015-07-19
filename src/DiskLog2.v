@@ -1,9 +1,8 @@
 Require Import Arith.
 Require Import Bool.
-Require Import List.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Prog.
 Require Import Hoare.
 Require Import SepAuto.
@@ -11,21 +10,537 @@ Require Import BasicProg.
 Require Import Omega.
 Require Import Word.
 Require Import Rec.
-Require Import RecArray.
 Require Import Array.
 Require Import GenSep.
 Require Import WordAuto.
 Require Import Cache.
 Require Import FSLayout.
+Require Import Rounding.
+Require Import List.
 
 Import ListNotations.
 
 Set Implicit Arguments.
 
-Definition log_contents := list (addr * valu).
+
+Section PAIRLIST.
+
+Variable A B : Type.
+Definition pairlist := list (A * B).
+
+Definition lfst (pl : pairlist) := map fst pl.
+Definition lsnd (pl : pairlist) := map snd pl.
+
+
+End PAIRLIST.
+
+
+(* RecArray on raw, async disk *)
+
+Module Type RASig.
+
+  Parameter xparams : Type.
+  Parameter RAStart : xparams -> addr.
+  Parameter RALen   : xparams -> addr.
+
+  Parameter itemtype : Rec.type.
+  Parameter items_per_val : nat.
+  Parameter blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+
+End RASig.
+
+
+
+Module AsyncRecArray (RA : RASig).
+
+  Import RA.
+
+  Definition item := Rec.data itemtype.
+  Definition itemsz := Rec.len itemtype.
+  Definition item0 := @Rec.of_word itemtype $0.
+
+  Definition blocktype : Rec.type := Rec.ArrayF itemtype items_per_val.
+  Definition blocksz := Rec.len blocktype.
+  Definition block := Rec.data blocktype.
+
+
+  Definition val2word (v : valu) : word (blocksz).
+    rewrite blocksz_ok in v; trivial.
+  Defined.
+
+  Definition word2val (w : word blocksz) : valu.
+    rewrite blocksz_ok; trivial.
+  Defined.
+
+  Definition block2val (b : block) := word2val (Rec.to_word b).
+  Definition val2block (v : valu) := Rec.of_word (val2word v).
+  Definition block0 := val2block $0.
+
+  Local Hint Resolve eq_nat_dec : core.
+
+  Theorem val2word2val_id : forall w, val2word (word2val w) = w.
+  Proof.
+    unfold val2word, word2val, eq_rec_r; simpl; intros.
+    rewrite eq_rect_nat_double.
+    erewrite eq_rect_eq_dec; auto.
+  Qed.
+
+  Theorem word2val2word_id : forall v, word2val (val2word v) = v.
+  Proof.
+    unfold val2word, word2val, eq_rec_r; simpl; intros.
+    rewrite eq_rect_nat_double.
+    erewrite eq_rect_eq_dec; auto.
+  Qed.
+
+  Local Hint Resolve Rec.of_to_id Rec.to_of_id val2word2val_id word2val2word_id.
+  Hint Rewrite val2word2val_id word2val2word_id Rec.of_to_id Rec.to_of_id : core.
+
+  (** crush any small goals.  Do NOT use for big proofs! *)
+  Ltac t' := intros; autorewrite with core; autorewrite with core in *;
+             eauto; simpl in *; intuition; eauto.
+  Ltac t := repeat t'; subst; eauto.
+
+  Theorem val2block2val_id : forall b, 
+    Rec.well_formed b -> val2block (block2val b) = b.
+  Proof.
+    unfold block2val, val2block; t.
+  Qed.
+
+  Theorem block2val2block_id : forall v,
+    block2val (val2block v) = v.
+  Proof.
+    unfold block2val, val2block; t.
+  Qed.
+
+  Local Hint Resolve val2block2val_id block2val2block_id Forall_forall: core.
+  Local Hint Resolve divup_mono firstn_nil.
+  Hint Rewrite val2block2val_id block2val2block_id: core.
+  Hint Rewrite combine_length : core.
+
+  Theorem val2block2val_selN_id : forall bl i,
+    Forall Rec.well_formed bl
+    -> val2block (selN (map block2val bl) i $0) = selN bl i block0.
+  Proof.
+    induction bl; intros; t.
+    destruct i; rewrite Forall_forall in *.
+    t; apply H; intuition.
+    apply IHbl; rewrite Forall_forall.
+    t; apply H; intuition.
+  Qed.
+  Hint Rewrite val2block2val_selN_id.
+
+  Lemma items_per_val_not_0 : items_per_val <> 0.
+  Proof.
+    generalize blocksz_ok.
+    rewrite valulen_is.
+    intros; intro.
+    rewrite H0 in H.
+    discriminate.
+  Qed.
+
+  Lemma items_per_val_gt_0 : items_per_val > 0.
+  Proof.
+    pose proof items_per_val_not_0; omega.
+  Qed.
+
+  Local Hint Resolve items_per_val_not_0 items_per_val_gt_0.
+
+  Hint Rewrite firstn_nil : core.
+
+  Lemma setlen_nil : forall A n (def : A),
+    setlen nil n def = repeat def n.
+  Proof.
+    unfold setlen; t.
+  Qed.
+  Hint Rewrite setlen_nil : core.
+
+  Theorem block0_repeat : block0 = repeat item0 items_per_val.
+  Proof.
+    unfold block0, item0, val2block, blocktype, val2word.
+    generalize blocksz_ok.
+    rewrite blocksz_ok; intros; simpl.
+    rewrite <- (eq_rect_eq_dec eq_nat_dec).
+    generalize dependent items_per_val.
+    induction n; simpl; auto; intros.
+    erewrite <- IHn; t.
+    unfold Rec.of_word at 1 3.
+    rewrite split1_zero.
+    rewrite split2_zero; auto.
+  Qed.
+  Hint Resolve block0_repeat.
+  Hint Resolve divup_ge.
+
+
+  Definition itemlist := list item.
+
+  Definition val_upd_rec rec item : nat * valu := 
+    let '(off, v) := rec in
+    (S off, word2val (Rec.word_updN off (val2word v) item)).
+
+  Definition val_upd_range (v : valu) (off : nat) (items : itemlist) : valu :=
+    let '(_ , v) := fold_left val_upd_rec (map Rec.to_word items) (off, v) in v.
+
+
+  Fixpoint list_chunk' {A} (l : list A) (sz : nat) (def : A) (nr : nat) : list (list A) :=
+    match nr with
+    | S n => setlen l sz def :: (list_chunk' (skipn sz l) sz def n)
+    | O => []
+    end.
+
+  (** cut list l into chunks of lists of length sz, pad the tailing list with default value def *)
+  Definition list_chunk {A} l sz def : list (list A) :=
+    list_chunk' l sz def (divup (length l) sz).
+
+
+  (** a variant of array where only the latest valu in the valuset is defined *)
+  Definition asarray start l: @pred addr (@weq _) valuset :=
+    (exists vs, [[ length vs = length l ]] *
+     array start (combine l vs) $1 )%pred.
+
+  (** rep invariant *)
+  Definition array_rep xp items := 
+     ([[ Forall Rec.well_formed items ]] *
+      [[ length items <= #(RALen xp) * items_per_val ]] *
+     exists vlist,
+      [[ vlist = map block2val (list_chunk items items_per_val item0) ]] *
+     asarray (RAStart xp) vlist)%pred.
+
+  (** append items starting at index off, slots after items might be cleared *)
+  Definition extend_range T xp off (items: itemlist) cs rx : prog T :=
+    (* update first block *)
+    let ix0 := off / items_per_val in
+    let off0 := off mod items_per_val in
+    let len0 := items_per_val - off0 in
+    let^ (cs, v0) <- BUFCACHE.read_array (RAStart xp) ($ ix0) cs;
+    let v0' := val_upd_range v0 off0 (setlen items len0 item0) in
+    cs <- BUFCACHE.write_array (RAStart xp) ($ ix0) v0' cs;
+
+    (* update remaining blocks *)
+    let chunks := list_chunk (skipn len0 items) items_per_val item0 in
+    let^ (cs, _) <- ForEach ck rest chunks
+      Ghost [ crash ]
+      Loopvar [ cs ix ]
+      Continuation lrx
+      Invariant [[ True ]]
+      OnCrash   crash
+      Begin
+        cs <- BUFCACHE.write_array (RAStart xp) ($ ix) (block2val ck) cs;
+        lrx ^(cs, S ix)
+      Rof ^(cs, 1);
+    rx cs.
+
+
+  (** read count items starting from beginning *)
+  Definition read_all T xp count cs rx : prog T :=
+    let nr := divup count items_per_val in
+    let^ (cs, log) <- ForN i < nr
+    Ghost [ crash F items d ]
+    Loopvar [ cs pf ]
+    Continuation lrx
+    Invariant
+      BUFCACHE.rep cs d *
+      [[ (F * array_rep xp items)%pred d ]] *
+      [[ let n := Nat.min (i * items_per_val)%nat count in
+         firstn n pf = firstn n items /\ length pf = (i * items_per_val)%nat ]]
+    OnCrash   crash
+    Begin
+      let^ (cs, v) <- BUFCACHE.read_array (RAStart xp) ($ i) cs;
+      lrx ^(cs, pf ++ (val2block v))
+    Rof ^(cs, []);
+    rx ^(cs, firstn count log).
+
+
+  Lemma list_chunk'_length: forall A nr l sz (def : A),
+      length (list_chunk' l sz def nr) = nr.
+  Proof.
+    induction nr; simpl; auto.
+  Qed.
+  Hint Rewrite list_chunk'_length : core.
+
+  Lemma list_chunk_length: forall A l sz (def : A),
+      length (list_chunk l sz def) = divup (length l) sz.
+  Proof.
+    unfold list_chunk; intros.
+    apply list_chunk'_length.
+  Qed.
+  Hint Rewrite list_chunk_length : core.
+
+  (** specialized list_chunk_length that works better with dependent type in Rec *)
+  Lemma block_chunk_length: forall l sz,
+      @length block (@list_chunk item l sz item0) = divup (length l) sz.
+  Proof.
+    intros; apply list_chunk_length.
+  Qed.
+  Hint Rewrite block_chunk_length : core.
+
+  Lemma list_chunk_nil : forall  A sz (def : A),
+    list_chunk nil sz def = nil.
+  Proof.
+    unfold list_chunk; t.
+    rewrite divup_0; t.
+  Qed.
+
+  Lemma setlen_In : forall A n l (a def : A),
+    In a (setlen l n def)
+    -> a = def \/ In a l.
+  Proof.
+    unfold setlen; intros.
+    destruct (le_dec n (length l)).
+    right.
+    rewrite repeat_is_nil in H by omega; rewrite app_nil_r in H.
+    eapply in_firstn_in; eauto.
+    apply in_app_or in H; destruct H.
+    right. eapply in_firstn_in; eauto.
+    left. eapply repeat_spec; eauto.
+  Qed.
+
+
+  Local Hint Resolve Rec.of_word_well_formed.
+  Lemma item0_wellformed : Rec.well_formed item0.
+  Proof.
+    unfold item0; auto.
+  Qed.
+  Lemma block0_wellformed : Rec.well_formed block0.
+  Proof.
+    unfold block0, val2block; auto.
+  Qed.
+  Local Hint Resolve item0_wellformed block0_wellformed.
+
+  Hint Rewrite setlen_length : core.
+
+  Lemma setlen_wellformed : forall l n,
+    Forall Rec.well_formed l
+    -> Forall (@Rec.well_formed itemtype) (setlen l n item0).
+  Proof.
+    intros; rewrite Forall_forall in *; intros.
+    destruct (setlen_In _ _ _ _ H0); t.
+  Qed.
+  Local Hint Resolve setlen_wellformed : core.
+
+  Lemma forall_skipn: forall A n (l : list A) p,
+    Forall p l -> Forall p (skipn n l).
+  Proof.
+    induction n; t.
+    destruct l; t.
+    apply IHn.
+    eapply Forall_cons2; eauto.
+  Qed.
+  Local Hint Resolve forall_skipn.
+
+  Theorem list_chunk'_wellformed : forall nr items,
+    Forall Rec.well_formed items
+    -> Forall (@Rec.well_formed blocktype) (list_chunk' items items_per_val item0 nr).
+  Proof.
+    induction nr; t.
+    apply Forall_cons; t.
+  Qed.
+
+  Theorem list_chunk_wellformed : forall items,
+    Forall Rec.well_formed items
+    -> Forall (@Rec.well_formed blocktype) (list_chunk items items_per_val item0).
+  Proof.
+    intros; eapply list_chunk'_wellformed; eauto.
+  Qed.
+  Local Hint Resolve list_chunk_wellformed.
+
+  Lemma wlt_nat2word_word2nat_lt : forall sz (w : word sz) n,
+    (w < $ n)%word -> # w < n.
+  Proof.
+    intros; word2nat_simpl; auto.
+  Qed.
+  
+  
+  Lemma list_chunk'_Forall_length : forall A nr l sz (i0 : A),
+    Forall (fun b => length b = sz) (list_chunk' l sz i0 nr).
+  Proof.
+    induction nr; t.
+    apply Forall_cons; t.
+  Qed.
+
+  Lemma list_chunk_In_length : forall A l sz (i0 : A) x,
+    In x (list_chunk l sz i0) -> length x = sz.
+  Proof.
+    intros until i0; apply Forall_forall.
+    unfold list_chunk.
+    apply list_chunk'_Forall_length.
+  Qed.
+
+  Local Hint Resolve in_selN.
+  Hint Rewrite skipn_length.
+
+  Lemma list_chunk_selN_length : forall l i,
+    length (selN (list_chunk l items_per_val item0) i block0) = items_per_val.
+  Proof.
+    intros.
+    destruct (lt_dec i (length (list_chunk l items_per_val item0))).
+    eapply list_chunk_In_length; eauto.
+    rewrite selN_oob by t.
+    apply block0_wellformed.
+  Qed.
+  Hint Rewrite list_chunk_selN_length.
+
+  Lemma list_chunk'_spec : forall A nr i l sz (i0 : A) b0,
+    i < nr ->
+    selN (list_chunk' l sz i0 nr) i b0 = setlen (skipn (i * sz) l) sz i0.
+  Proof.
+    induction nr; t. inversion H.
+    destruct i. t.
+    erewrite IHnr by t.
+    rewrite skipn_skipn; simpl.
+    f_equal; f_equal; omega.
+  Qed.
+
+  Lemma list_chunk_spec : forall l i,
+    selN (list_chunk l items_per_val item0) i block0 
+    = setlen (skipn (i * items_per_val) l) items_per_val item0.
+  Proof.
+    unfold list_chunk; intros.
+    destruct (lt_dec i (divup (length l) items_per_val)).
+    apply list_chunk'_spec; auto.
+    rewrite selN_oob by t.
+    rewrite skipn_oob; t.
+  Qed.
+
+  Lemma setlen_inbound : forall A n (l : list A) def,
+    n <= length l ->
+    setlen l n def = firstn n l.
+  Proof.
+    unfold setlen; intros.
+    replace (n - length l) with 0 by omega; t.
+  Qed.
+
+  Lemma list_chunk_app : forall l i pre,
+    items_per_val + i * items_per_val < length l
+    -> pre = firstn (i * items_per_val) l
+    -> firstn (i * items_per_val + items_per_val) l 
+       = pre ++ (selN (list_chunk l items_per_val item0) i block0).
+  Proof.
+    t; rewrite list_chunk_spec.
+    rewrite firstn_sum_split; f_equal.
+    rewrite setlen_inbound; t.
+  Qed.
+
+  Lemma firstn_setlen_firstn : forall A l m n (def : A),
+    n <= m -> n <= length l -> firstn n (setlen l m def) = firstn n l.
+  Proof.
+    unfold setlen; intros.
+    rewrite firstn_app_l.
+    rewrite firstn_firstn; rewrite Nat.min_l; auto.
+    rewrite firstn_length.
+    apply Min.min_glb; auto.
+  Qed.
+
+  Lemma roundup_min_r : forall a b,
+    b > 0 -> Nat.min ((divup a b) * b ) a = a.
+  Proof.
+    intros.
+    apply Nat.min_r.
+    apply roundup_ge; auto.
+  Qed.
+  Hint Rewrite roundup_min_r.
+
+
+  Definition xparams_ok xp := goodSize addrlen (#(RALen xp) * items_per_val).
+
+  Local Hint Unfold array_rep asarray sel upd xparams_ok: hoare_unfold.
+
+  Local Hint Extern 0 (okToUnify (list_chunk ?a ?b _) (list_chunk ?a ?b _)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (list_chunk _ ?b ?c) (list_chunk _ ?b ?c)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (array (RAStart _) _ _) (array (RAStart _) _ _)) => constructor : okToUnify.
+
+  Ltac prestep := intros; eapply pimpl_ok2; eauto with prog; intros.
+
+  (** Fast 'autorewrite with core' in a given hypothesis *)
+  Ltac simplen_rewrite H := try progress (
+    set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
+      [ try autorewrite_fast | try autorewrite_fast_goal .. ];
+    match type of H with
+    | context [ length (list_chunk _ _ _) ] => rewrite block_chunk_length in H
+    end).
+
+  Ltac simplen' := repeat match goal with
+    | [H : context[length ?x] |- _] => (is_var x || (progress simplen_rewrite H))
+    | [H : ?l = _  |- context [ ?l ] ] => rewrite H
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
+    | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
+    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega]
+    end.
+
+  Ltac elimwrt' :=
+    repeat (match goal with
+    | [H: goodSize _ ?a |- goodSize _ ?b ] => ((constr_eq a b; eauto) ||
+      (eapply goodSize_trans; [ | eauto] ) )
+    | [H: ?a < divup ?b ?c, H2: divup ?b ?c < ?b |- context [?a] ] => fail
+    | [H: ?a < divup ?b ?c |- context [?a] ] => pose proof (divup_lt_arg b c)
+    end; simpl; eauto; try omega).
+
+  (* eliminate word round trip *)
+  Ltac elimwrt := match goal with
+    | [ |- context [ wordToNat (natToWord _ ?x) ] ] => 
+      rewrite wordToNat_natToWord_idempotent' by elimwrt'
+  end.
+
+  Ltac simplen := repeat (try subst; simpl;
+    try elimwrt; simplen'; auto; autorewrite with core); simpl; auto; try omega.
+
+  Hint Rewrite selN_combine using simplen : core.
+
+
+  Lemma read_all_progress : forall i count pre items,
+    firstn (Nat.min (i * items_per_val) count) pre = firstn (Nat.min (i * items_per_val) count) items
+    -> count <= length items
+    -> length pre = i * items_per_val
+    -> firstn (Nat.min ((S i) * items_per_val) count) (pre ++ selN (list_chunk items items_per_val item0) i block0 ) =
+       firstn (Nat.min ((S i) * items_per_val) count) items.
+  Proof.
+    intros.
+    destruct (Min.min_spec (i * items_per_val) count); intuition; simplen.
+    destruct (Min.min_spec ((S i) * items_per_val) count); intuition; simpl in *; simplen.
+
+    rewrite Nat.add_comm; rewrite firstn_sum_app by auto.
+    erewrite list_chunk_app; [ | simplen | eauto ].
+    repeat rewrite firstn_oob by simplen; auto.
+
+    rewrite firstn_app_le; simplen.
+    replace count with (i * items_per_val + (count - i * items_per_val)) at 2 by omega.
+    rewrite firstn_sum_split; f_equal.
+    rewrite <- H; rewrite firstn_oob; simplen.
+    rewrite list_chunk_spec.
+    apply firstn_setlen_firstn; simplen.
+
+    destruct (Min.min_spec ((S i) * items_per_val) count); intuition; simpl in *; simplen.
+    generalize items_per_val_not_0; simpl in *; simplen.
+    rewrite firstn_app_l; simplen.
+  Qed.
+
+  Theorem read_all_ok : forall xp count cs,
+    {< F d items,
+    PRE            BUFCACHE.rep cs d *
+                   [[ count <= length items /\ xparams_ok xp ]] *
+                   [[ (F * array_rep xp items)%pred d ]]
+    POST RET:^(cs, r)
+                   BUFCACHE.rep cs d *
+                   [[ (F * array_rep xp items)%pred d ]] *
+                   [[ r = firstn count items ]]
+    CRASH  exists cs', BUFCACHE.rep cs' d
+    >} read_all xp count cs.
+  Proof.
+    unfold read_all.
+    prestep; norm. cancel. intuition; eauto.
+    step; simplen.
+    step; simplen.
+    apply read_all_progress; simplen.
+    step; simplen.
+    Unshelve. exact tt.
+  Qed.
+
+End AsyncRecArray.
+
 
 Module DISKLOG.
 
+  (************* Log descriptors *)
+  
   Definition desctype := Rec.WordF addrlen.
   Definition descblk := Rec.data desctype.
   Definition desc0 := @Rec.of_word desctype $0.
@@ -60,18 +575,8 @@ Module DISKLOG.
            xp (descxp xp) off v mscs;
     rx mscs.
 
-  Inductive state :=
-  | Synced (l: log_contents)
-  (* The log is synced on disk *)
 
-  | ClearedUnsync (old: log_contents)
-  (* The log has been cleared; but the length (0) is unsynced *)
-
-  | ContentUpdated (old: log_contents)
-  (* The log is being extended; only the content has been updated (unsynced) *)
-
-  | ExtendedUnsync (old: log_contents) (app: log_contents).
-  (* The log has been extended; the new contents are synced but the length is unsynced *)
+  (************* Log header *)
 
   Definition header_type := Rec.RecF ([("length", Rec.WordF addrlen)]).
   Definition header := Rec.data header_type.
@@ -82,7 +587,7 @@ Module DISKLOG.
     rewrite valulen_is. apply leb_complete. compute. trivial.
   Qed.
 
-  Theorem plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
+  Lemma plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
   Proof.
     apply le_plus_minus_r; apply header_sz_ok.
   Qed.
@@ -100,7 +605,7 @@ Module DISKLOG.
     refine (split1 _ _ v).
   Defined.
 
-  Definition header_valu_id : forall h,
+  Lemma header_valu_id : forall h,
     valu2hdr (hdr2valu h) = h.
   Proof.
     unfold valu2hdr, hdr2valu.
@@ -114,8 +619,24 @@ Module DISKLOG.
   Qed.
   Hint Rewrite header_valu_id.
 
+
+  (****************** Log contents and states *)
+
+  Definition log_contents := pairlist addr valu.
+
+  Inductive state :=
+  (* The log is synced on disk *)
+  | Synced (l: log_contents)
+  (* The log has been truncated; but the length (0) is unsynced *)
+  | Truncated (old: log_contents)
+  (* The log is being extended; only the content has been updated (unsynced) *)
+  | ContentUpdated (old: log_contents)
+  (* The log has been extended; the new contents are synced but the length is unsynced *)
+  | ContentSynced (old: log_contents) (app: log_contents).
+
+
   Definition valid_xp xp :=
-    wordToNat (LogLen xp) <= nr_desc xp /\
+    # (LogLen xp) <= nr_desc xp /\
     (* The log shouldn't overflow past the end of disk *)
     goodSize addrlen (# (LogData xp) + # (LogLen xp)).
 
@@ -134,7 +655,7 @@ Module DISKLOG.
     cancel.
   Qed.
 
-  Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
+  Definition synced_list m: list valuset := combine m (repeat nil (length m)).
 
   Lemma length_synced_list : forall l,
     length (synced_list l) = length l.
@@ -143,16 +664,14 @@ Module DISKLOG.
     rewrite combine_length. autorewrite with core. auto.
   Qed.
 
-  Definition valid_size xp (l: log_contents) :=
+  Definition loglen_valid xp (l: log_contents) :=
     length l <= wordToNat (LogLen xp).
 
   (** On-disk representation of the log *)
   Definition log_rep_synced xp (l: log_contents) : @pred addr (@weq addrlen) valuset :=
-     ([[ valid_size xp l ]] *
-      exists rest,
-      (LogDescriptor xp) |=> (descriptor_to_valu (map fst l ++ rest)) *
-      [[ @Rec.well_formed descriptor_type (map fst l ++ rest) ]] *
-      array (LogData xp) (synced_list (map snd l)) $1 *
+     ([[ loglen_valid xp l ]] *
+      (exists rest, descrep xp (lfst (l ++ rest))) *
+      (array (LogData xp) (synced_list (lsnd l)) $1) *
       avail_region (LogData xp ^+ $ (length l))
                          (wordToNat (LogLen xp) - length l))%pred.
 
