@@ -200,6 +200,11 @@ Section ExecConcurMany.
     unfold upd_prog; intros; destruct (eq_nat_dec tid tid); congruence.
   Qed.
 
+  Lemma upd_prog_eq' : forall ap tid p tid', tid = tid' -> upd_prog ap tid p tid' = p.
+  Proof.
+    intros; subst; apply upd_prog_eq.
+  Qed.
+
   Lemma upd_prog_ne : forall ap tid p tid', tid <> tid' -> upd_prog ap tid p tid' = ap tid'.
   Proof.
     unfold upd_prog; intros; destruct (eq_nat_dec tid' tid); congruence.
@@ -246,6 +251,9 @@ Definition pres_step (pres : forall (tid : nat),
   fun tid d r g (mthis : @mem addr (@weq addrlen) valuset) =>
   (pres tid) d r g m /\ mthis = m'.
 
+Hint Resolve in_eq.
+Hint Resolve in_cons.
+
 Lemma ccorr2_step : forall pres tid m m' p p',
   {C pres tid C} p ->
   step m p m' p' ->
@@ -253,23 +261,56 @@ Lemma ccorr2_step : forall pres tid m m' p p',
 Proof.
   unfold pres_step, env_corr2.
   intros.
-  intuition; intros; subst.
-  eapply H with (events := StepThis m m' :: events); eauto.
-  intros.
+  intuition; subst;
+    eapply H with (events := StepThis m m' :: events);
+    eauto; intros.
+
   apply H3.
   inversion H5; congruence.
-  constructor 2; auto.
 
-  eapply H with (events := StepThis m m' :: events); eauto.
-  intros.
   apply H3.
   inversion H1; congruence.
+Qed.
+
+Lemma ccorr2_stable_step : forall pres tid m m'
+  (p p' p'' : prog nat),
+  {C pres tid C} p ->
+  step m p' m' p'' ->
+  (forall d r g, pres tid d r g m -> r m m' /\ stable (pres tid d r g) r) ->
+  {C (pres_step pres m m') tid C} p.
+Proof.
+  unfold pres_step, env_corr2, stable.
+  intros.
+  intuition.
+  eapply H.
+  2: eauto.
+  2: eauto.
+  2: eauto.
+  subst.
+  eapply H1; eauto.
+  eapply H1; eauto.
+  eapply H; eauto.
+  intros; auto.
+  subst.
+  edestruct H2; eauto.
+  inversion H6; subst.
+  eapply H1; eauto.
 Qed.
 
 Ltac compose_helper :=
   match goal with
   | [ H: context[_ =a=> _] |- _ ] =>
     eapply H; [| | | eauto | eauto ]; eauto
+  end.
+
+Ltac upd_prog_case' tid tid' :=
+  destruct (eq_nat_dec tid tid');
+    try rewrite upd_prog_eq' in * by auto;
+    try rewrite upd_prog_ne in * by auto.
+
+Ltac upd_prog_case :=
+  match goal with
+  | [ H: upd_prog _ ?tid _ ?tid' = _ |- _] => upd_prog_case' tid tid'
   end.
 
 Theorem compose :
@@ -298,31 +339,27 @@ Proof.
       eapply IHcexec; clear IHcexec.
       eauto.
       instantiate (pres := pres_step pres m m').
-      all: unfold pres_step in *.
       * intros.
         intuition.
-        -- destruct (eq_nat_dec tid0 tid); subst.
-          ++ rewrite upd_prog_eq in H4. inversion H4. subst.
-            specialize (H2 _ _ H). intuition.
-            unfold env_corr2 in *.
-            intros. destruct H2. subst.
-            specialize (H5 _ _ _ _ H2).
-            specialize (H5 ((StepThis m m') :: events) out).
-            edestruct H5.
-            ** eauto.
-            ** intros.
-              inversion H9; try congruence. eauto.
-            ** intuition.
-          ++ rewrite upd_prog_ne in H4 by auto.
-            specialize (H2 _ _ H4).
-            intuition.
-            unfold env_corr2 in *; intros.
-            eapply H5.
-            3: eauto.
-            2: eauto.
-            intuition.
-            (* STABILITY! *)
-            admit.
+        -- upd_prog_case.
+          ++ edestruct H2; eauto.
+             inversion H4; subst.
+             eapply ccorr2_step; eauto.
+          ++ eapply ccorr2_stable_step.
+             edestruct H2; eauto.
+             eauto.
+             intros; intuition.
+             assert ((guarantees tid) m m').
+             assert ({C pres tid C} p).
+             apply H2; auto.
+             admit.
+             assert ((guarantees tid) =a=> r).
+             eapply H2.
+             4: eauto.
+             4: eauto.
+             all: eauto.
+             (* need to add stability to ccorr2 *)
+             admit.
         -- destruct (eq_nat_dec tid0 tid);
            destruct (eq_nat_dec tid' tid).
           ++ congruence.
