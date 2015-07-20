@@ -84,9 +84,10 @@ Section ExecConcurOne.
     pre done rely guarantee m ->
     forall events out,
     env_exec m p events out ->
-    (forall m0 m1, In (StepOther m0 m1) events -> rely m0 m1) ->
-    (forall m0 m1, In (StepThis m0 m1) events -> guarantee m0 m1) /\
-    (exists md vd, out = EFinished md vd /\ done vd md).
+    (forall m0 m1 n, (In (StepOther m0 m1) (firstn n events) -> rely m0 m1) ->
+      (In (StepThis m0 m1) (firstn n events) -> guarantee m0 m1)) /\
+    ((forall m0 m1, In (StepOther m0 m1) events -> rely m0 m1) ->
+     exists md vd, out = EFinished md vd /\ done vd md).
 
 End ExecConcurOne.
 
@@ -145,18 +146,23 @@ Proof.
   intros.
   specialize (H _ _ _ _ H0).
   assert (H' := H).
-  specialize (H' _ _ H1 H2).
+  specialize (H' _ _ H1).
   intuition.
   repeat deex.
   do 2 eexists; intuition.
   specialize (H (events ++ [StepOther md md']) (EFinished md' vd)).
   destruct H.
   - eapply env_exec_append_event; eauto.
-  - intros.
-    apply in_app_or in H; intuition.
-    inversion H5; try congruence.
-    inversion H.
-  - repeat deex.
+  - edestruct H5.
+    intros.
+    match goal with
+    | [ H: In _ (_ ++ _) |- _ ] => apply in_app_or in H; destruct H;
+      [| inversion H]
+    end.
+    apply H2; auto.
+    congruence.
+    contradiction.
+    deex.
     congruence.
 Qed.
 
