@@ -10,6 +10,9 @@ Definition upd {A : Type} {eq : DecEq A} {V: Type} (m : @mem A eq V) (a : A) (v 
 Definition upd_none {A : Type} {eq : DecEq A} {V : Type} (m : @mem A eq V) (a : A) : @mem A eq V :=
   fun a' => if eq a' a then None else m a'.
 
+Definition empty_mem {AT : Type} {AEQ : DecEq AT} {V : Type} : @mem AT AEQ V := fun a => None.
+
+
 Section GenMem.
 
 Variable V : Type.
