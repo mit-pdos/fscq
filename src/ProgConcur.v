@@ -82,8 +82,12 @@ Section ExecConcurOne.
                        (p : prog nat) : Prop :=
     forall done rely guarantee m,
     pre done rely guarantee m ->
+    (* stability of precondition under rely *)
+    (stable (pre done rely guarantee) rely) /\
     forall events out,
     env_exec m p events out ->
+    (* any prefix where others satisfy rely,
+       we will satisfy guarantee *)
     (forall m0 m1 n, (In (StepOther m0 m1) (firstn n events) -> rely m0 m1) ->
       (In (StepThis m0 m1) (firstn n events) -> guarantee m0 m1)) /\
     ((forall m0 m1, In (StepOther m0 m1) events -> rely m0 m1) ->
@@ -145,15 +149,16 @@ Proof.
   unfold env_corr2.
   intros.
   specialize (H _ _ _ _ H0).
-  assert (H' := H).
+  intuition.
+  assert (H' := H4).
   specialize (H' _ _ H1).
   intuition.
   repeat deex.
   do 2 eexists; intuition.
-  specialize (H (events ++ [StepOther md md']) (EFinished md' vd)).
-  destruct H.
+  specialize (H4 (events ++ [StepOther md md']) (EFinished md' vd)).
+  destruct H4.
   - eapply env_exec_append_event; eauto.
-  - edestruct H5.
+  - edestruct H6.
     intros.
     match goal with
     | [ H: In _ (_ ++ _) |- _ ] => apply in_app_or in H; destruct H;
