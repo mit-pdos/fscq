@@ -251,40 +251,53 @@ Proof.
   unfold pres_step, env_corr2.
   intros.
   intuition; subst;
-    eapply H with (events := StepThis m m' :: events);
+  specialize (H _ _ _ _ H2); intuition.
+
+  unfold stable; intros.
+  intuition.
+  (* this is no longer true, pres_step's equality condition
+     is not stable under rely *)
+  admit.
+
+  eapply H6 with (events := StepThis m m' :: events) (n := S n);
     eauto; intros.
+  simpl in H.
+  intuition.
+  inversion H7.
+  simpl; intuition.
 
-  apply H3.
-  inversion H5; congruence.
-
-  apply H3.
-  inversion H1; congruence.
-Qed.
+  eapply H5 with (events := StepThis m m' :: events);
+    eauto; intros.
+  apply H4.
+  inversion H; congruence.
+Admitted.
 
 Lemma ccorr2_stable_step : forall pres tid m m'
   (p p' p'' : prog nat),
   {C pres tid C} p ->
   step m p' m' p'' ->
-  (forall d r g, pres tid d r g m -> r m m' /\ stable (pres tid d r g) r) ->
+  (forall d r g, pres tid d r g m -> r m m') ->
   {C (pres_step pres m m') tid C} p.
 Proof.
   unfold pres_step, env_corr2, stable.
   intros.
   intuition.
-  eapply H.
-  2: eauto.
-  2: eauto.
-  2: eauto.
-  subst.
+  (* same problem, equality not stable *)
+  admit.
+  eapply H with (n := S n); eauto; simpl; intuition.
+  inversion H8; subst.
   eapply H1; eauto.
-  eapply H1; eauto.
+  intuition.
   eapply H; eauto.
-  intros; auto.
-  subst.
-  edestruct H2; eauto.
-  inversion H6; subst.
+  intros.
+  match goal with
+  | [ H : In _ (_ :: _) |- _ ] => let Heq := fresh in
+    inversion H as [Heq|];
+    [inversion Heq; subst | ]
+  end.
   eapply H1; eauto.
-Qed.
+  apply H5; auto.
+Admitted.
 
 Ltac compose_helper :=
   match goal with
