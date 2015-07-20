@@ -209,7 +209,7 @@ Section ExecConcurMany.
     (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
     cexec m ts CFailed
   | CDone : forall ts m (rs : results),
-    (forall tid r, ts tid = TRunning (Done r) -> rs tid = r) ->
+    (forall tid, ts tid = TNone \/ ts tid = TRunning (Done (rs tid))) ->
     cexec m ts (CFinished m rs).
 
   Definition corr_threads (pres : forall (tid : nat),
@@ -222,7 +222,7 @@ Section ExecConcurMany.
     (forall tid, (pres tid) (dones tid) (relys tid) (guarantees tid) m) ->
     cexec m ts out ->
     exists m' rs, out = CFinished m' rs /\
-    (forall tid, (exists p, ts tid = TRunning p) -> (dones tid) (rs tid) m').
+    (forall tid, (dones tid) (rs tid) m').
 
 End ExecConcurMany.
 
