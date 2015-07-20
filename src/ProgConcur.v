@@ -324,6 +324,8 @@ Proof.
   unfold env_corr2.
   intros.
   edestruct H; eauto.
+  edestruct H3; eauto.
+  destruct H5; eauto.
   intros; contradiction.
   repeat deex.
   congruence.
@@ -367,18 +369,17 @@ Proof.
              intros; intuition.
              assert ((guarantees tid) m m').
              assert ({C pres tid C} p).
-             apply H2; auto.
-             unfold env_corr2 in H6.
-             eapply H6.
+              apply H2; auto.
+             destruct (env_exec_progress p' m'); deex.
+             assert (env_exec m p (StepThis m m'::x) out0).
              eauto.
-             eapply EXStepThis; eauto.
-             3: auto.
-             admit.
-             admit.
+             unfold env_corr2 in H6.
+             eapply H6 with (n := 1); eauto; simpl.
+             intuition.
+             inversion H10.
+             auto.
              assert ((guarantees tid) =a=> r) by compose_helper.
              auto.
-             (* need to add stability to ccorr2 *)
-             admit.
         -- unfold pres_step in *.
            intuition.
            upd_prog_case; upd_prog_case; try congruence;
