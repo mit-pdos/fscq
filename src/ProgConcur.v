@@ -102,42 +102,20 @@ Lemma env_exec_progress :
   env_exec m p events out.
 Proof.
   intros T p.
-  induction p; simpl; intros.
-  - do 2 eexists. apply EXDone.
-  - case_eq (m a); try destruct p; intros.
-    + edestruct H. edestruct H1.
-      do 2 eexists.
-      eapply EXStepThis. eauto. eauto.
-    + do 2 eexists.
-      eapply EXFail; intuition; repeat deex.
-      inversion H1; congruence.
-      congruence.
-  - case_eq (m a); try destruct p; intros.
-    + edestruct H. edestruct H1.
-      do 2 eexists.
-      eapply EXStepThis. eauto. eauto.
-    + do 2 eexists.
-      eapply EXFail; intuition; repeat deex.
-      inversion H1; congruence.
-      congruence.
-  - case_eq (m a); try destruct p; intros.
-    + edestruct H. edestruct H1.
-      do 2 eexists.
-      eapply EXStepThis. eauto. eauto.
-    + do 2 eexists.
-      eapply EXFail; intuition; repeat deex.
-      inversion H1; congruence.
-      congruence.
-  - case_eq (m a); try destruct p; intros.
-    + edestruct H. edestruct H1.
-      do 2 eexists.
-      eapply EXStepThis. eauto. eauto.
-    + do 2 eexists.
-      eapply EXFail; intuition; repeat deex.
-      inversion H1; congruence.
-      congruence.
+  induction p; intros; eauto; case_eq (m a); intros.
+  (* handle non-error cases *)
+  all: try match goal with
+  | [ _ : _ _ = Some ?p |- _ ] =>
+    destruct p; edestruct H; repeat deex; repeat eexists; eauto
+  end.
+  (* handle error cases *)
+  all: repeat eexists; eapply EXFail; intro; repeat deex;
+  try match goal with
+  | [ H : step _ _ _ _ |- _] => inversion H
+  end; congruence.
+
   Grab Existential Variables.
-  eauto.
+  all: eauto.
 Qed.
 
 Lemma env_exec_append_event :
