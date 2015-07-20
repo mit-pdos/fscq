@@ -360,39 +360,12 @@ Proof.
              all: eauto.
              (* need to add stability to ccorr2 *)
              admit.
-        -- destruct (eq_nat_dec tid0 tid);
-           destruct (eq_nat_dec tid' tid).
-          ++ congruence.
-          ++ subst; try congruence;
-             try rewrite upd_prog_eq in *;
-             try rewrite upd_prog_ne in * by auto.
-            specialize (H2 _ _ H). intuition.
-            eapply H10 with (tid' := tid').
-            eauto.
-            eauto.
-            eauto.
-            eauto.
-          ++ subst; try congruence;
-             try rewrite upd_prog_eq in *;
-             try rewrite upd_prog_ne in * by auto.
-            specialize (H2 _ _ H4). intuition.
-            eapply H10 with (tid' := tid).
-            eauto.
-            eauto.
-            eauto.
-            eauto.
-          ++ subst; try congruence;
-             try rewrite upd_prog_eq in *;
-             try rewrite upd_prog_ne in * by auto.
-            specialize (H2 _ _ H4). intuition.
-            eapply H10 with (tid' := tid').
-            eauto.
-            eauto.
-            eauto.
-            eauto.
-      * intros.
-        simpl.
-        eauto.
+        -- unfold pres_step in *.
+           intuition.
+           upd_prog_case; upd_prog_case; try congruence;
+             subst;
+             compose_helper.
+      * unfold pres_step; auto.
 
     + (* thread [tid] failed *)
       specialize (H2 _ _ H); intuition.
@@ -401,8 +374,7 @@ Proof.
       unfold env_corr2 in H4.
       specialize (H4 _ _ _ _ H3).
 
-      assert (env_exec m p nil (@EFailed nat)).
-      apply EXFail; eauto.
+      assert (env_exec m p nil (@EFailed nat)) by auto.
 
       specialize (H4 _ _ H2).
       edestruct H4; intros.
