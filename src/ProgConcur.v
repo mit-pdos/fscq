@@ -313,6 +313,20 @@ Ltac upd_prog_case :=
   | [ H: upd_prog _ ?tid _ ?tid' = _ |- _] => upd_prog_case' tid tid'
   end.
 
+Theorem ccorr2_no_fail : forall pre m p d r g,
+  {C pre C} p ->
+  pre d r g m ->
+  env_exec m p nil (@EFailed nat) ->
+  False.
+Proof.
+  unfold env_corr2.
+  intros.
+  edestruct H; eauto.
+  intros; contradiction.
+  repeat deex.
+  congruence.
+Qed.
+
 Theorem compose :
   forall ts pres,
   (forall tid p, ts tid = TRunning p ->
@@ -352,12 +366,15 @@ Proof.
              assert ((guarantees tid) m m').
              assert ({C pres tid C} p).
              apply H2; auto.
+             unfold env_corr2 in H6.
+             eapply H6.
+             eauto.
+             eapply EXStepThis; eauto.
+             3: auto.
              admit.
-             assert ((guarantees tid) =a=> r).
-             eapply H2.
-             4: eauto.
-             4: eauto.
-             all: eauto.
+             admit.
+             assert ((guarantees tid) =a=> r) by compose_helper.
+             auto.
              (* need to add stability to ccorr2 *)
              admit.
         -- unfold pres_step in *.
@@ -368,19 +385,8 @@ Proof.
       * unfold pres_step; auto.
 
     + (* thread [tid] failed *)
-      specialize (H2 _ _ H); intuition.
-      specialize (H3 tid).
-
-      unfold env_corr2 in H4.
-      specialize (H4 _ _ _ _ H3).
-
-      assert (env_exec m p nil (@EFailed nat)) by auto.
-
-      specialize (H4 _ _ H2).
-      edestruct H4; intros.
-      inversion H6.
-      repeat deex.
-      congruence.
+      edestruct H2; eauto.
+      eapply ccorr2_no_fail; eauto.
 
     + congruence.
 
