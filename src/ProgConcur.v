@@ -269,8 +269,9 @@ Definition pres_step (pres : forall (tid : nat),
                                   @pred addr (@weq addrlen) valuset)
                       (tid0:nat) m m' :=
   fun tid d r g (mthis : @mem addr (@weq addrlen) valuset) =>
-    if (eq_nat_dec tid0 tid) then (pres tid) d r g m /\ star r m' mthis
-    else (pres tid) d r g m /\ (pres tid) d r g mthis.
+    (pres tid) d r g m /\
+    if (eq_nat_dec tid0 tid) then star r m' mthis
+    else (pres tid) d r g mthis.
 
 Hint Resolve in_eq.
 Hint Resolve in_cons.
