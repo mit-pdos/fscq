@@ -351,16 +351,20 @@ Definition read_bytes T fsxp inum off len mscs rx : prog T :=
   rx ^(mscs, data).
 
 Theorem read_bytes_ok : forall fsxp inum off len mscs,
-  {< m F Fm Ftop tree pathname f Fx bytes olddata,
+  {< m F Fm Ftop tree pathname f bytes,
   PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ FASTBYTEFILE.rep bytes f ]] *
-         [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
-         [[ length olddata = len ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
-         [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type _) r = olddata  ]]
+         [[ FASTBYTEFILE.rep bytes f ]]
+    POST RET:^(mscs,b)
+         exists Fx v,
+         LOG.rep fsxp.(FSXPLog) F (NoTransaction m) mscs *
+         [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
+         [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type (FASTBYTEFILE.buf_len b))
+           (FASTBYTEFILE.buf_data b) = v ]] *
+         (* non-error guarantee *)
+         [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
+            0 < FASTBYTEFILE.buf_len b ]]
   CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
   >} read_bytes fsxp inum off len mscs.
 Proof.
@@ -374,16 +378,20 @@ Qed.
 Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
 
 Theorem read_bytes_recover_ok : forall fsxp inum off len mscs,
-  {<< m Fm Ftop tree pathname f Fx bytes olddata,
+  {<< m Fm Ftop tree pathname f bytes,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ FASTBYTEFILE.rep bytes f ]] *
-         [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
-         [[ length olddata = len ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type _) r = olddata  ]]
+         [[ FASTBYTEFILE.rep bytes f ]]
+  POST RET:^(mscs,b)
+       exists Fx v,
+       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+       [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
+       [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type (FASTBYTEFILE.buf_len b))
+         (FASTBYTEFILE.buf_data b) = v ]] *
+       (* non-error guarantee *)
+       [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
+          0 < FASTBYTEFILE.buf_len b ]]
   REC RET:^(mscs,fsxp)
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} read_bytes fsxp inum off len mscs >> recover.
@@ -770,13 +778,13 @@ Proof.
   hoare.
   erewrite DIRTREE.find_subtree_tree_graft by eauto; reflexivity.
   eapply pimpl_or_r; right; cancel.
-  rewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
+  erewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
   all: try rewrite LOG.activetxn_would_recover_old.
   all: try rewrite LOG.notxn_would_recover_old.
   all: try apply LOG.would_recover_old_either_pred.
   rewrite <- LOG.would_recover_either_pred_pimpl.
   cancel.
-  rewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
+  erewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
   Grab Existential Variables.
   all: eauto.
   exact BFILE.bfile0.

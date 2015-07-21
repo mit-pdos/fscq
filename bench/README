@@ -6,6 +6,11 @@ How to run the benchmarks:
 
 Install fusexmp from fuse-2.9.3/example.
 
+Build sv6's mailbench:
+
+  cd ~/proj/sv6
+  make HW=linux o.linux/bin/mailbench
+
 For crash testing:
 
   ./crashtest.sh ./crash-setup.sh ./crash-check.sh

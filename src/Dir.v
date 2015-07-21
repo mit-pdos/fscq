@@ -120,8 +120,6 @@ Module DIR.
   Proof.
     unfold deget, derep_macro, derep.
     hoare.
-    list2nmem_bound.
-    repeat rewrite_list2nmem_pred; auto.
   Qed.
 
   Theorem deput_ok : forall lxp bxp ixp inum idx e mscs,
@@ -140,8 +138,6 @@ Module DIR.
   Proof.
     unfold deput, derep_macro, derep.
     hoare.
-    list2nmem_bound.
-    eapply list2nmem_updN; eauto.
   Qed.
 
   Theorem delist_ok : forall lxp bxp ixp inum mscs,
@@ -257,7 +253,9 @@ Module DIR.
     unfold deext, derep_macro, derep.
     hoare.
     apply pimpl_or_r; right; cancel.
-    exists l0, b; split; eauto.
+    exists flist'.
+    exists {| BFILE.BFData := fdata'; BFILE.BFAttr := BFILE.BFAttr f |}.
+    split; eauto.
 
     (**
      * The theorem [item0_list_dent0] talks about [@repeat (Rec.data dent_type)],
@@ -379,6 +377,9 @@ Module DIR.
 
     subst. do 2 eexists. intuition eauto.
     apply LOG.activetxn_would_recover_old.
+
+    Grab Existential Variables.
+    exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (dfold _ _ _ _ _ _ _) _) => apply dfold_ok : prog.
@@ -754,10 +755,10 @@ Module DIR.
     apply helper_sep_star_comm_middle.
     generalize H; unfold_sep_star.
     intro; repeat deex.
-    exists x; exists x0; intuition.
-    assert (x0 name = Some v) as Hx.
+    exists m1; exists m2; intuition.
+    assert (m2 name = Some v) as Hx.
     eapply helper_ptsto_either; eauto.
-    pose proof (IHl x0 name v H5 Hx).
+    pose proof (IHl m2 name v H5 Hx).
     generalize H2; unfold_sep_star; auto.
   Qed.
 
@@ -968,8 +969,8 @@ Module DIR.
     apply dlookup_f_ok in Hx; destruct Hx as [HA HN].
     step.
 
-    exists x2, x3; intuition.
-    exists l; split; auto.
+    exists flist0, f0; intuition.
+    exists delist'; split; auto.
     eapply ptsto_dent0_mem_except; eauto.
     apply mem_except_notindomain.
 
@@ -1133,10 +1134,10 @@ Module DIR.
     (* case 1 : use an existing avail entry *)
     unfold Rec.well_formed; simpl; auto.
     apply pimpl_or_r; right; cancel.
-    exists x2, x3; intuition.
-    exists l; split; auto.
-    2: eapply ptsto_upd_disjoint with (m := m); auto.
+    exists flist0, f0; intuition.
+    exists delist'; split; auto.
     eapply helper_dlink_ok_avail; eauto.
+    eapply ptsto_upd_disjoint; eauto.
     eapply dlookup_notindomain; eauto.
     unfold pimpl; intros.
     eapply dlookup_notindomain; eauto.
@@ -1145,19 +1146,16 @@ Module DIR.
     unfold Rec.well_formed; simpl; auto.
     apply list2nmem_array.
     apply pimpl_or_r; right; cancel.
-    exists x2, x3; intuition.
-    2: eapply ptsto_upd_disjoint with (m := m); auto.
+    exists flist0, f0; intuition.
     eexists; split; eauto.
     eapply helper_dlink_ok_ext; eauto.
+    eapply ptsto_upd_disjoint; eauto.
     eapply dlookup_notindomain; eauto.
-
     unfold pimpl; intros.
     eapply dlookup_notindomain; eauto.
 
     Grab Existential Variables.
-    exact emp. exact emp. exact emp. exact nil. exact dent0.
-    exact emp. exact emp. exact emp. exact nil. exact emp.
-    exact emp. exact nil. exact nil.
+    all: try exact emp; try exact nil; try exact dent0.
   Qed.
 
 

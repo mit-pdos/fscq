@@ -10,6 +10,7 @@ import System.Posix.Files
 import Word
 import qualified Data.ByteString.Internal as BSI
 import qualified GHC.Integer.GMP.Internals as GMPI
+import qualified Foreign.C.Types
 import GHC.Exts
 import Foreign.Marshal.Alloc
 import Data.Word
@@ -77,13 +78,13 @@ logFlush (Just fl) = do
 -- Snippets of ByteArray# manipulation code from GHC's
 -- testsuite/tests/lib/integer/integerGmpInternals.hs
 
-buf2i :: Ptr Word8 -> IO Integer
-buf2i (GHC.Exts.Ptr a) = do
-  GMPI.importIntegerFromAddr a 4096## 0#
+buf2i :: Word -> Ptr Word8 -> IO Integer
+buf2i (W# nbytes) (GHC.Exts.Ptr a) = do
+  GMPI.importIntegerFromAddr a nbytes 0#
 
-i2buf :: Integer -> Ptr Word8 -> IO ()
-i2buf i (GHC.Exts.Ptr a) = do
-  _ <- BSI.memset (GHC.Exts.Ptr a) 0 4096
+i2buf :: Integer -> Foreign.C.Types.CSize -> Ptr Word8 -> IO ()
+i2buf i nbytes (GHC.Exts.Ptr a) = do
+  _ <- BSI.memset (GHC.Exts.Ptr a) 0 nbytes
   _ <- GMPI.exportIntegerToAddr i a 0#
   return ()
 
@@ -97,7 +98,7 @@ read_disk (S fd sr _ _) (W64 a) = do
     cc <- fdReadBuf fd buf 4096
     if cc == 4096 then
       do
-        i <- buf2i buf
+        i <- buf2i 4096 buf
         return $ W i
     else
       do
@@ -114,7 +115,7 @@ write_disk (S fd sr dirty fl) (W64 a) (W v) = do
   logWrite fl a (W v)
   allocaBytes 4096 $ \buf -> do
     _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
-    i2buf v buf
+    i2buf v 4096 buf
     cc <- fdWriteBuf fd buf 4096
     if cc == 4096 then
       return ()

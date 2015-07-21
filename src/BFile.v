@@ -238,7 +238,6 @@ Module BFILE.
     unfold bfsetattr, rep.
     hoare.
     list2nmem_ptsto_cancel; file_bounds.
-    2: eapply list2nmem_updN; eauto.
 
     repeat rewrite_list2nmem_pred; file_bounds.
     destruct_listmatch_n.
@@ -379,7 +378,6 @@ Module BFILE.
 
     eapply pimpl_or_r; right; cancel.
     2: simpl; eapply list2nmem_updN; eauto.
-    instantiate (a1 := w0).
 
     erewrite listmatch_extract with (i := # inum) in H3 by file_bounds;
       autorewrite with defaults in H3.
@@ -440,8 +438,8 @@ Module BFILE.
     (* extract some lifted facts early *)
     destruct_listmatch_n.
     assert (Heq := H).
-    setoid_rewrite listmatch_extract with (prd := (data_match bxp))
-      (i := # ($ (length (INODE.IBlocks (sel l0 inum _))) ^- $ (1))) in Heq.
+    rewrite listmatch_extract with (prd := (data_match bxp))
+      (i := @wordToNat addrlen ($ (length (INODE.IBlocks (selN ilist #inum INODE.inode0))) ^- $ (1))) in Heq.
     autorewrite with defaults in Heq.
     unfold data_match in Heq.
     destruct_lift Heq; clear H0.
@@ -454,7 +452,7 @@ Module BFILE.
     repeat rewrite_list2nmem_pred.
     step.
     rewrite listmatch_isolate with (prd := data_match bxp)
-      (i := length (BFData (selN l1 (wordToNat inum) bfile0)) - 1); auto.
+      (i := length (BFData (selN flist (wordToNat inum) bfile0)) - 1); auto.
     autorewrite with defaults; shrink_bounds; [ | file_bounds].
     unfold data_match at 2; rewrite H9.
     cancel.
@@ -464,9 +462,8 @@ Module BFILE.
     2: list2nmem_ptsto_cancel; file_bounds.
     file_bounds.
     step.
-    2: simpl; eapply list2nmem_updN; eauto.
 
-    erewrite list2nmem_array_upd with (nl := l2); [ | file_bounds ..].
+    erewrite list2nmem_array_upd with (nl := ilist'); [ | file_bounds ..].
     unfold upd, sel.
     setoid_rewrite listmatch_isolate with (i := wordToNat inum) at 3;
       autorewrite with defaults core; [ | file_bounds .. ].

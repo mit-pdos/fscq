@@ -1019,8 +1019,6 @@ Proof.
   apply functional_extensionality; unfold emp in *; congruence.
 Qed.
 
-Definition empty_mem {AT : Type} {AEQ : DecEq AT} {V : Type} : @mem AT AEQ V := fun a => None.
-
 Theorem sep_star_empty_mem : forall (a b : @pred AT AEQ V),
   (a * b)%pred empty_mem -> a empty_mem /\ b empty_mem.
 Proof.

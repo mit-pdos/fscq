@@ -90,87 +90,151 @@ Module FASTBYTEFILE.
     rx ^(mscs)
   }.
 
+  Inductive byte_buf : Set :=
+  | len_bytes : forall (len:nat), bytes len -> byte_buf.
+
+  Definition buf_len (buf:byte_buf) : nat :=
+  match buf with
+  | @len_bytes len _ => len
+  end.
+
+  Definition buf_data (buf:byte_buf) : bytes (buf_len buf) :=
+  match buf with
+  | @len_bytes _ b => b
+  end.
+
   Definition read_bytes T fsxp inum (off:nat) len mscs rx : prog T :=
   If (lt_dec 0 len) {
-    let^ (mscs, data) <- BFileRec.bf_read_range items_per_valu itemsz_ok
-      fsxp inum off len mscs;
-    rx ^(mscs, data)
+    let^ (mscs, attr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    let flen := # (INODE.ISize attr) in
+    If (lt_dec off flen) {
+      If (lt_dec (off+len) flen) {
+        let^ (mscs, data) <- BFileRec.bf_read_range items_per_valu itemsz_ok
+          fsxp inum off len mscs;
+        rx ^(mscs, len_bytes data)
+      } else {
+        let^ (mscs, data) <- BFileRec.bf_read_range items_per_valu itemsz_ok
+          fsxp inum off (flen - off) mscs;
+        rx ^(mscs, len_bytes data)
+      }
+   } else {
+    (* reading starting at or past the end of the file *)
+    rx ^(mscs, @len_bytes 0 (wzero _))
+   }
   } else {
-    rx ^(mscs, wzero _)
+    (* reading zero bytes *)
+    rx ^(mscs, @len_bytes 0 (wzero _))
   }.
 
   Implicit Arguments read_bytes [T].
 
+  Lemma list2nmem_array_eq' : forall A (l l':list A),
+    l = l' ->
+    arrayN 0 l (list2nmem l').
+  Proof.
+    intros.
+    rewrite H.
+    apply list2nmem_array.
+  Qed.
+
+  Lemma sep_star_abc_to_acb : forall AT AEQ AV (a b c : @pred AT AEQ AV),
+    (a * b * c)%pred =p=> (a * c * b).
+  Proof. cancel. Qed.
+
+  Lemma list2nmem_arrayN_xyz_frame : forall (A:Type) (l:list A)
+    off len,
+    off + len <= length l ->
+    (arrayN 0 (firstn off l) *
+    arrayN (off+len) (skipn (off+len) l) *
+    arrayN off (firstn len (skipn off l)))%pred (list2nmem l).
+  Proof.
+    intros.
+    apply sep_star_abc_to_acb.
+    rewrite arrayN_combine by LOG.solve_lengths.
+    apply arrayN_combine.
+    LOG.solve_lengths.
+    apply list2nmem_array_eq'.
+    rewrite <- firstn_sum_split.
+    apply firstn_skipn.
+  Qed.
+
   Theorem read_bytes_ok: forall fsxp inum off len mscs,
-  {< m mbase F Fx Fm A flist f bytes v,
+  {< m mbase F Fm A flist f bytes,
   PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
       [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
       [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-      [[ rep bytes f ]] *
-      [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
-      [[ length v = len ]]
-   POST RET:^(mscs, databytes)
+      [[ rep bytes f ]]
+   POST RET:^(mscs, b)
+      exists Fx v,
       LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-      [[ @Rec.of_word (Rec.ArrayF byte_type len) databytes = v ]]
+      [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
+      [[ @Rec.of_word (Rec.ArrayF byte_type (buf_len b))
+        (buf_data b) = v ]] *
+      (* non-error guarantee *)
+      [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
+         0 < buf_len b ]]
    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
    >} read_bytes fsxp inum off len mscs.
    Proof.
     unfold read_bytes, rep, bytes_rep.
+    time step. (* 15s *)
+    step.
+    step.
+    step.
+    step.
 
-    time hoare. (* 30s *)
-    (* XXX: this is duplicated several times to get a bound on off + len *)
-    apply list2nmem_arrayN_bound in H5.
-    inversion H5.
-    (* contradictory case *)
-    subst.
-    now inversion H12.
-    rewrite H6 in H0.
+    eapply goodSize_word_bound.
+    eapply le_trans.
+    apply divup_lt_arg.
+    apply Nat.lt_le_incl; eauto.
+
+    erewrite array_items_num_blocks; eauto.
+    apply divup_mono.
+    eapply le_trans.
+    apply Nat.lt_le_incl; eauto.
+    apply firstn_length_l_iff; auto.
+
+    step.
+    rewrite H15.
+    rewrite <- firstn_double_skipn
+      with (len2 := # (INODE.ISize (BFILE.BFAttr f)))
+      by omega.
+    apply list2nmem_arrayN_xyz_frame.
+    omega.
+
+    step.
+    rewrite le_plus_minus_r by omega.
     eapply goodSize_word_bound.
     eapply le_trans.
     apply divup_lt_arg.
     eauto.
 
-    apply list2nmem_arrayN_bound in H5.
-    inversion H5.
-    (* contradictory case *)
-    subst.
-    now inversion H12.
-    rewrite H6 in H0.
-
-    apply firstn_length_l_iff in H6.
+    rewrite le_plus_minus_r by omega.
     erewrite BFileRec.array_items_num_blocks; eauto.
-    unfold item; simpl; fold byte.
     apply divup_mono.
+    apply firstn_length_l_iff; auto.
+
+    step.
+    rewrite H15.
+    rewrite <- firstn_double_skipn
+      with (len2 := # (INODE.ISize (BFILE.BFAttr f)))
+      by omega.
+    apply list2nmem_arrayN_xyz_frame.
+    rewrite H4.
     omega.
 
-    rewrite H14.
-    assert (H5' := H5).
-    apply arrayN_list2nmem in H5.
-    rewrite H5 at 2.
-    rewrite firstn_double_skipn.
-    auto.
-    apply list2nmem_arrayN_bound in H5'.
-    inversion H5'.
-    subst.
-    now inversion H12.
-    omega.
-    exact ($0).
+    step.
+    (* off out of bounds *)
+    apply emp_star_r.
+    apply list2nmem_array.
 
-    (* zero-length read case *)
-    assert (length v9 = 0) by omega.
-    rewrite H0.
-    simpl.
-    apply length_nil in H0.
-    subst.
-    apply Rec.of_word_empty with (t:=byte_type).
-    auto.
+    (* len = 0 *)
+    step.
+    apply emp_star_r.
+    apply list2nmem_array.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
-
-  Lemma sep_star_abc_to_acb : forall AT AEQ AV (a b c : @pred AT AEQ AV),
-    (a * b * c)%pred =p=> (a * c * b).
-  Proof. cancel. Qed.
 
   Theorem update_bytes_ok: forall fsxp inum off len (newbytes : bytes len) mscs,
       {< m mbase F Fm A flist f bytes olddata Fx,
@@ -232,7 +296,6 @@ Module FASTBYTEFILE.
         replace (BFILE.BFAttr f').
         auto.
       * replace (BFILE.BFAttr f').
-        set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
         apply firstn_length_l_iff in H10.
         fold flen.
         match goal with

@@ -189,6 +189,9 @@ Module BALLOC.
     cancel.
     auto.
     word2nat_auto.
+
+    Grab Existential Variables.
+    exact tt.
   Qed.
 
 
@@ -294,16 +297,15 @@ Module BALLOC.
     intros.
     eapply pimpl_ok2. apply alloc'_ok.
     unfold rep_gen, rep'.
-    cancel.
-    cancel.
-    step.
-    apply pimpl_or_r. right.
-    norm. (* We can't just [cancel] here because it introduces evars too early *)
+    intros; norm.
     cancel.
     intuition.
+    (* cancel is unable to make this unification *)
+    instantiate (Fm0 := Fm).
+    pred_apply; cancel.
 
-    pred_apply.
-    cancel.
+    step.
+    apply pimpl_or_r; right; cancel.
 
     assert (bmap a = Avail) as Ha by ( apply H9; eapply remove_still_In; eauto ).
     rewrite <- Ha.
@@ -316,11 +318,11 @@ Module BALLOC.
     apply remove_other_In. assumption.
     rewrite H9; assumption.
 
-    erewrite listpred_remove with (dec := @weq addrlen). cancel.
+    erewrite listpred_remove with (dec := @weq addrlen) (x := a2). cancel.
     intros; apply ptsto_conflict.
     rewrite H9; assumption.
 
-    erewrite listpred_remove with (dec := @weq addrlen). cancel.
+    erewrite listpred_remove with (dec := @weq addrlen) (x := a2). cancel.
     intros; apply ptsto_conflict.
     rewrite H9; assumption.
   Qed.
@@ -342,8 +344,12 @@ Module BALLOC.
     intros.
     eapply pimpl_ok2. apply free'_ok.
     unfold rep_gen, rep'.
+    intros; norm.
     cancel.
-    cancel.
+    intuition.
+    instantiate (Fm0 := Fm).
+    pred_apply; cancel.
+
     step.
     subst; apply fupd_same; trivial.
     rewrite H10 in H3.
@@ -351,7 +357,7 @@ Module BALLOC.
     subst; apply fupd_same; trivial.
     rewrite <- H3; apply fupd_other; assumption.
     destruct (weq bn a1).
-    left. auto.
+    left. trivial.
     right. rewrite fupd_other in H0 by assumption. apply H10; assumption.
   Qed.
 

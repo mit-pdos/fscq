@@ -4,7 +4,7 @@ Require Import Prog.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec FastByteFile.
+Require Import BFile Bytes Rec Inode FastByteFile.
 Require Import String.
 Require Import FSLayout.
 Require Import Pred.
@@ -1999,16 +1999,20 @@ Module DIRTREE.
   Qed.
 
   Theorem read_bytes_ok : forall fsxp inum off len mscs,
-    {< F mbase m pathname Fm Ftop tree f Fx bytes olddata,
+    {< F mbase m pathname Fm Ftop tree f bytes,
     PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
            [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[ FASTBYTEFILE.rep bytes f ]] *
-           [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
-           [[ length olddata = len ]]
-    POST RET:^(mscs,r)
+           [[ FASTBYTEFILE.rep bytes f ]]
+    POST RET:^(mscs,b)
+           exists Fx v,
            LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
-           [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type _) r = olddata  ]]
+           [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
+           [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type (FASTBYTEFILE.buf_len b))
+             (FASTBYTEFILE.buf_data b) = v ]] *
+           (* non-error guarantee *)
+           [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
+              0 < FASTBYTEFILE.buf_len b ]]
     CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
     >} read_bytes fsxp inum off len mscs.
   Proof.
