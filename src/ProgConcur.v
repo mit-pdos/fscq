@@ -16,41 +16,56 @@ Set Implicit Arguments.
 Section STAR.
 
   Variable state : Type.
-  Variable prog : Type.
-  Variable step : state -> prog -> state -> prog -> Prop.
+  Variable step : state -> state -> Prop.
 
-  Inductive star : state -> prog -> state -> prog -> Prop :=
-  | star_refl : forall s p,
-    star s p s p
-  | star_step : forall s1 s2 s3 p1 p2 p3,
-    step s1 p1 s2 p2 ->
-    star s2 p2 s3 p3 ->
-    star s1 p1 s3 p3.
+  Inductive star : state -> state -> Prop :=
+  | star_refl : forall s,
+    star s s
+  | star_step : forall s1 s2 s3,
+    step s1 s2 ->
+    star s2 s3 ->
+    star s1 s3.
 
-  Lemma star_trans : forall s0 p0 s1 p1 s2 p2,
-    star s0 p0 s1 p1 ->
-    star s1 p1 s2 p2 ->
-    star s0 p0 s2 p2.
+  Hint Constructors star.
+
+  Inductive star_r : state -> state -> Prop :=
+  | star_r_refl : forall s,
+    star_r s s
+  | star_r_step : forall s1 s2 s3,
+    star_r s1 s2 ->
+    step s2 s3 ->
+    star_r s1 s3.
+
+  Hint Constructors star_r.
+
+  Theorem star_lr_eq : forall s s',
+    star s s' -> star_r s s'.
+  Proof.
+    intros.
+    induction H; eauto.
+  Admitted.
+
+  Lemma star_trans : forall s0 s1 s2,
+    star s0 s1 ->
+    star s1 s2 ->
+    star s0 s2.
   Proof.
     induction 1; eauto.
-    intros.
-    eapply star_step; eauto.
   Qed.
 
 End STAR.
 
-Lemma star_impl :
-  forall state prog s0 p0 s1 p1 (step1 step2 : state -> prog -> state -> prog -> Prop),
-  (forall s p s' p', step1 s p s' p' -> step2 s p s' p') ->
-  star step1 s0 p0 s1 p1 ->
-  star step2 s0 p0 s1 p1.
-Proof.
-  intros.
-  induction H0.
-  - constructor.
-  - econstructor; eauto.
-Qed.
+(* TODO: remove duplication *)
+Hint Constructors star.
+Hint Constructors star_r.
 
+Theorem stable_star : forall AT AEQ V (p: @pred AT AEQ V) a,
+  stable p a -> stable p (star a).
+Proof.
+  unfold stable.
+  intros.
+  induction H1; eauto.
+Qed.
 
 Section ExecConcurOne.
 
