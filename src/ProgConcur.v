@@ -38,12 +38,13 @@ Section STAR.
 
   Hint Constructors star_r.
 
-  Theorem star_lr_eq : forall s s',
-    star s s' -> star_r s s'.
+  Lemma star_r_trans : forall s0 s1 s2,
+    star_r s1 s2 ->
+    star_r s0 s1 ->
+    star_r s0 s2.
   Proof.
-    intros.
-    induction H; eauto.
-  Admitted.
+    induction 1; eauto.
+  Qed.
 
   Lemma star_trans : forall s0 s1 s2,
     star s0 s1 ->
@@ -52,6 +53,18 @@ Section STAR.
   Proof.
     induction 1; eauto.
   Qed.
+
+  Theorem star_lr_eq : forall s s',
+    star s s' <-> star_r s s'.
+  Proof.
+    intros.
+    split; intros.
+    induction H; eauto.
+    eapply star_r_trans; eauto.
+    induction H; eauto.
+    eapply star_trans; eauto.
+  Qed.
+
 
 End STAR.
 
