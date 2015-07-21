@@ -116,6 +116,16 @@ Hint Constructors env_exec.
 Notation "{C pre C} p" := (env_corr2 pre%pred p) (at level 0, p at level 60, format
   "'[' '{C' '//' '['   pre ']' '//' 'C}'  p ']'").
 
+Theorem env_corr2_stable : forall pre p d r g m,
+  {C pre C} p ->
+  pre d r g m ->
+  stable (pre d r g) r.
+Proof.
+  unfold env_corr2.
+  intros.
+  specialize (H _ _ _ _ H0).
+  intuition.
+Qed.
 
 Lemma env_exec_progress :
   forall T (p : prog T) m, exists events out,
@@ -242,18 +252,24 @@ Section ExecConcurMany.
     (forall tid, (pres tid) (dones tid) (relys tid) (guarantees tid) m) ->
     cexec m ts out ->
     exists m' rs, out = CFinished m' rs /\
-    (forall tid, (dones tid) (rs tid) m').
+    (forall tid, ts tid <> TNone -> (dones tid) (rs tid) m').
 
 End ExecConcurMany.
+
+Ltac inv_ts :=
+  match goal with
+  | [ H: TRunning _ = TRunning ?p |- _ ] => inversion H; clear H; subst p
+  end.
 
 Definition pres_step (pres : forall (tid : nat),
                                   forall (done : donecond nat),
                                   forall (rely : @action addr (@weq addrlen) valuset),
                                   forall (guarantee : @action addr (@weq addrlen) valuset),
                                   @pred addr (@weq addrlen) valuset)
-                      m m' :=
+                      (tid0:nat) m m' :=
   fun tid d r g (mthis : @mem addr (@weq addrlen) valuset) =>
-  (pres tid) d r g m /\ mthis = m'.
+    if (eq_nat_dec tid0 tid) then (pres tid) d r g m /\ star r m' mthis
+    else (pres tid) d r g m /\ (pres tid) d r g mthis.
 
 Hint Resolve in_eq.
 Hint Resolve in_cons.
@@ -261,58 +277,71 @@ Hint Resolve in_cons.
 Lemma ccorr2_step : forall pres tid m m' p p',
   {C pres tid C} p ->
   step m p m' p' ->
-  {C (pres_step pres m m') tid C} p'.
+  {C (pres_step pres tid m m') tid C} p'.
 Proof.
   unfold pres_step, env_corr2.
   intros.
+  destruct (eq_nat_dec tid tid); [|congruence].
+  assert (H' := H).
   intuition; subst;
   specialize (H _ _ _ _ H2); intuition.
 
-  unfold stable; intros.
-  intuition.
-  (* this is no longer true, pres_step's equality condition
-     is not stable under rely *)
-  admit.
+  - unfold stable; intros.
+    intuition.
+    eapply star_trans; eauto.
 
-  eapply H6 with (events := StepThis m m' :: events) (n := S n);
-    eauto; intros.
-  simpl in H.
-  intuition.
-  inversion H7.
-  simpl; intuition.
+  - apply star_lr_eq in H3.
+    generalize dependent events.
+    generalize dependent n.
+    induction H3; intros.
+    * eapply H7 with (events := StepThis m s :: events) (n := S n);
+      eauto; intros.
+      simpl in H.
+      destruct H; try congruence.
+      apply H4; auto.
+      simpl.
+      intuition.
+    * apply IHstar_r with (events := StepOther s2 s3 :: events)
+        (n := S n); eauto.
+      all: simpl; intuition; congruence.
+ - apply star_lr_eq in H3.
+    generalize dependent events.
+    induction H3; intros.
+    * eapply H' with (events := StepThis m s :: events); eauto.
+      intros.
+      inversion H; [congruence|].
+      eauto.
+    * eapply IHstar_r; eauto.
+      intros ? ? Hin; inversion Hin.
+      congruence.
+      eauto.
+Qed.
 
-  eapply H5 with (events := StepThis m m' :: events);
-    eauto; intros.
-  apply H4.
-  inversion H; congruence.
-Admitted.
-
-Lemma ccorr2_stable_step : forall pres tid m m'
-  (p p' p'' : prog nat),
-  {C pres tid C} p ->
-  step m p' m' p'' ->
-  (forall d r g, pres tid d r g m -> r m m') ->
-  {C (pres_step pres m m') tid C} p.
+Lemma stable_and : forall AT AEQ V P (p: @pred AT AEQ V) a,
+  stable p a ->
+  stable (fun m => P /\ p m) a.
 Proof.
-  unfold pres_step, env_corr2, stable.
   intros.
-  intuition.
-  (* same problem, equality not stable *)
-  admit.
-  eapply H with (n := S n); eauto; simpl; intuition.
-  inversion H8; subst.
-  eapply H1; eauto.
-  intuition.
-  eapply H; eauto.
+  unfold stable; intros.
+  intuition eauto.
+Qed.
+
+Lemma ccorr2_stable_step : forall pres tid tid' m m' p,
+  {C pres tid C} p ->
+  tid <> tid' ->
+  {C (pres_step pres tid' m m') tid C} p.
+Proof.
+  unfold pres_step, env_corr2.
   intros.
+  destruct (eq_nat_dec tid' tid); [congruence|].
+  inversion H1.
   match goal with
-  | [ H : In _ (_ :: _) |- _ ] => let Heq := fresh in
-    inversion H as [Heq|];
-    [inversion Heq; subst | ]
+  | [ Hpre: pres _ _ _ _ m0 |- _ ] =>
+    specialize (H _ _ _ _ Hpre)
   end.
-  eapply H1; eauto.
-  apply H5; auto.
-Admitted.
+  intuition.
+  apply stable_and; auto.
+Qed.
 
 Ltac compose_helper :=
   match goal with
@@ -509,11 +538,6 @@ Ltac inv_cstep :=
 Ltac inv_step :=
   match goal with
   | [ H: step _ _ _ _ |- _ ] => inversion H; clear H; subst
-  end.
-
-Ltac inv_ts :=
-  match goal with
-  | [ H: TRunning _ = TRunning _ |- _ ] => inversion H; clear H; subst
   end.
 
 Lemma star_cstep_tid : forall m ts m' ts' tid,
