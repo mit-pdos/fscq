@@ -649,43 +649,21 @@ Qed.
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
   (forall done rely guarantee, pre done rely guarantee =p=> pre' done rely guarantee) ->
+  (forall done rely guarantee, stable (pre done rely guarantee) rely) ->
   {C pre C} p.
 Proof.
-  unfold ccorr2; intros.
-  eapply H; eauto.
-  eapply H0.
-  eauto.
+  unfold env_corr2; intros; eauto.
+  intuition.
+  - eapply H; eauto.
+    apply H0; eauto.
+  - eapply H; eauto.
+    apply H0; eauto.
 Qed.
 
 Definition write2 a b va vb (rx : prog nat) :=
   Write a va;;
   Write b vb;;
   rx.
-
-Theorem parallel_composition : forall ts (dones : nat -> donecond nat) pres relys guars,
-  (forall tid p, ts tid = TRunning p ->
-    {C pres tid C} p) ->
-  (forall tid tid', tid <> tid' ->
-    guars tid' =a=> relys tid) ->
-  forall m,
-    (forall tid,
-    (pres tid) (dones tid) (relys tid) (guars tid) m) ->
-  forall out,
-    cexec m ts out ->
-    exists m' rs,
-      out = CFinished m' rs /\
-      forall tid, (dones tid) (rs tid) m'.
-Proof.
-  intros.
-  generalize dependent H.
-  induction H2; intros.
-  - (* CStep *)
-    admit.
-  - (* CFail *)
-    admit.
-  - (* CDone *)
-    admit.
-Admitted.
 
 Theorem write2_cok : forall a b vanew vbnew rx,
   {C
@@ -739,7 +717,4 @@ Proof.
 
   (* XXX some other issue with losing information in [write_cok]'s [F] vs [F'].. *)
   admit.
-
-  eapply act_impl_trans; eassumption.
-  eapply act_impl_trans; eassumption.
 Admitted.
