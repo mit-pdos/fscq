@@ -209,6 +209,20 @@ Proof.
     congruence.
 Qed.
 
+Example rely_stutter_ok : forall pre p,
+  {C pre C} p ->
+  {C fun d r g => pre d (r \/ act_id_any)%act g C} p.
+Proof.
+  unfold env_corr2, act_or.
+  intros.
+  edestruct H; eauto.
+  intuition.
+  - (* stability *)
+    unfold stable; intros.
+    eauto.
+  - eapply H2; eauto.
+  - eapply H2; eauto.
+Qed.
 
 Section ExecConcurMany.
 
