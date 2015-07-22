@@ -116,8 +116,10 @@ Section ExecConcurOne.
     env_exec m p events out ->
     (* any prefix where others satisfy rely,
        we will satisfy guarantee *)
-    (forall m0 m1 n, (In (StepOther m0 m1) (firstn n events) -> rely m0 m1) ->
-      (In (StepThis m0 m1) (firstn n events) -> guarantee m0 m1)) /\
+    (forall n,
+      let events' := firstn n events in
+      (forall m0 m1, In (StepOther m0 m1) events' -> rely m0 m1) ->
+      (forall m0 m1, In (StepThis m0 m1) events' -> guarantee m0 m1)) /\
     ((forall m0 m1, In (StepOther m0 m1) events -> rely m0 m1) ->
      exists md vd, out = EFinished md vd /\ done vd md).
 
@@ -583,17 +585,17 @@ Proof.
         apply sep_star_comm.
         eapply ptsto_upd.
         pred_apply; cancel.
+        intros; eauto.
     * rewrite firstn_nil in *. contradiction.
     * destruct n; simpl in *.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
-      (* It feels like (m, m') = (m0, m1), but somehow new memories were
-         introduced and we no longer have a general statement about StepOther
-         and rely. *)
       assert (rely m m').
-      admit.
-      apply H4 in H1.
+      apply H1; eauto.
+      match goal with
+      | [ H: rely =a=> _, H': rely _ _ |- _ ] => apply H in H'
+      end.
       eapply act_star_ptsto; eauto.
     * rewrite firstn_nil in *. contradiction.
  (* done condition *)
