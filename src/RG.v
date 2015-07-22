@@ -626,3 +626,5 @@ Proof.
   do 2 eexists; intuition eauto.
   eapply H; eauto.
 Qed.
+
+End Coprecise.
