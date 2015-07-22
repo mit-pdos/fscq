@@ -530,7 +530,8 @@ Theorem write_cok : forall a vnew rx,
     exists F v0 vrest,
     F * a |-> (v0, vrest) *
     [[ rely =a=> (F ~> F) * act_id_pred (a |->?) ]] *
-    [[ act_id_any * (a |->? ~> a |->?) =a=> guarantee ]] *
+    [[ act_id_any *
+      (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest)) =a=> guarantee ]] *
     [[ {C
          fun done_rx rely_rx guarantee_rx =>
          F * a |-> (vnew, [v0] ++ vrest) *
