@@ -532,6 +532,10 @@ Proof.
   apply ptsto_preserves.
 Qed.
 
+Local Hint Resolve in_eq.
+Local Hint Resolve in_cons.
+Local Hint Resolve act_star_ptsto.
+
 Theorem write_cok : forall a vnew rx,
   {C
     fun done rely guarantee =>
@@ -557,8 +561,6 @@ Proof.
     destruct_lift H0.
     repeat eexists.
     repeat apply sep_star_lift_apply'; eauto.
-    apply H9 in H1.
-    eapply act_star_ptsto; eauto.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -591,12 +593,6 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
-      assert (rely m m').
-      apply H1; eauto.
-      match goal with
-      | [ H: rely =a=> _, H': rely _ _ |- _ ] => apply H in H'
-      end.
-      eapply act_star_ptsto; eauto.
     * rewrite firstn_nil in *. contradiction.
  (* done condition *)
  -
