@@ -87,6 +87,12 @@ Section RGThm.
     unfold fence, stable, act_emp, act_any, act_id_any,
            act_iff, act_impl, act_or, act_bow, act_id_pred, act_exis.
 
+  Theorem act_impl_refl : forall (a : @action AT AEQ V),
+    a =a=> a.
+  Proof.
+    act_unfold; intuition.
+  Qed.
+
   Theorem act_impl_trans : forall (a b c : @action AT AEQ V),
     a =a=> b ->
     b =a=> c ->
@@ -498,3 +504,125 @@ Section RGThm.
   Qed.
 
 End RGThm.
+
+Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
+  @stable AT AEQ V (a |-> v)%pred (act_id_pred (a |->?)).
+Proof.
+  unfold act_id_pred, stable.
+  intuition congruence.
+Qed.
+
+Lemma act_star_stable_invariants : forall AT AEQ V F1 F2 p q,
+  F1 =a=> p ~> p ->
+  F2 =a=> q ~> q ->
+  @stable AT AEQ V (p*q) (F1*F2).
+Proof.
+  unfold_sep_star; unfold stable.
+  intros.
+  unfold act_impl in *.
+  unfold act_star in *.
+  repeat deex.
+  repeat match goal with
+  | [ Himpl: context[?F _ _ -> _], H: ?F _ _ |- _ ] => apply Himpl in H
+  end.
+  unfold act_bow in *.
+  do 2 eexists; intuition eauto.
+Qed.
+
+Section Coprecise.
+
+Definition coprecise_l AT AEQ V (p: @pred AT AEQ V) (F: action) :=
+  forall m1 m2 m1' m m',
+  F m1 m2 ->
+  p m1' ->
+  mem_disjoint m1 m ->
+  mem_disjoint m1' m' ->
+  mem_union m1 m = mem_union m1' m' ->
+  m1 = m1'.
+
+Example ptsto_coprecise : forall AT AEQ V a v,
+  @coprecise_l AT AEQ V (a |-> v) (act_id_pred (a |->?)).
+Proof.
+  intros.
+  unfold coprecise_l.
+  unfold act_id_pred.
+  intros.
+  intuition.
+  subst m2.
+  assert ((a |->?)%pred m1').
+  eexists; eauto.
+  eapply (@ptsto_any_precise AT AEQ V a); eauto.
+Qed.
+
+Definition preserves AT AEQ V F (p: @pred AT AEQ V) :=
+  coprecise_l p F /\ stable p F.
+
+Example ptsto_preserves : forall AT AEQ V a v,
+  @preserves AT AEQ V (act_id_pred (a |->?)) (a |-> v).
+Proof.
+  intros.
+  split.
+  apply ptsto_coprecise.
+  unfold stable.
+  apply act_ptsto_stable_under_id.
+Qed.
+
+Theorem act_impl_preserves_invariant : forall AT AEQ V F p,
+  F =a=> p ~> p ->
+  precise p ->
+  @preserves AT AEQ V F p.
+Proof.
+  unfold act_bow, preserves, coprecise_l, stable.
+  intros.
+  split; intros; match goal with
+  | [ H : ?F =a=> _, H' : ?F _ _  |- _] => apply H in H'
+  end; intuition.
+
+  (* coprecise_l *)
+  eapply H0; eauto.
+Qed.
+
+Lemma disjoint_union_comm_eq : forall AT AEQ V
+  (m1a m1b m2a m2b : @mem AT AEQ V),
+  mem_union m1a m1b = mem_union m2a m2b ->
+  mem_disjoint m1a m1b ->
+  mem_disjoint m2a m2b ->
+  mem_union m1b m1a = mem_union m2b m2a.
+Proof.
+  intros.
+  rewrite mem_union_comm with (m1 := m1b).
+  rewrite mem_union_comm with (m1 := m2b).
+  auto.
+  rewrite mem_disjoint_comm; auto.
+  rewrite mem_disjoint_comm; auto.
+Qed.
+
+(* TODO: make this more general and use it in Pred.v *)
+Ltac solve_disjoint_union :=
+  match goal with
+  | [ |- mem_disjoint _ _ ] =>
+     now ( eauto ||rewrite mem_disjoint_comm; eauto)
+  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
+        mem_union ?m1b ?m1a = mem_union ?m2b ?m2a ] =>
+    now (apply disjoint_union_comm_eq; eauto)
+  end.
+
+Lemma act_star_stable_invariant_preserves : forall AT AEQ V
+  F1 F2 p q (m1 m2: @mem AT AEQ V),
+  F1 =a=> p ~> p ->
+  preserves F2 q ->
+  @stable AT AEQ V (p * q) (F1*F2).
+Proof.
+  unfold_sep_star; unfold act_impl, act_star.
+  unfold preserves, stable.
+  intros.
+  repeat deex.
+  match goal with
+  | [ Hcoprec: context[coprecise_l ?p ?F],
+        H: ?F ?m1 _, H': ?p ?m1' |- _ ] =>
+        assert (m1 = m1') by (eapply Hcoprec; eauto; solve_disjoint_union)
+  end.
+  subst.
+  do 2 eexists; intuition eauto.
+  eapply H; eauto.
+Qed.

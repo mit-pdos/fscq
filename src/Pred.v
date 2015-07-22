@@ -1440,6 +1440,25 @@ Proof.
   - repeat rewrite <- mem_union_assoc; auto.
 Qed.
 
+
+Theorem ptsto_any_precise : forall a,
+  @precise AT AEQ V (a |->?)%pred.
+Proof.
+  unfold ptsto, precise; intros.
+  destruct H2.
+  destruct H3.
+  apply equal_f with (x1 := a) in H.
+  unfold mem_union in H.
+  intuition.
+  rewrite H4 in H; rewrite H2 in H.
+  inversion H.
+  apply functional_extensionality; intros; intuition.
+  destruct (AEQ a x1); subst; try congruence.
+  rewrite H5 by eauto.
+  rewrite H6 by eauto.
+  eauto.
+Qed.
+
 Theorem forall_strictly_exact : forall A (a : A) (p : A -> @pred AT AEQ V),
   (forall x, strictly_exact (p x)) ->
   strictly_exact (foral x, p x).
