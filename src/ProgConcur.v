@@ -553,7 +553,7 @@ Theorem write_cok : forall a vnew rx,
        C} rx tt ]]
   C} Write a vnew rx.
 Proof.
-  unfold env_corr2; intros.
+  unfold env_corr2 at 1; intros.
   destruct_lift H.
   intuition.
   (* stability *)
@@ -595,7 +595,16 @@ Proof.
       eapply IHenv_exec; eauto.
     * rewrite firstn_nil in *. contradiction.
  (* done condition *)
- -
+ - remember (Write a vnew rx) as p.
+   induction H0; intros; try subst p.
+   * admit.
+   * contradiction H0.
+     repeat eexists; eauto.
+     econstructor.
+     eapply ptsto_valid.
+     pred_apply; cancel.
+   * eapply IHenv_exec; eauto.
+   * congruence.
 Admitted.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
