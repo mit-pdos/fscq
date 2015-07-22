@@ -520,7 +520,6 @@ Lemma act_star_ptsto : forall AT AEQ V F a v (m1 m2: @mem AT AEQ V),
 Proof.
   intros.
   eapply act_star_stable_invariant_preserves; eauto.
-  apply act_impl_refl.
   apply ptsto_preserves.
 Qed.
 

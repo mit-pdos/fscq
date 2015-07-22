@@ -505,6 +505,8 @@ Section RGThm.
 
 End RGThm.
 
+Hint Resolve act_impl_refl.
+
 Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
   @stable AT AEQ V (a |-> v)%pred (act_id_pred (a |->?)).
 Proof.
