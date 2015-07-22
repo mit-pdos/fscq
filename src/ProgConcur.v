@@ -581,61 +581,20 @@ Proof.
       congruence.
 Qed.
 
-
-Ltac inv_cstep :=
-  match goal with
-  | [ H: cstep _ _ _ _ _ |- _ ] => inversion H; clear H; subst
-  end.
-
 Ltac inv_step :=
   match goal with
   | [ H: step _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
-Lemma star_cstep_tid : forall m ts m' ts' tid,
-  star cstep_any m ts m' ts' ->
-  (star (cstep_except tid) m ts m' ts') \/
-  (exists m0 ts0 m1 ts1,
-   star (cstep_except tid) m ts m0 ts0 /\
-   cstep tid m0 ts0 m1 ts1 /\
-   star cstep_any m1 ts1 m' ts').
+Lemma act_star_ptsto : forall AT AEQ V F a v (m1 m2: @mem AT AEQ V),
+  (F * a |-> v)%pred m1 ->
+  ( (F ~> F) * act_id_pred (a |->?) )%act m1 m2 ->
+  (F * a |-> v)%pred m2.
 Proof.
-  induction 1.
-  - left. constructor.
-  - unfold cstep_any in H. destruct H as [tid' H].
-    destruct (eq_nat_dec tid' tid); subst.
-    + right. exists s1. exists p1. do 2 eexists.
-      split; [ constructor | ].
-      split; [ eauto | ].
-      eauto.
-    + intuition.
-      * left. econstructor.
-        unfold cstep_except; eauto.
-        eauto.
-      * repeat deex.
-        right.
-        do 4 eexists.
-        intuition eauto.
-        econstructor.
-        unfold cstep_except; eauto.
-        eauto.
-Qed.
-
-Lemma star_cstep_except_ts : forall m ts m' ts' tid,
-  star (cstep_except tid) m ts m' ts' ->
-  ts tid = ts' tid.
-Proof.
-  induction 1; eauto.
-  rewrite <- IHstar.
-  inversion H. destruct H1.
-  inversion H2; rewrite upd_prog_ne in * by auto; congruence.
-Qed.
-
-Lemma cstep_except_cstep_any : forall m ts m' ts' tid,
-  cstep_except tid m ts m' ts' ->
-  cstep_any m ts m' ts'.
-Proof.
-  firstorder.
+  intros.
+  eapply act_star_stable_invariant_preserves; eauto.
+  apply act_impl_refl.
+  apply ptsto_preserves.
 Qed.
 
 Theorem write_cok : forall a vnew rx,
@@ -643,119 +602,31 @@ Theorem write_cok : forall a vnew rx,
     fun done rely guarantee =>
     exists F v0 vrest,
     F * a |-> (v0, vrest) *
-    [[ forall F0 F1 v, rely =a=> (F0 * a |-> v ~> F1 * a |-> v) ]] *
-    [[ forall F x y, (F * a |-> x ~> F * a |-> y) =a=> guarantee ]] *
+    [[ rely =a=> (F ~> F) * act_id_pred (a |->?) ]] *
+    [[ act_id_any * (a |->? ~> a |->?) =a=> guarantee ]] *
     [[ {C
          fun done_rx rely_rx guarantee_rx =>
-         exists F', F' * a |-> (vnew, [v0] ++ vrest) *
+         F * a |-> (vnew, [v0] ++ vrest) *
          [[ done_rx = done ]] *
          [[ rely =a=> rely_rx ]] *
          [[ guarantee_rx =a=> guarantee ]]
        C} rx tt ]]
   C} Write a vnew rx.
 Proof.
-  unfold ccorr2; intros.
-  destruct_lift H0.
-  apply star_cstep_tid with (tid := tid) in H2. destruct H2.
-  - (* No steps by [tid] up to this point. *)
-    assert ((exists F', F' * a |-> (v1, vrest))%pred m) by ( pred_apply; cancel ).
-    clear H0.
-
-    assert ((exists F', F' * a |-> (v1, vrest))%pred m').
-    {
-      clear H6 H.
-      induction H2; [ pred_apply; cancel | ].
-      unfold cstep_except in *; deex.
-      eapply IHstar; eauto; intros.
-      eapply H1; [ | | eauto ]; eauto.
-      econstructor; eauto. unfold cstep_any in *; intros. eauto.
-      eapply H8 in H1; [ | econstructor | eauto | eauto ].
-      destruct H1.
-      pred_apply; cancel.
-    }
-    clear H4.
+  unfold env_corr2; intros.
+  destruct_lift H.
+  intuition.
+  (* stability *)
+  - unfold stable; intros;
     destruct_lift H0.
-
-    assert (ts tid = ts' tid) by ( eapply star_cstep_except_ts; eauto ).
-    rewrite H4 in H; clear H4.
-
-    inv_cstep.
-    + (* cstep_step *)
-      rewrite H in *. inv_ts.
-      inv_step.
-      intuition.
-      * eapply H7.
-        unfold act_bow. intuition.
-        ** pred_apply; cancel.
-        ** apply sep_star_comm. eapply ptsto_upd. pred_apply; cancel.
-      * rewrite upd_prog_eq in *; congruence.
-      * rewrite upd_prog_eq in *; congruence.
-    + (* cstep_fail *)
-      rewrite H in *. inv_ts.
-      exfalso. apply H5. do 2 eexists.
-      constructor.
-      apply sep_star_comm in H0. apply ptsto_valid in H0. eauto.
-    + (* cstep_done *)
-      congruence.
-
-  - (* [tid] made a step. *)
-    destruct H2. destruct H2. destruct H2. destruct H2. destruct H2. destruct H4.
-    assert (ts tid = x0 tid) by ( eapply star_cstep_except_ts; eauto ).
-    rewrite H9 in H; clear H9.
-
-    assert ((exists F', F' * a |-> (v1, vrest))%pred m) by ( pred_apply; cancel ).
-    clear H0.
-
-    assert ((exists F', F' * a |-> (v1, vrest))%pred x).
-    {
-      clear H6 H.
-      induction H2; [ pred_apply; cancel | ].
-      unfold cstep_except in *; deex.
-      eapply IHstar; eauto; intros.
-      eapply H1; [ | | eauto ]; eauto.
-      econstructor; eauto. unfold cstep_any in *; intros. eauto.
-      eapply H8 in H1; [ | econstructor | eauto | eauto ].
-      destruct H1.
-      pred_apply; cancel.
-    }
-    clear H9.
-    destruct_lift H0.
-
-    inversion H4.
-    + (* cstep_step *)
-      rewrite H in *. inv_ts.
-      inv_step.
-      apply ptsto_valid' in H0 as H0'. rewrite H0' in H16. inversion H16; subst; clear H16.
-      eapply H6 with (ts := upd_prog x0 tid (TRunning (rx tt))); eauto.
-      { rewrite upd_prog_eq; eauto. }
-      {
-        eapply pimpl_trans; [ cancel | | ].
-        2: eapply ptsto_upd; pred_apply; cancel.
-        cancel.
-      }
-      {
-        intros.
-        eapply H8.
-        eapply H1; eauto.
-
-        eapply star_trans.
-        eapply star_impl. intros; eapply cstep_except_cstep_any; eauto.
-        eauto.
-        econstructor.
-        unfold cstep_any; eauto.
-        eauto.
-      }
-    + (* cstep_fail *)
-      rewrite H in *. inv_ts.
-      exfalso. apply H10. do 2 eexists.
-      constructor.
-      apply sep_star_comm in H0. apply ptsto_valid in H0. eauto.
-    + (* cstep_done *)
-      congruence.
-
-  Grab Existential Variables.
-  all: eauto.
-Qed.
+    repeat eexists.
+    repeat apply sep_star_lift_apply'; eauto.
+    apply H9 in H1.
+    eapply act_star_ptsto; eauto.
+  (* guarantee *)
+  - apply H3.
+    (* induction over H0 (env_exec) *)
+Admitted.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
