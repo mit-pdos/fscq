@@ -272,7 +272,16 @@ End ExecConcurMany.
 
 Ltac inv_ts :=
   match goal with
-  | [ H: TRunning _ = TRunning ?p |- _ ] => inversion H; clear H; subst p
+  | [ H: TRunning ?p = TRunning ?p' |- _ ] => inversion H; clear H;
+      (* these might fail if p and/or p' are not variables *)
+      try subst p; try subst p'
+  end.
+
+Ltac inv_coutcome :=
+  match goal with
+  | [ H: CFinished ?m ?rs = CFinished ?m' ?rs' |- _ ] => inversion H; clear H;
+      try subst m; try subst rs;
+      try subst m'; try subst rs'
   end.
 
 Definition pres_step (pres : forall (tid : nat),
@@ -422,23 +431,18 @@ Proof.
       instantiate (pres := pres_step pres tid m m').
       * intros.
         intuition.
-        -- upd_prog_case.
-          ++ edestruct H2; eauto.
-             inversion H4; subst.
-             eapply ccorr2_step; eauto.
+        -- upd_prog_case; subst.
+          ++ eapply ccorr2_step; eauto.
+             edestruct H2; eauto.
+             inv_ts; auto.
           ++ eapply ccorr2_stable_step; eauto.
              edestruct H2; eauto.
         -- unfold pres_step in *.
-           destruct (eq_nat_dec tid tid0);
-             destruct (eq_nat_dec tid tid'); try congruence;
-             try rewrite upd_prog_eq' in * by auto;
-             try rewrite upd_prog_ne in * by auto;
-             subst; intuition.
-           ** inv_ts.
-              eapply H2 with (tid' := tid') (tid := tid0); eauto.
-           ** inv_ts.
-              eapply H2 with (tid' := tid') (tid := tid0) (m := m); eauto.
-           ** eapply H2 with (tid' := tid') (tid := tid0) (m := m); eauto.
+           upd_prog_case; upd_prog_case; try congruence;
+             subst; intuition; try now compose_helper.
+           inv_ts.
+           eapply H2 with (tid' := tid') (tid := tid0) (m := m); eauto.
+
       * unfold pres_step; intros.
       destruct (eq_nat_dec tid tid0).
       subst.
@@ -549,8 +553,7 @@ Proof.
       apply H3; congruence.
 
       * deex; repeat eexists; intros.
-        (* TODO: automate this *)
-        inversion H5; subst.
+        inv_coutcome.
         eapply H6.
         intros.
         upd_prog_case; congruence.
