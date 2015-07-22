@@ -613,8 +613,8 @@ Proof.
         eapply H2; eauto.
         repeat apply sep_star_lift_apply'; eauto.
         apply sep_star_comm.
-        eapply ptsto_upd.
-        pred_apply; cancel.
+        eapply ptsto_upd;
+          pred_apply; cancel.
         intros; eauto.
     * rewrite firstn_nil in *. contradiction.
     * destruct n; simpl in *.
@@ -625,7 +625,18 @@ Proof.
  (* done condition *)
  - remember (Write a vnew rx) as p.
    induction H0; intros; try subst p.
-   * admit.
+   * inversion H0; subst.
+     eapply H2; eauto.
+     repeat apply sep_star_lift_apply'; eauto.
+     assert (m a = Some (v1, vrest)) as Hma'.
+     eapply ptsto_valid.
+     pred_apply; cancel.
+     rewrite Hma' in H12.
+     inversion H12; subst.
+     apply sep_star_comm.
+     eapply ptsto_upd;
+       pred_apply; cancel.
+     intros; eauto.
    * contradiction H0.
      repeat eexists; eauto.
      econstructor.
@@ -633,7 +644,7 @@ Proof.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto.
    * congruence.
-Admitted.
+Qed.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
