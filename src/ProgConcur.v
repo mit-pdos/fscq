@@ -252,7 +252,7 @@ Section ExecConcurMany.
     (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
     cexec m ts CFailed
   | CDone : forall ts m (rs : results),
-    (forall tid, ts tid = TNone \/ ts tid = TRunning (Done (rs tid))) ->
+    (forall tid p, ts tid = TRunning p -> p = Done (rs tid)) ->
     cexec m ts (CFinished m rs).
 
   Definition corr_threads (pres : forall (tid : nat),
@@ -262,11 +262,11 @@ Section ExecConcurMany.
                                   @pred addr (@weq addrlen) valuset)
                           (ts : threadstates) :=
     forall dones relys guarantees m out,
-    (forall tid, ts tid <> TNone ->
+    (forall tid p, ts tid = TRunning p ->
       (pres tid) (dones tid) (relys tid) (guarantees tid) m) ->
     cexec m ts out ->
     exists m' rs, out = CFinished m' rs /\
-    (forall tid, ts tid <> TNone -> (dones tid) (rs tid) m').
+    (forall tid p, ts tid = TRunning p -> (dones tid) (rs tid) m').
 
 End ExecConcurMany.
 
@@ -375,12 +375,13 @@ Ltac compose_helper :=
 
 Ltac upd_prog_case' tid tid' :=
   destruct (eq_nat_dec tid tid');
-    try rewrite upd_prog_eq' in * by auto;
-    try rewrite upd_prog_ne in * by auto.
+    [ rewrite upd_prog_eq' in * by auto; subst tid |
+      rewrite upd_prog_ne in * by auto ].
 
 Ltac upd_prog_case :=
   match goal with
   | [ H: upd_prog _ ?tid _ ?tid' = _ |- _] => upd_prog_case' tid tid'
+  | [ |- upd_prog _ ?tid _ ?tid' = _ ] => upd_prog_case' tid tid'
   end.
 
 Theorem ccorr2_no_fail : forall pre m p d r g,
@@ -396,6 +397,21 @@ Proof.
   destruct H5; eauto.
   intros; contradiction.
   repeat deex.
+  congruence.
+Qed.
+
+Lemma ccorr2_single_step_guarantee : forall pre d r g p m p' m',
+  {C pre C} p ->
+  step m p m' p' ->
+  pre d r g m ->
+  g m m'.
+Proof.
+  intros.
+  assert (Hprogress := env_exec_progress p' m').
+  repeat deex.
+  eapply H with (n := 1) (events := StepThis m m' :: events);
+    eauto.
+  all: simpl; intuition.
   congruence.
 Qed.
 
@@ -435,50 +451,26 @@ Proof.
              edestruct H2; eauto.
         -- unfold pres_step in *.
            upd_prog_case; upd_prog_case; try congruence;
-             subst; intuition; try now compose_helper.
+             intuition; try now compose_helper.
            inv_ts.
            eapply H2 with (tid' := tid') (tid := tid0) (m := m); eauto.
 
       * unfold pres_step; intros.
-      destruct (eq_nat_dec tid tid0).
-      subst.
-      intuition.
-      apply H3; congruence.
+      upd_prog_case; eauto.
+      intuition eauto.
 
-      case_eq (ts tid0); intros.
-      rewrite upd_prog_ne in * by auto; congruence.
-      intuition.
-      apply H3; congruence.
-      assert (relys tid0 m m').
-      (* need guarantee, which requires applying env_corr2 with n := 1 *)
-      assert (guarantees tid m m').
-      edestruct H2 with (tid := tid); eauto.
-      assert (Hprogress := env_exec_progress p' m').
-      repeat deex.
-      eapply H6 with (n := 1) (events := StepThis m m' :: events); eauto.
-      (* this should be automated away *)
-      eapply H3; congruence.
-      simpl; intuition congruence.
-      simpl; intuition.
-      assert (guarantees tid =a=> relys tid0).
-      eapply H2.
-      3: eauto.
-      eauto.
-      eauto.
-      eapply H3; congruence.
-      eapply H3; congruence.
-      eauto.
-      assert (stable (pres tid0 (dones tid0) (relys tid0) (guarantees tid0)) (relys tid0)).
-      eapply env_corr2_stable; eauto.
+      eapply env_corr2_stable with (m := m); eauto.
       apply H2; eauto.
-      apply H3; congruence.
-      eapply H7; eauto.
-      apply H3; congruence.
+      (* turn the goal into proving tid's g *)
+      assert (guarantees tid =a=> relys tid0) as Hguar by compose_helper;
+        apply Hguar; clear Hguar.
+
+      edestruct H2 with (tid := tid); eauto.
+      eapply ccorr2_single_step_guarantee; eauto.
 
     + (* thread [tid] failed *)
       edestruct H2; eauto.
       eapply ccorr2_no_fail; eauto.
-      apply H3; congruence.
 
     + congruence.
 
@@ -513,68 +505,48 @@ Proof.
               eapply H2 with (tid' := tid') (tid := tid0) (m := m); eauto.
            ** eapply H2 with (tid' := tid') (tid := tid0) (m := m); eauto.
       * unfold pres_step; intros.
-      destruct (eq_nat_dec tid tid0).
-      subst.
-      intuition.
-      apply H3; congruence.
+      upd_prog_case; eauto.
+      intuition eauto.
 
-      case_eq (ts tid0); intros.
-      rewrite upd_prog_ne in * by auto; congruence.
-      intuition.
-      apply H3; congruence.
-      assert (relys tid0 m m').
-      (* need guarantee, which requires applying env_corr2 with n := 1 *)
-      assert (guarantees tid m m').
-      edestruct H2 with (tid := tid); eauto.
-      assert (Hprogress := env_exec_progress p' m').
-      repeat deex.
-      eapply H6 with (n := 1) (events := StepThis m m' :: events); eauto.
-      (* this should be automated away *)
-      eapply H3; congruence.
-      simpl; intuition congruence.
-      simpl; intuition.
-      assert (guarantees tid =a=> relys tid0).
-      eapply H2.
-      3: eauto.
-      eauto.
-      eauto.
-      eapply H3; congruence.
-      eapply H3; congruence.
-      eauto.
-      assert (stable (pres tid0 (dones tid0) (relys tid0) (guarantees tid0)) (relys tid0)).
-      eapply env_corr2_stable; eauto.
+      eapply env_corr2_stable with (m := m); eauto.
       apply H2; eauto.
-      apply H3; congruence.
-      eapply H7; eauto.
-      apply H3; congruence.
+      (* turn the goal into proving tid's g *)
+      assert (guarantees tid =a=> relys tid0) as Hguar by compose_helper;
+        apply Hguar; clear Hguar.
+
+      edestruct H2 with (tid := tid); eauto.
+      eapply ccorr2_single_step_guarantee; eauto.
 
       * deex; repeat eexists; intros.
         inv_coutcome.
-        eapply H6.
-        intros.
-        upd_prog_case; congruence.
+        (* we need to destruct first because the program running at tid0 will
+           depend on whether tid = tid0 *)
+        destruct (eq_nat_dec tid tid0);
+          eapply H6.
+        rewrite upd_prog_eq'; eauto.
+        rewrite upd_prog_ne; eauto.
+
     + (* thread [tid] failed *)
       edestruct H2; eauto.
       exfalso.
       eapply ccorr2_no_fail; eauto.
-      apply H3; congruence.
 
     + do 2 eexists; intuition eauto.
       case_eq (ts tid); intros; [congruence|].
       edestruct H0; eauto.
       unfold env_corr2 in H4.
-      specialize (H1 _ H2).
+      specialize (H1 _ _ H2).
       specialize (H4 _ _ _ _ H1).
       intuition.
-      inversion Heqcout; subst.
-      assert (env_exec m0 p nil (EFinished m0 (rs tid))).
-      destruct (H tid); [congruence|].
-      rewrite H3 in H4.
-      inversion H4.
-      eauto.
-      specialize (H7 _ _ H4).
+      inv_coutcome.
+      assert (env_exec m0 p0 nil (EFinished m0 (rs tid))) as Hexec.
+      match goal with
+      | [ H': _ = TRunning p0, H: context[_ = TRunning _ -> _] |- _] =>
+        apply H in H'; rewrite H'
+      end; auto.
+      specialize (H7 _ _ Hexec).
       intuition.
-      edestruct H9.
+      edestruct H8.
       intros ? ? Hin; inversion Hin.
       deex.
       congruence.
