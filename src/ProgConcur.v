@@ -123,6 +123,13 @@ Section ExecConcurOne.
 
 End ExecConcurOne.
 
+Ltac inv_label := match goal with
+| [ H: StepThis ?m ?m' = StepThis _ _ |- _ ] => inversion H; clear H; subst m
+| [ H: StepOther ?m ?m' = StepOther _ _ |- _ ] => inversion H; clear H; subst m
+| [ H: StepThis _ _ = StepOther _ _ |- _ ] => now inversion H
+| [ H: StepOther _ _ = StepThis _ _ |- _ ] => now inversion H
+end.
+
 Hint Constructors env_exec.
 
 
@@ -551,8 +558,46 @@ Proof.
     apply H9 in H1.
     eapply act_star_ptsto; eauto.
   (* guarantee *)
-  - apply H3.
-    (* induction over H0 (env_exec) *)
+  - remember (Write a vnew rx) as p.
+    generalize dependent n.
+    induction H0; intros.
+    * subst p.
+      inversion H0; subst.
+      (* prove n = S n' *)
+      destruct n; simpl in *.
+        contradiction.
+      assert (m a = Some (v1, vrest)) as Hma'.
+      eapply ptsto_valid.
+      pred_apply; cancel.
+      rewrite Hma' in H13.
+      inversion H13; subst.
+      intuition.
+      + (* StepThis was the Write *)
+        inv_label.
+        apply H3.
+        (* yay this should be provable *)
+        admit.
+      + (* StepThis was in rx *)
+        eapply H2; eauto.
+        repeat apply sep_star_lift_apply'; eauto.
+        apply sep_star_comm.
+        eapply ptsto_upd.
+        pred_apply; cancel.
+    * rewrite firstn_nil in *. contradiction.
+    * destruct n; simpl in *.
+        contradiction.
+      intuition (try congruence; eauto).
+      eapply IHenv_exec; eauto.
+      (* It feels like (m, m') = (m0, m1), but somehow new memories were
+         introduced and we no longer have a general statement about StepOther
+         and rely. *)
+      assert (rely m m').
+      admit.
+      apply H4 in H1.
+      eapply act_star_ptsto; eauto.
+    * rewrite firstn_nil in *. contradiction.
+ (* done condition *)
+ -
 Admitted.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
