@@ -295,10 +295,6 @@ Definition pres_step (pres : forall (tid : nat),
     if (eq_nat_dec tid0 tid) then star r m' mthis
     else (pres tid) d r g mthis.
 
-Hint Resolve in_eq.
-Hint Resolve in_cons.
-
-
 Lemma ccorr2_step : forall pres tid m m' p p',
   {C pres tid C} p ->
   step m p m' p' ->
