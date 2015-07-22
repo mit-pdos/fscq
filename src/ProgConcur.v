@@ -536,6 +536,35 @@ Local Hint Resolve in_eq.
 Local Hint Resolve in_cons.
 Local Hint Resolve act_star_ptsto.
 
+Lemma act_ptsto_upd : forall AT AEQ V F a old new (m: @mem AT AEQ V),
+  (F * a |-> old)%pred m ->
+  (act_id_any * (a |-> old ~> a |-> new))%act m (upd m a new).
+Proof.
+  unfold_sep_star.
+  unfold act_star, act_bow.
+  intros.
+  repeat deex.
+  do 4 eexists.
+  (* prove this first since it's used twice *)
+  assert (mem_disjoint m1 (upd m2 a new)).
+    rewrite mem_disjoint_comm.
+    eapply mem_disjoint_upd.
+    eapply ptsto_valid.
+    pred_apply; cancel.
+    now (apply mem_disjoint_comm; auto).
+  intuition eauto.
+  - apply act_id_any_refl.
+  - apply emp_star.
+    apply sep_star_comm.
+    eapply ptsto_upd.
+    pred_apply; cancel.
+  - rewrite mem_union_comm by auto.
+    rewrite mem_union_comm with (m1 := m1) by auto.
+    erewrite mem_union_upd; auto.
+    eapply ptsto_valid.
+    pred_apply; cancel.
+Qed.
+
 Theorem write_cok : forall a vnew rx,
   {C
     fun done rely guarantee =>
@@ -579,8 +608,7 @@ Proof.
       + (* StepThis was the Write *)
         inv_label.
         apply H3.
-        (* yay this should be provable *)
-        admit.
+        eapply act_ptsto_upd; eauto.
       + (* StepThis was in rx *)
         eapply H2; eauto.
         repeat apply sep_star_lift_apply'; eauto.

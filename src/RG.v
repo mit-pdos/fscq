@@ -113,10 +113,19 @@ Section RGThm.
     act_unfold; unfold any; intuition.
   Qed.
 
-  Theorem act_id_any_eq : forall (m1 m2 : @mem AT AEQ V),
-    act_id_any m1 m2 -> m1 = m2.
+  Theorem act_id_any_eq_iff : forall (m1 m2 : @mem AT AEQ V),
+    act_id_any m1 m2 <-> m1 = m2.
   Proof.
     act_unfold; intros; intuition.
+    unfold any.
+    auto.
+  Qed.
+
+  Theorem act_id_any_refl : forall (m : @mem AT AEQ V),
+    act_id_any m m.
+  Proof.
+    intros.
+    apply act_id_any_eq_iff; auto.
   Qed.
 
   Theorem act_impl_any : forall (a : @action AT AEQ V),
@@ -473,9 +482,9 @@ Section RGThm.
     inversion H3.
     inversion H4.
     intuition.
-    apply act_id_any_eq in H10.
+    apply act_id_any_eq_iff in H10.
     subst m2; auto.
-    apply act_id_any_eq in H10.
+    apply act_id_any_eq_iff in H10.
     subst m2; auto.
   Qed.
 
