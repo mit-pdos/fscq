@@ -644,7 +644,7 @@ Proof.
         eapply ptsto_upd;
           pred_apply; cancel.
         intros; eauto.
-    * rewrite firstn_nil in *. contradiction.
+    * destruct n; contradiction.
     * destruct n; simpl in *.
         contradiction.
       intuition (try congruence; eauto).
