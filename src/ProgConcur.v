@@ -591,8 +591,8 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
               fun done_rx rely_rx guar_rx =>
               post emp ret_ *
               [[ done_rx = done ]] *
-              [[ rely_ =a=> rely_rx ]] *
-              [[ guar_rx =a=> guar_ ]]
+              [[ rely_rx =a=> rely_ ]] *
+              [[ guar_ =a=> guar_rx ]]
             C} rx ret_ ]]
          )) .. ))
      C} p1 rx)
@@ -689,28 +689,19 @@ Proof.
     apply H0; eauto.
 Qed.
 
-Definition write2 a b va vb (rx : prog nat) :=
+Definition write2 a b va vb (rx : unit -> prog nat) :=
   Write a va;;
   Write b vb;;
-  rx.
+  rx tt.
 
-Theorem write2_cok : forall a b vanew vbnew rx,
-  {C
-    fun done rely guarantee =>
-    exists F va0 varest vb0 vbrest,
-    F * a |-> (va0, varest) * b |-> (vb0, vbrest) *
-    [[ forall F0 F1 va vb, rely =a=> (F0 * a |-> va * b |-> vb ~>
-                                      F1 * a |-> va * b |-> vb) ]] *
-    [[ forall F va va' vb vb', (F * a |-> va  * b |-> vb ~>
-                                F * a |-> va' * b |-> vb') =a=> guarantee ]] *
-    [[ {C
-         fun done_rx rely_rx guarantee_rx =>
-         exists F', F' * a |-> (vanew, [va0] ++ varest) * b |-> (vbnew, [vb0] ++ vbrest) *
-         [[ done_rx = done ]] *
-         [[ rely =a=> rely_rx ]] *
-         [[ guarantee_rx =a=> guarantee ]]
-       C} rx ]]
-  C} write2 a b vanew vbnew rx.
+Theorem write2_cok : forall a b vanew vbnew,
+  {!C< F va0 varest vb0 vbrest,
+  PRE F * a |-> (va0, varest) * b |-> (vb0, vbrest)
+  RELY (F ~> F) * act_id_pred (a |->? * b |->?)
+  GUAR act_id_any * ((a |->? * b |->?) ~> (a |->? * b |->?))
+  POST RET:r F * a |-> (vanew, [va0] ++ varest) *
+                 b |-> (vbnew, [vb0] ++ vbrest)
+  >C!} write2 a b vanew vbnew.
 Proof.
   unfold write2; intros.
 
@@ -728,22 +719,23 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros; cancel.
 
-  (* XXX hmm, the [write_cok] spec is too weak: it changes [F] in the precondition
-   * with [F'] in the postcondition, and thus loses all information about blocks
-   * other than the one being written to.  but really we should be using [rely].
-   * how to elegantly specify this in separation logic?
-   *)
+  eapply act_impl_trans; [ eapply H5 | ].
+  eapply act_impl_trans; [ eapply H3 | ].
+  (* act_cancel *)
   admit.
 
-  (* XXX H5 seems backwards... *)
+  eapply act_impl_trans; [ | eapply H4 ].
+  eapply act_impl_trans; [ | eapply H2 ].
+  (* act_cancel *)
   admit.
 
-  (* XXX H4 seems backwards... *)
-  admit.
 
-  eapply pimpl_cok. eauto.
-  intros; cancel.
-
-  (* XXX some other issue with losing information in [write_cok]'s [F] vs [F'].. *)
-  admit.
+  (* same as H1 with a emp * in front *)
+  (* cancel doesn't handle the action impls well *)
+  eapply pimpl_cok.
+  apply H1.
+  cancel.
+  eapply act_impl_trans; eauto.
+  eapply act_impl_trans; eauto.
+  (* remaining goals are stability *)
 Admitted.
