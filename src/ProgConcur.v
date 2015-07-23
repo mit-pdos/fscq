@@ -708,24 +708,22 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros. cancel.
 
-  eapply act_impl_trans; [ eapply H3 | ].
-  (* XXX need some kind of [cancel] for actions.. *)
+  rewrite H3.
   admit.
 
-  eapply act_impl_trans; [ | eapply H2 ].
-  (* XXX need some kind of [cancel] for actions.. *)
+  rewrite <- H2.
   admit.
 
   eapply pimpl_cok. apply write_cok.
   intros; cancel.
 
-  eapply act_impl_trans; [ eapply H5 | ].
-  eapply act_impl_trans; [ eapply H3 | ].
+  rewrite H5.
+  rewrite H3.
   (* act_cancel *)
   admit.
 
-  eapply act_impl_trans; [ | eapply H4 ].
-  eapply act_impl_trans; [ | eapply H2 ].
+  rewrite <- H4.
+  rewrite <- H2.
   (* act_cancel *)
   admit.
 

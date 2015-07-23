@@ -524,6 +524,12 @@ Hint Resolve act_impl_refl.
 Enables some rewriting, though more instances might be needed in other
 circumstances. *)
 
+Instance act_iff_impl_subrelation {AT AEQ V} :
+  subrelation (@act_iff AT AEQ V) (@act_impl AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
 Instance act_iff_equiv {AT AEQ V} :
   Equivalence (@act_iff AT AEQ V).
 Proof.
