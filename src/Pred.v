@@ -257,6 +257,24 @@ Proof.
   apply H; exists a. destruct (m1 a); destruct (m2 a); try congruence; eauto.
 Qed.
 
+Theorem mem_disjoint_union_parts : forall AT AEQ V
+  (m1 m2 m3: @mem AT AEQ V),
+  mem_disjoint m1 m3 ->
+  mem_disjoint m2 m3 ->
+  mem_disjoint (mem_union m1 m2) m3.
+Proof.
+  intros.
+  unfold mem_disjoint, mem_union.
+  intro Hfalse.
+  repeat deex.
+  case_eq (m1 a); intros.
+  apply H.
+  repeat eexists; eauto.
+  apply H0.
+  rewrite H1 in H2.
+  repeat eexists; eauto.
+Qed.
+
 Theorem mem_disjoint_upd:
   forall (m1 m2 : @mem AT AEQ V) a v v0,
   m1 a = Some v0 ->
