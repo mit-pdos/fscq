@@ -649,7 +649,7 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
-    * rewrite firstn_nil in *. contradiction.
+    * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
    induction H0; intros; try subst p.
