@@ -1,5 +1,6 @@
 Require Import Mem.
 Require Import Pred.
+Require Import Morphisms.
 
 Set Implicit Arguments.
 
@@ -62,6 +63,8 @@ Arguments act_or {AT AEQ V} _ _ _ _.
 Arguments act_emp {AT AEQ V} _ _.
 Arguments act_id_any {AT AEQ V} _ _.
 Arguments act_any {AT AEQ V} _ _.
+Arguments act_impl {AT AEQ V} _ _.
+Arguments act_iff {AT AEQ V} _ _.
 Arguments stable {AT AEQ V} _ _.
 Arguments fence {AT AEQ V} _ _.
 
@@ -515,6 +518,35 @@ Section RGThm.
 End RGThm.
 
 Hint Resolve act_impl_refl.
+
+(** Some morphism instances for <=a=>.
+
+Enables some rewriting, though more instances might be needed in other
+circumstances. *)
+
+Instance act_iff_equiv {AT AEQ V} :
+  Equivalence (@act_iff AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance act_iff_proper {AT AEQ V} :
+  Proper (act_iff ==> act_iff ==> Basics.flip Basics.impl) (@act_impl AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance act_impl_impl_proper1 {AT AEQ V} :
+  Proper (act_impl ==> Basics.flip act_impl ==> Basics.flip Basics.impl) (@act_impl AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance act_impl_impl_proper2 {AT AEQ V} :
+  Proper (Basics.flip act_impl ==> act_impl ==> Basics.impl) (@act_impl AT AEQ V).
+Proof.
+  firstorder.
+Qed.
 
 Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
   @stable AT AEQ V (a |-> v)%pred (act_id_pred (a |->?)).
