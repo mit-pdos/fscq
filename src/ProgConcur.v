@@ -565,22 +565,49 @@ Proof.
     pred_apply; cancel.
 Qed.
 
-Theorem write_cok : forall a vnew rx,
-  {C
-    fun done rely guarantee =>
-    exists F v0 vrest,
-    F * a |-> (v0, vrest) *
-    [[ rely =a=> (F ~> F) * act_id_pred (a |->?) ]] *
-    [[ act_id_any *
-      (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest)) =a=> guarantee ]] *
-    [[ {C
-         fun done_rx rely_rx guarantee_rx =>
-         F * a |-> (vnew, [v0] ++ vrest) *
-         [[ done_rx = done ]] *
-         [[ rely =a=> rely_rx ]] *
-         [[ guarantee_rx =a=> guarantee ]]
-       C} rx tt ]]
-  C} Write a vnew rx.
+(** Wrapper for {C pre C} that constructs a pre function from separate
+    precondition, rely, guarantee and post statements, all under a common
+    set of (existential) binders.
+
+    We encode the postcondition as follows: The precondition of p rx includes
+    {C post C} rx and captures the done predicate. Since this is the only way to
+    prove done, proving this statement requires also proving the postcondition
+    for after p executes.
+
+    Analogous to the Hoare notation {!< ... >!}, similarly lacking a frame
+    predicate. We do this here because we don't yet know how the frame
+    should be incorporated into the rely condition, having seen few examples.
+*)
+Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1" :=
+  (forall (rx: _ -> prog nat),
+    {C
+      fun done rely_ guar_ =>
+        (exis (fun e1 => .. (exis (fun e2 =>
+         pre *
+         [[ rely_ =a=> rely ]] *
+         [[ guar =a=> guar_ ]] *
+         [[ forall ret_,
+            {C
+              fun done_rx rely_rx guar_rx =>
+              post emp ret_ *
+              [[ done_rx = done ]] *
+              [[ rely_ =a=> rely_rx ]] *
+              [[ guar_rx =a=> guar_ ]]
+            C} rx ret_ ]]
+         )) .. ))
+     C} p1 rx)
+   (at level 0, p1 at level 60,
+    e1 binder, e2 binder,
+    only parsing).
+
+Theorem write_cok : forall a vnew,
+  {!C< F v0 vrest,
+  PRE F * a |-> (v0, vrest)
+  RELY (F ~> F) * act_id_pred (a |->?)
+  GUAR act_id_any *
+         (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
+  POST RET:r F * a |-> (vnew, [v0] ++ vrest)
+  >C!} Write a vnew.
 Proof.
   unfold env_corr2 at 1; intros.
   destruct_lift H.
@@ -612,6 +639,7 @@ Proof.
       + (* StepThis was in rx *)
         eapply H2; eauto.
         repeat apply sep_star_lift_apply'; eauto.
+        apply pimpl_star_emp.
         apply sep_star_comm.
         eapply ptsto_upd;
           pred_apply; cancel.
@@ -633,6 +661,7 @@ Proof.
      pred_apply; cancel.
      rewrite Hma' in H12.
      inversion H12; subst.
+     apply pimpl_star_emp.
      apply sep_star_comm.
      eapply ptsto_upd;
        pred_apply; cancel.
