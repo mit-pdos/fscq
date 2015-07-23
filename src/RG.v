@@ -34,6 +34,8 @@ Section RGDef.
 
   Definition act_or (a b : action) : action :=
     fun m1 m2 => a m1 m2 \/ b m1 m2.
+  Definition act_and (a b : action) : action :=
+    fun m1 m2 => a m1 m2 /\ b m1 m2.
 
   Definition act_emp := act_id_pred emp.
   Definition act_id_any := act_id_pred any.
@@ -60,6 +62,7 @@ Arguments act_id_pred {AT AEQ V} _ _ _.
 Arguments act_star {AT AEQ V} _ _ _ _.
 Arguments act_exis {AT AEQ V T} _ _ _ _.
 Arguments act_or {AT AEQ V} _ _ _ _.
+Arguments act_and {AT AEQ V} _ _ _ _.
 Arguments act_emp {AT AEQ V} _ _.
 Arguments act_id_any {AT AEQ V} _ _.
 Arguments act_any {AT AEQ V} _ _.
@@ -75,6 +78,7 @@ Delimit Scope act_scope with act.
 Notation "p ~> q" := (act_bow p%pred q%pred) (at level 80) : act_scope.
 Notation "[ p ]" := (act_id_pred p%pred) : act_scope.
 Infix "\/" := act_or : act_scope.
+Infix "/\" := act_and : act_scope.
 
 Notation "a =a=> b" := (act_impl a%act b%act) (at level 90).
 Notation "a <=a=> b" := (act_iff a%act b%act) (at level 90).
@@ -550,6 +554,12 @@ Qed.
 
 Instance act_impl_impl_proper2 {AT AEQ V} :
   Proper (Basics.flip act_impl ==> act_impl ==> Basics.impl) (@act_impl AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance and_act_impl_proper {AT AEQ V} :
+  Proper (act_impl ==> act_impl ==> act_impl) (@act_and AT AEQ V).
 Proof.
   firstorder.
 Qed.

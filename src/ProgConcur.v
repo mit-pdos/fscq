@@ -583,9 +583,11 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
     {C
       fun done rely_ guar_ =>
         (exis (fun e1 => .. (exis (fun e2 =>
-         pre *
-         [[ rely_ =a=> rely ]] *
-         [[ guar =a=> guar_ ]] *
+        (* the %pred%act causes both pre occurrences to use the same
+           scope stack *)
+         pre%pred%act *
+         [[ act_and (pre ~> any) rely_ =a=> rely%act ]] *
+         [[ guar%act =a=> guar_ ]] *
          [[ forall ret_,
             {C
               fun done_rx rely_rx guar_rx =>
@@ -599,6 +601,24 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
    (at level 0, p1 at level 60,
     e1 binder, e2 binder,
     only parsing).
+
+Lemma pre_and_rely : forall AT AEQ V pre (m1 m2:@mem AT AEQ V) rely_ r,
+  (pre ~> any) /\ rely_ =a=> r ->
+  rely_ m1 m2 ->
+  pre m1 ->
+  r m1 m2.
+Proof.
+  firstorder.
+Qed.
+
+Ltac match_rely_pre :=
+  match goal with
+  | [ H1: (?pre ~> any) /\ _ =a=> _ |- _ ] =>
+    match goal with
+    | [ H2: pre ?m1 |- _ ?m2 ] =>
+      generalize (pre_and_rely m1 m2 H1)
+    end
+  end.
 
 Theorem write_cok : forall a vnew,
   {!C< F v0 vrest,
@@ -617,6 +637,7 @@ Proof.
     destruct_lift H0.
     repeat eexists.
     repeat apply sep_star_lift_apply'; eauto.
+    match_rely_pre; eauto.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -649,6 +670,7 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
+      match_rely_pre; eauto.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
@@ -672,6 +694,7 @@ Proof.
      eapply ptsto_valid.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto.
+     match_rely_pre; eauto.
    * congruence.
 Qed.
 
@@ -708,7 +731,7 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros. cancel.
 
-  rewrite H3.
+  (* need to use H3 *)
   admit.
 
   rewrite <- H2.
@@ -718,7 +741,7 @@ Proof.
   intros; cancel.
 
   rewrite H5.
-  rewrite H3.
+  (* also need H3 *)
   (* act_cancel *)
   admit.
 
