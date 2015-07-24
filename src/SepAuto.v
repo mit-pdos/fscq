@@ -942,3 +942,16 @@ Ltac step := step_unfold idtac.
 Ltac hoare := repeat step.
 Ltac hoare_unfold unfolder := unfolder; repeat (step_unfold unfolder).
 Ltac hoare_with unfolder t := unfolder; repeat (step_with unfolder t).
+
+(** These hints are for existential variables created by automation
+    that don't matter (for example, the selN default value, or any unit).
+    The Immediate keyword is unnecessary (obviously these values don't have
+    hypotheses), but emphasizes that these hints have no cost in terms of
+    expanding the proof search tree.
+
+    Feel free to add more such hints whenever "Grab Existential Variables.
+    all: auto." doesn't cover something. *)
+Hint Immediate tt.
+Hint Immediate emp.
+Hint Immediate $0.
+Hint Extern 0 (list _) => apply nil.
