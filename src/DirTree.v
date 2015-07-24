@@ -815,7 +815,7 @@ Module DIRTREE.
     unfold find_name; destruct tree0; simpl in *; subst; auto.
 
     Grab Existential Variables.
-    all: try exact emp; try exact empty_mem; try exact tt.
+    all: auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (namei _ _ _ _) _) => apply namei_ok : prog.
