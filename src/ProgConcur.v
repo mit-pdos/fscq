@@ -819,20 +819,52 @@ Proof.
 
   (* remaining goals are stability *)
 
-  intros.
-  destruct_lift H.
-  repeat apply stable_and_empty.
-  edestruct H1 with (m:=m). pred_apply. cancel.
-  unfold stable; intros m1 m2; intros.
-  match goal with
-  | [ H: stable _ rely |- _ ] =>
-      repeat (apply stable_and_empty_rev in H; [| now auto]);
-      unfold stable in H;
-      specialize (H m1 m2)
-   end.
-   eapply pimpl_apply; [| apply H0]; auto.
-   cancel.
-   pred_apply; cancel.
+  - intros.
+    (* this proof is sort of cheating: our rely-guarantee spec supposes
+       that the postcondition is stable under rely by making a {C ... C}
+       statement about rx, and that's what we're proving here;
+       if the postcondition weren't stable under rely, the spec would be
+       useless since it would assume a contradiction, and this would be hard to
+       figure out. *)
+    destruct_lift H; subst.
+    repeat apply stable_and_empty.
+    edestruct H1 with (m:=m). pred_apply. cancel.
+    unfold stable; intros m1 m2; intros.
+    match goal with
+    | [ H: stable _ rely |- _ ] =>
+        repeat (apply stable_and_empty_rev in H; [| now auto]);
+        unfold stable in H;
+        specialize (H m1 m2)
+     end.
+     eapply pimpl_apply; [| apply H0]; auto.
+     cancel.
+     pred_apply; cancel.
 
-  admit.
+  - intros.
+    destruct_lift H; subst.
+    repeat apply stable_and_empty.
+    unfold stable; intros.
+    apply pimpl_star_emp.
+    apply emp_star in H0.
+    apply H6 in H4.
+    (* Now we're stuck; the only way to get the real rely condition
+       (F ~> F) * [a |->? * b |->?] is to show that a and b point to the old
+       values in m1 (and use H3), but this isn't true now that we've written.
+       Somehow our own guarantee needs to be allowed in (pre ~> any) =a=> rely
+       for the intermediate instructions. *)
+    admit.
+
+  - intros.
+    destruct_lift H; subst.
+    (* Why are there existential binders under the {C .. C}?
+       if they aren't universally quantified, we can't make use of H4,
+       the =a=> we have about rely, which will make this impossible to prove.
+
+       It's that this is how {!< >!} and {< >} (CHL) work for Hoare logic,
+       but not {<< >>} (crash+recovery semantics), which has universal
+       quantification outside the Hoare tuple. *)
+    admit.
+
+  Grab Existential Variables.
+  all: auto.
 Admitted.
