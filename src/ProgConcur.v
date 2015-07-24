@@ -816,10 +816,28 @@ Proof.
   (* trivial action impls *)
   eapply act_impl_trans; eauto.
   eapply act_impl_trans; eauto.
+
   (* remaining goals are stability *)
+
+  (* I don't believe this comment. see messy proof below. *)
   (* doesn't seem provable; run into problems with ... /\ in H3 making it
      impossible to use, which means we can't say anything about rely;
      seems almost like instead of rely_rx =a=> rely we should just have
      rely_rx = rely or at least rely_rx <=a=> rely. *)
+  intros.
+  destruct_lift H.
+  repeat apply stable_and_empty.
+  edestruct H1 with (m:=m). pred_apply. cancel.
+  apply stable_and_empty_rev in H0; [| apply act_impl_refl ].
+  apply stable_and_empty_rev in H0; [| apply act_impl_refl ].
+  apply stable_and_empty_rev in H0; [| reflexivity ].
+
+  unfold stable in *; intros.
+  specialize (H0 m1 m2).
+  eapply pimpl_apply; [| apply H0 ].
+  cancel.
+  pred_apply; cancel.
+  eauto.
+
   admit.
 Admitted.
