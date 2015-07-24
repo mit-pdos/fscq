@@ -715,11 +715,14 @@ Qed.
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
   (forall done rely guarantee, pre done rely guarantee =p=> pre' done rely guarantee) ->
-  (forall done rely guarantee, stable (pre done rely guarantee) rely) ->
+  (forall done rely guarantee m, pre done rely guarantee m
+    -> stable (pre done rely guarantee) rely) ->
   {C pre C} p.
 Proof.
   unfold env_corr2; intros; eauto.
   intuition.
+  - unfold stable; intros.
+    eapply H1; eauto.
   - eapply H; eauto.
     apply H0; eauto.
   - eapply H; eauto.
