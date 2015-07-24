@@ -634,6 +634,26 @@ Ltac match_rely_pre :=
     end
   end.
 
+Lemma ptsto_same : forall AT AEQ V F a v v' (m:@mem AT AEQ V),
+  (F * a |-> v)%pred m ->
+  m a = Some v' ->
+  v = v'.
+Proof.
+  intros.
+  assert (m a = Some v).
+  eapply ptsto_valid; eauto.
+  pred_apply; cancel.
+  congruence.
+Qed.
+
+Ltac subst_ptsto_same :=
+  match goal with
+  | [ Hpred: (_ * _ |-> _)%pred ?m, Hma: ?m _ = Some _ |- _] =>
+    generalize (ptsto_same Hpred Hma);
+    let H := fresh in
+    intro H; inversion H; subst; clear H
+  end.
+
 Theorem write_cok : forall a vnew,
   {!C< F v0 vrest,
   PRE F * a |-> (v0, vrest)
@@ -661,11 +681,7 @@ Proof.
       (* prove n = S n' *)
       destruct n; simpl in *.
         contradiction.
-      assert (m a = Some (v1, vrest)) as Hma'.
-      eapply ptsto_valid.
-      pred_apply; cancel.
-      rewrite Hma' in H13.
-      inversion H13; subst.
+      subst_ptsto_same.
       intuition.
       + (* StepThis was the Write *)
         inv_label.
@@ -692,11 +708,7 @@ Proof.
    * inversion H0; subst.
      eapply H2; eauto.
      repeat apply sep_star_lift_apply'; eauto.
-     assert (m a = Some (v1, vrest)) as Hma'.
-     eapply ptsto_valid.
-     pred_apply; cancel.
-     rewrite Hma' in H12.
-     inversion H12; subst.
+     subst_ptsto_same.
      apply pimpl_star_emp.
      apply sep_star_comm.
      eapply ptsto_upd;
