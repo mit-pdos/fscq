@@ -734,6 +734,44 @@ Definition write2 a b va vb (rx : unit -> prog nat) :=
   Write b vb;;
   rx tt.
 
+Lemma pre_and_impl : forall AT AEQ V (rely: @action AT AEQ V)
+  pre pre' r r',
+  pre' ~> any /\ rely =a=> r' ->
+  pre =p=> pre' ->
+  pre ~> any /\ r' =a=> r ->
+  pre ~> any /\ rely =a=> r.
+Proof.
+  intros.
+  rewrite <- H1.
+  eapply act_impl_trans; [|eauto].
+  unfold act_and, act_impl, act_bow.
+  firstorder.
+Qed.
+
+Lemma stable_and_empty : forall AT AEQ V P (p: @pred AT AEQ V) a,
+  stable p a ->
+  stable (p * [[P]]) a.
+Proof.
+  unfold stable.
+  intros.
+  destruct_lift H0.
+  eapply H in H0; eauto.
+  pred_apply; cancel.
+Qed.
+
+Lemma stable_and_empty_rev : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
+  P ->
+  stable (p * [[P]]) a ->
+  stable p a.
+Proof.
+  unfold stable.
+  intros.
+  assert ((p * [[P]])%pred m2).
+  eapply H0; eauto.
+  pred_apply; cancel.
+  pred_apply; cancel.
+Qed.
+
 Theorem write2_cok : forall a b vanew vbnew,
   {!C< F va0 varest vb0 vbrest,
   PRE F * a |-> (va0, varest) * b |-> (vb0, vbrest)
@@ -748,32 +786,40 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros. cancel.
 
-  (* need to use H3 *)
+  eapply pre_and_impl; eauto.
+  cancel.
   admit.
 
   rewrite <- H2.
+  apply act_impl_star; auto.
+  (* TODO: need to fix guarantee in the same way as rely;
+     this isn't provable since we can't prove b |->? *)
   admit.
 
   eapply pimpl_cok. apply write_cok.
   intros; cancel.
 
   rewrite H5.
-  (* also need H3 *)
   (* act_cancel *)
   admit.
 
   rewrite <- H4.
   rewrite <- H2.
   (* act_cancel *)
+  (* similarly need pre to prove a |->? *)
   admit.
 
-
   (* same as H1 with a emp * in front *)
-  (* cancel doesn't handle the action impls well *)
   eapply pimpl_cok.
   apply H1.
   cancel.
+  (* trivial action impls *)
   eapply act_impl_trans; eauto.
   eapply act_impl_trans; eauto.
   (* remaining goals are stability *)
+  (* doesn't seem provable; run into problems with ... /\ in H3 making it
+     impossible to use, which means we can't say anything about rely;
+     seems almost like instead of rely_rx =a=> rely we should just have
+     rely_rx = rely or at least rely_rx <=a=> rely. *)
+  admit.
 Admitted.
