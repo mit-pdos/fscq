@@ -564,6 +564,17 @@ Proof.
   firstorder.
 Qed.
 
+Instance act_star_impl_proper {AT AEQ V} :
+  Proper (act_impl ==> act_impl ==> act_impl) (@act_star AT AEQ V).
+Proof.
+  unfold Proper.
+  unfold respectful.
+  unfold act_impl, act_star.
+  intros.
+  repeat deex.
+  repeat eexists; eauto.
+Qed.
+
 Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
   @stable AT AEQ V (a |-> v)%pred (act_id_pred (a |->?)).
 Proof.
@@ -707,3 +718,22 @@ Proof.
   apply act_impl_star; auto.
   apply act_id_dist_star.
 Qed.
+
+Lemma act_bow_any : forall AT AEQ V (p:@pred AT AEQ V) m1 m2,
+  p m1 ->
+  (p ~> any)%act m1 m2.
+Proof.
+  firstorder.
+Qed.
+
+Lemma act_and_both : forall AT AEQ V (a1 a2:@action AT AEQ V) m1 m2,
+  a1 m1 m2 ->
+  a2 m1 m2 ->
+  (a1 /\ a2)%act m1 m2.
+Proof.
+  firstorder.
+Qed.
+
+(* these feel safe since the lemmas have applied actions *)
+Hint Resolve act_and_both.
+Hint Resolve act_bow_any.
