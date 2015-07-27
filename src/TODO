@@ -1,5 +1,4 @@
 - double-indirect blocks
-- byte-level read/write
 - factor out on-disk list code from MemLog
 - bigger log (more than one descriptor block)
 - deleting a file should free its data blocks

@@ -29,7 +29,7 @@ Section RGDef.
       mem_disjoint m1a m1b /\ m1 = mem_union m1a m1b /\
       mem_disjoint m2a m2b /\ m2 = mem_union m2a m2b.
 
-  Definition act_exis {T} (x : T) (a : T -> action) : action :=
+  Definition act_exis {T} (a : T -> action) : action :=
     fun m1 m2 => exists x, (a x) m1 m2.
 
   Definition act_or (a b : action) : action :=
@@ -60,7 +60,7 @@ Arguments action {AT AEQ V}.
 Arguments act_bow {AT AEQ V} _ _ _ _.
 Arguments act_id_pred {AT AEQ V} _ _ _.
 Arguments act_star {AT AEQ V} _ _ _ _.
-Arguments act_exis {AT AEQ V T} _ _ _ _.
+Arguments act_exis {AT AEQ V T} _ _ _.
 Arguments act_or {AT AEQ V} _ _ _ _.
 Arguments act_and {AT AEQ V} _ _ _ _.
 Arguments act_emp {AT AEQ V} _ _.
@@ -79,6 +79,7 @@ Notation "p ~> q" := (act_bow p%pred q%pred) (at level 80) : act_scope.
 Notation "[ p ]" := (act_id_pred p%pred) : act_scope.
 Infix "\/" := act_or : act_scope.
 Infix "/\" := act_and : act_scope.
+Notation "'exists' x .. y , a" := (act_exis (fun x => .. (act_exis (fun y => a)) ..)) : act_scope.
 
 Notation "a =a=> b" := (act_impl a%act b%act) (at level 90).
 Notation "a <=a=> b" := (act_iff a%act b%act) (at level 90).
@@ -727,6 +728,25 @@ Lemma act_and_both : forall AT AEQ V (a1 a2:@action AT AEQ V) m1 m2,
   a1 m1 m2 ->
   a2 m1 m2 ->
   (a1 /\ a2)%act m1 m2.
+Proof.
+  firstorder.
+Qed.
+
+Lemma act_exis_star : forall AT AEQ V T a (b : T -> @action AT AEQ V),
+  a * (exists v, b v) <=a=> exists v, a * b v.
+Proof.
+  unfold act_exis, act_iff, act_impl, act_star; split; intros;
+    repeat deex; repeat eexists; eauto.
+Qed.
+
+Lemma act_exis_and : forall AT AEQ V T a (b : T -> @action AT AEQ V),
+  a /\ (exists v, b v) <=a=> exists v, a /\ b v.
+Proof.
+  firstorder.
+Qed.
+
+Lemma act_exis_id : forall AT AEQ V T (p : T -> @pred AT AEQ V),
+  [exists v, p v] <=a=> exists v, [p v].
 Proof.
   firstorder.
 Qed.
