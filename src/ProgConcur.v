@@ -8,7 +8,10 @@ Require Import Arith.
 Require Import SepAuto.
 Require Import List.
 
-Import ListNotations.
+(* importing the [ x ; .. ; y ] notation from ListNotations breaks our RG
+   act_id_pred notation, so we re-define only the list notation we actually
+   use. *)
+Notation "[ x ]" := (cons x nil) : list_scope.
 
 Set Implicit Arguments.
 
@@ -538,7 +541,7 @@ Ltac inv_step :=
 
 Lemma act_star_ptsto : forall AT AEQ V F a v (m1 m2: @mem AT AEQ V),
   (F * a |-> v)%pred m1 ->
-  ( (F ~> F) * act_id_pred (a |->?) )%act m1 m2 ->
+  ( (F ~> F) * [a |->?] )%act m1 m2 ->
   (F * a |-> v)%pred m2.
 Proof.
   intros.
@@ -670,9 +673,8 @@ Ltac subst_ptsto_same :=
 Theorem write_cok : forall a vnew,
   {!C< F v0 vrest,
   PRE F * a |-> (v0, vrest)
-  RELY (F ~> F) * act_id_pred (a |->?)
-  GUAR act_id_pred F *
-         (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
+  RELY (F ~> F) *  [a |->?]
+  GUAR [F] * (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
   POST RET:r F * a |-> (vnew, [v0] ++ vrest)
   >C!} Write a vnew.
 Proof.
@@ -800,8 +802,8 @@ Qed.
 Theorem write2_cok : forall a b vanew vbnew,
   {!C< F va0 varest vb0 vbrest,
   PRE F * a |-> (va0, varest) * b |-> (vb0, vbrest)
-  RELY (F ~> F) * act_id_pred (a |->? * b |->?)
-  GUAR act_id_pred F * ((a |->? * b |->?) ~> (a |->? * b |->?))
+  RELY (F ~> F) * [a |->? * b |->?]
+  GUAR [F] * ((a |->? * b |->?) ~> (a |->? * b |->?))
   POST RET:r F * a |-> (vanew, [va0] ++ varest) *
                  b |-> (vbnew, [vb0] ++ vbrest)
   >C!} write2 a b vanew vbnew.
@@ -818,7 +820,7 @@ Proof.
   rewrite <- H2.
   (* this is a manual version of what act_cancel should be able to do *)
   rewrite act_id_dist_star.
-  rewrite act_star_comm with (b := act_id_pred F).
+  rewrite act_star_comm with (b := [F]%act).
   rewrite act_star_assoc.
   apply act_impl_star; auto.
   rewrite act_star_comm.
