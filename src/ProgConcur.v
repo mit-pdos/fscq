@@ -8,7 +8,10 @@ Require Import Arith.
 Require Import SepAuto.
 Require Import List.
 
-Import ListNotations.
+(* importing the [ x ; .. ; y ] notation from ListNotations breaks our RG
+   act_id_pred notation, so we re-define only the list notation we actually
+   use. *)
+Notation "[ x ]" := (cons x nil) : list_scope.
 
 Set Implicit Arguments.
 
@@ -538,7 +541,7 @@ Ltac inv_step :=
 
 Lemma act_star_ptsto : forall AT AEQ V F a v (m1 m2: @mem AT AEQ V),
   (F * a |-> v)%pred m1 ->
-  ( (F ~> F) * act_id_pred (a |->?) )%act m1 m2 ->
+  ( (F ~> F) * [a |->?] )%act m1 m2 ->
   (F * a |-> v)%pred m2.
 Proof.
   intros.
@@ -605,7 +608,7 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
         (* the %pred%act causes both pre occurrences to use the same
            scope stack *)
          pre%pred%act *
-         [[ act_and (pre ~> any) rely_ =a=> rely%act ]] *
+         [[ rely_ =a=> rely%act ]] *
          [[ guar%act =a=> guar_ ]] *
          [[ forall ret_,
             {C
@@ -670,9 +673,8 @@ Ltac subst_ptsto_same :=
 Theorem write_cok : forall a vnew,
   {!C< F v0 vrest,
   PRE F * a |-> (v0, vrest)
-  RELY (F ~> F) * act_id_pred (a |->?)
-  GUAR act_id_pred F *
-         (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
+  RELY (F ~> F) *  [a |->?]
+  GUAR [F] * (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
   POST RET:r F * a |-> (vnew, [v0] ++ vrest)
   >C!} Write a vnew.
 Proof.
@@ -713,7 +715,6 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
-      match_rely_pre.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
@@ -733,13 +734,13 @@ Proof.
      eapply ptsto_valid.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto.
-     match_rely_pre.
    * congruence.
 Admitted.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
-  (forall done rely guarantee, pre done rely guarantee =p=> pre' done rely guarantee) ->
+  (forall done rely guarantee,
+    pre done rely guarantee =p=> pre' done rely guarantee) ->
   (forall done rely guarantee m, pre done rely guarantee m
     -> stable (pre done rely guarantee) rely) ->
   {C pre C} p.
@@ -800,8 +801,8 @@ Qed.
 Theorem write2_cok : forall a b vanew vbnew,
   {!C< F va0 varest vb0 vbrest,
   PRE F * a |-> (va0, varest) * b |-> (vb0, vbrest)
-  RELY (F ~> F) * act_id_pred (a |->? * b |->?)
-  GUAR act_id_pred F * ((a |->? * b |->?) ~> (a |->? * b |->?))
+  RELY (F ~> F) * [a |->? * b |->?]
+  GUAR [F] * ((a |->? * b |->?) ~> (a |->? * b |->?))
   POST RET:r F * a |-> (vanew, [va0] ++ varest) *
                  b |-> (vbnew, [vb0] ++ vbrest)
   >C!} write2 a b vanew vbnew.
@@ -811,21 +812,22 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros; simpl. cancel.
 
-  eapply pre_and_impl; eauto.
-  cancel.
+  rewrite H3.
+  (* action implication won't be provable without pre ~> any *)
   admit.
 
   rewrite <- H2.
+  (* this is a manual version of what act_cancel should be able to do *)
   rewrite act_id_dist_star.
-  rewrite (act_star_comm _ (act_id_pred F)).
+  rewrite act_star_comm with (b := [F]%act).
   rewrite act_star_assoc.
   apply act_impl_star; auto.
   rewrite act_star_comm.
   rewrite act_star_bow.
   apply act_impl_star.
-  apply act_bow_pimpl; cancel.
+  apply act_impl_bow; cancel.
   rewrite act_impl_id_bow.
-  apply act_bow_pimpl; cancel.
+  apply act_impl_bow; cancel.
 
   eapply pimpl_cok. apply write_cok.
   intros; cancel.
@@ -834,19 +836,13 @@ Proof.
   (* act_cancel *)
   admit.
 
-  rewrite <- H4.
+  subst.
   rewrite <- H2.
   (* act_cancel *)
-  (* similarly need pre to prove a |->? *)
   admit.
 
-  (* same as H1 with a emp * in front *)
-  eapply pimpl_cok.
-  apply H1.
+  eapply pimpl_cok; eauto.
   cancel.
-  (* trivial action impls *)
-  eapply act_impl_trans; eauto.
-  eapply act_impl_trans; eauto.
 
   (* remaining goals are stability *)
 
@@ -877,7 +873,6 @@ Proof.
     unfold stable; intros.
     apply pimpl_star_emp.
     apply emp_star in H0.
-    apply H6 in H4.
     (* Now we're stuck; the only way to get the real rely condition
        (F ~> F) * [a |->? * b |->?] is to show that a and b point to the old
        values in m1 (and use H3), but this isn't true now that we've written.

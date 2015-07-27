@@ -262,14 +262,6 @@ Section RGThm.
     apply act_star_bow_dist'.
   Qed.
 
-  Theorem act_bow_pimpl : forall (p p' q q' : @pred AT AEQ V),
-    p =p=> p' ->
-    q =p=> q' ->
-    (p ~> q) =a=> (p' ~> q').
-  Proof.
-    act_unfold; intuition.
-  Qed.
-
   Theorem act_or_bow_dist_l_1 : forall (p p' q : @pred AT AEQ V),
     (p \/ p') ~> q =a=> (p ~> q) \/ (p' ~> q).
   Proof.
@@ -576,7 +568,7 @@ Proof.
 Qed.
 
 Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
-  @stable AT AEQ V (a |-> v)%pred (act_id_pred (a |->?)).
+  @stable AT AEQ V (a |-> v) [a |->?].
 Proof.
   unfold act_id_pred, stable.
   intuition congruence.
@@ -611,7 +603,7 @@ Definition coprecise_l AT AEQ V (p: @pred AT AEQ V) (F: action) :=
   m1 = m1'.
 
 Example ptsto_coprecise : forall AT AEQ V a v,
-  @coprecise_l AT AEQ V (a |-> v) (act_id_pred (a |->?)).
+  @coprecise_l AT AEQ V (a |-> v) [a |->?].
 Proof.
   intros.
   unfold coprecise_l.
@@ -628,7 +620,7 @@ Definition preserves AT AEQ V F (p: @pred AT AEQ V) :=
   coprecise_l p F /\ stable p F.
 
 Example ptsto_preserves : forall AT AEQ V a v,
-  @preserves AT AEQ V (act_id_pred (a |->?)) (a |-> v).
+  @preserves AT AEQ V [a |->?] (a |-> v).
 Proof.
   intros.
   split.
@@ -700,7 +692,7 @@ Qed.
 End Coprecise.
 
 Lemma act_id_dist_star : forall AT AEQ V (p q: @pred AT AEQ V),
-  act_id_pred (p * q) <=a=> act_id_pred p * act_id_pred q.
+  [p * q] <=a=> [p] * [q].
 Proof.
   unfold act_id_pred, act_iff, act_impl, act_star.
   unfold_sep_star.
@@ -716,7 +708,7 @@ Proof.
 Qed.
 
 Lemma act_id_dist_star_frame : forall AT AEQ V F (p q: @pred AT AEQ V),
-  F * act_id_pred (p * q) =a=> F * act_id_pred p * act_id_pred q.
+  F * [p * q] =a=> F * [p] * [q].
 Proof.
   intros.
   rewrite act_star_assoc.
