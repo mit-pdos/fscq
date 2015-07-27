@@ -579,6 +579,9 @@ Proof.
     pred_apply; cancel.
 Qed.
 
+Definition forall_helper T (p : T -> Prop) :=
+  forall v, p v.
+
 (** Wrapper for {C pre C} that constructs a pre function from separate
     precondition, rely, guarantee and post statements, all under a common
     set of (existential) binders.
@@ -591,12 +594,14 @@ Qed.
     Analogous to the Hoare notation {!< ... >!}, similarly lacking a frame
     predicate. We do this here because we don't yet know how the frame
     should be incorporated into the rely condition, having seen few examples.
+    Note however that the binders at the top of the notation are universally
+    quantified, as in {<<< ... >>>}.
 *)
 Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1" :=
   (forall (rx: _ -> prog nat),
+    forall_helper (fun e1 => .. (forall_helper (fun e2 =>
     {C
       fun done rely_ guar_ =>
-        (exis (fun e1 => .. (exis (fun e2 =>
         (* the %pred%act causes both pre occurrences to use the same
            scope stack *)
          pre%pred%act *
@@ -607,11 +612,10 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
               fun done_rx rely_rx guar_rx =>
               post emp ret_ *
               [[ done_rx = done ]] *
-              [[ rely_rx =a=> rely_ ]] *
-              [[ guar_ =a=> guar_rx ]]
+              [[ rely_rx = rely_ ]] *
+              [[ guar_ = guar_rx ]]
             C} rx ret_ ]]
-         )) .. ))
-     C} p1 rx)
+     C} p1 rx)) ..))
    (at level 0, p1 at level 60,
     e1 binder, e2 binder,
     only parsing).
@@ -630,20 +634,49 @@ Ltac match_rely_pre :=
   | [ H1: (?pre ~> any) /\ _ =a=> _ |- _ ] =>
     match goal with
     | [ H2: pre ?m1 |- _ ?m2 ] =>
-      generalize (pre_and_rely m1 m2 H1)
+      generalize (pre_and_rely m1 m2 H1); now eauto
     end
+  end.
+
+Ltac intro_forall_single :=
+  match goal with
+  | [ |- forall_helper (fun (varname:_) => _) ] =>
+    unfold forall_helper at 1;
+    let x := fresh varname in intro x
+  end.
+
+Ltac intro_forall := intros; repeat intro_forall_single; intros.
+
+Lemma ptsto_same : forall AT AEQ V F a v v' (m:@mem AT AEQ V),
+  (F * a |-> v)%pred m ->
+  m a = Some v' ->
+  v = v'.
+Proof.
+  intros.
+  assert (m a = Some v).
+  eapply ptsto_valid; eauto.
+  pred_apply; cancel.
+  congruence.
+Qed.
+
+Ltac subst_ptsto_same :=
+  match goal with
+  | [ Hpred: (_ * _ |-> _)%pred ?m, Hma: ?m _ = Some _ |- _] =>
+    generalize (ptsto_same Hpred Hma);
+    let H := fresh in
+    intro H; inversion H; subst; clear H
   end.
 
 Theorem write_cok : forall a vnew,
   {!C< F v0 vrest,
   PRE F * a |-> (v0, vrest)
   RELY (F ~> F) * act_id_pred (a |->?)
-  GUAR act_id_any *
+  GUAR act_id_pred F *
          (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
   POST RET:r F * a |-> (vnew, [v0] ++ vrest)
   >C!} Write a vnew.
 Proof.
-  unfold env_corr2 at 1; intros.
+  unfold env_corr2 at 1; intro_forall.
   destruct_lift H.
   intuition.
   (* stability *)
@@ -651,7 +684,6 @@ Proof.
     destruct_lift H0.
     repeat eexists.
     repeat apply sep_star_lift_apply'; eauto.
-    match_rely_pre; eauto.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -661,16 +693,13 @@ Proof.
       (* prove n = S n' *)
       destruct n; simpl in *.
         contradiction.
-      assert (m a = Some (v1, vrest)) as Hma'.
-      eapply ptsto_valid.
-      pred_apply; cancel.
-      rewrite Hma' in H13.
-      inversion H13; subst.
+      subst_ptsto_same.
       intuition.
       + (* StepThis was the Write *)
         inv_label.
         apply H3.
-        eapply act_ptsto_upd; eauto.
+        admit.
+        (* eapply act_ptsto_upd; eauto. *)
       + (* StepThis was in rx *)
         eapply H2; eauto.
         repeat apply sep_star_lift_apply'; eauto.
@@ -684,7 +713,7 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
-      match_rely_pre; eauto.
+      match_rely_pre.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
@@ -692,11 +721,7 @@ Proof.
    * inversion H0; subst.
      eapply H2; eauto.
      repeat apply sep_star_lift_apply'; eauto.
-     assert (m a = Some (v1, vrest)) as Hma'.
-     eapply ptsto_valid.
-     pred_apply; cancel.
-     rewrite Hma' in H12.
-     inversion H12; subst.
+     subst_ptsto_same.
      apply pimpl_star_emp.
      apply sep_star_comm.
      eapply ptsto_upd;
@@ -708,9 +733,9 @@ Proof.
      eapply ptsto_valid.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto.
-     match_rely_pre; eauto.
+     match_rely_pre.
    * congruence.
-Qed.
+Admitted.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
@@ -776,30 +801,36 @@ Theorem write2_cok : forall a b vanew vbnew,
   {!C< F va0 varest vb0 vbrest,
   PRE F * a |-> (va0, varest) * b |-> (vb0, vbrest)
   RELY (F ~> F) * act_id_pred (a |->? * b |->?)
-  GUAR act_id_any * ((a |->? * b |->?) ~> (a |->? * b |->?))
+  GUAR act_id_pred F * ((a |->? * b |->?) ~> (a |->? * b |->?))
   POST RET:r F * a |-> (vanew, [va0] ++ varest) *
                  b |-> (vbnew, [vb0] ++ vbrest)
   >C!} write2 a b vanew vbnew.
 Proof.
-  unfold write2; intros.
+  unfold write2; intro_forall.
 
   eapply pimpl_cok. apply write_cok.
-  intros. cancel.
+  intros; simpl. cancel.
 
   eapply pre_and_impl; eauto.
   cancel.
   admit.
 
   rewrite <- H2.
+  rewrite act_id_dist_star.
+  rewrite (act_star_comm _ (act_id_pred F)).
+  rewrite act_star_assoc.
   apply act_impl_star; auto.
-  (* TODO: need to fix guarantee in the same way as rely;
-     this isn't provable since we can't prove b |->? *)
-  admit.
+  rewrite act_star_comm.
+  rewrite act_star_bow.
+  apply act_impl_star.
+  apply act_bow_pimpl; cancel.
+  rewrite act_impl_id_bow.
+  apply act_bow_pimpl; cancel.
 
   eapply pimpl_cok. apply write_cok.
   intros; cancel.
 
-  rewrite H5.
+  subst.
   (* act_cancel *)
   admit.
 
@@ -856,13 +887,18 @@ Proof.
 
   - intros.
     destruct_lift H; subst.
-    (* Why are there existential binders under the {C .. C}?
-       if they aren't universally quantified, we can't make use of H4,
-       the =a=> we have about rely, which will make this impossible to prove.
-
-       It's that this is how {!< >!} and {< >} (CHL) work for Hoare logic,
-       but not {<< >>} (crash+recovery semantics), which has universal
-       quantification outside the Hoare tuple. *)
+    repeat apply stable_and_empty.
+    unfold stable; intros.
+    match goal with
+    | [ |- ?p m2 ] =>
+      assert ((p ~> any /\ rely)%act m1 m2) by auto
+    end.
+    rewrite act_id_dist_star in H4.
+    apply H4 in H5.
+    (* this really needs a pred_apply/act_apply and combined cancel;
+       we have sep logic in m1, m2 and in an action over m1 and m2,
+       which together give the goal, but to preserve the [a |->?] we
+       need to combine it with a |-> v0 from the p m1 *)
     admit.
 
   Grab Existential Variables.

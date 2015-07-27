@@ -53,3 +53,6 @@ Proof.
 Qed.
 
 End GenMem.
+
+(* existential variable hint *)
+Hint Immediate empty_mem.
