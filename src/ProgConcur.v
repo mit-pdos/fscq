@@ -816,6 +816,7 @@ Proof.
   admit.
 
   rewrite <- H2.
+  (* this is a manual version of what act_cancel should be able to do *)
   rewrite act_id_dist_star.
   rewrite act_star_comm with (b := act_id_pred F).
   rewrite act_star_assoc.
@@ -834,19 +835,13 @@ Proof.
   (* act_cancel *)
   admit.
 
-  rewrite <- H4.
+  subst.
   rewrite <- H2.
   (* act_cancel *)
-  (* similarly need pre to prove a |->? *)
   admit.
 
-  (* same as H1 with a emp * in front *)
-  eapply pimpl_cok.
-  apply H1.
+  eapply pimpl_cok; eauto.
   cancel.
-  (* trivial action impls *)
-  eapply act_impl_trans; eauto.
-  eapply act_impl_trans; eauto.
 
   (* remaining goals are stability *)
 
@@ -877,7 +872,6 @@ Proof.
     unfold stable; intros.
     apply pimpl_star_emp.
     apply emp_star in H0.
-    apply H6 in H4.
     (* Now we're stuck; the only way to get the real rely condition
        (F ~> F) * [a |->? * b |->?] is to show that a and b point to the old
        values in m1 (and use H3), but this isn't true now that we've written.
