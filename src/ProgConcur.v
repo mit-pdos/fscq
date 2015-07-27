@@ -612,8 +612,8 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
               fun done_rx rely_rx guar_rx =>
               post emp ret_ *
               [[ done_rx = done ]] *
-              [[ rely_rx =a=> rely_ ]] *
-              [[ guar_ =a=> guar_rx ]]
+              [[ rely_rx = rely_ ]] *
+              [[ guar_ = guar_rx ]]
             C} rx ret_ ]]
      C} p1 rx)) ..))
    (at level 0, p1 at level 60,
@@ -634,7 +634,7 @@ Ltac match_rely_pre :=
   | [ H1: (?pre ~> any) /\ _ =a=> _ |- _ ] =>
     match goal with
     | [ H2: pre ?m1 |- _ ?m2 ] =>
-      generalize (pre_and_rely m1 m2 H1)
+      generalize (pre_and_rely m1 m2 H1); now eauto
     end
   end.
 
@@ -671,7 +671,7 @@ Theorem write_cok : forall a vnew,
   {!C< F v0 vrest,
   PRE F * a |-> (v0, vrest)
   RELY (F ~> F) * act_id_pred (a |->?)
-  GUAR act_id_any *
+  GUAR act_id_pred F *
          (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
   POST RET:r F * a |-> (vnew, [v0] ++ vrest)
   >C!} Write a vnew.
@@ -698,7 +698,8 @@ Proof.
       + (* StepThis was the Write *)
         inv_label.
         apply H3.
-        eapply act_ptsto_upd; eauto.
+        admit.
+        (* eapply act_ptsto_upd; eauto. *)
       + (* StepThis was in rx *)
         eapply H2; eauto.
         repeat apply sep_star_lift_apply'; eauto.
@@ -712,7 +713,7 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
-      match_rely_pre; eauto.
+      match_rely_pre.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
@@ -732,9 +733,9 @@ Proof.
      eapply ptsto_valid.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto.
-     match_rely_pre; eauto.
+     match_rely_pre.
    * congruence.
-Qed.
+Admitted.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
@@ -800,7 +801,7 @@ Theorem write2_cok : forall a b vanew vbnew,
   {!C< F va0 varest vb0 vbrest,
   PRE F * a |-> (va0, varest) * b |-> (vb0, vbrest)
   RELY (F ~> F) * act_id_pred (a |->? * b |->?)
-  GUAR act_id_any * ((a |->? * b |->?) ~> (a |->? * b |->?))
+  GUAR act_id_pred F * ((a |->? * b |->?) ~> (a |->? * b |->?))
   POST RET:r F * a |-> (vanew, [va0] ++ varest) *
                  b |-> (vbnew, [vb0] ++ vbrest)
   >C!} write2 a b vanew vbnew.
@@ -815,15 +816,21 @@ Proof.
   admit.
 
   rewrite <- H2.
+  rewrite act_id_dist_star.
+  rewrite (act_star_comm _ (act_id_pred F)).
+  rewrite act_star_assoc.
   apply act_impl_star; auto.
-  (* TODO: need to fix guarantee in the same way as rely;
-     this isn't provable since we can't prove b |->? *)
-  admit.
+  rewrite act_star_comm.
+  rewrite act_star_bow.
+  apply act_impl_star.
+  apply act_bow_pimpl; cancel.
+  rewrite act_impl_id_bow.
+  apply act_bow_pimpl; cancel.
 
   eapply pimpl_cok. apply write_cok.
   intros; cancel.
 
-  rewrite H5.
+  subst.
   (* act_cancel *)
   admit.
 

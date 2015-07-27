@@ -700,14 +700,19 @@ Qed.
 End Coprecise.
 
 Lemma act_id_dist_star : forall AT AEQ V (p q: @pred AT AEQ V),
-  act_id_pred (p * q) =a=> act_id_pred p * act_id_pred q.
+  act_id_pred (p * q) <=a=> act_id_pred p * act_id_pred q.
 Proof.
-  unfold act_id_pred, act_impl, act_star.
+  unfold act_id_pred, act_iff, act_impl, act_star.
   unfold_sep_star.
-  intros.
-  intuition.
-  repeat deex.
-  repeat eexists; eauto.
+  split.
+  - intuition.
+    repeat deex.
+    repeat eexists; eauto.
+  - intuition.
+    repeat deex.
+    repeat eexists; eauto.
+    repeat deex.
+    repeat eexists; eauto.
 Qed.
 
 Lemma act_id_dist_star_frame : forall AT AEQ V F (p q: @pred AT AEQ V),
