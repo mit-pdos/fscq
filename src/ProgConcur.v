@@ -607,17 +607,19 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
       fun done rely_ guar_ =>
         (* the %pred%act causes both pre occurrences to use the same
            scope stack *)
-         pre%pred%act *
-         [[ rely_ =a=> rely%act ]] *
+         pre%pred *
+         [[ act_impl (act_and (act_bow pre%pred any) rely_) (rely%act) ]] *
          [[ guar%act =a=> guar_ ]] *
-         [[ forall ret_,
+         lift_empty (forall ret_,
             {C
               fun done_rx rely_rx guar_rx =>
               post emp ret_ *
               [[ done_rx = done ]] *
-              [[ rely_rx = rely_ ]] *
+              lift_empty (act_impl
+                          (act_and (act_bow (post emp ret_) any) rely_rx)
+                          (act_and (act_bow pre any) rely_)) *
               [[ guar_ = guar_rx ]]
-            C} rx ret_ ]]
+            C} rx ret_)
      C} p1 rx)) ..))
    (at level 0, p1 at level 60,
     e1 binder, e2 binder,
@@ -812,8 +814,7 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros; simpl. cancel.
 
-  rewrite H3.
-  (* action implication won't be provable without pre ~> any *)
+  eapply pre_and_impl; eauto. cancel.
   admit.
 
   rewrite <- H2.
@@ -833,6 +834,7 @@ Proof.
   intros; cancel.
 
   subst.
+  
   (* act_cancel *)
   admit.
 
@@ -873,6 +875,7 @@ Proof.
     unfold stable; intros.
     apply pimpl_star_emp.
     apply emp_star in H0.
+    
     (* Now we're stuck; the only way to get the real rely condition
        (F ~> F) * [a |->? * b |->?] is to show that a and b point to the old
        values in m1 (and use H3), but this isn't true now that we've written.
