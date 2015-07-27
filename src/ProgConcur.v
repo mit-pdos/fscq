@@ -817,15 +817,15 @@ Proof.
 
   rewrite <- H2.
   rewrite act_id_dist_star.
-  rewrite (act_star_comm _ (act_id_pred F)).
+  rewrite act_star_comm with (b := act_id_pred F).
   rewrite act_star_assoc.
   apply act_impl_star; auto.
   rewrite act_star_comm.
   rewrite act_star_bow.
   apply act_impl_star.
-  apply act_bow_pimpl; cancel.
+  apply act_impl_bow; cancel.
   rewrite act_impl_id_bow.
-  apply act_bow_pimpl; cancel.
+  apply act_impl_bow; cancel.
 
   eapply pimpl_cok. apply write_cok.
   intros; cancel.

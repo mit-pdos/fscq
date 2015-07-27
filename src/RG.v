@@ -262,14 +262,6 @@ Section RGThm.
     apply act_star_bow_dist'.
   Qed.
 
-  Theorem act_bow_pimpl : forall (p p' q q' : @pred AT AEQ V),
-    p =p=> p' ->
-    q =p=> q' ->
-    (p ~> q) =a=> (p' ~> q').
-  Proof.
-    act_unfold; intuition.
-  Qed.
-
   Theorem act_or_bow_dist_l_1 : forall (p p' q : @pred AT AEQ V),
     (p \/ p') ~> q =a=> (p ~> q) \/ (p' ~> q).
   Proof.
