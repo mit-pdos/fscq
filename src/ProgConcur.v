@@ -608,7 +608,7 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
         (* the %pred%act causes both pre occurrences to use the same
            scope stack *)
          pre%pred%act *
-         [[ act_and (pre ~> any) rely_ =a=> rely%act ]] *
+         [[ rely_ =a=> rely%act ]] *
          [[ guar%act =a=> guar_ ]] *
          [[ forall ret_,
             {C
@@ -715,7 +715,6 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto.
-      match_rely_pre.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
@@ -735,13 +734,13 @@ Proof.
      eapply ptsto_valid.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto.
-     match_rely_pre.
    * congruence.
 Admitted.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
-  (forall done rely guarantee, pre done rely guarantee =p=> pre' done rely guarantee) ->
+  (forall done rely guarantee,
+    pre done rely guarantee =p=> pre' done rely guarantee) ->
   (forall done rely guarantee m, pre done rely guarantee m
     -> stable (pre done rely guarantee) rely) ->
   {C pre C} p.
@@ -813,8 +812,8 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros; simpl. cancel.
 
-  eapply pre_and_impl; eauto.
-  cancel.
+  rewrite H3.
+  (* action implication won't be provable without pre ~> any *)
   admit.
 
   rewrite <- H2.
