@@ -673,37 +673,58 @@ Proof.
   congruence.
 Qed.
 
-Lemma act_ptsto_narrow : forall AT AEQ V (Fa:@action AT AEQ V) F a v m m',
-  (Fa * [a |->?])%act m m' ->
-  (F * a |-> v)%pred m ->
-  (Fa * [a |-> v])%act m m'.
+Lemma stable_and_empty : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
+  (P -> stable p a) ->
+  stable (p * [[P]]) a.
 Proof.
-  Local Hint Resolve ptsto_disjoint_hole.
-  Local Hint Resolve ptsto_valid_neq.
+  unfold stable.
+  intros.
+  destruct_lift H0.
+  eapply H in H0; eauto.
+  pred_apply; cancel.
+Qed.
 
-  unfold act_star, act_id_pred.
+(* weaken stable_and_empty when the empty proposition is unneeded *)
+Corollary stable_and_empty_discard : forall AT AEQ V P (p: @pred AT AEQ V) a,
+  stable p a ->
+  stable (p * [[P]]) a.
+Proof.
+  intros.
+  apply stable_and_empty; auto.
+Qed.
+
+Lemma stable_and_empty_rev : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
+  P ->
+  stable (p * [[P]]) a ->
+  stable p a.
+Proof.
+  unfold stable.
+  intros.
+  assert ((p * [[P]])%pred m2).
+  eapply H0; eauto.
+  pred_apply; cancel.
+  pred_apply; cancel.
+Qed.
+
+Lemma stable_cancel_id : forall AT AEQ V (F p p':@pred AT AEQ V) a,
+  stable F a ->
+  precise p' ->
+  p =p=> p' ->
+  stable (F*p) (a * [p'])%act.
+Proof.
+  unfold stable, act_star, act_bow, precise, act_id_pred.
   unfold_sep_star.
   intros.
   repeat deex.
   assert (m2 = m2b).
-  unfold exis in H3.
-  deex.
-  apply functional_extensionality; intros.
-  apply equal_f with x0 in H5.
-  case_eq (AEQ x0 a); intros; subst.
-  unfold mem_union in H5.
-  assert (m1 a = None) as Hm1 by eauto.
-  assert (m1a a = None) as Hm1a by eauto.
-  rewrite Hm1 in *;
-  rewrite Hm1a in *.
-  auto.
-  assert (m2 x0 = None) by eauto.
-  assert (m2b x0 = None) by eauto.
-  congruence.
-
+  eapply H0; eauto.
+  all: try solve_disjoint_union.
+  solve_disjoint_union.
   subst.
-  do 4 eexists.
-  intuition eauto.
+  assert (m1 = m1a).
+  eapply mem_disjoint_union_cancel; solve_disjoint_union.
+  subst.
+  do 2 eexists; intuition eauto.
 Qed.
 
 Theorem write_cok : forall a vnew,
@@ -718,21 +739,11 @@ Proof.
   destruct_lift H.
   intuition.
   (* stability *)
-  - unfold stable; intros;
-    destruct_lift H0.
-    repeat apply sep_star_lift_apply'; eauto.
-    match goal with
-    | [ H: ?rely =a=> _, H': ?rely _ _ |- _ ] =>
-      apply H in H'
-    end.
-    apply sep_star_assoc.
-    eapply act_id_weaken.
-    instantiate (p := (Fid * a |-> (v0, vrest))%pred).
-    cancel; auto.
-    auto with precision.
-    instantiate (m := m1). pred_apply; cancel.
-    apply act_id_dist_star_frame.
-    eapply act_ptsto_narrow; eauto.
+  - repeat (apply stable_and_empty; intro).
+    rewrite H7.
+    apply stable_cancel_id; auto with precision.
+    apply stable_cancel_id; auto.
+    cancel.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -833,41 +844,7 @@ Proof.
   firstorder.
 Qed.
 
-Lemma stable_and_empty_discard : forall AT AEQ V P (p: @pred AT AEQ V) a,
-  stable p a ->
-  stable (p * [[P]]) a.
-Proof.
-  unfold stable.
-  intros.
-  destruct_lift H0.
-  eapply H in H0; eauto.
-  pred_apply; cancel.
-Qed.
 
-Lemma stable_and_empty : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
-  (P -> stable p a) ->
-  stable (p * [[P]]) a.
-Proof.
-  unfold stable.
-  intros.
-  destruct_lift H0.
-  eapply H in H0; eauto.
-  pred_apply; cancel.
-Qed.
-
-
-Lemma stable_and_empty_rev : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
-  P ->
-  stable (p * [[P]]) a ->
-  stable p a.
-Proof.
-  unfold stable.
-  intros.
-  assert ((p * [[P]])%pred m2).
-  eapply H0; eauto.
-  pred_apply; cancel.
-  pred_apply; cancel.
-Qed.
 
 Lemma stable_cancel_precise_inv : forall AT AEQ V i (p:@pred AT AEQ V) a,
   stable p a ->
@@ -887,27 +864,6 @@ Proof.
   eapply mem_disjoint_union_cancel; eauto.
   subst.
   eauto.
-Qed.
-
-Lemma stable_cancel_id : forall AT AEQ V (F p p':@pred AT AEQ V) a,
-  stable F a ->
-  precise p' ->
-  p =p=> p' ->
-  stable (F*p) (a * [p'])%act.
-Proof.
-  unfold stable, act_star, act_bow, precise, act_id_pred.
-  unfold_sep_star.
-  intros.
-  repeat deex.
-  assert (m2 = m2b).
-  eapply H0; eauto.
-  all: try solve_disjoint_union.
-  solve_disjoint_union.
-  subst.
-  assert (m1 = m1a).
-  eapply mem_disjoint_union_cancel; solve_disjoint_union.
-  subst.
-  do 2 eexists; intuition eauto.
 Qed.
 
 Ltac act_norm :=

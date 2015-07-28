@@ -635,6 +635,12 @@ Proof.
   intuition congruence.
 Qed.
 
+Lemma act_inv_stable : forall AT AEQ V (i:@pred AT AEQ V),
+  stable i (i~>i).
+Proof.
+  firstorder.
+Qed.
+
 Lemma act_star_stable_invariants : forall AT AEQ V F1 F2 p q,
   F1 =a=> p ~> p ->
   F2 =a=> q ~> q ->
@@ -819,3 +825,5 @@ Hint Resolve act_and_both.
 Hint Resolve act_bow_any.
 Hint Resolve act_id_any_refl.
 Hint Resolve act_id_pred_refl.
+
+Hint Resolve act_inv_stable.
