@@ -115,6 +115,15 @@ Section RGThm.
     act_unfold; intuition congruence.
   Qed.
 
+  Theorem act_impl_id_bow_impl : forall (p q : @pred AT AEQ V),
+    p =p=> q ->
+    [p] =a=> q ~> q.
+  Proof.
+    act_unfold; intuition.
+    subst.
+    eauto.
+  Qed.
+
   Theorem act_impl_id_pred_id_any : forall (p : @pred AT AEQ V),
     [p] =a=> act_id_any.
   Proof.

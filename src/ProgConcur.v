@@ -857,6 +857,15 @@ Proof.
   pred_apply; cancel.
 Qed.
 
+Ltac act_norm :=
+  repeat rewrite act_id_dist_star;
+  repeat rewrite act_star_bow;
+  repeat rewrite act_star_assoc.
+
+Ltac act_cancel_left :=
+  act_norm;
+  apply act_impl_star; [now auto | ].
+
 Theorem write2_cok : forall a b vanew vbnew,
   {!C< F va0 varest vb0 vbrest,
   PRE F * a |-> (va0, varest) * b |-> (vb0, vbrest)
@@ -876,22 +885,17 @@ Proof.
   cancel.
   cancel.
   rewrite H3.
-  rewrite act_star_assoc.
-  apply act_impl_star; auto.
+  act_cancel_left.
   rewrite act_star_comm.
-  apply act_id_dist_star.
+  auto.
 
   rewrite <- H2.
   (* this is a manual version of what act_cancel should be able to do *)
-  rewrite act_id_dist_star.
-  rewrite act_star_assoc.
-  apply act_impl_star; auto.
+  act_cancel_left.
   rewrite act_star_comm.
-  rewrite act_star_bow.
   apply act_impl_star.
   apply act_impl_bow; cancel.
-  rewrite act_impl_id_bow.
-  apply act_impl_bow; cancel.
+  apply act_impl_id_bow_impl; cancel.
 
   eapply pimpl_cok. apply write_cok.
   intros; simpl.
@@ -903,13 +907,20 @@ Proof.
 
   subst.
   rewrite H3.
-  (* act_cancel *)
-  admit.
+  rewrite act_star_assoc.
+  apply act_impl_star; auto.
+  apply act_id_dist_star.
 
   subst.
   rewrite <- H2.
+  rewrite act_id_dist_star.
+  rewrite act_star_assoc.
+  apply act_impl_star; auto.
   (* act_cancel *)
-  admit.
+  act_norm.
+  apply act_impl_star.
+  apply act_impl_id_bow_impl; cancel.
+  apply act_impl_bow; cancel.
 
   eapply pimpl_cok; eauto.
 
