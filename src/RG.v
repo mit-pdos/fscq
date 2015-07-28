@@ -625,6 +625,34 @@ Proof.
   do 2 eexists; intuition eauto.
 Qed.
 
+Lemma disjoint_union_comm_eq : forall AT AEQ V
+  (m1a m1b m2a m2b : @mem AT AEQ V),
+  mem_union m1a m1b = mem_union m2a m2b ->
+  mem_disjoint m1a m1b ->
+  mem_disjoint m2a m2b ->
+  mem_union m1b m1a = mem_union m2b m2a.
+Proof.
+  intros.
+  rewrite mem_union_comm with (m1 := m1b).
+  rewrite mem_union_comm with (m1 := m2b).
+  auto.
+  rewrite mem_disjoint_comm; auto.
+  rewrite mem_disjoint_comm; auto.
+Qed.
+
+(* TODO: make this more general and use it in Pred.v *)
+Ltac solve_disjoint_union :=
+  match goal with
+  | [ |- mem_disjoint _ _ ] =>
+     now ( eauto ||rewrite mem_disjoint_comm; eauto)
+  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
+        mem_union ?m1b ?m1a = mem_union ?m2b ?m2a ] =>
+    now (apply disjoint_union_comm_eq; eauto)
+  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
+        mem_union ?m2b ?m2a = mem_union ?m1b ?m1a ] =>
+    now (apply disjoint_union_comm_eq; eauto)
+  end.
+
 Section Coprecise.
 
 Definition coprecise_l AT AEQ V (p: @pred AT AEQ V) (F: action) :=
@@ -677,31 +705,6 @@ Proof.
   (* coprecise_l *)
   eapply H0; eauto.
 Qed.
-
-Lemma disjoint_union_comm_eq : forall AT AEQ V
-  (m1a m1b m2a m2b : @mem AT AEQ V),
-  mem_union m1a m1b = mem_union m2a m2b ->
-  mem_disjoint m1a m1b ->
-  mem_disjoint m2a m2b ->
-  mem_union m1b m1a = mem_union m2b m2a.
-Proof.
-  intros.
-  rewrite mem_union_comm with (m1 := m1b).
-  rewrite mem_union_comm with (m1 := m2b).
-  auto.
-  rewrite mem_disjoint_comm; auto.
-  rewrite mem_disjoint_comm; auto.
-Qed.
-
-(* TODO: make this more general and use it in Pred.v *)
-Ltac solve_disjoint_union :=
-  match goal with
-  | [ |- mem_disjoint _ _ ] =>
-     now ( eauto ||rewrite mem_disjoint_comm; eauto)
-  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
-        mem_union ?m1b ?m1a = mem_union ?m2b ?m2a ] =>
-    now (apply disjoint_union_comm_eq; eauto)
-  end.
 
 Lemma act_star_stable_invariant_preserves : forall AT AEQ V
   F1 F2 p q (m1 m2: @mem AT AEQ V),

@@ -666,16 +666,10 @@ Proof.
   intros.
   repeat deex.
   repeat eexists; eauto.
-  assert (H10' := H10).
-  apply H in H10.
   assert (m2 = m2b).
   eapply H0; eauto.
-  instantiate (m1' := m1).
-  instantiate (m2' := m1a).
-  rewrite mem_union_comm.
-  rewrite mem_union_comm with (m1 := m2b).
-  auto.
-  all: try (apply mem_disjoint_comm; auto).
+  all: try solve_disjoint_union.
+  solve_disjoint_union.
   congruence.
 Qed.
 
