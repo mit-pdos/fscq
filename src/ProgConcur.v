@@ -656,65 +656,6 @@ Ltac subst_ptsto_same :=
 
 Lemma act_id_weaken : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
   p' =p=> p ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p])%act m m' ->
-  (i * p)%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-Qed.
-
-Lemma act_id_weaken' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p'])%act m m' ->
-  (i * p)%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-Qed.
-
-Lemma act_id_weaken'' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p'])%act m m' ->
-  (i * p')%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-Qed.
-
-Lemma act_id_weaken''' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
-  precise i ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p])%act m m' ->
-  (i * p')%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred, precise.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-  assert (m1a = m1).
-  eapply H0; eauto.
-  subst.
-  assert (m2 = m2b).
-  eapply mem_disjoint_union_cancel; eauto.
-  congruence.
-Qed.
-
-Lemma act_id_weaken'''' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
   precise p ->
   (i * p')%pred m ->
   ((i ~> i) * [p])%act m m' ->
@@ -788,7 +729,7 @@ Proof.
       apply H in H'
     end.
     apply sep_star_assoc.
-    eapply act_id_weaken''''.
+    eapply act_id_weaken.
     instantiate (p := (Fid * a |-> (v0, vrest))%pred).
     cancel; auto.
     (* these should just be in hint dbs *)
@@ -826,7 +767,7 @@ Proof.
       eapply IHenv_exec; eauto 10.
       assert (rely m m') by eauto.
       apply sep_star_assoc.
-      eapply act_id_weaken''''.
+      eapply act_id_weaken.
       instantiate (p := (Fid * a |->?)%pred).
       cancel; auto.
       apply sep_star_precise; auto.
@@ -853,7 +794,7 @@ Proof.
    * eapply IHenv_exec; eauto 10.
      assert (rely m m') by eauto.
      apply sep_star_assoc.
-     eapply act_id_weaken''''.
+     eapply act_id_weaken.
      instantiate (p := (Fid * a |->?)%pred).
      cancel; auto.
      apply sep_star_precise; auto.
