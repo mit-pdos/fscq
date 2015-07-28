@@ -936,16 +936,22 @@ Proof.
   unfold write2; intro_forall.
 
   eapply pimpl_cok. apply write_cok.
-  intros; simpl. cancel.
-
+  intros; simpl.
+  (* cancel does some unfortunate things here *)
+  instantiate (v0 := (b |-> (vb0, vbrest))%pred).
+  instantiate (v3 := (b |->?)%pred).
+  cancel.
+  cancel.
+  apply ptsto_any_precise.
   rewrite H3.
-  (* action implication won't be provable without pre ~> any *)
-  admit.
+  rewrite act_star_assoc.
+  apply act_impl_star; auto.
+  rewrite act_star_comm.
+  apply act_id_dist_star.
 
   rewrite <- H2.
   (* this is a manual version of what act_cancel should be able to do *)
   rewrite act_id_dist_star.
-  rewrite act_star_comm with (b := [F]%act).
   rewrite act_star_assoc.
   apply act_impl_star; auto.
   rewrite act_star_comm.
@@ -956,9 +962,16 @@ Proof.
   apply act_impl_bow; cancel.
 
   eapply pimpl_cok. apply write_cok.
-  intros; cancel.
+  intros; simpl.
+  (* cancel does the same unfortunate things here *)
+  instantiate (v0 := (a |-> (vanew, va0 :: varest))%pred).
+  instantiate (v3 := (a |->?)%pred).
+  cancel.
+  cancel.
+  apply ptsto_any_precise.
 
   subst.
+  rewrite H3.
   (* act_cancel *)
   admit.
 
@@ -968,10 +981,10 @@ Proof.
   admit.
 
   eapply pimpl_cok; eauto.
-  cancel.
 
   (* remaining goals are stability *)
-
+  - intros.
+    cancel.
   - intros.
     (* this proof is sort of cheating: our rely-guarantee spec supposes
        that the postcondition is stable under rely by making a {C ... C}
@@ -990,8 +1003,6 @@ Proof.
         specialize (H m1 m2)
      end.
      eapply pimpl_apply; [| apply H0]; auto.
-     cancel.
-     pred_apply; cancel.
 
   - intros.
     destruct_lift H; subst.
@@ -999,11 +1010,12 @@ Proof.
     unfold stable; intros.
     apply pimpl_star_emp.
     apply emp_star in H0.
-    (* Now we're stuck; the only way to get the real rely condition
-       (F ~> F) * [a |->? * b |->?] is to show that a and b point to the old
-       values in m1 (and use H3), but this isn't true now that we've written.
-       Somehow our own guarantee needs to be allowed in (pre ~> any) =a=> rely
-       for the intermediate instructions. *)
+    (* TODO: re-use automation above to apply ?rely =a=> _ to ?rely _ _ *)
+    apply H3 in H4.
+    (* this really needs a pred_apply/act_apply and combined cancel;
+       we have sep logic in m1, m2 and in an action over m1 and m2,
+       which together give the goal, but to preserve the [a |->?] we
+       need to combine it with a |-> v0 from the p m1 *)
     admit.
 
   - intros.
@@ -1015,11 +1027,8 @@ Proof.
       assert ((p ~> any /\ rely)%act m1 m2) by auto
     end.
     rewrite act_id_dist_star in H4.
-    apply H4 in H5.
-    (* this really needs a pred_apply/act_apply and combined cancel;
-       we have sep logic in m1, m2 and in an action over m1 and m2,
-       which together give the goal, but to preserve the [a |->?] we
-       need to combine it with a |-> v0 from the p m1 *)
+    apply H4 in H1.
+    (* more act_apply; act_cancel *)
     admit.
 
   Grab Existential Variables.
