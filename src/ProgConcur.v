@@ -770,7 +770,7 @@ Qed.
 
 Theorem write_cok : forall a vnew,
   {!C< Finv Fid Fid' v0 vrest,
-  PRE Finv * Fid' * a |-> (v0, vrest) * [[ Fid' =p=> Fid ]] * [[ precise Finv ]]
+  PRE Finv * Fid' * a |-> (v0, vrest) * [[ Fid' =p=> Fid ]] * [[ precise Fid ]]
   RELY (Finv ~> Finv) * [Fid] * [a |->?]
   GUAR [Finv * Fid'] * (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
   POST RET:r Finv * Fid' * a |-> (vnew, [v0] ++ vrest)
@@ -788,9 +788,13 @@ Proof.
       apply H in H'
     end.
     apply sep_star_assoc.
-    eapply act_id_weaken'''; auto.
+    eapply act_id_weaken''''.
     instantiate (p := (Fid * a |-> (v0, vrest))%pred).
     cancel; auto.
+    (* these should just be in hint dbs *)
+    apply sep_star_precise; auto.
+    apply strictly_exact_to_precise.
+    apply ptsto_strictly_exact.
     instantiate (m := m1). pred_apply; cancel.
     apply act_id_dist_star_frame.
     eapply act_ptsto_narrow; eauto.
@@ -822,9 +826,11 @@ Proof.
       eapply IHenv_exec; eauto 10.
       assert (rely m m') by eauto.
       apply sep_star_assoc.
-      eapply act_id_weaken'''; auto.
+      eapply act_id_weaken''''.
       instantiate (p := (Fid * a |->?)%pred).
       cancel; auto.
+      apply sep_star_precise; auto.
+      apply ptsto_any_precise.
       instantiate (m := m). pred_apply; cancel.
       apply act_id_dist_star_frame; auto.
     * destruct n; contradiction.
@@ -847,9 +853,11 @@ Proof.
    * eapply IHenv_exec; eauto 10.
      assert (rely m m') by eauto.
      apply sep_star_assoc.
-     eapply act_id_weaken'''; auto.
+     eapply act_id_weaken''''.
      instantiate (p := (Fid * a |->?)%pred).
      cancel; auto.
+     apply sep_star_precise; auto.
+     apply ptsto_any_precise.
      instantiate (m := m). pred_apply; cancel.
      apply act_id_dist_star_frame; auto.
    * congruence.
