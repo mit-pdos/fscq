@@ -555,7 +555,7 @@ Local Hint Resolve act_star_ptsto.
 
 Lemma act_ptsto_upd : forall AT AEQ V F a old new (m: @mem AT AEQ V),
   (F * a |-> old)%pred m ->
-  (act_id_any * (a |-> old ~> a |-> new))%act m (upd m a new).
+  ([F] * (a |-> old ~> a |-> new))%act m (upd m a new).
 Proof.
   unfold_sep_star.
   unfold act_star, act_bow.
@@ -570,7 +570,6 @@ Proof.
     pred_apply; cancel.
     now (apply mem_disjoint_comm; auto).
   intuition eauto.
-  - apply act_id_any_refl.
   - apply emp_star.
     apply sep_star_comm.
     eapply ptsto_upd.
@@ -581,6 +580,8 @@ Proof.
     eapply ptsto_valid.
     pred_apply; cancel.
 Qed.
+
+Local Hint Resolve act_ptsto_upd.
 
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
@@ -666,7 +667,6 @@ Proof.
   (* stability *)
   - unfold stable; intros;
     destruct_lift H0.
-    repeat eexists.
     repeat apply sep_star_lift_apply'; eauto.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
@@ -681,17 +681,14 @@ Proof.
       intuition.
       + (* StepThis was the Write *)
         inv_label.
-        apply H3.
-        admit.
-        (* eapply act_ptsto_upd; eauto. *)
+        eauto.
       + (* StepThis was in rx *)
         eapply H2; eauto.
         repeat apply sep_star_lift_apply'; eauto.
-        apply pimpl_star_emp.
-        apply sep_star_comm.
-        eapply ptsto_upd;
-          pred_apply; cancel.
-        intros; eauto.
+        eapply pimpl_apply; [| eapply ptsto_upd].
+        cancel.
+        pred_apply; cancel.
+        eauto.
     * destruct n; contradiction.
     * destruct n; simpl in *.
         contradiction.
@@ -705,11 +702,10 @@ Proof.
      eapply H2; eauto.
      repeat apply sep_star_lift_apply'; eauto.
      subst_ptsto_same.
-     apply pimpl_star_emp.
-     apply sep_star_comm.
-     eapply ptsto_upd;
-       pred_apply; cancel.
-     intros; eauto.
+     eapply pimpl_apply; [| eapply ptsto_upd].
+     cancel.
+     pred_apply; cancel.
+     eauto.
    * contradiction H0.
      repeat eexists; eauto.
      econstructor.
@@ -717,7 +713,7 @@ Proof.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto 10.
    * congruence.
-Admitted.
+Qed.
 
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->

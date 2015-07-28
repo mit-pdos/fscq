@@ -136,6 +136,13 @@ Section RGThm.
     apply act_id_any_eq_iff; auto.
   Qed.
 
+  Theorem act_id_pred_refl : forall (p:pred) (m : @mem AT AEQ V),
+    p m ->
+    [p]%act m m.
+  Proof.
+    act_unfold; firstorder.
+  Qed.
+
   Theorem act_impl_any : forall (a : @action AT AEQ V),
     a =a=> act_any.
   Proof.
@@ -754,3 +761,5 @@ Qed.
 (* these feel safe since the lemmas have applied actions *)
 Hint Resolve act_and_both.
 Hint Resolve act_bow_any.
+Hint Resolve act_id_any_refl.
+Hint Resolve act_id_pred_refl.
