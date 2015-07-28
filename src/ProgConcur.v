@@ -623,24 +623,6 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
     e1 binder, e2 binder,
     only parsing).
 
-Lemma pre_and_rely : forall AT AEQ V pre (m1 m2:@mem AT AEQ V) rely_ r,
-  (pre ~> any) /\ rely_ =a=> r ->
-  rely_ m1 m2 ->
-  pre m1 ->
-  r m1 m2.
-Proof.
-  firstorder.
-Qed.
-
-Ltac match_rely_pre :=
-  match goal with
-  | [ H1: (?pre ~> any) /\ _ =a=> _ |- _ ] =>
-    match goal with
-    | [ H2: pre ?m1 |- _ ?m2 ] =>
-      generalize (pre_and_rely m1 m2 H1); now eauto
-    end
-  end.
-
 Ltac intro_forall_single :=
   match goal with
   | [ |- forall_helper (fun (varname:_) => _) ] =>
@@ -714,7 +696,7 @@ Proof.
     * destruct n; simpl in *.
         contradiction.
       intuition (try congruence; eauto).
-      eapply IHenv_exec; eauto.
+      eapply IHenv_exec; eauto 10.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
@@ -733,7 +715,7 @@ Proof.
      econstructor.
      eapply ptsto_valid.
      pred_apply; cancel.
-   * eapply IHenv_exec; eauto.
+   * eapply IHenv_exec; eauto 10.
    * congruence.
 Admitted.
 
