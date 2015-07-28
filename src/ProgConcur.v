@@ -653,12 +653,71 @@ Ltac subst_ptsto_same :=
     intro H; inversion H; subst; clear H
   end.
 
+Lemma act_id_weaken : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
+  p' =p=> p ->
+  (i * p')%pred m ->
+  ((i ~> i) * [p])%act m m' ->
+  (i * p)%pred m'.
+Proof.
+  unfold_sep_star.
+  unfold act_star, act_bow, act_id_pred.
+  intros.
+  repeat deex.
+  repeat eexists; eauto.
+Qed.
+
+Lemma act_id_weaken' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
+  p' =p=> p ->
+  (i * p')%pred m ->
+  ((i ~> i) * [p'])%act m m' ->
+  (i * p)%pred m'.
+Proof.
+  unfold_sep_star.
+  unfold act_star, act_bow, act_id_pred.
+  intros.
+  repeat deex.
+  repeat eexists; eauto.
+Qed.
+
+Lemma act_id_weaken'' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
+  p' =p=> p ->
+  (i * p')%pred m ->
+  ((i ~> i) * [p'])%act m m' ->
+  (i * p')%pred m'.
+Proof.
+  unfold_sep_star.
+  unfold act_star, act_bow, act_id_pred.
+  intros.
+  repeat deex.
+  repeat eexists; eauto.
+Qed.
+
+Lemma act_id_weaken''' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
+  p' =p=> p ->
+  precise i ->
+  (i * p')%pred m ->
+  ((i ~> i) * [p])%act m m' ->
+  (i * p')%pred m'.
+Proof.
+  unfold_sep_star.
+  unfold act_star, act_bow, act_id_pred, precise.
+  intros.
+  repeat deex.
+  repeat eexists; eauto.
+  assert (m1a = m1).
+  eapply H0; eauto.
+  subst.
+  assert (m2 = m2b).
+  eapply mem_disjoint_union_cancel; eauto.
+  congruence.
+Qed.
+
 Theorem write_cok : forall a vnew,
-  {!C< F v0 vrest,
-  PRE F * a |-> (v0, vrest)
-  RELY (F ~> F) *  [a |->?]
-  GUAR [F] * (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
-  POST RET:r F * a |-> (vnew, [v0] ++ vrest)
+  {!C< Finv Fid Fid' v0 vrest,
+  PRE Finv * Fid' * a |-> (v0, vrest) * [[ Fid' =p=> Fid ]]
+  RELY (Finv ~> Finv) * [Fid] * [a |->?]
+  GUAR [Finv * Fid'] * (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
+  POST RET:r Finv * Fid' * a |-> (vnew, [v0] ++ vrest)
   >C!} Write a vnew.
 Proof.
   unfold env_corr2 at 1; intro_forall.
@@ -668,6 +727,16 @@ Proof.
   - unfold stable; intros;
     destruct_lift H0.
     repeat apply sep_star_lift_apply'; eauto.
+    apply sep_star_assoc.
+    eapply act_id_weaken'''.
+    instantiate (p := (Fid * a |-> (v0, vrest))%pred).
+    cancel.
+    auto.
+    admit.
+    instantiate (m := m1). pred_apply; cancel.
+    apply H10 in H1.
+    rewrite H11 in H0.
+    admit.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -694,6 +763,15 @@ Proof.
         contradiction.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto 10.
+      assert (rely m m') by eauto.
+      apply H4 in H6.
+      apply sep_star_assoc.
+      eapply act_id_weaken'''.
+      instantiate (p := (Fid * a |-> (v0, vrest))%pred).
+      cancel.
+      auto.
+      admit.
+      instantiate (m := m1). pred_apply; cancel.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
