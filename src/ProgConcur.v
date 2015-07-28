@@ -729,10 +729,7 @@ Proof.
     eapply act_id_weaken.
     instantiate (p := (Fid * a |-> (v0, vrest))%pred).
     cancel; auto.
-    (* these should just be in hint dbs *)
-    apply sep_star_precise; auto.
-    apply strictly_exact_to_precise.
-    apply ptsto_strictly_exact.
+    auto with precision.
     instantiate (m := m1). pred_apply; cancel.
     apply act_id_dist_star_frame.
     eapply act_ptsto_narrow; eauto.
@@ -767,8 +764,7 @@ Proof.
       eapply act_id_weaken.
       instantiate (p := (Fid * a |->?)%pred).
       cancel; auto.
-      apply sep_star_precise; auto.
-      apply ptsto_any_precise.
+      auto with precision.
       instantiate (m := m). pred_apply; cancel.
       apply act_id_dist_star_frame; auto.
     * destruct n; contradiction.
@@ -794,8 +790,7 @@ Proof.
      eapply act_id_weaken.
      instantiate (p := (Fid * a |->?)%pred).
      cancel; auto.
-     apply sep_star_precise; auto.
-     apply ptsto_any_precise.
+     auto with precision.
      instantiate (m := m). pred_apply; cancel.
      apply act_id_dist_star_frame; auto.
    * congruence.
@@ -880,7 +875,6 @@ Proof.
   instantiate (v3 := (b |->?)%pred).
   cancel.
   cancel.
-  apply ptsto_any_precise.
   rewrite H3.
   rewrite act_star_assoc.
   apply act_impl_star; auto.
@@ -906,7 +900,6 @@ Proof.
   instantiate (v3 := (a |->?)%pred).
   cancel.
   cancel.
-  apply ptsto_any_precise.
 
   subst.
   rewrite H3.
