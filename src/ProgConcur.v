@@ -961,27 +961,26 @@ Proof.
     rewrite H3.
     rewrite <- emp_star.
     rewrite act_id_dist_star.
-    rewrite sep_star_assoc.
-    unfold stable; intros.
-    (* this really needs a pred_apply/act_apply and combined cancel;
-       we have sep logic in m1, m2 and in an action over m1 and m2,
-       which together give the goal, but to preserve the [a |->?] we
-       need to combine it with a |-> v0 from the p m1 *)
-    admit.
+    match goal with
+    | [ |- stable _ (_ * (?b * ?c))%act ] =>
+      rewrite act_star_comm with (a := b)
+    end.
+    rewrite <- act_star_assoc.
+    apply stable_cancel_id; auto with precision.
+    apply stable_cancel_id; auto with precision.
+    cancel.
+    cancel.
 
   - intros.
     destruct_lift H; subst.
-    repeat apply stable_and_empty.
-    unfold stable; intros.
-    match goal with
-    | [ |- ?p m2 ] =>
-      assert ((p ~> any /\ rely)%act m1 m2) by auto
-    end.
-    rewrite act_id_dist_star in H4.
-    apply H4 in H1.
-    (* more act_apply; act_cancel *)
-    admit.
+    repeat (apply stable_and_empty; intro).
+    rewrite H5.
+    rewrite act_id_dist_star_frame.
+    apply stable_cancel_id; auto with precision.
+    apply stable_cancel_id; auto with precision.
+    cancel.
+    cancel.
 
   Grab Existential Variables.
   all: auto.
-Admitted.
+Qed.
