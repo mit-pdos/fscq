@@ -833,7 +833,7 @@ Proof.
   firstorder.
 Qed.
 
-Lemma stable_and_empty : forall AT AEQ V P (p: @pred AT AEQ V) a,
+Lemma stable_and_empty_discard : forall AT AEQ V P (p: @pred AT AEQ V) a,
   stable p a ->
   stable (p * [[P]]) a.
 Proof.
@@ -843,6 +843,18 @@ Proof.
   eapply H in H0; eauto.
   pred_apply; cancel.
 Qed.
+
+Lemma stable_and_empty : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
+  (P -> stable p a) ->
+  stable (p * [[P]]) a.
+Proof.
+  unfold stable.
+  intros.
+  destruct_lift H0.
+  eapply H in H0; eauto.
+  pred_apply; cancel.
+Qed.
+
 
 Lemma stable_and_empty_rev : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
   P ->
@@ -855,6 +867,47 @@ Proof.
   eapply H0; eauto.
   pred_apply; cancel.
   pred_apply; cancel.
+Qed.
+
+Lemma stable_cancel_precise_inv : forall AT AEQ V i (p:@pred AT AEQ V) a,
+  stable p a ->
+  precise i ->
+  stable (i*p) ((i ~> i) * a)%act.
+Proof.
+  unfold stable, act_star, act_bow, precise.
+  unfold_sep_star.
+  intros.
+  repeat deex.
+  do 2 eexists.
+  intuition.
+  assert (m1 = m1a).
+  eapply H0; eauto.
+  subst.
+  assert (m2 = m1b).
+  eapply mem_disjoint_union_cancel; eauto.
+  subst.
+  eauto.
+Qed.
+
+Lemma stable_cancel_id : forall AT AEQ V (F p p':@pred AT AEQ V) a,
+  stable F a ->
+  precise p' ->
+  p =p=> p' ->
+  stable (F*p) (a * [p'])%act.
+Proof.
+  unfold stable, act_star, act_bow, precise, act_id_pred.
+  unfold_sep_star.
+  intros.
+  repeat deex.
+  assert (m2 = m2b).
+  eapply H0; eauto.
+  all: try solve_disjoint_union.
+  solve_disjoint_union.
+  subst.
+  assert (m1 = m1a).
+  eapply mem_disjoint_union_cancel; solve_disjoint_union.
+  subst.
+  do 2 eexists; intuition eauto.
 Qed.
 
 Ltac act_norm :=
@@ -935,7 +988,7 @@ Proof.
        useless since it would assume a contradiction, and this would be hard to
        figure out. *)
     destruct_lift H; subst.
-    repeat apply stable_and_empty.
+    repeat apply stable_and_empty_discard.
     edestruct H1 with (m:=m). pred_apply. cancel.
     unfold stable; intros m1 m2; intros.
     match goal with
@@ -948,12 +1001,12 @@ Proof.
 
   - intros.
     destruct_lift H; subst.
-    repeat apply stable_and_empty.
+    repeat apply stable_and_empty_discard.
+    rewrite H3.
+    rewrite <- emp_star.
+    rewrite act_id_dist_star.
+    rewrite sep_star_assoc.
     unfold stable; intros.
-    apply pimpl_star_emp.
-    apply emp_star in H0.
-    (* TODO: re-use automation above to apply ?rely =a=> _ to ?rely _ _ *)
-    apply H3 in H4.
     (* this really needs a pred_apply/act_apply and combined cancel;
        we have sep logic in m1, m2 and in an action over m1 and m2,
        which together give the goal, but to preserve the [a |->?] we

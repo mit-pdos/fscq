@@ -610,6 +610,24 @@ Proof.
   split; intros; repeat deex; eauto 15.
 Qed.
 
+Instance piff_stable_impl_proper {AT AEQ V} :
+  Proper (piff ==> act_impl ==> Basics.flip Basics.impl) (@stable AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance piff_stable_iff_proper {AT AEQ V} :
+  Proper (piff ==> act_iff ==> Basics.flip Basics.impl) (@stable AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance act_impl_stable_proper {AT AEQ V p} :
+  Proper (act_impl ==> Basics.flip Basics.impl) (@stable AT AEQ V p).
+Proof.
+  firstorder.
+Qed.
+
 Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
   @stable AT AEQ V (a |-> v) [a |->?].
 Proof.
