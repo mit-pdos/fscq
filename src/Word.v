@@ -2114,6 +2114,15 @@ Proof.
   omega.
 Qed.
 
+Lemma wordToNat_natToWord_lt : forall sz n b,
+  (n < b -> wordToNat (natToWord sz n) < b)%nat.
+Proof.
+  intros.
+  eapply le_lt_trans.
+  apply wordToNat_natToWord_le.
+  auto.
+Qed.
+
 Lemma wordToNat_eq_natToWord : forall sz (w : word sz) n,
   wordToNat w = n
   -> w = natToWord sz n.

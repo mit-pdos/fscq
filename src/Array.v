@@ -110,6 +110,13 @@ Proof.
   inversion H.
 Qed.
 
+Lemma length_nil' : forall A (l : list A),
+  length l = 0 -> nil = l.
+Proof.
+  intros; apply eq_sym.
+  apply length_nil; auto.
+Qed.
+
 (** XXX use [nth] everywhere *)
 Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
 Proof.
@@ -2154,3 +2161,19 @@ Proof.
   apply ptsto_strictly_exact.
   eauto.
 Qed.
+
+Lemma list_isloate_len : forall A tl hd (x : A),
+  length (hd ++ x :: tl) = length hd + S (length tl).
+Proof.
+  induction tl; intros; simpl; autorewrite with core; simpl; auto.
+Qed.
+
+Lemma updN_0_skip_1: forall A l (a: A),
+  length l > 0 -> updN l 0 a = a :: skipn 1 l .
+Proof.
+  intros; destruct l.
+  simpl in H. omega.
+  reflexivity.
+Qed.
+
+

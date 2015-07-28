@@ -98,7 +98,7 @@ Module AsyncRecArray (RA : RASig).
   (** crush any small goals.  Do NOT use for big proofs! *)
   Ltac t' := intros; autorewrite with core; autorewrite with core in *;
              eauto; simpl in *; intuition; eauto.
-  Ltac t := repeat t'; subst; eauto.
+  Ltac t := repeat t'; subst; simpl; eauto.
 
   Theorem val2block2val_id : forall b, 
     Rec.well_formed b -> val2block (block2val b) = b.
@@ -219,51 +219,6 @@ Module AsyncRecArray (RA : RASig).
         [[ rep_common xp items vlist ]] * 
         unsync_array (RAStart xp) vlist
     end)%pred.
-
-  (** append items starting at index off, slots after items might be cleared *)
-  Definition extend_range T xp off (items: itemlist) cs rx : prog T :=
-    (* update first block *)
-    let ix0 := off / items_per_val in
-    let off0 := off mod items_per_val in
-    let len0 := items_per_val - off0 in
-    let^ (cs, v0) <- BUFCACHE.read_array (RAStart xp) ($ ix0) cs;
-    let v0' := val_upd_range v0 off0 (setlen items len0 item0) in
-    cs <- BUFCACHE.write_array (RAStart xp) ($ ix0) v0' cs;
-
-    (* update remaining blocks *)
-    let chunks := list_chunk (skipn len0 items) items_per_val item0 in
-    let^ (cs, _) <- ForEach ck rest chunks
-      Ghost [ crash ]
-      Loopvar [ cs ix ]
-      Continuation lrx
-      Invariant [[ True ]]
-      OnCrash   crash
-      Begin
-        cs <- BUFCACHE.write_array (RAStart xp) ($ ix) (block2val ck) cs;
-        lrx ^(cs, S ix)
-      Rof ^(cs, 1);
-    rx cs.
-
-
-  (** read count items starting from beginning *)
-  Definition read_all T xp count cs rx : prog T :=
-    let nr := divup count items_per_val in
-    let^ (cs, log) <- ForN i < nr
-    Ghost [ crash F items d ]
-    Loopvar [ cs pf ]
-    Continuation lrx
-    Invariant
-      BUFCACHE.rep cs d *
-      [[ (F * array_rep xp (Synced items))%pred d ]] *
-      [[ let n := Nat.min (i * items_per_val)%nat count in
-         firstn n pf = firstn n items /\ length pf = (i * items_per_val)%nat ]]
-    OnCrash   crash
-    Begin
-      let^ (cs, v) <- BUFCACHE.read_array (RAStart xp) ($ i) cs;
-      lrx ^(cs, pf ++ (val2block v))
-    Rof ^(cs, []);
-    rx ^(cs, firstn count log).
-
 
   Lemma list_chunk'_length: forall A nr l sz (def : A),
       length (list_chunk' l sz def nr) = nr.
@@ -453,8 +408,15 @@ Module AsyncRecArray (RA : RASig).
     apply roundup_ge; auto.
   Qed.
   Hint Rewrite roundup_min_r.
+  
+  Lemma goodSize_sub : forall sz n a,
+    goodSize sz n -> goodSize sz (n - a).
+  Proof.
+    intros; eapply goodSize_trans with (n2 := n); eauto; omega.
+  Qed.
 
-
+  (** prevent eauto from unifying length ?a = length ?b *)
+  Definition eqlen A B (a : list A) (b : list B) := length a = length b.
   Definition xparams_ok xp := goodSize addrlen (#(RALen xp) * items_per_val).
 
   Local Hint Unfold array_rep rep_common synced_array unsync_array sel upd item xparams_ok: hoare_unfold.
@@ -478,11 +440,14 @@ Module AsyncRecArray (RA : RASig).
     | [H : ?l = _  |- context [ ?l ] ] => rewrite H
     | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
     | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
-    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega]
+    | [ H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [ |- # ($ _) < _ ] => apply wordToNat_natToWord_lt
+    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
     end.
 
   Ltac elimwrt' :=
-    repeat (match goal with
+    repeat (repeat match goal with
+    | [ |- goodSize _ (_ - _) ] => apply goodSize_sub
     | [H: goodSize _ ?a |- goodSize _ ?b ] => ((constr_eq a b; eauto) ||
       (eapply goodSize_trans; [ | eauto] ) )
     | [H: ?a < divup ?b ?c |- context [?a] ] =>
@@ -490,6 +455,7 @@ Module AsyncRecArray (RA : RASig).
       | [H2: divup ?b ?c <= ?b |- _ ] => idtac
       | _ =>  pose proof (divup_lt_arg b c)
       end
+    | [ |- divup _ _ <= _ ] => eapply le_trans; [ apply divup_lt_arg | ]
     end; simpl; eauto; try omega).
 
   (* eliminate word round trip *)
@@ -498,8 +464,8 @@ Module AsyncRecArray (RA : RASig).
       rewrite wordToNat_natToWord_idempotent' by elimwrt'
   end.
 
-  Ltac simplen := repeat (try subst; simpl;
-    try elimwrt; simplen'; auto; autorewrite with core); simpl; auto; try omega.
+  Ltac simplen := unfold eqlen; eauto; repeat (try subst; simpl;
+    try elimwrt; simplen'; auto; autorewrite with core); simpl; eauto; try omega.
 
   Hint Rewrite selN_combine using simplen : core.
 
@@ -508,7 +474,8 @@ Module AsyncRecArray (RA : RASig).
     firstn (Nat.min (i * items_per_val) count) pre = firstn (Nat.min (i * items_per_val) count) items
     -> count <= length items
     -> length pre = i * items_per_val
-    -> firstn (Nat.min ((S i) * items_per_val) count) (pre ++ selN (list_chunk items items_per_val item0) i block0 ) =
+    -> firstn (Nat.min ((S i) * items_per_val) count)
+              (pre ++ selN (list_chunk items items_per_val item0) i block0 ) =
        firstn (Nat.min ((S i) * items_per_val) count) items.
   Proof.
     intros.
@@ -531,6 +498,27 @@ Module AsyncRecArray (RA : RASig).
     rewrite firstn_app_l; simplen.
   Qed.
 
+
+  (** read count items starting from the beginning *)
+  Definition read_all T xp count cs rx : prog T :=
+    let nr := divup count items_per_val in
+    let^ (cs, log) <- ForN i < nr
+    Ghost [ crash F items d ]
+    Loopvar [ cs pf ]
+    Continuation lrx
+    Invariant
+      BUFCACHE.rep cs d *
+      [[ (F * array_rep xp (Synced items))%pred d ]] *
+      [[ let n := Nat.min (i * items_per_val)%nat count in
+         firstn n pf = firstn n items /\ length pf = (i * items_per_val)%nat ]]
+    OnCrash   crash
+    Begin
+      let^ (cs, v) <- BUFCACHE.read_array (RAStart xp) ($ i) cs;
+      lrx ^(cs, pf ++ (val2block v))
+    Rof ^(cs, []);
+    rx ^(cs, firstn count log).
+
+
   Theorem read_all_ok : forall xp count cs,
     {< F d items,
     PRE            BUFCACHE.rep cs d *
@@ -551,6 +539,211 @@ Module AsyncRecArray (RA : RASig).
     step; simplen.
     Unshelve. exact tt.
   Qed.
+
+
+
+
+
+  Hint Rewrite list_chunk_nil app_nil_l app_nil_r firstn_length Nat.sub_diag Nat.sub_0_r: core.
+
+  Lemma S_minus_S : forall a b,
+    a > b -> S (a - S b) = a - b.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma helper_list_chunk_app_length_gt : forall A a b sz pf e (def : A),
+    list_chunk a sz def = pf ++ e :: b
+    -> divup (length a) sz > length b.
+  Proof.
+    intros.
+    erewrite <- list_chunk_length with (def := def).
+    simplen.
+  Qed.
+
+  Local Hint Resolve S_minus_S helper_list_chunk_app_length_gt.
+
+  Lemma eqlen_skipn_1: forall A (a b : list A),
+    length a = S (length b) -> eqlen (skipn 1 a) b.
+  Proof.
+    unfold eqlen; intros.
+    rewrite skipn_length; omega.
+  Qed.
+  Local Hint Resolve eqlen_skipn_1 : core.
+
+  Lemma min_sub_l : forall a b,
+    b > 0 -> Nat.min (a - b) a = a - b.
+  Proof.
+    intros; apply Nat.min_l; omega.
+  Qed.
+
+  Local Hint Resolve Nat.lt_add_pos_r Nat.lt_0_succ Nat.le_sub_l.
+  Local Hint Resolve length_nil length_nil'.
+  Hint Rewrite min_sub_l using omega.
+  Hint Rewrite combine_updN minus_diag app_length : core.
+
+  Lemma upd_prepend_combine : forall a b i v,
+    length a = length b ->
+    upd_prepend (combine a b) i v = combine (upd a i v) (upd b i (sel a i $0 :: sel b i nil)).
+  Proof.
+    unfold upd_prepend, valuset_list, sel, upd; t.
+  Qed.
+
+  Lemma updN_firstn_app : forall A tl hd i (v : A),
+    i <= length hd
+    -> updN (firstn i hd ++ tl) i v = firstn i hd ++ updN tl 0 v.
+  Proof.
+    destruct tl; t.
+    rewrite updN_oob; t.
+    rewrite updN_app2; t.
+    rewrite Nat.min_l; t.
+  Qed.
+
+  Lemma updN_firstn_app_cons : forall A tl hd i (v : A),
+    length tl > 0 -> i <= length hd
+    -> updN (firstn i hd ++ tl) i v = firstn i hd ++ v :: skipn 1 tl.
+  Proof.
+    intros.
+    rewrite <- updN_0_skip_1 by auto.
+    apply updN_firstn_app; auto.
+  Qed.
+
+  Lemma list_updN_isolate : forall A hd tl i l (x v : A),
+    l = hd ++ x :: tl
+    -> i = length l - S (length tl)
+    -> updN l i v = hd ++ v :: tl.
+  Proof.
+    induction hd; t; t.
+    replace (length hd + S (length tl) - length tl) with (S (length hd)) by omega.
+    erewrite IHhd; eauto.
+    rewrite list_isloate_len; omega.
+  Qed.
+
+  Lemma firstn_app_elem_eq' : forall A hd x tl (a : A) l,
+      hd ++ x :: tl = a :: l
+   -> firstn (length hd) (a :: l) ++ [x] = a :: firstn (length hd) l.
+  Proof.
+    induction hd; t; inversion H; auto.
+    case_eq (hd ++ x :: tl); intros.
+    apply eq_sym in H0; contradict H0.
+    apply app_cons_not_nil.
+    erewrite IHhd; eauto.
+  Qed.
+
+  Lemma firstn_app_elem_eq : forall A l i tl hd (x : A),
+    l = hd ++ x :: tl
+    -> i = length l - S (length tl)
+    -> firstn i l ++ [x] = firstn (S i) l.
+  Proof.
+    t; t.
+    replace (length hd + S (length tl) - S (length tl)) with (length hd) by omega.
+    case_eq (hd ++ x :: tl); intros.
+    apply eq_sym in H; contradict H.
+    apply app_cons_not_nil.
+    eapply firstn_app_elem_eq'; eauto.
+  Qed.
+
+
+  Lemma helper_list_chunk_isolate_len : forall prefix lst' new elem,
+    prefix ++ elem :: lst' = list_chunk new items_per_val item0
+    -> divup (length new) items_per_val > length lst'.
+  Proof.
+    intros.
+    erewrite <- list_chunk_length.
+    rewrite <- H.
+    rewrite list_isloate_len.
+    omega.
+  Qed.
+  Local Hint Resolve helper_list_chunk_isolate_len.
+
+  Lemma write_all_progress_length : forall A (a b c: list A) n,
+    length a = n
+    -> length a > length b
+    -> length c = S (length b)
+    -> n - S (length b) + S (length b) = length (firstn (S (n - S (length b))) a) + length (skipn 1 c).
+  Proof.
+    intros.
+    rewrite firstn_length.
+    rewrite Nat.min_l by omega.
+    rewrite skipn_length; omega.
+  Qed.
+
+  Lemma array_unify : forall A (a b : list A) s k,
+    a = b -> array s a k =p=> array s b k.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Lemma write_all_progress : forall ix xp chunks tail prefix new lst' vs blocks elem,
+   length new ≤ # (RALen xp) * items_per_val
+   -> goodSize addrlen (# (RALen xp) * items_per_val)
+   -> length tail = S (length lst')
+   -> length vs = length (firstn ix chunks ++ tail)
+   -> chunks = list_chunk new items_per_val item0
+   -> prefix ++ elem :: lst' = chunks
+   -> ix = divup (length new) items_per_val - S (length lst')
+   -> blocks = (map block2val (firstn ix chunks ++ tail))
+   -> upd_prepend (combine blocks vs) $ (ix) (block2val elem)
+       = combine (map block2val ((firstn (S ix) chunks) ++ (skipn 1 tail)))
+                 (upd vs ($ ix) ((sel blocks ($ ix) $0) :: (sel vs ($ ix) nil))).
+  Proof.
+    intros.
+    rewrite upd_prepend_combine by simplen.
+    f_equal; eauto.
+    unfold upd, sel; simplen.
+    rewrite <- map_updN.
+    f_equal.
+    rewrite updN_firstn_app_cons by simplen.
+    rewrite <- cons_nil_app.
+    f_equal.
+    erewrite firstn_app_elem_eq; simplen.
+  Qed.
+  
+  
+  (** write items from the beginning, 
+      slots following the items will be cleared *)
+  Definition write_all T xp (items: itemlist) cs rx : prog T :=
+    let chunks := list_chunk items items_per_val item0 in
+    let^ (cs, _) <- ForEach ck rest chunks
+      Ghost [ crash F ]
+      Loopvar [ cs ix ]
+      Continuation lrx
+      Invariant
+        exists d' tail, BUFCACHE.rep cs d' *
+        [[ ix = length chunks - length rest /\ eqlen tail rest  ]] *
+        [[ (F * unsync_array (RAStart xp) 
+                (map block2val ((firstn ix chunks) ++ tail)))%pred d' ]]
+      OnCrash crash
+      Begin
+        cs <- BUFCACHE.write_array (RAStart xp) ($ ix) (block2val ck) cs;
+        lrx ^(cs, S ix)
+      Rof ^(cs, 0);
+    rx cs.
+
+
+  Theorem write_all_ok : forall xp new cs,
+    {< F d,
+    PRE            exists old, BUFCACHE.rep cs d *
+                   [[ length old = length new /\ xparams_ok xp ]] *
+                   [[ length new <= # (RALen xp) * items_per_val ]] *
+                   [[ Forall Rec.well_formed new ]] *
+                   [[ (F * array_rep xp (Synced old))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * array_rep xp (Unsync new))%pred d' ]]
+    CRASH  exists cs d, BUFCACHE.rep cs d
+    >} write_all xp new cs.
+  Proof.
+    unfold write_all.
+    step; simplen.
+    step; simplen.
+    step; simplen.
+    apply array_unify; eapply write_all_progress; eauto.
+    simplen; apply write_all_progress_length; simplen.
+    step; rewrite firstn_oob; simplen.
+    Unshelve. exact tt.
+  Qed.
+
 
 End AsyncRecArray.
 
@@ -908,13 +1101,7 @@ Module DISKLOG.
     apply combine_updN.
   Qed.
 
-  Lemma updN_0_skip_1: forall A l (a: A),
-    length l > 0 -> updN l 0 a = a :: skipn 1 l .
-  Proof.
-    intros; destruct l.
-    simpl in H. omega.
-    reflexivity.
-  Qed.
+
 
   Lemma cons_app: forall A l (a: A),
     a :: l = [a] ++ l.
