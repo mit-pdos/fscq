@@ -238,6 +238,24 @@ Section RGThm.
     intuition eauto.
   Qed.
 
+  Theorem act_frame_star : forall (F a a' : @action AT AEQ V),
+    a =a=> a' ->
+    F * a =a=> F * a'.
+  Proof.
+    intros.
+    apply act_impl_star; auto.
+    apply act_impl_refl.
+  Qed.
+
+  Theorem act_frame_star_iff : forall (F a a' : @action AT AEQ V),
+    a <=a=> a' ->
+    F * a <=a=> F * a'.
+  Proof.
+    unfold act_iff.
+    intros.
+    intuition; apply act_frame_star; auto.
+  Qed.
+
   Theorem act_impl_bow : forall (p p' q q' : @pred AT AEQ V),
     p =p=> p' ->
     q =p=> q' ->
@@ -575,6 +593,14 @@ Proof.
   repeat eexists; eauto.
 Qed.
 
+Instance act_star_iff_proper {AT AEQ V} :
+  Proper (act_iff ==> act_iff ==> act_iff) (@act_star AT AEQ V).
+Proof.
+  unfold Proper, respectful, act_iff, act_impl, act_star.
+  intros.
+  split; intros; repeat deex; eauto 15.
+Qed.
+
 Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
   @stable AT AEQ V (a |-> v) [a |->?].
 Proof.
@@ -716,11 +742,11 @@ Proof.
 Qed.
 
 Lemma act_id_dist_star_frame : forall AT AEQ V F (p q: @pred AT AEQ V),
-  F * [p * q] =a=> F * [p] * [q].
+  F * [p * q] <=a=> F * [p] * [q].
 Proof.
   intros.
   rewrite act_star_assoc.
-  apply act_impl_star; auto.
+  apply act_frame_star_iff.
   apply act_id_dist_star.
 Qed.
 

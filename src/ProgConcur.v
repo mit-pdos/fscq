@@ -712,9 +712,91 @@ Proof.
   congruence.
 Qed.
 
+Lemma act_id_weaken'''' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
+  p' =p=> p ->
+  precise p ->
+  (i * p')%pred m ->
+  ((i ~> i) * [p])%act m m' ->
+  (i * p')%pred m'.
+Proof.
+  unfold_sep_star.
+  unfold act_star, act_bow, act_id_pred, precise.
+  intros.
+  repeat deex.
+  repeat eexists; eauto.
+  assert (H10' := H10).
+  apply H in H10.
+  assert (m2 = m2b).
+  eapply H0; eauto.
+  instantiate (m1' := m1).
+  instantiate (m2' := m1a).
+  rewrite mem_union_comm.
+  rewrite mem_union_comm with (m1 := m2b).
+  auto.
+  all: try (apply mem_disjoint_comm; auto).
+  congruence.
+Qed.
+
+Require Import FunctionalExtensionality.
+
+Lemma ptsto_disjoint_hole : forall AT AEQ V a v (m1 m2: @mem AT AEQ V),
+  mem_disjoint m1 m2 ->
+  (a |-> v)%pred m2 ->
+  m1 a = None.
+Proof.
+  unfold mem_disjoint.
+  intros.
+  case_eq (m1 a); intros.
+  apply emp_star in H0.
+  apply sep_star_comm in H0.
+  apply ptsto_valid in H0.
+  contradiction H.
+  eexists; eauto.
+  auto.
+Qed.
+
+Lemma ptsto_valid_neq : forall AT AEQ V a a' v (m: @mem AT AEQ V),
+  a' <> a ->
+  (a |-> v)%pred m ->
+  m a' = None.
+Proof.
+  intros.
+  apply H0; auto.
+Qed.
+
+Lemma act_ptsto_narrow : forall AT AEQ V (Fa:@action AT AEQ V) F a v m m',
+  (Fa * [a |->?])%act m m' ->
+  (F * a |-> v)%pred m ->
+  (Fa * [a |-> v])%act m m'.
+Proof.
+  unfold act_star, act_id_pred.
+  unfold_sep_star.
+  intros.
+  repeat deex.
+  assert (m2 = m2b).
+  unfold exis in H3.
+  deex.
+  apply functional_extensionality; intros.
+  apply equal_f with x0 in H5.
+  case_eq (AEQ x0 a); intros; subst.
+  unfold mem_union in H5.
+  assert (m1 a = None) by (eapply ptsto_disjoint_hole; eauto).
+  assert (m1a a = None) by (eapply ptsto_disjoint_hole; eauto).
+  rewrite H8 in *.
+  rewrite H9 in *.
+  auto.
+  assert (m2 x0 = None) by (eapply ptsto_valid_neq; eauto).
+  assert (m2b x0 = None) by (eapply ptsto_valid_neq; eauto).
+  congruence.
+
+  subst.
+  do 4 eexists.
+  intuition eauto.
+Qed.
+
 Theorem write_cok : forall a vnew,
   {!C< Finv Fid Fid' v0 vrest,
-  PRE Finv * Fid' * a |-> (v0, vrest) * [[ Fid' =p=> Fid ]]
+  PRE Finv * Fid' * a |-> (v0, vrest) * [[ Fid' =p=> Fid ]] * [[ precise Finv ]]
   RELY (Finv ~> Finv) * [Fid] * [a |->?]
   GUAR [Finv * Fid'] * (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
   POST RET:r Finv * Fid' * a |-> (vnew, [v0] ++ vrest)
@@ -727,16 +809,17 @@ Proof.
   - unfold stable; intros;
     destruct_lift H0.
     repeat apply sep_star_lift_apply'; eauto.
+    match goal with
+    | [ H: ?rely =a=> _, H': ?rely _ _ |- _ ] =>
+      apply H in H'
+    end.
     apply sep_star_assoc.
-    eapply act_id_weaken'''.
+    eapply act_id_weaken'''; auto.
     instantiate (p := (Fid * a |-> (v0, vrest))%pred).
-    cancel.
-    auto.
-    admit.
+    cancel; auto.
     instantiate (m := m1). pred_apply; cancel.
-    apply H10 in H1.
-    rewrite H11 in H0.
-    admit.
+    apply act_id_dist_star_frame.
+    eapply act_ptsto_narrow; eauto.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -764,14 +847,12 @@ Proof.
       intuition (try congruence; eauto).
       eapply IHenv_exec; eauto 10.
       assert (rely m m') by eauto.
-      apply H4 in H6.
       apply sep_star_assoc.
-      eapply act_id_weaken'''.
-      instantiate (p := (Fid * a |-> (v0, vrest))%pred).
-      cancel.
-      auto.
-      admit.
-      instantiate (m := m1). pred_apply; cancel.
+      eapply act_id_weaken'''; auto.
+      instantiate (p := (Fid * a |->?)%pred).
+      cancel; auto.
+      instantiate (m := m). pred_apply; cancel.
+      apply act_id_dist_star_frame; auto.
     * destruct n; contradiction.
  (* done condition *)
  - remember (Write a vnew rx) as p.
@@ -790,6 +871,13 @@ Proof.
      eapply ptsto_valid.
      pred_apply; cancel.
    * eapply IHenv_exec; eauto 10.
+     assert (rely m m') by eauto.
+     apply sep_star_assoc.
+     eapply act_id_weaken'''; auto.
+     instantiate (p := (Fid * a |->?)%pred).
+     cancel; auto.
+     instantiate (m := m). pred_apply; cancel.
+     apply act_id_dist_star_frame; auto.
    * congruence.
 Qed.
 
