@@ -678,6 +678,9 @@ Lemma act_ptsto_narrow : forall AT AEQ V (Fa:@action AT AEQ V) F a v m m',
   (F * a |-> v)%pred m ->
   (Fa * [a |-> v])%act m m'.
 Proof.
+  Local Hint Resolve ptsto_disjoint_hole.
+  Local Hint Resolve ptsto_valid_neq.
+
   unfold act_star, act_id_pred.
   unfold_sep_star.
   intros.
@@ -689,13 +692,13 @@ Proof.
   apply equal_f with x0 in H5.
   case_eq (AEQ x0 a); intros; subst.
   unfold mem_union in H5.
-  assert (m1 a = None) by (eapply ptsto_disjoint_hole; eauto).
-  assert (m1a a = None) by (eapply ptsto_disjoint_hole; eauto).
-  rewrite H8 in *.
-  rewrite H9 in *.
+  assert (m1 a = None) as Hm1 by eauto.
+  assert (m1a a = None) as Hm1a by eauto.
+  rewrite Hm1 in *;
+  rewrite Hm1a in *.
   auto.
-  assert (m2 x0 = None) by (eapply ptsto_valid_neq; eauto).
-  assert (m2b x0 = None) by (eapply ptsto_valid_neq; eauto).
+  assert (m2 x0 = None) by eauto.
+  assert (m2b x0 = None) by eauto.
   congruence.
 
   subst.
