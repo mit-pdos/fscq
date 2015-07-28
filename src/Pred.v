@@ -744,6 +744,33 @@ Proof.
   rewrite mem_disjoint_comm; eauto.
 Qed.
 
+Lemma ptsto_disjoint_hole:
+  forall a v (m1 m2: @mem AT AEQ V),
+  mem_disjoint m1 m2 ->
+  (a |-> v)%pred m2 ->
+  m1 a = None.
+Proof.
+  unfold mem_disjoint.
+  intros.
+  case_eq (m1 a); intros.
+  apply emp_star in H0.
+  apply sep_star_comm in H0.
+  apply ptsto_valid in H0.
+  contradiction H.
+  eexists; eauto.
+  auto.
+Qed.
+
+Lemma ptsto_valid_neq:
+  forall a a' v (m: @mem AT AEQ V),
+  a' <> a ->
+  (a |-> v)%pred m ->
+  m a' = None.
+Proof.
+  intros.
+  apply H0; auto.
+Qed.
+
 
 Lemma ptsto_upd_disjoint: forall V (F : @pred AT AEQ V) a v m,
   F m -> m a = None

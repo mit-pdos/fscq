@@ -7,6 +7,7 @@ Require Import RG.
 Require Import Arith.
 Require Import SepAuto.
 Require Import List.
+Require Import FunctionalExtensionality.
 
 (* importing the [ x ; .. ; y ] notation from ListNotations breaks our RG
    act_id_pred notation, so we re-define only the list notation we actually
@@ -735,33 +736,6 @@ Proof.
   auto.
   all: try (apply mem_disjoint_comm; auto).
   congruence.
-Qed.
-
-Require Import FunctionalExtensionality.
-
-Lemma ptsto_disjoint_hole : forall AT AEQ V a v (m1 m2: @mem AT AEQ V),
-  mem_disjoint m1 m2 ->
-  (a |-> v)%pred m2 ->
-  m1 a = None.
-Proof.
-  unfold mem_disjoint.
-  intros.
-  case_eq (m1 a); intros.
-  apply emp_star in H0.
-  apply sep_star_comm in H0.
-  apply ptsto_valid in H0.
-  contradiction H.
-  eexists; eauto.
-  auto.
-Qed.
-
-Lemma ptsto_valid_neq : forall AT AEQ V a a' v (m: @mem AT AEQ V),
-  a' <> a ->
-  (a |-> v)%pred m ->
-  m a' = None.
-Proof.
-  intros.
-  apply H0; auto.
 Qed.
 
 Lemma act_ptsto_narrow : forall AT AEQ V (Fa:@action AT AEQ V) F a v m m',
