@@ -115,6 +115,15 @@ Section RGThm.
     act_unfold; intuition congruence.
   Qed.
 
+  Theorem act_impl_id_bow_impl : forall (p q : @pred AT AEQ V),
+    p =p=> q ->
+    [p] =a=> q ~> q.
+  Proof.
+    act_unfold; intuition.
+    subst.
+    eauto.
+  Qed.
+
   Theorem act_impl_id_pred_id_any : forall (p : @pred AT AEQ V),
     [p] =a=> act_id_any.
   Proof.
@@ -601,11 +610,35 @@ Proof.
   split; intros; repeat deex; eauto 15.
 Qed.
 
+Instance piff_stable_impl_proper {AT AEQ V} :
+  Proper (piff ==> act_impl ==> Basics.flip Basics.impl) (@stable AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance piff_stable_iff_proper {AT AEQ V} :
+  Proper (piff ==> act_iff ==> Basics.flip Basics.impl) (@stable AT AEQ V).
+Proof.
+  firstorder.
+Qed.
+
+Instance act_impl_stable_proper {AT AEQ V p} :
+  Proper (act_impl ==> Basics.flip Basics.impl) (@stable AT AEQ V p).
+Proof.
+  firstorder.
+Qed.
+
 Lemma act_ptsto_stable_under_id : forall AT AEQ V a v,
   @stable AT AEQ V (a |-> v) [a |->?].
 Proof.
   unfold act_id_pred, stable.
   intuition congruence.
+Qed.
+
+Lemma act_inv_stable : forall AT AEQ V (i:@pred AT AEQ V),
+  stable i (i~>i).
+Proof.
+  firstorder.
 Qed.
 
 Lemma act_star_stable_invariants : forall AT AEQ V F1 F2 p q,
@@ -624,6 +657,34 @@ Proof.
   unfold act_bow in *.
   do 2 eexists; intuition eauto.
 Qed.
+
+Lemma disjoint_union_comm_eq : forall AT AEQ V
+  (m1a m1b m2a m2b : @mem AT AEQ V),
+  mem_union m1a m1b = mem_union m2a m2b ->
+  mem_disjoint m1a m1b ->
+  mem_disjoint m2a m2b ->
+  mem_union m1b m1a = mem_union m2b m2a.
+Proof.
+  intros.
+  rewrite mem_union_comm with (m1 := m1b).
+  rewrite mem_union_comm with (m1 := m2b).
+  auto.
+  rewrite mem_disjoint_comm; auto.
+  rewrite mem_disjoint_comm; auto.
+Qed.
+
+(* TODO: make this more general and use it in Pred.v *)
+Ltac solve_disjoint_union :=
+  match goal with
+  | [ |- mem_disjoint _ _ ] =>
+     now ( eauto ||rewrite mem_disjoint_comm; eauto)
+  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
+        mem_union ?m1b ?m1a = mem_union ?m2b ?m2a ] =>
+    now (apply disjoint_union_comm_eq; eauto)
+  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
+        mem_union ?m2b ?m2a = mem_union ?m1b ?m1a ] =>
+    now (apply disjoint_union_comm_eq; eauto)
+  end.
 
 Section Coprecise.
 
@@ -677,31 +738,6 @@ Proof.
   (* coprecise_l *)
   eapply H0; eauto.
 Qed.
-
-Lemma disjoint_union_comm_eq : forall AT AEQ V
-  (m1a m1b m2a m2b : @mem AT AEQ V),
-  mem_union m1a m1b = mem_union m2a m2b ->
-  mem_disjoint m1a m1b ->
-  mem_disjoint m2a m2b ->
-  mem_union m1b m1a = mem_union m2b m2a.
-Proof.
-  intros.
-  rewrite mem_union_comm with (m1 := m1b).
-  rewrite mem_union_comm with (m1 := m2b).
-  auto.
-  rewrite mem_disjoint_comm; auto.
-  rewrite mem_disjoint_comm; auto.
-Qed.
-
-(* TODO: make this more general and use it in Pred.v *)
-Ltac solve_disjoint_union :=
-  match goal with
-  | [ |- mem_disjoint _ _ ] =>
-     now ( eauto ||rewrite mem_disjoint_comm; eauto)
-  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
-        mem_union ?m1b ?m1a = mem_union ?m2b ?m2a ] =>
-    now (apply disjoint_union_comm_eq; eauto)
-  end.
 
 Lemma act_star_stable_invariant_preserves : forall AT AEQ V
   F1 F2 p q (m1 m2: @mem AT AEQ V),
@@ -789,3 +825,5 @@ Hint Resolve act_and_both.
 Hint Resolve act_bow_any.
 Hint Resolve act_id_any_refl.
 Hint Resolve act_id_pred_refl.
+
+Hint Resolve act_inv_stable.

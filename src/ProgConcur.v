@@ -656,65 +656,6 @@ Ltac subst_ptsto_same :=
 
 Lemma act_id_weaken : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
   p' =p=> p ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p])%act m m' ->
-  (i * p)%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-Qed.
-
-Lemma act_id_weaken' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p'])%act m m' ->
-  (i * p)%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-Qed.
-
-Lemma act_id_weaken'' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p'])%act m m' ->
-  (i * p')%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-Qed.
-
-Lemma act_id_weaken''' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
-  precise i ->
-  (i * p')%pred m ->
-  ((i ~> i) * [p])%act m m' ->
-  (i * p')%pred m'.
-Proof.
-  unfold_sep_star.
-  unfold act_star, act_bow, act_id_pred, precise.
-  intros.
-  repeat deex.
-  repeat eexists; eauto.
-  assert (m1a = m1).
-  eapply H0; eauto.
-  subst.
-  assert (m2 = m2b).
-  eapply mem_disjoint_union_cancel; eauto.
-  congruence.
-Qed.
-
-Lemma act_id_weaken'''' : forall AT AEQ V i (p' p:@pred AT AEQ V) m m',
-  p' =p=> p ->
   precise p ->
   (i * p')%pred m ->
   ((i ~> i) * [p])%act m m' ->
@@ -725,47 +666,65 @@ Proof.
   intros.
   repeat deex.
   repeat eexists; eauto.
-  assert (H10' := H10).
-  apply H in H10.
   assert (m2 = m2b).
   eapply H0; eauto.
-  instantiate (m1' := m1).
-  instantiate (m2' := m1a).
-  rewrite mem_union_comm.
-  rewrite mem_union_comm with (m1 := m2b).
-  auto.
-  all: try (apply mem_disjoint_comm; auto).
+  all: try solve_disjoint_union.
+  solve_disjoint_union.
   congruence.
 Qed.
 
-Lemma act_ptsto_narrow : forall AT AEQ V (Fa:@action AT AEQ V) F a v m m',
-  (Fa * [a |->?])%act m m' ->
-  (F * a |-> v)%pred m ->
-  (Fa * [a |-> v])%act m m'.
+Lemma stable_and_empty : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
+  (P -> stable p a) ->
+  stable (p * [[P]]) a.
 Proof.
-  unfold act_star, act_id_pred.
+  unfold stable.
+  intros.
+  destruct_lift H0.
+  eapply H in H0; eauto.
+  pred_apply; cancel.
+Qed.
+
+(* weaken stable_and_empty when the empty proposition is unneeded *)
+Corollary stable_and_empty_discard : forall AT AEQ V P (p: @pred AT AEQ V) a,
+  stable p a ->
+  stable (p * [[P]]) a.
+Proof.
+  intros.
+  apply stable_and_empty; auto.
+Qed.
+
+Lemma stable_and_empty_rev : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
+  P ->
+  stable (p * [[P]]) a ->
+  stable p a.
+Proof.
+  unfold stable.
+  intros.
+  assert ((p * [[P]])%pred m2).
+  eapply H0; eauto.
+  pred_apply; cancel.
+  pred_apply; cancel.
+Qed.
+
+Lemma stable_cancel_id : forall AT AEQ V (F p p':@pred AT AEQ V) a,
+  stable F a ->
+  precise p' ->
+  p =p=> p' ->
+  stable (F*p) (a * [p'])%act.
+Proof.
+  unfold stable, act_star, act_bow, precise, act_id_pred.
   unfold_sep_star.
   intros.
   repeat deex.
   assert (m2 = m2b).
-  unfold exis in H3.
-  deex.
-  apply functional_extensionality; intros.
-  apply equal_f with x0 in H5.
-  case_eq (AEQ x0 a); intros; subst.
-  unfold mem_union in H5.
-  assert (m1 a = None) by (eapply ptsto_disjoint_hole; eauto).
-  assert (m1a a = None) by (eapply ptsto_disjoint_hole; eauto).
-  rewrite H8 in *.
-  rewrite H9 in *.
-  auto.
-  assert (m2 x0 = None) by (eapply ptsto_valid_neq; eauto).
-  assert (m2b x0 = None) by (eapply ptsto_valid_neq; eauto).
-  congruence.
-
+  eapply H0; eauto.
+  all: try solve_disjoint_union.
+  solve_disjoint_union.
   subst.
-  do 4 eexists.
-  intuition eauto.
+  assert (m1 = m1a).
+  eapply mem_disjoint_union_cancel; solve_disjoint_union.
+  subst.
+  do 2 eexists; intuition eauto.
 Qed.
 
 Theorem write_cok : forall a vnew,
@@ -780,24 +739,11 @@ Proof.
   destruct_lift H.
   intuition.
   (* stability *)
-  - unfold stable; intros;
-    destruct_lift H0.
-    repeat apply sep_star_lift_apply'; eauto.
-    match goal with
-    | [ H: ?rely =a=> _, H': ?rely _ _ |- _ ] =>
-      apply H in H'
-    end.
-    apply sep_star_assoc.
-    eapply act_id_weaken''''.
-    instantiate (p := (Fid * a |-> (v0, vrest))%pred).
-    cancel; auto.
-    (* these should just be in hint dbs *)
-    apply sep_star_precise; auto.
-    apply strictly_exact_to_precise.
-    apply ptsto_strictly_exact.
-    instantiate (m := m1). pred_apply; cancel.
-    apply act_id_dist_star_frame.
-    eapply act_ptsto_narrow; eauto.
+  - repeat (apply stable_and_empty; intro).
+    rewrite H7.
+    apply stable_cancel_id; auto with precision.
+    apply stable_cancel_id; auto.
+    cancel.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -826,11 +772,10 @@ Proof.
       eapply IHenv_exec; eauto 10.
       assert (rely m m') by eauto.
       apply sep_star_assoc.
-      eapply act_id_weaken''''.
+      eapply act_id_weaken.
       instantiate (p := (Fid * a |->?)%pred).
       cancel; auto.
-      apply sep_star_precise; auto.
-      apply ptsto_any_precise.
+      auto with precision.
       instantiate (m := m). pred_apply; cancel.
       apply act_id_dist_star_frame; auto.
     * destruct n; contradiction.
@@ -853,11 +798,10 @@ Proof.
    * eapply IHenv_exec; eauto 10.
      assert (rely m m') by eauto.
      apply sep_star_assoc.
-     eapply act_id_weaken''''.
+     eapply act_id_weaken.
      instantiate (p := (Fid * a |->?)%pred).
      cancel; auto.
-     apply sep_star_precise; auto.
-     apply ptsto_any_precise.
+     auto with precision.
      instantiate (m := m). pred_apply; cancel.
      apply act_id_dist_star_frame; auto.
    * congruence.
@@ -900,29 +844,36 @@ Proof.
   firstorder.
 Qed.
 
-Lemma stable_and_empty : forall AT AEQ V P (p: @pred AT AEQ V) a,
+
+
+Lemma stable_cancel_precise_inv : forall AT AEQ V i (p:@pred AT AEQ V) a,
   stable p a ->
-  stable (p * [[P]]) a.
+  precise i ->
+  stable (i*p) ((i ~> i) * a)%act.
 Proof.
-  unfold stable.
+  unfold stable, act_star, act_bow, precise.
+  unfold_sep_star.
   intros.
-  destruct_lift H0.
-  eapply H in H0; eauto.
-  pred_apply; cancel.
+  repeat deex.
+  do 2 eexists.
+  intuition.
+  assert (m1 = m1a).
+  eapply H0; eauto.
+  subst.
+  assert (m2 = m1b).
+  eapply mem_disjoint_union_cancel; eauto.
+  subst.
+  eauto.
 Qed.
 
-Lemma stable_and_empty_rev : forall AT AEQ V (P:Prop) (p: @pred AT AEQ V) a,
-  P ->
-  stable (p * [[P]]) a ->
-  stable p a.
-Proof.
-  unfold stable.
-  intros.
-  assert ((p * [[P]])%pred m2).
-  eapply H0; eauto.
-  pred_apply; cancel.
-  pred_apply; cancel.
-Qed.
+Ltac act_norm :=
+  repeat rewrite act_id_dist_star;
+  repeat rewrite act_star_bow;
+  repeat rewrite act_star_assoc.
+
+Ltac act_cancel_left :=
+  act_norm;
+  apply act_impl_star; [now auto | ].
 
 Theorem write2_cok : forall a b vanew vbnew,
   {!C< F va0 varest vb0 vbrest,
@@ -942,24 +893,18 @@ Proof.
   instantiate (v3 := (b |->?)%pred).
   cancel.
   cancel.
-  apply ptsto_any_precise.
   rewrite H3.
-  rewrite act_star_assoc.
-  apply act_impl_star; auto.
+  act_cancel_left.
   rewrite act_star_comm.
-  apply act_id_dist_star.
+  auto.
 
   rewrite <- H2.
   (* this is a manual version of what act_cancel should be able to do *)
-  rewrite act_id_dist_star.
-  rewrite act_star_assoc.
-  apply act_impl_star; auto.
+  act_cancel_left.
   rewrite act_star_comm.
-  rewrite act_star_bow.
   apply act_impl_star.
   apply act_impl_bow; cancel.
-  rewrite act_impl_id_bow.
-  apply act_impl_bow; cancel.
+  apply act_impl_id_bow_impl; cancel.
 
   eapply pimpl_cok. apply write_cok.
   intros; simpl.
@@ -968,17 +913,23 @@ Proof.
   instantiate (v3 := (a |->?)%pred).
   cancel.
   cancel.
-  apply ptsto_any_precise.
 
   subst.
   rewrite H3.
-  (* act_cancel *)
-  admit.
+  rewrite act_star_assoc.
+  apply act_impl_star; auto.
+  apply act_id_dist_star.
 
   subst.
   rewrite <- H2.
+  rewrite act_id_dist_star.
+  rewrite act_star_assoc.
+  apply act_impl_star; auto.
   (* act_cancel *)
-  admit.
+  act_norm.
+  apply act_impl_star.
+  apply act_impl_id_bow_impl; cancel.
+  apply act_impl_bow; cancel.
 
   eapply pimpl_cok; eauto.
 
@@ -993,7 +944,7 @@ Proof.
        useless since it would assume a contradiction, and this would be hard to
        figure out. *)
     destruct_lift H; subst.
-    repeat apply stable_and_empty.
+    repeat apply stable_and_empty_discard.
     edestruct H1 with (m:=m). pred_apply. cancel.
     unfold stable; intros m1 m2; intros.
     match goal with
@@ -1006,31 +957,30 @@ Proof.
 
   - intros.
     destruct_lift H; subst.
-    repeat apply stable_and_empty.
-    unfold stable; intros.
-    apply pimpl_star_emp.
-    apply emp_star in H0.
-    (* TODO: re-use automation above to apply ?rely =a=> _ to ?rely _ _ *)
-    apply H3 in H4.
-    (* this really needs a pred_apply/act_apply and combined cancel;
-       we have sep logic in m1, m2 and in an action over m1 and m2,
-       which together give the goal, but to preserve the [a |->?] we
-       need to combine it with a |-> v0 from the p m1 *)
-    admit.
+    repeat apply stable_and_empty_discard.
+    rewrite H3.
+    rewrite <- emp_star.
+    rewrite act_id_dist_star.
+    match goal with
+    | [ |- stable _ (_ * (?b * ?c))%act ] =>
+      rewrite act_star_comm with (a := b)
+    end.
+    rewrite <- act_star_assoc.
+    apply stable_cancel_id; auto with precision.
+    apply stable_cancel_id; auto with precision.
+    cancel.
+    cancel.
 
   - intros.
     destruct_lift H; subst.
-    repeat apply stable_and_empty.
-    unfold stable; intros.
-    match goal with
-    | [ |- ?p m2 ] =>
-      assert ((p ~> any /\ rely)%act m1 m2) by auto
-    end.
-    rewrite act_id_dist_star in H4.
-    apply H4 in H1.
-    (* more act_apply; act_cancel *)
-    admit.
+    repeat (apply stable_and_empty; intro).
+    rewrite H5.
+    rewrite act_id_dist_star_frame.
+    apply stable_cancel_id; auto with precision.
+    apply stable_cancel_id; auto with precision.
+    cancel.
+    cancel.
 
   Grab Existential Variables.
   all: auto.
-Admitted.
+Qed.

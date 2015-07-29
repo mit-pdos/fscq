@@ -1515,6 +1515,11 @@ Qed.
 
 End GenPredThm.
 
+Hint Resolve sep_star_precise : precision.
+Hint Resolve strictly_exact_to_precise : precision.
+Hint Resolve ptsto_any_precise : precision.
+Hint Resolve emp_strictly_exact : precision.
+Hint Resolve ptsto_strictly_exact : precision.
 
 Instance piff_equiv {AT AEQ V} :
   Equivalence (@piff AT AEQ V).
