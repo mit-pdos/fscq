@@ -599,14 +599,12 @@ Definition forall_helper T (p : T -> Prop) :=
     Analogous to the Hoare notation {!< ... >!}, similarly lacking a frame
     predicate. We do this here because we don't yet know how the frame
     should be incorporated into the rely condition, having seen few examples.
-    Note however that the binders at the top of the notation are universally
-    quantified, as in {<<< ... >>>}.
 *)
 Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1" :=
   (forall (rx: _ -> prog nat),
-    forall_helper (fun e1 => .. (forall_helper (fun e2 =>
     {C
       fun done rely_ guar_ =>
+      (exis (fun e1 => .. (exis (fun e2 =>
         (* the %pred%act causes both pre occurrences to use the same
            scope stack *)
          pre%pred%act *
@@ -618,9 +616,9 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
               post emp ret_ *
               [[ done_rx = done ]] *
               [[ rely_rx = rely_ ]] *
-              [[ guar_ = guar_rx ]]
-            C} rx ret_ ]]
-     C} p1 rx)) ..))
+              [[ guar_rx = guar_ ]]
+            C} rx ret_ ]] )) .. ))
+     C} p1 rx)
    (at level 0, p1 at level 60,
     e1 binder, e2 binder,
     only parsing).
@@ -727,6 +725,40 @@ Proof.
   do 2 eexists; intuition eauto.
 Qed.
 
+Lemma stable_exists : forall AT AEQ V A (p:A -> @pred AT AEQ V) a,
+  (forall x, (stable (p x) a)) ->
+  stable (exists x, p x) a.
+Proof.
+  intros.
+  unfold stable; intros.
+  unfold exis in H0.
+  deex.
+  eexists.
+  eapply H; eauto.
+Qed.
+
+(** Apply stable_exists, preserving the variable name. *)
+Ltac intro_stable_exists :=
+  match goal with
+  | [ |- stable (exists (varname:_), _) _ ] =>
+    apply stable_exists;
+    let x := fresh varname "'" in
+    intro x
+  end.
+
+(** like "replace a", but uses action implications and setoid rewriting *)
+Ltac act_replace a :=
+  match goal with
+  | [ H: a =a=> _ |- _] =>
+    rewrite H
+  | [ H: _ =a=> a |- _ ] =>
+    rewrite <- H
+  | [ H: a <=a=> _ |- _ ] =>
+    rewrite H
+  | [ H: _ <=a=> a |- _ ] =>
+    rewrite <- H
+  end.
+
 Theorem write_cok : forall a vnew,
   {!C< Finv Fid Fid' v0 vrest,
   PRE Finv * Fid' * a |-> (v0, vrest) * [[ Fid' =p=> Fid ]] * [[ precise Fid ]]
@@ -739,8 +771,9 @@ Proof.
   destruct_lift H.
   intuition.
   (* stability *)
-  - repeat (apply stable_and_empty; intro).
-    rewrite H7.
+  - repeat intro_stable_exists.
+    repeat (apply stable_and_empty; intro).
+    act_replace rely.
     apply stable_cancel_id; auto with precision.
     apply stable_cancel_id; auto.
     cancel.
@@ -888,17 +921,20 @@ Proof.
 
   eapply pimpl_cok. apply write_cok.
   intros; simpl.
-  (* cancel does some unfortunate things here *)
-  instantiate (v0 := (b |-> (vb0, vbrest))%pred).
-  instantiate (v3 := (b |->?)%pred).
+  (* cancel by itself unfortunately introduces a crash_xform *)
+  norm.
   cancel.
+  (* getting the automation to instantiate Finv and Fid appropriately is
+     tricky; it has to look ahead to the rely to figure it out *)
+  instantiate (Finv := F).
   cancel.
-  rewrite H3.
+  intuition; try cancel.
+  act_replace rely.
   act_cancel_left.
   rewrite act_star_comm.
   auto.
 
-  rewrite <- H2.
+  act_replace guarantee.
   (* this is a manual version of what act_cancel should be able to do *)
   act_cancel_left.
   rewrite act_star_comm.
@@ -909,19 +945,18 @@ Proof.
   eapply pimpl_cok. apply write_cok.
   intros; simpl.
   (* cancel does the same unfortunate things here *)
-  instantiate (v0 := (a |-> (vanew, va0 :: varest))%pred).
-  instantiate (v3 := (a |->?)%pred).
+  norm.
   cancel.
+  instantiate (Finv := F).
   cancel.
+  intuition; try cancel; subst.
 
-  subst.
-  rewrite H3.
+  act_replace rely.
   rewrite act_star_assoc.
   apply act_impl_star; auto.
   apply act_id_dist_star.
 
-  subst.
-  rewrite <- H2.
+  act_replace guarantee.
   rewrite act_id_dist_star.
   rewrite act_star_assoc.
   apply act_impl_star; auto.
@@ -934,8 +969,6 @@ Proof.
   eapply pimpl_cok; eauto.
 
   (* remaining goals are stability *)
-  - intros.
-    cancel.
   - intros.
     (* this proof is sort of cheating: our rely-guarantee spec supposes
        that the postcondition is stable under rely by making a {C ... C}
@@ -958,7 +991,7 @@ Proof.
   - intros.
     destruct_lift H; subst.
     repeat apply stable_and_empty_discard.
-    rewrite H3.
+    act_replace rely.
     rewrite <- emp_star.
     rewrite act_id_dist_star.
     match goal with
@@ -966,15 +999,14 @@ Proof.
       rewrite act_star_comm with (a := b)
     end.
     rewrite <- act_star_assoc.
-    apply stable_cancel_id; auto with precision.
-    apply stable_cancel_id; auto with precision.
-    cancel.
-    cancel.
+    apply stable_cancel_id; auto with precision; try cancel.
+    apply stable_cancel_id; auto with precision; try cancel.
 
   - intros.
     destruct_lift H; subst.
+    repeat intro_stable_exists.
     repeat (apply stable_and_empty; intro).
-    rewrite H5.
+    act_replace rely.
     rewrite act_id_dist_star_frame.
     apply stable_cancel_id; auto with precision.
     apply stable_cancel_id; auto with precision.
