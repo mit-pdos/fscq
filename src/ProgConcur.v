@@ -330,6 +330,8 @@ Ltac inv_ts :=
   | [ H: TRunning ?p = TRunning ?p' |- _ ] => inversion H; clear H;
       (* these might fail if p and/or p' are not variables *)
       try subst p; try subst p'
+  | [ H: TNone = TRunning _ |- _ ] => now inversion H
+  | [ H: TRunning _ = TNone |- _ ] => now inversion H
   end.
 
 Ltac inv_coutcome :=
@@ -572,16 +574,16 @@ Qed.
 Theorem compose' :
   forall ts pre,
   (exists rg_pres,
-   (exists r g,
-    forall tid p, ts tid = TRunning p ->
-      forall dones,
-      pre dones =p=> rg_pres tid (dones tid) r g) /\
    (forall tid p, ts tid = TRunning p ->
    {C rg_pres tid C} p /\
    forall tid' p' m d r g d' r' g', ts tid' = TRunning p' -> tid <> tid' ->
    (rg_pres tid) d r g m ->
    (rg_pres tid') d' r' g' m ->
-   g =a=> r')) ->
+   g =a=> r') /\
+   (exists r g,
+    forall tid p, ts tid = TRunning p ->
+      forall dones,
+      pre dones =p=> rg_pres tid (dones tid) r g)) ->
   corr_threads' pre ts.
 Proof.
   intros.
@@ -912,6 +914,91 @@ Proof.
   - eapply H; eauto.
     apply H0; eauto.
 Qed.
+
+Section ParallelSpec.
+
+Local Notation " 'PRED' " := (@pred addr (@weq addrlen) valuset) (only parsing).
+Local Notation "'ACTION'" := (@action addr (@weq addrlen) valuset) (only parsing).
+
+Fixpoint corr_threads'_post_helper tid (dones: nat -> donecond nat)
+  (post:PRED) (l: list (donecond nat)) : PRED :=
+  match l with
+  | nil => [[True]]
+  | done :: xs => [[ forall n, post * done n =p=> dones tid n ]] /\
+                  corr_threads'_post_helper (S tid) dones post xs
+  end.
+
+Import Compare_dec.
+
+Definition corr_threads'_ts_helper (l: list (prog nat)) : (nat -> threadstate) :=
+  (fun n =>
+    if (Compare_dec.lt_dec n (length l)) then
+      TRunning (nth n l (Done 0))
+    else
+      TNone).
+
+Local Notation "{{C< e1 .. e2 , 'PRE' pre 'POST' post 'RETS' ret1 ; .. ; ret2 >C}} ts" :=
+  (corr_threads'
+    (fun dones =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+    sep_star pre%pred
+    (corr_threads'_post_helper 0 dones post%pred (cons ret1 .. (cons ret2 nil) ..))
+    )) ..))) ts)
+  (at level 0, ts at level 60,
+    ret1 at level 70, ret2 at level 70,
+    e1 binder, e2 binder,
+    only parsing).
+
+Notation "[[ p1 <|> .. <|> p2 ]]" :=
+  (corr_threads'_ts_helper (cons p1 .. (cons p2 nil) .. ))
+  (at level 0, p1 at level 70, p2 at level 70).
+
+Notation " 'RVAL' r : p" := (fun r => lift_empty p) (at level 50, r at level 0, p at level 90).
+
+Theorem write2_par_ok : forall a b va' vb',
+  {{C< F va vb varest vbrest,
+    PRE F * a |-> (va, varest) * b |-> (vb, vbrest)
+    POST F * a |-> (va', va :: varest) * b |-> (vb', vb :: vbrest)
+    RETS RVAL r : r = 0 ; RVAL r : r = 1
+  >C}} [[ Write a va';; Done 0 <|> Write b vb' ;; Done 1 ]].
+Proof.
+  intros.
+  unfold corr_threads'_ts_helper.
+  apply compose'.
+  evar (rg_pre0: donecond nat -> ACTION -> ACTION -> PRED).
+  evar (rg_pre1: donecond nat -> ACTION -> ACTION -> PRED).
+  exists (fun n =>
+    if (Nat.eq_dec n 0) then
+      rg_pre0
+    else (if (Nat.eq_dec n 1) then
+      rg_pre1
+    else
+      fun _ _ _ => emp)).
+  intuition.
+  - case_eq tid; intros; subst; simpl in *.
+    inv_ts.
+    apply write_cok.
+
+    case_eq n; intros; subst; simpl in *.
+    inv_ts.
+    apply write_cok.
+
+    inv_ts.
+
+  - case_eq tid; case_eq tid'; intros; subst; try congruence.
+    case_eq n; intros; subst; simpl in *.
+    do 2 inv_ts.
+    subst rg_pre0.
+    subst rg_pre1.
+    simpl in *.
+    repeat deex.
+    repeat match goal with
+    | [ H: context[lift_empty _] |- _] => destruct_lift H
+    end.
+    destruct_lift H0.
+Admitted.
+
+End ParallelSpec.
 
 Definition write2 a b va vb (rx : unit -> prog nat) :=
   Write a va;;

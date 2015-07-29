@@ -161,12 +161,16 @@ Arguments sep_star {AT AEQ V} _ _ _.
 Infix "*" := sep_star : pred_scope.
 Notation "p --* q" := (septract p%pred q%pred) (at level 40) : pred_scope.
 
+Ltac deex_this H name :=
+  let name := fresh name in
+  destruct H as [name ?]; intuition subst.
 
 Ltac deex :=
   match goal with
   | [ H : exists (varname : _), _ |- _ ] =>
-    let newvar := fresh varname in
-    destruct H as [newvar ?]; intuition subst
+    deex_this H varname
+  | [ H : (exists (varname : _), _)%pred _ |- _ ] =>
+    deex_this H varname
   end.
 
 Ltac deex_unique :=
