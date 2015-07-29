@@ -1112,24 +1112,19 @@ Proof.
 
   (* remaining goals are stability *)
   - intros.
-    (* this proof is sort of cheating: our rely-guarantee spec supposes
-       that the postcondition is stable under rely by making a {C ... C}
-       statement about rx, and that's what we're proving here;
-       if the postcondition weren't stable under rely, the spec would be
-       useless since it would assume a contradiction, and this would be hard to
-       figure out. *)
-    destruct_lift H; subst.
-    repeat apply stable_and_empty_discard.
-    edestruct H1 with (m:=m). pred_apply. cancel.
-    unfold stable; intros m1 m2; intros.
-    match goal with
-    | [ H: stable _ rely |- _ ] =>
-        repeat (apply stable_and_empty_rev in H; [| now auto]);
-        unfold stable in H;
-        specialize (H m1 m2)
-     end.
-     eapply pimpl_apply; [| apply H0]; auto.
-
+    (* We could extract this from H1. However, H1 is our assumption about rx;
+    if we can't prove stability, then assuming the rx Hoare tuple assumed
+    false, making this whole theorem useless. Therefore, we should prove
+    stability of the postcondition independently. *)
+    clear H1.
+    repeat (apply stable_and_empty; intro).
+    subst.
+    act_replace rely.
+    rewrite <- emp_star.
+    rewrite act_id_dist_star.
+    rewrite <- act_star_assoc.
+    apply stable_cancel_id; auto with precision; try cancel.
+    apply stable_cancel_id; auto with precision; try cancel.
   - intros.
     destruct_lift H; subst.
     repeat apply stable_and_empty_discard.
