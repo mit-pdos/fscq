@@ -960,6 +960,71 @@ Proof.
    * congruence.
 Qed.
 
+Theorem sync_cok : forall a,
+  {!C< F v vrest,
+  PRE F * a |-> (v, vrest)
+  RELY (F ~> F) * [a |->?]
+  GUAR [F] * (a |-> (v, vrest) ~> a |-> (v, nil))
+  POST RET:r F * a |-> (v, nil)
+  >C!} Sync a.
+Proof.
+  (* same proof as write_ok *)
+  unfold env_corr2 at 1; intro_forall.
+  destruct_lift H.
+  intuition.
+  (* stability *)
+  - repeat intro_stable_exists.
+    repeat (apply stable_and_empty; intro).
+    act_replace rely.
+    apply stable_cancel_id; auto with precision.
+    cancel.
+  (* guarantee *)
+  - remember (Sync a rx) as p.
+    generalize dependent n.
+    induction H0; intros.
+    * subst p.
+      inversion H0; subst.
+      (* prove n = S n' *)
+      destruct n; simpl in *.
+        contradiction.
+      subst_ptsto_same.
+      intuition.
+      + (* StepThis was the Sync *)
+        inv_label.
+        eauto.
+      + (* StepThis was in rx *)
+        eapply H2; eauto.
+        repeat apply sep_star_lift_apply'; eauto.
+        eapply pimpl_apply; [| eapply ptsto_upd].
+        cancel.
+        pred_apply; cancel.
+        eauto.
+    * destruct n; contradiction.
+    * destruct n; simpl in *.
+        contradiction.
+      intuition (try congruence; eauto).
+      eapply IHenv_exec; eauto 10.
+    * destruct n; contradiction.
+ (* done condition *)
+ - remember (Sync a rx) as p.
+   induction H0; intros; try subst p.
+   * inversion H0; subst.
+     eapply H2; eauto.
+     repeat apply sep_star_lift_apply'; eauto.
+     subst_ptsto_same.
+     eapply pimpl_apply; [| eapply ptsto_upd].
+     cancel.
+     pred_apply; cancel.
+     eauto.
+   * contradiction H0.
+     repeat eexists; eauto.
+     econstructor.
+     eapply ptsto_valid.
+     pred_apply; cancel.
+   * eapply IHenv_exec; eauto 10.
+   * congruence.
+Qed.
+
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
   (forall done rely guarantee,
