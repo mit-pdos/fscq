@@ -818,8 +818,8 @@ Theorem write_cok : forall a vnew,
   {!C< Finv Fid Fid' v0 vrest,
   PRE Finv * Fid' * a |-> (v0, vrest) * [[ Fid' =p=> Fid ]] * [[ precise Fid ]]
   RELY (Finv ~> Finv) * [Fid] * [a |->?]
-  GUAR [Finv * Fid'] * (a |-> (v0, vrest) ~> a |-> (vnew, [v0] ++ vrest))
-  POST RET:r Finv * Fid' * a |-> (vnew, [v0] ++ vrest)
+  GUAR [Finv * Fid'] * (a |-> (v0, vrest) ~> a |-> (vnew, v0 :: vrest))
+  POST RET:r Finv * Fid' * a |-> (vnew, v0 :: vrest)
   >C!} Write a vnew.
 Proof.
   unfold env_corr2 at 1; intro_forall.
@@ -1063,21 +1063,23 @@ Definition corr_threads'_ts_helper (l: list (prog nat)) : (nat -> threadstate) :
     else
       TNone).
 
+Notation "[[ p1 <|> .. <|> p2 ]]" :=
+  (corr_threads'_ts_helper (cons p1 .. (cons p2 nil) .. ))
+  (at level 0, p1 at level 70, p2 at level 70) : ts_scope.
+
+Delimit Scope ts_scope with ts.
+
 Local Notation "{{C< e1 .. e2 , 'PRE' pre 'POST' post 'RETS' ret1 ; .. ; ret2 >C}} ts" :=
   (corr_threads'
     (fun dones =>
     (exis (fun e1 => .. (exis (fun e2 =>
     sep_star pre%pred
     (corr_threads'_post_helper 0 dones post%pred (cons ret1 .. (cons ret2 nil) ..))
-    )) ..))) ts)
+    )) ..))) ts%ts)
   (at level 0, ts at level 60,
     ret1 at level 70, ret2 at level 70,
     e1 binder, e2 binder,
     only parsing).
-
-Notation "[[ p1 <|> .. <|> p2 ]]" :=
-  (corr_threads'_ts_helper (cons p1 .. (cons p2 nil) .. ))
-  (at level 0, p1 at level 70, p2 at level 70).
 
 Notation " 'RVAL' r : p" := (fun r => lift_empty p) (at level 50, r at level 0, p at level 90).
 
@@ -1103,25 +1105,99 @@ Proof.
   intuition.
   - case_eq tid; intros; subst; simpl in *.
     inv_ts.
+    eapply pimpl_cok.
     apply write_cok.
+    intros.
+    simpl.
+    instantiate (rg_pre0 :=
+    fun done rely guarantee =>
+    (exists (Finv Fid Fid' : pred) (v0 : valu) (vrest : list valu),
+   (Finv * Fid' * a |-> (v0, vrest) * lift_empty (Fid' =p=> Fid) * lift_empty (precise Fid) *
+   lift_empty (rely <=a=> (Finv ~> Finv) * [Fid] * [a |->?]) *
+   lift_empty ([Finv * Fid'] * (a |-> (v0, vrest) ~> a |-> (va', v0 :: vrest)) <=a=> guarantee ) *
+   lift_empty (unit ->
+     {C
+       fun (done_rx : donecond nat) (rely_rx guar_rx : action) =>
+       emp * (Finv * Fid' * a |-> (va', v0 :: vrest)) * lift_empty (done_rx = done) * lift_empty (rely_rx = rely) *
+       lift_empty (guar_rx = guarantee)
+     C} Done 0)))%pred).
+     subst rg_pre0.
+     simpl.
+     norm.
+     cancel.
+     instantiate (Finv0 := Finv).
+     cancel.
+     intuition eauto.
+     act_replace rely; auto.
+     act_replace guarantee; auto.
+     intros.
+     subst rg_pre0.
+     simpl.
+     repeat intro_stable_exists.
+     repeat (apply stable_and_empty; intro).
+     act_replace rely.
+     admit. (* we have this proof somewhere *)
 
     case_eq n; intros; subst; simpl in *.
     inv_ts.
+        instantiate (rg_pre1 :=
+    fun done rely guarantee =>
+    (exists (Finv Fid Fid' : pred) (v0 : valu) (vrest : list valu),
+   (Finv * Fid' * b |-> (v0, vrest) * lift_empty (Fid' =p=> Fid) * lift_empty (precise Fid) *
+   lift_empty (rely <=a=> (Finv ~> Finv) * [Fid] * [b |->?]) *
+   lift_empty ([Finv * Fid'] * (b |-> (v0, vrest) ~> b |-> (vb', v0 :: vrest)) <=a=> guarantee ) *
+   lift_empty (unit ->
+     {C
+       fun (done_rx : donecond nat) (rely_rx guar_rx : action) =>
+       emp * (Finv * Fid' * b |-> (vb', v0 :: vrest)) * lift_empty (done_rx = done) * lift_empty (rely_rx = rely) *
+       lift_empty (guar_rx = guarantee)
+     C} Done 1)))%pred).
+     subst rg_pre1; simpl.
+    eapply pimpl_cok.
     apply write_cok.
+    intros.
+    norm.
+    cancel.
+    instantiate (Finv0 := Finv).
+    cancel.
+    intuition eauto.
+    act_replace rely; auto.
+    act_replace guarantee; auto.
+
+    admit. (* old stability proof *)
 
     inv_ts.
 
-  - case_eq tid; case_eq tid'; intros; subst; try congruence.
-    case_eq n; intros; subst; simpl in *.
-    do 2 inv_ts.
-    subst rg_pre0.
-    subst rg_pre1.
-    simpl in *.
-    repeat deex.
-    repeat match goal with
-    | [ H: context[lift_empty _] |- _] => destruct_lift H
-    end.
-    destruct_lift H0.
+  - case_eq tid; case_eq tid'; intros; try congruence;
+    case_eq n; intros; subst rg_pre0 rg_pre1; subst; simpl in *; repeat inv_ts.
+    * repeat deex.
+      repeat match goal with
+      | [ H: context[lift_empty _] |- _] => destruct_lift H
+      end.
+      destruct_lift H0.
+      rewrite H6.
+      rewrite <- H10.
+      admit.
+
+    * repeat deex.
+      repeat match goal with
+      | [ H: context[lift_empty _] |- _] => destruct_lift H
+      end.
+      destruct_lift H0.
+      rewrite H11.
+      rewrite <- H5.
+      admit.
+
+    * case_eq n0; intros; subst; try congruence; simpl in *; repeat inv_ts.
+  - exists [any]%act.
+    exists (any ~> any)%act.
+    intros.
+    cancel.
+    subst rg_pre0 rg_pre1; simpl.
+    unfold pimpl; intros.
+    unfold and in H0.
+    case_eq tid; intros; subst; simpl in *.
+    pred_apply; cancel.
 Admitted.
 
 End ParallelSpec.
