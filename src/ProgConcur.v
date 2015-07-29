@@ -662,9 +662,7 @@ Notation "{!C< e1 .. e2 , 'PRE' pre 'RELY' rely 'GUAR' guar 'POST' post >C!} p1"
     {C
       fun done rely_ guar_ =>
       (exis (fun e1 => .. (exis (fun e2 =>
-        (* the %pred%act causes both pre occurrences to use the same
-           scope stack *)
-         pre%pred%act *
+         pre%pred *
          [[ rely_ =a=> rely%act ]] *
          [[ guar%act =a=> guar_ ]] *
          [[ forall ret_,
