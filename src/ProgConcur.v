@@ -309,6 +309,20 @@ Section ExecConcurMany.
     exists m' rs, out = CFinished m' rs /\
     (forall tid p, ts tid = TRunning p -> (dones tid) (rs tid) m').
 
+  (** This simplified corr_threads does not require a rely/guarantee for each
+  thread, but simply says executing them in parallel works out.
+
+  The proof, via compose', will require rely/guarantee specs for the threads,
+  since it works via corr_threads and the compose theorem. *)
+  Definition corr_threads' (pre : forall (dones : nat -> donecond nat),
+                                  @pred addr (@weq addrlen) valuset)
+                          (ts : threadstates) :=
+    forall dones m out,
+    pre dones m ->
+    cexec m ts out ->
+    exists m' rs, out = CFinished m' rs /\
+    (forall tid p, ts tid = TRunning p -> (dones tid) (rs tid) m').
+
 End ExecConcurMany.
 
 Ltac inv_ts :=
@@ -533,6 +547,47 @@ Proof.
     intros ? ? Hin; inversion Hin.
     deex.
     congruence.
+Qed.
+
+Theorem corr_threads'_conv : forall pres pre ts,
+  corr_threads pres ts ->
+  (exists r g,
+  forall tid p, ts tid = TRunning p ->
+    forall dones,
+    pre dones =p=> pres tid (dones tid) r g) ->
+  corr_threads' pre ts.
+Proof.
+  intros.
+  unfold corr_threads, corr_threads' in *.
+  intros.
+  do 2 deex.
+  eapply H; eauto.
+  intros.
+  instantiate (relys := fun _ => r).
+  instantiate (guarantees := fun _ => g).
+  simpl.
+  eapply H0; eauto.
+Qed.
+
+Theorem compose' :
+  forall ts pre,
+  (exists rg_pres,
+   (exists r g,
+    forall tid p, ts tid = TRunning p ->
+      forall dones,
+      pre dones =p=> rg_pres tid (dones tid) r g) /\
+   (forall tid p, ts tid = TRunning p ->
+   {C rg_pres tid C} p /\
+   forall tid' p' m d r g d' r' g', ts tid' = TRunning p' -> tid <> tid' ->
+   (rg_pres tid) d r g m ->
+   (rg_pres tid') d' r' g' m ->
+   g =a=> r')) ->
+  corr_threads' pre ts.
+Proof.
+  intros.
+  deex.
+  eapply corr_threads'_conv; eauto.
+  apply compose; eauto.
 Qed.
 
 Ltac inv_step :=
