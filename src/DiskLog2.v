@@ -851,91 +851,75 @@ Module DiskLogDescSig <: RASig.
 
 End DiskLogDescSig.
 
-Module DiskLogDesc := AsyncRecArray DiskLogDescSig.
+
+Module DiskLogDataSig <: RASig.
+
+  Definition xparams := log_xparams.
+  Definition RAStart := LogData.
+  Definition RALen := LogLen.
+
+  Definition itemtype := Rec.WordF valulen.
+  Definition items_per_val := 1.
+
+  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+  Proof.
+    unfold items_per_val; simpl.
+    rewrite valulen_is.
+    cbv; auto.
+  Qed.
+
+End DiskLogDataSig.
 
 
 Module DISKLOG.
 
-
-  (************* Log descriptors *)
-  
-  Definition desctype := Rec.WordF addrlen.
-  Definition descblk := Rec.data desctype.
-  Definition desc0 := @Rec.of_word desctype $0.
-
-  Definition desc_per_block := Eval compute in valulen_real / addrlen.
-  Definition wdesc_per_block : addr := natToWord addrlen desc_per_block.
-  Definition descsz := Rec.len desctype.
-
-  Theorem descsz_ok : valulen = wordToNat wdesc_per_block * descsz.
-  Proof.
-    unfold wdesc_per_block, desc_per_block, descsz, desctype.
-    rewrite valulen_is.
-    rewrite wordToNat_natToWord_idempotent; compute; auto.
-  Qed.
-
-  Definition descxp xp := RecArray.Build_xparams (LogDescriptor xp) (LogDescLen xp).
-
-  Definition nr_desc xp := desc_per_block * #(LogDescLen xp).
-  Definition wnr_desc xp := (natToWord addrlen desc_per_block) ^* (LogDescLen xp).
-
-  Definition descrep xp (dlist : list addr) :=
-    ([[ length dlist = nr_desc xp ]] *
-     RecArray.array_item desctype wdesc_per_block descsz_ok (descxp xp) dlist)%pred.
-
-  Definition descget T xp off mscs rx : prog T :=
-    let^ (mscs, v) <- RecArray.get desctype wdesc_per_block descsz_ok
-         xp (descxp xp) off mscs;
-    rx ^(mscs, v).
-
-  Definition descput T xp off v mscs rx : prog T :=
-    mscs <- RecArray.put desctype wdesc_per_block descsz_ok
-           xp (descxp xp) off v mscs;
-    rx mscs.
+  Module Desc := AsyncRecArray DiskLogDescSig.
+  Module Data := AsyncRecArray DiskLogDataSig.
 
 
   (************* Log header *)
+  Module Hdr.
+    Definition header_type := Rec.RecF ([("length", Rec.WordF addrlen)]).
+    Definition header := Rec.data header_type.
+    Definition mk_header (len : nat) : header := ($ len, tt).
 
-  Definition header_type := Rec.RecF ([("length", Rec.WordF addrlen)]).
-  Definition header := Rec.data header_type.
-  Definition mk_header (len : nat) : header := ($ len, tt).
+    Theorem header_sz_ok : Rec.len header_type <= valulen.
+    Proof.
+      rewrite valulen_is. apply leb_complete. compute. trivial.
+    Qed.
 
-  Theorem header_sz_ok : Rec.len header_type <= valulen.
-  Proof.
-    rewrite valulen_is. apply leb_complete. compute. trivial.
-  Qed.
+    Lemma plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
+    Proof.
+      apply le_plus_minus_r; apply header_sz_ok.
+    Qed.
 
-  Lemma plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
-  Proof.
-    apply le_plus_minus_r; apply header_sz_ok.
-  Qed.
+    Definition hdr2valu (h : header) : valu.
+      set (zext (Rec.to_word h) (valulen - Rec.len header_type)) as r.
+      rewrite plus_minus_header in r.
+      refine r.
+    Defined.
+    Arguments hdr2valu : simpl never.
 
-  Definition hdr2valu (h : header) : valu.
-    set (zext (Rec.to_word h) (valulen - Rec.len header_type)) as r.
-    rewrite plus_minus_header in r.
-    refine r.
-  Defined.
-  Arguments hdr2valu : simpl never.
+    Definition valu2hdr (v : valu) : header.
+      apply Rec.of_word.
+      rewrite <- plus_minus_header in v.
+      refine (split1 _ _ v).
+    Defined.
 
-  Definition valu2hdr (v : valu) : header.
-    apply Rec.of_word.
-    rewrite <- plus_minus_header in v.
-    refine (split1 _ _ v).
-  Defined.
+    Lemma header_valu_id : forall h,
+      valu2hdr (hdr2valu h) = h.
+    Proof.
+      unfold valu2hdr, hdr2valu.
+      unfold eq_rec_r, eq_rec.
+      intros.
+      rewrite <- plus_minus_header.
+      unfold zext.
+      autorewrite with core; auto.
+      simpl; destruct h; tauto.
+    Qed.
+  End Hdr.
 
-  Lemma header_valu_id : forall h,
-    valu2hdr (hdr2valu h) = h.
-  Proof.
-    unfold valu2hdr, hdr2valu.
-    unfold eq_rec_r, eq_rec.
-    intros.
-    rewrite <- plus_minus_header.
-    unfold zext.
-    autorewrite with core.
-    apply Rec.of_to_id.
-    simpl; destruct h; tauto.
-  Qed.
-  Hint Rewrite header_valu_id.
+  Hint Rewrite Hdr.header_valu_id.
 
 
   (****************** Log contents and states *)
