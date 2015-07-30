@@ -1144,7 +1144,7 @@ Proof.
      repeat intro_stable_exists.
      repeat (apply stable_and_empty; intro).
      act_replace rely.
-     admit. (* we have this proof somewhere *)
+     repeat stable_cancel_right.
 
     case_eq n; intros; subst; simpl in *.
     inv_ts.
@@ -1175,8 +1175,7 @@ Proof.
     repeat intro_stable_exists.
     repeat (apply stable_and_empty; intro).
     act_replace rely.
-
-    admit. (* old stability proof *)
+    repeat stable_cancel_right.
 
     inv_ts.
 
@@ -1187,8 +1186,8 @@ Proof.
       | [ H: context[lift_empty _] |- _] => destruct_lift H
       end.
       destruct_lift H0.
-      rewrite H6.
-      rewrite <- H10.
+      act_replace g.
+      act_replace r'.
       admit.
 
     * repeat deex.
@@ -1196,8 +1195,8 @@ Proof.
       | [ H: context[lift_empty _] |- _] => destruct_lift H
       end.
       destruct_lift H0.
-      rewrite H11.
-      rewrite <- H5.
+      act_replace g.
+      act_replace r'.
       admit.
 
     * case_eq n0; intros; subst; try congruence; simpl in *; repeat inv_ts.
