@@ -782,6 +782,9 @@ Proof.
   do 2 eexists; intuition eauto.
 Qed.
 
+Ltac stable_cancel_right :=
+  apply stable_cancel_id; [| auto with precision | try cancel]; auto.
+
 Lemma stable_exists : forall AT AEQ V A (p:A -> @pred AT AEQ V) a,
   (forall x, (stable (p x) a)) ->
   stable (exists x, p x) a.
@@ -831,9 +834,7 @@ Proof.
   - repeat intro_stable_exists.
     repeat (apply stable_and_empty; intro).
     act_replace rely.
-    apply stable_cancel_id; auto with precision.
-    apply stable_cancel_id; auto.
-    cancel.
+    repeat stable_cancel_right.
   (* guarantee *)
   - remember (Write a vnew rx) as p.
     generalize dependent n.
@@ -914,8 +915,7 @@ Proof.
   - repeat intro_stable_exists.
     repeat (apply stable_and_empty; intro).
     act_replace rely.
-    apply stable_cancel_id; auto with precision.
-    cancel.
+    repeat stable_cancel_right.
   (* guarantee *)
   - remember (Read a rx) as p.
     generalize dependent n.
@@ -976,8 +976,7 @@ Proof.
   - repeat intro_stable_exists.
     repeat (apply stable_and_empty; intro).
     act_replace rely.
-    apply stable_cancel_id; auto with precision.
-    cancel.
+    repeat stable_cancel_right.
   (* guarantee *)
   - remember (Sync a rx) as p.
     generalize dependent n.
