@@ -553,43 +553,49 @@ Qed.
 
 Theorem corr_threads'_conv : forall pres pre ts,
   corr_threads pres ts ->
-  (exists r g,
+  (forall dones,
   forall tid p, ts tid = TRunning p ->
-    forall dones,
+    exists r g,
     pre dones =p=> pres tid (dones tid) r g) ->
   corr_threads' pre ts.
 Proof.
   intros.
   unfold corr_threads, corr_threads' in *.
   intros.
-  do 2 deex.
+  specialize (H0 dones).
   eapply H; eauto.
-  intros.
-  instantiate (relys := fun _ => r).
-  instantiate (guarantees := fun _ => g).
-  simpl.
-  eapply H0; eauto.
-Qed.
+Admitted.
 
 Theorem compose' :
   forall ts pre,
   (exists rg_pres,
-   (forall tid p, ts tid = TRunning p ->
-   {C rg_pres tid C} p /\
-   forall tid' p' m d r g d' r' g', ts tid' = TRunning p' -> tid <> tid' ->
+   forall tid p, ts tid = TRunning p ->
+   ({C rg_pres tid C} p) /\
+
+   (forall tid' p' m d r g d' r' g', ts tid' = TRunning p' -> tid <> tid' ->
    (rg_pres tid) d r g m ->
    (rg_pres tid') d' r' g' m ->
    g =a=> r') /\
-   (exists r g,
-    forall tid p, ts tid = TRunning p ->
-      forall dones,
+
+   (forall dones,
+      exists r g,
       pre dones =p=> rg_pres tid (dones tid) r g)) ->
   corr_threads' pre ts.
 Proof.
   intros.
+  unfold corr_threads.
+  intros.
+  unfold corr_threads'.
+  intros.
   deex.
   eapply corr_threads'_conv; eauto.
-  apply compose; eauto.
+  eapply compose; eauto.
+  intros.
+  intuition.
+  edestruct H; eauto.
+  compose_helper.
+  intros.
+  eapply H; eauto.
 Qed.
 
 Ltac inv_step :=
@@ -1049,8 +1055,8 @@ Local Notation "'ACTION'" := (@action addr (@weq addrlen) valuset) (only parsing
 Fixpoint corr_threads'_post_helper tid (dones: nat -> donecond nat)
   (post:PRED) (l: list (donecond nat)) : PRED :=
   match l with
-  | nil => [[True]]
-  | done :: xs => [[ forall n, post * done n =p=> dones tid n ]] /\
+  | nil => emp
+  | done :: xs => [[ forall n, post * done n =p=> dones tid n ]] *
                   corr_threads'_post_helper (S tid) dones post xs
   end.
 
@@ -1189,15 +1195,46 @@ Proof.
       admit.
 
     * case_eq n0; intros; subst; try congruence; simpl in *; repeat inv_ts.
-  - exists [any]%act.
-    exists (any ~> any)%act.
-    intros.
+  - case_eq tid; intros; subst; simpl in *.
+    subst rg_pre0.
+    do 2 eexists.
+    norm.
     cancel.
-    subst rg_pre0 rg_pre1; simpl.
-    unfold pimpl; intros.
-    unfold and in H0.
-    case_eq tid; intros; subst; simpl in *.
-    pred_apply; cancel.
+    instantiate (Finv := F).
+    cancel.
+    intuition.
+    cancel.
+    match goal with
+    | [ |- _ <=a=> ?a ] => instantiate (r := a)
+    end.
+    apply act_iff_refl.
+    match goal with
+    | [ |- ?a <=a=> _ ] => instantiate (g := a)
+    end.
+    eapply act_iff_refl.
+    admit. (* pretty easy to prove {C pre C} about Done, only the return value
+      matters *)
+
+    case_eq n; intros; subst; simpl in *.
+    subst rg_pre1.
+    do 2 eexists.
+    norm.
+    cancel.
+    instantiate (Finv := F).
+    cancel.
+    intuition.
+    cancel.
+    match goal with
+    | [ |- _ <=a=> ?a ] => instantiate (r := a)
+    end.
+    apply act_iff_refl.
+    match goal with
+    | [ |- ?a <=a=> _ ] => instantiate (g := a)
+    end.
+    eapply act_iff_refl.
+    admit. (* another Done RG tuple *)
+
+    inv_ts.
 Admitted.
 
 End ParallelSpec.

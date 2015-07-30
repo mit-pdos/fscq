@@ -101,6 +101,12 @@ Section RGThm.
     act_unfold; intuition.
   Qed.
 
+  Theorem act_iff_refl : forall (a : @action AT AEQ V),
+    a <=a=> a.
+  Proof.
+    act_unfold; intuition.
+  Qed.
+
   Theorem act_impl_trans : forall (a b c : @action AT AEQ V),
     a =a=> b ->
     b =a=> c ->
