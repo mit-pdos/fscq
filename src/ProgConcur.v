@@ -1024,6 +1024,45 @@ Proof.
    * congruence.
 Qed.
 
+Theorem done_cok : forall (pre: donecond nat ->
+                                action -> action ->
+                                pred)
+                   n,
+  (forall d r g m, pre d r g m -> d n m /\
+    stable (pre d r g) r) ->
+  {C pre C} Done n.
+Proof.
+  intros.
+  unfold env_corr2.
+  intros.
+  intuition eauto.
+  - eapply H; eauto.
+  - remember (Done n).
+    generalize dependent n0.
+    induction H1; intros.
+    * subst.
+      inversion H1.
+    * contradiction H2; eauto.
+    * subst.
+      destruct n0; simpl in *.
+        contradiction.
+      eapply IHenv_exec; eauto 10.
+      eapply H; eauto.
+      intuition.
+      inv_label.
+    * destruct n0; contradiction.
+  - remember (Done n).
+    induction H1.
+    * subst.
+      inversion H1.
+    * contradiction H3; eauto.
+    * eapply IHenv_exec; eauto.
+      eapply H; eauto.
+    * do 2 eexists; intuition eauto.
+      inversion Heqp; subst.
+      eapply H; eauto.
+Qed.
+
 Theorem pimpl_cok : forall pre pre' (p : prog nat),
   {C pre' C} p ->
   (forall done rely guarantee,
