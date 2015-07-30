@@ -23,18 +23,6 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
-Section PAIRLIST.
-
-Variable A B : Type.
-Definition pairlist := list (A * B).
-
-Definition lfst (pl : pairlist) := map fst pl.
-Definition lsnd (pl : pairlist) := map snd pl.
-
-
-End PAIRLIST.
-
-
 (* RecArray on raw, async disk *)
 
 Module Type RASig.
@@ -468,7 +456,7 @@ Module AsyncRecArray (RA : RASig).
     try elimwrt; simplen'; auto; autorewrite with core); simpl; eauto; try omega.
 
   Hint Rewrite selN_combine using simplen : core.
-
+  Local Hint Resolve tt : core.
 
   Lemma read_all_progress : forall i count pre items,
     firstn (Nat.min (i * items_per_val) count) pre = firstn (Nat.min (i * items_per_val) count) items
@@ -537,7 +525,7 @@ Module AsyncRecArray (RA : RASig).
     step; simplen.
     apply read_all_progress; simplen.
     step; simplen.
-    Unshelve. exact tt.
+    Unshelve. eauto.
   Qed.
 
 
@@ -741,7 +729,104 @@ Module AsyncRecArray (RA : RASig).
     apply array_unify; eapply write_all_progress; eauto.
     simplen; apply write_all_progress_length; simplen.
     step; rewrite firstn_oob; simplen.
-    Unshelve. exact tt.
+    Unshelve. eauto.
+  Qed.
+
+
+  (** sync all items *)
+  Definition sync_all T xp count cs rx : prog T :=
+    let nr := divup count items_per_val in
+    let^ (cs) <- ForN i < nr
+    Ghost [ crash F blocks ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d' vs, BUFCACHE.rep cs d' *
+      [[ (F * array (RAStart xp) (combine blocks vs) $1  )%pred d' ]] *
+      [[ length blocks = nr /\ length vs = nr ]] *
+      [[ forall k, k < i -> selN vs k nil = nil ]]
+    OnCrash   crash
+    Begin
+      cs <- BUFCACHE.sync_array (RAStart xp) ($ i) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+
+  Lemma wplus_unit_r : forall a : addr, a ^+ $0 = a.
+  Proof.
+    intros; ring.
+  Qed.
+  Hint Rewrite wplus_unit_r : core.
+
+
+  Lemma selN_repeat_eq : forall A n l def (v : A),
+    length l = n
+    -> (forall i, i < n -> selN l i def = v)
+    -> l = repeat v n.
+  Proof.
+    induction n; t.
+    destruct l.
+    inversion H.
+    pose proof (H0 0 (Nat.lt_0_succ n)) as Hx.
+    simpl in Hx; subst.
+    erewrite <- IHn; t.
+    apply (H0 (S i)); omega.
+  Qed.
+  Local Hint Resolve selN_repeat_eq.
+
+  Lemma sync_all_progress : forall F blocks vs m st,
+    length vs = length blocks
+    -> F * array st (upd_sync (combine blocks vs) m ($ 0, nil)) $1
+     =p=> F * array st (combine blocks (upd vs m nil)) $1.
+  Proof.
+    intros; cancel.
+    apply array_unify.
+    unfold upd_sync, sel, upd; intros.
+    rewrite selN_combine by auto; simpl.
+    rewrite <- combine_updN.
+    rewrite updN_selN_eq; simplen.
+  Qed.
+
+  Lemma sync_all_progress_length: forall k m (vs : list (list valu)),
+    k < S m  -> m < length vs
+    -> (forall i, i < m -> selN vs i nil = nil)
+    -> (selN (updN vs m nil) k nil) = nil.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec k m); simplen.
+    rewrite selN_updN_ne; simplen.
+    apply H1; omega.
+  Qed.
+
+
+  Theorem sync_all_ok : forall xp count cs,
+    {< F d items,
+    PRE            BUFCACHE.rep cs d * [[ xparams_ok xp ]] *
+                   [[ length items = count ]] *
+                   [[ (F * array_rep xp (Unsync items))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * array_rep xp (Synced items))%pred d' ]]
+    CRASH  exists cs d, BUFCACHE.rep cs d
+    >} sync_all xp count cs.
+  Proof.
+    unfold sync_all.
+    prestep; norm'l.
+    autounfold with hoare_unfold in *; simpl.
+    destruct_lifts; cancel.
+    simplen. simplen. simplen.
+    step; simplen.
+
+    prestep; norm. cancel. intuition; subst; auto.
+    pred_apply; apply sync_all_progress; simplen.
+    simplen.
+    apply sync_all_progress_length; simplen.
+
+    step.
+    apply array_unify; f_equal; simplen.
+    cancel.
+    Unshelve. all: eauto.
   Qed.
 
 

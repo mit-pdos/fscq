@@ -647,6 +647,10 @@ Ltac destruct_lift H :=
   repeat destruct_type True;
   repeat destruct_type unit;
   repeat clear_varname.
+  
+Ltac destruct_lifts := try progress match goal with 
+  | [ H : sep_star _ _  _ |- _ ] => destruct_lift H
+end.
 
 Definition norm_goal (T: Type) (g: T) := True.
 Theorem norm_goal_ok: forall T g, @norm_goal T g. Proof. firstorder. Qed.

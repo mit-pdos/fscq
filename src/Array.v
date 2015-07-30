@@ -1142,6 +1142,12 @@ Proof.
   rewrite IHl; firstorder.
 Qed.
 
+Lemma firstn_exact: forall A (l : list A),
+  firstn (length l) l = l.
+Proof.
+  intros; rewrite firstn_oob; auto.
+Qed.
+
 
 Lemma firstn_firstn : forall A (l : list A) n1 n2 ,
   firstn n1 (firstn n2 l) = firstn (Init.Nat.min n1 n2) l.
