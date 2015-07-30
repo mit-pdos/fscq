@@ -1268,8 +1268,25 @@ Proof.
     auto with precision.
     inst_iff_refl.
     inst_iff_refl.
-    admit. (* pretty easy to prove {C pre C} about Done, only the return value
-      matters *)
+    eapply done_cok.
+    intros.
+    intuition.
+    destruct_lift H3.
+    subst.
+    apply H0.
+    pred_apply; cancel.
+    (* Oops, H0, our only way to prove dones 0, requires the whole
+       postcondition, while we only have thread 0's postcondition (somehow
+       with b |-> vb, though interleaving is non-deterministic).
+
+       Maybe done_cok should allow guarantee steps? *)
+    admit.
+
+    (* another copy of the stability proof... *)
+    repeat (apply stable_and_empty; intro).
+    subst.
+    rewrite <- emp_star.
+    repeat stable_cancel_right.
 
     case_eq n; intros; subst; simpl in *.
     subst rg_pre1; simpl.
@@ -1281,7 +1298,21 @@ Proof.
     cancel.
     inst_iff_refl.
     inst_iff_refl.
-    admit. (* another Done RG tuple *)
+    eapply done_cok.
+    intros.
+    intuition.
+    destruct_lift H3.
+    subst.
+    apply H2.
+    pred_apply; cancel.
+    (* Here as well, it's as if thread 1 got to step first. *)
+    admit.
+
+    repeat (apply stable_and_empty; intro).
+    subst.
+    rewrite <- emp_star.
+    stable_cancel_right.
+    repeat stable_cancel_right.
 
     inv_ts.
 Admitted.
