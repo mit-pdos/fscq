@@ -1227,6 +1227,15 @@ Proof.
       destruct_lift H0.
       act_replace g.
       act_replace r'.
+      (* We seem stuck at this point. We know both programs individually
+         get their own preconditions (hence two statements about m, H and H0),
+         but we've lost the whole-program precondition that separates a and b.
+         Without that in-context we can't show [b |->?] on the rhs of =a=>.
+
+         There seem to be a lot of cases where we'd like some of the
+         precondition available when talking about relies and guarantees.
+         Here we want F * a |-> va * b |-> vb as well as a connection between
+         that precondition and the two copies of write_cok's pre. *)
       admit.
 
     * repeat deex.
@@ -1236,6 +1245,8 @@ Proof.
       destruct_lift H0.
       act_replace g.
       act_replace r'.
+      (* Same problem here, with a and b reversed (now we're talking about
+         thread 1). *)
       admit.
 
     * case_eq n0; intros; subst; try congruence; simpl in *; repeat inv_ts.
