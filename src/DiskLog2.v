@@ -833,7 +833,29 @@ Module AsyncRecArray (RA : RASig).
 End AsyncRecArray.
 
 
+Module DiskLogDescSig <: RASig.
+
+  Definition xparams := log_xparams.
+  Definition RAStart := LogDescriptor.
+  Definition RALen := LogDescLen.
+
+  Definition itemtype := Rec.WordF addrlen.
+  Definition items_per_val := valulen / addrlen.
+
+  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+  Proof.
+    unfold items_per_val; simpl.
+    rewrite valulen_is.
+    cbv; auto.
+  Qed.
+
+End DiskLogDescSig.
+
+Module DiskLogDesc := AsyncRecArray DiskLogDescSig.
+
+
 Module DISKLOG.
+
 
   (************* Log descriptors *)
   
