@@ -553,33 +553,35 @@ Qed.
 
 Theorem corr_threads'_conv : forall pres pre ts,
   corr_threads pres ts ->
-  (forall dones,
+  (forall dones, exists relys guars,
   forall tid p, ts tid = TRunning p ->
-    exists r g,
-    pre dones =p=> pres tid (dones tid) r g) ->
+    pre dones =p=> pres tid (dones tid) (relys tid) (guars tid)) ->
   corr_threads' pre ts.
 Proof.
   intros.
   unfold corr_threads, corr_threads' in *.
   intros.
   specialize (H0 dones).
+  do 2 deex.
   eapply H; eauto.
-Admitted.
+  intros.
+  eapply H0; eauto.
+Qed.
 
 Theorem compose' :
   forall ts pre,
   (exists rg_pres,
-   forall tid p, ts tid = TRunning p ->
+   (forall tid p, ts tid = TRunning p ->
    ({C rg_pres tid C} p) /\
 
    (forall tid' p' m d r g d' r' g', ts tid' = TRunning p' -> tid <> tid' ->
    (rg_pres tid) d r g m ->
    (rg_pres tid') d' r' g' m ->
-   g =a=> r') /\
+   g =a=> r')) /\
 
-   (forall dones,
-      exists r g,
-      pre dones =p=> rg_pres tid (dones tid) r g)) ->
+   (forall dones, exists relys guars,
+     forall tid p, ts tid = TRunning p ->
+     pre dones =p=> rg_pres tid (dones tid) (relys tid) (guars tid))) ->
   corr_threads' pre ts.
 Proof.
   intros.
@@ -590,12 +592,6 @@ Proof.
   deex.
   eapply corr_threads'_conv; eauto.
   eapply compose; eauto.
-  intros.
-  intuition.
-  edestruct H; eauto.
-  compose_helper.
-  intros.
-  eapply H; eauto.
 Qed.
 
 Ltac inv_step :=
@@ -1089,6 +1085,12 @@ Local Notation "{{C< e1 .. e2 , 'PRE' pre 'POST' post 'RETS' ret1 ; .. ; ret2 >C
 
 Notation " 'RVAL' r : p" := (fun r => lift_empty p) (at level 50, r at level 0, p at level 90).
 
+Ltac inst_iff_refl :=
+  match goal with
+  | [ |- ?v <=a=> ?a ] => is_evar v; instantiate (1 := a); apply act_iff_refl
+  | [ |- ?a <=a=> ?v ] => is_evar v; instantiate (1 := a); apply act_iff_refl
+  end.
+
 Theorem write2_par_ok : forall a b va' vb',
   {{C< F va vb varest vbrest,
     PRE F * a |-> (va, varest) * b |-> (vb, vbrest)
@@ -1109,6 +1111,7 @@ Proof.
     else
       fun _ _ _ => emp)).
   intuition.
+
   - case_eq tid; intros; subst; simpl in *.
     inv_ts.
     eapply pimpl_cok.
@@ -1169,6 +1172,10 @@ Proof.
     intuition eauto.
     act_replace rely; auto.
     act_replace guarantee; auto.
+    intros.
+    repeat intro_stable_exists.
+    repeat (apply stable_and_empty; intro).
+    act_replace rely.
 
     admit. (* old stability proof *)
 
@@ -1195,43 +1202,48 @@ Proof.
       admit.
 
     * case_eq n0; intros; subst; try congruence; simpl in *; repeat inv_ts.
-  - case_eq tid; intros; subst; simpl in *.
-    subst rg_pre0.
-    do 2 eexists.
+  - evar (rely_0 : ACTION).
+    evar (rely_1 : ACTION).
+    evar (guar_0 : ACTION).
+    evar (guar_1 : ACTION).
+    exists (fun n =>
+      match n with
+      | 0 => rely_0
+      | 1 => rely_1
+      | _ => act_emp
+      end).
+    exists (fun n =>
+      match n with
+      | 0 => guar_0
+      | 1 => guar_1
+      | _ => act_emp
+      end).
+    intros.
+    unfold corr_threads'_post_helper.
+    cancel.
+    case_eq tid; intros; subst; simpl in *.
+    subst rg_pre0; simpl.
     norm.
     cancel.
     instantiate (Finv := F).
     cancel.
-    intuition.
-    cancel.
-    match goal with
-    | [ |- _ <=a=> ?a ] => instantiate (r := a)
-    end.
-    apply act_iff_refl.
-    match goal with
-    | [ |- ?a <=a=> _ ] => instantiate (g := a)
-    end.
-    eapply act_iff_refl.
+    intuition eauto.
+    auto with precision.
+    inst_iff_refl.
+    inst_iff_refl.
     admit. (* pretty easy to prove {C pre C} about Done, only the return value
       matters *)
 
     case_eq n; intros; subst; simpl in *.
-    subst rg_pre1.
-    do 2 eexists.
+    subst rg_pre1; simpl.
     norm.
     cancel.
     instantiate (Finv := F).
     cancel.
     intuition.
     cancel.
-    match goal with
-    | [ |- _ <=a=> ?a ] => instantiate (r := a)
-    end.
-    apply act_iff_refl.
-    match goal with
-    | [ |- ?a <=a=> _ ] => instantiate (g := a)
-    end.
-    eapply act_iff_refl.
+    inst_iff_refl.
+    inst_iff_refl.
     admit. (* another Done RG tuple *)
 
     inv_ts.
