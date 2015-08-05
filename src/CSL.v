@@ -2,11 +2,12 @@ Require Import Mem.
 Require Import Pred.
 Require Import Prog.
 Require Import Word.
+Require Import Hoare.
+Require Import SepAuto.
 
 Import List.
-Import List.ListNotations.
 
-Open Scope list.
+Infix "::" := cons.
 
 Set Implicit Arguments.
 
@@ -76,6 +77,16 @@ Section ConcurrentSepLogic.
 
   Definition context := list (R * @pred addr (@weq addrlen) valu).
 
+  Notation "r : p" := (r, p%pred) (at level 30) : context_scope.
+  Delimit Scope context_scope with context.
+
+  Notation "[G ri1 , .. , ri2 G]" :=
+    (cons ri1%context .. (cons ri2%context nil) ..)
+      (at level 0) : context_scope.
+
+  Notation "[G]" := (nil (A := R * @pred addr (@weq addrlen) valu)) (at level 60) : context_scope.
+
+
   Fixpoint inv (gamma:context) :=
     match gamma with
     | nil => emp
@@ -89,21 +100,98 @@ Section ConcurrentSepLogic.
       if REQ r r' then Ri else rinv r gamma'
     end.
 
-  Notation "m |= p" := (p%pred m) (at level 90).
+  Notation "m |= p" := (p%pred m) (at level 90, only parsing).
 
   Definition valid gamma (pre: forall (done:donecond),
                              pred)
              (p:cprog) : Prop :=
-    forall m d events out,
+    forall m d ls events out,
       m |= pre d * inv gamma ->
       (forall r rm, In (AcqStep r rm) events ->
                rm |= rinv r gamma) ->
-      cexec (State m nil) p events out ->
+      cexec (State m ls) p events out ->
       (forall r rm, In (RelStep r rm) events ->
                rm |= rinv r gamma) /\
       (exists md v, out = Finished md v /\
               (md |= d v * inv gamma)).
 
-End ConcurrentSepLogic.
+  Notation "gamma |- {{ e1 .. e2 , 'PRE' pre 'POST' post }} p" :=
+    (forall (rx: _ -> cprog),
+        valid gamma%context%pred
+              (fun done =>
+                 (exis (fun e1 => .. (exis (fun e2 =>
+                                          (pre%pred *
+                                          [[ forall ret_,
+                                               valid gamma%context
+                                                     (fun done_rx =>
+                                                        post emp ret_ *
+                                                        [[ done_rx = done ]])
+                                                     (rx ret_)
+                                          ]])%pred )) .. ))
+              ) (p rx))
+   (at level 0, p at level 60,
+    e1 binder, e2 binder,
+    only parsing).
 
-Close Scope list.
+  Ltac inv_cprog :=
+    match goal with
+    | [ H: @eq cprog ?a ?b |- _ ] =>
+      inversion H; subst; clear H
+    end.
+
+  Ltac inv_state :=
+    match goal with
+    | [ H: @eq state ?a ?b |- _ ] =>
+      inversion H; subst; clear H
+    end.
+
+  (** Save an equality to a non-variable expression so induction on an expression preserves
+      information. *)
+  Ltac remember_nonvar a :=
+    (is_var a || remember a).
+
+  Ltac inv_cexec :=
+    match goal with
+    | [ H : cexec ?s ?c _ _ |- _ ] =>
+      remember_nonvar s;
+        remember_nonvar c;
+        induction H; inv_cprog; inv_state
+    end.
+
+  Theorem write_cok : forall a v,
+      [G] |- {{ F v0,
+               PRE F * a |-> v0
+               POST RET:_ F * a |-> v
+            }} CWrite a v.
+  Proof.
+    unfold valid.
+    intros.
+    destruct_lift H.
+    inv_cexec.
+    - edestruct H5; eauto.
+      eapply pimpl_apply; [| eapply ptsto_upd].
+      cancel.
+      pred_apply; cancel.
+    - assert (m a = Some v2).
+      eapply ptsto_valid; pred_apply; cancel.
+      congruence.
+  Qed.
+
+  Theorem read_cok : forall a,
+      [G] |- {{ F v0,
+               PRE F * a |-> v0
+               POST RET:_ F * a |-> v0
+            }} CRead a.
+  Proof.
+    unfold valid.
+    intros.
+    destruct_lift H.
+    inv_cexec.
+    - edestruct H5; eauto.
+      pred_apply; cancel.
+    - assert (m a = Some v1).
+      eapply ptsto_valid; pred_apply; cancel.
+      congruence.
+  Qed.
+
+End ConcurrentSepLogic.
