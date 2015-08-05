@@ -147,7 +147,7 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Trim _) _) => apply trim_ok : prog.
 
-Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
+Definition If_ {PROGTYPE : Type -> Type} {T : Type} P Q (b : {P} + {Q}) (p1 p2 : PROGTYPE T) :=
   if b then p1 else p2.
 
 Theorem if_ok:
@@ -171,7 +171,8 @@ Qed.
 Hint Extern 1 ({{_}} If_ _ _ _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
-Definition IfRx_ T P Q R (b : {P} + {Q}) (p1 p2 : (R -> prog T) -> prog T) (rx : R -> prog T) : prog T :=
+Definition IfRx_ {PROGTYPE : Type -> Type} {T : Type} P Q R (b : {P} + {Q})
+                 (p1 p2 : (R -> PROGTYPE T) -> PROGTYPE T) (rx : R -> PROGTYPE T) : PROGTYPE T :=
   If_ b (p1 rx) (p2 rx).
 
 Theorem ifrx_ok:
@@ -205,14 +206,15 @@ Proof.
   apply wlt_lt; auto.
 Qed.
 
-Definition For_ (T: Type)
-                (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
+Definition For_ {PROGTYPE : Type -> Type}
+                {T: Type}
+                (L : Type) (G : Type) (f : addr -> L -> (L -> PROGTYPE T) -> PROGTYPE T)
                 (i n : addr)
                 (nocrash : G -> addr -> L -> @pred addr (@weq addrlen) valuset)
                 (crashed : G -> @pred addr (@weq addrlen) valuset)
                 (l : L)
-                (rx: L -> prog T) : prog T.
-  refine (Fix (@for_args_wf L) (fun _ => prog T)
+                (rx: L -> PROGTYPE T) : PROGTYPE T.
+  refine (Fix (@for_args_wf L) (fun _ => PROGTYPE T)
           (fun args For_ => _)
           {| For_args_i := i; For_args_n := n; For_args_l := l |}).
   clear i n l.
@@ -250,12 +252,12 @@ Definition For_ (T: Type)
   omega.
 Defined.
 
-Lemma For_step: forall T L G f i n l nocrash crashed (rx: _ -> prog T),
-  @For_ T L G f i n nocrash crashed l rx =
+Lemma For_step: forall {PROGTYPE : Type -> Type} T L G f i n l nocrash crashed (rx: _ -> PROGTYPE T),
+  @For_ PROGTYPE T L G f i n nocrash crashed l rx =
     if weq n $0
     then rx l
     else l' <- (f i l);
-         @For_ T L G f
+         @For_ PROGTYPE T L G f
                (i ^+ $1)
                (n ^- $1)
                nocrash crashed l' rx.
@@ -451,12 +453,13 @@ Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation'
    body at level 9).
 
 
-Fixpoint ForEach_ (T: Type) (ITEM : Type)
-                (L : Type) (G : Type) (f : ITEM -> L -> (L -> prog T) -> prog T)
+Fixpoint ForEach_
+                {PROGTYPE : Type -> Type} {T: Type} (ITEM : Type)
+                (L : Type) (G : Type) (f : ITEM -> L -> (L -> PROGTYPE T) -> PROGTYPE T)
                 (lst : list ITEM)
                 (nocrash : G -> list ITEM -> L -> @pred addr (@weq addrlen) valuset)
                 (crashed : G -> @pred addr (@weq addrlen) valuset)
-                (l : L) (rx: L -> prog T) : prog T :=
+                (l : L) (rx: L -> PROGTYPE T) : PROGTYPE T :=
   match lst with
   | nil => rx l
   | elem :: lst' =>

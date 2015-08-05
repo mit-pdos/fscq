@@ -94,7 +94,7 @@ Module SLOWBYTEFILE.
   Definition hidden (P : Prop) : Prop := P.
   Opaque hidden.
 
-  Definition update_bytes T fsxp inum (off : nat) (newdata : list byte) mscs rx : prog T :=
+  Definition update_bytes T fsxp inum (off : nat) (newdata : list byte) mscs (rx : _ -> prog T) :=
     let^ (mscs, finaloff) <- ForEach b rest newdata
       Ghost [ mbase F Fm A f allbytes ]
       Loopvar [ mscs boff ]
