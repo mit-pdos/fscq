@@ -131,9 +131,9 @@ Section ConcurrentSepLogic.
 
   Notation "[G ri1 , .. , ri2 G]" :=
     (cons ri1%context .. (cons ri2%context nil) ..)
-      (at level 0) : context_scope.
+      (at level 0, only parsing) : context_scope.
 
-  Notation "[G]" := (nil (A := R * @pred addr (@weq addrlen) valu)) (at level 60) : context_scope.
+  Notation "[G]" := (nil (A := R * @pred addr (@weq addrlen) valu)) (at level 60, only parsing) : context_scope.
 
 
   Fixpoint inv (gamma:context) :=
@@ -270,23 +270,24 @@ Section ConcurrentSepLogic.
       PFinished m ret1 ret2
     end.
 
-  (* TODO: implement locks *)
   (* TODO: track events *)
   Inductive cexec : mem -> pstate -> pstate -> poutcomes -> Prop :=
-  | CProg1Step : forall m m' ls1 ls1' p1 p1' events ps2 outs,
+  | CProg1Step : forall m m' ls1 ls1' p1 p1' events p2 ls2 outs,
       rstep (State m ls1) p1 (State m' ls1') p1' events ->
-      cexec m' (PState p1' ls1') ps2 outs ->
-      cexec m (PState p1 ls1) ps2 outs
-  | CProg2Step : forall m ps1 m' ls2 ls2' p2 p2' events outs,
+      (forall r, In r ls1' -> In r ls2 -> False) ->
+      cexec m' (PState p1' ls1') (PState p2 ls2) outs ->
+      cexec m (PState p1 ls1) (PState p2 ls2) outs
+  | CProg2Step : forall m p1 ls1 m' ls2 ls2' p2 p2' events outs,
       rstep (State m ls2) p2 (State m' ls2') p2' events ->
-      cexec m' ps1 (PState p2' ls2') outs ->
-      cexec m ps1 (PState p2 ls2) outs
-  | CProg1Done : forall m m' ret1 ret2 events ls1 p2 ls2,
+      (forall r, In r ls2' -> In r ls1 -> False) ->
+      cexec m' (PState p1 ls1) (PState p2' ls2') outs ->
+      cexec m (PState p1 ls1) (PState p2 ls2) outs
+  | CProg1Done : forall m m' ret1 ret2 events p2 ls2,
       rexec (State m ls2) p2 events (Finished m' ret2) ->
-      cexec m (PState (CDone ret1) ls1) (PState p2 ls2) (PFinished m' ret1 ret2)
-  | CProg2Done : forall m m' ret1 ret2 events ls1 p1 ls2,
+      cexec m (PState (CDone ret1) nil) (PState p2 ls2) (PFinished m' ret1 ret2)
+  | CProg2Done : forall m m' ret1 ret2 events ls1 p1,
       rexec (State m ls1) p1 events (Finished m' ret2) ->
-      cexec m (PState p1 ls1) (PState (CDone ret2) ls2) (PFinished m' ret1 ret2)
+      cexec m (PState p1 ls1) (PState (CDone ret2) nil) (PFinished m' ret1 ret2)
   | CProg1Fail : forall m ls1 p1 ps2,
         (forall m' ls1' p1' events, ~rstep (State m ls1) p1 (State m' ls1') p1' events) ->
         (forall v, p1 <> CDone v) ->
@@ -295,5 +296,34 @@ Section ConcurrentSepLogic.
         (forall m' ls2' p2' events, ~rstep (State m ls2) p2 (State m' ls2') p2' events) ->
         (forall v, p2 <> CDone v) ->
         cexec m ps1 (PState p2 ls2) PFailed.
+
+  Ltac inv_pstate :=
+    match goal with
+    | [ H : @eq pstate _ _ |- _ ] =>
+      inversion H; subst; clear H
+    end.
+
+  Ltac ind_cexec :=
+    match goal with
+    | [ H: cexec _ ?ps1 ?ps2 ?pout |- _ ] =>
+      remember_nonvar ps1;
+        remember_nonvar ps2;
+        remember_nonvar pout;
+        induction H;
+        repeat inv_pstate
+    end.
+
+  Theorem locks_disjoint : forall m p1 ls1 p2 ls2 m' ret1 ret2,
+      cexec m (PState p1 ls1) (PState p2 ls2) (PFinished m' ret1 ret2) ->
+      (forall r, In r ls1 -> In r ls2 -> False).
+  Proof.
+    Hint Resolve in_eq in_cons remove_In.
+    intros.
+    ind_cexec; try inv_rstep; try congruence; eauto.
+    destruct (REQ r0 r); eauto; subst.
+    (* unfortunately this theorem isn't true; it's possible to execute correctly
+       from a state where locks overlap if the program begins by releasing those locks;
+       this doesn't work if the execution began with neither program holding locks. *)
+  Abort.
 
 End ConcurrentSepLogic.
