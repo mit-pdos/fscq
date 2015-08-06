@@ -1124,6 +1124,23 @@ Proof.
   unfold mem_disjoint, empty_mem, not. intros; repeat deex. congruence.
 Qed.
 
+Lemma mem_disjoint_empty_mem_r : forall (m : @mem AT AEQ V),
+  mem_disjoint m empty_mem.
+Proof.
+  intros.
+  apply mem_disjoint_comm.
+  apply mem_disjoint_empty_mem.
+Qed.
+
+Lemma mem_union_empty_mem_r : forall (m : @mem AT AEQ V),
+  mem_union m empty_mem = m.
+Proof.
+  intros.
+  rewrite mem_union_comm.
+  apply mem_union_empty_mem.
+  apply mem_disjoint_empty_mem_r.
+Qed.
+
 Theorem notindomain_empty_mem : forall a,
   notindomain a (@empty_mem AT AEQ V).
 Proof.

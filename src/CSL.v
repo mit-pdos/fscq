@@ -8,6 +8,7 @@ Require Import SepAuto.
 Import List.
 
 Infix "::" := cons.
+Notation "[ x ]" := (cons x nil).
 
 Set Implicit Arguments.
 
@@ -41,37 +42,84 @@ Section ConcurrentSepLogic.
   | Finished : forall m, T -> coutcome
   | Failed.
 
-  Inductive rexec : state -> cprog -> list exec_label -> coutcome -> Prop :=
-  | EStepRead : forall m ls a v rx events out,
+  Inductive rstep : state -> cprog -> state -> cprog -> list exec_label -> Prop :=
+  | SRead : forall m ls a v rx,
       m a = Some v ->
-      rexec (State m ls) (rx v) events out ->
-      rexec (State m ls) (CRead a rx) events out
-  | EReadFail : forall m a ls rx events,
-      m a = None ->
-      rexec (State m ls) (CRead a rx) events (Failed)
-  | EStepWrite : forall m ls a v0 v rx events out,
-      m a = v0 ->
-      rexec (State (upd m a v) ls) (rx tt) events out ->
-      rexec (State m ls) (CWrite a v rx) events out
-  | EWriteFail : forall m a v ls rx events,
-      m a = None ->
-      rexec (State m ls) (CWrite a v rx) events (Failed)
-  | EStepAcq : forall m rm ls r rx events out,
+      rstep (State m ls) (CRead a rx)
+            (State m ls) (rx v)
+            nil
+  | SWrite : forall m ls a v0 v rx,
+      m a = Some v0 ->
+      rstep (State m ls) (CWrite a v rx)
+            (State (upd m a v) ls) (rx tt)
+            nil
+  | SAcq : forall m rm ls r rx,
       mem_disjoint m rm ->
-      rexec (State (mem_union m rm) (r::ls)) (rx tt)
-            events out ->
-      rexec (State m ls) (Acq r rx)
-            (AcqStep r rm::events) out
-  | EStepRel : forall m m' rm ls r rx events out,
+      rstep (State m ls) (Acq r rx)
+            (State (mem_union m rm) (r::ls)) (rx tt)
+            [AcqStep r rm]
+  | SRel : forall m m' rm ls r rx,
       mem_disjoint m' rm ->
       m = mem_union m' rm ->
-      rexec (State m (remove REQ r ls)) (rx tt)
-            events out ->
-      rexec (State m ls) (Rel r rx)
-            (RelStep r rm::events) out
-  | EDone : forall m ls v events,
+      rstep (State m ls) (Rel r rx)
+            (State m (remove REQ r ls)) (rx tt)
+            [RelStep r rm].
+
+  Hint Constructors rstep.
+
+  Inductive rexec : state -> cprog -> list exec_label -> coutcome -> Prop :=
+  | EStep : forall s s' p p' events new_events out,
+      rstep s p s' p' new_events ->
+      rexec s' p' events out ->
+      rexec s p (new_events ++ events) out
+  | EDone : forall m ls v,
       rexec (State m ls) (CDone v)
-            events (Finished m v).
+            nil (Finished m v)
+  | EFail : forall s p,
+      (forall s' p' new_events, ~rstep s p s' p' new_events) ->
+      (forall v, p <> CDone v) ->
+      rexec s p nil Failed.
+
+  Hint Constructors rexec.
+
+  Theorem rexec_progress : forall p s,
+      exists events out,
+        rexec s p events out.
+  Proof.
+    induction p; destruct s; eauto.
+    - case_eq (m a); intros.
+      * evar (s: state).
+        specialize (H w ?s).
+        repeat deex; repeat eexists.
+        eauto.
+      * repeat eexists; eapply EFail; intros.
+        intro.
+        inversion H1; congruence.
+        congruence.
+    - case_eq (m a); intros.
+      * evar (s: state).
+        specialize (H tt ?s).
+        repeat deex; repeat eexists.
+        eauto.
+      * repeat eexists; eapply EFail; intros.
+        intro.
+        inversion H1; congruence.
+        congruence.
+    - Hint Resolve mem_disjoint_empty_mem_r.
+      evar (s: state).
+      specialize (H tt ?s).
+      repeat deex.
+      do 2 eexists; eauto.
+    - evar (s: state).
+      specialize (H tt ?s).
+      repeat deex.
+      do 2 eexists; eauto.
+      econstructor.
+      econstructor.
+      eauto.
+      rewrite mem_union_empty_mem_r; reflexivity.
+      eauto.
+  Qed.
 
   Definition donecond :=  T -> @pred addr (@weq addrlen) valu.
 
