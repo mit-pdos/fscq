@@ -132,8 +132,13 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     pose proof items_per_val_not_0; omega.
   Qed.
+  
+  Lemma items_per_val_gt_0' : 0 < items_per_val.
+  Proof.
+    pose proof items_per_val_not_0; omega.
+  Qed.
 
-  Local Hint Resolve items_per_val_not_0 items_per_val_gt_0.
+  Local Hint Resolve items_per_val_not_0 items_per_val_gt_0 items_per_val_gt_0'.
 
   Hint Rewrite firstn_nil : core.
 
@@ -435,7 +440,7 @@ Module AsyncRecArray (RA : RASig).
 
   Ltac simplen' := repeat match goal with
     | [H : context[length ?x] |- _] => (is_var x || (progress simplen_rewrite H))
-    | [H : ?l = _  |- context [ ?l ] ] => rewrite H
+    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
     | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
     | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
     | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
@@ -891,7 +896,7 @@ Module AsyncRecArray (RA : RASig).
   Theorem write_aligned_ok : forall xp start new cs,
     {< F d,
     PRE            exists old, BUFCACHE.rep cs d *
-                   [[ length old = length new /\ xparams_ok xp /\ (start < RALen xp)%word ]] *
+                   [[ eqlen old new /\ xparams_ok xp /\ (start < RALen xp)%word ]] *
                    [[ length new <= # (RALen xp ^- start) * items_per_val ]] *
                    [[ Forall Rec.well_formed new ]] *
                    [[ (F * synced_array (RAStart xp ^+ start)
@@ -957,7 +962,7 @@ Module AsyncRecArray (RA : RASig).
     let bn := idx / items_per_val in
     let off := idx mod items_per_val in
     cs <- write_unaligned_block xp ($ bn) off (setlen new (items_per_val - off) item0) cs;
-    If (wlt_dec ($ bn ^+ $1) (RALen xp)) {
+    If (lt_dec (items_per_val - off) (length new)) {
       cs <- write_aligned xp ($ bn ^+ $1) (skipn (items_per_val - off) new ) cs;
       rx cs
     } else {
@@ -985,7 +990,14 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     hoare.
   Qed.
-
+  
+  Lemma helper_array_isolate_unify4 : forall V i1 i2 i3 (v1 v3 v1' v3' : list V) (v2 v2' : V),
+    v1 = v1' -> v2 = v2' -> v3 = v3'
+    -> array i1 v1 $1 * array i3 v3 $1 * i2 |-> v2
+       =p=> array i1 v1' $1 * i2 |-> v2' * array i3 v3' $1.
+  Proof.
+    hoare.
+  Qed.
 
   Local Hint Resolve div_le Nat.div_le_mono.
 
@@ -1042,6 +1054,120 @@ Module AsyncRecArray (RA : RASig).
     apply div_lt_divup; auto; omega.
   Qed.
   Local Hint Resolve helper_div_lt_divup.
+  
+  Lemma helper_lt_add_le_lt : forall a b c,
+     a < a + c -> a + c <= b -> a < b.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma helper_sub_lt_move : forall a b c d,
+    b >= c -> a - (b - c) < d
+    -> a + c < b + d.
+  Proof.
+    intros; lia.
+  Qed.
+
+  Local Hint Resolve helper_lt_add_le_lt helper_sub_lt_move.
+  Local Hint Resolve Nat.mul_div_le.
+
+  Lemma write_unaligned_bounds_ok1' : forall len idx new,
+    idx + new ≤ len * items_per_val
+    -> items_per_val - idx mod items_per_val < new
+    -> S (idx / items_per_val) < len.
+  Proof.
+    intros.
+    erewrite Nat.mul_lt_mono_pos_r with (p := items_per_val) by auto.
+    eapply lt_le_trans; [ | eauto].
+    rewrite Nat.mod_eq in H0 by auto.
+    rewrite Nat.mul_succ_l.
+    rewrite Nat.mul_comm; rewrite Nat.add_comm.
+    eauto.
+  Qed.
+
+  Lemma write_unaligned_bounds_ok1 : forall A (len : addr) idx (new : list A),
+    idx < idx + length new
+    -> goodSize addrlen (# len * items_per_val)
+    -> idx + length new ≤ # len * items_per_val
+    -> items_per_val - idx mod items_per_val < length new
+    -> ($ (idx / items_per_val) ^+ $ (1) < len)%word.
+  Proof.
+    intros.
+    apply lt_wlt.
+    erewrite wordToNat_plusone by eauto.
+    rewrite wordToNat_natToWord_idempotent' by eauto.
+    eapply write_unaligned_bounds_ok1'; eauto.
+  Qed.
+  Local Hint Resolve write_unaligned_bounds_ok1.
+
+  Lemma helper_sub_le_simplify: forall a b c d e,
+    c >= d -> c + a <= e
+    -> a - (b - (c - d)) <= e - (d + b).
+  Proof.
+    intros; lia.
+  Qed.
+  Local Hint Resolve helper_sub_le_simplify.
+
+
+  Lemma write_unaligned_bounds_ok2' : forall len idx new,
+    idx + new ≤ len * items_per_val
+    -> items_per_val - idx mod items_per_val < new
+    -> new - (items_per_val - idx mod items_per_val) 
+        <= (len - S (idx / items_per_val)) * items_per_val.
+  Proof.
+    intros.
+    rewrite Nat.mul_sub_distr_r.
+    rewrite Nat.mul_succ_l.
+    rewrite Nat.mod_eq by auto.
+    setoid_rewrite Nat.mul_comm at 3.
+    eauto.
+  Qed.
+
+   Lemma write_unaligned_bounds_ok2 : forall A (len : addr) idx (new : list A),
+    idx < idx + length new
+    -> goodSize addrlen (# len * items_per_val)
+    -> idx + length new ≤ # len * items_per_val
+    -> items_per_val - idx mod items_per_val < length new
+    -> length new - (items_per_val - idx mod items_per_val) 
+        <= # (len ^- ($ (idx / items_per_val) ^+ $ (1))) * items_per_val.
+  Proof.
+    intros.
+    rewrite wminus_minus by eauto.
+    erewrite wordToNat_plusone by eauto.
+    rewrite wordToNat_natToWord_idempotent' by eauto.
+    apply write_unaligned_bounds_ok2'; auto.
+  Qed.
+  Local Hint Resolve write_unaligned_bounds_ok2.
+
+  Lemma mod_bound_expand : forall a b,
+    b <> 0 -> a - b * (a / b) < b.
+  Proof.
+    intros.
+    rewrite <- Nat.mod_eq by auto.
+    apply Nat.mod_upper_bound; auto.
+  Qed.
+  Local Hint Resolve mod_bound_expand Nat.lt_le_incl.
+
+  Lemma helper_sub_eq_simplify : forall a b c d,
+    c >= a - d -> a >= d ->
+    a + b - (c + d) = b - (c - (a - d)).
+  Proof.
+    intros; lia.
+  Qed.
+
+  Lemma write_unaligned_eqlen : forall  A idx (old new : list A),
+      length old = idx + length new
+      -> idx < length old
+      -> items_per_val - idx mod items_per_val < length new
+      -> eqlen (skipn (S (idx / items_per_val) * items_per_val) old)
+            (skipn (items_per_val - idx mod items_per_val) new).
+  Proof.
+    intros; simplen;
+    rewrite Nat.mod_eq in * by auto;
+    rewrite Nat.mul_comm; eauto.
+    rewrite helper_sub_eq_simplify; eauto.
+  Qed.
+  Local Hint Resolve write_unaligned_eqlen.
 
   Theorem write_unaligned_ok : forall xp idx new cs,
     {< F d old,
@@ -1064,10 +1190,11 @@ Module AsyncRecArray (RA : RASig).
     unfold sel; autorewrite_fast_goal; simplen.
 
     step.
-    step.
-    admit.
-    admit.
+    step. simplen. simplen.
     apply helper_array_isolate_unify2.
+    rewrite skipn_combine_comm.
+    rewrite wordToNat_natToWord_idempotent' by simplen.
+
     admit.
 
     step.
@@ -1076,6 +1203,7 @@ Module AsyncRecArray (RA : RASig).
     instantiate (vs0 := repeat nil (idx / items_per_val)
       ++ [selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0]
       :: skipn (idx / items_per_val + 1) vs).
+
 
     apply helper_array_isolate_unify3.
     admit.
@@ -1086,8 +1214,21 @@ Module AsyncRecArray (RA : RASig).
     admit.
     admit.
     admit.
-    
+
     step.
+    setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
+    autorewrite_fast_goal.
+    apply helper_array_isolate_unify4.
+    instantiate (vs := updN (repeat nil (length (list_chunk old items_per_val item0)))
+      (idx / items_per_val)
+      [(selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0)]).
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
   Qed.
 
 
