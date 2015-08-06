@@ -229,7 +229,7 @@ Section ConcurrentSepLogic.
       (exists m' v, out = Finished m' v /\
               (m' |= d v * inv gamma)).
 
-  Notation "gamma |- {{ e1 .. e2 , 'PRE' pre 'POST' post }} p" :=
+  Notation "gamma |- {{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
     (forall (rx: _ -> cprog),
         valid gamma%context%pred
               (fun done =>
@@ -268,8 +268,8 @@ Section ConcurrentSepLogic.
 
   Theorem write_cok : forall a v,
       [G] |- {{ F v0,
-               PRE F * a |-> v0
-               POST RET:_ F * a |-> v
+             | PRE F * a |-> v0
+             | POST RET:_ F * a |-> v
             }} CWrite a v.
   Proof.
     unfold valid.
@@ -290,8 +290,8 @@ Section ConcurrentSepLogic.
 
   Theorem read_cok : forall a,
       [G] |- {{ F v0,
-               PRE F * a |-> v0
-               POST RET:_ F * a |-> v0
+             | PRE F * a |-> v0
+             | POST RET:_ F * a |-> v0
             }} CRead a.
   Proof.
     unfold valid.
@@ -388,7 +388,7 @@ Section ParallelSemantics.
       (exists m' ret1 ret2, out = PFinished m' ret1 ret2 /\
                        (m' |= d ret1 ret2 * inv gamma)).
 
-  Notation "gamma |- {P e1 .. e2 , 'PRE' pre 'POST' post P} p1 , p2" :=
+  Notation "gamma |- {{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p1 , p2" :=
     (forall (rx1 rx2: _ -> cprog),
         pvalid gamma%context%pred
                (fun done =>
@@ -414,10 +414,10 @@ Section ParallelSemantics.
        only parsing).
 
   Theorem write_pok : forall a va b vb,
-      [G] |- {P F va0 vb0,
-              PRE F * a |-> va0 * b |-> vb0
-              POST RETS:_ _ F * a |-> va * b |-> vb
-            P} (CWrite a va) , (CWrite b vb).
+      [G] |- {{ F va0 vb0,
+             | PRE F * a |-> va0 * b |-> vb0
+             | POST RETS:_ _ F * a |-> va * b |-> vb
+            }} (CWrite a va) , (CWrite b vb).
   Proof.
   Admitted.
 
