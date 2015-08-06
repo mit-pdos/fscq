@@ -308,20 +308,13 @@ Section ConcurrentSepLogic.
       eapply ptsto_valid; pred_apply; cancel.
   Qed.
 
+Section ParallelSemantics.
   Inductive pstate :=
   | PState (p: cprog) (locks: list R).
 
   Inductive poutcomes :=
   | PFailed
   | PFinished m (ret1: T) (ret2: T).
-
-  (** Combine single-threaded return values, with out2 finishing second. *)
-  Definition outcome2 (ret1: T) (out2: coutcome) : poutcomes :=
-    match out2 with
-    | Failed => PFailed
-    | Finished m ret2 =>
-      PFinished m ret1 ret2
-    end.
 
   Inductive cexec : mem -> pstate -> pstate -> list exec_label -> poutcomes -> Prop :=
   | CProg1Step : forall m m' ls1 ls1' p1 p1' events new_events p2 ls2 outs,
@@ -343,15 +336,15 @@ Section ConcurrentSepLogic.
       cexec m (PState p1 ls1) (PState (CDone ret2) nil)
             new_events (PFinished m' ret1 ret2)
   | CProg1Fail : forall m ls1 p1 ps2,
-        (forall m' ls1' p1' events, ~rstep (State m ls1) p1 (State m' ls1') p1' events) ->
-        (forall v, p1 <> CDone v) ->
-        cexec m (PState p1 ls1) ps2
-              nil PFailed
+      (forall m' ls1' p1' events, ~rstep (State m ls1) p1 (State m' ls1') p1' events) ->
+      (forall v, p1 <> CDone v) ->
+      cexec m (PState p1 ls1) ps2
+            nil PFailed
   | CProg2Fail : forall m ps1 ls2 p2,
-        (forall m' ls2' p2' events, ~rstep (State m ls2) p2 (State m' ls2') p2' events) ->
-        (forall v, p2 <> CDone v) ->
-        cexec m ps1 (PState p2 ls2)
-              nil PFailed.
+      (forall m' ls2' p2' events, ~rstep (State m ls2) p2 (State m' ls2') p2' events) ->
+      (forall v, p2 <> CDone v) ->
+      cexec m ps1 (PState p2 ls2)
+            nil PFailed.
 
   Ltac inv_pstate :=
     match goal with
@@ -427,5 +420,7 @@ Section ConcurrentSepLogic.
             P} (CWrite a va) , (CWrite b vb).
   Proof.
   Admitted.
+
+End ParallelSemantics.
 
 End ConcurrentSepLogic.
