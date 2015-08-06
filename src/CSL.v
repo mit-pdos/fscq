@@ -24,8 +24,9 @@ Section ConcurrentSepLogic.
   Implicit Types r : R.
   Implicit Types m rm : @mem addr (@weq addrlen) valu.
 
+  (* TODO: change state to capture p and locks, not m and locks *)
   Inductive state :=
-  | State : forall m (locks: list R), state.
+  | State m (locks: list R).
 
   Inductive exec_label :=
   | AcqStep : forall r rm, exec_label
@@ -42,7 +43,7 @@ Section ConcurrentSepLogic.
   | Finished : forall m, T -> coutcome
   | Failed.
 
-  Inductive rstep : state -> cprog -> state -> cprog -> list exec_label -> Prop :=
+  Inductive rstep : (forall s1 p1 s2 p2 events, Prop) :=
   | SRead : forall m ls a v rx,
       m a = Some v ->
       rstep (State m ls) (CRead a rx)
@@ -254,11 +255,45 @@ Section ConcurrentSepLogic.
       eapply ptsto_valid; pred_apply; cancel.
   Qed.
 
-  Definition cprogs := list cprog.
-  Definition cstates := list (list R).
-  Definition coutcomes := list coutcome.
+  Inductive pstate :=
+  | PState (p: cprog) (locks: list R).
 
-  Inductive par_cexec : cprogs -> @mem addr (@weq addrlen) valu ->
-                        cstates -> coutcomes -> Prop :=.
+  Inductive poutcomes :=
+  | PFailed
+  | PFinished m (ret1: T) (ret2: T).
+
+  (** Combine single-threaded return values, with out2 finishing second. *)
+  Definition outcome2 (ret1: T) (out2: coutcome) : poutcomes :=
+    match out2 with
+    | Failed => PFailed
+    | Finished m ret2 =>
+      PFinished m ret1 ret2
+    end.
+
+  (* TODO: implement locks *)
+  (* TODO: track events *)
+  Inductive cexec : mem -> pstate -> pstate -> poutcomes -> Prop :=
+  | CProg1Step : forall m m' ls1 ls1' p1 p1' events ps2 outs,
+      rstep (State m ls1) p1 (State m' ls1') p1' events ->
+      cexec m' (PState p1' ls1') ps2 outs ->
+      cexec m (PState p1 ls1) ps2 outs
+  | CProg2Step : forall m ps1 m' ls2 ls2' p2 p2' events outs,
+      rstep (State m ls2) p2 (State m' ls2') p2' events ->
+      cexec m' ps1 (PState p2' ls2') outs ->
+      cexec m ps1 (PState p2 ls2) outs
+  | CProg1Done : forall m m' ret1 ret2 events ls1 p2 ls2,
+      rexec (State m ls2) p2 events (Finished m' ret2) ->
+      cexec m (PState (CDone ret1) ls1) (PState p2 ls2) (PFinished m' ret1 ret2)
+  | CProg2Done : forall m m' ret1 ret2 events ls1 p1 ls2,
+      rexec (State m ls1) p1 events (Finished m' ret2) ->
+      cexec m (PState p1 ls1) (PState (CDone ret2) ls2) (PFinished m' ret1 ret2)
+  | CProg1Fail : forall m ls1 p1 ps2,
+        (forall m' ls1' p1' events, ~rstep (State m ls1) p1 (State m' ls1') p1' events) ->
+        (forall v, p1 <> CDone v) ->
+        cexec m (PState p1 ls1) ps2 PFailed
+  | CProg2Fail : forall m ps1 ls2 p2,
+        (forall m' ls2' p2' events, ~rstep (State m ls2) p2 (State m' ls2') p2' events) ->
+        (forall v, p2 <> CDone v) ->
+        cexec m ps1 (PState p2 ls2) PFailed.
 
 End ConcurrentSepLogic.
