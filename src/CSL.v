@@ -21,8 +21,18 @@ Section ConcurrentSepLogic.
   (** We will define programs that return T. *)
   Variable T:Type.
 
-  Implicit Types r : R.
+  (** The execution semantics will release memory for resources according to this
+      policy. in_resource_domain r m a should hold when the resource invariant of r
+      should include a in memory m. *)
+  Variable in_resource_domain : R -> @mem addr (@weq addrlen) valu ->
+                                (addr -> Prop).
+
+
+  Implicit Type r : R.
   Implicit Types m rm : @mem addr (@weq addrlen) valu.
+
+  Definition respects_domain r m rm :=
+    (forall a, in_resource_domain r m a -> exists v, rm a = Some v).
 
   (* TODO: change state to capture p and locks, not m and locks *)
   Inductive state :=
@@ -62,6 +72,7 @@ Section ConcurrentSepLogic.
   | SRel : forall m m' rm ls r rx,
       mem_disjoint m' rm ->
       m = mem_union m' rm ->
+      respects_domain r m rm ->
       rstep (State m ls) (Rel r rx)
             (State m (remove REQ r ls)) (rx tt)
             [RelStep r rm].
@@ -83,43 +94,97 @@ Section ConcurrentSepLogic.
 
   Hint Constructors rexec.
 
-  Theorem rexec_progress : forall p s,
-      exists events out,
-        rexec s p events out.
+  Ltac inv_state :=
+    match goal with
+    | [ H: @eq state ?a ?b |- _ ] =>
+      inversion H; subst; clear H
+    end.
+
+  Ltac inv_rstep :=
+    match goal with
+    | [ H : rstep _ _ _ _ _ |- _ ] =>
+      inversion H; subst
+    end.
+
+  Lemma read_failure : forall m a ls rx,
+      m a = None ->
+      rexec (State m ls) (CRead a rx) nil Failed.
   Proof.
-    induction p; destruct s; eauto.
-    - case_eq (m a); intros.
-      * evar (s: state).
-        specialize (H w ?s).
-        repeat deex; repeat eexists.
-        eauto.
-      * repeat eexists; eapply EFail; intros.
-        intro.
-        inversion H1; congruence.
-        congruence.
-    - case_eq (m a); intros.
-      * evar (s: state).
-        specialize (H tt ?s).
-        repeat deex; repeat eexists.
-        eauto.
-      * repeat eexists; eapply EFail; intros.
-        intro.
-        inversion H1; congruence.
-        congruence.
-    - Hint Resolve mem_disjoint_empty_mem_r.
-      evar (s: state).
-      specialize (H tt ?s).
+    intros.
+    eapply EFail; try congruence; intros.
+    intro.
+    inv_rstep; congruence.
+  Qed.
+
+  Lemma write_failure : forall m a v ls rx,
+      m a = None ->
+      rexec (State m ls) (CWrite a v rx) nil Failed.
+  Proof.
+    intros.
+    eapply EFail; try congruence; intros.
+    intro.
+    inv_rstep; congruence.
+  Qed.
+
+  (** Instantiate a forall hypothesis with fresh evars.
+      If H quantifies over a Prop and a proof is in context,
+      we instantiate to that proof (following proof irrelevance). *)
+  Ltac specialize_evars H :=
+    repeat match type of H with
+    | (forall x:?T, _) =>
+      match type of T with
+      (* H looks like forall H', ...; if we can find an H', then use that
+         directly *)
+      | Prop =>
+        match goal with
+        | [ H' : T |- _ ] =>
+          specialize (H H')
+        end
+      (* normal case: create an evar and specialize to it *)
+      | _ =>
+        let x := fresh x in
+        evar (x:T);
+          specialize (H x);
+          (* a quirk of evar is that it creates a variable and an evar;
+             from Ltac it doesn't seem like we can access the evar name,
+             but we can simply get rid of the variable with subst. *)
+          subst x
+      end
+    end.
+
+  Theorem rexec_progress : forall p m locks,
+      (* this is a very powerful hypothesis, but in general if in_resource_domain looks
+         at the memory contents, then Writes could get us into a state where
+         there's no way to release memory that even has the right domain.
+
+         In these cases, if in_resource_domain is at least decidable, then we can still
+         prove progress via a fail step. *)
+      (forall r m, exists m' rm, m = mem_union m' rm /\
+                       mem_disjoint m' rm /\
+                       respects_domain r m rm) ->
+      exists events out,
+        rexec (State m locks) p events out.
+  Proof.
+    Local Hint Resolve read_failure write_failure.
+    induction p; intros; eauto.
+    - case_eq (m a); intros; eauto.
+      specialize_evars H.
+      repeat deex; repeat eexists.
+      eauto.
+    - case_eq (m a); intros; eauto.
+      specialize_evars H.
+      repeat deex; repeat eexists.
+      eauto.
+    - specialize_evars H.
+      repeat deex.
+      repeat eexists; eauto.
+      econstructor; eauto.
+      econstructor.
+      apply mem_disjoint_empty_mem_r.
+    - specialize_evars H.
+      specialize_evars H0.
       repeat deex.
       do 2 eexists; eauto.
-    - evar (s: state).
-      specialize (H tt ?s).
-      repeat deex.
-      do 2 eexists; eauto.
-      econstructor.
-      econstructor.
-      eauto.
-      rewrite mem_union_empty_mem_r; reflexivity.
-      eauto.
   Qed.
 
   Definition donecond :=  T -> @pred addr (@weq addrlen) valu.
@@ -182,21 +247,9 @@ Section ConcurrentSepLogic.
     e1 binder, e2 binder,
     only parsing).
 
-  Ltac inv_rstep :=
-    match goal with
-    | [ H : rstep _ _ _ _ _ |- _ ] =>
-      inversion H; subst
-    end.
-
   Ltac inv_cprog :=
     match goal with
     | [ H: @eq cprog ?a ?b |- _ ] =>
-      inversion H; subst; clear H
-    end.
-
-  Ltac inv_state :=
-    match goal with
-    | [ H: @eq state ?a ?b |- _ ] =>
       inversion H; subst; clear H
     end.
 
@@ -374,6 +427,5 @@ Section ConcurrentSepLogic.
             P} (CWrite a va) , (CWrite b vb).
   Proof.
   Admitted.
-
 
 End ConcurrentSepLogic.
