@@ -308,6 +308,43 @@ Section ConcurrentSepLogic.
       eapply ptsto_valid; pred_apply; cancel.
   Qed.
 
+  Theorem pimpl_cok : forall gamma pre pre' p,
+      valid gamma pre' p ->
+      (forall d, pre d =p=> pre' d) ->
+      valid gamma pre p.
+  Proof.
+    unfold valid.
+    intros.
+    rewrite H0 in H1.
+    eauto.
+  Qed.
+
+  (* TODO: debug notation not applying here; I believe it's due to cprog
+      not actually being parametrized by T here, since T is a variable. *)
+  Theorem write2_cok : forall a va b vb,
+      [G] |- {{ F va0 vb0,
+             | PRE F * a |-> va0 * b |-> vb0
+             | POST RET:_ F * a |-> va * b |-> vb
+            }} (fun rx => CWrite a va (fun unit => CWrite b vb rx)).
+  Proof.
+    (* basically, do 3 step. *)
+    intros.
+    eapply pimpl_cok.
+    apply write_cok.
+    intros.
+    cancel.
+
+    eapply pimpl_cok.
+    apply write_cok.
+    intros.
+    cancel.
+
+    subst.
+    eapply pimpl_cok.
+    apply H1.
+    cancel.
+  Qed.
+
 Section ParallelSemantics.
   Inductive pstate :=
   | PState (p: cprog) (locks: list R).
