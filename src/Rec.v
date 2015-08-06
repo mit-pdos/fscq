@@ -771,6 +771,49 @@ Module Rec.
       lia.
   Qed.
 
+  Program Fixpoint word_concat {ft : type} (items : list (word (len ft)))
+    : word ((len ft) * (List.length items)) :=
+    match items with
+    | nil => $0
+    | m :: rest => combine m (@word_concat ft rest)
+    end.
+  Next Obligation.
+  abstract nia.
+  Defined.
+
+  Definition word_splice {ft : type} {l : nat} (w : word (len (ArrayF ft l))) (idx : nat)
+                         (items : list (word (len ft))) : word (len (ArrayF ft l)).
+    destruct (lt_dec idx l).
+    remember ( word_concat (firstn (l - idx) items) ) as v.
+    replace (len (ArrayF ft l)) with 
+     (len (ArrayF ft l) - Nat.min (len (ArrayF ft l) - idx * len ft) (len ft * List.length items)
+     + len ft * List.length (firstn (l - idx) items)).
+    refine (splice w (idx * len ft) (len ft * List.length items) v).
+    abstract (
+      destruct (lt_dec (l - idx) (List.length items)); 
+        [ rewrite firstn_length_l by lia; simpl; rewrite Nat.min_l; nia
+        | rewrite firstn_length_r by lia; simpl; rewrite Nat.min_r; nia 
+      ]).
+    exact w.
+  Defined.
+
+  Lemma word_splice_exact : forall {ft} {l} w idx items,
+    idx + (List.length items) = l
+    -> @word_splice ft l w idx (map to_word items) = @to_word (ArrayF ft l)
+        ((firstn idx (of_word w)) ++ items)%list.
+  Proof.
+    unfold word_splice; intros.
+    destruct (lt_dec idx l).
+
+    admit.
+
+    destruct (Nat.eq_dec (List.length items) 0); try omega.
+    rewrite length_nil with (l := items) by auto.
+    rewrite app_nil_r.
+    rewrite firstn_oob.
+    rewrite to_of_id; auto.
+    generalize (of_word_length _ w); simpl; intuition.
+  Admitted.
 
   Theorem of_word_zero_list : forall ft n,
     @Rec.of_word (ArrayF ft n) $0 = repeat (Rec.of_word $0) n.

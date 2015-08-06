@@ -17,6 +17,8 @@ Require Import Cache.
 Require Import FSLayout.
 Require Import Rounding.
 Require Import List.
+Require Import Psatz.
+
 
 Import ListNotations.
 
@@ -407,6 +409,14 @@ Module AsyncRecArray (RA : RASig).
   Definition eqlen A B (a : list A) (b : list B) := length a = length b.
   Definition xparams_ok xp := goodSize addrlen (#(RALen xp) * items_per_val).
 
+  Lemma eqlen_nil : forall A B (a : list A),
+    eqlen a (@nil B) -> a = nil.
+  Proof.
+    unfold eqlen; simpl; intros.
+    apply length_nil; auto.
+  Qed.
+
+
   Local Hint Unfold array_rep rep_common synced_array unsync_array sel upd item xparams_ok: hoare_unfold.
 
   Local Hint Extern 0 (okToUnify (list_chunk ?a ?b _) (list_chunk ?a ?b _)) => constructor : okToUnify.
@@ -428,7 +438,8 @@ Module AsyncRecArray (RA : RASig).
     | [H : ?l = _  |- context [ ?l ] ] => rewrite H
     | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
     | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
-    | [ H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [H : @eqlen _ ?T ?l nil |- context [?l] ] => replace l with (@nil T) by eauto
     | [ |- # ($ _) < _ ] => apply wordToNat_natToWord_lt
     | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
     end.
@@ -827,6 +838,256 @@ Module AsyncRecArray (RA : RASig).
     apply array_unify; f_equal; simplen.
     cancel.
     Unshelve. all: eauto.
+  Qed.
+
+
+
+  (** write items from a given block index, 
+      slots following the items will be cleared *)
+  Definition write_aligned T xp start (items: itemlist) cs rx : prog T :=
+    let chunks := list_chunk items items_per_val item0 in
+    let^ (cs, _) <- ForEach ck rest chunks
+      Ghost [ crash F ]
+      Loopvar [ cs ix ]
+      Continuation lrx
+      Invariant
+        exists d' tail, BUFCACHE.rep cs d' *
+        [[ ix = length chunks - length rest /\ eqlen tail rest  ]] *
+        [[ (F * unsync_array (RAStart xp ^+ start) 
+                (map block2val ((firstn ix chunks) ++ tail)))%pred d' ]]
+      OnCrash crash
+      Begin
+        cs <- BUFCACHE.write_array (RAStart xp ^+ start) ($ ix) (block2val ck) cs;
+        lrx ^(cs, S ix)
+      Rof ^(cs, 0);
+    rx cs.
+
+
+  Lemma helper_list_chunk_eqlen : forall a b,
+    length a = length b
+    -> eqlen (list_chunk a items_per_val item0) (list_chunk b items_per_val item0).
+  Proof.
+    intros; simplen.
+  Qed.
+
+  Lemma helper_eqlen_lt_add : forall A B (a : list B) b (x : A) n,
+    eqlen a (x :: b) -> n < n + length a.
+  Proof.
+    unfold eqlen; intros; simplen.
+  Qed.
+  Local Hint Resolve helper_eqlen_lt_add.
+
+  Lemma helper_wlt_le_minus_mult : forall (w n : addr) a c,
+    (w < n)%word
+    -> a <= # (n ^- w) * c
+    -> a <= # n * c.
+  Proof.
+    intros.
+    rewrite wminus_minus in H0 by auto.
+    nia.
+  Qed.
+  Local Hint Resolve helper_wlt_le_minus_mult.
+
+  Theorem write_aligned_ok : forall xp start new cs,
+    {< F d,
+    PRE            exists old, BUFCACHE.rep cs d *
+                   [[ length old = length new /\ xparams_ok xp /\ (start < RALen xp)%word ]] *
+                   [[ length new <= # (RALen xp ^- start) * items_per_val ]] *
+                   [[ Forall Rec.well_formed new ]] *
+                   [[ (F * synced_array (RAStart xp ^+ start)
+                          (map block2val (list_chunk old items_per_val item0)))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * unsync_array (RAStart xp ^+ start)
+                          (map block2val (list_chunk new items_per_val item0)))%pred d' ]]
+    CRASH  exists cs d, BUFCACHE.rep cs d
+    >} write_aligned xp start new cs.
+  Proof.
+    unfold write_aligned.
+    step.
+    eapply helper_list_chunk_eqlen; eauto.
+    cancel; eauto. simplen.
+
+    step; simplen.
+    step.
+    apply array_unify; eapply write_all_progress; eauto.
+    simplen.
+    pose proof write_all_progress_length as X; simpl in X.
+    rewrite <- X; simplen.
+
+    step.
+    rewrite firstn_oob; simplen. simplen.
+    Unshelve. eauto.
+  Qed.
+
+
+  Definition write_unaligned_block T xp bn off (new: itemlist) cs rx : prog T :=
+    let^ (cs, v) <- BUFCACHE.read (RAStart xp ^+ bn) cs;
+    let v' := word2val (Rec.word_splice (val2word v) off (map Rec.to_word new)) in
+    cs <- BUFCACHE.write (RAStart xp ^+ bn) v' cs;
+    rx cs.
+
+  Theorem write_unaligned_block_ok : forall xp bn off items cs,
+    {< F d v0,
+    PRE            BUFCACHE.rep cs d *
+                   [[ xparams_ok xp /\ (bn < RALen xp)%word ]] *
+                   [[ length items + off = items_per_val ]] *
+                   [[ Forall Rec.well_formed items ]] *
+                   [[ (F * (RAStart xp ^+ bn) |-> (v0, nil))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * (RAStart xp ^+ bn) |-> 
+                           (block2val ((firstn off (val2block v0)) ++ items), [v0]))%pred d' ]]
+    CRASH  exists cs d, BUFCACHE.rep cs d
+    >} write_unaligned_block xp bn off items cs.
+  Proof.
+    unfold write_unaligned_block.
+    hoare.
+    apply ptsto_value_eq.
+    unfold valuset_list; simpl; f_equal.
+    unfold block2val; f_equal.
+    rewrite Rec.word_splice_exact by omega.
+    autorewrite with core; auto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (write_unaligned_block _ _ _ _ _) _) => apply write_unaligned_block_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
+
+  Definition write_unaligned T xp idx (new : itemlist) cs rx : prog T :=
+    let bn := idx / items_per_val in
+    let off := idx mod items_per_val in
+    cs <- write_unaligned_block xp ($ bn) off (setlen new (items_per_val - off) item0) cs;
+    If (wlt_dec ($ bn ^+ $1) (RALen xp)) {
+      cs <- write_aligned xp ($ bn ^+ $1) (skipn (items_per_val - off) new ) cs;
+      rx cs
+    } else {
+      rx cs
+    }.
+
+  Hint Rewrite wmult_unit_r wmult_unit_l repeat_selN selN_combine: core.
+
+  Lemma helper_array_isolate_unify1 : forall AT AEQ V u v i (A B C : @pred AT AEQ V),
+    u = v -> A * (i |-> u) * B * C =p=> (A * B * C) * i |-> v.
+  Proof.
+    hoare.
+  Qed.
+
+  Lemma helper_array_isolate_unify2 : forall V a b i (A B C : @pred _ _ V),
+    a = b -> A * B * array i a ($ 1) * C =p=> (A * B * C) * array i b ($ 1).
+  Proof.
+    hoare.
+  Qed.
+
+  Lemma helper_array_isolate_unify3 : forall V i1 i2 i3 (v1 v3 v1' v3' : list V) (v2 v2' : V),
+    v1 = v1' -> v2 = v2' -> v3 = v3'
+    -> i2 |-> v2 * array i1 v1 $1 * array i3 v3 $1
+       =p=> array i1 v1' $1 * i2 |-> v2' * array i3 v3' $1.
+  Proof.
+    hoare.
+  Qed.
+
+
+  Local Hint Resolve div_le Nat.div_le_mono.
+
+  Lemma div_add_r_le_mono : forall a b c,
+    a / b <= (a + c) / b.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec b 0).
+    subst; simpl; auto.
+    apply Nat.div_le_mono; eauto; omega.
+  Qed.
+  Local Hint Resolve div_add_r_le_mono.
+
+
+  Lemma helper_div_goodSize : forall (len : addr) idx,
+    idx < # len * items_per_val
+    -> goodSize addrlen (# len * items_per_val)
+    -> goodSize addrlen (idx / items_per_val).
+  Proof.
+    intros.
+    eapply goodSize_trans with (n2 := idx); eauto.
+    eapply goodSize_trans with (n2 := # len * items_per_val); eauto; omega.
+  Qed.
+  Local Hint Resolve helper_div_goodSize.
+
+  Lemma helper_div_wlt: forall (len : addr) idx,
+    idx < # len * items_per_val
+    -> goodSize addrlen (# len * items_per_val)
+    -> ($ (idx / items_per_val) < len)%word.
+  Proof.
+    intros.
+    apply lt_wlt.
+    rewrite wordToNat_natToWord_idempotent' by eauto.
+    rewrite Nat.mul_comm in H.
+    apply Nat.div_lt_upper_bound in H; auto.
+  Qed.
+  Local Hint Resolve helper_div_wlt.
+
+  Lemma sub_mod_add_mod : forall a b,
+    b <> 0 -> b - a mod b + a mod b = b.
+  Proof.
+    intros.
+    pose proof (Nat.mod_upper_bound a b H).
+    omega.
+  Qed.
+  Local Hint Resolve sub_mod_add_mod.
+
+  Lemma helper_div_lt_divup : forall oldlen newlen idx,
+    oldlen = idx + newlen
+    -> idx < idx + newlen
+    -> idx / items_per_val < divup oldlen items_per_val.
+  Proof.
+    intros.
+    apply div_lt_divup; auto; omega.
+  Qed.
+  Local Hint Resolve helper_div_lt_divup.
+
+  Theorem write_unaligned_ok : forall xp idx new cs,
+    {< F d old,
+    PRE            BUFCACHE.rep cs d *
+                   [[ length old = idx + length new /\ idx < length old /\ xparams_ok xp ]] *
+                   [[ length old <= # (RALen xp) * items_per_val ]] *
+                   [[ Forall Rec.well_formed new ]] *
+                   [[ (F * array_rep xp (Synced old))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * array_rep xp (Unsync ((firstn idx old) ++ new)))%pred d' ]]
+    CRASH  exists cs d, BUFCACHE.rep cs d
+    >} write_unaligned xp idx new cs.
+  Proof.
+    unfold write_unaligned.
+    step.
+    rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) by simplen.
+    autorewrite_fast_goal.
+    apply helper_array_isolate_unify1.
+    unfold sel; autorewrite_fast_goal; simplen.
+
+    step.
+    step.
+    admit.
+    admit.
+    apply helper_array_isolate_unify2.
+    admit.
+
+    step.
+    setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
+    autorewrite_fast_goal.
+    instantiate (vs0 := repeat nil (idx / items_per_val)
+      ++ [selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0]
+      :: skipn (idx / items_per_val + 1) vs).
+
+    apply helper_array_isolate_unify3.
+    admit.
+    admit.
+    admit.
+
+    admit.
+    admit.
+    admit.
+    admit.
+    
+    step.
   Qed.
 
 

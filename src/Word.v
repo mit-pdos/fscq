@@ -10,6 +10,7 @@ Require Import Recdef.
 Require Import Ring.
 Require Import Ring_polynom.
 Require Import ProofIrrelevance.
+Require Import Psatz.
 
 Set Implicit Arguments.
 
@@ -591,6 +592,22 @@ Fixpoint split2 (sz1 sz2 : nat) : word (sz1 + sz2) -> word sz2 :=
     | O => fun w => w
     | S sz1' => fun w => split2 sz1' sz2 (wtl w)
   end.
+
+Definition splice {n m : nat} (w : word n) (idx : nat) (d : nat) (v : word m) 
+  : word (n - (Nat.min (n - idx) d) + m).
+  refine (if lt_dec (idx + d) n then _ else _).
+  replace (n - Nat.min (n - idx) d + m) with (idx + m + (n - idx - d)) by (abstract lia).
+  refine (combine (combine (split1 idx (n - idx) _) v) (split2 (idx + d) (n - idx - d) _)).
+  replace (idx + (n - idx)) with n by (abstract lia); exact w.
+  replace (idx + d + (n - idx - d)) with n by (abstract lia); exact w.
+
+  refine (if lt_dec idx n then _ else _).
+  replace (n - Nat.min (n - idx) d + m) with (idx + m) by (abstract lia).
+  refine (combine (split1 idx (n - idx) _) v).
+  replace (idx + (n - idx)) with n by (abstract lia); exact w.
+  replace (n - Nat.min (n - idx) d + m) with (n + m) by (abstract lia).
+  refine (combine w v).
+Defined.
 
 Ltac shatterer := simpl; intuition;
   match goal with
@@ -1376,7 +1393,7 @@ Proof.
   apply div2_double.
 Qed.
 
-Theorem wmult_unit : forall sz (x : word sz), natToWord sz 1 ^* x = x.
+Theorem wmult_unit_l : forall sz (x : word sz), natToWord sz 1 ^* x = x.
 Proof.
   intros; rewrite wmult_alt; unfold wmultN, wordBinN; intros.
   destruct sz; simpl.
@@ -1395,6 +1412,13 @@ Qed.
 Theorem wmult_comm : forall sz (x y : word sz), x ^* y = y ^* x.
 Proof.
   intros; repeat rewrite wmult_alt; unfold wmultN, wordBinN; auto with arith.
+Qed.
+
+Theorem wmult_unit_r : forall sz (x : word sz), x ^* natToWord sz 1 = x.
+Proof.
+  intros.
+  rewrite wmult_comm.
+  apply wmult_unit_l.
 Qed.
 
 Theorem wmult_assoc : forall sz (x y z : word sz), x ^* (y ^* z) = x ^* y ^* z.
@@ -1562,7 +1586,7 @@ Qed.
 Definition wring (sz : nat) : ring_theory (wzero sz) (wone sz) (@wplus sz) (@wmult sz) (@wminus sz) (@wneg sz) (@eq _) :=
   mk_rt _ _ _ _ _ _ _
   (@wplus_unit _) (@wplus_comm _) (@wplus_assoc _)
-  (@wmult_unit _) (@wmult_comm _) (@wmult_assoc _)
+  (@wmult_unit_l _) (@wmult_comm _) (@wmult_assoc _)
   (@wmult_plus_distr _) (@wminus_def _) (@wminus_inv _).
 
 Theorem weqb_sound : forall sz (x y : word sz), weqb x y = true -> x = y.
