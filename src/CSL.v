@@ -181,6 +181,12 @@ Section ConcurrentSepLogic.
     e1 binder, e2 binder,
     only parsing).
 
+  Ltac inv_rstep :=
+    match goal with
+    | [ H : rstep _ _ _ _ _ |- _ ] =>
+      inversion H; subst
+    end.
+
   Ltac inv_cprog :=
     match goal with
     | [ H: @eq cprog ?a ?b |- _ ] =>
@@ -203,7 +209,7 @@ Section ConcurrentSepLogic.
     | [ H : rexec ?s ?c _ _ |- _ ] =>
       remember_nonvar s;
         remember_nonvar c;
-        induction H; inv_cprog; inv_state
+        induction H; try (inv_rstep; inv_cprog; inv_state)
     end.
 
   Theorem write_cok : forall a v,
@@ -223,6 +229,9 @@ Section ConcurrentSepLogic.
     - assert (m a = Some v2).
       eapply ptsto_valid; pred_apply; cancel.
       congruence.
+    - subst; exfalso; eapply H1.
+      econstructor.
+      eapply ptsto_valid; pred_apply; cancel.
   Qed.
 
   Theorem read_cok : forall a,
@@ -240,6 +249,16 @@ Section ConcurrentSepLogic.
     - assert (m a = Some v1).
       eapply ptsto_valid; pred_apply; cancel.
       congruence.
+    - subst; exfalso; eapply H1.
+      econstructor.
+      eapply ptsto_valid; pred_apply; cancel.
   Qed.
+
+  Definition cprogs := list cprog.
+  Definition cstates := list (list R).
+  Definition coutcomes := list coutcome.
+
+  Inductive par_cexec : cprogs -> @mem addr (@weq addrlen) valu ->
+                        cstates -> coutcomes -> Prop :=.
 
 End ConcurrentSepLogic.
