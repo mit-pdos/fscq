@@ -154,15 +154,15 @@ Section ConcurrentSepLogic.
   Definition valid gamma (pre: forall (done:donecond),
                              pred)
              (p:cprog) : Prop :=
-    forall m d ls events out,
+    forall m d events out,
       m |= pre d * inv gamma ->
       (forall r rm, In (AcqStep r rm) events ->
                rm |= rinv r gamma) ->
-      rexec (State m ls) p events out ->
+      rexec (State m nil) p events out ->
       (forall r rm, In (RelStep r rm) events ->
                rm |= rinv r gamma) /\
-      (exists md v, out = Finished md v /\
-              (md |= d v * inv gamma)).
+      (exists m' v, out = Finished m' v /\
+              (m' |= d v * inv gamma)).
 
   Notation "gamma |- {{ e1 .. e2 , 'PRE' pre 'POST' post }} p" :=
     (forall (rx: _ -> cprog),
@@ -325,5 +325,18 @@ Section ConcurrentSepLogic.
        from a state where locks overlap if the program begins by releasing those locks;
        this doesn't work if the execution began with neither program holding locks. *)
   Abort.
+
+  Definition doneconds := T -> T -> @pred addr (@weq addrlen) valu.
+
+  Definition pvalid (gamma:context) (pre : forall doneconds,
+                                        pred)
+             (p1 p2:cprog) : Prop :=
+    forall m d events out,
+      m |= pre d * inv gamma ->
+      (forall r rm, In (AcqStep r rm) events -> rinv r gamma rm) ->
+      cexec m (PState p1 nil) (PState p2 nil) out ->
+      (forall r rm, In (RelStep r rm) events -> rinv r gamma rm) /\
+      (exists m' ret1 ret2, out = PFinished m' ret1 ret2 /\
+                       (m' |= d ret1 ret2 * inv gamma)).
 
 End ConcurrentSepLogic.
