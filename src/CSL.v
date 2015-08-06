@@ -342,4 +342,38 @@ Section ConcurrentSepLogic.
       (exists m' ret1 ret2, out = PFinished m' ret1 ret2 /\
                        (m' |= d ret1 ret2 * inv gamma)).
 
+  Notation "gamma |- {P e1 .. e2 , 'PRE' pre 'POST' post P} p1 , p2" :=
+    (forall (rx1 rx2: _ -> cprog),
+        pvalid gamma%context%pred
+               (fun done =>
+                  (exis (fun e1 => .. (exis (fun e2 =>
+                                            (pre%pred *
+                                             [[ forall ret1_ ret2_,
+                                                  pvalid gamma%context
+                                                         (fun done_rx =>
+                                                            post emp ret1_ ret2_ *
+                                                            [[ done_rx = done ]])
+                                                         (rx1 ret1_) (rx2 ret2_)
+                                            ]])%pred )) .. ))
+               ) (p1 rx1) (p2 rx2))
+      (at level 0, p1 at level 60, p2 at level 60,
+       e1 binder, e2 binder,
+       only parsing).
+
+  Notation "'RETS' : ret1 ret2 post" :=
+    ((fun F =>
+        (fun ret1 ret2 => F * post))%pred)
+      (at level 0, post at level 90,
+       ret1 at level 0, ret2 at level 0,
+       only parsing).
+
+  Theorem write_pok : forall a va b vb,
+      [G] |- {P F va0 vb0,
+              PRE F * a |-> va0 * b |-> vb0
+              POST RETS:_ _ F * a |-> va * b |-> vb
+            P} (CWrite a va) , (CWrite b vb).
+  Proof.
+  Admitted.
+
+
 End ConcurrentSepLogic.
