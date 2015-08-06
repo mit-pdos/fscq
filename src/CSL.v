@@ -41,36 +41,36 @@ Section ConcurrentSepLogic.
   | Finished : forall m, T -> coutcome
   | Failed.
 
-  Inductive cexec : state -> cprog -> list exec_label -> coutcome -> Prop :=
+  Inductive rexec : state -> cprog -> list exec_label -> coutcome -> Prop :=
   | EStepRead : forall m ls a v rx events out,
       m a = Some v ->
-      cexec (State m ls) (rx v) events out ->
-      cexec (State m ls) (CRead a rx) events out
+      rexec (State m ls) (rx v) events out ->
+      rexec (State m ls) (CRead a rx) events out
   | EReadFail : forall m a ls rx events,
       m a = None ->
-      cexec (State m ls) (CRead a rx) events (Failed)
+      rexec (State m ls) (CRead a rx) events (Failed)
   | EStepWrite : forall m ls a v0 v rx events out,
       m a = v0 ->
-      cexec (State (upd m a v) ls) (rx tt) events out ->
-      cexec (State m ls) (CWrite a v rx) events out
+      rexec (State (upd m a v) ls) (rx tt) events out ->
+      rexec (State m ls) (CWrite a v rx) events out
   | EWriteFail : forall m a v ls rx events,
       m a = None ->
-      cexec (State m ls) (CWrite a v rx) events (Failed)
+      rexec (State m ls) (CWrite a v rx) events (Failed)
   | EStepAcq : forall m rm ls r rx events out,
       mem_disjoint m rm ->
-      cexec (State (mem_union m rm) (r::ls)) (rx tt)
+      rexec (State (mem_union m rm) (r::ls)) (rx tt)
             events out ->
-      cexec (State m ls) (Acq r rx)
+      rexec (State m ls) (Acq r rx)
             (AcqStep r rm::events) out
   | EStepRel : forall m m' rm ls r rx events out,
       mem_disjoint m' rm ->
       m = mem_union m' rm ->
-      cexec (State m (remove REQ r ls)) (rx tt)
+      rexec (State m (remove REQ r ls)) (rx tt)
             events out ->
-      cexec (State m ls) (Rel r rx)
+      rexec (State m ls) (Rel r rx)
             (RelStep r rm::events) out
   | EDone : forall m ls v events,
-      cexec (State m ls) (CDone v)
+      rexec (State m ls) (CDone v)
             events (Finished m v).
 
   Definition donecond :=  T -> @pred addr (@weq addrlen) valu.
@@ -109,7 +109,7 @@ Section ConcurrentSepLogic.
       m |= pre d * inv gamma ->
       (forall r rm, In (AcqStep r rm) events ->
                rm |= rinv r gamma) ->
-      cexec (State m ls) p events out ->
+      rexec (State m ls) p events out ->
       (forall r rm, In (RelStep r rm) events ->
                rm |= rinv r gamma) /\
       (exists md v, out = Finished md v /\
@@ -150,9 +150,9 @@ Section ConcurrentSepLogic.
   Ltac remember_nonvar a :=
     (is_var a || remember a).
 
-  Ltac inv_cexec :=
+  Ltac inv_rexec :=
     match goal with
-    | [ H : cexec ?s ?c _ _ |- _ ] =>
+    | [ H : rexec ?s ?c _ _ |- _ ] =>
       remember_nonvar s;
         remember_nonvar c;
         induction H; inv_cprog; inv_state
@@ -167,7 +167,7 @@ Section ConcurrentSepLogic.
     unfold valid.
     intros.
     destruct_lift H.
-    inv_cexec.
+    inv_rexec.
     - edestruct H5; eauto.
       eapply pimpl_apply; [| eapply ptsto_upd].
       cancel.
@@ -186,7 +186,7 @@ Section ConcurrentSepLogic.
     unfold valid.
     intros.
     destruct_lift H.
-    inv_cexec.
+    inv_rexec.
     - edestruct H5; eauto.
       pred_apply; cancel.
     - assert (m a = Some v1).
