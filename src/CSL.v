@@ -745,6 +745,31 @@ Section ParallelSemantics.
     eauto.
   Qed.
 
+  (* Parallel Decomposition lemma from paper *)
+  Theorem parallel_decompose : forall m p1 locks1 p2 locks2 events ret1 ret2 m',
+      (forall r, In r locks1 -> In r locks2 -> False) ->
+      cexec m (PState p1 locks1) (PState p2 locks2) events (PFinished m' ret1 ret2) ->
+      (* TODO: need to filter events to separate into p1 and p2's events *)
+      rexec (State m locks1) p1 events (Finished m' ret1).
+            (* also symmetrically for p2, but let's defer that *)
+  Proof.
+  Admitted.
+
+  (* soundness of Parallel deduction rule from paper *)
+  Theorem parallel_compose : forall gamma p1 p2 pre1 pre2,
+      valid gamma pre1 p1 ->
+      valid gamma pre2 p2 ->
+      pvalid gamma (fun d =>
+                      (exists d1 d2,
+                        pre1 d1 * pre2 d2 *
+                        [[ forall ret1 ret2,
+                             d1 ret1 * d2 ret2 =p=> d ret1 ret2 ]])%pred) p1 p2.
+  Proof.
+    unfold pvalid.
+    intros.
+    destruct_lift H1.
+  Admitted.
+
 End ParallelSemantics.
 
 End ConcurrentSepLogic.
