@@ -355,15 +355,23 @@ Module AsyncRecArray (RA : RASig).
     f_equal; f_equal; omega.
   Qed.
 
+  Lemma list_chunk_spec' : forall A l i n (e0 : A) b0,
+    n <> 0 -> b0 = repeat e0 n ->
+    selN (list_chunk l n e0) i b0 
+    = setlen (skipn (i * n) l) n e0.
+  Proof.
+    unfold list_chunk; intros.
+    destruct (lt_dec i (divup (length l) n)).
+    apply list_chunk'_spec; auto.
+    rewrite selN_oob by t.
+    rewrite skipn_oob; t.
+  Qed.
+
   Lemma list_chunk_spec : forall l i,
     selN (list_chunk l items_per_val item0) i block0 
     = setlen (skipn (i * items_per_val) l) items_per_val item0.
   Proof.
-    unfold list_chunk; intros.
-    destruct (lt_dec i (divup (length l) items_per_val)).
-    apply list_chunk'_spec; auto.
-    rewrite selN_oob by t.
-    rewrite skipn_oob; t.
+    intros; apply list_chunk_spec'; eauto.
   Qed.
 
   Lemma setlen_inbound : forall A n (l : list A) def,
@@ -374,7 +382,7 @@ Module AsyncRecArray (RA : RASig).
     replace (n - length l) with 0 by omega; t.
   Qed.
 
-  Lemma list_chunk_app : forall l i pre,
+  Lemma firstn_list_chunk_app : forall l i pre,
     items_per_val + i * items_per_val < length l
     -> pre = firstn (i * items_per_val) l
     -> firstn (i * items_per_val + items_per_val) l 
@@ -487,7 +495,7 @@ Module AsyncRecArray (RA : RASig).
     destruct (Min.min_spec ((S i) * items_per_val) count); intuition; simpl in *; simplen.
 
     rewrite Nat.add_comm; rewrite firstn_sum_app by auto.
-    erewrite list_chunk_app; [ | simplen | eauto ].
+    erewrite firstn_list_chunk_app; [ | simplen | eauto ].
     repeat rewrite firstn_oob by simplen; auto.
 
     rewrite firstn_app_le; simplen.
@@ -1036,13 +1044,6 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve helper_div_wlt.
 
-  Lemma sub_mod_add_mod : forall a b,
-    b <> 0 -> b - a mod b + a mod b = b.
-  Proof.
-    intros.
-    pose proof (Nat.mod_upper_bound a b H).
-    omega.
-  Qed.
   Local Hint Resolve sub_mod_add_mod.
 
   Lemma helper_div_lt_divup : forall oldlen newlen idx,
@@ -1054,7 +1055,7 @@ Module AsyncRecArray (RA : RASig).
     apply div_lt_divup; auto; omega.
   Qed.
   Local Hint Resolve helper_div_lt_divup.
-  
+
   Lemma helper_lt_add_le_lt : forall a b c,
      a < a + c -> a + c <= b -> a < b.
   Proof.
@@ -1123,7 +1124,7 @@ Module AsyncRecArray (RA : RASig).
     eauto.
   Qed.
 
-   Lemma write_unaligned_bounds_ok2 : forall A (len : addr) idx (new : list A),
+  Lemma write_unaligned_bounds_ok2 : forall A (len : addr) idx (new : list A),
     idx < idx + length new
     -> goodSize addrlen (# len * items_per_val)
     -> idx + length new ≤ # len * items_per_val
@@ -1169,6 +1170,65 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve write_unaligned_eqlen.
 
+  Lemma list_chunk'_skipn_1: forall A n l k (e0 : A),
+    list_chunk' (skipn n l) n e0 (k - 1) = skipn 1 (list_chunk' l n e0 k).
+  Proof.
+    induction k; intros; simpl; auto; rewrite Nat.sub_0_r; auto.
+  Qed.
+
+  Lemma list_chunk_skipn_1 : forall A n l (e0 : A),
+    list_chunk (skipn n l) n e0 = skipn 1 (list_chunk l n e0).
+  Proof.
+    unfold list_chunk; intros.
+    rewrite skipn_length.
+    destruct (Nat.eq_dec n 0).
+    subst; simpl; auto.
+    destruct (lt_dec (length l) n).
+    replace (length l - n) with 0 by omega.
+    rewrite divup_0.
+    apply Nat.lt_le_incl in l0; apply divup_le_1 in l0.
+    destruct (Nat.eq_dec (divup (length l) n) 1).
+    rewrite e.
+    setoid_rewrite skipn_oob at 2; simpl; auto.
+    replace (divup (length l) n) with 0 by omega.
+    simpl; auto.
+    rewrite divup_sub_1 by omega.
+    apply list_chunk'_skipn_1.
+  Qed.
+
+  Lemma skipn_list_chunk_skipn_eq : forall A i l n (e0 : A),
+    skipn i (list_chunk l n e0) = list_chunk (skipn (i * n) l) n e0.
+  Proof.
+    induction i; intros.
+    simpl; auto.
+    simpl (S i * n).
+    rewrite <- skipn_skipn'.
+    rewrite <- IHi; auto.
+    rewrite list_chunk_skipn_1.
+    rewrite skipn_skipn.
+    replace (S i) with (i + 1) by omega; auto.
+  Qed.
+
+  Local Hint Resolve divup_le divup_mul_ge.
+
+  Lemma skipn_repeat_list_chunk : forall A i l n (e0 : A) B (x : B),
+    skipn i (repeat x (length (list_chunk l n e0)))
+    = repeat x (length (list_chunk (skipn (i * n) l) n e0)).
+  Proof.
+    intros.
+    destruct (Nat.eq_dec n 0).
+    subst; simpl; rewrite skipn_nil; auto.
+    destruct (lt_dec (length l) (n * i)); simplen.
+    replace (length l - i * n) with 0 by nia.
+    rewrite divup_0.
+    rewrite skipn_oob; simplen.
+    rewrite divup_sub by nia.
+    rewrite skipn_repeat; auto.
+    apply divup_mul_ge; omega.
+  Qed.
+
+  Local Hint Resolve skipn_list_chunk_skipn_eq list_chunk_skipn_1 skipn_repeat_list_chunk.
+
   Theorem write_unaligned_ok : forall xp idx new cs,
     {< F d old,
     PRE            BUFCACHE.rep cs d *
@@ -1194,8 +1254,10 @@ Module AsyncRecArray (RA : RASig).
     apply helper_array_isolate_unify2.
     rewrite skipn_combine_comm.
     rewrite wordToNat_natToWord_idempotent' by simplen.
-
-    admit.
+    rewrite skipn_map_comm.
+    f_equal; f_equal.
+    apply skipn_list_chunk_skipn_eq.
+    apply skipn_repeat_list_chunk.
 
     step.
     setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.

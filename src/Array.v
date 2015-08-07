@@ -1315,8 +1315,7 @@ Proof.
 Qed.
 
 Lemma skipn_length: forall A n (l : list A),
-  n <= length l
-  -> length (skipn n l) = length l - n.
+  length (skipn n l) = length l - n.
 Proof.
   induction n; destruct l; intros; firstorder.
 Qed.
@@ -2181,5 +2180,13 @@ Proof.
   simpl in H. omega.
   reflexivity.
 Qed.
+
+Lemma skipn_map_comm : forall A B n (l : list A) (f : A -> B),
+  skipn n (map f l) = map f (skipn n l).
+Proof.
+  induction n; intros; auto.
+  destruct l; simpl; auto.
+Qed.
+
 
 

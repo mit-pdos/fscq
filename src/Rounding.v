@@ -292,3 +292,104 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     simpl (pow2 1).
     omega.
   Qed.
+  
+  Lemma divup_sub_1 : forall n sz,
+    n >= sz -> sz <> 0 ->
+    divup (n - sz) sz = divup n sz - 1.
+  Proof.
+    unfold divup; intros; simpl.
+    replace (n - sz + sz) with n by lia.
+    replace (n + sz - 1) with (n - 1 + 1 * sz) by lia.
+    rewrite Nat.div_add by auto.
+    omega.
+  Qed.
+
+  Lemma divup_sub : forall i n sz,
+    n >= i * sz -> sz <> 0 ->
+    divup (n - i * sz) sz = divup n sz - i.
+  Proof.
+    induction i; intros; simpl.
+    repeat rewrite Nat.sub_0_r; auto.
+    replace (n - (sz + i * sz)) with ((n - sz) - (i * sz)) by nia.
+    rewrite IHi by nia.
+    rewrite divup_sub_1; nia.
+  Qed.
+
+  Lemma sub_mod_add_mod : forall a b,
+    b <> 0 -> b - a mod b + a mod b = b.
+  Proof.
+    intros.
+    pose proof (Nat.mod_upper_bound a b H).
+    omega.
+  Qed.
+
+  Lemma divup_mul_l : forall b c,
+    divup (c * b) b <= c.
+  Proof.
+    intros; destruct (Nat.eq_dec b 0); subst.
+    rewrite Nat.mul_0_r; rewrite divup_0; omega.
+    rewrite divup_mul; omega.
+  Qed.
+
+  Lemma divup_mul_r : forall b c,
+    divup (b * c) b <= c.
+  Proof.
+    intros; rewrite Nat.mul_comm; apply divup_mul_l.
+  Qed.
+
+  Lemma divup_le : forall a b c,
+    a <= b * c -> divup a b <= c.
+  Proof.
+    intros.
+    eapply le_trans.
+    apply divup_mono; eauto.
+    rewrite divup_mul_r; auto.
+  Qed.
+
+  Lemma divup_le_1 : forall a b,
+    a <= b -> divup a b <= 1.
+  Proof.
+    intros; apply divup_le; omega.
+  Qed.
+
+  Lemma divup_mul_ge : forall a b c,
+    b <> 0 -> a >= b * c -> divup a b >= c.
+  Proof.
+    intros.
+    eapply le_trans.
+    2: apply divup_mono; eauto.
+    rewrite Nat.mul_comm.
+    rewrite divup_mul; auto.
+  Qed.
+
+
+  Lemma mod_div_0 : forall a b,
+    (a mod b) / b = 0.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec b 0); subst; simpl; auto.
+    rewrite Nat.div_small; auto.
+    apply Nat.mod_bound_pos; omega.
+  Qed.
+
+  Lemma div_add_distr_le : forall a b c,
+    a / c + b / c <= (a + b) / c.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec c 0); subst; simpl; auto.
+    rewrite Nat.div_mod with (x := a) (y := c) by auto.
+    rewrite Nat.div_mod with (x := b) (y := c) by auto.
+    replace (c * (a / c) + a mod c + (c * (b / c) + b mod c)) with
+            (((a mod c + b mod c) + (b / c) * c) + (a / c) * c) by nia.
+    repeat rewrite Nat.div_add by auto.
+    setoid_rewrite Nat.add_comm at 2 3.
+    setoid_rewrite Nat.mul_comm.
+    repeat rewrite Nat.div_add by auto.
+    repeat rewrite mod_div_0.
+    repeat rewrite Nat.add_0_l.
+    omega.
+  Qed.
+
+
+
+
