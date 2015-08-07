@@ -364,6 +364,21 @@ Proof.
   repeat eexists; eauto.
 Qed.
 
+Theorem mem_disjoint_union_cancel_r:
+  forall m1 m1' m2,
+  mem_disjoint m1 m2 ->
+  mem_disjoint m1' m2 ->
+  mem_union m1 m2 = mem_union m1' m2 ->
+  m1 = m1'.
+Proof.
+  intros.
+  rewrite mem_union_comm in H1; auto.
+  rewrite mem_union_comm with (m1 := m1') in H1; auto.
+  eapply mem_disjoint_union_cancel; eauto.
+  apply mem_disjoint_comm; auto.
+  apply mem_disjoint_comm; auto.
+Qed.
+
 Theorem mem_union_addr:
   forall m1 m2 a v,
   mem_disjoint m1 m2 ->
