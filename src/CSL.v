@@ -450,13 +450,30 @@ Section ParallelSemantics.
        ret1 at level 0, ret2 at level 0,
        only parsing).
 
-  Theorem write_pok : forall a va b vb,
+  Ltac inv_cexec :=
+    match goal with
+    | [ H: cexec _ ?s1 ?s2 _ _ |- _ ] =>
+      remember_nonvar s1;
+        remember_nonvar s2;
+        inversion H; subst;
+        repeat inv_pstate
+    end.
+
+  Theorem write2_pok : forall a va b vb,
       [G] |- {{ F va0 vb0,
              | PRE F * a |-> va0 * b |-> vb0
              | POST RETS:_ _ F * a |-> va * b |-> vb
-            }} (CWrite a va) , (CWrite b vb).
+            }} CWrite a va, CWrite b vb.
   Proof.
-  Admitted.
+    unfold pvalid.
+    intros.
+    destruct_lift H.
+    inv_cexec.
+    inv_rstep.
+    (* not convinced this is true - we know rx1 || rx2 behaves properly, but the
+       scheduler may never run that (eg, it runs some of rx1 before starting rx2),
+       and in that case, what's to stop one of the continuations from crashing? *)
+  Abort.
 
 End ParallelSemantics.
 
