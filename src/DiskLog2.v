@@ -448,13 +448,13 @@ Module AsyncRecArray (RA : RASig).
 
   Ltac simplen_rewrite H := try progress (
     set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
-      [ try autorewrite_fast | try autorewrite_fast_goal .. ];
+      [ try simplen_rewrite H | try autorewrite with core .. ];
     match type of H with
     | context [ length (list_chunk _ _ _) ] => rewrite block_chunk_length in H
     end).
 
   Ltac simplen' := repeat match goal with
-    | [H : context[length ?x] |- _] => progress simplen_rewrite H
+    | [H : context[length ?x] |- _] => progress ( first [ rewrite_ignore H | simplen_rewrite H ] )
     | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
     | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
     | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
@@ -1328,20 +1328,6 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold write_unaligned.
     step.
-
-    rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)).
-    Focus 2.
-
-
-
-    simplen.
-    rewrite wordToNat_natToWord_idempotent'. 2: simplen.
-    simplen'.
-    
-unfold eqlen; eauto; repeat (try subst; simpl;
-    try elimwrt; simplen'; auto; autorewrite with core); simpl; eauto; try omega.
-
-
     rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) by simplen.
     autorewrite_fast_goal.
     apply helper_array_isolate_unify1.
@@ -1383,45 +1369,9 @@ unfold eqlen; eauto; repeat (try subst; simpl;
     unfold sel.
     rewrite selN_combine.
     rewrite wordToNat_natToWord_idempotent' by simplen.
-
-
- match goal with
-    | [H : context[length ?x] |- _] => (is_var x || (progress simplen_rewrite H))
-    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite_ignore H2; rewrite H in H2
-    end.
-
- match goal with
-    | [H : context[length ?x] |- _] => first [is_var x; idtac "var" x | idtac x; rewrite_ignore H; idtac "skip" H | idtac H; (progress simplen_rewrite H)]
-    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => (rewrite_ignore H || rewrite H in H2)
-    end.
-
-  rewrite_ignore H2.
-  
-  Ltac simplen_rewrite H := rewrite_ignore H; try progress (
-    set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
-      [ try autorewrite_fast | try autorewrite_fast_goal .. ];
-    match type of H with
-    | context [ length (list_chunk _ _ _) ] => rewrite block_chunk_length in H
-    end).
-
- match goal with
-    | [H : context[length ?x] |- _] => (is_var x || simplen_rewrite H)
-    end.
-
- match goal with
-    | [H : context[length ?x] |- _] => (is_var x || simplen_rewrite H)
-    end.
-    
- match goal with
-    | [H : context[length ?x] |- _] => (is_var x || simplen_rewrite H)
-    end.
-
-    
     erewrite selN_map by simplen.
     erewrite selN_map by simplen.
     f_equal.
-    
-    
     2: simplen.
 
     
