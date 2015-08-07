@@ -168,13 +168,32 @@ Ltac deex_this H name :=
   let name := fresh name in
   destruct H as [name ?]; intuition subst.
 
-Ltac deex :=
+Ltac deex' t :=
   match goal with
   | [ H : exists (varname : _), _ |- _ ] =>
-    deex_this H varname
+    t H varname
   | [ H : (exists (varname : _), _)%pred _ |- _ ] =>
-    deex_this H varname
+    t H varname
   end.
+
+Ltac deex := deex' deex_this.
+
+Ltac destruct_and H :=
+  match type of H with
+  | _ /\ _ =>
+    let Hl := fresh in
+    let Hr := fresh in
+    destruct H as [Hl Hr];
+      destruct_and Hr
+  | _ => idtac
+  end.
+
+Ltac deex_this_local H name :=
+  let name := fresh name in
+  destruct H as [name ?];
+  destruct_and H.
+
+Ltac deex_local := deex' deex_this_local.
 
 Ltac deex_unique :=
   match goal with
@@ -193,8 +212,15 @@ Ltac pred := pred_unfold;
   repeat (repeat deex; simpl in *;
     intuition (try (congruence || omega);
       try autorewrite with core in *; eauto); try subst).
-Ltac unfold_sep_star :=
+
+Tactic Notation "unfold_sep_star" :=
   unfold sep_star; rewrite sep_star_is; unfold sep_star_impl.
+Tactic Notation "unfold_sep_star" "in" hyp(H) :=
+  unfold sep_star in H; rewrite sep_star_is in H; unfold sep_star_impl in H.
+Tactic Notation "unfold_sep_star" "at" integer(K) "in" hyp(H) :=
+  unfold sep_star in H at K; rewrite sep_star_is in H; unfold sep_star_impl in H.
+Tactic Notation "unfold_sep_star" "at" integer(K) :=
+  unfold sep_star at K; rewrite sep_star_is; unfold sep_star_impl.
 
 
 Section GenPredThm.
