@@ -435,19 +435,14 @@ Section ParallelSemantics.
                        (m' |= d ret1 ret2 * inv gamma)).
 
   Notation "gamma |- {{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p1 , p2" :=
-    (forall (rx1 rx2: _ -> cprog),
-        pvalid gamma%context%pred
-               (fun done =>
-                  (exis (fun e1 => .. (exis (fun e2 =>
-                                            (pre%pred *
-                                             [[ forall ret1_ ret2_,
-                                                  pvalid gamma%context
-                                                         (fun done_rx =>
-                                                            post emp ret1_ ret2_ *
-                                                            [[ done_rx = done ]])
-                                                         (rx1 ret1_) (rx2 ret2_)
-                                            ]])%pred )) .. ))
-               ) (p1 rx1) (p2 rx2))
+    (pvalid gamma%context%pred
+            (fun done =>
+               (exis (fun e1 => .. (exis (fun e2 =>
+                                         (pre%pred *
+                                          [[ forall ret1 ret2,
+                                               post emp ret1 ret2 =p=> done ret1 ret2 ]]
+                                         )%pred )) .. ))
+            ) p1 p2)
       (at level 0, p1 at level 60, p2 at level 60,
        e1 binder, e2 binder,
        only parsing).
@@ -541,13 +536,13 @@ Section ParallelSemantics.
   Qed.
 
   (* we quantify over arbitrary return values since they must be from
-     the arbitrary type T *)
-  Theorem write2_done_pok : forall ret1 ret2 a va b vb,
-      pvalid nil (fun done =>
-                    (exists F va0 vb0,
-                      F * a |-> va0 * b |-> vb0 *
-                      [[  forall ret1 ret2, F * a |-> va * b |-> vb =p=> done ret1 ret2 ]])%pred)
-             (CWrite a va (fun _ => CDone ret1)) (CWrite b vb (fun _ => CDone ret2)).
+     the arbitrary type T; the proof can go through since the postcondition
+     doesn't say anything about ret1 and ret2. *)
+  Theorem write2_pok : forall ret1 ret2 a va b vb,
+      [G] |- {{ F va0 vb0,
+             | PRE F * a |-> va0 * b |-> vb0
+             | POST RETS:_ _ F * a |-> va * b |-> vb
+            }} CWrite a va (fun _ => CDone ret1), CWrite b vb (fun _ => CDone ret2).
   Proof.
     unfold pvalid.
     intros.
@@ -621,22 +616,6 @@ Section ParallelSemantics.
     eapply ptsto_valid.
     pred_apply; cancel.
   Qed.
-
-  Theorem write2_pok : forall a va b vb,
-      [G] |- {{ F va0 vb0,
-             | PRE F * a |-> va0 * b |-> vb0
-             | POST RETS:_ _ F * a |-> va * b |-> vb
-            }} CWrite a va, CWrite b vb.
-  Proof.
-    unfold pvalid.
-    intros.
-    destruct_lift H.
-    inv_cexec.
-    inv_rstep.
-    (* not convinced this is true - we know rx1 || rx2 behaves properly, but the
-       scheduler may never run that (eg, it runs some of rx1 before starting rx2),
-       and in that case, what's to stop one of the continuations from crashing? *)
-  Abort.
 
 End ParallelSemantics.
 
