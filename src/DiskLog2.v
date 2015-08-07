@@ -439,6 +439,13 @@ Module AsyncRecArray (RA : RASig).
   Ltac prestep := intros; eapply pimpl_ok2; eauto with prog; intros.
 
   (** Fast 'autorewrite with core' in a given hypothesis *)
+
+  Ltac rewrite_ignore H :=
+    match type of H with
+    | forall _, corr2 _ _ => idtac
+    | sep_star _ _ _ => idtac
+    end.
+
   Ltac simplen_rewrite H := try progress (
     set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
       [ try autorewrite_fast | try autorewrite_fast_goal .. ];
@@ -447,7 +454,7 @@ Module AsyncRecArray (RA : RASig).
     end).
 
   Ltac simplen' := repeat match goal with
-    | [H : context[length ?x] |- _] => (is_var x || (progress simplen_rewrite H))
+    | [H : context[length ?x] |- _] => progress simplen_rewrite H
     | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
     | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
     | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
@@ -1229,6 +1236,83 @@ Module AsyncRecArray (RA : RASig).
 
   Local Hint Resolve skipn_list_chunk_skipn_eq list_chunk_skipn_1 skipn_repeat_list_chunk.
 
+  Lemma list_chunk'_firstn' : forall A i n l (e0 : A),
+    length l >= i * n ->
+    list_chunk' (firstn (i * n) l) n e0 i = list_chunk' l n e0 i.
+  Proof.
+    induction i; intros; simpl; auto.
+    repeat rewrite setlen_inbound by (autorewrite with core; nia).
+    rewrite firstn_firstn.
+    rewrite Nat.min_l by nia.
+    setoid_rewrite <- IHi at 2; autorewrite with core; try nia.
+    f_equal; f_equal.
+    apply skipn_firstn_comm.
+  Qed.
+
+  Lemma list_chunk'_firstn : forall A i n l (e0 : A),
+    list_chunk' (firstn (i * n) l) n e0 i = list_chunk' l n e0 i.
+  Proof.
+    intros.
+    destruct (le_lt_dec (i * n) (length l)).
+    apply list_chunk'_firstn'; auto.
+    rewrite firstn_oob; auto.
+  Qed.
+
+  Lemma firstn_list_chunk' : forall A m n i l (e0 : A),
+    n <= m ->
+    firstn n (list_chunk' l i e0 m) = list_chunk' l i e0 n.
+  Proof.
+    induction m; destruct n; t.
+    rewrite IHm; t.
+  Qed.
+
+  Hint Rewrite divup_mul Nat.mul_0_r Nat.mul_0_l.
+
+  Lemma list_chunk_firstn' : forall A i n l (e0 : A),
+    n <> 0 -> length l >= i * n ->
+    list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
+  Proof.
+    unfold list_chunk; t.
+    rewrite Nat.min_l; t.
+    rewrite list_chunk'_firstn.
+    rewrite firstn_list_chunk'; t.
+    apply divup_mul_ge; nia.
+  Qed.
+
+  Lemma list_chunk_firstn : forall A i n l (e0 : A),
+    list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
+  Proof.
+    intros.
+    destruct (Nat.eq_dec n 0); t. t.
+    destruct (le_lt_dec (i * n) (length l)).
+    apply list_chunk_firstn'; t.
+    rewrite firstn_oob by nia.
+    rewrite firstn_oob; t.
+    apply divup_le; nia.
+  Qed.
+
+  Lemma div_mul_le_r : forall a b, b <> 0 -> a / b * b <= a.
+  Proof.
+    intros; rewrite Nat.mul_comm; apply Nat.mul_div_le; auto.
+  Qed.
+  Local Hint Resolve Nat.div_mul_le div_mul_le_r.
+
+  Lemma list_chunk_firstn_eq : forall idx old new,
+    length old = idx + length new
+    -> firstn (idx / items_per_val) (list_chunk old items_per_val item0)
+     = firstn (idx / items_per_val) (list_chunk (firstn idx old ++ new) items_per_val item0).
+  Proof.
+    intros.
+    setoid_rewrite <- list_chunk_firstn.
+    rewrite firstn_app_l.
+    rewrite firstn_firstn.
+    rewrite Nat.min_l; auto.
+    rewrite firstn_length.
+    rewrite Nat.min_l by omega; auto.
+  Qed.
+  Local Hint Resolve list_chunk_firstn_eq.
+
+
   Theorem write_unaligned_ok : forall xp idx new cs,
     {< F d old,
     PRE            BUFCACHE.rep cs d *
@@ -1244,6 +1328,20 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold write_unaligned.
     step.
+
+    rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)).
+    Focus 2.
+
+
+
+    simplen.
+    rewrite wordToNat_natToWord_idempotent'. 2: simplen.
+    simplen'.
+    
+unfold eqlen; eauto; repeat (try subst; simpl;
+    try elimwrt; simplen'; auto; autorewrite with core); simpl; eauto; try omega.
+
+
     rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) by simplen.
     autorewrite_fast_goal.
     apply helper_array_isolate_unify1.
@@ -1251,9 +1349,9 @@ Module AsyncRecArray (RA : RASig).
 
     step.
     step. simplen. simplen.
-    apply helper_array_isolate_unify2.
-    rewrite skipn_combine_comm.
+    apply helper_array_isolate_unify2;
     rewrite wordToNat_natToWord_idempotent' by simplen.
+    rewrite skipn_combine_comm.
     rewrite skipn_map_comm.
     f_equal; f_equal.
     apply skipn_list_chunk_skipn_eq.
@@ -1266,8 +1364,70 @@ Module AsyncRecArray (RA : RASig).
       ++ [selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0]
       :: skipn (idx / items_per_val + 1) vs).
 
+    apply helper_array_isolate_unify3;
+    rewrite wordToNat_natToWord_idempotent' by simplen.
+    repeat rewrite firstn_combine_comm.
+    repeat rewrite firstn_map_comm.
+    f_equal. f_equal; eauto.
+    rewrite firstn_app_l by simplen.
+    repeat rewrite firstn_repeat; simplen.
+    
+    
+    Lemma min_l_add_r : forall a b,
+      Nat.min a (a + b) = a.
+    Proof.
+      intros; lia.
+    Qed.
+    Hint Rewrite min_l_add_r.
 
-    apply helper_array_isolate_unify3.
+    unfold sel.
+    rewrite selN_combine.
+    rewrite wordToNat_natToWord_idempotent' by simplen.
+
+
+ match goal with
+    | [H : context[length ?x] |- _] => (is_var x || (progress simplen_rewrite H))
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite_ignore H2; rewrite H in H2
+    end.
+
+ match goal with
+    | [H : context[length ?x] |- _] => first [is_var x; idtac "var" x | idtac x; rewrite_ignore H; idtac "skip" H | idtac H; (progress simplen_rewrite H)]
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => (rewrite_ignore H || rewrite H in H2)
+    end.
+
+  rewrite_ignore H2.
+  
+  Ltac simplen_rewrite H := rewrite_ignore H; try progress (
+    set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
+      [ try autorewrite_fast | try autorewrite_fast_goal .. ];
+    match type of H with
+    | context [ length (list_chunk _ _ _) ] => rewrite block_chunk_length in H
+    end).
+
+ match goal with
+    | [H : context[length ?x] |- _] => (is_var x || simplen_rewrite H)
+    end.
+
+ match goal with
+    | [H : context[length ?x] |- _] => (is_var x || simplen_rewrite H)
+    end.
+    
+ match goal with
+    | [H : context[length ?x] |- _] => (is_var x || simplen_rewrite H)
+    end.
+
+    
+    erewrite selN_map by simplen.
+    erewrite selN_map by simplen.
+    f_equal.
+    
+    
+    2: simplen.
+
+    
+
+
+
     admit.
     admit.
     admit.

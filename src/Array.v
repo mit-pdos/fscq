@@ -2188,5 +2188,19 @@ Proof.
   destruct l; simpl; auto.
 Qed.
 
+Lemma firstn_map_comm : forall A B n (l : list A) (f : A -> B),
+  firstn n (map f l) = map f (firstn n l).
+Proof.
+  induction n; intros; auto.
+  destruct l; simpl; auto.
+  rewrite IHn; auto.
+Qed.
+
+Lemma skipn_firstn_comm : forall A n m (l : list A),
+  skipn n (firstn (n + m) l) = firstn m (skipn n l).
+Proof.
+  induction n; destruct l; intros; simpl; auto.
+  rewrite firstn_nil; auto.
+Qed.
 
 
