@@ -254,8 +254,6 @@ Lemma ptsto_cur_valid:
 Proof.
   unfold ptsto; unfold_sep_star; intros.
   repeat deex.
-  destruct H1.
-  destruct H0.
   eexists.
   apply mem_union_addr; eauto.
 Qed.
