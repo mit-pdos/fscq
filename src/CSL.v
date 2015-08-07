@@ -100,10 +100,13 @@ Section ConcurrentSepLogic.
       inversion H; subst; clear H
     end.
 
+  Ltac inv_rstep' H :=
+    inversion H; subst.
+
   Ltac inv_rstep :=
     match goal with
     | [ H : rstep _ _ _ _ _ |- _ ] =>
-      inversion H; subst
+      inv_rstep' H
     end.
 
   Lemma read_failure : forall m a ls rx,
@@ -258,12 +261,18 @@ Section ConcurrentSepLogic.
   Ltac remember_nonvar a :=
     (is_var a || remember a).
 
-  Ltac inv_rexec :=
+  Ltac ind_rexec :=
     match goal with
     | [ H : rexec ?s ?c _ _ |- _ ] =>
       remember_nonvar s;
         remember_nonvar c;
         induction H; try (inv_rstep; inv_cprog; inv_state)
+    end.
+
+  Ltac inv_rexec :=
+    match goal with
+    | [ H : rexec _ _ _ _ |- _ ] =>
+      inversion H; subst
     end.
 
   Theorem write_cok : forall a v,
@@ -275,7 +284,7 @@ Section ConcurrentSepLogic.
     unfold valid.
     intros.
     destruct_lift H.
-    inv_rexec.
+    ind_rexec.
     - edestruct H5; eauto.
       eapply pimpl_apply; [| eapply ptsto_upd].
       cancel.
@@ -297,7 +306,7 @@ Section ConcurrentSepLogic.
     unfold valid.
     intros.
     destruct_lift H.
-    inv_rexec.
+    ind_rexec.
     - edestruct H5; eauto.
       pred_apply; cancel.
     - assert (m a = Some v1).
@@ -450,14 +459,168 @@ Section ParallelSemantics.
        ret1 at level 0, ret2 at level 0,
        only parsing).
 
-  Ltac inv_cexec :=
-    match goal with
-    | [ H: cexec _ ?s1 ?s2 _ _ |- _ ] =>
-      remember_nonvar s1;
-        remember_nonvar s2;
-        inversion H; subst;
-        repeat inv_pstate
+  Ltac inv_cexec' H :=
+    match type of H with
+      | cexec _ ?s1 ?s2 _ _ =>
+        remember_nonvar s1;
+          remember_nonvar s2;
+          inversion H; subst;
+          repeat inv_pstate
     end.
+
+  Ltac inv_cexec :=
+    match reverse goal with
+    | [ H: cexec _ _ _ _ _ |- _ ] =>
+      inv_cexec' H
+    end.
+
+  Lemma no_locks_releases : forall gamma,
+      (forall r rm, In (RelStep r rm) nil -> rinv r gamma rm).
+  Proof.
+    intros.
+    contradiction.
+  Qed.
+
+  Hint Resolve no_locks_releases.
+
+  Check ptsto_upd.
+
+  Lemma ptsto_upd2 : forall m F a b va0 vb0 va vb,
+      m |= a |-> va0 * b |-> vb0 * F ->
+      (upd (upd m a va) b vb) |= a |-> va * b |-> vb * F.
+  Proof.
+    intros.
+    eapply pimpl_apply; [ | eapply ptsto_upd ].
+    cancel.
+    eapply pimpl_apply; [ | eapply ptsto_upd ].
+    cancel.
+
+    pred_apply; cancel.
+  Qed.
+
+  Lemma done_empty_inv : forall d m (ret1 ret2:T) post,
+      (post =p=> d ret1 ret2) ->
+      post m ->
+      (d ret1 ret2 * emp)%pred m.
+  Proof.
+    intros.
+    eapply pimpl_apply.
+    cancel.
+    eauto.
+  Qed.
+
+  Lemma pimpl_apply' : forall AT AEQ V (p q:pred) (m: @mem AT AEQ V),
+      p m ->
+      (p =p=> q) ->
+      q m.
+  Proof.
+    eauto.
+  Qed.
+
+  Lemma rexec_done : forall m ret ret' events m',
+      rexec (State m nil) (CDone ret) events (Finished m' ret') ->
+      m = m' /\
+      events = nil /\
+      ret = ret'.
+  Proof.
+    intros.
+    inv_rexec.
+    inv_rstep.
+    intuition.
+  Qed.
+
+  Lemma ptsto_other_safe : forall F m a b va va0 vb0,
+      m |= F * a |-> va0 * b |-> vb0 ->
+      (upd m a va) b = Some vb0.
+  Proof.
+    intros.
+    eapply ptsto_valid.
+    eapply pimpl_apply'; [eapply ptsto_upd | cancel].
+    pred_apply; cancel.
+    cancel.
+  Qed.
+
+  (* we quantify over arbitrary return values since they must be from
+     the arbitrary type T *)
+  Theorem write2_done_pok : forall ret1 ret2 a va b vb,
+      pvalid nil (fun done =>
+                    (exists F va0 vb0,
+                      F * a |-> va0 * b |-> vb0 *
+                      [[  forall ret1 ret2, F * a |-> va * b |-> vb =p=> done ret1 ret2 ]])%pred)
+             (CWrite a va (fun _ => CDone ret1)) (CWrite b vb (fun _ => CDone ret2)).
+  Proof.
+    unfold pvalid.
+    intros.
+    Ltac done_solve :=
+      match goal with
+      | [ H: rstep _ (CDone _) _ _ _ |- _] =>
+        now inversion H
+      end.
+
+    Ltac clear_rexec_done :=
+      match goal with
+      | [ H : rexec _ (CDone _) _ (Finished _ _) |- _ ] =>
+        let H' := fresh in
+        apply rexec_done in H; destruct H as [? H'];
+        destruct H'
+      end.
+
+    (* cleanup goals that require finding contradictions in the hypotheses *)
+    Ltac recognize_false :=
+      match goal with
+      | [ |- context[PFailed = PFinished _ _ _] ] => exfalso
+      | _ => idtac
+      end.
+
+    Ltac rsimpl := try inv_rexec;
+        try done_solve; try clear_rexec_done;
+        try inv_rstep;
+        (* simplify all the nil events *)
+        simpl app in *; subst;
+        try congruence;
+        recognize_false.
+
+    Ltac rstep_events new_events :=
+      match goal with
+      | [ H: rstep _ _ _ _ new_events |- _ ] =>
+        inv_rstep' H
+      end.
+
+    Ltac t := intuition; repeat eexists; eapply done_empty_inv; eauto;
+              eapply pimpl_apply'; [eapply ptsto_upd2; pred_apply |]; cancel.
+
+    destruct_lift H.
+
+    inv_cexec; rsimpl.
+    inv_cexec; rsimpl.
+    inv_cexec; rsimpl; try t.
+
+    rsimpl; rsimpl; try t.
+
+    eapply H6.
+    econstructor.
+    eapply ptsto_other_safe.
+    pred_apply; cancel.
+
+    inv_cexec; rsimpl.
+    inv_cexec; rsimpl; try t.
+    rsimpl; t.
+
+    eapply H6.
+    econstructor.
+    eapply ptsto_other_safe.
+    pred_apply; cancel.
+
+    eapply H2.
+    econstructor.
+    eapply ptsto_valid.
+    pred_apply; cancel.
+
+    eapply H2.
+    econstructor.
+    eapply ptsto_valid.
+    pred_apply; cancel.
+  Qed.
 
   Theorem write2_pok : forall a va b vb,
       [G] |- {{ F va0 vb0,
