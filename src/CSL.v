@@ -354,6 +354,123 @@ Section ConcurrentSepLogic.
     cancel.
   Qed.
 
+  Theorem frame_exec : forall m h m' ret locks events p,
+      mem_disjoint m h ->
+      mem_disjoint m' h ->
+      rexec (State m locks) p events (Finished m' ret) ->
+      (* extended initial/final memories *)
+      let mh := mem_union m h in
+      let m'h := mem_union m' h in
+      rexec (State mh locks) p events (Finished m'h ret).
+  Proof.
+    cbv zeta.
+    intros.
+    generalize dependent m.
+    generalize dependent m'.
+    generalize dependent locks.
+    generalize dependent events.
+    induction p; intros.
+
+    Local Hint Resolve mem_disjoint_union.
+    Local Hint Resolve mem_disjoint_union_parts.
+
+    Local Hint Resolve mem_union_addr.
+
+    - (* CDone *)
+      inv_rexec.
+      inv_rstep.
+      eauto.
+
+    - (* CRead *)
+      inv_rexec.
+      inv_rstep.
+      eauto.
+
+    - (* CWrite *)
+      inv_rexec.
+      inv_rstep.
+      econstructor; eauto.
+      erewrite <- mem_union_upd by eauto.
+      eapply H; eauto.
+      eapply mem_disjoint_upd; eauto.
+
+    - (* Acq *)
+      inv_rexec.
+      inv_rstep.
+      (* need mem_disjoint h rm; this could be guaranteed by F * inv gamma in
+         the context of the actual frame rule proof. *)
+      assert (mem_disjoint h rm).
+      admit.
+      assert (mem_disjoint rm h) by solve_disjoint_union.
+      econstructor; eauto.
+      replace events0 with (nil ++ events0) by auto.
+      replace (mem_union (mem_union m h) rm) with
+      (mem_union (mem_union m rm) h).
+      eapply H; eauto.
+      rewrite mem_union_comm by solve_disjoint_union.
+      rewrite <- mem_union_assoc by solve_disjoint_union.
+      f_equal.
+      apply mem_union_comm; solve_disjoint_union.
+
+    - (* Rel *)
+      inv_rexec.
+      inv_rstep.
+      assert (mem_disjoint m'0 h).
+      eapply mem_disjoint_union.
+      rewrite mem_union_comm; solve_disjoint_union.
+      assert (mem_disjoint rm h) by eauto.
+
+      econstructor; eauto.
+      econstructor.
+      instantiate (1 := mem_union m'0 h).
+      apply mem_disjoint_union_parts; eauto.
+      solve_disjoint_union.
+      rewrite mem_union_comm by solve_disjoint_union.
+      rewrite <- mem_union_assoc; try solve_disjoint_union.
+      f_equal.
+      apply mem_union_comm; solve_disjoint_union.
+      eapply mem_disjoint_union_parts; solve_disjoint_union.
+
+      (* we need to assume something about in_resource_domain, and this is likely
+         to be one of them; it looks like the precision requirement: when respects_domain
+         r m rm holds, extending m should not change what rm respects_domain. *)
+      admit.
+  Admitted.
+
+  Theorem frame_rule : forall gamma pre p,
+      valid gamma pre p ->
+      valid gamma (fun d =>
+                     (exists F,
+                         let F_star_d :=
+                             (fun ret => F * d ret) in
+                         F * pre F_star_d)%pred) p.
+  Proof.
+    unfold valid.
+    intros.
+    unfold_sep_star at 1 in H0.
+    repeat deex_local.
+    unfold_sep_star at 1 in H4.
+    repeat deex_local.
+    subst.
+    edestruct H with (m := mem_union m3 m2) (d :=
+                                          (fun ret => (F * d ret)%pred)); eauto.
+    unfold_sep_star at 1.
+    repeat eexists; intuition eauto.
+    admit.
+
+    repeat deex_local.
+    intuition.
+    unfold_sep_star in H10.
+    repeat deex.
+    exists (mem_union m6 m4); exists v.
+    split.
+    repeat eexists; eauto.
+    admit.
+
+    unfold_sep_star.
+    repeat eexists; eauto.
+  Admitted.
+
 Section ParallelSemantics.
   Inductive pstate :=
   | PState (p: cprog) (locks: list R).
