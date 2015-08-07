@@ -454,7 +454,7 @@ Module AsyncRecArray (RA : RASig).
     end).
 
   Ltac simplen' := repeat match goal with
-    | [H : context[length ?x] |- _] => progress ( first [ rewrite_ignore H | simplen_rewrite H ] )
+    | [H : context[length ?x] |- _] => progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite H ] )
     | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
     | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
     | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
@@ -1146,13 +1146,13 @@ Module AsyncRecArray (RA : RASig).
     apply write_unaligned_bounds_ok2'; auto.
   Qed.
   Local Hint Resolve write_unaligned_bounds_ok2.
-
+  Local Hint Resolve Nat.mod_upper_bound.
+  
   Lemma mod_bound_expand : forall a b,
     b <> 0 -> a - b * (a / b) < b.
   Proof.
     intros.
-    rewrite <- Nat.mod_eq by auto.
-    apply Nat.mod_upper_bound; auto.
+    rewrite <- Nat.mod_eq; auto.
   Qed.
   Local Hint Resolve mod_bound_expand Nat.lt_le_incl.
 
@@ -1312,6 +1312,118 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve list_chunk_firstn_eq.
 
+  Lemma min_l_add_r : forall a b,
+    Nat.min a (a + b) = a.
+  Proof.
+    intros; lia.
+  Qed.
+  Hint Rewrite min_l_add_r.
+
+  Lemma selN_app_cons : forall A i a b (x : A) d,
+    length a = i -> x = selN (a ++ x :: b) i d.
+  Proof.
+    induction i; destruct a; t; inversion H.
+  Qed.
+
+  Lemma helper_unaligned_block_le : forall i n new,
+    n <> 0 -> n - i mod n < new
+    -> n <= i + new - i / n * n.
+  Proof.
+    intros.
+    pose proof (Nat.mul_div_le i n H).
+    replace (i + new - i / n * n) with (new + (i - n * (i / n))) by nia.
+    rewrite <- Nat.mod_eq; omega.
+  Qed.
+  Local Hint Resolve helper_unaligned_block_le.
+
+  Lemma div_mod' : forall x y,
+    y <> 0 -> x / y * y + x mod y = x.
+  Proof.
+    intros.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.div_mod; auto.
+  Qed.
+  Hint Rewrite div_mod' : core.
+
+  Lemma unaligned_block_eq1 : forall old new idx n,
+    n - idx mod n < length new -> n <> 0 ->
+    length old = idx + length new ->
+    firstn (idx mod n) (setlen (skipn (idx / n * n) old) n item0) ++ setlen new (n - idx mod n) item0
+    = setlen (skipn (idx / n * n) (firstn idx old ++ new)) n item0.
+  Proof.
+    intros; subst.
+    setoid_rewrite setlen_inbound at 1 3; simplen.
+    rewrite firstn_firstn.
+    rewrite Nat.min_l by auto.
+    repeat rewrite <- skipn_firstn_comm.
+    rewrite <- skipn_app_l; simplen.
+    replace (idx / n * n + n) with (idx + (n - idx mod n)).
+    rewrite firstn_sum_app by simplen.
+    rewrite setlen_inbound; simplen.
+    rewrite <- div_mod' with (x := idx) (y := n) at 1 by auto.
+    assert (n >= idx mod n) by auto; nia.
+  Qed.
+  Local Hint Resolve unaligned_block_eq1.
+
+  Lemma unaligned_block_eq2 : forall old new idx n,
+    (n - idx mod n < length new -> False) -> n <> 0 ->
+    length old = idx + length new ->
+    firstn (idx mod n) (setlen (skipn (idx / n * n) old) n item0) ++ setlen new (n - idx mod n) item0
+    = setlen (skipn (idx / n * n) (firstn idx old ++ new)) n item0.
+  Proof.
+    intros.
+    assert (idx mod n <= n) by auto.
+    assert (length new + idx mod n <= n) by lia.
+    admit.
+  Admitted.
+  Local Hint Resolve unaligned_block_eq2.
+
+  Lemma unaligned_block_length_eq : forall new i n,
+    n <> 0 -> n - i mod n < new
+    -> i / n + S (divup (new - (n - i mod n)) n) = divup (i + new) n.
+  Proof.
+    intros.
+    admit.
+  Admitted.
+  Local Hint Resolve unaligned_block_length_eq.
+  Hint Rewrite unaligned_block_length_eq.
+
+  Lemma unaligned_block_idx_eq : forall i n,
+    n <> 0 -> i + (n - i mod n) = S (i / n) * n.
+  Proof.
+    intros; simpl.
+    rewrite <- div_mod' with (x := i) (y := n) at 1 by auto.
+    assert (n >= i mod n) by auto; lia.
+  Qed.
+  Local Hint Resolve unaligned_block_idx_eq.
+
+  Lemma well_formed_firstn : forall A n (a : list (Rec.data A)), 
+    Forall Rec.well_formed a
+    -> Forall Rec.well_formed (firstn n a).
+  Proof.
+    intros.
+    rewrite Forall_forall in *; intros.
+    apply H; eapply in_firstn_in; eauto.
+  Qed.
+  Local Hint Resolve Forall_append well_formed_firstn.
+
+  Lemma skipn_S_fold : forall A i (l : list A),
+    match l with | nil => nil | _ :: l' => skipn i l' end = skipn (S i) l.
+  Proof.
+    intros; simpl; auto.
+  Qed.
+
+  Lemma unaligned_block_length_ge : forall n i new,
+    (n - i mod n < new -> False) -> n <> 0
+    -> S (i / n) >= divup (i + new) n.
+  Proof.
+    intros.
+    assert (i mod n <= n) by auto.
+    assert (new + i mod n <= n) by lia.
+    unfold divup.
+    admit.
+  Admitted.
+  Local Hint Resolve unaligned_block_length_ge.
 
   Theorem write_unaligned_ok : forall xp idx new cs,
     {< F d old,
@@ -1344,11 +1456,10 @@ Module AsyncRecArray (RA : RASig).
     apply skipn_repeat_list_chunk.
 
     step.
+    instantiate (vs0 := repeat nil (idx / items_per_val)
+      ++ [selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0] :: vs).
     setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
     autorewrite_fast_goal.
-    instantiate (vs0 := repeat nil (idx / items_per_val)
-      ++ [selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0]
-      :: skipn (idx / items_per_val + 1) vs).
 
     apply helper_array_isolate_unify3;
     rewrite wordToNat_natToWord_idempotent' by simplen.
@@ -1357,50 +1468,49 @@ Module AsyncRecArray (RA : RASig).
     f_equal. f_equal; eauto.
     rewrite firstn_app_l by simplen.
     repeat rewrite firstn_repeat; simplen.
-    
-    
-    Lemma min_l_add_r : forall a b,
-      Nat.min a (a + b) = a.
-    Proof.
-      intros; lia.
-    Qed.
-    Hint Rewrite min_l_add_r.
 
-    unfold sel.
-    rewrite selN_combine.
+    unfold sel; rewrite selN_combine by simplen.
     rewrite wordToNat_natToWord_idempotent' by simplen.
-    erewrite selN_map by simplen.
-    erewrite selN_map by simplen.
-    f_equal.
-    2: simplen.
+    repeat erewrite selN_map with (default' := block0) by simplen.
+    repeat rewrite list_chunk_spec.
+    f_equal. f_equal; auto.
+    apply selN_app_cons; simplen.
 
-    
-
-
-
-    admit.
-    admit.
-    admit.
-
-    admit.
-    admit.
-    admit.
-    admit.
+    simpl; rewrite skipn_combine_comm; f_equal.
+    rewrite skipn_map_comm; f_equal.
+    setoid_rewrite skipn_list_chunk_skipn_eq; f_equal.
+    replace (S (idx / items_per_val) * items_per_val) with
+      (idx + (items_per_val - idx mod items_per_val)) by auto.
+    rewrite skipn_sum_app; simplen.
+    rewrite <- cons_nil_app.
+    rewrite skipn_app_eq; simplen.
+    simplen. simplen. simplen.
 
     step.
+    instantiate (vs := 
+      updN (repeat nil (length (list_chunk old items_per_val item0))) (idx / items_per_val)
+      [(selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0)]).
     setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
     autorewrite_fast_goal.
     apply helper_array_isolate_unify4.
-    instantiate (vs := updN (repeat nil (length (list_chunk old items_per_val item0)))
-      (idx / items_per_val)
-      [(selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0)]).
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
+
+    rewrite wordToNat_natToWord_idempotent' by simplen.
+    repeat rewrite firstn_combine_comm.
+    repeat rewrite firstn_map_comm.
+    f_equal. f_equal; eauto.
+    repeat (rewrite firstn_repeat; simplen).
+
+    unfold sel; rewrite selN_combine by simplen.
+    rewrite wordToNat_natToWord_idempotent' by simplen.
+    repeat erewrite selN_map with (default' := block0) by simplen.
+    repeat rewrite list_chunk_spec.
+    f_equal. f_equal; auto.
+    rewrite selN_updN_eq; simplen.
+
+    rewrite wordToNat_natToWord_idempotent' by simplen.
+    rewrite skipn_S_fold.
+    repeat rewrite skipn_oob; simplen.
+    simplen. simplen. simplen.
   Qed.
 
 
