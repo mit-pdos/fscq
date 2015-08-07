@@ -617,6 +617,17 @@ Section ParallelSemantics.
     pred_apply; cancel.
   Qed.
 
+  Theorem pimpl_pok : forall gamma pre pre' p1 p2,
+      pvalid gamma pre' p1 p2 ->
+      (forall d, pre d =p=> pre' d) ->
+      pvalid gamma pre p1 p2.
+  Proof.
+    unfold pvalid.
+    intros.
+    rewrite H0 in H1.
+    eauto.
+  Qed.
+
 End ParallelSemantics.
 
 End ConcurrentSepLogic.
