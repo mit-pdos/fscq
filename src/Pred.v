@@ -379,6 +379,20 @@ Proof.
   apply mem_disjoint_comm; auto.
 Qed.
 
+Theorem disjoint_union_comm_eq : forall (m1a m1b m2a m2b : @mem AT AEQ V),
+    mem_union m1a m1b = mem_union m2a m2b ->
+    mem_disjoint m1a m1b ->
+    mem_disjoint m2a m2b ->
+    mem_union m1b m1a = mem_union m2b m2a.
+Proof.
+  intros.
+  rewrite mem_union_comm with (m1 := m1b).
+  rewrite mem_union_comm with (m1 := m2b).
+  auto.
+  rewrite mem_disjoint_comm; auto.
+  rewrite mem_disjoint_comm; auto.
+Qed.
+
 Theorem mem_union_addr:
   forall m1 m2 a v,
   mem_disjoint m1 m2 ->
@@ -1588,6 +1602,20 @@ Proof.
 Qed.
 
 End GenPredThm.
+
+(* this tactic could use much more generalization *)
+Ltac solve_disjoint_union :=
+  match goal with
+  | [ |- mem_disjoint _ _ ] =>
+    now ( eauto ||rewrite mem_disjoint_comm; eauto)
+  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
+      mem_union ?m1b ?m1a = mem_union ?m2b ?m2a ] =>
+    now (apply disjoint_union_comm_eq; eauto)
+  | [ H: mem_union ?m1a ?m1b = mem_union ?m2a ?m2b |-
+      mem_union ?m2b ?m2a = mem_union ?m1b ?m1a ] =>
+    now (apply disjoint_union_comm_eq; eauto)
+  end.
+
 
 Hint Resolve sep_star_precise : precision.
 Hint Resolve strictly_exact_to_precise : precision.
