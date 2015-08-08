@@ -2203,4 +2203,13 @@ Proof.
   rewrite firstn_nil; auto.
 Qed.
 
-
+Lemma setlen_app_r : forall A n (a b : list A) e0,
+  n >= length a ->
+  setlen (a ++ b) n e0 = a ++ setlen b (n - length a) e0.
+Proof.
+  unfold setlen; t.
+  rewrite firstn_app_le by auto.
+  rewrite app_assoc.
+  f_equal; f_equal; omega.
+Qed.
+    

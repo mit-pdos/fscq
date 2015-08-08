@@ -352,6 +352,15 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     intros; apply divup_le; omega.
   Qed.
 
+  Lemma divup_ge_1 : forall a b,
+   b <> 0 -> a >= b -> divup a b >= 1.
+  Proof.
+    intros; unfold divup.
+    replace (a + b - 1) with (a - 1 + 1 * b) by omega.
+    rewrite Nat.div_add by auto.
+    nia.
+  Qed.
+
   Lemma divup_mul_ge : forall a b c,
     b <> 0 -> a >= b * c -> divup a b >= c.
   Proof.
@@ -391,5 +400,28 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
   Qed.
 
 
-
+  Lemma divup_add' : forall i n sz,
+    sz <> 0 -> n <> 0 ->
+    divup (n + sz * i) sz = divup n sz + i.
+  Proof.
+    induction i; intros; simpl.
+    rewrite Nat.add_0_r; rewrite Nat.mul_0_r; auto.
+    replace (n + (sz * S i)) with ((n + sz) + (sz * i)) by nia.
+    rewrite IHi by nia.
+    unfold divup.
+    replace (n + sz + sz - 1) with (n - 1 + 2 * sz) by nia.
+    replace (n + sz - 1) with (n - 1 + 1 * sz) by nia.
+    repeat rewrite Nat.div_add by auto.
+    omega.
+  Qed.
+  
+  Lemma divup_add : forall i n sz,
+    sz <> 0 -> divup (n + sz * i) sz = divup n sz + i.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec n 0); subst.
+    rewrite divup_0; rewrite Nat.add_0_l; rewrite Nat.mul_comm.
+    rewrite divup_mul; omega.
+    apply divup_add'; auto.
+  Qed.
 

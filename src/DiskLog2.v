@@ -1374,17 +1374,49 @@ Module AsyncRecArray (RA : RASig).
     intros.
     assert (idx mod n <= n) by auto.
     assert (length new + idx mod n <= n) by lia.
-    admit.
-  Admitted.
+    rewrite firstn_setlen_firstn; simplen.
+    rewrite skipn_app_l by simplen.
+    rewrite setlen_app_r; simplen.
+    rewrite <- skipn_firstn_comm.
+    f_equal; f_equal; f_equal; simplen.
+    rewrite Nat.mod_eq; nia.
+    eapply le_trans with (m := idx mod n); eauto.
+    rewrite Nat.mod_eq; nia.
+    rewrite Nat.mod_eq; nia.
+  Qed.
   Local Hint Resolve unaligned_block_eq2.
+
+  Lemma S_div : forall a b,
+    b <> 0 -> S (a / b) = (a + b) / b.
+  Proof.
+    intros.
+    replace (a + b) with (a + 1 * b) by nia.
+    rewrite Nat.div_add by auto.
+    omega.
+  Qed.
 
   Lemma unaligned_block_length_eq : forall new i n,
     n <> 0 -> n - i mod n < new
     -> i / n + S (divup (new - (n - i mod n)) n) = divup (i + new) n.
   Proof.
     intros.
-    admit.
-  Admitted.
+    assert (n > i mod n) by auto.
+    replace (new - (n - i mod n)) with (new + i mod n - 1 * n) by lia.
+    rewrite divup_sub by omega.
+    assert (divup (new + i mod n) n >= 1) by (apply divup_ge_1; omega).
+    replace (S (divup (new + i mod n) n - 1)) with (divup (new + i mod n) n) by lia.
+    setoid_rewrite Nat.div_mod with (x := new) (y := n); auto.
+    replace (n * (new / n) + new mod n + i mod n) with
+      ((new mod n + i mod n) + n * (new / n)) by omega.
+    replace (i + (n * (new / n) + new mod n)) with
+      ((new mod n + i) + n * (new / n)) by omega.
+    setoid_rewrite Nat.div_mod with (x := i) (y := n) at 3; auto.
+    repeat rewrite divup_add by auto.
+    replace (new mod n + (n * (i / n) + i mod n)) with
+      (new mod n + i mod n + n * (i / n)) by omega.
+    rewrite divup_add by auto.
+    omega.
+  Qed.
   Local Hint Resolve unaligned_block_length_eq.
   Hint Rewrite unaligned_block_length_eq.
 
@@ -1420,9 +1452,10 @@ Module AsyncRecArray (RA : RASig).
     intros.
     assert (i mod n <= n) by auto.
     assert (new + i mod n <= n) by lia.
-    unfold divup.
-    admit.
-  Admitted.
+    eapply divup_le.
+    rewrite Nat.mod_eq in H2 by auto.
+    nia.
+  Qed.
   Local Hint Resolve unaligned_block_length_ge.
 
   Theorem write_unaligned_ok : forall xp idx new cs,
