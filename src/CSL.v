@@ -749,10 +749,17 @@ Section ParallelSemantics.
   Theorem parallel_decompose : forall m p1 locks1 p2 locks2 events ret1 ret2 m',
       (forall r, In r locks1 -> In r locks2 -> False) ->
       cexec m (PState p1 locks1) (PState p2 locks2) events (PFinished m' ret1 ret2) ->
-      (* TODO: need to filter events to separate into p1 and p2's events *)
-      rexec (State m locks1) p1 events (Finished m' ret1).
-            (* also symmetrically for p2, but let's defer that *)
+      (forall m1 m2,
+          mem_disjoint m1 m2 /\
+          m = mem_union m1 m2 /\
+          exists m1' m2',
+            mem_disjoint m1' m2' /\
+            m1' = mem_union m1' m2' /\
+            (* TODO: need to filter events to separate into p1 and p2's events *)
+            rexec (State m1 locks1) p1 events (Finished m1' ret1) /\
+            rexec (State m2 locks2) p2 events (Finished m2' ret1)).
   Proof.
+    intros.
   Admitted.
 
   (* soundness of Parallel deduction rule from paper *)
