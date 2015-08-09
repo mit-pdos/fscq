@@ -968,7 +968,7 @@ Module AsyncRecArray (RA : RASig).
   Fixpoint upd_range (v : word blocksz) (off : nat) (items : itemlist) : word blocksz :=
     match items with
     | nil => v
-    | e :: rest => upd_range (Rec.word_updN off v (Rec.to_word e)) (S off) rest
+    | e :: rest => upd_range (Rec.word_updN off v (Rec.to_word e)) (off + 1) rest
     end.
 
   Lemma upd_range_exact : forall l i v,
@@ -987,7 +987,6 @@ Module AsyncRecArray (RA : RASig).
     rewrite IHl by t.
     rewrite Rec.of_to_id by eauto.
     f_equal; f_equal.
-    replace (S i) with (i + 1) by omega.
     rewrite <- firstn_app_updN_eq; t.
     Unshelve. eauto.
   Qed.
@@ -1055,7 +1054,7 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     hoare.
   Qed.
-  
+
   Lemma helper_array_isolate_unify4 : forall V i1 i2 i3 (v1 v3 v1' v3' : list V) (v2 v2' : V),
     v1 = v1' -> v2 = v2' -> v3 = v3'
     -> array i1 v1 $1 * array i3 v3 $1 * i2 |-> v2
@@ -1508,6 +1507,54 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve unaligned_block_length_ge.
 
+  Lemma helper_list_chunk_skipn_comm : forall idx old new n,
+    length old = idx + length new -> n <> 0
+    -> list_chunk (skipn (n - idx mod n) new) n item0
+     = skipn (S (idx / n)) (list_chunk (firstn idx old ++ new) n item0).
+  Proof.
+    intros.
+    setoid_rewrite skipn_list_chunk_skipn_eq; f_equal.
+    replace (S (idx / n) * n) with (idx + (n - idx mod n)) by auto.
+    rewrite skipn_sum_app; simplen.
+  Qed.
+  Local Hint Resolve helper_list_chunk_skipn_comm.
+
+  Hint Rewrite selN_updN_eq: core.
+  Hint Rewrite wordToNat_natToWord_idempotent' 
+               firstn_app_l firstn_repeat skipn_app_eq skipn_sum_app
+               selN_map selN_combine using (solve [simplen]) : write_unaligned.
+  Hint Rewrite skipn_combine_comm skipn_combine_comm'
+               skipn_map_comm skipn_list_chunk_skipn_eq
+               firstn_combine_comm firstn_map_comm 
+               list_chunk_spec: write_unaligned.
+
+  Ltac xcrush_apply := try autorewrite_fast_goal;
+    first [ apply helper_array_isolate_unify1
+          | apply helper_array_isolate_unify2
+          | apply helper_array_isolate_unify3
+          | apply helper_array_isolate_unify4
+          | apply skipn_list_chunk_skipn_eq
+          | apply skipn_repeat_list_chunk
+          | (try solve [apply selN_app_cons; simplen])
+          ].
+
+  Ltac xcrush_elim := match goal with 
+  | [ |- combine _ _ = combine _ _ ] => f_equal
+  | [ |- map ?a _ = map ?a _ ] => f_equal
+  | [ |- block2val _ = block2val _ ] => f_equal
+  | [ |- (_, _) = (_, _) ] => f_equal
+  end.
+
+  Ltac xcrush_rewrite :=
+    unfold sel; try rewrite skipn_S_fold;
+    try autorewrite_fast_goal;
+    repeat erewrite selN_map with (default' := block0) by (solve [simplen]);
+    autorewrite with write_unaligned; eauto.
+
+  Ltac xcrush' := repeat xcrush_elim; repeat xcrush_apply; xcrush_rewrite; try solve [ simplen ].
+  Ltac xcrush := repeat xcrush'.
+
+
   Theorem write_unaligned_ok : forall xp idx new cs,
     {< F d old,
     PRE            BUFCACHE.rep cs d *
@@ -1524,78 +1571,31 @@ Module AsyncRecArray (RA : RASig).
     unfold write_unaligned.
     step.
     rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) by simplen.
-    autorewrite_fast_goal.
-    apply helper_array_isolate_unify1.
-    unfold sel; autorewrite_fast_goal; simplen.
+    xcrush.
 
     step.
-    step. simplen. simplen.
-    apply helper_array_isolate_unify2;
-    rewrite wordToNat_natToWord_idempotent' by simplen.
-    rewrite skipn_combine_comm.
-    rewrite skipn_map_comm.
-    f_equal; f_equal.
-    apply skipn_list_chunk_skipn_eq.
-    apply skipn_repeat_list_chunk.
+    step.
+    simplen. simplen. xcrush.
 
     step.
     instantiate (vs0 := repeat nil (idx / items_per_val)
       ++ [selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0] :: vs).
     setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
-    autorewrite_fast_goal.
 
-    apply helper_array_isolate_unify3;
-    rewrite wordToNat_natToWord_idempotent' by simplen.
-    repeat rewrite firstn_combine_comm.
-    repeat rewrite firstn_map_comm.
-    f_equal. f_equal; eauto.
-    rewrite firstn_app_l by simplen.
-    repeat rewrite firstn_repeat; simplen.
-
-    unfold sel; rewrite selN_combine by simplen.
-    rewrite wordToNat_natToWord_idempotent' by simplen.
-    repeat erewrite selN_map with (default' := block0) by simplen.
-    repeat rewrite list_chunk_spec.
-    f_equal. f_equal; auto.
-    apply selN_app_cons; simplen.
-
-    simpl; rewrite skipn_combine_comm; f_equal.
-    rewrite skipn_map_comm; f_equal.
-    setoid_rewrite skipn_list_chunk_skipn_eq; f_equal.
-    replace (S (idx / items_per_val) * items_per_val) with
-      (idx + (items_per_val - idx mod items_per_val)) by auto.
-    rewrite skipn_sum_app; simplen.
-    rewrite <- cons_nil_app.
-    rewrite skipn_app_eq; simplen.
-    simplen. simplen. simplen.
+    xcrush.
+    rewrite <- cons_nil_app; xcrush.
+    simplen. simplen. simplen. simplen.
 
     step.
     instantiate (vs := 
       updN (repeat nil (length (list_chunk old items_per_val item0))) (idx / items_per_val)
       [(selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0)]).
     setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
-    autorewrite_fast_goal.
-    apply helper_array_isolate_unify4.
 
-    rewrite wordToNat_natToWord_idempotent' by simplen.
-    repeat rewrite firstn_combine_comm.
-    repeat rewrite firstn_map_comm.
-    f_equal. f_equal; eauto.
-    repeat (rewrite firstn_repeat; simplen).
-
-    unfold sel; rewrite selN_combine by simplen.
-    rewrite wordToNat_natToWord_idempotent' by simplen.
-    repeat erewrite selN_map with (default' := block0) by simplen.
-    repeat rewrite list_chunk_spec.
-    f_equal. f_equal; auto.
-    rewrite selN_updN_eq; simplen.
-
-    rewrite wordToNat_natToWord_idempotent' by simplen.
-    rewrite skipn_S_fold.
+    xcrush.
     repeat rewrite skipn_oob; simplen.
-    simplen. simplen. simplen.
+    simplen. simplen. simplen. simplen.
   Qed.
-
 
 End AsyncRecArray.
 

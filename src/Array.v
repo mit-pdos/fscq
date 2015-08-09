@@ -707,6 +707,11 @@ Proof.
     simpl; auto.
 Qed.
 
+Lemma skipn_combine_comm' : forall n T R (a : list T) (b : list R),
+  skipn (S n) (List.combine a b) = List.combine (skipn (S n) a) (skipn (S n) b).
+Proof.
+  intros. apply skipn_combine_comm.
+Qed.
 
 (** * Isolating an array cell *)
 
