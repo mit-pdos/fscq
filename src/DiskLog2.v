@@ -168,14 +168,6 @@ Module AsyncRecArray (RA : RASig).
 
   Definition itemlist := list item.
 
-  Definition val_upd_rec rec item : nat * valu := 
-    let '(off, v) := rec in
-    (S off, word2val (Rec.word_updN off (val2word v) item)).
-
-  Definition val_upd_range (v : valu) (off : nat) (items : itemlist) : valu :=
-    let '(_ , v) := fold_left val_upd_rec (map Rec.to_word items) (off, v) in v.
-
-
   Fixpoint list_chunk' {A} (l : list A) (sz : nat) (def : A) (nr : nat) : list (list A) :=
     match nr with
     | S n => setlen l sz def :: (list_chunk' (skipn sz l) sz def n)
@@ -940,10 +932,70 @@ Module AsyncRecArray (RA : RASig).
     Unshelve. eauto.
   Qed.
 
+  Lemma val2block_length : forall v,
+    length (val2block v) = items_per_val.
+  Proof.
+    unfold val2block; simpl; intros.
+    pose proof (Rec.of_word_length blocktype (val2word v)).
+    unfold Rec.well_formed in H; simpl in H; destruct H; auto.
+  Qed.
+  Local Hint Resolve val2block_length.
+  Hint Rewrite val2block_length Rec.array_of_word_length.
+
+  Lemma well_formed_updN : forall {ft nr} (l : Rec.data (Rec.ArrayF ft nr)) i v,
+    Rec.well_formed l -> Rec.well_formed v
+    -> @Rec.well_formed (Rec.ArrayF ft nr) (updN l i v).
+  Proof.
+    intros; t.
+    rewrite Forall_forall in *; intros.
+    apply in_updN in H; destruct H; t.
+  Qed.
+  Local Hint Resolve well_formed_updN.
+
+  Lemma well_formed_inv : forall {ft nr} (l : Rec.data (Rec.ArrayF ft nr)) a,
+    Forall Rec.well_formed (a :: l) -> Rec.well_formed a.
+  Proof.
+    intros; eapply Forall_inv; eauto.
+  Qed.
+
+  Lemma well_formed_cons : forall {ft nr} (l : Rec.data (Rec.ArrayF ft nr)) a,
+    Forall Rec.well_formed (a :: l) -> Forall Rec.well_formed l.
+  Proof.
+    intros; eapply Forall_cons2; eauto.
+  Qed.
+  Local Hint Resolve well_formed_cons well_formed_inv.
+
+  Fixpoint upd_range (v : word blocksz) (off : nat) (items : itemlist) : word blocksz :=
+    match items with
+    | nil => v
+    | e :: rest => upd_range (Rec.word_updN off v (Rec.to_word e)) (S off) rest
+    end.
+
+  Lemma upd_range_exact : forall l i v,
+    Forall Rec.well_formed l ->
+    length l + i = items_per_val ->
+    word2val (upd_range (val2word v) i l) = block2val (firstn i (val2block v) ++ l).
+  Proof.
+    induction l; t.
+    rewrite firstn_oob; t.
+    rewrite Rec.word_updN_equiv by omega.
+
+    generalize blocksz_ok v.
+    unfold block2val, val2block, val2word, eq_rec, eq_rect in *.
+    rewrite blocksz_ok in *; intros.
+
+    rewrite IHl by t.
+    rewrite Rec.of_to_id by eauto.
+    f_equal; f_equal.
+    replace (S i) with (i + 1) by omega.
+    rewrite <- firstn_app_updN_eq; t.
+    Unshelve. eauto.
+  Qed.
+
 
   Definition write_unaligned_block T xp bn off (new: itemlist) cs rx : prog T :=
     let^ (cs, v) <- BUFCACHE.read (RAStart xp ^+ bn) cs;
-    let v' := word2val (Rec.word_splice (val2word v) off (map Rec.to_word new)) in
+    let v' := word2val (upd_range (val2word v) off new) in
     cs <- BUFCACHE.write (RAStart xp ^+ bn) v' cs;
     rx cs.
 
@@ -965,9 +1017,7 @@ Module AsyncRecArray (RA : RASig).
     hoare.
     apply ptsto_value_eq.
     unfold valuset_list; simpl; f_equal.
-    unfold block2val; f_equal.
-    rewrite Rec.word_splice_exact by omega.
-    autorewrite with core; auto.
+    rewrite upd_range_exact; auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write_unaligned_block _ _ _ _ _) _) => apply write_unaligned_block_ok : prog.
