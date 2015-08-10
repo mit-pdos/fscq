@@ -1597,6 +1597,8 @@ Module AsyncRecArray (RA : RASig).
     simplen. simplen. simplen. simplen.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (write_unaligned _ _ _ _) _) => apply write_unaligned_ok : prog.
+
 End AsyncRecArray.
 
 
@@ -1650,33 +1652,35 @@ Module DISKLOG.
     Definition header := Rec.data header_type.
     Definition mk_header (len : nat) : header := ($ len, tt).
 
-    Theorem header_sz_ok : Rec.len header_type <= valulen.
+    Theorem hdrsz_ok : Rec.len header_type <= valulen.
     Proof.
       rewrite valulen_is. apply leb_complete. compute. trivial.
     Qed.
+    Local Hint Resolve hdrsz_ok.
 
     Lemma plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
     Proof.
-      apply le_plus_minus_r; apply header_sz_ok.
+      apply le_plus_minus_r; auto.
     Qed.
 
-    Definition hdr2valu (h : header) : valu.
+    Definition hdr2val (h : header) : valu.
       set (zext (Rec.to_word h) (valulen - Rec.len header_type)) as r.
       rewrite plus_minus_header in r.
       refine r.
     Defined.
-    Arguments hdr2valu : simpl never.
 
-    Definition valu2hdr (v : valu) : header.
+    Definition val2hdr (v : valu) : header.
       apply Rec.of_word.
       rewrite <- plus_minus_header in v.
       refine (split1 _ _ v).
     Defined.
 
-    Lemma header_valu_id : forall h,
-      valu2hdr (hdr2valu h) = h.
+    Arguments hdr2val: simpl never.
+
+    Lemma val2hdr2val : forall h,
+      val2hdr (hdr2val h) = h.
     Proof.
-      unfold valu2hdr, hdr2valu.
+      unfold val2hdr, hdr2val.
       unfold eq_rec_r, eq_rec.
       intros.
       rewrite <- plus_minus_header.
@@ -1684,14 +1688,95 @@ Module DISKLOG.
       autorewrite with core; auto.
       simpl; destruct h; tauto.
     Qed.
-  End Hdr.
 
-  Hint Rewrite Hdr.header_valu_id.
+    Arguments val2hdr: simpl never.
+    Opaque val2hdr.  (* for some reason "simpl never" doesn't work *)
+
+
+    Definition xparams := log_xparams.
+    Definition LAHdr := LogHeader.
+
+    Inductive state : Type :=
+    | Synced : nat -> state
+    | Unsync : nat -> nat -> state
+    .
+
+    Definition rep xp state : @pred addr (@weq _) valuset :=
+      match state with
+      | Synced n =>   ((LAHdr xp) |-> (hdr2val (mk_header n), nil)) %pred
+      | Unsync n o => ((LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)])) %pred
+      end.
+
+    Definition read T xp cs rx : prog T := Eval compute_rec in
+      let^ (cs, v) <- BUFCACHE.read (LAHdr xp) cs;
+      rx ^(cs, # ((val2hdr v) :-> "length")).
+
+    Definition write T xp n cs rx : prog T :=
+      cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
+      rx cs.
+
+    Definition sync T xp cs rx : prog T :=
+      cs <- BUFCACHE.sync (LAHdr xp) cs;
+      rx cs.
+
+    Theorem write_ok : forall xp n cs,
+    {< F d old,
+    PRE            BUFCACHE.rep cs d *
+                   [[ goodSize addrlen n ]] *
+                   [[ (F * rep xp (Synced old))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * rep xp (Unsync n old))%pred d' ]]
+    CRASH  exists cs d, BUFCACHE.rep cs d
+    >} write xp n cs.
+    Proof.
+      unfold write.
+      hoare.
+    Qed.
+
+    Theorem read_ok : forall xp cs,
+    {< F d n,
+    PRE            BUFCACHE.rep cs d *
+                   [[ goodSize addrlen n ]] *
+                   [[ (F * rep xp (Synced n))%pred d ]]
+    POST RET: ^(cs, r)
+                   BUFCACHE.rep cs d *
+                   [[ (F * rep xp (Synced n))%pred d ]] *
+                   [[ r = n ]]
+    CRASH exists cs', BUFCACHE.rep cs' d
+    >} read xp cs.
+    Proof.
+      unfold read.
+      hoare.
+      subst; rewrite val2hdr2val; simpl.
+      rewrite wordToNat_natToWord_idempotent'; auto.
+    Qed.
+
+    Theorem sync_ok : forall xp cs,
+    {< F d n,
+    PRE            BUFCACHE.rep cs d * exists old,
+                   [[ goodSize addrlen n ]] *
+                   [[ (F * rep xp (Unsync n old))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * rep xp (Synced n))%pred d' ]]
+    CRASH  exists cs d, BUFCACHE.rep cs d
+    >} sync xp cs.
+    Proof.
+      unfold sync.
+      hoare.
+    Qed.
+
+    Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
+    Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
+    Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
+
+  End Hdr.
 
 
   (****************** Log contents and states *)
 
-  Definition log_contents := pairlist addr valu.
+  Definition log_contents := list ( addr * valu ).
 
   Inductive state :=
   (* The log is synced on disk *)
