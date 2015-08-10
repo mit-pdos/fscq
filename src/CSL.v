@@ -27,12 +27,19 @@ Section ConcurrentSepLogic.
   Variable in_resource_domain : R -> @mem addr (@weq addrlen) valu ->
                                 (addr -> Prop).
 
-
   Implicit Type r : R.
   Implicit Types m rm : @mem addr (@weq addrlen) valu.
 
   Definition respects_domain r m rm :=
-    (forall a, in_resource_domain r m a -> exists v, rm a = Some v).
+    forall a, in_resource_domain r m a <-> exists v, rm a = Some v.
+
+  (** We assume that when a resource memory respects the appropriate domain
+      in some memory, extending the memory doesn't change that fact.
+      It would be nice to express this in terms of in_resource_domain and then
+      prove this as a corollary. *)
+  Hypothesis respects_domain_precise : forall r m rm h,
+      respects_domain r m rm ->
+      respects_domain r (mem_union m h) rm.
 
   Inductive exec_label :=
   | AcqStep : forall r rm, exec_label
@@ -384,6 +391,9 @@ Section ConcurrentSepLogic.
   Theorem frame_exec : forall p m h m' ret locks events,
       mem_disjoint m h ->
       mem_disjoint m' h ->
+      (* need mem_disjoint h rm; this could be guaranteed by F * inv gamma in
+         the context of the actual frame rule proof. *)
+      (forall r rm, In (AcqStep r rm) events -> mem_disjoint rm h) ->
       rexec m (State p locks) events (Finished m' ret) ->
       (* extended initial/final memories *)
       let mh := mem_union m h in
@@ -397,6 +407,9 @@ Section ConcurrentSepLogic.
     Local Hint Resolve mem_disjoint_union_parts.
 
     Local Hint Resolve mem_union_addr.
+
+    Local Hint Extern 3 (In _ _) => eapply in_eq.
+    Local Hint Extern 3 (In _ _) => eapply in_cons.
 
     - (* CDone *)
       inv_rexec.
@@ -419,11 +432,8 @@ Section ConcurrentSepLogic.
     - (* Acq *)
       inv_rexec.
       inv_rstep.
-      (* need mem_disjoint h rm; this could be guaranteed by F * inv gamma in
-         the context of the actual frame rule proof. *)
-      assert (mem_disjoint h rm).
-      admit.
-      assert (mem_disjoint rm h) by solve_disjoint_union.
+      assert (mem_disjoint rm h) by eauto.
+      assert (mem_disjoint h rm) by solve_disjoint_union.
       econstructor; eauto.
       replace events0 with (nil ++ events0) by auto.
       replace (mem_union (mem_union m h) rm) with
@@ -453,11 +463,8 @@ Section ConcurrentSepLogic.
       apply mem_union_comm; solve_disjoint_union.
       eapply mem_disjoint_union_parts; solve_disjoint_union.
 
-      (* we need to assume something about in_resource_domain, and this is likely
-         to be one of them; it looks like the precision requirement: when respects_domain
-         r m rm holds, extending m should not change what rm respects_domain. *)
-      admit.
-  Admitted.
+      apply respects_domain_precise; auto.
+  Qed.
 
   Theorem frame_rule : forall gamma pre p,
       valid gamma pre p ->
