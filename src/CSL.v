@@ -34,10 +34,6 @@ Section ConcurrentSepLogic.
   Definition respects_domain r m rm :=
     (forall a, in_resource_domain r m a -> exists v, rm a = Some v).
 
-  (* TODO: change state to capture p and locks, not m and locks *)
-  Inductive state :=
-  | State m (locks: list R).
-
   Inductive exec_label :=
   | AcqStep : forall r rm, exec_label
   | RelStep : forall r rm, exec_label.
@@ -49,48 +45,51 @@ Section ConcurrentSepLogic.
   | Acq r (rx: unit -> cprog)
   | Rel r (rx: unit -> cprog).
 
+  Inductive state :=
+  | State (p: cprog) (locks: list R).
+
   Inductive coutcome :=
   | Finished : forall m, T -> coutcome
   | Failed.
 
-  Inductive rstep : (forall s1 p1 s2 p2 events, Prop) :=
+  Inductive rstep : (forall m s1 m' s2 events, Prop) :=
   | SRead : forall m ls a v rx,
       m a = Some v ->
-      rstep (State m ls) (CRead a rx)
-            (State m ls) (rx v)
+      rstep m (State (CRead a rx) ls)
+            m (State (rx v) ls)
             nil
   | SWrite : forall m ls a v0 v rx,
       m a = Some v0 ->
-      rstep (State m ls) (CWrite a v rx)
-            (State (upd m a v) ls) (rx tt)
+      rstep m (State (CWrite a v rx) ls)
+            (upd m a v) (State (rx tt) ls)
             nil
   | SAcq : forall m rm ls r rx,
       mem_disjoint m rm ->
-      rstep (State m ls) (Acq r rx)
-            (State (mem_union m rm) (r::ls)) (rx tt)
+      rstep m (State (Acq r rx) ls)
+            (mem_union m rm) (State (rx tt) (r::ls))
             [AcqStep r rm]
   | SRel : forall m m' rm ls r rx,
       mem_disjoint m' rm ->
       m = mem_union m' rm ->
       respects_domain r m rm ->
-      rstep (State m ls) (Rel r rx)
-            (State m (remove REQ r ls)) (rx tt)
+      rstep m (State (Rel r rx) ls)
+            m (State (rx tt) (remove REQ r ls))
             [RelStep r rm].
 
   Hint Constructors rstep.
 
-  Inductive rexec : state -> cprog -> list exec_label -> coutcome -> Prop :=
-  | EStep : forall s s' p p' events new_events out,
-      rstep s p s' p' new_events ->
-      rexec s' p' events out ->
-      rexec s p (new_events ++ events) out
+  Inductive rexec : mem -> state -> list exec_label -> coutcome -> Prop :=
+  | EStep : forall m m' s s' events new_events out,
+      rstep m s m' s' new_events ->
+      rexec m' s' events out ->
+      rexec m s (new_events ++ events) out
   | EDone : forall m ls v,
-      rexec (State m ls) (CDone v)
+      rexec m (State (CDone v) ls)
             nil (Finished m v)
-  | EFail : forall s p,
-      (forall s' p' new_events, ~rstep s p s' p' new_events) ->
+  | EFail : forall m p ls,
+      (forall m' s' new_events, ~rstep m (State p ls) m' s' new_events) ->
       (forall v, p <> CDone v) ->
-      rexec s p nil Failed.
+      rexec m (State p ls) nil Failed.
 
   Hint Constructors rexec.
 
@@ -111,7 +110,7 @@ Section ConcurrentSepLogic.
 
   Lemma read_failure : forall m a ls rx,
       m a = None ->
-      rexec (State m ls) (CRead a rx) nil Failed.
+      rexec m (State (CRead a rx) ls) nil Failed.
   Proof.
     intros.
     eapply EFail; try congruence; intros.
@@ -121,7 +120,7 @@ Section ConcurrentSepLogic.
 
   Lemma write_failure : forall m a v ls rx,
       m a = None ->
-      rexec (State m ls) (CWrite a v rx) nil Failed.
+      rexec m (State (CWrite a v rx) ls) nil Failed.
   Proof.
     intros.
     eapply EFail; try congruence; intros.
@@ -166,7 +165,7 @@ Section ConcurrentSepLogic.
                        mem_disjoint m' rm /\
                        respects_domain r m rm) ->
       exists events out,
-        rexec (State m locks) p events out.
+        rexec m (State p locks) events out.
   Proof.
     Local Hint Resolve read_failure write_failure.
     induction p; intros; eauto.
@@ -226,7 +225,7 @@ Section ConcurrentSepLogic.
       m |= pre d * inv gamma ->
       (forall r rm, In (AcqStep r rm) events ->
                rm |= rinv r gamma) ->
-      rexec (State m nil) p events out ->
+      rexec m (State p nil) events out ->
       (forall r rm, In (RelStep r rm) events ->
                rm |= rinv r gamma) /\
       (exists m' v, out = Finished m' v /\
@@ -261,12 +260,22 @@ Section ConcurrentSepLogic.
   Ltac remember_nonvar a :=
     (is_var a || remember a).
 
+  Ltac remember_state s :=
+    match s with
+    | State ?prog ?ls => (is_var prog ||
+                                let c := fresh "c" in
+                                remember prog as c; remember (State c ls))
+    | _ => remember_nonvar s
+    end.
+
   Ltac ind_rexec :=
     match goal with
-    | [ H : rexec ?s ?c _ _ |- _ ] =>
-      remember_nonvar s;
-        remember_nonvar c;
-        induction H; try (inv_rstep; inv_cprog; inv_state)
+    | [ H : rexec _ ?s _ _ |- _ ] =>
+      remember_state s;
+        induction H; subst;
+        try inv_rstep;
+        try inv_cprog;
+        try inv_state
     end.
 
   Ltac inv_rexec :=
@@ -274,6 +283,16 @@ Section ConcurrentSepLogic.
     | [ H : rexec _ _ _ _ |- _ ] =>
       inversion H; subst
     end.
+
+  Theorem write_fail : forall m a v rx,
+      (forall m' s' new_events, ~ rstep m (State (CWrite a v rx) nil) m' s' new_events) ->
+      m a = None.
+  Proof.
+    intros.
+    case_eq (m a); intros; auto.
+    exfalso; eapply H.
+    eauto.
+  Qed.
 
   Theorem write_cok : forall a v,
       [G] |- {{ F v0,
@@ -286,15 +305,25 @@ Section ConcurrentSepLogic.
     destruct_lift H.
     ind_rexec.
     - edestruct H5; eauto.
+      eapply pimpl_apply.
+      cancel.
       eapply pimpl_apply; [| eapply ptsto_upd].
       cancel.
       pred_apply; cancel.
     - assert (m a = Some v2).
       eapply ptsto_valid; pred_apply; cancel.
+      apply write_fail in H1.
       congruence.
-    - subst; exfalso; eapply H1.
-      econstructor.
-      eapply ptsto_valid; pred_apply; cancel.
+  Qed.
+
+  Theorem read_fail : forall m a rx,
+      (forall m' s' new_events, ~ rstep m (State (CRead a rx) nil) m' s' new_events) ->
+      m a = None.
+  Proof.
+    intros.
+    case_eq (m a); intros; auto.
+    exfalso; eapply H.
+    eauto.
   Qed.
 
   Theorem read_cok : forall a,
@@ -311,10 +340,8 @@ Section ConcurrentSepLogic.
       pred_apply; cancel.
     - assert (m a = Some v1).
       eapply ptsto_valid; pred_apply; cancel.
+      apply read_fail in H1.
       congruence.
-    - subst; exfalso; eapply H1.
-      econstructor.
-      eapply ptsto_valid; pred_apply; cancel.
   Qed.
 
   Theorem pimpl_cok : forall gamma pre pre' p,
@@ -354,21 +381,16 @@ Section ConcurrentSepLogic.
     cancel.
   Qed.
 
-  Theorem frame_exec : forall m h m' ret locks events p,
+  Theorem frame_exec : forall p m h m' ret locks events,
       mem_disjoint m h ->
       mem_disjoint m' h ->
-      rexec (State m locks) p events (Finished m' ret) ->
+      rexec m (State p locks) events (Finished m' ret) ->
       (* extended initial/final memories *)
       let mh := mem_union m h in
       let m'h := mem_union m' h in
-      rexec (State mh locks) p events (Finished m'h ret).
+      rexec mh (State p locks) events (Finished m'h ret).
   Proof.
     cbv zeta.
-    intros.
-    generalize dependent m.
-    generalize dependent m'.
-    generalize dependent locks.
-    generalize dependent events.
     induction p; intros.
 
     Local Hint Resolve mem_disjoint_union.
@@ -415,14 +437,14 @@ Section ConcurrentSepLogic.
     - (* Rel *)
       inv_rexec.
       inv_rstep.
-      assert (mem_disjoint m'0 h).
+      assert (mem_disjoint m'1 h).
       eapply mem_disjoint_union.
       rewrite mem_union_comm; solve_disjoint_union.
       assert (mem_disjoint rm h) by eauto.
 
       econstructor; eauto.
       econstructor.
-      instantiate (1 := mem_union m'0 h).
+      instantiate (1 := mem_union m'1 h).
       apply mem_disjoint_union_parts; eauto.
       solve_disjoint_union.
       rewrite mem_union_comm by solve_disjoint_union.
@@ -472,61 +494,52 @@ Section ConcurrentSepLogic.
   Admitted.
 
 Section ParallelSemantics.
-  Inductive pstate :=
-  | PState (p: cprog) (locks: list R).
-
   Inductive poutcomes :=
   | PFailed
   | PFinished m (ret1: T) (ret2: T).
 
-  Inductive cexec : mem -> pstate -> pstate -> list exec_label -> poutcomes -> Prop :=
+  Inductive cexec : mem -> state -> state -> list exec_label -> poutcomes -> Prop :=
   | CProg1Step : forall m m' ls1 ls1' p1 p1' events new_events p2 ls2 outs,
-      rstep (State m ls1) p1 (State m' ls1') p1' new_events ->
+      rstep m (State p1 ls1) m' (State p1' ls1') new_events ->
       (forall r, In r ls1' -> In r ls2 -> False) ->
-      cexec m' (PState p1' ls1') (PState p2 ls2) events outs ->
-      cexec m (PState p1 ls1) (PState p2 ls2) (new_events ++ events) outs
+      cexec m' (State p1' ls1') (State p2 ls2) events outs ->
+      cexec m (State p1 ls1) (State p2 ls2) (new_events ++ events) outs
   | CProg2Step : forall m p1 ls1 m' ls2 ls2' p2 p2' events new_events outs,
-      rstep (State m ls2) p2 (State m' ls2') p2' new_events ->
+      rstep m (State p2 ls2) m' (State p2' ls2') new_events ->
       (forall r, In r ls2' -> In r ls1 -> False) ->
-      cexec m' (PState p1 ls1) (PState p2' ls2') events outs ->
-      cexec m (PState p1 ls1) (PState p2 ls2) (new_events ++ events) outs
+      cexec m' (State p1 ls1) (State p2' ls2') events outs ->
+      cexec m (State p1 ls1) (State p2 ls2) (new_events ++ events) outs
   | CProg1Done : forall m m' ret1 ret2 new_events p2 ls2,
-      rexec (State m ls2) p2 new_events (Finished m' ret2) ->
-      cexec m (PState (CDone ret1) nil) (PState p2 ls2)
+      rexec m (State p2 ls2) new_events (Finished m' ret2) ->
+      cexec m (State (CDone ret1) nil) (State p2 ls2)
             new_events (PFinished m' ret1 ret2)
   | CProg2Done : forall m m' ret1 ret2 new_events ls1 p1,
-      rexec (State m ls1) p1 new_events (Finished m' ret2) ->
-      cexec m (PState p1 ls1) (PState (CDone ret2) nil)
+      rexec m (State p1 ls1) new_events (Finished m' ret2) ->
+      cexec m (State p1 ls1) (State (CDone ret2) nil)
             new_events (PFinished m' ret1 ret2)
   | CProg1Fail : forall m ls1 p1 ps2,
-      (forall m' ls1' p1' events, ~rstep (State m ls1) p1 (State m' ls1') p1' events) ->
+      (forall m' ls1' p1' events, ~rstep m (State p1 ls1) m' (State p1' ls1') events) ->
       (forall v, p1 <> CDone v) ->
-      cexec m (PState p1 ls1) ps2
+      cexec m (State p1 ls1) ps2
             nil PFailed
   | CProg2Fail : forall m ps1 ls2 p2,
-      (forall m' ls2' p2' events, ~rstep (State m ls2) p2 (State m' ls2') p2' events) ->
+      (forall m' ls2' p2' events, ~rstep m (State p2 ls2) m' (State p2' ls2') events) ->
       (forall v, p2 <> CDone v) ->
-      cexec m ps1 (PState p2 ls2)
+      cexec m ps1 (State p2 ls2)
             nil PFailed.
-
-  Ltac inv_pstate :=
-    match goal with
-    | [ H : @eq pstate _ _ |- _ ] =>
-      inversion H; subst; clear H
-    end.
 
   Ltac ind_cexec :=
     match goal with
-    | [ H: cexec _ ?ps1 ?ps2 _ ?pout |- _ ] =>
-      remember_nonvar ps1;
-        remember_nonvar ps2;
+    | [ H: cexec _ ?s1 ?s2 _ ?pout |- _ ] =>
+      remember_state s1;
+        remember_state s2;
         remember_nonvar pout;
         induction H;
-        repeat inv_pstate
+        repeat inv_state
     end.
 
   Theorem locks_disjoint : forall m p1 ls1 p2 ls2 m' events ret1 ret2,
-      cexec m (PState p1 ls1) (PState p2 ls2) events (PFinished m' ret1 ret2) ->
+      cexec m (State p1 ls1) (State p2 ls2) events (PFinished m' ret1 ret2) ->
       (forall r, In r ls1 -> In r ls2 -> False).
   Proof.
     Hint Resolve in_eq in_cons remove_In.
@@ -546,7 +559,7 @@ Section ParallelSemantics.
     forall m d events out,
       m |= pre d * inv gamma ->
       (forall r rm, In (AcqStep r rm) events -> rinv r gamma rm) ->
-      cexec m (PState p1 nil) (PState p2 nil) events out ->
+      cexec m (State p1 nil) (State p2 nil) events out ->
       (forall r rm, In (RelStep r rm) events -> rinv r gamma rm) /\
       (exists m' ret1 ret2, out = PFinished m' ret1 ret2 /\
                        (m' |= d ret1 ret2 * inv gamma)).
@@ -574,10 +587,10 @@ Section ParallelSemantics.
   Ltac inv_cexec' H :=
     match type of H with
       | cexec _ ?s1 ?s2 _ _ =>
-        remember_nonvar s1;
-          remember_nonvar s2;
+        remember_state s1;
+          remember_state s2;
           inversion H; subst;
-          repeat inv_pstate
+          repeat inv_state
     end.
 
   Ltac inv_cexec :=
@@ -630,7 +643,7 @@ Section ParallelSemantics.
   Qed.
 
   Lemma rexec_done : forall m ret ret' events m',
-      rexec (State m nil) (CDone ret) events (Finished m' ret') ->
+      rexec m (State (CDone ret) nil) events (Finished m' ret') ->
       m = m' /\
       events = nil /\
       ret = ret'.
@@ -650,6 +663,28 @@ Section ParallelSemantics.
     eapply pimpl_apply'; [eapply ptsto_upd | cancel].
     pred_apply; cancel.
     cancel.
+  Qed.
+
+  Inductive lockfree : cprog -> Prop :=
+    | DoneLockFree : forall v, lockfree (CDone v)
+    | ReadLockfree : forall a rx, (forall v, lockfree (rx v)) ->
+                             lockfree (CRead a (fun v => rx v))
+    | WriteLockfree : forall a v rx, lockfree (rx tt) ->
+                                lockfree (CWrite a v (fun t => rx t)).
+
+  Hint Constructors lockfree.
+
+  Theorem lockfree_execution : forall m p ls out events,
+      rexec m (State p ls) events out ->
+      lockfree p ->
+      events = nil.
+  Proof.
+    intros.
+    generalize dependent m.
+    generalize dependent events.
+    induction H0; intros;
+    inv_rexec; auto;
+    inv_rstep; simpl; eauto.
   Qed.
 
   (* we quantify over arbitrary return values since they must be from
@@ -698,7 +733,7 @@ Section ParallelSemantics.
         inv_rstep' H
       end.
 
-    Ltac t := intuition; repeat eexists; eapply done_empty_inv; eauto;
+    Ltac t := simpl In; intuition; repeat eexists; eapply done_empty_inv; eauto;
               eapply pimpl_apply'; [eapply ptsto_upd2; pred_apply |]; cancel.
 
     destruct_lift H.
@@ -707,7 +742,7 @@ Section ParallelSemantics.
     inv_cexec; rsimpl.
     inv_cexec; rsimpl; try t.
 
-    rsimpl; rsimpl; try t.
+    inv_cexec; rsimpl; rsimpl; t.
 
     eapply H6.
     econstructor.
@@ -716,7 +751,10 @@ Section ParallelSemantics.
 
     inv_cexec; rsimpl.
     inv_cexec; rsimpl; try t.
-    rsimpl; t.
+    assert (events = nil) by (eapply lockfree_execution; eauto).
+    subst.
+    rsimpl; rsimpl.
+    t.
 
     eapply H6.
     econstructor.
@@ -748,7 +786,7 @@ Section ParallelSemantics.
   (* Parallel Decomposition lemma from paper *)
   Theorem parallel_decompose : forall m p1 locks1 p2 locks2 events ret1 ret2 m',
       (forall r, In r locks1 -> In r locks2 -> False) ->
-      cexec m (PState p1 locks1) (PState p2 locks2) events (PFinished m' ret1 ret2) ->
+      cexec m (State p1 locks1) (State p2 locks2) events (PFinished m' ret1 ret2) ->
       (forall m1 m2,
           mem_disjoint m1 m2 /\
           m = mem_union m1 m2 /\
@@ -756,8 +794,8 @@ Section ParallelSemantics.
             mem_disjoint m1' m2' /\
             m1' = mem_union m1' m2' /\
             (* TODO: need to filter events to separate into p1 and p2's events *)
-            rexec (State m1 locks1) p1 events (Finished m1' ret1) /\
-            rexec (State m2 locks2) p2 events (Finished m2' ret1)).
+            rexec m1 (State p1 locks1) events (Finished m1' ret1) /\
+            rexec m2 (State p2 locks2) events (Finished m2' ret1)).
   Proof.
     intros.
   Admitted.
