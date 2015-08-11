@@ -519,6 +519,12 @@ Section ConcurrentSepLogic.
                                          [[ done_rx = d ]])
                                 (rx ret) ]])%pred (p rx).
   Proof.
+    intros.
+    unfold valid at 1; intros.
+    destruct_lift H0.
+    apply sep_star_assoc in H0.
+    unfold_sep_star at 1 in H0.
+    do 2 deex_local.
   Admitted.
 
   Theorem write_ok_narrow : forall a v,
