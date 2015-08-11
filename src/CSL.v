@@ -112,9 +112,9 @@ Section ConcurrentSepLogic.
     inversion H; subst.
 
   Ltac inv_rstep :=
-    match goal with
+    match reverse goal with
     | [ H : rstep _ _ _ _ _ |- _ ] =>
-      inv_rstep' H
+      idtac "rstep: " H; inv_rstep' H
     end.
 
   Lemma read_failure : forall m a ls rx,
@@ -267,14 +267,14 @@ Section ConcurrentSepLogic.
   (** Save an equality to a non-variable expression so induction on an expression preserves
       information. *)
   Ltac remember_nonvar a :=
-    (is_var a || remember a).
+    first [ is_var a | remember a ].
 
   Ltac remember_state s :=
     match s with
-    | State ?prog ?ls => (is_var prog ||
+    | State ?prog ?ls => first [ is_var prog; remember s |
                                 let c := fresh "c" in
-                                remember prog as c; remember (State c ls))
-    | _ => remember_nonvar s
+                                remember prog as c; remember (State c ls) ]
+    | _ => remember s
     end.
 
   Ltac ind_rexec :=
@@ -288,7 +288,7 @@ Section ConcurrentSepLogic.
     end.
 
   Ltac inv_rexec :=
-    match goal with
+    match reverse goal with
     | [ H : rexec _ _ _ _ |- _ ] =>
       inversion H; subst
     end.
@@ -584,17 +584,21 @@ Section ParallelSemantics.
   | PFailed
   | PFinished m (ret1: T) (ret2: T).
 
-  Inductive cexec : mem -> state -> state -> list exec_label -> poutcomes -> Prop :=
-  | CProg1Step : forall m m' ls1 ls1' p1 p1' events new_events p2 ls2 outs,
+  Inductive cstep : mem -> state -> state -> mem -> state -> state -> list exec_label -> Prop :=
+  | Prog1Step : forall m m' ls1 ls1' p1 p1' new_events p2 ls2,
       rstep m (State p1 ls1) m' (State p1' ls1') new_events ->
       (forall r, In r ls1' -> In r ls2 -> False) ->
-      cexec m' (State p1' ls1') (State p2 ls2) events outs ->
-      cexec m (State p1 ls1) (State p2 ls2) (new_events ++ events) outs
-  | CProg2Step : forall m p1 ls1 m' ls2 ls2' p2 p2' events new_events outs,
+      cstep m (State p1 ls1) (State p2 ls2) m' (State p1' ls1') (State p2 ls2) new_events
+  | Prog2Step : forall m m' ls2 ls2' p2 p2' new_events p1 ls1,
       rstep m (State p2 ls2) m' (State p2' ls2') new_events ->
       (forall r, In r ls2' -> In r ls1 -> False) ->
-      cexec m' (State p1 ls1) (State p2' ls2') events outs ->
-      cexec m (State p1 ls1) (State p2 ls2) (new_events ++ events) outs
+      cstep m (State p1 ls1) (State p2 ls2) m' (State p1 ls1) (State p2' ls2') new_events.
+
+  Inductive cexec : mem -> state -> state -> list exec_label -> poutcomes -> Prop :=
+  | CStep : forall m m' s1 s2 s1' s2' events new_events outs,
+      cstep m s1 s2 m' s1' s2' new_events ->
+      cexec m' s1' s2' events outs ->
+      cexec m s1 s2 (new_events ++ events) outs
   | CProg1Done : forall m m' ret1 ret2 new_events p2 ls2,
       rexec m (State p2 ls2) new_events (Finished m' ret2) ->
       cexec m (State (CDone ret1) nil) (State p2 ls2)
@@ -604,15 +608,21 @@ Section ParallelSemantics.
       cexec m (State p1 ls1) (State (CDone ret2) nil)
             new_events (PFinished m' ret1 ret2)
   | CProg1Fail : forall m ls1 p1 ps2,
-      (forall m' ls1' p1' events, ~rstep m (State p1 ls1) m' (State p1' ls1') events) ->
+      (forall m' s' events, ~rstep m (State p1 ls1) m' s' events) ->
       (forall v, p1 <> CDone v) ->
       cexec m (State p1 ls1) ps2
             nil PFailed
   | CProg2Fail : forall m ps1 ls2 p2,
-      (forall m' ls2' p2' events, ~rstep m (State p2 ls2) m' (State p2' ls2') events) ->
+      (forall m' s' events, ~rstep m (State p2 ls2) m' s' events) ->
       (forall v, p2 <> CDone v) ->
       cexec m ps1 (State p2 ls2)
             nil PFailed.
+
+  Ltac inv_cstep :=
+    match reverse goal with
+    | [ H: cstep _ _ _ _ _ _ _ |- _ ] =>
+      idtac "cstep: " H; inversion H; subst
+    end.
 
   Ltac ind_cexec :=
     match goal with
@@ -621,6 +631,7 @@ Section ParallelSemantics.
         remember_state s2;
         remember_nonvar pout;
         induction H;
+        try inv_cstep;
         repeat inv_state
     end.
 
@@ -676,13 +687,13 @@ Section ParallelSemantics.
         remember_state s1;
           remember_state s2;
           inversion H; subst;
-          repeat inv_state
+          try inv_state; try inv_state
     end.
 
   Ltac inv_cexec :=
     match reverse goal with
     | [ H: cexec _ _ _ _ _ |- _ ] =>
-      inv_cexec' H
+      idtac "cexec:" H; inv_cexec' H
     end.
 
   Lemma no_locks_releases : forall gamma,
@@ -822,39 +833,20 @@ Section ParallelSemantics.
 
     destruct_lift H.
 
-    inv_cexec; rsimpl.
-    inv_cexec; rsimpl.
-    inv_cexec; rsimpl; try t.
+    Ltac impossible_failure :=
+      recognize_false; match goal with
+      | [ H: context[~rstep _ _ _ _ _] |- False ] =>
+        eapply H; econstructor;
+        (eapply ptsto_other_safe || eapply ptsto_valid);
+        pred_apply; cancel
+      end.
 
-    inv_cexec; rsimpl; rsimpl; t.
-
-    eapply H6.
-    econstructor.
-    eapply ptsto_other_safe.
-    pred_apply; cancel.
-
-    inv_cexec; rsimpl.
-    inv_cexec; rsimpl; try t.
-    assert (events = nil) by (eapply lockfree_execution; eauto).
-    subst.
-    rsimpl; rsimpl.
-    t.
-
-    eapply H6.
-    econstructor.
-    eapply ptsto_other_safe.
-    pred_apply; cancel.
-
-    eapply H2.
-    econstructor.
-    eapply ptsto_valid.
-    pred_apply; cancel.
-
-    eapply H2.
-    econstructor.
-    eapply ptsto_valid.
-    pred_apply; cancel.
-  Qed.
+    inv_cexec; try impossible_failure.
+    inv_cexec;
+      try inv_cstep;
+      try inv_rstep;
+      try impossible_failure.
+  Admitted.
 
   Theorem pimpl_pok : forall gamma pre pre' p1 p2,
       pvalid gamma pre' p1 p2 ->
