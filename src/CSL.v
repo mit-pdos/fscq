@@ -500,6 +500,74 @@ Section ConcurrentSepLogic.
     repeat eexists; eauto.
   Admitted.
 
+  Theorem frame_rule_rx : forall V gamma pre post p rx,
+      valid gamma (fun d =>
+                     pre d *
+                     [[ forall (ret:V),
+                          valid gamma (fun done_rx =>
+                                         post ret *
+                                         [[ done_rx = d ]])
+                                (rx ret) ]])%pred (p rx) ->
+      valid gamma (fun d =>
+                     exists F,
+                     F * pre d *
+                     [[ forall (ret:V),
+                          valid gamma (fun done_rx =>
+                                         F * post ret *
+                                         [[ done_rx = d ]])
+                                (rx ret) ]])%pred (p rx).
+  Proof.
+  Admitted.
+
+  Theorem write_ok_narrow : forall a v,
+      [G] |- {{ v0,
+             | PRE a |-> v0
+             | POST RET:_ a |-> v
+            }} CWrite a v.
+  Proof.
+    intros.
+    eapply pimpl_cok.
+    apply write_cok.
+    cancel.
+
+    eapply pimpl_cok.
+    eapply H1.
+    cancel.
+  Qed.
+
+  Theorem write_ok_frame : forall a v,
+      [G] |- {{ F v0,
+             | PRE F * a |-> v0
+             | POST RET:_ F * a |-> v
+            }} CWrite a v.
+  Proof.
+    (* despite appearances, this is a perfect proof;
+      nothing specific to the program appears (other than some explicit
+      instantiations that can be automated), yet this upgrades the
+      write_ok_narrow spec to include a frame predicate. *)
+    intros.
+    eapply pimpl_cok.
+    eapply frame_rule_rx.
+    eapply pimpl_cok.
+    eapply write_ok_narrow.
+    intros.
+    (* cancel will instantiate pre, but leave off exists v0; later this makes
+       instantiating v0 impossible since the appropriate value is not in the
+       evar's environment. *)
+    instantiate (pre := (fun _ => exists v0, a |-> v0)%pred).
+    cancel.
+    eapply pimpl_cok.
+    eapply H1.
+    cancel.
+    instantiate (post := (fun _ => a |-> v)%pred).
+    cancel.
+    cancel.
+
+    eapply pimpl_cok.
+    eapply H1.
+    cancel.
+  Qed.
+
 Section ParallelSemantics.
   Inductive poutcomes :=
   | PFailed
