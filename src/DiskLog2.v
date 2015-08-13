@@ -1776,17 +1776,54 @@ Module DISKLOG.
 
   (****************** Log contents and states *)
 
-  Definition log_contents := list ( addr * valu ).
+  Definition entry := (addr * valu)%type.
+  Definition contents := list entry.
 
   Inductive state :=
   (* The log is synced on disk *)
-  | Synced (l: log_contents)
+  | Synced (l: contents)
   (* The log has been truncated; but the length (0) is unsynced *)
-  | Truncated (old: log_contents)
+  | Truncated (old: contents)
   (* The log is being extended; only the content has been updated (unsynced) *)
-  | ContentUpdated (old: log_contents)
+  | ExtendedContent (old: contents)
   (* The log has been extended; the new contents are synced but the length is unsynced *)
-  | ContentSynced (old: log_contents) (app: log_contents).
+  | Extended (old: contents) (new: contents).
+
+
+  Definition rep_inner xp (st : state) : @pred addr (@weq _) valuset :=
+  match st with
+  | Synced l => let (al, vl) := (map fst l, map snd l) in
+       Hdr.rep xp (Hdr.Synced (length l)) *
+       Desc.array_rep xp (Desc.Synced al) *
+       Data.array_rep xp (Data.Synced vl)
+
+  | Truncated old => let (al, vl) := (map fst old, map snd old) in
+       Hdr.rep xp (Hdr.Unsync 0 (length old)) *
+       Desc.array_rep xp (Desc.Synced al) *
+       Data.array_rep xp (Data.Synced vl)
+
+  | ExtendedContent old => let (al, vl) := (map fst old, map snd old) in
+       Hdr.rep xp (Hdr.Synced (length old)) *
+       Desc.array_rep xp (Desc.Unsync al) *
+       Data.array_rep xp (Data.Unsync vl)
+
+  | Extended old new => let (al, vl) := (map fst (old ++ new), map snd (old ++ new)) in
+       Hdr.rep xp (Hdr.Unsync (length (old ++ new)) (length old)) *
+       Desc.array_rep xp (Desc.Synced al) *
+       Data.array_rep xp (Data.Synced vl)
+  end.
+
+  Definition rep xp F st cs := (exists d,
+    BUFCACHE.rep cs d * [[ (F * rep_inner xp st)%pred d ]])%pred.
+
+  Definition xparams_ok xp := 
+    Desc.xparams_ok xp /\ Data.xparams_ok xp.
+
+  Local Hint Unfold rep rep_inner xparams_ok: hoare_unfold.
+
+  Definition read_log T (xp : log_xparams) cs rx : prog T :=
+
+
 
 
   Definition valid_xp xp :=
