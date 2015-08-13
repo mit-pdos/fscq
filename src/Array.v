@@ -2217,4 +2217,19 @@ Proof.
   rewrite app_assoc.
   f_equal; f_equal; omega.
 Qed.
-    
+
+Lemma firstn_map_exact : forall A B (l : list A) (f : A -> B),
+  firstn (length l) (map f l) = map f l.
+Proof.
+  intros.
+  rewrite firstn_map_comm.
+  rewrite firstn_exact; auto.
+Qed.
+
+
+Lemma combine_map_fst_snd: forall A B (l: list (A * B)),
+  List.combine (map fst l) (map snd l) = l.
+Proof.
+  induction l; simpl; auto.
+  rewrite IHl; rewrite <- surjective_pairing; auto.
+Qed.

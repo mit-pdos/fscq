@@ -550,7 +550,8 @@ Module AsyncRecArray (RA : RASig).
     step; simplen.
     Unshelve. eauto.
   Qed.
-
+  
+  Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.
 
 
 
@@ -1813,15 +1814,64 @@ Module DISKLOG.
        Data.array_rep xp (Data.Synced vl)
   end.
 
-  Definition rep xp F st cs := (exists d,
-    BUFCACHE.rep cs d * [[ (F * rep_inner xp st)%pred d ]])%pred.
-
   Definition xparams_ok xp := 
     Desc.xparams_ok xp /\ Data.xparams_ok xp.
 
+  Definition rep xp F st cs := (exists d,
+    BUFCACHE.rep cs d * [[ xparams_ok xp ]] *
+    [[ (F * rep_inner xp st)%pred d ]])%pred.
+
+
   Local Hint Unfold rep rep_inner xparams_ok: hoare_unfold.
 
-  Definition read_log T (xp : log_xparams) cs rx : prog T :=
+  Ltac rewrite_ignore H :=
+    match type of H with
+    | forall _, corr2 _ _ => idtac
+    | sep_star _ _ _ => idtac
+    end.
+
+  Ltac simplen_rewrite H := try progress (
+    set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
+      [ try simplen_rewrite H | try autorewrite with core .. ]).
+
+  Ltac simplen' := repeat match goal with
+    | [H : context[length ?x] |- _] => progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite H ] )
+    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
+    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [ |- # ($ _) < _ ] => apply wordToNat_natToWord_lt
+    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
+    end.
+
+  Ltac simplen := eauto; repeat (try subst; simpl;
+    simplen'; auto; autorewrite with core); simpl; eauto; try omega.
+
+
+  Hint Rewrite firstn_map_exact combine_map_fst_snd : core.
+  Local Hint Resolve combine_map_fst_snd.
+
+  Definition read T xp cs rx : prog T :=
+    let^ (cs, nr) <- Hdr.read xp cs;
+    let^ (cs, al) <- Desc.read_all xp nr cs;
+    let^ (cs, vl) <- Data.read_all xp nr cs;
+    rx ^(cs, combine al vl).
+
+
+  Definition read_ok : forall xp cs,
+    {< F l,
+    PRE            [[ goodSize addrlen (length l) ]] *
+                   rep xp F (Synced l) cs
+    POST RET: ^(cs, r)
+                   rep xp F (Synced l) cs *
+                   [[ r = l ]]
+    CRASH exists cs', rep xp F (Synced l) cs'
+    >} read xp cs.
+  Proof.
+    unfold read.
+    hoare; simplen.
+  Qed.
+
+
 
 
 
