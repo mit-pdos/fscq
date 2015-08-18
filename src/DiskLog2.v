@@ -481,6 +481,22 @@ Module AsyncRecArray (RA : RASig).
   Hint Rewrite selN_combine using simplen : core.
   Local Hint Resolve tt : core.
 
+  Hint Rewrite list_chunk_nil : core.
+
+  Lemma array_rep_sync_emp : forall xp,
+    array_rep xp (Synced nil) <=p=> emp.
+  Proof.
+    autounfold with hoare_unfold; unfold synced_array; split; cancel; t.
+  Qed.
+
+  Lemma array_rep_unsync_emp : forall xp,
+    array_rep xp (Unsync nil) <=p=> emp.
+  Proof.
+    autounfold with hoare_unfold; unfold unsync_array; split; cancel; t.
+    instantiate (vs := nil); eauto.
+  Qed.
+
+
   Lemma read_all_progress : forall i count pre items,
     firstn (Nat.min (i * items_per_val) count) pre = firstn (Nat.min (i * items_per_val) count) items
     -> count <= length items
@@ -556,7 +572,7 @@ Module AsyncRecArray (RA : RASig).
 
 
 
-  Hint Rewrite list_chunk_nil app_nil_l app_nil_r firstn_length Nat.sub_diag Nat.sub_0_r: core.
+  Hint Rewrite app_nil_l app_nil_r firstn_length Nat.sub_diag Nat.sub_0_r: core.
 
   Lemma S_minus_S : forall a b,
     a > b -> S (a - S b) = a - b.
@@ -1871,9 +1887,47 @@ Module DISKLOG.
     hoare; simplen.
   Qed.
 
+  Lemma goodSize_0 : forall sz, goodSize sz 0.
+  Proof.
+    unfold goodSize; intros.
+    apply zero_lt_pow2.
+  Qed.
+
+  Local Hint Resolve goodSize_0.
 
 
+  Definition trunc T xp cs rx : prog T :=
+    cs <- Hdr.write xp 0 cs;
+    cs <- Hdr.sync xp cs;
+    rx cs.
 
+  Arguments Desc.array_rep : simpl never.
+  Arguments Data.array_rep : simpl never.
+
+  Definition trunc_ok : forall xp cs,
+    {< F l,
+    PRE            [[ goodSize addrlen (length l) ]] *
+                   rep xp F (Synced l) cs
+    POST RET: cs   exists F',
+                   rep xp (F * F') (Synced nil) cs
+    CRASH exists cs', 
+       rep xp F (Synced l) cs' \/ rep xp F (Truncated l) cs'
+    >} trunc xp cs.
+  Proof.
+    unfold trunc.
+    step.
+    step.
+    step.
+    rewrite Desc.array_rep_sync_emp.
+    rewrite Data.array_rep_sync_emp.
+    cancel.
+
+    admit.
+    admit.
+  Admitted.
+
+
+  
 
 
   Definition valid_xp xp :=
