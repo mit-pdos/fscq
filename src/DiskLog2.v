@@ -1744,7 +1744,8 @@ Module DISKLOG.
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Unsync n old))%pred d' ]]
-    CRASH  exists cs d, BUFCACHE.rep cs d
+    CRASH  exists cs', BUFCACHE.rep cs' d
+           \/ exists d', BUFCACHE.rep cs' d' * [[ (F * rep xp (Unsync n old))%pred d' ]]
     >} write xp n cs.
     Proof.
       unfold write.
@@ -1777,7 +1778,8 @@ Module DISKLOG.
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Synced n))%pred d' ]]
-    CRASH  exists cs d, BUFCACHE.rep cs d
+    CRASH  exists cs', BUFCACHE.rep cs' d
+           \/ exists d', BUFCACHE.rep cs' d' * [[ (F * rep xp (Synced n))%pred d' ]]
     >} sync xp cs.
     Proof.
       unfold sync.
@@ -1911,7 +1913,9 @@ Module DISKLOG.
     POST RET: cs   exists F',
                    rep xp (F * F') (Synced nil) cs
     CRASH exists cs', 
-       rep xp F (Synced l) cs' \/ rep xp F (Truncated l) cs'
+       rep xp F (Synced l) cs' \/
+       rep xp F (Truncated l) cs' \/
+       exists F', rep xp (F * F') (Synced nil) cs'
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -1922,12 +1926,16 @@ Module DISKLOG.
     rewrite Data.array_rep_sync_emp.
     cancel.
 
-    admit.
-    admit.
-  Admitted.
-
-
-  
+    (* crash conditions *)
+    apply pimpl_or_r; right; cancel.
+    apply pimpl_or_r; right.
+    apply pimpl_or_r; right. cancel.
+    rewrite Desc.array_rep_sync_emp.
+    rewrite Data.array_rep_sync_emp.
+    cancel.
+    apply pimpl_or_r; left; cancel.
+    apply pimpl_or_r; right; cancel.
+  Qed.
 
 
   Definition valid_xp xp :=
