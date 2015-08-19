@@ -1938,6 +1938,19 @@ Module DISKLOG.
   Qed.
 
 
+  Definition extend T xp log cs rx : prog T :=
+    let^ (cs, n) <- Hdr.read xp cs;
+    cs <- Desc.write_unaligned xp n (map fst log) cs;
+    cs <- Data.write_unaligned xp n (map snd log) cs;
+    let n' := n + length log in
+    cs <- Desc.sync_all xp n' cs;
+    cs <- Data.sync_all xp n' cs;
+    cs <- Hdr.write xp n' cs;
+    cs <- Hdr.sync xp cs;
+    rx cs.
+
+
+
   Definition valid_xp xp :=
     # (LogLen xp) <= nr_desc xp /\
     (* The log shouldn't overflow past the end of disk *)
