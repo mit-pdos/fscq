@@ -61,7 +61,7 @@ mv $TRACE $SCRIPTPREFIX-xv6.blktrace
 ./blkstats.sh $SCRIPTPREFIX-xv6.blktrace >> $SCRIPTPREFIX-xv6.out
 
 ## ext3
-yes | mke2fs -j $DEV
+yes | mke2fs -t ext3 $DEV
 sudo mount $DEV $MOUNT -o data=journal,sync
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
@@ -76,8 +76,24 @@ wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-ext3.blktrace
 ./blkstats.sh $SCRIPTPREFIX-ext3.blktrace >> $SCRIPTPREFIX-ext3.out
 
-## ext3fuse
-yes | mke2fs -j $DEV
+## ext4
+yes | mke2fs -t ext4 $DEV
+sudo mount $DEV $MOUNT -o data=journal,sync
+sudo chmod 777 $MOUNT
+sudo blktrace -d $DEV -o - > $TRACE &
+TRACEPID=$!
+sleep 1
+
+script $SCRIPTPREFIX-ext4.out -c "$CMD"
+
+sudo killall blktrace
+sudo umount $MOUNT
+wait $TRACEPID
+mv $TRACE $SCRIPTPREFIX-ext4.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4.blktrace >> $SCRIPTPREFIX-ext4.out
+
+## ext4fuse
+yes | mke2fs -t ext4 $DEV
 sudo mount $DEV $MOUNT.real -o data=journal,sync
 sudo chmod 777 $MOUNT.real
 fusexmp $MOUNT -o modules=subdir,subdir=$MOUNT.real
@@ -85,11 +101,43 @@ sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
 
-script $SCRIPTPREFIX-ext3fuse.out -c "$CMD"
+script $SCRIPTPREFIX-ext4fuse.out -c "$CMD"
 
 sudo killall blktrace
 fusermount -u $MOUNT
 sudo umount $MOUNT.real
 wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext3fuse.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext3fuse.blktrace >> $SCRIPTPREFIX-ext3fuse.out
+mv $TRACE $SCRIPTPREFIX-ext4fuse.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4fuse.blktrace >> $SCRIPTPREFIX-ext4fuse.out
+
+## ext4ordered
+yes | mke2fs -t ext4 $DEV
+sudo mount $DEV $MOUNT -o data=ordered,sync
+sudo chmod 777 $MOUNT
+sudo blktrace -d $DEV -o - > $TRACE &
+TRACEPID=$!
+sleep 1
+
+script $SCRIPTPREFIX-ext4ordered.out -c "$CMD"
+
+sudo killall blktrace
+sudo umount $MOUNT
+wait $TRACEPID
+mv $TRACE $SCRIPTPREFIX-ext4ordered.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4ordered.blktrace >> $SCRIPTPREFIX-ext4ordered.out
+
+## ext4async
+yes | mke2fs -t ext4 $DEV
+sudo mount $DEV $MOUNT -o data=ordered,async
+sudo chmod 777 $MOUNT
+sudo blktrace -d $DEV -o - > $TRACE &
+TRACEPID=$!
+sleep 1
+
+script $SCRIPTPREFIX-ext4async.out -c "$CMD"
+
+sudo killall blktrace
+sudo umount $MOUNT
+wait $TRACEPID
+mv $TRACE $SCRIPTPREFIX-ext4async.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4async.blktrace >> $SCRIPTPREFIX-ext4async.out
