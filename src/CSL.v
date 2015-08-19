@@ -14,6 +14,8 @@ Set Implicit Arguments.
 
 Section ConcurrentSepLogic.
 
+  Set Default Proof Using "Type".
+
   (** Resources will have names from this set. *)
   Variable R : Set.
   (** R must have decidable equality. *)
@@ -569,6 +571,9 @@ Section ConcurrentSepLogic.
   Qed.
 
 Section ParallelSemantics.
+
+  Set Default Proof Using "Type".
+
   Inductive poutcomes :=
   | PFailed
   | PFinished m (ret1: T) (ret2: T).
@@ -682,8 +687,6 @@ Section ParallelSemantics.
   Qed.
 
   Hint Resolve no_locks_releases.
-
-  Check ptsto_upd.
 
   Lemma ptsto_upd2 : forall m F a b va0 vb0 va vb,
       m |= a |-> va0 * b |-> vb0 * F ->
