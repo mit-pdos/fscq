@@ -60,25 +60,9 @@ wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-xv6.blktrace
 ./blkstats.sh $SCRIPTPREFIX-xv6.blktrace >> $SCRIPTPREFIX-xv6.out
 
-## ext3
-yes | mke2fs -t ext3 $DEV
-sudo mount $DEV $MOUNT -o data=journal,sync
-sudo chmod 777 $MOUNT
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
-
-script $SCRIPTPREFIX-ext3.out -c "$CMD"
-
-sudo killall blktrace
-sudo umount $MOUNT
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext3.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext3.blktrace >> $SCRIPTPREFIX-ext3.out
-
 ## ext4
 yes | mke2fs -t ext4 $DEV
-sudo mount $DEV $MOUNT -o data=journal,sync
+sudo mount -t ext4 $DEV $MOUNT -o data=journal,sync
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
@@ -92,9 +76,25 @@ wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-ext4.blktrace
 ./blkstats.sh $SCRIPTPREFIX-ext4.blktrace >> $SCRIPTPREFIX-ext4.out
 
+## ext4journalasync
+yes | mke2fs -t ext4 $DEV
+sudo mount -t ext4 $DEV $MOUNT -o journal_async_commit,data=journal,sync
+sudo chmod 777 $MOUNT
+sudo blktrace -d $DEV -o - > $TRACE &
+TRACEPID=$!
+sleep 1
+
+script $SCRIPTPREFIX-ext4journalasync.out -c "$CMD"
+
+sudo killall blktrace
+sudo umount $MOUNT
+wait $TRACEPID
+mv $TRACE $SCRIPTPREFIX-ext4journalasync.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4journalasync.blktrace >> $SCRIPTPREFIX-ext4journalasync.out
+
 ## ext4fuse
 yes | mke2fs -t ext4 $DEV
-sudo mount $DEV $MOUNT.real -o data=journal,sync
+sudo mount -t ext4 $DEV $MOUNT.real -o data=journal,sync
 sudo chmod 777 $MOUNT.real
 fusexmp $MOUNT -o modules=subdir,subdir=$MOUNT.real
 sudo blktrace -d $DEV -o - > $TRACE &
@@ -112,7 +112,7 @@ mv $TRACE $SCRIPTPREFIX-ext4fuse.blktrace
 
 ## ext4ordered
 yes | mke2fs -t ext4 $DEV
-sudo mount $DEV $MOUNT -o data=ordered,sync
+sudo mount -t ext4 $DEV $MOUNT -o data=ordered,sync
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
@@ -128,7 +128,7 @@ mv $TRACE $SCRIPTPREFIX-ext4ordered.blktrace
 
 ## ext4async
 yes | mke2fs -t ext4 $DEV
-sudo mount $DEV $MOUNT -o data=ordered,async
+sudo mount -t ext4 $DEV $MOUNT -o data=ordered,async
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
