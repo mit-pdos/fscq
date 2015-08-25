@@ -447,6 +447,7 @@ Module AsyncRecArray (RA : RASig).
 
   Ltac simplen' := repeat match goal with
     | [H : context[length ?x] |- _] => progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite H ] )
+    | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
     | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
     | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
     | [H : (_ < $ _)%word |- _ ] => apply wlt_nat2word_word2nat_lt in H
@@ -772,12 +773,11 @@ Module AsyncRecArray (RA : RASig).
     Unshelve. eauto.
   Qed.
 
-
   (** sync all items *)
   Definition sync_all T xp count cs rx : prog T :=
     let nr := divup count items_per_val in
     let^ (cs) <- ForN i < nr
-    Ghost [ crash F blocks ]
+    Ghost [ F blocks ]
     Loopvar [ cs ]
     Continuation lrx
     Invariant
@@ -785,7 +785,9 @@ Module AsyncRecArray (RA : RASig).
       [[ (F * array (RAStart xp) (combine blocks vs) $1  )%pred d' ]] *
       [[ length blocks = nr /\ length vs = nr ]] *
       [[ forall k, k < i -> selN vs k nil = nil ]]
-    OnCrash   crash
+    OnCrash
+      exists d' vs, BUFCACHE.rep cs d' * [[ length vs = nr ]] *
+      [[ (F * array (RAStart xp) (combine blocks vs) $1)%pred d' ]]
     Begin
       cs <- BUFCACHE.sync_array (RAStart xp) ($ i) cs;
       lrx ^(cs)
@@ -815,10 +817,10 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve selN_repeat_eq.
 
-  Lemma sync_all_progress : forall F blocks vs m st,
+  Lemma sync_all_progress' : forall blocks vs m st,
     length vs = length blocks
-    -> F * array st (upd_sync (combine blocks vs) m ($ 0, nil)) $1
-     =p=> F * array st (combine blocks (upd vs m nil)) $1.
+    -> array st (upd_sync (combine blocks vs) m ($ 0, nil)) $1
+     =p=> array st (combine blocks (upd vs m nil)) $1.
   Proof.
     intros; cancel.
     apply array_unify.
@@ -827,6 +829,15 @@ Module AsyncRecArray (RA : RASig).
     rewrite <- combine_updN.
     rewrite updN_selN_eq; simplen.
   Qed.
+
+  Lemma sync_all_progress : forall F blocks vs m st,
+    length vs = length blocks
+    -> F * array st (upd_sync (combine blocks vs) m ($ 0, nil)) $1
+     =p=> F * array st (combine blocks (upd vs m nil)) $1.
+  Proof.
+    intros. rewrite sync_all_progress'; auto; cancel.
+  Qed.
+
 
   Lemma sync_all_progress_length: forall k m (vs : list (list valu)),
     k < S m  -> m < length vs
@@ -848,7 +859,8 @@ Module AsyncRecArray (RA : RASig).
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * array_rep xp (Synced items))%pred d' ]]
-    CRASH  exists cs d, BUFCACHE.rep cs d
+    CRASH  exists cs' d', BUFCACHE.rep cs' d' *
+                   [[ (F * array_rep xp (Unsync items))%pred d' ]]
     >} sync_all xp count cs.
   Proof.
     unfold sync_all.
@@ -856,19 +868,23 @@ Module AsyncRecArray (RA : RASig).
     autounfold with hoare_unfold in *; simpl.
     destruct_lifts; cancel.
     simplen. simplen. simplen.
-    step; simplen.
+
+    prestep; norm. cancel. intuition; subst; auto.
+    pred_apply; cancel. simplen.
 
     prestep; norm. cancel. intuition; subst; auto.
     pred_apply; apply sync_all_progress; simplen.
     simplen.
     apply sync_all_progress_length; simplen.
 
+    cancel.
+    apply sync_all_progress'. simplen. simplen.
+
     step.
     apply array_unify; f_equal; simplen.
-    cancel.
+    cancel; simplen.
     Unshelve. all: eauto.
   Qed.
-
 
 
   (** write items from a given block index, 
