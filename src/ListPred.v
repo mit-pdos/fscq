@@ -414,9 +414,9 @@ Section LISTMATCH.
 
 End LISTMATCH.
 
-Hint Resolve listmatch_length_r.
-Hint Resolve listmatch_length_l.
-Hint Resolve listmatch_length.
+Local Hint Resolve listmatch_length_r.
+Local Hint Resolve listmatch_length_l.
+Local Hint Resolve listmatch_length.
 
 Ltac solve_length_eq :=
   eauto; try congruence ; try omega;

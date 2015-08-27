@@ -945,7 +945,7 @@ Module AsyncRecArray (RA : RASig).
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * unsync_array (RAStart xp ^+ start)
                           (map block2val (list_chunk new items_per_val item0)))%pred d' ]]
-    CRASH  exists cs d, BUFCACHE.rep cs d
+    CRASH  exists cs' d' F', BUFCACHE.rep cs' d' * [[ (F * F') % pred d' ]]
     >} write_aligned xp start new cs.
   Proof.
     unfold write_aligned.
@@ -959,6 +959,7 @@ Module AsyncRecArray (RA : RASig).
     simplen.
     pose proof write_all_progress_length as X; simpl in X.
     rewrite <- X; simplen.
+    cancel.
 
     step.
     rewrite firstn_oob; simplen. simplen.
@@ -1042,7 +1043,10 @@ Module AsyncRecArray (RA : RASig).
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * (RAStart xp ^+ bn) |-> 
                            (block2val ((firstn off (val2block v0)) ++ items), [v0]))%pred d' ]]
-    CRASH  exists cs d, BUFCACHE.rep cs d
+    CRASH  exists cs' d', BUFCACHE.rep cs' d' *
+           [[ (F * (RAStart xp ^+ bn) |-> (v0, nil))%pred d'
+           \/ (F * (RAStart xp ^+ bn) |->
+                           (block2val ((firstn off (val2block v0)) ++ items), [v0]))%pred d' ]]
     >} write_unaligned_block xp bn off items cs.
   Proof.
     unfold write_unaligned_block.
@@ -1050,6 +1054,7 @@ Module AsyncRecArray (RA : RASig).
     apply ptsto_value_eq.
     unfold valuset_list; simpl; f_equal.
     rewrite upd_range_exact; auto.
+    right; rewrite <- upd_range_exact; auto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write_unaligned_block _ _ _ _ _) _) => apply write_unaligned_block_ok : prog.
@@ -1598,7 +1603,9 @@ Module AsyncRecArray (RA : RASig).
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * array_rep xp (Unsync ((firstn idx old) ++ new)))%pred d' ]]
-    CRASH  exists cs d, BUFCACHE.rep cs d
+    CRASH  exists cs' d' l, BUFCACHE.rep cs' d' *
+                   [[ (F * array_rep xp (Synced old))%pred d'
+                   \/ (F * array_rep xp (Unsync ((firstn idx old) ++ l)))%pred d' ]]
     >} write_unaligned xp idx new cs.
   Proof.
     unfold write_unaligned.
@@ -1611,16 +1618,20 @@ Module AsyncRecArray (RA : RASig).
     simplen. simplen. xcrush.
 
     step.
-    instantiate (vs0 := repeat nil (idx / items_per_val)
+    instantiate (1 := repeat nil (idx / items_per_val)
       ++ [selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0] :: vs).
     setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
 
     xcrush.
     rewrite <- cons_nil_app; xcrush.
-    simplen. simplen. simplen. simplen.
+    simplen. simplen. simplen.
 
+    (* crash in write_aligned *)
+    right. pred_apply. admit.
+
+    simplen.
     step.
-    instantiate (vs := 
+    instantiate (1 := 
       updN (repeat nil (length (list_chunk old items_per_val item0))) (idx / items_per_val)
       [(selN (map block2val (list_chunk old items_per_val item0)) (idx / items_per_val) $0)]).
     setoid_rewrite array_isolate with (i := $ (idx / items_per_val)) (default := ($0, nil)) at 3.
@@ -1628,6 +1639,13 @@ Module AsyncRecArray (RA : RASig).
     xcrush.
     repeat rewrite skipn_oob; simplen.
     simplen. simplen. simplen. simplen.
+
+    (* crash in write_unaligned_block *)
+    left. pred_apply. clear H0. cancel. rewrite skipn_S_fold.
+admit.
+    right. pred_apply. clear H0. norm. cancel.
+
+
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write_unaligned _ _ _ _) _) => apply write_unaligned_ok : prog.
