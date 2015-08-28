@@ -1,0 +1,18 @@
+diff --git a/Makefile.build b/Makefile.build
+index 83cdd50..fd9442a 100644
+--- a/Makefile.build
++++ b/Makefile.build
+@@ -101,13 +101,8 @@ BYTEFLAGS=-thread $(CAMLDEBUG) $(USERFLAGS)
+ OPTFLAGS=-thread $(CAMLDEBUGOPT) $(CAMLTIMEPROF) $(USERFLAGS)
+ DEPFLAGS= $(LOCALINCLUDES) -I ide -I ide/utils
+ 
+-ifeq ($(shell which codesign > /dev/null 2>&1 && echo $(ARCH)),Darwin)
+-LINKMETADATA=-ccopt "-sectcreate __TEXT __info_plist config/Info-$(notdir $@).plist"
+-CODESIGN:=codesign -s -
+-else
+ LINKMETADATA=
+ CODESIGN:=true
+-endif
+ 
+ define bestocaml
+ $(if $(OPT),\
