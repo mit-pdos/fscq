@@ -297,14 +297,13 @@ Module FASTBYTEFILE.
         auto.
       * replace (BFILE.BFAttr f').
         apply firstn_length_l_iff in H10.
-        fold flen.
         match goal with
         | [ H : _ (list2nmem ilist') |- _ ] => rename H into Hilist'
         end.
-        rewrite <- firstn_skipn with (l := ilist') (n := flen) in Hilist'.
-        assert (length (firstn flen ilist') = flen) as Hflen.
+        rewrite <- firstn_skipn with (l := ilist') (n := # (INODE.ISize (BFILE.BFAttr f))) in Hilist'.
+        assert (length (firstn # (INODE.ISize (BFILE.BFAttr f)) ilist')
+          = # (INODE.ISize (BFILE.BFAttr f))) as Hflen.
         apply firstn_length_l; omega.
-
         eapply pimpl_apply in Hilist'; [|apply sep_star_abc_to_acb].
         rewrite <- Hflen in Hilist' at 1.
         assert (Htails_eq := Hilist').
