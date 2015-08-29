@@ -222,7 +222,7 @@ Module Rec.
     simpl in v. simpl.
     destruct (string_dec n0 n2); destruct (string_dec n0 n1);
       subst; trivial.
-    contradiction neq. trivial.
+    contradiction neq. auto.
     apply IHt. assumption.
   Qed.
 

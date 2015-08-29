@@ -613,14 +613,13 @@ Module BFILE.
   Proof.
     unfold bftrunc_shrink.
     step.
-    step.
+    step_with idtac idtac. eauto.
 
     ring_simplify (a ^- $ (0)).
-    instantiate (a4 := b); subst.
+    instantiate (2 := f); subst.
     erewrite wordToNat_natToWord_bound; eauto.
     rewrite firstn_oob by omega.
-    destruct b; pred_apply; cancel.
-
+    destruct f; pred_apply; cancel.
     step.
     subst; simpl; rewrite firstn_length_l;
       eapply helper_bfdata_length; eauto.
@@ -637,6 +636,7 @@ Module BFILE.
 
     step.
     apply ptsto_value_eq; repeat f_equal; ring.
+    Grab Existential Variables. eauto.
   Qed.
 
 
@@ -668,16 +668,17 @@ Module BFILE.
   Proof.
     unfold bftrunc_grow.
     step.
-    step.
+    step_with idtac idtac. eauto.
 
-    instantiate (a4 := b); subst.
+    instantiate (2 := f); subst.
     unfold repeat; rewrite app_nil_r.
-    destruct b; pred_apply; eauto.
+    destruct f; pred_apply; eauto.
 
     step; subst; simpl.
     apply list2nmem_array.
     step; subst; step; simpl.
     erewrite helper_wplus_length_app_repeat by bftrunc_bfdata_bound.
+    rewrite app_length; rewrite repeat_length.
     pred_apply; cancel.
 
     step.
@@ -694,8 +695,7 @@ Module BFILE.
       erewrite wordToNat_natToWord_bound; eauto.
 
     Grab Existential Variables.
-    all: try exact nil; try exact $0; try exact emp.
-    exact bfile0. exact bxp.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (bftrunc_shrink _ _ _ _ _ _) _) => apply bftrunc_shrink_ok : prog.

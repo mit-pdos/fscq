@@ -934,12 +934,8 @@ Module INODE.
     intros.
     erewrite firstn_plusone_selN; eauto.
     rewrite firstn_app by auto.
-    f_equal; subst.
-    rewrite Nat.sub_diag; simpl.
-    rewrite app_nil_r.
-    apply firstn_oob; omega.
-    rewrite selN_app2; auto.
-    rewrite Nat.sub_diag; auto.
+    rewrite selN_app2 by omega.
+    replace (n - length a) with 0 by omega; auto.
     rewrite app_length; omega.
   Qed.
 
@@ -1216,10 +1212,9 @@ Module INODE.
     pose proof (@inode_blocks_length (list2mem a3)) as Hlen; rec_simpl.
     erewrite Hlen; inode_bounds.
     resolve_length_eq.
-    (* XXX: this proof has gotten broken by this point *)
-    pred_apply; cancel.
 
-    erewrite indirect_length with (m := list2mem d2).
+    pred_apply; cancel.
+    erewrite indirect_length with (m := list2mem m'0).
     unfold nr_indirect; omega.
     pred_apply; cancel.
 
@@ -1227,7 +1222,6 @@ Module INODE.
     erewrite Hlen; inode_bounds.
     rewrite H6; resolve_length_eq.
     pred_apply; cancel.
-
     apply LOG.activetxn_would_recover_old.
 
     (* CASE 2: indirect block allocation failed *)
