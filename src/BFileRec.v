@@ -2711,11 +2711,13 @@ Section RECBFILE.
     (* vs_nested fold *)
     rewrite Hrep_concat.
     rewrite <- concat_hom_firstn with (k := block_items) by eauto.
-    admit.
-  Admitted.
+    (* hypotheses are incorrect; need lengths to match up. *)
+  Abort.
 
   (** TODO: bf_shrink should not promise to make number of items
   exactly count_items, only roundup countitems block_items *)
+  (** Note: this function is still unproven and quite possibly incorrect,
+  with a spec that isn't fully worked out. It shouldn't be used yet. *)
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
   {< mbase m F Fm A Fi f flist ilist deleted,
     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -2749,16 +2751,8 @@ Section RECBFILE.
 
     apply pimpl_or_r; right; cancel.
     eassumption.
-    apply rep_shrink_file.
-    apply le_trans with (kept_items count_items).
-    unfold kept_items.
-    apply roundup_ge.
-    apply block_items_gt_0.
-    rewrite H4.
-    omega.
-    admit. (* count_items <= length ilist, which should be goodSize *)
-    split with vs_nested.
-    split; [assumption | split; auto].
+    (* rep_shrink_file lemma *)
+    admit.
 
     admit. (* [[ Fi * deleted]] is true on ilist (H5, precondition);
     via array_item_file on (f with attributes modified), this implies
