@@ -585,7 +585,6 @@ Hint Resolve length_grow_oneblock_ok.
 
     Grab Existential Variables.
     all: eauto.
-    exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (grow_blocks _ _ _ _) _) => apply grow_blocks_ok : prog.
@@ -1187,9 +1186,7 @@ Hint Resolve length_grow_oneblock_ok.
     step. (* return *)
 
     Grab Existential Variables.
-    all: eauto. 
-    exact emp.
-
+    all: eauto.
   Qed.
 
 End SLOWBYTEFILE.
