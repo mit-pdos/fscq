@@ -913,25 +913,52 @@ Section RECBFILE.
   let sz := bend - boff in
   firstn sz (skipn boff b).
 
+  Lemma Forall_firstn : forall A (l : list A) P n,
+    Forall P l ->
+    Forall P (firstn n l).
+  Proof.
+    induction l; simpl; intros.
+    - rewrite firstn_nil. auto.
+    - destruct n; simpl; auto.
+      constructor.
+      inversion H; auto.
+      inversion H; auto.
+  Qed.
+
+  Lemma Forall_skipn : forall A (l : list A) P n,
+    Forall P l ->
+    Forall P (skipn n l).
+  Proof.
+    induction l; simpl; intros.
+    - rewrite skipn_nil; auto.
+    - destruct n; simpl; auto.
+      apply IHl.
+      inversion H; auto.
+  Qed.
+
+  Hint Resolve Forall_firstn.
+  Hint Resolve Forall_skipn.
+
   Lemma read_well_formed : forall b ck,
     Rec.well_formed b ->
     Rec.well_formed (read_block_chunk b ck).
   Proof.
     intros.
-    unfold read_block_chunk.
-    assert (@Rec.well_formed
-      (Rec.ArrayF itemtype (block_items - rchunk_boff ck))
-      (skipn (rchunk_boff ck) b)).
-    apply Rec.skipn_well_formed.
-    replace (rchunk_boff ck + (block_items - rchunk_boff ck)) with
-      block_items by (rck_omega ck).
-    auto.
-  Admitted.
+    unfold read_block_chunk, blocktype in *.
+    unfold Rec.well_formed in *.
+    intuition.
+    destruct ck; simpl in *.
+    unfold block_items in *.
+    rewrite firstn_length.
+    rewrite min_l; auto.
+    rewrite skipn_length; omega.
+  Qed.
 
   Theorem eq_rect_items : forall n n' H H' w,
     eq_rect (n*itemsize) word w (n'*itemsize) H =
     eq_rect n items w n' H'.
-  intros.
+  Proof.
+    intros.
     unfold items.
     rewrite eq_rect_word_mult.
     f_equal.
