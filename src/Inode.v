@@ -1210,7 +1210,7 @@ Module INODE.
     (* clean up goals about bounds *)
     unfold sel.
     pose proof (@inode_blocks_length (list2mem a3)) as Hlen; rec_simpl.
-    erewrite Hlen; inode_bounds.
+    simpl in Hlen; erewrite Hlen; inode_bounds.
     resolve_length_eq.
 
     pred_apply; cancel.
@@ -1219,7 +1219,7 @@ Module INODE.
     pred_apply; cancel.
 
     pose proof (@inode_blocks_length (list2mem a3)) as Hlen; rec_simpl.
-    erewrite Hlen; inode_bounds.
+    simpl in Hlen; erewrite Hlen; inode_bounds.
     rewrite H6; resolve_length_eq.
     pred_apply; cancel.
     apply LOG.activetxn_would_recover_old.

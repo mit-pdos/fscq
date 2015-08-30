@@ -958,7 +958,7 @@ Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
  * where [yy] may contain calls to [recget] and [recset].
  *)
 Declare Reduction compute_rec :=
-  cbn [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
+  cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
        String.string_dec String.string_rec String.string_rect
        Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
        sumbool_rec sumbool_rect
@@ -966,7 +966,7 @@ Declare Reduction compute_rec :=
        eq_rec_r eq_rec eq_rect eq_sym].
 
 Ltac rec_simpl :=
-  cbn [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
+  cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
        String.string_dec String.string_rec String.string_rect
        Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
        sumbool_rec sumbool_rect
