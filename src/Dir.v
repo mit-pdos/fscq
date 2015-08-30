@@ -608,15 +608,21 @@ Module DIR.
         rx ^(mscs, Some (de :-> "inum", isdir2bool (de :-> "isdir")))
     end.
 
+  Ltac destruct_if :=
+    match goal with
+    | [ H : context [ if ?a then _ else _ ] |- _ ] => destruct a
+    | [ |- context [ if ?a then _ else _ ] ] => destruct a
+    end; auto.
+
   Lemma dlookup_f_ok: forall name de,
     dlookup_f name de = true
     -> de :-> "valid" <> $0 /\ de :-> "name" = name.
   Proof.
-    unfold dlookup_f; rec_simpl; intros.
-    destruct (weq (fst (snd (snd de))) $ (0)).
+    unfold dlookup_f; rec_simpl; simpl in *; intros.
+    destruct_if.
     inversion H.
     split; auto.
-    destruct (weq (fst de) name); auto.
+    destruct_if.
     inversion H.
   Qed.
 
@@ -624,9 +630,8 @@ Module DIR.
     dlookup_f name de = false
     -> de :-> "valid" = $0 \/ de :-> "name" <> name.
   Proof.
-    unfold dlookup_f; rec_simpl; intros.
-    destruct (weq (fst (snd (snd de))) $ (0)); auto.
-    destruct (weq (fst de) name); auto.
+    unfold dlookup_f; rec_simpl; simpl in *; intros.
+    repeat destruct_if.
     inversion H.
   Qed.
 
@@ -826,9 +831,8 @@ Module DIR.
     induction l; simpl; intros.
     split; cancel.
     simpl in IHl.
-    unfold dlist_f at 2 4.
-    destruct (weq (fst (snd (snd a))) $0) eqn:HV.
-    apply IHl.
+    unfold dlist_f at 2 4; simpl.
+    destruct_if.
     repeat rewrite <- IHl.
     split; cancel.
   Qed.
@@ -838,8 +842,8 @@ Module DIR.
     =p=> listpred dlmatch (fold_left dlist_f l (dlist_f nil a)).
   Proof.
     intros.
-    unfold dmatch at 1; unfold dlist_f at 3; rec_simpl.
-    destruct (weq (fst (snd (snd a))) $0) eqn:HV.
+    unfold dmatch at 1; unfold dlist_f at 3; rec_simpl; simpl.
+    destruct_if.
     rewrite star_emp_pimpl; auto.
     pose proof (dlist_fold_listpred' l nil (fst a, (fst (snd a), isdir2bool (fst (snd (snd (snd a)))))) dlmatch).
     simpl in H; apply H.
