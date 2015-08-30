@@ -20,6 +20,7 @@ GHCARGS    := -O2 -threaded
 		# -eventlog
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
+J ?= 4
 
 .PHONY: coq proof clean
 
