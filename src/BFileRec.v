@@ -2264,6 +2264,63 @@ Section RECBFILE.
     rewrite map_length; auto.
   Qed.
 
+  Theorem firstn_map : forall A B n l (f: A -> B),
+    firstn n (map f l) = map f (firstn n l).
+  Proof.
+    induction n; simpl; intros.
+    reflexivity.
+    destruct l; simpl.
+    reflexivity.
+    f_equal.
+    eauto.
+  Qed.
+
+
+  Lemma list2nmem_array_item_pairs_eq : forall a b,
+    array_item_pairs a (list2nmem b) -> b = map rep_block a.
+  Proof.
+    unfold array_item_pairs; intros.
+    apply list2nmem_array_eq.
+    pred_apply; cancel.
+  Qed.
+
+  Theorem array_item_pairs_firstn' : forall n vs fd,
+    n <= length vs
+    -> array_item_pairs vs (list2nmem fd)
+    -> array_item_pairs (firstn n vs) (list2nmem (firstn n fd)).
+  Proof.
+    unfold array_item_pairs; intros.
+    assert (fd = map rep_block vs).
+    apply list2nmem_array_eq.
+    pred_apply; cancel.
+
+    rewrite <- arrayN_split with (off := n) in H0.
+    rewrite <- firstn_skipn with (l := fd) (n  := n) in H0 by auto.
+    apply list2nmem_arrayN_app_iff with (l' := skipn n fd).
+    pred_apply; cancel.
+    rewrite firstn_map.
+    rewrite map_length.
+    rewrite firstn_length_l by auto.
+    cancel.
+
+    rewrite Forall_forall in H2 |- *; intros.
+    apply H2; eapply in_firstn_in; eauto.
+    autorewrite with core; auto.
+  Qed.
+
+  Theorem array_item_pairs_firstn : forall n vs fd,
+    array_item_pairs vs (list2nmem fd)
+    -> array_item_pairs (firstn n vs) (list2nmem (firstn n fd)).
+  Proof.
+    intros.
+    assert (fd = map rep_block vs) by (apply list2nmem_array_item_pairs_eq; auto).
+    destruct (le_lt_dec n (length vs)); subst.
+    apply array_item_pairs_firstn'; auto.
+    repeat rewrite firstn_oob; try omega; auto.
+    rewrite map_length.
+    apply Nat.lt_le_incl in l; eauto.
+  Qed.
+
   Lemma concat_app_nil : forall A (l : list (list A)) (v: list A),
     concat l ++ v = concat (l ++ v :: nil).
   Proof.
@@ -2481,10 +2538,6 @@ Section RECBFILE.
 
 
 
-
-
-
-
   Lemma S_lt_add_1 : forall m n, m > 0 ->
     S n < m <-> n < m - 1.
   Proof.
@@ -2595,6 +2648,19 @@ Section RECBFILE.
     apply divup_lt_arg.
     assumption.
   Qed.
+  
+  Lemma array_item_pairs_length_ok : forall lists fd,
+    array_item_pairs lists (list2nmem fd)
+    -> Forall (fun l => length l = block_items) lists.
+  Proof.
+    intros.
+    rewrite Forall_forall; intros.
+    unfold array_item_pairs in H.
+    destruct_lift H.
+    eapply RecArray.block_length_is; eauto.
+  Qed.
+  Local Hint Resolve array_item_pairs_length_ok.
+
 
   Lemma rep_shrink_file : forall f count_items ilist,
   count_items <= length ilist ->
@@ -2626,10 +2692,25 @@ Section RECBFILE.
     apply divup_mono; assumption.
     omega.
 
+    unfold setlen, newlen.
+    rewrite wordToNat_natToWord_idempotent' by
+      (apply goodSize_items_blocks; assumption).
+    replace ((divup count_items block_items) - length (BFILE.BFData f)) with 0; simpl.
+    rewrite app_nil_r.
+
     (* array_item_pairs *)
-    admit.
+    apply array_item_pairs_firstn; auto.
+    apply eq_sym; apply Nat.sub_0_le.
+    rewrite <- Hrep_len.
+    eapply le_trans.
+    eapply divup_mono; eauto.
+    rewrite Hrep_concat.
+    rewrite concat_hom_length with (k := block_items) by eauto.
+    rewrite divup_mul; auto.
 
     (* vs_nested fold *)
+    rewrite Hrep_concat.
+    rewrite <- concat_hom_firstn with (k := block_items) by eauto.
     admit.
   Admitted.
 
