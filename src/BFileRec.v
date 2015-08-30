@@ -1409,7 +1409,7 @@ Section RECBFILE.
   >} bf_read_chunk lxp ixp inum ck mscs.
   Proof.
     unfold bf_read_chunk.
-    time step. (* 30s *)
+    step. (* 30s *)
     step.
   Qed.
 
@@ -2910,7 +2910,7 @@ Section RECBFILE.
   Proof.
     unfold bf_expand, bf_resize.
 
-    time step. (* 40s *)
+    step. (* 40s *)
     step.
 
     apply pimpl_or_r; right; cancel.
@@ -3215,7 +3215,7 @@ Section RECBFILE.
   >} bf_read_blocks fsxp inum off count mscs.
   Proof.
     unfold bf_read_blocks.
-    time step. (* 30s *)
+    step. (* 30s *)
     assert (Hm1bound := H6).
     apply wlt_lt in H6.
     rewrite wordToNat_natToWord_idempotent' in H6.
@@ -3371,7 +3371,7 @@ Section RECBFILE.
   >} bf_read_range fsxp inum off len mscs.
   Proof.
     unfold bf_read_range.
-    time step. (* 20s *)
+    step. (* 20s *)
 
     apply wordToNat_natToWord_idempotent'.
     eapply goodSize_trans; [|eauto].

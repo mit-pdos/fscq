@@ -177,7 +177,7 @@ Module FASTBYTEFILE.
    >} read_bytes fsxp inum off len mscs.
    Proof.
     unfold read_bytes, rep, bytes_rep.
-    time step. (* 15s *)
+    step. (* 15s *)
     step.
     step.
     step.
@@ -257,14 +257,14 @@ Module FASTBYTEFILE.
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes.
-    time step. (* 40s *)
+    step. (* 40s *)
     inversion H6 as [allbytes Hrepconj].
     inversion Hrepconj as [Hbytes_rep Hrepconj']; clear Hrepconj.
     inversion Hbytes_rep as [Hrecrep Hallbytes_goodSize].
     (* TODO: replace this with filelen f *)
     set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
 
-    time step. (* 50s *)
+    step. (* 50s *)
     - instantiate (Fx0 := (Fx * arrayN flen
         (skipn flen allbytes))%pred).
       rewrite <- firstn_skipn with (l := allbytes) (n := flen) at 2.
@@ -371,9 +371,9 @@ Module FASTBYTEFILE.
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
-     time step. (* 30s *)
+     step. (* 30s *)
      step.
-     time step. (* 10s *)
+     step. (* 10s *)
 
      fold (filelen f) in *.
      instantiate (Fi := arrayN 0 allbytes).
@@ -405,10 +405,10 @@ Module FASTBYTEFILE.
      apply Nat.min_l; auto.
 
      step.
-     time step. (* 60s *)
+     step. (* 60s *)
      step.
 
-     time step. (* 80s *)
+     step. (* 80s *)
      fold (filelen f) in *.
      apply firstn_length_l_iff in H6.
      instantiate (Fx0 := arrayN 0 (firstn (filelen f) allbytes)).
@@ -442,7 +442,7 @@ Module FASTBYTEFILE.
      omega.
 
      step.
-     time step. (* 15s *)
+     step. (* 15s *)
      apply pimpl_or_r; right.
      cancel.
      fold (filelen f) in *.
@@ -582,7 +582,7 @@ Module FASTBYTEFILE.
       >} append fsxp inum off newbytes mscs.
   Proof.
     unfold append, write_bytes.
-    time step. (* 50s *)
+    step. (* 50s *)
     inversion H7 as [allbytes Hrepconj].
     inversion Hrepconj as [Hbytes_rep Hrepconj']; clear Hrepconj.
     inversion Hrepconj' as [Hbytes Hrepconj'']; clear Hrepconj'.
@@ -594,15 +594,15 @@ Module FASTBYTEFILE.
     apply roundup_valu_ge.
 
     step.
-    time step. (* 10s *)
+    step. (* 10s *)
 
     unfold filelen.
     auto.
 
     step.
-    time step. (* 165s -> 7.5s !!! *)
+    step. (* 165s -> 7.5s !!! *)
     step.
-    time step. (* 165s -> 13s *)
+    step. (* 165s -> 13s *)
 
     instantiate (Fx0 := (Fi * arrayN (filelen f) (repeat $0 (off - filelen f)))%pred).
     instantiate (olddata0 := repeat $0 len).
@@ -622,7 +622,7 @@ Module FASTBYTEFILE.
     autorewrite with lengths.
     reflexivity.
 
-    time step. (* 15s *)
+    step. (* 15s *)
     step.
     (* just the first part of step *)
     eapply pimpl_ok2; eauto with prog.
@@ -640,7 +640,7 @@ Module FASTBYTEFILE.
     pred_apply; cancel.
     auto.
 
-    time step.
+    step.
     eapply pimpl_or_r; right; cancel; eauto.
     (* there are no zeroes, since we're appending nothing *)
     replace (off - filelen f) with 0 by omega.

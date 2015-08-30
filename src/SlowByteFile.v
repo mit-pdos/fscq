@@ -229,12 +229,10 @@ Module SLOWBYTEFILE.
     assumption.
     apply Nat.lt_le_incl. eassumption.
     step.
-    Search ptsto list2nmem selN.
     eapply list2nmem_sel in H4 as H4'.
 
     apply list2nmem_ptsto_bound in H4.
     rewrite firstn_length in H4.
-    Search lt Init.Nat.min.
     apply Nat.min_glb_lt_iff in H4. destruct H4.
 
     rewrite selN_firstn in H4' by eauto.

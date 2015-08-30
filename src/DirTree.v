@@ -896,7 +896,7 @@ Module DIRTREE.
 
     step.
     Grab Existential Variables.
-    all: try exact emp; try exact nil; try exact empty_mem; try exact BFILE.bfile0.
+    all: eauto.
   Qed.
 
 
@@ -1892,7 +1892,7 @@ Module DIRTREE.
     eapply subtree_graft_absorb; eauto.
 
     Grab Existential Variables.
-    all: try exact emp; try exact empty_mem; try exact nil; try exact mvtree.
+    all: eauto.
   Qed.
 
 
@@ -2255,10 +2255,7 @@ Module DIRTREE.
    
     step.
     Grab Existential Variables.
-    all: try exact emp.
-    all: try exact BFILE.bfile0.
-    all: try exact nil.
-    all: try exact empty_mem.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
