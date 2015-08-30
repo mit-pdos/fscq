@@ -2274,6 +2274,22 @@ Module DIRTREE.
       eauto.
   Qed.
 
+  Lemma lookup_name_ne: forall tree_elem name name' subtree dnum tree,
+    name <> name' ->
+    find_subtree [name] (update_subtree [] (add_to_dir name' subtree (TreeDir dnum tree_elem)) tree) =
+    find_subtree [name] (TreeDir dnum tree_elem).
+  Proof.
+    unfold find_subtree, update_subtree, add_to_dir.
+    induction tree_elem; intros; subst; simpl.
+    - destruct (string_dec name' name); congruence.
+    - destruct a.
+      destruct (string_dec s name'); subst; simpl.
+      destruct (string_dec name' name); congruence.
+      destruct (string_dec s name); subst; simpl.
+      congruence.
+      eauto.
+  Qed.
+
   Lemma lookup_firstelem_path: forall  suffix tree a f,
     find_subtree (a::suffix) tree = Some f ->
     exists d, find_subtree [a] tree = Some d /\ find_subtree suffix d = Some f.
@@ -2291,10 +2307,10 @@ Module DIRTREE.
   Qed.
 
 
- Lemma lookup_firstelem_path_r: forall a dir name suffix subtree tree childdir,
-    find_subtree [a] tree = Some childdir /\ 
-        find_subtree (suffix ++ [name]) (update_subtree suffix (add_to_dir name subtree dir) childdir) = Some subtree ->
-    find_subtree ((a::suffix) ++ [name]) (update_subtree (a::suffix) (add_to_dir name subtree dir) tree) = Some subtree.
+ Lemma lookup_firstelem_path_r: forall a name suffix tree childdir f r,
+    find_subtree [a] tree = Some childdir /\
+        find_subtree (suffix ++ [name]) (update_subtree suffix f childdir) = r ->
+    find_subtree ((a::suffix) ++ [name]) (update_subtree (a::suffix) f tree) = r.
   Proof.
     intros.
     subst; simpl.
@@ -2322,6 +2338,18 @@ Module DIRTREE.
       eauto.
   Qed.
 
+  Lemma find_subtree_descend:
+    forall tree sub name suffix,
+    find_subtree [name] tree = Some sub ->
+    find_subtree (name :: suffix) tree = find_subtree suffix sub.
+  Proof.
+    destruct tree; simpl; try congruence.
+    induction l; simpl; subst; try congruence.
+    intros.
+    destruct a; simpl in *.
+    destruct (string_dec s name); eauto; try congruence.
+  Qed.
+
   Lemma lookup_path: forall prefix name subtree dir tree dnum tree_elem,
     dir = (TreeDir dnum tree_elem) ->
     find_subtree prefix tree = Some dir ->
@@ -2344,6 +2372,28 @@ Module DIRTREE.
       reflexivity.
   Qed.
 
+  Lemma lookup_path_ne: forall prefix name name' subtree dir tree dnum tree_elem,
+    name <> name' ->
+    dir = TreeDir dnum tree_elem ->
+    find_subtree prefix tree = Some dir ->
+    find_subtree (prefix ++ [name]) (update_subtree prefix (add_to_dir name' subtree dir) tree)
+        = find_subtree (prefix ++ [name]) tree.
+  Proof.
+    induction prefix; intros.
+    - rewrite app_nil_l.
+      inversion H1.
+      subst.
+      rewrite lookup_name_ne by auto.
+      auto.
+    - edestruct lookup_firstelem_path; eauto.
+      intuition.
+      erewrite lookup_firstelem_path_r; eauto.
+      intuition eauto.
+      erewrite IHprefix by eauto.
+      rewrite <- app_comm_cons.
+      erewrite find_subtree_descend; eauto.
+  Qed.
+
   Theorem find_subtree_tree_graft: forall prefix name tree dnum tree_elem subtree,
     find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
     find_subtree (prefix++[name]) (tree_graft dnum tree_elem prefix name subtree tree) = Some subtree.
@@ -2360,8 +2410,10 @@ Module DIRTREE.
     find_subtree (prefix++[name]) (tree_graft dnum tree_elem prefix name' subtree tree) =
       find_subtree (prefix++[name]) tree.
   Proof.
-    admit.
-  Admitted.
+    intros.
+    unfold tree_graft.
+    erewrite lookup_path_ne; eauto.
+  Qed.
 
   Lemma tree_names_distinct_head_name : forall inum name subtree rest,
     tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
