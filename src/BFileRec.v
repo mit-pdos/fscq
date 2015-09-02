@@ -2741,6 +2741,32 @@ Section RECBFILE.
     auto.
   Qed.
 
+  Lemma arrayN_end : forall A (def:A) F n (l l':list A),
+    (F * arrayN n l')%pred (list2nmem l) ->
+    length l = n + length l' ->
+    l' = skipn n l.
+  Proof.
+    Search arrayN skipn.
+    intros.
+    apply arrayN_list2nmem in H; auto.
+    rewrite H.
+    apply firstn_oob.
+    rewrite skipn_length; omega.
+  Qed.
+
+  Lemma pred_subset : forall A (def:A) F n (l l':list A),
+    (F * arrayN n l')%pred (list2nmem l) ->
+    length l = n + length l' ->
+    F (list2nmem (firstn n l)).
+  Proof.
+    intros.
+    assert (l' = skipn n l) by (eapply arrayN_end; eauto).
+    eapply list2nmem_arrayN_app_iff with (skipn n l).
+    rewrite <- firstn_skipn with (n := n) (l := l) in H.
+    pred_apply; cancel.
+    rewrite firstn_length_l by omega.
+    auto.
+  Qed.
 
   (** Note: this function is still unproven and quite possibly incorrect,
   with a spec that isn't fully worked out. It shouldn't be used yet. *)
@@ -2772,17 +2798,31 @@ Section RECBFILE.
   Proof.
     unfold bf_shrink, bf_resize.
 
-    step.
+    time step. (* 30s *)
     step.
 
     apply pimpl_or_r; right; cancel.
     eassumption.
-    (* rep_shrink_file lemma *)
-    admit.
+    apply rep_shrink_file.
+    apply le_trans with (kept_items count_items).
+    unfold kept_items.
+    apply roundup_ge.
+    apply block_items_gt_0.
+    rewrite H4.
+    omega.
+    apply goodSize_trans with (length (concat vs_nested)).
+    eapply le_trans.
+    apply roundup_ge with (sz := block_items); auto.
+    unfold kept_items in *.
+    fold item in *.
+    omega.
+    admit. (* goodSize ilist should come from somewhere *)
+    unfold array_item_file.
+    eexists; intuition eauto.
 
-    admit. (* [[ Fi * deleted]] is true on ilist (H5, precondition);
-    via array_item_file on (f with attributes modified), this implies
-    Fi is true in (firstn count_items ilist) *)
+    unfold kept_items in *.
+    eapply pred_subset; eauto; try omega.
+    exact item_zero.
   Admitted.
 
   Lemma array_item_app_repeated_0 : forall vs_nested l n,
