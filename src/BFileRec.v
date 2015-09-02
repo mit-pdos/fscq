@@ -2696,7 +2696,7 @@ Section RECBFILE.
   let newlen := # (natToWord addrlen (divup count_items block_items)) in
   let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
                BFILE.BFAttr := BFILE.BFAttr f |} in
-  array_item_file f' (firstn count_items ilist).
+  array_item_file f' (firstn (roundup count_items block_items) ilist).
   Proof.
     intros.
     split_reps.
@@ -2738,11 +2738,10 @@ Section RECBFILE.
     (* vs_nested fold *)
     rewrite Hrep_concat.
     rewrite <- concat_hom_firstn with (k := block_items) by eauto.
-    (* hypotheses are incorrect; need lengths to match up. *)
-  Abort.
+    auto.
+  Qed.
 
-  (** TODO: bf_shrink should not promise to make number of items
-  exactly count_items, only roundup countitems block_items *)
+
   (** Note: this function is still unproven and quite possibly incorrect,
   with a spec that isn't fully worked out. It shouldn't be used yet. *)
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
@@ -2764,7 +2763,7 @@ Section RECBFILE.
       [[ ok = true ]] *
       [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
       [[ array_item_file f' ilist' ]] *
-      [[ ilist' = firstn count_items ilist ]] *
+      [[ ilist' = firstn (roundup count_items block_items) ilist ]] *
       (* preserves any predicate regarding the non-deleted items *)
       (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
       [[ Fi%pred (list2nmem ilist') ]] )
