@@ -2801,9 +2801,12 @@ Section RECBFILE.
     time step. (* 30s *)
     step.
 
+    assert (array_item_file f (concat vs_nested)).
+    eexists; intuition eauto.
+
     apply pimpl_or_r; right; cancel.
     eassumption.
-    apply rep_shrink_file.
+    apply rep_shrink_file; auto.
     apply le_trans with (kept_items count_items).
     unfold kept_items.
     apply roundup_ge.
@@ -2816,14 +2819,14 @@ Section RECBFILE.
     unfold kept_items in *.
     fold item in *.
     omega.
-    admit. (* goodSize ilist should come from somewhere *)
-    unfold array_item_file.
-    eexists; intuition eauto.
+
+    eapply goodSize_bound.
+    eapply bfrec_bound; eauto.
 
     unfold kept_items in *.
     eapply pred_subset; eauto; try omega.
     exact item_zero.
-  Admitted.
+  Qed.
 
   Lemma array_item_app_repeated_0 : forall vs_nested l n,
     array_item_pairs vs_nested (list2nmem l) ->
