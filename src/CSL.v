@@ -39,7 +39,7 @@ Section ConcurrentSepLogic.
       in some memory, extending the memory doesn't change that fact.
       It would be nice to express this in terms of in_resource_domain and then
       prove this as a corollary. *)
-  Hypothesis respects_domain_precise : forall r m rm h,
+  Axiom respects_domain_precise : forall r m rm h,
       respects_domain r m rm ->
       respects_domain r (mem_union m h) rm.
 
@@ -468,6 +468,179 @@ Section ConcurrentSepLogic.
       apply respects_domain_precise; auto.
   Qed.
 
+  Lemma rexec_done : forall m ret ret' events locks m',
+      rexec m (State (CDone ret) locks) events (Finished m' ret') ->
+      m = m' /\
+      events = nil /\
+      ret = ret'.
+  Proof.
+    intros.
+    inv_rexec.
+    inv_rstep.
+    intuition.
+  Qed.
+
+  Lemma rexec_done_ok : forall m events locks ret,
+    ~(rexec m (State (CDone ret) locks) events Failed).
+  Proof.
+    intros.
+    intro H.
+    inversion H; subst.
+    inversion H0.
+    eapply H5; auto.
+  Qed.
+
+  Ltac inv_opt :=
+    match goal with
+    | [ H: @eq (option _) _ _ |- _ ] =>
+      inversion H; subst; clear H
+    end.
+
+  Lemma read_failure' : forall m a rx locks events,
+    rexec m (State (CRead a rx) locks) events Failed ->
+    m a = None /\ events = nil \/
+      forall v,
+      m a = Some v ->
+      rexec m (State (rx v) locks) events Failed.
+  Proof.
+    intros.
+    case_eq (m a); intros.
+    right; intros.
+    inversion H1; subst.
+    remember Failed.
+    inv_opt.
+    inv_rexec.
+    inv_rstep.
+    simpl app.
+    assert (v = v0) by congruence; subst.
+    auto.
+
+    exfalso.
+    eapply H4; eauto.
+
+    left; intuition.
+    inv_rexec; auto.
+    inv_rstep.
+    congruence.
+  Qed.
+
+  Lemma write_failure' : forall m a v rx locks events,
+    rexec m (State (CWrite a v rx) locks) events Failed ->
+    m a = None /\ events = nil \/
+      rexec (upd m a v) (State (rx tt) locks) events Failed.
+  Proof.
+    intros.
+    case_eq (m a); intros.
+    right; intros.
+    remember Failed.
+    inv_opt.
+    inv_rexec.
+    inv_rstep.
+    simpl app.
+    assert (v0 = w) by congruence; subst.
+    auto.
+
+    exfalso.
+    eapply H4; eauto.
+
+    left; intuition.
+    inv_rexec; auto.
+    inv_rstep.
+    congruence.
+  Qed.
+
+  Theorem mem_union_none : forall AT AEQ V (m1 m2:@mem AT AEQ V) a,
+    mem_union m1 m2 a = None ->
+    m1 a = None /\
+    m2 a = None.
+  Proof.
+    unfold mem_union.
+    intuition.
+    case_eq (m1 a); intros; auto.
+    rewrite H0 in H.
+    congruence.
+    case_eq (m1 a); intros; auto.
+    rewrite H0 in H.
+    congruence.
+    rewrite H0 in H.
+    congruence.
+  Qed.
+
+  Lemma frame_exec_fail_read : forall m h a v rx locks,
+    rexec (mem_union m h) (State (CRead a rx) locks) nil Failed ->
+    mem_union m h a = Some v ->
+    rexec (mem_union m h) (State (rx v) locks) nil Failed ->
+    rexec m (State (CRead a rx) locks) nil Failed.
+  Proof.
+    intros.
+    pose proof H as H'.
+    apply read_failure' in H.
+    intuition.
+    (* read fails *)
+    - apply mem_union_none in H; intuition.
+    (* rx fails *)
+    - case_eq (m a); intros.
+      inv_rexec.
+      rewrite H3.
+  Abort.
+
+  (** Theorem 19 from the paper *)
+  Theorem frame_exec'_fail : forall p m events locks h,
+    rexec (mem_union m h) (State p locks) events Failed ->
+    mem_disjoint m h ->
+    exists events', rexec m (State p locks) events' Failed.
+  Proof.
+    intros.
+    generalize dependent m.
+    induction p; intros.
+    - exfalso.
+      eapply rexec_done_ok; eauto.
+    - match goal with
+      | [ H : rexec _ _ _ _ |- _ ] =>
+        apply read_failure' in H; intuition; subst
+      end.
+      eexists.
+      apply read_failure.
+      match goal with
+      | [ H : mem_union _ _ _ = None |- _ ] =>
+        apply mem_union_none in H; intuition
+      end.
+      case_eq (m a); intros.
+      assert (mem_union m h a = Some w).
+      unfold mem_union.
+      rewrite H0; auto.
+      specialize (H2 _ H3).
+      specialize (H _ _ H2 H1).
+      deex.
+      eexists.
+      eapply EStep; eauto.
+      exists nil.
+      eauto.
+    - match goal with
+      | [ H : rexec _ _ _ _ |- _ ] =>
+        apply write_failure' in H; intuition; subst
+      end.
+      eexists.
+      apply write_failure.
+      match goal with
+      | [ H : mem_union _ _ _ = None |- _ ] =>
+        apply mem_union_none in H; intuition
+      end.
+      case_eq (m a); intros; eauto.
+      assert (mem_union m h a = Some w).
+      unfold mem_union.
+      rewrite H0; auto.
+      erewrite <- mem_union_upd in H2; eauto.
+      eapply mem_disjoint_upd in H1; eauto.
+      specialize (H _ _ H2 H1).
+      deex.
+      eauto.
+    - (* acq *)
+      admit.
+    - (* rel *)
+      admit.
+  Admitted.
+
   Theorem frame_rule : forall gamma pre p,
       valid gamma pre p ->
       valid gamma (fun d =>
@@ -735,18 +908,6 @@ Section ParallelSemantics.
       q m.
   Proof.
     eauto.
-  Qed.
-
-  Lemma rexec_done : forall m ret ret' events m',
-      rexec m (State (CDone ret) nil) events (Finished m' ret') ->
-      m = m' /\
-      events = nil /\
-      ret = ret'.
-  Proof.
-    intros.
-    inv_rexec.
-    inv_rstep.
-    intuition.
   Qed.
 
   Lemma ptsto_other_safe : forall F m a b va va0 vb0,
