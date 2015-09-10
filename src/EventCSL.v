@@ -28,6 +28,12 @@ Section EventCSL.
   | Yield (rx: unit -> prog)
   | Done (v: T).
 
+  Ltac ind_prog :=
+    match goal with
+    | [ H: @eq prog _ _ |- _ ] =>
+      inversion H
+    end.
+
   Implicit Type p : prog.
 
   Inductive step : forall m p m' p', Prop :=
@@ -131,16 +137,22 @@ Section EventCSL.
   Qed.
 
   Theorem yield_failure : forall m rx,
+      (~ exists m' p', step m (Yield rx) m' p') ->
+      (~Inv m).
+  Proof.
+    intros.
+    intro.
+    eauto.
+  Qed.
+
+  Theorem yield_failure' : forall m rx,
       (~Inv m) ->
       (~ exists m' p', step m (Yield rx) m' p').
   Proof.
     intros.
     intro.
     repeat deex.
-    match goal with
-    | [ H: step _ _ _ _ |- _ ] =>
-      inversion H
-    end.
+    inv_step.
     congruence.
   Qed.
 
@@ -162,7 +174,7 @@ Section EventCSL.
 
     Hint Resolve read_failure'.
     Hint Resolve write_failure'.
-    Hint Resolve yield_failure.
+    Hint Resolve yield_failure'.
 
     induction p; intros.
     - case_eq (m a); intros.
@@ -222,7 +234,8 @@ Section EventCSL.
     | [ H : exec _ ?p _ |- _ ] =>
       remember p;
         induction H; subst;
-        try inv_step
+        try inv_step;
+        try ind_prog
     end.
 
   Theorem write_ok : forall a v0 v,
@@ -249,7 +262,47 @@ Section EventCSL.
         apply ptsto_valid' in H
       end.
       congruence.
-    - congruence.
+  Qed.
+
+  Theorem yield_ok :
+    {{ (_:unit),
+      | PRE Inv
+      | POST RET:_ Inv
+    }} Yield.
+  Proof.
+    unfold valid; intros.
+    destruct_lift H.
+    ind_exec.
+    - edestruct H3; eauto.
+      eapply pimpl_apply; [cancel | auto].
+    - eapply yield_failure in H0.
+      congruence.
+  Qed.
+
+  Theorem pimpl_ok : forall pre pre' p,
+      (forall d, pre' d =p=> pre d) ->
+      valid pre p ->
+      valid pre' p.
+  Proof.
+    unfold valid.
+    intros.
+    apply H in H1.
+    eauto.
+  Qed.
+
+  Theorem yield_ok' :
+    {{ F,
+     | PRE F * [[ F =p=> Inv ]]
+     | POST RET:_ Inv
+    }} Yield.
+  Proof.
+    intros.
+    eapply pimpl_ok; [| apply yield_ok].
+    cancel.
+    auto.
+
+    Grab Existential Variables.
+    auto.
   Qed.
 
 End EventCSL.
