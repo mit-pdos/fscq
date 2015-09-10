@@ -137,13 +137,13 @@ Section EventCSL.
     congruence.
   Qed.
 
-  Theorem exec_progress : forall m p,
+  Theorem exec_progress : forall p m,
       exists out, exec m p out.
   Proof.
 
     Ltac rx_specialize new_mem :=
       match goal with
-      | [ H : forall w:?t, forall _, exists out, exec _ (_ w) out |- _ ] =>
+      | [ H : forall w:?t, forall _, exists out, exec _ _ out |- _ ] =>
         match t with
         | unit => specialize (H tt new_mem); inversion H
         | _ => match goal with
@@ -153,14 +153,10 @@ Section EventCSL.
         end
       end.
 
-    Hint Resolve read_failure.
     Hint Resolve read_failure'.
-    Hint Resolve write_failure.
     Hint Resolve write_failure'.
     Hint Resolve yield_failure.
 
-    intros.
-    generalize dependent m.
     induction p; intros.
     - case_eq (m a); intros.
       rx_specialize m; eexists; eauto.
