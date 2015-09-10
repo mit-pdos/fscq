@@ -1,6 +1,7 @@
 Require Import Mem.
 Require Import Pred.
 Require Import Word.
+Require Import SepAuto.
 
 (* defined in Prog. which we don't want to import here *)
 Definition addrlen := 64.
@@ -40,6 +41,12 @@ Section EventCSL.
       step m (Yield rx) m' (rx tt).
 
   Hint Constructors step.
+
+  Ltac inv_step :=
+    match goal with
+    | [ H: step _ _ _ _ |- _ ] =>
+      inversion H; subst
+    end.
 
   Inductive outcome :=
   | Failed
@@ -170,3 +177,79 @@ Section EventCSL.
       eexists; eapply ExecFail; eauto; try congruence.
     - eauto.
   Qed.
+
+  Definition donecond := T -> @pred addr (@weq addrlen) valu.
+
+  Definition valid (pre: donecond -> pred) p : Prop :=
+    forall m d out,
+      pre d m ->
+      exec m p out ->
+      exists m' v,
+        out = Finished m' v /\
+        d v m'.
+
+  Notation "'RET' : r post" :=
+  (fun F =>
+    (fun r => (F * post)%pred)
+  )%pred
+  (at level 0, post at level 90, r at level 0, only parsing).
+
+  Notation "{{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
+    (forall (rx: _ -> prog),
+        valid (fun done =>
+                 (exis (fun e1 => .. (exis (fun e2 =>
+                                           (pre%pred *
+                                            [[ forall ret_,
+                                                 valid (fun done_rx =>
+                                                          post emp ret_ *
+                                                          [[ done_rx = done ]])
+                                                       (rx ret_)
+                                           ]])%pred )) .. ))
+              ) (p rx))
+      (at level 0, p at level 60,
+       e1 binder, e2 binder,
+       only parsing).
+
+  Definition progseq (A:Type) (p1 : prog -> A) (p2: prog) := p1 p2.
+
+  Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
+                           (at level 60, right associativity).
+  Notation "x <- p1 ;; p2" := (progseq p1 (fun x => p2 x))
+                                (at level 60, right associativity).
+
+  Ltac ind_exec :=
+    match goal with
+    | [ H : exec _ ?p _ |- _ ] =>
+      remember p;
+        induction H; subst;
+        try inv_step
+    end.
+
+  Theorem write_ok : forall a v0 v,
+      {{ F,
+         | PRE F * a |-> v0
+         | POST RET:_ F * a |-> v
+      }} Write a v.
+  Proof.
+    unfold valid; intros.
+    destruct_lift H.
+    ind_exec.
+    - edestruct H3; eauto.
+      eapply pimpl_apply.
+      cancel.
+      eapply pimpl_apply; [| eapply ptsto_upd].
+      cancel.
+      pred_apply; cancel.
+    - match goal with
+      | [ H: ~ exists m' p', step _ _ _ _ |- _] =>
+        apply write_failure in H
+      end.
+      match goal with
+      | [ H: context[ptsto a  _] |- _ ] =>
+        apply ptsto_valid' in H
+      end.
+      congruence.
+    - congruence.
+  Qed.
+
+End EventCSL.
