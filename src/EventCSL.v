@@ -230,11 +230,6 @@ Section EventCSL.
   A is the type of the whole expression, (output -> prog). *)
   Definition progseq (A B:Type) (p1 : B -> A) (p2: B) := p1 p2.
 
-  Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
-                           (at level 60, right associativity).
-  Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2 x))
-                                (at level 60, right associativity).
-
   Ltac ind_exec :=
     match goal with
     | [ H : exec _ ?p _ |- _ ] =>
@@ -312,13 +307,13 @@ Section EventCSL.
   Qed.
 
   Theorem pimpl_ok : forall pre pre' p,
-      (forall d, pre' d =p=> pre d) ->
       valid pre p ->
+      (forall d, pre' d =p=> pre d) ->
       valid pre' p.
   Proof.
     unfold valid.
     intros.
-    apply H in H1.
+    apply H0 in H1.
     eauto.
   Qed.
 
@@ -329,7 +324,7 @@ Section EventCSL.
     }} Yield.
   Proof.
     intros.
-    eapply pimpl_ok; [| apply yield_ok].
+    eapply pimpl_ok; [apply yield_ok |].
     cancel.
     auto.
 
@@ -338,3 +333,105 @@ Section EventCSL.
   Qed.
 
 End EventCSL.
+
+(* FIXME: these notations are needed both inside and outside the EventCSL
+   section, resulting in duplication.
+
+   The Hoare triple notation isn't quite the same because the invariant
+   has to be passed explicitly rather than captured from the environment. *)
+Notation "'RET' : r post" :=
+(fun F =>
+  (fun r => (F * post)%pred)
+)%pred
+(at level 0, post at level 90, r at level 0, only parsing).
+
+Notation "gamma |- {{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
+  (forall T (rx: _ -> prog T),
+      valid gamma (fun done =>
+               (exis (fun e1 => .. (exis (fun e2 =>
+                                         (pre%pred *
+                                          [[ forall ret_,
+                                               valid gamma (fun done_rx =>
+                                                        post emp ret_ *
+                                                        [[ done_rx = done ]])
+                                                     (rx ret_)
+                                         ]])%pred )) .. ))
+            ) (p rx))
+    (at level 0, p at level 60,
+     e1 binder, e2 binder,
+     only parsing).
+
+Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
+                         (at level 60, right associativity).
+Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
+                              (at level 60, right associativity).
+
+(* maximally insert the return type for Yield, which is always called
+   without applying it to any arguments *)
+Arguments Yield {T} rx.
+
+Section Bank.
+  Definition acct1 : addr := $0.
+  Definition acct2 : addr := $1.
+
+  Definition rep bal1 bal2 : @pred addr (@weq addrlen) valu :=
+    acct1 |-> bal1 * acct2 |-> bal2.
+
+  Definition Inv : @pred addr (@weq addrlen) valu := (exists F bal1 bal2,
+    F * rep bal1 bal2 *
+    [[ #bal1 + #bal2 = 100 ]])%pred.
+
+  Definition transfer {T} rx : prog T :=
+    bal1 <- Read acct1;
+    bal2 <- Read acct2;
+    Write acct1 (bal1 ^- $1);;
+    Write acct2 (bal2 ^+ $1);;
+    rx tt.
+
+  (** TODO: automate picking f_ok with a prog hint db *)
+  Ltac step f_ok :=
+    eapply pimpl_ok; [apply f_ok | ];
+    try cancel.
+
+  Theorem transfer_ok : forall bal1 bal2,
+    Inv |-
+    {{ F,
+      | PRE F * rep bal1 bal2
+      | POST RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1)
+    }} transfer.
+  Proof.
+    unfold transfer, rep; intros.
+    step read_ok.
+    step read_ok.
+    step write_ok.
+    step write_ok.
+    step H1.
+  Qed.
+
+  Definition transfer_yield {T} rx : prog T :=
+    transfer;; Yield;; rx tt.
+
+  Theorem transfer_yield_ok : forall bal1 bal2,
+    Inv |-
+    {{ F,
+      | PRE F * rep bal1 bal2
+      | POST RET:_ exists F' bal1' bal2', F' * rep bal1' bal2'
+    }} transfer_yield.
+  Proof.
+    unfold transfer_yield, rep; intros.
+    step transfer_ok.
+    unfold rep.
+    cancel.
+
+    unfold Inv, rep.
+    step yield_ok.
+    (* TODO: add hypothesis that transfer doesn't under or overflow *)
+    admit.
+
+    step H1.
+
+    Grab Existential Variables.
+    all: auto.
+  Admitted.
+
+End Bank.
