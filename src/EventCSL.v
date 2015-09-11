@@ -5,8 +5,9 @@ Require Import SepAuto.
 
 (* defined in Prog. which we don't want to import here *)
 Definition addrlen := 64.
+Definition valulen := 64.
 Notation "'addr'" := (word addrlen).
-Notation "'valu'" := (word 64).
+Notation "'valu'" := (word valulen).
 
 Set Implicit Arguments.
 
