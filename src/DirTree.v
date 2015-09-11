@@ -4,7 +4,7 @@ Require Import Prog.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec Inode FastByteFile.
+Require Import BFile Bytes Rec Inode ByteFile.
 Require Import String.
 Require Import FSLayout.
 Require Import Pred.
@@ -1935,7 +1935,7 @@ Module DIRTREE.
     rx ^(mscs, v).
 
   Definition read_bytes T fsxp inum off len mscs rx : prog T :=
-    let^ (mscs, data) <- FASTBYTEFILE.read_bytes fsxp inum off len mscs;
+    let^ (mscs, data) <- BYTEFILE.read_bytes fsxp inum off len mscs;
     rx ^(mscs, data).
 
   Implicit Arguments read_bytes [T].
@@ -1945,11 +1945,11 @@ Module DIRTREE.
     rx mscs.
 
   Definition update_bytes T fsxp inum off len (data: bytes len) mscs rx : prog T :=
-    mscs <- FASTBYTEFILE.update_bytes fsxp inum off data mscs;
+    mscs <- BYTEFILE.update_bytes fsxp inum off data mscs;
     rx mscs.
 
   Definition append T fsxp inum off len (data: bytes len) mscs rx : prog T :=
-    mscs <- FASTBYTEFILE.append fsxp inum off data mscs;
+    mscs <- BYTEFILE.append fsxp inum off data mscs;
     rx mscs.
 
   Definition truncate T fsxp inum nblocks mscs rx : prog T :=
@@ -2003,16 +2003,16 @@ Module DIRTREE.
     PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
            [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[ FASTBYTEFILE.rep bytes f ]]
+           [[ BYTEFILE.rep bytes f ]]
     POST RET:^(mscs,b)
            exists Fx v,
            LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
            [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
-           [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type (FASTBYTEFILE.buf_len b))
-             (FASTBYTEFILE.buf_data b) = v ]] *
+           [[ @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type (BYTEFILE.buf_len b))
+             (BYTEFILE.buf_data b) = v ]] *
            (* non-error guarantee *)
            [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
-              0 < FASTBYTEFILE.buf_len b ]]
+              0 < BYTEFILE.buf_len b ]]
     CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
     >} read_bytes fsxp inum off len mscs.
   Proof.
@@ -2052,7 +2052,7 @@ Module DIRTREE.
      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
          [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-         [[ FASTBYTEFILE.rep bytes f ]] *
+         [[ BYTEFILE.rep bytes f ]] *
          [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
          [[ length olddata = len ]]
     POST RET: ^(mscs)
@@ -2060,11 +2060,11 @@ Module DIRTREE.
          LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
          [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-         [[ FASTBYTEFILE.rep bytes' f' ]] *
+         [[ BYTEFILE.rep bytes' f' ]] *
          [[ let newdata := @Rec.of_word
-              (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+              (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
             (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-         [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+         [[ BYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
     >} update_bytes fsxp inum off newbytes mscs.
   Proof.
@@ -2082,23 +2082,23 @@ Module DIRTREE.
       PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
          [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-         [[ FASTBYTEFILE.rep bytes f ]] *
+         [[ BYTEFILE.rep bytes f ]] *
          [[ Fi (list2nmem bytes) ]] *
          [[ goodSize addrlen (off + len) ]] *
          (* makes this an append *)
-         [[ FASTBYTEFILE.filelen f <= off ]]
+         [[ BYTEFILE.filelen f <= off ]]
       POST RET:^(mscs, ok)
          exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
          ([[ ok = false ]] \/
          [[ ok = true ]] * exists tree' f' bytes' zeros,
          [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-         [[ FASTBYTEFILE.rep bytes' f' ]] *
+         [[ BYTEFILE.rep bytes' f' ]] *
          [[ let newdata := @Rec.of_word
-              (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
+              (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
             (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-         [[ zeros = arrayN (FASTBYTEFILE.filelen f)
-              (repeat $0 (off - (FASTBYTEFILE.filelen f))) ]])
+         [[ zeros = arrayN (BYTEFILE.filelen f)
+              (repeat $0 (off - (BYTEFILE.filelen f))) ]])
       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
     >} append fsxp inum off newbytes mscs.
   Proof.
