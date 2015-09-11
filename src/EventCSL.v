@@ -378,18 +378,20 @@ Section Bank.
   Definition rep bal1 bal2 : @pred addr (@weq addrlen) valu :=
     acct1 |-> bal1 * acct2 |-> bal2.
 
-  Definition Inv : @pred addr (@weq addrlen) valu := (exists F bal1 bal2,
-    F * rep bal1 bal2 *
-    [[ #bal1 + #bal2 = 100 ]])%pred.
+  Definition inv_rep bal1 bal2 : pred :=
+    rep bal1 bal2 *
+    [[ #bal1 + #bal2 = 100 ]].
+
+  Definition Inv : pred := (exists F bal1 bal2,
+    F * inv_rep bal1 bal2)%pred.
 
   Lemma max_balance : forall bal1 bal2,
-    (exists F, F * rep bal1 bal2) *
-    [[ #bal1 + #bal2 = 100 ]] =p=>
-    Inv *
+    (exists F, F * inv_rep bal1 bal2) =p=>
+    (exists F, F * inv_rep bal1 bal2) *
     [[ #bal1 <= 100 ]] *
     [[ #bal2 <= 100 ]].
   Proof.
-    unfold Inv, rep.
+    unfold inv_rep, rep.
     intros.
     intros m H.
     pred_apply; cancel.
@@ -428,25 +430,21 @@ Section Bank.
   Theorem transfer_yield_ok : forall bal1 bal2,
     Inv |-
     {{ F,
-      (* it is unfortunate that we repeat the definition of Inv,
-        which is needed since we need access to the existentials
-        inside the definition of Inv *)
-      | PRE F * rep bal1 bal2 * [[ #bal1 + #bal2 = 100 ]] *
+      | PRE F * inv_rep bal1 bal2 *
            [[ #bal1 > 0 ]]
-      | POST RET:_ exists F' bal1' bal2', F' * rep bal1' bal2'
+      | POST RET:_ Inv
     }} transfer_yield.
   Proof.
-    unfold transfer_yield, rep; intros.
+    unfold transfer_yield, Inv, inv_rep, rep; intros.
     step transfer_ok.
     unfold rep.
     cancel.
 
-    unfold Inv, rep.
+    unfold Inv, inv_rep, rep.
     step yield_ok.
     rewrite wordToNat_minus_one.
     erewrite wordToNat_plusone.
     omega.
-    Search wlt lt.
     apply lt_wlt.
     instantiate (1 := $101).
     simpl; omega.
