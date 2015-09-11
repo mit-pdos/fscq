@@ -194,7 +194,13 @@ dirStat ctx = FileStat
 
 attrToType :: INODE__Coq_iattr -> EntryType
 attrToType attr =
-  if t == 0 then RegularFile else Socket
+  case t of
+    0 -> RegularFile
+    1 -> Socket
+    2 -> NamedPipe
+    3 -> BlockSpecial
+    4 -> CharacterSpecial
+    _ -> Unknown
   where t = wordToNat 32 $ _INODE__coq_IType attr
 
 fileStat :: FuseContext -> INODE__Coq_iattr -> FileStat
@@ -208,7 +214,7 @@ fileStat ctx attr = FileStat
   , statLinkCount = 1
   , statFileOwner = fuseCtxUserID ctx
   , statFileGroup = fuseCtxGroupID ctx
-  , statSpecialDeviceID = 0
+  , statSpecialDeviceID = fromIntegral $ wordToNat 64 $ _INODE__coq_IDev attr
   , statFileSize = fromIntegral $ wordToNat 64 $ _INODE__coq_ISize attr
   , statBlocks = 1
   , statAccessTime = 0
@@ -220,7 +226,7 @@ fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Err
 fscqGetFileStat fr m_fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
-    return $ Right $ fileStat ctx (INODE__Build_iattr (W 1024) (W 0) (W 0))
+    return $ Right $ fileStat ctx (INODE__Build_iattr (W 1024) (W 0) (W 0) (W 0))
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
   nameparts <- return $ splitDirectories path
@@ -297,7 +303,7 @@ splitDirsFile path = (init parts, last parts)
   where parts = splitDirectories path
 
 fscqCreate :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
-fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
+fscqCreate fr m_fsxp (_:path) entrytype _ dev = withMVar m_fsxp $ \fsxp -> do
   debugStart "CREATE" path
   (dirparts, filename) <- return $ splitDirsFile path
   (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
@@ -308,7 +314,10 @@ fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
       | isdir -> do
         (r, ()) <- case entrytype of
           RegularFile -> fr $ FS.create fsxp dnum filename
-          Socket -> fr $ FS.mksock fsxp dnum filename
+          Socket -> fr $ FS.mkdev fsxp dnum filename (W 1) (W 0)
+          NamedPipe -> fr $ FS.mkdev fsxp dnum filename (W 2) (W 0)
+          BlockSpecial -> fr $ FS.mkdev fsxp dnum filename (W 3) (W $ fromIntegral dev)
+          CharacterSpecial -> fr $ FS.mkdev fsxp dnum filename (W 4) (W $ fromIntegral dev)
           _ -> return (Nothing, ())
         debugMore r
         case r of

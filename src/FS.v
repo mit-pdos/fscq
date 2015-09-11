@@ -221,7 +221,8 @@ Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
   mscs <- DIRTREE.setattr fsxp inum
                           (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
-                                             (INODE.IType attr))
+                                             (INODE.IType attr)
+                                             (INODE.IDev attr))
                           mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
@@ -238,9 +239,10 @@ Theorem file_set_sz_ok : forall fsxp inum sz mscs,
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
          [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f) (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
-                                             (INODE.IType attr)) ]])
+                                             (INODE.IType attr)
+                                             (INODE.IDev attr)) ]])
   CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
            exists tree' f' attr, 
          (Fm * DIRTREE.rep fsxp Ftop tree')*
@@ -248,7 +250,8 @@ Theorem file_set_sz_ok : forall fsxp inum sz mscs,
          [[ attr = BFILE.BFAttr f ]] *
          [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
-                                             (INODE.IType attr)) ]])
+                                             (INODE.IType attr)
+                                             (INODE.IDev attr)) ]])
 
   >} file_set_sz fsxp inum sz mscs.
 Proof.
@@ -283,7 +286,8 @@ Theorem file_set_sz_recover_ok : forall fsxp inum sz mscs,
          [[ attr = BFILE.BFAttr f ]] *
          [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
-                                             (INODE.IType attr)) ]])
+                                             (INODE.IType attr)
+                                             (INODE.IDev attr)) ]])
   REC RET:^(mscs, fsxp)   
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
@@ -292,7 +296,8 @@ Theorem file_set_sz_recover_ok : forall fsxp inum sz mscs,
          [[ attr = BFILE.BFAttr f ]] *
          [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
                                              (INODE.IMTime attr)
-                                             (INODE.IType attr)) ]] *
+                                             (INODE.IType attr)
+                                             (INODE.IDev attr)) ]] *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} file_set_sz fsxp inum sz mscs >> recover.
 Proof.
@@ -496,7 +501,8 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
     mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
                             (INODE.Build_iattr newsz
                                                (INODE.IMTime oldattr)
-                                               (INODE.IType oldattr))
+                                               (INODE.IType oldattr)
+                                               (INODE.IDev oldattr))
                             mscs;
     irx mscs
   } else {
@@ -748,7 +754,7 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     rx ^(mscs, None)
   | Some inum =>
     mscs <- DIRTREE.setattr fsxp inum
-                            (INODE.Build_iattr $0 $0 $0) mscs;
+                            (INODE.Build_iattr $0 $0 $0 $0) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
@@ -818,7 +824,7 @@ Proof.
   recover_rw_ok.
 Qed.
 
-Definition mksock T fsxp dnum name mscs rx : prog T :=
+Definition mkdev T fsxp dnum name type dev mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, oi) <- DIRTREE.mkfile fsxp dnum name mscs;
   match oi with
@@ -827,7 +833,7 @@ Definition mksock T fsxp dnum name mscs rx : prog T :=
     rx ^(mscs, None)
   | Some inum =>
     mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
-                            (INODE.Build_iattr $0 $0 $1) mscs;
+                            (INODE.Build_iattr $0 $0 type dev) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
