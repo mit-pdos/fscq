@@ -270,6 +270,32 @@ Section EventCSL.
       congruence.
   Qed.
 
+  Theorem read_ok : forall a v0,
+    {{ F,
+      | PRE F * a |-> v0
+      | POST RET:v F * a |-> v0 * [[ v = v0 ]]
+    }} Read a.
+  Proof.
+    unfold valid; intros.
+    destruct_lift H.
+    ind_exec.
+    - edestruct H3; eauto.
+      pred_apply; cancel.
+      assert (m' a = Some v0).
+      eapply ptsto_valid; eauto.
+      pred_apply; cancel.
+      congruence.
+    - match goal with
+      | [ H: ~ exists m' p', step _ _ _ _ |- _ ] =>
+        apply read_failure in H
+      end.
+      match goal with
+      | [ H: context[ptsto a _] |- _ ] =>
+        apply ptsto_valid' in H
+      end.
+      congruence.
+  Qed.
+
   Theorem yield_ok :
     {{ (_:unit),
       | PRE Inv
