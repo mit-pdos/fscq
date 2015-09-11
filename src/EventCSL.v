@@ -371,6 +371,10 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
    without applying it to any arguments *)
 Arguments Yield {T} rx.
 
+Hint Extern 1 (valid _ _ (progseq (Read _) _)) => apply read_ok : prog.
+Hint Extern 1 (valid _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
+Hint Extern 1 (valid _ _ (progseq (Yield) _)) => apply yield_ok : prog.
+
 Section Bank.
   Definition acct1 : addr := $0.
   Definition acct2 : addr := $1.
@@ -384,6 +388,8 @@ Section Bank.
 
   Definition Inv : pred := (exists F bal1 bal2,
     F * inv_rep bal1 bal2)%pred.
+
+  Local Hint Unfold rep inv_rep Inv : prog.
 
   Lemma max_balance : forall bal1 bal2,
     (exists F, F * inv_rep bal1 bal2) =p=>
@@ -404,10 +410,13 @@ Section Bank.
     Write acct2 (bal2 ^+ $1);;
     rx tt.
 
-  (** TODO: automate picking f_ok with a prog hint db *)
-  Ltac step f_ok :=
-    eapply pimpl_ok; [apply f_ok | ];
+  Ltac step :=
+    repeat (autounfold with prog);
+    eapply pimpl_ok; [ auto with prog | ];
+    repeat (autounfold with prog);
     try cancel.
+
+  Ltac hoare := intros; repeat step.
 
   Theorem transfer_ok : forall bal1 bal2,
     Inv |-
@@ -416,16 +425,29 @@ Section Bank.
       | POST RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1)
     }} transfer.
   Proof.
-    unfold transfer, rep; intros.
-    step read_ok.
-    step read_ok.
-    step write_ok.
-    step write_ok.
-    step H1.
+    unfold transfer.
+    hoare.
   Qed.
+
+  Hint Extern 1 (valid _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
 
   Definition transfer_yield {T} rx : prog T :=
     transfer;; Yield;; rx tt.
+
+  Lemma inv_transfer_stable : forall (bal1 bal2 : valu),
+    #bal1 + #bal2 = 100 ->
+    #bal1 > 0 ->
+    # (bal1 ^- $1) + # (bal2 ^+ $1) = 100.
+  Proof.
+    intros.
+    rewrite wordToNat_minus_one.
+    erewrite wordToNat_plusone.
+    omega.
+    apply lt_wlt.
+    instantiate (1 := $101).
+    simpl; omega.
+    apply gt0_wneq0; auto.
+  Qed.
 
   Theorem transfer_yield_ok : forall bal1 bal2,
     Inv |-
@@ -435,22 +457,9 @@ Section Bank.
       | POST RET:_ Inv
     }} transfer_yield.
   Proof.
-    unfold transfer_yield, Inv, inv_rep, rep; intros.
-    step transfer_ok.
-    unfold rep.
-    cancel.
-
-    unfold Inv, inv_rep, rep.
-    step yield_ok.
-    rewrite wordToNat_minus_one.
-    erewrite wordToNat_plusone.
-    omega.
-    apply lt_wlt.
-    instantiate (1 := $101).
-    simpl; omega.
-    apply gt0_wneq0; auto.
-
-    step H1.
+    Local Hint Resolve inv_transfer_stable.
+    unfold transfer_yield.
+    hoare.
 
     Grab Existential Variables.
     all: auto.
