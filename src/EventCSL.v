@@ -222,11 +222,16 @@ Section EventCSL.
        e1 binder, e2 binder,
        only parsing).
 
-  Definition progseq (A:Type) (p1 : prog -> A) (p2: prog) := p1 p2.
+  (** Programs are written in continuation-passing style, where sequencing
+  is simply function application. We wrap this sequencing in a function for
+  automation purposes, so that we can recognize when logically instructions
+  are being sequenced. B is a continuation, of the type (input -> prog), while
+  A is the type of the whole expression, (output -> prog). *)
+  Definition progseq (A B:Type) (p1 : B -> A) (p2: B) := p1 p2.
 
   Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
                            (at level 60, right associativity).
-  Notation "x <- p1 ;; p2" := (progseq p1 (fun x => p2 x))
+  Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2 x))
                                 (at level 60, right associativity).
 
   Ltac ind_exec :=
