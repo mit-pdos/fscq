@@ -1,6 +1,7 @@
 Require Import Mem.
 Require Import Pred.
 Require Import Word.
+Require Import Omega.
 Require Import SepAuto.
 
 (* defined in Prog. which we don't want to import here *)
@@ -381,6 +382,19 @@ Section Bank.
     F * rep bal1 bal2 *
     [[ #bal1 + #bal2 = 100 ]])%pred.
 
+  Lemma max_balance : forall bal1 bal2,
+    (exists F, F * rep bal1 bal2) *
+    [[ #bal1 + #bal2 = 100 ]] =p=>
+    Inv *
+    [[ #bal1 <= 100 ]] *
+    [[ #bal2 <= 100 ]].
+  Proof.
+    unfold Inv, rep.
+    intros.
+    intros m H.
+    pred_apply; cancel.
+  Qed.
+
   Definition transfer {T} rx : prog T :=
     bal1 <- Read acct1;
     bal2 <- Read acct2;
@@ -414,7 +428,11 @@ Section Bank.
   Theorem transfer_yield_ok : forall bal1 bal2,
     Inv |-
     {{ F,
-      | PRE F * rep bal1 bal2
+      (* it is unfortunate that we repeat the definition of Inv,
+        which is needed since we need access to the existentials
+        inside the definition of Inv *)
+      | PRE F * rep bal1 bal2 * [[ #bal1 + #bal2 = 100 ]] *
+           [[ #bal1 > 0 ]]
       | POST RET:_ exists F' bal1' bal2', F' * rep bal1' bal2'
     }} transfer_yield.
   Proof.
@@ -425,13 +443,19 @@ Section Bank.
 
     unfold Inv, rep.
     step yield_ok.
-    (* TODO: add hypothesis that transfer doesn't under or overflow *)
-    admit.
+    rewrite wordToNat_minus_one.
+    erewrite wordToNat_plusone.
+    omega.
+    Search wlt lt.
+    apply lt_wlt.
+    instantiate (1 := $101).
+    simpl; omega.
+    apply gt0_wneq0; auto.
 
     step H1.
 
     Grab Existential Variables.
     all: auto.
-  Admitted.
+  Qed.
 
 End Bank.
