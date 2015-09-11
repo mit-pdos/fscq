@@ -24,7 +24,7 @@ J ?= 4
 
 .PHONY: coq proof clean
 
-all: hstest fuse mkfs
+all: fuse mkfs
 
 %: %.ml coq
 	rm -f $@
