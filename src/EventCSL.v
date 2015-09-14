@@ -54,6 +54,8 @@ Section EventCSL.
   | StepWrite : forall m s a rx v v', m a = Some v ->
                                step m s (Write a v' rx) (upd m a v') s (rx tt)
   | StepYield : forall m s m' rx,
+      (** TODO: need to also have StateI m s and StateI m s', otherwise should
+      run into problems later *)
       Inv m ->
       Inv m' ->
       step m s (Yield rx) m' s (rx tt)
