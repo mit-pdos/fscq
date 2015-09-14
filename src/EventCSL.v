@@ -410,17 +410,56 @@ Notation "'RET' : r post" :=
 )%pred
 (at level 0, post at level 90, r at level 0, only parsing).
 
-Notation "gamma |- {{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
-  (forall T (rx: _ -> prog T),
-      valid gamma (fun done =>
+Inductive transitions S :=
+  | Transitions
+      (StateR: S -> S -> Prop)
+      (StateI: @mem addr (@weq addrlen) valu -> S -> Prop).
+
+Definition transition_r S (sigma: transitions S) :=
+  match sigma with
+  | Transitions StateR _ => StateR
+  end.
+
+Definition transition_i S (sigma: transitions S) :=
+  match sigma with
+  | Transitions _ StateI => StateI
+  end.
+
+Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' pre | 'GHOST' s1 ghostpre | 'POST' post | 'GHOST' s2 ghostpost  }} p" :=
+  (forall T (rx: _ -> prog T _),
+      valid gamma (transition_r sigma%pred) (transition_i sigma%pred) (fun done s1 =>
+               sep_star
                (exis (fun e1 => .. (exis (fun e2 =>
                                          (pre%pred *
                                           [[ forall ret_,
-                                               valid gamma (fun done_rx =>
+                                               valid gamma (transition_r sigma) (transition_i sigma) (fun done_rx s2 =>
                                                         post emp ret_ *
+                                                        [[ ghostpost ]] *
                                                         [[ done_rx = done ]])
                                                      (rx ret_)
-                                         ]])%pred )) .. ))
+                                          ]])%pred )) .. ))
+                (lift_empty ghostpre%pred)
+            ) (p rx))
+    (at level 0, p at level 60,
+     e1 binder, e2 binder,
+     s1 at level 0,
+     s2 at level 0,
+     only parsing).
+
+Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
+  (forall T (rx: _ -> prog T _) ghostpre,
+      valid gamma (transition_r sigma%pred) (transition_i sigma%pred) (fun done s1 =>
+               sep_star
+               (exis (fun e1 => .. (exis (fun e2 =>
+                                         (pre%pred *
+                                          [[ forall ret_,
+                                               valid gamma (transition_r sigma) (transition_i sigma) (fun done_rx s2 =>
+                                                        post emp ret_ *
+                                                        [[ ghostpre s2 ]] *
+                                                        [[ done_rx = done ]])
+                                                     (rx ret_)
+                                          ]])%pred )) .. ))
+                (lift_empty (ghostpre s1))
             ) (p rx))
     (at level 0, p at level 60,
      e1 binder, e2 binder,
@@ -431,13 +470,13 @@ Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
                               (at level 60, right associativity).
 
-(* maximally insert the return type for Yield, which is always called
+(* maximally insert the return/state types for Yield, which is always called
    without applying it to any arguments *)
-Arguments Yield {T} rx.
+Arguments Yield {T} {S} rx.
 
-Hint Extern 1 (valid _ _ (progseq (Read _) _)) => apply read_ok : prog.
-Hint Extern 1 (valid _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
-Hint Extern 1 (valid _ _ (progseq (Yield) _)) => apply yield_ok : prog.
+Hint Extern 1 (valid _ _ _ _ (progseq (Read _) _)) => apply read_ok : prog.
+Hint Extern 1 (valid _ _ _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
+Hint Extern 1 (valid _ _ _ _ (progseq (Yield) _)) => apply yield_ok : prog.
 
 Section Bank.
   Definition acct1 : addr := $0.
@@ -453,6 +492,11 @@ Section Bank.
   Definition Inv : pred := (exists F bal1 bal2,
     F * inv_rep bal1 bal2)%pred.
 
+  Definition State := nat.
+
+  Definition bankS : transitions State :=
+    Transitions (fun n1 n2 => n2 > n1) (fun _ n1 => n1 > 5).
+
   Local Hint Unfold rep inv_rep Inv : prog.
 
   Lemma max_balance : forall bal1 bal2,
@@ -467,7 +511,7 @@ Section Bank.
     pred_apply; cancel.
   Qed.
 
-  Definition transfer {T} rx : prog T :=
+  Definition transfer {T S} rx : prog T S :=
     bal1 <- Read acct1;
     bal2 <- Read acct2;
     Write acct1 (bal1 ^- $1);;
@@ -478,12 +522,13 @@ Section Bank.
     repeat (autounfold with prog);
     eapply pimpl_ok; [ auto with prog | ];
     repeat (autounfold with prog);
-    try cancel.
+    try cancel;
+    eauto.
 
   Ltac hoare := intros; repeat step.
 
   Theorem transfer_ok : forall bal1 bal2,
-    Inv |-
+    Inv, bankS |-
     {{ F,
       | PRE F * rep bal1 bal2
       | POST RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1)
@@ -493,9 +538,9 @@ Section Bank.
     hoare.
   Qed.
 
-  Hint Extern 1 (valid _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
+  Hint Extern 1 (valid _ _ _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
 
-  Definition transfer_yield {T} rx : prog T :=
+  Definition transfer_yield {T} rx : prog T State :=
     transfer;; Yield;; rx tt.
 
   Lemma inv_transfer_stable : forall (bal1 bal2 : valu),
@@ -514,7 +559,7 @@ Section Bank.
   Qed.
 
   Theorem transfer_yield_ok : forall bal1 bal2,
-    Inv |-
+    Inv, bankS |-
     {{ F,
       | PRE F * inv_rep bal1 bal2 *
            [[ #bal1 > 0 ]]
