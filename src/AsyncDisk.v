@@ -66,3 +66,10 @@ Notation "'valuset'" := (valu * list valu)%type.
 (* Async-disk *)
 Definition rawdisk := @mem addr addr_eq_dec valuset.
 Definition vsmerge (vs : valuset) : list valu := fst vs :: snd vs.
+
+
+(* Hashing *)
+Definition hashlen := 256.
+
+Parameter hash_inv : word hashlen -> {sz: nat & word sz}.
+Parameter hash_fwd : forall sz, word sz -> word hashlen.

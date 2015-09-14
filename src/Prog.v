@@ -5,6 +5,7 @@ Require Import Omega.
 Require Import List.
 Require Import Mem.
 Require Import AsyncDisk.
+Require Import Word.
 
 Import ListNotations.
 
@@ -18,7 +19,8 @@ Inductive prog (T : Type):=
   | Read (a: addr) (rx: valu -> prog T)
   | Write (a: addr) (v: valu) (rx: unit -> prog T)
   | Sync (a: addr) (rx: unit -> prog T)
-  | Trim (a: addr) (rx: unit -> prog T).
+  | Trim (a: addr) (rx: unit -> prog T)
+  | Hash (sz: nat) (buf: word sz) (rx: word hashlen -> prog T).
 
 Inductive outcome (T : Type) :=
   | Failed
@@ -34,13 +36,17 @@ Inductive step (T : Type) : rawdisk -> prog T ->
   | StepSync : forall m a rx v l, m a = Some (v, l) ->
     step m (Sync a rx) (upd m a (v, nil)) (rx tt)
   | StepTrim : forall m a rx vs vs', m a = Some vs ->
-    step m (Trim a rx) (upd m a vs') (rx tt).
+    step m (Trim a rx) (upd m a vs') (rx tt)
+  | StepHash : forall m sz buf rx h, hash_inv h = existT _ sz buf ->
+    hash_fwd buf = h ->
+    step m (Hash buf rx) m (rx h).
 
 Inductive exec (T : Type) : rawdisk -> prog T -> outcome T -> Prop :=
   | XStep : forall m m' p p' out, step m p m' p' ->
     exec m' p' out ->
     exec m p out
   | XFail : forall m p, (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
+    (~exists sz (buf : word sz) rx, p = Hash buf rx) ->
     exec m p (Failed T)
   | XCrash : forall m p, exec m p (Crashed T m)
   | XDone : forall m v, exec m (Done v) (Finished m v).
