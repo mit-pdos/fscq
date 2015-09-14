@@ -20,14 +20,24 @@ Section EventCSL.
   (** Our programs will return values of type T *)
   Variable T:Type.
 
+  (** Programs can manipulate ghost state of type S *)
+  Variable S:Type.
+
   (** Yield will respect this invariant. *)
   Variable Inv : @pred addr (@weq addrlen) valu.
+
+  (** Define the transition system for the ghost state.
+      The semantics will reject transitions that do not obey these rules. *)
+  Variable StateR : S -> S -> Prop.
+  Variable StateI : forall m, S -> Prop.
+
   Axiom InvDec : forall m, {Inv m} + {~ Inv m}.
 
   Inductive prog :=
   | Read (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
   | Yield (rx: unit -> prog)
+  | Commit (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
 
   Ltac ind_prog :=
@@ -38,21 +48,25 @@ Section EventCSL.
 
   Implicit Type p : prog.
 
-  Inductive step : forall m p m' p', Prop :=
-  | StepRead : forall m a rx v, m a = Some v ->
-                           step m (Read a rx) m (rx v)
-  | StepWrite : forall m a rx v v', m a = Some v ->
-                               step m (Write a v' rx) (upd m a v') (rx tt)
-  | StepYield : forall m m' rx,
+  Inductive step : forall m s p m' s' p', Prop :=
+  | StepRead : forall m s a rx v, m a = Some v ->
+                           step m s (Read a rx) m s (rx v)
+  | StepWrite : forall m s a rx v v', m a = Some v ->
+                               step m s (Write a v' rx) (upd m a v') s (rx tt)
+  | StepYield : forall m s m' rx,
       Inv m ->
       Inv m' ->
-      step m (Yield rx) m' (rx tt).
+      step m s (Yield rx) m' s (rx tt)
+  | StepCommit : forall m s up rx,
+      StateR s (up s) ->
+      StateI m s ->
+      step m s (Commit up rx) m (up s) (rx tt).
 
   Hint Constructors step.
 
   Ltac inv_step :=
     match goal with
-    | [ H: step _ _ _ _ |- _ ] =>
+    | [ H: step _ _ _ _ _ _ |- _ ] =>
       inversion H; subst
     end.
 
@@ -60,23 +74,23 @@ Section EventCSL.
   | Failed
   | Finished m (v:T).
 
-  Inductive exec : forall m p (out:outcome), Prop :=
-  | ExecStep : forall m p m' p' out,
-      step m p m' p' ->
-      exec m' p' out ->
-      exec m p out
-  | ExecFail : forall m p,
-      (~ exists m' p', step m p m' p') ->
+  Inductive exec : forall m s p (out:outcome), Prop :=
+  | ExecStep : forall m s p m' s' p' out,
+      step m s p m' s' p' ->
+      exec m' s' p' out ->
+      exec m s p out
+  | ExecFail : forall m s p,
+      (~ exists m' s' p', step m s p m' s' p') ->
       (forall v, p <> Done v) ->
-      exec m p Failed
-  | ExecDone : forall m v,
-      exec m (Done v) (Finished m v).
+      exec m s p Failed
+  | ExecDone : forall m s v,
+      exec m s (Done v) (Finished m v).
 
   Hint Constructors exec.
 
   Ltac invalid_address :=
     match goal with
-    | [ H: ~ exists m' p', step _ _ _ _ |- ?m ?a = None ] =>
+    | [ H: ~ exists m' s' p', step _ _ _ _ _ _ |- ?m ?a = None ] =>
       case_eq (m a); auto; intros;
       contradiction H;
       eauto
@@ -84,10 +98,10 @@ Section EventCSL.
 
   Ltac no_step :=
     match goal with
-    | [  |- ~ exists m' p', step _ _ _ _ ] =>
+    | [  |- ~ exists m' s' p', step _ _ _ _ _ _ ] =>
       let Hcontra := fresh in
       intro Hcontra;
-        do 2 deex;
+        do 3 deex;
         inversion Hcontra; congruence
     end.
 
@@ -96,80 +110,101 @@ Section EventCSL.
     try invalid_address;
     try no_step.
 
-  Theorem read_failure_iff : forall m rx a,
-      (~ exists m' p', step m (Read a rx) m' p') <->
+  Theorem read_failure_iff : forall m s rx a,
+      (~ exists m' s' p', step m s (Read a rx) m' s' p') <->
       m a = None.
   Proof.
     address_failure.
   Qed.
 
-  Theorem read_failure : forall m rx a,
-      (~ exists m' p', step m (Read a rx) m' p') ->
+  Theorem read_failure : forall m s rx a,
+      (~ exists m' s' p', step m s (Read a rx) m' s' p') ->
       m a = None.
   Proof.
     apply read_failure_iff.
   Qed.
 
-  Theorem read_failure' : forall m rx a,
+  Theorem read_failure' : forall m s rx a,
       m a = None ->
-      (~ exists m' p', step m (Read a rx) m' p').
+      (~ exists m' s' p', step m s (Read a rx) m' s' p').
   Proof.
     apply read_failure_iff.
   Qed.
 
-  Theorem write_failure_iff : forall m v rx a,
-      (~ exists m' p', step m (Write a v rx) m' p') <->
+  Theorem write_failure_iff : forall m s v rx a,
+      (~ exists m' s' p', step m s (Write a v rx) m' s' p') <->
       m a = None.
   Proof.
     address_failure.
   Qed.
 
-  Theorem write_failure : forall m v rx a,
-      (~ exists m' p', step m (Write a v rx) m' p') ->
+  Theorem write_failure : forall m s v rx a,
+      (~ exists m' s' p', step m s (Write a v rx) m' s' p') ->
       m a = None.
   Proof.
     apply write_failure_iff.
   Qed.
 
-  Theorem write_failure' : forall m v rx a,
+  Theorem write_failure' : forall m s v rx a,
       m a = None ->
-      (~ exists m' p', step m (Write a v rx) m' p').
+      (~ exists m' s' p', step m s (Write a v rx) m' s' p').
   Proof.
     apply write_failure_iff.
   Qed.
 
-  Theorem yield_failure : forall m rx,
-      (~ exists m' p', step m (Yield rx) m' p') ->
+  Theorem yield_failure : forall m s rx,
+      (~ exists m' s' p', step m s (Yield rx) m' s' p') ->
       (~Inv m).
   Proof.
     intros.
     intro.
-    eauto.
+    eauto 10.
   Qed.
 
-  Theorem yield_failure' : forall m rx,
-      (~Inv m) ->
-      (~ exists m' p', step m (Yield rx) m' p').
-  Proof.
-    intros.
-    intro.
-    repeat deex.
-    inv_step.
+  Ltac not_sidecondition_fail :=
+    intros; intro Hcontra;
+    repeat deex;
+    inv_step;
     congruence.
+
+  Theorem yield_failure' : forall m s rx,
+      (~Inv m) ->
+      (~ exists m' s' p', step m s (Yield rx) m' s' p').
+  Proof.
+    not_sidecondition_fail.
   Qed.
 
-  Theorem exec_progress : forall p m,
-      exists out, exec m p out.
+  Theorem commit_failure'_inv : forall m s up rx,
+    (~StateI m s) ->
+    (~ exists m' s' p', step m s (Commit up rx) m' s' p').
+  Proof.
+    not_sidecondition_fail.
+  Qed.
+
+  Theorem commit_failure'_rel : forall m s up rx,
+    (~StateR s (up s)) ->
+    (~ exists m' s' p', step m s (Commit up rx) m' s' p').
+  Proof.
+    not_sidecondition_fail.
+  Qed.
+
+  Hint Extern 2 (forall v, _ <> Done v) => intro; congruence.
+
+  Theorem exec_progress :
+      forall (StateI_dec: forall m s, {StateI m s} + {~StateI m s}),
+      forall (StateR_dec: forall s s', {StateR s s'} + {~StateR s s'}),
+      forall p m s,
+      exists out, exec m s p out.
   Proof.
 
-    Ltac rx_specialize new_mem :=
+    Ltac rx_specialize new_mem new_s :=
       match goal with
-      | [ H : forall w:?t, forall _, exists out, exec _ _ out |- _ ] =>
+      | [ H : forall w:?t, forall _ _, exists out, exec _ _ _ out |- _ ] =>
         match t with
-        | unit => specialize (H tt new_mem); inversion H
+        | unit => specialize (H tt new_mem new_s); inversion H
         | _ => match goal with
               | [ _ : _ _ = Some ?w |- _ ] =>
-                specialize (H w new_mem); inversion H
+                specialize (H w new_mem new_s); inversion H
               end
         end
       end.
@@ -177,27 +212,32 @@ Section EventCSL.
     Hint Resolve read_failure'.
     Hint Resolve write_failure'.
     Hint Resolve yield_failure'.
+    Hint Resolve commit_failure'_inv.
+    Hint Resolve commit_failure'_rel.
 
     induction p; intros.
     - case_eq (m a); intros.
-      rx_specialize m; eexists; eauto.
-      eexists; eapply ExecFail; eauto; try congruence.
+      rx_specialize m s.
+      all: eauto 15.
     - case_eq (m a); intros.
-      rx_specialize (upd m a v); eexists; eauto.
-      eexists; eapply ExecFail; eauto; try congruence.
-    - rx_specialize m.
+      rx_specialize (upd m a v) s.
+      all: eauto 15.
+    - rx_specialize m s.
       destruct (InvDec m); intros.
-      eexists; eapply ExecStep; eauto.
-      eexists; eapply ExecFail; eauto; try congruence.
+      all: eauto 15.
+    - case_eq (StateR_dec s (up s));
+      case_eq (StateI_dec m s).
+      rx_specialize m (up s).
+      all: eauto 15.
     - eauto.
   Qed.
 
   Definition donecond := T -> @pred addr (@weq addrlen) valu.
 
-  Definition valid (pre: donecond -> pred) p : Prop :=
-    forall m d out,
-      pre d m ->
-      exec m p out ->
+  Definition valid (pre: donecond -> S -> pred) p : Prop :=
+    forall m s d out,
+      pre d s m ->
+      exec m s p out ->
       exists m' v,
         out = Finished m' v /\
         d v m'.
@@ -208,17 +248,41 @@ Section EventCSL.
   )%pred
   (at level 0, post at level 90, r at level 0, only parsing).
 
-  Notation "{{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
+  Notation "{{ e1 .. e2 , | 'PRE' pre | 'GHOST' s1 ghostpre | 'POST' post | 'GHOST' s2 ghostpost  }} p" :=
     (forall (rx: _ -> prog),
-        valid (fun done =>
+        valid (fun done s1 =>
+                 sep_star
                  (exis (fun e1 => .. (exis (fun e2 =>
                                            (pre%pred *
                                             [[ forall ret_,
-                                                 valid (fun done_rx =>
+                                                 valid (fun done_rx s2 =>
                                                           post emp ret_ *
+                                                          [[ ghostpost ]] *
                                                           [[ done_rx = done ]])
                                                        (rx ret_)
-                                           ]])%pred )) .. ))
+                                            ]])%pred )) .. ))
+                  (lift_empty ghostpre%pred)
+              ) (p rx))
+      (at level 0, p at level 60,
+       e1 binder, e2 binder,
+       s1 at level 0,
+       s2 at level 0,
+       only parsing).
+
+  Notation "{{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
+    (forall (rx: _ -> prog) ghostpre,
+        valid (fun done s1 =>
+                 sep_star
+                 (exis (fun e1 => .. (exis (fun e2 =>
+                                           (pre%pred *
+                                            [[ forall ret_,
+                                                 valid (fun done_rx s2 =>
+                                                          post emp ret_ *
+                                                          [[ ghostpre s2 ]] *
+                                                          [[ done_rx = done ]])
+                                                       (rx ret_)
+                                            ]])%pred )) .. ))
+                  (lift_empty (ghostpre s1))
               ) (p rx))
       (at level 0, p at level 60,
        e1 binder, e2 binder,
@@ -233,7 +297,7 @@ Section EventCSL.
 
   Ltac ind_exec :=
     match goal with
-    | [ H : exec _ ?p _ |- _ ] =>
+    | [ H : exec _ _ ?p _ |- _ ] =>
       remember p;
         induction H; subst;
         try inv_step;
@@ -249,14 +313,14 @@ Section EventCSL.
     unfold valid; intros.
     destruct_lift H.
     ind_exec.
-    - edestruct H3; eauto.
+    - edestruct H4; eauto.
       eapply pimpl_apply.
       cancel.
       eapply pimpl_apply; [| eapply ptsto_upd].
       cancel.
       pred_apply; cancel.
     - match goal with
-      | [ H: ~ exists m' p', step _ _ _ _ |- _] =>
+      | [ H: ~ exists m' s' p', step _ _ _ _ _ _ |- _] =>
         apply write_failure in H
       end.
       match goal with
@@ -275,14 +339,14 @@ Section EventCSL.
     unfold valid; intros.
     destruct_lift H.
     ind_exec.
-    - edestruct H3; eauto.
+    - edestruct H4; eauto.
       pred_apply; cancel.
       assert (m' a = Some v0).
       eapply ptsto_valid; eauto.
       pred_apply; cancel.
       congruence.
     - match goal with
-      | [ H: ~ exists m' p', step _ _ _ _ |- _ ] =>
+      | [ H: ~ exists m' s' p', step _ _ _ _ _ _ |- _ ] =>
         apply read_failure in H
       end.
       match goal with
@@ -301,7 +365,7 @@ Section EventCSL.
     unfold valid; intros.
     destruct_lift H.
     ind_exec.
-    - edestruct H3; eauto.
+    - edestruct H4; eauto.
       eapply pimpl_apply; [cancel | auto].
     - eapply yield_failure in H0.
       congruence.
@@ -309,7 +373,7 @@ Section EventCSL.
 
   Theorem pimpl_ok : forall pre pre' p,
       valid pre p ->
-      (forall d, pre' d =p=> pre d) ->
+      (forall d s, pre' d s =p=> pre d s) ->
       valid pre' p.
   Proof.
     unfold valid.
