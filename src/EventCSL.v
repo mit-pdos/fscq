@@ -369,10 +369,16 @@ Section EventCSL.
     unfold valid; intros.
     destruct_lift H.
     ind_exec.
-    - edestruct H4; eauto.
+    - unfold and in H; intuition.
+      deex.
+      destruct_lift H.
+      edestruct H9; eauto.
+      intuition.
       eapply pimpl_apply; [cancel | auto].
-    - eapply yield_failure in H0.
-      congruence.
+    - unfold and in H; intuition.
+      deex.
+      destruct_lift H.
+      contradiction H0; eauto.
   Qed.
 
   Theorem pimpl_ok : forall pre pre' p,
@@ -389,16 +395,20 @@ Section EventCSL.
   Theorem yield_ok' :
     {{ F,
      | PRE F * [[ F =p=> Inv ]]
+     | GHOST s (fun m => StateI m s)
      | POST RET:_ Inv
+     | GHOST s (fun m => StateI m s)
     }} Yield.
   Proof.
     intros.
     eapply pimpl_ok; [apply yield_ok |].
+    (* cancel handles the top-level pred and poorly *)
     cancel.
-    auto.
-
-    Grab Existential Variables.
-    auto.
+    unfold and.
+    eexists; eauto.
+    split; intuition; auto.
+    pred_apply; cancel; auto.
+    destruct_lift H; auto.
   Qed.
 
 End EventCSL.
@@ -432,17 +442,17 @@ Definition transition_i S (sigma: transitions S) :=
 Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' pre | 'GHOST' s1 ghostpre | 'POST' post | 'GHOST' s2 ghostpost  }} p" :=
   (forall T (rx: _ -> prog T _),
       valid gamma (transition_r sigma%pred) (transition_i sigma%pred) (fun done s1 =>
-               sep_star
+               and
                (exis (fun e1 => .. (exis (fun e2 =>
                                          (pre%pred *
                                           [[ forall ret_,
                                                valid gamma (transition_r sigma) (transition_i sigma) (fun done_rx s2 =>
-                                                        post emp ret_ *
-                                                        [[ ghostpost ]] *
+                                                        and (post emp ret_ *
                                                         [[ done_rx = done ]])
+                                                        ghostpost)
                                                      (rx ret_)
                                           ]])%pred )) .. ))
-                (lift_empty ghostpre%pred)
+                ghostpre%pred
             ) (p rx))
     (at level 0, p at level 60,
      e1 binder, e2 binder,
@@ -501,7 +511,9 @@ Section Bank.
   Definition bankS : transitions State :=
     Transitions (fun n1 n2 => n2 > n1) (fun _ n1 => n1 > 5).
 
-  Local Hint Unfold rep inv_rep Inv : prog.
+  Definition bankI := Eval simpl in transition_i bankS.
+
+  Local Hint Unfold rep inv_rep Inv bankI : prog.
 
   Lemma max_balance : forall bal1 bal2,
     (exists F, F * inv_rep bal1 bal2) =p=>
@@ -562,20 +574,40 @@ Section Bank.
     apply gt0_wneq0; auto.
   Qed.
 
+  Lemma pimpl_and_l : forall AT AEQ V (p q r: @pred AT AEQ V),
+    p =p=> r -> p /\ q =p=> r.
+  Proof.
+    firstorder.
+  Qed.
+
   Theorem transfer_yield_ok : forall bal1 bal2,
     Inv, bankS |-
     {{ F,
       | PRE F * inv_rep bal1 bal2 *
            [[ #bal1 > 0 ]]
+      | GHOST s (fun m => bankI m s)
       | POST RET:_ Inv
+      | GHOST s (fun m => bankI m s)
     }} transfer_yield.
   Proof.
     Local Hint Resolve inv_transfer_stable.
     unfold transfer_yield.
-    hoare.
+    intros.
+    eapply pimpl_ok.
 
-    Grab Existential Variables.
-    all: auto.
+    step.
+    apply pimpl_and_l.
+    cancel.
+    hoare.
+    apply pimpl_and_l.
+    cancel.
+    admit.
+    cancel.
+    apply pimpl_and_split; cancel.
+    admit.
+    admit.
+    admit.
+    apply pimpl_refl.
   Qed.
 
 End Bank.
