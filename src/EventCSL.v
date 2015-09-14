@@ -32,6 +32,7 @@ Section EventCSL.
   Variable StateI : forall m, S -> Prop.
 
   Axiom InvDec : forall m, {Inv m} + {~ Inv m}.
+  Axiom StateStutter : forall m s, StateI m s -> StateR s s.
 
   Inductive prog :=
   | Read (a: addr) (rx: valu -> prog)
@@ -54,9 +55,9 @@ Section EventCSL.
   | StepWrite : forall m s a rx v v', m a = Some v ->
                                step m s (Write a v' rx) (upd m a v') s (rx tt)
   | StepYield : forall m s m' rx,
-      (** TODO: need to also have StateI m s and StateI m s', otherwise should
-      run into problems later *)
+      StateI m s ->
       Inv m ->
+      StateI m' s ->
       Inv m' ->
       step m s (Yield rx) m' s (rx tt)
   | StepCommit : forall m s up rx,
@@ -154,23 +155,21 @@ Section EventCSL.
     apply write_failure_iff.
   Qed.
 
-  Theorem yield_failure : forall m s rx,
-      (~ exists m' s' p', step m s (Yield rx) m' s' p') ->
-      (~Inv m).
-  Proof.
-    intros.
-    intro.
-    eauto 10.
-  Qed.
-
   Ltac not_sidecondition_fail :=
     intros; intro Hcontra;
     repeat deex;
     inv_step;
     congruence.
 
-  Theorem yield_failure' : forall m s rx,
+  Theorem yield_failure'_inv : forall m s rx,
       (~Inv m) ->
+      (~ exists m' s' p', step m s (Yield rx) m' s' p').
+  Proof.
+    not_sidecondition_fail.
+  Qed.
+
+  Theorem yield_failure'_state_inv : forall m s rx,
+      (~StateI m s) ->
       (~ exists m' s' p', step m s (Yield rx) m' s' p').
   Proof.
     not_sidecondition_fail.
@@ -213,7 +212,8 @@ Section EventCSL.
 
     Hint Resolve read_failure'.
     Hint Resolve write_failure'.
-    Hint Resolve yield_failure'.
+    Hint Resolve yield_failure'_inv.
+    Hint Resolve yield_failure'_state_inv.
     Hint Resolve commit_failure'_inv.
     Hint Resolve commit_failure'_rel.
 
@@ -225,8 +225,8 @@ Section EventCSL.
       rx_specialize (upd m a v) s.
       all: eauto 15.
     - rx_specialize m s.
-      destruct (InvDec m); intros.
-      all: eauto 15.
+      destruct (InvDec m);
+      destruct (StateI_dec m s); eauto.
     - case_eq (StateR_dec s (up s));
       case_eq (StateI_dec m s).
       rx_specialize m (up s).
@@ -253,17 +253,17 @@ Section EventCSL.
   Notation "{{ e1 .. e2 , | 'PRE' pre | 'GHOST' s1 ghostpre | 'POST' post | 'GHOST' s2 ghostpost  }} p" :=
     (forall (rx: _ -> prog),
         valid (fun done s1 =>
-                 sep_star
+                 and
                  (exis (fun e1 => .. (exis (fun e2 =>
                                            (pre%pred *
                                             [[ forall ret_,
                                                  valid (fun done_rx s2 =>
-                                                          post emp ret_ *
-                                                          [[ ghostpost ]] *
+                                                          and (post emp ret_ *
                                                           [[ done_rx = done ]])
+                                                          ghostpost)
                                                        (rx ret_)
                                             ]])%pred )) .. ))
-                  (lift_empty ghostpre%pred)
+                  (ghostpre%pred)
               ) (p rx))
       (at level 0, p at level 60,
        e1 binder, e2 binder,
@@ -361,7 +361,9 @@ Section EventCSL.
   Theorem yield_ok :
     {{ (_:unit),
       | PRE Inv
+      | GHOST s (fun m => StateI m s)
       | POST RET:_ Inv
+      | GHOST s (fun m => StateI m s)
     }} Yield.
   Proof.
     unfold valid; intros.
