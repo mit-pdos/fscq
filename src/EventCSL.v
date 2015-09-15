@@ -250,46 +250,22 @@ Section EventCSL.
   )%pred
   (at level 0, post at level 90, r at level 0, only parsing).
 
-  Notation "{{ e1 .. e2 , | 'PRE' pre | 'GHOST' s1 ghostpre | 'POST' post | 'GHOST' s2 ghostpost  }} p" :=
+  Notation "{{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
     (forall (rx: _ -> prog),
         valid (fun done s1 =>
                  (exis (fun e1 => .. (exis (fun e2 =>
-                                           and
                                            (pre%pred *
                                             [[ forall ret_,
                                                  valid (fun done_rx s2 =>
-                                                          and (post emp ret_ *
+                                                          post emp ret_ *
                                                           [[ done_rx = done ]])
-                                                          ghostpost)
                                                        (rx ret_)
-                                            ]])%pred
-                                            ghostpre%pred
-                                             )) .. ))
+                                            ]])%pred)) .. ))
               ) (p rx))
       (at level 0, p at level 60,
        e1 binder, e2 binder,
        s1 at level 0,
        s2 at level 0,
-       only parsing).
-
-  Notation "{{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
-    (forall (rx: _ -> prog) ghostpre,
-        valid (fun done s1 =>
-                 (exis (fun e1 => .. (exis (fun e2 =>
-                                           and
-                                           (pre%pred *
-                                            [[ forall ret_,
-                                                 valid (fun done_rx s2 =>
-                                                          and (post emp ret_ *
-                                                          [[ done_rx = done ]])
-                                                          (ghostpre s2))
-                                                       (rx ret_)
-                                            ]])%pred
-                                            (ghostpre s1)
-                                             )) .. ))
-              ) (p rx))
-      (at level 0, p at level 60,
-       e1 binder, e2 binder,
        only parsing).
 
   (** Programs are written in continuation-passing style, where sequencing
@@ -308,27 +284,26 @@ Section EventCSL.
         try ind_prog
     end.
 
+  Ltac prove_rx :=
+    match goal with
+    | [ H: forall _, valid _ _ |- _ ] =>
+      edestruct H; eauto
+    end.
+
   Theorem write_ok : forall a v0 v,
       {{ F s0,
-         | PRE F * a |-> v0
-         | GHOST s any * [[ s = s0 ]]
-         | POST RET:_ F * a |-> v
-         | GHOST s any * [[ s = s0 ]]
+         | PRE s: F * a |-> v0 * [[ s = s0 ]]
+         | POST s: RET:_ F * a |-> v * [[ s = s0 ]]
       }} Write a v.
   Proof.
-    Local Hint Resolve pimpl_any.
-    unfold valid; intros.
-    repeat deex.
-    destruct_and H.
-    destruct_lift H1.
-    destruct_lift H2.
-    clear H1.
+    unfold valid at 1; intros.
+    destruct_lift H.
     ind_exec.
-    - edestruct H4; eauto.
+    - prove_rx.
       eapply pimpl_apply.
       cancel.
       eapply pimpl_apply; [| eapply ptsto_upd].
-      apply pimpl_and_split; cancel; auto.
+      cancel.
       pred_apply; cancel.
     - match goal with
       | [ H: ~ exists m' s' p', step _ _ _ _ _ _ |- _] =>
@@ -342,22 +317,19 @@ Section EventCSL.
   Qed.
 
   Theorem read_ok : forall a v0,
-    {{ F,
-      | PRE F * a |-> v0
-      | POST RET:v F * a |-> v0 * [[ v = v0 ]]
+    {{ F s0,
+      | PRE s: F * a |-> v0 * [[ s = s0 ]]
+      | POST s: RET:v F * a |-> v0 * [[ v = v0 ]] * [[ s = s0 ]]
     }} Read a.
   Proof.
-    unfold valid; intros.
-    repeat deex.
-    destruct_and H.
-    destruct_lift H1.
+    unfold valid at 1; intros.
+    destruct_lift H.
     ind_exec.
-    - edestruct H4; eauto.
-      split; auto.
-      pred_apply' H; cancel.
+    - prove_rx.
+      pred_apply; cancel.
       assert (m' a = Some v0).
       eapply ptsto_valid; eauto.
-      pred_apply' H; cancel.
+      pred_apply; cancel.
       congruence.
     - match goal with
       | [ H: ~ exists m' s' p', step _ _ _ _ _ _ |- _ ] =>
@@ -371,24 +343,22 @@ Section EventCSL.
   Qed.
 
   Theorem yield_ok :
-    {{ (_:unit),
-      | PRE Inv
-      | GHOST s (fun m => StateI m s)
-      | POST RET:_ Inv
-      | GHOST s (fun m => StateI m s)
+    {{ s0,
+      | PRE s: and (Inv * [[ s = s0 ]]) (fun m => StateI m s)
+      | POST s : RET:_ and (Inv * [[ s = s0 ]]) (fun m => StateI m s)
     }} Yield.
   Proof.
-    unfold valid; intros.
+    unfold valid at 1; intros.
     destruct_lift H.
+    destruct_and H.
+    destruct_lift H1.
     ind_exec.
-    - destruct_and H.
-      destruct_lift H2.
-      edestruct H9; eauto.
-      split; auto.
+    - prove_rx.
+      simpl.
       eapply pimpl_apply; [cancel | auto].
-    - destruct_and H.
-      destruct_lift H2.
-      contradiction H0; eauto.
+      split; auto.
+      pred_apply; cancel.
+    - contradiction H0; eauto.
   Qed.
 
   Theorem pimpl_ok : forall pre pre' p,
@@ -400,25 +370,6 @@ Section EventCSL.
     intros.
     apply H0 in H1.
     eauto.
-  Qed.
-
-  Theorem yield_ok' :
-    {{ F,
-     | PRE F * [[ F =p=> Inv ]]
-     | GHOST s (fun m => StateI m s)
-     | POST RET:_ Inv
-     | GHOST s (fun m => StateI m s)
-    }} Yield.
-  Proof.
-    intros.
-    eapply pimpl_ok; [apply yield_ok |].
-    (* cancel handles the top-level pred and poorly *)
-    cancel.
-    unfold and.
-    eexists; eauto.
-    split; intuition; auto.
-    pred_apply; cancel; auto.
-    destruct_lift H; auto.
   Qed.
 
 End EventCSL.
@@ -458,44 +409,29 @@ Definition transition_i S (sigma: transitions S) :=
   | Transitions _ StateI => StateI
   end.
 
-Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' pre | 'GHOST' s1 ghostpre | 'POST' post | 'GHOST' s2 ghostpost  }} p" :=
+(** Copy-paste metaprogramming:
+
+* Copy the above notation
+* add gamma, sigma |- in front to specify the invariant/transition system
+* quantify over T and change prog to prog T _ (the state type should be inferred)
+* add gamma (transition_r sigma) (transition_i sigma) as arguments to valid
+    (you'll need %pred on the outer valid due to scope stacks) *)
+Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
   (forall T (rx: _ -> prog T _),
       valid gamma (transition_r sigma%pred) (transition_i sigma%pred) (fun done s1 =>
-               and
-               (exis (fun e1 => .. (exis (fun e2 =>
-                                         (pre%pred *
-                                          [[ forall ret_,
-                                               valid gamma (transition_r sigma) (transition_i sigma) (fun done_rx s2 =>
-                                                        and (post emp ret_ *
-                                                        [[ done_rx = done ]])
-                                                        ghostpost)
-                                                     (rx ret_)
-                                          ]])%pred )) .. ))
-                ghostpre%pred
-            ) (p rx))
-    (at level 0, p at level 60,
-     e1 binder, e2 binder,
-     s1 at level 0,
-     s2 at level 0,
-     only parsing).
-
-Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
-  (forall T (rx: _ -> prog T _) ghostpre,
-      valid gamma (transition_r sigma%pred) (transition_i sigma%pred) (fun done s1 =>
-               sep_star
                (exis (fun e1 => .. (exis (fun e2 =>
                                          (pre%pred *
                                           [[ forall ret_,
                                                valid gamma (transition_r sigma) (transition_i sigma) (fun done_rx s2 =>
                                                         post emp ret_ *
-                                                        [[ ghostpre s2 ]] *
                                                         [[ done_rx = done ]])
                                                      (rx ret_)
-                                          ]])%pred )) .. ))
-                (lift_empty (ghostpre s1))
+                                          ]])%pred)) .. ))
             ) (p rx))
     (at level 0, p at level 60,
      e1 binder, e2 binder,
+     s1 at level 0,
+     s2 at level 0,
      only parsing).
 
 Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
@@ -533,10 +469,10 @@ Section Bank.
   Definition State := nat.
 
   Definition bankR n1 n2 := n2 > n1.
-  Definition bankI (m: @mem addr (@weq addrlen) valu) n := n > 5.
+  Definition bankI n := n > 5.
 
   Definition bankS : transitions State :=
-    Transitions bankR bankI.
+    Transitions bankR (fun _ n => bankI n).
 
   Local Hint Unfold rep inv_rep Inv bankI : prog.
 
@@ -570,9 +506,9 @@ Section Bank.
 
   Theorem transfer_ok : forall bal1 bal2,
     Inv, bankS |-
-    {{ F,
-      | PRE F * rep bal1 bal2
-      | POST RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1)
+    {{ F s0,
+      | PRE s: F * rep bal1 bal2 * [[ s = s0 ]]
+      | POST s: RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1) * [[ s = s0 ]]
     }} transfer.
   Proof.
     unfold transfer.
@@ -605,34 +541,30 @@ Section Bank.
     firstorder.
   Qed.
 
+  Hint Extern 4 (pimpl _ (and _ _)) => apply pimpl_and_split; try cancel.
+
   Theorem transfer_yield_ok : forall bal1 bal2,
     Inv, bankS |-
     {{ F,
-      | PRE F * inv_rep bal1 bal2 *
-           [[ #bal1 > 0 ]]
-      | GHOST s (fun m => bankI m s)
-      | POST RET:_ Inv
-      | GHOST s (fun m => bankI m s)
+      | PRE s: F * inv_rep bal1 bal2 *
+           [[ #bal1 > 0 ]] * [[ bankI s ]]
+      | POST s: RET:_ Inv * [[ bankI s ]]
     }} transfer_yield.
   Proof.
     Local Hint Resolve inv_transfer_stable.
     unfold transfer_yield.
     intros.
-    eapply pimpl_ok.
-
     step.
+    step.
+    eapply pimpl_ok; [ auto with prog | ].
+    autounfold with prog.
+    intros.
+    apply sep_star_lift_l; intros.
+    rewrite star_emp_pimpl.
+    (* cancel doesn't do this (although it could, since the right-hand side is
+    basically a lifted prop *)
     apply pimpl_and_l.
     cancel.
-    hoare.
-    apply pimpl_and_l.
-    cancel.
-    admit.
-    cancel.
-    apply pimpl_and_split; cancel.
-    admit.
-    admit.
-    admit.
-    apply pimpl_refl.
   Qed.
 
 End Bank.
