@@ -434,11 +434,20 @@ Notation "'RET' : r post" :=
 )%pred
 (at level 0, post at level 90, r at level 0, only parsing).
 
+(** transitions defines a transition system, which is nothing more than a
+struct with the StateR relation and StateI state invariant variables used
+above.
+
+This makes the notation more convenient, since R and I can be grouped together.
+*)
 Inductive transitions S :=
   | Transitions
+      (* StateR s s' holds when s -> s' is a valid transition *)
       (StateR: S -> S -> Prop)
+      (* StateI m s holds when s is a valid state and represents the memory m *)
       (StateI: @mem addr (@weq addrlen) valu -> S -> Prop).
 
+(* projection functions for transitions *)
 Definition transition_r S (sigma: transitions S) :=
   match sigma with
   | Transitions StateR _ => StateR
@@ -516,12 +525,18 @@ Section Bank.
   Definition Inv : pred := (exists F bal1 bal2,
     F * inv_rep bal1 bal2)%pred.
 
+  (** The bank transition system.
+
+  Currently a fake system to illustrate the ideas, but will eventually
+  represent a ledger that is read-only and sums up to the current balances.
+   *)
   Definition State := nat.
 
-  Definition bankS : transitions State :=
-    Transitions (fun n1 n2 => n2 > n1) (fun _ n1 => n1 > 5).
+  Definition bankR n1 n2 := n2 > n1.
+  Definition bankI (m: @mem addr (@weq addrlen) valu) n := n > 5.
 
-  Definition bankI := Eval simpl in transition_i bankS.
+  Definition bankS : transitions State :=
+    Transitions bankR bankI.
 
   Local Hint Unfold rep inv_rep Inv bankI : prog.
 
