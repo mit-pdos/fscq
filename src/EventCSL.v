@@ -29,10 +29,10 @@ Section EventCSL.
   (** Define the transition system for the ghost state.
       The semantics will reject transitions that do not obey these rules. *)
   Variable StateR : S -> S -> Prop.
-  Variable StateI : forall m, S -> Prop.
+  Variable StateI : S -> @pred addr (@weq addrlen) valu.
 
   Axiom InvDec : forall m, {Inv m} + {~ Inv m}.
-  Axiom StateStutter : forall m s, StateI m s -> StateR s s.
+  Axiom StateStutter : forall s m, StateI s m -> StateR s s.
 
   Inductive prog :=
   | Read (a: addr) (rx: valu -> prog)
@@ -55,14 +55,14 @@ Section EventCSL.
   | StepWrite : forall m s a rx v v', m a = Some v ->
                                step m s (Write a v' rx) (upd m a v') s (rx tt)
   | StepYield : forall m s m' rx,
-      StateI m s ->
+      StateI s m ->
       Inv m ->
-      StateI m' s ->
+      StateI s m' ->
       Inv m' ->
       step m s (Yield rx) m' s (rx tt)
   | StepCommit : forall m s up rx,
       StateR s (up s) ->
-      StateI m s ->
+      StateI s m ->
       step m s (Commit up rx) m (up s) (rx tt).
 
   Hint Constructors step.
@@ -169,14 +169,14 @@ Section EventCSL.
   Qed.
 
   Theorem yield_failure'_state_inv : forall m s rx,
-      (~StateI m s) ->
+      (~StateI s m) ->
       (~ exists m' s' p', step m s (Yield rx) m' s' p').
   Proof.
     not_sidecondition_fail.
   Qed.
 
   Theorem commit_failure'_inv : forall m s up rx,
-    (~StateI m s) ->
+    (~StateI s m) ->
     (~ exists m' s' p', step m s (Commit up rx) m' s' p').
   Proof.
     not_sidecondition_fail.
@@ -192,7 +192,7 @@ Section EventCSL.
   Hint Extern 2 (forall v, _ <> Done v) => intro; congruence.
 
   Theorem exec_progress :
-      forall (StateI_dec: forall m s, {StateI m s} + {~StateI m s}),
+      forall (StateI_dec: forall s m, {StateI s m} + {~StateI s m}),
       forall (StateR_dec: forall s s', {StateR s s'} + {~StateR s s'}),
       forall p m s,
       exists out, exec m s p out.
@@ -226,9 +226,9 @@ Section EventCSL.
       all: eauto 15.
     - rx_specialize m s.
       destruct (InvDec m);
-      destruct (StateI_dec m s); eauto.
+      destruct (StateI_dec s m); eauto.
     - case_eq (StateR_dec s (up s));
-      case_eq (StateI_dec m s).
+      case_eq (StateI_dec s m).
       rx_specialize m (up s).
       all: eauto 15.
     - eauto.
@@ -344,8 +344,8 @@ Section EventCSL.
 
   Theorem yield_ok :
     {{ s0,
-      | PRE s: and (Inv * [[ s = s0 ]]) (fun m => StateI m s)
-      | POST s : RET:_ and (Inv * [[ s = s0 ]]) (fun m => StateI m s)
+      | PRE s: and (Inv * [[ s = s0 ]]) (StateI s)
+      | POST s : RET:_ and (Inv * [[ s = s0 ]]) (StateI s)
     }} Yield.
   Proof.
     unfold valid at 1; intros.
@@ -395,8 +395,8 @@ Inductive transitions S :=
   | Transitions
       (* StateR s s' holds when s -> s' is a valid transition *)
       (StateR: S -> S -> Prop)
-      (* StateI m s holds when s is a valid state and represents the memory m *)
-      (StateI: @mem addr (@weq addrlen) valu -> S -> Prop).
+      (* StateI s m holds when s is a valid state and represents the memory m *)
+      (StateI: S -> @pred addr (@weq addrlen) valu).
 
 (* projection functions for transitions *)
 Definition transition_r S (sigma: transitions S) :=
@@ -472,7 +472,7 @@ Section Bank.
   Definition bankI n := n > 5.
 
   Definition bankS : transitions State :=
-    Transitions bankR (fun _ n => bankI n).
+    Transitions bankR (fun n => lift (bankI n)).
 
   Local Hint Unfold rep inv_rep Inv bankI : prog.
 
@@ -561,8 +561,7 @@ Section Bank.
     intros.
     apply sep_star_lift_l; intros.
     rewrite star_emp_pimpl.
-    (* cancel doesn't do this (although it could, since the right-hand side is
-    basically a lifted prop *)
+    (* cancel doesn't do this, although it could, if it handled and better *)
     apply pimpl_and_l.
     cancel.
   Qed.
