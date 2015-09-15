@@ -185,6 +185,9 @@ Ltac destruct_and H :=
     let Hr := fresh in
     destruct H as [Hl Hr];
       destruct_and Hr
+  | (and _ _) _ =>
+    unfold and in H at 1;
+    destruct_and H
   | _ => idtac
   end.
 

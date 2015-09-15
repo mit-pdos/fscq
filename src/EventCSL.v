@@ -253,8 +253,8 @@ Section EventCSL.
   Notation "{{ e1 .. e2 , | 'PRE' pre | 'GHOST' s1 ghostpre | 'POST' post | 'GHOST' s2 ghostpost  }} p" :=
     (forall (rx: _ -> prog),
         valid (fun done s1 =>
-                 and
                  (exis (fun e1 => .. (exis (fun e2 =>
+                                           and
                                            (pre%pred *
                                             [[ forall ret_,
                                                  valid (fun done_rx s2 =>
@@ -262,8 +262,9 @@ Section EventCSL.
                                                           [[ done_rx = done ]])
                                                           ghostpost)
                                                        (rx ret_)
-                                            ]])%pred )) .. ))
-                  (ghostpre%pred)
+                                            ]])%pred
+                                            ghostpre%pred
+                                             )) .. ))
               ) (p rx))
       (at level 0, p at level 60,
        e1 binder, e2 binder,
@@ -274,17 +275,18 @@ Section EventCSL.
   Notation "{{ e1 .. e2 , | 'PRE' pre | 'POST' post }} p" :=
     (forall (rx: _ -> prog) ghostpre,
         valid (fun done s1 =>
-                 sep_star
                  (exis (fun e1 => .. (exis (fun e2 =>
+                                           and
                                            (pre%pred *
                                             [[ forall ret_,
                                                  valid (fun done_rx s2 =>
-                                                          post emp ret_ *
-                                                          [[ ghostpre s2 ]] *
+                                                          and (post emp ret_ *
                                                           [[ done_rx = done ]])
+                                                          (ghostpre s2))
                                                        (rx ret_)
-                                            ]])%pred )) .. ))
-                  (lift_empty (ghostpre s1))
+                                            ]])%pred
+                                            (ghostpre s1)
+                                             )) .. ))
               ) (p rx))
       (at level 0, p at level 60,
        e1 binder, e2 binder,
@@ -307,19 +309,26 @@ Section EventCSL.
     end.
 
   Theorem write_ok : forall a v0 v,
-      {{ F,
+      {{ F s0,
          | PRE F * a |-> v0
+         | GHOST s any * [[ s = s0 ]]
          | POST RET:_ F * a |-> v
+         | GHOST s any * [[ s = s0 ]]
       }} Write a v.
   Proof.
+    Local Hint Resolve pimpl_any.
     unfold valid; intros.
-    destruct_lift H.
+    repeat deex.
+    destruct_and H.
+    destruct_lift H1.
+    destruct_lift H2.
+    clear H1.
     ind_exec.
     - edestruct H4; eauto.
       eapply pimpl_apply.
       cancel.
       eapply pimpl_apply; [| eapply ptsto_upd].
-      cancel.
+      apply pimpl_and_split; cancel; auto.
       pred_apply; cancel.
     - match goal with
       | [ H: ~ exists m' s' p', step _ _ _ _ _ _ |- _] =>
@@ -339,13 +348,16 @@ Section EventCSL.
     }} Read a.
   Proof.
     unfold valid; intros.
-    destruct_lift H.
+    repeat deex.
+    destruct_and H.
+    destruct_lift H1.
     ind_exec.
     - edestruct H4; eauto.
-      pred_apply; cancel.
+      split; auto.
+      pred_apply' H; cancel.
       assert (m' a = Some v0).
       eapply ptsto_valid; eauto.
-      pred_apply; cancel.
+      pred_apply' H; cancel.
       congruence.
     - match goal with
       | [ H: ~ exists m' s' p', step _ _ _ _ _ _ |- _ ] =>
@@ -369,15 +381,13 @@ Section EventCSL.
     unfold valid; intros.
     destruct_lift H.
     ind_exec.
-    - unfold and in H; intuition.
-      deex.
-      destruct_lift H.
+    - destruct_and H.
+      destruct_lift H2.
       edestruct H9; eauto.
-      intuition.
+      split; auto.
       eapply pimpl_apply; [cancel | auto].
-    - unfold and in H; intuition.
-      deex.
-      destruct_lift H.
+    - destruct_and H.
+      destruct_lift H2.
       contradiction H0; eauto.
   Qed.
 
