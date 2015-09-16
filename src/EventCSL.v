@@ -3,6 +3,8 @@ Require Import Pred.
 Require Import Word.
 Require Import Omega.
 Require Import SepAuto.
+Import List.ListNotations.
+Open Scope list.
 
 (* defined in Prog. which we don't want to import here *)
 Definition addrlen := 64.
@@ -401,11 +403,11 @@ Record transitions S := {
 (** Copy-paste metaprogramming:
 
 * Copy the above notation
-* add gamma, sigma |- in front to specify the invariant/transition system
+* add [gamma; sigma] |- in front to specify the invariant/transition system
 * quantify over T and change prog to prog T _ (the state type should be inferred)
 * add gamma (transition_r sigma) (transition_i sigma) as arguments to valid
     (you'll need %pred on the outer valid due to scope stacks) *)
-Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
+Notation "[ gamma ; sigma ] |- {{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
   (forall T (rx: _ -> prog T _),
       valid gamma (StateR sigma%pred) (StateI sigma%pred) (fun done s1 =>
                (exis (fun e1 => .. (exis (fun e2 =>
@@ -450,20 +452,39 @@ Section Bank.
   Definition Inv : pred := (exists F bal1 bal2,
     F * inv_rep bal1 bal2)%pred.
 
-  (** The bank transition system.
+  (** The bank transition system, bankS. *)
+  Inductive ledger_entry : Set :=
+  | from1 : nat -> ledger_entry
+  | from2 : nat -> ledger_entry.
 
-  Currently a fake system to illustrate the ideas, but will eventually
-  represent a ledger that is read-only and sums up to the current balances.
-   *)
-  Definition State := nat.
+  Definition State := list ledger_entry.
 
-  Definition bankR n1 n2 := n2 > n1.
-  Definition bankI n := n > 5.
+  Fixpoint balances (entries:State) : (nat * nat) :=
+    match entries with
+    | nil => (100, 0)
+    | entry :: xs => match (balances xs) with
+                    | (bal1, bal2) => match entry with
+                                       | from1 n => (bal1 - n, bal2 + n)
+                                       | from2 n => (bal1 + n, bal2 - n)
+                                       end
+                    end
+    end.
+
+
+  Definition bankR (ledger1 ledger2:State) :=
+    ledger2 = ledger2 \/
+    exists entry, ledger2 = entry :: ledger1.
+
+  Definition bankI ledger bal1 bal2 :=
+    balances ledger = (bal1, bal2).
 
   Definition bankS : transitions State :=
-    Build_transitions bankR (fun n => lift (bankI n)).
+    Build_transitions bankR (fun ledger m => forall bal1 bal2,
+                                 m acct1 = Some bal1 ->
+                                 m acct2 = Some bal2 ->
+                                 bankI ledger #bal1 #bal2).
 
-  Local Hint Unfold rep inv_rep Inv bankI : prog.
+  Local Hint Unfold rep inv_rep Inv State bankI : prog.
 
   Lemma max_balance : forall bal1 bal2,
     (exists F, F * inv_rep bal1 bal2) =p=>
@@ -484,6 +505,9 @@ Section Bank.
     Write acct2 (bal2 ^+ $1);;
     rx tt.
 
+  (* an update function that adds an entry to the ledger for transfer *)
+  Definition record_transfer ledger : State := (from1 1) :: ledger.
+
   Ltac step :=
     repeat (autounfold with prog);
     eapply pimpl_ok; [ auto with prog | ];
@@ -494,7 +518,7 @@ Section Bank.
   Ltac hoare := intros; repeat step.
 
   Theorem transfer_ok : forall bal1 bal2,
-    Inv, bankS |-
+    [Inv; bankS] |-
     {{ F s0,
       | PRE s: F * rep bal1 bal2 * [[ s = s0 ]]
       | POST s: RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1) * [[ s = s0 ]]
@@ -533,11 +557,11 @@ Section Bank.
   Hint Extern 4 (pimpl _ (and _ _)) => apply pimpl_and_split; try cancel.
 
   Theorem transfer_yield_ok : forall bal1 bal2,
-    Inv, bankS |-
+    [Inv; bankS] |-
     {{ F,
-      | PRE s: F * inv_rep bal1 bal2 *
-           [[ #bal1 > 0 ]] * [[ bankI s ]]
-      | POST s: RET:_ Inv * [[ bankI s ]]
+      | PRE l: F * inv_rep bal1 bal2 *
+           [[ #bal1 > 0 ]] * [[ bankI l #bal1 #bal2 ]]
+      | POST l: RET:_ Inv * [[ bankI l #bal1 #bal2 ]]
     }} transfer_yield.
   Proof.
     Local Hint Resolve inv_transfer_stable.
@@ -545,6 +569,23 @@ Section Bank.
     intros.
     step.
     step.
+
+    apply pimpl_and_split.
+    cancel.
+    subst.
+    intro; intros.
+    assert (m acct1 = Some (bal1 ^- $1)).
+    eapply ptsto_valid; pred_apply; cancel.
+    assert (m acct2 = Some (bal2 ^+ $1)).
+    eapply ptsto_valid; pred_apply; cancel.
+    rewrite H6 in H0; inversion H0.
+    rewrite H7 in H4; inversion H4.
+    (* this isn't true: the ledger hasn't been correctly updated
+       with a Commit *)
+    admit.
+
+    (* step'ing over the final continuation calls cancel, which causes
+    some evar problems *)
     eapply pimpl_ok; [ auto with prog | ].
     autounfold with prog.
     intros.
@@ -553,6 +594,6 @@ Section Bank.
     (* cancel doesn't do this, although it could, if it handled and better *)
     apply pimpl_and_l.
     cancel.
-  Qed.
+  Abort.
 
 End Bank.
