@@ -8,7 +8,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 		  ListPred GenSepN Log LogRecArray \
 		  Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 		  Dir DirName StringUtils TreeUtils DirTree FS Testprog \
-	      ExtrHaskellPrelude Extraction ExtractJSON
+	      ExtrHaskellPrelude Extraction ExtractJSON \
+		  Compare
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 GHC 	   := ghc

@@ -73,3 +73,15 @@ Definition hashlen := 256.
 
 Parameter hash_inv : word hashlen -> {sz: nat & word sz}.
 Parameter hash_fwd : forall sz, word sz -> word hashlen.
+
+(* Converting between hash and valu.*)
+Lemma hashlen_valulen: hashlen + (valulen - hashlen) = valulen.
+Proof.
+  rewrite valulen_is; auto.
+Qed.
+
+Definition hash_to_valu (h: word hashlen) : valu.
+  set (zext h (valulen-hashlen)) as r.
+  rewrite hashlen_valulen in r.
+  apply r.
+Defined.
