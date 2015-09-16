@@ -64,7 +64,7 @@ Section EventCSL.
       step m s (Yield rx) m' s (rx tt)
   | StepCommit : forall m s up rx,
       StateR s (up s) ->
-      StateI s m ->
+      StateI (up s) m ->
       step m s (Commit up rx) m (up s) (rx tt).
 
   Hint Constructors step.
@@ -178,7 +178,7 @@ Section EventCSL.
   Qed.
 
   Theorem commit_failure'_inv : forall m s up rx,
-    (~StateI s m) ->
+    (~StateI (up s) m) ->
     (~ exists m' s' p', step m s (Commit up rx) m' s' p').
   Proof.
     not_sidecondition_fail.
@@ -230,7 +230,7 @@ Section EventCSL.
       destruct (InvDec m);
       destruct (StateI_dec s m); eauto.
     - case_eq (StateR_dec s (up s));
-      case_eq (StateI_dec s m).
+      case_eq (StateI_dec (up s) m).
       rx_specialize m (up s).
       all: eauto 15.
     - eauto.
@@ -363,6 +363,21 @@ Section EventCSL.
     - contradiction H0; eauto.
   Qed.
 
+  Theorem commit_ok : forall up,
+    {{ F s0,
+     | PRE s: F * [[ s = s0 ]] * [[ StateR s0 (up s0) ]] * [[ F =p=> StateI (up s0) ]]
+     | POST s': RET:_ F * [[ s' = up s0 ]]
+    }} Commit up.
+  Proof.
+    unfold valid at 1; intros.
+    destruct_lift H.
+    ind_exec.
+    - prove_rx.
+      simpl.
+      eapply pimpl_apply; [cancel | auto].
+    - contradiction H0; eauto 10.
+  Qed.
+
   Theorem pimpl_ok : forall pre pre' p,
       valid pre p ->
       (forall d s, pre' d s =p=> pre d s) ->
@@ -437,6 +452,7 @@ Arguments Yield {T} {S} rx.
 Hint Extern 1 (valid _ _ _ _ (progseq (Read _) _)) => apply read_ok : prog.
 Hint Extern 1 (valid _ _ _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
 Hint Extern 1 (valid _ _ _ _ (progseq (Yield) _)) => apply yield_ok : prog.
+Hint Extern 1 (valid _ _ _ _ (progseq (Commit _) _)) => apply commit_ok : prog.
 
 Section Bank.
   Definition acct1 : addr := $0.
@@ -478,13 +494,28 @@ Section Bank.
   Definition bankI ledger bal1 bal2 :=
     balances ledger = (bal1, bal2).
 
-  Definition bankS : transitions State :=
-    Build_transitions bankR (fun ledger m => forall bal1 bal2,
-                                 m acct1 = Some bal1 ->
-                                 m acct2 = Some bal2 ->
-                                 bankI ledger #bal1 #bal2).
+  Definition bankPred ledger : @pred addr (@weq addrlen) valu :=
+    (fun m => forall bal1 bal2,
+         m acct1 = Some bal1 ->
+         m acct2 = Some bal2 ->
+         bankI ledger #bal1 #bal2).
 
-  Local Hint Unfold rep inv_rep Inv State bankI : prog.
+  Definition bankS : transitions State :=
+    Build_transitions bankR bankPred.
+
+  Local Hint Unfold rep inv_rep Inv State bankR bankI : prog.
+
+  Definition transfer {T S} rx : prog T S :=
+    bal1 <- Read acct1;
+    bal2 <- Read acct2;
+    Write acct1 (bal1 ^- $1);;
+          Write acct2 (bal2 ^+ $1);;
+          rx tt.
+
+  (* an update function that adds an entry to the ledger for transfer *)
+  Definition record_transfer ledger : State := (from1 1) :: ledger.
+
+  Hint Unfold record_transfer : prog.
 
   Lemma max_balance : forall bal1 bal2,
     (exists F, F * inv_rep bal1 bal2) =p=>
@@ -498,21 +529,82 @@ Section Bank.
     pred_apply; cancel.
   Qed.
 
-  Definition transfer {T S} rx : prog T S :=
-    bal1 <- Read acct1;
-    bal2 <- Read acct2;
-    Write acct1 (bal1 ^- $1);;
-    Write acct2 (bal2 ^+ $1);;
-    rx tt.
+  Lemma pair_eq : forall T S (a1 b1:T) (a2 b2:S),
+      a1 = b1 /\ a2 = b2 <->
+      (a1, a2) = (b1, b2).
+  Proof.
+    intros.
+    intuition; try inversion H; subst; auto.
+  Qed.
 
-  (* an update function that adds an entry to the ledger for transfer *)
-  Definition record_transfer ledger : State := (from1 1) :: ledger.
+  Hint Resolve -> gt0_wneq0.
+
+  Lemma inv_transfer_stable : forall (bal1 bal2 : valu),
+      #bal1 + #bal2 = 100 ->
+      #bal1 > 0 ->
+      # (bal1 ^- $1) + # (bal2 ^+ $1) = 100.
+  Proof.
+    intros.
+    rewrite wordToNat_minus_one by auto.
+    erewrite wordToNat_plusone.
+    omega.
+    apply lt_wlt.
+    instantiate (1 := $101).
+    simpl; omega.
+  Qed.
+
+  Lemma record_correct : forall (bal1 bal2:valu),
+      #bal1 > 0 ->
+      #bal1 + #bal2 = 100 ->
+      (# (bal1) - 1, # (bal2) + 1) =
+      (# (bal1 ^- $ (1)), # (bal2 ^+ $ (1))).
+  Proof.
+    intros.
+    rewrite wordToNat_minus_one by auto.
+    erewrite wordToNat_plusone.
+    apply pair_eq; omega.
+    apply lt_wlt.
+    instantiate (1 := $101).
+    simpl; omega.
+  Qed.
+
+  Hint Resolve record_correct.
+
+  Ltac combine_opt_eq :=
+    match goal with
+    | [ H1 : ?m ?acct = ?rhs, H2 : ?m ?acct = _  |- _ ] =>
+      rewrite H1 in H2; inversion H2;
+      match rhs with
+      | Some ?obj => subst obj
+      end
+    end.
+
+  Lemma bank_invariant_transfer : forall F s bal1 bal2,
+      #bal1 > 0 ->
+      #bal1 + #bal2 = 100 ->
+      balances s = (#bal1, #bal2) ->
+      acct2 |-> (bal2 ^+ $ (1)) * acct1 |-> (bal1 ^- $ (1)) * F =p=>
+  bankPred (from1 1 :: s).
+  Proof.
+    unfold bankPred.
+    autounfold with prog.
+    intros.
+    intro m; intros.
+    assert (m acct1 = Some (bal1 ^- $1)).
+    eapply ptsto_valid; pred_apply; cancel.
+    assert (m acct2 = Some (bal2 ^+ $1)).
+    eapply ptsto_valid; pred_apply; cancel.
+    do 2 combine_opt_eq.
+    simpl; replace (balances s).
+    auto.
+  Qed.
 
   Ltac step :=
     repeat (autounfold with prog);
     eapply pimpl_ok; [ auto with prog | ];
     repeat (autounfold with prog);
     try cancel;
+    try subst;
     eauto.
 
   Ltac hoare := intros; repeat step.
@@ -531,22 +623,7 @@ Section Bank.
   Hint Extern 1 (valid _ _ _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
 
   Definition transfer_yield {T} rx : prog T State :=
-    transfer;; Yield;; rx tt.
-
-  Lemma inv_transfer_stable : forall (bal1 bal2 : valu),
-    #bal1 + #bal2 = 100 ->
-    #bal1 > 0 ->
-    # (bal1 ^- $1) + # (bal2 ^+ $1) = 100.
-  Proof.
-    intros.
-    rewrite wordToNat_minus_one.
-    erewrite wordToNat_plusone.
-    omega.
-    apply lt_wlt.
-    instantiate (1 := $101).
-    simpl; omega.
-    apply gt0_wneq0; auto.
-  Qed.
+    transfer;; Commit record_transfer;; Yield;; rx tt.
 
   Lemma pimpl_and_l : forall AT AEQ V (p q r: @pred AT AEQ V),
     p =p=> r -> p /\ q =p=> r.
@@ -561,28 +638,16 @@ Section Bank.
     {{ F,
       | PRE l: F * inv_rep bal1 bal2 *
            [[ #bal1 > 0 ]] * [[ bankI l #bal1 #bal2 ]]
-      | POST l: RET:_ Inv * [[ bankI l #bal1 #bal2 ]]
+      | POST l': RET:_ Inv * [[ bankI l' (#bal1 - 1) (#bal2 + 1) ]]
     }} transfer_yield.
   Proof.
-    Local Hint Resolve inv_transfer_stable.
+    Hint Resolve inv_transfer_stable.
+    Hint Resolve bank_invariant_transfer.
     unfold transfer_yield.
     intros.
     step.
     step.
-
-    apply pimpl_and_split.
-    cancel.
-    subst.
-    intro; intros.
-    assert (m acct1 = Some (bal1 ^- $1)).
-    eapply ptsto_valid; pred_apply; cancel.
-    assert (m acct2 = Some (bal2 ^+ $1)).
-    eapply ptsto_valid; pred_apply; cancel.
-    rewrite H6 in H0; inversion H0.
-    rewrite H7 in H4; inversion H4.
-    (* this isn't true: the ledger hasn't been correctly updated
-       with a Commit *)
-    admit.
+    step.
 
     (* step'ing over the final continuation calls cancel, which causes
     some evar problems *)
@@ -593,7 +658,11 @@ Section Bank.
     rewrite star_emp_pimpl.
     (* cancel doesn't do this, although it could, if it handled and better *)
     apply pimpl_and_l.
+    (* finish up what step would do *)
     cancel.
-  Abort.
+    subst.
+
+    simpl; replace (balances s); auto.
+  Qed.
 
 End Bank.
