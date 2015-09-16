@@ -385,29 +385,18 @@ Notation "'RET' : r post" :=
 )%pred
 (at level 0, post at level 90, r at level 0, only parsing).
 
-(** transitions defines a transition system, which is nothing more than a
-struct with the StateR relation and StateI state invariant variables used
-above.
+(** transitions defines a transition system, grouping the StateR and StateI
+variables above.
 
-This makes the notation more convenient, since R and I can be grouped together.
+This makes the notation more convenient, since R and I can be specified in one
+ident.
 *)
-Inductive transitions S :=
-  | Transitions
+Record transitions S := {
       (* StateR s s' holds when s -> s' is a valid transition *)
-      (StateR: S -> S -> Prop)
+      StateR: S -> S -> Prop;
       (* StateI s m holds when s is a valid state and represents the memory m *)
-      (StateI: S -> @pred addr (@weq addrlen) valu).
-
-(* projection functions for transitions *)
-Definition transition_r S (sigma: transitions S) :=
-  match sigma with
-  | Transitions StateR _ => StateR
-  end.
-
-Definition transition_i S (sigma: transitions S) :=
-  match sigma with
-  | Transitions _ StateI => StateI
-  end.
+      StateI: S -> @pred addr (@weq addrlen) valu
+      }.
 
 (** Copy-paste metaprogramming:
 
@@ -418,11 +407,11 @@ Definition transition_i S (sigma: transitions S) :=
     (you'll need %pred on the outer valid due to scope stacks) *)
 Notation "gamma , sigma |- {{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
   (forall T (rx: _ -> prog T _),
-      valid gamma (transition_r sigma%pred) (transition_i sigma%pred) (fun done s1 =>
+      valid gamma (StateR sigma%pred) (StateI sigma%pred) (fun done s1 =>
                (exis (fun e1 => .. (exis (fun e2 =>
                                          (pre%pred *
                                           [[ forall ret_,
-                                               valid gamma (transition_r sigma) (transition_i sigma) (fun done_rx s2 =>
+                                               valid gamma (StateR sigma) (StateI sigma) (fun done_rx s2 =>
                                                         post emp ret_ *
                                                         [[ done_rx = done ]])
                                                      (rx ret_)
@@ -472,7 +461,7 @@ Section Bank.
   Definition bankI n := n > 5.
 
   Definition bankS : transitions State :=
-    Transitions bankR (fun n => lift (bankI n)).
+    Build_transitions bankR (fun n => lift (bankI n)).
 
   Local Hint Unfold rep inv_rep Inv bankI : prog.
 
