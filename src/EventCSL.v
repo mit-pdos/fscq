@@ -3,6 +3,8 @@ Require Import Pred.
 Require Import Word.
 Require Import Omega.
 Require Import SepAuto.
+Require Import Star.
+Require Import List.
 Import List.ListNotations.
 Open Scope list.
 
@@ -56,12 +58,13 @@ Section EventCSL.
                            step m s (Read a rx) m s (rx v)
   | StepWrite : forall m s a rx v v', m a = Some v ->
                                step m s (Write a v' rx) (upd m a v') s (rx tt)
-  | StepYield : forall m s m' rx,
+  | StepYield : forall m s s' m' rx,
       StateI s m ->
       Inv m ->
-      StateI s m' ->
+      StateI s' m' ->
       Inv m' ->
-      step m s (Yield rx) m' s (rx tt)
+      star StateR s s' ->
+      step m s (Yield rx) m' s' (rx tt)
   | StepCommit : forall m s up rx,
       StateR s (up s) ->
       StateI (up s) m ->
@@ -347,7 +350,7 @@ Section EventCSL.
   Theorem yield_ok :
     {{ s0,
       | PRE s: and (Inv * [[ s = s0 ]]) (StateI s)
-      | POST s : RET:_ and (Inv * [[ s = s0 ]]) (StateI s)
+      | POST s': RET:_ and (Inv * [[ star StateR s0 s' ]]) (StateI s')
     }} Yield.
   Proof.
     unfold valid at 1; intros.
@@ -470,26 +473,30 @@ Section Bank.
 
   (** The bank transition system, bankS. *)
   Inductive ledger_entry : Set :=
-  | from1 : nat -> ledger_entry
-  | from2 : nat -> ledger_entry.
+  | from1 : forall (amount:nat), ledger_entry
+  | from2 : forall (amount:nat), ledger_entry.
 
   Definition State := list ledger_entry.
 
-  Fixpoint balances (entries:State) : (nat * nat) :=
-    match entries with
-    | nil => (100, 0)
-    | entry :: xs => match (balances xs) with
-                    | (bal1, bal2) => match entry with
-                                       | from1 n => (bal1 - n, bal2 + n)
-                                       | from2 n => (bal1 + n, bal2 - n)
-                                       end
-                    end
+  Definition add_entry (bals:nat*nat) (entry:ledger_entry) :=
+    match bals with
+    | (bal1, bal2) => match entry with
+                     | from1 n => (bal1 - n, bal2 + n)
+                     | from2 n => (bal1 + n, bal2 - n)
+                     end
     end.
 
+  Fixpoint balances' (entries:State) accum : (nat * nat) :=
+    match entries with
+    | nil => accum
+    | entry :: xs => balances' xs (add_entry accum entry)
+    end.
+
+  Definition balances entries := balances' entries (100, 0).
 
   Definition bankR (ledger1 ledger2:State) :=
-    ledger2 = ledger2 \/
-    exists entry, ledger2 = entry :: ledger1.
+    ledger1 = ledger2 \/
+    exists entry, ledger2 = ledger1 ++ [entry].
 
   Definition bankI ledger bal1 bal2 :=
     balances ledger = (bal1, bal2).
@@ -513,7 +520,7 @@ Section Bank.
           rx tt.
 
   (* an update function that adds an entry to the ledger for transfer *)
-  Definition record_transfer ledger : State := (from1 1) :: ledger.
+  Definition record_transfer ledger : State := ledger ++ [from1 1].
 
   Hint Unfold record_transfer : prog.
 
@@ -535,6 +542,20 @@ Section Bank.
   Proof.
     intros.
     intuition; try inversion H; subst; auto.
+  Qed.
+
+  Lemma balances'_assoc : forall entry ledger accum,
+      balances' (ledger ++ [entry]) accum =
+      add_entry (balances' ledger accum) entry.
+  Proof.
+    induction ledger; intros; auto; simpl.
+    rewrite IHledger; auto.
+  Qed.
+
+  Lemma balances_assoc : forall entry ledger,
+      balances (ledger ++ [entry]) = add_entry (balances ledger) entry.
+  Proof.
+    intros; apply balances'_assoc.
   Qed.
 
   Hint Resolve -> gt0_wneq0.
@@ -570,22 +591,45 @@ Section Bank.
 
   Hint Resolve record_correct.
 
-  Ltac combine_opt_eq :=
-    match goal with
-    | [ H1 : ?m ?acct = ?rhs, H2 : ?m ?acct = _  |- _ ] =>
-      rewrite H1 in H2; inversion H2;
-      match rhs with
-      | Some ?obj => subst obj
-      end
-    end.
+  Lemma star_bankR : forall ledger1 ledger2,
+      star bankR ledger1 ledger2 ->
+      exists ledger1', ledger2 = ledger1 ++ ledger1'.
+  Proof.
+    unfold bankR.
+    intros.
+    induction H.
+    exists nil; rewrite app_nil_r; auto.
+    destruct H.
+    subst; auto.
+    repeat deex.
+    eexists.
+    rewrite <- app_assoc.
+    auto.
+  Qed.
 
   Lemma bank_invariant_transfer : forall F s bal1 bal2,
       #bal1 > 0 ->
       #bal1 + #bal2 = 100 ->
       balances s = (#bal1, #bal2) ->
       acct2 |-> (bal2 ^+ $ (1)) * acct1 |-> (bal1 ^- $ (1)) * F =p=>
-  bankPred (from1 1 :: s).
+  bankPred (s ++ [from1 1]).
   Proof.
+    Ltac combine_opt_eq :=
+      match goal with
+      | [ H1 : ?m ?acct = ?rhs, H2 : ?m ?acct = _  |- _ ] =>
+        rewrite H1 in H2; inversion H2;
+        match rhs with
+        | Some ?obj => subst obj
+        end
+      end.
+
+    Ltac process_entry :=
+      match goal with
+      | [ |- context[balances (?l ++ [_])] ] =>
+        rewrite balances_assoc; unfold add_entry;
+        try (replace (balances l))
+      end.
+
     unfold bankPred.
     autounfold with prog.
     intros.
@@ -595,8 +639,7 @@ Section Bank.
     assert (m acct2 = Some (bal2 ^+ $1)).
     eapply ptsto_valid; pred_apply; cancel.
     do 2 combine_opt_eq.
-    simpl; replace (balances s).
-    auto.
+    process_entry; auto.
   Qed.
 
   Ltac step :=
@@ -622,7 +665,7 @@ Section Bank.
 
   Hint Extern 1 (valid _ _ _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
 
-  Definition transfer_yield {T} rx : prog T State :=
+  Definition transfer_yield {T} rx : prog T _ :=
     transfer;; Commit record_transfer;; Yield;; rx tt.
 
   Lemma pimpl_and_l : forall AT AEQ V (p q r: @pred AT AEQ V),
@@ -633,12 +676,24 @@ Section Bank.
 
   Hint Extern 4 (pimpl _ (and _ _)) => apply pimpl_and_split; try cancel.
 
+  Lemma firstn_length_app : forall A (l1 l2:list A) n,
+      n = length l1 ->
+      firstn n (l1 ++ l2) = l1.
+  Proof.
+    induction l1; intros; simpl in *.
+    subst; auto.
+    subst.
+    simpl.
+    f_equal.
+    auto.
+  Qed.
+
   Theorem transfer_yield_ok : forall bal1 bal2,
     [Inv; bankS] |-
-    {{ F,
+    {{ F l0,
       | PRE l: F * inv_rep bal1 bal2 *
-           [[ #bal1 > 0 ]] * [[ bankI l #bal1 #bal2 ]]
-      | POST l': RET:_ Inv * [[ bankI l' (#bal1 - 1) (#bal2 + 1) ]]
+           [[ #bal1 > 0 ]] * [[ bankI l #bal1 #bal2 ]] * [[ l = l0 ]]
+      | POST l': RET:_ Inv * [[ firstn (length l0 + 1) l' = l0 ++ [from1 1] ]]
     }} transfer_yield.
   Proof.
     Hint Resolve inv_transfer_stable.
@@ -659,10 +714,13 @@ Section Bank.
     (* cancel doesn't do this, although it could, if it handled and better *)
     apply pimpl_and_l.
     (* finish up what step would do *)
-    cancel.
-    subst.
+    try cancel.
+    try subst.
 
-    simpl; replace (balances s); auto.
+    apply star_bankR in H2.
+    deex.
+    apply firstn_length_app.
+    rewrite app_length; auto.
   Qed.
 
 End Bank.
