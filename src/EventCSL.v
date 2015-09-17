@@ -490,15 +490,15 @@ Section Bank.
 
   Local Hint Unfold rep inv_rep State bankR bankI : prog.
 
-  Definition transfer {T S} rx : prog T S :=
+  Definition transfer {T S} amount rx : prog T S :=
     bal1 <- Read acct1;
     bal2 <- Read acct2;
-    Write acct1 (bal1 ^- $1);;
-          Write acct2 (bal2 ^+ $1);;
+    Write acct1 (bal1 ^- $ amount);;
+          Write acct2 (bal2 ^+ $ amount);;
           rx tt.
 
   (* an update function that adds an entry to the ledger for transfer *)
-  Definition record_transfer ledger : State := ledger ++ [from1 1].
+  Definition record_transfer amount ledger : State := ledger ++ [from1 amount].
 
   Hint Unfold record_transfer : prog.
 
@@ -538,35 +538,69 @@ Section Bank.
 
   Hint Resolve -> gt0_wneq0.
 
-  Lemma inv_transfer_stable : forall (bal1 bal2 : valu),
-      #bal1 + #bal2 = 100 ->
-      #bal1 > 0 ->
-      # (bal1 ^- $1) + # (bal2 ^+ $1) = 100.
+  Check wminus_minus.
+
+  Lemma wplus_plus : forall sz a b,
+      goodSize sz (#a + #b) ->
+      @wordToNat sz (a ^+ b) = #a + #b.
   Proof.
     intros.
-    rewrite wordToNat_minus_one by auto.
-    erewrite wordToNat_plusone.
+    rewrite wplus_alt.
+    unfold wplusN.
+    unfold wordBinN.
+    apply wordToNat_natToWord_idempotent'; eauto.
+  Qed.
+
+  Lemma minus_amount : forall (bal1 bal2:valu) amount,
+      #bal1 + #bal2 = 100 ->
+      #bal1 >= amount ->
+      # (bal1 ^- $ amount) = #bal1 - amount.
+  Proof.
+    intros.
+    assert (@wordToNat valulen ($ amount) = amount).
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    apply goodSize_bound with 100; simpl; omega.
+    rewrite wminus_minus.
     omega.
-    apply lt_wlt.
-    instantiate (1 := $101).
-    simpl; omega.
+    apply le_wle; omega.
+  Qed.
+
+  Lemma plus_amount : forall (bal1 bal2:valu) amount,
+      #bal1 + #bal2 = 100 ->
+      #bal1 >= amount ->
+      # (bal2 ^+ $ amount) = #bal2 + amount.
+  Proof.
+    intros.
+    assert (@wordToNat valulen ($ amount) = amount).
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    apply goodSize_bound with 100; simpl; omega.
+    rewrite wplus_plus.
+    omega.
+    apply goodSize_bound with 100; simpl; omega.
+  Qed.
+
+  Lemma inv_transfer_stable : forall (bal1 bal2 : valu) amount,
+      #bal1 + #bal2 = 100 ->
+      #bal1 >= amount ->
+      # (bal1 ^- $ amount) + # (bal2 ^+ $ amount) = 100.
+  Proof.
+    intros.
+    erewrite minus_amount; eauto.
+    erewrite plus_amount; eauto.
+    omega.
   Qed.
 
   Hint Resolve inv_transfer_stable.
 
-  Lemma record_correct : forall (bal1 bal2:valu),
-      #bal1 > 0 ->
+  Lemma record_correct : forall (bal1 bal2:valu) amount,
       #bal1 + #bal2 = 100 ->
-      (# (bal1) - 1, # (bal2) + 1) =
-      (# (bal1 ^- $ (1)), # (bal2 ^+ $ (1))).
+      #bal1 >= amount ->
+      (# (bal1) - amount, # (bal2) + amount) =
+      (# (bal1 ^- $ amount), # (bal2 ^+ $ amount)).
   Proof.
     intros.
-    rewrite wordToNat_minus_one by auto.
-    erewrite wordToNat_plusone.
-    apply pair_eq; omega.
-    apply lt_wlt.
-    instantiate (1 := $101).
-    simpl; omega.
+    erewrite minus_amount; eauto.
+    erewrite plus_amount; eauto.
   Qed.
 
   Hint Resolve record_correct.
@@ -587,12 +621,12 @@ Section Bank.
     auto.
   Qed.
 
-  Lemma bank_invariant_transfer : forall F s bal1 bal2,
-      #bal1 > 0 ->
+  Lemma bank_invariant_transfer : forall F s bal1 bal2 amount,
       #bal1 + #bal2 = 100 ->
+      #bal1 >= amount ->
       balances s = (#bal1, #bal2) ->
-      acct2 |-> (bal2 ^+ $ (1)) * acct1 |-> (bal1 ^- $ (1)) * F =p=>
-  bankPred (s ++ [from1 1]).
+      acct2 |-> (bal2 ^+ $ amount) * acct1 |-> (bal1 ^- $ amount) * F =p=>
+  bankPred (s ++ [from1 amount]).
   Proof.
     Ltac process_entry :=
       match goal with
@@ -619,21 +653,21 @@ Section Bank.
 
   Ltac hoare := intros; repeat step.
 
-  Theorem transfer_ok : forall bal1 bal2,
+  Theorem transfer_ok : forall bal1 bal2 amount,
     bankS |-
     {{ F s0,
       | PRE s: F * rep bal1 bal2 * [[ s = s0 ]]
-      | POST s: RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1) * [[ s = s0 ]]
-    }} transfer.
+      | POST s: RET:_ F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) * [[ s = s0 ]]
+    }} transfer amount.
   Proof.
     unfold transfer.
     hoare.
   Qed.
 
-  Hint Extern 1 (valid _ _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
+  Hint Extern 1 (valid _ _ _ (progseq (transfer _) _)) => apply transfer_ok : prog.
 
-  Definition transfer_yield {T} rx : prog T _ :=
-    transfer;; Commit record_transfer;; Yield;; rx tt.
+  Definition transfer_yield {T} amount rx : prog T _ :=
+    transfer amount;; Commit (record_transfer amount);; Yield;; rx tt.
 
   Lemma pimpl_and_l : forall AT AEQ V (p q r: @pred AT AEQ V),
     p =p=> r -> p /\ q =p=> r.
@@ -655,13 +689,16 @@ Section Bank.
     auto.
   Qed.
 
-  Theorem transfer_yield_ok : forall bal1 bal2,
+  Theorem transfer_yield_ok : forall bal1 bal2 amount,
     bankS |-
     {{ F l0,
       | PRE l: F * inv_rep bal1 bal2 *
-           [[ #bal1 > 0 ]] * [[ bankI l #bal1 #bal2 ]] * [[ l = l0 ]]
-      | POST l': RET:_ bankPred l' * [[ firstn (length l0 + 1) l' = l0 ++ [from1 1] ]]
-    }} transfer_yield.
+               [[ #bal1 >= amount ]] *
+               [[ bankI l #bal1 #bal2 ]] *
+               [[ l = l0 ]]
+      | POST l': RET:_ bankPred l' *
+                     [[ firstn (length l0 + 1) l' = l0 ++ [from1 amount] ]]
+    }} transfer_yield amount.
   Proof.
     unfold transfer_yield.
     hoare.
