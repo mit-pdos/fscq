@@ -27,16 +27,10 @@ Section EventCSL.
   (** Programs can manipulate ghost state of type S *)
   Variable S:Type.
 
-  (** Yield will respect this invariant. *)
-  Variable Inv : @pred addr (@weq addrlen) valu.
-
   (** Define the transition system for the ghost state.
       The semantics will reject transitions that do not obey these rules. *)
   Variable StateR : S -> S -> Prop.
   Variable StateI : S -> @pred addr (@weq addrlen) valu.
-
-  Axiom InvDec : forall m, {Inv m} + {~ Inv m}.
-  Axiom StateStutter : forall s m, StateI s m -> StateR s s.
 
   Inductive prog :=
   | Read (a: addr) (rx: valu -> prog)
@@ -60,9 +54,7 @@ Section EventCSL.
                                step m s (Write a v' rx) (upd m a v') s (rx tt)
   | StepYield : forall m s s' m' rx,
       StateI s m ->
-      Inv m ->
       StateI s' m' ->
-      Inv m' ->
       star StateR s s' ->
       step m s (Yield rx) m' s' (rx tt)
   | StepCommit : forall m s up rx,
@@ -167,13 +159,6 @@ Section EventCSL.
     congruence.
 
   Theorem yield_failure'_inv : forall m s rx,
-      (~Inv m) ->
-      (~ exists m' s' p', step m s (Yield rx) m' s' p').
-  Proof.
-    not_sidecondition_fail.
-  Qed.
-
-  Theorem yield_failure'_state_inv : forall m s rx,
       (~StateI s m) ->
       (~ exists m' s' p', step m s (Yield rx) m' s' p').
   Proof.
@@ -218,7 +203,6 @@ Section EventCSL.
     Hint Resolve read_failure'.
     Hint Resolve write_failure'.
     Hint Resolve yield_failure'_inv.
-    Hint Resolve yield_failure'_state_inv.
     Hint Resolve commit_failure'_inv.
     Hint Resolve commit_failure'_rel.
 
@@ -230,7 +214,6 @@ Section EventCSL.
       rx_specialize (upd m a v) s.
       all: eauto 15.
     - rx_specialize m s.
-      destruct (InvDec m);
       destruct (StateI_dec s m); eauto.
     - case_eq (StateR_dec s (up s));
       case_eq (StateI_dec (up s) m).
@@ -349,20 +332,16 @@ Section EventCSL.
 
   Theorem yield_ok :
     {{ s0,
-      | PRE s: and (Inv * [[ s = s0 ]]) (StateI s)
-      | POST s': RET:_ and (Inv * [[ star StateR s0 s' ]]) (StateI s')
+      | PRE s: StateI s * [[ s = s0 ]]
+      | POST s': RET:_ StateI s' * [[ star StateR s0 s' ]]
     }} Yield.
   Proof.
     unfold valid at 1; intros.
     destruct_lift H.
-    destruct_and H.
-    destruct_lift H1.
     ind_exec.
     - prove_rx.
       simpl.
       eapply pimpl_apply; [cancel | auto].
-      split; auto.
-      pred_apply; cancel.
     - contradiction H0; eauto.
   Qed.
 
@@ -388,7 +367,10 @@ Section EventCSL.
   Proof.
     unfold valid.
     intros.
-    apply H0 in H1.
+    match goal with
+    | [ H: context[?pre _ _ =p=> _], H1: ?pre _ _ _ |- _ ] =>
+      apply H in H1
+    end.
     eauto.
   Qed.
 
@@ -421,17 +403,17 @@ Record transitions S := {
 (** Copy-paste metaprogramming:
 
 * Copy the above notation
-* add [gamma; sigma] |- in front to specify the invariant/transition system
+* add sigma |- in front to specify the transition system
 * quantify over T and change prog to prog T _ (the state type should be inferred)
-* add gamma (transition_r sigma) (transition_i sigma) as arguments to valid
-    (you'll need %pred on the outer valid due to scope stacks) *)
-Notation "[ gamma ; sigma ] |- {{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
+* add (transition_r sigma) (transition_i sigma) as arguments to valid
+    (you'll need %pred on sigma in the outer `valid` due to scope stacks) *)
+Notation "sigma |- {{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
   (forall T (rx: _ -> prog T _),
-      valid gamma (StateR sigma%pred) (StateI sigma%pred) (fun done s1 =>
+      valid (StateR sigma%pred) (StateI sigma%pred) (fun done s1 =>
                (exis (fun e1 => .. (exis (fun e2 =>
                                          (pre%pred *
                                           [[ forall ret_,
-                                               valid gamma (StateR sigma) (StateI sigma) (fun done_rx s2 =>
+                                               valid (StateR sigma) (StateI sigma) (fun done_rx s2 =>
                                                         post emp ret_ *
                                                         [[ done_rx = done ]])
                                                      (rx ret_)
@@ -452,10 +434,10 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
    without applying it to any arguments *)
 Arguments Yield {T} {S} rx.
 
-Hint Extern 1 (valid _ _ _ _ (progseq (Read _) _)) => apply read_ok : prog.
-Hint Extern 1 (valid _ _ _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
-Hint Extern 1 (valid _ _ _ _ (progseq (Yield) _)) => apply yield_ok : prog.
-Hint Extern 1 (valid _ _ _ _ (progseq (Commit _) _)) => apply commit_ok : prog.
+Hint Extern 1 (valid _ _ _ (progseq (Read _) _)) => apply read_ok : prog.
+Hint Extern 1 (valid _ _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
+Hint Extern 1 (valid _ _ _ (progseq (Yield) _)) => apply yield_ok : prog.
+Hint Extern 1 (valid _ _ _ (progseq (Commit _) _)) => apply commit_ok : prog.
 
 Section Bank.
   Definition acct1 : addr := $0.
@@ -467,9 +449,6 @@ Section Bank.
   Definition inv_rep bal1 bal2 : pred :=
     rep bal1 bal2 *
     [[ #bal1 + #bal2 = 100 ]].
-
-  Definition Inv : pred := (exists F bal1 bal2,
-    F * inv_rep bal1 bal2)%pred.
 
   (** The bank transition system, bankS. *)
   Inductive ledger_entry : Set :=
@@ -502,15 +481,14 @@ Section Bank.
     balances ledger = (bal1, bal2).
 
   Definition bankPred ledger : @pred addr (@weq addrlen) valu :=
-    (fun m => forall bal1 bal2,
-         m acct1 = Some bal1 ->
-         m acct2 = Some bal2 ->
-         bankI ledger #bal1 #bal2).
+    (exists F bal1 bal2,
+      F * inv_rep bal1 bal2 *
+      [[ bankI ledger #bal1 #bal2 ]])%pred.
 
   Definition bankS : transitions State :=
     Build_transitions bankR bankPred.
 
-  Local Hint Unfold rep inv_rep Inv State bankR bankI : prog.
+  Local Hint Unfold rep inv_rep State bankR bankI : prog.
 
   Definition transfer {T S} rx : prog T S :=
     bal1 <- Read acct1;
@@ -574,6 +552,8 @@ Section Bank.
     simpl; omega.
   Qed.
 
+  Hint Resolve inv_transfer_stable.
+
   Lemma record_correct : forall (bal1 bal2:valu),
       #bal1 > 0 ->
       #bal1 + #bal2 = 100 ->
@@ -614,15 +594,6 @@ Section Bank.
       acct2 |-> (bal2 ^+ $ (1)) * acct1 |-> (bal1 ^- $ (1)) * F =p=>
   bankPred (s ++ [from1 1]).
   Proof.
-    Ltac combine_opt_eq :=
-      match goal with
-      | [ H1 : ?m ?acct = ?rhs, H2 : ?m ?acct = _  |- _ ] =>
-        rewrite H1 in H2; inversion H2;
-        match rhs with
-        | Some ?obj => subst obj
-        end
-      end.
-
     Ltac process_entry :=
       match goal with
       | [ |- context[balances (?l ++ [_])] ] =>
@@ -631,16 +602,12 @@ Section Bank.
       end.
 
     unfold bankPred.
-    autounfold with prog.
-    intros.
-    intro m; intros.
-    assert (m acct1 = Some (bal1 ^- $1)).
-    eapply ptsto_valid; pred_apply; cancel.
-    assert (m acct2 = Some (bal2 ^+ $1)).
-    eapply ptsto_valid; pred_apply; cancel.
-    do 2 combine_opt_eq.
+    repeat (autounfold with prog).
+    cancel.
     process_entry; auto.
   Qed.
+
+  Hint Resolve bank_invariant_transfer.
 
   Ltac step :=
     repeat (autounfold with prog);
@@ -653,7 +620,7 @@ Section Bank.
   Ltac hoare := intros; repeat step.
 
   Theorem transfer_ok : forall bal1 bal2,
-    [Inv; bankS] |-
+    bankS |-
     {{ F s0,
       | PRE s: F * rep bal1 bal2 * [[ s = s0 ]]
       | POST s: RET:_ F * rep (bal1 ^- $1) (bal2 ^+ $1) * [[ s = s0 ]]
@@ -663,7 +630,7 @@ Section Bank.
     hoare.
   Qed.
 
-  Hint Extern 1 (valid _ _ _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
+  Hint Extern 1 (valid _ _ _ (progseq (transfer) _)) => apply transfer_ok : prog.
 
   Definition transfer_yield {T} rx : prog T _ :=
     transfer;; Commit record_transfer;; Yield;; rx tt.
@@ -689,36 +656,24 @@ Section Bank.
   Qed.
 
   Theorem transfer_yield_ok : forall bal1 bal2,
-    [Inv; bankS] |-
+    bankS |-
     {{ F l0,
       | PRE l: F * inv_rep bal1 bal2 *
            [[ #bal1 > 0 ]] * [[ bankI l #bal1 #bal2 ]] * [[ l = l0 ]]
-      | POST l': RET:_ Inv * [[ firstn (length l0 + 1) l' = l0 ++ [from1 1] ]]
+      | POST l': RET:_ bankPred l' * [[ firstn (length l0 + 1) l' = l0 ++ [from1 1] ]]
     }} transfer_yield.
   Proof.
-    Hint Resolve inv_transfer_stable.
-    Hint Resolve bank_invariant_transfer.
     unfold transfer_yield.
-    intros.
-    step.
-    step.
-    step.
+    hoare.
 
-    (* step'ing over the final continuation calls cancel, which causes
-    some evar problems *)
-    eapply pimpl_ok; [ auto with prog | ].
-    autounfold with prog.
-    intros.
-    apply sep_star_lift_l; intros.
-    rewrite star_emp_pimpl.
-    (* cancel doesn't do this, although it could, if it handled and better *)
-    apply pimpl_and_l.
-    (* finish up what step would do *)
-    try cancel.
-    try subst.
+    eapply pimpl_trans;
+      [ | apply bank_invariant_transfer ];
+      [ cancel | .. ]; auto.
 
-    apply star_bankR in H2.
-    deex.
+    match goal with
+    | [ H: star _ _ _ |- _ ] => apply star_bankR in H;
+        inversion H; subst
+    end.
     apply firstn_length_app.
     rewrite app_length; auto.
   Qed.
