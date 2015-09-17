@@ -279,9 +279,9 @@ Section EventCSL.
     end.
 
   Theorem write_ok : forall a v0 v,
-      {{ F s0,
-         | PRE s: F * a |-> v0 * [[ s = s0 ]]
-         | POST s: RET:_ F * a |-> v * [[ s = s0 ]]
+      {{ F,
+         | PRE s: F * a |-> v0
+         | POST s': RET:_ F * a |-> v * [[ s' = s ]]
       }} Write a v.
   Proof.
     unfold valid at 1; intros.
@@ -305,9 +305,10 @@ Section EventCSL.
   Qed.
 
   Theorem read_ok : forall a v0,
-    {{ F s0,
-      | PRE s: F * a |-> v0 * [[ s = s0 ]]
-      | POST s: RET:v F * a |-> v0 * [[ v = v0 ]] * [[ s = s0 ]]
+    {{ F,
+      | PRE s: F * a |-> v0
+      | POST s': RET:v F * a |-> v0 * [[ v = v0 ]] *
+                     [[ s' = s ]]
     }} Read a.
   Proof.
     unfold valid at 1; intros.
@@ -331,9 +332,9 @@ Section EventCSL.
   Qed.
 
   Theorem yield_ok :
-    {{ s0,
-      | PRE s: StateI s * [[ s = s0 ]]
-      | POST s': RET:_ StateI s' * [[ star StateR s0 s' ]]
+    {{ (_:unit),
+      | PRE s: StateI s
+      | POST s': RET:_ StateI s' * [[ star StateR s s' ]]
     }} Yield.
   Proof.
     unfold valid at 1; intros.
@@ -346,9 +347,9 @@ Section EventCSL.
   Qed.
 
   Theorem commit_ok : forall up,
-    {{ F s0,
-     | PRE s: F * [[ s = s0 ]] * [[ StateR s0 (up s0) ]] * [[ F =p=> StateI (up s0) ]]
-     | POST s': RET:_ F * [[ s' = up s0 ]]
+    {{ F,
+     | PRE s: F * [[ StateR s (up s) ]] * [[ F =p=> StateI (up s) ]]
+     | POST s': RET:_ F * [[ s' = up s ]]
     }} Commit up.
   Proof.
     unfold valid at 1; intros.
@@ -655,9 +656,9 @@ Section Bank.
 
   Theorem transfer_ok : forall bal1 bal2 amount,
     bankS |-
-    {{ F s0,
-      | PRE s: F * rep bal1 bal2 * [[ s = s0 ]]
-      | POST s: RET:_ F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) * [[ s = s0 ]]
+    {{ F,
+      | PRE s: F * rep bal1 bal2
+      | POST s': RET:_ F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) * [[ s' = s ]]
     }} transfer amount.
   Proof.
     unfold transfer.
@@ -691,13 +692,12 @@ Section Bank.
 
   Theorem transfer_yield_ok : forall bal1 bal2 amount,
     bankS |-
-    {{ F l0,
+    {{ F,
       | PRE l: F * inv_rep bal1 bal2 *
                [[ #bal1 >= amount ]] *
-               [[ bankI l #bal1 #bal2 ]] *
-               [[ l = l0 ]]
+               [[ bankI l #bal1 #bal2 ]]
       | POST l': RET:_ bankPred l' *
-                     [[ firstn (length l0 + 1) l' = l0 ++ [from1 amount] ]]
+                     [[ firstn (length l + 1) l' = l ++ [from1 amount] ]]
     }} transfer_yield amount.
   Proof.
     unfold transfer_yield.
@@ -713,6 +713,9 @@ Section Bank.
     end.
     apply firstn_length_app.
     rewrite app_length; auto.
+
+    Grab Existential Variables.
+    all: auto.
   Qed.
 
 End Bank.
