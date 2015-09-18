@@ -40,7 +40,7 @@ Section EventCSL.
   | Commit (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
 
-  Ltac ind_prog :=
+  Ltac inv_prog :=
     match goal with
     | [ H: @eq prog _ _ |- _ ] =>
       inversion H
@@ -48,26 +48,34 @@ Section EventCSL.
 
   Implicit Type p : prog.
 
-  Inductive step : forall d s p d' s' p', Prop :=
+  Inductive state :=
+    | sigma : forall d (s:S), state.
+
+  Notation "{| d ; s |}" := (sigma d s) (at level 0).
+
+  Reserved Notation "p '/' st '==>' p' '/' st'" (at level 40, p' at level 39).
+
+  Inductive step : forall st p st' p', Prop :=
   | StepRead : forall d s a rx v, d a = Some v ->
-                           step d s (Read a rx) d s (rx v)
+                             Read a rx / {|d; s|} ==> rx v / {|d; s|}
   | StepWrite : forall d s a rx v v', d a = Some v ->
-                               step d s (Write a v' rx) (upd d a v') s (rx tt)
+                                 Write a v' rx / {|d; s|} ==> rx tt / {|upd d a v'; s|}
   | StepYield : forall d s s' d' rx,
       StateI s d ->
       StateI s' d' ->
       star StateR s s' ->
-      step d s (Yield rx) d' s' (rx tt)
+      Yield rx / {|d; s|} ==> rx tt / {|d'; s'|}
   | StepCommit : forall d s up rx,
       StateR s (up s) ->
       StateI (up s) d ->
-      step d s (Commit up rx) d (up s) (rx tt).
+      Commit up rx / {|d; s|} ==> rx tt / {|d; up s|}
+  where "p '/' st '==>' p' '/' st'" := (step st p st' p').
 
   Hint Constructors step.
 
   Ltac inv_step :=
     match goal with
-    | [ H: step _ _ _ _ _ _ |- _ ] =>
+    | [ H: step _ _ _ _ |- _ ] =>
       inversion H; subst
     end.
 
@@ -75,23 +83,23 @@ Section EventCSL.
   | Failed
   | Finished d (v:T).
 
-  Inductive exec : forall d s p (out:outcome), Prop :=
-  | ExecStep : forall d s p d' s' p' out,
-      step d s p d' s' p' ->
-      exec d' s' p' out ->
-      exec d s p out
-  | ExecFail : forall d s p,
-      (~ exists d' s' p', step d s p d' s' p') ->
+  Inductive exec : forall st p (out:outcome), Prop :=
+  | ExecStep : forall st p st' p' out,
+      p / st ==> p' / st' ->
+      exec st' p' out ->
+      exec st p out
+  | ExecFail : forall st p,
+      (~ exists st' p', p / st ==> p' / st') ->
       (forall v, p <> Done v) ->
-      exec d s p Failed
+      exec st p Failed
   | ExecDone : forall d s v,
-      exec d s (Done v) (Finished d v).
+      exec {|d; s|} (Done v) (Finished d v).
 
   Hint Constructors exec.
 
   Ltac invalid_address :=
     match goal with
-    | [ H: ~ exists d' s' p', step _ _ _ _ _ _ |- ?d ?a = None ] =>
+    | [ H: ~ exists st' p', step _ _ _ _ |- ?d ?a = None ] =>
       case_eq (d a); auto; intros;
       contradiction H;
       eauto
@@ -99,10 +107,10 @@ Section EventCSL.
 
   Ltac no_step :=
     match goal with
-    | [  |- ~ exists d' s' p', step _ _ _ _ _ _ ] =>
+    | [  |- ~ (exists st' p', step _ _ _ _) ] =>
       let Hcontra := fresh in
       intro Hcontra;
-        do 3 deex;
+        repeat deex;
         inversion Hcontra; congruence
     end.
 
@@ -112,14 +120,14 @@ Section EventCSL.
     try no_step.
 
   Theorem read_failure_iff : forall d s rx a,
-      (~ exists d' s' p', step d s (Read a rx) d' s' p') <->
+      (~ exists st' p', Read a rx / {|d; s|} ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
   Qed.
 
   Theorem read_failure : forall d s rx a,
-      (~ exists d' s' p', step d s (Read a rx) d' s' p') ->
+      (~ exists st' p', Read a rx / {|d; s|} ==> p' / st') ->
       d a = None.
   Proof.
     apply read_failure_iff.
@@ -127,20 +135,20 @@ Section EventCSL.
 
   Theorem read_failure' : forall d s rx a,
       d a = None ->
-      (~ exists d' s' p', step d s (Read a rx) d' s' p').
+      (~ exists st' p', Read a rx / {|d; s|} ==> p' / st').
   Proof.
     apply read_failure_iff.
   Qed.
 
   Theorem write_failure_iff : forall d s v rx a,
-      (~ exists d' s' p', step d s (Write a v rx) d' s' p') <->
+      (~ exists st' p', Write a v rx / {|d; s|} ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
   Qed.
 
   Theorem write_failure : forall d s v rx a,
-      (~ exists d' s' p', step d s (Write a v rx) d' s' p') ->
+      (~ exists st' p', Write a v rx / {|d; s|} ==> p' / st') ->
       d a = None.
   Proof.
     apply write_failure_iff.
@@ -148,7 +156,7 @@ Section EventCSL.
 
   Theorem write_failure' : forall d s v rx a,
       d a = None ->
-      (~ exists d' s' p', step d s (Write a v rx) d' s' p').
+      (~ exists st' p', Write a v rx / {|d; s|} ==> p' / st').
   Proof.
     apply write_failure_iff.
   Qed.
@@ -161,21 +169,21 @@ Section EventCSL.
 
   Theorem yield_failure'_inv : forall d s rx,
       (~StateI s d) ->
-      (~ exists d' s' p', step d s (Yield rx) d' s' p').
+      (~ exists st' p', Yield rx / {|d; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
   Theorem commit_failure'_inv : forall d s up rx,
     (~StateI (up s) d) ->
-    (~ exists d' s' p', step d s (Commit up rx) d' s' p').
+    (~ exists st' p', Commit up rx / {|d; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
   Theorem commit_failure'_rel : forall d s up rx,
     (~StateR s (up s)) ->
-    (~ exists d' s' p', step d s (Commit up rx) d' s' p').
+    (~ exists st' p', Commit up rx / {|d; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
@@ -185,18 +193,18 @@ Section EventCSL.
   Theorem exec_progress :
       forall (StateI_dec: forall s d, {StateI s d} + {~StateI s d}),
       forall (StateR_dec: forall s s', {StateR s s'} + {~StateR s s'}),
-      forall p d s,
-      exists out, exec d s p out.
+      forall p st,
+      exists out, exec st p out.
   Proof.
 
-    Ltac rx_specialize new_mem new_s :=
+    Ltac rx_specialize new_st :=
       match goal with
-      | [ H : forall w:?t, forall _ _, exists out, exec _ _ _ out |- _ ] =>
+      | [ H : forall w:?t, forall _, exists out, exec _ _ out |- _ ] =>
         match t with
-        | unit => specialize (H tt new_mem new_s); inversion H
+        | unit => specialize (H tt new_st); inversion H
         | _ => match goal with
               | [ _ : _ _ = Some ?w |- _ ] =>
-                specialize (H w new_mem new_s); inversion H
+                specialize (H w new_st); inversion H
               end
         end
       end.
@@ -207,18 +215,18 @@ Section EventCSL.
     Hint Resolve commit_failure'_inv.
     Hint Resolve commit_failure'_rel.
 
-    induction p; intros.
+    induction p; intros; destruct st.
     - case_eq (d a); intros.
-      rx_specialize d s.
+      rx_specialize {|d; s|}.
       all: eauto 15.
     - case_eq (d a); intros.
-      rx_specialize (upd d a v) s.
+      rx_specialize {| upd d a v; s |}.
       all: eauto 15.
-    - rx_specialize d s.
+    - rx_specialize {|d; s|}.
       destruct (StateI_dec s d); eauto.
     - case_eq (StateR_dec s (up s));
       case_eq (StateI_dec (up s) d).
-      rx_specialize d (up s).
+      rx_specialize {|d; up s|}.
       all: eauto 15.
     - eauto.
   Qed.
@@ -228,7 +236,7 @@ Section EventCSL.
   Definition valid (pre: donecond -> S -> pred) p : Prop :=
     forall d s done out,
       pre done s d ->
-      exec d s p out ->
+      exec {|d; s|} p out ->
       exists d' v,
         out = Finished d' v /\
         done v d'.
@@ -264,13 +272,21 @@ Section EventCSL.
   A is the type of the whole expression, (output -> prog). *)
   Definition progseq (A B:Type) (p1 : B -> A) (p2: B) := p1 p2.
 
+  Ltac inv_st :=
+    match goal with
+    | [ H : @eq state _ _ |- _ ] =>
+      inversion H
+    end.
+
   Ltac ind_exec :=
     match goal with
-    | [ H : exec _ _ ?p _ |- _ ] =>
-      remember p;
-        induction H; subst;
-        try inv_step;
-        try ind_prog
+    | [ H : exec ?st ?p _ |- _ ] =>
+      remember st; remember p;
+      induction H; subst;
+      try (destruct st;
+      inv_st);
+      try inv_step;
+      try inv_prog
     end.
 
   Ltac prove_rx :=
@@ -295,7 +311,7 @@ Section EventCSL.
       cancel.
       pred_apply; cancel.
     - match goal with
-      | [ H: ~ exists d' s' p', step _ _ _ _ _ _ |- _] =>
+      | [ H: ~ exists st' p', step _ _ _ _ |- _] =>
         apply write_failure in H
       end.
       match goal with
@@ -317,12 +333,12 @@ Section EventCSL.
     ind_exec.
     - prove_rx.
       pred_apply; cancel.
-      assert (d' a = Some v0).
+      assert (d a = Some v0).
       eapply ptsto_valid; eauto.
       pred_apply; cancel.
       congruence.
     - match goal with
-      | [ H: ~ exists d' s' p', step _ _ _ _ _ _ |- _ ] =>
+      | [ H: ~ exists st' p', step _ _ _ _ |- _ ] =>
         apply read_failure in H
       end.
       match goal with
@@ -342,7 +358,7 @@ Section EventCSL.
     destruct_lift H.
     ind_exec.
     - prove_rx.
-      simpl.
+      cbn.
       eapply pimpl_apply; [cancel | auto].
     - contradiction H0; eauto.
   Qed.
@@ -357,7 +373,7 @@ Section EventCSL.
     destruct_lift H.
     ind_exec.
     - prove_rx.
-      simpl.
+      cbn.
       eapply pimpl_apply; [cancel | auto].
     - contradiction H0; eauto 10.
   Qed.
