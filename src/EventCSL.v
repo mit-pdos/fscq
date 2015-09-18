@@ -233,37 +233,13 @@ Section EventCSL.
 
   Definition donecond := T -> @pred addr (@weq addrlen) valu.
 
-  Definition valid (pre: donecond -> S -> pred) p : Prop :=
+  Definition valid (pre: donecond -> mem -> S -> Prop) p : Prop :=
     forall d s done out,
-      pre done s d ->
+      pre done d s ->
       exec {|d; s|} p out ->
       exists d' v,
         out = Finished d' v /\
         done v d'.
-
-  Notation "'RET' : r post" :=
-  (fun F =>
-    (fun r => (F * post)%pred)
-  )%pred
-  (at level 0, post at level 90, r at level 0, only parsing).
-
-  Notation "{{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
-    (forall (rx: _ -> prog),
-        valid (fun done s1 =>
-                 (exis (fun e1 => .. (exis (fun e2 =>
-                                           (pre%pred *
-                                            [[ forall ret_,
-                                                 valid (fun done_rx s2 =>
-                                                          post emp ret_ *
-                                                          [[ done_rx = done ]])
-                                                       (rx ret_)
-                                            ]])%pred)) .. ))
-              ) (p rx))
-      (at level 0, p at level 60,
-       e1 binder, e2 binder,
-       s1 at level 0,
-       s2 at level 0,
-       only parsing).
 
   (** Programs are written in continuation-passing style, where sequencing
   is simply function application. We wrap this sequencing in a function for
@@ -295,18 +271,53 @@ Section EventCSL.
       edestruct H; eauto
     end.
 
+  Definition pred_in AT AEQ V (F: @pred AT AEQ V) m := F m.
+
+  Notation "m '|=' F ;" :=
+    (pred_in F%pred m) (at level 30, F at level 0) : mem_judgement_scope.
+
+  Delimit Scope mem_judgement_scope with judgement.
+
+  Notation "{{ e1 .. e2 , | 'PRE' d s : pre | 'POST' d' s' r : post }} p" :=
+    (forall (rx: _ -> prog),
+        valid (fun done d s =>
+                 (ex (fun e1 => .. (ex (fun e2 =>
+                                           pre%judgement /\
+                                           forall ret_,
+                                             valid (fun done_rx d' s' =>
+                                                      (fun r => post%judgement) ret_ /\
+                                                      done_rx = done)
+                                                   (rx ret_)
+                                  )) .. ))
+              ) (p rx))
+      (at level 0, p at level 60,
+       e1 binder, e2 binder,
+       d at level 0,
+       d' at level 0,
+       s at level 0,
+       s' at level 0,
+       r at level 0,
+       only parsing).
+
+  (* extract the precondition of a valid statement into the hypotheses *)
+  Ltac intros_pre :=
+    unfold valid at 1; unfold pred_in; intros;
+    repeat deex.
+
+  (* simplify the postcondition obligation to its components *)
+  Ltac simpl_post :=
+    cbn; intuition.
+
   Theorem write_ok : forall a v0 v,
       {{ F,
-         | PRE s: F * a |-> v0
-         | POST s': RET:_ F * a |-> v * [[ s' = s ]]
+         | PRE d s: d |= F * a |-> v0;
+         | POST d' s' _: d' |= F * a |-> v; /\
+                                            s = s'
       }} Write a v.
   Proof.
-    unfold valid at 1; intros.
-    destruct_lift H.
+    intros_pre.
     ind_exec.
-    - prove_rx.
-      eapply pimpl_apply.
-      cancel.
+    - prove_rx; simpl_post.
       eapply pimpl_apply; [| eapply ptsto_upd].
       cancel.
       pred_apply; cancel.
@@ -323,16 +334,15 @@ Section EventCSL.
 
   Theorem read_ok : forall a v0,
     {{ F,
-      | PRE s: F * a |-> v0
-      | POST s': RET:v F * a |-> v0 * [[ v = v0 ]] *
-                     [[ s' = s ]]
+      | PRE d s: d |= F * a |-> v0;
+       | POST d' s' v: d |= F * a |-> v0; /\
+                       v = v0 /\
+                       s' = s
     }} Read a.
   Proof.
-    unfold valid at 1; intros.
-    destruct_lift H.
+    intros_pre.
     ind_exec.
-    - prove_rx.
-      pred_apply; cancel.
+    - prove_rx; simpl_post.
       assert (d a = Some v0).
       eapply ptsto_valid; eauto.
       pred_apply; cancel.
@@ -350,43 +360,41 @@ Section EventCSL.
 
   Theorem yield_ok :
     {{ (_:unit),
-      | PRE s: StateI s
-      | POST s': RET:_ StateI s' * [[ star StateR s s' ]]
+      | PRE d s: d |= StateI s;
+      | POST d' s' _: d' |= StateI s'; /\
+                     star StateR s s'
     }} Yield.
   Proof.
-    unfold valid at 1; intros.
-    destruct_lift H.
+    intros_pre.
     ind_exec.
-    - prove_rx.
-      cbn.
-      eapply pimpl_apply; [cancel | auto].
-    - contradiction H0; eauto.
+    - prove_rx; simpl_post.
+    - contradiction H; eauto.
   Qed.
 
   Theorem commit_ok : forall up,
     {{ F,
-     | PRE s: F * [[ StateR s (up s) ]] * [[ F =p=> StateI (up s) ]]
-     | POST s': RET:_ F * [[ s' = up s ]]
+     | PRE d s: d |= F;
+       /\ StateR s (up s)
+       /\ (F =p=> StateI (up s))
+     | POST d' s' _: d |= F;
+       /\ s' = up s
     }} Commit up.
   Proof.
-    unfold valid at 1; intros.
-    destruct_lift H.
+    intros_pre.
     ind_exec.
-    - prove_rx.
-      cbn.
-      eapply pimpl_apply; [cancel | auto].
+    - prove_rx; simpl_post.
     - contradiction H0; eauto 10.
   Qed.
 
-  Theorem pimpl_ok : forall pre pre' p,
+  Theorem pimpl_ok : forall (pre pre': _ -> _ -> _ -> Prop) p,
       valid pre p ->
-      (forall done s, pre' done s =p=> pre done s) ->
+      (forall done d s, pre' done d s -> pre done d s) ->
       valid pre' p.
   Proof.
     unfold valid.
     intros.
     match goal with
-    | [ H: context[?pre _ _ =p=> _], H1: ?pre _ _ _ |- _ ] =>
+    | [ H: context[?pre _ _ _ -> _], H1: ?pre _ _ _ |- _ ] =>
       apply H in H1
     end.
     eauto.
