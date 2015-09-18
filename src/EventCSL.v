@@ -759,9 +759,7 @@ Section Bank.
     unfold transfer_yield.
     hoare.
 
-    eapply pimpl_trans;
-      [ | apply bank_invariant_transfer ];
-      [ cancel | .. ]; auto.
+    eapply pimpl_trans; [|eauto]; cancel.
 
     match goal with
     | [ H: star _ _ _ |- _ ] => apply star_bankR in H;
