@@ -16,6 +16,13 @@ Notation "'valu'" := (word valulen).
 
 Set Implicit Arguments.
 
+Definition pred_in AT AEQ V (F: @pred AT AEQ V) m := F m.
+
+Notation "m '|=' F ;" :=
+  (pred_in F%pred m) (at level 30, F at level 0) : mem_judgement_scope.
+
+Delimit Scope mem_judgement_scope with judgement.
+
 Section EventCSL.
   Set Default Proof Using "Type".
 
@@ -271,13 +278,6 @@ Section EventCSL.
       edestruct H; eauto
     end.
 
-  Definition pred_in AT AEQ V (F: @pred AT AEQ V) m := F m.
-
-  Notation "m '|=' F ;" :=
-    (pred_in F%pred m) (at level 30, F at level 0) : mem_judgement_scope.
-
-  Delimit Scope mem_judgement_scope with judgement.
-
   Notation "{{ e1 .. e2 , | 'PRE' d s : pre | 'POST' d' s' r : post }} p" :=
     (forall (rx: _ -> prog),
         valid (fun done d s =>
@@ -335,7 +335,7 @@ Section EventCSL.
   Theorem read_ok : forall a v0,
     {{ F,
       | PRE d s: d |= F * a |-> v0;
-       | POST d' s' v: d |= F * a |-> v0; /\
+       | POST d' s' v: d' |= F * a |-> v0; /\
                        v = v0 /\
                        s' = s
     }} Read a.
@@ -376,7 +376,7 @@ Section EventCSL.
      | PRE d s: d |= F;
        /\ StateR s (up s)
        /\ (F =p=> StateI (up s))
-     | POST d' s' _: d |= F;
+     | POST d' s' _: d' |= F;
        /\ s' = up s
     }} Commit up.
   Proof.
@@ -402,17 +402,6 @@ Section EventCSL.
 
 End EventCSL.
 
-(* FIXME: these notations are needed both inside and outside the EventCSL
-   section, resulting in duplication.
-
-   The Hoare triple notation isn't quite the same because the invariant
-   has to be passed explicitly rather than captured from the environment. *)
-Notation "'RET' : r post" :=
-(fun F =>
-  (fun r => (F * post)%pred)
-)%pred
-(at level 0, post at level 90, r at level 0, only parsing).
-
 (** transitions defines a transition system, grouping the StateR and StateI
 variables above.
 
@@ -431,24 +420,28 @@ Record transitions S := {
 * Copy the above notation
 * add sigma |- in front to specify the transition system
 * quantify over T and change prog to prog T _ (the state type should be inferred)
-* add (transition_r sigma) (transition_i sigma) as arguments to valid
-    (you'll need %pred on sigma in the outer `valid` due to scope stacks) *)
-Notation "sigma |- {{ e1 .. e2 , | 'PRE' s1 : pre | 'POST' s2 : post }} p" :=
+* add (StateR sigma) (StateI sigma) as arguments to valid *)
+Notation "sigma |- {{ e1 .. e2 , | 'PRE' d s : pre | 'POST' d' s' r : post }} p" :=
   (forall T (rx: _ -> prog T _),
-      valid (StateR sigma%pred) (StateI sigma%pred) (fun done s1 =>
-               (exis (fun e1 => .. (exis (fun e2 =>
-                                         (pre%pred *
-                                          [[ forall ret_,
-                                               valid (StateR sigma) (StateI sigma) (fun done_rx s2 =>
-                                                        post emp ret_ *
-                                                        [[ done_rx = done ]])
-                                                     (rx ret_)
-                                          ]])%pred)) .. ))
+      valid (StateR sigma) (StateI sigma)
+            (fun done d s =>
+               (ex (fun e1 => .. (ex (fun e2 =>
+                                     pre%judgement /\
+                                     forall ret_,
+                                       valid (StateR sigma) (StateI sigma)
+                                             (fun done_rx d' s' =>
+                                                (fun r => post%judgement) ret_ /\
+                                                done_rx = done)
+                                             (rx ret_)
+                              )) .. ))
             ) (p rx))
     (at level 0, p at level 60,
      e1 binder, e2 binder,
-     s1 at level 0,
-     s2 at level 0,
+     d at level 0,
+     d' at level 0,
+     s at level 0,
+     s' at level 0,
+     r at level 0,
      only parsing).
 
 Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
@@ -669,21 +662,59 @@ Section Bank.
 
   Hint Resolve bank_invariant_transfer.
 
-  Ltac step :=
+  (* simplify the postcondition obligation to its components *)
+  Ltac simpl_post :=
+    cbn; repeat match goal with
+           | [ |- exists _, _ ] =>
+             eexists
+           end; intuition.
+
+  Ltac step' simplifier finisher :=
     repeat (autounfold with prog);
     eapply pimpl_ok; [ auto with prog | ];
     repeat (autounfold with prog);
-    try cancel;
-    try subst;
-    eauto.
+    simplifier;
+    finisher.
+
+  (* combinator to apply t in applied predicates *)
+  Ltac t_in_applied t :=
+    match goal with
+    | [ H: ?F _ |- _ ] =>
+      match type of F with
+      | pred => t H
+      end
+    end.
+
+  Ltac lift_this H :=
+    match type of H with
+    | context[lift_empty _] =>
+      destruct_lift H
+    end.
+
+  Ltac lift_all := repeat (t_in_applied lift_this).
+
+  Ltac unfold_pred_applications :=
+    unfold pred_in; intros; repeat deex.
+
+  Ltac step_simplifier :=
+    unfold_pred_applications;
+    lift_all;
+    simpl_post;
+    try subst.
+
+  Ltac step_finisher := try (pred_apply; cancel);
+      eauto.
+
+  Ltac step := step' step_simplifier step_finisher.
 
   Ltac hoare := intros; repeat step.
 
   Theorem transfer_ok : forall bal1 bal2 amount,
     bankS |-
     {{ F,
-      | PRE s: F * rep bal1 bal2
-      | POST s': RET:_ F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) * [[ s' = s ]]
+      | PRE d l: d |= F * rep bal1 bal2;
+      | POST d' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount); /\
+                       l' = l
     }} transfer amount.
   Proof.
     unfold transfer.
@@ -718,11 +749,11 @@ Section Bank.
   Theorem transfer_yield_ok : forall bal1 bal2 amount,
     bankS |-
     {{ F,
-      | PRE l: F * inv_rep bal1 bal2 *
-               [[ #bal1 >= amount ]] *
-               [[ bankI l #bal1 #bal2 ]]
-      | POST l': RET:_ bankPred l' *
-                     [[ firstn (length l + 1) l' = l ++ [from1 amount] ]]
+      | PRE d l: d |= F * inv_rep bal1 bal2; /\
+               #bal1 >= amount /\
+               bankI l #bal1 #bal2
+      | POST d' l' _: d' |= bankPred l'; /\
+                     firstn (length l + 1) l' = l ++ [from1 amount]
     }} transfer_yield amount.
   Proof.
     unfold transfer_yield.
@@ -738,9 +769,6 @@ Section Bank.
     end.
     apply firstn_length_app.
     rewrite app_length; auto.
-
-    Grab Existential Variables.
-    all: auto.
   Qed.
 
 End Bank.
