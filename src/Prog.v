@@ -4,6 +4,8 @@ Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import List.
 Require Import Mem.
+Require Import AsyncDisk.
+
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -39,10 +41,6 @@ Notation "'let^' ( a , .. , b ) <- p1 ; p2" :=
   )
   (at level 60, right associativity, a closed binder, b closed binder).
 
-
-Notation "'valuset'" := (valu * list valu)%type.
-
-Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 
 Inductive outcome (T: Type) :=
 | Failed
