@@ -62,6 +62,7 @@ Definition waddrring := wring addrlen.
 Add Ring waddrring : waddrring (decidable (weqb_sound addrlen), constants [wcst]).
 
 Notation "'valuset'" := (valu * list valu)%type.
-Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 
-Definition asdisk := @mem addr addr_eq_dec valuset.
+(* Async-disk *)
+Definition rawdisk := @mem addr addr_eq_dec valuset.
+Definition valuset_list (vs : valuset) := fst vs :: snd vs.
