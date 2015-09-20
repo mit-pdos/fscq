@@ -1,5 +1,6 @@
 Require Import Prog.
 Require Import Pred.
+Require Import PredCrash.
 Require Import Hoare.
 Require Import Omega.
 Require Import SepAuto.
@@ -8,6 +9,7 @@ Require Import Nomega.
 Require Import NArith.
 Require Import FunctionalExtensionality.
 Require Import List.
+Require Import AsyncDisk.
 
 Set Implicit Arguments.
 
@@ -191,8 +193,8 @@ Notation "'IfRx' rx b { p1 } 'else' { p2 }" :=
   (IfRx_ b (fun rx => p1) (fun rx => p2)) (at level 9, rx at level 0, b at level 0).
 
 Record For_args (L : Type) := {
-  For_args_i : addr;
-  For_args_n : addr;
+  For_args_i : waddr;
+  For_args_n : waddr;
   For_args_l : L
 }.
 
@@ -206,10 +208,10 @@ Proof.
 Qed.
 
 Definition For_ (T: Type)
-                (L : Type) (G : Type) (f : addr -> L -> (L -> prog T) -> prog T)
-                (i n : addr)
-                (nocrash : G -> addr -> L -> @pred addr (@weq addrlen) valuset)
-                (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (L : Type) (G : Type) (f : waddr -> L -> (L -> prog T) -> prog T)
+                (i n : waddr)
+                (nocrash : G -> waddr -> L -> rawpred)
+                (crashed : G -> rawpred)
                 (l : L)
                 (rx: L -> prog T) : prog T.
   refine (Fix (@for_args_wf L) (fun _ => prog T)
@@ -283,11 +285,11 @@ Proof.
 Qed.
 
 Theorem for_ok':
-  forall T (n i : addr)
+  forall T (n i : waddr)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> addr -> L -> pred)
-         (crashed : G -> pred)
+         (nocrash : G -> waddr -> L -> rawpred)
+         (crashed : G -> rawpred)
          (li : L),
   {{ fun done crash => exists F (g:G), F * nocrash g i li
    * [[forall m lm rxm,
@@ -400,11 +402,11 @@ Proof.
 Qed.
 
 Theorem for_ok:
-  forall T (n : addr)
+  forall T (n : waddr)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> addr -> L -> pred)
-         (crashed : G -> pred)
+         (nocrash : G -> waddr -> L -> rawpred)
+         (crashed : G -> rawpred)
          (li : L),
   {{ fun done crash => exists F (g:G), F * nocrash g $0 li
    * [[forall m lm rxm,
@@ -450,12 +452,11 @@ Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation'
    l1 closed binder, l2 closed binder,
    body at level 9).
 
-
 Fixpoint ForN_ (T: Type)
                 (L : Type) (G : Type) (f : nat -> L -> (L -> prog T) -> prog T)
                 (i n : nat)
-                (nocrash : G -> nat -> L -> @pred addr (@weq addrlen) valuset)
-                (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (nocrash : G -> nat -> L -> rawpred)
+                (crashed : G -> rawpred)
                 (l : L)
                 (rx: L -> prog T) : prog T :=
   match n with
@@ -580,8 +581,8 @@ Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation
 Fixpoint ForEach_ (T: Type) (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> (L -> prog T) -> prog T)
                 (lst : list ITEM)
-                (nocrash : G -> list ITEM -> L -> @pred addr (@weq addrlen) valuset)
-                (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (nocrash : G -> list ITEM -> L -> rawpred)
+                (crashed : G -> rawpred)
                 (l : L) (rx: L -> prog T) : prog T :=
   match lst with
   | nil => rx l

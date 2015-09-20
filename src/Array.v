@@ -3,6 +3,7 @@ Require Import List Omega Ring Word Pred PredCrash.
 Require Import Prog Hoare SepAuto BasicProg.
 Require Import FunctionalExtensionality.
 Require Import WordAuto.
+Require Import AsyncDisk.
 
 Set Implicit Arguments.
 
