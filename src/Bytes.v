@@ -1,6 +1,7 @@
 Require Import Word.
 Require Import Arith.
 Require Import Eqdep_dec.
+Require Import Mem.
 
 Set Implicit Arguments.
 
@@ -72,3 +73,48 @@ Program Fixpoint bsplit_list sz (w: bytes sz) : list byte :=
     | O => nil
     | S sz => bsplit1_dep 1 sz w _ :: bsplit_list (bsplit2_dep 1 sz w _)
     end.
+
+Notation "'valubytes'" := (Valulen.valubytes).
+Notation "'valubytes_is'" := (Valulen.valubytes_is).
+
+Definition valu2bytes (v : valu) : bytes valubytes.
+  refine (@word2bytes valulen valubytes _ v).
+  rewrite valulen_is. rewrite valubytes_is. reflexivity.
+Defined.
+
+Definition bytes2valu (v : bytes valubytes) : valu.
+  rewrite valulen_is.
+  unfold bytes in *.
+  rewrite valubytes_is in *.
+  exact v.
+Defined.
+
+Theorem valu2bytes2valu : forall v, valu2bytes (bytes2valu v) = v.
+Proof.
+  unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
+  intros.
+  rewrite eq_rect_word_mult.
+  rewrite eq_rect_nat_double.
+  generalize dependent v.
+  rewrite valubytes_is.
+  rewrite valulen_is.
+  intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Theorem bytes2valu2bytes : forall v, bytes2valu (valu2bytes v) = v.
+Proof.
+  unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
+  intros.
+  rewrite eq_rect_word_mult.
+  rewrite eq_rect_nat_double.
+  generalize dependent v.
+  rewrite valubytes_is.
+  rewrite valulen_is.
+  intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+

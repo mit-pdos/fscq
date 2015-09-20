@@ -1,5 +1,4 @@
 Require Import FunctionalExtensionality.
-
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
@@ -31,6 +30,7 @@ Notation "'let^' ( a ) <- p1 ; p2" :=
     (pair_args_helper (fun a (_:unit) => p2))
   )
   (at level 60, right associativity, a ident).
+
 Notation "'let^' ( a , .. , b ) <- p1 ; p2" :=
   (progseq p1
     (pair_args_helper (fun a => ..
