@@ -1,8 +1,5 @@
-Require Import Arith.
-Require Import Word.
-Require Import Bytes.
 Require Import FunctionalExtensionality.
-Require Import Eqdep_dec.
+
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
@@ -14,99 +11,6 @@ Set Implicit Arguments.
 
 (** * The programming language *)
 
-Notation "'valubytes_real'" := 4096. (* 4KB *)
-Notation "'valulen_real'" := (valubytes_real * 8)%nat.
-
-Module Type VALULEN.
-  Parameter valulen : nat.
-  Parameter valubytes : nat.
-  Axiom valulen_is : valulen = valulen_real.
-  Axiom valubytes_is : valubytes = valubytes_real.
-End VALULEN.
-
-Module Valulen : VALULEN.
-  Definition valulen := valulen_real.
-  Definition valubytes := valubytes_real.
-  Theorem valulen_is: valulen = valulen_real.
-  Proof.
-    auto.
-  Qed.
-  Theorem valubytes_is: valubytes = valubytes_real.
-  Proof.
-    auto.
-  Qed.
-End Valulen.
-
-Definition addrlen := 64.
-Notation "'valulen'" := (Valulen.valulen).
-Notation "'valubytes'" := (Valulen.valubytes).
-Notation "'valulen_is'" := (Valulen.valulen_is).
-Notation "'valubytes_is'" := (Valulen.valubytes_is).
-
-Notation "'addr'" := (word addrlen).
-Notation "'valu'" := (word valulen).
-Definition addr_eq_dec := @weq addrlen.
-
-Definition valu2bytes (v : valu) : bytes valubytes.
-  refine (@word2bytes valulen valubytes _ v).
-  rewrite valulen_is. rewrite valubytes_is. reflexivity.
-Defined.
-
-Definition bytes2valu (v : bytes valubytes) : valu.
-  rewrite valulen_is.
-  unfold bytes in *.
-  rewrite valubytes_is in *.
-  exact v.
-Defined.
-
-Theorem valu2bytes2valu : forall v, valu2bytes (bytes2valu v) = v.
-Proof.
-  unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
-  intros.
-  rewrite eq_rect_word_mult.
-  rewrite eq_rect_nat_double.
-  generalize dependent v.
-  rewrite valubytes_is.
-  rewrite valulen_is.
-  intros.
-  rewrite <- (eq_rect_eq_dec eq_nat_dec).
-  reflexivity.
-Qed.
-
-Theorem bytes2valu2bytes : forall v, bytes2valu (valu2bytes v) = v.
-Proof.
-  unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
-  intros.
-  rewrite eq_rect_word_mult.
-  rewrite eq_rect_nat_double.
-  generalize dependent v.
-  rewrite valubytes_is.
-  rewrite valulen_is.
-  intros.
-  rewrite <- (eq_rect_eq_dec eq_nat_dec).
-  reflexivity.
-Qed.
-
-Theorem valulen_wordToNat_natToWord : # (natToWord addrlen valulen) = valulen.
-Proof.
-  rewrite valulen_is.
-  compute.
-  reflexivity.
-Qed.
-
-(* tight bound for valulen *)
-Theorem valulen_bound : valulen < pow2 16.
-Proof.
-  eapply Nat.lt_le_trans with (m := pow2 15 + 1).
-  rewrite valulen_is.
-  compute; auto.
-  apply pow2_le_S.
-Qed.
-
-
-Definition wringaddr := wring addrlen.
-Add Ring wringaddr : wringaddr (decidable (weqb_sound addrlen), constants [wcst]).
-
 Inductive prog (T: Type) :=
 | Done (v: T)
 | Read (a: addr) (rx: valu -> prog T)
@@ -115,6 +19,7 @@ Inductive prog (T: Type) :=
 | Trim (a: addr) (rx: unit -> prog T).
 
 Definition progseq (A B:Type) (a:B->A) (b:B) := a b.
+
 Definition pair_args_helper (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 Notation "^( a )" := (pair a tt).
 Notation "^( a , .. , b )" := (pair a .. (pair b tt) .. ).
@@ -139,11 +44,10 @@ Notation "'valuset'" := (valu * list valu)%type.
 
 Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 
-
 Inductive outcome (T: Type) :=
 | Failed
-| Finished (m: @mem addr (@weq addrlen) valuset) (v: T)
-| Crashed (m: @mem addr (@weq addrlen) valuset).
+| Finished (m: @mem addr Nat.eq_dec valuset) (v: T)
+| Crashed (m: @mem addr Nat.eq_dec valuset).
 
 Inductive step (T: Type) : @mem _ (@weq addrlen) _ -> prog T ->
                            @mem _ (@weq addrlen) _ -> prog T -> Prop :=
