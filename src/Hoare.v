@@ -4,15 +4,16 @@ Require Import Pred PredCrash.
 Require Import List.
 Require Import Morphisms.
 Require Import Word.
+Require Import AsyncDisk.
 
 Set Implicit Arguments.
 
 
 (** ** Hoare logic *)
 
-Definition donecond (T: Type) := T -> @mem addr (@weq addrlen) valuset -> Prop.
+Definition donecond (T: Type) := T -> rawdisk -> Prop.
 
-Definition corr2 (T: Type) (pre: donecond T -> pred -> pred) (p: prog T) :=
+Definition corr2 (T: Type) (pre: donecond T -> rawpred -> rawpred) (p: prog T) :=
   forall done crash m out, pre done crash m
   -> exec m p out
   -> (exists m' v, out = Finished m' v /\ done v m') \/

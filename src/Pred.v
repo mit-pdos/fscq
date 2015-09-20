@@ -14,7 +14,7 @@ Set Implicit Arguments.
 Section GenPredDef.
 
 Variable AT : Type.
-Variable AEQ : DecEq AT.
+Variable AEQ : EqDec AT.
 Variable V : Type.
 
 Definition pred := @mem AT AEQ V -> Prop.
@@ -145,7 +145,7 @@ Proof.
 Qed.
 
 Module Type SEP_STAR.
-  Parameter sep_star : forall {AT:Type} {AEQ:DecEq AT} {V:Type}, @pred AT AEQ V -> @pred AT AEQ V -> @pred AT AEQ V.
+  Parameter sep_star : forall {AT:Type} {AEQ:EqDec AT} {V:Type}, @pred AT AEQ V -> @pred AT AEQ V -> @pred AT AEQ V.
   Axiom sep_star_is : @sep_star = @sep_star_impl.
 End SEP_STAR.
 
@@ -195,7 +195,7 @@ Section GenPredThm.
 Set Default Proof Using "Type".
 
 Variable AT : Type.
-Variable AEQ : DecEq AT.
+Variable AEQ : EqDec AT.
 Variable V : Type.
 
 Theorem pimpl_refl : forall (p : @pred AT AEQ V), p =p=> p.

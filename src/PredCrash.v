@@ -4,6 +4,7 @@ Require Import Prog.
 Require Import List.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
+Require Import AsyncDisk.
 
 Set Implicit Arguments.
 
@@ -11,22 +12,25 @@ Set Implicit Arguments.
 Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
 Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
 
+Definition rawpred := @pred addr addr_eq_dec valuset.
+
+
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
-Definition crash_xform {AT : Type} {AEQ : DecEq AT} (p : pred) : @pred AT AEQ valuset :=
+Definition crash_xform (p : rawpred) : rawpred :=
   fun m => exists m', p m' /\ possible_crash m' m.
 
 
 (* Specialized relations for [@pred valuset], to deal with async IO *)
 
-Theorem crash_xform_apply : forall AT AEQ (p : @pred AT AEQ valuset) (m m' : @mem AT AEQ valuset), possible_crash m m'
+Theorem crash_xform_apply : forall (p : rawpred) (m m' : rawdisk), possible_crash m m'
   -> p m
   -> crash_xform p m'.
 Proof.
   unfold crash_xform; eauto.
 Qed.
 
-Theorem possible_crash_mem_union : forall AT AEQ (ma mb m' : @mem AT AEQ _), possible_crash (mem_union ma mb) m'
-  -> mem_disjoint ma mb
+Theorem possible_crash_mem_union : forall (ma mb m' : rawdisk), possible_crash (mem_union ma mb) m'
+  -> @mem_disjoint _ addr_eq_dec _ ma mb
   -> exists ma' mb', m' = mem_union ma' mb' /\ mem_disjoint ma' mb' /\
                      possible_crash ma ma' /\ possible_crash mb mb'.
 Proof.
@@ -63,10 +67,11 @@ Proof.
     congruence.
 Qed.
 
-Theorem possible_crash_disjoint : forall AT AEQ (ma mb ma' mb' : @mem AT AEQ _), mem_disjoint ma' mb'
+Theorem possible_crash_disjoint : forall (ma mb ma' mb' : rawdisk),
+  @mem_disjoint _ addr_eq_dec _ ma' mb'
   -> possible_crash ma ma'
   -> possible_crash mb mb'
-  -> mem_disjoint ma mb.
+  -> @mem_disjoint _ addr_eq_dec _ ma mb.
 Proof.
   unfold mem_disjoint, possible_crash; intros.
   intro Hnot.
@@ -77,7 +82,7 @@ Proof.
   do 3 eexists; eauto.
 Qed.
 
-Theorem possible_crash_union : forall AT AEQ (ma mb ma' mb' : @mem AT AEQ _), possible_crash ma ma'
+Theorem possible_crash_union : forall (ma mb ma' mb' : rawdisk), possible_crash ma ma'
   -> possible_crash mb mb'
   -> possible_crash (mem_union ma mb) (mem_union ma' mb').
 Proof.
@@ -97,7 +102,7 @@ Proof.
     right. do 2 eexists. intuition.
 Qed.
 
-Theorem possible_crash_trans : forall AT AEQ (ma mb mc : @mem AT AEQ _),
+Theorem possible_crash_trans : forall (ma mb mc : rawdisk),
   possible_crash ma mb ->
   possible_crash mb mc ->
   possible_crash ma mc.
@@ -114,14 +119,14 @@ Proof.
   inversion H1.
 Qed.
 
-Theorem crash_xform_idem : forall AT AEQ (p : @pred AT AEQ _), crash_xform (crash_xform p) =p=> crash_xform p.
+Theorem crash_xform_idem : forall (p : rawpred), crash_xform (crash_xform p) =p=> crash_xform p.
 Proof.
   unfold crash_xform, pimpl; intros.
   repeat deex; eexists; intuition eauto.
   eapply possible_crash_trans; eauto.
 Qed.
 
-Theorem crash_xform_sep_star_dist : forall AT AEQ (p q : @pred AT AEQ _),
+Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
 Proof.
   unfold_sep_star; unfold crash_xform, piff, pimpl; split; intros; repeat deex.
@@ -133,14 +138,14 @@ Proof.
     apply possible_crash_union; eauto.
 Qed.
 
-Theorem crash_xform_or_dist : forall AT AEQ (p q : @pred AT AEQ _),
+Theorem crash_xform_or_dist : forall (p q : rawpred),
   crash_xform (p \/ q) <=p=> crash_xform p \/ crash_xform q.
 Proof.
   firstorder.
 Qed.
 
-Theorem crash_xform_lift_empty : forall AT AEQ (P : Prop),
-  @crash_xform AT AEQ [[ P ]] <=p=> [[ P ]].
+Theorem crash_xform_lift_empty : forall (P : Prop),
+  @crash_xform [[ P ]] <=p=> [[ P ]].
 Proof.
   unfold crash_xform, lift_empty, possible_crash; intros; split;
     intros m H; repeat deex.
@@ -149,7 +154,7 @@ Proof.
   eexists; intuition.
 Qed.
 
-Theorem crash_xform_sep_star_apply : forall AT AEQ (p q : @pred AT AEQ _) (m m' : mem), possible_crash m m'
+Theorem crash_xform_sep_star_apply : forall (p q : rawpred) (m m' : mem), possible_crash m m'
   -> (p * q)%pred m
   -> (crash_xform p * crash_xform q)%pred m'.
 Proof.
@@ -158,22 +163,22 @@ Proof.
   do 2 eexists; repeat split; auto; unfold crash_xform; eexists; split; eauto.
 Qed.
 
-Theorem crash_xform_exists_comm : forall AT AEQ T (p : T -> @pred AT AEQ _),
+Theorem crash_xform_exists_comm : forall T (p : T -> rawpred),
   crash_xform (exists x, p x) =p=> exists x, crash_xform (p x).
 Proof.
   unfold crash_xform, exis, pimpl; intros.
   repeat deex; repeat eexists; intuition eauto.
 Qed.
 
-Theorem crash_xform_forall_comm : forall AT AEQ T (p : T -> @pred AT AEQ _),
+Theorem crash_xform_forall_comm : forall T (p : T -> rawpred),
   crash_xform (foral x, p x) =p=> foral x, crash_xform (p x).
 Proof.
   unfold crash_xform, foral_, pimpl; intros.
   repeat deex; repeat eexists; intuition eauto.
 Qed.
 
-Theorem crash_xform_ptsto: forall AT AEQ a v,
-  (@crash_xform AT AEQ) (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
+Theorem crash_xform_ptsto: forall a v,
+  crash_xform (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
 Proof.
   unfold crash_xform, possible_crash, ptsto, pimpl; intros.
   repeat deex; destruct (H1 a).
@@ -191,39 +196,39 @@ Proof.
   congruence.
 Qed.
 
-Theorem crash_xform_pimpl : forall AT AEQ (p q : @pred AT AEQ _), p =p=>q
+Theorem crash_xform_pimpl : forall (p q : rawpred), p =p=>q
   -> crash_xform p =p=> crash_xform q.
 Proof.
   firstorder.
 Qed.
 
-Instance crash_xform_pimpl_proper {AT AEQ} :
-  Proper (pimpl ==> pimpl) (@crash_xform AT AEQ).
+Instance crash_xform_pimpl_proper:
+  Proper (pimpl ==> pimpl) crash_xform.
 Proof.
   firstorder.
 Qed.
 
-Instance crash_xform_flip_pimpl_proper {AT AEQ} :
-  Proper (Basics.flip pimpl ==> Basics.flip pimpl) (@crash_xform AT AEQ).
+Instance crash_xform_flip_pimpl_proper:
+  Proper (Basics.flip pimpl ==> Basics.flip pimpl) crash_xform.
 Proof.
   firstorder.
 Qed.
 
-Instance crash_xform_piff_proper {AT AEQ} :
-  Proper (piff ==> piff) (@crash_xform AT AEQ).
+Instance crash_xform_piff_proper:
+  Proper (piff ==> piff) crash_xform.
 Proof.
   firstorder.
 Qed.
 
-Theorem crash_invariant_emp: forall AT AEQ,
-  (@crash_xform AT AEQ) emp =p=> emp.
+Theorem crash_invariant_emp:
+  crash_xform emp =p=> emp.
 Proof.
   unfold crash_xform, possible_crash, emp, pimpl; repeat deex; intuition; repeat deex.
   destruct (H1 a); [ intuition | repeat deex; congruence ].
 Qed.
 
-Theorem crash_invariant_ptsto: forall AT AEQ a v,
-  (@crash_xform AT AEQ) (a |=> v) =p=> a |=> v.
+Theorem crash_invariant_ptsto: forall a v,
+  crash_xform (a |=> v) =p=> a |=> v.
 Proof.
   unfold crash_xform, pimpl, possible_crash, ptsto; intros.
   deex; intuition eauto.
@@ -239,7 +244,7 @@ Proof.
 Qed.
 
 Lemma ptsto_synced_valid:
-  forall AT AEQ a v F (m : @mem AT AEQ _),
+  forall a v (F : rawpred) m,
   (a |=> v * F)%pred m
   -> m a = Some (v, nil).
 Proof.
@@ -248,7 +253,7 @@ Proof.
 Qed.
 
 Lemma ptsto_cur_valid:
-  forall AT AEQ a v F (m : @mem AT AEQ _),
+  forall a v (F : rawpred) m,
   (a |~> v * F)%pred m
   -> exists l, m a = Some (v, l).
 Proof.
@@ -260,7 +265,7 @@ Proof.
   apply mem_union_addr; eauto.
 Qed.
 
-Lemma crash_xform_diskIs: forall A AEQ (m: @mem A AEQ valuset),
+Lemma crash_xform_diskIs: forall m,
   crash_xform (diskIs m) =p=> exists m', [[ possible_crash m m' ]] * diskIs m'.
 Proof.
   unfold crash_xform, pimpl, diskIs.
@@ -287,13 +292,13 @@ Hint Rewrite crash_invariant_ptsto : crash_xform.
 
 Hint Resolve crash_invariant_emp.
 
-Lemma pred_apply_crash_xform : forall AT AEQ (p : @pred AT AEQ valuset) m m',
+Lemma pred_apply_crash_xform : forall (p : rawpred) m m',
   possible_crash m m' -> p m -> (crash_xform p) m'.
 Proof.
   unfold pimpl, crash_xform; eauto.
 Qed.
 
-Lemma pred_apply_crash_xform_pimpl : forall AT AEQ (p q : @pred AT AEQ valuset) m m',
+Lemma pred_apply_crash_xform_pimpl : forall (p q : rawpred) m m',
   possible_crash m m' -> p m -> crash_xform p =p=> q -> q m'.
 Proof.
   intros.

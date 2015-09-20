@@ -5,6 +5,7 @@ Require Import Prog.
 Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import Word.
+Require Import AsyncDisk.
 
 Set Implicit Arguments.
 
@@ -419,8 +420,6 @@ Ltac words := ring_prepare; ring.
 
 Ltac wordcmp_one :=
   match goal with
-  | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
-  | [ |- context[valu2addr (addr2valu _)] ] => rewrite addr2valu2addr
   | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
     assert (goodSize sz (wordToNat x)) by (apply wordToNat_good);
     assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; unfold goodSize in *; auto; omega);
@@ -453,7 +452,7 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
-Lemma crash_xform_okToUnify : forall V AEQ (P Q: @pred V AEQ _),
+Lemma crash_xform_okToUnify : forall (P Q: rawpred),
   okToUnify P Q -> okToUnify (crash_xform P) (crash_xform Q).
 Proof.
   intros. unfold okToUnify in *. congruence.

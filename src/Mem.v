@@ -7,8 +7,9 @@ Definition EqDec (T : Type) := forall (a b : T), {a = b} + {a <> b}.
 (* generalized memory of any address / value type *)
 
 Definition mem {A : Type} {AEQ : EqDec A} {V : Type} := A -> option V.
+Definition empty_mem {A : Type} {AEQ : EqDec A} {V : Type} : @mem A AEQ V := fun a => None.
 
-Section GENMEM.
+Section GenMem.
   Variable A : Type.
   Variable V : Type.
   Variable AEQ : EqDec A.
@@ -18,8 +19,6 @@ Section GENMEM.
 
   Definition upd_none (m : @mem A AEQ V) (a : A) : @mem A AEQ V :=
     fun a' => if AEQ a' a then None else m a'.
-
-  Definition empty_mem : @mem A AEQ V := fun a => None.
 
   Theorem upd_eq : forall m (a : A) (v : V) a',
     a' = a -> upd m a v a' = Some v.
@@ -53,4 +52,4 @@ Section GENMEM.
     repeat ( ( rewrite upd_ne by auto ) || ( rewrite upd_eq by auto ) ); auto.
   Qed.
 
-End GENMEM.
+End GenMem.
