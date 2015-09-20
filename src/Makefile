@@ -3,7 +3,7 @@ OCAMLINC   := -I codegen
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem AsyncDisk Pred Prog PredCrash Hoare \
 	      SepAuto Idempotent Errno \
-	      BasicProg Array AddrMap Rec RecArray \
+	      BasicProg ListUtils Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache FSLayout \
 		   \
 	      Log Balloc Inode BFile BFileRec Dir \

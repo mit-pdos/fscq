@@ -637,6 +637,7 @@ Proof.
   intros; split; [ apply pimpl_star_emp | apply star_emp_pimpl ].
 Qed.
 
+
 Lemma piff_star_r: forall (a b c : @pred AT AEQ V),
   (a <=p=> b) ->
   (a * c <=p=> b * c).
@@ -1812,6 +1813,5 @@ Proof.
   destruct (m x0); auto.
   rewrite H5; auto; discriminate.
 Qed.
-
 
 Global Opaque pred.
