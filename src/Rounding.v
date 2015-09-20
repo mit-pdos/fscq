@@ -3,6 +3,10 @@ Require Import Word.
 Require Import Prog.
 Require Import Psatz.
 
+(* TODO: move byte-specific lemmas *)
+Require Import AsyncDisk.
+Import Valulen.
+
 (** The divup and roundup functions and associated theorems.
     divup n sz performs n / sz, rounding up rather than down.
     roundup n sz rounds n to the smallest multiple of sz >= n;
@@ -267,7 +271,7 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
   Qed.
 
   Lemma divup_goodSize:
-    forall (a: addr),
+    forall (a: waddr),
       goodSize addrlen (divup #a valubytes).
   Proof.
     assert (addrlen > 1) by ( unfold addrlen ; omega ).
@@ -292,7 +296,7 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     simpl (pow2 1).
     omega.
   Qed.
-  
+
   Lemma divup_sub_1 : forall n sz,
     n >= sz -> sz <> 0 ->
     divup (n - sz) sz = divup n sz - 1.
