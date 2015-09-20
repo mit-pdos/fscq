@@ -1,7 +1,5 @@
 Require Import Arith.
 Require Import Word.
-Require Import Eqdep_dec.
-Require Import FunctionalExtensionality.
 Require Import List.
 Require Import Mem.
 
@@ -65,3 +63,5 @@ Add Ring waddrring : waddrring (decidable (weqb_sound addrlen), constants [wcst]
 
 Notation "'valuset'" := (valu * list valu)%type.
 Definition valuset_list (vs : valuset) := fst vs :: snd vs.
+
+Definition asdisk := @mem addr addr_eq_dec valuset.
