@@ -30,9 +30,6 @@ Section EventCSL.
   (* a disk state *)
   Implicit Type d : @mem addr (@weq addrlen) valu.
 
-  (** Our programs will return values of type T *)
-  Variable T:Type.
-
   (** The memory is a heterogenously typed list where element types
       are given by Mcontents. *)
   Variable Mcontents:list Set.
@@ -43,6 +40,9 @@ Section EventCSL.
 
   (** Programs can manipulate ghost state of type S *)
   Variable S:Type.
+
+  (** Our programs will return values of type T *)
+  Variable T:Type.
 
   Definition var t := @member Set t Mcontents.
 
@@ -489,7 +489,7 @@ Record transitions S := {
 * quantify over T and change prog to prog T _ (the state type should be inferred)
 * add (StateR sigma) (StateI sigma) as arguments to valid *)
 Notation "sigma |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
-  (forall T (rx: _ -> prog T _ _),
+  (forall T (rx: _ -> prog _ _ T),
       valid (StateR sigma) (StateI sigma)
             (fun done d m s =>
                (ex (fun e1 => .. (ex (fun e2 =>
@@ -520,7 +520,7 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
 
 (* maximally insert the return/state types for Yield, which is always called
    without applying it to any arguments *)
-Arguments Yield {T} {Mcontents} {S} rx.
+Arguments Yield {Mcontents} {S} {T} rx.
 
 (** This notation is intended to produce the patterns for prog hints.
 
@@ -589,7 +589,7 @@ Section Bank.
 
   Local Hint Unfold rep inv_rep State bankR bankI : prog.
 
-  Definition transfer {T S} amount rx : prog T Mcontents S :=
+  Definition transfer {T S} amount rx : prog Mcontents S T :=
     bal1 <- Read acct1;
     bal2 <- Read acct2;
     Write acct1 (bal1 ^- $ amount);;
@@ -804,7 +804,7 @@ Section Bank.
 
   Hint Extern 1 {{ transfer _; _ }} => apply transfer_ok : prog.
 
-  Definition transfer_yield {T} amount rx : prog T Mcontents _ :=
+  Definition transfer_yield {T} amount rx : prog _ _ T :=
     transfer amount;; Commit (record_transfer amount);; Yield;; rx tt.
 
   Lemma pimpl_and_l : forall AT AEQ V (p q r: @pred AT AEQ V),
