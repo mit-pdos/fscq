@@ -522,12 +522,18 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
    without applying it to any arguments *)
 Arguments Yield {T} {Mcontents} {S} rx.
 
-Hint Extern 1 (valid _ _ _ (progseq (Read _) _)) => apply read_ok : prog.
-Hint Extern 1 (valid _ _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
-Hint Extern 1 (valid _ _ _ (progseq (Get _) _)) => apply get_ok : prog.
-Hint Extern 1 (valid _ _ _ (progseq (Assgn _ _) _)) => apply assgn_ok : prog.
-Hint Extern 1 (valid _ _ _ (progseq (Yield) _)) => apply yield_ok : prog.
-Hint Extern 1 (valid _ _ _ (progseq (Commit _) _)) => apply commit_ok : prog.
+(** This notation is intended to produce the patterns for prog hints.
+
+The ; _ is merely a visual indicator that the pattern applies to any Hoare
+statement beginning with f and followed by anything else. *)
+Notation "{{ f ; '_' }}" := (valid _ _ _ (progseq f _)).
+
+Hint Extern 1 {{ Read _; _ }} => apply read_ok : prog.
+Hint Extern 1 {{ Write _ _; _ }} => apply write_ok : prog.
+Hint Extern 1 {{ Get _; _ }} => apply get_ok : prog.
+Hint Extern 1 {{ Assgn _ _; _ }} => apply assgn_ok : prog.
+Hint Extern 1 {{ Yield; _ }} => apply yield_ok : prog.
+Hint Extern 1 {{ Commit _; _ }} => apply commit_ok : prog.
 
 Section Bank.
   Definition acct1 : addr := $0.
@@ -745,7 +751,7 @@ Section Bank.
 
   Ltac step' simplifier finisher :=
     repeat (autounfold with prog);
-    eapply pimpl_ok; [ auto with prog | ];
+    eapply pimpl_ok; [ now auto with prog | ];
     repeat (autounfold with prog);
     simplifier;
     finisher.
@@ -796,7 +802,7 @@ Section Bank.
     hoare.
   Qed.
 
-  Hint Extern 1 (valid _ _ _ (progseq (transfer _) _)) => apply transfer_ok : prog.
+  Hint Extern 1 {{ transfer _; _ }} => apply transfer_ok : prog.
 
   Definition transfer_yield {T} amount rx : prog T Mcontents _ :=
     transfer amount;; Commit (record_transfer amount);; Yield;; rx tt.
@@ -842,5 +848,7 @@ Section Bank.
     apply firstn_length_app.
     rewrite app_length; auto.
   Qed.
+
+  Hint Extern 1 {{ transfer_yield _; _ }} => apply transfer_yield_ok : prog.
 
 End Bank.
