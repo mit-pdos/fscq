@@ -8,7 +8,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree FastByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON \
-		  Hlist Star EventCSL
+		  Hlist Star EventCSL Bank
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 GHC 	   := ghc
