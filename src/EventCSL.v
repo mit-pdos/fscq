@@ -807,8 +807,6 @@ Section Bank.
     firstorder.
   Qed.
 
-  Hint Extern 4 (pimpl _ (and _ _)) => apply pimpl_and_split; try cancel.
-
   Lemma firstn_length_app : forall A (l1 l2:list A) n,
       n = length l1 ->
       firstn n (l1 ++ l2) = l1.
