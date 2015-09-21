@@ -4,6 +4,7 @@ Require Import Word.
 Require Import Omega.
 Require Import SepAuto.
 Require Import Star.
+Require Import Hlist.
 Require Import List.
 Import List.ListNotations.
 Open Scope list.
@@ -32,8 +33,18 @@ Section EventCSL.
   (** Our programs will return values of type T *)
   Variable T:Type.
 
+  (** The memory is a heterogenously typed list where element types
+      are given by Mcontents. *)
+  Variable Mcontents:list Set.
+  (** The type of the program's memory. *)
+  Definition M := @hlist Set (fun T:Set => T) Mcontents.
+
+  Implicit Type m : M.
+
   (** Programs can manipulate ghost state of type S *)
   Variable S:Type.
+
+  Definition var t := @member Set t Mcontents.
 
   (** Define the transition system for the ghost state.
       The semantics will reject transitions that do not obey these rules. *)
@@ -43,6 +54,8 @@ Section EventCSL.
   Inductive prog :=
   | Read (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
+  | Get t (v: var t) (rx: t -> prog)
+  | Assgn t (v: var t) (val:t) (rx: unit -> prog)
   | Yield (rx: unit -> prog)
   | Commit (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
@@ -56,26 +69,30 @@ Section EventCSL.
   Implicit Type p : prog.
 
   Inductive state :=
-    | sigma : forall d (s:S), state.
+    | sigma : forall d m (s:S), state.
 
-  Notation "{| d ; s |}" := (sigma d s) (at level 0).
+  Notation "{| d ; m ; s |}" := (sigma d m s) (at level 0).
 
   Reserved Notation "p '/' st '==>' p' '/' st'" (at level 40, p' at level 39).
 
   Inductive step : forall st p st' p', Prop :=
-  | StepRead : forall d s a rx v, d a = Some v ->
-                             Read a rx / {|d; s|} ==> rx v / {|d; s|}
-  | StepWrite : forall d s a rx v v', d a = Some v ->
-                                 Write a v' rx / {|d; s|} ==> rx tt / {|upd d a v'; s|}
-  | StepYield : forall d s s' d' rx,
+  | StepRead : forall d m s a rx v, d a = Some v ->
+                             Read a rx / {|d; m; s|} ==> rx v / {|d; m; s|}
+  | StepWrite : forall d m s a rx v v', d a = Some v ->
+                                 Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
+  | StepYield : forall d m s s' d' rx,
       StateI s d ->
       StateI s' d' ->
       star StateR s s' ->
-      Yield rx / {|d; s|} ==> rx tt / {|d'; s'|}
-  | StepCommit : forall d s up rx,
+      Yield rx / {|d; m; s|} ==> rx tt / {|d'; m; s'|}
+  | StepCommit : forall d m s up rx,
       StateR s (up s) ->
       StateI (up s) d ->
-      Commit up rx / {|d; s|} ==> rx tt / {|d; up s|}
+      Commit up rx / {|d; m; s|} ==> rx tt / {|d; m; up s|}
+  | StepGet : forall d m s t (v: var t) rx,
+      Get v rx / {|d; m; s|} ==> rx (get m v) / {|d; m; s|}
+  | StepAssgn : forall d m s t (v: var t) val rx,
+      Assgn v val rx / {|d; m; s|} ==> rx tt / {|d; set m val v; s|}
   where "p '/' st '==>' p' '/' st'" := (step st p st' p').
 
   Hint Constructors step.
@@ -99,8 +116,8 @@ Section EventCSL.
       (~ exists st' p', p / st ==> p' / st') ->
       (forall v, p <> Done v) ->
       exec st p Failed
-  | ExecDone : forall d s v,
-      exec {|d; s|} (Done v) (Finished d v).
+  | ExecDone : forall d m s v,
+      exec {|d; m; s|} (Done v) (Finished d v).
 
   Hint Constructors exec.
 
@@ -126,44 +143,44 @@ Section EventCSL.
     try invalid_address;
     try no_step.
 
-  Theorem read_failure_iff : forall d s rx a,
-      (~ exists st' p', Read a rx / {|d; s|} ==> p' / st') <->
+  Theorem read_failure_iff : forall d m s rx a,
+      (~ exists st' p', Read a rx / {|d; m; s|} ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
   Qed.
 
-  Theorem read_failure : forall d s rx a,
-      (~ exists st' p', Read a rx / {|d; s|} ==> p' / st') ->
+  Theorem read_failure : forall d m s rx a,
+      (~ exists st' p', Read a rx / {|d; m; s|} ==> p' / st') ->
       d a = None.
   Proof.
     apply read_failure_iff.
   Qed.
 
-  Theorem read_failure' : forall d s rx a,
+  Theorem read_failure' : forall d m s rx a,
       d a = None ->
-      (~ exists st' p', Read a rx / {|d; s|} ==> p' / st').
+      (~ exists st' p', Read a rx / {|d; m; s|} ==> p' / st').
   Proof.
     apply read_failure_iff.
   Qed.
 
-  Theorem write_failure_iff : forall d s v rx a,
-      (~ exists st' p', Write a v rx / {|d; s|} ==> p' / st') <->
+  Theorem write_failure_iff : forall d m s v rx a,
+      (~ exists st' p', Write a v rx / {|d; m; s|} ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
   Qed.
 
-  Theorem write_failure : forall d s v rx a,
-      (~ exists st' p', Write a v rx / {|d; s|} ==> p' / st') ->
+  Theorem write_failure : forall d m s v rx a,
+      (~ exists st' p', Write a v rx / {|d; m; s|} ==> p' / st') ->
       d a = None.
   Proof.
     apply write_failure_iff.
   Qed.
 
-  Theorem write_failure' : forall d s v rx a,
+  Theorem write_failure' : forall d m s v rx a,
       d a = None ->
-      (~ exists st' p', Write a v rx / {|d; s|} ==> p' / st').
+      (~ exists st' p', Write a v rx / {|d; m; s|} ==> p' / st').
   Proof.
     apply write_failure_iff.
   Qed.
@@ -174,23 +191,23 @@ Section EventCSL.
     inv_step;
     congruence.
 
-  Theorem yield_failure'_inv : forall d s rx,
+  Theorem yield_failure'_inv : forall d m s rx,
       (~StateI s d) ->
-      (~ exists st' p', Yield rx / {|d; s|} ==> p' / st').
+      (~ exists st' p', Yield rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
-  Theorem commit_failure'_inv : forall d s up rx,
+  Theorem commit_failure'_inv : forall d m s up rx,
     (~StateI (up s) d) ->
-    (~ exists st' p', Commit up rx / {|d; s|} ==> p' / st').
+    (~ exists st' p', Commit up rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
-  Theorem commit_failure'_rel : forall d s up rx,
+  Theorem commit_failure'_rel : forall d m s up rx,
     (~StateR s (up s)) ->
-    (~ exists st' p', Commit up rx / {|d; s|} ==> p' / st').
+    (~ exists st' p', Commit up rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
@@ -224,26 +241,31 @@ Section EventCSL.
 
     induction p; intros; destruct st.
     - case_eq (d a); intros.
-      rx_specialize {|d; s|}.
+      rx_specialize {|d; m; s|}.
       all: eauto 15.
     - case_eq (d a); intros.
-      rx_specialize {| upd d a v; s |}.
+      rx_specialize {| upd d a v; m; s |}.
       all: eauto 15.
-    - rx_specialize {|d; s|}.
+    - specialize (H (get m v) {|d; m; s|}).
+      inversion H.
+      eauto.
+    - rx_specialize {|d; set m val v; s|}.
+      eauto.
+    - rx_specialize {|d; m; s|}.
       destruct (StateI_dec s d); eauto.
     - case_eq (StateR_dec s (up s));
       case_eq (StateI_dec (up s) d).
-      rx_specialize {|d; up s|}.
+      rx_specialize {|d; m; up s|}.
       all: eauto 15.
     - eauto.
   Qed.
 
   Definition donecond := T -> @pred addr (@weq addrlen) valu.
 
-  Definition valid (pre: donecond -> mem -> S -> Prop) p : Prop :=
-    forall d s done out,
-      pre done d s ->
-      exec {|d; s|} p out ->
+  Definition valid (pre: donecond -> mem -> M -> S -> Prop) p : Prop :=
+    forall d m s done out,
+      pre done d m s ->
+      exec {|d; m; s|} p out ->
       exists d' v,
         out = Finished d' v /\
         done v d'.
@@ -266,8 +288,7 @@ Section EventCSL.
     | [ H : exec ?st ?p _ |- _ ] =>
       remember st; remember p;
       induction H; subst;
-      try (destruct st;
-      inv_st);
+      try (destruct st; inv_st);
       try inv_step;
       try inv_prog
     end.
@@ -278,13 +299,13 @@ Section EventCSL.
       edestruct H; eauto
     end.
 
-  Notation "{{ e1 .. e2 , | 'PRE' d s : pre | 'POST' d' s' r : post }} p" :=
+  Notation "{{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
     (forall (rx: _ -> prog),
-        valid (fun done d s =>
+        valid (fun done d m s =>
                  (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
                                            forall ret_,
-                                             valid (fun done_rx d' s' =>
+                                             valid (fun done_rx d' m' s' =>
                                                       (fun r => post%judgement) ret_ /\
                                                       done_rx = done)
                                                    (rx ret_)
@@ -294,6 +315,8 @@ Section EventCSL.
        e1 binder, e2 binder,
        d at level 0,
        d' at level 0,
+       m at level 0,
+       m' at level 0,
        s at level 0,
        s' at level 0,
        r at level 0,
@@ -310,9 +333,10 @@ Section EventCSL.
 
   Theorem write_ok : forall a v0 v,
       {{ F,
-         | PRE d s: d |= F * a |-> v0;
-         | POST d' s' _: d' |= F * a |-> v; /\
-                                            s = s'
+         | PRE d m s: d |= F * a |-> v0;
+         | POST d' m' s' _: d' |= F * a |-> v; /\
+                                               s' = s /\
+                                               m' = m
       }} Write a v.
   Proof.
     intros_pre.
@@ -334,10 +358,11 @@ Section EventCSL.
 
   Theorem read_ok : forall a v0,
     {{ F,
-      | PRE d s: d |= F * a |-> v0;
-       | POST d' s' v: d' |= F * a |-> v0; /\
+      | PRE d m s: d |= F * a |-> v0;
+       | POST d' m' s' v: d' |= F * a |-> v0; /\
                        v = v0 /\
-                       s' = s
+                       s' = s /\
+                       m' = m
     }} Read a.
   Proof.
     intros_pre.
@@ -358,11 +383,52 @@ Section EventCSL.
       congruence.
   Qed.
 
+  Ltac sigT_eq :=
+    match goal with
+    | [ H: @eq (sigT _) _ _ |- _ ] =>
+      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
+        subst
+    end.
+
+  Theorem get_ok : forall t (v: var t),
+      {{ F,
+       | PRE d m s: d |= F;
+       | POST d' m' s' r: d' |= F; /\
+                                  r = get m v /\
+                                  m' = m /\
+                                  s' = s
+      }} Get v.
+  Proof.
+    intros_pre.
+    ind_exec.
+    - prove_rx; simpl_post; eauto.
+      repeat sigT_eq.
+      eauto.
+    - contradiction H; eauto.
+  Qed.
+
+  Theorem assgn_ok : forall t (v: var t) val,
+      {{ F,
+       | PRE d m s: d |= F;
+       | POST d' m' s' _: d' |= F; /\
+                                  m' = set m val v /\
+                                  s' = s
+      }} Assgn v val.
+  Proof.
+    intros_pre.
+    ind_exec.
+    - prove_rx; simpl_post; eauto.
+      repeat sigT_eq.
+      eauto.
+    - contradiction H; eauto.
+  Qed.
+
   Theorem yield_ok :
     {{ (_:unit),
-      | PRE d s: d |= StateI s;
-      | POST d' s' _: d' |= StateI s'; /\
-                     star StateR s s'
+      | PRE d m s: d |= StateI s;
+      | POST d' m' s' _: d' |= StateI s'; /\
+                                           star StateR s s' /\
+                                           m' = m
     }} Yield.
   Proof.
     intros_pre.
@@ -373,11 +439,12 @@ Section EventCSL.
 
   Theorem commit_ok : forall up,
     {{ F,
-     | PRE d s: d |= F;
+     | PRE d m s: d |= F;
        /\ StateR s (up s)
        /\ (F =p=> StateI (up s))
-     | POST d' s' _: d' |= F;
+     | POST d' m' s' _: d' |= F;
        /\ s' = up s
+       /\ m' = m
     }} Commit up.
   Proof.
     intros_pre.
@@ -386,15 +453,15 @@ Section EventCSL.
     - contradiction H0; eauto 10.
   Qed.
 
-  Theorem pimpl_ok : forall (pre pre': _ -> _ -> _ -> Prop) p,
+  Theorem pimpl_ok : forall (pre pre': _ -> _ -> _ -> _ -> Prop) p,
       valid pre p ->
-      (forall done d s, pre' done d s -> pre done d s) ->
+      (forall done d m s, pre' done d m s -> pre done d m s) ->
       valid pre' p.
   Proof.
     unfold valid.
     intros.
     match goal with
-    | [ H: context[?pre _ _ _ -> _], H1: ?pre _ _ _ |- _ ] =>
+    | [ H: context[?pre _ _ _ _ -> _], H1: ?pre _ _ _ _ |- _ ] =>
       apply H in H1
     end.
     eauto.
@@ -421,15 +488,15 @@ Record transitions S := {
 * add sigma |- in front to specify the transition system
 * quantify over T and change prog to prog T _ (the state type should be inferred)
 * add (StateR sigma) (StateI sigma) as arguments to valid *)
-Notation "sigma |- {{ e1 .. e2 , | 'PRE' d s : pre | 'POST' d' s' r : post }} p" :=
-  (forall T (rx: _ -> prog T _),
+Notation "sigma |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
+  (forall T (rx: _ -> prog T _ _),
       valid (StateR sigma) (StateI sigma)
-            (fun done d s =>
+            (fun done d m s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      forall ret_,
                                        valid (StateR sigma) (StateI sigma)
-                                             (fun done_rx d' s' =>
+                                             (fun done_rx d' m' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done)
                                              (rx ret_)
@@ -439,6 +506,8 @@ Notation "sigma |- {{ e1 .. e2 , | 'PRE' d s : pre | 'POST' d' s' r : post }} p"
      e1 binder, e2 binder,
      d at level 0,
      d' at level 0,
+     m at level 0,
+     m' at level 0,
      s at level 0,
      s' at level 0,
      r at level 0,
@@ -451,10 +520,12 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
 
 (* maximally insert the return/state types for Yield, which is always called
    without applying it to any arguments *)
-Arguments Yield {T} {S} rx.
+Arguments Yield {T} {Mcontents} {S} rx.
 
 Hint Extern 1 (valid _ _ _ (progseq (Read _) _)) => apply read_ok : prog.
 Hint Extern 1 (valid _ _ _ (progseq (Write _ _) _)) => apply write_ok : prog.
+Hint Extern 1 (valid _ _ _ (progseq (Get _) _)) => apply get_ok : prog.
+Hint Extern 1 (valid _ _ _ (progseq (Assgn _ _) _)) => apply assgn_ok : prog.
 Hint Extern 1 (valid _ _ _ (progseq (Yield) _)) => apply yield_ok : prog.
 Hint Extern 1 (valid _ _ _ (progseq (Commit _) _)) => apply commit_ok : prog.
 
@@ -475,6 +546,9 @@ Section Bank.
   | from2 : forall (amount:nat), ledger_entry.
 
   Definition State := list ledger_entry.
+
+  (* the memory for a bank is empty *)
+  Definition Mcontents := @nil Set.
 
   Definition add_entry (bals:nat*nat) (entry:ledger_entry) :=
     match bals with
@@ -509,7 +583,7 @@ Section Bank.
 
   Local Hint Unfold rep inv_rep State bankR bankI : prog.
 
-  Definition transfer {T S} amount rx : prog T S :=
+  Definition transfer {T S} amount rx : prog T Mcontents S :=
     bal1 <- Read acct1;
     bal2 <- Read acct2;
     Write acct1 (bal1 ^- $ amount);;
@@ -712,9 +786,10 @@ Section Bank.
   Theorem transfer_ok : forall bal1 bal2 amount,
     bankS |-
     {{ F,
-      | PRE d l: d |= F * rep bal1 bal2;
-      | POST d' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount); /\
-                       l' = l
+      | PRE d m l: d |= F * rep bal1 bal2;
+      | POST d' m' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount); /\
+                                                                              l' = l /\
+                                                                              m' = m
     }} transfer amount.
   Proof.
     unfold transfer.
@@ -723,7 +798,7 @@ Section Bank.
 
   Hint Extern 1 (valid _ _ _ (progseq (transfer _) _)) => apply transfer_ok : prog.
 
-  Definition transfer_yield {T} amount rx : prog T _ :=
+  Definition transfer_yield {T} amount rx : prog T Mcontents _ :=
     transfer amount;; Commit (record_transfer amount);; Yield;; rx tt.
 
   Lemma pimpl_and_l : forall AT AEQ V (p q r: @pred AT AEQ V),
@@ -749,11 +824,12 @@ Section Bank.
   Theorem transfer_yield_ok : forall bal1 bal2 amount,
     bankS |-
     {{ F,
-      | PRE d l: d |= F * inv_rep bal1 bal2; /\
+      | PRE d m l: d |= F * inv_rep bal1 bal2; /\
                #bal1 >= amount /\
                bankI l #bal1 #bal2
-      | POST d' l' _: d' |= bankPred l'; /\
-                     firstn (length l + 1) l' = l ++ [from1 amount]
+      | POST d' m' l' _: d' |= bankPred l'; /\
+                                            firstn (length l + 1) l' = l ++ [from1 amount] /\
+                                            m' = m
     }} transfer_yield amount.
   Proof.
     unfold transfer_yield.
