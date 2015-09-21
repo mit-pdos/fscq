@@ -3,9 +3,9 @@ OCAMLINC   := -I codegen
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem AsyncDisk Pred Prog PredCrash Hoare \
 	      SepAuto Idempotent Errno \
-	      BasicProg ListUtils Array AddrMap Rec RecArray \
-	      GenSep GenSepN ListPred Cache FSLayout \
-		   \
+	      BasicProg ListUtils Array Rec \
+	      Cache FSLayout \
+		  ListPred AddrMap GenSep GenSepN RecArray  \
 	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree SlowByteFile FastByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON

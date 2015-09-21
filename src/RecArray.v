@@ -1,4 +1,4 @@
-Require Import Eqdep_dec Arith Omega List.
+Require Import Eqdep_dec Arith Omega List ListUtils.
 Require Import Word WordAuto Pred GenSep Rec Prog BasicProg Hoare SepAuto2 Array Log.
 
 Set Implicit Arguments.

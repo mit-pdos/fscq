@@ -11,44 +11,15 @@ Require Import SepAuto.
 Require Import BasicProg.
 Require Import WordAuto.
 Require Import Omega.
-
-Module Addr_as_OT <: UsualOrderedType.
-  Definition t := addr.
-  Definition eq := @eq t.
-  Definition eq_refl := @eq_refl t.
-  Definition eq_sym := @eq_sym t.
-  Definition eq_trans := @eq_trans t.
-  Definition lt := @wlt addrlen.
-
-  Lemma lt_trans: forall x y z : t, lt x y -> lt y z -> lt x z.
-  Proof.
-    unfold lt; intros.
-    apply wlt_lt in H; apply wlt_lt in H0.
-    apply lt_wlt.
-    omega.
-  Qed.
-
-  Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
-  Proof.
-    unfold lt, eq; intros.
-    apply wlt_lt in H.
-    intro He; subst; omega.
-  Qed.
-
-  Definition compare x y : Compare lt eq x y.
-    unfold lt, eq.
-    destruct (wlt_dec x y); [ apply LT; auto | ].
-    destruct (weq x y); [ apply EQ; auto | ].
-    apply GT. apply le_neq_lt; auto.
-  Defined.
-
-  Definition eq_dec := @weq addrlen.
-End Addr_as_OT.
+Require Import ListUtils.
+Require Import AsyncDisk.
+Require Import OrderedTypeEx.
+Require Import Arith.
 
 
-Module Map := FMapAVL.Make(Addr_as_OT).
-Module MapFacts := WFacts_fun Addr_as_OT Map.
-Module MapProperties := WProperties_fun Addr_as_OT Map.
+Module Map := FMapAVL.Make(Nat_as_OT).
+Module MapFacts := WFacts_fun Nat_as_OT Map.
+Module MapProperties := WProperties_fun Nat_as_OT Map.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -56,7 +27,7 @@ Set Implicit Arguments.
 Definition eviction_state : Type := unit.
 Definition eviction_init : eviction_state := tt.
 Definition eviction_update (s : eviction_state) (a : addr) := s.
-Definition eviction_choose (s : eviction_state) : (addr * eviction_state) := ($0, s).
+Definition eviction_choose (s : eviction_state) : (addr * eviction_state) := (0, s).
 
 Record cachestate := {
   CSMap : Map.t valu;
@@ -67,7 +38,7 @@ Record cachestate := {
 
 Module BUFCACHE.
 
-  Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) valuset) :=
+  Definition rep (cs : cachestate) (m : @rawdisk) : rawpred :=
     (diskIs m *
      [[ Map.cardinal (CSMap cs) = CSCount cs ]] *
      [[ CSCount cs <= CSMaxCount cs ]] *
@@ -133,19 +104,19 @@ Module BUFCACHE.
     rx (Build_cachestate (Map.empty valu) 0 cachesize eviction_init).
 
   Definition read_array T a i cs rx : prog T :=
-    r <- read (a ^+ i ^* $1) cs;
+    r <- read (a + i) cs;
     rx r.
 
   Definition write_array T a i v cs rx : prog T :=
-    cs <- write (a ^+ i ^* $1) v cs;
+    cs <- write (a + i) v cs;
     rx cs.
 
   Definition sync_array T a i cs rx : prog T :=
-    cs <- sync (a ^+ i ^* $1) cs;
+    cs <- sync (a + i) cs;
     rx cs.
 
   Definition trim_array T a i cs rx : prog T :=
-    cs <- trim (a ^+ i ^* $1) cs;
+    cs <- trim (a + i) cs;
     rx cs.
 
   Lemma mapsto_add : forall a v v' (m : Map.t valu),
@@ -165,7 +136,7 @@ Module BUFCACHE.
     omega.
     apply Map.remove_1; auto.
     intro.
-    destruct (Addr_as_OT.eq_dec k y); subst.
+    destruct (Nat_as_OT.eq_dec k y); subst.
     - rewrite MapFacts.add_eq_o; auto.
       erewrite Map.find_1; eauto.
     - rewrite MapFacts.add_neq_o; auto.
@@ -191,11 +162,11 @@ Module BUFCACHE.
     omega.
     apply Map.remove_1; auto.
     intro.
-    destruct (Addr_as_OT.eq_dec k y); subst.
+    destruct (Nat_as_OT.eq_dec k y); subst.
     - rewrite MapFacts.add_eq_o; auto.
       rewrite MapFacts.add_eq_o; auto.
     - rewrite MapFacts.add_neq_o; auto.
-      rewrite MapFacts.add_neq_o; auto.
+      rewrite MapFacts.add_neq_o; try omega.
       rewrite MapFacts.remove_neq_o; auto.
   Qed.
 
@@ -212,7 +183,7 @@ Module BUFCACHE.
     omega.
     apply Map.remove_1; reflexivity.
     intro.
-    destruct (Addr_as_OT.eq_dec k y); subst.
+    destruct (Nat_as_OT.eq_dec k y); subst.
     - rewrite MapFacts.add_eq_o; auto.
       erewrite Map.find_1; eauto.
     - rewrite MapFacts.add_neq_o; auto.
@@ -257,7 +228,7 @@ Module BUFCACHE.
   Hint Extern 1 ({{_}} progseq (maybe_evict _) _) => apply maybe_evict_ok : prog.
 
   Theorem read_ok : forall cs a,
-    {< d F v,
+    {< d (F : rawpred) v,
     PRE
       rep cs d * [[ (F * a |~> v)%pred d ]]
     POST RET:^(cs, r)
@@ -280,7 +251,7 @@ Module BUFCACHE.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
     apply ptsto_valid' in H3 as H'.
-    destruct (weq a a0); subst.
+    destruct (addr_eq_dec a a0); subst.
     apply mapsto_add in H; subst; eauto.
     edestruct H12. eauto. eexists; eauto.
     simpl in *; auto.
@@ -293,7 +264,7 @@ Module BUFCACHE.
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
 
   Theorem write_ok : forall cs a v,
-    {< d F v0,
+    {< d (F : rawpred) v0,
     PRE
       rep cs d * [[ (F * a |-> v0)%pred d ]]
     POST RET:cs
@@ -312,7 +283,7 @@ Module BUFCACHE.
 
     rewrite <- diskIs_combine_upd with (m:=d) (a:=a); try pred_apply; cancel.
     rewrite map_add_dup_cardinal; eauto.
-    destruct (weq a a0); subst.
+    destruct (addr_eq_dec a a0); subst.
     apply mapsto_add in H; subst.
     rewrite upd_eq by auto. eauto.
     apply Map.add_3 in H; auto.
@@ -325,7 +296,7 @@ Module BUFCACHE.
     rewrite map_add_cardinal; eauto.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
-    destruct (weq a a0); subst.
+    destruct (addr_eq_dec a a0); subst.
     apply mapsto_add in H; subst.
     rewrite upd_eq by auto. eauto.
     apply Map.add_3 in H; auto.
@@ -347,7 +318,7 @@ Module BUFCACHE.
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
 
   Theorem sync_ok : forall a cs,
-    {< d F v,
+    {< d (F : rawpred) v,
     PRE
       rep cs d * [[ (F * a |-> v)%pred d ]]
     POST RET:cs
@@ -366,7 +337,7 @@ Module BUFCACHE.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     apply H5 in H; deex.
-    destruct (weq a a0); subst.
+    destruct (addr_eq_dec a a0); subst.
     apply sep_star_comm in H3; apply ptsto_valid in H3.
     rewrite H3 in H. inversion H. subst.
     rewrite upd_eq by auto. eexists. eauto.
@@ -384,7 +355,7 @@ Module BUFCACHE.
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
 
   Theorem trim_ok : forall a cs,
-    {< d F vs,
+    {< d (F : rawpred) vs,
     PRE
       rep cs d * [[ (F * a |-> vs)%pred d ]]
     POST RET:cs
@@ -407,7 +378,7 @@ Module BUFCACHE.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     rewrite map_remove_cardinal. eauto. eauto.
-    destruct (weq a a0).
+    destruct (addr_eq_dec a a0).
     apply MapFacts.remove_mapsto_iff in H0. intuition.
     rewrite upd_ne by eauto. eauto.
 
@@ -421,7 +392,7 @@ Module BUFCACHE.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
 
-    destruct (weq a a0).
+    destruct (addr_eq_dec a a0).
     apply MapProperties.F.find_mapsto_iff in H0. congruence.
     rewrite upd_ne by eauto. eauto.
 
@@ -549,16 +520,16 @@ Module BUFCACHE.
   Theorem read_array_ok : forall a i cs,
     {< d F vs,
     PRE
-      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
     POST RET:^(cs, v)
-      rep cs d * [[ v = fst (sel vs i ($0, nil)) ]]
+      rep cs d * [[ v = fst (selN vs i ($0, nil)) ]]
     CRASH
       exists cs', rep cs' d
     >} read_array a i cs.
   Proof.
     unfold read_array.
     hoare.
-    rewrite isolate_fwd with (i:=i) by auto.
+    rewrite isolateN_fwd with (i:=i) by auto.
     rewrite <- surjective_pairing.
     cancel.
   Qed.
@@ -572,31 +543,31 @@ Module BUFCACHE.
   Theorem write_array_ok : forall a i v cs,
     {< d F vs,
     PRE
-      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
     POST RET:cs
       exists d', rep cs d' *
-      [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
+      [[ (F * arrayN a (upd_prepend vs i v))%pred d' ]]
     CRASH
       exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * array a (upd_prepend vs i v) $1)%pred d' ]]
+      exists d', rep cs' d' * [[ (F * arrayN a (upd_prepend vs i v))%pred d' ]]
     >} write_array a i v cs.
   Proof.
     unfold write_array, upd_prepend.
     hoare.
 
     pred_apply.
-    rewrite isolate_fwd with (i:=i) by auto. cancel.
+    rewrite isolateN_fwd with (i:=i) by auto. cancel.
     rewrite ptsto_tuple.
     cancel.
 
-    rewrite <- isolate_bwd_upd by auto.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
     cancel.
     apply pimpl_or_r; left; cancel.
 
     cancel.
     apply pimpl_or_r; right; cancel.
-    rewrite <- isolate_bwd_upd by auto.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
   Qed.
 
@@ -605,60 +576,60 @@ Module BUFCACHE.
   Theorem sync_array_ok : forall a i cs,
     {< d F vs,
     PRE
-      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
     POST RET:cs
       exists d', rep cs d' *
-      [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
+      [[ (F * arrayN a (upd_sync vs i ($0, nil)))%pred d' ]]
     CRASH
       exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * array a (upd_sync vs i ($0, nil)) $1)%pred d' ]]
+      exists d', rep cs' d' * [[ (F * arrayN a (upd_sync vs i ($0, nil)))%pred d' ]]
     >} sync_array a i cs.
   Proof.
     unfold sync_array, upd_sync.
     hoare.
 
     pred_apply.
-    rewrite isolate_fwd with (i:=i) by auto. cancel.
+    rewrite isolateN_fwd with (i:=i) by auto. cancel.
     rewrite ptsto_tuple.
     cancel.
 
-    rewrite <- isolate_bwd_upd by auto.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
     cancel.
     apply pimpl_or_r; left; cancel.
 
     cancel.
     apply pimpl_or_r; right; cancel.
-    rewrite <- isolate_bwd_upd by auto.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
   Theorem trim_array_ok : forall a i cs,
-    {< d F vs,
+    {< d (F : rawpred) vs,
     PRE
-      rep cs d * [[ (F * array a vs $1)%pred d ]] * [[ #i < length vs ]]
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
     POST RET:cs
       exists d' v', rep cs d' *
-      [[ (F * array a (upd vs i v') $1)%pred d' ]]
+      [[ (F * arrayN a (updN vs i v'))%pred d' ]]
     CRASH
       exists cs' d' v', rep cs' d' *
-      [[ (F * array a (upd vs i v') $1)%pred d' ]]
+      [[ (F * arrayN a (updN vs i v'))%pred d' ]]
     >} trim_array a i cs.
   Proof.
-    unfold trim_array, upd_sync.
+    unfold trim_array.
     hoare.
 
     pred_apply.
     rewrite <- surjective_pairing.
-    rewrite isolate_fwd with (i:=i) by auto. cancel.
+    rewrite isolateN_fwd with (i:=i) by auto. cancel.
 
-    rewrite <- isolate_bwd_upd by auto.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
 
     pred_apply. cancel.
-    rewrite <- isolate_bwd_upd by auto.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
 
     Grab Existential Variables.
