@@ -6,7 +6,7 @@ Require Import Omega.
 Require Import Star.
 Require Import List.
 Import List.ListNotations.
-Open Scope list.
+Local Open Scope list.
 
 Set Implicit Arguments.
 

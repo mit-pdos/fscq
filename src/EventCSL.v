@@ -7,7 +7,7 @@ Require Import Star.
 Require Import Hlist.
 Require Import List.
 Import List.ListNotations.
-Open Scope list.
+Local Open Scope list.
 
 (* defined in Prog. which we don't want to import here *)
 Definition addrlen := 64.
