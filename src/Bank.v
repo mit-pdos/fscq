@@ -115,8 +115,6 @@ Section Bank.
 
   Hint Resolve -> gt0_wneq0.
 
-  Check wminus_minus.
-
   Lemma wplus_plus : forall sz a b,
       goodSize sz (#a + #b) ->
       @wordToNat sz (a ^+ b) = #a + #b.
