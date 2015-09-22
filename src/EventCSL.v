@@ -86,7 +86,7 @@ Section EventCSL.
   | StepRead : forall d m s a rx v, d a = Some v ->
                                tid :- Read a rx / {|d; m; s|} ==> rx v / {|d; m; s|}
   | StepWrite : forall d m s a rx v v', d a = Some v ->
-  (* TODO: add side conditions for preserving invariant/relation *)
+                                   StateR tid (d, m, s) (upd d a v', m, s) ->
                                    tid :- Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
   | StepYield : forall d m s s' m' d' rx,
       StateI m s d ->
@@ -133,10 +133,10 @@ Section EventCSL.
 
   Ltac invalid_address :=
     match goal with
-    | [ H: ~ exists st' p', step _ _ _ _ _ |- ?d ?a = None ] =>
+    | [ H: ~ exists st' p', step _ _ _ _ _ |- context[?d ?a = None] ] =>
       case_eq (d a); auto; intros;
-      contradiction H;
-      eauto
+      try solve [ contradiction H;
+                  eauto ]
     end.
 
   Ltac no_step :=
@@ -160,13 +160,6 @@ Section EventCSL.
     address_failure.
   Qed.
 
-  Theorem write_failure_iff : forall tid d m s v rx a,
-      (~ exists st' p', tid :- Write a v rx / {|d; m; s|} ==> p' / st') <->
-      d a = None.
-  Proof.
-    address_failure.
-  Qed.
-
   Ltac sigT_eq :=
     match goal with
     | [ H: @eq (sigT _) _ _ |- _ ] =>
@@ -181,37 +174,35 @@ Section EventCSL.
     repeat sigT_eq;
     congruence.
 
-  Theorem assgn_failure_inv : forall tid d m s rx t (v:var t) val,
-      (~StateI (set m val v) s d) ->
-      (~ exists st' p', tid :- Assgn v val rx / {|d; m; s|} ==> p' / st').
+  Theorem write_failure_iff : forall tid d m s v rx a,
+      (~ exists st' p', tid :- Write a v rx / {|d; m; s|} ==> p' / st') <->
+      (d a = None \/
+       ~ StateR tid (d, m, s) (upd d a v, m, s)).
   Proof.
-    not_sidecondition_fail.
+    address_failure;
+    try not_sidecondition_fail;
+    intuition eauto.
   Qed.
 
-  Theorem assgn_failure_rel : forall tid d m s rx t (v:var t) val,
+  Theorem assgn_failure : forall tid d m s rx t (v:var t) val,
+      (~StateI (set m val v) s d) \/
       (~StateR tid (d, m, s) (d, set m val v, s)) ->
       (~ exists st' p', tid :- Assgn v val rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
-  Theorem yield_failure_inv : forall tid d m s rx,
+  Theorem yield_failure : forall tid d m s rx,
       (~StateI m s d) ->
       (~ exists st' p', tid :- Yield rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
-  Theorem commit_failure_inv : forall tid d m s up rx,
-    (~StateI m (up s) d) ->
-    (~ exists st' p', tid :- Commit up rx / {|d; m; s|} ==> p' / st').
-  Proof.
-    not_sidecondition_fail.
-  Qed.
-
-  Theorem commit_failure_rel : forall tid d m s up rx,
-    (~StateR tid (d, m, s) (d, m, up s)) ->
-    (~ exists st' p', tid :- Commit up rx / {|d; m; s|} ==> p' / st').
+  Theorem commit_failure : forall tid d m s up rx,
+    (~StateI m (up s) d \/
+     (~StateR tid (d, m, s) (d, m, up s))) ->
+     (~ exists st' p', tid :- Commit up rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
@@ -240,17 +231,16 @@ Section EventCSL.
 
     Hint Resolve <- read_failure_iff.
     Hint Resolve <- write_failure_iff.
-    Hint Resolve assgn_failure_inv.
-    Hint Resolve assgn_failure_rel.
-    Hint Resolve yield_failure_inv.
-    Hint Resolve commit_failure_inv.
-    Hint Resolve commit_failure_rel.
+    Hint Resolve assgn_failure.
+    Hint Resolve yield_failure.
+    Hint Resolve commit_failure.
 
     induction p; intros; destruct st.
     - case_eq (d a); intros.
       rx_specialize {|d; m; s|}.
       all: eauto 15.
-    - case_eq (d a); intros.
+    - case_eq (d a);
+      case_eq (StateR_dec tid d m s (upd d a v) m s); intros.
       rx_specialize {| upd d a v; m; s |}.
       all: eauto 15.
     - specialize (H (get m v) {|d; m; s|}).
@@ -342,7 +332,8 @@ Section EventCSL.
 
   Theorem write_ok : forall a v0 v,
       tid |- {{ F,
-             | PRE d m s: d |= F * a |-> v0;
+             | PRE d m s: d |= F * a |-> v0; /\
+                                             StateR tid (d, m, s) (upd d a v, m, s)
                | POST d' m' s' _: d' |= F * a |-> v; /\
                                                      s' = s /\
                                                      m' = m
@@ -362,7 +353,7 @@ Section EventCSL.
       | [ H: context[ptsto a  _] |- _ ] =>
         apply ptsto_valid' in H
       end.
-      congruence.
+      intuition; congruence.
   Qed.
 
   Theorem read_ok : forall a v0,
