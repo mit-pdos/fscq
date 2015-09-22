@@ -498,3 +498,9 @@ Hint Extern 1 {{ Get _; _ }} => apply get_ok : prog.
 Hint Extern 1 {{ Assgn _ _; _ }} => apply assgn_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply yield_ok : prog.
 Hint Extern 1 {{ Commit _; _ }} => apply commit_ok : prog.
+
+(* creating member variables for an hlist is painful, so define notation for it.
+
+Ideally we'd have a function nth_member, but the dependent types are too painful
+(one problem is that n might be out-of-bounds). *)
+Notation "'VAR' 0 'IN' contents" := (@HFirst _ (nth 0 contents unit) (skipn (0+1) contents)) (at level 30).
