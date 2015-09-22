@@ -28,7 +28,10 @@ Section EventCSL.
   Set Default Proof Using "Type".
 
   (* a disk state *)
-  Implicit Type d : @mem addr (@weq addrlen) valu.
+  Notation "'DISK'" := (@mem addr (@weq addrlen) valu).
+  Implicit Type d : DISK.
+
+  Definition ID := nat.
 
   (** The memory is a heterogenously typed list where element types
       are given by Mcontents. *)
@@ -44,12 +47,14 @@ Section EventCSL.
   (** Our programs will return values of type T *)
   Variable T:Type.
 
-  Definition var t := @member Set t Mcontents.
+  Definition var (t:Set) : Type := @member Set t Mcontents.
 
   (** Define the transition system for the ghost state.
       The semantics will reject transitions that do not obey these rules. *)
-  Variable StateR : S -> S -> Prop.
-  Variable StateI : S -> @pred addr (@weq addrlen) valu.
+  Definition Relation := ID -> DISK * M * S -> DISK * M * S -> Prop.
+  Variable StateR : Relation.
+  Definition Invariant := M -> S -> @pred addr (@weq addrlen) valu.
+  Variable StateI : Invariant.
 
   Inductive prog :=
   | Read (a: addr) (rx: valu -> prog)
@@ -68,38 +73,43 @@ Section EventCSL.
 
   Implicit Type p : prog.
 
+  (* TODO: make this a tuple type *)
   Inductive state :=
     | sigma : forall d m (s:S), state.
 
   Notation "{| d ; m ; s |}" := (sigma d m s) (at level 0).
 
-  Reserved Notation "p '/' st '==>' p' '/' st'" (at level 40, p' at level 39).
+  Reserved Notation "tid ':-' p '/' st '==>' p' '/' st'"
+           (at level 40, p at next level, p' at next level).
 
-  Inductive step : forall st p st' p', Prop :=
+  Inductive step (tid:ID) : forall st p st' p', Prop :=
   | StepRead : forall d m s a rx v, d a = Some v ->
-                             Read a rx / {|d; m; s|} ==> rx v / {|d; m; s|}
+                               tid :- Read a rx / {|d; m; s|} ==> rx v / {|d; m; s|}
   | StepWrite : forall d m s a rx v v', d a = Some v ->
-                                 Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
-  | StepYield : forall d m s s' d' rx,
-      StateI s d ->
-      StateI s' d' ->
-      star StateR s s' ->
-      Yield rx / {|d; m; s|} ==> rx tt / {|d'; m; s'|}
+  (* TODO: add side conditions for preserving invariant/relation *)
+                                   tid :- Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
+  | StepYield : forall d m s s' m' d' rx,
+      StateI m s d ->
+      StateI m' s' d' ->
+      star (StateR tid) (d, m, s) (d', m', s') ->
+      tid :- Yield rx / {|d; m; s|} ==> rx tt / {|d'; m'; s'|}
   | StepCommit : forall d m s up rx,
-      StateR s (up s) ->
-      StateI (up s) d ->
-      Commit up rx / {|d; m; s|} ==> rx tt / {|d; m; up s|}
+      StateR tid (d, m, s) (d, m, up s) ->
+      StateI m (up s) d ->
+      tid :- Commit up rx / {|d; m; s|} ==> rx tt / {|d; m; up s|}
   | StepGet : forall d m s t (v: var t) rx,
-      Get v rx / {|d; m; s|} ==> rx (get m v) / {|d; m; s|}
+      tid :- Get v rx / {|d; m; s|} ==> rx (get m v) / {|d; m; s|}
   | StepAssgn : forall d m s t (v: var t) val rx,
-      Assgn v val rx / {|d; m; s|} ==> rx tt / {|d; set m val v; s|}
-  where "p '/' st '==>' p' '/' st'" := (step st p st' p').
+      StateI (set m val v) s d ->
+      StateR tid (d, m, s) (d, set m val v, s) ->
+      tid :- Assgn v val rx / {|d; m; s|} ==> rx tt / {|d; set m val v; s|}
+  where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
   Hint Constructors step.
 
   Ltac inv_step :=
     match goal with
-    | [ H: step _ _ _ _ |- _ ] =>
+    | [ H: step _ _ _ _ _ |- _ ] =>
       inversion H; subst
     end.
 
@@ -107,23 +117,23 @@ Section EventCSL.
   | Failed
   | Finished d (v:T).
 
-  Inductive exec : forall st p (out:outcome), Prop :=
+  Inductive exec tid : forall st p (out:outcome), Prop :=
   | ExecStep : forall st p st' p' out,
-      p / st ==> p' / st' ->
-      exec st' p' out ->
-      exec st p out
+      tid :- p / st ==> p' / st' ->
+      exec tid st' p' out ->
+      exec tid st p out
   | ExecFail : forall st p,
-      (~ exists st' p', p / st ==> p' / st') ->
+      (~ exists st' p', tid :- p / st ==> p' / st') ->
       (forall v, p <> Done v) ->
-      exec st p Failed
+      exec tid st p Failed
   | ExecDone : forall d m s v,
-      exec {|d; m; s|} (Done v) (Finished d v).
+      exec tid {|d; m; s|} (Done v) (Finished d v).
 
   Hint Constructors exec.
 
   Ltac invalid_address :=
     match goal with
-    | [ H: ~ exists st' p', step _ _ _ _ |- ?d ?a = None ] =>
+    | [ H: ~ exists st' p', step _ _ _ _ _ |- ?d ?a = None ] =>
       case_eq (d a); auto; intros;
       contradiction H;
       eauto
@@ -131,7 +141,7 @@ Section EventCSL.
 
   Ltac no_step :=
     match goal with
-    | [  |- ~ (exists st' p', step _ _ _ _) ] =>
+    | [  |- ~ (exists st' p', step _ _ _ _ _) ] =>
       let Hcontra := fresh in
       intro Hcontra;
         repeat deex;
@@ -143,71 +153,65 @@ Section EventCSL.
     try invalid_address;
     try no_step.
 
-  Theorem read_failure_iff : forall d m s rx a,
-      (~ exists st' p', Read a rx / {|d; m; s|} ==> p' / st') <->
+  Theorem read_failure_iff : forall tid d m s rx a,
+      (~ exists st' p', tid :- Read a rx / {|d; m; s|} ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
   Qed.
 
-  Theorem read_failure : forall d m s rx a,
-      (~ exists st' p', Read a rx / {|d; m; s|} ==> p' / st') ->
-      d a = None.
-  Proof.
-    apply read_failure_iff.
-  Qed.
-
-  Theorem read_failure' : forall d m s rx a,
-      d a = None ->
-      (~ exists st' p', Read a rx / {|d; m; s|} ==> p' / st').
-  Proof.
-    apply read_failure_iff.
-  Qed.
-
-  Theorem write_failure_iff : forall d m s v rx a,
-      (~ exists st' p', Write a v rx / {|d; m; s|} ==> p' / st') <->
+  Theorem write_failure_iff : forall tid d m s v rx a,
+      (~ exists st' p', tid :- Write a v rx / {|d; m; s|} ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
   Qed.
 
-  Theorem write_failure : forall d m s v rx a,
-      (~ exists st' p', Write a v rx / {|d; m; s|} ==> p' / st') ->
-      d a = None.
-  Proof.
-    apply write_failure_iff.
-  Qed.
-
-  Theorem write_failure' : forall d m s v rx a,
-      d a = None ->
-      (~ exists st' p', Write a v rx / {|d; m; s|} ==> p' / st').
-  Proof.
-    apply write_failure_iff.
-  Qed.
+  Ltac sigT_eq :=
+    match goal with
+    | [ H: @eq (sigT _) _ _ |- _ ] =>
+      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
+        subst
+    end.
 
   Ltac not_sidecondition_fail :=
     intros; intro Hcontra;
     repeat deex;
     inv_step;
+    repeat sigT_eq;
     congruence.
 
-  Theorem yield_failure'_inv : forall d m s rx,
-      (~StateI s d) ->
-      (~ exists st' p', Yield rx / {|d; m; s|} ==> p' / st').
+  Theorem assgn_failure_inv : forall tid d m s rx t (v:var t) val,
+      (~StateI (set m val v) s d) ->
+      (~ exists st' p', tid :- Assgn v val rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
-  Theorem commit_failure'_inv : forall d m s up rx,
-    (~StateI (up s) d) ->
-    (~ exists st' p', Commit up rx / {|d; m; s|} ==> p' / st').
+  Theorem assgn_failure_rel : forall tid d m s rx t (v:var t) val,
+      (~StateR tid (d, m, s) (d, set m val v, s)) ->
+      (~ exists st' p', tid :- Assgn v val rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
 
-  Theorem commit_failure'_rel : forall d m s up rx,
-    (~StateR s (up s)) ->
-    (~ exists st' p', Commit up rx / {|d; m; s|} ==> p' / st').
+  Theorem yield_failure_inv : forall tid d m s rx,
+      (~StateI m s d) ->
+      (~ exists st' p', tid :- Yield rx / {|d; m; s|} ==> p' / st').
+  Proof.
+    not_sidecondition_fail.
+  Qed.
+
+  Theorem commit_failure_inv : forall tid d m s up rx,
+    (~StateI m (up s) d) ->
+    (~ exists st' p', tid :- Commit up rx / {|d; m; s|} ==> p' / st').
+  Proof.
+    not_sidecondition_fail.
+  Qed.
+
+  Theorem commit_failure_rel : forall tid d m s up rx,
+    (~StateR tid (d, m, s) (d, m, up s)) ->
+    (~ exists st' p', tid :- Commit up rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
@@ -215,15 +219,16 @@ Section EventCSL.
   Hint Extern 2 (forall v, _ <> Done v) => intro; congruence.
 
   Theorem exec_progress :
-      forall (StateI_dec: forall s d, {StateI s d} + {~StateI s d}),
-      forall (StateR_dec: forall s s', {StateR s s'} + {~StateR s s'}),
-      forall p st,
-      exists out, exec st p out.
+      forall (StateI_dec: forall d m s, {StateI m s d} + {~StateI m s d}),
+      forall (StateR_dec: forall tid d m s d' m' s', {StateR tid (d, m, s) (d', m', s')} +
+                                           {~StateR tid (d, m, s) (d', m', s')}),
+      forall tid p st,
+      exists out, exec tid st p out.
   Proof.
 
     Ltac rx_specialize new_st :=
       match goal with
-      | [ H : forall w:?t, forall _, exists out, exec _ _ out |- _ ] =>
+      | [ H : forall w:?t, forall _, exists out, exec _ _ _ out |- _ ] =>
         match t with
         | unit => specialize (H tt new_st); inversion H
         | _ => match goal with
@@ -233,11 +238,13 @@ Section EventCSL.
         end
       end.
 
-    Hint Resolve read_failure'.
-    Hint Resolve write_failure'.
-    Hint Resolve yield_failure'_inv.
-    Hint Resolve commit_failure'_inv.
-    Hint Resolve commit_failure'_rel.
+    Hint Resolve <- read_failure_iff.
+    Hint Resolve <- write_failure_iff.
+    Hint Resolve assgn_failure_inv.
+    Hint Resolve assgn_failure_rel.
+    Hint Resolve yield_failure_inv.
+    Hint Resolve commit_failure_inv.
+    Hint Resolve commit_failure_rel.
 
     induction p; intros; destruct st.
     - case_eq (d a); intros.
@@ -249,12 +256,14 @@ Section EventCSL.
     - specialize (H (get m v) {|d; m; s|}).
       inversion H.
       eauto.
-    - rx_specialize {|d; set m val v; s|}.
-      eauto.
+    - case_eq (StateI_dec d (set m val v) s);
+      case_eq (StateR_dec tid d m s d (set m val v) s); intros.
+      rx_specialize {|d; set m val v; s|}.
+      all: eauto 15.
     - rx_specialize {|d; m; s|}.
-      destruct (StateI_dec s d); eauto.
-    - case_eq (StateR_dec s (up s));
-      case_eq (StateI_dec (up s) d).
+      destruct (StateI_dec d m s); eauto.
+    - case_eq (StateR_dec tid d m s d m (up s));
+      case_eq (StateI_dec d m (up s)).
       rx_specialize {|d; m; up s|}.
       all: eauto 15.
     - eauto.
@@ -262,10 +271,10 @@ Section EventCSL.
 
   Definition donecond := T -> @pred addr (@weq addrlen) valu.
 
-  Definition valid (pre: donecond -> mem -> M -> S -> Prop) p : Prop :=
+  Definition valid tid (pre: donecond -> mem -> M -> S -> Prop) p : Prop :=
     forall d m s done out,
       pre done d m s ->
-      exec {|d; m; s|} p out ->
+      exec tid {|d; m; s|} p out ->
       exists d' v,
         out = Finished d' v /\
         done v d'.
@@ -285,7 +294,7 @@ Section EventCSL.
 
   Ltac ind_exec :=
     match goal with
-    | [ H : exec ?st ?p _ |- _ ] =>
+    | [ H : exec _ ?st ?p _ |- _ ] =>
       remember st; remember p;
       induction H; subst;
       try (destruct st; inv_st);
@@ -295,22 +304,22 @@ Section EventCSL.
 
   Ltac prove_rx :=
     match goal with
-    | [ H: forall _, valid _ _ |- _ ] =>
+    | [ H: forall _, valid _ _ _ |- _ ] =>
       edestruct H; eauto
     end.
 
-  Notation "{{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
-    (forall (rx: _ -> prog),
-        valid (fun done d m s =>
-                 (ex (fun e1 => .. (ex (fun e2 =>
+  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
+    (forall (rx: _ -> prog) (tid:ID),
+        valid tid (fun done d m s =>
+                     (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
                                            forall ret_,
-                                             valid (fun done_rx d' m' s' =>
+                                             valid tid (fun done_rx d' m' s' =>
                                                       (fun r => post%judgement) ret_ /\
                                                       done_rx = done)
                                                    (rx ret_)
-                                  )) .. ))
-              ) (p rx))
+                                    )) .. ))
+                  ) (p rx))
       (at level 0, p at level 60,
        e1 binder, e2 binder,
        d at level 0,
@@ -332,12 +341,12 @@ Section EventCSL.
     cbn; intuition.
 
   Theorem write_ok : forall a v0 v,
-      {{ F,
-         | PRE d m s: d |= F * a |-> v0;
-         | POST d' m' s' _: d' |= F * a |-> v; /\
-                                               s' = s /\
-                                               m' = m
-      }} Write a v.
+      tid |- {{ F,
+             | PRE d m s: d |= F * a |-> v0;
+               | POST d' m' s' _: d' |= F * a |-> v; /\
+                                                     s' = s /\
+                                                     m' = m
+            }} Write a v.
   Proof.
     intros_pre.
     ind_exec.
@@ -346,8 +355,8 @@ Section EventCSL.
       cancel.
       pred_apply; cancel.
     - match goal with
-      | [ H: ~ exists st' p', step _ _ _ _ |- _] =>
-        apply write_failure in H
+      | [ H: ~ exists st' p', step _ _ _ _ _ |- _] =>
+        apply write_failure_iff in H
       end.
       match goal with
       | [ H: context[ptsto a  _] |- _ ] =>
@@ -357,7 +366,7 @@ Section EventCSL.
   Qed.
 
   Theorem read_ok : forall a v0,
-    {{ F,
+    tid |- {{ F,
       | PRE d m s: d |= F * a |-> v0;
        | POST d' m' s' v: d' |= F * a |-> v0; /\
                        v = v0 /\
@@ -373,8 +382,8 @@ Section EventCSL.
       pred_apply; cancel.
       congruence.
     - match goal with
-      | [ H: ~ exists st' p', step _ _ _ _ |- _ ] =>
-        apply read_failure in H
+      | [ H: ~ exists st' p', step _ _ _ _ _ |- _ ] =>
+        apply read_failure_iff in H
       end.
       match goal with
       | [ H: context[ptsto a _] |- _ ] =>
@@ -383,33 +392,28 @@ Section EventCSL.
       congruence.
   Qed.
 
-  Ltac sigT_eq :=
-    match goal with
-    | [ H: @eq (sigT _) _ _ |- _ ] =>
-      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
-        subst
-    end.
-
   Theorem get_ok : forall t (v: var t),
-      {{ F,
-       | PRE d m s: d |= F;
-       | POST d' m' s' r: d' |= F; /\
-                                  r = get m v /\
-                                  m' = m /\
-                                  s' = s
-      }} Get v.
+      tid |- {{ F,
+             | PRE d m s: d |= F;
+               | POST d' m' s' r: d' |= F; /\
+                                           r = get m v /\
+                                           m' = m /\
+                                           s' = s
+            }} Get v.
   Proof.
     intros_pre.
     ind_exec.
     - prove_rx; simpl_post; eauto.
       repeat sigT_eq.
       eauto.
-    - contradiction H; eauto.
+    - exfalso; eauto.
   Qed.
 
   Theorem assgn_ok : forall t (v: var t) val,
-      {{ F,
-       | PRE d m s: d |= F;
+      tid |- {{ F,
+             | PRE d m s: d |= F; /\
+                            StateI (set m val v) s d /\
+                            StateR tid (d, m, s) (d, set m val v, s)
        | POST d' m' s' _: d' |= F; /\
                                   m' = set m val v /\
                                   s' = s
@@ -420,28 +424,27 @@ Section EventCSL.
     - prove_rx; simpl_post; eauto.
       repeat sigT_eq.
       eauto.
-    - contradiction H; eauto.
+    - exfalso; eauto.
   Qed.
 
   Theorem yield_ok :
-    {{ (_:unit),
-      | PRE d m s: d |= StateI s;
-      | POST d' m' s' _: d' |= StateI s'; /\
-                                           star StateR s s' /\
-                                           m' = m
+    tid |- {{ (_:unit),
+           | PRE d m s: d |= StateI m s;
+           | POST d' m' s' _: d' |= StateI m' s';
+           /\ star (StateR tid) (d, m, s) (d', m', s')
     }} Yield.
   Proof.
     intros_pre.
     ind_exec.
     - prove_rx; simpl_post.
-    - contradiction H; eauto.
+    - exfalso; eauto.
   Qed.
 
   Theorem commit_ok : forall up,
-    {{ F,
+    tid |- {{ F,
      | PRE d m s: d |= F;
-       /\ StateR s (up s)
-       /\ (F =p=> StateI (up s))
+       /\ StateR tid (d,m,s) (d,m,up s)
+       /\ (F =p=> StateI m (up s))
      | POST d' m' s' _: d' |= F;
        /\ s' = up s
        /\ m' = m
@@ -450,13 +453,13 @@ Section EventCSL.
     intros_pre.
     ind_exec.
     - prove_rx; simpl_post.
-    - contradiction H0; eauto 10.
+    - exfalso; eauto 10.
   Qed.
 
-  Theorem pimpl_ok : forall (pre pre': _ -> _ -> _ -> _ -> Prop) p,
-      valid pre p ->
+  Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ -> _ -> Prop) p,
+      valid tid pre p ->
       (forall done d m s, pre' done d m s -> pre done d m s) ->
-      valid pre' p.
+      valid tid pre' p.
   Proof.
     unfold valid.
     intros.
@@ -475,27 +478,27 @@ variables above.
 This makes the notation more convenient, since R and I can be specified in one
 ident.
 *)
-Record transitions S := {
+Record transitions Mcontents S := {
       (* StateR s s' holds when s -> s' is a valid transition *)
-      StateR: S -> S -> Prop;
+      StateR: Relation Mcontents S;
       (* StateI s d holds when s is a valid state and represents the memory d *)
-      StateI: S -> @pred addr (@weq addrlen) valu
+      StateI: Invariant Mcontents S
       }.
 
 (** Copy-paste metaprogramming:
 
 * Copy the above notation
-* add sigma |- in front to specify the transition system
-* quantify over T and change prog to prog T _ (the state type should be inferred)
+* add sigma, tid |- in front to specify the transition system and thread ID
+* quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
 * add (StateR sigma) (StateI sigma) as arguments to valid *)
-Notation "sigma |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
-  (forall T (rx: _ -> prog _ _ T),
-      valid (StateR sigma) (StateI sigma)
+Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
+  (forall T (rx: _ -> prog _ _ T) (tid:ID),
+      valid (StateR sigma) (StateI sigma) tid
             (fun done d m s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      forall ret_,
-                                       valid (StateR sigma) (StateI sigma)
+                                       valid (StateR sigma) (StateI sigma) tid
                                              (fun done_rx d' m' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done)
@@ -526,7 +529,7 @@ Arguments Yield {Mcontents} {S} {T} rx.
 
 The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
-Notation "{{ f ; '_' }}" := (valid _ _ _ (progseq f _)).
+Notation "{{ f ; '_' }}" := (valid _ _ _ _ (progseq f _)).
 
 Hint Extern 1 {{ Read _; _ }} => apply read_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply write_ok : prog.

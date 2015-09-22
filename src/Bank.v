@@ -47,19 +47,22 @@ Section Bank.
 
   Definition balances entries := balances' entries (100, 0).
 
-  Definition bankR (ledger1 ledger2:State) :=
-    ledger1 = ledger2 \/
-    exists entry, ledger2 = ledger1 ++ [entry].
+  Definition bankR : Relation Mcontents State :=
+    fun tid dms dms' =>
+    let '(_, _, ledger) := dms in
+    let '(_, _, ledger') := dms' in
+    ledger' = ledger \/
+    exists entry, ledger' = ledger ++ [entry].
 
   Definition bankI ledger bal1 bal2 :=
     balances ledger = (bal1, bal2).
 
-  Definition bankPred ledger : @pred addr (@weq addrlen) valu :=
+  Definition bankPred (_:M Mcontents) ledger : @pred addr (@weq addrlen) valu :=
     (exists F bal1 bal2,
       F * inv_rep bal1 bal2 *
       [[ bankI ledger #bal1 #bal2 ]])%pred.
 
-  Definition bankS : transitions State :=
+  Definition bankS : transitions Mcontents State :=
     Build_transitions bankR bankPred.
 
   Local Hint Unfold rep inv_rep State bankR bankI : prog.
@@ -179,28 +182,44 @@ Section Bank.
 
   Hint Resolve record_correct.
 
-  Lemma star_bankR : forall ledger1 ledger2,
-      star bankR ledger1 ledger2 ->
-      exists ledger1', ledger2 = ledger1 ++ ledger1'.
+  Lemma star_bankR' : forall tid dms dms',
+      star (bankR tid) dms dms' ->
+      let '(_, _, ledger) := dms in
+      let '(_, _, ledger') := dms' in
+      exists ledger_ext, ledger' = ledger ++ ledger_ext.
   Proof.
     unfold bankR.
     intros.
+
     induction H.
+    destruct s.
+    destruct p.
     exists nil; rewrite app_nil_r; auto.
-    destruct H.
-    subst; auto.
-    repeat deex.
-    eexists.
+
+    destruct s1, s2, s3.
+    destruct p, p0, p1.
+    intuition; repeat deex; eauto.
     rewrite <- app_assoc.
-    auto.
+    eauto.
   Qed.
 
-  Lemma bank_invariant_transfer : forall F s bal1 bal2 amount,
+  Lemma star_bankR : forall tid d m ledger d' m' ledger',
+      star (bankR tid) (d, m, ledger) (d', m', ledger') ->
+      exists ledger_ext, ledger' = ledger ++ ledger_ext.
+  Proof.
+    intros.
+    match goal with
+      | [ H: star _ ?dms ?dms' |- _ ] =>
+        pose proof (@star_bankR' tid dms dms')
+    end; eauto.
+  Qed.
+
+  Lemma bank_invariant_transfer : forall F s m bal1 bal2 amount,
       #bal1 + #bal2 = 100 ->
       #bal1 >= amount ->
       balances s = (#bal1, #bal2) ->
       acct2 |-> (bal2 ^+ $ amount) * acct1 |-> (bal1 ^- $ amount) * F =p=>
-  bankPred (s ++ [from1 amount]).
+  bankPred m (s ++ [from1 amount]).
   Proof.
     Ltac process_entry :=
       match goal with
@@ -265,13 +284,13 @@ Section Bank.
   Ltac hoare := intros; repeat step.
 
   Theorem transfer_ok : forall bal1 bal2 amount,
-    bankS |-
-    {{ F,
-      | PRE d m l: d |= F * rep bal1 bal2;
-      | POST d' m' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount); /\
-                                                                              l' = l /\
-                                                                              m' = m
-    }} transfer amount.
+      bankS TID: tid |-
+      {{ F,
+       | PRE d m l: d |= F * rep bal1 bal2;
+         | POST d' m' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount); /\
+                                                                                 l' = l /\
+                                                                                 m' = m
+      }} transfer amount.
   Proof.
     unfold transfer.
     hoare.
@@ -301,14 +320,13 @@ Section Bank.
   Qed.
 
   Theorem transfer_yield_ok : forall bal1 bal2 amount,
-    bankS |-
+    bankS TID: tid |-
     {{ F,
       | PRE d m l: d |= F * inv_rep bal1 bal2; /\
                #bal1 >= amount /\
                bankI l #bal1 #bal2
-      | POST d' m' l' _: d' |= bankPred l'; /\
-                                            firstn (length l + 1) l' = l ++ [from1 amount] /\
-                                            m' = m
+      | POST d' m' l' _: d' |= bankPred m' l'; /\
+                                            firstn (length l + 1) l' = l ++ [from1 amount]
     }} transfer_yield amount.
   Proof.
     unfold transfer_yield.
@@ -317,9 +335,9 @@ Section Bank.
     eapply pimpl_trans; [|eauto]; cancel.
 
     match goal with
-    | [ H: star _ _ _ |- _ ] => apply star_bankR in H;
-        inversion H; subst
+    | [ H: star _ _ _ |- _ ] => apply star_bankR in H; auto
     end.
+    deex; subst.
     apply firstn_length_app.
     rewrite app_length; auto.
   Qed.
