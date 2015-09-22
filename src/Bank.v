@@ -1,6 +1,3 @@
-Require Import Word.
-Require Import Pred.
-Require Import SepAuto.
 Require Import EventCSL.
 Require Import Omega.
 Require Import Star.

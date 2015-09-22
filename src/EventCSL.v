@@ -1,8 +1,8 @@
-Require Import Mem.
-Require Import Pred.
-Require Import Word.
+Require Export Mem.
+Require Export Pred.
+Require Export Word.
+Require Export SepAuto.
 Require Import Omega.
-Require Import SepAuto.
 Require Import Star.
 Require Import Hlist.
 Require Import List.
