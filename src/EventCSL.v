@@ -56,7 +56,7 @@ Section EventCSL.
   Definition Invariant := M -> S -> @pred addr (@weq addrlen) valu.
   Variable StateI : Invariant.
 
-  Inductive prog :=
+  CoInductive prog :=
   | Read (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
   | Get t (v: var t) (rx: t -> prog)
@@ -208,56 +208,6 @@ Section EventCSL.
   Qed.
 
   Hint Extern 2 (forall v, _ <> Done v) => intro; congruence.
-
-  Theorem exec_progress :
-      forall (StateI_dec: forall d m s, {StateI m s d} + {~StateI m s d}),
-      forall (StateR_dec: forall tid d m s d' m' s', {StateR tid (d, m, s) (d', m', s')} +
-                                           {~StateR tid (d, m, s) (d', m', s')}),
-      forall tid p st,
-      exists out, exec tid st p out.
-  Proof.
-
-    Ltac rx_specialize new_st :=
-      match goal with
-      | [ H : forall w:?t, forall _, exists out, exec _ _ _ out |- _ ] =>
-        match t with
-        | unit => specialize (H tt new_st); inversion H
-        | _ => match goal with
-              | [ _ : _ _ = Some ?w |- _ ] =>
-                specialize (H w new_st); inversion H
-              end
-        end
-      end.
-
-    Hint Resolve <- read_failure_iff.
-    Hint Resolve <- write_failure_iff.
-    Hint Resolve assgn_failure.
-    Hint Resolve yield_failure.
-    Hint Resolve commit_failure.
-
-    induction p; intros; destruct st.
-    - case_eq (d a); intros.
-      rx_specialize {|d; m; s|}.
-      all: eauto 15.
-    - case_eq (d a);
-      case_eq (StateR_dec tid d m s (upd d a v) m s); intros.
-      rx_specialize {| upd d a v; m; s |}.
-      all: eauto 15.
-    - specialize (H (get m v) {|d; m; s|}).
-      inversion H.
-      eauto.
-    - case_eq (StateI_dec d (set m val v) s);
-      case_eq (StateR_dec tid d m s d (set m val v) s); intros.
-      rx_specialize {|d; set m val v; s|}.
-      all: eauto 15.
-    - rx_specialize {|d; m; s|}.
-      destruct (StateI_dec d m s); eauto.
-    - case_eq (StateR_dec tid d m s d m (up s));
-      case_eq (StateI_dec d m (up s)).
-      rx_specialize {|d; m; up s|}.
-      all: eauto 15.
-    - eauto.
-  Qed.
 
   Definition donecond := T -> @pred addr (@weq addrlen) valu.
 
