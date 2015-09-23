@@ -61,6 +61,7 @@ Section EventCSL.
   | Write (a: addr) (v: valu) (rx: unit -> prog)
   | Get t (v: var t) (rx: t -> prog)
   | Assgn t (v: var t) (val:t) (rx: unit -> prog)
+  | GetTID (rx: ID -> prog)
   | Yield (rx: unit -> prog)
   | Commit (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
@@ -97,6 +98,8 @@ Section EventCSL.
       StateR tid (d, m, s) (d, m, up s) ->
       StateI m (up s) d ->
       tid :- Commit up rx / {|d; m; s|} ==> rx tt / {|d; m; up s|}
+  | StepGetTID : forall st rx,
+      tid :- GetTID rx / st ==> rx tid / st
   | StepGet : forall d m s t (v: var t) rx,
       tid :- Get v rx / {|d; m; s|} ==> rx (get m v) / {|d; m; s|}
   | StepAssgn : forall d m s t (v: var t) val rx,
@@ -280,6 +283,8 @@ Section EventCSL.
   Ltac simpl_post :=
     cbn; intuition.
 
+  (* TODO: automate the common structure of these proofs *)
+
   Theorem write_ok : forall a v0 v,
       tid |- {{ F,
              | PRE d m s: d |= F * a |-> v0; /\
@@ -368,6 +373,21 @@ Section EventCSL.
     - exfalso; eauto.
   Qed.
 
+  Theorem get_tid_ok :
+    tid |- {{ F,
+           | PRE d m s: d |= F;
+           | POST d' m' s' r: d' |= F;
+             /\ m' = m
+             /\ s' = s
+             /\ r = tid
+          }} GetTID.
+  Proof.
+    intros_pre.
+    ind_exec.
+    - prove_rx; simpl_post.
+    - exfalso; eauto.
+  Qed.
+
   Theorem yield_ok :
     tid |- {{ (_:unit),
            | PRE d m s: d |= StateI m s;
@@ -430,7 +450,6 @@ Section EventCSL.
     destruct b; eauto.
   Qed.
 
-  Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 End EventCSL.
 
 (** transitions defines a transition system, grouping the StateR and StateI
@@ -482,9 +501,12 @@ Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
                               (at level 60, right associativity).
 
-(* maximally insert the return/state types for Yield, which is always called
-   without applying it to any arguments *)
+(* maximally insert the return/state types for Yield/GetTID, which are always called
+   without applying them to any arguments *)
 Arguments Yield {Mcontents} {S} {T} rx.
+Arguments GetTID {Mcontents} {S} {T} rx.
+
+Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
 (** This notation is intended to produce the patterns for prog hints.
 
@@ -496,6 +518,7 @@ Hint Extern 1 {{ Read _; _ }} => apply read_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply write_ok : prog.
 Hint Extern 1 {{ Get _; _ }} => apply get_ok : prog.
 Hint Extern 1 {{ Assgn _ _; _ }} => apply assgn_ok : prog.
+Hint Extern 1 {{ GetTID ; _ }} => apply get_tid_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply yield_ok : prog.
 Hint Extern 1 {{ Commit _; _ }} => apply commit_ok : prog.
 

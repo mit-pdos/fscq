@@ -20,15 +20,20 @@ Section MemCache.
 End MemCache.
 
 Section Lock.
-  Inductive Lock := Open | Locked.
+  Inductive Mutex := Open | Locked (tid:nat).
+  Definition is_locked l :
+    {exists tid, l = Locked tid} + {l = Open}.
+  Proof.
+    destruct l; intuition eauto.
+  Qed.
 End Lock.
 
 Definition S := unit.
-Definition Mcontents := [AssocCache; Lock].
+Definition Mcontents := [AssocCache; Mutex].
 
 Definition Cache := Eval simpl in VAR 0 IN Mcontents.
 
-Definition CacheL := @HNext _ _ AssocCache _ (VAR 0 IN [Lock]).
+Definition CacheL := Eval simpl in @HNext _ _ AssocCache _ (VAR 0 IN [Mutex]).
 
 Fixpoint cache_pred c : @pred addr (@weq addrlen) valu :=
   match c with
@@ -193,3 +198,14 @@ Proof.
   Grab Existential Variables.
   all: auto.
 Qed.
+
+CoFixpoint lock {T} (rx: prog Mcontents S T) :=
+  l <- Get CacheL;
+  If (is_locked l) {
+       Yield;;
+            lock rx
+     } else {
+    tid <- GetTID;
+    Assgn CacheL (Locked tid);;
+          rx
+  }.
