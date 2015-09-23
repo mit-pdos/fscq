@@ -184,7 +184,7 @@ Theorem disk_read_hit_ok : forall a,
     {{ F v,
      | PRE d m _: d |= F * cache_pred (get m Cache);
        /\ (cache_get (get m Cache) a = Some v)
-       | POST d' m' _ r: d' |= F * cache_pred (get m Cache);
+       | POST d' m' _ r: d' |= F * cache_pred (get m' Cache);
        /\ r = v
     }} disk_read a.
 Proof.
@@ -199,7 +199,7 @@ Proof.
   all: auto.
 Qed.
 
-CoFixpoint lock {T} (rx: prog Mcontents S T) :=
+CoFixpoint lock {T} (rx: unit -> prog Mcontents S T) :=
   l <- Get CacheL;
   If (is_locked l) {
        Yield;;
@@ -207,5 +207,20 @@ CoFixpoint lock {T} (rx: prog Mcontents S T) :=
      } else {
     tid <- GetTID;
     Assgn CacheL (Locked tid);;
-          rx
+          rx tt
   }.
+
+Theorem lock_ok :
+  cacheS TID: tid |-
+{{ (_:unit),
+ | PRE d m s: d |= cacheI m s;
+   | POST d' m' s' _: d' |= cacheI m' s';
+   /\ get m' CacheL = Locked tid
+}} lock.
+Proof.
+  unfold lock.
+  intros.
+  eapply pimpl_ok.
+  simpl.
+  (* need to trigger a reduction of the cofix to at least extract the Get *)
+Abort.

@@ -527,11 +527,3 @@ Hint Extern 1 {{ Commit _; _ }} => apply commit_ok : prog.
 Ideally we'd have a function nth_member, but the dependent types are too painful
 (one problem is that n might be out-of-bounds). *)
 Notation "'VAR' 0 'IN' contents" := (@HFirst _ (nth 0 contents unit) (skipn (0+1) contents)) (at level 30).
-
-(* TODO: placeholder until I figure out how to get around guardedness for
-a loop construct (if that's even possible the way I'd like) *)
-CoFixpoint Loop_ {M S T} (body : prog M S T ->
-                                 (unit -> prog M S T) ->
-                                 prog M S T)
-           (rx: unit -> prog M S T) : prog M S T :=
-  body (rx tt) rx.
