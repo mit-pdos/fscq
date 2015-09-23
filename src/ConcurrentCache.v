@@ -174,8 +174,6 @@ Proof.
   inversion H1.
 Qed.
 
-Check ptsto_eq.
-
 Theorem disk_read_hit_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
