@@ -43,7 +43,9 @@ Definition cacheR : Relation Mcontents S :=
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
     forall c, c = get m Cache ->
-         (d |= cache_pred c;)%judgement.
+         exists F, (d |= F * cache_pred c;)%judgement.
+
+Hint Unfold cacheR cacheI : prog.
 
 Definition cacheS : transitions Mcontents S :=
   Build_transitions cacheR cacheI.
@@ -99,6 +101,20 @@ Proof.
   cancel.
 Qed.
 
+Theorem cache_add_pred : forall c a v,
+    cache_pred (cache_add c a v) <=p=>
+        a |-> v * cache_pred c.
+Proof.
+  intros.
+  auto.
+Qed.
+
+Hint Rewrite get_set.
+Hint Rewrite cache_add_pred.
+
+Hint Extern 0 (okToUnify (cache_pred ?c) (cache_pred ?c)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (cache_pred (get ?m Cache)) (cache_pred (get ?m Cache))) => constructor : okToUnify.
+
 Theorem disk_read_miss_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
@@ -127,8 +143,6 @@ Proof.
   inversion H4.
 
   hoare.
-  unfold cacheI.
-  unfold pimpl; intros.
-  unfold pred_in.
-  pred_apply; cancel.
-Admitted.
+  autorewrite with core; cancel.
+  autorewrite with core; cancel.
+Qed.

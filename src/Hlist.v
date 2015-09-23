@@ -60,10 +60,25 @@ Arguments HNil [A] [B].
 Arguments HFirst [A] [elm] [types].
 Arguments HNext [A] [elm] [a] [types] mem.
 
-Example types := [nat; bool; nat].
-Example someValues : hlist (fun T : Set => T) types := HCons 5 (HCons true (HCons 3 HNil)).
+Module Examples.
 
-Eval simpl in get someValues HFirst.
-Eval simpl in get someValues (HNext HFirst).
+  Local Example types := [nat; bool; nat].
+  Local Example someValues : hlist (fun T : Set => T) types := HCons 5 (HCons true (HCons 3 HNil)).
 
-Eval simpl in set someValues false (HNext HFirst).
+  Eval simpl in get someValues HFirst.
+  Eval simpl in get someValues (HNext HFirst).
+
+  Eval simpl in set someValues false (HNext HFirst).
+
+End Examples.
+
+Theorem get_set : forall A B (types: list A)
+                    (l : hlist B types)
+                    (elm:A) (m: member elm types) v,
+    get (set l v m) m = v.
+Proof.
+  induction l; intros.
+  inversion m.
+  (* can't destruct m due to dependent types, but need to get to the individual match
+     cases for both set and get *)
+Admitted.
