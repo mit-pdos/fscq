@@ -6,6 +6,9 @@ Ltac inv_opt :=
     inversion H; clear H; subst
   end.
 
+Ltac econtradiction H :=
+  exfalso; eapply H.
+
 (* extract the precondition of a valid statement into the hypotheses *)
 Ltac intros_pre :=
   unfold valid at 1; unfold pred_in; intros;
