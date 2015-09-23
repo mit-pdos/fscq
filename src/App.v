@@ -39,8 +39,8 @@ Definition atomic_cp T fsxp src_fn dst_fn mscs rx : prog T :=
       match maybe_dst_inum with
       | None => rx ^(mscs, false)
       | Some dst_inum =>
-        let^ (mscs, b) <- FS.read_block fsxp src_inum $0 mscs;
-        let^ (mscs, ok) <- FS.write_block fsxp dst_inum $0 b ($ valubytes) mscs;
+        let^ (mscs, b) <- FS.read_bytes fsxp src_inum 0 1024 mscs;
+        let^ (mscs, ok) <- FS.append fsxp dst_inum 0 (ByteFile.BYTEFILE.buf_data b) mscs;
         match ok with
         | false =>
           let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
@@ -83,7 +83,10 @@ Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
          ([[ r = true ]] * exists old_inum new_inum bf,
           [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bf) ]] *
           [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bf) tree ]]))
-  CRASH any
+  CRASH LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+            exists old_inum new_inum bf tree',
+          [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bf) ]] *
+          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bf) tree ]])
   >} atomic_cp fsxp src_fn dst_fn mscs.
 Proof.
   unfold atomic_cp; intros.
@@ -100,7 +103,6 @@ Proof.
   edestruct (DIRTREE.find_name_exists) with (path := [src_fn]); intuition eauto.
   (* [src_fn] points to a file.  destruct [x], consider both cases, one will be false. *)
   destruct x; try solve [ exfalso; eauto ].
-
   step.
   instantiate (pathname0 := [] ++ [src_fn]).
   rewrite DIRTREE.find_subtree_tree_graft_ne by auto.
@@ -108,10 +110,29 @@ Proof.
   rewrite H3.
   reflexivity.
 
+
   (* XXX need a precondition saying the file we're reading is non-empty..
    * or a runtime check for this fact?
    *)
+
   admit.
 
   step.
-  (* XXX odd Coq error, "Not a variable or hypothesis"? *)
+  admit.  (* append pre: file exists *)
+  admit.  (* append pre: file rep *)
+  admit.  (* append pre: good size *)
+  admit.  (* len is <= offset, 0 *)
+
+  step.
+
+  admit.
+  admit.
+
+  step.
+
+  admit.
+  admit.
+  admit.
+
+  step.
+
