@@ -1,6 +1,7 @@
 Require Import List.
 Import List.ListNotations.
 Open Scope list.
+Require Import Coq.Program.Equality.
 
 Set Implicit Arguments.
 
@@ -79,6 +80,6 @@ Theorem get_set : forall A B (types: list A)
 Proof.
   induction l; intros.
   inversion m.
-  (* can't destruct m due to dependent types, but need to get to the individual match
-     cases for both set and get *)
-Admitted.
+
+  dependent destruction m; simpl; eauto.
+Qed.
