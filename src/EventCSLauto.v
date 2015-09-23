@@ -1,5 +1,11 @@
 Require Import EventCSL.
 
+Ltac inv_opt :=
+  match goal with
+  | [ H: @eq (option _) _ _ |- _ ] =>
+    inversion H; clear H; subst
+  end.
+
 (* extract the precondition of a valid statement into the hypotheses *)
 Ltac intros_pre :=
   unfold valid at 1; unfold pred_in; intros;
