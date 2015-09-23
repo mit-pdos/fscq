@@ -19,8 +19,8 @@ Set Implicit Arguments.
 
 Definition pred_in AT AEQ V (F: @pred AT AEQ V) m := F m.
 
-Notation "m '|=' F ;" :=
-  (pred_in F%pred m) (at level 30, F at level 0) : mem_judgement_scope.
+Notation "m '|=' F" :=
+  (pred_in F%pred m) (at level 30, F at level 40) : mem_judgement_scope.
 
 Delimit Scope mem_judgement_scope with judgement.
 
@@ -287,11 +287,11 @@ Section EventCSL.
 
   Theorem write_ok : forall a v0 v,
       tid |- {{ F,
-             | PRE d m s: d |= F * a |-> v0; /\
-                                             StateR tid (d, m, s) (upd d a v, m, s)
-               | POST d' m' s' _: d' |= F * a |-> v; /\
-                                                     s' = s /\
-                                                     m' = m
+             | PRE d m s: d |= F * a |-> v0 /\
+                          StateR tid (d, m, s) (upd d a v, m, s)
+               | POST d' m' s' _: d' |= F * a |-> v /\
+                                  s' = s /\
+                                  m' = m
             }} Write a v.
   Proof.
     intros_pre.
@@ -313,11 +313,11 @@ Section EventCSL.
 
   Theorem read_ok : forall a v0,
     tid |- {{ F,
-      | PRE d m s: d |= F * a |-> v0;
-       | POST d' m' s' v: d' |= F * a |-> v0; /\
-                       v = v0 /\
-                       s' = s /\
-                       m' = m
+      | PRE d m s: d |= F * a |-> v0
+       | POST d' m' s' v: d' |= F * a |-> v0 /\
+                          v = v0 /\
+                          s' = s /\
+                          m' = m
     }} Read a.
   Proof.
     intros_pre.
@@ -340,11 +340,11 @@ Section EventCSL.
 
   Theorem get_ok : forall t (v: var t),
       tid |- {{ F,
-             | PRE d m s: d |= F;
-               | POST d' m' s' r: d' |= F; /\
-                                           r = get m v /\
-                                           m' = m /\
-                                           s' = s
+             | PRE d m s: d |= F
+               | POST d' m' s' r: d' |= F /\
+                                  r = get m v /\
+                                  m' = m /\
+                                  s' = s
             }} Get v.
   Proof.
     intros_pre.
@@ -357,12 +357,12 @@ Section EventCSL.
 
   Theorem assgn_ok : forall t (v: var t) val,
       tid |- {{ F,
-             | PRE d m s: d |= F; /\
-                            StateI (set m val v) s d /\
-                            StateR tid (d, m, s) (d, set m val v, s)
-       | POST d' m' s' _: d' |= F; /\
-                                  m' = set m val v /\
-                                  s' = s
+             | PRE d m s: d |= F /\
+                          StateI (set m val v) s d /\
+                          StateR tid (d, m, s) (d, set m val v, s)
+       | POST d' m' s' _: d' |= F /\
+                          m' = set m val v /\
+                          s' = s
       }} Assgn v val.
   Proof.
     intros_pre.
@@ -375,11 +375,11 @@ Section EventCSL.
 
   Theorem get_tid_ok :
     tid |- {{ F,
-           | PRE d m s: d |= F;
-           | POST d' m' s' r: d' |= F;
-             /\ m' = m
-             /\ s' = s
-             /\ r = tid
+           | PRE d m s: d |= F
+           | POST d' m' s' r: d' |= F /\
+                              m' = m /\
+                              s' = s /\
+                              r = tid
           }} GetTID.
   Proof.
     intros_pre.
@@ -390,8 +390,8 @@ Section EventCSL.
 
   Theorem yield_ok :
     tid |- {{ (_:unit),
-           | PRE d m s: d |= StateI m s;
-           | POST d' m' s' _: d' |= StateI m' s';
+           | PRE d m s: d |= StateI m s
+           | POST d' m' s' _: d' |= StateI m' s'
            /\ star (StateR tid) (d, m, s) (d', m', s')
     }} Yield.
   Proof.
@@ -403,13 +403,13 @@ Section EventCSL.
 
   Theorem commit_ok : forall up,
     tid |- {{ F,
-     | PRE d m s: d |= F;
-       /\ StateR tid (d,m,s) (d,m,up s)
-       /\ (F =p=> StateI m (up s))
-     | POST d' m' s' _: d' |= F;
-       /\ s' = up s
-       /\ m' = m
-    }} Commit up.
+           | PRE d m s: d |= F /\
+                        StateR tid (d,m,s) (d,m,up s) /\
+                        (F =p=> StateI m (up s))
+           | POST d' m' s' _: d' |= F /\
+                              s' = up s /\
+                              m' = m
+          }} Commit up.
   Proof.
     intros_pre.
     ind_exec.

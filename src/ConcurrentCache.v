@@ -48,7 +48,7 @@ Definition cacheR : Relation Mcontents S :=
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
     forall c, c = get m Cache ->
-         exists F, (d |= F * cache_pred c;)%judgement.
+         exists F, (d |= F * cache_pred c)%judgement.
 
 Hint Unfold cacheR cacheI : prog.
 
@@ -145,13 +145,12 @@ Ltac cache_contents_eq :=
                          auto)
   end; inv_opt.
 
-
 Theorem disk_read_miss_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
-       | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v;
-       | POST d' m' _ r: d' |= F * cache_pred (get m' Cache);
-       /\ r = v
+     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v
+     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
+                       r = v
     }} disk_read a.
 Proof.
   unfold disk_read.
@@ -182,10 +181,10 @@ Qed.
 Theorem disk_read_hit_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
-     | PRE d m _: d |= F * cache_pred (get m Cache);
-       /\ (cache_get (get m Cache) a = Some v)
-       | POST d' m' _ r: d' |= F * cache_pred (get m' Cache);
-       /\ r = v
+     | PRE d m _: d |= F * cache_pred (get m Cache) /\
+                  cache_get (get m Cache) a = Some v
+     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
+                       r = v
     }} disk_read a.
 Proof.
   unfold disk_read.
@@ -213,9 +212,9 @@ CoFixpoint lock {T} (rx: unit -> prog Mcontents S T) :=
 Theorem lock_ok :
   cacheS TID: tid |-
 {{ (_:unit),
- | PRE d m s: d |= cacheI m s;
-   | POST d' m' s' _: d' |= cacheI m' s';
-   /\ get m' CacheL = Locked tid
+ | PRE d m s: d |= cacheI m s
+ | POST d' m' s' _: d' |= cacheI m' s'
+                    /\ get m' CacheL = Locked tid
 }} lock.
 Proof.
   unfold lock.
