@@ -250,8 +250,5 @@ Theorem lock_ok :
 }} lock.
 Proof.
   unfold lock.
-  intros.
-  eapply pimpl_ok.
-  simpl.
-  (* need to trigger a reduction of the cofix to at least extract the Get *)
+  intros_pre.
 Abort.

@@ -24,14 +24,23 @@ Notation "m '|=' F" :=
 
 Delimit Scope mem_judgement_scope with judgement.
 
+Definition ID := nat.
+
+Section Lock.
+  Inductive Mutex := Open | Locked (tid:ID).
+  Definition is_locked l :
+    {exists tid, l = Locked tid} + {l = Open}.
+  Proof.
+    destruct l; intuition eauto.
+  Defined.
+End Lock.
+
 Section EventCSL.
   Set Default Proof Using "Type".
 
   (* a disk state *)
   Notation "'DISK'" := (@mem addr (@weq addrlen) valu).
   Implicit Type d : DISK.
-
-  Definition ID := nat.
 
   (** The memory is a heterogenously typed list where element types
       are given by Mcontents. *)
@@ -62,6 +71,7 @@ Section EventCSL.
   | Get t (v: var t) (rx: t -> prog)
   | Assgn t (v: var t) (val:t) (rx: unit -> prog)
   | GetTID (rx: ID -> prog)
+  | AcquireLock (l: var Mutex) (rx: unit -> prog)
   | Yield (rx: unit -> prog)
   | Commit (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
@@ -97,6 +107,12 @@ Section EventCSL.
   | StepWrite : forall d m s a rx v v', d a = Some v ->
                                    StateR tid (d, m, s) (upd d a v', m, s) ->
                                    tid :- Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
+  | StepAcquireLock : forall d m s d' s' rx l,
+      let m' := set m (Locked tid) l in
+      StateI m s d ->
+      StateI m' s' d' ->
+      star (StateR' tid) (d, m, s) (d', m', s') ->
+      tid :- AcquireLock l rx / {|d; m; s|} ==> rx tt / {|d'; m'; s'|}
   | StepYield : forall d m s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
@@ -394,6 +410,32 @@ Section EventCSL.
     ind_exec.
     - prove_rx; simpl_post.
     - exfalso; eauto.
+  Qed.
+
+  (** This is a bit dangerous, but assumes that we don't get stuck
+      acquiring a lock because the invariants don't allow us to give
+      you the lock. For our lock protocol, it's always possible to  *)
+  Hypothesis lock_step_available : forall tid d m s l,
+      (d |= StateI m s)%judgement ->
+      let m' := set m (Locked tid) l in
+      exists d' s', (d' |= StateI m' s')%judgement /\
+               star (StateR' tid) (d, m, s) (d', m', s').
+
+  Theorem acquire_lock_ok : forall l,
+      tid |- {{ (_:unit),
+             | PRE d m s: d |= StateI m s
+             | POST d' m' s' _: d' |= StateI m' s' /\
+                                get m' l = Locked tid
+            }} AcquireLock l.
+              (* Proof remove lock_step_available *)
+    intros_pre.
+    ind_exec.
+    - prove_rx; simpl_post.
+      subst m'.
+      rewrite get_set; auto.
+    - exfalso; eauto.
+      edestruct lock_step_available; eauto; deex.
+      eauto.
   Qed.
 
   Theorem yield_ok :
