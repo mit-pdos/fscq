@@ -19,6 +19,12 @@ Section hlist.
   | HFirst : forall types, member (elm :: types)
   | HNext : forall a types, member types -> member (a::types).
 
+  Fixpoint member_index {types} (m: member types) :=
+    match m with
+    | HFirst _ => O
+    | HNext _ m' => S (member_index m')
+    end.
+
   (** Adapted from CPDT DataStruct hlist.
 
       In Coq v8.5beta2 at least, the return annotations are unnecessary. *)
@@ -88,13 +94,14 @@ Theorem get_set_other : forall A B (types: list A)
                           (l : hlist B types)
                           (elm1:A) (m1: member elm1 types)
                           (elm2:A) (m2: member elm2 types) v,
-    elm1 <> elm2 ->
+    member_index m1 <> member_index m2 ->
     get (set l v m1) m2 = get l m2.
 Proof.
   induction l; intros.
   inversion m1.
 
   dependent destruction m1;
-    dependent destruction m2; cbn;
-    try congruence; auto.
+    dependent destruction m2; cbn in *;
+    try congruence;
+    auto.
 Qed.

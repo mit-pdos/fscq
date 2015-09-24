@@ -191,16 +191,13 @@ Proof.
 
   hoare.
   autorewrite with core; cancel.
-  left.
-  rewrite get_set_other; auto.
-  (* what: have to prove inequality of Sets AssocCache and Mutex *)
-  admit.
+  rewrite get_set_other; cbn; auto.
 
   (* this is the read-only obligation from the lock protocol, which
   only applies if you're not the owner.  *)
   congruence.
   autorewrite with core; cancel.
-Admitted.
+Qed.
 
 Lemma emp_not_ptsto : forall AT AEQ V (F: @pred AT AEQ V) a v,
     ~ (emp =p=> F * a |-> v).
