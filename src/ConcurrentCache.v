@@ -19,15 +19,6 @@ Section MemCache.
 
 End MemCache.
 
-Section Lock.
-  Inductive Mutex := Open | Locked (tid:nat).
-  Definition is_locked l :
-    {exists tid, l = Locked tid} + {l = Open}.
-  Proof.
-    destruct l; intuition eauto.
-  Qed.
-End Lock.
-
 Definition S := unit.
 Definition Mcontents := [AssocCache; Mutex].
 
