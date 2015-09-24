@@ -1,4 +1,5 @@
 Require Import EventCSL.
+Require Import EventCSLauto.
 Require Import Omega.
 Require Import Star.
 Require Import List.
@@ -178,12 +179,12 @@ Section Bank.
   Hint Resolve record_correct.
 
   Lemma star_bankR' : forall tid dms dms',
-      star (bankR tid) dms dms' ->
+      star (othersR bankR tid) dms dms' ->
       let '(_, _, ledger) := dms in
       let '(_, _, ledger') := dms' in
       exists ledger_ext, ledger' = ledger ++ ledger_ext.
   Proof.
-    unfold bankR.
+    unfold othersR, bankR.
     intros.
 
     induction H.
@@ -194,12 +195,13 @@ Section Bank.
     destruct s1, s2, s3.
     destruct p, p0, p1.
     intuition; repeat deex; eauto.
+    eexists.
     rewrite <- app_assoc.
     eauto.
   Qed.
 
   Lemma star_bankR : forall tid d m ledger d' m' ledger',
-      star (bankR tid) (d, m, ledger) (d', m', ledger') ->
+      star (othersR bankR tid) (d, m, ledger) (d', m', ledger') ->
       exists ledger_ext, ledger' = ledger ++ ledger_ext.
   Proof.
     intros.

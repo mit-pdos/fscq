@@ -83,6 +83,14 @@ Section EventCSL.
   Reserved Notation "tid ':-' p '/' st '==>' p' '/' st'"
            (at level 40, p at next level, p' at next level).
 
+  Definition othersR (stateR:Relation) : Relation :=
+    fun tid dms dms' =>
+      exists tid', tid <> tid' /\
+              stateR tid' dms dms'.
+
+  (* StateR' tid is a valid transition for someone other than tid *)
+  Definition StateR' : Relation := othersR StateR.
+
   Inductive step (tid:ID) : forall st p st' p', Prop :=
   | StepRead : forall d m s a rx v, d a = Some v ->
                                tid :- Read a rx / {|d; m; s|} ==> rx v / {|d; m; s|}
@@ -92,7 +100,7 @@ Section EventCSL.
   | StepYield : forall d m s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
-      star (StateR tid) (d, m, s) (d', m', s') ->
+      star (StateR' tid) (d, m, s) (d', m', s') ->
       tid :- Yield rx / {|d; m; s|} ==> rx tt / {|d'; m'; s'|}
   | StepCommit : forall d m s up rx,
       StateR tid (d, m, s) (d, m, up s) ->
@@ -392,7 +400,7 @@ Section EventCSL.
     tid |- {{ (_:unit),
            | PRE d m s: d |= StateI m s
            | POST d' m' s' _: d' |= StateI m' s'
-           /\ star (StateR tid) (d, m, s) (d', m', s')
+           /\ star (StateR' tid) (d, m, s) (d', m', s')
     }} Yield.
   Proof.
     intros_pre.
