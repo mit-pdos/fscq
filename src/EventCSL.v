@@ -307,7 +307,14 @@ Section EventCSL.
   Ltac simpl_post :=
     cbn; intuition.
 
-  (* TODO: automate the common structure of these proofs *)
+  Ltac opcode_ok :=
+    intros_pre; ind_exec;
+    match goal with
+    | [ H: step _ _ _ _ _ |- _ ] =>
+      prove_rx; simpl_post
+    | [ H: ~ exists st' p', step _ _ _ _ _ |- _ ] =>
+      exfalso
+    end; eauto 10.
 
   Theorem write_ok : forall a v0 v,
       tid |- {{ F,
@@ -318,21 +325,19 @@ Section EventCSL.
                                   m' = m
             }} Write a v.
   Proof.
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post.
-      eapply pimpl_apply; [| eapply ptsto_upd].
-      cancel.
-      pred_apply; cancel.
-    - match goal with
-      | [ H: ~ exists st' p', step _ _ _ _ _ |- _] =>
-        apply write_failure_iff in H
-      end.
-      match goal with
-      | [ H: context[ptsto a  _] |- _ ] =>
-        apply ptsto_valid' in H
-      end.
-      intuition; congruence.
+    opcode_ok.
+    eapply pimpl_apply; [| eapply ptsto_upd].
+    cancel.
+    pred_apply; cancel.
+    match goal with
+    | [ H: ~ exists st' p', step _ _ _ _ _ |- _] =>
+      apply write_failure_iff in H
+    end.
+    match goal with
+    | [ H: context[ptsto a  _] |- _ ] =>
+      apply ptsto_valid' in H
+    end.
+    intuition; congruence.
   Qed.
 
   Theorem read_ok : forall a v0,
@@ -344,22 +349,20 @@ Section EventCSL.
                           m' = m
     }} Read a.
   Proof.
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post.
-      assert (d a = Some v0).
-      eapply ptsto_valid; eauto.
-      pred_apply; cancel.
-      congruence.
-    - match goal with
-      | [ H: ~ exists st' p', step _ _ _ _ _ |- _ ] =>
-        apply read_failure_iff in H
-      end.
-      match goal with
-      | [ H: context[ptsto a _] |- _ ] =>
-        apply ptsto_valid' in H
-      end.
-      congruence.
+    opcode_ok.
+    assert (d a = Some v0).
+    eapply ptsto_valid; eauto.
+    pred_apply; cancel.
+    congruence.
+    match goal with
+    | [ H: ~ exists st' p', step _ _ _ _ _ |- _ ] =>
+      apply read_failure_iff in H
+    end.
+    match goal with
+    | [ H: context[ptsto a _] |- _ ] =>
+      apply ptsto_valid' in H
+    end.
+    congruence.
   Qed.
 
   Theorem get_ok : forall t (v: var t),
@@ -371,12 +374,7 @@ Section EventCSL.
                                   s' = s
             }} Get v.
   Proof.
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post; eauto.
-      repeat sigT_eq.
-      eauto.
-    - exfalso; eauto.
+    opcode_ok; repeat sigT_eq; eauto.
   Qed.
 
   Theorem assgn_ok : forall t (v: var t) val,
@@ -389,12 +387,7 @@ Section EventCSL.
                           s' = s
       }} Assgn v val.
   Proof.
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post; eauto.
-      repeat sigT_eq.
-      eauto.
-    - exfalso; eauto.
+    opcode_ok; repeat sigT_eq; eauto.
   Qed.
 
   Theorem get_tid_ok :
@@ -406,10 +399,7 @@ Section EventCSL.
                               r = tid
           }} GetTID.
   Proof.
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post.
-    - exfalso; eauto.
+    opcode_ok.
   Qed.
 
   (** This is a bit dangerous, but assumes that we don't get stuck
@@ -428,14 +418,11 @@ Section EventCSL.
                                 get m' l = Locked tid
             }} AcquireLock l.
               (* Proof remove lock_step_available *)
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post.
-      subst m'.
-      rewrite get_set; auto.
-    - exfalso; eauto.
-      edestruct lock_step_available; eauto; deex.
-      eauto.
+              opcode_ok.
+              subst m'.
+              rewrite get_set; auto.
+              edestruct lock_step_available; eauto; deex.
+              eauto.
   Qed.
 
   Theorem yield_ok :
@@ -445,10 +432,7 @@ Section EventCSL.
            /\ star (StateR' tid) (d, m, s) (d', m', s')
     }} Yield.
   Proof.
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post.
-    - exfalso; eauto.
+    opcode_ok.
   Qed.
 
   Theorem commit_ok : forall up,
@@ -461,10 +445,7 @@ Section EventCSL.
                               m' = m
           }} Commit up.
   Proof.
-    intros_pre.
-    ind_exec.
-    - prove_rx; simpl_post.
-    - exfalso; eauto 10.
+    opcode_ok.
   Qed.
 
   Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ -> _ -> Prop) p,
@@ -473,12 +454,7 @@ Section EventCSL.
       valid tid pre' p.
   Proof.
     unfold valid.
-    intros.
-    match goal with
-    | [ H: context[?pre _ _ _ _ -> _], H1: ?pre _ _ _ _ |- _ ] =>
-      apply H in H1
-    end.
-    eauto.
+    firstorder.
   Qed.
 
   Definition If_ P Q (b: {P} + {Q}) (ptrue pfalse : prog) :=
