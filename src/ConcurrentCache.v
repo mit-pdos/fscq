@@ -41,15 +41,37 @@ Fixpoint cache_pred c : @pred addr (@weq addrlen) valu :=
   | (a, v) :: c' => a |-> v * cache_pred c'
   end.
 
+(** given a lock variable and some other variable v, generate a relation for tid
+over memory that makes the variable read-only for non-owners. *)
+Definition lock_protects (lvar : var Mcontents Mutex)
+           {tv} (v : var Mcontents tv) tid (m m' : M Mcontents) :=
+  forall owner_tid,
+    get m lvar = Locked owner_tid ->
+    tid <> owner_tid ->
+    get m' v = get m v.
+
+Definition lock_protocol (lvar : var Mcontents Mutex) tid (m m' : M Mcontents) :=
+  forall owner_tid,
+    get m lvar = Locked owner_tid ->
+    get m' lvar = get m lvar \/
+    (owner_tid = tid /\
+     get m' lvar = Open).
+
 Definition cacheR : Relation Mcontents S :=
   fun tid dms dms' =>
-    True.
+    let '(_, m, _) := dms in
+    let '(_', m', _) := dms' in
+    lock_protocol CacheL tid m m' /\
+    lock_protects CacheL Cache tid m m'.
 
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
     forall c, c = get m Cache ->
          exists F, (d |= F * cache_pred c)%judgement.
 
+(* for now, we don't have any lemmas about the lock semantics so just operate
+on the definitions directly *)
+Hint Unfold lock_protects lock_protocol : prog.
 Hint Unfold cacheR cacheI : prog.
 
 Definition cacheS : transitions Mcontents S :=
@@ -148,7 +170,8 @@ Ltac cache_contents_eq :=
 Theorem disk_read_miss_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
-     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v
+     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v /\
+                  get m CacheL = Locked tid
      | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
                        r = v
     }} disk_read a.
@@ -159,13 +182,25 @@ Proof.
   (* cache hit; impossible due to precondition *)
   intros_pre.
   intuition; subst.
-  apply cache_miss in H0.
+  Check cache_miss.
+  match goal with
+  | [ H: context[cache_pred (get m Cache)] |- _ ] =>
+    apply cache_miss in H
+  end.
   cache_contents_eq.
 
   hoare.
   autorewrite with core; cancel.
+  left.
+  rewrite get_set_other; auto.
+  (* what: have to prove inequality of Sets AssocCache and Mutex *)
+  admit.
+
+  (* this is the read-only obligation from the lock protocol, which
+  only applies if you're not the owner.  *)
+  congruence.
   autorewrite with core; cancel.
-Qed.
+Admitted.
 
 Lemma emp_not_ptsto : forall AT AEQ V (F: @pred AT AEQ V) a v,
     ~ (emp =p=> F * a |-> v).
@@ -213,8 +248,8 @@ Theorem lock_ok :
   cacheS TID: tid |-
 {{ (_:unit),
  | PRE d m s: d |= cacheI m s
- | POST d' m' s' _: d' |= cacheI m' s'
-                    /\ get m' CacheL = Locked tid
+ | POST d' m' s' _: d' |= cacheI m' s' /\
+                    get m' CacheL = Locked tid
 }} lock.
 Proof.
   unfold lock.
