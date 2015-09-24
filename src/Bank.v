@@ -234,10 +234,10 @@ Section Bank.
   Theorem transfer_ok : forall bal1 bal2 amount,
       bankS TID: tid |-
       {{ F,
-       | PRE d m l: d |= F * rep bal1 bal2;
-         | POST d' m' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount); /\
-                                                                                 l' = l /\
-                                                                                 m' = m
+       | PRE d m l: d |= F * rep bal1 bal2
+         | POST d' m' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) /\
+                            l' = l /\
+                            m' = m
       }} transfer amount.
   Proof.
     unfold transfer.
@@ -270,11 +270,11 @@ Section Bank.
   Theorem transfer_yield_ok : forall bal1 bal2 amount,
     bankS TID: tid |-
     {{ F,
-      | PRE d m l: d |= F * inv_rep bal1 bal2; /\
-               #bal1 >= amount /\
-               bankI l #bal1 #bal2
-      | POST d' m' l' _: d' |= bankPred m' l'; /\
-                                            firstn (length l + 1) l' = l ++ [from1 amount]
+     | PRE d m l: d |= F * inv_rep bal1 bal2 /\
+                  #bal1 >= amount /\
+                  bankI l #bal1 #bal2
+      | POST d' m' l' _: d' |= bankPred m' l' /\
+                         firstn (length l + 1) l' = l ++ [from1 amount]
     }} transfer_yield amount.
   Proof.
     unfold transfer_yield.
