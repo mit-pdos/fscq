@@ -83,3 +83,18 @@ Proof.
 
   dependent destruction m; simpl; eauto.
 Qed.
+
+Theorem get_set_other : forall A B (types: list A)
+                          (l : hlist B types)
+                          (elm1:A) (m1: member elm1 types)
+                          (elm2:A) (m2: member elm2 types) v,
+    elm1 <> elm2 ->
+    get (set l v m1) m2 = get l m2.
+Proof.
+  induction l; intros.
+  inversion m1.
+
+  dependent destruction m1;
+    dependent destruction m2; cbn;
+    try congruence; auto.
+Qed.
