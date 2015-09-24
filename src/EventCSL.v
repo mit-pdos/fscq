@@ -60,8 +60,8 @@ Section EventCSL.
 
   (** Define the transition system for the ghost state.
       The semantics will reject transitions that do not obey these rules. *)
-  Definition Relation := ID -> DISK * M * S -> DISK * M * S -> Prop.
-  Variable StateR : Relation.
+  Definition Relation :=  DISK * M * S -> DISK * M * S -> Prop.
+  Variable StateR : ID -> Relation.
   Definition Invariant := M -> S -> @pred addr (@weq addrlen) valu.
   Variable StateI : Invariant.
 
@@ -93,13 +93,13 @@ Section EventCSL.
   Reserved Notation "tid ':-' p '/' st '==>' p' '/' st'"
            (at level 40, p at next level, p' at next level).
 
-  Definition othersR (stateR:Relation) : Relation :=
-    fun tid dms dms' =>
+  Definition othersR (stateR:ID -> Relation) tid : Relation :=
+    fun dms dms' =>
       exists tid', tid <> tid' /\
               stateR tid' dms dms'.
 
   (* StateR' tid is a valid transition for someone other than tid *)
-  Definition StateR' : Relation := othersR StateR.
+  Definition StateR' : ID -> Relation := othersR StateR.
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
   | StepRead : forall d m s a rx v, d a = Some v ->
@@ -486,7 +486,7 @@ ident.
 *)
 Record transitions Mcontents S := {
       (* StateR s s' holds when s -> s' is a valid transition *)
-      StateR: Relation Mcontents S;
+      StateR: ID -> Relation Mcontents S;
       (* StateI s d holds when s is a valid state and represents the memory d *)
       StateI: Invariant Mcontents S
       }.

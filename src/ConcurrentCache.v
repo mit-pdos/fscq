@@ -57,8 +57,8 @@ Definition lock_protocol (lvar : var Mcontents Mutex) tid (m m' : M Mcontents) :
     (owner_tid = tid /\
      get m' lvar = Open).
 
-Definition cacheR : Relation Mcontents S :=
-  fun tid dms dms' =>
+Definition cacheR tid : Relation Mcontents S :=
+  fun dms dms' =>
     let '(_, m, _) := dms in
     let '(_', m', _) := dms' in
     lock_protocol CacheL tid m m' /\

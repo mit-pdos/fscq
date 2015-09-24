@@ -45,8 +45,8 @@ Section Bank.
 
   Definition balances entries := balances' entries (100, 0).
 
-  Definition bankR : Relation Mcontents State :=
-    fun tid dms dms' =>
+  Definition bankR (_:ID) : Relation Mcontents State :=
+    fun dms dms' =>
     let '(_, _, ledger) := dms in
     let '(_, _, ledger') := dms' in
     ledger' = ledger \/
