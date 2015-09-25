@@ -2,6 +2,7 @@ Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Hlist.
 Require Import Star.
+Require Import Coq.Program.Equality.
 Require Import List.
 Import List.ListNotations.
 Open Scope list.
@@ -74,16 +75,25 @@ Hint Unfold cacheR cacheI : prog.
 Theorem locks_are_all_CacheL : forall (l:var Mcontents Mutex),
     l = CacheL.
 Proof.
+  intros.
+  unfold Mcontents in l.
+  unfold var in l.
+  unfold CacheL.
+  dependent destruction l.
+  contradict x0.
+  admit. (* types are inequal *)
+
+  dependent destruction l.
+  auto.
+  inversion l.
 Admitted.
 
 Theorem locks_are_not_caches : forall (l : var Mcontents Mutex),
     member_index l <> member_index Cache.
 Proof.
   intros.
-  cbn.
-  intro.
-  rewrite (locks_are_all_CacheL l) in H.
-  inversion H.
+  rewrite (locks_are_all_CacheL l).
+  cbn; auto.
 Qed.
 
 Hint Resolve locks_are_not_caches.
