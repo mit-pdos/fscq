@@ -321,7 +321,7 @@ fscqCreate fr m_fsxp (_:path) entrytype _ dev = withMVar m_fsxp $ \fsxp -> do
           _ -> return (Nothing, ())
         debugMore r
         case r of
-          Nothing -> return eNOSPC
+          Nothing -> return eIO
           Just _ -> return eOK
       | otherwise -> return eNOTDIR
 fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
@@ -339,7 +339,7 @@ fscqCreateDir fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
         (r, ()) <- fr $ FS.mkdir fsxp dnum filename
         debugMore r
         case r of
-          Nothing -> return eNOSPC
+          Nothing -> return eIO
           Just _ -> return eOK
       | otherwise -> return eNOTDIR
 fscqCreateDir _ _ _ _ = return eOPNOTSUPP
