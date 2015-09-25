@@ -108,12 +108,13 @@ Section EventCSL.
   | StepWrite : forall d m s a rx v v', d a = Some v ->
                                    StateR tid (d, m, s) (upd d a v', m, s) ->
                                    tid :- Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
-  | StepAcquireLock : forall d m s d' s' rx l,
-      let m' := set m (Locked tid) l in
+  | StepAcquireLock : forall d m m' s d' s' rx l,
+      let m'' := set m' (Locked tid) l in
       StateI m s d ->
-      StateI m' s' d' ->
+      StateI m'' s' d' ->
       star (StateR' tid) (d, m, s) (d', m', s') ->
-      tid :- AcquireLock l rx / {|d; m; s|} ==> rx tt / {|d'; m'; s'|}
+      StateR tid (d', m', s') (d', m'', s') ->
+      tid :- AcquireLock l rx / {|d; m; s|} ==> rx tt / {|d'; m''; s'|}
   | StepYield : forall d m s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
@@ -408,24 +409,33 @@ Section EventCSL.
       you the lock. For our lock protocol, it's always possible to  *)
   Definition lock_step_available := forall tid d m s l,
       (d |= StateI m s)%judgement ->
-      let m' := set m (Locked tid) l in
-      exists d' s', (d' |= StateI m' s')%judgement /\
-               star (StateR' tid) (d, m, s) (d', m', s').
+      exists d' m' s',
+        let m'' := set m' (Locked tid) l in
+        (d' |= StateI m'' s')%judgement /\
+        star (StateR' tid) (d, m, s) (d', m', s') /\
+        StateR tid (d', m', s') (d', m'', s') .
   Hypothesis lock_step_is_available : lock_step_available.
 
   Theorem acquire_lock_ok : forall l,
       tid |- {{ (_:unit),
              | PRE d m s: d |= StateI m s
-             | POST d' m' s' _: d' |= StateI m' s' /\
-                                star (StateR' tid) (d, m, s) (d', m', s') /\
-                                get m' l = Locked tid
+             | POST d' m'' s' _: exists m',
+                 d' |= StateI m'' s' /\
+                 m'' = set m' (Locked tid) l /\
+                 star (StateR' tid) (d, m, s) (d', m', s') /\
+                 StateR tid (d', m', s') (d', m'', s') /\
+                 get m'' l = Locked tid
             }} AcquireLock l.
               (* Proof. here removes lock_step_available (possibly a bug) *)
               opcode_ok.
-              subst m'.
+              eexists; intuition.
+              subst m''.
               rewrite get_set; auto.
-              edestruct lock_step_is_available; eauto; deex.
-              eauto.
+              edestruct lock_step_is_available; eauto; repeat deex.
+              (* strangely, eauto doesn't find this *)
+              apply H.
+              repeat eexists.
+              constructor; eauto.
   Qed.
 
   Theorem yield_ok :

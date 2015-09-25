@@ -105,3 +105,10 @@ Proof.
     try congruence;
     auto.
 Qed.
+
+(* this is the best way to use get_set without getting into trouble *)
+Ltac simpl_get_set :=
+  repeat match goal with
+         | [ |- _ ] => rewrite get_set
+         | [ |- _ ] => rewrite get_set_other by (cbn; auto)
+         end; auto.

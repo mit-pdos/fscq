@@ -66,19 +66,68 @@ Definition cacheI : Invariant Mcontents S :=
     let c := get m Cache in
     exists F, (d |= F * cache_pred c)%judgement.
 
-Theorem cache_lock_step_available : lock_step_available cacheR cacheI.
-Proof.
-  unfold lock_step_available.
-  intros.
-  exists d, s.
-Admitted.
-
-Hint Resolve cache_lock_step_available : prog.
-
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
 Hint Unfold lock_protects : prog.
 Hint Unfold cacheR cacheI : prog.
+
+Theorem locks_are_all_CacheL : forall (l:var Mcontents Mutex),
+    l = CacheL.
+Proof.
+Admitted.
+
+Theorem locks_are_not_caches : forall (l : var Mcontents Mutex),
+    member_index l <> member_index Cache.
+Proof.
+  intros.
+  cbn.
+  intro.
+  rewrite (locks_are_all_CacheL l) in H.
+  inversion H.
+Qed.
+
+Hint Resolve locks_are_not_caches.
+
+Ltac solve_get_set :=
+  simpl_get_set;
+  try match goal with
+      | [ |- _ =p=> _ ] => cancel
+      | [ |- ?p _ ] => match type of p with
+                      | pred => solve [ pred_apply; cancel ]
+                      end
+      end.
+
+Hint Extern 4 (get (set _ _ _) _ = _) => solve_get_set.
+Hint Extern 4 (_ = get (set _ _ _) _) => solve_get_set.
+
+Ltac dispatch :=
+  intros; subst;
+  cbn in *;
+  (repeat match goal with
+         | [ |- _ /\ _ ] => intuition
+         | [ |- exists _, _ ] => eexists
+         | _ => solve_get_set
+         end); eauto.
+
+Theorem cache_lock_step_available : lock_step_available cacheR cacheI.
+Proof.
+  unfold lock_step_available.
+  repeat (autounfold with prog); unfold pred_in.
+  intros.
+  rewrite (locks_are_all_CacheL l).
+  deex. exists d.
+  case_eq (get m CacheL); intros.
+  - dispatch.
+  - case_eq (PeanoNat.Nat.eq_dec tid0 tid); intros.
+    * dispatch.
+    * exists (set m Open CacheL), s.
+      dispatch.
+      unfold StateR', othersR.
+      eapply star_step; [| apply star_refl].
+      dispatch.
+Qed.
+
+Hint Resolve cache_lock_step_available : prog.
 
 Definition cacheS : transitions Mcontents S :=
   Build_transitions cacheR cacheI.
@@ -213,6 +262,43 @@ Proof.
   congruence.
 Qed.
 
+Ltac remove_duplicates :=
+  repeat match goal with
+         | [ H: ?p, H': ?p |- _ ] =>
+           match type of p with
+           | Prop => clear H'
+           end
+         end.
+
+Hint Extern 4 (get (set _ _ _) _ = _) => simpl_get_set : prog.
+Hint Extern 4 (_ = get (set _ _ _) _) => simpl_get_set : prog.
+
+Ltac mem_contents_eq :=
+  match goal with
+  | [ H: get ?m ?var = _, H': get ?m ?var = _ |- _ ] =>
+    rewrite H in H';
+      try inversion H';
+      subst
+  end.
+
+Ltac cache_locked :=
+  match goal with
+  | [ H: star _ _ _ |- _ ] =>
+    let H' := fresh in
+    pose proof H as H';
+      apply cache_readonly in H'; cbn; solve [ auto ];
+      cbn in H'
+  end.
+
+(* These two theorems are no longer true: they attempt to separate
+cache miss and cache hit into two cases via the precondition, but this
+trick no longer works: the cache can change after acquiring the lock,
+and the precondtion can't talk about this new cache. We really need a
+combined theorem (perhaps proven from two specs, each assuming the
+cache starts out locked), but this is hard to state since it's
+necessary that a |-> v is in F or cache_pred, which I'm not sure how
+to state and then guarantee across AcquireLock. *)
+
 Theorem disk_read_miss_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
@@ -223,69 +309,8 @@ Theorem disk_read_miss_ok : forall a,
 Proof.
   unfold disk_read.
   hoare.
-  pose proof H3 as H'.
-  apply cache_readonly in H'; cbn in H'.
-  intuition.
-  clear H5.
-  valid_match_opt.
-
-  (* cache hit; impossible due to precondition *)
-  intros_pre.
-  intuition; subst.
-  match goal with
-  | [ H: context[cache_pred (get m Cache)] |- _ ] =>
-    apply cache_miss in H
-  end.
-  (** oops, sorry, that came from nowhere *)
-  rewrite <- H4 in H0.
-  cache_contents_eq.
-  rewrite H4 in *.
-
-  hoare.
-
-  admit.
-  admit.
-  admit.
-
-  Ltac simpl_get_set :=
-    repeat match goal with
-           | [ |- _ ] => rewrite get_set
-           | [ |- _ ] => rewrite get_set_other by (cbn; auto)
-           end; auto;
-    try match goal with
-    | [ |- _ =p=> _ ] => cancel
-    end.
-
-  apply NoChange.
-  simpl_get_set.
-  simpl_get_set.
-
-  admit. (* false; where is an equality of caches coming from? *)
-
-  simpl_get_set.
-  simpl_get_set.
-
-  apply OwnerRelease.
-  simpl_get_set.
-  simpl_get_set.
-  simpl_get_set.
-  cbn.
-  admit. (* why did the cache have to be locked back in m? *)
-
-  Grab Existential Variables.
-  all: auto.
-Admitted.
-
-Lemma emp_not_ptsto : forall AT AEQ V (F: @pred AT AEQ V) a v,
-    ~ (emp =p=> F * a |-> v).
-Proof.
-  unfold not, pimpl; intros.
-  specialize (H empty_mem).
-  assert (@emp AT AEQ V empty_mem) by (apply emp_empty_mem).
-  intuition.
-  apply ptsto_valid' in H1.
-  inversion H1.
-Qed.
+  valid_match_opt; hoare; solve_get_set.
+Abort.
 
 Theorem disk_read_hit_ok : forall a,
     cacheS TID: tid |-
@@ -298,22 +323,5 @@ Theorem disk_read_hit_ok : forall a,
 Proof.
   unfold disk_read.
   hoare.
-  valid_match_opt.
-  hoare.
-  admit. (* the same lock obligation *)
-  apply OwnerRelease; simpl_get_set.
-  simpl_get_set.
-  simpl_get_set.
-  (* probably need to prove no change through star cacheR' lemma *)
-  admit.
-  admit.
-  (* cache_contents_eq; auto. *)
-  step. (* ; cache_contents_eq *)
-  admit.
-
-  (* need to finish this proof *)
-  admit.
-
-  Grab Existential Variables.
-  all: auto.
-Admitted.
+  valid_match_opt; hoare; solve_get_set.
+Abort.
