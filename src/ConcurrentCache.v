@@ -23,9 +23,9 @@ End MemCache.
 Definition S := unit.
 Definition Mcontents := [AssocCache; Mutex].
 
-Definition Cache := Eval simpl in VAR 0 IN Mcontents.
+Definition Cache : var Mcontents _ := HFirst.
 
-Definition CacheL := Eval simpl in @HNext _ _ AssocCache _ (VAR 0 IN [Mutex]).
+Definition CacheL : var Mcontents _ := HNext HFirst.
 
 Fixpoint cache_pred c : @pred addr (@weq addrlen) valu :=
   match c with
@@ -197,7 +197,7 @@ Proof.
   intuition eauto.
   match goal with
   | [ H: lock_protocol _ _ _ _ |- _ ] =>
-    inversion H; unfold Mcontents in *; congruence
+    inversion H; congruence
   end.
 Qed.
 
