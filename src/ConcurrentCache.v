@@ -153,6 +153,18 @@ Definition locked_disk_read {T} a rx : prog Mcontents S T :=
     rx v
   end.
 
+Definition locked_async_disk_read {T} a rx : prog Mcontents S T :=
+  c <- Get Cache;
+  match cache_get c a with
+  | None => v <- Read a;
+      Yield;;
+           let c' := cache_add c a v in
+           Assgn Cache c';;
+                 rx v
+  | Some v =>
+    rx v
+  end.
+
 Lemma ptsto_conflict_falso : forall AT AEQ V a v0 v1 (F p:@pred AT AEQ V),
     a |-> v0 * a |-> v1 * F =p=> p.
 Proof.
@@ -292,8 +304,9 @@ Ltac cache_locked :=
   | [ H: star _ _ _ |- _ ] =>
     let H' := fresh in
     pose proof H as H';
-      apply cache_readonly in H'; cbn; solve [ auto ];
-      cbn in H'
+      apply cache_readonly in H'; [| cbn; now auto ];
+      cbn in H';
+      destruct H'
   end.
 
 Theorem locked_disk_read_miss_ok : forall a,
@@ -340,6 +353,47 @@ Proof.
   Grab Existential Variables.
   all: auto.
 Qed.
+
+Theorem locked_async_disk_read_miss_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v,
+     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v /\
+                  get m CacheL = Locked tid
+     | POST d' m' _ r: exists F',
+         d' |= F' * cache_pred (get m' Cache) /\
+         r = v /\
+         get m' CacheL = Locked tid
+    }} locked_async_disk_read a.
+Proof.
+  unfold locked_async_disk_read.
+  hoare.
+  match goal with
+  | [ H: (F * cache_pred _ * _)%pred d |- _ ] =>
+    let H' := fresh in
+    pose proof H as H';
+      apply cache_miss in H'
+  end.
+  valid_match_opt; hoare; solve_get_set;
+  try cache_contents_eq;
+  try cache_locked;
+  try congruence;
+  eauto.
+  match goal with
+  | [ |- context[cache_pred ?c] ] => replace c
+  end.
+  cancel.
+  admit. (* this is only true if between d1 and d2 the address a
+  wasn't deleted *)
+
+  match goal with
+  | [ |- context[cache_pred ?c] ] => replace c
+  end.
+  cancel.
+  admit. (* same story *)
+
+  Grab Existential Variables.
+  all: auto.
+Admitted.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   AcquireLock CacheL;;
