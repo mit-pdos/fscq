@@ -41,12 +41,17 @@ Definition lock_protects (lvar : var Mcontents Mutex)
     tid <> owner_tid ->
     get m' v = get m v.
 
-Definition lock_protocol (lvar : var Mcontents Mutex) tid (m m' : M Mcontents) :=
-  forall owner_tid,
-    get m lvar = Locked owner_tid ->
-    get m' lvar = get m lvar \/
-    (owner_tid = tid /\
-     get m' lvar = Open).
+Inductive lock_protocol (lvar : var Mcontents Mutex) (tid : ID) :  M Mcontents -> M Mcontents -> Prop :=
+| NoChange : forall m m', get m lvar = get m' lvar ->
+                     lock_protocol lvar tid m m'
+| OwnerRelease : forall m m', get m lvar = Locked tid ->
+                         get m' lvar = Open ->
+                         lock_protocol lvar tid m m'
+| OwnerAcquire : forall m m', get m lvar = Open ->
+                         get m' lvar = Locked tid ->
+                         lock_protocol lvar tid m m'.
+
+Hint Constructors lock_protocol.
 
 Definition cacheR tid : Relation Mcontents S :=
   fun dms dms' =>
@@ -62,7 +67,7 @@ Definition cacheI : Invariant Mcontents S :=
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
-Hint Unfold lock_protects lock_protocol : prog.
+Hint Unfold lock_protects : prog.
 Hint Unfold cacheR cacheI : prog.
 
 Definition cacheS : transitions Mcontents S :=
