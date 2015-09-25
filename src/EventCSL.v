@@ -24,6 +24,9 @@ Notation "m '|=' F" :=
 
 Delimit Scope mem_judgement_scope with judgement.
 
+(* a disk state *)
+Notation "'DISK'" := (@mem addr (@weq addrlen) valu).
+
 Definition ID := nat.
 
 Section Lock.
@@ -38,8 +41,6 @@ End Lock.
 Section EventCSL.
   Set Default Proof Using "Type".
 
-  (* a disk state *)
-  Notation "'DISK'" := (@mem addr (@weq addrlen) valu).
   Implicit Type d : DISK.
 
   (** The memory is a heterogenously typed list where element types
@@ -405,23 +406,25 @@ Section EventCSL.
   (** This is a bit dangerous, but assumes that we don't get stuck
       acquiring a lock because the invariants don't allow us to give
       you the lock. For our lock protocol, it's always possible to  *)
-  Hypothesis lock_step_available : forall tid d m s l,
+  Definition lock_step_available := forall tid d m s l,
       (d |= StateI m s)%judgement ->
       let m' := set m (Locked tid) l in
       exists d' s', (d' |= StateI m' s')%judgement /\
                star (StateR' tid) (d, m, s) (d', m', s').
+  Hypothesis lock_step_is_available : lock_step_available.
 
   Theorem acquire_lock_ok : forall l,
       tid |- {{ (_:unit),
              | PRE d m s: d |= StateI m s
              | POST d' m' s' _: d' |= StateI m' s' /\
+                                star (StateR' tid) (d, m, s) (d', m', s') /\
                                 get m' l = Locked tid
             }} AcquireLock l.
-              (* Proof remove lock_step_available *)
+              (* Proof. here removes lock_step_available (possibly a bug) *)
               opcode_ok.
               subst m'.
               rewrite get_set; auto.
-              edestruct lock_step_available; eauto; deex.
+              edestruct lock_step_is_available; eauto; deex.
               eauto.
   Qed.
 

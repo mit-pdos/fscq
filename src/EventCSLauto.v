@@ -16,10 +16,15 @@ Ltac intros_pre :=
 
 (* simplify the postcondition obligation to its components *)
 Ltac simpl_post :=
-  cbn; repeat match goal with
-              | [ |- exists _, _ ] =>
-                eexists
-              end; intuition.
+  cbn;
+  (* the intention here is to unfold /\'s and instantiate existentials
+     before creating evars; something that just broke conjunctions would
+     be better than [intuition]. *)
+  intuition; repeat deex;
+  repeat match goal with
+         | [ |- exists _, _ ] =>
+           eexists
+         end; intuition.
 
 Ltac step' simplifier finisher :=
   repeat (autounfold with prog);

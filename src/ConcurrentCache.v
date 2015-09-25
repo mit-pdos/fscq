@@ -1,6 +1,7 @@
 Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Hlist.
+Require Import Star.
 Require Import List.
 Import List.ListNotations.
 Open Scope list.
@@ -62,8 +63,17 @@ Definition cacheR tid : Relation Mcontents S :=
 
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
-    forall c, c = get m Cache ->
-         exists F, (d |= F * cache_pred c)%judgement.
+    let c := get m Cache in
+    exists F, (d |= F * cache_pred c)%judgement.
+
+Theorem cache_lock_step_available : lock_step_available cacheR cacheI.
+Proof.
+  unfold lock_step_available.
+  intros.
+  exists d, s.
+Admitted.
+
+Hint Resolve cache_lock_step_available : prog.
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
@@ -75,13 +85,18 @@ Definition cacheS : transitions Mcontents S :=
 
 Definition disk_read {T} a rx : prog Mcontents S T :=
   c <- Get Cache;
-  match cache_get c a with
-  | None => v <- Read a;
-      let c' := cache_add c a v in
-      Assgn Cache c';;
-      rx v
-  | Some v => rx v
-  end.
+  AcquireLock CacheL;;
+  c <- Get Cache;
+              match cache_get c a with
+              | None => v <- Read a;
+                  let c' := cache_add c a v in
+                  Assgn Cache c';;
+                        Assgn CacheL Open;;
+                        rx v
+              | Some v =>
+                Assgn CacheL Open;;
+                      rx v
+              end.
 
 Lemma ptsto_conflict_falso : forall AT AEQ V a v0 v1 (F p:@pred AT AEQ V),
     a |-> v0 * a |-> v1 * F =p=> p.
@@ -163,37 +178,103 @@ Ltac cache_contents_eq :=
                          auto)
   end; inv_opt.
 
+Definition state_m (dms: @mem addr (@weq _) valu * M Mcontents * S) : M Mcontents :=
+  let '(_, m, _) := dms in m.
+
+Lemma cache_readonly' : forall tid dms dms',
+    get (state_m dms) CacheL = Locked tid ->
+    othersR cacheR tid dms dms' ->
+    get (state_m dms') Cache = get (state_m dms) Cache /\
+    get (state_m dms') CacheL = Locked tid.
+Proof.
+  repeat (autounfold with prog).
+  unfold othersR.
+  intros.
+  destruct dms, dms'.
+  destruct p, p0.
+  cbn in *.
+  deex.
+  intuition eauto.
+  match goal with
+  | [ H: lock_protocol _ _ _ _ |- _ ] =>
+    inversion H; unfold Mcontents in *; congruence
+  end.
+Qed.
+
+Lemma cache_readonly : forall tid dms dms',
+    get (state_m dms) CacheL = Locked tid ->
+    star (othersR cacheR tid) dms dms' ->
+    get (state_m dms') Cache = get (state_m dms) Cache /\
+    get (state_m dms') CacheL = Locked tid.
+Proof.
+  intros.
+  eapply (star_invariant _ _ (cache_readonly' tid));
+    intros; intuition; eauto.
+  congruence.
+Qed.
+
 Theorem disk_read_miss_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
-     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v /\
-                  get m CacheL = Locked tid
+     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v
      | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
                        r = v
     }} disk_read a.
 Proof.
   unfold disk_read.
   hoare.
+  pose proof H3 as H'.
+  apply cache_readonly in H'; cbn in H'.
+  intuition.
+  clear H5.
   valid_match_opt.
+
   (* cache hit; impossible due to precondition *)
   intros_pre.
   intuition; subst.
-  Check cache_miss.
   match goal with
   | [ H: context[cache_pred (get m Cache)] |- _ ] =>
     apply cache_miss in H
   end.
+  (** oops, sorry, that came from nowhere *)
+  rewrite <- H4 in H0.
   cache_contents_eq.
+  rewrite H4 in *.
 
   hoare.
-  autorewrite with core; cancel.
-  rewrite get_set_other; cbn; auto.
 
-  (* this is the read-only obligation from the lock protocol, which
-  only applies if you're not the owner.  *)
-  congruence.
-  autorewrite with core; cancel.
-Qed.
+  admit.
+  admit.
+  admit.
+
+  Ltac simpl_get_set :=
+    repeat match goal with
+           | [ |- _ ] => rewrite get_set
+           | [ |- _ ] => rewrite get_set_other by (cbn; auto)
+           end; auto;
+    try match goal with
+    | [ |- _ =p=> _ ] => cancel
+    end.
+
+  apply NoChange.
+  simpl_get_set.
+  simpl_get_set.
+
+  admit. (* false; where is an equality of caches coming from? *)
+
+  simpl_get_set.
+  simpl_get_set.
+
+  apply OwnerRelease.
+  simpl_get_set.
+  simpl_get_set.
+  simpl_get_set.
+  cbn.
+  admit. (* why did the cache have to be locked back in m? *)
+
+  Grab Existential Variables.
+  all: auto.
+Admitted.
 
 Lemma emp_not_ptsto : forall AT AEQ V (F: @pred AT AEQ V) a v,
     ~ (emp =p=> F * a |-> v).
@@ -219,32 +300,20 @@ Proof.
   hoare.
   valid_match_opt.
   hoare.
-  cache_contents_eq; auto.
-  step; cache_contents_eq.
+  admit. (* the same lock obligation *)
+  apply OwnerRelease; simpl_get_set.
+  simpl_get_set.
+  simpl_get_set.
+  (* probably need to prove no change through star cacheR' lemma *)
+  admit.
+  admit.
+  (* cache_contents_eq; auto. *)
+  step. (* ; cache_contents_eq *)
+  admit.
+
+  (* need to finish this proof *)
+  admit.
 
   Grab Existential Variables.
   all: auto.
-Qed.
-
-CoFixpoint lock {T} (rx: unit -> prog Mcontents S T) :=
-  l <- Get CacheL;
-  If (is_locked l) {
-       Yield;;
-            lock rx
-     } else {
-    tid <- GetTID;
-    Assgn CacheL (Locked tid);;
-          rx tt
-  }.
-
-Theorem lock_ok :
-  cacheS TID: tid |-
-{{ (_:unit),
- | PRE d m s: d |= cacheI m s
- | POST d' m' s' _: d' |= cacheI m' s' /\
-                    get m' CacheL = Locked tid
-}} lock.
-Proof.
-  unfold lock.
-  intros_pre.
-Abort.
+Admitted.

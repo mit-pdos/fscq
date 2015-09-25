@@ -67,6 +67,20 @@ Section STAR.
       induction H; eauto.
   Qed.
 
+  Theorem star_invariant : forall (P : _ -> Prop) (Q : _ -> _ -> Prop),
+      (forall s s', P s -> s --> s' -> Q s s') ->
+      (forall s, P s -> Q s s) ->
+      (forall s s', Q s s' -> P s') ->
+      (forall s s' s'', Q s s' -> Q s' s'' -> Q s s'') ->
+      forall s s',
+        P s -> s -->* s' -> Q s s'.
+  Proof.
+    intros.
+    match goal with
+    | [ H : star _ _ |- _ ] =>
+      induction H
+    end; eauto 10.
+  Qed.
 
 End STAR.
 
