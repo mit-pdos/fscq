@@ -132,20 +132,16 @@ Hint Resolve cache_lock_step_available : prog.
 Definition cacheS : transitions Mcontents S :=
   Build_transitions cacheR cacheI.
 
-Definition disk_read {T} a rx : prog Mcontents S T :=
+Definition locked_disk_read {T} a rx : prog Mcontents S T :=
   c <- Get Cache;
-  AcquireLock CacheL;;
-  c <- Get Cache;
-              match cache_get c a with
-              | None => v <- Read a;
-                  let c' := cache_add c a v in
-                  Assgn Cache c';;
-                        Assgn CacheL Open;;
-                        rx v
-              | Some v =>
-                Assgn CacheL Open;;
-                      rx v
-              end.
+  match cache_get c a with
+  | None => v <- Read a;
+      let c' := cache_add c a v in
+      Assgn Cache c';;
+            rx v
+  | Some v =>
+    rx v
+  end.
 
 Lemma ptsto_conflict_falso : forall AT AEQ V a v0 v1 (F p:@pred AT AEQ V),
     a |-> v0 * a |-> v1 * F =p=> p.
@@ -290,14 +286,49 @@ Ltac cache_locked :=
       cbn in H'
   end.
 
+Theorem locked_disk_read_miss_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v,
+     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v /\
+                  get m CacheL = Locked tid
+     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
+                       r = v /\
+                       get m' CacheL = Locked tid
+    }} locked_disk_read a.
+Proof.
+  unfold locked_disk_read.
+  hoare.
+  (* valid_match_opt; hoare; solve_get_set. *)
+Admitted.
+
+Theorem disk_read_hit_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v,
+     | PRE d m _: d |= F * cache_pred (get m Cache) /\
+                  cache_get (get m Cache) a = Some v
+     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
+                       r = v /\
+                       get m CacheL = Open
+    }} locked_disk_read a.
+Proof.
+  unfold locked_disk_read.
+  hoare.
+Admitted.
+
+Definition disk_read {T} a rx : prog _ _ T :=
+  AcquireLock CacheL;;
+              v <- locked_disk_read a;
+              Assgn CacheL Open;;
+              rx v.
+
 (* These two theorems are no longer true: they attempt to separate
 cache miss and cache hit into two cases via the precondition, but this
 trick no longer works: the cache can change after acquiring the lock,
 and the precondtion can't talk about this new cache. We really need a
-combined theorem (perhaps proven from two specs, each assuming the
-cache starts out locked), but this is hard to state since it's
-necessary that a |-> v is in F or cache_pred, which I'm not sure how
-to state and then guarantee across AcquireLock. *)
+combined theorem (proven from the above two specs), but this is hard
+to state since it's necessary that a |-> v is in F or cache_pred,
+which I'm not sure how to state and then guarantee across
+AcquireLock. *)
 
 Theorem disk_read_miss_ok : forall a,
     cacheS TID: tid |-
@@ -309,7 +340,6 @@ Theorem disk_read_miss_ok : forall a,
 Proof.
   unfold disk_read.
   hoare.
-  valid_match_opt; hoare; solve_get_set.
 Abort.
 
 Theorem disk_read_hit_ok : forall a,
@@ -323,5 +353,4 @@ Theorem disk_read_hit_ok : forall a,
 Proof.
   unfold disk_read.
   hoare.
-  valid_match_opt; hoare; solve_get_set.
 Abort.
