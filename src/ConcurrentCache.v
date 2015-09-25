@@ -308,22 +308,38 @@ Theorem locked_disk_read_miss_ok : forall a,
 Proof.
   unfold locked_disk_read.
   hoare.
-  (* valid_match_opt; hoare; solve_get_set. *)
-Admitted.
+  (* TODO: it would be nice to automate this pattern, but the problem
+     is that the hypothesis pattern depends on the lemma and is hard
+     to extract from Ltac *)
+  match goal with
+  | [ H: (F * cache_pred _ * _)%pred d |- _ ] =>
+    let H' := fresh in
+    pose proof H as H';
+      apply cache_miss in H'
+  end.
+  valid_match_opt; hoare; solve_get_set;
+  try cache_contents_eq;
+  try congruence.
+Qed.
 
-Theorem disk_read_hit_ok : forall a,
+Theorem locked_disk_read_hit_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
      | PRE d m _: d |= F * cache_pred (get m Cache) /\
                   cache_get (get m Cache) a = Some v
      | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
-                       r = v /\
-                       get m CacheL = Open
+                       r = v
     }} locked_disk_read a.
 Proof.
   unfold locked_disk_read.
   hoare.
-Admitted.
+  valid_match_opt; hoare; solve_get_set;
+  try cache_contents_eq;
+  try congruence.
+
+  Grab Existential Variables.
+  all: auto.
+Qed.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   AcquireLock CacheL;;
