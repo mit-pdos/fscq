@@ -62,6 +62,13 @@ Ltac step_simplifier :=
 Ltac step_finisher := try (pred_apply; cancel);
     eauto.
 
-Ltac step := step' step_simplifier step_finisher.
+Tactic Notation "step" := step' step_simplifier step_finisher.
+Tactic Notation "step" "pre" tactic(simplifier) := step' simplifier step_finisher.
+Tactic Notation "step" "pre" tactic(simplifier) "with" tactic(finisher) := step' simplifier finisher.
+Tactic Notation "step" "with" tactic(finisher) := step' step_simplifier finisher.
 
-Ltac hoare := intros; repeat step.
+Ltac hoare' simplifier finisher  := intros; repeat step' simplifier finisher.
+Tactic Notation "hoare" := hoare' step_simplifier step_finisher.
+Tactic Notation "hoare" "pre" tactic(simplifier) := hoare' simplifier step_finisher.
+Tactic Notation "hoare" "pre" tactic(simplifier) "with" tactic(finisher) := hoare' simplifier finisher.
+Tactic Notation "hoare" "with" tactic(finisher) := hoare' step_simplifier finisher.
