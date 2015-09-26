@@ -43,6 +43,13 @@ Definition lock_protects (lvar : var Mcontents Mutex)
     tid <> owner_tid ->
     get m' v = get m v.
 
+Definition lock_protects_disk (lvar : var Mcontents Mutex)
+           tid (m : M Mcontents) (d d' : DISK) :=
+  forall owner_tid,
+    get m lvar = Locked owner_tid ->
+    tid <> owner_tid ->
+    d' = d.
+
 Inductive lock_protocol (lvar : var Mcontents Mutex) (tid : ID) :  M Mcontents -> M Mcontents -> Prop :=
 | NoChange : forall m m', get m lvar = get m' lvar ->
                      lock_protocol lvar tid m m'
@@ -57,10 +64,11 @@ Hint Constructors lock_protocol.
 
 Definition cacheR tid : Relation Mcontents S :=
   fun dms dms' =>
-    let '(_, m, _) := dms in
-    let '(_', m', _) := dms' in
+    let '(d, m, _) := dms in
+    let '(d', m', _) := dms' in
     lock_protocol CacheL tid m m' /\
-    lock_protects CacheL Cache tid m m'.
+    lock_protects CacheL Cache tid m m' /\
+    lock_protects_disk CacheL tid m d d'.
 
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
@@ -69,7 +77,7 @@ Definition cacheI : Invariant Mcontents S :=
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
-Hint Unfold lock_protects : prog.
+Hint Unfold lock_protects_disk lock_protects : prog.
 Hint Unfold cacheR cacheI : prog.
 
 Theorem locks_are_all_CacheL : forall (l:var Mcontents Mutex),
@@ -245,8 +253,11 @@ Ltac cache_contents_eq :=
                          auto)
   end; inv_opt.
 
-Definition state_m (dms: @mem addr (@weq _) valu * M Mcontents * S) : M Mcontents :=
+Definition state_m (dms: DISK * M Mcontents * S) :=
   let '(_, m, _) := dms in m.
+
+Definition state_d (dms: DISK * M Mcontents * S) :=
+  let '(d, _, _) := dms in d.
 
 Lemma cache_readonly' : forall tid dms dms',
     get (state_m dms) CacheL = Locked tid ->
@@ -280,6 +291,38 @@ Proof.
   congruence.
 Qed.
 
+Lemma disk_readonly' : forall tid dms dms',
+    get (state_m dms) CacheL = Locked tid ->
+    othersR cacheR tid dms dms' ->
+    state_d dms' = state_d dms /\
+    get (state_m dms') CacheL = Locked tid.
+Proof.
+  repeat (autounfold with prog).
+  unfold othersR.
+  intros.
+  destruct dms, dms'.
+  destruct p, p0.
+  cbn in *.
+  deex.
+  intuition eauto.
+  match goal with
+  | [ H: lock_protocol _ _ _ _ |- _ ] =>
+    inversion H; congruence
+  end.
+Qed.
+
+Lemma disk_readonly : forall tid dms dms',
+    get (state_m dms) CacheL = Locked tid ->
+    star (othersR cacheR tid) dms dms' ->
+    state_d dms' = state_d dms /\
+    get (state_m dms') CacheL = Locked tid.
+Proof.
+  intros.
+  eapply (star_invariant _ _ (disk_readonly' tid));
+    intros; intuition; eauto.
+  congruence.
+Qed.
+
 Ltac remove_duplicates :=
   repeat match goal with
          | [ H: ?p, H': ?p |- _ ] =>
@@ -299,15 +342,18 @@ Ltac mem_contents_eq :=
       subst
   end.
 
-Ltac cache_locked :=
+Ltac star_readonly thm :=
   match goal with
   | [ H: star _ _ _ |- _ ] =>
     let H' := fresh in
     pose proof H as H';
-      apply cache_readonly in H'; [| cbn; now auto ];
+      apply thm in H'; [| cbn; now auto ];
       cbn in H';
       destruct H'
   end.
+
+Ltac cache_locked := star_readonly cache_readonly.
+Ltac disk_locked := star_readonly disk_readonly.
 
 Theorem locked_disk_read_miss_ok : forall a,
     cacheS TID: tid |-
@@ -354,6 +400,38 @@ Proof.
   all: auto.
 Qed.
 
+(** FIXME: this is a terrible hack. When we have two hypotheses about
+the same memory, it deletes the older one, since we carry forward less
+information then what we get by using the fact that the disk hasn't
+changed (from the lock invariant) and pred_apply then picks the wrong
+disk. It has two problems:
+
+* it isn't guaranteed to delete the less useful premise
+* the solution to this problem is actually to backtrack over
+  pred_apply (there are only two options, after all)
+*)
+Ltac keep_older_pred :=
+  match goal with
+  | [ H: _ ?d, H' : ?p ?d |- _ ] =>
+    match type of (d, p) with
+      | (DISK * pred)%type => clear H'
+    end
+  end.
+
+Ltac simplify :=
+  step_simplifier;
+  try cache_locked;
+  try disk_locked;
+  subst;
+  try keep_older_pred.
+
+Ltac finish :=
+  solve_get_set;
+  try solve [ pred_apply; cancel ];
+  try cache_contents_eq;
+  try congruence;
+  eauto.
+
 Theorem locked_async_disk_read_miss_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
@@ -373,27 +451,8 @@ Proof.
     pose proof H as H';
       apply cache_miss in H'
   end.
-  valid_match_opt; hoare; solve_get_set;
-  try cache_contents_eq;
-  try cache_locked;
-  try congruence;
-  eauto.
-  match goal with
-  | [ |- context[cache_pred ?c] ] => replace c
-  end.
-  cancel.
-  admit. (* this is only true if between d1 and d2 the address a
-  wasn't deleted *)
-
-  match goal with
-  | [ |- context[cache_pred ?c] ] => replace c
-  end.
-  cancel.
-  admit. (* same story *)
-
-  Grab Existential Variables.
-  all: auto.
-Admitted.
+  valid_match_opt; hoare pre simplify with finish.
+Qed.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   AcquireLock CacheL;;
