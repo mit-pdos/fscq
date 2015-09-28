@@ -17,6 +17,7 @@ Set Implicit Arguments.
 
 Definition block1 : addr := $0.
 Definition block2 : addr := $1.
+Definition default_valu : valu := $0.
 Definition hash_block : addr := $2.
 
 
@@ -34,37 +35,32 @@ Definition crep a b a' b' : @pred addr (@weq addrlen) valuset :=
     hash_block |-> (hash2 a' b', hash2 a b :: nil) \/
     hash_block |-> (hash2 a' b', nil)) )%pred.
 
-(* Example "log" using checksums *)
 
-Definition apply T xp (cs : cachestate) rx : prog T :=
-  (* apply log to disk *)
-  let^ (cs, v) <- BUFCACHE.read (LogData xp) cs;
-  cs <- BUFCACHE.write (DataStart xp) v cs;
-  cs <- BUFCACHE.sync (DataStart xp) cs;
+(* Example "log" implementation using checksums *)
+
+Definition put T cs d1 d2 rx : prog T :=
+  cs <- BUFCACHE.write block1 d1 cs;
+  cs <- BUFCACHE.write block2 d2 cs;
+  h <- Hash (Word.combine d1 d2);
+  cs <- BUFCACHE.write hash_block (hash_to_valu h) cs;
+  cs <- BUFCACHE.sync block1 cs;
+  cs <- BUFCACHE.sync block2 cs;
+  cs <- BUFCACHE.sync hash_block cs;
   rx cs.
 
+Definition get T cs rx : prog T :=
+  d1 <- BUFCACHE.read block1 cs;
+  d2 <- BUFCACHE.read block2 cs;
+  rx ^(d1, d2).
 
-Definition write T xp (mscs : memstate_cachestate) v rx : prog T :=
-  let '^(ms, cs) := mscs in
-  (* write log to disk *)
-  cs <- BUFCACHE.write (LogData xp) v cs;
-  cs <- BUFCACHE.sync (LogData xp) cs;
-  (* write hash to commit block *)
-  h <- Hash v;
-  cs <- BUFCACHE.write (LogHeader xp) (hash_to_valu h) cs;
-  cs <- BUFCACHE.sync (LogHeader xp) cs;
-
-  cs <- apply xp cs;
-  rx ^(^(ms, cs), true).
-
-Definition recover T (xp: log_xparams) cs rx : prog T :=
-  let^ (cs, v) <- BUFCACHE.read (LogData xp) cs;
-  let^ (cs, diskh) <- BUFCACHE.read (LogHeader xp) cs;
-  h <- Hash v;
+Definition recover T cs rx : prog T :=
+  let^ (cs, d1) <- BUFCACHE.read block1 cs;
+  let^ (cs, d2) <- BUFCACHE.read block2 cs;
+  let^ (cs, diskh) <- BUFCACHE.read hash_block cs;
+  h <- Hash (Word.combine d1 d2);
   If (weq diskh (hash_to_valu h)) {
-    (* If the log's checksum is okay, apply the changes. *)
-    cs <- apply xp cs;
-    rx true
+    rx cs
   } else {
-    rx true
+    cs <- put cs default_valu default_valu;
+    rx cs
   }.
