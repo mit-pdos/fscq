@@ -12,8 +12,8 @@ Local Open Scope list.
 (* defined in Prog. which we don't want to import here *)
 Definition addrlen := 64.
 Definition valulen := 64.
-Notation "'addr'" := (word addrlen).
-Notation "'valu'" := (word valulen).
+Notation addr := (word addrlen).
+Notation valu := (word valulen).
 
 Set Implicit Arguments.
 
@@ -25,7 +25,7 @@ Notation "m '|=' F" :=
 Delimit Scope mem_judgement_scope with judgement.
 
 (* a disk state *)
-Notation "'DISK'" := (@mem addr (@weq addrlen) valu).
+Notation DISK := (@mem addr (@weq addrlen) valu).
 
 Definition ID := nat.
 

@@ -69,8 +69,8 @@ Section Bank.
     bal1 <- Read acct1;
     bal2 <- Read acct2;
     Write acct1 (bal1 ^- $ amount);;
-          Write acct2 (bal2 ^+ $ amount);;
-          rx tt.
+    Write acct2 (bal2 ^+ $ amount);;
+    rx tt.
 
   (* an update function that adds an entry to the ledger for transfer *)
   Definition record_transfer amount ledger : State := ledger ++ [from1 amount].
@@ -93,22 +93,20 @@ Section Bank.
       a1 = b1 /\ a2 = b2 <->
       (a1, a2) = (b1, b2).
   Proof.
-    intros.
-    intuition; try inversion H; subst; auto.
+    intuition congruence.
   Qed.
 
   Lemma balances'_assoc : forall entry ledger accum,
       balances' (ledger ++ [entry]) accum =
       add_entry (balances' ledger accum) entry.
   Proof.
-    induction ledger; intros; auto; simpl.
-    rewrite IHledger; auto.
+    induction ledger; simpl; eauto. 
   Qed.
 
   Lemma balances_assoc : forall entry ledger,
       balances (ledger ++ [entry]) = add_entry (balances ledger) entry.
   Proof.
-    intros; apply balances'_assoc.
+    eauto using balances'_assoc.
   Qed.
 
   Hint Resolve -> gt0_wneq0.
@@ -185,15 +183,11 @@ Section Bank.
       exists ledger_ext, ledger' = ledger ++ ledger_ext.
   Proof.
     unfold othersR, bankR.
-    intros.
-
-    induction H.
-    destruct s.
-    destruct p.
+    induction 1.
+    destruct s as [ [ ] ].
     exists nil; rewrite app_nil_r; auto.
 
-    destruct s1, s2, s3.
-    destruct p, p0, p1.
+    destruct s1 as [ [ ] ], s2 as [ [ ] ], s3 as [ [ ] ].
     intuition; repeat deex; eauto.
     eexists.
     rewrite <- app_assoc.
@@ -216,7 +210,7 @@ Section Bank.
       #bal1 >= amount ->
       balances s = (#bal1, #bal2) ->
       acct2 |-> (bal2 ^+ $ amount) * acct1 |-> (bal1 ^- $ amount) * F =p=>
-  bankPred m (s ++ [from1 amount]).
+      bankPred m (s ++ [from1 amount]).
   Proof.
     Ltac process_entry :=
       match goal with
@@ -237,9 +231,9 @@ Section Bank.
       bankS TID: tid |-
       {{ F,
        | PRE d m l: d |= F * rep bal1 bal2
-         | POST d' m' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) /\
-                            l' = l /\
-                            m' = m
+       | POST d' m' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) /\
+                          l' = l /\
+                          m' = m
       }} transfer amount.
   Proof.
     unfold transfer.
@@ -261,12 +255,8 @@ Section Bank.
       n = length l1 ->
       firstn n (l1 ++ l2) = l1.
   Proof.
-    induction l1; intros; simpl in *.
-    subst; auto.
-    subst.
-    simpl.
-    f_equal.
-    auto.
+    induction l1; intuition (subst; simpl in *; auto).
+    rewrite IHl1; auto.
   Qed.
 
   Theorem transfer_yield_ok : forall bal1 bal2 amount,
@@ -275,8 +265,8 @@ Section Bank.
      | PRE d m l: d |= F * inv_rep bal1 bal2 /\
                   #bal1 >= amount /\
                   bankI l #bal1 #bal2
-      | POST d' m' l' _: d' |= bankPred m' l' /\
-                         firstn (length l + 1) l' = l ++ [from1 amount]
+     | POST d' m' l' _: d' |= bankPred m' l' /\
+                        firstn (length l + 1) l' = l ++ [from1 amount]
     }} transfer_yield amount.
   Proof.
     unfold transfer_yield.
