@@ -11,7 +11,7 @@ Set Implicit Arguments.
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
-Fixpoint arrayN {V : Type} (a : addr) (vs : list V) : @pred _ eq_nat_dec _ :=
+Fixpoint arrayN {V : Type} (a : addr) (vs : list V) : @pred _ addr_eq_dec _ :=
   match vs with
     | nil => emp
     | v :: vs' => a |-> v * arrayN (S a) vs'
