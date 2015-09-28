@@ -5,8 +5,34 @@ Require Import Log.
 Require Import BasicProg.
 Require Import Compare.
 Require Import Cache.
+Require Import Pred.
+Require Import Hoare.
+Require Import Mem.
+Require Import GenSep.
+Require Import SepAuto.
+Require Import List.
+Require Import Array.
 
 Set Implicit Arguments.
+
+Definition block1 : addr := $0.
+Definition block2 : addr := $1.
+Definition hash_block : addr := $2.
+
+
+Definition hash2 (a b : word valulen) := hash_to_valu (hash_fwd (Word.combine a b)).
+
+Definition rep a b : @pred addr (@weq addrlen) valuset :=
+  (block1 |-> (a, nil) *
+   block2 |-> (b, nil) *
+   hash_block |-> (hash2 a b, nil) )%pred.
+
+Definition crep a b a' b' : @pred addr (@weq addrlen) valuset :=
+  (block1 |->? *
+   block2 |->? *
+   (hash_block |-> (hash2 a b, nil) \/
+    hash_block |-> (hash2 a' b', hash2 a b :: nil) \/
+    hash_block |-> (hash2 a' b', nil)) )%pred.
 
 (* Example "log" using checksums *)
 
