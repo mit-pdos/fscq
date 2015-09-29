@@ -3,6 +3,7 @@ Require Import EventCSLauto.
 Require Import Hlist.
 Require Import Star.
 Require Import Coq.Program.Equality.
+Require Import FunctionalExtensionality.
 Require Import List.
 Import List.ListNotations.
 Open Scope list.
@@ -25,7 +26,7 @@ Definition S := DISK.
 Definition Mcontents := [AssocCache; Mutex].
 
 (* to make code clear, and make it easier to add things to S later *)
-Definition virt_disk (s:S) := s.
+Definition virt_disk (s:S) : DISK := s.
 
 Hint Unfold virt_disk : prog.
 
@@ -33,7 +34,9 @@ Definition Cache : var Mcontents _ := HFirst.
 
 Definition CacheL : var Mcontents _ := HNext HFirst.
 
-Fixpoint cache_mem c : DISK := cache_get c.
+Definition cache_mem c : DISK := cache_get c.
+
+Hint Unfold cache_mem : prog.
 
 Definition cache_pred c vd : @pred addr (@weq addrlen) valu :=
   fun d => vd = mem_union (cache_mem c) d /\
@@ -193,57 +196,7 @@ Proof.
   pred_apply; cancel.
 Qed.
 
-Lemma cache_hit : forall c a v,
-    cache_get c a = Some v ->
-    exists F, cache_pred c =p=> F * a |-> v.
-Proof.
-  induction c; intros.
-  inversion H.
-  destruct a.
-  simpl in *.
-  match goal with
-  | [ H: context[if ?b then _ else _] |- _ ] =>
-    destruct b; simpl; inv_opt; eexists
-  end.
-  - cancel.
-  - edestruct IHc; eauto.
-    rewrite H.
-    cancel.
-    eapply pimpl_trans; [| apply ptsto_conflict_falso with (a := w)]; cancel.
-
-    Grab Existential Variables.
-    auto.
-Qed.
-
-Lemma cache_miss : forall F a v c d,
-    (F * cache_pred c * a |-> v)%pred d ->
-    cache_get c a = None.
-Proof.
-  intros.
-  case_eq (cache_get c a); intros; auto.
-  apply cache_hit in H0.
-  deex.
-  exfalso.
-  eapply ptsto_conflict_F with (a := a) (m := d).
-  pred_apply; cancel.
-  rewrite H0.
-  cancel.
-Qed.
-
-Theorem cache_add_pred : forall c a v,
-    cache_pred (cache_add c a v) <=p=>
-        a |-> v * cache_pred c.
-Proof.
-  auto.
-Qed.
-
 Hint Rewrite get_set.
-Hint Rewrite cache_add_pred.
-
-Hint Extern 0 (okToUnify (cache_pred ?c)
-                         (cache_pred ?c)) => constructor : okToUnify.
-Hint Extern 0 (okToUnify (cache_pred (get ?m Cache))
-                         (cache_pred (get ?m Cache))) => constructor : okToUnify.
 
 Ltac valid_match_opt :=
   match goal with
@@ -328,8 +281,8 @@ Lemma disk_readonly : forall tid dms dms',
     get (state_m dms') CacheL = Locked tid.
 Proof.
   intros.
-  eapply (star_invariant _ _ (disk_readonly' tid));
-    intros; intuition; eauto.
+  (* ; intuition; eauto  gives "conversion test raised an anomaly" here *)
+  eapply (star_invariant _ _ (disk_readonly' tid)); intros; intuition eauto.
   congruence.
 Qed.
 
@@ -365,49 +318,156 @@ Ltac star_readonly thm :=
 Ltac cache_locked := star_readonly cache_readonly.
 Ltac disk_locked := star_readonly disk_readonly.
 
-Theorem locked_disk_read_miss_ok : forall a,
-    cacheS TID: tid |-
-    {{ F v,
-     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v /\
-                  get m CacheL = Locked tid
-     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
-                       r = v /\
-                       get m' CacheL = Locked tid
-    }} locked_disk_read a.
+(** These proofs are still very messy. There's a lot of low-level
+manipulations of memories to prove/use the cache_pred in service of
+re-representing the disk as disk + cache. *)
+
+Lemma ptsto_valid_iff : forall AT AEQ V a v (m : @mem AT AEQ V),
+    m a = Some v ->
+    (any * a |-> v)%pred m.
 Proof.
-  unfold locked_disk_read.
-  hoare.
-  (* TODO: it would be nice to automate this pattern, but the problem
-     is that the hypothesis pattern depends on the lemma and is hard
-     to extract from Ltac *)
-  match goal with
-  | [ H: (F * cache_pred _ * _)%pred d |- _ ] =>
-    let H' := fresh in
-    pose proof H as H';
-      apply cache_miss in H'
-  end.
-  valid_match_opt; hoare; solve_get_set;
-  try cache_contents_eq;
-  try congruence.
+  intros.
+  unfold_sep_star.
+  exists (mem_except m a).
+  exists (fun a0 => if (AEQ a0 a) then Some v else None).
+  intuition.
+  apply functional_extensionality; intro a0.
+  unfold mem_union.
+  unfold mem_except.
+  case_eq (AEQ a0 a); intros; subst; eauto.
+  case_eq (m a0); eauto.
+  unfold mem_disjoint, mem_except.
+  intro.
+  repeat deex.
+  case_eq (AEQ a0 a); intros.
+  rewrite H0 in *.
+  congruence.
+  rewrite H0 in *.
+  congruence.
+  unfold any; auto.
+  unfold ptsto; intuition.
+  case_eq (AEQ a a); intros; auto; congruence.
+  case_eq (AEQ a' a); intros; auto; congruence.
 Qed.
 
-Theorem locked_disk_read_hit_ok : forall a,
-    cacheS TID: tid |-
-    {{ F v,
-     | PRE d m _: d |= F * cache_pred (get m Cache) /\
-                  cache_get (get m Cache) a = Some v
-     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
-                       r = v
-    }} locked_disk_read a.
+Lemma cache_pred_miss : forall c a v vd,
+    cache_get c a = None ->
+    vd a = Some v ->
+    cache_pred c vd =p=> any * a |-> v.
 Proof.
-  unfold locked_disk_read.
-  hoare.
-  valid_match_opt; hoare; solve_get_set;
-  try cache_contents_eq;
-  try congruence.
+  intros.
+  unfold pimpl, cache_pred, cache_mem; intuition.
+  apply equal_f with a in H2.
+  unfold mem_union in H2.
+  rewrite H in H2.
+  assert (m a = Some v) by congruence.
+  apply ptsto_valid_iff; eauto.
+Qed.
 
-  Grab Existential Variables.
-  all: auto.
+Lemma cache_pred_add : forall c vd a v,
+    cache_get c a = None ->
+    vd a = Some v ->
+    cache_pred c (mem_except vd a) * a |-> v =p=>
+cache_pred (cache_add c a v) vd.
+Proof.
+  intros.
+  unfold pimpl, cache_pred, cache_add; intuition eauto.
+  apply functional_extensionality; intro a'.
+  unfold mem_union, cache_mem; cbn.
+  apply sep_star_comm in H1.
+  pose proof H1 as H'.
+  apply ptsto_mem_except in H1.
+  apply ptsto_valid in H'.
+  intuition.
+  pose proof H2 as H2a.
+  pose proof H2 as H2a'.
+  apply equal_f with a in H2a.
+  apply equal_f with a' in H2a'.
+  unfold mem_except in H2a, H2a'.
+
+  case_eq (weq a a');
+    case_eq (weq a' a);
+    case_eq (weq a a);
+    intros; subst;
+    try replace (weq a a) in *;
+    try replace (weq a a') in *;
+    try replace (weq a' a) in *;
+    try congruence.
+  replace (cache_get c a).
+  rewrite H2a'.
+  unfold cache_mem in *.
+  unfold mem_union.
+  case_eq (cache_get c a'); intros.
+  apply H3 in H6.
+  unfold mem_except in H6.
+  replace (weq a' a) in H6.
+  congruence.
+  replace (weq a' a).
+  auto.
+  case_eq (weq a a0); intros; subst.
+  cbn in H2.
+  case_eq (weq a0 a0); intros; try congruence.
+  rewrite H4 in H2.
+  inversion H2; subst.
+  apply ptsto_valid' in H1; congruence.
+  unfold cache_mem in H2.
+  unfold cache_get in H2.
+  replace (weq a a0) in H2.
+  fold (cache_get c a) in H2.
+  cache_contents_eq.
+Qed.
+
+Lemma cache_miss_mem_match : forall c vd a (m: DISK) v,
+    cache_pred c vd m ->
+    cache_get c a = None ->
+    vd a = Some v ->
+    m a = Some v.
+Proof.
+  unfold cache_pred; intuition.
+  apply equal_f with a in H2.
+  unfold mem_union in *.
+  unfold cache_mem in *.
+  replace (cache_get c a) in H2.
+  congruence.
+Qed.
+
+Lemma cache_pred_except : forall c vd m a,
+    cache_get c a = None ->
+    cache_pred c vd m ->
+    cache_pred c (mem_except vd a) (mem_except m a).
+Proof.
+  unfold cache_pred, mem_except, mem_union, cache_mem; intuition.
+  apply functional_extensionality; intro a'.
+  case_eq (weq a' a); intros; subst; auto.
+  replace (cache_get c a); auto.
+  case_eq (weq a0 a); intros; subst; try congruence; eauto.
+Qed.
+
+Lemma cache_pred_add' : forall c vd a v,
+    cache_get c a = None ->
+    vd a = Some v ->
+    cache_pred c vd =p=>
+cache_pred c (mem_except vd a) * a |-> v.
+Proof.
+  unfold pimpl.
+  intros.
+  unfold_sep_star.
+  exists (mem_except m a).
+  exists (fun a' => if weq a' a then Some v else None).
+  intuition.
+  apply functional_extensionality; intro a'.
+  unfold mem_union, mem_except.
+  case_eq (weq a' a); intros; subst.
+  eapply cache_miss_mem_match; eauto.
+  destruct (m a'); eauto.
+  unfold mem_disjoint, mem_except.
+  intro.
+  repeat deex.
+  case_eq (weq a0 a); intros; try replace (weq a0 a) in *; try congruence.
+  apply cache_pred_except; auto.
+  unfold ptsto.
+  case_eq (weq a a); intros; try congruence; intuition auto.
+  case_eq (weq a' a); intros; try congruence.
 Qed.
 
 (** FIXME: this is a terrible hack. When we have two hypotheses about
@@ -441,6 +501,44 @@ Ltac finish :=
   try cache_contents_eq;
   try congruence;
   eauto.
+
+Theorem locked_disk_read_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v,
+     | PRE d m s: let vd := virt_disk s in
+                  d |= cache_pred (get m Cache) vd /\
+                  vd |= F * a |-> v /\
+                  get m CacheL = Locked tid
+     | POST d' m' s' r: let vd' := virt_disk s' in
+                        d' |= cache_pred (get m' Cache) vd' /\
+                        r = v /\
+                        get m' CacheL = Locked tid
+    }} locked_disk_read a.
+Proof.
+  unfold locked_disk_read.
+  hoare.
+  pose proof H0 as H';
+    apply ptsto_valid' in H'.
+  valid_match_opt.
+  - hoare pre simplify with finish; solve_get_set.
+    clear H4.
+    unfold cache_pred in H; autounfold with prog in *; intuition.
+    specialize (H5 _ _ H2).
+    apply equal_f with a in H4.
+    unfold mem_union in H4.
+    rewrite H2 in H4.
+    congruence.
+  - hoare pre simplify with finish; solve_get_set.
+    shelve. (* should come back to this when we have the right ?F *)
+    pred_apply.
+    rewrite cache_pred_add; eauto.
+    pred_apply.
+    rewrite cache_pred_add; eauto.
+
+    Unshelve.
+    pred_apply; cancel.
+    apply cache_pred_add'; auto.
+Qed.
 
 Theorem locked_async_disk_read_miss_ok : forall a,
     cacheS TID: tid |-
