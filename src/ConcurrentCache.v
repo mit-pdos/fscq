@@ -21,18 +21,24 @@ Section MemCache.
 
 End MemCache.
 
-Definition S := unit.
+Definition S := DISK.
 Definition Mcontents := [AssocCache; Mutex].
+
+(* to make code clear, and make it easier to add things to S later *)
+Definition virt_disk (s:S) := s.
+
+Hint Unfold virt_disk : prog.
 
 Definition Cache : var Mcontents _ := HFirst.
 
 Definition CacheL : var Mcontents _ := HNext HFirst.
 
-Fixpoint cache_pred c : @pred addr (@weq addrlen) valu :=
-  match c with
-  | nil => emp
-  | (a, v) :: c' => a |-> v * cache_pred c'
-  end.
+Fixpoint cache_mem c : DISK := cache_get c.
+
+Definition cache_pred c vd : @pred addr (@weq addrlen) valu :=
+  fun d => vd = mem_union (cache_mem c) d /\
+         (* this is only true for the clean addresses *)
+         forall a v, cache_mem c a = Some v -> d a = Some v.
 
 (** given a lock variable and some other variable v, generate a relation for tid
 over memory that makes the variable read-only for non-owners. *)
@@ -73,7 +79,7 @@ Definition cacheR tid : Relation Mcontents S :=
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
     let c := get m Cache in
-    exists F, (d |= F * cache_pred c)%judgement.
+    (d |= cache_pred c (virt_disk s))%judgement.
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
@@ -122,26 +128,30 @@ Ltac dispatch :=
   intros; subst;
   cbn in *;
   (repeat match goal with
-         | [ |- _ /\ _ ] => intuition
-         | [ |- exists _, _ ] => eexists
-         | _ => solve_get_set
-         end); eauto.
+          | [ |- _ /\ _ ] => intuition
+          | [ |- exists _, _ ] => eexists
+          | [ H: context[get (set _ _ _) _] |- _ ] => simpl_get_set_hyp H
+          | _ => solve_get_set
+          end); eauto;
+  try match goal with
+      | [ |- star (StateR' _ _) _ _ ] =>
+        unfold StateR', othersR;
+          eapply star_step; [| apply star_refl];
+          eauto 10
+      end.
 
 Theorem cache_lock_step_available : lock_step_available cacheR cacheI.
 Proof.
   unfold lock_step_available.
-  repeat (autounfold with prog); unfold pred_in.
+  repeat (autounfold with prog); unfold pred_in; unfold cache_pred.
   intros.
   rewrite (locks_are_all_CacheL l).
-  deex. exists d.
+  exists d.
   case_eq (get m CacheL); intros.
   - dispatch.
   - case_eq (PeanoNat.Nat.eq_dec tid0 tid); intros.
     * dispatch.
     * exists (set m Open CacheL), s.
-      dispatch.
-      unfold StateR', othersR.
-      eapply star_step; [| apply star_refl].
       dispatch.
 Qed.
 

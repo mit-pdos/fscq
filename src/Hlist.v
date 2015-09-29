@@ -107,8 +107,16 @@ Proof.
 Qed.
 
 (* this is the best way to use get_set without getting into trouble *)
-Ltac simpl_get_set :=
-  repeat match goal with
-         | [ |- _ ] => rewrite get_set
-         | [ |- _ ] => rewrite get_set_other by (cbn; auto)
-         end; auto.
+Ltac simpl_get_set_goal :=
+  repeat (rewrite get_set ||
+                  rewrite get_set_other by (cbn; auto));
+  auto.
+
+Ltac simpl_get_set_hyp H :=
+  repeat (rewrite get_set in H ||
+                               rewrite get_set_other in H by (cbn; auto));
+  auto.
+
+Tactic Notation "simpl_get_set" := simpl_get_set_goal.
+(* TODO: debug this notation not working *)
+Tactic Notation "simpl_get_set" "in" hyp(H) := simpl_get_set_hyp H.
