@@ -381,7 +381,7 @@ Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
  * if the addresses in the two [ptsto] predicates are necessarily equal.
  * Fold [wzero] for [ring], and convert nat multiplications and additions
  * into word, so that [ring] can solve them.
- *)
+
 Ltac rw_natToWord_mult :=
   match goal with
   | [ |- context[natToWord ?s (?x * ?y)] ] =>
@@ -416,6 +416,7 @@ Ltac ring_prepare :=
   fold (wzero addrlen);
   repeat rewrite natToWord_wordToNat.
 
+
 Ltac words := ring_prepare; ring.
 
 Ltac wordcmp_one :=
@@ -435,7 +436,11 @@ Ltac wordcmp_one :=
     try solve [ rewrite H; apply le_n ]
   end.
 
+
 Ltac wordcmp := repeat wordcmp_one.
+
+*)
+
 
 Inductive pick {AT AEQ V} (lhs : pred) : list (@pred AT AEQ V) -> list pred -> Prop :=
 | PickFirst : forall p ps,
@@ -452,14 +457,17 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
+(*
 Lemma crash_xform_okToUnify : forall (P Q: rawpred),
   okToUnify P Q -> okToUnify (crash_xform P) (crash_xform Q).
 Proof.
   intros. unfold okToUnify in *. congruence.
 Qed.
+*)
 
-Ltac pick := solve [ repeat ((apply PickFirst; solve [ try apply crash_xform_okToUnify; trivial with okToUnify ])
+Ltac pick := solve [ repeat ((apply PickFirst; solve [ (*try apply crash_xform_okToUnify; *) trivial with okToUnify ])
                                || apply PickLater) ].
+
 
 Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,
   (pick q qs qs' /\ (p =p=> q))
@@ -642,11 +650,11 @@ Ltac destruct_lift' H :=
 Ltac destruct_lift H :=
   destruct_lift' H;
   repeat destruct_prod;
-  simpl in *;
   repeat destruct_type True;
   repeat destruct_type unit;
+  simpl in *;
   repeat clear_varname.
-  
+
 Ltac destruct_lifts := try progress match goal with 
   | [ H : sep_star _ _  _ |- _ ] => destruct_lift H
 end.
@@ -680,7 +688,7 @@ Opaque pimpl_hidden.
 (**
  * In-code hints to transform predicates.
  *)
-
+(*
 Definition xform_fwd {T: Prop} (x: T) := True.
 Definition xform_bwd {T: Prop} (x: T) := True.
 Opaque xform_fwd xform_bwd.
@@ -730,6 +738,7 @@ Ltac apply_xform canceller := match goal with
     end
   | _ => idtac
   end; clear_xform.
+*)
 
 (**
  * Older predicate replacement machinery.
@@ -813,7 +822,7 @@ Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
 
 Create HintDb false_precondition_hint.
 
-Ltac norm := unfold pair_args_helper;
+Ltac norml := unfold pair_args_helper;
              norm'l; repeat deex; repeat destruct_type valuset;
              (* To check whether [split_or_l] succeeded, we require that it
               * produce at least 2 subgoals.  Also, because [split_or_l] reverses
@@ -821,7 +830,9 @@ Ltac norm := unfold pair_args_helper;
               *)
              repeat ( split_or_l; [ | | .. ]; split_or_l; unfold stars; simpl; norm'l );
              set_norm_goal;
-             repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
+             repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l ).
+
+Ltac norm := norml;
              solve [ exfalso ; auto with false_precondition_hint ] ||
              ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] );
              repeat clear_norm_goal.
@@ -860,7 +871,6 @@ Ltac cancel_with t :=
   end.
 
 Ltac cancel := cancel_with idtac.
-
 
 (* fastest version of cancel, should always try this first *)
 Ltac cancel_exact := repeat match goal with 
@@ -913,12 +923,13 @@ Ltac destruct_branch :=
   | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
   end.
 
-Ltac step_with unfolder t :=
+
+Ltac prestep :=
   intros;
   try autounfold with hoare_unfold in *;
   try cancel;
   repeat destruct_branch;
-  remember_xform;
+(*   remember_xform; *)
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
@@ -929,7 +940,32 @@ Ltac step_with unfolder t :=
         end; solve [ eapply nop_ok ] | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
-  try autounfold with hoare_unfold in *; unfolder; eauto;
+  try autounfold with hoare_unfold in *; eauto.
+
+Ltac poststep t :=
+  intuition t;
+  try omega;
+  try congruence;
+  try t.
+
+Tactic Notation "step" "using" tactic(t) "with" ident(db) "in" "*" :=
+  prestep;
+  try ( cancel_with t ; try ( autorewrite with db in * |-; cancel_with t ) );
+  poststep t.
+
+Tactic Notation "step" "using" tactic(t) "with" ident(db) :=
+  prestep;
+  try ( cancel_with t ; try ( autorewrite with db; cancel_with t ) );
+  poststep t.
+
+Tactic Notation "step" "using" tactic(t) :=
+  prestep;
+  try cancel_with t;
+  poststep t.
+
+(*
+Ltac step_with t :=
+  prestep;
   try ( cancel_with t ; try ( progress autorewrite_fast ; cancel_with t ) );
   apply_xform cancel;
   try cancel_with t; try autorewrite_fast;
@@ -937,11 +973,19 @@ Ltac step_with unfolder t :=
   try omega;
   try congruence;
   try t.
+*)
 
-Ltac step_unfold unfolder := step_with unfolder eauto.
+Ltac step := step using eauto.
 
-Ltac step := step_unfold idtac.
+Tactic Notation "hoare" "using" tactic(t) "with" ident(db) "in" "*" :=
+  repeat (step using t with db in *).
 
-Ltac hoare := repeat step.
-Ltac hoare_unfold unfolder := unfolder; repeat (step_unfold unfolder).
-Ltac hoare_with unfolder t := unfolder; repeat (step_with unfolder t).
+Tactic Notation "hoare" "using" tactic(t) "with" ident(db) :=
+  repeat (step using t with db).
+
+Tactic Notation "hoare" "using" tactic(t) :=
+  repeat (step using t).
+
+Ltac hoare := hoare using eauto.
+
+

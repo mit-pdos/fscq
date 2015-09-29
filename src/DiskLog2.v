@@ -183,17 +183,17 @@ Module AsyncRecArray (RA : RASig).
   .
 
   (** a variant of array where only the latest valu in the valuset is defined *)
-  Definition unsync_array start l: @pred addr (@weq _) valuset :=
+  Definition unsync_array start l: rawpred :=
     (exists vs, [[ length vs = length l ]] *
-     array start (combine l vs) $1 )%pred.
+     arrayN start (combine l vs) )%pred.
 
-  Definition synced_array start l: @pred addr (@weq _) valuset :=
-    (array start (combine l (repeat nil (length l))) $1 )%pred.
+  Definition synced_array start l: rawpred :=
+    (arrayN start (combine l (repeat nil (length l))) )%pred.
 
   (** rep invariant *)
   Definition rep_common xp items vlist := 
        Forall Rec.well_formed items
-    /\ length items <= #(RALen xp) * items_per_val
+    /\ length items <= (RALen xp) * items_per_val
     /\ vlist = map block2val (list_chunk items items_per_val item0).
 
   Definition array_rep xp (st : state) :=
@@ -304,8 +304,8 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     intros; word2nat_simpl; auto.
   Qed.
-  
-  
+
+
   Lemma list_chunk'_Forall_length : forall A nr l sz (i0 : A),
     Forall (fun b => length b = sz) (list_chunk' l sz i0 nr).
   Proof.
@@ -402,7 +402,7 @@ Module AsyncRecArray (RA : RASig).
     apply roundup_ge; auto.
   Qed.
   Hint Rewrite roundup_min_r.
-  
+
   Lemma goodSize_sub : forall sz n a,
     goodSize sz n -> goodSize sz (n - a).
   Proof.
@@ -411,7 +411,7 @@ Module AsyncRecArray (RA : RASig).
 
   (** prevent eauto from unifying length ?a = length ?b *)
   Definition eqlen A B (a : list A) (b : list B) := length a = length b.
-  Definition xparams_ok xp := goodSize addrlen (#(RALen xp) * items_per_val).
+  Definition xparams_ok xp := goodSize addrlen ((RALen xp) * items_per_val).
 
   Lemma eqlen_nil : forall A B (a : list A),
     eqlen a (@nil B) -> a = nil.
@@ -421,11 +421,11 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
 
-  Local Hint Unfold array_rep rep_common synced_array unsync_array sel upd item xparams_ok: hoare_unfold.
+  Local Hint Unfold array_rep rep_common synced_array unsync_array item xparams_ok: hoare_unfold.
 
   Local Hint Extern 0 (okToUnify (list_chunk ?a ?b _) (list_chunk ?a ?b _)) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (list_chunk _ ?b ?c) (list_chunk _ ?b ?c)) => constructor : okToUnify.
-  Local Hint Extern 0 (okToUnify (array (RAStart _) _ _) (array (RAStart _) _ _)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (arrayN (RAStart _) _ _) (arrayN (RAStart _) _ _)) => constructor : okToUnify.
 
   Ltac prestep := intros; eapply pimpl_ok2; eauto with prog; intros.
 
@@ -540,7 +540,7 @@ Module AsyncRecArray (RA : RASig).
          firstn n pf = firstn n items /\ length pf = (i * items_per_val)%nat ]]
     OnCrash   crash
     Begin
-      let^ (cs, v) <- BUFCACHE.read_array (RAStart xp) ($ i) cs;
+      let^ (cs, v) <- BUFCACHE.read_array (RAStart xp) i cs;
       lrx ^(cs, pf ++ (val2block v))
     Rof ^(cs, []);
     rx ^(cs, firstn count log).

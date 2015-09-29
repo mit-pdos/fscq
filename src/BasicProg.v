@@ -16,19 +16,6 @@ Set Implicit Arguments.
 
 (** * Some helpful [prog] combinators and proofs *)
 
-Ltac inv_option :=
-  match goal with
-  | [ H: Some _ = Some _ |- _ ] => inversion H; clear H; subst
-  | [ H: ?a = Some ?b |- _ ] =>
-    match goal with
-    | [ H': a = Some ?c |- _ ] =>
-      match b with
-      | c => fail 1
-      | _ => rewrite H in H'
-      end
-    end
-  end.
-
 Ltac inv_exec :=
   match goal with
   | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst

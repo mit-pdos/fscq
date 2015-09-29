@@ -206,7 +206,7 @@ Module BUFCACHE.
   Hint Resolve Map.find_2.
   Hint Resolve mapsto_add.
 
-  Ltac unfold_rep := unfold rep.
+  Local Hint Unfold rep : hoare_unfold.
 
   Theorem maybe_evict_ok : forall cs,
     {< d,
@@ -238,13 +238,12 @@ Module BUFCACHE.
     >} read a cs.
   Proof.
     unfold read.
-    hoare_unfold unfold_rep.
+    hoare.
 
     apply ptsto_valid' in H3 as H'.
     apply Map.find_2 in Heqo. apply H12 in Heqo. rewrite H' in Heqo. deex; congruence.
 
-    rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
-
+    rewrite diskIs_extract with (a:=a); try pred_apply; cancel; cancel.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
 
     rewrite map_add_cardinal; auto.
@@ -254,8 +253,8 @@ Module BUFCACHE.
     destruct (addr_eq_dec a a0); subst.
     apply mapsto_add in H; subst; eauto.
     edestruct H12. eauto. eexists; eauto.
-    simpl in *; auto.
 
+    subst; cancel; eauto.
     rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
     eauto.
     cancel.
@@ -276,7 +275,7 @@ Module BUFCACHE.
     >} write a v cs.
   Proof.
     unfold write.
-    hoare_unfold unfold_rep.
+    hoare.
 
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
@@ -309,9 +308,8 @@ Module BUFCACHE.
     instantiate (cs' := r_).
     apply pimpl_or_r. left. cancel.
     rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
-    eauto.
+    cancel. eauto. cancel.
     cancel.
-
     apply pimpl_or_r. left. cancel; eauto.
   Qed.
 
@@ -513,6 +511,8 @@ Module BUFCACHE.
     unfold diskIs in *; subst.
     exists m'.
     intuition.
+
+    cancel; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
@@ -555,7 +555,6 @@ Module BUFCACHE.
     unfold write_array, upd_prepend.
     hoare.
 
-    pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto. cancel.
     rewrite ptsto_tuple.
     cancel.
@@ -563,10 +562,8 @@ Module BUFCACHE.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     cancel.
-    apply pimpl_or_r; left; cancel.
-
-    cancel.
-    apply pimpl_or_r; right; cancel.
+    apply pimpl_or_r; left; cancel; eauto.
+    apply pimpl_or_r; right; cancel; eauto.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
   Qed.
@@ -588,7 +585,6 @@ Module BUFCACHE.
     unfold sync_array, upd_sync.
     hoare.
 
-    pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto. cancel.
     rewrite ptsto_tuple.
     cancel.
@@ -596,10 +592,8 @@ Module BUFCACHE.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     cancel.
-    apply pimpl_or_r; left; cancel.
-
-    cancel.
-    apply pimpl_or_r; right; cancel.
+    apply pimpl_or_r; left; cancel; eauto.
+    apply pimpl_or_r; right; cancel; eauto.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
   Qed.
@@ -621,14 +615,13 @@ Module BUFCACHE.
     unfold trim_array.
     hoare.
 
-    pred_apply.
     rewrite <- surjective_pairing.
     rewrite isolateN_fwd with (i:=i) by auto. cancel.
 
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
 
-    pred_apply. cancel.
+    cancel; eauto.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
 

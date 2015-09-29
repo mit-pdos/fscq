@@ -17,6 +17,7 @@ Ltac set_evars_in H :=
             end.
 
 
+
 Theorem f_neq : forall {A B : Type} (f : A -> B) x y, f x <> f y -> x <> y.
 Proof.
   intros. unfold not. intro He. rewrite He in H. auto.
