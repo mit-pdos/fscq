@@ -77,7 +77,8 @@ Definition cacheR tid : Relation Mcontents S :=
     let '(d', m', _) := dms' in
     lock_protocol CacheL tid m m' /\
     lock_protects CacheL Cache tid m m' /\
-    lock_protects_disk CacheL tid m d d'.
+    lock_protects_disk CacheL tid m d d' /\
+    forall a v, d a = Some v -> exists v', d' a = Some v'.
 
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
@@ -274,6 +275,36 @@ Proof.
   end.
 Qed.
 
+Lemma sectors_unchanged' : forall tid dms dms',
+    othersR cacheR tid dms dms' ->
+    (forall a v, state_d dms a = Some v ->
+            exists v', state_d dms' a = Some v').
+Proof.
+  unfold othersR, cacheR.
+  destruct dms as [ [] ], dms' as [ [] ].
+  intros; deex; eauto.
+Qed.
+
+Lemma sectors_unchanged'' : forall tid dms dms',
+    star (othersR cacheR tid) dms dms' ->
+    (forall a, (exists v, state_d dms a = Some v) ->
+            exists v', state_d dms' a = Some v').
+Proof.
+  intros.
+  induction H; eauto.
+  deex.
+  eapply sectors_unchanged' in H; eauto.
+Qed.
+
+Lemma sectors_unchanged : forall tid dms dms',
+    star (othersR cacheR tid) dms dms' ->
+    (forall a v, state_d dms a = Some v ->
+            exists v', state_d dms' a = Some v').
+Proof.
+  intros.
+  eauto using sectors_unchanged''.
+Qed.
+
 Lemma disk_readonly : forall tid dms dms',
     get (state_m dms) CacheL = Locked tid ->
     star (othersR cacheR tid) dms dms' ->
@@ -332,6 +363,12 @@ Ltac star_readonly thm :=
 
 Ltac cache_locked := star_readonly cache_readonly.
 Ltac disk_locked := star_readonly disk_readonly.
+Ltac sectors_unchanged := match goal with
+                          | [ H: star _ _ _ |- _ ] =>
+                            let H' := fresh in
+                            pose proof (sectors_unchanged _ _ _ H) as H';
+                              cbn in H'
+                          end.
 
 (** These proofs are still very messy. There's a lot of low-level
 manipulations of memories to prove/use the cache_pred in service of
@@ -572,6 +609,7 @@ Ltac simplify :=
   step_simplifier;
   try cache_locked;
   try disk_locked;
+  try sectors_unchanged;
   subst;
   try keep_older_pred;
   cleanup.
@@ -644,6 +682,8 @@ Proof.
     pred_apply; cancel; auto.
 Qed.
 
+Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
+
 Theorem cache_pred_same_disk : forall c vd vd' d,
     cache_pred c vd d ->
     cache_pred c vd' d ->
@@ -715,3 +755,42 @@ Definition disk_read {T} a rx : prog _ _ T :=
               v <- locked_disk_read a;
               Assgn CacheL Open;;
               rx v.
+
+Theorem disk_read_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     d |= cache_pred (get m Cache) vd /\
+                     vd |= F * a |-> v /\
+                     s0 = s
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
+                            exists F' v',
+                              d' |= cache_pred (get m' Cache) vd' /\
+                              vd' |= F' * a |-> v' /\
+                              (* star (othersR cacheR tid) (d, m, s) (d', m, s') /\ *)
+                              r = v' /\
+                              get m' CacheL = Open /\
+                              s0' = s'
+    }} disk_read a.
+Proof.
+  unfold disk_read.
+  intros.
+  step pre simplify with finish.
+  assert (d a = Some v).
+  admit.
+  step pre (cbn; intuition; repeat deex;
+            try disk_locked;
+            try cache_locked;
+            try sectors_unchanged) with idtac.
+  specialize (H3 _ _ H2).
+  deex.
+  simpl_post.
+  unfold pred_in.
+  instantiate (F := any).
+  admit. (* this might be a complicated derivation... *)
+
+  hoare pre simplify with finish.
+
+  Grab Existential Variables.
+  all: auto.
+Admitted.
