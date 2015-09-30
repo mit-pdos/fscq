@@ -59,9 +59,9 @@ Section EventCSL.
 
   Definition var (t:Set) : Type := @member Set t Mcontents.
 
-  (** Define the transition system for the ghost state.
+  (** Define the transition system for the semantics.
       The semantics will reject transitions that do not obey these rules. *)
-  Definition Relation :=  DISK * M * S -> DISK * M * S -> Prop.
+  Definition Relation := DISK * M * S -> DISK * M * S -> Prop.
   Variable StateR : ID -> Relation.
   Definition Invariant := M -> S -> @pred addr (@weq addrlen) valu.
   Variable StateI : Invariant.
