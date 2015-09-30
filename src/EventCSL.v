@@ -85,11 +85,7 @@ Section EventCSL.
 
   Implicit Type p : prog.
 
-  (* TODO: make this a tuple type *)
-  Inductive state :=
-    | sigma : forall d m (s:S), state.
-
-  Notation "{| d ; m ; s |}" := (sigma d m s) (at level 0).
+  Definition state := (DISK * M * S)%type.
 
   Reserved Notation "tid ':-' p '/' st '==>' p' '/' st'"
            (at level 40, p at next level, p' at next level).
@@ -104,29 +100,29 @@ Section EventCSL.
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
   | StepRead : forall d m s a rx v, d a = Some v ->
-                               tid :- Read a rx / {|d; m; s|} ==> rx v / {|d; m; s|}
+                               tid :- Read a rx / (d, m, s) ==> rx v / (d, m, s)
   | StepWrite : forall d m s a rx v v', d a = Some v ->
-                                   tid :- Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
+                                   tid :- Write a v' rx / (d, m, s) ==> rx tt / (upd d a v', m, s)
   | StepAcquireLock : forall d m m' s d' s' rx l,
       let m'' := set m' (Locked tid) l in
       StateI m s d ->
       StateI m'' s' d' ->
       star (StateR' tid) (d, m, s) (d', m', s') ->
       StateR tid (d', m', s') (d', m'', s') ->
-      tid :- AcquireLock l rx / {|d; m; s|} ==> rx tt / {|d'; m''; s'|}
+      tid :- AcquireLock l rx / (d, m, s) ==> rx tt / (d', m'', s')
   | StepYield : forall d m s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
       star (StateR' tid) (d, m, s) (d', m', s') ->
-      tid :- Yield rx / {|d; m; s|} ==> rx tt / {|d'; m'; s'|}
+      tid :- Yield rx / (d, m, s) ==> rx tt / (d', m', s')
   | StepCommit : forall d m s up rx,
-      tid :- Commit up rx / {|d; m; s|} ==> rx tt / {|d; m; up s|}
+      tid :- Commit up rx / (d, m, s) ==> rx tt / (d, m, up s)
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
   | StepGet : forall d m s t (v: var t) rx,
-      tid :- Get v rx / {|d; m; s|} ==> rx (get m v) / {|d; m; s|}
+      tid :- Get v rx / (d, m, s) ==> rx (get m v) / (d, m, s)
   | StepAssgn : forall d m s t (v: var t) val rx,
-      tid :- Assgn v val rx / {|d; m; s|} ==> rx tt / {|d; set m val v; s|}
+      tid :- Assgn v val rx / (d, m, s) ==> rx tt / (d, set m val v, s)
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
   Hint Constructors step.
@@ -151,7 +147,7 @@ Section EventCSL.
       (forall v, p <> Done v) ->
       exec tid st p Failed
   | ExecDone : forall d m s v,
-      exec tid {|d; m; s|} (Done v) (Finished d v).
+      exec tid (d, m, s) (Done v) (Finished d v).
 
   Hint Constructors exec.
 
@@ -178,7 +174,7 @@ Section EventCSL.
     try no_step.
 
   Theorem read_failure_iff : forall tid d m s rx a,
-      (~ exists st' p', tid :- Read a rx / {|d; m; s|} ==> p' / st') <->
+      (~ exists st' p', tid :- Read a rx / (d, m, s) ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
@@ -199,7 +195,7 @@ Section EventCSL.
     congruence.
 
   Theorem write_failure_iff : forall tid d m s v rx a,
-      (~ exists st' p', tid :- Write a v rx / {|d; m; s|} ==> p' / st') <->
+      (~ exists st' p', tid :- Write a v rx / (d, m, s) ==> p' / st') <->
       d a = None.
   Proof.
     address_failure;
@@ -209,7 +205,7 @@ Section EventCSL.
 
   Theorem yield_failure : forall tid d m s rx,
       (~StateI m s d) ->
-      (~ exists st' p', tid :- Yield rx / {|d; m; s|} ==> p' / st').
+      (~ exists st' p', tid :- Yield rx / (d, m, s) ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
@@ -221,7 +217,7 @@ Section EventCSL.
   Definition valid tid (pre: donecond -> mem -> M -> S -> Prop) p : Prop :=
     forall d m s done out,
       pre done d m s ->
-      exec tid {|d; m; s|} p out ->
+      exec tid (d, m, s) p out ->
       exists d' v,
         out = Finished d' v /\
         done v d'.
