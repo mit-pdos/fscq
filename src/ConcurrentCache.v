@@ -715,37 +715,3 @@ Definition disk_read {T} a rx : prog _ _ T :=
               v <- locked_disk_read a;
               Assgn CacheL Open;;
               rx v.
-
-(* These two theorems are no longer true: they attempt to separate
-cache miss and cache hit into two cases via the precondition, but this
-trick no longer works: the cache can change after acquiring the lock,
-and the precondtion can't talk about this new cache. We really need a
-combined theorem (proven from the above two specs), but this is hard
-to state since it's necessary that a |-> v is in F or cache_pred,
-which I'm not sure how to state and then guarantee across
-AcquireLock. *)
-
-Theorem disk_read_miss_ok : forall a,
-    cacheS TID: tid |-
-    {{ F v,
-     | PRE d m _: d |= F * cache_pred (get m Cache) * a |-> v
-     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
-                       r = v
-    }} disk_read a.
-Proof.
-  unfold disk_read.
-  hoare.
-Abort.
-
-Theorem disk_read_hit_ok : forall a,
-    cacheS TID: tid |-
-    {{ F v,
-     | PRE d m _: d |= F * cache_pred (get m Cache) /\
-                  cache_get (get m Cache) a = Some v
-     | POST d' m' _ r: d' |= F * cache_pred (get m' Cache) /\
-                       r = v
-    }} disk_read a.
-Proof.
-  unfold disk_read.
-  hoare.
-Abort.
