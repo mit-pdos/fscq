@@ -85,7 +85,7 @@ Section EventCSL.
 
   Implicit Type p : prog.
 
-  Definition state := (DISK * M * S)%type.
+  Definition state := (DISK * M * S * S)%type.
 
   Reserved Notation "tid ':-' p '/' st '==>' p' '/' st'"
            (at level 40, p at next level, p' at next level).
@@ -99,30 +99,36 @@ Section EventCSL.
   Definition StateR' : ID -> Relation := othersR StateR.
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
-  | StepRead : forall d m s a rx v, d a = Some v ->
-                               tid :- Read a rx / (d, m, s) ==> rx v / (d, m, s)
-  | StepWrite : forall d m s a rx v v', d a = Some v ->
-                                   tid :- Write a v' rx / (d, m, s) ==> rx tt / (upd d a v', m, s)
-  | StepAcquireLock : forall d m m' s d' s' rx l,
+  | StepRead : forall d m s0 s a rx v, d a = Some v ->
+                                  tid :- Read a rx / (d, m, s0, s) ==>
+                                      rx v / (d, m, s0, s)
+  | StepWrite : forall d m s0 s a rx v v', d a = Some v ->
+                                      tid :- Write a v' rx / (d, m, s0, s) ==>
+                                          rx tt / (upd d a v', m, s0, s)
+  | StepAcquireLock : forall d m m' s s0 d' s' rx l,
       let m'' := set m' (Locked tid) l in
       StateI m s d ->
+      (* TODO: shouldn't have d and m in R *)
+      StateR tid (d, m, s0) (d, m, s) ->
       StateI m'' s' d' ->
       star (StateR' tid) (d, m, s) (d', m', s') ->
       StateR tid (d', m', s') (d', m'', s') ->
-      tid :- AcquireLock l rx / (d, m, s) ==> rx tt / (d', m'', s')
-  | StepYield : forall d m s s' m' d' rx,
+      tid :- AcquireLock l rx / (d, m, s0, s) ==> rx tt / (d', m'', s', s')
+  | StepYield : forall d m s0 s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
+      (* TODO: shouldn't have d and m in R *)
+      StateR tid (d, m, s0) (d, m, s) ->
       star (StateR' tid) (d, m, s) (d', m', s') ->
-      tid :- Yield rx / (d, m, s) ==> rx tt / (d', m', s')
-  | StepCommit : forall d m s up rx,
-      tid :- Commit up rx / (d, m, s) ==> rx tt / (d, m, up s)
+      tid :- Yield rx / (d, m, s0, s) ==> rx tt / (d', m', s', s')
+  | StepCommit : forall d m s0 s up rx,
+      tid :- Commit up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, up s)
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
-  | StepGet : forall d m s t (v: var t) rx,
-      tid :- Get v rx / (d, m, s) ==> rx (get m v) / (d, m, s)
-  | StepAssgn : forall d m s t (v: var t) val rx,
-      tid :- Assgn v val rx / (d, m, s) ==> rx tt / (d, set m val v, s)
+  | StepGet : forall d m s s0 t (v: var t) rx,
+      tid :- Get v rx / (d, m, s0, s) ==> rx (get m v) / (d, m, s0, s)
+  | StepAssgn : forall d m s s0 t (v: var t) val rx,
+      tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, set m val v, s0, s)
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
   Hint Constructors step.
@@ -146,8 +152,8 @@ Section EventCSL.
       (~ exists st' p', tid :- p / st ==> p' / st') ->
       (forall v, p <> Done v) ->
       exec tid st p Failed
-  | ExecDone : forall d m s v,
-      exec tid (d, m, s) (Done v) (Finished d v).
+  | ExecDone : forall d m s0 s v,
+      exec tid (d, m, s0, s) (Done v) (Finished d v).
 
   Hint Constructors exec.
 
@@ -173,8 +179,8 @@ Section EventCSL.
     try invalid_address;
     try no_step.
 
-  Theorem read_failure_iff : forall tid d m s rx a,
-      (~ exists st' p', tid :- Read a rx / (d, m, s) ==> p' / st') <->
+  Theorem read_failure_iff : forall tid d m s0 s rx a,
+      (~ exists st' p', tid :- Read a rx / (d, m, s0, s) ==> p' / st') <->
       d a = None.
   Proof.
     address_failure.
@@ -194,8 +200,8 @@ Section EventCSL.
     repeat sigT_eq;
     congruence.
 
-  Theorem write_failure_iff : forall tid d m s v rx a,
-      (~ exists st' p', tid :- Write a v rx / (d, m, s) ==> p' / st') <->
+  Theorem write_failure_iff : forall tid d m s0 s v rx a,
+      (~ exists st' p', tid :- Write a v rx / (d, m, s0, s) ==> p' / st') <->
       d a = None.
   Proof.
     address_failure;
@@ -203,9 +209,9 @@ Section EventCSL.
     intuition eauto.
   Qed.
 
-  Theorem yield_failure : forall tid d m s rx,
+  Theorem yield_failure : forall tid d m s0 s rx,
       (~StateI m s d) ->
-      (~ exists st' p', tid :- Yield rx / (d, m, s) ==> p' / st').
+      (~ exists st' p', tid :- Yield rx / (d, m, s0, s) ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
@@ -214,10 +220,10 @@ Section EventCSL.
 
   Definition donecond := T -> @pred addr (@weq addrlen) valu.
 
-  Definition valid tid (pre: donecond -> mem -> M -> S -> Prop) p : Prop :=
-    forall d m s done out,
-      pre done d m s ->
-      exec tid (d, m, s) p out ->
+  Definition valid tid (pre: donecond -> mem -> M -> S -> S -> Prop) p : Prop :=
+    forall d m s0 s done out,
+      pre done d m s0 s ->
+      exec tid (d, m, s0, s) p out ->
       exists d' v,
         out = Finished d' v /\
         done v d'.
@@ -251,13 +257,13 @@ Section EventCSL.
       edestruct H; eauto
     end.
 
-  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
+  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
     (forall (rx: _ -> prog) (tid:ID),
-        valid tid (fun done d m s =>
+        valid tid (fun done d m s0 s =>
                      (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
                                            forall ret_,
-                                             valid tid (fun done_rx d' m' s' =>
+                                             valid tid (fun done_rx d' m' s0' s' =>
                                                       (fun r => post%judgement) ret_ /\
                                                       done_rx = done)
                                                    (rx ret_)
@@ -269,6 +275,8 @@ Section EventCSL.
        d' at level 0,
        m at level 0,
        m' at level 0,
+       s0 at level 0,
+       s0' at level 0,
        s at level 0,
        s' at level 0,
        r at level 0,
@@ -294,10 +302,11 @@ Section EventCSL.
 
   Theorem write_ok : forall a v0 v,
       tid |- {{ F,
-             | PRE d m s: d |= F * a |-> v0
-               | POST d' m' s' _: d' |= F * a |-> v /\
-                                  s' = s /\
-                                  m' = m
+             | PRE d m s0 s: d |= F * a |-> v0
+             | POST d' m' s0' s' _: d' |= F * a |-> v /\
+                                s0' = s0 /\
+                                s' = s /\
+                                m' = m
             }} Write a v.
   Proof.
     opcode_ok.
@@ -317,11 +326,12 @@ Section EventCSL.
 
   Theorem read_ok : forall a v0,
     tid |- {{ F,
-      | PRE d m s: d |= F * a |-> v0
-      | POST d' m' s' v: d' = d /\
-                         v = v0 /\
-                         s' = s /\
-                         m' = m
+      | PRE d m s0 s: d |= F * a |-> v0
+      | POST d' m' s0' s' v: d' = d /\
+                             v = v0 /\
+                             s0' = s0 /\
+                             s' = s /\
+                             m' = m
     }} Read a.
   Proof.
     opcode_ok.
@@ -342,11 +352,12 @@ Section EventCSL.
 
   Theorem get_ok : forall t (v: var t),
       tid |- {{ (_:unit),
-             | PRE d m s: True
-             | POST d' m' s' r: d' = d /\
-                                r = get m v /\
-                                m' = m /\
-                                s' = s
+             | PRE d m s0 s: True
+             | POST d' m' s0' s' r: d' = d /\
+                                    r = get m v /\
+                                    m' = m /\
+                                    s0' = s0 /\
+                                    s' = s
             }} Get v.
   Proof.
     opcode_ok; repeat sigT_eq; eauto.
@@ -354,11 +365,12 @@ Section EventCSL.
 
   Theorem assgn_ok : forall t (v: var t) val,
       tid |- {{ F,
-             | PRE d m s: d |= F
-             | POST d' m' s' _: d' |= F /\
-                                d' = d /\
-                                m' = set m val v /\
-                                s' = s
+             | PRE d m s0 s: d |= F
+             | POST d' m' s0' s' _: d' |= F /\
+                                    d' = d /\
+                                    m' = set m val v /\
+                                    s0' = s0 /\
+                                    s' = s
             }} Assgn v val.
   Proof.
     opcode_ok; repeat sigT_eq; eauto.
@@ -366,11 +378,12 @@ Section EventCSL.
 
   Theorem get_tid_ok :
     tid |- {{ (_:unit),
-           | PRE d m s: True
-           | POST d' m' s' r: d' = d /\
-                              m' = m /\
-                              s' = s /\
-                              r = tid
+           | PRE d m s0 s: True
+           | POST d' m' s0' s' r: d' = d /\
+                                  m' = m /\
+                                  s0' = s0 /\
+                                  s' = s /\
+                                  r = tid
           }} GetTID.
   Proof.
     opcode_ok.
@@ -390,13 +403,15 @@ Section EventCSL.
 
   Theorem acquire_lock_ok : forall l,
       tid |- {{ (_:unit),
-             | PRE d m s: d |= StateI m s
-             | POST d' m'' s' _: exists m',
+             | PRE d m s0 s: d |= StateI m s /\
+                             StateR tid (d, m, s0) (d, m, s)
+             | POST d' m'' s0' s' _: exists m',
                  d' |= StateI m'' s' /\
                  m'' = set m' (Locked tid) l /\
                  star (StateR' tid) (d, m, s) (d', m', s') /\
                  StateR tid (d', m', s') (d', m'', s') /\
-                 get m'' l = Locked tid
+                 get m'' l = Locked tid /\
+                 s0' = s'
             }} AcquireLock l.
               (* Proof. here removes lock_step_available (possibly a bug) *)
               opcode_ok.
@@ -405,16 +420,18 @@ Section EventCSL.
               rewrite get_set; auto.
               edestruct lock_step_is_available; eauto; repeat deex.
               (* strangely, eauto doesn't find this *)
-              apply H.
+              apply H0.
               repeat eexists.
               constructor; eauto.
   Qed.
 
   Theorem yield_ok :
     tid |- {{ (_:unit),
-           | PRE d m s: d |= StateI m s
-           | POST d' m' s' _: d' |= StateI m' s' /\
-                              star (StateR' tid) (d, m, s) (d', m', s')
+           | PRE d m s0 s: d |= StateI m s /\
+                           StateR tid (d, m, s0) (d, m, s)
+           | POST d' m' s0' s' _: d' |= StateI m' s' /\
+                                  s0' = s' /\
+                                  star (StateR' tid) (d, m, s) (d', m', s')
     }} Yield.
   Proof.
     opcode_ok.
@@ -422,22 +439,25 @@ Section EventCSL.
 
   Theorem commit_ok : forall up,
     tid |- {{ (_:unit),
-           | PRE d m s: True
-           | POST d' m' s' _: d' = d /\
-                              s' = up s /\
-                              m' = m
+           | PRE d m s0 s: True
+           | POST d' m' s0' s' _: d' = d /\
+                                  s0' = s0 /\
+                                  s' = up s /\
+                                  m' = m
           }} Commit up.
   Proof.
     opcode_ok.
   Qed.
 
-  Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ -> _ -> Prop) p,
+  Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ -> _ -> _ -> Prop) p,
       valid tid pre p ->
-      (forall done d m s, pre' done d m s -> pre done d m s) ->
+      (forall done d m s0 s, pre' done d m s0 s -> pre done d m s0 s) ->
       valid tid pre' p.
   Proof.
     unfold valid.
-    firstorder.
+    intros.
+    apply H0 in H1.
+    eauto.
   Qed.
 
   Definition If_ P Q (b: {P} + {Q}) (ptrue pfalse : prog) :=
@@ -445,12 +465,12 @@ Section EventCSL.
 
   Theorem if_ok:
     forall tid P Q (b : {P}+{Q}) (p1 p2 : prog),
-      valid tid (fun done d m s => exists pre,
-                 pre d m s /\
-                 valid tid (fun done' d' m' s' => pre d' m' s' /\
+      valid tid (fun done d m s0 s => exists pre,
+                 pre d m s0 s /\
+                 valid tid (fun done' d' m' s0' s' => pre d' m' s0' s' /\
                                            P /\
                                            done' = done) p1 /\
-                 valid tid (fun done' d' m' s' => pre d' m' s' /\
+                 valid tid (fun done' d' m' s0' s' => pre d' m' s0' s' /\
                                            Q /\
                                            done' = done) p2
                 ) (If_ b p1 p2).
@@ -480,15 +500,15 @@ Record transitions Mcontents S := {
 * add sigma, tid |- in front to specify the transition system and thread ID
 * quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
 * add (StateR sigma) (StateI sigma) as arguments to valid *)
-Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m' s' r : post }} p" :=
+Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
   (forall T (rx: _ -> prog _ _ T) (tid:ID),
       valid (StateR sigma) (StateI sigma) tid
-            (fun done d m s =>
+            (fun done d m s0 s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      forall ret_,
                                        valid (StateR sigma) (StateI sigma) tid
-                                             (fun done_rx d' m' s' =>
+                                             (fun done_rx d' m' s0' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done)
                                              (rx ret_)
@@ -500,6 +520,8 @@ Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s : pre | 'POST' d' m
      d' at level 0,
      m at level 0,
      m' at level 0,
+     s0 at level 0,
+     s0' at level 0,
      s at level 0,
      s' at level 0,
      r at level 0,
