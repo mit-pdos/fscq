@@ -106,7 +106,6 @@ Section EventCSL.
   | StepRead : forall d m s a rx v, d a = Some v ->
                                tid :- Read a rx / {|d; m; s|} ==> rx v / {|d; m; s|}
   | StepWrite : forall d m s a rx v v', d a = Some v ->
-                                   StateR tid (d, m, s) (upd d a v', m, s) ->
                                    tid :- Write a v' rx / {|d; m; s|} ==> rx tt / {|upd d a v'; m; s|}
   | StepAcquireLock : forall d m m' s d' s' rx l,
       let m'' := set m' (Locked tid) l in
@@ -121,16 +120,12 @@ Section EventCSL.
       star (StateR' tid) (d, m, s) (d', m', s') ->
       tid :- Yield rx / {|d; m; s|} ==> rx tt / {|d'; m'; s'|}
   | StepCommit : forall d m s up rx,
-      StateR tid (d, m, s) (d, m, up s) ->
-      StateI m (up s) d ->
       tid :- Commit up rx / {|d; m; s|} ==> rx tt / {|d; m; up s|}
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
   | StepGet : forall d m s t (v: var t) rx,
       tid :- Get v rx / {|d; m; s|} ==> rx (get m v) / {|d; m; s|}
   | StepAssgn : forall d m s t (v: var t) val rx,
-      StateI (set m val v) s d ->
-      StateR tid (d, m, s) (d, set m val v, s) ->
       tid :- Assgn v val rx / {|d; m; s|} ==> rx tt / {|d; set m val v; s|}
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
@@ -205,33 +200,16 @@ Section EventCSL.
 
   Theorem write_failure_iff : forall tid d m s v rx a,
       (~ exists st' p', tid :- Write a v rx / {|d; m; s|} ==> p' / st') <->
-      (d a = None \/
-       ~ StateR tid (d, m, s) (upd d a v, m, s)).
+      d a = None.
   Proof.
     address_failure;
     try not_sidecondition_fail;
     intuition eauto.
   Qed.
 
-  Theorem assgn_failure : forall tid d m s rx t (v:var t) val,
-      (~StateI (set m val v) s d) \/
-      (~StateR tid (d, m, s) (d, set m val v, s)) ->
-      (~ exists st' p', tid :- Assgn v val rx / {|d; m; s|} ==> p' / st').
-  Proof.
-    not_sidecondition_fail.
-  Qed.
-
   Theorem yield_failure : forall tid d m s rx,
       (~StateI m s d) ->
       (~ exists st' p', tid :- Yield rx / {|d; m; s|} ==> p' / st').
-  Proof.
-    not_sidecondition_fail.
-  Qed.
-
-  Theorem commit_failure : forall tid d m s up rx,
-    (~StateI m (up s) d \/
-     (~StateR tid (d, m, s) (d, m, up s))) ->
-     (~ exists st' p', tid :- Commit up rx / {|d; m; s|} ==> p' / st').
   Proof.
     not_sidecondition_fail.
   Qed.
@@ -320,8 +298,7 @@ Section EventCSL.
 
   Theorem write_ok : forall a v0 v,
       tid |- {{ F,
-             | PRE d m s: d |= F * a |-> v0 /\
-                          StateR tid (d, m, s) (upd d a v, m, s)
+             | PRE d m s: d |= F * a |-> v0
                | POST d' m' s' _: d' |= F * a |-> v /\
                                   s' = s /\
                                   m' = m
@@ -345,10 +322,10 @@ Section EventCSL.
   Theorem read_ok : forall a v0,
     tid |- {{ F,
       | PRE d m s: d |= F * a |-> v0
-       | POST d' m' s' v: d' |= F * a |-> v0 /\
-                          v = v0 /\
-                          s' = s /\
-                          m' = m
+      | POST d' m' s' v: d' = d /\
+                         v = v0 /\
+                         s' = s /\
+                         m' = m
     }} Read a.
   Proof.
     opcode_ok.
@@ -368,12 +345,12 @@ Section EventCSL.
   Qed.
 
   Theorem get_ok : forall t (v: var t),
-      tid |- {{ F,
-             | PRE d m s: d |= F
-               | POST d' m' s' r: d' |= F /\
-                                  r = get m v /\
-                                  m' = m /\
-                                  s' = s
+      tid |- {{ (_:unit),
+             | PRE d m s: True
+             | POST d' m' s' r: d' = d /\
+                                r = get m v /\
+                                m' = m /\
+                                s' = s
             }} Get v.
   Proof.
     opcode_ok; repeat sigT_eq; eauto.
@@ -381,21 +358,20 @@ Section EventCSL.
 
   Theorem assgn_ok : forall t (v: var t) val,
       tid |- {{ F,
-             | PRE d m s: d |= F /\
-                          StateI (set m val v) s d /\
-                          StateR tid (d, m, s) (d, set m val v, s)
-       | POST d' m' s' _: d' |= F /\
-                          m' = set m val v /\
-                          s' = s
-      }} Assgn v val.
+             | PRE d m s: d |= F
+             | POST d' m' s' _: d' |= F /\
+                                d' = d /\
+                                m' = set m val v /\
+                                s' = s
+            }} Assgn v val.
   Proof.
     opcode_ok; repeat sigT_eq; eauto.
   Qed.
 
   Theorem get_tid_ok :
-    tid |- {{ F,
-           | PRE d m s: d |= F
-           | POST d' m' s' r: d' |= F /\
+    tid |- {{ (_:unit),
+           | PRE d m s: True
+           | POST d' m' s' r: d' = d /\
                               m' = m /\
                               s' = s /\
                               r = tid
@@ -441,19 +417,17 @@ Section EventCSL.
   Theorem yield_ok :
     tid |- {{ (_:unit),
            | PRE d m s: d |= StateI m s
-           | POST d' m' s' _: d' |= StateI m' s'
-           /\ star (StateR' tid) (d, m, s) (d', m', s')
+           | POST d' m' s' _: d' |= StateI m' s' /\
+                              star (StateR' tid) (d, m, s) (d', m', s')
     }} Yield.
   Proof.
     opcode_ok.
   Qed.
 
   Theorem commit_ok : forall up,
-    tid |- {{ F,
-           | PRE d m s: d |= F /\
-                        StateR tid (d,m,s) (d,m,up s) /\
-                        (F =p=> StateI m (up s))
-           | POST d' m' s' _: d' |= F /\
+    tid |- {{ (_:unit),
+           | PRE d m s: True
+           | POST d' m' s' _: d' = d /\
                               s' = up s /\
                               m' = m
           }} Commit up.

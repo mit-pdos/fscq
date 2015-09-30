@@ -286,13 +286,28 @@ Proof.
   congruence.
 Qed.
 
-Ltac remove_duplicates :=
-  repeat match goal with
-         | [ H: ?p, H': ?p |- _ ] =>
-           match type of p with
-           | Prop => clear H'
-           end
-         end.
+Ltac remove_duplicate :=
+  match goal with
+  | [ H: ?p, H': ?p |- _ ] =>
+    match type of p with
+    | Prop => clear H'
+    end
+  end.
+
+Ltac remove_refl :=
+  match goal with
+  | [ H: ?a = ?a |- _ ] => clear dependent H
+  end.
+
+Ltac remove_sym_neq :=
+  match goal with
+  | [ H: ?a <> ?a', H': ?a' <> ?a |- _ ] => clear dependent H'
+  end.
+
+Ltac cleanup :=
+  repeat (remove_duplicate
+            || remove_refl
+            || remove_sym_neq).
 
 Hint Extern 4 (get (set _ _ _) _ = _) => simpl_get_set : prog.
 Hint Extern 4 (_ = get (set _ _ _) _) => simpl_get_set : prog.
@@ -449,10 +464,7 @@ Ltac distinguish_addresses :=
       subst;
       try congruence
   end;
-  repeat match goal with
-         | [ H: ?a = ?a |- _ ] => clear dependent H
-         | [ H: ?a <> ?a', H': ?a' <> ?a |- _ ] => clear dependent H'
-         end.
+  cleanup.
 
 Lemma cache_pred_except : forall c vd m a,
     cache_get c a = None ->
@@ -561,7 +573,8 @@ Ltac simplify :=
   try cache_locked;
   try disk_locked;
   subst;
-  try keep_older_pred.
+  try keep_older_pred;
+  cleanup.
 
 Ltac finish :=
   solve_get_set;
@@ -569,6 +582,28 @@ Ltac finish :=
   try cache_contents_eq;
   try congruence;
   eauto.
+
+Lemma cache_pred_stable_add : forall c vd a v,
+    vd a = Some v ->
+    cache_get c a = None ->
+    cache_pred c vd =p=>
+cache_pred (cache_add c a v) vd.
+Proof.
+  intros.
+  unfold pimpl, cache_pred, mem_union, cache_mem, cache_add;
+    intuition.
+  apply functional_extensionality; intro a'.
+  cbn.
+  distinguish_addresses.
+  rewrite H0 in H.
+  rewrite H0.
+  case_eq (cache_get c a'); firstorder.
+  cbn in *.
+  distinguish_addresses.
+  rewrite H0 in H.
+  inversion H1.
+  congruence.
+Qed.
 
 Theorem locked_disk_read_ok : forall a,
     cacheS TID: tid |-
@@ -579,6 +614,7 @@ Theorem locked_disk_read_ok : forall a,
                   get m CacheL = Locked tid
      | POST d' m' s' r: let vd' := virt_disk s' in
                         d' |= cache_pred (get m' Cache) vd' /\
+                        vd' |= F * a |-> v /\
                         r = v /\
                         get m' CacheL = Locked tid
     }} locked_disk_read a.
@@ -589,7 +625,6 @@ Proof.
     apply ptsto_valid' in H'.
   valid_match_opt.
   - hoare pre simplify with finish; solve_get_set.
-    clear H4.
     unfold cache_pred in H; autounfold with prog in *; intuition.
     specialize (H5 _ _ H2).
     apply equal_f with a in H4.
@@ -599,13 +634,41 @@ Proof.
   - hoare pre simplify with finish; solve_get_set.
     shelve. (* should come back to this when we have the right ?F *)
     pred_apply.
-    rewrite cache_pred_add; eauto.
-    pred_apply.
-    rewrite cache_pred_add; eauto.
+    apply cache_pred_stable_add; auto.
 
     Unshelve.
+    shelve.
     pred_apply; cancel; auto.
 Qed.
+
+Theorem cache_pred_same_disk : forall c vd vd' d,
+    cache_pred c vd d ->
+    cache_pred c vd' d ->
+    vd = vd'.
+Proof.
+  unfold cache_pred, cache_mem, mem_union.
+  intuition.
+  apply functional_extensionality; intro a.
+  apply equal_f with a in H1.
+  apply equal_f with a in H.
+  case_eq (cache_get c a); intros;
+  replace (cache_get c a) in *;
+  congruence.
+Qed.
+
+Ltac replace_cache :=
+  match goal with
+  | [ H: get ?m Cache = get ?m' Cache |- _ ] =>
+    try replace (get m Cache) in *
+  end.
+
+Ltac vd_locked :=
+  match goal with
+  | [ H: cache_pred ?c ?vd ?d, H': cache_pred ?c ?vd' ?d |- _ ] =>
+    assert (vd = vd') by
+        (apply (cache_pred_same_disk c vd vd' d); auto);
+      subst vd'
+  end.
 
 Theorem locked_async_disk_read_ok : forall a,
     cacheS TID: tid |-
@@ -616,6 +679,7 @@ Theorem locked_async_disk_read_ok : forall a,
                   get m CacheL = Locked tid
      | POST d' m' s' r: let vd' := virt_disk s' in
                         d' |= cache_pred (get m' Cache) vd' /\
+                        vd' |= F * a |-> v /\
                         r = v /\
                         get m' CacheL = Locked tid
     }} locked_async_disk_read a.
@@ -626,34 +690,20 @@ Proof.
     apply ptsto_valid' in H'.
   valid_match_opt.
   - hoare pre simplify with finish; solve_get_set.
-    clear H4.
     unfold cache_pred in H; autounfold with prog in *; intuition.
     specialize (H5 _ _ H2).
     apply equal_f with a in H4.
     unfold mem_union in H4.
     rewrite H2 in H4.
     congruence.
-  - hoare pre simplify with idtac; solve_get_set.
-    shelve.
-    shelve.
-    pred_apply.
-    rewrite cache_pred_add; eauto.
-    (* not sure why I have no information about s and s0 -- ideally
-       the StateI would get us the fact that s = s0 due to the disks
-       being equal and the cache not changing. *)
-    admit.
-    pred_apply.
-    rewrite cache_pred_add; eauto.
-    (* same goal *)
-    admit.
-    finish.
-
-    Unshelve.
-    pred_apply; cancel; auto.
-    pred_apply; cancel.
-    rewrite sep_star_comm.
-    apply cache_pred_address'; auto.
-Admitted.
+  - hoare with (step_finisher;
+                try cache_locked;
+                try disk_locked;
+                try (replace_cache; vd_locked));
+    simpl_get_set;
+    cleanup.
+    apply cache_pred_stable_add; eauto.
+Qed.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   AcquireLock CacheL;;
