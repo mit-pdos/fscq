@@ -605,18 +605,22 @@ Proof.
   congruence.
 Qed.
 
+Hint Resolve cache_pred_stable_add.
+
 Theorem locked_disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
-     | PRE d m s: let vd := virt_disk s in
+     | PRE d m s0 s: let vd := virt_disk s in
                   d |= cache_pred (get m Cache) vd /\
                   vd |= F * a |-> v /\
-                  get m CacheL = Locked tid
-     | POST d' m' s' r: let vd' := virt_disk s' in
+                  get m CacheL = Locked tid /\
+                  s0 = s
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
                         d' |= cache_pred (get m' Cache) vd' /\
                         vd' |= F * a |-> v /\
                         r = v /\
-                        get m' CacheL = Locked tid
+                        get m' CacheL = Locked tid /\
+                        s0' = s'
     }} locked_disk_read a.
 Proof.
   unfold locked_disk_read.
@@ -626,15 +630,14 @@ Proof.
   valid_match_opt.
   - hoare pre simplify with finish; solve_get_set.
     unfold cache_pred in H; autounfold with prog in *; intuition.
-    specialize (H5 _ _ H2).
+    specialize (H5 _ _ H3).
     apply equal_f with a in H4.
     unfold mem_union in H4.
-    rewrite H2 in H4.
+    replace (cache_get (get m Cache) a) in *.
     congruence.
   - hoare pre simplify with finish; solve_get_set.
     shelve. (* should come back to this when we have the right ?F *)
-    pred_apply.
-    apply cache_pred_stable_add; auto.
+    pred_apply; auto.
 
     Unshelve.
     shelve.
@@ -673,15 +676,17 @@ Ltac vd_locked :=
 Theorem locked_async_disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
-     | PRE d m s: let vd := virt_disk s in
+     | PRE d m s0 s: let vd := virt_disk s in
                   d |= cache_pred (get m Cache) vd /\
                   vd |= F * a |-> v /\
-                  get m CacheL = Locked tid
-     | POST d' m' s' r: let vd' := virt_disk s' in
+                  get m CacheL = Locked tid /\
+                  s0 = s
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
                         d' |= cache_pred (get m' Cache) vd' /\
                         vd' |= F * a |-> v /\
                         r = v /\
-                        get m' CacheL = Locked tid
+                        get m' CacheL = Locked tid /\
+                        s0' = s'
     }} locked_async_disk_read a.
 Proof.
   unfold locked_async_disk_read.
@@ -691,18 +696,18 @@ Proof.
   valid_match_opt.
   - hoare pre simplify with finish; solve_get_set.
     unfold cache_pred in H; autounfold with prog in *; intuition.
-    specialize (H5 _ _ H2).
+    specialize (H5 _ _ H3).
     apply equal_f with a in H4.
     unfold mem_union in H4.
-    rewrite H2 in H4.
+    replace (cache_get (get m Cache) a) in *.
     congruence.
-  - hoare with (step_finisher;
+  - (* hoare with finish gives:
+Anomaly: Evar ?X13997 was not declared. Please report. *)
+    hoare with (step_finisher;
                 try cache_locked;
                 try disk_locked;
-                try (replace_cache; vd_locked));
-    simpl_get_set;
-    cleanup.
-    apply cache_pred_stable_add; eauto.
+                try (replace_cache; vd_locked);
+               solve_get_set).
 Qed.
 
 Definition disk_read {T} a rx : prog _ _ T :=
