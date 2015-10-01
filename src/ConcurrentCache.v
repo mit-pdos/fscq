@@ -48,25 +48,25 @@ over memory that makes the variable read-only for non-owners. *)
 Definition lock_protects (lvar : var Mcontents Mutex)
            {tv} (v : var Mcontents tv) tid (m m' : M Mcontents) :=
   forall owner_tid,
-    get m lvar = Locked owner_tid ->
+    get lvar m = Locked owner_tid ->
     tid <> owner_tid ->
-    get m' v = get m v.
+    get v m' = get v m.
 
 Definition lock_protects_disk (lvar : var Mcontents Mutex)
            tid (m : M Mcontents) (d d' : DISK) :=
   forall owner_tid,
-    get m lvar = Locked owner_tid ->
+    get lvar m = Locked owner_tid ->
     tid <> owner_tid ->
     d' = d.
 
 Inductive lock_protocol (lvar : var Mcontents Mutex) (tid : ID) :  M Mcontents -> M Mcontents -> Prop :=
-| NoChange : forall m m', get m lvar = get m' lvar ->
+| NoChange : forall m m', get lvar m  = get lvar m' ->
                      lock_protocol lvar tid m m'
-| OwnerRelease : forall m m', get m lvar = Locked tid ->
-                         get m' lvar = Open ->
+| OwnerRelease : forall m m', get lvar m = Locked tid ->
+                         get lvar m' = Open ->
                          lock_protocol lvar tid m m'
-| OwnerAcquire : forall m m', get m lvar = Open ->
-                         get m' lvar = Locked tid ->
+| OwnerAcquire : forall m m', get lvar m = Open ->
+                         get lvar m' = Locked tid ->
                          lock_protocol lvar tid m m'.
 
 Hint Constructors lock_protocol.
@@ -82,7 +82,7 @@ Definition cacheR tid : Relation Mcontents S :=
 
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
-    let c := get m Cache in
+    let c := get Cache m in
     (d |= cache_pred c (virt_disk s))%judgement.
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
@@ -125,8 +125,8 @@ Ltac solve_get_set :=
                       end
       end.
 
-Hint Extern 4 (get (set _ _ _) _ = _) => solve_get_set.
-Hint Extern 4 (_ = get (set _ _ _) _) => solve_get_set.
+Hint Extern 4 (get _ (set _ _ _) = _) => solve_get_set.
+Hint Extern 4 (_ = get _ (set _ _ _)) => solve_get_set.
 
 Ltac dispatch :=
   intros; subst;
@@ -134,7 +134,7 @@ Ltac dispatch :=
   (repeat match goal with
           | [ |- _ /\ _ ] => intuition
           | [ |- exists _, _ ] => eexists
-          | [ H: context[get (set _ _ _) _] |- _ ] => simpl_get_set_hyp H
+          | [ H: context[get _ (set _ _ _)] |- _ ] => simpl_get_set_hyp H
           | _ => solve_get_set
           end); eauto;
   try match goal with
@@ -151,11 +151,11 @@ Proof.
   intros.
   rewrite (locks_are_all_CacheL l).
   exists d.
-  case_eq (get m CacheL); intros.
+  case_eq (get CacheL m); intros.
   - dispatch.
   - case_eq (PeanoNat.Nat.eq_dec tid0 tid); intros.
     * dispatch.
-    * exists (set m Open CacheL), s.
+    * exists (set CacheL Open m), s.
       dispatch.
 Qed.
 
@@ -224,10 +224,10 @@ Definition state_d (dms: DISK * M Mcontents * S) :=
   let '(d, _, _) := dms in d.
 
 Lemma cache_readonly' : forall tid dms dms',
-    get (state_m dms) CacheL = Locked tid ->
+    get CacheL (state_m dms) = Locked tid ->
     othersR cacheR tid dms dms' ->
-    get (state_m dms') Cache = get (state_m dms) Cache /\
-    get (state_m dms') CacheL = Locked tid.
+    get Cache (state_m dms') = get Cache (state_m dms) /\
+    get CacheL (state_m dms') = Locked tid.
 Proof.
   repeat (autounfold with prog).
   unfold othersR.
@@ -244,10 +244,10 @@ Proof.
 Qed.
 
 Lemma cache_readonly : forall tid dms dms',
-    get (state_m dms) CacheL = Locked tid ->
+    get CacheL (state_m dms) = Locked tid ->
     star (othersR cacheR tid) dms dms' ->
-    get (state_m dms') Cache = get (state_m dms) Cache /\
-    get (state_m dms') CacheL = Locked tid.
+    get Cache (state_m dms') = get Cache (state_m dms) /\
+    get CacheL (state_m dms') = Locked tid.
 Proof.
   intros.
   eapply (star_invariant _ _ (cache_readonly' tid));
@@ -256,10 +256,10 @@ Proof.
 Qed.
 
 Lemma disk_readonly' : forall tid dms dms',
-    get (state_m dms) CacheL = Locked tid ->
+    get CacheL (state_m dms) = Locked tid ->
     othersR cacheR tid dms dms' ->
     state_d dms' = state_d dms /\
-    get (state_m dms') CacheL = Locked tid.
+    get CacheL (state_m dms') = Locked tid.
 Proof.
   repeat (autounfold with prog).
   unfold othersR.
@@ -306,10 +306,10 @@ Proof.
 Qed.
 
 Lemma disk_readonly : forall tid dms dms',
-    get (state_m dms) CacheL = Locked tid ->
+    get CacheL (state_m dms) = Locked tid ->
     star (othersR cacheR tid) dms dms' ->
     state_d dms' = state_d dms /\
-    get (state_m dms') CacheL = Locked tid.
+    get CacheL (state_m dms') = Locked tid.
 Proof.
   intros.
   (* ; intuition; eauto  gives "conversion test raised an anomaly" here *)
@@ -340,8 +340,8 @@ Ltac cleanup :=
             || remove_refl
             || remove_sym_neq).
 
-Hint Extern 4 (get (set _ _ _) _ = _) => simpl_get_set : prog.
-Hint Extern 4 (_ = get (set _ _ _) _) => simpl_get_set : prog.
+Hint Extern 4 (get _ (set _ _ _) = _) => simpl_get_set : prog.
+Hint Extern 4 (_ = get _ (set _ _ _)) => simpl_get_set : prog.
 
 Ltac mem_contents_eq :=
   match goal with
@@ -649,15 +649,15 @@ Theorem locked_disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
      | PRE d m s0 s: let vd := virt_disk s in
-                  d |= cache_pred (get m Cache) vd /\
+                  d |= cache_pred (get Cache m) vd /\
                   vd |= F * a |-> v /\
-                  get m CacheL = Locked tid /\
+                  get CacheL m = Locked tid /\
                   s0 = s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                        d' |= cache_pred (get m' Cache) vd' /\
+                        d' |= cache_pred (get Cache m') vd' /\
                         vd' |= F * a |-> v /\
                         r = v /\
-                        get m' CacheL = Locked tid /\
+                        get CacheL m' = Locked tid /\
                         s0' = s'
     }} locked_disk_read a.
 Proof.
@@ -671,7 +671,7 @@ Proof.
     specialize (H5 _ _ H3).
     apply equal_f with a in H4.
     unfold mem_union in H4.
-    replace (cache_get (get m Cache) a) in *.
+    replace (cache_get (get Cache m) a) in *.
     congruence.
   - hoare pre simplify with finish; solve_get_set.
     shelve. (* should come back to this when we have the right ?F *)
@@ -701,8 +701,8 @@ Qed.
 
 Ltac replace_cache :=
   match goal with
-  | [ H: get ?m Cache = get ?m' Cache |- _ ] =>
-    try replace (get m Cache) in *
+  | [ H: get Cache ?m = get Cache ?m' |- _ ] =>
+    try replace (get Cache m) in *
   end.
 
 Ltac vd_locked :=
@@ -717,15 +717,15 @@ Theorem locked_async_disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
      | PRE d m s0 s: let vd := virt_disk s in
-                  d |= cache_pred (get m Cache) vd /\
+                  d |= cache_pred (get Cache m) vd /\
                   vd |= F * a |-> v /\
-                  get m CacheL = Locked tid /\
+                  get CacheL m = Locked tid /\
                   s0 = s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                        d' |= cache_pred (get m' Cache) vd' /\
+                        d' |= cache_pred (get Cache m') vd' /\
                         vd' |= F * a |-> v /\
                         r = v /\
-                        get m' CacheL = Locked tid /\
+                        get CacheL m' = Locked tid /\
                         s0' = s'
     }} locked_async_disk_read a.
 Proof.
@@ -739,7 +739,7 @@ Proof.
     specialize (H5 _ _ H3).
     apply equal_f with a in H4.
     unfold mem_union in H4.
-    replace (cache_get (get m Cache) a) in *.
+    replace (cache_get (get Cache m) a) in *.
     congruence.
   - (* hoare with finish gives:
 Anomaly: Evar ?X13997 was not declared. Please report. *)
@@ -747,7 +747,7 @@ Anomaly: Evar ?X13997 was not declared. Please report. *)
                 try cache_locked;
                 try disk_locked;
                 try (replace_cache; vd_locked);
-               solve_get_set).
+                solve_get_set).
 Qed.
 
 Definition disk_read {T} a rx : prog _ _ T :=
@@ -760,16 +760,16 @@ Theorem disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
      | PRE d m s0 s: let vd := virt_disk s in
-                     d |= cache_pred (get m Cache) vd /\
+                     d |= cache_pred (get Cache m) vd /\
                      vd |= F * a |-> v /\
                      s0 = s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             exists F' v',
-                              d' |= cache_pred (get m' Cache) vd' /\
+                              d' |= cache_pred (get Cache m') vd' /\
                               vd' |= F' * a |-> v' /\
                               (* star (othersR cacheR tid) (d, m, s) (d', m, s') /\ *)
                               r = v' /\
-                              get m' CacheL = Open /\
+                              get CacheL m' = Open /\
                               s0' = s'
     }} disk_read a.
 Proof.

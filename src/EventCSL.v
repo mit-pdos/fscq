@@ -106,7 +106,7 @@ Section EventCSL.
                                       tid :- Write a v' rx / (d, m, s0, s) ==>
                                           rx tt / (upd d a v', m, s0, s)
   | StepAcquireLock : forall d m m' s s0 d' s' rx l,
-      let m'' := set m' (Locked tid) l in
+      let m'' := set l (Locked tid) m' in
       StateI m s d ->
       (* TODO: shouldn't have d and m in R *)
       StateR tid (d, m, s0) (d, m, s) ->
@@ -126,9 +126,9 @@ Section EventCSL.
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
   | StepGet : forall d m s s0 t (v: var t) rx,
-      tid :- Get v rx / (d, m, s0, s) ==> rx (get m v) / (d, m, s0, s)
+      tid :- Get v rx / (d, m, s0, s) ==> rx (get v m) / (d, m, s0, s)
   | StepAssgn : forall d m s s0 t (v: var t) val rx,
-      tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, set m val v, s0, s)
+      tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, set v val m, s0, s)
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
   Hint Constructors step.
@@ -354,7 +354,7 @@ Section EventCSL.
       tid |- {{ (_:unit),
              | PRE d m s0 s: True
              | POST d' m' s0' s' r: d' = d /\
-                                    r = get m v /\
+                                    r = get v m /\
                                     m' = m /\
                                     s0' = s0 /\
                                     s' = s
@@ -368,7 +368,7 @@ Section EventCSL.
              | PRE d m s0 s: d |= F
              | POST d' m' s0' s' _: d' |= F /\
                                     d' = d /\
-                                    m' = set m val v /\
+                                    m' = set v val m /\
                                     s0' = s0 /\
                                     s' = s
             }} Assgn v val.
@@ -395,7 +395,7 @@ Section EventCSL.
   Definition lock_step_available := forall tid d m s l,
       (d |= StateI m s)%judgement ->
       exists d' m' s',
-        let m'' := set m' (Locked tid) l in
+        let m'' := set l (Locked tid) m' in
         (d' |= StateI m'' s')%judgement /\
         star (StateR' tid) (d, m, s) (d', m', s') /\
         StateR tid (d', m', s') (d', m'', s') .
@@ -407,10 +407,10 @@ Section EventCSL.
                              StateR tid (d, m, s0) (d, m, s)
              | POST d' m'' s0' s' _: exists m',
                  d' |= StateI m'' s' /\
-                 m'' = set m' (Locked tid) l /\
+                 m'' = set l (Locked tid) m' /\
                  star (StateR' tid) (d, m, s) (d', m', s') /\
                  StateR tid (d', m', s') (d', m'', s') /\
-                 get m'' l = Locked tid /\
+                 get l m'' = Locked tid /\
                  s0' = s'
             }} AcquireLock l.
               (* Proof. here removes lock_step_available (possibly a bug) *)
