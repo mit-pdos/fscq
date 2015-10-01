@@ -17,3 +17,4 @@ _build
 /#*#
 /.coq-native
 Makefile.coqproof
+/code.v
