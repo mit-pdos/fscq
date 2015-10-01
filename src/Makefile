@@ -6,7 +6,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      BasicProg Array AddrMap Rec RecArray \
 	      GenSep GenSepN ListPred Cache FSLayout \
 	      Log Balloc Inode BFile BFileRec Dir \
-	      MemMatch DirName DirTree FastByteFile FS Testprog \
+	      MemMatch DirName DirTree ByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON \
 		  Hlist Star EventCSL EventCSLauto Bank ConcurrentCache
 VS         := $(MODULES:%=%.v)
@@ -25,7 +25,7 @@ J ?= 4
 
 .PHONY: coq proof clean
 
-all: hstest fuse mkfs
+all: fuse mkfs
 
 %: %.ml coq
 	rm -f $@

@@ -36,7 +36,9 @@ Module INODE.
   Definition iattrtype : Rec.type := Rec.RecF ([
     ("size",   Rec.WordF addrlen) ;   (* file size in bytes *)
     ("mtime",  Rec.WordF 32) ;        (* last modify time *)
-    ("itype",  Rec.WordF 32)          (* type, used to represent Unix domain sockets *)
+    ("itype",  Rec.WordF 32) ;        (* type, used to represent sockets, devices, etc *)
+    ("dev",    Rec.WordF 64) ;        (* device ID, for character/block devices *)
+    ("pad",    Rec.WordF 64)
   ]).
 
   Definition iarec  := Rec.data iattrtype.
@@ -45,18 +47,20 @@ Module INODE.
   Record iattr := {
     ISize : addr;
     IMTime : word 32;
-    IType : word 32
+    IType : word 32;
+    IDev : word 64
   }.
 
-  Definition iattr0 := Build_iattr $0 $0 $0.
+  Definition iattr0 := Build_iattr $0 $0 $0 $0.
 
   Definition pack_attr (ia : iattr) := Eval compute_rec in
     iarec0 :=> "size" := (ISize ia)
            :=> "mtime" := (IMTime ia)
-           :=> "itype" := (IType ia).
+           :=> "itype" := (IType ia)
+           :=> "dev" := (IDev ia).
 
   Definition unpack_attr (iar : iarec) := Eval compute_rec in
-    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype").
+    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype") (iar :-> "dev").
 
   Theorem unpack_pack_attr : forall a, unpack_attr (pack_attr a) = a.
   Proof.
@@ -73,10 +77,11 @@ Module INODE.
   Definition iattr_match ia (rec : iarec) : Prop :=
     ISize ia = rec :-> "size" /\
     IMTime ia = rec :-> "mtime" /\
-    IType ia = rec :-> "itype".
+    IType ia = rec :-> "itype" /\
+    IDev ia = rec :-> "dev".
 
 
-  Definition nr_direct := 12.
+  Definition nr_direct := 10.
   Definition wnr_direct := natToWord addrlen nr_direct.
 
   Definition inodetype : Rec.type := Rec.RecF ([
