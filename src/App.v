@@ -110,10 +110,19 @@ Proof.
   rewrite H3.
   reflexivity.
 
-  (* XXX need a precondition saying the file we're reading is non-empty..
-   * or a runtime check for this fact?
+  (* XXX need to prove that the source file has a bytefile representation.
+   * This should really be in DIRTREE somewhere; every valid file is a bytefile..
    *)
   admit.
 
   step.
-  (* XXX odd Coq error, "Not a variable or hypothesis"? *)
+  instantiate (pathname0 := [] ++ [src_fn]).
+  rewrite DIRTREE.find_subtree_tree_graft_ne by auto.
+  simpl.
+  rewrite H3.
+  reflexivity.
+
+  (* XXX bytefile rep of the source file.. *)
+  admit.
+
+  step.
