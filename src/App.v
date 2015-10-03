@@ -12,6 +12,7 @@ Require Import GenSep.
 Require Import SepAuto.
 Require Import Bool.
 Require Import BasicProg.
+Require Import ByteFile.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -39,8 +40,9 @@ Definition atomic_cp T fsxp src_fn dst_fn mscs rx : prog T :=
       match maybe_dst_inum with
       | None => rx ^(mscs, false)
       | Some dst_inum =>
-        let^ (mscs, b) <- FS.read_block fsxp src_inum $0 mscs;
-        let^ (mscs, ok) <- FS.write_block fsxp dst_inum $0 b ($ valubytes) mscs;
+        let^ (mscs, sz) <- FS.file_get_sz fsxp src_inum mscs;
+        let^ (mscs, b) <- FS.read_bytes fsxp src_inum 0 (# sz) mscs;
+        let^ (mscs, ok) <- FS.append fsxp dst_inum 0 (BYTEFILE.buf_data b) mscs;
         match ok with
         | false =>
           let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
