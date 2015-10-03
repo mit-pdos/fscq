@@ -151,12 +151,6 @@ Definition file_get_attr T fsxp inum mscs rx : prog T :=
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, attr).
 
-Definition file_get_sz T fsxp inum mscs rx : prog T :=
-  mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, INODE.ISize attr).
-
 Theorem file_getattr_ok : forall fsxp inum mscs,
   {< m pathname Fm Ftop tree f,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
@@ -210,6 +204,52 @@ Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   REC RET:^(mscs, fsxp)
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs 
   >>} file_get_attr fsxp inum mscs >> recover.
+Proof.
+  recover_ro_ok.
+Qed.
+
+
+Definition file_get_sz T fsxp inum mscs rx : prog T :=
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+  rx ^(mscs, INODE.ISize attr).
+
+Theorem file_get_sz_ok : forall fsxp inum mscs,
+  {< m F Fm Ftop tree pathname f bytes,
+  PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ BYTEFILE.rep bytes f ]]
+  POST RET:^(mscs, sz)
+         LOG.rep fsxp.(FSXPLog) F (NoTransaction m) mscs *
+         [[ # sz = length bytes ]]
+  CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
+  >} file_get_sz fsxp inum mscs.
+Proof.
+  unfold file_get_sz.
+  hoare.
+  unfold BYTEFILE.rep in *. deex. intuition.
+  unfold BYTEFILE.rep in *. deex. intuition.
+  all: try rewrite LOG.activetxn_would_recover_old.
+  all: try rewrite LOG.notxn_would_recover_old.
+  all: try apply LOG.would_recover_old_either.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
+
+Theorem file_get_sz_recover_ok : forall fsxp inum mscs,
+  {<< m Fm Ftop tree pathname f bytes,
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ BYTEFILE.rep bytes f ]]
+  POST RET:^(mscs, sz)
+         LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs *
+         [[ # sz = length bytes ]]
+  REC RET:^(mscs, fsxp)
+         LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs
+  >>} file_get_sz fsxp inum mscs >> recover.
 Proof.
   recover_ro_ok.
 Qed.
