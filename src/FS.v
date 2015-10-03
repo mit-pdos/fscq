@@ -362,7 +362,7 @@ Theorem read_bytes_ok : forall fsxp inum off len mscs,
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
          [[ BYTEFILE.rep bytes f ]]
-    POST RET:^(mscs,b)
+  POST RET:^(mscs,b)
          exists Fx v,
          LOG.rep fsxp.(FSXPLog) F (NoTransaction m) mscs *
          [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
