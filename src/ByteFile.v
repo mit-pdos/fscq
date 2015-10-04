@@ -324,7 +324,7 @@ Module BYTEFILE.
   Hint Extern 1 ({{_}} progseq (update_bytes ?fsxp ?inum ?off ?newbytes _) _) =>
     apply update_bytes_ok with (fsxp:=fsxp) (inum:=inum) (off:=off) (newbytes:=newbytes) : prog.
 
-   Definition grow_file T fsxp inum newlen mscs rx : prog T :=
+  Definition grow_file T fsxp inum newlen mscs rx : prog T :=
     let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
     let oldlen := oldattr.(INODE.ISize) in
     If (wlt_dec oldlen ($ newlen)) {
@@ -525,6 +525,111 @@ Module BYTEFILE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (grow_file _ _ _ _) _) => apply grow_file_ok : prog.
+
+
+  Lemma bounds_firstn : forall A (l : list A) n nbits,
+    # (natToWord nbits (length l)) = length l ->
+    # (natToWord nbits (length (firstn n l))) = length (firstn n l).
+  Proof.
+    intros.
+    erewrite wordToNat_natToWord_bound; auto.
+    rewrite firstn_length.
+    eapply le_trans. apply Nat.le_min_r.
+    rewrite <- H. constructor.
+  Qed.
+
+  Hint Resolve bounds_firstn.
+
+  Definition shrink_file T fsxp inum newlen mscs rx : prog T :=
+    let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
+    let^ (mscs, ok) <- bf_shrink items_per_valu fsxp inum newlen mscs;
+    If (bool_dec ok true) {
+      mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
+                              (INODE.Build_iattr ($ newlen)
+                                                 (INODE.IMTime oldattr)
+                                                 (INODE.IType oldattr)
+                                                 (INODE.IDev oldattr)) mscs;
+      rx ^(mscs, true)
+    } else {
+      rx ^(mscs, false)
+    }.
+
+  Theorem shrink_file_ok: forall fsxp inum newlen mscs,
+    {< m mbase F Fm A flist f bytes,
+      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+           [[ rep bytes f ]] *
+           [[ goodSize addrlen newlen ]] *
+           [[ newlen <= filelen f ]]
+      POST RET:^(mscs, ok)
+           exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+           ([[ ok = false ]] \/
+           [[ ok = true ]] * exists flist' f' bytes' fdata' attr,
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ bytes' = firstn newlen bytes ]] *
+           [[ rep bytes' f' ]] *
+           [[ attr = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) ]] *
+           [[ f' = BFILE.Build_bfile fdata' attr ]])
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+     >} shrink_file fsxp inum newlen mscs.
+  Proof.
+    unfold shrink_file, rep, bytes_rep.
+    step.
+    step.
+
+    apply list2nmem_arrayN_firstn_skipn.
+
+    assert (kept_items items_per_valu newlen <= length allbytes).
+    unfold kept_items. eapply le_trans. apply roundup_mono. eauto.
+    unfold filelen. rewrite block_items_ok.
+    eapply le_trans. apply roundup_mono. apply le_n.
+    unfold roundup. apply Nat.eq_le_incl. auto.
+
+    rewrite skipn_length by assumption.
+    rewrite Nat.sub_add by assumption; auto.
+    step.
+    step.
+    step.
+    step.
+    step.
+    apply pimpl_or_r. right. cancel.
+    eexists; intuition.
+    eassumption.
+
+    eauto.
+
+    unfold filelen in *.
+    erewrite wordToNat_natToWord_bound by eauto.
+    repeat rewrite firstn_firstn.
+    repeat rewrite Nat.min_l; auto.
+    apply roundup_ge. rewrite block_items_ok. rewrite valubytes_is; omega.
+
+    erewrite wordToNat_natToWord_bound by eauto.
+    rewrite firstn_firstn.
+    rewrite Nat.min_l; auto.
+    rewrite firstn_length.
+    rewrite Nat.min_l; auto.
+    unfold filelen in *.
+    eapply le_trans. eauto.
+    rewrite <- H10. apply divup_ok.
+
+    erewrite wordToNat_natToWord_bound by eauto.
+    rewrite block_items_ok.
+    rewrite firstn_length. rewrite Nat.min_l. auto.
+    fold byte. rewrite <- H10. apply roundup_mono. auto.
+
+    step.
+
+    Grab Existential Variables.
+    all: eauto.
+    (* XXX where did this leak from? *)
+    exact (FSXPBlockAlloc fsxp).
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (shrink_file _ _ _ _) _) => apply shrink_file_ok : prog.
+
 
   (** Write bytes follows POSIX, which is overloaded to do two things:
   (1) if the write falls within the bounds of the file, update those bytes
