@@ -2785,6 +2785,7 @@ Section RECBFILE.
         ( [[ ok = false ]] \/
         exists f' ilist' flist',
         [[ ok = true ]] *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
         [[ array_item_file f' ilist' ]] *
         [[ ilist' = firstn (roundup count_items block_items) ilist ]] *
@@ -2796,15 +2797,15 @@ Section RECBFILE.
   Proof.
     unfold bf_shrink, bf_resize.
 
-    time step. (* 30s *)
+    step.
     step.
 
     assert (array_item_file f (concat vs_nested)).
     eexists; intuition eauto.
 
     apply pimpl_or_r; right; cancel.
-    eassumption.
-    apply rep_shrink_file; auto.
+    pose proof rep_shrink_file as H'; unfold array_item_file in H'; simpl in H'.
+    apply H'; auto.
     apply le_trans with (kept_items count_items).
     unfold kept_items.
     apply roundup_ge.
