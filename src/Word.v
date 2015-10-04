@@ -2020,6 +2020,17 @@ Proof.
   auto.
 Qed.
 
+Lemma wge_ge: forall sz (a b : word sz), a >= b ->
+  (wordToNat a >= wordToNat b)%nat.
+Proof.
+  intros.
+  unfold wlt in H.
+  repeat rewrite wordToN_nat in *.
+  apply Nge_out in H.
+  repeat rewrite Nat2N.id in *.
+  auto.
+Qed.
+
 Lemma wlt_lt': forall sz a b, goodSize sz a
   -> natToWord sz a < b
   -> (wordToNat (natToWord sz a) < wordToNat b)%nat.

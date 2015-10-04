@@ -631,6 +631,79 @@ Module BYTEFILE.
   Hint Extern 1 ({{_}} progseq (shrink_file _ _ _ _) _) => apply shrink_file_ok : prog.
 
 
+  Lemma rep_length : forall bytes f,
+    rep bytes f ->
+    length bytes = (# (f.(BFILE.BFAttr).(INODE.ISize))).
+  Proof.
+    unfold rep. intuition deex.
+  Qed.
+
+  Lemma ge_minus_zero : forall b a,
+    a >= b -> b - a = 0.
+  Proof.
+    induction b; simpl; intros; auto.
+    destruct a; omega.
+  Qed.
+
+  Definition resize_file T fsxp inum newlen mscs rx : prog T :=
+    let^ (mscs, oldattr) <- BFILE.bfgetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum mscs;
+    let oldlen := oldattr.(INODE.ISize) in
+    If (wlt_dec oldlen ($ newlen)) {
+      let^ (mscs, ok) <- grow_file fsxp inum newlen mscs;
+      rx ^(mscs, ok)
+    } else {
+      let^ (mscs, ok) <- shrink_file fsxp inum newlen mscs;
+      rx ^(mscs, ok)
+    }.
+
+  Theorem resize_file_ok: forall fsxp inum newlen mscs,
+    {< m mbase F Fm A flist f bytes,
+      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+           [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+           [[ rep bytes f ]] *
+           [[ goodSize addrlen newlen ]]
+      POST RET:^(mscs, ok)
+           exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+           ([[ ok = false ]] \/
+           [[ ok = true ]] * exists flist' f' bytes' fdata' attr,
+           [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+           [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+           [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - (# (INODE.ISize (BFILE.BFAttr f))))) ]] *
+           [[ rep bytes' f' ]] *
+           [[ attr = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) ]] *
+           [[ f' = BFILE.Build_bfile fdata' attr ]])
+       CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+     >} resize_file fsxp inum newlen mscs.
+  Proof.
+    unfold resize_file.
+    step.
+    step.
+    step.
+    apply Nat.lt_le_incl.
+    apply wlt_lt in H9.
+    rewrite wordToNat_natToWord_idempotent' in H9 by auto.
+    apply H9.
+    step.
+    apply pimpl_or_r; right. cancel.
+
+    rewrite firstn_oob; auto.
+    erewrite rep_length by eauto.
+    apply wlt_lt in H9. rewrite wordToNat_natToWord_idempotent' in H9 by auto. omega.
+
+    step.
+    apply wge_ge in H9.
+    rewrite wordToNat_natToWord_idempotent' in H9 by auto.
+    eauto.
+    step.
+    apply pimpl_or_r; right. cancel.
+
+    apply wge_ge in H9. rewrite wordToNat_natToWord_idempotent' in H9 by auto.
+
+    rewrite ge_minus_zero by auto. simpl. rewrite app_nil_r; auto.
+  Qed.
+
+
   (** Write bytes follows POSIX, which is overloaded to do two things:
   (1) if the write falls within the bounds of the file, update those bytes
   (2) otherwise, grow the file and update the new file (any grown bytes not
