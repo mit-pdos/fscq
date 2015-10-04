@@ -2644,9 +2644,9 @@ Section RECBFILE.
   (** Resize the file at [inum] to hold count_items (rounded up to fit
   a whole number of blocks) using BFILE.bftrunc. **)
   Definition bf_resize T fsxp inum count_items mscs rx : prog T :=
-      let size := divup count_items block_items in
-      let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
-      rx ^(mscs, ok).
+    let size := divup count_items block_items in
+    let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum ($ size) mscs;
+    rx ^(mscs, ok).
 
   (** Alias for bf_resize where spec requires the new size to be
   smaller than the old. *)
@@ -2675,7 +2675,7 @@ Section RECBFILE.
     apply divup_lt_arg.
     assumption.
   Qed.
-  
+
   Lemma array_item_pairs_length_ok : forall lists fd,
     array_item_pairs lists (list2nmem fd)
     -> Forall (fun l => length l = block_items) lists.
@@ -2690,13 +2690,13 @@ Section RECBFILE.
 
 
   Lemma rep_shrink_file : forall f count_items ilist,
-  count_items <= length ilist ->
-  goodSize addrlen count_items ->
-  array_item_file f ilist ->
-  let newlen := # (natToWord addrlen (divup count_items block_items)) in
-  let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
-               BFILE.BFAttr := BFILE.BFAttr f |} in
-  array_item_file f' (firstn (roundup count_items block_items) ilist).
+    count_items <= length ilist ->
+    goodSize addrlen count_items ->
+    array_item_file f ilist ->
+    let newlen := # (natToWord addrlen (divup count_items block_items)) in
+    let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
+                 BFILE.BFAttr := BFILE.BFAttr f |} in
+    array_item_file f' (firstn (roundup count_items block_items) ilist).
   Proof.
     intros.
     split_reps.
@@ -2768,33 +2768,31 @@ Section RECBFILE.
     auto.
   Qed.
 
-  (** Note: this function is still unproven and quite possibly incorrect,
-  with a spec that isn't fully worked out. It shouldn't be used yet. *)
   Theorem bf_shrink_ok : forall fsxp inum count_items mscs,
-  {< mbase m F Fm A Fi f flist ilist deleted,
-    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-    [[ array_item_file f ilist ]] *
-    (* split items into preserved [Fi] and [deleted] items *)
-    (* this also ensures count_items < length ilist and this is a shrink *)
-    [[ (Fi * arrayN (kept_items count_items) deleted)%pred (list2nmem ilist) ]] *
-    (* the [deleted] list is actually the rest of [ilist], not some strict prefix *)
-    [[ length ilist = length deleted + kept_items count_items ]]
-    POST RET: ^(mscs, ok)
-    exists m',
-    LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-      ( [[ ok = false ]] \/
-      exists f' ilist' flist',
-      [[ ok = true ]] *
-      [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-      [[ array_item_file f' ilist' ]] *
-      [[ ilist' = firstn (roundup count_items block_items) ilist ]] *
-      (* preserves any predicate regarding the non-deleted items *)
-      (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
-      [[ Fi%pred (list2nmem ilist') ]] )
-    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_shrink fsxp inum count_items mscs.
+    {< mbase m F Fm A Fi f flist ilist deleted,
+      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ array_item_file f ilist ]] *
+        (* split items into preserved [Fi] and [deleted] items *)
+        (* this also ensures count_items < length ilist and this is a shrink *)
+        [[ (Fi * arrayN (kept_items count_items) deleted)%pred (list2nmem ilist) ]] *
+        (* the [deleted] list is actually the rest of [ilist], not some strict prefix *)
+        [[ length ilist = length deleted + kept_items count_items ]]
+      POST RET: ^(mscs, ok)
+        exists m',
+        LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+        ( [[ ok = false ]] \/
+        exists f' ilist' flist',
+        [[ ok = true ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+        [[ array_item_file f' ilist' ]] *
+        [[ ilist' = firstn (roundup count_items block_items) ilist ]] *
+        (* preserves any predicate regarding the non-deleted items *)
+        (* [length ilist' <= length ilist] is implied by setting [Fi] appropriately *)
+        [[ Fi%pred (list2nmem ilist') ]] )
+      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} bf_shrink fsxp inum count_items mscs.
   Proof.
     unfold bf_shrink, bf_resize.
 
@@ -2894,14 +2892,14 @@ Section RECBFILE.
   Qed.
 
   Lemma rep_expand_file : forall f count_items ilist,
-  roundup count_items block_items >= length ilist ->
-  goodSize addrlen count_items ->
-  array_item_file f ilist ->
-  let newlen := # (natToWord addrlen (divup count_items block_items)) in
-  let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
-               BFILE.BFAttr := BFILE.BFAttr f |} in
-  let newdata := repeat item_zero (alloc_items count_items - length ilist) in
-  array_item_file f' (ilist ++ newdata).
+    roundup count_items block_items >= length ilist ->
+    goodSize addrlen count_items ->
+    array_item_file f ilist ->
+    let newlen := # (natToWord addrlen (divup count_items block_items)) in
+    let f' := {| BFILE.BFData := setlen (BFILE.BFData f) newlen ($ 0);
+                 BFILE.BFAttr := BFILE.BFAttr f |} in
+    let newdata := repeat item_zero (alloc_items count_items - length ilist) in
+    array_item_file f' (ilist ++ newdata).
   Proof.
     intros.
     split_reps.
@@ -2941,35 +2939,35 @@ Section RECBFILE.
   Qed.
 
   Theorem bf_expand_ok : forall fsxp inum count_items mscs,
-  {< mbase m F Fm Fi A f flist ilist,
-   PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-    [[ array_item_file f ilist ]] *
-    [[ Fi%pred (list2nmem ilist) ]] *
-    (* require that this is an expand since postcondition implies all of ilist
-       is preserved  *)
-    [[ roundup count_items block_items >= length ilist ]] *
-    [[ goodSize addrlen count_items ]]
-    POST RET: ^(mscs, ok)
-    exists m',
-    LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+    {< mbase m F Fm Fi A f flist ilist,
+     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+       [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+       [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+       [[ array_item_file f ilist ]] *
+       [[ Fi%pred (list2nmem ilist) ]] *
+       (* require that this is an expand since postcondition implies all of ilist
+          is preserved  *)
+       [[ roundup count_items block_items >= length ilist ]] *
+       [[ goodSize addrlen count_items ]]
+     POST RET: ^(mscs, ok)
+      exists m',
+      LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
       ( [[ ok = false ]] \/
-      exists f' ilist' flist' newitems,
-      [[ ok = true ]] *
-      [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-      [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-      [[ array_item_file f' ilist' ]] *
-      [[ ilist' = ilist ++ newitems ]] *
-      (* we don't mess with ilist ([Fi] still holds) *)
-      [[ (Fi * arrayN (length ilist) newitems)%pred (list2nmem ilist') ]] *
-      (* this is a weak postcondition (in reality newitems consists of repeated zeros
-        due to bftrunc); this allows bf_expand to eventually leave junk data with
-        the same spec *)
-      [[ length newitems = alloc_items count_items - length ilist ]] *
-      [[ hidden (BFILE.BFAttr f' = BFILE.BFAttr f) ]] )
-    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_expand fsxp inum count_items mscs.
+        exists f' ilist' flist' newitems,
+        [[ ok = true ]] *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+        [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+        [[ array_item_file f' ilist' ]] *
+        [[ ilist' = ilist ++ newitems ]] *
+        (* we don't mess with ilist ([Fi] still holds) *)
+        [[ (Fi * arrayN (length ilist) newitems)%pred (list2nmem ilist') ]] *
+        (* this is a weak postcondition (in reality newitems consists of repeated zeros
+          due to bftrunc); this allows bf_expand to eventually leave junk data with
+          the same spec *)
+        [[ length newitems = alloc_items count_items - length ilist ]] *
+        [[ hidden (BFILE.BFAttr f' = BFILE.BFAttr f) ]] )
+      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} bf_expand fsxp inum count_items mscs.
   Proof.
     unfold bf_expand, bf_resize.
 
@@ -3263,19 +3261,19 @@ Section RECBFILE.
   Qed.
 
   Theorem bf_read_blocks_ok : forall fsxp inum off count mscs,
-  {< mbase m F Fm A flist ilist f,
-    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-    [[ array_item_file f ilist ]] *
-    [[ @wordToNat addrlen ($ (off + count)) = off + count ]] *
-    [[ off + count <= length (BFILE.BFData f) ]]
-    POST RET: ^(mscs, l)
-      LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-      [[ concat (map (@Rec.of_word blocktype) l) =
-        firstn (count * block_items) (skipn (off * block_items) ilist) ]]
-    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_read_blocks fsxp inum off count mscs.
+    {< mbase m F Fm A flist ilist f,
+      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ array_item_file f ilist ]] *
+        [[ @wordToNat addrlen ($ (off + count)) = off + count ]] *
+        [[ off + count <= length (BFILE.BFData f) ]]
+      POST RET: ^(mscs, l)
+        LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ concat (map (@Rec.of_word blocktype) l) =
+          firstn (count * block_items) (skipn (off * block_items) ilist) ]]
+      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} bf_read_blocks fsxp inum off count mscs.
   Proof.
     unfold bf_read_blocks.
     step. (* 30s *)
@@ -3420,18 +3418,18 @@ Section RECBFILE.
   Qed.
 
   Theorem bf_read_range_ok : forall fsxp inum off len mscs,
-  {< mbase m F Fm A flist ilist f,
-    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-    [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-    [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-    [[ array_item_file f ilist ]] *
-    [[ goodSize addrlen (divup (off+len) block_items) ]] *
-    [[ divup (off + len) block_items <= length (BFILE.BFData f) ]]
-    POST RET: ^(mscs, data)
-      LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-      [[ @Rec.of_word (Rec.ArrayF itemtype len) data = firstn len (skipn off ilist) ]]
-    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-  >} bf_read_range fsxp inum off len mscs.
+    {< mbase m F Fm A flist ilist f,
+      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ array_item_file f ilist ]] *
+        [[ goodSize addrlen (divup (off+len) block_items) ]] *
+        [[ divup (off + len) block_items <= length (BFILE.BFData f) ]]
+      POST RET: ^(mscs, data)
+        LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ @Rec.of_word (Rec.ArrayF itemtype len) data = firstn len (skipn off ilist) ]]
+      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} bf_read_range fsxp inum off len mscs.
   Proof.
     unfold bf_read_range.
     step. (* 20s *)
@@ -3568,7 +3566,7 @@ Hint Extern 1 ({{_}} progseq (bf_read_range _ _ _ _ _ _ _) _) => apply bf_read_r
 Hint Extern 1 ({{_}} progseq (bf_put _ _ _ _ _ _ _ _ _) _) => apply bf_put_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_extend _ _ _ _ _ _ _ _ _) _) => apply bf_extend_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_update_range _ _ _ _ _ _ _) _) => apply bf_update_range_ok : prog.
-Hint Extern 1 ({{_}} progseq (bf_shrink _ _ _ _ _ _) _) => apply bf_shrink_ok : prog.
+Hint Extern 1 ({{_}} progseq (bf_shrink _ _ _ _ _) _) => apply bf_shrink_ok : prog.
 Hint Extern 1 ({{_}} progseq (bf_expand _ _ _ _ _) _) => apply bf_expand_ok : prog.
 
 (* Two BFileRec arrays should always be equal *)
