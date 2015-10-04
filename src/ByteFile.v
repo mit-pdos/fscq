@@ -669,7 +669,7 @@ Module BYTEFILE.
            [[ ok = true ]] * exists flist' f' bytes' fdata' attr,
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-           [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - (# (INODE.ISize (BFILE.BFAttr f))))) ]] *
+           [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]] *
            [[ rep bytes' f' ]] *
            [[ attr = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) ]] *
            [[ f' = BFILE.Build_bfile fdata' attr ]])
@@ -687,6 +687,7 @@ Module BYTEFILE.
     step.
     apply pimpl_or_r; right. cancel.
 
+    erewrite rep_length by eauto.
     rewrite firstn_oob; auto.
     erewrite rep_length by eauto.
     apply wlt_lt in H9. rewrite wordToNat_natToWord_idempotent' in H9 by auto. omega.
@@ -700,6 +701,7 @@ Module BYTEFILE.
 
     apply wge_ge in H9. rewrite wordToNat_natToWord_idempotent' in H9 by auto.
 
+    erewrite rep_length by eauto.
     rewrite ge_minus_zero by auto. simpl. rewrite app_nil_r; auto.
   Qed.
 
