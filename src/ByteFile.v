@@ -705,6 +705,8 @@ Module BYTEFILE.
     rewrite ge_minus_zero by auto. simpl. rewrite app_nil_r; auto.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (resize_file _ _ _ _) _) => apply resize_file_ok : prog.
+
 
   (** Write bytes follows POSIX, which is overloaded to do two things:
   (1) if the write falls within the bounds of the file, update those bytes

@@ -1952,9 +1952,8 @@ Module DIRTREE.
     mscs <- BYTEFILE.append fsxp inum off data mscs;
     rx mscs.
 
-  Definition truncate T fsxp inum nblocks mscs rx : prog T :=
-    let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
-                                     inum nblocks mscs;
+  Definition resize T fsxp inum newlen mscs rx : prog T :=
+    let^ (mscs, ok) <- BYTEFILE.resize_file fsxp inum newlen mscs;
     rx ^(mscs, ok).
 
   Definition getlen T fsxp inum mscs rx : prog T :=
@@ -2112,30 +2111,38 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
   Qed.
 
-  Theorem truncate_ok : forall fsxp inum nblocks mscs,
-    {< F mbase m pathname Fm Ftop tree f,
+  Theorem resize_ok : forall fsxp inum newlen mscs,
+    {< F mbase m pathname Fm Ftop tree f bytes,
     PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
            [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[ BYTEFILE.rep bytes f ]] *
+           [[ goodSize addrlen newlen ]]
     POST RET:^(mscs, ok)
            exists m',
            LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
           ([[ ok = false ]] \/
            [[ ok = true ]] *
-           exists tree' f',
+           exists tree' f' bytes',
            [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-           [[ f' = BFILE.Build_bfile (setlen (BFILE.BFData f) #nblocks $0) (BFILE.BFAttr f) ]])
+           [[ BYTEFILE.rep bytes' f' ]] *
+           [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]])
     CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
-    >} truncate fsxp inum nblocks mscs.
+    >} resize fsxp inum newlen mscs.
   Proof.
-    unfold truncate, rep.
+    unfold resize, rep.
     step.
     rewrite subtree_extract; eauto. cancel.
     step.
     apply pimpl_or_r; right. cancel.
+    match goal with
+    | [ |- context[(BFILE.Build_bfile ?data ?attr)] ] =>
+      instantiate (f' := BFILE.Build_bfile data attr)
+    end.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
+    eauto.
   Qed.
 
   Theorem getlen_ok : forall fsxp inum mscs,
@@ -2199,7 +2206,7 @@ Module DIRTREE.
   Hint Extern 1 ({{_}} progseq (write _ _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
-  Hint Extern 1 ({{_}} progseq (truncate _ _ _ _) _) => apply truncate_ok : prog.
+  Hint Extern 1 ({{_}} progseq (resize _ _ _ _) _) => apply resize_ok : prog.
   Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.
   Hint Extern 1 ({{_}} progseq (setattr _ _ _ _) _) => apply setattr_ok : prog.
