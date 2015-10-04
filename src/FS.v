@@ -255,47 +255,41 @@ Proof.
 Qed.
 
 
-Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
+Definition file_resize T fsxp inum newlen mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-  mscs <- DIRTREE.setattr fsxp inum
-                          (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr))
-                          mscs;
-  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, ok).
+  let^ (mscs, ok) <- DIRTREE.resize fsxp inum newlen mscs;
+  If (bool_dec ok true) {
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+    rx ^(mscs, ok)
+  } else {
+    mscs <- LOG.abort (FSXPLog fsxp) mscs;
+    rx ^(mscs, false)
+  }.
 
-Theorem file_set_sz_ok : forall fsxp inum sz mscs,
-  {< m pathname Fm Ftop tree f,
+Theorem file_resize_ok : forall fsxp inum newlen mscs,
+  {< m pathname Fm Ftop tree f bytes,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ BYTEFILE.rep bytes f ]] *
+         [[ goodSize addrlen newlen ]]
   POST RET:^(mscs, ok)
          [[ ok = false ]] * LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs \/
          (exists m', LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m') mscs * 
-          exists tree' f' attr, [[ ok = true ]] *
+          exists tree' f' bytes', [[ ok = true ]] *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f) (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]])
+         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]])
   CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-           exists tree' f' attr, 
+           exists tree' f' bytes',
          (Fm * DIRTREE.rep fsxp Ftop tree')*
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]])
-
-  >} file_set_sz fsxp inum sz mscs.
+         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]])
+  >} file_resize fsxp inum newlen mscs.
 Proof.
-  unfold file_set_sz.
+  unfold file_resize.
   hoare.
   all: try rewrite LOG.activetxn_would_recover_old.
   all: try rewrite LOG.notxn_would_recover_old.
@@ -304,7 +298,7 @@ Proof.
   cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (file_set_sz  _ _ _ _) _) => apply file_set_sz_ok : prog.
+Hint Extern 1 ({{_}} progseq (file_resize  _ _ _ _) _) => apply file_resize_ok : prog.
 
 Ltac recover_rw_ok := unfold forall_helper; intros; eexists; intros; eapply pimpl_ok3;
   [eapply corr3_from_corr2_rx; eauto with prog | idtac ];
@@ -312,34 +306,30 @@ Ltac recover_rw_ok := unfold forall_helper; intros; eexists; intros; eapply pimp
   match goal with H: crash_xform _ =p=> _ |- crash_xform _ * _ =p=> _ => rewrite H end; cancel; step.
 
 
-Theorem file_set_sz_recover_ok : forall fsxp inum sz mscs,
-  {<< m pathname Fm Ftop tree f,
+Theorem file_resize_recover_ok : forall fsxp inum newlen mscs,
+  {<< m pathname Fm Ftop tree f bytes,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+         [[ BYTEFILE.rep bytes f ]] *
+         [[ goodSize addrlen newlen ]]
   POST RET:^(mscs, ok)
          [[ ok = false ]] * LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs \/
          (exists m', LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m') mscs * 
-          exists tree' f' attr, [[ ok = true ]] *
+          exists tree' f' bytes', [[ ok = true ]] *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]])
+         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]])
   REC RET:^(mscs, fsxp)   
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-           exists tree' f' attr,
+           exists tree' f' bytes',
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]] *
-         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
-  >>} file_set_sz fsxp inum sz mscs >> recover.
+         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]]
+  >>} file_resize fsxp inum newlen mscs >> recover.
 Proof.
   recover_rw_ok.
 Qed.

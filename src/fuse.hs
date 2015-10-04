@@ -422,7 +422,7 @@ fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
     Just (inum, isdir)
       | isdir -> return eISDIR
       | otherwise -> do
-        (ok, ()) <- fr $ FS.file_set_sz fsxp inum (W64 $ fromIntegral size)
+        (ok, ()) <- fr $ FS.file_resize fsxp inum (fromIntegral size)
         if ok then
           return eOK
         else
