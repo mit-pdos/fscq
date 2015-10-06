@@ -10,6 +10,8 @@ Require Import Omega.
 Require Import Ring.
 Require Import SepAuto.
 Require Import ListPred.
+Require Import AsyncDisk.
+Require Import ListUtils.
 
 Set Implicit Arguments.
 
@@ -27,8 +29,8 @@ Set Implicit Arguments.
  * object that maps inode numbers (list positions) into files (or None, if the
  * inode number is too big).  For now, this always uses [addr] as the index.
  *)
-Definition list2mem (A: Type) (l: list A) : @mem addr (@weq addrlen) A :=
-  fun a => sel (map (@Some A) l) a None.
+Definition list2mem (A: Type) (l: list A) : @mem addr addr_eq_dec A :=
+  fun a => selN (map (@Some A) l) a None.
 
 Theorem list2mem_ptsto_bounds: forall A F (l: list A) i x,
   (F * i |-> x)%pred (list2mem l) -> wordToNat i < length l.

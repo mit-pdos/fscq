@@ -1,5 +1,5 @@
 Require Import Mem.
-Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
+Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array ListUtils.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
@@ -56,7 +56,7 @@ Section LISTPRED.
 
   Variable T : Type.
   Variable AT : Type.
-  Variable AEQ : DecEq AT.
+  Variable AEQ : EqDec AT.
   Variable V : Type.
   Variable prd : T -> @pred AT AEQ V.
 
@@ -276,7 +276,7 @@ Section LISTMATCH.
   Variable A : Type.
   Variable B : Type.
   Variable AT : Type.
-  Variable AEQ : DecEq AT.
+  Variable AEQ : EqDec AT.
   Variable V : Type.
   Variable prd : A -> B -> @pred AT AEQ V.
 

@@ -1,4 +1,4 @@
-Require Import Prog.
+Require Import Prog AsyncDisk.
 
 Set Implicit Arguments.
 
