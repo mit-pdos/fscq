@@ -843,6 +843,98 @@ Module BYTEFILE.
 
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
 
+  Definition getlen T fsxp inum mscs rx : prog T :=
+    let^ (mscs, attr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    rx ^(mscs, INODE.ISize attr).
+
+  Theorem getlen_ok: forall fsxp inum mscs,
+    {< m mbase F Fm A flist f bytes attr,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ rep bytes attr f ]]
+    POST RET: ^(mscs, len)
+         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+         [[ len = $ (length bytes) ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} getlen fsxp inum mscs.
+  Proof.
+    unfold getlen.
+    step.
+    step.
+    erewrite rep_length by eauto.
+    rewrite natToWord_wordToNat.
+    congruence.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
+
+
+  Definition getattr T fsxp inum mscs rx : prog T :=
+    let^ (mscs, attr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    rx ^(mscs, Build_bytefile_attr attr.(INODE.IMTime) attr.(INODE.IType) attr.(INODE.IDev)).
+
+  Lemma rep_attr : forall bytes attr f,
+    rep bytes attr f ->
+    attr = Build_bytefile_attr f.(BFILE.BFAttr).(INODE.IMTime)
+                               f.(BFILE.BFAttr).(INODE.IType)
+                               f.(BFILE.BFAttr).(INODE.IDev).
+  Proof.
+    unfold rep. intuition deex.
+    destruct attr; simpl in *.
+    congruence.
+  Qed.
+
+  Theorem getattr_ok: forall fsxp inum mscs,
+    {< m mbase F Fm A flist f bytes attr,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ rep bytes attr f ]]
+    POST RET: ^(mscs, a)
+         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+         [[ a = attr ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} getattr fsxp inum mscs.
+  Proof.
+    unfold getattr.
+    step.
+    step.
+    erewrite rep_attr by eauto; congruence.
+  Qed.
+
+  Definition setattr T fsxp inum newattr mscs rx : prog T :=
+    let^ (mscs, iattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
+            (INODE.Build_iattr iattr.(INODE.ISize)
+                               newattr.(FMTime) newattr.(FType) newattr.(FDev))
+            mscs;
+    rx mscs.
+
+  Theorem setattr_ok: forall fsxp inum newattr mscs,
+    {< m mbase F Fm A flist f bytes attr,
+    PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
+        [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
+        [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
+        [[ rep bytes attr f ]]
+    POST RET: mscs
+         exists m' flist' f',
+         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
+         [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
+         [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
+         [[ rep bytes newattr f' ]]
+    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
+    >} setattr fsxp inum newattr mscs.
+  Proof.
+    unfold setattr.
+    step.
+    step.
+    step.
+    unfold rep in *; repeat deex; simpl.
+    eexists.
+    intuition eauto.
+  Qed.
+
   Theorem rep_unique : forall bytes1 bytes2 attr1 attr2 bf,
     rep bytes1 attr1 bf -> rep bytes2 attr2 bf -> bytes1 = bytes2 /\ attr1 = attr2.
   Proof.
