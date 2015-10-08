@@ -6,7 +6,7 @@ import re
 import collections
 import sys
 
-CODE_BEGIN = re.compile(r"""(Definition|Fixpoint|Function|Program Definition) (?P<name>\w*)""")
+CODE_BEGIN = re.compile(r"""(Theorem|Lemma|Definition|Fixpoint|Function|Program Definition) (?P<name>\w*)""")
 CODE_END = re.compile(r"""\.\s*$""")
 LOOP_INIT = re.compile(r"\b(ForEach|For)\b")
 LOOP_BEGIN = re.compile(r"Begin")
@@ -15,6 +15,7 @@ class Snippet:
     def __init__(self):
         self.fname = None
         self.name = None
+        self.is_thm = False
         self.is_prog = False
         self.lines = []
 
@@ -48,7 +49,9 @@ class CodeBox:
             begin = CODE_BEGIN.search(line)
             if begin:
                 self._cur_snippet.name = begin.group("name")
-                if re.search("rx", line):
+                if re.search("(Theorem|Lemma)", line):
+                    self._cur_snippet.is_thm = True
+                elif re.search("rx", line):
                     self._cur_snippet.is_prog = True
                 self._cur_snippet.fname = fname
                 self.is_code = True
@@ -60,9 +63,25 @@ class CodeBox:
             snippets[snippet.name].append(snippet)
         return snippets
 
+def any_non_thm(snippet_list):
+    for snippet in snippet_list:
+        if not snippet.is_thm:
+            return True
+    return False
+
+def ok_thm_prog(snippet):
+    if not snippet.is_thm:
+        return None
+    m = re.match("^(\w*)_ok", snippet.name)
+    if m is None:
+        return None
+    return m.group(1)
+
 def dependencies(snippet, snippets):
     """
     Get the dependencies of a snippet from a collection of definitions.
+
+    There must be a dependency on a non-theorem.
 
     :param snippet: a Snippet
     :param snippets: a dict name -> [Snippet] of global definitions
@@ -71,7 +90,7 @@ def dependencies(snippet, snippets):
     deps = set([])
     for line in snippet.lines:
         for word in re.split("[ .]", line):
-            if word in snippets:
+            if any_non_thm(snippets[word]) and word != ok_thm_prog(snippet):
                 deps.add(word)
     return deps
 
@@ -109,14 +128,28 @@ if __name__ == "__main__":
     parser.add_argument("file", nargs="+")
     parser.add_argument("-o", "--output",
             help="file to output all discovered code to")
+    parser.add_argument("-m", "--main",
+            help="file to start program dependency search from")
+    parser.add_argument("-s", "--specs",
+            action="store_true",
+            help="get dependencies for all specs")
+
+    ## Example usages:
+    # How much functional code is required to implement FSCQ without any specs?
+    # ./find_code.py -o code.v -m FS.v *.v
+    #
+    # How much code is required to specify FSCQ, from the perspective of the
+    # TCB? This is a fair estimate since it includes all definitions that are
+    # part of the specs.
+    # ./find_code.py -o top-specs.v -m FS.v --specs *.v
+    #
+    # How much specification is required? This is one form of proof burden for
+    # the developer, and also includes definitions required to write the specs.
+    # ./find_code.py -o all-specs.v --specs *.v
 
     args = parser.parse_args()
 
     import sys
-
-    output = sys.stdout
-    if args.output:
-        output = open(args.output, "w")
 
     box = CodeBox()
     for fname in args.file:
@@ -126,9 +159,29 @@ if __name__ == "__main__":
             for line in f:
                 box.add_line(line, fname)
 
+    if args.main is None:
+        main_box = box
+    else:
+        main_box = CodeBox()
+        with open(args.main) as f:
+            for line in f:
+                main_box.add_line(line, fname)
+
+    if args.specs:
+        spec_filter = lambda s: s.is_thm
+    else:
+        spec_filter = lambda s: s.is_prog
+
+    main_names = set([s.name for s in main_box.snippets if spec_filter(s)])
+
     file_snippets = collections.defaultdict(list)
-    for snippet in prog_dependencies(box):
+    for snippet in transitive_dependencies(main_names, box.index()):
         file_snippets[snippet.fname].append(snippet)
+
+    output = sys.stdout
+    if args.output:
+        output = open(args.output, "w")
+
     for fname, snippets in file_snippets.items():
         if snippets:
             output.write("(* File: {} *)\n".format(fname))
