@@ -71,14 +71,21 @@ Inductive lock_protocol (lvar : var Mcontents Mutex) (tid : ID) :  M Mcontents -
 
 Hint Constructors lock_protocol.
 
+Variable diskR : DISK -> DISK -> Prop.
+
+Hypothesis diskR_stutter : forall vd, diskR vd vd.
+
+Hint Resolve diskR_stutter.
+
 Definition cacheR tid : Relation Mcontents S :=
   fun dms dms' =>
-    let '(d, m, _) := dms in
-    let '(d', m', _) := dms' in
+    let '(d, m, vd) := dms in
+    let '(d', m', vd') := dms' in
     lock_protocol CacheL tid m m' /\
     lock_protects CacheL Cache tid m m' /\
     lock_protects_disk CacheL tid m d d' /\
-    forall a v, d a = Some v -> exists v', d' a = Some v'.
+    (forall a v, d a = Some v -> exists v', d' a = Some v') /\
+    diskR vd vd'.
 
 Definition cacheI : Invariant Mcontents S :=
   fun m s d =>
@@ -179,6 +186,9 @@ Definition state_m (dms: DISK * M Mcontents * S) :=
 Definition state_d (dms: DISK * M Mcontents * S) :=
   let '(d, _, _) := dms in d.
 
+Definition state_s (dms: DISK * M Mcontents * S) :=
+  let '(_, _, s) := dms in s.
+
 Lemma cache_readonly' : forall tid dms dms',
     get CacheL (state_m dms) = Locked tid ->
     othersR cacheR tid dms dms' ->
@@ -261,6 +271,21 @@ Proof.
   eauto using sectors_unchanged''.
 Qed.
 
+Lemma star_diskR : forall tid dms dms',
+    star (othersR cacheR tid) dms dms' ->
+    star diskR (state_s dms) (state_s dms').
+Proof.
+  induction 1; eauto.
+  eapply star_trans; try eassumption.
+  eapply star_step; [| eauto].
+  unfold othersR, cacheR in *; deex.
+  repeat match goal with
+         | [ s: DISK * M Mcontents * S |- _ ] =>
+           destruct s as [ [] ]
+         end.
+  intuition.
+Qed.
+
 Lemma disk_readonly : forall tid dms dms',
     get CacheL (state_m dms) = Locked tid ->
     star (othersR cacheR tid) dms dms' ->
@@ -325,6 +350,19 @@ Ltac sectors_unchanged := match goal with
                             pose proof (sectors_unchanged _ _ _ H) as H';
                               cbn in H'
                           end.
+Ltac star_diskR := match goal with
+                   | [ H: star _ _ _ |- _ ] =>
+                     let H' := fresh in
+                     pose proof H as H';
+                       apply star_diskR in H';
+                       cbn in H'
+                   end.
+
+Ltac learn_invariants :=
+  try cache_locked;
+  try disk_locked;
+  try sectors_unchanged;
+  try star_diskR.
 
 (** These proofs are still very messy. There's a lot of low-level
 manipulations of memories to prove/use the cache_pred in service of
@@ -563,9 +601,7 @@ Ltac keep_older_pred :=
 
 Ltac simplify :=
   step_simplifier;
-  try cache_locked;
-  try disk_locked;
-  try sectors_unchanged;
+  learn_invariants;
   subst;
   try keep_older_pred;
   cleanup.
@@ -611,7 +647,7 @@ Theorem locked_disk_read_ok : forall a,
                   s0 = s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                         d' |= cache_pred (get Cache m') vd' /\
-                        vd' |= F * a |-> v /\
+                        vd' = virt_disk s /\
                         r = v /\
                         get CacheL m' = Locked tid /\
                         s0' = s'
@@ -679,12 +715,11 @@ Theorem locked_async_disk_read_ok : forall a,
                   s0 = s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                         d' |= cache_pred (get Cache m') vd' /\
-                        vd' |= F * a |-> v /\
+                        vd' = virt_disk s /\
                         r = v /\
                         get CacheL m' = Locked tid /\
                         s0' = s'
     }} locked_async_disk_read a.
-Proof.
   unfold locked_async_disk_read.
   hoare.
   pose proof H0 as H';
@@ -706,9 +741,11 @@ Anomaly: Evar ?X13997 was not declared. Please report. *)
                 solve_get_set).
 Qed.
 
+Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
+
 Definition disk_read {T} a rx : prog _ _ T :=
   AcquireLock CacheL;;
-              v <- locked_disk_read a;
+              v <- locked_async_disk_read a;
               Assgn CacheL Open;;
               rx v.
 
@@ -769,12 +806,13 @@ Theorem disk_read_ok : forall a,
                             exists F' v',
                               d' |= cache_pred (get Cache m') vd' /\
                               vd' |= F' * a |-> v' /\
-                              (* star (othersR cacheR tid) (d, m, s) (d', m, s') /\ *)
+                              star diskR s s' /\
                               r = v' /\
                               get CacheL m' = Open /\
                               s0' = s'
     }} disk_read a.
 Proof.
+  Hint Resolve ptsto_valid_iff.
   unfold disk_read.
   intros.
   step pre simplify with finish.
@@ -782,21 +820,14 @@ Proof.
   apply ptsto_valid' in H0.
   eapply cache_pred_match; eauto.
   step pre (cbn; intuition; repeat deex;
-            try disk_locked;
-            try cache_locked;
-            try sectors_unchanged) with idtac.
+            learn_invariants) with idtac.
   specialize (H3 _ _ H2).
   deex.
   assert (exists v, s1 a = Some v).
   eexists.
   unfold pred_in in *.
   eapply cache_pred_match'; eauto.
-  simpl_post.
-  unfold pred_in.
-  apply ptsto_valid_iff; eauto.
+  simpl_post; eauto.
 
   hoare pre simplify with finish.
-
-  Grab Existential Variables.
-  all: auto.
 Qed.

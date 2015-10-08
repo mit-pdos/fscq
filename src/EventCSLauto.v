@@ -16,7 +16,7 @@ Ltac intros_pre :=
 
 (* simplify the postcondition obligation to its components *)
 Ltac simpl_post :=
-  cbn;
+  cbn; unfold pred_in;
   (* the intention here is to unfold /\'s and instantiate existentials
      before creating evars; something that just broke conjunctions would
      be better than [intuition]. *)
