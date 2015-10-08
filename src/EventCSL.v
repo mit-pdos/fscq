@@ -131,7 +131,17 @@ Section EventCSL.
       tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, set v val m, s0, s)
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
-  Hint Constructors step.
+  Inductive fail_step (tid:ID) : prog -> state -> Prop :=
+  | FailStepRead : forall a d m s0 s rx, d a = None ->
+                                    fail_step tid (Read a rx) (d, m, s0, s)
+  | FailStepWrite : forall a v d m s0 s rx, d a = None ->
+                                       fail_step tid (Write a v rx) (d, m, s0, s)
+  | FailStepAcquireLock : forall l d m s0 s rx, (~StateI m s d) ->
+                                           fail_step tid (AcquireLock l rx) (d, m, s0, s)
+  | FailStepYield : forall d m s0 s rx, (~StateI m s d) ->
+                                   fail_step tid (Yield rx) (d, m, s0, s).
+
+  Hint Constructors step fail_step.
 
   Ltac inv_step :=
     match goal with
@@ -149,74 +159,39 @@ Section EventCSL.
       exec tid st' p' out ->
       exec tid st p out
   | ExecFail : forall st p,
-      (~ exists st' p', tid :- p / st ==> p' / st') ->
-      (forall v, p <> Done v) ->
+      fail_step tid p st ->
       exec tid st p Failed
   | ExecDone : forall d m s0 s v,
       exec tid (d, m, s0, s) (Done v) (Finished d v).
 
   Hint Constructors exec.
 
-  Ltac invalid_address :=
+  Ltac inv_fail_step :=
     match goal with
-    | [ H: ~ exists st' p', step _ _ _ _ _ |- context[?d ?a = None] ] =>
-      case_eq (d a); auto; intros;
-      try solve [ contradiction H;
-                  eauto ]
-    end.
-
-  Ltac no_step :=
-    match goal with
-    | [  |- ~ (exists st' p', step _ _ _ _ _) ] =>
-      let Hcontra := fresh in
-      intro Hcontra;
-        repeat deex;
-        inversion Hcontra; congruence
+    | [ H: context[fail_step] |- _ ] =>
+      inversion H; subst
     end.
 
   Ltac address_failure :=
-    intros; split; intros;
-    try invalid_address;
-    try no_step.
+    intros; inv_fail_step; eauto; congruence.
 
-  Theorem read_failure_iff : forall tid d m s0 s rx a,
-      (~ exists st' p', tid :- Read a rx / (d, m, s0, s) ==> p' / st') <->
-      d a = None.
+  Theorem read_failure : forall tid d m s0 s rx a v,
+      fail_step tid (Read a rx) (d, m, s0, s) ->
+      d a = Some v ->
+      False.
   Proof.
     address_failure.
   Qed.
 
-  Ltac sigT_eq :=
-    match goal with
-    | [ H: @eq (sigT _) _ _ |- _ ] =>
-      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
-        subst
-    end.
-
-  Ltac not_sidecondition_fail :=
-    intros; intro Hcontra;
-    repeat deex;
-    inv_step;
-    repeat sigT_eq;
-    congruence.
-
-  Theorem write_failure_iff : forall tid d m s0 s v rx a,
-      (~ exists st' p', tid :- Write a v rx / (d, m, s0, s) ==> p' / st') <->
-      d a = None.
+  Theorem write_failure : forall tid d m s0 s v rx a v0,
+      fail_step tid (Write a v rx) (d, m, s0, s) ->
+      d a = Some v0 ->
+      False.
   Proof.
-    address_failure;
-    try not_sidecondition_fail;
-    intuition eauto.
+    address_failure.
   Qed.
 
-  Theorem yield_failure : forall tid d m s0 s rx,
-      (~StateI m s d) ->
-      (~ exists st' p', tid :- Yield rx / (d, m, s0, s) ==> p' / st').
-  Proof.
-    not_sidecondition_fail.
-  Qed.
-
-  Hint Extern 2 (forall v, _ <> Done v) => intro; congruence.
+  Hint Resolve read_failure write_failure.
 
   Definition donecond := T -> @pred addr (@weq addrlen) valu.
 
@@ -294,9 +269,14 @@ Section EventCSL.
   Ltac opcode_ok :=
     intros_pre; ind_exec;
     match goal with
-    | [ H: step _ _ _ _ _ |- _ ] =>
+    | [ H: context[step] |- _ ] =>
       prove_rx; simpl_post
-    | [ H: ~ exists st' p', step _ _ _ _ _ |- _ ] =>
+    | [ H: context[fail_step] |- _ ] =>
+      try solve [ inversion H; congruence ];
+        try match goal with
+        | [ Ha: context[ptsto] |- _ ] =>
+          apply ptsto_valid' in Ha
+        end;
       exfalso
     end; eauto 10.
 
@@ -313,15 +293,6 @@ Section EventCSL.
     eapply pimpl_apply; [| eapply ptsto_upd].
     cancel.
     pred_apply; cancel.
-    match goal with
-    | [ H: ~ exists st' p', step _ _ _ _ _ |- _] =>
-      apply write_failure_iff in H
-    end.
-    match goal with
-    | [ H: context[ptsto a  _] |- _ ] =>
-      apply ptsto_valid' in H
-    end.
-    intuition; congruence.
   Qed.
 
   Theorem read_ok : forall a v0,
@@ -339,16 +310,14 @@ Section EventCSL.
     eapply ptsto_valid; eauto.
     pred_apply; cancel.
     congruence.
-    match goal with
-    | [ H: ~ exists st' p', step _ _ _ _ _ |- _ ] =>
-      apply read_failure_iff in H
-    end.
-    match goal with
-    | [ H: context[ptsto a _] |- _ ] =>
-      apply ptsto_valid' in H
-    end.
-    congruence.
   Qed.
+
+  Ltac sigT_eq :=
+    match goal with
+    | [ H: @eq (sigT _) _ _ |- _ ] =>
+      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
+        subst
+    end.
 
   Theorem get_ok : forall t (v: var t),
       tid |- {{ (_:unit),
@@ -389,18 +358,6 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  (** This is a bit dangerous, but assumes that we don't get stuck
-      acquiring a lock because the invariants don't allow us to give
-      you the lock. For our lock protocol, it's always possible to  *)
-  Definition lock_step_available := forall tid d m s l,
-      (d |= StateI m s)%judgement ->
-      exists d' m' s',
-        let m'' := set l (Locked tid) m' in
-        (d' |= StateI m'' s')%judgement /\
-        star (StateR' tid) (d, m, s) (d', m', s') /\
-        StateR tid (d', m', s') (d', m'', s') .
-  Hypothesis lock_step_is_available : lock_step_available.
-
   Theorem acquire_lock_ok : forall l,
       tid |- {{ (_:unit),
              | PRE d m s0 s: d |= StateI m s /\
@@ -413,16 +370,11 @@ Section EventCSL.
                  get l m'' = Locked tid /\
                  s0' = s'
             }} AcquireLock l.
-              (* Proof. here removes lock_step_available (possibly a bug) *)
-              opcode_ok.
-              eexists; intuition.
-              subst m''.
-              rewrite get_set; auto.
-              edestruct lock_step_is_available; eauto; repeat deex.
-              (* strangely, eauto doesn't find this *)
-              apply H0.
-              repeat eexists.
-              constructor; eauto.
+  Proof.
+    opcode_ok.
+    eexists; intuition.
+    subst m''.
+    simpl_get_set.
   Qed.
 
   Theorem yield_ok :

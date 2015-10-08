@@ -90,32 +90,6 @@ on the definitions directly *)
 Hint Unfold lock_protects_disk lock_protects : prog.
 Hint Unfold cacheR cacheI : prog.
 
-Theorem locks_are_all_CacheL : forall (l:var Mcontents Mutex),
-    l = CacheL.
-Proof.
-  intros.
-  unfold Mcontents in l.
-  unfold var in l.
-  unfold CacheL.
-  dependent destruction l.
-  contradict x0.
-  admit. (* types are inequal *)
-
-  dependent destruction l.
-  auto.
-  inversion l.
-Admitted.
-
-Theorem locks_are_not_caches : forall (l : var Mcontents Mutex),
-    member_index l <> member_index Cache.
-Proof.
-  intros.
-  rewrite (locks_are_all_CacheL l).
-  cbn; auto.
-Qed.
-
-Hint Resolve locks_are_not_caches.
-
 Ltac solve_get_set :=
   simpl_get_set;
   try match goal with
@@ -143,23 +117,6 @@ Ltac dispatch :=
           eapply star_step; [| apply star_refl];
           eauto 10
       end.
-
-Theorem cache_lock_step_available : lock_step_available cacheR cacheI.
-Proof.
-  unfold lock_step_available.
-  repeat (autounfold with prog); unfold pred_in; unfold cache_pred.
-  intros.
-  rewrite (locks_are_all_CacheL l).
-  exists d.
-  case_eq (get CacheL m); intros.
-  - dispatch.
-  - case_eq (PeanoNat.Nat.eq_dec tid0 tid); intros.
-    * dispatch.
-    * exists (set CacheL Open m), s.
-      dispatch.
-Qed.
-
-Hint Resolve cache_lock_step_available : prog.
 
 Definition cacheS : transitions Mcontents S :=
   Build_transitions cacheR cacheI.
@@ -202,8 +159,7 @@ Hint Rewrite get_set.
 Ltac valid_match_opt :=
   match goal with
   | [ |- valid _ _ _ _ (match ?discriminee with
-                       | None => _
-                       | Some _ => _
+                       | _ => _
                        end) ] =>
     case_eq discriminee; intros
   end.
