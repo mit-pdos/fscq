@@ -883,15 +883,15 @@ Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :
   }.
 
 Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
-  {< m Ftop tree cwd tree_elem,
+  {< m Ftop Fm tree cwd tree_elem,
   PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-          [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
           [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
   POST RET:^(mscs,ok)
           [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
           [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
           [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
@@ -900,7 +900,7 @@ Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
           [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
   CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
           exists srcnum srcents dstnum dstents subtree pruned renamed tree',
-          (DIRTREE.rep fsxp Ftop tree')%pred *
+          (Fm * DIRTREE.rep fsxp Ftop tree')%pred *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
           [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
           [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
@@ -921,15 +921,15 @@ Qed.
 Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
 Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
-  {<< m Ftop tree cwd tree_elem,
+  {<< m Ftop Fm tree cwd tree_elem,
   PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-          [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
           [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
   POST RET:^(mscs,ok)
           [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
           [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
           [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
@@ -940,7 +940,7 @@ Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname msc
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
           exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
           [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
           [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
           [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
