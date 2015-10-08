@@ -835,4 +835,13 @@ Module BYTEFILE.
 
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
 
+  Theorem rep_unique : forall bytes1 bytes2 bf,
+    rep bytes1 bf -> rep bytes2 bf -> bytes1 = bytes2.
+  Proof.
+    unfold rep, bytes_rep; intros.
+    repeat deex.
+    pose proof (array_item_file_eq H0 H).
+    congruence.
+  Qed.
+
 End BYTEFILE.
