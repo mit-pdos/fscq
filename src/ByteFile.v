@@ -903,6 +903,9 @@ Module BYTEFILE.
     erewrite rep_attr by eauto; congruence.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.
+
+
   Definition setattr T fsxp inum newattr mscs rx : prog T :=
     let^ (mscs, iattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
@@ -934,6 +937,9 @@ Module BYTEFILE.
     eexists.
     intuition eauto.
   Qed.
+
+  Hint Extern 1 ({{_}} progseq (setattr _ _ _ _) _) => apply setattr_ok : prog.
+
 
   Theorem rep_unique : forall bytes1 bytes2 attr1 attr2 bf,
     rep bytes1 attr1 bf -> rep bytes2 attr2 bf -> bytes1 = bytes2 /\ attr1 = attr2.
