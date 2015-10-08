@@ -152,13 +152,13 @@ Definition file_get_attr T fsxp inum mscs rx : prog T :=
   rx ^(mscs, attr).
 
 Theorem file_getattr_ok : forall fsxp inum mscs,
-  {< m pathname Fm Ftop tree f,
+  {< m pathname Fm Ftop tree bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
   POST RET:^(mscs,r)
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ r = BFILE.BFAttr f ]]
+         [[ r = attr ]]
   CRASH  LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m
   >} file_get_attr fsxp inum mscs.
 Proof.
@@ -194,13 +194,13 @@ Ltac recover_ro_ok := intros;
 
 
 Theorem file_getattr_recover_ok : forall fsxp inum mscs,
-  {<< m pathname Fm Ftop tree f,
+  {<< m pathname Fm Ftop tree bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
   POST RET:^(mscs,r)
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ r = BFILE.BFAttr f ]]
+         [[ r = attr ]]
   REC RET:^(mscs, fsxp)
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs 
   >>} file_get_attr fsxp inum mscs >> recover.
@@ -211,19 +211,18 @@ Qed.
 
 Definition file_get_sz T fsxp inum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
+  let^ (mscs, len) <- DIRTREE.getlen fsxp inum mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, INODE.ISize attr).
+  rx ^(mscs, len).
 
 Theorem file_get_sz_ok : forall fsxp inum mscs,
-  {< m F Fm Ftop tree pathname f bytes,
+  {< m F Fm Ftop tree pathname bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ BYTEFILE.rep bytes f ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
   POST RET:^(mscs, sz)
          LOG.rep fsxp.(FSXPLog) F (NoTransaction m) mscs *
-         [[ # sz = length bytes ]]
+         [[ sz = $ (length bytes) ]]
   CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
   >} file_get_sz fsxp inum mscs.
 Proof.
@@ -239,14 +238,13 @@ Qed.
 Hint Extern 1 ({{_}} progseq (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
 
 Theorem file_get_sz_recover_ok : forall fsxp inum mscs,
-  {<< m Fm Ftop tree pathname f bytes,
+  {<< m Fm Ftop tree pathname bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ BYTEFILE.rep bytes f ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
   POST RET:^(mscs, sz)
          LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ # sz = length bytes ]]
+         [[ sz = $ (length bytes) ]]
   REC RET:^(mscs, fsxp)
          LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs
   >>} file_get_sz fsxp inum mscs >> recover.
@@ -267,25 +265,22 @@ Definition file_resize T fsxp inum newlen mscs rx : prog T :=
   }.
 
 Theorem file_resize_ok : forall fsxp inum newlen mscs,
-  {< m pathname Fm Ftop tree f bytes,
+  {< m pathname Fm Ftop tree bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ BYTEFILE.rep bytes f ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]] *
          [[ goodSize addrlen newlen ]]
   POST RET:^(mscs, ok)
          [[ ok = false ]] * LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs \/
          (exists m', LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m') mscs * 
-          exists tree' f' bytes', [[ ok = true ]] *
+          exists tree' bytes', [[ ok = true ]] *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
          [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]])
   CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-           exists tree' f' bytes',
+           exists tree' bytes',
          (Fm * DIRTREE.rep fsxp Ftop tree')*
-         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
          [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]])
   >} file_resize fsxp inum newlen mscs.
 Proof.
@@ -307,76 +302,28 @@ Ltac recover_rw_ok := unfold forall_helper; intros; eexists; intros; eapply pimp
 
 
 Theorem file_resize_recover_ok : forall fsxp inum newlen mscs,
-  {<< m pathname Fm Ftop tree f bytes,
+  {<< m pathname Fm Ftop tree bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ BYTEFILE.rep bytes f ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]] *
          [[ goodSize addrlen newlen ]]
   POST RET:^(mscs, ok)
          [[ ok = false ]] * LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs \/
          (exists m', LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m') mscs * 
-          exists tree' f' bytes', [[ ok = true ]] *
+          exists tree' bytes', [[ ok = true ]] *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
          [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]])
   REC RET:^(mscs, fsxp)   
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-           exists tree' f' bytes',
+           exists tree' bytes',
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ BYTEFILE.rep bytes' f' ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
          [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]]
   >>} file_resize fsxp inum newlen mscs >> recover.
 Proof.
   recover_rw_ok.
-Qed.
-
-Definition read_block T fsxp inum off mscs rx : prog T :=
-  mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, b) <- DIRTREE.read fsxp inum off mscs;
-  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, b).
-
-Theorem read_block_ok : forall fsxp inum off mscs,
-  {< m F Fm Ftop tree pathname f B v,
-  PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
-         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
-         [[ r = v ]]
-  CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
-  >} read_block fsxp inum off mscs.
-Proof.
-  unfold read_block.
-  hoare.
-  apply LOG.would_recover_old_either.
-  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
-  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
-Qed.
-
-Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
-
-
-
-Theorem read_block_recover_ok : forall fsxp inum off mscs,
-  {<< m Fm Ftop tree pathname f B v,
-  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ r = v ]]
-  REC RET:^(mscs,fsxp)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
-  >>} read_block fsxp inum off mscs >> recover.
-Proof.
-  recover_ro_ok.
 Qed.
 
 
@@ -387,11 +334,10 @@ Definition read_bytes T fsxp inum off len mscs rx : prog T :=
   rx ^(mscs, data).
 
 Theorem read_bytes_ok : forall fsxp inum off len mscs,
-  {< m F Fm Ftop tree pathname f bytes,
+  {< m F Fm Ftop tree pathname bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ BYTEFILE.rep bytes f ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
   POST RET:^(mscs,b)
          exists Fx v,
          LOG.rep fsxp.(FSXPLog) F (NoTransaction m) mscs *
@@ -399,8 +345,7 @@ Theorem read_bytes_ok : forall fsxp inum off len mscs,
          [[ @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type (BYTEFILE.buf_len b))
            (BYTEFILE.buf_data b) = v ]] *
          (* non-error guarantee *)
-         [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
-            0 < BYTEFILE.buf_len b ]]
+         [[ 0 < len -> off < length bytes -> 0 < BYTEFILE.buf_len b ]]
   CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
   >} read_bytes fsxp inum off len mscs.
 Proof.
@@ -414,11 +359,10 @@ Qed.
 Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
 
 Theorem read_bytes_recover_ok : forall fsxp inum off len mscs,
-  {<< m Fm Ftop tree pathname f bytes,
+  {<< m Fm Ftop tree pathname bytes attr,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ BYTEFILE.rep bytes f ]]
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
   POST RET:^(mscs,b)
        exists Fx v,
        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -426,120 +370,13 @@ Theorem read_bytes_recover_ok : forall fsxp inum off len mscs,
        [[ @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type (BYTEFILE.buf_len b))
          (BYTEFILE.buf_data b) = v ]] *
        (* non-error guarantee *)
-       [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
-          0 < BYTEFILE.buf_len b ]]
+       [[ 0 < len -> off < length bytes -> 0 < BYTEFILE.buf_len b ]]
   REC RET:^(mscs,fsxp)
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
   >>} read_bytes fsxp inum off len mscs >> recover.
 Proof.
   recover_ro_ok.
 Qed.
-
-Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
-  mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
-  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, ok).
-
-Theorem write_block_inbounds_ok : forall fsxp inum off v mscs,
-  {< m Fm flist A f B v0,
-  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
-  POST RET:^(mscs,ok)
-          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-          [[ ok = true ]] * exists m' flist' f',
-          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
-  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-          exists flist' f',
-          (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred
-  >} write_block_inbounds fsxp inum off v mscs.
-Proof.
-  unfold write_block_inbounds.
-  hoare.
-  rewrite <- LOG.would_recover_either_pred_pimpl. cancel.
-  rewrite <- LOG.would_recover_old_either_pred. cancel.
-  rewrite <- LOG.would_recover_old_either_pred.
-  unfold LOG.rep, LOG.would_recover_old, LOG.would_recover_old'. cancel. cancel.
-  rewrite <- LOG.would_recover_old_either_pred.
-  unfold LOG.rep, LOG.would_recover_old, LOG.would_recover_old'. cancel. cancel.
-Qed.
-
-Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.
-
-Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
-  {<< flist A f B v0 Fm m,
-  PRE     [[ cachesize <> 0 ]] *
-          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist *
-            [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-            [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]])%pred (list2mem m) ]]
-  POST RET:^(mscs,ok)
-          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-          [[ ok = true ]] * exists m',
-          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
-            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
-  REC RET:^(mscs,fsxp)
-          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
-          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (exists flist' f', Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' *
-            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-            [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred (list2mem m') ]]
-  >>} write_block_inbounds fsxp inum off v mscs >> recover.
-Proof.
-  unfold forall_helper; intros.
-  eexists.
-
-  intros.
-  eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx; eauto with prog.
-
-  cancel; eauto.
-  step.
-
-  autorewrite with crash_xform.
-  rewrite H3.
-  cancel.
-  step.
-Qed.
-
-Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
-  mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
-  let^ (mscs, curlen) <- BFILE.bflen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
-  mscs <- IfRx irx (wlt_dec off curlen) {
-    irx mscs
-  } else {
-    let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum (off ^+ $1) mscs;
-    If (bool_dec ok true) {
-      irx mscs
-    } else {
-      mscs <- LOG.abort (FSXPLog fsxp) mscs;
-      rx ^(mscs, false)
-    }
-  };
-  mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
-  mscs <- IfRx irx (wlt_dec (INODE.ISize oldattr) newsz) {
-    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
-                            (INODE.Build_iattr newsz
-                                               (INODE.IMTime oldattr)
-                                               (INODE.IType oldattr)
-                                               (INODE.IDev oldattr))
-                            mscs;
-    irx mscs
-  } else {
-    irx mscs
-  };
-  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, ok).
 
 Definition update_bytes T fsxp inum off len (data:bytes len) mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -548,32 +385,27 @@ Definition update_bytes T fsxp inum off len (data:bytes len) mscs rx : prog T :=
   rx ^(mscs, ok).
 
 Theorem update_bytes_ok: forall fsxp inum off len (newbytes:bytes len) mscs,
-   {< m pathname Fm Ftop tree f bytes olddata Fx,
+   {< m pathname Fm Ftop tree bytes attr olddata Fx,
    PRE LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-       [[ BYTEFILE.rep bytes f ]] *
+       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]] *
        [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
        [[ length olddata = len ]]
    POST RET: ^(mscs, ok)
        [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
        [[ ok = true ]] *
-       exists m' tree' f' bytes',
+       exists m' tree' bytes',
        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
        [[ let newdata := @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
-          (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-       [[ BYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+          (Fx * arrayN off newdata)%pred (list2nmem bytes') ]]
    CRASH LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-       exists tree' f' bytes',
+       exists tree' bytes',
        (Fm * DIRTREE.rep fsxp Ftop tree') *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
        [[ let newdata := @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
-          (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-       [[ BYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]] )
+          (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] )
    >} update_bytes fsxp inum off newbytes mscs.
 Proof.
   unfold update_bytes.
@@ -588,11 +420,10 @@ Qed.
 Hint Extern 1 ({{_}} progseq (update_bytes _ _ _ _ _) _) => apply update_bytes_ok : prog.
 
 Theorem update_bytes_recover_ok: forall fsxp inum off len (newbytes:bytes len) mscs,
-   {<< m pathname Fm Ftop tree f bytes olddata newdata Fx,
+   {<< m pathname Fm Ftop tree bytes attr olddata newdata Fx,
    PRE LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-       [[ BYTEFILE.rep bytes f ]] *
+       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]] *
        [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
        (* this spec uses an existential newdata since length olddata = len
           gives dependent type issues, at least when using the automation *)
@@ -602,22 +433,18 @@ Theorem update_bytes_recover_ok: forall fsxp inum off len (newbytes:bytes len) m
    POST RET: ^(mscs, ok)
        [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
        [[ ok = true ]] *
-       exists m' tree' f' bytes',
+       exists m' tree' bytes',
        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
-       [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-       [[ BYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
+       [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]]
     REC RET:^(mscs,fsxp)
       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-      exists m' tree' f' bytes',
+      exists m' tree' bytes',
        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
-       [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-       [[ BYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
+       [[ (Fx * arrayN off newdata)%pred (list2nmem bytes') ]]
    >>} update_bytes fsxp inum off newbytes mscs >> recover.
 Proof.
   (* recover_rw_ok fails in step *)
@@ -655,36 +482,31 @@ Definition append T fsxp inum off len (data:bytes len) mscs rx : prog T :=
   }.
 
 Theorem append_ok: forall fsxp inum off len (newbytes:bytes len) mscs,
-   {< m pathname Fm Ftop tree Fi f bytes,
+   {< m pathname Fm Ftop tree Fi bytes attr,
    PRE LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-       [[ BYTEFILE.rep bytes f ]] *
+       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]] *
        [[ Fi (list2nmem bytes) ]] *
        [[ goodSize addrlen (off + len) ]] *
        (* makes this an append *)
-       [[ BYTEFILE.filelen f <= off ]]
+       [[ length bytes <= off ]]
    POST RET: ^(mscs, ok)
        [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
        [[ ok = true ]] *
-       exists m' tree' f' bytes' zeros,
+       exists m' tree' bytes' zeros,
        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
        [[ let newdata := @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
            (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-       [[ zeros = arrayN (BYTEFILE.filelen f)
-            (repeat $0 (off - (BYTEFILE.filelen f))) ]]
+       [[ zeros = arrayN (length bytes) (repeat $0 (off - length bytes)) ]]
    CRASH LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-       exists tree' f' bytes' zeros,
+       exists tree' bytes' zeros,
        (Fm * DIRTREE.rep fsxp Ftop tree') *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
        [[ let newdata := @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
             (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-       [[ zeros = arrayN (BYTEFILE.filelen f)
-          (repeat $0 (off - (BYTEFILE.filelen f))) ]] )
+       [[ zeros = arrayN (length bytes) (repeat $0 (off - length bytes)) ]] )
    >} append fsxp inum off newbytes mscs.
 Proof.
   unfold append.
@@ -699,38 +521,33 @@ Qed.
 Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
 
 Theorem append_recover_ok: forall fsxp inum off len (newbytes:bytes len) mscs,
-   {<< m pathname Fm Ftop tree Fi f bytes,
+   {<< m pathname Fm Ftop tree Fi bytes attr,
    PRE LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-       [[ BYTEFILE.rep bytes f ]] *
+       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]] *
        [[ Fi (list2nmem bytes) ]] *
        [[ goodSize addrlen (off + len) ]] *
        (* makes this an append *)
-       [[ BYTEFILE.filelen f <= off ]]
+       [[ length bytes <= off ]]
    POST RET: ^(mscs, ok)
        [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
        [[ ok = true ]] *
-       exists m' tree' f' bytes' zeros,
+       exists m' tree' bytes' zeros,
        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
        [[ let newdata := @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
            (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-       [[ zeros = arrayN (BYTEFILE.filelen f)
-            (repeat $0 (off - (BYTEFILE.filelen f))) ]]
+       [[ zeros = arrayN (length bytes) (repeat $0 (off - length bytes)) ]]
    REC RET: ^(mscs,fsxp)
       LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-      exists m' tree' f' bytes' zeros,
+      exists m' tree' bytes' zeros,
        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-       [[ BYTEFILE.rep bytes' f' ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes' attr) tree ]] *
        [[ let newdata := @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type len) newbytes in
             (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-       [[ zeros = arrayN (BYTEFILE.filelen f)
-          (repeat $0 (off - (BYTEFILE.filelen f))) ]]
+       [[ zeros = arrayN (length bytes) (repeat $0 (off - length bytes)) ]]
    >>} append fsxp inum off newbytes mscs >> recover.
 Proof.
   recover_rw_ok.
@@ -773,7 +590,7 @@ Theorem readdir_recover_ok: forall fsxp dnum mscs,
   >>} readdir fsxp dnum mscs >> recover.
 Proof.
   recover_ro_ok.
-Qed.  
+Qed.
 
 Definition create T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -784,7 +601,7 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     rx ^(mscs, None)
   | Some inum =>
     mscs <- DIRTREE.setattr fsxp inum
-                            (INODE.Build_iattr $0 $0 $0 $0) mscs;
+                            (BYTEFILE.Build_bytefile_attr $0 $0 $0) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
@@ -802,13 +619,13 @@ Theorem create_ok : forall fsxp dnum name mscs,
            (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
             exists inum tree', [[ r = Some inum ]] *
             [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                         (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
+                         (DIRTREE.TreeFile inum nil BYTEFILE.attr0) tree ]] *
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
   CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
             exists inum tree',
             (Fm * DIRTREE.rep fsxp Ftop tree') *
             [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                         (DIRTREE.TreeFile inum BFILE.bfile0) tree ]])
+                         (DIRTREE.TreeFile inum nil BYTEFILE.attr0) tree ]])
   >} create fsxp dnum name mscs.
 Proof.
   unfold create.
@@ -840,14 +657,14 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
           (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
             exists inum tree', [[ r = Some inum ]] *
             [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                         (DIRTREE.TreeFile inum BFILE.bfile0) tree  ]] *
+                         (DIRTREE.TreeFile inum nil BYTEFILE.attr0) tree  ]] *
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
   REC RET:^(mscs,fsxp)
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
           LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
            exists inum tree',
             [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                         (DIRTREE.TreeFile inum BFILE.bfile0) tree  ]] *
+                         (DIRTREE.TreeFile inum nil BYTEFILE.attr0) tree  ]] *
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} create fsxp dnum name mscs >> recover.
 Proof.
@@ -862,8 +679,8 @@ Definition mkdev T fsxp dnum name type dev mscs rx : prog T :=
     mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
-                            (INODE.Build_iattr $0 $0 type dev) mscs;
+    mscs <- DIRTREE.setattr fsxp inum
+                            (BYTEFILE.Build_bytefile_attr $0 type dev) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
