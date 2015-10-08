@@ -165,8 +165,6 @@ Module AsyncRecArray (RA : RASig).
   Hint Resolve divup_ge.
 
 
-  Definition itemlist := list item.
-
   Fixpoint list_chunk' {A} (l : list A) (sz : nat) (def : A) (nr : nat) : list (list A) :=
     match nr with
     | S n => setlen l sz def :: (list_chunk' (skipn sz l) sz def n)
@@ -176,35 +174,6 @@ Module AsyncRecArray (RA : RASig).
   (** cut list l into chunks of lists of length sz, pad the tailing list with default value def *)
   Definition list_chunk {A} l sz def : list (list A) :=
     list_chunk' l sz def (divup (length l) sz).
-
-  Inductive state : Type :=
-  | Synced : itemlist -> state
-  | Unsync : itemlist -> state
-  .
-
-  (** a variant of array where only the latest valu in the valuset is defined *)
-  Definition unsync_array start l: rawpred :=
-    (exists vs, [[ length vs = length l ]] *
-     arrayN start (combine l vs) )%pred.
-
-  Definition synced_array start l: rawpred :=
-    (arrayN start (combine l (repeat nil (length l))) )%pred.
-
-  (** rep invariant *)
-  Definition rep_common xp items vlist := 
-       Forall Rec.well_formed items
-    /\ length items <= (RALen xp) * items_per_val
-    /\ vlist = map block2val (list_chunk items items_per_val item0).
-
-  Definition array_rep xp (st : state) :=
-   (match st with
-    | Synced items => exists vlist,
-        [[ rep_common xp items vlist ]] *
-        synced_array (RAStart xp) vlist
-    | Unsync items => exists vlist,
-        [[ rep_common xp items vlist ]] * 
-        unsync_array (RAStart xp) vlist
-    end)%pred.
 
   Lemma list_chunk'_length: forall A nr l sz (def : A),
       length (list_chunk' l sz def nr) = nr.
@@ -419,6 +388,67 @@ Module AsyncRecArray (RA : RASig).
     unfold eqlen; simpl; intros.
     apply length_nil; auto.
   Qed.
+
+  (* combined array *)
+  Definition carray start vl vsl : rawpred :=
+    ([[ length vl = length vsl ]] *
+    arrayN start (combine vl vsl))%pred.
+
+  (* combined spliced array *)
+  Definition csarray s1 vl1 vsl1 s2 vl2 vsl2 : rawpred :=
+    ([[ length vl1 = length vsl2 /\ length vl2 = length vsl2 ]] *
+    arrayN s1 (combine vl1 vsl1) * arrayN s2 (combine vl2 vsl2)) %pred.
+
+  Definition nils n := @repeat (list valu) nil n.
+
+  (* optional value to valuset *)
+  Definition optvalu := option valu.
+
+  Definition ov2vs (ov : optvalu) : list valu := 
+    match ov with
+    | None => nil
+    | Some v => [v]
+    end.
+
+  (* optional valu list to valu set list *)
+  Definition ovl2vsl (ovl : list optvalu) : list (list valu) := map ov2vs ovl.
+
+  Definition synced_array start vl: rawpred :=
+    carray start vl (nils (length vl)).
+
+  (** a variant of array where only the latest valu in the valuset is defined *)
+  Definition unsync_array start vl ovl: rawpred :=
+    (carray start vl (ovl2vsl ovl))%pred.
+
+  Definition ov_synced v (ov : optvalu) : Prop :=
+    ov = None \/ ov = Some v.
+
+  Definition itemlist := list item.
+
+  Definition optlist := list (option item).
+
+  Definition .
+
+  (** rep invariant *)
+  Inductive state : Type :=
+  | Synced : itemlist -> state
+  | Unsync : itemlist -> optlist -> state
+  .
+
+  Definition rep_common xp items vlist := 
+       Forall Rec.well_formed items
+    /\ length items <= (RALen xp) * items_per_val
+    /\ vlist = map block2val (list_chunk items items_per_val item0).
+
+  Definition array_rep xp (st : state) :=
+   (match st with
+    | Synced items => exists vlist,
+        [[ rep_common xp items vlist ]] *
+        synced_array (RAStart xp) vlist
+    | Unsync items => exists vlist,
+        [[ rep_common xp items vlist ]] * 
+        unsync_array (RAStart xp) vlist
+    end)%pred.
 
 
   Local Hint Unfold array_rep rep_common synced_array unsync_array item xparams_ok: hoare_unfold.

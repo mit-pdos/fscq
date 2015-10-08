@@ -268,10 +268,10 @@ Module BUFCACHE.
       rep cs d * [[ (F * a |-> v0)%pred d ]]
     POST RET:cs
       exists d',
-      rep cs d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
+      rep cs d' * [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
     CRASH
       exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * a |-> (v, valuset_list v0))%pred d' ]]
+      exists d', rep cs' d' * [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
     >} write a v cs.
   Proof.
     unfold write.
@@ -546,13 +546,13 @@ Module BUFCACHE.
       rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
     POST RET:cs
       exists d', rep cs d' *
-      [[ (F * arrayN a (upd_prepend vs i v))%pred d' ]]
+      [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
     CRASH
       exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * arrayN a (upd_prepend vs i v))%pred d' ]]
+      exists d', rep cs' d' * [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
     >} write_array a i v cs.
   Proof.
-    unfold write_array, upd_prepend.
+    unfold write_array, vsupd.
     hoare.
 
     rewrite isolateN_fwd with (i:=i) by auto. cancel.
@@ -576,13 +576,13 @@ Module BUFCACHE.
       rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
     POST RET:cs
       exists d', rep cs d' *
-      [[ (F * arrayN a (upd_sync vs i ($0, nil)))%pred d' ]]
+      [[ (F * arrayN a (vssync vs i))%pred d' ]]
     CRASH
       exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * arrayN a (upd_sync vs i ($0, nil)))%pred d' ]]
+      exists d', rep cs' d' * [[ (F * arrayN a (vssync vs i))%pred d' ]]
     >} sync_array a i cs.
   Proof.
-    unfold sync_array, upd_sync.
+    unfold sync_array, vssync.
     hoare.
 
     rewrite isolateN_fwd with (i:=i) by auto. cancel.

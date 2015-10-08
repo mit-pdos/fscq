@@ -55,7 +55,7 @@ Inductive recover_outcome (TF TR: Type) :=
 Definition possible_crash (m m' : rawdisk) : Prop :=
   forall a,
   (m a = None /\ m' a = None) \/
-  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
+  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (vsmerge vs)).
 
 Inductive exec_recover (TF TR: Type)
     : rawdisk -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=

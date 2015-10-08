@@ -17,11 +17,11 @@ Fixpoint arrayN {V : Type} (a : addr) (vs : list V) : @pred _ addr_eq_dec _ :=
     | v :: vs' => a |-> v * arrayN (S a) vs'
   end%pred.
 
-Definition upd_prepend (vs : list valuset) (i : addr) (v : valu) : list valuset :=
-  updN vs i (v, valuset_list (selN vs i ($0, nil))).
+Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
+  updN vs i (v, vsmerge (selN vs i ($0, nil))).
 
-Definition upd_sync (vs : list valuset) (i : addr) (default : valuset) : list valuset :=
-  updN vs i (fst (selN vs i default), nil).
+Definition vssync (vs : list valuset) (i : addr) : list valuset :=
+  updN vs i (fst (selN vs i ($0, nil)), nil).
 
 
 Lemma isolateN_fwd' : forall V vs i a (default : V),

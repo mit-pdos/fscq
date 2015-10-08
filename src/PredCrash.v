@@ -178,7 +178,7 @@ Proof.
 Qed.
 
 Theorem crash_xform_ptsto: forall a v,
-  crash_xform (a |-> v) =p=> exists v', [[ In v' (valuset_list v) ]] * a |=> v'.
+  crash_xform (a |-> v) =p=> exists v', [[ In v' (vsmerge v) ]] * a |=> v'.
 Proof.
   unfold crash_xform, possible_crash, ptsto, pimpl; intros.
   repeat deex; destruct (H1 a).

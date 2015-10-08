@@ -65,4 +65,4 @@ Notation "'valuset'" := (valu * list valu)%type.
 
 (* Async-disk *)
 Definition rawdisk := @mem addr addr_eq_dec valuset.
-Definition valuset_list (vs : valuset) := fst vs :: snd vs.
+Definition vsmerge (vs : valuset) : list valu := fst vs :: snd vs.

@@ -56,7 +56,7 @@ Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
   PRE        a |-> v0
-  POST RET:r a |-> (v, valuset_list v0)
+  POST RET:r a |-> (v, vsmerge v0)
   CRASH      a |-> v0
   >} Write a v.
 Proof.
@@ -67,7 +67,7 @@ Proof.
     eapply H4; eauto.
     eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
     apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H10; inversion H10; subst; unfold valuset_list; simpl.
+    rewrite H in H10; inversion H10; subst; unfold vsmerge; simpl.
     cancel.
   - exfalso.
     apply H1. repeat eexists.
