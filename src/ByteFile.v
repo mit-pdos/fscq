@@ -50,6 +50,8 @@ Module BYTEFILE.
     FDev : word 64
   }.
 
+  Definition attr0 := Build_bytefile_attr $0 $0 $0.
+
   (* The bytes of a file are mapped onto a list of blocks:   *)
   (*   [ block 0 ... block n]                                *)
   (*   <-- allbytes      -->                                 *)
