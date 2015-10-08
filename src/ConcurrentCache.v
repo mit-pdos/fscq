@@ -756,6 +756,52 @@ Definition disk_read {T} a rx : prog _ _ T :=
               Assgn CacheL Open;;
               rx v.
 
+Lemma cache_pred_match : forall a v c vd d,
+    cache_pred c vd d ->
+    vd a = Some v ->
+    d a = Some v.
+Proof.
+  unfold cache_pred, mem_union.
+  intuition.
+  case_eq (cache_mem c a); intros.
+  apply equal_f with a in H1.
+  rewrite H in H1.
+  apply H2; eauto.
+  congruence.
+  apply equal_f with a in H1.
+  rewrite H in H1.
+  congruence.
+Qed.
+
+Lemma cache_pred_match' : forall a v c vd d,
+    cache_pred c vd d ->
+    d a = Some v ->
+    vd a = Some v.
+Proof.
+  unfold cache_pred, mem_union.
+  intuition.
+  case_eq (cache_mem c a); intros.
+  apply equal_f with a in H1.
+  rewrite H in H1.
+  apply H2 in H.
+  congruence.
+  apply equal_f with a in H1.
+  rewrite H in H1.
+  congruence.
+Qed.
+
+Lemma cache_pred_mem_eq : forall c vd d,
+    cache_pred c vd d ->
+    vd = d.
+Proof.
+  intros.
+  apply functional_extensionality; intro a.
+  case_eq (vd a); intros.
+  eapply cache_pred_match in H0; eauto.
+  case_eq (d a); intros; eauto.
+  eapply cache_pred_match' in H1; eauto; congruence.
+Qed.
+
 Theorem disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
@@ -777,20 +823,24 @@ Proof.
   intros.
   step pre simplify with finish.
   assert (d a = Some v).
-  admit.
+  apply ptsto_valid' in H0.
+  eapply cache_pred_match; eauto.
   step pre (cbn; intuition; repeat deex;
             try disk_locked;
             try cache_locked;
             try sectors_unchanged) with idtac.
   specialize (H3 _ _ H2).
   deex.
+  assert (exists v, s1 a = Some v).
+  eexists.
+  unfold pred_in in *.
+  eapply cache_pred_match'; eauto.
   simpl_post.
   unfold pred_in.
-  instantiate (F := any).
-  admit. (* this might be a complicated derivation... *)
+  apply ptsto_valid_iff; eauto.
 
   hoare pre simplify with finish.
 
   Grab Existential Variables.
   all: auto.
-Admitted.
+Qed.
