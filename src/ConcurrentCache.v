@@ -67,7 +67,9 @@ Hint Unfold cache_mem : prog.
 Definition cache_pred c vd : @pred addr (@weq addrlen) valu :=
   fun d => vd = mem_union (cache_mem c) d /\
          (* this is only true for the clean addresses *)
-         forall a v, cache_get c a = Some (false, v) -> d a = Some v.
+         (forall a v, cache_get c a = Some (false, v) -> d a = Some v) /\
+         (* there's something on disk for even dirty addresses *)
+         (forall a v, cache_get c a = Some (true, v) -> exists v', d a = Some v').
 
 (** given a lock variable and some other variable v, generate a relation for tid
 over memory that makes the variable read-only for non-owners. *)
@@ -471,7 +473,7 @@ Hint Extern 3 (eq _ _) => congruence : mem_equalities.
 Ltac prove_cache_pred :=
   intros; repeat match goal with
   | [ |- context[cache_pred] ] =>
-    autounfold with cache; split;
+    autounfold with cache; intuition;
     disk_equalities
   | [ H_cache_pred: context[cache_pred] |- _ ] =>
     autounfold with cache in H_cache_pred; intuition;
@@ -534,7 +536,7 @@ Proof.
   prove_cache_pred;
     distinguish_addresses;
     replace_cache_vals;
-    auto.
+    eauto.
 Qed.
 
 Lemma cache_pred_address : forall c vd a v,
@@ -549,7 +551,7 @@ Proof.
   exists (mem_except m a).
   exists (fun a' => if weq a' a then Some v else None).
   unfold mem_except.
-  prove_cache_pred; distinguish_addresses; replace_cache_vals; auto.
+  prove_cache_pred; distinguish_addresses; replace_cache_vals; eauto.
   destruct (m a'); auto.
   unfold mem_disjoint; intro; repeat deex.
   distinguish_addresses.
@@ -558,48 +560,6 @@ Proof.
 Qed.
 
 Hint Resolve cache_pred_address.
-
-Lemma cache_pred_address' : forall c vd a v,
-    cache_get c a = None ->
-    vd a = Some v ->
-    cache_pred c (mem_except vd a) * a |-> v =p=>
-cache_pred c vd.
-Proof.
-  unfold pimpl.
-  intros.
-  unfold_sep_star in H1.
-  repeat deex.
-  unfold cache_pred in *; intuition.
-  apply functional_extensionality; intro a'.
-  unfold mem_union, cache_mem.
-  pose proof H2 as H2a.
-  pose proof H2 as H2a'.
-  apply equal_f with a in H2a.
-  unfold mem_except, mem_union, cache_mem in H2a.
-  apply equal_f with a' in H2a'.
-  unfold mem_except, mem_union, cache_mem in H2a'.
-  case_eq (cache_get c a'); distinguish_addresses;
-  try replace (cache_get c a') in *;
-  try replace (cache_get c a) in *;
-  try congruence.
-  destruct p as [ [] ].
-  apply pimpl_apply with (q := (a |-> v * emp)%pred) in H5; try cancel.
-  apply ptsto_valid in H5.
-  congruence.
-  case_eq (m1 a'); intros; subst; try congruence.
-  replace (m1 a).
-  unfold ptsto in H5.
-  intuition.
-  replace (m1 a').
-  case_eq (vd a'); intros; auto.
-  unfold ptsto in H5.
-  intuition.
-  erewrite H9; eauto.
-
-  unfold mem_union.
-  apply H4 in H3.
-  replace (m1 a0); auto.
-Qed.
 
 Lemma cache_pred_hit :  forall c vd d a b v,
     cache_pred c vd d ->
@@ -670,7 +630,7 @@ Lemma cache_pred_stable_add : forall c vd a v d,
     vd a = Some v ->
     cache_get c a = None ->
     cache_pred c vd d ->
-cache_pred (cache_add c a v) vd d.
+    cache_pred (cache_add c a v) vd d.
 Proof.
   intros.
 
@@ -682,8 +642,8 @@ Proof.
     replace_cache_vals;
     try rewrite cache_get_eq in *;
     try rewrite cache_get_neq in * by auto;
-    auto.
-  inv_opt; auto.
+    try inv_opt;
+    eauto.
 Qed.
 
 Hint Resolve cache_pred_stable_add.
@@ -782,9 +742,9 @@ Definition disk_read {T} a rx : prog _ _ T :=
               Assgn CacheL Open;;
               rx v.
 
-Lemma cache_pred_same_sectors : forall c a vd d,
+Lemma cache_pred_same_sectors : forall c vd d,
     cache_pred c vd d ->
-    (forall v, d a = Some v ->
+    (forall a v, d a = Some v ->
           exists v', vd a = Some v').
 Proof.
   intros.
@@ -801,38 +761,39 @@ Proof.
   replace (vd a); eauto.
 Qed.
 
-Lemma virtual_sectors_unchanged' : forall tid dms dms',
-    othersR cacheR tid dms dms' ->
-    (forall a v, state_s dms a = Some v ->
-            exists v', state_s dms' a = Some v').
+Lemma cache_pred_same_sectors' : forall c vd d,
+    cache_pred c vd d ->
+    (forall a v, vd a = Some v ->
+          exists v', d a = Some v').
 Proof.
   intros.
-  (* neither cache_pred nor the relation guarantee this; non-disk
-addresses can freely be cached, as long as they're also added to the
-virtual disk. *)
-Admitted.
-
-Lemma virtual_sectors_unchanged : forall tid dms dms',
-    star (othersR cacheR tid) dms dms' ->
-    (forall a v, state_s dms a = Some v ->
-            exists v', state_s dms' a = Some v').
-Proof.
-  induction 1; intros; eauto.
+  case_eq (cache_get c a); intros.
+  prove_cache_pred.
+  destruct p as [ [] ]; eauto.
   match goal with
-  | [ H: othersR cacheR _ _ _ |- _ ] =>
-    pose proof (virtual_sectors_unchanged' _ _ _ H)
+  | [ H: context[cache_pred] |- _ ] =>
+    eapply cache_miss_mem_eq in H; eauto
   end.
-  match goal with
-  | [ H: context[_ -> exists _, _] |- _ ] =>
-    edestruct H; now eauto
-  end.
+  replace (d a); eauto.
 Qed.
 
-Ltac vd_sectors_unchanged :=
-  match goal with
-  | [ H: star _ _ _ |- _ ] =>
-    let H' := fresh in
-    pose proof (virtual_sectors_unchanged _ _ _ H)
+Lemma cache_pred_sector_domain : forall c vd d,
+    cache_pred c vd d ->
+    (forall a, (exists v, vd a = Some v) <-> exists v', d a = Some v').
+Proof.
+  intros.
+  split; intros; deex;
+  eauto using cache_pred_same_sectors, cache_pred_same_sectors'.
+Qed.
+
+Ltac learn_fact H :=
+  match type of H with
+    | ?t =>
+      match goal with
+      | [ H': t |- _ ] =>
+        fail 2 "already knew that" H'
+      | _ => pose proof H
+      end
   end.
 
 Theorem disk_read_ok : forall a,
@@ -857,12 +818,23 @@ Proof.
   intros.
   step pre simplify with finish.
   step pre (cbn; intuition; repeat deex;
-            learn_invariants;
-            try vd_sectors_unchanged) with idtac.
+            learn_invariants) with idtac.
   learn_some_addr.
-  match goal with
-    | [ H: context[_ -> exists _, _] |- _ ] =>
-    edestruct H; [ now eauto | ]
+  unfold pred_in in *.
+  repeat match goal with
+         | [ H: cache_pred _ _ _ |- _ ] =>
+           learn_fact (cache_pred_same_sectors _ _ _ H) ||
+                      learn_fact (cache_pred_same_sectors' _ _ _ H)
+         end.
+  (* follow the chain of sector equalities until you can't produce a
+  term about a new disk *)
+  repeat match goal with
+  | [ Hmem: context[_ -> exists _, ?d _ = _] |- _ ] =>
+    edestruct Hmem; [ now eauto | ];
+    match goal with
+    | [ H: d _ = _, H': d _ = _ |- _ ] => fail 1
+    | _ => idtac
+    end
   end.
 
   simpl_post; eauto.
