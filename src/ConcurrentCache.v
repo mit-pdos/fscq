@@ -17,16 +17,13 @@ Section MemCache.
   Definition AssocCache := list cache_entry.
   Definition cache_add (c:AssocCache) a v := Clean a v :: c.
 
-  (* both of these are probably not needed *)
-  Definition cache_add_dirty (c:AssocCache) a v := Dirty a v :: c.
-
-  Fixpoint cache_dirty (c:AssocCache) a0 :=
+  Fixpoint cache_dirty (c:AssocCache) a0 v' :=
     match c with
     | nil => nil
     | Clean a v :: c' =>
-      if (weq a a0) then Dirty a v :: cache_dirty c' a0
-      else Clean a v :: cache_dirty c' a0
-    | Dirty a v :: c' => Dirty a v :: cache_dirty c' a0
+      (if (weq a a0) then Dirty a v' else Clean a v) :: cache_dirty c' a0 v'
+    | Dirty a v :: c' =>
+      (if (weq a a0) then Dirty a v' else Dirty a v) :: cache_dirty c' a0 v'
     end.
 
   (* returns (dirty, v) *)
@@ -39,6 +36,12 @@ Section MemCache.
     | Dirty a v :: c' =>
       if (weq a a0) then Some (true, v)
       else cache_get c' a0
+    end.
+
+  Definition cache_add_dirty (c:AssocCache) a v' :=
+    match (cache_get c a) with
+    | None => Dirty a v' :: c
+    | Some _ => cache_dirty c a v'
     end.
 
   Definition cache_mem c : DISK :=
@@ -507,18 +510,29 @@ Proof.
   prove_cache_pred.
 Qed.
 
-Ltac distinguish_addresses :=
-  match goal with
-  | [ a1 : addr, a2 : addr |- _ ] =>
+Ltac distinguish_two_addresses a1 a2 :=
     case_eq (weq a1 a2);
       case_eq (weq a2 a1);
       case_eq (weq a1 a1);
       intros;
       subst;
+      cbn;
       try replace (weq a1 a2) in *;
       try replace (weq a2 a1) in *;
       try replace (weq a1 a1) in *;
-      try congruence
+      try congruence.
+
+Ltac distinguish_addresses :=
+  match goal with
+  | [ a1 : addr, a2 : addr |- _ ] =>
+    match goal with
+      | [ H: context[if (weq a1 a2) then _ else _] |- _] =>
+        distinguish_two_addresses a1 a2
+      | [ |- context[if (weq a1 a2) then _ else _] ] =>
+        distinguish_two_addresses a1 a2
+    end
+  | [ a1 : addr, a2 : addr |- _ ] =>
+    distinguish_two_addresses a1 a2
   | [ a1 : addr |- _ ] =>
     case_eq (weq a1 a1);
       intros;
@@ -617,6 +631,47 @@ Proof.
   distinguish_addresses.
 Qed.
 
+Lemma cache_get_dirty_eq : forall c a v,
+    cache_get (cache_add_dirty c a v) a = Some (true, v).
+Proof.
+  intros.
+  unfold cache_add_dirty.
+  case_eq (cache_get c a); intros.
+  induction c; eauto; cbn in *; try congruence.
+  destruct p as [ [] ];
+    match goal with
+    | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+      destruct d
+    end;
+    distinguish_addresses; eauto.
+
+  cbn; distinguish_addresses.
+Qed.
+
+Lemma cache_get_dirty_neq : forall c a a' v,
+    a <> a' ->
+    cache_get (cache_add_dirty c a v) a' = cache_get c a'.
+Proof.
+  intros.
+  unfold cache_add_dirty.
+  case_eq (cache_get c a); intros.
+  (* this hypothesis has served its purpose and now just makes the induction difficult. *)
+  match goal with
+  | [ H: cache_get _ _ = _ |- _ ] => clear H
+  end.
+  induction c; intros; cbn in *; eauto.
+  match goal with
+  | [ |- context[match ?d with | _ => _ end] ] =>
+    case_eq d; intros
+  end; distinguish_addresses;
+  repeat match goal with
+         | [ |- context[if (weq ?a1 ?a2) then _ else _] ] =>
+           distinguish_two_addresses a1 a2
+         end; eauto.
+
+  cbn; distinguish_addresses.
+Qed.
+
 Lemma cache_get_neq : forall c a a' v,
     a <> a' ->
     cache_get (cache_add c a v) a' = cache_get c a'.
@@ -647,6 +702,30 @@ Proof.
 Qed.
 
 Hint Resolve cache_pred_stable_add.
+
+Hint Rewrite cache_get_dirty_eq : cache.
+Hint Rewrite cache_get_dirty_neq using (now auto) : cache.
+Hint Rewrite upd_eq : cache.
+Hint Rewrite upd_ne using (now auto) : cache.
+
+Lemma cache_pred_stable_dirty : forall c vd a v v' d,
+    vd a = Some v ->
+    cache_pred c vd d ->
+    cache_pred (cache_add_dirty c a v') (upd vd a v') d.
+Proof.
+  intros.
+  case_eq (cache_get c a); intros;
+  try match goal with
+      | [ p: bool * valu |- _ ] =>
+        destruct p as [ [] ]
+      end;
+  prove_cache_pred;
+  distinguish_addresses;
+  autorewrite with cache in *;
+  try inv_opt; eauto.
+  replace_cache_vals.
+  eauto.
+Qed.
 
 Ltac learn_mem_val m a :=
   let v := fresh "v" in
