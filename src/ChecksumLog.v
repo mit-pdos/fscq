@@ -24,17 +24,19 @@ Definition hash_block : addr := $2.
 
 Definition hash2 (a b : word valulen) := hash_to_valu (hash_fwd (Word.combine a b)).
 
-Definition rep a b : @pred addr (@weq addrlen) valuset :=
-  (block1 |-> (a, nil) *
+Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
+    @pred addr (@weq addrlen) valuset :=
+  [[ (block1 |-> (a, nil) *
    block2 |-> (b, nil) *
-   hash_block |-> (hash2 a b, nil) )%pred.
+   hash_block |-> (hash2 a b, nil) )%pred d ]].
 
-Definition crep a b a' b' : @pred addr (@weq addrlen) valuset :=
-  (block1 |->? *
+Definition crep a b a' b' (d : @mem addr (@weq addrlen) valuset) :
+    @pred addr (@weq addrlen) valuset :=
+  [[ (block1 |->? *
    block2 |->? *
    (hash_block |-> (hash2 a b, nil) \/
     hash_block |-> (hash2 a' b', hash2 a b :: nil) \/
-    hash_block |-> (hash2 a' b', nil)) )%pred.
+    hash_block |-> (hash2 a' b', nil)) )%pred d ]].
 
 
 (* Example "log" implementation using checksums *)
@@ -71,24 +73,52 @@ Theorem put_ok : forall cs d1 d2,
   {< d d1_old d2_old,
   PRE
     BUFCACHE.rep cs d *
-    rep d1_old d2_old
-  POST RET:cs
-    rep d1 d2
+    rep d1_old d2_old d
+  POST RET:cs'
+    exists d',
+      BUFCACHE.rep cs' d' *
+      rep d1 d2 d'
   CRASH
-    exists cs', BUFCACHE.rep cs' d *
-    crep d1_old d2_old d1 d2
+    exists cs' d',
+      BUFCACHE.rep cs' d' *
+      crep d1_old d2_old d1 d2 d'
   >} put cs d1 d2.
+Proof.
+  unfold put, rep, crep.
+  step.
+  step.
+  step.
+  step.
+  step.
+  step.
+  step.
+  step.
+  all: try (unfold hash2; cancel).
+  Grab Existential Variables.
+  all: eauto.
+Qed.
+
 
 Theorem get_ok : forall cs,
   {< d d1 d2,
   PRE
     BUFCACHE.rep cs d *
-    rep d1 d2
+    rep d1 d2 d
   POST RET:^(d1', d2')
+    exists cs', BUFCACHE.rep cs' d *
+    rep d1 d2 d *
     [[ d1 = d1' /\ d2 = d2' ]]
   CRASH
-    BUFCACHE.rep cs d
+    exists cs', BUFCACHE.rep cs' d *
+    rep d1 d2 d
   >} get cs.
+Proof.
+  unfold get, rep.
+  step.
+  step.
+  step.
+Qed.
+
 
 Theorem recover_ok : forall cs,
   {< d d1_old d2_old d1 d2,
