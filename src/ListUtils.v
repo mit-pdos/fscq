@@ -342,6 +342,20 @@ Proof.
   apply in_cons; auto.
 Qed.
 
+(** crush any small goals.  Do NOT use for big proofs! *)
+Ltac t' := intros; autorewrite with core; autorewrite with core in *;
+           eauto; simpl in *; intuition; eauto.
+Ltac t := repeat t'; subst; simpl; eauto.
+
+Lemma forall_skipn: forall A n (l : list A) p,
+  Forall p l -> Forall p (skipn n l).
+Proof.
+  induction n; t.
+  destruct l; t.
+  intros; apply IHn.
+  eapply Forall_cons2; eauto.
+Qed.
+
 Lemma updN_selN_eq : forall T (l : list T) ix default,
   updN l ix (selN l ix default) = l.
 Proof.
@@ -658,6 +672,27 @@ Proof.
   intros.
   rewrite H.
   apply firstn_plusone_selN; auto.
+Qed.
+
+Lemma firstn_S_selN : forall A n l (def : A),
+  n < length l ->
+  firstn (S n) l = firstn n l ++ [ (selN l n def) ].
+Proof.
+  intros.
+  replace (S n) with (n + 1) by omega.
+  apply firstn_plusone_selN; auto.
+Qed.
+
+Lemma firstn_S_selN_expand : forall A n l (def : A),
+  n < length l ->
+  match l with
+  | nil => nil
+  | a :: l => a :: firstn n l
+  end = firstn n l ++ [ (selN l n def) ].
+Proof.
+  intros.
+  rewrite <- firstn_S_selN by auto.
+  simpl; auto.
 Qed.
 
 Lemma firstn_updN_oob: forall A (l : list A) n i def,

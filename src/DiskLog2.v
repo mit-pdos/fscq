@@ -242,14 +242,6 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve setlen_wellformed : core.
 
-  Lemma forall_skipn: forall A n (l : list A) p,
-    Forall p l -> Forall p (skipn n l).
-  Proof.
-    induction n; t.
-    destruct l; t.
-    apply IHn.
-    eapply Forall_cons2; eauto.
-  Qed.
   Local Hint Resolve forall_skipn.
 
   Theorem list_chunk'_wellformed : forall nr items,
@@ -568,7 +560,7 @@ Module AsyncRecArray (RA : RASig).
       [[ (F * array_rep xp (Synced items))%pred d ]] *
       [[ let n := Nat.min (i * items_per_val)%nat count in
          firstn n pf = firstn n items /\ length pf = (i * items_per_val)%nat ]]
-    OnCrash   crash
+    OnCrash crash
     Begin
       let^ (cs, v) <- BUFCACHE.read_array (RAStart xp) i cs;
       lrx ^(cs, pf ++ (val2block v))
@@ -596,7 +588,7 @@ Module AsyncRecArray (RA : RASig).
     step; simplen.
     Unshelve. eauto.
   Qed.
-  
+
   Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.
 
 
@@ -724,12 +716,6 @@ Module AsyncRecArray (RA : RASig).
     rewrite firstn_length.
     rewrite Nat.min_l by omega.
     rewrite skipn_length; omega.
-  Qed.
-
-  Lemma array_unify : forall A (a b : list A) s k,
-    a = b -> array s a k =p=> array s b k.
-  Proof.
-    intros; subst; auto.
   Qed.
 
   Lemma write_all_progress : forall ix xp chunks tail prefix new lst' vs blocks elem,

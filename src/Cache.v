@@ -631,6 +631,164 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (trim_array _ _ _) _) => apply trim_array_ok : prog.
 
+
+  Definition read_range T A a nr (vfold : A -> valu -> A) a0 cs rx : prog T :=
+    let^ (cs, r) <- ForN i < nr
+    Ghost [ F crash d vs ]
+    Loopvar [ cs pf ]
+    Continuation lrx
+    Invariant
+      BUFCACHE.rep cs d * [[ (F * arrayN a vs)%pred d ]] *
+      [[ pf = fold_left vfold (firstn i (map fst vs)) a0 ]]
+    OnCrash  crash
+    Begin
+      let^ (cs, v) <- read_array a i cs;
+      lrx ^(cs, vfold pf v)
+    Rof ^(cs, a0);
+    rx ^(cs, r).
+
+
+  Theorem read_range_ok : forall A a nr vfold (a0 : A) cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ nr <= length vs ]]
+    POST RET:^(cs, r)
+      rep cs d * [[ r = fold_left vfold (firstn nr (map fst vs)) a0 ]]
+    CRASH
+      exists cs', rep cs' d
+    >} read_range a nr vfold a0 cs.
+  Proof.
+    unfold read_range; intros.
+    hoare.
+    cancel.
+    instantiate (2 := F); cancel.
+    omega.
+    subst.
+    rewrite firstn_S_selN_expand with (def := $0).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map by omega; auto.
+    rewrite map_length; omega.
+    cancel; eauto.
+    Unshelve. exact tt.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
+
+  Definition write_range T a l cs rx : prog T :=
+    let^ (cs) <- ForN i < length l
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_range vs (firstn i l)))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- write_array a i (selN l i $0) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+  Theorem write_range_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ length l <= length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_range vs l))%pred d' ]]
+    CRASH
+      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
+      [[ (F * arrayN a (vsupd_range vs (firstn n l)))%pred d' ]]
+    >} write_range a l cs.
+  Proof.
+    unfold write_range; intros.
+    step.
+    cancel.
+    instantiate (2:=F); cancel.
+
+    step.
+    cancel.
+    instantiate (2:=F); cancel.
+    rewrite vsupd_range_length; try omega.
+    rewrite firstn_length_l; omega.
+
+    step.
+    apply arrayN_unify.
+    erewrite firstn_S_selN_expand.
+    apply vsupd_range_progress; auto.
+    omega.
+
+    subst; pimpl_crash.
+    norm; try cancel; intuition; eauto.
+    rewrite Nat.min_l; eauto; omega.
+    rewrite Nat.min_l; eauto.
+    pred_apply; cancel.
+    apply arrayN_unify.
+    erewrite firstn_S_selN_expand.
+    apply vsupd_range_progress; auto.
+    omega.
+
+    step.
+    rewrite firstn_oob by omega; auto.
+    Unshelve. exact tt.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (write_range _ _ _) _) => apply write_range_ok : prog.
+
+  Definition sync_range T a nr cs rx : prog T :=
+    let^ (cs) <- ForN i < nr
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_range vs i))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- sync_array a i cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+  Theorem sync_range_ok : forall a n cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ n <= length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_range vs n))%pred d' ]]
+    CRASH
+      exists cs' d' m, rep cs' d' * [[ m <= n ]] *
+      [[ (F * arrayN a (vssync_range vs m))%pred d' ]]
+    >} sync_range a n cs.
+  Proof.
+    unfold sync_range; intros.
+    step.
+    cancel.
+
+    step.
+    cancel.
+    instantiate (2:=F); cancel.
+    rewrite vssync_range_length; try omega.
+
+    step.
+    apply arrayN_unify.
+    apply vssync_range_progress; omega.
+
+    subst; pimpl_crash.
+    norm; try cancel; intuition; eauto.
+    rewrite Nat.min_l; eauto; omega.
+    rewrite Nat.min_l; eauto.
+    pred_apply; cancel.
+    apply arrayN_unify.
+    apply vssync_range_progress; auto.
+    omega.
+
+    Unshelve. exact tt.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
+
   Lemma crash_xform_rep: forall cs m,
     crash_xform (rep cs m) =p=> exists m' cs', [[ possible_crash m m' ]] * rep cs' m'.
   Proof.

@@ -6,6 +6,8 @@ Require Import FunctionalExtensionality.
 Require Import WordAuto.
 Require Import AsyncDisk.
 
+Import ListNotations.
+
 Set Implicit Arguments.
 
 
@@ -17,12 +19,17 @@ Fixpoint arrayN {V : Type} (a : addr) (vs : list V) : @pred _ addr_eq_dec _ :=
     | v :: vs' => a |-> v * arrayN (S a) vs'
   end%pred.
 
-Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
-  updN vs i (v, vsmerge (selN vs i ($0, nil))).
+Fixpoint arrays {V : Type} (a : addr) (vs_list : list (list V)) : @pred _ addr_eq_dec _ :=
+  match vs_list with
+  | nil => emp
+  | vs :: l' => arrayN (a + length vs) l'
+  end.
 
-Definition vssync (vs : list valuset) (i : addr) : list valuset :=
-  updN vs i (fst (selN vs i ($0, nil)), nil).
-
+Lemma arrayN_unify : forall A (a b : list A) s,
+  a = b -> arrayN s a =p=> arrayN s b.
+Proof.
+  intros; subst; auto.
+Qed.
 
 Lemma isolateN_fwd' : forall V vs i a (default : V),
   i < length vs
@@ -109,7 +116,7 @@ Proof.
   apply isolateN_bwd; auto.
 Qed.
 
-Theorem arrayN_isolate_upd : forall V (v : V) a i vs,
+Theorem isolate_fwd_upd : forall V (v : V) a i vs,
   i < length vs
   -> arrayN a (updN vs i v) <=p=>
      arrayN a (firstn i vs)
@@ -133,10 +140,11 @@ Theorem isolateN_bwd_upd : forall V (v : V) a i vs,
 Proof.
   intros.
   erewrite <- isolateN_bwd with (vs:=updN vs i v) (i:=i) (default:=v).
+  rewrite selN_updN_eq by auto.
+  rewrite firstn_updN_oob by auto.
+  rewrite skipN_updN' by auto.
   cancel.
-  autorewrite with core.
-  cancel.
-  autorewrite with core.
+  rewrite length_updN.
   auto.
 Qed.
 
@@ -212,3 +220,113 @@ Proof.
   apply ptsto_mem_except in H0.
   eapply IHvs1; eauto.
 Qed.
+
+
+Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
+  updN vs i (v, vsmerge (selN vs i ($0, nil))).
+
+Definition vssync (vs : list valuset) (i : addr) : list valuset :=
+  updN vs i (fst (selN vs i ($0, nil)), nil).
+
+Definition vsupd_range (vsl : list valuset) (vl : list valu) :=
+  let n := length vl in
+  (List.combine vl (map vsmerge (firstn n vsl))) ++ skipn n vsl.
+
+Lemma vsupd_range_length : forall vsl l,
+  length l <= length vsl ->
+  length (vsupd_range vsl l) = length vsl.
+Proof.
+  unfold vsupd_range; intros.
+  rewrite app_length.
+  rewrite combine_length.
+  rewrite Nat.min_l.
+  rewrite skipn_length.
+  omega.
+  rewrite map_length.
+  rewrite firstn_length_l; auto.
+Qed.
+
+Lemma vsupd_range_nil : forall vsl,
+  vsupd_range vsl nil = vsl.
+Proof.
+  unfold vsupd_range; intros.
+  autorewrite with lists; simpl; auto.
+Qed.
+
+Lemma vsupd_range_progress : forall i vsl l,
+  length l <= length vsl -> i < length l ->
+    (vsupd (vsupd_range vsl (firstn i l)) i (selN l i $0))
+  = (vsupd_range vsl ((firstn i l) ++ [ selN l i $0 ])).
+Proof.
+  unfold vsupd, vsmerge; intros.
+  unfold vsupd_range.
+  autorewrite with lists; simpl.
+  repeat replace (length (firstn i l)) with i
+    by (rewrite firstn_length_l by omega; auto).
+  rewrite updN_app2.
+  erewrite firstn_plusone_selN by omega.
+  rewrite map_app.
+  rewrite combine_app
+    by (rewrite map_length; repeat rewrite firstn_length_l; omega).
+  rewrite <- app_assoc; f_equal; simpl.
+  rewrite combine_length; autorewrite with lists.
+  rewrite Nat.min_l; repeat rewrite firstn_length_l; try omega.
+  replace (i - i) with 0 by omega.
+  rewrite updN_0_skip_1 by (rewrite skipn_length; omega).
+  rewrite skipn_skipn'; f_equal; f_equal.
+  rewrite selN_app2.
+  rewrite combine_length; rewrite Nat.min_l;
+     autorewrite with lists; repeat rewrite firstn_length_l; try omega.
+  replace (i + (i - i)) with i by omega.
+  unfold vsmerge; auto.
+  all: rewrite combine_length_eq2; autorewrite with lists;
+    repeat rewrite firstn_length_l; omega.
+Qed.
+
+
+
+Definition vssync_range (vsl : list valuset) n :=
+  (List.combine (map fst (firstn n vsl)) (repeat nil n)) ++ skipn n vsl.
+
+Lemma vssync_range_length : forall vsl n,
+  n <= length vsl ->
+  length (vssync_range vsl n) = length vsl.
+Proof.
+  unfold vssync_range; intros.
+  autorewrite with lists.
+  rewrite combine_length.
+  rewrite Nat.min_l.
+  rewrite skipn_length.
+  autorewrite with lists.
+  rewrite firstn_length_l; omega.
+  autorewrite with lists.
+  rewrite firstn_length_l; omega.
+Qed.
+
+Lemma vssync_range_progress : forall vs m,
+  m < length vs ->
+  vssync (vssync_range vs m) m = vssync_range vs (S m).
+Proof.
+  unfold vssync, vssync_range; intros.
+  rewrite updN_app2.
+  erewrite firstn_S_selN by auto.
+  rewrite map_app.
+  rewrite repeat_app_tail.
+  rewrite combine_app
+    by (autorewrite with lists; rewrite firstn_length_l; omega).
+  rewrite <- app_assoc; f_equal.
+  rewrite combine_length; autorewrite with lists.
+  rewrite Nat.min_l; repeat rewrite firstn_length_l; try omega.
+  replace (m - m) with 0 by omega.
+  rewrite updN_0_skip_1 by (rewrite skipn_length; omega).
+  rewrite skipn_skipn; simpl.
+  f_equal; f_equal.
+  rewrite selN_app2.
+  rewrite combine_length; rewrite Nat.min_l;
+     autorewrite with lists; repeat rewrite firstn_length_l; try omega.
+  replace (m + (m - m)) with m by omega.
+  unfold vsmerge; auto.
+  all: rewrite combine_length_eq2; autorewrite with lists;
+    repeat rewrite firstn_length_l; omega.
+Qed.
+
