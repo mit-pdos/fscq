@@ -383,9 +383,9 @@ Ltac learn_tac H t :=
     lazymatch type of H with
     | ?t =>
       try lazymatch goal with
-          | [ Hcopy: t, H: t |- _ ] =>
-            fail 1 "already know that"
-          end
+        | [ Hcopy: t, H: t |- _ ] =>
+          fail 1 "already know that"
+        end
     end.
 
 Tactic Notation "learn" hyp(H) tactic(t) := learn_tac H t.
@@ -587,7 +587,7 @@ Ltac cache_vd_val :=
   lazymatch goal with
   | [ H: cache_get _ ?a = Some (_, ?v) |- _ ] =>
     learn H (eapply cache_pred_hit in H;
-                eauto)
+              eauto)
   end.
 
 (** FIXME: this is a terrible hack. When we have two hypotheses about
