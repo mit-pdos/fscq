@@ -920,3 +920,34 @@ Proof.
 
   hoare pre simplify with finish.
 Qed.
+
+Definition locked_disk_write {T} a v rx : prog Mcontents S T :=
+  c <- Get Cache;
+  let c' := cache_add_dirty c a v in
+  Assgn Cache c';;
+        Commit (fun s => upd s a v);;
+        rx tt.
+
+Theorem locked_disk_write_ok : forall a v,
+    cacheS TID: tid |-
+    {{ F v0,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     d |= cache_pred (get Cache m) vd /\
+                     get CacheL m = Locked tid /\
+                     vd |= F * a |-> v0 /\
+                     s0 = s
+     | POST d' m' s0' s' _: let vd' := virt_disk s' in
+                            get CacheL m = Locked tid /\
+                            d' |= cache_pred (get Cache m') vd' /\
+                            vd' |= F * a |-> v /\
+                            @upd _ (@weq addrlen) _ s0' a v = s'
+    }} locked_disk_write a v.
+Proof.
+  unfold locked_disk_write.
+  hoare pre simplify with finish.
+  learn_some_addr.
+  eapply cache_pred_stable_dirty; eauto.
+  eapply pimpl_apply;
+    [ | eapply ptsto_upd ];
+    dispatch.
+Qed.
