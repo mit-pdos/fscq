@@ -182,16 +182,6 @@ Definition locked_async_disk_read {T} a rx : prog Mcontents S T :=
     rx v
   end.
 
-Lemma ptsto_conflict_falso : forall AT AEQ V a v0 v1 (F p:@pred AT AEQ V),
-    a |-> v0 * a |-> v1 * F =p=> p.
-Proof.
-  unfold pimpl.
-  intros.
-  exfalso.
-  eapply ptsto_conflict_F with (a := a) (m := m).
-  pred_apply; cancel.
-Qed.
-
 Hint Rewrite get_set.
 
 Ltac valid_match_opt :=
@@ -490,15 +480,6 @@ Lemma cache_pred_miss : forall c a v vd,
     cache_pred c vd =p=> any * a |-> v.
 Proof.
   unfold pimpl.
-  prove_cache_pred.
-Qed.
-
-Lemma cache_miss_mem_match : forall c vd a (d: DISK) v,
-    cache_pred c vd d ->
-    cache_get c a = None ->
-    vd a = Some v ->
-    d a = Some v.
-Proof.
   prove_cache_pred.
 Qed.
 
@@ -856,15 +837,6 @@ Proof.
   replace (d a); eauto.
 Qed.
 
-Lemma cache_pred_sector_domain : forall c vd d,
-    cache_pred c vd d ->
-    (forall a, (exists v, vd a = Some v) <-> exists v', d a = Some v').
-Proof.
-  intros.
-  split; intros; deex;
-  eauto using cache_pred_same_sectors, cache_pred_same_sectors'.
-Qed.
-
 Ltac learn_fact H :=
   match type of H with
     | ?t =>
@@ -892,7 +864,6 @@ Theorem disk_read_ok : forall a,
                               s0' = s'
     }} disk_read a.
 Proof.
-  Hint Resolve ptsto_valid_iff.
   unfold disk_read.
   intros.
   step pre simplify with finish.
