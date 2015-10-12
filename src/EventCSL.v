@@ -415,22 +415,6 @@ Section EventCSL.
   Definition If_ P Q (b: {P} + {Q}) (ptrue pfalse : prog) :=
     if b then ptrue else pfalse.
 
-  Theorem if_ok:
-    forall tid P Q (b : {P}+{Q}) (p1 p2 : prog),
-      valid tid (fun done d m s0 s => exists pre,
-                 pre d m s0 s /\
-                 valid tid (fun done' d' m' s0' s' => pre d' m' s0' s' /\
-                                           P /\
-                                           done' = done) p1 /\
-                 valid tid (fun done' d' m' s0' s' => pre d' m' s0' s' /\
-                                           Q /\
-                                           done' = done) p2
-                ) (If_ b p1 p2).
-  Proof.
-    intros_pre.
-    destruct b; eauto.
-  Qed.
-
 End EventCSL.
 
 (** transitions defines a transition system, grouping the StateR and StateI

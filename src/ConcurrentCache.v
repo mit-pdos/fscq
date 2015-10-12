@@ -51,6 +51,18 @@ Section MemCache.
       | Some (_, v) => Some v
       end.
 
+  Fixpoint cache_evict (c:AssocCache) a :=
+    match c with
+    | nil => nil
+    | Clean a' v :: c' =>
+      let rest := cache_evict c' a in
+      if (weq a a') then rest
+      else Clean a' v :: rest
+    | Dirty a' v :: c' =>
+      let rest := cache_evict c' a in
+      Dirty a' v :: rest
+    end.
+
 End MemCache.
 
 Definition S := DISK.
@@ -922,3 +934,110 @@ Proof.
     [ | eapply ptsto_upd ];
     dispatch.
 Qed.
+
+(** Eviction, so far without writeback *)
+Definition evict {T} a rx : prog Mcontents S T :=
+  c <- Get Cache;
+  match cache_get c a with
+  | None => rx tt
+  | Some (dirty, v) =>
+    If (Bool.bool_dec dirty true) {
+        rx tt
+       } else {
+   let c' := cache_evict c a in
+    Assgn Cache c';;
+          rx tt
+  }
+end.
+
+Ltac if_ok :=
+  match goal with
+  | [ |- valid _ _ _ _ (If_ ?b _ _) ] =>
+    unfold If_; case_eq b; intros
+  end.
+
+Lemma cache_evict_get : forall c v a,
+  cache_get c a = Some (false, v) ->
+  cache_get (cache_evict c a) a = None.
+Proof.
+  intros.
+Abort.
+
+Lemma cache_evict_get_other : forall c a a',
+  a <> a' ->
+  cache_get (cache_evict c a) a' = cache_get c a'.
+Proof.
+  intros.
+  induction c; eauto; cbn.
+  destruct a0;
+    repeat match goal with
+    | [ |- context[if (@weq addrlen _ _) then _ else _] ] =>
+      distinguish_addresses
+    end.
+Qed.
+
+(* Hint Rewrite cache_evict_get : cache. *)
+Hint Rewrite cache_evict_get_other using (now eauto) : cache.
+
+Lemma cache_pred_remove_clean : forall c a vd d v,
+  cache_pred (Clean a v :: c) vd d ->
+  cache_pred c vd d.
+Proof.
+  prove_cache_pred.
+  distinguish_addresses.
+  case_eq (cache_get c a); intros.
+  destruct p as [ [] ].
+
+  (* This proof relies heavily on there not being duplicates in the cache,
+  otherwise the state of a can change arbitrarily and the lemma isn't true. *)
+Abort.
+
+Lemma cache_pred_stable_evict : forall c a vd d v,
+  cache_pred c vd d ->
+  cache_get c a = Some (false, v) ->
+  cache_pred (cache_evict c a) vd d.
+Proof.
+  induction c; intros; eauto; cbn in *.
+  destruct a;
+  distinguish_addresses;
+    autorewrite with cache in *.
+  inv_opt.
+  eapply IHc; eauto.
+  (* cache_pred_remove_clean, which needs stronger assumptions on the cache *)
+Abort.
+
+Theorem locked_evict_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v0,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     d |= cache_pred (get Cache m) vd /\
+                     get CacheL m = Locked tid /\
+                     vd |= F * a |-> v0
+     | POST d' m' s0' s' _: let vd' := virt_disk s' in
+                            d' |= cache_pred (get Cache m') vd' /\
+                            get CacheL m' = Locked tid /\
+                            vd' = virt_disk s /\
+                            s0' = s0
+    }} evict a.
+Proof.
+  unfold evict.
+  hoare pre simplify with finish.
+  learn_some_addr.
+  assert (exists dv0, d a = Some dv0).
+  prove_cache_pred.
+  case_eq (cache_get (get Cache m) a); intros.
+  destruct p as [ [] ]; eauto.
+  replace_cache_vals.
+  eexists.
+  replace (d a); eauto.
+  deex.
+
+  valid_match_opt; try if_ok; try congruence;
+    hoare pre simplify with finish.
+  lazymatch goal with
+  | [ H: ?s ?a = Some ?v, H': ?s ?a = Some ?v' |- _ ] =>
+    assert (v = v') by congruence; subst; remove_duplicate
+  end.
+
+  (* use cache_pred_stable_evict *)
+Abort.
