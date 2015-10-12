@@ -905,13 +905,13 @@ Theorem locked_disk_write_ok : forall a v,
      | PRE d m s0 s: let vd := virt_disk s in
                      d |= cache_pred (get Cache m) vd /\
                      get CacheL m = Locked tid /\
-                     vd |= F * a |-> v0 /\
-                     s0 = s
+                     vd |= F * a |-> v0
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            get CacheL m = Locked tid /\
+                            get CacheL m' = Locked tid /\
                             d' |= cache_pred (get Cache m') vd' /\
                             vd' |= F * a |-> v /\
-                            @upd _ (@weq addrlen) _ s0' a v = s'
+                            @upd _ (@weq addrlen) _ s a v = s' /\
+                            s0' = s0
     }} locked_disk_write a v.
 Proof.
   unfold locked_disk_write.
