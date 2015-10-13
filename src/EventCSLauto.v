@@ -2,6 +2,14 @@ Require Import EventCSL.
 
 Ltac inv_opt :=
   match goal with
+  | [ H: None = Some _ |- _ ] =>
+    now (inversion H)
+  | [ H: Some _ = None |- _ ] =>
+    now (inversion H)
+  | [ H: Some _ = Some _ |- _ ] =>
+    inversion H; subst; clear H
+  | [ H: None = None |- _ ] =>
+    clear H
   | [ H: @eq (option _) _ _ |- _ ] =>
     inversion H; clear H; subst
   end.
