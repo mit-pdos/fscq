@@ -4,63 +4,73 @@ Require Import Hlist.
 Require Import Star.
 Require Import Coq.Program.Equality.
 Require Import FunctionalExtensionality.
+Require Import FMapAVL.
+Require Import FMapFacts.
+Require Word.
+
 Require Import List.
 Import List.ListNotations.
 Open Scope list.
 
+Module AddrM <: Word.WordSize.
+                 Definition sz := addrlen.
+                 Definition word := word sz.
+End AddrM.
+
+Module Addr_as_OT := Word_as_OT AddrM.
+
+Module Map := FMapAVL.Make(Addr_as_OT).
+Module MapFacts := WFacts_fun Addr_as_OT Map.
+Module MapProperties := WProperties_fun Addr_as_OT Map.
+
 Section MemCache.
 
   Inductive cache_entry : Set :=
-  | Clean : addr -> valu -> cache_entry
-  | Dirty : addr -> valu -> cache_entry.
+  | Clean :  valu -> cache_entry
+  | Dirty :  valu -> cache_entry.
 
-  Definition AssocCache := list cache_entry.
-  Definition cache_add (c:AssocCache) a v := Clean a v :: c.
-
-  Fixpoint cache_dirty (c:AssocCache) a0 v' :=
-    match c with
-    | nil => nil
-    | Clean a v :: c' =>
-      (if (weq a a0) then Dirty a v' else Clean a v) :: cache_dirty c' a0 v'
-    | Dirty a v :: c' =>
-      (if (weq a a0) then Dirty a v' else Dirty a v) :: cache_dirty c' a0 v'
-    end.
+  Definition AssocCache := Map.t cache_entry.
+  Definition cache_add (c:AssocCache) a v := Map.add a (Clean v) c.
 
   (* returns (dirty, v) *)
-  Fixpoint cache_get (c:AssocCache) a0 : option (bool * valu) :=
-    match c with
-    | nil => None
-    | Clean a v :: c' =>
-      if (weq a a0) then Some (false, v)
-      else cache_get c' a0
-    | Dirty a v :: c' =>
-      if (weq a a0) then Some (true, v)
-      else cache_get c' a0
+  Definition cache_get (c:AssocCache) (a0:addr) : option (bool * valu) :=
+    match (Map.find a0 c) with
+    | Some (Clean v) => Some (false, v)
+    | Some (Dirty v) => Some (true, v)
+    | None => None
     end.
 
-  Definition cache_add_dirty (c:AssocCache) a v' :=
-    match (cache_get c a) with
-    | None => Dirty a v' :: c
-    | Some _ => cache_dirty c a v'
+  Definition cache_dirty (c:AssocCache) (a:addr) v' :=
+    match (Map.find a c) with
+    | Some (Clean _) => Map.add a v' c
+    | Some (Dirty _) => Map.add a v' c
+    | None => c
     end.
+
+  Definition cache_add_dirty (c:AssocCache) (a:addr) v' :=
+    Map.add a (Dirty v') c.
 
   Definition cache_mem c : DISK :=
-    fun a =>
+    fun (a:addr) =>
       match (cache_get c a) with
       | None => None
       | Some (_, v) => Some v
       end.
 
-  Fixpoint cache_evict (c:AssocCache) a :=
-    match c with
-    | nil => nil
-    | Clean a' v :: c' =>
-      let rest := cache_evict c' a in
-      if (weq a a') then rest
-      else Clean a' v :: rest
-    | Dirty a' v :: c' =>
-      let rest := cache_evict c' a in
-      Dirty a' v :: rest
+  (** Evict a clean address *)
+  Definition cache_evict (c:AssocCache) (a:addr) :=
+    match (Map.find a c) with
+    | Some (Clean _) => Map.remove a c
+    (* dirty/miss *)
+    | _ => c
+    end.
+
+  (** Change a dirty mapping to a clean one, keeping the same
+  value. Intended for use after writeback. *)
+  Definition cache_clean (c:AssocCache) (a:addr) :=
+    match (Map.find a c) with
+    | Some (Dirty v) => Map.add a (Clean v) c
+    | _ => c
     end.
 
 End MemCache.
@@ -475,8 +485,12 @@ Ltac disk_equalities :=
 
 Hint Extern 3 (eq _ _) => congruence : mem_equalities.
 
+Hint Unfold Map.key AddrM.word AddrM.sz : cache_m.
+
 Ltac prove_cache_pred :=
-  intros; repeat match goal with
+  intros;
+  autounfold with cache_m in *;
+  repeat match goal with
   | [ |- context[cache_pred] ] =>
     autounfold with cache; intuition;
     disk_equalities
@@ -616,63 +630,41 @@ Ltac finish :=
   try congruence;
   eauto.
 
+Ltac cache_get_add :=
+  unfold cache_get, cache_add, cache_add_dirty, cache_evict;
+  intros;
+  try rewrite MapFacts.add_eq_o by auto;
+  try rewrite MapFacts.add_neq_o by auto;
+  auto.
+
 Lemma cache_get_eq : forall c a v,
     cache_get (cache_add c a v) a = Some (false, v).
 Proof.
-  intros.
-  cbn.
-  distinguish_addresses.
+  cache_get_add.
 Qed.
 
 Lemma cache_get_dirty_eq : forall c a v,
     cache_get (cache_add_dirty c a v) a = Some (true, v).
 Proof.
-  intros.
-  unfold cache_add_dirty.
-  case_eq (cache_get c a); intros.
-  induction c; eauto; cbn in *; try congruence.
-  destruct p as [ [] ];
-    match goal with
-    | [ H: context[match ?d with | _ => _ end] |- _ ] =>
-      destruct d
-    end;
-    distinguish_addresses; eauto.
-
-  cbn; distinguish_addresses.
+  cache_get_add.
 Qed.
 
 Lemma cache_get_dirty_neq : forall c a a' v,
     a <> a' ->
     cache_get (cache_add_dirty c a v) a' = cache_get c a'.
 Proof.
-  intros.
-  unfold cache_add_dirty.
-  case_eq (cache_get c a); intros.
-  (* this hypothesis has served its purpose and now just makes the induction difficult. *)
-  match goal with
-  | [ H: cache_get _ _ = _ |- _ ] => clear H
-  end.
-  induction c; intros; cbn in *; eauto.
-  match goal with
-  | [ |- context[match ?d with | _ => _ end] ] =>
-    case_eq d; intros
-  end; distinguish_addresses;
-  repeat match goal with
-         | [ |- context[if (weq ?a1 ?a2) then _ else _] ] =>
-           distinguish_two_addresses a1 a2
-         end; eauto.
-
-  cbn; distinguish_addresses.
+  cache_get_add.
 Qed.
 
 Lemma cache_get_neq : forall c a a' v,
     a <> a' ->
     cache_get (cache_add c a v) a' = cache_get c a'.
 Proof.
-  intros.
-  cbn.
-  distinguish_addresses.
+  cache_get_add.
 Qed.
+
+Hint Rewrite cache_get_eq cache_get_dirty_eq : cache.
+Hint Rewrite cache_get_dirty_neq cache_get_neq using (now eauto) : cache.
 
 Lemma cache_pred_stable_add : forall c vd a v d,
     vd a = Some v ->
@@ -696,10 +688,8 @@ Qed.
 
 Hint Resolve cache_pred_stable_add.
 
-Hint Rewrite cache_get_dirty_eq : cache.
-Hint Rewrite cache_get_dirty_neq using (now auto) : cache.
-Hint Rewrite upd_eq : cache.
-Hint Rewrite upd_ne using (now auto) : cache.
+Hint Rewrite cache_get_dirty_eq upd_eq : cache.
+Hint Rewrite cache_get_dirty_neq upd_ne using (now auto) : cache.
 
 Lemma cache_pred_stable_dirty : forall c vd a v v' d,
     vd a = Some v ->
@@ -707,16 +697,17 @@ Lemma cache_pred_stable_dirty : forall c vd a v v' d,
     cache_pred (cache_add_dirty c a v') (upd vd a v') d.
 Proof.
   intros.
+  prove_cache_pred;
+    distinguish_addresses;
+    autorewrite with cache in *;
+    try congruence;
+    eauto.
   case_eq (cache_get c a); intros;
   try match goal with
       | [ p: bool * valu |- _ ] =>
         destruct p as [ [] ]
       end;
-  prove_cache_pred;
-  distinguish_addresses;
-  autorewrite with cache in *;
-  try inv_opt; eauto.
-  replace_cache_vals.
+  replace_cache_vals;
   eauto.
 Qed.
 
@@ -956,55 +947,64 @@ Ltac if_ok :=
     unfold If_; case_eq b; intros
   end.
 
+Ltac destruct_matches :=
+  repeat (match goal with
+         | [ |- context[match ?d with | _ => _ end] ] =>
+           (replace d ||
+           case_eq d; intros)
+         | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+           (replace d in H ||
+            case_eq d; intros)
+          end;
+           try match goal with
+           | [ H: context[match ?d with | _ => _ end], Heq: ?d = _ |- _ ] =>
+             rewrite Heq in H
+           end);
+  subst;
+  try congruence.
+
+Ltac remove_rewrite :=
+  try rewrite MapFacts.remove_eq_o in * by auto;
+  try rewrite MapFacts.remove_neq_o in * by auto.
+
+Ltac cache_remove_manip :=
+  cache_get_add;
+  destruct_matches;
+  remove_rewrite;
+  try congruence.
+
 Lemma cache_evict_get : forall c v a,
   cache_get c a = Some (false, v) ->
   cache_get (cache_evict c a) a = None.
 Proof.
-  intros.
-Abort.
+  cache_remove_manip.
+Qed.
 
 Lemma cache_evict_get_other : forall c a a',
   a <> a' ->
   cache_get (cache_evict c a) a' = cache_get c a'.
 Proof.
-  intros.
-  induction c; eauto; cbn.
-  destruct a0;
-    repeat match goal with
-    | [ |- context[if (@weq addrlen _ _) then _ else _] ] =>
-      distinguish_addresses
-    end.
+  cache_remove_manip.
 Qed.
 
-(* Hint Rewrite cache_evict_get : cache. *)
+Hint Rewrite cache_evict_get using (now eauto) : cache.
 Hint Rewrite cache_evict_get_other using (now eauto) : cache.
-
-Lemma cache_pred_remove_clean : forall c a vd d v,
-  cache_pred (Clean a v :: c) vd d ->
-  cache_pred c vd d.
-Proof.
-  prove_cache_pred.
-  distinguish_addresses.
-  case_eq (cache_get c a); intros.
-  destruct p as [ [] ].
-
-  (* This proof relies heavily on there not being duplicates in the cache,
-  otherwise the state of a can change arbitrarily and the lemma isn't true. *)
-Abort.
 
 Lemma cache_pred_stable_evict : forall c a vd d v,
   cache_pred c vd d ->
   cache_get c a = Some (false, v) ->
   cache_pred (cache_evict c a) vd d.
 Proof.
-  induction c; intros; eauto; cbn in *.
-  destruct a;
-  distinguish_addresses;
-    autorewrite with cache in *.
-  inv_opt.
-  eapply IHc; eauto.
-  (* cache_pred_remove_clean, which needs stronger assumptions on the cache *)
-Abort.
+  prove_cache_pred; distinguish_addresses; eauto;
+  try solve [ autorewrite with cache in *; eauto ].
+
+  rewrite H0.
+  erewrite cache_evict_get; eauto.
+  erewrite H; eauto.
+  erewrite cache_evict_get in H1 by eauto; congruence.
+Qed.
+
+Hint Resolve cache_pred_stable_evict.
 
 Theorem locked_evict_ok : forall a,
     cacheS TID: tid |-
@@ -1034,10 +1034,4 @@ Proof.
 
   valid_match_opt; try if_ok; try congruence;
     hoare pre simplify with finish.
-  lazymatch goal with
-  | [ H: ?s ?a = Some ?v, H': ?s ?a = Some ?v' |- _ ] =>
-    assert (v = v') by congruence; subst; remove_duplicate
-  end.
-
-  (* use cache_pred_stable_evict *)
-Abort.
+Qed.

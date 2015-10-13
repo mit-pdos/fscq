@@ -11,6 +11,9 @@ Require Import Ring.
 Require Import Ring_polynom.
 Require Import ProofIrrelevance.
 
+Require Structures.OrderedType.
+Require Import Structures.OrderedTypeEx.
+
 Set Implicit Arguments.
 
 
@@ -1875,6 +1878,7 @@ Qed.
 
 Hint Resolve word_neq lt_le eq_le sub_0_eq le_neq_lt : worder.
 
+
 Ltac shatter_word x :=
   match type of x with
     | word 0 => try rewrite (shatter_word_0 x) in *
@@ -2360,9 +2364,45 @@ Proof.
   discriminate H0.
 Qed.
 
+Module Type WordSize.
+  Parameter sz : nat.
+  Definition word := word sz.
+End WordSize.
+
+Module Word_as_OT(Word : WordSize) <: UsualOrderedType.
+  Definition t := Word.word.
+  Definition eq := @eq t.
+  Definition eq_refl := @eq_refl t.
+  Definition eq_sym := @eq_sym t.
+  Definition eq_trans := @eq_trans t.
+  Definition lt := @wlt Word.sz.
+
+  Lemma lt_trans: forall x y z : t, lt x y -> lt y z -> lt x z.
+  Proof.
+    unfold lt; intros.
+    apply wlt_lt in H; apply wlt_lt in H0.
+    apply lt_wlt.
+    omega.
+  Qed.
+
+  Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
+  Proof.
+    unfold lt, eq; intros.
+    apply wlt_lt in H.
+    intro He; subst; omega.
+  Qed.
+
+  Definition compare x y : OrderedType.Compare lt eq x y.
+    unfold lt, eq.
+    destruct (wlt_dec x y); destruct (weq x y);
+    auto using OrderedType.LT, OrderedType.EQ, OrderedType.GT, le_neq_lt.
+  Defined.
+
+  Definition eq_dec := @weq Word.sz.
+End Word_as_OT.
+
 Notation "$ n" := (natToWord _ n) (at level 0).
 Notation "# n" := (wordToNat n) (at level 0).
-
 
 Lemma neq0_wneq0: forall sz (n : word sz),
   wordToNat n <> 0  <-> n <> $0.
