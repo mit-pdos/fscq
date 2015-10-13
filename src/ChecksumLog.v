@@ -124,11 +124,14 @@ Theorem recover_ok : forall cs,
   {< d d1_old d2_old d1 d2,
   PRE
     BUFCACHE.rep cs d *
-    crash_xform (crep d1_old d2_old d1 d2)
+    [[ crash_xform (crep d1_old d2_old d1 d2 d)%pred d ]]
   POST RET:cs
-    rep d1_old d2_old \/
-    rep d1 d2 \/
-    rep default_valu default_valu
+    exists d',
+      rep d1_old d2_old d' \/
+      rep d1 d2 d' \/
+      rep default_valu default_valu d'
   CRASH
-    crep d1_old d2_old d1 d2
+    exists d', crep d1_old d2_old d1 d2 d'
   >} recover cs.
+Proof.
+Admitted.
