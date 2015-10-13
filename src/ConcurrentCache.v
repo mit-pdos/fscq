@@ -743,7 +743,6 @@ Theorem locked_disk_read_ok : forall a,
                         s0' = s'
     }} locked_disk_read a.
 Proof.
-  unfold locked_disk_read.
   hoare.
   learn_some_addr.
   valid_match_opt; hoare pre simplify with finish.
@@ -788,8 +787,7 @@ Theorem locked_async_disk_read_ok : forall a,
                         get CacheL m' = Locked tid /\
                         s0' = s'
     }} locked_async_disk_read a.
-      Proof.
-  unfold locked_async_disk_read.
+Proof.
   hoare.
   learn_some_addr.
   valid_match_opt; hoare pre simplify with (finish;
@@ -867,7 +865,6 @@ Theorem disk_read_ok : forall a,
                               s0' = s'
     }} disk_read a.
 Proof.
-  unfold disk_read.
   intros.
   step pre simplify with finish.
   step pre (cbn; intuition; repeat deex;
@@ -917,7 +914,6 @@ Theorem locked_disk_write_ok : forall a v,
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
-  unfold locked_disk_write.
   hoare pre simplify with finish.
   learn_some_addr.
   eapply cache_pred_stable_dirty; eauto.
@@ -1020,7 +1016,6 @@ Theorem locked_evict_ok : forall a,
                             s0' = s0
     }} evict a.
 Proof.
-  unfold evict.
   hoare pre simplify with finish.
   learn_some_addr.
   assert (exists dv0, d a = Some dv0).

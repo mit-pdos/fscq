@@ -26,9 +26,35 @@ Ltac simpl_post :=
            eexists
          end; intuition.
 
+Ltac next_control_step :=
+  eapply pimpl_ok; [ now auto with prog | ].
+
+Ltac head_symbol e :=
+  lazymatch e with
+  | ?h _ _ _ _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ => h
+  | ?h _ _ _ _ => h
+  | ?h _ _ _ => h
+  | ?h _ _ => h
+  | ?h _ => h
+  | ?h => h
+  end.
+
+Ltac unfold_prog :=
+  lazymatch goal with
+  | [ |- valid _ _ _ _ ?p ] =>
+    let program := head_symbol p in
+    unfold program
+  end.
+
 Ltac step' simplifier finisher :=
   repeat (autounfold with prog);
-  eapply pimpl_ok; [ now auto with prog | ];
+  next_control_step ||
+                    (unfold_prog; next_control_step);
   repeat (autounfold with prog);
   simplifier;
   finisher.
