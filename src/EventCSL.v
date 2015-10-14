@@ -30,9 +30,9 @@ Notation DISK := (@mem addr (@weq addrlen) valu).
 Definition ID := nat.
 
 Section Lock.
-  Inductive Mutex := Open | Locked (tid:ID).
+  Inductive Mutex := Open | Locked.
   Definition is_locked l :
-    {exists tid, l = Locked tid} + {l = Open}.
+    {l = Locked} + {l = Open}.
   Proof.
     destruct l; intuition eauto.
   Defined.
@@ -72,7 +72,7 @@ Section EventCSL.
   | Get t (v: var t) (rx: t -> prog)
   | Assgn t (v: var t) (val:t) (rx: unit -> prog)
   | GetTID (rx: ID -> prog)
-  | AcquireLock (l: var Mutex) (rx: unit -> prog)
+  | AcquireLock (l: var Mutex) (lock_ghost: ID -> S -> S) (rx: unit -> prog)
   | Yield (rx: unit -> prog)
   | Commit (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
@@ -105,17 +105,17 @@ Section EventCSL.
   | StepWrite : forall d m s0 s a rx v v', d a = Some v ->
                                       tid :- Write a v' rx / (d, m, s0, s) ==>
                                           rx tt / (upd d a v', m, s0, s)
-  | StepAcquireLock : forall d m m' s s0 d' s' rx l,
-      let m'' := set l (Locked tid) m' in
+  | StepAcquireLock : forall d m m' s s0 d' s' up rx l,
+      let m'' := set l Locked m' in
+      let s'' := up tid s' in
       StateI m s d ->
       StateR tid s0 s ->
-      StateI m'' s' d' ->
+      StateI m' s' d' ->
       star (StateR' tid) s s' ->
-      tid :- AcquireLock l rx / (d, m, s0, s) ==> rx tt / (d', m'', s', s')
+      tid :- AcquireLock l up rx / (d, m, s0, s) ==> rx tt / (d', m'', s'', s'')
   | StepYield : forall d m s0 s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
-      (* TODO: shouldn't have d and m in R *)
       StateR tid s0 s ->
       star (StateR' tid) s s' ->
       tid :- Yield rx / (d, m, s0, s) ==> rx tt / (d', m', s', s')
@@ -134,8 +134,8 @@ Section EventCSL.
                                     fail_step tid (Read a rx) (d, m, s0, s)
   | FailStepWrite : forall a v d m s0 s rx, d a = None ->
                                        fail_step tid (Write a v rx) (d, m, s0, s)
-  | FailStepAcquireLock : forall l d m s0 s rx, (~StateI m s d) ->
-                                           fail_step tid (AcquireLock l rx) (d, m, s0, s)
+  | FailStepAcquireLock : forall l up d m s0 s rx, (~StateI m s d) ->
+                                           fail_step tid (AcquireLock l up rx) (d, m, s0, s)
   | FailStepYield : forall d m s0 s rx, (~StateI m s d) ->
                                    fail_step tid (Yield rx) (d, m, s0, s).
 
@@ -356,20 +356,21 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem acquire_lock_ok : forall l,
+  Theorem acquire_lock_ok : forall l up,
       tid |- {{ (_:unit),
              | PRE d m s0 s: d |= StateI m s /\
                              StateR tid s0 s
-             | POST d' m'' s0' s' _: exists m',
-                 d' |= StateI m'' s' /\
-                 m'' = set l (Locked tid) m' /\
+             | POST d' m'' s0' s'' _: exists m' s',
+                 d' |= StateI m' s' /\
                  star (StateR' tid) s s' /\
-                 get l m'' = Locked tid /\
-                 s0' = s'
-            }} AcquireLock l.
+                 m'' = set l Locked m' /\
+                 s'' = up tid s' /\
+                 get l m'' = Locked /\
+                 s0' = s''
+            }} AcquireLock l up.
   Proof.
     opcode_ok.
-    eexists; intuition.
+    repeat eexists; intuition.
     subst m''.
     simpl_get_set.
   Qed.

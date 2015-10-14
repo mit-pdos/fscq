@@ -75,6 +75,8 @@ Section MemCache.
 
 End MemCache.
 
+(* TODO: move lock owner into ghost state *)
+(* TODO after that: fix ALL THE THINGS *)
 Definition S := DISK.
 Definition Mcontents := [AssocCache; Mutex].
 
