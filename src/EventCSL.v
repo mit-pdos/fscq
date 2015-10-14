@@ -61,7 +61,7 @@ Section EventCSL.
 
   (** Define the transition system for the semantics.
       The semantics will reject transitions that do not obey these rules. *)
-  Definition Relation := DISK * M * S -> DISK * M * S -> Prop.
+  Definition Relation := S -> S -> Prop.
   Variable StateR : ID -> Relation.
   Definition Invariant := M -> S -> @pred addr (@weq addrlen) valu.
   Variable StateI : Invariant.
@@ -91,9 +91,9 @@ Section EventCSL.
            (at level 40, p at next level, p' at next level).
 
   Definition othersR (stateR:ID -> Relation) tid : Relation :=
-    fun dms dms' =>
+    fun s s' =>
       exists tid', tid <> tid' /\
-              stateR tid' dms dms'.
+              stateR tid' s s'.
 
   (* StateR' tid is a valid transition for someone other than tid *)
   Definition StateR' : ID -> Relation := othersR StateR.
@@ -108,18 +108,16 @@ Section EventCSL.
   | StepAcquireLock : forall d m m' s s0 d' s' rx l,
       let m'' := set l (Locked tid) m' in
       StateI m s d ->
-      (* TODO: shouldn't have d and m in R *)
-      StateR tid (d, m, s0) (d, m, s) ->
+      StateR tid s0 s ->
       StateI m'' s' d' ->
-      star (StateR' tid) (d, m, s) (d', m', s') ->
-      StateR tid (d', m', s') (d', m'', s') ->
+      star (StateR' tid) s s' ->
       tid :- AcquireLock l rx / (d, m, s0, s) ==> rx tt / (d', m'', s', s')
   | StepYield : forall d m s0 s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
       (* TODO: shouldn't have d and m in R *)
-      StateR tid (d, m, s0) (d, m, s) ->
-      star (StateR' tid) (d, m, s) (d', m', s') ->
+      StateR tid s0 s ->
+      star (StateR' tid) s s' ->
       tid :- Yield rx / (d, m, s0, s) ==> rx tt / (d', m', s', s')
   | StepCommit : forall d m s0 s up rx,
       tid :- Commit up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, up s)
@@ -361,12 +359,11 @@ Section EventCSL.
   Theorem acquire_lock_ok : forall l,
       tid |- {{ (_:unit),
              | PRE d m s0 s: d |= StateI m s /\
-                             StateR tid (d, m, s0) (d, m, s)
+                             StateR tid s0 s
              | POST d' m'' s0' s' _: exists m',
                  d' |= StateI m'' s' /\
                  m'' = set l (Locked tid) m' /\
-                 star (StateR' tid) (d, m, s) (d', m', s') /\
-                 StateR tid (d', m', s') (d', m'', s') /\
+                 star (StateR' tid) s s' /\
                  get l m'' = Locked tid /\
                  s0' = s'
             }} AcquireLock l.
@@ -380,10 +377,10 @@ Section EventCSL.
   Theorem yield_ok :
     tid |- {{ (_:unit),
            | PRE d m s0 s: d |= StateI m s /\
-                           StateR tid (d, m, s0) (d, m, s)
+                           StateR tid s0 s
            | POST d' m' s0' s' _: d' |= StateI m' s' /\
                                   s0' = s' /\
-                                  star (StateR' tid) (d, m, s) (d', m', s')
+                                  star (StateR' tid) s s'
     }} Yield.
   Proof.
     opcode_ok.
@@ -425,7 +422,7 @@ ident.
 *)
 Record transitions Mcontents S := {
       (* StateR s s' holds when s -> s' is a valid transition *)
-      StateR: ID -> Relation Mcontents S;
+      StateR: ID -> Relation S;
       (* StateI s d holds when s is a valid state and represents the memory d *)
       StateI: Invariant Mcontents S
       }.

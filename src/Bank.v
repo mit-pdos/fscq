@@ -45,10 +45,8 @@ Section Bank.
 
   Definition balances entries := balances' entries (100, 0).
 
-  Definition bankR (_:ID) : Relation Mcontents State :=
-    fun dms dms' =>
-    let '(_, _, ledger) := dms in
-    let '(_, _, ledger') := dms' in
+  Definition bankR (_:ID) : Relation State :=
+    fun ledger ledger' =>
     ledger' = ledger \/
     exists entry, ledger' = ledger ++ [entry].
 
@@ -176,33 +174,18 @@ Section Bank.
 
   Hint Resolve record_correct.
 
-  Lemma star_bankR' : forall tid dms dms',
-      star (othersR bankR tid) dms dms' ->
-      let '(_, _, ledger) := dms in
-      let '(_, _, ledger') := dms' in
+  Lemma star_bankR : forall tid ledger ledger',
+      star (othersR bankR tid) ledger ledger' ->
       exists ledger_ext, ledger' = ledger ++ ledger_ext.
   Proof.
     unfold othersR, bankR.
     induction 1.
-    destruct s as [ [ ] ].
     exists nil; rewrite app_nil_r; auto.
 
-    destruct s1 as [ [ ] ], s2 as [ [ ] ], s3 as [ [ ] ].
     intuition; repeat deex; eauto.
     eexists.
     rewrite <- app_assoc.
     eauto.
-  Qed.
-
-  Lemma star_bankR : forall tid d m ledger d' m' ledger',
-      star (othersR bankR tid) (d, m, ledger) (d', m', ledger') ->
-      exists ledger_ext, ledger' = ledger ++ ledger_ext.
-  Proof.
-    intros.
-    match goal with
-      | [ H: star _ ?dms ?dms' |- _ ] =>
-        pose proof (@star_bankR' tid dms dms')
-    end; eauto.
   Qed.
 
   Lemma bank_invariant_transfer : forall F s m bal1 bal2 amount,
