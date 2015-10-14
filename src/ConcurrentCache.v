@@ -798,29 +798,10 @@ Ltac cache_vd_val :=
               eauto)
   end.
 
-(** FIXME: this is a terrible hack. When we have two hypotheses about
-the same memory, it deletes the older one, since we carry forward less
-information then what we get by using the fact that the disk hasn't
-changed (from the lock invariant) and pred_apply then picks the wrong
-disk. It has two problems:
-
-* it isn't guaranteed to delete the less useful premise
-* the solution to this problem is actually to backtrack over
-  pred_apply (there are only two options, after all)
-*)
-Ltac keep_older_pred :=
-  match goal with
-  | [ H: _ ?d, H' : ?p ?d |- _ ] =>
-    match type of (d, p) with
-      | (DISK * pred)%type => clear H'
-    end
-  end.
-
 Ltac simplify :=
   step_simplifier;
   learn_invariants;
   subst;
-  try keep_older_pred;
   try cache_vd_val;
   cleanup.
 
