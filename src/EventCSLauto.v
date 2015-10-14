@@ -10,8 +10,6 @@ Ltac inv_opt :=
     inversion H; subst; clear H
   | [ H: None = None |- _ ] =>
     clear H
-  | [ H: @eq (option _) _ _ |- _ ] =>
-    inversion H; clear H; subst
   end.
 
 Ltac econtradiction H :=
