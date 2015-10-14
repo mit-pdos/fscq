@@ -375,7 +375,8 @@ Ltac remove_sym_neq :=
 Ltac cleanup :=
   repeat (remove_duplicate
             || remove_refl
-            || remove_sym_neq).
+            || remove_sym_neq);
+  try congruence.
 
 Hint Extern 4 (get _ (set _ _ _) = _) => simpl_get_set : prog.
 Hint Extern 4 (_ = get _ (set _ _ _)) => simpl_get_set : prog.
@@ -529,8 +530,17 @@ Ltac distinguish_two_addresses a1 a2 :=
       try replace (weq a1 a1) in *;
       try congruence.
 
+Lemma weq_same : forall sz a,
+    @weq sz a a = left (eq_refl a).
+Proof.
+  intros.
+  case_eq (weq a a); intros; try congruence.
+  f_equal.
+  apply proof_irrelevance.
+Qed.
+
 Ltac distinguish_addresses :=
-  match goal with
+  try match goal with
   | [ a1 : addr, a2 : addr |- _ ] =>
     match goal with
       | [ H: context[if (weq a1 a2) then _ else _] |- _] =>
@@ -540,11 +550,10 @@ Ltac distinguish_addresses :=
     end
   | [ a1 : addr, a2 : addr |- _ ] =>
     distinguish_two_addresses a1 a2
-  | [ a1 : addr |- _ ] =>
-    case_eq (weq a1 a1);
-      intros;
-      subst;
-      try congruence
+  | [ H : context[weq ?a ?a] |- _ ] =>
+    progress (rewrite weq_same in H)
+  | [ |- context[weq ?a ?a] ] =>
+    progress (rewrite weq_same)
   end;
   cleanup.
 
@@ -577,7 +586,7 @@ Proof.
   unfold mem_disjoint; intro; repeat deex.
   distinguish_addresses.
   disk_equalities; distinguish_addresses; replace_cache_vals; auto.
-  unfold ptsto; distinguish_addresses; intuition; distinguish_addresses.
+  unfold ptsto; intuition; distinguish_addresses.
 Qed.
 
 Hint Resolve cache_pred_address.
@@ -723,7 +732,56 @@ Proof.
   - unfold ptsto; intuition; distinguish_addresses.
 Qed.
 
+Ltac replace_match :=
+  try match goal with
+  | [ |- context[match ?d with _ => _ end] ] =>
+    replace d
+  | [ H: context[match ?d with _ => _ end] |- _ ] =>
+    replace d in H
+  end.
+
+Lemma cache_pred_clean' : forall c vd a v,
+    cache_get c a = Some (false, v) ->
+    vd a = Some v ->
+    cache_pred (cache_evict c a) (mem_except vd a) * a |-> v =p=>
+cache_pred c vd.
+Proof.
+  unfold pimpl, mem_except.
+  intros.
+  unfold_sep_star in H1.
+  repeat deex.
+  unfold ptsto in *; intuition.
+  prove_cache_pred; distinguish_addresses; replace_cache_vals; rewrite_cache_get;
+  disk_equalities; distinguish_addresses; replace_match.
+  case_eq (cache_get c a'); intros.
+  destruct p as [ [] ]; replace_cache_vals; auto.
+  (* why doesn't disk_equalities do this? *)
+  lazymatch goal with
+  | [ H: @eq (@mem addr _ _) _ _ |- context[match (?m ?a) with _ => _ end] ] =>
+    apply equal_f with a' in H
+  end.
+  distinguish_addresses.
+  rewrite_cache_get; replace_cache_vals.
+  case_eq (m1 a'); intros; try congruence.
+  match goal with
+  | [ H: context[m2 _ = None] |- _ ] =>
+    rewrite H; auto
+  end; congruence.
+  distinguish_addresses.
+
+  (* these are some annoying manipulations that would be hard to automate *)
+
+  distinguish_addresses.
+  replace (m1 a0) with (Some v0); auto.
+  erewrite H3; autorewrite with cache; auto.
+  edestruct H8; eauto.
+  autorewrite with cache; eauto.
+  eexists.
+  replace_match; eauto.
+Qed.
+
 Hint Resolve cache_pred_clean.
+Hint Resolve cache_pred_clean'.
 
 Lemma cache_pred_hit :  forall c vd d a b v,
     cache_pred c vd d ->
