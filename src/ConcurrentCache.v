@@ -582,19 +582,26 @@ Qed.
 
 Hint Resolve cache_pred_address.
 
+Ltac destruct_matches_in e :=
+  lazymatch e with
+  | context[match ?d with | _ => _ end] =>
+    destruct_matches_in d
+  | _ => case_eq e; intros
+  end.
+
 Ltac destruct_matches :=
+  repeat (match goal with
+          | [ H: context[match ?d with | _ => _ end], Heq: ?d = _ |- _ ] =>
+            rewrite Heq in H
+          end);
   repeat (match goal with
          | [ |- context[match ?d with | _ => _ end] ] =>
            (replace d ||
-           case_eq d; intros)
+            destruct_matches_in d)
          | [ H: context[match ?d with | _ => _ end] |- _ ] =>
            (replace d in H ||
-            case_eq d; intros)
-          end;
-           try match goal with
-           | [ H: context[match ?d with | _ => _ end], Heq: ?d = _ |- _ ] =>
-             rewrite Heq in H
-           end);
+                         destruct_matches_in d)
+          end);
   subst;
   try congruence.
 
@@ -626,14 +633,79 @@ Proof.
   split; destruct_matches.
 Qed.
 
+Ltac cache_get_add :=
+  unfold cache_get, cache_add, cache_add_dirty, cache_evict;
+  intros;
+  try rewrite MapFacts.add_eq_o by auto;
+  try rewrite MapFacts.add_neq_o by auto;
+  auto.
+
+Lemma cache_get_eq : forall c a v,
+    cache_get (cache_add c a v) a = Some (false, v).
+Proof.
+  cache_get_add.
+Qed.
+
+Lemma cache_get_dirty_eq : forall c a v,
+    cache_get (cache_add_dirty c a v) a = Some (true, v).
+Proof.
+  cache_get_add.
+Qed.
+
+Lemma cache_get_dirty_neq : forall c a a' v,
+    a <> a' ->
+    cache_get (cache_add_dirty c a v) a' = cache_get c a'.
+Proof.
+  cache_get_add.
+Qed.
+
+Lemma cache_get_neq : forall c a a' v,
+    a <> a' ->
+    cache_get (cache_add c a v) a' = cache_get c a'.
+Proof.
+  cache_get_add.
+Qed.
+
+Hint Rewrite cache_get_eq cache_get_dirty_eq : cache.
+Hint Rewrite cache_get_dirty_neq cache_get_neq using (now eauto) : cache.
+
+Ltac cache_remove_manip :=
+  cache_get_add;
+  destruct_matches;
+  remove_rewrite;
+  try congruence.
+
+Lemma cache_evict_get : forall c v a,
+  cache_get c a = Some (false, v) ->
+  cache_get (cache_evict c a) a = None.
+Proof.
+  cache_remove_manip.
+Qed.
+
+Lemma cache_evict_get_other : forall c a a',
+  a <> a' ->
+  cache_get (cache_evict c a) a' = cache_get c a'.
+Proof.
+  cache_remove_manip.
+Qed.
+
+Hint Rewrite cache_evict_get_other using (now eauto) : cache.
+
+Ltac rewrite_cache_get :=
+  repeat match goal with
+         | [ H: context[cache_get (cache_evict ?c ?a) ?a],
+             H': cache_get ?c ?a = Some (false, ?v) |- _ ] =>
+           rewrite (cache_evict_get c v a H') in H
+         | [ H: context[cache_get] |- _ ] => progress (autorewrite with cache in H)
+         end;
+  autorewrite with cache.
+
 Lemma cache_pred_clean : forall c vd a v,
     cache_get c a = Some (false, v) ->
     vd a = Some v ->
     cache_pred c vd =p=>
 cache_pred (cache_evict c a) (mem_except vd a) * a |-> v.
 Proof.
-  (* FIXME: this proof is basically completely manual - the automation
-does some incorrect things that should be debugged *)
   unfold pimpl.
   intros.
   unfold_sep_star.
@@ -643,76 +715,12 @@ does some incorrect things that should be debugged *)
   intuition.
   - unfold mem_union; apply functional_extensionality; intro a'.
     prove_cache_pred; distinguish_addresses; replace_cache_vals; eauto.
-    destruct (m a'); auto.
-  - prove_cache_pred; distinguish_addresses; replace_cache_vals; eauto.
-    unfold mem_disjoint; intro; repeat deex.
-    distinguish_addresses.
-  - assert (m a = Some v).
-    prove_cache_pred.
-    unfold cache_evict.
-    unfold cache_pred; intuition.
-    apply functional_extensionality; intro a'.
-    unfold mem_union, cache_mem.
-    distinguish_addresses.
-    apply cache_get_find_clean in H; rewrite H.
-    unfold cache_get; remove_rewrite; auto.
-    apply cache_get_find_clean in H; rewrite H.
-    unfold cache_get; remove_rewrite.
-    case_eq (Map.find a' c); intros.
-    destruct c0.
-    apply cache_get_find_clean in H3.
-    prove_cache_pred.
-    apply cache_get_find_dirty in H3.
-    prove_cache_pred.
-    apply cache_get_find_empty in H3.
-    eauto using cache_miss_mem_eq.
-    distinguish_addresses.
-    apply cache_get_find_clean in H.
-    rewrite H in H3.
-    unfold cache_get in H3; remove_rewrite; inv_opt.
-    apply cache_get_find_clean in H.
-    rewrite H in H3.
-    unfold cache_get in H3; remove_rewrite.
-    case_eq (Map.find a0 c); intros; try congruence.
-    destruct c0.
-    rewrite H4 in H3.
-    inversion H3; subst.
-    unfold cache_pred in H1; intuition.
-    apply cache_get_find_clean in H4.
-    eauto.
-    rewrite H4 in H3.
-    inversion H3; subst.
-    unfold cache_pred in H1; intuition.
-
-    distinguish_addresses.
-    apply cache_get_find_clean in H.
-    rewrite H in H3.
-    unfold cache_get in H3; remove_rewrite; inv_opt.
-    case_eq (Map.find a c); intros.
-    destruct c0;
-      rewrite H4 in H3.
-    unfold cache_get in H3; remove_rewrite.
-    case_eq (Map.find a0 c); intros; try congruence.
-    destruct c0.
-    rewrite H6 in H3; inversion H3; subst.
-    rewrite H6 in H3; inversion H3; subst.
-    apply cache_get_find_dirty in H6.
-    unfold cache_pred in *; intuition eauto.
-    rewrite H6 in H3.
-    inversion H3.
-    unfold cache_pred in *; intuition eauto.
-    apply cache_get_find_clean in H.
-    rewrite H in H3.
-    unfold cache_get in H3; remove_rewrite.
-    case_eq (Map.find a0 c); intros.
-    destruct c0.
-    rewrite H6 in H3; inversion H3.
-    rewrite H6 in H3; inversion H3.
-    apply cache_get_find_dirty in H6.
-    unfold cache_pred in *; intuition eauto.
-    unfold cache_pred in *; intuition eauto.
-
-    - unfold ptsto; distinguish_addresses; intuition; distinguish_addresses.
+    destruct_matches.
+  - unfold mem_disjoint; intro; repeat deex.
+    prove_cache_pred; distinguish_addresses; replace_cache_vals; eauto.
+  - prove_cache_pred; distinguish_addresses; destruct_matches;
+    rewrite_cache_get; try congruence; eauto.
+  - unfold ptsto; intuition; distinguish_addresses.
 Qed.
 
 Hint Resolve cache_pred_clean.
@@ -764,42 +772,6 @@ Ltac finish :=
   try cache_contents_eq;
   try congruence;
   eauto.
-
-Ltac cache_get_add :=
-  unfold cache_get, cache_add, cache_add_dirty, cache_evict;
-  intros;
-  try rewrite MapFacts.add_eq_o by auto;
-  try rewrite MapFacts.add_neq_o by auto;
-  auto.
-
-Lemma cache_get_eq : forall c a v,
-    cache_get (cache_add c a v) a = Some (false, v).
-Proof.
-  cache_get_add.
-Qed.
-
-Lemma cache_get_dirty_eq : forall c a v,
-    cache_get (cache_add_dirty c a v) a = Some (true, v).
-Proof.
-  cache_get_add.
-Qed.
-
-Lemma cache_get_dirty_neq : forall c a a' v,
-    a <> a' ->
-    cache_get (cache_add_dirty c a v) a' = cache_get c a'.
-Proof.
-  cache_get_add.
-Qed.
-
-Lemma cache_get_neq : forall c a a' v,
-    a <> a' ->
-    cache_get (cache_add c a v) a' = cache_get c a'.
-Proof.
-  cache_get_add.
-Qed.
-
-Hint Rewrite cache_get_eq cache_get_dirty_eq : cache.
-Hint Rewrite cache_get_dirty_neq cache_get_neq using (now eauto) : cache.
 
 Lemma cache_pred_stable_add : forall c vd a v d,
     vd a = Some v ->
@@ -1078,29 +1050,6 @@ Ltac if_ok :=
     unfold If_; case_eq b; intros
   end.
 
-Ltac cache_remove_manip :=
-  cache_get_add;
-  destruct_matches;
-  remove_rewrite;
-  try congruence.
-
-Lemma cache_evict_get : forall c v a,
-  cache_get c a = Some (false, v) ->
-  cache_get (cache_evict c a) a = None.
-Proof.
-  cache_remove_manip.
-Qed.
-
-Lemma cache_evict_get_other : forall c a a',
-  a <> a' ->
-  cache_get (cache_evict c a) a' = cache_get c a'.
-Proof.
-  cache_remove_manip.
-Qed.
-
-Hint Rewrite cache_evict_get using (now eauto) : cache.
-Hint Rewrite cache_evict_get_other using (now eauto) : cache.
-
 Lemma cache_pred_stable_evict : forall c a vd d v,
   cache_pred c vd d ->
   cache_get c a = Some (false, v) ->
@@ -1189,7 +1138,6 @@ Proof.
   eexists.
   replace (d a); eauto.
   deex.
-  clear H4.
 
   valid_match_opt; hoare pre simplify with finish.
 
