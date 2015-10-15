@@ -106,8 +106,7 @@ Theorem get_set_other : forall A B (types: list A)
     get m2 (set m1 v l) = get m2 l.
 Proof.
   unfold get, set.
-  induction l; intros.
-  inversion m1.
+  induction l; intros; eauto.
 
   dependent destruction m1;
     dependent destruction m2; cbn in *;
@@ -115,16 +114,31 @@ Proof.
     auto.
 Qed.
 
+Theorem set_get : forall A B (types: list A)
+                    (l : hlist B types)
+                    (elm:A) (m: member elm types) v,
+    v = get m l ->
+    set m v l  = l.
+Proof.
+  unfold get, set.
+  induction l; intros; eauto; subst.
+
+  dependent destruction m;
+    cbn in *;
+    auto.
+  rewrite IHl; auto.
+Qed.
+
+Hint Rewrite get_set : hlist.
+Hint Rewrite get_set_other using (cbn; now auto) : hlist.
+Hint Rewrite set_get using (cbn; now auto) : hlist.
+
 (* this is the best way to use get_set without getting into trouble *)
 Ltac simpl_get_set_goal :=
-  repeat (rewrite get_set ||
-                  rewrite get_set_other by (cbn; auto));
-  auto.
+  autorewrite with hlist; auto.
 
 Ltac simpl_get_set_hyp H :=
-  repeat (rewrite get_set in H ||
-                               rewrite get_set_other in H by (cbn; auto));
-  auto.
+  autorewrite with hlist in H; auto.
 
 (* certainly we don't want users to reason about get_impl and set_impl *)
 Global Opaque get set.

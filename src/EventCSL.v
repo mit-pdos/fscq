@@ -486,4 +486,4 @@ Hint Extern 1 {{ Assgn _ _; _ }} => apply assgn_ok : prog.
 Hint Extern 1 {{ GetTID ; _ }} => apply get_tid_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply yield_ok : prog.
 Hint Extern 1 {{ Commit _; _ }} => apply commit_ok : prog.
-Hint Extern 1 {{ AcquireLock _; _ }} => apply acquire_lock_ok : prog.
+Hint Extern 1 {{ AcquireLock _ _; _ }} => apply acquire_lock_ok : prog.
