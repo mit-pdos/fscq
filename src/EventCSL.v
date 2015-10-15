@@ -24,8 +24,22 @@ Notation "m '|=' F" :=
 
 Delimit Scope mem_judgement_scope with judgement.
 
+Inductive valuset : Set :=
+  | Valuset (last:valu) (pending:list valu).
+
+Definition buffer_valu (vs:valuset) v :=
+  match vs with
+  | Valuset last pending => Valuset v (last::pending)
+  end.
+
+Definition latest_valu (vs:valuset) :=
+  let 'Valuset last _ := vs in last.
+
+Definition synced (vs:valuset) :=
+  let 'Valuset last _ := vs in Valuset last nil.
+
 (* a disk state *)
-Notation DISK := (@mem addr (@weq addrlen) valu).
+Notation DISK := (@mem addr (@weq addrlen) valuset).
 
 Definition ID := nat.
 
@@ -63,12 +77,13 @@ Section EventCSL.
       The semantics will reject transitions that do not obey these rules. *)
   Definition Relation := S -> S -> Prop.
   Variable StateR : ID -> Relation.
-  Definition Invariant := M -> S -> @pred addr (@weq addrlen) valu.
+  Definition Invariant := M -> S -> @pred addr (@weq addrlen) valuset.
   Variable StateI : Invariant.
 
   CoInductive prog :=
   | Read (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
+  | Sync (a: addr) (rx: unit -> prog)
   | Get t (v: var t) (rx: t -> prog)
   | Assgn t (v: var t) (val:t) (rx: unit -> prog)
   | GetTID (rx: ID -> prog)
@@ -99,12 +114,18 @@ Section EventCSL.
   Definition StateR' : ID -> Relation := othersR StateR.
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
-  | StepRead : forall d m s0 s a rx v, d a = Some v ->
-                                  tid :- Read a rx / (d, m, s0, s) ==>
-                                      rx v / (d, m, s0, s)
-  | StepWrite : forall d m s0 s a rx v v', d a = Some v ->
-                                      tid :- Write a v' rx / (d, m, s0, s) ==>
-                                          rx tt / (upd d a v', m, s0, s)
+  | StepRead : forall d m s0 s a rx vs,
+      d a = Some vs ->
+      tid :- Read a rx / (d, m, s0, s) ==>
+          rx (latest_valu vs) / (d, m, s0, s)
+  | StepWrite : forall d m s0 s a rx vs0 v',
+      d a = Some vs0 ->
+      tid :- Write a v' rx / (d, m, s0, s) ==>
+          rx tt / (upd d a (buffer_valu vs0 v'), m, s0, s)
+  | StepSync : forall d m s0 s a rx vs0,
+      d a = Some vs0 ->
+      tid :- Sync a rx / (d, m, s0, s) ==>
+          rx tt / (upd d a (synced vs0), m, s0, s)
   | StepAcquireLock : forall d m m' s s0 d' s' up rx l,
       let m'' := set l Locked m' in
       let s'' := up tid s' in
@@ -191,7 +212,7 @@ Section EventCSL.
 
   Hint Resolve read_failure write_failure.
 
-  Definition donecond := T -> @pred addr (@weq addrlen) valu.
+  Definition donecond := T -> @pred addr (@weq addrlen) valuset.
 
   Definition valid tid (pre: donecond -> mem -> M -> S -> S -> Prop) p : Prop :=
     forall d m s0 s done out,
@@ -264,6 +285,29 @@ Section EventCSL.
   Ltac simpl_post :=
     cbn; intuition.
 
+  Ltac learn_mem_val H m a :=
+    let v := fresh "v" in
+      evar (v : valuset);
+      assert (m a = Some v);
+      [ eapply ptsto_valid;
+        pred_apply' H; cancel |
+      ]; subst v.
+
+  Ltac learn_some_addr :=
+    match goal with
+    | [ a: addr, H: ?P ?m |- _ ] =>
+      match P with
+      | context[(a |-> _)%pred] => learn_mem_val H m a
+      end
+    end.
+
+  Ltac match_valusets :=
+    match goal with
+    | [ H: ?d ?a = Some ?v1, H': ?d ?a = Some ?v2 |- _ ] =>
+      assert (v1 = v2) by congruence; subst v2;
+      clear H'
+    end.
+
   Ltac opcode_ok :=
     intros_pre; ind_exec;
     match goal with
@@ -278,36 +322,51 @@ Section EventCSL.
       exfalso
     end; eauto 10.
 
-  Theorem write_ok : forall a v0 v,
-      tid |- {{ F,
+  Theorem write_ok : forall a v,
+      tid |- {{ F v0,
              | PRE d m s0 s: d |= F * a |-> v0
-             | POST d' m' s0' s' _: d' |= F * a |-> v /\
+             | POST d' m' s0' s' _: d' |= F * a |-> (buffer_valu v0 v) /\
                                 s0' = s0 /\
                                 s' = s /\
                                 m' = m
             }} Write a v.
   Proof.
     opcode_ok.
+    learn_some_addr; match_valusets.
     eapply pimpl_apply; [| eapply ptsto_upd].
     cancel.
     pred_apply; cancel.
   Qed.
 
-  Theorem read_ok : forall a v0,
-    tid |- {{ F,
+  Theorem sync_ok : forall a,
+      tid |- {{ F v0,
+             | PRE d m s0 s: d |= F * a |-> v0
+             | POST d' m' s0' s' _: d' |= F * a |-> (synced v0) /\
+                                s0' = s0 /\
+                                s' = s /\
+                                m' = m
+            }} Sync a.
+  Proof.
+    opcode_ok.
+    learn_some_addr; match_valusets.
+    eapply pimpl_apply; [| eapply ptsto_upd].
+    cancel.
+    pred_apply; cancel.
+  Qed.
+
+  Theorem read_ok : forall a,
+    tid |- {{ F v0,
       | PRE d m s0 s: d |= F * a |-> v0
       | POST d' m' s0' s' v: d' = d /\
-                             v = v0 /\
+                             v = latest_valu v0 /\
                              s0' = s0 /\
                              s' = s /\
                              m' = m
     }} Read a.
   Proof.
     opcode_ok.
-    assert (d a = Some v0).
-    eapply ptsto_valid; eauto.
-    pred_apply; cancel.
-    congruence.
+    learn_some_addr; match_valusets.
+    auto.
   Qed.
 
   Ltac sigT_eq :=
@@ -481,6 +540,7 @@ Notation "{{ f ; '_' }}" := (valid _ _ _ _ (progseq f _)).
 
 Hint Extern 1 {{ Read _; _ }} => apply read_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply write_ok : prog.
+Hint Extern 1 {{ Sync _; _ }} => apply sync_ok : prog.
 Hint Extern 1 {{ Get _; _ }} => apply get_ok : prog.
 Hint Extern 1 {{ Assgn _ _; _ }} => apply assgn_ok : prog.
 Hint Extern 1 {{ GetTID ; _ }} => apply get_tid_ok : prog.
