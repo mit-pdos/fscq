@@ -41,6 +41,9 @@ Definition synced (vs:valuset) :=
 (* a disk state *)
 Notation DISK := (@mem addr (@weq addrlen) valuset).
 
+(* a disk predicate *)
+Notation DISK_PRED := (@pred addr (@weq addrlen) valuset).
+
 Definition ID := nat.
 
 Section Lock.
@@ -77,7 +80,7 @@ Section EventCSL.
       The semantics will reject transitions that do not obey these rules. *)
   Definition Relation := S -> S -> Prop.
   Variable StateR : ID -> Relation.
-  Definition Invariant := M -> S -> @pred addr (@weq addrlen) valuset.
+  Definition Invariant := M -> S -> DISK_PRED.
   Variable StateI : Invariant.
 
   CoInductive prog :=
@@ -212,7 +215,7 @@ Section EventCSL.
 
   Hint Resolve read_failure write_failure.
 
-  Definition donecond := T -> @pred addr (@weq addrlen) valuset.
+  Definition donecond := T -> DISK_PRED.
 
   Definition valid tid (pre: donecond -> mem -> M -> S -> S -> Prop) p : Prop :=
     forall d m s0 s done out,

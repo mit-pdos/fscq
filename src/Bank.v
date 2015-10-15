@@ -12,11 +12,11 @@ Section Bank.
   Definition acct1 : addr := $0.
   Definition acct2 : addr := $1.
 
-  Definition rep bal1 bal2 : @pred addr (@weq addrlen) valu :=
-    acct1 |-> bal1 * acct2 |-> bal2.
+  Definition rep rest1 rest2 bal1 bal2 : DISK_PRED :=
+    acct1 |-> (Valuset bal1 rest1) * acct2 |-> (Valuset bal2 rest2).
 
-  Definition inv_rep bal1 bal2 : pred :=
-    rep bal1 bal2 *
+  Definition inv_rep rest1 rest2 bal1 bal2 : pred :=
+    rep rest1 rest2 bal1 bal2 *
     [[ #bal1 + #bal2 = 100 ]].
 
   (** The bank transition system, bankS. *)
@@ -53,9 +53,9 @@ Section Bank.
   Definition bankI ledger bal1 bal2 :=
     balances ledger = (bal1, bal2).
 
-  Definition bankPred (_:M Mcontents) ledger : @pred addr (@weq addrlen) valu :=
-    (exists F bal1 bal2,
-      F * inv_rep bal1 bal2 *
+  Definition bankPred (_:M Mcontents) ledger : DISK_PRED :=
+    (exists F rest1 rest2 bal1 bal2,
+      F * inv_rep rest1 rest2 bal1 bal2 *
       [[ bankI ledger #bal1 #bal2 ]])%pred.
 
   Definition bankS : transitions Mcontents State :=
@@ -75,9 +75,9 @@ Section Bank.
 
   Hint Unfold record_transfer : prog.
 
-  Lemma max_balance : forall bal1 bal2,
-    (exists F, F * inv_rep bal1 bal2) =p=>
-    (exists F, F * inv_rep bal1 bal2) *
+  Lemma max_balance : forall rest1 rest2 bal1 bal2,
+    (exists F, F * inv_rep rest1 rest2 bal1 bal2) =p=>
+    (exists F, F * inv_rep rest1 rest2 bal1 bal2) *
     [[ #bal1 <= 100 ]] *
     [[ #bal2 <= 100 ]].
   Proof.
@@ -188,40 +188,19 @@ Section Bank.
     eauto.
   Qed.
 
-  Lemma bank_invariant_transfer : forall F s m bal1 bal2 amount,
-      #bal1 + #bal2 = 100 ->
-      #bal1 >= amount ->
-      balances s = (#bal1, #bal2) ->
-      acct2 |-> (bal2 ^+ $ amount) * acct1 |-> (bal1 ^- $ amount) * F =p=>
-      bankPred m (s ++ [from1 amount]).
-  Proof.
-    Ltac process_entry :=
-      match goal with
-      | [ |- context[balances (?l ++ [_])] ] =>
-        rewrite balances_assoc; unfold add_entry;
-        try (replace (balances l))
-      end.
-
-    unfold bankPred.
-    repeat (autounfold with prog).
-    cancel.
-    process_entry; auto.
-  Qed.
-
-  Hint Resolve bank_invariant_transfer.
-
-  Theorem transfer_ok : forall bal1 bal2 amount,
+  Theorem transfer_ok : forall rest1 rest2 bal1 bal2 amount,
       bankS TID: tid |-
       {{ F,
-       | PRE d m l0 l: d |= F * rep bal1 bal2 /\
+       | PRE d m l0 l: d |= F * rep rest1 rest2 bal1 bal2 /\
                        l0 = l
-       | POST d' m' l0' l' _: d' |= F * rep (bal1 ^- $ amount) (bal2 ^+ $ amount) /\
+       | POST d' m' l0' l' _: d' |= F *
+                              rep (bal1 :: rest1) (bal2 :: rest2)
+                                  (bal1 ^- $ amount) (bal2 ^+ $ amount) /\
                               l' = l /\
                               l0' = l' /\
                               m' = m
       }} transfer amount.
   Proof.
-    unfold transfer.
     hoare.
   Qed.
 
@@ -244,10 +223,33 @@ Section Bank.
     rewrite IHl1; auto.
   Qed.
 
-  Theorem transfer_yield_ok : forall bal1 bal2 amount,
+  Lemma bank_invariant_transfer : forall F s m rest1 rest2 bal1 bal2 amount,
+      #bal1 + #bal2 = 100 ->
+      #bal1 >= amount ->
+      balances s = (#bal1, #bal2) ->
+      (acct2 |-> (Valuset (bal2 ^+ $ amount) rest2) *
+       acct1 |-> (Valuset (bal1 ^- $ amount) rest1) * F) =p=>
+  bankPred m (s ++ [from1 amount]).
+  Proof.
+    Ltac process_entry :=
+      match goal with
+      | [ |- context[balances (?l ++ [_])] ] =>
+        rewrite balances_assoc; unfold add_entry;
+        try (replace (balances l))
+      end.
+
+    unfold bankPred.
+    repeat (autounfold with prog).
+    cancel.
+    process_entry; auto.
+  Qed.
+
+  Hint Resolve bank_invariant_transfer.
+
+  Theorem transfer_yield_ok : forall rest1 rest2 bal1 bal2 amount,
     bankS TID: tid |-
     {{ F,
-     | PRE d m l0 l: d |= F * inv_rep bal1 bal2 /\
+     | PRE d m l0 l: d |= F * inv_rep rest1 rest2 bal1 bal2 /\
                      #bal1 >= amount /\
                      bankI l #bal1 #bal2 /\
                      l0 = l
@@ -256,7 +258,6 @@ Section Bank.
                             l0' = l'
     }} transfer_yield amount.
   Proof.
-    unfold transfer_yield.
     hoare.
 
     match goal with
