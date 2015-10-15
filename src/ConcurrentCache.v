@@ -970,11 +970,11 @@ Theorem locked_disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v,
      | PRE d m s0 s: let vd := virt_disk s in
-                     d |= cache_pred (get Cache m) vd /\
+                     cacheI m s d /\
                      vd |= F * a |-> v /\
                      get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            d' |= cache_pred (get Cache m') vd' /\
+                            cacheI m s d /\
                             vd' = virt_disk s /\
                             r = v /\
                             get GCacheL s' = Owned tid /\
