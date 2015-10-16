@@ -95,8 +95,8 @@ Definition cache_pred c (vd:DISK) : DISK_PRED :=
       match (cache_get c a) with
       | Some (false, v) => exists rest, vd a = Some (Valuset v rest) /\
                                    d a = Some (Valuset v rest)
-      | Some (true, v) => exists rest, vd a = Some (Valuset v rest) /\
-                                  exists v', d a = Some (Valuset v' rest)
+      | Some (true, v') => exists rest v, vd a = Some (Valuset v' (v :: rest)) /\
+                                     d a = Some (Valuset v rest)
       | None => vd a = d a
       end.
 
@@ -332,6 +332,11 @@ Ltac remove_sym_neq :=
   | [ H: ?a <> ?a', H': ?a' <> ?a |- _ ] => clear dependent H'
   end.
 
+Ltac remove_unit :=
+  match goal with
+  | [ a: unit |- _ ] => clear a
+  end.
+
 Ltac same_cache_vals :=
   match goal with
   | [ H: cache_get ?c ?a = Some ?v,
@@ -391,6 +396,7 @@ Abort.
 Ltac cleanup :=
   repeat (remove_duplicate
           || remove_refl
+          || remove_unit
           || remove_sym_neq
           || same_cache_vals
           || same_disk_vals
@@ -672,6 +678,10 @@ Ltac case_cache_val' c a :=
 
 Ltac case_cache_val :=
   lazymatch goal with
+    (* particularly in Hoare proofs, cache_get appears in the goal
+       on an expression to get the AssocCache *)
+  | [ |- context[cache_get ?c ?a] ] =>
+    case_cache_val' c a
   | [ c: AssocCache, a: addr, a': addr |- _ ] =>
     (* if address is ambiguous, focus on one in the goal *)
     match goal with
@@ -866,25 +876,20 @@ Proof.
   intuition.
 Qed.
 
-Hint Resolve cache_pred_clean.
-Hint Resolve cache_pred_clean'.
+Hint Resolve cache_pred_clean cache_pred_clean'.
 
-Lemma cache_pred_dirty : forall c vd a v rest,
-    cache_get c a = Some (true, v) ->
-    vd a = Some (Valuset v rest) ->
+Lemma cache_pred_dirty : forall c vd a v v' rest,
+    cache_get c a = Some (true, v') ->
+    vd a = Some (Valuset v' (v :: rest)) ->
     cache_pred c vd =p=>
-exists v' rest', cache_pred (Map.remove a c) (mem_except vd a) *
-            a |-> (Valuset v' rest').
+    cache_pred (Map.remove a c) (mem_except vd a) *
+      a |-> (Valuset v rest).
 Proof.
   unfold pimpl.
   intros.
   unfold_sep_star.
-  assert (exists v', m a = Some v').
-  prove_cache_pred.
-  destruct H2 as [ [v' rest'] ?].
-  exists v', rest'.
   exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some (Valuset v' rest') else None).
+  exists (fun a' => if weq a' a then Some (Valuset v rest) else None).
   unfold mem_except, mem_union, mem_disjoint, ptsto.
   intuition;
     prove_cache_pred; distinguish_addresses; replace_cache_vals;
@@ -894,9 +899,9 @@ Qed.
 
 Lemma cache_pred_dirty' : forall c vd a v v' rest,
     cache_get c a = Some (true, v') ->
-    vd a = Some (Valuset v' rest) ->
-    cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest) =p=>
-cache_pred c vd.
+    vd a = Some (Valuset v' (v :: rest)) ->
+    cache_pred (Map.remove a c) (mem_except vd a) *
+    a |-> (Valuset v rest) =p=> cache_pred c vd.
 Proof.
   unfold pimpl, mem_except.
   intros.
@@ -911,18 +916,33 @@ Proof.
   destruct_matches; intuition.
 Qed.
 
-Lemma cache_pred_hit :  forall c vd d a b v,
+Hint Resolve cache_pred_dirty cache_pred_dirty'.
+
+Lemma cache_pred_clean_val :  forall c vd d a v,
     cache_pred c vd d ->
-    cache_get c a = Some (b, v) ->
-    exists rest, vd a = Some (Valuset v rest).
+    cache_get c a = Some (false, v) ->
+    exists rest, vd a = Some (Valuset v rest) /\
+                 d a = Some (Valuset v rest).
 Proof.
-  destruct b; prove_cache_pred.
+  prove_cache_pred.
+Qed.
+
+Lemma cache_pred_dirty_val :  forall c vd d a v,
+    cache_pred c vd d ->
+    cache_get c a = Some (true, v) ->
+    exists v' rest, vd a = Some (Valuset v (v' :: rest)) /\
+               d a = Some (Valuset v' rest).
+Proof.
+  prove_cache_pred.
 Qed.
 
 Ltac cache_vd_val :=
   lazymatch goal with
-  | [ H: cache_get _ ?a = Some (_, ?v) |- _ ] =>
-    learn H (eapply cache_pred_hit in H;
+  | [ H: cache_get ?c ?a = Some (true, ?v), H': cache_pred ?c _ _ |- _ ] =>
+    learn H (eapply cache_pred_dirty_val in H;
+              eauto)
+  | [ H: cache_get ?c ?a = Some (false, ?v), H': cache_pred ?c _ _ |- _ ] =>
+    learn H (eapply cache_pred_clean_val in H;
               eauto)
   end.
 
@@ -974,17 +994,13 @@ Hint Resolve cache_pred_stable_add.
 Hint Rewrite cache_get_dirty_eq upd_eq : cache.
 Hint Rewrite cache_get_dirty_neq upd_ne using (now auto) : cache.
 
-Lemma cache_pred_stable_write : forall c vd a v rest v' d,
+Lemma cache_pred_stable_dirty_write : forall c vd a v rest v' d vs',
+    cache_get c a = Some (true, v) ->
     vd a = Some (Valuset v rest) ->
     cache_pred c vd d ->
-    cache_pred (cache_add_dirty c a v') (upd vd a (Valuset v' rest)) d.
+    vs' = Valuset v' rest ->
+    cache_pred (cache_add_dirty c a v') (upd vd a vs') d.
 Proof.
-  intros.
-  case_eq (cache_get c a); intros;
-  try match goal with
-      | [ p: bool * valu |- _ ] =>
-        destruct p as [ [] ]
-      end;
   prove_cache_pred;
   distinguish_addresses;
   rewrite_cache_get;
@@ -992,7 +1008,37 @@ Proof.
   cleanup; eauto.
 Qed.
 
-Hint Resolve cache_pred_stable_write.
+Lemma cache_pred_stable_clean_write : forall c vd a v rest v' d vs',
+    cache_get c a = Some (false, v) ->
+    vd a = Some (Valuset v rest) ->
+    cache_pred c vd d ->
+    vs' = Valuset v' (v :: rest) ->
+    cache_pred (cache_add_dirty c a v') (upd vd a vs') d.
+Proof.
+  prove_cache_pred;
+  distinguish_addresses;
+  rewrite_cache_get;
+  complete_mem_equalities;
+  cleanup; eauto.
+Qed.
+
+Lemma cache_pred_stable_miss_write : forall c vd a v rest v' d vs',
+    cache_get c a = None ->
+    vd a = Some (Valuset v rest) ->
+    cache_pred c vd d ->
+    vs' = Valuset v' (v :: rest) ->
+    cache_pred (cache_add_dirty c a v') (upd vd a vs') d.
+Proof.
+  prove_cache_pred;
+  distinguish_addresses;
+  rewrite_cache_get;
+  complete_mem_equalities;
+  cleanup; eauto.
+Qed.
+
+Hint Resolve cache_pred_stable_dirty_write
+             cache_pred_stable_clean_write
+             cache_pred_stable_miss_write.
 
 Ltac learn_mem_val H m a :=
   let v := fresh "v" in
@@ -1221,12 +1267,19 @@ Definition locked_disk_write {T} a v rx : prog Mcontents S T :=
   let c' := cache_add_dirty c a v in
   Assgn Cache c';;
         Commit (set GCache c');;
-        Commit (fun (s:S) => let d := get GDisk s in
-                           let vs' := match (d a) with
-                                      | Some vs => replace_latest vs v
-                                      | None => Valuset v nil
-                                      end in
-                           set GDisk (upd d a vs') s);;
+        Commit (fun (s:S) => let vd := get GDisk s in
+                           let rest := match (vd a) with
+                                       | Some (Valuset v0 rest) =>
+                                         match (cache_get c a) with
+                                         | Some (true, _) => rest
+                                         | Some (false, _) => v0 :: rest
+                                         | None => v0 :: rest
+                                         end
+                                       (* impossible *)
+                                       | None => nil
+                                       end in
+                           let vs' := Valuset v rest in
+                           set GDisk (upd vd a vs') s);;
         rx tt.
 
 Theorem locked_disk_write_ok : forall a v,
@@ -1239,11 +1292,14 @@ Theorem locked_disk_write_ok : forall a v,
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             cacheI m' s' d' /\
                             get GCacheL s = Owned tid /\
-                            vd' |= F * a |-> (Valuset v rest) /\
+                            exists rest', vd' |= F * a |-> (Valuset v rest') /\
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
   hoare pre (simplify; learn_some_addr) with finish.
+  case_cache_val;
+    cbn; try cache_vd_val; repeat deex; cleanup; eauto.
+
   eapply pimpl_apply;
     [ | eapply ptsto_upd ];
     dispatch.
@@ -1310,7 +1366,6 @@ Definition writeback {T} a rx : prog Mcontents S T :=
   match (cache_get c a) with
   | Some (true, v) =>
     Write a v;;
-          (* TODO: buffer this write in the virtual disk *)
           let c' := cache_clean c a in
           Assgn Cache c';;
                 Commit (set GCache c');;
@@ -1356,23 +1411,78 @@ Qed.
 Hint Rewrite cache_get_add_clean : cache.
 Hint Rewrite cache_get_add_clean_other using (now eauto) : cache.
 
-Lemma cache_pred_stable_clean : forall c vd d a v rest,
+Lemma cache_pred_stable_clean : forall c vd d a v,
     cache_pred c vd d ->
     cache_get c a = Some (true, v) ->
-    d a = Some (Valuset v rest) ->
+    vd a = d a ->
     cache_pred (cache_clean c a) vd d.
 Proof.
   intros.
   unfold cache_clean.
   match goal with
-    | [ H: cache_get _ _ = Some (true, _) |- _ ] =>
-      learn H (apply cache_get_find_dirty in H)
+  | [ H: cache_get _ _ = Some (true, _) |- _ ] =>
+    learn H (apply cache_get_find_dirty in H)
   end; simpl_match.
   prove_cache_pred; destruct_matches; distinguish_addresses; replace_cache_vals;
-  rewrite_cache_get; repeat deex; cleanup; try inv_opt; eauto.
+  rewrite_cache_get; repeat deex; cleanup;
+  try inv_opt; complete_mem_equalities; eauto.
 Qed.
 
 Hint Resolve cache_pred_stable_clean.
+
+Lemma cache_get_remove_eq : forall c a,
+    cache_get (Map.remove a c) a = None.
+Proof.
+  intros.
+  unfold cache_get.
+  rewrite MapFacts.remove_eq_o; auto.
+Qed.
+
+Lemma cache_get_remove_neq : forall c a a',
+    a <> a' ->
+    cache_get (Map.remove a c) a' = cache_get c a'.
+Proof.
+  intros.
+  unfold cache_get.
+  rewrite MapFacts.remove_neq_o; auto.
+Qed.
+
+Lemma cache_get_clean_neq : forall c a a',
+    a <> a' ->
+    cache_get (cache_clean c a) a' = cache_get c a'.
+Proof.
+  intros.
+  unfold cache_get, cache_clean; destruct_matches;
+  rewrite MapFacts.add_neq_o in * by auto; congruence.
+Qed.
+
+Hint Rewrite cache_get_remove_eq : cache.
+Hint Rewrite cache_get_remove_neq using (now auto) : cache.
+Hint Rewrite cache_get_clean_neq using (now auto) : cache.
+
+Lemma cache_pred_stable_remove_clean : forall c vd a,
+    cache_pred (Map.remove a c) vd =p=>
+cache_pred (Map.remove a (cache_clean c a)) vd.
+Proof.
+  unfold pimpl.
+  intros.
+  prove_cache_pred; distinguish_addresses; rewrite_cache_get; auto.
+Qed.
+
+Hint Resolve cache_pred_stable_remove_clean.
+
+Lemma cache_get_dirty_clean : forall c a v,
+  cache_get c a = Some (true, v) ->
+  cache_get (cache_clean c a) a = Some (false, v).
+Proof.
+  intros.
+  apply cache_get_find_dirty in H.
+  unfold cache_clean; simpl_match.
+  autorewrite with cache; auto.
+Qed.
+
+Hint Rewrite cache_get_dirty_clean using (now auto) : cache.
+Hint Resolve cache_get_dirty_clean.
 
 Theorem writeback_ok : forall a,
     cacheS TID: tid |-
@@ -1384,49 +1494,24 @@ Theorem writeback_ok : forall a,
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             d' |= cache_pred (get Cache m') vd' /\
                             get GCacheL s = Owned tid /\
-                            (* not quite true, since we will have to
-                                buffer the write of the actual value
-                                in the virtual disk *)
                             vd' = virt_disk s /\
                             s0' = s0
     }} writeback a.
 Proof.
-  (* this proof is a bit messy, but could be better automated with some
-specific simplifiers *)
   hoare pre simplify with finish.
   learn_some_addr.
 
   Remove Hints ptsto_valid_iff : core.
 
-  assert (exists dv0, d a = Some dv0).
-    prove_cache_pred.
-    case_cache_val' (get Cache m) a; repeat deex;
-    cleanup; complete_mem_equalities; eauto.
-
-    (* we have to split the proof at this level so we can get the
+  (* we have to split the proof at this level so we can get the
   cache_pred we need for the Write *)
 
-    case_cache_val' (get Cache m) a.
-    edestruct cache_pred_hit; eauto.
-    match goal with
-    | [ H: cache_pred _ _ _ |- _ ] =>
-      let H' := fresh in
-      pose proof H as H';
-        eapply cache_pred_dirty in H; cleanup; eauto
-    end;
-      repeat deex.
-    all: valid_match_opt; hoare pre simplify with finish.
+  case_cache_val' (get Cache m) a;
+    try cache_vd_val; repeat deex; cleanup.
 
-    match goal with
-    | [ H: ?m _ = _ |- cache_pred _ ?m _ ] =>
-      pose proof H as H';
-      eapply cache_pred_dirty' in H; cleanup; eauto
-    end.
-
-    pred_apply; cancel.
-    (* rests don't line up; if we write to disk, we actually have to
-    update the virtual disk to reflect the buffered write. *)
-    (* other than that, cache_pred_stable_clean will prove this, after
-    unfolding pimpl *)
-    admit.
-Abort.
+  all: valid_match_opt; hoare pre simplify with finish.
+  learn_some_addr.
+  pred_apply; cancel.
+  eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto.
+  cancel; eauto.
+Qed.
