@@ -1308,12 +1308,14 @@ Definition writeback {T} a rx : prog Mcontents S T :=
   c <- Get Cache;
   let ov := cache_get c a in
   match (cache_get c a) with
-  | Some (dirty, v) =>
+  | Some (true, v) =>
     Write a v;;
+          (* TODO: buffer this write in the virtual disk *)
           let c' := cache_clean c a in
           Assgn Cache c';;
                 Commit (set GCache c');;
-      rx tt
+                rx tt
+  | Some (false, _) => rx tt
   | None => rx tt
   end.
 
@@ -1382,6 +1384,9 @@ Theorem writeback_ok : forall a,
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             d' |= cache_pred (get Cache m') vd' /\
                             get GCacheL s = Owned tid /\
+                            (* not quite true, since we will have to
+                                buffer the write of the actual value
+                                in the virtual disk *)
                             vd' = virt_disk s /\
                             s0' = s0
     }} writeback a.
@@ -1410,23 +1415,18 @@ specific simplifiers *)
         eapply cache_pred_dirty in H; cleanup; eauto
     end;
       repeat deex.
-    valid_match_opt; hoare pre simplify with finish.
+    all: valid_match_opt; hoare pre simplify with finish.
 
-    admit. (* rests don't line up *)
-    repeat deex; repeat match goal with
-                 | [ vs: valuset |- _ ] => destruct vs
-                 end.
-    edestruct cache_pred_hit; eauto; cleanup.
-
-    valid_match_opt; hoare pre simplify with finish.
-    pred_apply; cancel.
-    eapply pimpl_trans; [ eapply cache_pred_clean | ]; eauto.
-    cancel.
-    admit. (* order of existential instantiations is wrong *)
+    match goal with
+    | [ H: ?m _ = _ |- cache_pred _ ?m _ ] =>
+      pose proof H as H';
+      eapply cache_pred_dirty' in H; cleanup; eauto
+    end.
 
     pred_apply; cancel.
-    (* should fall through from above frame predicate *)
+    (* rests don't line up; if we write to disk, we actually have to
+    update the virtual disk to reflect the buffered write. *)
+    (* other than that, cache_pred_stable_clean will prove this, after
+    unfolding pimpl *)
     admit.
-
-    valid_match_opt; hoare pre simplify with finish.
-Admitted.
+Abort.
