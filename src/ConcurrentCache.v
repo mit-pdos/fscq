@@ -1213,25 +1213,33 @@ Proof.
     repeat unify_mem_contents; eauto.
 Qed.
 
+Definition replace_latest vs v' :=
+  let 'Valuset _ rest := vs in Valuset v' rest.
+
 Definition locked_disk_write {T} a v rx : prog Mcontents S T :=
   c <- Get Cache;
   let c' := cache_add_dirty c a v in
   Assgn Cache c';;
         Commit (set GCache c');;
-        Commit (fun (s:S) => set GDisk (upd (get GDisk s) a v) s);;
+        Commit (fun (s:S) => let d := get GDisk s in
+                           let vs' := match (d a) with
+                                      | Some vs => replace_latest vs v
+                                      | None => Valuset v nil
+                                      end in
+                           set GDisk (upd d a vs') s);;
         rx tt.
 
 Theorem locked_disk_write_ok : forall a v,
     cacheS TID: tid |-
-    {{ F v0,
+    {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
                      get GCacheL s = Owned tid /\
-                     vd |= F * a |-> v0
+                     vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             cacheI m' s' d' /\
                             get GCacheL s = Owned tid /\
-                            vd' |= F * a |-> v /\
+                            vd' |= F * a |-> (Valuset v rest) /\
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
@@ -1252,6 +1260,7 @@ Definition evict {T} a rx : prog Mcontents S T :=
        } else {
     let c' := cache_evict c a in
     Assgn Cache c';;
+          Commit (set GCache c');;
           rx tt
   }
 end.
@@ -1270,10 +1279,7 @@ Proof.
   prove_cache_pred; distinguish_addresses; eauto;
   try solve [ autorewrite with cache in *; eauto ].
 
-  rewrite H0.
-  erewrite cache_evict_get; eauto.
-  erewrite H; eauto.
-  erewrite cache_evict_get in H1 by eauto; congruence.
+  erewrite cache_evict_get; try congruence; eauto.
 Qed.
 
 Hint Resolve cache_pred_stable_evict.
@@ -1304,7 +1310,9 @@ Definition writeback {T} a rx : prog Mcontents S T :=
   match (cache_get c a) with
   | Some (dirty, v) =>
     Write a v;;
-          Assgn Cache (cache_clean c a);;
+          let c' := cache_clean c a in
+          Assgn Cache c';;
+                Commit (set GCache c');;
       rx tt
   | None => rx tt
   end.
@@ -1346,10 +1354,10 @@ Qed.
 Hint Rewrite cache_get_add_clean : cache.
 Hint Rewrite cache_get_add_clean_other using (now eauto) : cache.
 
-Lemma cache_pred_stable_clean : forall c vd d a v,
+Lemma cache_pred_stable_clean : forall c vd d a v rest,
     cache_pred c vd d ->
     cache_get c a = Some (true, v) ->
-    d a = Some v ->
+    d a = Some (Valuset v rest) ->
     cache_pred (cache_clean c a) vd d.
 Proof.
   intros.
@@ -1359,18 +1367,18 @@ Proof.
       learn H (apply cache_get_find_dirty in H)
   end; simpl_match.
   prove_cache_pred; destruct_matches; distinguish_addresses; replace_cache_vals;
-  rewrite_cache_get; try congruence; eauto.
+  rewrite_cache_get; repeat deex; cleanup; try inv_opt; eauto.
 Qed.
 
 Hint Resolve cache_pred_stable_clean.
 
 Theorem writeback_ok : forall a,
     cacheS TID: tid |-
-    {{ F v0,
+    {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
                      get GCacheL s = Owned tid /\
-                     vd |= F * a |-> v0
+                     vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             d' |= cache_pred (get Cache m') vd' /\
                             get GCacheL s = Owned tid /\
@@ -1386,39 +1394,39 @@ specific simplifiers *)
   Remove Hints ptsto_valid_iff : core.
 
   assert (exists dv0, d a = Some dv0).
-  prove_cache_pred.
-  case_eq (cache_get (get Cache m) a); intros.
-  destruct p as [ [] ]; eauto.
-  replace_cache_vals.
-  eexists.
-  replace (d a); eauto.
+    prove_cache_pred.
+    case_cache_val' (get Cache m) a; repeat deex;
+    cleanup; complete_mem_equalities; eauto.
 
-  (* we have to split the proof at this level so we can get the
+    (* we have to split the proof at this level so we can get the
   cache_pred we need for the Write *)
-  case_eq (cache_get (get Cache m) a); intros;
-  try destruct p as [ [] ].
-  match goal with
-  | [ H: cache_pred _ _ _ |- _ ] =>
-    let H' := fresh in
-    pose proof H as H';
-      eapply cache_pred_dirty in H; eauto
-  end.
-  repeat deex.
 
-  all: valid_match_opt; hoare pre simplify with finish.
+    case_cache_val' (get Cache m) a.
+    edestruct cache_pred_hit; eauto.
+    match goal with
+    | [ H: cache_pred _ _ _ |- _ ] =>
+      let H' := fresh in
+      pose proof H as H';
+        eapply cache_pred_dirty in H; cleanup; eauto
+    end;
+      repeat deex.
+    valid_match_opt; hoare pre simplify with finish.
 
-  assert (d0 a = Some w0).
-  eapply ptsto_valid; pred_apply; cancel.
-  match goal with
-  | [ H: ?m _ = _ |- cache_pred _ ?m _ ] =>
-    eapply cache_pred_dirty' in H; eauto
-  end.
+    admit. (* rests don't line up *)
+    repeat deex; repeat match goal with
+                 | [ vs: valuset |- _ ] => destruct vs
+                 end.
+    edestruct cache_pred_hit; eauto; cleanup.
 
-  match goal with
-  | [ H: ?m _ = _ |- cache_pred _ ?m _ ] =>
-    eapply cache_pred_clean' in H; eauto
-  end.
+    valid_match_opt; hoare pre simplify with finish.
+    pred_apply; cancel.
+    eapply pimpl_trans; [ eapply cache_pred_clean | ]; eauto.
+    cancel.
+    admit. (* order of existential instantiations is wrong *)
 
-  Grab Existential Variables.
-  all: auto.
-Qed.
+    pred_apply; cancel.
+    (* should fall through from above frame predicate *)
+    admit.
+
+    valid_match_opt; hoare pre simplify with finish.
+Admitted.
