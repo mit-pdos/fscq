@@ -352,13 +352,41 @@ Ltac same_disk_vals :=
     rewrite H in H'; inversion H'
   end.
 
-Ltac replace_match :=
-  try match goal with
-  | [ |- context[match ?d with _ => _ end] ] =>
-    replace d
+Ltac simpl_match :=
+  match goal with
+  | [ H: ?d = ?d' |- context[match ?d with _ => _ end] ] =>
+    replace d with d';
+      try lazymatch goal with
+      | [ |- context[match d' with _ => _ end] ] => fail
+      end
   | [ H: context[match ?d with _ => _ end] |- _ ] =>
     replace d in H
   end.
+
+(* test simpl_match failure *)
+Goal forall (vd m: DISK) a,
+    vd a = m a ->
+    vd a = match (m a) with
+         | Some v => Some v
+         | None => None
+           end.
+Proof.
+  intros.
+  (simpl_match; fail "should not work here")
+  || idtac.
+Abort.
+
+Goal forall (vd m: DISK) v v' a,
+    vd a =  Some v ->
+    m a = Some v' ->
+    vd a = match (m a) with
+           | Some _ => Some v
+           | None => None
+           end.
+Proof.
+  intros.
+  simpl_match; now auto.
+Abort.
 
 Ltac cleanup :=
   repeat (remove_duplicate
@@ -366,7 +394,7 @@ Ltac cleanup :=
           || remove_sym_neq
           || same_cache_vals
           || same_disk_vals
-          || replace_match);
+          || simpl_match);
   try congruence.
 
 Hint Extern 4 (get _ (set _ _ _) = _) => simpl_get_set : prog.
@@ -507,6 +535,14 @@ Ltac prove_cache_pred :=
   repeat deex;
   try congruence; eauto with core mem_equalities.
 
+Ltac complete_mem_equalities :=
+  try match goal with
+  | [ H: ?vd ?a = Some ?vs, H': ?vd ?a = _ |- _ ] =>
+    learn H' rewrite H in H'
+  | [ H: ?vd ?a = Some ?vs, H': _ = ?vd ?a |- _ ] =>
+    learn H' rewrite H in H'
+  end.
+
 Hint Resolve ptsto_valid_iff.
 Lemma cache_pred_miss : forall c a v vd,
     cache_get c a = None ->
@@ -605,18 +641,8 @@ Ltac destruct_matches_in e :=
   | _ => case_eq e; intros
   end.
 
-Ltac simpl_matches :=
-  repeat match goal with
-          | [H: context[match ?d with | _ => _ end], Heq: ?d = _ |- _ ] =>
-            rewrite Heq in H
-         | [ |- context[match ?d with | _ => _ end] ] =>
-           replace d
-         | [ H: context[match ?d with | _ => _ end] |- _ ] =>
-           replace d in H
-          end.
-
 Ltac destruct_matches :=
-  repeat (simpl_matches;
+  repeat (try simpl_match;
            try match goal with
            | [ |- context[match ?d with | _ => _ end] ] =>
               destruct_matches_in d
@@ -627,12 +653,34 @@ Ltac destruct_matches :=
   try congruence.
 
 Ltac destruct_goal_matches :=
-  repeat (simpl_matches;
+  repeat (try simpl_match;
            match goal with
            | [ |- context[match ?d with | _ => _ end] ] =>
               destruct_matches_in d
            end);
   try congruence.
+
+Ltac case_cache_val' c a :=
+  case_eq (cache_get c a); intros;
+  try match goal with
+      | [ p: bool * valu |- _ ] =>
+        destruct p as [ [] ]
+      end;
+  replace_cache_vals;
+  (* especially to remove impossible cases *)
+  try congruence.
+
+Ltac case_cache_val :=
+  lazymatch goal with
+  | [ c: AssocCache, a: addr, a': addr |- _ ] =>
+    (* if address is ambiguous, focus on one in the goal *)
+    match goal with
+    | [ |- context[a] ] => case_cache_val' c a
+    | [ |- context[a'] ] => case_cache_val' c a'
+    end
+  | [ c: AssocCache, a: addr |- _ ] =>
+    case_cache_val' c a
+  end.
 
 Ltac remove_rewrite :=
   try rewrite MapFacts.remove_eq_o in * by auto;
@@ -806,60 +854,48 @@ Proof.
   unfold_sep_star in H1.
   repeat deex.
   unfold ptsto in *; intuition.
-  prove_cache_pred; distinguish_addresses; replace_cache_vals; rewrite_cache_get;
-  disk_equalities; distinguish_addresses; cleanup.
+  prove_cache_pred; distinguish_addresses; replace_cache_vals;
+  rewrite_cache_get; disk_equalities; distinguish_addresses; cleanup.
   eexists; intuition eauto.
 
-  case_eq (cache_get c a0); intros.
-  destruct p as [ [] ]; replace_cache_vals;
-  repeat deex; cleanup; eauto.
+  case_cache_val; repeat deex; cleanup; eauto.
+  destruct_matches.
 
-  match goal with
-  | [ H: forall (_:addr), match cache_get _ _ with | _ => _ end |- _ ] =>
-    learn_fact (H a0)
-  end; rewrite_cache_get; replace_cache_vals.
-  case_eq (m1 a0); intros; try congruence.
-  repeat match goal with
-         | [ H: forall (_:addr), _, a: addr |- _ ] =>
-           idtac H a; learn_fact (H a)
-         end; distinguish_addresses.
+  case_cache_val; repeat deex; cleanup; eauto.
+  destruct_matches.
   intuition.
 Qed.
 
 Hint Resolve cache_pred_clean.
 Hint Resolve cache_pred_clean'.
 
-Lemma cache_pred_dirty : forall c vd a v,
+Lemma cache_pred_dirty : forall c vd a v rest,
     cache_get c a = Some (true, v) ->
-    vd a = Some v ->
+    vd a = Some (Valuset v rest) ->
     cache_pred c vd =p=>
-exists v', cache_pred (Map.remove a c) (mem_except vd a) * a |-> v'.
+exists v' rest', cache_pred (Map.remove a c) (mem_except vd a) *
+            a |-> (Valuset v' rest').
 Proof.
   unfold pimpl.
   intros.
   unfold_sep_star.
   assert (exists v', m a = Some v').
-  unfold cache_pred in *; intuition eauto.
-  destruct H2 as [v' ?].
-  exists v'.
+  prove_cache_pred.
+  destruct H2 as [ [v' rest'] ?].
+  exists v', rest'.
   exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some v' else None).
-  unfold mem_except.
-  intuition.
-  - unfold mem_union; apply functional_extensionality; intro a'.
-    prove_cache_pred; distinguish_addresses; replace_cache_vals; eauto.
-    destruct_matches.
-  - unfold mem_disjoint; intro; repeat deex.
-    prove_cache_pred; distinguish_addresses; replace_cache_vals; eauto.
-  - prove_cache_pred; distinguish_addresses; destruct_matches;
-    rewrite_cache_get; try congruence; eauto.
-  - unfold ptsto; intuition; distinguish_addresses.
+  exists (fun a' => if weq a' a then Some (Valuset v' rest') else None).
+  unfold mem_except, mem_union, mem_disjoint, ptsto.
+  intuition;
+    prove_cache_pred; distinguish_addresses; replace_cache_vals;
+    try solve [ destruct_matches ];
+    rewrite_cache_get; cleanup.
 Qed.
 
-Lemma cache_pred_dirty' : forall c vd a v v',
+Lemma cache_pred_dirty' : forall c vd a v v' rest,
     cache_get c a = Some (true, v') ->
-    vd a = Some v' ->
-    cache_pred (Map.remove a c) (mem_except vd a) * a |-> v =p=>
+    vd a = Some (Valuset v' rest) ->
+    cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest) =p=>
 cache_pred c vd.
 Proof.
   unfold pimpl, mem_except.
@@ -867,42 +903,20 @@ Proof.
   unfold_sep_star in H1.
   repeat deex.
   unfold ptsto in *; intuition.
-  prove_cache_pred; distinguish_addresses; replace_cache_vals; rewrite_cache_get;
-  disk_equalities; distinguish_addresses; replace_match; eauto.
-  case_eq (cache_get c a'); intros.
-  destruct p as [ [] ]; replace_cache_vals; auto.
+  prove_cache_pred; distinguish_addresses; replace_cache_vals;
+  rewrite_cache_get; disk_equalities; distinguish_addresses; cleanup.
+  destruct_matches; eauto.
 
-  (* why doesn't disk_equalities do this? *)
-  lazymatch goal with
-  | [ H: @eq (@mem addr _ _) _ _ |- context[match (?m ?a) with _ => _ end] ] =>
-    apply equal_f with a' in H
-  end.
-  distinguish_addresses.
-  rewrite_cache_get; replace_cache_vals.
-  case_eq (m1 a'); intros; try congruence.
-  match goal with
-  | [ H: context[m2 _ = None] |- _ ] =>
-    rewrite H; auto
-  end; congruence.
-
-  match goal with
-  | [ H: context[cache_get _ _ = Some (false, _) ] |- _ ] =>
-    erewrite H; rewrite_cache_get; eauto
-  end.
-
-  match goal with
-  | [ H: context[cache_get _ _ = Some (true, _) ] |- _ ] =>
-    edestruct H; rewrite_cache_get; eauto
-  end.
-  eexists; replace_match; eauto.
+  case_cache_val; repeat deex; cleanup; eauto.
+  destruct_matches; intuition.
 Qed.
 
 Lemma cache_pred_hit :  forall c vd d a b v,
     cache_pred c vd d ->
     cache_get c a = Some (b, v) ->
-    vd a = Some v.
+    exists rest, vd a = Some (Valuset v rest).
 Proof.
-  prove_cache_pred.
+  destruct b; prove_cache_pred.
 Qed.
 
 Ltac cache_vd_val :=
@@ -919,6 +933,7 @@ Ltac unify_mem_contents :=
   end.
 
 Ltac simplify :=
+  repeat deex;
   step_simplifier;
   learn_invariants;
   subst;
@@ -929,26 +944,28 @@ Ltac finish :=
   solve_get_set;
   try solve [ pred_apply; cancel ];
   try cache_contents_eq;
+  repeat deex;
+  cleanup;
   try congruence;
   eauto.
 
-Lemma cache_pred_stable_add : forall c vd a v d,
-    vd a = Some v ->
+Lemma cache_pred_stable_add : forall c vd a v d rest,
+    vd a = Some (Valuset v rest) ->
     cache_get c a = None ->
     cache_pred c vd d ->
     cache_pred (cache_add c a v) vd d.
 Proof.
   intros.
 
-  assert (d a = Some v).
-  prove_cache_pred.
+  lazymatch goal with
+  | [ H: vd a = Some ?v |- _ ] =>
+    assert (d a = Some v) by prove_cache_pred
+  end.
 
   prove_cache_pred;
     distinguish_addresses;
     replace_cache_vals;
-    try rewrite cache_get_eq in *;
-    try rewrite cache_get_neq in * by auto;
-    try inv_opt;
+    rewrite_cache_get;
     eauto.
 Qed.
 
@@ -957,31 +974,29 @@ Hint Resolve cache_pred_stable_add.
 Hint Rewrite cache_get_dirty_eq upd_eq : cache.
 Hint Rewrite cache_get_dirty_neq upd_ne using (now auto) : cache.
 
-Lemma cache_pred_stable_dirty : forall c vd a v v' d,
-    vd a = Some v ->
+Lemma cache_pred_stable_write : forall c vd a v rest v' d,
+    vd a = Some (Valuset v rest) ->
     cache_pred c vd d ->
-    cache_pred (cache_add_dirty c a v') (upd vd a v') d.
+    cache_pred (cache_add_dirty c a v') (upd vd a (Valuset v' rest)) d.
 Proof.
   intros.
-  prove_cache_pred;
-    distinguish_addresses;
-    autorewrite with cache in *;
-    try congruence;
-    eauto.
   case_eq (cache_get c a); intros;
   try match goal with
       | [ p: bool * valu |- _ ] =>
         destruct p as [ [] ]
       end;
-  replace_cache_vals;
-  eauto.
+  prove_cache_pred;
+  distinguish_addresses;
+  rewrite_cache_get;
+  complete_mem_equalities;
+  cleanup; eauto.
 Qed.
 
-Hint Resolve cache_pred_stable_dirty.
+Hint Resolve cache_pred_stable_write.
 
 Ltac learn_mem_val H m a :=
   let v := fresh "v" in
-    evar (v : valu);
+    evar (v : valuset);
     assert (m a = Some v);
     [ eapply ptsto_valid;
       pred_apply' H; cancel |
@@ -1001,6 +1016,7 @@ Definition locked_disk_read {T} a rx : prog Mcontents S T :=
   | None => v <- Read a;
       let c' := cache_add c a v in
       Assgn Cache c';;
+            Commit (set GCache c');;
             rx v
   | Some (_, v) =>
     rx v
@@ -1008,10 +1024,10 @@ Definition locked_disk_read {T} a rx : prog Mcontents S T :=
 
 Theorem locked_disk_read_ok : forall a,
     cacheS TID: tid |-
-    {{ F v,
+    {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
-                     vd |= F * a |-> v /\
+                     vd |= F * a |-> (Valuset v rest) /\
                      get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             cacheI m s d /\
@@ -1034,6 +1050,7 @@ Theorem cache_pred_same_disk : forall c vd vd' d,
     vd = vd'.
 Proof.
   prove_cache_pred.
+  case_cache_val; repeat deex; cleanup.
 Qed.
 
 Ltac replace_cache :=
@@ -1079,10 +1096,10 @@ Hint Resolve ghost_lock_stable_set_cache.
 
 Theorem locked_async_disk_read_ok : forall a,
     cacheS TID: tid |-
-    {{ F v,
+    {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
-                     vd |= F * a |-> v /\
+                     vd |= F * a |-> (Valuset v rest) /\
                      get GCacheL s = Owned tid /\
                      s0 = s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
@@ -1116,17 +1133,8 @@ Lemma cache_pred_same_sectors : forall c vd d,
             exists v', vd a = Some v').
 Proof.
   intros.
-  case_eq (cache_get c a); intros.
-  destruct p as [ [] ];
-  match goal with
-  | [ H: cache_get _ _ = _ |- _ ] =>
-    eapply cache_pred_hit in H; eauto
-  end.
-  match goal with
-  | [ H: context[cache_pred] |- _ ] =>
-    eapply cache_miss_mem_eq in H; eauto
-  end.
-  replace (vd a); eauto.
+  case_cache_val; prove_cache_pred;
+  complete_mem_equalities; eauto.
 Qed.
 
 Lemma cache_pred_same_sectors' : forall c vd d,
@@ -1135,14 +1143,8 @@ Lemma cache_pred_same_sectors' : forall c vd d,
             exists v', d a = Some v').
 Proof.
   intros.
-  case_eq (cache_get c a); intros.
-  prove_cache_pred.
-  destruct p as [ [] ]; eauto.
-  match goal with
-  | [ H: context[cache_pred] |- _ ] =>
-    eapply cache_miss_mem_eq in H; eauto
-  end.
-  replace (d a); eauto.
+  case_cache_val; prove_cache_pred;
+  complete_mem_equalities; eauto.
 Qed.
 
 Remark cacheR_stutter : forall tid s,
@@ -1154,10 +1156,10 @@ Qed.
 
 Theorem disk_read_ok : forall a,
     cacheS TID: tid |-
-    {{ F v,
+    {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
-                     vd |= F * a |-> v /\
+                     vd |= F * a |-> (Valuset v rest) /\
                      cacheR tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             cacheI m' s' d' /\
@@ -1166,8 +1168,8 @@ Theorem disk_read_ok : forall a,
                             (* this is ugly, but very precise *)
                             s' = set GCacheL NoOwner
                                      (set GCache (get Cache m') s0') /\
-                            exists F' v',
-                              vd' |= F' * a |-> v' /\
+                            exists F' v' rest',
+                              vd' |= F' * a |-> (Valuset v' rest') /\
                               r = v'
     }} disk_read a.
 Proof.
@@ -1181,7 +1183,6 @@ Proof.
   | [ H: context[virt_disk s' _ = _] |- _ ] =>
     unfold virt_disk in H; edestruct (H a); eauto
   end.
-  simplify; finish.
   unfold pred_in in *.
   repeat match goal with
          | [ H: cache_pred _ _ _ |- _ ] =>
@@ -1198,6 +1199,10 @@ Proof.
            | _ => idtac
            end
          end.
+  repeat match goal with
+         | [ vs: valuset |- _ ] => destruct vs
+         end.
+  simplify; finish.
 
   hoare pre (simplify;
               repeat match goal with
@@ -1352,7 +1357,7 @@ Proof.
   match goal with
     | [ H: cache_get _ _ = Some (true, _) |- _ ] =>
       learn H (apply cache_get_find_dirty in H)
-  end; replace_match.
+  end; simpl_match.
   prove_cache_pred; destruct_matches; distinguish_addresses; replace_cache_vals;
   rewrite_cache_get; try congruence; eauto.
 Qed.
