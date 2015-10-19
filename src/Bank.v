@@ -5,6 +5,7 @@ Require Import Star.
 Require Import List.
 Import List.ListNotations.
 Local Open Scope list.
+Local Open Scope judgement.
 
 Set Implicit Arguments.
 
@@ -14,10 +15,6 @@ Section Bank.
 
   Definition rep rest1 rest2 bal1 bal2 : DISK_PRED :=
     acct1 |-> (Valuset bal1 rest1) * acct2 |-> (Valuset bal2 rest2).
-
-  Definition inv_rep rest1 rest2 bal1 bal2 : pred :=
-    rep rest1 rest2 bal1 bal2 *
-    [[ #bal1 + #bal2 = 100 ]].
 
   (** The bank transition system, bankS. *)
   Inductive ledger_entry : Set :=
@@ -54,14 +51,17 @@ Section Bank.
     balances ledger = (bal1, bal2).
 
   Definition bankPred (_:M Mcontents) ledger : DISK_PRED :=
-    (exists F rest1 rest2 bal1 bal2,
-      F * inv_rep rest1 rest2 bal1 bal2 *
-      [[ bankI ledger #bal1 #bal2 ]])%pred.
+    fun d =>
+      exists bal1 bal2,
+        #bal1 + #bal2 = 100 /\
+        exists F rest1 rest2 ,
+          d |= F * rep rest1 rest2 bal1 bal2 /\
+          bankI ledger #bal1 #bal2.
 
   Definition bankS : transitions Mcontents State :=
     Build_transitions bankR bankPred.
 
-  Local Hint Unfold rep inv_rep State bankR bankI : prog.
+  Local Hint Unfold rep State bankR bankI : prog.
 
   Definition transfer {T S} amount rx : prog Mcontents S T :=
     bal1 <- Read acct1;
@@ -74,18 +74,6 @@ Section Bank.
   Definition record_transfer amount ledger : State := ledger ++ [from1 amount].
 
   Hint Unfold record_transfer : prog.
-
-  Lemma max_balance : forall rest1 rest2 bal1 bal2,
-    (exists F, F * inv_rep rest1 rest2 bal1 bal2) =p=>
-    (exists F, F * inv_rep rest1 rest2 bal1 bal2) *
-    [[ #bal1 <= 100 ]] *
-    [[ #bal2 <= 100 ]].
-  Proof.
-    unfold inv_rep, rep.
-    intros.
-    intros d H.
-    pred_apply; cancel.
-  Qed.
 
   Lemma pair_eq : forall T S (a1 b1:T) (a2 b2:S),
       a1 = b1 /\ a2 = b2 <->
@@ -231,17 +219,17 @@ Section Bank.
        acct1 |-> (Valuset (bal1 ^- $ amount) rest1) * F) =p=>
   bankPred m (s ++ [from1 amount]).
   Proof.
-    Ltac process_entry :=
-      match goal with
-      | [ |- context[balances (?l ++ [_])] ] =>
-        rewrite balances_assoc; unfold add_entry;
-        try (replace (balances l))
-      end.
-
-    unfold bankPred.
+    unfold bankPred, pimpl, pred_in; intros.
     repeat (autounfold with prog).
-    cancel.
-    process_entry; auto.
+    exists (bal1 ^- ($ amount)).
+    exists (bal2 ^+ ($ amount)).
+    repeat eexists; eauto.
+    pred_apply; cancel.
+    match goal with
+    | [ |- context[balances (?l ++ [_])] ] =>
+      rewrite balances_assoc; unfold add_entry;
+      try (replace (balances l))
+    end; auto.
   Qed.
 
   Hint Resolve bank_invariant_transfer.
@@ -249,7 +237,8 @@ Section Bank.
   Theorem transfer_yield_ok : forall rest1 rest2 bal1 bal2 amount,
     bankS TID: tid |-
     {{ F,
-     | PRE d m l0 l: d |= F * inv_rep rest1 rest2 bal1 bal2 /\
+     | PRE d m l0 l: d |= F * rep rest1 rest2 bal1 bal2 /\
+                     #bal1 + #bal2 = 100 /\
                      #bal1 >= amount /\
                      bankI l #bal1 #bal2 /\
                      l0 = l

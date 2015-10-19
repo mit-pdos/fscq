@@ -1514,4 +1514,7 @@ Proof.
   pred_apply; cancel.
   eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto.
   cancel; eauto.
+
+  Grab Existential Variables.
+  all: auto.
 Qed.

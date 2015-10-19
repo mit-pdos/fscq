@@ -38,6 +38,8 @@ Definition latest_valu (vs:valuset) :=
 Definition synced (vs:valuset) :=
   let 'Valuset last _ := vs in Valuset last nil.
 
+Hint Immediate (Valuset $0 nil).
+
 (* a disk state *)
 Notation DISK := (@mem addr (@weq addrlen) valuset).
 
