@@ -33,11 +33,7 @@ Ltac split_ands :=
 Ltac simpl_post :=
   cbn; unfold pred_in;
   split_ands;
-  repeat deex;
-  repeat match goal with
-         | [ |- exists _, _ ] => eexists
-         end;
-  split_ands.
+  repeat deex.
 
 Ltac next_control_step :=
   eapply pimpl_ok; [ now auto with prog | ].
@@ -59,7 +55,7 @@ Ltac head_symbol e :=
 
 Ltac unfold_prog :=
   lazymatch goal with
-  | [ |- valid _ _ _ _ ?p ] =>
+  | [ |- valid _ _ _ _ _ _ ?p ] =>
     let program := head_symbol p in
     unfold program
   end.
@@ -80,8 +76,16 @@ Ltac step_simplifier :=
   simpl_post;
   try subst.
 
-Ltac step_finisher := try (pred_apply; cancel);
-    eauto.
+Ltac simpl_goal :=
+  repeat match goal with
+         | [ |- exists _, _ ] => eexists
+         | [ |- _ /\ _ ] => split
+         | [ |- forall _, _ ] => intros
+         end.
+
+Ltac step_finisher :=
+  simpl_goal;
+  eauto.
 
 Tactic Notation "step" := step' step_simplifier step_finisher.
 Tactic Notation "step" "pre" tactic(simplifier) := step' simplifier step_finisher.

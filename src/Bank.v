@@ -58,10 +58,14 @@ Section Bank.
           d |= F * rep rest1 rest2 bal1 bal2 /\
           bankI ledger #bal1 #bal2.
 
-  Definition bankS : transitions Mcontents State :=
-    Build_transitions bankR bankPred.
+  Definition bankLockR : ID -> Relation State := fun _ _ _ => True.
 
-  Local Hint Unfold rep State bankR bankI : prog.
+  Definition bankLockI : Invariant Mcontents State := fun _ _ _ => True.
+
+  Definition bankS : transitions Mcontents State :=
+    Build_transitions bankR bankLockR bankPred bankLockI.
+
+  Local Hint Unfold rep State bankR bankLockR bankI bankLockI : prog.
 
   Definition transfer {T S} amount rx : prog Mcontents S T :=
     bal1 <- Read acct1;

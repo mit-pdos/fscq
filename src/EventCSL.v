@@ -82,8 +82,10 @@ Section EventCSL.
       The semantics will reject transitions that do not obey these rules. *)
   Definition Relation := S -> S -> Prop.
   Variable StateR : ID -> Relation.
+  Variable LockR : ID -> Relation.
   Definition Invariant := M -> S -> DISK_PRED.
   Variable StateI : Invariant.
+  Variable LockI : Invariant.
 
   CoInductive prog :=
   | Read (a: addr) (rx: valu -> prog)
@@ -117,6 +119,8 @@ Section EventCSL.
 
   (* StateR' tid is a valid transition for someone other than tid *)
   Definition StateR' : ID -> Relation := othersR StateR.
+  (* LockR' tid obeys the locking discipline for a non-tid thread *)
+  Definition LockR' : ID -> Relation := othersR LockR.
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
   | StepRead : forall d m s0 s a rx vs,
@@ -125,8 +129,10 @@ Section EventCSL.
           rx (latest_valu vs) / (d, m, s0, s)
   | StepWrite : forall d m s0 s a rx vs0 v',
       d a = Some vs0 ->
+      let d' := upd d a (buffer_valu vs0 v') in
+      LockI m s d' ->
       tid :- Write a v' rx / (d, m, s0, s) ==>
-          rx tt / (upd d a (buffer_valu vs0 v'), m, s0, s)
+          rx tt / (d', m, s0, s)
   | StepSync : forall d m s0 s a rx vs0,
       d a = Some vs0 ->
       tid :- Sync a rx / (d, m, s0, s) ==>
@@ -135,33 +141,57 @@ Section EventCSL.
       let m'' := set l Locked m' in
       let s'' := up tid s' in
       StateI m s d ->
+      LockI m s d ->
       StateR tid s0 s ->
       StateI m' s' d' ->
+      LockI m' s' d' ->
       star (StateR' tid) s s' ->
+      star (LockR' tid) s s' ->
+      LockR tid s' s'' ->
+      LockI m'' s'' d' ->
       tid :- AcquireLock l up rx / (d, m, s0, s) ==> rx tt / (d', m'', s'', s'')
   | StepYield : forall d m s0 s s' m' d' rx,
       StateI m s d ->
+      LockI m s d ->
       StateI m' s' d' ->
+      LockI m' s' d' ->
       StateR tid s0 s ->
       star (StateR' tid) s s' ->
+      star (LockR' tid) s s' ->
       tid :- Yield rx / (d, m, s0, s) ==> rx tt / (d', m', s', s')
   | StepCommit : forall d m s0 s up rx,
-      tid :- Commit up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, up s)
+      let s' := up s in
+      LockR tid s s' ->
+      tid :- Commit up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, s')
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
   | StepGet : forall d m s s0 t (v: var t) rx,
       tid :- Get v rx / (d, m, s0, s) ==> rx (get v m) / (d, m, s0, s)
   | StepAssgn : forall d m s s0 t (v: var t) val rx,
-      tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, set v val m, s0, s)
+      let m' := set v val m in
+      LockI m' s d ->
+      tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, m', s0, s)
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
   Inductive fail_step (tid:ID) : prog -> state -> Prop :=
   | FailStepRead : forall a d m s0 s rx, d a = None ->
                                     fail_step tid (Read a rx) (d, m, s0, s)
-  | FailStepWrite : forall a v d m s0 s rx, d a = None ->
-                                       fail_step tid (Write a v rx) (d, m, s0, s)
+  | FailStepWriteMissing : forall a v d m s0 s rx, d a = None ->
+                                              fail_step tid (Write a v rx) (d, m, s0, s)
+  | FailStepWriteLock : forall a vs0 v' d m s0 s rx, d a = Some vs0 ->
+                                              let d' := upd d a (buffer_valu vs0 v') in
+                                              ~LockI m s d' ->
+                                              fail_step tid (Write a v' rx) (d, m, s0, s)
   | FailStepAcquireLock : forall l up d m s0 s rx, (~StateI m s d) ->
                                            fail_step tid (AcquireLock l up rx) (d, m, s0, s)
+  | FailStepAssgnLock : forall d m s s0 t (v: var t) val rx,
+      let m' := set v val m in
+      ~LockI m' s d ->
+      fail_step tid (Assgn v val rx) (d, m, s0, s)
+  | FailStepCommitLock : forall d m s0 s up rx,
+      let s' := up s in
+      ~LockR tid s s' ->
+      fail_step tid (Commit up rx) (d, m, s0, s)
   | FailStepYield : forall d m s0 s rx, (~StateI m s d) ->
                                    fail_step tid (Yield rx) (d, m, s0, s).
 
@@ -190,32 +220,64 @@ Section EventCSL.
 
   Hint Constructors exec.
 
+  (* clear up dependent equalities produced by inverting fail_step *)
+  Ltac sigT_eq :=
+    match goal with
+    | [ H: @eq (sigT _) _ _ |- _ ] =>
+      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
+        subst
+    end.
+
   Ltac inv_fail_step :=
     match goal with
     | [ H: context[fail_step] |- _ ] =>
-      inversion H; subst
+      inversion H; subst;
+      (* produce equalities from dependent equalities using proof
+      irrelevance *)
+      repeat sigT_eq;
+      (* get rid of local definitions in context *)
+      repeat match goal with
+             | [ v := _ : _ |- _ ] => subst v
+             end
     end.
 
-  Ltac address_failure :=
-    intros; inv_fail_step; eauto; congruence.
+  Ltac condition_failure :=
+    intros; inv_fail_step; eauto; try congruence.
 
   Theorem read_failure : forall tid d m s0 s rx a v,
       fail_step tid (Read a rx) (d, m, s0, s) ->
       d a = Some v ->
       False.
   Proof.
-    address_failure.
+    condition_failure.
   Qed.
 
   Theorem write_failure : forall tid d m s0 s v rx a v0,
       fail_step tid (Write a v rx) (d, m, s0, s) ->
       d a = Some v0 ->
+      LockI m s (upd d a (buffer_valu v0 v)) ->
       False.
   Proof.
-    address_failure.
+    condition_failure.
   Qed.
 
-  Hint Resolve read_failure write_failure.
+  Theorem assgn_failure : forall tid d m s0 s rx t (v: var t) val,
+      fail_step tid (Assgn v val rx) (d, m, s0, s) ->
+      LockI (set v val m) s d ->
+      False.
+  Proof.
+    condition_failure.
+  Qed.
+
+  Theorem commit_failure : forall tid d m s0 s rx up,
+      fail_step tid (Commit up rx) (d, m, s0, s) ->
+      LockR tid s (up s) ->
+      False.
+  Proof.
+    condition_failure.
+  Qed.
+
+  Hint Resolve read_failure write_failure assgn_failure commit_failure.
 
   Definition donecond := T -> DISK_PRED.
 
@@ -325,11 +387,14 @@ Section EventCSL.
           apply ptsto_valid' in Ha
         end;
       exfalso
-    end; eauto 10.
+    end;
+    try (learn_some_addr; match_valusets);
+    eauto 10.
 
   Theorem write_ok : forall a v,
       tid |- {{ F v0,
-             | PRE d m s0 s: d |= F * a |-> v0
+             | PRE d m s0 s: d |= F * a |-> v0 /\
+                             LockI m s (upd d a (buffer_valu v0 v))
              | POST d' m' s0' s' _: d' |= F * a |-> (buffer_valu v0 v) /\
                                 s0' = s0 /\
                                 s' = s /\
@@ -337,7 +402,6 @@ Section EventCSL.
             }} Write a v.
   Proof.
     opcode_ok.
-    learn_some_addr; match_valusets.
     eapply pimpl_apply; [| eapply ptsto_upd].
     cancel.
     pred_apply; cancel.
@@ -353,7 +417,6 @@ Section EventCSL.
             }} Sync a.
   Proof.
     opcode_ok.
-    learn_some_addr; match_valusets.
     eapply pimpl_apply; [| eapply ptsto_upd].
     cancel.
     pred_apply; cancel.
@@ -370,16 +433,7 @@ Section EventCSL.
     }} Read a.
   Proof.
     opcode_ok.
-    learn_some_addr; match_valusets.
-    auto.
   Qed.
-
-  Ltac sigT_eq :=
-    match goal with
-    | [ H: @eq (sigT _) _ _ |- _ ] =>
-      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
-        subst
-    end.
 
   Theorem get_ok : forall t (v: var t),
       tid |- {{ (_:unit),
@@ -395,10 +449,9 @@ Section EventCSL.
   Qed.
 
   Theorem assgn_ok : forall t (v: var t) val,
-      tid |- {{ F,
-             | PRE d m s0 s: d |= F
-             | POST d' m' s0' s' _: d' |= F /\
-                                    d' = d /\
+      tid |- {{ (_:unit),
+             | PRE d m s0 s: LockI (set v val m) s d
+             | POST d' m' s0' s' _: d' = d /\
                                     m' = set v val m /\
                                     s0' = s0 /\
                                     s' = s
@@ -426,7 +479,10 @@ Section EventCSL.
                              StateR tid s0 s
              | POST d' m'' s0' s'' _: exists m' s',
                  d' |= StateI m' s' /\
+                 LockI m' s' d' /\
                  star (StateR' tid) s s' /\
+                 star (LockR' tid) s s' /\
+                 LockR tid s' s'' /\
                  m'' = set l Locked m' /\
                  s'' = up tid s' /\
                  get l m'' = Locked /\
@@ -445,7 +501,9 @@ Section EventCSL.
                            StateR tid s0 s
            | POST d' m' s0' s' _: d' |= StateI m' s' /\
                                   s0' = s' /\
-                                  star (StateR' tid) s s'
+                                  star (StateR' tid) s s' /\
+                                  star (LockR' tid) s s' /\
+                                  LockI m' s' d'
     }} Yield.
   Proof.
     opcode_ok.
@@ -453,7 +511,7 @@ Section EventCSL.
 
   Theorem commit_ok : forall up,
     tid |- {{ (_:unit),
-           | PRE d m s0 s: True
+           | PRE d m s0 s: LockR tid s (up s)
            | POST d' m' s0' s' _: d' = d /\
                                   s0' = s0 /\
                                   s' = up s /\
@@ -488,8 +546,14 @@ ident.
 Record transitions Mcontents S := {
       (* StateR s s' holds when s -> s' is a valid transition *)
       StateR: ID -> Relation S;
-      (* StateI s d holds when s is a valid state and represents the memory d *)
-      StateI: Invariant Mcontents S
+      (* LockR s s' holds when s -> s' follows the lock protocol *)
+      LockR: ID -> Relation S;
+      (* StateI m s d holds when the ghost state s matches the memory m and disk d,
+        and any important invariants across helds hold in all three *)
+      StateI: Invariant Mcontents S;
+      (* LockI m s d maintains consistency of lock copies in s and is
+      enforced on every write to memory or disk. *)
+      LockI: Invariant Mcontents S
       }.
 
 (** Copy-paste metaprogramming:
@@ -500,12 +564,12 @@ Record transitions Mcontents S := {
 * add (StateR sigma) (StateI sigma) as arguments to valid *)
 Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
   (forall T (rx: _ -> prog _ _ T) (tid:ID),
-      valid (StateR sigma) (StateI sigma) tid
+      valid (StateR sigma) (LockR sigma) (StateI sigma) (LockI sigma) tid
             (fun done d m s0 s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      forall ret_,
-                                       valid (StateR sigma) (StateI sigma) tid
+                                       valid (StateR sigma) (LockR sigma) (StateI sigma) (LockI sigma) tid
                                              (fun done_rx d' m' s0' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done)
@@ -541,7 +605,7 @@ Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 
 
 The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
-Notation "{{ f ; '_' }}" := (valid _ _ _ _ (progseq f _)).
+Notation "{{ f ; '_' }}" := (valid _ _ _ _ _ _ (progseq f _)).
 
 Hint Extern 1 {{ Read _; _ }} => apply read_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply write_ok : prog.
