@@ -172,7 +172,7 @@ Definition cacheI : Invariant Mcontents S :=
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
 Hint Unfold lock_protects : prog.
-Hint Unfold cacheR cacheI stateI lockI : prog.
+Hint Unfold LockR' cacheR stateI lockI cacheI : prog.
 
 Ltac solve_get_set :=
   simpl_get_set;
@@ -185,6 +185,55 @@ Ltac solve_get_set :=
                       | pred => solve [ pred_apply; cancel; eauto ]
                       end
       end.
+
+Lemma progR_is : forall S R1 R2 tid (s s':S),
+  star (ProgR R1 R2 tid) s s' ->
+  star (R1 tid) s s' /\
+  star (R2 tid) s s'.
+Proof.
+  unfold ProgR.
+  induction 1; intuition eauto.
+Qed.
+
+Lemma othersR_and : forall S R1 R2 tid s s',
+  @othersR S (fun tid s s' => R1 tid s s' /\ R2 tid s s') tid s s' ->
+  @othersR S R1 tid s s' /\
+  @othersR S R2 tid s s'.
+Proof.
+  unfold othersR; intros.
+  deex; eauto.
+Qed.
+
+Lemma progR'_is : forall S R1 R2 tid (s s':S),
+  star (ProgR' R1 R2 tid) s s' ->
+  star (othersR R1 tid) s s' /\
+  star (othersR R2 tid) s s'.
+Proof.
+  unfold ProgR', ProgR.
+  induction 1;
+    try match goal with
+    | [ H: othersR _ _ _ _ |- _ ] => apply othersR_and in H
+    end; intuition eauto.
+Qed.
+
+Lemma progI_is : forall Mcontents S I1 I2 m s d,
+  @ProgI Mcontents S I1 I2 m s d ->
+  I1 m s d /\
+  I2 m s d.
+Proof.
+  unfold ProgI;
+  intuition.
+Qed.
+
+Ltac unfold_progR :=
+  repeat match goal with
+         | [ H: star (ProgR _ _ _) _ _ |- _ ] =>
+           apply progR_is in H; destruct H
+         | [ H: star (ProgR' _ _ _) _ _ |- _ ] =>
+          apply progR'_is in H; destruct H
+         | [ H: ProgI _ _ _ _ _ |- _ ] =>
+          apply progI_is in H; destruct H
+         end.
 
 Hint Extern 4 (get _ (set _ _ _) = _) => solve_get_set.
 Hint Extern 4 (_ = get _ (set _ _ _)) => solve_get_set.
@@ -252,8 +301,7 @@ Qed.
 Lemma cache_readonly : forall tid s s',
     get GCacheL s = Owned tid ->
     star (othersR lockR tid) s s' ->
-    get GCache s' = get GCache s /\
-    get GCacheL s' = Owned tid.
+    get GCache s' = get GCache s.
 Proof.
   intros.
   eapply (star_invariant _ _ (cache_readonly' tid));
@@ -274,12 +322,28 @@ Qed.
 Lemma virt_disk_readonly : forall tid s s',
     get GCacheL s = Owned tid ->
     star (othersR lockR tid) s s' ->
-    get GDisk s' = get GDisk s /\
-    get GCacheL s' = Owned tid.
+    get GDisk s' = get GDisk s.
 Proof.
   intros.
   eapply (star_invariant _ _ (virt_disk_readonly' tid));
     intuition eauto; try congruence.
+Qed.
+
+Lemma cache_lock_owner_unchanged' : forall tid s s',
+    othersR lockR tid s s' ->
+    get GCacheL s = Owned tid ->
+    get GCacheL s' = Owned tid.
+Proof.
+  unfold othersR, lockR; intros.
+  deex; inv_protocol.
+Qed.
+
+Lemma cache_lock_owner_unchanged : forall tid s s',
+    star (othersR lockR tid) s s' ->
+    get GCacheL s = Owned tid ->
+    get GCacheL s' = Owned tid.
+Proof.
+  induction 1; eauto using cache_lock_owner_unchanged'.
 Qed.
 
 Lemma sectors_unchanged' : forall tid s s',
@@ -453,12 +517,12 @@ Ltac star_readonly thm :=
   match goal with
   | [ H: star _ _ _ |- _ ] =>
     learn H (apply thm in H; [| cbn; now auto ];
-      cbn in H;
-      destruct H)
+      cbn in H)
   end.
 
 Ltac cache_locked := star_readonly cache_readonly.
 Ltac disk_locked := star_readonly virt_disk_readonly.
+Ltac lock_unchanged := star_readonly cache_lock_owner_unchanged.
 Ltac sectors_unchanged := match goal with
                           | [ H: star _ _ _ |- _ ] =>
                             let H' := fresh in
@@ -480,6 +544,7 @@ Ltac sector_unchanged :=
 Ltac learn_invariants :=
   try cache_locked;
   try disk_locked;
+  try lock_unchanged;
   try sectors_unchanged;
   try sector_unchanged; repeat deex;
   try star_diskR.
@@ -940,6 +1005,7 @@ Ltac unify_mem_contents :=
 
 Ltac simplify :=
   repeat deex;
+  unfold_progR;
   step_simplifier;
   learn_invariants;
   subst;
@@ -1113,8 +1179,7 @@ Ltac vd_locked :=
 Definition locked_async_disk_read {T} a rx : prog Mcontents S T :=
   c <- Get Cache;
   match cache_get c a with
-  | None => v <- Read a;
-             Yield;;
+  | None => v <- AsyncRead a;
              let c' := cache_add c a v in
              Commit (fun (s:S) => set GCache c' s);;
              Assgn Cache c';;
@@ -1136,6 +1201,23 @@ Qed.
 
 Hint Resolve ghost_lock_stable_set_cache.
 
+Lemma cache_get_vd : forall c d vd a b v rest v',
+  cache_pred c vd d ->
+  vd a = Some (Valuset v rest) ->
+  cache_get c a = Some (b, v') ->
+  v' = v.
+Proof.
+  destruct b; prove_cache_pred.
+Qed.
+
+Hint Resolve cache_get_vd.
+
+(** This proof is still horrendous and extremely poorly automated.
+
+Fixing it seems to be best done with some invasive changes to the automation.
+It would also benefit from a proof that AsyncRead when the disk is locked
+behaves completely normally, which would isolate the challenging part of the
+proof. *)
 Theorem locked_async_disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v rest,
@@ -1154,27 +1236,66 @@ Theorem locked_async_disk_read_ok : forall a,
 Proof.
   hoare.
   learn_some_addr.
-  valid_match_opt; hoare pre simplify with (finish;
-                                             try (replace_cache; vd_locked);
-                                             eauto).
+  valid_match_opt.
+  hoare pre simplify with (finish;
+         try (replace_cache; vd_locked);
+         eauto).
+  hoare pre simplify with (finish;
+         try (replace_cache; vd_locked);
+         eauto).
+  step pre simplify with (finish;
+         try (replace_cache; vd_locked);
+         eauto).
+  step pre simplify with (finish;
+         try (replace_cache; vd_locked);
+         eauto).
+  unfold_progR; intuition; learn_invariants; cleanup.
+  unfold lock_protects; autorewrite with core cache; intros; try congruence.
+  learn_invariants.
+  learn_invariants.
+  learn_invariants.
+  repeat match goal with
+  | [ H: _ = Owned tid |- _ ] => let t := type of H in idtac t; fail
+  end.
+  congruence.
+  unfold_progR; do 4 learn_invariants; cleanup.
+
+  hoare pre simplify with (finish;
+    try (replace_cache; vd_locked); eauto).
+
+  do 4 learn_invariants; cleanup.
 
   eapply cache_pred_stable_add; eauto.
-  replace (get GDisk s1); eauto.
+  replace (get GDisk s1 a) with (Some (Valuset v rest)) by congruence.
+  repeat f_equal.
+  admit.
   match goal with
   | [ H: cache_pred ?c ?vd ?d |- cache_pred ?c' ?vd' ?d ] =>
     replace c' with c by congruence;
       replace vd' with vd by congruence;
       eauto
   end.
+
+  do 4 learn_invariants; cleanup.
   eapply cache_pred_stable_add; eauto.
-  replace (get GDisk s1); eauto.
+  replace (get GDisk s1 a) with (Some (Valuset v rest)) by congruence.
+  repeat f_equal.
+  admit.
   match goal with
   | [ H: cache_pred ?c ?vd ?d |- cache_pred ?c' ?vd' ?d ] =>
     replace c' with c by congruence;
       replace vd' with vd by congruence;
       eauto
   end.
-Qed.
+  do 4 learn_invariants; cleanup.
+  learn_some_addr.
+  admit.
+
+  do 4 learn_invariants.
+
+  (* only goals left are v = ret_0, which requires showing that
+  the disk couldn't change if it was locked *)
+Admitted.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
 

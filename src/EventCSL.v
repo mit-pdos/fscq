@@ -88,6 +88,7 @@ Section EventCSL.
   Variable LockI : Invariant.
 
   CoInductive prog :=
+  | AsyncRead (a: addr) (rx: valu -> prog)
   | Read (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
   | Sync (a: addr) (rx: unit -> prog)
@@ -117,12 +118,44 @@ Section EventCSL.
       exists tid', tid <> tid' /\
               stateR tid' s s'.
 
+  Definition ProgR : ID -> Relation :=
+    fun tid =>
+      fun s s' =>
+        StateR tid s s' /\
+        LockR tid s s'.
+
+  Definition ProgI : Invariant :=
+    fun m s d =>
+      StateI m s d /\
+      LockI m s d.
+
   (* StateR' tid is a valid transition for someone other than tid *)
   Definition StateR' : ID -> Relation := othersR StateR.
   (* LockR' tid obeys the locking discipline for a non-tid thread *)
   Definition LockR' : ID -> Relation := othersR LockR.
+  Definition ProgR' : ID -> Relation := othersR ProgR.
+
+  (* TODO: use ProgR and ProgI throughout, not just for AsyncRead *)
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
+  | StepAsyncRead : forall d m s0 s
+                      d' m' s'
+                      d'' v rest m'' s''
+                      d''' m''' s'''
+                      d'''' m'''' s''''
+                      a rx,
+      ProgI m s d ->
+      star (ProgR' tid) s s' ->
+      ProgI m' s' d' ->
+      star (LockR' tid) s' s'' ->
+      LockI m'' s'' d'' ->
+      d'' a = Some (Valuset v rest) ->
+      star (LockR' tid) s'' s''' ->
+      LockI m''' s''' d''' ->
+      star (ProgR' tid) s''' s'''' ->
+      ProgI m'''' s'''' d'''' ->
+      tid :- AsyncRead a rx / (d, m, s0, s) ==>
+          rx v / (d'''', m'''', s'''', s'''')
   | StepRead : forall d m s0 s a rx vs,
       d a = Some vs ->
       tid :- Read a rx / (d, m, s0, s) ==>
@@ -174,6 +207,9 @@ Section EventCSL.
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
   Inductive fail_step (tid:ID) : prog -> state -> Prop :=
+  | FailStepAsyncRead : forall a d m s0 s rx,
+      ~ProgI m s d ->
+      fail_step tid (AsyncRead a rx) (d, m, s0, s)
   | FailStepRead : forall a d m s0 s rx, d a = None ->
                                     fail_step tid (Read a rx) (d, m, s0, s)
   | FailStepWriteMissing : forall a v d m s0 s rx, d a = None ->
@@ -243,6 +279,14 @@ Section EventCSL.
 
   Ltac condition_failure :=
     intros; inv_fail_step; eauto; try congruence.
+
+  Theorem async_read_failure : forall tid d m s0 s rx a,
+      fail_step tid (AsyncRead a rx) (d, m, s0, s) ->
+      ProgI m s d ->
+      False.
+  Proof.
+    condition_failure.
+  Qed.
 
   Theorem read_failure : forall tid d m s0 s rx a v,
       fail_step tid (Read a rx) (d, m, s0, s) ->
@@ -420,6 +464,31 @@ Section EventCSL.
     eapply pimpl_apply; [| eapply ptsto_upd].
     cancel.
     pred_apply; cancel.
+  Qed.
+
+  Theorem async_read_ok : forall a,
+      tid |- {{ (_:unit),
+             | PRE d m s0 s: ProgI m s d
+             | POST d'''' m'''' s0' s'''' v:
+                 s0' = s'''' /\
+                 exists m' s' d'
+                   m'' s'' d''
+                   F rest
+                   m''' s''' d''',
+                   star (ProgR' tid) s s' /\
+                   ProgI m' s' d' /\
+                   star (LockR' tid) s' s'' /\
+                   LockI m'' s'' d'' /\
+                   d'' |= F * a |-> (Valuset v rest) /\
+                   star (LockR' tid) s'' s''' /\
+                   LockI m''' s''' d''' /\
+                   star (ProgR' tid) s''' s'''' /\
+                   ProgI m'''' s'''' d''''
+            }} AsyncRead a.
+  Proof.
+    opcode_ok.
+    unfold ProgI in *; intuition.
+    repeat eexists; eauto using ptsto_valid_iff.
   Qed.
 
   Theorem read_ok : forall a,
@@ -607,6 +676,7 @@ The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
 Notation "{{ f ; '_' }}" := (valid _ _ _ _ _ _ (progseq f _)).
 
+Hint Extern 1 {{ AsyncRead _; _ }} => apply async_read_ok : prog.
 Hint Extern 1 {{ Read _; _ }} => apply read_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply write_ok : prog.
 Hint Extern 1 {{ Sync _; _ }} => apply sync_ok : prog.
