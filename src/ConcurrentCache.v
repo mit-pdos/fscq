@@ -471,8 +471,6 @@ Ltac star_diskR := match goal with
                               cbn in H)
                    end.
 
-Check sectors_unchanged.
-
 Ltac sector_unchanged :=
   match goal with
   | [ H: forall a v, ?vd a = Some v -> (exists _, _), H': ?vd ?a = Some ?v |- _ ] =>
@@ -485,38 +483,6 @@ Ltac learn_invariants :=
   try sectors_unchanged;
   try sector_unchanged; repeat deex;
   try star_diskR.
-
-(** These proofs are still very messy. There's a lot of low-level
-manipulations of memories to prove/use the cache_pred in service of
-re-representing the disk as disk + cache. *)
-
-Lemma ptsto_valid_iff : forall AT AEQ V a v (m : @mem AT AEQ V),
-    m a = Some v ->
-    (any * a |-> v)%pred m.
-Proof.
-  intros.
-  unfold_sep_star.
-  exists (mem_except m a).
-  exists (fun a0 => if (AEQ a0 a) then Some v else None).
-  intuition.
-  apply functional_extensionality; intro a0.
-  unfold mem_union.
-  unfold mem_except.
-  case_eq (AEQ a0 a); intros; subst; eauto.
-  case_eq (m a0); eauto.
-  unfold mem_disjoint, mem_except.
-  intro.
-  repeat deex.
-  case_eq (AEQ a0 a); intros.
-  rewrite H0 in *.
-  congruence.
-  rewrite H0 in *.
-  congruence.
-  unfold any; auto.
-  unfold ptsto; intuition.
-  case_eq (AEQ a a); intros; auto; congruence.
-  case_eq (AEQ a' a); intros; auto; congruence.
-Qed.
 
 Hint Unfold cache_pred mem_union : cache.
 
@@ -1568,18 +1534,6 @@ Proof.
 Qed.
 
 Hint Resolve cache_pred_stable_upd.
-
-Lemma upd_same : forall AT AEQ V (m: @mem AT AEQ V) a v,
-    m a = Some v ->
-    upd m a v = m.
-Proof.
-  intros.
-  apply functional_extensionality; intro a'.
-  case_eq (AEQ a a'); intros;
-  try rewrite upd_eq by auto;
-  try rewrite upd_ne by auto;
-  subst; auto.
-Qed.
 
 Hint Rewrite upd_repeat : cache.
 Hint Rewrite upd_same using (now auto) : cache.

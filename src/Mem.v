@@ -44,6 +44,18 @@ Proof.
   repeat rewrite upd_ne; auto.
 Qed.
 
+Lemma upd_same : forall (m: @mem A aeq V) a v,
+    m a = Some v ->
+    upd m a v = m.
+Proof.
+  intros.
+  apply functional_extensionality; intro a'.
+  case_eq (aeq a a'); intros;
+  try rewrite upd_eq by auto;
+  try rewrite upd_ne by auto;
+  subst; auto.
+Qed.
+
 Theorem upd_comm: forall m (a0 : A) (v0:V) a1 v1, a0 <> a1
   -> upd (@upd A aeq V m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
 Proof.

@@ -818,6 +818,34 @@ Proof.
   rewrite mem_disjoint_comm; eauto.
 Qed.
 
+Lemma ptsto_valid_iff : forall AT AEQ V a v (m : @mem AT AEQ V),
+    m a = Some v ->
+    (any * a |-> v)%pred m.
+Proof.
+  intros.
+  unfold_sep_star.
+  exists (mem_except m a).
+  exists (fun a0 => if (AEQ a0 a) then Some v else None).
+  intuition.
+  apply functional_extensionality; intro a0.
+  unfold mem_union.
+  unfold mem_except.
+  case_eq (AEQ a0 a); intros; subst; eauto.
+  case_eq (m a0); eauto.
+  unfold mem_disjoint, mem_except.
+  intro.
+  repeat deex.
+  case_eq (AEQ a0 a); intros.
+  rewrite H0 in *.
+  congruence.
+  rewrite H0 in *.
+  congruence.
+  unfold any; auto.
+  unfold ptsto; intuition.
+  case_eq (AEQ a a); intros; auto; congruence.
+  case_eq (AEQ a' a); intros; auto; congruence.
+Qed.
+
 Lemma ptsto_disjoint_hole:
   forall a v m1 m2,
   mem_disjoint m1 m2 ->
