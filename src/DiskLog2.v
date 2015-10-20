@@ -131,7 +131,7 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     pose proof items_per_val_not_0; omega.
   Qed.
-  
+
   Lemma items_per_val_gt_0' : 0 < items_per_val.
   Proof.
     pose proof items_per_val_not_0; omega.
@@ -326,12 +326,131 @@ Module AsyncRecArray (RA : RASig).
     intros; apply list_chunk_spec'; eauto.
   Qed.
 
+  Lemma list_chunk'_skipn_1: forall A n l k (e0 : A),
+    list_chunk' (skipn n l) n e0 (k - 1) = skipn 1 (list_chunk' l n e0 k).
+  Proof.
+    induction k; intros; simpl; auto; rewrite Nat.sub_0_r; auto.
+  Qed.
+
+  Lemma list_chunk_skipn_1 : forall A n l (e0 : A),
+    list_chunk (skipn n l) n e0 = skipn 1 (list_chunk l n e0).
+  Proof.
+    unfold list_chunk; intros.
+    rewrite skipn_length.
+    destruct (Nat.eq_dec n 0).
+    subst; simpl; auto.
+    destruct (lt_dec (length l) n).
+    replace (length l - n) with 0 by omega.
+    rewrite divup_0.
+    apply Nat.lt_le_incl in l0; apply divup_le_1 in l0.
+    destruct (Nat.eq_dec (divup (length l) n) 1).
+    rewrite e.
+    setoid_rewrite skipn_oob at 2; simpl; auto.
+    replace (divup (length l) n) with 0 by omega.
+    simpl; auto.
+    rewrite divup_sub_1 by omega.
+    apply list_chunk'_skipn_1.
+  Qed.
+
+  Lemma skipn_list_chunk_skipn_eq : forall A i l n (e0 : A),
+    skipn i (list_chunk l n e0) = list_chunk (skipn (i * n) l) n e0.
+  Proof.
+    induction i; intros.
+    simpl; auto.
+    simpl (S i * n).
+    rewrite <- skipn_skipn'.
+    rewrite <- IHi; auto.
+    rewrite list_chunk_skipn_1.
+    rewrite skipn_skipn.
+    replace (S i) with (i + 1) by omega; auto.
+  Qed.
+
+  Local Hint Resolve divup_le divup_mul_ge.
+
+  Lemma skipn_repeat_list_chunk : forall A i l n (e0 : A) B (x : B),
+    skipn i (repeat x (length (list_chunk l n e0)))
+    = repeat x (length (list_chunk (skipn (i * n) l) n e0)).
+  Proof.
+    intros.
+    destruct (Nat.eq_dec n 0).
+    subst; simpl; rewrite skipn_nil; auto.
+    destruct (lt_dec (length l) (n * i)); autorewrite with core.
+    replace (length l - i * n) with 0 by nia.
+    rewrite divup_0.
+    rewrite skipn_oob; autorewrite with core; simpl; auto.
+    autorewrite with lists.
+    apply divup_le; nia.
+    rewrite divup_sub by nia.
+    rewrite skipn_repeat; auto.
+    apply divup_mul_ge; omega.
+  Qed.
+
+  Local Hint Resolve skipn_list_chunk_skipn_eq list_chunk_skipn_1 skipn_repeat_list_chunk.
+  Hint Rewrite app_nil_l app_nil_r firstn_length Nat.sub_diag Nat.sub_0_r: core.
+
   Lemma setlen_inbound : forall A n (l : list A) def,
     n <= length l ->
     setlen l n def = firstn n l.
   Proof.
     unfold setlen; intros.
     replace (n - length l) with 0 by omega; t.
+  Qed.
+
+  Lemma list_chunk'_firstn' : forall A i n l (e0 : A),
+    length l >= i * n ->
+    list_chunk' (firstn (i * n) l) n e0 i = list_chunk' l n e0 i.
+  Proof.
+    induction i; intros; simpl; auto.
+    repeat rewrite setlen_inbound by (autorewrite with core lists; nia).
+    rewrite firstn_firstn.
+    rewrite Nat.min_l by nia.
+    setoid_rewrite <- IHi at 2; autorewrite with core; try nia.
+    f_equal; f_equal.
+    apply skipn_firstn_comm.
+  Qed.
+
+  Lemma list_chunk'_firstn : forall A i n l (e0 : A),
+    list_chunk' (firstn (i * n) l) n e0 i = list_chunk' l n e0 i.
+  Proof.
+    intros.
+    destruct (le_lt_dec (i * n) (length l)).
+    apply list_chunk'_firstn'; auto.
+    rewrite firstn_oob; auto.
+    nia.
+  Qed.
+
+  Lemma firstn_list_chunk' : forall A m n i l (e0 : A),
+    n <= m ->
+    firstn n (list_chunk' l i e0 m) = list_chunk' l i e0 n.
+  Proof.
+    induction m; destruct n; t.
+    inversion H.
+    rewrite IHm; t.
+  Qed.
+
+  Hint Rewrite divup_mul Nat.mul_0_r Nat.mul_0_l.
+
+  Lemma list_chunk_firstn' : forall A i n l (e0 : A),
+    n <> 0 -> length l >= i * n ->
+    list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
+  Proof.
+    unfold list_chunk; t.
+    rewrite Nat.min_l; t.
+    rewrite list_chunk'_firstn.
+    rewrite firstn_list_chunk'; t.
+    apply divup_mul_ge; nia.
+  Qed.
+
+  Lemma list_chunk_firstn : forall A i n l (e0 : A),
+    list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
+  Proof.
+    intros.
+    destruct (Nat.eq_dec n 0); t. t.
+    destruct (le_lt_dec (i * n) (length l)).
+    apply list_chunk_firstn'; t.
+    rewrite firstn_oob by nia.
+    rewrite firstn_oob; t.
+    apply divup_le; nia.
   Qed.
 
   Lemma firstn_list_chunk_app : forall l i pre,
@@ -353,6 +472,38 @@ Module AsyncRecArray (RA : RASig).
     rewrite firstn_firstn; rewrite Nat.min_l; auto.
     rewrite firstn_length.
     apply Min.min_glb; auto.
+  Qed.
+
+  Lemma list_chunk'_app : forall A na sz a b (def : A),
+    sz <> 0 ->
+    length a = sz * na ->
+    list_chunk' (a ++ b) sz def (na + divup (length b) sz) =
+    list_chunk' a sz def na ++ list_chunk' b sz def (divup (length b) sz).
+  Proof.
+    induction na; t.
+    replace (a ++ b) with b; auto.
+    rewrite length_nil with (l := a); auto; omega.
+    repeat rewrite setlen_inbound by (autorewrite with lists; nia).
+    rewrite firstn_app_l by nia.
+    f_equal.
+    rewrite skipn_app_l by nia.
+    rewrite IHna; auto.
+    autorewrite with core; nia.
+  Qed.
+
+
+  Lemma list_chunk_app: forall A na sz a b (def : A),
+    sz <> 0 ->
+    length a = sz * na ->
+    list_chunk (a ++ b) sz def = list_chunk a sz def ++ list_chunk b sz def.
+  Proof.
+    unfold list_chunk; intros.
+    rewrite app_length; autorewrite with core lists.
+    repeat (rewrite H0; rewrite Nat.mul_comm; rewrite divup_mul by auto).
+    rewrite <- list_chunk'_app; auto.
+    f_equal.
+    replace (na * sz + length b) with (length b + sz * na) by lia.
+    rewrite divup_add by auto; omega.
   Qed.
 
   Lemma roundup_min_r : forall a b,
@@ -381,66 +532,244 @@ Module AsyncRecArray (RA : RASig).
     apply length_nil; auto.
   Qed.
 
-  (* combined array *)
-  Definition carray start vl vsl : rawpred :=
-    ([[ length vl = length vsl ]] *
-    arrayN start (combine vl vsl))%pred.
-
-  (* combined spliced array *)
-  Definition csarray s1 vl1 vsl1 s2 vl2 vsl2 : rawpred :=
-    ([[ length vl1 = length vsl2 /\ length vl2 = length vsl2 ]] *
-    arrayN s1 (combine vl1 vsl1) * arrayN s2 (combine vl2 vsl2)) %pred.
-
-  Definition nils n := @repeat (list valu) nil n.
-
-  (* optional value to valuset *)
-  Definition optvalu := option valu.
-
-  Definition ov2vs (ov : optvalu) : list valu := 
-    match ov with
-    | None => nil
-    | Some v => [v]
-    end.
-
-  (* optional valu list to valu set list *)
-  Definition ovl2vsl (ovl : list optvalu) : list (list valu) := map ov2vs ovl.
-
-  Definition synced_array start vl: rawpred :=
-    carray start vl (nils (length vl)).
-
-  (** a variant of array where only the latest valu in the valuset is defined *)
-  Definition unsync_array start vl ovl: rawpred :=
-    (carray start vl (ovl2vsl ovl))%pred.
-
-  Definition ov_synced v (ov : optvalu) : Prop :=
-    ov = None \/ ov = Some v.
 
   Definition itemlist := list item.
-
-  Definition optlist := list (option item).
-
-  Definition .
 
   (** rep invariant *)
   Inductive state : Type :=
   | Synced : itemlist -> state
-  | Unsync : itemlist -> optlist -> state
+  | Unsync : itemlist -> state
   .
 
-  Definition rep_common xp items vlist := 
-       Forall Rec.well_formed items
-    /\ length items <= (RALen xp) * items_per_val
-    /\ vlist = map block2val (list_chunk items items_per_val item0).
+  Definition ipack items := map block2val (list_chunk items items_per_val item0).
 
-  Definition array_rep xp (st : state) :=
+  Definition iunpack (r : itemlist) (v : valu) : itemlist :=
+    r ++ (val2block v).
+
+  Definition vs_unique (vs : valuset) := snd vs = nil \/ snd vs = [ fst vs ].
+
+  Definition tolist A (v : A) := [ v ].
+
+  Definition nils n := @repeat (list valu) nil n.
+
+  Definition items_valid xp start (items : itemlist) :=
+    xparams_ok xp /\  start < (RALen xp) /\
+    Forall Rec.well_formed items /\
+    length items <= (RALen xp - start) * items_per_val.
+
+  Definition rep_common xp start items vl (vsl : list (list valu)) :=
+    items_valid xp start items /\
+    vl = ipack items /\ eqlen vl vsl.
+
+  Definition synced_array xp start items :=
+    (exists vl vsl, [[ rep_common xp start items vl vsl /\
+        vsl = nils (length vl) ]] *
+    arrayN ((RAStart xp ) + start) (combine vl vsl))%pred.
+
+  Definition unsync_array xp start items :=
+    (exists vl vsl, [[ rep_common xp start items vl vsl ]] *
+    arrayN ((RAStart xp ) + start) (combine vl vsl))%pred.
+
+  Definition array_rep xp start (st : state) :=
    (match st with
-    | Synced items => exists vlist,
-        [[ rep_common xp items vlist ]] *
-        synced_array (RAStart xp) vlist
-    | Unsync items => exists vlist,
-        [[ rep_common xp items vlist ]] * 
-        unsync_array (RAStart xp) vlist
+    | Synced items => synced_array xp start items
+    | Unsync items => unsync_array xp start items
     end)%pred.
+
+  Local Hint Extern 0 (okToUnify (arrayN (RAStart ?a) _ _) (arrayN (RAStart ?a) _ _)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (arrayN (RAStart ?b + ?a) _ _) (arrayN (RAStart ?b + ?a) _ _)) 
+    => constructor : okToUnify.
+
+  Lemma synced_array_is : forall xp start items,
+    synced_array xp start items =p=>
+    arrayN ((RAStart xp) + start) (combine (ipack items) (nils (length (ipack items)))).
+  Proof.
+    unfold synced_array, rep_common; cancel; subst; auto.
+  Qed.
+
+  Lemma nils_length : forall n,
+    length (nils n) = n.
+  Proof.
+    unfold nils; intros.
+    apply repeat_length.
+  Qed.
+
+  Lemma ipack_length : forall items,
+    length (ipack items) = divup (length items) items_per_val.
+  Proof.
+    unfold ipack; intros.
+    rewrite map_length.
+    setoid_rewrite list_chunk_length; auto.
+  Qed.
+
+  Lemma ipack_app: forall na a b,
+    length a = na * items_per_val ->
+    ipack (a ++ b) = ipack a ++ ipack b.
+  Proof.
+    unfold ipack; intros.
+    rewrite <- map_app; f_equal.
+    eapply list_chunk_app; eauto.
+    rewrite Nat.mul_comm; eauto.
+  Qed.
+
+  Lemma map_fst_combine : forall A B (a : list A) (b : list B),
+    length a = length b ->
+    map fst (combine a b) = a.
+  Proof.
+    induction a; destruct b; simpl; auto; intros.
+    inversion H.
+    rewrite IHa; auto.
+  Qed.
+
+  Lemma ipack_nil : ipack nil = nil.
+  Proof.
+    unfold ipack.
+    rewrite list_chunk_nil; auto.
+  Qed.
+
+  Lemma divup_same : forall x,
+    x <> 0 -> divup x x = 1.
+  Proof.
+    intros; erewrite <- divup_mul; eauto.
+    rewrite Nat.mul_1_l; auto.
+  Qed.
+
+  Lemma ipack_one : forall l,
+    length l = items_per_val ->
+    ipack l = block2val l :: nil.
+  Proof.
+    unfold ipack, list_chunk; intros.
+    rewrite H.
+    rewrite divup_same by auto; simpl.
+    rewrite setlen_inbound by omega.
+    rewrite firstn_oob by omega; auto.
+  Qed.
+
+  Lemma iunpack_ipack_one : forall l init,
+    Forall Rec.well_formed l ->
+    length l = items_per_val ->
+    fold_left iunpack (ipack l) init = init ++ l.
+  Proof.
+    intros; unfold iunpack.
+    rewrite ipack_one by auto; simpl.
+    autorewrite with core; split; auto.
+  Qed.
+
+  Lemma well_formed_firstn : forall A n (a : list (Rec.data A)), 
+    Forall Rec.well_formed a
+    -> Forall Rec.well_formed (firstn n a).
+  Proof.
+    intros.
+    rewrite Forall_forall in *; intros.
+    apply H; eapply in_firstn_in; eauto.
+  Qed.
+
+  Lemma well_formed_skipn : forall A n (a : list (Rec.data A)), 
+    Forall Rec.well_formed a
+    -> Forall Rec.well_formed (skipn n a).
+  Proof.
+    intros.
+    rewrite Forall_forall in *; intros.
+    apply H; eapply in_skipn_in; eauto.
+  Qed.
+
+  Local Hint Resolve Forall_append well_formed_firstn well_formed_skipn.
+
+  Lemma iunpack_ipack' : forall nr init items ,
+    Forall Rec.well_formed items ->
+    length items = nr * items_per_val ->
+    fold_left iunpack (ipack items) init = init ++ items.
+  Proof.
+    induction nr; t.
+    apply length_nil in H0; rewrite H0.
+    rewrite ipack_nil; simpl; t.
+
+    erewrite <- firstn_skipn with (n := items_per_val) (l := items).
+    rewrite ipack_app with (na := 1).
+    rewrite fold_left_app.
+    rewrite IHnr; auto.
+    rewrite app_assoc.
+    f_equal.
+
+    rewrite iunpack_ipack_one; auto.
+    rewrite firstn_length_l; lia.
+    rewrite skipn_length; nia.
+    rewrite firstn_length; lia.
+  Qed.
+
+  Lemma iunpack_ipack : forall nr items,
+    length items = nr * items_per_val ->
+    fold_left iunpack (ipack items) [] = items.
+  Proof.
+    intros; eapply iunpack_ipack'; eauto.
+  Qed.
+
+  Hint Rewrite list_chunk_nil ipack_nil.
+  Hint Rewrite Nat.add_0_r Nat.add_0_l.
+  Hint Rewrite synced_array_is.
+  Hint Rewrite combine_length nils_length : lists.
+  Hint Rewrite ipack_length divup_mul.
+
+  Ltac rewrite_ignore H :=
+    match type of H with
+    | forall _, corr2 _ _ => idtac
+    | sep_star _ _ _ => idtac
+    end.
+
+  Ltac simplen_rewrite H := try progress (
+    set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
+      [ try simplen_rewrite H | try autorewrite with core .. ];
+    match type of H with
+    | context [ length (list_chunk _ _ _) ] => rewrite block_chunk_length in H
+    end).
+
+  Ltac simplen' := repeat match goal with
+    | [H : context[length ?x] |- _] => progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite H ] )
+    | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
+    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
+    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [H : @eqlen _ ?T ?l nil |- context [?l] ] => replace l with (@nil T) by eauto
+    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
+    end.
+
+  Ltac simplen := unfold eqlen; eauto; repeat (try subst; simpl;
+    auto; simplen'; autorewrite with core lists); simpl; eauto; try omega.
+
+
+  (** read count blocks starting from the beginning *)
+  Definition read_all T xp count cs rx : prog T :=
+    let^ (cs, r) <- BUFCACHE.read_range (RAStart xp) count iunpack nil cs;
+    rx ^(cs, r).
+
+  Theorem read_all_ok : forall xp count cs,
+    {< F d items,
+    PRE            BUFCACHE.rep cs d *
+                   [[ length items = (count * items_per_val)%nat /\ xparams_ok xp ]] *
+                   [[ (F * array_rep xp 0 (Synced items))%pred d ]]
+    POST RET:^(cs, r)
+                   BUFCACHE.rep cs d *
+                   [[ (F * array_rep xp 0 (Synced items))%pred d ]] *
+                   [[ r = items ]]
+    CRASH  exists cs', BUFCACHE.rep cs' d
+    >} read_all xp count cs.
+  Proof.
+    unfold read_all.
+    step.
+
+    simplen.
+    instantiate (2 := F); cancel.
+    simplen.
+
+    step; subst.
+    rewrite map_fst_combine by simplen.
+    rewrite firstn_oob by simplen.
+    eapply iunpack_ipack; eauto.
+  Qed.
+
+
+
+
 
 
   Local Hint Unfold array_rep rep_common synced_array unsync_array item xparams_ok: hoare_unfold.
@@ -594,7 +923,7 @@ Module AsyncRecArray (RA : RASig).
 
 
 
-  Hint Rewrite app_nil_l app_nil_r firstn_length Nat.sub_diag Nat.sub_0_r: core.
+
 
   Lemma S_minus_S : forall a b,
     a > b -> S (a - S b) = a - b.
@@ -1279,119 +1608,6 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve write_unaligned_eqlen.
 
-  Lemma list_chunk'_skipn_1: forall A n l k (e0 : A),
-    list_chunk' (skipn n l) n e0 (k - 1) = skipn 1 (list_chunk' l n e0 k).
-  Proof.
-    induction k; intros; simpl; auto; rewrite Nat.sub_0_r; auto.
-  Qed.
-
-  Lemma list_chunk_skipn_1 : forall A n l (e0 : A),
-    list_chunk (skipn n l) n e0 = skipn 1 (list_chunk l n e0).
-  Proof.
-    unfold list_chunk; intros.
-    rewrite skipn_length.
-    destruct (Nat.eq_dec n 0).
-    subst; simpl; auto.
-    destruct (lt_dec (length l) n).
-    replace (length l - n) with 0 by omega.
-    rewrite divup_0.
-    apply Nat.lt_le_incl in l0; apply divup_le_1 in l0.
-    destruct (Nat.eq_dec (divup (length l) n) 1).
-    rewrite e.
-    setoid_rewrite skipn_oob at 2; simpl; auto.
-    replace (divup (length l) n) with 0 by omega.
-    simpl; auto.
-    rewrite divup_sub_1 by omega.
-    apply list_chunk'_skipn_1.
-  Qed.
-
-  Lemma skipn_list_chunk_skipn_eq : forall A i l n (e0 : A),
-    skipn i (list_chunk l n e0) = list_chunk (skipn (i * n) l) n e0.
-  Proof.
-    induction i; intros.
-    simpl; auto.
-    simpl (S i * n).
-    rewrite <- skipn_skipn'.
-    rewrite <- IHi; auto.
-    rewrite list_chunk_skipn_1.
-    rewrite skipn_skipn.
-    replace (S i) with (i + 1) by omega; auto.
-  Qed.
-
-  Local Hint Resolve divup_le divup_mul_ge.
-
-  Lemma skipn_repeat_list_chunk : forall A i l n (e0 : A) B (x : B),
-    skipn i (repeat x (length (list_chunk l n e0)))
-    = repeat x (length (list_chunk (skipn (i * n) l) n e0)).
-  Proof.
-    intros.
-    destruct (Nat.eq_dec n 0).
-    subst; simpl; rewrite skipn_nil; auto.
-    destruct (lt_dec (length l) (n * i)); simplen.
-    replace (length l - i * n) with 0 by nia.
-    rewrite divup_0.
-    rewrite skipn_oob; simplen.
-    rewrite divup_sub by nia.
-    rewrite skipn_repeat; auto.
-    apply divup_mul_ge; omega.
-  Qed.
-
-  Local Hint Resolve skipn_list_chunk_skipn_eq list_chunk_skipn_1 skipn_repeat_list_chunk.
-
-  Lemma list_chunk'_firstn' : forall A i n l (e0 : A),
-    length l >= i * n ->
-    list_chunk' (firstn (i * n) l) n e0 i = list_chunk' l n e0 i.
-  Proof.
-    induction i; intros; simpl; auto.
-    repeat rewrite setlen_inbound by (autorewrite with core; nia).
-    rewrite firstn_firstn.
-    rewrite Nat.min_l by nia.
-    setoid_rewrite <- IHi at 2; autorewrite with core; try nia.
-    f_equal; f_equal.
-    apply skipn_firstn_comm.
-  Qed.
-
-  Lemma list_chunk'_firstn : forall A i n l (e0 : A),
-    list_chunk' (firstn (i * n) l) n e0 i = list_chunk' l n e0 i.
-  Proof.
-    intros.
-    destruct (le_lt_dec (i * n) (length l)).
-    apply list_chunk'_firstn'; auto.
-    rewrite firstn_oob; auto.
-  Qed.
-
-  Lemma firstn_list_chunk' : forall A m n i l (e0 : A),
-    n <= m ->
-    firstn n (list_chunk' l i e0 m) = list_chunk' l i e0 n.
-  Proof.
-    induction m; destruct n; t.
-    rewrite IHm; t.
-  Qed.
-
-  Hint Rewrite divup_mul Nat.mul_0_r Nat.mul_0_l.
-
-  Lemma list_chunk_firstn' : forall A i n l (e0 : A),
-    n <> 0 -> length l >= i * n ->
-    list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
-  Proof.
-    unfold list_chunk; t.
-    rewrite Nat.min_l; t.
-    rewrite list_chunk'_firstn.
-    rewrite firstn_list_chunk'; t.
-    apply divup_mul_ge; nia.
-  Qed.
-
-  Lemma list_chunk_firstn : forall A i n l (e0 : A),
-    list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
-  Proof.
-    intros.
-    destruct (Nat.eq_dec n 0); t. t.
-    destruct (le_lt_dec (i * n) (length l)).
-    apply list_chunk_firstn'; t.
-    rewrite firstn_oob by nia.
-    rewrite firstn_oob; t.
-    apply divup_le; nia.
-  Qed.
 
   Lemma div_mul_le_r : forall a b, b <> 0 -> a / b * b <= a.
   Proof.
@@ -1531,15 +1747,6 @@ Module AsyncRecArray (RA : RASig).
   Qed.
   Local Hint Resolve unaligned_block_idx_eq.
 
-  Lemma well_formed_firstn : forall A n (a : list (Rec.data A)), 
-    Forall Rec.well_formed a
-    -> Forall Rec.well_formed (firstn n a).
-  Proof.
-    intros.
-    rewrite Forall_forall in *; intros.
-    apply H; eapply in_firstn_in; eauto.
-  Qed.
-  Local Hint Resolve Forall_append well_formed_firstn.
 
   Lemma skipn_S_fold : forall A i (l : list A),
     match l with | nil => nil | _ :: l' => skipn i l' end = skipn (S i) l.
