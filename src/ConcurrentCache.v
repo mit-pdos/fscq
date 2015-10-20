@@ -1012,7 +1012,7 @@ Qed.
 
 Hint Resolve cache_pred_stable_add.
 
-Hint Rewrite cache_get_dirty_eq upd_eq : cache.
+Hint Rewrite cache_get_dirty_eq upd_eq using (now auto) : cache.
 Hint Rewrite cache_get_dirty_neq upd_ne using (now auto) : cache.
 
 Lemma cache_pred_stable_dirty_write : forall c vd a v rest v' d vs',
@@ -1418,9 +1418,24 @@ Definition writeback {T} a rx : prog Mcontents S T :=
   let ov := cache_get c a in
   match (cache_get c a) with
   | Some (true, v) =>
+    Commit (fun s => let vd : DISK := get GDisk s in
+                   let vs' := match (vd a) with
+                              | Some vs0 => buffer_valu vs0 v
+                              (* impossible *)
+                              | None => Valuset v nil
+                              end in
+                   set GDisk (upd vd a vs') s);;
     Write a v;;
           let c' := cache_clean c a in
           Commit (set GCache c');;
+                 Commit (fun s => let vd : DISK := get GDisk s in
+                                let vs' := match (vd a) with
+                                           | Some (Valuset v' (v :: rest)) =>
+                                             Valuset v rest
+                                           (* impossible *)
+                                           | _ => Valuset $0 nil
+                                           end in
+                                set GDisk (upd vd a vs') s);;
                  Assgn Cache c';;
                  rx tt
   | Some (false, _) => rx tt
@@ -1537,6 +1552,38 @@ Qed.
 Hint Rewrite cache_get_dirty_clean using (now auto) : cache.
 Hint Resolve cache_get_dirty_clean.
 
+Lemma cache_pred_stable_upd : forall c d vd a vs0 v vs' vs'',
+    cache_pred c vd d ->
+    cache_get c a = Some (true, v) ->
+    d a = Some vs0 ->
+    vs' = buffer_valu vs0 v ->
+    vs'' = buffer_valu vs' v ->
+    cache_pred c (upd vd a vs'') (upd d a vs').
+Proof.
+  intros.
+  prove_cache_pred; complete_mem_equalities; inv_opt.
+  distinguish_addresses;
+    autorewrite with cache;
+    eauto.
+Qed.
+
+Hint Resolve cache_pred_stable_upd.
+
+Lemma upd_same : forall AT AEQ V (m: @mem AT AEQ V) a v,
+    m a = Some v ->
+    upd m a v = m.
+Proof.
+  intros.
+  apply functional_extensionality; intro a'.
+  case_eq (AEQ a a'); intros;
+  try rewrite upd_eq by auto;
+  try rewrite upd_ne by auto;
+  subst; auto.
+Qed.
+
+Hint Rewrite upd_repeat : cache.
+Hint Rewrite upd_same using (now auto) : cache.
+
 Theorem writeback_ok : forall a,
     cacheS TID: tid |-
     {{ F v0 rest,
@@ -1562,11 +1609,14 @@ Proof.
   case_cache_val' (get Cache m) a;
     try cache_vd_val; repeat deex; cleanup.
 
-  all: valid_match_opt; hoare pre (simplify; learn_some_addr) with finish.
-  (* precondition of Write demands this; need to try proving it to see
-if it's true (otherwise, need to Commit a change to vd, Write, then
-Commit back to the original vd.) *)
-  admit.
+  all: valid_match_opt; hoare pre (simplify; learn_some_addr) with
+                        (finish;
+                          try lazymatch goal with
+                              | [ |- lock_protects _ _ _ _ _ ] =>
+                                unfold lock_protects; simpl_get_set;
+                                try congruence
+                              end;
+                        cbn; autorewrite with cache).
 
   pred_apply; cancel.
   eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto.
@@ -1575,4 +1625,4 @@ Commit back to the original vd.) *)
   pred_apply; cancel.
   eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto.
   cancel; eauto.
-Admitted.
+Qed.
