@@ -1196,15 +1196,26 @@ Theorem locked_AsyncRead_ok : forall a,
                           s0' = s'
   }} locked_AsyncRead a.
 Proof.
-  time hoare pre (simplify;
-    learn_some_addr;
-    unfold ProgI in *;
-    unfold_progR) with (finish;
-    do 4 learn_invariants;
-    cleanup).
-  (* only goal is ret_ = v, which requires showing that the disk after
-  LockR steps is consistent with the original virtual disk. *)
-Admitted.
+  hoare pre (simplify;
+                   learn_some_addr;
+                   unfold ProgI in *;
+                   unfold_progR)
+  with (finish;
+         do 4 learn_invariants;
+         cleanup).
+
+  repeat match goal with
+         | [ H: cache_get ?c ?a = None, H': ?c' = ?c |- _ ] =>
+           learn H (rewrite <- H' in H)
+         | [ H: cache_get ?c ?a = None, H': ?c = ?c' |- _ ] =>
+           learn H (rewrite -> H' in H)
+         end.
+  repeat match goal with
+         | [ H: cache_get ?c ?a = None, H': cache_pred ?c ?vd ?d |- _ ] =>
+           learn_fact (cache_miss_mem_eq c vd a d H' H)
+         end.
+  congruence.
+Qed.
 
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
 
