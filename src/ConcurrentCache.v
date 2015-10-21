@@ -1176,10 +1176,42 @@ Ltac vd_locked :=
       subst vd'
   end.
 
+Definition locked_AsyncRead {T} a rx : prog Mcontents S T :=
+  v <- AsyncRead a; rx v.
+
+Theorem locked_AsyncRead_ok : forall a,
+  cacheS TID: tid |-
+  {{ F v rest,
+   | PRE d m s0 s: let vd := virt_disk s in
+                   cacheI m s d /\
+                   cache_get (get Cache m) a = None /\
+                   vd |= F * a |-> (Valuset v rest) /\
+                   get GCacheL s = Owned tid
+   | POST d' m' s0' s' r: let vd' := virt_disk s' in
+                          cacheI m' s' d' /\
+                          vd' = virt_disk s /\
+                          get Cache m' = get Cache m /\
+                          get GCacheL s' = Owned tid /\
+                          r = v /\
+                          s0' = s'
+  }} locked_AsyncRead a.
+Proof.
+  time hoare pre (simplify;
+    learn_some_addr;
+    unfold ProgI in *;
+    unfold_progR) with (finish;
+    do 4 learn_invariants;
+    cleanup).
+  (* only goal is ret_ = v, which requires showing that the disk after
+  LockR steps is consistent with the original virtual disk. *)
+Admitted.
+
+Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
+
 Definition locked_async_disk_read {T} a rx : prog Mcontents S T :=
   c <- Get Cache;
   match cache_get c a with
-  | None => v <- AsyncRead a;
+  | None => v <- locked_AsyncRead a;
              let c' := cache_add c a v in
              Commit (fun (s:S) => set GCache c' s);;
              Assgn Cache c';;
@@ -1212,6 +1244,7 @@ Qed.
 
 Hint Resolve cache_get_vd.
 
+
 (** This proof is still horrendous and extremely poorly automated.
 
 Fixing it seems to be best done with some invasive changes to the automation.
@@ -1236,39 +1269,14 @@ Theorem locked_async_disk_read_ok : forall a,
 Proof.
   hoare.
   learn_some_addr.
-  valid_match_opt.
+  valid_match_opt;
   hoare pre simplify with (finish;
          try (replace_cache; vd_locked);
          eauto).
-  hoare pre simplify with (finish;
-         try (replace_cache; vd_locked);
-         eauto).
-  step pre simplify with (finish;
-         try (replace_cache; vd_locked);
-         eauto).
-  step pre simplify with (finish;
-         try (replace_cache; vd_locked);
-         eauto).
-  unfold_progR; intuition; learn_invariants; cleanup.
-  unfold lock_protects; autorewrite with core cache; intros; try congruence.
-  learn_invariants.
-  learn_invariants.
-  learn_invariants.
-  repeat match goal with
-  | [ H: _ = Owned tid |- _ ] => let t := type of H in idtac t; fail
-  end.
-  congruence.
-  unfold_progR; do 4 learn_invariants; cleanup.
-
-  hoare pre simplify with (finish;
-    try (replace_cache; vd_locked); eauto).
-
-  do 4 learn_invariants; cleanup.
 
   eapply cache_pred_stable_add; eauto.
-  replace (get GDisk s1 a) with (Some (Valuset v rest)) by congruence.
-  repeat f_equal.
-  admit.
+  replace (get GDisk s1 a) with (Some (Valuset v rest))
+    by congruence; eauto.
   match goal with
   | [ H: cache_pred ?c ?vd ?d |- cache_pred ?c' ?vd' ?d ] =>
     replace c' with c by congruence;
@@ -1276,26 +1284,16 @@ Proof.
       eauto
   end.
 
-  do 4 learn_invariants; cleanup.
   eapply cache_pred_stable_add; eauto.
-  replace (get GDisk s1 a) with (Some (Valuset v rest)) by congruence.
-  repeat f_equal.
-  admit.
+  replace (get GDisk s1 a) with (Some (Valuset v rest))
+    by congruence; eauto.
   match goal with
   | [ H: cache_pred ?c ?vd ?d |- cache_pred ?c' ?vd' ?d ] =>
     replace c' with c by congruence;
       replace vd' with vd by congruence;
       eauto
   end.
-  do 4 learn_invariants; cleanup.
-  learn_some_addr.
-  admit.
-
-  do 4 learn_invariants.
-
-  (* only goals left are v = ret_0, which requires showing that
-  the disk couldn't change if it was locked *)
-Admitted.
+Qed.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
 
