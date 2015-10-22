@@ -1144,22 +1144,53 @@ Theorem locked_disk_read_ok : forall a,
                             r = v /\
                             get GCacheL s' = Owned tid /\
                             s0' = s0
+     | CRASH d'c: d'c = d
     }} locked_disk_read a.
 Proof.
-  hoare.
-  learn_some_addr.
+  hoare pre (step_simplifier; learn_some_addr).
   valid_match_opt; hoare pre simplify with finish.
 Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
 
-Theorem cache_pred_same_disk : forall c vd vd' d,
+Theorem cache_pred_same_virt_disk : forall c vd vd' d,
     cache_pred c vd d ->
     cache_pred c vd' d ->
     vd = vd'.
 Proof.
   prove_cache_pred.
   case_cache_val; repeat deex; cleanup.
+Qed.
+
+Theorem cache_pred_same_virt_disk_eq : forall c c' vd vd' d d',
+    c = c' ->
+    d = d' ->
+    cache_pred c vd d ->
+    cache_pred c vd' d ->
+    vd = vd'.
+Proof.
+  intros; subst.
+  eauto using cache_pred_same_virt_disk.
+Qed.
+
+Theorem cache_pred_same_disk : forall c vd d d',
+    cache_pred c vd d ->
+    cache_pred c vd d' ->
+    d = d'.
+Proof.
+  prove_cache_pred.
+  case_cache_val; repeat deex; cleanup.
+Qed.
+
+Theorem cache_pred_same_disk_eq : forall c c' vd vd' d d',
+    c = c' ->
+    vd = vd' ->
+    cache_pred c vd d ->
+    cache_pred c' vd' d' ->
+    d = d'.
+Proof.
+  intros; subst.
+  eauto using cache_pred_same_disk.
 Qed.
 
 Ltac replace_cache :=
@@ -1172,7 +1203,7 @@ Ltac vd_locked :=
   match goal with
   | [ H: cache_pred ?c ?vd ?d, H': cache_pred ?c ?vd' ?d |- _ ] =>
     assert (vd = vd') by
-        (apply (cache_pred_same_disk c vd vd' d); auto);
+        (apply (cache_pred_same_virt_disk c vd vd' d); auto);
       subst vd'
   end.
 
@@ -1194,6 +1225,7 @@ Theorem locked_AsyncRead_ok : forall a,
                           get GCacheL s' = Owned tid /\
                           r = v /\
                           s0' = s'
+   | CRASH d'c : d'c = d
   }} locked_AsyncRead a.
 Proof.
   hoare pre (simplify;
@@ -1276,6 +1308,7 @@ Theorem locked_async_disk_read_ok : forall a,
                             r = v /\
                             get GCacheL s' = Owned tid /\
                             s' = set GCache (get Cache m') s0'
+    | CRASH d'c: d'c = d
     }} locked_async_disk_read a.
 Proof.
   hoare.
@@ -1283,7 +1316,10 @@ Proof.
   valid_match_opt;
   hoare pre simplify with (finish;
          try (replace_cache; vd_locked);
-         eauto).
+         eauto;
+         try match goal with
+         | [ |- crash _ ] => eauto using cache_pred_same_disk_eq
+         end).
 
   eapply cache_pred_stable_add; eauto.
   replace (get GDisk s1 a) with (Some (Valuset v rest))
@@ -1359,6 +1395,7 @@ Theorem disk_read_ok : forall a,
                             exists F' v' rest',
                               vd' |= F' * a |-> (Valuset v' rest') /\
                               r = v'
+     | CRASH d'c: True
     }} disk_read a.
 Proof.
   intros.
@@ -1436,6 +1473,7 @@ Theorem locked_disk_write_ok : forall a v,
                             get GCacheL s = Owned tid /\
                             exists rest', vd' |= F * a |-> (Valuset v rest') /\
                                      s0' = s0
+     | CRASH d'c: d'c = d
     }} locked_disk_write a v.
 Proof.
   intros.
@@ -1501,6 +1539,7 @@ Theorem locked_evict_ok : forall a,
                             get GCacheL s = Owned tid /\
                             vd' = virt_disk s /\
                             s0' = s0
+     | CRASH d'c : d'c = d
     }} evict a.
 Proof.
   hoare pre simplify with finish.
@@ -1668,6 +1707,33 @@ Hint Resolve cache_pred_stable_upd.
 Hint Rewrite upd_repeat : cache.
 Hint Rewrite upd_same using (now auto) : cache.
 
+Lemma cache_pred_determine : forall (c: AssocCache) (a: addr) vd vs vs' d d',
+    (cache_pred (Map.remove a c) (mem_except vd a) * a |-> vs)%pred d ->
+    (cache_pred (Map.remove a c) (mem_except vd a) * a |-> vs')%pred d' ->
+    d' = upd d a vs'.
+Proof.
+  intros.
+  extensionality a'.
+  distinguish_addresses; autorewrite with cache; auto.
+  eapply ptsto_valid; pred_apply; cancel.
+
+  repeat match goal with
+         | [ H: (_ * _ |-> _)%pred _ |- _ ] =>
+           apply sep_star_comm in H;
+             apply ptsto_mem_except in H
+         end.
+
+  match goal with
+  | [ H: cache_pred _ _ ?d, H': cache_pred _ _?d' |- _ ] =>
+    let H' := fresh in
+    assert (d = d') as H'
+        by eauto using cache_pred_same_disk_eq;
+      unfold mem_except in H';
+      apply equal_f with a' in H'
+  end.
+  distinguish_addresses.
+Qed.
+
 Theorem writeback_ok : forall a,
     cacheS TID: tid |-
     {{ F v0 rest,
@@ -1680,6 +1746,7 @@ Theorem writeback_ok : forall a,
                             get GCacheL s = Owned tid /\
                             vd' = virt_disk s /\
                             s0' = s0
+     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
     }} writeback a.
 Proof.
   hoare pre simplify with finish.
@@ -1709,4 +1776,9 @@ Proof.
   pred_apply; cancel.
   eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto.
   cancel; eauto.
+
+  all: match goal with
+       | [ H: cache_pred _ _ _ |- _ ] =>
+         eapply cache_pred_dirty in H
+       end; eauto using cache_pred_determine.
 Qed.

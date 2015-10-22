@@ -191,6 +191,7 @@ Section Bank.
                               l' = l /\
                               l0' = l' /\
                               m' = m
+       | CRASH d'c: True
       }} transfer amount.
   Proof.
     hoare.
@@ -249,9 +250,11 @@ Section Bank.
      | POST d' m' l0' l' _: d' |= bankPred m' l' /\
                             firstn (length l + 1) l' = l ++ [from1 amount] /\
                             l0' = l'
+     | CRASH d'c : True
     }} transfer_yield amount.
   Proof.
     hoare.
+    pred_apply; cancel; eauto.
 
     match goal with
     | [ H: star _ _ _ |- _ ] => apply star_bankR in H; auto

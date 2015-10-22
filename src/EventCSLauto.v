@@ -85,6 +85,7 @@ Ltac simpl_goal :=
 
 Ltac step_finisher :=
   simpl_goal;
+  try solve [ pred_apply; cancel ];
   eauto.
 
 Tactic Notation "step" := step' step_simplifier step_finisher.
