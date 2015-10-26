@@ -1743,8 +1743,11 @@ Theorem writeback_ok : forall a,
                      vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             cacheI m' s' d' /\
-                            get GCacheL s = Owned tid /\
+                            get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
+                            ((exists b, cache_get (get Cache m) a = Some (b, v0)) ->
+                            (cache_get (get Cache m') a = Some (false, v0))) /\
+                            d' a = Some (Valuset v0 rest) /\
                             s0' = s0
      | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
     }} writeback a.
@@ -1769,16 +1772,45 @@ Proof.
                               end;
                         cbn; autorewrite with cache).
 
-  pred_apply; cancel.
-  eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto.
-  cancel; eauto.
+  all: try solve [
+             match goal with
+             | [ |- cache_pred _ _ _ ] =>
+               pred_apply; cancel;
+               eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto;
+               cancel; eauto
+             end ].
 
-  pred_apply; cancel.
-  eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto.
-  cancel; eauto.
+  all: try solve [
+             match goal with
+             | [ H: cache_pred _ _ _ |- _ ] =>
+               eapply cache_pred_dirty in H
+             end; eauto using cache_pred_determine ].
 
-  all: match goal with
-       | [ H: cache_pred _ _ _ |- _ ] =>
-         eapply cache_pred_dirty in H
-       end; eauto using cache_pred_determine.
+  prove_cache_pred.
 Qed.
+
+Hint Extern 4 {{ writeback _; _ }} => apply writeback_ok : prog.
+
+Definition cache_sync {T} a rx : prog Mcontents S T :=
+  writeback a;;
+  c <- Get Cache;
+  match cache_get c a with
+  (* impossible due to writeback *)
+  | Some (true, v) => rx tt
+  | Some (false, _) => Sync a;; rx tt
+  | None => Sync a;; rx tt
+  end.
+
+Theorem cache_sync_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v0 rest,
+     | PRE d m s0 s: let vd := virt_disk s in
+                    cacheI m s d /\
+                    get GCacheL s = Owned tid /\
+                    vd |= F * a |-> Valuset v0 rest
+     | POST d' m' s0' s' _: let vd' := virt_disk s' in
+                            cacheI m' s' d' /\
+                            get GCacheL s' = Owned tid /\
+                            vd' = virt_disk s
+     | CRASH d'c: d'c = d
+    }} cache_sync a.
