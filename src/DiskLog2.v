@@ -698,6 +698,7 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
   Lemma iunpack_ipack : forall nr items,
+    Forall Rec.well_formed items ->
     length items = nr * items_per_val ->
     fold_left iunpack (ipack items) [] = items.
   Proof.
@@ -745,7 +746,8 @@ Module AsyncRecArray (RA : RASig).
   Theorem read_all_ok : forall xp count cs,
     {< F d items,
     PRE            BUFCACHE.rep cs d *
-                   [[ length items = (count * items_per_val)%nat /\ xparams_ok xp ]] *
+                   [[ length items = (count * items_per_val)%nat /\
+                      Forall Rec.well_formed items /\ xparams_ok xp ]] *
                    [[ (F * array_rep xp 0 (Synced items))%pred d ]]
     POST RET:^(cs, r)
                    BUFCACHE.rep cs d *
@@ -766,7 +768,6 @@ Module AsyncRecArray (RA : RASig).
     rewrite firstn_oob by simplen.
     eapply iunpack_ipack; eauto.
   Qed.
-
 
 
 
