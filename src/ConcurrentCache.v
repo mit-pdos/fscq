@@ -184,7 +184,9 @@ Ltac solve_get_set :=
       | [ |- ?p _ ] => match type of p with
                       | pred => solve [ pred_apply; cancel; eauto ]
                       end
-      end.
+      end;
+  try congruence;
+  eauto.
 
 Lemma progR_is : forall S R1 R2 tid (s s':S),
   star (ProgR R1 R2 tid) s s' ->
@@ -880,18 +882,15 @@ Lemma cache_pred_clean : forall c vd rest a v,
     cache_get c a = Some (false, v) ->
     vd a = Some (Valuset v rest) ->
     cache_pred c vd =p=>
-exists rest, cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest).
+cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest).
 Proof.
   unfold pimpl.
   intros.
   unfold_sep_star.
   learn_disk_val.
 
-  evar (rest' : list valu).
-  exists rest'.
   exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some (Valuset v rest') else None).
-  subst rest'.
+  exists (fun a' => if weq a' a then Some (Valuset v rest) else None).
   unfold mem_except.
   intuition.
   - unfold mem_union; apply functional_extensionality; intro a'.
@@ -1003,13 +1002,40 @@ Ltac unify_mem_contents :=
     progress replace (get v l) in *
   end.
 
+Ltac learn_mem_val H m a :=
+  let v := fresh "v" in
+  evar (v : valuset);
+    assert (m a = Some v) by (eapply ptsto_valid;
+                               pred_apply' H; cancel);
+    subst v;
+    try lazymatch goal with
+    | [ H: m a = Some ?v, H': m a = Some ?v |- _ ] =>
+      fail 2
+    end.
+
+Ltac learn_some_addr :=
+  repeat match goal with
+         | [ a: addr, H: ?P ?m |- _ ] =>
+           match P with
+           | context[(a |-> _)%pred] => learn_mem_val H m a
+           end
+         end.
+
+Ltac standardize_mem_fields :=
+  repeat match goal with
+         | [ H: get _ _ = get _ _ |- _ ] =>
+           rewrite <- H in *
+         end.
+
 Ltac simplify :=
   repeat deex;
   unfold_progR;
   step_simplifier;
   learn_invariants;
+  learn_some_addr;
   subst;
   try cache_vd_val;
+  standardize_mem_fields;
   cleanup.
 
 Ltac finish :=
@@ -1093,22 +1119,6 @@ Hint Resolve cache_pred_stable_dirty_write
              cache_pred_stable_clean_write
              cache_pred_stable_miss_write.
 
-Ltac learn_mem_val H m a :=
-  let v := fresh "v" in
-    evar (v : valuset);
-    assert (m a = Some v);
-    [ eapply ptsto_valid;
-      pred_apply' H; cancel |
-    ]; subst v.
-
-Ltac learn_some_addr :=
-  match goal with
-  | [ a: addr, H: ?P ?m |- _ ] =>
-    match P with
-    | context[(a |-> _)%pred] => learn_mem_val H m a
-    end
-  end.
-
 Definition locked_disk_read {T} a rx : prog Mcontents S T :=
   c <- Get Cache;
   match cache_get c a with
@@ -1147,7 +1157,7 @@ Theorem locked_disk_read_ok : forall a,
      | CRASH d'c: d'c = d
     }} locked_disk_read a.
 Proof.
-  hoare pre (step_simplifier; learn_some_addr).
+  hoare pre simplify.
   valid_match_opt; hoare pre simplify with finish.
 Qed.
 
@@ -1229,9 +1239,8 @@ Theorem locked_AsyncRead_ok : forall a,
   }} locked_AsyncRead a.
 Proof.
   hoare pre (simplify;
-                   learn_some_addr;
-                   unfold ProgI in *;
-                   unfold_progR)
+              unfold ProgI in *;
+              unfold_progR)
   with (finish;
          do 4 learn_invariants;
          cleanup).
@@ -1287,13 +1296,6 @@ Qed.
 
 Hint Resolve cache_get_vd.
 
-
-(** This proof is still horrendous and extremely poorly automated.
-
-Fixing it seems to be best done with some invasive changes to the automation.
-It would also benefit from a proof that AsyncRead when the disk is locked
-behaves completely normally, which would isolate the challenging part of the
-proof. *)
 Theorem locked_async_disk_read_ok : forall a,
     cacheS TID: tid |-
     {{ F v rest,
@@ -1311,8 +1313,7 @@ Theorem locked_async_disk_read_ok : forall a,
     | CRASH d'c: d'c = d
     }} locked_async_disk_read a.
 Proof.
-  hoare.
-  learn_some_addr.
+  hoare pre simplify.
   valid_match_opt;
   hoare pre simplify with (finish;
          try (replace_cache; vd_locked);
@@ -1320,26 +1321,6 @@ Proof.
          try match goal with
          | [ |- crash _ ] => eauto using cache_pred_same_disk_eq
          end).
-
-  eapply cache_pred_stable_add; eauto.
-  replace (get GDisk s1 a) with (Some (Valuset v rest))
-    by congruence; eauto.
-  match goal with
-  | [ H: cache_pred ?c ?vd ?d |- cache_pred ?c' ?vd' ?d ] =>
-    replace c' with c by congruence;
-      replace vd' with vd by congruence;
-      eauto
-  end.
-
-  eapply cache_pred_stable_add; eauto.
-  replace (get GDisk s1 a) with (Some (Valuset v rest))
-    by congruence; eauto.
-  match goal with
-  | [ H: cache_pred ?c ?vd ?d |- cache_pred ?c' ?vd' ?d ] =>
-    replace c' with c by congruence;
-      replace vd' with vd by congruence;
-      eauto
-  end.
 Qed.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
@@ -1401,7 +1382,6 @@ Proof.
   intros.
   step pre simplify with finish.
 
-  learn_some_addr.
   step pre (cbn; intuition; repeat deex;
             learn_invariants) with idtac.
   match goal with
@@ -1477,11 +1457,11 @@ Theorem locked_disk_write_ok : forall a v,
     }} locked_disk_write a v.
 Proof.
   intros.
-  hoare pre (simplify; learn_some_addr) with
+  hoare pre simplify with
     (finish;
     try match goal with
     | [ |- lock_protects _ _ _ _ _ ] =>
-      unfold lock_protects; intros; solve_get_set; try congruence
+      unfold lock_protects; intros; solve_get_set
     | [ |- cache_pred (cache_add_dirty _ _ _) (upd _ _ _) _ ] =>
       case_cache_val;
         cbn; try cache_vd_val; repeat deex;
@@ -1497,22 +1477,13 @@ Definition evict {T} a rx : prog Mcontents S T :=
   c <- Get Cache;
   match cache_get c a with
   | None => rx tt
-  | Some (dirty, v) =>
-    If (Bool.bool_dec dirty true) {
-         rx tt
-       } else {
+  | Some (true, _) => rx tt
+  | Some (false, v) =>
     let c' := cache_evict c a in
     Commit (set GCache c');;
-          Assgn Cache c';;
-          rx tt
-  }
+           Assgn Cache c';;
+           rx tt
 end.
-
-Ltac if_ok :=
-  match goal with
-  | [ |- valid _ _ _ _ _ _ (If_ ?b _ _) ] =>
-    unfold If_; case_eq b; intros
-  end.
 
 Lemma cache_pred_stable_evict : forall c a vd d v,
     cache_pred c vd d ->
@@ -1543,9 +1514,7 @@ Theorem locked_evict_ok : forall a,
     }} evict a.
 Proof.
   hoare pre simplify with finish.
-  learn_some_addr.
-  valid_match_opt; try if_ok; try congruence;
-    hoare pre simplify with finish.
+  valid_match_opt; hoare pre simplify with finish.
 Qed.
 
 Definition writeback {T} a rx : prog Mcontents S T :=
@@ -1745,15 +1714,14 @@ Theorem writeback_ok : forall a,
                             cacheI m' s' d' /\
                             get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
-                            ((exists b, cache_get (get Cache m) a = Some (b, v0)) ->
+                            (forall b, cache_get (get Cache m) a = Some (b, v0) ->
                             (cache_get (get Cache m') a = Some (false, v0))) /\
-                            d' a = Some (Valuset v0 rest) /\
+                            d' = upd d a (Valuset v0 rest) /\
                             s0' = s0
      | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
     }} writeback a.
 Proof.
   hoare pre simplify with finish.
-  learn_some_addr.
 
   Remove Hints ptsto_valid_iff : core.
 
@@ -1763,14 +1731,13 @@ Proof.
   case_cache_val' (get Cache m) a;
     try cache_vd_val; repeat deex; cleanup.
 
-  all: valid_match_opt; hoare pre (simplify; learn_some_addr) with
+  all: valid_match_opt; hoare pre simplify with
                         (finish;
                           try lazymatch goal with
                               | [ |- lock_protects _ _ _ _ _ ] =>
-                                unfold lock_protects; simpl_get_set;
-                                try congruence
+                                unfold lock_protects; solve_get_set
                               end;
-                        cbn; autorewrite with cache).
+                        cbn; autorewrite with cache; auto).
 
   all: try solve [
              match goal with
@@ -1786,19 +1753,103 @@ Proof.
                eapply cache_pred_dirty in H
              end; eauto using cache_pred_determine ].
 
-  prove_cache_pred.
+  prove_cache_pred; distinguish_addresses;
+  autorewrite with cache; prove_cache_pred.
 Qed.
 
 Hint Extern 4 {{ writeback _; _ }} => apply writeback_ok : prog.
 
+Definition sync {T} a rx : prog Mcontents S T :=
+  Commit (fun s =>
+            let vd := virt_disk s in
+            let vs' := match vd a with
+                       | Some (Valuset v _) => Valuset v nil
+                       (* precondition will disallow this *)
+                       | None => Valuset $0 nil
+                       end in
+            set GDisk (upd vd a vs') s);;
+         Sync a;;
+         rx tt.
+
+Lemma mem_except_upd : forall AT AEQ V (m:@mem AT AEQ V) a v,
+    mem_except (upd m a v) a = mem_except m a.
+Proof.
+  intros.
+  unfold mem_except.
+  extensionality a'.
+  case_eq (AEQ a' a); intros;
+  autorewrite with cache; auto.
+Qed.
+
+Hint Rewrite mem_except_upd : cache.
+
+Lemma cache_pred_miss' : forall c vd a rest v,
+    cache_get c a = None ->
+    vd a = Some (Valuset v rest) ->
+    (cache_pred c (mem_except vd a) * a |-> (Valuset v rest)) =p=>
+cache_pred c vd.
+Proof.
+  unfold pimpl, mem_except.
+  intros.
+  unfold_sep_star in H1.
+  repeat deex.
+  unfold ptsto in *; intuition.
+  prove_cache_pred; distinguish_addresses; replace_cache_vals;
+  rewrite_cache_get; disk_equalities; distinguish_addresses; cleanup.
+
+  destruct_matches.
+
+  case_cache_val; repeat deex; cleanup; eauto.
+  destruct_matches.
+  intuition.
+Qed.
+
+Hint Resolve cache_pred_miss'.
+
+Theorem sync_ok : forall a,
+    cacheS TID: tid |-
+    {{ F v0 rest,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     cacheI m s d /\
+                     get GCacheL s = Owned tid /\
+                     (cache_get (get Cache m) a = Some (false, v0) \/
+                      cache_get (get Cache m) a = None) /\
+                     vd |= F * a |-> Valuset v0 rest
+     | POST d' m' s0' s' _: let vd' := virt_disk s' in
+                          cacheI m' s' d' /\
+                          get GCacheL s' = Owned tid /\
+                          m = m' /\
+                          get GCache s' = get GCache s /\
+                          vd' |= F * a |-> Valuset v0 nil
+     | CRASH d'c: d'c = d
+    }} sync a.
+Proof.
+  hoare pre simplify with
+  (finish;
+    try lazymatch goal with
+      | [ |- lock_protects _ _ _ _ _ ] =>
+        unfold lock_protects; solve_get_set
+      end).
+
+  eapply cache_pred_clean'; autorewrite with cache; eauto.
+
+  apply sep_star_comm.
+  eapply ptsto_upd; pred_apply; cancel.
+
+  eapply cache_pred_miss'; autorewrite with cache; eauto.
+
+  apply sep_star_comm.
+  eapply ptsto_upd; pred_apply; cancel.
+Qed.
+
+Hint Extern 4 {{sync _; _}} => apply sync_ok : prog.
+
 Definition cache_sync {T} a rx : prog Mcontents S T :=
-  writeback a;;
   c <- Get Cache;
   match cache_get c a with
-  (* impossible due to writeback *)
-  | Some (true, v) => rx tt
-  | Some (false, _) => Sync a;; rx tt
-  | None => Sync a;; rx tt
+  | Some (true, v) => writeback a;; sync a;; rx tt
+  | Some (false, _) => sync a;; rx tt
+  | None => sync a;; rx tt
   end.
 
 Theorem cache_sync_ok : forall a,
@@ -1811,6 +1862,10 @@ Theorem cache_sync_ok : forall a,
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             cacheI m' s' d' /\
                             get GCacheL s' = Owned tid /\
-                            vd' = virt_disk s
-     | CRASH d'c: d'c = d
+                            vd' |= F * a |-> Valuset v0 nil
+     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
     }} cache_sync a.
+Proof.
+  hoare pre simplify with finish.
+  valid_match_opt; hoare pre simplify with finish.
+Qed.
