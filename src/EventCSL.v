@@ -473,7 +473,7 @@ Section EventCSL.
     try (learn_some_addr; match_valusets);
     eauto 10.
 
-  Theorem write_ok : forall a v,
+  Theorem Write_ok : forall a v,
       tid |- {{ F v0,
              | PRE d m s0 s: d |= F * a |-> v0 /\
                              LockI m s (upd d a (buffer_valu v0 v))
@@ -490,7 +490,7 @@ Section EventCSL.
     pred_apply; cancel.
   Qed.
 
-  Theorem sync_ok : forall a,
+  Theorem Sync_ok : forall a,
       tid |- {{ F v0,
              | PRE d m s0 s: d |= F * a |-> v0
              | POST d' m' s0' s' _: d' |= F * a |-> (synced v0) /\
@@ -506,7 +506,7 @@ Section EventCSL.
     pred_apply; cancel.
   Qed.
 
-  Theorem async_read_ok : forall a,
+  Theorem AsyncRead_ok : forall a,
       tid |- {{ (_:unit),
              | PRE d m s0 s: ProgI m s d
              | POST d'''' m'''' s0' s'''' v:
@@ -532,7 +532,7 @@ Section EventCSL.
     repeat eexists; eauto using ptsto_valid_iff.
   Qed.
 
-  Theorem read_ok : forall a,
+  Theorem Read_ok : forall a,
     tid |- {{ F v0,
       | PRE d m s0 s: d |= F * a |-> v0
       | POST d' m' s0' s' v: d' = d /\
@@ -546,7 +546,7 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem get_ok : forall t (v: var t),
+  Theorem Get_ok : forall t (v: var t),
       tid |- {{ (_:unit),
              | PRE d m s0 s: True
              | POST d' m' s0' s' r: d' = d /\
@@ -565,7 +565,7 @@ Section EventCSL.
       end.
   Qed.
 
-  Theorem assgn_ok : forall t (v: var t) val,
+  Theorem Assgn_ok : forall t (v: var t) val,
       tid |- {{ (_:unit),
              | PRE d m s0 s: LockI (set v val m) s d
              | POST d' m' s0' s' _: d' = d /\
@@ -578,7 +578,7 @@ Section EventCSL.
     opcode_ok; repeat sigT_eq; eauto.
   Qed.
 
-  Theorem get_tid_ok :
+  Theorem GetTID_ok :
     tid |- {{ (_:unit),
            | PRE d m s0 s: True
            | POST d' m' s0' s' r: d' = d /\
@@ -592,7 +592,7 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem acquire_lock_ok : forall l up,
+  Theorem AcquireLock_ok : forall l up,
       tid |- {{ (_:unit),
              | PRE d m s0 s: d |= StateI m s /\
                              StateR tid s0 s
@@ -614,7 +614,7 @@ Section EventCSL.
     simpl_get_set.
   Qed.
 
-  Theorem yield_ok :
+  Theorem Yield_ok :
     tid |- {{ (_:unit),
            | PRE d m s0 s: d |= StateI m s /\
                            StateR tid s0 s
@@ -629,7 +629,7 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem commit_ok : forall up,
+  Theorem Commit_ok : forall up,
     tid |- {{ (_:unit),
            | PRE d m s0 s: LockR tid s (up s)
            | POST d' m' s0' s' _: d' = d /\
@@ -732,13 +732,13 @@ The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
 Notation "{{ f ; '_' }}" := (valid _ _ _ _ _ _ (progseq f _)).
 
-Hint Extern 1 {{ AsyncRead _; _ }} => apply async_read_ok : prog.
-Hint Extern 1 {{ Read _; _ }} => apply read_ok : prog.
-Hint Extern 1 {{ Write _ _; _ }} => apply write_ok : prog.
-Hint Extern 1 {{ Sync _; _ }} => apply sync_ok : prog.
-Hint Extern 1 {{ Get _; _ }} => apply get_ok : prog.
-Hint Extern 1 {{ Assgn _ _; _ }} => apply assgn_ok : prog.
-Hint Extern 1 {{ GetTID ; _ }} => apply get_tid_ok : prog.
-Hint Extern 1 {{ Yield; _ }} => apply yield_ok : prog.
-Hint Extern 1 {{ Commit _; _ }} => apply commit_ok : prog.
-Hint Extern 1 {{ AcquireLock _ _; _ }} => apply acquire_lock_ok : prog.
+Hint Extern 1 {{ AsyncRead _; _ }} => apply AsyncRead_ok : prog.
+Hint Extern 1 {{ Read _; _ }} => apply Read_ok : prog.
+Hint Extern 1 {{ Write _ _; _ }} => apply Write_ok : prog.
+Hint Extern 1 {{ Sync _; _ }} => apply Sync_ok : prog.
+Hint Extern 1 {{ Get _; _ }} => apply Get_ok : prog.
+Hint Extern 1 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
+Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
+Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
+Hint Extern 1 {{ Commit _; _ }} => apply Commit_ok : prog.
+Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
