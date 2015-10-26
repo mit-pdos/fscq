@@ -820,6 +820,102 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
 
+
+  Lemma vssync_range_sync_array : forall xp start items count vsl,
+    items_valid xp start items ->
+    length items = (count * items_per_val)%nat ->
+    length vsl = count ->
+    arrayN (RAStart xp + start) (vssync_range (combine (ipack items) vsl) count)
+      =p=> synced_array xp start items.
+  Proof.
+    unfold synced_array, rep_common; cancel; simplen.
+    unfold vssync_range.
+    rewrite skipn_oob by simplen.
+    rewrite app_nil_r.
+    apply arrayN_unify.
+    rewrite firstn_oob by simplen.
+    rewrite map_fst_combine by simplen.
+    auto.
+  Qed.
+
+  Lemma helper_ipack_length_eq: forall (vsl : list (list valu)) count items,
+    eqlen (ipack items) vsl ->
+    length items = count * items_per_val ->
+    count = length vsl.
+  Proof.
+    intros.
+    replace (length vsl) with (length (ipack items)) by simplen.
+    rewrite ipack_length; simplen.
+  Qed.
+
+  Lemma helper_ipack_length_eq': forall (vsl : list (list valu)) count items,
+    eqlen (ipack items) vsl ->
+    length items = count * items_per_val ->
+    length vsl = count.
+  Proof.
+    intros; apply eq_sym; eapply helper_ipack_length_eq; eauto.
+  Qed.
+
+  Local Hint Resolve helper_ipack_length_eq helper_ipack_length_eq'.
+  Hint Rewrite ipack_length.
+
+  Lemma vssync_range_pimpl : forall xp start items vsl m,
+    length items = (length vsl) * items_per_val ->
+    m <= (length vsl) ->
+    arrayN (RAStart xp + start) (vssync_range (combine (ipack items) vsl) m) =p=>
+    arrayN (RAStart xp + start) (combine (ipack items) (repeat [] m ++ skipn m vsl)).
+  Proof.
+      intros.
+      unfold vssync_range, ipack.
+      apply arrayN_unify.
+      rewrite skipn_combine by simplen.
+      rewrite <- combine_app.
+      f_equal.
+      rewrite <- firstn_map_comm.
+      rewrite map_fst_combine by simplen.
+      rewrite firstn_skipn; auto.
+      simplen.
+      lia.
+  Qed.
+
+
+  (** sync count blocks starting from start *)
+  Definition sync_aligned T xp start count cs rx : prog T :=
+    cs <- BUFCACHE.sync_range ((RAStart xp) + start) count cs;
+    rx cs.
+
+  Theorem sync_aligned_ok : forall xp start count cs,
+    {< F d items,
+    PRE            BUFCACHE.rep cs d * 
+                   [[ length items = (count * items_per_val)%nat ]] *
+                   [[ items_valid xp start items ]] *
+                   [[ (F * array_rep xp start (Unsync items))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * array_rep xp start (Synced items))%pred d' ]]
+    CRASH  exists cs' d', BUFCACHE.rep cs' d' *
+                   [[ (F * array_rep xp start (Unsync items))%pred d' ]]
+    >} sync_aligned xp start count cs.
+  Proof.
+    unfold sync_aligned.
+    prestep. norml.
+    unfold unsync_array, rep_common in *; destruct_lifts.
+    cancel.
+
+    instantiate (2 := F); cancel.
+    rewrite combine_length_eq by simplen.
+    rewrite ipack_length; simplen.
+
+    step.
+    apply vssync_range_sync_array; eauto.
+    cancel.
+    apply vssync_range_pimpl; simplen.
+    replace (length vsl) with count by eauto; simplen.
+    simplen; replace (length vsl) with count by eauto; omega.
+  Qed.
+
+
+
   Local Hint Unfold array_rep rep_common synced_array unsync_array item xparams_ok: hoare_unfold.
 
   Local Hint Extern 0 (okToUnify (list_chunk ?a ?b _) (list_chunk ?a ?b _)) => constructor : okToUnify.

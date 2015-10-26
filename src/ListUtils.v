@@ -575,6 +575,15 @@ Proof.
   intros. apply skipn_combine_comm.
 Qed.
 
+Lemma skipn_combine : forall A B n (a : list A) (b : list B),
+  length a = length b ->
+  skipn n (combine a b) = combine (skipn n a) (skipn n b).
+Proof.
+  induction n; intros.
+  simpl; auto.
+  rewrite skipn_combine_comm'; auto.
+Qed.
+
 Lemma selN_last: forall A l n def (a : A),
   n = length l -> selN (l ++ a :: nil) n def = a.
 Proof.
