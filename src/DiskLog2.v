@@ -725,6 +725,7 @@ Module AsyncRecArray (RA : RASig).
     end).
 
   Ltac simplen' := repeat match goal with
+    | [H : @eqlen _ ?T ?a ?b |- context [length ?a] ] => setoid_replace (length a) with (length b) by auto
     | [H : context[length ?x] |- _] => progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite H ] )
     | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
     | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
@@ -769,8 +770,54 @@ Module AsyncRecArray (RA : RASig).
     eapply iunpack_ipack; eauto.
   Qed.
 
+  Lemma vsupd_range_unsync_array : forall xp start items old_vs,
+    items_valid xp start items ->
+    eqlen old_vs (ipack items) ->
+    arrayN (RAStart xp + start) (vsupd_range old_vs (ipack items))
+      =p=> unsync_array xp start items.
+  Proof.
+    intros.
+    unfold vsupd_range, unsync_array, rep_common, ipack.
+    cancel.
+    apply arrayN_unify.
+    rewrite skipn_oob.
+    rewrite app_nil_r.
+    f_equal.
+    simplen.
+    simplen.
+  Qed.
 
 
+  (** write items from a given block index, 
+      slots following the items will be cleared *)
+  Definition write_aligned T xp start (items: itemlist) cs rx : prog T :=
+    let chunks := list_chunk items items_per_val item0 in
+    cs <- BUFCACHE.write_range ((RAStart xp) + start) (map block2val chunks) cs;
+    rx cs.
+
+  Theorem write_aligned_ok : forall xp start new cs,
+    {< F d,
+    PRE            exists old, BUFCACHE.rep cs d *
+                   [[ eqlen old new /\ items_valid xp start new ]] *
+                   [[ (F * array_rep xp start (Synced old))%pred d ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * array_rep xp start (Unsync new))%pred d' ]]
+    CRASH  exists cs' d' F', BUFCACHE.rep cs' d' * [[ (F * F') % pred d' ]]
+    >} write_aligned xp start new cs.
+  Proof.
+    unfold write_aligned.
+    step.
+
+    simplen.
+    instantiate (2 := F); cancel.
+    simplen.
+
+    step.
+    setoid_rewrite vsupd_range_unsync_array; auto.
+    simplen.
+    step.
+  Qed.
 
 
   Local Hint Unfold array_rep rep_common synced_array unsync_array item xparams_ok: hoare_unfold.
