@@ -657,44 +657,53 @@ Section EventCSL.
   Definition If_ P Q (b: {P} + {Q}) (ptrue pfalse : prog) :=
     if b then ptrue else pfalse.
 
-
-  Record For_args (L : Type) := {
-                                 For_args_i : nat;
-                                 For_args_n : nat;
-                                 For_args_l : L
-                               }.
-
-  Theorem for_args_wf: forall L,
-      well_founded (fun a b => lt a.(@For_args_n L) b.(@For_args_n L)).
-  Proof.
-    intros.
-    eauto using well_founded_lt_compat.
-  Qed.
-
-  Definition For_ (L : Type) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
+  Fixpoint For_ (L : Type) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
              (i n : nat)
              (nocrash : G -> nat -> L -> DISK -> M -> S -> S -> Prop)
              (crashed : G -> DISK_PRED)
              (l : L)
-             (rx: L -> prog) : prog.
-  Proof.
-    refine (Fix (@for_args_wf L) (fun _ => prog)
-                (fun args For_ => _)
-                {| For_args_i := i; For_args_n := n; For_args_l := l |}).
-    clear i n l.
-    destruct args.
-    refine (if Nat.eq_dec For_args_n0 0 then rx For_args_l0 else _).
-    refine ((f For_args_i0 For_args_l0) (fun l' => _)).
-    refine (For_ {| For_args_i := For_args_i0 + 1;
-                    For_args_n := For_args_n0 - 1;
-                    For_args_l := l' |} _).
-    cbn.
-    omega.
-  Defined.
+             (rx: L -> prog) : prog :=
+    match n with
+    | O => rx l
+    | Datatypes.S n' =>  (f i l) (fun l' => For_ f (1 + i) n' nocrash crashed l' rx)
+    end.
 
-  Theorem for_ok : forall tid i n L G
-                     f (rx: _ -> prog)
-                     nocrash (crashed : G -> DISK_PRED) (li:L),
+  Lemma valid_exists_to_forall : forall A tid pre p,
+      (forall a:A, valid tid (fun done crash d m s0 s =>
+                           pre done crash d m s0 s a) p) ->
+      (valid tid (fun done crash d m s0 s =>
+                    exists a, pre done crash d m s0 s a) p).
+  Proof.
+    unfold valid; intros; deex; eauto.
+  Qed.
+
+  Ltac especialize H :=
+    match type of H with
+    | forall (a:?A), _ =>
+      let a' := fresh a in
+      evar (a':A);
+        specialize (H a');
+        subst a'
+    end.
+
+  Lemma pimpl_pre_valid : forall tid (pre: donecond -> crashcond -> _ -> _ -> _ -> _ -> Prop)
+                            pre' p,
+      (forall done crash d m s0 s, pre done crash d m s0 s ->
+                              valid tid (pre' done crash) p) ->
+      (forall done crash d m s0 s, pre done crash d m s0 s ->
+                              pre' done crash done crash d m s0 s) ->
+      valid tid pre p.
+  Proof.
+    unfold valid; eauto.
+  Qed.
+
+  Hint Extern 4 (_ <= _) => omega.
+  Hint Extern 5 (@eq nat _ _) => omega.
+
+  Theorem for_ok' : forall tid L G
+                     (rx: _ -> prog)
+                     nocrash (crashed : G -> DISK_PRED)
+                     n i f (li:L),
       valid tid (fun done crash =>
                    fun d m s0 s =>
                      exists (g:G),
@@ -704,23 +713,87 @@ Section EventCSL.
                            n' < n + i ->
                            (forall lSm,
                                valid tid (fun done' crash' d' m' s0' s' =>
-                                            nocrash g (n'+1) lSm d' m' s0' s' /\
+                                            nocrash g (1+n') lSm d' m' s0' s' /\
                                             done' = done /\
                                             crash' = crash) (rxm lSm)) ->
                            valid tid (fun done' crash' d' m' s0' s' =>
-                                        nocrash g (n'+1) ln' d' m' s0' s' /\
+                                        nocrash g n' ln' d' m' s0' s' /\
                                         done' = done /\
                                         crash' = crash) (f n' ln' rxm)) /\
                        (forall lfinal,
                            valid tid (fun done' crash' d' m' s0' s' =>
-                                        nocrash g (n+i) lfinal d' m' s0' s' /\
+                                        nocrash g (i+n) lfinal d' m' s0' s' /\
                                         done' = done /\
                                         crash' = crash) (rx lfinal)) /\
-                       (forall d', crashed g d' -> crash d))
+                       (forall d', crashed g d' -> crash d'))
             (For_ f i n nocrash crashed li rx).
   Proof.
+    intro.
+    induction n; cbn; intros.
+    - unfold valid in *; intros; repeat deex.
+      (* TODO: ring_simplify should handle this *)
+      rewrite <- plus_n_O in *.
+      eauto.
+    - apply valid_exists_to_forall; intros.
+      eapply pimpl_pre_valid; intuition.
+      eapply pimpl_ok.
+      apply H; eauto.
+      intros; eapply pimpl_ok.
+      apply IHn.
+      intuition; subst; cbn.
+      match goal with
+      | [ g: ?G |- exists _:?G, _ ] => exists g
+      end; intuition eauto.
+      eapply pimpl_ok; eauto.
+      intuition eauto.
+      (* TODO: ring_simplify should handle this *)
+      match goal with
+      | [ H: nocrash _ ?i ?l _ _ _ _
+          |- nocrash _ ?i' ?l _ _ _ _ ] =>
+        replace i with i' in H by omega; assumption
+      end.
+
+      intros.
+      eapply H2.
+      intuition.
+  Qed.
+
+  Theorem for_ok : forall tid L G
+                     (rx: _ -> prog)
+                     nocrash (crashed : G -> DISK_PRED)
+                     n f (li:L),
+      valid tid (fun done crash =>
+                   fun d m s0 s =>
+                     exists (g:G),
+                       nocrash g 0 li d m s0 s /\
+                       (forall n' ln' rxm,
+                           n' < n ->
+                           (forall lSm,
+                               valid tid (fun done' crash' d' m' s0' s' =>
+                                            nocrash g (1+n') lSm d' m' s0' s' /\
+                                            done' = done /\
+                                            crash' = crash) (rxm lSm)) ->
+                           valid tid (fun done' crash' d' m' s0' s' =>
+                                        nocrash g n' ln' d' m' s0' s' /\
+                                        done' = done /\
+                                        crash' = crash) (f n' ln' rxm)) /\
+                       (forall lfinal,
+                           valid tid (fun done' crash' d' m' s0' s' =>
+                                        nocrash g n lfinal d' m' s0' s' /\
+                                        done' = done /\
+                                        crash' = crash) (rx lfinal)) /\
+                       (forall d', crashed g d' -> crash d'))
+            (For_ f 0 n nocrash crashed li rx).
+  Proof.
     intros.
-  Admitted.
+    apply valid_exists_to_forall; intros.
+    eapply pimpl_ok.
+    apply for_ok'.
+    intros; intuition.
+    match goal with
+    | [ g: ?G |- exists _:?G, _ ] => exists g
+    end; intuition eauto.
+  Qed.
 
 End EventCSL.
 
@@ -797,6 +870,35 @@ The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
 Notation "{{ f ; '_' }}" := (valid _ _ _ _ _ _ (progseq f _)).
 
+
+(* copy of pair_args_helper from Prog *)
+Definition tuple_args (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
+
+Notation "'For' i < n | 'Ghost' [ g1 .. g2 ] | 'Loopvar' [ l1 .. l2 ] | 'Continuation' lrx | 'LoopInv' nocrash | 'OnCrash' crashed | 'Begin' body | 'Rof'" :=
+  (For_ (fun i =>
+           (tuple_args
+              (fun l1 => .. (tuple_args
+                             (fun l2 (_:unit) => (fun lrx => body)))
+                          ..)))
+        0 n
+        (tuple_args
+           (fun g1 => .. (tuple_args
+                          (fun g2 (_:unit) =>
+                             fun i =>
+                               (tuple_args
+                                  (fun l1 => .. (tuple_args
+                                                 (fun l2 (_:unit) => nocrash)) ..))
+                       )) .. ))
+        (tuple_args
+           (fun g1 => .. (tuple_args
+                          (fun g2 (_:unit) =>
+                             crashed)) .. )))
+    (at level 9, i at level 0, n at level 0,
+     g1 closed binder, g2 closed binder,
+     lrx at level 0,
+     l1 closed binder, l2 closed binder,
+     body at level 9).
+
 Hint Extern 1 {{ AsyncRead _; _ }} => apply AsyncRead_ok : prog.
 Hint Extern 1 {{ Read _; _ }} => apply Read_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply Write_ok : prog.
@@ -807,3 +909,4 @@ Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ Commit _; _ }} => apply Commit_ok : prog.
 Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
+Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
