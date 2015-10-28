@@ -657,6 +657,71 @@ Section EventCSL.
   Definition If_ P Q (b: {P} + {Q}) (ptrue pfalse : prog) :=
     if b then ptrue else pfalse.
 
+
+  Record For_args (L : Type) := {
+                                 For_args_i : nat;
+                                 For_args_n : nat;
+                                 For_args_l : L
+                               }.
+
+  Theorem for_args_wf: forall L,
+      well_founded (fun a b => lt a.(@For_args_n L) b.(@For_args_n L)).
+  Proof.
+    intros.
+    eauto using well_founded_lt_compat.
+  Qed.
+
+  Definition For_ (L : Type) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
+             (i n : nat)
+             (nocrash : G -> nat -> L -> DISK -> M -> S -> S -> Prop)
+             (crashed : G -> DISK_PRED)
+             (l : L)
+             (rx: L -> prog) : prog.
+  Proof.
+    refine (Fix (@for_args_wf L) (fun _ => prog)
+                (fun args For_ => _)
+                {| For_args_i := i; For_args_n := n; For_args_l := l |}).
+    clear i n l.
+    destruct args.
+    refine (if Nat.eq_dec For_args_n0 0 then rx For_args_l0 else _).
+    refine ((f For_args_i0 For_args_l0) (fun l' => _)).
+    refine (For_ {| For_args_i := For_args_i0 + 1;
+                    For_args_n := For_args_n0 - 1;
+                    For_args_l := l' |} _).
+    cbn.
+    omega.
+  Defined.
+
+  Theorem for_ok : forall tid i n L G
+                     f (rx: _ -> prog)
+                     nocrash (crashed : G -> DISK_PRED) (li:L),
+      valid tid (fun done crash =>
+                   fun d m s0 s =>
+                     exists (g:G),
+                       nocrash g i li d m s0 s /\
+                       (forall n' ln' rxm,
+                           i <= n' ->
+                           n' < n + i ->
+                           (forall lSm,
+                               valid tid (fun done' crash' d' m' s0' s' =>
+                                            nocrash g (n'+1) lSm d' m' s0' s' /\
+                                            done' = done /\
+                                            crash' = crash) (rxm lSm)) ->
+                           valid tid (fun done' crash' d' m' s0' s' =>
+                                        nocrash g (n'+1) ln' d' m' s0' s' /\
+                                        done' = done /\
+                                        crash' = crash) (f n' ln' rxm)) /\
+                       (forall lfinal,
+                           valid tid (fun done' crash' d' m' s0' s' =>
+                                        nocrash g (n+i) lfinal d' m' s0' s' /\
+                                        done' = done /\
+                                        crash' = crash) (rx lfinal)) /\
+                       (forall d', crashed g d' -> crash d))
+            (For_ f i n nocrash crashed li rx).
+  Proof.
+    intros.
+  Admitted.
+
 End EventCSL.
 
 (** transitions defines a transition system, grouping the StateR and StateI
