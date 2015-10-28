@@ -11,7 +11,7 @@ Local Open Scope list.
 
 (* defined in Prog. which we don't want to import here *)
 Definition addrlen := 64.
-Definition valulen := 64.
+Definition valulen := 4096.
 Notation addr := (word addrlen).
 Notation valu := (word valulen).
 
