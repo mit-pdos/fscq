@@ -32,18 +32,18 @@ Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
    hash_block |-> (hash2 a b, nil))%pred d ]] *
   [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]].
 
-Definition hash_crep a b l (d : @mem addr (@weq addrlen) valuset) :
+Definition hash_crep a b l :
     @pred addr (@weq addrlen) valuset :=
-  ([[ (block1 |->? *
+  (block1 |->? *
    block2 |->? *
-   hash_block |-> (hash2 a b, l))%pred d ]] *
-  [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]]).
+   hash_block |-> (hash2 a b, l)) *
+  [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]]%pred.
 
-Definition crep a b a' b' d :
+Definition crep a b a' b' :
     @pred addr (@weq addrlen) valuset :=
-  (hash_crep a b nil d \/
-  hash_crep a' b' (hash2 a b :: nil) d \/
-  hash_crep a' b' nil d).
+  (hash_crep a b nil \/
+  hash_crep a' b' (hash2 a b :: nil) \/
+  hash_crep a' b' nil).
 
 (*
    (hash_block |-> (hash2 a b, nil) \/
@@ -86,8 +86,7 @@ Definition recover T cs rx : prog T :=
 Theorem put_ok : forall cs d1 d2,
   {< d d1_old d2_old,
   PRE
-    BUFCACHE.rep cs d *
-    rep d1_old d2_old d
+    BUFCACHE.rep cs d
   POST RET:cs'
     exists d',
       BUFCACHE.rep cs' d' *
@@ -95,11 +94,12 @@ Theorem put_ok : forall cs d1 d2,
   CRASH
     exists cs' d',
       BUFCACHE.rep cs' d' *
-      crep d1_old d2_old d1 d2 d'
+      [[ (crep d1_old d2_old d1 d2)%pred d' ]]
   >} put cs d1 d2.
 Proof.
   unfold put, rep, crep, hash_crep.
   step.
+
   step.
   step.
   step.
@@ -137,17 +137,18 @@ Proof.
 Qed.
 
 (* block1 and block2 get some value, and hash_block points to a valid hash of  *)
-Definition after_crash_pred v1 v2 (d : @mem addr (@weq addrlen) valuset) :
+Definition after_crash_pred v1 v2 :
     @pred addr (@weq addrlen) valuset :=
-  ([[ exists a b, (block1 |-> (a, nil) *
-   block2 |-> (b, nil) *
-   hash_block |-> (hash2 v1 v2, nil))%pred d ]] *
-   [[ hash_inv (hash_fwd (Word.combine v1 v2)) = existT _ _ (Word.combine v1 v2) ]])%pred.
+  (exists a b, 
+      block1 |-> (a, nil) *
+      block2 |-> (b, nil) *
+      hash_block |-> (hash2 v1 v2, nil) *
+    [[ hash_inv (hash_fwd (Word.combine v1 v2)) = existT _ _ (Word.combine v1 v2) ]])%pred.
 
-Lemma crash_xform_would_recover_either_pred : forall v1 v2 v1' v2' d,
-  crash_xform (crep v1 v2 v1' v2' d) =p=>
-    after_crash_pred v1 v2 d \/
-    after_crash_pred v1' v2' d.
+Lemma crash_xform_would_recover_either_pred : forall v1 v2 v1' v2',
+  crash_xform (crep v1 v2 v1' v2') =p=>
+    after_crash_pred v1 v2 \/
+    after_crash_pred v1' v2'.
 Proof.
 Admitted.
 
@@ -155,11 +156,11 @@ Hint Rewrite crash_xform_would_recover_either_pred : crash_xform.
 
 
 Theorem recover_ok : forall cs,
-  {< d1_old d2_old d1 d2 F,
+  {< d1_old d2_old d1 d2,
   PRE
     exists d,
       BUFCACHE.rep cs d *
-      [[ crash_xform (F * crep d1_old d2_old d1 d2 d)%pred d ]]
+      [[ crash_xform (crep d1_old d2_old d1 d2)%pred d ]]
   POST RET:cs'
     exists d',
       BUFCACHE.rep cs' d' *
@@ -169,9 +170,9 @@ Theorem recover_ok : forall cs,
   CRASH
     exists cs' d',
       (BUFCACHE.rep cs' d' *
-       [[ (crep d1_old d2_old default_valu default_valu d' * (crash_xform F))%pred d' ]]) \/
+       [[ (crep d1_old d2_old default_valu default_valu)%pred d' ]]) \/
       (BUFCACHE.rep cs' d' *
-       [[ (crep d1 d2 default_valu default_valu d' * (crash_xform F))%pred d' ]])
+       [[ (crep d1 d2 default_valu default_valu)%pred d' ]])
   >} recover cs.
 Proof.
   unfold recover, rep.
@@ -179,43 +180,37 @@ Proof.
   eapply pimpl_ok2; eauto with prog.
   intros. norm'l. unfold stars; simpl.
 
-  apply crash_xform_sep_star_dist in H4.
-  autorewrite with crash_xform in H4.
-  destruct_lift H4.
-  repeat ( apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H;
-    destruct_lift H; unfold after_crash_pred in * ).
+  (* apply crash_xform_sep_star_dist in H4.*)
+  assert (Hafter_crash: (after_crash_pred d1_old d2_old)%pred d \/
+    (after_crash_pred d1 d2)%pred d).
+    apply crash_xform_would_recover_either_pred.
+    auto.
+
+  unfold after_crash_pred in Hafter_crash.
+  destruct Hafter_crash; destruct_lift H.
 
   - cancel.
-    instantiate (F0:=crash_xform F). cancel. admit.
-    step. instantiate (F0:=crash_xform F). cancel. admit.
+    step.
     step.
     step.
     step.
     step.
     unfold hash2 in *.
     apply hash_to_valu_inj in H8.
-    assert (Hheq: d1_old = v1_cur /\ d2_old = v0_cur).
+    assert (Hheq: d1_old = a /\ d2_old = b).
       rewrite H8 in H5.
       rewrite H5 in H11.
       pose proof (eq_sigT_snd H11).
       autorewrite with core in *.
       apply combine_inj in H0.
       auto.
-
-    intuition.
-    rewrite <- H4 in H3. rewrite <- H0 in H3.
-
-    apply pimpl_or_r. left.
-    rewrite <- sep_star_and2lift.
-    apply pimpl_and_lift; auto.
     cancel.
-    (* block2 |-> (v0_cur, v0_old) * block1 |-> (v1_cur, v1_old) =p=>
-       block1 |-> (v1_cur, nil) * block2 |-> (v0_cur, nil)
-       How to prove (or specify?) that v0_old and v1_old are nil? *)
-    admit.
 
-    step. admit.
     step.
+    step.
+    unfold rep. cancel.
+    cancel.
+    all: cancel; try (unfold crep, hash_crep; instantiate (1:=d); cancel).
 
 
 Admitted.
