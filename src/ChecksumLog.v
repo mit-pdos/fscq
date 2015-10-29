@@ -25,12 +25,23 @@ Definition hash_block : addr := $2.
 
 Definition hash2 (a b : word valulen) := hash_to_valu (hash_fwd (Word.combine a b)).
 
+Definition any_hash_rep a b a' b' (d : @mem addr (@weq addrlen) valuset) :
+    @pred addr (@weq addrlen) valuset :=
+  [[ (block1 |-> (a, nil) *
+   block2 |-> (b, nil) *
+   hash_block |-> (hash2 a' b', nil))%pred d ]] *
+  [[ hash_inv (hash_fwd (Word.combine a' b')) = existT _ _ (Word.combine a' b') ]].
+
 Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
+    @pred addr (@weq addrlen) valuset :=
+  any_hash_rep a b a b d.
+
+(*Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
     @pred addr (@weq addrlen) valuset :=
   [[ (block1 |-> (a, nil) *
    block2 |-> (b, nil) *
    hash_block |-> (hash2 a b, nil))%pred d ]] *
-  [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]].
+  [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]].*)
 
 Definition hash_crep a b l :
     @pred addr (@weq addrlen) valuset :=
@@ -84,9 +95,10 @@ Definition recover T cs rx : prog T :=
 
 
 Theorem put_ok : forall cs d1 d2,
-  {< d d1_old d2_old,
+  {< d d1_old d2_old d1_old' d2_old',
   PRE
-    BUFCACHE.rep cs d
+    BUFCACHE.rep cs d *
+    any_hash_rep d1_old d2_old d1_old' d2_old' d
   POST RET:cs'
     exists d',
       BUFCACHE.rep cs' d' *
@@ -94,10 +106,10 @@ Theorem put_ok : forall cs d1 d2,
   CRASH
     exists cs' d',
       BUFCACHE.rep cs' d' *
-      [[ (crep d1_old d2_old d1 d2)%pred d' ]]
+      [[ (crep d1_old' d2_old' d1 d2)%pred d' ]]
   >} put cs d1 d2.
 Proof.
-  unfold put, rep, crep, hash_crep.
+  unfold put, any_hash_rep, rep, crep, hash_crep.
   step.
 
   step.
@@ -107,7 +119,7 @@ Proof.
   step.
   step.
   step.
-  all: try (unfold hash2; cancel).
+  unfold any_hash_rep. cancel.
 
   Grab Existential Variables.
   all: eauto.
@@ -130,7 +142,7 @@ Theorem get_ok : forall cs,
     rep d1 d2 d
   >} get cs.
 Proof.
-  unfold get, rep.
+  unfold get, rep, any_hash_rep.
   step.
   step.
   step.
@@ -204,13 +216,11 @@ Proof.
       autorewrite with core in *.
       apply combine_inj in H0.
       auto.
+    unfold any_hash_rep.
     cancel.
 
+    step. unfold any_hash_rep. cancel.
     step.
-    step.
-    unfold rep. cancel.
-    cancel.
-    all: cancel; try (unfold crep, hash_crep; instantiate (1:=d); cancel).
-
-
+    cancel. instantiate (1:=d'). cancel.
+    all: cancel; try (unfold crep, hash_crep in *; instantiate (1:=d); cancel).
 Admitted.
