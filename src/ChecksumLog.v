@@ -136,6 +136,23 @@ Proof.
   step.
 Qed.
 
+(* block1 and block2 get some value, and hash_block points to a valid hash of  *)
+Definition after_crash_pred v1 v2 (d : @mem addr (@weq addrlen) valuset) :
+    @pred addr (@weq addrlen) valuset :=
+  ([[ exists a b, (block1 |-> (a, nil) *
+   block2 |-> (b, nil) *
+   hash_block |-> (hash2 v1 v2, nil))%pred d ]] *
+   [[ hash_inv (hash_fwd (Word.combine v1 v2)) = existT _ _ (Word.combine v1 v2) ]])%pred.
+
+Lemma crash_xform_would_recover_either_pred : forall v1 v2 v1' v2' d,
+  crash_xform (crep v1 v2 v1' v2' d) =p=>
+    after_crash_pred v1 v2 d \/
+    after_crash_pred v1' v2' d.
+Proof.
+Admitted.
+
+Hint Rewrite crash_xform_would_recover_either_pred : crash_xform.
+
 
 Theorem recover_ok : forall cs,
   {< d1_old d2_old d1 d2 F,
@@ -157,7 +174,7 @@ Theorem recover_ok : forall cs,
        [[ (crep d1 d2 default_valu default_valu d' * (crash_xform F))%pred d' ]])
   >} recover cs.
 Proof.
-  unfold recover, rep, crep, hash_crep.
+  unfold recover, rep.
   intros.
   eapply pimpl_ok2; eauto with prog.
   intros. norm'l. unfold stars; simpl.
@@ -166,10 +183,11 @@ Proof.
   autorewrite with crash_xform in H4.
   destruct_lift H4.
   repeat ( apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H;
-    destruct_lift H ).
+    destruct_lift H; unfold after_crash_pred in * ).
 
   - cancel.
-    step.
+    instantiate (F0:=crash_xform F). cancel. admit.
+    step. instantiate (F0:=crash_xform F). cancel. admit.
     step.
     step.
     step.
