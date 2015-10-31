@@ -7,8 +7,9 @@ Set Implicit Arguments.
 Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.
 Definition mem {A : Type} {eq : DecEq A} {V: A -> Type} := forall a, option (V a).
 Definition upd {A : Type} {eq : DecEq A} {V: A -> Type}
-           (m : @mem A eq V) (a : A) (v : V a) (a' : A) : option (V a').
+           (m : @mem A eq V) (a : A) (v : V a) : @mem A eq V.
 Proof.
+  intro a'.
   destruct (eq a' a); intros.
   rewrite e.
   exact (Some v).
@@ -44,9 +45,9 @@ Proof.
   destruct (aeq a' a); tauto.
 Qed.
 
-Local Ltac simpl_upd :=
+Ltac simpl_upd :=
   subst;
-  repeat (rewrite upd_eq by auto) ||
+  repeat (rewrite upd_eq) ||
          (rewrite upd_ne by auto).
 
 Theorem upd_repeat: forall m (a : A) (v v':V a),
@@ -77,3 +78,18 @@ End GenMem.
 
 (* existential variable hint *)
 Hint Immediate empty_mem.
+
+Tactic Notation "simpl_upd" :=
+  subst;
+  repeat (rewrite upd_eq) ||
+         (rewrite upd_ne by auto).
+
+Tactic Notation "simpl_upd" "in" hyp(H) :=
+  subst;
+  repeat (rewrite upd_eq in H) ||
+         (rewrite upd_ne in H by auto).
+
+Tactic Notation "simpl_upd" "in" "*" :=
+  subst;
+  repeat (rewrite upd_eq in *) ||
+         (rewrite upd_ne in * by auto).
