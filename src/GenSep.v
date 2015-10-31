@@ -27,7 +27,7 @@ Set Implicit Arguments.
  * object that maps inode numbers (list positions) into files (or None, if the
  * inode number is too big).  For now, this always uses [addr] as the index.
  *)
-Definition list2mem (A: Type) (l: list A) : @mem addr (@weq addrlen) A :=
+Definition list2mem (A: Type) (l: list A) : @mem addr (@weq addrlen) (const A) :=
   fun a => sel (map (@Some A) l) a None.
 
 Theorem list2mem_ptsto_bounds: forall A F (l: list A) i x,
@@ -85,7 +85,7 @@ Lemma listupd_memupd: forall A l i (v : A),
   -> list2mem (upd l i v) = Mem.upd (list2mem l) i v.
 Proof.
   intros.
-  apply functional_extensionality; intro.
+  apply functional_extensionality_dep; intro.
   unfold list2mem, sel, upd, Mem.upd.
   autorewrite with core.
 
@@ -114,7 +114,7 @@ Theorem listapp_memupd: forall A l (a : A) (b : addr),
   -> list2mem (l ++ a :: nil) = Mem.upd (list2mem l) $ (length l) a.
 Proof.
   intros.
-  apply functional_extensionality; intro.
+  apply functional_extensionality_dep; intro.
   unfold list2mem, sel, upd, Mem.upd.
 
   destruct (wlt_dec x $ (length l)).
@@ -145,7 +145,7 @@ Proof.
 Qed.
 
 
-Theorem list2mem_app: forall A (F : @pred addr (@weq addrlen) A) l a (b : addr),
+Theorem list2mem_app: forall A (F : @pred addr (@weq addrlen) (const A)) l a (b : addr),
   length l <= wordToNat b
   -> F (list2mem l)
   -> (F * $ (length l) |-> a)%pred (list2mem (l ++ a :: nil)).
@@ -165,7 +165,7 @@ Theorem list2mem_removelast_is : forall A l (def : A) (b : addr),
   -> list2mem (removelast l) =
      fun i => if (wlt_dec i $ (length l - 1)) then Some (sel l i def) else None.
 Proof.
-  intros; apply functional_extensionality; intros.
+  intros; apply functional_extensionality_dep; intros.
   destruct (wlt_dec x $ (length l - 1)); unfold list2mem, sel.
   - assert (wordToNat x < length l - 1); apply wlt_lt in w.
     erewrite wordToNat_natToWord_bound with (bound:=b) in w by omega; auto.
@@ -185,7 +185,7 @@ Theorem list2mem_removelast_list2mem : forall A (l : list A) (b : addr),
   -> list2mem (removelast l) =
      fun i => if (weq i $ (length l - 1)) then None else (list2mem l) i.
 Proof.
-  intros; apply functional_extensionality; intros.
+  intros; apply functional_extensionality_dep; intros.
   assert (exists def, firstn 1 l = def :: nil) as Hdef.
   destruct l; try congruence.
   exists a; eauto.
@@ -213,7 +213,7 @@ Theorem list2mem_removelast: forall A F (l : list A) v (b : addr),
 Proof.
   unfold_sep_star; unfold ptsto; intuition; repeat deex.
   assert (m1 = list2mem (removelast l)); subst; auto.
-  apply functional_extensionality; intros.
+  apply functional_extensionality_dep; intros.
   rewrite list2mem_removelast_list2mem with (b:=b); auto.
 
   destruct (weq x $ (length l - 1)); subst.
@@ -246,7 +246,7 @@ Definition list2mem_off (A: Type) (start : nat) (l: list A) : (addr -> option A)
 Theorem list2mem_off_eq : forall A (l : list A), list2mem l = list2mem_off 0 l.
 Proof.
   unfold list2mem, list2mem_off, sel; intros.
-  apply functional_extensionality; intros.
+  apply functional_extensionality_dep; intros.
   rewrite <- minus_n_O.
   reflexivity.
 Qed.
@@ -296,7 +296,7 @@ Theorem list2mem_fix_eq : forall A (l : list A) (b : addr),
 Proof.
   intros.
   rewrite list2mem_off_eq.
-  eapply list2mem_fix_off_eq.
+  eapply list2mem_fix_off_eq with (A := A).
   rewrite <- plus_n_O.
   eassumption.
 Qed.
@@ -334,7 +334,7 @@ Theorem list2mem_fix_eq' : forall A (l : list A) sz,
 Proof.
   intros; subst.
   rewrite list2mem_off_eq.
-  eapply list2mem_fix_off_eq' with (sz:=addrlen); auto.
+  eapply list2mem_fix_off_eq' with (sz:=addrlen) (A := A); auto.
   rewrite <- plus_n_O.
   eassumption.
 Qed.
@@ -347,7 +347,7 @@ Proof.
   unfold_sep_star; unfold ptsto, list2mem, sel; simpl; intros.
   repeat deex.
   unfold mem_union in H0.
-  apply equal_f with ($ start) in H0.
+  apply equal_f_dep with ($ start) in H0.
   rewrite H2 in H0.
   congruence.
 Qed.
@@ -379,7 +379,7 @@ Proof.
       repeat deex.
       unfold ptsto in H3; destruct H3.
       f_equal.
-      * eapply equal_f with ($ start) in H2 as H2'.
+      * eapply equal_f_dep with ($ start) in H2 as H2'.
         erewrite wordToNat_natToWord_bound with (bound:=b) in H2' by omega.
 
         unfold mem_union in H2'.
@@ -389,13 +389,13 @@ Proof.
         replace ($ start ^+ $1) with (natToWord addrlen (S start)) in H5 by words.
         assert (m2 = list2mem_fix (S start) l'); subst; auto.
 
-        apply functional_extensionality; intros.
+        apply functional_extensionality_dep; intros.
         unfold mem_union in H2.
-        apply equal_f with x in H2.
+        apply equal_f_dep with x in H2.
         destruct (eq_nat_dec (wordToNat x) start).
 
         rewrite list2mem_fix_below by omega.
-        eapply mem_disjoint_either.
+        eapply mem_disjoint_either with (V := const A).
         eauto.
         rewrite <- e in H3.
         rewrite natToWord_wordToNat in *.

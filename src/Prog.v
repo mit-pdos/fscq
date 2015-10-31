@@ -9,6 +9,7 @@ Require Import Omega.
 Require Import List.
 Require Import Mem.
 Import ListNotations.
+Export Program.Basics. (* for const function *)
 
 Set Implicit Arguments.
 
@@ -142,8 +143,8 @@ Definition valuset_list (vs : valuset) := fst vs :: snd vs.
 
 Inductive outcome (T: Type) :=
 | Failed
-| Finished (m: @mem addr (@weq addrlen) valuset) (v: T)
-| Crashed (m: @mem addr (@weq addrlen) valuset).
+| Finished (m: @mem addr (@weq addrlen) (const valuset)) (v: T)
+| Crashed (m: @mem addr (@weq addrlen) (const valuset)).
 
 Inductive step (T: Type) : @mem _ (@weq addrlen) _ -> prog T ->
                            @mem _ (@weq addrlen) _ -> prog T -> Prop :=
@@ -171,10 +172,10 @@ Hint Constructors step.
 
 Inductive recover_outcome (TF TR: Type) :=
 | RFailed
-| RFinished (m: @mem addr (@weq addrlen) valuset) (v: TF)
-| RRecovered (m: @mem addr (@weq addrlen) valuset) (v: TR).
+| RFinished (m: @mem addr (@weq addrlen) (const valuset)) (v: TF)
+| RRecovered (m: @mem addr (@weq addrlen) (const valuset)) (v: TR).
 
-Definition possible_crash {A : Type} {eq : DecEq A} (m m' : @mem A eq valuset) : Prop :=
+Definition possible_crash {A : Type} {eq : DecEq A} (m m' : @mem A eq (const valuset)) : Prop :=
   forall a,
   (m a = None /\ m' a = None) \/
   (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).

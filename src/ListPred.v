@@ -57,7 +57,7 @@ Section LISTPRED.
   Variable T : Type.
   Variable AT : Type.
   Variable AEQ : DecEq AT.
-  Variable V : Type.
+  Variable V : AT -> Type.
   Variable prd : T -> @pred AT AEQ V.
 
   Fixpoint listpred (ts : list T) :=
@@ -277,7 +277,7 @@ Section LISTMATCH.
   Variable B : Type.
   Variable AT : Type.
   Variable AEQ : DecEq AT.
-  Variable V : Type.
+  Variable V : AT -> Type.
   Variable prd : A -> B -> @pred AT AEQ V.
 
   Definition pprd := prod_curry prd.

@@ -56,7 +56,7 @@ Proof.
   - exfalso.
     apply H1. repeat eexists.
     econstructor.
-    eapply ptsto_valid.
+    eapply ptsto_valid with (V := const valuset).
     pred_apply; cancel.
   - right. eexists; intuition eauto.
 Qed.
@@ -83,7 +83,7 @@ Proof.
   - exfalso.
     apply H1. repeat eexists.
     econstructor.
-    eapply ptsto_valid.
+    eapply ptsto_valid with (V := const valuset).
     pred_apply; cancel.
   - right. eexists; intuition eauto.
 Qed.
@@ -110,7 +110,7 @@ Proof.
   - exfalso.
     apply H1. repeat eexists.
     econstructor.
-    eapply ptsto_valid.
+    eapply ptsto_valid with (V := const valuset).
     pred_apply; cancel.
   - right. eexists; intuition eauto.
 Qed.
@@ -136,7 +136,7 @@ Proof.
   - exfalso.
     apply H1. repeat eexists.
     econstructor.
-    eapply ptsto_valid.
+    eapply ptsto_valid with (V := const valuset).
     pred_apply; cancel.
   - right. eexists; intuition eauto.
     pred_apply. cancel.
@@ -210,8 +210,8 @@ Definition For_ {PROGTYPE : Type -> Type}
                 {T: Type}
                 (L : Type) (G : Type) (f : addr -> L -> (L -> PROGTYPE T) -> PROGTYPE T)
                 (i n : addr)
-                (nocrash : G -> addr -> L -> @pred addr (@weq addrlen) valuset)
-                (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (nocrash : G -> addr -> L -> @pred addr (@weq addrlen) (const valuset))
+                (crashed : G -> @pred addr (@weq addrlen) (const valuset))
                 (l : L)
                 (rx: L -> PROGTYPE T) : PROGTYPE T.
   refine (Fix (@for_args_wf L) (fun _ => PROGTYPE T)
@@ -457,8 +457,8 @@ Fixpoint ForEach_
                 {PROGTYPE : Type -> Type} {T: Type} (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> (L -> PROGTYPE T) -> PROGTYPE T)
                 (lst : list ITEM)
-                (nocrash : G -> list ITEM -> L -> @pred addr (@weq addrlen) valuset)
-                (crashed : G -> @pred addr (@weq addrlen) valuset)
+                (nocrash : G -> list ITEM -> L -> @pred addr (@weq addrlen) (const valuset))
+                (crashed : G -> @pred addr (@weq addrlen) (const valuset))
                 (l : L) (rx: L -> PROGTYPE T) : PROGTYPE T :=
   match lst with
   | nil => rx l
