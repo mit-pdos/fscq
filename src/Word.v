@@ -2366,11 +2366,11 @@ Qed.
 
 Module Type WordSize.
   Parameter sz : nat.
-  Definition word := word sz.
 End WordSize.
 
 Module Word_as_OT(Word : WordSize) <: UsualOrderedType.
-  Definition t := Word.word.
+  Import Word.
+  Definition t := word sz.
   Definition eq := @eq t.
   Definition eq_refl := @eq_refl t.
   Definition eq_sym := @eq_sym t.

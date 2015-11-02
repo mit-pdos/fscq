@@ -14,7 +14,6 @@ Open Scope list.
 
 Module AddrM <: Word.WordSize.
                  Definition sz := addrlen.
-                 Definition word := word sz.
 End AddrM.
 
 Module Addr_as_OT := Word_as_OT AddrM.
@@ -575,7 +574,7 @@ Ltac disk_equalities :=
 
 Hint Extern 3 (eq _ _) => congruence : mem_equalities.
 
-Hint Unfold Map.key AddrM.word AddrM.sz : cache_m.
+Hint Unfold Map.key AddrM.sz : cache_m.
 
 Ltac prove_cache_pred :=
   intros;
