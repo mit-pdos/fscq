@@ -41,10 +41,10 @@ Definition synced (vs:valuset) :=
 Hint Immediate (Valuset $0 nil).
 
 (* a disk state *)
-Notation DISK := (@mem addr (@weq addrlen) valuset).
+Notation DISK := (@mem addr (@weq addrlen) (const valuset)).
 
 (* a disk predicate *)
-Notation DISK_PRED := (@pred addr (@weq addrlen) valuset).
+Notation DISK_PRED := (@pred addr (@weq addrlen) (const valuset)).
 
 Definition ID := nat.
 
