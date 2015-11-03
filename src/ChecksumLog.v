@@ -25,6 +25,7 @@ Definition hash_block : addr := $2.
 
 Definition hash2 (a b : word valulen) := hash_to_valu (hash_fwd (Word.combine a b)).
 
+(* block1 and block2 are synced, hash_block has some valid hash *)
 Definition any_hash_rep a b a' b' (d : @mem addr (@weq addrlen) valuset) :
     @pred addr (@weq addrlen) valuset :=
   [[ (block1 |-> (a, nil) *
@@ -32,17 +33,15 @@ Definition any_hash_rep a b a' b' (d : @mem addr (@weq addrlen) valuset) :
    hash_block |-> (hash2 a' b', nil))%pred d ]] *
   [[ hash_inv (hash_fwd (Word.combine a' b')) = existT _ _ (Word.combine a' b') ]].
 
+(* hash_block has the valid hash of block1 and block2 values *)
 Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
     @pred addr (@weq addrlen) valuset :=
   any_hash_rep a b a b d.
 
-(*Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
-    @pred addr (@weq addrlen) valuset :=
-  [[ (block1 |-> (a, nil) *
-   block2 |-> (b, nil) *
-   hash_block |-> (hash2 a b, nil))%pred d ]] *
-  [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]].*)
-
+(* After a crash:
+  - block1 and block2 can be anything
+  - hash_block points to a valid hash
+  - hash_block can have unsynced values (how to state cleanly that these are also valid hashes? *)
 Definition hash_crep a b l :
     @pred addr (@weq addrlen) valuset :=
   (block1 |->? *
@@ -50,18 +49,15 @@ Definition hash_crep a b l :
    hash_block |-> (hash2 a b, l)) *
   [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]]%pred.
 
+(* After a crash, hash_block is one of:
+  - hash of old values
+  - hash of new values but unsynced
+  - hash of new values and synced *)
 Definition crep a b a' b' :
     @pred addr (@weq addrlen) valuset :=
   (hash_crep a b nil \/
   hash_crep a' b' (hash2 a b :: nil) * [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]] \/
   hash_crep a' b' nil).
-
-(*
-   (hash_block |-> (hash2 a b, nil) \/
-    hash_block |-> (hash2 a' b', hash2 a b :: nil) \/
-    hash_block |-> (hash2 a' b', nil)) )%pred d ]] *
-  [[ exists a b, hash_block |-> ((hash2 a b), nil) /\
-hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]]. *)
 
 
 (* Example "log" implementation using checksums *)
