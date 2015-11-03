@@ -53,7 +53,7 @@ Definition hash_crep a b l :
 Definition crep a b a' b' :
     @pred addr (@weq addrlen) valuset :=
   (hash_crep a b nil \/
-  hash_crep a' b' (hash2 a b :: nil) \/
+  hash_crep a' b' (hash2 a b :: nil) * [[ hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b) ]] \/
   hash_crep a' b' nil).
 
 (*
@@ -162,7 +162,16 @@ Lemma crash_xform_would_recover_either_pred : forall v1 v2 v1' v2',
     after_crash_pred v1 v2 \/
     after_crash_pred v1' v2'.
 Proof.
-Admitted.
+  unfold crep, hash_crep, after_crash_pred.
+  intros.
+  autorewrite with crash_xform.
+  cancel.
+
+  autorewrite with crash_xform. cancel.
+  autorewrite with crash_xform. cancel.
+  autorewrite with crash_xform. cancel.
+  autorewrite with crash_xform. cancel.
+Qed.
 
 Hint Rewrite crash_xform_would_recover_either_pred : crash_xform.
 
@@ -199,7 +208,22 @@ Proof.
     auto.
 
   unfold after_crash_pred in Hafter_crash.
-  destruct Hafter_crash; destruct_lift H.
+  destruct Hafter_crash;
+  destruct_lift H;
+  cancel;
+  try (repeat step).
+
+    unfold hash2 in *.
+    apply hash_to_valu_inj in H8.
+    assert (Hheq: d1_old = a /\ d2_old = b).
+      rewrite H8 in H5.
+      rewrite H5 in H11.
+      pose proof (eq_sigT_snd H11).
+      autorewrite with core in *.
+      apply combine_inj in H0.
+      auto.
+    unfold any_hash_rep.
+    cancel.
 
   - cancel.
     step.
@@ -223,4 +247,29 @@ Proof.
     step.
     cancel. instantiate (1:=d'). cancel.
     all: cancel; try (unfold crep, hash_crep in *; instantiate (1:=d); cancel).
-Admitted.
+
+  - cancel.
+    step.
+    step.
+    step.
+    step.
+    step.
+    assert (Hheq: d1 = a /\ d2 = b).
+      apply hash_to_valu_inj in H8.
+      rewrite H8 in H5.
+      rewrite H5 in H11.
+      pose proof (eq_sigT_snd H11).
+      autorewrite with core in *.
+      apply combine_inj in H0.
+      auto.
+    unfold any_hash_rep.
+    cancel.
+
+    step. unfold any_hash_rep. cancel.
+    step.
+    cancel. instantiate (1:=d'). cancel.
+    all: cancel; try (unfold crep, hash_crep in *; instantiate (1:=d); cancel).
+
+  Grab Existential Variables.
+  all: eauto.
+Qed.
