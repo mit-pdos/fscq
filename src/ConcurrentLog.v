@@ -161,7 +161,7 @@ Definition log_inv : Invariant Mcontents S :=
 Definition log_relation : ID -> Relation S :=
   fun tid s s' => True.
 
-(* TODO: build these out of combinators in a common locking module *)
+(* TODO: build these out of shared code in Locking *)
 Definition lockR : ID -> Relation S :=
   fun tid s s' => True.
 

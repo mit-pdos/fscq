@@ -1,6 +1,7 @@
 Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Hlist.
+Require Import Locking.
 Require Import Star.
 Require Import Coq.Program.Equality.
 Require Import FunctionalExtensionality.
@@ -67,10 +68,6 @@ Section MemCache.
 
 End MemCache.
 
-Inductive MutexOwner : Set :=
-| NoOwner
-| Owned (id:ID).
-
 Definition Scontents := [DISK; AssocCache; MutexOwner].
 
 Definition GDisk : var Scontents _ := HFirst.
@@ -99,29 +96,6 @@ Definition cache_pred c (vd:DISK) : DISK_PRED :=
       | None => vd a = d a
       end.
 
-(** given a lock variable and some other variable v, generate a
-relation for tid that makes the variable read-only for non-owners. *)
-Definition lock_protects (lvar : var Scontents MutexOwner)
-           {tv} (v : var Scontents tv) tid (s s' : S) :=
-  forall owner_tid,
-    get lvar s = Owned owner_tid ->
-    tid <> owner_tid ->
-    get v s' = get v s.
-
-Hint Unfold lock_protects : prog.
-
-Inductive lock_protocol (lvar : var Scontents MutexOwner) (tid : ID) :  S -> S -> Prop :=
-| NoChange : forall s s', get lvar s  = get lvar s' ->
-                     lock_protocol lvar tid s s'
-| OwnerRelease : forall s s', get lvar s = Owned tid ->
-                         get lvar s' = NoOwner ->
-                         lock_protocol lvar tid s s'
-| OwnerAcquire : forall s s', get lvar s = NoOwner ->
-                         get lvar s' = Owned tid ->
-                         lock_protocol lvar tid s s'.
-
-Hint Constructors lock_protocol.
-
 Variable diskR : DISK -> DISK -> Prop.
 
 Hypothesis diskR_stutter : forall vd, diskR vd vd.
@@ -140,17 +114,6 @@ Definition lockR tid : Relation S :=
     lock_protocol GCacheL tid s s' /\
     lock_protects GCacheL GCache tid s s' /\
     lock_protects GCacheL GDisk tid s s'.
-
-Inductive ghost_lock_invariant
-          (lvar : var Mcontents Mutex)
-          (glvar : var Scontents MutexOwner)
-          (m : M Mcontents) (s : S) : Prop :=
-| LockOpen : get lvar m = Open -> get glvar s = NoOwner ->
-             ghost_lock_invariant lvar glvar m s
-| LockOwned : forall tid, get lvar m = Locked -> get glvar s = Owned tid ->
-                     ghost_lock_invariant lvar glvar m s.
-
-Hint Constructors ghost_lock_invariant.
 
 Definition stateI : Invariant Mcontents S :=
   fun m s d => True.
@@ -1129,14 +1092,6 @@ Definition locked_disk_read {T} a rx : prog Mcontents S T :=
   | Some (_, v) =>
     rx v
   end.
-
-Lemma ghost_lock_owned : forall lvar glvar m s tid,
-    ghost_lock_invariant lvar glvar m s ->
-    get glvar s = Owned tid ->
-    get lvar m = Locked.
-Proof.
-  inversion 1; congruence.
-Qed.
 
 Hint Resolve ghost_lock_owned.
 
