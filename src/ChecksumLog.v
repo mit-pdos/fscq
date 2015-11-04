@@ -205,21 +205,7 @@ Proof.
 
   unfold after_crash_pred in Hafter_crash.
   destruct Hafter_crash;
-  destruct_lift H;
-  cancel;
-  try (repeat step).
-
-    unfold hash2 in *.
-    apply hash_to_valu_inj in H8.
-    assert (Hheq: d1_old = a /\ d2_old = b).
-      rewrite H8 in H5.
-      rewrite H5 in H11.
-      pose proof (eq_sigT_snd H11).
-      autorewrite with core in *.
-      apply combine_inj in H0.
-      auto.
-    unfold any_hash_rep.
-    cancel.
+  destruct_lift H.
 
   - cancel.
     step.
