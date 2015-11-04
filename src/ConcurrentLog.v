@@ -2,7 +2,6 @@ Require Import ConcurrentCache.
 Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Word.
-Require Import Hlist.
 Import List.ListNotations.
 Require Import Rec.
 

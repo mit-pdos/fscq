@@ -21,7 +21,8 @@ Section Bank.
   | from1 : forall (amount:nat), ledger_entry
   | from2 : forall (amount:nat), ledger_entry.
 
-  Definition State := list ledger_entry.
+  Definition Scontents : list Type := [(list ledger_entry):Type].
+  Definition Ledger : svar Scontents _ := HFirst.
 
   (* the memory for a bank is empty *)
   Definition Mcontents := @nil Set.
@@ -34,7 +35,7 @@ Section Bank.
                      end
     end.
 
-  Fixpoint balances' (entries:State) accum : (nat * nat) :=
+  Fixpoint balances' (entries:list ledger_entry) accum : (nat * nat) :=
     match entries with
     | nil => accum
     | entry :: xs => balances' xs (add_entry accum entry)
@@ -42,30 +43,32 @@ Section Bank.
 
   Definition balances entries := balances' entries (100, 0).
 
-  Definition bankR (_:ID) : Relation State :=
-    fun ledger ledger' =>
+  Definition bankR (_:ID) : Relation Scontents :=
+    fun s s' =>
+    let ledger := get Ledger s in
+    let ledger' := get Ledger s' in
     ledger' = ledger \/
     exists entry, ledger' = ledger ++ [entry].
 
-  Definition bankI ledger bal1 bal2 :=
-    balances ledger = (bal1, bal2).
+  Definition bankI (s:S Scontents) bal1 bal2 :=
+    balances (get Ledger s) = (bal1, bal2).
 
-  Definition bankPred (_:M Mcontents) ledger : DISK_PRED :=
+  Definition bankPred (_:M Mcontents) s : DISK_PRED :=
     fun d =>
       exists bal1 bal2,
         #bal1 + #bal2 = 100 /\
         exists F rest1 rest2 ,
           d |= F * rep rest1 rest2 bal1 bal2 /\
-          bankI ledger #bal1 #bal2.
+          bankI s #bal1 #bal2.
 
-  Definition bankLockR : ID -> Relation State := fun _ _ _ => True.
+  Definition bankLockR : ID -> Relation Scontents := fun _ _ _ => True.
 
-  Definition bankLockI : Invariant Mcontents State := fun _ _ _ => True.
+  Definition bankLockI : Invariant Mcontents Scontents := fun _ _ _ => True.
 
-  Definition bankS : transitions Mcontents State :=
+  Definition bankS : transitions Mcontents Scontents :=
     Build_transitions bankR bankLockR bankPred bankLockI.
 
-  Local Hint Unfold rep State bankR bankLockR bankI bankLockI : prog.
+  Local Hint Unfold rep bankR bankLockR bankI bankLockI : prog.
 
   Definition transfer {T S} amount rx : prog Mcontents S T :=
     bal1 <- Read acct1;
@@ -75,7 +78,10 @@ Section Bank.
     rx tt.
 
   (* an update function that adds an entry to the ledger for transfer *)
-  Definition record_transfer amount ledger : State := ledger ++ [from1 amount].
+  Definition record_transfer amount (s:S Scontents) :=
+    Eval cbn in
+    let ledger := get Ledger s in
+    set Ledger (ledger ++ [from1 amount]) s.
 
   Hint Unfold record_transfer : prog.
 
@@ -166,16 +172,21 @@ Section Bank.
 
   Hint Resolve record_correct.
 
-  Lemma star_bankR : forall tid ledger ledger',
-      star (othersR bankR tid) ledger ledger' ->
+  Lemma star_bankR : forall tid s s',
+      star (othersR bankR tid) s s' ->
+      let ledger := get Ledger s in
+      let ledger' := get Ledger s' in
       exists ledger_ext, ledger' = ledger ++ ledger_ext.
   Proof.
     unfold othersR, bankR.
     induction 1.
     exists nil; rewrite app_nil_r; auto.
 
-    intuition; repeat deex; eauto.
-    eexists.
+    intuition; repeat deex;
+      repeat match goal with
+      | [ H: get Ledger _ = _ |- _ ] =>
+        rewrite H in *
+      end; eauto.
     rewrite <- app_assoc.
     eauto.
   Qed.
@@ -219,13 +230,14 @@ Section Bank.
   Lemma bank_invariant_transfer : forall F s m rest1 rest2 bal1 bal2 amount,
       #bal1 + #bal2 = 100 ->
       #bal1 >= amount ->
-      balances s = (#bal1, #bal2) ->
+      balances (get Ledger s) = (#bal1, #bal2) ->
       (acct2 |-> (Valuset (bal2 ^+ $ amount) rest2) *
        acct1 |-> (Valuset (bal1 ^- $ amount) rest1) * F) =p=>
-  bankPred m (s ++ [from1 amount]).
+  bankPred m (set Ledger (get Ledger s ++ [from1 amount]) s).
   Proof.
     unfold bankPred, pimpl, pred_in; intros.
     repeat (autounfold with prog).
+    simpl_get_set.
     exists (bal1 ^- ($ amount)).
     exists (bal2 ^+ ($ amount)).
     repeat eexists; eauto.
@@ -242,24 +254,30 @@ Section Bank.
   Theorem transfer_yield_ok : forall rest1 rest2 bal1 bal2 amount,
     bankS TID: tid |-
     {{ F,
-     | PRE d m l0 l: d |= F * rep rest1 rest2 bal1 bal2 /\
+     | PRE d m s0 s: d |= F * rep rest1 rest2 bal1 bal2 /\
                      #bal1 + #bal2 = 100 /\
                      #bal1 >= amount /\
-                     bankI l #bal1 #bal2 /\
-                     l0 = l
-     | POST d' m' l0' l' _: d' |= bankPred m' l' /\
+                     bankI s #bal1 #bal2 /\
+                     s0 = s
+     | POST d' m' s0' s' _: d' |= bankPred m' s' /\
+                            let l := get Ledger s in
+                            let l' := get Ledger s' in
                             firstn (length l + 1) l' = l ++ [from1 amount] /\
-                            l0' = l'
+                            s0' = s'
      | CRASH d'c : True
     }} transfer_yield amount.
   Proof.
-    hoare.
+    hoare pre (step_simplifier; simpl_get_set).
     pred_apply; cancel; eauto.
 
     match goal with
     | [ H: star _ _ _ |- _ ] => apply star_bankR in H; auto
     end.
-    deex; subst.
+    deex.
+    match goal with
+    | [ H: get Ledger _ = _ |- _ ] =>
+      rewrite H; simpl_get_set
+    end.
     apply firstn_length_app.
     rewrite app_length; auto.
   Qed.

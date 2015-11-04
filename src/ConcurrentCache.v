@@ -1,6 +1,5 @@
 Require Import EventCSL.
 Require Import EventCSLauto.
-Require Import Hlist.
 Require Import Locking.
 Require Import Star.
 Require Import Coq.Program.Equality.

@@ -2,9 +2,9 @@ Require Export Mem.
 Require Export Pred.
 Require Export Word.
 Require Export SepAuto.
+Require Export Hlist.
 Require Import Omega.
 Require Import Star.
-Require Import Hlist.
 Require Import List.
 Import List.ListNotations.
 Local Open Scope list.
@@ -70,13 +70,16 @@ Section EventCSL.
 
   Implicit Type m : M.
 
-  (** Programs can manipulate ghost state of type S *)
-  Variable S:Type.
+  (** Programs can manipulate ghost state of an hlist where element types
+      are given by Scontents *)
+  Variable Scontents:list Type.
+  Definition S := @hlist Type (fun T:Type => T) Scontents.
 
   (** Our programs will return values of type T *)
   Variable T:Type.
 
   Definition var (t:Set) : Type := @member Set t Mcontents.
+  Definition svar (t:Type) : Type := @member Type t Scontents.
 
   (** Define the transition system for the semantics.
       The semantics will reject transitions that do not obey these rules. *)
@@ -859,8 +862,8 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
 
 (* maximally insert the return/state types for Yield/GetTID, which are always called
    without applying them to any arguments *)
-Arguments Yield {Mcontents} {S} {T} rx.
-Arguments GetTID {Mcontents} {S} {T} rx.
+Arguments Yield {Mcontents} {Scontents} {T} rx.
+Arguments GetTID {Mcontents} {Scontents} {T} rx.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 

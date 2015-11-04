@@ -3,17 +3,17 @@ Require Import EventCSL.
 Section RecoveryExecution.
 
   Variable Mcontents : list Set.
-  Variable S : Type.
+  Variable Scontents : list Type.
 
-  Variable StateR : ID -> Relation S.
-  Variable LockR : ID -> Relation S.
-  Variable StateI : Invariant Mcontents S.
-  Variable LockI : Invariant Mcontents S.
+  Variable StateR : ID -> Relation Scontents.
+  Variable LockR : ID -> Relation Scontents.
+  Variable StateI : Invariant Mcontents Scontents.
+  Variable LockI : Invariant Mcontents Scontents.
 
   Variable empty_mem : M Mcontents.
-  Variable empty_s : S.
+  Variable empty_s : S Scontents.
 
-  Notation exec := (@exec Mcontents S _ StateR LockR StateI LockI).
+  Notation exec := (@exec Mcontents Scontents _ StateR LockR StateI LockI).
 
   Inductive recover_outcome (TF TR:Type) :=
   | RFailed
@@ -21,8 +21,8 @@ Section RecoveryExecution.
   | RRecovered (d:DISK) (v: TR).
 
   Inductive exec_recover (TF TR:Type)
-            (tid:ID) (st:DISK * M Mcontents * S * S)
-    : forall (p:prog Mcontents S TF) (recovery_p:prog Mcontents S TR),
+            (tid:ID) (st:DISK * M Mcontents * S Scontents * S Scontents)
+    : forall (p:prog Mcontents Scontents TF) (recovery_p:prog Mcontents Scontents TR),
       recover_outcome TF TR -> Prop :=
   | ExecRecoverFail : forall p rec,
       exec tid st p (Failed _) ->
