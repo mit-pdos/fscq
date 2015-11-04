@@ -64,9 +64,9 @@ Section EventCSL.
 
   (** The memory is a heterogenously typed list where element types
       are given by Mcontents. *)
-  Variable Mcontents:list Set.
+  Variable Mcontents:list Type.
   (** The type of the program's memory. *)
-  Definition M := @hlist Set (fun T:Set => T) Mcontents.
+  Definition M := @hlist Type (fun T:Type => T) Mcontents.
 
   Implicit Type m : M.
 
@@ -78,8 +78,7 @@ Section EventCSL.
   (** Our programs will return values of type T *)
   Variable T:Type.
 
-  Definition var (t:Set) : Type := @member Set t Mcontents.
-  Definition svar (t:Type) : Type := @member Type t Scontents.
+  Definition var (t:Type) : Type := @member Type t Mcontents.
 
   (** Define the transition system for the semantics.
       The semantics will reject transitions that do not obey these rules. *)
@@ -173,7 +172,7 @@ Section EventCSL.
       d a = Some vs0 ->
       tid :- Sync a rx / (d, m, s0, s) ==>
           rx tt / (upd d a (synced vs0), m, s0, s)
-  | StepAcquireLock : forall d m m' s s0 d' s' up rx l,
+  | StepAcquireLock : forall d m m' s s0 d' s' up rx (l:var Mutex),
       let m'' := set l Locked m' in
       let s'' := up tid s' in
       StateI m s d ->

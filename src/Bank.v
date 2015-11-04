@@ -22,10 +22,10 @@ Section Bank.
   | from2 : forall (amount:nat), ledger_entry.
 
   Definition Scontents : list Type := [(list ledger_entry):Type].
-  Definition Ledger : svar Scontents _ := HFirst.
+  Definition Ledger : var Scontents _ := HFirst.
 
   (* the memory for a bank is empty *)
-  Definition Mcontents := @nil Set.
+  Definition Mcontents := @nil Type.
 
   Definition add_entry (bals:nat*nat) (entry:ledger_entry) :=
     match bals with

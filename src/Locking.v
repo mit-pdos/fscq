@@ -4,7 +4,7 @@ Set Implicit Arguments.
 
 Section Locking.
 
-Variable Mcontents : list Set.
+Variable Mcontents : list Type.
 Variable Scontents : list Type.
 
 Inductive MutexOwner : Set :=
@@ -13,8 +13,8 @@ Inductive MutexOwner : Set :=
 
 (** given a lock variable and some other variable v, generate a
 relation for tid that makes the variable read-only for non-owners. *)
-Definition lock_protects (lvar : svar Scontents MutexOwner)
-           {tv} (v : svar Scontents tv) tid (s s': S Scontents) :=
+Definition lock_protects (lvar : var Scontents MutexOwner)
+           {tv} (v : var Scontents tv) tid (s s': S Scontents) :=
   forall owner_tid,
     get lvar s = Owned owner_tid ->
     tid <> owner_tid ->
@@ -22,7 +22,7 @@ Definition lock_protects (lvar : svar Scontents MutexOwner)
 
 Hint Unfold lock_protects : prog.
 
-Inductive lock_protocol (lvar : svar Scontents MutexOwner) (tid : ID) :
+Inductive lock_protocol (lvar : var Scontents MutexOwner) (tid : ID) :
   S Scontents -> S Scontents -> Prop :=
 | NoChange : forall s s', get lvar s  = get lvar s' ->
                      lock_protocol lvar tid s s'
@@ -37,7 +37,7 @@ Hint Constructors lock_protocol.
 
 Inductive ghost_lock_invariant
           (lvar : var Mcontents Mutex)
-          (glvar : svar Scontents MutexOwner)
+          (glvar : var Scontents MutexOwner)
           (m : M Mcontents) (s : S Scontents) : Prop :=
 | LockOpen : get lvar m = Open -> get glvar s = NoOwner ->
              ghost_lock_invariant lvar glvar m s

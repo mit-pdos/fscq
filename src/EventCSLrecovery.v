@@ -2,7 +2,7 @@ Require Import EventCSL.
 
 Section RecoveryExecution.
 
-  Variable Mcontents : list Set.
+  Variable Mcontents : list Type.
   Variable Scontents : list Type.
 
   Variable StateR : ID -> Relation Scontents.
