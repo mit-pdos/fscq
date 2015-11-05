@@ -144,5 +144,13 @@ Ltac simpl_get_set_hyp H :=
 Global Opaque get set.
 
 Tactic Notation "simpl_get_set" := simpl_get_set_goal.
-(* TODO: debug this notation not working *)
 Tactic Notation "simpl_get_set" "in" hyp(H) := simpl_get_set_hyp H.
+
+Inductive HIn {A:Type} {B:A -> Type} (elt:A) (el:B elt) : forall (types:list A),
+  hlist B types -> Prop :=
+| HHere types' (rest:hlist B types') : HIn elt el (HCons el rest)
+| HLater elt' (el': B elt') types' (rest:hlist B types') :
+  HIn elt el rest ->
+  HIn elt el (HCons el' rest).
+
+Arguments HIn {A} {B} {elt} el {types} l.
