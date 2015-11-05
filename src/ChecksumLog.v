@@ -29,15 +29,6 @@ Definition hash2_rep a b v :=
   v = hash2 a b /\
   hash_inv (hash_fwd (Word.combine a b)) = existT _ _ (Word.combine a b).
 
-Fixpoint list_hash2_rep lhv lab :=
-  match lhv with
-  | nil => True
-  | hv :: lhv' => match lab with
-    | nil => False
-    | (a, b) :: lab' => hash2_rep a b hv /\ list_hash2_rep lhv' lab'
-    end
-  end.
-
 (* block1 and block2 are synced, hash_block has some valid hash *)
 Definition any_hash_rep a b a' b' (d : @mem addr (@weq addrlen) valuset) :
     @pred addr (@weq addrlen) valuset :=
@@ -54,26 +45,21 @@ Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
 
 (* After a crash:
   - block1 and block2 can be anything
-  - hash_block points to a valid hash
-  - hash_block can have unsynced values (how to state cleanly that these are also valid hashes? *)
-Definition hash_crep a b l lhv :
-    @pred addr (@weq addrlen) valuset :=
-  (exists hv,
-   block1 |->? *
-   block2 |->? *
-   hash_block |-> (hv, l) *
-   [[ list_hash2_rep (hv :: l) ((a, b) :: lhv) ]])%pred.
-
-
-(* After a crash, hash_block is one of:
-  - hash of old values
-  - hash of new values but unsynced
-  - hash of new values and synced *)
+  - hash_block can be one of:
+    - hash of old values
+    - hash of new values but unsynced
+    - hash of new values and synced *)
 Definition crep a b a' b' :
     @pred addr (@weq addrlen) valuset :=
-  (hash_crep a b nil nil \/
-    hash_crep a' b' ((hash2 a b) :: nil) ((a, b) :: nil) \/
-    hash_crep a' b' nil nil).
+  (exists hv hv',
+    block1 |->? *
+    block2 |->? *
+    ( hash_block |-> (hv, nil) *
+        [[ hash2_rep a b hv ]] \/
+      hash_block |-> (hv', hv :: nil) *
+        [[ hash2_rep a b hv /\ hash2_rep a' b' hv' ]] \/
+      hash_block |-> (hv', nil) *
+        [[ hash2_rep a' b' hv' ]]))%pred.
 
 
 (* Example "log" implementation using checksums *)
@@ -121,7 +107,7 @@ Theorem put_ok : forall cs d1 d2,
       [[ (crep d1_old' d2_old' d1 d2)%pred d' ]]
   >} put cs d1 d2.
 Proof.
-  unfold put, rep, any_hash_rep, crep, hash_crep, list_hash2_rep, hash2_rep.
+  unfold put, rep, any_hash_rep, crep, hash2_rep, hash2.
   step.
   step.
   step.
@@ -131,6 +117,7 @@ Proof.
   step.
   step.
 
+  all: cancel.
   Grab Existential Variables.
   all: eauto.
 Qed.
@@ -172,12 +159,9 @@ Lemma crash_xform_would_recover_either_pred : forall v1 v2 v1' v2',
     after_crash_pred v1 v2 \/
     after_crash_pred v1' v2'.
 Proof.
-  unfold crep, hash_crep, list_hash2_rep, after_crash_pred.
+  unfold crep, after_crash_pred.
   intros.
-  autorewrite with crash_xform.
-  cancel.
-
-  all: repeat (autorewrite with crash_xform; cancel; autorewrite with crash_xform; cancel).
+  repeat (autorewrite with crash_xform; cancel).
 Qed.
 
 Hint Rewrite crash_xform_would_recover_either_pred : crash_xform.
@@ -208,7 +192,7 @@ Proof.
   eapply pimpl_ok2; eauto with prog.
   intros. norm'l. unfold stars; simpl.
 
-  (* apply crash_xform_sep_star_dist in H4.*)
+  (* autorewrite with crash_xform doesn't work? *)
   assert (Hafter_crash: (after_crash_pred d1_old d2_old)%pred d \/
     (after_crash_pred d1 d2)%pred d).
     apply crash_xform_would_recover_either_pred.
@@ -242,9 +226,11 @@ Proof.
     step. unfold any_hash_rep, hash2_rep, hash2 in *. cancel.
     step.
     cancel.
-    all: cancel; try (unfold crep, hash_crep, list_hash2_rep, hash2_rep in *;
+    all: cancel; try (
+      unfold crep, hash2_rep, hash2 in *;
       instantiate (1:=d);
-      cancel).
+      apply pimpl_or_r; left;
+      repeat cancel).
 
   - cancel.
     step.
@@ -270,9 +256,11 @@ Proof.
     step. unfold any_hash_rep, hash2_rep, hash2 in *. cancel.
     step.
     cancel.
-    all: cancel; try (unfold crep, hash_crep, list_hash2_rep, hash2_rep in *;
+    all: cancel; try (
+      unfold crep, hash2_rep, hash2 in *;
       instantiate (1:=d);
-      cancel).
+      apply pimpl_or_r; right;
+      repeat cancel).
 
   Grab Existential Variables.
   all: eauto.
