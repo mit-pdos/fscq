@@ -1250,19 +1250,19 @@ Ltac vd_locked :=
       subst vd'
   end.
 
-Definition locked_AsyncRead {T} a rx : prog Mcontents S T :=
+Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
   v <- AsyncRead a; rx v.
 
 Theorem locked_AsyncRead_ok : forall a,
-  cacheS TID: tid |-
+  stateS TID: tid |-
   {{ F v rest,
    | PRE d m s0 s: let vd := virt_disk s in
-                   cacheI m s d /\
+                   inv m s d /\
                    cache_get (get Cache m) a = None /\
                    vd |= F * a |-> (Valuset v rest) /\
                    get GCacheL s = Owned tid
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                          cacheI m' s' d' /\
+                          inv m' s' d' /\
                           vd' = virt_disk s /\
                           get Cache m' = get Cache m /\
                           get GCacheL s' = Owned tid /\
@@ -1293,7 +1293,7 @@ Qed.
 
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
 
-Definition locked_async_disk_read {T} a rx : prog Mcontents S T :=
+Definition locked_async_disk_read {T} a rx : prog _ _ T :=
   c <- Get Cache;
   match cache_get c a with
   | None => v <- locked_AsyncRead a;
@@ -1330,7 +1330,7 @@ Qed.
 Hint Resolve cache_get_vd.
 
 Theorem locked_async_disk_read_ok : forall a,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
@@ -1393,16 +1393,15 @@ Proof.
 Qed.
 
 Theorem disk_read_ok : forall a,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     cacheI m s d /\
+                     inv m s d /\
                      vd |= F * a |-> (Valuset v rest) /\
                      cacheR tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            cacheI m' s' d' /\
+                            inv m' s' d' /\
                             get CacheL m' = Open /\
-                            star diskR (virt_disk s) (virt_disk s') /\
                             (* this is ugly, but very precise *)
                             s' = set GCacheL NoOwner
                                      (set GCache (get Cache m') s0') /\
@@ -1454,7 +1453,7 @@ Qed.
 Definition replace_latest vs v' :=
   let 'Valuset _ rest := vs in Valuset v' rest.
 
-Definition locked_disk_write {T} a v rx : prog Mcontents S T :=
+Definition locked_disk_write {T} a v rx : prog _ _ T :=
   c <- Get Cache;
   let c' := cache_add_dirty c a v in
   Commit (set GCache c');;
@@ -1475,7 +1474,7 @@ Definition locked_disk_write {T} a v rx : prog Mcontents S T :=
          rx tt.
 
 Theorem locked_disk_write_ok : forall a v,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
@@ -1506,7 +1505,7 @@ Proof.
     dispatch.
 Qed.
 
-Definition evict {T} a rx : prog Mcontents S T :=
+Definition evict {T} a rx : prog _ _ T :=
   c <- Get Cache;
   match cache_get c a with
   | None => rx tt
@@ -1532,7 +1531,7 @@ Qed.
 Hint Resolve cache_pred_stable_evict.
 
 Theorem locked_evict_ok : forall a,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v0,
      | PRE d m s0 s: let vd := virt_disk s in
                      cacheI m s d /\
@@ -1550,7 +1549,7 @@ Proof.
   valid_match_opt; hoare pre simplify with finish.
 Qed.
 
-Definition writeback {T} a rx : prog Mcontents S T :=
+Definition writeback {T} a rx : prog _ _ T :=
   c <- Get Cache;
   let ov := cache_get c a in
   match (cache_get c a) with
@@ -1737,14 +1736,14 @@ Proof.
 Qed.
 
 Theorem writeback_ok : forall a,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     cacheI m s d /\
+                     inv m s d /\
                      get GCacheL s = Owned tid /\
                      vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            cacheI m' s' d' /\
+                            inv m' s' d' /\
                             get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
                             (forall b, cache_get (get Cache m) a = Some (b, v0) ->
@@ -1792,7 +1791,7 @@ Qed.
 
 Hint Extern 4 {{ writeback _; _ }} => apply writeback_ok : prog.
 
-Definition sync {T} a rx : prog Mcontents S T :=
+Definition sync {T} a rx : prog Mcontents Scontents T :=
   Commit (fun s =>
             let vd := virt_disk s in
             let vs' := match vd a with
@@ -1840,16 +1839,16 @@ Qed.
 Hint Resolve cache_pred_miss'.
 
 Theorem sync_ok : forall a,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     cacheI m s d /\
+                     inv m s d /\
                      get GCacheL s = Owned tid /\
                      (cache_get (get Cache m) a = Some (false, v0) \/
                       cache_get (get Cache m) a = None) /\
                      vd |= F * a |-> Valuset v0 rest
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                          cacheI m' s' d' /\
+                          inv m' s' d' /\
                           get GCacheL s' = Owned tid /\
                           m = m' /\
                           get GCache s' = get GCache s /\
@@ -1877,7 +1876,7 @@ Qed.
 
 Hint Extern 4 {{sync _; _}} => apply sync_ok : prog.
 
-Definition cache_sync {T} a rx : prog Mcontents S T :=
+Definition cache_sync {T} a rx : prog _ _ T :=
   c <- Get Cache;
   match cache_get c a with
   | Some (true, v) => writeback a;; sync a;; rx tt
@@ -1886,14 +1885,14 @@ Definition cache_sync {T} a rx : prog Mcontents S T :=
   end.
 
 Theorem cache_sync_ok : forall a,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                    cacheI m s d /\
+                    inv m s d /\
                     get GCacheL s = Owned tid /\
                     vd |= F * a |-> Valuset v0 rest
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            cacheI m' s' d' /\
+                            inv m' s' d' /\
                             get GCacheL s' = Owned tid /\
                             vd' |= F * a |-> Valuset v0 nil
      | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
