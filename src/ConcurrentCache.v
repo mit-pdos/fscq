@@ -79,72 +79,76 @@ Section MemCache.
 
 End MemCache.
 
-Section CacheTransitionSystem.
+(* TODO: move somewhere more appropriate *)
+Definition variables contents vartypes :=
+  hlist (var contents) vartypes.
 
-Variable Mcontents : list Type.
-Variable Scontents : list Type.
+Module Type CacheVars (Sem:Semantics).
+  Import Sem.
+  Parameter memVars : variables Mcontents [AssocCache; Mutex:Type].
+  Parameter stateVars : variables Scontents [DISK; AssocCache; MutexOwner:Type].
+End CacheVars.
 
-Definition variables (contents:list Type) := hlist (var Mcontents) contents.
-Definition svariables (contents:list Type) := hlist (var Scontents) contents.
+Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
+  Import Sem.
+  Import CVars.
 
-Definition CacheMem : list Type := [AssocCache; Mutex:Type].
-Definition CacheState : list Type := [DISK; AssocCache; MutexOwner:Type].
+  Definition Cache := get HFirst memVars.
+  Definition CacheL := get (HNext HFirst) memVars.
 
-Variable memVars : variables CacheMem.
-Variable stateVars : svariables CacheState.
+  Definition GDisk := get HFirst stateVars.
+  Definition GCache := get (HNext HFirst) stateVars.
+  Definition GCacheL := get (HNext (HNext HFirst)) stateVars.
 
-Notation Cache := (get HFirst memVars).
-Notation CacheL := (get (HNext HFirst) memVars).
-
-Notation GDisk := (get HFirst stateVars).
-Notation GCache := (get (HNext HFirst) stateVars).
-Notation GCacheL := (get (HNext (HNext HFirst)) stateVars).
-
-Definition cache_pred c (vd:DISK) : DISK_PRED :=
-  fun d => forall a,
-      match (cache_get c a) with
-      | Some (false, v) => exists rest, vd a = Some (Valuset v rest) /\
-                                   d a = Some (Valuset v rest)
-      | Some (true, v') => exists rest v, vd a = Some (Valuset v' (v :: rest)) /\
+  (* not actually dependent on the semantics or cache variables *)
+  Definition cache_pred c (vd:DISK) : DISK_PRED :=
+    fun d => forall a,
+        match (cache_get c a) with
+        | Some (false, v) => exists rest, vd a = Some (Valuset v rest) /\
                                      d a = Some (Valuset v rest)
-      | None => vd a = d a
-      end.
+        | Some (true, v') => exists rest v, vd a = Some (Valuset v' (v :: rest)) /\
+                                       d a = Some (Valuset v rest)
+        | None => vd a = d a
+        end.
 
-Definition cacheR (_:ID) : Relation Scontents :=
-  fun s s' =>
-    let vd := get GDisk s in
-    let vd' := get GDisk s' in
-    (forall a v, vd a = Some v -> exists v', vd' a = Some v').
+  Definition cacheR (_:ID) : Relation Scontents :=
+    fun s s' =>
+      let vd := get GDisk s in
+      let vd' := get GDisk s' in
+      (forall a v, vd a = Some v -> exists v', vd' a = Some v').
 
-Definition lockR tid : Relation Scontents :=
-  fun s s' =>
-    lock_protocol GCacheL tid s s' /\
-    lock_protects GCacheL GCache tid s s' /\
-    lock_protects GCacheL GDisk tid s s'.
+  Definition lockR tid : Relation Scontents :=
+    fun s s' =>
+      lock_protocol GCacheL tid s s' /\
+      lock_protects GCacheL GCache tid s s' /\
+      lock_protects GCacheL GDisk tid s s'.
 
-Definition stateI : Invariant Mcontents Scontents :=
-  fun m s d => True.
+  Definition stateI : Invariant Mcontents Scontents :=
+    fun m s d => True.
 
-Definition lockI : Invariant Mcontents Scontents :=
-  fun m s d =>
-    let c := get Cache m in
-    (d |= cache_pred c (get GDisk s))%judgement /\
-    ghost_lock_invariant CacheL GCacheL m s /\
-    (* mirror cache for sake of lock_protects *)
-    get Cache m = get GCache s.
+  Definition lockI : Invariant Mcontents Scontents :=
+    fun m s d =>
+      let c := get Cache m in
+      (d |= cache_pred c (get GDisk s))%judgement /\
+      ghost_lock_invariant CacheL GCacheL m s /\
+      (* mirror cache for sake of lock_protects *)
+      get Cache m = get GCache s.
 
-Definition cacheI : Invariant Mcontents Scontents :=
-  fun m s d =>
-    stateI m s d /\
-    lockI m s d.
+  Definition cacheI : Invariant Mcontents Scontents :=
+    fun m s d =>
+      stateI m s d /\
+      lockI m s d.
 
+  (* what is the scoping of this hint? *)
+  Hint Unfold cacheR stateI lockI cacheI : prog.
 End CacheTransitionSystem.
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
 Hint Unfold lock_protects : prog.
-Hint Unfold LockR' cacheR stateI lockI cacheI : prog.
+Hint Unfold LockR' : prog.
 
+(* TODO: move this somewhere more appropriate *)
 Definition modified contents vartypes
   (vars: hlist (fun T:Type => var contents T) vartypes)
   (l l': hlist (fun T:Type => T) contents) : Prop :=
@@ -153,57 +157,69 @@ Definition modified contents vartypes
 
 Module Type CacheSemantics.
   Declare Module Sem : Semantics.
+  Declare Module CVars : CacheVars Sem.
 
-  Parameter memVars : variables Sem.Mcontents CacheMem.
-  Parameter stateVars : svariables Sem.Scontents CacheState.
+  Module Transitions := CacheTransitionSystem Sem CVars.
+
+  Import Sem.
+  Import CVars.
+  Import Transitions.
 
   Axiom cache_invariant_holds : forall m s d,
-    Sem.Inv m s d ->
-    cacheI memVars stateVars m s d.
+    Inv m s d ->
+    cacheI m s d.
 
   Axiom lock_invariant_holds : forall m s d,
-    Sem.LockInv m s d ->
-    lockI memVars stateVars m s d.
+    LockInv m s d ->
+    lockI m s d.
 
   Axiom cache_relation_holds : forall tid s s',
-    Sem.R tid s s' ->
-    cacheR stateVars tid s s'.
+    R tid s s' ->
+    cacheR tid s s'.
 
   Axiom lock_relation_holds : forall tid s s',
-    Sem.LockR tid s s' ->
-    lockR stateVars tid s s'.
+    LockR tid s s' ->
+    lockR tid s s'.
 
   Axiom cache_invariant_preserved : forall m s d m' s' d',
-    Sem.Inv m s d ->
-    cacheI memVars stateVars m' s' d' ->
+    Inv m s d ->
+    cacheI m' s' d' ->
     (* only memVars/stateVars were modified *)
     modified memVars m m' ->
     modified stateVars s s' ->
-    Sem.Inv m' s' d'.
+    Inv m' s' d'.
 
 End CacheSemantics.
 
 Module Cache (CSem:CacheSemantics).
 
 Import CSem.
+Import Sem.
+Import CVars.
+Import Transitions.
 
-Definition Cache := (get HFirst memVars).
-Definition CacheL := (get (HNext HFirst) memVars).
+Definition M := EventCSL.M Mcontents.
+Definition S := EventCSL.S Scontents.
 
-Definition GDisk := (get HFirst stateVars).
-Definition GCache := (get (HNext HFirst) stateVars).
-Definition GCacheL := (get (HNext (HNext HFirst)) stateVars).
+Definition inv m s d := Inv m s d /\ LockInv m s d.
 
-Definition inv m s d := Sem.Inv m s d /\ Sem.LockInv m s d.
+Theorem inv_implications : forall m s d,
+  inv m s d ->
+  Inv m s d /\
+  LockInv m s d /\
+  cacheI m s d /\
+  lockI m s d.
+Proof.
+  unfold inv; intuition;
+    eauto using cache_invariant_holds, lock_invariant_holds.
+Qed.
 
-Hint Unfold inv : prog.
-
-Definition virt_disk (s:S Sem.Scontents) : DISK := get GDisk s.
+Definition virt_disk (s:S) : DISK := get GDisk s.
 
 Hint Unfold virt_disk : prog.
 
-Definition stateS : transitions Sem.Mcontents Sem.Scontents :=
-  Build_transitions Sem.R Sem.LockR Sem.Inv Sem.LockInv.
+Definition stateS : transitions Mcontents Scontents :=
+  Build_transitions R LockR Inv LockInv.
 
 Ltac solve_get_set :=
   simpl_get_set;
@@ -219,7 +235,10 @@ Ltac solve_get_set :=
   try congruence;
   eauto.
 
-Lemma progR_is : forall Scontents R1 R2 tid (s s':S Scontents),
+(* TODO: move these lemmas (and make them generic over Scontents) into
+   EventCSL itself *)
+
+Lemma progR_is : forall R1 R2 tid (s s':S),
   star (ProgR R1 R2 tid) s s' ->
   star (R1 tid) s s' /\
   star (R2 tid) s s'.
@@ -228,7 +247,7 @@ Proof.
   induction 1; intuition eauto.
 Qed.
 
-Lemma othersR_and : forall Scontents R1 R2 tid (s s':S Scontents),
+Lemma othersR_and : forall R1 R2 tid (s s':S),
   othersR (fun tid s s' => R1 tid s s' /\ R2 tid s s') tid s s' ->
   othersR R1 tid s s' /\
   othersR R2 tid s s'.
@@ -237,7 +256,7 @@ Proof.
   deex; eauto.
 Qed.
 
-Lemma progR'_is : forall Scontents R1 R2 tid (s s':S Scontents),
+Lemma progR'_is : forall R1 R2 tid (s s':S),
   star (ProgR' R1 R2 tid) s s' ->
   star (othersR R1 tid) s s' /\
   star (othersR R2 tid) s s'.
@@ -249,8 +268,8 @@ Proof.
     end; intuition eauto.
 Qed.
 
-Lemma progI_is : forall Mcontents Scontents I1 I2
-  (m:M Mcontents) (s:S Scontents) d,
+Lemma progI_is : forall I1 I2
+  (m:M) (s:S) d,
   ProgI I1 I2 m s d ->
   I1 m s d /\
   I2 m s d.
@@ -320,7 +339,7 @@ Ltac inv_protocol :=
 
 Lemma cache_readonly' : forall tid s s',
     get GCacheL s = Owned tid ->
-    othersR (lockR stateVars) tid s s' ->
+    othersR lockR tid s s' ->
     get GCache s' = get GCache s /\
     get GCacheL s' = Owned tid.
 Proof.
@@ -335,7 +354,7 @@ Lemma cache_readonly : forall tid s s',
     get GCache s' = get GCache s.
 Proof.
   intros.
-  eapply (star_invariant _ _ (cache_readonly' tid));
+  eapply (star_invariant _ _ (@cache_readonly' tid));
     intuition eauto; try congruence.
 Qed.
 
@@ -356,7 +375,7 @@ Lemma virt_disk_readonly : forall tid s s',
     get GDisk s' = get GDisk s.
 Proof.
   intros.
-  eapply (star_invariant _ _ (virt_disk_readonly' tid));
+  eapply (star_invariant _ _ (@virt_disk_readonly' tid));
     intuition eauto; try congruence.
 Qed.
 
@@ -411,16 +430,6 @@ Proof.
   intros.
   subst vd vd'.
   eauto using sectors_unchanged''.
-Qed.
-
-Lemma star_diskR : forall tid s s',
-    star (othersR cacheR tid) s s' ->
-    star diskR (get GDisk s) (get GDisk s').
-Proof.
-  induction 1; eauto.
-  eapply star_trans; try eassumption.
-  eapply star_step; [| eauto].
-  unfold othersR, cacheR in *; deex.
 Qed.
 
 Ltac remove_duplicate :=
@@ -560,16 +569,17 @@ Ltac sectors_unchanged := match goal with
                             pose proof (sectors_unchanged _ _ _ H) as H';
                               cbn in H'
                           end.
-Ltac star_diskR := match goal with
-                   | [ H: star _ _ _ |- _ ] =>
-                     learn H (apply star_diskR in H;
-                              cbn in H)
-                   end.
 
 Ltac sector_unchanged :=
   match goal with
   | [ H: forall a v, ?vd a = Some v -> (exists _, _), H': ?vd ?a = Some ?v |- _ ] =>
     learn_fact (H a v H')
+  end.
+
+Ltac expand_inv :=
+  match goal with
+  | [ H: inv _ _ _ |- _ ] =>
+    apply inv_implications in H
   end.
 
 Ltac learn_invariants :=
@@ -578,7 +588,7 @@ Ltac learn_invariants :=
   try lock_unchanged;
   try sectors_unchanged;
   try sector_unchanged; repeat deex;
-  try star_diskR.
+  try expand_inv.
 
 Hint Unfold cache_pred mem_union : cache.
 
@@ -1148,7 +1158,7 @@ Hint Resolve cache_pred_stable_dirty_write
              cache_pred_stable_clean_write
              cache_pred_stable_miss_write.
 
-Definition locked_disk_read {T} a rx : prog Mcontents S T :=
+Definition locked_disk_read {T} a rx : prog Mcontents Scontents T :=
   c <- Get Cache;
   match cache_get c a with
   | None => v <- Read a;
@@ -1163,14 +1173,14 @@ Definition locked_disk_read {T} a rx : prog Mcontents S T :=
 Hint Resolve ghost_lock_owned.
 
 Theorem locked_disk_read_ok : forall a,
-    cacheS TID: tid |-
+    stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     cacheI m s d /\
+                     inv m s d /\
                      vd |= F * a |-> (Valuset v rest) /\
                      get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            cacheI m s d /\
+                            inv m s d /\
                             vd' = virt_disk s /\
                             r = v /\
                             get GCacheL s' = Owned tid /\
@@ -1179,6 +1189,8 @@ Theorem locked_disk_read_ok : forall a,
     }} locked_disk_read a.
 Proof.
   hoare pre simplify.
+  valid_match_opt.
+  hoare pre simplify with finish.
   valid_match_opt; hoare pre simplify with finish.
 Qed.
 
