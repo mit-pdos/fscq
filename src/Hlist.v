@@ -130,15 +130,15 @@ Proof.
 Qed.
 
 Hint Rewrite get_set : hlist.
-Hint Rewrite get_set_other using (cbn; now auto) : hlist.
-Hint Rewrite set_get using (cbn; now auto) : hlist.
+Hint Rewrite get_set_other using (now cbn) : hlist.
+Hint Rewrite set_get using (now cbn) : hlist.
 
 (* this is the best way to use get_set without getting into trouble *)
 Ltac simpl_get_set_goal :=
-  autorewrite with hlist; auto.
+  autorewrite with hlist; trivial.
 
 Ltac simpl_get_set_hyp H :=
-  autorewrite with hlist in H; auto.
+  autorewrite with hlist in H; trivial.
 
 (* certainly we don't want users to reason about get_impl and set_impl *)
 Global Opaque get set.

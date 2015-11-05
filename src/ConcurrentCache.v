@@ -288,9 +288,6 @@ Ltac unfold_progR :=
           apply progI_is in H; destruct H
          end.
 
-Hint Extern 4 (get _ (set _ _ _) = _) => solve_get_set.
-Hint Extern 4 (_ = get _ (set _ _ _)) => solve_get_set.
-
 Ltac dispatch :=
   intros; subst;
   cbn in *;
@@ -664,6 +661,10 @@ Ltac distinguish_two_addresses a1 a2 :=
       case_eq (weq a2 a1);
       case_eq (weq a1 a1);
       intros;
+      try lazymatch goal with
+        | [ H: @eq addr ?a ?a', H': @eq addr ?a' ?a |- _ ] =>
+          clear dependent H'
+        end;
       subst;
       cbn;
       try replace (weq a1 a2) in *;
@@ -914,7 +915,7 @@ Ltac learn_disk_val :=
     | [ H: d a = Some (Valuset v _) |- _ ] => fail 1 "already did that"
     end;
       let rest := fresh "rest" in
-      edestruct (cache_pred_eq_disk _ _ _ _ _ Hget Hpred) as [rest ?]
+      edestruct (cache_pred_eq_disk a Hget Hpred) as [rest ?]
   end.
 
 Lemma cache_pred_clean : forall c vd rest a v,
@@ -1066,11 +1067,14 @@ Ltac standardize_mem_fields :=
            rewrite <- H in *
          end.
 
+Hint Unfold pred_in : prog.
+
 Ltac simplify :=
   repeat deex;
   unfold_progR;
   step_simplifier;
   learn_invariants;
+  repeat autounfold with prog in *;
   learn_some_addr;
   subst;
   try cache_vd_val;
