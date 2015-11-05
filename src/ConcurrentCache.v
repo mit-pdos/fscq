@@ -8,6 +8,8 @@ Require Import FMapAVL.
 Require Import FMapFacts.
 Require Word.
 
+Set Implicit Arguments.
+
 Require Import List.
 Import List.ListNotations.
 Open Scope list.
@@ -21,6 +23,16 @@ Module Addr_as_OT := Word_as_OT AddrM.
 Module Map := FMapAVL.Make(Addr_as_OT).
 Module MapFacts := WFacts_fun Addr_as_OT Map.
 Module MapProperties := WProperties_fun Addr_as_OT Map.
+
+Module Type Semantics.
+  Parameter Mcontents : list Type.
+  Parameter Scontents : list Type.
+  Parameter Inv : Invariant Mcontents Scontents.
+  Parameter R : ID -> Relation Scontents.
+
+  Parameter LockInv : Invariant Mcontents Scontents.
+  Parameter LockR : ID -> Relation Scontents.
+End Semantics.
 
 Section MemCache.
 
@@ -67,23 +79,26 @@ Section MemCache.
 
 End MemCache.
 
-Definition Scontents := [DISK; AssocCache; MutexOwner].
+Section CacheTransitionSystem.
 
-Definition GDisk : var Scontents _ := HFirst.
-Definition GCache : var Scontents _ := HNext HFirst.
-Definition GCacheL : var Scontents _ := HNext (HNext HFirst).
+Variable Mcontents : list Type.
+Variable Scontents : list Type.
 
-Definition S := hlist (fun T:Set => T) Scontents.
+Definition variables (contents:list Type) := hlist (var Mcontents) contents.
+Definition svariables (contents:list Type) := hlist (var Scontents) contents.
 
-Definition Mcontents := [AssocCache; Mutex].
+Definition CacheMem : list Type := [AssocCache; Mutex:Type].
+Definition CacheState : list Type := [DISK; AssocCache; MutexOwner:Type].
 
-Definition virt_disk (s:S) : DISK := get GDisk s.
+Variable memVars : variables CacheMem.
+Variable stateVars : svariables CacheState.
 
-Hint Unfold virt_disk : prog.
+Notation Cache := (get HFirst memVars).
+Notation CacheL := (get (HNext HFirst) memVars).
 
-Definition Cache : var Mcontents _ := HFirst.
-
-Definition CacheL : var Mcontents _ := HNext HFirst.
+Notation GDisk := (get HFirst stateVars).
+Notation GCache := (get (HNext HFirst) stateVars).
+Notation GCacheL := (get (HNext (HNext HFirst)) stateVars).
 
 Definition cache_pred c (vd:DISK) : DISK_PRED :=
   fun d => forall a,
@@ -95,45 +110,100 @@ Definition cache_pred c (vd:DISK) : DISK_PRED :=
       | None => vd a = d a
       end.
 
-Variable diskR : DISK -> DISK -> Prop.
-
-Hypothesis diskR_stutter : forall vd, diskR vd vd.
-
-Hint Resolve diskR_stutter.
-
-Definition cacheR (_:ID) : Relation S :=
+Definition cacheR (_:ID) : Relation Scontents :=
   fun s s' =>
-    let vd := virt_disk s in
-    let vd' := virt_disk s' in
-    (forall a v, vd a = Some v -> exists v', vd' a = Some v') /\
-    diskR vd vd'.
+    let vd := get GDisk s in
+    let vd' := get GDisk s' in
+    (forall a v, vd a = Some v -> exists v', vd' a = Some v').
 
-Definition lockR tid : Relation S :=
+Definition lockR tid : Relation Scontents :=
   fun s s' =>
     lock_protocol GCacheL tid s s' /\
     lock_protects GCacheL GCache tid s s' /\
     lock_protects GCacheL GDisk tid s s'.
 
-Definition stateI : Invariant Mcontents S :=
+Definition stateI : Invariant Mcontents Scontents :=
   fun m s d => True.
 
-Definition lockI : Invariant Mcontents S :=
+Definition lockI : Invariant Mcontents Scontents :=
   fun m s d =>
     let c := get Cache m in
-    (d |= cache_pred c (virt_disk s))%judgement /\
+    (d |= cache_pred c (get GDisk s))%judgement /\
     ghost_lock_invariant CacheL GCacheL m s /\
     (* mirror cache for sake of lock_protects *)
     get Cache m = get GCache s.
 
-Definition cacheI : Invariant Mcontents S :=
+Definition cacheI : Invariant Mcontents Scontents :=
   fun m s d =>
     stateI m s d /\
     lockI m s d.
+
+End CacheTransitionSystem.
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
 Hint Unfold lock_protects : prog.
 Hint Unfold LockR' cacheR stateI lockI cacheI : prog.
+
+Definition modified contents vartypes
+  (vars: hlist (fun T:Type => var contents T) vartypes)
+  (l l': hlist (fun T:Type => T) contents) : Prop :=
+  forall t (m:var contents t), (HIn m vars -> False) ->
+  get m l = get m l'.
+
+Module Type CacheSemantics.
+  Declare Module Sem : Semantics.
+
+  Parameter memVars : variables Sem.Mcontents CacheMem.
+  Parameter stateVars : svariables Sem.Scontents CacheState.
+
+  Axiom cache_invariant_holds : forall m s d,
+    Sem.Inv m s d ->
+    cacheI memVars stateVars m s d.
+
+  Axiom lock_invariant_holds : forall m s d,
+    Sem.LockInv m s d ->
+    lockI memVars stateVars m s d.
+
+  Axiom cache_relation_holds : forall tid s s',
+    Sem.R tid s s' ->
+    cacheR stateVars tid s s'.
+
+  Axiom lock_relation_holds : forall tid s s',
+    Sem.LockR tid s s' ->
+    lockR stateVars tid s s'.
+
+  Axiom cache_invariant_preserved : forall m s d m' s' d',
+    Sem.Inv m s d ->
+    cacheI memVars stateVars m' s' d' ->
+    (* only memVars/stateVars were modified *)
+    modified memVars m m' ->
+    modified stateVars s s' ->
+    Sem.Inv m' s' d'.
+
+End CacheSemantics.
+
+Module Cache (CSem:CacheSemantics).
+
+Import CSem.
+
+Definition Cache := (get HFirst memVars).
+Definition CacheL := (get (HNext HFirst) memVars).
+
+Definition GDisk := (get HFirst stateVars).
+Definition GCache := (get (HNext HFirst) stateVars).
+Definition GCacheL := (get (HNext (HNext HFirst)) stateVars).
+
+Definition inv m s d := Sem.Inv m s d /\ Sem.LockInv m s d.
+
+Hint Unfold inv : prog.
+
+Definition virt_disk (s:S Sem.Scontents) : DISK := get GDisk s.
+
+Hint Unfold virt_disk : prog.
+
+Definition stateS : transitions Sem.Mcontents Sem.Scontents :=
+  Build_transitions Sem.R Sem.LockR Sem.Inv Sem.LockInv.
 
 Ltac solve_get_set :=
   simpl_get_set;
@@ -149,7 +219,7 @@ Ltac solve_get_set :=
   try congruence;
   eauto.
 
-Lemma progR_is : forall S R1 R2 tid (s s':S),
+Lemma progR_is : forall Scontents R1 R2 tid (s s':S Scontents),
   star (ProgR R1 R2 tid) s s' ->
   star (R1 tid) s s' /\
   star (R2 tid) s s'.
@@ -158,16 +228,16 @@ Proof.
   induction 1; intuition eauto.
 Qed.
 
-Lemma othersR_and : forall S R1 R2 tid s s',
-  @othersR S (fun tid s s' => R1 tid s s' /\ R2 tid s s') tid s s' ->
-  @othersR S R1 tid s s' /\
-  @othersR S R2 tid s s'.
+Lemma othersR_and : forall Scontents R1 R2 tid (s s':S Scontents),
+  othersR (fun tid s s' => R1 tid s s' /\ R2 tid s s') tid s s' ->
+  othersR R1 tid s s' /\
+  othersR R2 tid s s'.
 Proof.
   unfold othersR; intros.
   deex; eauto.
 Qed.
 
-Lemma progR'_is : forall S R1 R2 tid (s s':S),
+Lemma progR'_is : forall Scontents R1 R2 tid (s s':S Scontents),
   star (ProgR' R1 R2 tid) s s' ->
   star (othersR R1 tid) s s' /\
   star (othersR R2 tid) s s'.
@@ -179,8 +249,9 @@ Proof.
     end; intuition eauto.
 Qed.
 
-Lemma progI_is : forall Mcontents S I1 I2 m s d,
-  @ProgI Mcontents S I1 I2 m s d ->
+Lemma progI_is : forall Mcontents Scontents I1 I2
+  (m:M Mcontents) (s:S Scontents) d,
+  ProgI I1 I2 m s d ->
   I1 m s d /\
   I2 m s d.
 Proof.
@@ -217,9 +288,6 @@ Ltac dispatch :=
           eauto 10
       end.
 
-Definition cacheS : transitions Mcontents S :=
-  Build_transitions cacheR lockR stateI lockI.
-
 Hint Rewrite get_set.
 
 Ltac valid_match_opt :=
@@ -252,7 +320,7 @@ Ltac inv_protocol :=
 
 Lemma cache_readonly' : forall tid s s',
     get GCacheL s = Owned tid ->
-    othersR lockR tid s s' ->
+    othersR (lockR stateVars) tid s s' ->
     get GCache s' = get GCache s /\
     get GCacheL s' = Owned tid.
 Proof.
@@ -311,8 +379,8 @@ Qed.
 
 Lemma sectors_unchanged' : forall tid s s',
     othersR cacheR tid s s' ->
-    let vd := virt_disk s in
-    let vd' := virt_disk s' in
+    let vd := get GDisk s in
+    let vd' := get GDisk s' in
     (forall a v, vd a = Some v ->
             exists v', vd' a = Some v').
 Proof.
@@ -323,8 +391,8 @@ Qed.
 
 Lemma sectors_unchanged'' : forall tid s s',
     star (othersR cacheR tid) s s' ->
-    let vd := virt_disk s in
-    let vd' := virt_disk s' in
+    let vd := get GDisk s in
+    let vd' := get GDisk s' in
     (forall a, (exists v, vd a = Some v) ->
             exists v', vd' a = Some v').
 Proof.
@@ -335,8 +403,8 @@ Qed.
 
 Lemma sectors_unchanged : forall tid s s',
     star (othersR cacheR tid) s s' ->
-    let vd := virt_disk s in
-    let vd' := virt_disk s' in
+    let vd := get GDisk s in
+    let vd' := get GDisk s' in
     (forall a v, vd a = Some v ->
             exists v', vd' a = Some v').
 Proof.
@@ -347,7 +415,7 @@ Qed.
 
 Lemma star_diskR : forall tid s s',
     star (othersR cacheR tid) s s' ->
-    star diskR (virt_disk s) (virt_disk s').
+    star diskR (get GDisk s) (get GDisk s').
 Proof.
   induction 1; eauto.
   eapply star_trans; try eassumption.
