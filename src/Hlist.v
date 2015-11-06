@@ -154,3 +154,24 @@ Inductive HIn {A:Type} {B:A -> Type} (elt:A) (el:B elt) : forall (types:list A),
   HIn elt el (HCons el' rest).
 
 Arguments HIn {A} {B} {elt} el {types} l.
+
+Fixpoint hmap (A:Type) (B:A -> Type) (types:list A) (C:Type) (f: forall a, B a -> C)
+         (l: hlist B types) : list C :=
+  match l with
+  | HNil => nil
+  | @HCons _ _ a _ el l' => f a el :: (hmap f l')
+  end.
+
+Theorem hmap_length : forall A B (types:list A) C (f : forall a, B a -> C)
+                        (l: hlist B types),
+    length (hmap f l) = length types.
+Proof.
+  induction l; cbn; eauto.
+Qed.
+
+Fixpoint hmap_dep (A:Type) (B:A -> Type) (types:list A) (C:A -> Type) (f: forall a, B a -> C a)
+         (l: hlist B types) : hlist C types :=
+  match l with
+  | HNil => HNil
+  | @HCons _ _ a _ el l' => HCons (f a el) (hmap_dep C f l')
+  end.
