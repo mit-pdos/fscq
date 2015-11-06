@@ -2,7 +2,9 @@ Require Import List.
 Import List.ListNotations.
 Open Scope list.
 
-Require Import Coq.Program.Equality.
+Require Import Equality.
+Import EqdepTheory.
+Require Import Omega.
 
 Set Implicit Arguments.
 
@@ -175,3 +177,64 @@ Fixpoint hmap_dep (A:Type) (B:A -> Type) (types:list A) (C:A -> Type) (f: forall
   | HNil => HNil
   | @HCons _ _ a _ el l' => HCons (f a el) (hmap_dep C f l')
   end.
+
+Theorem member_index_dec A (types: list A) a1
+        (m1:member a1 types) a2 (m2:member a2 types) :
+  {member_index m1 = member_index m2} + {member_index m1 <> member_index m2}.
+Proof. decide equality. Qed.
+
+Ltac elim_rew :=
+  try lazymatch goal with
+    | [ |- exists (_: _ = _), _ ] => exists eq_refl
+    end;
+  repeat rewrite <- Eqdep.EqdepTheory.eq_rect_eq in *;
+  try congruence.
+
+Theorem indices_eq : forall A (types: list A) t1 (m1: member t1 types) t2 (m2: member t2 types),
+    member_index m1 = member_index m2 ->
+    exists (H: t1 = t2), eq_rect _ (fun t => member t types) m1 _ H = m2.
+Proof.
+  intros.
+  dependent induction types.
+  inversion m1.
+  dependent induction m1;
+    dependent induction m2;
+    cbn in *;
+    try congruence.
+  elim_rew.
+  clear IHm1 IHm2.
+  inversion H.
+  destruct (IHtypes _ _ _ _ H1).
+  subst.
+  elim_rew.
+Qed.
+
+Theorem hin_iff_index_in : forall A (types: list A) t (m: member t types) mtypes
+                             (members: hlist (fun t => member t types) mtypes),
+    HIn m members <->
+    In (member_index m) (hmap (fun t (m:member t types) => member_index m) members).
+Proof.
+  split; intros.
+  - induction members; inversion H;
+    repeat lazymatch goal with
+      | [ H: existT _ _ _ = existT _ _ _ |- _ ] =>
+        apply inj_pair2 in H
+      end; cbn; subst; eauto.
+  - induction members; inversion H; eauto using HLater.
+    match goal with
+    | [ H: member_index _ = member_index _ |- _ ] =>
+      apply indices_eq in H; destruct H; subst
+    end.
+    elim_rew.
+    constructor.
+Qed.
+
+Theorem member_index_bound : forall A (B:A -> Type) (types: list A)
+                               (l: hlist B types) (a:A) (m: member a types),
+    member_index m < length types.
+Proof.
+  intros.
+  dependent induction m; cbn; try omega.
+  inversion l; subst.
+  intuition.
+Qed.
