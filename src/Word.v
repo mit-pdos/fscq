@@ -749,12 +749,10 @@ Lemma whd_eq_rect : forall n w Heq,
   whd w.
 Proof.
   intros.
-  f_equal; try omega.
-  intros.
   generalize_proof.
-  rewrite H; intros.
-  eq_rect_simpl.
-  reflexivity.
+  replace (n + 0) with n by omega.
+  intros.
+  now eq_rect_simpl.
 Qed.
 
 Lemma wtl_eq_rect : forall n w Heq Heq',
@@ -764,8 +762,7 @@ Proof.
   intros.
   generalize dependent Heq.
   rewrite <- Heq'; simpl; intros.
-  rewrite <- (eq_rect_eq_dec eq_nat_dec).
-  reflexivity.
+  now eq_rect_simpl.
 Qed.
 
 Theorem split1_0 : forall n w Heq,
