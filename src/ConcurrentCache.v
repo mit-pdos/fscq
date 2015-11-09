@@ -6,6 +6,7 @@ Require Import Coq.Program.Equality.
 Require Import FunctionalExtensionality.
 Require Import FMapAVL.
 Require Import FMapFacts.
+Require Import Omega.
 Require Word.
 
 Set Implicit Arguments.
@@ -83,10 +84,16 @@ End MemCache.
 Definition variables contents vartypes :=
   hlist (var contents) vartypes.
 
+(* version of member_index suitable for use in hmap *)
+Definition var_index {contents} := fun t (m:var contents t) => member_index m.
+
 Module Type CacheVars (Sem:Semantics).
   Import Sem.
   Parameter memVars : variables Mcontents [AssocCache; Mutex:Type].
   Parameter stateVars : variables Scontents [DISK; AssocCache; MutexOwner:Type].
+
+  Axiom no_confusion_memVars : NoDup (hmap var_index memVars).
+  Axiom no_confusion_stateVars : NoDup (hmap var_index stateVars).
 End CacheVars.
 
 Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
@@ -1186,10 +1193,31 @@ Hint Resolve ghost_lock_owned.
 Theorem hin_index_vars : forall contents t (m: var contents t)
                            typevars (vars: variables contents typevars),
     HIn m vars <->
-    In (member_index m) (hmap (fun t (m:var contents t) => member_index m) vars).
+    In (member_index m) (hmap var_index vars).
 Proof.
   apply hin_iff_index_in.
 Qed.
+
+Theorem member_index_eq_var_index : forall contents t
+  (m: member t contents),
+  member_index m = var_index m.
+Proof. reflexivity. Qed.
+
+Theorem NoDup_get_neq : forall A (def:A) (l:list A) n1 n2,
+  n1 < length l ->
+  n2 < length l ->
+  n1 <> n2 ->
+  NoDup l ->
+  nth n1 l def <> nth n2 l def.
+Proof.
+  intros.
+  intro.
+  contradiction H1.
+  eapply NoDup_nth; eauto.
+Qed.
+
+Hint Resolve no_confusion_memVars.
+Hint Resolve no_confusion_stateVars.
 
 Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
@@ -1218,9 +1246,12 @@ Proof.
     simpl_get_set.
     rewrite get_set_other.
     unfold pred_in; eauto.
-    (* TODO: need an assumption that all cache variables are distinct *)
-    admit.
-    cbn.
+    repeat rewrite member_index_eq_var_index.
+    unfold GCache, GDisk, GCacheL.
+    repeat erewrite get_hmap; cbn.
+    apply NoDup_get_neq; eauto;
+      autorewrite with hlist;
+      cbn; omega.
     admit. (* locks have not changed *)
 
     solve_get_set.
@@ -1251,12 +1282,23 @@ Proof.
     apply hin_get.
 
   - rewrite get_set_other; trivial.
-    (* assumption cache variables are distinct *)
-    admit.
+    (* TODO: automate proofs that member_index of mem/state variables are
+    distinct *)
+    repeat rewrite member_index_eq_var_index.
+    unfold GCache, GDisk, GCacheL.
+    repeat erewrite get_hmap; cbn.
+    apply NoDup_get_neq; eauto;
+      autorewrite with hlist;
+      cbn; omega.
 
   - rewrite get_set_other; trivial.
-    (* assumption cache variables are distinct *)
-    admit.
+    (* same automation *)
+    repeat rewrite member_index_eq_var_index.
+    unfold GCache, GDisk, GCacheL.
+    repeat erewrite get_hmap; cbn.
+    apply NoDup_get_neq; eauto;
+      autorewrite with hlist;
+      cbn; omega.
 Admitted.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.

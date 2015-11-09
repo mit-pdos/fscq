@@ -236,6 +236,28 @@ Proof.
       eauto using HHere, HLater.
 Qed.
 
+Theorem get_hmap_error : forall A B (types:list A) C
+                        (f : forall a, B a -> C)
+                        (l: hlist B types) (a:A) (m: member a types),
+    Some (f a (get m l)) = nth_error (hmap f l) (member_index m).
+Proof.
+  intros.
+  induction l;
+    dependent induction m; cbn; eauto.
+Qed.
+
+Theorem get_hmap : forall A B (types:list A) C
+                        (f : forall a, B a -> C)
+                        (l: hlist B types) (a:A) (m: member a types)
+                        (def:C),
+    f a (get m l) = nth (member_index m) (hmap f l) def.
+Proof.
+  intros.
+  induction l;
+    dependent induction m; cbn; eauto.
+Qed.
+
+Hint Rewrite hmap_length : hlist.
 Hint Rewrite get_set : hlist.
 Hint Rewrite get_set_other using (now cbn) : hlist.
 Hint Rewrite set_get using (now cbn) : hlist.
