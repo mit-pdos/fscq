@@ -203,6 +203,16 @@ Module Type CacheSemantics.
     modified stateVars s s' ->
     LockInv m' s' d'.
 
+  Axiom cache_relation_preserved : forall tid s s',
+    modified stateVars s s' ->
+    cacheR tid s s' ->
+    R tid s s'.
+
+  Axiom lock_relation_preserved : forall tid s s',
+    modified stateVars s s' ->
+    lockR tid s s' ->
+    LockR tid s s'.
+
 End CacheSemantics.
 
 Module Cache (CSem:CacheSemantics).
@@ -1271,6 +1281,44 @@ Hint Resolve Cache_neq_CacheL
              GCache_neq_GCacheL
              GCache_neq_GDisk.
 
+(* TODO: should automate these two modified lemmas *)
+Lemma only_GCache_modified : forall s c',
+  modified stateVars s (set GCache c' s).
+Proof.
+  unfold modified; intros.
+  rewrite hin_index_vars in H.
+  rewrite get_set_other;
+    trivial.
+  case_eq (PeanoNat.Nat.eq_dec (member_index GCache) (member_index m)); intros; auto.
+  rewrite <- e in *.
+  exfalso.
+  apply H.
+  apply hin_index_vars.
+  (* auto can't find this since variables isn't syntactically equal to the
+  expression in the theorem *)
+  apply hin_get.
+Qed.
+
+Lemma only_Cache_modified : forall m c',
+  modified memVars m (set Cache c' m).
+Proof.
+  unfold modified; intros.
+  rewrite hin_index_vars in H.
+  rewrite get_set_other;
+    trivial.
+  case_eq (PeanoNat.Nat.eq_dec (member_index Cache) (member_index m0)); intros; auto.
+  rewrite <- e in *.
+  exfalso.
+  apply H.
+  apply hin_index_vars.
+  (* auto can't find this since variables isn't syntactically equal to the
+  expression in the theorem *)
+  apply hin_get.
+Qed.
+
+Hint Resolve only_GCache_modified
+             only_Cache_modified.
+
 Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
@@ -1290,43 +1338,20 @@ Proof.
   hoare pre simplify.
   valid_match_opt; hoare pre simplify with finish.
 
-  (* TODO: need a factoring axiom about LockR *)
-  - admit.
+  - eapply lock_relation_preserved; eauto.
+    unfold lockR; intuition eauto;
+      try solve [ eapply NoChange; solve_get_set ];
+      unfold lock_protects; intuition eauto; solve_get_set.
 
   - eapply lock_invariant_preserved; eauto.
     unfold lockI; intuition eauto.
     simpl_get_set.
     unfold pred_in; eauto.
     eapply ghost_lock_inv_preserved; eauto;
-      simpl_get_set.
+      solve_get_set.
 
     solve_get_set.
-
-    unfold modified; intros.
-    rewrite hin_index_vars in H6.
-    rewrite get_set_other;
-      trivial.
-    case_eq (PeanoNat.Nat.eq_dec (member_index Cache) (member_index m0)); intros; auto.
-    rewrite <- e in *.
-    exfalso.
-    apply H6.
-    apply hin_index_vars.
-    (* auto can't find this since variables isn't syntactically equal to the
-    expression in the theorem *)
-    apply hin_get.
-
-    (* TODO: automate this type of proof (reflection, mayhaps?) *)
-    unfold modified; intros.
-    rewrite hin_index_vars in H6.
-    rewrite get_set_other;
-      trivial.
-    case_eq (PeanoNat.Nat.eq_dec (member_index GCache) (member_index m0)); intros; auto.
-    rewrite <- e in *.
-    exfalso.
-    apply H6.
-    apply hin_index_vars.
-    apply hin_get.
-Admitted.
+Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
 
