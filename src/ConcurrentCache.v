@@ -189,6 +189,13 @@ Module Type CacheSemantics.
     modified stateVars s s' ->
     Inv m' s' d'.
 
+  Axiom lock_invariant_preserved : forall m s d m' s' d',
+    LockInv m s d ->
+    lockI m' s' d' ->
+    modified memVars m m' ->
+    modified stateVars s s' ->
+    LockInv m' s' d'.
+
 End CacheSemantics.
 
 Module Cache (CSem:CacheSemantics).
@@ -1176,6 +1183,14 @@ Definition locked_disk_read {T} a rx : prog Mcontents Scontents T :=
 
 Hint Resolve ghost_lock_owned.
 
+Theorem hin_index_vars : forall contents t (m: var contents t)
+                           typevars (vars: variables contents typevars),
+    HIn m vars <->
+    In (member_index m) (hmap (fun t (m:var contents t) => member_index m) vars).
+Proof.
+  apply hin_iff_index_in.
+Qed.
+
 Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
@@ -1193,10 +1208,56 @@ Theorem locked_disk_read_ok : forall a,
     }} locked_disk_read a.
 Proof.
   hoare pre simplify.
-  valid_match_opt.
-  hoare pre simplify with finish.
   valid_match_opt; hoare pre simplify with finish.
-Qed.
+
+  (* TODO: need a factoring axiom about LockR *)
+  - admit.
+
+  - eapply lock_invariant_preserved; eauto.
+    unfold lockI; intuition eauto.
+    simpl_get_set.
+    rewrite get_set_other.
+    unfold pred_in; eauto.
+    (* TODO: need an assumption that all cache variables are distinct *)
+    admit.
+    cbn.
+    admit. (* locks have not changed *)
+
+    solve_get_set.
+
+    unfold modified; intros.
+    rewrite hin_index_vars in H6.
+    rewrite get_set_other;
+      trivial.
+    case_eq (PeanoNat.Nat.eq_dec (member_index Cache) (member_index m0)); intros; auto.
+    rewrite <- e in *.
+    exfalso.
+    apply H6.
+    apply hin_index_vars.
+    (* auto can't find this since variables isn't syntactically equal to the
+    expression in the theorem *)
+    apply hin_get.
+
+    (* TODO: automate this type of proof (reflection, mayhaps?) *)
+    unfold modified; intros.
+    rewrite hin_index_vars in H6.
+    rewrite get_set_other;
+      trivial.
+    case_eq (PeanoNat.Nat.eq_dec (member_index GCache) (member_index m0)); intros; auto.
+    rewrite <- e in *.
+    exfalso.
+    apply H6.
+    apply hin_index_vars.
+    apply hin_get.
+
+  - rewrite get_set_other; trivial.
+    (* assumption cache variables are distinct *)
+    admit.
+
+  - rewrite get_set_other; trivial.
+    (* assumption cache variables are distinct *)
+    admit.
+Admitted.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
 

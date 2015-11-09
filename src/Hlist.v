@@ -131,22 +131,7 @@ Proof.
   rewrite IHl; auto.
 Qed.
 
-Hint Rewrite get_set : hlist.
-Hint Rewrite get_set_other using (now cbn) : hlist.
-Hint Rewrite set_get using (now cbn) : hlist.
 
-(* this is the best way to use get_set without getting into trouble *)
-Ltac simpl_get_set_goal :=
-  autorewrite with hlist; trivial.
-
-Ltac simpl_get_set_hyp H :=
-  autorewrite with hlist in H; trivial.
-
-(* certainly we don't want users to reason about get_impl and set_impl *)
-Global Opaque get set.
-
-Tactic Notation "simpl_get_set" := simpl_get_set_goal.
-Tactic Notation "simpl_get_set" "in" hyp(H) := simpl_get_set_hyp H.
 
 Inductive HIn {A:Type} {B:A -> Type} (elt:A) (el:B elt) : forall (types:list A),
   hlist B types -> Prop :=
@@ -238,3 +223,32 @@ Proof.
   inversion l; subst.
   intuition.
 Qed.
+
+Theorem hin_get : forall A (contents:list A) mtypes
+                   (members: hlist (fun t => member t contents) mtypes)
+                   t (m: member t mtypes),
+    HIn (get m members) members.
+Proof.
+  unfold get; intros.
+  dependent induction members.
+  - inversion m.
+  - dependent induction m; cbn;
+      eauto using HHere, HLater.
+Qed.
+
+Hint Rewrite get_set : hlist.
+Hint Rewrite get_set_other using (now cbn) : hlist.
+Hint Rewrite set_get using (now cbn) : hlist.
+
+(* this is the best way to use get_set without getting into trouble *)
+Ltac simpl_get_set_goal :=
+  autorewrite with hlist; trivial.
+
+Ltac simpl_get_set_hyp H :=
+  autorewrite with hlist in H; trivial.
+
+Tactic Notation "simpl_get_set" := simpl_get_set_goal.
+Tactic Notation "simpl_get_set" "in" hyp(H) := simpl_get_set_hyp H.
+
+(* certainly we don't want users to reason about get_impl and set_impl *)
+Global Opaque get set.
