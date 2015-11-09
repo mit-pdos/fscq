@@ -1216,8 +1216,60 @@ Proof.
   eapply NoDup_nth; eauto.
 Qed.
 
+Print ghost_lock_invariant.
+
+Theorem ghost_lock_inv_preserved : forall Mcontents Scontents
+  (lvar: var Mcontents Mutex) (glvar: var Scontents MutexOwner) m s m' s',
+  ghost_lock_invariant lvar glvar m s ->
+  get lvar m = get lvar m' ->
+  get glvar s = get glvar s' ->
+  ghost_lock_invariant lvar glvar m' s'.
+Proof.
+  inversion 1; intros;
+  repeat match goal with
+       | [ H: get ?v ?m = ?x, H': get ?v ?m = ?y |- _ ] =>
+          lazymatch goal with
+          | [ Heq: x = y |- _ ] => fail
+          | _ => assert (x = y) by congruence
+          end
+        end;
+  eauto using LockOpen, LockOwned.
+Qed.
+
 Hint Resolve no_confusion_memVars.
 Hint Resolve no_confusion_stateVars.
+
+Ltac vars_distinct :=
+  repeat rewrite member_index_eq_var_index;
+  repeat match goal with
+  | [ |- context[var_index ?v] ] => unfold v
+  end;
+  repeat erewrite get_hmap; cbn;
+  apply NoDup_get_neq with (def := 0); eauto;
+    autorewrite with hlist;
+    cbn; omega.
+
+Lemma Cache_neq_CacheL :
+  member_index Cache <> member_index CacheL.
+Proof.
+  vars_distinct.
+Qed.
+
+Lemma GCache_neq_GCacheL :
+  member_index GCache <> member_index GCacheL.
+Proof.
+  vars_distinct.
+Qed.
+
+Lemma GCache_neq_GDisk :
+  member_index GCache <> member_index GDisk.
+Proof.
+  vars_distinct.
+Qed.
+
+Hint Resolve Cache_neq_CacheL
+             GCache_neq_GCacheL
+             GCache_neq_GDisk.
 
 Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
@@ -1244,15 +1296,9 @@ Proof.
   - eapply lock_invariant_preserved; eauto.
     unfold lockI; intuition eauto.
     simpl_get_set.
-    rewrite get_set_other.
     unfold pred_in; eauto.
-    repeat rewrite member_index_eq_var_index.
-    unfold GCache, GDisk, GCacheL.
-    repeat erewrite get_hmap; cbn.
-    apply NoDup_get_neq; eauto;
-      autorewrite with hlist;
-      cbn; omega.
-    admit. (* locks have not changed *)
+    eapply ghost_lock_inv_preserved; eauto;
+      simpl_get_set.
 
     solve_get_set.
 
@@ -1280,25 +1326,6 @@ Proof.
     apply H6.
     apply hin_index_vars.
     apply hin_get.
-
-  - rewrite get_set_other; trivial.
-    (* TODO: automate proofs that member_index of mem/state variables are
-    distinct *)
-    repeat rewrite member_index_eq_var_index.
-    unfold GCache, GDisk, GCacheL.
-    repeat erewrite get_hmap; cbn.
-    apply NoDup_get_neq; eauto;
-      autorewrite with hlist;
-      cbn; omega.
-
-  - rewrite get_set_other; trivial.
-    (* same automation *)
-    repeat rewrite member_index_eq_var_index.
-    unfold GCache, GDisk, GCacheL.
-    repeat erewrite get_hmap; cbn.
-    apply NoDup_get_neq; eauto;
-      autorewrite with hlist;
-      cbn; omega.
 Admitted.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
