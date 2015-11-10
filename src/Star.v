@@ -9,13 +9,14 @@ Set Implicit Arguments.
 Section STAR.
 
   Variable A : Type.
-  Variable R : A -> A -> Prop.
+  Definition relation := A -> A -> Prop.
+  Variable R : relation.
 
-  Infix "-->" := R (at level 40).
+  Infix "-->" := R (at level 55).
 
   Reserved Notation "s1 -->* s2" (at level 50).
 
-  Inductive star : A -> A -> Prop :=
+  Inductive star : relation :=
   | star_refl : forall s,
     s -->* s
   | star_step : forall s1 s2 s3,
@@ -28,7 +29,7 @@ Section STAR.
 
   Reserved Notation "s1 ==>* s2" (at level 50).
 
-  Inductive star_r : A -> A -> Prop :=
+  Inductive star_r : relation :=
   | star_r_refl : forall s,
     s ==>* s
   | star_r_step : forall s1 s2 s3,
@@ -67,7 +68,7 @@ Section STAR.
       induction H; eauto.
   Qed.
 
-  Theorem star_invariant : forall (P : _ -> Prop) (Q : _ -> _ -> Prop),
+  Theorem star_invariant : forall (P : A -> Prop) (Q : relation),
       (forall s s', P s -> s --> s' -> Q s s') ->
       (forall s, P s -> Q s s) ->
       (forall s s', Q s s' -> P s') ->
@@ -86,3 +87,38 @@ End STAR.
 
 Hint Constructors star.
 Hint Constructors star_r.
+
+Require Import Morphisms.
+
+Definition rimpl {A} (r1 r2: relation A) :=
+  forall s s', r1 s s' -> r2 s s'.
+
+Instance star_rimpl_proper {A} :
+  Proper (rimpl ==> eq ==> eq ==> Basics.impl) (@star A).
+Proof.
+  unfold Proper, Basics.impl, respectful, rimpl; intros.
+  subst.
+  match goal with
+  | [ H: star _ _ _ |- _ ] =>
+    induction H; eauto
+  end.
+Qed.
+
+Section RewriteExample.
+
+Require Import Setoid.
+
+(* example of rewriting under star *)
+Goal forall A (R1 R2 : relation A),
+  rimpl R1 R2 ->
+  forall s s',
+  star R1 s s' ->
+  star R2 s s'.
+Proof.
+  intros.
+  rewrite H in H0.
+  assumption.
+  Fail idtac "no more goals".
+Abort.
+
+End RewriteExample.
