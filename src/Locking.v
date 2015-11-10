@@ -54,4 +54,21 @@ Proof.
   inversion 1; congruence.
 Qed.
 
+Theorem ghost_lock_inv_preserved : forall
+  (lvar: var Mcontents Mutex) (glvar: var Scontents MutexOwner) m s m' s',
+  ghost_lock_invariant lvar glvar m s ->
+  get lvar m = get lvar m' ->
+  get glvar s = get glvar s' ->
+  ghost_lock_invariant lvar glvar m' s'.
+Proof.
+  inversion 1; intros;
+  repeat match goal with
+       | [ H: get ?v ?m = ?x, H': get ?v ?m = ?y |- _ ] =>
+          lazymatch goal with
+          | [ Heq: x = y |- _ ] => fail
+          | _ => assert (x = y) by congruence
+          end
+        end; eauto.
+Qed.
+
 End Locking.
