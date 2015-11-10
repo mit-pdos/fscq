@@ -113,13 +113,11 @@ Module Type CacheSemantics.
     LockInv m s d ->
     lockI m s d.
 
-  Axiom cache_relation_holds : forall tid s s',
-    R tid s s' ->
-    cacheR tid s s'.
+  Axiom cache_relation_holds : forall tid,
+    rimpl (R tid) (cacheR tid).
 
-  Axiom lock_relation_holds : forall tid s s',
-    LockR tid s s' ->
-    lockR tid s s'.
+  Axiom lock_relation_holds : forall tid,
+    rimpl (LockR tid) (lockR tid).
 
   Axiom cache_invariant_preserved : forall m s d m' s' d',
     Inv m s d ->
@@ -154,6 +152,39 @@ Import CSem.
 Import Sem.
 Import CVars.
 Import Transitions.
+
+Hint Resolve no_confusion_memVars
+             no_confusion_stateVars.
+
+Hint Resolve
+  cache_invariant_holds
+   lock_invariant_holds
+   cache_relation_holds
+   lock_relation_holds
+   cache_invariant_preserved
+   lock_invariant_preserved
+   cache_relation_preserved
+   lock_relation_preserved.
+
+Lemma others_cache_relation_holds : forall tid,
+  rimpl (othersR R tid) (othersR cacheR tid).
+Proof.
+  unfold othersR, rimpl.
+  intros.
+  deex.
+  eexists; intuition eauto.
+  apply cache_relation_holds; auto.
+Qed.
+
+Lemma others_lock_relation_holds : forall tid,
+  rimpl (othersR LockR tid) (othersR lockR tid).
+Proof.
+  unfold othersR, rimpl.
+  intros.
+  deex.
+  eexists; intuition eauto.
+  apply lock_relation_holds; auto.
+Qed.
 
 Definition M := EventCSL.M Mcontents.
 Definition S := EventCSL.S Scontents.
@@ -291,7 +322,7 @@ Ltac inv_protocol :=
     inversion H; subst; try congruence
   end.
 
-Lemma cache_readonly' : forall tid s s',
+Lemma cache_readonly' : forall tid (s s':S),
     get GCacheL s = Owned tid ->
     othersR lockR tid s s' ->
     get GCache s' = get GCache s /\
@@ -302,7 +333,7 @@ Proof.
   deex; eauto; inv_protocol.
 Qed.
 
-Lemma cache_readonly : forall tid s s',
+Lemma cache_readonly : forall tid (s s':S),
     get GCacheL s = Owned tid ->
     star (othersR lockR tid) s s' ->
     get GCache s' = get GCache s.
@@ -312,7 +343,7 @@ Proof.
     intuition eauto; try congruence.
 Qed.
 
-Lemma virt_disk_readonly' : forall tid s s',
+Lemma virt_disk_readonly' : forall tid (s s':S),
     get GCacheL s = Owned tid ->
     othersR lockR tid s s' ->
     get GDisk s' = get GDisk s /\
@@ -323,7 +354,7 @@ Proof.
   deex; eauto; inv_protocol.
 Qed.
 
-Lemma virt_disk_readonly : forall tid s s',
+Lemma virt_disk_readonly : forall tid (s s':S),
     get GCacheL s = Owned tid ->
     star (othersR lockR tid) s s' ->
     get GDisk s' = get GDisk s.
@@ -333,7 +364,7 @@ Proof.
     intuition eauto; try congruence.
 Qed.
 
-Lemma cache_lock_owner_unchanged' : forall tid s s',
+Lemma cache_lock_owner_unchanged' : forall tid (s s':S),
     othersR lockR tid s s' ->
     get GCacheL s = Owned tid ->
     get GCacheL s' = Owned tid.
@@ -342,7 +373,7 @@ Proof.
   deex; inv_protocol.
 Qed.
 
-Lemma cache_lock_owner_unchanged : forall tid s s',
+Lemma cache_lock_owner_unchanged : forall tid (s s':S),
     star (othersR lockR tid) s s' ->
     get GCacheL s = Owned tid ->
     get GCacheL s' = Owned tid.
@@ -616,12 +647,21 @@ Ltac standardize_mem_fields :=
            rewrite <- H in *
          end.
 
+Ltac derive_local_relations :=
+  repeat match goal with
+         | [ H: star (othersR R _) _ _ |- _ ] =>
+            learn H (rewrite others_cache_relation_holds in H)
+         | [ H: star (othersR LockR _) _ _ |- _ ] =>
+            learn H (rewrite others_lock_relation_holds in H)
+         end.
+
 Hint Unfold pred_in : prog.
 
 Ltac simplify :=
   repeat deex;
   unfold_progR;
   step_simplifier;
+  derive_local_relations;
   learn_invariants;
   repeat autounfold with prog in *;
   learn_some_addr;
@@ -689,8 +729,6 @@ Qed.
 
 Hint Resolve ghost_lock_inv_preserved.
 
-Hint Resolve no_confusion_memVars.
-Hint Resolve no_confusion_stateVars.
 
 Ltac vars_distinct :=
   repeat rewrite member_index_eq_var_index;
@@ -762,6 +800,10 @@ Qed.
 Hint Resolve only_GCache_modified
              only_Cache_modified.
 
+Hint Extern 5 (get _ _ = get _ (set _ _ _)) => solve_get_set.
+Hint Extern 5 (get _ (set _ _ _) = get _ _) => solve_get_set.
+Hint Constructors lock_protocol.
+
 Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
@@ -782,17 +824,12 @@ Proof.
   valid_match_opt; hoare pre simplify with finish.
 
   - eapply lock_relation_preserved; eauto.
-    unfold lockR; intuition eauto;
-      try solve [ eapply NoChange; solve_get_set ];
-      unfold lock_protects; intuition eauto; solve_get_set.
+    unfold lockR, lock_protects; intuition eauto.
 
   - eapply lock_invariant_preserved; eauto.
     unfold lockI; intuition eauto.
     simpl_get_set.
     unfold pred_in; eauto.
-    eapply ghost_lock_inv_preserved; eauto; solve_get_set.
-
-    solve_get_set.
 Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
@@ -836,9 +873,18 @@ Proof.
               unfold ProgI in *;
               unfold_progR)
   with (finish;
-         do 4 learn_invariants;
-         cleanup;
-         intuition trivial).
+         destruct_ands;
+         derive_local_relations;
+         match goal with
+         | [ H: Inv _ _ _ |- _ ] =>
+            learn H (apply cache_invariant_holds in H)
+         end;
+         repeat learn_invariants;
+         cleanup).
+
+  repeat (autounfold with prog in *).
+  destruct_ands.
+  congruence.
 
   repeat match goal with
          | [ H: cache_get ?c ?a = None, H': ?c' = ?c |- _ ] =>
@@ -848,20 +894,18 @@ Proof.
          end.
   repeat match goal with
          | [ H: cache_get ?c ?a = None, H': cache_pred ?c ?vd ?d |- _ ] =>
-           learn_fact (cache_miss_mem_eq c vd a d H' H)
+           learn_fact (cache_miss_mem_eq a H' H)
          end.
-
-  Lemma others_R : forall tid,
-    rimpl (othersR R tid) (othersR cacheR tid).
-  Proof.
-    unfold othersR, rimpl.
-    intros.
-    deex.
-    eexists; intuition eauto.
-    apply cache_relation_holds; auto.
-  Qed.
-
-  rewrite others_R in H13.
+  repeat match goal with
+  | [ H: context[ret_] |- _ ] => idtac H;
+    let t := type of H in idtac t;
+    fail
+  end.
+  repeat match goal with
+  | [ H: context[v] |- _ ] => idtac H;
+    let t := type of H in idtac t;
+    fail
+  end.
 Admitted.
 
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
