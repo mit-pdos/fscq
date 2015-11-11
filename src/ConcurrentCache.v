@@ -762,39 +762,49 @@ Hint Resolve Cache_neq_CacheL
              GCache_neq_GCacheL
              GCache_neq_GDisk.
 
-(* TODO: should automate these two modified lemmas *)
+Ltac distinguish_indices :=
+  match goal with
+  | [ |- member_index ?m <> member_index ?m' ] =>
+    case_eq (Nat.eq_dec (member_index m') (member_index m)); intros; auto;
+    exfalso;
+    match goal with
+    | [ H: member_index m' = member_index m |- _ ] =>
+      rewrite H in *; clear H
+    end
+  end.
+
+Lemma hin_get_variables : forall contents vartypes
+                            (vars: variables contents vartypes)
+                            t (v: var vartypes t),
+    HIn (get v vars) vars.
+Proof.
+  apply hin_get.
+Qed.
+
+Hint Resolve hin_get_variables.
+Hint Resolve -> hin_index_vars.
+Hint Resolve <- hin_index_vars.
+
 Lemma only_GCache_modified : forall s c',
   modified stateVars s (set GCache c' s).
 Proof.
-  unfold modified; intros.
+  unfold modified, GCache; intros.
   rewrite hin_index_vars in H.
   rewrite get_set_other;
     trivial.
-  case_eq (PeanoNat.Nat.eq_dec (member_index GCache) (member_index m)); intros; auto.
-  rewrite <- e in *.
-  exfalso.
-  apply H.
-  apply hin_index_vars.
-  (* auto can't find this since variables isn't syntactically equal to the
-  expression in the theorem *)
-  apply hin_get.
+
+  distinguish_indices; auto.
 Qed.
 
 Lemma only_Cache_modified : forall m c',
   modified memVars m (set Cache c' m).
 Proof.
-  unfold modified; intros.
+  unfold modified, Cache; intros.
   rewrite hin_index_vars in H.
   rewrite get_set_other;
     trivial.
-  case_eq (PeanoNat.Nat.eq_dec (member_index Cache) (member_index m0)); intros; auto.
-  rewrite <- e in *.
-  exfalso.
-  apply H.
-  apply hin_index_vars.
-  (* auto can't find this since variables isn't syntactically equal to the
-  expression in the theorem *)
-  apply hin_get.
+
+  distinguish_indices; auto.
 Qed.
 
 Hint Resolve only_GCache_modified
