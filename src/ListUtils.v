@@ -1876,3 +1876,12 @@ Proof.
   rewrite firstn_length.
   rewrite Nat.min_l; omega.
 Qed.
+
+
+Theorem rev_injective :
+  forall A (l1 l2 : list A), rev l1 = rev l2 -> l1 = l2.
+Proof.
+  intros.
+  rewrite <- rev_involutive. rewrite <- H. rewrite -> rev_involutive.
+  reflexivity.
+Qed.
