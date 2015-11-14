@@ -454,29 +454,23 @@ Local Ltac t :=
   match goal with
   | [ H: context[HIn _ _] |- _ ] =>
     rewrite hin_index_vars in H
-  end; rewrite get_set_other; trivial;
+  end; rewrite get_set_other; eauto;
   distinguish_indices; auto.
 
-Lemma only_GCache_modified : forall s c',
-  modified stateVars s (set GCache c' s).
+Lemma modified_nothing : forall contents vartypes
+  (vars: variables contents vartypes)
+  (m: hlist (fun T:Type => T) contents),
+  modified vars m m.
 Proof.
-  t.
+  unfold modified; intros; auto.
 Qed.
 
-Lemma only_Cache_modified : forall m c',
-  modified memVars m (set Cache c' m).
-Proof.
-  t.
-Qed.
-
-Lemma only_CacheL_modified : forall m l,
-  modified memVars m (set CacheL l m).
-Proof.
-  t.
-Qed.
-
-Lemma only_GCacheL_modified : forall s l,
-  modified stateVars s (set GCacheL l s).
+Lemma one_more_modified : forall contents vartypes
+  (vars: variables contents vartypes)
+  t v (val': t)
+  (m m': hlist (fun T:Type => T) contents),
+  modified vars m m' ->
+  modified vars m (set (get v vars) val' m').
 Proof.
   t.
 Qed.
@@ -491,10 +485,11 @@ Hint Immediate Cache_neq_CacheL
 
 Hint Resolve not_eq_sym.
 
-Hint Immediate only_GCache_modified
-             only_Cache_modified
-             only_CacheL_modified
-             only_GCacheL_modified.
+Hint Unfold GCache GCacheL GDisk Cache CacheL : modified.
+Hint Resolve modified_nothing one_more_modified : modified.
+
+Ltac solve_modified :=
+  solve [ autounfold with modified; eauto with modified ].
 
 Hint Extern 5 (get _ _ = get _ (set _ _ _)) => solve_get_set.
 Hint Extern 5 (get _ (set _ _ _) = get _ _) => solve_get_set.
@@ -685,13 +680,14 @@ Ltac solve_global_transitions :=
   repeat lazymatch goal with
   | [ |- forall _, _ ] => progress intros
   | [ |- _ /\ _ ] => split
-  end; simpl_get_set; try congruence; eauto.
+  end; simpl_get_set.
 
 Ltac finish :=
   time_solver (
+  try time "solve_global_transitions" solve_global_transitions;
   try congruence;
-  try solve_global_transitions;
   eauto;
+  try time "solve_modified" solve_modified;
   let solver := cancel_with_split idtac ltac:(destruct_ands; repeat split); eauto in
   try time "backtrack_pred" backtrack_pred_solve solver).
 
@@ -955,32 +951,38 @@ Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     cacheI m s d /\
+                     inv m s d /\
                      get GCacheL s = Owned tid /\
                      vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            cacheI m' s' d' /\
-                            get GCacheL s = Owned tid /\
+                            inv m' s' d' /\
+                            get GCacheL s' = Owned tid /\
                             exists rest', vd' |= F * a |-> (Valuset v rest') /\
                                      s0' = s0
      | CRASH d'c: d'c = d
     }} locked_disk_write a v.
 Proof.
-  intros.
-  hoare pre simplify with
+  time "hoare" hoare pre simplify with
     (finish;
-    try match goal with
-    | [ |- lock_protects _ _ _ _ _ ] =>
-      unfold lock_protects; intros; solve_get_set
-    | [ |- cache_pred (cache_add_dirty _ _ _) (upd _ _ _) _ ] =>
-      case_cache_val;
-        cbn; try cache_vd_val; repeat deex;
-        cleanup; eauto
-    end).
+      time "simpl_get_set *" simpl_get_set in *;
+      try congruence;
+      try match goal with
+          | [ |- ghost_lock_invariant _ _ _ _ ] =>
+            time "eauto inv_preserved"
+              solve [ eauto using ghost_lock_inv_preserved ]
+          end).
+
+  (* former proof did case analysis on cache_get c a
+    for the cache_pred goals *)
+  admit.
+  admit.
+  admit.
 
   eapply pimpl_apply;
-    [ | eapply ptsto_upd ];
-    dispatch.
+    [ | eapply ptsto_upd ].
+  cancel.
+  apply sep_star_comm.
+  eauto using ptsto_valid_iff.
 Qed.
 
 Definition evict {T} a rx : prog _ _ T :=
