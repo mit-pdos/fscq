@@ -78,7 +78,6 @@ Ltac step_simplifier :=
 
 Ltac simpl_goal :=
   repeat match goal with
-         | [ |- exists _, _ ] => eexists
          | [ |- _ /\ _ ] => split
          | [ |- forall _, _ ] => intros
          end.

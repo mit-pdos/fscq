@@ -836,25 +836,27 @@ Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
 Tactic Notation "hypmatch" constr(pattern) "as" ident(n) :=
   match goal with | [ H: context [ pattern ] |- _ ] => rename H into n end.
 
-Ltac cancel_with t :=
+Ltac cancel_with_split t splitter :=
   intros;
   unfold stars; simpl; try subst;
   pimpl_crash;
   norm;
   try match goal with
       | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
-        solve [ apply stars_or_left; cancel_with t
-              | apply stars_or_right; cancel_with t ]
+        solve [ apply stars_or_left; cancel_with_split t splitter
+              | apply stars_or_right; cancel_with_split t splitter ]
       | [ |- _ =p=> _ ] => cancel'
       end;
-  intuition;
-  try ( pred_apply; cancel_with t );
+  splitter;
+  try ( pred_apply; cancel_with_split t splitter );
   try congruence;
   try t;
   unfold stars; simpl; inv_option_eq;
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
+
+Ltac cancel_with t := cancel_with_split t intuition.
 
 Ltac cancel := cancel_with idtac.
 

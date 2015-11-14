@@ -3,7 +3,7 @@ Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import FunctionalExtensionality.
 Require Import Eqdep_dec.
-Require Import ForwardChaining.
+Require Import Automation.
 
 Set Implicit Arguments.
 
@@ -117,96 +117,7 @@ Ltac distinguish_two_addresses a1 a2 :=
     subst;
     try congruence.
 
-Ltac remove_duplicate :=
-  match goal with
-  | [ H: ?p, H': ?p |- _ ] =>
-    match type of p with
-    | Prop => clear H'
-    end
-  end.
-
-Ltac remove_refl :=
-  match goal with
-  | [ H: ?a = ?a |- _ ] => clear dependent H
-  end.
-
-Ltac remove_sym_neq :=
-  match goal with
-  | [ H: ?a <> ?a', H': ?a' <> ?a |- _ ] => clear dependent H'
-  end.
-
-Ltac remove_unit :=
-  match goal with
-  | [ a: unit |- _ ] => clear a
-  end.
-
-Ltac same_cache_vals :=
-  match goal with
-  | [ H: cache_get ?c ?a = Some ?v,
-         H': cache_get ?c ?a = Some ?v' |- _ ] =>
-    rewrite H in H'; inversion H'; subst
-  | [ H: cache_get ?c ?a = Some ?v,
-         H': cache_get ?c ?a = None |- _ ] =>
-    rewrite H in H'; inversion H'
-  end.
-
-Ltac same_disk_vals :=
-  match goal with
-  | [ H: ?d ?a = Some ?v,
-         H': ?d ?a = Some ?v' |- _ ] =>
-    rewrite H in H'; inversion H'; subst
-  | [ H: ?d ?a = Some ?v,
-         H': ?d ?a = None |- _ ] =>
-    rewrite H in H'; inversion H'
-  end.
-
-Ltac simpl_match :=
-  match goal with
-  | [ H: ?d = ?d' |- context[match ?d with _ => _ end] ] =>
-    replace d with d';
-      try lazymatch goal with
-      | [ |- context[match d' with _ => _ end] ] => fail
-      end
-  | [ H: context[match ?d with _ => _ end] |- _ ] =>
-    replace d in H
-  end.
-
-(* test simpl_match failure *)
-Goal forall (vd m: DISK) a,
-    vd a = m a ->
-    vd a = match (m a) with
-         | Some v => Some v
-         | None => None
-           end.
-Proof.
-  intros.
-  (simpl_match; fail "should not work here")
-  || idtac.
-Abort.
-
-Goal forall (vd m: DISK) v v' a,
-    vd a =  Some v ->
-    m a = Some v' ->
-    vd a = match (m a) with
-           | Some _ => Some v
-           | None => None
-           end.
-Proof.
-  intros.
-  simpl_match; solve [ assumption ].
-  Fail idtac "should be solved".
-Abort.
-
-Ltac cleanup :=
-  repeat (remove_duplicate
-          || remove_refl
-          || remove_unit
-          || remove_sym_neq
-          || same_cache_vals
-          || same_disk_vals
-          || simpl_match);
-  try congruence;
-  eauto.
+Local Ltac finish := cleanup; eauto.
 
 Ltac distinguish_addresses :=
   try match goal with
@@ -221,7 +132,7 @@ Ltac distinguish_addresses :=
     distinguish_two_addresses a1 a2
   end;
   try rewrite weq_same in *;
-  cleanup.
+  finish.
 
 Ltac complete_mem_equalities :=
   try match goal with
@@ -248,7 +159,7 @@ Ltac prove_cache_pred :=
   repeat deex;
   complete_mem_equalities;
   distinguish_addresses;
-  cleanup.
+  finish.
 
 Ltac destruct_matches_in e :=
   lazymatch e with
@@ -529,7 +440,7 @@ Proof.
   - unfold mem_disjoint; intro; repeat deex.
     prove_cache_pred; replace_cache_vals; eauto.
   - prove_cache_pred; destruct matches in *;
-    rewrite_cache_get; cleanup.
+    rewrite_cache_get; finish.
   - unfold ptsto; intuition; distinguish_addresses.
 Qed.
 
@@ -545,12 +456,12 @@ Proof.
   repeat deex.
   unfold ptsto in *; intuition.
   prove_cache_pred;
-    rewrite_cache_get; disk_equalities; distinguish_addresses; cleanup.
+    rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
   eexists; intuition eauto.
 
   destruct matches.
 
-  destruct matches; repeat deex; cleanup; eauto.
+  destruct matches; repeat deex; finish; eauto.
   intuition; distinguish_addresses.
 Qed.
 
@@ -570,7 +481,7 @@ Proof.
   intuition;
     prove_cache_pred; replace_cache_vals;
     try solve [ destruct matches ];
-    rewrite_cache_get; cleanup.
+    rewrite_cache_get; finish.
 Qed.
 
 Lemma cache_pred_dirty' : forall c vd a v v' rest,
@@ -585,10 +496,10 @@ Proof.
   repeat deex.
   unfold ptsto in *; intuition.
   prove_cache_pred; distinguish_addresses;
-  rewrite_cache_get; disk_equalities; distinguish_addresses; cleanup.
+  rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
   destruct matches; eauto.
 
-  destruct matches; repeat deex; cleanup; eauto.
+  destruct matches; repeat deex; finish; eauto.
   intuition; distinguish_addresses.
 Qed.
 
@@ -633,7 +544,7 @@ Proof.
   prove_cache_pred;
   rewrite_cache_get;
   complete_mem_equalities;
-  cleanup.
+  finish; eauto.
 Qed.
 
 Lemma cache_pred_stable_clean_write : forall c vd a v rest v' d vs',
@@ -646,7 +557,7 @@ Proof.
   prove_cache_pred;
   rewrite_cache_get;
   complete_mem_equalities;
-  cleanup.
+  finish.
 Qed.
 
 Lemma cache_pred_stable_miss_write : forall c vd a v rest v' d vs',
@@ -659,7 +570,7 @@ Proof.
   prove_cache_pred;
   rewrite_cache_get;
   complete_mem_equalities;
-  cleanup.
+  finish.
 Qed.
 
 Lemma cache_pred_stable_evict : forall c a vd d v,
@@ -670,7 +581,7 @@ Proof.
   prove_cache_pred; eauto;
   try solve [ autorewrite with cache in *; eauto ].
 
-  erewrite cache_evict_get; cleanup.
+  erewrite cache_evict_get; finish.
 Qed.
 
 Lemma cache_pred_stable_clean_noop : forall c vd d a v,
@@ -695,7 +606,7 @@ Proof.
     learn H (apply cache_get_find_dirty in H)
   end; simpl_match.
   prove_cache_pred; replace_cache_vals; rewrite_cache_get;
-    repeat deex; cleanup.
+    repeat deex; finish.
 Qed.
 
 Lemma cache_pred_stable_remove_clean : forall c vd a,
@@ -733,11 +644,11 @@ Proof.
   repeat deex.
   unfold ptsto in *; intuition.
   prove_cache_pred; distinguish_addresses; replace_cache_vals;
-  rewrite_cache_get; disk_equalities; distinguish_addresses; cleanup.
+  rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
 
   destruct matches.
 
-  destruct matches; repeat deex; cleanup; eauto.
+  destruct matches; repeat deex; finish; eauto.
   intuition; distinguish_addresses.
 Qed.
 
@@ -749,7 +660,7 @@ Theorem cache_pred_same_virt_disk : forall c vd vd' d,
     vd = vd'.
 Proof.
   prove_cache_pred.
-  destruct matches in *; repeat deex; cleanup.
+  destruct matches in *; repeat deex; finish.
 Qed.
 
 Theorem cache_pred_same_virt_disk_eq : forall c c' vd vd' d d',
@@ -769,14 +680,14 @@ Theorem cache_pred_same_disk : forall c vd d d',
     d = d'.
 Proof.
   prove_cache_pred.
-  destruct matches in *; repeat deex; cleanup.
+  destruct matches in *; repeat deex; finish.
 Qed.
 
 Theorem cache_pred_same_disk_eq : forall c c' vd vd' d d',
-    c = c' ->
-    vd = vd' ->
     cache_pred c vd d ->
     cache_pred c' vd' d' ->
+    c = c' ->
+    vd = vd' ->
     d = d'.
 Proof.
   intros; subst.

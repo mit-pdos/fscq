@@ -35,6 +35,9 @@ Definition buffer_valu (vs:valuset) v :=
 Definition latest_valu (vs:valuset) :=
   let 'Valuset last _ := vs in last.
 
+Definition pending_valus (vs:valuset) :=
+  let 'Valuset _ pending := vs in pending.
+
 Definition synced (vs:valuset) :=
   let 'Valuset last _ := vs in Valuset last nil.
 
@@ -912,3 +915,53 @@ Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ Commit _; _ }} => apply Commit_ok : prog.
 Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
+
+Lemma progR_is : forall Scontents R1 R2 tid (s s':S Scontents),
+  star (ProgR R1 R2 tid) s s' ->
+  star (R1 tid) s s' /\
+  star (R2 tid) s s'.
+Proof.
+  unfold ProgR.
+  induction 1; intuition eauto.
+Qed.
+
+Lemma othersR_and : forall Scontents R1 R2 tid (s s':S Scontents),
+  othersR (fun tid s s' => R1 tid s s' /\ R2 tid s s') tid s s' ->
+  othersR R1 tid s s' /\
+  othersR R2 tid s s'.
+Proof.
+  unfold othersR; intros.
+  deex; eauto.
+Qed.
+
+Lemma progR'_is : forall Scontents R1 R2 tid (s s':S Scontents),
+  star (ProgR' R1 R2 tid) s s' ->
+  star (othersR R1 tid) s s' /\
+  star (othersR R2 tid) s s'.
+Proof.
+  unfold ProgR', ProgR.
+  induction 1;
+    try match goal with
+    | [ H: othersR _ _ _ _ |- _ ] => apply othersR_and in H
+    end; intuition eauto.
+Qed.
+
+Lemma progI_is : forall Mcontents Scontents
+                   I1 I2 (m:M Mcontents) (s:S Scontents) d,
+  ProgI I1 I2 m s d ->
+  I1 m s d /\
+  I2 m s d.
+Proof.
+  unfold ProgI;
+  intuition.
+Qed.
+
+Ltac unfold_progR :=
+  repeat match goal with
+         | [ H: star (ProgR _ _ _) _ _ |- _ ] =>
+           apply progR_is in H; destruct H
+         | [ H: star (ProgR' _ _ _) _ _ |- _ ] =>
+          apply progR'_is in H; destruct H
+         | [ H: ProgI _ _ _ _ _ |- _ ] =>
+          apply progI_is in H; destruct H
+         end.

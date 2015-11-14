@@ -1,26 +1,71 @@
-Ltac learn_tac H t :=
+Inductive Learnt {P:Prop} :=
+  | AlreadyLearnt (H:P).
+
+Ltac check_consistency :=
+  try lazymatch goal with
+  | [ H: @Learnt ?P, H': @Learnt ?P |- _ ] =>
+    fail 10 "learnt" P "twice:" H H'
+  end.
+
+Local Ltac learn_tac H t :=
   let H' := fresh in
   pose proof H as H';
     t;
-    lazymatch type of H with
-    | ?t =>
-      try lazymatch goal with
-        | [ Hcopy: t, H: t |- _ ] =>
-          fail 1 "already know that"
-        end
+    let P := type of H in
+    lazymatch goal with
+      | [ Hlearnt: @Learnt P |- _ ] =>
+        fail 0 "already knew" P "through" Hlearnt
+      | _ => pose proof (AlreadyLearnt H)
     end.
 
-Ltac learn_fact H :=
-  match type of H with
-    | ?t =>
-      match goal with
-      | [ H': t |- _ ] =>
-        fail 2 "already knew that" H'
-      | _ => pose proof H
-      end
+Local Ltac learn_fact H :=
+  let P := type of H in
+  lazymatch goal with
+    (* matching the type of H with the Learnt hypotheses means the
+    learning fails even when the proposition is known by a different
+    but unifiable type term *)
+  | [ Hlearnt: @Learnt P |- _ ] =>
+    fail 0 "already knew" P "through" Hlearnt
+  | _ => pose proof H; pose proof (AlreadyLearnt H)
   end.
 
 Tactic Notation "learn" hyp(H) tactic(t) := learn_tac H t.
+Tactic Notation "learn" "that" constr(H) := learn_fact H.
+
+Module LearnExample.
+
+  Parameter P : nat -> Prop.
+  Parameter Q R : nat -> nat -> Prop.
+
+  Axiom P_Q : forall {x}, P x -> exists y, Q x y.
+  Axiom Q_R : forall {x y}, P x -> Q x y -> R y x.
+
+  Goal forall x, P x -> exists y, R y x.
+  Proof.
+    repeat match goal with
+           | _ => progress intros
+           | [ H: _ /\ _ |- _ ] => destruct H
+           | [ H: exists _, _ |- _ ] => destruct H
+           | [ H: P _ |- _ ] => learn that (P_Q H)
+           | [ H: P ?x, H': Q ?x _ |- _ ] => learn that (Q_R H H')
+           | [ |- exists _, _ ] => eexists
+           | _ => eassumption
+           end.
+  Qed.
+
+  Goal forall x, P x -> exists y, R y x.
+  Proof.
+    repeat match goal with
+           | _ => progress intros
+           | [ H: _ /\ _ |- _ ] => destruct H
+           | [ H: exists _, _ |- _ ] => destruct H
+           | [ H: P _ |- _ ] => learn H (apply P_Q in H)
+           | [ H: P ?x, H': Q ?x _ |- _ ] => learn H (apply Q_R in H'; trivial)
+           | [ |- exists _, _ ] => eexists
+           | _ => eassumption
+           end.
+  Qed.
+End LearnExample.
 
 Ltac complete_mem_equalities :=
   try match goal with

@@ -259,8 +259,8 @@ Qed.
 
 Hint Rewrite hmap_length : hlist.
 Hint Rewrite get_set : hlist.
-Hint Rewrite get_set_other using (now cbn) : hlist.
-Hint Rewrite set_get using (now cbn) : hlist.
+Hint Rewrite get_set_other using (cbn; solve [ auto 3 ]) : hlist.
+Hint Rewrite set_get using (cbn; solve [ auto 3 ]) : hlist.
 
 (* this is the best way to use get_set without getting into trouble *)
 Ltac simpl_get_set_goal :=
@@ -269,8 +269,12 @@ Ltac simpl_get_set_goal :=
 Ltac simpl_get_set_hyp H :=
   autorewrite with hlist in H; trivial.
 
+Ltac simpl_get_set_all :=
+  autorewrite with hlist in *; trivial.
+
 Tactic Notation "simpl_get_set" := simpl_get_set_goal.
 Tactic Notation "simpl_get_set" "in" hyp(H) := simpl_get_set_hyp H.
+Tactic Notation "simpl_get_set" "in" "*" := simpl_get_set_all.
 
 (* certainly we don't want users to reason about get_impl and set_impl *)
 Global Opaque get set.

@@ -9,7 +9,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      MemMatch DirName DirTree ByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON \
 		  Hlist Star EventCSL EventCSLrecovery EventCSLauto \
-		  Locking MemCache ForwardChaining \
+		  Locking Automation MemCache ForwardChaining \
 		  Bank ConcurrentCache ConcurrentLog
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
