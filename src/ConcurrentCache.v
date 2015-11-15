@@ -1188,22 +1188,20 @@ Theorem sync_ok : forall a,
      | CRASH d'c: d'c = d
     }} sync a.
 Proof.
-  hoare pre simplify with
-  (finish;
-    try lazymatch goal with
-      | [ |- lock_protects _ _ _ _ _ ] =>
-        unfold lock_protects; solve_get_set
+  let simp_step :=
+    simplify_step
+    || (try lazymatch goal with
+          | [ H: _ \/ _ |- _ ] => destruct H
+        end) in
+  time "hoare" hoare pre (simplify' simp_step) with
+    (finish;
+      try lazymatch goal with
+      | [ |- cache_pred _ _ _ ] =>
+        solve [
+          eapply cache_pred_clean'; autorewrite with cache; eauto
+          | eapply cache_pred_miss_stable; autorewrite with cache; eauto
+        ]
       end).
-
-  eapply cache_pred_clean'; autorewrite with cache; eauto.
-
-  apply sep_star_comm.
-  eapply ptsto_upd; pred_apply; cancel.
-
-  eapply cache_pred_miss'; autorewrite with cache; eauto.
-
-  apply sep_star_comm.
-  eapply ptsto_upd; pred_apply; cancel.
 Qed.
 
 Hint Extern 4 {{sync _; _}} => apply sync_ok : prog.
