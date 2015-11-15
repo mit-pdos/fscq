@@ -495,9 +495,12 @@ Hint Extern 5 (get _ _ = get _ (set _ _ _)) => solve_get_set.
 Hint Extern 5 (get _ (set _ _ _) = get _ _) => solve_get_set.
 Hint Extern 5 (get _ (set _ _ _) = _) => solve_get_set.
 
-Hint Resolve ghost_lock_owned.
+(* ghost_lock_owned, if needed, should be forward chained *)
 Hint Constructors lock_protocol.
 Hint Constructors ghost_lock_invariant.
+Hint Extern 3 (ghost_lock_invariant _ _ _ _) =>
+  simple eapply ghost_lock_inv_preserved;
+    [ eassumption | .. ].
 
 Ltac expand_inv :=
   match goal with
@@ -686,7 +689,7 @@ Ltac finish :=
   time_solver (
   try time "solve_global_transitions" solve_global_transitions;
   try time "congruence" congruence;
-  eauto;
+  try time "finish eauto" solve [ eauto ];
   try time "solve_modified" solve_modified;
   let solver := cancel_with_split idtac ltac:(destruct_ands; repeat split); eauto in
   try time "backtrack_pred" backtrack_pred_solve solver).
@@ -743,12 +746,7 @@ Theorem locked_disk_read_ok : forall a,
     }} locked_disk_read a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-  valid_match_ok; time "hoare" hoare pre simplify with
-    (finish;
-      try lazymatch goal with
-          | [ |- ghost_lock_invariant _ _ _ _ ] =>
-              eauto using ghost_lock_inv_preserved
-          end).
+  valid_match_ok; time "hoare" hoare pre simplify with finish.
 Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
@@ -854,11 +852,10 @@ Theorem locked_async_disk_read_ok : forall a,
 Proof.
   hoare pre simplify with finish.
   valid_match_ok;
-    time "hoare" hoare pre (simplify; time "standardize_mem_fields" standardize_mem_fields) with
+    time "hoare" hoare pre (simplify;
+      time "standardize_mem_fields" standardize_mem_fields) with
     (finish;
       try lazymatch goal with
-          | [ |- ghost_lock_invariant _ _ _ _ ] =>
-            eauto using ghost_lock_inv_preserved
           | [ |- crash _ ] =>
             eauto using cache_pred_same_disk_eq
           end).
@@ -979,7 +976,7 @@ Proof.
   time "hoare" hoare pre (simplify' simp_step) with
     (finish;
       time "simpl_get_set *" simpl_get_set in *;
-      try congruence;
+      try time "congruence" congruence;
       try match goal with
           | [ |- ghost_lock_invariant _ _ _ _ ] =>
             time "eauto inv_preserved"
@@ -1005,19 +1002,19 @@ Theorem locked_evict_ok : forall a,
     stateS TID: tid |-
     {{ F v0,
      | PRE d m s0 s: let vd := virt_disk s in
-                     cacheI m s d /\
+                     inv m s d /\
                      get GCacheL s = Owned tid /\
                      vd |= F * a |-> v0
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            cacheI m s d /\
-                            get GCacheL s = Owned tid /\
+                            inv m s d /\
+                            get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
                             s0' = s0
      | CRASH d'c : d'c = d
     }} evict a.
 Proof.
-  hoare pre simplify with finish.
-  valid_match_ok; hoare pre simplify with finish.
+  time "hoare" hoare pre simplify with finish.
+  valid_match_ok; time "hoare" hoare pre simplify with finish.
 Qed.
 
 Definition writeback {T} a rx : prog _ _ T :=
