@@ -1020,7 +1020,7 @@ Module DISKLOG.
     | Unsync : nat -> nat -> state
     .
 
-    Definition rep xp state : @pred addr (@weq _) valuset :=
+    Definition rep xp state : @rawpred :=
       match state with
       | Synced n =>   ((LAHdr xp) |-> (hdr2val (mk_header n), nil)) %pred
       | Unsync n o => ((LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)])) %pred
@@ -1069,6 +1069,7 @@ Module DISKLOG.
       unfold read.
       hoare.
       subst; rewrite val2hdr2val; simpl.
+      unfold mk_header, Rec.recget'; simpl.
       rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
