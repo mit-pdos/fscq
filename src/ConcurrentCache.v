@@ -685,7 +685,7 @@ Ltac solve_global_transitions :=
 Ltac finish :=
   time_solver (
   try time "solve_global_transitions" solve_global_transitions;
-  try congruence;
+  try time "congruence" congruence;
   eauto;
   try time "solve_modified" solve_modified;
   let solver := cancel_with_split idtac ltac:(destruct_ands; repeat split); eauto in
@@ -743,8 +743,12 @@ Theorem locked_disk_read_ok : forall a,
     }} locked_disk_read a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-  valid_match_ok; time "hoare" hoare pre simplify with finish.
-  eauto using ghost_lock_inv_preserved.
+  valid_match_ok; time "hoare" hoare pre simplify with
+    (finish;
+      try lazymatch goal with
+          | [ |- ghost_lock_invariant _ _ _ _ ] =>
+              eauto using ghost_lock_inv_preserved
+          end).
 Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
@@ -852,9 +856,11 @@ Proof.
   valid_match_ok;
     time "hoare" hoare pre (simplify; time "standardize_mem_fields" standardize_mem_fields) with
     (finish;
-      eauto using ghost_lock_inv_preserved;
       try lazymatch goal with
-          | [ |- crash _ ] => eauto using cache_pred_same_disk_eq
+          | [ |- ghost_lock_invariant _ _ _ _ ] =>
+            eauto using ghost_lock_inv_preserved
+          | [ |- crash _ ] =>
+            eauto using cache_pred_same_disk_eq
           end).
 Qed.
 
@@ -947,6 +953,8 @@ Definition locked_disk_write {T} a v rx : prog _ _ T :=
          Assgn Cache c';;
          rx tt.
 
+Hint Resolve ptsto_upd'.
+
 Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
     {{ F v0 rest,
@@ -962,7 +970,13 @@ Theorem locked_disk_write_ok : forall a v,
      | CRASH d'c: d'c = d
     }} locked_disk_write a v.
 Proof.
-  time "hoare" hoare pre simplify with
+  let simp_step :=
+    simplify_step ||
+    lazymatch goal with
+    | [ |- context[match (cache_get ?c ?a) with _ => _ end] ] =>
+      case_cache_val' c a
+    end in
+  time "hoare" hoare pre (simplify' simp_step) with
     (finish;
       time "simpl_get_set *" simpl_get_set in *;
       try congruence;
@@ -971,18 +985,6 @@ Proof.
             time "eauto inv_preserved"
               solve [ eauto using ghost_lock_inv_preserved ]
           end).
-
-  (* former proof did case analysis on cache_get c a
-    for the cache_pred goals *)
-  admit.
-  admit.
-  admit.
-
-  eapply pimpl_apply;
-    [ | eapply ptsto_upd ].
-  cancel.
-  apply sep_star_comm.
-  eauto using ptsto_valid_iff.
 Qed.
 
 Definition evict {T} a rx : prog _ _ T :=

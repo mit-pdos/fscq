@@ -920,6 +920,16 @@ Proof.
     destruct (AEQ a' a); pred.
 Qed.
 
+Lemma ptsto_upd' : forall F a v v' m,
+  (F * a |-> v)%pred m ->
+  (F * a |-> v')%pred (upd m a v').
+Proof.
+  intros.
+  apply sep_star_comm.
+  apply sep_star_comm in H.
+  eapply ptsto_upd; eauto.
+Qed.
+
 Lemma ptsto_upd_bwd:
   forall a b v w F m,
   a <> b ->
