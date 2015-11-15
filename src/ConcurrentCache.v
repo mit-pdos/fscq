@@ -1111,13 +1111,14 @@ Proof.
   case_cache_val' (get Cache m) a;
     try cache_vd_val; repeat deex; cleanup.
 
-  all: valid_match_ok; hoare pre simplify with
-                        (finish;
-                          try lazymatch goal with
-                              | [ |- lock_protects _ _ _ _ _ ] =>
-                                unfold lock_protects; solve_get_set
-                              end;
-                        cbn; autorewrite with cache; auto).
+  all: valid_match_ok;
+    let simp_step :=
+      (simplify_step
+      || autorewrite with cache
+      || (try time "cbn *" progress cbn in *)) in
+    time "hoare" hoare pre (simplify' simp_step) with (finish;
+        time "simpl_get_set *" simpl_get_set in *;
+        try time "congruence" congruence).
 
   all: try solve [
              match goal with
@@ -1133,8 +1134,13 @@ Proof.
                eapply cache_pred_dirty in H
              end; eauto using cache_pred_determine ].
 
-  (* should not use prove_cache_pred here *)
-Admitted.
+  (* TODO: should not use prove_cache_pred here *)
+  assert (d a = Some (Valuset v0 rest)).
+  prove_cache_pred.
+
+  extensionality a'; distinguish_addresses;
+    autorewrite with cache; auto.
+Qed.
 
 Hint Extern 4 {{ writeback _; _ }} => apply writeback_ok : prog.
 
