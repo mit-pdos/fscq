@@ -665,8 +665,6 @@ Ltac backtrack_pred_solve_tac solver :=
 Tactic Notation "backtrack_pred_solve" tactic2(solver) :=
   backtrack_pred_solve_tac solver.
 
-Import Dbg.
-
 Ltac solve_global_transitions :=
   (* match only these types of goals *)
   lazymatch goal with
@@ -686,7 +684,7 @@ Ltac solve_global_transitions :=
   end; simpl_get_set.
 
 Ltac finish :=
-  time_solver (
+  try time "finisher" progress (
   try time "solve_global_transitions" solve_global_transitions;
   try time "congruence" congruence;
   try time "finish eauto" solve [ eauto ];
@@ -1228,6 +1226,9 @@ Theorem cache_sync_ok : forall a,
      | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
     }} cache_sync a.
 Proof.
-  hoare pre simplify with finish.
-  valid_match_ok; hoare pre simplify with finish.
+  time "hoare"  hoare pre simplify with finish.
+  valid_match_ok; time "hoare" hoare pre
+    (simplify; standardize_mem_fields) with finish.
 Qed.
+
+End Cache.
