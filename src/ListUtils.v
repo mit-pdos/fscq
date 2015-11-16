@@ -1435,6 +1435,15 @@ Proof.
   rewrite firstn_length_r; omega.
 Qed.
 
+Lemma setlen_nil : forall A n (def : A),
+  setlen nil n def = repeat def n.
+Proof.
+  unfold setlen; intros; simpl.
+  rewrite firstn_nil.
+  rewrite app_nil_l.
+  rewrite Nat.sub_0_r; auto.
+Qed.
+
 Lemma list_isloate_len : forall A tl hd (x : A),
   length (hd ++ x :: tl) = length hd + S (length tl).
 Proof.

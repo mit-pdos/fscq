@@ -140,12 +140,6 @@ Module AsyncRecArray (RA : RASig).
   Local Hint Resolve items_per_val_not_0 items_per_val_gt_0 items_per_val_gt_0'.
 
   Hint Rewrite firstn_nil : core.
-
-  Lemma setlen_nil : forall A n (def : A),
-    setlen nil n def = repeat def n.
-  Proof.
-    unfold setlen; t.
-  Qed.
   Hint Rewrite setlen_nil : core.
 
   Theorem block0_repeat : block0 = repeat item0 items_per_val.
@@ -703,12 +697,13 @@ Module AsyncRecArray (RA : RASig).
     admit.
   Admitted.
 
-  Lemma array_rep_sync_emp : forall xp a,
-    array_rep xp a (Synced nil) <=p=> [[ xparams_ok xp /\ a < (RALen xp) ]].
+  Lemma array_rep_sync_nil : forall xp a l,
+    array_rep xp a (Synced l) =p=> array_rep xp a (Synced nil) * array_rep xp a (Synced l).
   Proof.
     unfold array_rep, synced_array, rep_common, eqlen; intros.
-    split; cancel; subst; repeat setoid_rewrite ipack_nil; simpl; auto;
+    cancel; subst; repeat setoid_rewrite ipack_nil; simpl; auto;
     unfold items_valid in *; intuition.
+    cancel.
   Qed.
 
   Lemma well_formed_firstn : forall A n (a : list (Rec.data A)), 
@@ -1424,14 +1419,41 @@ Module DISKLOG.
   Lemma padded_log_length: forall l,
     length (padded_log l) = roundup (length l) DiskLogDescSig.items_per_val.
   Proof.
-    admit.
-  Admitted.
+    unfold padded_log, roundup; intros.
+    rewrite setlen_length; auto.
+  Qed.
+
+  Lemma nonzero_addrs_app_zero : forall a,
+    nonzero_addrs (a ++ [0]) = nonzero_addrs a.
+  Proof.
+    induction a; intros; simpl; auto.
+    destruct a; simpl; auto.
+  Qed.
+
+  Lemma nonzero_addrs_app_zeros : forall n a,
+    nonzero_addrs (a ++ repeat 0 n) = nonzero_addrs a.
+  Proof.
+    induction n; intros; simpl.
+    rewrite app_nil_r; auto.
+    rewrite <- cons_nil_app.
+    rewrite IHn.
+    apply nonzero_addrs_app_zero.
+  Qed.
 
   Lemma nonzero_addrs_padded_log : forall l,
     nonzero_addrs (map fst (padded_log l)) = nonzero_addrs (map fst l).
   Proof.
-    admit.
-  Admitted.
+    unfold padded_log; induction l; simpl; auto.
+    rewrite setlen_nil, repeat_is_nil; simpl; auto.
+    unfold roundup; rewrite divup_0; omega.
+    
+    destruct a, n; simpl;
+    rewrite <- IHl;
+    unfold setlen, roundup;
+    repeat rewrite firstn_oob, map_app by auto;
+    setoid_rewrite map_fst_repeat;
+    repeat rewrite nonzero_addrs_app_zeros; simpl; auto.
+  Qed.
 
   Definition read_ok : forall xp cs,
     {< F l,
@@ -1457,6 +1479,12 @@ Module DISKLOG.
     apply zero_lt_pow2.
   Qed.
 
+  Lemma ndesc_log_nil : ndesc_log nil = 0.
+  Proof.
+    unfold ndesc_log; simpl.
+    rewrite divup_0; auto.
+  Qed.
+
   Local Hint Resolve goodSize_0.
 
 
@@ -1467,6 +1495,9 @@ Module DISKLOG.
 
   Arguments Desc.array_rep : simpl never.
   Arguments Data.array_rep : simpl never.
+  Hint Extern 0 (okToUnify (Desc.array_rep _ _ _) (Desc.array_rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (Data.array_rep _ _ _) (Data.array_rep _ _ _)) => constructor : okToUnify.
+  Local Hint Resolve Forall_nil.
 
   Definition trunc_ok : forall xp cs,
     {< F l,
@@ -1485,17 +1516,16 @@ Module DISKLOG.
     step.
     step.
     unfold ndesc_log, vals_nonzero; simpl; rewrite divup_0.
-    rewrite Desc.array_rep_sync_emp, Data.array_rep_sync_emp; auto.
+    rewrite Desc.array_rep_sync_nil, Data.array_rep_sync_nil; auto.
     cancel.
-    admit. admit. admit.
-    
     cancel.
 
     (* crash conditions *)
     apply pimpl_or_r; right; cancel.
     apply pimpl_or_r; right.
     apply pimpl_or_r; right. cancel.
-    rewrite Desc.array_rep_sync_emp, Data.array_rep_sync_emp; auto.
+    rewrite Desc.array_rep_sync_nil, Data.array_rep_sync_nil, ndesc_log_nil; auto.
+    cancel.
     cancel.
     apply pimpl_or_r; left; cancel.
     apply pimpl_or_r; right; cancel.
