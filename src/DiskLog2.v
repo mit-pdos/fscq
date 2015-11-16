@@ -580,6 +580,44 @@ Module AsyncRecArray (RA : RASig).
   Local Hint Extern 0 (okToUnify (arrayN (RAStart ?b + ?a) _ _) (arrayN (RAStart ?b + ?a) _ _)) 
     => constructor : okToUnify.
 
+  Lemma well_formed_app_iff : forall A (a b : list (Rec.data A)) ,
+     Forall Rec.well_formed (a ++ b)
+     <-> Forall Rec.well_formed a /\ Forall Rec.well_formed b.
+  Proof.
+    intros; repeat (try split; rewrite Forall_forall in *; t).
+    destruct (in_app_or a b x); t.
+  Qed.
+
+  Lemma items_valid_app : forall xp st a b,
+    items_valid xp st (a ++ b) ->
+    items_valid xp st a /\ items_valid xp st b.
+  Proof.
+    unfold items_valid; intros; split; intros;
+    pose proof (well_formed_app_iff itemtype a b);
+    rewrite app_length in *; intuition.
+  Qed.
+
+  Lemma le_add_helper: forall a b c d,
+    b <= d -> a + d <= c -> a + b <= c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma items_valid_app2 : forall xp st a b,
+    length b <= (roundup (length a) items_per_val - length a)
+    -> items_valid xp st a
+    -> Forall Rec.well_formed b
+    -> items_valid xp st (a ++ b).
+  Proof.
+    unfold items_valid, roundup; intuition.
+    pose proof (well_formed_app_iff itemtype a b); intuition.
+    rewrite app_length.
+    eapply le_add_helper. apply H.
+    rewrite le_plus_minus_r by (apply roundup_ge; auto).
+    apply mult_le_compat_r.
+    apply divup_le; lia.
+  Qed.
+
   Lemma synced_array_is : forall xp start items,
     synced_array xp start items =p=>
     arrayN ((RAStart xp) + start) (combine (ipack items) (nils (length (ipack items)))).
@@ -653,6 +691,24 @@ Module AsyncRecArray (RA : RASig).
     intros; unfold iunpack.
     rewrite ipack_one by auto; simpl.
     autorewrite with core; split; auto.
+  Qed.
+
+
+  Lemma ipack_app_item0 : forall l n,
+    n <= (roundup (length l) items_per_val - length l) ->
+    ipack (l ++ repeat item0 n) = ipack l.
+  Proof.
+    unfold ipack, list_chunk; intros.
+    f_equal.
+    admit.
+  Admitted.
+
+  Lemma array_rep_sync_emp : forall xp a,
+    array_rep xp a (Synced nil) <=p=> [[ xparams_ok xp /\ a < (RALen xp) ]].
+  Proof.
+    unfold array_rep, synced_array, rep_common, eqlen; intros.
+    split; cancel; subst; repeat setoid_rewrite ipack_nil; simpl; auto;
+    unfold items_valid in *; intuition.
   Qed.
 
   Lemma well_formed_firstn : forall A n (a : list (Rec.data A)), 
@@ -1255,18 +1311,47 @@ Module DISKLOG.
     rewrite combine_nonzero_app_zeros; auto.
   Qed.
 
+  Lemma map_fst_repeat : forall A B n (a : A) (b : B),
+    map fst (repeat (a, b) n) = repeat a n.
+  Proof.
+    induction n; intros; simpl; auto.
+    rewrite IHn; auto.
+  Qed.
+
+  Lemma map_entaddr_repeat_0 : forall n b,
+    map ent_addr (repeat (0, b) n) = repeat $0 n.
+  Proof.
+    induction n; intros; simpl; auto.
+    rewrite IHn; auto.
+  Qed.
+
   Lemma combine_nonzero_padded_log : forall l b,
     combine_nonzero (map fst (padded_log l)) b = combine_nonzero (map fst l) b.
   Proof.
-    intros.
-    admit.
-  Admitted.
+    unfold padded_log, setlen, roundup; intros.
+    induction l; simpl.
+    rewrite divup_0; simpl; auto.
+    
+    rewrite <- IHl.
+    destruct a, b, n; simpl; auto;
+    repeat rewrite firstn_oob; simpl; auto;
+    repeat rewrite map_app;
+    setoid_rewrite map_fst_repeat;
+    repeat rewrite combine_nonzero_app_zeros; auto.
+  Qed.
 
   Lemma addr_valid_padded : forall l,
     Forall addr_valid l -> Forall addr_valid (padded_log l).
   Proof.
-    admit.
-  Admitted.
+    unfold padded_log, setlen, roundup; intros.
+    rewrite firstn_oob; simpl; auto.
+    apply Forall_append; auto.
+    rewrite Forall_forall; intros.
+    apply repeat_spec in H0; subst.
+    unfold addr_valid; simpl.
+    apply zero_lt_pow2.
+  Qed.
+  Local Hint Resolve addr_valid_padded.
 
   Lemma map_wordToNat_ent_addr : forall l,
     Forall addr_valid l ->
@@ -1289,7 +1374,6 @@ Module DISKLOG.
     rewrite <- combine_nonzero_padded_log.
     f_equal.
     rewrite map_wordToNat_ent_addr; auto.
-    apply addr_valid_padded; auto.
   Qed.
 
   Lemma vals_nonzero_addrs : forall l,
@@ -1299,11 +1383,60 @@ Module DISKLOG.
     destruct a, n; simpl; auto.
   Qed.
 
+  Lemma desc_ipack_padded : forall l,
+    Desc.ipack (map ent_addr l) = Desc.ipack (map ent_addr (padded_log l)).
+  Proof.
+    unfold padded_log, setlen; intros.
+    rewrite firstn_oob, map_app, map_entaddr_repeat_0 by auto.
+    rewrite Desc.ipack_app_item0; auto.
+    rewrite map_length; auto.
+  Qed.
+
   Local Hint Resolve combine_nonzero_padded_wordToNat.
+
+  Lemma desc_padding_piff : forall xp a l,
+    Desc.synced_array xp a (map ent_addr (padded_log l))
+    <=p=> Desc.synced_array xp a (map ent_addr l).
+  Proof.
+     unfold Desc.synced_array, Desc.rep_common; intros.
+     split; cancel; subst.
+     unfold padded_log, setlen, roundup in H0.
+     rewrite firstn_oob, map_app in H0 by auto.
+     apply Desc.items_valid_app in H0; intuition.
+     apply eq_sym; apply desc_ipack_padded.
+     unfold padded_log, setlen, roundup.
+     rewrite firstn_oob, map_app by auto.
+     apply Desc.items_valid_app2; auto.
+     autorewrite with lists; auto.
+     apply desc_ipack_padded.
+  Qed.
+
+  Lemma goodSize_ndesc : forall l,
+    goodSize addrlen (length l) -> goodSize addrlen (ndesc_log l).
+  Proof.
+    intros; unfold ndesc_log.
+    eapply goodSize_trans; [ apply divup_le | eauto ].
+    destruct (mult_O_le (length l) DiskLogDescSig.items_per_val); auto.
+    contradict H0; apply Desc.items_per_val_not_0.
+  Qed.
+  Local Hint Resolve goodSize_ndesc.
+
+  Lemma padded_log_length: forall l,
+    length (padded_log l) = roundup (length l) DiskLogDescSig.items_per_val.
+  Proof.
+    admit.
+  Admitted.
+
+  Lemma nonzero_addrs_padded_log : forall l,
+    nonzero_addrs (map fst (padded_log l)) = nonzero_addrs (map fst l).
+  Proof.
+    admit.
+  Admitted.
 
   Definition read_ok : forall xp cs,
     {< F l,
-    PRE            rep xp F (Synced l) cs
+    PRE            [[ goodSize addrlen (length l) ]] *
+                   rep xp F (Synced l) cs
     POST RET: ^(cs, r)
                    rep xp F (Synced l) cs *
                    [[ r = log_nonzero l ]]
@@ -1312,21 +1445,10 @@ Module DISKLOG.
   Proof.
     unfold read.
     hoare using (subst; eauto).
-    all: try cancel.
-
-
-    hoare using (subst; eauto).
-    all: try cancel.
-
-    admit.
-    autorewrite with lists.
-    Search Nat.modulo 0.
-
-    Search Forall True.
-    Focus 4.
-    rewrite map_wordToNat_ent_addr by auto.
-    replace DiskLogDataSig.items_per_val with 1 by (cbv; auto).
-    rewrite vals_nonzero_addrs; rewrite Nat.mul_1_r; auto.
+    all: try cancel; try (rewrite desc_padding_piff; cancel).
+    rewrite map_length, padded_log_length; auto.
+    rewrite vals_nonzero_addrs, map_wordToNat_ent_addr, nonzero_addrs_padded_log by auto.
+    replace DiskLogDataSig.items_per_val with 1 by (cbv; auto); omega.
   Qed.
 
   Lemma goodSize_0 : forall sz, goodSize sz 0.
@@ -1362,16 +1484,18 @@ Module DISKLOG.
     step.
     step.
     step.
-    rewrite Desc.array_rep_sync_emp.
-    rewrite Data.array_rep_sync_emp.
+    unfold ndesc_log, vals_nonzero; simpl; rewrite divup_0.
+    rewrite Desc.array_rep_sync_emp, Data.array_rep_sync_emp; auto.
+    cancel.
+    admit. admit. admit.
+    
     cancel.
 
     (* crash conditions *)
     apply pimpl_or_r; right; cancel.
     apply pimpl_or_r; right.
     apply pimpl_or_r; right. cancel.
-    rewrite Desc.array_rep_sync_emp.
-    rewrite Data.array_rep_sync_emp.
+    rewrite Desc.array_rep_sync_emp, Data.array_rep_sync_emp; auto.
     cancel.
     apply pimpl_or_r; left; cancel.
     apply pimpl_or_r; right; cancel.
