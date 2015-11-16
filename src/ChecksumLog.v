@@ -179,7 +179,7 @@ Definition any_hash_rep (a b a' b' : valu) (d : @mem addr (@weq addrlen) valuset
     [[ (block1 |-> (a, nil) *
      block2 |-> (b, nil) *
      hash_block |-> (hash_to_valu hv, nil))%pred d ]] *
-    [[ hash2_rep a' b' hv ]])%pred.
+    [[ hash_list_rep (b' :: a' :: nil) hv ]])%pred.
 
 (* hash_block has the valid hash of block1 and block2 values *)
 Definition rep a b (d : @mem addr (@weq addrlen) valuset) :
@@ -198,18 +198,18 @@ Definition crep (a b a' b' : valu) :
     block1 |->? *
     block2 |->? *
     ( hash_block |-> (hash_to_valu hv, nil) *
-        [[ hash2_rep a b hv ]] \/
+        [[ hash_list_rep (b :: a :: nil) hv ]] \/
       hash_block |-> (hash_to_valu hv', hash_to_valu hv :: nil) *
-        [[ hash2_rep a b hv /\ hash2_rep a' b' hv' ]] \/
+        [[ hash_list_rep (b :: a :: nil) hv /\ hash_list_rep (b' :: a' :: nil) hv' ]] \/
       hash_block |-> (hash_to_valu hv', nil) *
-        [[ hash2_rep a' b' hv' ]]))%pred.
+        [[ hash_list_rep (b' :: a' :: nil) hv' ]]))%pred.
 
 
 (* Example "log" implementation using checksums *)
 Definition put T cs d1 d2 rx : prog T :=
   cs <- BUFCACHE.write block1 d1 cs;
   cs <- BUFCACHE.write block2 d2 cs;
-  h <- Hash (Word.combine d1 d2);
+  h <- hash_list (d1 :: d2 :: nil);
   cs <- BUFCACHE.write hash_block (hash_to_valu h) cs;
   cs <- BUFCACHE.sync block1 cs;
   cs <- BUFCACHE.sync block2 cs;
@@ -225,7 +225,7 @@ Definition recover T cs rx : prog T :=
   let^ (cs, d1) <- BUFCACHE.read block1 cs;
   let^ (cs, d2) <- BUFCACHE.read block2 cs;
   let^ (cs, diskh) <- BUFCACHE.read hash_block cs;
-  h <- Hash (Word.combine d1 d2);
+  h <- hash_list (d1 :: d2 :: nil);
   If (weq diskh (hash_to_valu h)) {
     rx cs
   } else {
@@ -249,10 +249,11 @@ Theorem put_ok : forall cs d1 d2,
       [[ (crep d1_old' d2_old' d1 d2)%pred d' ]]
   >} put cs d1 d2.
 Proof.
-  unfold put, rep, any_hash_rep, crep, hash2_rep, hash2.
+  unfold put, rep, any_hash_rep, crep.
   step.
   step.
   step.
+  apply goodSize_bound with (bound := 2); auto.
   step.
   step.
   step.
@@ -294,7 +295,7 @@ Definition after_crash_pred (v1 v2 : valu) :
       block1 |-> (a, nil) *
       block2 |-> (b, nil) *
       hash_block |-> (hash_to_valu hv, nil) *
-    [[ hash2_rep v1 v2 hv ]])%pred.
+    [[ hash_list_rep (v2 :: v1 :: nil) hv ]])%pred.
 
 Lemma crash_xform_would_recover_either_pred : forall v1 v2 v1' v2',
   crash_xform (crep v1 v2 v1' v2') =p=>
@@ -348,28 +349,22 @@ Proof.
     step.
     step.
     step.
+    apply goodSize_bound with (bound := 2); auto.
     step.
     step.
-    unfold hash2_rep, hash2 in *.
-    destruct H5.
-
+    apply hash_to_valu_inj in H8.
+    subst.
     assert (Hheq: d1_old = a /\ d2_old = b).
-      subst.
-      apply hash_to_valu_inj in H8.
-      rewrite H8 in H3.
-      rewrite H11 in H3.
-      pose proof (eq_sigT_snd H3).
-      autorewrite with core in *.
-      apply combine_inj in H0.
-      intuition.
-    unfold any_hash_rep, hash2_rep.
+      eapply hash_list_injective in H5; try apply H10.
+      inversion H5. auto.
+    unfold any_hash_rep.
     cancel.
 
-    step. unfold any_hash_rep, hash2_rep, hash2 in *. cancel.
     step.
-    cancel.
-    all: cancel; try (
-      unfold crep, hash2_rep, hash2 in *;
+    unfold any_hash_rep. cancel.
+    step.
+    all: repeat cancel; try (
+      unfold crep in *;
       instantiate (1:=d);
       apply pimpl_or_r; left;
       repeat cancel).
@@ -378,28 +373,22 @@ Proof.
     step.
     step.
     step.
+    apply goodSize_bound with (bound := 2); auto.
     step.
     step.
-    unfold hash2_rep, hash2 in *.
-    destruct H5.
-
+    apply hash_to_valu_inj in H8.
+    subst.
     assert (Hheq: d1 = a /\ d2 = b).
-      subst.
-      apply hash_to_valu_inj in H8.
-      rewrite H8 in H3.
-      rewrite H11 in H3.
-      pose proof (eq_sigT_snd H3).
-      autorewrite with core in *.
-      apply combine_inj in H0.
-      intuition.
-    unfold any_hash_rep, hash2_rep.
+      eapply hash_list_injective in H5; try apply H10.
+      inversion H5. auto.
+    unfold any_hash_rep.
     cancel.
 
-    step. unfold any_hash_rep, hash2_rep, hash2 in *. cancel.
     step.
-    cancel.
-    all: cancel; try (
-      unfold crep, hash2_rep, hash2 in *;
+    unfold any_hash_rep. cancel.
+    step.
+    all: repeat cancel; try (
+      unfold crep in *;
       instantiate (1:=d);
       apply pimpl_or_r; right;
       repeat cancel).
