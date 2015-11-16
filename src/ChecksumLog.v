@@ -358,7 +358,7 @@ Proof.
       eapply hash_list_injective in H5; try apply H10.
       inversion H5. auto.
     unfold any_hash_rep.
-    cancel.
+    cancel_with eauto.
 
     step.
     unfold any_hash_rep. cancel.
@@ -382,7 +382,7 @@ Proof.
       eapply hash_list_injective in H5; try apply H10.
       inversion H5. auto.
     unfold any_hash_rep.
-    cancel.
+    cancel_with eauto.
 
     step.
     unfold any_hash_rep. cancel.
