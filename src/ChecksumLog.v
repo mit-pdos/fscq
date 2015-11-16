@@ -18,6 +18,7 @@ Require Import Arith.
 
 Set Implicit Arguments.
 
+
 Definition block1 : addr := $0.
 Definition block2 : addr := $1.
 Definition default_valu : valu := $0.
@@ -139,7 +140,35 @@ Proof.
   all: eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (hash_list _ _ _) _) => apply hash_list_ok : prog.
+Hint Extern 1 ({{_}} progseq (hash_list _) _) => apply hash_list_ok : prog.
+
+Ltac existT_wordsz_neq H :=
+  inversion H as [ Hvalulen ];
+  rewrite <- plus_0_r in Hvalulen;
+  apply plus_reg_l in Hvalulen;
+  inversion Hvalulen.
+
+Ltac existT_wordsz_eq H :=
+  pose proof (eq_sigT_snd H);
+  autorewrite with core in *.
+
+Theorem hash_list_injective : forall l1 l2 hv,
+  hash_list_rep l1 hv -> hash_list_rep l2 hv -> l1 = l2.
+Proof.
+  induction l1;
+    intros;
+    inversion H; inversion H0;
+    unfold hash2_rep, hash2 in *; intuition;
+    subst; auto.
+
+  - rewrite H9 in H2. existT_wordsz_neq H2.
+  - rewrite H11 in H7. existT_wordsz_neq H7.
+  - rewrite H11 in H12.
+    existT_wordsz_eq H12.
+    apply combine_inj in H1.
+    intuition.
+    apply IHl1 in H6; congruence.
+Qed.
 
 
 (* Representations for an example with two log blocks. *)
