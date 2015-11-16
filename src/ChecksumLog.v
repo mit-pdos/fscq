@@ -28,21 +28,15 @@ Definition hash_block : addr := $2.
 Definition hash2 sz1 sz2 (a : word sz1) (b : word sz2) :=
   hash_fwd (Word.combine a b).
 
-Definition hash2_valu (a b : valu) :=
-  hash2 a (hash2 b default_valu).
-
-Definition hash2_rep sz1 sz2 (a : word sz1) (b : word sz2) v :=
-  v = hash2 a b /\
-  hash_inv v = existT _ _ (Word.combine a b).
-
 Inductive hash_list_rep : (list valu) -> word hashlen -> Prop :=
   | HL_nil : forall hl,
       hl = hash_fwd default_valu ->
       hash_inv hl = existT _ _ default_valu ->
-        hash_list_rep nil hl
+      hash_list_rep nil hl
   | HL_cons : forall values hvalues hvalues' x,
       hash_list_rep values hvalues ->
-      hash2_rep x hvalues hvalues' ->
+      hvalues' = hash2 x hvalues ->
+      hash_inv hvalues' = existT _ _ (Word.combine x hvalues) ->
       hash_list_rep (x :: values) hvalues'.
 
 
@@ -95,8 +89,7 @@ Proof.
   (* Loop invariant. *)
   - destruct (rev (firstn # (m ^+ $ (1)) values)) eqn:Hrev_values.
     + simpl in Hlength. inversion Hlength.
-    + eapply HL_cons.
-      assert (Hl: rev l = (firstn # (m) values)).
+    + assert (Hl: rev l = (firstn # (m) values)).
         replace l with (rev (rev l)) in Hrev_values;
           try apply rev_involutive.
         rewrite <- rev_unit in Hrev_values.
@@ -116,7 +109,6 @@ Proof.
       rewrite <- rev_involutive in Hl.
       apply rev_injective in Hl.
       rewrite Hl. eauto.
-      unfold hash2_rep, hash2.
       assert (Hw: selN (firstn # (m ^+ $ (1)) values) (# m) default_valu = w).
         rewrite <- rev_involutive in Hrev_values.
         apply rev_injective in Hrev_values.
@@ -126,8 +118,7 @@ Proof.
         auto.
       rewrite selN_firstn in Hw;
         try (erewrite wordToNat_plusone; eauto).
-      subst.
-      intuition.
+      eapply HL_cons; subst; eauto.
 
   (* Loop invariant implies post-condition. *)
   - step.
@@ -158,16 +149,16 @@ Proof.
   induction l1;
     intros;
     inversion H; inversion H0;
-    unfold hash2_rep, hash2 in *; intuition;
+    unfold hash2 in *; intuition;
     subst; auto.
 
-  - rewrite H9 in H2. existT_wordsz_neq H2.
-  - rewrite H11 in H7. existT_wordsz_neq H7.
-  - rewrite H11 in H12.
-    existT_wordsz_eq H12.
+  - rewrite H6 in H2. existT_wordsz_neq H2.
+  - rewrite H6 in H8. existT_wordsz_neq H8.
+  - rewrite H9 in H6.
+    existT_wordsz_eq H6.
     apply combine_inj in H1.
     intuition.
-    apply IHl1 in H6; congruence.
+    apply IHl1 in H7; congruence.
 Qed.
 
 
@@ -361,7 +352,8 @@ Proof.
     cancel_with eauto.
 
     step.
-    unfold any_hash_rep. cancel.
+    unfold any_hash_rep.
+    cancel_with eauto.
     step.
     all: repeat cancel; try (
       unfold crep in *;
@@ -385,7 +377,8 @@ Proof.
     cancel_with eauto.
 
     step.
-    unfold any_hash_rep. cancel.
+    unfold any_hash_rep.
+    cancel_with eauto.
     step.
     all: repeat cancel; try (
       unfold crep in *;
