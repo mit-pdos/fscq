@@ -1107,33 +1107,64 @@ Module DISKLOG.
   (* The log has been truncated; but the length (0) is unsynced *)
   | Truncated (old: contents)
   (* The log is being extended; only the content has been updated (unsynced) *)
-  | ExtendedContent (old: contents)
+  | ExtendedUnsync (old: contents)
   (* The log has been extended; the new contents are synced but the length is unsynced *)
   | Extended (old: contents) (new: contents).
 
+  Definition ent_addr (e : entry) := addr2w (fst e).
+  Definition ent_valu (e : entry) := snd e.
 
-  Definition rep_inner xp (st : state) : @pred addr (@weq _) valuset :=
-  match st with
-  | Synced l => let (al, vl) := (map fst l, map snd l) in
-       Hdr.rep xp (Hdr.Synced (length l)) *
-       Desc.array_rep xp (Desc.Synced al) *
-       Data.array_rep xp (Data.Synced vl)
+  Definition ndesc_log (log : contents) := (divup (length log) DiskLogDescSig.items_per_val).
 
-  | Truncated old => let (al, vl) := (map fst old, map snd old) in
-       Hdr.rep xp (Hdr.Unsync 0 (length old)) *
-       Desc.array_rep xp (Desc.Synced al) *
-       Data.array_rep xp (Data.Synced vl)
+  Fixpoint log_nonzero (log : contents) : list entry :=
+    match log with
+    | (0, _) :: rest => log_nonzero rest
+    | e :: rest => e :: log_nonzero rest
+    | nil => nil
+    end.
 
-  | ExtendedContent old => let (al, vl) := (map fst old, map snd old) in
-       Hdr.rep xp (Hdr.Synced (length old)) *
-       Desc.array_rep xp (Desc.Unsync al) *
-       Data.array_rep xp (Data.Unsync vl)
+  Definition vals_nonzero (log : contents) := map ent_valu (log_nonzero log).
 
-  | Extended old new => let (al, vl) := (map fst (old ++ new), map snd (old ++ new)) in
-       Hdr.rep xp (Hdr.Unsync (length (old ++ new)) (length old)) *
-       Desc.array_rep xp (Desc.Synced al) *
-       Data.array_rep xp (Data.Synced vl)
-  end.
+
+  Fixpoint nonzero_addrs (al : list addr) : nat :=
+    match al with
+    | 0 :: rest => nonzero_addrs rest
+    | e :: rest => S (nonzero_addrs rest)
+    | nil => 0
+    end.
+
+  Fixpoint combine_nonzero (al : list addr) (vl : list valu) : contents :=
+    match al, vl with
+    | 0 :: al', v :: vl' => combine_nonzero al' vl
+    | a :: al', v :: vl' => (a, v) :: (combine_nonzero al' vl')
+    | _, _ => nil
+    end.
+
+  Definition addr_valid (e : entry) := goodSize addrlen (fst e).
+
+  Definition rep_contents xp (log : contents) : rawpred :=
+    ( [[ Forall addr_valid log ]] *
+     Desc.array_rep xp 0 (Desc.Synced (map ent_addr log)) *
+     Data.array_rep xp 0 (Data.Synced (vals_nonzero log)))%pred.
+
+  Definition rep_inner xp (st : state) : rawpred :=
+  (match st with
+  | Synced l =>
+       Hdr.rep xp (Hdr.Synced (ndesc_log l)) *
+       rep_contents xp l
+
+  | Truncated old =>
+       Hdr.rep xp (Hdr.Unsync 0 (ndesc_log old)) *
+       rep_contents xp old
+
+  | ExtendedUnsync old =>
+       Hdr.rep xp (Hdr.Synced (ndesc_log old)) *
+       rep_contents xp old
+
+  | Extended old new =>
+       Hdr.rep xp (Hdr.Unsync (ndesc_log (old ++ new)) (ndesc_log old)) *
+       rep_contents xp old
+  end)%pred.
 
   Definition xparams_ok xp := 
     Desc.xparams_ok xp /\ Data.xparams_ok xp.
@@ -1143,53 +1174,159 @@ Module DISKLOG.
     [[ (F * rep_inner xp st)%pred d ]])%pred.
 
 
-  Local Hint Unfold rep rep_inner xparams_ok: hoare_unfold.
-
-  Ltac rewrite_ignore H :=
-    match type of H with
-    | forall _, corr2 _ _ => idtac
-    | sep_star _ _ _ => idtac
-    end.
-
-  Ltac simplen_rewrite H := try progress (
-    set_evars_in H; (rewrite_strat (topdown (hints core)) in H); subst_evars;
-      [ try simplen_rewrite H | try autorewrite with core .. ]).
-
-  Ltac simplen' := repeat match goal with
-    | [H : context[length ?x] |- _] => progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite H ] )
-    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
-    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
-    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
-    | [ |- # ($ _) < _ ] => apply wordToNat_natToWord_lt
-    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
-    end.
-
-  Ltac simplen := eauto; repeat (try subst; simpl;
-    simplen'; auto; autorewrite with core); simpl; eauto; try omega.
-
-
-  Hint Rewrite firstn_map_exact combine_map_fst_snd : core.
-  Local Hint Resolve combine_map_fst_snd.
+  Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
   Definition read T xp cs rx : prog T :=
-    let^ (cs, nr) <- Hdr.read xp cs;
-    let^ (cs, al) <- Desc.read_all xp nr cs;
-    let^ (cs, vl) <- Data.read_all xp nr cs;
-    rx ^(cs, combine al vl).
+    let^ (cs, ndesc) <- Hdr.read xp cs;
+    let^ (cs, wal) <- Desc.read_all xp ndesc cs;
+    let al := map (@wordToNat addrlen) wal in
+    let ndata := nonzero_addrs al in
+    let^ (cs, vl) <- Data.read_all xp ndata cs;
+    rx ^(cs, combine_nonzero al vl).
 
+  (* this is an evil hint *)
+  Remove Hints Forall_nil.
+
+  Lemma Forall_True : forall A (l : list A),
+    Forall (fun _ : A => True) l.
+  Proof.
+    intros; rewrite Forall_forall; auto.
+  Qed.
+  Hint Resolve Forall_True.
+
+  Lemma combine_nonzero_ok : forall l,
+    combine_nonzero (map fst l) (vals_nonzero l) = log_nonzero l.
+  Proof.
+    unfold vals_nonzero.
+    induction l; intros; simpl; auto.
+    destruct a, n; simpl.
+    case_eq (map ent_valu (log_nonzero l)); intros; simpl.
+    apply map_eq_nil in H; auto.
+    rewrite <- H; auto.
+    rewrite IHl; auto.
+  Qed.
+
+  Definition padded_addr (al : list addr) :=
+    setlen al (roundup (length al) DiskLogDescSig.items_per_val) 0.
+
+  Definition padded_log (log : contents) :=
+    setlen log (roundup (length log) DiskLogDescSig.items_per_val) (0, $0).
+
+  Lemma combine_nonzero_nil : forall a,
+    combine_nonzero a nil = nil.
+  Proof.
+    induction a; intros; simpl; auto.
+    destruct a; simpl; auto.
+  Qed.
+  Local Hint Resolve combine_nonzero_nil.
+
+  Lemma combine_nonzero_app_zero : forall a b,
+    combine_nonzero (a ++ [0]) b = combine_nonzero a b.
+  Proof.
+    induction a; intros; simpl; auto.
+    destruct b; auto.
+    destruct a, b; simpl; auto.
+    rewrite IHa; auto.
+  Qed.
+
+  Lemma combine_nonzero_app_zeros : forall n a b,
+    combine_nonzero (a ++ repeat 0 n) b = combine_nonzero a b.
+  Proof.
+    induction n; intros; simpl.
+    rewrite app_nil_r; auto.
+    rewrite <- cons_nil_app.
+    rewrite IHn.
+    apply combine_nonzero_app_zero.
+  Qed.
+
+  Local Hint Resolve roundup_ge Desc.items_per_val_gt_0.
+
+  Lemma combine_nonzero_padded_addr : forall a b,
+    combine_nonzero (padded_addr a) b = combine_nonzero a b.
+  Proof.
+    unfold padded_addr, vals_nonzero.
+    induction a; intros; simpl; auto.
+    unfold setlen, roundup; simpl.
+    rewrite divup_0; simpl; auto.
+
+    unfold setlen, roundup; simpl.
+    destruct a, b; simpl; auto;
+    rewrite firstn_oob; simpl; auto;
+    rewrite combine_nonzero_app_zeros; auto.
+  Qed.
+
+  Lemma combine_nonzero_padded_log : forall l b,
+    combine_nonzero (map fst (padded_log l)) b = combine_nonzero (map fst l) b.
+  Proof.
+    intros.
+    admit.
+  Admitted.
+
+  Lemma addr_valid_padded : forall l,
+    Forall addr_valid l -> Forall addr_valid (padded_log l).
+  Proof.
+    admit.
+  Admitted.
+
+  Lemma map_wordToNat_ent_addr : forall l,
+    Forall addr_valid l ->
+    (map (@wordToNat _) (map ent_addr l)) = map fst l.
+  Proof.
+    unfold ent_addr, addr2w.
+    induction l; intros; simpl; auto.
+    rewrite IHl; f_equal.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    apply Forall_inv in H; unfold addr_valid in H; auto.
+    eapply Forall_cons2; eauto.
+  Qed.
+
+  Lemma combine_nonzero_padded_wordToNat : forall l,
+    Forall addr_valid l ->
+    combine_nonzero (map (@wordToNat _) (map ent_addr (padded_log l))) (vals_nonzero l) = log_nonzero l.
+  Proof.
+    intros; unfold ent_addr, addr2w.
+    rewrite <- combine_nonzero_ok.
+    rewrite <- combine_nonzero_padded_log.
+    f_equal.
+    rewrite map_wordToNat_ent_addr; auto.
+    apply addr_valid_padded; auto.
+  Qed.
+
+  Lemma vals_nonzero_addrs : forall l,
+    length (vals_nonzero l) = nonzero_addrs (map fst l).
+  Proof.
+    induction l; intros; simpl; auto.
+    destruct a, n; simpl; auto.
+  Qed.
+
+  Local Hint Resolve combine_nonzero_padded_wordToNat.
 
   Definition read_ok : forall xp cs,
     {< F l,
-    PRE            [[ goodSize addrlen (length l) ]] *
-                   rep xp F (Synced l) cs
+    PRE            rep xp F (Synced l) cs
     POST RET: ^(cs, r)
                    rep xp F (Synced l) cs *
-                   [[ r = l ]]
+                   [[ r = log_nonzero l ]]
     CRASH exists cs', rep xp F (Synced l) cs'
     >} read xp cs.
   Proof.
     unfold read.
-    hoare; simplen.
+    hoare using (subst; eauto).
+    all: try cancel.
+
+
+    hoare using (subst; eauto).
+    all: try cancel.
+
+    admit.
+    autorewrite with lists.
+    Search Nat.modulo 0.
+
+    Search Forall True.
+    Focus 4.
+    rewrite map_wordToNat_ent_addr by auto.
+    replace DiskLogDataSig.items_per_val with 1 by (cbv; auto).
+    rewrite vals_nonzero_addrs; rewrite Nat.mul_1_r; auto.
   Qed.
 
   Lemma goodSize_0 : forall sz, goodSize sz 0.
