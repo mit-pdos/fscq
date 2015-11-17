@@ -977,6 +977,9 @@ Module Type Semantics.
   Parameter Inv : Invariant Mcontents Scontents.
   Parameter R : ID -> Relation Scontents.
 
+  Axiom R_stutter : forall tid s,
+    R tid s s.
+
   Parameter LockInv : Invariant Mcontents Scontents.
   Parameter LockR : ID -> Relation Scontents.
 End Semantics.

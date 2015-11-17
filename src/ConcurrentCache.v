@@ -112,10 +112,11 @@ Module Type CacheSemantics.
     modified stateVars s s' ->
     LockInv m' s' d'.
 
-  Axiom cache_relation_preserved : forall tid s s',
-    modified stateVars s s' ->
-    cacheR tid s s' ->
-    R tid s s'.
+  Axiom cache_relation_preserved : forall tid s s' s'',
+    R tid s s' ->
+    modified stateVars s' s'' ->
+    cacheR tid s' s'' ->
+    R tid s s''.
 
   Axiom lock_relation_preserved : forall tid s s',
     modified stateVars s s' ->
@@ -130,6 +131,8 @@ Import CSem.
 Import Sem.
 Import CVars.
 Import Transitions.
+
+Hint Resolve R_stutter.
 
 Hint Resolve no_confusion_memVars
              no_confusion_stateVars.
@@ -575,13 +578,16 @@ Ltac solve_global_transitions :=
   lazymatch goal with
   | [ |- LockR _ _ _ ] =>
     eapply lock_relation_preserved
+  | [ |- R _ _ _ ] =>
+    eapply cache_relation_preserved; [
+      solve [ eassumption | eauto ] | .. ]
   | [ |- LockInv _ _ _ ] =>
     eapply lock_invariant_preserved
   | [ |- Inv _ _ _ ] =>
     eapply cache_invariant_preserved
   | [ |- inv _ _ _ ] => unfold inv; intuition; try solve_global_transitions
   end;
-  unfold lockR, lockI, cacheI, stateI, lockI,
+  unfold lockR, lockI, cacheR, cacheI, stateI, lockI,
     lock_protects, pred_in;
   repeat lazymatch goal with
   | [ |- forall _, _ ] => progress intros
@@ -743,13 +749,13 @@ Theorem locked_async_disk_read_ok : forall a,
                      inv m s d /\
                      vd |= F * a |-> (Valuset v rest) /\
                      get GCacheL s = Owned tid /\
-                     s0 = s
+                     R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             inv m' s' d' /\
                             vd' = virt_disk s /\
                             r = v /\
                             get GCacheL s' = Owned tid /\
-                            s' = set GCache (get Cache m') s0'
+                            R tid s0' s'
     | CRASH d'c: d'c = d
     }} locked_async_disk_read a.
 Proof.
@@ -790,9 +796,7 @@ Theorem disk_read_ok : forall a,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             inv m' s' d' /\
                             get CacheL m' = Open /\
-                            (* this is ugly, but very precise *)
-                            s' = set GCacheL NoOwner
-                                     (set GCache (get Cache m') s0') /\
+                            R tid s0' s' /\
                             exists F' v' rest',
                               vd' |= F' * a |-> (Valuset v' rest') /\
                               r = v'
@@ -826,6 +830,7 @@ Proof.
   instantiate (v := latest_valu v'0);
   instantiate (rest := pending_valus v'0).
   destruct v'0; cbn; auto.
+
   instantiate (rest' := pending_valus v'3).
   destruct v'0, v'3; cbn; eauto.
 Qed.
@@ -1087,7 +1092,8 @@ Theorem sync_ok : forall a,
                           get GCacheL s' = Owned tid /\
                           m = m' /\
                           get GCache s' = get GCache s /\
-                          vd' |= F * a |-> Valuset v0 nil
+                          vd' |= F * a |-> Valuset v0 nil /\
+                          s0' = s0
      | CRASH d'c: d'c = d
     }} sync a.
 Proof.
@@ -1127,7 +1133,8 @@ Theorem cache_sync_ok : forall a,
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             inv m' s' d' /\
                             get GCacheL s' = Owned tid /\
-                            vd' |= F * a |-> Valuset v0 nil
+                            vd' |= F * a |-> Valuset v0 nil /\
+                            s0' = s0
      | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
     }} cache_sync a.
 Proof.
