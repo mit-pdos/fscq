@@ -3,6 +3,7 @@ Require Export Pred.
 Require Export Word.
 Require Export SepAuto.
 Require Export Hlist.
+Require Export Variables.
 Require Import Omega.
 Require Import Star.
 Require Import List.
@@ -24,22 +25,26 @@ Notation "m '|=' F" :=
 
 Delimit Scope mem_judgement_scope with judgement.
 
-Inductive valuset : Set :=
+Section AsyncDiskWrites.
+
+  Inductive valuset : Set :=
   | Valuset (last:valu) (pending:list valu).
 
-Definition buffer_valu (vs:valuset) v :=
-  match vs with
-  | Valuset last pending => Valuset v (last::pending)
-  end.
+  Definition buffer_valu (vs:valuset) v :=
+    match vs with
+    | Valuset last pending => Valuset v (last::pending)
+    end.
 
-Definition latest_valu (vs:valuset) :=
-  let 'Valuset last _ := vs in last.
+  Definition latest_valu (vs:valuset) :=
+    let 'Valuset last _ := vs in last.
 
-Definition pending_valus (vs:valuset) :=
-  let 'Valuset _ pending := vs in pending.
+  Definition pending_valus (vs:valuset) :=
+    let 'Valuset _ pending := vs in pending.
 
-Definition synced (vs:valuset) :=
-  let 'Valuset last _ := vs in Valuset last nil.
+  Definition synced (vs:valuset) :=
+    let 'Valuset last _ := vs in Valuset last nil.
+
+End AsyncDiskWrites.
 
 Hint Immediate (Valuset $0 nil).
 
@@ -81,8 +86,6 @@ Section EventCSL.
   (** Our programs will return values of type T *)
   Variable T:Type.
 
-  Definition var (t:Type) : Type := @member Type t Mcontents.
-
   (** Define the transition system for the semantics.
       The semantics will reject transitions that do not obey these rules. *)
   Definition Relation := S -> S -> Prop.
@@ -97,10 +100,10 @@ Section EventCSL.
   | Read (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
   | Sync (a: addr) (rx: unit -> prog)
-  | Get t (v: var t) (rx: t -> prog)
-  | Assgn t (v: var t) (val:t) (rx: unit -> prog)
+  | Get t (v: var Mcontents t) (rx: t -> prog)
+  | Assgn t (v: var Mcontents t) (val:t) (rx: unit -> prog)
   | GetTID (rx: ID -> prog)
-  | AcquireLock (l: var Mutex) (lock_ghost: ID -> S -> S) (rx: unit -> prog)
+  | AcquireLock (l: var Mcontents Mutex) (lock_ghost: ID -> S -> S) (rx: unit -> prog)
   | Yield (rx: unit -> prog)
   | Commit (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
@@ -175,7 +178,7 @@ Section EventCSL.
       d a = Some vs0 ->
       tid :- Sync a rx / (d, m, s0, s) ==>
           rx tt / (upd d a (synced vs0), m, s0, s)
-  | StepAcquireLock : forall d m m' s s0 d' s' up rx (l:var Mutex),
+  | StepAcquireLock : forall d m m' s s0 d' s' up rx (l:var Mcontents Mutex),
       let m'' := set l Locked m' in
       let s'' := up tid s' in
       StateI m s d ->
@@ -203,9 +206,9 @@ Section EventCSL.
       tid :- Commit up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, s')
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
-  | StepGet : forall d m s s0 t (v: var t) rx,
+  | StepGet : forall d m s s0 t (v: var Mcontents t) rx,
       tid :- Get v rx / (d, m, s0, s) ==> rx (get v m) / (d, m, s0, s)
-  | StepAssgn : forall d m s s0 t (v: var t) val rx,
+  | StepAssgn : forall d m s s0 t (v: var Mcontents t) val rx,
       let m' := set v val m in
       LockI m' s d ->
       tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, m', s0, s)
@@ -225,7 +228,7 @@ Section EventCSL.
                                               fail_step tid (Write a v' rx) (d, m, s0, s)
   | FailStepAcquireLock : forall l up d m s0 s rx, (~StateI m s d) ->
                                            fail_step tid (AcquireLock l up rx) (d, m, s0, s)
-  | FailStepAssgnLock : forall d m s s0 t (v: var t) val rx,
+  | FailStepAssgnLock : forall d m s s0 t (v: var Mcontents t) val rx,
       let m' := set v val m in
       ~LockI m' s d ->
       fail_step tid (Assgn v val rx) (d, m, s0, s)
@@ -327,7 +330,7 @@ Section EventCSL.
     condition_failure.
   Qed.
 
-  Theorem assgn_failure : forall tid d m s0 s rx t (v: var t) val,
+  Theorem assgn_failure : forall tid d m s0 s rx t (v: var Mcontents t) val,
       fail_step tid (Assgn v val rx) (d, m, s0, s) ->
       LockI (set v val m) s d ->
       False.
@@ -551,7 +554,7 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem Get_ok : forall t (v: var t),
+  Theorem Get_ok : forall t (v: var _ t),
       tid |- {{ (_:unit),
              | PRE d m s0 s: True
              | POST d' m' s0' s' r: d' = d /\
@@ -570,7 +573,7 @@ Section EventCSL.
       end.
   Qed.
 
-  Theorem Assgn_ok : forall t (v: var t) val,
+  Theorem Assgn_ok : forall t (v: var _ t) val,
       tid |- {{ (_:unit),
              | PRE d m s0 s: LockI (set v val m) s d
              | POST d' m' s0' s' _: d' = d /\
@@ -875,7 +878,6 @@ The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
 Notation "{{ f ; '_' }}" := (valid _ _ _ _ _ _ (progseq f _)).
 
-
 (* copy of pair_args_helper from Prog *)
 Definition tuple_args (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
 
@@ -915,6 +917,8 @@ Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ Commit _; _ }} => apply Commit_ok : prog.
 Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
+
+(* Lemmas to help unfold some definitions from EventCSL *)
 
 Lemma progR_is : forall Scontents R1 R2 tid (s s':S Scontents),
   star (ProgR R1 R2 tid) s s' ->
@@ -965,3 +969,14 @@ Ltac unfold_progR :=
          | [ H: ProgI _ _ _ _ _ |- _ ] =>
           apply progI_is in H; destruct H
          end.
+
+(* Wrap up the parameters that the semantics takes in a module. *)
+Module Type Semantics.
+  Parameter Mcontents : list Type.
+  Parameter Scontents : list Type.
+  Parameter Inv : Invariant Mcontents Scontents.
+  Parameter R : ID -> Relation Scontents.
+
+  Parameter LockInv : Invariant Mcontents Scontents.
+  Parameter LockR : ID -> Relation Scontents.
+End Semantics.

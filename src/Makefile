@@ -8,7 +8,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree ByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON \
-		  Hlist Star EventCSL EventCSLrecovery EventCSLauto \
+		  Hlist Star Variables EventCSL EventCSLrecovery EventCSLauto \
 		  Locking Automation MemCache ForwardChaining \
 		  Bank ConcurrentCache ConcurrentLog
 VS         := $(MODULES:%=%.v)

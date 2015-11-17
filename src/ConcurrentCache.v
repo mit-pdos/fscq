@@ -14,23 +14,11 @@ Set Implicit Arguments.
 
 Open Scope list.
 
-Module Type Semantics.
-  Parameter Mcontents : list Type.
-  Parameter Scontents : list Type.
-  Parameter Inv : Invariant Mcontents Scontents.
-  Parameter R : ID -> Relation Scontents.
-
-  Parameter LockInv : Invariant Mcontents Scontents.
-  Parameter LockR : ID -> Relation Scontents.
-End Semantics.
-
-(* TODO: move somewhere more appropriate *)
-Definition variables contents vartypes :=
-  hlist (var contents) vartypes.
-
-(* version of member_index suitable for use in hmap *)
-Definition var_index {contents} := fun t (m:var contents t) => member_index m.
-
+(* For a given global semantics, CacheVars defines what variables the
+cache gets to itself. This is defined separately since it actually has
+to be instantiated with concrete variables (and a proof of
+distinctness). The rest of the cache-local semantics can be defined
+once a semantics and these basics are provided. *)
 Module Type CacheVars (Sem:Semantics).
   Import Sem.
   Parameter memVars : variables Mcontents [AssocCache; Mutex:Type].
@@ -84,13 +72,6 @@ End CacheTransitionSystem.
 on the definitions directly *)
 Hint Unfold lock_protects : prog.
 Hint Unfold StateR' LockR' : prog.
-
-(* TODO: move this somewhere more appropriate *)
-Definition modified contents vartypes
-  (vars: hlist (fun T:Type => var contents T) vartypes)
-  (l l': hlist (fun T:Type => T) contents) : Prop :=
-  forall t (m:var contents t), (HIn m vars -> False) ->
-  get m l = get m l'.
 
 Module Type CacheSemantics.
   Declare Module Sem : Semantics.
@@ -365,31 +346,6 @@ Ltac sector_unchanged :=
 
 Section Variables.
 
-Theorem hin_index_vars : forall contents t (m: var contents t)
-                           typevars (vars: variables contents typevars),
-    HIn m vars <->
-    In (member_index m) (hmap var_index vars).
-Proof.
-  apply hin_iff_index_in.
-Qed.
-
-Theorem member_index_eq_var_index : forall contents t
-  (m: member t contents),
-  member_index m = var_index m.
-Proof. reflexivity. Qed.
-
-Theorem NoDup_get_neq : forall A (def:A) (l:list A) n1 n2,
-  n1 < length l ->
-  n2 < length l ->
-  n1 <> n2 ->
-  NoDup l ->
-  nth n1 l def <> nth n2 l def.
-Proof.
-  intros.
-  contradict H1.
-  eapply NoDup_nth; eauto.
-Qed.
-
 Ltac vars_distinct :=
   repeat rewrite member_index_eq_var_index;
   repeat match goal with
@@ -422,57 +378,6 @@ Lemma GCacheL_neq_GDisk :
   member_index GCacheL <> member_index GDisk.
 Proof.
   vars_distinct.
-Qed.
-
-Ltac distinguish_indices :=
-  match goal with
-  | [ |- member_index ?m <> member_index ?m' ] =>
-    case_eq (Nat.eq_dec (member_index m') (member_index m)); intros; auto;
-    exfalso;
-    match goal with
-    | [ H: member_index m' = member_index m |- _ ] =>
-      rewrite H in *; clear H
-    end
-  end.
-
-Lemma hin_get_variables : forall contents vartypes
-                            (vars: variables contents vartypes)
-                            t (v: var vartypes t),
-    HIn (get v vars) vars.
-Proof.
-  apply hin_get.
-Qed.
-
-Hint Resolve hin_get_variables.
-Hint Resolve -> hin_index_vars.
-Hint Resolve <- hin_index_vars.
-
-Hint Unfold modified GCache Cache CacheL GCacheL : variables.
-
-Local Ltac t :=
-  autounfold with variables; intros;
-  match goal with
-  | [ H: context[HIn _ _] |- _ ] =>
-    rewrite hin_index_vars in H
-  end; rewrite get_set_other; eauto;
-  distinguish_indices; auto.
-
-Lemma modified_nothing : forall contents vartypes
-  (vars: variables contents vartypes)
-  (m: hlist (fun T:Type => T) contents),
-  modified vars m m.
-Proof.
-  unfold modified; intros; auto.
-Qed.
-
-Lemma one_more_modified : forall contents vartypes
-  (vars: variables contents vartypes)
-  t v (val': t)
-  (m m': hlist (fun T:Type => T) contents),
-  modified vars m m' ->
-  modified vars m (set (get v vars) val' m').
-Proof.
-  t.
 Qed.
 
 End Variables.
