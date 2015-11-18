@@ -814,6 +814,25 @@ Proof.
   intuition eauto.
 Qed.
 
+Ltac destruct_valusets :=
+  repeat match goal with
+  | [ vs: valuset |- _ ] => destruct vs
+  end.
+
+Lemma disk_eq_valuset : forall a (vd: DISK) vs,
+  vd a = Some vs ->
+  (any * a |-> Valuset (latest_valu vs) (pending_valus vs))%pred vd.
+Proof.
+  intros.
+  match goal with
+  | [ H: ?vd ?a = Some ?vs |-
+    context[ptsto a ?vs'] ] =>
+    replace vs with vs' in H
+  end; destruct_valusets; eauto.
+Qed.
+
+Hint Resolve disk_eq_valuset.
+
 Theorem disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
@@ -825,9 +844,7 @@ Theorem disk_read_ok : forall a,
                             inv m' s' d' /\
                             get CacheL m' = Open /\
                             R tid s0' s' /\
-                            exists F' v' rest',
-                              vd' |= F' * a |-> (Valuset v' rest') /\
-                              r = v'
+                            exists rest', vd' a = Some (Valuset r rest')
      | CRASH d'c: True
     }} disk_read a.
 Proof.
@@ -851,16 +868,11 @@ Proof.
   let simp_step :=
     simplify_step
     || (time "learn_same_sectors" learn_same_sectors)
-    || (time "learn_sector_equalities" learn_sector_equality) in
+    || (time "learn_sector_equalities" learn_sector_equality)
+    || (time "destruct_valusets" destruct_valusets) in
   time "hoare" hoare pre (simplify' simp_step)
-     with (finish; time "simpl_get_set *" simpl_get_set in *).
-
-  instantiate (v := latest_valu v'0);
-  instantiate (rest := pending_valus v'0).
-  destruct v'0; cbn; auto.
-
-  instantiate (rest' := pending_valus v'3).
-  destruct v'0, v'3; cbn; eauto.
+     with (finish;
+      time "standardize_mem_fields" standardize_mem_fields).
 Qed.
 
 Definition replace_latest vs v' :=
