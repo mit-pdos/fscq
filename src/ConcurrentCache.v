@@ -394,7 +394,8 @@ Hint Immediate Cache_neq_CacheL
 Hint Resolve not_eq_sym.
 
 Hint Unfold GCache GCacheL GDisk Cache CacheL : modified.
-Hint Resolve modified_nothing one_more_modified : modified.
+Hint Resolve modified_nothing one_more_modified modified_single_var : modified.
+Hint Constructors HIn : modified.
 
 Ltac solve_modified :=
   solve [ autounfold with modified; eauto with modified ].
@@ -771,6 +772,33 @@ Proof.
 Qed.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
+
+Definition cache_unlock {T} rx : prog _ _ T :=
+  Commit (set GCacheL NoOwner);;
+         Assgn CacheL Open;;
+         rx tt.
+
+Theorem cache_unlock_ok :
+    stateS TID: tid |-
+    {{ (_:unit),
+     | PRE d m s0 s: let vd := virt_disk s in
+                     inv m s d /\
+                     get GCacheL s = Owned tid /\
+                     R tid s0 s
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
+                            inv m' s' d' /\
+                            modified (HCons CacheL HNil) m m' /\
+                            modified (HCons GCacheL HNil) s s' /\
+                            d' = d /\
+                            get CacheL m' = Open /\
+                            R tid s0' s'
+     | CRASH d'c: True
+    }} cache_unlock.
+Proof.
+  hoare pre simplify with finish.
+Qed.
+
+Hint Extern 1 {{cache_unlock; _}} => apply cache_unlock_ok : prog.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   AcquireLock CacheL (fun tid => set GCacheL (Owned tid));;

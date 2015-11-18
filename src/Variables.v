@@ -1,6 +1,7 @@
 Require Import Hlist.
 Require Import List.
 Require Import PeanoNat.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
@@ -113,6 +114,23 @@ Section Modification.
     rewrite hin_index_vars in H0.
     rewrite get_set_other; eauto.
     distinguish_indices; auto.
+  Qed.
+
+  Lemma modified_single_var : forall contents vartypes
+    (vars: variables contents vartypes)
+    t v (val': t)
+    (m m':hlist (fun T:Type => T) contents),
+    HIn v vars ->
+    modified vars m (set v val' m).
+  Proof.
+    unfold modified; intros.
+    rewrite get_set_other; eauto.
+    intro.
+    contradict H0.
+    apply indices_eq in H1; match goal with
+      | [ H: exists _, _ |- _ ] => destruct H
+      end; subst.
+    rewrite <- Eq_rect_eq.eq_rect_eq; auto.
   Qed.
 
 End Modification.
