@@ -697,6 +697,36 @@ Ltac vd_locked :=
 Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
   v <- AsyncRead a; rx v.
 
+(* More combinators for relations *)
+
+Definition chain (S:Type) (R1 R2: S -> S -> Prop) : S -> S -> Prop :=
+  fun s s'' =>
+  exists (s':S), R1 s s' /\ R2 s' s''.
+
+Definition applied S (f: S -> S) : S -> S -> Prop :=
+  fun s s' =>
+  s' = f s.
+
+(* hints and associated proofs for chain/applied combinators *)
+Lemma chain_trans : forall S (s s' s'':S) (R1 R2: _ -> _ -> Prop),
+  R1 s s' ->
+  R2 s' s'' ->
+  chain R1 R2 s s''.
+Proof.
+  unfold chain; eauto.
+Qed.
+
+Hint Resolve chain_trans.
+
+Lemma applied_def : forall S (s s':S) f,
+  s' = f s ->
+  applied f s s'.
+Proof.
+  unfold applied; auto.
+Qed.
+
+Hint Resolve applied_def.
+
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ F v rest,
@@ -708,6 +738,7 @@ Theorem locked_AsyncRead_ok : forall a,
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
                           inv m' s' d' /\
                           vd' = virt_disk s /\
+                          star (othersR R tid) s s' /\
                           get Cache m' = get Cache m /\
                           get GCacheL s' = Owned tid /\
                           r = v /\
@@ -716,6 +747,8 @@ Theorem locked_AsyncRead_ok : forall a,
   }} locked_AsyncRead a.
 Proof.
   time "hoare" hoare pre (time "simplify" simplify) with finish.
+  eauto using star_trans.
+
   repeat match goal with
          | [ H: cache_get ?c ?a = None, H': ?c' = ?c |- _ ] =>
            learn H (rewrite <- H' in H)
@@ -773,6 +806,7 @@ Theorem locked_async_disk_read_ok : forall a,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             inv m' s' d' /\
                             vd' = virt_disk s /\
+                            chain (star (othersR R tid)) (R tid) s s' /\
                             r = v /\
                             get GCacheL s' = Owned tid /\
                             R tid s0' s'
@@ -788,6 +822,7 @@ Proof.
           | [ |- crash _ ] =>
             eauto using cache_pred_same_disk_eq
           end).
+  eapply chain_trans; finish.
 Qed.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
@@ -802,13 +837,12 @@ Theorem cache_lock_ok :
      | PRE d m s0 s: let vd := virt_disk s in
                      inv m s d /\
                      R tid s0 s
-     | POST d' m' s0' s'' r: let vd' := virt_disk s'' in
-                            inv m' s'' d' /\
-                            get GCacheL s'' = Owned tid /\
-                            s0' = s'' /\
-                            exists s',
-                            s'' = set GCacheL (Owned tid) s' /\
-                            star (othersR R tid) s s'
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
+                            inv m' s' d' /\
+                            get GCacheL s' = Owned tid /\
+                            s0' = s' /\
+                            chain (star (othersR R tid))
+                              (applied (set GCacheL (Owned tid))) s s'
      | CRASH d'c: True
     }} cache_lock.
 Proof.
@@ -829,15 +863,13 @@ Theorem cache_unlock_ok :
                      inv m s d /\
                      (* not strictly necessary, but why would you unlock
                      if you don't know you have the lock? *)
-                     get GCacheL s = Owned tid /\
-                     R tid s0 s
+                     get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             inv m' s' d' /\
-                            modified (HCons CacheL HNil) m m' /\
-                            modified (HCons GCacheL HNil) s s' /\
+                            R tid s s' /\
                             d' = d /\
                             get GCacheL s' = NoOwner /\
-                            R tid s0' s'
+                            s0' = s0
      | CRASH d'c: True
     }} cache_unlock.
 Proof.
@@ -847,10 +879,8 @@ Qed.
 Hint Extern 1 {{cache_unlock; _}} => apply cache_unlock_ok : prog.
 
 Definition disk_read {T} a rx : prog _ _ T :=
-  AcquireLock CacheL (fun tid => set GCacheL (Owned tid));;
+  cache_lock;;
               v <- locked_async_disk_read a;
-  Commit (set GCacheL NoOwner);;
-         Assgn CacheL Open;;
          rx v.
 
 Remark cacheR_stutter : forall tid s,
@@ -879,6 +909,47 @@ Qed.
 
 Hint Resolve disk_eq_valuset.
 
+Definition anyR S (R: ID -> S -> S -> Prop) : S -> S -> Prop :=
+  fun s s' =>
+  exists (tid:ID), R tid s s'.
+
+Lemma anyR_weaken : forall S (R: ID -> Relation S) tid,
+  rimpl (R tid) (anyR R).
+Proof.
+  unfold rimpl, anyR; intros; eauto.
+Qed.
+
+Lemma anyR_others_weaken : forall S (R: ID -> Relation S) tid,
+  rimpl (othersR R tid) (anyR R).
+Proof.
+  unfold rimpl, othersR, anyR; intros;
+    deex; eauto.
+Qed.
+
+Example chain_env_local : forall S (R: ID -> Relation S) tid,
+  rimpl (chain (star (othersR R tid)) (star (R tid)))
+    (star (anyR R)).
+Proof.
+  unfold rimpl, chain.
+  intros; deex.
+  induction H0; intuition;
+    try rewrite anyR_weaken in *;
+    auto.
+  apply anyR_others_weaken in H.
+  eauto.
+Qed.
+
+Lemma chain_stars : forall S (R1 R2 R': Relation S),
+  rimpl R1 R' ->
+  rimpl R2 R' ->
+  rimpl (chain (star R1) (star R2)) (star R').
+Proof.
+  unfold chain; intros; unfold rimpl; intros; deex.
+  rewrite H in H2.
+  rewrite H0 in H3.
+  eauto using star_trans.
+Qed.
+
 Theorem disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
@@ -888,7 +959,8 @@ Theorem disk_read_ok : forall a,
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             inv m' s' d' /\
-                            get CacheL m' = Open /\
+                            star (anyR R) s s' /\
+                            get GCacheL s' = Owned tid /\
                             R tid s0' s' /\
                             exists rest', vd' a = Some (Valuset r rest')
      | CRASH d'c: True
@@ -897,10 +969,27 @@ Proof.
   let simp_step :=
     simplify_step
     || (time "learn_same_sectors" learn_same_sectors)
+    || match goal with
+       | [ H: chain _ _ _ _ |- _ ] =>
+        learn H (unfold chain, applied in H)
+       end
     || (time "destruct_valusets" destruct_valusets) in
   time "hoare" hoare pre (simplify' simp_step)
      with (finish;
-      time "standardize_mem_fields" standardize_mem_fields).
+      time "standardize_mem_fields" standardize_mem_fields;
+      eauto).
+
+  (* TODO: automate these relational proofs if they turn out to be common *)
+  eapply star_trans.
+  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
+  eapply star_trans with (set GCacheL (Owned tid) s').
+  eapply star_step; [ | apply star_refl ].
+  eapply anyR_weaken.
+  finish.
+  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
+
+  Grab Existential Variables.
+  all: auto.
 Qed.
 
 Definition replace_latest vs v' :=
