@@ -1121,7 +1121,8 @@ Theorem locked_evict_ok : forall a,
                      get GCacheL s = Owned tid /\
                      vd |= F * a |-> v0
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            inv m s d /\
+                            inv m' s' d' /\
+                            R tid s s' /\
                             get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
                             s0' = s0
