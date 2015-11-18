@@ -502,6 +502,24 @@ Ltac learn_some_addr :=
     end
   end.
 
+Ltac learn_same_sectors :=
+   match goal with
+   | [ H: cache_pred _ _ _ |- _ ] =>
+     learn that (cache_pred_same_sectors H) ||
+                learn that (cache_pred_same_sectors' H)
+   end.
+
+Ltac learn_sector_equality :=
+  match goal with
+  | [ Hmem: forall a v, ?d _ = Some _ -> _,
+      Heq: ?d _ = Some _ |- _ ] =>
+      learn that (Hmem _ _ Heq)
+  | [ Hmem: forall a v, ?d _ = Some _ -> _,
+      Heq: ?d' _ = Some _,
+      Hdisk_eq: ?d = ?d' |- _ ] =>
+      learn Heq (rewrite <- Hdisk_eq in Heq; apply Hmem in Heq)
+  end.
+
 Ltac standardize_mem_fields :=
   repeat match goal with
          | [ Heq: get _ _ = get ?v _, H: context[get ?v _] |- _ ] =>
@@ -546,6 +564,7 @@ Ltac simplify_step :=
     || (time "derive_local_relations" derive_local_relations)
     || (time "learn_invariants" learn_invariants)
     || (time "learn_some_addr" learn_some_addr)
+    || (time "learn_sector_equality" learn_sector_equality)
     || (time "cache_vd_val" cache_vd_val).
 
 Ltac simplify' t :=
@@ -848,27 +867,9 @@ Theorem disk_read_ok : forall a,
      | CRASH d'c: True
     }} disk_read a.
 Proof.
-  Ltac learn_same_sectors :=
-     match goal with
-     | [ H: cache_pred _ _ _ |- _ ] =>
-       learn that (cache_pred_same_sectors H) ||
-                  learn that (cache_pred_same_sectors' H)
-     end.
-  Ltac learn_sector_equality :=
-    match goal with
-    | [ Hmem: forall a v, ?d _ = Some _ -> _,
-        Heq: ?d _ = Some _ |- _ ] =>
-        learn that (Hmem _ _ Heq)
-    | [ Hmem: forall a v, ?d _ = Some _ -> _,
-        Heq: ?d' _ = Some _,
-        Hdisk_eq: ?d = ?d' |- _ ] =>
-        learn Heq (rewrite <- Hdisk_eq in Heq; apply Hmem in Heq)
-    end.
-
   let simp_step :=
     simplify_step
     || (time "learn_same_sectors" learn_same_sectors)
-    || (time "learn_sector_equalities" learn_sector_equality)
     || (time "destruct_valusets" destruct_valusets) in
   time "hoare" hoare pre (simplify' simp_step)
      with (finish;
