@@ -1018,9 +1018,11 @@ Module DISKLOG.
 
   (************* Log header *)
   Module Hdr.
-    Definition header_type := Rec.RecF ([("length", Rec.WordF addrlen)]).
+    Definition header_type := Rec.RecF ([("ndesc", Rec.WordF addrlen);
+                                         ("ndata", Rec.WordF addrlen)]).
     Definition header := Rec.data header_type.
-    Definition mk_header (len : nat) : header := ($ len, tt).
+    Definition hdr := (nat * nat)%type.
+    Definition mk_header (len : hdr) : header := ($ (fst len), ($ (snd len), tt)).
 
     Theorem hdrsz_ok : Rec.len header_type <= valulen.
     Proof.
@@ -1067,8 +1069,8 @@ Module DISKLOG.
     Definition LAHdr := LogHeader.
 
     Inductive state : Type :=
-    | Synced : nat -> state
-    | Unsync : nat -> nat -> state
+    | Synced : hdr -> state
+    | Unsync : hdr -> hdr -> state
     .
 
     Definition rep xp state : @rawpred :=
@@ -1079,7 +1081,7 @@ Module DISKLOG.
 
     Definition read T xp cs rx : prog T := Eval compute_rec in
       let^ (cs, v) <- BUFCACHE.read (LAHdr xp) cs;
-      rx ^(cs, # ((val2hdr v) :-> "length")).
+      rx ^(cs, (# ((val2hdr v) :-> "ndesc"), # ((val2hdr v) :-> "ndata"))).
 
     Definition write T xp n cs rx : prog T :=
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
@@ -1092,7 +1094,7 @@ Module DISKLOG.
     Theorem write_ok : forall xp n cs,
     {< F d old,
     PRE            BUFCACHE.rep cs d *
-                   [[ goodSize addrlen n ]] *
+                   [[ goodSize addrlen (fst n) /\ goodSize addrlen (snd n) ]] *
                    [[ (F * rep xp (Synced old))%pred d ]]
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
@@ -1108,7 +1110,7 @@ Module DISKLOG.
     Theorem read_ok : forall xp cs,
     {< F d n,
     PRE            BUFCACHE.rep cs d *
-                   [[ goodSize addrlen n ]] *
+                   [[ goodSize addrlen (fst n) /\ goodSize addrlen (snd n) ]] *
                    [[ (F * rep xp (Synced n))%pred d ]]
     POST RET: ^(cs, r)
                    BUFCACHE.rep cs d *
@@ -1121,13 +1123,13 @@ Module DISKLOG.
       hoare.
       subst; rewrite val2hdr2val; simpl.
       unfold mk_header, Rec.recget'; simpl.
-      rewrite wordToNat_natToWord_idempotent'; auto.
+      repeat rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
     Theorem sync_ok : forall xp cs,
     {< F d n,
     PRE            BUFCACHE.rep cs d * exists old,
-                   [[ goodSize addrlen n ]] *
+                   [[ goodSize addrlen (fst n) /\ goodSize addrlen (snd n)  ]] *
                    [[ (F * rep xp (Unsync n old))%pred d ]]
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
@@ -1176,7 +1178,6 @@ Module DISKLOG.
 
   Definition vals_nonzero (log : contents) := map ent_valu (log_nonzero log).
 
-
   Fixpoint nonzero_addrs (al : list addr) : nat :=
     match al with
     | 0 :: rest => nonzero_addrs rest
@@ -1191,6 +1192,8 @@ Module DISKLOG.
     | _, _ => nil
     end.
 
+  Definition ndata_log (log : contents) := nonzero_addrs (map fst log) .
+
   Definition addr_valid (e : entry) := goodSize addrlen (fst e).
 
   Definition rep_contents xp (log : contents) : rawpred :=
@@ -1201,19 +1204,24 @@ Module DISKLOG.
   Definition rep_inner xp (st : state) : rawpred :=
   (match st with
   | Synced l =>
-       Hdr.rep xp (Hdr.Synced (ndesc_log l)) *
+       [[ goodSize addrlen (length l) ]] *
+       Hdr.rep xp (Hdr.Synced (ndesc_log l, ndata_log l)) *
        rep_contents xp l
 
   | Truncated old =>
-       Hdr.rep xp (Hdr.Unsync 0 (ndesc_log old)) *
+       [[ goodSize addrlen (length old) ]] *
+       Hdr.rep xp (Hdr.Unsync (0, 0) (ndesc_log old, ndata_log old)) *
        rep_contents xp old
 
   | ExtendedUnsync old =>
-       Hdr.rep xp (Hdr.Synced (ndesc_log old)) *
+       [[ goodSize addrlen (length old) ]] *
+       Hdr.rep xp (Hdr.Synced (ndesc_log old, ndata_log old)) *
        rep_contents xp old
 
   | Extended old new =>
-       Hdr.rep xp (Hdr.Unsync (ndesc_log (old ++ new)) (ndesc_log old)) *
+       [[ goodSize addrlen (length (old ++ new)) ]] *
+       Hdr.rep xp (Hdr.Unsync (ndesc_log (old ++ new), ndata_log (old ++ new))
+                              (ndesc_log old, ndata_log old)) *
        rep_contents xp old
   end)%pred.
 
@@ -1228,10 +1236,10 @@ Module DISKLOG.
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
   Definition read T xp cs rx : prog T :=
-    let^ (cs, ndesc) <- Hdr.read xp cs;
+    let^ (cs, nr) <- Hdr.read xp cs;
+    let '(ndesc, ndata) := nr in
     let^ (cs, wal) <- Desc.read_all xp ndesc cs;
     let al := map (@wordToNat addrlen) wal in
-    let ndata := nonzero_addrs al in
     let^ (cs, vl) <- Data.read_all xp ndata cs;
     rx ^(cs, combine_nonzero al vl).
 
@@ -1455,10 +1463,29 @@ Module DISKLOG.
     repeat rewrite nonzero_addrs_app_zeros; simpl; auto.
   Qed.
 
+  Lemma vals_nonzero_length : forall l,
+    length (vals_nonzero l) <= length l.
+  Proof.
+    unfold vals_nonzero; induction l; intros; simpl; auto.
+    destruct a, n; simpl; auto.
+    autorewrite with lists in *; omega.
+  Qed.
+
+  Lemma ndata_log_goodSize : forall l,
+    goodSize addrlen (length l) -> goodSize addrlen (ndata_log l).
+  Proof.
+    unfold ndata_log; intros.
+    rewrite <- vals_nonzero_addrs.
+    eapply goodSize_trans.
+    apply vals_nonzero_length; auto.
+    auto.
+  Qed.
+  Local Hint Resolve ndata_log_goodSize.
+
+
   Definition read_ok : forall xp cs,
     {< F l,
-    PRE            [[ goodSize addrlen (length l) ]] *
-                   rep xp F (Synced l) cs
+    PRE            rep xp F (Synced l) cs
     POST RET: ^(cs, r)
                    rep xp F (Synced l) cs *
                    [[ r = log_nonzero l ]]
@@ -1469,7 +1496,7 @@ Module DISKLOG.
     hoare using (subst; eauto).
     all: try cancel; try (rewrite desc_padding_piff; cancel).
     rewrite map_length, padded_log_length; auto.
-    rewrite vals_nonzero_addrs, map_wordToNat_ent_addr, nonzero_addrs_padded_log by auto.
+    rewrite vals_nonzero_addrs; unfold ndata_log.
     replace DiskLogDataSig.items_per_val with 1 by (cbv; auto); omega.
   Qed.
 
@@ -1489,7 +1516,7 @@ Module DISKLOG.
 
 
   Definition trunc T xp cs rx : prog T :=
-    cs <- Hdr.write xp 0 cs;
+    cs <- Hdr.write xp (0, 0) cs;
     cs <- Hdr.sync xp cs;
     rx cs.
 
@@ -1501,8 +1528,7 @@ Module DISKLOG.
 
   Definition trunc_ok : forall xp cs,
     {< F l,
-    PRE            [[ goodSize addrlen (length l) ]] *
-                   rep xp F (Synced l) cs
+    PRE            rep xp F (Synced l) cs
     POST RET: cs   exists F',
                    rep xp (F * F') (Synced nil) cs
     CRASH exists cs', 
@@ -1531,17 +1557,74 @@ Module DISKLOG.
     apply pimpl_or_r; right; cancel.
   Qed.
 
+  Definition loglen_valid xp ndesc ndata :=
+    LogDescLen xp <= ndesc /\ LogLen xp <= ndata.
+
+  Definition loglen_invalid xp ndesc ndata :=
+    LogDescLen xp > ndesc \/ LogLen xp > ndata.
+
+  Theorem loglen_valid_dec xp ndesc ndata :
+    {loglen_valid xp ndesc ndata} + {loglen_invalid xp ndesc ndata }.
+  Proof.
+    unfold loglen_valid, loglen_invalid.
+    destruct (lt_dec ndesc (LogDescLen xp));
+    destruct (lt_dec ndata (LogLen xp)); simpl; auto.
+    left; intuition.
+  Qed.
 
   Definition extend T xp log cs rx : prog T :=
-    let^ (cs, n) <- Hdr.read xp cs;
-    cs <- Desc.write_unaligned xp n (map fst log) cs;
-    cs <- Data.write_unaligned xp n (map snd log) cs;
-    let n' := n + length log in
-    cs <- Desc.sync_all xp n' cs;
-    cs <- Data.sync_all xp n' cs;
-    cs <- Hdr.write xp n' cs;
-    cs <- Hdr.sync xp cs;
-    rx cs.
+    let^ (cs, nr) <- Hdr.read xp cs;
+    let '(ndata, ndesc) := nr in
+    let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
+    If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
+      cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
+      cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
+      cs <- Desc.sync_aligned xp ndata nndesc cs;
+      cs <- Data.sync_aligned xp ndesc nndata cs;
+      cs <- Hdr.write xp (ndesc + nndesc, ndata + nndata) cs;
+      cs <- Hdr.sync xp cs;
+      rx ^(cs, true)
+    } else {
+      rx ^(cs, false)
+    }.
+
+  Remove Hints goodSize_0.
+
+  Ltac safestep :=
+      prestep; norm; [ cancel | ];
+      repeat match goal with 
+      | [ |- _ /\ _ ] => split 
+      | [ |- True ] => auto
+      end; try pred_apply.
+
+  Definition extend_ok : forall xp new cs,
+    {< F old,
+    PRE   rep xp F (Synced old) cs
+    POST RET: ^(cs, r)
+          ([[ r = true ]] * rep xp F (Synced (old ++ new)) cs) \/
+          ([[ r = false ]] * rep xp F (Synced old) cs)
+    CRASH exists cs',
+          rep xp F (Synced old) cs' \/
+          rep xp F (ExtendedUnsync old) cs' \/
+          rep xp F (Extended old new) cs' \/
+          rep xp F (Synced (old ++ new)) cs'
+    >} extend xp new cs.
+  Proof.
+    unfold extend.
+    step.
+    step.
+
+    (* return true *)
+    - safestep.
+      Search Desc.array_rep.
+      
+    (* false *)
+    - hoare.
+
+    (* crash *)
+    - cancel.
+  Qed.
+
 
 
 
