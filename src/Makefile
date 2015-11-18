@@ -10,7 +10,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ExtrHaskellPrelude Extraction ExtractJSON \
 		  Hlist Star Variables EventCSL EventCSLrecovery EventCSLauto \
 		  Locking Automation MemCache ForwardChaining \
-		  Bank ConcurrentCache ConcurrentLog
+		  Bank ConcurrentCache TwoBlockExample ConcurrentLog
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 GHC 	   := ghc
