@@ -1260,6 +1260,17 @@ Hint Rewrite mem_except_upd : cache.
 
 Hint Resolve cache_pred_miss_stable.
 
+Lemma upd_eq_something : forall AT AEQ V (d: @mem AT AEQ V) a a' v0 v',
+  d a = Some v0 ->
+  exists v, upd d a' v' a = Some v.
+Proof.
+  intros.
+  case_eq (AEQ a a'); intros;
+    autorewrite with cache; eauto.
+Qed.
+
+Hint Resolve upd_eq_something.
+
 Theorem sync_ok : forall a,
     stateS TID: tid |-
     {{ F v0 rest,
@@ -1271,6 +1282,7 @@ Theorem sync_ok : forall a,
                      vd |= F * a |-> Valuset v0 rest
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                           inv m' s' d' /\
+                          R tid s s' /\
                           get GCacheL s' = Owned tid /\
                           m = m' /\
                           get GCache s' = get GCache s /\
