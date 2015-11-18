@@ -73,9 +73,7 @@ on the definitions directly *)
 Hint Unfold lock_protects : prog.
 Hint Unfold StateR' LockR' : prog.
 
-Module Type CacheSemantics.
-  Declare Module Sem : Semantics.
-  Declare Module CVars : CacheVars Sem.
+Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
 
   Module Transitions := CacheTransitionSystem Sem CVars.
 
@@ -125,7 +123,9 @@ Module Type CacheSemantics.
 
 End CacheSemantics.
 
-Module Cache (CSem:CacheSemantics).
+Module Cache (Sem:Semantics)
+  (CVars:CacheVars Sem)
+  (CSem:CacheSemantics Sem CVars).
 
 Import CSem.
 Import Sem.
