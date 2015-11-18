@@ -1182,6 +1182,7 @@ Theorem writeback_ok : forall a,
                      vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             inv m' s' d' /\
+                            R tid s s' /\
                             get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
                             (forall b, cache_get (get Cache m) a = Some (b, v0) ->
@@ -1326,6 +1327,7 @@ Theorem cache_sync_ok : forall a,
                     vd |= F * a |-> Valuset v0 rest
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             inv m' s' d' /\
+                            star (R tid) s s' /\
                             get GCacheL s' = Owned tid /\
                             vd' |= F * a |-> Valuset v0 nil /\
                             s0' = s0
