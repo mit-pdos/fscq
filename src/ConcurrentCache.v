@@ -1026,9 +1026,11 @@ Theorem locked_disk_write_ok : forall a v,
                      vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             inv m' s' d' /\
+                            R tid s s' /\
                             get GCacheL s' = Owned tid /\
-                            exists rest', vd' |= F * a |-> (Valuset v rest') /\
-                                     s0' = s0
+                            (exists rest', vd' |= F * a |-> (Valuset v rest') /\
+                            vd' = upd (virt_disk s) a (Valuset v rest')) /\
+                            s0' = s0
      | CRASH d'c: d'c = d
     }} locked_disk_write a v.
 Proof.
@@ -1047,6 +1049,54 @@ Proof.
             time "eauto inv_preserved"
               solve [ eauto using ghost_lock_inv_preserved ]
           end).
+  (* TODO: make distinguish_two_addresses faster by rewriting
+     more precisely and with better matching *)
+  Ltac t := time "distinguish_addresses" distinguish_addresses;
+    (rewrite upd_eq by (now auto)) || (rewrite upd_ne by (now auto));
+    eauto.
+  t.
+  t.
+  t.
+Qed.
+
+Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
+
+Definition disk_write {T} a v rx : prog _ _ T :=
+  cache_lock;;
+              locked_disk_write a v;;
+              rx tt.
+
+Theorem disk_write_ok : forall a v,
+    stateS TID: tid |-
+    {{ F v0 rest,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     inv m s d /\
+                     vd |= F * a |-> (Valuset v0 rest) /\
+                     R tid s0 s
+     | POST d' m' s0' s' _:  let vd' := virt_disk s' in
+                            inv m' s' d' /\
+                            star (anyR R) s s' /\
+                            get GCacheL s' = Owned tid /\
+                            (exists rest', vd' a = Some (Valuset v rest'))
+     | CRASH d'c: True
+    }} disk_write a v.
+Proof.
+  let simp_step :=
+    simplify_step
+    || unfold chain, applied in *|- in
+  time "hoare" hoare pre (simplify' simp_step) with finish.
+
+  (* same as above proof *)
+  eapply star_trans.
+  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
+  eapply star_trans with (set GCacheL (Owned tid) s').
+  eapply star_step; [ | apply star_refl ].
+  eapply anyR_weaken.
+  finish.
+  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
+
+  Grab Existential Variables.
+  all: auto.
 Qed.
 
 Definition evict {T} a rx : prog _ _ T :=

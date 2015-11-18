@@ -160,6 +160,7 @@ Section EventCSL.
       d'' a = Some (Valuset v rest) ->
       star (LockR' tid) s'' s''' ->
       LockI m''' s''' d''' ->
+      (StateR' tid) s' s''' ->
       star (ProgR' tid) s''' s'''' ->
       ProgI m'''' s'''' d'''' ->
       tid :- AsyncRead a rx / (d, m, s0, s) ==>
@@ -530,6 +531,7 @@ Section EventCSL.
                    d'' |= F * a |-> (Valuset v rest) /\
                    star (LockR' tid) s'' s''' /\
                    LockI m''' s''' d''' /\
+                   StateR' tid s' s''' /\
                    star (ProgR' tid) s''' s'''' /\
                    ProgI m'''' s'''' d''''
             | CRASH d'c : d'c = d
@@ -537,6 +539,7 @@ Section EventCSL.
   Proof.
     opcode_ok.
     unfold ProgI in *; intuition.
+    unfold StateR', othersR in *; deex.
     repeat eexists; eauto using ptsto_valid_iff.
   Qed.
 
