@@ -107,7 +107,11 @@ Module Dbg.
 Ltac find_all x :=
 repeat match goal with
        | [ H: context[x] |- _ ] =>
-         let t := type of H in idtac H ":" t; fail
+         let t := type of H in
+          lazymatch t with
+          | Learnt => idtac
+          | _ => idtac H ":" t
+          end; fail
        end.
 
 Ltac repeat_upto k t :=
@@ -128,5 +132,36 @@ Abort.
 
 Tactic Notation "time_solver" tactic(t) :=
   try time "finisher" progress t.
+
+Inductive hidden (P:Prop) : Prop :=
+| Hidden (H:P).
+
+Remark hidden_eq_p : forall P,
+  hidden P <-> P.
+Proof.
+  firstorder.
+Qed.
+
+Ltac unhide_goal := apply Hidden.
+
+Ltac unhide_hyp H := rewrite hidden_eq_p in H.
+
+Tactic Notation "unhide" := unhide_goal.
+Tactic Notation "unhide" "in" hyp(H) := unhide_hyp H.
+
+Goal forall (P Q:Prop),
+  hidden (P -> Q) ->
+  P ->
+  Q /\ hidden P.
+Proof.
+  intros.
+  split.
+  - unhide in H.
+    apply H. apply H0.
+  - unhide.
+    apply H0.
+
+  Fail idtac "should be solved".
+Abort.
 
 End Dbg.
