@@ -792,6 +792,31 @@ Qed.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
 
+Definition cache_lock {T} rx : prog _ _ T :=
+  AcquireLock CacheL (fun tid => set GCacheL (Owned tid));;
+  rx tt.
+
+Theorem cache_lock_ok :
+    stateS TID: tid |-
+    {{ (_:unit),
+     | PRE d m s0 s: let vd := virt_disk s in
+                     inv m s d /\
+                     R tid s0 s
+     | POST d' m' s0' s'' r: let vd' := virt_disk s'' in
+                            inv m' s'' d' /\
+                            get GCacheL s'' = Owned tid /\
+                            s0' = s'' /\
+                            exists s',
+                            s'' = set GCacheL (Owned tid) s' /\
+                            star (othersR R tid) s s'
+     | CRASH d'c: True
+    }} cache_lock.
+Proof.
+  time "hoare" hoare pre simplify with finish.
+Qed.
+
+Hint Extern 1 {{cache_lock; _}} => apply cache_lock_ok : prog.
+
 Definition cache_unlock {T} rx : prog _ _ T :=
   Commit (set GCacheL NoOwner);;
          Assgn CacheL Open;;
@@ -802,6 +827,8 @@ Theorem cache_unlock_ok :
     {{ (_:unit),
      | PRE d m s0 s: let vd := virt_disk s in
                      inv m s d /\
+                     (* not strictly necessary, but why would you unlock
+                     if you don't know you have the lock? *)
                      get GCacheL s = Owned tid /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
@@ -809,12 +836,12 @@ Theorem cache_unlock_ok :
                             modified (HCons CacheL HNil) m m' /\
                             modified (HCons GCacheL HNil) s s' /\
                             d' = d /\
-                            get CacheL m' = Open /\
+                            get GCacheL s' = NoOwner /\
                             R tid s0' s'
      | CRASH d'c: True
     }} cache_unlock.
 Proof.
-  hoare pre simplify with finish.
+  time "hoare" hoare pre simplify with finish.
 Qed.
 
 Hint Extern 1 {{cache_unlock; _}} => apply cache_unlock_ok : prog.
