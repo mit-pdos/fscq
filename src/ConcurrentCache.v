@@ -878,7 +878,7 @@ Proof.
   | [ H: ?vd ?a = Some ?vs |-
     context[ptsto a ?vs'] ] =>
     replace vs with vs' in H
-  end; destruct_valusets; eauto.
+  end; destruct_valusets; eauto using ptsto_valid_iff.
 Qed.
 
 Hint Resolve disk_eq_valuset.
@@ -1193,7 +1193,7 @@ Theorem writeback_ok : forall a,
 Proof.
   hoare pre simplify with finish.
 
-  Remove Hints ptsto_valid_iff : core.
+  Remove Hints disk_eq_valuset : core.
 
   (* we have to split the proof at this level so we can get the
   cache_pred we need for the Write *)
