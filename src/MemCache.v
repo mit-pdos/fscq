@@ -192,17 +192,6 @@ Tactic Notation "destruct" "matches" := destruct_goal_matches.
 
 Hint Unfold cache_pred mem_union : cache.
 
-Hint Resolve ptsto_valid_iff.
-
-Lemma cache_pred_miss : forall c a v vd,
-    cache_get c a = None ->
-    vd a = Some v ->
-    cache_pred c vd =p=> any * a |-> v.
-Proof.
-  unfold pimpl.
-  prove_cache_pred.
-Qed.
-
 Lemma cache_miss_mem_eq : forall c vd a d,
     cache_pred c vd d ->
     cache_get c a = None ->
@@ -419,6 +408,32 @@ Ltac learn_disk_val :=
       edestruct (cache_pred_eq_disk a Hget Hpred) as [rest ?]
   end.
 
+Ltac case_cache_val' c a :=
+  case_eq (cache_get c a); intros;
+  try match goal with
+      | [ p: bool * valu |- _ ] =>
+        destruct p as [ [] ]
+      end;
+  replace_cache_vals;
+  (* especially to remove impossible cases *)
+  try congruence.
+
+Ltac case_cache_val :=
+  lazymatch goal with
+    (* particularly in Hoare proofs, cache_get appears in the goal
+       on an expression to get the AssocCache *)
+  | [ |- context[cache_get ?c ?a] ] =>
+    case_cache_val' c a
+  | [ c: AssocCache, a: addr, a': addr |- _ ] =>
+    (* if address is ambiguous, focus on one in the goal *)
+    match goal with
+    | [ |- context[a] ] => case_cache_val' c a
+    | [ |- context[a'] ] => case_cache_val' c a'
+    end
+  | [ c: AssocCache, a: addr |- _ ] =>
+    case_cache_val' c a
+  end.
+
 Lemma cache_pred_clean : forall c vd rest a v,
     cache_get c a = Some (false, v) ->
     vd a = Some (Valuset v rest) ->
@@ -457,12 +472,16 @@ Proof.
   unfold ptsto in *; intuition.
   prove_cache_pred;
     rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
-  eexists; intuition eauto.
 
   destruct matches.
+  eauto.
 
-  destruct matches; repeat deex; finish; eauto.
-  intuition; distinguish_addresses.
+  case_cache_val;
+    destruct matches;
+    repeat deex;
+    repeat match goal with
+    | [ |- exists _, _ ] => eexists
+    end; intuition eauto; try congruence.
 Qed.
 
 Lemma cache_pred_dirty : forall c vd a v v' rest,
@@ -499,8 +518,12 @@ Proof.
   rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
   destruct matches; eauto.
 
-  destruct matches; repeat deex; finish; eauto.
-  intuition; distinguish_addresses.
+  case_cache_val;
+    destruct matches;
+    repeat deex;
+    repeat match goal with
+    | [ |- exists _, _ ] => eexists
+    end; intuition eauto; try congruence.
 Qed.
 
 Lemma cache_pred_clean_val :  forall c vd d a v,
@@ -646,10 +669,15 @@ Proof.
   prove_cache_pred; distinguish_addresses; replace_cache_vals;
   rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
 
-  destruct matches.
+  replace (m1 a).
+  congruence.
 
-  destruct matches; repeat deex; finish; eauto.
-  intuition; distinguish_addresses.
+  case_cache_val;
+    destruct matches;
+    repeat deex;
+    repeat match goal with
+    | [ |- exists _, _ ] => eexists
+    end; intuition eauto; try congruence.
 Qed.
 
 End CachePredStability.

@@ -447,32 +447,6 @@ Ltac disk_equalities :=
 
 Hint Resolve cache_pred_address.
 
-Ltac case_cache_val' c a :=
-  case_eq (cache_get c a); intros;
-  try match goal with
-      | [ p: bool * valu |- _ ] =>
-        destruct p as [ [] ]
-      end;
-  replace_cache_vals;
-  (* especially to remove impossible cases *)
-  try congruence.
-
-Ltac case_cache_val :=
-  lazymatch goal with
-    (* particularly in Hoare proofs, cache_get appears in the goal
-       on an expression to get the AssocCache *)
-  | [ |- context[cache_get ?c ?a] ] =>
-    case_cache_val' c a
-  | [ c: AssocCache, a: addr, a': addr |- _ ] =>
-    (* if address is ambiguous, focus on one in the goal *)
-    match goal with
-    | [ |- context[a] ] => case_cache_val' c a
-    | [ |- context[a'] ] => case_cache_val' c a'
-    end
-  | [ c: AssocCache, a: addr |- _ ] =>
-    case_cache_val' c a
-  end.
-
 Ltac cache_vd_val :=
   lazymatch goal with
   | [ H: cache_get ?c ?a = Some (true, ?v), H': cache_pred ?c _ _ |- _ ] =>
