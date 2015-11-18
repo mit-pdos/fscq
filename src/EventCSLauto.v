@@ -35,8 +35,24 @@ Ltac simpl_post :=
   split_ands;
   repeat deex.
 
+(* Captures a program in a type so the hypotheses can give the program that
+  produced each proof obligation. *)
+Inductive CurrentProg {Mcontents} {Scontents} {T}
+  (p: prog Mcontents Scontents T) :=
+| SomeProg.
+
+Local Ltac set_prog p :=
+  repeat match goal with
+  | [ H: CurrentProg _ |- _ ] => clear H
+  end;
+  let H := fresh "PreOf" in
+  pose proof (SomeProg p) as H.
+
 Ltac next_control_step :=
-  eapply pimpl_ok; [ now auto with prog | ].
+    match goal with
+    | [ |- valid _ _ _ _ _ _ ?p ] =>
+      eapply pimpl_ok; [ now (auto with prog) | set_prog p  ]
+    end.
 
 Ltac head_symbol e :=
   lazymatch e with
