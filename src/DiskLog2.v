@@ -1679,7 +1679,7 @@ Module DISKLOG.
     Desc.avail_rep xp (ndesc_log l) (LogDescLen xp - ndesc_log l) *
     Data.array_rep xp 0 (Data.Synced (vals_nonzero l)) *
     Desc.array_rep xp 0 (Desc.Synced (map ent_addr l))
-    =p=> emp *
+    =p=>
     Hdr.LAHdr xp |-> (Hdr.hdr2val (Hdr.mk_header (ndesc_log [], ndata_log [])), []) *
     Desc.array_rep xp 0 (Desc.Synced []) *
     Data.array_rep xp 0 (Data.Synced (vals_nonzero [])) *
@@ -1706,12 +1706,11 @@ Module DISKLOG.
   Definition trunc_ok : forall xp cs,
     {< F l,
     PRE            rep xp F (Synced l) cs
-    POST RET: cs   exists F',
-                   rep xp (F * F') (Synced nil) cs
+    POST RET: cs   rep xp F (Synced nil) cs
     CRASH exists cs', 
        rep xp F (Synced l) cs' \/
        rep xp F (Truncated l) cs' \/
-       exists F', rep xp (F * F') (Synced nil) cs'
+       rep xp F (Synced nil) cs'
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -1847,6 +1846,36 @@ Module DISKLOG.
     apply divup_le; lia.
   Qed.
 
+  Lemma mul_le_mono_helper : forall a b,
+    b > 0 -> a <= a * b.
+  Proof.
+    intros. nia.
+  Qed.
+
+  Lemma loglen_valid_goodSize_l : forall xp a b,
+    loglen_valid xp a b -> Desc.xparams_ok xp -> Data.xparams_ok xp ->
+    goodSize addrlen a.
+  Proof.
+    unfold loglen_valid, Desc.xparams_ok, Data.xparams_ok; intuition.
+    eapply goodSize_trans; eauto.
+    eapply goodSize_trans.
+    apply mul_le_mono_helper.
+    apply Desc.items_per_val_gt_0.
+    auto.
+  Qed.
+
+  Lemma loglen_valid_goodSize_r : forall xp a b,
+    loglen_valid xp a b -> Desc.xparams_ok xp -> Data.xparams_ok xp ->
+    goodSize addrlen b.
+  Proof.
+    unfold loglen_valid, Desc.xparams_ok, Data.xparams_ok; intuition.
+    eapply goodSize_trans; eauto.
+    eapply goodSize_trans.
+    apply mul_le_mono_helper.
+    apply Data.items_per_val_gt_0.
+    auto.
+  Qed.
+
 
   Definition extend_ok : forall xp new cs,
     {< F old,
@@ -1865,7 +1894,6 @@ Module DISKLOG.
     unfold extend.
     step.
     step.
-
     -
       (* write content *)
       step.
@@ -1885,14 +1913,19 @@ Module DISKLOG.
       apply padded_desc_valid.
       apply loglen_valid_desc_valid; auto.
       admit.
-      
+
       step.
       autorewrite with lists.
       rewrite entry_valid_ndata, Nat.mul_1_r; auto.
 
       (* write header *)
       step.
-
+      eapply loglen_valid_goodSize_l; eauto.
+      eapply loglen_valid_goodSize_r; eauto.
+      
+      
+      (* sync header *)
+      
 
     (* false *)
     - hoare.
