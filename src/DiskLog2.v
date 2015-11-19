@@ -935,6 +935,14 @@ Module AsyncRecArray (RA : RASig).
     simplen.
   Qed.
 
+  Lemma write_aligned_length_helper : forall n l,
+    n <= length (map block2val (list_chunk l items_per_val item0)) ->
+    n <= divup (length l) items_per_val.
+  Proof.
+    intros; autorewrite with lists in *.
+    erewrite <- list_chunk_length; eauto.
+  Qed.
+  Local Hint Resolve write_aligned_length_helper.
 
   (** write items from a given block index, 
       slots following the items will be cleared *)
@@ -942,32 +950,6 @@ Module AsyncRecArray (RA : RASig).
     let chunks := list_chunk items items_per_val item0 in
     cs <- BUFCACHE.write_range ((RAStart xp) + start) (map block2val chunks) cs;
     rx cs.
-
-(*
-  Theorem write_aligned_ok : forall xp start new cs,
-    {< F d,
-    PRE            exists old, BUFCACHE.rep cs d *
-                   [[ eqlen old new /\ items_valid xp start new ]] *
-                   [[ (F * array_rep xp start (Synced old))%pred d ]]
-    POST RET: cs
-                   exists d', BUFCACHE.rep cs d' *
-                   [[ (F * array_rep xp start (Unsync new))%pred d' ]]
-    CRASH  exists cs' d' F', BUFCACHE.rep cs' d' * [[ (F * F') % pred d' ]]
-    >} write_aligned xp start new cs.
-  Proof.
-    unfold write_aligned.
-    step.
-
-    simplen.
-    instantiate (2 := F); cancel.
-    simplen.
-
-    step.
-    setoid_rewrite vsupd_range_unsync_array; auto.
-    simplen.
-    step.
-  Qed.
-*)
 
   Theorem write_aligned_ok : forall xp start new cs,
     {< F d,
@@ -977,7 +959,9 @@ Module AsyncRecArray (RA : RASig).
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * array_rep xp start (Unsync new))%pred d' ]]
-    CRASH  exists cs' d' F', BUFCACHE.rep cs' d' * [[ (F * F') % pred d' ]]
+    CRASH  exists cs' d',
+                   BUFCACHE.rep cs' d' *
+                   [[ (F * avail_rep xp start (divup (length new) items_per_val)) % pred d' ]]
     >} write_aligned xp start new cs.
   Proof.
     unfold write_aligned, avail_rep.
@@ -987,7 +971,10 @@ Module AsyncRecArray (RA : RASig).
     step.
     setoid_rewrite vsupd_range_unsync_array; auto.
     simplen.
-    step.
+
+    pimpl_crash; cancel.
+    rewrite vsupd_range_length; auto.
+    simplen; rewrite Nat.min_l; eauto.
   Qed.
 
 
@@ -1526,7 +1513,7 @@ Module DISKLOG.
 
   Local Hint Resolve combine_nonzero_padded_wordToNat.
 
-  Lemma desc_padding_piff : forall xp a l,
+  Lemma desc_padding_synced_piff : forall xp a l,
     Desc.synced_array xp a (map ent_addr (padded_log l))
     <=p=> Desc.synced_array xp a (map ent_addr l).
   Proof.
@@ -1535,6 +1522,23 @@ Module DISKLOG.
      unfold padded_log, setlen, roundup in H0.
      rewrite firstn_oob, map_app in H0 by auto.
      apply Desc.items_valid_app in H0; intuition.
+     apply eq_sym; apply desc_ipack_padded.
+     unfold padded_log, setlen, roundup.
+     rewrite firstn_oob, map_app by auto.
+     apply Desc.items_valid_app2; auto.
+     autorewrite with lists; auto.
+     apply desc_ipack_padded.
+  Qed.
+
+  Lemma desc_padding_unsync_piff : forall xp a l,
+    Desc.array_rep xp a (Desc.Unsync (map ent_addr (padded_log l)))
+    <=p=> Desc.array_rep xp a (Desc.Unsync (map ent_addr l)).
+  Proof.
+     unfold Desc.array_rep, Desc.unsync_array, Desc.rep_common; intros.
+     split; cancel; subst.
+     unfold padded_log, setlen, roundup in H.
+     rewrite firstn_oob, map_app in H by auto.
+     apply Desc.items_valid_app in H; intuition.
      apply eq_sym; apply desc_ipack_padded.
      unfold padded_log, setlen, roundup.
      rewrite firstn_oob, map_app by auto.
@@ -1623,7 +1627,7 @@ Module DISKLOG.
   Proof.
     unfold read.
     hoare using (subst; eauto).
-    all: try cancel; try (rewrite desc_padding_piff; cancel).
+    all: try cancel; try (rewrite desc_padding_synced_piff; cancel).
     rewrite map_length, padded_log_length; auto.
     rewrite vals_nonzero_addrs; unfold ndata_log.
     replace DiskLogDataSig.items_per_val with 1 by (cbv; auto); omega.
@@ -1771,6 +1775,9 @@ Module DISKLOG.
       | [ |- True ] => auto
       end; try pred_apply.
 
+  Ltac or_r := apply pimpl_or_r; right.
+  Ltac or_l := apply pimpl_or_r; left.
+
   Definition entry_valid (ent : entry) := fst ent <> 0.
 
   Definition entry_valid_ndata : forall l,
@@ -1882,20 +1889,21 @@ Module DISKLOG.
     PRE   [[ Forall entry_valid new ]] *
           rep xp F (Synced old) cs
     POST RET: ^(cs, r)
-          ([[ r = true ]] * rep xp F (Synced (old ++ new)) cs) \/
+          ([[ r = true ]] * rep xp F (Synced ((padded_log old) ++ new)) cs) \/
           ([[ r = false ]] * rep xp F (Synced old) cs)
     CRASH exists cs',
           rep xp F (Synced old) cs' \/
           rep xp F (ExtendedUnsync old) cs' \/
           rep xp F (Extended old new) cs' \/
-          rep xp F (Synced (old ++ new)) cs'
+          rep xp F (Synced ((padded_log old) ++ new)) cs'
     >} extend xp new cs.
   Proof.
     unfold extend.
     step.
     step.
-    -
-      (* write content *)
+
+    (* true case *)
+    - (* write content *)
       step.
       rewrite Desc.avail_rep_split. cancel.
       autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
@@ -1905,14 +1913,15 @@ Module DISKLOG.
       autorewrite with lists.
       rewrite divup_1; rewrite <- entry_valid_ndata by auto.
       apply helper_loglen_data_valid_extend; auto.
-      
+
       (* sync content *)
       safestep.
       instantiate ( 1 := map ent_addr (padded_log new) ).
       rewrite map_length, padded_log_length; auto.
       apply padded_desc_valid.
       apply loglen_valid_desc_valid; auto.
-      admit.
+      rewrite desc_padding_unsync_piff.
+      cancel.
 
       step.
       autorewrite with lists.
@@ -1922,16 +1931,51 @@ Module DISKLOG.
       step.
       eapply loglen_valid_goodSize_l; eauto.
       eapply loglen_valid_goodSize_r; eauto.
-      
-      
-      (* sync header *)
-      
 
-    (* false *)
+      (* sync header *)
+      step.
+      eapply loglen_valid_goodSize_l; eauto.
+      eapply loglen_valid_goodSize_r; eauto.
+
+      (* post condition *)
+      step.
+      admit.
+
+      (* crash conditons *)
+      cancel. admit. admit.
+      cancel. admit. admit.
+
+      (* after sync desc *)
+      cancel. admit.
+
+      (* after write data *)
+      cancel. or_r. or_r. or_l. cancel.
+      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
+      simpl; autorewrite with lists.
+      admit. admit.
+
+      (* after write desc *)
+      cancel. or_r. or_l. cancel.
+      rewrite Desc.array_rep_avail; simpl; autorewrite with lists.
+      setoid_rewrite <- Desc.avail_rep_merge at 3.
+      setoid_rewrite <- Data.avail_rep_merge at 3.
+      cancel.
+      unfold ndata_log; autorewrite with lists.
+      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      apply helper_loglen_data_valid_extend; auto.
+      apply helper_loglen_desc_valid_extend; auto.
+
+      (* before write desc *)
+      cancel. or_l. cancel.
+      rewrite Desc.avail_rep_merge. cancel.
+      autorewrite with lists.
+      apply helper_loglen_desc_valid_extend; auto.
+
+    (* false case *)
     - hoare.
 
-    (* crash *)
-    - cancel.
+    (* crash for the false case *)
+    - cancel; hoare.
   Qed.
 
 
