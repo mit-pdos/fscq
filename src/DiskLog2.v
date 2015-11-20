@@ -1844,6 +1844,17 @@ Module DISKLOG.
     omega.
   Qed.
 
+  Lemma helper_loglen_data_valid_extend_entry_valid : forall xp new old,
+    Forall entry_valid new ->
+    loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
+    length new + (LogLen xp - ndata_log old - ndata_log new) 
+      = LogLen xp - ndata_log old.
+  Proof.
+    intros.
+    rewrite <- entry_valid_ndata by auto.
+    apply helper_loglen_data_valid_extend; auto.
+  Qed.
+
   Lemma padded_desc_valid : forall xp st l,
     Desc.items_valid xp st (map ent_addr l)
     -> Desc.items_valid xp st (map ent_addr (padded_log l)).
@@ -1894,6 +1905,19 @@ Module DISKLOG.
   Qed.
   Local Hint Resolve ent_valid_addr_valid.
   Local Hint Resolve Forall_append Desc.items_per_val_not_0.
+
+
+  Hint Rewrite Desc.array_rep_avail Data.array_rep_avail
+     padded_log_length divup_mul divup_1 map_length using auto: extend_crash.
+  Hint Unfold roundup ndata_log : extend_crash.
+
+  Ltac extend_crash :=
+     repeat (autorewrite with extend_crash; autounfold with extend_crash; simpl);
+     setoid_rewrite <- Desc.avail_rep_merge at 3;
+     [ setoid_rewrite <- Data.avail_rep_merge at 3 | ];
+     [ cancel
+     | apply helper_loglen_data_valid_extend_entry_valid; auto
+     | apply helper_loglen_desc_valid_extend; auto ].
 
 
   Definition extend T xp log cs rx : prog T :=
@@ -1970,98 +1994,32 @@ Module DISKLOG.
       admit.
 
       (* crash conditons *)
-      cancel.
-
       (* after header write : Extended *)
-      or_r. or_r. or_l. cancel.
-      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
-      simpl; autorewrite with lists.
-      rewrite padded_log_length; unfold roundup.
-      rewrite divup_mul by auto.
-      setoid_rewrite <- Desc.avail_rep_merge at 3.
-      setoid_rewrite <- Data.avail_rep_merge at 3.
-      cancel.
-      unfold ndata_log; autorewrite with lists.
-      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      apply helper_loglen_data_valid_extend; auto.
-      apply helper_loglen_desc_valid_extend; auto.
+      cancel. or_r; or_r; or_l.  cancel. extend_crash.
 
       (* after header sync : Synced new *)
-      or_r. or_r. or_r. cancel.
+      or_r; or_r; or_r.  cancel.
       admit.
 
-      cancel.
       (* before header write : ExtendedUnsync *)
-      or_r. or_l. cancel.
-      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
-      simpl; autorewrite with lists.
-      rewrite padded_log_length; unfold roundup.
-      rewrite divup_mul by auto.
-      setoid_rewrite <- Desc.avail_rep_merge at 3.
-      setoid_rewrite <- Data.avail_rep_merge at 3.
-      cancel.
-      unfold ndata_log; autorewrite with lists.
-      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      apply helper_loglen_data_valid_extend; auto.
-      apply helper_loglen_desc_valid_extend; auto.
+      cancel. or_r; or_l. cancel. extend_crash.
 
       (* after sync data : Extended *)
-      or_r. or_r. or_l. cancel.
-      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
-      simpl; autorewrite with lists.
-      rewrite padded_log_length; unfold roundup.
-      rewrite divup_mul by auto.
-      setoid_rewrite <- Desc.avail_rep_merge at 3.
-      setoid_rewrite <- Data.avail_rep_merge at 3.
-      cancel.
-      unfold ndata_log; autorewrite with lists.
-      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      apply helper_loglen_data_valid_extend; auto.
-      apply helper_loglen_desc_valid_extend; auto.
+      or_r; or_r; or_l.    cancel. extend_crash.
 
       (* after sync desc : ExtendedUnsync *)
-      cancel. or_r. or_l. cancel.
-      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
-      simpl; autorewrite with lists.
-      rewrite padded_log_length; unfold roundup.
-      rewrite divup_mul by auto.
-      setoid_rewrite <- Desc.avail_rep_merge at 3.
-      setoid_rewrite <- Data.avail_rep_merge at 3.
-      cancel.
-      unfold ndata_log; autorewrite with lists.
-      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      apply helper_loglen_data_valid_extend; auto.
-      apply helper_loglen_desc_valid_extend; auto.
+      cancel. or_r; or_l.  cancel. extend_crash.
 
       (* after write data : ExtendedUnsync *)
-      cancel. or_r. or_l. cancel.
-      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
-      simpl; autorewrite with lists.
-      rewrite padded_log_length; unfold roundup.
-      rewrite divup_mul by auto.
-      setoid_rewrite <- Desc.avail_rep_merge at 3.
-      setoid_rewrite <- Data.avail_rep_merge at 3.
-      cancel.
-      unfold ndata_log; autorewrite with lists.
-      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      apply helper_loglen_data_valid_extend; auto.
-      apply helper_loglen_desc_valid_extend; auto.
+      cancel. or_r; or_l.  cancel. extend_crash.
 
       (* after write desc : ExtendedUnsync *)
-      cancel. or_r. or_l. cancel.
-      rewrite Desc.array_rep_avail; simpl; autorewrite with lists.
-      setoid_rewrite <- Desc.avail_rep_merge at 3.
-      setoid_rewrite <- Data.avail_rep_merge at 3.
-      cancel.
-      unfold ndata_log; autorewrite with lists.
-      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      apply helper_loglen_data_valid_extend; auto.
-      apply helper_loglen_desc_valid_extend; auto.
+      cancel. or_r; or_l.  cancel. extend_crash.
 
       (* before write desc : Synced old *)
       cancel. or_l. cancel.
       rewrite Desc.avail_rep_merge. cancel.
-      autorewrite with lists.
+      rewrite map_length.
       apply helper_loglen_desc_valid_extend; auto.
 
     (* false case *)
