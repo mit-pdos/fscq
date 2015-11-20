@@ -697,6 +697,27 @@ Module AsyncRecArray (RA : RASig).
     autorewrite with core; split; auto.
   Qed.
 
+  Lemma list_chunk'_app_def : forall A n z l k (def : A),
+    list_chunk' (l ++ repeat def z) k def n = list_chunk' l k def n.
+  Proof.
+    induction n; intros; simpl; auto.
+    destruct (le_gt_dec k (length l)).
+    repeat rewrite setlen_inbound by (auto; rewrite app_length; omega).
+    rewrite firstn_app_l, skipn_app_l by auto.
+    rewrite IHn; auto.
+    
+    rewrite setlen_app_r by omega.
+    unfold setlen at 2; rewrite firstn_oob by omega.
+    rewrite setlen_repeat.
+    f_equal.
+    rewrite skipn_app_r_ge by omega.
+    setoid_rewrite skipn_oob at 2; try omega.
+    destruct (le_gt_dec (k - length l) z).
+    rewrite skipn_repeat by auto.
+    setoid_rewrite <- app_nil_l at 2.
+    apply IHn.
+    rewrite skipn_oob by (rewrite repeat_length; omega); auto.
+  Qed.
 
   Lemma ipack_app_item0 : forall l n,
     n <= (roundup (length l) items_per_val - length l) ->
@@ -704,8 +725,10 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold ipack, list_chunk; intros.
     f_equal.
-    admit.
-  Admitted.
+    rewrite list_chunk'_app_def, app_length.
+    rewrite divup_add_small; auto.
+    rewrite repeat_length; auto.
+  Qed.
 
   Lemma array_rep_sync_nil : forall xp a l,
     array_rep xp a (Synced l) =p=> array_rep xp a (Synced nil) * array_rep xp a (Synced l).

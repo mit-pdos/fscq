@@ -439,3 +439,76 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     apply divup_add'; auto.
   Qed.
 
+  Lemma add_lt_upper_bound : forall a b c d,
+    a <= b -> c + b < d -> c + a < d.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma helper_sub_add_cancel : forall a b c,
+    a >= b -> b >= c ->
+    a - b + (b - c) = a - c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma helper_add_sub_lt : forall a b c,
+    b > 0 -> a < c -> a + b - c < b.
+  Proof.
+    intros. omega.
+  Qed.
+
+  Lemma div_mul_lt : forall a b,
+    b <> 0 -> a mod b <> 0 -> a / b * b < a.
+  Proof.
+    intros.
+    rewrite Nat.div_mod with (x := a) (y := b) by auto.
+    setoid_rewrite Nat.mul_comm at 2.
+    repeat rewrite Nat.div_add_l by omega.
+    rewrite Nat.div_small with (a := (a mod b)).
+    rewrite Nat.add_0_r, Nat.mul_comm.
+    omega.
+    apply Nat.mod_upper_bound; omega.
+  Qed.
+
+
+  Lemma roundup_sub_lt : forall n sz,
+    sz > 0 -> roundup n sz - n < sz.
+  Proof.
+    unfold roundup; intros.
+    divup_cases.
+    replace (n / sz * sz) with n; try omega.
+    rewrite Nat.mul_comm.
+    rewrite Nat.div_exact; omega.
+    rewrite Nat.mul_add_distr_r, Nat.mul_1_l.
+
+    apply helper_add_sub_lt; auto.
+    apply div_mul_lt; omega.
+  Qed.
+
+  Lemma divup_add_small : forall m n k,
+    k > 0 -> n <= roundup m k - m ->
+    divup (m + n) k = divup m k.
+  Proof.
+    unfold roundup, divup; intros.
+    replace (m + n + k - 1) with ((m + k - 1) + n) by omega.
+    rewrite Nat.div_mod with (x := (m + k -1)) (y := k) by omega.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.add_assoc.
+    repeat rewrite Nat.div_add_l by omega.
+    f_equal.
+    repeat rewrite Nat.div_small; auto.
+    apply Nat.mod_upper_bound; omega.
+
+    eapply add_lt_upper_bound; eauto.
+    rewrite Nat.mod_eq by omega.
+    rewrite Nat.mul_comm.
+
+    destruct (le_gt_dec (m + k - 1) ((m + k - 1) / k * k)).
+    replace (m + k - 1 - (m + k - 1) / k * k ) with 0 by omega.
+    rewrite Nat.add_0_l.
+
+    apply roundup_sub_lt; auto.
+    rewrite helper_sub_add_cancel; try omega.
+    apply roundup_ge; auto.
+  Qed.

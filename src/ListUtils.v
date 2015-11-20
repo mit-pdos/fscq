@@ -1491,6 +1491,34 @@ Proof.
   f_equal; f_equal; omega.
 Qed.
 
+Lemma setlen_repeat : forall A m n (a : A),
+  setlen (repeat a n) m a = repeat a m.
+Proof.
+  unfold setlen; intros.
+  destruct (le_gt_dec m n).
+  rewrite firstn_repeat by auto.
+  rewrite repeat_app, repeat_length.
+  replace (m + (m - n)) with m by omega; auto.
+  
+  rewrite firstn_oob by (rewrite repeat_length; omega).
+  rewrite repeat_app, repeat_length.
+  replace (n + (m - n)) with m by omega; auto.
+Qed.
+
+Lemma skipn_app_r_ge : forall A n (a b : list A),
+  n >= length a ->
+  skipn n (a ++ b) = skipn (n - length a) b.
+Proof.
+  induction n; intros; auto.
+  replace a with (@nil A); auto.
+  rewrite length_nil; auto; omega.
+  destruct a, b; simpl; auto.
+  rewrite app_nil_r, skipn_nil, skipn_oob; auto.
+  simpl in H; omega.
+  apply IHn.
+  simpl in H; omega.
+Qed.
+
 Lemma firstn_map_exact : forall A B (l : list A) (f : A -> B),
   firstn (length l) (map f l) = map f l.
 Proof.
