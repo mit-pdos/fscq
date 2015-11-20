@@ -822,8 +822,15 @@ Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
 
 Create HintDb false_precondition_hint.
 
+
+Ltac destruct_pair_eq :=
+    match goal with
+    | [ H : (_ , _) = (_, _) |- _ ] => inversion H; clear H
+    end.
+
 Ltac norml := unfold pair_args_helper;
              norm'l; repeat deex; repeat destruct_type valuset;
+             repeat destruct_pair_eq;
              (* To check whether [split_or_l] succeeded, we require that it
               * produce at least 2 subgoals.  Also, because [split_or_l] reverses
               * the list of predicates, we run it twice to preserve the order.
@@ -922,7 +929,6 @@ Ltac destruct_branch :=
   | [ |- {{ _ }} if ?v then _ else _ ] => destruct v eqn:?
   | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
   end.
-
 
 Ltac prestep :=
   intros;
