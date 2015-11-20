@@ -187,6 +187,21 @@ Proof.
   apply emp_star.
 Qed.
 
+Theorem arrayN_app : forall V (a b : list V) st,
+  arrayN st (a ++ b) <=p=>
+  arrayN st a * arrayN (st + length a) b.
+Proof.
+  induction a; split; simpl; auto.
+  rewrite Nat.add_0_r; cancel.
+  rewrite Nat.add_0_r; cancel.
+  rewrite IHa.
+  replace (S st + length a0) with (st + S (length a0)) by omega.
+  cancel.
+  rewrite IHa.
+  replace (S st + length a0) with (st + S (length a0)) by omega.
+  cancel.
+Qed.
+
 Lemma arrayN_app_memupd : forall V l (v : V) m,
   arrayN 0 l m
   -> arrayN 0 (l ++ v :: nil) (Mem.upd m (length l) v).
