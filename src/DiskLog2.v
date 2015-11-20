@@ -1779,22 +1779,6 @@ Module DISKLOG.
     left; intuition.
   Qed.
 
-  Definition extend T xp log cs rx : prog T :=
-    let^ (cs, nr) <- Hdr.read xp cs;
-    let '(ndesc, ndata) := nr in
-    let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
-    If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
-      cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
-      cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
-      cs <- Desc.sync_aligned xp ndesc nndesc cs;
-      cs <- Data.sync_aligned xp ndata nndata cs;
-      cs <- Hdr.write xp (ndesc + nndesc, ndata + nndata) cs;
-      cs <- Hdr.sync xp cs;
-      rx ^(cs, true)
-    } else {
-      rx ^(cs, false)
-    }.
-
   Remove Hints goodSize_0.
 
   Definition entry_valid (ent : entry) := fst ent <> 0 /\ addr_valid ent.
@@ -1909,7 +1893,25 @@ Module DISKLOG.
     apply H; auto.
   Qed.
   Local Hint Resolve ent_valid_addr_valid.
-  Local Hint Resolve Forall_append.
+  Local Hint Resolve Forall_append Desc.items_per_val_not_0.
+
+
+  Definition extend T xp log cs rx : prog T :=
+    let^ (cs, nr) <- Hdr.read xp cs;
+    let '(ndesc, ndata) := nr in
+    let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
+    If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
+      cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
+      cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
+      cs <- Desc.sync_aligned xp ndesc nndesc cs;
+      cs <- Data.sync_aligned xp ndata nndata cs;
+      cs <- Hdr.write xp (ndesc + nndesc, ndata + nndata) cs;
+      cs <- Hdr.sync xp cs;
+      rx ^(cs, true)
+    } else {
+      rx ^(cs, false)
+    }.
+
 
   Definition extend_ok : forall xp new cs,
     {< F old,
@@ -1968,21 +1970,84 @@ Module DISKLOG.
       admit.
 
       (* crash conditons *)
-      cancel. admit. admit.
-      cancel. admit. admit.
+      cancel.
 
-      (* after sync desc *)
-      cancel. admit.
-
-      (* after write data *)
-      cancel. or_r. or_r. or_l. cancel.
+      (* after header write : Extended *)
+      or_r. or_r. or_l. cancel.
       repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
       simpl; autorewrite with lists.
-      admit.
-      
-      
+      rewrite padded_log_length; unfold roundup.
+      rewrite divup_mul by auto.
+      setoid_rewrite <- Desc.avail_rep_merge at 3.
+      setoid_rewrite <- Data.avail_rep_merge at 3.
+      cancel.
+      unfold ndata_log; autorewrite with lists.
+      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      apply helper_loglen_data_valid_extend; auto.
+      apply helper_loglen_desc_valid_extend; auto.
 
-      (* after write desc *)
+      (* after header sync : Synced new *)
+      or_r. or_r. or_r. cancel.
+      admit.
+
+      cancel.
+      (* before header write : ExtendedUnsync *)
+      or_r. or_l. cancel.
+      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
+      simpl; autorewrite with lists.
+      rewrite padded_log_length; unfold roundup.
+      rewrite divup_mul by auto.
+      setoid_rewrite <- Desc.avail_rep_merge at 3.
+      setoid_rewrite <- Data.avail_rep_merge at 3.
+      cancel.
+      unfold ndata_log; autorewrite with lists.
+      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      apply helper_loglen_data_valid_extend; auto.
+      apply helper_loglen_desc_valid_extend; auto.
+
+      (* after sync data : Extended *)
+      or_r. or_r. or_l. cancel.
+      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
+      simpl; autorewrite with lists.
+      rewrite padded_log_length; unfold roundup.
+      rewrite divup_mul by auto.
+      setoid_rewrite <- Desc.avail_rep_merge at 3.
+      setoid_rewrite <- Data.avail_rep_merge at 3.
+      cancel.
+      unfold ndata_log; autorewrite with lists.
+      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      apply helper_loglen_data_valid_extend; auto.
+      apply helper_loglen_desc_valid_extend; auto.
+
+      (* after sync desc : ExtendedUnsync *)
+      cancel. or_r. or_l. cancel.
+      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
+      simpl; autorewrite with lists.
+      rewrite padded_log_length; unfold roundup.
+      rewrite divup_mul by auto.
+      setoid_rewrite <- Desc.avail_rep_merge at 3.
+      setoid_rewrite <- Data.avail_rep_merge at 3.
+      cancel.
+      unfold ndata_log; autorewrite with lists.
+      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      apply helper_loglen_data_valid_extend; auto.
+      apply helper_loglen_desc_valid_extend; auto.
+
+      (* after write data : ExtendedUnsync *)
+      cancel. or_r. or_l. cancel.
+      repeat rewrite Desc.array_rep_avail, Data.array_rep_avail;
+      simpl; autorewrite with lists.
+      rewrite padded_log_length; unfold roundup.
+      rewrite divup_mul by auto.
+      setoid_rewrite <- Desc.avail_rep_merge at 3.
+      setoid_rewrite <- Data.avail_rep_merge at 3.
+      cancel.
+      unfold ndata_log; autorewrite with lists.
+      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      apply helper_loglen_data_valid_extend; auto.
+      apply helper_loglen_desc_valid_extend; auto.
+
+      (* after write desc : ExtendedUnsync *)
       cancel. or_r. or_l. cancel.
       rewrite Desc.array_rep_avail; simpl; autorewrite with lists.
       setoid_rewrite <- Desc.avail_rep_merge at 3.
@@ -1993,7 +2058,7 @@ Module DISKLOG.
       apply helper_loglen_data_valid_extend; auto.
       apply helper_loglen_desc_valid_extend; auto.
 
-      (* before write desc *)
+      (* before write desc : Synced old *)
       cancel. or_l. cancel.
       rewrite Desc.avail_rep_merge. cancel.
       autorewrite with lists.
