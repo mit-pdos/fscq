@@ -7,13 +7,13 @@ Section Locking.
 Variable Mcontents : list Type.
 Variable Scontents : list Type.
 
-Inductive MutexOwner : Set :=
+Inductive BusyFlagOwner : Set :=
 | NoOwner
 | Owned (id:ID).
 
 (** given a lock variable and some other variable v, generate a
 relation for tid that makes the variable read-only for non-owners. *)
-Definition lock_protects (lvar : var Scontents MutexOwner)
+Definition lock_protects (lvar : var Scontents BusyFlagOwner)
            {tv} (v : var Scontents tv) tid (s s': S Scontents) :=
   forall owner_tid,
     get lvar s = Owned owner_tid ->
@@ -22,7 +22,7 @@ Definition lock_protects (lvar : var Scontents MutexOwner)
 
 Hint Unfold lock_protects : prog.
 
-Inductive lock_protocol (lvar : var Scontents MutexOwner) (tid : ID) :
+Inductive lock_protocol (lvar : var Scontents BusyFlagOwner) (tid : ID) :
   S Scontents -> S Scontents -> Prop :=
 | NoChange : forall s s', get lvar s  = get lvar s' ->
                      lock_protocol lvar tid s s'
@@ -36,8 +36,8 @@ Inductive lock_protocol (lvar : var Scontents MutexOwner) (tid : ID) :
 Hint Constructors lock_protocol.
 
 Inductive ghost_lock_invariant
-          (lvar : var Mcontents Mutex)
-          (glvar : var Scontents MutexOwner)
+          (lvar : var Mcontents BusyFlag)
+          (glvar : var Scontents BusyFlagOwner)
           (m : M Mcontents) (s : S Scontents) : Prop :=
 | LockOpen : get lvar m = Open -> get glvar s = NoOwner ->
              ghost_lock_invariant lvar glvar m s
@@ -55,7 +55,7 @@ Proof.
 Qed.
 
 Theorem ghost_lock_inv_preserved : forall
-  (lvar: var Mcontents Mutex) (glvar: var Scontents MutexOwner) m s m' s',
+  (lvar: var Mcontents BusyFlag) (glvar: var Scontents BusyFlagOwner) m s m' s',
   ghost_lock_invariant lvar glvar m s ->
   get lvar m = get lvar m' ->
   get glvar s = get glvar s' ->

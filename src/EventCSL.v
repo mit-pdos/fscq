@@ -57,7 +57,7 @@ Notation DISK_PRED := (@pred addr (@weq addrlen) valuset).
 Definition ID := nat.
 
 Section Lock.
-  Inductive Mutex := Open | Locked.
+  Inductive BusyFlag := Open | Locked.
   Definition is_locked l :
     {l = Locked} + {l = Open}.
   Proof.
@@ -103,9 +103,9 @@ Section EventCSL.
   | Get t (v: var Mcontents t) (rx: t -> prog)
   | Assgn t (v: var Mcontents t) (val:t) (rx: unit -> prog)
   | GetTID (rx: ID -> prog)
-  | AcquireLock (l: var Mcontents Mutex) (lock_ghost: ID -> S -> S) (rx: unit -> prog)
+  | AcquireLock (l: var Mcontents BusyFlag) (lock_ghost: ID -> S -> S) (rx: unit -> prog)
   | Yield (rx: unit -> prog)
-  | Commit (up: S -> S) (rx: unit -> prog)
+  | GhostUpdate (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
 
   Ltac inv_prog :=
@@ -179,7 +179,7 @@ Section EventCSL.
       d a = Some vs0 ->
       tid :- Sync a rx / (d, m, s0, s) ==>
           rx tt / (upd d a (synced vs0), m, s0, s)
-  | StepAcquireLock : forall d m m' s s0 d' s' up rx (l:var Mcontents Mutex),
+  | StepAcquireLock : forall d m m' s s0 d' s' up rx (l:var Mcontents BusyFlag),
       let m'' := set l Locked m' in
       let s'' := up tid s' in
       StateI m s d ->
@@ -201,10 +201,10 @@ Section EventCSL.
       star (StateR' tid) s s' ->
       star (LockR' tid) s s' ->
       tid :- Yield rx / (d, m, s0, s) ==> rx tt / (d', m', s', s')
-  | StepCommit : forall d m s0 s up rx,
+  | StepGhostUpdate : forall d m s0 s up rx,
       let s' := up s in
       LockR tid s s' ->
-      tid :- Commit up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, s')
+      tid :- GhostUpdate up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, s')
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
   | StepGet : forall d m s s0 t (v: var Mcontents t) rx,
@@ -233,10 +233,10 @@ Section EventCSL.
       let m' := set v val m in
       ~LockI m' s d ->
       fail_step tid (Assgn v val rx) (d, m, s0, s)
-  | FailStepCommitLock : forall d m s0 s up rx,
+  | FailStepGhostUpdate : forall d m s0 s up rx,
       let s' := up s in
       ~LockR tid s s' ->
-      fail_step tid (Commit up rx) (d, m, s0, s)
+      fail_step tid (GhostUpdate up rx) (d, m, s0, s)
   | FailStepYield : forall d m s0 s rx, (~StateI m s d) ->
                                    fail_step tid (Yield rx) (d, m, s0, s).
 
@@ -339,15 +339,15 @@ Section EventCSL.
     condition_failure.
   Qed.
 
-  Theorem commit_failure : forall tid d m s0 s rx up,
-      fail_step tid (Commit up rx) (d, m, s0, s) ->
+  Theorem ghost_update_failure : forall tid d m s0 s rx up,
+      fail_step tid (GhostUpdate up rx) (d, m, s0, s) ->
       LockR tid s (up s) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Hint Resolve read_failure write_failure assgn_failure commit_failure.
+  Hint Resolve read_failure write_failure assgn_failure ghost_update_failure.
 
   Definition donecond := T -> DISK_PRED.
   Definition crashcond := DISK_PRED.
@@ -640,7 +640,7 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem Commit_ok : forall up,
+  Theorem GhostUpdate_ok : forall up,
     tid |- {{ (_:unit),
            | PRE d m s0 s: LockR tid s (up s)
            | POST d' m' s0' s' _: d' = d /\
@@ -648,7 +648,7 @@ Section EventCSL.
                                   s' = up s /\
                                   m' = m
            | CRASH d'c: d'c = d
-          }} Commit up.
+          }} GhostUpdate up.
   Proof.
     opcode_ok.
   Qed.
@@ -917,7 +917,7 @@ Hint Extern 1 {{ Get _; _ }} => apply Get_ok : prog.
 Hint Extern 1 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
-Hint Extern 1 {{ Commit _; _ }} => apply Commit_ok : prog.
+Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 

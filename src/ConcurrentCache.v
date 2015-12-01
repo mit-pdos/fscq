@@ -21,8 +21,8 @@ distinctness). The rest of the cache-local semantics can be defined
 once a semantics and these basics are provided. *)
 Module Type CacheVars (Sem:Semantics).
   Import Sem.
-  Parameter memVars : variables Mcontents [AssocCache; Mutex:Type].
-  Parameter stateVars : variables Scontents [DISK; AssocCache; MutexOwner:Type].
+  Parameter memVars : variables Mcontents [AssocCache; BusyFlag:Type].
+  Parameter stateVars : variables Scontents [DISK; AssocCache; BusyFlagOwner:Type].
 
   Axiom no_confusion_memVars : NoDup (hmap var_index memVars).
   Axiom no_confusion_stateVars : NoDup (hmap var_index stateVars).
@@ -625,9 +625,9 @@ Definition locked_disk_read {T} a rx : prog Mcontents Scontents T :=
   match cache_get c a with
   | None => v <- Read a;
       let c' := cache_add c a v in
-      Commit (set GCache c');;
-             Assgn Cache c';;
-            rx v
+      GhostUpdate (set GCache c');;
+                  Assgn Cache c';;
+                  rx v
   | Some (_, v) =>
     rx v
   end.
@@ -743,7 +743,7 @@ Definition locked_async_disk_read {T} a rx : prog _ _ T :=
   match cache_get c a with
   | None => v <- locked_AsyncRead a;
              let c' := cache_add c a v in
-             Commit (fun (s:S) => set GCache c' s);;
+             GhostUpdate (fun (s:S) => set GCache c' s);;
              Assgn Cache c';;
                    rx v
   | Some (_, v) =>
@@ -826,7 +826,7 @@ Qed.
 Hint Extern 1 {{cache_lock; _}} => apply cache_lock_ok : prog.
 
 Definition cache_unlock {T} rx : prog _ _ T :=
-  Commit (set GCacheL NoOwner);;
+  GhostUpdate (set GCacheL NoOwner);;
          Assgn CacheL Open;;
          rx tt.
 
@@ -974,22 +974,22 @@ Definition replace_latest vs v' :=
 Definition locked_disk_write {T} a v rx : prog _ _ T :=
   c <- Get Cache;
   let c' := cache_add_dirty c a v in
-  Commit (set GCache c');;
-         Commit (fun (s:S) => let vd := get GDisk s in
-                            let rest := match (vd a) with
-                                        | Some (Valuset v0 rest) =>
-                                          match (cache_get c a) with
-                                          | Some (true, _) => rest
-                                          | Some (false, _) => v0 :: rest
-                                          | None => v0 :: rest
-                                          end
-                                        (* impossible *)
-                                        | None => nil
-                                        end in
-                            let vs' := Valuset v rest in
-                            set GDisk (upd vd a vs') s);;
-         Assgn Cache c';;
-         rx tt.
+  GhostUpdate (set GCache c');;
+              GhostUpdate (fun (s:S) => let vd := get GDisk s in
+                                      let rest := match (vd a) with
+                                                  | Some (Valuset v0 rest) =>
+                                                    match (cache_get c a) with
+                                                    | Some (true, _) => rest
+                                                    | Some (false, _) => v0 :: rest
+                                                    | None => v0 :: rest
+                                                    end
+                                                  (* impossible *)
+                                                  | None => nil
+                                                  end in
+                                      let vs' := Valuset v rest in
+                                      set GDisk (upd vd a vs') s);;
+              Assgn Cache c';;
+              rx tt.
 
 Hint Resolve ptsto_upd'.
 
@@ -1085,9 +1085,9 @@ Definition evict {T} a rx : prog _ _ T :=
   | Some (true, _) => rx tt
   | Some (false, v) =>
     let c' := cache_evict c a in
-    Commit (set GCache c');;
-           Assgn Cache c';;
-           rx tt
+    GhostUpdate (set GCache c');;
+                Assgn Cache c';;
+                rx tt
 end.
 
 Hint Resolve cache_pred_stable_evict.
@@ -1117,26 +1117,26 @@ Definition writeback {T} a rx : prog _ _ T :=
   let ov := cache_get c a in
   match (cache_get c a) with
   | Some (true, v) =>
-    Commit (fun s => let vd : DISK := get GDisk s in
-                   let vs' := match (vd a) with
-                              | Some vs0 => buffer_valu vs0 v
-                              (* impossible *)
-                              | None => Valuset v nil
-                              end in
-                   set GDisk (upd vd a vs') s);;
+    GhostUpdate (fun s => let vd : DISK := get GDisk s in
+                        let vs' := match (vd a) with
+                                   | Some vs0 => buffer_valu vs0 v
+                                   (* impossible *)
+                                   | None => Valuset v nil
+                                   end in
+                        set GDisk (upd vd a vs') s);;
     Write a v;;
           let c' := cache_clean c a in
-          Commit (set GCache c');;
-                 Commit (fun s => let vd : DISK := get GDisk s in
-                                let vs' := match (vd a) with
-                                           | Some (Valuset v' (v :: rest)) =>
-                                             Valuset v rest
-                                           (* impossible *)
-                                           | _ => Valuset $0 nil
-                                           end in
-                                set GDisk (upd vd a vs') s);;
-                 Assgn Cache c';;
-                 rx tt
+          GhostUpdate (set GCache c');;
+                      GhostUpdate (fun s => let vd : DISK := get GDisk s in
+                                          let vs' := match (vd a) with
+                                                     | Some (Valuset v' (v :: rest)) =>
+                                                       Valuset v rest
+                                                     (* impossible *)
+                                                     | _ => Valuset $0 nil
+                                                     end in
+                                          set GDisk (upd vd a vs') s);;
+                      Assgn Cache c';;
+                      rx tt
   | Some (false, _) => rx tt
   | None => rx tt
   end.
@@ -1241,16 +1241,16 @@ Qed.
 Hint Extern 4 {{ writeback _; _ }} => apply writeback_ok : prog.
 
 Definition sync {T} a rx : prog Mcontents Scontents T :=
-  Commit (fun s =>
-            let vd := virt_disk s in
-            let vs' := match vd a with
-                       | Some (Valuset v _) => Valuset v nil
-                       (* precondition will disallow this *)
-                       | None => Valuset $0 nil
-                       end in
-            set GDisk (upd vd a vs') s);;
-         Sync a;;
-         rx tt.
+  GhostUpdate (fun s =>
+                 let vd := virt_disk s in
+                 let vs' := match vd a with
+                            | Some (Valuset v _) => Valuset v nil
+                            (* precondition will disallow this *)
+                            | None => Valuset $0 nil
+                            end in
+                 set GDisk (upd vd a vs') s);;
+              Sync a;;
+              rx tt.
 
 Lemma mem_except_upd : forall AT AEQ V (m:@mem AT AEQ V) a v,
     mem_except (upd m a v) a = mem_except m a.
