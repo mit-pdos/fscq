@@ -1,5 +1,6 @@
 Require Import EventCSL.
 Require Import EventCSLauto.
+Require Import Automation.
 Require Import Locking.
 Require Import ConcurrentCache.
 Require Import Star.
@@ -61,6 +62,18 @@ Module Type TwoBlockSemantics (Sem : Semantics)
     modified stateVars s' s'' ->
     twoblockR tid s' s'' ->
     R tid s s''.
+
+  Axiom twoblock_invariant_holds : forall d m s,
+    Inv d m s ->
+    twoblockI d m s.
+
+  Axiom twoblock_invariant_preserved : forall d m s d' m' s',
+    Inv m s d ->
+    twoblockI m' s' d' ->
+    m' = m ->
+    modified stateVars s s' ->
+    Inv m' s' d'.
+
 End TwoBlockSemantics.
 
 Module TwoBlocks (Sem:Semantics)
@@ -68,14 +81,60 @@ Module TwoBlocks (Sem:Semantics)
   (CSem:CacheSemantics Sem CVars)
   (TBVars:TwoBlockVars Sem)
   (TBSem:TwoBlockSemantics Sem CVars TBVars).
+  Import Sem.
   Module CacheM := Cache Sem CVars CSem.
   Import CacheM.
+  Import CSem.Transitions.
   Import TBSem.
+  Import TBTrans.
 
-  Definition write_yield_read {T} rx a v' : prog _ _ T :=
-    disk_write a v';;
+  Ltac solve_global_transitions ::=
+  (* match only these types of goals *)
+  lazymatch goal with
+  | [ |- R _ _ _ ] =>
+    eapply twoblock_relation_preserved; [
+      solve [ eassumption | eauto ] | .. ]
+  | [ |- Inv _ _ _ ] =>
+    eapply twoblock_invariant_preserved
+  | [ |- inv _ _ _ ] => unfold inv; intuition; try solve_global_transitions
+  end;
+  unfold lockR, lockI, cacheR, cacheI, stateI, lockI,
+    lock_protects, pred_in;
+  repeat lazymatch goal with
+  | [ |- forall _, _ ] => progress intros
+  | [ |- _ /\ _ ] => split
+  end; simpl_get_set.
+
+  Definition write_yield_read {T} v' rx : prog _ _ T :=
+    disk_write block0 v';;
       Yield;;
-      v <- disk_read a;
+      v <- disk_read block0;
       rx v.
+
+  Hint Resolve ptsto_valid_iff.
+
+  Theorem write_yield_read_ok : forall v',
+    stateS TID: tid |-
+    {{ F v rest,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     inv m s d /\
+                     vd |= F * block0 |-> (Valuset v rest) /\
+                     R tid s0 s /\
+                     get GCacheL s = Owned tid
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
+                            inv m' s' d' /\
+                            (exists F' rest', vd' |= F' * block0 |-> (Valuset v' rest')) /\
+                            R tid s s' /\
+                            r = v' /\
+                            get GCacheL s' = Owned tid /\
+                            R tid s0' s'
+     | CRASH d'c: True
+    }} write_yield_read v'.
+Proof.
+  let simp_step :=
+    simplify_step
+    || destruct_valusets in
+  time "hoare" hoare pre (simplify' simp_step) with finish.
+  (* TODO: learn equality of block0 from twoblockR *)
 
 End TwoBlocks.

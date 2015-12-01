@@ -640,7 +640,7 @@ Theorem locked_disk_read_ok : forall a,
                      vd |= F * a |-> (Valuset v rest) /\
                      get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            inv m s d /\
+                            inv m' s' d' /\
                             vd' = virt_disk s /\
                             r = v /\
                             get GCacheL s' = Owned tid /\
@@ -966,6 +966,8 @@ Proof.
   all: auto.
 Qed.
 
+Hint Extern 1 {{disk_read _; _ }} => apply disk_read_ok : prog.
+
 Definition replace_latest vs v' :=
   let 'Valuset _ rest := vs in Valuset v' rest.
 
@@ -1051,6 +1053,7 @@ Theorem disk_write_ok : forall a v,
                             inv m' s' d' /\
                             star (anyR R) s s' /\
                             get GCacheL s' = Owned tid /\
+                            R tid s0' s' /\
                             (exists rest', vd' a = Some (Valuset v rest'))
      | CRASH d'c: True
     }} disk_write a v.
@@ -1072,6 +1075,8 @@ Proof.
   Grab Existential Variables.
   all: auto.
 Qed.
+
+Hint Extern 1 {{disk_write _ _; _}} => apply disk_write_ok : prog.
 
 Definition evict {T} a rx : prog _ _ T :=
   c <- Get Cache;
