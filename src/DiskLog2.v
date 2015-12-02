@@ -1165,7 +1165,7 @@ Module DiskLogDataSig <: RASig.
 End DiskLogDataSig.
 
 
-Module DISKLOG.
+Module PaddedLog.
 
   Module Desc := AsyncRecArray DiskLogDescSig.
   Module Data := AsyncRecArray DiskLogDataSig.
@@ -2048,6 +2048,19 @@ Module DISKLOG.
     eapply Forall_cons2; eauto.
   Qed.
 
+  Lemma nonzero_addrs_entry_valid : forall l,
+    Forall entry_valid l ->
+    nonzero_addrs (map fst l) = length l.
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a, n; simpl.
+    exfalso.
+    rewrite Forall_forall in H.
+    apply (H (0, w)); simpl; auto.
+    rewrite IHl; auto.
+    eapply Forall_cons2; eauto.
+  Qed.
+
   Lemma extend_ok_helper : forall xp old new,
     Forall entry_valid new ->
     Hdr.rep xp (Hdr.Synced (ndesc_log old + ndesc_log new, ndata_log old + ndata_log new)) *
@@ -2060,11 +2073,14 @@ Module DISKLOG.
       (LogLen xp - ndata_log old - ndata_log new) *
     Desc.array_rep xp (ndesc_log old) (Desc.Synced (map ent_addr (padded_log new)))
     =p=>
-    Hdr.rep xp (Hdr.Synced (ndesc_log (padded_log old ++ new), ndata_log (padded_log old ++ new))) *
-    Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ new))) *
-    Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old ++ new))) *
-    Desc.avail_rep xp (ndesc_log (padded_log old ++ new)) (LogDescLen xp - ndesc_log (padded_log old ++ new)) *
-    Data.avail_rep xp (ndata_log (padded_log old ++ new)) (LogLen xp - ndata_log (padded_log old ++ new)).
+    Hdr.rep xp (Hdr.Synced (ndesc_log (padded_log old ++ padded_log new),
+                            ndata_log (padded_log old ++ padded_log new))) *
+    Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ padded_log new))) *
+    Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old ++ padded_log new))) *
+    Desc.avail_rep xp (ndesc_log (padded_log old ++ padded_log new))
+                      (LogDescLen xp - ndesc_log (padded_log old ++ padded_log new)) *
+    Data.avail_rep xp (ndata_log (padded_log old ++ padded_log new)) 
+                      (LogLen xp - ndata_log (padded_log old ++ padded_log new)).
   Proof.
     intros.
     repeat rewrite ndesc_log_padded_app, ndata_log_padded_app.
@@ -2083,17 +2099,29 @@ Module DISKLOG.
     rewrite divup_1, padded_log_length.
     unfold roundup; rewrite divup_mul; auto.
     unfold ndata_log; rewrite vals_nonzero_addrs.
+    rewrite nonzero_addrs_padded_log.
+    rewrite nonzero_addrs_entry_valid with (l := new); auto.
+    unfold vals_nonzero; rewrite entry_valid_vals_nonzero with (l := new); auto.
+    rewrite padded_log_length.
+    unfold roundup; rewrite divup_divup by auto.
     cancel.
-    unfold vals_nonzero; rewrite entry_valid_vals_nonzero; auto.
 
     rewrite Nat.mul_1_r; auto.
     rewrite map_length, padded_log_length.
     unfold roundup; auto.
   Qed.
 
+  Lemma ndesc_log_padded_log : forall l,
+    ndesc_log (padded_log l) = ndesc_log l.
+  Proof.
+    unfold ndesc_log; intros.
+    rewrite padded_log_length.
+    unfold roundup; rewrite divup_divup; auto.
+  Qed.
 
   Hint Rewrite Desc.array_rep_avail Data.array_rep_avail
-     padded_log_length divup_mul divup_1 map_length using auto: extend_crash.
+     padded_log_length divup_mul divup_1 map_length
+     ndesc_log_padded_log nonzero_addrs_padded_log using auto: extend_crash.
   Hint Unfold roundup ndata_log : extend_crash.
 
   Ltac extend_crash :=
@@ -2127,13 +2155,13 @@ Module DISKLOG.
     PRE   [[ Forall entry_valid new ]] *
           rep xp F (Synced old) cs
     POST RET: ^(cs, r)
-          ([[ r = true ]] * rep xp F (Synced ((padded_log old) ++ new)) cs) \/
+          ([[ r = true ]] * rep xp F (Synced ((padded_log old) ++ (padded_log new))) cs) \/
           ([[ r = false ]] * rep xp F (Synced old) cs)
     CRASH exists cs',
           rep xp F (Synced old) cs' \/
           rep xp F (ExtendedUnsync old) cs' \/
-          rep xp F (Extended old new) cs' \/
-          rep xp F (Synced ((padded_log old) ++ new)) cs'
+          rep xp F (Extended old (padded_log new)) cs' \/
+          rep xp F (Synced ((padded_log old) ++ (padded_log new))) cs'
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -2215,4 +2243,196 @@ Module DISKLOG.
   Qed.
 
 
-End DISKLOG.
+  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
+
+  Lemma log_nonzero_padded_log : forall l,
+    log_nonzero (padded_log l) = log_nonzero l.
+  Proof.
+    unfold padded_log, setlen, roundup; intros.
+    rewrite firstn_oob by auto.
+    rewrite log_nonzero_app.
+    rewrite log_nonzero_repeat_0, app_nil_r; auto.
+  Qed.
+
+  Lemma log_nonzero_padded_app : forall l new,
+    Forall entry_valid new ->
+    log_nonzero l ++ new = log_nonzero (padded_log l ++ padded_log new).
+  Proof.
+    intros.
+    rewrite log_nonzero_app.
+    repeat rewrite log_nonzero_padded_log.
+    f_equal.
+    rewrite entry_valid_vals_nonzero; auto.
+  Qed.
+
+  Lemma log_nonzero_app_padded : forall l new,
+    Forall entry_valid new ->
+    log_nonzero l ++ new = log_nonzero (l ++ padded_log new).
+  Proof.
+    intros.
+    rewrite log_nonzero_app, log_nonzero_padded_log.
+    f_equal.
+    rewrite entry_valid_vals_nonzero; auto.
+  Qed.
+
+  Theorem entry_valid_dec : forall ent,
+    {entry_valid ent} + {~ entry_valid ent}.
+  Proof.
+    unfold entry_valid, addr_valid, goodSize; intuition.
+    destruct (addr_eq_dec (fst ent) 0); destruct (lt_dec (fst ent) (pow2 addrlen)).
+    right; tauto.
+    right; tauto.
+    left; tauto.
+    right; tauto.
+  Qed.
+
+End PaddedLog.
+
+
+Module DLog.
+
+  Definition entry := (addr * valu)%type.
+  Definition contents := list entry.
+
+  Inductive state :=
+  (* The log is synced on disk *)
+  | Synced (l: contents)
+  (* The log has been truncated; but the length (0) is unsynced *)
+  | Truncated  (old: contents)
+  (* The log is being extended; only the content has been updated (unsynced) *)
+  | ExtendedUnsync (old: contents)
+  (* The log has been extended; the new contents are synced but the length is unsynced *)
+  | Extended  (old: contents) (new: contents).
+
+  Definition rep_common l padded : rawpred :=
+      ([[ l = PaddedLog.log_nonzero padded /\
+         length padded = roundup (length padded) DiskLogDescSig.items_per_val ]])%pred.
+
+  Definition rep xp F st cs :=
+    (match st with
+    | Synced l =>
+          exists padded, rep_common l padded *
+          PaddedLog.rep xp F (PaddedLog.Synced padded) cs
+    | Truncated l =>
+          exists padded, rep_common l padded *
+          PaddedLog.rep xp F (PaddedLog.Truncated padded) cs
+    | ExtendedUnsync l =>
+          exists padded, rep_common l padded *
+          PaddedLog.rep xp F (PaddedLog.ExtendedUnsync padded) cs
+    | Extended l new =>
+          exists padded, rep_common l padded *
+          PaddedLog.rep xp F (PaddedLog.Extended padded (PaddedLog.padded_log new)) cs
+    end)%pred.
+
+  Local Hint Unfold rep rep_common : hoare_unfold.
+  Hint Extern 0 (okToUnify (PaddedLog.rep _ _ _ _) (PaddedLog.rep _ _ _ _)) => constructor : okToUnify.
+
+  Ltac or_r := apply pimpl_or_r; right.
+  Ltac or_l := apply pimpl_or_r; left.
+
+
+  Definition read T xp cs rx : prog T :=
+    r <- PaddedLog.read xp cs;
+    rx r.
+
+  Definition read_ok : forall xp cs,
+    {< F l,
+    PRE            rep xp F (Synced l) cs
+    POST RET: ^(cs, r)
+                   rep xp F (Synced l) cs *
+                   [[ r = l ]]
+    CRASH exists cs', rep xp F (Synced l) cs'
+    >} read xp cs.
+  Proof.
+    unfold read.
+    hoare.
+  Qed.
+
+  Definition trunc T xp cs rx : prog T :=
+    cs <- PaddedLog.trunc xp cs;
+    rx cs.
+
+  Definition trunc_ok : forall xp cs,
+    {< F l,
+    PRE            rep xp F (Synced l) cs
+    POST RET: cs   rep xp F (Synced nil) cs
+    CRASH exists cs', 
+       rep xp F (Synced l) cs' \/
+       rep xp F (Truncated l) cs' \/
+       rep xp F (Synced nil) cs'
+    >} trunc xp cs.
+  Proof.
+    unfold trunc.
+    hoare.
+    unfold roundup; rewrite divup_0; omega.
+    (* crashes *)
+    cancel.
+    or_l. cancel.
+    or_r; or_l. cancel.
+    or_r; or_r. cancel.
+    unfold roundup; rewrite divup_0; omega.
+  Qed.
+
+  Local Hint Resolve PaddedLog.Desc.items_per_val_gt_0.
+
+  Lemma extend_length_ok' : forall l new,
+    length l = roundup (length l) DiskLogDescSig.items_per_val ->
+    length (l ++ PaddedLog.padded_log new)
+      = roundup (length (l ++ PaddedLog.padded_log new)) DiskLogDescSig.items_per_val.
+  Proof.
+    intros.
+    repeat rewrite app_length.
+    repeat rewrite PaddedLog.padded_log_length.
+    rewrite H.
+    rewrite roundup_roundup_add, roundup_roundup; auto.
+  Qed.
+
+  Lemma extend_length_ok : forall l new,
+    length l = roundup (length l) DiskLogDescSig.items_per_val ->
+    length (PaddedLog.padded_log l ++ PaddedLog.padded_log new)
+      = roundup (length (PaddedLog.padded_log l ++ PaddedLog.padded_log new)) DiskLogDescSig.items_per_val.
+  Proof.
+    intros.
+    apply extend_length_ok'.
+    rewrite PaddedLog.padded_log_length.
+    rewrite roundup_roundup; auto.
+  Qed.
+
+  Local Hint Resolve extend_length_ok PaddedLog.log_nonzero_padded_app.
+
+  Definition extend T xp new cs rx : prog T :=
+    If (Forall_dec PaddedLog.entry_valid PaddedLog.entry_valid_dec new) {
+      r <- PaddedLog.extend xp new cs;
+      rx r
+    } else {
+      rx ^(cs, false)
+    }.
+
+  Definition extend_ok : forall xp new cs,
+    {< F old,
+    PRE   rep xp F (Synced old) cs
+    POST RET: ^(cs, r)
+          ([[ r = true ]] * rep xp F (Synced (old ++ new)) cs) \/
+          ([[ r = false ]] * rep xp F (Synced old) cs)
+    CRASH exists cs',
+          rep xp F (Synced old) cs' \/
+          rep xp F (ExtendedUnsync old) cs' \/
+          rep xp F (Extended old new) cs' \/
+          rep xp F (Synced (old ++ new)) cs'
+    >} extend xp new cs.
+  Proof.
+    unfold extend.
+    hoare.
+
+    (* crashes *)
+    cancel.
+    or_l; cancel.
+    or_r; or_l; cancel.
+    or_r; or_r; or_l; cancel.
+    or_r; or_r; or_r; cancel.
+  Qed.
+
+End DLog.
+

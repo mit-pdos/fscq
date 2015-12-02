@@ -512,3 +512,34 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     rewrite helper_sub_add_cancel; try omega.
     apply roundup_ge; auto.
   Qed.
+
+  Lemma divup_divup: forall x sz,
+      sz > 0 ->
+      divup ((divup x sz) * sz) sz = divup x sz.
+  Proof.
+    unfold divup; intros.
+    rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.div_add_l by omega.
+    replace ((sz - 1) / sz) with 0. omega.
+    rewrite Nat.div_small; omega.
+  Qed.
+
+  Lemma roundup_roundup : forall n sz,
+    sz > 0 ->
+    roundup (roundup n sz) sz = roundup n sz.
+  Proof.
+    unfold roundup; intros.
+    rewrite divup_divup; auto.
+  Qed.
+
+  Lemma roundup_roundup_add : forall x n sz,
+    sz > 0 ->
+    roundup (roundup n sz + x) sz = roundup n sz + roundup x sz.
+  Proof.
+    unfold roundup; intros.
+    rewrite Nat.add_comm.
+    setoid_rewrite Nat.mul_comm at 2.
+    rewrite divup_add by omega.
+    lia.
+  Qed.
+
