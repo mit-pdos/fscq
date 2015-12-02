@@ -47,14 +47,17 @@ Section AsyncDiskWrites.
 End AsyncDiskWrites.
 
 Hint Immediate (Valuset $0 nil).
-
-(* a disk state *)
-Notation DISK := (@mem addr (@weq addrlen) valuset).
-
-(* a disk predicate *)
-Notation DISK_PRED := (@pred addr (@weq addrlen) valuset).
+Hint Immediate (Valuset $0 nil, @None ID).
 
 Definition ID := nat.
+
+Definition wr_set : Type := valuset * option ID.
+
+(* a disk state *)
+Notation DISK := (@mem addr (@weq addrlen) wr_set).
+
+(* a disk predicate *)
+Notation DISK_PRED := (@pred addr (@weq addrlen) wr_set).
 
 Section Lock.
   Inductive BusyFlag := Open | Locked.
@@ -68,15 +71,12 @@ End Lock.
 Section EventCSL.
   Set Default Proof Using "Type".
 
-  Implicit Type d : DISK.
-
   (** The memory is a heterogenously typed list where element types
       are given by Mcontents. *)
   Variable Mcontents:list Type.
   (** The type of the program's memory. *)
   Definition M := @hlist Type (fun T:Type => T) Mcontents.
 
-  Implicit Type m : M.
 
   (** Programs can manipulate ghost state of an hlist where element types
       are given by Scontents *)
@@ -90,14 +90,12 @@ Section EventCSL.
       The semantics will reject transitions that do not obey these rules. *)
   Definition Relation := S -> S -> Prop.
   Variable StateR : ID -> Relation.
-  Variable LockR : ID -> Relation.
   Definition Invariant := M -> S -> DISK_PRED.
   Variable StateI : Invariant.
-  Variable LockI : Invariant.
 
-  CoInductive prog :=
-  | AsyncRead (a: addr) (rx: valu -> prog)
-  | Read (a: addr) (rx: valu -> prog)
+  Inductive prog :=
+  | StartRead (a: addr) (rx: unit -> prog)
+  | FinishRead (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
   | Sync (a: addr) (rx: unit -> prog)
   | Get t (v: var Mcontents t) (rx: t -> prog)
@@ -114,6 +112,9 @@ Section EventCSL.
       inversion H
     end.
 
+  Implicit Type d : DISK.
+  Implicit Type m : M.
+  Implicit Type s : S.
   Implicit Type p : prog.
 
   Definition state := (DISK * M * S * S)%type.
@@ -126,121 +127,95 @@ Section EventCSL.
       exists tid', tid <> tid' /\
               stateR tid' s s'.
 
-  Definition ProgR : ID -> Relation :=
-    fun tid =>
-      fun s s' =>
-        StateR tid s s' /\
-        LockR tid s s'.
-
-  Definition ProgI : Invariant :=
-    fun m s d =>
-      StateI m s d /\
-      LockI m s d.
-
   (* StateR' tid is a valid transition for someone other than tid *)
   Definition StateR' : ID -> Relation := othersR StateR.
-  (* LockR' tid obeys the locking discipline for a non-tid thread *)
-  Definition LockR' : ID -> Relation := othersR LockR.
-  Definition ProgR' : ID -> Relation := othersR ProgR.
-
-  (* TODO: use ProgR and ProgI throughout, not just for AsyncRead *)
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
-  | StepAsyncRead : forall d m s0 s
-                      d' m' s'
-                      d'' v rest m'' s''
-                      d''' m''' s'''
-                      d'''' m'''' s''''
+  | StepStartRead : forall d m s0 s vs
                       a rx,
-      ProgI m s d ->
-      star (ProgR' tid) s s' ->
-      ProgI m' s' d' ->
-      star (LockR' tid) s' s'' ->
-      LockI m'' s'' d'' ->
-      d'' a = Some (Valuset v rest) ->
-      star (LockR' tid) s'' s''' ->
-      LockI m''' s''' d''' ->
-      (StateR' tid) s' s''' ->
-      star (ProgR' tid) s''' s'''' ->
-      ProgI m'''' s'''' d'''' ->
-      tid :- AsyncRead a rx / (d, m, s0, s) ==>
-          rx v / (d'''', m'''', s'''', s'''')
-  | StepRead : forall d m s0 s a rx vs,
-      d a = Some vs ->
-      tid :- Read a rx / (d, m, s0, s) ==>
-          rx (latest_valu vs) / (d, m, s0, s)
+      d a = Some (vs, None) ->
+      let d' := upd d a (vs, Some tid) in
+      tid :- StartRead a rx / (d, m, s0, s) ==>
+        rx tt / (d', m, s0, s)
+  | StepFinishRead : forall d m s0 s a rx vs,
+      d a = Some (vs, Some tid) ->
+      let d' := upd d a (vs, None) in
+      tid :- FinishRead a rx / (d, m, s0, s) ==>
+          rx (latest_valu vs) / (d', m, s0, s)
   | StepWrite : forall d m s0 s a rx vs0 v',
-      d a = Some vs0 ->
-      let d' := upd d a (buffer_valu vs0 v') in
-      LockI m s d' ->
+      d a = Some (vs0, None) ->
+      let d' := upd d a (buffer_valu vs0 v', None) in
       tid :- Write a v' rx / (d, m, s0, s) ==>
           rx tt / (d', m, s0, s)
-  | StepSync : forall d m s0 s a rx vs0,
-      d a = Some vs0 ->
+  | StepSync : forall d m s0 s a rx vs0 reader,
+      d a = Some (vs0, reader) ->
+      let d' := upd d a (synced vs0, reader) in
       tid :- Sync a rx / (d, m, s0, s) ==>
-          rx tt / (upd d a (synced vs0), m, s0, s)
+          rx tt / (d', m, s0, s)
   | StepAcquireLock : forall d m m' s s0 d' s' up rx (l:var Mcontents BusyFlag),
       let m'' := set l Locked m' in
       let s'' := up tid s' in
       StateI m s d ->
-      LockI m s d ->
       StateR tid s0 s ->
-      StateI m' s' d' ->
-      LockI m' s' d' ->
       star (StateR' tid) s s' ->
-      star (LockR' tid) s s' ->
-      LockR tid s' s'' ->
-      LockI m'' s'' d' ->
-      tid :- AcquireLock l up rx / (d, m, s0, s) ==> rx tt / (d', m'', s'', s'')
+      StateI m' s' d' ->
+      tid :- AcquireLock l up rx / (d, m, s0, s) ==>
+          rx tt / (d', m'', s'', s'')
   | StepYield : forall d m s0 s s' m' d' rx,
       StateI m s d ->
-      LockI m s d ->
       StateI m' s' d' ->
-      LockI m' s' d' ->
       StateR tid s0 s ->
       star (StateR' tid) s s' ->
-      star (LockR' tid) s s' ->
-      tid :- Yield rx / (d, m, s0, s) ==> rx tt / (d', m', s', s')
+      tid :- Yield rx / (d, m, s0, s) ==>
+          rx tt / (d', m', s', s')
   | StepGhostUpdate : forall d m s0 s up rx,
       let s' := up s in
-      LockR tid s s' ->
-      tid :- GhostUpdate up rx / (d, m, s0, s) ==> rx tt / (d, m, s0, s')
+      tid :- GhostUpdate up rx / (d, m, s0, s) ==>
+          rx tt / (d, m, s0, s')
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
   | StepGet : forall d m s s0 t (v: var Mcontents t) rx,
       tid :- Get v rx / (d, m, s0, s) ==> rx (get v m) / (d, m, s0, s)
   | StepAssgn : forall d m s s0 t (v: var Mcontents t) val rx,
       let m' := set v val m in
-      LockI m' s d ->
       tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, m', s0, s)
   where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
 
   Inductive fail_step (tid:ID) : prog -> state -> Prop :=
-  | FailStepAsyncRead : forall a d m s0 s rx,
-      ~ProgI m s d ->
-      fail_step tid (AsyncRead a rx) (d, m, s0, s)
-  | FailStepRead : forall a d m s0 s rx, d a = None ->
-                                    fail_step tid (Read a rx) (d, m, s0, s)
-  | FailStepWriteMissing : forall a v d m s0 s rx, d a = None ->
-                                              fail_step tid (Write a v rx) (d, m, s0, s)
-  | FailStepWriteLock : forall a vs0 v' d m s0 s rx, d a = Some vs0 ->
-                                              let d' := upd d a (buffer_valu vs0 v') in
-                                              ~LockI m s d' ->
-                                              fail_step tid (Write a v' rx) (d, m, s0, s)
-  | FailStepAcquireLock : forall l up d m s0 s rx, (~StateI m s d) ->
-                                           fail_step tid (AcquireLock l up rx) (d, m, s0, s)
-  | FailStepAssgnLock : forall d m s s0 t (v: var Mcontents t) val rx,
-      let m' := set v val m in
-      ~LockI m' s d ->
-      fail_step tid (Assgn v val rx) (d, m, s0, s)
-  | FailStepGhostUpdate : forall d m s0 s up rx,
-      let s' := up s in
-      ~LockR tid s s' ->
-      fail_step tid (GhostUpdate up rx) (d, m, s0, s)
-  | FailStepYield : forall d m s0 s rx, (~StateI m s d) ->
-                                   fail_step tid (Yield rx) (d, m, s0, s).
+  | FailStepStartRead : forall a d m s0 s rx,
+      d a = None ->
+      fail_step tid (StartRead a rx) (d, m, s0, s)
+  | FailStepStartReadConflict : forall a vs tid' d m s0 s rx,
+      tid' <> tid ->
+      d a = Some (vs, Some tid') ->
+      fail_step tid (StartRead a rx) (d, m, s0, s)
+  | FailStepFinishRead : forall a vs d m s0 s rx,
+      d a = Some (vs, None) ->
+      fail_step tid (FinishRead a rx) (d, m, s0, s)
+  | FailStepFinishConflict : forall a vs tid' d m s0 s rx,
+      tid' <> tid ->
+      d a = Some (vs, Some tid') ->
+      fail_step tid (FinishRead a rx) (d, m, s0, s)
+  | FailStepWriteMissing : forall a v d m s0 s rx,
+      d a = None ->
+      fail_step tid (Write a v rx) (d, m, s0, s)
+  | FailStepAcquireLock : forall l up d m s0 s rx,
+      (~StateI m s d) ->
+      fail_step tid (AcquireLock l up rx) (d, m, s0, s)
+  | FailStepYield : forall d m s0 s rx,
+      (~StateI m s d) ->
+      fail_step tid (Yield rx) (d, m, s0, s).
 
   Hint Constructors step fail_step.
+
+  Theorem fail_step_consistent : forall tid p d m s0 s
+                                   p' st',
+      step tid (d, m, s0, s) p st' p' ->
+      fail_step tid p (d, m, s0, s) ->
+      False.
+  Proof.
+    inversion 1; inversion 1; congruence.
+  Qed.
 
   Ltac inv_step :=
     match goal with
@@ -262,8 +237,6 @@ Section EventCSL.
   Inductive yieldProg : forall p, Prop :=
   | YieldProgYield : forall rx,
     yieldProg (Yield rx)
-  | YieldProgAsyncRead : forall a rx,
-    yieldProg (AsyncRead a rx)
   | YieldProgAcquireLock : forall l up rx,
     yieldProg (AcquireLock l up rx).
 
@@ -306,48 +279,31 @@ Section EventCSL.
   Ltac condition_failure :=
     intros; inv_fail_step; eauto; try congruence.
 
-  Theorem async_read_failure : forall tid d m s0 s rx a,
-      fail_step tid (AsyncRead a rx) (d, m, s0, s) ->
-      ProgI m s d ->
+  Theorem start_read_failure : forall tid d m s0 s rx a v,
+      fail_step tid (StartRead a rx) (d, m, s0, s) ->
+      d a = Some (v, None) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Theorem read_failure : forall tid d m s0 s rx a v,
-      fail_step tid (Read a rx) (d, m, s0, s) ->
-      d a = Some v ->
+  Theorem finish_read_failure : forall tid d m s0 s rx a v,
+      fail_step tid (FinishRead a rx) (d, m, s0, s) ->
+      d a = Some (v, Some tid) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Theorem write_failure : forall tid d m s0 s v rx a v0,
+  Theorem write_failure : forall tid d m s0 s rx a v vs0,
       fail_step tid (Write a v rx) (d, m, s0, s) ->
-      d a = Some v0 ->
-      LockI m s (upd d a (buffer_valu v0 v)) ->
+      d a = Some (vs0, None) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Theorem assgn_failure : forall tid d m s0 s rx t (v: var Mcontents t) val,
-      fail_step tid (Assgn v val rx) (d, m, s0, s) ->
-      LockI (set v val m) s d ->
-      False.
-  Proof.
-    condition_failure.
-  Qed.
-
-  Theorem ghost_update_failure : forall tid d m s0 s rx up,
-      fail_step tid (GhostUpdate up rx) (d, m, s0, s) ->
-      LockR tid s (up s) ->
-      False.
-  Proof.
-    condition_failure.
-  Qed.
-
-  Hint Resolve read_failure write_failure assgn_failure ghost_update_failure.
+  Hint Resolve start_read_failure finish_read_failure write_failure.
 
   Definition donecond := T -> DISK_PRED.
   Definition crashcond := DISK_PRED.
@@ -443,26 +399,25 @@ Section EventCSL.
              | [ v := _ : _ |- _ ] => subst v
              end.
 
-  Ltac learn_mem_val H m a :=
-    let v := fresh "v" in
-      evar (v : valuset);
+  Ltac learn_mem_val H m a v :=
       assert (m a = Some v);
       [ eapply ptsto_valid;
-        pred_apply' H; cancel |
-      ]; subst v.
+        pred_apply' H; cancel |].
 
   Ltac learn_some_addr :=
     match goal with
     | [ a: addr, H: ?P ?m |- _ ] =>
       match P with
-      | context[(a |-> _)%pred] => learn_mem_val H m a
+      | context[(a |-> ?v)%pred] => learn_mem_val H m a v
       end
     end.
 
-  Ltac match_valusets :=
+  Ltac match_contents :=
     match goal with
     | [ H: ?d ?a = Some ?v1, H': ?d ?a = Some ?v2 |- _ ] =>
-      assert (v1 = v2) by congruence; subst v2;
+      let H := fresh in
+      assert (v1 = v2) as H by congruence;
+        inversion H; subst;
       clear H'
     end.
 
@@ -479,14 +434,15 @@ Section EventCSL.
         end;
       exfalso
     end;
-    try (learn_some_addr; match_valusets);
+    try (learn_some_addr; match_contents);
     eauto 10.
 
+  Hint Resolve ptsto_upd'.
+
   Theorem Write_ok : forall a v,
-      tid |- {{ F v0,
-             | PRE d m s0 s: d |= F * a |-> v0 /\
-                             LockI m s (upd d a (buffer_valu v0 v))
-             | POST d' m' s0' s' _: d' |= F * a |-> (buffer_valu v0 v) /\
+      tid |- {{ F vs0,
+             | PRE d m s0 s: d |= F * a |-> (vs0, None)
+             | POST d' m' s0' s' _: d' |= F * a |-> (buffer_valu vs0 v, None) /\
                                 s0' = s0 /\
                                 s' = s /\
                                 m' = m
@@ -494,15 +450,12 @@ Section EventCSL.
             }} Write a v.
   Proof.
     opcode_ok.
-    eapply pimpl_apply; [| eapply ptsto_upd].
-    cancel.
-    pred_apply; cancel.
   Qed.
 
   Theorem Sync_ok : forall a,
-      tid |- {{ F v0,
-             | PRE d m s0 s: d |= F * a |-> v0
-             | POST d' m' s0' s' _: d' |= F * a |-> (synced v0) /\
+      tid |- {{ F v0 reader,
+             | PRE d m s0 s: d |= F * a |-> (v0, reader)
+             | POST d' m' s0' s' _: d' |= F * a |-> (synced v0, reader) /\
                                 s0' = s0 /\
                                 s' = s /\
                                 m' = m
@@ -510,49 +463,31 @@ Section EventCSL.
             }} Sync a.
   Proof.
     opcode_ok.
-    eapply pimpl_apply; [| eapply ptsto_upd].
-    cancel.
-    pred_apply; cancel.
   Qed.
 
-  Theorem AsyncRead_ok : forall a,
-      tid |- {{ (_:unit),
-             | PRE d m s0 s: ProgI m s d
-             | POST d'''' m'''' s0' s'''' v:
-                 s0' = s'''' /\
-                 exists m' s' d'
-                   m'' s'' d''
-                   F rest
-                   m''' s''' d''',
-                   star (ProgR' tid) s s' /\
-                   ProgI m' s' d' /\
-                   star (LockR' tid) s' s'' /\
-                   LockI m'' s'' d'' /\
-                   d'' |= F * a |-> (Valuset v rest) /\
-                   star (LockR' tid) s'' s''' /\
-                   LockI m''' s''' d''' /\
-                   StateR' tid s' s''' /\
-                   star (ProgR' tid) s''' s'''' /\
-                   ProgI m'''' s'''' d''''
-            | CRASH d'c : d'c = d
-            }} AsyncRead a.
+  Theorem StartRead_ok : forall a,
+    tid |- {{ F vs0,
+           | PRE d m s0 s: d |= F * a |-> (vs0, None)
+           | POST d' m' s0' s' _: d' |= F * a |-> (vs0, Some tid) /\
+                                  s0' = s0 /\
+                                  s' = s /\
+                                  m' = m
+           | CRASH d'c : d'c = d
+          }} StartRead a.
   Proof.
     opcode_ok.
-    unfold ProgI in *; intuition.
-    unfold StateR', othersR in *; deex.
-    repeat eexists; eauto using ptsto_valid_iff.
   Qed.
 
-  Theorem Read_ok : forall a,
-    tid |- {{ F v0,
-      | PRE d m s0 s: d |= F * a |-> v0
-      | POST d' m' s0' s' v: d' = d /\
-                             v = latest_valu v0 /\
-                             s0' = s0 /\
-                             s' = s /\
-                             m' = m
-      | CRASH d'c : d'c = d
-    }} Read a.
+  Theorem FinishRead_ok : forall a,
+      tid |- {{ F vs0,
+             | PRE d m s0 s: d |= F * a |-> (vs0, Some tid)
+             | POST d' m' s0' s' r: d' |= F * a |-> (vs0, None) /\
+                                    s0' = s0 /\
+                                    s' = s /\
+                                    m' = m /\
+                                    r = latest_valu vs0
+             | CRASH d'c : d'c = d
+            }} FinishRead a.
   Proof.
     opcode_ok.
   Qed.
@@ -578,7 +513,7 @@ Section EventCSL.
 
   Theorem Assgn_ok : forall t (v: var _ t) val,
       tid |- {{ (_:unit),
-             | PRE d m s0 s: LockI (set v val m) s d
+             | PRE d m s0 s: True
              | POST d' m' s0' s' _: d' = d /\
                                     m' = set v val m /\
                                     s0' = s0 /\
@@ -609,10 +544,7 @@ Section EventCSL.
                              StateR tid s0 s
              | POST d' m'' s0' s'' _: exists m' s',
                  d' |= StateI m' s' /\
-                 LockI m' s' d' /\
                  star (StateR' tid) s s' /\
-                 star (LockR' tid) s s' /\
-                 LockR tid s' s'' /\
                  m'' = set l Locked m' /\
                  s'' = up tid s' /\
                  get l m'' = Locked /\
@@ -631,9 +563,7 @@ Section EventCSL.
                            StateR tid s0 s
            | POST d' m' s0' s' _: d' |= StateI m' s' /\
                                   s0' = s' /\
-                                  star (StateR' tid) s s' /\
-                                  star (LockR' tid) s s' /\
-                                  LockI m' s' d'
+                                  star (StateR' tid) s s'
            | CRASH d'c: d'c = d
     }} Yield.
   Proof.
@@ -642,7 +572,7 @@ Section EventCSL.
 
   Theorem GhostUpdate_ok : forall up,
     tid |- {{ (_:unit),
-           | PRE d m s0 s: LockR tid s (up s)
+           | PRE d m s0 s: True
            | POST d' m' s0' s' _: d' = d /\
                                   s0' = s0 /\
                                   s' = up s /\
@@ -817,14 +747,9 @@ ident.
 Record transitions Mcontents S := {
       (* StateR s s' holds when s -> s' is a valid transition *)
       StateR: ID -> Relation S;
-      (* LockR s s' holds when s -> s' follows the lock protocol *)
-      LockR: ID -> Relation S;
       (* StateI m s d holds when the ghost state s matches the memory m and disk d,
-        and any important invariants across helds hold in all three *)
+        and any important invariants across them hold in all three *)
       StateI: Invariant Mcontents S;
-      (* LockI m s d maintains consistency of lock copies in s and is
-      enforced on every write to memory or disk. *)
-      LockI: Invariant Mcontents S
       }.
 
 (** Copy-paste metaprogramming:
@@ -835,12 +760,12 @@ Record transitions Mcontents S := {
 * add (StateR sigma) (StateI sigma) as arguments to valid *)
 Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post | 'CRASH' d'c : oncrash }} p" :=
   (forall T (rx: _ -> prog _ _ T) (tid:ID),
-      valid (StateR sigma) (LockR sigma) (StateI sigma) (LockI sigma) tid
+      valid (StateR sigma) (StateI sigma) tid
             (fun done crash d m s0 s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      (forall ret_,
-                                       valid (StateR sigma) (LockR sigma) (StateI sigma) (LockI sigma) tid
+                                       valid (StateR sigma) (StateI sigma) tid
                                              (fun done_rx crash_rx d' m' s0' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done /\
@@ -879,7 +804,7 @@ Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 
 
 The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
-Notation "{{ f ; '_' }}" := (valid _ _ _ _ _ _ (progseq f _)).
+Notation "{{ f ; '_' }}" := (valid _ _ _ _ (progseq f _)).
 
 (* copy of pair_args_helper from Prog *)
 Definition tuple_args (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
@@ -909,8 +834,8 @@ Notation "'For' i < n | 'Ghost' [ g1 .. g2 ] | 'Loopvar' [ l1 .. l2 ] | 'Continu
      l1 closed binder, l2 closed binder,
      body at level 9).
 
-Hint Extern 1 {{ AsyncRead _; _ }} => apply AsyncRead_ok : prog.
-Hint Extern 1 {{ Read _; _ }} => apply Read_ok : prog.
+Hint Extern 1 {{ StartRead _; _ }} => apply StartRead_ok : prog.
+Hint Extern 1 {{ FinishRead _; _ }} => apply FinishRead_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 1 {{ Sync _; _ }} => apply Sync_ok : prog.
 Hint Extern 1 {{ Get _; _ }} => apply Get_ok : prog.
@@ -921,58 +846,6 @@ Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 
-(* Lemmas to help unfold some definitions from EventCSL *)
-
-Lemma progR_is : forall Scontents R1 R2 tid (s s':S Scontents),
-  star (ProgR R1 R2 tid) s s' ->
-  star (R1 tid) s s' /\
-  star (R2 tid) s s'.
-Proof.
-  unfold ProgR.
-  induction 1; intuition eauto.
-Qed.
-
-Lemma othersR_and : forall Scontents R1 R2 tid (s s':S Scontents),
-  othersR (fun tid s s' => R1 tid s s' /\ R2 tid s s') tid s s' ->
-  othersR R1 tid s s' /\
-  othersR R2 tid s s'.
-Proof.
-  unfold othersR; intros.
-  deex; eauto.
-Qed.
-
-Lemma progR'_is : forall Scontents R1 R2 tid (s s':S Scontents),
-  star (ProgR' R1 R2 tid) s s' ->
-  star (othersR R1 tid) s s' /\
-  star (othersR R2 tid) s s'.
-Proof.
-  unfold ProgR', ProgR.
-  induction 1;
-    try match goal with
-    | [ H: othersR _ _ _ _ |- _ ] => apply othersR_and in H
-    end; intuition eauto.
-Qed.
-
-Lemma progI_is : forall Mcontents Scontents
-                   I1 I2 (m:M Mcontents) (s:S Scontents) d,
-  ProgI I1 I2 m s d ->
-  I1 m s d /\
-  I2 m s d.
-Proof.
-  unfold ProgI;
-  intuition.
-Qed.
-
-Ltac unfold_progR :=
-  repeat match goal with
-         | [ H: star (ProgR _ _ _) _ _ |- _ ] =>
-           apply progR_is in H; destruct H
-         | [ H: star (ProgR' _ _ _) _ _ |- _ ] =>
-          apply progR'_is in H; destruct H
-         | [ H: ProgI _ _ _ _ _ |- _ ] =>
-          apply progI_is in H; destruct H
-         end.
-
 (* Wrap up the parameters that the semantics takes in a module. *)
 Module Type Semantics.
   Parameter Mcontents : list Type.
@@ -982,7 +855,4 @@ Module Type Semantics.
 
   Axiom R_stutter : forall tid s,
     R tid s s.
-
-  Parameter LockInv : Invariant Mcontents Scontents.
-  Parameter LockR : ID -> Relation Scontents.
 End Semantics.

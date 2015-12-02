@@ -39,39 +39,28 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
   Definition GCache := get (HNext HFirst) stateVars.
   Definition GCacheL := get (HNext (HNext HFirst)) stateVars.
 
-  Definition cacheR (_:ID) : Relation Scontents :=
+  Definition cacheR (tid:ID) : Relation Scontents :=
     fun s s' =>
       let vd := get GDisk s in
       let vd' := get GDisk s' in
-      (forall a v, vd a = Some v -> exists v', vd' a = Some v').
-
-  Definition lockR tid : Relation Scontents :=
-    fun s s' =>
+      (forall a v, vd a = Some v -> exists v', vd' a = Some v') /\
       lock_protocol GCacheL tid s s' /\
       lock_protects GCacheL GCache tid s s' /\
       lock_protects GCacheL GDisk tid s s'.
 
-  Definition stateI : Invariant Mcontents Scontents :=
-    fun m s d => True.
-
-  Definition lockI : Invariant Mcontents Scontents :=
+  Definition cacheI : Invariant Mcontents Scontents :=
     fun m s d =>
       let c := get Cache m in
       (d |= cache_pred c (get GDisk s))%judgement /\
       ghost_lock_invariant CacheL GCacheL m s /\
       (* mirror cache for sake of lock_protects *)
       get Cache m = get GCache s.
-
-  Definition cacheI : Invariant Mcontents Scontents :=
-    fun m s d =>
-      stateI m s d /\
-      lockI m s d.
 End CacheTransitionSystem.
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
 on the definitions directly *)
 Hint Unfold lock_protects : prog.
-Hint Unfold StateR' LockR' : prog.
+Hint Unfold StateR' : prog.
 
 Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
 
@@ -85,15 +74,8 @@ Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
     Inv m s d ->
     cacheI m s d.
 
-  Axiom lock_invariant_holds : forall m s d,
-    LockInv m s d ->
-    lockI m s d.
-
   Axiom cache_relation_holds : forall tid,
     rimpl (R tid) (cacheR tid).
-
-  Axiom lock_relation_holds : forall tid,
-    rimpl (LockR tid) (lockR tid).
 
   Axiom cache_invariant_preserved : forall m s d m' s' d',
     Inv m s d ->
@@ -103,23 +85,11 @@ Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
     modified stateVars s s' ->
     Inv m' s' d'.
 
-  Axiom lock_invariant_preserved : forall m s d m' s' d',
-    LockInv m s d ->
-    lockI m' s' d' ->
-    modified memVars m m' ->
-    modified stateVars s s' ->
-    LockInv m' s' d'.
-
   Axiom cache_relation_preserved : forall tid s s' s'',
     R tid s s' ->
     modified stateVars s' s'' ->
     cacheR tid s' s'' ->
     R tid s s''.
-
-  Axiom lock_relation_preserved : forall tid s s',
-    modified stateVars s s' ->
-    lockR tid s s' ->
-    LockR tid s s'.
 
 End CacheSemantics.
 
@@ -134,18 +104,15 @@ Import Transitions.
 
 Hint Resolve R_stutter.
 
-Hint Resolve no_confusion_memVars
-             no_confusion_stateVars.
+Hint Resolve
+     no_confusion_memVars
+     no_confusion_stateVars.
 
 Hint Resolve
-  cache_invariant_holds
-   lock_invariant_holds
-   cache_relation_holds
-   lock_relation_holds
-   cache_invariant_preserved
-   lock_invariant_preserved
-   cache_relation_preserved
-   lock_relation_preserved.
+     cache_invariant_holds
+     cache_relation_holds
+     cache_invariant_preserved
+     cache_relation_preserved.
 
 Definition M := EventCSL.M Mcontents.
 Definition S := EventCSL.S Scontents.
@@ -160,45 +127,20 @@ Proof.
   apply cache_relation_holds; auto.
 Qed.
 
-Lemma others_lock_relation_holds : forall tid,
-  rimpl (othersR LockR tid) (othersR lockR tid).
-Proof.
-  unfold othersR, rimpl.
-  intros.
-  deex.
-  eexists; intuition eauto.
-  apply lock_relation_holds; auto.
-Qed.
-
 Ltac derive_local_relations :=
   repeat match goal with
          | [ H: star R _ _ |- _ ] =>
             learn H (rewrite cache_relation_holds in H)
          | [ H: star (othersR R _) _ _ |- _ ] =>
             learn H (rewrite others_cache_relation_holds in H)
-         | [ H: star (othersR LockR _) _ _ |- _ ] =>
-            learn H (rewrite others_lock_relation_holds in H)
          end.
-
-Definition inv m s d := Inv m s d /\ LockInv m s d.
-
-Theorem inv_implications : forall m s d,
-  inv m s d ->
-  Inv m s d /\
-  LockInv m s d /\
-  cacheI m s d /\
-  lockI m s d.
-Proof.
-  unfold inv; intuition;
-    eauto using cache_invariant_holds, lock_invariant_holds.
-Qed.
 
 Definition virt_disk (s:S) : DISK := get GDisk s.
 
 Hint Unfold virt_disk : prog.
 
 Definition stateS : transitions Mcontents Scontents :=
-  Build_transitions R LockR Inv LockInv.
+  Build_transitions R Inv.
 
 Ltac solve_get_set := solve [ simpl_get_set; try congruence; auto ].
 
@@ -222,18 +164,18 @@ Ltac inv_protocol :=
 
 Lemma cache_readonly' : forall tid (s s':S),
     get GCacheL s = Owned tid ->
-    othersR lockR tid s s' ->
+    othersR cacheR tid s s' ->
     get GCache s' = get GCache s /\
     get GCacheL s' = Owned tid.
 Proof.
-  unfold lockR, othersR.
+  unfold cacheR, othersR.
   intros.
   deex; eauto; inv_protocol.
 Qed.
 
 Lemma cache_readonly : forall tid (s s':S),
     get GCacheL s = Owned tid ->
-    star (othersR lockR tid) s s' ->
+    star (othersR cacheR tid) s s' ->
     get GCache s' = get GCache s.
 Proof.
   intros.
@@ -243,18 +185,18 @@ Qed.
 
 Lemma virt_disk_readonly' : forall tid (s s':S),
     get GCacheL s = Owned tid ->
-    othersR lockR tid s s' ->
+    othersR cacheR tid s s' ->
     get GDisk s' = get GDisk s /\
     get GCacheL s' = Owned tid.
 Proof.
-  unfold lockR, othersR.
+  unfold cacheR, othersR.
   intros.
   deex; eauto; inv_protocol.
 Qed.
 
 Lemma virt_disk_readonly : forall tid (s s':S),
     get GCacheL s = Owned tid ->
-    star (othersR lockR tid) s s' ->
+    star (othersR cacheR tid) s s' ->
     get GDisk s' = get GDisk s.
 Proof.
   intros.
@@ -264,16 +206,17 @@ Qed.
 
 Lemma cache_lock_owner_unchanged' : forall tid (s s':S),
     get GCacheL s = Owned tid ->
-    othersR lockR tid s s' ->
+    othersR cacheR tid s s' ->
     get GCacheL s' = Owned tid.
 Proof.
-  unfold othersR, lockR; intros.
+  unfold cacheR, othersR.
+  intros.
   deex; inv_protocol.
 Qed.
 
 Lemma cache_lock_owner_unchanged : forall tid (s s':S),
     get GCacheL s = Owned tid ->
-    star (othersR lockR tid) s s' ->
+    star (othersR cacheR tid) s s' ->
     get GCacheL s' = Owned tid.
 Proof.
   intros.
@@ -316,7 +259,7 @@ Qed.
 
 Lemma cache_locked_unchanged : forall tid s s',
   get GCacheL s = Owned tid ->
-  star (othersR lockR tid) s s' ->
+  star (othersR cacheR tid) s s' ->
   get GCache s' = get GCache s /\
   get GDisk s' = get GDisk s /\
   get GCacheL s' = Owned tid.
@@ -331,7 +274,7 @@ Qed.
 Ltac cache_readonly :=
   match goal with
   | [ Hlock : get GCacheL ?s = Owned _,
-     H: star (othersR lockR _) ?s _ |- _ ] =>
+     H: star (othersR cacheR _) ?s _ |- _ ] =>
     learn that (cache_locked_unchanged Hlock H)
   end.
 
@@ -408,30 +351,19 @@ Hint Extern 5 (get _ (set _ _ _) = _) => solve_get_set.
 Hint Constructors lock_protocol.
 Hint Constructors ghost_lock_invariant.
 Hint Extern 3 (ghost_lock_invariant _ _ _ _) =>
-  simple eapply ghost_lock_inv_preserved;
-    [ eassumption | .. ].
-
-Ltac expand_inv :=
-  match goal with
-  | [ H: inv _ _ _ |- _ ] =>
-    learn that (inv_implications H); destruct_ands
-  end.
+simple eapply ghost_lock_inv_preserved;
+  [ eassumption | .. ].
 
 Ltac local_state_transitions :=
-  try match goal with
+  match goal with
       | [ H: Inv _ _ _ |- _ ] =>
         learn that (cache_invariant_holds H)
-      end;
-  try match goal with
-      | [ H: LockInv _ _ _ |- _ ] =>
-        learn that (lock_invariant_holds H)
       end.
 
 Ltac learn_invariants :=
   progress repeat
            (time "cache_readonly" cache_readonly)
            || (time "sectors_unchanged" sectors_unchanged)
-           || (time "expand_inv" expand_inv)
            || (time "local_state_transitions" local_state_transitions).
 
 Ltac disk_equalities :=
@@ -501,16 +433,7 @@ Ltac standardize_mem_fields :=
          end.
 
 Ltac unfold_cache_definitions :=
-  let unfold_head H :=
-      let P := type of H in
-      (let h := head_symbol P in
-       unfold h in H) in
-  repeat lazymatch goal with
-    | [ H: cacheI _ _ _ |- _ ] => unfold_head H
-    | [ H: cacheR _ _ _ |- _ ] => unfold_head H
-    | [ H: lockI _ _ _ |- _ ] => unfold_head H
-    | [ H: lockR _ _ _ |- _ ] => unfold_head H
-    end.
+  unfold cacheI, cacheR in *.
 
 Hint Unfold pred_in : prog.
 
@@ -528,7 +451,6 @@ Ltac simplify_reduce_step :=
           || descend
           || (try time "simpl_get_set" progress simpl_get_set)
           || subst
-          || unfold_progR
           || unfold_cache_definitions
           || unfold_pred_applications
           || unf.
@@ -570,19 +492,13 @@ Tactic Notation "backtrack_pred_solve" tactic2(solver) :=
 Ltac solve_global_transitions :=
   (* match only these types of goals *)
   lazymatch goal with
-  | [ |- LockR _ _ _ ] =>
-    eapply lock_relation_preserved
   | [ |- R _ _ _ ] =>
     eapply cache_relation_preserved; [
       solve [ eassumption | eauto ] | .. ]
-  | [ |- LockInv _ _ _ ] =>
-    eapply lock_invariant_preserved
   | [ |- Inv _ _ _ ] =>
     eapply cache_invariant_preserved
-  | [ |- inv _ _ _ ] => unfold inv; intuition; try solve_global_transitions
   end;
-  unfold lockR, lockI, cacheR, cacheI, stateI, lockI,
-    lock_protects, pred_in;
+  unfold cacheR, cacheI, lock_protects, pred_in;
   repeat lazymatch goal with
   | [ |- forall _, _ ] => progress intros
   | [ |- _ /\ _ ] => split
@@ -636,11 +552,11 @@ Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      vd |= F * a |-> (Valuset v rest) /\
                      get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             vd' = virt_disk s /\
                             r = v /\
                             get GCacheL s' = Owned tid /\
@@ -705,12 +621,12 @@ Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ F v rest,
    | PRE d m s0 s: let vd := virt_disk s in
-                   inv m s d /\
+                   Inv m s d /\
                    cache_get (get Cache m) a = None /\
                    vd |= F * a |-> (Valuset v rest) /\
                    get GCacheL s = Owned tid
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                          inv m' s' d' /\
+                          Inv m' s' d' /\
                           vd' = virt_disk s /\
                           star (othersR R tid) s s' /\
                           get Cache m' = get Cache m /\
@@ -766,19 +682,19 @@ Hint Resolve lock_protects_locked.
 Lemma inv_definition : forall m s d,
   LockInv m s d ->
   Inv m s d ->
-  inv m s d.
+  Inv m s d.
 Proof. firstorder. Qed.
 
 Theorem locked_async_disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      vd |= F * a |-> (Valuset v rest) /\
                      get GCacheL s = Owned tid /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             vd' = virt_disk s /\
                             chain (star (othersR R tid)) (R tid) s s' /\
                             r = v /\
@@ -809,10 +725,10 @@ Theorem cache_lock_ok :
     stateS TID: tid |-
     {{ (_:unit),
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             get GCacheL s' = Owned tid /\
                             s0' = s' /\
                             chain (star (othersR R tid))
@@ -834,12 +750,12 @@ Theorem cache_unlock_ok :
     stateS TID: tid |-
     {{ (_:unit),
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      (* not strictly necessary, but why would you unlock
                      if you don't know you have the lock? *)
                      get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             R tid s s' /\
                             d' = d /\
                             get GCacheL s' = NoOwner /\
@@ -928,11 +844,11 @@ Theorem disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      vd |= F * a |-> (Valuset v rest) /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             star (anyR R) s s' /\
                             get GCacheL s' = Owned tid /\
                             R tid s0' s' /\
@@ -997,11 +913,11 @@ Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      get GCacheL s = Owned tid /\
                      vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             R tid s s' /\
                             get GCacheL s' = Owned tid /\
                             (exists rest', vd' |= F * a |-> (Valuset v rest') /\
@@ -1046,11 +962,11 @@ Theorem disk_write_ok : forall a v,
     stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      vd |= F * a |-> (Valuset v0 rest) /\
                      R tid s0 s
      | POST d' m' s0' s' _:  let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             star (anyR R) s s' /\
                             get GCacheL s' = Owned tid /\
                             R tid s0' s' /\
@@ -1096,11 +1012,11 @@ Theorem locked_evict_ok : forall a,
     stateS TID: tid |-
     {{ F v0,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      get GCacheL s = Owned tid /\
                      vd |= F * a |-> v0
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             R tid s s' /\
                             get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
@@ -1182,11 +1098,11 @@ Theorem writeback_ok : forall a,
     stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      get GCacheL s = Owned tid /\
                      vd |= F * a |-> (Valuset v0 rest)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             R tid s s' /\
                             get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
@@ -1281,13 +1197,13 @@ Theorem sync_ok : forall a,
     stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                     inv m s d /\
+                     Inv m s d /\
                      get GCacheL s = Owned tid /\
                      (cache_get (get Cache m) a = Some (false, v0) \/
                       cache_get (get Cache m) a = None) /\
                      vd |= F * a |-> Valuset v0 rest
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                          inv m' s' d' /\
+                          Inv m' s' d' /\
                           R tid s s' /\
                           get GCacheL s' = Owned tid /\
                           m = m' /\
@@ -1327,11 +1243,11 @@ Theorem cache_sync_ok : forall a,
     stateS TID: tid |-
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
-                    inv m s d /\
+                    Inv m s d /\
                     get GCacheL s = Owned tid /\
                     vd |= F * a |-> Valuset v0 rest
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            inv m' s' d' /\
+                            Inv m' s' d' /\
                             star (R tid) s s' /\
                             get GCacheL s' = Owned tid /\
                             vd' |= F * a |-> Valuset v0 nil /\

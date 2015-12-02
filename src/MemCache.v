@@ -65,10 +65,12 @@ End MemCache.
 Definition cache_pred c (vd:DISK) : DISK_PRED :=
   fun d => forall a,
       match (cache_get c a) with
-      | Some (false, v) => exists rest, vd a = Some (Valuset v rest) /\
-                                   d a = Some (Valuset v rest)
-      | Some (true, v') => exists rest v, vd a = Some (Valuset v' (v :: rest)) /\
-                                     d a = Some (Valuset v rest)
+      | Some (false, v) => exists rest reader,
+                           vd a = Some (Valuset v rest, reader) /\
+                           d a = Some (Valuset v rest, reader)
+      | Some (true, v') => exists rest v reader,
+                           vd a = Some (Valuset v' (v :: rest), reader) /\
+                           d a = Some (Valuset v rest, reader)
       | None => vd a = d a
       end.
 
@@ -160,35 +162,6 @@ Ltac prove_cache_pred :=
   complete_mem_equalities;
   distinguish_addresses;
   finish.
-
-Ltac destruct_matches_in e :=
-  lazymatch e with
-  | context[match ?d with | _ => _ end] =>
-    destruct_matches_in d
-  | _ => case_eq e; intros
-  end.
-
-Ltac destruct_all_matches :=
-  repeat (try simpl_match;
-           try match goal with
-           | [ |- context[match ?d with | _ => _ end] ] =>
-              destruct_matches_in d
-           | [ H: context[match ?d with | _ => _ end] |- _ ] =>
-             destruct_matches_in d
-           end);
-  subst;
-  try congruence.
-
-Ltac destruct_goal_matches :=
-  repeat (try simpl_match;
-           match goal with
-           | [ |- context[match ?d with | _ => _ end] ] =>
-              destruct_matches_in d
-           end);
-  try congruence.
-
-Tactic Notation "destruct" "matches" "in" "*" := destruct_all_matches.
-Tactic Notation "destruct" "matches" := destruct_goal_matches.
 
 Hint Unfold cache_pred mem_union : cache.
 
@@ -392,7 +365,7 @@ Ltac rewrite_cache_get :=
 Theorem cache_pred_eq_disk : forall c vd d a v,
     cache_get c a = Some (false, v) ->
     cache_pred c vd d ->
-    exists rest, d a = Some (Valuset v rest).
+    exists rest reader, d a = Some (Valuset v rest, reader).
 Proof.
   prove_cache_pred.
 Qed.
@@ -434,11 +407,11 @@ Ltac case_cache_val :=
     case_cache_val' c a
   end.
 
-Lemma cache_pred_clean : forall c vd rest a v,
+Lemma cache_pred_clean : forall c vd rest a v reader,
     cache_get c a = Some (false, v) ->
-    vd a = Some (Valuset v rest) ->
+    vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd =p=>
-cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest).
+cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest, reader).
 Proof.
   unfold pimpl.
   intros.
@@ -446,7 +419,7 @@ Proof.
   learn_disk_val.
 
   exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some (Valuset v rest) else None).
+  exists (fun a' => if weq a' a then Some (Valuset v rest, reader) else None).
   unfold mem_except.
   intuition.
   - unfold mem_union; apply functional_extensionality; intro a'.
@@ -459,10 +432,10 @@ Proof.
   - unfold ptsto; intuition; distinguish_addresses.
 Qed.
 
-Lemma cache_pred_clean' : forall c vd a rest v,
+Lemma cache_pred_clean' : forall c vd a rest v reader,
     cache_get c a = Some (false, v) ->
-    vd a = Some (Valuset v rest) ->
-    (cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest)) =p=>
+    vd a = Some (Valuset v rest, reader) ->
+    (cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest, reader)) =p=>
 cache_pred c vd.
 Proof.
   unfold pimpl, mem_except.
@@ -481,21 +454,28 @@ Proof.
     repeat deex;
     repeat match goal with
     | [ |- exists _, _ ] => eexists
-    end; intuition eauto; try congruence.
+           end; intuition eauto; try congruence.
+  (* congruence doesn't work here for some reason *)
+  match goal with
+  | [ |- @eq (option ?t) ?a ?b ] =>
+    replace a with (@None t) by congruence;
+      replace b with (@None t) by congruence;
+      auto
+  end.
 Qed.
 
-Lemma cache_pred_dirty : forall c vd a v v' rest,
+Lemma cache_pred_dirty : forall c vd a v v' rest reader,
     cache_get c a = Some (true, v') ->
-    vd a = Some (Valuset v' (v :: rest)) ->
+    vd a = Some (Valuset v' (v :: rest), reader) ->
     cache_pred c vd =p=>
     cache_pred (Map.remove a c) (mem_except vd a) *
-      a |-> (Valuset v rest).
+      a |-> (Valuset v rest, reader).
 Proof.
   unfold pimpl.
   intros.
   unfold_sep_star.
   exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some (Valuset v rest) else None).
+  exists (fun a' => if weq a' a then Some (Valuset v rest, reader) else None).
   unfold mem_except, mem_union, mem_disjoint, ptsto.
   intuition;
     prove_cache_pred; replace_cache_vals;
@@ -503,11 +483,11 @@ Proof.
     rewrite_cache_get; finish.
 Qed.
 
-Lemma cache_pred_dirty' : forall c vd a v v' rest,
+Lemma cache_pred_dirty' : forall c vd a v v' rest reader,
     cache_get c a = Some (true, v') ->
-    vd a = Some (Valuset v' (v :: rest)) ->
+    vd a = Some (Valuset v' (v :: rest), reader) ->
     cache_pred (Map.remove a c) (mem_except vd a) *
-    a |-> (Valuset v rest) =p=> cache_pred c vd.
+    a |-> (Valuset v rest, reader) =p=> cache_pred c vd.
 Proof.
   unfold pimpl, mem_except.
   intros.
@@ -523,14 +503,21 @@ Proof.
     repeat deex;
     repeat match goal with
     | [ |- exists _, _ ] => eexists
-    end; intuition eauto; try congruence.
+           end; intuition eauto; try congruence.
+
+  match goal with
+  | [ |- @eq (option ?t) ?a ?b ] =>
+    replace a with (@None t) by congruence;
+      replace b with (@None t) by congruence;
+      auto
+  end.
 Qed.
 
 Lemma cache_pred_clean_val :  forall c vd d a v,
     cache_pred c vd d ->
     cache_get c a = Some (false, v) ->
-    exists rest, vd a = Some (Valuset v rest) /\
-                 d a = Some (Valuset v rest).
+    exists rest reader, vd a = Some (Valuset v rest, reader) /\
+                   d a = Some (Valuset v rest, reader).
 Proof.
   prove_cache_pred.
 Qed.
@@ -538,8 +525,9 @@ Qed.
 Lemma cache_pred_dirty_val :  forall c vd d a v,
     cache_pred c vd d ->
     cache_get c a = Some (true, v) ->
-    exists v' rest, vd a = Some (Valuset v (v' :: rest)) /\
-               d a = Some (Valuset v' rest).
+    exists v' rest reader,
+      vd a = Some (Valuset v (v' :: rest), reader) /\
+      d a = Some (Valuset v' rest, reader).
 Proof.
   prove_cache_pred.
 Qed.
@@ -548,8 +536,8 @@ Section CachePredStability.
 
 Hint Rewrite upd_eq upd_ne using (now auto) : cache.
 
-Lemma cache_pred_stable_add : forall c vd a v d rest,
-    vd a = Some (Valuset v rest) ->
+Lemma cache_pred_stable_add : forall c vd a v d rest reader,
+    vd a = Some (Valuset v rest, reader) ->
     cache_get c a = None ->
     cache_pred c vd d ->
     cache_pred (cache_add c a v) vd d.
@@ -557,12 +545,12 @@ Proof.
   prove_cache_pred; rewrite_cache_get; eauto.
 Qed.
 
-Lemma cache_pred_stable_dirty_write : forall c vd a v rest v' d vs',
+Lemma cache_pred_stable_dirty_write : forall c vd a v rest v' d vs' reader,
     cache_get c a = Some (true, v) ->
-    vd a = Some (Valuset v rest) ->
+    vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' rest ->
-    cache_pred (cache_add_dirty c a v') (upd vd a vs') d.
+    cache_pred (cache_add_dirty c a v') (upd vd a (vs', reader)) d.
 Proof.
   prove_cache_pred;
   rewrite_cache_get;
@@ -570,12 +558,12 @@ Proof.
   finish; eauto.
 Qed.
 
-Lemma cache_pred_stable_clean_write : forall c vd a v rest v' d vs',
+Lemma cache_pred_stable_clean_write : forall c vd a v rest v' d vs' reader,
     cache_get c a = Some (false, v) ->
-    vd a = Some (Valuset v rest) ->
+    vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' (v :: rest) ->
-    cache_pred (cache_add_dirty c a v') (upd vd a vs') d.
+    cache_pred (cache_add_dirty c a v') (upd vd a (vs', reader)) d.
 Proof.
   prove_cache_pred;
   rewrite_cache_get;
@@ -583,12 +571,12 @@ Proof.
   finish.
 Qed.
 
-Lemma cache_pred_stable_miss_write : forall c vd a v rest v' d vs',
+Lemma cache_pred_stable_miss_write : forall c vd a v rest v' d vs' reader,
     cache_get c a = None ->
-    vd a = Some (Valuset v rest) ->
+    vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' (v :: rest) ->
-    cache_pred (cache_add_dirty c a v') (upd vd a vs') d.
+    cache_pred (cache_add_dirty c a v') (upd vd a (vs', reader)) d.
 Proof.
   prove_cache_pred;
   rewrite_cache_get;
@@ -640,13 +628,13 @@ Proof.
   prove_cache_pred; rewrite_cache_get; auto.
 Qed.
 
-Lemma cache_pred_stable_upd : forall c d vd a vs0 v vs' vs'',
+Lemma cache_pred_stable_upd : forall c d vd a vs0 v vs' vs'' reader,
     cache_pred c vd d ->
     cache_get c a = Some (true, v) ->
-    d a = Some vs0 ->
+    d a = Some (vs0, reader) ->
     vs' = buffer_valu vs0 v ->
     vs'' = buffer_valu vs' v ->
-    cache_pred c (upd vd a vs'') (upd d a vs').
+    cache_pred c (upd vd a (vs'', reader)) (upd d a (vs', reader)).
 Proof.
   prove_cache_pred; complete_mem_equalities;
     repeat deex; repeat eexists;
@@ -655,10 +643,10 @@ Proof.
     eauto.
 Qed.
 
-Lemma cache_pred_miss_stable : forall c vd a rest v,
+Lemma cache_pred_miss_stable : forall c vd a rest v reader,
     cache_get c a = None ->
-    vd a = Some (Valuset v rest) ->
-    (cache_pred c (mem_except vd a) * a |-> (Valuset v rest)) =p=>
+    vd a = Some (Valuset v rest, reader) ->
+    (cache_pred c (mem_except vd a) * a |-> (Valuset v rest, reader)) =p=>
 cache_pred c vd.
 Proof.
   unfold pimpl, mem_except.
@@ -677,7 +665,14 @@ Proof.
     repeat deex;
     repeat match goal with
     | [ |- exists _, _ ] => eexists
-    end; intuition eauto; try congruence.
+           end; intuition eauto; try congruence.
+
+  match goal with
+  | [ |- @eq (option ?t) ?a ?b ] =>
+    replace a with (@None t) by congruence;
+      replace b with (@None t) by congruence;
+      auto
+  end.
 Qed.
 
 End CachePredStability.
@@ -722,9 +717,9 @@ Proof.
   eauto using cache_pred_same_disk.
 Qed.
 
-Lemma cache_get_vd : forall c d vd a b v rest v',
+Lemma cache_get_vd : forall c d vd a b v rest v' reader,
   cache_pred c vd d ->
-  vd a = Some (Valuset v rest) ->
+  vd a = Some (Valuset v rest, reader) ->
   cache_get c a = Some (b, v') ->
   v' = v.
 Proof.

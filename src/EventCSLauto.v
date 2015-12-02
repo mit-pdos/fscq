@@ -50,7 +50,7 @@ Local Ltac set_prog p :=
 
 Ltac next_control_step :=
     match goal with
-    | [ |- valid _ _ _ _ _ _ ?p ] =>
+    | [ |- valid _ _ _ _ ?p ] =>
       eapply pimpl_ok; [ now (auto with prog) | set_prog p  ]
     end.
 
@@ -71,7 +71,7 @@ Ltac head_symbol e :=
 
 Ltac unfold_prog :=
   lazymatch goal with
-  | [ |- valid _ _ _ _ _ _ ?p ] =>
+  | [ |- valid _ _ _ _ ?p ] =>
     let program := head_symbol p in
     unfold program
   end.
@@ -113,3 +113,46 @@ Tactic Notation "hoare" := hoare' step_simplifier step_finisher.
 Tactic Notation "hoare" "pre" tactic(simplifier) := hoare' simplifier step_finisher.
 Tactic Notation "hoare" "pre" tactic(simplifier) "with" tactic(finisher) := hoare' simplifier finisher.
 Tactic Notation "hoare" "with" tactic(finisher) := hoare' step_simplifier finisher.
+
+Definition Read {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
+  StartRead a;;
+            v <- FinishRead a;
+  rx v.
+
+Theorem Read_ok : forall Mcontents Scontents Inv R a,
+    (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+    {{ F vs0,
+     | PRE d m s0 s: d |= F * a |-> (vs0, None)
+     | POST d' m' s0' s' r: d' = d /\
+                            s0' = s0 /\
+                            s' = s /\
+                            m' = m /\
+                            r = latest_valu vs0
+     | CRASH d'c : exists reader, d'c |= F * a |-> (vs0, reader)
+    }} Read a.
+Proof.
+  intros.
+  step.
+  exists (diskIs (mem_except d a)).
+  repeat eexists; intuition; subst; eauto.
+  eapply diskIs_combine_same'; eauto.
+  eauto using ptsto_valid'.
+  unfold diskIs; auto.
+
+  step.
+  repeat eexists; intuition eauto.
+
+  step.
+  apply diskIs_combine_same in H3.
+  unfold diskIs in H3; auto.
+  eexists.
+  pred_apply; cancel.
+
+  eapply H2.
+  eexists.
+  eapply diskIs_combine_upd in H1.
+  unfold diskIs in H1; subst.
+  eauto using ptsto_upd'.
+Qed.
+
+Hint Extern 1 {{Read _; _}} => apply Read_ok : prog.

@@ -4,6 +4,7 @@ Require Import FunctionalExtensionality.
 Require Import Mem.
 Require Import RelationClasses.
 Require Import Morphisms.
+Require Import Automation.
 Require Import List.
 
 Set Implicit Arguments.
@@ -2025,5 +2026,20 @@ Proof.
   rewrite H5; auto; discriminate.
 Qed.
 
+Lemma diskIs_combine_same':
+forall (AT : Type) (AEQ : DecEq AT) (V : Type)
+  (a : AT) (v : V) (m : @mem AT AEQ V),
+  m a = Some v ->
+  diskIs m =p=> diskIs (mem_except m a) * a |-> v.
+Proof.
+  unfold_sep_star; unfold pimpl, diskIs.
+  intros; subst.
+  exists (mem_except m0 a).
+  exists (fun a' => if AEQ a' a then Some v else None).
+  unfold mem_except, ptsto, mem_disjoint, mem_union in *.
+  intuition eauto; destruct matches.
+  extensionality a'; destruct matches.
+  repeat deex; destruct matches in *.
+Qed.
 
 Global Opaque pred.

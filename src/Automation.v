@@ -77,6 +77,37 @@ Proof.
   || idtac.
 Abort.
 
+Ltac destruct_matches_in e :=
+  lazymatch e with
+  | context[match ?d with | _ => _ end] =>
+    destruct_matches_in d
+  | _ => case_eq e; intros
+  end.
+
+Ltac destruct_all_matches :=
+  repeat (try simpl_match;
+           try match goal with
+           | [ |- context[match ?d with | _ => _ end] ] =>
+              destruct_matches_in d
+           | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+             destruct_matches_in d
+           end);
+  subst;
+  try congruence;
+  auto.
+
+Ltac destruct_goal_matches :=
+  repeat (try simpl_match;
+           match goal with
+           | [ |- context[match ?d with | _ => _ end] ] =>
+              destruct_matches_in d
+           end);
+  try congruence;
+  auto.
+
+Tactic Notation "destruct" "matches" "in" "*" := destruct_all_matches.
+Tactic Notation "destruct" "matches" := destruct_goal_matches.
+
 Ltac same_opt_val :=
   match goal with
   | [ H: ?e = Some ?v, H': ?e = Some ?v' |- _ ] =>
