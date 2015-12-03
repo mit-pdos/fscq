@@ -1,4 +1,6 @@
 Require Import EventCSL.
+Require Import FunctionalExtensionality.
+Require Import Automation.
 
 Ltac inv_opt :=
   match goal with
@@ -76,10 +78,17 @@ Ltac unfold_prog :=
     unfold program
   end.
 
+Ltac valid_match_ok :=
+  match goal with
+  | [ |- valid _ _ _ _ (match ?d with | _ => _ end) ] =>
+    case_eq d; intros
+  end.
+
 Ltac step' simplifier finisher :=
   repeat (autounfold with prog);
   next_control_step ||
-                    (unfold_prog; next_control_step);
+                    (unfold_prog; next_control_step) ||
+                    valid_match_ok;
   repeat (autounfold with prog);
   simplifier;
   finisher.
@@ -119,40 +128,93 @@ Definition Read {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
             v <- FinishRead a;
   rx v.
 
-Theorem Read_ok : forall Mcontents Scontents Inv R a,
+Section ReadTheorems.
+
+  Lemma diskIs_combine_same'_applied
+     : forall AT AEQ V a v (m d : @mem AT AEQ V),
+      m a = Some v ->
+      diskIs m d ->
+      (diskIs (mem_except m a) * a |-> v)%pred d.
+  Proof.
+    intros.
+    apply diskIs_combine_same'; auto.
+  Qed.
+
+  Lemma diskIs_same : forall AT AEQ V (d: @mem AT AEQ V),
+      diskIs d d.
+  Proof.
+    unfold diskIs; auto.
+  Qed.
+
+  Hint Resolve
+       diskIs_combine_same'_applied
+       diskIs_combine_upd
+       diskIs_same.
+
+  Hint Resolve ptsto_valid ptsto_valid'.
+
+  Theorem Read_ok : forall Mcontents Scontents Inv R a,
+      (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+      {{ F vs0,
+       | PRE d m s0 s: d |= F * a |-> (vs0, None)
+       | POST d' m' s0' s' r: d' = d /\
+                              s0' = s0 /\
+                              s' = s /\
+                              m' = m /\
+                              r = latest_valu vs0
+       | CRASH d'c : clean_readers d'c = clean_readers d
+      }} Read a.
+  Proof.
+    intros.
+    step.
+    exists (diskIs (mem_except d a)).
+    repeat eexists; intuition; subst; eauto.
+
+    step.
+    repeat eexists; intuition eauto.
+
+    step.
+    apply diskIs_combine_same in H3.
+    unfold diskIs in H3; auto.
+    eexists.
+    pred_apply; cancel.
+
+    eapply H2.
+    unfold clean_readers; extensionality a'.
+    eapply diskIs_combine_upd in H1.
+    unfold diskIs in H1; subst.
+    unfold upd.
+    apply ptsto_valid' in H0.
+    destruct matches.
+  Qed.
+
+
+Definition StartRead_upd {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
+  StartRead a;;
+            rx tt.
+
+Theorem StartRead_upd_ok : forall Mcontents Scontents Inv R a,
     (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
-    {{ F vs0,
-     | PRE d m s0 s: d |= F * a |-> (vs0, None)
-     | POST d' m' s0' s' r: d' = d /\
+    {{ vs0,
+     | PRE d m s0 s: d a = Some (vs0, None)
+     | POST d' m' s0' s' _: d' = upd d a (vs0, Some tid) /\
                             s0' = s0 /\
                             s' = s /\
-                            m' = m /\
-                            r = latest_valu vs0
-     | CRASH d'c : exists reader, d'c |= F * a |-> (vs0, reader)
-    }} Read a.
+                            m' = m
+     | CRASH d'c : d'c = d
+    }} StartRead_upd a.
 Proof.
   intros.
   step.
   exists (diskIs (mem_except d a)).
-  repeat eexists; intuition; subst; eauto.
-  eapply diskIs_combine_same'; eauto.
-  eauto using ptsto_valid'.
-  unfold diskIs; auto.
+  eexists; intuition eauto.
 
   step.
-  repeat eexists; intuition eauto.
-
-  step.
-  apply diskIs_combine_same in H3.
-  unfold diskIs in H3; auto.
-  eexists.
-  pred_apply; cancel.
-
-  eapply H2.
-  eexists.
-  eapply diskIs_combine_upd in H1.
-  unfold diskIs in H1; subst.
-  eauto using ptsto_upd'.
+  eapply diskIs_combine_upd in H1; unfold diskIs in H1.
+  auto.
 Qed.
 
+End ReadTheorems.
+
 Hint Extern 1 {{Read _; _}} => apply Read_ok : prog.
+Hint Extern 1 {{StartRead_upd _; _}} => apply StartRead_upd_ok : prog.

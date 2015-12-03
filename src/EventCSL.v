@@ -59,6 +59,13 @@ Notation DISK := (@mem addr (@weq addrlen) wr_set).
 (* a disk predicate *)
 Notation DISK_PRED := (@pred addr (@weq addrlen) wr_set).
 
+Definition clean_readers (d:DISK) : @mem addr (@weq addrlen) valuset :=
+  fun a =>
+    match d a with
+    | Some (vs, _) => Some vs
+    | None => None
+    end.
+
 Section Lock.
   Inductive BusyFlag := Open | Locked.
   Definition is_locked l :
