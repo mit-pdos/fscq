@@ -144,18 +144,6 @@ Definition stateS : transitions Mcontents Scontents :=
 
 Ltac solve_get_set := solve [ simpl_get_set; try congruence; auto ].
 
-Ltac valid_match_ok :=
-  match goal with
-  | [ |- valid _ _ _ _ _ _ (match ?discriminee with
-                       | _ => _
-                       end) ] =>
-    case_eq discriminee; intros;
-    try match goal with
-    | [ cache_entry : bool * valu |- _ ] =>
-      destruct cache_entry as [ [] ]
-    end
-  end.
-
 Ltac inv_protocol :=
   match goal with
   | [ H: lock_protocol _ _ _ _ |- _ ] =>
@@ -433,9 +421,18 @@ Ltac standardize_mem_fields :=
          end.
 
 Ltac unfold_cache_definitions :=
-  unfold cacheI, cacheR in *.
+  match goal with
+  | [ H: cacheI _ _ _ |- _ ] => unfold cacheI in H
+  | [ H: cacheR _ _ _ |- _ ] => unfold cacheR in H
+  end.
 
 Hint Unfold pred_in : prog.
+
+Ltac destruct_cache_entry :=
+  match goal with
+  | [ cache_entry: bool * valu |- _ ] =>
+    destruct cache_entry as [ [] ]
+  end.
 
 Ltac descend :=
   match goal with
@@ -448,6 +445,7 @@ Ltac simplify_reduce_step :=
   let unf := autounfold with prog in * in
           deex_local
           || destruct_ands
+          || destruct_cache_entry
           || descend
           || (try time "simpl_get_set" progress simpl_get_set)
           || subst
@@ -553,7 +551,7 @@ Theorem locked_disk_read_ok : forall a,
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * a |-> (Valuset v rest) /\
+                     vd |= F * a |-> (Valuset v rest, None) /\
                      get GCacheL s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
@@ -561,11 +559,10 @@ Theorem locked_disk_read_ok : forall a,
                             r = v /\
                             get GCacheL s' = Owned tid /\
                             s0' = s0
-     | CRASH d'c: d'c = d
+     | CRASH d'c: clean_readers d'c = clean_readers d
     }} locked_disk_read a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-  valid_match_ok; time "hoare" hoare pre simplify with finish.
 Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
@@ -585,7 +582,29 @@ Ltac vd_locked :=
   end.
 
 Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
-  v <- AsyncRead a; rx v.
+  tid <- GetTID;
+  GhostUpdate (fun s =>
+                 let vd := get GDisk s in
+                 let vd' := match vd a with
+                            | Some (vs, _) => upd vd a (vs, Some tid)
+                            (* impossible, cannot read if sector does
+                            not exist *)
+                            | None => vd
+                            end in
+                 set GDisk vd' s);;
+  StartRead a;;
+            Yield;;
+            v <- FinishRead a;
+  GhostUpdate (fun s =>
+                 let vd := get GDisk s in
+                 let vd' := match vd a with
+                            | Some (vs, _) => upd vd a (vs, None)
+                            (* impossible, cannot read if sector does
+                            not exist *)
+                            | None => vd
+                            end in
+                 set GDisk vd' s);;
+  rx v.
 
 (* More combinators for relations *)
 
@@ -623,8 +642,9 @@ Theorem locked_AsyncRead_ok : forall a,
    | PRE d m s0 s: let vd := virt_disk s in
                    Inv m s d /\
                    cache_get (get Cache m) a = None /\
-                   vd |= F * a |-> (Valuset v rest) /\
-                   get GCacheL s = Owned tid
+                   vd |= F * a |-> (Valuset v rest, None) /\
+                   get GCacheL s = Owned tid /\
+                   R tid s0 s
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
                           Inv m' s' d' /\
                           vd' = virt_disk s /\
@@ -636,8 +656,46 @@ Theorem locked_AsyncRead_ok : forall a,
    | CRASH d'c : d'c = d
   }} locked_AsyncRead a.
 Proof.
-  time "hoare" hoare pre (time "simplify" simplify) with finish.
-  eauto using star_trans.
+  intros.
+  time "step" step pre (time "simplify" simplify) with finish.
+  time "step" step pre (time "simplify" simplify) with finish.
+  time "step" step pre (time "simplify" simplify) with finish.
+  time "step" step pre (time "simplify" simplify) with finish.
+
+  (* This cache_pred stability proof might be easier if we use
+  StartRead_upd so d0 is expressed in terms of d directly. *)
+  admit.
+
+  (* upd preserves sectors *)
+  case_eq (weq a a0); intros; subst;
+  try rewrite upd_eq by auto;
+  try rewrite upd_ne by auto;
+  eauto.
+
+  time "step" step pre (time "simplify" simplify) with finish.
+
+  match goal with
+  | [ H: star (othersR cacheR tid) ?s _ |- _ ] =>
+    assert (get GCacheL s = Owned tid) by simpl_get_set
+  end.
+  simplify; simpl_get_set in *.
+  standardize_mem_fields.
+  (* Need to prove that d1 = upd d a ... based on cache_pred with same
+  cache and a virtual disk that differs only by an upd. *)
+  admit.
+
+  time "step" step pre (time "simplify" simplify) with finish.
+
+  step pre simplify with idtac.
+  (* BUG: finish gives "Conversion test raised an anomaly *)
+  admit.
+
+  finish.
+  admit.
+  finish.
+  (* relies on the above proof that GDisk hasn't changed (so only the
+  Yield matters) *)
+  admit.
 
   repeat match goal with
          | [ H: cache_get ?c ?a = None, H': ?c' = ?c |- _ ] =>
