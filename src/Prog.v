@@ -94,6 +94,13 @@ Proof.
   reflexivity.
 Qed.
 
+Theorem valubytes_wordToNat_natToWord : # (natToWord addrlen valubytes) = valubytes.
+Proof.
+  rewrite valubytes_is.
+  compute.
+  reflexivity.
+Qed.
+  
 (* tight bound for valulen *)
 Theorem valulen_bound : valulen < pow2 16.
 Proof.
