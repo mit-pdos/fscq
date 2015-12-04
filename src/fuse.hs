@@ -25,7 +25,6 @@ import ByteFile
 import FSLayout
 import qualified DirName
 import System.Environment
-import Inode
 import Control.Concurrent.MVar
 import Data.Word
 import Text.Printf
@@ -192,7 +191,7 @@ dirStat ctx = FileStat
   , statStatusChangeTime = 0
   }
 
-attrToType :: INODE__Coq_iattr -> EntryType
+attrToType :: BYTEFILE__Coq_bytefile_attr -> EntryType
 attrToType attr =
   case t of
     0 -> RegularFile
@@ -201,10 +200,10 @@ attrToType attr =
     3 -> BlockSpecial
     4 -> CharacterSpecial
     _ -> Unknown
-  where t = wordToNat 32 $ _INODE__coq_IType attr
+  where t = wordToNat 32 $ _BYTEFILE__coq_FType attr
 
-fileStat :: FuseContext -> INODE__Coq_iattr -> FileStat
-fileStat ctx attr = FileStat
+fileStat :: FuseContext -> Coq_word -> BYTEFILE__Coq_bytefile_attr -> FileStat
+fileStat ctx len attr = FileStat
   { statEntryType = attrToType attr
   , statFileMode = foldr1 unionFileModes
                      [ ownerReadMode, ownerWriteMode, ownerExecuteMode
@@ -214,11 +213,11 @@ fileStat ctx attr = FileStat
   , statLinkCount = 1
   , statFileOwner = fuseCtxUserID ctx
   , statFileGroup = fuseCtxGroupID ctx
-  , statSpecialDeviceID = fromIntegral $ wordToNat 64 $ _INODE__coq_IDev attr
-  , statFileSize = fromIntegral $ wordToNat 64 $ _INODE__coq_ISize attr
+  , statSpecialDeviceID = fromIntegral $ wordToNat 64 $ _BYTEFILE__coq_FDev attr
+  , statFileSize = fromIntegral $ wordToNat 64 len
   , statBlocks = 1
   , statAccessTime = 0
-  , statModificationTime = fromIntegral $ wordToNat 32 $ _INODE__coq_IMTime attr
+  , statModificationTime = fromIntegral $ wordToNat 32 $ _BYTEFILE__coq_FMTime attr
   , statStatusChangeTime = 0
   }
 
@@ -226,7 +225,7 @@ fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Err
 fscqGetFileStat fr m_fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
-    return $ Right $ fileStat ctx (INODE__Build_iattr (W 1024) (W 0) (W 0) (W 0))
+    return $ Right $ fileStat ctx (W 1024) _BYTEFILE__attr0
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
   nameparts <- return $ splitDirectories path
@@ -240,8 +239,9 @@ fscqGetFileStat fr m_fsxp (_:path)
         return $ Right $ dirStat ctx
       | otherwise -> do
         (attr, ()) <- fr $ FS.file_get_attr fsxp inum
+        (len, ()) <- fr $ FS.file_get_sz fsxp inum
         ctx <- getFuseContext
-        return $ Right $ fileStat ctx attr
+        return $ Right $ fileStat ctx len attr
 fscqGetFileStat _ _ _ = return $ Left eNOENT
 
 fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO Errno
@@ -279,7 +279,8 @@ fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
       | isdir = return $ (fn, dirStat ctx)
       | otherwise = do
         (attr, ()) <- fr $ FS.file_get_attr fsxp inum
-        return $ (fn, fileStat ctx attr)
+        (len, ()) <- fr $ FS.file_get_sz fsxp inum
+        return $ (fn, fileStat ctx len attr)
 
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
@@ -321,7 +322,7 @@ fscqCreate fr m_fsxp (_:path) entrytype _ dev = withMVar m_fsxp $ \fsxp -> do
           _ -> return (Nothing, ())
         debugMore r
         case r of
-          Nothing -> return eNOSPC
+          Nothing -> return eIO
           Just _ -> return eOK
       | otherwise -> return eNOTDIR
 fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
@@ -339,7 +340,7 @@ fscqCreateDir fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
         (r, ()) <- fr $ FS.mkdir fsxp dnum filename
         debugMore r
         case r of
-          Nothing -> return eNOSPC
+          Nothing -> return eIO
           Just _ -> return eOK
       | otherwise -> return eNOTDIR
 fscqCreateDir _ _ _ _ = return eOPNOTSUPP
@@ -422,7 +423,7 @@ fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
     Just (inum, isdir)
       | isdir -> return eISDIR
       | otherwise -> do
-        (ok, ()) <- fr $ FS.file_set_sz fsxp inum (W64 $ fromIntegral size)
+        (ok, ()) <- fr $ FS.file_resize fsxp inum (fromIntegral size)
         if ok then
           return eOK
         else

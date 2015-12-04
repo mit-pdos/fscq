@@ -13,6 +13,8 @@ Require Import GenSep.
 Require Import SepAuto.
 Require Import Bool.
 Require Import BasicProg.
+Require Import ByteFile.
+Require Import Omega.
 
 (* for BFile lemma *)
 Require Import Array.
@@ -202,7 +204,7 @@ Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
   POST RET:^(mscs, r)
         exists m' tree',
         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m) ]] *
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
         (([[ r = false ]] * [[ tree' = tree ]]) \/
          ([[ r = false ]] * exists inum bf,
           [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] temp_fn (DIRTREE.TreeFile inum bf) tree ]]) \/
@@ -237,34 +239,76 @@ Proof.
   reflexivity.
 
   step.
+
   admit. (* the file exists; better tree lemmas? find_name in H3, H9 should give us what we want *)
   (* read_bytes has rep in its precondition ... *)
   admit. 
 
   ---- old stuff
     
-  (* XXX need a precondition saying the file we're reading is non-empty..
-   * or a runtime check for this fact?
+
+  instantiate (pathname0 := [] ++ [src_fn]).
+  rewrite DIRTREE.find_subtree_tree_graft_ne by auto.
+  simpl.
+  rewrite H3.
+  reflexivity.
+
+  (* Here [step] instantiates things incorrectly, so need to do this manually.. *)
+  eapply pimpl_ok2. eauto with prog. cancel.
+
+  instantiate (pathname0 := [] ++ [temp_fn]).
+  rewrite DIRTREE.find_subtree_tree_graft by auto.
+  reflexivity.
+
+  instantiate (Fi := emp). constructor.
+
+  (* XXX we need to know that the buffer we're appending is smaller than 2^64.
+   * We're missing the fact that the [bytes] from BYTEFILE.rep (via DIRTREE.rep)
+   * is similarly small..
    *)
 
   admit.
 
-  step.
-  admit.  (* append pre: file exists *)
-  admit.  (* append pre: file rep *)
-  admit.  (* append pre: good size *)
-  admit.  (* len is <= offset, 0 *)
+  simpl; omega.
 
   step.
+  instantiate (cwd := []). simpl. subst. eauto.
 
+  step.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  cancel.
+  eauto.
+
+  (* XXX need some lemmas to prove that we've gotten rid of the temporary file in the tree.. *)
   admit.
+
+  instantiate (pathname1 := []).
+  simpl. reflexivity.
+
+  step.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  cancel.
+
+  (* XXX two ways of adding the temp file name are the same? *)
   admit.
+
+  eapply pimpl_or_r. left.
+  cancel.
+  (* XXX need a lemma that deleting temp_fn gives us back the original tree *)
+  admit.
+
+  all: try apply pimpl_any.
+  instantiate (pathname0 := []). simpl.
+  unfold DIRTREE.tree_graft. simpl. reflexivity.
 
   step.
 
-  admit.
-  admit.
+  eapply pimpl_or_r. left.
+  cancel.
+  (* XXX add and delete [temp_fn] gives us back the original tree *)
   admit.
 
-  step.
-
+  subst. pimpl_crash. cancel. apply pimpl_any.
+Admitted.
