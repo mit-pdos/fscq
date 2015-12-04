@@ -57,9 +57,9 @@ Definition atomic_cp T fsxp src_fn dst_fn mscs rx : prog T :=
       match maybe_dst_inum with
       | None => rx ^(mscs, false)
       | Some dst_inum =>
-        let^ (mscs, attr) <- FS.file_get_attr fsxp src_inum mscs;
-        let^ (mscs, b) <- FS.read_bytes fsxp src_inum 0 # (INODE.ISize attr) mscs;
-        let^ (mscs, ok) <- FS.append fsxp dst_inum 0 (ByteFile.BYTEFILE.buf_data b) mscs;
+        let^ (mscs, sz) <- FS.file_get_sz fsxp src_inum mscs;
+        let^ (mscs, b) <- FS.read_bytes fsxp src_inum 0 (# sz) mscs;
+        let^ (mscs, ok) <- FS.append fsxp dst_inum 0 (BYTEFILE.buf_data b) mscs;
         match ok with
         | false =>
           let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
@@ -129,8 +129,9 @@ Proof.
 Qed.
 
 
-Lemma BFile_impl_ByteFileRep: forall (f : BFILE.bfile),
-    exists bytes, BYTEFILE.rep bytes f.
+(* XXX need some additional conditions on f *)
+Lemma BFile_impl_ByteFileRep: forall f,
+    exists bytes, BYTEFILE.rep f bytes.
 Proof.
   Show Existentials.
   intros.
@@ -188,12 +189,13 @@ Proof.
 Abort.
 
 
-
 Definition atomic_cp_recover T rx : prog T :=
   let^ (mscs, fsxp) <- FS.recover;
   let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
   rx ^(mscs, fsxp).
 
+
+ 
 Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
   {< m Fm Ftop tree tree_elem,
   PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -206,15 +208,12 @@ Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
         (([[ r = false ]] * [[ tree' = tree ]]) \/
-         ([[ r = false ]] * exists inum bf,
-          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] temp_fn (DIRTREE.TreeFile inum bf) tree ]]) \/
-         ([[ r = true ]] * exists old_inum new_inum bf,
-          [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bf) ]] *
-          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bf) tree ]]))
-  CRASH LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-            exists old_inum new_inum bf tree',
-          [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bf) ]] *
-          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bf) tree ]])
+         ([[ r = false ]] * exists inum tbytes tattr,
+          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] temp_fn (DIRTREE.TreeFile inum tbytes tattr) tree ]]) \/
+         ([[ r = true ]] * exists old_inum new_inum bytes attr,
+          [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
+          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]]))
+  CRASH any
   >} atomic_cp fsxp src_fn dst_fn mscs.
 Proof.
   unfold atomic_cp; intros.
@@ -231,22 +230,15 @@ Proof.
   edestruct (DIRTREE.find_name_exists) with (path := [src_fn]); intuition eauto.
   (* [src_fn] points to a file.  destruct [x], consider both cases, one will be false. *)
   destruct x; try solve [ exfalso; eauto ].
+
   step.
   instantiate (pathname0 := [] ++ [src_fn]).
   rewrite DIRTREE.find_subtree_tree_graft_ne by auto.
   simpl.
   rewrite H3.
-  reflexivity.
+ reflexivity.
 
   step.
-
-  admit. (* the file exists; better tree lemmas? find_name in H3, H9 should give us what we want *)
-  (* read_bytes has rep in its precondition ... *)
-  admit. 
-
-  ---- old stuff
-    
-
   instantiate (pathname0 := [] ++ [src_fn]).
   rewrite DIRTREE.find_subtree_tree_graft_ne by auto.
   simpl.
@@ -266,7 +258,6 @@ Proof.
    * We're missing the fact that the [bytes] from BYTEFILE.rep (via DIRTREE.rep)
    * is similarly small..
    *)
-
   admit.
 
   simpl; omega.
@@ -293,7 +284,6 @@ Proof.
 
   (* XXX two ways of adding the temp file name are the same? *)
   admit.
-
   eapply pimpl_or_r. left.
   cancel.
   (* XXX need a lemma that deleting temp_fn gives us back the original tree *)
@@ -304,7 +294,6 @@ Proof.
   unfold DIRTREE.tree_graft. simpl. reflexivity.
 
   step.
-
   eapply pimpl_or_r. left.
   cancel.
   (* XXX add and delete [temp_fn] gives us back the original tree *)
@@ -312,3 +301,4 @@ Proof.
 
   subst. pimpl_crash. cancel. apply pimpl_any.
 Admitted.
+    
