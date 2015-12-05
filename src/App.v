@@ -130,8 +130,8 @@ Qed.
 
 
 (* XXX need some additional conditions on f *)
-Lemma BFile_impl_ByteFileRep: forall f,
-    exists bytes, BYTEFILE.rep f bytes.
+Lemma BFile_impl_ByteFileRep: forall (a: BYTEFILE.bytefile_attr) (f: BFILE.bfile),
+    exists bytes, BYTEFILE.rep bytes a f.
 Proof.
   Show Existentials.
   intros.
