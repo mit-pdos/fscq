@@ -73,7 +73,48 @@ Definition atomic_cp_recover T rx : prog T :=
   rx ^(mscs, fsxp).
 
 
- 
+(* XXX no all lemmas are used.  the ones we ending up using should move to DirTree.v *)
+Lemma dirtree_update_dents: forall name elem' elem dents,
+       map (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem') name)
+           (DIRTREE.add_to_list name elem dents) = DIRTREE.add_to_list name elem' dents.
+Proof.
+      intros.
+Admitted.
+
+
+Lemma dirtree_update_graft: forall tree dnum dents name elem elem',
+      DIRTREE.update_subtree ([]++ [name]) elem'
+                             (DIRTREE.tree_graft dnum dents [] name elem tree) =
+      DIRTREE.tree_graft dnum dents [] name elem' tree.
+Proof.
+      intros.
+      unfold DIRTREE.update_subtree; subst; simpl.
+      unfold DIRTREE.tree_graft; subst; simpl.
+      erewrite dirtree_update_dents.
+      reflexivity.
+Qed.
+
+Lemma dirtree_prune_graft: forall tree dnum dents name elem,
+      DIRTREE.tree_prune dnum (DIRTREE.add_to_list name elem dents) [] name
+                         (DIRTREE.tree_graft dnum dents [] name elem tree) = tree.
+Proof.
+      intros.
+      unfold DIRTREE.tree_graft; subst; simpl.
+      unfold DIRTREE.tree_prune; subst; simpl.
+Admitted.
+
+(* XXX need to prove this one ...*)
+Lemma dirtree_prune_upd: forall dnum tree_elem dents temp_fn elem elem',
+    dents = map (DIRTREE.update_subtree_helper
+                   (fun _ : DIRTREE.dirtree => elem') temp_fn)
+                   (DIRTREE.add_to_list temp_fn elem tree_elem)
+    ->  (DIRTREE.tree_prune the_dnum dents [] temp_fn
+                            (DIRTREE.TreeDir dnum dents))
+        = (DIRTREE.TreeDir dnum tree_elem).
+Proof.
+    intros.
+Admitted.
+
 Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
   {< m Fm Ftop tree tree_elem,
   PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -136,7 +177,7 @@ Proof.
    * We're missing the fact that the [bytes] from BYTEFILE.rep (via DIRTREE.rep)
    * is similarly small..
    *)
-  admit.
+  (* admit. *)   (* comment if goodSize in post of read_bytes *)
 
   simpl; omega.
 
@@ -149,9 +190,30 @@ Proof.
   cancel.
   eauto.
 
-  (* XXX need some lemmas to prove that we've gotten rid of the temporary file in the tree.. *)
-  admit.
+  (* XXX some progress that we've gotten rid of the temporary file in the tree.. *)
 
+  remember (map (DIRTREE.update_subtree_helper
+                 (fun _ : DIRTREE.dirtree =>
+                  DIRTREE.TreeFile inum bytes' BYTEFILE.attr0) temp_fn)
+              (DIRTREE.add_to_list temp_fn
+                 (DIRTREE.TreeFile inum [] BYTEFILE.attr0) tree_elem)) as dents'.
+
+  rewrite dirtree_prune_upd with (elem' :=  DIRTREE.TreeFile inum bytes' BYTEFILE.attr0) (elem := DIRTREE.TreeFile inum [] BYTEFILE.attr0) (tree_elem := tree_elem).
+
+  instantiate (new_inum := inum).
+
+  (* XXX how to relate l with bytes' and BYTEFILE.attr0 with b1?
+   * subtree is the node for tmp_fn, containing bytes' and BYTEFILE.attr0,
+   * which we renamed to dst_fn.
+   * src_fn is (DIRTREE.TreeFile w0 l b1), which is the node for src_fn,
+   * we need to prove that bytes and attributes for tmp_fn are the same as for src_fn,
+   * which must be true because we wrote bytes from src_fn into tmp_fn, but we seem
+   * to have no facts about this.  we should have gotten this from append.  Hah, H0 and H19
+   * is what we need for bytes.
+   *)
+  admit.
+  assumption.
+    
   instantiate (pathname1 := []).
   simpl. reflexivity.
 
