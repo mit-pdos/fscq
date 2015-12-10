@@ -169,6 +169,42 @@ Module BYTEFILE.
     apply firstn_skipn.
   Qed.
 
+  Lemma goodSize_read_length : forall F A m bxp ixp
+   (inum:addr) (fl : list BFILE.bfile)
+    f len (allbytes : list byte),
+    array_item_file byte_type items_per_valu itemsz_ok f allbytes ->
+    (A * # (inum) |-> f)%pred (list2nmem fl) ->
+    (F * BFILE.rep bxp ixp fl)%pred m ->
+    len <= length allbytes ->
+    goodSize addrlen len.
+  Proof.
+    intros.
+    eapply goodSize_word_bound.
+    eapply le_trans; eauto.
+    eapply bfrec_bound with (itemtype := byte_type); eauto.
+  Qed.
+
+  Hint Resolve goodSize_read_length.
+
+  Lemma min_eq_l : forall n m,
+    n <= m ->
+    n = Nat.min n m.
+  Proof.
+    intros.
+    rewrite Nat.min_l; omega.
+  Qed.
+
+  Lemma min_eq_r : forall n m,
+    m <= n ->
+    m = Nat.min n m.
+  Proof.
+    intros.
+    rewrite Nat.min_r; omega.
+  Qed.
+
+  Hint Resolve min_eq_l min_eq_r.
+  Hint Extern 4 (_ <= _) => omega.
+
   Theorem read_bytes_ok: forall fsxp inum off len mscs,
   {< m mbase F Fm A flist f bytes attr,
   PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
@@ -181,8 +217,11 @@ Module BYTEFILE.
       [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
       [[ @Rec.of_word (Rec.ArrayF byte_type (buf_len b))
         (buf_data b) = v ]] *
+      let flen := # (INODE.ISize (BFILE.BFAttr f)) in
+      [[ buf_len b = Nat.min (flen - off) len ]] *
+      [[ goodSize addrlen (buf_len b) ]] *
       (* non-error guarantee *)
-      [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
+      [[ 0 < len -> off < flen ->
          0 < buf_len b ]]
    CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
    >} read_bytes fsxp inum off len mscs.
@@ -206,12 +245,18 @@ Module BYTEFILE.
     apply firstn_length_l_iff; auto.
 
     step.
-    rewrite H15.
+    match goal with
+    | [ H: Rec.of_word ?w = _ |- context[Rec.of_word ?w] ] =>
+      rewrite H
+    end.
     rewrite <- firstn_double_skipn
       with (len2 := # (INODE.ISize (BFILE.BFAttr f)))
       by omega.
     apply list2nmem_arrayN_xyz_frame.
     omega.
+
+    apply firstn_length_l_iff in H4.
+    eauto.
 
     step.
     rewrite le_plus_minus_r by omega.
@@ -226,23 +271,34 @@ Module BYTEFILE.
     apply firstn_length_l_iff; auto.
 
     step.
-    rewrite H15.
+    match goal with
+    | [ H: Rec.of_word ?w = _ |- context[Rec.of_word ?w] ] =>
+      rewrite H
+    end.
     rewrite <- firstn_double_skipn
       with (len2 := # (INODE.ISize (BFILE.BFAttr f)))
       by omega.
     apply list2nmem_arrayN_xyz_frame.
-    rewrite H4.
     omega.
+
+    apply firstn_length_l_iff in H4.
+    eauto.
 
     step.
     (* off out of bounds *)
     apply emp_star_r.
     apply list2nmem_array.
 
+    (* buf_len value (error) *)
+    rewrite Nat.min_l; omega.
+
     (* len = 0 *)
     step.
     apply emp_star_r.
     apply list2nmem_array.
+
+    (* buf_len value (error) *)
+    rewrite Nat.min_r; omega.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_bytes _ _ _ _ _) _) => apply read_bytes_ok : prog.
