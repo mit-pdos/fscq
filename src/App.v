@@ -27,6 +27,9 @@ Set Implicit Arguments.
  *
  * For now, this works for a single-block file, since there's no
  * byte-level file read yet.
+ *
+        let^ (mscs, attr) <- FS.file_get_attr fsxp src_inum mscs;
+
  *)
 
 Parameter the_dnum : addr.
@@ -87,6 +90,14 @@ Admitted.
 Lemma dirtree_delete_add_dents: forall temp_fn elem tree_elem,
   DIRTREE.delete_from_list temp_fn (DIRTREE.add_to_list temp_fn elem tree_elem)
   = tree_elem.
+Proof.
+  intros.
+Admitted.
+
+(* XXX need to prove this one ...*)
+Lemma dirtree_find_add_dents: forall temp_fn elem tree_elem,
+  DIRTREE.find_dirlist temp_fn (DIRTREE.add_to_list temp_fn elem tree_elem)
+  = Some elem.
 Proof.
   intros.
 Admitted.
@@ -182,31 +193,24 @@ Proof.
 
   (* src file == dst file *)
   
+  assert (subtree =  (DIRTREE.TreeFile inum bytes' BYTEFILE.attr0)).
+  rewrite dirtree_update_add_dents in H26.
+  rewrite dirtree_find_add_dents in H26.
+  inversion H26; eauto.
+  rewrite H0.
+
   instantiate (new_inum := inum).
+
   eapply star_emp_pimpl in H20.
   apply list2nmem_array_eq in H20.
   rewrite Nat.min_r in H15.
   apply arrayN_list2nmem in H11.
   assert (skipn 0 l = l).
   admit.  (* there must be a lemma for this ...*)
-  rewrite H0 in H11.
-
-  assert ((@firstn Bytes.byte
-        (@Datatypes.length Bytes.byte
-           (@Rec.Rec.of_word
-              (Rec.Rec.ArrayF BYTEFILE.byte_type (BYTEFILE.buf_len a7))
-              (BYTEFILE.buf_data a7))) l) = l).
-  admit. (* there must be a lemma for this ...*)
-  
   rewrite H10 in H11.
+  rewrite Array.firstn_oob in H11.
   rewrite <- H11.
   rewrite <- H20.
-
-  assert (subtree =  (DIRTREE.TreeFile inum bytes' BYTEFILE.attr0)).
-  admit.  (* XXX prove assert *)
-  
-  rewrite H16.
-
   
   admit. (* XXX b1 = BYTEFILE.attr0; we need to set attr for new file! *)
   admit.
