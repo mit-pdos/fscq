@@ -1993,7 +1993,9 @@ Module DIRTREE.
            LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
            [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
            [[ @Rec.of_word (Rec.ArrayF BYTEFILE.byte_type (BYTEFILE.buf_len b))
-             (BYTEFILE.buf_data b) = v ]] *
+                           (BYTEFILE.buf_data b) = v ]] *
+           [[ BYTEFILE.buf_len b = Nat.min (len - off) len ]] *
+           [[ goodSize addrlen (BYTEFILE.buf_len b) ]] *
            (* non-error guarantee *)
            [[ 0 < len -> off < length bytes -> 0 < BYTEFILE.buf_len b ]]
     CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
