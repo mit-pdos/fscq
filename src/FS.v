@@ -171,6 +171,35 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
+Definition file_set_attr T fsxp inum attr mscs rx : prog T :=
+  mscs <- LOG.begin (FSXPLog fsxp) mscs;
+  mscs <- DIRTREE.setattr fsxp inum attr mscs;
+  let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+  rx ^(mscs, ok).
+
+Theorem file_setattr_ok : forall fsxp inum newattr mscs,
+  {< m pathname Fm Ftop tree bytes attr,
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
+  POST RET:^(mscs, ok)
+         [[ ok = false ]] * LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m) mscs \/
+         [[ ok = true ]] *
+         exists m' tree',
+         LOG.rep fsxp.(FSXPLog) (sb_rep fsxp) (NoTransaction m') mscs *   
+         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes newattr) tree ]]
+  CRASH  LOG.would_recover_either_pred (FSXPLog fsxp)  (sb_rep fsxp) m (
+           exists tree',
+         (Fm * DIRTREE.rep fsxp Ftop tree') *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum bytes newattr) tree ]])
+  >} file_set_attr fsxp inum newattr mscs.
+Proof.
+  (* XXX prove *)
+Admitted.
+
+Hint Extern 1 ({{_}} progseq (file_set_attr _ _ _ _) _) => apply file_setattr_ok : prog.
+
 Ltac recover_ro_ok := intros;
   repeat match goal with 
   | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
@@ -191,7 +220,6 @@ Ltac recover_ro_ok := intros;
   | [ |- pimpl (LOG.would_recover_either_pred _ _ _ _ ) _ ] => idtac "would_rec";
        rewrite LOG.would_recover_either_pred_diskIs_rev by auto; cancel
   end.
-
 
 Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   {<< m pathname Fm Ftop tree bytes attr,
