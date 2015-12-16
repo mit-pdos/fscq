@@ -27,6 +27,15 @@ Set Implicit Arguments.
  *
  *)
 
+(* we don't have this theorem?  a candidate for Word.v? *)
+Theorem goodSize_wordToNat_natToWord_impl: forall sz n,
+   goodSize sz n -> n = wordToNat (natToWord sz n).
+Proof.
+  intros.
+  unfold goodSize in H.
+Admitted.
+
+
 (* Some lemmas that should be moved to DirTree, once they are proven *)
 
 Lemma dirtree_update_add_dents: forall name elem' elem dents,
@@ -169,13 +178,13 @@ Theorem file_copy_ok : forall fsxp src_fn src_inum dst_fn dst_inum mscs,
   >} file_copy fsxp src_inum dst_inum mscs.
 Proof.
   unfold file_copy; intros.
-  step.
+  step. (* file_get_sz *)
   instantiate (pathname := [src_fn]).
   eauto.
-  step.
+  step.  (* get_attr *)
   instantiate (pathname := [src_fn]).
   eauto.
-  step.
+  step. (* read_bytes *)
   instantiate (pathname := [src_fn]).
   eauto.
 
@@ -206,7 +215,7 @@ Proof.
   instantiate (attr1 := BYTEFILE.attr0).
   eauto.
 
-  rewrite H18.
+  rewrite H19.
   rewrite dirtree_find_update_dents; auto.
   
   step.   (* set_attr is ok *)
@@ -217,19 +226,21 @@ Proof.
   cancel.
 
   assert (bytes = bytes').
-  eapply star_emp_pimpl in H17.
-  apply list2nmem_array_eq in H17.
-  rewrite Nat.min_r in H12.
+  eapply star_emp_pimpl in H18.
+  apply list2nmem_array_eq in H18.
+  rewrite Nat.min_r in H13.
   apply arrayN_list2nmem in H9.
   unfold skipn in H9.
   rewrite Array.firstn_oob in H9.
-  rewrite H9 in H17.
+  rewrite H9 in H18; auto.
+  rewrite Rec.Rec.array_of_word_length with (ft := BYTEFILE.byte_type); auto.
+  rewrite H13.
+  apply goodSize_wordToNat_natToWord_impl in H10.
+  rewrite <- H10.
   eauto.
-  admit.  (* H12 *)
-  admit.  (* Bytes.byte *)
-  omega.
-  rewrite <- H.
+  admit. (* Bytes.byte ??? *)
 
+  rewrite H.
   rewrite dirtree_update_update_dents; auto.
   
   subst. pimpl_crash. cancel. apply pimpl_any.
@@ -280,7 +291,6 @@ Definition atomic_cp_recover T rx : prog T :=
   let^ (mscs, fsxp) <- FS.recover;
   let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
   rx ^(mscs, fsxp).
-
 
 
 Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
