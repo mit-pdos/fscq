@@ -250,7 +250,8 @@ Theorem file_get_sz_ok : forall fsxp inum mscs,
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum bytes attr) ]]
   POST RET:^(mscs, sz)
          LOG.rep fsxp.(FSXPLog) F (NoTransaction m) mscs *
-         [[ sz = $ (length bytes) ]]
+         [[ sz = $ (length bytes) ]] *
+         [[ goodSize addrlen (length bytes) ]]
   CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
   >} file_get_sz fsxp inum mscs.
 Proof.

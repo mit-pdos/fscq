@@ -913,7 +913,8 @@ Module BYTEFILE.
         [[ rep bytes attr f ]]
     POST RET: ^(mscs, len)
          LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-         [[ len = $ (length bytes) ]]
+         [[ len = $ (length bytes) ]] *
+         [[ goodSize addrlen (length bytes) ]]
     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
     >} getlen fsxp inum mscs.
   Proof.
@@ -923,6 +924,15 @@ Module BYTEFILE.
     erewrite rep_length by eauto.
     rewrite natToWord_wordToNat.
     congruence.
+    unfold rep, bytes_rep in H4.
+    deex.
+    eapply goodSize_word_bound.
+    eapply le_trans.
+    instantiate (m := (length allbytes)).
+    rewrite H4.
+    rewrite <- H10.
+    apply divup_ok with (x :=# (INODE.ISize (BFILE.BFAttr f))).
+    eapply bfrec_bound with (itemtype := byte_type); eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.

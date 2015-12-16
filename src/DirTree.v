@@ -2106,7 +2106,8 @@ Module DIRTREE.
            [[ find_subtree pathname tree = Some (TreeFile inum bytes attr) ]]
     POST RET:^(mscs,r)
            LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
-           [[ r = $ (length bytes) ]]
+           [[ r = $ (length bytes) ]] *
+           [[ goodSize addrlen (length bytes) ]]
     CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
     >} getlen fsxp inum mscs.
   Proof.
