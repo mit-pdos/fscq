@@ -4,7 +4,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem AsyncDisk Pred Prog PredCrash Hoare \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils Array Rec \
-	      Cache FSLayout \
+	      Cache FSLayout DiskLog2 \
 		  ListPred AddrMap GenSep GenSepN RecArray  \
 	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree SlowByteFile FastByteFile FS Testprog \
