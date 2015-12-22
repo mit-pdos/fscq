@@ -338,7 +338,6 @@ Proof.
   assumption.
 Qed.
 
-(* XXX simplify proof. inducation is unnecessary. *)
 Lemma dirtree_find_update_dents: forall dnum temp_fn elem tree_elem,
   In temp_fn (map fst tree_elem) ->
   DIRTREE.find_subtree [temp_fn]
@@ -346,23 +345,26 @@ Lemma dirtree_find_update_dents: forall dnum temp_fn elem tree_elem,
      (map (DIRTREE.update_subtree_helper
              (fun _ : DIRTREE.dirtree => elem) temp_fn) tree_elem)) = Some elem.
 Proof.
+  intros.
   induction tree_elem.
   - intros; subst; simpl.
     destruct H.
-  - rewrite cons_app.
-    rewrite map_app.
+  - assert (a :: tree_elem = ([a]++tree_elem)).  (* xxx why? *)
+    auto.
+    rewrite H0.
     rewrite map_app.
     unfold DIRTREE.update_subtree_helper at 1; simpl.
     destruct a.
-    destruct (string_dec s temp_fn).
-    simpl.
-    destruct (string_dec s temp_fn).
-    intros. auto.
+    destruct (string_dec s temp_fn); subst; simpl.
+    destruct (string_dec temp_fn temp_fn); auto.
+    apply IHtree_elem.
+    simpl in *.
     congruence.
-    unfold DIRTREE.update_subtree_helper at 1; simpl.
-    destruct (string_dec s temp_fn).
+    intuition.
+    destruct (string_dec s temp_fn); subst; simpl.
     congruence.
-    intros.
+    apply IHtree_elem.
+    simpl in *.
     intuition.
 Qed.    
 
@@ -527,8 +529,11 @@ Proof.
   instantiate (bytes1 := bytes').
   instantiate (attr1 := BYTEFILE.attr0).
   eauto.
-
-  rewrite H19.
+  
+  match goal with
+    | [ H: ?tree' = DIRTREE.TreeDir _ _ |- DIRTREE.find_subtree _ ?tree' = Some _] =>
+      rewrite H
+  end.
   rewrite dirtree_find_update_dents; auto.
 
   eapply dirtree_name_in_dents.
@@ -544,7 +549,7 @@ Proof.
   assert (bytes = bytes').
   eapply star_emp_pimpl in H18.
   apply list2nmem_array_eq in H18.
-  rewrite Nat.min_r in H13.
+  rewrite Nat.min_r in *.
   apply arrayN_list2nmem in H9.
   unfold skipn in H9.
   rewrite Array.firstn_oob in H9.
@@ -557,8 +562,8 @@ Proof.
   unfold Bytes.byte; auto.
   omega.
   rewrite H.
-  rewrite dirtree_update_update_dents; auto.
   
+  rewrite dirtree_update_update_dents; auto.
   
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
@@ -609,6 +614,11 @@ Definition atomic_cp_recover T rx : prog T :=
   let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
   rx ^(mscs, fsxp).
 
+
+Ltac NoDup :=
+  match goal with
+    | [ H : (_ * DIRTREE.rep _ _ (DIRTREE.TreeDir _ ?list)) %pred _ |- NoDup (map fst ?list) ] => idtac "nodup"; eapply DIRTREE.rep_tree_names_distinct in H; idtac "step 1: " H; eapply tree_names_distinct_nodup in H; assumption
+  end.                            
 
 Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
   {< m Fm Ftop tree tree_elem,
@@ -672,49 +682,46 @@ Proof.
   eauto.
 
   (* we got rid of the temporary file in the tree *)
+  instantiate (new_inum := inum).
   rewrite dirtree_update_add_dents.
   rewrite dirtree_prune_add_dents with (elem := (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem).
-  rewrite dirtree_update_add_dents in H22.
+  
+  match goal with
+    | [ H: DIRTREE.find_dirlist _ _ = Some ?s |- context[DIRTREE.tree_graft _ _ _ _ ?s] ]  =>
+      rewrite dirtree_update_add_dents in H; idtac "xxx" H
+  end.
+
+  (* XXX include these in match but how? *)
   rewrite dirtree_find_add_dents in H22.
-  instantiate (new_inum := inum).
   inversion H22.
-  rewrite dirtree_update_add_dents in H21.
+
+  match goal with
+    | [ H: DIRTREE.TreeDir _ _ = DIRTREE.tree_prune _ _ _ _ _ |- _ ]  =>
+      rewrite dirtree_update_add_dents in H; idtac "xxx" H
+  end.
+  (* XXX include these in match but how? *)
   rewrite dirtree_prune_add_dents with (elem :=  (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem) in H21.
   inversion H21.
+  
   reflexivity.
   assumption.  
   auto.
 
-  Ltac NoDup :=
-  match goal with
-    | [ H : (_ * DIRTREE.rep _ _ _) %pred _ |- NoDup _ ] => idtac "nodup"; eapply DIRTREE.rep_tree_names_distinct in H; idtac "step 1: " H; eapply tree_names_distinct_nodup in H; assumption
-  end.                            
-
   NoDup.
-  
-  eapply DIRTREE.rep_tree_names_distinct in H.
-  apply tree_names_distinct_nodup in H.
-  assumption.
-  
-  eapply DIRTREE.rep_tree_names_distinct in H.
-  apply tree_names_distinct_nodup in H.
-  assumption.
+  NoDup.
+
   assumption.
 
   reflexivity.
 
-  eapply DIRTREE.rep_tree_names_distinct in H.
-  apply tree_names_distinct_nodup in H.
-  assumption.
+  NoDup.
 
   rewrite dirtree_update_add_dents.
   instantiate (pathname1 := []).
   instantiate (tree_elem0 :=  (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile inum l b1) tree_elem)).
   subst; simpl; eauto.
 
-  eapply DIRTREE.rep_tree_names_distinct in H.
-  apply tree_names_distinct_nodup in H.
-  assumption.
+  NoDup.
 
   step.
 
@@ -725,9 +732,7 @@ Proof.
   rewrite dirtree_update_add_dents.
   rewrite dirtree_graft_add_dents_eq; auto.
 
-  eapply DIRTREE.rep_tree_names_distinct in H.
-  apply tree_names_distinct_nodup in H.
-  assumption.
+  NoDup.
 
   eapply pimpl_or_r. left.
   cancel.
@@ -755,17 +760,20 @@ Proof.
   
   pimpl_crash. cancel. apply pimpl_any.
 
-  rewrite dirtree_update_add_dents in H17.
-  instantiate (tree_elem2 := (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile inum bytes' attr')
-             tree_elem)).
+  instantiate (tree_elem2 := (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile inum bytes' attr') tree_elem)).
   instantiate (pathname0 := []).
+
+  match goal with
+      | [ H: ?t = DIRTREE.TreeDir _ _ |- DIRTREE.find_subtree _ ?t = Some _ ] =>
+          rewrite dirtree_update_add_dents in H
+  end.
+  (* XXX do this in above goal *)
   rewrite H17.
+          
   unfold DIRTREE.find_subtree; subst; simpl.
   reflexivity.
 
-  eapply DIRTREE.rep_tree_names_distinct in H.
-  apply tree_names_distinct_nodup in H.
-  assumption.
+  NoDup.
 
   step.
 
@@ -780,9 +788,7 @@ Proof.
   unfold DIRTREE.update_subtree.
   eauto.
 
-  eapply DIRTREE.rep_tree_names_distinct in H.
-  apply tree_names_distinct_nodup in H.
-  assumption.
+  NoDup.
 
   eapply pimpl_or_r. left.
   cancel.
