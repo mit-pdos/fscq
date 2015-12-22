@@ -71,6 +71,17 @@ Module BYTEFILE.
     FType attr = INODE.IType (BFILE.BFAttr f) /\
     FDev attr = INODE.IDev (BFILE.BFAttr f).
 
+
+  Lemma bytefile_nil :
+    BYTEFILE.rep [] BYTEFILE.attr0 BFILE.bfile0.
+  Proof.
+    unfold rep, bytes_rep.
+    exists nil; intuition; simpl.
+    apply bfile0_empty.
+    rewrite divup_0.
+    apply Nat.mul_0_l.
+  Qed.
+
   Lemma block_items_ok : block_items items_per_valu = valubytes.
   Proof.
     unfold block_items.

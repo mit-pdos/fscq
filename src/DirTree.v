@@ -2211,11 +2211,9 @@ Module DIRTREE.
 
     apply pimpl_or_r; right. cancel.
 
-    eapply notindomain_not_in_dirents in H24; eauto.
-
+    eapply notindomain_not_in_dirents; eauto.
     rewrite <- subtree_graft_absorb; eauto. cancel.
-
-    admit. (* BYTEFILE.rep [] BYTEFILE.attr0 BFILE.bfile0 *)
+    apply BYTEFILE.bytefile_nil.
 
     step.
     Grab Existential Variables.
