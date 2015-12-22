@@ -27,39 +27,245 @@ Set Implicit Arguments.
  *
  *)
 
-(* we don't have this theorem?  a candidate for Word.v? *)
-Theorem goodSize_wordToNat_natToWord_impl: forall sz n,
-   goodSize sz n -> n = wordToNat (natToWord sz n).
-Proof.
-  intros.
-  unfold goodSize in H.
-Admitted.
-
 
 (* Some lemmas that should be moved to DirTree, once they are proven *)
 
+(* Todo: sometimes do induction but don't use IH; clean up proof not to do induction. *)
+
+Lemma cons_app: forall (A: Type)  (l: list A) (a: A),
+                            a::l = [a] ++ l.
+Proof.
+  intros.
+  auto.
+Qed.
+
+Lemma notin_map: forall (tree_elem: list (string*DIRTREE.dirtree)) name s d,
+   ~In name (map fst ((s, d) :: tree_elem)) <-> s <> name /\ ~In name (map fst tree_elem).
+Proof.
+  induction tree_elem.
+  - subst; simpl.
+    intros. intuition.
+  - intros.    
+    split.
+    * intros.
+      split.
+      apply (IHtree_elem name s d).
+      contradict H.
+      destruct a. simpl in *.  intuition.
+      contradict H.
+      destruct a. simpl in *.  intuition.
+    * intros.
+      destruct a. simpl.
+      simpl in H.
+      intuition.
+Qed.
+
+Lemma notin_app: forall name s d  (dents : list (string*DIRTREE.dirtree)),
+  ~ In name (map fst ([(s, d)] ++ dents)) -> ~ In name (map fst dents).
+Proof.
+  intros.
+  apply notin_map in H.
+  intuition.
+Qed.
+
+Lemma nodup_app_eq_notin: forall name d (dents : list (string *
+  DIRTREE.dirtree)), NoDup (map fst ((name, d) :: dents)) ->  ~ In name (map fst dents).
+Proof.
+  intros.
+  induction dents.
+  - subst; simpl.
+    auto.
+  - destruct a.
+    destruct (string_dec name s).
+    rewrite e in H.
+    simpl in *.
+    inversion H.
+    contradict H2.
+    simpl.
+    left.
+    auto.
+    apply notin_map.
+    split.
+    auto.
+    apply IHdents.
+    rewrite cons_app in H.
+    rewrite map_app in H.
+    apply NoDup_remove_1 in H.
+    auto.
+Qed.
+
+Lemma dirtree_update_dents_ne: forall name dents elem,
+  ~In name (map fst dents)
+  ->  map (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem) name) dents
+      = dents.
+Proof.
+  induction dents.
+  - intros. auto.
+  - intros.
+    rewrite cons_app.
+    rewrite map_app.
+    destruct a.
+    simpl.
+    destruct (string_dec s name).
+    rewrite cons_app in H.
+    Check in_app_iff.
+    rewrite in_map_iff in H.
+    destruct H.
+    eexists.
+    instantiate (x := (s, d)).
+    split. auto.
+    simpl. left. auto.
+    rewrite IHdents.
+    reflexivity.
+    rewrite cons_app in H.
+    rewrite map_app in H.
+    apply notin_app in H; auto.
+Qed.
+
+Lemma dirtree_add_to_list_distinct: forall temp_fn elem tree_elem,
+  ~ In temp_fn (map fst tree_elem)
+   -> DIRTREE.add_to_list temp_fn elem tree_elem = tree_elem ++ [(temp_fn, elem)].
+Proof.
+  intros.
+  induction tree_elem; simpl; auto.
+  destruct a.
+  destruct (string_dec s temp_fn).
+  apply notin_map in H.
+  intuition.
+  rewrite IHtree_elem.
+  intuition.
+  apply notin_map in H.
+  intuition.
+Qed.
+
+Lemma dirtree_add_app_ne: forall dents s d name elem',
+  s <> name
+  ->  DIRTREE.add_to_list name elem' ((s,d) :: dents) = [(s,d)] ++ DIRTREE.add_to_list name elem' dents.
+Proof.
+  intros.
+  unfold DIRTREE.add_to_list at 1.
+  destruct (string_dec s name).
+  congruence.
+  unfold DIRTREE.add_to_list at 1.
+  reflexivity.
+Qed.  
+
+
+Lemma dirtree_add_app_eq: forall dents s d name elem',
+  s = name
+  ->  DIRTREE.add_to_list name elem' ((s,d) :: dents) = [(s,elem')] ++ dents.
+Proof.
+  intros.
+  unfold DIRTREE.add_to_list.
+  destruct (string_dec s name).
+  rewrite cons_app.
+  rewrite <- e.
+  reflexivity.
+  fold DIRTREE.add_to_list.
+  intuition.
+Qed.
+
+                
+Lemma dirtree_delete_from_list_distinct: forall temp_fn elem tree_elem,
+  ~ In temp_fn (map fst tree_elem)
+  -> DIRTREE.delete_from_list temp_fn ((tree_elem) ++ [(temp_fn, elem)]) = tree_elem.
+Proof.
+  intros.
+  induction tree_elem; subst; simpl.
+  - destruct (string_dec temp_fn temp_fn).
+    auto.
+    congruence.
+  - destruct a.
+    destruct (string_dec s temp_fn).
+    apply notin_map in H.
+    intuition.
+    rewrite IHtree_elem.
+    reflexivity.
+    apply notin_map in H.
+    intuition.
+Qed.
+
 Lemma dirtree_update_add_dents: forall name elem' elem dents,
-       map (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem') name)
+   NoDup (map fst dents) ->
+   map (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem') name)
            (DIRTREE.add_to_list name elem dents) = DIRTREE.add_to_list name elem' dents.
 Proof.
   intros.
-Admitted.
+  induction dents.
+  - subst. simpl. destruct (string_dec name name); congruence.
+  - destruct a.
+    destruct (string_dec s name).
+    rewrite dirtree_add_app_eq.
+    rewrite dirtree_add_app_eq.
+    rewrite map_app.
+    unfold DIRTREE.update_subtree_helper at 1.
+    simpl.
+    destruct (string_dec s name).
+    rewrite dirtree_update_dents_ne.
+    reflexivity.
+    apply nodup_app_eq_notin in H.
+    rewrite <- e.
+    assumption.
+    rewrite dirtree_update_dents_ne.
+    congruence.
+    congruence.
+    auto.
+    auto.
+    rewrite dirtree_add_app_ne.
+    rewrite map_app.
+    unfold map at 1.
+    unfold DIRTREE.update_subtree_helper.
+    destruct (string_dec s name).
+    congruence.
+    rewrite dirtree_add_app_ne.
+    fold DIRTREE.update_subtree_helper.
+    f_equal.
+    apply IHdents.
+    simpl in *.
+    assert (NoDup ([] ++ [s] ++ map fst dents)).
+    simpl; assumption.
+    apply NoDup_remove_1 in H0.
+    simpl in H0.
+    assumption.
+    assumption.
+    assumption.
+Qed.
 
+  
 Lemma dirtree_update_update_dents: forall name elem' elem tree_elem,
     (map (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem') name)
          (map  (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem) name) tree_elem))
     =  (map (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem') name) tree_elem).
 Proof.
   intros.
-Admitted.
+  induction tree_elem; subst; simpl.
+  - auto.
+  - unfold DIRTREE.update_subtree_helper at 2; subst; simpl.
+    unfold DIRTREE.update_subtree_helper at 4; subst; simpl.
+    destruct a.
+    destruct (string_dec s name); subst; simpl.
+    destruct (string_dec name name).
+    rewrite IHtree_elem.
+    reflexivity.
+    congruence.
+    destruct (string_dec s name).
+    congruence.
+    rewrite IHtree_elem.
+    reflexivity.
+Qed.
 
 
 Lemma dirtree_delete_add_dents: forall temp_fn elem tree_elem,
+  ~ In temp_fn (map fst tree_elem) ->
   DIRTREE.delete_from_list temp_fn (DIRTREE.add_to_list temp_fn elem tree_elem)
   = tree_elem.
 Proof.
   intros.
-Admitted.
+  rewrite dirtree_add_to_list_distinct.
+  rewrite dirtree_delete_from_list_distinct; auto.
+  assumption.
+Qed.
+
 
 Lemma dirtree_find_add_dents': forall temp_fn elem tree_elem,
   fold_right
@@ -68,7 +274,27 @@ Lemma dirtree_find_add_dents': forall temp_fn elem tree_elem,
      (DIRTREE.add_to_list temp_fn elem tree_elem) = Some elem.
 Proof.
   intros.
-Admitted.
+  induction tree_elem; subst; simpl.
+  - destruct (string_dec temp_fn temp_fn).
+    auto.
+    congruence.
+  - destruct a.
+    destruct (string_dec s temp_fn).
+    rewrite cons_app.
+    rewrite fold_right_app.
+    simpl.
+    destruct (string_dec temp_fn temp_fn).
+    auto.
+    congruence.
+    rewrite cons_app.
+    rewrite fold_right_app.
+    rewrite IHtree_elem.
+    simpl.
+    destruct (string_dec s temp_fn).
+    congruence.
+    auto.
+Qed.
+
   
 Lemma dirtree_find_add_dents: forall temp_fn elem tree_elem,
   DIRTREE.find_dirlist temp_fn (DIRTREE.add_to_list temp_fn elem tree_elem)
@@ -90,44 +316,75 @@ Proof.
     exfalso. auto.
     rewrite IHtree_elem; reflexivity.
 Qed.
-    
 
 Lemma dirtree_add_dents_ne : forall name name' elem tree_elem,
-   name <> name' ->
-    fold_right
+   name <> name' /\ ~In name' (map fst tree_elem)
+   -> fold_right
       (DIRTREE.find_subtree_helper (fun tree : DIRTREE.dirtree => Some tree) name) None
       (DIRTREE.add_to_list name' elem tree_elem) =
     fold_right
       (DIRTREE.find_subtree_helper (fun tree : DIRTREE.dirtree => Some tree) name) None
       tree_elem.
 Proof.
-    intros.
-Admitted.
+  intros.
+  rewrite dirtree_add_to_list_distinct.
+  rewrite fold_right_app.
+  destruct (string_dec name name').
+  destruct H.
+  congruence.
+  simpl.
+  destruct (string_dec name' name).
+  congruence.
+  reflexivity.
+  destruct H.
+  assumption.
+Qed.
 
-
+(* XXX simplify proof *)
 Lemma dirtree_find_update_dents: forall dnum temp_fn elem tree_elem,
+  In temp_fn (map fst tree_elem) ->
   DIRTREE.find_subtree [temp_fn]
      (DIRTREE.TreeDir dnum
      (map (DIRTREE.update_subtree_helper
              (fun _ : DIRTREE.dirtree => elem) temp_fn) tree_elem)) = Some elem.
 Proof.
-  unfold DIRTREE.find_subtree.
-  intros.
-Admitted.
+  induction tree_elem.
+  - intros; subst; simpl.
+    destruct H.
+  - rewrite cons_app.
+    rewrite map_app.
+    rewrite map_app.
+    unfold DIRTREE.update_subtree_helper at 1; simpl.
+    destruct a.
+    destruct (string_dec s temp_fn).
+    simpl.
+    destruct (string_dec s temp_fn).
+    intros. auto.
+    congruence.
+    unfold DIRTREE.update_subtree_helper at 1; simpl.
+    destruct (string_dec s temp_fn).
+    congruence.
+    intros.
+    intuition.
+Qed.    
+
 
 Lemma dirtree_prune_add_dents: forall inum dents temp_fn elem tree_elem,
-  dents = (DIRTREE.add_to_list temp_fn elem tree_elem)
-   -> DIRTREE.tree_prune inum dents [] temp_fn
+  ~ In temp_fn (map fst tree_elem)                                 
+  -> dents = (DIRTREE.add_to_list temp_fn elem tree_elem)
+  -> DIRTREE.tree_prune inum dents [] temp_fn
         (DIRTREE.TreeDir inum dents) = DIRTREE.TreeDir inum tree_elem.
 Proof.
   intros.
   unfold DIRTREE.tree_prune.
   unfold DIRTREE.update_subtree.
   unfold DIRTREE.delete_from_dir.
-  rewrite H.
+  rewrite H0.
   rewrite dirtree_delete_add_dents.
   auto.
+  assumption.
 Qed.
+
 
 Lemma dirtree_graft_add_dents_eq: forall dnum tree_elem temp_fn elem,
   DIRTREE.tree_graft dnum tree_elem [] temp_fn elem (DIRTREE.TreeDir dnum tree_elem) =
@@ -139,7 +396,57 @@ Proof.
   unfold DIRTREE.add_to_dir.
   reflexivity.
 Qed.  
-     
+
+Lemma dirtree_find_app: forall name n d elem tree_elem,
+  fold_right (DIRTREE.find_subtree_helper
+                (fun tree : DIRTREE.dirtree => Some tree) name) None
+             ((n, d) :: tree_elem) = Some elem
+  -> name = n \/
+     fold_right (DIRTREE.find_subtree_helper
+                   (fun tree : DIRTREE.dirtree => Some tree) name) None
+                tree_elem = Some elem.
+Proof.
+  induction tree_elem.
+  - subst; simpl.
+    destruct (string_dec n name); auto.
+  - rewrite cons_app at 1.
+    rewrite fold_right_app at 1. simpl.
+    destruct (string_dec n name).
+    left. auto.
+    intuition.
+Qed.    
+
+Lemma dirtree_name_in_dents: forall name tree_elem elem,
+  fold_right
+    (DIRTREE.find_subtree_helper
+       (fun tree : DIRTREE.dirtree => Some tree) name) None tree_elem = Some elem
+  -> In name (map fst tree_elem).
+Proof.
+  intros.
+  induction tree_elem.
+  - intros. simpl in H. congruence.
+  - destruct a.
+    destruct (string_dec s name).
+    rewrite cons_app.
+    rewrite map_app.
+    apply in_app_iff.
+    simpl.
+    left.
+    auto.
+    rewrite cons_app.
+    rewrite map_app.
+    apply in_or_app.
+    right.
+    apply IHtree_elem.
+    rewrite cons_app in H.
+    rewrite fold_right_app in H.
+    simpl in H.
+    destruct (string_dec s name).
+    congruence.
+    assumption.
+Qed.
+
+  
 Parameter the_dnum : addr.
 Definition temp_fn := ".temp"%string.
 
@@ -217,7 +524,10 @@ Proof.
 
   rewrite H19.
   rewrite dirtree_find_update_dents; auto.
-  
+
+  eapply dirtree_name_in_dents.
+  instantiate (elem := (DIRTREE.TreeFile dst_inum [] BYTEFILE.attr0)).
+  assumption.
   step.   (* set_attr is ok *)
   
 
@@ -235,20 +545,21 @@ Proof.
   rewrite H9 in H18; auto.
   rewrite Rec.Rec.array_of_word_length with (ft := BYTEFILE.byte_type); auto.
   rewrite H13.
-  apply goodSize_wordToNat_natToWord_impl in H10.
-  rewrite <- H10.
+  apply wordToNat_natToWord_idempotent' in H10.
+  rewrite H10.
   eauto.
-  admit. (* Bytes.byte ??? *)
-
+  unfold Bytes.byte; auto.
+  omega.
   rewrite H.
   rewrite dirtree_update_update_dents; auto.
+  
   
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
-Admitted.
+Qed.
 
 
 Hint Extern 1 ({{_}} progseq (file_copy _ _ _ _) _) => apply file_copy_ok : prog.
@@ -328,17 +639,15 @@ Proof.
   (* [src_fn] points to a file.  destruct [x], consider both cases, one will be false. *)
   destruct x; try solve [ exfalso; eauto ].
 
-  step.  (* file_copy *)
-  
-  rewrite dirtree_add_dents_ne by auto.
-  simpl.
-  rewrite H3.
-  reflexivity.
+  step. (* file_copy *)
+
+  rewrite dirtree_add_dents_ne.
+  eauto.
+  intuition.
 
   rewrite dirtree_find_add_dents'.
-  eauto.
-  eauto.
-
+  reflexivity.
+    
   step. (* rename *)
   
   instantiate (cwd := []).
@@ -359,22 +668,34 @@ Proof.
   (* we got rid of the temporary file in the tree *)
   rewrite dirtree_update_add_dents.
   rewrite dirtree_prune_add_dents with (elem := (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem).
-  rewrite dirtree_update_add_dents in H21.
-  rewrite dirtree_find_add_dents in H21.
+  rewrite dirtree_update_add_dents in H22.
+  rewrite dirtree_find_add_dents in H22.
   instantiate (new_inum := inum).
+  inversion H22.
+  rewrite dirtree_update_add_dents in H21.
+  rewrite dirtree_prune_add_dents with (elem :=  (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem) in H21.
   inversion H21.
-  rewrite dirtree_update_add_dents in H20.
-  rewrite dirtree_prune_add_dents with (elem :=  (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem) in H20.
-  inversion H20.
   reflexivity.
-  reflexivity.
-  reflexivity.
+  assumption.  
+  auto.
+
+  assert( NoDup (map fst tree_elem)).
   
+  
+  admit.  (* NoDup should follow from DIRTREE.rep.  Maybe the one in H? *)
+  auto.
+  admit.  (* NoDup *)
+  auto.
+
+  reflexivity.
+  admit.  (* NoDup *)
+     
   rewrite dirtree_update_add_dents.
   instantiate (pathname1 := []).
   instantiate (tree_elem0 :=  (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile inum l b1) tree_elem)).
   subst; simpl; eauto.
-  
+
+  admit.  (* NoDup tree_elem *)
   step.
 
   eapply pimpl_or_r. right.
@@ -383,11 +704,13 @@ Proof.
 
   rewrite dirtree_update_add_dents.
   rewrite dirtree_graft_add_dents_eq; auto.
-    
+
+  admit.  (* NoDup tree_elem *)
   eapply pimpl_or_r. left.
   cancel.
   rewrite dirtree_delete_add_dents.
   reflexivity.
+  assumption.
 
   pimpl_crash. cancel. apply pimpl_any.
   pimpl_crash. cancel. apply pimpl_any.
@@ -405,15 +728,19 @@ Proof.
   rewrite dirtree_delete_add_dents.
   reflexivity.
 
+  assumption.
+  
   pimpl_crash. cancel. apply pimpl_any.
 
-  rewrite dirtree_update_add_dents in H16.
+  rewrite dirtree_update_add_dents in H17.
   instantiate (tree_elem2 := (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile inum bytes' attr')
              tree_elem)).
   instantiate (pathname0 := []).
-  rewrite H16.
+  rewrite H17.
   unfold DIRTREE.find_subtree; subst; simpl.
   reflexivity.
+
+  admit. (* NoDup tree_elem *)
   
   step.
 
@@ -428,18 +755,21 @@ Proof.
   unfold DIRTREE.update_subtree.
   eauto.
 
+  admit. (* NoDup tree_elem *)
+  
   eapply pimpl_or_r. left.
   cancel.
   rewrite dirtree_delete_add_dents.
   reflexivity.
-  
+  assumption.
+
   pimpl_crash. cancel. apply pimpl_any.
   pimpl_crash. cancel. apply pimpl_any.
   pimpl_crash. cancel. apply pimpl_any.
 
   Grab Existential Variables.
   all: eauto.
-Qed.
+Admitted.
 
 
 
