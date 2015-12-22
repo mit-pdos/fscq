@@ -2178,7 +2178,7 @@ Module DIRTREE.
             *)
            exists m', LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
            ([[ r = None ]] \/
-            exists inum, [[ r = Some inum ]] *
+            exists inum, [[ r = Some inum ]] *  [[ ~In name (map fst tree_elem) ]] *
             [[ (Fm * rep fsxp Ftop (tree_graft dnum tree_elem pathname name 
                          (TreeFile inum nil BYTEFILE.attr0) tree))%pred (list2mem m') ]])
     CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
@@ -2208,8 +2208,10 @@ Module DIRTREE.
     step.
     step.
 
-    apply pimpl_or_r; right. cancel.
+    (* XXX prove:  notindomain name dsmap implies [[In name (map fst tree_elem) -> False]] *)
 
+    apply pimpl_or_r; right. cancel.
+    
     rewrite <- subtree_graft_absorb; eauto. cancel.
    
     step.

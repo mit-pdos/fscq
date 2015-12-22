@@ -649,6 +649,7 @@ Theorem create_ok : forall fsxp dnum name mscs,
           [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
            (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
             exists inum tree', [[ r = Some inum ]] *
+            [[ ~In name (map fst tree_elem) ]] *                         
             [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
                          (DIRTREE.TreeFile inum nil BYTEFILE.attr0) tree ]] *
             [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
