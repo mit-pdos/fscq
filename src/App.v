@@ -685,35 +685,24 @@ Proof.
   instantiate (new_inum := inum).
   rewrite dirtree_update_add_dents.
   rewrite dirtree_prune_add_dents with (elem := (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem).
-  
+
   match goal with
     | [ H: DIRTREE.find_dirlist _ _ = Some ?s |- context[DIRTREE.tree_graft _ _ _ _ ?s] ]  =>
-      rewrite dirtree_update_add_dents in H; idtac "xxx" H
+      rewrite dirtree_update_add_dents in H; [rewrite dirtree_find_add_dents in H; inversion H|idtac "ignore sub"]
   end.
-
-  (* XXX include these in match but how? *)
-  rewrite dirtree_find_add_dents in H22.
-  inversion H22.
-
+                                                
   match goal with
     | [ H: DIRTREE.TreeDir _ _ = DIRTREE.tree_prune _ _ _ _ _ |- _ ]  =>
-      rewrite dirtree_update_add_dents in H; idtac "xxx" H
+      rewrite dirtree_update_add_dents in H; [rewrite dirtree_prune_add_dents with (elem :=  (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem) in H; inversion H|idtac "ignore sub"]
   end.
-  (* XXX include these in match but how? *)
-  rewrite dirtree_prune_add_dents with (elem :=  (DIRTREE.TreeFile inum l b1)) (tree_elem := tree_elem) in H21.
-  inversion H21.
   
   reflexivity.
   assumption.  
   auto.
-
   NoDup.
   NoDup.
-
   assumption.
-
   reflexivity.
-
   NoDup.
 
   rewrite dirtree_update_add_dents.
@@ -765,10 +754,8 @@ Proof.
 
   match goal with
       | [ H: ?t = DIRTREE.TreeDir _ _ |- DIRTREE.find_subtree _ ?t = Some _ ] =>
-          rewrite dirtree_update_add_dents in H
+          rewrite dirtree_update_add_dents in H; [rewrite H | idtac "ignore sub"]
   end.
-  (* XXX do this in above goal *)
-  rewrite H17.
           
   unfold DIRTREE.find_subtree; subst; simpl.
   reflexivity.
