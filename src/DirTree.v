@@ -2178,7 +2178,7 @@ Module DIRTREE.
             *)
            exists m', LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m') mscs *
            ([[ r = None ]] \/
-            exists inum, [[ r = Some inum ]] *  [[ ~In name (map fst tree_elem) ]] *
+            exists inum, [[ r = Some inum /\ ~In name (map fst tree_elem) ]] *
             [[ (Fm * rep fsxp Ftop (tree_graft dnum tree_elem pathname name 
                          (TreeFile inum nil BYTEFILE.attr0) tree))%pred (list2mem m') ]])
     CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
@@ -2202,18 +2202,21 @@ Module DIRTREE.
     step.
     step.
 
+
     repeat deex.
     hypmatch dirlist_pred as Hx; hypmatch (pimpl freeinode_pred) as Hy;
     rewrite Hy in Hx; destruct_lift Hx.
     step.
     step.
 
-    (* XXX prove:  notindomain name dsmap implies [[In name (map fst tree_elem) -> False]] *)
-
     apply pimpl_or_r; right. cancel.
-    
+
+    eapply notindomain_not_in_dirents in H24; eauto.
+
     rewrite <- subtree_graft_absorb; eauto. cancel.
-   
+
+    admit. (* BYTEFILE.rep [] BYTEFILE.attr0 BFILE.bfile0 *)
+
     step.
     Grab Existential Variables.
     all: eauto.
