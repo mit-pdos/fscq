@@ -30,8 +30,6 @@ Set Implicit Arguments.
 
 (* Some lemmas that should be moved to DirTree, once they are proven *)
 
-(* Todo: sometimes do induction but don't use IH; clean up proof not to do induction. *)
-
 Lemma cons_app: forall (A: Type)  (l: list A) (a: A),
                             a::l = [a] ++ l.
 Proof.
@@ -340,7 +338,7 @@ Proof.
   assumption.
 Qed.
 
-(* XXX simplify proof *)
+(* XXX simplify proof. inducation is unnecessary. *)
 Lemma dirtree_find_update_dents: forall dnum temp_fn elem tree_elem,
   In temp_fn (map fst tree_elem) ->
   DIRTREE.find_subtree [temp_fn]
@@ -444,6 +442,14 @@ Proof.
     destruct (string_dec s name).
     congruence.
     assumption.
+Qed.
+
+Lemma tree_names_distinct_nodup: forall inum tree_elem,
+  DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum tree_elem) -> NoDup (map fst tree_elem).
+Proof.
+  intros.
+  inversion H.
+  assumption.
 Qed.
 
   
@@ -679,23 +685,30 @@ Proof.
   assumption.  
   auto.
 
-  assert( NoDup (map fst tree_elem)).
+  eapply DIRTREE.rep_tree_names_distinct in H.
+  apply tree_names_distinct_nodup in H.
+  assumption.
   
-  
-  admit.  (* NoDup should follow from DIRTREE.rep.  Maybe the one in H? *)
-  auto.
-  admit.  (* NoDup *)
-  auto.
+  eapply DIRTREE.rep_tree_names_distinct in H.
+  apply tree_names_distinct_nodup in H.
+  assumption.
+  assumption.
 
   reflexivity.
-  admit.  (* NoDup *)
-     
+
+  eapply DIRTREE.rep_tree_names_distinct in H.
+  apply tree_names_distinct_nodup in H.
+  assumption.
+
   rewrite dirtree_update_add_dents.
   instantiate (pathname1 := []).
   instantiate (tree_elem0 :=  (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile inum l b1) tree_elem)).
   subst; simpl; eauto.
 
-  admit.  (* NoDup tree_elem *)
+  eapply DIRTREE.rep_tree_names_distinct in H.
+  apply tree_names_distinct_nodup in H.
+  assumption.
+
   step.
 
   eapply pimpl_or_r. right.
@@ -705,7 +718,10 @@ Proof.
   rewrite dirtree_update_add_dents.
   rewrite dirtree_graft_add_dents_eq; auto.
 
-  admit.  (* NoDup tree_elem *)
+  eapply DIRTREE.rep_tree_names_distinct in H.
+  apply tree_names_distinct_nodup in H.
+  assumption.
+
   eapply pimpl_or_r. left.
   cancel.
   rewrite dirtree_delete_add_dents.
@@ -740,8 +756,10 @@ Proof.
   unfold DIRTREE.find_subtree; subst; simpl.
   reflexivity.
 
-  admit. (* NoDup tree_elem *)
-  
+  eapply DIRTREE.rep_tree_names_distinct in H.
+  apply tree_names_distinct_nodup in H.
+  assumption.
+
   step.
 
   eapply pimpl_or_r. right.
@@ -755,8 +773,10 @@ Proof.
   unfold DIRTREE.update_subtree.
   eauto.
 
-  admit. (* NoDup tree_elem *)
-  
+  eapply DIRTREE.rep_tree_names_distinct in H.
+  apply tree_names_distinct_nodup in H.
+  assumption.
+
   eapply pimpl_or_r. left.
   cancel.
   rewrite dirtree_delete_add_dents.
@@ -769,7 +789,8 @@ Proof.
 
   Grab Existential Variables.
   all: eauto.
-Admitted.
+Qed.
+
 
 
 
