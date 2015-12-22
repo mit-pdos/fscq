@@ -546,19 +546,31 @@ Proof.
   eapply pimpl_or_r. right.
   cancel.
 
+  (* prove that bytes in the dst file are the same as the ones in the src file *)
   assert (bytes = bytes').
-  eapply star_emp_pimpl in H18.
-  apply list2nmem_array_eq in H18.
+  match goal with
+    | [H: ( _ )%pred (list2nmem ?b') |- _ = ?b'] =>
+      eapply star_emp_pimpl in H; apply list2nmem_array_eq in H; [apply list2nmem_array_eq in H||idtac "ignore sub"]
+  end.
   rewrite Nat.min_r in *.
-  apply arrayN_list2nmem in H9.
-  unfold skipn in H9.
-  rewrite Array.firstn_oob in H9.
+  match goal with
+      | [H: ( _ )%pred (list2nmem ?b) |- ?b = _] =>
+        apply arrayN_list2nmem in H; unfold skipn in H
+  end.
+  match goal with
+      | [H: (Rec.Rec.of_word (BYTEFILE.buf_data _)) = firstn _ ?b |- ?b = _] =>
+        rewrite Array.firstn_oob in H
+  end.
   rewrite H9 in H18; auto.
   rewrite Rec.Rec.array_of_word_length with (ft := BYTEFILE.byte_type); auto.
-  rewrite H13.
-  apply wordToNat_natToWord_idempotent' in H10.
-  rewrite H10.
-  eauto.
+  match goal with
+    | [H: BYTEFILE.buf_len _ = # ($ (Datatypes.length ?b)) |- _ >= Datatypes.length ?b ] =>
+      rewrite H
+  end.
+  match goal with
+    | [H: goodSize _ ((Datatypes.length) ?b) |-  _ >= Datatypes.length ?b ] =>
+      apply wordToNat_natToWord_idempotent' in H; rewrite H; eauto
+  end.
   unfold Bytes.byte; auto.
   omega.
   rewrite H.
