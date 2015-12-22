@@ -452,7 +452,7 @@ Proof.
   assumption.
 Qed.
 
-  
+
 Parameter the_dnum : addr.
 Definition temp_fn := ".temp"%string.
 
@@ -685,6 +685,13 @@ Proof.
   assumption.  
   auto.
 
+  Ltac NoDup :=
+  match goal with
+    | [ H : (_ * DIRTREE.rep _ _ _) %pred _ |- NoDup _ ] => idtac "nodup"; eapply DIRTREE.rep_tree_names_distinct in H; idtac "step 1: " H; eapply tree_names_distinct_nodup in H; assumption
+  end.                            
+
+  NoDup.
+  
   eapply DIRTREE.rep_tree_names_distinct in H.
   apply tree_names_distinct_nodup in H.
   assumption.
