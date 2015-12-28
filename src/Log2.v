@@ -20,6 +20,7 @@ Require Import Eqdep_dec.
 Require Import WordAuto.
 Require Import Cache.
 Require Import Idempotent.
+Require Import ListUtils.
 Require Import FSLayout.
 Require Import DiskLog2.
 Require Import AsyncDisk.
@@ -32,9 +33,11 @@ Module MapOrdProperties := OrdProperties Map.
 Import ListNotations.
 Set Implicit Arguments.
 
+Definition valumap := Map.t valu.
+
 Record memstate := mk_memstate {
-  MSOld   : Map.t valu;   (* memory state for committed txns *)
-  MSCur   : Map.t valu;   (* memory state for active txns *)
+  MSOld   : valumap;   (* memory state for committed txns *)
+  MSCur   : valumap;   (* memory state for active txns *)
   MSCache : cachestate    (* cache state *)
 }.
 
@@ -43,8 +46,8 @@ Definition diskstate := list valu.
 
 
 Inductive logstate :=
-| NoTxnApplied (cur : diskstate)
-(* The clean state, all transaction is committed and applied *)
+| NoTxn (cur : diskstate)
+(* All transaction is committed, but might not be applied yet *)
 
 | ActiveTxn (old : diskstate) (cur : diskstate)
 (* A transaction is in progress.
@@ -52,29 +55,87 @@ Inductive logstate :=
  * It has not committed yet. e.g. DiskLog.Synced
  *)
 
-| FlushedUnsyncTxn (old : diskstate) (cur : diskstate)
-(* Current transaction has been flushed to the log, but not sync'ed or
- * committed yet. e.g. DiskLog.ExtendedUnsync *)
-
-| FlushedTxn (old : diskstate) (cur : diskstate)
-(* Like FlushedUnsyncTxn above, except that we sync'ed the log.
-    e.g. DiskLog.Extended.
- *)
-
-| NoTxnUnapplied (cur : diskstate)
-(* A transaction has committed but the log has not necessarily been applied yet.
-   e.g. DiskLog.Synced
- *)
+| FlushingTxn (old : diskstate) (cur : diskstate)
+(* Current transaction is being flushed to the log, but not sync'ed or
+ * committed yet. e.g. DiskLog.ExtendedUnsync or DiskLog.Extended *)
 
 | NoTxnApplying (cur : diskstate)
-(* Applying committed transactions to the disk, 
-   block content might or might not be synced. e.g. DiskLog.Synced
- *)
-| NoTxnAppliedUnsync (cur : diskstate)
-(* Committed transactions have been applied to the disk and synced.
-   Log has been truncated but not yet synced.  e.g. DiskLog.Truncated
+(* Applying committed transactions to the disk.
+   Block content might or might not be synced.
+   Log might be truncated but not yet synced.
+   e.g. DiskLog.Synced or DiskLog.Truncated
  *)
 .
+
+
+
+Module LOG.
+
+  Definition replay_mem (log : DLog.contents) init : valumap :=
+    fold_left (fun m e => Map.add (fst e) (snd e) m) log init.
+
+  Definition replay_disk (log : DLog.contents) (m : diskstate) : diskstate:=
+    fold_left (fun m' e => updN m' (fst e) (snd e)) log m.
+
+  Definition map_replay ms old cur : rawpred :=
+    ([[ cur = replay_disk (Map.elements ms) old ]])%pred.
+
+  Definition map_empty ms : rawpred :=
+    ([[ Map.Equal ms map0 ]])%pred.
+
+  Definition map_keys (m : valumap) := map fst (Map.elements m).
+
+  Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
+
+  Definition synced_data xp (d : diskstate) : rawpred :=
+    arrayN (DataStart xp) (synced_list d).
+
+  Definition nil_unless_in (keys: list addr) (l: list (list valu)) :=
+    forall a, ~ In a keys -> selN l a nil = nil.
+
+  Definition unsync_applying xp (ms : valumap) (old cur : diskstate) : rawpred :=
+    (exists vs, [[ nil_unless_in (map_keys ms) vs /\ length vs = length old]] *
+     map_replay ms old cur *
+     arrayN (DataStart xp) (List.combine old vs)
+    )%pred.
+
+  Definition unsync_syncing xp (ms : valumap) (cur : diskstate) : rawpred :=
+    (exists vs, [[ nil_unless_in (map_keys ms) vs /\ length vs = length cur ]] *
+     arrayN (DataStart xp) (List.combine cur vs)
+    )%pred.
+
+
+  Definition rep_common (xp : log_xparams) (oms cms : valumap) : rawpred := emp.
+
+  Definition rep xp F st ms := 
+    let '(cs, oms, cms) := (MSCache ms, MSOld ms, MSCur ms) in
+    ( rep_common xp oms cms *
+      exists log raw, [[ Map.Equal oms (replay_mem log map0) ]] *
+    (match st with
+    | NoTxn cur =>
+        map_replay oms raw cur *
+        map_empty cms *
+        DLog.rep xp (F * synced_data xp raw) (DLog.Synced log) cs
+    | ActiveTxn old cur =>
+        map_replay oms raw old *
+        map_replay cms old cur *
+        DLog.rep xp (F * synced_data xp raw) (DLog.Synced log) cs
+    | FlushingTxn old cur =>
+        map_replay oms raw old *
+        map_replay cms old cur *
+        (DLog.rep xp (F * synced_data xp raw) (DLog.ExtendedUnsync log) cs
+      \/ DLog.rep xp (F * synced_data xp raw) (DLog.Extended log (Map.elements cms)) cs)
+    | NoTxnApplying cur =>
+        map_empty cms *
+        (DLog.rep xp (F * unsync_applying xp oms raw cur) (DLog.Synced log) cs
+      \/ DLog.rep xp (F * unsync_syncing xp oms cur) (DLog.Synced log) cs
+      \/ DLog.rep xp (F * synced_data xp cur) (DLog.Truncated log) cs)
+    end))%pred.
+
+  
+
+
+End LOG.
 
 
 Module LOG.
