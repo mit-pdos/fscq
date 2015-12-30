@@ -345,3 +345,85 @@ Proof.
     repeat rewrite firstn_length_l; omega.
 Qed.
 
+
+(** update vsl according to (addr, valu) pairs in l. *)
+Definition vsupd_vecs (vsl : list valuset) (l : list (addr * valu)) : list valuset :=
+  fold_left (fun vs e => (vsupd vs (fst e) (snd e))) l vsl.
+
+
+Lemma vsupd_vecs_length : forall l vs,
+  length (vsupd_vecs vs l) = length vs.
+Proof.
+  induction l; intros; simpl; auto.
+  rewrite IHl.
+  unfold vsupd.
+  rewrite length_updN; auto.
+Qed.
+
+Lemma vsupd_vecs_length_ok : forall l m def vs,
+  Forall (fun e => fst e < length vs) l ->
+  m < length l ->
+  fst (selN l m def) < length (vsupd_vecs vs (firstn m l)).
+Proof.
+  intros.
+  rewrite vsupd_vecs_length.
+  rewrite Forall_forall in H.
+  apply H.
+  apply in_selN; auto.
+Qed.
+
+Lemma vsupd_vecs_progress : forall l m vs,
+  m < length l ->
+  let e := selN l m (0, $0) in
+  vsupd (vsupd_vecs vs (firstn m l)) (fst e) (snd e) =
+  vsupd_vecs vs (firstn (S m) l).
+Proof.
+  induction l; intros.
+  inversion H.
+  destruct m; auto.
+  simpl.
+  rewrite IHl; auto.
+  simpl in H.
+  omega.
+Qed.
+
+
+(** sync vsl for all addresses in l. *)
+Definition vssync_vecs (vsl : list valuset) (l : list addr) : list valuset :=
+  fold_left vssync l vsl.
+
+
+Lemma vssync_vecs_length : forall l vs,
+  length (vssync_vecs vs l) = length vs.
+Proof.
+  induction l; intros; simpl; auto.
+  rewrite IHl.
+  unfold vssync.
+  rewrite length_updN; auto.
+Qed.
+
+Lemma vssync_vecs_length_ok : forall l m def vs,
+  Forall (fun e => e < length vs) l ->
+  m < length l ->
+  selN l m def < length (vssync_vecs vs (firstn m l)).
+Proof.
+  intros.
+  rewrite vssync_vecs_length.
+  rewrite Forall_forall in H.
+  apply H.
+  apply in_selN; auto.
+Qed.
+
+Lemma vssync_vecs_progress : forall l m vs,
+  m < length l ->
+  vssync (vssync_vecs vs (firstn m l)) (selN l m 0) =
+  vssync_vecs vs (firstn (S m) l).
+Proof.
+  induction l; intros.
+  inversion H.
+  destruct m; auto.
+  simpl.
+  rewrite IHl; auto.
+  simpl in H.
+  omega.
+Qed.

@@ -789,6 +789,119 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
 
+
+  Hint Extern 0 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (arrayN ?a _) (arrayN ?a _)) => constructor : okToUnify.
+
+  Local Hint Resolve vsupd_vecs_length_ok.
+
+  Definition write_vecs T a l cs rx : prog T :=
+    let^ (cs) <- ForN i < length l
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_vecs vs (firstn i l)))%pred d' ]]
+    OnCrash crash
+    Begin
+      let v := selN l i (0, $0) in
+      cs <- write_array a (fst v) (snd v) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+
+  Theorem write_vecs_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] *
+      [[ Forall (fun e => fst e < length vs) l ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_vecs vs l))%pred d' ]]
+    CRASH
+      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
+      [[ (F * arrayN a (vsupd_vecs vs (firstn n l)))%pred d' ]]
+    >} write_vecs a l cs.
+  Proof.
+    unfold write_vecs.
+    step.
+    step.
+    step.
+
+    apply arrayN_unify.
+    apply vsupd_vecs_progress; auto.
+
+    subst; pimpl_crash.
+    norm; try cancel; intuition; eauto.
+    rewrite Nat.min_l; eauto; omega.
+    rewrite Nat.min_l; eauto.
+    pred_apply; cancel.
+    apply arrayN_unify.
+    apply vsupd_vecs_progress; auto.
+
+    step.
+    apply arrayN_unify.
+    rewrite firstn_oob; auto.
+    Unshelve. exact tt.
+  Qed.
+
+  Local Hint Resolve vssync_vecs_length_ok.
+
+  Definition sync_vecs T a l cs rx : prog T :=
+    let^ (cs) <- ForN i < length l
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_vecs vs (firstn i l)))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- sync_array a (selN l i 0) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+  Theorem sync_vecs_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] *
+      [[ Forall (fun e => e < length vs) l ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_vecs vs l))%pred d' ]]
+    CRASH
+      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
+      [[ (F * arrayN a (vssync_vecs vs (firstn n l)))%pred d' ]]
+    >} sync_vecs a l cs.
+  Proof.
+    unfold sync_vecs.
+    step.
+    step.
+    step.
+
+    apply arrayN_unify.
+    apply vssync_vecs_progress; auto.
+
+    subst; pimpl_crash.
+    norm; try cancel; intuition; eauto.
+    rewrite Nat.min_l; eauto; omega.
+    rewrite Nat.min_l; eauto.
+    pred_apply; cancel.
+    apply arrayN_unify.
+    apply vssync_vecs_progress; auto.
+
+    step.
+    apply arrayN_unify.
+    rewrite firstn_oob; auto.
+    Unshelve. exact tt.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
+
   Lemma crash_xform_rep: forall cs m,
     crash_xform (rep cs m) =p=> exists m' cs', [[ possible_crash m m' ]] * rep cs' m'.
   Proof.
