@@ -85,6 +85,9 @@ Module LOG.
 
   Definition map_keys (m : valumap) := map fst (Map.elements m).
 
+  Definition map_merge (m1 m2 : valumap) :=
+    replay_mem (Map.elements m2) m1.
+
   Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
 
   Definition synced_data xp (d : diskstate) : rawpred :=
@@ -95,8 +98,8 @@ Module LOG.
 
   Definition unsync_applying xp (ms : valumap) (old cur : diskstate) : rawpred :=
     (exists vs, [[ nil_unless_in (map_keys ms) vs /\ length vs = length old]] *
-     map_replay ms old cur *
-     arrayN (DataStart xp) (List.combine old vs)
+     arrayN (DataStart xp) (List.combine old vs) *
+     map_replay ms old cur
     )%pred.
 
   Definition unsync_syncing xp (ms : valumap) (cur : diskstate) : rawpred :=
@@ -132,8 +135,52 @@ Module LOG.
       \/ DLog.rep xp (F * synced_data xp cur) (DLog.Truncated log) cs)
     end))%pred.
 
-  
 
+  Definition begin T (xp : log_xparams) ms rx : prog T :=
+    let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
+    rx (mk_memstate oms map0 cs).
+
+  Definition abort T (xp : log_xparams) ms rx : prog T :=
+    let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
+    rx (mk_memstate oms map0 cs).
+
+  Definition write T (xp : log_xparams) a v ms rx : prog T :=
+    let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
+    rx (mk_memstate oms (Map.add a v cms) cs).
+
+  Definition read T xp a ms rx : prog T :=
+    let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
+    match Map.find a cms with
+    | Some v =>   rx ^(ms, v)
+    | None =>
+      match Map.find a oms with
+      | Some v => rx ^(ms, v)
+      | None =>
+        let^ (cs, v) <- BUFCACHE.read_array (DataStart xp) a cs;
+        rx ^(mk_memstate oms cms cs, v)
+      end
+    end.
+
+  Definition commit T xp ms rx : prog T :=
+    let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
+    If (bool_dec (Map.is_empty cms) true) {
+      rx ^(ms, true)
+    } else {
+      let^ (cs, ok) <- DLog.extend xp (Map.elements cms) cs;
+      If (bool_dec ok true) {
+        rx ^(mk_memstate (map_merge oms cms) map0 cs, true)
+      } else {
+        ms <- abort xp ms;
+        rx ^(ms, false)
+      }
+    }.
+
+  Definition apply T xp ms rx : prog T :=
+    let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
+    cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
+    cs <- BUFCACHE.sync_vecs (DataStart xp) (map_keys oms) cs;
+    cs <- DLog.trunc xp cs;
+    rx (mk_memstate map0 map0 cs).
 
 End LOG.
 
