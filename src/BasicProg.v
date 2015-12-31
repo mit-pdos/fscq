@@ -138,28 +138,33 @@ Qed.
 Hint Extern 1 ({{_}} progseq (Trim _) _) => apply trim_ok : prog.
 
 Theorem hash_ok:
-  forall sz (buf : word sz),
-  {< (_ : unit),
+  forall sz (buf : word sz) hm,
+  {< (_: unit),
   PRE         emp
-  POST RET:r  emp * [[ hash_inv r = existT _ sz buf ]] * [[ hash_fwd buf = r ]]
+  POST RET:^(h, hm')  emp *
+              [[ hash_safe hm h buf ]] *
+              [[ h = hash_fwd buf ]] *
+              [[ hm' = upd_hashmap' hm h buf ]]
   CRASH       emp
-  >} Hash buf.
+  >} Hash buf hm.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
     eapply H4; eauto.
-    pred_apply. cancel.
-    pose proof (eq_sigT_snd H5).
-    autorewrite with core in *. congruence.
+    pred_apply.
+    assert (Hbufeq: buf = buf1).
+      pose proof (eq_sigT_snd H5).
+      autorewrite with core in *. congruence.
+    cancel.
   - exfalso.
     apply H5. repeat eexists.
   - right. eexists; intuition eauto.
     pred_apply. cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Hash _) _) => apply hash_ok : prog.
+Hint Extern 1 ({{_}} progseq (Hash _ _) _) => apply hash_ok : prog.
 
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.

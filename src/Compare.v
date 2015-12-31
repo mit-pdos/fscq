@@ -27,9 +27,9 @@ Proof.
   unfold compare. step. step. step.
 Qed.
 
-Definition compare_hash T sz (buf1 buf2 : word sz) rx : prog T :=
-  h1 <- Hash buf1;
-  h2 <- Hash buf2;
+Definition compare_hash T sz (buf1 buf2 : word sz) hm rx : prog T :=
+  let^ (h1, hm) <- Hash buf1 hm;
+  let^ (h2, hm) <- Hash buf2 hm;
   If (weq h1 h2) {
     rx true
   } else {
@@ -37,12 +37,12 @@ Definition compare_hash T sz (buf1 buf2 : word sz) rx : prog T :=
   }.
 
 Theorem compare_hash_ok :
-  forall sz (buf1 buf2 : word sz),
+  forall sz (buf1 buf2 : word sz) hm,
   {< (_ : unit),
   PRE         emp
   POST RET:r  emp * [[ r = true -> buf1 = buf2 ]] * [[ r = false -> buf1 <> buf2 ]]
   CRASH       emp
-  >} compare_hash buf1 buf2.
+  >} compare_hash buf1 buf2 hm.
 Proof.
   unfold compare_hash. step. step. step.
   step. rewrite H5 in H7. rewrite H7 in H8.

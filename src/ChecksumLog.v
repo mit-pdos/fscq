@@ -3,72 +3,132 @@ Require Import Word.
 Require Import FSLayout.
 Require Import Log.
 Require Import BasicProg.
-Require Import Compare.
 Require Import Cache.
 Require Import Pred.
 Require Import PredCrash.
 Require Import Hoare.
 Require Import Mem.
-Require Import GenSep.
+Require Import GenSepAuto.
 Require Import SepAuto.
 Require Import List.
 Require Import Array.
 Require Import EqdepFacts.
 Require Import Arith.
+Require Import AsyncDisk.
+Require Import ListUtils.
 
 Set Implicit Arguments.
 
 
-Definition default_valu : valu := $0.
-
 Definition hash2 sz1 sz2 (a : word sz1) (b : word sz2) :=
   hash_fwd (Word.combine a b).
 
-Inductive hash_list_rep : (list valu) -> word hashlen -> Prop :=
-  | HL_nil : forall hl,
+Inductive hash_list_rep : (list valu) -> word hashlen -> hashmap -> Prop :=
+  | HL_nil : forall hl hm,
       hl = hash_fwd default_valu ->
-      hash_inv hl = existT _ _ default_valu ->
-      hash_list_rep nil hl
-  | HL_cons : forall values hvalues hvalues' x,
-      hash_list_rep values hvalues ->
-      hvalues' = hash2 x hvalues ->
-      hash_inv hvalues' = existT _ _ (Word.combine x hvalues) ->
-      hash_list_rep (x :: values) hvalues'.
+      hash_list_rep nil hl hm
+  | HL_cons : forall l hl hl' x hm,
+      hash_list_rep l hl hm ->
+      hl' = hash2 x hl ->
+      hashmap_get hm hl' = Some (existT _ _ (Word.combine x hl)) ->
+      hash_list_rep (x :: l) hl' hm.
 
 
-(* Program that hashes a list of values into a single hash value. *)
-Definition hash_list T values rx : prog T :=
-    default_hash <- Hash default_valu;
-    let^ (hash) <- For i < $ (length values)
-    Ghost [ crash ]
-    Loopvar [ hash ]
-    Continuation lrx
-    Invariant
-      [[ hash_list_rep (rev (firstn #i values)) hash ]]
-    OnCrash crash
-    Begin
-      hash <- Hash (Word.combine (sel values i default_valu) hash);
-      lrx ^(hash)
-    Rof ^(default_hash);
-    rx hash.
+Ltac existT_wordsz_neq H :=
+  inversion H as [ Hvalulen ];
+  rewrite <- plus_0_r in Hvalulen at 1;
+  apply plus_reg_l in Hvalulen;
+  inversion Hvalulen.
+
+Theorem hashmap_get_default : forall hm,
+  hashmap_get hm default_hash = Some (existT _ _ default_valu).
+Proof.
+  unfold hashmap_get.
+  destruct hm; destruct (weq default_hash default_hash); intuition.
+Qed.
 
 
-Theorem hash_list_ok : forall values,
+Theorem hash_list_rep_upd_none : forall l hl hm h sz (k : word sz),
+  hash_list_rep l hl hm ->
+  hashmap_get hm h = None ->
+  hash_list_rep l hl (upd_hashmap' hm h k).
+Proof.
+  induction l; intros.
+  constructor. inversion H. auto.
+  inversion H.
+  eapply HL_cons; eauto.
+
+  unfold upd_hashmap', hashmap_get.
+  destruct (weq hl default_hash) eqn:Hhl.
+  - rewrite e in H7.
+    rewrite hashmap_get_default in H7.
+    auto.
+  - destruct (weq h hl) eqn:Hhl'; auto.
+    subst.
+    rewrite H0 in H7. inversion H7.
+Qed.
+
+Theorem hash_list_rep_upd_some : forall l hl hm h sz (k : word sz),
+  hash_list_rep l hl hm ->
+  hashmap_get hm h = Some (existT _ _ k) ->
+  hash_list_rep l hl (upd_hashmap' hm h k).
+Proof.
+  induction l; intros.
+  constructor. inversion H. auto.
+  inversion H.
+  eapply HL_cons; eauto.
+
+  unfold upd_hashmap', hashmap_get.
+  destruct (weq hl default_hash) eqn:Hhl.
+  - rewrite e in H7.
+    rewrite hashmap_get_default in H7.
+    auto.
+  - destruct (weq h hl) eqn:Hhl'; auto.
+    subst.
+    rewrite H0 in H7. inversion H7. auto.
+Qed.
+
+
+Theorem hash_list_rep_upd : forall l hl hm h sz (k : word sz),
+  hash_list_rep l hl hm ->
+  hash_safe hm h k ->
+  hash_list_rep l hl (upd_hashmap' hm h k).
+Proof.
+  unfold hash_safe. intuition.
+  eapply hash_list_rep_upd_none in H1; eauto.
+  eapply hash_list_rep_upd_some in H1; eauto.
+Qed.
+
+
+Definition hash_list T values hm rx : prog T :=
+  let^ (default_hash, hm) <- Hash default_valu hm;
+  let^ (hash, hm) <- For i < $ (length values)
+  Ghost [ crash ]
+  Loopvar [ hash hm ]
+  Continuation lrx
+  Invariant
+    [[ hash_list_rep (rev (firstn #i values)) hash hm ]]
+  OnCrash crash
+  Begin
+    let^ (hash, hm) <- Hash (Word.combine (selN values #i default_valu) hash) hm;
+    lrx ^(hash, hm)
+  Rof ^(default_hash, hm);
+  rx ^(hash, hm).
+
+
+Theorem hash_list_ok : forall values hm,
   {< (_ : unit) ,
   PRE
     emp * [[ goodSize addrlen (length values) ]]
-  POST RET:hash
-    emp * [[ hash_list_rep (rev values) hash ]]
+  POST RET:^(hash, hm')
+    emp * [[ hash_list_rep (rev values) hash hm' ]]
   CRASH
     emp
-  >} hash_list values.
+  >} hash_list values hm.
 Proof.
   unfold hash_list.
   step.
-  step.
-  constructor; auto.
-  step.
-  step.
+  step; try apply HL_nil; auto.
 
   assert (Hlength: length (rev (firstn # (m ^+ $ (1)) values)) = S (# (m))).
     rewrite rev_length.
@@ -81,6 +141,9 @@ Proof.
       apply wlt_lt in H.
       rewrite wordToNat_natToWord_idempotent' in H; auto.
       intuition.
+
+  step.
+  step.
 
   (* Loop invariant. *)
   - destruct (rev (firstn # (m ^+ $ (1)) values)) eqn:Hrev_values.
@@ -114,7 +177,19 @@ Proof.
         auto.
       rewrite selN_firstn in Hw;
         try (erewrite wordToNat_plusone; eauto).
-      eapply HL_cons; subst; eauto.
+      subst.
+
+      econstructor.
+      apply hash_list_rep_upd; eauto.
+      auto.
+      apply upd_hashmap'_eq.
+      intuition.
+      unfold hash_safe in H13.
+      inversion H13 as [ Hhash_safe | Hhash_safe ];
+        rewrite H3 in Hhash_safe;
+        rewrite hashmap_get_default in Hhash_safe;
+        inversion Hhash_safe as [ Hwordlen ].
+      existT_wordsz_neq Hwordlen.
 
   (* Loop invariant implies post-condition. *)
   - step.
@@ -124,23 +199,17 @@ Proof.
     rewrite <- Hfirstn. auto.
 
   Grab Existential Variables.
-  all: eauto.
+  all: constructor.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (hash_list _) _) => apply hash_list_ok : prog.
-
-Ltac existT_wordsz_neq H :=
-  inversion H as [ Hvalulen ];
-  rewrite <- plus_0_r in Hvalulen;
-  apply plus_reg_l in Hvalulen;
-  inversion Hvalulen.
+Hint Extern 1 ({{_}} progseq (hash_list _ _) _) => apply hash_list_ok : prog.
 
 Ltac existT_wordsz_eq H :=
   pose proof (eq_sigT_snd H);
   autorewrite with core in *.
 
-Theorem hash_list_injective : forall l1 l2 hv,
-  hash_list_rep l1 hv -> hash_list_rep l2 hv -> l1 = l2.
+Theorem hash_list_injective : forall l1 l2 hv hm,
+  hash_list_rep l1 hv hm -> hash_list_rep l2 hv hm -> l1 = l2.
 Proof.
   induction l1;
     intros;
@@ -148,11 +217,24 @@ Proof.
     unfold hash2 in *; intuition;
     subst; auto.
 
-  - rewrite H6 in H2. existT_wordsz_neq H2.
-  - rewrite H6 in H8. existT_wordsz_neq H8.
-  - rewrite H9 in H6.
-    existT_wordsz_eq H6.
-    apply combine_inj in H1.
-    intuition.
-    apply IHl1 in H7; congruence.
+  contradict H6.
+  destruct hm; unfold hashmap_get, default_hash;
+  destruct (weq (hash_fwd default_valu) (hash_fwd default_valu)); intuition.
+  existT_wordsz_neq H1.
+  existT_wordsz_neq H1.
+
+  (* put this in a lemma, no valu can have hash equal to default_hash *)
+  rewrite H8 in H7.
+  contradict H7.
+  destruct hm; unfold hashmap_get, default_hash;
+  destruct (weq (hash_fwd default_valu) (hash_fwd default_valu)); intuition.
+  existT_wordsz_neq H1.
+  existT_wordsz_neq H1.
+
+  rewrite H7 in H10.
+  inversion H10.
+  pose proof (eq_sigT_snd H2); autorewrite with core in *.
+  apply combine_inj in H1.
+  intuition.
+  apply IHl1 in H8; congruence.
 Qed.

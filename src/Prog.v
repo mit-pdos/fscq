@@ -20,7 +20,7 @@ Inductive prog (T : Type):=
   | Write (a: addr) (v: valu) (rx: unit -> prog T)
   | Sync (a: addr) (rx: unit -> prog T)
   | Trim (a: addr) (rx: unit -> prog T)
-  | Hash (sz: nat) (buf: word sz) (rx: word hashlen -> prog T).
+  | Hash (sz: nat) (buf: word sz) (hm: hashmap) (rx: (word hashlen * (hashmap * unit)) -> prog T).
 
 Inductive outcome (T : Type) :=
   | Failed
@@ -37,16 +37,17 @@ Inductive step (T : Type) : rawdisk -> prog T ->
     step m (Sync a rx) (upd m a (v, nil)) (rx tt)
   | StepTrim : forall m a rx vs vs', m a = Some vs ->
     step m (Trim a rx) (upd m a vs') (rx tt)
-  | StepHash : forall m sz buf rx h, hash_inv h = existT _ sz buf ->
+  | StepHash : forall m sz (buf : word sz) rx h hm,
+    hash_safe hm h buf ->
     hash_fwd buf = h ->
-    step m (Hash buf rx) m (rx h).
+    step m (Hash buf hm rx) m (rx (h, (upd_hashmap' hm h buf, tt))).
 
 Inductive exec (T : Type) : rawdisk -> prog T -> outcome T -> Prop :=
   | XStep : forall m m' p p' out, step m p m' p' ->
     exec m' p' out ->
     exec m p out
   | XFail : forall m p, (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
-    (~exists sz (buf : word sz) rx, p = Hash buf rx) ->
+    (~exists sz (buf : word sz) hm rx, p = Hash buf hm rx) ->
     exec m p (Failed T)
   | XCrash : forall m p, exec m p (Crashed T m)
   | XDone : forall m v, exec m (Done v) (Finished m v).
