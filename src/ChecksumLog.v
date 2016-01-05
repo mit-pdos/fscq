@@ -35,10 +35,17 @@ Inductive hash_list_rep : (list valu) -> word hashlen -> hashmap -> Prop :=
 
 
 Ltac existT_wordsz_neq H :=
-  inversion H as [ Hvalulen ];
-  rewrite <- plus_0_r in Hvalulen at 1;
-  apply plus_reg_l in Hvalulen;
-  inversion Hvalulen.
+  let Hx := fresh in
+  inversion H as [ Hx ];
+  rewrite <- plus_0_r in Hx at 1;
+  apply plus_reg_l in Hx;
+  inversion Hx.
+
+Ltac existT_wordsz_eq H :=
+  let Hx := fresh in
+  pose proof (eq_sigT_snd H) as Hx;
+  autorewrite with core in Hx;
+  try apply combine_inj in Hx.
 
 Theorem hashmap_get_default : forall hm,
   hashmap_get hm default_hash = Some (existT _ _ default_valu).
@@ -47,6 +54,13 @@ Proof.
   destruct hm; destruct (weq default_hash default_hash); intuition.
 Qed.
 
+Ltac contradict_hashmap_get_default H hm :=
+  let Hx := fresh in
+  contradict H;
+  destruct hm; unfold hashmap_get, default_hash;
+  destruct (weq (hash_fwd default_valu) (hash_fwd default_valu));
+  intro Hx; try existT_wordsz_neq Hx;
+  intuition.
 
 Theorem hash_list_rep_upd_none : forall l hl hm h sz (k : word sz),
   hash_list_rep l hl hm ->
@@ -119,6 +133,7 @@ Proof.
   apply hash_list_rep_upd; auto.
   eapply IHhkl; eauto.
 Qed.
+
 
 Definition hash_list T values hm rx : prog T :=
   let^ (default_hash, hm') <- Hash default_valu hm;
@@ -211,11 +226,9 @@ Proof.
       apply upd_hashmap'_eq.
       intuition.
       unfold hash_safe in H14.
-      inversion H14 as [ Hhash_safe | Hhash_safe ];
-        rewrite H6 in Hhash_safe;
-        rewrite hashmap_get_default in Hhash_safe;
-        inversion Hhash_safe as [ Hwordlen ].
-      existT_wordsz_neq Hwordlen.
+      rewrite H6 in H14.
+      inversion H14 as [ Hdef | Hdef ];
+      contradict_hashmap_get_default Hdef a2.
 
   - eexists. subst.
     econstructor; eauto.
@@ -233,9 +246,6 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (hash_list _ _) _) => apply hash_list_ok : prog.
 
-Ltac existT_wordsz_eq H :=
-  pose proof (eq_sigT_snd H);
-  autorewrite with core in *.
 
 Theorem hash_list_injective : forall l1 l2 hv hm,
   hash_list_rep l1 hv hm -> hash_list_rep l2 hv hm -> l1 = l2.
@@ -246,24 +256,14 @@ Proof.
     unfold hash2 in *; intuition;
     subst; auto.
 
-  contradict H6.
-  destruct hm; unfold hashmap_get, default_hash;
-  destruct (weq (hash_fwd default_valu) (hash_fwd default_valu)); intuition.
-  existT_wordsz_neq H1.
-  existT_wordsz_neq H1.
+  contradict_hashmap_get_default H6 hm.
 
-  (* put this in a lemma, no valu can have hash equal to default_hash *)
   rewrite H8 in H7.
-  contradict H7.
-  destruct hm; unfold hashmap_get, default_hash;
-  destruct (weq (hash_fwd default_valu) (hash_fwd default_valu)); intuition.
-  existT_wordsz_neq H1.
-  existT_wordsz_neq H1.
+  contradict_hashmap_get_default H7 hm.
 
   rewrite H7 in H10.
   inversion H10.
-  pose proof (eq_sigT_snd H2); autorewrite with core in *.
-  apply combine_inj in H1.
+  existT_wordsz_eq H2.
   intuition.
   apply IHl1 in H8; congruence.
 Qed.
