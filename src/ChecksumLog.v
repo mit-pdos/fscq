@@ -99,21 +99,42 @@ Proof.
   eapply hash_list_rep_upd_some in H1; eauto.
 Qed.
 
+Inductive hashmap_subset : list (word hashlen * {sz : nat & word sz}) -> hashmap -> hashmap -> Prop  :=
+  | HS_nil : forall hm,
+      hashmap_subset nil hm hm
+  | HS_cons : forall h sz (k : word sz) l hm hm',
+      hashmap_subset l hm hm' ->
+      hash_safe hm' h k ->
+      hashmap_subset ((h, (existT _ _ k)) :: l) hm (upd_hashmap' hm' h k).
+
+Theorem hash_list_rep_subset : forall hkl l hl hm hm',
+  hashmap_subset hkl hm hm' ->
+  hash_list_rep l hl hm ->
+  hash_list_rep l hl hm'.
+Proof.
+  induction hkl; intros.
+  inversion H. congruence.
+
+  inversion H. subst.
+  apply hash_list_rep_upd; auto.
+  eapply IHhkl; eauto.
+Qed.
 
 Definition hash_list T values hm rx : prog T :=
-  let^ (default_hash, hm) <- Hash default_valu hm;
-  let^ (hash, hm) <- For i < $ (length values)
+  let^ (default_hash, hm') <- Hash default_valu hm;
+  let^ (hash, hm') <- For i < $ (length values)
   Ghost [ crash ]
-  Loopvar [ hash hm ]
+  Loopvar [ hash hm' ]
   Continuation lrx
   Invariant
-    [[ hash_list_rep (rev (firstn #i values)) hash hm ]]
+    [[ hash_list_rep (rev (firstn #i values)) hash hm' ]] *
+    [[ exists l, hashmap_subset l hm hm' ]]
   OnCrash crash
   Begin
-    let^ (hash, hm) <- Hash (Word.combine (selN values #i default_valu) hash) hm;
-    lrx ^(hash, hm)
-  Rof ^(default_hash, hm);
-  rx ^(hash, hm).
+    let^ (hash, hm') <- Hash (Word.combine (sel values #i default_valu) hash) hm';
+    lrx ^(hash, hm')
+  Rof ^(default_hash, hm');
+  rx ^(hash, hm').
 
 
 Theorem hash_list_ok : forall values hm,
@@ -121,7 +142,8 @@ Theorem hash_list_ok : forall values hm,
   PRE
     emp * [[ goodSize addrlen (length values) ]]
   POST RET:^(hash, hm')
-    emp * [[ hash_list_rep (rev values) hash hm' ]]
+    emp * [[ hash_list_rep (rev values) hash hm' ]] *
+          [[ exists l, hashmap_subset l hm hm' ]]
   CRASH
     emp
   >} hash_list values hm.
@@ -129,6 +151,10 @@ Proof.
   unfold hash_list.
   step.
   step; try apply HL_nil; auto.
+
+  rewrite H7.
+  exists ((a, existT _ _ default_valu) :: nil).
+  econstructor; eauto. constructor.
 
   assert (Hlength: length (rev (firstn # (m ^+ $ (1)) values)) = S (# (m))).
     rewrite rev_length.
@@ -148,8 +174,8 @@ Proof.
   (* Loop invariant. *)
   - destruct (rev (firstn # (m ^+ $ (1)) values)) eqn:Hrev_values.
     + simpl in Hlength. inversion Hlength.
-    + assert (Hl: rev l = (firstn # (m) values)).
-        replace l with (rev (rev l)) in Hrev_values;
+    + assert (Hl: rev l0 = (firstn # (m) values)).
+        replace l0 with (rev (rev l0)) in Hrev_values;
           try apply rev_involutive.
         rewrite <- rev_unit in Hrev_values.
         erewrite wordToNat_plusone in Hrev_values; eauto.
@@ -157,12 +183,12 @@ Proof.
 
         rewrite <- removelast_firstn;
           try (apply lt_word_lt_nat; auto).
-        replace (rev l) with (rev l ++ removelast (w :: nil)).
+        replace (rev l0) with (rev l0 ++ removelast (w :: nil)).
         rewrite <- removelast_app.
         rewrite Hrev_values.
         auto.
 
-        intuition. inversion H3.
+        intuition. inversion H6.
         simpl. rewrite app_nil_r. auto.
 
       rewrite <- rev_involutive in Hl.
@@ -184,12 +210,15 @@ Proof.
       auto.
       apply upd_hashmap'_eq.
       intuition.
-      unfold hash_safe in H13.
-      inversion H13 as [ Hhash_safe | Hhash_safe ];
-        rewrite H3 in Hhash_safe;
+      unfold hash_safe in H14.
+      inversion H14 as [ Hhash_safe | Hhash_safe ];
+        rewrite H6 in Hhash_safe;
         rewrite hashmap_get_default in Hhash_safe;
         inversion Hhash_safe as [ Hwordlen ].
       existT_wordsz_neq Hwordlen.
+
+  - eexists. subst.
+    econstructor; eauto.
 
   (* Loop invariant implies post-condition. *)
   - step.
