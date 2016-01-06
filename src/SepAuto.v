@@ -954,6 +954,17 @@ Ltac poststep t :=
   try congruence;
   try t.
 
+Ltac safestep :=
+    prestep; norm; [ cancel | ];
+    repeat match goal with 
+    | [ |- _ /\ _ ] => split 
+    | [ |- True ] => auto
+    end; try pred_apply.
+
+Ltac or_r := apply pimpl_or_r; right.
+Ltac or_l := apply pimpl_or_r; left.
+
+
 Tactic Notation "step" "using" tactic(t) "with" ident(db) "in" "*" :=
   prestep;
   try ( cancel_with t ; try ( autorewrite with db in * |-; cancel_with t ) );

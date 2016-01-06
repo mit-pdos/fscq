@@ -24,6 +24,7 @@ Require Import ListUtils.
 Require Import FSLayout.
 Require Import DiskLog2.
 Require Import AsyncDisk.
+Require Import SepAuto.
 
 Module Map := FMapAVL.Make(Nat_as_OT).
 Module MapFacts := WFacts_fun Nat_as_OT Map.
@@ -181,6 +182,51 @@ Module LOG.
     cs <- BUFCACHE.sync_vecs (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
     rx (mk_memstate map0 map0 cs).
+
+
+  Lemma mapeq_elements : forall V m1 m2,
+    @Map.Equal V m1 m2 -> Map.elements m1 = Map.elements m2.
+  Proof.
+    intros.
+    apply MapOrdProperties.elements_Equal_eqlistA in H.
+    generalize dependent (Map.elements m2).
+    generalize dependent (Map.elements m1).
+    induction l.
+    - intros. inversion H. reflexivity.
+    - intros. destruct l0; inversion H. subst.
+      inversion H3. destruct a; destruct p; simpl in *; subst.
+      f_equal; eauto.
+  Qed.
+
+  Hint Unfold rep map_replay rep_common map_empty: hoare_unfold.
+
+  (* destruct memstate *)
+  Ltac dems := try match goal with
+  | [ H : @eq memstate ?ms (mk_memstate _ _ _) |- _ ] =>
+     destruct ms; inversion H; subst
+  end.
+
+  Theorem begin_ok: forall xp ms,
+    {< m F,
+    PRE
+      rep xp F (NoTxn m) ms
+    POST RET:r
+      rep xp F (ActiveTxn m m) r
+    CRASH
+      exists ms', rep xp F (NoTxn m) ms' \/ rep xp F (ActiveTxn m m) ms'
+    >} begin xp ms.
+  Proof.
+    unfold begin.
+    hoare using dems.
+    auto.
+    pimpl_crash.
+    cancel.
+    or_l.
+    cancel.
+  Qed.
+
+  
+
 
 End LOG.
 

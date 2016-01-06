@@ -1685,17 +1685,6 @@ Module PaddedLog.
   Hint Extern 0 (okToUnify (Desc.avail_rep _ _ _) (Desc.avail_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (Data.avail_rep _ _ _) (Data.avail_rep _ _ _)) => constructor : okToUnify.
 
-  Ltac safestep :=
-      prestep; norm; [ cancel | ];
-      repeat match goal with 
-      | [ |- _ /\ _ ] => split 
-      | [ |- True ] => auto
-      end; try pred_apply.
-
-  Ltac or_r := apply pimpl_or_r; right.
-  Ltac or_l := apply pimpl_or_r; left.
-
-
   Definition read_ok : forall xp cs,
     {< F l,
     PRE            rep xp F (Synced l) cs
