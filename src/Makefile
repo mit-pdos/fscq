@@ -9,7 +9,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 		  Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 		  Dir DirName StringUtils TreeUtils DirTree FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON \
-	      Compare ChecksumLog
+	      Compare Hashmap
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 GHC 	   := ghc

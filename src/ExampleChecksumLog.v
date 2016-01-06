@@ -8,7 +8,7 @@ Require Import Cache.
 Require Import List.
 Require Import Hoare.
 Require Import SepAuto.
-Require Import ChecksumLog.
+Require Import Hashmap.
 
 Set Implicit Arguments.
 

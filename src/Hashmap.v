@@ -33,6 +33,14 @@ Inductive hash_list_rep : (list valu) -> word hashlen -> hashmap -> Prop :=
       hashmap_get hm hl' = Some (existT _ _ (Word.combine x hl)) ->
       hash_list_rep (x :: l) hl' hm.
 
+Inductive hashmap_subset : list (word hashlen * {sz : nat & word sz}) -> hashmap -> hashmap -> Prop  :=
+  | HS_nil : forall hm,
+      hashmap_subset nil hm hm
+  | HS_cons : forall h sz (k : word sz) l hm hm',
+      hashmap_subset l hm hm' ->
+      hash_safe hm' h k ->
+      hashmap_subset ((h, (existT _ _ k)) :: l) hm (upd_hashmap' hm' h k).
+
 
 Ltac existT_wordsz_neq H :=
   let Hx := fresh in
@@ -47,13 +55,6 @@ Ltac existT_wordsz_eq H :=
   autorewrite with core in Hx;
   try apply combine_inj in Hx.
 
-Theorem hashmap_get_default : forall hm,
-  hashmap_get hm default_hash = Some (existT _ _ default_valu).
-Proof.
-  unfold hashmap_get.
-  destruct hm; destruct (weq default_hash default_hash); intuition.
-Qed.
-
 Ltac contradict_hashmap_get_default H hm :=
   let Hx := fresh in
   contradict H;
@@ -62,64 +63,36 @@ Ltac contradict_hashmap_get_default H hm :=
   intro Hx; try existT_wordsz_neq Hx;
   intuition.
 
-Theorem hash_list_rep_upd_none : forall l hl hm h sz (k : word sz),
-  hash_list_rep l hl hm ->
-  hashmap_get hm h = None ->
-  hash_list_rep l hl (upd_hashmap' hm h k).
+Theorem hashmap_get_default : forall hm,
+  hashmap_get hm default_hash = Some (existT _ _ default_valu).
 Proof.
-  induction l; intros.
-  constructor. inversion H. auto.
-  inversion H.
-  eapply HL_cons; eauto.
-
-  unfold upd_hashmap', hashmap_get.
-  destruct (weq hl default_hash) eqn:Hhl.
-  - rewrite e in H7.
-    rewrite hashmap_get_default in H7.
-    auto.
-  - destruct (weq h hl) eqn:Hhl'; auto.
-    subst.
-    rewrite H0 in H7. inversion H7.
+  unfold hashmap_get.
+  destruct hm; destruct (weq default_hash default_hash);
+  intuition.
 Qed.
-
-Theorem hash_list_rep_upd_some : forall l hl hm h sz (k : word sz),
-  hash_list_rep l hl hm ->
-  hashmap_get hm h = Some (existT _ _ k) ->
-  hash_list_rep l hl (upd_hashmap' hm h k).
-Proof.
-  induction l; intros.
-  constructor. inversion H. auto.
-  inversion H.
-  eapply HL_cons; eauto.
-
-  unfold upd_hashmap', hashmap_get.
-  destruct (weq hl default_hash) eqn:Hhl.
-  - rewrite e in H7.
-    rewrite hashmap_get_default in H7.
-    auto.
-  - destruct (weq h hl) eqn:Hhl'; auto.
-    subst.
-    rewrite H0 in H7. inversion H7. auto.
-Qed.
-
 
 Theorem hash_list_rep_upd : forall l hl hm h sz (k : word sz),
   hash_list_rep l hl hm ->
   hash_safe hm h k ->
   hash_list_rep l hl (upd_hashmap' hm h k).
 Proof.
-  unfold hash_safe. intuition.
-  eapply hash_list_rep_upd_none in H1; eauto.
-  eapply hash_list_rep_upd_some in H1; eauto.
-Qed.
+  induction l; intros.
+  constructor. inversion H. auto.
+  inversion H.
+  eapply HL_cons; eauto.
 
-Inductive hashmap_subset : list (word hashlen * {sz : nat & word sz}) -> hashmap -> hashmap -> Prop  :=
-  | HS_nil : forall hm,
-      hashmap_subset nil hm hm
-  | HS_cons : forall h sz (k : word sz) l hm hm',
-      hashmap_subset l hm hm' ->
-      hash_safe hm' h k ->
-      hashmap_subset ((h, (existT _ _ k)) :: l) hm (upd_hashmap' hm' h k).
+  unfold upd_hashmap', hashmap_get.
+  destruct (weq hl default_hash) eqn:Hhl.
+  - rewrite e in H7.
+    rewrite hashmap_get_default in H7.
+    auto.
+  - destruct (weq h hl) eqn:Hhl'; auto.
+    subst.
+    unfold hash_safe in H0.
+    inversion H0 as [ Hget | Hget ];
+      rewrite Hget in H7;
+      inversion H7; auto.
+Qed.
 
 Theorem hash_list_rep_subset : forall hkl l hl hm hm',
   hashmap_subset hkl hm hm' ->
