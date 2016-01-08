@@ -5,8 +5,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils Array Rec \
 	      Cache FSLayout DiskLog2 \
-		  ListPred AddrMap GenSep GenSepN RecArray  \
-	      Log Balloc Inode BFile BFileRec Dir \
+		  ListPred AddrMap GenSepN RecArray  \
+	      Log2 Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree SlowByteFile FastByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON
 VS         := $(MODULES:%=%.v)

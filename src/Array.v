@@ -237,6 +237,16 @@ Proof.
 Qed.
 
 
+Theorem arrayN_strictly_exact : forall A (vs : list A) base,
+  strictly_exact (arrayN base vs).
+Proof.
+  induction vs; simpl; intros.
+  apply emp_strictly_exact.
+  apply sep_star_strictly_exact.
+  apply ptsto_strictly_exact.
+  eauto.
+Qed.
+
 Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
   updN vs i (v, vsmerge (selN vs i ($0, nil))).
 

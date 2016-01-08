@@ -1,4 +1,3 @@
-
 Require Import Arith.
 Require Import Bool.
 Require Import List.
@@ -25,6 +24,7 @@ Require Import FSLayout.
 Require Import DiskLog2.
 Require Import AsyncDisk.
 Require Import SepAuto.
+Require Import GenSepN.
 
 Module Map := FMapAVL.Make(Nat_as_OT).
 Module MapFacts := WFacts_fun Nat_as_OT Map.
@@ -201,11 +201,11 @@ Module LOG.
   Hint Unfold rep map_replay rep_common map_empty: hoare_unfold.
 
   (* destruct memstate *)
-  Ltac dems := try match goal with
+  Ltac dems := eauto; try match goal with
   | [ H : @eq memstate ?ms (mk_memstate _ _ _) |- _ ] =>
      destruct ms; inversion H; subst
-  end.
-
+  end; eauto.
+  
   Theorem begin_ok: forall xp ms,
     {< m F,
     PRE
@@ -218,14 +218,43 @@ Module LOG.
   Proof.
     unfold begin.
     hoare using dems.
-    auto.
     pimpl_crash.
     cancel.
     or_l.
     cancel.
   Qed.
 
-  
+
+  Theorem abort_ok : forall xp ms,
+    {< m1 m2 F,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms
+    POST RET:r
+      rep xp F (NoTxn m1) r
+    CRASH
+      exists ms', rep xp F (ActiveTxn m1 m2) ms' \/ rep xp F (NoTxn m1) ms'
+    >} abort xp ms.
+  Proof.
+    unfold abort.
+    hoare using dems.
+    pimpl_crash.
+    cancel.
+    or_l.
+    cancel.
+  Qed.
+
+  Theorem write_ok : forall xp ms a v,
+    {< m1 m2 F F' v0,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms * [[ (F' * a |-> v0)%pred (list2nmem m2) ]]
+    POST RET:mscs
+      exists m', rep xp F (ActiveTxn m1 m') ms *
+      [[ (F' * a |-> v)%pred (list2nmem m') ]]
+    CRASH
+      exists m' ms', rep xp F (ActiveTxn m1 m') ms'
+    >} write xp a v ms.
+  Proof.
+  Qed.
 
 
 End LOG.
