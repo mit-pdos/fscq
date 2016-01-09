@@ -198,7 +198,7 @@ Module LOG.
       f_equal; eauto.
   Qed.
 
-  Hint Unfold rep map_replay rep_common map_empty: hoare_unfold.
+  Local Hint Unfold rep map_replay rep_common map_empty: hoare_unfold.
 
   (* destruct memstate *)
   Ltac dems := eauto; try match goal with
@@ -243,21 +243,190 @@ Module LOG.
     cancel.
   Qed.
 
+  Arguments DLog.rep : simpl never.
+
+  Lemma replay_disk_length : forall l m,
+    length (replay_disk l m) = length m.
+  Proof.
+    induction l; intros; simpl; auto.
+    rewrite IHl.
+    rewrite length_updN; auto.
+  Qed.
+  
+  Hint Rewrite replay_disk_length : lists.
+
+  Definition KIn V := InA (@Map.eq_key V).
+  Definition KNoDup V := NoDupA (@Map.eq_key V).
+
+  Lemma replay_disk_updN_comm : forall l d a v,
+    ~ In a (map fst l)
+    -> replay_disk l (updN d a v) = updN (replay_disk l d) a v.
+  Proof.
+    induction l; simpl; intuition; simpl in *.
+    rewrite updN_comm by auto.
+    apply IHl; auto.
+  Qed.
+
+  Lemma replay_disk_selN_other : forall l d a (def : valu),
+    ~ In a (map fst l)
+    -> NoDup (map fst l)
+    -> selN (replay_disk l d) a def = selN d a def.
+  Proof.
+    induction l; simpl; intuition; simpl in *.
+    inversion H0; subst; auto.
+    rewrite replay_disk_updN_comm by auto.
+    rewrite selN_updN_ne by auto.
+    apply IHl; auto.
+  Qed.
+
+  Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
+    In a (map fst l) -> exists b, In (a, b) l.
+  Proof.
+    induction l; simpl; firstorder.
+    destruct a; simpl in *; subst; eauto.
+  Qed.
+
+  Local Hint Resolve MapProperties.eqke_equiv.
+
+  Lemma KNoDup_NoDup: forall V (l : list (addr * V)),
+    KNoDup l -> NoDup (map fst l).
+  Proof.
+    induction l; simpl; intros; constructor.
+    inversion H; subst.
+    contradict H2.
+    apply in_map_fst_exists_snd in H2; destruct H2.
+    apply InA_alt.
+    exists (fst a, x); intuition.
+    destruct a; simpl in *.
+    cbv; auto.
+    inversion H; subst.
+    apply IHl; auto.
+  Qed.
+
+  Lemma map_fst_nodup: forall (ms : valumap),
+    NoDup (map fst (Map.elements ms)).
+  Proof.
+    intros.
+    apply KNoDup_NoDup.
+    apply Map.elements_3w.
+  Qed.
+
+  Lemma replay_disk_selN_In : forall l m a v def,
+    In (a, v) l -> NoDup (map fst l) -> a < length m ->
+    selN (replay_disk l m) a def = v.
+  Proof.
+    induction l; simpl; intros; auto.
+    inversion H.
+    inversion H0; subst.
+    destruct a; intuition; simpl.
+    inversion H2; subst.
+    rewrite replay_disk_updN_comm by auto.
+    rewrite selN_updN_eq; auto.
+    erewrite replay_disk_length; auto.
+    simpl in *.
+    apply IHl; auto.
+    rewrite length_updN; auto.
+  Qed.
+
+  Lemma replay_disk_selN_In_KNoDup : forall a v l m def,
+    In (a, v) l -> KNoDup l -> a < length m ->
+    selN (replay_disk l m) a def = v.
+  Proof.
+    intros.
+    eapply replay_disk_selN_In; eauto.
+    apply KNoDup_NoDup; auto.
+  Qed.
+
+
+  Lemma InA_eqke_In : forall V a v l,
+    InA (Map.eq_key_elt (elt:=V)) (a, v) l -> In (a, v) l.
+  Proof.
+    induction l; intros; auto; inversion H; subst.
+    inversion H1.
+    destruct a0; simpl in *; subst; auto.
+    simpl. right.
+    apply IHl; auto.
+  Qed.
+
+  Lemma replay_disk_selN_MapsTo : forall a v ms m def,
+    Map.MapsTo a v ms -> a < length m ->
+    selN (replay_disk (Map.elements ms) m) a def = v.
+  Proof.
+    intros.
+    apply replay_disk_selN_In_KNoDup; auto.
+    apply InA_eqke_In.
+    apply MapFacts.elements_mapsto_iff; auto.
+    apply Map.elements_3w.
+  Qed.
+
+  Lemma replay_disk_selN_not_In : forall a ms m def,
+    ~ Map.In a ms
+    -> selN (replay_disk (Map.elements ms) m) a def = selN m a def.
+  Proof.
+    intros.
+    apply replay_disk_selN_other; auto.
+    contradict H.
+    erewrite MapFacts.elements_in_iff.
+    apply in_map_fst_exists_snd in H; destruct H.
+    eexists; apply In_InA; eauto.
+    apply KNoDup_NoDup.
+    apply Map.elements_3w.
+  Qed.
+
+  Lemma replay_disk_add : forall a v ds m,
+    replay_disk (Map.elements (Map.add a v ds)) m = updN (replay_disk (Map.elements ds) m) a v.
+  Proof.
+    intros.
+    eapply list_selN_ext.
+    autorewrite with lists; auto.
+    intros.
+    destruct (eq_nat_dec pos a); subst; autorewrite with lists in *.
+    rewrite selN_updN_eq by (autorewrite with lists in *; auto).
+    apply replay_disk_selN_MapsTo; auto.
+    apply Map.add_1; auto.
+
+    rewrite selN_updN_ne by auto.
+    case_eq (Map.find pos ds); intros; autorewrite with lists in *.
+    (* [pos] is in the transaction *)
+    apply replay_disk_selN_MapsTo; auto.
+    apply Map.find_2 in H0.
+    erewrite replay_disk_selN_MapsTo; eauto.
+    apply Map.add_2; auto.
+    (* [pos] is not in the transaction *)
+    repeat rewrite replay_disk_selN_not_In; auto.
+    apply MapFacts.not_find_in_iff; auto.
+    apply MapFacts.not_find_in_iff.
+    rewrite MapFacts.add_neq_o by auto; auto.
+    Unshelve.
+    exact $0.
+  Qed.
+
   Theorem write_ok : forall xp ms a v,
     {< m1 m2 F F' v0,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms * [[ (F' * a |-> v0)%pred (list2nmem m2) ]]
-    POST RET:mscs
-      exists m', rep xp F (ActiveTxn m1 m') ms *
-      [[ (F' * a |-> v)%pred (list2nmem m') ]]
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: (F' * a |-> v0) ]]]
+    POST RET:ms'
+      exists m', rep xp F (ActiveTxn m1 m') ms' *
+      [[[ m' ::: (F' * a |-> v) ]]]
     CRASH
       exists m' ms', rep xp F (ActiveTxn m1 m') ms'
     >} write xp a v ms.
   Proof.
+    unfold write.
+    hoare using dems.
+    rewrite replay_disk_add.
+    eapply list2nmem_updN; eauto.
+    pimpl_crash.
+    cancel.
+    instantiate (1 := log); auto.
+    auto.
   Qed.
 
 
 End LOG.
+
+
 
 
 Module LOG.

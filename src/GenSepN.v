@@ -31,6 +31,7 @@ Set Implicit Arguments.
 Definition list2nmem (A: Type) (l: list A) : (@mem nat eq_nat_dec A) :=
   fun a => selN (map (@Some A) l) a None.
 
+Notation "[[[ NS ':::' P ]]]" := [[ (list2nmem NS) ## (P) ]]%pred : pred_scope.
 
 Theorem list2nmem_oob : forall A (l : list A) i,
   i >= length l
