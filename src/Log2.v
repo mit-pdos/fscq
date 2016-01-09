@@ -400,6 +400,8 @@ Module LOG.
     Unshelve.
     exact $0.
   Qed.
+  
+  Hint Extern 0 (okToUnify (DLog.rep _ _ _ _) (DLog.rep _ _ _ _)) => constructor : okToUnify.
 
   Theorem write_ok : forall xp ms a v,
     {< m1 m2 F F' v0,
@@ -417,10 +419,106 @@ Module LOG.
     hoare using dems.
     rewrite replay_disk_add.
     eapply list2nmem_updN; eauto.
-    pimpl_crash.
+  Qed.
+
+  Lemma replay_disk_eq : forall a v v' ms d,
+    Map.find a ms = Some v ->
+    (exists F, F * a |-> v')%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
+    v = v'.
+  Proof.
+    intros.
+    destruct H0.
+    eapply list2nmem_sel with (def := $0) in H0 as Hx.
+    rewrite Hx.
+    erewrite replay_disk_selN_MapsTo; eauto.
+    apply Map.find_2; auto.
+    apply list2nmem_ptsto_bound in H0.
+    repeat rewrite replay_disk_length in *; auto.
+  Qed.
+
+  Lemma replay_disk_eq_none : forall a v v' ms1 ms2 d,
+    Map.find a ms1 = None ->
+    Map.find a ms2 = Some v ->
+    (exists F, F * a |-> v')%pred
+      (list2nmem (replay_disk (Map.elements ms1) (replay_disk (Map.elements ms2) d))) ->
+    v = v'.
+  Proof.
+    intros.
+    destruct H1.
+    eapply list2nmem_sel with (def := $0) in H1 as Hx.
+    rewrite Hx.
+    rewrite replay_disk_selN_not_In.
+    erewrite replay_disk_selN_MapsTo; eauto.
+    apply Map.find_2; auto.
+    apply list2nmem_ptsto_bound in H1.
+    repeat rewrite replay_disk_length in *; auto.
+    apply MapFacts.not_find_in_iff; auto.
+  Qed.
+
+  Lemma replay_disk_double_none_selN : forall a v ms1 ms2 d def,
+    Map.find a ms1 = None ->
+    Map.find a ms2 = None ->
+    (exists F, F * a |-> v)%pred
+      (list2nmem (replay_disk (Map.elements ms1) (replay_disk (Map.elements ms2) d))) ->
+    selN d a def = v.
+  Proof.
+    intros.
+    destruct H1.
+    eapply list2nmem_sel in H1 as Hx.
+    rewrite Hx.
+    repeat rewrite replay_disk_selN_not_In; eauto;
+    apply MapFacts.not_find_in_iff; auto.
+  Qed.
+
+  Theorem read_ok: forall xp ms a,
+    {< m1 m2 v F,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: exists F, (F * a |-> v) ]]]
+    POST RET:^(ms', r)
+      rep xp F (ActiveTxn m1 m2) ms' * [[ r = v ]]
+    CRASH
+      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+    >} read xp a ms.
+  Proof.
+    unfold read.
+    prestep.
+
     cancel.
-    instantiate (1 := log); auto.
-    auto.
+    safestep; auto.
+    eapply replay_disk_eq; eauto.
+    pimpl_crash; cancel.
+
+    cancel.
+    safestep; auto; subst.
+    eapply replay_disk_eq_none; eauto.
+    pimpl_crash; cancel.
+
+    unfold DLog.rep, DLog.rep_common, PaddedLog.rep, synced_data, synced_list.
+    cancel.
+
+    unfold pred_apply in H4.
+    destruct H4.
+    apply list2nmem_ptsto_bound in H0.
+    subst.
+    autorewrite with lists in H0; auto.
+    autorewrite with lists; auto.
+
+    prestep.
+    cancel.
+    subst.
+    unfold pred_apply in *.
+    rewrite selN_combine by (autorewrite with lists; auto); simpl.
+    eapply replay_disk_double_none_selN; [ apply Heqo | apply Heqo0 | auto].
+
+    pimpl_crash.
+    norm.
+    cancel.
+    instantiate ( 2 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel.
+    intuition; subst; simpl; eauto.
+    pred_apply.
+    cancel.
   Qed.
 
 
