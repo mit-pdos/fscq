@@ -2423,5 +2423,9 @@ Module DLog.
     or_r; or_r; or_r; cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
+
 End DLog.
 

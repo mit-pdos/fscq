@@ -171,7 +171,7 @@ Module LOG.
       If (bool_dec ok true) {
         rx ^(mk_memstate (map_merge oms cms) map0 cs, true)
       } else {
-        ms <- abort xp ms;
+        ms <- abort xp (mk_memstate oms cms cs);
         rx ^(ms, false)
       }
     }.
@@ -494,22 +494,16 @@ Module LOG.
     eapply replay_disk_eq_none; eauto.
     pimpl_crash; cancel.
 
-    unfold DLog.rep, DLog.rep_common, PaddedLog.rep, synced_data, synced_list.
+    unfold DLog.rep, DLog.rep_common, PaddedLog.rep, synced_data, synced_list, pred_apply.
     cancel.
-
-    unfold pred_apply in H4.
-    destruct H4.
-    apply list2nmem_ptsto_bound in H0.
-    subst.
-    autorewrite with lists in H0; auto.
-    autorewrite with lists; auto.
+    autorewrite with lists; subst.
+    apply list2nmem_ptsto_bound in H4.
+    autorewrite with lists in H4; auto.
 
     prestep.
-    cancel.
-    subst.
-    unfold pred_apply in *.
+    cancel; subst.
     rewrite selN_combine by (autorewrite with lists; auto); simpl.
-    eapply replay_disk_double_none_selN; [ apply Heqo | apply Heqo0 | auto].
+    eapply replay_disk_double_none_selN; [ apply Heqo | apply Heqo0 | pred_apply; cancel].
 
     pimpl_crash.
     norm.
@@ -521,6 +515,81 @@ Module LOG.
     cancel.
   Qed.
 
+  Definition would_recover_either xp F old new :=
+    (exists ms,
+     rep xp F (ActiveTxn old new) ms \/
+     rep xp F (NoTxn old) ms \/
+     rep xp F (NoTxn new) ms \/
+     rep xp F (FlushingTxn old new) ms)%pred.
+
+  Local Hint Unfold would_recover_either : hoare_unfold.
+
+  Lemma replay_disk_is_empty : forall d ms,
+    Map.is_empty ms = true -> replay_disk (Map.elements ms) d = d.
+  Proof.
+    intros.
+    apply Map.is_empty_2 in H.
+    apply MapProperties.elements_Empty in H.
+    rewrite H.
+    simpl; auto.
+  Qed.
+
+  Lemma is_empty_eq_map0 : forall m,
+    Map.is_empty m = true -> Map.Equal m map0.
+  Proof.
+    unfold map0; intros.
+    apply Map.is_empty_2 in H.
+    hnf; intros.
+    rewrite MapFacts.empty_o.
+    apply MapFacts.not_find_in_iff.
+    cbv in *; intros.
+    destruct H0; eapply H; eauto.
+  Qed.
+
+  Theorem commit_ok: forall xp ms,
+    {< m1 m2 F,
+     PRE            rep xp F (ActiveTxn m1 m2) ms
+     POST RET:^(ms',r)
+                    ([[ r = true ]] * rep xp F (NoTxn m2) ms') \/
+                    ([[ r = false ]] * rep xp F (NoTxn m1) ms')
+     CRASH          would_recover_either xp F m1 m2
+    >} commit xp ms.
+  Proof.
+    unfold commit.
+    step using dems.
+    step using dems.
+    or_l.
+    cancel.
+    apply replay_disk_is_empty; auto.
+    apply is_empty_eq_map0; auto.
+    
+    hoare using dems.
+    or_l.
+    cancel.
+    admit. admit.
+
+    (* crashes *)
+    cancel.
+    or_l; norm.
+    instantiate (ms0 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel. intuition.
+
+    or_r; or_r; or_r.
+    norm. or_l.
+    instantiate (ms1 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel. intuition.
+
+    or_r; or_r; or_r.
+    norm. or_r.
+    instantiate (ms2 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel. intuition.
+
+    or_r; or_r; or_l; norm.
+    instantiate (ms3 := mk_memstate (map_merge (MSOld ms) (MSCur ms)) map0 cs').
+    cancel. simpl; intuition.
+    admit.
+    admit.
+  Qed.
 
 End LOG.
 
