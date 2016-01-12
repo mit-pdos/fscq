@@ -19,12 +19,12 @@ Set Implicit Arguments.
 
 Ltac inv_exec :=
   match goal with
-  | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
   end.
 
 Ltac inv_step :=
   match goal with
-  | [ H: step _ _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: step _ _ _ _ _ _|- _ ] => inversion H; clear H; subst
   end.
 
 Theorem read_ok:
@@ -35,7 +35,7 @@ Theorem read_ok:
   CRASH      a |-> v
   >} Read a.
 Proof.
-  unfold corr2; intros.
+  unfold corr2'; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
@@ -48,7 +48,9 @@ Proof.
     econstructor.
     eapply ptsto_valid.
     pred_apply; cancel.
-  - right. eexists; intuition eauto.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
+    pred_apply; cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
@@ -61,21 +63,23 @@ Theorem write_ok:
   CRASH      a |-> v0
   >} Write a v.
 Proof.
-  unfold corr2; intros.
+  unfold corr2'; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
     eapply H4; eauto.
     eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
     apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H10; inversion H10; subst; unfold vsmerge; simpl.
+    rewrite H in H12; inversion H12; subst; unfold vsmerge; simpl.
     cancel.
   - exfalso.
     apply H1. repeat eexists.
     econstructor.
     eapply ptsto_valid.
     pred_apply; cancel.
-  - right. eexists; intuition eauto.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
+    pred_apply; cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
@@ -88,21 +92,23 @@ Theorem sync_ok:
   CRASH      a |-> v
   >} Sync a.
 Proof.
-  unfold corr2; intros.
+  unfold corr2'; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
     eapply H4; eauto.
     eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
     apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H9; inversion H9; subst.
+    rewrite H in H11; inversion H11; subst.
     cancel.
   - exfalso.
     apply H1. repeat eexists.
     econstructor.
     eapply ptsto_valid.
     pred_apply; cancel.
-  - right. eexists; intuition eauto.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
+    pred_apply; cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Sync _) _) => apply sync_ok : prog.
@@ -115,7 +121,7 @@ Theorem trim_ok:
   CRASH      a |->?
   >} Trim a.
 Proof.
-  unfold corr2; intros.
+  unfold corr2'; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
@@ -128,8 +134,9 @@ Proof.
     econstructor.
     eapply ptsto_valid.
     pred_apply; cancel.
-  - right. eexists; intuition eauto.
-    pred_apply. cancel.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
+    pred_apply; cancel.
 
   Grab Existential Variables.
   eauto.
@@ -137,18 +144,23 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Trim _) _) => apply trim_ok : prog.
 
+(* TODO: Once Hoare.v is modified to require that the starting
+  hashmap is a subset of the crash hashmap, the proof that the
+  crash hashmap is also equal to the starting hashmap might
+  need to be fixed. *)
 Theorem hash_ok:
-  forall sz (buf : word sz) hm,
-  {< (_: unit),
-  PRE         emp
-  POST RET:^(h, hm')  emp *
+  forall sz (buf : word sz),
+  {{< (_: unit),
+  PRE:hm    emp
+  POST:hm'
+    RET:h   emp *
               [[ hash_safe hm h buf ]] *
               [[ h = hash_fwd buf ]] *
               [[ hm' = upd_hashmap' hm h buf ]]
-  CRASH       emp
-  >} Hash buf hm.
+  CRASH:hm' emp * [[ hm' = hm ]]
+  >}} Hash buf.
 Proof.
-  unfold corr2; intros.
+  unfold corr2'; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
@@ -160,8 +172,9 @@ Proof.
     cancel.
   - exfalso.
     apply H5. repeat eexists.
-  - right. eexists; intuition eauto.
-    pred_apply. cancel.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
+    pred_apply; cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Hash _ _) _) => apply hash_ok : prog.
@@ -176,7 +189,7 @@ Theorem if_ok:
    * [[ {{ fun done' crash' => pre * [[Q]] * [[ done' = done ]] * [[ crash' = crash ]] }} p2 ]]
   }} If_ b p1 p2.
 Proof.
-  unfold corr2, exis; intros; repeat deex.
+  unfold corr2, corr2', exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   destruct b.
   - eapply H2; eauto.
@@ -651,7 +664,7 @@ Proof.
       eapply pimpl_ok2.
       apply IHlst.
       cancel.
-      instantiate (lst' := lst).
+      instantiate (3 := lst).
       instantiate (g := a1).
       cancel.
       eapply pimpl_ok2.
