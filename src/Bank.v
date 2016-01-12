@@ -14,7 +14,8 @@ Section Bank.
   Definition acct2 : addr := $1.
 
   Definition rep rest1 rest2 bal1 bal2 : DISK_PRED :=
-    acct1 |-> (Valuset bal1 rest1) * acct2 |-> (Valuset bal2 rest2).
+    acct1 |-> (Valuset bal1 rest1, None) *
+    acct2 |-> (Valuset bal2 rest2, None).
 
   (** The bank transition system, bankS. *)
   Inductive ledger_entry : Set :=
@@ -61,14 +62,10 @@ Section Bank.
           d |= F * rep rest1 rest2 bal1 bal2 /\
           bankI s #bal1 #bal2.
 
-  Definition bankLockR : ID -> Relation Scontents := fun _ _ _ => True.
-
-  Definition bankLockI : Invariant Mcontents Scontents := fun _ _ _ => True.
-
   Definition bankS : transitions Mcontents Scontents :=
-    Build_transitions bankR bankLockR bankPred bankLockI.
+    Build_transitions bankR bankPred.
 
-  Local Hint Unfold rep bankR bankLockR bankI bankLockI : prog.
+  Local Hint Unfold rep bankR bankI : prog.
 
   Definition transfer {T S} amount rx : prog Mcontents S T :=
     bal1 <- Read acct1;
@@ -126,7 +123,7 @@ Section Bank.
     intros.
     assert (@wordToNat valulen ($ amount) = amount).
     rewrite wordToNat_natToWord_idempotent'; auto.
-    apply goodSize_bound with 100; simpl; omega.
+    apply goodSize_bound with 100; compute; omega.
     rewrite wminus_minus.
     omega.
     apply le_wle; omega.
@@ -140,10 +137,14 @@ Section Bank.
     intros.
     assert (@wordToNat valulen ($ amount) = amount).
     rewrite wordToNat_natToWord_idempotent'; auto.
-    apply goodSize_bound with 100; simpl; omega.
+    apply goodSize_bound with 100; compute; omega.
     rewrite wplus_plus.
     omega.
-    apply goodSize_bound with 100; simpl; omega.
+    apply goodSize_bound with 100.
+    rewrite H1.
+    replace (# ($ 100)) with 100.
+    omega.
+    compute; omega.
   Qed.
 
   Lemma inv_transfer_stable : forall (bal1 bal2 : valu) amount,
@@ -206,6 +207,8 @@ Section Bank.
       }} transfer amount.
   Proof.
     hoare.
+    repeat (eexists; intros; eauto; hoare;
+      try (pred_apply; cancel)).
   Qed.
 
   Hint Extern 1 {{ transfer _; _ }} => apply transfer_ok : prog.
@@ -231,8 +234,8 @@ Section Bank.
       #bal1 + #bal2 = 100 ->
       #bal1 >= amount ->
       balances (get Ledger s) = (#bal1, #bal2) ->
-      (acct2 |-> (Valuset (bal2 ^+ $ amount) rest2) *
-       acct1 |-> (Valuset (bal1 ^- $ amount) rest1) * F) =p=>
+      (acct2 |-> (Valuset (bal2 ^+ $ amount) rest2, None) *
+       acct1 |-> (Valuset (bal1 ^- $ amount) rest1, None) * F) =p=>
   bankPred m (set Ledger (get Ledger s ++ [from1 amount]) s).
   Proof.
     unfold bankPred, pimpl, pred_in; intros.
@@ -268,8 +271,11 @@ Section Bank.
     }} transfer_yield amount.
   Proof.
     hoare pre (step_simplifier; simpl_get_set).
+    eexists; intuition.
     pred_apply; cancel; eauto.
 
+    hoare pre (step_simplifier; simpl_get_set).
+    pred_apply; cancel; eauto.
     match goal with
     | [ H: star _ _ _ |- _ ] => apply star_bankR in H; auto
     end.
