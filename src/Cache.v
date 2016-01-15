@@ -384,7 +384,7 @@ Module BUFCACHE.
     congruence.
     omega.
     intros.
-    contradict H0; apply Map.empty_1.
+    contradict H1; apply Map.empty_1.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init_load _) _) => apply init_load_ok : prog.

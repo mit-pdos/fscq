@@ -149,16 +149,16 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
    exists idemcrash,
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
    corr3
-   (fun done_ crashdone_ =>
+   (fun hm done_ crashdone_ =>
      exists F_,
      F_ * pre *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => post F_ r_ *
+        {{ fun hm done'_ crash'_ => post F_ r_ *
                                  [[ done'_ = done_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ fun done'_ crash'_ => crash F_ r_ *
+        {{ fun hm done'_ crash'_ => crash F_ r_ *
                                  [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
