@@ -153,6 +153,25 @@ Section ReadTheorems.
 
   Hint Resolve ptsto_valid ptsto_valid'.
 
+  Lemma clean_readers_upd : forall m a v0 reader reader',
+      m a = Some (v0, reader) ->
+      clean_readers (upd m a (v0, reader')) = clean_readers m.
+  Proof.
+    intros.
+    unfold clean_readers, upd; extensionality a'.
+    destruct matches.
+  Qed.
+
+  Lemma clean_readers_upd' : forall m a v0 reader reader',
+      m a = Some (v0, reader) ->
+      clean_readers m = clean_readers (upd m a (v0, reader')).
+  Proof.
+    intros.
+    erewrite clean_readers_upd; eauto.
+  Qed.
+
+  Hint Resolve clean_readers_upd.
+
   Theorem Read_ok : forall Mcontents Scontents Inv R a,
       (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
       {{ F vs0,
@@ -179,13 +198,9 @@ Section ReadTheorems.
     eexists.
     pred_apply; cancel.
 
-    eapply H2.
-    unfold clean_readers; extensionality a'.
     eapply diskIs_combine_upd in H1.
     unfold diskIs in H1; subst.
-    unfold upd.
-    apply ptsto_valid' in H0.
-    destruct matches.
+    eauto.
   Qed.
 
 

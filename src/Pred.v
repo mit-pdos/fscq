@@ -1285,6 +1285,14 @@ Proof.
   destruct (AEQ x a); auto.
 Qed.
 
+Theorem mem_except_upd : forall m a v,
+  mem_except (upd m a v) a = mem_except m a.
+Proof.
+  unfold mem_except, upd; intros.
+  extensionality a'.
+  destruct (AEQ a' a); auto.
+Qed.
+
 Lemma mem_except_union_comm: forall m1 m2 a1 a2 v1,
   a1 <> a2
   -> (a1 |-> v1)%pred m1

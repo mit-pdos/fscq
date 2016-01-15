@@ -354,6 +354,12 @@ Ltac learn_invariants :=
            || (time "sectors_unchanged" sectors_unchanged)
            || (time "local_state_transitions" local_state_transitions).
 
+Ltac cache_pred_same_disk :=
+  match goal with
+  | [ H: cache_pred ?c ?vd ?d, H': cache_pred ?c ?vd ?d' |- _ ] =>
+    learn that (cache_pred_same_disk H H')
+  end.
+
 Ltac disk_equalities :=
   repeat
     lazymatch goal with
@@ -457,6 +463,7 @@ Ltac simplify_step :=
     (time "simplify_reduce" simplify_reduce_step)
     || (time "derive_local_relations" derive_local_relations)
     || (time "learn_invariants" learn_invariants)
+    || (time "cache_pred_same_disk" cache_pred_same_disk)
     || (time "learn_some_addr" learn_some_addr)
     || (time "learn_sector_equality" learn_sector_equality)
     || (time "cache_vd_val" cache_vd_val).
@@ -636,6 +643,66 @@ Qed.
 
 Hint Resolve applied_def.
 
+Hint Rewrite upd_eq using (now auto) : upd.
+Hint Rewrite upd_ne using (now auto) : upd.
+
+Lemma cache_pred_vd_upd : forall c vd a v' d d',
+  cache_get c a = None ->
+  cache_pred c (upd vd a v') d' ->
+  cache_pred c vd d ->
+  d' = upd d a v'.
+Proof.
+  intros.
+  extensionality a'.
+  distinguish_addresses;
+    unfold cache_pred in *; intuition;
+    repeat match goal with
+    | [ a: addr, H: forall (_:addr), _ |- _ ] =>
+      learn that (H a)
+    end;
+    repeat simpl_match;
+    autorewrite with upd in *.
+ auto.
+
+ case_cache_val;
+  repeat simpl_match;
+  repeat deex;
+  autorewrite with upd in *;
+  auto.
+Qed.
+
+Hint Rewrite upd_repeat : upd.
+Hint Rewrite upd_same using (now auto) : upd.
+Hint Rewrite mem_except_upd : upd.
+Hint Resolve upd_same.
+
+Lemma diskIs_split_upd : forall AT AEQ V a v (m: @mem AT AEQ V),
+  diskIs (upd m a v) =p=>
+  diskIs (mem_except m a) * a |-> v.
+Proof.
+  unfold diskIs, pimpl, mem_except, mem_union, mem_disjoint.
+  unfold_sep_star.
+  intros.
+  do 2 eexists; intuition.
+  instantiate (m2 := fun a' => if AEQ a' a then Some v else None).
+  unfold mem_union; subst.
+  extensionality a'.
+  case_eq (AEQ a' a); intros; subst.
+  rewrite upd_eq by auto; auto.
+  rewrite upd_ne by auto.
+  case_eq (m a'); intros; auto.
+
+  unfold mem_disjoint; intro; repeat deex.
+  case_eq (AEQ a0 a); intros; subst;
+  rewrite H in *; congruence.
+  unfold ptsto; intuition.
+  case_eq (AEQ a a); intros; congruence.
+  case_eq (AEQ a' a); intros; congruence.
+Qed.
+
+Hint Resolve clean_readers_upd.
+Hint Resolve clean_readers_upd'.
+
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ F v rest,
@@ -648,12 +715,16 @@ Theorem locked_AsyncRead_ok : forall a,
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
                           Inv m' s' d' /\
                           vd' = virt_disk s /\
+                          (* not quite true, since first need a step
+                            to add the reader and need a step at the
+                            end to remove it, which cannot be
+                            performed under othersR R *)
                           star (othersR R tid) s s' /\
                           get Cache m' = get Cache m /\
                           get GCacheL s' = Owned tid /\
                           r = v /\
-                          s0' = s'
-   | CRASH d'c : d'c = d
+                          star (R tid) s0' s'
+   | CRASH d'c : clean_readers d'c = clean_readers d
   }} locked_AsyncRead a.
 Proof.
   intros.
@@ -662,14 +733,12 @@ Proof.
   time "step" step pre (time "simplify" simplify) with finish.
   time "step" step pre (time "simplify" simplify) with finish.
 
-  (* This cache_pred stability proof might be easier if we use
-  StartRead_upd so d0 is expressed in terms of d directly. *)
-  admit.
+  eapply cache_pred_miss_stable;
+    autorewrite with upd; eauto.
 
   (* upd preserves sectors *)
   case_eq (weq a a0); intros; subst;
-  try rewrite upd_eq by auto;
-  try rewrite upd_ne by auto;
+  autorewrite with upd;
   eauto.
 
   time "step" step pre (time "simplify" simplify) with finish.
@@ -680,35 +749,104 @@ Proof.
   end.
   simplify; simpl_get_set in *.
   standardize_mem_fields.
-  (* Need to prove that d1 = upd d a ... based on cache_pred with same
-  cache and a virtual disk that differs only by an upd. *)
-  admit.
+
+  rewrite H28 in H21.
+  eapply cache_pred_vd_upd in H1; eauto.
+  subst.
+  apply diskIs_split_upd; unfold diskIs; auto.
+
+  (* copied proof that produces d1 = upd d ... *)
+  match goal with
+  | [ H: star (othersR cacheR tid) ?s _ |- _ ] =>
+    assert (get GCacheL s = Owned tid) by simpl_get_set
+  end.
+  simplify; simpl_get_set in *.
+  standardize_mem_fields.
+  rewrite H28 in H21.
+  learn H1 (eapply cache_pred_vd_upd in H1; eauto).
+  subst.
 
   time "step" step pre (time "simplify" simplify) with finish.
 
   step pre simplify with idtac.
-  (* BUG: finish gives "Conversion test raised an anomaly *)
-  admit.
+  (* BUG: finish gives "Conversion test raised an anomaly" *)
+  rewrite H28.
+  autorewrite with upd.
+  solve_global_transitions; eauto;
+  try solve_modified;
+  try congruence.
+  assert (d1 = upd d a (Valuset v rest, None)).
+  eapply diskIs_combine_upd in H1; eauto.
+  subst.
 
-  finish.
-  admit.
-  finish.
-  (* relies on the above proof that GDisk hasn't changed (so only the
-  Yield matters) *)
-  admit.
-
-  repeat match goal with
+  all: repeat match goal with
          | [ H: cache_get ?c ?a = None, H': ?c' = ?c |- _ ] =>
            learn H (rewrite <- H' in H)
          | [ H: cache_get ?c ?a = None, H': ?c = ?c' |- _ ] =>
            learn H (rewrite -> H' in H)
          end.
-  repeat match goal with
+  all: repeat match goal with
        | [ H: cache_get ?c _ = None, H': cache_pred ?c _ _ |- _ ] =>
          learn that (cache_miss_mem_eq _ H' H)
        end.
-  congruence.
-Qed.
+  assert (d a = Some (Valuset v rest, None)) by auto.
+  autorewrite with upd.
+  eauto.
+
+  rewrite H28.
+  autorewrite with upd; now auto.
+  rewrite H28.
+  autorewrite with upd.
+  (* relation between s and s'; theorem statement is currently
+  broken *)
+  admit.
+
+  rewrite H28.
+  autorewrite with upd.
+  eapply star_one_step.
+  finish.
+  case_eq (weq a0 a); intros; subst; eauto.
+  eexists; eauto.
+  eapply equal_f in H28.
+  rewrite H47 in H28.
+  autorewrite with upd in H28.
+  eauto.
+
+  match goal with
+  | [ crash: crashcond, H: context[crash] |- crash _ ] =>
+    eapply H
+  end.
+  match goal with
+  | [ H: _ d1 |- _ ] =>
+    apply diskIs_combine_same in H
+  end.
+  unfold diskIs in *; subst; auto.
+  eexists.
+  eauto using ptsto_valid_iff.
+
+  match goal with
+  | [ crash: crashcond, H: context[crash] |- crash _ ] =>
+    eapply H
+  end.
+  match goal with
+  | [ H: star (othersR R ?tid) ?s s2 |- _ ] =>
+    assert (get GCacheL s = Owned tid) by eauto
+  end.
+  learn_invariants; split_ands.
+  simpl_get_set in *.
+  standardize_mem_fields.
+  complete_mem_equalities.
+  rewrite H34 in H21.
+  eapply cache_pred_vd_upd in H1; eauto.
+  subst; eauto.
+
+  match goal with
+  | [ crash: crashcond, H: context[crash] |- crash _ ] =>
+    eapply H
+  end.
+  eapply cache_pred_upd_combine in H12; eauto.
+  simplify; eauto.
+Abort.
 
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
 

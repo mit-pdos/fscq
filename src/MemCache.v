@@ -667,12 +667,36 @@ Proof.
     | [ |- exists _, _ ] => eexists
            end; intuition eauto; try congruence.
 
+  (* congruence doesn't work here for some reason *)
+
   match goal with
   | [ |- @eq (option ?t) ?a ?b ] =>
     replace a with (@None t) by congruence;
       replace b with (@None t) by congruence;
-      auto
+      reflexivity
   end.
+Qed.
+
+Lemma cache_pred_upd_combine : forall c d vd a vs0 vs',
+    cache_get c a = None ->
+    vd a = Some vs' ->
+    (cache_pred c (mem_except vd a) * a |-> vs0)%pred d ->
+    cache_pred c vd (upd d a vs').
+Proof.
+  unfold mem_except, ptsto; intros; unfold_sep_star in H1.
+  repeat deex.
+  prove_cache_pred; distinguish_addresses; replace_cache_vals;
+    rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
+
+  case_cache_val;
+    destruct matches;
+    repeat deex;
+    repeat eexists;
+    eauto;
+    try congruence.
+
+  intuition idtac.
+  congruence.
 Qed.
 
 End CachePredStability.
