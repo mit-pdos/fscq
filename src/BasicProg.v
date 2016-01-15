@@ -177,7 +177,7 @@ Proof.
     pred_apply; cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Hash _ _) _) => apply hash_ok : prog.
+Hint Extern 1 ({{_}} progseq (Hash _) _) => apply hash_ok : prog.
 
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
