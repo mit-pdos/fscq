@@ -60,17 +60,20 @@ Qed.
 
 Theorem compare_hash_ok :
   forall sz (buf1 buf2 : word sz),
-  {< (_ : unit),
-  PRE         emp
-  POST RET:r  emp * [[ r = true -> buf1 = buf2 ]] * [[ r = false -> buf1 <> buf2 ]]
-  CRASH       emp
-  >} compare_hash buf1 buf2.
+  {{< (_ : unit),
+  PRE:hm          emp
+  POST:hm' RET:r  emp * [[ r = true -> buf1 = buf2 ]] * [[ r = false -> buf1 <> buf2 ]]
+  CRASH:hm'       emp
+  >}} compare_hash buf1 buf2.
 Proof.
   unfold compare_hash.
   hoare.
 
-  rewrite <- H5 in H9.
+  rewrite <- H8 in H11.
   eapply hash_safe_eq; eauto.
+
+  subst. eexists. repeat (econstructor; auto).
+  subst. eexists. repeat (econstructor; auto).
 
   Grab Existential Variables.
   all: eauto.

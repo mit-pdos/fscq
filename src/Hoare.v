@@ -5,6 +5,7 @@ Require Import List.
 Require Import Morphisms.
 Require Import Word.
 Require Import AsyncDisk.
+Require Import Hashmap.
 
 Set Implicit Arguments.
 
@@ -50,8 +51,7 @@ Notation "'RET' : ^( ra , .. , rb ) post" :=
 (**
   * Underlying CHL that allows pre, post, and crash conditions to state
   * propositions about the hashmap machine state.
-  * TODO: Add crash-condition that the starting hashmap is a subset of
-  * any hashmap after a crash.
+  * The pre-hashmap must be a subset of both the post- and crash-hashmaps.
   *)
 Notation "{{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash crash >}} p1" :=
   (forall T (rx: _ -> prog T), corr2
@@ -61,10 +61,11 @@ Notation "{{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cra
      F_ * pre *
      [[ forall r_ ,
         {{ fun hm' done'_ crash'_ =>
-           post F_ r_ *
+           post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
-     [[ forall (hm_crash : hashmap), (F_ * crash)%pred =p=> crash_ ]]
+     [[ forall (hm_crash : hashmap),
+        (F_ * crash * [[ exists l, hashmap_subset l hm hm_crash ]])%pred =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -73,8 +74,11 @@ Notation "{{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cra
     e1 closed binder, e2 closed binder).
 
 (**
-  * Same as {{< ... >}}, except that the frame F_ can also include
-  * propositions about the hashmap machine state.
+  * Same as {{< ... >}}, except that the specified pre, post, and
+  * crash conditions cannot state additional propositions about the
+  * hashmap machine state. This can be used for programs that don't
+  * contain a Hash step, as well as programs that don't need to
+  * reason about the contents of the hashmap.
   * TODO: How to reuse the above notation? I want to carry over
   * the e1 .. e2 as the e1 .. e2 of {{< ... >}}, but not sure how.
   *)
@@ -86,10 +90,11 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
      F_ * pre *
      [[ forall r_ ,
         {{ fun hm' done'_ crash'_ =>
-           post F_ r_ *
+           post F_ r_ * [[ hm = hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
-     [[ forall (hm_crash : hashmap), (F_ * crash * [[ hm_crash = hm ]])%pred =p=> crash_ ]]
+     [[ forall (hm_crash : hashmap),
+        (F_ * crash * [[ hm = hm_crash ]]) =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -108,10 +113,10 @@ Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
      pre *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ =>
-           post emp r_ *
+           post [[ hm' = hm ]] r_ *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
-     [[ forall (hm_crash : hashmap), crash =p=> crash_ ]]
+     [[ forall (hm_crash : hashmap), crash * [[ hm_crash = hm ]] =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
