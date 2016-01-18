@@ -76,8 +76,9 @@ Notation "{{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cra
 (**
   * Same as {{< ... >}}, except that the specified pre, post, and
   * crash conditions cannot state additional propositions about the
-  * hashmap machine state. This can be used for programs that don't
-  * contain a Hash step, as well as programs that don't need to
+  * hashmap machine state. This can be used for any programs that
+  * don't need to reason about the contents of the hashmap, including
+  * programs that don't contain a Hash step
   * reason about the contents of the hashmap.
   * TODO: How to reuse the above notation? I want to carry over
   * the e1 .. e2 as the e1 .. e2 of {{< ... >}}, but not sure how.
@@ -90,11 +91,11 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
      F_ * pre *
      [[ forall r_ ,
         {{ fun hm' done'_ crash'_ =>
-           post F_ r_ * [[ hm = hm' ]] *
+           post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
      [[ forall (hm_crash : hashmap),
-        (F_ * crash * [[ hm = hm_crash ]]) =p=> crash_ ]]
+        (F_ * crash * [[ exists l, hashmap_subset l hm hm_crash ]]) =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -113,10 +114,11 @@ Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
      pre *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ =>
-           post [[ hm' = hm ]] r_ *
+           post emp r_ * [[ exists l, hashmap_subset l hm hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
-     [[ forall (hm_crash : hashmap), crash * [[ hm_crash = hm ]] =p=> crash_ ]]
+     [[ forall (hm_crash : hashmap),
+        crash * [[ exists l, hashmap_subset l hm hm_crash ]] =p=> crash_ ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -149,6 +151,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 
+(* TODO: Like above notations, state that pre-hashmap is a subset of post-hashmap. *)
 Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    exists idemcrash,
@@ -176,7 +179,7 @@ Inductive corr3_result {A B : Type} :=
   | Complete : A -> corr3_result
   | Recover : B -> corr3_result.
 
-(* TODO *)
+(* TODO: Like above notations, allow propositions about hashmap. *)
 Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    exists idemcrash,

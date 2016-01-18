@@ -51,6 +51,11 @@ Ltac contradict_hashmap_get_default H hm :=
   intro Hx; try existT_wordsz_neq Hx;
   intuition.
 
+Ltac solve_hashmap_subset :=
+  match goal with
+  | [ |- exists _, hashmap_subset _ _ _ ] => subst; eexists; repeat (econstructor; auto)
+  end.
+
 Theorem hashmap_get_default : forall hm,
   hashmap_get hm default_hash = Some (existT _ _ default_valu).
 Proof.

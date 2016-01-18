@@ -5,8 +5,10 @@ Require Import Word.
 Require Import Hoare.
 Require Import Pred.
 Require Import EqdepFacts.
+Require Import Hashmap.
 
 Set Implicit Arguments.
+
 
 Definition compare T sz (buf1 buf2 : word sz) rx : prog T :=
   If (weq buf1 buf2) {
@@ -14,7 +16,6 @@ Definition compare T sz (buf1 buf2 : word sz) rx : prog T :=
   } else {
     rx false
   }.
-
 
 Theorem compare_ok :
   forall sz (buf1 buf2 : word sz),
@@ -24,7 +25,8 @@ Theorem compare_ok :
   CRASH       emp
   >} compare buf1 buf2.
 Proof.
-  unfold compare. step. step. step.
+  unfold compare.
+  hoare.
 Qed.
 
 Definition compare_hash T sz (buf1 buf2 : word sz) rx : prog T :=
@@ -60,20 +62,17 @@ Qed.
 
 Theorem compare_hash_ok :
   forall sz (buf1 buf2 : word sz),
-  {{< (_ : unit),
-  PRE:hm          emp
-  POST:hm' RET:r  emp * [[ r = true -> buf1 = buf2 ]] * [[ r = false -> buf1 <> buf2 ]]
-  CRASH:hm'       emp
-  >}} compare_hash buf1 buf2.
+  {< (_ : unit),
+  PRE          emp
+  POST RET:r  emp * [[ r = true -> buf1 = buf2 ]] * [[ r = false -> buf1 <> buf2 ]]
+  CRASH       emp
+  >} compare_hash buf1 buf2.
 Proof.
   unfold compare_hash.
   hoare.
 
   rewrite <- H8 in H11.
   eapply hash_safe_eq; eauto.
-
-  subst. eexists. repeat (econstructor; auto).
-  subst. eexists. repeat (econstructor; auto).
 
   Grab Existential Variables.
   all: eauto.

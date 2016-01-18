@@ -5,6 +5,7 @@ Require Import Prog.
 Require Import Pred.
 Require Import Hoare.
 Require Import Word.
+Require Import Hashmap.
 
 Set Implicit Arguments.
 
@@ -791,6 +792,7 @@ Ltac cancel_with t :=
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end;
+  try solve_hashmap_subset;
   try t.
 
 Ltac cancel := cancel_with idtac.

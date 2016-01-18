@@ -11,6 +11,7 @@ Require Import FunctionalExtensionality.
 Require Import List.
 Require Import AsyncDisk.
 Require Import EqdepFacts.
+Require Import Hashmap.
 
 Set Implicit Arguments.
 
@@ -170,13 +171,11 @@ Proof.
       pose proof (eq_sigT_snd H5).
       autorewrite with core in *. congruence.
     cancel.
-    eexists. econstructor. econstructor. eauto.
   - exfalso.
     apply H5. repeat eexists.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
-    eexists. econstructor.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Hash _) _) => apply hash_ok : prog.
