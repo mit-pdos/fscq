@@ -4,6 +4,7 @@ Require Import EqdepFacts.
 Require Import Arith.
 Require Import AsyncDisk.
 Require Import ListUtils.
+Require Import List.
 
 Set Implicit Arguments.
 
@@ -50,11 +51,6 @@ Ltac contradict_hashmap_get_default H hm :=
   destruct (weq (hash_fwd default_valu) (hash_fwd default_valu));
   intro Hx; try existT_wordsz_neq Hx;
   intuition.
-
-Ltac solve_hashmap_subset :=
-  match goal with
-  | [ |- exists _, hashmap_subset _ _ _ ] => subst; eexists; repeat (econstructor; auto)
-  end.
 
 Theorem hashmap_get_default : forall hm,
   hashmap_get hm default_hash = Some (existT _ _ default_valu).
@@ -120,3 +116,59 @@ Proof.
   destruct H0 as [ H0' | H0' ]; inversion H0'.
   pose proof (eq_sigT_snd H1). autorewrite with core in *. auto.
 Qed.
+
+Lemma hashmap_subset_safe : forall hm2 l h k hm1,
+  hashmap_subset l hm1 hm2 ->
+  In (h, k) l ->
+  hashmap_get hm2 h = Some k.
+Proof.
+  induction hm2; intros.
+  inversion H. subst.
+  inversion H0.
+
+  inversion H; subst.
+  inversion H0.
+
+  destruct H0; subst.
+  - inversion H0.
+    destruct (weq h default_hash); subst.
+    unfold hash_safe in *.
+    intuition.
+    contradict_hashmap_get_default H1 hm2.
+    rewrite hashmap_get_default in *; auto.
+
+    rewrite upd_hashmap_eq; auto.
+  - eapply IHhm2 in H5; eauto.
+    destruct (weq h default_hash); subst.
+    rewrite hashmap_get_default in *; auto.
+    unfold hashmap_get. destruct (weq h default_hash); intuition.
+    destruct (weq w h); subst.
+    unfold hash_safe in *. intuition;
+    rewrite H1 in H5; inversion H5; auto.
+
+    unfold hashmap_get in H5; auto.
+Qed.
+
+
+Theorem hashmap_subset_trans : forall hm3 l1 l2 hm1 hm2,
+  hashmap_subset l1 hm1 hm2 ->
+  hashmap_subset l2 hm2 hm3 ->
+  hashmap_subset (l2 ++ l1) hm1 hm3.
+Proof.
+  induction hm3; intros;
+  inversion H0; subst; auto.
+
+  rewrite <- app_comm_cons.
+  constructor; eauto.
+Qed.
+
+
+Ltac solve_hashmap_subset :=
+  try match goal with
+  | [ |- exists _, hashmap_subset _ _ _ ]
+    => eexists; solve_hashmap_subset
+  | [ H: hashmap_subset _ ?hm _ |- hashmap_subset _ ?hm _ ]
+    => eapply hashmap_subset_trans; [ exact H | solve_hashmap_subset ]
+  | [ |- hashmap_subset _ _ _ ]
+    => try (subst; econstructor; eauto; solve_hashmap_subset)
+  end.
