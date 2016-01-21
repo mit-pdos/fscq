@@ -546,6 +546,161 @@ Module LOG.
     destruct H0; eapply H; eauto.
   Qed.
 
+  Lemma replay_mem_map0 : forall m,
+    Map.Equal (replay_mem (Map.elements m) map0) m.
+  Proof.
+    intros; hnf; intro.
+    unfold replay_mem.
+    rewrite <- Map.fold_1.
+    rewrite MapProperties.fold_identity; auto.
+  Qed.
+
+  Local Hint Resolve MapFacts.Equal_refl.
+
+  Lemma replay_mem_app' : forall l m,
+    Map.Equal (replay_mem ((Map.elements m) ++ l) map0) (replay_mem l m).
+  Proof.
+    induction l using rev_ind; intros.
+    rewrite app_nil_r; simpl.
+    rewrite replay_mem_map0; auto.
+    rewrite app_assoc.
+    setoid_rewrite fold_left_app; simpl.
+    rewrite <- IHl; auto.
+  Qed.
+
+  Lemma replay_mem_app : forall l2 l m,
+    Map.Equal m (replay_mem l map0) ->
+    Map.Equal (replay_mem (l ++ l2) map0) (replay_mem l2 m).
+  Proof.
+    induction l2 using rev_ind; intros.
+    rewrite app_nil_r; simpl.
+    rewrite H; auto.
+    rewrite app_assoc.
+    setoid_rewrite fold_left_app; simpl.
+    rewrite <- IHl2; auto.
+  Qed.
+
+  Lemma map_add_comm : forall A k1 k2 (v1 v2 : A) m,
+    k1 <> k2 ->
+    Map.Equal (Map.add k1 v1 (Map.add k2 v2 m)) (Map.add k2 v2 (Map.add k1 v1 m)).
+  Proof.
+    intros; hnf; intro.
+    destruct (eq_nat_dec y k1); destruct (eq_nat_dec y k2); subst; try congruence.
+    rewrite MapFacts.add_eq_o by auto.
+    rewrite MapFacts.add_neq_o by auto.
+    rewrite MapFacts.add_eq_o; auto.
+    setoid_rewrite MapFacts.add_eq_o at 2; auto.
+    rewrite MapFacts.add_neq_o by auto.
+    rewrite MapFacts.add_eq_o; auto.
+    repeat rewrite MapFacts.add_neq_o; auto.
+  Qed.
+
+  Lemma replay_mem_equal : forall l m1 m2,
+    Map.Equal m1 m2 ->
+    Map.Equal (replay_mem l m1) (replay_mem l m2).
+  Proof.
+    induction l; simpl; intros; auto.
+    hnf; intro.
+    apply IHl.
+    apply MapFacts.add_m; auto.
+  Qed.
+
+  Lemma replay_mem_add : forall l k v m,
+    ~ KIn (k, v) l -> KNoDup l ->
+    Map.Equal (replay_mem l (Map.add k v m)) (Map.add k v (replay_mem l m)).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a; simpl.
+    rewrite <- IHl.
+    apply replay_mem_equal.
+    apply map_add_comm.
+    contradict H; inversion H0; subst.
+    constructor; hnf; simpl; auto.
+    contradict H.
+    apply InA_cons.
+    right; auto.
+    inversion H0; auto.
+  Qed.
+
+  Lemma In_fst_KIn : forall V a (l : list (Map.key * V)),
+    In (fst a) (map fst l) -> KIn a l.
+  Proof.
+    intros; destruct a; simpl in *.
+    eapply in_selN_exists in H.
+    do 2 destruct H.
+    rewrite map_length in H.
+    apply InA_alt.
+    eexists; split.
+    2: apply in_selN_map; eauto.
+    rewrite H0.
+    hnf; auto.
+    Unshelve.
+    all : eauto.
+  Qed.
+
+(*
+  Lemma replay_disk_merge' : forall l1 l2 d,
+    KNoDup l1 -> KNoDup l2 ->
+    replay_disk l2 (replay_disk l1 d) =
+    replay_disk (Map.elements (replay_mem l2 (replay_mem l1 map0))) d.
+  Proof.
+    induction l1; intros; simpl.
+    induction l2; simpl; auto.
+    inversion H0; subst.
+    erewrite mapeq_elements.
+    2: apply replay_mem_add; destruct a; auto.
+    rewrite replay_disk_add.
+    rewrite <- IHl2 by auto.
+    apply replay_disk_updN_comm.
+    contradict H3.
+    apply In_fst_KIn; auto.
+
+    induction l2; destruct a; simpl; auto.
+    inversion H; simpl; subst.
+    erewrite mapeq_elements.  
+    2: apply replay_mem_add; auto.
+    rewrite replay_disk_add.
+    rewrite replay_disk_updN_comm.
+    f_equal.
+    admit.
+    contradict H3.
+    apply In_fst_KIn; auto.
+
+    destruct a0; simpl.
+    inversion H; inversion H0; simpl; subst.
+    rewrite IHl1 by auto.
+    setoid_rewrite mapeq_elements at 2.
+    2: apply replay_mem_equal.
+    2: apply replay_mem_add; auto.
+    setoid_rewrite mapeq_elements.
+
+
+
+    inversion H; destruct a; simpl; subst.
+    rewrite IHl1 by auto.
+    setoid_rewrite mapeq_elements at 2.
+    2: apply replay_mem_equal.
+    2: apply replay_mem_add; auto.
+    setoid_rewrite mapeq_elements.
+
+
+    induction l2; simpl; auto.
+    inversion H; subst.
+    erewrite mapeq_elements.
+    2: apply replay_mem_add; destruct a; auto.
+*)
+
+  Lemma replay_disk_merge : forall m1 m2 d,
+    replay_disk (Map.elements m2) (replay_disk (Map.elements m1) d) =
+    replay_disk (Map.elements (map_merge m1 m2)) d.
+  Proof.
+    intros.
+    unfold map_merge.
+    setoid_rewrite mapeq_elements at 3.
+    2: eapply replay_mem_equal.
+
+  Admitted.
+
   Theorem commit_ok: forall xp ms,
     {< m1 m2 F,
      PRE            rep xp F (ActiveTxn m1 m2) ms
@@ -562,11 +717,12 @@ Module LOG.
     cancel.
     apply replay_disk_is_empty; auto.
     apply is_empty_eq_map0; auto.
-    
+
     hoare using dems.
     or_l.
-    cancel.
-    admit. admit.
+    cancel; unfold map_merge.
+    rewrite replay_mem_app; eauto.
+    apply replay_disk_merge.
 
     (* crashes *)
     cancel.
@@ -587,8 +743,9 @@ Module LOG.
     or_r; or_r; or_l; norm.
     instantiate (ms3 := mk_memstate (map_merge (MSOld ms) (MSCur ms)) map0 cs').
     cancel. simpl; intuition.
-    admit.
-    admit.
+    unfold map_merge.
+    rewrite replay_mem_app; eauto.
+    apply replay_disk_merge.
   Qed.
 
 End LOG.

@@ -202,6 +202,30 @@ Proof.
   cancel.
 Qed.
 
+Theorem arrayN_split : forall V i (a b : list V) st,
+  arrayN st a <=p=>
+  arrayN st (firstn i a) * arrayN (st + i) (skipn i a).
+Proof.
+  intros.
+  destruct (lt_dec i (length a)).
+  erewrite arrayN_isolate; eauto.
+  setoid_rewrite arrayN_isolate with (i := 0) at 4.
+  rewrite skipn_skipn, skipn_selN.
+  replace (st + i + 0) with (st+i) by omega.
+  replace (1 + i) with (S i) by omega.
+  replace (i + 0) with i by omega.
+  split; cancel.
+  rewrite skipn_length.
+  omega.
+  rewrite firstn_oob, skipn_oob by omega.
+  split; cancel.
+  Grab Existential Variables.
+  destruct a.
+  contradict l; simpl; omega.
+  exact v.
+Qed.
+
+
 Lemma arrayN_app_memupd : forall V l (v : V) m,
   arrayN 0 l m
   -> arrayN 0 (l ++ v :: nil) (Mem.upd m (length l) v).

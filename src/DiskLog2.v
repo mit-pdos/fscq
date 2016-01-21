@@ -734,9 +734,12 @@ Module AsyncRecArray (RA : RASig).
     array_rep xp a (Synced l) =p=> array_rep xp a (Synced nil) * array_rep xp a (Synced l).
   Proof.
     unfold array_rep, synced_array, rep_common, eqlen; intros.
-    cancel; subst; repeat setoid_rewrite ipack_nil; simpl; auto;
-    unfold items_valid in *; intuition.
+    norm.
+    instantiate (vl0 := @nil valu).
     cancel.
+    subst; repeat setoid_rewrite ipack_nil; simpl; auto;
+    unfold items_valid in *; intuition.
+    rewrite nils_length; auto.
   Qed.
 
   Lemma well_formed_firstn : forall A n (a : list (Rec.data A)), 
@@ -862,38 +865,31 @@ Module AsyncRecArray (RA : RASig).
     n1 + n2 = nr ->
     avail_rep xp start nr =p=> avail_rep xp start n1 * avail_rep xp (start + n1) n2.
   Proof.
-    unfold avail_rep; cancel.
-    destruct (lt_dec n1 (length vsl)).
-    
-    erewrite arrayN_isolate with (i := n1) at 1 by auto.
-    setoid_rewrite arrayN_isolate with (i := 0) at 4.
+    unfold avail_rep; intros; norm.
+    instantiate (vsl0 := (firstn n1 vsl)).
     instantiate (vsl1 := (skipn n1 vsl)).
-    rewrite skipn_selN, skipn_skipn.
-    repeat rewrite Nat.add_0_r, Nat.add_assoc; cancel.
-    rewrite Nat.add_0_r; cancel.
-    rewrite skipn_length; omega.
-    rewrite firstn_oob, skipn_oob by omega; cancel.
-    
-    destruct (lt_dec n1 (length vsl)).
-    rewrite firstn_length_l; omega.
-    rewrite firstn_length_r; omega.
-    rewrite skipn_length; omega.
-    Grab Existential Variables.
-    exact ($0, @nil valu).
+    cancel.
+    rewrite Nat.add_assoc.
+    rewrite arrayN_split by auto.
+    cancel.
+    intuition.
+    rewrite firstn_length.
+    rewrite Nat.min_l; omega.
+    rewrite skipn_length.
+    omega.
   Qed.
-  
+
   Lemma avail_rep_merge : forall xp start nr n1 n2,
     n1 + n2 = nr ->
     avail_rep xp start n1 * avail_rep xp (start + n1) n2 =p=> avail_rep xp start nr.
   Proof.
-    unfold avail_rep; cancel.
+    unfold avail_rep; intros; norm.
     instantiate (vsl1 := vsl0 ++ vsl).
-    destruct (lt_dec n1 (length (vsl0 ++ vsl))).
-    rewrite arrayN_app, Nat.add_assoc.
-    simplen; cancel.
-    rewrite arrayN_app, Nat.add_assoc.
-    simplen; cancel.
-    simplen.
+    setoid_rewrite arrayN_app.
+    rewrite Nat.add_assoc.
+    cancel.
+    intuition.
+    rewrite app_length; omega.
   Qed.
 
   Lemma helper_add_sub : forall a b c,
@@ -914,7 +910,9 @@ Module AsyncRecArray (RA : RASig).
     array_rep xp (start + (divup (length a) items_per_val)) (Synced b) =p=>
     array_rep xp start (Synced (a ++ b)).
   Proof.
-    simpl; unfold synced_array, rep_common, nils; cancel; subst.
+    simpl; intros;
+    unfold synced_array, rep_common, nils; norm; subst; intuition.
+    cancel.
     erewrite ipack_app by eauto.
     rewrite app_length, Nat.add_assoc.
     rewrite <- repeat_app.
@@ -1015,7 +1013,6 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold write_aligned, avail_rep.
     step.
-    instantiate (2 := F); cancel.
     simplen.
     step.
     setoid_rewrite vsupd_range_unsync_array; auto.
@@ -1107,8 +1104,6 @@ Module AsyncRecArray (RA : RASig).
     prestep. norml.
     unfold unsync_array, rep_common in *; destruct_lifts.
     cancel.
-
-    instantiate (2 := F); cancel.
     rewrite combine_length_eq by simplen.
     rewrite ipack_length; simplen.
 
@@ -1395,9 +1390,8 @@ Module PaddedLog.
   Definition xparams_ok xp := 
     Desc.xparams_ok xp /\ Data.xparams_ok xp.
 
-  Definition rep xp F st cs := (exists d,
-    BUFCACHE.rep cs d * [[ xparams_ok xp ]] *
-    [[ (F * rep_inner xp st)%pred d ]])%pred.
+  Definition rep xp st:=
+    ([[ xparams_ok xp ]] * rep_inner xp st)%pred.
 
 
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
@@ -1686,17 +1680,21 @@ Module PaddedLog.
   Hint Extern 0 (okToUnify (Data.avail_rep _ _ _) (Data.avail_rep _ _ _)) => constructor : okToUnify.
 
   Definition read_ok : forall xp cs,
-    {< F l,
-    PRE            rep xp F (Synced l) cs
+    {< F l d,
+    PRE   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l))%pred d ]]
     POST RET: ^(cs, r)
-                   rep xp F (Synced l) cs *
-                   [[ r = log_nonzero l ]]
-    CRASH exists cs', rep xp F (Synced l) cs'
+          BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l))%pred d ]] *
+          [[ r = log_nonzero l ]]
+    CRASH exists cs',
+          BUFCACHE.rep cs' d *
+          [[ (F * rep xp (Synced l))%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.
     step.
-    
+
     safestep; subst.
     instantiate (1 := map ent_addr (padded_log l)).
     rewrite map_length, padded_log_length.
@@ -1734,7 +1732,7 @@ Module PaddedLog.
   Local Hint Resolve Forall_nil.
 
   Lemma helper_sep_star_reorder : forall (a b c d : rawpred),
-    a * b * c * d =p=> (c * a) * (d * b).
+    a * b * c * d =p=> (a * c) * (b * d).
   Proof.
     intros; cancel.
   Qed.
@@ -1746,11 +1744,11 @@ Module PaddedLog.
   Qed.
 
   Lemma helper_trunc_ok : forall xp l,
-    Hdr.rep xp (Hdr.Synced (0, 0)) *
-    Data.avail_rep xp (ndata_log l) (LogLen xp - ndata_log l) *
-    Desc.avail_rep xp (ndesc_log l) (LogDescLen xp - ndesc_log l) *
+    Desc.array_rep xp 0 (Desc.Synced (map ent_addr l)) *
     Data.array_rep xp 0 (Data.Synced (vals_nonzero l)) *
-    Desc.array_rep xp 0 (Desc.Synced (map ent_addr l))
+    Desc.avail_rep xp (ndesc_log l) (LogDescLen xp - ndesc_log l) *
+    Data.avail_rep xp (ndata_log l) (LogLen xp - ndata_log l) *
+    Hdr.rep xp (Hdr.Synced (0, 0))
     =p=>
     Hdr.rep xp (Hdr.Synced (ndesc_log [], ndata_log [])) *
     Desc.array_rep xp 0 (Desc.Synced []) *
@@ -1776,26 +1774,30 @@ Module PaddedLog.
   Qed.
 
   Definition trunc_ok : forall xp cs,
-    {< F l,
-    PRE            rep xp F (Synced l) cs
-    POST RET: cs   rep xp F (Synced nil) cs
-    CRASH exists cs', 
-       rep xp F (Synced l) cs' \/
-       rep xp F (Truncated l) cs' \/
-       rep xp F (Synced nil) cs'
+    {< F l d,
+    PRE   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l))%pred d ]]
+    POST RET: cs  exists d',
+          BUFCACHE.rep cs d' *
+          [[ (F * rep xp (Synced nil))%pred d' ]]
+    CRASH exists cs' d', 
+          BUFCACHE.rep cs' d' * (
+          [[ (F * (rep xp (Synced l)))%pred d' ]] \/
+          [[ (F * (rep xp (Truncated l)))%pred d' ]] \/
+          [[ (F * (rep xp (Synced nil)))%pred d' ]])
     >} trunc xp cs.
   Proof.
     unfold trunc.
     step.
     step.
     step.
-    apply helper_trunc_ok.
+    cancel_by helper_trunc_ok.
 
     (* crash conditions *)
     cancel.
     or_r; cancel.
     or_r; or_r; cancel.
-    apply helper_trunc_ok.
+    cancel_by helper_trunc_ok.
 
     cancel.
     or_l; cancel.
@@ -2140,17 +2142,22 @@ Module PaddedLog.
 
 
   Definition extend_ok : forall xp new cs,
-    {< F old,
-    PRE   [[ Forall entry_valid new ]] *
-          rep xp F (Synced old) cs
-    POST RET: ^(cs, r)
-          ([[ r = true ]] * rep xp F (Synced ((padded_log old) ++ (padded_log new))) cs) \/
-          ([[ r = false ]] * rep xp F (Synced old) cs)
-    CRASH exists cs',
-          rep xp F (Synced old) cs' \/
-          rep xp F (ExtendedUnsync old) cs' \/
-          rep xp F (Extended old (padded_log new)) cs' \/
-          rep xp F (Synced ((padded_log old) ++ (padded_log new))) cs'
+    {< F old d,
+    PRE   BUFCACHE.rep cs d *
+          [[ Forall entry_valid new ]] *
+          [[ (F * rep xp (Synced old))%pred d ]]
+    POST RET: ^(cs, r) exists d', 
+          BUFCACHE.rep cs d' * (
+          [[ r = true /\
+             (F * rep xp (Synced ((padded_log old) ++ (padded_log new))))%pred d' ]] \/
+          [[ r = false /\
+             (F * rep xp (Synced old))%pred d' ]])
+    CRASH exists cs' d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (Synced old))%pred d' ]] \/
+          [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
+          [[ (F * rep xp (Extended old (padded_log new)))%pred d' ]] \/
+          [[ (F * rep xp (Synced ((padded_log old) ++ (padded_log new))))%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -2299,40 +2306,39 @@ Module DLog.
       ([[ l = PaddedLog.log_nonzero padded /\
          length padded = roundup (length padded) DiskLogDescSig.items_per_val ]])%pred.
 
-  Definition rep xp F st cs :=
+  Definition rep xp st :=
     (match st with
     | Synced l =>
           exists padded, rep_common l padded *
-          PaddedLog.rep xp F (PaddedLog.Synced padded) cs
+          PaddedLog.rep xp (PaddedLog.Synced padded)
     | Truncated l =>
           exists padded, rep_common l padded *
-          PaddedLog.rep xp F (PaddedLog.Truncated padded) cs
+          PaddedLog.rep xp (PaddedLog.Truncated padded)
     | ExtendedUnsync l =>
           exists padded, rep_common l padded *
-          PaddedLog.rep xp F (PaddedLog.ExtendedUnsync padded) cs
+          PaddedLog.rep xp (PaddedLog.ExtendedUnsync padded)
     | Extended l new =>
           exists padded, rep_common l padded *
-          PaddedLog.rep xp F (PaddedLog.Extended padded (PaddedLog.padded_log new)) cs
+          PaddedLog.rep xp (PaddedLog.Extended padded (PaddedLog.padded_log new))
     end)%pred.
 
   Local Hint Unfold rep rep_common : hoare_unfold.
-  Hint Extern 0 (okToUnify (PaddedLog.rep _ _ _ _) (PaddedLog.rep _ _ _ _)) => constructor : okToUnify.
-
-  Ltac or_r := apply pimpl_or_r; right.
-  Ltac or_l := apply pimpl_or_r; left.
-
+  Hint Extern 0 (okToUnify (PaddedLog.rep _ _) (PaddedLog.rep _ _)) => constructor : okToUnify.
 
   Definition read T xp cs rx : prog T :=
     r <- PaddedLog.read xp cs;
     rx r.
 
   Definition read_ok : forall xp cs,
-    {< F l,
-    PRE            rep xp F (Synced l) cs
-    POST RET: ^(cs, r)
-                   rep xp F (Synced l) cs *
-                   [[ r = l ]]
-    CRASH exists cs', rep xp F (Synced l) cs'
+    {< F l d,
+    PRE       BUFCACHE.rep cs d * 
+              [[ (F * rep xp (Synced l))%pred d ]]
+    POST RET: ^(cs, r) exists d',
+              BUFCACHE.rep cs d' *
+              [[ r = l /\ (F * rep xp (Synced l))%pred d' ]]
+    CRASH exists cs' d',
+              BUFCACHE.rep cs' d' *
+              [[ (F * rep xp (Synced l))%pred d' ]]
     >} read xp cs.
   Proof.
     unfold read.
@@ -2344,18 +2350,23 @@ Module DLog.
     rx cs.
 
   Definition trunc_ok : forall xp cs,
-    {< F l,
-    PRE            rep xp F (Synced l) cs
-    POST RET: cs   rep xp F (Synced nil) cs
-    CRASH exists cs', 
-       rep xp F (Synced l) cs' \/
-       rep xp F (Truncated l) cs' \/
-       rep xp F (Synced nil) cs'
+    {< F l d,
+    PRE       BUFCACHE.rep cs d *
+              [[ (F * rep xp (Synced l))%pred d ]]
+    POST RET: cs exists d',
+              BUFCACHE.rep cs d' *
+              [[ (F * rep xp (Synced nil))%pred d' ]]
+    CRASH exists cs d',
+              BUFCACHE.rep cs d' * (
+              [[ (F * rep xp (Synced l))%pred d' ]] \/
+              [[ (F * rep xp (Truncated l))%pred d' ]] \/
+              [[ (F * rep xp (Synced nil))%pred d' ]])
     >} trunc xp cs.
   Proof.
     unfold trunc.
     hoare.
     unfold roundup; rewrite divup_0; omega.
+
     (* crashes *)
     cancel.
     or_l. cancel.
@@ -2400,16 +2411,21 @@ Module DLog.
     }.
 
   Definition extend_ok : forall xp new cs,
-    {< F old,
-    PRE   rep xp F (Synced old) cs
-    POST RET: ^(cs, r)
-          ([[ r = true ]] * rep xp F (Synced (old ++ new)) cs) \/
-          ([[ r = false ]] * rep xp F (Synced old) cs)
-    CRASH exists cs',
-          rep xp F (Synced old) cs' \/
-          rep xp F (ExtendedUnsync old) cs' \/
-          rep xp F (Extended old new) cs' \/
-          rep xp F (Synced (old ++ new)) cs'
+    {< F old d,
+    PRE       BUFCACHE.rep cs d *
+              [[ (F * rep xp (Synced old))%pred d ]]
+    POST RET: ^(cs, r) exists d',
+              BUFCACHE.rep cs d' * (
+              [[ r = true /\
+                (F * rep xp (Synced (old ++ new)))%pred d' ]] \/
+              [[ r = false /\
+                (F * rep xp (Synced old))%pred d' ]])
+    CRASH exists cs' d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (Synced old))%pred d' ]] \/
+          [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
+          [[ (F * rep xp (Extended old new))%pred d' ]] \/
+          [[ (F * rep xp (Synced (old ++ new)))%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.

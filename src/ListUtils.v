@@ -288,6 +288,17 @@ Proof.
   nth_selN nth_In.
 Qed.
 
+Lemma in_selN_exists : forall A l (a : A) def,
+  In a l -> exists i, i < length l /\ selN l i def = a.
+Proof.
+  induction l; try easy; intros.
+  inversion H; subst.
+  exists 0; simpl; split; auto; omega.
+  destruct (IHl a0 def H0).
+  destruct H1.
+  exists (S x); simpl; split; auto; omega.
+Qed.
+
 Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
   In x l \/ x = xn.
 Proof.

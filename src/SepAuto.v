@@ -894,6 +894,10 @@ Ltac cancel_exact := repeat match goal with
 end.
 
 
+Ltac cancel_by H :=
+  eapply pimpl_ext; [ eapply H | cancel | cancel ].
+
+
 Theorem nop_ok :
   forall T A v (rx : A -> prog T),
   {{ fun done_ crash_ => exists F, F * [[ forall r_,

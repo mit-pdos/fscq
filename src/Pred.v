@@ -554,6 +554,15 @@ Proof.
   firstorder.
 Qed.
 
+Lemma pimpl_ext : forall (p q p' q' : @pred AT AEQ V),
+  p  =p=> q  ->
+  p' =p=> p  ->
+  q  =p=> q' ->
+  p' =p=> q'.
+Proof.
+  firstorder.
+Qed.
+
 Lemma sep_star_lift_l:
   forall (a: Prop) (b c: @pred AT AEQ V),
   (a -> (b =p=> c)) ->
