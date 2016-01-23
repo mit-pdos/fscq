@@ -322,26 +322,35 @@ Theorem for_ok':
          (nocrash : G -> waddr -> L -> rawpred)
          (crashed : G -> rawpred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G), F * nocrash g i li
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g i li
+   * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
       (forall lSm,
-       {{ fun hm' done' crash' => F * nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (m ^+ $1) lSm *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm' done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      {{ fun hm'' done' crash' => F * nocrash g m lm *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
       }} f m lm rxm]]
    * [[forall lfinal,
-       {{ fun hm' done' crash' => F * nocrash g (n ^+ i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (n ^+ i) lfinal *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
-   * [[F * crashed g =p=> crash]]
+   * [[forall hm'',
+        F * crashed g * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash]]
   }} (For_ f i n nocrash crashed li rx).
 Proof.
   intro T.
   wlt_ind.
 
   intros.
+  apply corr2_exists; intros.
   apply corr2_exists; intros.
   apply corr2_exists; intros.
   case_eq (weq x $0); intros; subst.
@@ -358,7 +367,7 @@ Proof.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + assert (wordToNat x <> 0).
       unfold not in *; intros; apply n.
-      rewrite <- H5; rewrite natToWord_wordToNat; auto.
+      rewrite <- H6; rewrite natToWord_wordToNat; auto.
 
       unfold pimpl, lift; intros.
       rewrite For_step.
@@ -384,7 +393,7 @@ Proof.
       eapply Nat.lt_le_trans; [| apply (wordToNat_bound x) ].
       omega.
       unfold not in *; intros; apply n.
-      apply wlt_lt in H7; simpl in H7.
+      apply wlt_lt in H8; simpl in H8.
       rewrite <- natToWord_wordToNat with (w:=x).
       f_equal.
       omega.
@@ -392,13 +401,14 @@ Proof.
       intros.
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
+      apply pimpl_exists_r; exists a1.
       ring_simplify (i ^+ $1 ^+ (x ^- $1)).
       ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       cancel.
 
       subst; apply H4; eauto.
-      intros; apply H7; clear H7.
-      apply wlt_lt in H9.
+      intros; apply H9; clear H9.
+      apply wlt_lt in H12.
       unfold wlt.
       repeat rewrite wordToN_nat.
       apply Nlt_in.
@@ -409,8 +419,6 @@ Proof.
       rewrite wordToNat_natToWord_idempotent'.
       omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
-
-      subst; eauto.
 
       rewrite wminus_Alt.
       rewrite wminus_Alt2.
@@ -425,10 +433,9 @@ Proof.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound x) ]; omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
 
-      unfold not; intros; apply H5.
+      unfold not; intros; apply H6.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H7; simpl in H7; auto.
-      subst; auto.
+      apply wlt_lt in H9; simpl in H9; auto.
     + cancel.
 Qed.
 
@@ -440,18 +447,26 @@ Theorem for_ok:
          (nocrash : G -> waddr -> L -> rawpred)
          (crashed : G -> rawpred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G), F * nocrash g $0 li
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g $0 li
+   * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       (m < n)%word ->
       (forall lSm,
-       {{ fun hm' done' crash' => F * nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (m ^+ $1) lSm *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm' done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
+      {{ fun hm'' done' crash' => F * nocrash g m lm *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
       }} f m lm rxm]]
    * [[forall lfinal,
-       {{ fun hm' done' crash' => F * nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g n lfinal *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
-   * [[F * crashed g =p=> crash]]
+   * [[forall hm'',
+        F * crashed g * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash]]
   }} For_ f $0 n nocrash crashed li rx.
 Proof.
   intros.
@@ -630,23 +645,31 @@ Theorem foreach_ok:
          (nocrash : G -> list ITEM -> L -> pred)
          (crashed : G -> pred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G), F * nocrash g lst li
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g lst li
+   * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall elem lst' lm rxm,
       (forall lSm,
-       {{ fun hm' done' crash' => F * nocrash g lst' lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g lst' lSm *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]]  * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm' done' crash' => F * nocrash g (elem :: lst') lm *
+      {{ fun hm'' done' crash' => F * nocrash g (elem :: lst') lm *
+         [[ exists l, hashmap_subset l hm' hm'' ]] *
          [[ exists prefix, prefix ++ elem :: lst' = lst ]] *
          [[ done' = done ]] * [[ crash' = crash ]]
       }} f elem lm rxm]]
    * [[forall lfinal,
-       {{ fun hm' done' crash' => F * nocrash g nil lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g nil lfinal *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
-   * [[F * crashed g =p=> crash]]
+   * [[forall hm'',
+        F * crashed g * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash]]
   }} ForEach_ f lst nocrash crashed li rx.
 Proof.
   intros T ITEM.
   induction lst; intros;
+    apply corr2_exists; intros;
     apply corr2_exists; intros;
     apply corr2_exists; intros.
 
@@ -666,21 +689,16 @@ Proof.
       eapply pimpl_ok2.
       apply IHlst.
       cancel.
-      instantiate (3 := lst).
-      instantiate (g := a1).
+      instantiate (1 := lst).
       cancel.
       eapply pimpl_ok2.
       apply H1.
       intros.
       eapply pimpl_ok2.
-      apply H3.
+      apply H2.
       cancel.
       cancel.
       exists (a :: prefix); auto.
-      eapply pimpl_ok2.
-      apply H0.
-      cancel.
-      cancel.
 
       intros.
       apply pimpl_refl.

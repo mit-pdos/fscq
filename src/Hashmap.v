@@ -162,13 +162,17 @@ Proof.
   constructor; eauto.
 Qed.
 
+Ltac solve_hashmap_subset_trans :=
+  match goal with
+  | [ H: hashmap_subset _ ?hm ?hm2, H2: hashmap_subset _ ?hm2 _ |- hashmap_subset _ ?hm _ ]
+    => eapply hashmap_subset_trans;
+        [ exact H | try exact H2; solve_hashmap_subset_trans ]
+  end.
 
 Ltac solve_hashmap_subset :=
-  try match goal with
+  match goal with
   | [ |- exists _, hashmap_subset _ _ _ ]
     => eexists; solve_hashmap_subset
-  | [ H: hashmap_subset _ ?hm _ |- hashmap_subset _ ?hm _ ]
-    => eapply hashmap_subset_trans; [ exact H | solve_hashmap_subset ]
   | [ |- hashmap_subset _ _ _ ]
-    => try (subst; econstructor; eauto; solve_hashmap_subset)
+    => subst; solve [ solve_hashmap_subset_trans | repeat (eauto; econstructor) ]
   end.
