@@ -109,33 +109,37 @@ Module LOG.
     )%pred.
 
 
-  Definition rep_common (xp : log_xparams) (oms cms : valumap) : rawpred := emp.
-
-  Definition rep xp F st ms := 
-    let '(cs, oms, cms) := (MSCache ms, MSOld ms, MSCur ms) in
-    ( rep_common xp oms cms *
-      exists log raw, [[ Map.Equal oms (replay_mem log map0) ]] *
+  Definition rep_inner xp st log raw oms cms :=
     (match st with
     | NoTxn cur =>
         map_replay oms raw cur *
         map_empty cms *
-        DLog.rep xp (F * synced_data xp raw) (DLog.Synced log) cs
+        synced_data xp raw *
+        DLog.rep xp (DLog.Synced log)
     | ActiveTxn old cur =>
         map_replay oms raw old *
         map_replay cms old cur *
-        DLog.rep xp (F * synced_data xp raw) (DLog.Synced log) cs
+        synced_data xp raw *
+        DLog.rep xp (DLog.Synced log)
     | FlushingTxn old cur =>
         map_replay oms raw old *
         map_replay cms old cur *
-        (DLog.rep xp (F * synced_data xp raw) (DLog.ExtendedUnsync log) cs
-      \/ DLog.rep xp (F * synced_data xp raw) (DLog.Extended log (Map.elements cms)) cs)
+        synced_data xp raw *
+        (DLog.rep xp (DLog.ExtendedUnsync log)
+      \/ DLog.rep xp (DLog.Extended log (Map.elements cms)))
     | NoTxnApplying cur =>
         map_empty cms *
-        (DLog.rep xp (F * unsync_applying xp oms raw cur) (DLog.Synced log) cs
-      \/ DLog.rep xp (F * unsync_syncing xp oms cur) (DLog.Synced log) cs
-      \/ DLog.rep xp (F * synced_data xp cur) (DLog.Truncated log) cs)
-    end))%pred.
+        (((DLog.rep xp (DLog.Synced log)) * (unsync_applying xp oms raw cur))
+      \/ ((DLog.rep xp (DLog.Synced log)) * (unsync_syncing xp oms cur))
+      \/ ((DLog.rep xp (DLog.Truncated log)) * (synced_data xp cur)))
+    end)%pred.
 
+  Definition rep xp st ms := 
+    ( exists F d log raw, 
+      let '(cs, oms, cms) := (MSCache ms, MSOld ms, MSCur ms) in
+      BUFCACHE.rep cs d *
+      [[ Map.Equal oms (replay_mem log map0) ]] *
+      [[ (F * rep_inner xp st log raw oms cms)%pred d ]])%pred.
 
   Definition begin T (xp : log_xparams) ms rx : prog T :=
     let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
@@ -198,49 +202,53 @@ Module LOG.
       f_equal; eauto.
   Qed.
 
-  Local Hint Unfold rep map_replay rep_common map_empty: hoare_unfold.
+  Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
+  Arguments DLog.rep: simpl never.
+  Hint Extern 0 (okToUnify (DLog.rep _ _) (DLog.rep _ _)) => constructor : okToUnify.
 
   (* destruct memstate *)
   Ltac dems := eauto; try match goal with
   | [ H : @eq memstate ?ms (mk_memstate _ _ _) |- _ ] =>
      destruct ms; inversion H; subst
   end; eauto.
-  
+
   Theorem begin_ok: forall xp ms,
-    {< m F,
+    {< m,
     PRE
-      rep xp F (NoTxn m) ms
+      rep xp (NoTxn m) ms
     POST RET:r
-      rep xp F (ActiveTxn m m) r
+      rep xp (ActiveTxn m m) r
     CRASH
-      exists ms', rep xp F (NoTxn m) ms' \/ rep xp F (ActiveTxn m m) ms'
+      exists ms', rep xp (NoTxn m) ms' \/ rep xp (ActiveTxn m m) ms'
     >} begin xp ms.
   Proof.
     unfold begin.
     hoare using dems.
+    repeat cancel.
     pimpl_crash.
     cancel.
     or_l.
-    cancel.
+    repeat cancel.
   Qed.
 
 
   Theorem abort_ok : forall xp ms,
-    {< m1 m2 F,
+    {< m1 m2,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms
+      rep xp (ActiveTxn m1 m2) ms
     POST RET:r
-      rep xp F (NoTxn m1) r
+      rep xp (NoTxn m1) r
     CRASH
-      exists ms', rep xp F (ActiveTxn m1 m2) ms' \/ rep xp F (NoTxn m1) ms'
+      exists ms', rep xp (ActiveTxn m1 m2) ms' \/ rep xp (NoTxn m1) ms'
     >} abort xp ms.
   Proof.
     unfold abort.
     hoare using dems.
+    repeat cancel.
     pimpl_crash.
     cancel.
     or_l.
-    cancel.
+    repeat cancel.
   Qed.
 
   Arguments DLog.rep : simpl never.
@@ -252,7 +260,7 @@ Module LOG.
     rewrite IHl.
     rewrite length_updN; auto.
   Qed.
-  
+
   Hint Rewrite replay_disk_length : lists.
 
   Definition KIn V := InA (@Map.eq_key V).
@@ -400,25 +408,26 @@ Module LOG.
     Unshelve.
     exact $0.
   Qed.
-  
-  Hint Extern 0 (okToUnify (DLog.rep _ _ _ _) (DLog.rep _ _ _ _)) => constructor : okToUnify.
 
   Theorem write_ok : forall xp ms a v,
-    {< m1 m2 F F' v0,
+    {< m1 m2 F v0,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m2 ::: (F' * a |-> v0) ]]]
+      rep xp (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: (F * a |-> v0) ]]]
     POST RET:ms'
-      exists m', rep xp F (ActiveTxn m1 m') ms' *
-      [[[ m' ::: (F' * a |-> v) ]]]
+      exists m', rep xp (ActiveTxn m1 m') ms' *
+      [[[ m' ::: (F * a |-> v) ]]]
     CRASH
-      exists m' ms', rep xp F (ActiveTxn m1 m') ms'
+      exists m' ms', rep xp (ActiveTxn m1 m') ms'
     >} write xp a v ms.
   Proof.
     unfold write.
     hoare using dems.
+    repeat cancel.
     rewrite replay_disk_add.
     eapply list2nmem_updN; eauto.
+    pimpl_crash.
+    repeat cancel.
   Qed.
 
   Lemma replay_disk_eq : forall a v v' ms d,
@@ -473,29 +482,33 @@ Module LOG.
   Theorem read_ok: forall xp ms a,
     {< m1 m2 v F,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m2 ::: exists F, (F * a |-> v) ]]]
+      rep xp (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: (F * a |-> v) ]]]
     POST RET:^(ms', r)
-      rep xp F (ActiveTxn m1 m2) ms' * [[ r = v ]]
+      rep xp (ActiveTxn m1 m2) ms' * [[ r = v ]]
     CRASH
-      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+      exists ms', rep xp (ActiveTxn m1 m2) ms'
     >} read xp a ms.
   Proof.
     unfold read.
     prestep.
 
     cancel.
-    safestep; auto.
+    safestep; auto. eauto.
+    repeat cancel.
     eapply replay_disk_eq; eauto.
     pimpl_crash; cancel.
 
     cancel.
-    safestep; auto; subst.
+    cancel.
+    safestep; auto; subst. eauto.
+    repeat cancel.
     eapply replay_disk_eq_none; eauto.
     pimpl_crash; cancel.
 
-    unfold DLog.rep, DLog.rep_common, PaddedLog.rep, synced_data, synced_list, pred_apply.
     cancel.
+    cancel.
+
     autorewrite with lists; subst.
     apply list2nmem_ptsto_bound in H4.
     autorewrite with lists in H4; auto.

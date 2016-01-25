@@ -956,7 +956,6 @@ Module AsyncRecArray (RA : RASig).
     step.
 
     simplen.
-    instantiate (2 := F); cancel.
     simplen.
 
     step; subst.
@@ -1018,7 +1017,7 @@ Module AsyncRecArray (RA : RASig).
     setoid_rewrite vsupd_range_unsync_array; auto.
     simplen.
 
-    pimpl_crash; cancel.
+    pimpl_crash.
     rewrite vsupd_range_length; auto.
     simplen; rewrite Nat.min_l; eauto.
   Qed.
@@ -1267,7 +1266,6 @@ Module PaddedLog.
     Proof.
       unfold write.
       hoare.
-      repeat cancel.
     Qed.
 
     Theorem read_ok : forall xp cs,
@@ -1302,7 +1300,6 @@ Module PaddedLog.
     Proof.
       unfold sync.
       hoare.
-      repeat cancel.
     Qed.
 
     Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
@@ -1796,10 +1793,9 @@ Module PaddedLog.
     (* crash conditions *)
     cancel.
     or_r; cancel.
-    or_r; or_r; cancel.
+    or_r; cancel.
     cancel_by helper_trunc_ok.
 
-    cancel.
     or_l; cancel.
     or_r; cancel.
   Qed.
@@ -2368,10 +2364,8 @@ Module DLog.
     unfold roundup; rewrite divup_0; omega.
 
     (* crashes *)
-    cancel.
-    or_l. cancel.
-    or_r; or_l. cancel.
-    or_r; or_r. cancel.
+    or_r; cancel.
+    or_r; cancel.
     unfold roundup; rewrite divup_0; omega.
   Qed.
 
@@ -2430,13 +2424,6 @@ Module DLog.
   Proof.
     unfold extend.
     hoare.
-
-    (* crashes *)
-    cancel.
-    or_l; cancel.
-    or_r; or_l; cancel.
-    or_r; or_r; or_l; cancel.
-    or_r; or_r; or_r; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
