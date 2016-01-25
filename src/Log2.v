@@ -224,9 +224,7 @@ Module LOG.
   Proof.
     unfold begin.
     hoare using dems.
-    repeat cancel.
-    pimpl_crash.
-    cancel.
+    pred_apply; cancel; cancel.
     or_l.
     repeat cancel.
   Qed.
@@ -244,9 +242,8 @@ Module LOG.
   Proof.
     unfold abort.
     hoare using dems.
-    repeat cancel.
+    pred_apply; repeat cancel.
     pimpl_crash.
-    cancel.
     or_l.
     repeat cancel.
   Qed.
@@ -479,11 +476,21 @@ Module LOG.
     apply MapFacts.not_find_in_iff; auto.
   Qed.
 
+  Lemma synced_data_double_replay_inb : forall a v c1 c2 d,
+    (exists F, F * a |-> v)%pred (list2nmem (replay_disk c1 (replay_disk c2 d)))
+    -> a < length (synced_list d).
+  Proof.
+    unfold synced_list; intros.
+    destruct H.
+    apply list2nmem_ptsto_bound in H.
+    autorewrite with lists in *; auto.
+  Qed.
+
   Theorem read_ok: forall xp ms a,
-    {< m1 m2 v F,
+    {< m1 m2 v,
     PRE
       rep xp (ActiveTxn m1 m2) ms *
-      [[[ m2 ::: (F * a |-> v) ]]]
+      [[[ m2 ::: exists F, (F * a |-> v) ]]]
     POST RET:^(ms', r)
       rep xp (ActiveTxn m1 m2) ms' * [[ r = v ]]
     CRASH
@@ -508,13 +515,12 @@ Module LOG.
 
     cancel.
     cancel.
-
-    autorewrite with lists; subst.
-    apply list2nmem_ptsto_bound in H4.
-    autorewrite with lists in H4; auto.
+    unfold synced_data; cancel.
+    subst; eapply synced_data_double_replay_inb; eauto.
 
     prestep.
-    cancel; subst.
+    cancel; subst. cancel.
+    unfold synced_list; unfold pred_apply in *.
     rewrite selN_combine by (autorewrite with lists; auto); simpl.
     eapply replay_disk_double_none_selN; [ apply Heqo | apply Heqo0 | pred_apply; cancel].
 
@@ -525,15 +531,15 @@ Module LOG.
     cancel.
     intuition; subst; simpl; eauto.
     pred_apply.
-    cancel.
+    repeat cancel.
   Qed.
 
-  Definition would_recover_either xp F old new :=
+  Definition would_recover_either xp old new :=
     (exists ms,
-     rep xp F (ActiveTxn old new) ms \/
-     rep xp F (NoTxn old) ms \/
-     rep xp F (NoTxn new) ms \/
-     rep xp F (FlushingTxn old new) ms)%pred.
+     rep xp (ActiveTxn old new) ms \/
+     rep xp (NoTxn old) ms \/
+     rep xp (NoTxn new) ms \/
+     rep xp (FlushingTxn old new) ms)%pred.
 
   Local Hint Unfold would_recover_either : hoare_unfold.
 
