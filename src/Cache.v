@@ -227,6 +227,7 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (maybe_evict _) _) => apply maybe_evict_ok : prog.
 
+
   Theorem read_ok : forall cs a,
     {< d (F : rawpred) v,
     PRE
@@ -253,14 +254,12 @@ Module BUFCACHE.
     destruct (addr_eq_dec a a0); subst.
     apply mapsto_add in H; subst; eauto.
     edestruct H12. eauto. eexists; eauto.
-
-    subst; cancel; eauto.
-    rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
-    eauto.
-    cancel.
+    rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
+
+  Remove Hints okToUnify: okToUnify.
 
   Theorem write_ok : forall cs a v,
     {< d (F : rawpred) v0,
@@ -307,9 +306,7 @@ Module BUFCACHE.
     cancel.
     instantiate (cs' := r_).
     apply pimpl_or_r. left. cancel.
-    rewrite <- diskIs_combine_same with (m:=d); try pred_apply; cancel.
-    cancel. eauto. cancel.
-    cancel.
+    rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
     apply pimpl_or_r. left. cancel; eauto.
   Qed.
 
@@ -511,8 +508,6 @@ Module BUFCACHE.
     unfold diskIs in *; subst.
     exists m'.
     intuition.
-
-    cancel; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
@@ -660,15 +655,11 @@ Module BUFCACHE.
   Proof.
     unfold read_range; intros.
     hoare.
-    cancel.
-    instantiate (2 := F); cancel.
-    omega.
     subst.
     rewrite firstn_S_selN_expand with (def := $0).
     rewrite fold_left_app; simpl.
     erewrite selN_map by omega; auto.
     rewrite map_length; omega.
-    cancel; eauto.
     Unshelve. exact tt.
   Qed.
 
@@ -706,7 +697,7 @@ Module BUFCACHE.
     cancel.
     instantiate (2:=F); cancel.
 
-    step.
+    prestep; cancel.
     cancel.
     instantiate (2:=F); cancel.
     rewrite vsupd_range_length; try omega.
@@ -719,7 +710,7 @@ Module BUFCACHE.
     omega.
 
     subst; pimpl_crash.
-    norm; try cancel; intuition; eauto.
+    norm; [ cancel | | cancel | ]; intuition; eauto.
     rewrite Nat.min_l; eauto; omega.
     rewrite Nat.min_l; eauto.
     pred_apply; cancel.
@@ -764,9 +755,8 @@ Module BUFCACHE.
   Proof.
     unfold sync_range; intros.
     step.
-    cancel.
 
-    step.
+    prestep; cancel.
     cancel.
     instantiate (2:=F); cancel.
     rewrite vssync_range_length; try omega.
@@ -776,7 +766,7 @@ Module BUFCACHE.
     apply vssync_range_progress; omega.
 
     subst; pimpl_crash.
-    norm; try cancel; intuition; eauto.
+    norm; [ cancel | | cancel | ]; intuition; eauto.
     rewrite Nat.min_l; eauto; omega.
     rewrite Nat.min_l; eauto.
     pred_apply; cancel.
@@ -788,8 +778,6 @@ Module BUFCACHE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
-
-
   Hint Extern 0 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (arrayN ?a _) (arrayN ?a _)) => constructor : okToUnify.
 
@@ -827,14 +815,14 @@ Module BUFCACHE.
   Proof.
     unfold write_vecs.
     step.
-    step.
+    prestep; cancel; auto.
     step.
 
     apply arrayN_unify.
     apply vsupd_vecs_progress; auto.
 
     subst; pimpl_crash.
-    norm; try cancel; intuition; eauto.
+    norm; [ cancel | | cancel | ]; intuition; eauto.
     rewrite Nat.min_l; eauto; omega.
     rewrite Nat.min_l; eauto.
     pred_apply; cancel.
@@ -879,14 +867,14 @@ Module BUFCACHE.
   Proof.
     unfold sync_vecs.
     step.
-    step.
+    prestep; cancel; auto.
     step.
 
     apply arrayN_unify.
     apply vssync_vecs_progress; auto.
 
     subst; pimpl_crash.
-    norm; try cancel; intuition; eauto.
+    norm; [ cancel | | cancel | ]; intuition; eauto.
     rewrite Nat.min_l; eauto; omega.
     rewrite Nat.min_l; eauto.
     pred_apply; cancel.

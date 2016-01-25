@@ -981,7 +981,7 @@ Tactic Notation "step" "using" tactic(t) "with" ident(db) :=
 
 Tactic Notation "step" "using" tactic(t) :=
   prestep;
-  try cancel_with t;
+  try (cancel_with t; try cancel_with t);
   poststep t.
 
 (*
