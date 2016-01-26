@@ -1,3 +1,4 @@
+Require Import Hashmap.
 Require Import Prog.
 Require Import BasicProg.
 Require Import SepAuto.
@@ -5,7 +6,7 @@ Require Import Word.
 Require Import Hoare.
 Require Import Pred.
 Require Import EqdepFacts.
-Require Import Hashmap.
+
 
 Set Implicit Arguments.
 

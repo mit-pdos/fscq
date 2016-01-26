@@ -1,3 +1,4 @@
+Require Import Hashmap.
 Require Import Prog.
 Require Import BasicProg.
 Require Import Word.
@@ -8,7 +9,7 @@ Require Import Cache.
 Require Import List.
 Require Import Hoare.
 Require Import SepAuto.
-Require Import Hashmap.
+Require Import HashmapProg.
 
 Set Implicit Arguments.
 
@@ -52,87 +53,88 @@ Definition crep (a b a' b' : valu) hm :
 
 
 (* Example "log" implementation using checksums *)
-Definition put T cs hm d1 d2 rx : prog T :=
+Definition put T cs d1 d2 rx : prog T :=
   cs <- BUFCACHE.write block1 d1 cs;
   cs <- BUFCACHE.write block2 d2 cs;
-  let^ (h, hm) <- hash_list (d1 :: d2 :: nil) hm;
+  h <- hash_list (d1 :: d2 :: nil);
   cs <- BUFCACHE.write hash_block (hash_to_valu h) cs;
   cs <- BUFCACHE.sync block1 cs;
   cs <- BUFCACHE.sync block2 cs;
   cs <- BUFCACHE.sync hash_block cs;
-  rx ^(cs, hm).
+  rx cs.
 
-Definition get T cs (hm : hashmap) rx : prog T :=
+Definition get T cs rx : prog T :=
   let^ (cs, d1) <- BUFCACHE.read block1 cs;
   let^ (cs, d2) <- BUFCACHE.read block2 cs;
   rx ^(d1, d2).
 
-Definition recover T cs hm rx : prog T :=
+Definition recover T cs rx : prog T :=
   let^ (cs, d1) <- BUFCACHE.read block1 cs;
   let^ (cs, d2) <- BUFCACHE.read block2 cs;
   let^ (cs, diskh) <- BUFCACHE.read hash_block cs;
-  let^ (h, hm) <- hash_list (d1 :: d2 :: nil) hm;
+  h <- hash_list (d1 :: d2 :: nil);
   If (weq diskh (hash_to_valu h)) {
-    rx ^(cs, hm)
+    rx cs
   } else {
-    let^ (cs, hm) <- put cs hm default_valu default_valu;
-    rx ^(cs, hm)
+    cs <- put cs default_valu default_valu;
+    rx cs
   }.
 
 
-Theorem put_ok : forall cs d1 d2 hm,
+Theorem put_ok : forall cs d1 d2,
   {< d d1_old d2_old d1_old' d2_old',
-  PRE
+  PRE:hm
     BUFCACHE.rep cs d *
     any_hash_rep d1_old d2_old d1_old' d2_old' d hm
-  POST RET:^(cs', hm')
+  POST:hm' RET:cs'
     exists d',
       BUFCACHE.rep cs' d' *
       rep d1 d2 d' hm'
-  CRASH
-    exists cs' d' hm',
+  CRASH:hm_crash
+    exists cs' d',
       BUFCACHE.rep cs' d' *
-      [[ (crep d1_old' d2_old' d1 d2 hm')%pred d' ]]
-  >} put cs hm d1 d2.
+      [[ (crep d1_old' d2_old' d1 d2 hm_crash)%pred d' ]]
+  >} put cs d1 d2.
 Proof.
   unfold put, rep, any_hash_rep, crep.
   step.
   step.
   step.
   apply goodSize_bound with (bound := 2); auto.
-  step;
-  eapply hash_list_rep_subset in H as H'; eauto.
+  step.
   step.
   step.
   step.
   step.
 
-  all: cancel_with eauto.
+  solve_hash_list_rep.
+  all: cancel_with solve_hash_list_rep.
   Grab Existential Variables.
   all: eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (put _ _ _ _) _) => apply put_ok : prog.
+Hint Extern 1 ({{_}} progseq (put _ _ _) _) => apply put_ok : prog.
 
 
-Theorem get_ok : forall cs hm,
+Theorem get_ok : forall cs,
   {< d d1 d2,
-  PRE
+  PRE:hm
     BUFCACHE.rep cs d *
     rep d1 d2 d hm
-  POST RET:^(d1', d2')
+  POST:hm' RET:^(d1', d2')
     exists cs', BUFCACHE.rep cs' d *
-    rep d1 d2 d hm *
+    rep d1 d2 d hm' *
     [[ d1 = d1' /\ d2 = d2' ]]
-  CRASH
+  CRASH:hm'
     exists cs', BUFCACHE.rep cs' d *
-    rep d1 d2 d hm
-  >} get cs hm.
+    rep d1 d2 d hm'
+  >} get cs.
 Proof.
   unfold get, rep, any_hash_rep.
   step.
   step.
   step.
+  all: solve_hash_list_rep.
 Qed.
 
 (* block1 and block2 get some value, and hash_block points to a valid hash of  *)
@@ -157,25 +159,25 @@ Qed.
 Hint Rewrite crash_xform_would_recover_either_pred : crash_xform.
 
 
-Theorem recover_ok : forall cs hm,
+Theorem recover_ok : forall cs,
   {< d1_old d2_old d1 d2,
-  PRE
+  PRE:hm
     exists d,
       BUFCACHE.rep cs d *
       [[ crash_xform (crep d1_old d2_old d1 d2 hm)%pred d ]]
-  POST RET:^(cs', hm')
+  POST:hm' RET:cs'
     exists d',
       BUFCACHE.rep cs' d' *
       (rep d1_old d2_old d' hm' \/
        rep d1 d2 d' hm' \/
        rep default_valu default_valu d' hm')
-  CRASH
-    exists cs' d' hm',
+  CRASH:hm'
+    exists cs' d',
       (BUFCACHE.rep cs' d' *
        [[ (crep d1_old d2_old default_valu default_valu hm')%pred d' ]]) \/
       (BUFCACHE.rep cs' d' *
        [[ (crep d1 d2 default_valu default_valu hm')%pred d' ]])
-  >} recover cs hm.
+  >} recover cs.
 Proof.
   unfold recover, rep.
   intros.
@@ -199,25 +201,29 @@ Proof.
     apply goodSize_bound with (bound := 2); auto.
     step.
     step.
-    apply hash_to_valu_inj in H9.
+    apply hash_to_valu_inj in H13.
     subst.
-    assert (Hheq: d1_old = a /\ d2_old = b).
-      eapply hash_list_rep_subset in H0; eauto.
-      eapply hash_list_injective in H0; try apply H11.
-      inversion H0. auto.
+    assert (Hheq: d2_old :: d1_old :: nil = b :: a :: nil).
+      eapply hash_list_injective.
+      solve_hash_list_rep.
+      auto.
+    inversion Hheq.
     unfold any_hash_rep.
-    cancel_with eauto.
+    apply pimpl_or_r. left.
+    apply pimpl_exists_r. exists r_.
+    cancel.
 
     step.
     unfold any_hash_rep.
     cancel_with eauto.
-    eapply hash_list_rep_subset; eauto.
+    solve_hash_list_rep.
     step.
+
     all: repeat cancel; try (
       unfold crep in *;
-      instantiate (1:=d);
       apply pimpl_or_r; left;
-      repeat cancel_with eauto).
+      cancel;
+      cancel_with solve_hash_list_rep).
 
   - cancel.
     step.
@@ -226,25 +232,29 @@ Proof.
     apply goodSize_bound with (bound := 2); auto.
     step.
     step.
-    apply hash_to_valu_inj in H9.
+    apply hash_to_valu_inj in H13.
     subst.
-    assert (Hheq: d1 = a /\ d2 = b).
-      eapply hash_list_rep_subset in H0; eauto.
-      eapply hash_list_injective in H0; try apply H11.
-      inversion H0. auto.
+    assert (Hheq: d2 :: d1 :: nil = b :: a :: nil).
+      eapply hash_list_injective.
+      solve_hash_list_rep.
+      auto.
+    inversion Hheq.
     unfold any_hash_rep.
-    cancel_with eauto.
+    apply pimpl_or_r; right. apply pimpl_or_r; left.
+    apply pimpl_exists_r. exists r_.
+    cancel.
 
     step.
     unfold any_hash_rep.
     cancel_with eauto.
-    eapply hash_list_rep_subset; eauto.
+    solve_hash_list_rep.
+
     step.
     all: repeat cancel; try (
       unfold crep in *;
-      instantiate (1:=d);
       apply pimpl_or_r; right;
-      repeat cancel_with eauto).
+      cancel;
+      cancel_with solve_hash_list_rep).
 
   Grab Existential Variables.
   all: eauto.

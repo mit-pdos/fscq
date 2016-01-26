@@ -3,7 +3,6 @@ Require Import AsyncDisk.
 Require Import Hashmap.
 Require Import Word.
 Require Import FSLayout.
-Require Import Log.
 Require Import BasicProg.
 Require Import Cache.
 Require Import Pred.
@@ -20,41 +19,36 @@ Require Import ListUtils.
 Set Implicit Arguments.
 
 
-Definition hash_list T values hm rx : prog T :=
-  hash <- Hash default_valu hm;
-  let^ (hash, hm') <- For i < $ (length values)
+Definition hash_list T values rx : prog T :=
+  hash <- Hash default_valu;
+  let^ (hash) <- For i < $ (length values)
+  Hashmap hm'
   Ghost [ crash ]
-  Loopvar [ hash hm' ]
+  Loopvar [ hash ]
   Continuation lrx
   Invariant
-    [[ hash_list_rep (rev (firstn #i values)) hash hm' ]] *
-    [[ exists l, hashmap_subset l hm hm' ]]
+    [[ hash_list_rep (rev (firstn #i values)) hash hm' ]]
   OnCrash crash
   Begin
-    let^ (hash, hm') <- Hash (Word.combine (sel values i default_valu) hash) hm';
-    lrx ^(hash, hm')
-  Rof ^(default_hash, hm');
-  rx ^(hash, hm').
+    hash <- Hash (Word.combine (sel values i default_valu) hash);
+    lrx ^(hash)
+  Rof ^(hash);
+  rx hash.
 
 
-Theorem hash_list_ok : forall values hm,
+Theorem hash_list_ok : forall values,
   {< (_ : unit) ,
-  PRE
+  PRE:hm
     emp * [[ goodSize addrlen (length values) ]]
-  POST RET:^(hash, hm')
-    emp * [[ hash_list_rep (rev values) hash hm' ]] *
-          [[ exists l, hashmap_subset l hm hm' ]]
-  CRASH
-    emp
-  >} hash_list values hm.
+  POST:hm' RET:hash
+    emp * [[ hash_list_rep (rev values) hash hm' ]]
+  CRASH:hm'
+    emp * [[ exists i hash, hash_list_rep (rev (firstn i values)) hash hm' ]]
+  >} hash_list values.
 Proof.
   unfold hash_list.
   step.
   step; try apply HL_nil; auto.
-
-  rewrite H7.
-  exists ((a, existT _ _ default_valu) :: nil).
-  econstructor; eauto. constructor.
 
   assert (Hlength: length (rev (firstn # (m ^+ $ (1)) values)) = S (# (m))).
     rewrite rev_length.
@@ -64,8 +58,8 @@ Proof.
       apply Min.min_l. auto.
 
       apply not_lt in n.
-      apply wlt_lt in H.
-      rewrite wordToNat_natToWord_idempotent' in H; auto.
+      apply wlt_lt in H0.
+      rewrite wordToNat_natToWord_idempotent' in H0; auto.
       intuition.
 
   step.
@@ -74,8 +68,8 @@ Proof.
   (* Loop invariant. *)
   - destruct (rev (firstn # (m ^+ $ (1)) values)) eqn:Hrev_values.
     + simpl in Hlength. inversion Hlength.
-    + assert (Hl: rev l0 = (firstn # (m) values)).
-        replace l0 with (rev (rev l0)) in Hrev_values;
+    + assert (Hl: rev l2 = (firstn # (m) values)).
+        replace l2 with (rev (rev l2)) in Hrev_values;
           try apply rev_involutive.
         rewrite <- rev_unit in Hrev_values.
         erewrite wordToNat_plusone in Hrev_values; eauto.
@@ -83,12 +77,12 @@ Proof.
 
         rewrite <- removelast_firstn;
           try (apply lt_word_lt_nat; auto).
-        replace (rev l0) with (rev l0 ++ removelast (w :: nil)).
+        replace (rev l2) with (rev l2 ++ removelast (w :: nil)).
         rewrite <- removelast_app.
         rewrite Hrev_values.
         auto.
 
-        intuition. inversion H6.
+        intuition. inversion H7.
         simpl. rewrite app_nil_r. auto.
 
       rewrite <- rev_involutive in Hl.
@@ -111,13 +105,10 @@ Proof.
       unfold sel in *.
       apply upd_hashmap'_eq.
       intuition.
-      unfold hash_safe in H14.
-      rewrite H6 in H14.
-      inversion H14 as [ Hdef | Hdef ];
-      contradict_hashmap_get_default Hdef a2.
-
-  - eexists. subst.
-    econstructor; eauto.
+      unfold hash_safe in *.
+      rewrite H7 in H16.
+      inversion H16 as [ Hdef | Hdef ];
+      contradict_hashmap_get_default Hdef hm0.
 
   (* Loop invariant implies post-condition. *)
   - step.
@@ -126,11 +117,14 @@ Proof.
       apply firstn_oob. auto.
     rewrite <- Hfirstn. auto.
 
+  - repeat eexists. instantiate (i:=0). econstructor. eauto.
+  - repeat eexists. instantiate (i:=0). econstructor. eauto.
+
   Grab Existential Variables.
   all: eauto; unfold DecEq; apply weq.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (hash_list _ _) _) => apply hash_list_ok : prog.
+Hint Extern 1 ({{_}} progseq (hash_list _) _) => apply hash_list_ok : prog.
 
 
 Theorem hash_list_injective : forall l1 l2 hv hm,

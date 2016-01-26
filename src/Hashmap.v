@@ -162,11 +162,16 @@ Proof.
   constructor; eauto.
 Qed.
 
+(** Chains together hashmap_subset patterns until it solves the goal.
+  If the goal's larger hashmap isn't instantiated yet, try to match
+  it to the largest possible hashmap. *)
 Ltac solve_hashmap_subset_trans :=
   match goal with
   | [ H: hashmap_subset _ ?hm ?hm2, H2: hashmap_subset _ ?hm2 _ |- hashmap_subset _ ?hm _ ]
     => eapply hashmap_subset_trans;
-        [ exact H | try exact H2; solve_hashmap_subset_trans ]
+        [ exact H | try solve_hashmap_subset_trans ]
+  | [ |- hashmap_subset _ _ _ ]
+    => eauto
   end.
 
 Ltac solve_hashmap_subset :=
@@ -175,4 +180,16 @@ Ltac solve_hashmap_subset :=
     => eexists; solve_hashmap_subset
   | [ |- hashmap_subset _ _ _ ]
     => subst; solve [ solve_hashmap_subset_trans | repeat (eauto; econstructor) ]
+  end.
+
+Ltac solve_hash_list_rep :=
+  try match goal with
+  | [ H: hash_list_rep _ ?h ?hm, Htrans: hashmap_subset _ ?hm _ |-
+      hash_list_rep _ ?h _ ]
+    => eapply hash_list_rep_subset; [ | exact H ];
+        try solve_hashmap_subset
+  | [ H: hash_list_rep ?l _ ?hm, Htrans: hashmap_subset _ ?hm _ |-
+      hash_list_rep ?l _ _ ]
+    => eapply hash_list_rep_subset; [ | exact H ];
+        try solve_hashmap_subset
   end.
