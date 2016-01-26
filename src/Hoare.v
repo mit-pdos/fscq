@@ -53,7 +53,7 @@ Notation "'RET' : ^( ra , .. , rb ) post" :=
   * propositions about the hashmap machine state.
   * The pre-hashmap must be a subset of both the post- and crash-hashmaps.
   *)
-Notation "{{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash crash >}} p1" :=
+Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
    (fun hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
