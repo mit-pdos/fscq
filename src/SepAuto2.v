@@ -776,19 +776,19 @@ Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
 Tactic Notation "hypmatch" constr(pattern) "as" ident(n) :=
   match goal with | [ H: context [ pattern ] |- _ ] => rename H into n end.
 
-Ltac cancel_with t :=
+Ltac cancel_with' t intuition_t :=
   intros;
   unfold stars; simpl; subst;
   pimpl_crash;
   norm;
   try match goal with
       | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
-        solve [ apply stars_or_left; cancel_with t
-              | apply stars_or_right; cancel_with t ]
+        solve [ apply stars_or_left; cancel_with' t intuition_t
+              | apply stars_or_right; cancel_with' t intuition_t ]
       | [ |- _ =p=> _ ] => cancel'
       end;
-  intuition;
-  try ( pred_apply; cancel_with t );
+  intuition intuition_t;
+  try ( pred_apply; cancel_with' t intuition_t);
   try congruence;
   unfold stars; simpl;
   try match goal with
@@ -797,6 +797,7 @@ Ltac cancel_with t :=
   try solve_hashmap;
   try t.
 
+Ltac cancel_with t := cancel_with' t auto.
 Ltac cancel := cancel_with idtac.
 
 
@@ -851,7 +852,7 @@ Ltac destruct_branch :=
   | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
   end.
 
-Ltac step_with unfolder t :=
+Ltac step_with' unfolder t intuition_t :=
   intros;
   try (unfolder; cancel);
   repeat destruct_branch;
@@ -867,17 +868,20 @@ Ltac step_with unfolder t :=
   intros; subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
   unfolder;
-  try ( cancel_with t ; try ( progress autorewrite_fast ; cancel_with t ) );
+  try ( cancel_with' t intuition_t ;
+        try ( progress autorewrite_fast ; cancel_with' t intuition_t ) );
   apply_xform cancel;
-  try cancel_with t; try autorewrite_fast;
+  try cancel_with' t intuition_t; try autorewrite_fast;
   intuition eauto;
   try omega;
   try congruence;
   try t.
 
+Ltac step_with unfolder t := step_with' unfolder t auto.
 Ltac step_unfold unfolder := step_with unfolder eauto.
 
 Ltac step := step_unfold idtac.
+Ltac step_idtac := step_with' idtac idtac idtac.
 
 Ltac hoare := repeat step.
 Ltac hoare_unfold unfolder := unfolder; repeat (step_unfold unfolder).

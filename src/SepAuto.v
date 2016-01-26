@@ -883,19 +883,19 @@ Tactic Notation "substl" constr(term) :=
   end.
 
 
-Ltac cancel_with t :=
+Ltac cancel_with' t intuition_t :=
   intros;
   unfold stars; simpl; try subst;
   pimpl_crash;
   norm;
   try match goal with
       | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
-        solve [ apply stars_or_left; cancel_with t
-              | apply stars_or_right; cancel_with t ]
+        solve [ apply stars_or_left; cancel_with' t intuition_t
+              | apply stars_or_right; cancel_with' t intuition_t ]
       | [ |- _ =p=> _ ] => cancel'
       end;
-  intuition;
-  try ( pred_apply; cancel_with t );
+  intuition intuition_t;
+  try ( pred_apply; cancel_with' t intuition_t);
   try congruence;
   try solve_hashmap;
   try t;
@@ -904,6 +904,7 @@ Ltac cancel_with t :=
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
 
+Ltac cancel_with t := cancel_with' t auto.
 Ltac cancel := cancel_with idtac.
 
 (* fastest version of cancel, should always try this first *)
@@ -1007,10 +1008,16 @@ Tactic Notation "step" "using" tactic(t) "with" ident(db) :=
   try ( cancel_with t ; try ( autorewrite with db; cancel_with t ) );
   poststep t.
 
+Tactic Notation "step" "using" tactic(t) "with" "intuition" tactic(intuition_t) :=
+  prestep;
+  try (cancel_with' t intuition_t; try cancel_with' t intuition_t);
+  poststep t.
+
 Tactic Notation "step" "using" tactic(t) :=
   prestep;
   try (cancel_with t; try cancel_with t);
   poststep t.
+
 
 (*
 Ltac step_with t :=
@@ -1025,6 +1032,7 @@ Ltac step_with t :=
 *)
 
 Ltac step := step using eauto.
+Ltac step_idtac := step using idtac with intuition idtac.
 
 Tactic Notation "hoare" "using" tactic(t) "with" ident(db) "in" "*" :=
   repeat (step using t with db in *).
