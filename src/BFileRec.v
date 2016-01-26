@@ -1385,10 +1385,6 @@ Section RECBFILE.
       apply Nat.mul_le_mono_pos_r with (p := block_items) in H5; auto.
       simpl in H5.
       omega.
-    - Transparent hidden.
-      unfold hidden.
-      replace f'.
-      auto.
 
     Grab Existential Variables.
     exact ($ 0).

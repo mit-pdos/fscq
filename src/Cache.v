@@ -161,10 +161,10 @@ Module BUFCACHE.
     >} read a cs.
   Proof.
     unfold read.
-    hoare.
+    hoare using auto.
 
     apply ptsto_valid' in H3 as H'.
-    apply Map.find_2 in Heqo. apply H12 in Heqo. rewrite H' in Heqo. deex; congruence.
+    apply Map.find_2 in Heqo. apply H13 in Heqo. rewrite H' in Heqo. deex; congruence.
 
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel; cancel.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
@@ -174,9 +174,14 @@ Module BUFCACHE.
 
     apply ptsto_valid' in H3 as H'.
     destruct (addr_eq_dec a a0); subst.
-    apply mapsto_add in H; subst; eauto.
-    edestruct H12. eauto. eexists; eauto.
+    apply mapsto_add in H4; subst; eauto.
+    edestruct H13. eauto. eexists.
+    eauto.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
+    eauto.
+    eauto.
+    eauto.
+    edestruct H13; try eexists; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
@@ -196,7 +201,7 @@ Module BUFCACHE.
     >} write a v cs.
   Proof.
     unfold write.
-    hoare.
+    hoare using auto.
 
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
@@ -204,9 +209,9 @@ Module BUFCACHE.
     rewrite <- diskIs_combine_upd with (m:=d) (a:=a); try pred_apply; cancel.
     rewrite map_add_dup_cardinal; eauto.
     destruct (addr_eq_dec a a0); subst.
-    apply mapsto_add in H; subst.
+    apply mapsto_add in H4; subst.
     rewrite upd_eq by auto. eauto.
-    apply Map.add_3 in H; auto.
+    apply Map.add_3 in H4; auto.
     rewrite upd_ne by auto. auto.
 
     apply sep_star_comm; apply sep_star_comm in H3.
@@ -217,9 +222,9 @@ Module BUFCACHE.
     intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
 
     destruct (addr_eq_dec a a0); subst.
-    apply mapsto_add in H; subst.
+    apply mapsto_add in H4; subst.
     rewrite upd_eq by auto. eauto.
-    apply Map.add_3 in H; auto.
+    apply Map.add_3 in H4; auto.
     rewrite upd_ne by auto. auto.
 
     apply sep_star_comm; apply sep_star_comm in H3.
@@ -253,13 +258,14 @@ Module BUFCACHE.
     instantiate (d' := Mem.upd d a (v2_cur, [])); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
-    apply H5 in H; deex.
+    apply H5 in H0; deex.
     destruct (addr_eq_dec a a0); subst.
     apply sep_star_comm in H3; apply ptsto_valid in H3.
-    rewrite H3 in H. inversion H. subst.
+    rewrite H3 in H0. inversion H0. subst.
     rewrite upd_eq by auto. eexists. eauto.
     rewrite upd_ne by auto. eexists. eauto.
     apply sep_star_comm. eapply ptsto_upd. apply sep_star_comm. eauto.
+    eauto.
     cancel.
     apply pimpl_or_r; left.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
@@ -290,13 +296,14 @@ Module BUFCACHE.
 
     case_eq (Map.find a (CSMap cs)); intros.
     eapply pimpl_ok2; eauto with prog.
-    intros; norm.
+    cancel.
+
     instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     rewrite map_remove_cardinal. eauto. eauto.
     destruct (addr_eq_dec a a0).
-    apply MapFacts.remove_mapsto_iff in H0. intuition.
+    apply MapFacts.remove_mapsto_iff in H4. intuition.
     rewrite upd_ne by eauto. eauto.
 
     assert ((a |-> (v0_cur, v0_old) * F)%pred (Mem.upd d a (v0_cur, v0_old))).
@@ -310,21 +317,21 @@ Module BUFCACHE.
     intuition.
 
     destruct (addr_eq_dec a a0).
-    apply MapProperties.F.find_mapsto_iff in H0. congruence.
+    apply MapProperties.F.find_mapsto_iff in H4. congruence.
     rewrite upd_ne by eauto. eauto.
 
     assert ((a |-> (v0_cur, v0_old) * F)%pred (Mem.upd d a (v0_cur, v0_old))).
     eapply ptsto_upd. pred_apply; cancel.
     pred_apply; cancel.
+    eauto.
 
-    pimpl_crash. norm.
+    pimpl_crash. cancel.
     instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
 
-    intuition.
     instantiate (cs' := Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) eviction_init).
     all: simpl in *; eauto; try omega.
-    apply MapProperties.F.empty_mapsto_iff in H; exfalso; eauto.
+    apply MapProperties.F.empty_mapsto_iff in H0; exfalso; eauto.
 
     assert ((a |-> (v0_cur, v0_old) * F)%pred (Mem.upd d a (v0_cur, v0_old))).
     eapply ptsto_upd. pred_apply; cancel.
@@ -370,7 +377,7 @@ Module BUFCACHE.
      * from the base memory to a virtual memory.
      *)
     match goal with
-    | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
+    | [ |- _ =p=> _ * ?E * [[ _ ]] * [[ _ = _ ]] * [[ _ = _ ]] ] =>
       remember (E)
     end.
     norm; cancel'; intuition.
@@ -384,7 +391,8 @@ Module BUFCACHE.
     congruence.
     omega.
     intros.
-    contradict H1; apply Map.empty_1.
+    contradict H0; apply Map.empty_1.
+    subst; econstructor; econstructor.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init_load _) _) => apply init_load_ok : prog.
@@ -411,7 +419,7 @@ Module BUFCACHE.
      * from the base memory to a virtual memory.
      *)
     match goal with
-    | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
+    | [ |- _ =p=> _ * ?E * [[ _ ]] * [[ _ = _ ]] * [[ _ = _ ]] ] =>
       remember (E)
     end.
     norm; cancel'; intuition.
@@ -430,6 +438,7 @@ Module BUFCACHE.
     unfold diskIs in *; subst.
     exists m'.
     intuition.
+    solve_hashmap.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.

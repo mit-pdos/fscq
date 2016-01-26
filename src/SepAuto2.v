@@ -9,6 +9,8 @@ Require Import Hashmap.
 
 Set Implicit Arguments.
 
+Ltac solve_hashmap := solve_hashmap_subset.
+
 (* Helpers for existential variables *)
 
 Ltac set_evars :=
@@ -792,7 +794,7 @@ Ltac cancel_with t :=
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end;
-  try solve_hashmap_subset;
+  try solve_hashmap;
   try t.
 
 Ltac cancel := cancel_with idtac.
