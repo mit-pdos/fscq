@@ -2342,11 +2342,39 @@ Module LOG.
       (exists cur, rep_inner xp (AppliedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
       (exists cur, rep_inner xp (NoTransaction cur) ms * [[ curpred (list2mem cur) ]]))%pred.
 
+  Lemma would_recover_either_pred'_pimpl : forall xp old p1 p2,
+    p1 =p=> p2 ->
+    would_recover_either_pred' xp old p1 =p=> would_recover_either_pred' xp old p2.
+  Proof.
+    intros.
+    unfold would_recover_either_pred'.
+    norm; unfold stars; simpl; auto.
+    do 0 or_r. or_l. cancel.
+    do 1 or_r. or_l. cancel.
+    do 2 or_r. or_l. cancel.
+    do 3 or_r. or_l. cancel.
+    do 4 or_r. or_l. cancel.
+    do 5 or_r. or_l. cancel.
+    do 6 or_r. or_l. cancel.
+    do 7 or_r. or_l. cancel.
+    do 8 or_r. cancel.
+  Qed.
+
   Definition would_recover_either xp F old cur :=
     (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either' xp old cur)%pred d ]])%pred.
 
   Definition would_recover_either_pred xp F old curpred :=
     (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either_pred' xp old curpred)%pred d ]])%pred.
+
+  Lemma would_recover_either_pred_ppimpl : forall xp F old p1 p2,
+    p1 =p=> p2 ->
+    would_recover_either_pred xp F old p1 =p=> would_recover_either_pred xp F old p2.
+  Proof.
+    intros.
+    unfold would_recover_either_pred.
+    cancel.
+    apply would_recover_either_pred'_pimpl; auto.
+  Qed.
 
   Hint Extern 0 (okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (SepAuto.okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
