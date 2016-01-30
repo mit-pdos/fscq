@@ -422,9 +422,8 @@ Module LOG.
     hoare using dems.
     repeat cancel.
     rewrite replay_disk_add.
+    pred_apply; repeat cancel.
     eapply list2nmem_updN; eauto.
-    pimpl_crash.
-    repeat cancel.
   Qed.
 
   Lemma replay_disk_eq : forall a v v' ms d,
@@ -657,7 +656,65 @@ Module LOG.
     all : eauto.
   Qed.
 
-(*
+
+  Lemma In_map_fst_MapIn : forall elt k m,
+    In k (map fst (Map.elements (elt:=elt) m)) <-> Map.In k m.
+  Proof.
+    intros; split; intros.
+    apply in_map_fst_exists_snd in H.
+    destruct H.
+    apply MapFacts.elements_in_iff.
+    exists x.
+    apply In_InA; auto.
+    apply MapFacts.elements_in_iff in H.
+    destruct H.
+    apply InA_alt in H.
+    destruct H; intuition.
+    hnf in H0; simpl in *; intuition; subst.
+    destruct x0; simpl in *.
+    generalize dependent (Map.elements m).
+    induction l; intros; simpl; auto.
+    inversion H1; intuition.
+    destruct a; inversion H.
+    tauto.
+  Qed.
+
+
+  Lemma In_replay_mem_mem0 : forall l k,
+    KNoDup l ->
+    In k (map fst (Map.elements (replay_mem l map0))) ->
+    In k (map fst l).
+  Proof.
+    induction l; intros; simpl; auto.
+    destruct a; simpl in *.
+    destruct (addr_eq_dec k0 k).
+    left; auto.
+    right.
+    inversion H; subst.
+    apply In_map_fst_MapIn in H0.
+    rewrite replay_mem_add in H0 by auto.
+    apply MapFacts.add_neq_in_iff in H0; auto.
+    apply IHl; auto.
+    apply In_map_fst_MapIn; auto.
+  Qed.
+
+  Lemma replay_disk_replay_mem : forall l d,
+    KNoDup l ->
+    replay_disk l d = replay_disk (Map.elements (elt:=valu) (replay_mem l map0)) d.
+  Proof.
+    induction l; intros; simpl; auto.
+    destruct a; inversion H; subst; simpl.
+    rewrite IHl by auto.
+    rewrite replay_disk_updN_comm.
+    rewrite <- replay_disk_add.
+    f_equal; apply eq_sym.
+    apply mapeq_elements.
+    apply replay_mem_add; auto.
+    contradict H2.
+    apply In_fst_KIn; simpl.
+    apply In_replay_mem_mem0; auto.
+  Qed.
+
   Lemma replay_disk_merge' : forall l1 l2 d,
     KNoDup l1 -> KNoDup l2 ->
     replay_disk l2 (replay_disk l1 d) =
@@ -676,38 +733,29 @@ Module LOG.
 
     induction l2; destruct a; simpl; auto.
     inversion H; simpl; subst.
-    erewrite mapeq_elements.  
+    erewrite mapeq_elements.
     2: apply replay_mem_add; auto.
     rewrite replay_disk_add.
     rewrite replay_disk_updN_comm.
     f_equal.
-    admit.
+
+    apply replay_disk_replay_mem; auto.
     contradict H3.
     apply In_fst_KIn; auto.
 
-    destruct a0; simpl.
+    destruct a0; simpl in *.
     inversion H; inversion H0; simpl; subst.
-    rewrite IHl1 by auto.
-    setoid_rewrite mapeq_elements at 2.
-    2: apply replay_mem_equal.
-    2: apply replay_mem_add; auto.
-    setoid_rewrite mapeq_elements.
+    rewrite replay_disk_updN_comm.
+    rewrite IHl2 by auto.
+    rewrite <- replay_disk_add.
+    f_equal.
+    apply eq_sym.
+    apply mapeq_elements.
+    apply replay_mem_add; auto.
+    contradict H7.
+    apply In_fst_KIn; simpl; auto.
+  Qed.
 
-
-
-    inversion H; destruct a; simpl; subst.
-    rewrite IHl1 by auto.
-    setoid_rewrite mapeq_elements at 2.
-    2: apply replay_mem_equal.
-    2: apply replay_mem_add; auto.
-    setoid_rewrite mapeq_elements.
-
-
-    induction l2; simpl; auto.
-    inversion H; subst.
-    erewrite mapeq_elements.
-    2: apply replay_mem_add; destruct a; auto.
-*)
 
   Lemma replay_disk_merge : forall m1 m2 d,
     replay_disk (Map.elements m2) (replay_disk (Map.elements m1) d) =
@@ -716,17 +764,23 @@ Module LOG.
     intros.
     unfold map_merge.
     setoid_rewrite mapeq_elements at 3.
-    2: eapply replay_mem_equal.
+    2: eapply replay_mem_equal with (m2 := m1); auto.
+    rewrite replay_disk_merge' by (apply Map.elements_3w).
+    f_equal.
+    apply mapeq_elements.
+    apply replay_mem_equal.
+    apply replay_mem_map0.
+  Qed.
 
-  Admitted.
+  Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem commit_ok: forall xp ms,
-    {< m1 m2 F,
-     PRE            rep xp F (ActiveTxn m1 m2) ms
+    {< m1 m2,
+     PRE            rep xp (ActiveTxn m1 m2) ms
      POST RET:^(ms',r)
-                    ([[ r = true ]] * rep xp F (NoTxn m2) ms') \/
-                    ([[ r = false ]] * rep xp F (NoTxn m1) ms')
-     CRASH          would_recover_either xp F m1 m2
+                    ([[ r = true ]] * rep xp (NoTxn m2) ms') \/
+                    ([[ r = false ]] * rep xp (NoTxn m1) ms')
+     CRASH          would_recover_either xp m1 m2
     >} commit xp ms.
   Proof.
     unfold commit.
@@ -741,29 +795,38 @@ Module LOG.
     or_l.
     cancel; unfold map_merge.
     rewrite replay_mem_app; eauto.
+
     apply replay_disk_merge.
 
     (* crashes *)
     cancel.
     or_l; norm.
     instantiate (ms0 := mk_memstate (MSOld ms) (MSCur ms) cs').
-    cancel. intuition.
+    cancel. intuition; simpl; eauto.
+    pred_apply; cancel.
 
     or_r; or_r; or_r.
-    norm. or_l.
+    norm. cancel.
     instantiate (ms1 := mk_memstate (MSOld ms) (MSCur ms) cs').
-    cancel. intuition.
+    cancel. intuition; simpl; eauto.
+    pred_apply; cancel.
+    instantiate ( 1 := F); cancel.
+    or_l; auto.
 
     or_r; or_r; or_r.
-    norm. or_r.
+    norm. cancel.
     instantiate (ms2 := mk_memstate (MSOld ms) (MSCur ms) cs').
-    cancel. intuition.
+    cancel. intuition; simpl; eauto.
+    pred_apply; cancel.
+    instantiate ( 1 := F); cancel.
+    or_r; auto.
 
     or_r; or_r; or_l; norm.
     instantiate (ms3 := mk_memstate (map_merge (MSOld ms) (MSCur ms)) map0 cs').
-    cancel. simpl; intuition.
+    cancel. simpl; intuition; eauto.
     unfold map_merge.
     rewrite replay_mem_app; eauto.
+    pred_apply; cancel.
     apply replay_disk_merge.
   Qed.
 
