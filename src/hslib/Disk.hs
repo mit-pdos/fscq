@@ -17,6 +17,7 @@ import Foreign.Marshal.Alloc
 import Data.Word
 import Data.IORef
 import Data.Map
+import Control.Concurrent.MVar
 
 verbose :: Bool
 verbose = False
@@ -41,8 +42,11 @@ data FlushLog =
   -- The first list is the list of writes since the last flush
   -- The second list is the list of previous flushed write groups
 
+-- VMem represents our variable-based memory model
+type VMem = Data.Map.Map Int GHC.Prim.Any
+
 data DiskState =
-  S !Fd !(IORef DiskStats) !(IORef Bool) !(Maybe (IORef FlushLog)) !(Data.Map.Map Int GHC.Prim.Any)
+  S !Fd !(IORef DiskStats) !(IORef Bool) !(Maybe (IORef FlushLog)) !(IORef VMem) !(MVar ())
 
 bumpRead :: IORef DiskStats -> IO ()
 bumpRead sr = do
@@ -92,7 +96,7 @@ i2buf i nbytes (GHC.Exts.Ptr a) = do
 
 read_disk :: DiskState -> Coq_word -> IO Coq_word
 read_disk ds (W a) = read_disk ds (W64 $ fromIntegral a)
-read_disk (S fd sr _ _ _) (W64 a) = do
+read_disk (S fd sr _ _ _ _) (W64 a) = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
@@ -109,7 +113,7 @@ read_disk (S fd sr _ _ _) (W64 a) = do
 write_disk :: DiskState -> Coq_word -> Coq_word -> IO ()
 write_disk ds (W a) v = write_disk ds (W64 $ fromIntegral a) v
 write_disk _ (W64 _) (W64 _) = error "write_disk: short value"
-write_disk (S fd sr dirty fl _) (W64 a) (W v) = do
+write_disk (S fd sr dirty fl _ _) (W64 a) (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   bumpWrite sr
@@ -126,7 +130,7 @@ write_disk (S fd sr dirty fl _) (W64 a) (W v) = do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
 sync_disk :: DiskState -> Coq_word -> IO ()
-sync_disk (S fd sr dirty fl _) a = do
+sync_disk (S fd sr dirty fl _ _) a = do
   debugmsg $ "sync(" ++ (show a) ++ ")"
   isdirty <- readIORef dirty
   if isdirty then do
@@ -146,11 +150,11 @@ trim_disk _ a = do
   return ()
 
 clear_stats :: DiskState -> IO ()
-clear_stats (S _ sr _ _ _) = do
+clear_stats (S _ sr _ _ _ _) = do
   writeIORef sr $ Stats 0 0 0
 
 get_stats :: DiskState -> IO DiskStats
-get_stats (S _ sr _ _ _) = do
+get_stats (S _ sr _ _ _ _) = do
   s <- readIORef sr
   return s
 
@@ -159,7 +163,9 @@ init_disk disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
   dirty <- newIORef False
-  return $ S fd sr dirty Nothing Data.Map.empty
+  vm <- newIORef Data.Map.empty
+  lock <- newMVar ()
+  return $ S fd sr dirty Nothing vm lock
 
 init_disk_crashlog :: FilePath -> IO DiskState
 init_disk_crashlog disk_fn = do
@@ -167,40 +173,56 @@ init_disk_crashlog disk_fn = do
   sr <- newIORef $ Stats 0 0 0
   dirty <- newIORef False
   fl <- newIORef $ FL [] []
-  return $ S fd sr dirty (Just fl) Data.Map.empty
+  vm <- newIORef Data.Map.empty
+  lock <- newMVar ()
+  return $ S fd sr dirty (Just fl) vm lock
 
 set_nblocks_disk :: DiskState -> Int -> IO ()
-set_nblocks_disk (S fd _ _ _ _) nblocks = do
+set_nblocks_disk (S fd _ _ _ _ _) nblocks = do
   setFdSize fd $ fromIntegral $ nblocks * 4096
   return ()
 
 close_disk :: DiskState -> IO DiskStats
-close_disk (S fd sr _ _ _) = do
+close_disk (S fd sr _ _ _ _) = do
   closeFd fd
   s <- readIORef sr
   return s
 
 get_flush_log :: DiskState -> IO [[(Word64, Coq_word)]]
-get_flush_log (S _ _ _ Nothing _) = return []
-get_flush_log (S _ _ _ (Just fl) _) = do
+get_flush_log (S _ _ _ Nothing _ _) = return []
+get_flush_log (S _ _ _ (Just fl) _ _) = do
   FL writes flushes <- readIORef fl
   return (writes : flushes)
 
 clear_flush_log :: DiskState -> IO [[(Word64, Coq_word)]]
-clear_flush_log (S _ _ _ Nothing _) = return []
-clear_flush_log (S _ _ _ (Just fl) _) = do
+clear_flush_log (S _ _ _ Nothing _ _) = return []
+clear_flush_log (S _ _ _ (Just fl) _ _) = do
   FL writes flushes <- readIORef fl
   writeIORef fl $ FL [] []
   return (writes : flushes)
 
-get_var :: DiskState -> Int -> GHC.Prim.Any
-get_var (S _ _ _ _ m) a =
+get_var :: DiskState -> Int -> IO GHC.Prim.Any
+get_var (S _ _ _ _ vm _) a = do
+  m <- readIORef vm
   case Data.Map.lookup a m of
-    Just x -> x
+    Just x -> return x
     Nothing -> error $ "getting an unset variable " ++ (show a)
 
-set_var :: DiskState -> Int -> GHC.Prim.Any -> DiskState
-set_var (S fd sr dirty fl m) a v = S fd sr dirty fl (Data.Map.insert a v m)
+set_var :: DiskState -> Int -> GHC.Prim.Any -> IO ()
+set_var (S _ _ _ _ vm _) a v = do
+  m <- readIORef vm
+  writeIORef vm (Data.Map.insert a v m)
+  return ()
+
+acquire_global_lock :: DiskState -> IO ()
+acquire_global_lock (S _ _ _ _ _ lock) = do
+  v <- takeMVar lock
+  return v
+
+release_global_lock :: DiskState -> IO ()
+release_global_lock (S _ _ _ _ _ lock) = do
+  putMVar lock ()
+  return ()
 
 print_stats :: DiskStats -> IO ()
 print_stats (Stats r w s) = do

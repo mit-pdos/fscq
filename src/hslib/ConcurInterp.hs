@@ -41,24 +41,40 @@ run_dcode ds tid (Sync a rx) = do
   run_dcode ds tid $ rx ()
 run_dcode ds tid (Get a rx) = do
   debugmsg $ "Get " ++ (show (hmember_to_int a))
-  run_dcode ds tid $ rx $ Disk.get_var ds (hmember_to_int a)
+  val <- Disk.get_var ds (hmember_to_int a)
+  run_dcode ds tid $ rx val
 run_dcode ds tid (Assgn a v rx) = do
   debugmsg $ "Assgn " ++ (show (hmember_to_int a))
-  run_dcode (Disk.set_var ds (hmember_to_int a) v) tid $ rx ()
+  Disk.set_var ds (hmember_to_int a) v
+  run_dcode ds tid $ rx ()
 run_dcode ds tid (GetTID rx) = do
   debugmsg $ "GetTID"
   run_dcode ds tid $ rx tid
 run_dcode ds tid (Yield rx) = do
   debugmsg $ "Yield"
-  -- XXX how to yield?
+  Disk.release_global_lock ds
+  -- XXX should we wait for a little bit?
+  Disk.acquire_global_lock ds
   run_dcode ds tid $ rx ()
 run_dcode ds tid (GhostUpdate _ rx) = do
   debugmsg $ "GhostUpdate"
   run_dcode ds tid $ rx ()
-run_dcode ds tid (AcquireLock lockvar _ rx) = do
+run_dcode ds tid (AcquireLock lockvar xx rx) = do
   debugmsg $ "AcquireLock"
-  -- XXX check that it's not currently locked....
-  run_dcode (Disk.set_var ds (hmember_to_int lockvar) (unsafeCoerce Locked)) tid $ rx ()
+  val <- Disk.get_var ds (hmember_to_int lockvar)
+  case (unsafeCoerce val) of
+    Open -> do
+      Disk.set_var ds (hmember_to_int lockvar) $ unsafeCoerce Locked
+      run_dcode ds tid $ rx ()
+    Locked -> do
+      Disk.release_global_lock ds
+      -- XXX should we wait for a little bit?
+      Disk.acquire_global_lock ds
+      run_dcode ds tid $ AcquireLock lockvar xx rx
 
 run :: Disk.DiskState -> Int -> ((a -> EventCSL.Coq_prog a) -> EventCSL.Coq_prog a) -> IO a
-run ds tid p = run_dcode ds tid $ p (\x -> EventCSL.Done x)
+run ds tid p = do
+  Disk.acquire_global_lock ds
+  ret <- run_dcode ds tid $ p (\x -> EventCSL.Done x)
+  Disk.release_global_lock ds
+  return ret
