@@ -489,7 +489,33 @@ Theorem file_copy_ok : forall fsxp src_fn src_inum dst_fn dst_inum mscs,
        ([[r = true ]] *
         [[ tree' = DIRTREE.update_subtree [dst_fn]
                                           (DIRTREE.TreeFile dst_inum bytes attr) tree ]]))
-  CRASH any
+  CRASH
+    (* crash during one of the read-only ops *)
+    LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m \/ 
+    (* crashed during append *)
+    LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+       exists tree',
+        (Fm * DIRTREE.rep fsxp Ftop tree') *
+        [[ tree' = DIRTREE.update_subtree [dst_fn]
+                                   (DIRTREE.TreeFile dst_inum bytes BYTEFILE.attr0) tree ]])
+    \/
+    (* append failed, crashed during setattr *)
+    LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+      (exists tree',
+        (Fm * DIRTREE.rep fsxp Ftop tree') *
+        [[ tree' = DIRTREE.update_subtree [dst_fn]
+                                   (DIRTREE.TreeFile dst_inum [] attr) tree ]]))
+   \/
+   (* append succeeded, crashed during setattr *)
+   (exists m' tree',
+     [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+     [[ tree' = DIRTREE.update_subtree [dst_fn]
+                                   (DIRTREE.TreeFile dst_inum bytes BYTEFILE.attr0) tree ]] *
+     LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m' (
+       exists tree'',
+        (Fm * DIRTREE.rep fsxp Ftop tree'') *
+        [[ tree'' = DIRTREE.update_subtree [dst_fn]
+                                          (DIRTREE.TreeFile dst_inum bytes attr) tree' ]]))
   >} file_copy fsxp src_inum dst_inum mscs.
 Proof.
   unfold file_copy; intros.
@@ -522,8 +548,13 @@ Proof.
   eauto.
 
   step.  (* return *)
-  
-  subst. pimpl_crash. cancel. apply pimpl_any.
+
+  (* append and setattr failed *)
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  apply LOG.would_recover_either_pred_ppimpl.
+  cancel; eauto.
 
   instantiate (pathname0 := [dst_fn]).
   instantiate (bytes1 := bytes').
@@ -540,7 +571,6 @@ Proof.
   instantiate (elem := (DIRTREE.TreeFile dst_inum [] BYTEFILE.attr0)).
   assumption.
   step.   (* set_attr is ok *)
-  
 
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
@@ -576,12 +606,73 @@ Proof.
   rewrite H.
   
   rewrite dirtree_update_update_dents; auto.
+
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+
   
+  eapply pimpl_exists_r.
+  eexists.
+  eapply pimpl_exists_r.
+  eexists.
+
+  rewrite sep_star_assoc.
+  
+  Lemma sep_star_lift_r_prop : forall AT AEQ V (p q: @pred AT AEQ V) (P: Prop),
+                                 P ->
+                                 p =p=> q ->
+                                        p =p=> [[P]] * q.
+
+  Proof.
+    unfold pimpl, lift_empty.
+    unfold_sep_star.
+    unfold mem_union, mem_disjoint.
+    intros.
+    repeat eexists; intros; eauto.
+    intro.
+    repeat deex.
+    congruence.
+  Qed.
+
+  eapply sep_star_lift_r_prop.
+
+  eauto.
+
+  eapply sep_star_lift_r_prop.
+  eauto.
+
+  assert (bytes = bytes').
+  admit.
+  subst; auto.
+
+  assert (bytes = bytes').
+  admit.
+  
+  apply LOG.would_recover_either_pred_ppimpl.
+  cancel; subst; eauto.
+  
+  subst. pimpl_crash.
+
+  cancel.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  apply LOG.would_recover_either_pred_ppimpl.
+  subst; cancel.
+  rewrite H14; eauto.  
+  admit. (* reprove bytes = bytes'. factor out. *)
+  idtac.
+  
+  eapply pimpl_or_r. left. cancel.
+  eapply pimpl_or_r. left. cancel.
+  eapply pimpl_or_r. left. cancel.
+  
+  (* old:
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
   subst. pimpl_crash. cancel. apply pimpl_any.
-  subst. pimpl_crash. cancel. apply pimpl_any.
+  subst. pimpl_crash. cancel. apply pimpl_any. *)
 Qed.
 
 
@@ -649,8 +740,16 @@ Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
          ([[ r = true ]] * exists old_inum new_inum bytes attr,
           [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
           [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]]))
-  CRASH any
-  >} atomic_cp fsxp src_fn dst_fn mscs.
+   CRASH
+      LOG.would_recover_either_pred (FSXPLog fsxp)  (sb_rep fsxp) m (
+        exists tree',
+         (exists bytes' attr',
+           [[ tree' = DIRTREE.update_subtree [temp_fn]
+                                           (DIRTREE.TreeFile dst_inum bytes' attr') tree ]]) \/
+         (exists bytes attr,
+           [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
+           [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree]])
+>} atomic_cp fsxp src_fn dst_fn mscs.
 Proof.
   unfold atomic_cp; intros.
   step.
