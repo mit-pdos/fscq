@@ -38,26 +38,27 @@ all: hstest fuse mkfs
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
 
-coq: Makefile.coq
-	$(MAKE) -f Makefile.coq quick
+coq: coqbuild/Makefile.coq
+	( cd coqbuild && $(MAKE) -f Makefile.coq quick )
 
-checkproofs: Makefile.coq
-	$(MAKE) -f Makefile.coq checkproofs J=$(J)
+checkproofs: coqbuild/Makefile.coq
+	( cd coqbuild && $(MAKE) -f Makefile.coq checkproofs J=$(J) )
 
-proof: Makefile.coq
-	$(MAKE) -f Makefile.coq
+proof: coqbuild/Makefile.coq
+	( cd coqbuild && $(MAKE) -f Makefile.coq )
 
 parproof: coq
-	$(MAKE) -f Makefile.coq vio2vo J=$(J)
+	( cd coqbuild && $(MAKE) -f Makefile.coq vio2vo J=$(J) )
 
 coqbuild/%.v: %.v
 	@mkdir -p coqbuild
 	ln -s ../$< $@
 
-Makefile.coq: Makefile $(VS_BUILD)
+coqbuild/Makefile.coq: Makefile $(VS_BUILD)
 	@mkdir -p codegen
+	@mkdir -p coqbuild
 	@ln -sf ../coqbuild codegen
-	coq_makefile -R coqbuild Fscq $(VS_BUILD) -o Makefile.coq
+	( cd coqbuild && coq_makefile -R . Fscq $(VS) -o Makefile.coq )
 
 %/main.go: %.json coq2go.py
 	@mkdir -p $(@D)
@@ -68,7 +69,5 @@ Makefile.coq: Makefile $(VS_BUILD)
 gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
-clean:: Makefile.coq
-	$(MAKE) -f Makefile.coq clean
-	rm -f Makefile.coq
+clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img
