@@ -22,7 +22,7 @@ GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
-HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
+HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
 J ?= 4
 
 .PHONY: coq proof clean
