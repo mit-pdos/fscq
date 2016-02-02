@@ -166,7 +166,7 @@ Fixpoint hmap_dep (A:Type) (B:A -> Type) (types:list A) (C:A -> Type) (f: forall
 Theorem member_index_dec A (types: list A) a1
         (m1:member a1 types) a2 (m2:member a2 types) :
   {member_index m1 = member_index m2} + {member_index m1 <> member_index m2}.
-Proof. decide equality. Qed.
+Proof. decide equality. Defined.
 
 Ltac elim_rew :=
   try lazymatch goal with
