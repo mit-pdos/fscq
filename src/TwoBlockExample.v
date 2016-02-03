@@ -2,6 +2,7 @@ Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Automation.
 Require Import Locking.
+Require Import MemCache.
 Require Import ConcurrentCache.
 Require Import Star.
 Import List.
@@ -142,3 +143,121 @@ Proof.
 *)
 
 End TwoBlocks.
+
+Module MySemantics <: Semantics.
+  Definition Mcontents := [AssocCache ; BusyFlag : Type ].
+  Definition Scontents := [DISK ; AssocCache ; BusyFlagOwner : Type ; ID : Type].
+  Definition Inv := fun (_ : M Mcontents) (_ : S Scontents) => (emp : DISK_PRED).
+  Definition R := fun (_ : ID) (_ _ : S Scontents) => True.
+
+  Theorem R_stutter : forall tid s,
+    R tid s s.
+  Proof. firstorder. Qed.
+End MySemantics.
+
+Module MyCacheVars <: CacheVars MySemantics.
+  Definition memVars : variables MySemantics.Mcontents [AssocCache; BusyFlag:Type] :=
+    HCons (HFirst) (HCons (HNext HFirst) HNil).
+  Definition stateVars : variables MySemantics.Scontents [DISK; AssocCache; BusyFlagOwner:Type] :=
+    HCons (HFirst) (HCons (HNext HFirst) (HCons (HNext (HNext HFirst)) HNil)).
+
+  Theorem no_confusion_memVars : NoDup (hmap var_index memVars).
+  Proof.
+    cbn.
+    repeat ( constructor; cbn; firstorder ).
+  Qed.
+
+  Theorem no_confusion_stateVars : NoDup (hmap var_index stateVars).
+    cbn.
+    repeat ( constructor; cbn; firstorder ).
+  Qed.
+End MyCacheVars.
+
+Module MyCacheSemantics : CacheSemantics MySemantics MyCacheVars.
+  Module Transitions := CacheTransitionSystem MySemantics MyCacheVars.
+
+  Theorem cache_invariant_holds : forall m s d,
+    MySemantics.Inv m s d ->
+    Transitions.cacheI m s d.
+  Proof.
+    unfold MySemantics.Inv.
+    unfold Transitions.cacheI.
+  Admitted.
+
+  Theorem cache_relation_holds : forall tid,
+    rimpl (MySemantics.R tid) (Transitions.cacheR tid).
+  Proof.
+    unfold MySemantics.R.
+    unfold Transitions.cacheR.
+  Admitted.
+
+  Theorem cache_invariant_preserved : forall m s d m' s' d',
+    MySemantics.Inv m s d ->
+    Transitions.cacheI m' s' d' ->
+    modified MyCacheVars.memVars m m' ->
+    modified MyCacheVars.stateVars s s' ->
+    MySemantics.Inv m' s' d'.
+  Proof.
+    unfold Transitions.cacheI.
+    intros.
+    (* XXX this might be broken! *)
+  Admitted.
+
+  Theorem cache_relation_preserved : forall tid s s' s'',
+    MySemantics.R tid s s' ->
+    modified MyCacheVars.stateVars s' s'' ->
+    Transitions.cacheR tid s' s'' ->
+    MySemantics.R tid s s''.
+  Proof.
+    unfold Transitions.cacheR.
+    intros.
+    unfold MySemantics.R; auto.
+  Qed.
+End MyCacheSemantics.
+
+Module MyTwoBlockVars : TwoBlockVars MySemantics.
+  Definition stateVars : variables MySemantics.Scontents [ID:Type] :=
+    HCons (HNext (HNext (HNext HFirst))) HNil.
+End MyTwoBlockVars.
+
+Module MyTwoBlockSemantics : TwoBlockSemantics MySemantics MyCacheVars MyTwoBlockVars.
+  Module TBTrans := TwoBlockTransitions MySemantics MyCacheVars MyTwoBlockVars.
+
+  Theorem twoblock_relation_holds : forall tid,
+    rimpl (MySemantics.R tid) (TBTrans.twoblockR tid).
+  Proof.
+    unfold TBTrans.twoblockR.
+    intros.
+  Admitted.
+
+  Theorem twoblock_relation_preserved : forall tid s s' s'',
+    MySemantics.R tid s s' ->
+    modified MyTwoBlockVars.stateVars s' s'' ->
+    TBTrans.twoblockR tid s' s'' ->
+    MySemantics.R tid s s''.
+  Proof.
+  Admitted.
+
+  Theorem twoblock_invariant_holds : forall d m s,
+    MySemantics.Inv d m s ->
+    TBTrans.twoblockI d m s.
+  Proof.
+    unfold TBTrans.twoblockI.
+    auto.
+  Qed.
+
+  Theorem twoblock_invariant_preserved : forall d m s d' m' s',
+    MySemantics.Inv m s d ->
+    TBTrans.twoblockI m' s' d' ->
+    m' = m ->
+    modified MyTwoBlockVars.stateVars s s' ->
+    MySemantics.Inv m' s' d'.
+  Proof.
+    unfold TBTrans.twoblockI.
+    intros; subst.
+    (* XXX this is broken *)
+  Admitted.
+
+End MyTwoBlockSemantics.
+
+Module TwoBlocksI := TwoBlocks MySemantics MyCacheVars MyCacheSemantics MyTwoBlockVars MyTwoBlockSemantics.
