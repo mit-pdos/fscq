@@ -1,7 +1,7 @@
 Require Import ExtrHaskellPrelude.
 Require Import FS.
 Require Import Testprog.
-Require Import EventCSL.
+Require Import TwoBlockExample.
 
 Extraction Language Haskell.
 
@@ -22,4 +22,4 @@ Extract Constant FS.cachesize => "10000".
 Cd "../codegen".
 Recursive Extraction Library FS.
 Recursive Extraction Library Testprog.
-Recursive Extraction Library EventCSL.
+Recursive Extraction Library TwoBlockExample.
