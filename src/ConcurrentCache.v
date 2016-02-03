@@ -848,7 +848,9 @@ Proof.
   simplify; eauto.
 Abort.
 
+(*
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
+*)
 
 Definition locked_async_disk_read {T} a rx : prog _ _ T :=
   c <- Get Cache;
@@ -875,18 +877,12 @@ Qed.
 
 Hint Resolve lock_protects_locked.
 
-Lemma inv_definition : forall m s d,
-  LockInv m s d ->
-  Inv m s d ->
-  Inv m s d.
-Proof. firstorder. Qed.
-
 Theorem locked_async_disk_read_ok : forall a,
     stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * a |-> (Valuset v rest) /\
+                     vd |= F * a |-> (Valuset v rest, None) /\
                      get GCacheL s = Owned tid /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
@@ -982,8 +978,8 @@ Ltac destruct_valusets :=
   end.
 
 Lemma disk_eq_valuset : forall a (vd: DISK) vs,
-  vd a = Some vs ->
-  (any * a |-> Valuset (latest_valu vs) (pending_valus vs))%pred vd.
+  vd a = Some (vs, None) ->
+  (any * a |-> (Valuset (latest_valu vs) (pending_valus vs), None))%pred vd.
 Proof.
   intros.
   match goal with
@@ -1041,14 +1037,14 @@ Theorem disk_read_ok : forall a,
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * a |-> (Valuset v rest) /\
+                     vd |= F * a |-> (Valuset v rest, None) /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             star (anyR R) s s' /\
                             get GCacheL s' = Owned tid /\
                             R tid s0' s' /\
-                            exists rest', vd' a = Some (Valuset r rest')
+                            exists rest', vd' a = Some (Valuset r rest', None)
      | CRASH d'c: True
     }} disk_read a.
 Proof.
@@ -1089,7 +1085,7 @@ Definition locked_disk_write {T} a v rx : prog _ _ T :=
   GhostUpdate (set GCache c');;
               GhostUpdate (fun (s:S) => let vd := get GDisk s in
                                       let rest := match (vd a) with
-                                                  | Some (Valuset v0 rest) =>
+                                                  | Some (Valuset v0 rest, _) =>
                                                     match (cache_get c a) with
                                                     | Some (true, _) => rest
                                                     | Some (false, _) => v0 :: rest
@@ -1099,7 +1095,7 @@ Definition locked_disk_write {T} a v rx : prog _ _ T :=
                                                   | None => nil
                                                   end in
                                       let vs' := Valuset v rest in
-                                      set GDisk (upd vd a vs') s);;
+                                      set GDisk (upd vd a (vs', None)) s);;
               Assgn Cache c';;
               rx tt.
 
@@ -1111,13 +1107,13 @@ Theorem locked_disk_write_ok : forall a v,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
                      get GCacheL s = Owned tid /\
-                     vd |= F * a |-> (Valuset v0 rest)
+                     vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
                             get GCacheL s' = Owned tid /\
-                            (exists rest', vd' |= F * a |-> (Valuset v rest') /\
-                            vd' = upd (virt_disk s) a (Valuset v rest')) /\
+                            (exists rest', vd' |= F * a |-> (Valuset v rest', None) /\
+                            vd' = upd (virt_disk s) a (Valuset v rest', None)) /\
                             s0' = s0
      | CRASH d'c: d'c = d
     }} locked_disk_write a v.
@@ -1159,14 +1155,14 @@ Theorem disk_write_ok : forall a v,
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * a |-> (Valuset v0 rest) /\
+                     vd |= F * a |-> (Valuset v0 rest, None) /\
                      R tid s0 s
      | POST d' m' s0' s' _:  let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             star (anyR R) s s' /\
                             get GCacheL s' = Owned tid /\
                             R tid s0' s' /\
-                            (exists rest', vd' a = Some (Valuset v rest'))
+                            (exists rest', vd' a = Some (Valuset v rest', None))
      | CRASH d'c: True
     }} disk_write a v.
 Proof.
@@ -1231,22 +1227,22 @@ Definition writeback {T} a rx : prog _ _ T :=
   | Some (true, v) =>
     GhostUpdate (fun s => let vd : DISK := get GDisk s in
                         let vs' := match (vd a) with
-                                   | Some vs0 => buffer_valu vs0 v
+                                   | Some (vs0, _) => buffer_valu vs0 v
                                    (* impossible *)
                                    | None => Valuset v nil
                                    end in
-                        set GDisk (upd vd a vs') s);;
+                        set GDisk (upd vd a (vs', None)) s);;
     Write a v;;
           let c' := cache_clean c a in
           GhostUpdate (set GCache c');;
                       GhostUpdate (fun s => let vd : DISK := get GDisk s in
                                           let vs' := match (vd a) with
-                                                     | Some (Valuset v' (v :: rest)) =>
+                                                     | Some (Valuset v' (v :: rest), None) =>
                                                        Valuset v rest
                                                      (* impossible *)
                                                      | _ => Valuset $0 nil
                                                      end in
-                                          set GDisk (upd vd a vs') s);;
+                                          set GDisk (upd vd a (vs', None)) s);;
                       Assgn Cache c';;
                       rx tt
   | Some (false, _) => rx tt
@@ -1296,7 +1292,7 @@ Theorem writeback_ok : forall a,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
                      get GCacheL s = Owned tid /\
-                     vd |= F * a |-> (Valuset v0 rest)
+                     vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
@@ -1304,9 +1300,9 @@ Theorem writeback_ok : forall a,
                             vd' = virt_disk s /\
                             (forall b, cache_get (get Cache m) a = Some (b, v0) ->
                             (cache_get (get Cache m') a = Some (false, v0))) /\
-                            d' = upd d a (Valuset v0 rest) /\
+                            d' = upd d a (Valuset v0 rest, None) /\
                             s0' = s0
-     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
+     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest, None)
     }} writeback a.
 Proof.
   hoare pre simplify with finish.
@@ -1356,11 +1352,11 @@ Definition sync {T} a rx : prog Mcontents Scontents T :=
   GhostUpdate (fun s =>
                  let vd := virt_disk s in
                  let vs' := match vd a with
-                            | Some (Valuset v _) => Valuset v nil
+                            | Some (Valuset v _, _) => Valuset v nil
                             (* precondition will disallow this *)
                             | None => Valuset $0 nil
                             end in
-                 set GDisk (upd vd a vs') s);;
+                 set GDisk (upd vd a (vs', None)) s);;
               Sync a;;
               rx tt.
 
@@ -1397,14 +1393,14 @@ Theorem sync_ok : forall a,
                      get GCacheL s = Owned tid /\
                      (cache_get (get Cache m) a = Some (false, v0) \/
                       cache_get (get Cache m) a = None) /\
-                     vd |= F * a |-> Valuset v0 rest
+                     vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                           Inv m' s' d' /\
                           R tid s s' /\
                           get GCacheL s' = Owned tid /\
                           m = m' /\
                           get GCache s' = get GCache s /\
-                          vd' |= F * a |-> Valuset v0 nil /\
+                          vd' |= F * a |-> (Valuset v0 nil, None) /\
                           s0' = s0
      | CRASH d'c: d'c = d
     }} sync a.
@@ -1441,14 +1437,14 @@ Theorem cache_sync_ok : forall a,
      | PRE d m s0 s: let vd := virt_disk s in
                     Inv m s d /\
                     get GCacheL s = Owned tid /\
-                    vd |= F * a |-> Valuset v0 rest
+                    vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             star (R tid) s s' /\
                             get GCacheL s' = Owned tid /\
-                            vd' |= F * a |-> Valuset v0 nil /\
+                            vd' |= F * a |-> (Valuset v0 nil, None) /\
                             s0' = s0
-     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest)
+     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest, None)
     }} cache_sync a.
 Proof.
   time "hoare"  hoare pre simplify with finish.

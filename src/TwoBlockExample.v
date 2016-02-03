@@ -96,9 +96,11 @@ Module TwoBlocks (Sem:Semantics)
       solve [ eassumption | eauto ] | .. ]
   | [ |- Inv _ _ _ ] =>
     eapply twoblock_invariant_preserved
+(*
   | [ |- inv _ _ _ ] => unfold inv; intuition; try solve_global_transitions
+*)
   end;
-  unfold lockR, lockI, cacheR, cacheI, stateI, lockI,
+  unfold lockR, lockI, cacheR, cacheI, (* stateI, *) lockI,
     lock_protects, pred_in;
   repeat lazymatch goal with
   | [ |- forall _, _ ] => progress intros
@@ -113,6 +115,7 @@ Module TwoBlocks (Sem:Semantics)
 
   Hint Resolve ptsto_valid_iff.
 
+(*
   Theorem write_yield_read_ok : forall v',
     stateS TID: tid |-
     {{ F v rest,
@@ -136,5 +139,6 @@ Proof.
     || destruct_valusets in
   time "hoare" hoare pre (simplify' simp_step) with finish.
   (* TODO: learn equality of block0 from twoblockR *)
+*)
 
 End TwoBlocks.
