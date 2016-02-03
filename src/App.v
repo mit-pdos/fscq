@@ -455,6 +455,58 @@ Proof.
 Qed.
 
 
+(**
+ * Ad-hoc lemma for file_copy_ok: prove that bytes in the dst file are the same
+ * as the ones in the src file 
+ *)
+Lemma bytes_dst_src_eq: forall bytes' bytes (a : BYTEFILE.byte_buf) Fx,
+    (emp * @Array.arrayN Bytes.byte 0 (@Rec.Rec.of_word (Rec.Rec.ArrayF BYTEFILE.byte_type
+          (BYTEFILE.buf_len a)) (BYTEFILE.buf_data a)))%pred (list2nmem bytes')  ->
+    
+    BYTEFILE.buf_len a =
+        Nat.min (@wordToNat addrlen ($ (Datatypes.length bytes)) - 0)
+                (@wordToNat addrlen ($ (Datatypes.length bytes))) ->
+
+    goodSize addrlen (Datatypes.length bytes) ->
+
+    (Fx * Array.arrayN 0 (@Rec.Rec.of_word  (Rec.Rec.ArrayF BYTEFILE.byte_type
+                                                       (BYTEFILE.buf_len a))
+                  (BYTEFILE.buf_data a)))%pred (list2nmem bytes)
+
+    -> bytes = bytes'.
+Proof.
+  intros.
+  eapply star_emp_pimpl in H.
+  apply list2nmem_array_eq in H.
+  apply arrayN_list2nmem in H2.
+  rewrite Array.firstn_oob in H2.
+  unfold skipn in H2.
+  rewrite <- H2.
+  rewrite H; auto.
+  rewrite Nat.min_r in *.
+  unfold skipn; auto.
+  rewrite Rec.Rec.array_of_word_length with (ft := BYTEFILE.byte_type); auto.
+  rewrite H0.
+  apply  wordToNat_natToWord_idempotent' in H1.
+  rewrite H1; auto.
+  auto.
+  admit.
+Admitted.
+
+    
+Lemma sep_star_lift_r_prop : forall AT AEQ V (p q: @pred AT AEQ V) (P: Prop),
+                P ->  p =p=> q ->  p =p=> [[P]] * q.
+Proof.
+  unfold pimpl, lift_empty.
+  unfold_sep_star.
+  unfold mem_union, mem_disjoint.
+  intros.
+  repeat eexists; intros; eauto.
+  intro.
+  repeat deex.
+  congruence.
+Qed.
+
 Parameter the_dnum : addr.
 Definition temp_fn := ".temp"%string.
 
@@ -528,7 +580,6 @@ Proof.
   step. (* read_bytes *)
   instantiate (pathname := [src_fn]).
   eauto.
-
  
   eapply pimpl_ok2. eauto with prog. cancel.  (* append step instantiates incorrectly *)
   instantiate (pathname := [dst_fn]).
@@ -576,35 +627,10 @@ Proof.
   eapply pimpl_or_r. right.
   cancel.
 
-  (* prove that bytes in the dst file are the same as the ones in the src file *)
   assert (bytes = bytes').
-  match goal with
-    | [H: ( _ )%pred (list2nmem ?b') |- _ = ?b'] =>
-      eapply star_emp_pimpl in H; apply list2nmem_array_eq in H; [apply list2nmem_array_eq in H||idtac "ignore sub"]
-  end.
-  rewrite Nat.min_r in *.
-  match goal with
-      | [H: ( _ )%pred (list2nmem ?b) |- ?b = _] =>
-        apply arrayN_list2nmem in H; unfold skipn in H
-  end.
-  match goal with
-      | [H: (Rec.Rec.of_word (BYTEFILE.buf_data _)) = firstn _ ?b |- ?b = _] =>
-        rewrite Array.firstn_oob in H
-  end.
-  rewrite H9 in H18; auto.
-  rewrite Rec.Rec.array_of_word_length with (ft := BYTEFILE.byte_type); auto.
-  match goal with
-    | [H: BYTEFILE.buf_len _ = # ($ (Datatypes.length ?b)) |- _ >= Datatypes.length ?b ] =>
-      rewrite H
-  end.
-  match goal with
-    | [H: goodSize _ ((Datatypes.length) ?b) |-  _ >= Datatypes.length ?b ] =>
-      apply wordToNat_natToWord_idempotent' in H; rewrite H; eauto
-  end.
-  unfold Bytes.byte; auto.
-  omega.
+  apply bytes_dst_src_eq with (a := a) (Fx := Fx); eauto.
+
   rewrite H.
-  
   rewrite dirtree_update_update_dents; auto.
 
   eapply pimpl_or_r. right.
@@ -618,23 +644,6 @@ Proof.
   eexists.
 
   rewrite sep_star_assoc.
-  
-  Lemma sep_star_lift_r_prop : forall AT AEQ V (p q: @pred AT AEQ V) (P: Prop),
-                                 P ->
-                                 p =p=> q ->
-                                        p =p=> [[P]] * q.
-
-  Proof.
-    unfold pimpl, lift_empty.
-    unfold_sep_star.
-    unfold mem_union, mem_disjoint.
-    intros.
-    repeat eexists; intros; eauto.
-    intro.
-    repeat deex.
-    congruence.
-  Qed.
-
   eapply sep_star_lift_r_prop.
 
   eauto.
@@ -643,36 +652,32 @@ Proof.
   eauto.
 
   assert (bytes = bytes').
-  admit.
-  subst; auto.
+  apply bytes_dst_src_eq with (a := a) (Fx := Fx); eauto.
+  rewrite H; auto.
 
-  assert (bytes = bytes').
-  admit.
-  
   apply LOG.would_recover_either_pred_ppimpl.
   cancel; subst; eauto.
+
+  assert (bytes = bytes').
+  apply bytes_dst_src_eq with (a := a) (Fx := Fx); eauto.
+  rewrite H; auto.
   
   subst. pimpl_crash.
-
   cancel.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. left.
   apply LOG.would_recover_either_pred_ppimpl.
   subst; cancel.
-  rewrite H14; eauto.  
-  admit. (* reprove bytes = bytes'. factor out. *)
-  idtac.
-  
+  rewrite H14; eauto.
+
+  assert (bytes = bytes').
+  apply bytes_dst_src_eq with (a := a) (Fx := Fx); eauto.
+  rewrite H7 in H0; auto.
+  rewrite H; auto.
+
   eapply pimpl_or_r. left. cancel.
   eapply pimpl_or_r. left. cancel.
   eapply pimpl_or_r. left. cancel.
-  
-  (* old:
-  subst. pimpl_crash. cancel. apply pimpl_any.
-  subst. pimpl_crash. cancel. apply pimpl_any.
-  subst. pimpl_crash. cancel. apply pimpl_any.
-  subst. pimpl_crash. cancel. apply pimpl_any.
-  subst. pimpl_crash. cancel. apply pimpl_any. *)
 Qed.
 
 
