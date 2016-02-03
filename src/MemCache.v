@@ -20,34 +20,29 @@ Module MapProperties := WProperties_fun Addr_as_OT Map.
 Section MemCache.
 
   Inductive cache_entry : Set :=
-  | Clean :  valu -> cache_entry
-  | Dirty :  valu -> cache_entry.
+  | Clean : forall (v:valu) (l:BusyFlag), cache_entry
+  | Dirty : forall (v:valu) (l:BusyFlag), cache_entry
+  | Invalid : cache_entry.
 
   Definition AssocCache := Map.t cache_entry.
-  Definition cache_add (c:AssocCache) a v := Map.add a (Clean v) c.
+  Definition cache_add (c:AssocCache) a v := Map.add a (Clean v Open) c.
 
-  (* returns (dirty, v) *)
-  Definition cache_get (c:AssocCache) (a0:addr) : option (bool * valu) :=
-    match (Map.find a0 c) with
-    | Some (Clean v) => Some (false, v)
-    | Some (Dirty v) => Some (true, v)
-    | None => None
-    end.
+  Definition cache_get (c:AssocCache) (a0:addr) : option cache_entry :=
+    Map.find a0 c.
 
   Definition cache_dirty (c:AssocCache) (a:addr) v' :=
     match (Map.find a c) with
-    | Some (Clean _) => Map.add a v' c
-    | Some (Dirty _) => Map.add a v' c
+    | Some _ => Map.add a v' c
     | None => c
     end.
 
   Definition cache_add_dirty (c:AssocCache) (a:addr) v' :=
-    Map.add a (Dirty v') c.
+    Map.add a (Dirty v' Open) c.
 
   (** Evict a clean address *)
   Definition cache_evict (c:AssocCache) (a:addr) :=
     match (Map.find a c) with
-    | Some (Clean _) => Map.remove a c
+    | Some (Clean _ _) => Map.remove a c
     (* dirty/miss *)
     | _ => c
     end.
@@ -56,7 +51,7 @@ Section MemCache.
   value. Intended for use after writeback. *)
   Definition cache_clean (c:AssocCache) (a:addr) :=
     match (Map.find a c) with
-    | Some (Dirty v) => Map.add a (Clean v) c
+    | Some (Dirty v l) => Map.add a (Clean v l) c
     | _ => c
     end.
 
@@ -65,12 +60,13 @@ End MemCache.
 Definition cache_pred c (vd:DISK) : DISK_PRED :=
   fun d => forall a,
       match (cache_get c a) with
-      | Some (false, v) => exists rest reader,
+      | Some (Clean v l) => exists rest reader,
                            vd a = Some (Valuset v rest, reader) /\
                            d a = Some (Valuset v rest, reader)
-      | Some (true, v') => exists rest v reader,
+      | Some (Dirty v' l) => exists rest v reader,
                            vd a = Some (Valuset v' (v :: rest), reader) /\
                            d a = Some (Valuset v rest, reader)
+      | Some (Invalid) => vd a = d a
       | None => vd a = d a
       end.
 
@@ -207,6 +203,35 @@ Hint Rewrite MapFacts.add_neq_o using (now auto) : cache_get.
 Hint Rewrite MapFacts.remove_eq_o using (now auto) : cache_get.
 Hint Rewrite MapFacts.remove_neq_o using (now auto) : cache_get.
 
+Lemma map_raw_add_eq_o : forall (a a':Map.key) ce (c:AssocCache),
+  a = a' -> Map.Raw.find a' (Map.Raw.add a ce (Map.this c)) = Some ce.
+Proof.
+  intros.
+  apply MapFacts.add_eq_o; auto.
+Qed.
+
+Lemma map_raw_add_neq_o : forall (a a':Map.key) ce (c:AssocCache),
+  a <> a' -> Map.Raw.find a' (Map.Raw.add a ce (Map.this c)) = Map.find a' c.
+Proof.
+  intros.
+  apply MapFacts.add_neq_o; auto.
+Qed.
+
+Lemma map_raw_remove_eq_o : forall (a:Map.key) (c:AssocCache),
+  Map.Raw.find a (Map.Raw.remove a (Map.this c)) = None.
+Proof.
+  intros.
+  apply MapFacts.remove_eq_o; auto.
+Qed.
+
+Lemma map_raw_remove_neq_o : forall (a a': Map.key) (c:AssocCache),
+  a <> a' ->
+  Map.Raw.find a (Map.Raw.remove a' (Map.this c)) = cache_get c a.
+Proof.
+  intros.
+  apply MapFacts.remove_neq_o; auto.
+Qed.
+
 Hint Unfold cache_get cache_add cache_add_dirty
             cache_evict cache_clean : cache_get.
 
@@ -216,35 +241,14 @@ Ltac t := autounfold with cache_get; intuition;
   try congruence;
   auto.
 
-Lemma cache_get_find_clean : forall c a v,
-    cache_get c a = Some (false, v) <->
-    Map.find a c = Some (Clean v).
-Proof.
-  t.
-Qed.
-
-Lemma cache_get_find_dirty : forall c a v,
-    cache_get c a = Some (true, v) <->
-    Map.find a c = Some (Dirty v).
-Proof.
-  t.
-Qed.
-
-Lemma cache_get_find_empty : forall c a,
-    cache_get c a = None <->
-    Map.find a c = None.
-Proof.
-  t.
-Qed.
-
 Lemma cache_get_eq : forall c a v,
-    cache_get (cache_add c a v) a = Some (false, v).
+    cache_get (cache_add c a v) a = Some (Clean v Open).
 Proof.
   t.
 Qed.
 
 Lemma cache_get_dirty_eq : forall c a v,
-    cache_get (cache_add_dirty c a v) a = Some (true, v).
+    cache_get (cache_add_dirty c a v) a = Some (Dirty v Open).
 Proof.
   t.
 Qed.
@@ -263,8 +267,8 @@ Proof.
   t.
 Qed.
 
-Lemma cache_evict_get : forall c v a,
-  cache_get c a = Some (false, v) ->
+Lemma cache_evict_get : forall c v a l,
+  cache_get c a = Some (Clean v l) ->
   cache_get (cache_evict c a) a = None.
 Proof.
   t.
@@ -290,23 +294,23 @@ Proof.
   t.
 Qed.
 
-Lemma cache_clean_clean_noop : forall c a v,
-    cache_get c a = Some (false, v) ->
+Lemma cache_clean_clean_noop : forall c a v l,
+    cache_get c a = Some (Clean v l) ->
     cache_clean c a = c.
 Proof.
   t.
 Qed.
 
 (* TODO: get rid of these two lemmas; Map.add should never be unfolded *)
-Lemma cache_get_add_clean : forall a c v,
-    cache_get (Map.add a (Clean v) c) a = Some (false, v).
+Lemma cache_get_add_clean : forall a c v l,
+    cache_get (Map.add a (Clean v l) c) a = Some (Clean v l).
 Proof.
   t.
 Qed.
 
-Lemma cache_get_add_clean_other : forall a a' c v,
+Lemma cache_get_add_other : forall a a' c ce,
     a <> a' ->
-    cache_get (Map.add a (Clean v) c) a' = cache_get c a'.
+    cache_get (Map.add a ce c) a' = cache_get c a'.
 Proof.
   t.
 Qed.
@@ -331,9 +335,9 @@ Proof.
   t.
 Qed.
 
-Lemma cache_get_dirty_clean : forall c a v,
-  cache_get c a = Some (true, v) ->
-  cache_get (cache_clean c a) a = Some (false, v).
+Lemma cache_get_dirty_clean : forall c a v l,
+  cache_get c a = Some (Dirty v l) ->
+  cache_get (cache_clean c a) a = Some (Clean v l).
 Proof.
   t.
 Qed.
@@ -347,23 +351,26 @@ Hint Rewrite cache_remove_get_other using (now eauto) : cache.
 Hint Rewrite cache_evict_get using (now eauto) : cache.
 Hint Rewrite cache_evict_get_other using (now eauto) : cache.
 Hint Rewrite cache_get_add_clean : cache.
-Hint Rewrite cache_get_add_clean_other using (now eauto) : cache.
+Hint Rewrite cache_get_add_other using (now eauto) : cache.
 Hint Rewrite cache_get_remove_eq : cache.
 Hint Rewrite cache_get_remove_neq using (now auto) : cache.
 Hint Rewrite cache_get_clean_neq using (now auto) : cache.
 Hint Rewrite cache_get_dirty_clean using (now auto) : cache.
+Hint Rewrite map_raw_add_eq_o using (now auto): cache.
+Hint Rewrite map_raw_add_neq_o using (now auto): cache.
+Hint Rewrite map_raw_remove_eq_o using (now auto): cache.
+Hint Rewrite map_raw_remove_neq_o using (now auto): cache.
 
 Ltac rewrite_cache_get :=
   repeat match goal with
          | [ H: context[cache_get (cache_evict ?c ?a) ?a],
              H': cache_get ?c ?a = Some (false, ?v) |- _ ] =>
            rewrite (cache_evict_get c v a H') in H
-         | [ H: context[cache_get] |- _ ] => progress (autorewrite with cache in H)
          end;
-  autorewrite with cache.
+  autorewrite with cache in *.
 
-Theorem cache_pred_eq_disk : forall c vd d a v,
-    cache_get c a = Some (false, v) ->
+Theorem cache_pred_eq_disk : forall c vd d a v l,
+    cache_get c a = Some (Clean v l) ->
     cache_pred c vd d ->
     exists rest reader, d a = Some (Valuset v rest, reader).
 Proof.
@@ -372,7 +379,7 @@ Qed.
 
 Ltac learn_disk_val :=
   lazymatch goal with
-  | [ Hget: cache_get ?c ?a = Some (false, ?v),
+  | [ Hget: cache_get ?c ?a = Some (Clean ?v _),
             Hpred: cache_pred ?c ?vd ?d |- _ ] =>
     try lazymatch goal with
     | [ H: d a = Some (Valuset v _) |- _ ] => fail 1 "already did that"
@@ -407,8 +414,8 @@ Ltac case_cache_val :=
     case_cache_val' c a
   end.
 
-Lemma cache_pred_clean : forall c vd rest a v reader,
-    cache_get c a = Some (false, v) ->
+Lemma cache_pred_clean : forall c vd rest a v l reader,
+    cache_get c a = Some (Clean v l) ->
     vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd =p=>
 cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest, reader).
@@ -428,12 +435,12 @@ Proof.
   - unfold mem_disjoint; intro; repeat deex.
     prove_cache_pred; replace_cache_vals; eauto.
   - prove_cache_pred; destruct matches in *;
-    rewrite_cache_get; finish.
+      rewrite_cache_get; finish.
   - unfold ptsto; intuition; distinguish_addresses.
 Qed.
 
-Lemma cache_pred_clean' : forall c vd a rest v reader,
-    cache_get c a = Some (false, v) ->
+Lemma cache_pred_clean' : forall c vd a rest v l reader,
+    cache_get c a = Some (Clean v l) ->
     vd a = Some (Valuset v rest, reader) ->
     (cache_pred (Map.remove a c) (mem_except vd a) * a |-> (Valuset v rest, reader)) =p=>
 cache_pred c vd.
@@ -451,21 +458,17 @@ Proof.
 
   case_cache_val;
     destruct matches;
+    subst;
     repeat deex;
     repeat match goal with
-    | [ |- exists _, _ ] => eexists
-           end; intuition eauto; try congruence.
-  (* congruence doesn't work here for some reason *)
-  match goal with
-  | [ |- @eq (option ?t) ?a ?b ] =>
-    replace a with (@None t) by congruence;
-      replace b with (@None t) by congruence;
-      auto
-  end.
+           | [ |- exists _, _ ] => eexists
+           end; intuition eauto;
+           fold wr_set in *;
+           try congruence.
 Qed.
 
-Lemma cache_pred_dirty : forall c vd a v v' rest reader,
-    cache_get c a = Some (true, v') ->
+Lemma cache_pred_dirty : forall c vd a v v' l rest reader,
+    cache_get c a = Some (Dirty v' l) ->
     vd a = Some (Valuset v' (v :: rest), reader) ->
     cache_pred c vd =p=>
     cache_pred (Map.remove a c) (mem_except vd a) *
@@ -483,8 +486,8 @@ Proof.
     rewrite_cache_get; finish.
 Qed.
 
-Lemma cache_pred_dirty' : forall c vd a v v' rest reader,
-    cache_get c a = Some (true, v') ->
+Lemma cache_pred_dirty' : forall c vd a v v' l rest reader,
+    cache_get c a = Some (Dirty v' l) ->
     vd a = Some (Valuset v' (v :: rest), reader) ->
     cache_pred (Map.remove a c) (mem_except vd a) *
     a |-> (Valuset v rest, reader) =p=> cache_pred c vd.
@@ -500,31 +503,27 @@ Proof.
 
   case_cache_val;
     destruct matches;
+    subst;
     repeat deex;
     repeat match goal with
     | [ |- exists _, _ ] => eexists
-           end; intuition eauto; try congruence.
-
-  match goal with
-  | [ |- @eq (option ?t) ?a ?b ] =>
-    replace a with (@None t) by congruence;
-      replace b with (@None t) by congruence;
-      auto
-  end.
+           end; intuition eauto;
+           fold wr_set in *;
+           try congruence.
 Qed.
 
-Lemma cache_pred_clean_val :  forall c vd d a v,
+Lemma cache_pred_clean_val :  forall c vd d a v l,
     cache_pred c vd d ->
-    cache_get c a = Some (false, v) ->
+    cache_get c a = Some (Clean v l) ->
     exists rest reader, vd a = Some (Valuset v rest, reader) /\
                    d a = Some (Valuset v rest, reader).
 Proof.
   prove_cache_pred.
 Qed.
 
-Lemma cache_pred_dirty_val :  forall c vd d a v,
+Lemma cache_pred_dirty_val :  forall c vd d a v l,
     cache_pred c vd d ->
-    cache_get c a = Some (true, v) ->
+    cache_get c a = Some (Dirty v l) ->
     exists v' rest reader,
       vd a = Some (Valuset v (v' :: rest), reader) /\
       d a = Some (Valuset v' rest, reader).
@@ -545,8 +544,8 @@ Proof.
   prove_cache_pred; rewrite_cache_get; eauto.
 Qed.
 
-Lemma cache_pred_stable_dirty_write : forall c vd a v rest v' d vs' reader,
-    cache_get c a = Some (true, v) ->
+Lemma cache_pred_stable_dirty_write : forall c vd a v l rest v' d vs' reader,
+    cache_get c a = Some (Dirty v l) ->
     vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' rest ->
@@ -558,8 +557,8 @@ Proof.
   finish; eauto.
 Qed.
 
-Lemma cache_pred_stable_clean_write : forall c vd a v rest v' d vs' reader,
-    cache_get c a = Some (false, v) ->
+Lemma cache_pred_stable_clean_write : forall c vd a v l rest v' d vs' reader,
+    cache_get c a = Some (Clean v l) ->
     vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' (v :: rest) ->
@@ -584,9 +583,9 @@ Proof.
   finish.
 Qed.
 
-Lemma cache_pred_stable_evict : forall c a vd d v,
+Lemma cache_pred_stable_evict : forall c a vd d v l,
     cache_pred c vd d ->
-    cache_get c a = Some (false, v) ->
+    cache_get c a = Some (Clean v l) ->
     cache_pred (cache_evict c a) vd d.
 Proof.
   prove_cache_pred; eauto;
@@ -595,29 +594,25 @@ Proof.
   erewrite cache_evict_get; finish.
 Qed.
 
-Lemma cache_pred_stable_clean_noop : forall c vd d a v,
+Lemma cache_pred_stable_clean_noop : forall c vd d a v l,
     cache_pred c vd d ->
-    cache_get c a = Some (false, v) ->
+    cache_get c a = Some (Clean v l) ->
     cache_pred (cache_clean c a) vd d.
 Proof.
   intros.
   erewrite cache_clean_clean_noop; eauto.
 Qed.
 
-Lemma cache_pred_stable_clean : forall c vd d a v,
+Lemma cache_pred_stable_clean : forall c vd d a v l,
     cache_pred c vd d ->
-    cache_get c a = Some (true, v) ->
+    cache_get c a = Some (Clean v l) ->
     vd a = d a ->
     cache_pred (cache_clean c a) vd d.
 Proof.
+  unfold cache_clean, cache_get.
   intros.
-  unfold cache_clean.
-  match goal with
-  | [ H: cache_get _ _ = Some (true, _) |- _ ] =>
-    learn H (apply cache_get_find_dirty in H)
-  end; simpl_match.
-  prove_cache_pred; replace_cache_vals; rewrite_cache_get;
-    repeat deex; finish.
+  simpl_match.
+  auto.
 Qed.
 
 Lemma cache_pred_stable_remove_clean : forall c vd a,
@@ -628,9 +623,9 @@ Proof.
   prove_cache_pred; rewrite_cache_get; auto.
 Qed.
 
-Lemma cache_pred_stable_upd : forall c d vd a vs0 v vs' vs'' reader,
+Lemma cache_pred_stable_upd : forall c d vd a vs0 v l vs' vs'' reader,
     cache_pred c vd d ->
-    cache_get c a = Some (true, v) ->
+    cache_get c a = Some (Dirty v l) ->
     d a = Some (vs0, reader) ->
     vs' = buffer_valu vs0 v ->
     vs'' = buffer_valu vs' v ->
@@ -662,19 +657,13 @@ Proof.
 
   case_cache_val;
     destruct matches;
+    subst;
     repeat deex;
     repeat match goal with
     | [ |- exists _, _ ] => eexists
-           end; intuition eauto; try congruence.
-
-  (* congruence doesn't work here for some reason *)
-
-  match goal with
-  | [ |- @eq (option ?t) ?a ?b ] =>
-    replace a with (@None t) by congruence;
-      replace b with (@None t) by congruence;
-      reflexivity
-  end.
+           end; intuition eauto;
+           fold wr_set in *;
+           try congruence.
 Qed.
 
 Lemma cache_pred_upd_combine : forall c d vd a vs0 vs',
@@ -690,13 +679,12 @@ Proof.
 
   case_cache_val;
     destruct matches;
+    subst;
     repeat deex;
     repeat eexists;
     eauto;
+    intuition idtac;
     try congruence.
-
-  intuition idtac.
-  congruence.
 Qed.
 
 End CachePredStability.
@@ -741,13 +729,22 @@ Proof.
   eauto using cache_pred_same_disk.
 Qed.
 
-Lemma cache_get_vd : forall c d vd a b v rest v' reader,
+Lemma cache_get_vd_clean : forall c d vd a v rest v' l reader,
   cache_pred c vd d ->
   vd a = Some (Valuset v rest, reader) ->
-  cache_get c a = Some (b, v') ->
+  cache_get c a = Some (Clean v' l) ->
   v' = v.
 Proof.
-  destruct b; prove_cache_pred.
+  prove_cache_pred.
+Qed.
+
+Lemma cache_get_vd_dirty : forall c d vd a v rest v' l reader,
+  cache_pred c vd d ->
+  vd a = Some (Valuset v rest, reader) ->
+  cache_get c a = Some (Dirty v' l) ->
+  v' = v.
+Proof.
+  prove_cache_pred.
 Qed.
 
 Lemma cache_pred_same_sectors : forall c vd d,
@@ -757,7 +754,7 @@ Lemma cache_pred_same_sectors : forall c vd d,
 Proof.
   prove_cache_pred.
   destruct matches in *; repeat deex;
-    complete_mem_equalities; eauto.
+    repeat (complete_mem_equalities; eauto).
 Qed.
 
 Lemma cache_pred_same_sectors' : forall c vd d,
@@ -767,7 +764,7 @@ Lemma cache_pred_same_sectors' : forall c vd d,
 Proof.
   prove_cache_pred.
   destruct matches in *; repeat deex;
-    complete_mem_equalities; eauto.
+    repeat (complete_mem_equalities; eauto).
 Qed.
 
 Hint Opaque cache_pred.
