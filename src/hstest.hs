@@ -38,6 +38,13 @@ testprog ds tid = do
     done
   return ()
 
+twoblock :: Disk.DiskState -> Int -> IO ()
+twoblock ds tid = do
+  _ <- I.run ds tid $
+    \done -> TwoBlockExample._TwoBlocksI__write_yield_read (W 0) $
+    \v -> done (v :: Coq_word)
+  return ()
+
 main :: IO ()
 main = do
   ds <- init_disk disk_fn
@@ -45,6 +52,7 @@ main = do
   putStrLn "Disk initialized.."
 
   children <- newMVar []
+  forkChild children $ twoblock ds 1
   forkChild children $ testprog ds 3
   forkChild children $ testprog ds 5
   waitForChildren children
