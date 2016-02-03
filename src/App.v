@@ -520,29 +520,8 @@ Definition file_copy T fsxp src_inum dst_inum mscs rx : prog T :=
   let^ (mscs, ok1) <- FS.file_set_attr fsxp dst_inum sattr mscs;   (* then set_attr *)
   rx ^(mscs, ok && ok1).
 
-
-Theorem file_copy_ok : forall fsxp src_fn src_inum dst_fn dst_inum mscs,
-  {< m Fm Ftop tree tree_elem attr bytes,
-  PRE  LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs * 
-        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-        [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
-        [[ src_fn <> dst_fn ]] *
-        [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile src_inum bytes attr) ]] *
-        [[ DIRTREE.find_subtree [dst_fn] tree = Some (DIRTREE.TreeFile dst_inum [] BYTEFILE.attr0) ]]
-  POST RET:^(mscs, r)
-    exists m' tree',
-      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-      [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-      (([[r = false ]] * [[ tree' = tree]]) \/
-       ([[r = false ]] *
-        exists bytes' attr',
-          [[ tree' = DIRTREE.update_subtree [dst_fn]
-                                            (DIRTREE.TreeFile dst_inum bytes' attr') tree ]]) \/
-       ([[r = true ]] *
-        [[ tree' = DIRTREE.update_subtree [dst_fn]
-                                          (DIRTREE.TreeFile dst_inum bytes attr) tree ]]))
-  CRASH
-    (* crash during one of the read-only ops *)
+Definition file_copy_crash Fm Ftop fsxp dst_fn dst_inum tree bytes attr m :=
+  (  (* crash during one of the read-only ops *)
     LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m \/ 
     (* crashed during append *)
     LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
@@ -567,7 +546,31 @@ Theorem file_copy_ok : forall fsxp src_fn src_inum dst_fn dst_inum mscs,
        exists tree'',
         (Fm * DIRTREE.rep fsxp Ftop tree'') *
         [[ tree'' = DIRTREE.update_subtree [dst_fn]
-                                          (DIRTREE.TreeFile dst_inum bytes attr) tree' ]]))
+                                           (DIRTREE.TreeFile dst_inum bytes attr) tree' ]]))
+     )%pred.
+       
+
+Theorem file_copy_ok : forall fsxp src_fn src_inum dst_fn dst_inum mscs,
+  {< m Fm Ftop tree tree_elem attr bytes,
+  PRE  LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs * 
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+        [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
+        [[ src_fn <> dst_fn ]] *
+        [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile src_inum bytes attr) ]] *
+        [[ DIRTREE.find_subtree [dst_fn] tree = Some (DIRTREE.TreeFile dst_inum [] BYTEFILE.attr0) ]]
+  POST RET:^(mscs, r)
+    exists m' tree',
+      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+      [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+      (([[r = false ]] * [[ tree' = tree]]) \/
+       ([[r = false ]] *
+        exists bytes' attr',
+          [[ tree' = DIRTREE.update_subtree [dst_fn]
+                                            (DIRTREE.TreeFile dst_inum bytes' attr') tree ]]) \/
+       ([[r = true ]] *
+        [[ tree' = DIRTREE.update_subtree [dst_fn]
+                                          (DIRTREE.TreeFile dst_inum bytes attr) tree ]]))
+  CRASH file_copy_crash Fm Ftop fsxp dst_fn dst_inum tree bytes attr m
   >} file_copy fsxp src_inum dst_inum mscs.
 Proof.
   unfold file_copy; intros.
@@ -746,14 +749,139 @@ Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
           [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
           [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]]))
    CRASH
-      LOG.would_recover_either_pred (FSXPLog fsxp)  (sb_rep fsxp) m (
-        exists tree',
-         (exists bytes' attr',
-           [[ tree' = DIRTREE.update_subtree [temp_fn]
-                                           (DIRTREE.TreeFile dst_inum bytes' attr') tree ]]) \/
-         (exists bytes attr,
-           [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
-           [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree]])
+    (* crash during one of the read-only ops *)
+    LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m \/      
+    (* temp_fn deleted? *)
+    (exists m' tree' temp_inum tbytes tattr,
+       [[ (Fm *  DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+       [[ tree' = (DIRTREE.TreeDir the_dnum
+             (map
+                (DIRTREE.update_subtree_helper
+                   (fun _ : DIRTREE.dirtree => DIRTREE.TreeFile temp_inum tbytes tattr)
+                   temp_fn)
+                (DIRTREE.add_to_list temp_fn
+                   (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem))) ]] *
+     LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m' (
+      exists tree'' : DIRTREE.dirtree,
+        Fm * DIRTREE.rep fsxp Ftop tree'' *
+        [[tree'' =
+          DIRTREE.update_subtree []
+            (DIRTREE.TreeDir the_dnum
+               (DIRTREE.delete_from_list temp_fn
+                  (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile temp_inum tbytes tattr)
+                     tree_elem)))
+            (DIRTREE.TreeDir the_dnum
+               (map
+                  (DIRTREE.update_subtree_helper
+                     (fun _ : DIRTREE.dirtree => DIRTREE.TreeFile temp_inum tbytes tattr)
+                     temp_fn)
+                  (DIRTREE.add_to_list temp_fn
+                     (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)))]])) \/
+   (* renamed? *)
+    (exists m' tree' temp_inum tbytes tattr,
+      [[ (Fm *  DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+      [[ tree' = (DIRTREE.TreeDir the_dnum
+             (map
+                (DIRTREE.update_subtree_helper
+                   (fun _ : DIRTREE.dirtree => DIRTREE.TreeFile temp_inum tbytes tattr)
+                   temp_fn)
+                (DIRTREE.add_to_list temp_fn
+                            (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)))]] *
+      LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m'
+       (exists srcnum srcents dstnum dstents subtree pruned renamed tree'',
+        Fm * DIRTREE.rep fsxp Ftop tree'' *
+        [[Some
+            (DIRTREE.TreeDir the_dnum
+               (map
+                  (DIRTREE.update_subtree_helper
+                     (fun _ : DIRTREE.dirtree => DIRTREE.TreeFile temp_inum tbytes tattr)
+                     temp_fn)
+                  (DIRTREE.add_to_list temp_fn
+                     (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem))) =
+          Some (DIRTREE.TreeDir srcnum srcents)]] *
+        [[DIRTREE.find_dirlist temp_fn srcents = Some subtree]] *
+        [[pruned =
+          DIRTREE.tree_prune srcnum srcents [] temp_fn
+            (DIRTREE.TreeDir the_dnum
+               (map
+                  (DIRTREE.update_subtree_helper
+                     (fun _ : DIRTREE.dirtree => DIRTREE.TreeFile temp_inum tbytes tattr)
+                     temp_fn)
+                  (DIRTREE.add_to_list temp_fn
+                     (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)))]] *
+        [[Some pruned = Some (DIRTREE.TreeDir dstnum dstents)]] *
+        [[renamed =
+          DIRTREE.tree_graft dstnum dstents [] dst_fn subtree pruned]] *
+        [[tree'' =
+          DIRTREE.update_subtree [] renamed
+            (DIRTREE.TreeDir the_dnum
+               (map
+                  (DIRTREE.update_subtree_helper
+                     (fun _ : DIRTREE.dirtree => DIRTREE.TreeFile temp_inum tbytes tattr)
+                     temp_fn)
+                  (DIRTREE.add_to_list temp_fn
+                     (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)))]])) \/
+   (* deleted empty temp file *)
+    (exists m' tree' temp_inum,
+     [[ (Fm *  DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+     [[ tree' = (DIRTREE.TreeDir the_dnum
+             (DIRTREE.add_to_list temp_fn
+                (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)) ]] *
+      LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m'
+       (exists tree'',
+        Fm * DIRTREE.rep fsxp Ftop tree'' *
+        [[tree'' =
+          DIRTREE.update_subtree []
+            (DIRTREE.TreeDir the_dnum
+               (DIRTREE.delete_from_list temp_fn
+                  (DIRTREE.add_to_list temp_fn
+                     (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)))
+            (DIRTREE.TreeDir the_dnum
+               (DIRTREE.add_to_list temp_fn
+                  (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem))]])) \/
+    (* deleted temp file with content *)
+    (exists m' tree' temp_inum tbytes tattr,
+     [[ (Fm *  DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+     [[ tree' = DIRTREE.TreeDir the_dnum  (map
+                (DIRTREE.update_subtree_helper
+                   (fun _ : DIRTREE.dirtree =>
+                    DIRTREE.TreeFile temp_inum tbytes tattr) temp_fn)
+                (DIRTREE.add_to_list temp_fn
+                   (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem))]] *
+     LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m'
+      (exists tree'',
+        Fm * DIRTREE.rep fsxp Ftop tree'' *
+        [[tree'' =
+          DIRTREE.update_subtree []
+            (DIRTREE.TreeDir the_dnum
+               (DIRTREE.delete_from_list temp_fn
+                  (DIRTREE.add_to_list temp_fn
+                     (DIRTREE.TreeFile temp_inum tbytes tattr) tree_elem)))
+            (DIRTREE.TreeDir the_dnum
+               (map
+                  (DIRTREE.update_subtree_helper
+                     (fun _ : DIRTREE.dirtree =>
+                      DIRTREE.TreeFile temp_inum tbytes tattr) temp_fn)
+                  (DIRTREE.add_to_list temp_fn
+                        (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)))]])) \/
+   (* file_copy *)
+    (exists m' tree' temp_inum tbytes tattr,
+       [[ (Fm *  DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+       [[ tree' = (DIRTREE.tree_graft the_dnum tree_elem [] temp_fn
+              (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0)
+              (DIRTREE.TreeDir the_dnum tree_elem)) ]] *
+     (file_copy_crash Fm Ftop fsxp temp_fn temp_inum
+      (DIRTREE.TreeDir the_dnum
+        (DIRTREE.add_to_list temp_fn
+           (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0) tree_elem)) tbytes tattr m')) \/
+   (* empty temp file *)
+    LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m
+     (exists temp_inum tree',
+        Fm * DIRTREE.rep fsxp Ftop tree' *
+        [[tree' =
+          DIRTREE.tree_graft the_dnum tree_elem [] temp_fn
+            (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0)
+            (DIRTREE.TreeDir the_dnum tree_elem)]])
 >} atomic_cp fsxp src_fn dst_fn mscs.
 Proof.
   unfold atomic_cp; intros.
@@ -845,8 +973,30 @@ Proof.
   reflexivity.
   assumption.
 
-  pimpl_crash. cancel. apply pimpl_any.
-  pimpl_crash. cancel. apply pimpl_any.
+  (* XXX a tactic for traversing crash conditions and then resolving/proving them *)
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  rewrite sep_star_assoc.
+  eapply sep_star_lift_r_prop; eauto.
+  eapply sep_star_lift_r_prop; eauto.
+
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  rewrite sep_star_assoc.
+  eapply sep_star_lift_r_prop; eauto.
+  eapply sep_star_lift_r_prop; eauto.
 
   instantiate (pathname := []).
   instantiate (tree_elem1 := (DIRTREE.add_to_list temp_fn
@@ -862,8 +1012,19 @@ Proof.
   reflexivity.
 
   assumption.
+
+
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
   
-  pimpl_crash. cancel. apply pimpl_any.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  rewrite sep_star_assoc.
+  eapply sep_star_lift_r_prop; eauto.
+  eapply sep_star_lift_r_prop; eauto.
 
   instantiate (tree_elem2 := (DIRTREE.add_to_list temp_fn (DIRTREE.TreeFile inum bytes' attr') tree_elem)).
   instantiate (pathname0 := []).
@@ -899,10 +1060,49 @@ Proof.
   reflexivity.
   assumption.
 
-  pimpl_crash. cancel. apply pimpl_any.
-  pimpl_crash. cancel. apply pimpl_any.
-  pimpl_crash. cancel. apply pimpl_any.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  
+  rewrite sep_star_assoc.
+  eapply sep_star_lift_r_prop; eauto.
+  eapply sep_star_lift_r_prop; eauto.
 
+
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+
+  instantiate( x := a).
+
+  rewrite sep_star_assoc.
+  eapply sep_star_lift_r_prop; eauto.
+  cancel.
+
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eauto.
+
+  eapply pimpl_or_r. left.
+  eauto.
+  
   Grab Existential Variables.
   all: eauto.
 Qed.
