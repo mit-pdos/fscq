@@ -3,6 +3,7 @@ module ConcurInterp where
 import EventCSL
 import Hlist
 import qualified Disk
+import Control.Exception as E
 
 verbose :: Bool
 verbose = True
@@ -72,9 +73,21 @@ run_dcode ds tid (AcquireLock lockvar xx rx) = do
       Disk.acquire_global_lock ds
       run_dcode ds tid $ AcquireLock lockvar xx rx
 
-run :: Disk.DiskState -> Int -> ((a -> EventCSL.Coq_prog a) -> EventCSL.Coq_prog a) -> IO a
-run ds tid p = do
+run_e :: Disk.DiskState -> Int -> ((a -> EventCSL.Coq_prog a) -> EventCSL.Coq_prog a) -> IO a
+run_e ds tid p = do
   Disk.acquire_global_lock ds
   ret <- run_dcode ds tid $ p (\x -> EventCSL.Done x)
   Disk.release_global_lock ds
   return ret
+
+spin_forever :: IO a
+spin_forever = do
+  spin_forever
+
+print_exception :: Int -> ErrorCall -> IO a
+print_exception tid e = do
+  putStrLn $ "[" ++ (show tid) ++ "] Exception: " ++ (show e)
+  spin_forever
+
+run :: Disk.DiskState -> Int -> ((a -> EventCSL.Coq_prog a) -> EventCSL.Coq_prog a) -> IO a
+run ds tid p = E.catch (run_e ds tid p) (print_exception tid)
