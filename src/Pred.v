@@ -2050,4 +2050,58 @@ Proof.
   repeat deex; destruct matches in *.
 Qed.
 
+Section MemDomains.
+
+Variable (AT:Type).
+Variable (AEQ: DecEq AT).
+Variable (V:Type).
+
+Implicit Types (m: @mem AT AEQ V).
+
+(* m <= m' *)
+Definition subset m m' :=
+  forall a v, m a = Some v -> exists v', m' a = Some v'.
+
+Definition same_domain m m' :=
+  subset m m' /\
+  subset m' m.
+
+Theorem same_domain_refl : forall m,
+  same_domain m m.
+Proof.
+  firstorder.
+Qed.
+
+Theorem same_domain_sym : forall m m',
+  same_domain m m' ->
+  same_domain m' m.
+Proof.
+  firstorder.
+Qed.
+
+Theorem same_domain_trans : forall m m' m'',
+  same_domain m m' ->
+  same_domain m' m'' ->
+  same_domain m m''.
+Proof.
+  unfold same_domain, subset.
+  intuition eauto;
+  match goal with
+  | [ H: context[forall _, ?m _ = Some _ -> _], H': ?m _ = Some _ |- _] =>
+    apply H in H'
+  end; deex; eauto.
+Qed.
+
+Theorem same_domain_upd : forall m a v v0,
+  m a = Some v0 ->
+  same_domain m (upd m a v).
+Proof.
+  unfold same_domain, subset, upd.
+  firstorder.
+  destruct (AEQ a0 a); eauto.
+  destruct (AEQ a0 a); subst; eauto.
+Qed.
+
+End MemDomains.
+
 Global Opaque pred.
