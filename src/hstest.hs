@@ -1,11 +1,18 @@
+{-# OPTIONS_GHC -XMagicHash #-}
+
 module Main where
 
 import Word
 import qualified ConcurInterp as I
 import qualified TwoBlockExample
 import qualified EventCSL
+import qualified MemCache
 import Disk
 import Control.Concurrent
+import GHC.Base
+
+unsafeCoerce :: a -> b
+unsafeCoerce = GHC.Base.unsafeCoerce#
 
 disk_fn :: String
 disk_fn = "disk.img"
@@ -40,9 +47,11 @@ testprog ds tid = do
 
 twoblock :: Disk.DiskState -> Int -> IO ()
 twoblock ds tid = do
-  _ <- I.run ds tid $
-    \done -> TwoBlockExample._TwoBlocksI__write_yield_read (W 0) $
-    \v -> done (v :: Coq_word)
+  _ <- I.run ds tid $ \done ->
+    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_Cache (unsafeCoerce (MemCache._Map__empty :: MemCache.Map__Coq_t MemCache.Coq_cache_entry)) $ \_ ->
+    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_CacheL (unsafeCoerce EventCSL.Open) $ \_ ->
+    TwoBlockExample._TwoBlocksI__write_yield_read (W 0) $ \v ->
+    done (v :: Coq_word)
   return ()
 
 main :: IO ()
