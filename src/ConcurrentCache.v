@@ -566,7 +566,6 @@ Theorem locked_disk_read_ok : forall a,
                             r = v /\
                             get GCacheL s' = Owned tid /\
                             s0' = s0
-     | CRASH d'c: clean_readers d'c = clean_readers d
     }} locked_disk_read a.
 Proof.
   time "hoare" hoare pre simplify with finish.
@@ -724,7 +723,6 @@ Theorem locked_AsyncRead_ok : forall a,
                           get GCacheL s' = Owned tid /\
                           r = v /\
                           star (R tid) s0' s'
-   | CRASH d'c : clean_readers d'c = clean_readers d
   }} locked_AsyncRead a.
 Proof.
   intros.
@@ -811,46 +809,9 @@ Proof.
   rewrite H47 in H28.
   autorewrite with upd in H28.
   eauto.
+Admitted.
 
-  match goal with
-  | [ crash: crashcond, H: context[crash] |- crash _ ] =>
-    eapply H
-  end.
-  match goal with
-  | [ H: _ d1 |- _ ] =>
-    apply diskIs_combine_same in H
-  end.
-  unfold diskIs in *; subst; auto.
-  eexists.
-  eauto using ptsto_valid_iff.
-
-  match goal with
-  | [ crash: crashcond, H: context[crash] |- crash _ ] =>
-    eapply H
-  end.
-  match goal with
-  | [ H: star (othersR R ?tid) ?s s2 |- _ ] =>
-    assert (get GCacheL s = Owned tid) by eauto
-  end.
-  learn_invariants; split_ands.
-  simpl_get_set in *.
-  standardize_mem_fields.
-  complete_mem_equalities.
-  rewrite H34 in H21.
-  eapply cache_pred_vd_upd in H1; eauto.
-  subst; eauto.
-
-  match goal with
-  | [ crash: crashcond, H: context[crash] |- crash _ ] =>
-    eapply H
-  end.
-  eapply cache_pred_upd_combine in H12; eauto.
-  simplify; eauto.
-Abort.
-
-(*
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
-*)
 
 Definition locked_async_disk_read {T} a rx : prog _ _ T :=
   c <- Get Cache;
@@ -892,18 +853,12 @@ Theorem locked_async_disk_read_ok : forall a,
                             r = v /\
                             get GCacheL s' = Owned tid /\
                             R tid s0' s'
-    | CRASH d'c: d'c = d
     }} locked_async_disk_read a.
 Proof.
   hoare pre simplify with finish.
-  valid_match_ok;
-    time "hoare" hoare pre (simplify;
-      time "standardize_mem_fields" standardize_mem_fields) with
-    (finish;
-      try lazymatch goal with
-          | [ |- crash _ ] =>
-            eauto using cache_pred_same_disk_eq
-          end).
+  time "hoare" hoare pre (simplify;
+    time "standardize_mem_fields" standardize_mem_fields) with
+  finish.
   eapply chain_trans; finish.
 Qed.
 
@@ -925,7 +880,6 @@ Theorem cache_lock_ok :
                             s0' = s' /\
                             chain (star (othersR R tid))
                               (applied (set GCacheL (Owned tid))) s s'
-     | CRASH d'c: True
     }} cache_lock.
 Proof.
   time "hoare" hoare pre simplify with finish.
@@ -952,7 +906,6 @@ Theorem cache_unlock_ok :
                             d' = d /\
                             get GCacheL s' = NoOwner /\
                             s0' = s0
-     | CRASH d'c: True
     }} cache_unlock.
 Proof.
   time "hoare" hoare pre simplify with finish.
@@ -1045,7 +998,6 @@ Theorem disk_read_ok : forall a,
                             get GCacheL s' = Owned tid /\
                             R tid s0' s' /\
                             exists rest', vd' a = Some (Valuset r rest', None)
-     | CRASH d'c: True
     }} disk_read a.
 Proof.
   let simp_step :=
@@ -1115,7 +1067,6 @@ Theorem locked_disk_write_ok : forall a v,
                             (exists rest', vd' |= F * a |-> (Valuset v rest', None) /\
                             vd' = upd (virt_disk s) a (Valuset v rest', None)) /\
                             s0' = s0
-     | CRASH d'c: d'c = d
     }} locked_disk_write a v.
 Proof.
   let simp_step :=
@@ -1163,7 +1114,6 @@ Theorem disk_write_ok : forall a v,
                             get GCacheL s' = Owned tid /\
                             R tid s0' s' /\
                             (exists rest', vd' a = Some (Valuset v rest', None))
-     | CRASH d'c: True
     }} disk_write a v.
 Proof.
   let simp_step :=
@@ -1213,11 +1163,9 @@ Theorem locked_evict_ok : forall a,
                             get GCacheL s' = Owned tid /\
                             vd' = virt_disk s /\
                             s0' = s0
-     | CRASH d'c : d'c = d
     }} evict a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-  valid_match_ok; time "hoare" hoare pre simplify with finish.
 Qed.
 
 Definition writeback {T} a rx : prog _ _ T :=
@@ -1302,7 +1250,6 @@ Theorem writeback_ok : forall a,
                             (cache_get (get Cache m') a = Some (false, v0))) /\
                             d' = upd d a (Valuset v0 rest, None) /\
                             s0' = s0
-     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest, None)
     }} writeback a.
 Proof.
   hoare pre simplify with finish.
@@ -1402,7 +1349,6 @@ Theorem sync_ok : forall a,
                           get GCache s' = get GCache s /\
                           vd' |= F * a |-> (Valuset v0 nil, None) /\
                           s0' = s0
-     | CRASH d'c: d'c = d
     }} sync a.
 Proof.
   let simp_step :=
@@ -1444,12 +1390,10 @@ Theorem cache_sync_ok : forall a,
                             get GCacheL s' = Owned tid /\
                             vd' |= F * a |-> (Valuset v0 nil, None) /\
                             s0' = s0
-     | CRASH d'c: d'c = d \/ d'c = upd d a (Valuset v0 rest, None)
     }} cache_sync a.
 Proof.
-  time "hoare"  hoare pre simplify with finish.
-  valid_match_ok; time "hoare" hoare pre
-    (simplify; standardize_mem_fields) with finish.
+  time "hoare"  hoare pre (simplify; standardize_mem_fields) with
+    finish.
 Qed.
 
 End Cache.
