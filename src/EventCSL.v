@@ -723,12 +723,11 @@ Section EventCSL.
   Hint Extern 4 (_ <= _) => omega.
   Hint Extern 5 (@eq nat _ _) => omega.
 
-  (*
   Theorem for_ok' : forall tid L G
                      (rx: _ -> prog)
-                     nocrash (crashed : G -> DISK_PRED)
+                     nocrash
                      n i f (li:L),
-      valid tid (fun done crash =>
+      valid tid (fun done =>
                    fun d m s0 s =>
                      exists (g:G),
                        nocrash g i li d m s0 s /\
@@ -736,21 +735,17 @@ Section EventCSL.
                            i <= n' ->
                            n' < n + i ->
                            (forall lSm,
-                               valid tid (fun done' crash' d' m' s0' s' =>
+                               valid tid (fun done' d' m' s0' s' =>
                                             nocrash g (1+n') lSm d' m' s0' s' /\
-                                            done' = done /\
-                                            crash' = crash) (rxm lSm)) ->
-                           valid tid (fun done' crash' d' m' s0' s' =>
+                                            done' = done) (rxm lSm)) ->
+                           valid tid (fun done' d' m' s0' s' =>
                                         nocrash g n' ln' d' m' s0' s' /\
-                                        done' = done /\
-                                        crash' = crash) (f n' ln' rxm)) /\
+                                        done' = done) (f n' ln' rxm)) /\
                        (forall lfinal,
-                           valid tid (fun done' crash' d' m' s0' s' =>
+                           valid tid (fun done' d' m' s0' s' =>
                                         nocrash g (i+n) lfinal d' m' s0' s' /\
-                                        done' = done /\
-                                        crash' = crash) (rx lfinal)) /\
-                       (forall d', crashed g d' -> crash d'))
-            (For_ f i n nocrash crashed li rx).
+                                        done' = done) (rx lfinal)))
+            (For_ f i n nocrash li rx).
   Proof.
     intro.
     induction n; cbn; intros.
@@ -777,37 +772,36 @@ Section EventCSL.
         replace i with i' in H by omega; assumption
       end.
 
+      (* TODO: proof has diverged here for some reason from previous
+      version (when we had crashes) and original FSCQ BasicProg for
+      loops *)
       intros.
-      eapply H2.
+      (* eapply H2. *)
       intuition.
-  Qed.
+  Admitted.
 
   Theorem for_ok : forall tid L G
                      (rx: _ -> prog)
-                     nocrash (crashed : G -> DISK_PRED)
+                     nocrash
                      n f (li:L),
-      valid tid (fun done crash =>
+      valid tid (fun done =>
                    fun d m s0 s =>
                      exists (g:G),
                        nocrash g 0 li d m s0 s /\
                        (forall n' ln' rxm,
                            n' < n ->
                            (forall lSm,
-                               valid tid (fun done' crash' d' m' s0' s' =>
+                               valid tid (fun done' d' m' s0' s' =>
                                             nocrash g (1+n') lSm d' m' s0' s' /\
-                                            done' = done /\
-                                            crash' = crash) (rxm lSm)) ->
-                           valid tid (fun done' crash' d' m' s0' s' =>
+                                            done' = done) (rxm lSm)) ->
+                           valid tid (fun done' d' m' s0' s' =>
                                         nocrash g n' ln' d' m' s0' s' /\
-                                        done' = done /\
-                                        crash' = crash) (f n' ln' rxm)) /\
+                                        done' = done) (f n' ln' rxm)) /\
                        (forall lfinal,
-                           valid tid (fun done' crash' d' m' s0' s' =>
+                           valid tid (fun done' d' m' s0' s' =>
                                         nocrash g n lfinal d' m' s0' s' /\
-                                        done' = done /\
-                                        crash' = crash) (rx lfinal)) /\
-                       (forall d', crashed g d' -> crash d'))
-            (For_ f 0 n nocrash crashed li rx).
+                                        done' = done) (rx lfinal)))
+            (For_ f 0 n nocrash li rx).
   Proof.
     intros.
     apply valid_exists_to_forall; intros.
@@ -818,7 +812,6 @@ Section EventCSL.
     | [ g: ?G |- exists _:?G, _ ] => exists g
     end; intuition eauto.
   Qed.
-   *)
 
 End EventCSL.
 
@@ -925,7 +918,7 @@ Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
-(* Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog. *)
+Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 
 (* Wrap up the parameters that the semantics takes in a module. *)
 Module Type Semantics.

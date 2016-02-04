@@ -1,6 +1,7 @@
 Require Import EventCSL.
 Require Import FunctionalExtensionality.
 Require Import Automation.
+Import Bool.
 
 Set Implicit Arguments.
 
@@ -75,14 +76,14 @@ Ltac head_symbol e :=
 
 Ltac unfold_prog :=
   lazymatch goal with
-  | [ |- valid _ _ _ ?p ] =>
+  | [ |- valid _ _ _ _ ?p ] =>
     let program := head_symbol p in
     unfold program
   end.
 
 Ltac valid_match_ok :=
   match goal with
-  | [ |- valid _ _ _ (match ?d with | _ => _ end) ] =>
+  | [ |- valid _ _ _ _ (match ?d with | _ => _ end) ] =>
     case_eq d; intros
   end.
 
@@ -174,7 +175,6 @@ Section ReadTheorems.
 
   Hint Resolve clean_readers_upd.
 
-  (*
   Theorem Read_ok : forall Mcontents Scontents Inv R a,
       (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
       {{ F vs0,
@@ -189,22 +189,19 @@ Section ReadTheorems.
     intros.
     step.
     exists (diskIs (mem_except d a)).
-    repeat eexists; intuition; subst; eauto.
+    eexists; intuition; subst; eauto.
 
     step.
-    repeat eexists; intuition eauto.
+    repeat match goal with
+           | [ |- exists _, _ ] => eexists
+           end; intuition eauto.
 
     step.
-    apply diskIs_combine_same in H3.
-    unfold diskIs in H3; auto.
+    apply diskIs_combine_same in H2.
+    unfold diskIs in H2; auto.
     eexists.
     pred_apply; cancel.
-
-    eapply diskIs_combine_upd in H1.
-    unfold diskIs in H1; subst.
-    eauto.
   Qed.
-
 
 Definition StartRead_upd {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
   StartRead a;;
@@ -218,7 +215,6 @@ Theorem StartRead_upd_ok : forall Mcontents Scontents Inv R a,
                             s0' = s0 /\
                             s' = s /\
                             m' = m
-     | CRASH d'c : d'c = d
     }} StartRead_upd a.
 Proof.
   intros.
@@ -227,21 +223,16 @@ Proof.
   eexists; intuition eauto.
 
   step.
-  eapply diskIs_combine_upd in H1; unfold diskIs in H1.
+  eapply diskIs_combine_upd in H; unfold diskIs in H.
   auto.
 Qed.
-*)
 
 End ReadTheorems.
 
-(*
 Hint Extern 1 {{Read _; _}} => apply Read_ok : prog.
 Hint Extern 1 {{StartRead_upd _; _}} => apply StartRead_upd_ok : prog.
-*)
 
 Section WaitForCombinator.
-
-Import Bool.
 
 CoFixpoint wait_for {T} {Mcontents} {Scontents}
            tv (v: var Mcontents tv) (test: tv -> bool)
