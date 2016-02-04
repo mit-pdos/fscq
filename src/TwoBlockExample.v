@@ -110,9 +110,10 @@ Module TwoBlocks (Sem:Semantics)
 
   Definition write_yield_read {T} v' rx : prog _ _ T :=
     disk_write block0 v';;
-      Yield;;
-      v <- disk_read block0;
-      rx v.
+    Yield;;
+    v <- locked_disk_read block0;
+    v <- locked_disk_read (block0 ^+ $1);
+    rx v.
 
   Hint Resolve ptsto_valid_iff.
 
