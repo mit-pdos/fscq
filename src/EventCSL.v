@@ -262,6 +262,65 @@ Section EventCSL.
 
   Hint Constructors exec.
 
+  Definition exec_ind2
+                     (tid : ID)
+                     (P : DISK * M * S * S -> prog -> outcome -> Prop)
+                     (f : forall (st  : DISK * M * S * S) (p  : prog)
+                                 (st' : DISK * M * S * S) (p' : prog)
+                                 (out : outcome),
+                          tid :- p / st ==> p' / st' ->
+                          exec tid st' p' out ->
+                          ((exists v, p' = Done v) \/
+                           (out = Failed) \/
+                           (exists d, out = Crashed d)) ->
+                          P st' p' out ->
+                          P st p out)
+                     (g : forall (st   : DISK * M * S * S) (p   : prog)
+                                 (st'  : DISK * M * S * S) (p'  : prog)
+                                 (st'' : DISK * M * S * S) (p'' : prog)
+                                 (out : outcome),
+                          tid :- p / st ==> p' / st' ->
+                          tid :- p' / st' ==> p'' / st'' ->
+                          exec tid st'' p'' out ->
+                          P st'' p'' out ->
+                          P st p out)
+                     (f0 : forall (st : state) (p : prog),
+                           fail_step tid p st ->
+                           P st p Failed)
+                     (f1 : forall (d : DISK) (m : M) (s0 s : S) (p : prog),
+                           P (d, m, s0, s) p (Crashed d))
+                     (f2 : forall (d : DISK) (m : M) (s0 s : S) (v : T),
+                           P (d, m, s0, s) (Done v) (Finished d v))
+                     (st : DISK * M * S * S)
+                     (p : prog)
+                     (out : outcome)
+                     (e : exec tid st p out) : (P st p out).
+
+    refine ((fix exec_ind2
+                     (st : DISK * M * S * S)
+                     (p : prog)
+                     (out : outcome)
+                     (e : exec tid st p out) {struct e} : (P st p out) := _) st p out e).
+    destruct e.
+
+    - destruct e.
+      + refine (g _ _ _ _ _ _ _ _ _ _ _).
+        eassumption. eassumption. eassumption.
+        refine (exec_ind2 _ _ _ _). eassumption.
+      + refine (f _ _ _ _ _ _ _ _ _).
+        eassumption. eauto. eauto.
+        refine (f0 _ _ _); eauto.
+      + refine (f _ _ _ _ _ _ _ _ _).
+        eassumption. eauto. eauto.
+        refine (f1 _ _ _ _ _).
+      + refine (f _ _ _ _ _ _ _ _ _).
+        eassumption. eauto. eauto.
+        refine (f2 _ _ _ _ _).
+    - refine (f0 _ _ _); auto.
+    - refine (f1 _ _ _ _ _).
+    - refine (f2 _ _ _ _ _).
+  Defined.
+
   (* clear up dependent equalities produced by inverting fail_step *)
   Ltac sigT_eq :=
     match goal with
