@@ -203,7 +203,6 @@ Section Bank.
                               l' = l /\
                               l0' = l' /\
                               m' = m
-       | CRASH d'c: True
       }} transfer amount.
   Proof.
     hoare.
@@ -267,7 +266,6 @@ Section Bank.
                             let l' := get Ledger s' in
                             firstn (length l + 1) l' = l ++ [from1 amount] /\
                             s0' = s'
-     | CRASH d'c : True
     }} transfer_yield amount.
   Proof.
     hoare pre (step_simplifier; simpl_get_set).
