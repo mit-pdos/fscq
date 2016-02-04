@@ -2,6 +2,8 @@ Require Import EventCSL.
 Require Import FunctionalExtensionality.
 Require Import Automation.
 
+Set Implicit Arguments.
+
 Ltac inv_opt :=
   match goal with
   | [ H: None = Some _ |- _ ] =>
@@ -73,14 +75,14 @@ Ltac head_symbol e :=
 
 Ltac unfold_prog :=
   lazymatch goal with
-  | [ |- valid _ _ _ _ ?p ] =>
+  | [ |- valid _ _ _ ?p ] =>
     let program := head_symbol p in
     unfold program
   end.
 
 Ltac valid_match_ok :=
   match goal with
-  | [ |- valid _ _ _ _ (match ?d with | _ => _ end) ] =>
+  | [ |- valid _ _ _ (match ?d with | _ => _ end) ] =>
     case_eq d; intros
   end.
 
@@ -172,6 +174,7 @@ Section ReadTheorems.
 
   Hint Resolve clean_readers_upd.
 
+  (*
   Theorem Read_ok : forall Mcontents Scontents Inv R a,
       (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
       {{ F vs0,
@@ -181,7 +184,6 @@ Section ReadTheorems.
                               s' = s /\
                               m' = m /\
                               r = latest_valu vs0
-       | CRASH d'c : clean_readers d'c = clean_readers d
       }} Read a.
   Proof.
     intros.
@@ -228,8 +230,191 @@ Proof.
   eapply diskIs_combine_upd in H1; unfold diskIs in H1.
   auto.
 Qed.
+*)
 
 End ReadTheorems.
 
+(*
 Hint Extern 1 {{Read _; _}} => apply Read_ok : prog.
 Hint Extern 1 {{StartRead_upd _; _}} => apply StartRead_upd_ok : prog.
+*)
+
+Section WaitForCombinator.
+
+Import Bool.
+
+CoFixpoint wait_for {T} {Mcontents} {Scontents}
+           tv (v: var Mcontents tv) (test: tv -> bool)
+  rx : prog Mcontents Scontents T :=
+  val <- Get v;
+  If (bool_dec (test val) true) {
+    rx tt
+  } else {
+    Yield;;
+    wait_for v test rx
+  }.
+
+(* dummy function that will trigger computation of cofix *)
+Definition prog_frob Mcontents Scontents T (p: prog Mcontents Scontents T) :=
+  match p with
+  | StartRead a rx => StartRead a rx
+  | FinishRead a rx => FinishRead a rx
+  | Write a v rx => Write a v rx
+  | Sync a rx => Sync a rx
+  | Get v rx => Get v rx
+  | Assgn v val rx => Assgn v val rx
+  | GetTID rx => GetTID rx
+  | AcquireLock l update rx => AcquireLock l update rx
+  | Yield rx => Yield rx
+  | GhostUpdate update rx => GhostUpdate update rx
+  | Done _ _ v => Done _ _ v
+  end.
+
+Theorem prog_frob_eq : forall Mcontents Scontents T (p: prog Mcontents Scontents T),
+    p = prog_frob p.
+Proof.
+  destruct p; reflexivity.
+Qed.
+
+Theorem wait_for_expand : forall Mcontents Scontents T
+                               tv (v: var Mcontents tv) test
+                               (rx : _ -> prog Mcontents Scontents T),
+    wait_for v test rx =
+    val <- Get v;
+    If (bool_dec (test val) true) {
+         rx tt
+       } else {
+    Yield;;
+         wait_for v test rx
+  }.
+Proof.
+  intros.
+  match goal with
+  | [ |- ?p1 = ?p2 ] =>
+    rewrite (prog_frob_eq p1) at 1;
+    rewrite (prog_frob_eq p2) at 1
+  end; cbn.
+  auto.
+Qed.
+
+Ltac sigT_eq :=
+  match goal with
+  | [ H: @eq (sigT _) _ _ |- _ ] =>
+    apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
+      subst
+  end.
+
+Ltac inv_step :=
+  match goal with
+  | [ H: step _ _ _ _ _ _ _ |- _ ] =>
+    inversion H; subst; repeat sigT_eq
+  end.
+
+Ltac inv_st :=
+  match goal with
+  | [ H : @eq state _ _ |- _ ] =>
+    inversion H
+  end.
+
+Ltac inv_tuple :=
+  match goal with
+  | [ H : (_, _, _, _) = (_, _, _, _) |- _ ] =>
+    inversion H; subst
+  end.
+
+Ltac inv_prog :=
+  match goal with
+  | [ H: @eq (prog _ _ _) _ _ |- _ ] =>
+    inversion H
+  end.
+
+Ltac inv_fail_step :=
+  match goal with
+  | [ H: context[fail_step] |- _ ] =>
+    inversion H; subst;
+    (* produce equalities from dependent equalities using proof
+      irrelevance *)
+    repeat sigT_eq;
+    (* get rid of local definitions in context *)
+    repeat match goal with
+           | [ v := _ : _ |- _ ] => subst v
+           end
+  end.
+
+Ltac ind_exec :=
+  match goal with
+  | [ H : exec _ _ _ ?st ?p _ |- _ ] =>
+    remember st; remember p;
+    induction H; subst;
+    try (destruct st; inv_st);
+    try inv_tuple;
+    try inv_step;
+    try inv_prog;
+    intuition (subst; eauto)
+  end.
+
+Hint Constructors exec.
+
+Theorem wait_for_ok : forall Mcontents Scontents
+                        (R: ID -> Relation Scontents)
+                        (Inv: Invariant Mcontents Scontents)
+                        tv (v: var Mcontents tv) test
+                        (R_stutter: forall tid s, R tid s s),
+  (Build_transitions R Inv) TID: tid |-
+    {{ (_:unit),
+     | PRE d m s0 s: Inv m s d /\
+                     R tid s0 s
+     | POST d' m' s0' s' r: Inv m' s' d' /\
+                            test (get v m') = true /\
+                            R tid s0 s
+    }} wait_for v test.
+Proof.
+  intros; cbn.
+  unfold valid.
+  intros.
+  rewrite wait_for_eq_expand in H0.
+  repeat deex; intuition.
+
+  match goal with
+  | [ H: exec _ _ _ ?st ?p _ |- _ ] =>
+    remember p
+  end.
+
+  remember (d, m, s0, s) as st.
+  generalize dependent d.
+  generalize dependent m.
+  generalize dependent s0.
+  generalize dependent s.
+  generalize dependent st.
+  induction 1 using exec_ind2; intros; subst; try solve [ inv_prog ].
+
+  inv_step.
+
+  intuition.
+  deex.
+  unfold If_ in *.
+  destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
+  eapply H2; eauto.
+  unfold If_ in *.
+  destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
+  eapply H2; eauto.
+  inv_fail_step; congruence.
+
+  inv_step.
+  unfold If_ in *.
+  match goal with
+  | [ H: step _ _ _ _ (if ?d then _ else _) _ _ |- _ ] =>
+    destruct d
+  end.
+  eapply H2; eauto.
+  inversion H0; repeat sigT_eq; subst.
+  eapply IHexec.
+  apply wait_for_eq_expand.
+  3: eauto.
+  all: eauto.
+  intros; intuition eauto.
+
+  inv_fail_step.
+Qed.
+
+End WaitForCombinator.

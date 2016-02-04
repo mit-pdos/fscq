@@ -100,7 +100,7 @@ Section EventCSL.
   Definition Invariant := M -> S -> DISK_PRED.
   Variable StateI : Invariant.
 
-  Inductive prog :=
+  CoInductive prog :=
   | StartRead (a: addr) (rx: unit -> prog)
   | FinishRead (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
@@ -255,12 +255,12 @@ Section EventCSL.
   | ExecFail : forall st p,
       fail_step tid p st ->
       exec tid st p Failed
-  | ExecCrash : forall d m s0 s p,
-      exec tid (d, m, s0, s) p (Crashed d)
   | ExecDone : forall d m s0 s v,
       exec tid (d, m, s0, s) (Done v) (Finished d v).
 
   Hint Constructors exec.
+
+  Section TwoStepExecution.
 
   Definition exec_ind2
                      (tid : ID)
@@ -271,8 +271,7 @@ Section EventCSL.
                           tid :- p / st ==> p' / st' ->
                           exec tid st' p' out ->
                           ((exists v, p' = Done v) \/
-                           (out = Failed) \/
-                           (exists d, out = Crashed d)) ->
+                           fail_step tid p' st') ->
                           P st' p' out ->
                           P st p out)
                      (g : forall (st   : DISK * M * S * S) (p   : prog)
@@ -287,9 +286,7 @@ Section EventCSL.
                      (f0 : forall (st : state) (p : prog),
                            fail_step tid p st ->
                            P st p Failed)
-                     (f1 : forall (d : DISK) (m : M) (s0 s : S) (p : prog),
-                           P (d, m, s0, s) p (Crashed d))
-                     (f2 : forall (d : DISK) (m : M) (s0 s : S) (v : T),
+                     (f1 : forall (d : DISK) (m : M) (s0 s : S) (v : T),
                            P (d, m, s0, s) (Done v) (Finished d v))
                      (st : DISK * M * S * S)
                      (p : prog)
@@ -313,13 +310,54 @@ Section EventCSL.
       + refine (f _ _ _ _ _ _ _ _ _).
         eassumption. eauto. eauto.
         refine (f1 _ _ _ _ _).
-      + refine (f _ _ _ _ _ _ _ _ _).
-        eassumption. eauto. eauto.
-        refine (f2 _ _ _ _ _).
     - refine (f0 _ _ _); auto.
     - refine (f1 _ _ _ _ _).
-    - refine (f2 _ _ _ _ _).
   Defined.
+
+  Inductive exec2 tid : forall st p (out:outcome), Prop :=
+  | Exec2Step : forall st p st' p' st'' p'' out,
+      tid :- p / st ==> p' / st' ->
+      tid :- p' / st' ==> p'' / st'' ->
+      exec2 tid st'' p'' out ->
+      exec2 tid st p out
+  | Exec2Fail : forall st p,
+      fail_step tid p st ->
+      exec2 tid st p Failed
+  | Exec2StepFail : forall st p st' p',
+      tid :- p / st ==> p' / st' ->
+      fail_step tid p' st' ->
+      exec2 tid st p Failed
+  | Exec2Done : forall d m s0 s v,
+      exec2 tid (d, m, s0, s) (Done v) (Finished d v)
+  | Exec2StepDone : forall st p d' m' s0' s' v,
+      tid :- p / st ==> Done v / (d', m', s0', s') ->
+      exec2 tid st p (Finished d' v).
+
+  Hint Constructors exec2.
+
+  Theorem exec2_imp_exec : forall tid st p out,
+      exec2 tid st p out ->
+      exec tid st p out.
+  Proof.
+    induction 1; eauto.
+  Qed.
+
+  Theorem exec_imp_exec2 : forall tid st p out,
+      exec tid st p out ->
+      exec2 tid st p out.
+  Proof.
+    induction 1; subst; eauto.
+    inversion H0; subst; eauto.
+  Admitted.
+
+  Theorem exec_equiv_exec2 : forall tid st p out,
+      exec tid st p out <->
+      exec2 tid st p out.
+  Proof.
+    split; auto using exec2_imp_exec, exec_imp_exec2.
+  Qed.
+
+  End TwoStepExecution.
 
   (* clear up dependent equalities produced by inverting fail_step *)
   Ltac sigT_eq :=
@@ -372,21 +410,18 @@ Section EventCSL.
   Hint Resolve start_read_failure finish_read_failure write_failure.
 
   Definition donecond := T -> DISK_PRED.
-  Definition crashcond := DISK_PRED.
 
   (** A Hoare double judgement: encodes a Crash Hoare Logic tuple via
   a precondition that accepts appropriate postconditions (donecond) and crash
   conditions. *)
-  Definition valid tid (pre: donecond -> crashcond ->
+  Definition valid tid (pre: donecond ->
         (* state: d, m, s0, s *)
         mem -> M -> S -> S -> Prop) p : Prop :=
-    forall d m s0 s done crash out,
-      pre done crash d m s0 s ->
+    forall d m s0 s done out,
+      pre done d m s0 s ->
       exec tid (d, m, s0, s) p out ->
       (exists d' v,
-        out = Finished d' v /\ done v d') \/
-      (exists d',
-        out = Crashed d' /\ crash d').
+        out = Finished d' v /\ done v d').
 
   (** Programs are written in continuation-passing style, where sequencing
   is simply function application. We wrap this sequencing in a function for
@@ -424,18 +459,16 @@ Section EventCSL.
       edestruct H; eauto
     end.
 
-  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post | 'CRASH' d'c : oncrash }} p" :=
+  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
     (forall (rx: _ -> prog) (tid:ID),
-        valid tid (fun done crash d m s0 s =>
+        valid tid (fun done d m s0 s =>
                      (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
                                            (forall ret_,
-                                             valid tid (fun done_rx crash_rx d' m' s0' s' =>
+                                             valid tid (fun done_rx d' m' s0' s' =>
                                                       (fun r => post%judgement) ret_ /\
-                                                      done_rx = done /\
-                                                      crash_rx = crash)
-                                                   (rx ret_)) /\
-                                           (forall d'c, oncrash%judgement -> crash d'c)
+                                                      done_rx = done)
+                                                   (rx ret_))
                                     )) .. ))
                   ) (p rx))
       (at level 0, p at level 60,
@@ -449,7 +482,6 @@ Section EventCSL.
        s at level 0,
        s' at level 0,
        r at level 0,
-       d'c at level 0,
        only parsing).
 
   (* extract the precondition of a valid statement into the hypotheses *)
@@ -512,7 +544,6 @@ Section EventCSL.
                                 s0' = s0 /\
                                 s' = s /\
                                 m' = m
-             | CRASH d'c : d'c = d
             }} Write a v.
   Proof.
     opcode_ok.
@@ -525,7 +556,6 @@ Section EventCSL.
                                 s0' = s0 /\
                                 s' = s /\
                                 m' = m
-             | CRASH d'c : d'c = d
             }} Sync a.
   Proof.
     opcode_ok.
@@ -538,7 +568,6 @@ Section EventCSL.
                                   s0' = s0 /\
                                   s' = s /\
                                   m' = m
-           | CRASH d'c : d'c = d
           }} StartRead a.
   Proof.
     opcode_ok.
@@ -552,7 +581,6 @@ Section EventCSL.
                                     s' = s /\
                                     m' = m /\
                                     r = latest_valu vs0
-             | CRASH d'c : d'c = d
             }} FinishRead a.
   Proof.
     opcode_ok.
@@ -566,15 +594,9 @@ Section EventCSL.
                                     m' = m /\
                                     s0' = s0 /\
                                     s' = s
-             | CRASH d'c : d'c = d
             }} Get v.
   Proof.
-    opcode_ok; repeat sigT_eq;
-      (* this search is apparently too deep/complex for eauto *)
-      match goal with
-      | [ H: _ -> valid _ _ _ |- _ ] =>
-        eapply H; intuition eauto
-      end.
+    opcode_ok; repeat sigT_eq; auto.
   Qed.
 
   Theorem Assgn_ok : forall t (v: var _ t) val,
@@ -584,7 +606,6 @@ Section EventCSL.
                                     m' = set v val m /\
                                     s0' = s0 /\
                                     s' = s
-             | CRASH d'c : d'c = d
             }} Assgn v val.
   Proof.
     opcode_ok; repeat sigT_eq; eauto.
@@ -598,7 +619,6 @@ Section EventCSL.
                                   s0' = s0 /\
                                   s' = s /\
                                   r = tid
-           | CRASH d'c: d'c = d
           }} GetTID.
   Proof.
     opcode_ok.
@@ -615,7 +635,6 @@ Section EventCSL.
                  s'' = up tid s' /\
                  get l m'' = Locked /\
                  s0' = s''
-             | CRASH d'c: d'c = d
             }} AcquireLock l up.
   Proof.
     opcode_ok.
@@ -630,7 +649,6 @@ Section EventCSL.
            | POST d' m' s0' s' _: d' |= StateI m' s' /\
                                   s0' = s' /\
                                   star (StateR' tid) s s'
-           | CRASH d'c: d'c = d
     }} Yield.
   Proof.
     opcode_ok.
@@ -643,16 +661,15 @@ Section EventCSL.
                                   s0' = s0 /\
                                   s' = up s /\
                                   m' = m
-           | CRASH d'c: d'c = d
           }} GhostUpdate up.
   Proof.
     opcode_ok.
   Qed.
 
-  Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ -> _ -> _ -> _ -> Prop) p,
+  Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ ->  _ -> _ -> Prop) p,
       valid tid pre p ->
-      (forall done crash d m s0 s, pre' done crash d m s0 s ->
-        pre done crash d m s0 s) ->
+      (forall done d m s0 s, pre' done d m s0 s ->
+        pre done d m s0 s) ->
       valid tid pre' p.
   Proof.
     unfold valid.
@@ -667,19 +684,18 @@ Section EventCSL.
   Fixpoint For_ (L : Type) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
              (i n : nat)
              (nocrash : G -> nat -> L -> DISK -> M -> S -> S -> Prop)
-             (crashed : G -> DISK_PRED)
              (l : L)
              (rx: L -> prog) : prog :=
     match n with
     | O => rx l
-    | Datatypes.S n' =>  (f i l) (fun l' => For_ f (1 + i) n' nocrash crashed l' rx)
+    | Datatypes.S n' =>  (f i l) (fun l' => For_ f (1 + i) n' nocrash l' rx)
     end.
 
   Lemma valid_exists_to_forall : forall A tid pre p,
-      (forall a:A, valid tid (fun done crash d m s0 s =>
-                           pre done crash d m s0 s a) p) ->
-      (valid tid (fun done crash d m s0 s =>
-                    exists a, pre done crash d m s0 s a) p).
+      (forall a:A, valid tid (fun done d m s0 s =>
+                           pre done d m s0 s a) p) ->
+      (valid tid (fun done d m s0 s =>
+                    exists a, pre done d m s0 s a) p).
   Proof.
     unfold valid; intros; deex; eauto.
   Qed.
@@ -693,12 +709,12 @@ Section EventCSL.
         subst a'
     end.
 
-  Lemma pimpl_pre_valid : forall tid (pre: donecond -> crashcond -> _ -> _ -> _ -> _ -> Prop)
+  Lemma pimpl_pre_valid : forall tid (pre: donecond -> _ -> _ -> _ -> _ -> Prop)
                             pre' p,
-      (forall done crash d m s0 s, pre done crash d m s0 s ->
-                              valid tid (pre' done crash) p) ->
-      (forall done crash d m s0 s, pre done crash d m s0 s ->
-                              pre' done crash done crash d m s0 s) ->
+      (forall done d m s0 s, pre done d m s0 s ->
+                              valid tid (pre' done) p) ->
+      (forall done d m s0 s, pre done d m s0 s ->
+                              pre' done done d m s0 s) ->
       valid tid pre p.
   Proof.
     unfold valid; eauto.
@@ -707,6 +723,7 @@ Section EventCSL.
   Hint Extern 4 (_ <= _) => omega.
   Hint Extern 5 (@eq nat _ _) => omega.
 
+  (*
   Theorem for_ok' : forall tid L G
                      (rx: _ -> prog)
                      nocrash (crashed : G -> DISK_PRED)
@@ -801,6 +818,7 @@ Section EventCSL.
     | [ g: ?G |- exists _:?G, _ ] => exists g
     end; intuition eauto.
   Qed.
+   *)
 
 End EventCSL.
 
@@ -824,20 +842,18 @@ Record transitions Mcontents S := {
 * add sigma, tid |- in front to specify the transition system and thread ID
 * quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
 * add (StateR sigma) (StateI sigma) as arguments to valid *)
-Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post | 'CRASH' d'c : oncrash }} p" :=
+Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
   (forall T (rx: _ -> prog _ _ T) (tid:ID),
       valid (StateR sigma) (StateI sigma) tid
-            (fun done crash d m s0 s =>
+            (fun done d m s0 s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      (forall ret_,
                                        valid (StateR sigma) (StateI sigma) tid
-                                             (fun done_rx crash_rx d' m' s0' s' =>
+                                             (fun done_rx d' m' s0' s' =>
                                                 (fun r => post%judgement) ret_ /\
-                                                done_rx = done /\
-                                                crash_rx = crash)
-                                             (rx ret_)) /\
-                                     (forall d'c, oncrash%judgement -> crash d'c)
+                                                done_rx = done)
+                                             (rx ret_))
                               )) .. ))
             ) (p rx))
     (at level 0, p at level 60,
@@ -851,7 +867,6 @@ Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d
      s at level 0,
      s' at level 0,
      r at level 0,
-     d'c at level 0,
      only parsing).
 
 Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
@@ -910,7 +925,7 @@ Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
-Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
+(* Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog. *)
 
 (* Wrap up the parameters that the semantics takes in a module. *)
 Module Type Semantics.
