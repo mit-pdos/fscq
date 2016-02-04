@@ -21,8 +21,8 @@ distinctness). The rest of the cache-local semantics can be defined
 once a semantics and these basics are provided. *)
 Module Type CacheVars (Sem:Semantics).
   Import Sem.
-  Parameter memVars : variables Mcontents [AssocCache; BusyFlag:Type].
-  Parameter stateVars : variables Scontents [DISK; AssocCache; BusyFlagOwner:Type].
+  Parameter memVars : variables Mcontents [AssocCache BusyFlag].
+  Parameter stateVars : variables Scontents [DISK; AssocCache BusyFlagOwner].
 
   Axiom no_confusion_memVars : NoDup (hmap var_index memVars).
   Axiom no_confusion_stateVars : NoDup (hmap var_index stateVars).
@@ -33,11 +33,39 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
   Import CVars.
 
   Definition Cache := get HFirst memVars.
-  Definition CacheL := get (HNext HFirst) memVars.
 
   Definition GDisk := get HFirst stateVars.
   Definition GCache := get (HNext HFirst) stateVars.
-  Definition GCacheL := get (HNext (HNext HFirst)) stateVars.
+
+
+  Definition mcache_get_lock (c:AssocCache BusyFlag) a :=
+    match (cache_state c a) with
+    | Some l => l
+    | None => Open
+    end.
+
+  Definition gcache_get_lock (c:AssocCache BusyFlagOwner) a :=
+    match (cache_state c a) with
+    | Some l => l
+    | None => NoOwner
+    end.
+
+  Definition get_s_lock a (s: S Scontents) :=
+    gcache_get_lock (get GCache s) a.
+
+  Definition cache_entry_val st (ce: cache_entry st) :=
+    match ce with
+    | Clean v _ => Clean v tt
+    | Dirty v _ => Dirty v tt
+    | Invalid _ => Invalid tt
+    end.
+
+  (* TODO: replace with map for option *)
+  Definition opt_cache_entry_val st (ce: option (cache_entry st)) :=
+    match ce with
+    | Some ce => Some (cache_entry_val ce)
+    | None => None
+    end.
 
   Definition cacheR (tid:ID) : Relation Scontents :=
     fun s s' =>
