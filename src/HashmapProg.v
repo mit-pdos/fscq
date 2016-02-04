@@ -125,25 +125,3 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (hash_list _) _) => apply hash_list_ok : prog.
-
-
-Theorem hash_list_injective : forall l1 l2 hv hm,
-  hash_list_rep l1 hv hm -> hash_list_rep l2 hv hm -> l1 = l2.
-Proof.
-  induction l1;
-    intros;
-    inversion H; inversion H0;
-    unfold hash2 in *; intuition;
-    subst; auto.
-
-  contradict_hashmap_get_default H6 hm.
-
-  rewrite H8 in H7.
-  contradict_hashmap_get_default H7 hm.
-
-  rewrite H7 in H10.
-  inversion H10.
-  existT_wordsz_eq H2.
-  intuition.
-  apply IHl1 in H8; congruence.
-Qed.
