@@ -719,13 +719,6 @@ Definition atomic_cp T fsxp src_fn dst_fn mscs rx : prog T :=
     }
   end.
 
-
-Definition atomic_cp_recover T rx : prog T :=
-  let^ (mscs, fsxp) <- FS.recover;
-  let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
-  rx ^(mscs, fsxp).
-
-
 Ltac NoDup :=
   match goal with
     | [ H : (_ * DIRTREE.rep _ _ (DIRTREE.TreeDir _ ?list)) %pred _ |- NoDup (map fst ?list) ] => idtac "nodup"; eapply DIRTREE.rep_tree_names_distinct in H; idtac "step 1: " H; eapply tree_names_distinct_nodup in H; assumption
@@ -1108,9 +1101,36 @@ Proof.
 Qed.
 
 
-Require Import Idempotent.
+Hint Extern 1 ({{_}} progseq (atomic_cp _ _ _ _) _) => apply atomic_cp_ok : prog.
 
-Theorem atomic_cp_recover_ok : forall fsxp src_fn dst_fn mscs,
+Require Import Idempotent.
+Require Import PredCrash.
+
+Definition atomic_cp_recover {T} rx : prog T :=
+  let^ (mscs, fsxp) <- FS.recover;
+  let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
+  rx ^(mscs, fsxp).
+
+(* XXX need spec for atomic_cp_recover_ok to include FS.delete *)
+Theorem atomic_cp_recover_ok :
+  {< fsxp old newpred,
+  PRE
+    crash_xform (LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred)
+  POST RET:^(mscs, fsxp')
+    [[ fsxp' = fsxp ]] *
+    (LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
+     exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs *
+     [[ newpred (list2mem new) ]])
+  CRASH
+    LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred
+  >} recover.
+Proof.
+Admitted.
+
+Hint Extern 1 ({{_}} progseq (atomic_cp_recover) _) => apply atomic_cp_recover_ok : prog.
+
+     
+Theorem atomic_cp_with_recover_ok : forall fsxp src_fn dst_fn mscs,
   {<< m Fm Ftop tree tree_elem,
   PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
@@ -1134,10 +1154,12 @@ Theorem atomic_cp_recover_ok : forall fsxp src_fn dst_fn mscs,
         [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
         [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
         [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]])
-  >>} atomic_cp fsxp src_fn dst_fn mscs >> recover.
+  >>} atomic_cp fsxp src_fn dst_fn mscs >> atomic_cp_recover.
 Proof.
   unfold forall_helper.
   intros; eexists; intros.
   eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx.
+  eapply corr3_from_corr2_rx. eauto with prog.
+  eauto with prog. (* hangs *)
+
 Admitted.
