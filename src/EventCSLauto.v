@@ -1,6 +1,7 @@
 Require Import EventCSL.
 Require Import FunctionalExtensionality.
 Require Import Automation.
+Require Import Star.
 Import Bool.
 
 Set Implicit Arguments.
@@ -353,11 +354,14 @@ Theorem wait_for_ok : forall Mcontents Scontents
                         (R_stutter: forall tid s, R tid s s),
   (Build_transitions R Inv) TID: tid |-
     {{ (_:unit),
-     | PRE d m s0 s: Inv m s d /\
-                     R tid s0 s
-     | POST d' m' s0' s' r: Inv m' s' d' /\
-                            test (get v m') = true /\
-                            R tid s0 s
+     | PRE d m s0 s:
+       Inv m s d /\
+       R tid s0 s
+     | POST d' m' s0' s' r:
+       Inv m' s' d' /\
+       test (get v m') = true /\
+       ((s0 = s0' /\ s' = s) \/
+        (star (StateR' R tid) s s0' /\ s' = s0'))
     }} wait_for v test.
 Proof.
   intros; cbn.
@@ -377,35 +381,42 @@ Proof.
   generalize dependent s0.
   generalize dependent s.
   generalize dependent st.
-  induction 1 using exec_ind2; intros; subst; try solve [ inv_prog ].
+  induction 1 using exec_ind2; intros; subst.
 
-  inv_step.
+  - inv_step.
 
-  intuition.
-  deex.
-  unfold If_ in *.
-  destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
-  eapply H2; eauto.
-  unfold If_ in *.
-  destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
-  eapply H2; eauto.
-  inv_fail_step; congruence.
+    intuition.
+    deex.
+    unfold If_ in *.
+    destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
+    eapply H2; [| eauto ]. intuition.
+    unfold If_ in *.
+    destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
+    eapply H2; [| eauto ]. intuition.
+    inv_fail_step; congruence.
 
-  inv_step.
-  unfold If_ in *.
-  match goal with
-  | [ H: step _ _ _ _ (if ?d then _ else _) _ _ |- _ ] =>
-    destruct d
-  end.
-  eapply H2; eauto.
-  inversion H0; repeat sigT_eq; subst.
-  eapply IHexec.
-  apply wait_for_expand.
-  3: eauto.
-  all: eauto.
-  intros; intuition eauto.
+  - inv_step.
+    unfold If_ in *.
+    match goal with
+    | [ H: step _ _ _ _ (if ?d then _ else _) _ _ |- _ ] =>
+      destruct d
+    end.
+    eapply H2; [| eauto ]. intuition.
+    inversion H0; repeat sigT_eq; subst.
 
-  inv_fail_step.
+    eapply IHexec.
+    apply wait_for_expand.
+    3: eauto.
+    all: eauto.
+    intros; intuition.
+    eapply H2; [| eauto ]. subst. intuition.
+    eapply H2; [| eauto ]. subst. intuition.
+
+    right; intuition.
+    eapply star_trans; eauto.
+
+  - inv_fail_step.
+  - inv_prog.
 Qed.
 
 End WaitForCombinator.
