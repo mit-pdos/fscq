@@ -151,8 +151,8 @@ Module MySemantics <: Semantics.
   Definition Inv := fun (_ : M Mcontents) (_ : S Scontents) => (emp : DISK_PRED).
   Definition R := fun (_ : ID) (_ _ : S Scontents) => True.
 
-  Theorem R_stutter : forall tid s,
-    R tid s s.
+  Theorem R_trans : forall tid s1 s2,
+    star (R tid) s1 s2 -> R tid s1 s2.
   Proof. firstorder. Qed.
 End MySemantics.
 

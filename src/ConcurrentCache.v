@@ -102,6 +102,12 @@ Import Sem.
 Import CVars.
 Import Transitions.
 
+Lemma R_stutter : forall tid s, R tid s s.
+Proof.
+  intros.
+  eapply R_trans; auto.
+Qed.
+
 Hint Resolve R_stutter.
 
 Hint Resolve

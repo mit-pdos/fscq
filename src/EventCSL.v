@@ -927,6 +927,6 @@ Module Type Semantics.
   Parameter Inv : Invariant Mcontents Scontents.
   Parameter R : ID -> Relation Scontents.
 
-  Axiom R_stutter : forall tid s,
-    R tid s s.
+  Axiom R_trans : forall tid s1 s2,
+    star (R tid) s1 s2 -> R tid s1 s2.
 End Semantics.
