@@ -420,3 +420,5 @@ Proof.
 Qed.
 
 End WaitForCombinator.
+
+Hint Extern 1 {{ wait_for _ _; _ }} => apply wait_for_ok : prog.
