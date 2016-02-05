@@ -71,18 +71,20 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
     fun s s' =>
       let vd := get GDisk s in
       let vd' := get GDisk s' in
-      (forall a v, vd a = Some v -> exists v', vd' a = Some v') /\
-      lock_protocol GCacheL tid s s' /\
-      lock_protects GCacheL GCache tid s s' /\
-      lock_protects GCacheL GDisk tid s s'.
+      same_domain vd vd' /\
+      (forall a, lock_protocol (get_s_lock a) tid s s') /\
+      (forall a, lock_protects (get_s_lock a)
+        (fun s => opt_cache_entry_val (cache_get (get GCache s) a))
+        tid s s').
 
   Definition cacheI : Invariant Mcontents Scontents :=
     fun m s d =>
       let c := get Cache m in
       (d |= cache_pred c (get GDisk s))%judgement /\
-      ghost_lock_invariant CacheL GCacheL m s /\
-      (* mirror cache for sake of lock_protects *)
-      get Cache m = get GCache s.
+      (forall a,
+        opt_cache_entry_val (cache_get (get Cache m) a) =
+        opt_cache_entry_val (cache_get (get GCache s) a)).
+
 End CacheTransitionSystem.
 
 (* for now, we don't have any lemmas about the lock semantics so just operate
@@ -964,9 +966,9 @@ Ltac destruct_valusets :=
   | [ vs: valuset |- _ ] => destruct vs
   end.
 
-Lemma disk_eq_valuset : forall a (vd: DISK) vs,
-  vd a = Some (vs, None) ->
-  (any * a |-> (Valuset (latest_valu vs) (pending_valus vs), None))%pred vd.
+Lemma disk_eq_valuset : forall a (vd: DISK) vs reader,
+  vd a = Some (vs, reader) ->
+  (any * a |-> (Valuset (latest_valu vs) (pending_valus vs), reader))%pred vd.
 Proof.
   intros.
   match goal with
@@ -1019,12 +1021,12 @@ Proof.
   eauto using star_trans.
 Qed.
 
-Theorem disk_read_ok : forall a,
+Theorem disk_read_ok : forall a reader,
     stateS TID: tid |-
     {{ F v rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * a |-> (Valuset v rest, None) /\
+                     vd |= F * a |-> (Valuset v rest, reader) /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
