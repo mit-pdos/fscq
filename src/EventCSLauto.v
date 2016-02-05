@@ -363,7 +363,7 @@ Proof.
   intros; cbn.
   unfold valid.
   intros.
-  rewrite wait_for_eq_expand in H0.
+  rewrite wait_for_expand in H0.
   repeat deex; intuition.
 
   match goal with
@@ -400,7 +400,7 @@ Proof.
   eapply H2; eauto.
   inversion H0; repeat sigT_eq; subst.
   eapply IHexec.
-  apply wait_for_eq_expand.
+  apply wait_for_expand.
   3: eauto.
   all: eauto.
   intros; intuition eauto.
