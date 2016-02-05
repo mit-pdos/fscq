@@ -1108,6 +1108,36 @@ Proof.
 Qed.
 
 
+Require Import Idempotent.
 
-
-
+Theorem atomic_cp_recover_ok : forall fsxp src_fn dst_fn mscs,
+  {<< m Fm Ftop tree tree_elem,
+  PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+        [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
+        [[ src_fn <> temp_fn ]] *
+        [[ dst_fn <> temp_fn ]]
+  POST RET:^(mscs, r)
+        exists m' tree',
+        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+        (([[ r = false ]] * [[ tree' = tree ]]) \/
+         ([[ r = false ]] * exists inum tbytes tattr,
+          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] temp_fn (DIRTREE.TreeFile inum tbytes tattr) tree ]]) \/
+         ([[ r = true ]] * exists old_inum new_inum bytes attr,
+          [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
+         [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]]))
+   REC RET:^(mscs,fsxp)
+        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/  exists m',
+        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+        (exists tree' old_inum new_inum bytes attr,
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+        [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
+        [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]])
+  >>} atomic_cp fsxp src_fn dst_fn mscs >> recover.
+Proof.
+  unfold forall_helper.
+  intros; eexists; intros.
+  eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx.
+Admitted.
