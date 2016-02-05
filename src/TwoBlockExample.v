@@ -113,6 +113,7 @@ Module TwoBlocks (Sem:Semantics)
     Yield;;
     v <- locked_disk_read block0;
     v <- locked_disk_read (block0 ^+ $1);
+    cache_unlock;;
     rx v.
 
   Hint Resolve ptsto_valid_iff.

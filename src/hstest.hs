@@ -35,6 +35,13 @@ forkChild children io = do
   _ <- forkFinally io (\_ -> putMVar mvar ())
   return ()
 
+initmem :: Disk.DiskState -> Int -> IO ()
+initmem ds tid = do
+  I.run ds tid $ \done ->
+    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_Cache (unsafeCoerce (MemCache._Map__empty :: MemCache.Map__Coq_t MemCache.Coq_cache_entry)) $ \_ ->
+    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_CacheL (unsafeCoerce EventCSL.Open) $ \_ ->
+    done ()
+
 testprog :: Disk.DiskState -> Int -> IO ()
 testprog ds tid = do
   _ <- I.run ds tid $
@@ -47,11 +54,7 @@ testprog ds tid = do
 
 twoblock :: Disk.DiskState -> Int -> IO ()
 twoblock ds tid = do
-  _ <- I.run ds tid $ \done ->
-    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_Cache (unsafeCoerce (MemCache._Map__empty :: MemCache.Map__Coq_t MemCache.Coq_cache_entry)) $ \_ ->
-    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_CacheL (unsafeCoerce EventCSL.Open) $ \_ ->
-    TwoBlockExample._TwoBlocksI__write_yield_read (W 0) $ \v ->
-    done (v :: Coq_word)
+  _ <- I.run ds tid $ TwoBlockExample._TwoBlocksI__write_yield_read (W 0)
   return ()
 
 main :: IO ()
@@ -60,8 +63,11 @@ main = do
   set_nblocks_disk ds 128
   putStrLn "Disk initialized.."
 
+  initmem ds 0
+
   children <- newMVar []
   forkChild children $ twoblock ds 1
+  forkChild children $ twoblock ds 2
   forkChild children $ testprog ds 3
   forkChild children $ testprog ds 5
   waitForChildren children
