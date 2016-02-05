@@ -422,3 +422,50 @@ Qed.
 End WaitForCombinator.
 
 Hint Extern 1 {{ wait_for _ _; _ }} => apply wait_for_ok : prog.
+
+
+Definition is_unlocked (flag : BusyFlag) : bool :=
+  match flag with
+  | Open => true
+  | Locked => false
+  end.
+
+Definition AcquireLock' (Mcontents Scontents : list Type) (T : Type)
+                       (l : var Mcontents BusyFlag)
+                       (lock_ghost : ID -> S Scontents -> S Scontents)
+                       (rx : unit -> prog Mcontents Scontents T) :=
+  wait_for l is_unlocked;;
+  tid <- GetTID;
+  GhostUpdate (lock_ghost tid);;
+  Assgn l Locked;;
+  rx tt.
+
+(* XXX where's R_stutter? *)
+
+Theorem AcquireLock'_ok : forall Mcontents Scontents
+                        (R: ID -> Relation Scontents)
+                        (Inv: Invariant Mcontents Scontents)
+                        (R_stutter : forall tid s, R tid s s)
+                        l up,
+  (Build_transitions R Inv) TID: tid |-
+    {{ (_:unit),
+     | PRE d m s0 s:
+       d |= Inv m s /\
+       R tid s0 s
+     | POST d' m'' s0' s'' _:
+       exists m' s',
+       d' |= Inv m' s' /\
+       star (StateR' R tid) s s' /\
+       m'' = set l Locked m' /\
+       s'' = up tid s' /\
+       get l m'' = Locked /\
+       s0' = s''
+    }} AcquireLock' l up.
+Proof.
+  hoare.
+
+  do 2 eexists.
+  split. eauto.
+  split. unfold StateR'. unfold othersR.
+  intuition.
+Admitted.
