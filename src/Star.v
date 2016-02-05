@@ -95,6 +95,14 @@ End STAR.
 Hint Constructors star.
 Hint Constructors star_r.
 
+Theorem star_impl : forall A (r1 r2 : A -> A -> Prop) s1 s2,
+  (forall p q, r1 p q -> r2 p q) ->
+  star r1 s1 s2 ->
+  star r2 s1 s2.
+Proof.
+  induction 2; eauto.
+Qed.
+
 Require Import Morphisms.
 
 Definition rimpl {A} (r1 r2: relation A) :=

@@ -134,8 +134,20 @@ Section EventCSL.
       exists tid', tid <> tid' /\
               stateR tid' s s'.
 
+  Definition anyR (stateR : ID -> Relation) : Relation :=
+    fun s s' => exists tid, stateR tid s s'.
+
   (* StateR' tid is a valid transition for someone other than tid *)
   Definition StateR' : ID -> Relation := othersR StateR.
+
+  (* StateRany is a valid transition for any tid *)
+  Definition StateRany : Relation := anyR StateR.
+
+  Lemma StateR'_any : forall tid s1 s2,
+    StateR' tid s1 s2 -> StateRany s1 s2.
+  Proof.
+    unfold StateR', StateRany, othersR, anyR. intuition deex. eauto.
+  Qed.
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
   | StepStartRead : forall d m s0 s vs
