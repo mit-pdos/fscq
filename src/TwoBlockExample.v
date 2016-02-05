@@ -134,7 +134,6 @@ Module TwoBlocks (Sem:Semantics)
                             r = v' /\
                             get GCacheL s' = Owned tid /\
                             R tid s0' s'
-     | CRASH d'c: True
     }} write_yield_read v'.
 Proof.
   let simp_step :=
