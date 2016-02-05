@@ -60,18 +60,6 @@ run_dcode ds tid (Yield rx) = do
 run_dcode ds tid (GhostUpdate _ rx) = do
   debugmsg tid $ "GhostUpdate"
   run_dcode ds tid $ rx ()
-run_dcode ds tid (AcquireLock lockvar xx rx) = do
-  debugmsg tid $ "AcquireLock"
-  val <- Disk.get_var ds (hmember_to_int lockvar)
-  case (unsafeCoerce val) of
-    Open -> do
-      Disk.set_var ds (hmember_to_int lockvar) $ unsafeCoerce Locked
-      run_dcode ds tid $ rx ()
-    Locked -> do
-      Disk.release_global_lock ds
-      -- XXX should we wait for a little bit?
-      Disk.acquire_global_lock ds
-      run_dcode ds tid $ AcquireLock lockvar xx rx
 
 run_e :: Disk.DiskState -> Int -> ((a -> EventCSL.Coq_prog a) -> EventCSL.Coq_prog a) -> IO a
 run_e ds tid p = do

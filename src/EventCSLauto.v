@@ -256,7 +256,6 @@ Definition prog_frob Mcontents Scontents T (p: prog Mcontents Scontents T) :=
   | Get v rx => Get v rx
   | Assgn v val rx => Assgn v val rx
   | GetTID rx => GetTID rx
-  | AcquireLock l update rx => AcquireLock l update rx
   | Yield rx => Yield rx
   | GhostUpdate update rx => GhostUpdate update rx
   | Done _ _ v => Done _ _ v
@@ -431,7 +430,7 @@ Definition is_unlocked (flag : BusyFlag) : bool :=
   | Locked => false
   end.
 
-Definition AcquireLock' (Mcontents Scontents : list Type) (T : Type)
+Definition AcquireLock (Mcontents Scontents : list Type) (T : Type)
                        (l : var Mcontents BusyFlag)
                        (lock_ghost : ID -> S Scontents -> S Scontents)
                        (rx : unit -> prog Mcontents Scontents T) :=
@@ -443,7 +442,7 @@ Definition AcquireLock' (Mcontents Scontents : list Type) (T : Type)
 
 (* XXX where's R_trans? *)
 
-Theorem AcquireLock'_ok : forall Mcontents Scontents
+Theorem AcquireLock_ok : forall Mcontents Scontents
                         (R: ID -> Relation Scontents)
                         (Inv: Invariant Mcontents Scontents)
                         (R_trans : forall tid s1 s2, star (R tid) s1 s2 -> R tid s1 s2)
@@ -461,7 +460,7 @@ Theorem AcquireLock'_ok : forall Mcontents Scontents
        m'' = set l Locked m' /\
        s'' = up tid s' /\
        get l m'' = Locked
-    }} AcquireLock' l up.
+    }} AcquireLock l up.
 Proof.
   hoare.
   do 2 eexists.
@@ -471,3 +470,5 @@ Proof.
   intuition.
   rewrite get_set; auto.
 Qed.
+
+Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.

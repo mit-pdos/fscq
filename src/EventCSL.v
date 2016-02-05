@@ -108,7 +108,6 @@ Section EventCSL.
   | Get t (v: var Mcontents t) (rx: t -> prog)
   | Assgn t (v: var Mcontents t) (val:t) (rx: unit -> prog)
   | GetTID (rx: ID -> prog)
-  | AcquireLock (l: var Mcontents BusyFlag) (lock_ghost: ID -> S -> S) (rx: unit -> prog)
   | Yield (rx: unit -> prog)
   | GhostUpdate (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
@@ -171,15 +170,6 @@ Section EventCSL.
       let d' := upd d a (synced vs0, reader) in
       tid :- Sync a rx / (d, m, s0, s) ==>
           rx tt / (d', m, s0, s)
-  | StepAcquireLock : forall d m m' s s0 d' s' up rx (l:var Mcontents BusyFlag),
-      let m'' := set l Locked m' in
-      let s'' := up tid s' in
-      StateI m s d ->
-      StateR tid s0 s ->
-      star (StateR' tid) s s' ->
-      StateI m' s' d' ->
-      tid :- AcquireLock l up rx / (d, m, s0, s) ==>
-          rx tt / (d', m'', s'', s'')
   | StepYield : forall d m s0 s s' m' d' rx,
       StateI m s d ->
       StateI m' s' d' ->
@@ -218,9 +208,6 @@ Section EventCSL.
   | FailStepWriteMissing : forall a v d m s0 s rx,
       d a = None ->
       fail_step tid (Write a v rx) (d, m, s0, s)
-  | FailStepAcquireLock : forall l up d m s0 s rx,
-      (~StateI m s d) ->
-      fail_step tid (AcquireLock l up rx) (d, m, s0, s)
   | FailStepYield : forall d m s0 s rx,
       (~StateI m s d) ->
       fail_step tid (Yield rx) (d, m, s0, s).
@@ -255,9 +242,7 @@ Section EventCSL.
   execution and we can use its crash condition. *)
   Inductive yieldProg : forall p, Prop :=
   | YieldProgYield : forall rx,
-    yieldProg (Yield rx)
-  | YieldProgAcquireLock : forall l up rx,
-    yieldProg (AcquireLock l up rx).
+    yieldProg (Yield rx).
 
   Inductive exec tid : forall st p (out:outcome), Prop :=
   | ExecStep : forall st p st' p' out,
@@ -636,24 +621,6 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem AcquireLock_ok : forall l up,
-      tid |- {{ (_:unit),
-             | PRE d m s0 s: d |= StateI m s /\
-                             StateR tid s0 s
-             | POST d' m'' s0' s'' _: exists m' s',
-                 d' |= StateI m' s' /\
-                 star (StateR' tid) s s' /\
-                 m'' = set l Locked m' /\
-                 s'' = up tid s' /\
-                 get l m'' = Locked /\
-                 s0' = s''
-            }} AcquireLock l up.
-  Proof.
-    opcode_ok.
-    repeat eexists; intuition.
-    simpl_get_set.
-  Qed.
-
   Theorem Yield_ok :
     tid |- {{ (_:unit),
            | PRE d m s0 s: d |= StateI m s /\
@@ -929,7 +896,6 @@ Hint Extern 1 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
-Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 
 (* Wrap up the parameters that the semantics takes in a module. *)
