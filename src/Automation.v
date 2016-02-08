@@ -25,17 +25,25 @@ Ltac remove_unit :=
   end.
 
 Ltac simpl_match :=
-  match goal with
-  | [ Heq: ?d = ?d' |- context[match ?d with _ => _ end] ] =>
+  let repl_match_goal d d' :=
     replace d with d';
       try lazymatch goal with
         | [ |- context[match d' with _ => _ end] ] => fail
-        end
-  | [ Heq: ?d = ?d', H: context[match ?d with _ => _ end] |- _ ] =>
-    replace d in H;
+        end in
+  let repl_match_hyp H d d' :=
+    replace d with d' in H;
       try lazymatch type of H with
-        | context[match d' with _ => _ end] => fail
-        end
+      | context[match d' with _ => _ end] => fail
+      end in
+  match goal with
+  | [ Heq: ?d = ?d' |- context[match ?d with _ => _ end] ] =>
+    repl_match_goal d d'
+  | [ Heq: ?d' = ?d |- context[match ?d with _ => _ end] ] =>
+    repl_match_goal d d'
+  | [ Heq: ?d = ?d', H: context[match ?d with _ => _ end] |- _ ] =>
+    repl_match_hyp H d d'
+  | [ Heq: ?d' = ?d, H: context[match ?d with _ => _ end] |- _ ] =>
+    repl_match_hyp H d d'
   end.
 
 (* test simpl_match failure when match does not go away *)

@@ -57,6 +57,14 @@ Section MemCache.
     | _ => c
     end.
 
+  Definition cache_val (c:AssocCache) (a:addr) : option valu :=
+    match (Map.find a c) with
+    | Some (Clean v _) => Some v
+    | Some (Dirty v _) => Some v
+    | Some (Invalid _) => None
+    | None => None
+    end.
+
   Definition cache_state (c:AssocCache) a :=
     match (Map.find a c) with
     | Some (Clean _ s) => Some s
@@ -152,6 +160,66 @@ Ltac complete_mem_equalities :=
     learn H' rewrite H in H'
   end.
 
+Hint Unfold cache_pred mem_union : cache.
+
+Section CacheValEquiv.
+
+Variable st:Type.
+Variable c:AssocCache st.
+Variable a:addr.
+
+Ltac t := unfold cache_get, cache_val;
+  intros;
+  now simpl_match.
+
+Lemma cache_val_get_none :
+  cache_get c a = None ->
+  cache_val c a = None.
+Proof. t. Qed.
+
+Lemma cache_val_get_invalid : forall s,
+  cache_get c a = Some (Invalid s) ->
+  cache_val c a = None.
+Proof. t. Qed.
+
+Lemma cache_val_get_none' :
+  cache_val c a = None ->
+  cache_get c a = None \/
+  exists s, cache_get c a = Some (Invalid s).
+Proof.
+  unfold cache_get, cache_val; intros.
+  destruct matches in *; eauto.
+Qed.
+
+Lemma cache_val_get_clean : forall v s,
+  cache_get c a = Some (Clean v s) ->
+  cache_val c a = Some v.
+Proof. t. Qed.
+
+Lemma cache_val_get_dirty : forall v s,
+  cache_get c a = Some (Dirty v s) ->
+  cache_val c a = Some v.
+Proof. t. Qed.
+
+Lemma cache_val_get_some' : forall v,
+  cache_val c a = Some v ->
+  (exists s, cache_get c a = Some (Clean v s)) \/
+  (exists s, cache_get c a = Some (Dirty v s)).
+Proof.
+  unfold cache_get, cache_val; intros.
+    destruct matches in *;
+    match goal with
+    | [ H: Some _ = Some _ |- _ ] => inversion H; subst
+    end; eauto.
+Qed.
+
+End CacheValEquiv.
+
+Hint Resolve cache_val_get_none
+  cache_val_get_invalid
+  cache_val_get_clean
+  cache_val_get_dirty.
+
 Ltac prove_cache_pred :=
   intros;
   autounfold with cache_m in *;
@@ -165,25 +233,26 @@ Ltac prove_cache_pred :=
   | [ a:addr, H: forall (_:addr), _ |- _ ] =>
     learn H (specialize (H a);
               replace_cache_vals)
+  | [ H: cache_val _ _ = None |- _ ] =>
+    apply cache_val_get_none' in H; destruct H
+  | [ H: cache_val _ _ = Some _ |- _ ] =>
+    apply cache_val_get_some' in H; destruct H
          end;
   repeat deex;
   complete_mem_equalities;
   distinguish_addresses;
   finish.
 
-Hint Unfold cache_pred mem_union : cache.
-
-
 Lemma cache_miss_mem_eq : forall st (c:AssocCache st) vd a d,
     cache_pred c vd d ->
-    cache_get c a = None ->
+    cache_val c a = None ->
     vd a = d a.
 Proof.
   prove_cache_pred.
 Qed.
 
 Lemma cache_pred_except : forall st (c:AssocCache st) vd m a,
-    cache_get c a = None ->
+    cache_val c a = None ->
     cache_pred c vd m ->
     cache_pred c (mem_except vd a) (mem_except m a).
 Proof.
@@ -192,7 +261,7 @@ Proof.
 Qed.
 
 Lemma cache_pred_address : forall st (c:AssocCache st) vd a v,
-    cache_get c a = None ->
+    cache_val c a = None ->
     vd a = Some v ->
     cache_pred c vd =p=>
 cache_pred c (mem_except vd a) * a |-> v.
@@ -206,6 +275,12 @@ Proof.
   prove_cache_pred; destruct matches.
   unfold mem_disjoint; intro; repeat deex.
   destruct matches in *.
+
+  unfold mem_disjoint; intro; repeat deex.
+  destruct matches in *.
+
+  unfold ptsto; intuition; distinguish_addresses.
+
   unfold ptsto; intuition; distinguish_addresses.
 Qed.
 
@@ -403,9 +478,9 @@ Ltac learn_disk_val :=
 
 Ltac case_cache_val' c a :=
   case_eq (cache_get c a); intros;
-  try match goal with
-      | [ p: bool * valu |- _ ] =>
-        destruct p as [ [] ]
+  try lazymatch goal with
+      | [ ce: cache_entry _ |- _ ] =>
+        destruct ce
       end;
   replace_cache_vals;
   (* especially to remove impossible cases *)
@@ -416,6 +491,8 @@ Ltac case_cache_val :=
     (* particularly in Hoare proofs, cache_get appears in the goal
        on an expression to get the AssocCache *)
   | [ |- context[cache_get ?c ?a] ] =>
+    case_cache_val' c a
+  | [ H: context[cache_get ?c ?a] |- _ ] =>
     case_cache_val' c a
   | [ c: AssocCache, a: addr, a': addr |- _ ] =>
     (* if address is ambiguous, focus on one in the goal *)
@@ -466,9 +543,6 @@ Proof.
   prove_cache_pred;
     rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
 
-  destruct matches.
-  eauto.
-
   case_cache_val;
     destruct matches;
     subst;
@@ -512,7 +586,6 @@ Proof.
   unfold ptsto in *; intuition.
   prove_cache_pred; distinguish_addresses;
   rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
-  destruct matches; eauto.
 
   case_cache_val;
     destruct matches;
@@ -550,11 +623,12 @@ Hint Rewrite upd_eq upd_ne using (now auto) : cache.
 
 Lemma cache_pred_stable_add : forall st (c:AssocCache st) vd a v l d rest reader,
     vd a = Some (Valuset v rest, reader) ->
-    cache_get c a = None ->
+    cache_val c a = None ->
     cache_pred c vd d ->
     cache_pred (cache_add c a v l) vd d.
 Proof.
-  prove_cache_pred; rewrite_cache_get; eauto.
+  prove_cache_pred; rewrite_cache_get; repeat eexists;
+    eauto; congruence.
 Qed.
 
 Lemma cache_pred_stable_dirty_write : forall st (c:AssocCache st) vd a v s s' rest v' d vs' reader,
@@ -584,7 +658,7 @@ Proof.
 Qed.
 
 Lemma cache_pred_stable_miss_write : forall st (c:AssocCache st) vd a v rest v' s d vs' reader,
-    cache_get c a = None ->
+    cache_val c a = None ->
     vd a = Some (Valuset v rest, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' (v :: rest) ->
@@ -652,7 +726,7 @@ Proof.
 Qed.
 
 Lemma cache_pred_miss_stable : forall st (c:AssocCache st) vd a rest v reader,
-    cache_get c a = None ->
+    cache_val c a = None ->
     vd a = Some (Valuset v rest, reader) ->
     (cache_pred c (mem_except vd a) * a |-> (Valuset v rest, reader)) =p=>
 cache_pred c vd.
@@ -663,10 +737,18 @@ Proof.
   repeat deex.
   unfold ptsto in *; intuition.
   prove_cache_pred; distinguish_addresses; replace_cache_vals;
-  rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
+    rewrite_cache_get; disk_equalities; try simpl_match;
+    distinguish_addresses; finish.
 
-  replace (m1 a).
-  congruence.
+  case_cache_val;
+    destruct matches;
+    subst;
+    repeat deex;
+    repeat match goal with
+    | [ |- exists _, _ ] => eexists
+           end; intuition eauto;
+           fold wr_set in *;
+           try congruence.
 
   case_cache_val;
     destruct matches;
@@ -680,7 +762,7 @@ Proof.
 Qed.
 
 Lemma cache_pred_upd_combine : forall st (c:AssocCache st) d vd a vs0 vs',
-    cache_get c a = None ->
+    cache_val c a = None ->
     vd a = Some vs' ->
     (cache_pred c (mem_except vd a) * a |-> vs0)%pred d ->
     cache_pred c vd (upd d a vs').
@@ -689,6 +771,15 @@ Proof.
   repeat deex.
   prove_cache_pred; distinguish_addresses; replace_cache_vals;
     rewrite_cache_get; disk_equalities; distinguish_addresses; finish.
+
+  case_cache_val;
+    destruct matches;
+    subst;
+    repeat deex;
+    repeat eexists;
+    eauto;
+    intuition idtac;
+    try congruence.
 
   case_cache_val;
     destruct matches;
@@ -762,20 +853,10 @@ Qed.
 
 Lemma cache_pred_same_sectors : forall st (c:AssocCache st) vd d,
     cache_pred c vd d ->
-    (forall a v, d a = Some v ->
-            exists v', vd a = Some v').
+    same_domain d vd.
 Proof.
-  prove_cache_pred.
-  destruct matches in *; repeat deex;
-    repeat (complete_mem_equalities; eauto).
-Qed.
-
-Lemma cache_pred_same_sectors' : forall st (c:AssocCache st) vd d,
-    cache_pred c vd d ->
-    (forall a v, vd a = Some v ->
-            exists v', d a = Some v').
-Proof.
-  prove_cache_pred.
+  unfold same_domain, subset.
+  prove_cache_pred;
   destruct matches in *; repeat deex;
     repeat (complete_mem_equalities; eauto).
 Qed.
