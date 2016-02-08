@@ -113,7 +113,7 @@ Module TwoBlocks (Sem:Semantics)
     Yield;;
     v <- locked_disk_read block0;
     v <- locked_disk_read (block0 ^+ $1);
-    cache_unlock;;
+    cache_unlock block0;;
     rx v.
 
   Hint Resolve ptsto_valid_iff.
@@ -146,8 +146,8 @@ Proof.
 End TwoBlocks.
 
 Module MySemantics <: Semantics.
-  Definition Mcontents := [AssocCache ; BusyFlag : Type ].
-  Definition Scontents := [DISK ; AssocCache ; BusyFlagOwner : Type ; ID : Type].
+  Definition Mcontents := [AssocCache BusyFlag].
+  Definition Scontents := [DISK ; AssocCache BusyFlagOwner; ID : Type].
   Definition Inv := fun (_ : M Mcontents) (_ : S Scontents) => (emp : DISK_PRED).
   Definition R := fun (_ : ID) (_ _ : S Scontents) => True.
 
@@ -157,10 +157,13 @@ Module MySemantics <: Semantics.
 End MySemantics.
 
 Module MyCacheVars <: CacheVars MySemantics.
-  Definition memVars : variables MySemantics.Mcontents [AssocCache; BusyFlag:Type] :=
-    HCons (HFirst) (HCons (HNext HFirst) HNil).
-  Definition stateVars : variables MySemantics.Scontents [DISK; AssocCache; BusyFlagOwner:Type] :=
-    HCons (HFirst) (HCons (HNext HFirst) (HCons (HNext (HNext HFirst)) HNil)).
+  Import HlistNotations.
+
+  Definition memVars : variables MySemantics.Mcontents [AssocCache BusyFlag] :=
+    [( HFirst )].
+
+  Definition stateVars : variables MySemantics.Scontents [DISK; AssocCache BusyFlagOwner] :=
+    [( HFirst; HNext HFirst )].
 
   Theorem no_confusion_memVars : NoDup (hmap var_index memVars).
   Proof.
@@ -218,7 +221,7 @@ End MyCacheSemantics.
 
 Module MyTwoBlockVars : TwoBlockVars MySemantics.
   Definition stateVars : variables MySemantics.Scontents [ID:Type] :=
-    HCons (HNext (HNext (HNext HFirst))) HNil.
+    HCons (HNext (HNext HFirst)) HNil.
 End MyTwoBlockVars.
 
 Module MyTwoBlockSemantics : TwoBlockSemantics MySemantics MyCacheVars MyTwoBlockVars.

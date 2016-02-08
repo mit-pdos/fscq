@@ -33,16 +33,12 @@ Inductive lock_protocol (lvar : S Scontents -> BusyFlagOwner) (tid : ID) :
                          lvar s' = Owned tid ->
                          lock_protocol lvar tid s s'.
 
-Hint Constructors lock_protocol.
-
 Inductive ghost_lock_invariant
   (lvar: BusyFlag) (glvar: BusyFlagOwner) : Prop :=
 | LockOpen : lvar = Open -> glvar = NoOwner ->
              ghost_lock_invariant lvar glvar
 | LockOwned : forall tid, lvar = Locked -> glvar = Owned tid ->
                      ghost_lock_invariant lvar glvar.
-
-Hint Constructors ghost_lock_invariant.
 
 Lemma ghost_lock_owned : forall lvar glvar tid,
     ghost_lock_invariant lvar glvar ->
@@ -51,6 +47,7 @@ Lemma ghost_lock_owned : forall lvar glvar tid,
 Proof.
   inversion 1; congruence.
 Qed.
+
 
 Theorem lock_inv_still_held : forall lvar tid tid' s s',
   lock_protocol lvar tid' s s' ->

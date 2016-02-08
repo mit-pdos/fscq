@@ -684,7 +684,7 @@ Hint Resolve applied_def.
 Hint Rewrite upd_eq using (now auto) : upd.
 Hint Rewrite upd_ne using (now auto) : upd.
 
-Lemma cache_pred_vd_upd : forall c vd a v' d d',
+Lemma cache_pred_vd_upd : forall st (c: AssocCache st) vd a v' d d',
   cache_get c a = None ->
   cache_pred c (upd vd a v') d' ->
   cache_pred c vd d ->
@@ -740,6 +740,20 @@ Qed.
 
 Hint Resolve clean_readers_upd.
 Hint Resolve clean_readers_upd'.
+Hint Resolve same_domain_refl.
+Hint Resolve same_domain_upd.
+
+Lemma lock_protocol_same_cache : forall s s' tid a,
+  get GCache s = get GCache s' ->
+  lock_protocol (get_s_lock a) tid s s'.
+Proof.
+  intros.
+  apply NoChange.
+  unfold get_s_lock.
+  congruence.
+Qed.
+
+Hint Resolve lock_protocol_same_cache.
 
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
@@ -748,18 +762,19 @@ Theorem locked_AsyncRead_ok : forall a,
                    Inv m s d /\
                    cache_get (get Cache m) a = None /\
                    vd |= F * a |-> (Valuset v rest, None) /\
-                   get GCacheL s = Owned tid /\
+                   get_s_lock a s = Owned tid /\
                    R tid s0 s
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
                           Inv m' s' d' /\
-                          vd' = virt_disk s /\
+                          (* spec needs to say something about vd', which
+                          has evolved according to the relation *)
                           (* not quite true, since first need a step
                             to add the reader and need a step at the
                             end to remove it, which cannot be
                             performed under othersR R *)
                           star (othersR R tid) s s' /\
                           get Cache m' = get Cache m /\
-                          get GCacheL s' = Owned tid /\
+                          get_s_lock a s' = Owned tid /\
                           r = v /\
                           star (R tid) s0' s'
   }} locked_AsyncRead a.
@@ -773,10 +788,12 @@ Proof.
   eapply cache_pred_miss_stable;
     autorewrite with upd; eauto.
 
-  (* upd preserves sectors *)
-  case_eq (weq a a0); intros; subst;
-  autorewrite with upd;
-  eauto.
+  (* automatic unfolding of get_scache_val, get_disk_val should handle this *)
+  unfold get_scache_val.
+  simplify.
+  unfold get_disk_val.
+  simplify.
+  distinguish_addresses; eauto using upd_ne.
 
   time "step" step pre (time "simplify" simplify) with finish.
 
@@ -853,21 +870,32 @@ Admitted.
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
 
 Definition locked_async_disk_read {T} a rx : prog _ _ T :=
+  tid <- GetTID;
   c <- Get Cache;
-  match cache_get c a with
-  | None => v <- locked_AsyncRead a;
-             let c' := cache_add c a v in
-             GhostUpdate (fun (s:S) => set GCache c' s);;
+ let val := match cache_get c a with
+  | None => None
+  | Some (Invalid _) => None
+  | Some (Clean v _) => Some v
+  | Some (Dirty v _) => Some v
+  end in
+  match val with
+  | None =>  GhostUpdate (fun s =>
+                    let vc' := cache_invalidate (get GCache s) a (Owned tid) in
+                    set GCache vc' s);;
+             let c' := cache_invalidate c a Locked in
              Assgn Cache c';;
+             v <- locked_AsyncRead a;
+             let c'' := cache_add c' a v Open in
+             GhostUpdate (fun s =>
+                    let vc' := cache_add (get GCache s) a v NoOwner in
+                    set GCache vc' s);;
+             Assgn Cache c'';;
                    rx v
-  | Some (_, v) =>
-    rx v
+  | Some v => rx v
   end.
 
-Hint Resolve cache_get_vd.
-
-Lemma lock_protects_locked : forall Scontents lvar tv (v: var Scontents tv) tid s s',
-    get lvar s = Owned tid ->
+Lemma lock_protects_locked : forall lvar tv (v: _ -> tv) tid (s s':S),
+    lvar s = Owned tid ->
     lock_protects lvar v tid s s'.
 Proof.
   unfold lock_protects.
@@ -883,14 +911,14 @@ Theorem locked_async_disk_read_ok : forall a,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
                      vd |= F * a |-> (Valuset v rest, None) /\
-                     get GCacheL s = Owned tid /\
+                     get_s_lock a s = Owned tid /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             vd' = virt_disk s /\
                             chain (star (othersR R tid)) (R tid) s s' /\
                             r = v /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             R tid s0' s'
     }} locked_async_disk_read a.
 Proof.
@@ -903,11 +931,23 @@ Qed.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
 
-Definition cache_lock {T} rx : prog _ _ T :=
-  AcquireLock CacheL (fun tid => set GCacheL (Owned tid));;
+Definition cache_lock {T} a rx : prog _ _ T :=
+  tid <- GetTID;
+  wait_for Cache (fun c =>
+    match mcache_get_lock c a with
+    | Open => true
+    | Locked => false
+    end);;
+  c <- Get Cache;
+  GhostUpdate (fun s:S =>
+    let vc := get GCache s in
+    let vc' := cache_set_state vc a (Owned tid) in
+    set GCache vc' s);;
+  let c' := cache_set_state c a Locked in
+  Assgn Cache c';;
   rx tt.
 
-Theorem cache_lock_ok :
+Theorem cache_lock_ok : forall a,
     stateS TID: tid |-
     {{ (_:unit),
      | PRE d m s0 s: let vd := virt_disk s in
@@ -915,37 +955,46 @@ Theorem cache_lock_ok :
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             s0' = s' /\
                             chain (star (othersR R tid))
-                              (applied (set GCacheL (Owned tid))) s s'
-    }} cache_lock.
+                              (applied (fun s:S =>
+                                let vc := get GCache s in
+                                let vc' := cache_set_state vc a (Owned tid) in
+                                set GCache vc' s)) s s'
+    }} cache_lock a.
 Proof.
   time "hoare" hoare pre simplify with finish.
 Qed.
 
 Hint Extern 1 {{cache_lock; _}} => apply cache_lock_ok : prog.
 
-Definition cache_unlock {T} rx : prog _ _ T :=
-  GhostUpdate (set GCacheL NoOwner);;
-         Assgn CacheL Open;;
-         rx tt.
+Definition cache_unlock {T} a rx : prog _ _ T :=
+  tid <- GetTID;
+  c <- Get Cache;
+  GhostUpdate (fun s:S =>
+    let vc := get GCache s in
+    let vc' := cache_set_state vc a (Owned tid) in
+    set GCache vc' s);;
+  let c' := cache_set_state c a Locked in
+   Assgn Cache c';;
+   rx tt.
 
-Theorem cache_unlock_ok :
+Theorem cache_unlock_ok : forall a,
     stateS TID: tid |-
     {{ (_:unit),
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
                      (* not strictly necessary, but why would you unlock
                      if you don't know you have the lock? *)
-                     get GCacheL s = Owned tid
+                     get_s_lock a s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
                             d' = d /\
-                            get GCacheL s' = NoOwner /\
+                            get_s_lock a s' = NoOwner /\
                             s0' = s0
-    }} cache_unlock.
+    }} cache_unlock a.
 Proof.
   time "hoare" hoare pre simplify with finish.
 Qed.
@@ -953,7 +1002,7 @@ Qed.
 Hint Extern 1 {{cache_unlock; _}} => apply cache_unlock_ok : prog.
 
 Definition disk_read {T} a rx : prog _ _ T :=
-  cache_lock;;
+  cache_lock a;;
               v <- locked_async_disk_read a;
          rx v.
 
@@ -1034,7 +1083,7 @@ Theorem disk_read_ok : forall a reader,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             star (anyR R) s s' /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             R tid s0' s' /\
                             exists rest', vd' a = Some (Valuset r rest', None)
     }} disk_read a.
@@ -1071,16 +1120,20 @@ Definition replace_latest vs v' :=
   let 'Valuset _ rest := vs in Valuset v' rest.
 
 Definition locked_disk_write {T} a v rx : prog _ _ T :=
+  tid <- GetTID;
   c <- Get Cache;
-  let c' := cache_add_dirty c a v in
-  GhostUpdate (set GCache c');;
+  let c' := cache_add_dirty c a v Locked in
+  GhostUpdate (fun s =>
+    let vc := get GCache s in
+    let vc' := cache_add_dirty vc a v (Owned tid) in
+    set GCache vc' s);;
               GhostUpdate (fun (s:S) => let vd := get GDisk s in
                                       let rest := match (vd a) with
                                                   | Some (Valuset v0 rest, _) =>
                                                     match (cache_get c a) with
-                                                    | Some (true, _) => rest
-                                                    | Some (false, _) => v0 :: rest
-                                                    | None => v0 :: rest
+                                                    | Some (Dirty _ _) => rest
+                                                    | Some (Clean _ _) => v0 :: rest
+                                                    | _ => v0 :: rest
                                                     end
                                                   (* impossible *)
                                                   | None => nil
@@ -1097,12 +1150,12 @@ Theorem locked_disk_write_ok : forall a v,
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     get GCacheL s = Owned tid /\
+                     get_s_lock a s = Owned tid /\
                      vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             (exists rest', vd' |= F * a |-> (Valuset v rest', None) /\
                             vd' = upd (virt_disk s) a (Valuset v rest', None)) /\
                             s0' = s0
@@ -1136,7 +1189,7 @@ Qed.
 Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
 
 Definition disk_write {T} a v rx : prog _ _ T :=
-  cache_lock;;
+  cache_lock a;;
               locked_disk_write a v;;
               rx tt.
 
@@ -1150,7 +1203,7 @@ Theorem disk_write_ok : forall a v,
      | POST d' m' s0' s' _:  let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             star (anyR R) s s' /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             R tid s0' s' /\
                             (exists rest', vd' a = Some (Valuset v rest', None))
     }} disk_write a v.
@@ -1178,13 +1231,15 @@ Hint Extern 1 {{disk_write _ _; _}} => apply disk_write_ok : prog.
 Definition evict {T} a rx : prog _ _ T :=
   c <- Get Cache;
   match cache_get c a with
-  | None => rx tt
-  | Some (true, _) => rx tt
-  | Some (false, v) =>
+  | Some (Clean _ _) =>
     let c' := cache_evict c a in
-    GhostUpdate (set GCache c');;
+    GhostUpdate (fun s =>
+      let vc := get GCache s in
+      let vc' := cache_evict vc a in
+      set GCache vc' s);;
                 Assgn Cache c';;
                 rx tt
+  | _ => rx tt
 end.
 
 Hint Resolve cache_pred_stable_evict.
@@ -1194,12 +1249,12 @@ Theorem locked_evict_ok : forall a,
     {{ F v0,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     get GCacheL s = Owned tid /\
+                     get_s_lock a s = Owned tid /\
                      vd |= F * a |-> v0
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             vd' = virt_disk s /\
                             s0' = s0
     }} evict a.
@@ -1211,7 +1266,7 @@ Definition writeback {T} a rx : prog _ _ T :=
   c <- Get Cache;
   let ov := cache_get c a in
   match (cache_get c a) with
-  | Some (true, v) =>
+  | Some (Dirty v _) =>
     GhostUpdate (fun s => let vd : DISK := get GDisk s in
                         let vs' := match (vd a) with
                                    | Some (vs0, _) => buffer_valu vs0 v
@@ -1221,7 +1276,10 @@ Definition writeback {T} a rx : prog _ _ T :=
                         set GDisk (upd vd a (vs', None)) s);;
     Write a v;;
           let c' := cache_clean c a in
-          GhostUpdate (set GCache c');;
+          GhostUpdate (fun s =>
+            let vc := get GCache s in
+            let vc' := cache_clean vc a in
+            set GCache vc' s);;
                       GhostUpdate (fun s => let vd : DISK := get GDisk s in
                                           let vs' := match (vd a) with
                                                      | Some (Valuset v' (v :: rest), None) =>
@@ -1232,8 +1290,7 @@ Definition writeback {T} a rx : prog _ _ T :=
                                           set GDisk (upd vd a (vs', None)) s);;
                       Assgn Cache c';;
                       rx tt
-  | Some (false, _) => rx tt
-  | None => rx tt
+  | _ => rx tt
   end.
 
 Hint Resolve cache_pred_stable_clean_noop.
@@ -1246,7 +1303,7 @@ Hint Rewrite upd_eq upd_ne using (now auto) : cache.
 Hint Rewrite upd_repeat : cache.
 Hint Rewrite upd_same using (now auto) : cache.
 
-Lemma cache_pred_determine : forall (c: AssocCache) (a: addr) vd vs vs' d d',
+Lemma cache_pred_determine : forall st (c: AssocCache st) (a: addr) vd vs vs' d d',
     (cache_pred (Map.remove a c) (mem_except vd a) * a |-> vs)%pred d ->
     (cache_pred (Map.remove a c) (mem_except vd a) * a |-> vs')%pred d' ->
     d' = upd d a vs'.
@@ -1278,15 +1335,15 @@ Theorem writeback_ok : forall a,
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     get GCacheL s = Owned tid /\
+                     get_s_lock a s = Owned tid /\
                      vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             vd' = virt_disk s /\
-                            (forall b, cache_get (get Cache m) a = Some (b, v0) ->
-                            (cache_get (get Cache m') a = Some (false, v0))) /\
+                            (cache_val (get Cache m) a = Some v0 ->
+                            (exists l, cache_get (get Cache m') a = Some (Clean v0 l))) /\
                             d' = upd d a (Valuset v0 rest, None) /\
                             s0' = s0
     }} writeback a.
@@ -1376,14 +1433,14 @@ Theorem sync_ok : forall a,
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     get GCacheL s = Owned tid /\
-                     (cache_get (get Cache m) a = Some (false, v0) \/
+                     get_s_lock a s = Owned tid /\
+                     (exists l, cache_get (get Cache m) a = Some (Clean v0 l) \/
                       cache_get (get Cache m) a = None) /\
                      vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                           Inv m' s' d' /\
                           R tid s s' /\
-                          get GCacheL s' = Owned tid /\
+                          get_s_lock a s' = Owned tid /\
                           m = m' /\
                           get GCache s' = get GCache s /\
                           vd' |= F * a |-> (Valuset v0 nil, None) /\
@@ -1411,9 +1468,8 @@ Hint Extern 4 {{sync _; _}} => apply sync_ok : prog.
 Definition cache_sync {T} a rx : prog _ _ T :=
   c <- Get Cache;
   match cache_get c a with
-  | Some (true, v) => writeback a;; sync a;; rx tt
-  | Some (false, _) => sync a;; rx tt
-  | None => sync a;; rx tt
+  | Some (Dirty _ _) => writeback a;; sync a;; rx tt
+  | _ => sync a;; rx tt
   end.
 
 Theorem cache_sync_ok : forall a,
@@ -1421,12 +1477,12 @@ Theorem cache_sync_ok : forall a,
     {{ F v0 rest,
      | PRE d m s0 s: let vd := virt_disk s in
                     Inv m s d /\
-                    get GCacheL s = Owned tid /\
+                    get_s_lock a s = Owned tid /\
                     vd |= F * a |-> (Valuset v0 rest, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             star (R tid) s s' /\
-                            get GCacheL s' = Owned tid /\
+                            get_s_lock a s' = Owned tid /\
                             vd' |= F * a |-> (Valuset v0 nil, None) /\
                             s0' = s0
     }} cache_sync a.

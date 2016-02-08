@@ -76,10 +76,23 @@ Arguments HNil [A] [B].
 Arguments HFirst [A] [elm] [types].
 Arguments HNext [A] [elm] [a] [types] mem.
 
+Delimit Scope hlist_scope with hlist.
+
+Open Scope hlist_scope.
+
+Module HlistNotations.
+
+Notation " [( )] " := (HNil) (format "[( )]") : hlist_scope.
+Notation " [( x )] " := (HCons x HNil) : hlist_scope.
+Notation " [( x ; .. ; y )] " := (HCons x .. (HCons y HNil) ..) : hlist_scope.
+
+End HlistNotations.
+
 Module Examples.
+  Import HlistNotations.
 
   Local Example types := [nat; bool; nat].
-  Local Example someValues : hlist (fun T : Set => T) types := HCons 5 (HCons true (HCons 3 HNil)).
+  Local Example someValues : hlist (@id Set) types := [( 5; true; 3 )].
 
   Eval simpl in get HFirst someValues.
   Eval simpl in get (HNext HFirst) someValues.

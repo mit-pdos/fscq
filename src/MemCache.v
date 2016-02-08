@@ -57,6 +57,17 @@ Section MemCache.
     | _ => c
     end.
 
+  Definition cache_invalidate (c:AssocCache) (a:addr) s :=
+    Map.add a (Invalid s) c.
+
+  Definition cache_set_state (c:AssocCache) (a:addr) s' :=
+    match (Map.find a c) with
+    | Some (Clean v _) => Map.add a (Clean v s') c
+    | Some (Dirty v _) => Map.add a (Dirty v s') c
+    | Some (Invalid _) => Map.add a (Invalid s') c
+    | None => c
+    end.
+
   Definition cache_val (c:AssocCache) (a:addr) : option valu :=
     match (Map.find a c) with
     | Some (Clean v _) => Some v
