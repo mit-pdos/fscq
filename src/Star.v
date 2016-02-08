@@ -90,6 +90,19 @@ Section STAR.
     end; eauto 10.
   Qed.
 
+  Theorem star_idempotent : forall (P : A -> Prop)
+    (P_idempotent: forall s s', P s -> s --> s' ->
+                                P s'),
+    forall s s',
+      P s -> s -->* s' -> P s'.
+   Proof.
+     intros.
+     match goal with
+     | [ H : star _ _ |- _ ] =>
+       induction H
+     end; eauto.
+   Qed.
+
 End STAR.
 
 Hint Constructors star.

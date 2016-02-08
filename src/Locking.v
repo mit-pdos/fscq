@@ -71,4 +71,17 @@ Proof.
         end; eauto.
 Qed.
 
+Theorem lock_inv_still_held : forall lvar tid tid' s s',
+  lock_protocol lvar tid' s s' ->
+  tid <> tid' ->
+  lvar s = Owned tid ->
+  lvar s' = Owned tid.
+Proof.
+  inversion 1; congruence.
+Qed.
+
 End Locking.
+
+Hint Resolve ghost_lock_owned
+             ghost_lock_inv_preserved
+             lock_inv_still_held.

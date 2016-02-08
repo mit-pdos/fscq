@@ -178,13 +178,13 @@ Section ReadTheorems.
 
   Theorem Read_ok : forall Mcontents Scontents Inv R a,
       (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
-      {{ F vs0,
-       | PRE d m s0 s: d |= F * a |-> (vs0, None)
+      {{ F v rest,
+       | PRE d m s0 s: d |= F * a |-> (Valuset v rest, None)
        | POST d' m' s0' s' r: d' = d /\
                               s0' = s0 /\
                               s' = s /\
                               m' = m /\
-                              r = latest_valu vs0
+                              r = v
       }} Read a.
   Proof.
     intros.
