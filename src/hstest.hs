@@ -38,8 +38,7 @@ forkChild children io = do
 initmem :: Disk.DiskState -> Int -> IO ()
 initmem ds tid = do
   I.run ds tid $ \done ->
-    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_Cache (unsafeCoerce (MemCache._Map__empty :: MemCache.Map__Coq_t MemCache.Coq_cache_entry)) $ \_ ->
-    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_CacheL (unsafeCoerce EventCSL.Open) $ \_ ->
+    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_Cache (unsafeCoerce (MemCache._Map__empty :: MemCache.Map__Coq_t (MemCache.Coq_cache_entry EventCSL.BusyFlag))) $ \_ ->
     done ()
 
 testprog :: Disk.DiskState -> Int -> IO ()
