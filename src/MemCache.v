@@ -90,6 +90,17 @@ Definition cache_pred st (c:AssocCache st) (vd:DISK) : DISK_PRED :=
       | None => vd a = d a
       end.
 
+Inductive opt_R A B (R : A -> B -> Prop) : option A -> option B -> Prop :=
+| opt_R_none : opt_R R None None
+| opt_R_some : forall a b, R a b -> opt_R R (Some a) (Some b).
+
+Hint Constructors opt_R.
+
+Definition cache_eq st st' (st_eq: st -> st' -> Prop)
+  (c:AssocCache st) (c':AssocCache st') :=
+  (forall a:addr, cache_val c a = cache_val c' a /\
+                  opt_R st_eq (cache_state c a) (cache_state c' a)).
+
 Ltac replace_cache_vals :=
   repeat
     match goal with
@@ -389,16 +400,15 @@ Proof.
   t.
 Qed.
 
-(* TODO: get rid of these two lemmas; Map.add should never be unfolded *)
 Lemma cache_get_add_clean : forall st (c:AssocCache st) a v s,
-    cache_get (Map.add a (Clean v s) c) a = Some (Clean v s).
+    cache_get (cache_add c a v s) a = Some (Clean v s).
 Proof.
   t.
 Qed.
 
-Lemma cache_get_add_other : forall st (c:AssocCache st) a a' ce,
+Lemma cache_get_add_other : forall st (c:AssocCache st) a a' v s,
     a <> a' ->
-    cache_get (Map.add a ce c) a' = cache_get c a'.
+    cache_get (cache_add c a v s) a' = cache_get c a'.
 Proof.
   t.
 Qed.
@@ -448,6 +458,39 @@ Hint Rewrite map_raw_add_eq_o using (now auto): cache.
 Hint Rewrite map_raw_add_neq_o using (now auto): cache.
 Hint Rewrite map_raw_remove_eq_o using (now auto): cache.
 Hint Rewrite map_raw_remove_neq_o using (now auto): cache.
+
+Remark cache_eq_refl : forall st (c:AssocCache st),
+  cache_eq eq c c.
+Proof.
+  unfold cache_eq; intuition.
+  case_eq (cache_state c a); auto.
+Qed.
+
+Theorem cache_eq_preserved : forall st (c:AssocCache st)
+  st' (c':AssocCache st') st_eq
+  (a:addr) v s s',
+  cache_eq st_eq c c' ->
+  st_eq s s' ->
+  cache_eq st_eq (cache_add c a v s) (cache_add c' a v s').
+Proof.
+  unfold cache_eq; intuition;
+    match goal with
+    | [ H: forall (_:addr), _, a:addr |- _ ] =>
+      specialize (H a); unfold cache_val, cache_state in H
+    end; intuition.
+
+  distinguish_addresses;
+  unfold cache_val, cache_add;
+    repeat rewrite MapFacts.add_eq_o by auto;
+    repeat rewrite MapFacts.add_neq_o by auto;
+    auto.
+
+  distinguish_addresses;
+  unfold cache_state, cache_add;
+    repeat rewrite MapFacts.add_eq_o by auto;
+    repeat rewrite MapFacts.add_neq_o by auto;
+    auto.
+Qed.
 
 Ltac rewrite_cache_get :=
   repeat match goal with

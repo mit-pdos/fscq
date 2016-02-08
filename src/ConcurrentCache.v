@@ -37,7 +37,6 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
   Definition GDisk := get HFirst stateVars.
   Definition GCache := get (HNext HFirst) stateVars.
 
-
   (* TODO: replace with map for option *)
   Definition mcache_get_lock (c:AssocCache BusyFlag) a :=
     match (cache_state c a) with
@@ -94,8 +93,7 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
       let c := get Cache m in
       (d |= cache_pred c (get GDisk s))%judgement /\
       (* caches are equal, modulo relationship between real/ghost locks *)
-      (forall a, get_m_val a m = get_scache_val a s /\
-                 ghost_lock_invariant (get_m_lock a) (get_s_lock a) m s).
+      cache_eq ghost_lock_invariant (get Cache m) (get GCache s).
 
 End CacheTransitionSystem.
 
@@ -349,9 +347,6 @@ Hint Extern 5 (get _ (set _ _ _) = _) => solve_get_set.
 (* ghost_lock_owned, if needed, should be forward chained *)
 Hint Constructors lock_protocol.
 Hint Constructors ghost_lock_invariant.
-Hint Extern 3 (ghost_lock_invariant _ _ _ _) =>
-simple eapply ghost_lock_inv_preserved;
-  [ eassumption | .. ].
 
 Ltac local_state_transitions :=
   match goal with
@@ -517,6 +512,7 @@ Ltac finish :=
   let solver := cancel_with_split idtac ltac:(destruct_ands; repeat split); eauto in
   try time "backtrack_pred" backtrack_pred_solve solver).
 
+Hint Resolve cache_eq_preserved.
 Hint Resolve cache_pred_clean cache_pred_clean'.
 Hint Resolve cache_pred_dirty cache_pred_dirty'.
 Hint Resolve cache_pred_stable_add.

@@ -36,39 +36,20 @@ Inductive lock_protocol (lvar : S Scontents -> BusyFlagOwner) (tid : ID) :
 Hint Constructors lock_protocol.
 
 Inductive ghost_lock_invariant
-          (lvar : M Mcontents -> BusyFlag)
-          (glvar : S Scontents -> BusyFlagOwner)
-          (m : M Mcontents) (s : S Scontents) : Prop :=
-| LockOpen : lvar m = Open -> glvar s = NoOwner ->
-             ghost_lock_invariant lvar glvar m s
-| LockOwned : forall tid, lvar m = Locked -> glvar s = Owned tid ->
-                     ghost_lock_invariant lvar glvar m s.
+  (lvar: BusyFlag) (glvar: BusyFlagOwner) : Prop :=
+| LockOpen : lvar = Open -> glvar = NoOwner ->
+             ghost_lock_invariant lvar glvar
+| LockOwned : forall tid, lvar = Locked -> glvar = Owned tid ->
+                     ghost_lock_invariant lvar glvar.
 
 Hint Constructors ghost_lock_invariant.
 
-Lemma ghost_lock_owned : forall lvar glvar m s tid,
-    ghost_lock_invariant lvar glvar m s ->
-    glvar s = Owned tid ->
-    lvar m = Locked.
+Lemma ghost_lock_owned : forall lvar glvar tid,
+    ghost_lock_invariant lvar glvar ->
+    glvar = Owned tid ->
+    lvar = Locked.
 Proof.
   inversion 1; congruence.
-Qed.
-
-Theorem ghost_lock_inv_preserved :
-  forall lvar glvar m s m' s',
-  ghost_lock_invariant lvar glvar m s ->
-  lvar m = lvar m' ->
-  glvar s = glvar s' ->
-  ghost_lock_invariant lvar glvar m' s'.
-Proof.
-  inversion 1; intros;
-  repeat match goal with
-       | [ H: ?v ?m = ?x, H': ?v ?m = ?y |- _ ] =>
-          lazymatch goal with
-          | [ Heq: x = y |- _ ] => fail
-          | _ => assert (x = y) by congruence
-          end
-        end; eauto.
 Qed.
 
 Theorem lock_inv_still_held : forall lvar tid tid' s s',
@@ -83,5 +64,4 @@ Qed.
 End Locking.
 
 Hint Resolve ghost_lock_owned
-             ghost_lock_inv_preserved
              lock_inv_still_held.
