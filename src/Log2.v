@@ -1044,6 +1044,25 @@ Module LOG.
     apply Map.elements_3w.
   Qed.
 
+  Lemma map_merge_id: forall m,
+    Map.Equal (map_merge m m) m.
+  Proof.
+    unfold map_merge, replay_mem; intros.
+    rewrite <- Map.fold_1.
+    apply MapProperties.fold_rec_nodep; auto.
+    intros.
+    rewrite H0.
+    apply MapFacts.Equal_mapsto_iff; intros.
+
+    destruct (eq_nat_dec k0 k); subst; split; intros.
+    apply MapFacts.add_mapsto_iff in H1; intuition; subst; auto.
+    apply MapFacts.add_mapsto_iff; left; intuition.
+    eapply MapFacts.MapsTo_fun; eauto.
+    eapply Map.add_3; eauto.
+    eapply Map.add_2; eauto.
+  Qed.
+
+
   Theorem apply_ok: forall xp ms,
     {< m,
     PRE
@@ -1068,8 +1087,54 @@ Module LOG.
     rewrite apply_synced_data_ok; cancel.
 
     (* crash conditions *)
-    
-    
+    or_l. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs).
+    instantiate (raw0 := replay_disk (Map.elements (MSOld ms)) raw).
+    cancel.
+    intuition; simpl; eauto.
+    apply entries_valid_replay; auto.
+    apply entries_valid_replay; auto.
+    pred_apply; cancel.
+    rewrite apply_synced_data_ok; cancel.
+    rewrite replay_disk_merge.
+    setoid_rewrite mapeq_elements at 2; eauto.
+    apply map_merge_id.
+
+    (* truncated *)
+    or_r. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs).
+    cancel.
+    intuition; simpl; eauto.
+    instantiate (1 := F); pred_apply; cancel.
+    or_r; or_r; cancel.
+    rewrite apply_synced_data_ok; cancel.
+
+    (* synced nil *)
+    or_l. norm.
+    instantiate (2 := mk_memstate map0 map0 cs).
+    instantiate (log0 := nil).
+    cancel.
+    intuition; simpl; eauto.
+    pred_apply; cancel.
+    rewrite apply_synced_data_ok; cancel.
+
+    (* unsync_syncing *)
+    or_r. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel.
+    intuition; simpl; eauto.
+    instantiate (1 := F); pred_apply; cancel.
+    or_r; or_l; cancel.
+    admit.
+
+    (* unsync_applying *)
+    or_r. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel.
+    intuition; simpl; eauto.
+    instantiate (1 := F); pred_apply; cancel.
+    or_l; cancel.
+    admit.
   Qed.
     
   
