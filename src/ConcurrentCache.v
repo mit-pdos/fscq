@@ -1003,8 +1003,9 @@ Hint Extern 1 {{cache_unlock; _}} => apply cache_unlock_ok : prog.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   cache_lock a;;
-              v <- locked_async_disk_read a;
-         rx v.
+  v <- locked_async_disk_read a;
+  cache_unlock a;;
+  rx v.
 
 Remark cacheR_stutter : forall tid s,
   cacheR tid s s.
@@ -1190,8 +1191,9 @@ Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
 
 Definition disk_write {T} a v rx : prog _ _ T :=
   cache_lock a;;
-              locked_disk_write a v;;
-              rx tt.
+  locked_disk_write a v;;
+  cache_unlock a;;
+  rx tt.
 
 Theorem disk_write_ok : forall a v,
     stateS TID: tid |-
