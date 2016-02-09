@@ -2050,6 +2050,30 @@ Proof.
   repeat deex; destruct matches in *.
 Qed.
 
+Lemma diskIs_split_upd : forall AT AEQ V a v (m: @mem AT AEQ V),
+  diskIs (upd m a v) =p=>
+  diskIs (mem_except m a) * a |-> v.
+Proof.
+  unfold diskIs, pimpl, mem_except, mem_union, mem_disjoint.
+  unfold_sep_star.
+  intros.
+  do 2 eexists; intuition.
+  instantiate (m2 := fun a' => if AEQ a' a then Some v else None).
+  unfold mem_union; subst.
+  extensionality a'.
+  case_eq (AEQ a' a); intros; subst.
+  rewrite upd_eq by auto; auto.
+  rewrite upd_ne by auto.
+  case_eq (m a'); intros; auto.
+
+  unfold mem_disjoint; intro; repeat deex.
+  case_eq (AEQ a0 a); intros; subst;
+  rewrite H in *; congruence.
+  unfold ptsto; intuition.
+  case_eq (AEQ a a); intros; congruence.
+  case_eq (AEQ a' a); intros; congruence.
+Qed.
+
 Section MemDomains.
 
 Variable (AT:Type).

@@ -1,7 +1,7 @@
 Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Locking.
-Require Import Star.
+Require Import RelationCombinators.
 Require Import Coq.Program.Equality.
 Require Import FunctionalExtensionality.
 Require Import Omega.
@@ -706,92 +706,9 @@ Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
                  set GDisk vd' s);;
   rx v.
 
-(* More combinators for relations *)
 
-Definition chain (S:Type) (R1 R2: S -> S -> Prop) : S -> S -> Prop :=
-  fun s s'' =>
-  exists (s':S), R1 s s' /\ R2 s' s''.
-
-Definition applied S (f: S -> S) : S -> S -> Prop :=
-  fun s s' =>
-  s' = f s.
-
-(* hints and associated proofs for chain/applied combinators *)
-Lemma chain_trans : forall S (s s' s'':S) (R1 R2: _ -> _ -> Prop),
-  R1 s s' ->
-  R2 s' s'' ->
-  chain R1 R2 s s''.
-Proof.
-  unfold chain; eauto.
-Qed.
-
-Hint Resolve chain_trans.
-
-Lemma applied_def : forall S (s s':S) f,
-  s' = f s ->
-  applied f s s'.
-Proof.
-  unfold applied; auto.
-Qed.
-
-Hint Resolve applied_def.
-
-Hint Rewrite upd_eq using (now auto) : upd.
-Hint Rewrite upd_ne using (now auto) : upd.
-
-Lemma cache_pred_vd_upd : forall st (c: AssocCache st) vd a v' d d',
-  cache_get c a = None ->
-  cache_pred c (upd vd a v') d' ->
-  cache_pred c vd d ->
-  d' = upd d a v'.
-Proof.
-  intros.
-  extensionality a'.
-  distinguish_addresses;
-    unfold cache_pred in *; intuition;
-    repeat match goal with
-    | [ a: addr, H: forall (_:addr), _ |- _ ] =>
-      learn that (H a)
-    end;
-    repeat simpl_match;
-    autorewrite with upd in *.
- auto.
-
- case_cache_val;
-  repeat simpl_match;
-  repeat deex;
-  autorewrite with upd in *;
-  auto.
-Qed.
-
-Hint Rewrite upd_repeat : upd.
-Hint Rewrite upd_same using (now auto) : upd.
 Hint Rewrite mem_except_upd : upd.
 Hint Resolve upd_same.
-
-Lemma diskIs_split_upd : forall AT AEQ V a v (m: @mem AT AEQ V),
-  diskIs (upd m a v) =p=>
-  diskIs (mem_except m a) * a |-> v.
-Proof.
-  unfold diskIs, pimpl, mem_except, mem_union, mem_disjoint.
-  unfold_sep_star.
-  intros.
-  do 2 eexists; intuition.
-  instantiate (m2 := fun a' => if AEQ a' a then Some v else None).
-  unfold mem_union; subst.
-  extensionality a'.
-  case_eq (AEQ a' a); intros; subst.
-  rewrite upd_eq by auto; auto.
-  rewrite upd_ne by auto.
-  case_eq (m a'); intros; auto.
-
-  unfold mem_disjoint; intro; repeat deex.
-  case_eq (AEQ a0 a); intros; subst;
-  rewrite H in *; congruence.
-  unfold ptsto; intuition.
-  case_eq (AEQ a a); intros; congruence.
-  case_eq (AEQ a' a); intros; congruence.
-Qed.
 
 Hint Resolve clean_readers_upd.
 Hint Resolve clean_readers_upd'.

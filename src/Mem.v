@@ -68,3 +68,8 @@ End GenMem.
 
 (* existential variable hint *)
 Hint Immediate empty_mem.
+
+Hint Rewrite upd_eq using (solve [ auto ]) : upd.
+Hint Rewrite upd_ne using (solve [ auto ]) : upd.
+Hint Rewrite upd_repeat : upd.
+Hint Rewrite upd_same using (solve [ auto ]) : upd.

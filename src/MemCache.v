@@ -915,4 +915,29 @@ Proof.
     repeat (complete_mem_equalities; eauto).
 Qed.
 
+Lemma cache_pred_vd_upd : forall st (c: AssocCache st) vd a v' d d',
+  cache_get c a = None ->
+  cache_pred c (upd vd a v') d' ->
+  cache_pred c vd d ->
+  d' = upd d a v'.
+Proof.
+  intros.
+  extensionality a'.
+  distinguish_addresses;
+    unfold cache_pred in *; intuition;
+    repeat match goal with
+    | [ a: addr, H: forall (_:addr), _ |- _ ] =>
+      learn that (H a)
+    end;
+    repeat simpl_match;
+    autorewrite with upd in *.
+ auto.
+
+ case_cache_val;
+  repeat simpl_match;
+  repeat deex;
+  autorewrite with upd in *;
+  auto; congruence.
+Qed.
+
 Hint Opaque cache_pred.
