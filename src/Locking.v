@@ -20,8 +20,6 @@ Definition lock_protects (lvar : S Scontents -> BusyFlagOwner)
     tid <> owner_tid ->
     v s' = v s.
 
-Hint Unfold lock_protects : prog.
-
 Inductive lock_protocol (lvar : S Scontents -> BusyFlagOwner) (tid : ID) :
   S Scontents -> S Scontents -> Prop :=
 | NoChange : forall s s', lvar s  = lvar s' ->
@@ -32,6 +30,35 @@ Inductive lock_protocol (lvar : S Scontents -> BusyFlagOwner) (tid : ID) :
 | OwnerAcquire : forall s s', lvar s = NoOwner ->
                          lvar s' = Owned tid ->
                          lock_protocol lvar tid s s'.
+
+Hint Constructors lock_protocol.
+
+Theorem lock_protects_trans : forall lvar tv (v: _ -> tv) tid s s' s'',
+  lock_protects lvar v tid s s' ->
+  lock_protects lvar v tid s' s'' ->
+  lock_protocol lvar tid s s' ->
+  lock_protects lvar v tid s s''.
+Proof.
+  unfold lock_protects; intros.
+  eapply eq_trans with (y := v s'); eauto.
+  specialize (H owner_tid); intuition.
+  eapply H0; eauto.
+  inversion H1; subst; congruence.
+Qed.
+
+Hint Extern 1 (_ = _) => congruence.
+
+Theorem lock_protocol_trans : forall lvar tid s s' s'',
+  lock_protocol lvar tid s s' ->
+  lock_protocol lvar tid s' s'' ->
+  lock_protocol lvar tid s s''.
+Proof.
+  intros.
+  repeat match goal with
+    | [ H: lock_protocol _ _ _ _ |- _ ] =>
+      inversion H; subst; clear H
+    end; eauto.
+Qed.
 
 Inductive ghost_lock_invariant
   (lvar: BusyFlag) (glvar: BusyFlagOwner) : Prop :=

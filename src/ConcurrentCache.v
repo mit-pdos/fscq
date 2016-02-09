@@ -202,6 +202,61 @@ Ltac specific_addr :=
     specialize (H a)
   end.
 
+Section CacheRTrans.
+
+Lemma cacheR_split : forall tid s s',
+  cacheR tid s s' ->
+    let vd := get GDisk s in
+    let vd' := get GDisk s' in
+    same_domain vd vd' /\
+    (forall a, lock_protocol (get_s_lock a) tid s s') /\
+    (forall a, lock_protects (get_s_lock a) (get_scache_val a) tid s s') /\
+    (forall a, lock_protects (get_s_lock a) (get_disk_val a) tid s s').
+Proof.
+  unfold cacheR, rimpl.
+  intuition;
+    match goal with
+    | [ H: forall (_:addr), _, a:addr |- _ ] =>
+      specialize (H a)
+    end; intuition.
+Qed.
+
+Hint Resolve same_domain_refl same_domain_trans.
+Hint Constructors lock_protocol.
+Hint Resolve lock_protects_trans.
+Hint Resolve lock_protocol_trans.
+
+Remark cacheR_stutter : forall tid s,
+  cacheR tid s s.
+Proof.
+  unfold cacheR, lock_protects;
+  intuition eauto.
+Qed.
+
+Lemma cacheR_trans : forall tid (s s' s'':S),
+  cacheR tid s s' ->
+  cacheR tid s' s'' ->
+  cacheR tid s s''.
+Proof.
+  unfold cacheR; intuition;
+    repeat match goal with
+        | [ H: forall (_:addr), _, a:addr |- _ ] =>
+          specialize (H a)
+        end;
+  intuition eauto.
+Qed.
+
+Theorem cacheR_trans_closed : forall tid (s s':S),
+  star (cacheR tid) s s' ->
+  cacheR tid s s'.
+Proof.
+  intros.
+  apply trans_closed; intros;
+    eauto using cacheR_stutter, cacheR_trans.
+Qed.
+
+End CacheRTrans.
+
 Lemma cache_addr_readonly' : forall tid a (s s':S),
     get_s_lock a s = Owned tid ->
     othersR cacheR tid s s' ->
@@ -1007,12 +1062,7 @@ Definition disk_read {T} a rx : prog _ _ T :=
   cache_unlock a;;
   rx v.
 
-Remark cacheR_stutter : forall tid s,
-  cacheR tid s s.
-Proof.
-  unfold cacheR, lock_protects;
-  intuition eauto.
-Qed.
+
 
 Ltac destruct_valusets :=
   repeat match goal with

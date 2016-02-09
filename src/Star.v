@@ -150,3 +150,20 @@ Proof.
 Abort.
 
 End RewriteExample.
+
+Theorem star_and : forall A (P Q : relation A) s s',
+  star (fun s s' => P s s' /\ Q s s') s s' ->
+  star P s s' /\ star Q s s'.
+Proof.
+  intros.
+  induction H; intuition eauto.
+Qed.
+
+Theorem trans_closed : forall A (R: relation A) s s'
+  (R_refl: forall s, R s s)
+  (R_trans: forall s s' s'', R s s' -> R s' s'' -> R s s''),
+  star R s s' -> R s s'.
+Proof.
+  intros.
+  induction H; eauto.
+Qed.
