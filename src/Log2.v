@@ -108,6 +108,8 @@ Module LOG.
      arrayN (DataStart xp) (List.combine cur vs)
     )%pred.
 
+  Definition entries_valid (ms : valumap) (m : diskstate) :=
+     forall a v, Map.MapsTo a v ms -> a <> 0 /\ a < length m.
 
   Definition rep_inner xp st log raw oms cms :=
     (match st with
@@ -139,6 +141,7 @@ Module LOG.
       let '(cs, oms, cms) := (MSCache ms, MSOld ms, MSCur ms) in
       BUFCACHE.rep cs d *
       [[ Map.Equal oms (replay_mem log map0) ]] *
+      [[ entries_valid oms raw /\ entries_valid cms raw ]] *
       [[ (F * rep_inner xp st log raw oms cms)%pred d ]])%pred.
 
   Definition begin T (xp : log_xparams) ms rx : prog T :=
@@ -187,6 +190,15 @@ Module LOG.
     cs <- DLog.trunc xp cs;
     rx (mk_memstate map0 map0 cs).
 
+  Lemma entries_valid_map0 : forall m,
+    entries_valid map0 m.
+  Proof.
+    unfold entries_valid, map0; intuition; exfalso;
+    apply MapFacts.empty_mapsto_iff in H; auto.
+  Qed.
+
+  Local Hint Resolve entries_valid_map0.
+
 
   Lemma mapeq_elements : forall V m1 m2,
     @Map.Equal V m1 m2 -> Map.elements m1 = Map.elements m2.
@@ -226,7 +238,7 @@ Module LOG.
     hoare using dems.
     pred_apply; cancel; cancel.
     or_l.
-    repeat cancel.
+    repeat cancel; auto.
   Qed.
 
 
@@ -245,7 +257,7 @@ Module LOG.
     pred_apply; repeat cancel.
     pimpl_crash.
     or_l.
-    repeat cancel.
+    repeat cancel; auto.
   Qed.
 
   Arguments DLog.rep : simpl never.
@@ -406,10 +418,36 @@ Module LOG.
     exact $0.
   Qed.
 
+
+  Lemma entries_valid_replay : forall d ms1 ms2,
+    entries_valid ms1 d ->
+    entries_valid ms2 d ->
+    entries_valid ms1 (replay_disk (Map.elements ms2) d).
+  Proof.
+    unfold entries_valid; induction d; intros.
+    rewrite replay_disk_length; eauto.
+    split.
+    apply (H a0 v); auto.
+    rewrite replay_disk_length.
+    apply (H a0 v); auto.
+  Qed.
+
+  Lemma entries_valid_add : forall d a v ms,
+    entries_valid ms d ->
+    a < length d -> a <> 0 ->
+    entries_valid (Map.add a v ms) d.
+  Proof.
+    unfold entries_valid; intros.
+    destruct (addr_eq_dec a0 a); subst.
+    eauto.
+    eapply H.
+    eapply Map.add_3; eauto.
+  Qed.
+
   Theorem write_ok : forall xp ms a v,
     {< m1 m2 F v0,
     PRE
-      rep xp (ActiveTxn m1 m2) ms *
+      rep xp (ActiveTxn m1 m2) ms * [[ a <> 0 ]] *
       [[[ m2 ::: (F * a |-> v0) ]]]
     POST RET:ms'
       exists m', rep xp (ActiveTxn m1 m') ms' *
@@ -421,6 +459,12 @@ Module LOG.
     unfold write.
     hoare using dems.
     repeat cancel.
+
+    apply entries_valid_add; auto.
+    hypmatch replay_disk as Hx.
+    apply list2nmem_ptsto_bound in Hx.
+    repeat rewrite replay_disk_length in Hx; auto.
+
     rewrite replay_disk_add.
     pred_apply; repeat cancel.
     eapply list2nmem_updN; eauto.
@@ -501,16 +545,17 @@ Module LOG.
 
     cancel.
     safestep; auto. eauto.
-    repeat cancel.
+    repeat cancel; eauto. auto.
+    cancel.
     eapply replay_disk_eq; eauto.
-    pimpl_crash; cancel.
+    pimpl_crash; cancel; eauto.
 
     cancel.
     cancel.
-    safestep; auto; subst. eauto.
+    safestep; auto; subst.  eauto. eauto. auto.
     repeat cancel.
     eapply replay_disk_eq_none; eauto.
-    pimpl_crash; cancel.
+    pimpl_crash; cancel; auto.
 
     cancel.
     cancel.
@@ -518,7 +563,7 @@ Module LOG.
     subst; eapply synced_data_double_replay_inb; eauto.
 
     prestep.
-    cancel; subst. cancel.
+    cancel; subst; auto. cancel.
     unfold synced_list; unfold pred_apply in *.
     rewrite selN_combine by (autorewrite with lists; auto); simpl.
     eapply replay_disk_double_none_selN; [ apply Heqo | apply Heqo0 | pred_apply; cancel].
@@ -772,6 +817,51 @@ Module LOG.
     apply replay_mem_map0.
   Qed.
 
+  Lemma replay_mem_not_in' : forall l a v ms,
+    KNoDup l ->
+    ~ In a (map fst l) ->
+    Map.MapsTo a v (replay_mem l ms) ->
+    Map.MapsTo a v ms.
+  Proof.
+    induction l; intros; auto.
+    destruct a; simpl in *; intuition.
+    apply IHl; auto.
+    inversion H; subst; auto.
+    rewrite replay_mem_add in H1.
+    apply Map.add_3 in H1; auto.
+    inversion H; auto.
+    inversion H; auto.
+  Qed.
+
+  Lemma replay_mem_not_in : forall a v ms m,
+    Map.MapsTo a v (replay_mem (Map.elements m) ms) ->
+    ~ Map.In a m ->
+    Map.MapsTo a v ms.
+  Proof.
+    intros.
+    eapply replay_mem_not_in'; eauto.
+    apply Map.elements_3w.
+    contradict H0.
+    apply In_map_fst_MapIn; auto.
+  Qed.
+
+
+  Lemma entries_valid_replay_mem : forall d ms1 ms2,
+    entries_valid ms1 d ->
+    entries_valid ms2 d ->
+    entries_valid (replay_mem (Map.elements ms1) ms2) d.
+  Proof.
+    unfold entries_valid; intros.
+    destruct (MapFacts.In_dec ms1 a).
+    apply MapFacts.in_find_iff in i.
+    destruct (Map.find a ms1) eqn:X.
+    eapply H.
+    apply MapFacts.find_mapsto_iff; eauto.
+    tauto.
+    eapply H0.
+    eapply replay_mem_not_in; eauto.
+  Qed.
+
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem commit_ok: forall xp ms,
@@ -787,7 +877,7 @@ Module LOG.
     step using dems.
     step using dems.
     or_l.
-    cancel.
+    cancel; auto.
     apply replay_disk_is_empty; auto.
     apply is_empty_eq_map0; auto.
 
@@ -796,6 +886,7 @@ Module LOG.
     cancel; unfold map_merge.
     rewrite replay_mem_app; eauto.
 
+    apply entries_valid_replay_mem; auto.
     apply replay_disk_merge.
 
     (* crashes *)
@@ -826,10 +917,163 @@ Module LOG.
     cancel. simpl; intuition; eauto.
     unfold map_merge.
     rewrite replay_mem_app; eauto.
+    apply entries_valid_replay_mem; eauto.
     pred_apply; cancel.
     apply replay_disk_merge.
   Qed.
 
+
+  Lemma entries_valid_Forall_fst_synced : forall d ms,
+    entries_valid ms d ->
+    Forall (fun e => fst e < length (synced_list d)) (Map.elements ms).
+  Proof.
+    unfold entries_valid, synced_list; intros.
+    apply Forall_forall; intros.
+    autorewrite with lists.
+    destruct x; simpl.
+    apply (H n w).
+    apply Map.elements_2.
+    apply In_InA; auto.
+  Qed.
+  Local Hint Resolve entries_valid_Forall_fst_synced.
+
+  Lemma entries_valid_Forall_synced_map_fst : forall d ms,
+    entries_valid ms d ->
+    Forall (fun e => e < length (synced_list d)) (map fst (Map.elements ms)).
+  Proof.
+    unfold entries_valid, synced_list; intros.
+    apply Forall_forall; intros.
+    autorewrite with lists.
+    apply In_map_fst_MapIn in H0.
+    apply MapFacts.elements_in_iff in H0.
+    destruct H0.
+    eapply (H x).
+    apply Map.elements_2; eauto.
+  Qed.
+
+  Lemma vssync_synced : forall l a,
+    snd (selN l a ($0, nil)) = nil ->
+    vssync l a = l.
+  Proof.
+    unfold vssync; induction l; intros; auto.
+    destruct a0; simpl in *.
+    destruct a; simpl in *.
+    rewrite <- H; auto.
+    f_equal.
+    rewrite IHl; auto.
+  Qed.
+
+  Lemma vsupd_comm : forall l a1 v1 a2 v2,
+    a1 <> a2 ->
+    vsupd (vsupd l a1 v1) a2 v2 = vsupd (vsupd l a2 v2) a1 v1.
+  Proof.
+    unfold vsupd; intros.
+    rewrite updN_comm by auto.
+    repeat rewrite selN_updN_ne; auto.
+  Qed.
+
+  Lemma vsupd_vecs_vsupd_notin : forall av l a v,
+    ~ In a (map fst av) ->
+    vsupd_vecs (vsupd l a v) av = vsupd (vsupd_vecs l av) a v.
+  Proof.
+    induction av; simpl; intros; auto.
+    destruct a; simpl in *; intuition.
+    rewrite <- IHav by auto.
+    rewrite vsupd_comm; auto.
+  Qed.
+
+  Lemma vssync_vsupd_eq : forall l a v,
+    vssync (vsupd l a v) a = updN l a (v, nil).
+  Proof.
+    unfold vsupd, vssync, vsmerge; intros.
+    rewrite updN_twice.
+    destruct (lt_dec a (length l)).
+    rewrite selN_updN_eq; simpl; auto.
+    rewrite selN_oob.
+    repeat rewrite updN_oob; auto.
+    omega. omega.
+    autorewrite with lists; omega.
+  Qed.
+
+  Lemma updN_vsupd_vecs_notin : forall av l a v,
+    ~ In a (map fst av) ->
+    updN (vsupd_vecs l av) a v = vsupd_vecs (updN l a v) av.
+  Proof.
+    induction av; simpl; intros; auto.
+    destruct a; simpl in *; intuition.
+    rewrite IHav by auto.
+    unfold vsupd, vsmerge.
+    rewrite updN_comm by auto.
+    rewrite selN_updN_ne; auto.
+  Qed.
+
+  Lemma synced_list_updN : forall l a v,
+    updN (synced_list l) a (v, nil) = synced_list (updN l a v).
+  Proof.
+    unfold synced_list; induction l; simpl; intros; auto.
+    destruct a0; simpl; auto.
+    rewrite IHl; auto.
+  Qed.
+
+
+  Lemma apply_synced_data_ok' : forall l d,
+    NoDup (map fst l) ->
+    vssync_vecs (vsupd_vecs (synced_list d) l) (map fst l) = synced_list (replay_disk l d).
+  Proof.
+    induction l; intros; simpl; auto.
+    destruct a; simpl.
+    inversion H; subst.
+    rewrite <- IHl by auto.
+
+    rewrite vsupd_vecs_vsupd_notin by auto.
+    rewrite vssync_vsupd_eq.
+    rewrite updN_vsupd_vecs_notin by auto.
+    rewrite synced_list_updN.
+    auto.
+  Qed.
+
+
+  Lemma apply_synced_data_ok : forall xp m d,
+    arrayN (DataStart xp) (vssync_vecs (vsupd_vecs (synced_list d) (Map.elements m)) (map_keys m))
+    =p=> synced_data xp (replay_disk (Map.elements m) d).
+  Proof.
+    unfold synced_data; intros.
+    apply arrayN_unify.
+    apply apply_synced_data_ok'.
+    apply KNoDup_NoDup.
+    apply Map.elements_3w.
+  Qed.
+
+  Theorem apply_ok: forall xp ms,
+    {< m,
+    PRE
+      rep xp (NoTxn m) ms
+    POST RET:ms
+      rep xp (NoTxn m) ms
+    CRASH
+      exists ms', rep xp (NoTxn m) ms' \/
+                  rep xp (NoTxnApplying m) ms'
+    >} apply xp ms.
+  Proof.
+    unfold apply; intros.
+    step.
+    unfold synced_data; cancel.
+
+    step.
+    rewrite vsupd_vecs_length.
+    apply entries_valid_Forall_synced_map_fst; auto.
+
+    step.
+    step.
+    rewrite apply_synced_data_ok; cancel.
+
+    (* crash conditions *)
+    
+    
+  Qed.
+    
+  
+  
 End LOG.
 
 
