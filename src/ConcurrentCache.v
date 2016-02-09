@@ -976,9 +976,9 @@ Definition cache_unlock {T} a rx : prog _ _ T :=
     let vc := get GCache s in
     let vc' := cache_set_state vc a (Owned tid) in
     set GCache vc' s);;
-  let c' := cache_set_state c a Locked in
-   Assgn Cache c';;
-   rx tt.
+  let c' := cache_set_state c a Open in
+  Assgn Cache c';;
+  rx tt.
 
 Theorem cache_unlock_ok : forall a,
     stateS TID: tid |-
