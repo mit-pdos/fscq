@@ -257,10 +257,9 @@ Qed.
 
 End CacheRTrans.
 
-Lemma cache_addr_readonly' : forall tid a (s s':S),
+Lemma cache_lock_owner_unchanged' : forall tid a (s s':S),
     get_s_lock a s = Owned tid ->
     othersR cacheR tid s s' ->
-    get_scache_val a s' = get_scache_val a s /\
     get_s_lock a s' = Owned tid.
 Proof.
   unfold cacheR, othersR.
@@ -268,10 +267,44 @@ Proof.
   deex; specific_addr; intuition eauto.
 Qed.
 
+Lemma cache_lock_owner_unchanged : forall tid a (s s':S),
+    get_s_lock a s = Owned tid ->
+    star (othersR cacheR tid) s s' ->
+    get_s_lock a s' = Owned tid.
+Proof.
+  intros.
+  eapply (star_invariant _ _ (@cache_lock_owner_unchanged' tid a));
+    intuition eauto; try congruence.
+Qed.
+
+Lemma cache_addr_readonly' : forall tid a (s s':S),
+    get_s_lock a s = Owned tid ->
+    othersR cacheR tid s s' ->
+    cache_get (get GCache s') a = cache_get (get GCache s) a /\
+    get_s_lock a s' = Owned tid.
+Proof.
+  intros.
+  assert (get_s_lock a s' = Owned tid).
+  eapply cache_lock_owner_unchanged'; eauto.
+  unfold cacheR, othersR in *.
+  deex; specific_addr; intuition eauto.
+  repeat match goal with
+         | [ H: lock_protects _ _ _ _ _ |- _ ] =>
+           specialize (H tid)
+         end; intuition.
+  unfold get_scache_val, get_disk_val, opt_cache_entry_val in *.
+  unfold get_s_lock, gcache_get_lock in *.
+  rewrite cache_state_as_get in *.
+  case_cache_val' (get GCache s) a;
+    case_cache_val' (get GCache s') a;
+    inv_opt;
+    eauto.
+Qed.
+
 Lemma cache_addr_readonly : forall tid a (s s':S),
     get_s_lock a s = Owned tid ->
     star (othersR cacheR tid) s s' ->
-    get_scache_val a s' = get_scache_val a s.
+    cache_get (get GCache s') a = cache_get (get GCache s) a.
 Proof.
   intros.
   eapply (star_invariant _ _ (@cache_addr_readonly' tid a));
@@ -299,26 +332,6 @@ Proof.
     intuition eauto; try congruence.
 Qed.
 
-Lemma cache_lock_owner_unchanged' : forall tid a (s s':S),
-    get_s_lock a s = Owned tid ->
-    othersR cacheR tid s s' ->
-    get_s_lock a s' = Owned tid.
-Proof.
-  unfold cacheR, othersR.
-  intros.
-  deex; specific_addr; intuition eauto.
-Qed.
-
-Lemma cache_lock_owner_unchanged : forall tid a (s s':S),
-    get_s_lock a s = Owned tid ->
-    star (othersR cacheR tid) s s' ->
-    get_s_lock a s' = Owned tid.
-Proof.
-  intros.
-  eapply (star_invariant _ _ (@cache_lock_owner_unchanged' tid a));
-    intuition eauto; try congruence.
-Qed.
-
 Lemma sectors_unchanged' : forall tid s s',
     othersR cacheR tid s s' ->
     same_domain (get GDisk s) (get GDisk s').
@@ -341,7 +354,7 @@ Qed.
 Lemma cache_locked_unchanged : forall tid a s s',
   get_s_lock a s = Owned tid ->
   star (othersR cacheR tid) s s' ->
-  get_scache_val a s' = get_scache_val a s /\
+  cache_get (get GCache s') a = cache_get (get GCache s) a /\
   get GDisk s' a = get GDisk s a /\
   get_s_lock a s' = Owned tid.
 Proof.
@@ -732,7 +745,7 @@ Theorem locked_AsyncRead_ok : forall a,
   {{ F v rest,
    | PRE d m s0 s: let vd := virt_disk s in
                    Inv m s d /\
-                   cache_get (get Cache m) a = None /\
+                   cache_get (get Cache m) a = Some (Invalid Locked) /\
                    vd |= F * a |-> (Valuset v rest, None) /\
                    get_s_lock a s = Owned tid /\
                    R tid s0 s
@@ -769,28 +782,20 @@ Proof.
 
   time "step" step pre (time "simplify" simplify) with finish.
 
-  match goal with
-  | [ H: star (othersR cacheR tid) ?s _ |- _ ] =>
-    assert (get GCacheL s = Owned tid) by simpl_get_set
-  end.
-  simplify; simpl_get_set in *.
-  standardize_mem_fields.
+  assert (get GDisk s2 a = Some (Valuset v rest, Some tid)).
+  (* H16 is star from a modified s to the current state s2 *)
+  eapply virt_disk_addr_readonly in H16; eauto.
+  rewrite H16.
+  simpl_get_set.
+  autorewrite with upd; auto.
 
-  rewrite H28 in H21.
-  eapply cache_pred_vd_upd in H1; eauto.
-  subst.
-  apply diskIs_split_upd; unfold diskIs; auto.
-
-  (* copied proof that produces d1 = upd d ... *)
-  match goal with
-  | [ H: star (othersR cacheR tid) ?s _ |- _ ] =>
-    assert (get GCacheL s = Owned tid) by simpl_get_set
-  end.
-  simplify; simpl_get_set in *.
-  standardize_mem_fields.
-  rewrite H28 in H21.
-  learn H1 (eapply cache_pred_vd_upd in H1; eauto).
-  subst.
+  eapply cache_addr_readonly in H16; eauto.
+  unfold get_scache_val, opt_cache_entry_val in H16.
+  simpl_get_set in H16.
+  assert (cache_get (get GCache s) a = Some (Invalid (Owned tid))).
+  (* need lemmas for using cache_eq to derive equalities from ghost
+  contents to mem contents *)
+  admit.
 
   time "step" step pre (time "simplify" simplify) with finish.
 

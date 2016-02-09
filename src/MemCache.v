@@ -242,6 +242,18 @@ Hint Resolve cache_val_get_none
   cache_val_get_clean
   cache_val_get_dirty.
 
+Lemma cache_state_as_get : forall st (c:AssocCache st) a,
+    cache_state c a =
+    match cache_get c a with
+    | Some (Clean _ s) => Some s
+    | Some (Dirty _ s) => Some s
+    | Some (Invalid s) => Some s
+    | None => None
+    end.
+Proof.
+  unfold cache_state, cache_get; auto.
+Qed.
+
 Ltac prove_cache_pred :=
   intros;
   autounfold with cache_m in *;
