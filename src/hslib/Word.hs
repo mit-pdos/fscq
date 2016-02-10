@@ -123,3 +123,9 @@ combine sz1 (W64 w1) sz2 (W64 w2) = combine sz1 (W $ fromIntegral w1) sz2 (W $ f
 instance Show Coq_word where
   show (W x) = show x
   show (W64 x) = show x
+
+instance Eq Coq_word where
+  a == b = weq 0 a b
+
+instance Ord Coq_word where
+  a <= b = (wlt_dec 0 a b) || (weq 0 a b)

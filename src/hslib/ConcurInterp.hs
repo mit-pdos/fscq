@@ -4,6 +4,7 @@ import EventCSL
 import Hlist
 import qualified Disk
 import Control.Exception as E
+import Control.Concurrent.MVar
 
 verbose :: Bool
 verbose = True
@@ -51,12 +52,20 @@ run_dcode ds tid (Assgn a v rx) = do
 run_dcode ds tid (GetTID rx) = do
   debugmsg tid $ "GetTID"
   run_dcode ds tid $ rx tid
-run_dcode ds tid (Yield rx) = do
-  debugmsg tid $ "Yield"
+run_dcode ds tid (Yield wchan rx) = do
+  debugmsg tid $ "Yield " ++ (show wchan)
+  waiter <- newMVar ()
+  Disk.register_waiter ds wchan waiter
   Disk.release_global_lock ds
-  -- XXX should we wait for a little bit?
+  _ <- takeMVar waiter
   Disk.acquire_global_lock ds
   run_dcode ds tid $ rx ()
+run_dcode ds tid (Wakeup wchan rx) = do
+  debugmsg tid $ "Wakeup " ++ (show wchan)
+  waiters <- Disk.get_waiters ds wchan
+  _ <- mapM (\waiter -> putMVar waiter ()) waiters
+  run_dcode ds tid $ rx ()
+
 run_dcode ds tid (GhostUpdate _ rx) = do
   debugmsg tid $ "GhostUpdate"
   run_dcode ds tid $ rx ()
