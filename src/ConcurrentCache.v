@@ -585,9 +585,10 @@ Hint Resolve cache_pred_clean cache_pred_clean'.
 Hint Resolve cache_pred_dirty cache_pred_dirty'.
 Hint Resolve cache_pred_stable_add.
 
-Hint Resolve cache_pred_stable_dirty_write
-             cache_pred_stable_clean_write
-             cache_pred_stable_miss_write.
+Hint Resolve cache_pred_stable_change_reader
+     cache_pred_stable_dirty_write
+     cache_pred_stable_clean_write
+     cache_pred_stable_miss_write.
 
 Lemma cache_pred_eq : forall t (c c': AssocCache t) vd vd' d d',
   cache_pred c vd d ->
@@ -850,14 +851,13 @@ Theorem locked_AsyncRead_ok : forall a,
                    R tid s0 s
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
                           Inv m' s' d' /\
-                          (* spec needs to say something about vd', which
-                          has evolved according to the relation *)
+                          (exists F', vd' |= F' * a |-> (Valuset v rest, None)) /\
                           (* not quite true, since first need a step
                             to add the reader and need a step at the
                             end to remove it, which cannot be
                             performed under othersR R *)
                           star (othersR R tid) s s' /\
-                          get Cache m' = get Cache m /\
+                          cache_get (get Cache m') a = Some (Invalid Locked) /\
                           get_s_lock a s' = Owned tid /\
                           r = v /\
                           star (R tid) s0' s'
@@ -899,22 +899,63 @@ Proof.
   eauto.
   assert (get GDisk s2 a = d1 a) by eauto using cache_miss_mem_eq.
   assert (d1 a = Some (Valuset v rest, Some tid)) by eauto.
+
   eapply addr_val_is; eauto.
 
+  (* TODO: forward chain this rather than copy it *)
+
+  assert (get GDisk s2 a = Some (Valuset v rest, Some tid)).
+  (* H16 is star from a modified s to the current state s2 *)
+  eapply virt_disk_addr_readonly in H16; eauto.
+  rewrite H16.
+  simpl_get_set.
+  autorewrite with upd; auto.
+
+  eapply cache_addr_readonly in H16; eauto.
+  unfold get_scache_val, opt_cache_entry_val in H16.
+  simpl_get_set in H16.
+  assert (cache_get (get GCache s) a = Some (Invalid (Owned tid))).
+  eauto using cache_eq_invalid.
+
+  assert (cache_get (get Cache m0) a = Some (Invalid Locked)).
+  eapply cache_eq_mem in H21; eauto; simplify.
+  eauto.
+  assert (get GDisk s2 a = d1 a) by eauto using cache_miss_mem_eq.
+  assert (d1 a = Some (Valuset v rest, Some tid)) by eauto.
+
+  (* end copy-pasted asserts *)
+
+  time "step" step pre (time "simplify" simplify) with finish.
   time "step" step pre (time "simplify" simplify) with finish.
 
-  step pre simplify with finish.
+  apply diskIs_combine_upd in H27; unfold diskIs in H27; subst.
+  eauto.
 
-  all: repeat match goal with
-         | [ H: cache_get ?c ?a = None, H': ?c' = ?c |- _ ] =>
-           learn H (rewrite <- H' in H)
-         | [ H: cache_get ?c ?a = None, H': ?c = ?c' |- _ ] =>
-           learn H (rewrite -> H' in H)
-         end.
-  all: repeat match goal with
-       | [ H: cache_get ?c _ = None, H': cache_pred ?c _ _ |- _ ] =>
-         learn that (cache_miss_mem_eq _ H' H)
-       end.
+  apply diskIs_split_upd; eauto.
+
+  (* spec needs to be updated to deal with fact that before yielding,
+  we set a reader *)
+  admit.
+
+  unfold get_s_lock in *.
+  simplify.
+  unfold gcache_get_lock.
+  rewrite cache_state_as_get.
+  simplify.
+
+  eapply star_one_step.
+  eapply cache_relation_preserved; eauto.
+  solve_modified.
+  unfold cacheR; simplify; eauto.
+  unfold get_scache_val; simplify.
+  unfold get_disk_val; simplify.
+  distinguish_addresses; eauto.
+  assert (get_s_lock a0 s2 = Owned tid).
+  unfold get_s_lock, gcache_get_lock.
+  rewrite cache_state_as_get.
+  simplify.
+  congruence. (* contradiction with tid <> owner_tid *)
+  autorewrite with upd; auto.
 Admitted.
 
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.

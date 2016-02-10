@@ -778,6 +778,18 @@ Proof.
   prove_cache_pred; rewrite_cache_get; auto.
 Qed.
 
+Lemma cache_pred_stable_change_reader : forall st (c:AssocCache st)
+  vd d a vs rdr,
+  cache_val c a = None ->
+  cache_pred c vd d ->
+  cache_pred c (upd vd a (vs, rdr)) (upd d a (vs, rdr)).
+Proof.
+  prove_cache_pred;
+    distinguish_addresses;
+    autorewrite with cache;
+    eauto.
+Qed.
+
 Lemma cache_pred_stable_upd : forall st (c:AssocCache st) d vd a vs0 v l vs' vs'' reader,
     cache_pred c vd d ->
     cache_get c a = Some (Dirty v l) ->
