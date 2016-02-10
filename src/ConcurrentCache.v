@@ -740,6 +740,105 @@ Qed.
 
 Hint Resolve lock_protocol_same_cache.
 
+Definition mem_lock cl :=
+  match cl with
+  | Owned tid => Locked
+  | NoOwner => Open
+  end.
+
+Lemma cache_state_none : forall st (c: AssocCache st) (a:addr),
+    cache_state c a = None ->
+    cache_get c a = None.
+Proof.
+  intros.
+  rewrite cache_state_as_get in H.
+  case_cache_val.
+Qed.
+
+Lemma cache_val_as_get : forall st (c: AssocCache st) (a:addr),
+    cache_val c a =
+    match cache_get c a with
+    | Some (Clean v _) => Some v
+    | Some (Dirty v _) => Some v
+    | _ => None
+    end.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma ghost_lock_invariant_functional : forall l gl,
+    ghost_lock_invariant l gl ->
+    l = mem_lock gl.
+Proof.
+  unfold mem_lock.
+  inversion 1; subst; congruence.
+Qed.
+
+Theorem cache_eq_mem : forall c c' (a:addr) oce,
+    cache_eq ghost_lock_invariant c c' ->
+    cache_get c' a = oce ->
+    cache_get c a =
+    match oce with
+    | Some (Clean v s) =>
+      Some (Clean v (mem_lock s))
+    | Some (Dirty v s) =>
+      Some (Dirty v (mem_lock s))
+    | Some (Invalid s) =>
+      Some (Invalid (mem_lock s))
+    | None => None
+    end.
+Proof.
+  unfold cache_eq.
+  intros; subst.
+  specific_addr; intuition.
+  inversion H;
+    try match goal with
+        | [ H: ghost_lock_invariant _ _ |- _ ] =>
+          pose proof (ghost_lock_invariant_functional H)
+        end; try inv_opt;
+    try congruence.
+Qed.
+
+Lemma cache_eq_open : forall c c' (a:addr),
+    cache_eq ghost_lock_invariant c c' ->
+    cache_state c' a = Some NoOwner ->
+    cache_state c a = Some Open.
+Proof.
+  intros.
+  eapply cache_eq_mem with (a := a) in H; eauto.
+  rewrite cache_state_as_get in *.
+  case_cache_val' c' a;
+    inv_opt; cbn;
+    congruence.
+Qed.
+
+Lemma cache_eq_invalid : forall c c' (a:addr) tid,
+    cache_eq ghost_lock_invariant c c' ->
+    gcache_get_lock c' a = Owned tid ->
+    cache_get c a = Some (Invalid Locked) ->
+    cache_get c' a = Some (Invalid (Owned tid)).
+Proof.
+  unfold gcache_get_lock.
+  intros.
+  rewrite cache_state_as_get in *.
+  case_cache_val;
+    eapply cache_eq_mem with (a := a) in H;
+    eauto;
+    subst; congruence.
+Qed.
+
+Hint Resolve diskIs_same.
+
+Lemma addr_val_is : forall AT AEQ V (m: @mem AT AEQ V) a v,
+    m a = Some v ->
+    (diskIs (mem_except m a) * a |-> v)%pred m.
+Proof.
+  intros.
+  eapply diskIs_combine_same'; eauto.
+Qed.
+
+Hint Resolve addr_val_is.
+
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ F v rest,
@@ -793,22 +892,18 @@ Proof.
   unfold get_scache_val, opt_cache_entry_val in H16.
   simpl_get_set in H16.
   assert (cache_get (get GCache s) a = Some (Invalid (Owned tid))).
-  (* need lemmas for using cache_eq to derive equalities from ghost
-  contents to mem contents *)
-  admit.
+  eauto using cache_eq_invalid.
+
+  assert (cache_get (get Cache m0) a = Some (Invalid Locked)).
+  eapply cache_eq_mem in H21; eauto; simplify.
+  eauto.
+  assert (get GDisk s2 a = d1 a) by eauto using cache_miss_mem_eq.
+  assert (d1 a = Some (Valuset v rest, Some tid)) by eauto.
+  eapply addr_val_is; eauto.
 
   time "step" step pre (time "simplify" simplify) with finish.
 
-  step pre simplify with idtac.
-  (* BUG: finish gives "Conversion test raised an anomaly" *)
-  rewrite H28.
-  autorewrite with upd.
-  solve_global_transitions; eauto;
-  try solve_modified;
-  try congruence.
-  assert (d1 = upd d a (Valuset v rest, None)).
-  eapply diskIs_combine_upd in H1; eauto.
-  subst.
+  step pre simplify with finish.
 
   all: repeat match goal with
          | [ H: cache_get ?c ?a = None, H': ?c' = ?c |- _ ] =>
@@ -820,28 +915,6 @@ Proof.
        | [ H: cache_get ?c _ = None, H': cache_pred ?c _ _ |- _ ] =>
          learn that (cache_miss_mem_eq _ H' H)
        end.
-  assert (d a = Some (Valuset v rest, None)) by auto.
-  autorewrite with upd.
-  eauto.
-
-  rewrite H28.
-  autorewrite with upd; now auto.
-  rewrite H28.
-  autorewrite with upd.
-  (* relation between s and s'; theorem statement is currently
-  broken *)
-  admit.
-
-  rewrite H28.
-  autorewrite with upd.
-  eapply star_one_step.
-  finish.
-  case_eq (weq a0 a); intros; subst; eauto.
-  eexists; eauto.
-  eapply equal_f in H28.
-  rewrite H47 in H28.
-  autorewrite with upd in H28.
-  eauto.
 Admitted.
 
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.

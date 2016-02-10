@@ -75,6 +75,29 @@ Proof.
   inversion 1; congruence.
 Qed.
 
+Lemma ghost_lock_free : forall lvar glvar,
+    ghost_lock_invariant lvar glvar ->
+    glvar = NoOwner ->
+    lvar = Open.
+Proof.
+  inversion 1; congruence.
+Qed.
+
+Lemma mem_lock_owned : forall lvar glvar,
+    ghost_lock_invariant lvar glvar ->
+    lvar = Locked ->
+    exists tid, glvar = Owned tid.
+Proof.
+  inversion 1; try congruence; eauto.
+Qed.
+
+Lemma mem_lock_free : forall lvar glvar,
+    ghost_lock_invariant lvar glvar ->
+    lvar = Open ->
+    glvar = NoOwner.
+Proof.
+  inversion 1; congruence.
+Qed.
 
 Theorem lock_inv_still_held : forall lvar tid tid' s s',
   lock_protocol lvar tid' s s' ->

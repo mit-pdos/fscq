@@ -107,10 +107,19 @@ Inductive opt_R A B (R : A -> B -> Prop) : option A -> option B -> Prop :=
 
 Hint Constructors opt_R.
 
+Inductive cache_addr_eq st st' (st_eq: st -> st' -> Prop) :
+  option (cache_entry st) ->
+  option (cache_entry st') -> Prop :=
+| addr_clean : forall v s s', st_eq s s' -> cache_addr_eq st_eq (Some (Clean v s)) (Some (Clean v s'))
+| addr_dirty : forall v s s', st_eq s s' -> cache_addr_eq st_eq (Some (Dirty v s)) (Some (Dirty v s'))
+| addr_invalid : forall s s', st_eq s s' -> cache_addr_eq st_eq (Some (Invalid s)) (Some (Invalid s'))
+| addr_none : cache_addr_eq st_eq None None.
+
+Hint Constructors cache_addr_eq.
+
 Definition cache_eq st st' (st_eq: st -> st' -> Prop)
   (c:AssocCache st) (c':AssocCache st') :=
-  (forall a:addr, cache_val c a = cache_val c' a /\
-                  opt_R st_eq (cache_state c a) (cache_state c' a)).
+  forall a:addr, cache_addr_eq st_eq (cache_get c a) (cache_get c' a).
 
 Ltac replace_cache_vals :=
   repeat
@@ -482,11 +491,21 @@ Hint Rewrite map_raw_add_neq_o using (now auto): cache.
 Hint Rewrite map_raw_remove_eq_o using (now auto): cache.
 Hint Rewrite map_raw_remove_neq_o using (now auto): cache.
 
+Ltac case_cache_val' c a :=
+  case_eq (cache_get c a); intros;
+  try lazymatch goal with
+      | [ ce: cache_entry _ |- _ ] =>
+        destruct ce
+      end;
+  replace_cache_vals;
+  (* especially to remove impossible cases *)
+  try congruence.
+
 Remark cache_eq_refl : forall st (c:AssocCache st),
   cache_eq eq c c.
 Proof.
   unfold cache_eq; intuition.
-  case_eq (cache_state c a); auto.
+  case_cache_val' c a; eauto.
 Qed.
 
 Theorem cache_eq_preserved : forall st (c:AssocCache st)
@@ -503,15 +522,8 @@ Proof.
     end; intuition.
 
   distinguish_addresses;
-  unfold cache_val, cache_add;
-    repeat rewrite MapFacts.add_eq_o by auto;
-    repeat rewrite MapFacts.add_neq_o by auto;
-    auto.
-
-  distinguish_addresses;
-  unfold cache_state, cache_add;
-    repeat rewrite MapFacts.add_eq_o by auto;
-    repeat rewrite MapFacts.add_neq_o by auto;
+    repeat rewrite map_raw_add_neq_o by auto;
+    repeat rewrite map_raw_add_eq_o by auto;
     auto.
 Qed.
 
@@ -541,16 +553,6 @@ Ltac learn_disk_val :=
       let rest := fresh "rest" in
       edestruct (cache_pred_eq_disk a Hget Hpred) as [rest ?]
   end.
-
-Ltac case_cache_val' c a :=
-  case_eq (cache_get c a); intros;
-  try lazymatch goal with
-      | [ ce: cache_entry _ |- _ ] =>
-        destruct ce
-      end;
-  replace_cache_vals;
-  (* especially to remove impossible cases *)
-  try congruence.
 
 Ltac case_cache_val :=
   lazymatch goal with
