@@ -360,7 +360,7 @@ Theorem wait_for_ok : forall Mcontents Scontents
      | POST d' m' s0' s' r:
        Inv m' s' d' /\
        test (get v m') = true /\
-       star (StateRany R) s0 s0' /\
+       star (othersR R tid) s s' /\
        R tid s0' s'
     }} wait_for v test wchan.
 Proof.
@@ -414,7 +414,7 @@ Proof.
     econstructor. eexists; eauto.
     eapply star_trans; [| eauto ].
     eapply star_impl; [| eauto ].
-    apply StateR'_any.
+    unfold StateR'; auto.
 
   - inv_fail_step.
   - inv_prog.
@@ -442,8 +442,6 @@ Definition AcquireLock (Mcontents Scontents : list Type) (T : Type)
   Assgn l Locked;;
   rx tt.
 
-(* XXX where's R_trans? *)
-
 Theorem AcquireLock_ok : forall Mcontents Scontents
                         (R: ID -> Relation Scontents)
                         (Inv: Invariant Mcontents Scontents)
@@ -456,20 +454,16 @@ Theorem AcquireLock_ok : forall Mcontents Scontents
        R tid s0 s
      | POST d' m'' s0' s'' _:
        exists m' s',
-       star (StateRany R) s0 s0' /\
-       R tid s0' s' /\
+       star (othersR R tid) s s' /\
        d' |= Inv m' s' /\
        m'' = set l Locked m' /\
        s'' = up tid s' /\
+       R tid s0' s' /\
        get l m'' = Locked
     }} AcquireLock l up wchan.
 Proof.
   hoare.
-  do 2 eexists.
-  split. eauto.
-  split. eauto.
-  split. eauto.
-  intuition.
+  repeat eexists; eauto.
   rewrite get_set; auto.
 Qed.
 

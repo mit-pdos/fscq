@@ -1017,10 +1017,9 @@ Proof.
   time "hoare" hoare pre (simplify;
     time "standardize_mem_fields" standardize_mem_fields) with
   finish.
-  eapply chain_trans; finish.
-Qed.
+Abort.
 
-Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
+(* Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok. *)
 
 Definition cache_lock {T} a rx : prog _ _ T :=
   tid <- GetTID;
