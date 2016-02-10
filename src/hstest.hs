@@ -45,7 +45,7 @@ testprog :: Disk.DiskState -> Int -> IO ()
 testprog ds tid = do
   _ <- I.run ds tid $
     \done -> EventCSL.StartRead (natToWord 64 tid) $
-    \_ -> EventCSL.Yield (natToWord 64 0) $
+    \_ -> EventCSL.Yield (natToWord 64 123) $
     \_ -> EventCSL.FinishRead (natToWord 64 tid) $
     \val -> EventCSL.Write (natToWord 64 (tid+1)) val $
     done

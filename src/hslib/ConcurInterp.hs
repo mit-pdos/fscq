@@ -54,7 +54,7 @@ run_dcode ds tid (GetTID rx) = do
   run_dcode ds tid $ rx tid
 run_dcode ds tid (Yield wchan rx) = do
   debugmsg tid $ "Yield " ++ (show wchan)
-  waiter <- newMVar ()
+  waiter <- newEmptyMVar
   Disk.register_waiter ds wchan waiter
   Disk.release_global_lock ds
   _ <- takeMVar waiter
