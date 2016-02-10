@@ -236,14 +236,14 @@ Hint Extern 1 {{StartRead_upd _; _}} => apply StartRead_upd_ok : prog.
 Section WaitForCombinator.
 
 CoFixpoint wait_for {T} {Mcontents} {Scontents}
-           tv (v: var Mcontents tv) (test: tv -> bool)
+           tv (v: var Mcontents tv) (test: tv -> bool) (wchan: addr)
   rx : prog Mcontents Scontents T :=
   val <- Get v;
   If (bool_dec (test val) true) {
     rx tt
   } else {
-    Yield;;
-    wait_for v test rx
+    Yield wchan;;
+    wait_for v test wchan rx
   }.
 
 (* dummy function that will trigger computation of cofix *)
@@ -256,7 +256,8 @@ Definition prog_frob Mcontents Scontents T (p: prog Mcontents Scontents T) :=
   | Get v rx => Get v rx
   | Assgn v val rx => Assgn v val rx
   | GetTID rx => GetTID rx
-  | Yield rx => Yield rx
+  | Yield wchan rx => Yield wchan rx
+  | Wakeup wchan rx => Wakeup wchan rx
   | GhostUpdate update rx => GhostUpdate update rx
   | Done _ _ v => Done _ _ v
   end.
@@ -268,16 +269,16 @@ Proof.
 Qed.
 
 Theorem wait_for_expand : forall Mcontents Scontents T
-                               tv (v: var Mcontents tv) test
+                               tv (v: var Mcontents tv) test wchan
                                (rx : _ -> prog Mcontents Scontents T),
-    wait_for v test rx =
+    wait_for v test wchan rx =
     val <- Get v;
     If (bool_dec (test val) true) {
-         rx tt
-       } else {
-    Yield;;
-         wait_for v test rx
-  }.
+        rx tt
+    } else {
+        Yield wchan;;
+        wait_for v test wchan rx
+    }.
 Proof.
   intros.
   match goal with
@@ -349,7 +350,7 @@ Hint Constructors exec.
 Theorem wait_for_ok : forall Mcontents Scontents
                         (R: ID -> Relation Scontents)
                         (Inv: Invariant Mcontents Scontents)
-                        tv (v: var Mcontents tv) test
+                        tv (v: var Mcontents tv) test wchan
                         (R_stutter: forall tid s, R tid s s),
   (Build_transitions R Inv) TID: tid |-
     {{ (_:unit),
@@ -361,7 +362,7 @@ Theorem wait_for_ok : forall Mcontents Scontents
        test (get v m') = true /\
        star (StateRany R) s0 s0' /\
        R tid s0' s'
-    }} wait_for v test.
+    }} wait_for v test wchan.
 Proof.
   intros; cbn.
   unfold valid.
@@ -421,7 +422,7 @@ Qed.
 
 End WaitForCombinator.
 
-Hint Extern 1 {{ wait_for _ _; _ }} => apply wait_for_ok : prog.
+Hint Extern 1 {{ wait_for _ _ _; _ }} => apply wait_for_ok : prog.
 
 
 Definition is_unlocked (flag : BusyFlag) : bool :=
@@ -433,8 +434,9 @@ Definition is_unlocked (flag : BusyFlag) : bool :=
 Definition AcquireLock (Mcontents Scontents : list Type) (T : Type)
                        (l : var Mcontents BusyFlag)
                        (lock_ghost : ID -> S Scontents -> S Scontents)
+                       (wchan : addr)
                        (rx : unit -> prog Mcontents Scontents T) :=
-  wait_for l is_unlocked;;
+  wait_for l is_unlocked wchan;;
   tid <- GetTID;
   GhostUpdate (lock_ghost tid);;
   Assgn l Locked;;
@@ -446,7 +448,7 @@ Theorem AcquireLock_ok : forall Mcontents Scontents
                         (R: ID -> Relation Scontents)
                         (Inv: Invariant Mcontents Scontents)
                         (R_trans : forall tid s1 s2, star (R tid) s1 s2 -> R tid s1 s2)
-                        l up,
+                        l up wchan,
   (Build_transitions R Inv) TID: tid |-
     {{ (_:unit),
      | PRE d m s0 s:
@@ -460,7 +462,7 @@ Theorem AcquireLock_ok : forall Mcontents Scontents
        m'' = set l Locked m' /\
        s'' = up tid s' /\
        get l m'' = Locked
-    }} AcquireLock l up.
+    }} AcquireLock l up wchan.
 Proof.
   hoare.
   do 2 eexists.
@@ -471,4 +473,4 @@ Proof.
   rewrite get_set; auto.
 Qed.
 
-Hint Extern 1 {{ AcquireLock _ _; _ }} => apply AcquireLock_ok : prog.
+Hint Extern 1 {{ AcquireLock _ _ _; _ }} => apply AcquireLock_ok : prog.

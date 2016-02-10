@@ -707,7 +707,7 @@ Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
                             end in
                  set GDisk vd' s);;
   StartRead a;;
-            Yield;;
+            Yield a;;
             v <- FinishRead a;
   GhostUpdate (fun s =>
                  let vd := get GDisk s in
@@ -1028,7 +1028,7 @@ Definition cache_lock {T} a rx : prog _ _ T :=
     match mcache_get_lock c a with
     | Open => true
     | Locked => false
-    end);;
+    end) a;;
   c <- Get Cache;
   GhostUpdate (fun s:S =>
     let vc := get GCache s in
@@ -1069,6 +1069,7 @@ Definition cache_unlock {T} a rx : prog _ _ T :=
     set GCache vc' s);;
   let c' := cache_set_state c a Open in
   Assgn Cache c';;
+  Wakeup a;;
   rx tt.
 
 Theorem cache_unlock_ok : forall a,

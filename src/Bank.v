@@ -213,7 +213,7 @@ Section Bank.
   Hint Extern 1 {{ transfer _; _ }} => apply transfer_ok : prog.
 
   Definition transfer_yield {T} amount rx : prog _ _ T :=
-    transfer amount;; GhostUpdate (record_transfer amount);; Yield;; rx tt.
+    transfer amount;; GhostUpdate (record_transfer amount);; Yield $0;; rx tt.
 
   Lemma pimpl_and_l : forall AT AEQ V (p q r: @pred AT AEQ V),
     p =p=> r -> p /\ q =p=> r.

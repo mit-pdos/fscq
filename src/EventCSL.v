@@ -108,7 +108,8 @@ Section EventCSL.
   | Get t (v: var Mcontents t) (rx: t -> prog)
   | Assgn t (v: var Mcontents t) (val:t) (rx: unit -> prog)
   | GetTID (rx: ID -> prog)
-  | Yield (rx: unit -> prog)
+  | Yield (wchan: addr) (rx: unit -> prog)
+  | Wakeup (wchan: addr) (rx: unit -> prog)
   | GhostUpdate (up: S -> S) (rx: unit -> prog)
   | Done (v: T).
 
@@ -170,13 +171,16 @@ Section EventCSL.
       let d' := upd d a (synced vs0, reader) in
       tid :- Sync a rx / (d, m, s0, s) ==>
           rx tt / (d', m, s0, s)
-  | StepYield : forall d m s0 s s' m' d' rx,
+  | StepYield : forall d m s0 s s' m' d' wchan rx,
       StateI m s d ->
       StateI m' s' d' ->
       StateR tid s0 s ->
       star (StateR' tid) s s' ->
-      tid :- Yield rx / (d, m, s0, s) ==>
+      tid :- Yield wchan rx / (d, m, s0, s) ==>
           rx tt / (d', m', s', s')
+  | StepWakeup : forall d m s0 s wchan rx,
+      tid :- Wakeup wchan rx / (d, m, s0, s) ==>
+          rx tt / (d, m, s0, s)
   | StepGhostUpdate : forall d m s0 s up rx,
       let s' := up s in
       tid :- GhostUpdate up rx / (d, m, s0, s) ==>
@@ -208,9 +212,9 @@ Section EventCSL.
   | FailStepWriteMissing : forall a v d m s0 s rx,
       d a = None ->
       fail_step tid (Write a v rx) (d, m, s0, s)
-  | FailStepYield : forall d m s0 s rx,
+  | FailStepYield : forall d m s0 s wchan rx,
       (~StateI m s d) ->
-      fail_step tid (Yield rx) (d, m, s0, s).
+      fail_step tid (Yield wchan rx) (d, m, s0, s).
 
   Hint Constructors step fail_step.
 
@@ -241,8 +245,8 @@ Section EventCSL.
   believe this is important since some other thread must have crashed during
   execution and we can use its crash condition. *)
   Inductive yieldProg : forall p, Prop :=
-  | YieldProgYield : forall rx,
-    yieldProg (Yield rx).
+  | YieldProgYield : forall wchan rx,
+    yieldProg (Yield wchan rx).
 
   Inductive exec tid : forall st p (out:outcome), Prop :=
   | ExecStep : forall st p st' p' out,
@@ -621,14 +625,14 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem Yield_ok :
+  Theorem Yield_ok : forall wchan,
     tid |- {{ (_:unit),
            | PRE d m s0 s: d |= StateI m s /\
                            StateR tid s0 s
            | POST d' m' s0' s' _: d' |= StateI m' s' /\
                                   s0' = s' /\
                                   star (StateR' tid) s s'
-    }} Yield.
+    }} Yield wchan.
   Proof.
     opcode_ok.
   Qed.
@@ -846,9 +850,8 @@ Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
                               (at level 60, right associativity).
 
-(* maximally insert the return/state types for Yield/GetTID, which are always called
+(* maximally insert the return/state types for GetTID, which is always called
    without applying them to any arguments *)
-Arguments Yield {Mcontents} {Scontents} {T} rx.
 Arguments GetTID {Mcontents} {Scontents} {T} rx.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
