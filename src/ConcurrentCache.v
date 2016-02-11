@@ -251,7 +251,7 @@ Theorem cacheR_trans_closed : forall tid (s s':S),
   cacheR tid s s'.
 Proof.
   intros.
-  apply trans_closed; intros;
+  apply trans_closed_from_refl_trans; intros;
     eauto using cacheR_stutter, cacheR_trans.
 Qed.
 

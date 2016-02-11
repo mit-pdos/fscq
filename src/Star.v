@@ -159,7 +159,12 @@ Proof.
   induction H; intuition eauto.
 Qed.
 
-Theorem trans_closed : forall A (R: relation A) s s'
+Section TransClosure.
+
+(* reflexivity and transitivity are a perfect characterization of a
+relation being its own transitive closure *)
+
+Lemma trans_closed_from_refl_trans : forall A (R: relation A) s s'
   (R_refl: forall s, R s s)
   (R_trans: forall s s' s'', R s s' -> R s' s'' -> R s s''),
   star R s s' -> R s s'.
@@ -167,3 +172,24 @@ Proof.
   intros.
   induction H; eauto.
 Qed.
+
+Lemma refl_trans_from_trans_closed : forall A (R: relation A),
+    (forall s s', star R s s' -> R s s') ->
+    (forall s, R s s) /\
+    (forall s s' s'', R s s' -> R s' s'' -> R s s'').
+Proof.
+  intuition eauto.
+Qed.
+
+Theorem trans_closed : forall A (R: relation A),
+    ((forall s, R s s) /\ (forall s s' s'', R s s' -> R s' s'' -> R s s'')) <->
+    (forall s s', star R s s' <-> R s s').
+Proof.
+  intuition.
+  - induction H; eauto.
+  - eauto.
+  - eapply H; eauto.
+  - eapply H; eauto.
+Qed.
+
+End TransClosure.
