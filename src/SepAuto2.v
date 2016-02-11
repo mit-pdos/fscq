@@ -852,7 +852,7 @@ Ltac destruct_branch :=
   | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
   end.
 
-Ltac step_with' unfolder t intuition_t :=
+Ltac step_with' unfolder t t2 intuition_t :=
   intros;
   try (unfolder; cancel);
   repeat destruct_branch;
@@ -872,16 +872,16 @@ Ltac step_with' unfolder t intuition_t :=
         try ( progress autorewrite_fast ; cancel_with' t intuition_t ) );
   apply_xform cancel;
   try cancel_with' t intuition_t; try autorewrite_fast;
-  intuition eauto;
+  intuition t2;
   try omega;
   try congruence;
   try t.
 
-Ltac step_with unfolder t := step_with' unfolder t auto.
+Ltac step_with unfolder t := step_with' unfolder t eauto auto.
 Ltac step_unfold unfolder := step_with unfolder eauto.
 
 Ltac step := step_unfold idtac.
-Ltac step_idtac := step_with' idtac idtac idtac.
+Ltac step_idtac := step_with' idtac idtac idtac idtac.
 
 Ltac hoare := repeat step.
 Ltac hoare_unfold unfolder := unfolder; repeat (step_unfold unfolder).
