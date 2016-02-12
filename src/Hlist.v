@@ -144,7 +144,19 @@ Proof.
   rewrite IHl; auto.
 Qed.
 
+Theorem set_set : forall A B (types: list A)
+                    (l : hlist B types)
+                    (elm:A) (m: member elm types) v v',
+    set m v' (set m v l) = set m v' l.
+Proof.
+  unfold set.
+  induction l; intros; eauto; subst.
 
+  dependent destruction m;
+    cbn in *;
+    auto.
+  rewrite IHl; auto.
+Qed.
 
 Inductive HIn {A:Type} {B:A -> Type} (elt:A) (el:B elt) : forall (types:list A),
   hlist B types -> Prop :=
@@ -274,6 +286,7 @@ Hint Rewrite hmap_length : hlist.
 Hint Rewrite get_set : hlist.
 Hint Rewrite get_set_other using (cbn; solve [ auto 3 ]) : hlist.
 Hint Rewrite set_get using (cbn; solve [ auto 3 ]) : hlist.
+Hint Rewrite set_set using (cbn; solve [ auto 3 ]) : hlist.
 
 (* this is the best way to use get_set without getting into trouble *)
 Ltac simpl_get_set_goal :=
