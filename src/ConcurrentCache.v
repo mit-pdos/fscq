@@ -102,6 +102,12 @@ on the definitions directly *)
 Hint Unfold lock_protects : prog.
 Hint Unfold StateR' : prog.
 
+Definition change_reader (vd: DISK) a rdr :=
+  match vd a with
+  | Some (vs, _) => upd vd a (vs, rdr)
+  | None => vd
+  end.
+
 Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
 
   Module Transitions := CacheTransitionSystem Sem CVars.
@@ -130,6 +136,12 @@ Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
     modified stateVars s' s'' ->
     cacheR tid s' s'' ->
     R tid s s''.
+
+  Axiom relation_ignores_readers : forall tid (s s' s'': S Scontents) a rdr,
+      s' = set GDisk (change_reader (get GDisk s) a rdr) s ->
+      othersR R tid s' s'' ->
+      exists s1, othersR R tid s s1 /\
+      s'' = set GDisk (change_reader (get GDisk s1) a rdr) s1.
 
 End CacheSemantics.
 
@@ -244,6 +256,170 @@ Proof.
           specialize (H a)
         end;
   intuition eauto.
+Qed.
+
+Lemma subset_inverse : forall AT AEQ V (m m': @mem AT AEQ V) a,
+    m a = None ->
+    subset m' m ->
+    m' a = None.
+Proof.
+  unfold subset.
+  intros.
+  case_eq (m' a); intros; eauto.
+  specialize (H0 _ _ H1).
+  deex; congruence.
+Qed.
+
+Lemma same_domain_none : forall AT AEQ V (m m': @mem AT AEQ V) a,
+    m a = None ->
+    same_domain m m' ->
+    m' a = None.
+Proof.
+  unfold same_domain.
+  intuition.
+  eauto using subset_inverse.
+Qed.
+
+Lemma same_domain_remove_upd : forall AT AEQ V (m m': @mem AT AEQ V) a v v',
+    m a = Some v ->
+    same_domain (upd m a v') m' ->
+    same_domain m m'.
+Proof.
+  unfold same_domain, subset.
+  intuition; case_eq (AEQ a a0); intros; subst.
+  eapply H1; autorewrite with upd; eauto.
+  eapply H1; autorewrite with upd; eauto.
+
+  edestruct H2; eauto; autorewrite with upd in *; eauto.
+  edestruct H2; eauto; autorewrite with upd in *; eauto.
+Qed.
+
+Lemma lock_protocol_indifference : forall lvar tid (s0 s1 s0' s1': S),
+    lock_protocol lvar tid s0 s1 ->
+    lvar s0 = lvar s0' ->
+    lvar s1 = lvar s1' ->
+    lock_protocol lvar tid s0' s1'.
+Proof.
+  intros.
+  inversion H1; subst; eauto.
+Qed.
+
+Check lock_protects.
+
+Lemma lock_protects_indifference : forall lvar tv (v: _ -> tv) tid (s0 s0' s1 s1': S),
+    lock_protects lvar v tid s0 s1 ->
+    lvar s0 = lvar s0' ->
+    v s0 = v s0' ->
+    v s1 = v s1' ->
+    lock_protects lvar v tid s0' s1'.
+Proof.
+  unfold lock_protects.
+  intros.
+  rewrite H0 in *.
+  rewrite H1 in *.
+  rewrite H2 in *.
+  eauto.
+Qed.
+
+Section Variables.
+
+Ltac vars_distinct :=
+  repeat rewrite member_index_eq_var_index;
+  repeat match goal with
+  | [ |- context[var_index ?v] ] => unfold v
+  end;
+  repeat erewrite get_hmap; cbn;
+  apply NoDup_get_neq with (def := 0); eauto;
+    autorewrite with hlist;
+    cbn; omega.
+
+Lemma GCache_neq_GDisk :
+  member_index GCache <> member_index GDisk.
+Proof.
+  vars_distinct.
+Qed.
+
+End Variables.
+
+Hint Immediate GCache_neq_GDisk.
+
+Hint Resolve not_eq_sym.
+
+Lemma cacheR_ignores_readers : forall tid (s s' s'':S) a rdr,
+    s' = set GDisk (change_reader (get GDisk s) a rdr) s ->
+    othersR cacheR tid s' s'' ->
+    exists s1, othersR cacheR tid s s1 /\
+          s'' = set GDisk (change_reader (get GDisk s1) a rdr) s1.
+Proof.
+  unfold change_reader, othersR, cacheR.
+  intros.
+  case_eq (get GDisk s a); intros.
+  - match goal with
+    | [ w: wr_set |- _ ] => destruct w
+    end.
+    deex.
+    repeat simpl_match.
+    simpl_get_set in *.
+    exists (set GDisk (change_reader (get GDisk s'') a o) s'').
+    unfold change_reader; simpl_get_set.
+    intuition.
+    eexists; intuition eauto.
+    * simpl_get_set.
+      eapply same_domain_remove_upd in H0; eauto.
+      case_eq (get GDisk s'' a); intros; eauto.
+      destruct w.
+      eauto using same_domain_trans, same_domain_upd.
+    * specialize (H4 a0); intuition.
+      eapply lock_protocol_indifference; eauto;
+      unfold get_s_lock, gcache_get_lock;
+      simpl_get_set.
+
+    * specialize (H4 a0); intuition.
+      unfold get_s_lock, get_scache_val in *.
+      eapply lock_protects_indifference; eauto; simpl_get_set.
+
+    * specialize (H4 a0); intuition.
+      unfold get_s_lock, get_disk_val in *.
+      unfold lock_protects; intros.
+      simpl_get_set.
+      specialize (H5 owner_tid); cbn in H5.
+      simpl_get_set in H5.
+      intuition.
+      distinguish_two_addresses a a0.
+      simpl_match; autorewrite with upd; auto.
+
+      autorewrite with upd in *.
+      case_eq (get GDisk s'' a); intros.
+      destruct w; autorewrite with upd; auto.
+      congruence.
+
+    * case_eq (get GDisk s'' a); intros;
+      try match goal with
+          | [ w: wr_set |- _ ] => destruct w
+          end;
+      simpl_get_set.
+      rewrite set_get; auto.
+      destruct matches; subst;
+      autorewrite with upd in *;
+      inv_opt.
+      eapply upd_same.
+
+      admit. (* seem to have lost a rdr; perhaps cache relation needs to say something about readers *)
+
+      assert (exists v, get GDisk s'' a = Some v).
+      eapply H0; autorewrite with upd; eauto.
+      deex; congruence.
+
+  - simpl_match.
+    simpl_get_set in H.
+    subst.
+    deex.
+    eexists; intuition eauto.
+    rewrite set_get; auto.
+    destruct matches.
+
+    eapply same_domain_none in H; eauto.
+    congruence.
 Qed.
 
 Theorem cacheR_trans_closed : forall tid (s s':S),
@@ -377,29 +553,6 @@ Ltac sectors_unchanged := match goal with
                             learn that (sectors_unchanged H)
                           end.
 
-Section Variables.
-
-Ltac vars_distinct :=
-  repeat rewrite member_index_eq_var_index;
-  repeat match goal with
-  | [ |- context[var_index ?v] ] => unfold v
-  end;
-  repeat erewrite get_hmap; cbn;
-  apply NoDup_get_neq with (def := 0); eauto;
-    autorewrite with hlist;
-    cbn; omega.
-
-Lemma GCache_neq_GDisk :
-  member_index GCache <> member_index GDisk.
-Proof.
-  vars_distinct.
-Qed.
-
-End Variables.
-
-Hint Immediate GCache_neq_GDisk.
-
-Hint Resolve not_eq_sym.
 
 Hint Unfold GCache GDisk Cache : modified.
 Hint Resolve modified_nothing one_more_modified modified_single_var : modified.
