@@ -13,325 +13,185 @@ Require Import GenSep.
 
 Set Implicit Arguments.
 
-
-Definition DataStart : addr := $0.
-Definition HashStart : addr := $1.
-Definition Interval : addr := $2.
+Definition PreviousHash : addr := $0.
+Definition NextHash : addr := $1.
+Definition DataStart : addr := $2.
 Parameter maxlen : addr.
 
 Definition list_prefix A (p l : list A) :=
   firstn (length p) l = p.
 
-Definition list_suffix_repeat A (p l : list A) x :=
-  skipn (length p) l = repeat x (length l - length p).
+Definition log_rep_prefix h vl vdisk len hm :=
+  list_prefix vl vdisk /\
+  hash_list_rep (rev vl) h hm /\
+  length vdisk = len.
 
-(* TODO: Probably need something about how the next hash block on disk
-  doesn't match the current values. *)
-Definition log_rep vl hl (log_pointer : addr) hm vdisk hdisk :
+Definition log_rep vl vl' (log_pointer : addr) hm vdisk :
   @pred addr (@weq addrlen) valuset :=
-  (exists unsynced_data unsynced_hashes,
-    [[ length vdisk = # (maxlen) /\ length hdisk = # (maxlen) ]] *
-    [[ length vl = # (log_pointer) /\ length hl = # (log_pointer) ]] *
-    [[ list_prefix (rev vl) vdisk /\ list_prefix (rev hl) hdisk /\
-        list_suffix_repeat hl hdisk default_hash ]] *
-    array DataStart (combine vdisk unsynced_data) Interval *
-    [[ length unsynced_data = length vdisk ]] *
-    array HashStart (combine (map hash_to_valu hdisk)
-                              unsynced_hashes) Interval *
-    [[ length unsynced_hashes = length hdisk ]] *
-    [[ hash_list_prefixes vl hl hm ]]
+  (exists h h',
+    [[ log_rep_prefix h vl vl' # (log_pointer) hm ]] *
+    [[ log_rep_prefix h' vl' vdisk # (maxlen) hm ]] *
+    PreviousHash |-> (hash_to_valu h, nil) *
+    NextHash |-> (hash_to_valu h', nil) *
+    array DataStart (combine vdisk (repeat nil # (maxlen))) $1
   )%pred.
 
-Definition log_rep' vl hl log_pointer hm cs d : pred :=
+(* What the rep *should* be after crash. *)
+Definition log_rep_part vl hm vdisk :
+  @pred addr (@weq addrlen) valuset :=
+  (exists h h',
+    [[ log_rep_prefix h vl vdisk # (maxlen) hm ]] *
+    PreviousHash |-> (hash_to_valu h, nil) *
+    NextHash |-> (hash_to_valu h', nil) *
+    array DataStart (combine vdisk (repeat nil # (maxlen))) $1
+  )%pred.
+
+Definition log_rep' vl vl' log_pointer hm cs d : pred :=
   BUFCACHE.rep cs d *
-  [[ (exists vdisk hdisk, log_rep vl hl log_pointer hm vdisk hdisk)%pred d ]].
+  [[ (exists vdisk, log_rep vl vl' log_pointer hm vdisk)%pred d ]].
+
+(**
+* - PreviousHash must be equal to either the previous hash, the next
+    hash, or the newest hash (hash of the value appended)
+  - PreviousHash must point to a hash that matches some prefix of
+    the current disk.
+* - NextHash can point to anything, as long as it's a hash value.
+* - Disk can have original log data, with possibility of log_pointer
+    position unsynced (only happens when when log_pointer hasn't been
+    incremented yet)
+**)
+Definition crep vl vl' (log_pointer : addr) hm vdisk :
+  @pred addr (@weq addrlen) valuset :=
+  (exists h h' unsynced_data,
+    [[ log_rep_prefix h vl vl' # (log_pointer) hm ]] *
+    [[ log_rep_prefix h' vl' vdisk # (maxlen) hm ]] *
+    (PreviousHash |-> (hash_to_valu h, nil) \/
+      PreviousHash |-> (hash_to_valu h', hash_to_valu h :: nil) \/
+      PreviousHash |-> (hash_to_valu h', nil)) *
+    (exists h' h'', NextHash |-> (hash_to_valu h'', nil) \/
+      NextHash |-> (hash_to_valu h'', hash_to_valu h' :: nil)) *
+    (array DataStart (combine vdisk
+        (upd (repeat nil # (maxlen)) log_pointer unsynced_data)) $1)
+  )%pred.
 
 Definition read T i (log_pointer : addr) cs rx : prog T :=
-  let^ (cs, v) <- BUFCACHE.read_array DataStart i Interval cs;
+  let^ (cs, v) <- BUFCACHE.read_array DataStart i $1 cs;
   rx ^(cs, log_pointer, v).
 
 Definition append T v log_pointer cs rx : prog T :=
-  let^ (cs, h) <- IfRx irx (weq log_pointer $0) {
-    h <- Hash default_valu;
-    irx ^(cs, h)
-  } else {
-    let^ (cs, h) <- BUFCACHE.read_array HashStart (log_pointer ^- $1) Interval cs;
-    irx ^(cs, valu_to_hash h)
-  };
-  h <- Hash (Word.combine v h);
-  cs <- BUFCACHE.write_array DataStart log_pointer Interval v cs;
-  cs <- BUFCACHE.write_array HashStart log_pointer Interval (hash_to_valu h) cs;
+  let^ (cs, h') <- BUFCACHE.read NextHash cs;
+  h'' <- Hash (Word.combine v (valu_to_hash h'));
+  cs <- BUFCACHE.write_array DataStart log_pointer $1 v cs;
+  cs <- BUFCACHE.write PreviousHash h' cs;
+  cs <- BUFCACHE.write NextHash (hash_to_valu h'') cs;
+  cs <- BUFCACHE.sync_array DataStart log_pointer $1 cs;
+  cs <- BUFCACHE.sync PreviousHash cs;
+  cs <- BUFCACHE.sync NextHash cs;
   rx ^(cs, log_pointer ^+ $1).
 
 Definition truncate T cs rx : prog T :=
   h <- Hash default_valu;
-  cs <- BUFCACHE.write_array HashStart $0 Interval (hash_to_valu h) cs;
+  cs <- BUFCACHE.write PreviousHash (hash_to_valu h) cs;
+  cs <- BUFCACHE.write NextHash (hash_to_valu h) cs;
+  cs <- BUFCACHE.sync PreviousHash cs;
+  cs <- BUFCACHE.sync NextHash cs;
   rx (cs, natToWord addrlen 0).
 
-
-(* Some list helpers *)
-Lemma skipn_repeat_updN : forall T (a b : T) n n' i l,
-  skipn n l = repeat a n' ->
-  i < n ->
-  skipn n (updN l i b) = repeat a n'.
-Proof.
-Admitted.
-
-
-Lemma skipn_repeat_S : forall A (l : list A) x n n',
-  skipn n l = repeat x (S n') ->
-  skipn (S n) l = repeat x n'.
-Proof.
-  induction l; intros; simpl in *.
-  destruct n; inversion H.
-
-  destruct n; inversion H; auto.
-  eapply IHl. auto.
-Qed.
-
-
 Theorem append_ok : forall log_pointer v cs,
-  {< d vl hl,
+  {< d vl vl',
   PRE:hm
     [[ # (log_pointer) < # (maxlen) ]] *
-    log_rep' vl hl log_pointer hm cs d
+    log_rep' vl vl' log_pointer hm cs d
   POST:hm' RET:^(cs', log_pointer')
-    exists d' h,
-      log_rep' (v :: vl) (h :: hl) log_pointer' hm' cs' d'
+    exists d',
+      log_rep' vl' (vl' ++ v :: nil) log_pointer' hm' cs' d'
   CRASH:hm'
-    exists cs' d',
-      (log_rep' vl hl log_pointer hm' cs' d' \/
-       exists h,
-         log_rep' (v :: vl) (h :: hl) (log_pointer ^+ $1) hm' cs' d')
+    exists cs' d' vdisk, BUFCACHE.rep cs' d' *
+      (crep vl vl' log_pointer hm' vdisk \/
+        crep vl' (vl' ++ v :: nil) (log_pointer ^+ $1) hm' vdisk)
   >} append v log_pointer cs.
 Proof.
-  unfold append, log_rep', log_rep.
+  unfold append, log_rep', log_rep, log_rep_prefix.
   step.
-  - step.
-    assert (Hl3nil: l3 = nil). apply length_nil; auto.
-    assert (Hl4nil: l4 = nil). apply length_nil; auto.
-    rewrite Hl3nil, Hl4nil in *. clear Hl3nil Hl4nil l3 l4.
-    step.
-    step.
-    rewrite combine_length.
-    rewrite min_r; omega.
+  pred_apply; cancel.
 
-    step_idtac; eauto.
-    pred_apply; cancel_with eauto.
-    rewrite combine_length, map_length.
-    rewrite min_r; omega.
-    Ltac cancel_log_rep :=
-    try match goal with
-      | [ |- _ * _ =p=> _ * _ ]
-          => unfold upd_prepend;
-              repeat rewrite <- combine_upd; repeat rewrite <- map_upd;
-              eauto; cancel_with eauto
-      | [ |- length _ = _ ] => repeat rewrite length_upd; omega
-      | [ |- S (S (length _)) = _ ] => erewrite wordToNat_plusone; repeat rewrite length_upd; eauto; omega
-      | [ Hlen: length ?l = ?bound, Hinv: _ < ?bound |- context[(upd ?l _ _)] ]
-        => match goal with
-            | [ H: list_prefix nil _ |- list_prefix _ (upd l _ _) ]
-              => unfold list_prefix; destruct l; rewrite <- Hlen in Hinv;
-                  solve [ inversion Hinv; reflexivity ]
-            | [ H: list_prefix _ _ |- list_prefix _ _ ]
-                  => unfold list_prefix in *;
-                    rewrite <- H at 2;
-                    repeat rewrite firstn_app_updN_eq;
-                    unfold upd;
-                    repeat rewrite app_length;
-                    repeat rewrite rev_length; try omega;
-                    try match goal with
-                      | [ H: S (length ?l) = ?len |- context[length ?l] ]
-                        => replace (length l) with (len - 1);
-                            simpl;
-                            replace (len - 1 + 1) with len;
-                            solve [ try rewrite firstn_updN; try reflexivity; try omega |
-                                    try reflexivity; try omega ]
-                    end
-            | [ H: context[list_suffix_repeat _ _ _]
-                |- context[list_suffix_repeat _ _ _] ]
-              =>  unfold list_suffix_repeat in *; destruct l; rewrite <- Hlen in Hinv;
-                  try solve [ inversion Hinv; reflexivity ];
-                  simpl; inversion H;
-                  rewrite repeat_length;
-                  rewrite <- minus_n_O; auto
-              end
-    end.
+  step.
+  step.
+  admit. (* Solvable with list_prefix length lemma *)
+  step.
+  pred_apply; cancel.
+  step.
+  pred_apply; cancel.
+  step_idtac.
+  eauto.
+  pred_apply; cancel_with eauto.
+  instantiate (a25:=(upd_prepend (combine l (repeat nil # (maxlen))) log_pointer v)); cancel.
+  admit.
 
-    step_with idtac cancel_log_rep.
+  step_idtac.
+  eauto.
+  pred_apply; cancel_with eauto.
+  step_idtac.
+  eauto.
+  pred_apply; cancel_with eauto.
 
-    constructor.
-    eapply hash_list_rep_subset; eauto.
-    eapply hash_list_rep_subset; eauto.
-    econstructor; try econstructor; eauto.
-    rewrite upd_hashmap'_eq; eauto.
-    eapply hashmap_hashes_neq.
-    apply hashmap_get_default.
-    eauto.
-    intros H'; existT_wordsz_neq H'.
-    constructor.
-
-    cancel.
-    apply pimpl_or_r; left. cancel_with cancel_log_rep.
-    repeat (eapply hash_list_prefixes_subset; eauto).
-
-    cancel.
-    apply pimpl_or_r; right. cancel_with cancel_log_rep.
-    constructor.
-    eapply hash_list_rep_subset; eauto.
-    eapply hash_list_rep_subset; eauto.
-    econstructor; try econstructor; eauto.
-    rewrite upd_hashmap'_eq; eauto.
-    eapply hashmap_hashes_neq.
-    apply hashmap_get_default.
-    eauto.
-    intros H'; existT_wordsz_neq H'.
-    constructor.
-
-    all: (cancel;
-    apply pimpl_or_r; left; cancel_with cancel_log_rep;
-    constructor).
-
-  - apply lt_wlt in H as H'.
-    step.
-    rewrite combine_length, map_length.
-    rewrite wordToNat_minus_one; auto.
-    rewrite min_r; omega.
-
-    step.
-    step.
-    rewrite combine_length.
-    rewrite min_r; omega.
-
-    inversion H7.
-    subst.
-    apply neq0_wneq0 in H18.
-    rewrite <- H5 in H18. intuition.
-
-    assert (Hlengthhl: length l4 = length hl + 1).
-      rewrite <- H19.
-      simpl.
-      omega.
-
-    assert (Hhl: sel l0 (log_pointer ^- $1) default_hash = h).
-      unfold sel.
-      erewrite <- selN_firstn.
-      unfold list_prefix in *.
-      rewrite H12.
-      unfold rev. rewrite <- H19.
-      rewrite selN_app2.
-      rewrite rev_length.
-      rewrite wordToNat_minus_one; auto.
-      rewrite <- H15.
-      rewrite Hlengthhl.
-      simpl.
-      rewrite plus_comm.
-      simpl.
-      rewrite <- minus_n_O.
-      rewrite <- minus_diag_reverse. auto.
-      all: try (rewrite rev_length;
-                rewrite wordToNat_minus_one; intuition; omega).
-
-    step_idtac;
-    clear Hlengthhl.
-
-    eauto.
-    pred_apply; cancel_with eauto.
-    rewrite combine_length, map_length.
-    rewrite min_r; omega.
-
-    step_with idtac cancel_log_rep.
-    unfold list_suffix_repeat in *.
-    simpl. rewrite length_upd. Search hl log_pointer.
-    erewrite <- repeat_updN.
-    instantiate (n := S ( S(length hl))).
-    instantiate (l := l0). simpl. eauto.
-    Search repeat.
-    pose H17 as H''.
-    apply skipn_repeat_S; auto. omega.
-
-
-    cancel.
-    apply pimpl_or_r; left. cancel_with cancel_log_rep.
-    admit.
-    cancel.
-    apply pimpl_or_r; right. cancel_with cancel_log_rep.
-    admit.
-
-    Lemma fst_sel_combine : forall A B (l1 : list A) (l2 : list B) i default,
-      fst (sel (combine l1 l2) i default) = sel l1 i (fst default).
-    Proof. Admitted.
-
-    rewrite fst_sel_combine.
-    erewrite sel_map.
-    rewrite hash2valu2hash.
-    subst; reflexivity.
-    rewrite wordToNat_minus_one; intuition; omega.
-
-    erewrite hashmap_get_subset; eauto.
-    erewrite hashmap_get_subset; eauto.
-    rewrite upd_hashmap'_eq.
+  step_idtac.
+  Lemma upd_sync_prepend : forall l i v default,
+    upd_sync (upd_prepend l i v) i default = upd l i (v, nil).
+  Proof.
+    unfold upd_sync, upd_prepend.
+    induction l; intros; simpl.
     auto.
-
-
-    Lemma fst_sel_combine : forall A B (l1 : list A) (l2 : list B) i default,
-      fst (sel (combine l1 l2) i default) = sel l1 i (fst default).
-    Proof. Admitted.
-
-    rewrite fst_sel_combine.
-    erewrite sel_map.
-    rewrite hash2valu2hash.
-    replace (length hl) with (# (log_pointer) - 1);
-    replace (# (log_pointer) - 1 + 1) with (# (log_pointer)); try omega.
-    eauto.
-    rewrite wordToNat_minus_one; auto; omega.
-
-    Search hash_list_prefixes.
-    constructor.
-    econstructor.
-    solve_hash_list_rep. reflexivity.
-
-    erewrite hashmap_get_subset; eauto.
-    erewrite hashmap_get_subset; eauto.
-    rewrite fst_sel_combine.
-    erewrite sel_map.
-    rewrite hash2valu2hash.
-    rewrite upd_hashmap'_eq.
+    unfold upd, sel in *.
+    destruct # (i) eqn:Hi; simpl.
     auto.
+    replace n with # (@natToWord addrlen n).
+    erewrite <- IHl. eauto.
+    apply wordToNat_natToWord_bound with (bound:=i).
+    omega.
+  Qed.
 
-    inversion H3.
-    unfold upd_hashmap' in *.
-    contradict H21.
-    apply upd_hashmap_neq.
-    unfold hash_safe in H29; intuition.
+  Lemma repeat_upd : forall T n i (v : T),
+    upd (repeat v n) i v = repeat v n.
+  Proof.
+    induction n; intros; simpl.
+    auto.
+    unfold upd, sel in *.
+    destruct # (i) eqn:Hi; simpl.
+    auto.
+    replace n0 with # (@natToWord addrlen n0).
+    rewrite <- IHn at 2. eauto.
+    apply wordToNat_natToWord_bound with (bound:=i).
+    omega.
+  Qed.
 
-    rewrite fst_sel_combine in H31.
-    erewrite sel_map in H31.
-    rewrite hash2valu2hash in H31.
-    rewrite H30 in H31.
-    contradict_hashmap_get_default H31 hm.
-    rewrite wordToNat_minus_one; auto; omega.
+  rewrite upd_sync_prepend.
+  rewrite <- combine_upd.
+  rewrite repeat_upd.
+  eauto.
 
-    rewrite fst_sel_combine in H31.
-    erewrite sel_map in H31.
-    rewrite hash2valu2hash in H31.
-    rewrite H30 in H31.
-    contradict_hashmap_get_default H31 hm.
-    rewrite wordToNat_minus_one; auto; omega.
-    rewrite wordToNat_minus_one; auto; omega.
+  unfold list_prefix.
+  apply firstn_app; auto.
+  solve_hash_list_rep.
+  admit.
+  admit. (* list_prefix holds for updated disk *)
 
-    constructor.
-    solve_hash_list_rep.
-    repeat (eapply hash_list_prefixes_subset; eauto).
+  rewrite rev_unit.
+  econstructor.
+  solve_hash_list_rep.
+  rewrite hash2valu2hash; auto.
+  rewrite hash2valu2hash in *.
+  eapply hashmap_get_subset.
+  rewrite upd_hashmap'_eq. eauto.
+  intuition.
+  rewrite H20 in H19.
+  unfold hash_safe in H19; intuition.
+  contradict_hashmap_get_default H22 hm0.
+  contradict_hashmap_get_default H22 hm0.
+  instantiate (Goal:=hm0).
+  solve_hashmap_subset.
 
-    cancel.
-    apply pimpl_or_r; left.
-    cancel_with cancel_log_rep.
-    Search list_prefix.
+  rewrite length_upd; auto.
 
-    cancel.
-    cancel.
-
-    Grab Existential Variables.
-    all: eauto.
-Qed.
+  (* creps... *)
+Admitted.
