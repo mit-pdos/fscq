@@ -1546,3 +1546,36 @@ Proof.
   rewrite IHl; rewrite <- surjective_pairing; auto.
 Qed.
 
+Lemma map_fst_combine: forall A B (a: list A) (b: list B),
+  length a = length b -> map fst (List.combine a b) = a.
+Proof.
+  unfold map, List.combine; induction a; intros; auto.
+  destruct b; try discriminate; simpl in *.
+  rewrite IHa; [ auto | congruence ].
+Qed.
+
+Lemma map_snd_combine: forall A B (a: list A) (b: list B),
+  length a = length b -> map snd (List.combine a b) = b.
+Proof.
+  unfold map, List.combine.
+  induction a; destruct b; simpl; auto; try discriminate.
+  intros; rewrite IHa; eauto.
+Qed.
+
+Lemma map_snd_updN : forall A B (l : list (A*B)) a v,
+  map snd (updN l a v) = updN (map snd l) a (snd v).
+Proof.
+  induction l; intros; simpl; auto.
+  destruct a0; simpl; auto.
+  rewrite IHl; auto.
+Qed.
+
+Lemma NoDup_skipn : forall A (l : list A) n,
+  NoDup l -> NoDup (skipn n l).
+Proof.
+  induction l; simpl; intros; auto.
+  rewrite skipn_nil; auto.
+  inversion H; subst.
+  destruct n; simpl; auto.
+Qed.
+

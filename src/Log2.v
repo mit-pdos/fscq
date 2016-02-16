@@ -98,8 +98,8 @@ Module LOG.
     forall a, ~ In a keys -> selN l a nil = nil.
 
   Definition unsync_applying xp (ms : valumap) (old cur : diskstate) : rawpred :=
-    (exists vs, [[ nil_unless_in (map_keys ms) vs /\ length vs = length old]] *
-     arrayN (DataStart xp) (List.combine old vs) *
+    (exists vs, [[ nil_unless_in (map_keys ms) vs /\ length vs = length cur]] *
+     arrayN (DataStart xp) (List.combine cur vs) *
      map_replay ms old cur
     )%pred.
 
@@ -1062,6 +1062,143 @@ Module LOG.
     eapply Map.add_2; eauto.
   Qed.
 
+  Lemma map_snd_synced_list_eq : forall a b,
+    length a = length b ->
+    map snd (synced_list a) = map snd (synced_list b).
+  Proof.
+    unfold synced_list; intros.
+    repeat rewrite map_snd_combine; autorewrite with lists; auto.
+  Qed.
+
+  Lemma map_snd_vsupd_vecs_not_in : forall l d a v,
+    ~ In a (map fst l) ->
+    NoDup (map fst l) ->
+    map snd (vsupd_vecs (synced_list (updN d a v)) l) = map snd (vsupd_vecs (synced_list d) l).
+  Proof.
+    induction l; simpl; intros.
+    erewrite map_snd_synced_list_eq; eauto.
+    autorewrite with lists; auto.
+
+    destruct a; intuition; simpl in *.
+    inversion H0; subst.
+    setoid_rewrite vsupd_vecs_vsupd_notin; auto.
+    unfold vsupd.
+    repeat rewrite map_snd_updN.
+    f_equal.
+    apply IHl; auto.
+    f_equal; f_equal; f_equal.
+    rewrite <- synced_list_updN.
+    rewrite <- updN_vsupd_vecs_notin by auto.
+    rewrite selN_updN_ne; auto.
+  Qed.
+
+
+  Lemma apply_unsync_syncing_ok': forall l d n,
+    NoDup (map fst l) ->
+    vssync_vecs (vsupd_vecs (synced_list d) l) (firstn n (map fst l))
+      = List.combine (replay_disk l d) (map snd (vsupd_vecs (synced_list d) (skipn n l))).
+  Proof.
+    induction l; intros; simpl.
+    rewrite firstn_nil, skipn_nil; simpl.
+    unfold synced_list.
+    rewrite map_snd_combine; autorewrite with lists; auto.
+
+    destruct a; simpl.
+    inversion H; subst.
+    destruct n; simpl.
+    rewrite vsupd_vecs_vsupd_notin by auto.
+    unfold vsupd.
+    rewrite map_snd_updN.
+    rewrite replay_disk_updN_comm by auto.
+    rewrite combine_updN.
+    f_equal.
+    replace l with (skipn 0 l) at 3 by auto.
+    rewrite <- IHl; auto; omega.
+
+    erewrite <- map_snd_vsupd_vecs_not_in.
+    rewrite <- IHl; auto.
+    rewrite vsupd_vecs_vsupd_notin by auto.
+    rewrite vssync_vsupd_eq.
+    rewrite updN_vsupd_vecs_notin by auto.
+    rewrite synced_list_updN; auto.
+    contradict H2.
+    eapply in_skipn_in.
+    rewrite skipn_map_comm; eauto.
+    rewrite <- skipn_map_comm.
+    apply NoDup_skipn; auto.
+  Qed.
+
+  Lemma nil_unless_in_synced_list : forall l d,
+    NoDup (map fst l) ->
+    nil_unless_in (map fst l) (map snd (vsupd_vecs (synced_list d) l)).
+  Proof.
+    unfold nil_unless_in; induction l; simpl; intros; auto.
+    unfold synced_list.
+    rewrite map_snd_combine; autorewrite with lists; auto.
+    destruct (lt_dec a (length d)).
+    rewrite repeat_selN; auto.
+    rewrite selN_oob; auto.
+    autorewrite with lists; omega.
+
+    destruct a; intuition; simpl in *.
+    inversion H; subst.
+    rewrite vsupd_vecs_vsupd_notin by auto.
+    unfold vsupd.
+    rewrite map_snd_updN.
+    rewrite selN_updN_ne by auto.
+    rewrite IHl; auto.
+  Qed.
+
+  Lemma nil_unless_in_synced_list_skipN : forall n l d,
+    NoDup (map fst l) ->
+    nil_unless_in (map fst l) (map snd (vsupd_vecs (synced_list d) (skipn n l))).
+  Proof.
+    induction n; intros; auto.
+    apply nil_unless_in_synced_list; auto.
+    destruct l; simpl; auto.
+    unfold synced_list, nil_unless_in; intros.
+    rewrite map_snd_combine; autorewrite with lists; auto.
+    destruct (lt_dec a (length d)).
+    rewrite repeat_selN; auto.
+    rewrite selN_oob; auto.
+    autorewrite with lists; omega.
+
+    unfold nil_unless_in; intros.
+    inversion H; subst.
+    apply IHn; auto.
+    contradict H0.
+    apply in_cons; auto.
+  Qed.
+
+  Lemma apply_unsync_syncing_ok : forall xp m d n,
+    arrayN (DataStart xp) (vssync_vecs (vsupd_vecs (synced_list d) (Map.elements m)) (firstn n (map_keys m)))
+       =p=> unsync_syncing xp m (replay_disk (Map.elements m) d).
+  Proof.
+    unfold unsync_syncing; cancel.
+    apply arrayN_unify.
+    apply apply_unsync_syncing_ok'.
+    apply KNoDup_NoDup.
+    apply Map.elements_3w.
+
+    apply nil_unless_in_synced_list_skipN.
+    apply KNoDup_NoDup.
+    apply Map.elements_3w.
+
+    autorewrite with lists.
+    rewrite vsupd_vecs_length.
+    unfold synced_list.
+    rewrite combine_length_eq; autorewrite with lists; auto.
+  Qed.
+
+
+  Lemma apply_unsync_applying_ok : forall xp m d n,
+    arrayN (DataStart xp) (vsupd_vecs (synced_list d) (firstn n (Map.elements m)))
+       =p=> unsync_applying xp m d (replay_disk (Map.elements m) d).
+  Proof.
+    unfold unsync_applying, map_replay; cancel.
+    apply arrayN_unify.
+  Admitted.
+
 
   Theorem apply_ok: forall xp ms,
     {< m,
@@ -1125,7 +1262,7 @@ Module LOG.
     intuition; simpl; eauto.
     instantiate (1 := F); pred_apply; cancel.
     or_r; or_l; cancel.
-    admit.
+    apply apply_unsync_syncing_ok.
 
     (* unsync_applying *)
     or_r. norm.
@@ -1134,7 +1271,7 @@ Module LOG.
     intuition; simpl; eauto.
     instantiate (1 := F); pred_apply; cancel.
     or_l; cancel.
-    admit.
+    apply apply_unsync_applying_ok.
   Qed.
     
   
