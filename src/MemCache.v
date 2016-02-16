@@ -4,6 +4,7 @@ Require Import FMapFacts.
 Require Import FunctionalExtensionality.
 Require Import Eqdep_dec.
 Require Import Automation.
+Require Import Locking.
 
 Set Implicit Arguments.
 
@@ -101,11 +102,23 @@ Definition cache_pred st (c:AssocCache st) (vd:DISK) : DISK_PRED :=
       | None => vd a = d a
       end.
 
-Inductive opt_R A B (R : A -> B -> Prop) : option A -> option B -> Prop :=
-| opt_R_none : opt_R R None None
-| opt_R_some : forall a b, R a b -> opt_R R (Some a) (Some b).
+(* TODO: replace with map for option *)
+Definition mcache_get_lock (c:AssocCache BusyFlag) a :=
+  match (cache_state c a) with
+  | Some l => l
+  | None => Open
+  end.
 
-Hint Constructors opt_R.
+Definition gcache_get_lock (c:AssocCache BusyFlagOwner) (a: addr) :=
+  match (cache_state c a) with
+  | Some l => l
+  | None => NoOwner
+  end.
+
+Definition reader_lock_inv : DISK -> AssocCache BusyFlagOwner -> Prop :=
+  fun vd c => (forall a tid vs,
+                vd a = Some (vs, Some tid) ->
+                gcache_get_lock c a = Owned tid).
 
 Inductive cache_addr_eq st st' (st_eq: st -> st' -> Prop) :
   option (cache_entry st) ->
@@ -873,6 +886,54 @@ Qed.
 
 End CachePredStability.
 
+Section ReaderLockStability.
+
+  Lemma gcache_get_lock_add : forall c a a' v l,
+    a <> a' ->
+    gcache_get_lock (cache_add c a v l) a' =
+    gcache_get_lock c a'.
+  Proof.
+    unfold gcache_get_lock; intros.
+    repeat rewrite cache_state_as_get;
+      autorewrite with cache;
+      reflexivity.
+  Qed.
+
+  Theorem reader_lock_add_no_reader : forall vd a c v vs l,
+    vd a = Some (vs, None) ->
+    reader_lock_inv vd c ->
+    reader_lock_inv vd (cache_add c a v l).
+  Proof.
+    unfold reader_lock_inv.
+    intuition.
+    distinguish_two_addresses a a0.
+    rewrite gcache_get_lock_add by (now auto).
+    eauto.
+  Qed.
+
+  Lemma reader_lock_add_reader : forall vd a vs tid c,
+      reader_lock_inv vd c ->
+      gcache_get_lock c a = Owned tid ->
+      reader_lock_inv (upd vd a (vs, Some tid)) c.
+  Proof.
+    unfold reader_lock_inv.
+    intros.
+    distinguish_addresses; autorewrite with upd in *;
+    (congruence || eauto).
+  Qed.
+
+  Lemma reader_lock_remove_reader : forall vd a vs c,
+      reader_lock_inv vd c ->
+      reader_lock_inv (upd vd a (vs, None)) c.
+  Proof.
+    unfold reader_lock_inv.
+    intros.
+    distinguish_addresses; autorewrite with upd in *;
+    (congruence || eauto).
+  Qed.
+
+End ReaderLockStability.
+
 Theorem cache_pred_same_virt_disk : forall st (c:AssocCache st) vd vd' d,
     cache_pred c vd d ->
     cache_pred c vd' d ->
@@ -965,5 +1026,7 @@ Proof.
   autorewrite with upd in *;
   auto; congruence.
 Qed.
+
+
 
 Hint Opaque cache_pred.

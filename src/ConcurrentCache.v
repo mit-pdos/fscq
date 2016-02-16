@@ -37,19 +37,6 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
   Definition GDisk := get HFirst stateVars.
   Definition GCache := get (HNext HFirst) stateVars.
 
-  (* TODO: replace with map for option *)
-  Definition mcache_get_lock (c:AssocCache BusyFlag) a :=
-    match (cache_state c a) with
-    | Some l => l
-    | None => Open
-    end.
-
-  Definition gcache_get_lock (c:AssocCache BusyFlagOwner) (a: addr) :=
-    match (cache_state c a) with
-    | Some l => l
-    | None => NoOwner
-    end.
-
   Definition get_m_lock (a: addr) (m: M Mcontents) :=
     mcache_get_lock (get Cache m) a.
 
@@ -93,7 +80,8 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
       let c := get Cache m in
       (d |= cache_pred c (get GDisk s))%judgement /\
       (* caches are equal, modulo relationship between real/ghost locks *)
-      cache_eq ghost_lock_invariant (get Cache m) (get GCache s).
+      cache_eq ghost_lock_invariant (get Cache m) (get GCache s) /\
+      reader_lock_inv (get GDisk s) (get GCache s).
 
 End CacheTransitionSystem.
 
@@ -102,9 +90,22 @@ on the definitions directly *)
 Hint Unfold lock_protects : prog.
 Hint Unfold StateR' : prog.
 
-Definition change_reader (vd: DISK) a rdr :=
+Definition rdr_dec : forall (rdr rdr': option ID), {rdr = rdr'} + {rdr <> rdr'}.
+Proof.
+  unfold ID.
+  decide equality.
+  decide equality.
+Defined.
+
+Lemma rdr_not_none : forall (rdr: option ID), rdr <> None ->
+                                         exists tid, rdr = Some tid.
+Proof.
+  destruct rdr; intros; (congruence || eauto).
+Qed.
+
+Definition change_reader (vd: DISK) a rdr' :=
   match vd a with
-  | Some (vs, _) => upd vd a (vs, rdr)
+  | Some (vs, _) => upd vd a (vs, rdr')
   | None => vd
   end.
 
@@ -137,11 +138,11 @@ Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
     cacheR tid s' s'' ->
     R tid s s''.
 
-  Axiom relation_ignores_readers : forall tid (s s' s'': S Scontents) a rdr,
-      s' = set GDisk (change_reader (get GDisk s) a rdr) s ->
+  Axiom relation_ignores_readers : forall tid (s s' s'': S Scontents) a rdr',
+      s' = set GDisk (change_reader (get GDisk s) a rdr') s ->
       othersR R tid s' s'' ->
       exists s1, othersR R tid s s1 /\
-      s'' = set GDisk (change_reader (get GDisk s1) a rdr) s1.
+      s'' = set GDisk (change_reader (get GDisk s1) a rdr') s1.
 
 End CacheSemantics.
 
@@ -213,6 +214,30 @@ Ltac specific_addr :=
   | [ H: forall (_:addr), _, a: addr |- _ ] =>
     specialize (H a)
   end.
+
+Section Variables.
+
+Ltac vars_distinct :=
+  repeat rewrite member_index_eq_var_index;
+  repeat match goal with
+  | [ |- context[var_index ?v] ] => unfold v
+  end;
+  repeat erewrite get_hmap; cbn;
+  apply NoDup_get_neq with (def := 0); eauto;
+    autorewrite with hlist;
+    cbn; omega.
+
+Lemma GCache_neq_GDisk :
+  member_index GCache <> member_index GDisk.
+Proof.
+  vars_distinct.
+Qed.
+
+End Variables.
+
+Hint Immediate GCache_neq_GDisk.
+
+Hint Resolve not_eq_sym.
 
 Section CacheRTrans.
 
@@ -304,8 +329,6 @@ Proof.
   inversion H1; subst; eauto.
 Qed.
 
-Check lock_protects.
-
 Lemma lock_protects_indifference : forall lvar tv (v: _ -> tv) tid (s0 s0' s1 s1': S),
     lock_protects lvar v tid s0 s1 ->
     lvar s0 = lvar s0' ->
@@ -321,29 +344,48 @@ Proof.
   eauto.
 Qed.
 
-Section Variables.
-
-Ltac vars_distinct :=
-  repeat rewrite member_index_eq_var_index;
-  repeat match goal with
-  | [ |- context[var_index ?v] ] => unfold v
-  end;
-  repeat erewrite get_hmap; cbn;
-  apply NoDup_get_neq with (def := 0); eauto;
-    autorewrite with hlist;
-    cbn; omega.
-
-Lemma GCache_neq_GDisk :
-  member_index GCache <> member_index GDisk.
+Lemma same_domain_change_reader : forall d a rdr',
+    same_domain d (change_reader d a rdr').
 Proof.
-  vars_distinct.
+  unfold same_domain, subset, change_reader; intuition.
+  destruct matches;
+    distinguish_addresses; autorewrite with upd in *; eauto.
+  case_eq (d a); intros; simpl_match; eauto.
+  destruct w.
+  distinguish_addresses; autorewrite with upd in *; eauto.
 Qed.
 
-End Variables.
+Definition id_dec : forall (id1 id2:ID), {id1 = id2} + {id1 <> id2} :=
+  Nat.eq_dec.
 
-Hint Immediate GCache_neq_GDisk.
+Lemma cacheR_reader_collapse : forall tid (s s' s'' s''':S) vs0 a,
+    get GDisk s a = Some (vs0, None) ->
+    s' = set GDisk (change_reader (get GDisk s) a (Some tid)) s ->
+    reader_lock_inv (get GDisk s') (get GCache s') ->
+    othersR cacheR tid s' s'' ->
+    reader_lock_inv (get GDisk s'') (get GCache s'') ->
+    s''' = set GDisk (change_reader (get GDisk s'') a None) s'' ->
+    othersR cacheR tid s s'''.
+Proof.
+  unfold othersR, cacheR.
+  intros; subst.
+  deex; eexists; intuition eauto.
+  simpl_get_set in *.
+  eauto using same_domain_trans, same_domain_change_reader.
+  eapply lock_protocol_trans; [ eapply lock_protocol_trans | ];
+  [ | eapply H5 | ].
+  eapply lock_protocol_indifference; eauto.
+  unfold get_s_lock, gcache_get_lock; simpl_get_set.
+  eapply lock_protocol_indifference; eauto.
+  unfold get_s_lock, gcache_get_lock; simpl_get_set.
 
-Hint Resolve not_eq_sym.
+  match goal with
+  | [ H: forall (_:addr), _ |- _ ] => specialize (H a0); destruct_ands
+  end.
+
+  eapply lock_protects_indifference; eauto;
+  unfold get_s_lock, get_scache_val; now simpl_get_set.
+Abort.
 
 Lemma cacheR_ignores_readers : forall tid (s s' s'':S) a rdr,
     s' = set GDisk (change_reader (get GDisk s) a rdr) s ->
@@ -351,76 +393,7 @@ Lemma cacheR_ignores_readers : forall tid (s s' s'':S) a rdr,
     exists s1, othersR cacheR tid s s1 /\
           s'' = set GDisk (change_reader (get GDisk s1) a rdr) s1.
 Proof.
-  unfold change_reader, othersR, cacheR.
-  intros.
-  case_eq (get GDisk s a); intros.
-  - match goal with
-    | [ w: wr_set |- _ ] => destruct w
-    end.
-    deex.
-    repeat simpl_match.
-    simpl_get_set in *.
-    exists (set GDisk (change_reader (get GDisk s'') a o) s'').
-    unfold change_reader; simpl_get_set.
-    intuition.
-    eexists; intuition eauto.
-    * simpl_get_set.
-      eapply same_domain_remove_upd in H0; eauto.
-      case_eq (get GDisk s'' a); intros; eauto.
-      destruct w.
-      eauto using same_domain_trans, same_domain_upd.
-    * specialize (H4 a0); intuition.
-      eapply lock_protocol_indifference; eauto;
-      unfold get_s_lock, gcache_get_lock;
-      simpl_get_set.
-
-    * specialize (H4 a0); intuition.
-      unfold get_s_lock, get_scache_val in *.
-      eapply lock_protects_indifference; eauto; simpl_get_set.
-
-    * specialize (H4 a0); intuition.
-      unfold get_s_lock, get_disk_val in *.
-      unfold lock_protects; intros.
-      simpl_get_set.
-      specialize (H5 owner_tid); cbn in H5.
-      simpl_get_set in H5.
-      intuition.
-      distinguish_two_addresses a a0.
-      simpl_match; autorewrite with upd; auto.
-
-      autorewrite with upd in *.
-      case_eq (get GDisk s'' a); intros.
-      destruct w; autorewrite with upd; auto.
-      congruence.
-
-    * case_eq (get GDisk s'' a); intros;
-      try match goal with
-          | [ w: wr_set |- _ ] => destruct w
-          end;
-      simpl_get_set.
-      rewrite set_get; auto.
-      destruct matches; subst;
-      autorewrite with upd in *;
-      inv_opt.
-      eapply upd_same.
-
-      admit. (* seem to have lost a rdr; perhaps cache relation needs to say something about readers *)
-
-      assert (exists v, get GDisk s'' a = Some v).
-      eapply H0; autorewrite with upd; eauto.
-      deex; congruence.
-
-  - simpl_match.
-    simpl_get_set in H.
-    subst.
-    deex.
-    eexists; intuition eauto.
-    rewrite set_get; auto.
-    destruct matches.
-
-    eapply same_domain_none in H; eauto.
-    congruence.
-Qed.
+Abort.
 
 Theorem cacheR_trans_closed : forall tid (s s':S),
   star (cacheR tid) s s' ->
@@ -759,6 +732,7 @@ Hint Extern 4 (cache_pred _ _ _) => match goal with
 Hint Extern 4 (@eq (option _) _ _) => congruence.
 
 Definition locked_disk_read {T} a rx : prog Mcontents Scontents T :=
+  tid <- GetTID;
   c <- Get Cache;
   let val := match cache_get c a with
   | None => None
@@ -768,9 +742,9 @@ Definition locked_disk_read {T} a rx : prog Mcontents Scontents T :=
   end in
     match val with
     | None => v <- Read a;
-        let c' := cache_add c a v Open in
+        let c' := cache_add c a v Locked in
         GhostUpdate (fun s =>
-                    let vc' := cache_add (get GCache s) a v NoOwner in
+                    let vc' := cache_add (get GCache s) a v (Owned tid) in
                     set GCache vc' s);;
                     Assgn Cache c';;
                     rx v
@@ -800,7 +774,8 @@ Proof.
 Qed.
 
 Hint Resolve cache_vd_consistent_clean
-             cache_vd_consistent_dirty.
+     cache_vd_consistent_dirty
+     reader_lock_add_no_reader.
 
 Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
@@ -829,7 +804,7 @@ Proof.
       simplify_step ||
       (time "inv_opt" inv_opt) ||
       (time "split_cache_val" split_cache_val) in
-      time "simplify" simplify' simp_step) with finish.
+     time "simplify" simplify' simp_step) with finish.
 Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
@@ -993,6 +968,18 @@ Qed.
 
 Hint Resolve addr_val_is.
 
+Hint Resolve reader_lock_add_reader
+     reader_lock_remove_reader.
+
+Lemma upd_ptsto_any : forall AT AEQ V (m: @mem AT AEQ V) a v,
+    (any * a |-> v)%pred (upd m a v).
+Proof.
+  intros.
+  eauto using any_sep_star_ptsto, upd_eq.
+Qed.
+
+Hint Resolve upd_ptsto_any.
+
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ F v rest,
@@ -1004,12 +991,12 @@ Theorem locked_AsyncRead_ok : forall a,
                    R tid s0 s
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
                           Inv m' s' d' /\
-                          (exists F', vd' |= F' * a |-> (Valuset v rest, None)) /\
-                          (* not quite true, since first need a step
-                            to add the reader and need a step at the
-                            end to remove it, which cannot be
-                            performed under othersR R *)
-                          star (othersR R tid) s s' /\
+                          (vd' |= any * a |-> (Valuset v rest, None)) /\
+                          star (othersR R tid)
+                               (set GDisk (change_reader (get GDisk s)
+                                                         a (Some tid)) s)
+                               (set GDisk (change_reader (get GDisk s')
+                                                         a (Some tid)) s') /\
                           cache_get (get Cache m') a = Some (Invalid Locked) /\
                           get_s_lock a s' = Owned tid /\
                           r = v /\
@@ -1035,43 +1022,40 @@ Proof.
   time "step" step pre (time "simplify" simplify) with finish.
 
   assert (get GDisk s2 a = Some (Valuset v rest, Some tid)).
-  (* H16 is star from a modified s to the current state s2 *)
-  eapply virt_disk_addr_readonly in H16; eauto.
-  rewrite H16.
+  (* H17 is star from a modified s to the current state s2 *)
+  eapply virt_disk_addr_readonly in H17; eauto.
+  rewrite H17.
   simpl_get_set.
-  autorewrite with upd; auto.
+  autorewrite with upd; now auto.
 
-  eapply cache_addr_readonly in H16; eauto.
-  unfold get_scache_val, opt_cache_entry_val in H16.
-  simpl_get_set in H16.
-  assert (cache_get (get GCache s) a = Some (Invalid (Owned tid))).
-  eauto using cache_eq_invalid.
+  eapply cache_addr_readonly in H17; eauto.
+  simpl_get_set in H17.
+  assert (cache_get (get GCache s) a = Some (Invalid (Owned tid))) by
+      eauto using cache_eq_invalid.
 
   assert (cache_get (get Cache m0) a = Some (Invalid Locked)).
-  eapply cache_eq_mem in H21; eauto; simplify.
+  eapply cache_eq_mem in H17; eauto; simplify.
   eauto.
   assert (get GDisk s2 a = d1 a) by eauto using cache_miss_mem_eq.
   assert (d1 a = Some (Valuset v rest, Some tid)) by eauto.
-
-  eapply addr_val_is; eauto.
+  eauto.
 
   (* TODO: forward chain this rather than copy it *)
 
   assert (get GDisk s2 a = Some (Valuset v rest, Some tid)).
-  (* H16 is star from a modified s to the current state s2 *)
-  eapply virt_disk_addr_readonly in H16; eauto.
-  rewrite H16.
+  (* H17 is star from a modified s to the current state s2 *)
+  eapply virt_disk_addr_readonly in H17; eauto.
+  rewrite H17.
   simpl_get_set.
-  autorewrite with upd; auto.
+  autorewrite with upd; now auto.
 
-  eapply cache_addr_readonly in H16; eauto.
-  unfold get_scache_val, opt_cache_entry_val in H16.
-  simpl_get_set in H16.
-  assert (cache_get (get GCache s) a = Some (Invalid (Owned tid))).
-  eauto using cache_eq_invalid.
+  eapply cache_addr_readonly in H17; eauto.
+  simpl_get_set in H17.
+  assert (cache_get (get GCache s) a = Some (Invalid (Owned tid))) by
+      eauto using cache_eq_invalid.
 
   assert (cache_get (get Cache m0) a = Some (Invalid Locked)).
-  eapply cache_eq_mem in H21; eauto; simplify.
+  eapply cache_eq_mem in H17; eauto; simplify.
   eauto.
   assert (get GDisk s2 a = d1 a) by eauto using cache_miss_mem_eq.
   assert (d1 a = Some (Valuset v rest, Some tid)) by eauto.
@@ -1081,20 +1065,20 @@ Proof.
   time "step" step pre (time "simplify" simplify) with finish.
   time "step" step pre (time "simplify" simplify) with finish.
 
-  apply diskIs_combine_upd in H27; unfold diskIs in H27; subst.
+  match goal with
+    | [ H: (diskIs _ * ?a |-> _)%pred ?d |- _ ] =>
+      apply diskIs_combine_upd in H; unfold diskIs in H; subst
+  end.
   eauto.
 
-  apply diskIs_split_upd; eauto.
-
-  (* spec needs to be updated to deal with fact that before yielding,
-  we set a reader *)
-  admit.
+  simpl_get_set in *.
+  unfold change_reader.
+  autorewrite with upd; simplify.
+  rewrite set_get with (l := s2) by auto.
+  auto.
 
   unfold get_s_lock in *.
-  simplify.
-  unfold gcache_get_lock.
-  rewrite cache_state_as_get.
-  simplify.
+  simplify; eauto.
 
   eapply star_one_step.
   eapply cache_relation_preserved; eauto.
@@ -1102,14 +1086,13 @@ Proof.
   unfold cacheR; simplify; eauto.
   unfold get_scache_val; simplify.
   unfold get_disk_val; simplify.
-  distinguish_addresses; eauto.
+  distinguish_addresses; autorewrite with upd; eauto.
   assert (get_s_lock a0 s2 = Owned tid).
   unfold get_s_lock, gcache_get_lock.
   rewrite cache_state_as_get.
   simplify.
   congruence. (* contradiction with tid <> owner_tid *)
-  autorewrite with upd; auto.
-Admitted.
+Qed.
 
 Hint Extern 4 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
 

@@ -897,7 +897,7 @@ Hint Extern 1 {{ Sync _; _ }} => apply Sync_ok : prog.
 Hint Extern 1 {{ Get _; _ }} => apply Get_ok : prog.
 Hint Extern 1 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
-Hint Extern 1 {{ Yield; _ }} => apply Yield_ok : prog.
+Hint Extern 1 {{ Yield _; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 

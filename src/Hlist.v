@@ -295,11 +295,18 @@ Ltac simpl_get_set_goal :=
 Ltac simpl_get_set_hyp H :=
   autorewrite with hlist in H; trivial.
 
+(* TODO: measure that this is faster than
+[autorewrite with hlist in *] *)
 Ltac simpl_get_set_all :=
   repeat match goal with
       | [ H: context[get _ (set _ _ _)] |- _ ] =>
         progress simpl_get_set_hyp H
-      end.
+      | [ H: context[set _ (set _ _ _)] |- _ ] =>
+        progress simpl_get_set_hyp H
+      | [ H: context[set _ (get _ _ _)] |- _ ] =>
+        progress simpl_get_set_hyp H
+         end;
+  simpl_get_set_goal.
 
 Tactic Notation "simpl_get_set" := simpl_get_set_goal.
 Tactic Notation "simpl_get_set" "in" hyp(H) := simpl_get_set_hyp H.
