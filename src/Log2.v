@@ -97,10 +97,13 @@ Module LOG.
   Definition nil_unless_in (keys: list addr) (l: list (list valu)) :=
     forall a, ~ In a keys -> selN l a nil = nil.
 
-  Definition unsync_applying xp (ms : valumap) (old cur : diskstate) : rawpred :=
-    (exists vs, [[ nil_unless_in (map_keys ms) vs /\ length vs = length cur]] *
-     arrayN (DataStart xp) (List.combine cur vs) *
-     map_replay ms old cur
+  Definition equal_unless_in (keys: list addr) (l1 l2: list valuset) :=
+    forall a, ~ In a keys ->
+    selN l1 a ($0, nil) = selN l2 a ($0, nil) /\ length l1 = length l2.
+
+  Definition unsync_applying xp (ms : valumap) (old : diskstate) : rawpred :=
+    (exists vs, [[ equal_unless_in (map_keys ms) (synced_list old) vs ]] *
+     arrayN (DataStart xp) vs
     )%pred.
 
   Definition unsync_syncing xp (ms : valumap) (cur : diskstate) : rawpred :=
@@ -131,7 +134,7 @@ Module LOG.
       \/ DLog.rep xp (DLog.Extended log (Map.elements cms)))
     | NoTxnApplying cur =>
         map_empty cms *
-        (((DLog.rep xp (DLog.Synced log)) * (unsync_applying xp oms raw cur))
+        (((DLog.rep xp (DLog.Synced log)) * (unsync_applying xp oms raw))
       \/ ((DLog.rep xp (DLog.Synced log)) * (unsync_syncing xp oms cur))
       \/ ((DLog.rep xp (DLog.Truncated log)) * (synced_data xp cur)))
     end)%pred.
@@ -1190,15 +1193,33 @@ Module LOG.
     rewrite combine_length_eq; autorewrite with lists; auto.
   Qed.
 
+  Lemma apply_unsync_applying_ok' : forall l d n,
+    NoDup (map fst l) ->
+    equal_unless_in (map fst l) d (vsupd_vecs d (firstn n l)).
+  Proof.
+    unfold equal_unless_in; induction l; intros; simpl.
+    rewrite firstn_nil; simpl; intuition.
+    split.
+    destruct n; simpl; auto.
+    destruct a; inversion H; simpl in *; intuition; subst.
+    rewrite vsupd_vecs_vsupd_notin.
+    unfold vsupd; rewrite selN_updN_ne by auto.
+    pose proof (IHl d n H4 a0 H6); tauto.
+    rewrite <- firstn_map_comm.
+    contradict H3.
+    eapply in_firstn_in; eauto.
+    rewrite vsupd_vecs_length; auto.
+  Qed.
 
   Lemma apply_unsync_applying_ok : forall xp m d n,
     arrayN (DataStart xp) (vsupd_vecs (synced_list d) (firstn n (Map.elements m)))
-       =p=> unsync_applying xp m d (replay_disk (Map.elements m) d).
+       =p=> unsync_applying xp m d.
   Proof.
     unfold unsync_applying, map_replay; cancel.
-    apply arrayN_unify.
-  Admitted.
-
+    apply apply_unsync_applying_ok'.
+    apply KNoDup_NoDup.
+    apply Map.elements_3w.
+  Qed.
 
   Theorem apply_ok: forall xp ms,
     {< m,
@@ -1273,9 +1294,7 @@ Module LOG.
     or_l; cancel.
     apply apply_unsync_applying_ok.
   Qed.
-    
-  
-  
+
 End LOG.
 
 
