@@ -1237,50 +1237,49 @@ Theorem locked_async_disk_read_ok : forall a,
     }} locked_async_disk_read a.
 Proof.
   time "hoare" hoare pre
-    (time "simplify" simplify) with finish.
+    (time "simplify" simplify) with try solve [ finish ].
   - pred_apply; cancel; eauto. (* any * a |-> ... *)
-  - admit. (* cache value must line up with disk *)
+  - case_cache_val; inv_opt; eauto.
   - autorewrite with cache; auto.
   - (* invalidated cache is locked *)
     unfold gcache_get_lock.
     rewrite cache_invalidate_get; auto.
-  - distinguish_addresses.
-    eapply NoChange.
-    replace (get_s_lock a0 s).
-    autorewrite with ghost_state.
-    unfold gcache_get_lock; rewrite cache_invalidate_get.
-    auto.
-    eapply NoChange.
-    autorewrite with ghost_state.
-    rewrite gcache_get_lock_invalidate by (now auto).
-    auto.
-  - distinguish_addresses.
-    autorewrite with ghost_state cache.
-    auto.
-  - simplify.
+  - finish.
+    + distinguish_addresses.
+      eapply NoChange.
+      replace (get_s_lock a0 s).
+      autorewrite with ghost_state.
+      unfold gcache_get_lock; rewrite cache_invalidate_get.
+      auto.
+      eapply NoChange.
+      autorewrite with ghost_state.
+      rewrite gcache_get_lock_invalidate by auto.
+      auto.
+    + distinguish_addresses.
+      autorewrite with ghost_state cache.
+      auto.
+    + simplify.
   - (* relation between s and s' *)
     (* need cacheR_reader_collapse, but with star (R' tid) *)
     admit.
   - unfold gcache_get_lock; rewrite cache_state_as_get.
     autorewrite with cache.
     auto.
-  - admit. (* only modified right vars;
-    need something between s1 and s2, possibly from R s1 s2 *)
-  - eapply R_trans in H18.
-    eapply cache_relation_holds in H18.
-    unfold cacheR in H18; intuition.
-  - eapply R_trans in H18.
-    eapply cache_relation_holds in H18.
-    unfold cacheR in H18; intuition.
-    eapply lock_protocol_trans.
-    eapply H28.
-    admit.
-    (* similar to lock_protocol above *)
-  - autorewrite with ghost_state.
-    admit. (* not exactly sure what's going on here *)
-  - autorewrite with ghost_state.
-    (* doesn't seem true; maybe finish applied the wrong theorem? *)
-    admit.
+  - eapply R_trans.
+    eapply star_trans; eauto.
+    eapply star_one_step.
+    finish; simplify.
+    apply NoChange.
+    simplify.
+    distinguish_addresses.
+    unfold gcache_get_lock.
+    rewrite cache_state_as_get.
+    autorewrite with cache.
+    auto.
+    rewrite gcache_get_lock_add by auto.
+    auto.
+    distinguish_addresses;
+      autorewrite with ghost_state cache; auto.
 Admitted.
 
 (* Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok. *)
