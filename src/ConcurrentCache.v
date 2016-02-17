@@ -672,6 +672,46 @@ Ltac descend :=
   | [ |- _ /\ _ ] => split
   end.
 
+Lemma get_scache_val_set : forall ty (m: member ty _) a v s,
+  member_index m <> member_index GCache ->
+  get_scache_val a (set m v s) = get_scache_val a s.
+Proof.
+  unfold get_scache_val.
+  intros.
+  simpl_get_set.
+Qed.
+
+Lemma get_disk_val_set : forall ty (m: member ty _) a v s,
+  member_index m <> member_index GDisk ->
+  get_disk_val a (set m v s) = get_disk_val a s.
+Proof.
+  unfold get_disk_val.
+  intros.
+  simpl_get_set.
+Qed.
+
+Lemma get_disk_val_set_disk : forall a v s,
+  get_disk_val a (set GDisk v s) = v a.
+Proof.
+  unfold get_disk_val.
+  intros.
+  simpl_get_set.
+Qed.
+
+Lemma get_lock_set : forall ty (m: member ty _) a v s,
+  member_index m <> member_index GCache ->
+  get_s_lock a (set m v s) = get_s_lock a s.
+Proof.
+  unfold get_s_lock.
+  intros.
+  simpl_get_set.
+Qed.
+
+Hint Rewrite get_scache_val_set using (now auto) : ghost_state.
+Hint Rewrite get_disk_val_set using (now auto) : ghost_state.
+Hint Rewrite get_disk_val_set_disk using (now auto) : ghost_state.
+Hint Rewrite get_lock_set using (now auto): ghost_state.
+
 Ltac simplify_reduce_step :=
   (* this binding just fixes PG indentation *)
   let unf := autounfold with prog in * in
@@ -679,6 +719,7 @@ Ltac simplify_reduce_step :=
           || destruct_ands
           || destruct_cache_entry
           || descend
+          || (try time "rew_ghost_state" progress autorewrite with ghost_state)
           || (try time "simpl_get_set" progress simpl_get_set)
           || subst
           || unfold_cache_definitions
@@ -1045,16 +1086,12 @@ Proof.
   time "step" step pre (time "simplify" simplify) with finish.
   time "step" step pre (time "simplify" simplify) with finish.
   time "step" step pre (time "simplify" simplify) with finish.
-  time "step" step pre (time "simplify" simplify) with finish.
+  time "step" step pre (time "simplify" simplify) with finish; simplify.
 
   eapply cache_pred_miss_stable;
     autorewrite with upd; eauto.
 
-  (* automatic unfolding of get_scache_val, get_disk_val should handle this *)
-  unfold get_scache_val.
-  simplify.
   unfold get_disk_val.
-  simplify.
   distinguish_addresses; eauto using upd_ne.
 
   time "step" step pre (time "simplify" simplify) with finish.
@@ -1119,11 +1156,8 @@ Proof.
   simplify; eauto.
 
   eapply star_one_step.
-  eapply cache_relation_preserved; eauto.
-  solve_modified.
-  unfold cacheR; simplify; eauto.
-  unfold get_scache_val; simplify.
-  unfold get_disk_val; simplify.
+  finish; simplify.
+
   distinguish_addresses; autorewrite with upd; eauto.
   assert (get_s_lock a0 s2 = Owned tid).
   unfold get_s_lock, gcache_get_lock.
