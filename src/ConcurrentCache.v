@@ -681,6 +681,14 @@ Proof.
   simpl_get_set.
 Qed.
 
+Lemma get_scache_val_set_eq : forall a c s,
+  get_scache_val a (set GCache c s) = opt_cache_entry_val (cache_get c a).
+Proof.
+  unfold get_scache_val.
+  intros.
+  simpl_get_set.
+Qed.
+
 Lemma get_disk_val_set : forall ty (m: member ty _) a v s,
   member_index m <> member_index GDisk ->
   get_disk_val a (set m v s) = get_disk_val a s.
@@ -690,8 +698,8 @@ Proof.
   simpl_get_set.
 Qed.
 
-Lemma get_disk_val_set_disk : forall a v s,
-  get_disk_val a (set GDisk v s) = v a.
+Lemma get_disk_val_set_eq : forall a vd s,
+  get_disk_val a (set GDisk vd s) = vd a.
 Proof.
   unfold get_disk_val.
   intros.
@@ -707,10 +715,20 @@ Proof.
   simpl_get_set.
 Qed.
 
+Lemma get_lock_set_eq : forall a c s,
+  get_s_lock a (set GCache c s) = gcache_get_lock c a.
+Proof.
+  unfold get_s_lock.
+  intros.
+  simpl_get_set.
+Qed.
+
 Hint Rewrite get_scache_val_set using (now auto) : ghost_state.
+Hint Rewrite get_scache_val_set_eq : ghost_state.
 Hint Rewrite get_disk_val_set using (now auto) : ghost_state.
-Hint Rewrite get_disk_val_set_disk using (now auto) : ghost_state.
+Hint Rewrite get_disk_val_set_eq using (now auto) : ghost_state.
 Hint Rewrite get_lock_set using (now auto): ghost_state.
+Hint Rewrite get_lock_set_eq using (now auto): ghost_state.
 
 Ltac simplify_reduce_step :=
   (* this binding just fixes PG indentation *)
@@ -1186,6 +1204,7 @@ Definition locked_async_disk_read {T} a rx : prog _ _ T :=
              let c' := cache_invalidate c a Locked in
              Assgn Cache c';;
              v <- locked_AsyncRead a;
+             c' <- Get Cache;
              let c'' := cache_add c' a v Locked in
              GhostUpdate (fun s =>
                     let vc' := cache_add (get GCache s) a v (Owned tid) in
@@ -1196,8 +1215,9 @@ Definition locked_async_disk_read {T} a rx : prog _ _ T :=
   end.
 
 Hint Resolve lock_protects_locked.
-
+Hint Resolve reader_lock_invalidate.
 Hint Resolve pimpl_any.
+Hint Resolve cache_add_invalidate.
 
 Theorem locked_async_disk_read_ok : forall a,
     stateS TID: tid |-
@@ -1216,11 +1236,52 @@ Theorem locked_async_disk_read_ok : forall a,
                             R tid s0' s'
     }} locked_async_disk_read a.
 Proof.
-  hoare pre simplify with finish.
-  pred_apply; cancel; eauto.
-  admit. (* cache value must line up with disk *)
-
-Abort.
+  time "hoare" hoare pre
+    (time "simplify" simplify) with finish.
+  - pred_apply; cancel; eauto. (* any * a |-> ... *)
+  - admit. (* cache value must line up with disk *)
+  - autorewrite with cache; auto.
+  - (* invalidated cache is locked *)
+    unfold gcache_get_lock.
+    rewrite cache_invalidate_get; auto.
+  - distinguish_addresses.
+    eapply NoChange.
+    replace (get_s_lock a0 s).
+    autorewrite with ghost_state.
+    unfold gcache_get_lock; rewrite cache_invalidate_get.
+    auto.
+    eapply NoChange.
+    autorewrite with ghost_state.
+    rewrite gcache_get_lock_invalidate by (now auto).
+    auto.
+  - distinguish_addresses.
+    autorewrite with ghost_state cache.
+    auto.
+  - simplify.
+  - (* relation between s and s' *)
+    (* need cacheR_reader_collapse, but with star (R' tid) *)
+    admit.
+  - unfold gcache_get_lock; rewrite cache_state_as_get.
+    autorewrite with cache.
+    auto.
+  - admit. (* only modified right vars;
+    need something between s1 and s2, possibly from R s1 s2 *)
+  - eapply R_trans in H18.
+    eapply cache_relation_holds in H18.
+    unfold cacheR in H18; intuition.
+  - eapply R_trans in H18.
+    eapply cache_relation_holds in H18.
+    unfold cacheR in H18; intuition.
+    eapply lock_protocol_trans.
+    eapply H28.
+    admit.
+    (* similar to lock_protocol above *)
+  - autorewrite with ghost_state.
+    admit. (* not exactly sure what's going on here *)
+  - autorewrite with ghost_state.
+    (* doesn't seem true; maybe finish applied the wrong theorem? *)
+    admit.
+Admitted.
 
 (* Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok. *)
 

@@ -377,9 +377,10 @@ Proof.
 Qed.
 
 Hint Unfold cache_get cache_add cache_add_dirty
-            cache_evict cache_clean : cache_get.
+            cache_evict cache_clean cache_invalidate : cache_get.
 
-Ltac t := autounfold with cache_get; intuition;
+Ltac t := autounfold with cache_get;
+  intuition;
   destruct matches in *;
   autorewrite with cache_get in *;
   try congruence;
@@ -409,6 +410,29 @@ Lemma cache_get_neq : forall st (c:AssocCache st) a a' v s,
     cache_get (cache_add c a v s) a' = cache_get c a'.
 Proof.
   t.
+Qed.
+
+Lemma cache_invalidate_get : forall st (c:AssocCache st) a l,
+  cache_state (cache_invalidate c a l) a = Some l.
+Proof.
+  intros.
+  rewrite cache_state_as_get.
+  t.
+Qed.
+
+Lemma cache_invalidate_get_other : forall st (c:AssocCache st) a a' l,
+  a <> a' ->
+  cache_get (cache_invalidate c a l) a' = cache_get c a'.
+Proof.
+  t.
+Qed.
+
+Lemma cache_add_invalidate : forall st (c:AssocCache st) a l v l' a',
+  cache_get (cache_add (cache_invalidate c a l) a v l') a' =
+  cache_get (cache_add c a v l') a'.
+Proof.
+  intros.
+  destruct (weq a a'); t.
 Qed.
 
 Lemma cache_evict_get : forall st (c:AssocCache st) v a s,
@@ -491,6 +515,8 @@ Hint Rewrite cache_get_eq cache_get_dirty_eq : cache.
 Hint Rewrite cache_get_dirty_neq cache_get_neq using (now eauto) : cache.
 Hint Rewrite cache_remove_get : cache.
 Hint Rewrite cache_remove_get_other using (now eauto) : cache.
+Hint Rewrite cache_invalidate_get : cache.
+Hint Rewrite cache_invalidate_get_other using (now eauto) : cache.
 Hint Rewrite cache_evict_get using (now eauto) : cache.
 Hint Rewrite cache_evict_get_other using (now eauto) : cache.
 Hint Rewrite cache_get_add_clean : cache.
@@ -726,6 +752,17 @@ Section CachePredStability.
 
 Hint Rewrite upd_eq upd_ne using (now auto) : cache.
 
+Lemma cache_pred_same_cache : forall st (c:AssocCache st) vd d c',
+  cache_pred c vd d ->
+  (forall a, cache_get c' a = cache_get c a) ->
+  cache_pred c' vd d.
+Proof.
+  unfold cache_pred.
+  intros.
+  rewrite H0.
+  eapply H.
+Qed.
+
 Lemma cache_pred_stable_add : forall st (c:AssocCache st) vd a v l d rest reader,
     vd a = Some (Valuset v rest, reader) ->
     cache_val c a = None ->
@@ -932,6 +969,17 @@ Section ReaderLockStability.
       reflexivity.
   Qed.
 
+  Lemma gcache_get_lock_invalidate : forall c a a' l,
+    a <> a' ->
+    gcache_get_lock (cache_invalidate c a l) a' =
+    gcache_get_lock c a'.
+  Proof.
+    unfold gcache_get_lock; intros.
+    repeat rewrite cache_state_as_get;
+      autorewrite with cache.
+      reflexivity.
+  Qed.
+
   Theorem reader_lock_add_no_reader : forall vd a c v vs l,
     vd a = Some (vs, None) ->
     reader_lock_inv vd c ->
@@ -941,6 +989,18 @@ Section ReaderLockStability.
     intuition.
     distinguish_two_addresses a a0.
     rewrite gcache_get_lock_add by (now auto).
+    eauto.
+  Qed.
+
+  Lemma reader_lock_invalidate : forall vd a c vs l,
+      vd a = Some (vs, None) ->
+      reader_lock_inv vd c ->
+      reader_lock_inv vd (cache_invalidate c a l).
+  Proof.
+    unfold reader_lock_inv.
+    intros.
+    distinguish_addresses.
+    rewrite gcache_get_lock_invalidate by (now auto).
     eauto.
   Qed.
 
