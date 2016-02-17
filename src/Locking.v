@@ -46,6 +46,22 @@ Proof.
   inversion H1; subst; congruence.
 Qed.
 
+Lemma lock_protects_locked : forall lvar tv (v: _ -> tv) tid s s',
+    lvar s = Owned tid ->
+    lock_protects lvar v tid s s'.
+Proof.
+  unfold lock_protects.
+  congruence.
+Qed.
+
+Lemma lock_protects_unchanged : forall lvar tv (v: _ -> tv) tid s s',
+    v s = v s' ->
+    lock_protects lvar v tid s s'.
+Proof.
+  unfold lock_protects.
+  eauto.
+Qed.
+
 Hint Extern 1 (_ = _) => congruence.
 
 Theorem lock_protocol_trans : forall lvar tid s s' s'',

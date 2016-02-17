@@ -785,7 +785,7 @@ Ltac finish :=
   let solver := cancel_with_split idtac ltac:(destruct_ands; repeat split); eauto in
   try time "backtrack_pred" backtrack_pred_solve solver).
 
-Hint Resolve cache_eq_preserved.
+Hint Resolve cache_eq_add cache_eq_invalidate.
 Hint Resolve cache_pred_clean cache_pred_clean'.
 Hint Resolve cache_pred_dirty cache_pred_dirty'.
 Hint Resolve cache_pred_stable_add.
@@ -1059,6 +1059,8 @@ Qed.
 
 Hint Resolve upd_ptsto_any.
 
+Hint Resolve cache_pred_stable_invalidate.
+
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ F v rest,
@@ -1184,25 +1186,18 @@ Definition locked_async_disk_read {T} a rx : prog _ _ T :=
              let c' := cache_invalidate c a Locked in
              Assgn Cache c';;
              v <- locked_AsyncRead a;
-             let c'' := cache_add c' a v Open in
+             let c'' := cache_add c' a v Locked in
              GhostUpdate (fun s =>
-                    let vc' := cache_add (get GCache s) a v NoOwner in
+                    let vc' := cache_add (get GCache s) a v (Owned tid) in
                     set GCache vc' s);;
              Assgn Cache c'';;
                    rx v
   | Some v => rx v
   end.
 
-Lemma lock_protects_locked : forall lvar tv (v: _ -> tv) tid (s s':S),
-    lvar s = Owned tid ->
-    lock_protects lvar v tid s s'.
-Proof.
-  unfold lock_protects.
-  intros.
-  congruence.
-Qed.
-
 Hint Resolve lock_protects_locked.
+
+Hint Resolve pimpl_any.
 
 Theorem locked_async_disk_read_ok : forall a,
     stateS TID: tid |-
@@ -1214,17 +1209,17 @@ Theorem locked_async_disk_read_ok : forall a,
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
-                            vd' = virt_disk s /\
-                            chain (star (othersR R tid)) (R tid) s s' /\
+                            vd' |= any * a |-> (Valuset v rest, None) /\
+                            star (othersR R tid) s s' /\
                             r = v /\
                             get_s_lock a s' = Owned tid /\
                             R tid s0' s'
     }} locked_async_disk_read a.
 Proof.
   hoare pre simplify with finish.
-  time "hoare" hoare pre (simplify;
-    time "standardize_mem_fields" standardize_mem_fields) with
-  finish.
+  pred_apply; cancel; eauto.
+  admit. (* cache value must line up with disk *)
+
 Abort.
 
 (* Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok. *)

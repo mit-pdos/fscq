@@ -514,16 +514,21 @@ Ltac case_cache_val' c a :=
   (* especially to remove impossible cases *)
   try congruence.
 
-Remark cache_eq_refl : forall st (c:AssocCache st),
+Section CacheEqPreserved.
+
+Variable st:Type.
+Variable c:AssocCache st.
+Variable st':Type.
+Variable c':AssocCache st'.
+
+Remark cache_eq_refl :
   cache_eq eq c c.
 Proof.
   unfold cache_eq; intuition.
   case_cache_val' c a; eauto.
 Qed.
 
-Theorem cache_eq_preserved : forall st (c:AssocCache st)
-  st' (c':AssocCache st') st_eq
-  (a:addr) v s s',
+Theorem cache_eq_add : forall st_eq (a:addr) v s s',
   cache_eq st_eq c c' ->
   st_eq s s' ->
   cache_eq st_eq (cache_add c a v s) (cache_add c' a v s').
@@ -539,6 +544,25 @@ Proof.
     repeat rewrite map_raw_add_eq_o by auto;
     auto.
 Qed.
+
+Theorem cache_eq_invalidate : forall st_eq (a:addr) s s',
+  cache_eq st_eq c c' ->
+  st_eq s s' ->
+  cache_eq st_eq (cache_invalidate c a s) (cache_invalidate c' a s').
+Proof.
+  unfold cache_eq; intuition;
+    match goal with
+    | [ H: forall (_:addr), _, a:addr |- _ ] =>
+      specialize (H a); unfold cache_val, cache_state in H
+    end; intuition.
+
+  distinguish_addresses;
+    repeat rewrite map_raw_add_neq_o by auto;
+    repeat rewrite map_raw_add_eq_o by auto;
+    auto.
+Qed.
+
+End CacheEqPreserved.
 
 Ltac rewrite_cache_get :=
   repeat match goal with
@@ -710,6 +734,15 @@ Lemma cache_pred_stable_add : forall st (c:AssocCache st) vd a v l d rest reader
 Proof.
   prove_cache_pred; rewrite_cache_get; repeat eexists;
     eauto; congruence.
+Qed.
+
+Lemma cache_pred_stable_invalidate : forall st (c:AssocCache st) vd a l d,
+    cache_pred c vd d ->
+    cache_val c a = None ->
+    cache_pred (cache_invalidate c a l) vd d.
+Proof.
+  prove_cache_pred; rewrite_cache_get; repeat eexists;
+    eauto; try congruence.
 Qed.
 
 Lemma cache_pred_stable_dirty_write : forall st (c:AssocCache st) vd a v s s' rest v' d vs' reader,
