@@ -358,8 +358,27 @@ Qed.
 Definition id_dec : forall (id1 id2:ID), {id1 = id2} + {id1 <> id2} :=
   Nat.eq_dec.
 
+Lemma change_reader_eq : forall vd a vs rdr rdr',
+    vd a = Some (vs, rdr) ->
+    change_reader vd a rdr' a = Some (vs, rdr').
+Proof.
+  unfold change_reader; intros; simpl_match.
+  autorewrite with upd; eauto.
+Qed.
+
+Lemma change_reader_neq : forall vd a a' rdr',
+    a <> a' ->
+    change_reader vd a rdr' a' = vd a'.
+Proof.
+  unfold change_reader; intros.
+  case_eq (vd a); intros; eauto.
+  destruct w.
+  autorewrite with upd; eauto.
+Qed.
+
 Lemma cacheR_reader_collapse : forall tid (s s' s'' s''':S) vs0 a,
     get GDisk s a = Some (vs0, None) ->
+    get_s_lock a s = Owned tid ->
     s' = set GDisk (change_reader (get GDisk s) a (Some tid)) s ->
     reader_lock_inv (get GDisk s') (get GCache s') ->
     othersR cacheR tid s' s'' ->
@@ -370,22 +389,41 @@ Proof.
   unfold othersR, cacheR.
   intros; subst.
   deex; eexists; intuition eauto.
-  simpl_get_set in *.
-  eauto using same_domain_trans, same_domain_change_reader.
-  eapply lock_protocol_trans; [ eapply lock_protocol_trans | ];
-  [ | eapply H5 | ].
-  eapply lock_protocol_indifference; eauto.
-  unfold get_s_lock, gcache_get_lock; simpl_get_set.
-  eapply lock_protocol_indifference; eauto.
-  unfold get_s_lock, gcache_get_lock; simpl_get_set.
+  - simpl_get_set in *.
+    eauto using same_domain_trans, same_domain_change_reader.
+  - eapply lock_protocol_trans; [ eapply lock_protocol_trans | ];
+    [ | eapply H6 | ].
+    eapply lock_protocol_indifference; eauto.
+    unfold get_s_lock, gcache_get_lock; simpl_get_set.
+    eapply lock_protocol_indifference; eauto.
+    unfold get_s_lock, gcache_get_lock; simpl_get_set.
 
-  match goal with
-  | [ H: forall (_:addr), _ |- _ ] => specialize (H a0); destruct_ands
-  end.
+  - match goal with
+    | [ H: forall (_:addr), _ |- _ ] => specialize (H a0); destruct_ands
+    end.
 
-  eapply lock_protects_indifference; eauto;
-  unfold get_s_lock, get_scache_val; now simpl_get_set.
-Abort.
+    eapply lock_protects_indifference; eauto;
+    unfold get_s_lock, get_scache_val; now simpl_get_set.
+
+  - unfold lock_protects; unfold get_disk_val in *; simpl_get_set; intros.
+    assert (get GDisk s'' a = Some (vs0, Some tid)).
+    specialize (H6 a); destruct_ands.
+    erewrite H9.
+    simpl_get_set.
+    erewrite change_reader_eq; eauto.
+    unfold get_s_lock; simpl_get_set; eauto.
+    eauto.
+    distinguish_addresses;
+      try erewrite change_reader_eq by eauto;
+      try erewrite change_reader_neq by eauto;
+      eauto.
+    specialize (H6 a0); destruct_ands.
+    erewrite H11.
+    simpl_get_set.
+    erewrite change_reader_neq; eauto.
+    unfold get_s_lock; simpl_get_set; eauto.
+    eauto.
+Qed.
 
 Lemma cacheR_ignores_readers : forall tid (s s' s'':S) a rdr,
     s' = set GDisk (change_reader (get GDisk s) a rdr) s ->
