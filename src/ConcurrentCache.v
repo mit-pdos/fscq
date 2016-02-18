@@ -239,7 +239,7 @@ Hint Immediate GCache_neq_GDisk.
 
 Hint Resolve not_eq_sym.
 
-Section CacheRTrans.
+Section CacheRProperties.
 
 Lemma cacheR_split : forall tid s s',
   cacheR tid s s' ->
@@ -425,6 +425,137 @@ Proof.
     eauto.
 Qed.
 
+Lemma star_cacheR' : forall tid s s',
+  star (othersR cacheR tid) s s' ->
+  same_domain (get GDisk s) (get GDisk s') /\
+  (forall a:addr,
+    star (othersR (lock_protocol (get_s_lock a)) tid) s s' /\
+    star (othersR (lock_protects (get_s_lock a) (get_scache_val a)) tid) s s' /\
+    star (othersR (lock_protects (get_s_lock a) (get_disk_val a)) tid) s s').
+Proof.
+  unfold othersR, cacheR.
+  split.
+  - induction H; try deex; eauto.
+  - intros.
+    induction H; try deex_local; eauto.
+    specialize (H3 a).
+    intuition eauto.
+Qed.
+
+Definition lock_protects' lvar tv (v: S -> tv) tid s s' :=
+  lvar s = Owned tid -> v s' = v s.
+
+Theorem lock_protects'_correct : forall tid l tv (v: _ -> tv) s s',
+  othersR (lock_protects l v) tid s s' <->
+  lock_protects' l v tid s s'.
+Proof.
+  unfold othersR, lock_protects, lock_protects'.
+  split; intros.
+  - deex.
+    specialize (H2 _ H0).
+    intuition.
+  - (* there are three cases: l s is unlocked, where the protection is irrelevant,
+    l s is locked by tid, where lock_protects' has the right hypothesis,
+    and l s is locked by some other id, which leads to contradiction *)
+    case_eq (l s); intros.
+    exists (tid+1); intuition.
+    inversion H1.
+    destruct (id_dec tid id); subst.
+    exists (id+1); intuition.
+    exists id; intuition.
+    congruence.
+Qed.
+
+Definition lock_protocol' lvar tid (s s':S) :=
+  lvar s = Owned tid <-> lvar s' = Owned tid.
+
+Lemma lock_protocol'_no_change : forall lvar tid (s s':S),
+  lvar s = lvar s' ->
+  othersR (lock_protocol lvar) tid s s'.
+Proof.
+  unfold othersR.
+  intros.
+  exists (tid+1); intuition.
+Qed.
+
+Theorem lock_protocol'_correct : forall tid l s s',
+  (* this strange hypothesis says that it is possible to make the lock
+     have any value in some state; otherwise it might not be possible to
+     actually release the lock, for example *)
+  (forall f:BusyFlagOwner, {s' | l s' = f}) ->
+  star (othersR (lock_protocol l) tid) s s' <->
+  lock_protocol' l tid s s'.
+Proof.
+  unfold lock_protocol'.
+  split; intros.
+  - unfold othersR in *.
+    induction H; intuition eauto;
+    deex; match goal with
+          | [ H: lock_protocol _ _ _ _ |- _ ] =>
+            inversion H; subst; try congruence
+          end.
+    rewrite H in *.
+    intuition.
+  - intuition.
+    case_eq (l s); case_eq (l s'); intros;
+      try match goal with
+          | [ tid: ID, tid': ID |- _ ] => destruct (id_dec tid tid')
+          end; subst; intuition; try congruence.
+    eapply star_one_step.
+    eapply lock_protocol'_no_change; eauto; congruence.
+    eapply star_one_step.
+    unfold othersR; eauto.
+    unfold othersR; eauto.
+    eapply star_one_step.
+    eapply lock_protocol'_no_change; eauto; congruence.
+    destruct (id_dec id tid); subst; intuition; try congruence.
+    destruct (id_dec id0 tid); subst; intuition; try congruence.
+    destruct (X NoOwner) as [s1 ?].
+    eapply star_trans with (s1 := s1).
+    eapply star_one_step; eexists; eauto.
+    eapply star_one_step; eexists; eauto.
+Qed.
+
+Definition cacheR' tid (s s':S) :=
+  same_domain (get GDisk s) (get GDisk s') /\
+  (forall a,
+    lock_protocol' (get_s_lock a) tid s s' /\
+    lock_protects' (get_s_lock a) (get_scache_val a) tid s s' /\
+    lock_protects' (get_s_lock a) (get_disk_val a) tid s s').
+
+(* this doesn't strictly follow from the above lemmas (the inductions
+   have to be done simultaneously), but the above proof strategies essentially
+   apply here as well *)
+Theorem cacheR'_correct : forall tid s s',
+  star (othersR cacheR tid) s s' <->
+  cacheR' tid s s'.
+Proof.
+  unfold othersR, cacheR, cacheR'.
+  split; intros.
+  - induction H; unfold lock_protocol', lock_protects';
+    admit.
+  - (* this direction is much harder, since the sequence of steps actually
+       has to be constructed to some extent, and must handle modifications to
+       every address *)
+    admit.
+Admitted.
+
+Lemma cacheR_star_reader_collapse : forall tid (s s' s'' s''':S) vs0 a,
+    get GDisk s a = Some (vs0, None) ->
+    get_s_lock a s = Owned tid ->
+    s' = set GDisk (change_reader (get GDisk s) a (Some tid)) s ->
+    reader_lock_inv (get GDisk s') (get GCache s') ->
+    cacheR' tid s' s'' ->
+    reader_lock_inv (get GDisk s'') (get GCache s'') ->
+    s''' = set GDisk (change_reader (get GDisk s'') a None) s'' ->
+    cacheR' tid s s'''.
+Proof.
+  unfold cacheR'.
+  intros; subst.
+  (* not actually very similar to the above proof, but should be considerably
+     simpler since cacheR' is more simply expressed than othersR cacheR *)
+Admitted.
+
 Lemma cacheR_ignores_readers : forall tid (s s' s'':S) a rdr,
     s' = set GDisk (change_reader (get GDisk s) a rdr) s ->
     othersR cacheR tid s' s'' ->
@@ -442,7 +573,7 @@ Proof.
     eauto using cacheR_stutter, cacheR_trans.
 Qed.
 
-End CacheRTrans.
+End CacheRProperties.
 
 Lemma cache_lock_owner_unchanged' : forall tid a (s s':S),
     get_s_lock a s = Owned tid ->
