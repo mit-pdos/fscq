@@ -525,6 +525,82 @@ Definition cacheR' tid (s s':S) :=
     lock_protects' (get_s_lock a) (get_scache_val a) tid s s' /\
     lock_protects' (get_s_lock a) (get_disk_val a) tid s s').
 
+Lemma lock_protocol'_locked : forall (s s':S) tid l,
+  l s = Owned tid ->
+  lock_protocol' l tid s s' ->
+  l s' = Owned tid.
+Proof.
+  unfold lock_protocol'.
+  intuition.
+Qed.
+
+Hint Resolve lock_protocol'_locked.
+
+Lemma lock_protects'_refl : forall s tid l tv (v: _ -> tv),
+  lock_protects' l v tid s s.
+Proof.
+  unfold lock_protects'.
+  reflexivity.
+Qed.
+
+Lemma lock_protocol'_refl : forall (s:S) tid l,
+  lock_protocol' l tid s s.
+Proof.
+  unfold lock_protocol'.
+  reflexivity.
+Qed.
+
+Lemma lock_protocol'_trans : forall (s s' s'':S) tid l,
+  lock_protocol' l tid s s' ->
+  lock_protocol' l tid s' s'' ->
+  lock_protocol' l tid s s''.
+Proof.
+  unfold lock_protocol'; intros.
+  intuition.
+Qed.
+
+Check lock_protects_trans.
+
+Lemma lock_protects'_trans : forall (s s' s'':S) lvar tv (v: _ -> tv) tid,
+  lock_protects' lvar v tid s s' ->
+  lock_protects' lvar v tid s' s'' ->
+  lock_protocol' lvar tid s s' ->
+  lock_protects' lvar v tid s s''.
+Proof.
+  unfold lock_protects', lock_protocol'.
+  intros.
+  intuition.
+  congruence.
+Qed.
+
+Hint Resolve lock_protects'_refl
+  lock_protects'_trans
+  lock_protocol'_refl
+  lock_protocol'_trans.
+
+Definition set_s_lock_to_value (s:S) a l : {s | get_s_lock a s = l }.
+Proof.
+  exists (let c := get GCache s in
+          let c' := cache_invalidate c a l in
+          set GCache c' s).
+  cbn.
+  unfold get_s_lock, gcache_get_lock; simpl_get_set.
+  autorewrite with cache; auto.
+Qed.
+
+Hint Resolve set_s_lock_to_value.
+Hint Resolve lock_protocol'_correct.
+Hint Resolve lock_protects'_correct.
+
+Ltac single_addr :=
+  lazymatch goal with
+  | [ a: addr, H: forall (_:addr), _ |- _ ] =>
+    lazymatch goal with
+    | [ a: addr, a': addr |- _ ] => fail 1
+    | _ =>  specialize (H a); destruct_ands
+    end
+  end.
+
 (* this doesn't strictly follow from the above lemmas (the inductions
    have to be done simultaneously), but the above proof strategies essentially
    apply here as well *)
@@ -534,11 +610,37 @@ Theorem cacheR'_correct : forall tid s s',
 Proof.
   unfold othersR, cacheR, cacheR'.
   split; intros.
-  - induction H; unfold lock_protocol', lock_protects';
-    admit.
-  - (* this direction is much harder, since the sequence of steps actually
-       has to be constructed to some extent, and must handle modifications to
-       every address *)
+  - split.
+    eapply star_cacheR' in H; destruct_ands; eauto.
+    induction H.
+    intros; intuition.
+    intros.
+    single_addr.
+    intros.
+    assert (star (othersR cacheR tid) s1 s2).
+    unfold othersR, cacheR; eauto.
+    deex_local.
+    eapply star_cacheR' in H4; destruct_ands.
+    repeat single_addr.
+    intuition.
+    eapply lock_protocol'_trans; [ | eassumption ].
+    eapply lock_protocol'_correct; eauto.
+
+    eapply lock_protects'_trans; [ | eassumption | ].
+    eapply lock_protects'_correct; eauto.
+    eexists; intuition eauto.
+    eapply lock_protocol'_correct; eauto.
+
+    eapply lock_protects'_trans; [ | eassumption | ].
+    eapply lock_protects'_correct; eauto.
+    eexists; intuition eauto.
+    eapply lock_protocol'_correct; eauto.
+  - (* This direction is much harder: the steps are only allowed to be
+       about one tid, and we can't discriminate among addresses or tids
+       to be able to determine what to do with each step.
+
+       The statement turns out to be true since we could iterate over all
+       tids or addrs and build up the steps, but that would be painful. *)
     admit.
 Admitted.
 

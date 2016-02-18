@@ -193,3 +193,16 @@ Proof.
 Qed.
 
 End TransClosure.
+
+Theorem star_family : forall A B (R: B -> relation A),
+  forall (R_refl: forall x s, R x s s),
+  (forall s s',
+  star (fun s s' => forall x, R x s s') s s' <->
+  forall x, star (fun s s' => R x s s') s s').
+Proof.
+  split; intros.
+  induction H; eauto.
+  (* is there some condition under which star R1 /\ star R2 can combine
+     to prove star (R1 /\ R2)? that's what we need here, except over the entire
+     family B (at the very least for finite families B *)
+Abort.
