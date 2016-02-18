@@ -377,7 +377,7 @@ Proof.
 Qed.
 
 Hint Unfold cache_get cache_add cache_add_dirty
-            cache_evict cache_clean cache_invalidate : cache_get.
+            cache_evict cache_clean cache_invalidate cache_set_state : cache_get.
 
 Ltac t := autounfold with cache_get;
   intuition;
@@ -423,6 +423,24 @@ Qed.
 Lemma cache_invalidate_get_other : forall st (c:AssocCache st) a a' l,
   a <> a' ->
   cache_get (cache_invalidate c a l) a' = cache_get c a'.
+Proof.
+  t.
+Qed.
+
+Lemma cache_set_state_get : forall st (c:AssocCache st) a l,
+  cache_get (cache_set_state c a l) a = match cache_get c a with
+  | Some (Clean v _) => Some (Clean v l)
+  | Some (Dirty v _) => Some (Dirty v l)
+  | Some (Invalid _) => Some (Invalid l)
+  | None => None
+  end.
+Proof.
+  t.
+Qed.
+
+Lemma cache_set_state_get_other : forall st (c:AssocCache st) a a' l,
+  a <> a' ->
+  cache_get (cache_set_state c a l) a' = cache_get c a'.
 Proof.
   t.
 Qed.
@@ -515,6 +533,8 @@ Hint Rewrite cache_get_eq cache_get_dirty_eq : cache.
 Hint Rewrite cache_get_dirty_neq cache_get_neq using (now eauto) : cache.
 Hint Rewrite cache_remove_get : cache.
 Hint Rewrite cache_remove_get_other using (now eauto) : cache.
+Hint Rewrite cache_set_state_get : cache.
+Hint Rewrite cache_set_state_get_other using (now eauto) : cache.
 Hint Rewrite cache_invalidate_get : cache.
 Hint Rewrite cache_invalidate_get_other using (now eauto) : cache.
 Hint Rewrite cache_evict_get using (now eauto) : cache.
@@ -586,6 +606,23 @@ Proof.
     repeat rewrite map_raw_add_neq_o by auto;
     repeat rewrite map_raw_add_eq_o by auto;
     auto.
+Qed.
+
+Theorem cache_eq_lock : forall st_eq (a:addr) s s',
+  cache_eq st_eq c c' ->
+  st_eq s s' ->
+  cache_eq st_eq (cache_set_state c a s) (cache_set_state c' a s').
+Proof.
+  unfold cache_eq; intuition;
+    match goal with
+    | [ H: forall (_:addr), _, a:addr |- _ ] =>
+      specialize (H a); unfold cache_val, cache_state in H
+    end; intuition.
+
+  distinguish_addresses;
+    autorewrite with cache;
+    auto.
+  inversion H; eauto.
 Qed.
 
 End CacheEqPreserved.
@@ -780,6 +817,20 @@ Lemma cache_pred_stable_invalidate : forall st (c:AssocCache st) vd a l d,
 Proof.
   prove_cache_pred; rewrite_cache_get; repeat eexists;
     eauto; try congruence.
+Qed.
+
+Lemma cache_pred_stable_lock : forall st (c:AssocCache st) vd d a l,
+  cache_pred c vd d ->
+  cache_pred (cache_set_state c a l) vd d.
+Proof.
+  prove_cache_pred.
+  unfold cache_set_state.
+  fold (cache_get c a0).
+  case_cache_val' c a0; cbn; rewrite_cache_get; eauto.
+
+  unfold cache_set_state.
+  fold (cache_get c a).
+  case_cache_val' c a; cbn; rewrite_cache_get; eauto.
 Qed.
 
 Lemma cache_pred_stable_dirty_write : forall st (c:AssocCache st) vd a v s s' rest v' d vs' reader,

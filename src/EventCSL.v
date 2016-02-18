@@ -649,6 +649,18 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
+  Theorem Wakeup_ok : forall a,
+    tid |- {{ (_:unit),
+           | PRE d m s0 s: True
+           | POST d' m' s0' s' _: d' = d /\
+                                  s0' = s0 /\
+                                  s' = s /\
+                                  m' = m
+          }} Wakeup a.
+  Proof.
+    opcode_ok.
+  Qed.
+
   Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ ->  _ -> _ -> Prop) p,
       valid tid pre p ->
       (forall done d m s0 s, pre' done d m s0 s ->
@@ -899,6 +911,7 @@ Hint Extern 1 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield _; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
+Hint Extern 1 {{ Wakeup _; _ }} => apply Wakeup_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 
 (* Wrap up the parameters that the semantics takes in a module. *)

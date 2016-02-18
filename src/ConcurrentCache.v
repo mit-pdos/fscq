@@ -138,11 +138,13 @@ Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
     cacheR tid s' s'' ->
     R tid s s''.
 
+  (* not clearly the right way to express this idea
   Axiom relation_ignores_readers : forall tid (s s' s'': S Scontents) a rdr',
       s' = set GDisk (change_reader (get GDisk s) a rdr') s ->
       othersR R tid s' s'' ->
       exists s1, othersR R tid s s1 /\
       s'' = set GDisk (change_reader (get GDisk s1) a rdr') s1.
+  *)
 
 End CacheSemantics.
 
@@ -1169,6 +1171,23 @@ Proof.
     congruence.
 Qed.
 
+Lemma cache_eq_noowner : forall c c' (a:addr),
+    cache_eq ghost_lock_invariant c c' ->
+    cache_state c a = Some Open ->
+    cache_state c' a = Some NoOwner.
+Proof.
+  intros.
+  eapply cache_eq_mem with (a := a) in H; eauto.
+  rewrite cache_state_as_get in *.
+  case_cache_val' c a;
+    case_cache_val' c' a;
+    repeat inv_opt;
+    match goal with
+    | [ o: BusyFlagOwner |- _ ] => destruct o
+    end; cbn in *;
+    congruence.
+Qed.
+
 Lemma cache_eq_invalid : forall c c' (a:addr) tid,
     cache_eq ghost_lock_invariant c c' ->
     gcache_get_lock c' a = Owned tid ->
@@ -1431,6 +1450,9 @@ Definition cache_lock {T} a rx : prog _ _ T :=
   Assgn Cache c';;
   rx tt.
 
+Hint Resolve cache_pred_stable_lock.
+Hint Resolve cache_eq_lock.
+
 Theorem cache_lock_ok : forall a,
     stateS TID: tid |-
     {{ (_:unit),
@@ -1440,7 +1462,7 @@ Theorem cache_lock_ok : forall a,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             get_s_lock a s' = Owned tid /\
-                            s0' = s' /\
+                            R tid s0' s' /\
                             chain (star (othersR R tid))
                               (applied (fun s:S =>
                                 let vc := get GCache s in
@@ -1449,7 +1471,25 @@ Theorem cache_lock_ok : forall a,
     }} cache_lock a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-Qed.
+  admit. (* reader_lock_inv stability *)
+  admit. (* cache_state (cache_set_state ...), though there may be a bug
+    where the cache entry needs to be created if it doesn't exist (Invalid is
+    fine) before locking it *)
+  case_eq (mcache_get_lock (get Cache m0) a); intros; simpl_match; try congruence.
+  assert (gcache_get_lock (get GCache s2) a = NoOwner).
+  admit. (* through cache_eq_noowner, plus handling case of cache miss *)
+  admit. (* lock_protocol, one address has been locked *)
+
+  (* cache values haven't changed *)
+  autorewrite with ghost_state.
+  unfold get_scache_val.
+  distinguish_addresses; autorewrite with cache.
+  destruct (cache_get (get GCache s2) a0); auto.
+  destruct c; auto.
+  auto.
+
+  autorewrite with ghost_state; auto.
+Admitted.
 
 Hint Extern 1 {{cache_lock; _}} => apply cache_lock_ok : prog.
 
@@ -1458,7 +1498,7 @@ Definition cache_unlock {T} a rx : prog _ _ T :=
   c <- Get Cache;
   GhostUpdate (fun s:S =>
     let vc := get GCache s in
-    let vc' := cache_set_state vc a (Owned tid) in
+    let vc' := cache_set_state vc a NoOwner in
     set GCache vc' s);;
   let c' := cache_set_state c a Open in
   Assgn Cache c';;
@@ -1482,7 +1522,7 @@ Theorem cache_unlock_ok : forall a,
     }} cache_unlock a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-Qed.
+Admitted.
 
 Hint Extern 1 {{cache_unlock; _}} => apply cache_unlock_ok : prog.
 
