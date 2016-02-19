@@ -2,6 +2,7 @@ Require Import Mem.
 Require Import Pred.
 Require Import Hlist.
 Require Import Automation.
+Require Import FunctionalExtensionality.
 Import Eqdep.EqdepTheory.
 
 Set Implicit Arguments.
@@ -45,6 +46,18 @@ Proof.
   inversion H; auto.
 Defined.
 
+Theorem haddr_neq : forall types t1 t2 (m1: member t1 types) (m2: member t2 types),
+    haddr m1 <> haddr m2 ->
+    member_index m1 <> member_index m2.
+Proof.
+  intros.
+  intro.
+  apply indices_eq in H0.
+  destruct H0; subst.
+  apply H.
+  rewrite <- eq_rect_eq; auto.
+Qed.
+
 Definition haddr_val_type {types} (a: haddress types) : Type :=
   match a with
   | @haddr _ A _ => A
@@ -76,7 +89,6 @@ Definition del AT AEQ V (m: @mem AT AEQ V) a : @mem _ AEQ V :=
 Module Examples.
   Import List.ListNotations.
   Import HlistNotations.
-  Import FunctionalExtensionality.
   Require Import Word.
 
   Local Example types := [nat:Type; bool:Type; nat:Type].
@@ -118,3 +130,20 @@ Module Examples.
   Qed.
 
 End Examples.
+
+Theorem hlistupd_memupd : forall types (h: hlist (fun (T:Type) => T) types) t (m: member t types) v,
+    hlistmem (set m v h) = upd (hlistmem h) (haddr m) v.
+Proof.
+  unfold hlistmem.
+  intros.
+  extensionality a.
+  destruct matches; subst.
+  destruct (haddress_dec (haddr m) (haddr m0)); subst.
+  inversion e; subst.
+  pose proof (EqdepFacts.eq_sigT_snd H1).
+  rewrite <- eq_rect_eq in H; subst.
+  autorewrite with upd hlist; auto.
+  assert (member_index m <> member_index m0).
+  auto using haddr_neq.
+  autorewrite with upd hlist; auto.
+Qed.
