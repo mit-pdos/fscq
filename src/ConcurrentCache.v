@@ -1534,7 +1534,7 @@ Proof.
       autorewrite with ghost_state cache; auto.
 Admitted.
 
-(* Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok. *)
+Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
 
 Definition cache_lock {T} a rx : prog _ _ T :=
   tid <- GetTID;
@@ -1593,7 +1593,7 @@ Proof.
   autorewrite with ghost_state; auto.
 Admitted.
 
-Hint Extern 1 {{cache_lock; _}} => apply cache_lock_ok : prog.
+Hint Extern 1 {{cache_lock _; _}} => apply cache_lock_ok : prog.
 
 Definition cache_unlock {T} a rx : prog _ _ T :=
   tid <- GetTID;
@@ -1626,7 +1626,7 @@ Proof.
   time "hoare" hoare pre simplify with finish.
 Admitted.
 
-Hint Extern 1 {{cache_unlock; _}} => apply cache_unlock_ok : prog.
+Hint Extern 1 {{cache_unlock _; _}} => apply cache_unlock_ok : prog.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   cache_lock a;;
