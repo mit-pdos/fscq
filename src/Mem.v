@@ -85,13 +85,13 @@ Hint Rewrite upd_repeat : upd.
 Hint Rewrite upd_same using (solve [ auto ]) : upd.
 
 Tactic Notation "simpl_upd" :=
-  subst;
+  try subst;
   autorewrite with upd.
 
 Tactic Notation "simpl_upd" "in" hyp(H) :=
-  subst;
+  try subst;
   autorewrite with upd in H.
 
 Tactic Notation "simpl_upd" "in" "*" :=
-  subst;
+  try subst;
     autorewrite with upd in *.

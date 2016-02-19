@@ -33,7 +33,7 @@ Record cachestate := {
 
 Module BUFCACHE.
 
-  Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) valuset) :=
+  Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) (const valuset)) :=
     (diskIs m *
      [[ Map.cardinal (CSMap cs) = CSCount cs ]] *
      [[ CSCount cs <= CSMaxCount cs ]] *
@@ -532,8 +532,8 @@ Module BUFCACHE.
   Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
 
   Lemma ptsto_tuple : forall AT VA VB AEQ a v,
-    @pimpl AT AEQ (VA * VB) (a |-> v) (a |-> (fst v, snd v)).
-  Proof. cancel. Qed.
+    @pimpl AT AEQ (const (VA * VB)%type) (a |-> v) (a |-> (fst v, snd v)).
+  Proof. destruct v. cancel. Qed.
 
   Theorem write_array_ok : forall a i v cs,
     {< d F vs,

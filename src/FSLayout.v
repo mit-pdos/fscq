@@ -148,7 +148,7 @@ Proof.
   apply pickle_unpickle_superblock.
 Qed.
 
-Definition sb_rep (fsxp : fs_xparams) : @pred _ (@weq addrlen) _ :=
+Definition sb_rep (fsxp : fs_xparams) : @pred _ (@weq addrlen) (@const Set _ _) :=
   ($0 |=> v_pickle_superblock fsxp)%pred.
 
 Definition sb_load T cs rx : prog T :=

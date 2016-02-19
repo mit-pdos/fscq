@@ -229,7 +229,7 @@ Section Bank.
     rewrite IHl1; auto.
   Qed.
 
-  Lemma bank_invariant_transfer : forall F s m rest1 rest2 bal1 bal2 amount,
+  Lemma bank_invariant_transfer : forall (F: DISK_PRED) s m rest1 rest2 bal1 bal2 amount,
       #bal1 + #bal2 = 100 ->
       #bal1 >= amount ->
       balances (get Ledger s) = (#bal1, #bal2) ->

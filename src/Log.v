@@ -259,7 +259,7 @@ Module LOG.
     apply IHl.
   Qed.
 
-  Definition avail_region start len : @pred addr (@weq addrlen) valuset :=
+  Definition avail_region start len : @pred addr (@weq addrlen) (const valuset) :=
     (exists l, [[ length l = len ]] * array start l $1)%pred.
 
   Theorem avail_region_shrink_one : forall start len,
@@ -305,11 +305,11 @@ Module LOG.
     rewrite combine_length. autorewrite with core. auto.
   Qed.
 
-  Definition data_rep (xp: log_xparams) (m: list valuset) : @pred addr (@weq addrlen) valuset :=
+  Definition data_rep (xp: log_xparams) (m: list valuset) : @pred addr (@weq addrlen) (const valuset) :=
     array (DataStart xp) m $1.
 
   (** On-disk representation of the log *)
-  Definition log_rep xp m (ms : memstate) : @pred addr (@weq addrlen) valuset :=
+  Definition log_rep xp m (ms : memstate) : @pred addr (@weq addrlen) (const valuset) :=
      ([[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
       exists rest,
@@ -320,7 +320,7 @@ Module LOG.
                          (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
 
   (* XXX DRY? *)
-  Definition log_rep_unsynced xp m (ms : memstate) : @pred addr (@weq addrlen) valuset :=
+  Definition log_rep_unsynced xp m (ms : memstate) : @pred addr (@weq addrlen) (const valuset) :=
      ([[ valid_entries m ms ]] *
       [[ valid_size xp ms ]] *
       exists rest others,
@@ -334,13 +334,13 @@ Module LOG.
                          (wordToNat (LogLen xp) - Map.cardinal ms) *
       [[ Forall (@Rec.well_formed descriptor_type) others ]])%pred.
 
-  Definition log_rep_empty xp : @pred addr (@weq addrlen) valuset :=
+  Definition log_rep_empty xp : @pred addr (@weq addrlen) (const valuset) :=
      (exists rest,
       (LogDescriptor xp) |=> descriptor_to_valu rest *
       [[ @Rec.well_formed descriptor_type (rest) ]] *
       avail_region (LogData xp) (wordToNat (LogLen xp)))%pred.
 
-  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addr (@weq addrlen) valuset :=
+  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addr (@weq addrlen) (const valuset) :=
     [[ cur = replay ms old ]]%pred.
 
   Definition nil_unless_in (ms: list addr) (l: list (list valu)) :=
@@ -1027,7 +1027,7 @@ Module LOG.
     intros; auto.
   Qed.
 
-  Definition emp_star_r' : forall V AT AEQ P, P * (emp (V:=V) (AT:=AT) (AEQ:=AEQ)) =p=> P.
+  Definition emp_star_r' : forall AT AEQ V P, P * (emp (V:=V) (AT:=AT) (AEQ:=AEQ)) =p=> P.
   Proof.
     cancel.
   Qed.
