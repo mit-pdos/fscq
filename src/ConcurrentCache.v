@@ -586,7 +586,7 @@ Proof.
   cbn.
   unfold get_s_lock, gcache_get_lock; simpl_get_set.
   autorewrite with cache; auto.
-Qed.
+Defined.
 
 Hint Resolve set_s_lock_to_value.
 Hint Resolve lock_protocol'_correct.
