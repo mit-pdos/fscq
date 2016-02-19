@@ -54,12 +54,12 @@ Definition ID := nat.
 Definition wr_set : Type := valuset * option ID.
 
 (* a disk state *)
-Notation DISK := (@mem addr (@weq addrlen) wr_set).
+Notation DISK := (@mem addr (@weq addrlen) (const wr_set)).
 
 (* a disk predicate *)
-Notation DISK_PRED := (@pred addr (@weq addrlen) wr_set).
+Notation DISK_PRED := (@pred addr (@weq addrlen) (const wr_set)).
 
-Definition clean_readers (d:DISK) : @mem addr (@weq addrlen) valuset :=
+Definition clean_readers (d:DISK) : @mem addr (@weq addrlen) (const valuset) :=
   fun a =>
     match d a with
     | Some (vs, _) => Some vs

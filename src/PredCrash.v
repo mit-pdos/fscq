@@ -12,13 +12,13 @@ Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_sco
 Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
 
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
-Definition crash_xform {AT : Type} {AEQ : DecEq AT} (p : pred) : @pred AT AEQ valuset :=
+Definition crash_xform {AT : Type} {AEQ : DecEq AT} (p : pred) : @pred AT AEQ (const valuset) :=
   fun m => exists m', p m' /\ possible_crash m' m.
 
 
 (* Specialized relations for [@pred valuset], to deal with async IO *)
 
-Theorem crash_xform_apply : forall AT AEQ (p : @pred AT AEQ valuset) (m m' : @mem AT AEQ valuset), possible_crash m m'
+Theorem crash_xform_apply : forall AT AEQ (p : @pred AT AEQ (const valuset)) (m m' : @mem AT AEQ (fun _ => valuset)), possible_crash m m'
   -> p m
   -> crash_xform p m'.
 Proof.
@@ -35,7 +35,7 @@ Proof.
   exists (fun a => match mb a with | None => None | Some v => m' a end).
   repeat split.
 
-  - unfold mem_union; apply functional_extensionality; intros.
+  - unfold mem_union; extensionality x.
     case_eq (ma x); case_eq (mb x); case_eq (m' x); auto.
     intros; unfold possible_crash in *.
     destruct (H x).
@@ -244,7 +244,7 @@ Lemma ptsto_synced_valid:
   -> m a = Some (v, nil).
 Proof.
   intros.
-  eapply ptsto_valid; eauto.
+  eapply ptsto_valid with (V := const valuset); eauto.
 Qed.
 
 Lemma ptsto_cur_valid:
@@ -255,10 +255,10 @@ Proof.
   unfold ptsto; unfold_sep_star; intros.
   repeat deex.
   eexists.
-  apply mem_union_addr; eauto.
+  apply mem_union_addr with (V := const valuset); eauto.
 Qed.
 
-Lemma crash_xform_diskIs: forall A AEQ (m: @mem A AEQ valuset),
+Lemma crash_xform_diskIs: forall A AEQ (m: @mem A AEQ (const valuset)),
   crash_xform (diskIs m) =p=> exists m', [[ possible_crash m m' ]] * diskIs m'.
 Proof.
   unfold crash_xform, pimpl, diskIs.
@@ -285,13 +285,13 @@ Hint Rewrite crash_invariant_ptsto : crash_xform.
 
 Hint Resolve crash_invariant_emp.
 
-Lemma pred_apply_crash_xform : forall AT AEQ (p : @pred AT AEQ valuset) m m',
+Lemma pred_apply_crash_xform : forall AT AEQ (p : @pred AT AEQ (const valuset)) m m',
   possible_crash m m' -> p m -> (crash_xform p) m'.
 Proof.
   unfold pimpl, crash_xform; eauto.
 Qed.
 
-Lemma pred_apply_crash_xform_pimpl : forall AT AEQ (p q : @pred AT AEQ valuset) m m',
+Lemma pred_apply_crash_xform_pimpl : forall AT AEQ (p q : @pred AT AEQ (const valuset)) m m',
   possible_crash m m' -> p m -> crash_xform p =p=> q -> q m'.
 Proof.
   intros.
