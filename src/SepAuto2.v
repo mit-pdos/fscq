@@ -563,7 +563,7 @@ Ltac destruct_lift' H :=
 Ltac destruct_lift H :=
   destruct_lift' H;
   repeat destruct_prod;
-  simpl in *;
+  cbn in *;
   repeat destruct_type True;
   repeat destruct_type unit.
 
@@ -741,7 +741,7 @@ Ltac norm'l := eapply start_normalizing; [ flatten | flatten | ];
 
 Ltac norm'r := eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
-               simpl in *.
+               cbn in *.
 
 Create HintDb false_precondition_hint.
 
@@ -778,7 +778,7 @@ Tactic Notation "hypmatch" constr(pattern) "as" ident(n) :=
 
 Ltac cancel_with' t intuition_t :=
   intros;
-  unfold stars; simpl; subst;
+  unfold stars; cbn; subst;
   pimpl_crash;
   norm;
   try match goal with
@@ -790,7 +790,7 @@ Ltac cancel_with' t intuition_t :=
   intuition intuition_t;
   try ( pred_apply; cancel_with' t intuition_t);
   try congruence;
-  unfold stars; simpl;
+  unfold stars; cbn;
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end;
