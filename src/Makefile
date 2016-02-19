@@ -7,7 +7,7 @@ MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
 	      GenSep GenSepN ListPred Cache FSLayout \
 	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree ByteFile FS Testprog \
-	      Hlist Star RelationCombinators Variables EventCSL EventCSLauto \
+	      Hlist HlistMem Star RelationCombinators Variables EventCSL EventCSLauto \
 	      Locking Automation MemCache ForwardChaining \
 	      Bank ConcurrentCache TwoBlockExample \
 	      ExtrHaskellPrelude Extraction
