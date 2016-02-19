@@ -94,10 +94,9 @@ Module Examples.
   Local Example types := [nat; bool; nat].
   Local Example someValues : hlist (@id Set) types := [( 5; true; 3 )].
 
-  Eval simpl in get HFirst someValues.
-  Eval simpl in get (HNext HFirst) someValues.
-
-  Eval simpl in set (HNext HFirst) false someValues.
+  (* Eval simpl in get HFirst someValues. *)
+  (* Eval simpl in get (HNext HFirst) someValues. *)
+  (* Eval simpl in set (HNext HFirst) false someValues. *)
 
 End Examples.
 
