@@ -1385,7 +1385,8 @@ Module PaddedLog.
   end)%pred.
 
   Definition xparams_ok xp := 
-    Desc.xparams_ok xp /\ Data.xparams_ok xp.
+    Desc.xparams_ok xp /\ Data.xparams_ok xp /\
+    (LogLen xp) = DiskLogDescSig.items_per_val * (LogDescLen xp).
 
   Definition rep xp st:=
     ([[ xparams_ok xp ]] * rep_inner xp st)%pred.
@@ -2290,7 +2291,7 @@ Module DLog.
 
   Inductive state :=
   (* The log is synced on disk *)
-  | Synced (l: contents)
+  | Synced (navail : nat) (l: contents)
   (* The log has been truncated; but the length (0) is unsynced *)
   | Truncated  (old: contents)
   (* The log is being extended; only the content has been updated (unsynced) *)
@@ -2304,8 +2305,9 @@ Module DLog.
 
   Definition rep xp st :=
     (match st with
-    | Synced l =>
+    | Synced navail l =>
           exists padded, rep_common l padded *
+          [[ navail = (LogLen xp) - (length padded) ]] *
           PaddedLog.rep xp (PaddedLog.Synced padded)
     | Truncated l =>
           exists padded, rep_common l padded *
@@ -2326,15 +2328,15 @@ Module DLog.
     rx r.
 
   Definition read_ok : forall xp cs,
-    {< F l d,
+    {< F l d nr,
     PRE       BUFCACHE.rep cs d * 
-              [[ (F * rep xp (Synced l))%pred d ]]
+              [[ (F * rep xp (Synced nr l))%pred d ]]
     POST RET: ^(cs, r) exists d',
               BUFCACHE.rep cs d' *
-              [[ r = l /\ (F * rep xp (Synced l))%pred d' ]]
+              [[ r = l /\ (F * rep xp (Synced nr l))%pred d' ]]
     CRASH exists cs' d',
               BUFCACHE.rep cs' d' *
-              [[ (F * rep xp (Synced l))%pred d' ]]
+              [[ (F * rep xp (Synced nr l))%pred d' ]]
     >} read xp cs.
   Proof.
     unfold read.
@@ -2346,17 +2348,17 @@ Module DLog.
     rx cs.
 
   Definition trunc_ok : forall xp cs,
-    {< F l d,
+    {< F l d nr,
     PRE       BUFCACHE.rep cs d *
-              [[ (F * rep xp (Synced l))%pred d ]]
+              [[ (F * rep xp (Synced nr l))%pred d ]]
     POST RET: cs exists d',
               BUFCACHE.rep cs d' *
-              [[ (F * rep xp (Synced nil))%pred d' ]]
+              [[ (F * rep xp (Synced (LogLen xp) nil))%pred d' ]]
     CRASH exists cs d',
               BUFCACHE.rep cs d' * (
-              [[ (F * rep xp (Synced l))%pred d' ]] \/
+              [[ (F * rep xp (Synced nr l))%pred d' ]] \/
               [[ (F * rep xp (Truncated l))%pred d' ]] \/
-              [[ (F * rep xp (Synced nil))%pred d' ]])
+              [[ (F * rep xp (Synced (LogLen xp) nil))%pred d' ]])
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -2404,22 +2406,41 @@ Module DLog.
       rx ^(cs, false)
     }.
 
+  Definition rounded n := roundup n DiskLogDescSig.items_per_val.
+
+  Lemma extend_navail_ok : forall xp padded new, 
+    length padded = roundup (length padded) DiskLogDescSig.items_per_val ->
+    LogLen xp - length padded - rounded (length new)
+    = LogLen xp - length (PaddedLog.padded_log padded ++ PaddedLog.padded_log new).
+  Proof.
+    unfold rounded; intros.
+    rewrite extend_length_ok by auto.
+    rewrite app_length.
+    rewrite H.
+    repeat rewrite PaddedLog.padded_log_length.
+    rewrite roundup_roundup_add by auto.
+    rewrite roundup_roundup by auto.
+    omega.
+  Qed.
+
+  Local Hint Resolve extend_navail_ok.
+
   Definition extend_ok : forall xp new cs,
-    {< F old d,
+    {< F old d nr,
     PRE       BUFCACHE.rep cs d *
-              [[ (F * rep xp (Synced old))%pred d ]]
+              [[ (F * rep xp (Synced nr old))%pred d ]]
     POST RET: ^(cs, r) exists d',
               BUFCACHE.rep cs d' * (
               [[ r = true /\
-                (F * rep xp (Synced (old ++ new)))%pred d' ]] \/
+                (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)))%pred d' ]] \/
               [[ r = false /\
-                (F * rep xp (Synced old))%pred d' ]])
+                (F * rep xp (Synced nr old))%pred d' ]])
     CRASH exists cs' d',
           BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (Synced old))%pred d' ]] \/
+          [[ (F * rep xp (Synced nr old))%pred d' ]] \/
           [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
           [[ (F * rep xp (Extended old new))%pred d' ]] \/
-          [[ (F * rep xp (Synced (old ++ new)))%pred d' ]])
+          [[ (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)))%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
