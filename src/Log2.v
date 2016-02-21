@@ -60,7 +60,7 @@ Inductive logstate :=
 (* Current transaction is being flushed to the log, but not sync'ed or
  * committed yet. e.g. DiskLog.ExtendedUnsync or DiskLog.Extended *)
 
-| NoTxnApplying (cur : diskstate)
+| ApplyingTxn (old : diskstate)
 (* Applying committed transactions to the disk.
    Block content might or might not be synced.
    Log might be truncated but not yet synced.
@@ -132,11 +132,11 @@ Module LOG.
         synced_data xp raw *
         (DLog.rep xp (DLog.ExtendedUnsync log)
       \/ DLog.rep xp (DLog.Extended log (Map.elements cms)))
-    | NoTxnApplying cur =>
-        map_empty cms *
+    | ApplyingTxn old =>
+        map_replay oms raw old *
         (((DLog.rep xp (DLog.Synced log)) * (unsync_applying xp oms raw))
-      \/ ((DLog.rep xp (DLog.Synced log)) * (unsync_syncing xp oms cur))
-      \/ ((DLog.rep xp (DLog.Truncated log)) * (synced_data xp cur)))
+      \/ ((DLog.rep xp (DLog.Synced log)) * (unsync_syncing xp oms old))
+      \/ ((DLog.rep xp (DLog.Truncated log)) * (synced_data xp old)))
     end)%pred.
 
   Definition rep xp st ms := 
@@ -191,7 +191,7 @@ Module LOG.
     cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
     cs <- BUFCACHE.sync_vecs (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
-    rx (mk_memstate map0 map0 cs).
+    rx (mk_memstate map0 cms cs).
 
   Lemma entries_valid_map0 : forall m,
     entries_valid map0 m.
@@ -1221,18 +1221,22 @@ Module LOG.
     apply Map.elements_3w.
   Qed.
 
-  Theorem apply_ok: forall xp ms,
-    {< m,
+  Definition apply_txn := apply.
+  Definition apply_notxn := apply.
+
+  Theorem apply_txn_ok: forall xp ms,
+    {< m1 m2,
     PRE
-      rep xp (NoTxn m) ms
-    POST RET:ms
-      rep xp (NoTxn m) ms
+      rep xp (ActiveTxn m1 m2) ms
+    POST RET:ms'
+      rep xp (ActiveTxn m1 m2) ms'
     CRASH
-      exists ms', rep xp (NoTxn m) ms' \/
-                  rep xp (NoTxnApplying m) ms'
-    >} apply xp ms.
+      exists ms', rep xp (NoTxn m1) ms' \/
+                  rep xp (ActiveTxn m1 m2) ms' \/
+                  rep xp (ApplyingTxn m1) ms'
+    >} apply_txn xp ms.
   Proof.
-    unfold apply; intros.
+    unfold apply_txn, apply; intros.
     step.
     unfold synced_data; cancel.
 
@@ -1242,6 +1246,83 @@ Module LOG.
 
     step.
     step.
+    apply entries_valid_replay; auto.
+    rewrite apply_synced_data_ok; cancel.
+
+    (* crash conditions *)
+    or_r; or_l. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs).
+    instantiate (raw0 := replay_disk (Map.elements (MSOld ms)) raw).
+    cancel.
+    intuition; simpl; eauto.
+    apply entries_valid_replay; auto.
+    apply entries_valid_replay; auto.
+    pred_apply; cancel.
+    rewrite apply_synced_data_ok; cancel.
+    rewrite replay_disk_merge.
+    setoid_rewrite mapeq_elements at 2; eauto.
+    apply map_merge_id.
+
+    (* truncated *)
+    or_r; or_r. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs).
+    cancel.
+    intuition; simpl; eauto.
+    instantiate (1 := F); pred_apply; cancel.
+    or_r; or_r; cancel.
+    rewrite apply_synced_data_ok; cancel.
+
+    (* synced nil *)
+    or_l. norm.
+    instantiate (2 := mk_memstate map0 map0 cs).
+    instantiate (log0 := nil).
+    cancel.
+    intuition; simpl; eauto.
+    pred_apply; cancel.
+    rewrite apply_synced_data_ok; cancel.
+
+    (* unsync_syncing *)
+    or_r; or_r. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel.
+    intuition; simpl; eauto.
+    instantiate (1 := F); pred_apply; cancel.
+    or_r; or_l; cancel.
+    apply apply_unsync_syncing_ok.
+
+    (* unsync_applying *)
+    or_r; or_r. norm.
+    instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    cancel.
+    intuition; simpl; eauto.
+    instantiate (1 := F); pred_apply; cancel.
+    or_l; cancel.
+    apply apply_unsync_applying_ok.
+  Qed.
+
+
+  Theorem apply_notxn_ok: forall xp ms,
+    {< m1,
+    PRE
+      rep xp (NoTxn m1) ms
+    POST RET:ms'
+      rep xp (NoTxn m1) ms'
+    CRASH
+      exists ms', rep xp (NoTxn m1) ms' \/
+                  rep xp (ApplyingTxn m1) ms'
+    >} apply_notxn xp ms.
+  Proof.
+    unfold apply_notxn, apply; intros.
+    step.
+    unfold synced_data; cancel.
+
+    step.
+    rewrite vsupd_vecs_length.
+    apply entries_valid_Forall_synced_map_fst; auto.
+
+    step.
+    step.
+    apply entries_valid_replay; auto.
     rewrite apply_synced_data_ok; cancel.
 
     (* crash conditions *)
@@ -1266,6 +1347,7 @@ Module LOG.
     instantiate (1 := F); pred_apply; cancel.
     or_r; or_r; cancel.
     rewrite apply_synced_data_ok; cancel.
+
 
     (* synced nil *)
     or_l. norm.
@@ -1295,8 +1377,17 @@ Module LOG.
     apply apply_unsync_applying_ok.
   Qed.
 
-End LOG.
 
+  Definition recover T xp ms rx : prog T :=
+    let^ (cs, log) <- DLog.read xp (MSCache ms);
+    let msold := replay_mem log map0 in
+    ms <- apply_notxn xp (mk_memstate msold map0 cs);
+    rx ms.
+
+  
+
+
+End LOG.
 
 
 
