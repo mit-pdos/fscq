@@ -134,9 +134,12 @@ Module LOG.
       \/ DLog.rep xp (DLog.Extended log (Map.elements cms)))
     | ApplyingTxn old =>
         map_replay oms raw old *
-        (((DLog.rep xp (DLog.Synced log)) * (unsync_applying xp oms raw))
-      \/ ((DLog.rep xp (DLog.Synced log)) * (unsync_syncing xp oms old))
-      \/ ((DLog.rep xp (DLog.Truncated log)) * (synced_data xp old)))
+        (((DLog.rep xp (DLog.Synced log)) *
+          (unsync_applying xp oms raw))
+      \/ ((DLog.rep xp (DLog.Synced log)) *
+          (unsync_syncing xp oms old))
+      \/ ((DLog.rep xp (DLog.Truncated log)) *
+          (synced_data xp old)))
     end)%pred.
 
   Definition rep xp st ms := 

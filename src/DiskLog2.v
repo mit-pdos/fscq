@@ -1394,6 +1394,11 @@ Module PaddedLog.
 
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
+  Definition avail T xp cs rx : prog T :=
+    let^ (cs, nr) <- Hdr.read xp cs;
+    let '(ndesc, ndata) := nr in
+    rx ^(cs, ((LogLen xp) - ndesc * DiskLogDescSig.items_per_val)).
+
   Definition read T xp cs rx : prog T :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(ndesc, ndata) := nr in
@@ -1676,6 +1681,25 @@ Module PaddedLog.
   Hint Extern 0 (okToUnify (Data.array_rep _ _ _) (Data.array_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (Desc.avail_rep _ _ _) (Desc.avail_rep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (Data.avail_rep _ _ _) (Data.avail_rep _ _ _)) => constructor : okToUnify.
+
+
+  Definition avail_ok : forall xp cs,
+    {< F l d,
+    PRE   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l))%pred d ]]
+    POST RET: ^(cs, r)
+          BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l))%pred d ]] *
+          [[ r = (LogLen xp) - roundup (length l) DiskLogDescSig.items_per_val ]]
+    CRASH exists cs',
+          BUFCACHE.rep cs' d *
+          [[ (F * rep xp (Synced l))%pred d ]]
+    >} avail xp cs.
+  Proof.
+    unfold avail.
+    step.
+    step.
+  Qed.
 
   Definition read_ok : forall xp cs,
     {< F l d,
@@ -2236,6 +2260,7 @@ Module PaddedLog.
   Qed.
 
 
+  Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
@@ -2447,6 +2472,29 @@ Module DLog.
     hoare.
   Qed.
 
+  Definition avail T xp cs rx : prog T :=
+    r <- PaddedLog.avail xp cs;
+    rx r.
+
+  Definition avail_ok : forall xp cs,
+    {< F l d nr,
+    PRE   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced nr l))%pred d ]]
+    POST RET: ^(cs, r)
+          BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced nr l))%pred d ]] *
+          [[ r = nr ]]
+    CRASH exists cs',
+          BUFCACHE.rep cs' d *
+          [[ (F * rep xp (Synced nr l))%pred d ]]
+    >} avail xp cs.
+  Proof.
+    unfold avail.
+    step.
+    step.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
