@@ -1299,17 +1299,16 @@ Module LOG.
     apply Map.elements_3w.
   Qed.
 
-
   Theorem apply_txn_ok: forall xp ms,
-    {< m1 m2,
+    {< m1 m2 na,
     PRE
-      rep xp (ActiveTxn m1 m2) ms
+      rep xp na (ActiveTxn m1 m2) ms
     POST RET:ms'
-      rep xp (ActiveTxn m1 m2) ms'
+      rep xp (LogLen xp) (ActiveTxn m1 m2) ms'
     CRASH
-      exists ms', rep xp (NoTxn m1) ms' \/
-                  rep xp (ActiveTxn m1 m2) ms' \/
-                  rep xp (ApplyingTxn m1) ms'
+      exists ms', rep xp (LogLen xp) (NoTxn m1) ms' \/
+                  rep xp na (ActiveTxn m1 m2) ms' \/
+                  rep xp na (ApplyingTxn m1) ms'
     >} apply_txn xp ms.
   Proof.
     unfold apply_txn, apply; intros.
@@ -1378,14 +1377,15 @@ Module LOG.
 
 
   Theorem apply_notxn_ok: forall xp ms,
-    {< m1,
+    {< m1 na,
     PRE
-      rep xp (NoTxn m1) ms
+      rep xp na (NoTxn m1) ms
     POST RET:ms'
-      rep xp (NoTxn m1) ms'
+      rep xp (LogLen xp) (NoTxn m1) ms'
     CRASH
-      exists ms', rep xp (NoTxn m1) ms' \/
-                  rep xp (ApplyingTxn m1) ms'
+      exists ms', rep xp (LogLen xp) (NoTxn m1) ms' \/
+                  rep xp na (NoTxn m1) ms' \/
+                  rep xp na (ApplyingTxn m1) ms'
     >} apply_notxn xp ms.
   Proof.
     unfold apply_notxn, apply; intros.
@@ -1402,7 +1402,7 @@ Module LOG.
     rewrite apply_synced_data_ok; cancel.
 
     (* crash conditions *)
-    or_l. norm.
+    or_r; or_l. norm.
     instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs).
     instantiate (raw0 := replay_disk (Map.elements (MSOld ms)) raw).
     cancel.
@@ -1416,14 +1416,13 @@ Module LOG.
     apply map_merge_id.
 
     (* truncated *)
-    or_r. norm.
+    or_r; or_r. norm.
     instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs).
     cancel.
     intuition; simpl; eauto.
     instantiate (1 := F); pred_apply; cancel.
     or_r; or_r; cancel.
     rewrite apply_synced_data_ok; cancel.
-
 
     (* synced nil *)
     or_l. norm.
@@ -1435,7 +1434,7 @@ Module LOG.
     rewrite apply_synced_data_ok; cancel.
 
     (* unsync_syncing *)
-    or_r. norm.
+    or_r; or_r. norm.
     instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs').
     cancel.
     intuition; simpl; eauto.
@@ -1444,7 +1443,7 @@ Module LOG.
     apply apply_unsync_syncing_ok.
 
     (* unsync_applying *)
-    or_r. norm.
+    or_r; or_r. norm.
     instantiate (2 := mk_memstate (MSOld ms) (MSCur ms) cs').
     cancel.
     intuition; simpl; eauto.
