@@ -89,6 +89,7 @@ Definition log_rep previous_length vl vdisk hm :
     [[ hash_list_rep (rev vl) h hm /\
         length vl = current_length /\
         list_prefix vl vdisk /\
+        previous_length <= # (maxlen) /\
         length vdisk = # (maxlen) ]] *
     [[ hide_rec (header = header') ]] *
     Header |-> (header_to_valu header, nil) *
@@ -97,6 +98,37 @@ Definition log_rep previous_length vl vdisk hm :
 Definition log_rep' vl vl' hm cs d : pred :=
   BUFCACHE.rep cs d *
   [[ (exists vdisk, log_rep vl vl' vdisk hm)%pred d ]].
+
+Definition log_rep_recovered_inner vl previous_length current_length h header hm :=
+  let header' := make_header
+    :=> "previous_length" := ($ previous_length)
+    :=> "current_length"  := ($ current_length)
+    :=> "checksum"        := h
+  in
+  hash_list_rep (rev vl) h hm /\
+  length vl = current_length /\
+  previous_length <= # (maxlen) /\
+  current_length <= # (maxlen) /\
+  hide_rec (header = header').
+
+Definition log_rep_recovered vdisk hm :
+  @pred addr (@weq addrlen) valuset :=
+  (exists previous_length vl h current_length header,
+    [[ log_rep_recovered_inner vl previous_length current_length h header hm ]] *
+    [[ length vdisk = # (maxlen) ]] *
+    Header |-> (header_to_valu header, nil) *
+    array DataStart (combine vdisk (repeat nil # (maxlen))) $1)%pred.
+
+Definition crep vdisk hm :
+  @pred addr (@weq addrlen) valuset :=
+  (exists previous_length vl next_vl h next_h current_length next_length header next_header unsynced_data,
+    [[ log_rep_recovered_inner vl previous_length current_length h header hm ]] *
+    [[ log_rep_recovered_inner next_vl current_length next_length next_h next_header hm ]] *
+    [[ length vdisk = # (maxlen) ]] *
+    (Header |-> (header_to_valu header, nil) \/
+      Header |-> (header_to_valu next_header, header_to_valu header :: nil)) *
+    array DataStart (combine vdisk (updN (repeat nil # (maxlen)) current_length unsynced_data)) $1
+  )%pred.
 
 Definition append T v cs rx : prog T :=
   let^ (cs, header_valu) <- BUFCACHE.read Header cs;
@@ -140,7 +172,8 @@ Theorem append_ok : forall v cs,
     exists d',
       log_rep' (length vl) (vl ++ v :: nil) hm' cs' d'
   CRASH:hm'
-    exists cs' d', BUFCACHE.rep cs' d' (** TODO **)
+    exists cs' d', BUFCACHE.rep cs' d' *(** TODO **)
+  [[ (exists vdisk, crep vdisk hm)%pred d ]]
   >} append v cs.
 Proof.
   unfold append, log_rep', log_rep.
@@ -192,10 +225,10 @@ Proof.
   rewrite upd_hashmap'_eq. eauto.
   intuition.
   unfold hash2, hash_safe in *.
-  rewrite H13 in H17.
+  rewrite H14 in H18.
   intuition.
-  contradict_hashmap_get_default H15 hm0.
-  contradict_hashmap_get_default H15 hm0.
+  contradict_hashmap_get_default H16 hm0.
+  contradict_hashmap_get_default H16 hm0.
   instantiate (Goal2:=hm0).
   solve_hashmap_subset.
 
