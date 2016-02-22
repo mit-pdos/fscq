@@ -285,67 +285,6 @@ Proof.
   intuition eauto.
 Qed.
 
-Lemma subset_inverse : forall AT AEQ V (m m': @mem AT AEQ V) a,
-    m a = None ->
-    subset m' m ->
-    m' a = None.
-Proof.
-  unfold subset.
-  intros.
-  case_eq (m' a); intros; eauto.
-  specialize (H0 _ _ H1).
-  deex; congruence.
-Qed.
-
-Lemma same_domain_none : forall AT AEQ V (m m': @mem AT AEQ V) a,
-    m a = None ->
-    same_domain m m' ->
-    m' a = None.
-Proof.
-  unfold same_domain.
-  intuition.
-  eauto using subset_inverse.
-Qed.
-
-Lemma same_domain_remove_upd : forall AT AEQ V (m m': @mem AT AEQ V) a v v',
-    m a = Some v ->
-    same_domain (upd m a v') m' ->
-    same_domain m m'.
-Proof.
-  unfold same_domain, subset.
-  intuition; case_eq (AEQ a a0); intros; subst.
-  eapply H1; autorewrite with upd; eauto.
-  eapply H1; autorewrite with upd; eauto.
-
-  edestruct H2; eauto; autorewrite with upd in *; eauto.
-  edestruct H2; eauto; autorewrite with upd in *; eauto.
-Qed.
-
-Lemma lock_protocol_indifference : forall lvar tid (s0 s1 s0' s1': S),
-    lock_protocol lvar tid s0 s1 ->
-    lvar s0 = lvar s0' ->
-    lvar s1 = lvar s1' ->
-    lock_protocol lvar tid s0' s1'.
-Proof.
-  intros.
-  inversion H1; subst; eauto.
-Qed.
-
-Lemma lock_protects_indifference : forall lvar tv (v: _ -> tv) tid (s0 s0' s1 s1': S),
-    lock_protects lvar v tid s0 s1 ->
-    lvar s0 = lvar s0' ->
-    v s0 = v s0' ->
-    v s1 = v s1' ->
-    lock_protects lvar v tid s0' s1'.
-Proof.
-  unfold lock_protects.
-  intros.
-  rewrite H0 in *.
-  rewrite H1 in *.
-  rewrite H2 in *.
-  eauto.
-Qed.
-
 Lemma same_domain_change_reader : forall d a rdr',
     same_domain d (change_reader d a rdr').
 Proof.
@@ -558,8 +497,6 @@ Proof.
   unfold lock_protocol'; intros.
   intuition.
 Qed.
-
-Check lock_protects_trans.
 
 Lemma lock_protects'_trans : forall (s s' s'':S) lvar tv (v: _ -> tv) tid,
   lock_protects' lvar v tid s s' ->

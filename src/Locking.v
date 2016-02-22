@@ -62,6 +62,22 @@ Proof.
   eauto.
 Qed.
 
+Lemma lock_protects_indifference : forall lvar tv (v: _ -> tv) tid
+  s0 s0' s1 s1',
+    lock_protects lvar v tid s0 s1 ->
+    lvar s0 = lvar s0' ->
+    v s0 = v s0' ->
+    v s1 = v s1' ->
+    lock_protects lvar v tid s0' s1'.
+Proof.
+  unfold lock_protects.
+  intros.
+  rewrite H0 in *.
+  rewrite H1 in *.
+  rewrite H2 in *.
+  eauto.
+Qed.
+
 Hint Extern 1 (_ = _) => congruence.
 
 Theorem lock_protocol_trans : forall lvar tid s s' s'',
@@ -74,6 +90,16 @@ Proof.
     | [ H: lock_protocol _ _ _ _ |- _ ] =>
       inversion H; subst; clear H
     end; eauto.
+Qed.
+
+Theorem lock_protocol_indifference : forall lvar tid s0 s1 s0' s1',
+    lock_protocol lvar tid s0 s1 ->
+    lvar s0 = lvar s0' ->
+    lvar s1 = lvar s1' ->
+    lock_protocol lvar tid s0' s1'.
+Proof.
+  intros.
+  inversion H; subst; eauto.
 Qed.
 
 Inductive ghost_lock_invariant

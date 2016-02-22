@@ -2135,6 +2135,42 @@ Proof.
   destruct matches in *; eauto.
 Qed.
 
+Lemma subset_inverse : forall m m' a,
+    m a = None ->
+    subset m' m ->
+    m' a = None.
+Proof.
+  unfold subset.
+  intros.
+  case_eq (m' a); intros; eauto.
+  specialize (H0 _ _ H1).
+  deex; congruence.
+Qed.
+
+Lemma same_domain_none : forall m m' a,
+    m a = None ->
+    same_domain m m' ->
+    m' a = None.
+Proof.
+  unfold same_domain.
+  intuition.
+  eauto using subset_inverse.
+Qed.
+
+Lemma same_domain_remove_upd : forall m m' a v v',
+    m a = Some v ->
+    same_domain (upd m a v') m' ->
+    same_domain m m'.
+Proof.
+  unfold same_domain, subset.
+  intuition; case_eq (AEQ a a0); intros; subst.
+  eapply H1; autorewrite with upd; eauto.
+  eapply H1; autorewrite with upd; eauto.
+
+  edestruct H2; eauto; autorewrite with upd in *; eauto.
+  edestruct H2; eauto; autorewrite with upd in *; eauto.
+Qed.
+
 End MemDomains.
 
 Global Opaque pred.
