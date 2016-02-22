@@ -114,18 +114,18 @@ Module LOG.
   Definition entries_valid (ms : valumap) (m : diskstate) :=
      forall a v, Map.MapsTo a v ms -> a <> 0 /\ a < length m.
 
-  Definition rep_inner xp st log raw oms cms :=
+  Definition rep_inner xp na st log raw oms cms :=
     (match st with
     | NoTxn cur =>
         map_replay oms raw cur *
         map_empty cms *
         synced_data xp raw *
-        DLog.rep xp (DLog.Synced log)
+        DLog.rep xp (DLog.Synced na log)
     | ActiveTxn old cur =>
         map_replay oms raw old *
         map_replay cms old cur *
         synced_data xp raw *
-        DLog.rep xp (DLog.Synced log)
+        DLog.rep xp (DLog.Synced na log)
     | FlushingTxn old cur =>
         map_replay oms raw old *
         map_replay cms old cur *
@@ -134,21 +134,21 @@ Module LOG.
       \/ DLog.rep xp (DLog.Extended log (Map.elements cms)))
     | ApplyingTxn old =>
         map_replay oms raw old *
-        (((DLog.rep xp (DLog.Synced log)) *
+        (((DLog.rep xp (DLog.Synced na log)) *
           (unsync_applying xp oms raw))
-      \/ ((DLog.rep xp (DLog.Synced log)) *
+      \/ ((DLog.rep xp (DLog.Synced na log)) *
           (unsync_syncing xp oms old))
       \/ ((DLog.rep xp (DLog.Truncated log)) *
           (synced_data xp old)))
     end)%pred.
 
-  Definition rep xp st ms := 
+  Definition rep xp na st ms := 
     ( exists F d log raw, 
       let '(cs, oms, cms) := (MSCache ms, MSOld ms, MSCur ms) in
       BUFCACHE.rep cs d *
       [[ Map.Equal oms (replay_mem log map0) ]] *
       [[ entries_valid oms raw /\ entries_valid cms raw ]] *
-      [[ (F * rep_inner xp st log raw oms cms)%pred d ]])%pred.
+      [[ (F * rep_inner xp na st log raw oms cms)%pred d ]])%pred.
 
   Definition begin T (xp : log_xparams) ms rx : prog T :=
     let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
@@ -196,6 +196,21 @@ Module LOG.
     cs <- DLog.trunc xp cs;
     rx (mk_memstate map0 cms cs).
 
+  Definition apply_txn := apply.
+  Definition apply_notxn := apply.
+
+  Definition applycommit T xp ms rx : prog T :=
+    let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
+    let^ (cs, na) <- DLog.avail xp cs;
+    ms <- IfRx irx (lt_dec na (Map.cardinal oms)) {
+      ms <- apply_txn xp ms;
+      irx ms
+    } else {
+      irx ms
+    };
+    r <- commit xp ms;
+    rx r.
+
   Lemma entries_valid_map0 : forall m,
     entries_valid map0 m.
   Proof.
@@ -231,13 +246,14 @@ Module LOG.
   end; eauto.
 
   Theorem begin_ok: forall xp ms,
-    {< m,
+    {< m na,
     PRE
-      rep xp (NoTxn m) ms
+      rep xp na (NoTxn m) ms
     POST RET:r
-      rep xp (ActiveTxn m m) r
+      rep xp na (ActiveTxn m m) r
     CRASH
-      exists ms', rep xp (NoTxn m) ms' \/ rep xp (ActiveTxn m m) ms'
+      exists ms', rep xp na (NoTxn m) ms' 
+               \/ rep xp na (ActiveTxn m m) ms'
     >} begin xp ms.
   Proof.
     unfold begin.
@@ -249,13 +265,14 @@ Module LOG.
 
 
   Theorem abort_ok : forall xp ms,
-    {< m1 m2,
+    {< m1 m2 na,
     PRE
-      rep xp (ActiveTxn m1 m2) ms
+      rep xp na (ActiveTxn m1 m2) ms
     POST RET:r
-      rep xp (NoTxn m1) r
+      rep xp na (NoTxn m1) r
     CRASH
-      exists ms', rep xp (ActiveTxn m1 m2) ms' \/ rep xp (NoTxn m1) ms'
+      exists ms', rep xp na (ActiveTxn m1 m2) ms'
+               \/ rep xp na (NoTxn m1) ms'
     >} abort xp ms.
   Proof.
     unfold abort.
@@ -451,15 +468,15 @@ Module LOG.
   Qed.
 
   Theorem write_ok : forall xp ms a v,
-    {< m1 m2 F v0,
+    {< m1 m2 na F v0,
     PRE
-      rep xp (ActiveTxn m1 m2) ms * [[ a <> 0 ]] *
+      rep xp na (ActiveTxn m1 m2) ms * [[ a <> 0 ]] *
       [[[ m2 ::: (F * a |-> v0) ]]]
     POST RET:ms'
-      exists m', rep xp (ActiveTxn m1 m') ms' *
+      exists m', rep xp na (ActiveTxn m1 m') ms' *
       [[[ m' ::: (F * a |-> v) ]]]
     CRASH
-      exists m' ms', rep xp (ActiveTxn m1 m') ms'
+      exists m' ms', rep xp na (ActiveTxn m1 m') ms'
     >} write xp a v ms.
   Proof.
     unfold write.
@@ -536,14 +553,14 @@ Module LOG.
   Qed.
 
   Theorem read_ok: forall xp ms a,
-    {< m1 m2 v,
+    {< m1 m2 na v,
     PRE
-      rep xp (ActiveTxn m1 m2) ms *
+      rep xp na (ActiveTxn m1 m2) ms *
       [[[ m2 ::: exists F, (F * a |-> v) ]]]
     POST RET:^(ms', r)
-      rep xp (ActiveTxn m1 m2) ms' * [[ r = v ]]
+      rep xp na (ActiveTxn m1 m2) ms' * [[ r = v ]]
     CRASH
-      exists ms', rep xp (ActiveTxn m1 m2) ms'
+      exists ms', rep xp na (ActiveTxn m1 m2) ms'
     >} read xp a ms.
   Proof.
     unfold read.
@@ -583,15 +600,6 @@ Module LOG.
     pred_apply.
     repeat cancel.
   Qed.
-
-  Definition would_recover_either xp old new :=
-    (exists ms,
-     rep xp (ActiveTxn old new) ms \/
-     rep xp (NoTxn old) ms \/
-     rep xp (NoTxn new) ms \/
-     rep xp (FlushingTxn old new) ms)%pred.
-
-  Local Hint Unfold would_recover_either : hoare_unfold.
 
   Lemma replay_disk_is_empty : forall d ms,
     Map.is_empty ms = true -> replay_disk (Map.elements ms) d = d.
@@ -868,22 +876,86 @@ Module LOG.
     eapply replay_mem_not_in; eauto.
   Qed.
 
+  Lemma map_add_repeat : forall V a (v : V) m,
+    Map.Equal (Map.add a v (Map.add a v m)) (Map.add a v m).
+  Proof.
+    intros; hnf; intros.
+    destruct (eq_nat_dec y a); subst; try congruence.
+    rewrite MapFacts.add_eq_o by auto.
+    rewrite MapFacts.add_eq_o; auto.
+    rewrite MapFacts.add_neq_o by auto.
+    repeat rewrite MapFacts.add_neq_o; auto.
+  Qed.
+
+  Lemma map_merge_repeat' : forall l m,
+    KNoDup l ->
+    Map.Equal (replay_mem l (replay_mem l m)) (replay_mem l m).
+  Proof.
+    induction l; intros; auto.
+    destruct a; inversion H; simpl; subst.
+    rewrite replay_mem_add by auto.
+    rewrite IHl by auto.
+    setoid_rewrite replay_mem_add; auto.
+    apply map_add_repeat.
+  Qed.
+
+  Lemma map_merge_repeat : forall a b,
+    Map.Equal (map_merge (map_merge a b) b) (map_merge a b).
+  Proof.
+    unfold map_merge; intros.
+    apply map_merge_repeat'.
+    apply Map.elements_3w.
+  Qed.
+
+  Lemma map_merge_repeat_replay_disk : forall old cur raw,
+      replay_disk (Map.elements (map_merge old cur)) raw
+    = replay_disk (Map.elements (map_merge (map_merge old cur) cur)) raw.
+  Proof.
+    intros.
+    f_equal.
+    apply mapeq_elements.
+    rewrite map_merge_repeat; auto.
+  Qed.
+
+  Definition logsize ms := DLog.rounded (Map.cardinal (MSCur ms)).
+
+  Lemma logsize_0 : forall ms, 
+    Map.Empty (MSCur ms) ->
+    logsize ms = 0.
+  Proof.
+    unfold logsize, DLog.rounded; intros.
+    rewrite MapProperties.cardinal_1 by auto.
+    unfold Rounding.roundup.
+    rewrite Rounding.divup_0.
+    apply Nat.mul_0_l.
+  Qed.
+
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
+  Local Hint Resolve Map.is_empty_1 Map.is_empty_2.
+
 
   Theorem commit_ok: forall xp ms,
-    {< m1 m2,
-     PRE            rep xp (ActiveTxn m1 m2) ms
+    {< m1 m2 na,
+     PRE  rep xp na (ActiveTxn m1 m2) ms
      POST RET:^(ms',r)
-                    ([[ r = true ]] * rep xp (NoTxn m2) ms') \/
-                    ([[ r = false ]] * rep xp (NoTxn m1) ms')
-     CRASH          would_recover_either xp m1 m2
+          ([[ r = true ]] *
+            rep xp (na - (logsize ms)) (NoTxn m2) ms') \/
+          ([[ r = false ]] *
+            rep xp na (NoTxn m1) ms')
+     CRASH  exists ms,
+            rep xp na (ActiveTxn m1 m2) ms \/
+            rep xp na (NoTxn m1) ms \/
+            rep xp (na - (logsize ms)) (ActiveTxn m2 m2) ms \/
+            rep xp na (FlushingTxn m1 m2) ms
     >} commit xp ms.
   Proof.
     unfold commit.
     step using dems.
     step using dems.
     or_l.
-    cancel; auto.
+    cancel; eauto.
+    rewrite logsize_0, Nat.sub_0_r; auto.
+    cancel.
     apply replay_disk_is_empty; auto.
     apply is_empty_eq_map0; auto.
 
@@ -891,8 +963,8 @@ Module LOG.
     or_l.
     cancel; unfold map_merge.
     rewrite replay_mem_app; eauto.
-
     apply entries_valid_replay_mem; auto.
+    unfold logsize; rewrite Map.cardinal_1; cancel.
     apply replay_disk_merge.
 
     (* crashes *)
@@ -919,15 +991,18 @@ Module LOG.
     or_r; auto.
 
     or_r; or_r; or_l; norm.
-    instantiate (ms3 := mk_memstate (map_merge (MSOld ms) (MSCur ms)) map0 cs').
+    instantiate (ms3 := mk_memstate (map_merge (MSOld ms) (MSCur ms)) (MSCur ms) cs').
     cancel. simpl; intuition; eauto.
     unfold map_merge.
     rewrite replay_mem_app; eauto.
     apply entries_valid_replay_mem; eauto.
     pred_apply; cancel.
+    unfold logsize; simpl.
+    rewrite Map.cardinal_1; cancel.
     apply replay_disk_merge.
+    repeat rewrite replay_disk_merge.
+    apply map_merge_repeat_replay_disk.
   Qed.
-
 
   Lemma entries_valid_Forall_fst_synced : forall d ms,
     entries_valid ms d ->
@@ -1224,8 +1299,6 @@ Module LOG.
     apply Map.elements_3w.
   Qed.
 
-  Definition apply_txn := apply.
-  Definition apply_notxn := apply.
 
   Theorem apply_txn_ok: forall xp ms,
     {< m1 m2,
