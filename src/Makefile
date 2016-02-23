@@ -9,7 +9,7 @@ MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
 	      MemMatch DirName DirTree ByteFile FS Testprog \
 	      Hlist HlistMem Star RelationCombinators Variables EventCSL EventCSLauto \
 	      Locking Automation MemCache ForwardChaining \
-	      Bank ConcurrentCache TwoBlockExample \
+	      Bank MemCache ConcurrentCache TwoBlockExample \
 	      ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

@@ -204,3 +204,15 @@ Proof.
 Abort.
 
 End Dbg.
+
+Ltac inv_prod :=
+  match goal with
+  | [ H: (_, _) = (_, _) |- _ ] =>
+    inversion H; clear H; subst
+  end.
+
+Ltac destruct_ands :=
+  repeat match goal with
+         | [ H: _ /\ _ |- _ ] =>
+           destruct H
+         end.
