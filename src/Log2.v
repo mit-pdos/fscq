@@ -175,7 +175,7 @@ Module LOG.
       end
     end.
 
-  Definition commit T xp ms rx : prog T :=
+  Definition commit_noapply T xp ms rx : prog T :=
     let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
     If (bool_dec (Map.is_empty cms) true) {
       rx ^(ms, true)
@@ -199,16 +199,17 @@ Module LOG.
   Definition apply_txn := apply.
   Definition apply_notxn := apply.
 
-  Definition applycommit T xp ms rx : prog T :=
+  Definition commit T xp ms rx : prog T :=
     let '(oms, cms, cs) := (MSOld ms, MSCur ms, MSCache ms) in
     let^ (cs, na) <- DLog.avail xp cs;
-    ms <- IfRx irx (lt_dec na (Map.cardinal oms)) {
+    let ms := (mk_memstate oms cms cs) in
+    ms' <- IfRx irx (lt_dec na (Map.cardinal oms)) {
       ms <- apply_txn xp ms;
       irx ms
     } else {
       irx ms
     };
-    r <- commit xp ms;
+    r <- commit_noapply xp ms';
     rx r.
 
   Lemma entries_valid_map0 : forall m,
@@ -907,16 +908,6 @@ Module LOG.
     apply Map.elements_3w.
   Qed.
 
-  Lemma map_merge_repeat_replay_disk : forall old cur raw,
-      replay_disk (Map.elements (map_merge old cur)) raw
-    = replay_disk (Map.elements (map_merge (map_merge old cur) cur)) raw.
-  Proof.
-    intros.
-    f_equal.
-    apply mapeq_elements.
-    rewrite map_merge_repeat; auto.
-  Qed.
-
   Definition logsize ms := DLog.rounded (Map.cardinal (MSCur ms)).
 
   Lemma logsize_0 : forall ms, 
@@ -934,7 +925,7 @@ Module LOG.
   Local Hint Resolve Map.is_empty_1 Map.is_empty_2.
 
 
-  Theorem commit_ok: forall xp ms,
+  Theorem commit_noapply_ok: forall xp ms,
     {< m1 m2 na,
      PRE  rep xp na (ActiveTxn m1 m2) ms
      POST RET:^(ms',r)
@@ -942,14 +933,14 @@ Module LOG.
             rep xp (na - (logsize ms)) (NoTxn m2) ms') \/
           ([[ r = false ]] *
             rep xp na (NoTxn m1) ms')
-     CRASH  exists ms,
-            rep xp na (ActiveTxn m1 m2) ms \/
-            rep xp na (NoTxn m1) ms \/
-            rep xp (na - (logsize ms)) (ActiveTxn m2 m2) ms \/
-            rep xp na (FlushingTxn m1 m2) ms
-    >} commit xp ms.
+     CRASH  exists ms',
+            rep xp na (ActiveTxn m1 m2) ms' \/
+            rep xp na (NoTxn m1) ms' \/
+            rep xp (na - (logsize ms)) (NoTxn m2) ms' \/
+            rep xp na (FlushingTxn m1 m2) ms'
+    >} commit_noapply xp ms.
   Proof.
-    unfold commit.
+    unfold commit_noapply.
     step using dems.
     step using dems.
     or_l.
@@ -970,13 +961,13 @@ Module LOG.
     (* crashes *)
     cancel.
     or_l; norm.
-    instantiate (ms0 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    instantiate (ms' := mk_memstate (MSOld ms) (MSCur ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel.
 
     or_r; or_r; or_r.
     norm. cancel.
-    instantiate (ms1 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    instantiate (ms'0 := mk_memstate (MSOld ms) (MSCur ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel.
     instantiate ( 1 := F); cancel.
@@ -984,14 +975,14 @@ Module LOG.
 
     or_r; or_r; or_r.
     norm. cancel.
-    instantiate (ms2 := mk_memstate (MSOld ms) (MSCur ms) cs').
+    instantiate (ms'1 := mk_memstate (MSOld ms) (MSCur ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel.
     instantiate ( 1 := F); cancel.
     or_r; auto.
 
     or_r; or_r; or_l; norm.
-    instantiate (ms3 := mk_memstate (map_merge (MSOld ms) (MSCur ms)) (MSCur ms) cs').
+    instantiate (ms'2 := mk_memstate (map_merge (MSOld ms) (MSCur ms)) map0 cs').
     cancel. simpl; intuition; eauto.
     unfold map_merge.
     rewrite replay_mem_app; eauto.
@@ -1000,8 +991,6 @@ Module LOG.
     unfold logsize; simpl.
     rewrite Map.cardinal_1; cancel.
     apply replay_disk_merge.
-    repeat rewrite replay_disk_merge.
-    apply map_merge_repeat_replay_disk.
   Qed.
 
   Lemma entries_valid_Forall_fst_synced : forall d ms,
@@ -1453,13 +1442,48 @@ Module LOG.
   Qed.
 
 
+  Hint Extern 1 ({{_}} progseq (apply_txn _ _) _) => apply apply_txn_ok : prog.
+  Hint Extern 1 ({{_}} progseq (apply_notxn _ _) _) => apply apply_notxn_ok : prog.
+  Hint Extern 1 ({{_}} progseq (commit_noapply _ _) _) => apply commit_noapply_ok : prog.
+
+
+  Theorem commit_ok: forall xp ms,
+    {< m1 m2 na,
+     PRE  rep xp na (ActiveTxn m1 m2) ms
+     POST RET:^(ms',r)
+          ([[ r = true ]] *
+            rep xp (na - (logsize ms)) (NoTxn m2) ms') \/
+          ([[ r = false ]] *
+            rep xp na (NoTxn m1) ms')
+     CRASH  exists ms',
+            rep xp (LogLen xp) (NoTxn m1) ms' \/
+            rep xp (na - (logsize ms)) (NoTxn m2) ms' \/
+            rep xp na (NoTxn m1) ms' \/
+            rep xp na (ActiveTxn m1 m2) ms' \/
+            rep xp na (ApplyingTxn m1) ms' \/
+            rep xp na (FlushingTxn m1 m2) ms'
+    >} commit xp ms.
+  Proof.
+    unfold commit; intros.
+    step.
+    step.
+    safestep; unfold map_replay.
+    eauto. eauto. eauto.  cancel.
+    safestep; unfold map_replay.
+    eauto. eauto. eauto. cancel.
+    step.
+    or_l.
+    cancel.
+    eauto. eauto. eauto. cancel.
+    
+  Qed.
+
   Definition recover T xp ms rx : prog T :=
     let^ (cs, log) <- DLog.read xp (MSCache ms);
     let msold := replay_mem log map0 in
     ms <- apply_notxn xp (mk_memstate msold map0 cs);
     rx ms.
 
-  
 
 
 End LOG.
@@ -3719,7 +3743,7 @@ Module LOG.
 
   Definition would_recover_either' xp old cur :=
     (exists ms,
-      rep_inner xp (NoTransaction old) ms \/
+      rep_inner xp (NoTransaction old) ms \/  
       (exists x, rep_inner xp (ActiveTxn old x) ms) \/
       rep_inner xp (CommittedTxn old) ms \/
       rep_inner xp (AppliedTxn old) ms \/
