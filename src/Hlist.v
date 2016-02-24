@@ -131,17 +131,25 @@ Qed.
 
 Theorem set_get : forall A B (types: list A)
                     (l : hlist B types)
-                    (elm:A) (m: member elm types) v,
-    v = get m l ->
-    set m v l  = l.
+                    (elm:A) (m: member elm types),
+    set m (get m l) l = l.
 Proof.
   unfold get, set.
-  induction l; intros; eauto; subst.
+  induction l; intros; eauto.
 
   dependent destruction m;
     cbn in *;
     auto.
   rewrite IHl; auto.
+Qed.
+
+Theorem set_get_eq : forall A B (types: list A)
+                    (l : hlist B types)
+                    (elm:A) (m: member elm types) v,
+    v = get m l ->
+    set m v l = l.
+Proof.
+  intros; subst; apply set_get.
 Qed.
 
 Theorem set_set : forall A B (types: list A)
@@ -286,6 +294,7 @@ Hint Rewrite hmap_length : hlist.
 Hint Rewrite get_set : hlist.
 Hint Rewrite get_set_other using (cbn; solve [ auto 3 ]) : hlist.
 Hint Rewrite set_get using (cbn; solve [ auto 3 ]) : hlist.
+Hint Rewrite set_get_eq using (cbn; solve [ auto 3 ]) : hlist.
 Hint Rewrite set_set using (cbn; solve [ auto 3 ]) : hlist.
 
 (* this is the best way to use get_set without getting into trouble *)

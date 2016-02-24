@@ -892,6 +892,7 @@ Ltac simplify_reduce_step :=
           || descend
           || apply_hyp
           || recombine_diskIs
+          || inv_prod
           || (try time "rew_upd_all" progress rew_upd_all)
           || (try time "rew_ghost_state" progress autorewrite with ghost_state)
           || (try time "simpl_get_set" progress simpl_get_set)
@@ -939,7 +940,7 @@ Ltac solve_global_transitions :=
   lazymatch goal with
   | [ |- R _ _ _ ] =>
     eapply cache_relation_preserved; [
-      solve [ eassumption | eauto ] | .. ]
+        solve [ eassumption | eauto ] | .. ]
   | [ |- Inv _ _ _ ] =>
     eapply cache_invariant_preserved
   end;
@@ -947,7 +948,7 @@ Ltac solve_global_transitions :=
   repeat lazymatch goal with
   | [ |- forall _, _ ] => progress intros
   | [ |- _ /\ _ ] => split
-  end; simpl_get_set.
+    end; simpl_get_set.
 
 Ltac finish :=
   try time "finisher" progress (
@@ -1116,6 +1117,8 @@ Proof.
 Qed.
 
 Hint Unfold get_s_lock : prog.
+Hint Unfold get_scache_val : prog.
+Hint Unfold get_disk_val : prog.
 
 Hint Resolve cache_miss_lock
      cache_lock_miss_invalid
@@ -1353,14 +1356,13 @@ Proof.
          let simp_step :=
              simplify_step ||
              learn_fun_state in
-         time "simplify" simplify' simp_step) with finish; simplify.
+         time "simplify" simplify' simp_step) with (finish; simplify).
 
   eapply cache_pred_miss_stable; eauto.
 
-  unfold get_disk_val.
   distinguish_addresses; autorewrite with upd; eauto.
 
-  time "step" step pre (time "simplify" simplify) with finish.
+  time "step" step pre (time "simplify" simplify) with (finish; simplify).
 
   assert (get GDisk s2 a = d0 a).
   eapply cache_miss_mem_eq; eauto.
@@ -1378,24 +1380,14 @@ Proof.
 
   (* end copy-pasted asserts *)
 
-  time "step" step pre (time "simplify" simplify) with finish.
-  time "step" step pre (time "simplify" simplify) with idtac.
-  (* Conversion test raised an anomaly coming from
-backtrack_pred_solve, somewhere in cancel_with or subsequent eauto *)
-  solve_global_transitions;
-    try congruence;
-    eauto;
-    try solve_modified.
+  time "step" step pre (time "simplify" simplify) with (finish; simplify).
+  time "step" step pre (time "simplify" simplify) with (finish; simplify).
 
   eapply cache_pred_miss_stable; eauto.
   eauto using eq_trans.
 
   unfold change_reader.
-  autorewrite with upd; simplify.
-  rewrite set_get with (l := s2) by auto.
-  auto.
-
-  finish; simplify.
+  autorewrite with upd; now simplify.
 
   distinguish_addresses; autorewrite with upd; eauto.
 Qed.
