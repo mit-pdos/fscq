@@ -99,7 +99,9 @@ Ltac eexists_one :=
 
 Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
 
-Ltac pred_apply := match goal with
+Ltac pred_apply :=
+  match goal with
+  | [ |- _ =p=> _ ] => fail 1
   | [ H: _ ?m |- _ ?m ] => pred_apply' H
   | [ |- exists _, _ ] => eexists; pred_apply
   end.

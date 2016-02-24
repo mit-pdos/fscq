@@ -948,4 +948,51 @@ Proof.
 Qed.
 *)
 
+Lemma cache_lock_miss_invalid : forall c c' a tid,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_val c a = None ->
+    cache_fun_state c' a = Owned tid ->
+    cache_get c a = Some (Invalid, Locked).
+Proof.
+  unfold cache_eq, cache_addr_eq, cache_rep, cache_val, cache_fun_state; intros.
+  repeat single_addr.
+  case_cachefun c' a; case_cache_val' c a;
+  subst; edestruct H; eauto; subst;
+  match goal with
+  | [ H: ghost_lock_invariant _ _ |- _ ] => inversion H
+  end; subst; auto.
+Qed.
+
+Arguments cache_lock_miss_invalid {c c' a tid} _ _ _.
+
+Lemma cache_lock_miss_fun_invalid : forall c c' a tid,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_val c a = None ->
+    cache_fun_state c' a = Owned tid ->
+    c' a = (Invalid, Owned tid).
+Proof.
+  unfold cache_eq, cache_addr_eq, cache_rep, cache_val, cache_fun_state; intros.
+  repeat single_addr.
+  case_cachefun c' a; case_cache_val' c a;
+  edestruct H; eauto; congruence.
+Qed.
+
+Arguments cache_lock_miss_fun_invalid {c c' a tid} _ _ _.
+
+Lemma cache_miss_ghost_locked : forall c c' a v tid,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    c' a = (v, Owned tid) ->
+    cache_get c a = Some (v, Locked).
+Proof.
+  unfold cache_eq, cache_addr_eq, cache_rep; intros; single_addr.
+  rewrite H0 in *.
+  case_cache_val' c a; edestruct H; eauto;
+  match goal with
+  | [ H: ghost_lock_invariant _ _ |- _ ] =>
+    inversion H
+  end; subst; auto.
+Qed.
+
+Arguments cache_miss_ghost_locked {c c' a v tid} _ _.
+
 Hint Opaque cache_pred.
