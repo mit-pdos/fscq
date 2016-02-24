@@ -78,7 +78,7 @@ Opaque hide_rec.
   - The checksum and current_length in the header matches the current
     list of values (previous_length can be anything)
   Eventually current_length can live in memory **)
-Definition log_rep previous_length vl vdisk hm :
+Definition log_rep previous_length vl hm :
   @pred addr (@weq addrlen) valuset :=
   (exists h current_length header,
     let header' := make_header
@@ -88,16 +88,15 @@ Definition log_rep previous_length vl vdisk hm :
     in
     [[ hash_list_rep (rev vl) h hm /\
         length vl = current_length /\
-        list_prefix vl vdisk /\
-        previous_length <= # (maxlen) /\
-        length vdisk = # (maxlen) ]] *
+        current_length <= # (maxlen) /\
+        previous_length <= # (maxlen) ]] *
     [[ hide_rec (header = header') ]] *
     Header |-> (header_to_valu header, nil) *
-    array DataStart (combine vdisk (repeat nil # (maxlen))) $1)%pred.
+    array DataStart (combine vl (repeat nil (length vl))) $1)%pred.
 
-Definition log_rep' vl vl' hm cs d : pred :=
+(*Definition log_rep' vl hm cs d F : pred :=
   BUFCACHE.rep cs d *
-  [[ (exists vdisk, log_rep vl vl' vdisk hm)%pred d ]].
+  [[ (log_rep vl hm * F)%pred d ]].*)
 
 Definition log_rep_recovered_inner vl previous_length current_length h header hm :=
   let header' := make_header
@@ -135,14 +134,14 @@ Definition append T v cs rx : prog T :=
   let header := valu_to_header header_valu in
   let log_pointer := header :-> "current_length" in
   checksum <- Hash (Word.combine v (header :-> "checksum"));
-  cs <- BUFCACHE.write_array DataStart log_pointer v cs;
+  cs <- BUFCACHE.write (DataStart ^+ log_pointer) v cs;
   cs <- BUFCACHE.write Header (header_to_valu (
           make_header
             :=> "previous_length" := log_pointer
             :=> "current_length" := log_pointer ^+ $1
             :=> "checksum" := checksum
           )) cs;
-  cs <- BUFCACHE.sync_array DataStart log_pointer cs;
+  cs <- BUFCACHE.sync (DataStart ^+ log_pointer) cs;
   cs <- BUFCACHE.sync Header cs;
   rx cs.
 
@@ -164,19 +163,22 @@ Ltac unhide_rec :=
   subst.
 
 Theorem append_ok : forall v cs,
-  {< d previous_length vl,
+  {< d previous_length vl F v_old,
   PRE:hm
     [[ length vl < # (maxlen) ]] *
-    log_rep' previous_length vl hm cs d
+    BUFCACHE.rep cs d *
+    [[ (log_rep previous_length vl hm *
+        (DataStart ^+ $ (length vl)) |-> (v_old, nil) * F)%pred d ]]
   POST:hm' RET:cs'
     exists d',
-      log_rep' (length vl) (vl ++ v :: nil) hm' cs' d'
+      BUFCACHE.rep cs' d' *
+      [[ (log_rep (length vl) (vl ++ v :: nil) hm' * F)%pred d' ]]
   CRASH:hm'
     exists cs' d', BUFCACHE.rep cs' d' *(** TODO **)
-  [[ (exists vdisk, crep vdisk hm)%pred d ]]
+      [[ (exists vdisk, crep vdisk hm * F)%pred d ]]
   >} append v cs.
 Proof.
-  unfold append, log_rep', log_rep.
+  unfold append, log_rep.
   step.
   pred_apply; cancel.
 
@@ -184,36 +186,36 @@ Proof.
   rewrite of_to_header.
   simpl.
   step.
-
   Transparent hide_rec.
   unhide_rec.
-  rewrite combine_length, repeat_length.
-  rewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
-  rewrite min_r; omega.
+  cancel.
 
   step.
   pred_apply; cancel.
-
   step_idtac.
   eauto.
   pred_apply; cancel_with eauto.
-  unhide_rec.
-  rewrite length_updN, combine_length, repeat_length.
-  rewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
-  rewrite min_r; omega.
-
   step_idtac.
-  cancel_with eauto.
+  eauto.
   pred_apply; cancel_with eauto.
 
   step_idtac.
-  rewrite <- combine_updN.
-  replace (updN (repeat nil # (maxlen)) # (w1) nil) with (repeat (@nil valu) # (maxlen)).
-  eauto.
-  erewrite selN_eq_updN_eq; eauto.
-  rewrite repeat_selN; auto.
   unhide_rec.
+  rewrite array_isolate with (vs:=(combine (l ++ [v]) (repeat [] (length l + 1))))
+    (i:=$ (length l)).
+  rewrite wmult_comm, wmult_unit.
+  unfold sel.
   rewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  rewrite skipn_oob.
+  rewrite firstn_combine_comm, firstn_app, firstn_repeat, selN_combine,
+      selN_last, repeat_selN; try omega.
+  cancel.
+  rewrite app_length, repeat_length; auto.
+  rewrite combine_length. rewrite app_length, repeat_length.
+  rewrite min_r; simpl; try omega.
+  rewrite combine_length. rewrite app_length, repeat_length.
+  rewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  rewrite min_r; simpl; try omega.
 
   rewrite rev_unit.
   solve_hash_list_rep.
@@ -225,25 +227,12 @@ Proof.
   rewrite upd_hashmap'_eq. eauto.
   intuition.
   unfold hash2, hash_safe in *.
-  rewrite H14 in H18.
+  rewrite H10 in H17.
   intuition.
-  contradict_hashmap_get_default H16 hm0.
-  contradict_hashmap_get_default H16 hm0.
-  instantiate (Goal2:=hm0).
+  contradict_hashmap_get_default H15 hm0.
+  contradict_hashmap_get_default H15 hm0.
+  instantiate (Goal14:=hm0).
   solve_hashmap_subset.
-
-  unhide_rec.
-  unfold list_prefix in *.
-  rewrite app_length; simpl.
-  rewrite wordToNat_natToWord_bound with (bound := maxlen);
-    try omega.
-  rewrite <- firstn_app_updN_eq.
-  rewrite selN_updN_eq; simpl.
-  congruence.
-  rewrite combine_length, repeat_length.
-  rewrite min_r; omega.
-  omega.
-  rewrite length_updN. omega.
 
   unfold hide_rec.
   unhide_rec.
@@ -257,23 +246,24 @@ Proof.
 Qed.
 
 Theorem truncate_ok : forall cs,
-  {< d previous_length vl,
+  {< d previous_length vl F,
   PRE:hm
-    log_rep' previous_length vl hm cs d
+    BUFCACHE.rep cs d *
+    [[ (log_rep previous_length vl hm * F)%pred d ]]
   POST:hm' RET:cs'
-    exists d',
-      log_rep' 0 nil hm' cs' d'
+    exists d' vl,
+    BUFCACHE.rep cs' d' *
+    [[ (log_rep 0 nil hm' * array DataStart vl $1 * F)%pred d' ]]
   CRASH:hm'
     exists cs' d', BUFCACHE.rep cs' d' (** TODO **)
   >} truncate cs.
 Proof.
-  unfold truncate, log_rep', log_rep.
+  unfold truncate, log_rep.
   step.
   step.
   step.
   step.
   solve_hash_list_rep; eauto.
-  unfold list_prefix, firstn; auto.
   unfold hide_rec.
   auto.
 Qed.
