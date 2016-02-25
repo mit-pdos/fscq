@@ -780,7 +780,7 @@ Proof.
   pred_apply. cancel.
 Qed.
 
-Theorem list2nmem_ptsto_end_eq : forall A (F : @pred _ _ A) l a a',
+Theorem list2nmem_ptsto_end_eq : forall A (F : @pred _ _ (@const _ _ A)) l a a',
   (F * (length l) |-> a)%pred (list2nmem (l ++ a' :: nil)) ->
   a = a'.
 Proof.
@@ -789,18 +789,17 @@ Proof.
   rewrite selN_last in H; auto.
 Qed.
 
-Theorem list2nmem_arrayN_end_eq : forall A (F : @pred _ _ A) l l' l'' (def:A),
+Theorem list2nmem_arrayN_end_eq : forall A (F : @pred _ _ (@const _ _ A)) l l' l'' (def:A),
   length l' = length l'' ->
   (F * arrayN (length l) l')%pred (list2nmem (l ++ l'')) ->
   l' = l''.
 Proof.
   intros.
-  apply arrayN_list2nmem in H0.
-  rewrite skipn_app in H0.
+  apply (arrayN_list2nmem def) in H0.
+  erewrite skipn_app in H0.
   rewrite firstn_oob in H0.
   auto.
   omega.
-  exact def.
 Qed.
 
 Theorem list2nmem_off_arrayN: forall  A (l : list A) off,
@@ -814,7 +813,7 @@ Proof.
     omega.
 Qed.
 
-Theorem list2nmem_arrayN_app_iff : forall A (F : @pred _ _ A) l l',
+Theorem list2nmem_arrayN_app_iff : forall A (F : @pred _ _ (@const _ _ A)) l l',
   (F * arrayN (length l) l')%pred (list2nmem (l ++ l')) ->
   F (list2nmem l).
 Proof.

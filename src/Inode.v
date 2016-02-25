@@ -64,7 +64,7 @@ Module INODE.
     | IPadF => word 64
     end.
 
-  Definition IUpdate (a : iattr) field (v : iattr_field_type field) : iattr.
+  Definition IAUpdate (a : iattr) field (v : iattr_field_type field) : iattr.
     destruct a; destruct field.
     exact (Build_iattr v IMTime0 IType0 IDev0 IPad0).
     exact (Build_iattr ISize0 v IType0 IDev0 IPad0).
@@ -181,7 +181,7 @@ Module INODE.
     hoare.
   Qed.
 
-  Theorem irput_ok : forall lxp xp inum i mscs,
+  Theorem irput_ok : forall lxp xp inum (i : irec) mscs,
     {< F Fm A mbase m ilist ino,
     PRE        LOG.rep lxp F (ActiveTxn mbase m) mscs *
                [[ (Fm * irrep xp ilist)%pred (list2mem m) ]] *
@@ -504,7 +504,7 @@ Module INODE.
     omega.
   Qed.
 
-  Definition inode_match bxp ino (rec : irec) : @pred addr (@weq addrlen) valu := (
+  Definition inode_match bxp ino (rec : irec) : @pred addr (@weq addrlen) (@const _ _ valu) := (
     [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
     [[ length (IBlocks ino) <= blocks_per_inode ]] *
     [[ iattr_match (IAttr ino) (rec :-> "attr") ]] *
@@ -516,7 +516,7 @@ Module INODE.
      exists reclist, irrep xp reclist *
      listmatch (inode_match bxp) ilist reclist)%pred.
 
-  Definition inode_match_direct ino (rec : irec) : @pred addr (@weq addrlen) valu := (
+  Definition inode_match_direct ino (rec : irec) : @pred addr (@weq addrlen) (@const _ _ valu) := (
     [[ length (IBlocks ino) = wordToNat (rec :-> "len") ]] *
     [[ iattr_match (IAttr ino) (rec :-> "attr") ]] *
     [[ length (IBlocks ino) <= nr_direct ]] *
@@ -977,7 +977,7 @@ Module INODE.
   Qed.
 
 
-  Theorem igrow_direct_ok : forall lxp bxp xp (i0 : irec) inum a mscs,
+  Theorem igrow_direct_ok : forall lxp bxp xp (i0 : irec) inum (a : addr) mscs,
     {< F Fm A B mbase m ilist (reclist : list irec) ino,
     PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ length (IBlocks ino) < blocks_per_inode ]] *
@@ -1079,7 +1079,7 @@ Module INODE.
     end; eauto; simpl; try omega ].
 
 
-  Theorem igrow_indirect_ok : forall lxp bxp xp (i0 : irec) inum a mscs,
+  Theorem igrow_indirect_ok : forall lxp bxp xp (i0 : irec) inum (a : addr) mscs,
     {< F Fm A B mbase m ilist (reclist : list irec) ino,
     PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ length (IBlocks ino) < blocks_per_inode ]] *
@@ -1165,7 +1165,7 @@ Module INODE.
 
   Ltac resolve_length_eq := try solve [erewrite weq_eq; eauto; try omega; eauto].
 
-  Theorem igrow_alloc_ok : forall lxp bxp xp (i0 : irec) inum a mscs,
+  Theorem igrow_alloc_ok : forall lxp bxp xp (i0 : irec) inum (a : addr) mscs,
     {< F Fm A B mbase m ilist (reclist : list irec) freelist ino,
     PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ length (IBlocks ino) < blocks_per_inode ]] *
@@ -1267,7 +1267,7 @@ Module INODE.
 
   Hint Extern 0 (okToUnify (listmatch _ ?a ?b) (listmatch _ ?a ?b)) => constructor : okToUnify.
 
-  Theorem igrow_ok : forall lxp bxp xp inum a mscs,
+  Theorem igrow_ok : forall lxp bxp xp inum (a : addr) mscs,
     {< F Fm A B mbase m ilist ino freelist,
     PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ length (IBlocks ino) < blocks_per_inode ]] *
@@ -1350,7 +1350,7 @@ Module INODE.
   Local Hint Resolve neq0_wneq0.
 
   Theorem ishrink_ok : forall lxp bxp xp inum mscs,
-    {< F Fm A B mbase m ilist bn ino freelist,
+    {< F Fm A B mbase m ilist (bn : addr) ino freelist,
     PRE      LOG.rep lxp F (ActiveTxn mbase m) mscs *
              [[ length (IBlocks ino) > 0 ]] *
              [[ (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist)%pred (list2mem m) ]] *

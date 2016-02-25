@@ -270,8 +270,8 @@ Module BALLOC.
   Definition free_gen := free'.
 
   Definition rep_gen V xp (freeblocks : list addr)
-                          (genpred : @pred _ (@weq addrlen) V)
-                          (genpredn : @pred _ eq_nat_dec V) :=
+                          (genpred : @pred _ (@weq addrlen) (@const _ _ V))
+                          (genpredn : @pred _ eq_nat_dec (@const _ _ V)) :=
     (exists bmap,
      rep' xp bmap *
      [[ forall a, In a freeblocks <-> bmap a = Avail ]] *

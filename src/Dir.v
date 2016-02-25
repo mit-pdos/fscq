@@ -122,7 +122,7 @@ Module DIR.
     hoare.
   Qed.
 
-  Theorem deput_ok : forall lxp bxp ixp inum idx e mscs,
+  Theorem deput_ok : forall lxp bxp ixp inum idx (e : dent) mscs,
     {< F F1 A B mbase m delist e0,
     PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
            [[ derep_macro F1 A m bxp ixp inum delist ]] *
@@ -289,7 +289,7 @@ Module DIR.
   Definition isdir2bool (isdir : addr) := if weq isdir $0 then false else true.
   Definition bool2isdir (isdir : bool) : addr := if isdir then $1 else $0.
 
-  Definition dmatch (de: dent) : @pred filename (@weq filename_len) (addr * bool) :=
+  Definition dmatch (de: dent) : @pred filename (@weq filename_len) (@const Type _ (addr * bool)%type) :=
     if weq (de :-> "valid") $0 then emp
     else (de :-> "name") |-> (de :-> "inum", isdir2bool (de :-> "isdir")).
 
@@ -306,7 +306,8 @@ Module DIR.
   Definition rep f dmap :=
     exists delist, derep f delist /\ listpred dmatch delist dmap.
 
-  Definition rep_macro F1 F2 m bxp ixp (inum : addr) (dmap : @mem filename (@weq filename_len) (addr * bool)) :=
+  Definition rep_macro F1 F2 m bxp ixp (inum : addr)
+                       (dmap : @mem filename (@weq filename_len) (@const Type _ (addr * bool)%type)) :=
     exists flist f,
     rep f dmap /\
     (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
@@ -661,7 +662,7 @@ Module DIR.
   Qed.
 
 
-  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) (addr * bool) :=
+  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) (@const Type _ (addr * bool)%type) :=
     if (weq (de :-> "name") name) then emp
     else dmatch de.
 
@@ -813,7 +814,7 @@ Module DIR.
 
 
   Definition dlistent := (filename * (addr * bool))%type.
-  Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) _ :=
+  Definition dlmatch (de: dlistent) : @pred _ (@weq filename_len) (@const Type _ _) :=
     fst de |-> snd de.
 
   Definition dlist_f (s : list dlistent) (de : dent) := Eval compute_rec in

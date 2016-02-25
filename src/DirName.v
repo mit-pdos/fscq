@@ -521,7 +521,7 @@ Module SDIR.
     let^ (mscs, r) <- DIR.dlist lxp bxp ixp dnum mscs;
     rx ^(mscs, List.map dslist_trans r).
 
-  Definition rep f (dsmap : @mem string string_dec (addr * bool)) : Prop :=
+  Definition rep f (dsmap : @mem string string_dec (@const Type _ (addr * bool)%type)) : Prop :=
     exists dmap, DIR.rep f dmap
     /\ (forall w, indomain w dmap -> wname_valid w)
     /\ (forall s, indomain s dsmap -> sname_valid s)
@@ -590,7 +590,7 @@ Module SDIR.
 
 
   Definition dslistent := (string * (addr * bool))%type.
-  Definition dslmatch (de: dslistent) : @pred _ (string_dec) _ :=
+  Definition dslmatch (de: dslistent) : @pred _ (string_dec) (@const Type _ _) :=
     fst de |-> snd de.
 
   Lemma helper_atrans_dslist : forall l m1 m2

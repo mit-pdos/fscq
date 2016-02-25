@@ -89,13 +89,14 @@ Module DIRTREE.
   (**
    * Predicates capturing the representation invariant of a directory tree.
    *)
-  Fixpoint tree_dir_names_pred' (dirents : list (string * dirtree)) : @pred _ string_dec (addr * bool) :=
+  Fixpoint tree_dir_names_pred' (dirents : list (string * dirtree)) : @pred _ string_dec (@const Type _ (addr * bool)%type) :=
     match dirents with
     | nil => emp
     | (name, subtree) :: dirlist' => name |-> (dirtree_inum subtree, dirtree_isdir subtree) * tree_dir_names_pred' dirlist'
     end.
 
-  Definition tree_dir_names_pred ibxp (dir_inum : addr) (dirents : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
+  Definition tree_dir_names_pred ibxp (dir_inum : addr) (dirents : list (string * dirtree)) :
+             @pred _ eq_nat_dec (@const Type _ _) := (
     exists f dsmap,
     #dir_inum |-> f *
     [[ BALLOC.valid_block ibxp dir_inum ]] *
@@ -104,8 +105,8 @@ Module DIRTREE.
 
   Section DIRITEM.
 
-    Variable F : dirtree -> @pred nat eq_nat_dec BFILE.bfile.
-    Variable Fexcept : dirtree -> @pred nat eq_nat_dec BFILE.bfile.
+    Variable F : dirtree -> @pred nat eq_nat_dec (@const Type _ BFILE.bfile).
+    Variable Fexcept : dirtree -> @pred nat eq_nat_dec (@const Type _ BFILE.bfile).
 
     Fixpoint dirlist_pred (dirlist : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
       match dirlist with
