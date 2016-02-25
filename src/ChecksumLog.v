@@ -73,6 +73,20 @@ Check header_to_valu.
 Definition hide_rec p : Prop := p.
 Opaque hide_rec.
 
+
+Definition log_rep_inner previous_length header vl hm :=
+  (exists h current_length,
+    let header' := make_header
+      :=> "previous_length" := ($ previous_length)
+      :=> "current_length"  := ($ current_length)
+      :=> "checksum"        := h
+    in
+    hash_list_rep (rev vl) h hm /\
+      length vl = current_length /\
+      current_length <= # (maxlen) /\
+      previous_length <= # (maxlen) /\
+      hide_rec (header = header')).
+
 (** Log_rep:
   - The current list of values in the log is a prefix of the disk.
   - The checksum and current_length in the header matches the current
@@ -80,17 +94,8 @@ Opaque hide_rec.
   Eventually current_length can live in memory **)
 Definition log_rep previous_length vl hm :
   @pred addr (@weq addrlen) valuset :=
-  (exists h current_length header,
-    let header' := make_header
-      :=> "previous_length" := ($ previous_length)
-      :=> "current_length"  := ($ current_length)
-      :=> "checksum"        := h
-    in
-    [[ hash_list_rep (rev vl) h hm /\
-        length vl = current_length /\
-        current_length <= # (maxlen) /\
-        previous_length <= # (maxlen) ]] *
-    [[ hide_rec (header = header') ]] *
+  (exists header,
+    [[ log_rep_inner previous_length header vl hm ]] *
     Header |-> (header_to_valu header, nil) *
     array DataStart (combine vl (repeat nil (length vl))) $1)%pred.
 
@@ -98,27 +103,22 @@ Definition log_rep previous_length vl hm :
   BUFCACHE.rep cs d *
   [[ (log_rep vl hm * F)%pred d ]].*)
 
-Definition log_rep_recovered_inner vl previous_length current_length h header hm :=
-  let header' := make_header
-    :=> "previous_length" := ($ previous_length)
-    :=> "current_length"  := ($ current_length)
-    :=> "checksum"        := h
-  in
-  hash_list_rep (rev vl) h hm /\
-  length vl = current_length /\
-  previous_length <= # (maxlen) /\
-  current_length <= # (maxlen) /\
-  hide_rec (header = header').
-
-Definition log_rep_recovered vdisk hm :
+Definition log_rep_crash_xform (vl : list valu) hm :
   @pred addr (@weq addrlen) valuset :=
-  (exists previous_length vl h current_length header,
-    [[ log_rep_recovered_inner vl previous_length current_length h header hm ]] *
-    [[ length vdisk = # (maxlen) ]] *
+  (exists previous_length header vl vl',
+    [[ log_rep_inner previous_length header vl' hm ]] *
     Header |-> (header_to_valu header, nil) *
-    array DataStart (combine vdisk (repeat nil # (maxlen))) $1)%pred.
+    array DataStart (combine vl (repeat nil (length vl))) $1)%pred.
 
-Definition crep vdisk hm :
+Definition crep (vl : list valu) hm :
+  @pred addr (@weq addrlen) valuset :=
+  (exists previous_length header header' vl vl' vl'',
+    [[ log_rep_inner (length vl') header' vl'' hm ]] *
+    [[ log_rep_inner previous_length header vl' hm ]] *
+    Header |-> (header_to_valu header', header_to_valu header :: nil) *
+    array DataStart (combine vl (repeat nil (length vl))) $1)%pred.
+
+(*Definition crep vdisk hm :
   @pred addr (@weq addrlen) valuset :=
   (exists previous_length vl next_vl h next_h current_length next_length header next_header unsynced_data,
     [[ log_rep_recovered_inner vl previous_length current_length h header hm ]] *
@@ -127,7 +127,7 @@ Definition crep vdisk hm :
     (Header |-> (header_to_valu header, nil) \/
       Header |-> (header_to_valu next_header, header_to_valu header :: nil)) *
     array DataStart (combine vdisk (updN (repeat nil # (maxlen)) current_length unsynced_data)) $1
-  )%pred.
+  )%pred.*)
 
 Definition append T v cs rx : prog T :=
   let^ (cs, header_valu) <- BUFCACHE.read Header cs;
@@ -174,11 +174,13 @@ Theorem append_ok : forall v cs,
       BUFCACHE.rep cs' d' *
       [[ (log_rep (length vl) (vl ++ v :: nil) hm' * F)%pred d' ]]
   CRASH:hm'
-    exists cs' d', BUFCACHE.rep cs' d' *(** TODO **)
-      [[ (exists vdisk, crep vdisk hm * F)%pred d ]]
+    exists cs' d', BUFCACHE.rep cs' d' *
+      [[ ((log_rep_crash_xform vl hm' * (DataStart ^+ $ (length vl)) |->?
+          \/ log_rep_crash_xform (vl ++ v :: nil) hm'
+          \/ crep vl hm' * (DataStart ^+ $ (length vl)) |->?) * F)%pred d' ]]
   >} append v cs.
 Proof.
-  unfold append, log_rep.
+  unfold append, log_rep, log_rep_inner.
   step.
   pred_apply; cancel.
 
@@ -217,28 +219,203 @@ Proof.
   rewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
   rewrite min_r; simpl; try omega.
 
+  unhide_rec.
+  repeat eexists.
+
   rewrite rev_unit.
   solve_hash_list_rep.
   solve_hash_list_rep.
   eauto.
 
-  unhide_rec.
+  intuition.
   eapply hashmap_get_subset.
   rewrite upd_hashmap'_eq. eauto.
   intuition.
   unfold hash2, hash_safe in *.
-  rewrite H10 in H17.
+  rewrite H13 in H17.
   intuition.
   contradict_hashmap_get_default H15 hm0.
   contradict_hashmap_get_default H15 hm0.
-  instantiate (Goal14:=hm0).
+  instantiate (Goal13:=hm0).
   solve_hashmap_subset.
+
+  omega.
+  omega.
 
   unfold hide_rec.
   unhide_rec.
   rewrite natToWord_plus.
   unfold hash2.
   auto.
+
+  cancel_with eauto.
+  pred_apply; cancel.
+  apply pimpl_or_r. right.
+  apply pimpl_or_r. right.
+  unfold crep.
+  unhide_rec.
+  cancel.
+  unfold log_rep_inner.
+  eexists.
+  exists (length l + 1).
+  intuition.
+  instantiate (a16:=l ++ [v]).
+  rewrite rev_unit.
+  solve_hash_list_rep.
+  solve_hash_list_rep.
+  eauto.
+
+  eapply hashmap_get_subset.
+  rewrite upd_hashmap'_eq. eauto.
+  intuition.
+  unfold hash2, hash_safe in *.
+  rewrite H13 in H17.
+  intuition.
+  contradict_hashmap_get_default H15 hm0.
+  contradict_hashmap_get_default H15 hm0.
+  instantiate (Goal11:=hm0).
+  solve_hashmap_subset.
+
+  rewrite app_length; simpl.
+  omega.
+  eauto.
+
+  unfold hide_rec.
+  unhide_rec.
+  unfold make_header.
+  cbn.
+  rewrite natToWord_plus.
+  unfold hash2.
+  reflexivity.
+
+  unfold log_rep_inner.
+  eexists.
+  exists (length l).
+  intuition.
+  solve_hash_list_rep.
+
+  unfold hide_rec.
+  unhide_rec.
+  cbn.
+  rewrite Nat.min_l.
+  eauto.
+  omega.
+
+  cancel_with eauto.
+  pred_apply; cancel.
+  apply pimpl_or_r; right.
+  apply pimpl_or_r; left.
+  unfold log_rep_crash_xform.
+  repeat (apply pimpl_exists_r; eexists).
+  instantiate (x1:=l ++ [v]).
+  rewrite array_isolate with (vs:=(combine (l ++ [v]) (repeat [] (length (l ++ [v]))))).
+  instantiate (w0:=$ (length l)).
+  rewrite wmult_comm, wmult_unit.
+  unfold sel.
+  rewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  rewrite skipn_oob.
+  rewrite firstn_combine_comm, firstn_app, firstn_repeat, selN_combine,
+      selN_last, repeat_selN; try omega.
+  unhide_rec.
+  cancel.
+
+  unfold log_rep_inner.
+  eexists.
+  exists (length l + 1).
+  intuition.
+  instantiate (x2:=l ++ [v]).
+  rewrite rev_unit.
+  solve_hash_list_rep.
+  solve_hash_list_rep.
+  eauto.
+
+  eapply hashmap_get_subset.
+  rewrite upd_hashmap'_eq. eauto.
+  intuition.
+  unfold hash2, hash_safe in *.
+  rewrite H13 in H17.
+  intuition.
+  contradict_hashmap_get_default H15 hm0.
+  contradict_hashmap_get_default H15 hm0.
+  instantiate (Goal20:=hm0).
+  solve_hashmap_subset.
+
+  rewrite app_length; simpl.
+  omega.
+
+  unfold hide_rec.
+  unhide_rec.
+  cbn.
+  rewrite Nat.min_l; eauto.
+  rewrite natToWord_plus.
+  unfold hash2.
+  reflexivity.
+
+  rewrite app_length; simpl.
+  omega.
+  rewrite app_length, repeat_length; simpl.
+  omega.
+  rewrite app_length; simpl.
+  omega.
+  rewrite combine_length, repeat_length, app_length; simpl.
+  rewrite min_r; omega.
+
+
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen);
+    try rewrite combine_length, repeat_length, app_length, min_r; simpl; omega.
+
+  cancel_with eauto.
+  pred_apply; cancel.
+  apply pimpl_or_r; right.
+  apply pimpl_or_r; right.
+  unfold crep.
+  unhide_rec.
+  cancel.
+  unfold log_rep_inner.
+  eexists.
+  exists (length l + 1).
+  intuition.
+  instantiate (a12:=l ++ [v]).
+  rewrite rev_unit.
+  solve_hash_list_rep.
+  solve_hash_list_rep.
+  eauto.
+
+  eapply hashmap_get_subset.
+  rewrite upd_hashmap'_eq. eauto.
+  intuition.
+  unfold hash2, hash_safe in *.
+  rewrite H12 in H17.
+  intuition.
+  contradict_hashmap_get_default H13 hm0.
+  contradict_hashmap_get_default H13 hm0.
+  instantiate (Goal10:=hm0).
+  solve_hashmap_subset.
+
+  rewrite app_length; simpl.
+  omega.
+  eauto.
+
+  unfold hide_rec.
+  unhide_rec.
+  unfold make_header.
+  cbn.
+  rewrite natToWord_plus.
+  unfold hash2.
+  reflexivity.
+
+  unfold log_rep_inner.
+  eexists.
+  exists (length l).
+  intuition.
+  solve_hash_list_rep.
+
+  unfold hide_rec.
+  unhide_rec.
+  cbn.
+  rewrite Nat.min_l.
+  eauto.
+  omega.
 
   all: cancel_with eauto.
   Grab Existential Variables.
@@ -258,7 +435,7 @@ Theorem truncate_ok : forall cs,
     exists cs' d', BUFCACHE.rep cs' d' (** TODO **)
   >} truncate cs.
 Proof.
-  unfold truncate, log_rep.
+  unfold truncate, log_rep, log_rep_inner.
   step.
   step.
   step.
