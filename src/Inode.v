@@ -48,19 +48,40 @@ Module INODE.
     ISize : addr;
     IMTime : word 32;
     IType : word 32;
-    IDev : word 64
+    IDev : word 64;
+    IPad : word 64
   }.
 
-  Definition iattr0 := Build_iattr $0 $0 $0 $0.
+  Definition iattr0 := Build_iattr $0 $0 $0 $0 $0.
+
+  Inductive iattr_field := ISizeF | IMTimeF | ITypeF | IDevF | IPadF.
+  Definition iattr_field_type f :=
+    match f with
+    | ISizeF => addr
+    | IMTimeF => word 32
+    | ITypeF => word 32
+    | IDevF => word 64
+    | IPadF => word 64
+    end.
+
+  Definition IUpdate (a : iattr) field (v : iattr_field_type field) : iattr.
+    destruct a; destruct field.
+    exact (Build_iattr v IMTime0 IType0 IDev0 IPad0).
+    exact (Build_iattr ISize0 v IType0 IDev0 IPad0).
+    exact (Build_iattr ISize0 IMTime0 v IDev0 IPad0).
+    exact (Build_iattr ISize0 IMTime0 IType0 v IPad0).
+    exact (Build_iattr ISize0 IMTime0 IType0 IDev0 v).
+  Defined.
 
   Definition pack_attr (ia : iattr) := Eval compute_rec in
     iarec0 :=> "size" := (ISize ia)
            :=> "mtime" := (IMTime ia)
            :=> "itype" := (IType ia)
-           :=> "dev" := (IDev ia).
+           :=> "dev" := (IDev ia)
+           :=> "pad" := (IPad ia).
 
   Definition unpack_attr (iar : iarec) := Eval compute_rec in
-    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype") (iar :-> "dev").
+    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype") (iar :-> "dev") (iar :-> "pad").
 
   Theorem unpack_pack_attr : forall a, unpack_attr (pack_attr a) = a.
   Proof.
@@ -78,7 +99,8 @@ Module INODE.
     ISize ia = rec :-> "size" /\
     IMTime ia = rec :-> "mtime" /\
     IType ia = rec :-> "itype" /\
-    IDev ia = rec :-> "dev".
+    IDev ia = rec :-> "dev" /\
+    IPad ia = rec :-> "pad".
 
 
   Definition nr_direct := 10.

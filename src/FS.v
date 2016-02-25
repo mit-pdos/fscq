@@ -219,10 +219,7 @@ Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   mscs <- DIRTREE.setattr fsxp inum
-                          (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr))
+                          (INODE.IAUpdate attr INODE.ISizeF sz)
                           mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
@@ -239,19 +236,13 @@ Theorem file_set_sz_ok : forall fsxp inum sz mscs,
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
          [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f) (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]])
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f) (INODE.IAUpdate attr INODE.ISizeF sz) ]])
   CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
            exists tree' f' attr, 
          (Fm * DIRTREE.rep fsxp Ftop tree')*
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
          [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]])
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.IAUpdate attr INODE.ISizeF sz) ]])
 
   >} file_set_sz fsxp inum sz mscs.
 Proof.
@@ -284,20 +275,14 @@ Theorem file_set_sz_recover_ok : forall fsxp inum sz mscs,
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
          [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]])
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.IAUpdate attr INODE.ISizeF sz) ]])
   REC RET:^(mscs, fsxp)   
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
            exists tree' f' attr,
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
          [[ attr = BFILE.BFAttr f ]] *
-         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr)
-                                             (INODE.IDev attr)) ]] *
+         [[ f' = BFILE.Build_bfile (BFILE.BFData f)  (INODE.IAUpdate attr INODE.ISizeF sz) ]] *
          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
   >>} file_set_sz fsxp inum sz mscs >> recover.
 Proof.
@@ -499,10 +484,7 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
   mscs <- IfRx irx (wlt_dec (INODE.ISize oldattr) newsz) {
     mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
-                            (INODE.Build_iattr newsz
-                                               (INODE.IMTime oldattr)
-                                               (INODE.IType oldattr)
-                                               (INODE.IDev oldattr))
+                            (INODE.IAUpdate oldattr INODE.ISizeF newsz)
                             mscs;
     irx mscs
   } else {
@@ -753,8 +735,7 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    mscs <- DIRTREE.setattr fsxp inum
-                            (INODE.Build_iattr $0 $0 $0 $0) mscs;
+    mscs <- DIRTREE.setattr fsxp inum INODE.iattr0 mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
@@ -833,7 +814,7 @@ Definition mkdev T fsxp dnum name type dev mscs rx : prog T :=
     rx ^(mscs, None)
   | Some inum =>
     mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
-                            (INODE.Build_iattr $0 $0 type dev) mscs;
+                            (INODE.IAUpdate (INODE.IAUpdate INODE.iattr0 INODE.ITypeF type) INODE.IDevF dev) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)

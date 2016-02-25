@@ -334,10 +334,7 @@ Module BYTEFILE.
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
            fsxp inum #oldlen zeros mscs;
          mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
-                                (INODE.Build_iattr ($ newlen)
-                                                   (INODE.IMTime oldattr)
-                                                   (INODE.IType oldattr)
-                                                   (INODE.IDev oldattr)) mscs;
+                                (INODE.IAUpdate oldattr INODE.ISizeF ($ newlen)) mscs;
         rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
@@ -366,7 +363,7 @@ Module BYTEFILE.
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ bytes' = (bytes ++ (repeat $0 (newlen -  (# (INODE.ISize (BFILE.BFAttr f)))))) ]] *
            [[ rep bytes' f' ]] *
-           [[ attr = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) ]] *
+           [[ attr = INODE.IAUpdate f.(BFILE.BFAttr) INODE.ISizeF ($ newlen) ]] *
            [[ f' = BFILE.Build_bfile fdata' attr ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} grow_file fsxp inum newlen mscs.
