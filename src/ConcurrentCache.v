@@ -1380,7 +1380,6 @@ Proof.
   time "step" step pre (time "simplify" simplify) with (finish; simplify).
 
   eapply cache_pred_miss_stable; eauto.
-  eauto using eq_trans.
 
   unfold change_reader.
   autorewrite with upd; now simplify.
@@ -1518,12 +1517,12 @@ Definition cache_is_open a c : {cache_state c a Open = Open} + {cache_state c a 
 Definition cache_lock {T} a rx : prog _ _ T :=
   tid <- GetTID;
   wait_for Cache (cache_is_open a) a;;
-  c <- cache_alloc_prog a;
   GhostUpdate (fun s:S =>
                  let vc := get GCache s in
-                 let vc' := cache_set vc a (let (v, _) := vc a in v, Owned tid) in
+                 let vc' := cache_set vc a (cache_fun_val vc a, Owned tid) in
     set GCache vc' s);;
-  let c' := cache_set_state c a Locked in
+  c <- Get Cache;
+  let c' := cache_set_state (cache_alloc c a Open) a Locked in
   Assgn Cache c';;
         rx tt.
 
@@ -1544,6 +1543,42 @@ Qed.
 
 Arguments ghost_cache_entry_unlocked {c c' a v} _ _.
 
+Lemma cache_eq_stable_lock : forall c c' a s ms' vs',
+  cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+  ghost_lock_invariant ms' vs' ->
+  cache_eq ghost_lock_invariant
+           (cache_rep (cache_set_state (cache_alloc c a s) a ms') Open)
+           (cache_set c' a (cache_fun_val c' a, vs')).
+Proof.
+  intros.
+  eapply cache_eq_split with (a := a); intros; autorewrite with cache.
+  unfold cache_eq, cache_addr_eq, cache_rep,
+  cache_fun_val, cache_set_state, cache_alloc, cache_change in *;
+    specific_addr; intros.
+  case_eq (c' a); intros.
+  case_cache_val' c a; repeat simpl_match;
+  repeat (simpl_match ||
+  (cbn in *; autorewrite with cache in *) ||
+  inv_prod); edestruct H; eauto; subst; try congruence.
+
+  unfold cache_set_state; autorewrite with cache; eauto.
+Qed.
+
+Hint Resolve cache_eq_stable_lock.
+
+Lemma cache_pred_stable_lock : forall st (c: cache_fun st) vd d s a,
+  cache_pred c vd d ->
+  cache_pred (cache_set c a (cache_fun_val c a, s)) vd d.
+Proof.
+  unfold cache_pred, cache_set, cache_fun_val.
+  intros.
+  specific_addrs.
+  distinguish_addresses; eauto.
+  destruct (c a0); eauto.
+Qed.
+
+Hint Resolve cache_pred_stable_lock.
+
 Theorem cache_lock_ok : forall a,
     stateS TID: tid |-
     {{ (_:unit),
@@ -1557,44 +1592,19 @@ Theorem cache_lock_ok : forall a,
                             chain (star (othersR R tid))
                                   (applied (fun s:S =>
                                               let vc := get GCache s in
-                                              let (v, _) := vc a in
-                                              let vc' := cache_set vc a (v, Owned tid) in
+                                              let vc' := cache_set vc a (cache_fun_val vc a, Owned tid) in
                                 set GCache vc' s)) s s'
     }} cache_lock a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-
-  - destruct matches in *; congruence.
-
-  - unfold cache_set_state.
-    eapply cache_eq_split with (a := a); intros; autorewrite with cache; eauto.
-
-    match goal with
-    | [ H: cache_eq ghost_lock_invariant (cache_rep ?c Open) ?c',
-           H': cache_get ?c a = Some (_, Open) |- _ ] =>
-      learn that (ghost_cache_entry_unlocked H H')
-    end.
-
-    unfold cache_alloc in *; simpl_get_set in *.
-    simpl_match; simpl_get_set.
-
-    match goal with
-    | [ H: context[cache_state (get Cache m0) a] |- _ ] =>
-      unfold cache_state in H;
-        case_cache_val' (get Cache m0) a
-    end; subst; cbn in *; autorewrite with cache in *;
-    try erewrite cache_rep_change_get by eauto;
-    try congruence.
-
-    assert (v = Clean v0) by congruence; subst; eauto.
-    assert (v = Dirty v0) by congruence; subst; eauto.
-    assert (v = Invalid) by congruence; subst; eauto.
-
-    (* TODO: Something is wrong with the implementation; most likely
-    the way a is locked needs to be a single function and we should
-    reason about the stability of the predicates under that update in
-    dedicated lemmas *)
-
+  - admit.
+  - admit.
+  - admit.
+  - unfold get_scache_val; simplify.
+    distinguish_addresses; autorewrite with cache; auto.
+    (* can't have mc open and vc Owned owner_tid *)
+    admit.
+  - unfold get_disk_val; simplify.
 Admitted.
 
 Hint Extern 1 {{cache_lock _; _}} => apply cache_lock_ok : prog.

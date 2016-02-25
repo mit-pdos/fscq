@@ -104,6 +104,11 @@ Definition cache_fun_state st (f: cache_fun st) a : st :=
   | (_, s) => s
   end.
 
+Definition cache_fun_val st (f: cache_fun st) a : cached_val :=
+  match f a with
+  | (v, _) => v
+  end.
+
 Definition cache_pred st (c: cache_fun st) (vd:DISK) : DISK_PRED :=
   fun d => forall a,
       match c a with
@@ -236,6 +241,16 @@ Proof.
   apply MapFacts.add_eq_o; auto.
 Qed.
 
+Lemma map_raw_add_add_eq_o : forall st (c:AssocCache st) (a a':Map.key) ce ce',
+  a = a' ->
+  Map.Raw.find a' (Map.Raw.add a ce
+    (Map.Raw.add a ce' (Map.this c))) = Some ce.
+Proof.
+  intros.
+  replace (Map.Raw.add a ce' (Map.this c)) with (Map.this (Map.add a ce' c)) by reflexivity.
+  rewrite map_raw_add_eq_o; auto.
+Qed.
+
 Lemma map_raw_add_neq_o : forall st (c:AssocCache st) (a a':Map.key) ce,
   a <> a' -> Map.Raw.find a' (Map.Raw.add a ce (Map.this c)) = Map.find a' c.
 Proof.
@@ -300,6 +315,15 @@ Proof.
   rewrite map_raw_add_neq_o by auto; auto.
 Qed.
 
+Lemma cache_rep_alloc_get_neq : forall st (c:AssocCache st) def a a' s,
+    a <> a' ->
+    cache_rep (cache_alloc c a s) def a' = cache_rep c def a'.
+Proof.
+  unfold cache_rep, cache_alloc; intros.
+  case_eq (cache_get c a); intros; auto; cbn.
+  rewrite map_raw_add_neq_o by auto; auto.
+Qed.
+
 Hint Unfold cache_get cache_add
             cache_evict cache_clean cache_set_state : cache_get.
 
@@ -331,6 +355,7 @@ Hint Rewrite cache_get_clean_neq using (now auto) : cache.
 Hint Rewrite cache_get_dirty_clean using (now auto) : cache.
 *)
 Hint Rewrite map_raw_add_eq_o using (solve [ auto ]): cache.
+Hint Rewrite map_raw_add_add_eq_o using (solve [ auto ]) : cache.
 Hint Rewrite map_raw_add_neq_o using (solve [ auto ]): cache.
 Hint Rewrite map_raw_remove_eq_o using (solve [ auto ]): cache.
 Hint Rewrite map_raw_remove_neq_o using (solve [ auto ]): cache.
@@ -339,6 +364,7 @@ Hint Rewrite cache_rep_get_def using (solve [ auto ]) : cache.
 Hint Rewrite cache_rep_change_get using (solve [ auto ]) : cache.
 Hint Rewrite cache_rep_change_get_def using (solve [ auto ]) : cache.
 Hint Rewrite cache_rep_change_get_neq using (solve [ auto ]) : cache.
+Hint Rewrite cache_rep_alloc_get_neq using (solve [ auto ]) : cache.
 
 (* TODO: make this tactic more local *)
 Ltac case_cache_val' c a :=
