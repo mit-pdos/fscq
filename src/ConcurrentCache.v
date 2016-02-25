@@ -1512,13 +1512,12 @@ Qed.
 
 Hint Extern 1 {{cache_alloc_prog _; _}} => apply cache_alloc_prog_ok : prog.
 
+Definition cache_is_open a c : {cache_state c a Open = Open} + {cache_state c a Open <> Open} :=
+  is_unlocked (cache_state c a Open).
+
 Definition cache_lock {T} a rx : prog _ _ T :=
   tid <- GetTID;
-  wait_for Cache (fun c =>
-    match cache_state c a Open with
-    | Open => true
-    | Locked => false
-    end) a;;
+  wait_for Cache (cache_is_open a) a;;
   c <- cache_alloc_prog a;
   GhostUpdate (fun s:S =>
                  let vc := get GCache s in
@@ -1526,7 +1525,9 @@ Definition cache_lock {T} a rx : prog _ _ T :=
     set GCache vc' s);;
   let c' := cache_set_state c a Locked in
   Assgn Cache c';;
-  rx tt.
+        rx tt.
+
+Hint Unfold cache_is_open : prog.
 
 Lemma ghost_cache_entry_unlocked : forall c c' a v,
     cache_eq ghost_lock_invariant (cache_rep c Open) c' ->

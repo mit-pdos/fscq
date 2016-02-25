@@ -26,12 +26,6 @@ Ltac intros_pre :=
   unfold valid at 1; unfold pred_in; intros;
   repeat deex.
 
-Ltac destruct_ands :=
-  repeat match goal with
-         | [ H: _ /\ _ |- _ ] =>
-           destruct H
-         end.
-
 Ltac split_ands :=
   destruct_ands; repeat (split; intros).
 
@@ -162,8 +156,9 @@ Section ReadTheorems.
       clean_readers (upd m a (v0, reader')) = clean_readers m.
   Proof.
     intros.
-    unfold clean_readers, upd; extensionality a'.
-    destruct matches.
+    unfold clean_readers; extensionality a'.
+    destruct (weq a a'); subst; autorewrite with upd;
+    try simpl_match; auto.
   Qed.
 
   Lemma clean_readers_upd' : forall m a v0 reader reader',
@@ -235,16 +230,18 @@ Hint Extern 1 {{StartRead_upd _; _}} => apply StartRead_upd_ok : prog.
 
 Section WaitForCombinator.
 
+  (* TODO: change test to forall v, {P v} + {~ P v} *)
+
 CoFixpoint wait_for {T} {Mcontents} {Scontents}
-           tv (v: var Mcontents tv) (test: tv -> bool) (wchan: addr)
+           tv (v: var Mcontents tv) {P} (test: forall val, {P val} + {~P val}) (wchan: addr)
   rx : prog Mcontents Scontents T :=
   val <- Get v;
-  If (bool_dec (test val) true) {
+  if (test val) then (
     rx tt
-  } else {
+  ) else (
     Yield wchan;;
     wait_for v test wchan rx
-  }.
+    ).
 
 (* dummy function that will trigger computation of cofix *)
 Definition prog_frob Mcontents Scontents T (p: prog Mcontents Scontents T) :=
@@ -269,16 +266,16 @@ Proof.
 Qed.
 
 Theorem wait_for_expand : forall Mcontents Scontents T
-                               tv (v: var Mcontents tv) test wchan
-                               (rx : _ -> prog Mcontents Scontents T),
+                            tv (v: var Mcontents tv) P (test: forall val, {P val} + {~ P val})
+                            wchan (rx : _ -> prog Mcontents Scontents T),
     wait_for v test wchan rx =
     val <- Get v;
-    If (bool_dec (test val) true) {
+    if (test val) then (
         rx tt
-    } else {
+    ) else (
         Yield wchan;;
         wait_for v test wchan rx
-    }.
+    ).
 Proof.
   intros.
   match goal with
@@ -350,7 +347,7 @@ Hint Constructors exec.
 Theorem wait_for_ok : forall Mcontents Scontents
                         (R: ID -> Relation Scontents)
                         (Inv: Invariant Mcontents Scontents)
-                        tv (v: var Mcontents tv) test wchan
+                        tv (v: var Mcontents tv) P (test: forall v, {P v} + {~ P v}) wchan
                         (R_stutter: forall tid s, R tid s s),
   (Build_transitions R Inv) TID: tid |-
     {{ (_:unit),
@@ -359,7 +356,7 @@ Theorem wait_for_ok : forall Mcontents Scontents
        R tid s0 s
      | POST d' m' s0' s' r:
        Inv m' s' d' /\
-       test (get v m') = true /\
+       (exists H, test (get v m') = left H) /\
        star (othersR R tid) s s' /\
        R tid s0' s'
     }} wait_for v test wchan.
@@ -387,21 +384,23 @@ Proof.
 
     intuition.
     deex.
-    unfold If_ in *.
-    destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
-    eapply H2; [| eauto ]. intuition.
-    unfold If_ in *.
-    destruct (bool_dec (test (get v m)) true); try solve [ inv_prog ].
-    eapply H2; [| eauto ]. intuition.
+    case_eq (test (get v m)); intros p Htest;
+    rewrite Htest in *; try solve [ inv_prog ].
+    eapply H2; [| eauto ]. intuition eauto.
+
+    case_eq (test (get v m)); intros p Htest;
+    rewrite Htest in *; try solve [ inv_prog ].
+    eapply H2; [| eauto ]. intuition eauto.
+
     inv_fail_step; congruence.
 
   - inv_step.
-    unfold If_ in *.
     match goal with
     | [ H: step _ _ _ _ (if ?d then _ else _) _ _ |- _ ] =>
       destruct d
     end.
     eapply H2; [| eauto ]. intuition.
+    destruct (test (get v m)); eauto; congruence.
     inversion H0; repeat sigT_eq; subst.
 
     eapply IHexec.
@@ -424,12 +423,17 @@ End WaitForCombinator.
 
 Hint Extern 1 {{ wait_for _ _ _; _ }} => apply wait_for_ok : prog.
 
+Lemma flag_not_open : forall flag, flag <> Open ->
+                              flag = Locked.
+Proof.
+  intros; destruct flag; congruence.
+Qed.
 
-Definition is_unlocked (flag : BusyFlag) : bool :=
-  match flag with
-  | Open => true
-  | Locked => false
-  end.
+Definition is_unlocked (flag : BusyFlag) : {flag = Open} + {flag <> Open}.
+Proof.
+  destruct flag; eauto.
+  right; intro H; inversion H.
+Defined.
 
 Definition AcquireLock (Mcontents Scontents : list Type) (T : Type)
                        (l : var Mcontents BusyFlag)
@@ -464,7 +468,7 @@ Theorem AcquireLock_ok : forall Mcontents Scontents
 Proof.
   hoare.
   repeat eexists; eauto.
-  rewrite get_set; auto.
+  simpl_get_set.
 Qed.
 
 Hint Extern 1 {{ AcquireLock _ _ _; _ }} => apply AcquireLock_ok : prog.
