@@ -1614,7 +1614,7 @@ Definition cache_unlock {T} a rx : prog _ _ T :=
   c <- Get Cache;
   GhostUpdate (fun s:S =>
     let vc := get GCache s in
-    let vc' := cache_set_state vc a NoOwner in
+    let vc' := cache_set vc a (cache_fun_val vc a, NoOwner) in
     set GCache vc' s);;
   let c' := cache_set_state c a Open in
   Assgn Cache c';;
