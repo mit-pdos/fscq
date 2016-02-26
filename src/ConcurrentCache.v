@@ -895,8 +895,6 @@ Hint Rewrite get_disk_val_set using (now auto) : ghost_state.
 Hint Rewrite get_disk_val_set_eq using (now auto) : ghost_state.
 Hint Rewrite get_lock_set using (now auto): ghost_state.
 
-Check diskIs_combine_upd.
-
 Lemma diskIs_combine_upd_app : forall AT AEQ V (m m': @mem AT AEQ V) a v,
     (diskIs (mem_except m a) * a |-> v)%pred m' ->
     m' = upd m a v.
@@ -1579,6 +1577,36 @@ Qed.
 
 Hint Resolve cache_pred_stable_lock.
 
+Theorem reader_lock_inv_stable_acquire : forall vd c a tid,
+    reader_lock_inv vd c ->
+    cache_fun_state c a = NoOwner ->
+    reader_lock_inv vd (cache_set c a (cache_fun_val c a, Owned tid)).
+Proof.
+  unfold reader_lock_inv, cache_set, cache_fun_state, cache_fun_val; intros; specific_addrs.
+  distinguish_addresses; eauto.
+  destruct (c a0); inv_prod.
+  assert (NoOwner = Owned tid0) by eauto.
+  congruence.
+Qed.
+
+Lemma mem_cache_unlocked : forall c c' a,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_state c a Open = Open ->
+    cache_fun_state c' a = NoOwner.
+Proof.
+  unfold cache_eq, cache_addr_eq, cache_rep, cache_state, cache_fun_state;
+  intros; single_addr.
+  case_eq (c' a); intros.
+  case_cache_val' c a;
+    edestruct H; eauto;
+    match goal with
+    | [ H: ghost_lock_invariant _ _ |- _ ] =>
+      inversion H
+    end; congruence.
+Qed.
+
+Hint Resolve reader_lock_inv_stable_acquire mem_cache_unlocked.
+
 Theorem cache_lock_ok : forall a,
     stateS TID: tid |-
     {{ (_:unit),
@@ -1597,15 +1625,22 @@ Theorem cache_lock_ok : forall a,
     }} cache_lock a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-  - admit.
-  - admit.
-  - admit.
+  - unfold cache_fun_state.
+    autorewrite with cache; auto.
+  - unfold get_s_lock.
+    distinguish_addresses.
+    eapply OwnerAcquire; eauto.
+    unfold cache_fun_state; autorewrite with hlist cache; auto.
+
+    eapply NoChange; eauto.
+    unfold cache_fun_state; autorewrite with hlist cache; auto.
   - unfold get_scache_val; simplify.
     distinguish_addresses; autorewrite with cache; auto.
     (* can't have mc open and vc Owned owner_tid *)
-    admit.
+    assert (cache_fun_state (get GCache s2) a0 = NoOwner) by eauto.
+    congruence.
   - unfold get_disk_val; simplify.
-Admitted.
+Qed.
 
 Hint Extern 1 {{cache_lock _; _}} => apply cache_lock_ok : prog.
 
