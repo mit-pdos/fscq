@@ -2131,6 +2131,43 @@ Module PaddedLog.
     unfold roundup; rewrite divup_divup; auto.
   Qed.
 
+  Lemma nonzero_addrs_bound : forall l,
+    nonzero_addrs l <= length l.
+  Proof.
+    induction l; simpl; auto.
+    destruct a; omega.
+  Qed.
+
+  Lemma nonzero_addrs_roundup : forall B (l : list (addr * B)) n,
+    n > 0 ->
+    nonzero_addrs (map fst l) <= (divup (length l) n) * n.
+  Proof.
+    intros.
+    eapply le_trans.
+    apply nonzero_addrs_bound.
+    rewrite map_length.
+    apply roundup_ge; auto.
+  Qed.
+
+  Lemma loglen_invalid_overflow : forall xp old new,
+    LogLen xp = DiskLogDescSig.items_per_val * LogDescLen xp ->
+    loglen_invalid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
+    length (padded_log old ++ new) > LogLen xp.
+  Proof.
+    unfold loglen_invalid, ndesc_log, ndata_log; intros.
+    rewrite app_length; repeat rewrite padded_log_length.
+    unfold roundup; intuition.
+    rewrite H.
+    setoid_rewrite <- Nat.mul_comm at 2.
+    apply divup_add_gt; auto.
+
+    eapply lt_le_trans; eauto.
+    apply Nat.add_le_mono.
+    apply nonzero_addrs_roundup; auto.
+    erewrite <- map_length.
+    apply nonzero_addrs_bound.
+  Qed.
+
   Hint Rewrite Desc.array_rep_avail Data.array_rep_avail
      padded_log_length divup_mul divup_1 map_length
      ndesc_log_padded_log nonzero_addrs_padded_log using auto: extend_crash.
@@ -2171,7 +2208,7 @@ Module PaddedLog.
           BUFCACHE.rep cs d' * (
           [[ r = true /\
              (F * rep xp (Synced ((padded_log old) ++ (padded_log new))))%pred d' ]] \/
-          [[ r = false /\
+          [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
              (F * rep xp (Synced old))%pred d' ]])
     CRASH exists cs' d',
           BUFCACHE.rep cs' d' * (
@@ -2253,7 +2290,9 @@ Module PaddedLog.
       apply helper_loglen_desc_valid_extend; auto.
 
     (* false case *)
-    - hoare.
+    - step.
+      or_r; cancel.
+      apply loglen_invalid_overflow; auto.
 
     (* crash for the false case *)
     - cancel; hoare.
@@ -2304,6 +2343,17 @@ Module PaddedLog.
     right; tauto.
     left; tauto.
     right; tauto.
+  Qed.
+
+  Theorem rep_synced_length_ok : forall F xp l d,
+    (F * rep xp (Synced l))%pred d -> length l <= LogLen xp.
+  Proof.
+    unfold rep, rep_inner, rep_contents, xparams_ok.
+    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
+    intros; destruct_lifts.
+    hypmatch DiskLogDescSig.items_per_val as Hx.
+    rewrite map_length, Nat.sub_0_r in Hx.
+    rewrite H5, Nat.mul_comm; auto.
   Qed.
 
 End PaddedLog.
@@ -2421,17 +2471,30 @@ Module DLog.
     rewrite roundup_roundup; auto.
   Qed.
 
-  Local Hint Resolve extend_length_ok PaddedLog.log_nonzero_padded_app.
+  Lemma helper_extend_length_ok : forall xp padded new F d,
+    length padded = roundup (length padded) DiskLogDescSig.items_per_val
+    -> length (PaddedLog.padded_log padded ++ new) > LogLen xp
+    -> (F * PaddedLog.rep xp (PaddedLog.Synced padded))%pred d
+    -> length new > LogLen xp - length padded.
+  Proof.
+    intros.
+    rewrite app_length in H0.
+    pose proof (PaddedLog.rep_synced_length_ok H1).
+    generalize H2.
+    rewrite H.
+    rewrite <- PaddedLog.padded_log_length.
+    intro; omega.
+  Qed.
+
+  Local Hint Resolve extend_length_ok helper_extend_length_ok PaddedLog.log_nonzero_padded_app.
 
   Definition extend T xp new cs rx : prog T :=
-    If (Forall_dec PaddedLog.entry_valid PaddedLog.entry_valid_dec new) {
-      r <- PaddedLog.extend xp new cs;
-      rx r
-    } else {
-      rx ^(cs, false)
-    }.
+    r <- PaddedLog.extend xp new cs;
+    rx r.
 
   Definition rounded n := roundup n DiskLogDescSig.items_per_val.
+
+  Definition entries_valid l := Forall PaddedLog.entry_valid l.
 
   Lemma extend_navail_ok : forall xp padded new, 
     length padded = roundup (length padded) DiskLogDescSig.items_per_val ->
@@ -2452,13 +2515,13 @@ Module DLog.
 
   Definition extend_ok : forall xp new cs,
     {< F old d nr,
-    PRE       BUFCACHE.rep cs d *
+    PRE       BUFCACHE.rep cs d * [[ entries_valid new ]] *
               [[ (F * rep xp (Synced nr old))%pred d ]]
     POST RET: ^(cs, r) exists d',
               BUFCACHE.rep cs d' * (
               [[ r = true /\
                 (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)))%pred d' ]] \/
-              [[ r = false /\
+              [[ r = false /\ length new > nr /\
                 (F * rep xp (Synced nr old))%pred d' ]])
     CRASH exists cs' d',
           BUFCACHE.rep cs' d' * (

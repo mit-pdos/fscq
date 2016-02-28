@@ -543,3 +543,77 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     lia.
   Qed.
 
+  Lemma sub_sub_assoc : forall a b,
+    a >= b -> a - (a - b) = b.
+  Proof.
+    intros; omega.
+  Qed.
+
+
+  Lemma divup_gt : forall a b sz,
+    sz > 0 -> divup a sz > b -> a > b * sz.
+  Proof.
+    intros a b sz H.
+    divup_cases.
+    eapply Nat.mul_lt_mono_pos_r in H1; eauto.
+    replace (a / sz * sz) with a in H1; auto.
+    rewrite Nat.mul_comm.
+    apply Nat.div_exact; omega.
+
+    destruct b.
+    destruct (Nat.eq_dec a 0); subst.
+    contradict H0.
+    rewrite Nat.mod_0_l; omega.
+    omega.
+
+    rewrite Nat.add_1_r in H1.
+    apply lt_n_Sm_le in H1.
+    eapply Nat.mul_le_mono_pos_r in H1; eauto.
+    replace (a / sz * sz) with (a - a mod sz) in H1.
+    rewrite H0 in H1.
+    eapply Nat.le_lt_trans; eauto.
+    destruct (Nat.eq_dec a 0); subst.
+    contradict H0.
+    rewrite Nat.mod_0_l; omega.
+    omega.
+
+    rewrite Nat.mod_eq by omega.
+    setoid_rewrite Nat.mul_comm at 2.
+    apply sub_sub_assoc.
+    apply Nat.mul_div_le; omega.
+  Qed.
+
+  Definition divup_S x sz :=
+    match (x mod sz) with
+    | O => divup x sz + 1
+    | S _ => divup x sz
+    end.
+
+  Theorem divup_eq_divup_S : forall x sz,
+    sz <> 0 ->
+    divup (S x) sz = divup_S x sz.
+  Proof.
+    intros.
+    unfold divup, divup_S.
+    divup_cases;
+    replace (S x + sz - 1) with (x + 1 * sz) by omega;
+    rewrite Nat.div_add; auto.
+  Qed.
+
+
+  Lemma divup_add_gt : forall a b n sz,
+    sz > 0 -> a + divup b sz > n ->
+    a * sz + b > n * sz.
+  Proof.
+    induction a; intros; auto.
+    rewrite Nat.add_0_l in H0.
+    rewrite Nat.add_0_l.
+    apply divup_gt; auto.
+
+    replace (S a * sz + b) with (a * sz + (b + sz * 1)).
+    apply IHa; auto.
+    rewrite divup_add; omega.
+    rewrite Nat.mul_1_r.
+    rewrite Nat.mul_succ_l.
+    omega.
+  Qed.
