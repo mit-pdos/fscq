@@ -136,7 +136,7 @@ Module MLog.
       let '(cs, ms) := (MSCache ms, MSInLog ms) in
       BUFCACHE.rep cs d *
       [[ Map.Equal ms (replay_mem log map0) ]] *
-      [[ entries_valid ms raw ]] *
+      [[ goodSize addrlen (length raw) /\ entries_valid ms raw ]] *
       [[ (F * rep_inner xp na st log ms raw)%pred d ]])%pred.
 
   Definition read T xp a ms rx : prog T :=
@@ -468,7 +468,7 @@ Module MLog.
     prestep.
 
     cancel.
-    safestep; auto.  eauto. eauto.
+    safestep; auto.  eauto. eauto. eauto.
     cancel. subst.
     eapply replay_disk_eq; eauto.
     pimpl_crash; cancel; auto. cancel.
@@ -859,6 +859,28 @@ Module MLog.
     apply In_fst_KIn; auto.
   Qed.
 
+  Lemma items_valid_entries_valid : forall ents d l raw,
+    goodSize addrlen (length raw) ->
+    d = replay_disk l raw ->
+    items_valid ents d -> DLog.entries_valid ents.
+  Proof.
+    unfold items_valid, DLog.entries_valid; intuition.
+    rewrite Forall_forall.
+    intros; destruct x.
+    unfold PaddedLog.entry_valid, PaddedLog.addr_valid; intuition.
+    eapply H3; eauto; simpl.
+    apply In_fst_KIn.
+    eapply in_map; eauto.
+
+    simpl; subst.
+    rewrite replay_disk_length in *.
+    eapply goodSize_trans; [ | apply H].
+    apply Nat.lt_le_incl.
+    eapply H3.
+    apply In_fst_KIn.
+    eapply in_map; eauto.
+  Qed.
+
   Lemma items_valid_nodup : forall l d,
     items_valid l d -> KNoDup l.
   Proof.
@@ -877,8 +899,9 @@ Module MLog.
           [[ items_valid ents d ]] *
           [[ na' = (na - (DLog.rounded (length ents))) ]]
      POST RET:^(ms',r)
-          ([[ r = true ]] *  rep xp na' (Synced (replay_disk ents d)) ms') \/
-          ([[ r = false ]] * rep xp na  (Synced d) ms')
+          ([[ r = true ]]  *  rep xp na' (Synced (replay_disk ents d)) ms') \/
+          ([[ r = false /\ length ents > na ]]
+                           *  rep xp na  (Synced d) ms')
      CRASH  exists ms',
             rep xp na (Synced d) ms' \/
             rep xp na' (Synced (replay_disk ents d)) ms' \/
@@ -887,6 +910,7 @@ Module MLog.
   Proof.
     unfold flush_noapply.
     step using dems.
+    eapply items_valid_entries_valid; eauto.
     hoare using dems.
 
     or_l.
@@ -928,7 +952,7 @@ Module MLog.
     pred_apply; cancel.
     apply replay_disk_replay_mem; auto.
   Qed.
-  
+
   End UnfoldProof2.
 
 
@@ -1263,6 +1287,7 @@ Module MLog.
 
     step.
     step.
+    rewrite replay_disk_length; auto.
     rewrite apply_synced_data_ok; cancel.
 
     (* crash conditions *)
@@ -1271,6 +1296,7 @@ Module MLog.
     instantiate (raw0 := replay_disk (Map.elements (MSInLog ms)) raw).
     cancel.
     intuition; simpl; eauto.
+    rewrite replay_disk_length; auto.
     apply entries_valid_replay; auto.
 
     pred_apply; cancel.
@@ -1292,8 +1318,10 @@ Module MLog.
     or_l. norm.
     instantiate (2 := mk_memstate map0 cs).
     instantiate (log0 := nil).
+    instantiate (raw0 := replay_disk (Map.elements (MSInLog ms)) raw).
     cancel.
-    intuition; simpl; eauto.
+    intuition.
+    rewrite replay_disk_length; eauto.
     pred_apply; cancel.
     rewrite apply_synced_data_ok; cancel.
 
@@ -1333,7 +1361,7 @@ Module MLog.
              (rep xp n1 (Synced (replay_disk ents d)) ms') \/
              (rep xp n2 (Synced (replay_disk ents d)) ms'))
           \/
-          ([[ r = false ]] *
+          ([[ r = false /\ length ents > na ]] *
              (rep xp na          (Synced d) ms') \/
              (rep xp (LogLen xp) (Synced d) ms'))
      CRASH  exists ms',
@@ -1392,13 +1420,45 @@ Module MLog.
   Qed.
 
 
-  Definition recover T xp ms rx : prog T :=
-    let^ (cs, log) <- DLog.read xp (MSCache ms);
-    let m := replay_mem log map0 in
-    ms <- apply xp (mk_memstate m cs);
+  Definition recover T xp cs rx : prog T :=
+    let^ (cs, log) <- DLog.read xp cs;
+    ms <- apply xp (mk_memstate (replay_mem log map0) cs);
     rx ms.
 
+  Definition recover_either_pred xp d ents cs :=
+    let ms := (mk_memstate (replay_mem ents map0) cs) in
+    (exists na,
+          rep xp na (Synced d) ms \/
+          rep xp na (Synced (replay_disk ents d)) ms \/
+          rep xp na (Flushing d ents) ms \/
+          rep xp na (Applying d) ms)%pred.
 
-  
+  Theorem recover_ok: forall xp cs,
+    {< d ents,
+    PRE
+      crash_xform (recover_either_pred xp d ents cs)
+    POST RET:ms'
+      rep xp (LogLen xp) (Synced d) ms' \/
+      rep xp (LogLen xp) (Synced (replay_disk ents d)) ms'
+    CRASH
+      exists cs',  recover_either_pred xp d ents cs'
+    >} recover xp cs.
+  Proof.
+    unfold recover.
+
+    Lemma recover_either_after_crash : forall xp d ents cs,
+      crash_xform (recover_either_pred xp d ents cs) =p=>
+      exists raw ms, BUFCACHE.rep cs raw * 
+                [[ Map.Equal ms (replay_mem ents map0) ]] *
+                [[ entries_valid ms d ]].
+    Proof.
+    Admitted.
+
+    prestep; norm'l.
+    repeat rewrite stars_prepend.
+    rewrite crash_xform_bufcache.
+    cancel.
+
+
 
 End MLOG.
