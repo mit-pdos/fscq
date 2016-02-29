@@ -1740,128 +1740,41 @@ Definition disk_read {T} a rx : prog _ _ T :=
   cache_unlock a;;
   rx v.
 
-
-
-Ltac destruct_valusets :=
-  repeat match goal with
-  | [ vs: valuset |- _ ] => destruct vs
-  end.
-
-Lemma disk_eq_valuset : forall a (vd: DISK) vs reader,
-  vd a = Some (vs, reader) ->
-  (any * a |-> (Valuset (latest_valu vs) (pending_valus vs), reader))%pred vd.
-Proof.
-  intros.
-  match goal with
-  | [ H: ?vd ?a = Some ?vs |-
-    context[ptsto a ?vs'] ] =>
-    replace vs with vs' in H
-  end; destruct_valusets; eauto using ptsto_valid_iff.
-Qed.
-
-Hint Resolve disk_eq_valuset.
-
-Definition anyR S (R: ID -> S -> S -> Prop) : S -> S -> Prop :=
-  fun s s' =>
-  exists (tid:ID), R tid s s'.
-
-Lemma anyR_weaken : forall S (R: ID -> Relation S) tid,
-  rimpl (R tid) (anyR R).
-Proof.
-  unfold rimpl, anyR; intros; eauto.
-Qed.
-
-Lemma anyR_others_weaken : forall S (R: ID -> Relation S) tid,
-  rimpl (othersR R tid) (anyR R).
-Proof.
-  unfold rimpl, othersR, anyR; intros;
-    deex; eauto.
-Qed.
-
-Example chain_env_local : forall S (R: ID -> Relation S) tid,
-  rimpl (chain (star (othersR R tid)) (star (R tid)))
-    (star (anyR R)).
-Proof.
-  unfold rimpl, chain.
-  intros; deex.
-  induction H0; intuition;
-    try rewrite anyR_weaken in *;
-    auto.
-  apply anyR_others_weaken in H.
-  eauto.
-Qed.
-
-Lemma chain_stars : forall S (R1 R2 R': Relation S),
-  rimpl R1 R' ->
-  rimpl R2 R' ->
-  rimpl (chain (star R1) (star R2)) (star R').
-Proof.
-  unfold chain; intros; unfold rimpl; intros; deex.
-  rewrite H in H2.
-  rewrite H0 in H3.
-  eauto using star_trans.
-Qed.
-
-Theorem disk_read_ok : forall a reader,
-    stateS TID: tid |-
-    {{ F v rest,
-     | PRE d m s0 s: let vd := virt_disk s in
-                     Inv m s d /\
-                     vd |= F * a |-> (Valuset v rest, reader) /\
-                     R tid s0 s
-     | POST d' m' s0' s' r: let vd' := virt_disk s' in
-                            Inv m' s' d' /\
-                            star (anyR R) s s' /\
-                            get_s_lock a s' = Owned tid /\
-                            R tid s0' s' /\
-                            exists rest', vd' a = Some (Valuset r rest', None)
-    }} disk_read a.
-Proof.
-  let simp_step :=
-    simplify_step
-    || (time "learn_same_sectors" learn_same_sectors)
-    || match goal with
-       | [ H: chain _ _ _ _ |- _ ] =>
-        learn H (unfold chain, applied in H)
-       end
-    || (time "destruct_valusets" destruct_valusets) in
-  time "hoare" hoare pre (simplify' simp_step)
-     with (finish;
-      time "standardize_mem_fields" standardize_mem_fields;
-      eauto).
-
-  (* TODO: automate these relational proofs if they turn out to be common *)
-  eapply star_trans.
-  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
-  eapply star_trans with (set GCacheL (Owned tid) s').
-  eapply star_step; [ | apply star_refl ].
-  eapply anyR_weaken.
-  finish.
-  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
-
-  Grab Existential Variables.
-  all: auto.
-Qed.
-
-Hint Extern 1 {{disk_read _; _ }} => apply disk_read_ok : prog.
-
 Definition replace_latest vs v' :=
   let 'Valuset _ rest := vs in Valuset v' rest.
+
+Search cache_alloc.
+
+Lemma cache_alloc_unchanged : forall c c' a def,
+    cache_eq ghost_lock_invariant (cache_rep c def) c' ->
+    cache_eq ghost_lock_invariant (cache_rep (cache_alloc c a def) def) c'.
+Proof.
+  intros.
+  eapply cache_eq_split with (a := a); intros; autorewrite with cache; eauto.
+  unfold cache_eq in H; specific_addr.
+  unfold cache_addr_eq, cache_rep, cache_alloc in *; intros.
+  case_cache_val' c a; intros; repeat simpl_match;
+  repeat inv_prod; edestruct H; eauto; subst; try congruence.
+  cbn in *; autorewrite with cache in *.
+  split; congruence.
+Qed.
+
+Hint Resolve cache_alloc_unchanged.
 
 Definition locked_disk_write {T} a v rx : prog _ _ T :=
   tid <- GetTID;
   c <- Get Cache;
-  let c' := cache_add_dirty c a v Locked in
+  let c' := cache_dirty c a v in
   GhostUpdate (fun s =>
     let vc := get GCache s in
-    let vc' := cache_add_dirty vc a v (Owned tid) in
+    let vc' := cache_set vc a (Dirty v, Owned tid) in
     set GCache vc' s);;
               GhostUpdate (fun (s:S) => let vd := get GDisk s in
                                       let rest := match (vd a) with
                                                   | Some (Valuset v0 rest, _) =>
                                                     match (cache_get c a) with
-                                                    | Some (Dirty _ _) => rest
-                                                    | Some (Clean _ _) => v0 :: rest
+                                                    | Some (Dirty _, _) => rest
+                                                    | Some (Clean _, _) => v0 :: rest
                                                     | _ => v0 :: rest
                                                     end
                                                   (* impossible *)
@@ -1871,8 +1784,6 @@ Definition locked_disk_write {T} a v rx : prog _ _ T :=
                                       set GDisk (upd vd a (vs', None)) s);;
               Assgn Cache c';;
               rx tt.
-
-Hint Resolve ptsto_upd'.
 
 Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
@@ -1885,34 +1796,34 @@ Theorem locked_disk_write_ok : forall a v,
                             Inv m' s' d' /\
                             R tid s s' /\
                             get_s_lock a s' = Owned tid /\
-                            (exists rest', vd' |= F * a |-> (Valuset v rest', None) /\
+                            (exists rest', vd' |= any * a |-> (Valuset v rest', None) /\
                             vd' = upd (virt_disk s) a (Valuset v rest', None)) /\
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
-  let simp_step :=
-    simplify_step ||
-    lazymatch goal with
-    | [ |- context[match (cache_get ?c ?a) with _ => _ end] ] =>
-      case_cache_val' c a
-    end in
-  time "hoare" hoare pre (simplify' simp_step) with
-    (finish;
-      time "simpl_get_set *" simpl_get_set in *;
-      try time "congruence" congruence;
-      try match goal with
-          | [ |- ghost_lock_invariant _ _ _ _ ] =>
-            time "eauto inv_preserved"
-              solve [ eauto using ghost_lock_inv_preserved ]
-          end).
-  (* TODO: make distinguish_two_addresses faster by rewriting
-     more precisely and with better matching *)
-  Ltac t := time "distinguish_addresses" distinguish_addresses;
-    (rewrite upd_eq by (now auto)) || (rewrite upd_ne by (now auto));
-    eauto.
-  t.
-  t.
-  t.
+  time "hoare" hoare pre (time "simplify" simplify) with finish.
+  - unfold cache_dirty.
+    eapply cache_eq_split; intros; autorewrite with cache; eauto.
+    case_eq (cache_get (get Cache m) a); intros.
+    destruct c.
+    erewrite cache_rep_change_get by eauto.
+    (* cache_get c a must have an entry in order to be locked *)
+    admit.
+    admit.
+  - (* cache_pred stability *)
+    admit.
+  - unfold get_s_lock.
+    distinguish_addresses.
+    eapply NoChange; eauto.
+    unfold cache_fun_state; now autorewrite with hlist cache.
+
+    eapply NoChange; eauto.
+    unfold cache_fun_state; now autorewrite with hlist cache.
+  - unfold get_scache_val, get_s_lock in *.
+    distinguish_addresses; now autorewrite with hlist cache.
+  - unfold get_disk_val, get_s_lock in *.
+    distinguish_addresses; now autorewrite with upd hlist cache.
+  - unfold cache_fun_state; now autorewrite with cache.
 Qed.
 
 Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
