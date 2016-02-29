@@ -13,6 +13,7 @@ Require Import GenSep.
 Require Import PredCrash.
 Require Import Rec.
 Require Import Eqdep_dec.
+Require Import HashmapProg.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -74,6 +75,10 @@ Definition hide_rec p : Prop := p.
 Opaque hide_rec.
 
 
+(** Previous length doesn't need to be less than current_length,
+    but if we can guarantee that after a crash, it will be much
+    easier to prove that it's okay to roll back to the previous
+    length. *)
 Definition log_rep_inner previous_length header vl hm :=
   (exists h current_length,
     let header' := make_header
@@ -84,7 +89,7 @@ Definition log_rep_inner previous_length header vl hm :=
     hash_list_rep (rev vl) h hm /\
       length vl = current_length /\
       current_length <= # (maxlen) /\
-      previous_length <= # (maxlen) /\
+      previous_length <= current_length /\
       hide_rec (header = header')).
 
 (** Log_rep:
@@ -103,31 +108,30 @@ Definition log_rep previous_length vl hm :
   BUFCACHE.rep cs d *
   [[ (log_rep vl hm * F)%pred d ]].*)
 
-Definition log_rep_crash_xform (vl : list valu) hm :
+(** log_rep after a crash: Same as normal log_rep, except we don't
+    know if the list that matches the hash we have matches the list
+    that's on disk. **)
+Definition log_rep_crash_xform previous_length (vl : list valu) hm :
   @pred addr (@weq addrlen) valuset :=
-  (exists previous_length header vl vl',
+  (exists header vl',
     [[ log_rep_inner previous_length header vl' hm ]] *
     Header |-> (header_to_valu header, nil) *
+    [[ length vl' = length vl ]] *
     array DataStart (combine vl (repeat nil (length vl))) $1)%pred.
 
-Definition crep (vl : list valu) hm :
+(** The one in-between case right before a crash:
+  - Two possible headers could be synced to disk
+  - The older one matches the list on disk,
+    the other matches a longer list. **)
+Definition crep previous_length (vl : list valu) hm :
   @pred addr (@weq addrlen) valuset :=
-  (exists previous_length header header' vl vl' vl'',
+  (exists header header' vl' vl'',
     [[ log_rep_inner (length vl') header' vl'' hm ]] *
     [[ log_rep_inner previous_length header vl' hm ]] *
+    (* TODO: how to get the length vl' = length vl rule *)
     Header |-> (header_to_valu header', header_to_valu header :: nil) *
     array DataStart (combine vl (repeat nil (length vl))) $1)%pred.
 
-(*Definition crep vdisk hm :
-  @pred addr (@weq addrlen) valuset :=
-  (exists previous_length vl next_vl h next_h current_length next_length header next_header unsynced_data,
-    [[ log_rep_recovered_inner vl previous_length current_length h header hm ]] *
-    [[ log_rep_recovered_inner next_vl current_length next_length next_h next_header hm ]] *
-    [[ length vdisk = # (maxlen) ]] *
-    (Header |-> (header_to_valu header, nil) \/
-      Header |-> (header_to_valu next_header, header_to_valu header :: nil)) *
-    array DataStart (combine vdisk (updN (repeat nil # (maxlen)) current_length unsynced_data)) $1
-  )%pred.*)
 
 Definition append T v cs rx : prog T :=
   let^ (cs, header_valu) <- BUFCACHE.read Header cs;
@@ -156,11 +160,208 @@ Definition truncate T cs rx : prog T :=
   cs <- BUFCACHE.sync Header cs;
   rx cs.
 
+Definition read_log T pointer cs rx : prog T :=
+  let^ (cs, values) <- For i < pointer
+  Hashmap hm'
+  Ghost [ crash F l ]
+  Loopvar [ cs values ]
+  Continuation lrx
+  Invariant
+    exists d', BUFCACHE.rep cs d'
+    * [[ (F * array DataStart (combine l (repeat nil (length l))) $1
+        * [[ # (pointer) <= length l ]]
+        * [[ values = firstn # (i) l ]])%pred d' ]]
+  OnCrash crash
+  Begin
+    let^ (cs, v) <- BUFCACHE.read_array DataStart i cs;
+    lrx ^(cs, values ++ [v])
+  Rof ^(cs, []);
+  rx ^(cs, values).
+
+Theorem read_log_ok : forall pointer cs,
+  {< d F values,
+  PRE
+    BUFCACHE.rep cs d
+    * [[ (F * array DataStart (combine values (repeat nil (length values))) $1)%pred d ]]
+    * [[ # (pointer) <= length values ]]
+  POST RET:^(cs', values')
+      BUFCACHE.rep cs' d
+      * [[ (F * array DataStart (combine values (repeat nil (length values))) $1)%pred d ]]
+      * [[ values' = firstn # (pointer) values ]]
+  CRASH
+    exists cs',
+      BUFCACHE.rep cs' d
+      * [[ (F * array DataStart (combine values (repeat nil (length values))) $1)%pred d ]]
+  >} read_log pointer cs.
+Proof.
+  Admitted. (*
+  unfold read_log.
+  hoare.
+  pred_apply; cancel_with eauto.
+
+  rewrite combine_length, repeat_length.
+  rewrite min_l; try omega. Search lt wlt.
+  apply wlt_lt in H0.
+  omega.
+
+  erewrite <- natplus1_wordplus1_eq; eauto.
+  erewrite firstn_plusone_selN'; eauto.
+  rewrite selN_combine; simpl; auto.
+  rewrite repeat_length; auto.
+  apply wlt_lt in H0.
+  omega.
+  unfold addrlen; omega.
+
+  cancel.
+Qed.*)
+
+Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
+
+Definition recover T cs rx : prog T :=
+  let^ (cs, header_valu) <- BUFCACHE.read Header cs;
+  let header := valu_to_header header_valu in
+  let rollback_pointer := header :-> "previous_length" in
+  let log_pointer := header :-> "current_length" in
+  let checksum := header :-> "checksum" in
+  let^ (cs, values) <- read_log log_pointer cs;
+  h <- hash_list values;
+  If (weq checksum h) {
+    rx ^(cs, true)
+  } else {
+    h <- hash_list (firstn # (rollback_pointer) values);
+    cs <- BUFCACHE.write Header (header_to_valu (
+            make_header
+              :=> "previous_length" := rollback_pointer
+              :=> "current_length" := rollback_pointer
+              :=> "checksum" := h
+            )) cs;
+    cs <- BUFCACHE.sync Header cs;
+    rx ^(cs, false)
+  }.
+
+Theorem recover_ok :  forall cs,
+  {< d F prev_len values,
+  PRE:hm
+    BUFCACHE.rep cs d
+    * [[ (F * log_rep_crash_xform prev_len values hm)%pred d ]]
+  POST:hm' RET:^(cs', ok)
+    exists d',
+      BUFCACHE.rep cs' d'
+      * [[ ([[ ok = true ]] * F * log_rep prev_len values hm' \/
+            exists suffix, [[ ok = false ]]
+                           * F * log_rep prev_len (firstn prev_len values) hm'
+                           * array (DataStart ^+ $ (prev_len)) suffix $1)%pred d' ]]
+  CRASH:hm'
+    exists cs' d',
+      BUFCACHE.rep cs' d'
+  >} recover cs.
+Proof.
+  unfold recover, log_rep_crash_xform, log_rep_inner.
+  step.
+  pred_apply; cancel.
+  step.
 Ltac unhide_rec :=
   match goal with
   | [H: hide_rec _ |- _ ] => inversion H
   end;
   subst.
+  unhide_rec.
+  rewrite of_to_header.
+  cbn.
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+
+  step.
+  unhide_rec.
+  rewrite of_to_header.
+  cbn.
+  rewrite firstn_length.
+  rewrite min_r.
+  eapply goodSize_bound.
+  instantiate (bound:=length l0).
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  step.
+  step.
+  apply pimpl_or_r; left.
+  unfold log_rep, log_rep_inner.
+  cancel.
+  unhide_rec.
+  rewrite of_to_header in *.
+  cbn in *.
+
+  assert (Hl: l = l0).
+    apply rev_injective.
+    eapply hash_list_injective with (hm:=hm3).
+    solve_hash_list_rep.
+    erewrite wordToNat_natToWord_bound with (bound:=maxlen) in H17; try omega.
+    rewrite H8 in H17.
+    rewrite firstn_oob in H17; try omega.
+    solve_hash_list_rep.
+  subst.
+
+  repeat eexists.
+  solve_hash_list_rep.
+  omega.
+  omega.
+
+  step.
+  unhide_rec.
+  rewrite of_to_header.
+  cbn.
+  eapply goodSize_bound.
+  rewrite firstn_length.
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  rewrite min_l.
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen); eauto; omega.
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  rewrite firstn_length.
+  rewrite min_l; omega.
+
+  unhide_rec.
+  rewrite of_to_header in *.
+  cbn in *.
+  step_idtac.
+  cancel_with eauto.
+  pred_apply; cancel.
+  step_idtac.
+  cancel_with eauto.
+  cancel_with eauto.
+  pred_apply; cancel.
+  step_idtac.
+  apply pimpl_or_r; right.
+  cancel.
+  erewrite <- firstn_skipn with (l:=(combine l0 (repeat [] (length l0)))).
+  rewrite <- array_app.
+  unfold log_rep, log_rep_inner.
+  cancel.
+  instantiate (n:=n).
+  rewrite firstn_combine_comm.
+  rewrite firstn_repeat; try omega.
+  rewrite firstn_length.
+  rewrite min_l; try omega.
+  cancel.
+
+  repeat eexists.
+  Search hash_list_rep.
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen) in H20; try omega.
+  rewrite firstn_firstn in H20.
+  Search hash_list_rep.
+  rewrite min_l in H20.
+  solve_hash_list_rep.
+  erewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  rewrite firstn_length, min_l; omega.
+  rewrite firstn_length, min_l; omega.
+
+  Transparent hide_rec.
+  unfold hide_rec.
+  rewrite firstn_length, min_l; try omega.
+  reflexivity.
+  rewrite firstn_length, combine_length, repeat_length;
+  repeat rewrite min_l;
+  try omega; reflexivity.
+
+  all: cancel_with eauto.
+Qed.
 
 Theorem append_ok : forall v cs,
   {< d previous_length vl F v_old,
@@ -175,8 +376,8 @@ Theorem append_ok : forall v cs,
       [[ (log_rep (length vl) (vl ++ v :: nil) hm' * F)%pred d' ]]
   CRASH:hm'
     exists cs' d', BUFCACHE.rep cs' d' *
-      [[ ((log_rep_crash_xform vl hm' * (DataStart ^+ $ (length vl)) |->?
-          \/ log_rep_crash_xform (vl ++ v :: nil) hm'
+      [[ ((log_rep_crash_xform previous_length vl hm' * (DataStart ^+ $ (length vl)) |->?
+          \/ log_rep_crash_xform (length vl) (vl ++ v :: nil) hm'
           \/ crep vl hm' * (DataStart ^+ $ (length vl)) |->?) * F)%pred d' ]]
   >} append v cs.
 Proof.
