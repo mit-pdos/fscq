@@ -1656,11 +1656,57 @@ Definition cache_unlock {T} a rx : prog _ _ T :=
   Wakeup a;;
   rx tt.
 
+Lemma cache_eq_fun_val_hit : forall c c' a v b,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_get c a = Some (v, b) ->
+    cache_fun_val c' a = v.
+Proof.
+  unfold cache_eq, cache_addr_eq, cache_rep, cache_fun_val; intros; single_addr.
+  case_eq (c' a); intros.
+  edestruct H; eauto; simpl_match; eauto.
+Qed.
+
+Lemma cache_eq_fun_val_miss : forall c c' a,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_get c a = None ->
+    cache_fun_val c' a = Invalid.
+Proof.
+  unfold cache_eq, cache_addr_eq, cache_rep, cache_fun_val; intros; single_addr.
+  case_eq (c' a); intros.
+  edestruct H; eauto; simpl_match; eauto.
+Qed.
+
+Arguments cache_eq_fun_val_hit {c c' a v b} _ _.
+Arguments cache_eq_fun_val_miss {c c' a} _ _.
+
+Lemma cache_eq_unlock : forall c c' a,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_eq ghost_lock_invariant
+             (cache_rep (cache_set_state c a Open) Open)
+             (cache_set c' a (cache_fun_val c' a, NoOwner)).
+Proof.
+  intros.
+  unfold cache_set_state.
+  eapply cache_eq_split with (a := a); intros; autorewrite with cache; eauto.
+  case_cache_val' c a;
+    try erewrite cache_rep_change_get by eauto;
+    try match goal with
+        | [ H: cache_eq _ _ _, H': cache_get _ _ = _ |- _ ] =>
+          rewrite (cache_eq_fun_val_hit H H') ||
+                  rewrite (cache_eq_fun_val_miss H H')
+        end; auto.
+  unfold cache_rep, cache_change; repeat simpl_match.
+  auto.
+Qed.
+
+Hint Resolve cache_eq_unlock.
+
 Theorem cache_unlock_ok : forall a,
     stateS TID: tid |-
-    {{ (_:unit),
+    {{ F v,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
+                     vd |= F * a |-> (v, None) /\
                      (* not strictly necessary, but why would you unlock
                      if you don't know you have the lock? *)
                      get_s_lock a s = Owned tid
@@ -1673,7 +1719,18 @@ Theorem cache_unlock_ok : forall a,
     }} cache_unlock a.
 Proof.
   time "hoare" hoare pre simplify with finish.
-Admitted.
+  - unfold get_s_lock.
+    distinguish_addresses.
+    eapply OwnerRelease; eauto.
+    unfold cache_fun_state; now autorewrite with hlist cache.
+
+    eapply NoChange; eauto.
+    unfold cache_fun_state; now autorewrite with hlist cache.
+  - unfold get_scache_val, get_s_lock in *.
+    distinguish_addresses; autorewrite with hlist cache; auto.
+  - unfold get_disk_val; simplify.
+  - unfold cache_fun_state; now autorewrite with cache.
+Qed.
 
 Hint Extern 1 {{cache_unlock _; _}} => apply cache_unlock_ok : prog.
 
