@@ -1761,6 +1761,102 @@ Qed.
 
 Hint Resolve cache_alloc_unchanged.
 
+Lemma cache_eq_dirty : forall c c' a v tid,
+    cache_fun_state c' a = Owned tid ->
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_eq ghost_lock_invariant
+             (cache_rep (cache_dirty c a v) Open)
+             (cache_set c' a (Dirty v, Owned tid)).
+Proof.
+  unfold cache_dirty; intros.
+  eapply cache_eq_split with (a := a); intros; autorewrite with cache; eauto.
+  case_eq (cache_get c a); intros.
+  unfold cache_eq in *; specific_addr.
+  destruct c0.
+  erewrite cache_rep_change_get by eauto; autorewrite with cache.
+  unfold cache_rep, cache_fun_state in *.
+  case_eq (c' a); intros; simpl_match.
+  edestruct H0; subst; eauto; simpl_match; eauto.
+
+  assert (cache_get c a = Some (Invalid, Locked)).
+  eapply cache_lock_miss_invalid; eauto.
+  unfold cache_val; now simpl_match.
+  congruence.
+Qed.
+
+Hint Resolve cache_eq_dirty.
+
+Definition dirty_vd st (vd: DISK) (c: AssocCache st) a v' :=
+  let (rest, rdr) := match vd a with
+              | Some (Valuset v0 rest, rdr) =>
+                (match cache_get c a with
+                | Some (Dirty _, _) => rest
+                | _ => v0 :: rest
+                end, rdr)
+              | None => (nil, None)
+              end in
+  upd vd a (Valuset v' rest, rdr).
+
+Lemma cache_rep_get : forall st c a v s (def: st),
+    cache_get c a = Some (v, s) ->
+    cache_rep c def a = (v, s).
+Proof.
+  unfold cache_rep; intros; now simpl_match.
+Qed.
+
+Lemma cache_rep_get_def : forall st c a (def: st),
+    cache_get c a = None ->
+    cache_rep c def a = (Invalid, def).
+Proof.
+  unfold cache_rep; intros; now simpl_match.
+Qed.
+
+Hint Resolve cache_rep_get cache_rep_get_def.
+
+Lemma cache_pred_stable_dirty : forall c c' vd d a v0 rdr v tid,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    vd a = Some (v0, rdr) ->
+    cache_get c a <> None ->
+    cache_pred c' vd d ->
+    cache_pred (cache_set c' a (Dirty v, Owned tid))
+               (dirty_vd vd c a v) d.
+Proof.
+  unfold cache_pred; intros.
+  unfold dirty_vd.
+  distinguish_addresses; autorewrite with cache; specific_addrs.
+  case_eq (c' a0); intros.
+  repeat simpl_match.
+  destruct matches; repeat inv_prod; subst; autorewrite with upd; eauto;
+  try (edestruct (H a0); [ now eauto | now eauto | ]);
+  subst;
+  repeat deex;
+  eauto.
+  match goal with
+  | [ H: vd a0 = ?a, H': vd a0 = ?b |- _ ] =>
+    assert (a = b) by congruence; inv_opt
+  end; eauto.
+
+  destruct matches; autorewrite with upd; subst; eauto.
+Qed.
+
+Lemma cache_locked_get_some : forall c c' a tid,
+    cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+    cache_fun_state c' a = Owned tid ->
+    cache_get c a <> None.
+Proof.
+  unfold cache_fun_state, cache_eq, cache_addr_eq; intros; specific_addr.
+  case_eq (c' a); intros; simpl_match; subst.
+  case_cache_val' c a;
+    try (edestruct H; [ now eauto | now eauto | ]);
+    subst;
+    match goal with
+    | [ H: ghost_lock_invariant _ _ |- _ ] => inversion H
+    end; congruence.
+Qed.
+
+Hint Resolve cache_pred_stable_dirty
+     cache_locked_get_some.
+
 Definition locked_disk_write {T} a v rx : prog _ _ T :=
   tid <- GetTID;
   c <- Get Cache;
@@ -1770,20 +1866,28 @@ Definition locked_disk_write {T} a v rx : prog _ _ T :=
     let vc' := cache_set vc a (Dirty v, Owned tid) in
     set GCache vc' s);;
               GhostUpdate (fun (s:S) => let vd := get GDisk s in
-                                      let rest := match (vd a) with
-                                                  | Some (Valuset v0 rest, _) =>
-                                                    match (cache_get c a) with
-                                                    | Some (Dirty _, _) => rest
-                                                    | Some (Clean _, _) => v0 :: rest
-                                                    | _ => v0 :: rest
-                                                    end
-                                                  (* impossible *)
-                                                  | None => nil
-                                                  end in
-                                      let vs' := Valuset v rest in
-                                      set GDisk (upd vd a (vs', None)) s);;
+                                      set GDisk (dirty_vd vd c a v) s);;
               Assgn Cache c';;
               rx tt.
+
+Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
+| Transition_NoChange : forall o o', o = o' -> lock_transition tid o o'
+| Transition_OwnerAcquire : lock_transition tid NoOwner (Owned tid)
+| Transition_OwnerRelease : lock_transition tid (Owned tid) NoOwner.
+
+Hint Constructors lock_transition.
+
+Theorem lock_protocol_transition : forall tid lvar (s s':S),
+    lock_protocol lvar tid s s' <->
+    lock_transition tid (lvar s) (lvar s').
+Proof.
+  split; inversion 1; subst; eauto;
+  match goal with
+  | [ |- lock_transition _ ?v ?v' ] =>
+    try replace v;
+      try replace v'
+  end; eauto.
+Qed.
 
 Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
@@ -1801,28 +1905,14 @@ Theorem locked_disk_write_ok : forall a v,
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
-  time "hoare" hoare pre (time "simplify" simplify) with finish.
-  - unfold cache_dirty.
-    eapply cache_eq_split; intros; autorewrite with cache; eauto.
-    case_eq (cache_get (get Cache m) a); intros.
-    destruct c.
-    erewrite cache_rep_change_get by eauto.
-    (* cache_get c a must have an entry in order to be locked *)
-    admit.
-    admit.
-  - (* cache_pred stability *)
-    admit.
-  - unfold get_s_lock.
-    distinguish_addresses.
-    eapply NoChange; eauto.
-    unfold cache_fun_state; now autorewrite with hlist cache.
-
-    eapply NoChange; eauto.
-    unfold cache_fun_state; now autorewrite with hlist cache.
-  - unfold get_scache_val, get_s_lock in *.
-    distinguish_addresses; now autorewrite with hlist cache.
-  - unfold get_disk_val, get_s_lock in *.
-    distinguish_addresses; now autorewrite with upd hlist cache.
+  let finisher := (finish;
+                    try solve [ unfold dirty_vd; simplify; finish ];
+                    simplify) in
+  time "hoare" hoare pre (time "simplify" simplify) with finisher.
+  - unfold cache_fun_state.
+    distinguish_addresses; eapply NoChange; now autorewrite with hlist cache; eauto.
+  - distinguish_addresses; now autorewrite with cache.
+  - unfold dirty_vd; distinguish_addresses; now autorewrite with upd.
   - unfold cache_fun_state; now autorewrite with cache.
 Qed.
 
