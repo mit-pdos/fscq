@@ -305,3 +305,13 @@ Proof.
   apply H1.
   eapply pred_apply_crash_xform; eauto.
 Qed.
+
+
+Ltac xform_simpl :=
+  match goal with
+  | [ |- pimpl (exis _) _ ] => apply pimpl_exists_l; intro
+  end.
+Ltac xform' := autorewrite with crash_xform; repeat xform_simpl.
+Ltac xform := repeat xform'.
+
+

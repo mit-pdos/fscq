@@ -1429,53 +1429,71 @@ Module MLog.
     ms <- apply xp (mk_memstate (replay_mem log map0) cs);
     rx ms.
 
-  Definition recover_either_pred xp d ents cs :=
-    (exists na,
-    let ms := (mk_memstate (replay_mem ents map0) cs) in
-    let n1 := (na - (DLog.rounded (length ents))) in
-    let n2 := ((LogLen xp) - (DLog.rounded (length ents))) in
-        rep xp (LogLen xp) (Synced d) ms \/
-        rep xp          na (Synced d) ms \/
-        rep xp          n1 (Synced (replay_disk ents d)) ms \/
-        rep xp          n2 (Synced (replay_disk ents d)) ms \/
-        rep xp          na (Flushing d ents) ms \/
-        rep xp          na (Applying d) ms)%pred.
+  Definition recover_either_pred xp d ents :=
+    (exists na ms,
+      rep_inner xp na (Synced d) ms \/
+      rep_inner xp na (Synced (replay_disk ents d)) ms \/
+      rep_inner xp na (Flushing d ents) ms \/
+      rep_inner xp na (Applying d) ms)%pred.
+
+  Definition after_crash_pred xp d ents :=
+    (exists na ms,
+      rep_inner xp na (Synced d) ms \/
+      rep_inner xp na (Synced (replay_disk ents d)) ms)%pred.
 
 
-  Definition after_crash_pred xp d ents cs :=
-    (exists na,
-    let ms := mk_memstate map0 cs in
-        rep xp na (Synced d) ms \/
-        rep xp na (Synced (replay_disk ents d)) ms)%pred.
-
-
-  Lemma synced_after_crash_ok : forall xp na d ents cs,
-    crash_xform (rep xp na (Synced d) (mk_memstate (replay_mem ents map0) cs))
-    =p=> after_crash_pred xp d ents cs.
+  Lemma crash_xform_synced_data : forall xp d,
+    crash_xform (synced_data xp d) =p=> synced_data xp d.
   Proof.
-    unfold rep, rep_inner; cancel.
-    repeat (rewrite crash_xform_exists_comm; apply pimpl_exists_l; intro).
-    unfold after_crash_pred; cancel.
-    or_l; unfold rep, rep_inner; simpl.
-    repeat rewrite crash_xform_sep_star_dist.
-    repeat rewrite crash_xform_lift_empty.
-    rewrite BUFCACHE.crash_xform_rep.
+    unfold synced_data, synced_list; intros.
+    apply crash_xform_arrayN_combine_nils.
+  Qed.
+
+  Lemma crash_xform_log_rep_synced : forall xp na l,
+    crash_xform (DLog.rep xp (DLog.Synced na l)) =p=>
+    DLog.rep xp (DLog.Synced na l).
+  Proof.
+    unfold DLog.rep, DLog.rep_common;
+    unfold PaddedLog.rep, PaddedLog.rep_inner, PaddedLog.rep_contents, PaddedLog.Hdr.rep; intros.
+    unfold PaddedLog.Desc.array_rep, PaddedLog.Data.array_rep,
+           PaddedLog.Desc.avail_rep, PaddedLog.Data.avail_rep,
+           PaddedLog.Desc.synced_array, PaddedLog.Data.synced_array.
+    xform; cancel.
+    xform; cancel.
+    xform; cancel.
+    subst.
+    repeat rewrite crash_xform_synced_arrayN.
     cancel.
+    admit. admit.
     
-  Admitted.
-
-  Lemma recover_either_after_crash : forall xp d ents cs,
-    crash_xform (recover_either_pred xp d ents cs) =p=>
-    after_crash_pred xp d ents cs.
+    
+    
+    
+  Lemma synced_after_crash_ok : forall xp na d m ents,
+    crash_xform (rep_inner xp na (Synced d) m) =p=>
+    after_crash_pred xp d ents.
   Proof.
-    unfold recover_either_pred; intros.
-    rewrite crash_xform_exists_comm.
-    apply pimpl_exists_l; intro.
-    repeat rewrite crash_xform_or_dist.
-    cancel.
+    unfold after_crash_pred; intros.
+    cancel; or_l.
+    unfold rep_inner, map_replay.
+    xform; cancel.
+    rewrite crash_xform_synced_data; cancel.
+
     
 
       
+    
+  Admitted.
+
+
+  Lemma recover_either_after_crash : forall xp d ents,
+    crash_xform (recover_either_pred xp d ents) =p=>
+    after_crash_pred xp d ents.
+  Proof.
+    unfold recover_either_pred; intros.
+    xform.
+    
+    
     
   Admitted.
 

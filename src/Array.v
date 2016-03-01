@@ -461,3 +461,53 @@ Proof.
   simpl in H.
   omega.
 Qed.
+
+Definition possible_crash_list (l: list valuset) (l': list valu) :=
+  length l = length l' /\
+  forall i, i < length l -> In (selN l' i $0) (vsmerge (selN l i ($0, nil))).
+
+Lemma crash_xform_arrayN: forall l st,
+  crash_xform (arrayN st l) =p=>
+    exists l', [[ possible_crash_list l l' ]] *
+    arrayN st (List.combine l' (repeat nil (length l'))).
+Proof.
+  unfold possible_crash_list.
+  induction l; simpl; intros.
+  cancel.
+  instantiate (l' := nil).
+  simpl; auto. auto.
+
+  xform.
+  rewrite IHl.
+  cancel; [ instantiate (l'0 := v' :: l') | .. ]; simpl; auto; try cancel;
+  destruct i; simpl; auto;
+  destruct (H4 i); try omega; simpl; auto.
+Qed.
+
+Lemma crash_xform_synced_arrayN: forall l st,
+  Forall (fun x => snd x = nil) l ->
+  crash_xform (arrayN st l) =p=> arrayN st l.
+Proof.
+  induction l; simpl; auto; intros.
+  xform.
+  rewrite IHl.
+  cancel; subst.
+  inversion H; simpl in *; subst; auto.
+  inversion H; simpl in *; subst.
+  inversion H1.
+  eapply Forall_cons2; eauto.
+Qed.
+
+Lemma crash_xform_arrayN_combine_nils: forall (l : list valu) st,
+  crash_xform (arrayN st (List.combine l (repeat nil (length l)))) =p=>
+  arrayN st (List.combine l (repeat nil (length l))).
+Proof.
+  intros.
+  apply crash_xform_synced_arrayN.
+  rewrite Forall_forall; intros.
+  induction l; simpl in *.
+  inversion H.
+  inversion H; subst; simpl; auto.
+Qed.
+
+
