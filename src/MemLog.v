@@ -109,24 +109,25 @@ Module MLog.
   Definition items_valid (ents : DLog.contents) (m : diskstate) :=
      KNoDup ents /\ forall a v, KIn (a, v) ents -> a <> 0 /\ a < length m.
 
-  Definition rep_inner xp na st log ms raw :=
-    ( [[ Map.Equal ms (replay_mem log map0) ]] *
-      [[ goodSize addrlen (length raw) /\ entries_valid ms raw ]] *
+  Definition rep_inner xp na st ms :=
+    ( exists log d0,
+      [[ Map.Equal ms (replay_mem log map0) ]] *
+      [[ goodSize addrlen (length d0) /\ entries_valid ms d0 ]] *
     match st with
     | Synced d =>
-        map_replay ms raw d *
-        synced_data xp raw *
+        map_replay ms d0 d *
+        synced_data xp d0 *
         DLog.rep xp (DLog.Synced na log)
     | Flushing d ents =>
         [[ KNoDup ents ]] *
-        map_replay ms raw d *
-        synced_data xp raw *
+        map_replay ms d0 d *
+        synced_data xp d0 *
         (DLog.rep xp (DLog.ExtendedUnsync log)
       \/ DLog.rep xp (DLog.Extended log ents))
     | Applying d =>
-        map_replay ms raw d *
+        map_replay ms d0 d *
         (((DLog.rep xp (DLog.Synced na log)) *
-          (unsync_applying xp ms raw))
+          (unsync_applying xp ms d0))
       \/ ((DLog.rep xp (DLog.Synced na log)) *
           (unsync_syncing xp ms d))
       \/ ((DLog.rep xp (DLog.Truncated log)) *
@@ -134,10 +135,8 @@ Module MLog.
     end)%pred.
 
   Definition rep xp na st ms := 
-    ( exists F d log raw, 
-      let '(cs, ms) := (MSCache ms, MSInLog ms) in
-      BUFCACHE.rep cs d *
-      [[ (F * rep_inner xp na st log ms raw)%pred d ]])%pred.
+    ( exists d, BUFCACHE.rep (MSCache ms) d *
+      [[ (rep_inner xp na st (MSInLog ms))%pred d ]])%pred.
 
   Definition read T xp a ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
@@ -934,7 +933,6 @@ Module MLog.
     instantiate (ms'0 := mk_memstate (MSInLog ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel; eauto.
-    instantiate ( 1 := F); cancel.
     or_l; auto.
 
     or_r; or_r.
@@ -942,7 +940,6 @@ Module MLog.
     instantiate (ms'1 := mk_memstate (MSInLog ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel; eauto.
-    instantiate ( 1 := F); cancel.
     or_r; auto.
 
     or_r; or_l; norm.
@@ -1283,11 +1280,9 @@ Module MLog.
   Proof.
     unfold apply; intros.
     step.
-    unfold synced_data; cancel.
     step.
     rewrite vsupd_vecs_length.
     apply entries_valid_Forall_synced_map_fst; auto.
-
     step.
     step.
     rewrite apply_synced_data_ok; cancel.
@@ -1296,12 +1291,14 @@ Module MLog.
     (* crash conditions *)
     or_r; or_l. norm.
     instantiate (2 := mk_memstate (MSInLog ms) cs).
-    instantiate (raw0 := replay_disk (Map.elements (MSInLog ms)) raw).
     cancel.
     intuition; simpl; eauto.
+    pred_apply; norm.
+    instantiate (d2 := replay_disk (Map.elements (MSInLog ms)) d0).
+    cancel.
 
-    pred_apply; cancel.
     rewrite apply_synced_data_ok; cancel.
+    intuition.
     rewrite replay_disk_length; auto.
     apply entries_valid_replay; auto.
 
@@ -1314,7 +1311,6 @@ Module MLog.
     instantiate (2 := mk_memstate (MSInLog ms) cs).
     cancel.
     intuition; simpl; eauto.
-    instantiate (F0 := F).
     pred_apply; cancel; eauto.
     or_r; or_r; cancel.
     rewrite apply_synced_data_ok; cancel.
@@ -1322,20 +1318,21 @@ Module MLog.
     (* synced nil *)
     or_l. norm.
     instantiate (2 := mk_memstate map0 cs).
+    cancel. intuition.
+    pred_apply; norm.
     instantiate (log0 := nil).
-    instantiate (raw0 := replay_disk (Map.elements (MSInLog ms)) raw).
+    instantiate (d2 := replay_disk (Map.elements (MSInLog ms)) d0).
     cancel.
+    rewrite apply_synced_data_ok; cancel.
     intuition.
     rewrite replay_disk_length; eauto.
-    pred_apply; cancel.
-    rewrite apply_synced_data_ok; cancel.
 
     (* unsync_syncing *)
     or_r; or_r. norm.
     instantiate (2 := mk_memstate (MSInLog ms) cs').
     cancel.
     intuition; simpl; eauto.
-    instantiate (F0 := F); pred_apply; cancel; eauto.
+    pred_apply; cancel; eauto.
     or_r; or_l; cancel.
     apply apply_unsync_syncing_ok.
 
@@ -1344,7 +1341,7 @@ Module MLog.
     instantiate (2 := mk_memstate (MSInLog ms) cs').
     cancel.
     intuition; simpl; eauto.
-    instantiate (F0 := F); pred_apply; cancel; eauto.
+    pred_apply; cancel; eauto.
     or_l; cancel.
     apply apply_unsync_applying_ok.
   Qed.
@@ -1393,7 +1390,6 @@ Module MLog.
     prestep.
     unfold rep at 1, rep_inner at 1.
     cancel; auto.
-    instantiate (d1 := d); cancel.
     step.
     step.
 
@@ -1410,7 +1406,6 @@ Module MLog.
     prestep.
     unfold rep at 1, rep_inner at 1.
     cancel; auto.
-    instantiate (d1 := d); cancel. auto.
     step.
 
     (* crashes *)
