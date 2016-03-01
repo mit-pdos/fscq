@@ -42,10 +42,10 @@ all: fuse mkfs
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
 
-$(VS_HS): $(VS_VIO)
+$(VS_HS): $(VS_VIO) coqbuild/Extraction.v
 	( cd coqbuild && coqc -q -R . Fscq Extraction )
 
-$(VS_JSON): $(VS_VIO)
+$(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
 $(VS_VIO): coqbuild/Makefile.coq
