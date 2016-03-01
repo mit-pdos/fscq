@@ -1431,15 +1431,10 @@ Proof.
     erewrite cache_rep_change_get by eauto; eauto.
   - (* relation between s and s'; not stated precisely *)
     admit.
-  - unfold cache_fun_state; autorewrite with cache; auto.
-  - distinguish_addresses.
-    eapply NoChange; simpl_get_set.
-    unfold cache_fun_state; autorewrite with cache.
-    now simpl_match.
-    eapply NoChange; simpl_get_set.
-    unfold cache_fun_state; autorewrite with cache.
-    now auto.
-  - distinguish_addresses; autorewrite with cache; auto.
+  - distinguish_addresses;
+    apply NoChange; auto;
+    now autorewrite with hlist cache.
+  - distinguish_addresses; now autorewrite with cache.
 Admitted.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
@@ -1901,88 +1896,92 @@ Proof.
                     try solve [ unfold dirty_vd; simplify; finish ];
                     simplify) in
   time "hoare" hoare pre (time "simplify" simplify) with finisher.
-  - unfold cache_fun_state.
-    distinguish_addresses; eapply NoChange; now autorewrite with hlist cache; eauto.
+  - distinguish_addresses; apply NoChange; now autorewrite with hlist cache.
   - distinguish_addresses; now autorewrite with cache.
   - unfold dirty_vd; distinguish_addresses; now autorewrite with upd.
-  - unfold cache_fun_state; now autorewrite with cache.
 Qed.
 
 Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
 
-Definition disk_write {T} a v rx : prog _ _ T :=
-  cache_lock a;;
-  locked_disk_write a v;;
-  cache_unlock a;;
-  rx tt.
-
-Theorem disk_write_ok : forall a v,
-    stateS TID: tid |-
-    {{ F v0 rest,
-     | PRE d m s0 s: let vd := virt_disk s in
-                     Inv m s d /\
-                     vd |= F * a |-> (Valuset v0 rest, None) /\
-                     R tid s0 s
-     | POST d' m' s0' s' _:  let vd' := virt_disk s' in
-                            Inv m' s' d' /\
-                            star (anyR R) s s' /\
-                            get_s_lock a s' = Owned tid /\
-                            R tid s0' s' /\
-                            (exists rest', vd' a = Some (Valuset v rest', None))
-    }} disk_write a v.
+Lemma cache_pred_stable_invalidate : forall c c' vd d a v s tid,
+  cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+  cache_get c a = Some (Clean v, s) ->
+  cache_pred c' vd d ->
+  cache_pred (cache_set c' a (Invalid, Owned tid)) vd d.
 Proof.
-  let simp_step :=
-    simplify_step
-    || unfold chain, applied in *|- in
-  time "hoare" hoare pre (simplify' simp_step) with finish.
-
-  (* same as above proof *)
-  eapply star_trans.
-  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
-  eapply star_trans with (set GCacheL (Owned tid) s').
-  eapply star_step; [ | apply star_refl ].
-  eapply anyR_weaken.
-  finish.
-  eapply chain_stars; eauto; eauto using anyR_weaken, anyR_others_weaken.
-
-  Grab Existential Variables.
-  all: auto.
+  unfold cache_pred, cache_eq; intros; specific_addrs.
+  case_eq (c' a); case_eq (c' a0); intros; repeat simpl_match.
+  distinguish_addresses; autorewrite with cache; repeat simpl_match; eauto.
+  edestruct H6; eauto; subst; repeat simpl_match; repeat deex; eauto.
 Qed.
 
-Hint Extern 1 {{disk_write _ _; _}} => apply disk_write_ok : prog.
+Hint Resolve cache_pred_stable_invalidate.
 
-Definition evict {T} a rx : prog _ _ T :=
+Lemma cache_eq_state_consistent : forall c c' a v s s',
+  cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+  cache_fun_state c' a = s' ->
+  cache_get c a = Some (v, s) ->
+  s = mem_lock s'.
+Proof.
+  unfold cache_eq, cache_fun_state; intros; specific_addr.
+  case_eq (c' a); intros; simpl_match; subst.
+  edestruct H; eauto using ghost_lock_invariant_functional.
+Qed.
+
+Lemma cache_eq_stable_invalidate : forall c c' a tid v b,
+  cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
+  cache_fun_state c' a = Owned tid ->
+  cache_get c a = Some (Clean v, b) ->
+  cache_eq ghost_lock_invariant
+    (cache_rep (cache_invalidate c a) Open)
+    (cache_set c' a (Invalid, Owned tid)).
+Proof.
+  intros.
+  assert (b = Locked).
+  eapply cache_eq_state_consistent with (s' := Owned tid); eauto.
+
+  eapply cache_eq_split with (a := a); intros; autorewrite with cache; eauto.
+  unfold cache_rep, cache_invalidate; simpl_match.
+  cbn; autorewrite with cache.
+  eauto.
+Qed.
+
+Hint Resolve cache_eq_stable_invalidate.
+
+Definition invalidate {T} a rx : prog _ _ T :=
+  tid <- GetTID;
   c <- Get Cache;
   match cache_get c a with
-  | Some (Clean _ _) =>
-    let c' := cache_evict c a in
+  | Some (Clean _, _) =>
+    let c' := cache_invalidate c a in
     GhostUpdate (fun s =>
       let vc := get GCache s in
-      let vc' := cache_evict vc a in
+      (* can only invalidate locked entries *)
+      let vc' := cache_set vc a (Invalid, Owned tid) in
       set GCache vc' s);;
                 Assgn Cache c';;
                 rx tt
   | _ => rx tt
 end.
 
-Hint Resolve cache_pred_stable_evict.
-
-Theorem locked_evict_ok : forall a,
+Theorem locked_invalidate_ok : forall a,
     stateS TID: tid |-
-    {{ F v0,
+    {{ F vs0,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
                      get_s_lock a s = Owned tid /\
-                     vd |= F * a |-> v0
+                     vd |= F * a |-> (vs0, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
                             get_s_lock a s' = Owned tid /\
                             vd' = virt_disk s /\
                             s0' = s0
-    }} evict a.
+    }} invalidate a.
 Proof.
-  time "hoare" hoare pre simplify with finish.
+  time "hoare" hoare pre simplify with (finish; simplify).
+  - distinguish_addresses; apply NoChange; now autorewrite with hlist cache.
+  - distinguish_addresses; now autorewrite with cache.
 Qed.
 
 Definition writeback {T} a rx : prog _ _ T :=

@@ -54,13 +54,17 @@ Section MemCache.
   Definition cache_dirty a v' :=
     cache_change a (fun _ => Dirty v') id.
 
-  (** Evict a clean address *)
-  Definition cache_evict (a:addr) :=
+  (** Invalidate a clean address *)
+  Definition cache_invalidate (a:addr) :=
     match cache_get a with
-    | Some (Clean _, _) => Map.remove a c
+    | Some (Clean _, s) => Map.add a (Invalid, s) c
     (* dirty/miss *)
     | _ => c
     end.
+
+  (** Evict an entry (intended for invalid addresses) *)
+  Definition cache_evict (a:addr) :=
+    Map.remove a c.
 
   (** Change a dirty mapping to a clean one, keeping the same
   value. Intended for use after writeback. *)
@@ -311,7 +315,8 @@ Qed.
 
 
 Hint Unfold cache_rep cache_get cache_add cache_change
-            cache_evict cache_alloc cache_clean cache_set_state
+            cache_invalidate cache_evict cache_alloc cache_clean
+            cache_set_state
             cache_entry : cache_get.
 
 Ltac t := autounfold with cache_get in *;
@@ -366,6 +371,27 @@ Proof.
   t.
 Qed.
 
+Lemma cache_rep_invalidate_get_neq : forall st (c:AssocCache st) def a a',
+  a <> a' ->
+  cache_rep (cache_invalidate c a) def a' = cache_rep c def a'.
+Proof.
+  t.
+Qed.
+
+Lemma cache_rep_evict_get_eq : forall st (c:AssocCache st) def a a',
+  a = a' ->
+  cache_rep (cache_evict c a) def a' = (Invalid, def).
+Proof.
+  t.
+Qed.
+
+Lemma cache_rep_evict_get_neq : forall st (c:AssocCache st) def a a',
+  a <> a' ->
+  cache_rep (cache_evict c a) def a' = cache_rep c def a'.
+Proof.
+  t.
+Qed.
+
 End CacheGetFacts.
 
 (*
@@ -397,6 +423,9 @@ Hint Rewrite cache_rep_change_get using (solve [ auto ]) : cache.
 Hint Rewrite cache_rep_change_get_def using (solve [ auto ]) : cache.
 Hint Rewrite cache_rep_change_get_neq using (solve [ auto ]) : cache.
 Hint Rewrite cache_rep_alloc_get_neq using (solve [ auto ]) : cache.
+Hint Rewrite cache_rep_invalidate_get_neq using (solve [ auto ]) : cache.
+Hint Rewrite cache_rep_evict_get_eq using (solve [ auto ]) : cache.
+Hint Rewrite cache_rep_evict_get_neq using (solve [ auto ]) : cache.
 
 (* TODO: make this tactic more local *)
 Ltac case_cache_val' c a :=
