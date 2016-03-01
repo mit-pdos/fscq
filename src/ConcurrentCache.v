@@ -922,6 +922,7 @@ Ltac simplify_reduce_step :=
           || inv_prod
           || (try time "rew_upd_all" progress rew_upd_all)
           || (try time "rew_ghost_state" progress autorewrite with ghost_state)
+          || (try time "rew_cache" progress autorewrite with cache)
           || (try time "simpl_get_set" progress simpl_get_set)
           || subst
           || unfold_cache_definitions
@@ -1500,7 +1501,7 @@ Proof.
   end.
   destruct matches in *.
 
-  step pre simplify with finish.
+  step pre simplify with (finish; simplify).
   unfold cache_alloc; simpl_match; cbn; autorewrite with cache; eauto.
 
   step pre simplify with finish.
@@ -1624,22 +1625,18 @@ Theorem cache_lock_ok : forall a,
                                 set GCache vc' s)) s s'
     }} cache_lock a.
 Proof.
-  time "hoare" hoare pre simplify with finish.
-  - unfold cache_fun_state.
-    autorewrite with cache; auto.
-  - unfold get_s_lock.
-    distinguish_addresses.
+  time "hoare" hoare pre simplify with (finish; simplify).
+  - distinguish_addresses.
     eapply OwnerAcquire; eauto.
-    unfold cache_fun_state; autorewrite with hlist cache; auto.
+    now autorewrite with hlist cache.
 
-    eapply NoChange; eauto.
+    apply NoChange.
     unfold cache_fun_state; autorewrite with hlist cache; auto.
   - unfold get_scache_val; simplify.
     distinguish_addresses; autorewrite with cache; auto.
     (* can't have mc open and vc Owned owner_tid *)
     assert (cache_fun_state (get GCache s2) a0 = NoOwner) by eauto.
     congruence.
-  - unfold get_disk_val; simplify.
 Qed.
 
 Hint Extern 1 {{cache_lock _; _}} => apply cache_lock_ok : prog.
@@ -1718,18 +1715,15 @@ Theorem cache_unlock_ok : forall a,
                             s0' = s0
     }} cache_unlock a.
 Proof.
-  time "hoare" hoare pre simplify with finish.
+  time "hoare" hoare pre simplify with (finish; simplify).
   - unfold get_s_lock.
     distinguish_addresses.
     eapply OwnerRelease; eauto.
-    unfold cache_fun_state; now autorewrite with hlist cache.
+    now autorewrite with hlist cache.
 
-    eapply NoChange; eauto.
-    unfold cache_fun_state; now autorewrite with hlist cache.
-  - unfold get_scache_val, get_s_lock in *.
-    distinguish_addresses; autorewrite with hlist cache; auto.
-  - unfold get_disk_val; simplify.
-  - unfold cache_fun_state; now autorewrite with cache.
+    apply NoChange; auto.
+    now autorewrite with hlist cache.
+  - distinguish_addresses; now autorewrite with cache.
 Qed.
 
 Hint Extern 1 {{cache_unlock _; _}} => apply cache_unlock_ok : prog.
@@ -1742,8 +1736,6 @@ Definition disk_read {T} a rx : prog _ _ T :=
 
 Definition replace_latest vs v' :=
   let 'Valuset _ rest := vs in Valuset v' rest.
-
-Search cache_alloc.
 
 Lemma cache_alloc_unchanged : forall c c' a def,
     cache_eq ghost_lock_invariant (cache_rep c def) c' ->

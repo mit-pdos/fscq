@@ -161,8 +161,44 @@ Proof.
   destruct (weq a a'); congruence.
 Qed.
 
+Theorem cache_set_val_eq : forall st (c: cache_fun st) a v s a',
+  a = a' ->
+  cache_fun_val (cache_set c a (v, s)) a' = v.
+Proof.
+  intros.
+  unfold cache_fun_val; rewrite cache_set_eq; auto.
+Qed.
+
+Theorem cache_set_val_neq : forall st (c: cache_fun st) a ce a',
+  a <> a' ->
+  cache_fun_val (cache_set c a ce) a' = cache_fun_val c a'.
+Proof.
+  intros.
+  unfold cache_fun_val; rewrite cache_set_neq; auto.
+Qed.
+
+Theorem cache_set_state_eq : forall st (c: cache_fun st) a v s a',
+  a = a' ->
+  cache_fun_state (cache_set c a (v, s)) a' = s.
+Proof.
+  intros.
+  unfold cache_fun_state; rewrite cache_set_eq; auto.
+Qed.
+
+Theorem cache_set_state_neq : forall st (c: cache_fun st) a ce a',
+  a <> a' ->
+  cache_fun_state (cache_set c a ce) a' = cache_fun_state c a'.
+Proof.
+  intros.
+  unfold cache_fun_state; rewrite cache_set_neq; auto.
+Qed.
+
 Hint Rewrite cache_set_eq using (solve [ auto ]) : cache.
 Hint Rewrite cache_set_neq using (solve [ auto ]) : cache.
+Hint Rewrite cache_set_val_eq using (solve [ auto ]) : cache.
+Hint Rewrite cache_set_val_neq using (solve [ auto ]) : cache.
+Hint Rewrite cache_set_state_eq using (solve [ auto ]) : cache.
+Hint Rewrite cache_set_state_neq using (solve [ auto ]) : cache.
 
 Lemma weq_same : forall sz a,
     @weq sz a a = left (eq_refl a).
@@ -273,18 +309,31 @@ Proof.
   apply MapFacts.remove_neq_o; auto.
 Qed.
 
+
+Hint Unfold cache_rep cache_get cache_add cache_change
+            cache_evict cache_alloc cache_clean cache_set_state
+            cache_entry : cache_get.
+
+Ltac t := autounfold with cache_get in *;
+  intuition;
+  destruct matches in *;
+  autorewrite with cache_get in *;
+  repeat simpl_match;
+  try congruence;
+  auto.
+
 Lemma cache_rep_get : forall st (c:AssocCache st) def a v s,
     cache_get c a = Some (v, s) ->
     cache_rep c def a = (v, s).
 Proof.
-  unfold cache_rep; intros; now simpl_match.
+  t.
 Qed.
 
 Lemma cache_rep_get_def : forall st (c:AssocCache st) def a,
     cache_get c a = None ->
     cache_rep c def a = (Invalid, def).
 Proof.
-  unfold cache_rep; intros; now simpl_match.
+  t.
 Qed.
 
 Lemma cache_rep_change_get : forall st (c:AssocCache st) def a
@@ -292,8 +341,7 @@ Lemma cache_rep_change_get : forall st (c:AssocCache st) def a
     cache_get c a = Some (v, s) ->
     cache_rep (cache_change c a fv fs) def a = (fv v, fs s).
 Proof.
-  unfold cache_rep, cache_change; intros; simpl_match.
-  cbn; rewrite map_raw_add_eq_o by auto; auto.
+  t.
 Qed.
 
 Lemma cache_rep_change_get_def : forall st (c:AssocCache st) def a
@@ -301,38 +349,22 @@ Lemma cache_rep_change_get_def : forall st (c:AssocCache st) def a
     cache_get c a = None ->
     cache_rep (cache_change c a fv fs) def a = (Invalid, def).
 Proof.
-  unfold cache_rep, cache_change; intros; simpl_match.
-  rewrite H; auto.
+  t.
 Qed.
 
 Lemma cache_rep_change_get_neq : forall st (c:AssocCache st) def a a' fv fs,
     a <> a' ->
     cache_rep (cache_change c a fv fs) def a' = cache_rep c def a'.
 Proof.
-  unfold cache_rep, cache_change; intros.
-  case_eq (cache_get c a); intros; auto.
-  destruct c0; cbn.
-  rewrite map_raw_add_neq_o by auto; auto.
+  t.
 Qed.
 
 Lemma cache_rep_alloc_get_neq : forall st (c:AssocCache st) def a a' s,
     a <> a' ->
     cache_rep (cache_alloc c a s) def a' = cache_rep c def a'.
 Proof.
-  unfold cache_rep, cache_alloc; intros.
-  case_eq (cache_get c a); intros; auto; cbn.
-  rewrite map_raw_add_neq_o by auto; auto.
+  t.
 Qed.
-
-Hint Unfold cache_get cache_add
-            cache_evict cache_clean cache_set_state : cache_get.
-
-Ltac t := autounfold with cache_get;
-  intuition;
-  destruct matches in *;
-  autorewrite with cache_get in *;
-  try congruence;
-  auto.
 
 End CacheGetFacts.
 
