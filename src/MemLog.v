@@ -134,9 +134,9 @@ Module MLog.
           (synced_data xp d)))
     end)%pred.
 
-  Definition rep xp na st ms := 
+  Definition rep xp F na st ms := 
     ( exists d, BUFCACHE.rep (MSCache ms) d *
-      [[ (rep_inner xp na st (MSInLog ms))%pred d ]])%pred.
+      [[ (F * rep_inner xp na st (MSInLog ms))%pred d ]])%pred.
 
   Definition read T xp a ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
@@ -455,14 +455,14 @@ Module MLog.
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem read_ok: forall xp ms a,
-    {< d na v,
+    {< F d na v,
     PRE
-      rep xp na (Synced d) ms *
-      [[[ d ::: exists F, (F * a |-> v) ]]]
+      rep xp F na (Synced d) ms *
+      [[[ d ::: exists F', (F' * a |-> v) ]]]
     POST RET:^(ms', r)
-      rep xp na (Synced d) ms' * [[ r = v ]]
+      rep xp F na (Synced d) ms' * [[ r = v ]]
     CRASH
-      exists ms', rep xp na (Synced d) ms'
+      exists ms', rep xp F na (Synced d) ms'
     >} read xp a ms.
   Proof.
     unfold read.
@@ -895,18 +895,18 @@ Module MLog.
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem flush_noapply_ok: forall xp ents ms,
-    {< d na na',
-     PRE  rep xp na (Synced d) ms *
+    {< F d na na',
+     PRE  rep xp F na (Synced d) ms *
           [[ items_valid ents d ]] *
           [[ na' = (na - (DLog.rounded (length ents))) ]]
      POST RET:^(ms',r)
-          ([[ r = true ]]  *  rep xp na' (Synced (replay_disk ents d)) ms') \/
+          ([[ r = true ]]  *  rep xp F na' (Synced (replay_disk ents d)) ms') \/
           ([[ r = false /\ length ents > na ]]
-                           *  rep xp na  (Synced d) ms')
+                           *  rep xp F na  (Synced d) ms')
      CRASH  exists ms',
-            rep xp na (Synced d) ms' \/
-            rep xp na' (Synced (replay_disk ents d)) ms' \/
-            rep xp na (Flushing d ents) ms'
+            rep xp F na (Synced d) ms' \/
+            rep xp F na' (Synced (replay_disk ents d)) ms' \/
+            rep xp F na (Flushing d ents) ms'
     >} flush_noapply xp ents ms.
   Proof.
     unfold flush_noapply.
@@ -1267,19 +1267,20 @@ Module MLog.
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem apply_ok: forall xp ms,
-    {< d na,
+    {< F d na,
     PRE
-      rep xp na (Synced d) ms
+      rep xp F na (Synced d) ms
     POST RET:ms'
-      rep xp (LogLen xp) (Synced d) ms'
+      rep xp F (LogLen xp) (Synced d) ms'
     CRASH
-      exists ms', rep xp (LogLen xp) (Synced d) ms' \/
-                  rep xp na (Synced d) ms' \/
-                  rep xp na (Applying d) ms'
+      exists ms', rep xp F (LogLen xp) (Synced d) ms' \/
+                  rep xp F na (Synced d) ms' \/
+                  rep xp F na (Applying d) ms'
     >} apply xp ms.
   Proof.
     unfold apply; intros.
     step.
+    unfold synced_data; cancel.
     step.
     rewrite vsupd_vecs_length.
     apply entries_valid_Forall_synced_map_fst; auto.
@@ -1354,26 +1355,26 @@ Module MLog.
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem flush_ok: forall xp ents ms,
-    {< d na n1 n2,
-     PRE  rep xp na (Synced d) ms *
+    {< F d na n1 n2,
+     PRE  rep xp F na (Synced d) ms *
           [[ items_valid ents d ]] *
           [[ n1 = (na - (DLog.rounded (length ents))) ]] *
           [[ n2 = ((LogLen xp) - (DLog.rounded (length ents))) ]]
      POST RET:^(ms',r)
           ([[ r = true ]] * 
-             (rep xp n1 (Synced (replay_disk ents d)) ms') \/
-             (rep xp n2 (Synced (replay_disk ents d)) ms'))
+             (rep xp F n1 (Synced (replay_disk ents d)) ms') \/
+             (rep xp F n2 (Synced (replay_disk ents d)) ms'))
           \/
           ([[ r = false /\ length ents > na ]] *
-             (rep xp na          (Synced d) ms') \/
-             (rep xp (LogLen xp) (Synced d) ms'))
+             (rep xp F na          (Synced d) ms') \/
+             (rep xp F (LogLen xp) (Synced d) ms'))
      CRASH  exists ms',
-            rep xp (LogLen xp) (Synced d) ms' \/
-            rep xp na  (Synced d) ms' \/
-            rep xp n1  (Synced (replay_disk ents d)) ms' \/
-            rep xp n2  (Synced (replay_disk ents d)) ms' \/
-            rep xp na  (Flushing d ents) ms' \/
-            rep xp na  (Applying d) ms'
+            rep xp F (LogLen xp) (Synced d) ms' \/
+            rep xp F na  (Synced d) ms' \/
+            rep xp F n1  (Synced (replay_disk ents d)) ms' \/
+            rep xp F n2  (Synced (replay_disk ents d)) ms' \/
+            rep xp F na  (Flushing d ents) ms' \/
+            rep xp F na  (Applying d) ms'
     >} flush xp ents ms.
   Proof.
     unfold flush; intros.
@@ -1390,6 +1391,7 @@ Module MLog.
     prestep.
     unfold rep at 1, rep_inner at 1.
     cancel; auto.
+    instantiate (2 := F); cancel.
     step.
     step.
 
@@ -1406,6 +1408,7 @@ Module MLog.
     prestep.
     unfold rep at 1, rep_inner at 1.
     cancel; auto.
+    instantiate (1 := d); cancel. auto.
     step.
 
     (* crashes *)
