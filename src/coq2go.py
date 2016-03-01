@@ -355,6 +355,8 @@ def gen_expr_assign_real(e, s):
       if pat['what'] == 'pat:constructor':
         s.append('case *%s:' % coqname(pat['name']))
         for idx, argname in enumerate(pat['argnames']):
+          if argname == '_':
+            continue
           s.append('  var %s CoqT = __typesw.A%d' % (coqname(argname), idx))
           s.append('  var _ = %s' % coqname(argname))
         body = gen_expr_assign(case['body'], s)
