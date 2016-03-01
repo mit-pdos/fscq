@@ -5,12 +5,15 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      Cache WritebackCache FSLayout AsyncRecArray DiskLog \
-		  LogReplay MemLog ListPred MemPred GenSepN Log LogRecArray \
+	      LogReplay MemLog ListPred MemPred GenSepN Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree FS Testprog \
-	      ExtrHaskellPrelude Extraction ExtractJSON
+	      ExtrHaskellPrelude
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
+VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
+VS_HS      := codegen/FS.hs
+VS_ML      := codegen/FS.ml
 GHC 	   := ghc
 ifeq (,$(shell $(GHC) --version | grep 'version 7.10' 2>/dev/null))
 	GHC := /opt/ghc/7.10.2/bin/ghc
@@ -26,20 +29,24 @@ HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
 all: fuse mkfs
 
-%: %.ml coq
+%: %.ml $(VS_ML)
 	rm -f $@
 	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
-%: %.hs coq
+%: %.hs $(VS_HS)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
 
-coq: coqbuild/Makefile.coq
+$(VS_HS): $(VS_VIO)
+	( cd coqbuild && coqc -q -R . Fscq Extraction )
+
+$(VS_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq quick )
+	@touch coqbuild/*.vio
 
 checkproofs: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq checkproofs J=$(J) )
@@ -47,7 +54,7 @@ checkproofs: coqbuild/Makefile.coq
 proof: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq )
 
-parproof: coq
+parproof: $(VS_VIO)
 	( cd coqbuild && $(MAKE) -f Makefile.coq vio2vo J=$(J) )
 
 coqbuild/%.v: %.v
