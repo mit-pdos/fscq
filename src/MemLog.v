@@ -110,7 +110,9 @@ Module MLog.
      KNoDup ents /\ forall a v, KIn (a, v) ents -> a <> 0 /\ a < length m.
 
   Definition rep_inner xp na st log ms raw :=
-    (match st with
+    ( [[ Map.Equal ms (replay_mem log map0) ]] *
+      [[ goodSize addrlen (length raw) /\ entries_valid ms raw ]] *
+    match st with
     | Synced d =>
         map_replay ms raw d *
         synced_data xp raw *
@@ -135,8 +137,6 @@ Module MLog.
     ( exists F d log raw, 
       let '(cs, ms) := (MSCache ms, MSInLog ms) in
       BUFCACHE.rep cs d *
-      [[ Map.Equal ms (replay_mem log map0) ]] *
-      [[ goodSize addrlen (length raw) /\ entries_valid ms raw ]] *
       [[ (F * rep_inner xp na st log ms raw)%pred d ]])%pred.
 
   Definition read T xp a ms rx : prog T :=
@@ -453,6 +453,8 @@ Module MLog.
   Section UnfoldProof1.
   Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
 
+  Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
+
   Theorem read_ok: forall xp ms a,
     {< d na v,
     PRE
@@ -478,7 +480,7 @@ Module MLog.
     subst; eapply synced_data_replay_inb; eauto.
 
     prestep.
-    cancel; subst; auto. cancel.
+    cancel; subst; auto.
     unfold synced_list; unfold pred_apply in *.
     rewrite selN_combine by (autorewrite with lists; auto); simpl.
     eapply replay_disk_none_selN; eauto.
@@ -491,7 +493,7 @@ Module MLog.
     intuition; subst; simpl; eauto.
     pred_apply; cancel.
   Qed.
-  
+
   End UnfoldProof1.
 
   Lemma replay_disk_is_empty : forall d ms,
@@ -800,7 +802,6 @@ Module MLog.
     apply Map.elements_3w.
   Qed.
 
-  Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
   Local Hint Resolve Map.is_empty_1 Map.is_empty_2.
 
   Lemma eq_key_dec : forall V (a b : Map.key * V),
@@ -892,6 +893,7 @@ Module MLog.
 
   Section UnfoldProof2.
   Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
+  Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem flush_noapply_ok: forall xp ents ms,
     {< d na na',
@@ -946,10 +948,10 @@ Module MLog.
     or_r; or_l; norm.
     instantiate (ms'2 := mk_memstate (replay_mem ents (MSInLog ms)) cs').
     cancel. simpl; intuition; eauto.
+    pred_apply; cancel.
     rewrite replay_mem_app; eauto.
     apply entries_valid_replay_mem'.
     eapply items_valid_replay; eauto. auto.
-    pred_apply; cancel.
     apply replay_disk_replay_mem; auto.
   Qed.
 
@@ -1265,6 +1267,7 @@ Module MLog.
 
   Section UnfoldProof3.
   Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
+  Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem apply_ok: forall xp ms,
     {< d na,
@@ -1287,8 +1290,8 @@ Module MLog.
 
     step.
     step.
-    rewrite replay_disk_length; auto.
     rewrite apply_synced_data_ok; cancel.
+    rewrite replay_disk_length; auto.
 
     (* crash conditions *)
     or_r; or_l. norm.
@@ -1296,11 +1299,12 @@ Module MLog.
     instantiate (raw0 := replay_disk (Map.elements (MSInLog ms)) raw).
     cancel.
     intuition; simpl; eauto.
-    rewrite replay_disk_length; auto.
-    apply entries_valid_replay; auto.
 
     pred_apply; cancel.
     rewrite apply_synced_data_ok; cancel.
+    rewrite replay_disk_length; auto.
+    apply entries_valid_replay; auto.
+
     rewrite replay_disk_merge.
     setoid_rewrite mapeq_elements at 2; eauto.
     apply map_merge_id.
@@ -1310,7 +1314,8 @@ Module MLog.
     instantiate (2 := mk_memstate (MSInLog ms) cs).
     cancel.
     intuition; simpl; eauto.
-    instantiate (1 := F); pred_apply; cancel.
+    instantiate (F0 := F).
+    pred_apply; cancel; eauto.
     or_r; or_r; cancel.
     rewrite apply_synced_data_ok; cancel.
 
@@ -1330,7 +1335,7 @@ Module MLog.
     instantiate (2 := mk_memstate (MSInLog ms) cs').
     cancel.
     intuition; simpl; eauto.
-    instantiate (1 := F); pred_apply; cancel.
+    instantiate (F0 := F); pred_apply; cancel; eauto.
     or_r; or_l; cancel.
     apply apply_unsync_syncing_ok.
 
@@ -1339,7 +1344,7 @@ Module MLog.
     instantiate (2 := mk_memstate (MSInLog ms) cs').
     cancel.
     intuition; simpl; eauto.
-    instantiate (1 := F); pred_apply; cancel.
+    instantiate (F0 := F); pred_apply; cancel; eauto.
     or_l; cancel.
     apply apply_unsync_applying_ok.
   Qed.
@@ -1349,6 +1354,7 @@ Module MLog.
 
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush_noapply _ _ _) _) => apply flush_noapply_ok : prog.
+  Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem flush_ok: forall xp ents ms,
     {< d na n1 n2,
@@ -1416,7 +1422,7 @@ Module MLog.
     pimpl_crash; cancel.
     or_r; or_l.
     instantiate (ms' := mk_memstate (MSInLog ms) cs').
-    unfold rep; cancel; auto.
+    unfold rep, rep_inner; cancel; auto.
   Qed.
 
 
@@ -1426,12 +1432,54 @@ Module MLog.
     rx ms.
 
   Definition recover_either_pred xp d ents cs :=
-    let ms := (mk_memstate (replay_mem ents map0) cs) in
     (exists na,
-          rep xp na (Synced d) ms \/
-          rep xp na (Synced (replay_disk ents d)) ms \/
-          rep xp na (Flushing d ents) ms \/
-          rep xp na (Applying d) ms)%pred.
+    let ms := (mk_memstate (replay_mem ents map0) cs) in
+    let n1 := (na - (DLog.rounded (length ents))) in
+    let n2 := ((LogLen xp) - (DLog.rounded (length ents))) in
+        rep xp (LogLen xp) (Synced d) ms \/
+        rep xp          na (Synced d) ms \/
+        rep xp          n1 (Synced (replay_disk ents d)) ms \/
+        rep xp          n2 (Synced (replay_disk ents d)) ms \/
+        rep xp          na (Flushing d ents) ms \/
+        rep xp          na (Applying d) ms)%pred.
+
+
+  Definition after_crash_pred xp d ents cs :=
+    (exists na,
+    let ms := mk_memstate map0 cs in
+        rep xp na (Synced d) ms \/
+        rep xp na (Synced (replay_disk ents d)) ms)%pred.
+
+
+  Lemma synced_after_crash_ok : forall xp na d ents cs,
+    crash_xform (rep xp na (Synced d) (mk_memstate (replay_mem ents map0) cs))
+    =p=> after_crash_pred xp d ents cs.
+  Proof.
+    unfold rep, rep_inner; cancel.
+    repeat (rewrite crash_xform_exists_comm; apply pimpl_exists_l; intro).
+    unfold after_crash_pred; cancel.
+    or_l; unfold rep, rep_inner; simpl.
+    repeat rewrite crash_xform_sep_star_dist.
+    repeat rewrite crash_xform_lift_empty.
+    rewrite BUFCACHE.crash_xform_rep.
+    cancel.
+    
+  Admitted.
+
+  Lemma recover_either_after_crash : forall xp d ents cs,
+    crash_xform (recover_either_pred xp d ents cs) =p=>
+    after_crash_pred xp d ents cs.
+  Proof.
+    unfold recover_either_pred; intros.
+    rewrite crash_xform_exists_comm.
+    apply pimpl_exists_l; intro.
+    repeat rewrite crash_xform_or_dist.
+    cancel.
+    
+
+      
+    
+  Admitted.
 
   Theorem recover_ok: forall xp cs,
     {< d ents,
@@ -1446,17 +1494,9 @@ Module MLog.
   Proof.
     unfold recover.
 
-    Lemma recover_either_after_crash : forall xp d ents cs,
-      crash_xform (recover_either_pred xp d ents cs) =p=>
-      exists raw ms, BUFCACHE.rep cs raw * 
-                [[ Map.Equal ms (replay_mem ents map0) ]] *
-                [[ entries_valid ms d ]].
-    Proof.
-    Admitted.
-
     prestep; norm'l.
     repeat rewrite stars_prepend.
-    rewrite crash_xform_bufcache.
+    rewrite recover_either_after_crash.
     cancel.
 
 
