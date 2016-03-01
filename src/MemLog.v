@@ -103,16 +103,16 @@ Module MLog.
      arrayN (DataStart xp) (List.combine cur vs)
     )%pred.
 
-  Definition entries_valid (ms : valumap) (m : diskstate) :=
+  Definition map_valid (ms : valumap) (m : diskstate) :=
      forall a v, Map.MapsTo a v ms -> a <> 0 /\ a < length m.
 
-  Definition items_valid (ents : DLog.contents) (m : diskstate) :=
+  Definition log_valid (ents : DLog.contents) (m : diskstate) :=
      KNoDup ents /\ forall a v, KIn (a, v) ents -> a <> 0 /\ a < length m.
 
   Definition rep_inner xp na st ms :=
     ( exists log d0,
       [[ Map.Equal ms (replay_mem log map0) ]] *
-      [[ goodSize addrlen (length d0) /\ entries_valid ms d0 ]] *
+      [[ goodSize addrlen (length d0) /\ map_valid ms d0 ]] *
     match st with
     | Synced d =>
         map_replay ms d0 d *
@@ -177,14 +177,14 @@ Module MLog.
     rx r.
 
 
-  Lemma entries_valid_map0 : forall m,
-    entries_valid map0 m.
+  Lemma map_valid_map0 : forall m,
+    map_valid map0 m.
   Proof.
-    unfold entries_valid, map0; intuition; exfalso;
+    unfold map_valid, map0; intuition; exfalso;
     apply MapFacts.empty_mapsto_iff in H; auto.
   Qed.
 
-  Local Hint Resolve entries_valid_map0.
+  Local Hint Resolve map_valid_map0.
 
 
   Lemma mapeq_elements : forall V m1 m2,
@@ -364,12 +364,12 @@ Module MLog.
   Qed.
 
 
-  Lemma entries_valid_replay : forall d ms1 ms2,
-    entries_valid ms1 d ->
-    entries_valid ms2 d ->
-    entries_valid ms1 (replay_disk (Map.elements ms2) d).
+  Lemma map_valid_replay : forall d ms1 ms2,
+    map_valid ms1 d ->
+    map_valid ms2 d ->
+    map_valid ms1 (replay_disk (Map.elements ms2) d).
   Proof.
-    unfold entries_valid; induction d; intros.
+    unfold map_valid; induction d; intros.
     rewrite replay_disk_length; eauto.
     split.
     apply (H a0 v); auto.
@@ -377,12 +377,12 @@ Module MLog.
     apply (H a0 v); auto.
   Qed.
 
-  Lemma entries_valid_add : forall d a v ms,
-    entries_valid ms d ->
+  Lemma map_valid_add : forall d a v ms,
+    map_valid ms d ->
     a < length d -> a <> 0 ->
-    entries_valid (Map.add a v ms) d.
+    map_valid (Map.add a v ms) d.
   Proof.
-    unfold entries_valid; intros.
+    unfold map_valid; intros.
     destruct (addr_eq_dec a0 a); subst.
     eauto.
     eapply H.
@@ -754,12 +754,12 @@ Module MLog.
   Qed.
 
 
-  Lemma entries_valid_replay_mem : forall d ms1 ms2,
-    entries_valid ms1 d ->
-    entries_valid ms2 d ->
-    entries_valid (replay_mem (Map.elements ms1) ms2) d.
+  Lemma map_valid_replay_mem : forall d ms1 ms2,
+    map_valid ms1 d ->
+    map_valid ms2 d ->
+    map_valid (replay_mem (Map.elements ms1) ms2) d.
   Proof.
-    unfold entries_valid; intros.
+    unfold map_valid; intros.
     destruct (MapFacts.In_dec ms1 a).
     apply MapFacts.in_find_iff in i.
     destruct (Map.find a ms1) eqn:X.
@@ -813,12 +813,12 @@ Module MLog.
   Qed.
 
 
-  Lemma entries_valid_replay_mem' : forall ents d ms,
-    items_valid ents d ->
-    entries_valid ms d ->
-    entries_valid (replay_mem ents ms) d.
+  Lemma map_valid_replay_mem' : forall ents d ms,
+    log_valid ents d ->
+    map_valid ms d ->
+    map_valid (replay_mem ents ms) d.
   Proof.
-    unfold entries_valid, items_valid; intros.
+    unfold map_valid, log_valid; intros.
     destruct (InA_dec (@eq_key_dec valu) (a, v) ents).
     eapply H; eauto.
     eapply H0.
@@ -828,12 +828,12 @@ Module MLog.
     apply In_fst_KIn; auto.
   Qed.
 
-  Lemma items_valid_replay : forall ents d ms,
-    entries_valid ms d ->
-    items_valid ents (replay_disk (Map.elements ms) d) ->
-    items_valid ents d.
+  Lemma log_valid_replay : forall ents d ms,
+    map_valid ms d ->
+    log_valid ents (replay_disk (Map.elements ms) d) ->
+    log_valid ents d.
   Proof.
-    unfold items_valid, entries_valid; intros.
+    unfold log_valid, map_valid; intros.
     split; intros.
     apply H0.
     rewrite replay_disk_length in H0.
@@ -841,11 +841,11 @@ Module MLog.
   Qed.
 
   Lemma replay_disk_replay_mem : forall l m d,
-    items_valid l (replay_disk (Map.elements m) d) ->
+    log_valid l (replay_disk (Map.elements m) d) ->
     replay_disk l (replay_disk (Map.elements m) d) =
     replay_disk (Map.elements (replay_mem l m)) d.
   Proof.
-    unfold items_valid; induction l; intros; intuition; auto.
+    unfold log_valid; induction l; intros; intuition; auto.
     destruct a; inversion H0; subst; simpl.
     rewrite replay_disk_updN_comm.
     rewrite IHl.
@@ -859,12 +859,12 @@ Module MLog.
     apply In_fst_KIn; auto.
   Qed.
 
-  Lemma items_valid_entries_valid : forall ents d l raw,
+  Lemma log_valid_entries_valid : forall ents d l raw,
     goodSize addrlen (length raw) ->
     d = replay_disk l raw ->
-    items_valid ents d -> DLog.entries_valid ents.
+    log_valid ents d -> DLog.entries_valid ents.
   Proof.
-    unfold items_valid, DLog.entries_valid; intuition.
+    unfold log_valid, DLog.entries_valid; intuition.
     rewrite Forall_forall.
     intros; destruct x.
     unfold PaddedLog.entry_valid, PaddedLog.addr_valid; intuition.
@@ -881,12 +881,12 @@ Module MLog.
     eapply in_map; eauto.
   Qed.
 
-  Lemma items_valid_nodup : forall l d,
-    items_valid l d -> KNoDup l.
+  Lemma log_valid_nodup : forall l d,
+    log_valid l d -> KNoDup l.
   Proof.
-    unfold items_valid; intuition.
+    unfold log_valid; intuition.
   Qed.
-  Local Hint Resolve items_valid_nodup.
+  Local Hint Resolve log_valid_nodup.
 
   Local Hint Resolve KNoDup_NoDup Map.elements_3w.
 
@@ -897,7 +897,7 @@ Module MLog.
   Theorem flush_noapply_ok: forall xp ents ms,
     {< F d na na',
      PRE  rep xp F na (Synced d) ms *
-          [[ items_valid ents d ]] *
+          [[ log_valid ents d ]] *
           [[ na' = (na - (DLog.rounded (length ents))) ]]
      POST RET:^(ms',r)
           ([[ r = true ]]  *  rep xp F na' (Synced (replay_disk ents d)) ms') \/
@@ -911,14 +911,14 @@ Module MLog.
   Proof.
     unfold flush_noapply.
     step using dems.
-    eapply items_valid_entries_valid; eauto.
+    eapply log_valid_entries_valid; eauto.
     hoare using dems.
 
     or_l.
     cancel; unfold map_merge.
     rewrite replay_mem_app; eauto.
-    apply entries_valid_replay_mem'; auto.
-    eapply items_valid_replay; eauto.
+    apply map_valid_replay_mem'; auto.
+    eapply log_valid_replay; eauto.
     apply replay_disk_replay_mem; auto.
 
     (* crashes *)
@@ -947,19 +947,19 @@ Module MLog.
     cancel. simpl; intuition; eauto.
     pred_apply; cancel.
     rewrite replay_mem_app; eauto.
-    apply entries_valid_replay_mem'.
-    eapply items_valid_replay; eauto. auto.
+    apply map_valid_replay_mem'.
+    eapply log_valid_replay; eauto. auto.
     apply replay_disk_replay_mem; auto.
   Qed.
 
   End UnfoldProof2.
 
 
-  Lemma entries_valid_Forall_fst_synced : forall d ms,
-    entries_valid ms d ->
+  Lemma map_valid_Forall_fst_synced : forall d ms,
+    map_valid ms d ->
     Forall (fun e => fst e < length (synced_list d)) (Map.elements ms).
   Proof.
-    unfold entries_valid, synced_list; intros.
+    unfold map_valid, synced_list; intros.
     apply Forall_forall; intros.
     autorewrite with lists.
     destruct x; simpl.
@@ -967,13 +967,13 @@ Module MLog.
     apply Map.elements_2.
     apply In_InA; auto.
   Qed.
-  Local Hint Resolve entries_valid_Forall_fst_synced.
+  Local Hint Resolve map_valid_Forall_fst_synced.
 
-  Lemma entries_valid_Forall_synced_map_fst : forall d ms,
-    entries_valid ms d ->
+  Lemma map_valid_Forall_synced_map_fst : forall d ms,
+    map_valid ms d ->
     Forall (fun e => e < length (synced_list d)) (map fst (Map.elements ms)).
   Proof.
-    unfold entries_valid, synced_list; intros.
+    unfold map_valid, synced_list; intros.
     apply Forall_forall; intros.
     autorewrite with lists.
     apply In_map_fst_MapIn in H0.
@@ -1249,11 +1249,11 @@ Module MLog.
     apply Map.elements_3w.
   Qed.
 
-  Lemma entries_valid_replay_disk : forall l m d,
-    entries_valid m d ->
-    entries_valid m (replay_disk l d).
+  Lemma map_valid_replay_disk : forall l m d,
+    map_valid m d ->
+    map_valid m (replay_disk l d).
   Proof.
-    unfold entries_valid; induction d; intros.
+    unfold map_valid; induction d; intros.
     rewrite replay_disk_length; eauto.
     split.
     apply (H a0 v); auto.
@@ -1283,7 +1283,7 @@ Module MLog.
     unfold synced_data; cancel.
     step.
     rewrite vsupd_vecs_length.
-    apply entries_valid_Forall_synced_map_fst; auto.
+    apply map_valid_Forall_synced_map_fst; auto.
     step.
     step.
     rewrite apply_synced_data_ok; cancel.
@@ -1301,7 +1301,7 @@ Module MLog.
     rewrite apply_synced_data_ok; cancel.
     intuition.
     rewrite replay_disk_length; auto.
-    apply entries_valid_replay; auto.
+    apply map_valid_replay; auto.
 
     rewrite replay_disk_merge.
     setoid_rewrite mapeq_elements at 2; eauto.
@@ -1357,7 +1357,7 @@ Module MLog.
   Theorem flush_ok: forall xp ents ms,
     {< F d na n1 n2,
      PRE  rep xp F na (Synced d) ms *
-          [[ items_valid ents d ]] *
+          [[ log_valid ents d ]] *
           [[ n1 = (na - (DLog.rounded (length ents))) ]] *
           [[ n2 = ((LogLen xp) - (DLog.rounded (length ents))) ]]
      POST RET:^(ms',r)
