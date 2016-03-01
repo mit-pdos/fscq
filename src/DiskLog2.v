@@ -730,9 +730,27 @@ Module AsyncRecArray (RA : RASig).
     rewrite repeat_length; auto.
   Qed.
 
-  Lemma array_rep_sync_nil : forall xp a l,
+  Lemma array_rep_sync_nil : forall xp a,
+    xparams_ok xp -> a <= (RALen xp) ->
+    array_rep xp a (Synced nil) <=p=> emp.
+  Proof.
+    unfold array_rep, synced_array, rep_common; intros.
+    split; cancel; subst; simpl; unfold items_valid, eqlen;
+      try setoid_rewrite ipack_nil; simpl; intuition; auto.
+  Qed.
+
+  Lemma array_rep_sync_nil_emp : forall xp a,
+    array_rep xp a (Synced nil) =p=> emp.
+  Proof.
+    unfold array_rep, synced_array, rep_common; intros.
+    cancel; subst; simpl; unfold items_valid, eqlen;
+      try setoid_rewrite ipack_nil; simpl; intuition; auto.
+  Qed.
+
+  Lemma array_rep_sync_nil_sep_star : forall xp a l,
     array_rep xp a (Synced l) =p=> array_rep xp a (Synced nil) * array_rep xp a (Synced l).
   Proof.
+    intros.
     unfold array_rep, synced_array, rep_common, eqlen; intros.
     norm.
     instantiate (vl0 := @nil valu).
@@ -824,6 +842,48 @@ Module AsyncRecArray (RA : RASig).
 
   Ltac simplen := unfold eqlen; eauto; repeat (try subst; simpl;
     auto; simplen'; autorewrite with core lists); simpl; eauto; try omega.
+
+  Lemma xform_synced_array : forall xp st l,
+    crash_xform (synced_array xp st l) =p=> synced_array xp st l.
+  Proof.
+    unfold synced_array; intros.
+    xform; cancel; subst.
+    rewrite crash_xform_arrayN_combine_nils.
+    cancel.
+    auto.
+  Qed.
+
+  Lemma xform_synced_rep : forall xp st l,
+    crash_xform (array_rep xp st (Synced l)) =p=> array_rep xp st (Synced l).
+  Proof.
+    intros; simpl.
+    apply xform_synced_array.
+  Qed.
+
+  Lemma xform_avail_rep : forall xp st nr,
+    crash_xform (avail_rep xp st nr) =p=> avail_rep xp st nr.
+  Proof.
+    unfold avail_rep; intros; intros.
+    xform.
+    rewrite crash_xform_arrayN; cancel.
+    unfold possible_crash_list in *; subst; intuition.
+    rewrite H0.
+    rewrite combine_length_eq; auto.
+    rewrite repeat_length; auto.
+  Qed.
+
+  Lemma xform_unsync_array_avail : forall xp st l,
+    crash_xform (unsync_array xp st l) =p=>
+      avail_rep xp st (divup (length l) items_per_val).
+  Proof.
+    unfold unsync_array, avail_rep, rep_common; intros.
+    xform.
+    rewrite crash_xform_arrayN.
+    unfold possible_crash_list.
+    cancel.
+    rewrite combine_length_eq in *; simplen.
+    rewrite <- ipack_length; auto.
+  Qed.
 
   Lemma array_rep_size_ok : forall m xp start st,
     array_rep xp start st m ->
@@ -1237,6 +1297,22 @@ Module PaddedLog.
       | Unsync n o =>
          (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)])
       end)%pred.
+
+    Definition xform_rep_synced : forall xp n,
+      crash_xform (rep xp (Synced n)) =p=> rep xp (Synced n).
+    Proof.
+      unfold rep; intros; simpl.
+      xform; auto.
+    Qed.
+
+    Definition xform_rep_unsync : forall xp n o,
+      crash_xform (rep xp (Unsync n o)) =p=> rep xp (Synced n) \/ rep xp (Synced o).
+    Proof.
+      unfold rep; intros; simpl.
+      xform; cancel.
+      or_l; cancel.
+      or_r; cancel.
+    Qed.
 
     Definition read T xp cs rx : prog T := Eval compute_rec in
       let^ (cs, v) <- BUFCACHE.read (LAHdr xp) cs;
@@ -1743,6 +1819,11 @@ Module PaddedLog.
     rewrite divup_0; auto.
   Qed.
 
+  Lemma ndata_log_nil : ndata_log nil = 0.
+  Proof.
+    unfold ndata_log; simpl; auto.
+  Qed.
+
   Local Hint Resolve goodSize_0.
 
 
@@ -1780,7 +1861,7 @@ Module PaddedLog.
   Proof.
     intros.
     unfold ndesc_log, vals_nonzero; simpl; rewrite divup_0.
-    rewrite Desc.array_rep_sync_nil, Data.array_rep_sync_nil; auto.
+    rewrite Desc.array_rep_sync_nil_sep_star, Data.array_rep_sync_nil_sep_star; auto.
     cancel.
     unfold ndata_log; simpl; repeat rewrite Nat.sub_0_r.
     rewrite <- log_nonzero_addrs.
@@ -2355,6 +2436,63 @@ Module PaddedLog.
     rewrite map_length, Nat.sub_0_r in Hx.
     rewrite H5, Nat.mul_comm; auto.
   Qed.
+
+  Lemma xform_rep_synced : forall xp l,
+    crash_xform (rep xp (Synced l)) =p=> rep xp (Synced l).
+  Proof.
+    unfold rep; simpl; unfold rep_contents; intros.
+    xform; cancel.
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite Hdr.xform_rep_synced.
+    cancel.
+  Qed.
+
+  Lemma xform_rep_truncated : forall xp l,
+    crash_xform (rep xp (Truncated l)) =p=>
+      rep xp (Synced l) \/ rep xp (Synced nil).
+  Proof.
+    unfold rep; simpl; unfold rep_contents; intros.
+    xform; cancel.
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite Hdr.xform_rep_unsync.
+    norm; auto.
+
+    or_r; cancel.
+    cancel_by helper_trunc_ok.
+    or_l; cancel.
+  Qed.
+
+  Lemma xform_rep_extended_unsync : forall xp l,
+    crash_xform (rep xp (ExtendedUnsync l)) =p=> rep xp (Synced l).
+  Proof.
+    unfold rep; simpl; unfold rep_contents; intros.
+    xform; cancel.
+
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite Hdr.xform_rep_synced.
+    cancel.
+  Qed.
+
+  Lemma xform_rep_extended : forall xp old new,
+    crash_xform (rep xp (Extended old new)) =p=>
+       rep xp (Synced old) \/
+       rep xp (Synced ((padded_log old) ++ (padded_log new))).
+  Proof.
+    unfold rep; simpl; unfold rep_contents; intros.
+    xform; cancel.
+
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite Hdr.xform_rep_unsync.
+    norm; auto.
+
+    or_r. admit.
+    or_l; cancel.
+  Qed.
+
 
 End PaddedLog.
 
