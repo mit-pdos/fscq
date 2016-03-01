@@ -13,6 +13,7 @@ VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 VS_HS      := codegen/FS.hs
 VS_ML      := codegen/FS.ml
+VS_JSON    := codegen/FS.json
 GHC 	   := ghc
 ifeq (,$(shell $(GHC) --version | grep 'version 7.10' 2>/dev/null))
 	GHC := /opt/ghc/7.10.2/bin/ghc
@@ -43,6 +44,9 @@ all: fuse mkfs
 
 $(VS_HS): $(VS_VIO)
 	( cd coqbuild && coqc -q -R . Fscq Extraction )
+
+$(VS_JSON): $(VS_VIO)
+	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
 $(VS_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq quick )
