@@ -1,6 +1,7 @@
 Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Locking.
+Require Import Preservation.
 Require Import RelationCombinators.
 Require Import Coq.Program.Equality.
 Require Import FunctionalExtensionality.
@@ -1132,6 +1133,8 @@ Theorem locked_disk_read_ok : forall a,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             vd' = virt_disk s /\
+                            (* TODO: need to say something about
+                            how _all_ locks evolve *)
                             r = v /\
                             get_s_lock a s = Owned tid /\
                             s0' = s0
@@ -1151,6 +1154,39 @@ Proof.
 Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
+
+Definition cache_frames :=
+  split_frames virt_disk (fun s a => get_s_lock a s).
+
+Lemma cache_frames_vd_pred : forall tid F LF ls s,
+  cache_frames tid F LF ls s ->
+  (F * LF)%pred (get GDisk s).
+Proof.
+  unfold cache_frames, split_frames, virt_disk; intuition.
+Qed.
+
+Theorem locked_disk_read_lf : forall a,
+  stateS TID: tid |-
+  {{ F LF ls v rest,
+   | PRE d m s0 s: Inv m s d /\
+                   cache_frames tid F (LF * a |-> (Valuset v rest, None)) ls s
+   | POST d' m' s0' s' r:
+                   Inv m' s' d' /\
+                   cache_frames tid F (LF * a |-> (Valuset v rest, None)) ls s' /\
+                   s0' = s0
+  }} locked_disk_read a.
+Proof.
+  unfold cache_frames; intros.
+  eapply pimpl_ok; [ apply locked_disk_read_ok | ].
+  simplify.
+  eapply cache_frames_vd_pred in H0.
+  pred_apply; cancel.
+  eapply split_frame_ptsto_locked in H0; auto.
+
+  step pre simplify with finish.
+  eapply split_frame_indifferent; eauto.
+  (* locked_disk_read spec does not promise that locks are monotonic *)
+Admitted.
 
 Ltac replace_cache :=
   match goal with
