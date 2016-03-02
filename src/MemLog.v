@@ -119,7 +119,7 @@ Module MLog.
         synced_data xp d0 *
         DLog.rep xp (DLog.Synced na log)
     | Flushing d ents =>
-        [[ KNoDup ents ]] *
+        [[ log_valid ents d ]] *
         map_replay ms d0 d *
         synced_data xp d0 *
         (DLog.rep xp (DLog.ExtendedUnsync log)
@@ -1449,21 +1449,90 @@ Module MLog.
     apply crash_xform_arrayN_combine_nils.
   Qed.
 
-    
+  Lemma map_valid_equal : forall d m1 m2,
+    Map.Equal m1 m2 -> map_valid m1 d -> map_valid m2 d.
+  Proof.
+    induction d; unfold map_valid; simpl; intros; split;
+    eapply H0; rewrite H; eauto.
+  Qed.
+
   Lemma synced_after_crash_ok : forall xp na d m ents,
     crash_xform (rep_inner xp na (Synced d) m) =p=>
     after_crash_pred xp d ents.
   Proof.
-    unfold after_crash_pred; intros.
-    cancel; or_l.
-    unfold rep_inner, map_replay.
+    unfold after_crash_pred, rep_inner, map_replay; intros.
     xform.
     rewrite crash_xform_synced_data.
     rewrite DLog.xform_rep_synced.
+    cancel; or_l.
+    cancel.
+    eapply map_valid_equal; eauto.
+    erewrite mapeq_elements; eauto.
+  Qed.
+
+  Lemma synced_replay_after_crash_ok : forall xp na d m ents,
+    crash_xform (rep_inner xp na (Synced (replay_disk ents d)) m) =p=>
+    after_crash_pred xp d ents.
+  Proof.
+    unfold after_crash_pred, rep_inner, map_replay; intros.
+    xform.
+    rewrite crash_xform_synced_data.
+    rewrite DLog.xform_rep_synced.
+    cancel; or_r.
+    cancel.
+    eapply map_valid_equal; eauto.
+    erewrite mapeq_elements; eauto.
+    rewrite H; auto.
+  Qed.
+
+  Lemma flushing_after_crash_ok : forall xp na d m ents,
+    crash_xform (rep_inner xp na (Flushing d ents) m) =p=>
+    after_crash_pred xp d ents.
+  Proof.
+    unfold after_crash_pred, rep_inner, map_replay; intros.
+    xform.
+    rewrite crash_xform_synced_data.
+    rewrite DLog.xform_rep_extended.
+    rewrite DLog.xform_rep_extended_unsync.
     cancel.
 
-  Admitted.
+    or_l; cancel.
+    eapply map_valid_equal; eauto.
+    erewrite mapeq_elements; eauto.
 
+    or_l; cancel.
+    eapply map_valid_equal; eauto.
+    erewrite mapeq_elements; eauto.
+
+    or_r; cancel.
+    eapply map_valid_equal.
+    apply MapFacts.Equal_sym.
+    apply replay_mem_app; auto.
+    apply map_valid_replay_mem'.
+    eapply log_valid_replay; eauto.
+    eapply map_valid_equal; eauto.
+
+    setoid_rewrite mapeq_elements at 2.
+    2: apply replay_mem_app; eauto.
+    apply replay_disk_replay_mem; auto.
+  Qed.
+
+  Lemma applying_after_crash_ok : forall xp na d m ents,
+    crash_xform (rep_inner xp na (Applying d) m) =p=>
+    after_crash_pred xp d ents.
+  Proof.
+    unfold after_crash_pred, rep_inner, map_replay; intros.
+    xform.
+    rewrite crash_xform_synced_data.
+    rewrite DLog.xform_rep_synced.
+    rewrite DLog.xform_rep_truncated.
+    cancel.
+    
+    cancel.
+
+
+  Local Hint Resolve synced_after_crash_ok synced_replay_after_crash_ok
+                     flushing_after_crash_ok.
 
   Lemma recover_either_after_crash : forall xp d ents,
     crash_xform (recover_either_pred xp d ents) =p=>
@@ -1471,8 +1540,7 @@ Module MLog.
   Proof.
     unfold recover_either_pred; intros.
     xform.
-    
-    
+    cancel; auto.
     
   Admitted.
 
