@@ -520,6 +520,9 @@ Definition file_copy T fsxp src_inum dst_inum mscs rx : prog T :=
   let^ (mscs, ok1) <- FS.file_set_attr fsxp dst_inum sattr mscs;   (* then set_attr *)
   rx ^(mscs, ok && ok1).
 
+
+(* XXX Simply crash condition: there is a temp file; prove that all cases reduce to that one crash condition. *)
+
 Definition file_copy_crash Fm Ftop fsxp dst_fn dst_inum tree bytes attr m :=
   (  (* crash during one of the read-only ops *)
     LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m \/ 
@@ -724,27 +727,23 @@ Ltac NoDup :=
     | [ H : (_ * DIRTREE.rep _ _ (DIRTREE.TreeDir _ ?list)) %pred _ |- NoDup (map fst ?list) ] => idtac "nodup"; eapply DIRTREE.rep_tree_names_distinct in H; idtac "step 1: " H; eapply tree_names_distinct_nodup in H; assumption
   end.                            
 
-Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
-  {< m Fm Ftop tree tree_elem,
-  PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-        [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
-        [[ src_fn <> temp_fn ]] *
-        [[ dst_fn <> temp_fn ]]
-  POST RET:^(mscs, r)
-        exists m' tree',
-        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-        (([[ r = false ]] * [[ tree' = tree ]]) \/
-         ([[ r = false ]] * exists inum tbytes tattr,
-          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] temp_fn (DIRTREE.TreeFile inum tbytes tattr) tree ]]) \/
-         ([[ r = true ]] * exists old_inum new_inum bytes attr,
-          [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
-          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]]))
-   CRASH
-    (* crash during one of the read-only ops *)
-    LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m \/      
-    (* temp_fn deleted? *)
+
+(* XXX Simply crash condition: there is a temp file or there is no temp file.
+ * all possible crash conditions imply one of the two.
+ *)
+Definition atomic_cp_crash Fm Ftop fsxp dst_fn m tree tree_elem :=
+   ( (* crash before any transaction committed *)
+     ( [[(Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m)]] *
+       [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
+       [[DIRTREE.find_name [temp_fn] tree = None]] *
+       LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m) \/
+     (* crash after committing a read-only transaction *)
+     ( [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
+       [[DIRTREE.find_name [temp_fn] tree = None]] *
+       [[(Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m)]] *
+       LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
+                [[(Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m)]])) \/
+     (* temp_fn deleted? *)
     (exists m' tree' temp_inum tbytes tattr,
        [[ (Fm *  DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
        [[ tree' = (DIRTREE.TreeDir the_dnum
@@ -874,7 +873,28 @@ Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
         [[tree' =
           DIRTREE.tree_graft the_dnum tree_elem [] temp_fn
             (DIRTREE.TreeFile temp_inum [] BYTEFILE.attr0)
-            (DIRTREE.TreeDir the_dnum tree_elem)]])
+            (DIRTREE.TreeDir the_dnum tree_elem)]]))%pred.
+           
+Theorem atomic_cp_ok : forall fsxp src_fn dst_fn mscs,
+  {< m Fm Ftop tree tree_elem,
+  PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+        [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
+        [[ src_fn <> temp_fn ]] *
+        [[ dst_fn <> temp_fn ]] *
+        [[ DIRTREE.find_name [temp_fn] tree = None ]]
+  POST RET:^(mscs, r)
+        exists m' tree',
+        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+        (([[ r = false ]] * [[ tree' = tree ]]) \/
+         ([[ r = false ]] * exists inum tbytes tattr,
+          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] temp_fn (DIRTREE.TreeFile inum tbytes tattr) tree ]]) \/
+         ([[ r = true ]] * exists old_inum new_inum bytes attr,
+          [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) ]] *
+          [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) tree ]]))
+ CRASH
+   atomic_cp_crash Fm Ftop fsxp dst_fn m tree tree_elem
 >} atomic_cp fsxp src_fn dst_fn mscs.
 Proof.
   unfold atomic_cp; intros.
@@ -968,16 +988,21 @@ Proof.
 
   (* XXX a tactic for traversing crash conditions and then resolving/proving them *)
   eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
   eapply pimpl_or_r. left.
+  
   eapply pimpl_exists_r. eexists.
   eapply pimpl_exists_r. eexists.
   eapply pimpl_exists_r. eexists.
+  
   eapply pimpl_exists_r. eexists.
   eapply pimpl_exists_r. eexists.
   rewrite sep_star_assoc.
   eapply sep_star_lift_r_prop; eauto.
   eapply sep_star_lift_r_prop; eauto.
 
+  
+  eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. left.
@@ -1005,8 +1030,9 @@ Proof.
   reflexivity.
 
   assumption.
+  
 
-
+  eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
@@ -1054,6 +1080,7 @@ Proof.
   assumption.
 
   eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
   eapply pimpl_or_r. left.
   eapply pimpl_exists_r. eexists.
   eapply pimpl_exists_r. eexists.
@@ -1066,6 +1093,7 @@ Proof.
   eapply sep_star_lift_r_prop; eauto.
 
 
+  eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
@@ -1091,10 +1119,18 @@ Proof.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
   eauto.
 
   eapply pimpl_or_r. left.
-  eauto.
+  
+  rewrite sep_star_assoc.
+  rewrite sep_star_assoc.
+  
+  eapply sep_star_lift_r_prop; eauto.
+  
+  eapply sep_star_lift_r_prop; eauto.
+  eapply sep_star_lift_r_prop; eauto.
   
   Grab Existential Variables.
   all: eauto.
@@ -1106,35 +1142,361 @@ Hint Extern 1 ({{_}} progseq (atomic_cp _ _ _ _) _) => apply atomic_cp_ok : prog
 Require Import Idempotent.
 Require Import PredCrash.
 
-Definition atomic_cp_recover {T} rx : prog T :=
-  let^ (mscs, fsxp) <- FS.recover;
-  let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
+Lemma would_recover_either_pimpl_any : forall xp F old,
+  LOG.would_recover_either xp F old old =p=> LOG.would_recover_either_pred xp F old any.
+Proof.
+  unfold LOG.would_recover_either, LOG.would_recover_either_pred.
+  cancel.
+  rewrite <- LOG.would_recover_either'_pred'_pimpl.
+  instantiate(d0:= old).
+  cancel.
+  unfold any.
+  auto.
+Qed.
+
+(* xxx does any imply any p *)
+Lemma would_recover_either_pimpl_pred : forall xp F old p Fm,
+  (Fm * p)%pred (list2mem old) ->                                               
+  LOG.would_recover_either xp F old old =p=> LOG.would_recover_either_pred xp F old (Fm * p).
+Proof.
+  intros.
+  unfold LOG.would_recover_either, LOG.would_recover_either_pred.
+  cancel.
+  rewrite <- LOG.would_recover_either'_pred'_pimpl.
+  instantiate(d0:= old).
+  cancel.
+Qed.
+
+Require Import Cache.
+
+Definition recover' {T} rx : prog T :=
+  cs <- BUFCACHE.init_recover (if eq_nat_dec cachesize 0 then 1 else cachesize);
+  let^ (cs, fsxp) <- sb_load cs;
+  mscs <- LOG.recover (FSXPLog fsxp) cs;
   rx ^(mscs, fsxp).
 
-(* XXX need spec for atomic_cp_recover_ok to include FS.delete *)
-Theorem atomic_cp_recover_ok :
-  {< fsxp old newpred,
-  PRE
-    crash_xform (LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred)
-  POST RET:^(mscs, fsxp')
-    [[ fsxp' = fsxp ]] *
-    (LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
-     exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs *
-     [[ newpred (list2mem new) ]])
-  CRASH
-    LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred
-  >} recover.
+
+Set Printing Implicit.
+
+(* Maybe NoTempFile, TempFile *)
+Inductive state :=
+| NoTempFile
+| TempFileExists
+| DstFileExists
+.
+
+(* XXX maybe any tbytes in temp_fn case *)
+Definition rep_tree st (tree: DIRTREE.dirtree) dst_fn temp_fn tree_elem temp_inum tbytes tattr :=
+  match st with
+    | NoTempFile =>
+      tree = DIRTREE.TreeDir the_dnum tree_elem /\ DIRTREE.find_name [temp_fn] tree = None
+    | TempFileExists =>
+      tree = (DIRTREE.TreeDir the_dnum
+                              (DIRTREE.add_to_list
+                                 temp_fn
+                                 (DIRTREE.TreeFile temp_inum tbytes tattr)
+                                 tree_elem))
+    | DstFileExists =>
+      DIRTREE.find_name [temp_fn] tree = None /\
+      tree = (DIRTREE.TreeDir the_dnum
+                  (DIRTREE.add_to_list dst_fn
+                          (DIRTREE.TreeFile temp_inum tbytes tattr)
+                          (DIRTREE.delete_from_list temp_fn
+                                (DIRTREE.add_to_list temp_fn
+                                       (DIRTREE.TreeFile temp_inum tbytes tattr) tree_elem))))
+  end.
+
+
+Definition rep_crash (st : state) m Fm fsxp Ftop tree dst_fn tree_elem temp_inum tbytes tattr :=
+  (match st with
+     | NoTempFile =>
+       [[rep_tree NoTempFile tree dst_fn temp_fn tree_elem temp_inum tbytes tattr]] *
+       LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m
+                       (Fm * DIRTREE.rep fsxp Ftop tree) * 
+                       ([[rep_tree NoTempFile tree dst_fn temp_fn tree_elem temp_inum tbytes tattr]])
+     | TempFileExists =>
+       [[rep_tree TempFileExists tree dst_fn temp_fn tree_elem temp_inum tbytes tattr]] *
+       LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m
+                    (Fm * DIRTREE.rep fsxp Ftop tree) * 
+       [[rep_tree NoTempFile tree dst_fn temp_fn tree_elem temp_inum tbytes tattr]]
+     | DstFileExsts =>
+       [[(rep_tree TempFileExists tree dst_fn temp_fn tree_elem temp_inum tbytes tattr)]] *
+       LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m
+                        (Fm * DIRTREE.rep fsxp Ftop tree) * 
+                        [[rep_tree DstFileExists tree dst_fn temp_fn tree_elem temp_inum tbytes tattr]]
+
+   end)%pred.
+
+Definition tree_reps tree dst_fn tree_elem temp_inum tbytes tattr  :=
+  rep_tree NoTempFile tree dst_fn temp_fn tree_elem temp_inum tbytes tattr \/
+  rep_tree TempFileExists tree dst_fn temp_fn tree_elem temp_inum tbytes tattr \/
+  rep_tree DstFileExists tree dst_fn temp_fn tree_elem temp_inum tbytes tattr.
+
+Definition crash_states m Fm Ftop fsxp tree dst_fn tree_elem temp_inum tbytes tattr :=
+  (rep_crash NoTempFile m Fm Ftop fsxp tree dst_fn tree_elem temp_inum tbytes tattr \/
+   rep_crash TempFileExists m Fm Ftop fsxp tree dst_fn tree_elem temp_inum tbytes tattr \/
+   rep_crash DstFileExists m Fm Ftop fsxp tree dst_fn tree_elem temp_inum tbytes tattr
+  )%pred.
+
+Lemma treereps_impl_dnum: forall tree dst_fn tree_elem temp_inum tbytes tattr,
+               tree_reps tree dst_fn tree_elem temp_inum tbytes tattr ->
+               the_dnum = DIRTREE.dirtree_inum tree.
 Proof.
 Admitted.
 
+Lemma treereps_impl_isdir: forall tree dst_fn tree_elem temp_inum tbytes tattr,
+               tree_reps tree dst_fn tree_elem temp_inum tbytes tattr ->
+               DIRTREE.dirtree_isdir tree = true.
+Proof.
+Admitted.
+
+
+(*
+ * specialized for atomic_cp
+ *)
+Theorem recover'_ok :
+  {< fsxp Ftop Fm m new newpred tree dst_fn tree_elem temp_inum tbytes tattr,
+  PRE
+    crash_xform (crash_states m  Fm fsxp Ftop tree dst_fn tree_elem temp_inum tbytes tattr)
+  POST RET:^(mscs, fsxp')
+    [[ fsxp' = fsxp ]] * (LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs) * [[(DIRTREE.rep fsxp Ftop tree) (list2mem new)]] * [[newpred]]
+  CRASH
+    crash_states m Fm fsxp Ftop tree dst_fn tree_elem temp_inum tbytes tattr
+  >} recover'.
+Proof.
+  unfold recover'; intros.
+  setoid_rewrite crash_xform_or_dist.
+  setoid_rewrite crash_xform_or_dist.
+Admitted.
+
+Hint Extern 1 ({{_}} progseq (recover') _) => apply recover'_ok : prog.
+
+Definition atomic_cp_recover {T} rx : prog T :=
+  let^ (mscs, fsxp) <- recover';
+  let^ (mscs, maybe_src_inum) <- FS.lookup fsxp the_dnum [temp_fn] mscs;
+  match maybe_src_inum with
+  | None => rx ^(mscs, fsxp)
+  | Some (src_inum, isdir) =>
+    If (bool_dec isdir true) {
+      rx ^(mscs, fsxp)
+    } else {
+      let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
+      rx ^(mscs, fsxp)
+    }
+  end.
+
+(* Maybe simplify since case 1 and 2 in the post condition are logically equivalent *)
+Theorem atomic_cp_recover_ok :
+  {< fsxp Fm Ftop dst_fn m tree src_fn tree_elem tattr tbytes temp_inum,
+   PRE
+     crash_xform (crash_states m Fm fsxp Ftop tree dst_fn tree_elem temp_inum tbytes tattr)
+  POST RET:^(mscs, fsxp')
+  [[ fsxp' = fsxp ]] *
+    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+    [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+    [[ DIRTREE.find_name [temp_fn] tree = None ]]
+   \/
+   (exists m' tree' temp_inum bytes attr,
+    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+    [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+    [[ tree' =
+          DIRTREE.update_subtree []
+            (DIRTREE.TreeDir the_dnum
+               (DIRTREE.delete_from_list temp_fn
+                  (DIRTREE.add_to_list temp_fn
+                     (DIRTREE.TreeFile temp_inum bytes attr) tree_elem)))
+            (DIRTREE.TreeDir the_dnum
+                  (DIRTREE.add_to_list temp_fn
+                        (DIRTREE.TreeFile temp_inum bytes attr) tree_elem)) ]])
+   \/
+    (exists m' tree' src_inum dst_inum bytes attr,
+      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+          [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+          [[ DIRTREE.find_name [temp_fn] tree = None ]] *
+       [[ DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile src_inum bytes attr) ]] *
+       [[ tree' = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile dst_inum bytes attr) tree ]])
+   CRASH
+      crash_states m Fm fsxp Ftop tree dst_fn tree_elem temp_inum tbytes tattr
+    >} atomic_cp_recover.
+Proof.
+  unfold atomic_cp_recover; intros.
+
+  setoid_rewrite crash_xform_or_dist.
+  setoid_rewrite crash_xform_or_dist.
+
+  step.
+
+  
+  (* precondition of atomic_cp_recover implies precondition of recover? *)
+  apply crash_xform_pimpl.
+  cancel.
+  unfold crash_states.
+  eapply pimpl_or_r; left.
+  unfold rep_crash.
+  cancel.
+
+  (* lookup case 1:  FS system crashed in NoTempFile state *)
+  instantiate (new := m).
+  instantiate (newpred := rep_tree NoTempFile tree dst_fn temp_fn tree_elem temp_inum tbytes tattr).
+  step.
+
+  (* post condition of recover imply precondition of lookup? *)
+  instantiate (Ftop0 := Ftop).
+  instantiate (tree0 := tree).
+  instantiate (Fm0 := emp).  (* XXX maybe do something about Fm in specs of recover? *)
+  apply pimpl_star_emp; subst; eauto.
+
+  rewrite H5; eauto.
+  rewrite H5. eauto.
+
+  (* match *)
+  step.  (* takes forever ... *)
+  eapply pimpl_or_r; left.
+  (* this seems to be true *)
+  admit.
+  admit.
+  admit.
+
+  (* lookup case 2: temp file exists *)
+  instantiate (new0 := m).
+  instantiate (newpred0 := rep_tree TempFileExists tree dst_fn temp_fn tree_elem temp_inum tbytes tattr).
+  step. 
+  
+  instantiate (Ftop0 := Ftop).
+  instantiate (tree0 := tree).
+  instantiate (Fm0 := emp).  (* XXX maybe do something about Fm in specs of recover? *)
+  apply pimpl_star_emp; subst; eauto.
+
+  rewrite H6; eauto.
+  rewrite H6; eauto.
+
+  destruct a2 eqn:tempfile.
+  destruct p.
+  destruct b0 eqn:tempisdir.
+
+  eapply pimpl_ok2.
+  eauto with prog. cancel.
+  (* contradiction in H6 *)
+  admit.
+
+  (* contradiction *)
+  admit.
+
+  (* delete tempfile *)
+
+  (* if: a directory? no case *)
+  step.
+  (* return *)
+  step. 
+  
+  (* else case: it isn't a directory *)
+  (* delete: *)
+  step.
+
+  (* precondition of delete *)
+  instantiate (pathname := [temp_fn]).
+  instantiate (tree_elem0 := tree_elem).
+
+  (* admit ? *)
+  admit.
+
+  (* return successful delete? *)
+  eapply pimpl_ok2.
+  eauto with prog. cancel.
+  eapply pimpl_or_r. left.
+  (* delete failed? *)
+  cancel.
+  (* XXX emp *)
+  admit.
+
+  (* delete failed? *)
+  admit.
+
+  (* succesful delete *)
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  instantiate (x0 := tree').
+  instantiate (x := a6).
+  instantiate (x1 := temp_inum).
+  (* H12 *)
+  admit.
+
+  unfold crash_states.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  unfold rep_crash.
+  cancel.
+
+  (* some emp stuff. but more or less right. *)
+  admit.
+
+  (* XXX? these seem both false *)
+  admit.
+  admit.
+
+  eapply pimpl_ok2.
+  eauto with prog. cancel.
+
+  eapply pimpl_or_r; left.
+  (* h6 and h7 *)
+  admit.
+
+  admit.
+
+  (* post condition implies crash condition *)
+  admit.
+
+  (* lookup case 3: tempfile has been deleted and dst exists *)
+
+  instantiate (new1 := m).
+  instantiate (newpred1 := rep_tree DstFileExists tree dst_fn temp_fn tree_elem temp_inum tbytes tattr).
+  step.
+
+  instantiate (Ftop0 := Ftop).
+  instantiate (tree0 := tree).
+  instantiate (Fm0 := emp).  (* XXX maybe do something about Fm in specs of recover? *)
+  apply pimpl_star_emp; subst; eauto.
+
+  rewrite H9; eauto.
+  rewrite H9. eauto.
+
+  destruct a2 eqn:tempfile.
+  step.
+
+  (* tempfile doesn't exist *)
+  eapply pimpl_ok2.
+  eauto with prog. cancel.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  eapply pimpl_exists_r. eexists.
+  instantiate (x := m).
+  (* XXX tree disappeared *)
+  admit.
+  admit.
+  
+  Grab Existential Variables.
+  all: eauto.
+ Admitted.
+
 Hint Extern 1 ({{_}} progseq (atomic_cp_recover) _) => apply atomic_cp_recover_ok : prog.
 
-     
 Theorem atomic_cp_with_recover_ok : forall fsxp src_fn dst_fn mscs,
   {<< m Fm Ftop tree tree_elem,
   PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
         [[ tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
+        [[ DIRTREE.find_name [temp_fn] tree = None ]] *
         [[ src_fn <> temp_fn ]] *
         [[ dst_fn <> temp_fn ]]
   POST RET:^(mscs, r)
@@ -1160,6 +1522,10 @@ Proof.
   intros; eexists; intros.
   eapply pimpl_ok3.
   eapply corr3_from_corr2_rx. eauto with prog.
-  eauto with prog. (* hangs *)
+  eauto with prog. cancel.
+  step.
 
-Admitted.
+  (* XXX need to prove first that all crash conditions of atomic_cp_recover
+   * imply precondition of recover_ok. maybe redo spec of atomic_cp_recover. *)
+  
+Admitted
