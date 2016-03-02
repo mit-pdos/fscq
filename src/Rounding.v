@@ -60,7 +60,15 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     apply Nat.div_small.
     omega.
   Qed.
-  
+
+  Lemma roundup_0:
+    forall x,
+    roundup 0 x = 0.
+  Proof.
+    unfold roundup; intros.
+    rewrite divup_0. auto.
+  Qed.
+
   Lemma divup_1: forall x,
     divup x 1 = x.
   Proof.

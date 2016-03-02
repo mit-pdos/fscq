@@ -2567,8 +2567,9 @@ Module PaddedLog.
   Qed.
 
 
-  Theorem rep_extended_length_ok' : forall xp d old new,
+  Theorem rep_extended_facts' : forall xp d old new,
     (rep xp (Extended old new))%pred d ->
+    Forall entry_valid new /\
     LogLen xp >= ndata_log old + ndata_log new /\ LogDescLen xp >= ndesc_log old + ndesc_log new.
   Proof.
     unfold rep, rep_inner, rep_contents, xparams_ok.
@@ -2576,7 +2577,7 @@ Module PaddedLog.
     intros; destruct_lifts.
     hypmatch DiskLogDescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
-    unfold ndata_log, ndesc_log; split.
+    unfold ndata_log, ndesc_log; split; auto; split.
 
     rewrite H4, Nat.mul_comm.
     eapply le_trans; [ | eauto ].
@@ -2596,14 +2597,15 @@ Module PaddedLog.
     eapply le_trans; eauto.
   Qed.
 
-  Theorem rep_extended_length_ok : forall xp old new,
+  Theorem rep_extended_facts : forall xp old new,
     rep xp (Extended old new) =p=>
     (rep xp (Extended old new) *
       [[ LogLen xp >= ndata_log old + ndata_log new ]] *
-      [[ LogDescLen xp >= ndesc_log old + ndesc_log new ]])%pred.
+      [[ LogDescLen xp >= ndesc_log old + ndesc_log new ]] *
+      [[ Forall entry_valid new ]] )%pred.
   Proof.
     unfold pimpl; intros.
-    pose proof rep_extended_length_ok' H.
+    pose proof rep_extended_facts' H.
     pred_apply; cancel.
   Qed.
 
@@ -2664,7 +2666,7 @@ Module PaddedLog.
        rep xp (Synced old) \/
        rep xp (Synced ((padded_log old) ++ new)).
   Proof.
-    intros; rewrite rep_extended_length_ok.
+    intros; rewrite rep_extended_facts.
     unfold rep; simpl; unfold rep_contents; intros.
     xform; cancel.
 
@@ -2683,6 +2685,31 @@ Module PaddedLog.
     eapply forall_app_r; eauto.
   Qed.
 
+  Lemma rep_synced_app_pimpl : forall xp old new,
+    rep xp (Synced (padded_log old ++ new)) =p=>
+    rep xp (Synced (padded_log old ++ padded_log new)).
+  Proof.
+    unfold rep; simpl; intros; unfold rep_contents; cancel.
+    setoid_rewrite ndesc_log_padded_app.
+    setoid_rewrite ndata_log_padded_app.
+    rewrite ndesc_log_padded_log, ndata_log_padded_log.
+    setoid_rewrite map_app.
+    setoid_rewrite vals_nonzero_app.
+    setoid_rewrite vals_nonzero_padded_log.
+    cancel.
+
+    rewrite Desc.array_rep_synced_app_rev.
+    setoid_rewrite <- desc_padding_synced_piff at 2.
+    eapply pimpl_trans2.
+    eapply Desc.array_rep_synced_app.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    cancel.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    apply Forall_append.
+    eapply forall_app_r; eauto.
+    eapply forall_app_l in H2.
+    apply addr_valid_padded; auto.
+  Qed.
 
 End PaddedLog.
 
@@ -2720,10 +2747,12 @@ Module DLog.
           PaddedLog.rep xp (PaddedLog.ExtendedUnsync padded)
     | Extended l new =>
           exists padded, rep_common l padded *
-          PaddedLog.rep xp (PaddedLog.Extended padded (PaddedLog.padded_log new))
+          PaddedLog.rep xp (PaddedLog.Extended padded new)
     end)%pred.
 
   Local Hint Unfold rep rep_common : hoare_unfold.
+
+  Section UnifyProof.
   Hint Extern 0 (okToUnify (PaddedLog.rep _ _) (PaddedLog.rep _ _)) => constructor : okToUnify.
 
   Definition read T xp cs rx : prog T :=
@@ -2773,6 +2802,31 @@ Module DLog.
     or_r; cancel.
     unfold roundup; rewrite divup_0; omega.
   Qed.
+
+
+  Definition avail T xp cs rx : prog T :=
+    r <- PaddedLog.avail xp cs;
+    rx r.
+
+  Definition avail_ok : forall xp cs,
+    {< F l d nr,
+    PRE   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced nr l))%pred d ]]
+    POST RET: ^(cs, r)
+          BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced nr l))%pred d ]] *
+          [[ r = nr ]]
+    CRASH exists cs',
+          BUFCACHE.rep cs' d *
+          [[ (F * rep xp (Synced nr l))%pred d ]]
+    >} avail xp cs.
+  Proof.
+    unfold avail.
+    step.
+    step.
+  Qed.
+
+  End UnifyProof.
 
   Local Hint Resolve PaddedLog.Desc.items_per_val_gt_0.
 
@@ -2839,7 +2893,7 @@ Module DLog.
     omega.
   Qed.
 
-  Local Hint Resolve extend_navail_ok.
+  Local Hint Resolve extend_navail_ok PaddedLog.rep_synced_app_pimpl.
 
   Definition extend_ok : forall xp new cs,
     {< F old d nr,
@@ -2860,35 +2914,75 @@ Module DLog.
     >} extend xp new cs.
   Proof.
     unfold extend.
-    hoare.
-  Qed.
 
-  Definition avail T xp cs rx : prog T :=
-    r <- PaddedLog.avail xp cs;
-    rx r.
-
-  Definition avail_ok : forall xp cs,
-    {< F l d nr,
-    PRE   BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced nr l))%pred d ]]
-    POST RET: ^(cs, r)
-          BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced nr l))%pred d ]] *
-          [[ r = nr ]]
-    CRASH exists cs',
-          BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced nr l))%pred d ]]
-    >} avail xp cs.
-  Proof.
-    unfold avail.
     step.
     step.
+
+    or_l. norm; [ cancel | intuition; pred_apply; norm ].
+    instantiate (1 := (PaddedLog.padded_log padded ++ PaddedLog.padded_log new)).
+    cancel; auto.
+    intuition.
+
+    or_l; cancel.
+    cancel.
+    cancel.
+    or_r; or_r; or_r; norm; [ cancel | intuition; pred_apply; norm ].
+    instantiate (1 := (PaddedLog.padded_log padded ++ PaddedLog.padded_log new)).
+    cancel; auto.
+    intuition.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
+
+  Lemma xform_rep_synced : forall xp na l,
+    crash_xform (rep xp (Synced na l)) =p=> rep xp (Synced na l).
+  Proof.
+    unfold rep, rep_common; intros.
+    xform; cancel.
+    apply PaddedLog.xform_rep_synced.
+    all: auto.
+  Qed.
+
+  Lemma xform_rep_truncated : forall xp l,
+    crash_xform (rep xp (Truncated l)) =p=> exists na,
+      rep xp (Synced na l) \/ rep xp (Synced (LogLen xp) nil).
+  Proof.
+    unfold rep, rep_common; intros.
+    xform; cancel.
+    rewrite PaddedLog.xform_rep_truncated.
+    cancel.
+    or_r; cancel.
+    rewrite roundup_0; auto.
+  Qed.
+
+  Lemma xform_rep_extended_unsync : forall xp l,
+    crash_xform (rep xp (ExtendedUnsync l)) =p=> exists na, rep xp (Synced na l).
+  Proof.
+    unfold rep, rep_common; intros.
+    xform; cancel.
+    apply PaddedLog.xform_rep_extended_unsync.
+    all: auto.
+  Qed.
+
+  Lemma xform_rep_extended : forall xp old new,
+    crash_xform (rep xp (Extended old new)) =p=>
+       (exists na, rep xp (Synced na old)) \/
+       (exists na, rep xp (Synced na (old ++ new))).
+  Proof.
+    unfold rep, rep_common; intros.
+    xform.
+    rewrite PaddedLog.rep_extended_facts.
+    xform; cancel.
+    rewrite PaddedLog.xform_rep_extended.
+    cancel.
+    or_r; norm.
+    instantiate (1 := (PaddedLog.padded_log x ++ PaddedLog.padded_log new)).
+    cancel; auto.
+    intuition.
+  Qed.
 
 End DLog.
 

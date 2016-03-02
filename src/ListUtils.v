@@ -342,7 +342,7 @@ Proof.
 Qed.
 
 Lemma forall_app_l : forall A P (a b : list A),
-  Forall P (a ++ b) -> Forall P a.
+  Forall P (a ++ b) -> Forall P b.
 Proof.
   intros; rewrite Forall_forall in *; firstorder.
 Qed.
