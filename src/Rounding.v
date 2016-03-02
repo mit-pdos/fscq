@@ -617,3 +617,25 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     rewrite Nat.mul_succ_l.
     omega.
   Qed.
+
+  Lemma roundup_le' : forall a b sz,
+    sz > 0 ->
+    a <= b * sz -> roundup a sz <= b * sz.
+  Proof.
+    intros.
+    apply (roundup_mono _ _ sz) in H0.
+    eapply le_trans; eauto.
+    unfold roundup.
+    apply Nat.mul_le_mono_pos_r; auto.
+    apply divup_mul_l.
+  Qed.
+
+  Lemma roundup_le : forall a b sz,
+    a <= b * sz -> roundup a sz <= b * sz.
+  Proof.
+    destruct sz; intros.
+    unfold roundup.
+    repeat rewrite Nat.mul_0_r; auto.
+    apply roundup_le'; auto; omega.
+  Qed.
+

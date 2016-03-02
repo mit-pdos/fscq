@@ -1640,7 +1640,17 @@ Module PaddedLog.
     unfold addr_valid; simpl.
     apply zero_lt_pow2.
   Qed.
-  Local Hint Resolve addr_valid_padded.
+
+  Lemma padded_addr_valid : forall l,
+    Forall addr_valid (padded_log l) ->
+    Forall addr_valid l.
+  Proof.
+    unfold padded_log, setlen; intros.
+    rewrite firstn_oob in H; auto.
+    eapply forall_app_r; eauto.
+  Qed.
+
+  Local Hint Resolve addr_valid_padded padded_addr_valid.
 
   Lemma map_wordToNat_ent_addr : forall l,
     Forall addr_valid l ->
@@ -2246,12 +2256,12 @@ Module PaddedLog.
       (LogLen xp - ndata_log old - ndata_log new) *
     Desc.array_rep xp (ndesc_log old) (Desc.Synced (map ent_addr (padded_log new))) * F
     =p=>
-    Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ padded_log new))) *
-    Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old ++ padded_log new))) *
-    Desc.avail_rep xp (ndesc_log (padded_log old ++ padded_log new))
-                      (LogDescLen xp - ndesc_log (padded_log old ++ padded_log new)) *
-    Data.avail_rep xp (ndata_log (padded_log old ++ padded_log new)) 
-                      (LogLen xp - ndata_log (padded_log old ++ padded_log new)) * F.
+    Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ new))) *
+    Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old ++ new))) *
+    Desc.avail_rep xp (ndesc_log (padded_log old ++ new)) 
+                      (LogDescLen xp - ndesc_log (padded_log old ++ new)) *
+    Data.avail_rep xp (ndata_log (padded_log old ++ new))
+                      (LogLen xp - ndata_log (padded_log old ++ new)) * F.
   Proof.
     intros.
     repeat rewrite ndesc_log_padded_app, ndata_log_padded_app.
@@ -2270,11 +2280,7 @@ Module PaddedLog.
     rewrite divup_1, padded_log_length.
     unfold roundup; rewrite divup_mul; auto.
     unfold ndata_log; rewrite vals_nonzero_addrs.
-    rewrite nonzero_addrs_padded_log.
-    rewrite nonzero_addrs_entry_valid with (l := new); auto.
     unfold vals_nonzero; rewrite entry_valid_vals_nonzero with (l := new); auto.
-    rewrite padded_log_length.
-    unfold roundup; rewrite divup_divup by auto.
     cancel.
 
     rewrite Nat.mul_1_r; auto.
@@ -2290,36 +2296,16 @@ Module PaddedLog.
   Qed.
 
   Lemma extend_ok_synced_hdr_helper : forall xp old new,
-    Forall entry_valid new ->
     Hdr.rep xp (Hdr.Synced (ndesc_log old + ndesc_log new, ndata_log old + ndata_log new))
     =p=>
-    Hdr.rep xp (Hdr.Synced (ndesc_log (padded_log old ++ padded_log new),
-                            ndata_log (padded_log old ++ padded_log new))).
+    Hdr.rep xp (Hdr.Synced (ndesc_log (padded_log old ++ new),
+                            ndata_log (padded_log old ++ new))).
   Proof.
     intros.
-    repeat rewrite ndesc_log_padded_app, ndata_log_padded_app, ndesc_log_padded_log.
-    unfold ndata_log.
-    rewrite nonzero_addrs_padded_log.
-    rewrite nonzero_addrs_entry_valid with (l := new); auto.
+    rewrite ndesc_log_padded_app, ndata_log_padded_app; auto.
   Qed.
 
-  Lemma extend_ok_unsync_hdr_helper : forall xp old new,
-    Forall entry_valid new ->
-    Hdr.rep xp (Hdr.Unsync (ndesc_log old + ndesc_log new, ndata_log old + ndata_log new)
-                           (ndesc_log old, ndata_log old))
-    =p=>
-    Hdr.rep xp (Hdr.Unsync (ndesc_log old + ndesc_log (padded_log new), 
-                            ndata_log old + ndata_log (padded_log new))
-                           (ndesc_log old, ndata_log old)).
-  Proof.
-    intros.
-    rewrite ndesc_log_padded_log.
-    unfold ndata_log.
-    rewrite nonzero_addrs_padded_log.
-    rewrite nonzero_addrs_entry_valid with (l := new); auto.
-  Qed.
-
-  Local Hint Resolve extend_ok_synced_hdr_helper extend_ok_unsync_hdr_helper.
+  Local Hint Resolve extend_ok_synced_hdr_helper.
 
   Lemma nonzero_addrs_roundup : forall B (l : list (addr * B)) n,
     n > 0 ->
@@ -2390,7 +2376,7 @@ Module PaddedLog.
     POST RET: ^(cs, r) exists d', 
           BUFCACHE.rep cs d' * (
           [[ r = true /\
-             (F * rep xp (Synced ((padded_log old) ++ (padded_log new))))%pred d' ]] \/
+             (F * rep xp (Synced ((padded_log old) ++ new)))%pred d' ]] \/
           [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
              (F * rep xp (Synced old))%pred d' ]])
     CRASH exists cs' d',
@@ -2398,7 +2384,7 @@ Module PaddedLog.
           [[ (F * rep xp (Synced old))%pred d' ]] \/
           [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
           [[ (F * rep xp (Extended old new))%pred d' ]] \/
-          [[ (F * rep xp (Synced ((padded_log old) ++ (padded_log new))))%pred d' ]])
+          [[ (F * rep xp (Synced ((padded_log old) ++ new)))%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -2580,11 +2566,105 @@ Module PaddedLog.
     cancel.
   Qed.
 
+
+  Theorem rep_extended_length_ok' : forall xp d old new,
+    (rep xp (Extended old new))%pred d ->
+    LogLen xp >= ndata_log old + ndata_log new /\ LogDescLen xp >= ndesc_log old + ndesc_log new.
+  Proof.
+    unfold rep, rep_inner, rep_contents, xparams_ok.
+    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
+    intros; destruct_lifts.
+    hypmatch DiskLogDescSig.items_per_val as Hx.
+    rewrite map_length, Nat.sub_0_r in Hx.
+    unfold ndata_log, ndesc_log; split.
+
+    rewrite H4, Nat.mul_comm.
+    eapply le_trans; [ | eauto ].
+    rewrite app_length, nonzero_addrs_entry_valid with (l := new) by auto.
+    apply plus_le_compat_r.
+    eapply le_trans.
+    apply nonzero_addrs_bound.
+    rewrite padded_log_length, map_length.
+    apply roundup_ge; auto.
+
+    eapply Nat.mul_le_mono_pos_r with (p := DiskLogDescSig.items_per_val).
+    apply Desc.items_per_val_gt_0.
+    apply roundup_le in Hx.
+    rewrite app_length, padded_log_length in Hx.
+    rewrite roundup_roundup_add in Hx by auto.
+    rewrite Nat.mul_add_distr_r.
+    eapply le_trans; eauto.
+  Qed.
+
+  Theorem rep_extended_length_ok : forall xp old new,
+    rep xp (Extended old new) =p=>
+    (rep xp (Extended old new) *
+      [[ LogLen xp >= ndata_log old + ndata_log new ]] *
+      [[ LogDescLen xp >= ndesc_log old + ndesc_log new ]])%pred.
+  Proof.
+    unfold pimpl; intros.
+    pose proof rep_extended_length_ok' H.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma helper_sep_star_distr: forall AT AEQ V (a b c d : @pred AT AEQ V),
+    a * b * c * d =p=> (c * a) * (d * b).
+  Proof.
+    intros; cancel.
+  Qed.
+
+  Lemma helper_add_sub_add : forall a b c,
+    b >= c + a -> a + (b - (c + a)) = b - c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma xform_rep_extended_helper : forall xp old new,
+    Forall entry_valid new ->
+    LogLen xp >= ndata_log old + ndata_log new ->
+    LogDescLen xp >= ndesc_log old + ndesc_log new ->
+    Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ new))) *
+    Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old ++ new))) *
+    Desc.avail_rep xp (ndesc_log (padded_log old ++ new)) (LogDescLen xp - ndesc_log (padded_log old ++ new)) *
+    Data.avail_rep xp (ndata_log (padded_log old ++ new)) (LogLen xp - ndata_log (padded_log old ++ new))
+    =p=>
+    Desc.array_rep xp 0 (Desc.Synced (map ent_addr old)) *
+    Data.array_rep xp 0 (Data.Synced (vals_nonzero old)) *
+    Desc.avail_rep xp (ndesc_log old) (LogDescLen xp - ndesc_log old) *
+    Data.avail_rep xp (ndata_log old) (LogLen xp - ndata_log old).
+  Proof.
+    intros.
+    rewrite map_app, vals_nonzero_app.
+    rewrite ndesc_log_padded_app, ndata_log_padded_app.
+    rewrite Desc.array_rep_synced_app_rev, Data.array_rep_synced_app_rev.
+    repeat rewrite Nat.add_0_l.
+    rewrite map_length, vals_nonzero_padded_log, padded_log_length.
+    setoid_rewrite desc_padding_synced_piff.
+    cancel.
+
+    rewrite Data.array_rep_avail, Desc.array_rep_avail; simpl.
+    unfold roundup; rewrite divup_divup by auto.
+    setoid_rewrite vals_nonzero_addrs.
+    setoid_rewrite divup_1.
+    setoid_rewrite map_length.
+    unfold ndata_log, ndesc_log.
+    rewrite helper_sep_star_distr.
+    rewrite Desc.avail_rep_merge, Data.avail_rep_merge.
+    cancel.
+    apply helper_add_sub_add; auto.
+    apply helper_add_sub_add; auto.
+
+    rewrite Nat.mul_1_r; auto.
+    rewrite map_length, padded_log_length.
+    unfold roundup; auto.
+  Qed.
+
   Lemma xform_rep_extended : forall xp old new,
     crash_xform (rep xp (Extended old new)) =p=>
        rep xp (Synced old) \/
-       rep xp (Synced ((padded_log old) ++ (padded_log new))).
+       rep xp (Synced ((padded_log old) ++ new)).
   Proof.
+    intros; rewrite rep_extended_length_ok.
     unfold rep; simpl; unfold rep_contents; intros.
     xform; cancel.
 
@@ -2594,73 +2674,13 @@ Module PaddedLog.
     norm; auto.
 
     or_r; cancel.
-    rewrite extend_ok_synced_hdr_helper by auto.
-    cancel.
-
-
-  Lemma xform_rep_extended_helper : forall xp old new,
-    Forall addr_valid (padded_log old) ->
-    Forall entry_valid new ->
-    Data.avail_rep xp (ndata_log (padded_log old ++ new)) (LogLen xp - ndata_log (padded_log old ++ new)) *
-    Desc.avail_rep xp (ndesc_log (padded_log old ++ new)) (LogDescLen xp - ndesc_log (padded_log old ++ new)) *
-    Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old ++ new))) *
-    Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ new)))
-    =p=>
-    Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ padded_log new))) *
-    Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old ++ padded_log new))) *
-    Desc.avail_rep xp (ndesc_log (padded_log old ++ padded_log new))
-                      (LogDescLen xp - ndesc_log (padded_log old ++ padded_log new)) *
-    Data.avail_rep xp (ndata_log (padded_log old ++ padded_log new))
-                      (LogLen xp - ndata_log (padded_log old ++ padded_log new)).
-  Proof.
-    intros.
-    setoid_rewrite ndata_log_padded_app.
-    setoid_rewrite ndesc_log_padded_app.
-    rewrite ndesc_log_padded_log, ndata_log_padded_log.
-    cancel.
-    Search padded_log app.
-    
-    setoid_rewrite vals_nonzero_app.
-    setoid_rewrite map_app.
-    setoid_rewrite vals_nonzero_padded_log.
-
-
-  Lemma desc_padding_synced_app_pimpl : forall xp a l,
-    Desc.array_rep xp a (Desc.Synced (map ent_addr (padded_log l)))
-    <=p=> Desc.array_rep xp a (Desc.Synced (map ent_addr l)).
-  Proof.
-
-
-    Proof.
-      intros.
-      rewrite H0.
-      rewrite ndata_log_padded_app, ndesc_log_padded_app, ndesc_log_padded_log, ndata_log_padded_log.
-      unfold ndata_log at 2, ndesc_log at 2.
-      rewrite nonzero_addrs_entry_valid by auto.
-      rewrite divup_1.
-      repeat rewrite map_length.
-      repeat rewrite Nat.sub_add_distr.
-      cancel.
-
-      rewrite vals_nonzero_app, map_app at 1.
-      rewrite Desc.array_rep_synced_app_rev.
-      rewrite Data.array_rep_synced_app_rev.
-      repeat rewrite Nat.add_0_l.
-      unfold ndata_log, ndesc_log, vals_nonzero at 3.
-      repeat rewrite map_length.
-      setoid_rewrite desc_padding_synced_piff.
-      rewrite entry_valid_vals_nonzero by auto.
-      cancel.
-      rewrite H0 at 3 4.
-      rewrite vals_nonzero_addrs.
-    Admitted.
-
-    cancel_by xform_rep_extended_helper. admit. admit.
-    cancel_by extend_ok_helper.
-
-    rewrite Desc.array_rep_avail.
+    rewrite extend_ok_synced_hdr_helper; auto.
 
     or_l; cancel.
+    apply xform_rep_extended_helper; auto.
+
+    apply padded_addr_valid.
+    eapply forall_app_r; eauto.
   Qed.
 
 

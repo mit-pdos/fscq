@@ -334,6 +334,19 @@ Proof.
   apply H0; assumption.
 Qed.
 
+
+Lemma forall_app_r : forall A P (a b : list A),
+  Forall P (a ++ b) -> Forall P a.
+Proof.
+  intros; rewrite Forall_forall in *; firstorder.
+Qed.
+
+Lemma forall_app_l : forall A P (a b : list A),
+  Forall P (a ++ b) -> Forall P a.
+Proof.
+  intros; rewrite Forall_forall in *; firstorder.
+Qed.
+
 Lemma Forall_repeat: forall A (f:A -> Prop) a n,
   f a -> Forall f (repeat a n).
 Proof.
