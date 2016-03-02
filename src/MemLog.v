@@ -1449,25 +1449,6 @@ Module MLog.
     apply crash_xform_arrayN_combine_nils.
   Qed.
 
-  Lemma crash_xform_log_rep_synced : forall xp na l,
-    crash_xform (DLog.rep xp (DLog.Synced na l)) =p=>
-    DLog.rep xp (DLog.Synced na l).
-  Proof.
-    unfold DLog.rep, DLog.rep_common;
-    unfold PaddedLog.rep, PaddedLog.rep_inner, PaddedLog.rep_contents, PaddedLog.Hdr.rep; intros.
-    unfold PaddedLog.Desc.array_rep, PaddedLog.Data.array_rep,
-           PaddedLog.Desc.avail_rep, PaddedLog.Data.avail_rep,
-           PaddedLog.Desc.synced_array, PaddedLog.Data.synced_array.
-    xform; cancel.
-    xform; cancel.
-    xform; cancel.
-    subst.
-    repeat rewrite crash_xform_synced_arrayN.
-    cancel.
-    admit. admit.
-    
-    
-    
     
   Lemma synced_after_crash_ok : forall xp na d m ents,
     crash_xform (rep_inner xp na (Synced d) m) =p=>
@@ -1476,13 +1457,11 @@ Module MLog.
     unfold after_crash_pred; intros.
     cancel; or_l.
     unfold rep_inner, map_replay.
-    xform; cancel.
-    rewrite crash_xform_synced_data; cancel.
+    xform.
+    rewrite crash_xform_synced_data.
+    rewrite DLog.xform_rep_synced.
+    cancel.
 
-    
-
-      
-    
   Admitted.
 
 
