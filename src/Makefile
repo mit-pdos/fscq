@@ -24,7 +24,8 @@ endif
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
-HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs hslib/Fuse.hs
+HSLIB_FUSE := hscgen/Fuse.hs
+HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 J ?= 4
 
@@ -37,16 +38,17 @@ all: fuse mkfs
 	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
-hslib/%.hs: hslib/%.hsc
+hscgen/%.hs: hslib/%.hsc
 	@mkdir -p $(@D)
 	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
 
-%: %.hs $(VS_HS) $(HSLIB_PRE)
+%: %.hs $(VS_HS) $(HSLIB_FUSE)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
+	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -o $@
 
 $(VS_HS): $(VS_VIO) coqbuild/Extraction.v
 	( cd coqbuild && coqc -q -R . Fscq Extraction )
@@ -88,3 +90,5 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 
 clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img
+
+.PRECIOUS: hscgen/%.hs
