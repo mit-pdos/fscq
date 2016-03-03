@@ -1910,33 +1910,63 @@ Module MLog.
     unfold recover; intros.
     prestep; xform.
     norml.
+    
+    (* manually get two after-crash cases *)
     apply recover_either_after_crash_unfold' in H4.
     destruct_lifts.
-    cancel.
+    apply sep_star_or_distr in H0; apply pimpl_or_apply in H0.
+    destruct H0; destruct_lift H0.
 
-    prestep.
-    unfold rep at 1; unfold rep_inner, map_replay.
-    cancel.
-    admit.
+    (* case 1 : last transaction unapplied *)
+    - cancel.
+      prestep.
+      unfold rep at 1; unfold rep_inner, map_replay.
+      cancel.
+      eapply map_valid_equal; eauto.
 
-    step.
-    admit.
+      step.
+      map_rewrites.
+      or_l; cancel.
 
-    subst; pimpl_crash.
-    unfold rep, recover_either_pred.
-    cancel.
-    admit.
-    admit.
-    admit.
+      subst; pimpl_crash.
+      unfold rep, recover_either_pred.
+      cancel; map_rewrites.
+      or_l; cancel.
+      or_l; cancel.
+      or_r; or_r; or_r; cancel.
 
-    subst; pimpl_crash.
-    unfold rep, recover_either_pred.
-    cancel.
-    or_l.
-    unfold rep_inner, map_replay.
-    cancel; eauto.
-    admit.
+      subst; pimpl_crash.
+      unfold rep, recover_either_pred.
+      cancel.
+      or_l.
+      unfold rep_inner, map_replay.
+      cancel; auto.
 
+    (* case 2 : last transaction applied *)
+    - cancel.
+      prestep.
+      unfold rep at 1; unfold rep_inner, map_replay.
+      cancel.
+      eapply map_valid_equal; eauto.
+
+      step.
+      map_rewrites; rewrite H6.
+      or_r; cancel.
+
+      subst; pimpl_crash.
+      unfold rep, recover_either_pred.
+      cancel; map_rewrites; rewrite H6.
+      or_r; or_l; cancel.
+      or_r; or_l; cancel.
+      or_r; or_r; or_r; cancel.
+      admit.
+
+      subst; pimpl_crash.
+      unfold rep, recover_either_pred.
+      cancel.
+      or_r; or_l; rewrite H6.
+      unfold rep_inner, map_replay.
+      cancel; auto.
   Admitted.
 
 
