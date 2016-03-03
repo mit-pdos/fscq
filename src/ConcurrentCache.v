@@ -973,13 +973,21 @@ Ltac solve_global_transitions :=
   repeat lazymatch goal with
   | [ |- forall _, _ ] => progress intros
   | [ |- _ /\ _ ] => split
-    end; simpl_get_set.
+    end;
+  try lazymatch goal with
+  | [ |- lock_protocol _ _ _ _ ] =>
+    apply lock_protocol_transition
+  end; simpl_get_set.
+
+Ltac solve_addr_split :=
+  solve [ distinguish_addresses; progress autorewrite with hlist upd cache; eauto ].
 
 Ltac finish :=
   try time "finisher" progress (
   try time "solve_global_transitions" solve_global_transitions;
   try time "congruence" (unfold wr_set, const in *; congruence);
   try time "finish eauto" solve [ eauto ];
+  try time "solve_addr_split" solve_addr_split;
   try time "solve_modified" solve_modified;
   let solver := (try match goal with
                      | |- _ =p=> _ =>
@@ -995,9 +1003,11 @@ Lemma cache_pred_eq : forall t (c c': cache_fun t) vd vd' d d',
   cache_pred c' vd' d'.
 Proof. intros; subst; assumption. Qed.
 
+(* TODO: this may not do anything, and (worse) might be slowing things down.
+If it shows up in the profiling, it should be removed. *)
 Hint Extern 5 (cache_pred _ _ _) => match goal with
   | [ H: cache_pred _ _ _ |- _ ] =>
-    apply (cache_pred_eq H); congruence
+    time "cache_pred_eq_extern" (apply (cache_pred_eq H); congruence)
   end.
 
 Hint Extern 4 (@eq (option _) _ _) => congruence.
@@ -1121,6 +1131,7 @@ Hint Unfold get_disk_val : prog.
 Hint Resolve cache_miss_lock
      cache_lock_miss_invalid
      cache_pred_stable_read_fill
+     same_domain_refl
      reader_lock_inv_stable_no_rdr.
 
 Theorem locked_disk_read_ok : forall a,
@@ -1133,14 +1144,16 @@ Theorem locked_disk_read_ok : forall a,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             vd' = virt_disk s /\
-                            (* TODO: need to say something about
-                            how _all_ locks evolve *)
+                            R tid s s' /\
                             r = v /\
                             get_s_lock a s = Owned tid /\
                             s0' = s0
     }} locked_disk_read a.
 Proof.
-  time "hoare" hoare pre simplify with finish.
+  (* TODO: finish; simplify; finish is an awkward finisher;
+    need to find a better way to fit in finish's solve_global_transitions,
+    which creates a bunch of speculative goals *)
+  time "hoare" hoare pre simplify with (finish; simplify; finish).
 
   eapply cache_pred_miss;
     try match goal with
@@ -1149,7 +1162,6 @@ Proof.
 
   unfold cache_add.
   eapply cache_eq_split; intros; autorewrite with cache; eauto.
-
   erewrite cache_rep_change_get by solve [ eauto ]; eauto.
 Qed.
 
@@ -1389,11 +1401,9 @@ Proof.
          let simp_step :=
              simplify_step ||
              learn_fun_state in
-         time "simplify" simplify' simp_step) with (finish; simplify).
+         time "simplify" simplify' simp_step) with (finish; simplify; finish).
 
   eapply cache_pred_miss_stable; eauto.
-
-  distinguish_addresses; autorewrite with upd; eauto.
 
   time "step" step pre (time "simplify" simplify) with (finish; simplify).
 
@@ -1411,15 +1421,13 @@ Proof.
 
   (* end copy-pasted asserts *)
 
-  time "step" step pre (time "simplify" simplify) with (finish; simplify).
-  time "step" step pre (time "simplify" simplify) with (finish; simplify).
+  time "step" step pre (time "simplify" simplify) with finish.
+  time "step" step pre (time "simplify" simplify) with (finish; simplify; finish).
 
   eapply cache_pred_miss_stable; eauto.
 
   unfold change_reader.
   autorewrite with upd; now simplify.
-
-  distinguish_addresses; autorewrite with upd; eauto.
 Qed.
 
 Hint Extern 1 {{ locked_AsyncRead _; _ }} => apply locked_AsyncRead_ok : prog.
@@ -1460,17 +1468,13 @@ Theorem locked_async_disk_read_ok : forall a,
     }} locked_async_disk_read a.
 Proof.
   time "hoare" hoare pre (time "simplify" simplify) with (finish;
-    time "simplify" simplify).
+    time "simplify" simplify; finish).
   - pred_apply; cancel; eauto. (* any * a |-> ... *)
   - unfold cache_add.
     eapply cache_eq_split with (a := a); intros; autorewrite with cache; eauto.
     erewrite cache_rep_change_get by eauto; eauto.
   - (* relation between s and s'; not stated precisely *)
     admit.
-  - distinguish_addresses;
-    apply NoChange; auto;
-    now autorewrite with hlist cache.
-  - distinguish_addresses; now autorewrite with cache.
 Admitted.
 
 Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
@@ -1656,15 +1660,8 @@ Theorem cache_lock_ok : forall a,
                                 set GCache vc' s)) s s'
     }} cache_lock a.
 Proof.
-  time "hoare" hoare pre simplify with (finish; simplify).
-  - distinguish_addresses.
-    eapply OwnerAcquire; eauto.
-    now autorewrite with hlist cache.
-
-    apply NoChange.
-    unfold cache_fun_state; autorewrite with hlist cache; auto.
-  - unfold get_scache_val; simplify.
-    distinguish_addresses; autorewrite with cache; auto.
+  time "hoare" hoare pre simplify with (finish; simplify; finish).
+  - distinguish_addresses; autorewrite with cache; auto.
     (* can't have mc open and vc Owned owner_tid *)
     assert (cache_fun_state (get GCache s2) a0 = NoOwner) by eauto.
     congruence.
@@ -1746,15 +1743,7 @@ Theorem cache_unlock_ok : forall a,
                             s0' = s0
     }} cache_unlock a.
 Proof.
-  time "hoare" hoare pre simplify with (finish; simplify).
-  - unfold get_s_lock.
-    distinguish_addresses.
-    eapply OwnerRelease; eauto.
-    now autorewrite with hlist cache.
-
-    apply NoChange; auto.
-    now autorewrite with hlist cache.
-  - distinguish_addresses; now autorewrite with cache.
+  time "hoare" hoare pre simplify with (finish; simplify; finish).
 Qed.
 
 Hint Extern 1 {{cache_unlock _; _}} => apply cache_unlock_ok : prog.
@@ -1893,24 +1882,6 @@ Definition locked_disk_write {T} a v rx : prog _ _ T :=
               Assgn Cache c';;
               rx tt.
 
-Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
-| Transition_NoChange : forall o o', o = o' -> lock_transition tid o o'
-| Transition_OwnerAcquire : lock_transition tid NoOwner (Owned tid)
-| Transition_OwnerRelease : lock_transition tid (Owned tid) NoOwner.
-
-Hint Constructors lock_transition.
-
-Theorem lock_protocol_transition : forall tid lvar (s s':S),
-    lock_protocol lvar tid s s' <->
-    lock_transition tid (lvar s) (lvar s').
-Proof.
-  split; inversion 1; subst; eauto;
-  match goal with
-  | [ |- lock_transition _ ?v ?v' ] =>
-    try replace v;
-      try replace v'
-  end; eauto.
-Qed.
 
 Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
@@ -1930,11 +1901,8 @@ Theorem locked_disk_write_ok : forall a v,
 Proof.
   let finisher := (finish;
                     try solve [ unfold dirty_vd; simplify; finish ];
-                    simplify) in
+                    time "simplify_finish" (simplify; finish)) in
   time "hoare" hoare pre (time "simplify" simplify) with finisher.
-  - distinguish_addresses; apply NoChange; now autorewrite with hlist cache.
-  - distinguish_addresses; now autorewrite with cache.
-  - unfold dirty_vd; distinguish_addresses; now autorewrite with upd.
 Qed.
 
 Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
@@ -2015,9 +1983,7 @@ Theorem locked_invalidate_ok : forall a,
                             s0' = s0
     }} invalidate a.
 Proof.
-  time "hoare" hoare pre simplify with (finish; simplify).
-  - distinguish_addresses; apply NoChange; now autorewrite with hlist cache.
-  - distinguish_addresses; now autorewrite with cache.
+  time "hoare" hoare pre simplify with (finish; simplify; finish).
 Qed.
 
 Definition writeback {T} a rx : prog _ _ T :=

@@ -33,6 +33,29 @@ Inductive lock_protocol (lvar : S Scontents -> BusyFlagOwner) (tid : ID) :
 
 Hint Constructors lock_protocol.
 
+Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
+| Transition_NoChange : forall o o', o = o' -> lock_transition tid o o'
+| Transition_OwnerAcquire : forall o o', o = NoOwner ->
+                                o' = Owned tid ->
+                                lock_transition tid o o'
+| Transition_OwnerRelease : forall o o', o = Owned tid ->
+                                o' = NoOwner ->
+                                lock_transition tid o o'.
+
+Hint Constructors lock_transition.
+
+Theorem lock_protocol_transition : forall tid lvar s s',
+    lock_transition tid (lvar s) (lvar s') <->
+    lock_protocol lvar tid s s'.
+Proof.
+  split; inversion 1; subst; eauto;
+  match goal with
+  | [ |- lock_transition _ ?v ?v' ] =>
+    try replace v;
+      try replace v'
+  end; eauto.
+Qed.
+
 Theorem lock_protects_trans : forall lvar tv (v: _ -> tv) tid s s' s'',
   lock_protects lvar v tid s s' ->
   lock_protects lvar v tid s' s'' ->
@@ -154,3 +177,5 @@ End Locking.
 
 Hint Resolve ghost_lock_owned
              lock_inv_still_held.
+Hint Resolve lock_protocol_transition.
+Hint Constructors lock_transition.
