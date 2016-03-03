@@ -184,7 +184,6 @@ Module MLog.
     apply MapFacts.empty_mapsto_iff in H; auto.
   Qed.
 
-  Local Hint Resolve map_valid_map0.
 
 
   Lemma mapeq_elements : forall V m1 m2,
@@ -446,8 +445,6 @@ Module MLog.
     apply list2nmem_ptsto_bound in H.
     autorewrite with lists in *; auto.
   Qed.
-
-
 
   Section UnfoldProof1.
   Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
@@ -1303,6 +1300,7 @@ Module MLog.
     step.
     rewrite apply_synced_data_ok; cancel.
     rewrite replay_disk_length; auto.
+    apply map_valid_map0.
 
     (* crash conditions *)
     or_r; or_l. norm.
@@ -1342,6 +1340,7 @@ Module MLog.
     rewrite apply_synced_data_ok; cancel.
     intuition.
     rewrite replay_disk_length; eauto.
+    apply map_valid_map0.
 
     (* unsync_syncing *)
     or_r; or_r. norm.
@@ -1848,6 +1847,7 @@ Module MLog.
     eapply nil_unless_in_replay_disk; eauto.
     rewrite replay_disk_twice; auto.
     apply Map.elements_3w.
+    apply map_valid_map0.
   Qed.
 
   Local Hint Resolve synced_after_crash_ok synced_replay_after_crash_ok
@@ -1862,6 +1862,32 @@ Module MLog.
     cancel; auto.
   Qed.
 
+
+
+  Remove Hints MapFacts.Equal_refl.
+
+  Lemma recover_either_after_crash_unfold' : forall xp F d ents,
+    crash_xform (F * recover_either_pred xp d ents)
+      =p=>
+    crash_xform F * exists na ms log old,
+       synced_data xp old * DLog.rep xp (DLog.Synced na log) *
+       [[ Map.Equal ms (replay_mem log map0) ]] *
+       [[ goodSize addrlen (length old) ∧ map_valid ms old ]] *
+     ( [[ d = replay_disk (Map.elements ms) old ]] \/
+       [[ replay_disk ents d = replay_disk (Map.elements ms) old ]] ).
+  Proof.
+    intros; xform.
+    rewrite recover_either_after_crash.
+    unfold after_crash_pred, rep, rep_inner, map_replay.
+    cancel_with eauto.
+    or_l; cancel.
+    or_r; cancel.
+  Qed.
+
+
+  Definition readlog T xp ms rx : prog T :=
+    let^ (cs, log) <- DLog.read xp (MSCache ms);
+    rx ^(mk_memstate (MSInLog ms) cs, log).
 
   Definition recover T xp cs rx : prog T :=
     let^ (cs, log) <- DLog.read xp cs;
@@ -1878,13 +1904,40 @@ Module MLog.
       rep xp (crash_xform F) (LogLen xp) (Synced (replay_disk ents d)) ms'
     CRASH exists raw' cs',
       BUFCACHE.rep cs' raw' *
-      [[ (F * recover_either_pred xp d ents)%pred raw' ]]
+      [[ ((crash_xform F) * recover_either_pred xp d ents)%pred raw' ]]
     >} recover xp cs.
   Proof.
-    unfold recover.
+    unfold recover; intros.
+    prestep; xform.
+    norml.
+    apply recover_either_after_crash_unfold' in H4.
+    destruct_lifts.
+    cancel.
+
+    prestep.
+    unfold rep at 1; unfold rep_inner, map_replay.
+    cancel.
+    admit.
+
     step.
+    admit.
 
+    subst; pimpl_crash.
+    unfold rep, recover_either_pred.
+    cancel.
+    admit.
+    admit.
+    admit.
 
+    subst; pimpl_crash.
+    unfold rep, recover_either_pred.
+    cancel.
+    or_l.
+    unfold rep_inner, map_replay.
+    cancel; eauto.
+    admit.
+
+  Admitted.
 
 
 End MLOG.
