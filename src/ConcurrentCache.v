@@ -1021,6 +1021,15 @@ Definition cache_upd {T} a (ce: cache_entry _) rx : prog Mcontents Scontents T :
 
 Hint Extern 1 {{ cache_upd _ _; _ }} => unfold cache_upd; apply GhostUpdate_ok.
 
+Definition cache_upd_state {T} a (l: BusyFlagOwner) rx : prog Mcontents Scontents T :=
+  GhostUpdate (fun s =>
+    let vc := get GCache s in
+    let vc' := cache_set vc a (cache_fun_val vc a, l) in
+    set GCache vc' s);;
+    rx tt.
+
+Hint Extern 1 {{ cache_upd_state _ _; _ }} => unfold cache_upd_state; apply GhostUpdate_ok.
+
 Definition locked_disk_read {T} a rx : prog Mcontents Scontents T :=
   tid <- GetTID;
   c <- Get Cache;
@@ -1470,9 +1479,7 @@ Definition locked_async_disk_read {T} a rx : prog _ _ T :=
   | None =>  v <- locked_AsyncRead a;
              c' <- Get Cache;
              let c'' := cache_add c' a (Clean v) in
-             GhostUpdate (fun s =>
-                    let vc' := cache_set (get GCache s) a (Clean v, Owned tid) in
-                    set GCache vc' s);;
+             cache_upd a (Clean v, Owned tid);;
              Assgn Cache c'';;
                    rx v
   | Some v => rx v
@@ -1582,10 +1589,7 @@ Definition cache_is_open a c : {cache_state c a Open = Open} + {cache_state c a 
 Definition cache_lock {T} a rx : prog _ _ T :=
   tid <- GetTID;
   wait_for Cache (cache_is_open a) a;;
-  GhostUpdate (fun s:S =>
-                 let vc := get GCache s in
-                 let vc' := cache_set vc a (cache_fun_val vc a, Owned tid) in
-    set GCache vc' s);;
+  cache_upd_state a (Owned tid);;
   c <- Get Cache;
   let c' := cache_set_state (cache_alloc c a Open) a Locked in
   Assgn Cache c';;
@@ -1703,10 +1707,7 @@ Hint Extern 1 {{cache_lock _; _}} => apply cache_lock_ok : prog.
 Definition cache_unlock {T} a rx : prog _ _ T :=
   tid <- GetTID;
   c <- Get Cache;
-  GhostUpdate (fun s:S =>
-    let vc := get GCache s in
-    let vc' := cache_set vc a (cache_fun_val vc a, NoOwner) in
-    set GCache vc' s);;
+  cache_upd_state a NoOwner;;
   let c' := cache_set_state c a Open in
   Assgn Cache c';;
   Wakeup a;;
@@ -1903,16 +1904,12 @@ Hint Resolve cache_pred_stable_dirty
 Definition locked_disk_write {T} a v rx : prog _ _ T :=
   tid <- GetTID;
   c <- Get Cache;
+  cache_upd a (Dirty v, Owned tid);;
+  GhostUpdate (fun (s:S) => let vd := get GDisk s in
+                        set GDisk (dirty_vd vd c a v) s);;
   let c' := cache_dirty c a v in
-  GhostUpdate (fun s =>
-    let vc := get GCache s in
-    let vc' := cache_set vc a (Dirty v, Owned tid) in
-    set GCache vc' s);;
-              GhostUpdate (fun (s:S) => let vd := get GDisk s in
-                                      set GDisk (dirty_vd vd c a v) s);;
-              Assgn Cache c';;
-              rx tt.
-
+    Assgn Cache c';;
+    rx tt.
 
 Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
@@ -1988,12 +1985,9 @@ Definition invalidate {T} a rx : prog _ _ T :=
   c <- Get Cache;
   match cache_get c a with
   | Some (Clean _, _) =>
+    (* can only invalidate locked entries *)
+    cache_upd a (Invalid, Owned tid);;
     let c' := cache_invalidate c a in
-    GhostUpdate (fun s =>
-      let vc := get GCache s in
-      (* can only invalidate locked entries *)
-      let vc' := cache_set vc a (Invalid, Owned tid) in
-      set GCache vc' s);;
                 Assgn Cache c';;
                 rx tt
   | _ => rx tt
