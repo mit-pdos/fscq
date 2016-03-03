@@ -72,11 +72,7 @@ import System.Posix.IO ( OpenMode(..), OpenFileFlags(..) )
 import qualified System.Posix.Signals as Signals
 import GHC.IO.Handle(hDuplicateTo)
 import System.Exit
-#if MIN_VERSION_base(4,6,0)
 import System.IO.Error (catchIOError,ioeGetErrorString)
-#else
-import System.IO.Error (catch,ioeGetErrorString)
-#endif
 
 -- TODO: FileMode -> Permissions
 -- TODO: Arguments !
@@ -872,10 +868,7 @@ pokeCStringLen0 :: CStringLen -> String -> IO ()
 pokeCStringLen0 (pBuf, bufSize) src =
     pokeArray0 0 pBuf $ take (bufSize - 1) $ map castCharToCChar src
 
-#if MIN_VERSION_base(4,6,0)
 catch = catchIOError
-#else
-#endif
 
 -----------------------------------------------------------------------------
 -- C land
