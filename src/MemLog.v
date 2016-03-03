@@ -1885,23 +1885,18 @@ Module MLog.
   Qed.
 
 
-  Definition readlog T xp ms rx : prog T :=
-    let^ (cs, log) <- DLog.read xp (MSCache ms);
-    rx ^(mk_memstate (MSInLog ms) cs, log).
-
   Definition recover T xp cs rx : prog T :=
     let^ (cs, log) <- DLog.read xp cs;
-    ms <- apply xp (mk_memstate (replay_mem log map0) cs);
-    rx ms.
+    rx (mk_memstate (replay_mem log map0) cs).
 
   Theorem recover_ok: forall xp F cs,
     {< d ents raw,
     PRE
       BUFCACHE.rep cs raw *
       [[ crash_xform (F * recover_either_pred xp d ents)%pred raw ]]
-    POST RET:ms'
-      rep xp (crash_xform F) (LogLen xp) (Synced d) ms' \/
-      rep xp (crash_xform F) (LogLen xp) (Synced (replay_disk ents d)) ms'
+    POST RET:ms' exists na,
+      rep xp (crash_xform F) na (Synced d) ms' \/
+      rep xp (crash_xform F) na (Synced (replay_disk ents d)) ms'
     CRASH exists raw' cs',
       BUFCACHE.rep cs' raw' *
       [[ ((crash_xform F) * recover_either_pred xp d ents)%pred raw' ]]
@@ -1910,7 +1905,7 @@ Module MLog.
     unfold recover; intros.
     prestep; xform.
     norml.
-    
+
     (* manually get two after-crash cases *)
     apply recover_either_after_crash_unfold' in H4.
     destruct_lifts.
@@ -1919,21 +1914,11 @@ Module MLog.
 
     (* case 1 : last transaction unapplied *)
     - cancel.
-      prestep.
-      unfold rep at 1; unfold rep_inner, map_replay.
-      cancel.
-      eapply map_valid_equal; eauto.
-
       step.
-      map_rewrites.
+      unfold rep; cancel.
       or_l; cancel.
-
-      subst; pimpl_crash.
-      unfold rep, recover_either_pred.
-      cancel; map_rewrites.
-      or_l; cancel.
-      or_l; cancel.
-      or_r; or_r; or_r; cancel.
+      unfold rep_inner, map_replay, synced_data.
+      cancel; try map_rewrites; auto.
 
       subst; pimpl_crash.
       unfold rep, recover_either_pred.
@@ -1944,30 +1929,19 @@ Module MLog.
 
     (* case 2 : last transaction applied *)
     - cancel.
-      prestep.
-      unfold rep at 1; unfold rep_inner, map_replay.
-      cancel.
-      eapply map_valid_equal; eauto.
-
       step.
-      map_rewrites; rewrite H6.
+      unfold rep; cancel.
       or_r; cancel.
-
-      subst; pimpl_crash.
-      unfold rep, recover_either_pred.
-      cancel; map_rewrites; rewrite H6.
-      or_r; or_l; cancel.
-      or_r; or_l; cancel.
-      or_r; or_r; or_r; cancel.
-      admit.
+      unfold rep_inner, map_replay, synced_data.
+      cancel; try map_rewrites; auto.
 
       subst; pimpl_crash.
       unfold rep, recover_either_pred.
       cancel.
-      or_r; or_l; rewrite H6.
+      or_r; or_l.
       unfold rep_inner, map_replay.
-      cancel; auto.
-  Admitted.
+      cancel; eauto.
+  Qed.
 
 
 End MLOG.
