@@ -23,6 +23,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE EmptyDataDecls #-}
 module System.Fuse
     ( -- * Using FUSE
 

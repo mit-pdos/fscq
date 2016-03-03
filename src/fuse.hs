@@ -11,11 +11,11 @@ import Foreign.ForeignPtr
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
-import System.Fuse
 import System.FilePath.Posix
 import Word
 import Disk
 import Prog
+import Fuse
 import qualified Errno
 import Data.IORef
 import Interpreter as I

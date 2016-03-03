@@ -15,14 +15,16 @@ VS_HS      := codegen/FS.hs
 VS_ML      := codegen/FS.ml
 VS_JSON    := codegen/FS.json
 GHC 	   := ghc
+HSC2HS	   := hsc2hs
 ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
 	GHC := /opt/ghc/8.0.1/bin/ghc
+	HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
 endif
 
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
-HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
+HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs hslib/Fuse.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 J ?= 4
 
@@ -35,7 +37,11 @@ all: fuse mkfs
 	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
-%: %.hs $(VS_HS)
+hslib/%.hs: hslib/%.hsc
+	@mkdir -p $(@D)
+	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
+
+%: %.hs $(VS_HS) $(HSLIB_PRE)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
