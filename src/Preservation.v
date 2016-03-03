@@ -368,8 +368,6 @@ Proof.
   unfold pimpl, locks_held; intros; intuition.
 Qed.
 
-Check split_frame_indifferent.
-
 Theorem locks_held_indifferent : forall s s' LF,
   (forall a, lock_held s a -> lock_held s' a) ->
   locks_held s LF =p=> locks_held s' LF.

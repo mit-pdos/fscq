@@ -771,8 +771,6 @@ Ltac local_state_transitions :=
   match goal with
       | [ H: Inv _ _ _ |- _ ] =>
         learn that (cache_invariant_holds H)
-      | [ H: R _ _ _ |- _ ] =>
-        learn that (cache_relation_holds H)
       end.
 
 Ltac learn_invariants :=
