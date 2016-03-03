@@ -429,8 +429,13 @@ def gen_expr_assign_real(e, s):
 
   elif e['what'] == 'expr:let':
     v = gen_expr_assign(e['nameval'], s)
+    res = varname()
+    s.append('var %s CoqT' % res)
+    s.append('{')
     s.append('var %s CoqT = %s' % (coqname(e['name']), v))
-    return gen_expr_assign(e['body'], s)
+    s.append('%s = %s' % (res, gen_expr_assign(e['body'], s)))
+    s.append('}')
+    return res
 
   elif e['what'] == 'expr:axiom':
     s.append('panic("Axiom not realized")')
