@@ -1,5 +1,4 @@
 Require Import EventCSL.
-Require Import Locking.
 Require Import Pred.
 Require Import ForwardChaining.
 Require Import FunctionalExtensionality.
@@ -29,9 +28,9 @@ Section State.
 
 Variable S:Type.
 Variable proj: S -> @mem AT AEQ V.
-(* could replace lock with lock_held, returning a Prop rather than the lock
-itself *)
-Variable lock: S -> AT -> BusyFlagOwner.
+(* lock_held will capture the intended owner; for example,
+for each tid, lock_held := fun s a => get_s_lock s a = Owned tid *)
+Variable lock_held: S -> AT -> Prop.
 
 Definition preserves (R : S -> S -> Prop) F F' :=
   forall P s s',
@@ -227,27 +226,27 @@ Proof.
 Qed.
 
 (* at least the locks in dom are held *)
-Definition locked tid ls : S -> Prop :=
+Definition locked ls : S -> Prop :=
   fun s =>
-  forall a, In a ls -> lock s a = Owned tid.
+  forall a, In a ls -> lock_held s a.
 
-Definition locked_frame tid F (ls: list AT) : S -> Prop :=
+Definition locked_frame F (ls: list AT) : S -> Prop :=
   fun s =>
     F (proj s) /\
     pred_domain F ls /\
-    locked tid ls s.
+    locked ls s.
 
-Definition split_frames tid F LF (ls: list AT) : S -> Prop :=
+Definition split_frames F LF (ls: list AT) : S -> Prop :=
   fun s =>
     (F * LF)%pred (proj s) /\
     pred_domain LF ls /\
-    locked tid ls s.
+    locked ls s.
 
 Hint Unfold split_frames locked : pred.
 
-Theorem split_frame_ptsto_locked : forall tid F LF a v ls s,
-  split_frames tid F (LF * a |-> v) ls s ->
-  lock s a = Owned tid.
+Theorem split_frame_ptsto_locked : forall F LF a v ls s,
+  split_frames F (LF * a |-> v) ls s ->
+  lock_held s a.
 Proof.
   start; dispatch.
   unfold sep_star in H0 at 1.
@@ -257,25 +256,25 @@ Proof.
   eauto.
 Qed.
 
-Theorem split_frame_indifferent : forall tid F LF ls s s',
-  split_frames tid F LF ls s ->
-  (forall a, lock s a = Owned tid -> lock s' a = Owned tid) ->
+Theorem split_frame_indifferent : forall F LF ls s s',
+  split_frames F LF ls s ->
+  (forall a, lock_held s a -> lock_held s' a) ->
   proj s' = proj s ->
-  split_frames tid F LF ls s'.
+  split_frames F LF ls s'.
 Proof.
   start; dispatch.
 Qed.
 
-Definition locks_held tid s F : pred :=
+Definition locks_held s F : pred :=
   fun m => F m /\
   precise F /\
-  (forall a v, m a = Some v -> lock s a = Owned tid).
+  (forall a v, m a = Some v -> lock_held s a).
 
 Hint Unfold locks_held : pred.
 
-Theorem locks_held_ptsto_locked : forall tid s F a v m,
-  locks_held tid s (F * a |-> v) m ->
-  lock s a = Owned tid.
+Theorem locks_held_ptsto_locked : forall s F a v m,
+  locks_held s (F * a |-> v) m ->
+  lock_held s a.
 Proof.
   start; dispatch.
 Qed.
@@ -286,10 +285,10 @@ Hint Resolve strictly_exact_to_precise
 
 Hint Resolve sep_star_mem_union.
 
-Theorem locks_held_add_lock : forall tid s F LF a v,
-  lock s a = Owned tid ->
-  F * a |-> v * locks_held tid s LF =p=>
-  F * locks_held tid s (LF * a |-> v).
+Theorem locks_held_add_lock : forall s F LF a v,
+  lock_held s a ->
+  F * a |-> v * locks_held s LF =p=>
+  F * locks_held s (LF * a |-> v).
 Proof.
   intros; cancel; unfold pimpl; intros.
   unfold_sep_star in H0; repeat deex.
@@ -303,10 +302,10 @@ Proof.
   eauto.
 Qed.
 
-Theorem locks_held_weaken : forall tid s F F',
+Theorem locks_held_weaken : forall s F F',
   F =p=> F' ->
   precise F' ->
-  locks_held tid s F =p=> locks_held tid s F'.
+  locks_held s F =p=> locks_held s F'.
 Proof.
   start; dispatch.
 Qed.

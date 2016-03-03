@@ -1170,8 +1170,8 @@ Qed.
 
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
 
-Definition cache_frames :=
-  split_frames virt_disk (fun s a => get_s_lock a s).
+Definition cache_frames tid :=
+  split_frames virt_disk (fun s a => get_s_lock a s = Owned tid).
 
 Lemma cache_frames_vd_pred : forall tid F LF ls s,
   cache_frames tid F LF ls s ->
