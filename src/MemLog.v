@@ -1872,7 +1872,7 @@ Module MLog.
     crash_xform F * exists na ms log old,
        synced_data xp old * DLog.rep xp (DLog.Synced na log) *
        [[ Map.Equal ms (replay_mem log map0) ]] *
-       [[ goodSize addrlen (length old) ∧ map_valid ms old ]] *
+       [[ goodSize addrlen (length old) /\ map_valid ms old ]] *
      ( [[ d = replay_disk (Map.elements ms) old ]] \/
        [[ replay_disk ents d = replay_disk (Map.elements ms) old ]] ).
   Proof.
@@ -1944,4 +1944,4 @@ Module MLog.
   Qed.
 
 
-End MLOG.
+End MLog.
