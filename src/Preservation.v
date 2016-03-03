@@ -1,11 +1,14 @@
 Require Import EventCSL.
 Require Import Locking.
 Require Import ForwardChaining.
+Require Import FunctionalExtensionality.
 Import List.
 Import List.ListNotations.
 
 Set Implicit Arguments.
 
+(* TODO: this file is organized terribly, combining the very general pred_domain
+with the state/locking-specific preservation concept *)
 Section Preservation.
 
 Variable AT:Type.
@@ -188,6 +191,35 @@ Theorem pred_domain_ptsto_in : forall F a v ls,
 Proof.
   start; dispatch.
   eauto using ptsto_valid'.
+Qed.
+
+Definition precise_domain F :=
+  forall m1 m1' m2 m2',
+  mem_union m1 m1' = mem_union m2 m2' ->
+  mem_disjoint m1 m1' ->
+  mem_disjoint m2 m2' ->
+  F m1 ->
+  F m2 ->
+  (forall a, m1 a = None -> m2 a = None).
+
+Hint Unfold precise precise_domain : pred.
+
+Theorem precise_to_precise_domain : forall F,
+  precise F <->
+  precise_domain F.
+Proof.
+  start; dispatch.
+  - assert (m1 = m2) by eauto; subst; eauto.
+  - assert (forall a, m1 a = None -> m2 a = None) by eauto.
+    assert (forall a, m2 a = None -> m1 a = None) by eauto.
+    extensionality a.
+    assert (mem_union m1 m1' a = mem_union m2 m2' a) by congruence.
+    unfold mem_union in *.
+    case_eq (m1 a); case_eq (m2 a); intros;
+      replace (m1 a) in *;
+      replace (m2 a) in *; eauto.
+    assert (m1 a = None) by eauto; congruence.
+    assert (m2 a = None) by eauto; congruence.
 Qed.
 
 (* at least the locks in dom are held *)
