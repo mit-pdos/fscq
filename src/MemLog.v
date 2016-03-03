@@ -1439,11 +1439,6 @@ Module MLog.
   Qed.
 
 
-  Definition recover T xp cs rx : prog T :=
-    let^ (cs, log) <- DLog.read xp cs;
-    ms <- apply xp (mk_memstate (replay_mem log map0) cs);
-    rx ms.
-
   Definition recover_either_pred xp d ents :=
     (exists na ms,
       rep_inner xp na (Synced d) ms \/
@@ -1587,17 +1582,6 @@ Module MLog.
   Qed.
 
   Hint Rewrite length_synced_list selN_combine repeat_selN' Nat.min_id : lists.
-
-(*
-  Ltac length_rewrites :=
-    match goal with
-    | [ H : context[length ?x] |- _] => progress ( first [ is_var x | simplen_rewrite H ] )
-    | [ H : equal_unless_in _ _ _ |- _ ] => apply equal_unless_in_length_eq in H
-    | [ H : possible_crash_list _ _ |- _ ] => apply possible_crash_list_length_eq in H
-    | [ H : length ?a = length ?b |- context [ length ?a ] ] => rewrite H
-    | [ H : length ?a = _ |- context [ length ?a ] ] => rewrite H
-    end.
-*)
 
   Ltac simplen_rewrite H := try progress (
     set_evars_in H; (rewrite_strat (topdown (hints lists)) in H); subst_evars;
@@ -1879,23 +1863,27 @@ Module MLog.
   Qed.
 
 
-  Theorem recover_ok: forall xp cs,
-    {< d ents,
+  Definition recover T xp cs rx : prog T :=
+    let^ (cs, log) <- DLog.read xp cs;
+    ms <- apply xp (mk_memstate (replay_mem log map0) cs);
+    rx ms.
+
+  Theorem recover_ok: forall xp F cs,
+    {< d ents raw,
     PRE
-      crash_xform (recover_either_pred xp d ents cs)
+      BUFCACHE.rep cs raw *
+      [[ crash_xform (F * recover_either_pred xp d ents)%pred raw ]]
     POST RET:ms'
-      rep xp (LogLen xp) (Synced d) ms' \/
-      rep xp (LogLen xp) (Synced (replay_disk ents d)) ms'
-    CRASH
-      exists cs',  recover_either_pred xp d ents cs'
+      rep xp (crash_xform F) (LogLen xp) (Synced d) ms' \/
+      rep xp (crash_xform F) (LogLen xp) (Synced (replay_disk ents d)) ms'
+    CRASH exists raw' cs',
+      BUFCACHE.rep cs' raw' *
+      [[ (F * recover_either_pred xp d ents)%pred raw' ]]
     >} recover xp cs.
   Proof.
     unfold recover.
+    step.
 
-    prestep; norm'l.
-    repeat rewrite stars_prepend.
-    rewrite recover_either_after_crash.
-    cancel.
 
 
 
