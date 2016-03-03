@@ -1171,7 +1171,7 @@ Qed.
 Hint Extern 1 {{locked_disk_read _; _}} => apply locked_disk_read_ok : prog.
 
 Definition cache_frames tid :=
-  split_frames virt_disk (fun s a => get_s_lock a s = Owned tid).
+  split_frames (fun s a => get_s_lock a s = Owned tid) virt_disk.
 
 Lemma cache_frames_vd_pred : forall tid F LF ls s,
   cache_frames tid F LF ls s ->
@@ -1200,6 +1200,37 @@ Proof.
 
   step pre simplify with finish.
   eapply split_frame_indifferent; eauto.
+Qed.
+
+Definition cache_locked tid s (F: DISK_PRED) : pred :=
+  locks_held (fun s a => get_s_lock a s = Owned tid) s F.
+
+Theorem locked_disk_read_lf' : forall a,
+  stateS TID: tid |-
+  {{ F LF v rest,
+   | PRE d m s0 s: let vd := get GDisk s in
+                   Inv m s d /\
+                   vd |= F * cache_locked tid s
+                      (LF * a |-> (Valuset v rest, None))
+   | POST d' m' s0' s' r:
+                   let vd' := get GDisk s' in
+                   Inv m' s' d' /\
+                   vd' |= F * cache_locked tid s'
+                      (LF * a |-> (Valuset v rest, None)) /\
+                   s0' = s0
+  }} locked_disk_read a.
+Proof.
+  unfold cache_locked; intros.
+  eapply pimpl_ok; [ apply locked_disk_read_ok | ].
+  simplify.
+  apply locks_held_unwrap_weaken in H0.
+  pred_apply; cancel.
+  eapply locks_held_ptsto_locked_frame in H0; auto.
+
+  step pre simplify with finish.
+  replace (get GDisk s2).
+  pred_apply' H0; cancel.
+  eapply locks_held_indifferent; eauto.
 Qed.
 
 Ltac replace_cache :=

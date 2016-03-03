@@ -27,16 +27,10 @@ Definition preserves_frames R F F' :=
 Section State.
 
 Variable S:Type.
-Variable proj: S -> @mem AT AEQ V.
 (* lock_held will capture the intended owner; for example,
 for each tid, lock_held := fun s a => get_s_lock s a = Owned tid *)
 Variable lock_held: S -> AT -> Prop.
 
-Definition preserves (R : S -> S -> Prop) F F' :=
-  forall P s s',
-    (F * P)%pred (proj s) ->
-    R s s' ->
-    (F * P)%pred (proj s').
 
 Definition pred_domain F (dom: list AT) :=
   (forall m, F m -> forall a v, m a = Some v -> In a dom) /\
@@ -230,6 +224,15 @@ Definition locked ls : S -> Prop :=
   fun s =>
   forall a, In a ls -> lock_held s a.
 
+Section Projection.
+
+Variable proj: S -> @mem AT AEQ V.
+Definition preserves (R : S -> S -> Prop) F F' :=
+  forall P s s',
+    (F * P)%pred (proj s) ->
+    R s s' ->
+    (F * P)%pred (proj s').
+
 Definition locked_frame F (ls: list AT) : S -> Prop :=
   fun s =>
     F (proj s) /\
@@ -265,6 +268,8 @@ Proof.
   start; dispatch.
 Qed.
 
+End Projection.
+
 Definition locks_held s F : pred :=
   fun m => F m /\
   precise F /\
@@ -272,11 +277,31 @@ Definition locks_held s F : pred :=
 
 Hint Unfold locks_held : pred.
 
-Theorem locks_held_ptsto_locked : forall s F a v m,
+Theorem locks_held_weaken : forall s F F',
+  F =p=> F' ->
+  precise F' ->
+  locks_held s F =p=> locks_held s F'.
+Proof.
+  start; dispatch.
+Qed.
+
+Lemma locks_held_ptsto_locked : forall s F a v m,
   locks_held s (F * a |-> v) m ->
   lock_held s a.
 Proof.
   start; dispatch.
+Qed.
+
+Theorem locks_held_ptsto_locked_frame : forall s F LF a v m,
+  (F * locks_held s (LF * a |-> v))%pred m ->
+  lock_held s a.
+Proof.
+  intros.
+  unfold sep_star in H at 1.
+  rewrite sep_star_is in H.
+  unfold sep_star_impl in H.
+  repeat deex.
+  eauto using locks_held_ptsto_locked.
 Qed.
 
 Hint Resolve strictly_exact_to_precise
@@ -285,6 +310,7 @@ Hint Resolve strictly_exact_to_precise
 
 Hint Resolve sep_star_mem_union.
 
+(* outer frame F is unnecessary, but might make using the theorem easier *)
 Theorem locks_held_add_lock : forall s F LF a v,
   lock_held s a ->
   F * a |-> v * locks_held s LF =p=>
@@ -302,10 +328,51 @@ Proof.
   eauto.
 Qed.
 
-Theorem locks_held_weaken : forall s F F',
-  F =p=> F' ->
-  precise F' ->
-  locks_held s F =p=> locks_held s F'.
+Lemma locks_held_combine : forall s F F',
+  locks_held s F * locks_held s F' =p=>
+  locks_held s (F * F').
+Proof.
+  unfold locks_held; dispatch;
+  unfold_sep_star in H;
+  repeat deex; eauto.
+  apply mem_union_some in H0; destruct H0; eauto.
+Qed.
+
+Lemma locks_held_wrap : forall s F,
+  (forall m, F m -> forall a, lock_held s a) ->
+  precise F ->
+  F =p=> locks_held s F.
+Proof.
+  unfold locks_held; dispatch.
+Qed.
+
+Hint Resolve locks_held_combine locks_held_wrap.
+
+Theorem locks_held_add_frame : forall s F LF,
+  (forall m, F m -> forall a, lock_held s a) ->
+  precise F ->
+  F * locks_held s LF =p=>
+  locks_held s (F * LF).
+Proof.
+  intros.
+  eapply pimpl_trans with (locks_held s F * locks_held s LF)%pred.
+  cancel; eauto.
+  eauto.
+Qed.
+
+Theorem locks_held_unwrap_weaken : forall s F LF,
+  F * locks_held s LF =p=>
+  F * LF.
+Proof.
+  intros; cancel.
+  unfold pimpl, locks_held; intros; intuition.
+Qed.
+
+Check split_frame_indifferent.
+
+Theorem locks_held_indifferent : forall s s' LF,
+  (forall a, lock_held s a -> lock_held s' a) ->
+  locks_held s LF =p=> locks_held s' LF.
 Proof.
   start; dispatch.
 Qed.
