@@ -40,6 +40,12 @@ Proof.
   induction i; destruct n; firstorder; inversion H.
 Qed.
 
+Lemma repeat_selN' : forall T i n (v : T),
+  selN (repeat v n) i v = v.
+Proof.
+  induction i; destruct n; firstorder; inversion H.
+Qed.
+
 Lemma repeat_app : forall T i j (x : T),
   repeat x i ++ repeat x j = repeat x (i + j).
 Proof.
