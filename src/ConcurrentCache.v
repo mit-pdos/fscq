@@ -1146,9 +1146,10 @@ Theorem locked_disk_read_ok : forall a,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             vd' = virt_disk s /\
-                            R tid s s' /\
+                            (* tid's locks are monotonic *)
+                            (forall a, get_s_lock a s = Owned tid ->
+                            get_s_lock a s' = Owned tid) /\
                             r = v /\
-                            get_s_lock a s = Owned tid /\
                             s0' = s0
     }} locked_disk_read a.
 Proof.
@@ -1199,8 +1200,7 @@ Proof.
 
   step pre simplify with finish.
   eapply split_frame_indifferent; eauto.
-  (* locked_disk_read spec does not promise that locks are monotonic *)
-Admitted.
+Qed.
 
 Ltac replace_cache :=
   match goal with
