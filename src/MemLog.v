@@ -1586,13 +1586,9 @@ Module MLog.
     unfold map_valid; firstorder.
   Qed.
 
-  Hint Rewrite length_synced_list selN_combine repeat_selN' : lists.
+  Hint Rewrite length_synced_list selN_combine repeat_selN' Nat.min_id : lists.
 
-  Ltac simplen_rewrite H := try progress (
-    set_evars_in H; (rewrite_strat (topdown (hints lists)) in H); subst_evars;
-      [ try simplen_rewrite H | try autorewrite with lists .. ]
-  ).
-
+(*
   Ltac length_rewrites :=
     match goal with
     | [ H : context[length ?x] |- _] => progress ( first [ is_var x | simplen_rewrite H ] )
@@ -1601,9 +1597,27 @@ Module MLog.
     | [ H : length ?a = length ?b |- context [ length ?a ] ] => rewrite H
     | [ H : length ?a = _ |- context [ length ?a ] ] => rewrite H
     end.
+*)
 
-  Ltac simplen :=
-    auto; repeat (repeat length_rewrites; autorewrite with lists; subst); auto; try omega.
+  Ltac simplen_rewrite H := try progress (
+    set_evars_in H; (rewrite_strat (topdown (hints lists)) in H); subst_evars;
+      [ try simplen_rewrite H | try autorewrite with lists .. ]).
+
+  Ltac simplen' := repeat match goal with
+    | [H : context[length ?x] |- _] => progress ( first [ is_var x | simplen_rewrite H ] )
+    | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
+    | [H : context[Nat.min ?a ?a] |- _ ] => rewrite Nat.min_id in H
+    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
+    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [H : equal_unless_in _ _ _ |- _ ] => apply equal_unless_in_length_eq in H
+    | [H : possible_crash_list _ _ |- _ ] => apply possible_crash_list_length_eq in H
+    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
+    end.
+
+  Ltac simplen :=  auto; repeat (try subst; simpl;
+    auto; simplen'; autorewrite with lists); simpl; eauto; try omega.
+
 
   Ltac map_rewrites :=
     match goal with
@@ -1700,20 +1714,135 @@ Module MLog.
     apply Map.elements_3w.
   Qed.
 
-
-
-  Lemma nil_unless_in_replay_disk' : forall l d d' vsl,
-    KNoDup l -> length vsl = length d ->
-    nil_unless_in (map fst l) vsl ->
-    possible_crash_list (List.combine (replay_disk l d) vsl) d' ->
-    replay_disk l d = replay_disk l d'.
+  Lemma nil_unless_in_nils : forall vsl nr,
+    nil_unless_in nil vsl ->
+    length vsl = nr ->
+    vsl = repeat nil nr.
   Proof.
-    induction l; intuition; simpl.
-    eapply list_selN_ext; intros.
-    simplen.
-    admit.
+    unfold nil_unless_in.
+    induction vsl; destruct nr; intuition; simpl.
+    inversion H0.
+    inversion H0.
+    rewrite <- (H 0) at 1; simpl; auto.
+    f_equal.
+    inversion H0.
+    apply IHvsl; intros; auto.
+    rewrite <- (H (S a0)) at 2; simpl; eauto.
   Qed.
 
+
+  Lemma possible_crash_list_combine_nils : forall d d',
+    possible_crash_list (List.combine d (repeat nil (length d))) d' -> d = d'.
+  Proof.
+    unfold possible_crash_list.
+    induction d; destruct d'; intuition.
+    inversion H0.
+    inversion H0.
+    f_equal.
+    generalize (H1 0); rewrite H0; simpl; intuition.
+    destruct H; firstorder.
+
+    apply IHd; intuition.
+    generalize (H1 (S i)); rewrite H0; simpl; intros.
+    apply H2; simplen.
+    inversion H0; omega.
+  Qed.
+
+  Lemma nil_unless_in_empty : forall d d' vsl,
+    possible_crash_list (List.combine d vsl) d' ->
+    length vsl = length d ->
+    nil_unless_in nil vsl ->
+    d = d'.
+  Proof.
+    intros.
+    apply possible_crash_list_combine_nils.
+    erewrite <- nil_unless_in_nils; eauto.
+  Qed.
+
+  Lemma nil_unless_in_updN : forall V l a0 (v0 : V) vsl,
+    ~ KIn (a0, v0) l ->
+    nil_unless_in (a0 :: (map fst l)) vsl ->
+    nil_unless_in (map fst l) (updN vsl a0 nil).
+  Proof.
+    unfold nil_unless_in; simpl; intuition.
+    destruct (lt_dec a0 (length vsl)).
+    destruct (addr_eq_dec a a0); subst; simpl.
+    rewrite selN_updN_eq; auto.
+    rewrite selN_updN_ne; auto.
+    apply H0; intuition.
+
+    destruct (addr_eq_dec a a0); subst; simpl.
+    rewrite selN_oob; auto; simplen.
+    rewrite selN_updN_ne; auto.
+    apply H0; intuition.
+  Qed.
+
+  Lemma possible_crash_list_combine_updN : forall vsl d d' a v,
+    selN d a $0 = v -> length vsl = length d ->
+    possible_crash_list (List.combine d vsl) d' ->
+    possible_crash_list (List.combine d (updN vsl a nil)) (updN d' a v).
+  Proof.
+    unfold possible_crash_list, vsmerge; intros; intuition; simplen.
+    generalize (H3 i H1).
+    repeat rewrite selN_combine by simplen; simpl; intros.
+    destruct (addr_eq_dec a i); try subst a.
+    setoid_rewrite selN_updN_eq; firstorder.
+    setoid_rewrite selN_updN_ne; auto.
+  Qed.
+
+  Lemma In_InA : forall a v l,
+    In a (map fst l) -> InA (@Map.eq_key valu) (a, v) l.
+  Proof.
+    intros.
+    apply in_map_fst_exists_snd in H.
+    destruct H.
+    apply InA_alt.
+    exists (a, x).
+    split; auto.
+    hnf; auto.
+  Qed.
+  Local Hint Resolve In_InA.
+
+  Lemma nil_unless_in_replay_disk' : forall l d d' vsl,
+    nil_unless_in (map fst l) vsl ->
+    possible_crash_list (List.combine (replay_disk l d) vsl) d' ->
+    KNoDup l -> length vsl = length d ->
+    (forall x, InA (@Map.eq_key_elt valu) x l -> fst x < length d) ->
+    replay_disk l d = replay_disk l d'.
+  Proof.
+    induction l; intuition; simpl in *.
+    eapply nil_unless_in_empty; eauto.
+    inversion H1; subst.
+
+    eapply IHl; intros; eauto.
+    eapply nil_unless_in_updN; eauto.
+    apply possible_crash_list_combine_updN; auto.
+
+    erewrite replay_disk_selN_other; auto.
+    apply selN_updN_eq; auto.
+    apply (H3 (a0, b)).
+    apply InA_cons_hd; hnf; auto.
+    simplen.
+    simplen.
+    simplen.
+  Qed.
+
+  Lemma nil_unless_in_replay_disk : forall m d d' vsl,
+    map_valid m d ->
+    nil_unless_in (map_keys m) vsl ->
+    length vsl = length (replay_disk (Map.elements m) d) ->
+    possible_crash_list (List.combine (replay_disk (Map.elements m) d) vsl) d' ->
+    replay_disk (Map.elements m) d = replay_disk (Map.elements m) d'.
+  Proof.
+    unfold map_valid; intros.
+    eapply nil_unless_in_replay_disk'; intros; eauto.
+    apply Map.elements_3w.
+    simplen.
+    destruct x.
+    eapply H.
+    apply Map.elements_2.
+    simpl; eauto.
+  Qed.
 
   Lemma applying_after_crash_ok : forall xp na d m ents,
     crash_xform (rep_inner xp na (Applying d) m) =p=>
@@ -1732,13 +1861,10 @@ Module MLog.
     unfold synced_data, map_replay; cancel; t.
 
     eapply equal_unless_in_replay_disk; eauto.
-
-    admit.
-
+    eapply nil_unless_in_replay_disk; eauto.
     rewrite replay_disk_twice; auto.
     apply Map.elements_3w.
   Qed.
-
 
   Local Hint Resolve synced_after_crash_ok synced_replay_after_crash_ok
                      flushing_after_crash_ok applying_after_crash_ok.
