@@ -16,8 +16,8 @@ VS_HS      := codegen/FS.hs
 VS_ML      := codegen/FS.ml
 VS_JSON    := codegen/FS.json
 GHC 	   := ghc
-ifeq (,$(shell $(GHC) --version | grep 'version 7.10' 2>/dev/null))
-	GHC := /opt/ghc/7.10.2/bin/ghc
+ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
+	GHC := /opt/ghc/8.0.1/bin/ghc
 endif
 
 GHCARGS    := -O2 -threaded
