@@ -1,5 +1,6 @@
 Require Import EventCSL.
 Require Import Locking.
+Require Import Pred.
 Require Import ForwardChaining.
 Require Import FunctionalExtensionality.
 Import List.
@@ -28,6 +29,8 @@ Section State.
 
 Variable S:Type.
 Variable proj: S -> @mem AT AEQ V.
+(* could replace lock with lock_held, returning a Prop rather than the lock
+itself *)
 Variable lock: S -> AT -> BusyFlagOwner.
 
 Definition preserves (R : S -> S -> Prop) F F' :=
@@ -68,6 +71,8 @@ Ltac dispatch := repeat split; intros;
   repeat deex;
   intuition eauto;
   try congruence.
+
+Hint Resolve ptsto_valid'.
 
 Lemma exact_domain_oneside : forall F,
   (forall m1 m2, F m1 -> F m2 ->
@@ -190,7 +195,6 @@ Theorem pred_domain_ptsto_in : forall F a v ls,
   In a ls.
 Proof.
   start; dispatch.
-  eauto using ptsto_valid'.
 Qed.
 
 Definition precise_domain F :=
@@ -250,8 +254,7 @@ Proof.
   rewrite sep_star_is in H0.
   unfold sep_star_impl in H0.
   repeat deex.
-
-  eauto using ptsto_valid'.
+  eauto.
 Qed.
 
 Theorem split_frame_indifferent : forall tid F LF ls s s',
@@ -259,6 +262,51 @@ Theorem split_frame_indifferent : forall tid F LF ls s s',
   (forall a, lock s a = Owned tid -> lock s' a = Owned tid) ->
   proj s' = proj s ->
   split_frames tid F LF ls s'.
+Proof.
+  start; dispatch.
+Qed.
+
+Definition locks_held tid s F : pred :=
+  fun m => F m /\
+  precise F /\
+  (forall a v, m a = Some v -> lock s a = Owned tid).
+
+Hint Unfold locks_held : pred.
+
+Theorem locks_held_ptsto_locked : forall tid s F a v m,
+  locks_held tid s (F * a |-> v) m ->
+  lock s a = Owned tid.
+Proof.
+  start; dispatch.
+Qed.
+
+Hint Resolve strictly_exact_to_precise
+  ptsto_strictly_exact
+  sep_star_precise.
+
+Hint Resolve sep_star_mem_union.
+
+Theorem locks_held_add_lock : forall tid s F LF a v,
+  lock s a = Owned tid ->
+  F * a |-> v * locks_held tid s LF =p=>
+  F * locks_held tid s (LF * a |-> v).
+Proof.
+  intros; cancel; unfold pimpl; intros.
+  unfold_sep_star in H0; repeat deex.
+  unfold locks_held in *; dispatch.
+  destruct (AEQ a a0); subst; eauto.
+  unfold ptsto in *; intuition.
+  rewrite mem_union_comm in H1 by auto.
+  unfold mem_union in H1.
+  assert (m2 a0 = None) by eauto.
+  replace (m2 a0) in *.
+  eauto.
+Qed.
+
+Theorem locks_held_weaken : forall tid s F F',
+  F =p=> F' ->
+  precise F' ->
+  locks_held tid s F =p=> locks_held tid s F'.
 Proof.
   start; dispatch.
 Qed.
