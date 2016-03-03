@@ -26,7 +26,7 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE EmptyDataDecls #-}
-module System.Fuse
+module Fuse
     ( -- * Using FUSE
 
       -- $intro
