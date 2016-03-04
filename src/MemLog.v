@@ -1,11 +1,7 @@
 Require Import Arith.
 Require Import Bool.
 Require Import List.
-Require Import FMapAVL.
-Require Import FMapFacts.
 Require Import Classes.SetoidTactics.
-Require Import Structures.OrderedType.
-Require Import Structures.OrderedTypeEx.
 Require Import Pred PredCrash.
 Require Import Prog.
 Require Import Hoare.
@@ -25,21 +21,16 @@ Require Import DiskLog2.
 Require Import AsyncDisk.
 Require Import SepAuto.
 Require Import GenSepN.
+Require Import MapUtils.
+Require Import FMapFacts.
 
-Module Map := FMapAVL.Make(Nat_as_OT).
-Module MapFacts := WFacts_fun Nat_as_OT Map.
-Module MapProperties := WProperties_fun Nat_as_OT Map.
-Module MapOrdProperties := OrdProperties Map.
 
 Import ListNotations.
 Set Implicit Arguments.
 
 Definition valumap := Map.t valu.
-Definition map0 := Map.empty valu.
 Definition diskstate := list valu.
-
-Definition KIn V := InA (@Map.eq_key V).
-Definition KNoDup V := NoDupA (@Map.eq_key V).
+Definition vmap0 := map0 valu.
 
 Module MLog.
 
@@ -72,11 +63,6 @@ Module MLog.
 
   Definition map_replay ms old cur : rawpred :=
     ([[ cur = replay_disk (Map.elements ms) old ]])%pred.
-
-  Definition map_empty ms : rawpred :=
-    ([[ Map.Equal ms map0 ]])%pred.
-
-  Definition map_keys (m : valumap) := map fst (Map.elements m).
 
   Definition map_merge (m1 m2 : valumap) :=
     replay_mem (Map.elements m2) m1.
@@ -111,7 +97,7 @@ Module MLog.
 
   Definition rep_inner xp na st ms :=
     ( exists log d0,
-      [[ Map.Equal ms (replay_mem log map0) ]] *
+      [[ Map.Equal ms (replay_mem log vmap0) ]] *
       [[ goodSize addrlen (length d0) /\ map_valid ms d0 ]] *
     match st with
     | Synced d =>
@@ -161,7 +147,7 @@ Module MLog.
     cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
     cs <- BUFCACHE.sync_vecs (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
-    rx (mk_memstate map0 cs).
+    rx (mk_memstate vmap0 cs).
 
   Definition flush T xp ents ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
@@ -178,27 +164,12 @@ Module MLog.
 
 
   Lemma map_valid_map0 : forall m,
-    map_valid map0 m.
+    map_valid vmap0 m.
   Proof.
     unfold map_valid, map0; intuition; exfalso;
     apply MapFacts.empty_mapsto_iff in H; auto.
   Qed.
 
-
-
-  Lemma mapeq_elements : forall V m1 m2,
-    @Map.Equal V m1 m2 -> Map.elements m1 = Map.elements m2.
-  Proof.
-    intros.
-    apply MapOrdProperties.elements_Equal_eqlistA in H.
-    generalize dependent (Map.elements m2).
-    generalize dependent (Map.elements m1).
-    induction l.
-    - intros. inversion H. reflexivity.
-    - intros. destruct l0; inversion H. subst.
-      inversion H3. destruct a; destruct p; simpl in *; subst.
-      f_equal; eauto.
-  Qed.
 
   Arguments DLog.rep: simpl never.
   Hint Extern 0 (okToUnify (DLog.rep _ _) (DLog.rep _ _)) => constructor : okToUnify.
@@ -240,38 +211,6 @@ Module MLog.
     apply IHl; auto.
   Qed.
 
-  Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
-    In a (map fst l) -> exists b, In (a, b) l.
-  Proof.
-    induction l; simpl; firstorder.
-    destruct a; simpl in *; subst; eauto.
-  Qed.
-
-  Local Hint Resolve MapProperties.eqke_equiv.
-
-  Lemma KNoDup_NoDup: forall V (l : list (addr * V)),
-    KNoDup l -> NoDup (map fst l).
-  Proof.
-    induction l; simpl; intros; constructor.
-    inversion H; subst.
-    contradict H2.
-    apply in_map_fst_exists_snd in H2; destruct H2.
-    apply InA_alt.
-    exists (fst a, x); intuition.
-    destruct a; simpl in *.
-    cbv; auto.
-    inversion H; subst.
-    apply IHl; auto.
-  Qed.
-
-  Lemma map_fst_nodup: forall (ms : valumap),
-    NoDup (map fst (Map.elements ms)).
-  Proof.
-    intros.
-    apply KNoDup_NoDup.
-    apply Map.elements_3w.
-  Qed.
-
   Lemma replay_disk_selN_In : forall l m a v def,
     In (a, v) l -> NoDup (map fst l) -> a < length m ->
     selN (replay_disk l m) a def = v.
@@ -298,17 +237,6 @@ Module MLog.
     apply KNoDup_NoDup; auto.
   Qed.
 
-
-  Lemma InA_eqke_In : forall V a v l,
-    InA (Map.eq_key_elt (elt:=V)) (a, v) l -> In (a, v) l.
-  Proof.
-    induction l; intros; auto; inversion H; subst.
-    inversion H1.
-    destruct a0; simpl in *; subst; auto.
-    simpl. right.
-    apply IHl; auto.
-  Qed.
-
   Lemma replay_disk_selN_MapsTo : forall a v ms m def,
     Map.MapsTo a v ms -> a < length m ->
     selN (replay_disk (Map.elements ms) m) a def = v.
@@ -329,7 +257,7 @@ Module MLog.
     contradict H.
     erewrite MapFacts.elements_in_iff.
     apply in_map_fst_exists_snd in H; destruct H.
-    eexists; apply In_InA; eauto.
+    eexists. apply In_InA; eauto.
     apply KNoDup_NoDup.
     apply Map.elements_3w.
   Qed.
@@ -447,7 +375,7 @@ Module MLog.
   Qed.
 
   Section UnfoldProof1.
-  Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
+  Local Hint Unfold rep map_replay rep_inner: hoare_unfold.
 
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
@@ -502,20 +430,9 @@ Module MLog.
     simpl; auto.
   Qed.
 
-  Lemma is_empty_eq_map0 : forall m,
-    Map.is_empty m = true -> Map.Equal m map0.
-  Proof.
-    unfold map0; intros.
-    apply Map.is_empty_2 in H.
-    hnf; intros.
-    rewrite MapFacts.empty_o.
-    apply MapFacts.not_find_in_iff.
-    cbv in *; intros.
-    destruct H0; eapply H; eauto.
-  Qed.
 
   Lemma replay_mem_map0 : forall m,
-    Map.Equal (replay_mem (Map.elements m) map0) m.
+    Map.Equal (replay_mem (Map.elements m) vmap0) m.
   Proof.
     intros; hnf; intro.
     unfold replay_mem.
@@ -526,7 +443,7 @@ Module MLog.
   Local Hint Resolve MapFacts.Equal_refl.
 
   Lemma replay_mem_app' : forall l m,
-    Map.Equal (replay_mem ((Map.elements m) ++ l) map0) (replay_mem l m).
+    Map.Equal (replay_mem ((Map.elements m) ++ l) vmap0) (replay_mem l m).
   Proof.
     induction l using rev_ind; intros.
     rewrite app_nil_r; simpl.
@@ -537,8 +454,8 @@ Module MLog.
   Qed.
 
   Lemma replay_mem_app : forall l2 l m,
-    Map.Equal m (replay_mem l map0) ->
-    Map.Equal (replay_mem (l ++ l2) map0) (replay_mem l2 m).
+    Map.Equal m (replay_mem l vmap0) ->
+    Map.Equal (replay_mem (l ++ l2) vmap0) (replay_mem l2 m).
   Proof.
     induction l2 using rev_ind; intros.
     rewrite app_nil_r; simpl.
@@ -546,21 +463,6 @@ Module MLog.
     rewrite app_assoc.
     setoid_rewrite fold_left_app; simpl.
     rewrite <- IHl2; auto.
-  Qed.
-
-  Lemma map_add_comm : forall A k1 k2 (v1 v2 : A) m,
-    k1 <> k2 ->
-    Map.Equal (Map.add k1 v1 (Map.add k2 v2 m)) (Map.add k2 v2 (Map.add k1 v1 m)).
-  Proof.
-    intros; hnf; intro.
-    destruct (eq_nat_dec y k1); destruct (eq_nat_dec y k2); subst; try congruence.
-    rewrite MapFacts.add_eq_o by auto.
-    rewrite MapFacts.add_neq_o by auto.
-    rewrite MapFacts.add_eq_o; auto.
-    setoid_rewrite MapFacts.add_eq_o at 2; auto.
-    rewrite MapFacts.add_neq_o by auto.
-    rewrite MapFacts.add_eq_o; auto.
-    repeat rewrite MapFacts.add_neq_o; auto.
   Qed.
 
   Lemma replay_mem_equal : forall l m1 m2,
@@ -590,49 +492,10 @@ Module MLog.
     inversion H0; auto.
   Qed.
 
-  Lemma In_fst_KIn : forall V a (l : list (Map.key * V)),
-    In (fst a) (map fst l) -> KIn a l.
-  Proof.
-    intros; destruct a; simpl in *.
-    eapply in_selN_exists in H.
-    do 2 destruct H.
-    rewrite map_length in H.
-    apply InA_alt.
-    eexists; split.
-    2: apply in_selN_map; eauto.
-    rewrite H0.
-    hnf; auto.
-    Unshelve.
-    all : eauto.
-  Qed.
-
-
-  Lemma In_map_fst_MapIn : forall elt k m,
-    In k (map fst (Map.elements (elt:=elt) m)) <-> Map.In k m.
-  Proof.
-    intros; split; intros.
-    apply in_map_fst_exists_snd in H.
-    destruct H.
-    apply MapFacts.elements_in_iff.
-    exists x.
-    apply In_InA; auto.
-    apply MapFacts.elements_in_iff in H.
-    destruct H.
-    apply InA_alt in H.
-    destruct H; intuition.
-    hnf in H0; simpl in *; intuition; subst.
-    destruct x0; simpl in *.
-    generalize dependent (Map.elements m).
-    induction l; intros; simpl; auto.
-    inversion H1; intuition.
-    destruct a; inversion H.
-    tauto.
-  Qed.
-
 
   Lemma In_replay_mem_mem0 : forall l k,
     KNoDup l ->
-    In k (map fst (Map.elements (replay_mem l map0))) ->
+    In k (map fst (Map.elements (replay_mem l vmap0))) ->
     In k (map fst l).
   Proof.
     induction l; intros; simpl; auto.
@@ -650,7 +513,7 @@ Module MLog.
 
   Lemma replay_disk_replay_mem0 : forall l d,
     KNoDup l ->
-    replay_disk l d = replay_disk (Map.elements (elt:=valu) (replay_mem l map0)) d.
+    replay_disk l d = replay_disk (Map.elements (elt:=valu) (replay_mem l vmap0)) d.
   Proof.
     induction l; intros; simpl; auto.
     destruct a; inversion H; subst; simpl.
@@ -668,7 +531,7 @@ Module MLog.
   Lemma replay_disk_merge' : forall l1 l2 d,
     KNoDup l1 -> KNoDup l2 ->
     replay_disk l2 (replay_disk l1 d) =
-    replay_disk (Map.elements (replay_mem l2 (replay_mem l1 map0))) d.
+    replay_disk (Map.elements (replay_mem l2 (replay_mem l1 vmap0))) d.
   Proof.
     induction l1; intros; simpl.
     induction l2; simpl; auto.
@@ -767,17 +630,6 @@ Module MLog.
     eapply replay_mem_not_in; eauto.
   Qed.
 
-  Lemma map_add_repeat : forall V a (v : V) m,
-    Map.Equal (Map.add a v (Map.add a v m)) (Map.add a v m).
-  Proof.
-    intros; hnf; intros.
-    destruct (eq_nat_dec y a); subst; try congruence.
-    rewrite MapFacts.add_eq_o by auto.
-    rewrite MapFacts.add_eq_o; auto.
-    rewrite MapFacts.add_neq_o by auto.
-    repeat rewrite MapFacts.add_neq_o; auto.
-  Qed.
-
   Lemma map_merge_repeat' : forall l m,
     KNoDup l ->
     Map.Equal (replay_mem l (replay_mem l m)) (replay_mem l m).
@@ -799,16 +651,6 @@ Module MLog.
   Qed.
 
   Local Hint Resolve Map.is_empty_1 Map.is_empty_2.
-
-  Lemma eq_key_dec : forall V (a b : Map.key * V),
-    {Map.eq_key a b} + {~ Map.eq_key a b}.
-  Proof.
-    intros; destruct a, b.
-    destruct (addr_eq_dec k k0); subst.
-    left; hnf; auto.
-    right; hnf. tauto.
-  Qed.
-
 
   Lemma map_valid_replay_mem' : forall ents d ms,
     log_valid ents d ->
@@ -888,7 +730,7 @@ Module MLog.
   Local Hint Resolve KNoDup_NoDup Map.elements_3w.
 
   Section UnfoldProof2.
-  Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
+  Local Hint Unfold rep map_replay rep_inner: hoare_unfold.
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem flush_noapply_ok: forall xp ents ms,
@@ -980,62 +822,6 @@ Module MLog.
     apply Map.elements_2; eauto.
   Qed.
 
-  Lemma vssync_synced : forall l a,
-    snd (selN l a ($0, nil)) = nil ->
-    vssync l a = l.
-  Proof.
-    unfold vssync; induction l; intros; auto.
-    destruct a0; simpl in *.
-    destruct a; simpl in *.
-    rewrite <- H; auto.
-    f_equal.
-    rewrite IHl; auto.
-  Qed.
-
-  Lemma vsupd_comm : forall l a1 v1 a2 v2,
-    a1 <> a2 ->
-    vsupd (vsupd l a1 v1) a2 v2 = vsupd (vsupd l a2 v2) a1 v1.
-  Proof.
-    unfold vsupd; intros.
-    rewrite updN_comm by auto.
-    repeat rewrite selN_updN_ne; auto.
-  Qed.
-
-  Lemma vsupd_vecs_vsupd_notin : forall av l a v,
-    ~ In a (map fst av) ->
-    vsupd_vecs (vsupd l a v) av = vsupd (vsupd_vecs l av) a v.
-  Proof.
-    induction av; simpl; intros; auto.
-    destruct a; simpl in *; intuition.
-    rewrite <- IHav by auto.
-    rewrite vsupd_comm; auto.
-  Qed.
-
-  Lemma vssync_vsupd_eq : forall l a v,
-    vssync (vsupd l a v) a = updN l a (v, nil).
-  Proof.
-    unfold vsupd, vssync, vsmerge; intros.
-    rewrite updN_twice.
-    destruct (lt_dec a (length l)).
-    rewrite selN_updN_eq; simpl; auto.
-    rewrite selN_oob.
-    repeat rewrite updN_oob; auto.
-    omega. omega.
-    autorewrite with lists; omega.
-  Qed.
-
-  Lemma updN_vsupd_vecs_notin : forall av l a v,
-    ~ In a (map fst av) ->
-    updN (vsupd_vecs l av) a v = vsupd_vecs (updN l a v) av.
-  Proof.
-    induction av; simpl; intros; auto.
-    destruct a; simpl in *; intuition.
-    rewrite IHav by auto.
-    unfold vsupd, vsmerge.
-    rewrite updN_comm by auto.
-    rewrite selN_updN_ne; auto.
-  Qed.
-
   Lemma synced_list_updN : forall l a v,
     updN (synced_list l) a (v, nil) = synced_list (updN l a v).
   Proof.
@@ -1060,7 +846,6 @@ Module MLog.
     rewrite synced_list_updN.
     auto.
   Qed.
-
 
   Lemma apply_synced_data_ok : forall xp m d,
     arrayN (DataStart xp) (vssync_vecs (vsupd_vecs (synced_list d) (Map.elements m)) (map_keys m))
@@ -1218,13 +1003,6 @@ Module MLog.
     rewrite combine_length_eq; autorewrite with lists; auto.
   Qed.
 
-  Lemma vsupd_length : forall vsl a v,
-    length (vsupd vsl a v) = length vsl.
-  Proof.
-    unfold vsupd; intros.
-    rewrite length_updN; auto.
-  Qed.
-
 
   Lemma apply_unsync_applying_ok' : forall l d n,
     NoDup (map fst l) ->
@@ -1275,7 +1053,7 @@ Module MLog.
 
 
   Section UnfoldProof3.
-  Local Hint Unfold rep map_replay rep_inner map_empty: hoare_unfold.
+  Local Hint Unfold rep map_replay rep_inner: hoare_unfold.
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
 
   Theorem apply_ok: forall xp ms,
@@ -1331,7 +1109,7 @@ Module MLog.
 
     (* synced nil *)
     or_l. norm.
-    instantiate (2 := mk_memstate map0 cs).
+    instantiate (2 := mk_memstate vmap0 cs).
     cancel. intuition.
     pred_apply; norm.
     instantiate (log0 := nil).
@@ -1773,17 +1551,6 @@ Module MLog.
     setoid_rewrite selN_updN_ne; auto.
   Qed.
 
-  Lemma In_InA : forall a v l,
-    In a (map fst l) -> InA (@Map.eq_key valu) (a, v) l.
-  Proof.
-    intros.
-    apply in_map_fst_exists_snd in H.
-    destruct H.
-    apply InA_alt.
-    exists (a, x).
-    split; auto.
-    hnf; auto.
-  Qed.
   Local Hint Resolve In_InA.
 
   Lemma nil_unless_in_replay_disk' : forall l d d' vsl,
@@ -1805,6 +1572,8 @@ Module MLog.
     apply selN_updN_eq; auto.
     apply (H3 (a0, b)).
     apply InA_cons_hd; hnf; auto.
+    contradict H6.
+    apply In_KIn; auto.
     simplen.
     simplen.
     simplen.
@@ -1871,7 +1640,7 @@ Module MLog.
       =p=>
     crash_xform F * exists na ms log old,
        synced_data xp old * DLog.rep xp (DLog.Synced na log) *
-       [[ Map.Equal ms (replay_mem log map0) ]] *
+       [[ Map.Equal ms (replay_mem log vmap0) ]] *
        [[ goodSize addrlen (length old) /\ map_valid ms old ]] *
      ( [[ d = replay_disk (Map.elements ms) old ]] \/
        [[ replay_disk ents d = replay_disk (Map.elements ms) old ]] ).
@@ -1887,7 +1656,7 @@ Module MLog.
 
   Definition recover T xp cs rx : prog T :=
     let^ (cs, log) <- DLog.read xp cs;
-    rx (mk_memstate (replay_mem log map0) cs).
+    rx (mk_memstate (replay_mem log vmap0) cs).
 
   Theorem recover_ok: forall xp F cs,
     {< d ents raw,

@@ -15,11 +15,7 @@ Require Import ListUtils.
 Require Import AsyncDisk.
 Require Import OrderedTypeEx.
 Require Import Arith.
-
-
-Module Map := FMapAVL.Make(Nat_as_OT).
-Module MapFacts := WFacts_fun Nat_as_OT Map.
-Module MapProperties := WProperties_fun Nat_as_OT Map.
+Require Import MapUtils.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -119,92 +115,12 @@ Module BUFCACHE.
     cs <- trim (a + i) cs;
     rx cs.
 
-  Lemma mapsto_add : forall a v v' (m : Map.t valu),
-    Map.MapsTo a v (Map.add a v' m) -> v' = v.
-  Proof.
-    intros.
-    apply Map.find_1 in H.
-    erewrite Map.find_1 in H by (apply Map.add_1; auto).
-    congruence.
-  Qed.
 
-  Lemma map_remove_cardinal : forall V (m : Map.t V) k, (exists v, Map.MapsTo k v m) ->
-    Map.cardinal (Map.remove k m) = Map.cardinal m - 1.
-  Proof.
-    intros; deex.
-    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m) (m':=m) (x:=k) (e:=v).
-    omega.
-    apply Map.remove_1; auto.
-    intro.
-    destruct (Nat_as_OT.eq_dec k y); subst.
-    - rewrite MapFacts.add_eq_o; auto.
-      erewrite Map.find_1; eauto.
-    - rewrite MapFacts.add_neq_o; auto.
-      rewrite MapFacts.remove_neq_o; auto.
-  Qed.
 
-  Lemma map_add_cardinal : forall V (m : Map.t V) k v, ~ (exists v, Map.MapsTo k v m) ->
-    Map.cardinal (Map.add k v m) = Map.cardinal m + 1.
-  Proof.
-    intros.
-    erewrite MapProperties.cardinal_2 with (m:=m).
-    omega.
-    eauto.
-    intro.
-    reflexivity.
-  Qed.
-
-  Lemma map_add_dup_cardinal' : forall V (m : Map.t V) k v, (exists v, Map.MapsTo k v m) ->
-    Map.cardinal (Map.add k v m) = Map.cardinal (Map.remove k m) + 1.
-  Proof.
-    intros; deex.
-    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m).
-    omega.
-    apply Map.remove_1; auto.
-    intro.
-    destruct (Nat_as_OT.eq_dec k y); subst.
-    - rewrite MapFacts.add_eq_o; auto.
-      rewrite MapFacts.add_eq_o; auto.
-    - rewrite MapFacts.add_neq_o; auto.
-      rewrite MapFacts.add_neq_o; try omega.
-      rewrite MapFacts.remove_neq_o; auto.
-  Qed.
-
-  Lemma map_add_dup_cardinal : forall V (m : Map.t V) k v, (exists v, Map.MapsTo k v m) ->
-    Map.cardinal (Map.add k v m) = Map.cardinal m.
-  Proof.
-    intros.
-    replace (Map.cardinal m) with ((Map.cardinal m - 1) + 1).
-    erewrite <- map_remove_cardinal; eauto.
-    apply map_add_dup_cardinal'; auto.
-    deex.
-    assert (Map.cardinal m <> 0); try omega.
-    erewrite MapProperties.cardinal_2 with (m:=Map.remove k m).
-    omega.
-    apply Map.remove_1; reflexivity.
-    intro.
-    destruct (Nat_as_OT.eq_dec k y); subst.
-    - rewrite MapFacts.add_eq_o; auto.
-      erewrite Map.find_1; eauto.
-    - rewrite MapFacts.add_neq_o; auto.
-      rewrite MapFacts.remove_neq_o; auto.
-  Qed.
-
-  Lemma map_elements_hd_in : forall V (m : Map.t V) k w l,
-    Map.elements m = (k, w) :: l ->
-    Map.In k m.
-  Proof.
-    intros.
-    eexists; apply Map.elements_2.
-    rewrite H.
-    apply InA_cons_hd.
-    constructor; eauto.
-  Qed.
-
-  Hint Resolve Map.remove_3.
-  Hint Resolve Map.add_3.
-  Hint Resolve Map.find_2.
-  Hint Resolve mapsto_add.
+  Local Hint Resolve Map.remove_3.
+  Local Hint Resolve Map.add_3.
+  Local Hint Resolve Map.find_2.
+  Local Hint Resolve mapsto_add.
 
   Local Hint Unfold rep : hoare_unfold.
 

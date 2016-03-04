@@ -281,6 +281,14 @@ Definition vsupd_range (vsl : list valuset) (vl : list valu) :=
   let n := length vl in
   (List.combine vl (map vsmerge (firstn n vsl))) ++ skipn n vsl.
 
+
+Lemma vsupd_length : forall vsl a v,
+  length (vsupd vsl a v) = length vsl.
+Proof.
+  unfold vsupd; intros.
+  rewrite length_updN; auto.
+Qed.
+
 Lemma vsupd_range_length : forall vsl l,
   length l <= length vsl ->
   length (vsupd_range vsl l) = length vsl.
@@ -461,6 +469,67 @@ Proof.
   simpl in H.
   omega.
 Qed.
+
+Lemma vssync_synced : forall l a,
+  snd (selN l a ($0, nil)) = nil ->
+  vssync l a = l.
+Proof.
+  unfold vssync; induction l; intros; auto.
+  destruct a0; simpl in *.
+  destruct a; simpl in *.
+  rewrite <- H; auto.
+  f_equal.
+  rewrite IHl; auto.
+Qed.
+
+Lemma vsupd_comm : forall l a1 v1 a2 v2,
+  a1 <> a2 ->
+  vsupd (vsupd l a1 v1) a2 v2 = vsupd (vsupd l a2 v2) a1 v1.
+Proof.
+  unfold vsupd; intros.
+  rewrite updN_comm by auto.
+  repeat rewrite selN_updN_ne; auto.
+Qed.
+
+Lemma vsupd_vecs_vsupd_notin : forall av l a v,
+  ~ In a (map fst av) ->
+  vsupd_vecs (vsupd l a v) av = vsupd (vsupd_vecs l av) a v.
+Proof.
+  induction av; simpl; intros; auto.
+  destruct a; simpl in *; intuition.
+  rewrite <- IHav by auto.
+  rewrite vsupd_comm; auto.
+Qed.
+
+Lemma vssync_vsupd_eq : forall l a v,
+  vssync (vsupd l a v) a = updN l a (v, nil).
+Proof.
+  unfold vsupd, vssync, vsmerge; intros.
+  rewrite updN_twice.
+  destruct (lt_dec a (length l)).
+  rewrite selN_updN_eq; simpl; auto.
+  rewrite selN_oob.
+  repeat rewrite updN_oob; auto.
+  omega. omega.
+  autorewrite with lists; omega.
+Qed.
+
+Lemma updN_vsupd_vecs_notin : forall av l a v,
+  ~ In a (map fst av) ->
+  updN (vsupd_vecs l av) a v = vsupd_vecs (updN l a v) av.
+Proof.
+  induction av; simpl; intros; auto.
+  destruct a; simpl in *; intuition.
+  rewrite IHav by auto.
+  unfold vsupd, vsmerge.
+  rewrite updN_comm by auto.
+  rewrite selN_updN_ne; auto.
+Qed.
+
+
+
+
+(* crash prediate over arrays *)
 
 Definition possible_crash_list (l: list valuset) (l': list valu) :=
   length l = length l' /\

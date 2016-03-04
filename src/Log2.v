@@ -25,6 +25,7 @@ Require Import DiskLog2.
 Require Import AsyncDisk.
 Require Import SepAuto.
 Require Import GenSepN.
+Require Import MemLog.
 
 Module Map := FMapAVL.Make(Nat_as_OT).
 Module MapFacts := WFacts_fun Nat_as_OT Map.

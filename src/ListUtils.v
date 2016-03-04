@@ -1598,3 +1598,10 @@ Proof.
   destruct n; simpl; auto.
 Qed.
 
+Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
+  In a (map fst l) -> exists b, In (a, b) l.
+Proof.
+  induction l; simpl; firstorder.
+  destruct a; simpl in *; subst; eauto.
+Qed.
+
