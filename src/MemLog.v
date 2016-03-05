@@ -61,8 +61,8 @@ Module MLog.
   Definition replay_disk (log : DLog.contents) (m : diskstate) : diskstate:=
     fold_left (fun m' e => updN m' (fst e) (snd e)) log m.
 
-  Definition map_replay ms old cur : rawpred :=
-    ([[ cur = replay_disk (Map.elements ms) old ]])%pred.
+  Definition map_replay ms old cur :=
+    cur = replay_disk (Map.elements ms) old.
 
   Definition map_merge (m1 m2 : valumap) :=
     replay_mem (Map.elements m2) m1.
@@ -101,17 +101,16 @@ Module MLog.
       [[ goodSize addrlen (length d0) /\ map_valid ms d0 ]] *
     match st with
     | Synced d =>
-        map_replay ms d0 d *
+        [[ map_replay ms d0 d ]] *
         synced_data xp d0 *
         DLog.rep xp (DLog.Synced na log)
     | Flushing d ents =>
-        [[ log_valid ents d ]] *
-        map_replay ms d0 d *
+        [[ log_valid ents d /\ map_replay ms d0 d ]] *
         synced_data xp d0 *
         (DLog.rep xp (DLog.ExtendedUnsync log)
       \/ DLog.rep xp (DLog.Extended log ents))
     | Applying d =>
-        map_replay ms d0 d *
+        [[ map_replay ms d0 d ]] *
         (((DLog.rep xp (DLog.Synced na log)) *
           (unsync_applying xp ms d0))
       \/ ((DLog.rep xp (DLog.Synced na log)) *
@@ -1142,6 +1141,7 @@ Module MLog.
   End UnfoldProof3.
 
 
+  Local Hint Unfold map_replay : hoare_unfold.
   Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush_noapply _ _ _) _) => apply flush_noapply_ok : prog.
   Hint Extern 0 (okToUnify (synced_data ?a _) (synced_data ?a _)) => constructor : okToUnify.
@@ -1183,7 +1183,6 @@ Module MLog.
     prestep.
     unfold rep at 1, rep_inner at 1.
     cancel; auto.
-    instantiate (2 := F); cancel.
     step.
     step.
 
@@ -1200,7 +1199,6 @@ Module MLog.
     prestep.
     unfold rep at 1, rep_inner at 1.
     cancel; auto.
-    instantiate (1 := d); cancel. auto.
     step.
 
     (* crashes *)
