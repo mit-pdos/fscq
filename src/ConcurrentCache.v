@@ -2083,10 +2083,11 @@ Proof.
 Qed.
 
 Definition writeback {T} a rx : prog _ _ T :=
+  tid <- GetTID;
   c <- Get Cache;
   let ov := cache_get c a in
   match (cache_get c a) with
-  | Some (Dirty v _) =>
+  | Some (Dirty v, _) =>
     GhostUpdate (fun s => let vd : DISK := get GDisk s in
                         let vs' := match (vd a) with
                                    | Some (vs0, _) => buffer_valu vs0 v
@@ -2096,10 +2097,7 @@ Definition writeback {T} a rx : prog _ _ T :=
                         set GDisk (upd vd a (vs', None)) s);;
     Write a v;;
           let c' := cache_clean c a in
-          GhostUpdate (fun s =>
-            let vc := get GCache s in
-            let vc' := cache_clean vc a in
-            set GCache vc' s);;
+          cache_upd a (Clean v, Owned tid);;
                       GhostUpdate (fun s => let vd : DISK := get GDisk s in
                                           let vs' := match (vd a) with
                                                      | Some (Valuset v' (v :: rest), None) =>
@@ -2113,103 +2111,10 @@ Definition writeback {T} a rx : prog _ _ T :=
   | _ => rx tt
   end.
 
-Hint Resolve cache_pred_stable_clean_noop.
-Hint Resolve cache_pred_stable_clean.
-Hint Resolve cache_pred_stable_remove_clean.
-Hint Resolve cache_get_dirty_clean.
-Hint Resolve cache_pred_stable_upd.
 
 Hint Rewrite upd_eq upd_ne using (now auto) : cache.
 Hint Rewrite upd_repeat : cache.
 Hint Rewrite upd_same using (now auto) : cache.
-
-Lemma cache_pred_determine : forall st (c: AssocCache st) (a: addr) vd vs vs' d d',
-    (cache_pred (Map.remove a c) (mem_except vd a) * a |-> vs)%pred d ->
-    (cache_pred (Map.remove a c) (mem_except vd a) * a |-> vs')%pred d' ->
-    d' = upd d a vs'.
-Proof.
-  intros.
-  extensionality a'.
-  distinguish_addresses; autorewrite with cache; auto.
-  eapply ptsto_valid; pred_apply; cancel.
-
-  repeat match goal with
-         | [ H: (_ * _ |-> _)%pred _ |- _ ] =>
-           apply sep_star_comm in H;
-             apply ptsto_mem_except in H
-         end.
-
-  match goal with
-  | [ H: cache_pred _ _ ?d, H': cache_pred _ _?d' |- _ ] =>
-    let H' := fresh in
-    assert (d = d') as H'
-        by eauto using cache_pred_same_disk_eq;
-      unfold mem_except in H';
-      apply equal_f with a' in H'
-  end.
-  distinguish_addresses.
-Qed.
-
-Theorem writeback_ok : forall a,
-    stateS TID: tid |-
-    {{ F v0 rest,
-     | PRE d m s0 s: let vd := virt_disk s in
-                     Inv m s d /\
-                     get_s_lock a s = Owned tid /\
-                     vd |= F * a |-> (Valuset v0 rest, None)
-     | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            Inv m' s' d' /\
-                            R tid s s' /\
-                            get_s_lock a s' = Owned tid /\
-                            vd' = virt_disk s /\
-                            (cache_val (get Cache m) a = Some v0 ->
-                            (exists l, cache_get (get Cache m') a = Some (Clean v0 l))) /\
-                            d' = upd d a (Valuset v0 rest, None) /\
-                            s0' = s0
-    }} writeback a.
-Proof.
-  hoare pre simplify with finish.
-
-  Remove Hints disk_eq_valuset : core.
-
-  (* we have to split the proof at this level so we can get the
-  cache_pred we need for the Write *)
-
-  case_cache_val' (get Cache m) a;
-    try cache_vd_val; repeat deex; cleanup.
-
-  all: valid_match_ok;
-    let simp_step :=
-      (simplify_step
-      || autorewrite with cache
-      || (try time "cbn *" progress cbn in *)) in
-    time "hoare" hoare pre (simplify' simp_step) with (finish;
-        time "simpl_get_set *" simpl_get_set in *;
-        try time "congruence" congruence).
-
-  all: try solve [
-             match goal with
-             | [ |- cache_pred _ _ _ ] =>
-               pred_apply; cancel;
-               eapply pimpl_trans; [ | eapply cache_pred_clean' ]; eauto;
-               cancel; eauto
-             end ].
-
-  all: try solve [
-             match goal with
-             | [ H: cache_pred _ _ _ |- _ ] =>
-               eapply cache_pred_dirty in H
-             end; eauto using cache_pred_determine ].
-
-  (* TODO: should not use prove_cache_pred here *)
-  assert (d a = Some (Valuset v0 rest)).
-  prove_cache_pred.
-
-  extensionality a'; distinguish_addresses;
-    autorewrite with cache; auto.
-Qed.
-
-Hint Extern 4 {{ writeback _; _ }} => apply writeback_ok : prog.
 
 Definition sync {T} a rx : prog Mcontents Scontents T :=
   GhostUpdate (fun s =>
@@ -2242,73 +2147,17 @@ Lemma upd_eq_something : forall AT AEQ V (d: @mem AT AEQ V) a a' v0 v',
   exists v, upd d a' v' a = Some v.
 Proof.
   intros.
-  case_eq (AEQ a a'); intros;
-    autorewrite with cache; eauto.
+  case_eq (AEQ a a'); intros; subst;
+    autorewrite with upd cache; eauto.
 Qed.
 
 Hint Resolve upd_eq_something.
 
-Theorem sync_ok : forall a,
-    stateS TID: tid |-
-    {{ F v0 rest,
-     | PRE d m s0 s: let vd := virt_disk s in
-                     Inv m s d /\
-                     get_s_lock a s = Owned tid /\
-                     (exists l, cache_get (get Cache m) a = Some (Clean v0 l) \/
-                      cache_get (get Cache m) a = None) /\
-                     vd |= F * a |-> (Valuset v0 rest, None)
-     | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                          Inv m' s' d' /\
-                          R tid s s' /\
-                          get_s_lock a s' = Owned tid /\
-                          m = m' /\
-                          get GCache s' = get GCache s /\
-                          vd' |= F * a |-> (Valuset v0 nil, None) /\
-                          s0' = s0
-    }} sync a.
-Proof.
-  let simp_step :=
-    simplify_step
-    || (try lazymatch goal with
-          | [ H: _ \/ _ |- _ ] => destruct H
-        end) in
-  time "hoare" hoare pre (simplify' simp_step) with
-    (finish;
-      try lazymatch goal with
-      | [ |- cache_pred _ _ _ ] =>
-        solve [
-          eapply cache_pred_clean'; autorewrite with cache; eauto
-          | eapply cache_pred_miss_stable; autorewrite with cache; eauto
-        ]
-      end).
-Qed.
-
-Hint Extern 4 {{sync _; _}} => apply sync_ok : prog.
-
 Definition cache_sync {T} a rx : prog _ _ T :=
   c <- Get Cache;
   match cache_get c a with
-  | Some (Dirty _ _) => writeback a;; sync a;; rx tt
+  | Some (Dirty _, _) => writeback a;; sync a;; rx tt
   | _ => sync a;; rx tt
   end.
-
-Theorem cache_sync_ok : forall a,
-    stateS TID: tid |-
-    {{ F v0 rest,
-     | PRE d m s0 s: let vd := virt_disk s in
-                    Inv m s d /\
-                    get_s_lock a s = Owned tid /\
-                    vd |= F * a |-> (Valuset v0 rest, None)
-     | POST d' m' s0' s' _: let vd' := virt_disk s' in
-                            Inv m' s' d' /\
-                            star (R tid) s s' /\
-                            get_s_lock a s' = Owned tid /\
-                            vd' |= F * a |-> (Valuset v0 nil, None) /\
-                            s0' = s0
-    }} cache_sync a.
-Proof.
-  time "hoare"  hoare pre (simplify; standardize_mem_fields) with
-    finish.
-Qed.
 
 End Cache.
