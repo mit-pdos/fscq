@@ -272,7 +272,6 @@ End Projection.
 
 Definition locks_held s F : pred :=
   fun m => F m /\
-  precise F /\
   (forall a v, m a = Some v -> lock_held s a).
 
 Hint Unfold locks_held : pred.
@@ -325,6 +324,19 @@ Proof.
   assert (m2 a0 = None) by eauto.
   replace (m2 a0) in *.
   eauto.
+Qed.
+
+Theorem locks_held_remove_lock : forall s LF a v,
+  locks_held s (LF * a |-> v) =p=> a |-> v * locks_held s LF.
+Proof.
+  unfold pimpl, locks_held; intuition.
+  unfold_sep_star in H0; repeat deex.
+  unfold ptsto in *.
+  apply sep_star_comm.
+  unfold_sep_star; repeat eexists; intuition eauto.
+  eapply H1.
+  unfold mem_union.
+  replace (m1 a0); eauto.
 Qed.
 
 Lemma locks_held_combine : forall s F F',
@@ -401,6 +413,25 @@ Theorem locks_held_indifferent : forall s s' LF,
   locks_held s LF =p=> locks_held s' LF.
 Proof.
   start; dispatch.
+Qed.
+
+Hint Resolve mem_union_comm mem_disjoint_comm.
+
+Theorem locks_held_release : forall s s' LF a v,
+  (forall a', a <> a' -> lock_held s a' -> lock_held s' a') ->
+  locks_held s (LF * a |-> v) =p=> a |-> v * locks_held s' LF.
+Proof.
+  unfold pimpl, locks_held; start.
+  unfold_sep_star in H1; unfold_sep_star; repeat deex.
+  exists m2, m1; intuition eauto.
+  apply mem_disjoint_comm; auto.
+  destruct (AEQ a a0); subst; eauto.
+  - exfalso.
+    assert (m2 a0 = Some v) by (now unfold ptsto in *).
+    apply H0; eauto.
+  - eapply H; eauto.
+    eapply H2.
+    unfold mem_union; replace (m1 a0); eauto.
 Qed.
 
 End State.

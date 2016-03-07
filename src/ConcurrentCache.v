@@ -1813,6 +1813,10 @@ Theorem cache_unlock_ok : forall a,
                             Inv m' s' d' /\
                             R tid s s' /\
                             d' = d /\
+                            vd' = get GDisk s /\
+                            (forall a', a <> a' ->
+                            get_s_lock a' s = Owned tid ->
+                            get_s_lock a' s' = Owned tid) /\
                             get_s_lock a s' = NoOwner /\
                             s0' = s0
     }} cache_unlock a.
@@ -1821,6 +1825,31 @@ Proof.
 Qed.
 
 Hint Extern 1 {{cache_unlock _; _}} => apply cache_unlock_ok : prog.
+
+Theorem cache_unlock_ok_lf : forall a,
+    stateS TID: tid |-
+    {{ F LF v,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     Inv m s d /\
+                     vd |= F * cache_locked tid s (LF * a |-> (v, None))
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
+                            Inv m' s' d' /\
+                            R tid s s' /\
+                            d' = d /\
+                            vd' |= F * a |-> (v, None) * cache_locked tid s' LF /\
+                            s0' = s0
+    }} cache_unlock a.
+Proof.
+  intros.
+  eapply pimpl_ok; [apply cache_unlock_ok | ]; simplify; finish.
+  eapply locks_held_unwrap_weaken in H0.
+  pred_apply; cancel.
+  eapply locks_held_ptsto_locked_frame in H0; auto.
+  step pre simplify with finish.
+  replace (get GDisk s2) in *.
+  pred_apply' H0; cancel.
+  eapply locks_held_release; eauto.
+Qed.
 
 Definition disk_read {T} a rx : prog _ _ T :=
   cache_lock a;;
