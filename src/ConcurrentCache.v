@@ -1982,6 +1982,8 @@ Definition locked_disk_write {T} a v rx : prog _ _ T :=
     Assgn Cache c';;
     rx tt.
 
+Hint Resolve ptsto_upd'.
+
 Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
     {{ F v0 rest,
@@ -1992,9 +1994,9 @@ Theorem locked_disk_write_ok : forall a v,
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
-                            get_s_lock a s' = Owned tid /\
-                            (exists rest', vd' |= any * a |-> (Valuset v rest', None) /\
-                            vd' = upd (virt_disk s) a (Valuset v rest', None)) /\
+                            (forall a, get_s_lock a s = Owned tid ->
+                              get_s_lock a s' = Owned tid) /\
+                            (exists rest', vd' |= F * a |-> (Valuset v rest', None)) /\
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
@@ -2005,6 +2007,53 @@ Proof.
 Qed.
 
 Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
+
+Ltac unfold_cache_locked :=
+  unfold cache_locked in *.
+
+Ltac refold_cache_locked :=
+  repeat match goal with
+    | [ H: context[locks_held ?f ?s ?F] |- _] =>
+      match f with
+      | context[Owned ?tid] => fold (cache_locked tid s F) in H
+      end
+    | [ |- context[locks_held ?f ?s ?F] ] =>
+      match f with
+      | context[Owned ?tid] => fold (cache_locked tid s F)
+      end
+  end.
+
+Tactic Notation "unfolded_lh" tactic(t) :=
+  unfold_cache_locked; t; refold_cache_locked.
+
+Theorem locked_disk_write_ok_lf : forall a v,
+    stateS TID: tid |-
+    {{ F LF v0 rest,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     Inv m s d /\
+                     vd |= F * cache_locked tid s (LF * a |-> (Valuset v0 rest, None))
+     | POST d' m' s0' s' _: let vd' := virt_disk s' in
+                            Inv m' s' d' /\
+                            R tid s s' /\
+                            (exists rest', vd' |= F * cache_locked tid s'
+                              (LF * a |-> (Valuset v rest', None))) /\
+                            s0' = s0
+    }} locked_disk_write a v.
+Proof.
+  intros.
+  eapply pimpl_ok; [ apply locked_disk_write_ok | ]; simplify; finish.
+  eapply locks_held_ptsto_locked_frame in H0; auto.
+  pred_apply; cancel.
+  unfolded_lh rewrite locks_held_split.
+  unfolded_lh rewrite locks_held_unwrap_weaken.
+  cancel.
+  step pre simplify with finish.
+  pred_apply; cancel.
+  unfolded_lh rewrite locks_held_indifferent; eauto.
+  eapply locks_held_add_lock.
+  unfold get_s_lock; eauto.
+  eapply locks_held_ptsto_locked_frame in H0; eauto.
+Qed.
 
 Lemma cache_pred_stable_invalidate : forall c c' vd d a v s tid,
   cache_eq ghost_lock_invariant (cache_rep c Open) c' ->

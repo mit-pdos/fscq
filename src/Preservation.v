@@ -426,6 +426,19 @@ Proof.
     unfold mem_union; replace (m1 a0); eauto.
 Qed.
 
+Theorem locks_held_split : forall s LF LF',
+  locks_held s (LF * LF') =p=> locks_held s LF * locks_held s LF'.
+Proof.
+  unfold pimpl, locks_held; unfold_sep_star; start; dispatch.
+  exists m1, m2; dispatch.
+  eapply H1.
+  unfold mem_union; replace (m1 a); eauto.
+  case_eq (m1 a); intros.
+  exfalso; apply H; eauto.
+  eapply H1.
+  unfold mem_union; replace (m1 a); eauto.
+Qed.
+
 End State.
 
 End Preservation.
