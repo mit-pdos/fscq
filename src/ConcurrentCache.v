@@ -694,9 +694,10 @@ Qed.
 
 Lemma cache_relation_cache_preserved : forall tid s s',
     star (othersR cacheR tid) s s' ->
-    forall a, cache_fun_state (get GCache s) a = Owned tid ->
-         get GCache s' a = get GCache s a /\
-         cache_fun_state (get GCache s') a = Owned tid.
+    (forall a, cache_fun_state (get GCache s) a = Owned tid ->
+         get GCache s' a = get GCache s a) /\
+    (forall a, cache_fun_state (get GCache s) a = Owned tid ->
+        cache_fun_state (get GCache s') a = Owned tid).
 Proof.
   intuition; eapply cache_locked_unchanged; eauto.
 Qed.
@@ -1703,6 +1704,47 @@ Proof.
 Qed.
 
 Hint Extern 1 {{cache_lock _; _}} => apply cache_lock_ok : prog.
+
+Theorem cache_lock_ok_lf' : forall a,
+  stateS TID: tid |-
+  {{ F F' LF v,
+   | PRE d m s0 s: let vd := virt_disk s in
+                   Inv m s d /\
+                   vd |= F * a |-> v * cache_locked tid s LF /\
+                   preserves virt_disk (star (othersR R tid)) (F * a |->?) (F' * a |->?) /\
+                   R tid s0 s
+   | POST d' m' s0' s' _: let vd' := virt_disk s' in
+                        Inv m' s' d' /\
+                        vd' |= F' * cache_locked tid s' (LF * a |->?) /\
+                        R tid s0' s'
+  }} cache_lock a.
+Proof.
+  intros.
+  eapply pimpl_ok; [apply cache_lock_ok | ]; simplify; finish.
+  step pre simplify with finish.
+
+  eapply locks_held_add_lock_some_val; eauto.
+  (* visual cleanup *)
+  match goal with
+  | [ |- context[locks_held _ ?s ?F] ] =>
+    fold (cache_locked tid s F)
+  end.
+
+  unfold chain in *; deex.
+  simplify.
+  replace (get GDisk s2) with (get GDisk s') by (unfold applied in *; simplify).
+  assert ((F' * a |->? * cache_locked tid s LF)%pred (get GDisk s')).
+  match goal with
+  | [ H: preserves _ _ _ _ |- _ ] =>
+   eapply H; eauto
+  end.
+  pred_apply; cancel.
+  pred_apply; cancel.
+  eapply pimpl_trans with (cache_locked tid s' LF).
+  eapply locks_held_indifferent; unfold get_s_lock; eauto.
+  eapply locks_held_indifferent; unfold get_s_lock; intros.
+  unfold applied in *; distinguish_addresses; simplify.
+Qed.
 
 Definition cache_unlock {T} a rx : prog _ _ T :=
   tid <- GetTID;

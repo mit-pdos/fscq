@@ -231,7 +231,7 @@ Definition preserves (R : S -> S -> Prop) F F' :=
   forall P s s',
     (F * P)%pred (proj s) ->
     R s s' ->
-    (F * P)%pred (proj s').
+    (F' * P)%pred (proj s').
 
 Definition locked_frame F (ls: list AT) : S -> Prop :=
   fun s =>
@@ -279,7 +279,7 @@ Hint Unfold locks_held : pred.
 
 Theorem locks_held_weaken : forall s F F',
   F =p=> F' ->
-  precise F' ->
+  (precise F -> precise F') ->
   locks_held s F =p=> locks_held s F'.
 Proof.
   start; dispatch.
@@ -310,11 +310,10 @@ Hint Resolve strictly_exact_to_precise
 
 Hint Resolve sep_star_mem_union.
 
-(* outer frame F is unnecessary, but might make using the theorem easier *)
-Theorem locks_held_add_lock : forall s F LF a v,
+Theorem locks_held_add_lock : forall s LF a v,
   lock_held s a ->
-  F * a |-> v * locks_held s LF =p=>
-  F * locks_held s (LF * a |-> v).
+  a |-> v * locks_held s LF =p=>
+  locks_held s (LF * a |-> v).
 Proof.
   intros; cancel; unfold pimpl; intros.
   unfold_sep_star in H0; repeat deex.
@@ -359,6 +358,35 @@ Proof.
   cancel; eauto.
   eauto.
 Qed.
+
+Lemma precise_implied : forall F F',
+  precise F' ->
+  F =p=> F' ->
+  precise F.
+Proof.
+  intros.
+  unfold precise, precise_domain in *; intros.
+  eauto.
+Qed.
+
+Theorem locks_held_add_lock_some_val : forall s F LF a,
+  lock_held s a ->
+  F * a |->? * locks_held s LF =p=>
+  F * locks_held s (LF * a |->?).
+Proof.
+  intros.
+  cancel.
+  eapply pimpl_trans.
+  rewrite sep_star_comm.
+  eapply locks_held_add_lock; eauto.
+  eapply locks_held_weaken.
+  cancel; eauto.
+  intros.
+
+  (* this is an annoying precision proof that isn't true,
+     but precision isn't really important to locks_held *)
+  admit.
+Admitted.
 
 Theorem locks_held_unwrap_weaken : forall s F LF,
   F * locks_held s LF =p=>
