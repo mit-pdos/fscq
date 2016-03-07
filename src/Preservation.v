@@ -190,6 +190,8 @@ Proof.
   start; dispatch.
 Qed.
 
+(* TODO: move these facts about precise out,
+we longer use precision in defining Preservation *)
 Definition precise_domain F :=
   forall m1 m1' m2 m2',
   mem_union m1 m1' = mem_union m2 m2' ->
@@ -217,6 +219,16 @@ Proof.
       replace (m2 a) in *; eauto.
     assert (m1 a = None) by eauto; congruence.
     assert (m2 a = None) by eauto; congruence.
+Qed.
+
+Lemma precise_implied : forall F F',
+  precise F' ->
+  F =p=> F' ->
+  precise F.
+Proof.
+  intros.
+  unfold precise, precise_domain in *; intros.
+  eauto.
 Qed.
 
 (* at least the locks in dom are held *)
@@ -278,7 +290,6 @@ Hint Unfold locks_held : pred.
 
 Theorem locks_held_weaken : forall s F F',
   F =p=> F' ->
-  (precise F -> precise F') ->
   locks_held s F =p=> locks_held s F'.
 Proof.
   start; dispatch.
@@ -303,9 +314,6 @@ Proof.
   eauto using locks_held_ptsto_locked.
 Qed.
 
-Hint Resolve strictly_exact_to_precise
-  ptsto_strictly_exact
-  sep_star_precise.
 
 Hint Resolve sep_star_mem_union.
 
@@ -351,7 +359,6 @@ Qed.
 
 Lemma locks_held_wrap : forall s F,
   (forall m, F m -> forall a, lock_held s a) ->
-  precise F ->
   F =p=> locks_held s F.
 Proof.
   unfold locks_held; dispatch.
@@ -361,7 +368,6 @@ Hint Resolve locks_held_combine locks_held_wrap.
 
 Theorem locks_held_add_frame : forall s F LF,
   (forall m, F m -> forall a, lock_held s a) ->
-  precise F ->
   F * locks_held s LF =p=>
   locks_held s (F * LF).
 Proof.
@@ -371,15 +377,6 @@ Proof.
   eauto.
 Qed.
 
-Lemma precise_implied : forall F F',
-  precise F' ->
-  F =p=> F' ->
-  precise F.
-Proof.
-  intros.
-  unfold precise, precise_domain in *; intros.
-  eauto.
-Qed.
 
 Theorem locks_held_add_lock_some_val : forall s F LF a,
   lock_held s a ->
@@ -393,12 +390,7 @@ Proof.
   eapply locks_held_add_lock; eauto.
   eapply locks_held_weaken.
   cancel; eauto.
-  intros.
-
-  (* this is an annoying precision proof that isn't true,
-     but precision isn't really important to locks_held *)
-  admit.
-Admitted.
+Qed.
 
 Theorem locks_held_unwrap_weaken : forall s F LF,
   F * locks_held s LF =p=>
