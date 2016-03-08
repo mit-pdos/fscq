@@ -2055,6 +2055,30 @@ Proof.
   eapply locks_held_ptsto_locked_frame in H0; eauto.
 Qed.
 
+(* weaker version of spec that pretends to have taken a Yield step;
+this is intended to explore what would happen if we had true multicore
+parallelism rather than only allowing one CPU thread at a time *)
+Theorem locked_disk_write_ok_lf' : forall a v,
+    stateS TID: tid |-
+    {{ F F' LF v0 rest,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     Inv m s d /\
+                     preserves virt_disk (star (othersR R tid)) F F' /\
+                     vd |= F * cache_locked tid s (LF * a |-> (Valuset v0 rest, None))
+     | POST d' m' s0' s' _: let vd' := virt_disk s' in
+                            Inv m' s' d' /\
+                            (* this is odd if we're pretending to yield, but
+                            the change isn't purely other threads *)
+                            R tid s s' /\
+                            (exists rest', vd' |= F' * cache_locked tid s'
+                              (LF * a |-> (Valuset v rest', None))) /\
+                            s0' = s0
+    }} locked_disk_write a v.
+Proof.
+  intros.
+  eapply pimpl_ok; [ apply locked_disk_write_ok_lf | ]; simplify; finish.
+Qed.
+
 Lemma cache_pred_stable_invalidate : forall c c' vd d a v s tid,
   cache_eq ghost_lock_invariant (cache_rep c Open) c' ->
   cache_get c a = Some (Clean v, s) ->
