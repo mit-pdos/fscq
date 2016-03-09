@@ -26,52 +26,44 @@ Require Import AsyncDisk.
 Require Import SepAuto.
 Require Import GenSepN.
 Require Import MemLog.
-
-Module Map := FMapAVL.Make(Nat_as_OT).
-Module MapFacts := WFacts_fun Nat_as_OT Map.
-Module MapProperties := WProperties_fun Nat_as_OT Map.
-Module MapOrdProperties := OrdProperties Map.
+Require Import MapUtils.
 
 Import ListNotations.
 Set Implicit Arguments.
 
-Definition valumap := Map.t valu.
-
-Record memstate := mk_memstate {
-  MSOld   : valumap;   (* memory state for committed txns *)
-  MSCur   : valumap;   (* memory state for active txns *)
-  MSCache : cachestate    (* cache state *)
-}.
-
-Definition map0 := Map.empty valu.
-Definition diskstate := list valu.
-
-
-Inductive logstate :=
-| NoTxn (cur : diskstate)
-(* All transaction is committed, but might not be applied yet *)
-
-| ActiveTxn (old : diskstate) (cur : diskstate)
-(* A transaction is in progress.
- * It started from the first memory and has evolved into the second.
- * It has not committed yet. e.g. DiskLog.Synced
- *)
-
-| FlushingTxn (old : diskstate) (cur : diskstate)
-(* Current transaction is being flushed to the log, but not sync'ed or
- * committed yet. e.g. DiskLog.ExtendedUnsync or DiskLog.Extended *)
-
-| ApplyingTxn (old : diskstate)
-(* Applying committed transactions to the disk.
-   Block content might or might not be synced.
-   Log might be truncated but not yet synced.
-   e.g. DiskLog.Synced or DiskLog.Truncated
- *)
-.
-
-
 
 Module LOG.
+
+  Record memstate := mk_memstate {
+    MSTxn   : valumap;         (* memory state for active txns *)
+    MSMem   : MLog.memstate    (* lower-level state *)
+  }.
+
+  Inductive state :=
+  | NoTxn (cur : diskstate)
+  (* No active transaction, MemLog.Synced or MemLog.Applying *)
+
+  | ActiveTxn (old : diskstate) (cur : diskstate)
+  (* A transaction is in progress.
+   * It started from the first memory and has evolved into the second.
+     MemLog.Synced or MemLog.Flushing or MemLog.Applying
+   *)
+  .
+
+  Definition rep xp F nr st ms :=
+  let '(cm, mm) := (MSTxn ms, MSMem ms) in
+  (match st with
+    | NoTxn cur =>
+      [[ Map.Empty cm ]] *
+      ( MLog.rep xp F nr (MLog.Synced cur) mm \/
+        MLog.rep xp F nr (MLog.Applying cur) mm )
+    | ActiveTxn old cur => exists ents,
+      [[ MLog.map_replay cm old cur ]] *
+      ( MLog.rep xp F nr (MLog.Synced old) mm \/
+        MLog.rep xp F nr (MLog.Synced cur) mm \/
+        MLog.rep xp F nr (MLog.Applying old) mm \/
+        MLog.rep xp F nr (MLog.Flushing old ents) mm)
+  end)%pred.
 
   Definition replay_mem (log : DLog.contents) init : valumap :=
     fold_left (fun m e => Map.add (fst e) (snd e) m) log init.
