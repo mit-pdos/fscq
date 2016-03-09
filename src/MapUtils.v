@@ -19,6 +19,12 @@ Definition KNoDup V := NoDupA (@Map.eq_key V).
 Definition map0 V := Map.empty V.
 Definition map_keys V (m : Map.t V) := map fst (Map.elements m).
 
+Lemma KNoDup_map_elements : forall V (m : Map.t V) ,
+   KNoDup (Map.elements m).
+Proof.
+  intros; apply Map.elements_3w.
+Qed.
+Hint Resolve KNoDup_map_elements.
 
 Lemma mapsto_add : forall V a v v' (m : Map.t V),
   Map.MapsTo a v (Map.add a v' m) -> v' = v.
