@@ -164,9 +164,9 @@ Proof.
 Qed.
 
 Theorem crash_xform_exists_comm : forall T (p : T -> rawpred),
-  crash_xform (exists x, p x) =p=> exists x, crash_xform (p x).
+  crash_xform (exists x, p x) <=p=> exists x, crash_xform (p x).
 Proof.
-  unfold crash_xform, exis, pimpl; intros.
+  split; unfold crash_xform, exis, pimpl; intros;
   repeat deex; repeat eexists; intuition eauto.
 Qed.
 
