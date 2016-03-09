@@ -1422,6 +1422,58 @@ Module MLog.
   Admitted.
 
 
+  Definition dwrite T xp a v ms rx : prog T :=  
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    If (MapFacts.In_dec oms a) {
+      rx ^(ms, false)
+    } else {
+      cs <- BUFCACHE.write_array (DataStart xp) a v cs;
+      rx ^(mk_memstate oms cs, true)
+    }.
+
+  Section UnfoldProof4.
+  Local Hint Unfold rep map_replay rep_inner synced_rep: hoare_unfold.
+
+  Theorem dwrite_ok: forall xp a v ms,
+    {< F Fd d na vs,
+    PRE
+      rep xp F na (Synced d) ms *
+      [[[ d ::: (Fd * a |-> vs) ]]]
+    POST RET:^(ms', r) exists d',
+      rep xp F na (Synced d') ms' *
+      ([[ r = true  ]] * [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
+       [[ r = false ]] * [[[ d' ::: (Fd * a |-> vs) ]]] )
+    CRASH
+      exists ms' d', rep xp F na (Synced d') ms' *
+      ( [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
+        [[[ d' ::: (Fd * a |-> vs) ]]] )
+    >} dwrite xp a v ms.
+  Proof.
+    unfold dwrite.
+    step.
+    step.
+    step.
+    admit.
+    step.
+    or_l; cancel.
+    setoid_rewrite replay_disk_updN_comm.
+    admit.
+    admit.
+    admit.
+    admit.
+    instantiate (ms' := mk_memstate  (MSInLog ms) cs').
+    cancel. or_r; cancel; eauto.
+    pred_apply; cancel.
+    instantiate (ms'0 := mk_memstate  (MSInLog ms) cs').
+    cancel. or_l; cancel.
+    admit.
+    pred_apply; cancel.
+    admit.
+    admit.
+  Admitted.
+  
+  End UnfoldProof4.
+
 (*
   Theorem recover_ok: forall xp F cs,
     {< d ents raw,
