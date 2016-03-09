@@ -31,7 +31,7 @@ Set Implicit Arguments.
 Definition list2nmem (A: Type) (l: list A) : (@mem nat eq_nat_dec A) :=
   fun a => selN (map (@Some A) l) a None.
 
-Notation "[[[ NS ':::' P ]]]" := [[ (list2nmem NS) ## (P) ]]%pred : pred_scope.
+Notation "[[[ NS ':::' P ]]]" := [[ (P)%pred (list2nmem NS) ]]%pred : pred_scope.
 
 Theorem list2nmem_oob : forall A (l : list A) i,
   i >= length l
@@ -864,3 +864,68 @@ Ltac list2nmem_bound :=
           let Hb := fresh in apply list2nmem_inbound in H as Hb;
           eauto; (omega || setoid_rewrite <- Ha; omega); clear Hb Ha
   end.
+
+
+(* crashes *)
+
+Require Import PredCrash AsyncDisk.
+Import ListNotations.
+
+Lemma list2nmem_crash_xform : forall vl vsl (F : rawpred),
+  possible_crash_list vsl vl ->
+  F (list2nmem vsl) ->
+  crash_xform F (list2nmem (synced_list vl)).
+Proof.
+  induction vl using rev_ind; simpl; intuition.
+  unfold crash_xform, possible_crash; eexists; intuition.
+  setoid_rewrite length_nil in H0; auto.
+  apply possible_crash_list_length in H; auto.
+
+  unfold crash_xform, possible_crash.
+  eexists; intuition. eauto.
+  destruct H as [H Hx].
+  destruct (lt_eq_lt_dec a (length vl)).
+  destruct s.
+  assert (a < length vsl).
+  rewrite H; autorewrite with lists; simpl; omega.
+
+  right.
+  exists (selN vsl a ($0, nil)).
+  exists (selN vl a $0); intuition.
+  apply selN_map; auto.
+  unfold list2nmem, synced_list.
+  erewrite selN_map.
+  rewrite selN_combine, selN_app1, repeat_selN; auto.
+  autorewrite with lists; simpl; omega.
+  autorewrite with lists; auto.
+  rewrite combine_length_eq; autorewrite with lists; simpl; omega.
+  specialize (Hx a H1).
+  rewrite selN_app1 in Hx; auto.
+
+  right; subst.
+  eexists; exists x; intuition.
+  autorewrite with lists in H; simpl in H.
+  unfold list2nmem; erewrite selN_map by omega; eauto.
+  unfold list2nmem; rewrite synced_list_app.
+  erewrite selN_map, selN_app2.
+  rewrite synced_list_length, Nat.sub_diag; auto.
+  rewrite synced_list_length; auto.
+  rewrite app_length, synced_list_length; simpl; omega.
+  rewrite app_length in H; simpl in H.
+  assert (length vl < length vsl) as Hy by omega.
+  specialize (Hx (length vl) Hy).
+  rewrite selN_app2, Nat.sub_diag in Hx by omega; simpl in Hx.
+  unfold vsmerge; eauto.
+
+  left; split.
+  rewrite app_length in H; simpl in H.
+  unfold list2nmem; erewrite selN_oob; auto.
+  rewrite map_length; omega.
+  unfold list2nmem; erewrite selN_oob; auto.
+  rewrite map_length, synced_list_length, app_length; simpl; omega.
+  Unshelve. all: eauto.
+Qed.
+
+
+
+

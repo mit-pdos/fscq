@@ -67,17 +67,9 @@ Module MLog.
   Definition map_merge (m1 m2 : valumap) :=
     replay_mem (Map.elements m2) m1.
 
-  Definition nil_unless_in (keys: list addr) (l: list (list valu)) :=
-    forall a, ~ In a keys -> selN l a nil = nil.
-
   Definition equal_unless_in (keys: list addr) (l1 l2: list valuset) :=
     length l1 = length l2 /\
     forall a,  ~ In a keys -> selN l1 a ($0, nil) = selN l2 a ($0, nil).
-(*
-  Definition nil_if_in (keys: list addr) (l : list valuset) :=
-    forall a,  In a keys -> snd (selN l a ($0, nil)) = nil.
-*)
-(*  Definition synced_list m: list valuset := List.combine m (repeat nil (length m)). *)
 
   Definition synced_rep xp (d : diskstate) : rawpred :=
     arrayN (DataStart xp) d.
@@ -114,6 +106,7 @@ Module MLog.
       \/ ((DLog.rep xp (DLog.Truncated log)) *
           (synced_rep xp d)))
     end)%pred.
+
 
   Definition rep xp F na st ms := 
     ( exists d, BUFCACHE.rep (MSCache ms) d *
@@ -373,16 +366,19 @@ Module MLog.
     step.
     subst.
     eapply replay_disk_eq; eauto.
+    instantiate (d := d0); pred_apply; cancel.
     pimpl_crash; cancel; auto. cancel.
 
     unfold synced_rep; cancel.
     subst; eapply synced_data_replay_inb; eauto.
+    instantiate (c1 := (Map.elements (MSInLog ms))); pred_apply; cancel.
 
     prestep.
     cancel; subst; auto.
     unfold pred_apply in *.
     assert (selN d0 a ($0, nil) = (vs_cur, vs_old)) as Hx.
     eapply replay_disk_none_selN; eauto.
+    pred_apply; cancel.
     destruct (selN d0 a ($0, nil)); inversion Hx; auto.
 
     pimpl_crash.
@@ -797,16 +793,6 @@ Module MLog.
     apply Map.elements_2; eauto.
   Qed.
 
-(*
-  Lemma synced_list_updN : forall l a v,
-    updN (synced_list l) a (v, nil) = synced_list (updN l a v).
-  Proof.
-    unfold synced_list; induction l; simpl; intros; auto.
-    destruct a0; simpl; auto.
-    rewrite IHl; auto.
-  Qed.
-*)
-
   Lemma apply_synced_data_ok' : forall l d,
     NoDup (map fst l) ->
     vssync_vecs (vsupd_vecs d l) (map fst l) = replay_disk l d.
@@ -850,37 +836,6 @@ Module MLog.
     eapply Map.add_2; eauto.
   Qed.
 
-(*
-  Lemma map_snd_synced_list_eq : forall a b,
-    length a = length b ->
-    map snd (synced_list a) = map snd (synced_list b).
-  Proof.
-    unfold synced_list; intros.
-    repeat rewrite map_snd_combine; autorewrite with lists; auto.
-  Qed.
-
-  Lemma map_snd_vsupd_vecs_not_in : forall l d a v,
-    ~ In a (map fst l) ->
-    NoDup (map fst l) ->
-    map snd (vsupd_vecs (synced_list (updN d a v)) l) = map snd (vsupd_vecs (synced_list d) l).
-  Proof.
-    induction l; simpl; intros.
-    erewrite map_snd_synced_list_eq; eauto.
-    autorewrite with lists; auto.
-
-    destruct a; intuition; simpl in *.
-    inversion H0; subst.
-    setoid_rewrite vsupd_vecs_vsupd_notin; auto.
-    unfold vsupd.
-    repeat rewrite map_snd_updN.
-    f_equal.
-    apply IHl; auto.
-    f_equal; f_equal; f_equal.
-    rewrite <- synced_list_updN.
-    rewrite <- updN_vsupd_vecs_notin by auto.
-    rewrite selN_updN_ne; auto.
-  Qed.
-*)
 (*
   Lemma apply_unsync_syncing_ok': forall l d n,
     NoDup (map fst l) ->
@@ -1244,24 +1199,304 @@ Module MLog.
   Qed.
 
 
-  Definition recover_either_pred xp d ents :=
-    (exists na ms,
+  Lemma map_valid_equal : forall d m1 m2,
+    Map.Equal m1 m2 -> map_valid m1 d -> map_valid m2 d.
+  Proof.
+    induction d; unfold map_valid; simpl; intros; split;
+    eapply H0; rewrite H; eauto.
+  Qed.
+
+
+  Lemma equal_unless_in_length_eq : forall a b l,
+    equal_unless_in l a b -> length b = length a.
+  Proof.
+    unfold equal_unless_in; firstorder.
+  Qed.
+
+  Lemma length_eq_map_valid : forall m a b,
+    map_valid m a -> length b = length a -> map_valid m b.
+  Proof.
+    unfold map_valid; firstorder.
+  Qed.
+
+  Lemma replay_disk_updN_absorb : forall l a v d,
+    In a (map fst l) -> KNoDup l ->
+    replay_disk l (updN d a v) = replay_disk l d.
+  Proof.
+    induction l; intros; simpl; auto.
+    inversion H.
+    destruct a; simpl in *; intuition; subst.
+    rewrite updN_twice; auto.
+    inversion H0; subst.
+    setoid_rewrite <- IHl at 2; eauto.
+    rewrite updN_comm; auto.
+    contradict H3; subst.
+    apply In_fst_KIn; auto.
+  Qed.
+
+  Lemma replay_disk_twice : forall l d,
+    KNoDup l ->
+    replay_disk l (replay_disk l d) = replay_disk l d.
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a; inversion H; subst; simpl.
+    rewrite <- replay_disk_updN_comm.
+    rewrite IHl; auto.
+    rewrite updN_twice; auto.
+    contradict H2.
+    apply In_fst_KIn; auto.
+  Qed.
+
+
+  Hint Rewrite selN_combine repeat_selN' Nat.min_id synced_list_length : lists.
+
+  Ltac simplen_rewrite H := try progress (
+    set_evars_in H; (rewrite_strat (topdown (hints lists)) in H); subst_evars;
+      [ try simplen_rewrite H | try autorewrite with lists .. ]).
+
+  Ltac simplen' := repeat match goal with
+    | [H : context[length ?x] |- _] => progress ( first [ is_var x | simplen_rewrite H ] )
+    | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
+    | [H : context[Nat.min ?a ?a] |- _ ] => rewrite Nat.min_id in H
+    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
+    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [H : equal_unless_in _ _ _ |- _ ] => apply equal_unless_in_length_eq in H
+    | [H : possible_crash_list _ _ |- _ ] => apply possible_crash_list_length in H
+    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
+    end.
+
+  Ltac simplen :=  auto; repeat (try subst; simpl;
+    auto; simplen'; autorewrite with lists); simpl; eauto; try omega.
+
+  Ltac map_rewrites :=
+    match goal with
+    | [ H : Map.Equal (replay_mem ?x ?y) _ |- map_valid (replay_mem ?x ?y) ?l ] =>
+        eapply (map_valid_equal (MapFacts.Equal_sym H))
+    | [ H : Map.Equal _ (replay_mem ?x ?y) |- map_valid (replay_mem ?x ?y) ?l ] =>
+        eapply (map_valid_equal H)
+    | [ H : Map.Equal _  (replay_mem ?x ?y)
+        |-  context [ replay_disk (Map.elements (replay_mem ?x ?y)) _ ] ] =>
+        rewrite (mapeq_elements (MapFacts.Equal_sym H))
+    | [ H : Map.Equal (replay_mem ?x ?y) _
+        |-  context [ replay_disk (Map.elements (replay_mem ?x ?y)) _ ] ] =>
+        rewrite (mapeq_elements H)
+    end.
+
+  Ltac t :=
+    repeat map_rewrites;
+    try match goal with
+      | [ H : goodSize _ ?a |- goodSize _ ?b ] => simplen
+      | [ H : map_valid ?a _ |- map_valid ?a _ ] =>
+          solve [ eapply (length_eq_map_valid _ H); simplen ]
+    end.
+
+  Lemma equal_unless_in_possible_crash : forall l a b c,
+    equal_unless_in l (synced_list a) b ->
+    possible_crash_list b c ->
+    forall i, ~ In i l -> selN a i $0 = selN c i $0.
+  Proof.
+    unfold equal_unless_in, possible_crash_list, synced_list.
+    intros; simpl in *; autorewrite with lists in *; intuition.
+    destruct (lt_dec i (length b)).
+
+    destruct (H4 i l0).
+    rewrite <- H0.
+    rewrite <- H3 by auto.
+    rewrite selN_combine; simplen.
+
+    contradict H0.
+    rewrite <- H3 by auto.
+    rewrite selN_combine by simplen; simpl.
+    rewrite repeat_selN; simplen.
+    repeat rewrite selN_oob; simplen.
+  Qed.
+
+  Lemma equal_unless_in_synced_list_updN : forall B l a (b : B) v d d',
+    ~ KIn (a, b) l ->
+    equal_unless_in (a :: map fst l) (synced_list d) d' ->
+    equal_unless_in (map fst l) (synced_list (updN d a v)) (updN d' a (v, nil)).
+  Proof.
+    unfold equal_unless_in, synced_list; intuition; simpl in *.
+    simplen.
+    simplen.
+    destruct (lt_dec a0 (length d)).
+    destruct (Nat.eq_dec a a0); simplen.
+    repeat rewrite selN_updN_ne by auto.
+    rewrite <- H2; simplen; tauto.
+    repeat rewrite selN_oob; simplen.
+  Qed.
+
+(*
+  Lemma equal_unless_in_replay_disk' : forall l a b c,
+    KNoDup l ->
+    equal_unless_in (map fst l) (synced_list a) b ->
+    possible_crash_list b c ->
+    replay_disk l a = replay_disk l c.
+  Proof.
+    induction l; intuition; simpl.
+    eapply list_selN_ext.
+    simplen.
+    intros; eapply equal_unless_in_possible_crash; eauto.
+
+    inversion H; simpl in *; subst.
+    eapply IHl; auto.
+    eapply equal_unless_in_synced_list_updN; eauto.
+    apply possible_crash_list_updN; auto.
+  Qed.
+
+  Lemma equal_unless_in_replay_disk : forall a b c m,
+    equal_unless_in (map_keys m) (synced_list a) b ->
+    possible_crash_list b c ->
+    replay_disk (Map.elements m) a = replay_disk (Map.elements m) c.
+  Proof.
+    intros.
+    eapply equal_unless_in_replay_disk'; eauto.
+    apply Map.elements_3w.
+  Qed.
+*)
+
+  Definition recover_either_pred xp d ents Fold Fnew:=
+    (([[[ d ::: Fold ]]] * [[[ replay_disk ents d ::: Fnew ]]]) *
+      exists na ms,
       rep_inner xp na (Synced d) ms \/
       rep_inner xp na (Synced (replay_disk ents d)) ms \/
       rep_inner xp na (Flushing d ents) ms \/
       rep_inner xp na (Applying d) ms)%pred.
 
-  Definition after_crash_pred xp d ents :=
-    (exists na ms,
-      rep_inner xp na (Synced d) ms \/
-      rep_inner xp na (Synced (replay_disk ents d)) ms)%pred.
-(*
-  Lemma crash_xform_synced_data : forall xp d,
-    crash_xform (data_rep xp d) =p=> data_rep xp d.
+  Definition after_crash_pred xp ents Fold Fnew:=
+    (exists na ms d,
+      rep_inner xp na (Synced d) ms *
+        [[[ d ::: crash_xform Fold ]]] \/
+      rep_inner xp na (Synced (replay_disk ents d)) ms *
+        [[[ (replay_disk ents d) ::: crash_xform Fnew ]]]
+    )%pred.
+
+
+  Definition recover T xp cs rx : prog T :=
+    let^ (cs, log) <- DLog.read xp cs;
+    rx (mk_memstate (replay_mem log vmap0) cs).
+
+  Hint Rewrite crash_xform_arrayN
+    DLog.xform_rep_synced  DLog.xform_rep_truncated
+    DLog.xform_rep_extended DLog.xform_rep_extended_unsync: crash_xform.
+
+  Lemma list2nmem_replay_disk_crash_xform : forall ents vsl vl (F : rawpred),
+    KNoDup ents ->
+    possible_crash_list vsl vl ->
+    F (list2nmem (replay_disk ents vsl)) ->
+    crash_xform F (list2nmem (replay_disk ents (synced_list vl))).
   Proof.
-    unfold data_rep; intros.
-    rewrite crash_xform_arrayN.
+    induction ents; simpl; intros.
+    eapply list2nmem_crash_xform; eauto.
+    inversion H; destruct a; simpl in *; subst.
+    rewrite synced_list_updN.
+    eapply IHents; eauto.
+    apply possible_crash_list_updN; auto.
+  Qed.
+
+  Lemma recover_either_after_crash : forall xp d ents Fold Fnew,
+    crash_xform (recover_either_pred xp d ents Fold Fnew) =p=>
+    after_crash_pred xp ents Fold Fnew.
+  Proof.
+    unfold recover_either_pred, after_crash_pred, rep_inner,
+           map_replay, synced_rep, unsync_rep; intros.
+
+    Ltac xx := xform; norml; unfold stars; simpl; clear_norm_goal.
+    xx. xx. xx.
+    - xx. xx. cancel. or_l. cancel. t. t. t.
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      apply Map.elements_3w.
+    - xx. xx. cancel. or_r. cancel. t. t. t.
+
+crash_xform Fold (list2nmem (replay_disk (Map.elements (elt:=valu) x0) (synced_list l')))
+
+
+
     
+    Lemma 
+    
+    
+    Qed.
+
+
+    Search replay_disk replay_mem vmap0.
+    repeat progress (xform; norml; unfold stars; simpl; clear_norm_goal); cancel.
+    or_r; cancel.
+
+  
+
+  Lemma synced_after_crash_ok : forall xp na d m,
+    crash_xform (rep_inner xp na (Synced d) m) =p=>
+    after_crash_pred xp.
+  Proof.
+    unfold after_crash_pred, rep_inner, map_replay, synced_rep; intros.
+    xform.
+    rewrite crash_xform_arrayN.
+    rewrite DLog.xform_rep_synced.
+    cancel; or_l.
+    cancel; t.
+    Unshelve. eauto.
+  Qed.
+
+  Lemma synced_replay_after_crash_ok : forall xp na d m ents,
+    crash_xform (rep_inner xp na (Synced (replay_disk ents d)) m) =p=>
+    after_crash_pred xp.
+  Proof.
+    unfold after_crash_pred, rep_inner, map_replay, synced_rep; intros.
+    xform.
+    rewrite crash_xform_arrayN.
+    rewrite DLog.xform_rep_synced.
+    cancel; or_r.
+    cancel; t.
+  Qed.
+
+  Lemma flushing_after_crash_ok : forall xp na d m ents,
+    crash_xform (rep_inner xp na (Flushing d ents) m) =p=>
+    after_crash_pred xp.
+  Proof.
+    unfold after_crash_pred, rep_inner, map_replay, synced_rep; intros.
+    xform.
+    rewrite crash_xform_arrayN.
+    rewrite DLog.xform_rep_extended.
+    rewrite DLog.xform_rep_extended_unsync.
+    cancel.
+
+    or_l; cancel; t.
+    or_l; cancel; t.
+Admitted.
+
+  Theorem recover_ok: forall xp F cs,
+    {< d ents raw Fd Fdents,
+    PRE
+      BUFCACHE.rep cs raw *
+      [[ crash_xform (F * recover_either_pred xp d ents)%pred raw ]] *
+      [[[ d ::: Fd ]]] * [[[ (replay_disk ents d) ::: Fdents ]]]
+    POST RET:ms' exists na d' dents',
+      (rep xp (crash_xform F) na (Synced d') ms' \/
+       rep xp (crash_xform F) na (Synced dents') ms') *
+       [[[ d' ::: crash_xform Fd ]]] * [[[ dents' ::: crash_xform Fdents ]]]
+    CRASH exists raw' cs',
+      BUFCACHE.rep cs' raw' *
+      [[ ((crash_xform F) * recover_either_pred xp d ents)%pred raw' ]]
+    >} recover xp cs.
+  Proof.
+    unfold recover; intros.
+    step.
+    admit.
+    step.
+    admit.
+    unfold pred_apply in *.
+    instantiate (d'0 := d).
+    pred_apply.
+  Qed.
+
+  Lemma crash_xform_synced_data : forall xp d,
+    crash_xform (synced_rep xp d) =p=> synced_rep xp d.
+  Proof.
+    unfold synced_rep; intros.
+    rewrite crash_xform_arrayN.
+    cancel.
   Qed.
 
   Lemma map_valid_equal : forall d m1 m2,
@@ -1332,176 +1567,6 @@ Module MLog.
     apply replay_disk_replay_mem; auto.
   Qed.
 
-  Lemma replay_disk_updN_absorb : forall l a v d,
-    In a (map fst l) -> KNoDup l ->
-    replay_disk l (updN d a v) = replay_disk l d.
-  Proof.
-    induction l; intros; simpl; auto.
-    inversion H.
-    destruct a; simpl in *; intuition; subst.
-    rewrite updN_twice; auto.
-    inversion H0; subst.
-    setoid_rewrite <- IHl at 2; eauto.
-    rewrite updN_comm; auto.
-    contradict H3; subst.
-    apply In_fst_KIn; auto.
-  Qed.
-
-  Lemma replay_disk_twice : forall l d,
-    KNoDup l ->
-    replay_disk l (replay_disk l d) = replay_disk l d.
-  Proof.
-    induction l; simpl; intros; auto.
-    destruct a; inversion H; subst; simpl.
-    rewrite <- replay_disk_updN_comm.
-    rewrite IHl; auto.
-    rewrite updN_twice; auto.
-    contradict H2.
-    apply In_fst_KIn; auto.
-  Qed.
-
-  Lemma equal_unless_in_length_eq : forall a b l,
-    equal_unless_in l a b -> length b = length a.
-  Proof.
-    unfold equal_unless_in; firstorder.
-  Qed.
-
-  Lemma possible_crash_list_length_eq : forall a b,
-    possible_crash_list a b -> length b = length a.
-  Proof.
-    unfold possible_crash_list; firstorder.
-  Qed.
-
-  Lemma length_synced_list : forall l,
-    length (synced_list l) = length l.
-  Proof.
-    unfold synced_list; simpl; intros.
-    rewrite combine_length_eq; auto.
-    rewrite repeat_length; auto.
-  Qed.
-
-  Lemma length_eq_map_valid : forall m a b,
-    map_valid m a -> length b = length a -> map_valid m b.
-  Proof.
-    unfold map_valid; firstorder.
-  Qed.
-
-  Hint Rewrite length_synced_list selN_combine repeat_selN' Nat.min_id : lists.
-
-  Ltac simplen_rewrite H := try progress (
-    set_evars_in H; (rewrite_strat (topdown (hints lists)) in H); subst_evars;
-      [ try simplen_rewrite H | try autorewrite with lists .. ]).
-
-  Ltac simplen' := repeat match goal with
-    | [H : context[length ?x] |- _] => progress ( first [ is_var x | simplen_rewrite H ] )
-    | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
-    | [H : context[Nat.min ?a ?a] |- _ ] => rewrite Nat.min_id in H
-    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
-    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
-    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
-    | [H : equal_unless_in _ _ _ |- _ ] => apply equal_unless_in_length_eq in H
-    | [H : possible_crash_list _ _ |- _ ] => apply possible_crash_list_length_eq in H
-    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
-    end.
-
-  Ltac simplen :=  auto; repeat (try subst; simpl;
-    auto; simplen'; autorewrite with lists); simpl; eauto; try omega.
-
-
-  Ltac map_rewrites :=
-    match goal with
-    | [ H : Map.Equal (replay_mem ?x ?y) _ |- map_valid (replay_mem ?x ?y) ?l ] =>
-        eapply (map_valid_equal (MapFacts.Equal_sym H))
-    | [ H : Map.Equal _ (replay_mem ?x ?y) |- map_valid (replay_mem ?x ?y) ?l ] =>
-        eapply (map_valid_equal H)
-    | [ H : Map.Equal _  (replay_mem ?x ?y)
-        |-  context [ replay_disk (Map.elements (replay_mem ?x ?y)) _ ] ] =>
-        rewrite (mapeq_elements (MapFacts.Equal_sym H))
-    | [ H : Map.Equal (replay_mem ?x ?y) _
-        |-  context [ replay_disk (Map.elements (replay_mem ?x ?y)) _ ] ] =>
-        rewrite (mapeq_elements H)
-    end.
-
-  Ltac t :=
-    repeat map_rewrites;
-    try match goal with
-      | [ H : goodSize _ ?a |- goodSize _ ?b ] => simplen
-      | [ H : map_valid ?a _ |- map_valid ?a _ ] =>
-          solve [ eapply (length_eq_map_valid _ H); simplen ]
-    end.
-
-  Lemma equal_unless_in_possible_crash : forall l a b c,
-    equal_unless_in l (synced_list a) b ->
-    possible_crash_list b c ->
-    forall i, ~ In i l -> selN a i $0 = selN c i $0.
-  Proof.
-    unfold equal_unless_in, possible_crash_list, synced_list.
-    intros; simpl in *; autorewrite with lists in *; intuition.
-    destruct (lt_dec i (length b)).
-
-    destruct (H4 i l0).
-    rewrite <- H0.
-    rewrite <- H3 by auto.
-    rewrite selN_combine; simplen.
-
-    contradict H0.
-    rewrite <- H3 by auto.
-    rewrite selN_combine by simplen; simpl.
-    rewrite repeat_selN; simplen.
-    repeat rewrite selN_oob; simplen.
-  Qed.
-
-  Lemma equal_unless_in_synced_list_updN : forall B l a (b : B) v d d',
-    ~ KIn (a, b) l ->
-    equal_unless_in (a :: map fst l) (synced_list d) d' ->
-    equal_unless_in (map fst l) (synced_list (updN d a v)) (updN d' a (v, nil)).
-  Proof.
-    unfold equal_unless_in, synced_list; intuition; simpl in *.
-    simplen.
-    simplen.
-    destruct (lt_dec a0 (length d)).
-    destruct (Nat.eq_dec a a0); simplen.
-    repeat rewrite selN_updN_ne by auto.
-    rewrite <- H2; simplen; tauto.
-    repeat rewrite selN_oob; simplen.
-  Qed.
-
-  Lemma possible_crash_list_updN : forall l l' a v vs,
-    possible_crash_list l l' ->
-    possible_crash_list (updN l a (v, vs)) (updN l' a v).
-  Proof.
-    unfold possible_crash_list; simpl; intuition.
-    simplen.
-    destruct (Nat.eq_dec a i); subst; simplen.
-    repeat rewrite selN_updN_ne; eauto.
-  Qed.
-
-  Lemma equal_unless_in_replay_disk' : forall l a b c,
-    KNoDup l ->
-    equal_unless_in (map fst l) (synced_list a) b ->
-    possible_crash_list b c ->
-    replay_disk l a = replay_disk l c.
-  Proof.
-    induction l; intuition; simpl.
-    eapply list_selN_ext.
-    simplen.
-    intros; eapply equal_unless_in_possible_crash; eauto.
-
-    inversion H; simpl in *; subst.
-    eapply IHl; auto.
-    eapply equal_unless_in_synced_list_updN; eauto.
-    apply possible_crash_list_updN; auto.
-  Qed.
-
-  Lemma equal_unless_in_replay_disk : forall a b c m,
-    equal_unless_in (map_keys m) (synced_list a) b ->
-    possible_crash_list b c ->
-    replay_disk (Map.elements m) a = replay_disk (Map.elements m) c.
-  Proof.
-    intros.
-    eapply equal_unless_in_replay_disk'; eauto.
-    apply Map.elements_3w.
-  Qed.
 
   Lemma nil_unless_in_nils : forall vsl nr,
     nil_unless_in nil vsl ->
@@ -1742,25 +1807,6 @@ Module MLog.
 
 
 
-Definition recover T xp cs rx : prog T :=
-  let^ (cs, log) <- DLog.read xp cs;
-  rx (mk_memstate (replay_mem log vmap0) cs).
-
-Theorem recover_ok: forall xp F cs,
-  {< d ents raw Fd Fdents,
-  PRE
-    BUFCACHE.rep cs raw *
-    [[ crash_xform (F * recover_either_pred xp d ents)%pred raw ]] *
-    [[[ d ::: Fd ]]] * [[[ (replay_disk ents d) ::: Fdents ]]]
-  POST RET:ms' exists na d' dents',
-    (rep xp (crash_xform F) na (Synced d') ms' \/
-     rep xp (crash_xform F) na (Synced dents') ms') *
-     [[[ d' ::: crash_xform Fd ]]] * [[[ dents' ::: crash_xform Fdents ]]]
-  CRASH exists raw' cs',
-    BUFCACHE.rep cs' raw' *
-    [[ ((crash_xform F) * recover_either_pred xp d ents)%pred raw' ]]
-  >} recover xp cs.
-Proof.
     unfold recover; intros.
     step.
     unfold recover_either_pred, rep_inner.

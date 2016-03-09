@@ -530,15 +530,89 @@ Qed.
 
 
 (* crash prediate over arrays *)
+Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
 
 Definition possible_crash_list (l: list valuset) (l': list valu) :=
   length l = length l' /\
   forall i, i < length l -> In (selN l' i $0) (vsmerge (selN l i ($0, nil))).
 
+Lemma possible_crash_list_length : forall l l',
+  possible_crash_list l l' -> length l = length l'.
+Proof.
+  unfold possible_crash_list; firstorder.
+Qed.
+
+Lemma synced_list_length : forall l,
+  length (synced_list l) = length l.
+Proof.
+  unfold synced_list; intros.
+  rewrite combine_length_eq; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma synced_list_updN : forall l a v,
+  updN (synced_list l) a (v, nil) = synced_list (updN l a v).
+Proof.
+  unfold synced_list; induction l; simpl; intros; auto.
+  destruct a0; simpl; auto.
+  rewrite IHl; auto.
+Qed.
+
+Lemma synced_list_app : forall a b,
+  synced_list (a ++ b) = synced_list a ++ synced_list b.
+Proof.
+  induction a; simpl; auto; intros.
+  unfold synced_list at 1; simpl.
+  f_equal.
+  apply IHa.
+Qed.
+
+Lemma map_snd_synced_list_eq : forall a b,
+  length a = length b ->
+  map snd (synced_list a) = map snd (synced_list b).
+Proof.
+  unfold synced_list; intros.
+  repeat rewrite map_snd_combine; autorewrite with lists; auto.
+Qed.
+
+Lemma map_snd_vsupd_vecs_not_in : forall l d a v,
+  ~ In a (map fst l) ->
+  NoDup (map fst l) ->
+  map snd (vsupd_vecs (synced_list (updN d a v)) l) = map snd (vsupd_vecs (synced_list d) l).
+Proof.
+  induction l; simpl; intros.
+  erewrite map_snd_synced_list_eq; eauto.
+  autorewrite with lists; auto.
+
+  destruct a; intuition; simpl in *.
+  inversion H0; subst.
+  setoid_rewrite vsupd_vecs_vsupd_notin; auto.
+  unfold vsupd.
+  repeat rewrite map_snd_updN.
+  f_equal.
+  apply IHl; auto.
+  f_equal; f_equal; f_equal.
+  rewrite <- synced_list_updN.
+  rewrite <- updN_vsupd_vecs_notin by auto.
+  rewrite selN_updN_ne; auto.
+Qed.
+
+
+Lemma possible_crash_list_updN : forall l l' a v vs,
+  possible_crash_list l l' ->
+  possible_crash_list (updN l a (v, vs)) (updN l' a v).
+Proof.
+  unfold possible_crash_list; simpl; intuition;
+  autorewrite with lists in *; auto.
+  destruct (Nat.eq_dec a i); subst.
+  repeat rewrite selN_updN_eq; auto; omega.
+  repeat rewrite selN_updN_ne; eauto.
+Qed.
+
 Lemma crash_xform_arrayN: forall l st,
   crash_xform (arrayN st l) =p=>
     exists l', [[ possible_crash_list l l' ]] *
-    arrayN st (List.combine l' (repeat nil (length l'))).
+    arrayN st (synced_list l').
 Proof.
   unfold possible_crash_list.
   induction l; simpl; intros.
@@ -567,8 +641,8 @@ Proof.
   eapply Forall_cons2; eauto.
 Qed.
 
-Lemma crash_xform_arrayN_combine_nils: forall (l : list valu) st,
-  crash_xform (arrayN st (List.combine l (repeat nil (length l)))) =p=>
+Lemma crash_xform_arrayN_synced: forall (l : list valu) st,
+  crash_xform (arrayN st (synced_list l)) =p=>
   arrayN st (List.combine l (repeat nil (length l))).
 Proof.
   intros.
@@ -578,6 +652,8 @@ Proof.
   inversion H.
   inversion H; subst; simpl; auto.
 Qed.
+
+
 
 
 
