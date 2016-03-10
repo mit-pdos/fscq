@@ -46,24 +46,32 @@ Module LOG.
   | ActiveTxn (old : diskstate) (cur : diskstate)
   (* A transaction is in progress.
    * It started from the first memory and has evolved into the second.
-     MemLog.Synced or MemLog.Flushing or MemLog.Applying
+     MemLog.Synced
+   *)
+  | CommittingTxn (old : diskstate) (cur : diskstate)
+  (* A commit is in progress
+     MemLog.Flushing or MemLog.Applying
    *)
   .
 
-  Definition rep xp F nr st ms :=
+  Definition rep xp F st ms :=
   let '(cm, mm) := (MSTxn ms, MSMem ms) in
-  (match st with
+  (exists nr,
+  match st with
     | NoTxn cur =>
       [[ Map.Empty cm ]] *
       ( MLog.rep xp F nr (MLog.Synced cur) mm \/
         MLog.rep xp F nr (MLog.Applying cur) mm )
     | ActiveTxn old cur =>
+      [[ MLog.map_valid cm old ]] *
       [[ MLog.map_replay cm old cur ]] *
       ( MLog.rep xp F nr (MLog.Synced old) mm \/
-        MLog.rep xp F nr (MLog.Synced cur) mm \/
-        MLog.rep xp F nr (MLog.Applying old) mm \/
-        exists ents,
-        MLog.rep xp F nr (MLog.Flushing old ents) mm)
+        MLog.rep xp F nr (MLog.Applying old) mm )
+    | CommittingTxn old cur =>
+      [[ MLog.map_valid cm old ]] *
+      [[ MLog.map_replay cm old cur ]] *
+      ( MLog.rep xp F nr (MLog.Applying old) mm \/
+        MLog.rep xp F nr (MLog.Flushing old (Map.elements cm)) mm)
   end)%pred.
 
 
@@ -95,8 +103,54 @@ Module LOG.
 
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
-    let^ (mm', r) <- MLog.dwrite xp a v mm;
-    rx ^(mm', r).
+    let cm' := Map.remove a cm in
+    mm' <- MLog.dwrite xp a v mm;
+    rx (mk_memstate cm' mm').
+
+  Local Hint Unfold rep MLog.map_replay: hoare_unfold.
+  Arguments MLog.rep: simpl never.
+  Hint Extern 0 (okToUnify (MLog.rep _ _ _ _ _) (MLog.rep _ _ _ _ _)) => constructor : okToUnify.
+
+  (* destruct memstate *)
+  Ltac dems := eauto; repeat match goal with
+  | [ H : @eq memstate ?ms (mk_memstate _ _) |- _ ] =>
+     is_var ms; destruct ms; inversion H; subst; simpl
+  | [ |- Map.Empty vmap0 ] => apply Map.empty_1
+  | [ |- MLog.map_valid vmap0 _ ] => apply MLog.map_valid_map0
+  end; eauto.
+
+  (* This is a agressive hint *)
+  Theorem begin_ok: forall xp ms,
+    {< F m,
+    PRE
+      rep xp F (NoTxn m) ms
+    POST RET:r
+      rep xp F (ActiveTxn m m) r
+    CRASH
+      exists ms', rep xp F (NoTxn m) ms' 
+               \/ rep xp F (ActiveTxn m m) ms'
+    >} begin xp ms.
+  Proof.
+    unfold begin.
+    hoare using dems.
+  Qed.
+
+
+  Theorem abort_ok : forall xp ms,
+    {< F m1 m2,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms
+    POST RET:r
+      rep xp F (NoTxn m1) r
+    CRASH
+      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+               \/ rep xp F (NoTxn m1) ms'
+    >} abort xp ms.
+  Proof.
+    unfold abort.
+    hoare using dems.
+  Qed.
+
 
 
   Definition replay_mem (log : DLog.contents) init : valumap :=

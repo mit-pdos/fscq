@@ -1609,4 +1609,10 @@ Module MLog.
       Unshelve. eauto.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
+
+
 End MLog.
