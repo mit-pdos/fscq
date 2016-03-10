@@ -57,13 +57,47 @@ Module LOG.
       [[ Map.Empty cm ]] *
       ( MLog.rep xp F nr (MLog.Synced cur) mm \/
         MLog.rep xp F nr (MLog.Applying cur) mm )
-    | ActiveTxn old cur => exists ents,
+    | ActiveTxn old cur =>
       [[ MLog.map_replay cm old cur ]] *
       ( MLog.rep xp F nr (MLog.Synced old) mm \/
         MLog.rep xp F nr (MLog.Synced cur) mm \/
         MLog.rep xp F nr (MLog.Applying old) mm \/
+        exists ents,
         MLog.rep xp F nr (MLog.Flushing old ents) mm)
   end)%pred.
+
+
+  Definition begin T (xp : log_xparams) ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    rx (mk_memstate vmap0 mm).
+
+  Definition abort T (xp : log_xparams) ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    rx (mk_memstate vmap0 mm).
+
+  Definition write T (xp : log_xparams) a v ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    rx (mk_memstate (Map.add a v cm) mm).
+
+  Definition read T xp a ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    match Map.find a cm with
+    | Some v =>  rx ^(ms, v)
+    | None =>
+        let^ (mm', v) <- MLog.read xp a mm;
+        rx ^(mk_memstate cm mm', v)
+    end.
+
+  Definition commit T xp ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    let^ (mm', r) <- MLog.flush xp (Map.elements cm) mm;
+    rx ^(mk_memstate vmap0 mm', r).
+
+  Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    let^ (mm', r) <- MLog.dwrite xp a v mm;
+    rx ^(mm', r).
+
 
   Definition replay_mem (log : DLog.contents) init : valumap :=
     fold_left (fun m e => Map.add (fst e) (snd e) m) log init.
