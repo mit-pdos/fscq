@@ -1051,11 +1051,11 @@ Ltac case_cachefun c a :=
 
 Lemma cache_val_consistent : forall st st' R (c: AssocCache st) def
                                (c': cache_fun st')
-                               vd d a rest v v',
+                               vd d a v v',
     cache_eq R (cache_rep c def) c' ->
     cache_pred c' vd d ->
     cache_val c a = Some v ->
-    vd a = Some (Valuset v' rest, None) ->
+    vd a = Some (v', None) ->
     v = v'.
 Proof.
   unfold cache_pred, cache_eq, cache_addr_eq, cache_rep, cache_val.
@@ -1098,9 +1098,9 @@ Qed.
 Hint Resolve cache_addr_eq_pairs.
 
 Lemma cache_pred_stable_read_fill : forall st (c: cache_fun st) vd d
-                                      a v rest rdr s s',
+                                      a v rdr s s',
     c a = (Invalid, s) ->
-    vd a = Some (Valuset v rest, rdr) ->
+    vd a = Some (v, rdr) ->
     cache_pred c vd d ->
     cache_pred (cache_set c a (Clean v, s')) vd d.
 Proof.
@@ -1146,10 +1146,10 @@ Hint Resolve cache_miss_lock
 
 Theorem locked_disk_read_ok : forall a,
     stateS TID: tid |-
-    {{ F v rest,
+    {{ F v,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * a |-> (Valuset v rest, None) /\
+                     vd |= F * a |-> (v, None) /\
                      get_s_lock a s = Owned tid
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
@@ -1190,12 +1190,12 @@ Qed.
 
 Theorem locked_disk_read_lf : forall a,
   stateS TID: tid |-
-  {{ F LF ls v rest,
+  {{ F LF ls v,
    | PRE d m s0 s: Inv m s d /\
-                   cache_frames tid F (LF * a |-> (Valuset v rest, None)) ls s
+                   cache_frames tid F (LF * a |-> (v, None)) ls s
    | POST d' m' s0' s' r:
                    Inv m' s' d' /\
-                   cache_frames tid F (LF * a |-> (Valuset v rest, None)) ls s' /\
+                   cache_frames tid F (LF * a |-> (v, None)) ls s' /\
                    s0' = s0
   }} locked_disk_read a.
 Proof.
@@ -1215,16 +1215,16 @@ Definition cache_locked tid s (F: DISK_PRED) : pred :=
 
 Theorem locked_disk_read_lf' : forall a,
   stateS TID: tid |-
-  {{ F LF v rest,
+  {{ F LF v,
    | PRE d m s0 s: let vd := get GDisk s in
                    Inv m s d /\
                    vd |= F * cache_locked tid s
-                      (LF * a |-> (Valuset v rest, None))
+                      (LF * a |-> (v, None))
    | POST d' m' s0' s' r:
                    let vd' := get GDisk s' in
                    Inv m' s' d' /\
                    vd' |= F * cache_locked tid s'
-                      (LF * a |-> (Valuset v rest, None)) /\
+                      (LF * a |-> (v, None)) /\
                    s0' = s0
   }} locked_disk_read a.
 Proof.
@@ -1284,8 +1284,6 @@ Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
 Hint Rewrite mem_except_upd : upd.
 Hint Resolve upd_same.
 
-Hint Resolve clean_readers_upd.
-Hint Resolve clean_readers_upd'.
 Hint Resolve same_domain_refl.
 Hint Resolve same_domain_upd.
 
@@ -1408,16 +1406,16 @@ Qed.
 
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
-  {{ F v rest,
+  {{ F v,
    | PRE d m s0 s: let vd := virt_disk s in
                    Inv m s d /\
                    (* cache_get (get Cache m) a = Some (Invalid, Locked) /\ *)
-                   vd |= F * a |-> (Valuset v rest, None) /\
+                   vd |= F * a |-> (v, None) /\
                    get GCache s a = (Invalid, Owned tid) /\
                    R tid s0 s
    | POST d' m' s0' s' r: let vd' := virt_disk s' in
                           Inv m' s' d' /\
-                          (vd' |= any * a |-> (Valuset v rest, None)) /\
+                          (vd' |= any * a |-> (v, None)) /\
                           star (othersR R tid)
                                (set GDisk (change_reader (get GDisk s)
                                                          a (Some tid)) s)
@@ -1450,7 +1448,7 @@ Proof.
 
   assert (get GDisk s2 a = d0 a).
   eapply cache_miss_mem_eq; eauto.
-  assert (d0 a = Some (Valuset v rest, Some tid)) by finish.
+  assert (d0 a = Some (v, Some tid)) by finish.
 
   eauto.
 
@@ -1458,7 +1456,7 @@ Proof.
 
   assert (get GDisk s2 a = d0 a).
   eapply cache_miss_mem_eq; eauto.
-  assert (d0 a = Some (Valuset v rest, Some tid)) by finish.
+  assert (d0 a = Some (v, Some tid)) by finish.
 
   (* end copy-pasted asserts *)
 
@@ -1491,15 +1489,15 @@ Hint Resolve pimpl_any.
 
 Theorem locked_async_disk_read_ok : forall a,
     stateS TID: tid |-
-    {{ F v rest,
+    {{ F v,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * a |-> (Valuset v rest, None) /\
+                     vd |= F * a |-> (v, None) /\
                      get_s_lock a s = Owned tid /\
                      R tid s0 s
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
-                            vd' |= any * a |-> (Valuset v rest, None) /\
+                            vd' |= any * a |-> (v, None) /\
                             star (othersR R tid) s s' /\
                             r = v /\
                             get_s_lock a s' = Owned tid /\
@@ -1902,15 +1900,11 @@ Qed.
 Hint Resolve cache_eq_dirty.
 
 Definition dirty_vd st (vd: DISK) (c: AssocCache st) a v' :=
-  let (rest, rdr) := match vd a with
-              | Some (Valuset v0 rest, rdr) =>
-                (match cache_get c a with
-                | Some (Dirty _, _) => rest
-                | _ => v0 :: rest
-                end, rdr)
-              | None => (nil, None)
+  let rdr := match vd a with
+              | Some (_, rdr) => rdr
+              | None => None
               end in
-  upd vd a (Valuset v' rest, rdr).
+  upd vd a (v', rdr).
 
 Lemma cache_rep_get : forall st c a v s (def: st),
     cache_get c a = Some (v, s) ->
@@ -1938,20 +1932,14 @@ Lemma cache_pred_stable_dirty : forall c c' vd d a v0 rdr v tid,
 Proof.
   unfold cache_pred; intros.
   unfold dirty_vd.
-  distinguish_addresses; autorewrite with cache; specific_addrs.
-  case_eq (c' a0); intros.
-  repeat simpl_match.
-  destruct matches; repeat inv_prod; subst; autorewrite with upd; eauto;
-  try (edestruct (H a0); [ now eauto | now eauto | ]);
-  subst;
-  repeat deex;
-  eauto.
-  match goal with
+  distinguish_addresses; autorewrite with upd cache; specific_addrs;
+  case_cachefun c' a0; repeat deex; eauto;
+  try match goal with
   | [ H: vd a0 = ?a, H': vd a0 = ?b |- _ ] =>
     assert (a = b) by congruence; inv_opt
   end; eauto.
-
-  destruct matches; autorewrite with upd; subst; eauto.
+  assert (d a0 = Some (v0, rdr)) by congruence.
+  eauto.
 Qed.
 
 Lemma cache_locked_get_some : forall c c' a tid,
@@ -1986,17 +1974,17 @@ Hint Resolve ptsto_upd'.
 
 Theorem locked_disk_write_ok : forall a v,
     stateS TID: tid |-
-    {{ F v0 rest,
+    {{ F v0,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
                      get_s_lock a s = Owned tid /\
-                     vd |= F * a |-> (Valuset v0 rest, None)
+                     vd |= F * a |-> (v0, None)
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
                             (forall a, get_s_lock a s = Owned tid ->
                               get_s_lock a s' = Owned tid) /\
-                            (exists rest', vd' |= F * a |-> (Valuset v rest', None)) /\
+                            vd' |= F * a |-> (v, None) /\
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
@@ -2028,15 +2016,15 @@ Tactic Notation "unfolded_lh" tactic(t) :=
 
 Theorem locked_disk_write_ok_lf : forall a v,
     stateS TID: tid |-
-    {{ F LF v0 rest,
+    {{ F LF v0,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
-                     vd |= F * cache_locked tid s (LF * a |-> (Valuset v0 rest, None))
+                     vd |= F * cache_locked tid s (LF * a |-> (v0, None))
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             R tid s s' /\
-                            (exists rest', vd' |= F * cache_locked tid s'
-                              (LF * a |-> (Valuset v rest', None))) /\
+                            vd' |= F * cache_locked tid s'
+                              (LF * a |-> (v, None)) /\
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
@@ -2060,18 +2048,18 @@ this is intended to explore what would happen if we had true multicore
 parallelism rather than only allowing one CPU thread at a time *)
 Theorem locked_disk_write_ok_lf' : forall a v,
     stateS TID: tid |-
-    {{ F F' LF v0 rest,
+    {{ F F' LF v0,
      | PRE d m s0 s: let vd := virt_disk s in
                      Inv m s d /\
                      preserves virt_disk (star (othersR R tid)) F F' /\
-                     vd |= F * cache_locked tid s (LF * a |-> (Valuset v0 rest, None))
+                     vd |= F * cache_locked tid s (LF * a |-> (v0, None))
      | POST d' m' s0' s' _: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             (* this is odd if we're pretending to yield, but
                             the change isn't purely other threads *)
                             R tid s s' /\
-                            (exists rest', vd' |= F' * cache_locked tid s'
-                              (LF * a |-> (Valuset v rest', None))) /\
+                            vd' |= F' * cache_locked tid s'
+                              (LF * a |-> (v, None)) /\
                             s0' = s0
     }} locked_disk_write a v.
 Proof.
@@ -2162,44 +2150,20 @@ Definition writeback {T} a rx : prog _ _ T :=
   match (cache_get c a) with
   | Some (Dirty v, _) =>
     GhostUpdate (fun s => let vd : DISK := get GDisk s in
-                        let vs' := match (vd a) with
-                                   | Some (vs0, _) => buffer_valu vs0 v
-                                   (* impossible *)
-                                   | None => Valuset v nil
-                                   end in
-                        set GDisk (upd vd a (vs', None)) s);;
+                        set GDisk (upd vd a (v, None)) s);;
     Write a v;;
           let c' := cache_clean c a in
           cache_upd a (Clean v, Owned tid);;
                       GhostUpdate (fun s => let vd : DISK := get GDisk s in
-                                          let vs' := match (vd a) with
-                                                     | Some (Valuset v' (v :: rest), None) =>
-                                                       Valuset v rest
-                                                     (* impossible *)
-                                                     | _ => Valuset $0 nil
-                                                     end in
-                                          set GDisk (upd vd a (vs', None)) s);;
+                                          set GDisk (upd vd a (v, None)) s);;
                       Assgn Cache c';;
                       rx tt
   | _ => rx tt
   end.
 
-
 Hint Rewrite upd_eq upd_ne using (now auto) : cache.
 Hint Rewrite upd_repeat : cache.
 Hint Rewrite upd_same using (now auto) : cache.
-
-Definition sync {T} a rx : prog Mcontents Scontents T :=
-  GhostUpdate (fun s =>
-                 let vd := virt_disk s in
-                 let vs' := match vd a with
-                            | Some (Valuset v _, _) => Valuset v nil
-                            (* precondition will disallow this *)
-                            | None => Valuset $0 nil
-                            end in
-                 set GDisk (upd vd a (vs', None)) s);;
-              Sync a;;
-              rx tt.
 
 Lemma mem_except_upd : forall AT AEQ V (m:@mem AT AEQ V) a v,
     mem_except (upd m a v) a = mem_except m a.
@@ -2225,12 +2189,5 @@ Proof.
 Qed.
 
 Hint Resolve upd_eq_something.
-
-Definition cache_sync {T} a rx : prog _ _ T :=
-  c <- Get Cache;
-  match cache_get c a with
-  | Some (Dirty _, _) => writeback a;; sync a;; rx tt
-  | _ => sync a;; rx tt
-  end.
 
 End Cache.

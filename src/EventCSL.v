@@ -51,20 +51,13 @@ Hint Immediate (Valuset $0 nil, @None ID).
 
 Definition ID := nat.
 
-Definition wr_set : Type := valuset * option ID.
+Definition wr_set : Type := valu * option ID.
 
 (* a disk state *)
 Notation DISK := (@mem addr (@weq addrlen) (const wr_set)).
 
 (* a disk predicate *)
 Notation DISK_PRED := (@pred addr (@weq addrlen) (const wr_set)).
-
-Definition clean_readers (d:DISK) : @mem addr (@weq addrlen) (const valuset) :=
-  fun a =>
-    match d a with
-    | Some (vs, _) => Some vs
-    | None => None
-    end.
 
 Section Lock.
   Inductive BusyFlag := Open | Locked.
@@ -150,26 +143,21 @@ Section EventCSL.
   Qed.
 
   Inductive step (tid:ID) : forall st p st' p', Prop :=
-  | StepStartRead : forall d m s0 s vs
+  | StepStartRead : forall d m s0 s v
                       a rx,
-      d a = Some (vs, None) ->
-      let d' := upd d a (vs, Some tid) in
+      d a = Some (v, None) ->
+      let d' := upd d a (v, Some tid) in
       tid :- StartRead a rx / (d, m, s0, s) ==>
         rx tt / (d', m, s0, s)
-  | StepFinishRead : forall d m s0 s a rx vs,
-      d a = Some (vs, Some tid) ->
-      let d' := upd d a (vs, None) in
+  | StepFinishRead : forall d m s0 s a rx v,
+      d a = Some (v, Some tid) ->
+      let d' := upd d a (v, None) in
       tid :- FinishRead a rx / (d, m, s0, s) ==>
-          rx (latest_valu vs) / (d', m, s0, s)
-  | StepWrite : forall d m s0 s a rx vs0 v',
-      d a = Some (vs0, None) ->
-      let d' := upd d a (buffer_valu vs0 v', None) in
+          rx v / (d', m, s0, s)
+  | StepWrite : forall d m s0 s a rx v0 v',
+      d a = Some (v0, None) ->
+      let d' := upd d a (v', None) in
       tid :- Write a v' rx / (d, m, s0, s) ==>
-          rx tt / (d', m, s0, s)
-  | StepSync : forall d m s0 s a rx vs0 reader,
-      d a = Some (vs0, reader) ->
-      let d' := upd d a (synced vs0, reader) in
-      tid :- Sync a rx / (d, m, s0, s) ==>
           rx tt / (d', m, s0, s)
   | StepYield : forall d m s0 s s' m' d' wchan rx,
       StateI m s d ->
@@ -302,17 +290,11 @@ Section EventCSL.
     destruct e.
 
     - destruct e.
-      + refine (g _ _ _ _ _ _ _ _ _ _ _).
-        eassumption. eassumption. eassumption.
-        refine (exec_ind2 _ _ _ _). eassumption.
-      + refine (f _ _ _ _ _ _ _ _ _).
-        eassumption. eauto. eauto.
-        refine (f0 _ _ _); eauto.
-      + refine (f _ _ _ _ _ _ _ _ _).
-        eassumption. eauto. eauto.
-        refine (f1 _ _ _ _ _).
-    - refine (f0 _ _ _); auto.
-    - refine (f1 _ _ _ _ _).
+      + eapply g; eauto.
+      + eapply f; eauto.
+      + eapply f; eauto.
+    - eauto.
+    - eauto.
   Defined.
 
   Inductive exec2 tid : forall st p (out:outcome), Prop :=
@@ -539,9 +521,9 @@ Section EventCSL.
   Hint Resolve ptsto_upd'.
 
   Theorem Write_ok : forall a v,
-      tid |- {{ F vs0,
-             | PRE d m s0 s: d |= F * a |-> (vs0, None)
-             | POST d' m' s0' s' _: d' |= F * a |-> (buffer_valu vs0 v, None) /\
+      tid |- {{ F v0,
+             | PRE d m s0 s: d |= F * a |-> (v0, None)
+             | POST d' m' s0' s' _: d' |= F * a |-> (v, None) /\
                                 s0' = s0 /\
                                 s' = s /\
                                 m' = m
@@ -550,41 +532,39 @@ Section EventCSL.
     opcode_ok.
   Qed.
 
-  Theorem Sync_ok : forall a,
-      tid |- {{ F v0 reader,
-             | PRE d m s0 s: d |= F * a |-> (v0, reader)
-             | POST d' m' s0' s' _: d' |= F * a |-> (synced v0, reader) /\
-                                s0' = s0 /\
-                                s' = s /\
-                                m' = m
-            }} Sync a.
-  Proof.
-    opcode_ok.
-  Qed.
-
   Theorem StartRead_ok : forall a,
-    tid |- {{ F vs0,
-           | PRE d m s0 s: d |= F * a |-> (vs0, None)
-           | POST d' m' s0' s' _: d' |= F * a |-> (vs0, Some tid) /\
+    tid |- {{ F v0,
+           | PRE d m s0 s: d |= F * a |-> (v0, None)
+           | POST d' m' s0' s' _: d' |= F * a |-> (v0, Some tid) /\
                                   s0' = s0 /\
                                   s' = s /\
                                   m' = m
           }} StartRead a.
   Proof.
     opcode_ok.
+    assert (v = v0).
+    eapply ptsto_valid' in H1.
+    congruence.
+    subst; eauto.
   Qed.
 
   Theorem FinishRead_ok : forall a,
-      tid |- {{ F vs0,
-             | PRE d m s0 s: d |= F * a |-> (vs0, Some tid)
-             | POST d' m' s0' s' r: d' |= F * a |-> (vs0, None) /\
+      tid |- {{ F v,
+             | PRE d m s0 s: d |= F * a |-> (v, Some tid)
+             | POST d' m' s0' s' r: d' |= F * a |-> (v, None) /\
                                     s0' = s0 /\
                                     s' = s /\
                                     m' = m /\
-                                    r = latest_valu vs0
+                                    r = v
             }} FinishRead a.
   Proof.
     opcode_ok.
+    assert (v = v0).
+    eapply ptsto_valid' in H1.
+    congruence.
+    subst; eauto.
+    eapply ptsto_valid' in H1.
+    congruence.
   Qed.
 
   Theorem Get_ok : forall t (v: var _ t),
@@ -905,7 +885,6 @@ Notation "'For' i < n | 'Ghost' [ g1 .. g2 ] | 'Loopvar' [ l1 .. l2 ] | 'Continu
 Hint Extern 1 {{ StartRead _; _ }} => apply StartRead_ok : prog.
 Hint Extern 1 {{ FinishRead _; _ }} => apply FinishRead_ok : prog.
 Hint Extern 1 {{ Write _ _; _ }} => apply Write_ok : prog.
-Hint Extern 1 {{ Sync _; _ }} => apply Sync_ok : prog.
 Hint Extern 1 {{ Get _; _ }} => apply Get_ok : prog.
 Hint Extern 1 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.

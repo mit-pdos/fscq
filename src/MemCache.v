@@ -116,12 +116,12 @@ Definition cache_fun_val st (f: cache_fun st) a : cached_val :=
 Definition cache_pred st (c: cache_fun st) (vd:DISK) : DISK_PRED :=
   fun d => forall a,
       match c a with
-      | (Clean v, _) => exists rest reader,
-                           vd a = Some (Valuset v rest, reader) /\
-                           d a = Some (Valuset v rest, reader)
-      | (Dirty v', _) => exists rest v reader,
-                           vd a = Some (Valuset v' (v :: rest), reader) /\
-                           d a = Some (Valuset v rest, reader)
+      | (Clean v, _) => exists reader,
+                        vd a = Some (v, reader) /\
+                        d a = Some (v, reader)
+      | (Dirty v', _) => exists v reader,
+                           vd a = Some (v', reader) /\
+                           d a = Some (v, reader)
       | (Invalid, _) => vd a = d a
       end.
 
@@ -494,7 +494,7 @@ Ltac case_cache_val :=
 Theorem cache_pred_eq_disk : forall st (c:cache_fun st) vd d a v l,
     c a = (Clean v, l) ->
     cache_pred c vd d ->
-    exists rest reader, d a = Some (Valuset v rest, reader).
+    exists reader, d a = Some (v, reader).
 Proof.
   unfold cache_pred; intros;
   single_addr; simpl_match; repeat deex.
@@ -506,22 +506,22 @@ Ltac learn_disk_val :=
   | [ Hget: ?c ?a = (Clean ?v, _),
             Hpred: cache_pred ?c ?vd ?d |- _ ] =>
     try lazymatch goal with
-      | [ H: d a = Some (Valuset v _) |- _ ] => fail 1 "already did that"
+      | [ H: d a = Some (v, _) |- _ ] => fail 1 "already did that"
       end;
-      let rest := fresh "rest" in
-      edestruct (cache_pred_eq_disk a Hget Hpred) as [rest ?]
+      let reader := fresh "reader" in
+      edestruct (cache_pred_eq_disk a Hget Hpred) as [reader ?]
   end.
 
-Lemma cache_pred_miss : forall st (c:cache_fun st) l vd a v rest reader,
+Lemma cache_pred_miss : forall st (c:cache_fun st) l vd a v reader,
     c a = (Invalid, l) ->
-    vd a = Some (Valuset v rest, reader) ->
+    vd a = Some (v, reader) ->
     cache_pred c vd =p=>
-cache_pred c (mem_except vd a) * a |-> (Valuset v rest, reader).
+cache_pred c (mem_except vd a) * a |-> (v, reader).
 Proof.
   unfold cache_pred, pimpl; intros.
   unfold_sep_star.
   exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some (Valuset v rest, reader) else None).
+  exists (fun a' => if weq a' a then Some (v, reader) else None).
   unfold mem_union, mem_except.
   pose proof (H1 a); simpl_match.
   intuition.
@@ -549,10 +549,10 @@ Proof.
   destruct (m1 a'); auto.
 Qed.
 
-Lemma cache_pred_miss' : forall st (c:cache_fun st) l vd a v rest reader,
-    vd a = Some (Valuset v rest, reader) ->
+Lemma cache_pred_miss' : forall st (c:cache_fun st) l vd a v reader,
+    vd a = Some (v, reader) ->
     c a = (Invalid, l) ->
-    cache_pred c (mem_except vd a) * a |-> (Valuset v rest, reader) =p=>
+    cache_pred c (mem_except vd a) * a |-> (v, reader) =p=>
 cache_pred c vd.
 Proof.
   unfold cache_pred, pimpl; intros.
@@ -565,19 +565,20 @@ Proof.
   distinguish_addresses; autorewrite with upd; auto.
 Qed.
 
-Lemma cache_pred_clean : forall st (c:cache_fun st) def vd rest a v l reader,
-    vd a = Some (Valuset v rest, reader) ->
+Lemma cache_pred_clean : forall st (c:cache_fun st) def vd a v l reader,
+    vd a = Some (v, reader) ->
     c a = (Clean v, l) ->
     cache_pred c vd =p=>
-cache_pred (cache_set c a (Invalid, def)) (mem_except vd a) * a |-> (Valuset v rest, reader).
+cache_pred (cache_set c a (Invalid, def)) (mem_except vd a) * a |-> (v, reader).
 Proof.
   unfold pimpl.
   intros.
   unfold_sep_star.
-  learn_disk_val; deex.
+  learn_disk_val.
+  pose proof (H1 a); simpl_match; deex.
 
   exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some (Valuset v rest0, reader0) else None).
+  exists (fun a' => if weq a' a then Some (v, reader) else None).
   unfold mem_except.
   intuition.
   - unfold mem_union; extensionality a'.
@@ -589,63 +590,13 @@ Proof.
     autorewrite with cache; auto.
     apply H1.
   - unfold ptsto; intuition; distinguish_addresses.
-    unfold const, wr_set in *.
-    unfold cache_pred in *; single_addr; simpl_match; repeat deex.
-    congruence.
 Qed.
 
-Lemma cache_pred_clean' : forall st (c:cache_fun st) def vd a rest v l reader,
+Lemma cache_pred_clean' : forall st (c:cache_fun st) def vd a v l reader,
     c a = (Clean v, l) ->
-    vd a = Some (Valuset v rest, reader) ->
-    (cache_pred (cache_set c a (Invalid, def)) (mem_except vd a) * a |-> (Valuset v rest, reader)) =p=>
+    vd a = Some (v, reader) ->
+    (cache_pred (cache_set c a (Invalid, def)) (mem_except vd a) * a |-> (v, reader)) =p=>
 cache_pred c vd.
-Proof.
-  unfold pimpl, mem_except.
-  intros.
-  unfold_sep_star in H1.
-  repeat deex.
-  erewrite union_ptsto_to_upd; eauto.
-  unfold cache_pred; intros.
-  pose proof (H3 a0).
-  distinguish_addresses; autorewrite with cache upd in *;
-  repeat simpl_match; eauto.
-Qed.
-
-Lemma cache_pred_dirty : forall st (c:cache_fun st) def vd a v v' l rest reader,
-    c a = (Dirty v', l) ->
-    vd a = Some (Valuset v' (v :: rest), reader) ->
-    cache_pred c vd =p=>
-    cache_pred (cache_set c a (Invalid, def)) (mem_except vd a) *
-      a |-> (Valuset v rest, reader).
-Proof.
-  unfold pimpl.
-  intros.
-  unfold_sep_star.
-  exists (mem_except m a).
-  exists (fun a' => if weq a' a then Some (Valuset v rest, reader) else None).
-  unfold mem_except, mem_union, mem_disjoint, ptsto.
-  rewrite weq_same.
-  intuition.
-  extensionality a'; distinguish_addresses.
-  pose proof (H1 a); simpl_match; repeat deex.
-  congruence.
-  destruct (m a'); auto.
-  repeat deex.
-  distinguish_addresses.
-
-  unfold cache_pred; intros; distinguish_addresses;
-  autorewrite with cache; auto.
-  apply H1.
-
-  unfold const, wr_set.
-  destruct (weq a' a); try congruence.
-Qed.
-
-Lemma cache_pred_dirty' : forall st (c:cache_fun st) def vd a v v' l rest reader,
-    c a = (Dirty v', l) ->
-    vd a = Some (Valuset v' (v :: rest), reader) ->
-    cache_pred (cache_set c a (Invalid, def)) (mem_except vd a) *
-    a |-> (Valuset v rest, reader) =p=> cache_pred c vd.
 Proof.
   unfold pimpl, mem_except.
   intros.
@@ -661,8 +612,8 @@ Qed.
 Lemma cache_pred_clean_val :  forall st (c:cache_fun st) vd d a v l,
     cache_pred c vd d ->
     c a = (Clean v, l) ->
-    exists rest reader, vd a = Some (Valuset v rest, reader) /\
-                   d a = Some (Valuset v rest, reader).
+    exists reader, vd a = Some (v, reader) /\
+                   d a = Some (v, reader).
 Proof.
   unfold cache_pred; intros; single_addr; simpl_match; repeat deex; eauto.
 Qed.
@@ -670,9 +621,9 @@ Qed.
 Lemma cache_pred_dirty_val :  forall st (c:cache_fun st) vd d a v l,
     cache_pred c vd d ->
     c a = (Dirty v, l) ->
-    exists v' rest reader,
-      vd a = Some (Valuset v (v' :: rest), reader) /\
-      d a = Some (Valuset v' rest, reader).
+    exists v' reader,
+      vd a = Some (v, reader) /\
+      d a = Some (v', reader).
 Proof.
   unfold cache_pred; intros; single_addr; simpl_match; repeat deex; eauto.
 Qed.
@@ -694,7 +645,7 @@ Proof.
 Qed.
 
 Lemma cache_pred_stable_add : forall st (c:AssocCache st) vd a v l d rest reader,
-    vd a = Some (Valuset v rest, reader) ->
+    vd a = Some (v, reader) ->
     cache_val c a = None ->
     cache_pred c vd d ->
     cache_pred (cache_add c a v l) vd d.
@@ -728,7 +679,7 @@ Qed.
 
 Lemma cache_pred_stable_dirty_write : forall st (c:AssocCache st) vd a v s s' rest v' d vs' reader,
     cache_get c a = Some (Dirty v s) ->
-    vd a = Some (Valuset v rest, reader) ->
+    vd a = Some (v, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' rest ->
     cache_pred (cache_add_dirty c a v' s') (upd vd a (vs', reader)) d.
@@ -741,7 +692,7 @@ Qed.
 
 Lemma cache_pred_stable_clean_write : forall st (c:AssocCache st) vd a v s s' rest v' d vs' reader,
     cache_get c a = Some (Clean v s) ->
-    vd a = Some (Valuset v rest, reader) ->
+    vd a = Some (v, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' (v :: rest) ->
     cache_pred (cache_add_dirty c a v' s') (upd vd a (vs', reader)) d.
@@ -754,7 +705,7 @@ Qed.
 
 Lemma cache_pred_stable_miss_write : forall st (c:AssocCache st) vd a v rest v' s d vs' reader,
     cache_val c a = None ->
-    vd a = Some (Valuset v rest, reader) ->
+    vd a = Some (v, reader) ->
     cache_pred c vd d ->
     vs' = Valuset v' (v :: rest) ->
     cache_pred (cache_add_dirty c a v' s) (upd vd a (vs', reader)) d.
@@ -834,8 +785,8 @@ Qed.
 
 Lemma cache_pred_miss_stable : forall st (c:AssocCache st) vd a rest v reader,
     cache_val c a = None ->
-    vd a = Some (Valuset v rest, reader) ->
-    (cache_pred c (mem_except vd a) * a |-> (Valuset v rest, reader)) =p=>
+    vd a = Some (v, reader) ->
+    (cache_pred c (mem_except vd a) * a |-> (v, reader)) =p=>
 cache_pred c vd.
 Proof.
   unfold pimpl, mem_except.
@@ -958,29 +909,9 @@ Proof.
   eauto using cache_pred_same_virt_disk.
 Qed.
 
-Theorem cache_pred_same_disk : forall st (c:cache_fun st) vd d d',
-    cache_pred c vd d ->
-    cache_pred c vd d' ->
-    d = d'.
-Proof.
-  unfold cache_pred; intros; extensionality a; repeat single_addr.
-  destruct matches in *; repeat deex; congruence.
-Qed.
-
-Theorem cache_pred_same_disk_eq : forall st (c:cache_fun st) c' vd vd' d d',
-    cache_pred c vd d ->
-    cache_pred c' vd' d' ->
-    c = c' ->
-    vd = vd' ->
-    d = d'.
-Proof.
-  intros; subst.
-  eauto using cache_pred_same_disk.
-Qed.
-
-Lemma cache_get_vd_clean : forall st (c:cache_fun st) d vd a v rest v' l reader,
+Lemma cache_get_vd_clean : forall st (c:cache_fun st) d vd a v v' l reader,
   cache_pred c vd d ->
-  vd a = Some (Valuset v rest, reader) ->
+  vd a = Some (v, reader) ->
   c a = (Clean v', l) ->
   v' = v.
 Proof.
@@ -988,9 +919,9 @@ Proof.
   repeat deex; congruence.
 Qed.
 
-Lemma cache_get_vd_dirty : forall st (c:cache_fun st) d vd a v rest v' l reader,
+Lemma cache_get_vd_dirty : forall st (c:cache_fun st) d vd a v v' l reader,
   cache_pred c vd d ->
-  vd a = Some (Valuset v rest, reader) ->
+  vd a = Some (v, reader) ->
   c a = (Dirty v', l) ->
   v' = v.
 Proof.
@@ -1043,11 +974,12 @@ Lemma cache_lock_miss_invalid : forall c c' a tid,
 Proof.
   unfold cache_eq, cache_addr_eq, cache_rep, cache_val, cache_fun_state; intros.
   repeat single_addr.
-  case_cachefun c' a; case_cache_val' c a;
+  unfold cache_entry in *.
+  destruct matches in *;
   subst; edestruct H; eauto; subst;
   match goal with
   | [ H: ghost_lock_invariant _ _ |- _ ] => inversion H
-  end; subst; auto.
+  end; subst; auto; unfold cache_entry; congruence.
 Qed.
 
 Arguments cache_lock_miss_invalid {c c' a tid} _ _ _.
@@ -1060,7 +992,7 @@ Lemma cache_lock_miss_fun_invalid : forall c c' a tid,
 Proof.
   unfold cache_eq, cache_addr_eq, cache_rep, cache_val, cache_fun_state; intros.
   repeat single_addr.
-  case_cachefun c' a; case_cache_val' c a;
+  destruct matches in *;
   edestruct H; eauto; congruence.
 Qed.
 
@@ -1077,7 +1009,7 @@ Proof.
   match goal with
   | [ H: ghost_lock_invariant _ _ |- _ ] =>
     inversion H
-  end; subst; auto.
+  end; subst; auto; congruence.
 Qed.
 
 Arguments cache_miss_ghost_locked {c c' a v tid} _ _.

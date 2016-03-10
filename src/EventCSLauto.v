@@ -151,30 +151,10 @@ Section ReadTheorems.
 
   Hint Resolve ptsto_valid ptsto_valid'.
 
-  Lemma clean_readers_upd : forall m a v0 reader reader',
-      m a = Some (v0, reader) ->
-      clean_readers (upd m a (v0, reader')) = clean_readers m.
-  Proof.
-    intros.
-    unfold clean_readers; extensionality a'.
-    destruct (weq a a'); subst; autorewrite with upd;
-    try simpl_match; auto.
-  Qed.
-
-  Lemma clean_readers_upd' : forall m a v0 reader reader',
-      m a = Some (v0, reader) ->
-      clean_readers m = clean_readers (upd m a (v0, reader')).
-  Proof.
-    intros.
-    erewrite clean_readers_upd; eauto.
-  Qed.
-
-  Hint Resolve clean_readers_upd.
-
   Theorem Read_ok : forall Mcontents Scontents Inv R a,
       (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
-      {{ F v rest,
-       | PRE d m s0 s: d |= F * a |-> (Valuset v rest, None)
+      {{ F v,
+       | PRE d m s0 s: d |= F * a |-> (v, None)
        | POST d' m' s0' s' r: d' = d /\
                               s0' = s0 /\
                               s' = s /\
@@ -205,9 +185,9 @@ Definition StartRead_upd {Mcontents} {Scontents} {T} a rx : prog Mcontents Scont
 
 Theorem StartRead_upd_ok : forall Mcontents Scontents Inv R a,
     (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
-    {{ vs0,
-     | PRE d m s0 s: d a = Some (vs0, None)
-     | POST d' m' s0' s' _: d' = upd d a (vs0, Some tid) /\
+    {{ v0,
+     | PRE d m s0 s: d a = Some (v0, None)
+     | POST d' m' s0' s' _: d' = upd d a (v0, Some tid) /\
                             s0' = s0 /\
                             s' = s /\
                             m' = m
