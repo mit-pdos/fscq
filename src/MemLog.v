@@ -933,7 +933,7 @@ Module MLog.
     PRE
       rep xp F na (Synced d) ms
     POST RET:ms'
-      rep xp F (LogLen xp) (Synced d) ms'
+      rep xp F (LogLen xp) (Synced d) ms' * [[ Map.Empty (MSInLog ms') ]]
     CRASH
       exists ms', rep xp F (LogLen xp) (Synced d) ms' \/
                   rep xp F na (Synced d) ms' \/
@@ -951,7 +951,6 @@ Module MLog.
 
     rewrite vssync_vecs_length, vsupd_vecs_length; auto.
     apply map_valid_map0.
-    Search replay_disk vssync_vecs.
     rewrite apply_synced_data_ok'; auto.
     apply KNoDup_NoDup; auto.
 
@@ -1090,6 +1089,77 @@ Module MLog.
   Qed.
 
 
+
+
+
+  Lemma map_valid_updN : forall m d a v,
+    map_valid m d -> map_valid m (updN d a v).
+  Proof.
+    unfold map_valid; simpl; intuition.
+    eapply H; eauto.
+    rewrite length_updN.
+    eapply H; eauto.
+  Qed.
+
+  Lemma map_valid_equal : forall d m1 m2,
+    Map.Equal m1 m2 -> map_valid m1 d -> map_valid m2 d.
+  Proof.
+    induction d; unfold map_valid; simpl; intros; split;
+    eapply H0; rewrite H; eauto.
+  Qed.
+
+
+  Lemma equal_unless_in_length_eq : forall a b l,
+    equal_unless_in l a b -> length b = length a.
+  Proof.
+    unfold equal_unless_in; firstorder.
+  Qed.
+
+  Lemma length_eq_map_valid : forall m a b,
+    map_valid m a -> length b = length a -> map_valid m b.
+  Proof.
+    unfold map_valid; firstorder.
+  Qed.
+
+  Lemma replay_disk_updN_absorb : forall l a v d,
+    In a (map fst l) -> KNoDup l ->
+    replay_disk l (updN d a v) = replay_disk l d.
+  Proof.
+    induction l; intros; simpl; auto.
+    inversion H.
+    destruct a; simpl in *; intuition; subst.
+    rewrite updN_twice; auto.
+    inversion H0; subst.
+    setoid_rewrite <- IHl at 2; eauto.
+    rewrite updN_comm; auto.
+    contradict H3; subst.
+    apply In_fst_KIn; auto.
+  Qed.
+
+  Lemma replay_disk_twice : forall l d,
+    KNoDup l ->
+    replay_disk l (replay_disk l d) = replay_disk l d.
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a; inversion H; subst; simpl.
+    rewrite <- replay_disk_updN_comm.
+    rewrite IHl; auto.
+    rewrite updN_twice; auto.
+    contradict H2.
+    apply In_fst_KIn; auto.
+  Qed.
+
+
+  Lemma replay_disk_eq_length_eq : forall l l' a b,
+    replay_disk l a = replay_disk l' b ->
+    length a = length b.
+  Proof.
+    induction l; destruct l'; simpl; intros; subst;
+    repeat rewrite replay_disk_length; autorewrite with lists; auto.
+    setoid_rewrite <- length_updN.
+    eapply IHl; eauto.
+  Qed.
+
   Lemma ptsto_replay_disk_not_in' : forall l F a v d,
     ~ In a (map fst l) ->
     KNoDup l ->
@@ -1139,121 +1209,117 @@ Module MLog.
     apply In_map_fst_MapIn; auto.
   Qed.
 
-  Lemma map_valid_updN : forall m d a v,
-    map_valid m d -> map_valid m (updN d a v).
+  Lemma list2nmem_replay_disk_vsupd_empty : forall F a v vc vo m d,
+    Map.Empty m ->
+    (F * a |-> (vc, vo))%pred (list2nmem (replay_disk (Map.elements m) d)) ->
+    (F * a |-> (v, vsmerge (vc, vo)))%pred (list2nmem (replay_disk (Map.elements m) (vsupd d a v))).
   Proof.
-    unfold map_valid; simpl; intuition.
-    eapply H; eauto.
-    rewrite length_updN.
-    eapply H; eauto.
+    unfold vsupd; intros.
+    apply MapProperties.elements_Empty in H.
+    rewrite H in *; simpl in *.
+    erewrite <- list2nmem_sel by eauto.
+    eapply list2nmem_updN; eauto.
   Qed.
 
 
-
-  Definition dwrite T xp a v ms rx : prog T :=  
+  Definition dwrite T xp a v ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
-    If (MapFacts.In_dec oms a) {
-      rx ^(ms, false)
+    ms' <- IfRx irx (MapFacts.In_dec oms a) {
+      ms <- apply xp ms;
+      irx ms
     } else {
-      cs <- BUFCACHE.write_array (DataStart xp) a v cs;
-      rx ^(mk_memstate oms cs, true)
-    }.
+      irx ms
+    };
+    cs' <- BUFCACHE.write_array (DataStart xp) a v (MSCache ms');
+    rx (mk_memstate (MSInLog ms') cs').
 
-  Section UnfoldProof4.
-  Local Hint Unfold rep map_replay rep_inner synced_rep: hoare_unfold.
-  Hint Resolve In_map_fst_MapIn.
+
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
   Theorem dwrite_ok: forall xp a v ms,
     {< F Fd d na vs,
     PRE
       rep xp F na (Synced d) ms *
       [[[ d ::: (Fd * a |-> vs) ]]]
-    POST RET:^(ms', r) exists d',
-      rep xp F na (Synced d') ms' *
-      ([[ r = true  ]] * [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
-       [[ r = false ]] * [[[ d' ::: (Fd * a |-> vs) ]]] )
+    POST RET:ms' exists d' na',
+      rep xp F na' (Synced d') ms' *
+      [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
     CRASH
-      exists ms' d', rep xp F na (Synced d') ms' *
-      ( [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
-        [[[ d' ::: (Fd * a |-> vs) ]]] )
+      exists ms' d' na',
+      rep xp F na' (Applying d') ms' * [[[ d' ::: (Fd * a |-> vs) ]]] \/
+      rep xp F na' (Synced d')   ms' * [[[ d' ::: (Fd * a |-> vs) ]]] \/
+      rep xp F na' (Synced d')   ms' * [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite.
     step.
+
+    (* case 1: apply happens *)
     step.
-    step.
-    erewrite <- replay_disk_length.
+    prestep.
+    unfold rep at 1, rep_inner at 1.
+    unfold synced_rep, map_replay in *.
+    cancel; auto.
+    replace (length d0) with (length d).
     eapply list2nmem_inbound; eauto.
+    subst; erewrite replay_disk_length; eauto.
 
     step.
-    or_l; cancel.
-    apply list2nmem_replay_disk_vsupd_not_in; auto.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
+    apply list2nmem_replay_disk_vsupd_empty; auto.
 
-    instantiate (ms' := mk_memstate  (MSInLog ms) cs').
-    cancel. or_r; cancel; eauto.
+    (* crashes for case 1 *)
+    cancel.
+    or_r; or_l.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    instantiate (ms' := mk_memstate  (MSInLog r_) cs'); cancel.
     pred_apply; cancel.
 
-    instantiate (ms'0 := mk_memstate  (MSInLog ms) cs').
-    cancel. or_l; cancel.
+    cancel.
+    or_r; or_r.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    instantiate (ms'3 := mk_memstate  (MSInLog r_) cs'); cancel.
+    pred_apply; cancel.
+    unfold vsupd; autorewrite with lists; auto.
+    apply map_valid_updN; auto.
+    apply list2nmem_replay_disk_vsupd_empty; auto.
+
+    or_r; or_l; cancel.
+    or_r; or_l; cancel.
+    or_l; cancel.
+
+
+    (* case 2: no apply *)
+    prestep.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    replace (length d0) with (length d).
+    eapply list2nmem_inbound; eauto.
+    subst; erewrite replay_disk_length; eauto.
+
+    step.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel.
+    unfold vsupd; autorewrite with lists; auto.
+    apply map_valid_updN; auto.
     apply list2nmem_replay_disk_vsupd_not_in; eauto.
 
+    (* crashes for case 2 *)
+    cancel.
+    or_r; or_l.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    instantiate (ms' := mk_memstate (MSInLog ms) cs'); cancel.
+    pred_apply; cancel.
+
+    or_r; or_r.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    instantiate (ms'0 := mk_memstate  (MSInLog ms) cs'); cancel.
     pred_apply; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
+    apply list2nmem_replay_disk_vsupd_not_in; eauto.
   Qed.
 
-  End UnfoldProof4.
-
-
-  Lemma map_valid_equal : forall d m1 m2,
-    Map.Equal m1 m2 -> map_valid m1 d -> map_valid m2 d.
-  Proof.
-    induction d; unfold map_valid; simpl; intros; split;
-    eapply H0; rewrite H; eauto.
-  Qed.
-
-
-  Lemma equal_unless_in_length_eq : forall a b l,
-    equal_unless_in l a b -> length b = length a.
-  Proof.
-    unfold equal_unless_in; firstorder.
-  Qed.
-
-  Lemma length_eq_map_valid : forall m a b,
-    map_valid m a -> length b = length a -> map_valid m b.
-  Proof.
-    unfold map_valid; firstorder.
-  Qed.
-
-  Lemma replay_disk_updN_absorb : forall l a v d,
-    In a (map fst l) -> KNoDup l ->
-    replay_disk l (updN d a v) = replay_disk l d.
-  Proof.
-    induction l; intros; simpl; auto.
-    inversion H.
-    destruct a; simpl in *; intuition; subst.
-    rewrite updN_twice; auto.
-    inversion H0; subst.
-    setoid_rewrite <- IHl at 2; eauto.
-    rewrite updN_comm; auto.
-    contradict H3; subst.
-    apply In_fst_KIn; auto.
-  Qed.
-
-  Lemma replay_disk_twice : forall l d,
-    KNoDup l ->
-    replay_disk l (replay_disk l d) = replay_disk l d.
-  Proof.
-    induction l; simpl; intros; auto.
-    destruct a; inversion H; subst; simpl.
-    rewrite <- replay_disk_updN_comm.
-    rewrite IHl; auto.
-    rewrite updN_twice; auto.
-    contradict H2.
-    apply In_fst_KIn; auto.
-  Qed.
 
 
   Hint Rewrite selN_combine repeat_selN' Nat.min_id synced_list_length : lists.
