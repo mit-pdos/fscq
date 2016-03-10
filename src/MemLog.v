@@ -1090,6 +1090,123 @@ Module MLog.
   Qed.
 
 
+  Lemma ptsto_replay_disk_not_in' : forall l F a v d,
+    ~ In a (map fst l) ->
+    KNoDup l ->
+    (F * a |-> v)%pred (list2nmem (replay_disk l d)) ->
+    ((arrayN_ex d a) * a |-> v)%pred (list2nmem d).
+  Proof.
+    induction l; simpl; intros; auto.
+    erewrite list2nmem_sel with (x := v); eauto.
+    apply list2nmem_ptsto_cancel.
+    eapply list2nmem_ptsto_bound; eauto.
+
+    inversion H0; destruct a; subst.
+    erewrite list2nmem_sel with (x := v); eauto.
+    eapply IHl; simpl; auto.
+    rewrite replay_disk_updN_comm, selN_updN_ne.
+    apply list2nmem_ptsto_cancel.
+    apply list2nmem_ptsto_bound in H1.
+    rewrite replay_disk_length, length_updN in *; auto.
+    intuition.
+    contradict H4.
+    apply In_KIn; auto.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma ptsto_replay_disk_not_in : forall F a v d m,
+    ~ Map.In a m ->
+    (F * a |-> v)%pred (list2nmem (replay_disk (Map.elements m) d)) ->
+    ((arrayN_ex d a) * a |-> v)%pred (list2nmem d).
+  Proof.
+    intros.
+    eapply ptsto_replay_disk_not_in'; eauto.
+    contradict H.
+    apply In_map_fst_MapIn; auto.
+  Qed.
+
+  Lemma list2nmem_replay_disk_vsupd_not_in : forall F a v vc vo m d,
+    ~ Map.In a m ->
+    (F * a |-> (vc, vo))%pred (list2nmem (replay_disk (Map.elements m) d)) ->
+    (F * a |-> (v, vsmerge (vc, vo)))%pred (list2nmem (replay_disk (Map.elements m) (vsupd d a v))).
+  Proof.
+    intros.
+    setoid_rewrite replay_disk_updN_comm.
+    erewrite <- list2nmem_sel.
+    eapply list2nmem_updN; eauto.
+    eapply ptsto_replay_disk_not_in; eauto.
+    contradict H.
+    apply In_map_fst_MapIn; auto.
+  Qed.
+
+  Lemma map_valid_updN : forall m d a v,
+    map_valid m d -> map_valid m (updN d a v).
+  Proof.
+    unfold map_valid; simpl; intuition.
+    eapply H; eauto.
+    rewrite length_updN.
+    eapply H; eauto.
+  Qed.
+
+
+
+  Definition dwrite T xp a v ms rx : prog T :=  
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    If (MapFacts.In_dec oms a) {
+      rx ^(ms, false)
+    } else {
+      cs <- BUFCACHE.write_array (DataStart xp) a v cs;
+      rx ^(mk_memstate oms cs, true)
+    }.
+
+  Section UnfoldProof4.
+  Local Hint Unfold rep map_replay rep_inner synced_rep: hoare_unfold.
+  Hint Resolve In_map_fst_MapIn.
+
+  Theorem dwrite_ok: forall xp a v ms,
+    {< F Fd d na vs,
+    PRE
+      rep xp F na (Synced d) ms *
+      [[[ d ::: (Fd * a |-> vs) ]]]
+    POST RET:^(ms', r) exists d',
+      rep xp F na (Synced d') ms' *
+      ([[ r = true  ]] * [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
+       [[ r = false ]] * [[[ d' ::: (Fd * a |-> vs) ]]] )
+    CRASH
+      exists ms' d', rep xp F na (Synced d') ms' *
+      ( [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
+        [[[ d' ::: (Fd * a |-> vs) ]]] )
+    >} dwrite xp a v ms.
+  Proof.
+    unfold dwrite.
+    step.
+    step.
+    step.
+    erewrite <- replay_disk_length.
+    eapply list2nmem_inbound; eauto.
+
+    step.
+    or_l; cancel.
+    apply list2nmem_replay_disk_vsupd_not_in; auto.
+    unfold vsupd; autorewrite with lists; auto.
+    apply map_valid_updN; auto.
+
+    instantiate (ms' := mk_memstate  (MSInLog ms) cs').
+    cancel. or_r; cancel; eauto.
+    pred_apply; cancel.
+
+    instantiate (ms'0 := mk_memstate  (MSInLog ms) cs').
+    cancel. or_l; cancel.
+    apply list2nmem_replay_disk_vsupd_not_in; eauto.
+
+    pred_apply; cancel.
+    unfold vsupd; autorewrite with lists; auto.
+    apply map_valid_updN; auto.
+  Qed.
+
+  End UnfoldProof4.
+
+
   Lemma map_valid_equal : forall d m1 m2,
     Map.Equal m1 m2 -> map_valid m1 d -> map_valid m2 d.
   Proof.
@@ -1425,58 +1542,5 @@ Module MLog.
       or_r; or_l; cancel; eauto.
       Unshelve. eauto.
   Qed.
-
-
-  Definition dwrite T xp a v ms rx : prog T :=  
-    let '(oms, cs) := (MSInLog ms, MSCache ms) in
-    If (MapFacts.In_dec oms a) {
-      rx ^(ms, false)
-    } else {
-      cs <- BUFCACHE.write_array (DataStart xp) a v cs;
-      rx ^(mk_memstate oms cs, true)
-    }.
-
-  Section UnfoldProof4.
-  Local Hint Unfold rep map_replay rep_inner synced_rep: hoare_unfold.
-
-  Theorem dwrite_ok: forall xp a v ms,
-    {< F Fd d na vs,
-    PRE
-      rep xp F na (Synced d) ms *
-      [[[ d ::: (Fd * a |-> vs) ]]]
-    POST RET:^(ms', r) exists d',
-      rep xp F na (Synced d') ms' *
-      ([[ r = true  ]] * [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
-       [[ r = false ]] * [[[ d' ::: (Fd * a |-> vs) ]]] )
-    CRASH
-      exists ms' d', rep xp F na (Synced d') ms' *
-      ( [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] \/
-        [[[ d' ::: (Fd * a |-> vs) ]]] )
-    >} dwrite xp a v ms.
-  Proof.
-    unfold dwrite.
-    step.
-    step.
-    step.
-    admit.
-    step.
-    or_l; cancel.
-    setoid_rewrite replay_disk_updN_comm.
-    admit.
-    admit.
-    admit.
-    admit.
-    instantiate (ms' := mk_memstate  (MSInLog ms) cs').
-    cancel. or_r; cancel; eauto.
-    pred_apply; cancel.
-    instantiate (ms'0 := mk_memstate  (MSInLog ms) cs').
-    cancel. or_l; cancel.
-    admit.
-    pred_apply; cancel.
-    admit.
-    admit.
-  Admitted.
-
-  End UnfoldProof4.
 
 End MLog.
