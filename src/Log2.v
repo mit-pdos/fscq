@@ -48,6 +48,9 @@ Module LOG.
    * It started from the first memory and has evolved into the second.
      MemLog.Synced
    *)
+  | ApplyingTxn (old : diskstate)
+  (* special state when crash inside dwrite *)
+
   | CommittingTxn (old : diskstate) (cur : diskstate)
   (* A commit is in progress
      MemLog.Flushing or MemLog.Applying
@@ -60,13 +63,13 @@ Module LOG.
   match st with
     | NoTxn cur =>
       [[ Map.Empty cm ]] *
-      ( MLog.rep xp F nr (MLog.Synced cur) mm \/
-        MLog.rep xp F nr (MLog.Applying cur) mm )
+      MLog.rep xp F nr (MLog.Synced cur) mm
     | ActiveTxn old cur =>
       [[ MLog.map_valid cm old ]] *
       [[ MLog.map_replay cm old cur ]] *
-      ( MLog.rep xp F nr (MLog.Synced old) mm \/
-        MLog.rep xp F nr (MLog.Applying old) mm )
+      MLog.rep xp F nr (MLog.Synced old) mm
+    | ApplyingTxn old =>
+      MLog.rep xp F nr (MLog.Applying old) mm
     | CommittingTxn old cur =>
       [[ MLog.map_valid cm old ]] *
       [[ MLog.map_replay cm old cur ]] *
@@ -98,8 +101,12 @@ Module LOG.
 
   Definition commit T xp ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
-    let^ (mm', r) <- MLog.flush xp (Map.elements cm) mm;
-    rx ^(mk_memstate vmap0 mm', r).
+    If (bool_dec (Map.is_empty cm) true) {
+      rx ^(ms, true)
+    } else {
+      let^ (mm', r) <- MLog.flush xp (Map.elements cm) mm;
+      rx ^(mk_memstate vmap0 mm', r)
+    }.
 
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
@@ -151,6 +158,88 @@ Module LOG.
     hoare using dems.
   Qed.
 
+
+  Theorem read_ok: forall xp ms a,
+    {< F Fm m1 m2 v,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: Fm * a |-> v ]]]
+    POST RET:^(ms', r)
+      rep xp F (ActiveTxn m1 m2) ms' * [[ r = fst v ]]
+    CRASH
+      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+    >} read xp a ms.
+  Proof.
+    unfold read.
+    prestep.
+    cancel.
+    step.
+
+    eapply MLog.replay_disk_eq; eauto.
+    instantiate (d := m1); pred_apply; cancel.
+    pimpl_crash; cancel.
+
+    cancel.
+    2: step.
+    eexists; subst.
+    eapply MLog.ptsto_replay_disk_not_in; eauto.
+    apply MapFacts.not_find_in_iff; eauto.
+
+    pimpl_crash; norm.
+    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
+    cancel. intuition.
+  Qed.
+
+
+  Theorem write_ok : forall xp ms a v,
+    {< F Fm m1 m2 vs,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms * [[ a <> 0 ]] *
+      [[[ m2 ::: (Fm * a |-> vs) ]]]
+    POST RET:ms'
+      exists m', rep xp F (ActiveTxn m1 m') ms' *
+      [[[ m' ::: (Fm * a |-> (v, nil)) ]]]
+    CRASH
+      exists m' ms', rep xp F (ActiveTxn m1 m') ms'
+    >} write xp a v ms.
+  Proof.
+    unfold write.
+    hoare using dems.
+
+    apply MLog.map_valid_add; eauto.
+    erewrite <- MLog.replay_disk_length.
+    eapply list2nmem_ptsto_bound; eauto.
+
+    rewrite MLog.replay_disk_add.
+    eapply list2nmem_updN; eauto.
+  Qed.
+
+
+  Theorem dwrite_ok : forall xp ms a v,
+    {< F Fm1 Fm2 m1 m2 vs1 vs2,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms * [[ a <> 0 ]] *
+      [[[ m1 ::: (Fm1 * a |-> vs1) ]]] *
+      [[[ m2 ::: (Fm2 * a |-> vs2) ]]]
+    POST RET:ms' exists m1' m2',
+      rep xp F (ActiveTxn m1' m2') ms' *
+      [[[ m1' ::: (Fm1 * a |-> (v, vsmerge vs1)) ]]] *
+      [[[ m2' ::: (Fm2 * a |-> (v, vsmerge vs1)) ]]]
+    CRASH
+      exists m' m1' ms',
+      rep xp F (ActiveTxn m1  m') ms' \/
+      rep xp F (ActiveTxn m1' m') ms' \/ (* [[[ m1' ::: ... ]]] *)
+      rep xp F (ApplyingTxn m1  ) ms'
+    >} dwrite xp a v ms.
+  Proof.
+    unfold dwrite.
+    step.
+    step.
+
+    admit.
+    admit.
+
+  Qed.
 
 
   Definition replay_mem (log : DLog.contents) init : valumap :=

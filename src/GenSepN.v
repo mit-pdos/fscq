@@ -99,6 +99,15 @@ Proof.
   eapply list2nmem_inbound; eauto.
 Qed.
 
+Theorem list2nmem_updN_pair: forall A B F (l: list (A * B)) i x y,
+  (F * i |-> x)%pred (list2nmem l)
+  -> (F * i |-> ((fst y), (snd y)))%pred (list2nmem (updN l i y)).
+Proof.
+  intros.
+  rewrite <- surjective_pairing.
+  eapply list2nmem_updN; eauto.
+Qed.
+
 
 Theorem listapp_memupd: forall A l (a : A),
   list2nmem (l ++ a :: nil) = Mem.upd (list2nmem l) (length l) a.
@@ -673,6 +682,17 @@ Proof.
   intros.
   assert (arrayN 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
   pred_apply; erewrite arrayN_except; eauto.
+Qed.
+
+Lemma list2nmem_ptsto_cancel_pair : forall A B i (def : A * B) l,
+  i < length l ->
+  (arrayN_ex l i * i |-> (fst (selN l i def), snd (selN l i def)))%pred (list2nmem l).
+Proof.
+  intros.
+  assert (arrayN 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
+  pred_apply; erewrite arrayN_except; eauto.
+  rewrite <- surjective_pairing.
+  cancel.
 Qed.
 
 Lemma list2nmem_sel_for_eauto : forall V A i (v v' : V) l def,

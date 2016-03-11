@@ -260,4 +260,13 @@ Proof.
   right; hnf. tauto.
 Qed.
 
-
+Lemma map_empty_find_exfalso : forall V a m (v : V),
+  Map.find a m = Some v ->
+  Map.Empty m -> False.
+Proof.
+  intros.
+  rewrite MapFacts.elements_o in H.
+  apply MapProperties.elements_Empty in H0.
+  rewrite H0 in H; simpl in H.
+  congruence.
+Qed.
