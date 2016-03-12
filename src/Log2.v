@@ -426,48 +426,50 @@ Module LOG.
 
 
   Theorem read_array_ok : forall xp ms a i,
-    {< mbase m vs F,
-    PRE
-      rep xp F (ActiveTxn mbase m) mscs *
-      [[ exists F', (array a vs stride * F')%pred (list2mem m) ]] *
-      [[ wordToNat i < length vs ]]
-    POST RET:^(mscs,r)
-      [[ r = sel vs i $0 ]] * rep xp F (ActiveTxn mbase m) mscs
-    CRASH
-      exists mscs', rep xp F (ActiveTxn mbase m) mscs'
-    >} read_array xp a i stride mscs.
+    {< F Fm m1 m2 vs,
+    PRE   rep xp F (ActiveTxn m1 m2) ms *
+          [[ i < length vs /\ a <> 0 ]] *
+          [[[ m2 ::: Fm * arrayN a vs ]]]
+    POST RET:^(ms', r)
+          rep xp F (ActiveTxn m1 m2) ms' *
+          [[ r = fst (selN vs i ($0, nil)) ]]
+    CRASH exists ms',
+          rep xp F (ActiveTxn m1 m2) ms'
+    >} read_array xp a i ms.
   Proof.
     unfold read_array.
     hoare.
 
-    rewrite isolate_fwd with (i:=i) by auto.
+    subst; pred_apply.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite <- surjective_pairing.
     cancel.
   Qed.
 
-  Theorem write_array_ok : forall xp a i stride v mscs,
-    {< mbase m vs F F',
-    PRE
-      rep xp F (ActiveTxn mbase m) mscs *
-      [[ (array a vs stride * F')%pred (list2mem m) ]] *
-      [[ wordToNat i < length vs ]]
-    POST RET:mscs
-      exists m', rep xp F (ActiveTxn mbase m') mscs *
-      [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
-    CRASH
-      exists m' mscs', rep xp F (ActiveTxn mbase m') mscs'
-    >} write_array xp a i stride v mscs.
+
+  Theorem write_array_ok : forall xp a i v ms,
+    {< F Fm m1 m2 vs,
+    PRE   rep xp F (ActiveTxn m1 m2) ms *
+          [[ i < length vs /\ a <> 0 ]] *
+          [[[ m2 ::: Fm * arrayN a vs ]]]
+    POST RET:ms' exists m',
+          rep xp F (ActiveTxn m1 m') ms' *
+          [[[ m' ::: Fm * arrayN a (updN vs i (v, nil)) ]]]
+    CRASH exists m' ms',
+          rep xp F (ActiveTxn m1 m') ms'
+    >} write_array xp a i v ms.
   Proof.
     unfold write_array.
     hoare.
 
-    rewrite isolate_fwd with (i:=i) by auto.
+    subst; pred_apply.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite surjective_pairing with (p := selN vs i ($0, nil)).
     cancel.
 
-    rewrite <- isolate_bwd_upd by auto.
+    subst; pred_apply.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
-
-    Grab Existential Variables.
-    exact $0.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
