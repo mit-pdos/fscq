@@ -1328,6 +1328,93 @@ Module MLog.
   Qed.
 
 
+  Lemma replay_disk_selN_snd_nil : forall l a d,
+    In a (map fst l) ->
+    snd (selN (replay_disk l d) a ($0, nil)) = nil.
+  Proof.
+    induction l; simpl; intros; intuition.
+    destruct a; subst; simpl.
+    destruct (In_dec (eq_nat_dec) n (map fst l)).
+    apply IHl; auto.
+    rewrite replay_disk_updN_comm by auto.
+    destruct (lt_dec n (length d)).
+    rewrite selN_updN_eq; auto.
+    rewrite replay_disk_length; auto.
+    rewrite selN_oob; auto.
+    rewrite length_updN, replay_disk_length; omega.
+  Qed.
+
+  Lemma replay_disk_vssync_comm : forall m d a,
+    vssync (replay_disk (Map.elements m) d) a =
+    replay_disk (Map.elements m) (vssync d a).
+  Proof.
+    unfold vssync; intros.
+    destruct (MapFacts.In_dec m a).
+    rewrite replay_disk_updN_absorb; auto.
+    erewrite selN_eq_updN_eq; eauto.
+    rewrite surjective_pairing.
+    rewrite replay_disk_selN_snd_nil; auto.
+    apply In_map_fst_MapIn; auto.
+    apply In_map_fst_MapIn; auto.
+    rewrite replay_disk_updN_comm.
+    rewrite replay_disk_selN_not_In; auto.
+    contradict n; apply In_map_fst_MapIn; auto.
+  Qed.
+
+
+
+  Definition dsync T xp a ms rx : prog T :=
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    cs' <- BUFCACHE.sync_array (DataStart xp) a cs;
+    rx (mk_memstate oms cs').
+
+  Section UnfoldProof4.
+  Local Hint Unfold rep map_replay rep_inner synced_rep: hoare_unfold.
+
+  Theorem dsync_ok: forall xp a ms,
+    {< F Fd d na vs,
+    PRE
+      rep xp F na (Synced d) ms *
+      [[[ d ::: (Fd * a |-> vs) ]]]
+    POST RET:ms' exists d' na',
+      rep xp F na' (Synced d') ms' *
+      [[  d' = vssync d a ]] *
+      [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]]
+    CRASH
+      exists ms' na',
+      rep xp F na' (Synced d)   ms' \/
+      exists d', [[ d' = vssync d a ]] *
+      rep xp F na' (Synced d')  ms' * [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]]
+    >} dsync xp a ms.
+  Proof.
+    unfold dsync.
+    step.
+    subst; erewrite <- replay_disk_length.
+    eapply list2nmem_inbound; eauto.
+
+    step.
+    unfold vssync; autorewrite with lists; auto.
+    apply map_valid_updN; auto.
+    apply replay_disk_vssync_comm.
+    unfold vssync; erewrite <- list2nmem_sel; eauto; simpl.
+    eapply list2nmem_updN; eauto.
+
+    (* crashes *)
+    instantiate (ms' := mk_memstate (MSInLog ms) cs').
+    or_l; cancel.
+    instantiate (ms'0 := mk_memstate (MSInLog ms) cs').
+    or_r; cancel.
+    unfold vssync; autorewrite with lists; auto.
+    apply map_valid_updN; auto.
+    apply replay_disk_vssync_comm.
+    unfold vssync; erewrite <- list2nmem_sel; eauto; simpl.
+    eapply list2nmem_updN; eauto.
+  Qed.
+
+  End UnfoldProof4.
+
+
+
   Hint Rewrite selN_combine repeat_selN' Nat.min_id synced_list_length : lists.
 
   Ltac simplen_rewrite H := try progress (
@@ -1618,6 +1705,7 @@ Module MLog.
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
 
