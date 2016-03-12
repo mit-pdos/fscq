@@ -881,8 +881,7 @@ Module AsyncRecArray (RA : RASig).
     rewrite crash_xform_arrayN; cancel.
     unfold possible_crash_list in *; subst; intuition.
     rewrite H0.
-    rewrite combine_length_eq; auto.
-    rewrite repeat_length; auto.
+    rewrite synced_list_length; auto.
   Qed.
 
   Lemma xform_unsync_array_avail : forall xp st l,
@@ -896,6 +895,7 @@ Module AsyncRecArray (RA : RASig).
     cancel.
     rewrite combine_length_eq in *; simplen.
     rewrite <- ipack_length; auto.
+    rewrite synced_list_length; auto.
   Qed.
 
   Lemma array_rep_size_ok : forall m xp start st,

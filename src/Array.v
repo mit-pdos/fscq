@@ -641,6 +641,18 @@ Proof.
   eapply Forall_cons2; eauto.
 Qed.
 
+Lemma crash_xform_arrayN_combine_nils: forall (l : list valu) st,
+  crash_xform (arrayN st (List.combine l (repeat nil (length l)))) =p=>
+  arrayN st (List.combine l (repeat nil (length l))).
+Proof.
+  intros.
+  apply crash_xform_synced_arrayN.
+  rewrite Forall_forall; intros.
+  induction l; simpl in *.
+  inversion H.
+  inversion H; subst; simpl; auto.
+Qed.
+
 Lemma crash_xform_arrayN_synced: forall (l : list valu) st,
   crash_xform (arrayN st (synced_list l)) =p=>
   arrayN st (List.combine l (repeat nil (length l))).
