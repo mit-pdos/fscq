@@ -439,6 +439,61 @@ Proof.
   unfold mem_union; replace (m1 a); eauto.
 Qed.
 
+Lemma mem_union_first : forall m1 m2 a v,
+  m1 a = Some v ->
+  mem_union m1 m2 a = Some v.
+Proof.
+  unfold mem_union; intros.
+  replace (m1 a); eauto.
+Qed.
+
+Lemma mem_union_second : forall m1 m2 a,
+  m1 a = None ->
+  mem_union m1 m2 a = m2 a.
+Proof.
+  unfold mem_union; intros.
+  replace (m1 a); eauto.
+Qed.
+
+Hint Rewrite mem_union_first mem_union_second using (now auto) : mem_union.
+
+Lemma mem_union_upd' : forall m1 m2 a v,
+  m1 a = None ->
+  upd (mem_union m1 m2) a v = mem_union m1 (upd m2 a v).
+Proof.
+  intros.
+  extensionality a'.
+  destruct (AEQ a a'); subst; autorewrite with upd mem_union;
+    auto.
+  unfold mem_union.
+  destruct (m1 a'); autorewrite with upd; auto.
+Qed.
+
+Theorem locks_held_ptsto_upd : forall s F LF m a v0 v,
+  (F * locks_held s (LF * a |-> v0))%pred m ->
+  (F * locks_held s (LF * a |-> v))%pred (upd m a v).
+Proof.
+  intros.
+  unfold_sep_star at 1 in H; repeat deex.
+  unfold_sep_star at 1.
+  assert (m2 a = Some v0).
+  unfold locks_held in *; intuition.
+  eapply ptsto_valid'; pred_apply; cancel.
+  assert (m1 a = None).
+  case_eq (m1 a); intros; auto.
+  contradiction H; repeat eexists; intuition eauto.
+
+  exists m1, (upd m2 a v); intuition.
+  apply mem_union_upd'; auto.
+  apply mem_disjoint_comm.
+  eapply mem_disjoint_upd; eauto.
+  apply mem_disjoint_comm; auto.
+  unfold locks_held in *; intuition.
+  eapply ptsto_upd'; eauto.
+  destruct (AEQ a a0); subst;
+    autorewrite with upd in *; eauto.
+Qed.
+
 End State.
 
 End Preservation.

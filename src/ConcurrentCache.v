@@ -1498,7 +1498,15 @@ Theorem locked_async_disk_read_ok : forall a,
      | POST d' m' s0' s' r: let vd' := virt_disk s' in
                             Inv m' s' d' /\
                             vd' |= any * a |-> (v, None) /\
-                            star (othersR R tid) s s' /\
+                            (forall a, cache_fun_state (get GCache s) a = Owned tid ->
+                             cache_fun_state (get GCache s') a = Owned tid) /\
+                            (exists s'',
+                             s' = set GCache (get GCache s') s'' /\
+                             star (othersR R tid)
+                               (set GDisk (change_reader (get GDisk s)
+                                                         a (Some tid)) s)
+                               (set GDisk (change_reader (get GDisk s'')
+                                                         a (Some tid)) s'')) /\
                             r = v /\
                             get_s_lock a s' = Owned tid /\
                             R tid s0' s'
@@ -1510,11 +1518,87 @@ Proof.
   - unfold cache_add.
     eapply cache_eq_split with (a := a); intros; autorewrite with cache; eauto.
     erewrite cache_rep_change_get by eauto; eauto.
-  - (* relation between s and s'; not stated precisely *)
-    admit.
-Admitted.
+Qed.
 
-Hint Extern 4 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok.
+Hint Extern 1 {{locked_async_disk_read _; _}} => apply locked_async_disk_read_ok : prog.
+
+Ltac unfold_cache_locked :=
+  unfold cache_locked in *.
+
+Ltac refold_cache_locked :=
+  repeat match goal with
+    | [ H: context[locks_held ?f ?s ?F] |- _] =>
+      match f with
+      | context[Owned ?tid] => fold (cache_locked tid s F) in H
+      end
+    | [ |- context[locks_held ?f ?s ?F] ] =>
+      match f with
+      | context[Owned ?tid] => fold (cache_locked tid s F)
+      end
+  end.
+
+Tactic Notation "unfolded_lh" tactic(t) :=
+  unfold_cache_locked; t; refold_cache_locked.
+
+Theorem locked_async_disk_read_ok_lf : forall a,
+    stateS TID: tid |-
+    {{ F LF F' v,
+     | PRE d m s0 s: let vd := virt_disk s in
+                     Inv m s d /\
+                     vd |= F * cache_locked tid s
+                      (LF * a |-> (v, None)) /\
+                     preserves virt_disk (star (othersR R tid)) F F' /\
+                     R tid s0 s
+     | POST d' m' s0' s' r: let vd' := virt_disk s' in
+                            Inv m' s' d' /\
+                            vd' |= F' * cache_locked tid s'
+                              (LF * a |-> (v, None)) /\
+                           (forall a, cache_fun_state (get GCache s) a = Owned tid ->
+                             cache_fun_state (get GCache s') a = Owned tid) /\
+                            r = v /\
+                            R tid s0' s'
+    }} locked_async_disk_read a.
+Proof.
+  intros.
+  eapply pimpl_ok; [ apply locked_async_disk_read_ok | ]; simplify.
+  apply locks_held_unwrap_weaken in H0.
+  pred_apply; cancel.
+  eapply locks_held_ptsto_locked_frame in H0; auto.
+
+  step pre simplify with finish.
+  autorewrite with upd hlist cache in *.
+  assert (get GDisk s a = Some (v, None)).
+  eapply locks_held_unwrap_weaken in H0.
+  eapply ptsto_valid' with (m := get GDisk s).
+  pred_apply; cancel.
+
+  let vd' := constr:(change_reader (get GDisk s) a (Some tid)) in
+  assert
+    ((F * cache_locked tid s
+      (LF * a |-> (v, Some tid)))%pred (get GDisk (set GDisk vd' s))).
+  autorewrite with hlist.
+  unfold change_reader; simpl_match.
+  eapply locks_held_ptsto_upd; now eauto.
+
+  let vd'' := constr:(change_reader (get GDisk s'') a (Some tid)) in
+  assert
+    ((F' * cache_locked tid s
+      (LF * a |-> (v, Some tid)))%pred (get GDisk (set GDisk vd'' s''))).
+  unfolded_lh erewrite <- locks_held_indifferent; now eauto.
+
+  assert (get GDisk s2 = get GDisk s'') as Hdiskeq.
+  replace s2.
+  autorewrite with hlist; auto.
+
+  rewrite Hdiskeq in *.
+  autorewrite with hlist in *.
+  unfolded_lh erewrite <- locks_held_indifferent; eauto.
+  replace (get GDisk s'') with (upd
+    (change_reader (get GDisk s'') a (Some tid)) a (v, None)).
+  eapply locks_held_ptsto_upd; eauto.
+  unfold change_reader; simpl_match.
+  autorewrite with upd; auto.
+Qed.
 
 Definition cache_alloc_prog {T} a rx : prog Mcontents Scontents T :=
   c <- Get Cache;
@@ -1996,23 +2080,6 @@ Qed.
 
 Hint Extern 1 {{locked_disk_write _ _; _}} => apply locked_disk_write_ok : prog.
 
-Ltac unfold_cache_locked :=
-  unfold cache_locked in *.
-
-Ltac refold_cache_locked :=
-  repeat match goal with
-    | [ H: context[locks_held ?f ?s ?F] |- _] =>
-      match f with
-      | context[Owned ?tid] => fold (cache_locked tid s F) in H
-      end
-    | [ |- context[locks_held ?f ?s ?F] ] =>
-      match f with
-      | context[Owned ?tid] => fold (cache_locked tid s F)
-      end
-  end.
-
-Tactic Notation "unfolded_lh" tactic(t) :=
-  unfold_cache_locked; t; refold_cache_locked.
 
 Theorem locked_disk_write_ok_lf : forall a v,
     stateS TID: tid |-
