@@ -215,6 +215,66 @@ Module LOG.
   Qed.
 
 
+  Lemma map_valid_remove : forall a ms d1 d2,
+    MLog.map_valid ms d1 ->
+    length d1 = length d2 ->
+    MLog.map_valid (Map.remove a ms) d2.
+  Proof.
+    unfold MLog.map_valid; intros.
+    erewrite <- H0.
+    eapply H.
+    eapply Map.remove_3; eauto.
+  Qed.
+
+
+  Lemma replay_disk_remove_updN_eq : forall F m d a v,
+    (F * a |-> v)%pred (list2nmem (MLog.replay_disk (Map.elements m) d)) ->
+    MLog.replay_disk (Map.elements m) d =
+    MLog.replay_disk (Map.elements (Map.remove a m)) (updN d a v).
+  Proof.
+    intros.
+    eapply list_selN_ext with (default := ($0, nil)); intros.
+    repeat rewrite MLog.replay_disk_length; rewrite length_updN; auto.
+    rewrite MLog.replay_disk_updN_comm.
+
+    destruct (Nat.eq_dec pos a); subst.
+    rewrite selN_updN_eq; [ apply eq_sym | ].
+    eapply list2nmem_sel; eauto.
+    rewrite MLog.replay_disk_length in *; eauto.
+
+    rewrite selN_updN_ne by auto.
+    case_eq (Map.find pos m); intros.
+    apply Map.find_2 in H1.
+    rewrite MLog.replay_disk_length in *.
+    repeat erewrite MLog.replay_disk_selN_MapsTo; eauto.
+    apply Map.remove_2; eauto.
+
+    apply MapFacts.not_find_in_iff in H1.
+    setoid_rewrite MLog.replay_disk_selN_not_In; auto.
+    apply not_in_remove_not_in; auto.
+
+    rewrite In_map_fst_MapIn.
+    apply Map.remove_1; auto.
+  Qed.
+
+
+  Lemma list2nmem_replay_disk_remove_updN_ptsto : forall F a vs vs' d ms,
+    (F * a |-> vs)%pred (list2nmem (MLog.replay_disk (Map.elements ms) d)) ->
+    (F * a |-> vs')%pred
+      (list2nmem (MLog.replay_disk (Map.elements (Map.remove a ms)) (updN d a vs'))).
+  Proof.
+    intros.
+    rewrite MLog.replay_disk_updN_comm.
+    erewrite <- updN_twice.
+    eapply list2nmem_updN.
+    rewrite <- MLog.replay_disk_updN_comm.
+    erewrite <- replay_disk_remove_updN_eq; eauto.
+
+    rewrite In_map_fst_MapIn; apply Map.remove_1; auto.
+    rewrite In_map_fst_MapIn; apply Map.remove_1; auto.
+  Qed.
+
+
   Theorem dwrite_ok : forall xp ms a v,
     {< F Fm1 Fm2 m1 m2 vs1 vs2,
     PRE
@@ -228,18 +288,31 @@ Module LOG.
     CRASH
       exists m' m1' ms',
       rep xp F (ActiveTxn m1  m') ms' \/
-      rep xp F (ActiveTxn m1' m') ms' \/ (* [[[ m1' ::: ... ]]] *)
+      rep xp F (ActiveTxn m1' m') ms' *
+        [[[ m1' ::: (Fm1 * a |-> (v, vsmerge vs1)) ]]] \/
       rep xp F (ApplyingTxn m1  ) ms'
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite.
     step.
-    step.
+    step; subst.
 
-    admit.
-    admit.
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    eapply list2nmem_replay_disk_remove_updN_ptsto; eauto.
 
+    (* crash conditions *)
+    instantiate (ms'0 := mk_memstate vmap0 ms').
+    or_r; or_r; cancel.
+
+    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    or_l; cancel.
+
+    instantiate (ms'2 := mk_memstate (Map.remove a (MSTxn ms)) ms').
+    or_r; or_l; cancel.
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    Unshelve. all: eauto.
   Qed.
+
 
 
   Definition replay_mem (log : DLog.contents) init : valumap :=

@@ -514,17 +514,7 @@ Module AsyncRecArray (RA : RASig).
     intros; eapply goodSize_trans with (n2 := n); eauto; omega.
   Qed.
 
-  (** prevent eauto from unifying length ?a = length ?b *)
-  Definition eqlen A B (a : list A) (b : list B) := length a = length b.
   Definition xparams_ok xp := goodSize addrlen ((RALen xp) * items_per_val).
-
-  Lemma eqlen_nil : forall A B (a : list A),
-    eqlen a (@nil B) -> a = nil.
-  Proof.
-    unfold eqlen; simpl; intros.
-    apply length_nil; auto.
-  Qed.
-
 
   Definition itemlist := list item.
 

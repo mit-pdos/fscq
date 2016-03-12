@@ -1195,30 +1195,33 @@ Module MLog.
     apply In_map_fst_MapIn; auto.
   Qed.
 
-  Lemma list2nmem_replay_disk_vsupd_not_in : forall F a v vc vo m d,
-    ~ Map.In a m ->
-    (F * a |-> (vc, vo))%pred (list2nmem (replay_disk (Map.elements m) d)) ->
-    (F * a |-> (v, vsmerge (vc, vo)))%pred (list2nmem (replay_disk (Map.elements m) (vsupd d a v))).
-  Proof.
-    intros.
-    setoid_rewrite replay_disk_updN_comm.
-    erewrite <- list2nmem_sel.
-    eapply list2nmem_updN; eauto.
-    eapply ptsto_replay_disk_not_in; eauto.
-    contradict H.
-    apply In_map_fst_MapIn; auto.
-  Qed.
-
-  Lemma list2nmem_replay_disk_vsupd_empty : forall F a v vc vo m d,
-    Map.Empty m ->
-    (F * a |-> (vc, vo))%pred (list2nmem (replay_disk (Map.elements m) d)) ->
-    (F * a |-> (v, vsmerge (vc, vo)))%pred (list2nmem (replay_disk (Map.elements m) (vsupd d a v))).
+  Lemma replay_disk_updN_eq_not_in : forall Fd a v vs d ms,
+    ~ Map.In a ms ->
+    (Fd * a |-> vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
+    updN (replay_disk (Map.elements ms) d) a (v, (vsmerge vs)) =
+      replay_disk (Map.elements ms) (vsupd d a v).
   Proof.
     unfold vsupd; intros.
+    rewrite replay_disk_updN_comm.
+    repeat f_equal.
+    erewrite <- replay_disk_selN_not_In; eauto.
+    eapply list2nmem_sel; eauto.
+    contradict H.
+    apply In_map_fst_MapIn; eauto.
+  Qed.
+
+  Lemma replay_disk_updN_eq_empty : forall Fd a v vs d ms,
+    Map.Empty ms ->
+    (Fd * a |-> vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
+    updN (replay_disk (Map.elements ms) d) a (v, (vsmerge vs)) =
+      replay_disk (Map.elements ms) (vsupd d a v).
+  Proof.
+    intros.
+    eapply replay_disk_updN_eq_not_in; eauto.
+    apply MapFacts.not_find_in_iff.
+    rewrite MapFacts.elements_o.
     apply MapProperties.elements_Empty in H.
-    rewrite H in *; simpl in *.
-    erewrite <- list2nmem_sel by eauto.
-    eapply list2nmem_updN; eauto.
+    rewrite H; auto.
   Qed.
 
 
@@ -1243,12 +1246,14 @@ Module MLog.
       [[[ d ::: (Fd * a |-> vs) ]]]
     POST RET:ms' exists d' na',
       rep xp F na' (Synced d') ms' *
+      [[ d' = updN d a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
     CRASH
-      exists ms' d' na',
-      rep xp F na' (Applying d') ms' * [[[ d' ::: (Fd * a |-> vs) ]]] \/
-      rep xp F na' (Synced d')   ms' * [[[ d' ::: (Fd * a |-> vs) ]]] \/
-      rep xp F na' (Synced d')   ms' * [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
+      exists ms' na',
+      rep xp F na' (Applying d) ms' \/
+      rep xp F na' (Synced d)   ms' \/
+      exists d', [[ d' = updN d a (v, vsmerge vs) ]] *
+      rep xp F na' (Synced d')  ms' * [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite.
@@ -1268,7 +1273,8 @@ Module MLog.
     unfold rep, rep_inner, synced_rep, map_replay; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
-    apply list2nmem_replay_disk_vsupd_empty; auto.
+    eapply replay_disk_updN_eq_empty; eauto.
+    eapply list2nmem_updN; eauto.
 
     (* crashes for case 1 *)
     cancel.
@@ -1284,12 +1290,12 @@ Module MLog.
     pred_apply; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
-    apply list2nmem_replay_disk_vsupd_empty; auto.
+    eapply replay_disk_updN_eq_empty; eauto.
+    eapply list2nmem_updN; eauto.
 
     or_r; or_l; cancel.
     or_r; or_l; cancel.
     or_l; cancel.
-
 
     (* case 2: no apply *)
     prestep.
@@ -1302,7 +1308,9 @@ Module MLog.
     unfold rep, rep_inner, synced_rep, map_replay; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
-    apply list2nmem_replay_disk_vsupd_not_in; eauto.
+    unfold eqlen, vsupd; autorewrite with lists; auto.
+    eapply replay_disk_updN_eq_not_in; eauto.
+    eapply list2nmem_updN; eauto.
 
     (* crashes for case 2 *)
     cancel.
@@ -1317,9 +1325,9 @@ Module MLog.
     pred_apply; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
-    apply list2nmem_replay_disk_vsupd_not_in; eauto.
+    eapply replay_disk_updN_eq_not_in; eauto.
+    eapply list2nmem_updN; eauto.
   Qed.
-
 
 
   Hint Rewrite selN_combine repeat_selN' Nat.min_id synced_list_length : lists.

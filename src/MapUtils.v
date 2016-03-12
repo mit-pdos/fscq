@@ -270,3 +270,118 @@ Proof.
   rewrite H0 in H; simpl in H.
   congruence.
 Qed.
+
+Lemma map_remove_not_in_equal : forall V a (m : Map.t V),
+  ~ Map.In a m ->
+  Map.Equal (Map.remove a m) m.
+Proof.
+  intros.
+  apply MapFacts.Equal_mapsto_iff; intros; split; intro.
+  eapply Map.remove_3; eauto.
+  apply MapFacts.remove_mapsto_iff; intuition.
+  contradict H; subst.
+  apply MapFacts.in_find_iff.
+  apply Map.find_1 in H0.
+  congruence.
+Qed.
+
+
+Lemma map_remove_not_in_elements_eq : forall V a (m : Map.t V),
+  ~ Map.In a m ->
+  Map.elements (Map.remove a m) = Map.elements m.
+Proof.
+  intros.
+  erewrite mapeq_elements; eauto.
+  apply map_remove_not_in_equal; auto.
+Qed.
+
+Lemma map_empty_find_none : forall V (m : Map.t V) a,
+  Map.Empty m ->
+  Map.find a m = None.
+Proof.
+  intros.
+  rewrite MapFacts.elements_o.
+  apply MapProperties.elements_Empty in H.
+  rewrite H; simpl; auto.
+Qed.
+
+Lemma map_empty_not_In : forall V (m : Map.t V) a,
+  Map.Empty m ->
+  ~ Map.In a m.
+Proof.
+  intros.
+  apply MapFacts.not_find_in_iff.
+  apply map_empty_find_none; auto.
+Qed.
+
+Lemma find_none_empty : forall V (m : Map.t V),
+  (forall a, Map.find a m = None) ->
+  Map.Empty m.
+Proof.
+  intros; cbv; intros.
+  eapply Map.find_1 in H0.
+  congruence.
+Qed.
+
+Lemma map_remove_empty : forall V (m : Map.t V) a,
+  Map.Empty m ->
+  Map.Empty (Map.remove a m).
+Proof.
+  intros.
+  eapply find_none_empty; intros.
+  rewrite MapFacts.remove_o.
+  destruct (Nat_as_OT.eq_dec a a0); auto.
+  apply map_empty_find_none; auto.
+Qed.
+
+Lemma not_In_not_InA : forall V a v (m : Map.t V),
+  ~ Map.In a m ->
+  ~ InA (@Map.eq_key_elt V) (a, v) (Map.elements m).
+Proof.
+  intros.
+  apply MapFacts.not_find_in_iff in H.
+  intuition.
+  eapply Map.elements_2 in H0.
+  apply Map.find_1 in H0.
+  congruence.
+Qed.
+
+Lemma map_remove_elements_not_in : forall V m a (v : V),
+  ~ InA (@Map.eq_key_elt V) (a, v) (Map.elements (Map.remove a m)).
+Proof.
+  intros.
+  apply not_In_not_InA.
+  apply Map.remove_1; auto.
+Qed.
+
+Lemma not_in_remove_not_in : forall V x y (m : Map.t V),
+  ~ Map.In x m ->
+  ~ Map.In x (Map.remove y m).
+Proof.
+  intros.
+  destruct (Nat.eq_dec x y); subst.
+  apply Map.remove_1; auto.
+  destruct (MapFacts.In_dec (Map.remove y m) x).
+  contradict H.
+  eapply MapFacts.remove_neq_in_iff; eauto.
+  auto.
+Qed.
+
+Lemma MapsTo_In : forall V m a (v : V),
+  Map.MapsTo a v m -> Map.In a m.
+Proof.
+  intros.
+  apply MapFacts.find_mapsto_iff in H.
+  apply MapFacts.in_find_iff.
+  congruence.
+Qed.
+
+Lemma In_MapsTo : forall V (m : Map.t V) a,
+  Map.In a m -> exists v, Map.MapsTo a v m.
+Proof.
+  intros.
+  apply MapFacts.in_find_iff.
+  apply MapFacts.in_find_iff in H; auto.
+Qed.
+
+
