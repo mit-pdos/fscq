@@ -158,9 +158,17 @@ End Sep_Star.
 Definition sep_star := @Sep_Star.sep_star.
 Definition sep_star_is := Sep_Star.sep_star_is.
 Arguments sep_star {AT AEQ V} _ _ _.
+
 Infix "*" := sep_star : pred_scope.
 Notation "p --* q" := (septract p%pred q%pred) (at level 40) : pred_scope.
 
+(* Unicode bindings *)
+Notation "⟦⟦ P ⟧⟧" := (lift_empty P) : pred_scope.
+Notation "p '⇨⇨' q" := (pimpl p%pred q%pred) (right associativity, at level 90).
+Notation "p '⇦⇨' q" := (piff p%pred q%pred) (at level 90).
+Infix "✶" := sep_star (at level 80) : pred_scope.
+Infix "⋀" := and (at level 80) : pred_scope.
+Infix "⋁" := or (at level 85) : pred_scope.
 
 Ltac deex :=
   match goal with

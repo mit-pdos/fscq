@@ -25,11 +25,21 @@ Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
       end
   end.
 
-Notation "l [ i ]" := (selN l i _) (at level 56, left associativity).
-Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
+Notation "l ⟦ i ⟧" := (selN l i _) (at level 8, left associativity).
+Notation "l ⟦ i := v ⟧" := (updN l i v) (at level 8).
 
 (* rewrite hints for various List facts *)
 Hint Rewrite repeat_length map_length app_length Nat.min_idempotent : lists.
+
+(** prevent eauto from unifying length ?a = length ?b *)
+Definition eqlen A B (a : list A) (b : list B) := length a = length b.
+
+Lemma eqlen_nil : forall A B (a : list A),
+  eqlen a (@nil B) -> a = nil.
+Proof.
+  unfold eqlen; simpl; intros.
+  apply length_nil; auto.
+Qed.
 
 Definition removeN {V} (l : list V) i :=
    (firstn i l) ++ (skipn (S i) l).

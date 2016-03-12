@@ -32,6 +32,7 @@ Definition list2nmem (A: Type) (l: list A) : (@mem nat eq_nat_dec A) :=
   fun a => selN (map (@Some A) l) a None.
 
 Notation "[[[ NS ':::' P ]]]" := [[ (P)%pred (list2nmem NS) ]]%pred : pred_scope.
+Notation "【 NS '‣‣' P 】" := [[ (P)%pred (list2nmem NS) ]]%pred : pred_scope.
 
 Theorem list2nmem_oob : forall A (l : list A) i,
   i >= length l
@@ -99,13 +100,20 @@ Proof.
   eapply list2nmem_inbound; eauto.
 Qed.
 
-Theorem list2nmem_updN_pair: forall A B F (l: list (A * B)) i x y,
-  (F * i |-> x)%pred (list2nmem l)
-  -> (F * i |-> ((fst y), (snd y)))%pred (list2nmem (updN l i y)).
+Lemma list2nmem_updN_selN : forall A F (l : list A) a v1 def,
+  (F * a |-> v1)%pred (list2nmem (updN l a v1)) ->
+  (F * a |-> selN l a def)%pred (list2nmem l).
 Proof.
+
   intros.
-  rewrite <- surjective_pairing.
-  eapply list2nmem_updN; eauto.
+  destruct (lt_dec a (length l)).
+
+  eapply list2nmem_updN with (y := selN l a def) in H.
+  rewrite updN_twice in H.
+  rewrite updN_selN_eq in H; auto.
+  apply list2nmem_inbound in H.
+  rewrite length_updN in H.
+  congruence.
 Qed.
 
 
@@ -818,7 +826,6 @@ Proof.
   apply list2nmem_off_disjoint; intuition.
   apply list2nmem_off_arrayN.
 Qed.
-
 
 (* Ltacs *)
 
