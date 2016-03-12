@@ -114,6 +114,10 @@ Module LOG.
     mm' <- MLog.dwrite xp a v mm;
     rx (mk_memstate cm' mm').
 
+  Definition recover T xp cs rx : prog T :=
+    mm <- MLog.recover xp cs;
+    rx (mk_memstate vmap0 mm).
+
   Local Hint Unfold rep MLog.map_replay: hoare_unfold.
   Arguments MLog.rep: simpl never.
   Hint Extern 0 (okToUnify (MLog.rep _ _ _ _ _) (MLog.rep _ _ _ _ _)) => constructor : okToUnify.
@@ -377,6 +381,29 @@ Module LOG.
     or_r; or_l; cancel.
     or_r; or_r; cancel.
     or_r; or_r; cancel.
+  Qed.
+
+
+  Theorem recover_ok: forall xp F cs,
+    {< raw Fold Fnew,
+    PRE
+      BUFCACHE.rep cs raw *
+      [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]]
+    POST RET:ms' exists d',
+      rep xp (crash_xform F) (NoTxn d') ms' *
+      ([[[ d' ::: crash_xform Fold ]]] \/
+       [[[ d' ::: crash_xform Fnew ]]])
+    CRASH exists raw' cs',
+      BUFCACHE.rep cs' raw' *
+      [[ (crash_xform F * MLog.recover_either_pred xp 
+         (crash_xform Fold) (crash_xform Fnew))%pred raw' ]]
+    >} recover xp cs.
+  Proof.
+    unfold rep.
+    intros; eapply pimpl_ok2.
+    apply MLog.recover_ok.
+    cancel; eauto.
+    step.
   Qed.
 
 
