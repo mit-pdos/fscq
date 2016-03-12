@@ -1028,13 +1028,13 @@ Module MLog.
           [[ n1 = (na - (DLog.rounded (length ents))) ]] *
           [[ n2 = ((LogLen xp) - (DLog.rounded (length ents))) ]]
      POST RET:^(ms',r)
-          ([[ r = true ]] * 
-             (rep xp F n1 (Synced (replay_disk ents d)) ms') \/
-             (rep xp F n2 (Synced (replay_disk ents d)) ms'))
+          ([[ r = true ]] *
+            ((rep xp F n1 (Synced (replay_disk ents d)) ms') \/
+             (rep xp F n2 (Synced (replay_disk ents d)) ms')))
           \/
-          ([[ r = false /\ length ents > na ]] *
-             (rep xp F na          (Synced d) ms') \/
-             (rep xp F (LogLen xp) (Synced d) ms'))
+          ([[ r = false /\ length ents > (LogLen xp) ]] *
+            ((rep xp F na          (Synced d) ms') \/
+             (rep xp F (LogLen xp) (Synced d) ms')))
      CRASH  exists ms',
             rep xp F (LogLen xp) (Synced d) ms' \/
             rep xp F na  (Synced d) ms' \/
@@ -1087,8 +1087,6 @@ Module MLog.
     instantiate (ms' := mk_memstate (MSInLog ms) cs').
     unfold rep, rep_inner; cancel; auto.
   Qed.
-
-
 
 
 

@@ -384,4 +384,20 @@ Proof.
   apply MapFacts.in_find_iff in H; auto.
 Qed.
 
+Lemma KIn_exists_elt_InA : forall V l x,
+  KIn x l ->
+  exists v, InA (@Map.eq_key_elt V) (fst x, v) l.
+Proof.
+  intros.
+  apply InA_alt in H.
+  destruct H as [y [? ?]].
+  destruct x, y.
+  cbv in H; subst.
+  exists v0; simpl.
+  apply In_InA; auto.
+Qed.
+
+
+
+
 

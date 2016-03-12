@@ -314,6 +314,71 @@ Module LOG.
   Qed.
 
 
+  Lemma map_valid_log_valid : forall ms d,
+    MLog.map_valid ms d ->
+    MLog.log_valid (Map.elements ms) d.
+  Proof.
+    unfold MLog.map_valid, MLog.log_valid; intuition;
+    apply KIn_exists_elt_InA in H0;
+    destruct H0; simpl in H0;
+    eapply H; eauto;
+    apply Map.elements_2; eauto.
+  Qed.
+
+  Lemma length_elements_cardinal_gt : forall V (m : Map.t V) n,
+    length (Map.elements m) > n ->
+    Map.cardinal m > n.
+  Proof.
+    intros; rewrite Map.cardinal_1; auto.
+  Qed.
+
+  Lemma map_empty_vmap0 : Map.Empty vmap0.
+  Proof.
+    apply Map.empty_1.
+  Qed.
+
+  Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
+
+  Theorem commit_ok : forall xp ms,
+    {< F m1 m2,
+     PRE  rep xp F (ActiveTxn m1 m2) ms
+     POST RET:^(ms',r)
+          ([[ r = true ]] *
+            rep xp F (NoTxn m2) ms') \/
+          ([[ r = false ]] *
+            [[ Map.cardinal (MSTxn ms) > (LogLen xp) ]] *
+            rep xp F (NoTxn m1) ms')
+     CRASH  exists ms',
+            rep xp F (NoTxn m1) ms' \/
+            rep xp F (NoTxn m2) ms' \/
+            rep xp F (CommittingTxn m1 m2) ms'
+    >} commit xp ms.
+  Proof.
+    unfold commit.
+    step.
+    step.
+
+    (* case 1 : nothing to flush *)
+    or_l; cancel.
+    rewrite MLog.replay_disk_is_empty; auto; cancel.
+    apply MapFacts.is_empty_iff; auto.
+
+    (* case 1 : did flush *)
+    step.
+    step.
+
+    (* crashes *)
+    5: instantiate (1 := mk_memstate (MSTxn ms) ms').
+    6: instantiate (1 := mk_memstate (MSTxn ms) ms').
+    all: try instantiate (1 := mk_memstate vmap0 ms').
+    or_l; cancel.
+    or_l; cancel.
+    or_r; or_l; cancel.
+    or_r; or_l; cancel.
+    or_r; or_r; cancel.
+    or_r; or_r; cancel.
+  Qed.
+
 
   Definition replay_mem (log : DLog.contents) init : valumap :=
     fold_left (fun m e => Map.add (fst e) (snd e) m) log init.
