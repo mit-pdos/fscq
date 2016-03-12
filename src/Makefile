@@ -5,7 +5,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec \
 	      Cache FSLayout AsyncRecArray DiskLog MemLog \
-		  ListPred AddrMap GenSepN Log2  \
+		  ListPred GenSepN Log  RecArray \
 	      Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree SlowByteFile FastByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON
