@@ -114,6 +114,11 @@ Module LOG.
     mm' <- MLog.dwrite xp a v mm;
     rx (mk_memstate cm' mm').
 
+  Definition dsync T xp a ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    mm' <- MLog.dsync xp a mm;
+    rx (mk_memstate cm mm').
+
   Definition recover T xp cs rx : prog T :=
     mm <- MLog.recover xp cs;
     rx (mk_memstate vmap0 mm).
@@ -282,7 +287,7 @@ Module LOG.
   Theorem dwrite_ok : forall xp ms a v,
     {< F Fm1 Fm2 m1 m2 vs1 vs2,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms * [[ a <> 0 ]] *
+      rep xp F (ActiveTxn m1 m2) ms *
       [[[ m1 ::: (Fm1 * a |-> vs1) ]]] *
       [[[ m2 ::: (Fm2 * a |-> vs2) ]]]
     POST RET:ms' exists m1' m2',
@@ -315,6 +320,41 @@ Module LOG.
     or_r; or_l; cancel.
     eapply map_valid_remove; autorewrite with lists; eauto.
     Unshelve. all: eauto.
+  Qed.
+
+
+  Theorem dsync_ok : forall xp ms a,
+    {< F Fm1 Fm2 m1 m2 vs1 vs2,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[[ m1 ::: (Fm1 * a |-> vs1) ]]] *
+      [[[ m2 ::: (Fm2 * a |-> vs2) ]]]
+    POST RET:ms' exists m1' m2',
+      rep xp F (ActiveTxn m1' m2') ms' *
+      [[[ m1' ::: (Fm1 * a |-> (fst vs1, nil)) ]]] *
+      [[[ m2' ::: (Fm2 * a |-> (fst vs2, nil)) ]]]
+    CRASH
+      exists m' m1' ms',
+      rep xp F (ActiveTxn m1  m') ms' \/
+      rep xp F (ActiveTxn m1' m') ms' *
+        [[[ m1' ::: (Fm1 * a |-> (fst vs1, nil)) ]]]
+    >} dsync xp a ms.
+  Proof.
+    unfold dsync.
+    step.
+    step; subst.
+    apply MLog.map_valid_updN; auto.
+    rewrite <- MLog.replay_disk_vssync_comm.
+    unfold vssync; erewrite <- list2nmem_sel; eauto; simpl.
+    eapply list2nmem_updN; eauto.
+
+    (* crashes *)
+    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
+    or_l; cancel.
+    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    or_r; cancel.
+    apply MLog.map_valid_updN; auto.
+    Unshelve. eauto.
   Qed.
 
 
@@ -413,6 +453,7 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
 
