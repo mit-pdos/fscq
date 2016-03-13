@@ -149,6 +149,17 @@ Proof.
   eauto.
 Qed.
 
+Lemma pimpl_or_split: forall T pre1 pre2 (pr: prog T),
+                        {{ pre1 }} pr ->
+                        {{ pre2 }} pr ->
+                        {{ fun done crash => pre1 done crash \/ pre2 done crash}} pr.
+Proof.
+  unfold corr2; intros.
+  destruct H1.
+  eauto.
+  eauto.
+Qed.
+
 Theorem pimpl_ok3:
   forall TF TR pre pre' (p: prog TF) (r: prog TR),
   {{pre'}} p >> r ->

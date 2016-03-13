@@ -701,6 +701,19 @@ Proof.
   congruence.
 Qed.
 
+Lemma sep_star_lift_r_prop : forall AT AEQ V (p q: @pred AT AEQ V) (P: Prop),
+                P ->  p =p=> q ->  p =p=> [[P]] * q.
+Proof.
+  unfold pimpl, lift_empty.
+  unfold_sep_star.
+  unfold mem_union, mem_disjoint.
+  intros.
+  repeat eexists; intros; eauto.
+  intro.
+  repeat deex.
+  congruence.
+Qed.
+
 Lemma pimpl_star_emp: forall p, p =p=> emp * p.
 Proof.
   unfold pimpl; unfold_sep_star; intros.
@@ -1084,6 +1097,35 @@ Proof.
       apply pimpl_or_r; left; apply pimpl_refl.
     + apply pimpl_sep_star; [apply pimpl_refl|].
       apply pimpl_or_r; right; apply pimpl_refl.
+Qed.
+
+Theorem sep_star_or_distr_l : forall AT AEQ V (a b c : @pred AT AEQ V),
+                                ((b \/ c)*a)%pred <=p=> (a * b \/ a * c)%pred.
+Proof.
+  split.
+  - unfold_sep_star; unfold pimpl, or.
+    intros; repeat deex.
+    + left.
+      exists m2.
+      exists m1.
+      intuition.
+      rewrite mem_union_comm; auto.
+      rewrite mem_disjoint_comm; auto.
+    + right.
+      exists m2.
+      exists m1.
+      intuition.
+      rewrite mem_union_comm; auto.
+      rewrite mem_disjoint_comm; auto.
+  - apply pimpl_or_l.
+    + rewrite sep_star_comm.
+      apply pimpl_sep_star.
+      cancel.
+      cancel.
+    + rewrite sep_star_comm.
+      apply pimpl_sep_star.
+      cancel.
+      auto.
 Qed.
 
 Theorem lift_impl : forall (P : @pred AT AEQ V) (Q : Prop), (forall m, P m -> Q) -> P =p=> [[ Q ]] * P.

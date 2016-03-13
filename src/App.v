@@ -500,7 +500,7 @@ Proof.
 Admitted.
 
 
-Lemma find_name_fold_right_update_ne: forall fn1 fn2 dnum tree_elem elem inum bytes attr, 
+Lemma find_subtree_fold_right_update_ne: forall fn1 fn2 dnum tree_elem elem inum bytes attr, 
   DIRTREE.find_subtree [fn1] (DIRTREE.TreeDir dnum tree_elem) = elem ->
   fold_right
      (DIRTREE.find_subtree_helper (fun tree : DIRTREE.dirtree => Some tree)
@@ -518,6 +518,14 @@ Lemma find_name_add_to_list: forall fn dnum tree_elem inum,
      (DIRTREE.TreeDir dnum
         (DIRTREE.add_to_list fn
                              (DIRTREE.TreeFile inum [] BYTEFILE.attr0) tree_elem)) =  Some (inum, false).
+Proof.
+Admitted.
+
+Lemma find_name_delete_from_list: forall fn dnum tree_elem w, 
+   DIRTREE.find_name [fn] (DIRTREE.TreeDir dnum tree_elem) = Some (w, false) ->
+   DIRTREE.find_name [fn]
+     (DIRTREE.TreeDir dnum
+        (DIRTREE.delete_from_list fn tree_elem)) =  None.
 Proof.
 Admitted.
 
@@ -561,25 +569,14 @@ Proof.
 Admitted.
 
     
-Lemma sep_star_lift_r_prop : forall AT AEQ V (p q: @pred AT AEQ V) (P: Prop),
-                P ->  p =p=> q ->  p =p=> [[P]] * q.
-Proof.
-  unfold pimpl, lift_empty.
-  unfold_sep_star.
-  unfold mem_union, mem_disjoint.
-  intros.
-  repeat eexists; intros; eauto.
-  intro.
-  repeat deex.
-  congruence.
-Qed.
 
 Parameter the_dnum : addr.
 Definition temp_fn := ".temp"%string.
 
-(* The file system may crash during a transaction while running atomic_cp. The
-state of the file system after a crash can be described by the following 3
-generic states and 5 type of transactions between those 3 states: *)
+(* The file system may crash during a transaction while running atomic_cp or
+atomic_cp_recover. The state of the file system after a crash can be described
+by the following 3 generic states and 6 type of transactions between those 3
+states: *)
 
 Inductive state :=
 | NoTempFile
@@ -593,12 +590,12 @@ Inductive transition :=
 | Temp2Temp
 | Temp2NoTemp
 | Temp2Dst
+| Dst2Dst
 .
 
 Definition rep_root tree tree_elem :=
   DIRTREE.find_subtree [] tree = Some (DIRTREE.TreeDir the_dnum tree_elem).
   
-
 Definition rep_tree st (tree: DIRTREE.dirtree) src_fn dst_fn temp_fn :=
   match st with
     | NoTempFile =>
@@ -610,10 +607,10 @@ Definition rep_tree st (tree: DIRTREE.dirtree) src_fn dst_fn temp_fn :=
          DIRTREE.find_subtree [src_fn] tree = Some (DIRTREE.TreeFile old_inum bytes attr) /\
          DIRTREE.find_name [temp_fn] tree = Some (tinum, false)
     | DstFileExists =>
-      exists old_tree tree old_inum new_inum bytes attr dnum tree_elem,
-        rep_root tree tree_elem /\
+      exists old_tree old_inum new_inum bytes attr tree_elem,
+        rep_root tree tree_elem /\  rep_root old_tree tree_elem /\
           DIRTREE.find_subtree [src_fn] old_tree = Some (DIRTREE.TreeFile old_inum bytes attr) /\
-          tree = DIRTREE.tree_graft dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) old_tree  /\
+          tree = DIRTREE.tree_graft the_dnum tree_elem [] dst_fn (DIRTREE.TreeFile new_inum bytes attr) old_tree  /\
           DIRTREE.find_name [temp_fn] tree = None
   end.
 
@@ -660,9 +657,16 @@ Definition rep_crash (t : transition) Fm Ftop fsxp src_fn dst_fn :=
             (exists tree'',
                         (Fm * DIRTREE.rep fsxp Ftop tree'') * 
                         [[rep_tree DstFileExists tree'' src_fn dst_fn temp_fn ]])
+     | Dst2Dst =>
+       exists m' tree',
+        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+        [[rep_tree DstFileExists tree' src_fn dst_fn temp_fn ]] *
+        LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m'
+            (exists tree'',
+                        (Fm * DIRTREE.rep fsxp Ftop tree'') * 
+                        [[rep_tree DstFileExists tree'' src_fn dst_fn temp_fn ]])
 
    end)%pred.
-
 
 Definition tree_reps tree src_fn dst_fn   :=
   rep_tree NoTempFile tree src_fn dst_fn temp_fn  \/
@@ -674,7 +678,8 @@ Definition crash_transitions Fm Ftop fsxp src_fn dst_fn  :=
    rep_crash NoTemp2Temp Fm Ftop fsxp src_fn dst_fn  \/
    rep_crash Temp2NoTemp Fm Ftop fsxp src_fn dst_fn  \/
    rep_crash Temp2Temp Fm Ftop fsxp src_fn dst_fn  \/
-   rep_crash Temp2Dst Fm Ftop fsxp src_fn dst_fn )%pred.
+   rep_crash Temp2Dst Fm Ftop fsxp src_fn dst_fn \/
+   rep_crash Dst2Dst Fm Ftop fsxp src_fn dst_fn )%pred.
 
 Lemma would_recover_either_pimpl_pred : forall xp F old (newpred: pred),
   newpred (list2mem old) ->
@@ -1054,6 +1059,7 @@ Proof.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
   eapply pimpl_or_r. right.
+  eapply pimpl_or_r. left.
   unfold rep_crash.
   eapply pimpl_exists_r. eexists.
   eapply pimpl_exists_r. eexists.
@@ -1121,152 +1127,522 @@ Definition recover' {T} rx : prog T :=
 
 (* Set Printing Implicit. *)
 
-Definition atomic_cp_recover {T} rx : prog T :=
-  let^ (mscs, fsxp) <- FS.recover;
+Definition atomic_cp_cleanup {T} fsxp mscs rx : prog T :=
   let^ (mscs, maybe_src_inum) <- FS.lookup fsxp the_dnum [temp_fn] mscs;
   match maybe_src_inum with
-  | None => rx ^(mscs, fsxp)
+  | None => rx mscs
   | Some (src_inum, isdir) =>
     If (bool_dec isdir true) {
-      rx ^(mscs, fsxp)
+      rx mscs
     } else {
       let^ (mscs, ok) <- FS.delete fsxp the_dnum temp_fn mscs;
-      rx ^(mscs, fsxp)
+      rx mscs
     }
   end.
 
+
+Definition atomic_cp_recover {T} rx : prog T :=
+  let^ (mscs, fsxp) <- FS.recover;
+  mscs <- atomic_cp_cleanup fsxp mscs;
+  rx ^(mscs, fsxp).
+  
+
+Definition atomic_cp_recover_rep fsxp Fm Ftop src_fn dst_fn mscs :=
+  (exists m' tree tree_elem tree',
+    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
+    [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
+    ([[ DIRTREE.find_name [temp_fn] tree' = None ]] \/ 
+     [[ atomic_cp_return_rep_ok tree tree_elem tree' src_fn dst_fn ]]))%pred.
+
+
+Lemma root_ok : forall tree tree_elem,
+                  DIRTREE.find_subtree [] tree = Some (DIRTREE.TreeDir the_dnum tree_elem) ->
+                  the_dnum = DIRTREE.dirtree_inum tree /\ DIRTREE.dirtree_isdir tree = true.
+Proof.
+  intros.
+  split.
+  unfold DIRTREE.find_subtree in H.
+  assert (tree = (DIRTREE.TreeDir the_dnum tree_elem)).
+  congruence.
+  subst; simpl; auto.
+  unfold DIRTREE.find_subtree in H.
+  assert (tree = (DIRTREE.TreeDir the_dnum tree_elem)).
+  congruence.
+  subst; simpl; auto.
+Qed.
+
+
+Lemma NoTempFile_recover_ok : forall fsxp mscs,
+  {< m Fm Ftop tree dst_fn src_fn,
+   PRE
+     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+     [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+     [[rep_tree NoTempFile tree src_fn dst_fn temp_fn]]
+   POST RET:mscs
+     atomic_cp_recover_rep fsxp Fm Ftop src_fn dst_fn mscs
+  CRASH
+    crash_transitions Fm Ftop fsxp src_fn dst_fn
+    >} atomic_cp_cleanup fsxp mscs.
+Proof.
+  unfold atomic_cp_cleanup. intros.
+  step.
+  unfold rep_root in H3.
+  eapply root_ok; eauto.
+  eapply root_ok; eauto.
+  step.
+  unfold atomic_cp_recover_rep.
+  repeat (eapply pimpl_exists_r; eexists).
+  instantiate (x := m). cancel.
+  unfold atomic_cp_return_rep_ok.
+  eapply pimpl_or_r. left.
+  cancel.
+  unfold crash_transitions.
+  eapply pimpl_or_r. left.
+  unfold rep_crash.
+  repeat (eapply pimpl_exists_r; eexists).
+  instantiate (x := m).
+  instantiate (x2 := tree).
+  cancel.
+  eapply would_recover_either_pimpl_pred.
+  exists tree.
+  pred_apply.
+  cancel.
+  exists tree_elem.
+  intuition.
+  exists tree_elem.
+  intuition.
+  Grab Existential Variables.
+  all: eauto.
+Qed.
+  
+Lemma TempFileExists_recover_ok : forall fsxp mscs,
+  {< m Fm Ftop tree dst_fn src_fn,
+   PRE
+     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+     [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+     [[rep_tree TempFileExists tree src_fn dst_fn temp_fn]]
+   POST RET:mscs
+     atomic_cp_recover_rep fsxp Fm Ftop src_fn dst_fn mscs
+  CRASH
+    crash_transitions Fm Ftop fsxp src_fn dst_fn
+    >} atomic_cp_cleanup fsxp mscs.
+Proof.
+  unfold atomic_cp_cleanup. intros.
+  step.
+  eapply root_ok; eauto.
+  eapply root_ok; eauto.
+  step.
+  step.
+  step.
+  step.
+  (* delete failed; FS bug spec; delete shouldn't fail *)
+  admit.
+  (* delete succeeded *)
+  unfold atomic_cp_recover_rep.
+  repeat (eapply pimpl_exists_r; eexists).
+  
+  instantiate (x := a4).
+  instantiate (x0 := tree).
+  instantiate (x1 := tree_elem).
+  instantiate (x2 := (DIRTREE.TreeDir the_dnum
+              (DIRTREE.delete_from_list temp_fn tree_elem))).
+  cancel.
+  cancel.
+  eapply pimpl_or_r; left.
+  cancel.
+  eapply find_name_delete_from_list with (dnum := the_dnum) (fn := temp_fn). 
+Admitted.
+
+
+Lemma DstFileExists_recover_ok : forall fsxp mscs,
+  {< m Fm Ftop tree dst_fn src_fn,
+   PRE
+     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+     [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+     [[rep_tree DstFileExists tree src_fn dst_fn temp_fn]]
+   POST RET:mscs
+     atomic_cp_recover_rep fsxp Fm Ftop src_fn dst_fn mscs
+  CRASH
+    crash_transitions Fm Ftop fsxp src_fn dst_fn
+    >} atomic_cp_cleanup fsxp mscs.
+Proof.
+  unfold atomic_cp_cleanup; intros.
+  step.
+  step.
+  unfold atomic_cp_recover_rep.
+  repeat (eapply pimpl_exists_r; eexists).
+  instantiate (x := m).
+  instantiate (x0 := old_tree).
+  instantiate (x1 := tree_elem).
+  instantiate (x2 := (DIRTREE.tree_graft the_dnum tree_elem [] dst_fn
+             (DIRTREE.TreeFile new_inum bytes attr) old_tree)).
+  cancel.
+  cancel.
+  unfold crash_transitions.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  eapply pimpl_or_r. right.
+  unfold rep_crash.
+  repeat (eapply pimpl_exists_r; eexists).
+  instantiate (x := m).
+  instantiate (x0 := (DIRTREE.tree_graft the_dnum tree_elem [] dst_fn
+                                         (DIRTREE.TreeFile new_inum bytes attr) old_tree)).
+  cancel.
+  eapply would_recover_either_pimpl_pred.
+  eexists.
+  instantiate (x := (DIRTREE.tree_graft the_dnum tree_elem [] dst_fn
+                                        (DIRTREE.TreeFile new_inum bytes attr) old_tree)).
+  pred_apply.
+  cancel.
+  exists old_tree.
+  exists old_inum.
+  exists new_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  split; eauto.
+  exists old_tree.
+  exists old_inum.
+  exists new_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  split; eauto.
+Qed.
+
+
+(* Hint Extern 1 ({{_}} progseq (NoTempFile_cp_recover) _) => apply atomic_cp_recover_ok : prog. *)
+
+(* lift log_would_recover_either_pred through crash_xform *)
+Ltac lift_log_would_recover_either_pred :=
+  unfold stars; simpl; repeat (rewrite crash_xform_exists_comm; norm'l; unfold stars; simpl);
+  repeat (rewrite crash_xform_sep_star_dist); repeat (rewrite crash_xform_lift_empty); cancel.
+
+(* XXX shorten proof using automation *)
 Theorem atomic_cp_recover_ok :
   {< fsxp Fm Ftop dst_fn src_fn,
    PRE
     crash_xform (crash_transitions Fm Ftop fsxp src_fn dst_fn)
   POST RET:^(mscs, fsxp')
   [[ fsxp' = fsxp ]] *
-        exists m' tree tree_elem tree',
-        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-        [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-        ([[ DIRTREE.find_name [temp_fn] tree' = None ]] \/ 
-         [[ atomic_cp_return_rep_ok tree tree_elem tree' src_fn dst_fn ]])            
+     atomic_cp_recover_rep fsxp Fm Ftop src_fn dst_fn mscs
   CRASH
     crash_transitions Fm Ftop fsxp src_fn dst_fn
     >} atomic_cp_recover.
 Proof.
+
+  (* Pull the several crash transitions through crash_form so that we can deal
+  with each case separately *)
+
   unfold atomic_cp_recover, atomic_cp_return_rep_ok; intros.
   unfold crash_transitions.
-  setoid_rewrite crash_xform_or_dist.
-  setoid_rewrite crash_xform_or_dist.
-  setoid_rewrite crash_xform_or_dist.
-  setoid_rewrite crash_xform_or_dist.
+  repeat (setoid_rewrite crash_xform_or_dist).
 
-  (* recover but also promote post conditions into environment *)
+  (* step through recover but don't cancel immediately so that we arrange things
+   so that we can prove each crash transition individually. *)
+
   eapply pimpl_ok2. eauto with prog.
   unfold rep_crash.
-  intros. norm'l.  split_or_l.  unfold stars; simpl.
-  rewrite crash_xform_exists_comm. norm'l. unfold stars; simpl.
-  rewrite crash_xform_exists_comm. norm'l. unfold stars; simpl.
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_lift_empty.
-  rewrite crash_xform_lift_empty.
+
+  (* split all crash transition *)
+  intros. norm'l. split_or_l.
+
+  (* first crash transition: NoTemp2NoTemp *)
+  lift_log_would_recover_either_pred.
+  repeat (setoid_rewrite sep_star_or_distr).
+  repeat (setoid_rewrite sep_star_or_distr_l).
+  eapply pimpl_or_split.
+  eapply pimpl_ok2.
+  eapply NoTempFile_recover_ok.
   cancel.
 
-  (* lookup case 1:  FS system crashed in NoTempFile state *)
+  (*
+  Ltac Logrep fsxp x :=
+  match goal with
+    | [ H : ?a = fsxp |- LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction x) ^( _, _) * _ =p=> _ * LOG.rep (FSXPLog ?a) (sb_rep ?a) (NoTransaction ?m) ^( _, _) ] => idtac "x"; rewrite H; instantiate (m := x)
+  end.
+
+  Logrep fsxp x.
+*)
+
+  instantiate (m:= x).
+  instantiate (F_0 := F_).
+  instantiate (Ftop0 := Ftop).
+  rewrite H7.
+  cancel.
+  instantiate (tree := x0).
+  instantiate (Fm0 := Fm).
+  rewrite H7.
+  eauto.
+  exists tree_elem.
+  eauto.
   step.
-  subst; eauto.
-  unfold rep_root in H3.
-  admit.
-  admit.
+  cancel.
+
+  eapply pimpl_ok2.
+  eapply NoTempFile_recover_ok.
+  cancel.
+  exists tree_elem0.
+  intuition.
   step.
-
-  (* post condition of recover imply precondition of lookup? *)
-  eapply pimpl_or_r; left.
-  repeat (eapply pimpl_exists_r; eexists).
-  instantiate (x := x).
-  instantiate (x0 := x0).
   cancel.
-  eapply would_recover_either_pimpl_pred. eexists.
-  instantiate (x := x0).
-  eapply sep_star_lift_apply'; eauto.
-  subst; eauto.
-  subst; eauto.
-  admit.
-  admit.
+  cancel.
+  eapply pimpl_or_r; left.
+  cancel.
+  exists tree_elem; eauto.
 
-  (* match *)
+  (* NoTemp2Temp *)
+  lift_log_would_recover_either_pred.
+  repeat (setoid_rewrite sep_star_or_distr).
+  repeat (setoid_rewrite sep_star_or_distr_l).
+  eapply pimpl_or_split.
+  eapply pimpl_ok2.
+  eapply NoTempFile_recover_ok.
+  cancel.
+  instantiate (m:= x).
+  instantiate (F_0 := F_).
+  instantiate (Ftop0 := Ftop).
+  rewrite H7.
+  cancel.
+  instantiate (tree := x0).
+  instantiate (Fm0 := Fm).
+  rewrite H7.
+  eauto.
+  exists tree_elem.
+  eauto.
   step.
-  eapply pimpl_or_r; left.
-  repeat (eapply pimpl_exists_r; eexists).
-  instantiate (x := a2).
-  instantiate (x0 := tree'').
   cancel.
-  eapply would_recover_either_pimpl_pred. eexists.
-  eapply sep_star_lift_apply'; eauto.
-  repeat (eexists).
-  subst; eauto.
-  subst; eauto.
-  cancel.
-  eapply pimpl_or_r; left.
-  admit.
 
+  eapply pimpl_ok2.
+  eapply TempFileExists_recover_ok.
+  cancel.
+  exists tinum.
+  exists old_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem0.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
   
-  intros. norm'l.  split_or_l.  unfold stars; simpl.
-  rewrite crash_xform_exists_comm. norm'l. unfold stars; simpl.
-  rewrite crash_xform_exists_comm. norm'l. unfold stars; simpl.
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_lift_empty.
-  rewrite crash_xform_lift_empty.
   cancel.
-
-  (* lookup case 2:  FS system crashed in Notemp2Temp *)
-  step.
-  subst; eauto.
-  admit.
-  admit.
-  (* delete *)
-  step.
+  eapply pimpl_or_r; right.
   eapply pimpl_or_r; left.
-  admit.
-  (* recovered to temp exists case *)
-  subst; eauto.
-  admit.
-  admit.
-  step.
-  (* a directory *)
-  exfalso.
-  admit.
-  (* delete *)
-  step.
-
-  step.
-  admit.
-  admit.
-  admit.
-  admit.
-  admit.
-  
-  intros. norm'l.  split_or_l.  unfold stars; simpl.
-  rewrite crash_xform_exists_comm. norm'l. unfold stars; simpl.
-  rewrite crash_xform_exists_comm. norm'l. unfold stars; simpl.
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_sep_star_dist.
-  rewrite crash_xform_lift_empty.
-  rewrite crash_xform_lift_empty.
   cancel.
-  (* case 3: temp2temp? *)
-  step.
-  subst;eauto.
-  admit.
-  admit.
-  step.
-  exfalso.
-  admit.
-  step.
-  unfold rep_root in H3.
+  exists tree_elem.
+  intuition.
 
-  (* etc.: must be able to reduce this to 3 cases and a lemma for each case *)
- Admitted.
+  (* next crash transition: Temp2NoTemp *)
+  lift_log_would_recover_either_pred.
+  repeat (setoid_rewrite sep_star_or_distr).
+  repeat (setoid_rewrite sep_star_or_distr_l).
+  eapply pimpl_or_split.
+  eapply pimpl_ok2.
+  eapply TempFileExists_recover_ok.
+  cancel.
+  instantiate (m:= x).
+  instantiate (F_0 := F_).
+  cancel.
+  instantiate (Fm0 := Fm).
+  rewrite H8.
+  eauto.
+  exists tinum.
+  exists old_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
+
+  eapply pimpl_ok2.
+  eapply NoTempFile_recover_ok.
+  cancel.
+  exists tree_elem0.
+  intuition.
+  step.
+  cancel.
+  
+  cancel.
+  eapply pimpl_or_r; right.
+  eapply pimpl_or_r; right;
+  eapply pimpl_or_r; left.
+  cancel.
+  exists tinum.
+  exists old_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  eauto.
+         
+
+  (* next crash transition: Temp2Temp *)
+  lift_log_would_recover_either_pred.
+  repeat (setoid_rewrite sep_star_or_distr).
+  repeat (setoid_rewrite sep_star_or_distr_l).
+  eapply pimpl_or_split.
+  eapply pimpl_ok2.
+  eapply TempFileExists_recover_ok.
+  cancel.
+  instantiate (m:= x).
+  instantiate (F_0 := F_).
+  cancel.
+  instantiate (Fm0 := Fm).
+  rewrite H8.
+  eauto.
+  exists tinum.
+  exists old_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
+
+  eapply pimpl_ok2.
+  eapply TempFileExists_recover_ok.
+  cancel.
+  exists tinum0.
+  exists old_inum0.
+  exists bytes0.
+  exists attr0.
+  exists tree_elem0.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
+
+  cancel.
+  eapply pimpl_or_r; right.
+  eapply pimpl_or_r; right;
+  eapply pimpl_or_r; right;
+  eapply pimpl_or_r; left.
+  cancel.
+  exists tinum.
+  exists old_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  eauto.
+
+  (* next transition: Temp2Dst *)
+  lift_log_would_recover_either_pred.
+  repeat (setoid_rewrite sep_star_or_distr).
+  repeat (setoid_rewrite sep_star_or_distr_l).
+  eapply pimpl_or_split.
+  eapply pimpl_ok2.
+  eapply TempFileExists_recover_ok.
+  cancel.
+  instantiate (m:= x).
+  instantiate (F_0 := F_).
+  cancel.
+  instantiate (Fm0 := Fm).
+  instantiate (Ftop0 := Ftop).
+  instantiate (tree := x0).
+  rewrite H8; eauto.
+  exists tinum.
+  exists old_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
+  
+  eapply pimpl_ok2.
+  eapply DstFileExists_recover_ok.
+  cancel.
+  exists old_tree.
+  exists old_inum0.
+  exists new_inum.
+  exists bytes0.
+  exists attr0.
+  exists tree_elem0.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
+
+  cancel.
+  eapply pimpl_or_r; right.
+  eapply pimpl_or_r; right;
+  eapply pimpl_or_r; right;
+  eapply pimpl_or_r; right;
+  eapply pimpl_or_r; left.
+  cancel.
+  exists tinum.
+  exists old_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  eauto.
+
+  (* final transition Dst2Dst *)
+  
+  lift_log_would_recover_either_pred.
+  repeat (setoid_rewrite sep_star_or_distr).
+  repeat (setoid_rewrite sep_star_or_distr_l).
+  eapply pimpl_or_split.
+  eapply pimpl_ok2.
+  eapply DstFileExists_recover_ok.
+  cancel.
+  instantiate (m:= x).
+  instantiate (F_0 := F_).
+  cancel.
+  instantiate (Fm0 := Fm).
+  instantiate (Ftop0 := Ftop).
+  instantiate (tree := (DIRTREE.tree_graft the_dnum tree_elem [] dst_fn
+            (DIRTREE.TreeFile new_inum bytes attr) old_tree)).
+  rewrite H9; eauto.
+  exists old_tree.
+  exists old_inum.
+  exists new_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
+  
+  eapply pimpl_ok2.
+  eapply DstFileExists_recover_ok.
+  cancel.
+  exists old_tree0.
+  exists old_inum0.
+  exists new_inum0.
+  exists bytes0.
+  exists attr0.
+  exists tree_elem0.
+  instantiate (src_fn0 := src_fn).
+  intuition.
+  step.
+  cancel.
+
+  cancel.
+  eapply pimpl_or_r; right.
+  eapply pimpl_or_r; right.
+  eapply pimpl_or_r; right.
+  eapply pimpl_or_r; right.
+  eapply pimpl_or_r; right.
+  cancel.
+  exists old_tree.
+  exists old_inum.
+  exists new_inum.
+  exists bytes.
+  exists attr.
+  exists tree_elem.
+  eauto.
+Qed.
 
 Hint Extern 1 ({{_}} progseq (atomic_cp_recover) _) => apply atomic_cp_recover_ok : prog.
+
 
 Theorem atomic_cp_with_recover_ok : forall fsxp src_fn dst_fn mscs,
   {<< m Fm Ftop tree tree_elem,
@@ -1277,16 +1653,9 @@ Theorem atomic_cp_with_recover_ok : forall fsxp src_fn dst_fn mscs,
         [[ src_fn <> temp_fn ]] *
         [[ dst_fn <> temp_fn ]]
   POST RET:^(mscs, r)
-        atomic_cp_return_rep fsxp Fm Ftop tree tree_elem src_fn dst_fn mscs r
+    atomic_cp_return_rep fsxp Fm Ftop tree tree_elem src_fn dst_fn mscs r
   REC RET:^(mscs,fsxp)
-      exists m',
-        (LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-                [[ DIRTREE.find_name [temp_fn] tree = None ]])
-        \/
-        LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-        (exists tree',
-           [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-           [[ atomic_cp_return_rep_ok tree tree_elem tree' src_fn dst_fn ]])
+    atomic_cp_recover_rep fsxp Fm Ftop src_fn dst_fn mscs
   >>} atomic_cp fsxp src_fn dst_fn mscs >> atomic_cp_recover.
 Proof.
   unfold forall_helper.
@@ -1296,10 +1665,24 @@ Proof.
   eauto with prog.
   eauto with prog.
   cancel.
-  step.
-  admit.
+  eapply pimpl_ok2.
+  eapply H2.
+  cancel.
+  instantiate (crash :=(F_ *  crash_transitions v0 v1 fsxp src_fn dst_fn)%pred).
+  subst; cancel.
+  cancel.
+  repeat (eapply pimpl_exists_r; eexists).
+  instantiate (x0 := v0).
+  instantiate (x1 := v1).
+  instantiate (x := fsxp).
+  instantiate (x3 := src_fn).
+  instantiate (x2 := dst_fn).
+  instantiate (x4 := F_).
   cancel.
   autorewrite with crash_xform.
-  cancel.    
-Admitted
+  rewrite H3.
+  cancel.
+  step.
+Qed.
+
 
