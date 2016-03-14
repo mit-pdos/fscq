@@ -388,6 +388,50 @@ Proof.
 Qed.
 
 
+Definition vsupsyn_range (vsl : list valuset) (vl : list valu) :=
+  let n := length vl in
+  (List.combine vl (repeat nil n)) ++ skipn n vsl.
+
+Lemma vsupsyn_range_length : forall vsl l,
+  length l <= length vsl ->
+  length (vsupsyn_range vsl l) = length vsl.
+Proof.
+  unfold vsupsyn_range; intros.
+  rewrite app_length.
+  rewrite combine_length.
+  rewrite Nat.min_l.
+  rewrite skipn_length.
+  omega.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma vsupsyn_range_selN : forall vsl vl i def,
+  i < length vl ->
+  selN (vsupsyn_range vsl vl) i (def, nil) = (selN vl i def, nil).
+Proof.
+  unfold vsupsyn_range; intros.
+  rewrite selN_app1.
+  rewrite selN_combine, repeat_selN; auto.
+  rewrite repeat_length; auto.
+  rewrite combine_length_eq; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma vsupsyn_range_selN_oob : forall vsl vl i def,
+  i >= length vl ->
+  selN (vsupsyn_range vsl vl) i def = selN vsl i def.
+Proof.
+  unfold vsupsyn_range; intros.
+  rewrite selN_app2.
+  rewrite skipn_selN.
+  rewrite combine_length_eq.
+  rewrite le_plus_minus_r; auto.
+  rewrite repeat_length; auto.
+  rewrite combine_length_eq; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+
 (** update vsl according to (addr, valu) pairs in l. *)
 Definition vsupd_vecs (vsl : list valuset) (l : list (addr * valu)) : list valuset :=
   fold_left (fun vs e => (vsupd vs (fst e) (snd e))) l vsl.

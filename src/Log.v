@@ -469,7 +469,7 @@ Module LOG.
   Theorem read_array_ok : forall xp ms a i,
     {< F Fm m1 m2 vs,
     PRE   rep xp F (ActiveTxn m1 m2) ms *
-          [[ i < length vs /\ a <> 0 ]] *
+          [[ i < length vs]] *
           [[[ m2 ::: Fm * arrayN a vs ]]]
     POST RET:^(ms', r)
           rep xp F (ActiveTxn m1 m2) ms' *
@@ -517,6 +517,170 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
+
+
+  Definition read_range T A xp a nr (vfold : A -> valu -> A) v0 ms rx : prog T :=
+    let^ (ms, r) <- ForN i < nr
+    Ghost [ F Fm crash m1 m2 vs ]
+    Loopvar [ ms pf ]
+    Continuation lrx
+    Invariant
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: (Fm * arrayN a vs) ]]] *
+      [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+    OnCrash  crash
+    Begin
+      let^ (ms, v) <- read_array xp a i ms;
+      lrx ^(ms, vfold pf v)
+    Rof ^(ms, v0);
+    rx ^(ms, r).
+
+
+  Definition write_range T xp a l ms rx : prog T :=
+    let^ (ms) <- ForN i < length l
+    Ghost [ F Fm crash m1 vs ]
+    Loopvar [ ms ]
+    Continuation lrx
+    Invariant
+      exists m2, rep xp F (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: (Fm * arrayN a (vsupsyn_range vs (firstn i l))) ]]]
+    OnCrash crash
+    Begin
+      ms <- write_array xp a i (selN l i $0) ms;
+      lrx ^(ms)
+    Rof ^(ms);
+    rx ms.
+
+
+  Theorem read_range_ok : forall A xp a nr vfold (v0 : A) ms,
+    {< F Fm m1 m2 vs,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[ nr <= length vs ]] *
+      [[[ m2 ::: (Fm * arrayN a vs) ]]]
+    POST RET:^(ms', r)
+      rep xp F (ActiveTxn m1 m2) ms' *
+      [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
+    CRASH
+      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+    >} read_range xp a nr vfold v0 ms.
+  Proof.
+    unfold read_range; intros.
+    hoare.
+
+    subst; pred_apply; cancel.
+    eapply lt_le_trans; eauto.
+    subst; hypmatch (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
+    pred_apply; cancel.
+
+    rewrite firstn_S_selN_expand with (def := $0).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map by omega; subst; auto.
+    rewrite map_length; omega.
+    Unshelve. exact tt.
+  Qed.
+
+
+  Lemma firstn_vsupsyn_range_firstn_S : forall i vs l,
+    i < length l ->
+    firstn i (vsupsyn_range vs (firstn (S i) l)) =
+    firstn i (vsupsyn_range vs (firstn i l)).
+  Proof.
+    unfold vsupsyn_range; intros.
+    erewrite firstn_S_selN with (def := $0) by auto.
+    rewrite app_length; simpl.
+    rewrite <- repeat_app.
+    rewrite combine_app by (autorewrite with lists; auto); simpl.
+    rewrite <- app_assoc.
+    repeat rewrite firstn_app_l; auto.
+    all: autorewrite with lists; rewrite firstn_length_l; omega.
+  Qed.
+
+  Lemma skip_vsupsyn_range_skip_S : forall i vs l,
+    i < length l -> length l <= length vs ->
+    skipn (S i) (vsupsyn_range vs (firstn (S i) l)) =
+    skipn (S i) (vsupsyn_range vs (firstn i l)).
+  Proof.
+    unfold vsupsyn_range; intros.
+    setoid_rewrite skipn_selN_skipn with (def := ($0, nil)) at 4.
+    rewrite <- cons_nil_app.
+    repeat rewrite skipn_app_eq;
+      autorewrite with lists; repeat rewrite firstn_length_l by omega;
+      simpl; auto; try omega.
+    rewrite firstn_length_l; omega.
+  Qed.
+
+  Lemma sep_star_reorder_helper1 : forall AT AEQ V (a b c d : @pred AT AEQ V),
+    ((a * b * d) * c) =p=> (a * ((b * c) * d)).
+  Proof.
+    cancel.
+  Qed.
+
+  Lemma vsupsyn_range_progress : forall F l a m vs d,
+    m < length l -> length l <= length vs ->
+    (F ✶ arrayN a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
+    (F ✶ arrayN a (vsupsyn_range vs (firstn (S m) l)))%pred 
+        (list2nmem (updN d (a + m) (selN l m $0, nil))).
+  Proof.
+    intros.
+    rewrite arrayN_isolate with (i := m) (default := ($0, nil)).
+    apply sep_star_reorder_helper1.
+    rewrite vsupsyn_range_selN.
+    rewrite selN_firstn by auto.
+    eapply list2nmem_updN.
+    pred_apply.
+    rewrite arrayN_isolate with (i := m) (default := ($0, nil)).
+    rewrite firstn_vsupsyn_range_firstn_S by auto.
+    rewrite skip_vsupsyn_range_skip_S by auto.
+    cancel.
+    all: try rewrite vsupsyn_range_length; try rewrite firstn_length_l; omega.
+  Qed.
+
+  Lemma write_range_length_ok : forall F a i ms d vs,
+    i < length vs ->
+    (F ✶ arrayN a vs)%pred (list2nmem (MLog.replay_disk (Map.elements ms) d)) ->
+    a + i < length d.
+  Proof.
+    intros.
+    apply list2nmem_arrayN_bound in H0; destruct H0; subst; simpl in *.
+    inversion H.
+    rewrite MLog.replay_disk_length in *.
+    omega.
+  Qed.
+
+  Theorem write_range_ok : forall xp a l ms,
+    {< F Fm m1 m2 vs,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[ a <> 0 /\ length l <= length vs ]] *
+      [[[ m2 ::: (Fm * arrayN a vs) ]]]
+    POST RET:ms'
+      exists m', rep xp F (ActiveTxn m1 m') ms' *
+      [[[ m' ::: (Fm * arrayN a (vsupsyn_range vs l)) ]]]
+    CRASH exists ms' m',
+      rep xp F (ActiveTxn m1 m') ms'
+    >} write_range xp a l ms.
+  Proof.
+    unfold write_range; intros.
+    step.
+    subst; pred_apply; cancel.
+
+    step.
+    apply MLog.map_valid_add; auto; try omega.
+    eapply write_range_length_ok; eauto; omega.
+
+    subst; rewrite MLog.replay_disk_add.
+    apply vsupsyn_range_progress; auto.
+
+    step.
+    subst; pred_apply.
+    erewrite firstn_oob; eauto.
+    Unshelve. exact tt.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read_range_ok _ _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_range_ok _ _ _ _) _) => apply write_range_ok : prog.
+
 
 End LOG.
 
