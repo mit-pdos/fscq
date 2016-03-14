@@ -678,6 +678,63 @@ Module LOG.
     Unshelve. exact tt.
   Qed.
 
+
+  (* like read_range, but stops when cond is true *)
+  Definition read_cond T A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms rx : prog T :=
+    let^ (ms, r) <- ForN i < nr
+    Ghost [ F Fm crash m1 m2 vs ]
+    Loopvar [ ms pf ]
+    Continuation lrx
+    Invariant
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[[ m2 ::: (Fm * arrayN a vs) ]]] * [[ cond pf = false ]] *
+      [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+    OnCrash  crash
+    Begin
+      let^ (ms, v) <- read_array xp a i ms;
+      let pf' := vfold pf v in
+      If (bool_dec (cond pf') true) {
+        rx ^(ms, Some pf')
+      } else {
+        lrx ^(ms, pf')
+      }
+    Rof ^(ms, v0);
+    rx ^(ms, None).
+
+
+  Theorem read_cond_ok : forall A xp a nr vfold (v0 : A) cond ms,
+    {< F Fm m1 m2 vs,
+    PRE
+      rep xp F (ActiveTxn m1 m2) ms *
+      [[ nr <= length vs /\ cond v0 = false ]] *
+      [[[ m2 ::: (Fm * arrayN a vs) ]]]
+    POST RET:^(ms', r)
+      rep xp F (ActiveTxn m1 m2) ms' *
+      ( exists v, [[ r = Some v /\ cond v = true ]] \/
+      [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]])
+    CRASH
+      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+    >} read_cond xp a nr vfold v0 cond ms.
+  Proof.
+    unfold read_cond; intros.
+    hoare.
+
+    subst; pred_apply; cancel.
+    eapply lt_le_trans; eauto.
+    subst; hypmatch (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
+    pred_apply; cancel.
+    cancel.
+    apply not_true_is_false; auto.
+
+    rewrite firstn_S_selN_expand with (def := $0).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map by omega; subst; auto.
+    rewrite map_length; omega.
+
+    Unshelve. exact tt. eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read_cond_ok _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
   Hint Extern 1 ({{_}} progseq (read_range_ok _ _ _ _ _ _) _) => apply read_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_range_ok _ _ _ _) _) => apply write_range_ok : prog.
 
