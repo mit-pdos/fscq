@@ -1,7 +1,21 @@
-Require Import Eqdep_dec Arith Omega List ListUtils.
-Require Import Word WordAuto Pred GenSep Rec Prog BasicProg Hoare SepAuto2 Array Log.
+Require Import Eqdep_dec Arith Omega List ListUtils Rounding Psatz.
+Require Import Word WordAuto AsyncDisk Pred GenSepN Array.
+Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
+Import ListNotations.
 
 Set Implicit Arguments.
+
+
+Module LogRecArray (RA : RASig).
+
+  Module Defs := RADefs RA.
+  Import RA Defs.
+  Export RA Defs.
+
+  (** rep invariant *)
+
+End LogRecArray.
+
 
 (**
  * A variant of array that packs multiple items into a single disk block.

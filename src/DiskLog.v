@@ -18,54 +18,57 @@ Require Import Rounding.
 Require Import List ListUtils.
 Require Import Psatz.
 Require Import AsyncDisk.
+Require Import RecArrayUtils.
 Require Import AsyncRecArray.
 
 Import ListNotations.
 
 Set Implicit Arguments.
 
-Module DiskLogDescSig <: RASig.
-
-  Definition xparams := log_xparams.
-  Definition RAStart := LogDescriptor.
-  Definition RALen := LogDescLen.
-
-  Definition itemtype := Rec.WordF addrlen.
-  Definition items_per_val := valulen / addrlen.
-
-  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-  Proof.
-    unfold items_per_val; simpl.
-    rewrite valulen_is.
-    cbv; auto.
-  Qed.
-
-End DiskLogDescSig.
-
-
-Module DiskLogDataSig <: RASig.
-
-  Definition xparams := log_xparams.
-  Definition RAStart := LogData.
-  Definition RALen := LogLen.
-
-  Definition itemtype := Rec.WordF valulen.
-  Definition items_per_val := 1.
-
-  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-  Proof.
-    unfold items_per_val; simpl.
-    rewrite valulen_is.
-    cbv; auto.
-  Qed.
-
-End DiskLogDataSig.
-
 
 Module PaddedLog.
 
-  Module Desc := AsyncRecArray DiskLogDescSig.
-  Module Data := AsyncRecArray DiskLogDataSig.
+  Module DescSig <: RASig.
+
+    Definition xparams := log_xparams.
+    Definition RAStart := LogDescriptor.
+    Definition RALen := LogDescLen.
+
+    Definition itemtype := Rec.WordF addrlen.
+    Definition items_per_val := valulen / addrlen.
+
+    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+    Proof.
+      unfold items_per_val; simpl.
+      rewrite valulen_is.
+      cbv; auto.
+    Qed.
+
+  End DescSig.
+
+
+  Module DataSig <: RASig.
+
+    Definition xparams := log_xparams.
+    Definition RAStart := LogData.
+    Definition RALen := LogLen.
+
+    Definition itemtype := Rec.WordF valulen.
+    Definition items_per_val := 1.
+
+    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+    Proof.
+      unfold items_per_val; simpl.
+      rewrite valulen_is.
+      cbv; auto.
+    Qed.
+
+  End DataSig.
+
+  Module Desc := AsyncRecArray DescSig.
+  Module Data := AsyncRecArray DataSig.
+  Module DescDefs := Desc.Defs.
+  Module DataDefs := Data.Defs.
 
 
   (************* Log header *)
@@ -246,7 +249,7 @@ Module PaddedLog.
   Definition ent_addr (e : entry) := addr2w (fst e).
   Definition ent_valu (e : entry) := snd e.
 
-  Definition ndesc_log (log : contents) := (divup (length log) DiskLogDescSig.items_per_val).
+  Definition ndesc_log (log : contents) := (divup (length log) DescSig.items_per_val).
 
   Fixpoint log_nonzero (log : contents) : list entry :=
     match log with
@@ -286,10 +289,10 @@ Module PaddedLog.
      )%pred.
 
   Definition padded_addr (al : list addr) :=
-    setlen al (roundup (length al) DiskLogDescSig.items_per_val) 0.
+    setlen al (roundup (length al) DescSig.items_per_val) 0.
 
   Definition padded_log (log : contents) :=
-    setlen log (roundup (length log) DiskLogDescSig.items_per_val) (0, $0).
+    setlen log (roundup (length log) DescSig.items_per_val) (0, $0).
 
   Definition rep_inner xp (st : state) : rawpred :=
   (match st with
@@ -313,8 +316,8 @@ Module PaddedLog.
   end)%pred.
 
   Definition xparams_ok xp := 
-    Desc.xparams_ok xp /\ Data.xparams_ok xp /\
-    (LogLen xp) = DiskLogDescSig.items_per_val * (LogDescLen xp).
+    DescDefs.xparams_ok xp /\ DataDefs.xparams_ok xp /\
+    (LogLen xp) = DescSig.items_per_val * (LogDescLen xp).
 
   Definition rep xp st:=
     ([[ xparams_ok xp ]] * rep_inner xp st)%pred.
@@ -324,7 +327,7 @@ Module PaddedLog.
   Definition avail T xp cs rx : prog T :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(ndesc, ndata) := nr in
-    rx ^(cs, ((LogLen xp) - ndesc * DiskLogDescSig.items_per_val)).
+    rx ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
 
   Definition read T xp cs rx : prog T :=
     let^ (cs, nr) <- Hdr.read xp cs;
@@ -383,7 +386,7 @@ Module PaddedLog.
     apply combine_nonzero_app_zero.
   Qed.
 
-  Local Hint Resolve roundup_ge Desc.items_per_val_gt_0.
+  Local Hint Resolve roundup_ge DescDefs.items_per_val_gt_0.
 
   Lemma combine_nonzero_padded_addr : forall a b,
     combine_nonzero (padded_addr a) b = combine_nonzero a b.
@@ -489,11 +492,11 @@ Module PaddedLog.
   Qed.
 
   Lemma desc_ipack_padded : forall l,
-    Desc.ipack (map ent_addr l) = Desc.ipack (map ent_addr (padded_log l)).
+    DescDefs.ipack (map ent_addr l) = DescDefs.ipack (map ent_addr (padded_log l)).
   Proof.
     unfold padded_log, setlen; intros.
     rewrite firstn_oob, map_app, map_entaddr_repeat_0 by auto.
-    rewrite Desc.ipack_app_item0; auto.
+    rewrite DescDefs.ipack_app_item0; auto.
     rewrite map_length; auto.
   Qed.
 
@@ -507,11 +510,11 @@ Module PaddedLog.
      split; cancel; subst.
      unfold padded_log, setlen, roundup in H0.
      rewrite firstn_oob, map_app in H0 by auto.
-     apply Desc.items_valid_app in H0; intuition.
+     apply DescDefs.items_valid_app in H0; intuition.
      apply eq_sym; apply desc_ipack_padded.
      unfold padded_log, setlen, roundup.
      rewrite firstn_oob, map_app by auto.
-     apply Desc.items_valid_app2; auto.
+     apply DescDefs.items_valid_app2; auto.
      autorewrite with lists; auto.
      apply desc_ipack_padded.
   Qed.
@@ -524,11 +527,11 @@ Module PaddedLog.
      split; cancel; subst.
      unfold padded_log, setlen, roundup in H.
      rewrite firstn_oob, map_app in H by auto.
-     apply Desc.items_valid_app in H; intuition.
+     apply DescDefs.items_valid_app in H; intuition.
      apply eq_sym; apply desc_ipack_padded.
      unfold padded_log, setlen, roundup.
      rewrite firstn_oob, map_app by auto.
-     apply Desc.items_valid_app2; auto.
+     apply DescDefs.items_valid_app2; auto.
      autorewrite with lists; auto.
      apply desc_ipack_padded.
   Qed.
@@ -538,13 +541,13 @@ Module PaddedLog.
   Proof.
     intros; unfold ndesc_log.
     eapply goodSize_trans; [ apply divup_le | eauto ].
-    destruct (mult_O_le (length l) DiskLogDescSig.items_per_val); auto.
-    contradict H0; apply Desc.items_per_val_not_0.
+    destruct (mult_O_le (length l) DescSig.items_per_val); auto.
+    contradict H0; apply DescDefs.items_per_val_not_0.
   Qed.
   Local Hint Resolve goodSize_ndesc.
 
   Lemma padded_log_length: forall l,
-    length (padded_log l) = roundup (length l) DiskLogDescSig.items_per_val.
+    length (padded_log l) = roundup (length l) DescSig.items_per_val.
   Proof.
     unfold padded_log, roundup; intros.
     rewrite setlen_length; auto.
@@ -621,7 +624,7 @@ Module PaddedLog.
     POST RET: ^(cs, r)
           BUFCACHE.rep cs d *
           [[ (F * rep xp (Synced l))%pred d ]] *
-          [[ r = (LogLen xp) - roundup (length l) DiskLogDescSig.items_per_val ]]
+          [[ r = (LogLen xp) - roundup (length l) DescSig.items_per_val ]]
     CRASH exists cs',
           BUFCACHE.rep cs' d *
           [[ (F * rep xp (Synced l))%pred d ]]
@@ -656,7 +659,7 @@ Module PaddedLog.
 
     step.
     rewrite vals_nonzero_addrs; unfold ndata_log.
-    replace DiskLogDataSig.items_per_val with 1 by (cbv; auto); omega.
+    replace DataSig.items_per_val with 1 by (cbv; auto); omega.
 
     all: hoare using (subst; eauto).
     all: cancel; rewrite desc_padding_synced_piff; cancel.
@@ -791,14 +794,14 @@ Module PaddedLog.
   Qed.
 
   Lemma loglen_valid_desc_valid : forall xp old new,
-    Desc.xparams_ok xp ->
+    DescDefs.xparams_ok xp ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
-    Desc.items_valid xp (ndesc_log old) (map ent_addr new).
+    DescDefs.items_valid xp (ndesc_log old) (map ent_addr new).
   Proof.
-    unfold Desc.items_valid, loglen_valid.
+    unfold DescDefs.items_valid, loglen_valid.
     intuition.
-    unfold DiskLogDescSig.RALen; omega.
-    autorewrite with lists; unfold DiskLogDescSig.RALen.
+    unfold DescSig.RALen; omega.
+    autorewrite with lists; unfold DescSig.RALen.
     apply divup_ge; auto.
     unfold ndesc_log in *; omega.
   Qed.
@@ -806,21 +809,21 @@ Module PaddedLog.
 
 
   Lemma loglen_valid_data_valid : forall xp old new,
-    Data.xparams_ok xp ->
+    DataDefs.xparams_ok xp ->
     Forall entry_valid new ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
-    Data.items_valid xp (ndata_log old) (map ent_valu new).
+    DataDefs.items_valid xp (ndata_log old) (map ent_valu new).
   Proof.
-    unfold Data.items_valid, loglen_valid.
+    unfold DataDefs.items_valid, loglen_valid.
     intuition.
-    unfold DiskLogDataSig.RALen; omega.
-    autorewrite with lists; unfold DiskLogDataSig.RALen.
+    unfold DataSig.RALen; omega.
+    autorewrite with lists; unfold DataSig.RALen.
     apply divup_ge; auto.
     rewrite divup_1; rewrite <- entry_valid_ndata by auto.
     unfold ndata_log in *; omega.
   Qed.
   Local Hint Resolve loglen_valid_data_valid.
-  
+
   Lemma helper_loglen_desc_valid_extend : forall xp new old,
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     ndesc_log new + (LogDescLen xp - ndesc_log old - ndesc_log new) 
@@ -851,14 +854,14 @@ Module PaddedLog.
   Qed.
 
   Lemma padded_desc_valid : forall xp st l,
-    Desc.items_valid xp st (map ent_addr l)
-    -> Desc.items_valid xp st (map ent_addr (padded_log l)).
+    DescDefs.items_valid xp st (map ent_addr l)
+    -> DescDefs.items_valid xp st (map ent_addr (padded_log l)).
   Proof.
-    unfold Desc.items_valid; intuition.
+    unfold DescDefs.items_valid; intuition.
     autorewrite with lists in *.
     rewrite padded_log_length; unfold roundup.
     apply Nat.mul_le_mono_pos_r.
-    apply Desc.items_per_val_gt_0.
+    apply DescDefs.items_per_val_gt_0.
     apply divup_le; lia.
   Qed.
 
@@ -869,26 +872,26 @@ Module PaddedLog.
   Qed.
 
   Lemma loglen_valid_goodSize_l : forall xp a b,
-    loglen_valid xp a b -> Desc.xparams_ok xp -> Data.xparams_ok xp ->
+    loglen_valid xp a b -> DescDefs.xparams_ok xp -> DataDefs.xparams_ok xp ->
     goodSize addrlen a.
   Proof.
-    unfold loglen_valid, Desc.xparams_ok, Data.xparams_ok; intuition.
+    unfold loglen_valid, DescDefs.xparams_ok, DataDefs.xparams_ok; intuition.
     eapply goodSize_trans; eauto.
     eapply goodSize_trans.
     apply mul_le_mono_helper.
-    apply Desc.items_per_val_gt_0.
+    apply DescDefs.items_per_val_gt_0.
     auto.
   Qed.
 
   Lemma loglen_valid_goodSize_r : forall xp a b,
-    loglen_valid xp a b -> Desc.xparams_ok xp -> Data.xparams_ok xp ->
+    loglen_valid xp a b -> DescDefs.xparams_ok xp -> DataDefs.xparams_ok xp ->
     goodSize addrlen b.
   Proof.
-    unfold loglen_valid, Desc.xparams_ok, Data.xparams_ok; intuition.
+    unfold loglen_valid, DescDefs.xparams_ok, DataDefs.xparams_ok; intuition.
     eapply goodSize_trans; eauto.
     eapply goodSize_trans.
     apply mul_le_mono_helper.
-    apply Data.items_per_val_gt_0.
+    apply DataDefs.items_per_val_gt_0.
     auto.
   Qed.
 
@@ -899,7 +902,7 @@ Module PaddedLog.
     apply H; auto.
   Qed.
   Local Hint Resolve ent_valid_addr_valid.
-  Local Hint Resolve Forall_append Desc.items_per_val_not_0.
+  Local Hint Resolve Forall_append DescDefs.items_per_val_not_0.
 
   Lemma helper_add_sub : forall a b,
     a <= b -> a + (b - a) = b.
@@ -933,7 +936,7 @@ Module PaddedLog.
   Qed.
 
   Lemma ndesc_log_app : forall a b,
-    length a = roundup (length a) DiskLogDescSig.items_per_val ->
+    length a = roundup (length a) DescSig.items_per_val ->
     ndesc_log (a ++ b) = ndesc_log a + ndesc_log b.
   Proof.
     unfold ndesc_log; intros.
@@ -1049,9 +1052,9 @@ Module PaddedLog.
     Data.array_rep xp (ndata_log old) (Data.Synced (map ent_valu new)) *
     Desc.array_rep xp 0 (Desc.Synced (map ent_addr old)) *
     Data.array_rep xp 0 (Data.Synced (vals_nonzero old)) *
-    Desc.avail_rep xp (ndesc_log old + divup (length (map ent_addr new)) DiskLogDescSig.items_per_val)
+    Desc.avail_rep xp (ndesc_log old + divup (length (map ent_addr new)) DescSig.items_per_val)
       (LogDescLen xp - ndesc_log old - ndesc_log new) *
-    Data.avail_rep xp (ndata_log old + divup (length (map ent_valu new)) DiskLogDataSig.items_per_val)
+    Data.avail_rep xp (ndata_log old + divup (length (map ent_valu new)) DataSig.items_per_val)
       (LogLen xp - ndata_log old - ndata_log new) *
     Desc.array_rep xp (ndesc_log old) (Desc.Synced (map ent_addr (padded_log new))) * F
     =p=>
@@ -1118,7 +1121,7 @@ Module PaddedLog.
   Qed.
 
   Lemma loglen_invalid_overflow : forall xp old new,
-    LogLen xp = DiskLogDescSig.items_per_val * LogDescLen xp ->
+    LogLen xp = DescSig.items_per_val * LogDescLen xp ->
     loglen_invalid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     length (padded_log old ++ new) > LogLen xp.
   Proof.
@@ -1319,9 +1322,9 @@ Module PaddedLog.
     (F * rep xp (Synced l))%pred d -> length l <= LogLen xp.
   Proof.
     unfold rep, rep_inner, rep_contents, xparams_ok.
-    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
+    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, DescDefs.items_valid.
     intros; destruct_lifts.
-    hypmatch DiskLogDescSig.items_per_val as Hx.
+    hypmatch DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
     rewrite H5, Nat.mul_comm; auto.
   Qed.
@@ -1372,9 +1375,9 @@ Module PaddedLog.
     LogLen xp >= ndata_log old + ndata_log new /\ LogDescLen xp >= ndesc_log old + ndesc_log new.
   Proof.
     unfold rep, rep_inner, rep_contents, xparams_ok.
-    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
+    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, DescDefs.items_valid.
     intros; destruct_lifts.
-    hypmatch DiskLogDescSig.items_per_val as Hx.
+    hypmatch DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
     unfold ndata_log, ndesc_log; split; auto; split.
 
@@ -1387,8 +1390,8 @@ Module PaddedLog.
     rewrite padded_log_length, map_length.
     apply roundup_ge; auto.
 
-    eapply Nat.mul_le_mono_pos_r with (p := DiskLogDescSig.items_per_val).
-    apply Desc.items_per_val_gt_0.
+    eapply Nat.mul_le_mono_pos_r with (p := DescSig.items_per_val).
+    apply DescDefs.items_per_val_gt_0.
     apply roundup_le in Hx.
     rewrite app_length, padded_log_length in Hx.
     rewrite roundup_roundup_add in Hx by auto.
@@ -1530,7 +1533,7 @@ Module DLog.
 
   Definition rep_common l padded : rawpred :=
       ([[ l = PaddedLog.log_nonzero padded /\
-         length padded = roundup (length padded) DiskLogDescSig.items_per_val ]])%pred.
+         length padded = roundup (length padded) PaddedLog.DescSig.items_per_val ]])%pred.
 
   Definition rep xp st :=
     (match st with
@@ -1627,12 +1630,12 @@ Module DLog.
 
   End UnifyProof.
 
-  Local Hint Resolve PaddedLog.Desc.items_per_val_gt_0.
+  Local Hint Resolve PaddedLog.DescDefs.items_per_val_gt_0.
 
   Lemma extend_length_ok' : forall l new,
-    length l = roundup (length l) DiskLogDescSig.items_per_val ->
+    length l = roundup (length l) PaddedLog.DescSig.items_per_val ->
     length (l ++ PaddedLog.padded_log new)
-      = roundup (length (l ++ PaddedLog.padded_log new)) DiskLogDescSig.items_per_val.
+      = roundup (length (l ++ PaddedLog.padded_log new)) PaddedLog.DescSig.items_per_val.
   Proof.
     intros.
     repeat rewrite app_length.
@@ -1642,9 +1645,9 @@ Module DLog.
   Qed.
 
   Lemma extend_length_ok : forall l new,
-    length l = roundup (length l) DiskLogDescSig.items_per_val ->
+    length l = roundup (length l) PaddedLog.DescSig.items_per_val ->
     length (PaddedLog.padded_log l ++ PaddedLog.padded_log new)
-      = roundup (length (PaddedLog.padded_log l ++ PaddedLog.padded_log new)) DiskLogDescSig.items_per_val.
+      = roundup (length (PaddedLog.padded_log l ++ PaddedLog.padded_log new)) PaddedLog.DescSig.items_per_val.
   Proof.
     intros.
     apply extend_length_ok'.
@@ -1653,7 +1656,7 @@ Module DLog.
   Qed.
 
   Lemma helper_extend_length_ok : forall xp padded new F d,
-    length padded = roundup (length padded) DiskLogDescSig.items_per_val
+    length padded = roundup (length padded) PaddedLog.DescSig.items_per_val
     -> length (PaddedLog.padded_log padded ++ new) > LogLen xp
     -> (F * PaddedLog.rep xp (PaddedLog.Synced padded))%pred d
     -> length new > LogLen xp - length padded.
@@ -1673,12 +1676,12 @@ Module DLog.
     r <- PaddedLog.extend xp new cs;
     rx r.
 
-  Definition rounded n := roundup n DiskLogDescSig.items_per_val.
+  Definition rounded n := roundup n PaddedLog.DescSig.items_per_val.
 
   Definition entries_valid l := Forall PaddedLog.entry_valid l.
 
   Lemma extend_navail_ok : forall xp padded new, 
-    length padded = roundup (length padded) DiskLogDescSig.items_per_val ->
+    length padded = roundup (length padded) PaddedLog.DescSig.items_per_val ->
     LogLen xp - length padded - rounded (length new)
     = LogLen xp - length (PaddedLog.padded_log padded ++ PaddedLog.padded_log new).
   Proof.

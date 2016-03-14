@@ -34,13 +34,6 @@ Hint Rewrite repeat_length map_length app_length Nat.min_idempotent : lists.
 (** prevent eauto from unifying length ?a = length ?b *)
 Definition eqlen A B (a : list A) (b : list B) := length a = length b.
 
-Lemma eqlen_nil : forall A B (a : list A),
-  eqlen a (@nil B) -> a = nil.
-Proof.
-  unfold eqlen; simpl; intros.
-  apply length_nil; auto.
-Qed.
-
 Definition removeN {V} (l : list V) i :=
    (firstn i l) ++ (skipn (S i) l).
 
@@ -86,6 +79,14 @@ Proof.
   intros; apply eq_sym.
   apply length_nil; auto.
 Qed.
+
+Lemma eqlen_nil : forall A B (a : list A),
+  eqlen a (@nil B) -> a = nil.
+Proof.
+  unfold eqlen; simpl; intros.
+  apply length_nil; auto.
+Qed.
+
 
 (** XXX use [nth] everywhere *)
 Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
@@ -1613,5 +1614,19 @@ Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
 Proof.
   induction l; simpl; firstorder.
   destruct a; simpl in *; subst; eauto.
+Qed.
+
+Lemma setlen_In : forall A n l (a def : A),
+  In a (setlen l n def)
+  -> a = def \/ In a l.
+Proof.
+  unfold setlen; intros.
+  destruct (le_dec n (length l)).
+  right.
+  rewrite repeat_is_nil in H by omega; rewrite app_nil_r in H.
+  eapply in_firstn_in; eauto.
+  apply in_app_or in H; destruct H.
+  right. eapply in_firstn_in; eauto.
+  left. eapply repeat_spec; eauto.
 Qed.
 

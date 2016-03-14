@@ -1546,6 +1546,13 @@ Proof.
   eapply goodSize_word_bound; eauto.
 Qed.
 
+Lemma goodSize_sub : forall sz n a,
+  goodSize sz n -> goodSize sz (n - a).
+Proof.
+  intros; eapply goodSize_trans with (n2 := n); eauto; omega.
+Qed.
+
+
 Lemma wordToNat_natToWord_idempotent'_iff : forall n sz,
   @wordToNat sz (natToWord sz n) = n -> goodSize sz n.
 Proof.
