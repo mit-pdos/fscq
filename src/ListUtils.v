@@ -25,8 +25,8 @@ Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
       end
   end.
 
-Notation "l ⟦ i ⟧" := (selN l i _) (at level 8, left associativity).
-Notation "l ⟦ i := v ⟧" := (updN l i v) (at level 8).
+Notation "l ⟦ i ⟧" := (selN l i _) (at level 8, no associativity).
+Notation "l ⟦ i := v ⟧" := (updN l i v) (at level 8, no associativity).
 
 (* rewrite hints for various List facts *)
 Hint Rewrite repeat_length map_length app_length Nat.min_idempotent : lists.

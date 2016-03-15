@@ -797,23 +797,6 @@ Module Rec.
     exact w.
   Defined.
 
-  Lemma word_splice_exact : forall {ft} {l} w idx items,
-    idx + (List.length items) = l
-    -> @word_splice ft l w idx (map to_word items) = @to_word (ArrayF ft l)
-        ((firstn idx (of_word w)) ++ items)%list.
-  Proof.
-    unfold word_splice; intros.
-    destruct (lt_dec idx l).
-
-    admit.
-
-    destruct (Nat.eq_dec (List.length items) 0); try omega.
-    rewrite length_nil with (l := items) by auto.
-    rewrite app_nil_r.
-    rewrite firstn_oob.
-    rewrite to_of_id; auto.
-    generalize (of_word_length _ w); simpl; intuition.
-  Admitted.
 
   Theorem of_word_zero_list : forall ft n,
     @Rec.of_word (ArrayF ft n) $0 = repeat (Rec.of_word $0) n.
@@ -997,6 +980,9 @@ End Rec.
 
 Notation "r :-> n" := (Rec.recget' n r) (at level 20).
 Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
+
+Notation "r ⟦ n ⟧" := (Rec.recget' n r) (at level 8).
+Notation "r ⟦ n := v ⟧" := (Rec.recset' n r v) (at level 8).
 
 (**
  * This [compute_rec] convtactic allows us to do partial evaluation

@@ -75,6 +75,7 @@ Module LogRecArray (RA : RASig).
 End LogRecArray.
 
 
+
 (**
  * A variant of array that packs multiple items into a single disk block.
  *)
