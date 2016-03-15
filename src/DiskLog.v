@@ -141,7 +141,7 @@ Module PaddedLog.
       | Synced n =>
          (LAHdr xp) |-> (hdr2val (mk_header n), nil)
       | Unsync n o =>
-         (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)])
+         (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list)
       end)%pred.
 
     Definition xform_rep_synced : forall xp n,
