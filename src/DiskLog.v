@@ -1565,12 +1565,12 @@ Module DLog.
     {< F l d nr,
     PRE       BUFCACHE.rep cs d * 
               [[ (F * rep xp (Synced nr l))%pred d ]]
-    POST RET: ^(cs, r) exists d',
-              BUFCACHE.rep cs d' *
-              [[ r = l /\ (F * rep xp (Synced nr l))%pred d' ]]
-    CRASH exists cs' d',
-              BUFCACHE.rep cs' d' *
-              [[ (F * rep xp (Synced nr l))%pred d' ]]
+    POST RET: ^(cs, r)
+              BUFCACHE.rep cs d *
+              [[ r = l /\ (F * rep xp (Synced nr l))%pred d ]]
+    CRASH exists cs',
+              BUFCACHE.rep cs' d *
+              [[ (F * rep xp (Synced nr l))%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.

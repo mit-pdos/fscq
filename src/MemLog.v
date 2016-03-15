@@ -1658,8 +1658,8 @@ Module MLog.
     PRE
       BUFCACHE.rep cs raw *
       [[ crash_xform (F * recover_either_pred xp Fold Fnew)%pred raw ]]
-    POST RET:ms' exists na d',
-      rep xp (crash_xform F) na (Synced d') ms' *
+    POST RET:ms'
+      exists na d', rep xp (crash_xform F) na (Synced d') ms' *
       ([[[ d' ::: crash_xform Fold ]]] \/ [[[ d' ::: crash_xform Fnew ]]])
     CRASH exists cs',
       BUFCACHE.rep cs' raw
@@ -1679,30 +1679,21 @@ Module MLog.
     - cancel.
       step.
       unfold rep; cancel.
-      or_l; cancel.
-      apply H6.
-
-      unfold synced_rep, rep_inner, map_replay.
-      cancel; try map_rewrites; auto.
-
-      pimpl_crash; unfold recover_either_pred, rep_inner, map_replay; cancel.
       or_l; cancel; eauto.
-      apply crash_xform_idem; eauto.
+
+      unfold rep_inner, map_replay.
+      cancel; try map_rewrites; auto.
+      pimpl_crash; cancel.
 
     (* case 2 : last transaction applied *)
     - cancel.
       step.
       unfold rep; cancel.
       or_r; cancel; eauto.
-      apply crash_xform_idem; eauto.
 
       unfold rep_inner, map_replay, synced_rep.
       cancel; try map_rewrites; auto.
-
-      subst; pimpl_crash; unfold recover_either_pred, rep_inner, map_replay; cancel.
-      or_r; or_l; cancel; eauto.
-      apply crash_xform_idem; eauto.
-      Unshelve. eauto.
+      pimpl_crash; cancel.
   Qed.
 
 
