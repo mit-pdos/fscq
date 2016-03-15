@@ -1,4 +1,4 @@
-Require Import Eqdep_dec Arith Omega List ListUtils Rounding Psatz.
+Require Import Eqdep_dec Arith Omega List ListUtils MapUtils Rounding Psatz.
 Require Import Word WordAuto AsyncDisk Pred GenSepN Array.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Import ListNotations.
@@ -12,7 +12,65 @@ Module LogRecArray (RA : RASig).
   Import RA Defs.
   Export RA Defs.
 
+  Definition items_valid xp (items : itemlist) :=
+    xparams_ok xp /\ length items = (RALen xp) * items_per_val /\
+    Forall Rec.well_formed items.
+
   (** rep invariant *)
+  Definition array_rep xp (items : itemlist) :=
+    ( exists vl, [[ vl = ipack items ]] *
+      [[ items_valid xp items ]] *
+      arrayN (RAStart xp) (synced_list vl))%pred.
+
+  Definition get T lxp xp ix ms rx : prog T :=
+    let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
+    let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
+    rx ^(ms, selN (val2block v) off item0).
+
+  Definition put T lxp xp ix item ms rx : prog T :=
+    let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
+    let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
+    let v' := block2val (updN (val2block v) off item) in
+    ms <- LOG.write_array lxp (RAStart xp) bn v' ms;
+    rx ms.
+
+  (** read n blocks starting from the beginning *)
+  Definition get_range T lxp xp nblocks ms rx : prog T :=
+    let^ (ms, r) <- LOG.read_range lxp (RAStart xp) nblocks iunpack nil ms;
+    rx ^(ms, r).
+
+
+  Record ifind_state := mk_ifs {
+    IFSItem : item;
+    IFSIdx  : addr
+  }.
+
+  Fixpoint ifind_block (cond : item -> bool) (vs : block) (start : nat) : option ifind_state :=
+    match vs with
+    | nil => None
+    | x :: rest =>
+        if (cond x) then Some (mk_ifs x start)
+                    else ifind_block cond rest (S start)
+    end.
+
+  (* find the first item that satisfies cond *)
+  Definition find T lxp xp (cond : item -> bool) ms rx : prog T :=
+    let^ (ms) <- ForN i < (RALen xp)
+    Ghost [ F crash m1 m2 ]
+    Loopvar [ ms ]
+    Continuation lrx
+    Invariant
+      LOG.rep lxp F (LOG.ActiveTxn m1 m2) ms
+    OnCrash  crash
+    Begin
+      let^ (ms, v) <- LOG.read_array lxp (RAStart xp) i ms;
+      let r := ifind_block cond (val2block v) (i * items_per_val) in
+      match r with
+      | None => lrx ^(ms)
+      | Some ifs => rx ^(ms, Some ifs)
+      end
+    Rof ^(ms);
+    rx ^(ms, None).
 
 End LogRecArray.
 
