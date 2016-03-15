@@ -1023,3 +1023,33 @@ Proof.
 
   admit.
 Admitted.
+
+
+Lemma crash_xform_list2nmem_synced : forall vl (F : rawpred),
+  crash_xform F (list2nmem vl) ->
+  map snd vl = repeat (@nil valu) (length vl).
+Proof.
+  unfold crash_xform.
+  induction vl using rev_ind; intros; auto.
+  deex.
+  rewrite map_app.
+  erewrite IHvl.
+  unfold possible_crash in H1.
+  specialize (H1 (length vl)). destruct H1.
+  intuition. (* H2 should be false *) admit.
+  repeat deex.
+  rewrite listapp_memupd in H. rewrite upd_eq in H by auto. inversion H; subst.
+  simpl.
+  rewrite app_length; simpl.
+  rewrite <- repeat_app_tail.
+  f_equal; omega.
+  exists (mem_except m' (length vl)).
+  intuition.
+  apply pred_ex_mem_except; eauto.
+  admit.
+  replace (list2nmem vl) with (mem_except (list2nmem (vl ++ [x])) (length vl)).
+  apply possible_crash_mem_except. eauto.
+  rewrite listapp_memupd.
+  rewrite <- mem_except_upd.
+  rewrite mem_except_list2nmem_oob; auto.
+Admitted.
