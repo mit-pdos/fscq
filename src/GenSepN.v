@@ -967,45 +967,6 @@ Proof.
 Qed.
 
 
-Lemma crash_xform_list2nmem : forall vl (F : rawpred),
-  crash_xform F (list2nmem vl) ->
-  exists vsl, F (list2nmem vsl) /\ length vl = length vsl.
-Proof.
-  unfold crash_xform.
-  induction vl using rev_ind; intros; auto.
-  exists nil; deex.
-  replace (list2nmem nil) with m'; auto.
-  apply functional_extensionality; intro.
-  specialize (H1 x).
-  destruct H1; destruct H.
-  rewrite H; auto.
-  deex; unfold list2nmem in H; simpl in *; congruence.
-
-  deex.
-  specialize (IHvl (pred_ex F (length vl))).
-  rewrite listapp_memupd in H1.
-
-  pose proof (possible_crash_upd_mem_except H1) as Hx.
-  rewrite mem_except_list2nmem_oob in Hx by auto.
-  specialize (H1 (length vl)); destruct H1.
-  contradict H; rewrite upd_eq by auto.
-  intuition congruence.
-  repeat deex.
-
-  eapply pred_ex_mem_except in H0 as Hy.
-  destruct IHvl as [ ? Hz ].
-  eexists; eauto.
-  destruct Hz as [ Hz Heq ].
-
-  unfold pred_ex in Hz; destruct Hz as [? Hz].
-  rewrite Heq in Hz.
-  rewrite <- listapp_memupd in Hz.
-  eexists; split; eauto.
-  repeat rewrite app_length; simpl; omega.
-  eexists; eauto.
-Qed.
-
-
 Lemma crash_xform_list2nmem_possible_crash_list : forall vl (F : rawpred),
   crash_xform F (list2nmem vl) ->
   exists vsl, F (list2nmem vsl) /\ possible_crash_list vsl (map fst vl).
