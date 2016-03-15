@@ -671,6 +671,24 @@ Proof.
   destruct (H4 i); try omega; simpl; auto.
 Qed.
 
+Lemma crash_xform_arrayN_r: forall l l' st,
+  possible_crash_list l' l ->
+  arrayN st (synced_list l) =p=> crash_xform (arrayN st l').
+Proof.
+  unfold possible_crash_list.
+  induction l; simpl; intros; auto.
+  - intuition; destruct l'; simpl in *; try congruence.
+    apply crash_invariant_emp_r.
+  - intuition; destruct l'; simpl in *; try congruence.
+    pose proof (H1 0) as H1'. simpl in H1'.
+    rewrite IHl.
+    rewrite crash_xform_sep_star_dist.
+    rewrite <- crash_xform_ptsto_r with (v := a) by (apply H1'; omega).
+    apply pimpl_refl.
+    intuition.
+    specialize (H1 (S i)). simpl in H1. apply H1. omega.
+Qed.
+
 Lemma crash_xform_synced_arrayN: forall l st,
   Forall (fun x => snd x = nil) l ->
   crash_xform (arrayN st l) =p=> arrayN st l.

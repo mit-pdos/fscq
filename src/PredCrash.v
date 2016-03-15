@@ -5,6 +5,7 @@ Require Import List.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
 Require Import AsyncDisk.
+Require Import Arith.
 
 Set Implicit Arguments.
 
@@ -196,6 +197,20 @@ Proof.
   congruence.
 Qed.
 
+Theorem crash_xform_ptsto_r: forall a v vs,
+  In v (vsmerge vs) ->
+  a |=> v =p=> crash_xform (a |-> vs).
+Proof.
+  unfold crash_xform, possible_crash, ptsto, pimpl; intros.
+  exists (upd empty_mem a vs).
+  intuition.
+  rewrite upd_eq; auto.
+  rewrite upd_ne; auto.
+  destruct (eq_nat_dec a a0); subst.
+  - right. rewrite upd_eq; auto. exists vs. exists v. intuition.
+  - left. rewrite upd_ne; auto.
+Qed.
+
 Theorem crash_xform_pimpl : forall (p q : rawpred), p =p=>q
   -> crash_xform p =p=> crash_xform q.
 Proof.
@@ -225,6 +240,13 @@ Theorem crash_invariant_emp:
 Proof.
   unfold crash_xform, possible_crash, emp, pimpl; repeat deex; intuition; repeat deex.
   destruct (H1 a); [ intuition | repeat deex; congruence ].
+Qed.
+
+Theorem crash_invariant_emp_r:
+  emp =p=> crash_xform emp.
+Proof.
+  unfold crash_xform, possible_crash, emp, pimpl. intros.
+  exists empty_mem. intuition.
 Qed.
 
 Theorem crash_invariant_ptsto: forall a v,
