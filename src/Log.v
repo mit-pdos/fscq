@@ -442,6 +442,22 @@ Module LOG.
   Qed.
 
 
+  Definition intact xp F old :=
+    (exists ms,
+      rep xp F (NoTxn old) ms \/
+      rep xp F (ApplyingTxn old) ms \/
+      exists new, rep xp F (ActiveTxn old new) ms)%pred.
+
+  Lemma active_txn_intact : forall xp F old new ms,
+    rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Hint Resolve active_txn_intact.
+  Hint Extern 0 (okToUnify (intact _ _ _) (intact _ _ _)) => constructor : okToUnify.
+
+
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
   Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
