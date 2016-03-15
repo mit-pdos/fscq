@@ -281,13 +281,31 @@ Proof.
   unfold lift_empty; intuition.
 Qed.
 
+Lemma possible_crash_mem_except : forall m1 m2 a,
+  possible_crash m1 m2 ->
+  possible_crash (mem_except m1 a) (mem_except m2 a).
+Proof.
+  unfold possible_crash, mem_except; intuition.
+  specialize (H a0).
+  destruct (addr_eq_dec a0 a); intuition.
+Qed.
+
+Lemma mem_except_upd : forall AT AEQ V (m : @mem AT AEQ V) a v,
+  mem_except m a = mem_except (upd m a v) a.
+Proof.
+  unfold mem_except, upd; intuition.
+  apply functional_extensionality; intros.
+  destruct (AEQ x a); intuition.
+Qed.
+
 Lemma possible_crash_upd_mem_except : forall m1 m2 a v,
   possible_crash m1 (upd m2 a v) ->
   possible_crash (mem_except m1 a) (mem_except m2 a).
 Proof.
-  unfold possible_crash, mem_except, upd; intuition.
-  specialize (H a0).
-  destruct (addr_eq_dec a0 a); intuition.
+  intros.
+  eapply possible_crash_mem_except in H.
+  rewrite <- mem_except_upd in H.
+  auto.
 Qed.
 
 

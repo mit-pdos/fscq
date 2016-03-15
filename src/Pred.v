@@ -1833,22 +1833,19 @@ Qed.
 
 
 (* exclude an address from a predicate *)
-Definition pred_ex AT AEQ V (F : @pred AT AEQ V) a : @pred AT AEQ V :=
-  fun m => exists v, F (upd m a v).
+Definition pred_ex AT AEQ V (F : @pred AT AEQ V) a v : @pred AT AEQ V :=
+  fun m => F (upd m a v).
 
-Lemma pred_ex_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a,
-  F m -> indomain a m -> (pred_ex F a) (mem_except m a).
+Lemma pred_ex_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a v,
+  F m -> m a = Some v -> (pred_ex F a v) (mem_except m a).
 Proof.
   unfold pred_ex; intros.
-  case_eq (m a); intros.
+  case_eq (m a); intros; replace (upd (mem_except m a) a v) with m; auto.
 
-  exists v.
-  replace (upd (mem_except m a) a v) with m; auto.
   apply functional_extensionality; intros.
   unfold upd, mem_except.
   destruct (AEQ x a); subst; auto.
 
-  unfold indomain in H0; destruct H0.
   congruence.
 Qed.
 

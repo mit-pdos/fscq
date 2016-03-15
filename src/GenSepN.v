@@ -1023,7 +1023,10 @@ Proof.
   inversion H.
 
   deex.
-  specialize (IHvl (pred_ex F (length vl))).
+
+  (* Figure out [m' (length vl)] *)
+  case_eq (m' (length vl)); [ intro p | ]; intro Hp.
+  specialize (IHvl (pred_ex F (length vl) p)).
   rewrite listapp_memupd in H1.
 
   pose proof (possible_crash_upd_mem_except H1) as Hx.
@@ -1039,7 +1042,7 @@ Proof.
   destruct Hz as [ Hz [ Heq HP ] ].
   rewrite map_length in Heq.
 
-  unfold pred_ex in Hz; destruct Hz as [? Hz].
+  unfold pred_ex in Hz.
   rewrite <- Heq in Hz.
   rewrite <- listapp_memupd in Hz.
   eexists; split; eauto.
@@ -1053,8 +1056,9 @@ Proof.
   rewrite <- Heq; replace (i - length x0) with 0 by omega; simpl.
   rewrite upd_eq in H by auto.
   destruct x; inversion H; subst; simpl.
+  rewrite Hp in H1; inversion H1; subst.
+  eauto.
+  eauto.
+
   admit.
-  eexists; eauto.
 Admitted.
-
-
