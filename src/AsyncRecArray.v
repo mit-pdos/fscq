@@ -31,6 +31,11 @@ Module AsyncRecArray (RA : RASig).
   Import RA Defs.
   Export RA Defs.
 
+  Definition items_valid xp start (items : itemlist) :=
+    xparams_ok xp /\  start <= (RALen xp) /\
+    Forall Rec.well_formed items /\
+    length items <= (RALen xp - start) * items_per_val.
+
   (** rep invariant *)
   Inductive state : Type :=
   | Synced : itemlist -> state
@@ -69,6 +74,63 @@ Module AsyncRecArray (RA : RASig).
     | Synced l => (divup (length l) items_per_val)
     | Unsync l => (divup (length l) items_per_val)
     end.
+
+  Lemma items_valid_app : forall xp st a b,
+    items_valid xp st (a ++ b) ->
+    items_valid xp st a /\ items_valid xp st b.
+  Proof.
+    unfold items_valid; intros; split; intros;
+    pose proof (well_formed_app_iff itemtype a b);
+    rewrite app_length in *; intuition.
+  Qed.
+
+  Lemma le_add_helper: forall a b c d,
+    b <= d -> a + d <= c -> a + b <= c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma le_add_le_sub : forall a b c,
+    a <= c -> b <= c - a -> a + b <= c.
+  Proof.
+    intros. omega.
+  Qed.
+
+  Lemma items_valid_app2 : forall xp st a b,
+    length b <= (roundup (length a) items_per_val - length a)
+    -> items_valid xp st a
+    -> Forall Rec.well_formed b
+    -> items_valid xp st (a ++ b).
+  Proof.
+    unfold items_valid, roundup; intuition.
+    pose proof (well_formed_app_iff itemtype a b); intuition.
+    rewrite app_length.
+    eapply le_add_helper. apply H.
+    rewrite le_plus_minus_r.
+    apply mult_le_compat_r.
+    apply divup_le; lia.
+    apply roundup_ge.
+    apply items_per_val_gt_0.
+  Qed.
+
+  Lemma items_valid_app3 : forall xp st a b na,
+    length a = na * items_per_val ->
+    items_valid xp st (a ++ b) -> items_valid xp (st + na) b.
+  Proof.
+    unfold items_valid; intros; split; intros;
+    pose proof (well_formed_app_iff itemtype a b);
+    rewrite app_length in *; intuition.
+
+    apply le_add_le_sub; auto.
+    eapply Nat.mul_le_mono_pos_r.
+    apply items_per_val_gt_0.
+    rewrite <- H; omega.
+
+    rewrite Nat.sub_add_distr.
+    rewrite Nat.mul_sub_distr_r.
+    apply Nat.le_add_le_sub_l.
+    setoid_rewrite <- H; auto.
+  Qed.
 
   Lemma synced_array_is : forall xp start items,
     synced_array xp start items =p=>
@@ -309,7 +371,7 @@ Module AsyncRecArray (RA : RASig).
     rewrite combine_app, arrayN_app, combine_length_eq by (rewrite repeat_length; auto).
     repeat rewrite ipack_length.
     cancel.
-    apply (items_valid_app xp start a b H1).
+    apply (@items_valid_app xp start a b H1).
     rewrite H, divup_mul by auto.
     eapply items_valid_app3; eauto.
   Qed.

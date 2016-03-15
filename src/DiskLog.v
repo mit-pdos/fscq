@@ -510,11 +510,11 @@ Module PaddedLog.
      split; cancel; subst.
      unfold padded_log, setlen, roundup in H0.
      rewrite firstn_oob, map_app in H0 by auto.
-     apply DescDefs.items_valid_app in H0; intuition.
+     apply Desc.items_valid_app in H0; intuition.
      apply eq_sym; apply desc_ipack_padded.
      unfold padded_log, setlen, roundup.
      rewrite firstn_oob, map_app by auto.
-     apply DescDefs.items_valid_app2; auto.
+     apply Desc.items_valid_app2; auto.
      autorewrite with lists; auto.
      apply desc_ipack_padded.
   Qed.
@@ -527,11 +527,11 @@ Module PaddedLog.
      split; cancel; subst.
      unfold padded_log, setlen, roundup in H.
      rewrite firstn_oob, map_app in H by auto.
-     apply DescDefs.items_valid_app in H; intuition.
+     apply Desc.items_valid_app in H; intuition.
      apply eq_sym; apply desc_ipack_padded.
      unfold padded_log, setlen, roundup.
      rewrite firstn_oob, map_app by auto.
-     apply DescDefs.items_valid_app2; auto.
+     apply Desc.items_valid_app2; auto.
      autorewrite with lists; auto.
      apply desc_ipack_padded.
   Qed.
@@ -796,9 +796,9 @@ Module PaddedLog.
   Lemma loglen_valid_desc_valid : forall xp old new,
     DescDefs.xparams_ok xp ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
-    DescDefs.items_valid xp (ndesc_log old) (map ent_addr new).
+    Desc.items_valid xp (ndesc_log old) (map ent_addr new).
   Proof.
-    unfold DescDefs.items_valid, loglen_valid.
+    unfold Desc.items_valid, loglen_valid.
     intuition.
     unfold DescSig.RALen; omega.
     autorewrite with lists; unfold DescSig.RALen.
@@ -812,9 +812,9 @@ Module PaddedLog.
     DataDefs.xparams_ok xp ->
     Forall entry_valid new ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
-    DataDefs.items_valid xp (ndata_log old) (map ent_valu new).
+    Data.items_valid xp (ndata_log old) (map ent_valu new).
   Proof.
-    unfold DataDefs.items_valid, loglen_valid.
+    unfold Data.items_valid, loglen_valid.
     intuition.
     unfold DataSig.RALen; omega.
     autorewrite with lists; unfold DataSig.RALen.
@@ -854,10 +854,10 @@ Module PaddedLog.
   Qed.
 
   Lemma padded_desc_valid : forall xp st l,
-    DescDefs.items_valid xp st (map ent_addr l)
-    -> DescDefs.items_valid xp st (map ent_addr (padded_log l)).
+    Desc.items_valid xp st (map ent_addr l)
+    -> Desc.items_valid xp st (map ent_addr (padded_log l)).
   Proof.
-    unfold DescDefs.items_valid; intuition.
+    unfold Desc.items_valid; intuition.
     autorewrite with lists in *.
     rewrite padded_log_length; unfold roundup.
     apply Nat.mul_le_mono_pos_r.
@@ -1322,7 +1322,7 @@ Module PaddedLog.
     (F * rep xp (Synced l))%pred d -> length l <= LogLen xp.
   Proof.
     unfold rep, rep_inner, rep_contents, xparams_ok.
-    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, DescDefs.items_valid.
+    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
     hypmatch DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
@@ -1375,7 +1375,7 @@ Module PaddedLog.
     LogLen xp >= ndata_log old + ndata_log new /\ LogDescLen xp >= ndesc_log old + ndesc_log new.
   Proof.
     unfold rep, rep_inner, rep_contents, xparams_ok.
-    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, DescDefs.items_valid.
+    unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
     hypmatch DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
