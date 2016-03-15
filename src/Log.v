@@ -428,7 +428,8 @@ Module LOG.
     {< raw Fold Fnew,
     PRE
       BUFCACHE.rep cs raw *
-      [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]]
+      [[ crash_xform (F * MLog.recover_either_pred xp
+          (crash_xform Fold) (crash_xform Fnew))%pred raw ]]
     POST RET:ms' exists d',
       rep xp (crash_xform F) (NoTxn d') ms' *
       ([[[ d' ::: crash_xform Fold ]]] \/

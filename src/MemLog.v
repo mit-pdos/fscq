@@ -1657,7 +1657,7 @@ Module MLog.
     {< raw Fold Fnew,
     PRE
       BUFCACHE.rep cs raw *
-      [[ crash_xform (F * recover_either_pred xp Fold Fnew)%pred raw ]]
+      [[ crash_xform (F * recover_either_pred xp (crash_xform Fold) (crash_xform Fnew))%pred raw ]]
     POST RET:ms' exists na d',
       rep xp (crash_xform F) na (Synced d') ms' *
       ([[[ d' ::: crash_xform Fold ]]] \/ [[[ d' ::: crash_xform Fnew ]]])
@@ -1680,47 +1680,42 @@ Module MLog.
     - cancel.
       step.
       unfold rep; cancel.
-      or_l; cancel; eauto.
+      or_l; cancel.
+      apply crash_xform_idem; eauto.
 
       unfold synced_rep, rep_inner, map_replay.
       cancel; try map_rewrites; auto.
 
       pimpl_crash; unfold recover_either_pred, rep_inner, map_replay; cancel.
       or_l; cancel; eauto.
+      apply crash_xform_idem; eauto.
 
     (* case 2 : last transaction applied *)
     - cancel.
       step.
       unfold rep; cancel.
       or_r; cancel; eauto.
+      apply crash_xform_idem; eauto.
 
       unfold rep_inner, map_replay, synced_rep.
       cancel; try map_rewrites; auto.
 
       subst; pimpl_crash; unfold recover_either_pred, rep_inner, map_replay; cancel.
       or_r; or_l; cancel; eauto.
+      apply crash_xform_idem; eauto.
       Unshelve. eauto.
   Qed.
 
 
-  Ltac t ::= repeat
-    match goal with 
-    | [ H : crash_xform ?F (list2nmem _) |- _ ] =>
-        apply crash_xform_list2nmem in H as [?vl [?F ?F] ]
-    end.
-
-  Theorem recover_idem : forall xp Fold Fnew,
-    crash_xform (recover_either_pred xp (crash_xform Fold) (crash_xform Fnew)) =p=>
-    crash_xform (recover_either_pred xp Fold Fnew).
+  Theorem recover_idem : forall F xp Fold Fnew,
+    ( crash_xform (
+      crash_xform F * recover_either_pred xp (crash_xform Fold) (crash_xform Fnew))
+    =p=>
+      crash_xform (F * recover_either_pred xp (crash_xform Fold) (crash_xform Fnew)) )%pred.
   Proof.
-    unfold recover_either_pred; intros.
-    xform; cancel.
-    t.
-    repeat progress (xform; cancel).
-    or_l.
-    (* cannot proceed, as we know too little about vl *)
-
-  Admitted.
+    intros; xform.
+    rewrite crash_xform_idem; cancel.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
