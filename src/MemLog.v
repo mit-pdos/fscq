@@ -1697,35 +1697,6 @@ Module MLog.
   Qed.
 
 
-  Theorem recover_idem : forall F xp Fold Fnew,
-    ( crash_xform (
-      crash_xform F * recover_either_pred xp (crash_xform Fold) (crash_xform Fnew))
-    =p=>
-      crash_xform (F * recover_either_pred xp Fold Fnew) )%pred.
-  Proof.
-    intros; xform.
-    rewrite crash_xform_idem; cancel.
-    unfold recover_either_pred. xform; cancel.
-    apply crash_xform_list2nmem_possible_crash_list in H2 as H2'.
-    apply crash_xform_list2nmem_synced in H2.
-    deex.
-    do 4 ( xform; cancel ).
-    or_l.
-    instantiate (x8 := vsl).
-    instantiate (x7 := x0).
-    instantiate (x3 := x).
-    cancel.
-    unfold rep_inner. unfold map_replay.
-    xform. cancel.
-    unfold synced_rep.
-    rewrite crash_xform_arrayN. cancel.
-    xform. cancel. repeat rewrite crash_xform_sep_star_dist. repeat rewrite crash_xform_lift_empty.
-    cancel.
-    instantiate (x1 := vsl).
-    rewrite <- crash_xform_arrayN_r by eassumption. cancel.
-
-  Qed.
-
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.

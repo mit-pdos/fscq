@@ -428,23 +428,17 @@ Module LOG.
     {< raw Fold Fnew,
     PRE
       BUFCACHE.rep cs raw *
-      [[ crash_xform (F * MLog.recover_either_pred xp
-          (crash_xform Fold) (crash_xform Fnew))%pred raw ]]
+      [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]]
     POST RET:ms' exists d',
       rep xp (crash_xform F) (NoTxn d') ms' *
       ([[[ d' ::: crash_xform Fold ]]] \/
        [[[ d' ::: crash_xform Fnew ]]])
-    CRASH exists raw' cs',
-      BUFCACHE.rep cs' raw' *
-      [[ (crash_xform F * MLog.recover_either_pred xp 
-         (crash_xform Fold) (crash_xform Fnew))%pred raw' ]]
+    CRASH exists cs',
+      BUFCACHE.rep cs' raw
     >} recover xp cs.
   Proof.
-    unfold rep.
-    intros; eapply pimpl_ok2.
-    apply MLog.recover_ok.
-    cancel; eauto.
-    step.
+    unfold recover, rep.
+    hoare.
   Qed.
 
 
