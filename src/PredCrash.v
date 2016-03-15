@@ -281,6 +281,16 @@ Proof.
   unfold lift_empty; intuition.
 Qed.
 
+Lemma possible_crash_upd_mem_except : forall m1 m2 a v,
+  possible_crash m1 (upd m2 a v) ->
+  possible_crash (mem_except m1 a) (mem_except m2 a).
+Proof.
+  unfold possible_crash, mem_except, upd; intuition.
+  specialize (H a0).
+  destruct (addr_eq_dec a0 a); intuition.
+Qed.
+
+
 Hint Rewrite crash_xform_sep_star_dist : crash_xform.
 Hint Rewrite crash_xform_or_dist : crash_xform.
 Hint Rewrite crash_xform_exists_comm : crash_xform.

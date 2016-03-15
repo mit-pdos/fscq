@@ -827,6 +827,19 @@ Proof.
   apply list2nmem_off_arrayN.
 Qed.
 
+
+Lemma mem_except_list2nmem_oob : forall A (l : list A) a,
+  a >= length l ->
+  mem_except (list2nmem l) a = list2nmem l.
+Proof.
+  unfold mem_except, list2nmem; intros.
+  apply functional_extensionality; intro.
+  destruct (Nat.eq_dec x a); subst; simpl; auto.
+  erewrite selN_oob; auto.
+  autorewrite with lists in *; omega.
+Qed.
+
+
 (* Ltacs *)
 
 Ltac rewrite_list2nmem_pred_bound H :=
@@ -954,5 +967,94 @@ Proof.
 Qed.
 
 
+Lemma crash_xform_list2nmem : forall vl (F : rawpred),
+  crash_xform F (list2nmem vl) ->
+  exists vsl, F (list2nmem vsl) /\ length vl = length vsl.
+Proof.
+  unfold crash_xform.
+  induction vl using rev_ind; intros; auto.
+  exists nil; deex.
+  replace (list2nmem nil) with m'; auto.
+  apply functional_extensionality; intro.
+  specialize (H1 x).
+  destruct H1; destruct H.
+  rewrite H; auto.
+  deex; unfold list2nmem in H; simpl in *; congruence.
+
+  deex.
+  specialize (IHvl (pred_ex F (length vl))).
+  rewrite listapp_memupd in H1.
+
+  pose proof (possible_crash_upd_mem_except H1) as Hx.
+  rewrite mem_except_list2nmem_oob in Hx by auto.
+  specialize (H1 (length vl)); destruct H1.
+  contradict H; rewrite upd_eq by auto.
+  intuition congruence.
+  repeat deex.
+
+  eapply pred_ex_mem_except in H0 as Hy.
+  destruct IHvl as [ ? Hz ].
+  eexists; eauto.
+  destruct Hz as [ Hz Heq ].
+
+  unfold pred_ex in Hz; destruct Hz as [? Hz].
+  rewrite Heq in Hz.
+  rewrite <- listapp_memupd in Hz.
+  eexists; split; eauto.
+  repeat rewrite app_length; simpl; omega.
+  eexists; eauto.
+Qed.
+
+
+Lemma crash_xform_list2nmem_possible_crash_list : forall vl (F : rawpred),
+  crash_xform F (list2nmem vl) ->
+  exists vsl, F (list2nmem vsl) /\ possible_crash_list vsl (map fst vl).
+Proof.
+  unfold crash_xform.
+  induction vl using rev_ind; intros; auto.
+  exists nil; deex.
+  replace (list2nmem nil) with m'; auto.
+  apply functional_extensionality; intro.
+  specialize (H1 x).
+  destruct H1; destruct H.
+  rewrite H; auto.
+  deex; unfold list2nmem in H; simpl in *; congruence.
+  unfold possible_crash_list; intuition.
+  inversion H.
+
+  deex.
+  specialize (IHvl (pred_ex F (length vl))).
+  rewrite listapp_memupd in H1.
+
+  pose proof (possible_crash_upd_mem_except H1) as Hx.
+  rewrite mem_except_list2nmem_oob in Hx by auto.
+  specialize (H1 (length vl)); destruct H1.
+  contradict H; rewrite upd_eq by auto.
+  intuition congruence.
+  repeat deex.
+
+  eapply pred_ex_mem_except in H0 as Hy.
+  destruct IHvl as [ ? Hz ].
+  eexists; eauto.
+  destruct Hz as [ Hz [ Heq HP ] ].
+  rewrite map_length in Heq.
+
+  unfold pred_ex in Hz; destruct Hz as [? Hz].
+  rewrite <- Heq in Hz.
+  rewrite <- listapp_memupd in Hz.
+  eexists; split; eauto.
+
+  split; autorewrite with lists; simpl; intros.
+  repeat rewrite app_length; omega.
+  destruct (lt_dec i (length x0)); repeat rewrite map_app.
+  setoid_rewrite selN_app1; try rewrite map_length; try omega.
+  apply HP; auto.
+  setoid_rewrite selN_app2; try rewrite map_length; try omega.
+  rewrite <- Heq; replace (i - length x0) with 0 by omega; simpl.
+  rewrite upd_eq in H by auto.
+  destruct x; inversion H; subst; simpl.
+  admit.
+  eexists; eauto.
+Admitted.
 
 

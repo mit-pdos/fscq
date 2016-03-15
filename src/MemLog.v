@@ -1702,6 +1702,26 @@ Module MLog.
       Unshelve. eauto.
   Qed.
 
+
+  Ltac t ::= repeat
+    match goal with 
+    | [ H : crash_xform ?F (list2nmem _) |- _ ] =>
+        apply crash_xform_list2nmem in H as [?vl [?F ?F] ]
+    end.
+
+  Theorem recover_idem : forall xp Fold Fnew,
+    crash_xform (recover_either_pred xp (crash_xform Fold) (crash_xform Fnew)) =p=>
+    crash_xform (recover_either_pred xp Fold Fnew).
+  Proof.
+    unfold recover_either_pred; intros.
+    xform; cancel.
+    t.
+    repeat progress (xform; cancel).
+    or_l.
+    (* cannot proceed, as we know too little about vl *)
+
+  Admitted.
+
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
