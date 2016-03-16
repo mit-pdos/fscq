@@ -467,6 +467,14 @@ Proof.
   nth_selN app_nth2.
 Qed.
 
+Lemma selN_cons : forall A (a : A) l i def,
+  i > 0 -> selN (a :: l) i def = selN l (i - 1) def.
+Proof.
+  intros.
+  replace (a :: l) with ([a] ++ l) by (simpl; auto).
+  rewrite selN_app2; simpl; auto.
+Qed.
+
 Theorem seq_right : forall b a, seq a (S b) = seq a b ++ (a + b :: nil).
 Proof.
   induction b; simpl; intros.
@@ -1628,5 +1636,52 @@ Proof.
   apply in_app_or in H; destruct H.
   right. eapply in_firstn_in; eauto.
   left. eapply repeat_spec; eauto.
+Qed.
+
+Lemma updN_skipn : forall A l i n (v : A),
+  updN (skipn n l) i v = skipn n (updN l (i + n) v).
+Proof.
+  induction l using rev_ind; intros; simpl.
+  rewrite updN_oob; auto.
+  rewrite skipn_nil; simpl; omega.
+
+  destruct (lt_dec i (length l - n)).
+  destruct (le_dec n (length l)).
+  rewrite skipn_app_l by auto.
+  repeat rewrite updN_app1 by (try rewrite skipn_length; omega).
+  setoid_rewrite skipn_app_l; autorewrite with lists; auto.
+  f_equal; eauto.
+  rewrite updN_app1 by omega.
+  repeat rewrite skipn_app_r_ge by omega.
+  rewrite length_updN, skipn_oob; simpl; auto; omega.
+
+  destruct (le_dec n (length l)).
+  rewrite skipn_app_l by auto.
+  repeat rewrite updN_app2 by (try rewrite skipn_length; omega).
+  setoid_rewrite skipn_app_l; autorewrite with lists; auto; f_equal.
+  rewrite skipn_length; f_equal; omega.
+  repeat rewrite skipn_oob; autorewrite with lists; simpl; auto; omega.
+Qed.
+
+Lemma setlen_skipn_updN_absorb : forall A (l : list A) m n i v def,
+  i < n \/ i >= m + n ->
+  setlen (skipn n (updN l i v)) m def = setlen (skipn n l) m def.
+Proof.
+  intros; destruct H.
+  rewrite skipN_updN'; auto.
+  unfold setlen.
+  repeat rewrite <- skipn_firstn_comm.
+  rewrite firstn_updN_oob by omega.
+  repeat rewrite skipn_length.
+  rewrite length_updN; auto.
+Qed.
+
+Lemma Forall_selN : forall A (l : list A) P i def,
+  Forall P l -> i < length l -> P (selN l i def).
+Proof.
+  intros.
+  rewrite Forall_forall in H.
+  apply H.
+  apply in_selN; auto.
 Qed.
 

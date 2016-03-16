@@ -580,6 +580,26 @@ Definition possible_crash_list (l: list valuset) (l': list valu) :=
   length l = length l' /\
   forall i, i < length l -> In (selN l' i $0) (vsmerge (selN l i ($0, nil))).
 
+Lemma synced_list_selN : forall l i def,
+  selN (synced_list l) i (def, nil) = (selN l i def, nil).
+Proof.
+  unfold synced_list; intros.
+  rewrite selN_combine.
+  destruct (lt_dec i (length l)).
+  rewrite repeat_selN; auto.
+  setoid_rewrite selN_oob; auto.
+  omega. rewrite repeat_length; omega. omega.
+  rewrite repeat_length; omega.
+Qed.
+
+Lemma synced_list_map_fst : forall l,
+  map fst (synced_list l) = l.
+Proof.
+  unfold synced_list; intros.
+  rewrite map_fst_combine; auto.
+  rewrite repeat_length; auto.
+Qed.
+
 Lemma possible_crash_list_length : forall l l',
   possible_crash_list l l' -> length l = length l'.
 Proof.

@@ -29,7 +29,6 @@ Module AsyncRecArray (RA : RASig).
 
   Module Defs := RADefs RA.
   Import RA Defs.
-  Export RA Defs.
 
   Definition items_valid xp start (items : itemlist) :=
     xparams_ok xp /\  start <= (RALen xp) /\

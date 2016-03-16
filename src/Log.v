@@ -21,7 +21,6 @@ Require Import Cache.
 Require Import Idempotent.
 Require Import ListUtils.
 Require Import FSLayout.
-Require Import DiskLog2.
 Require Import AsyncDisk.
 Require Import SepAuto.
 Require Import GenSepN.
@@ -745,9 +744,9 @@ Module LOG.
     Unshelve. exact tt. eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_cond_ok _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read_range_ok _ _ _ _ _ _) _) => apply read_range_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_range_ok _ _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_range _ _ _ _) _) => apply write_range_ok : prog.
 
 
 End LOG.

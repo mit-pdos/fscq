@@ -413,7 +413,7 @@ Module RADefs (RA : RASig).
   Qed.
 
   Lemma firstn_list_chunk_app : forall l i pre,
-    items_per_val + i * items_per_val < length l
+    items_per_val + i * items_per_val <= length l
     -> pre = firstn (i * items_per_val) l
     -> firstn (i * items_per_val + items_per_val) l 
        = pre ++ (selN (list_chunk l items_per_val item0) i block0).
@@ -464,7 +464,6 @@ Module RADefs (RA : RASig).
     replace (na * sz + length b) with (length b + sz * na) by lia.
     rewrite divup_add by auto; omega.
   Qed.
-
 
 
 
@@ -617,6 +616,123 @@ Module RADefs (RA : RASig).
     fold_left iunpack (ipack items) [] = items.
   Proof.
     intros; eapply iunpack_ipack'; eauto.
+  Qed.
+
+  Lemma iunpack_ipack_firstn : forall n nr items,
+    Forall Rec.well_formed items ->
+    length items = nr * items_per_val ->
+    fold_left iunpack (firstn n (ipack items)) nil = 
+    firstn (n * items_per_val) items.
+  Proof.
+    induction n; intros.
+    simpl; auto.
+
+    destruct (lt_dec n (length (ipack items))).
+    rewrite firstn_S_selN with (def := $0) by auto.
+    rewrite fold_left_app.
+    erewrite IHn; simpl; eauto.
+
+    rewrite ipack_length in l.
+    unfold iunpack, ipack; rewrite Nat.add_comm.
+    erewrite firstn_list_chunk_app; [ f_equal | | apply eq_refl ].
+    erewrite selN_map, val2block2val_id; eauto.
+    apply Forall_selN.
+    apply list_chunk_wellformed; auto.
+    setoid_rewrite list_chunk_length; auto.
+    setoid_rewrite list_chunk_length; auto.
+
+    rewrite H0 in *.
+    rewrite divup_mul in l by auto.
+    apply lt_le_S in l; eapply mult_le_compat_r in l; eauto.
+
+    repeat rewrite firstn_oob; try omega.
+    eapply iunpack_ipack; eauto.
+    rewrite ipack_length in n0.
+    rewrite H0 in *.
+    rewrite divup_mul in n0 by auto.
+    apply Nat.nlt_ge in n0.
+    apply mult_le_compat; omega.
+  Qed.
+
+
+  Lemma mod_lt_length_firstn_skipn : forall A ix (l : list A),
+    ix < length l ->
+    ix mod items_per_val < length (firstn items_per_val (skipn (ix / items_per_val * items_per_val) l)).
+  Proof.
+    intros.
+    rewrite firstn_length, skipn_length.
+    apply Nat.min_glb_lt.
+    apply Nat.mod_upper_bound; auto.
+    rewrite Nat.mod_eq, Nat.mul_comm by auto.
+    enough (ix >= ix / items_per_val * items_per_val).
+    omega.
+    rewrite Nat.mul_comm.
+    apply Nat.mul_div_le; auto.
+  Qed.
+
+  Lemma ipack_selN_divmod : forall items ix,
+    (@Forall block) Rec.well_formed (list_chunk items items_per_val item0) ->
+    ix < length items ->
+    selN (val2block (selN (ipack items) (ix / items_per_val) $0)) (ix mod items_per_val) item0
+    = selN items ix item0.
+  Proof.
+    unfold ipack; intros.
+    rewrite val2block2val_selN_id by auto.
+    rewrite list_chunk_spec.
+    setoid_rewrite selN_app1.
+    rewrite selN_firstn.
+    rewrite skipn_selN.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.div_mod; auto.
+    apply Nat.mod_upper_bound; auto.
+    eapply mod_lt_length_firstn_skipn; auto.
+  Qed.
+
+  Lemma list_chunk_updN_divmod : forall items ix e,
+    ix < length items ->
+    updN (list_chunk items items_per_val item0) (ix / items_per_val)
+      (updN (selN (list_chunk items items_per_val item0) (ix / items_per_val) block0)
+        (ix mod items_per_val) e) =
+    list_chunk (updN items ix e) items_per_val item0.
+  Proof.
+    intros.
+    eapply list_selN_ext; intros.
+    rewrite length_updN.
+    setoid_rewrite list_chunk_length; rewrite length_updN; auto.
+    repeat rewrite list_chunk_spec.
+
+    destruct (Nat.eq_dec pos (ix / items_per_val)); subst.
+    rewrite selN_updN_eq; unfold setlen.
+    setoid_rewrite skipn_length; rewrite length_updN.
+    repeat rewrite updN_app1; [ f_equal | ].
+    rewrite <- updN_firstn_comm.
+    rewrite updN_skipn; repeat f_equal.
+    rewrite Nat.mul_comm, Nat.add_comm, <- Nat.div_mod; auto.
+    apply mod_lt_length_firstn_skipn; auto.
+    setoid_rewrite list_chunk_length.
+    apply div_lt_divup; auto.
+
+    rewrite length_updN, list_chunk_length in H0.
+    rewrite selN_updN_ne by auto.
+    rewrite list_chunk_spec.
+    rewrite setlen_skipn_updN_absorb; auto.
+    apply not_eq in n; destruct n.
+    right; apply lt_div_mul_add_le; auto.
+    left; apply div_lt_mul_lt; auto.
+  Qed.
+
+
+  Lemma ipack_updN_divmod : forall items ix e,
+    (@Forall block) Rec.well_formed (list_chunk items items_per_val item0) ->
+    ix < length items ->
+    updN (ipack items) (ix / items_per_val) (block2val
+      (updN (val2block (selN (ipack items) (ix / items_per_val) $0)) (ix mod items_per_val) e)) =
+    ipack (updN items ix e).
+  Proof.
+    unfold ipack; intros.
+    rewrite val2block2val_selN_id by auto.
+    rewrite <- map_updN; f_equal.
+    apply list_chunk_updN_divmod; auto.
   Qed.
 
 End RADefs.

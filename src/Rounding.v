@@ -16,7 +16,43 @@ Import Valulen.
 Definition divup (n unitsz : nat) : nat := (n + unitsz - 1) / unitsz.
 Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
 
- Lemma roundup_ge: forall x sz,
+  Lemma lt_add_lt_sub : forall a b c,
+    b <= a -> a < b + c -> a - b < c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma lt_div_mul_add_le : forall a b c,
+    b > 0 -> a < c / b -> b + a * b <= c.
+  Proof.
+    intros.
+    apply lt_le_S in H0.
+    apply mult_le_compat_r with ( p := b ) in H0; auto.
+    rewrite Nat.add_comm, <- Nat.mul_succ_l.
+    eapply le_trans; eauto.
+    rewrite Nat.mul_comm.
+    apply Nat.mul_div_le; omega.
+  Qed.
+
+  Lemma lt_div_mul_lt : forall a b c,
+    b > 0 -> a < c / b -> a * b < c.
+  Proof.
+    intros.
+    apply lt_div_mul_add_le in H0; auto; omega.
+  Qed.
+
+  Lemma div_lt_mul_lt : forall a b c,
+    b > 0 -> a / b < c -> a < c * b.
+  Proof.
+    intros.
+    apply lt_le_S in H0.
+    apply mult_le_compat_r with ( p := b ) in H0; auto.
+    eapply lt_le_trans; [ | eauto ].
+    rewrite Nat.mul_comm.
+    apply Nat.mul_succ_div_gt; omega.
+  Qed.
+
+  Lemma roundup_ge: forall x sz,
       sz > 0 ->
       roundup x sz >= x.
   Proof.
