@@ -35,21 +35,16 @@ Module LogRecArray (RA : RASig).
     rx ms.
 
   (** read n blocks starting from the beginning *)
-  Definition get_range T lxp xp nblocks ms rx : prog T :=
+  Definition read T lxp xp nblocks ms rx : prog T :=
     let^ (ms, r) <- LOG.read_range lxp (RAStart xp) nblocks iunpack nil ms;
     rx ^(ms, r).
 
 
-  Record ifind_state := mk_ifs {
-    IFSItem : item;
-    IFSIdx  : addr
-  }.
-
-  Fixpoint ifind_block (cond : item -> bool) (vs : block) (start : nat) : option ifind_state :=
+  Fixpoint ifind_block (cond : item -> bool) (vs : block) start : option (addr * item ) :=
     match vs with
     | nil => None
     | x :: rest =>
-        if (cond x) then Some (mk_ifs x start)
+        if (cond x) then Some (start, x)
                     else ifind_block cond rest (S start)
     end.
 
@@ -98,7 +93,8 @@ Module LogRecArray (RA : RASig).
   Qed.
 
   Lemma ifind_block_ok_mono : forall cond vs start r,
-    ifind_block cond vs start = Some r -> (IFSIdx r) >= start.
+    ifind_block cond vs start = Some r ->
+    fst r >= start.
   Proof.
     induction vs; simpl; intros; try congruence.
     destruct (cond a) eqn: C.
@@ -108,7 +104,8 @@ Module LogRecArray (RA : RASig).
   Qed.
 
   Lemma ifind_block_ok_bound : forall cond vs start r,
-    ifind_block cond vs start = Some r -> (IFSIdx r) < start + length vs.
+    ifind_block cond vs start = Some r ->
+    fst r < start + length vs.
   Proof.
     induction vs; simpl; intros; try congruence.
     destruct (cond a) eqn: C.
@@ -119,7 +116,7 @@ Module LogRecArray (RA : RASig).
 
   Lemma ifind_block_ok_cond : forall cond vs start r,
     ifind_block cond vs start = Some r ->
-    cond (IFSItem r) = true.
+    cond (snd r) = true.
   Proof.
     induction vs; simpl; intros; try congruence.
     destruct (cond a) eqn: C.
@@ -129,25 +126,26 @@ Module LogRecArray (RA : RASig).
 
   Lemma ifind_block_ok_item : forall cond vs start r,
     ifind_block cond vs start = Some r ->
-    selN vs ((IFSIdx r) - start) item0 = (IFSItem r).
+    selN vs ((fst r) - start) item0 = (snd r).
   Proof.
     induction vs; intros.
     simpl in *; try congruence.
     simpl in H; destruct (cond a) eqn: C.
     inversion H; simpl; auto.
     rewrite Nat.sub_diag; simpl; auto.
-    replace (IFSIdx r - start) with ((IFSIdx r - S start) + 1).
+    replace (fst r - start) with ((fst r - S start) + 1).
     rewrite selN_cons, Nat.add_sub by omega.
     apply IHvs; auto.
     apply ifind_block_ok_mono in H; omega.
   Qed.
 
+
   Lemma ifind_block_ok_facts : forall cond vs start r,
     ifind_block cond vs start = Some r ->
-    (IFSIdx r) >= start /\
-    (IFSIdx r) < start + length vs /\
-    cond (IFSItem r) = true /\
-    selN vs ((IFSIdx r) - start) item0 = (IFSItem r).
+    (fst r) >= start /\
+    (fst r) < start + length vs /\
+    cond (snd r) = true /\
+    selN vs ((fst r) - start) item0 = (snd r).
   Proof.
     intros; intuition.
     eapply ifind_block_ok_mono; eauto.
@@ -157,12 +155,35 @@ Module LogRecArray (RA : RASig).
   Qed.
 
 
+  Lemma ifind_result_inbound :  forall xp bn items cond r,
+    items_valid xp items ->
+    bn < RALen xp ->
+    ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
+      (bn * items_per_val) = Some r ->
+    fst r < length items.
+  Proof.
+    intros.
+    apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
+    unfold items_valid in H; intuition.
+    apply list_chunk_wellformed in H4.
+    rewrite synced_list_selN in Hb; simpl in Hb.
+    unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
+    rewrite list_chunk_spec, setlen_length in *.
+
+    rewrite H2.
+    eapply lt_le_trans; eauto.
+    setoid_rewrite <- Nat.mul_1_l at 5.
+    rewrite <- Nat.mul_add_distr_r.
+    apply Nat.mul_le_mono_r; omega.
+  Qed.
+
+
   Lemma ifind_result_item_ok : forall xp bn items cond r,
     items_valid xp items ->
     bn < RALen xp ->
     ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
       (bn * items_per_val) = Some r ->
-    (IFSItem r) = selN items (IFSIdx r) item0.
+    (snd r) = selN items (fst r) item0.
   Proof.
     intros.
     apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
@@ -207,6 +228,7 @@ Module LogRecArray (RA : RASig).
     unfold items_valid in *; intuition; auto.
   Qed.
 
+
   Theorem put_ok : forall lxp xp ix e ms,
     {< F Fm m0 m items,
     PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
@@ -234,7 +256,7 @@ Module LogRecArray (RA : RASig).
   Qed.
 
 
-  Theorem get_range_ok : forall lxp xp nblocks ms,
+  Theorem read_ok : forall lxp xp nblocks ms,
     {< F Fm m0 m items,
     PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
           [[ nblocks <= RALen xp ]] *
@@ -243,9 +265,9 @@ Module LogRecArray (RA : RASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
           [[ r = firstn (nblocks * items_per_val) items ]]
     CRASH LOG.intact lxp F m0
-    >} get_range lxp xp nblocks ms.
+    >} read lxp xp nblocks ms.
   Proof.
-    unfold get_range, rep.
+    unfold read, rep.
     hoare.
 
     rewrite synced_list_length, ipack_length.
@@ -265,8 +287,9 @@ Module LogRecArray (RA : RASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
         ( [[ r = None ]] \/ exists st,
-          [[ r = Some st /\ cond (IFSItem st) = true
-                         /\ (IFSItem st) = selN items (IFSIdx st) item0 ]])
+          [[ r = Some st /\ cond (snd st) = true
+                         /\ (fst st) < length items
+                         /\ snd st = selN items (fst st) item0 ]])
     CRASH LOG.intact lxp F m0
     >} ifind lxp xp cond ms.
   Proof.
@@ -277,7 +300,11 @@ Module LogRecArray (RA : RASig).
 
     step.
     or_r; cancel.
+    replace i with (snd (n, i)) by auto.
     eapply ifind_block_ok_cond; eauto.
+    replace n with (fst (n, i)) by auto.
+    eapply ifind_result_inbound; eauto.
+    replace i with (snd (n, i)) by auto.
     eapply ifind_result_item_ok; eauto.
     step.
     Unshelve. exact tt.
@@ -285,8 +312,140 @@ Module LogRecArray (RA : RASig).
 
   Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
   Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.
-  Hint Extern 1 ({{_}} progseq (get_range _ _ _ _) _) => apply get_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (ifind _ _ _ _) _) => apply ifind_ok : prog.
+
+
+  (** operations using array spec *)
+
+  Definition get_array T lxp xp ix ms rx : prog T :=
+    r <- get lxp xp ix ms;
+    rx r.
+
+  Definition put_array T lxp xp ix item ms rx : prog T :=
+    r <- put lxp xp ix item ms;
+    rx r.
+
+  Definition read_array T lxp xp nblocks ms rx : prog T :=
+    r <- read lxp xp nblocks ms;
+    rx r.
+
+  Definition ifind_array T lxp xp cond ms rx : prog T :=
+    r <- ifind lxp xp cond ms;
+    rx r.
+
+  Theorem get_array_ok : forall lxp xp ix ms,
+    {< F Fm Fi m0 m items e,
+    PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+          [[[ m ::: Fm * rep xp items ]]] *
+          [[[ items ::: Fi * (ix |-> e) ]]]
+    POST RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' * [[ r = e ]]
+    CRASH LOG.intact lxp F m0
+    >} get_array lxp xp ix ms.
+  Proof.
+    unfold get_array.
+    hoare.
+    eapply list2nmem_ptsto_bound; eauto.
+    subst; apply eq_sym.
+    eapply list2nmem_sel; eauto.
+  Qed.
+
+
+  Theorem put_array_ok : forall lxp xp ix e ms,
+    {< F Fm Fi m0 m items e0,
+    PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+          [[ Rec.well_formed e ]] *
+          [[[ m ::: Fm * rep xp items ]]] *
+          [[[ items ::: Fi * (ix |-> e0) ]]]
+    POST RET:ms' exists m' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' *
+          [[ items' = updN items ix e ]] *
+          [[[ m' ::: Fm * rep xp items' ]]] *
+          [[[ items' ::: Fi * (ix |-> e) ]]]
+    CRASH LOG.intact lxp F m0
+    >} put_array lxp xp ix e ms.
+  Proof.
+    unfold put_array.
+    hoare.
+    eapply list2nmem_ptsto_bound; eauto.
+    eapply list2nmem_updN; eauto.
+  Qed.
+
+
+  Lemma read_array_length_ok : forall l xp Fm Fi m items nblocks,
+    length l = nblocks * items_per_val ->
+    (Fm * rep xp items)%pred (list2nmem m) ->
+    (Fi * arrayN 0 l)%pred (list2nmem items) ->
+    nblocks <= RALen xp.
+  Proof.
+    unfold rep; intuition.
+    destruct_lift H0.
+    unfold items_valid in *; subst; intuition.
+    apply list2nmem_arrayN_length in H1.
+    rewrite H, H3 in H1.
+    eapply Nat.mul_le_mono_pos_r.
+    apply items_per_val_gt_0.
+    auto.
+  Qed.
+
+  Lemma read_array_list_ok : forall (l : list item) nblocks items Fi,
+    length l = nblocks * items_per_val ->
+    (Fi ✶ arrayN 0 l)%pred (list2nmem items) ->
+    firstn (nblocks * items_per_val) items = l.
+  Proof.
+    intros.
+    eapply arrayN_list2nmem in H0.
+    rewrite <- H; simpl in *; auto.
+    exact item0.
+  Qed.
+
+
+  Theorem read_array_ok : forall lxp xp nblocks ms,
+    {< F Fm Fi m0 m items l,
+    PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+          [[ length l = (nblocks * items_per_val)%nat ]] *
+          [[[ m ::: Fm * rep xp items ]]] *
+          [[[ items ::: Fi * arrayN 0 l ]]]
+    POST RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+          [[ r = l ]]
+    CRASH LOG.intact lxp F m0
+    >} read_array lxp xp nblocks ms.
+  Proof.
+    unfold read_array.
+    hoare.
+    eapply read_array_length_ok; eauto.
+    subst; eapply read_array_list_ok; eauto.
+  Qed.
+
+
+  Theorem ifind_array_ok : forall lxp xp cond ms,
+    {< F Fm m0 m items,
+    PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+          [[[ m ::: Fm * rep xp items ]]]
+    POST RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+        ( [[ r = None ]] \/ exists st,
+          [[ r = Some st /\ cond (snd st) = true ]] *
+          [[[ items ::: arrayN_ex items (fst st) * (fst st) |-> (snd st) ]]] )
+    CRASH LOG.intact lxp F m0
+    >} ifind_array lxp xp cond ms.
+  Proof.
+    unfold ifind_array; intros.
+    hoare.
+    or_r; cancel.
+    apply list2nmem_ptsto_cancel; auto.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (get_array _ _ _ _) _) => apply get_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (put_array _ _ _ _ _) _) => apply put_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (ifind_array _ _ _ _) _) => apply ifind_array_ok : prog.
+
+  (* If two arrays are in the same spot, their contents have to be equal *)
+  Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
 End LogRecArray.
 

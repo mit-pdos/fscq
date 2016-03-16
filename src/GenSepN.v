@@ -592,6 +592,15 @@ Proof.
   omega.
 Qed.
 
+Theorem list2nmem_arrayN_length : forall A (l m : list A) F,
+  (F * arrayN 0 l)%pred (list2nmem m)
+  -> length l <= length m.
+Proof.
+  intros.
+  apply list2nmem_arrayN_bound in H; destruct H; auto.
+  rewrite H; simpl; omega.
+Qed.
+
 Theorem list2nmem_ptsto_bound : forall A (l : list A) off v F,
   (F * off |-> v)%pred (list2nmem l)
   -> off < length l.
