@@ -7,69 +7,89 @@ Require Import SepAuto.
 Require Import BasicProg.
 Require Import Omega.
 Require Import Array.
-Require Import List.
+Require Import List ListUtils.
 Require Import Bool.
 Require Import Nomega.
 Require Import Idempotent.
 Require Import Psatz.
-Require Import AddrMap.
 Require Import Rec.
 Require Import NArith.
 Require Import Log.
-Require Import RecArray.
+Require Import RecArrayUtils.
+Require Import LogRecArray.
 Require Import ListPred.
-Require Import GenSep.
+Require Import GenSepN.
 Require Import WordAuto.
 Require Import FSLayout.
+Require Import AsyncDisk.
 
+Import ListNotations.
 
 Set Implicit Arguments.
 
 
-(* Block allocator *)
+(* Bitmap allocator *)
 
-Module BALLOC.
+Module Type AllocSig.
 
-  Definition itemtype := Rec.WordF 1.
-  Definition items_per_valu : addr := natToWord addrlen valulen.
+  Parameter xparams : Type.
+  Parameter BMPStart : xparams -> addr.
+  Parameter BMPLen   : xparams -> addr.
 
-  Theorem blocksz : valulen = Rec.len (RecArray.blocktype itemtype items_per_valu).
-  Proof.
-    unfold blocktype, items_per_valu.
-    rewrite wordToNat_natToWord_idempotent.
-    simpl. ring.
-    rewrite valulen_is. compute. auto.
-  Qed.
-
-  Definition rep_block := RecArray.rep_block blocksz.
-  Definition valu_to_block := RecArray.valu_to_block itemtype items_per_valu blocksz.
-  Definition rep_valu_id := RecArray.rep_valu_id blocksz.
+End AllocSig.
 
 
-  Inductive alloc_state :=
+Module BALLOC (Sig : AllocSig).
+
+  Import Sig.
+
+  Module BmpSig <: RASig.
+
+    Definition xparams := xparams.
+    Definition RAStart := BMPStart.
+    Definition RALen := BMPLen.
+
+    Definition itemtype := Rec.WordF 1.
+    Definition items_per_val := valulen.
+
+    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+    Proof.
+      unfold items_per_val; simpl.
+      rewrite Nat.mul_1_r; auto.
+    Qed.
+
+  End BmpSig.
+
+  Module Bmp := LogRecArray BmpSig.
+
+  Inductive state :=
   | Avail
   | InUse.
 
-  Definition alloc_state_dec : forall (a b : alloc_state), {a = b} + {a <> b}.
+  Definition state_dec : forall (a b : state), {a = b} + {a <> b}.
     destruct a; destruct b; try (left; constructor); right; discriminate.
   Defined.
 
-  Definition alloc_state_to_bit a : word 1 :=
-    match a with
-    | Avail => $0
-    | InUse => $1
-    end.
+  Definition state2bit a : word 1 :=
+  match a with
+  | Avail => $0
+  | InUse => $1
+  end.
 
-  Definition bit_to_alloc_state (b : word 1) : alloc_state :=
+  Definition bit2state (b : word 1) : state :=
     if weq b $0 then Avail else InUse.
 
-  Lemma bit_alloc_state_id : forall a, bit_to_alloc_state (alloc_state_to_bit a) = a.
+  Lemma bit2state2bit_id : forall a, bit2state (state2bit a) = a.
   Proof.
     destruct a; auto.
   Qed.
-  Hint Rewrite bit_alloc_state_id.
 
-  Definition valid_block xp bn := (bn < BmapNBlocks xp ^* $ valulen)%word.
+  Definition block_valid xp bn := bn < (BMPLen xp) * valulen.
+
+
+
+
+
 
   Definition bmap_bits xp (bmap : addr -> alloc_state) :=
      map (fun i => alloc_state_to_bit (bmap $ (i)))
