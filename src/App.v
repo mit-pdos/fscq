@@ -467,6 +467,7 @@ Proof.
 Admitted.
 
 Lemma fold_right_impl_in_elem: forall tree_elem fn elem,
+  In fn (map fst tree_elem) ->
   fold_right
      (DIRTREE.find_subtree_helper (fun tree : DIRTREE.dirtree => Some tree)
                                   fn) None tree_elem = Some elem.
@@ -480,7 +481,6 @@ Lemma find_name_impl_in_elem : forall name dnum tree_elem inum,
 Proof.
   (* use above *)
 Admitted.
-          
 
 Lemma find_name_impl_find_subtree: forall name inum tree a b,
     DIRTREE.find_name [name] tree = Some (inum, false) ->                                   
@@ -501,6 +501,7 @@ Admitted.
 
 
 Lemma find_subtree_fold_right_update_ne: forall fn1 fn2 dnum tree_elem elem inum bytes attr, 
+  fn1 <> fn2 ->
   DIRTREE.find_subtree [fn1] (DIRTREE.TreeDir dnum tree_elem) = elem ->
   fold_right
      (DIRTREE.find_subtree_helper (fun tree : DIRTREE.dirtree => Some tree)
@@ -711,11 +712,38 @@ Ltac crash_epilog := match goal with
       | [ |- stars _ * stars _ =p=> stars _ ] => idtac "unfold"; simpl; cancel; eapply LOG.would_recover_either_pred_ppimpl; eapply pimpl_exists_l; intro; cancel; eexists
     end.
 
-Ltac would_recover_either2pred tree_elem :=
+Ltac would_recover_either2pred :=
   match goal with
     | [ |- LOG.would_recover_either _ _ ?m  _  =p=> LOG.would_recover_either_pred _ _ ?m _ ] => idtac "either2pred";
-          eapply would_recover_either_pimpl_pred; eexists; instantiate (x := (DIRTREE.TreeDir the_dnum tree_elem)); eapply sep_star_lift_apply'; eauto
+          eapply would_recover_either_pimpl_pred; eexists; instantiate (x := (DIRTREE.TreeDir the_dnum _)); eapply sep_star_lift_apply'; eauto
   end.
+
+
+Ltac src_fn_exists :=
+  match goal with
+    | [ H:  fold_right (DIRTREE.find_subtree_helper (fun tree : DIRTREE.dirtree => Some tree) ?src_fn)
+       None ?tree_elem = Some (DIRTREE.TreeFile _ _ _) |- 
+       fold_right (DIRTREE.find_subtree_helper (fun tree : DIRTREE.dirtree => Some tree) ?src_fn) None
+           ?tree_elem = Some (DIRTREE.TreeFile _ _ _)] => rewrite H; eauto
+  end.
+
+Ltac src_fn_exists_tree :=
+  match goal with 
+  | [ |- DIRTREE.find_subtree [?src_fn] (DIRTREE.TreeDir _ ?tree_elem) = Some (DIRTREE.TreeFile _ _ _)] =>
+      unfold DIRTREE.find_subtree; simpl; auto; src_fn_exists
+  end.
+
+
+Ltac temp_fn_exists :=
+  match goal with 
+  | [ H :  DIRTREE.find_name [temp_fn] (DIRTREE.TreeDir _ ?tree_elem) = Some (_, _)
+    |- DIRTREE.find_name [temp_fn] (DIRTREE.TreeDir _ ?tree_elem) = Some (_, _)] => rewrite H; eauto
+  end.
+
+Ltac crush_would_recover_either tree_elem := would_recover_either2pred;
+      try repeat (eexists); try src_fn_exists; try temp_fn_exists.
+  
+Ltac crush_exists_crash := try repeat (eexists);try src_fn_exists; try temp_fn_exists.
 
 Theorem copy2temp_ok : forall fsxp src_fn dst_fn src_inum temp_inum mscs,
   {< m Fm Ftop tree tree_elem attr bytes,
@@ -783,17 +811,22 @@ Proof.
   rewrite H7.
   rewrite find_name_elem_update_exists; auto.
   repeat (eexists).
-  (* src_fn <> temp_fn *)
-  admit.
-  eapply dirtree_name_in_dents.
-  eapply fold_right_impl_in_elem; eauto.
+
+  erewrite find_subtree_fold_right_update_ne.
+  instantiate (old_inum := src_inum); eauto.
+  congruence.
+  instantiate (dnum := the_dnum).
+  unfold DIRTREE.find_subtree; simpl; auto.
+  eapply find_name_impl_in_elem; eauto.
+
   intuition; eauto.
   repeat (eexists).
-  eapply fold_right_impl_in_elem; eauto.
-  erewrite H4; eauto.
-  
+  src_fn_exists.
+  temp_fn_exists.
 
-  instantiate (pathname0 := [temp_fn]); instantiate (bytes1 := bytes'); instantiate (attr1 := BYTEFILE.attr0).
+  instantiate (pathname0 := [temp_fn]).
+  instantiate (bytes1 := bytes').
+  instantiate (attr1 := BYTEFILE.attr0).
   eauto.
   rewrite H19.
   rewrite dirtree_find_update_dents; eauto.
@@ -823,15 +856,19 @@ Proof.
   rewrite H7; eauto.
   repeat (eexists).
   rewrite dirtree_update_update_dents; auto.
-  erewrite fold_right_impl_in_elem; eauto.
+  eapply find_subtree_fold_right_update_ne; auto.
+
+  src_fn_exists_tree.
+
   rewrite dirtree_update_update_dents; auto.
   rewrite find_name_elem_update_exists; auto.
   eapply find_name_impl_in_elem; auto.
-  erewrite H4; eauto.
+  temp_fn_exists.
   intuition; eauto.
   repeat (eexists).
-  (* src_fn <> dst_fn *)
-  admit.
+
+  eapply find_subtree_fold_right_update_ne; auto.
+  src_fn_exists_tree.
   erewrite find_name_elem_update_exists; auto.
   eapply find_name_impl_in_elem; eauto.
 
@@ -842,20 +879,26 @@ Proof.
   rewrite H14.
   rewrite find_name_elem_update_exists; eauto.
   repeat (eexists).
-  (* src_fn <> dst_fn *)
-  admit.
+
+  eapply find_subtree_fold_right_update_ne; auto.
+  src_fn_exists_tree.
   eapply find_name_impl_in_elem; eauto.
   intuition; eauto.  
-  repeat (eexists).
-  erewrite fold_right_impl_in_elem; eauto.
-  erewrite H4; eauto.
 
-  (* update *)
-  (* would_recover_either2pred tree_elem.
-  would_recover_either2pred tree_elem.
-  would_recover_either2pred tree_elem. *)
+  crush_exists_crash.
 
-Admitted.
+  crush_would_recover_either tree_elem.
+  crush_exists_crash.
+
+  crush_would_recover_either tree_elem.
+  crush_exists_crash.
+
+  crush_would_recover_either tree_elem.
+  crush_exists_crash.
+  
+  Grab Existential Variables.
+  all: eauto.
+Qed.
 
 
 Hint Extern 1 ({{_}} progseq (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
