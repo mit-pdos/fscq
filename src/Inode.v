@@ -48,19 +48,21 @@ Module INODE.
     ISize : addr;
     IMTime : word 32;
     IType : word 32;
-    IDev : word 64
+    IDev : word 64;
+    IPad : word 64;
   }.
 
-  Definition iattr0 := Build_iattr $0 $0 $0 $0.
+  Definition iattr0 := Build_iattr $0 $0 $0 $0 $0.
 
   Definition pack_attr (ia : iattr) := Eval compute_rec in
     iarec0 :=> "size" := (ISize ia)
            :=> "mtime" := (IMTime ia)
            :=> "itype" := (IType ia)
-           :=> "dev" := (IDev ia).
+           :=> "dev" := (IDev ia)
+           :=> "pad" := (IPad ia).
 
   Definition unpack_attr (iar : iarec) := Eval compute_rec in
-    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype") (iar :-> "dev").
+    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype") (iar :-> "dev") (iar :-> "pad").
 
   Theorem unpack_pack_attr : forall a, unpack_attr (pack_attr a) = a.
   Proof.
@@ -78,7 +80,8 @@ Module INODE.
     ISize ia = rec :-> "size" /\
     IMTime ia = rec :-> "mtime" /\
     IType ia = rec :-> "itype" /\
-    IDev ia = rec :-> "dev".
+    IDev ia = rec :-> "dev" /\
+    IPad ia = rec :-> "pad".
 
 
   Definition nr_direct := 10.
