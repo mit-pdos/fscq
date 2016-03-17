@@ -33,7 +33,6 @@ Module PaddedLog.
     Definition xparams := log_xparams.
     Definition RAStart := LogDescriptor.
     Definition RALen := LogDescLen.
-    Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
 
     Definition itemtype := Rec.WordF addrlen.
     Definition items_per_val := valulen / addrlen.
@@ -53,7 +52,6 @@ Module PaddedLog.
     Definition xparams := log_xparams.
     Definition RAStart := LogData.
     Definition RALen := LogLen.
-    Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
 
     Definition itemtype := Rec.WordF valulen.
     Definition items_per_val := 1.
@@ -75,6 +73,7 @@ Module PaddedLog.
 
   (************* Log header *)
   Module Hdr.
+    (* ndesc, ndesc', ndata, ndata', checksum of desc' ++ data' (current) *)
     Definition header_type := Rec.RecF ([("ndesc", Rec.WordF addrlen);
                                          ("ndata", Rec.WordF addrlen)]).
     Definition header := Rec.data header_type.
@@ -142,8 +141,10 @@ Module PaddedLog.
       match state with
       | Synced n =>
          (LAHdr xp) |-> (hdr2val (mk_header n), nil)
+         (* hdr2val (mk_header n), nil *)
       | Unsync n o =>
          (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list)
+         (* hdr2val (mk_header n o), [hdr2val (mk_header o prev_o)] *)
       end)%pred.
 
     Definition xform_rep_synced : forall xp n,
@@ -300,6 +301,7 @@ Module PaddedLog.
   (match st with
   | Synced l =>
        Hdr.rep xp (Hdr.Synced (ndesc_log l, ndata_log l)) *
+        (* log_inner header prev_n l  in all cases *)
        rep_contents xp l
 
   | Truncated old =>
@@ -318,7 +320,7 @@ Module PaddedLog.
   end)%pred.
 
   Definition xparams_ok xp := 
-    DescSig.xparams_ok xp /\ DataSig.xparams_ok xp /\
+    DescDefs.xparams_ok xp /\ DataDefs.xparams_ok xp /\
     (LogLen xp) = DescSig.items_per_val * (LogDescLen xp).
 
   Definition rep xp st:=
@@ -796,7 +798,7 @@ Module PaddedLog.
   Qed.
 
   Lemma loglen_valid_desc_valid : forall xp old new,
-    DescSig.xparams_ok xp ->
+    DescDefs.xparams_ok xp ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     Desc.items_valid xp (ndesc_log old) (map ent_addr new).
   Proof.
@@ -811,7 +813,7 @@ Module PaddedLog.
 
 
   Lemma loglen_valid_data_valid : forall xp old new,
-    DataSig.xparams_ok xp ->
+    DataDefs.xparams_ok xp ->
     Forall entry_valid new ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     Data.items_valid xp (ndata_log old) (map ent_valu new).
@@ -870,28 +872,31 @@ Module PaddedLog.
   Lemma mul_le_mono_helper : forall a b,
     b > 0 -> a <= a * b.
   Proof.
-    intros; rewrite Nat.mul_comm.
-    destruct (mult_O_le a b); auto; omega.
+    intros. nia.
   Qed.
 
   Lemma loglen_valid_goodSize_l : forall xp a b,
-    loglen_valid xp a b -> DescSig.xparams_ok xp -> DataSig.xparams_ok xp ->
+    loglen_valid xp a b -> DescDefs.xparams_ok xp -> DataDefs.xparams_ok xp ->
     goodSize addrlen a.
   Proof.
-    unfold loglen_valid, DescSig.xparams_ok, DataSig.xparams_ok; intuition.
+    unfold loglen_valid, DescDefs.xparams_ok, DataDefs.xparams_ok; intuition.
+    eapply goodSize_trans; eauto.
     eapply goodSize_trans.
-    eapply le_trans. eauto.
-    apply le_plus_r. eauto.
+    apply mul_le_mono_helper.
+    apply DescDefs.items_per_val_gt_0.
+    auto.
   Qed.
 
   Lemma loglen_valid_goodSize_r : forall xp a b,
-    loglen_valid xp a b -> DescSig.xparams_ok xp -> DataSig.xparams_ok xp ->
+    loglen_valid xp a b -> DescDefs.xparams_ok xp -> DataDefs.xparams_ok xp ->
     goodSize addrlen b.
   Proof.
-    unfold loglen_valid, DescSig.xparams_ok, DataSig.xparams_ok; intuition.
+    unfold loglen_valid, DescDefs.xparams_ok, DataDefs.xparams_ok; intuition.
+    eapply goodSize_trans; eauto.
     eapply goodSize_trans.
-    eapply le_trans. eauto.
-    apply le_plus_r. eauto.
+    apply mul_le_mono_helper.
+    apply DataDefs.items_per_val_gt_0.
+    auto.
   Qed.
 
   Lemma ent_valid_addr_valid : forall l,
@@ -1158,14 +1163,16 @@ Module PaddedLog.
     let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
     If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
         (* synced *)
+      h <- Hash log;
       cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
-       (* extended unsync *)
+        (* extended unsync *)
       cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
+      cs <- Hdr.write xp (ndesc, ndata, ndesc + nndesc, ndata + nndata, h) cs;
+        (* extended *)
       cs <- Desc.sync_aligned xp ndesc nndesc cs;
       cs <- Data.sync_aligned xp ndata nndata cs;
-      cs <- Hdr.write xp (ndesc + nndesc, ndata + nndata) cs;
       cs <- Hdr.sync xp cs;
-       (* synced*)
+        (* synced *)
       rx ^(cs, true)
     } else {
       rx ^(cs, false)
@@ -1326,7 +1333,7 @@ Module PaddedLog.
     unfold rep, rep_inner, rep_contents, xparams_ok.
     unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
-    denote DescSig.items_per_val as Hx.
+    hypmatch DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
     rewrite H5, Nat.mul_comm; auto.
   Qed.
@@ -1379,7 +1386,7 @@ Module PaddedLog.
     unfold rep, rep_inner, rep_contents, xparams_ok.
     unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
-    denote DescSig.items_per_val as Hx.
+    hypmatch DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
     unfold ndata_log, ndesc_log; split; auto; split.
 
