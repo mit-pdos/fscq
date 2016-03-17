@@ -392,12 +392,11 @@ Proof.
   cancel; eauto.
 Qed.
 
-Theorem locks_held_unwrap_weaken : forall s F LF,
-  F * locks_held s LF =p=>
-  F * LF.
+Theorem locks_held_remove : forall s LF,
+  locks_held s LF =p=>
+  LF.
 Proof.
-  intros; cancel.
-  unfold pimpl, locks_held; intros; intuition.
+  unfold pimpl, locks_held; intuition.
 Qed.
 
 Theorem locks_held_indifferent : forall s s' LF,

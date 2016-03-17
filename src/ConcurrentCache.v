@@ -1231,7 +1231,7 @@ Proof.
   unfold cache_locked; intros.
   eapply pimpl_ok; [ apply locked_disk_read_ok | ].
   simplify.
-  apply locks_held_unwrap_weaken in H0.
+  rewrite locks_held_remove in H0.
   pred_apply; cancel.
   eapply locks_held_ptsto_locked_frame in H0; auto.
 
@@ -1561,14 +1561,14 @@ Theorem locked_async_disk_read_ok_lf : forall a,
 Proof.
   intros.
   eapply pimpl_ok; [ apply locked_async_disk_read_ok | ]; simplify.
-  apply locks_held_unwrap_weaken in H0.
+  unfold cache_locked in H0; rewrite locks_held_remove in H0.
   pred_apply; cancel.
   eapply locks_held_ptsto_locked_frame in H0; auto.
 
   step pre simplify with finish.
   autorewrite with upd hlist cache in *.
   assert (get GDisk s a = Some (v, None)).
-  eapply locks_held_unwrap_weaken in H0.
+  unfold cache_locked in H0; rewrite locks_held_remove in H0.
   eapply ptsto_valid' with (m := get GDisk s).
   pred_apply; cancel.
 
@@ -1924,7 +1924,7 @@ Theorem cache_unlock_ok_lf : forall a,
 Proof.
   intros.
   eapply pimpl_ok; [apply cache_unlock_ok | ]; simplify; finish.
-  eapply locks_held_unwrap_weaken in H0.
+  unfold cache_locked in H0; rewrite locks_held_remove in H0.
   pred_apply; cancel.
   eapply locks_held_ptsto_locked_frame in H0; auto.
   step pre simplify with finish.
@@ -2100,7 +2100,7 @@ Proof.
   eapply locks_held_ptsto_locked_frame in H0; auto.
   pred_apply; cancel.
   unfolded_lh rewrite locks_held_split.
-  unfolded_lh rewrite locks_held_unwrap_weaken.
+  unfold cache_locked at 2; rewrite locks_held_remove.
   cancel.
   step pre simplify with finish.
   pred_apply; cancel.
