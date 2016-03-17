@@ -61,33 +61,20 @@ Module BALLOC (Sig : AllocSig).
   End BmpSig.
 
   Module Bmp := LogRecArray BmpSig.
+  Module Defs := Bmp.Defs.
 
-  Inductive state :=
-  | Avail
-  | InUse.
+  Definition state := Defs.item.
 
-  Definition state_dec : forall (a b : state), {a = b} + {a <> b}.
-    destruct a; destruct b; try (left; constructor); right; discriminate.
+  Definition state_dec : forall (a : state), {a = $0} + {a = $1}.
+    intro.
+    rewrite (shatter_word a).
+    replace (wtl a) with WO by auto.
+    destruct (whd a).
+    right; apply eq_refl.
+    left; apply eq_refl.
   Defined.
 
-  Definition state2bit a : word 1 :=
-  match a with
-  | Avail => $0
-  | InUse => $1
-  end.
-
-  Definition bit2state (b : word 1) : state :=
-    if weq b $0 then Avail else InUse.
-
-  Lemma bit2state2bit_id : forall a, bit2state (state2bit a) = a.
-  Proof.
-    destruct a; auto.
-  Qed.
-
-  Definition block_valid xp bn := bn < (BMPLen xp) * valulen.
-
-
-
+  
 
 
 
