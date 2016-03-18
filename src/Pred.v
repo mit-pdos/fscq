@@ -451,6 +451,17 @@ Proof.
   intuition eauto.
 Qed.
 
+
+Lemma pimpl_exists_r_star_r:
+  forall T (p : T -> pred) (q : @pred AT AEQ V),
+  (exists x : T, p x) * q =p=>  (exists x : T, p x ✶ q).
+Proof.
+  unfold pimpl, exis; unfold_sep_star; intros.
+  repeat deex.
+  do 3 eexists.
+  intuition eauto.
+Qed.
+
 Lemma pimpl_exists_l_and:
   forall T p (q : @pred AT AEQ V) r,
   ((exists x:T, p x /\ r) =p=> q) ->
@@ -653,7 +664,6 @@ Lemma emp_star: forall p, p <=p=> (@emp AT AEQ V) * p.
 Proof.
   intros; split; [ apply pimpl_star_emp | apply star_emp_pimpl ].
 Qed.
-
 
 Lemma piff_star_r: forall (a b c : @pred AT AEQ V),
   (a <=p=> b) ->
