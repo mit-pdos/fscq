@@ -236,58 +236,74 @@ Module BmapAlloc (Sig : AllocSig).
   Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
+End BmapAlloc.
 
-  (*
-  (* Different names for actual on-disk-block allocation *)
-  Definition alloc := alloc_gen.
-  Definition free := free_gen.
+
+
+(* Specialize for actual on-disk-block allocation *)
+
+Module BALLOC.
+
+  Module Sig <: AllocSig.
+    Definition xparams := balloc_xparams.
+    Definition BMPStart := BmapStart.
+    Definition BMPLen := BmapNBlocks.
+  End Sig.
+
+  Module Alloc := BmapAlloc Sig.
+  Module Defs := Alloc.Defs.
+
+  Definition alloc T lxp xp ms rx : prog T :=
+    r <- Alloc.alloc lxp xp ms;
+    rx r.
+
+  Definition free T lxp xp bn ms rx : prog T :=
+    r <- Alloc.free lxp xp bn ms;
+    rx r.
 
   Definition rep xp (freeblocks : list addr) :=
-    (exists genpred genpredn, genpred * rep_gen xp freeblocks genpred genpredn)%pred.
+    (exists freepred, freepred * Alloc.rep xp freeblocks freepred)%pred.
 
-  Theorem alloc_ok : forall lxp xp mscs,
-    {< F Fm mbase m freeblocks,
-    PRE            LOG.rep lxp F (ActiveTxn mbase m) mscs * [[ (Fm * rep xp freeblocks)%pred (list2mem m) ]]
-    POST RET:^(mscs,r)
-                   [[ r = None ]] * LOG.rep lxp F (ActiveTxn mbase m) mscs \/
-                   exists bn m' freeblocks', [[ r = Some bn ]] *
-                   LOG.rep lxp F (ActiveTxn mbase m') mscs *
-                   [[ (Fm * bn |->? * rep xp freeblocks')%pred (list2mem m') ]] *
-                   [[ valid_block xp bn ]]
-    CRASH          LOG.would_recover_old lxp F mbase
-    >} alloc lxp xp mscs.
+  Theorem alloc_ok : forall lxp xp ms,
+    {< F Fm m0 m freeblocks,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep xp freeblocks) ]]]
+    POST RET:^(ms, r)
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms
+        \/ exists bn m' freeblocks',
+           [[ r = Some bn ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * bn |->? * rep xp freeblocks') ]]] *
+           [[ bn < (BmapNBlocks xp) * valulen  ]]
+    CRASH  LOG.intact lxp F m0
+    >} alloc lxp xp ms.
   Proof.
     unfold alloc, rep.
-    intros.
-    eapply pimpl_ok2. apply alloc_gen_ok.
-    cancel.
-    step.
-    rewrite H10 in H7.
-    apply pimpl_or_r. right.
-    cancel.
+    hoare.
+    match goal with
+    | [ H1 : (freepred =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
+    end.
+    or_r; cancel.
   Qed.
 
-  Theorem free_ok : forall lxp xp bn mscs,
-    {< F Fm mbase m freeblocks,
-    PRE        LOG.rep lxp F (ActiveTxn mbase m) mscs *
-               [[ (Fm * rep xp freeblocks * bn |->?)%pred (list2mem m) ]] *
-               [[ (bn < BmapNBlocks xp ^* $ valulen)%word ]]
-    POST RET:mscs
-               exists m', LOG.rep lxp F (ActiveTxn mbase m') mscs *
-               [[ (Fm * rep xp (bn :: freeblocks))%pred (list2mem m') ]]
-    CRASH      LOG.would_recover_old lxp F mbase
-    >} free lxp xp bn mscs.
+  Theorem free_ok : forall lxp xp bn ms,
+    {< F Fm m0 m freeblocks,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[  bn < (BmapNBlocks xp) * valulen ]] *
+           [[[ m ::: (Fm * rep xp freeblocks * bn |->?) ]]]
+    POST RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep xp (bn :: freeblocks)) ]]]
+    CRASH  LOG.intact lxp F m0
+    >} free lxp xp bn ms.
   Proof.
     unfold free, rep.
-    intros.
-    eapply pimpl_ok2. apply free_gen_ok.
-    cancel.
-    step.
+    hoare.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (BALLOC.alloc _ _ _) _) => apply BALLOC.alloc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (BALLOC.free _ _ _ _) _) => apply BALLOC.free_ok : prog.
-  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
-  *)
+  Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
-End BmapAlloc.
+End BALLOC.
+
