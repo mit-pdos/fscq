@@ -7,49 +7,6 @@ Set Implicit Arguments.
 
 (* A general list predicate *)
 
-Theorem remove_not_In :
-  forall T dec (a : T) l, ~ In a l -> remove dec a l = l.
-Proof.
-  induction l.
-  auto.
-  intro Hni. simpl.
-  destruct (dec a a0).
-  subst. destruct Hni. simpl. tauto.
-  rewrite IHl. trivial.
-  simpl in Hni. tauto.
-Qed.
-
-Theorem remove_still_In : forall T dec (a b : T) l,
-  In a (remove dec b l) -> In a l.
-Proof.
-  induction l; simpl; [tauto|].
-  destruct (dec b a0).
-  right; apply IHl; assumption.
-  intro H. destruct H. subst. auto.
-  right; apply IHl; assumption.
-Qed.
-
-Theorem remove_still_In_ne : forall T dec (a b : T) l,
-  In a (remove dec b l) -> b <> a.
-Proof.
-  induction l; simpl; [tauto|].
-  destruct (dec b a0).
-  assumption.
-  intro H. destruct H. subst. auto.
-  apply IHl; assumption.
-Qed.
-
-Theorem remove_other_In : forall T dec (a b : T) l,
-  b <> a -> In a l -> In a (remove dec b l).
-Proof.
-  induction l.
-  auto.
-  simpl. destruct (dec b a0).
-  subst. intros. destruct H0; [subst; tauto | apply IHl; auto].
-  simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
-Qed.
-
-
 Section LISTPRED.
 
   Set Default Proof Using "Type".
@@ -224,12 +181,13 @@ Section LISTPRED.
     eapply IHl; eauto.
   Qed.
 
-  Theorem listpred_nodup' : forall l,
+  Theorem listpred_nodup_piff : forall l,
     (forall x y : T, {x = y} + {x <> y}) ->
     (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
-    listpred l =p=> [[ NoDup l ]] * listpred l.
+    listpred l <=p=> [[ NoDup l ]] * listpred l.
   Proof.
-    intros. apply lift_impl. intros. eapply listpred_nodup; eauto.
+    intros. split. apply lift_impl. intros. eapply listpred_nodup; eauto.
+    cancel.
   Qed.
 
   Theorem listpred_remove :
@@ -241,7 +199,7 @@ Section LISTPRED.
     intros.
     induction l.
     cancel.
-    rewrite listpred_nodup'; eauto.
+    rewrite listpred_nodup_piff; eauto.
     simpl; destruct (dec x a).
     cancel; inversion H2; rewrite remove_not_In; eauto.
     rewrite IHl; [ cancel | destruct H0; subst; tauto ].
