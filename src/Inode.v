@@ -1102,7 +1102,7 @@ Module INODE.
     (* prove representation invariant *)
     repeat rewrite_list2nmem_pred; inode_bounds.
     unfold upd, sel; unfold sel in *.
-    assert (length blist = nr_indirect) by (eapply indirect_length; eauto).
+    assert (length dummy = nr_indirect) by (eapply indirect_length; eauto).
     assert (length blist' = nr_indirect) by (eapply indirect_length; eauto).
     assert (length ((selN reclist (wordToNat inum) irec0 : Rec.data inodetype) :-> "blocks") = nr_direct) as Hdeq.
     erewrite inode_blocks_length with (m := list2mem m); inode_bounds.
@@ -1179,7 +1179,7 @@ Module INODE.
     step.
 
     (* constructing new indirect list *)
-    instantiate (blist0 := indlist0).
+    instantiate (blist := indlist0).
     unfold indrep.
     rewrite ind_ptsto_zero.
     cancel. eauto.
@@ -1392,9 +1392,9 @@ Module INODE.
     (* extract facts about length *)
     rewrite indirect_valid_r in H.
     2: eapply helper_minus1_nr_direct_gt; eauto.
-    assert (length blist = nr_indirect) as Hieq.
+    assert (length dummy0 = nr_indirect) as Hieq.
     eapply indirect_length with (m := list2mem m); pred_apply; cancel.
-    assert (length ((selN reclist (wordToNat inum) irec0) :-> "blocks") = nr_direct) as Hdeq.
+    assert (length ((selN dummy (wordToNat inum) irec0) :-> "blocks") = nr_direct) as Hdeq.
     erewrite inode_blocks_length with (m := list2mem m'); inode_bounds.
     pred_apply; cancel.
     assert (length (IBlocks (selN ilist (wordToNat inum) inode0)) - 1 = nr_direct).
