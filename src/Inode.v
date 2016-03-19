@@ -99,19 +99,11 @@ Module INODE.
   Module Ind  := LogRecArray IndSig.
 
 
-  (************** rep invariant *)
+  (************* program *)
 
   Definition iattr := Rec.data iattrtype.
   Definition irec := Rec.data irectype.
   Definition bnlist := list addr.
-
-  Record inode := mk_inode {
-    IBlocks : bnlist;
-    IAttr   : iattr
-  }.
-
-  Definition iattr0 := @Rec.of_word iattrtype $0.
-  Definition inode0 := mk_inode nil iattr0.
 
   (* convenient way for setting attributes *)
 
@@ -128,7 +120,6 @@ Module INODE.
   | IAType  v => (e :=> "itype" := v)
   end.
 
-  (************* program *)
 
   Definition getlen T lxp xp inum ms rx : prog T := Eval compute_rec in
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
@@ -220,6 +211,39 @@ Module INODE.
     rx ^(ms, true).
 
 
+  (************** rep invariant *)
+
+  Record inode := mk_inode {
+    IBlocks : bnlist;
+    IAttr   : iattr
+  }.
+
+  Definition iattr0 := @Rec.of_word iattrtype $0.
+  Definition inode0 := mk_inode nil iattr0.
+
+  Definition bnlist_direct l (rec : irec) : @pred _ addr_eq_dec valuset :=
+    ([[ length l <= NDirect /\
+        l = map (@wordToNat addrlen) (firstn (length l) (rec :-> "blocks")) ]])%pred.
+
+  Definition bnlist_indirect bxp l (rec : irec) : @pred _ addr_eq_dec valuset :=
+    let ibn := # (rec :-> "indptr") in
+    (exists indlist, Ind.rep ibn indlist *
+     [[ length l > NDirect  /\ BALLOC.bn_valid bxp ibn /\
+        l = map (@wordToNat addrlen)
+            ((rec :-> "blocks") ++ firstn (length l - NDirect) indlist) ]])%pred.
+
+  Definition bnlist_rep bxp l rec :=
+    (bnlist_direct l rec \/ bnlist_indirect bxp l rec)%pred.
+
+  Definition inode_match bxp ino (rec : irec) := Eval compute_rec in (
+    let nr := length (IBlocks ino) in
+    [[ nr = # (rec :-> "len") /\ nr <= NBlocks ]] *
+    [[ IAttr ino = (rec :-> "attrs") ]] *
+    bnlist_rep bxp (IBlocks ino) rec)%pred.
+
+  Definition rep bxp xp (ilist : list inode) := (
+     exists reclist, IRec.rep xp reclist *
+     listmatch (inode_match bxp) ilist reclist)%pred.
 
 
 End INODE.
