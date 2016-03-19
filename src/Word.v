@@ -2403,6 +2403,14 @@ Qed.
 Notation "$ n" := (natToWord _ n) (at level 0).
 Notation "# n" := (wordToNat n) (at level 0).
 
+Definition bit_dec : forall (a : word 1), {a = $0} + {a = $1}.
+  intro.
+  rewrite (shatter_word a).
+  replace (wtl a) with WO by auto.
+  destruct (whd a).
+  right; apply eq_refl.
+  left; apply eq_refl.
+Defined.
 
 Lemma neq0_wneq0: forall sz (n : word sz),
   wordToNat n <> 0  <-> n <> $0.

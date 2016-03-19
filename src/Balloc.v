@@ -64,15 +64,7 @@ Module BmapAlloc (Sig : AllocSig).
   Module Defs := Bmp.Defs.
 
   Definition state := Defs.item.
-
-  Definition state_dec : forall (a : state), {a = $0} + {a = $1}.
-    intro.
-    rewrite (shatter_word a).
-    replace (wtl a) with WO by auto.
-    destruct (whd a).
-    right; apply eq_refl.
-    left; apply eq_refl.
-  Defined.
+  Definition state_dec := bit_dec.
 
   Definition Avail (s : state) : Prop := s = $0.
   Definition InUse (s : state) : Prop := s = $1.
