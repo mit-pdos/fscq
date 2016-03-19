@@ -33,7 +33,7 @@ Module INODE.
   (************* on-disk representation of inode *)
 
   Definition iattrtype : Rec.type := Rec.RecF ([
-    ("size",   Rec.WordF 64) ;        (* file size in bytes *)
+    ("bytes",  Rec.WordF 64) ;       (* file size in bytes *)
     ("uid",    Rec.WordF 32) ;        (* user id *)
     ("gid",    Rec.WordF 32) ;        (* group id *)
     ("dev",    Rec.WordF 64) ;        (* device major/minor *)
@@ -50,7 +50,7 @@ Module INODE.
 
   Definition irectype : Rec.type := Rec.RecF ([
     ("len", Rec.WordF addrlen);     (* number of blocks *)
-    ("attr", iattrtype);            (* file attributes *)
+    ("attrs", iattrtype);           (* file attributes *)
     ("indptr", Rec.WordF addrlen);  (* indirect block pointer *)
     ("blocks", Rec.ArrayF (Rec.WordF addrlen) NDirect)]).
 
@@ -97,6 +97,129 @@ Module INODE.
 
   Module IRec := LogRecArray IRecSig.
   Module Ind  := LogRecArray IndSig.
+
+
+  (************** rep invariant *)
+
+  Definition iattr := Rec.data iattrtype.
+  Definition irec := Rec.data irectype.
+  Definition bnlist := list addr.
+
+  Record inode := mk_inode {
+    IBlocks : bnlist;
+    IAttr   : iattr
+  }.
+
+  Definition iattr0 := @Rec.of_word iattrtype $0.
+  Definition inode0 := mk_inode nil iattr0.
+
+  (* convenient way for setting attributes *)
+
+  Inductive iattrupd_arg :=
+  | IABytes (v : word 64)
+  | IAMTime (v : word 32)
+  | IAType  (v : word  8)
+  .
+
+  Definition iattr_upd (e : iattr) (a : iattrupd_arg) := Eval compute_rec in
+  match a with
+  | IABytes v => (e :=> "bytes" := v)
+  | IAMTime v => (e :=> "mtime" := v)
+  | IAType  v => (e :=> "itype" := v)
+  end.
+
+  (************* program *)
+
+  Definition getlen T lxp xp inum ms rx : prog T := Eval compute_rec in
+    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
+    rx ^(ms, # (ir :-> "len" )).
+
+  Definition getattrs T lxp xp inum ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
+    rx ^(ms, (i :-> "attrs")).
+
+  Definition setattrs T lxp xp inum attr ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
+    ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
+    rx ms.
+
+  Definition updattr T lxp xp inum a ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
+    ms <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) ms;
+    rx ms.
+
+  Definition getbnum T lxp xp inum off ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
+    If (lt_dec off NDirect) {
+      rx ^(ms, selN (i :-> "blocks") off $0)
+    } else {
+      let^ (ms, v) <- Ind.get_array lxp # (i :-> "indptr") (off - NDirect) ms;
+      rx ^(ms, v)
+    }.
+
+  Definition getallbn T lxp xp inum ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
+    let nr := # (i :-> "len") in
+    If (le_dec nr NDirect) {
+      rx ^(ms, firstn nr  (i :-> "blocks"))
+    } else {
+      let^ (ms, ind_bns) <- Ind.read_array lxp # (i :-> "indptr") 1 ms;
+      rx ^(ms, firstn nr ((i :-> "blocks") ++ ind_bns))
+    }.
+
+  Definition shrink T lxp bxp xp inum ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i0 : irec)) <- IRec.get_array lxp xp inum ms;
+    let i := i0 :=> "len" := (i0 :-> "len" ^- $1) in
+    If (addr_eq_dec # (i :-> "len") NDirect) {
+      ms <- BALLOC.free lxp bxp # (i0 :-> "indptr") ms;
+      ms <- IRec.put_array lxp xp inum i ms;
+      rx ms
+    } else {
+      ms <- IRec.put_array lxp xp inum i ms;
+      rx ms
+    }.
+
+  Definition igrow_alloc T lxp bxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
+    let woff := i0 :-> "len" in
+    let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
+    match r with
+    | None => rx ^(ms, false)
+    | Some ibn =>
+        let ir := ((i0 :=> "indptr" := $ ibn) :=> "len" := (woff ^+ $1)) in
+        ms <- Ind.write lxp ibn (updN Ind.Defs.block0 0 a) ms;
+        ms <- IRec.put_array lxp xp inum ir ms;
+        rx ^(ms, true)
+    end.
+
+  Definition igrow_indirect T lxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
+    let woff := i0 :-> "len" in
+    let ir := i0 :=> "len" := (woff ^+ $1) in
+    ms <- Ind.put_array lxp (# (i0 :-> "indptr")) (# woff - NDirect) a ms;
+    ms <- IRec.put_array lxp xp inum ir ms;
+    rx ^(ms, true).
+
+  Definition igrow_direct T lxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
+    let woff := i0 :-> "len" in
+    let ir := i0 :=> "len" := (woff ^+ $1) in
+    let ir' := ir :=> "blocks" := (updN (i0 :-> "blocks") (# woff) a) in
+    ms <- IRec.put_array lxp xp inum ir' ms;
+    rx ^(ms, true).
+
+  Definition igrow T lxp bxp xp inum a ms rx : prog T := Eval compute_rec in
+    let^ (mscs, (i0 : irec)) <- IRec.get_array lxp xp inum ms;
+    let off := # (i0 :-> "len") in
+    If (lt_dec off NDirect) {
+      let^ (ms, r) <- igrow_direct lxp xp i0 inum a ms;
+      rx ^(ms, r)
+    } else {
+      If (addr_eq_dec off NDirect) {
+        let^ (ms, r) <- igrow_alloc lxp bxp xp i0 inum a ms;
+        rx ^(ms, r)
+      } else {
+        let^ (ms, r) <- igrow_indirect lxp xp i0 inum a ms;
+        rx ^(ms, r)
+      }
+    }.
 
 
 End INODE.

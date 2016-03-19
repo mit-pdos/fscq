@@ -39,6 +39,10 @@ Module LogRecArray (RA : RASig).
     let^ (ms, r) <- LOG.read_range lxp (RAStart xp) nblocks iunpack nil ms;
     rx ^(ms, r).
 
+  (** write full blocks starting from the beginning *)
+  Definition write T lxp xp items ms rx : prog T :=
+    ms <- LOG.write_range lxp (RAStart xp) (ipack items) ms;
+    rx ms.
 
   Fixpoint ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
     match vs with
@@ -205,6 +209,26 @@ Module LogRecArray (RA : RASig).
     apply Nat.mul_le_mono_r; omega.
   Qed.
 
+  Lemma items_valid_length_eq : forall xp a b,
+    items_valid xp a ->
+    items_valid xp b ->
+    length (ipack a) = length (ipack b).
+  Proof.
+    unfold items_valid; intuition.
+    repeat rewrite ipack_length.
+    setoid_rewrite H3; setoid_rewrite H4; auto.
+  Qed.
+
+
+  Lemma vsupsyn_range_synced_list : forall a b,
+    length a = length b ->
+    vsupsyn_range a b = synced_list b.
+  Proof.
+    unfold vsupsyn_range, synced_list; intros.
+    rewrite skipn_oob by omega.
+    rewrite app_nil_r; auto.
+  Qed.
+
 
   Theorem get_ok : forall lxp xp ix ms,
     {< F Fm m0 m items,
@@ -277,6 +301,26 @@ Module LogRecArray (RA : RASig).
     subst; rewrite synced_list_map_fst.
     unfold items_valid in *; intuition.
     eapply iunpack_ipack_firstn; eauto.
+  Qed.
+
+  Theorem write_ok : forall lxp xp items ms,
+    {< F Fm m0 m old,
+    PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+          [[ items_valid xp items ]] *
+          [[[ m ::: Fm * rep xp old ]]]
+    POST RET:ms' exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' *
+          [[[ m' ::: Fm * rep xp items ]]]
+    CRASH LOG.intact lxp F m0
+    >} write lxp xp items ms.
+  Proof.
+    unfold write, rep.
+    hoare.
+
+    unfold items_valid in *; intuition; auto.
+    erewrite synced_list_length, items_valid_length_eq; eauto.
+    rewrite vsupsyn_range_synced_list; auto.
+    erewrite synced_list_length, items_valid_length_eq; eauto.
   Qed.
 
 
@@ -418,7 +462,6 @@ Module LogRecArray (RA : RASig).
     eapply read_array_length_ok; eauto.
     subst; eapply read_array_list_ok; eauto.
   Qed.
-
 
   Theorem ifind_array_ok : forall lxp xp cond ms,
     {< F Fm m0 m items,
