@@ -153,7 +153,7 @@ Module INODE.
     If (lt_dec off NDirect) {
       rx ^(ms, selN (i :-> "blocks") off $0)
     } else {
-      let^ (ms, v) <- Ind.get_array lxp # (i :-> "indptr") (off - NDirect) ms;
+      let^ (ms, v) <- Ind.get lxp # (i :-> "indptr") (off - NDirect) ms;
       rx ^(ms, v)
     }.
 
@@ -163,63 +163,63 @@ Module INODE.
     If (le_dec nr NDirect) {
       rx ^(ms, firstn nr  (i :-> "blocks"))
     } else {
-      let^ (ms, ind_bns) <- Ind.read_array lxp # (i :-> "indptr") 1 ms;
+      let^ (ms, ind_bns) <- Ind.read lxp # (i :-> "indptr") 1 ms;
       rx ^(ms, firstn nr ((i :-> "blocks") ++ ind_bns))
     }.
 
-  Definition shrink T lxp bxp xp inum ms rx : prog T := Eval compute_rec in
+  Definition free_ind_dec ol nl :
+    { ol > NDirect /\ nl <= NDirect } + { ol <= NDirect \/ nl > NDirect }.
+  Proof.
+    destruct (gt_dec ol NDirect).
+    destruct (le_dec nl NDirect).
+    left; split; assumption.
+    right; right; apply not_le; assumption.
+    right; left; apply not_gt; assumption.
+  Defined.
+
+  Definition shrink T lxp bxp xp inum nr ms rx : prog T := Eval compute_rec in
     let^ (ms, (i0 : irec)) <- IRec.get_array lxp xp inum ms;
-    let i := i0 :=> "len" := (i0 :-> "len" ^- $1) in
-    If (addr_eq_dec # (i :-> "len") NDirect) {
+    let olen := # (i0 :-> "len") in
+    let nlen := olen - nr in
+    let ir := i0 :=> "len" := $ nlen in
+    ms <- IfRx irx (free_ind_dec olen nlen ) {
       ms <- BALLOC.free lxp bxp # (i0 :-> "indptr") ms;
-      ms <- IRec.put_array lxp xp inum i ms;
-      rx ms
+      irx ms
     } else {
-      ms <- IRec.put_array lxp xp inum i ms;
-      rx ms
-    }.
+      irx ms
+    };
+    ms <- IRec.put_array lxp xp inum ir ms;
+    rx ms.
 
-  Definition igrow_alloc T lxp bxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
-    let woff := i0 :-> "len" in
-    let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
-    match r with
-    | None => rx ^(ms, false)
-    | Some ibn =>
-        let ir := ((i0 :=> "indptr" := $ ibn) :=> "len" := (woff ^+ $1)) in
-        ms <- Ind.write lxp ibn (updN Ind.Defs.block0 0 a) ms;
-        ms <- IRec.put_array lxp xp inum ir ms;
-        rx ^(ms, true)
-    end.
 
-  Definition igrow_indirect T lxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
-    let woff := i0 :-> "len" in
-    let ir := i0 :=> "len" := (woff ^+ $1) in
-    ms <- Ind.put_array lxp (# (i0 :-> "indptr")) (# woff - NDirect) a ms;
+  Definition growone T lxp bxp xp inum bn ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i0 : irec)) <- IRec.get_array lxp xp inum ms;
+    let len := # (i0 :-> "len") in
+    let^ (ms, ir) <- IfRx irx (lt_dec len NDirect) {
+      (* change direct block address *)
+      irx ^(ms, (i0 :=> "blocks" := (updN (i0 :-> "blocks") len bn)))
+    } else {
+      (* allocate indirect block if necessary *)
+      let^ (ms, ibn) <- IfRx irx (addr_eq_dec len NDirect) {
+        let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
+        match r with
+        | None => rx ^(ms, false)
+        | Some ibn =>
+            ms <- Ind.write lxp ibn Ind.Defs.block0 ms;
+            irx ^(ms, ibn)
+        end
+      } else {
+        irx ^(ms, # (i0 :-> "indptr"))
+      };
+      (* write indirect block *)
+      ms <- Ind.put lxp ibn (len - NDirect) bn ms;
+      irx ^(ms, i0 :=> "indptr" := $ ibn)
+    };
+    (* write inode record *)
     ms <- IRec.put_array lxp xp inum ir ms;
     rx ^(ms, true).
 
-  Definition igrow_direct T lxp xp (i0 : irec) inum a ms rx : prog T := Eval compute_rec in
-    let woff := i0 :-> "len" in
-    let ir := i0 :=> "len" := (woff ^+ $1) in
-    let ir' := ir :=> "blocks" := (updN (i0 :-> "blocks") (# woff) a) in
-    ms <- IRec.put_array lxp xp inum ir' ms;
-    rx ^(ms, true).
 
-  Definition igrow T lxp bxp xp inum a ms rx : prog T := Eval compute_rec in
-    let^ (mscs, (i0 : irec)) <- IRec.get_array lxp xp inum ms;
-    let off := # (i0 :-> "len") in
-    If (lt_dec off NDirect) {
-      let^ (ms, r) <- igrow_direct lxp xp i0 inum a ms;
-      rx ^(ms, r)
-    } else {
-      If (addr_eq_dec off NDirect) {
-        let^ (ms, r) <- igrow_alloc lxp bxp xp i0 inum a ms;
-        rx ^(ms, r)
-      } else {
-        let^ (ms, r) <- igrow_indirect lxp xp i0 inum a ms;
-        rx ^(ms, r)
-      }
-    }.
 
 
 End INODE.
