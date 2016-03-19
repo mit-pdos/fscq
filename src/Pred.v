@@ -1477,6 +1477,28 @@ Proof.
   eauto.
 Qed.
 
+Lemma emp_pimpl_ptsto_exfalso : forall a v,
+  ~ (@emp AT AEQ V =p=> a |-> v).
+Proof.
+  unfold pimpl, ptsto; intuition.
+  specialize (H empty_mem).
+  destruct H.
+  apply emp_empty_mem.
+  unfold empty_mem in H; congruence.
+Qed.
+
+Lemma emp_pimpl_ptsto_exis_exfalso : forall a,
+  ~ (@emp AT AEQ V =p=> a |->?).
+Proof.
+  unfold pimpl, ptsto, exis; intuition.
+  specialize (H empty_mem).
+  destruct H.
+  apply emp_empty_mem.
+  destruct H.
+  unfold empty_mem in H; congruence.
+Qed.
+
+
 End GenPredThm.
 
 
@@ -1843,20 +1865,49 @@ Qed.
 
 
 (* exclude an address from a predicate *)
-Definition pred_ex AT AEQ V (F : @pred AT AEQ V) a v : @pred AT AEQ V :=
+Definition pred_except AT AEQ V (F : @pred AT AEQ V) a v : @pred AT AEQ V :=
   fun m => F (upd m a v).
 
-Lemma pred_ex_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a v,
-  F m -> m a = Some v -> (pred_ex F a v) (mem_except m a).
+Lemma pred_execpt_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a v,
+  F m -> m a = Some v -> (pred_except F a v) (mem_except m a).
 Proof.
-  unfold pred_ex; intros.
+  unfold pred_except; intros.
   case_eq (m a); intros; replace (upd (mem_except m a) a v) with m; auto.
-
   apply functional_extensionality; intros.
   unfold upd, mem_except.
   destruct (AEQ x a); subst; auto.
-
   congruence.
 Qed.
+
+Lemma pred_except_ptsto : forall AT AEQ V (p : @pred AT AEQ V) a v,
+  (p =p=> a |-> v) ->
+  (p =p=> pred_except p a v * a |-> v).
+Proof.
+  intros; rewrite sep_star_comm.
+  unfold pimpl; intros.
+  assert (m a = Some v).
+  specialize (H m H0).
+  apply ptsto_valid with (F := emp).
+  eapply pimpl_apply.
+  rewrite sep_star_comm.
+  rewrite <- emp_star; eauto.
+  eauto.
+  eapply mem_except_ptsto; auto.
+  apply pred_execpt_mem_except; eauto.
+Qed.
+
+Definition pred_ex AT AEQ V (F : @pred AT AEQ V) a : @pred AT AEQ V :=
+  fun m => exists v, F (upd m a v).
+
+Lemma pred_ex_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a,
+  F m -> indomain a m-> (pred_ex F a) (mem_except m a).
+Proof.
+  unfold pred_ex; intros.
+  unfold indomain in H0; destruct H0; eexists.
+  apply pred_execpt_mem_except; eauto.
+Qed.
+
+
+
 
 Global Opaque pred.

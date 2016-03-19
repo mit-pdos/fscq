@@ -78,14 +78,14 @@ Module BmapAlloc (Sig : AllocSig).
   Definition InUse (s : state) : Prop := s = $1.
 
   Definition is_avail (s : state) := if (state_dec s) then true else false.
-  Definition is_inuse (s : state) := if (state_dec s) then false else true.
+  Definition avail_nonzero s i := if (addr_eq_dec i 0) then false else is_avail s.
 
   Definition free T lxp xp bn ms rx : prog T :=
     ms <- Bmp.put lxp xp bn $0 ms;
     rx ms.
 
   Definition alloc T lxp xp ms rx : prog T :=
-    let^ (ms, r) <- Bmp.ifind lxp xp is_avail ms;
+    let^ (ms, r) <- Bmp.ifind lxp xp avail_nonzero ms;
     match r with
     | None =>
         rx ^(ms, None)
@@ -182,6 +182,23 @@ Module BmapAlloc (Sig : AllocSig).
     rewrite H6; auto.
   Qed.
 
+  Lemma avail_nonzero_is_avail : forall bmap i,
+    avail_nonzero (selN bmap i $0) i = true ->
+    is_avail (selN bmap i $0) = true.
+  Proof.
+    unfold avail_nonzero; intros.
+    destruct (addr_eq_dec i 0); congruence.
+  Qed.
+
+  Lemma avail_nonzero_not_zero : forall bmap i,
+    avail_nonzero (selN bmap i $0) i = true -> i <> 0.
+  Proof.
+    unfold avail_nonzero; intros.
+    destruct (addr_eq_dec i 0); congruence.
+  Qed.
+
+  Local Hint Resolve avail_nonzero_is_avail avail_nonzero_not_zero.
+
 
   Hint Extern 0 (okToUnify (listpred ?prd _ ) (listpred ?prd _)) => constructor : okToUnify.
 
@@ -191,11 +208,11 @@ Module BmapAlloc (Sig : AllocSig).
           [[[ m ::: (Fm * @rep V xp freelist freepred) ]]]
     POST RET:^(ms,r)
           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms
-       \/ exists bn m' freelist' freepred', 
+       \/ exists bn m' freepred',
           [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
-          [[[ m' ::: (Fm * @rep V xp freelist' freepred') ]]] *
+          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred') ]]] *
           [[ freepred =p=> freepred' * bn |->? ]] *
-          [[ bn < (BMPLen xp) * valulen ]]
+          [[ bn <> 0 /\ bn < (BMPLen xp) * valulen ]]
     CRASH LOG.intact lxp F m0
     >} alloc lxp xp ms.
   Proof.
@@ -207,6 +224,7 @@ Module BmapAlloc (Sig : AllocSig).
     rewrite listpred_remove; try cancel.
     intros; apply ptsto_conflict.
     eapply is_avail_in_freelist; eauto.
+    eapply avail_nonzero_not_zero; eauto.
     eapply bmap_rep_length_ok1; eauto.
   Qed.
 
@@ -261,8 +279,10 @@ Module BALLOC.
     r <- Alloc.free lxp xp bn ms;
     rx r.
 
+  Definition bn_valid xp bn := bn <> 0 /\ bn < (BmapNBlocks xp) * valulen.
+
   Definition rep xp (freeblocks : list addr) :=
-    (exists freepred, freepred * Alloc.rep xp freeblocks freepred)%pred.
+    ( exists freepred, freepred * Alloc.rep xp freeblocks freepred)%pred.
 
   Theorem alloc_ok : forall lxp xp ms,
     {< F Fm m0 m freeblocks,
@@ -270,15 +290,14 @@ Module BALLOC.
            [[[ m ::: (Fm * rep xp freeblocks) ]]]
     POST RET:^(ms, r)
            [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms
-        \/ exists bn m' freeblocks',
-           [[ r = Some bn ]] *
+        \/ exists bn m',
+           [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
-           [[[ m' ::: (Fm * bn |->? * rep xp freeblocks') ]]] *
-           [[ bn < (BmapNBlocks xp) * valulen  ]]
+           [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]]
     CRASH  LOG.intact lxp F m0
     >} alloc lxp xp ms.
   Proof.
-    unfold alloc, rep.
+    unfold alloc, rep, bn_valid.
     hoare.
     match goal with
     | [ H1 : (freepred =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
@@ -289,7 +308,7 @@ Module BALLOC.
   Theorem free_ok : forall lxp xp bn ms,
     {< F Fm m0 m freeblocks,
     PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
-           [[  bn < (BmapNBlocks xp) * valulen ]] *
+           [[ bn_valid xp bn ]] *
            [[[ m ::: (Fm * rep xp freeblocks * bn |->?) ]]]
     POST RET:ms exists m',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
@@ -297,7 +316,7 @@ Module BALLOC.
     CRASH  LOG.intact lxp F m0
     >} free lxp xp bn ms.
   Proof.
-    unfold free, rep.
+    unfold free, rep, bn_valid.
     hoare.
   Qed.
 

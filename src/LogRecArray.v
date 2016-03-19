@@ -40,16 +40,16 @@ Module LogRecArray (RA : RASig).
     rx ^(ms, r).
 
 
-  Fixpoint ifind_block (cond : item -> bool) (vs : block) start : option (addr * item ) :=
+  Fixpoint ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
     match vs with
     | nil => None
     | x :: rest =>
-        if (cond x) then Some (start, x)
-                    else ifind_block cond rest (S start)
+        if (cond x start) then Some (start, x)
+                          else ifind_block cond rest (S start)
     end.
 
   (* find the first item that satisfies cond *)
-  Definition ifind T lxp xp (cond : item -> bool) ms rx : prog T :=
+  Definition ifind T lxp xp (cond : item -> addr -> bool) ms rx : prog T :=
     let^ (ms) <- ForN i < (RALen xp)
     Ghost [ F crash m1 m2 ]
     Loopvar [ ms ]
@@ -116,7 +116,7 @@ Module LogRecArray (RA : RASig).
 
   Lemma ifind_block_ok_cond : forall cond vs start r,
     ifind_block cond vs start = Some r ->
-    cond (snd r) = true.
+    cond (snd r) (fst r) = true.
   Proof.
     induction vs; simpl; intros; try congruence.
     destruct (cond a) eqn: C.
@@ -144,7 +144,7 @@ Module LogRecArray (RA : RASig).
     ifind_block cond vs start = Some r ->
     (fst r) >= start /\
     (fst r) < start + length vs /\
-    cond (snd r) = true /\
+    cond (snd r) (fst r) = true /\
     selN vs ((fst r) - start) item0 = (snd r).
   Proof.
     intros; intuition.
@@ -287,7 +287,7 @@ Module LogRecArray (RA : RASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
         ( [[ r = None ]] \/ exists st,
-          [[ r = Some st /\ cond (snd st) = true
+          [[ r = Some st /\ cond (snd st) (fst st) = true
                          /\ (fst st) < length items
                          /\ snd st = selN items (fst st) item0 ]])
     CRASH LOG.intact lxp F m0
@@ -427,7 +427,7 @@ Module LogRecArray (RA : RASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
         ( [[ r = None ]] \/ exists st,
-          [[ r = Some st /\ cond (snd st) = true ]] *
+          [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
           [[[ items ::: arrayN_ex items (fst st) * (fst st) |-> (snd st) ]]] )
     CRASH LOG.intact lxp F m0
     >} ifind_array lxp xp cond ms.
