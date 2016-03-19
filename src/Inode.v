@@ -8,23 +8,98 @@ Require Import BasicProg.
 Require Import Omega.
 Require Import Log.
 Require Import Array.
-Require Import List.
+Require Import List ListUtils.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Rec.
 Require Import FunctionalExtensionality.
 Require Import NArith.
 Require Import WordAuto.
-Require Import RecArray.
-Require Import GenSep.
+Require Import RecArrayUtils LogRecArray.
 Require Import GenSepN.
 Require Import Balloc.
 Require Import ListPred.
 Require Import FSLayout.
+Require Import AsyncDisk.
 
 Import ListNotations.
 
 Set Implicit Arguments.
+
+
+
+Module INODE.
+
+  (************* on-disk representation of inode *)
+
+  Definition iattrtype : Rec.type := Rec.RecF ([
+    ("size",   Rec.WordF 64) ;        (* file size in bytes *)
+    ("uid",    Rec.WordF 32) ;        (* user id *)
+    ("gid",    Rec.WordF 32) ;        (* group id *)
+    ("dev",    Rec.WordF 64) ;        (* device major/minor *)
+    ("mtime",  Rec.WordF 32) ;        (* last modify time *)
+    ("atime",  Rec.WordF 32) ;        (* last access time *)
+    ("ctime",  Rec.WordF 32) ;        (* create time *)
+    ("itype",  Rec.WordF  8) ;        (* type code, 0 = regular file, 1 = directory, ... *)
+    ("unused", Rec.WordF 24)          (* reserved (permission bits) *)
+  ]).
+
+  Definition NDirect := 9.
+  Definition NIndirect := Eval compute in valulen_real / addrlen.
+  Definition NBlocks := NDirect + NIndirect.
+
+  Definition irectype : Rec.type := Rec.RecF ([
+    ("len", Rec.WordF addrlen);     (* number of blocks *)
+    ("attr", iattrtype);            (* file attributes *)
+    ("indptr", Rec.WordF addrlen);  (* indirect block pointer *)
+    ("blocks", Rec.ArrayF (Rec.WordF addrlen) NDirect)]).
+
+
+  (* RecArray for inodes records *)
+  Module IRecSig <: RASig.
+
+    Definition xparams := inode_xparams.
+    Definition RAStart := IXStart.
+    Definition RALen := IXLen.
+
+    Definition itemtype := irectype.
+    Definition items_per_val := valulen / (Rec.len itemtype).
+
+
+    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+    Proof.
+      unfold items_per_val; rewrite valulen_is; compute; auto.
+    Qed.
+
+  End IRecSig.
+
+
+  (* RecArray for indirect blocks *)
+
+  Definition indtype := Rec.WordF addrlen.
+
+  Module IndSig <: RASig.
+
+    Definition xparams := addr.
+    Definition RAStart := fun (x : xparams) => x.
+    Definition RALen := fun (_ : xparams) => 1.
+
+    Definition itemtype := indtype.
+    Definition items_per_val := valulen / (Rec.len itemtype).
+
+    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+    Proof.
+      unfold items_per_val.
+      rewrite valulen_is; compute; auto.
+    Qed.
+
+  End IndSig.
+
+  Module IRec := LogRecArray IRecSig.
+  Module Ind  := LogRecArray IndSig.
+
+
+End INODE.
 
 
 (* Inode layout *)
@@ -48,7 +123,7 @@ Module INODE.
     IType : word 32
   }.
 
-  Definition iattr0 := Build_iattr $0 $0 $0.
+  Definition iattr0 := Build_iattr 0 $0 $0.
 
   Definition pack_attr (ia : iattr) := Eval compute_rec in
     iarec0 :=> "size" := (ISize ia)
