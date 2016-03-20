@@ -265,6 +265,11 @@ Section LISTMATCH.
     destruct_lift H; auto.
   Qed.
 
+  Lemma listmatch_length_pimpl : forall a b,
+    listmatch a b =p=> (listmatch a b) * [[ length a = length b ]].
+  Proof.
+    unfold listmatch; cancel.
+  Qed.
 
   Theorem listmatch_isolate : forall a b i ad bd,
     i < length a -> i < length b ->
@@ -371,40 +376,4 @@ Section LISTMATCH.
   Qed.
 
 End LISTMATCH.
-
-Local Hint Resolve listmatch_length_r.
-Local Hint Resolve listmatch_length_l.
-Local Hint Resolve listmatch_length.
-
-Ltac solve_length_eq :=
-  eauto; try congruence ; try omega;
-  match goal with
-  | [ H : length ?l = _ |- context [ length ?l ] ] =>
-        solve [ setoid_rewrite H ; eauto ; try congruence ; try omega ]
-  | [ H : _ = length ?l |- context [ length ?l ] ] =>
-        solve [ setoid_rewrite <- H ; eauto ; try congruence ; try omega ]
-  | [ H : context [ listmatch _ ?a ?b ] |- context [ length ?c ] ] =>
-        let Heq := fresh in
-        first [ apply listmatch_length_r in H as Heq
-              | apply listmatch_length_l in H as Heq
-              | apply listmatch_length in H as Heq ];
-        solve [ constr_eq a c; repeat setoid_rewrite Heq ;
-                eauto ; try congruence ; try omega
-              | constr_eq b c; repeat setoid_rewrite <- Heq;
-                eauto; try congruence ; try omega ];
-        clear Heq
-  end.
-
-
-Ltac extract_listmatch_at ix :=
-  match goal with
-    | [  H : context [ listmatch ?p ?a _ ] |- _ ] =>
-            erewrite listmatch_extract with (i := wordToNat ix) in H;
-            try autorewrite with defaults in H; auto;
-            match p with
-            | ?n _ => try unfold n at 2 in H
-            | _    => try unfold p at 2 in H
-            end;
-            destruct_lift H
-  end.
 

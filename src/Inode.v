@@ -11,6 +11,7 @@ Require Import Array.
 Require Import List ListUtils.
 Require Import Bool.
 Require Import Eqdep_dec.
+Require Import Setoid.
 Require Import Rec.
 Require Import FunctionalExtensionality.
 Require Import NArith.
@@ -98,6 +99,9 @@ Module INODE.
   Module IRec := LogRecArray IRecSig.
   Module Ind  := LogRecArray IndSig.
 
+  Hint Extern 0 (okToUnify (IRec.rep _ _) (IRec.rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (Ind.rep _ _) (Ind.rep _ _)) => constructor : okToUnify.
+
 
   (************* program *)
 
@@ -142,20 +146,20 @@ Module INODE.
   Definition getbnum T lxp xp inum off ms rx : prog T := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     If (lt_dec off NDirect) {
-      rx ^(ms, selN (i :-> "blocks") off $0)
+      rx ^(ms, # (selN (i :-> "blocks") off $0))
     } else {
       let^ (ms, v) <- Ind.get lxp # (i :-> "indptr") (off - NDirect) ms;
-      rx ^(ms, v)
+      rx ^(ms, # v)
     }.
 
   Definition getallbn T lxp xp inum ms rx : prog T := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     let nr := # (i :-> "len") in
     If (le_dec nr NDirect) {
-      rx ^(ms, firstn nr  (i :-> "blocks"))
+      rx ^(ms, map (@wordToNat addrlen) (firstn nr  (i :-> "blocks")))
     } else {
       let^ (ms, ind_bns) <- Ind.read lxp # (i :-> "indptr") 1 ms;
-      rx ^(ms, firstn nr ((i :-> "blocks") ++ ind_bns))
+      rx ^(ms, map (@wordToNat addrlen) (firstn nr ((i :-> "blocks") ++ ind_bns)))
     }.
 
   Definition free_ind_dec ol nl :
@@ -220,31 +224,404 @@ Module INODE.
 
   Definition iattr0 := @Rec.of_word iattrtype $0.
   Definition inode0 := mk_inode nil iattr0.
+  Definition irec0 := IRec.Defs.item0.
 
-  Definition bnlist_direct l (rec : irec) : @pred _ addr_eq_dec valuset :=
+  Definition bnlist_direct l direct_bns : @pred _ addr_eq_dec valuset :=
     ([[ length l <= NDirect /\
-        l = map (@wordToNat addrlen) (firstn (length l) (rec :-> "blocks")) ]])%pred.
+        l = map (@wordToNat addrlen) (firstn (length l) direct_bns) ]])%pred.
 
-  Definition bnlist_indirect bxp l (rec : irec) : @pred _ addr_eq_dec valuset :=
-    let ibn := # (rec :-> "indptr") in
+  Definition bnlist_indirect bxp l ibn direct_bns : @pred _ addr_eq_dec valuset :=
     (exists indlist, Ind.rep ibn indlist *
      [[ length l > NDirect  /\ BALLOC.bn_valid bxp ibn /\
         l = map (@wordToNat addrlen)
-            ((rec :-> "blocks") ++ firstn (length l - NDirect) indlist) ]])%pred.
+            (direct_bns ++ firstn (length l - NDirect) indlist) ]])%pred.
 
-  Definition bnlist_rep bxp l rec :=
-    (bnlist_direct l rec \/ bnlist_indirect bxp l rec)%pred.
+  Definition bnlist_rep bxp l ibn direct_bns :=
+    (bnlist_direct l direct_bns \/ bnlist_indirect bxp l ibn direct_bns)%pred.
 
   Definition inode_match bxp ino (rec : irec) := Eval compute_rec in (
     let nr := length (IBlocks ino) in
     [[ nr = # (rec :-> "len") /\ nr <= NBlocks ]] *
     [[ IAttr ino = (rec :-> "attrs") ]] *
-    bnlist_rep bxp (IBlocks ino) rec)%pred.
+    bnlist_rep bxp (IBlocks ino) #(rec :-> "indptr") (rec :-> "blocks"))%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
      exists reclist, IRec.rep xp reclist *
      listmatch (inode_match bxp) ilist reclist)%pred.
 
+
+
+  (************** Basic lemmas *)
+
+  Lemma irec_well_formed : forall Fm xp l i inum m,
+    (Fm * IRec.rep xp l)%pred m
+    -> i = selN l inum irec0
+    -> Rec.well_formed i.
+  Proof.
+    intros; subst.
+    eapply IRec.item_wellforemd; eauto.
+  Qed.
+
+  Lemma direct_blocks_length: forall (i : irec),
+    Rec.well_formed i
+    -> length (i :-> "blocks") = NDirect.
+  Proof.
+    intros; simpl in H.
+    destruct i; repeat destruct p.
+    repeat destruct d0; repeat destruct p; intuition.
+  Qed.
+
+  Lemma irec_blocks_length: forall m xp l inum Fm,
+    (Fm * IRec.rep xp l)%pred m ->
+    length (selN l inum irec0 :-> "blocks") = NDirect.
+  Proof.
+    intros.
+    apply direct_blocks_length.
+    eapply irec_well_formed; eauto.
+  Qed.
+
+  Lemma irec_blocks_length': forall m xp l inum Fm d d0 d1 d2 u,
+    (Fm * IRec.rep xp l)%pred m ->
+    (d, (d0, (d1, (d2, u)))) = selN l inum irec0 ->
+    length d2 = NDirect.
+  Proof.
+    intros.
+    eapply IRec.item_wellforemd with (i := inum) in H.
+    setoid_rewrite <- H0 in H.
+    unfold Rec.well_formed in H; simpl in H; intuition.
+  Qed.
+
+
+  (**************  Automation *)
+
+
+  (* Hints for resolving default values *)
+
+  Fact resolve_selN_irec0 : forall l i d,
+    d = irec0 -> selN l i d = selN l i irec0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_inode0 : forall l i d,
+    d = inode0 -> selN l i d = selN l i inode0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_addr0 : forall l i (d : waddr),
+    d = $0 -> selN l i d = selN l i $0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_valu0 : forall l i (d : valu),
+    d = $0 -> selN l i d = selN l i $0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Hint Rewrite resolve_selN_irec0   using reflexivity : defaults.
+  Hint Rewrite resolve_selN_inode0  using reflexivity : defaults.
+  Hint Rewrite resolve_selN_addr0   using reflexivity : defaults.
+  Hint Rewrite resolve_selN_valu0   using reflexivity : defaults.
+
+  Ltac filldef :=
+    repeat match goal with
+    | [ H : context [ selN _ _ ?d ] |- _ ] =>
+        is_evar d; autorewrite with defaults in H
+    end; autorewrite with defaults.
+
+  Ltac rewrite_ignore H :=
+    match type of H with
+    | forall _, corr2 _ _ => idtac
+    end.
+
+  Ltac simplen_rewrite_hyp H := try progress (
+    set_evars_in H; (rewrite_strat (topdown (hints lists)) in H); subst_evars;
+      [ try simplen_rewrite_hyp H | try autorewrite with lists .. ]
+    ).
+
+  Ltac simplen_rewrite := repeat match goal with
+    | [H : @eqlen _ ?T ?a ?b |- context [length ?a] ] => setoid_replace (length a) with (length b) by auto
+    | [H : context[length ?x] |- _] =>
+           progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite_hyp H ] )
+    | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
+    | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
+    | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
+    | [H : @eqlen _ ?T ?l nil |- context [?l] ] => replace l with (@nil T) by eauto
+    | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
+    end.
+
+  Ltac genseplen_rewrite := repeat match goal with
+    | [H : ( _ * ?a |-> ?v)%pred (list2nmem ?l) |- _ ] =>
+            apply list2nmem_inbound in H
+    | [H : context [ listmatch ?a ?b ] |- _ ] =>
+            match goal with
+            | [ H' : length ?a = length ?b |- _ ] => idtac
+            | [ H' : length ?b = length ?a |- _ ] => idtac
+            | _ => setoid_rewrite listmatch_length_pimpl in H; destruct_lift H
+            end
+  end.
+
+  Ltac simplen' := unfold eqlen; eauto; repeat (try subst; simpl; auto;
+    genseplen_rewrite; simplen_rewrite;
+    autorewrite with defaults core lists); simpl; eauto; try omega.
+
+  Ltac simplen :=
+    try match goal with
+    | [ |- _ < _ ] =>  solve [simplen']
+    | [ |- _ <= _ ] =>  solve [simplen']
+    | [ |- _ = _ ] =>  solve [simplen']
+    end.
+
+  Ltac extract_listmatch_at H ix :=
+    match type of H with
+    | context [ listmatch ?prd ?a ?b ] =>
+      erewrite listmatch_extract with (i := ix) in H by simplen;
+      try autorewrite with defaults in H; auto;
+      match prd with
+      | ?n _ => try unfold n at 2 in H
+      | ?n   => try unfold n at 2 in H
+      end; destruct_lift H
+    end.
+
+  Ltac extract_listmatch :=
+    match goal with
+      | [  H : context [ listmatch ?prd ?a _ ],
+          H2 : ?p%pred (list2nmem ?a) |- _ ] =>
+        match p with
+          | context [ ( ?ix |-> _)%pred ] =>
+              extract_listmatch_at H ix
+        end
+    end.
+
+
+  Tactic Notation "extract" :=
+    extract_listmatch.
+
+  Tactic Notation "extract" "at" ident(ix) :=
+    match goal with
+      | [  H : context [ listmatch _ _ _ ] |- _ ] => extract_listmatch_at H ix
+    end.
+
+
+  Ltac rewrite_list2nmem_pred_bound H :=
+    let Hi := fresh in
+    eapply list2nmem_inbound in H as Hi.
+
+  Ltac rewrite_list2nmem_pred_sel H :=
+    let Hx := fresh in
+    eapply list2nmem_sel in H as Hx;
+    try autorewrite with defaults in Hx.
+
+  Ltac rewrite_list2nmem_pred_upd H:=
+    let Hx := fresh in
+    eapply list2nmem_array_updN in H as Hx.
+
+  Ltac rewrite_list2nmem_pred :=
+    match goal with
+    | [ H : (?prd * ?ix |-> ?v)%pred (list2nmem ?l) |- _ ] =>
+      rewrite_list2nmem_pred_bound H;
+      first [
+        is_var v; rewrite_list2nmem_pred_sel H; subst v |
+        match prd with
+        | arrayN_ex ?ol ix =>
+          is_var l; rewrite_list2nmem_pred_upd H;
+          [ subst l | simplen; clear H .. ]
+        end ]
+    end.
+
+  Ltac resolve_list2nmem_sel :=
+    match goal with
+    | [ |- (?prd * ?ix |-> ?v)%pred (list2nmem ?l) ] =>
+        eapply list2nmem_ptsto_cancel ; simplen
+    end.
+
+  Ltac resolve_list2nmem_upd :=
+    match goal with
+    | [ |- (?prd * ?ix |-> ?v)%pred (list2nmem ?l) ] =>
+        eapply list2nmem_updN; eauto
+    end.
+
+  Ltac gensep_auto' :=
+    subst; first [
+        resolve_list2nmem_sel
+      | resolve_list2nmem_upd
+      | try extract; subst; filldef;
+        try rewrite_list2nmem_pred; eauto; simplen;
+        try apply list2nmem_ptsto_cancel; simplen;
+        autorewrite with defaults; eauto
+    ].
+
+  Ltac genauto :=
+    try solve [ gensep_auto' ].
+
+
+  Ltac destruct_irec' x :=
+    match type of x with
+    | irec => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
+    | iattr => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
+    | prod _ _ => let b := fresh in destruct x as [? b] eqn:?; destruct_irec' b
+    | _ => idtac
+    end.
+
+  Ltac destruct_irec x :=
+    match x with
+    | (?a, ?b) => (destruct_irec a || destruct_irec b)
+    | fst ?a => destruct_irec a
+    | snd ?a => destruct_irec a
+    | _ => destruct_irec' x; simpl
+    end.
+
+  Ltac smash_rec_well_formed' :=
+    match goal with
+    | [ |- Rec.well_formed ?x ] => destruct_irec x
+    end.
+
+  Ltac smash_rec_well_formed :=
+    subst; autorewrite with defaults;
+    repeat smash_rec_well_formed';
+    unfold Rec.well_formed; simpl;
+    try rewrite Forall_forall; intuition.
+
+
+  Ltac irec_wf :=
+    smash_rec_well_formed;
+    match goal with
+      | [ H : ?p %pred ?mm |- length ?d = NDirect ] =>
+      match p with
+        | context [ IRec.rep ?xp ?ll ] => 
+          eapply irec_blocks_length' with (m := mm) (l := ll) (xp := xp); eauto;
+          pred_apply; cancel
+      end
+    end.
+
+  Arguments Rec.well_formed : simpl never.
+
+
+
+  (********************** SPECs *)
+
+  Theorem getlen_ok : forall lxp bxp xp inum ms,
+    {< F Fm Fi m0 m ilist ino,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ ilist ::: Fi * inum |-> ino ]]]
+    POST RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = length (IBlocks ino) ]]
+    CRASH  LOG.intact lxp F m0
+    >} getlen lxp xp inum ms.
+  Proof.
+    unfold getlen, rep; pose proof irec0.
+    hoare.
+
+    genauto.
+    genauto.
+  Qed.
+
+
+  Theorem getattrs_ok : forall lxp bxp xp inum ms,
+    {< F Fm Fi m0 m ilist ino,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = IAttr ino ]]
+    CRASH  LOG.intact lxp F m0
+    >} getattrs lxp xp inum ms.
+  Proof.
+    unfold getattrs, rep.
+    hoare.
+
+    genauto.
+    genauto.
+  Qed.
+
+
+  Theorem setattrs_ok : forall lxp bxp xp inum attr ms,
+    {< F Fm Fi m0 m ilist ino,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST RET:ms exists m' ilist' ino',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp xp ilist') ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ ino' = mk_inode (IBlocks ino) attr ]]
+    CRASH  LOG.intact lxp F m0
+    >} setattrs lxp xp inum attr ms.
+  Proof.
+    unfold setattrs, rep.
+    hoare.
+
+    genauto.
+    filldef; abstract irec_wf.
+    genauto.
+    eapply listmatch_updN_selN; simplen.
+    instantiate (1 := mk_inode (IBlocks ino) attr).
+    unfold inode_match; cancel; genauto.
+    genauto.
+    Unshelve. all: exact irec0.
+  Qed.
+
+
+  Theorem updattr_ok : forall lxp bxp xp inum kv ms,
+    {< F Fm Fi m0 m ilist ino,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST RET:ms exists m' ilist' ino',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp xp ilist') ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) ]]
+    CRASH  LOG.intact lxp F m0
+    >} updattr lxp xp inum kv ms.
+  Proof.
+    unfold updattr, rep.
+    hoare.
+
+    genauto.
+    filldef; abstract (destruct kv; simpl; subst; irec_wf).
+    genauto.
+    eapply listmatch_updN_selN; simplen.
+    instantiate (1 := mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
+    unfold inode_match; cancel; genauto.
+    genauto.
+    Unshelve. all: exact irec0.
+  Qed.
+
+
+  Theorem getbnum_ok : forall lxp bxp xp inum off ms,
+    {< F Fm Fi m0 m ilist ino,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ off < length (IBlocks ino) ]] *
+           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = selN (IBlocks ino) off 0 ]]
+    CRASH  LOG.intact lxp F m0
+    >} getbnum lxp xp inum off ms.
+  Proof.
+    unfold getbnum, rep.
+    hoare.
+    genauto.
+
+    admit.
+    (* from direct blocks *)
+
+  extract.
+
+    extract.
+    unfold bnlist_rep, bnlist_direct in H; destruct_lift H.
+
+
+  Qed.
 
 End INODE.
 

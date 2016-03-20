@@ -222,7 +222,7 @@ Module Rec.
     simpl in v. simpl.
     destruct (string_dec n0 n2); destruct (string_dec n0 n1);
       subst; trivial.
-    contradiction neq. trivial.
+    contradiction neq. auto.
     apply IHt. assumption.
   Qed.
 
@@ -984,6 +984,7 @@ Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
 Notation "r ⟦ n ⟧" := (Rec.recget' n r) (at level 8).
 Notation "r ⟦ n := v ⟧" := (Rec.recset' n r v) (at level 8).
 
+
 (**
  * This [compute_rec] convtactic allows us to do partial evaluation
  * of [recget] and [recset] so that extracted code does not deal
@@ -994,18 +995,38 @@ Notation "r ⟦ n := v ⟧" := (Rec.recset' n r v) (at level 8).
  *
  * where [yy] may contain calls to [recget] and [recset].
  *)
+
 Declare Reduction compute_rec :=
-  cbn [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
+  cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
        String.string_dec String.string_rec String.string_rect
        Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
        sumbool_rec sumbool_rect
        bool_dec bool_rec bool_rect
-       eq_rec_r eq_rec eq_rect eq_sym].
+       eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind].
+
+Tactic Notation "rec_cbv" "in" hyp(H) :=
+  cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
+       String.string_dec String.string_rec String.string_rect
+       Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+       sumbool_rec sumbool_rect
+       bool_dec bool_rec bool_rect
+       eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind] in H;
+  cbn [fst snd] in H.
+
+Tactic Notation "rec_cbv" :=
+  cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
+       String.string_dec String.string_rec String.string_rect
+       Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+       sumbool_rec sumbool_rect
+       bool_dec bool_rec bool_rect
+       eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind];
+  cbn [fst snd].
 
 Ltac rec_simpl :=
-  cbn [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
-       String.string_dec String.string_rec String.string_rect
-       Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
-       sumbool_rec sumbool_rect
-       bool_dec bool_rec bool_rect
-       eq_rec_r eq_rec eq_rect eq_sym] in *.
+  repeat match goal with
+  | [ H: context [ Rec.recget' ] |- _ ] => rec_cbv in H
+  | [ H: context [ Rec.recset' ] |- _ ] => rec_cbv in H
+  | [ |- context [ Rec.recget' ] ] => rec_cbv
+  | [ |- context [ Rec.recset' ] ] => rec_cbv
+  end.
+

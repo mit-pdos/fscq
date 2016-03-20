@@ -123,7 +123,6 @@ Definition superblock_pad0 := @Rec.of_word superblock_padded (wzero _).
 Definition addr2w (a : addr) : waddr := natToWord addrlen a.
 
 Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padded) :=
-  Eval compute_rec in
   let (lxp, ixp, ibxp, dbxp, rootinum, maxblock) := fsxp in
   let sb := superblock0
     :=> "data_start"  := addr2w (DataStart lxp)
@@ -143,7 +142,6 @@ Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padd
   in Rec.to_word (superblock_pad0 :=> "sb" := sb).
 
 Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) : fs_xparams :=
-  Eval compute_rec in
   let sb := ((Rec.of_word sbp) :-> "sb") in
   let lxp := Build_log_xparams
     # (sb :-> "data_start") # (sb :-> "log_header")

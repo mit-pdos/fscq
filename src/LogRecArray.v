@@ -490,6 +490,45 @@ Module LogRecArray (RA : RASig).
   (* If two arrays are in the same spot, their contents have to be equal *)
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
+
+  Lemma items_wellforemd : forall F xp l m,
+    (F * rep xp l)%pred m -> Forall Rec.well_formed l.
+  Proof.
+    unfold rep, items_valid; intuition.
+    destruct_lift H; auto.
+  Qed.
+
+  Lemma items_wellforemd_pimpl : forall xp l,
+    rep xp l =p=> [[ Forall Rec.well_formed l ]] * rep xp l.
+  Proof.
+    unfold rep, items_valid; cancel.
+  Qed.
+
+  Lemma item_wellforemd : forall F xp m l i,
+    (F * rep xp l)%pred m -> Rec.well_formed (selN l i item0).
+  Proof.
+    intros.
+    destruct (lt_dec i (length l)).
+    apply Forall_selN; auto.
+    eapply items_wellforemd; eauto.
+    rewrite selN_oob by omega.
+    apply item0_wellformed.
+  Qed.
+
+  Lemma items_length_ok : forall F xp l m,
+    (F * rep xp l)%pred m ->
+    length l = (RALen xp) * items_per_val.
+  Proof.
+    unfold rep, items_valid; intuition.
+    destruct_lift H; auto.
+  Qed.
+
+  Lemma items_length_ok_pimpl : forall xp l,
+    rep xp l =p=> [[ length l = ((RALen xp) * items_per_val)%nat ]] * rep xp l.
+  Proof.
+    unfold rep, items_valid; cancel.
+  Qed.
+
 End LogRecArray.
 
 
