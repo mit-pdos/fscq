@@ -46,8 +46,6 @@ Module INODE.
   ]).
 
   Definition NDirect := 9.
-  Definition NIndirect := Eval compute in valulen_real / addrlen.
-  Definition NBlocks := NDirect + NIndirect.
 
   Definition irectype : Rec.type := Rec.RecF ([
     ("len", Rec.WordF addrlen);     (* number of blocks *)
@@ -101,6 +99,10 @@ Module INODE.
 
   Hint Extern 0 (okToUnify (IRec.rep _ _) (IRec.rep _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (Ind.rep _ _) (Ind.rep _ _)) => constructor : okToUnify.
+
+  Notation "'NIndirect'" := IndSig.items_per_val.
+  Notation "'NBlocks'"   := (NDirect + NIndirect)%nat.
+  Opaque NDirect.
 
 
   (************* program *)
@@ -226,29 +228,38 @@ Module INODE.
   Definition inode0 := mk_inode nil iattr0.
   Definition irec0 := IRec.Defs.item0.
 
-  Definition bnlist_direct l direct_bns : @pred _ addr_eq_dec valuset :=
-    ([[ length l <= NDirect /\
-        l = map (@wordToNat addrlen) (firstn (length l) direct_bns) ]])%pred.
+  Definition indrep bxp ibn l indrec :=
+    ( [[ length l > NDirect /\ length indrec = NIndirect /\ BALLOC.bn_valid bxp ibn ]] *
+      [[ skipn NDirect l = map (@wordToNat _) (firstn (length l - NDirect) indrec) ]] *
+      Ind.rep ibn indrec)%pred.
 
-  Definition bnlist_indirect bxp l ibn direct_bns : @pred _ addr_eq_dec valuset :=
-    (exists indlist, Ind.rep ibn indlist *
-     [[ length l > NDirect  /\ BALLOC.bn_valid bxp ibn /\
-        l = map (@wordToNat addrlen)
-            (direct_bns ++ firstn (length l - NDirect) indlist) ]])%pred.
-
-  Definition bnlist_rep bxp l ibn direct_bns :=
-    (bnlist_direct l direct_bns \/ bnlist_indirect bxp l ibn direct_bns)%pred.
+  Definition indirect_rep bxp ibn l indrec :=
+    ( [[ length l <= NDirect ]] \/ indrep bxp ibn l indrec)%pred.
 
   Definition inode_match bxp ino (rec : irec) := Eval compute_rec in (
     let nr := length (IBlocks ino) in
     [[ nr = # (rec :-> "len") /\ nr <= NBlocks ]] *
     [[ IAttr ino = (rec :-> "attrs") ]] *
-    bnlist_rep bxp (IBlocks ino) #(rec :-> "indptr") (rec :-> "blocks"))%pred.
+    [[ firstn NDirect (IBlocks ino) = map (@wordToNat _) (rec :-> "blocks") ]] *
+    exists indrec, indirect_rep bxp # (rec :-> "indptr") (IBlocks ino) indrec)%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
      exists reclist, IRec.rep xp reclist *
      listmatch (inode_match bxp) ilist reclist)%pred.
 
+  Lemma indirect_rep_valid : forall bxp l ibn indrec,
+    length l > NDirect ->
+    indirect_rep bxp ibn l indrec =p=> indrep bxp ibn l indrec.
+  Proof.
+    unfold indirect_rep; intros; cancel; omega.
+  Qed.
+
+  Lemma indirect_rep_emp : forall bxp l ibn indrec,
+    length l <= NDirect ->
+    indirect_rep bxp ibn l indrec =p=> emp.
+  Proof.
+    unfold indirect_rep, indrep; intros; cancel; omega.
+  Qed.
 
 
   (************** Basic lemmas *)
@@ -335,6 +346,7 @@ Module INODE.
   Ltac rewrite_ignore H :=
     match type of H with
     | forall _, corr2 _ _ => idtac
+    | norm_goal _ => idtac
     end.
 
   Ltac simplen_rewrite_hyp H := try progress (
@@ -348,7 +360,7 @@ Module INODE.
            progress ( first [ is_var x | rewrite_ignore H | simplen_rewrite_hyp H ] )
     | [H : length ?l = _  |- context [ length ?l ] ] => setoid_rewrite H
     | [H : ?l = _  |- context [ ?l ] ] => setoid_rewrite H
-    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => rewrite H in H2
+    | [H : ?l = _ , H2 : context [ ?l ] |- _ ] => first [ rewrite_ignore H2 | rewrite H in H2 ]
     | [H : @length ?T ?l = 0 |- context [?l] ] => replace l with (@nil T) by eauto
     | [H : @eqlen _ ?T ?l nil |- context [?l] ] => replace l with (@nil T) by eauto
     | [ |- _ < _ ] => try solve [eapply lt_le_trans; eauto; try omega ]
@@ -365,21 +377,17 @@ Module INODE.
             end
   end.
 
-  Ltac simplen' := unfold eqlen; eauto; repeat (try subst; simpl; auto;
-    genseplen_rewrite; simplen_rewrite;
-    autorewrite with defaults core lists); simpl; eauto; try omega.
+  Ltac simplen' := unfold eqlen in *; eauto;
+    repeat (try subst; simpl; auto;
+      genseplen_rewrite; simplen_rewrite;
+      autorewrite with defaults core lists);
+    simpl; eauto; try omega.
 
-  Ltac simplen :=
-    try match goal with
-    | [ |- _ < _ ] =>  solve [simplen']
-    | [ |- _ <= _ ] =>  solve [simplen']
-    | [ |- _ = _ ] =>  solve [simplen']
-    end.
 
   Ltac extract_listmatch_at H ix :=
     match type of H with
     | context [ listmatch ?prd ?a ?b ] =>
-      erewrite listmatch_extract with (i := ix) in H by simplen;
+      erewrite listmatch_extract with (i := ix) in H by simplen';
       try autorewrite with defaults in H; auto;
       match prd with
       | ?n _ => try unfold n at 2 in H
@@ -429,14 +437,17 @@ Module INODE.
         match prd with
         | arrayN_ex ?ol ix =>
           is_var l; rewrite_list2nmem_pred_upd H;
-          [ subst l | simplen; clear H .. ]
+          [ subst l | simplen'; clear H .. ]
         end ]
     end.
+
+  Ltac seprewrite :=
+    repeat rewrite_list2nmem_pred.
 
   Ltac resolve_list2nmem_sel :=
     match goal with
     | [ |- (?prd * ?ix |-> ?v)%pred (list2nmem ?l) ] =>
-        eapply list2nmem_ptsto_cancel ; simplen
+        eapply list2nmem_ptsto_cancel ; simplen'
     end.
 
   Ltac resolve_list2nmem_upd :=
@@ -450,14 +461,28 @@ Module INODE.
         resolve_list2nmem_sel
       | resolve_list2nmem_upd
       | try extract; subst; filldef;
-        try rewrite_list2nmem_pred; eauto; simplen;
-        try apply list2nmem_ptsto_cancel; simplen;
+        try rewrite_list2nmem_pred; eauto; simplen';
+        try apply list2nmem_ptsto_cancel; simplen';
         autorewrite with defaults; eauto
     ].
 
-  Ltac genauto :=
+  Ltac sepauto :=
     try solve [ gensep_auto' ].
 
+  Ltac simplen :=
+    let tac :=
+      solve [ match goal with
+      | [ |- _ > _ ] =>   simplen'
+      | [ |- _ >= _ ] =>  simplen'
+      | [ |- _ < _ ] =>   simplen'
+      | [ |- _ <= _ ] =>  simplen'
+      | [ |- _ = _ ] =>   simplen'
+      end ] in
+    try solve [ filldef;
+    first [ tac
+          | seprewrite; subst; tac
+          | extract; seprewrite; subst; tac
+          ] ].
 
   Ltac destruct_irec' x :=
     match type of x with
@@ -518,8 +543,8 @@ Module INODE.
     unfold getlen, rep; pose proof irec0.
     hoare.
 
-    genauto.
-    genauto.
+    sepauto.
+    simplen.
   Qed.
 
 
@@ -537,8 +562,8 @@ Module INODE.
     unfold getattrs, rep.
     hoare.
 
-    genauto.
-    genauto.
+    sepauto.
+    simplen.
   Qed.
 
 
@@ -558,14 +583,14 @@ Module INODE.
     unfold setattrs, rep.
     hoare.
 
-    genauto.
-    filldef; abstract irec_wf.
-    genauto.
+    sepauto.
+    irec_wf.
+    sepauto.
     eapply listmatch_updN_selN; simplen.
     instantiate (1 := mk_inode (IBlocks ino) attr).
-    unfold inode_match; cancel; genauto.
-    genauto.
-    Unshelve. all: exact irec0.
+    unfold inode_match; cancel; sepauto.
+    sepauto.
+    Unshelve. exact irec0.
   Qed.
 
 
@@ -585,16 +610,60 @@ Module INODE.
     unfold updattr, rep.
     hoare.
 
-    genauto.
+    sepauto.
     filldef; abstract (destruct kv; simpl; subst; irec_wf).
-    genauto.
+    sepauto.
     eapply listmatch_updN_selN; simplen.
     instantiate (1 := mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
-    unfold inode_match; cancel; genauto.
-    genauto.
-    Unshelve. all: exact irec0.
+    unfold inode_match; cancel; sepauto.
+    sepauto.
+    Unshelve. exact irec0.
   Qed.
 
+
+  Tactic Notation "extract" "indirect" :=
+    extract_listmatch;
+    match goal with
+    | [ H : context [ indirect_rep ] |- _ ] =>
+      rewrite indirect_rep_valid in H; unfold indrep in H; destruct_lift H
+    end.
+
+  Lemma firstn_eq_wordToNat_selN_eq : forall off len a b,
+    firstn len a = map (@wordToNat addrlen) b ->
+    off < len ->
+    # (selN b off $0) = selN a off 0.
+  Proof.
+    intros.
+    erewrite <- selN_firstn with (l := a) by eauto.
+    rewrite H.
+    destruct (lt_dec off (length b)).
+    erewrite selN_map; eauto.
+    repeat rewrite selN_oob.
+    rewrite roundTrip_0; auto.
+    rewrite map_length; omega.
+    omega.
+  Qed.
+
+  Lemma skipn_eq_wordToNat_selN_eq : forall off len a b,
+    skipn len a = map (@wordToNat addrlen) (firstn (length a - len) b) ->
+    length a > len ->
+    off >= len ->
+    off < length a ->
+    # (selN b (off - len) $0) = selN a off 0.
+  Proof.
+    intros.
+    replace off with (len + (off - len)) at 2 by omega.
+    rewrite <- skipn_selN.
+    rewrite H.
+    rewrite <- firstn_map_comm.
+    rewrite selN_firstn by omega.
+    destruct (lt_dec (off - len ) (length b)).
+    erewrite selN_map; auto.
+    repeat rewrite selN_oob.
+    rewrite roundTrip_0; auto.
+    rewrite map_length; omega.
+    omega.
+  Qed.
 
   Theorem getbnum_ok : forall lxp bxp xp inum off ms,
     {< F Fm Fi m0 m ilist ino,
@@ -609,19 +678,90 @@ Module INODE.
     >} getbnum lxp xp inum off ms.
   Proof.
     unfold getbnum, rep.
-    hoare.
-    genauto.
+    step.
+    sepauto.
+    step.
 
-    admit.
     (* from direct blocks *)
+    step.
+    extract; seprewrite.
+    eapply firstn_eq_wordToNat_selN_eq; eauto.
 
-  extract.
-
-    extract.
-    unfold bnlist_rep, bnlist_direct in H; destruct_lift H.
-
-
+    (* from indirect blocks *)
+    prestep; norml.
+    extract indirect.
+    cancel.
+    simplen.
+    step.
+    subst; seprewrite.
+    apply skipn_eq_wordToNat_selN_eq; auto; omega.
+    simplen.
   Qed.
+
+  Lemma getallbn_direct_ok : forall a b nr,
+    length a = nr ->
+    firstn NDirect a = map (@wordToNat addrlen) b ->
+    nr <= NDirect ->
+    map (@wordToNat _) (firstn nr b) = a.
+  Proof.
+    intros; subst.
+    rewrite <- firstn_map_comm.
+    rewrite <- H0.
+    rewrite firstn_firstn, firstn_oob; auto.
+    rewrite Nat.min_l; auto.
+  Qed.
+
+  Lemma getallbn_indirect_ok : forall a b c nr,
+    firstn NDirect a = map (@wordToNat addrlen) b ->
+    skipn NDirect a = map (@wordToNat addrlen) (firstn (length a - NDirect) c) ->
+    length a = nr ->
+    length a > NDirect ->
+    length c = NIndirect ->
+    map (@wordToNat _) (firstn nr (b ++ (firstn (NIndirect + 0) c))) = a.
+  Proof.
+    intros.
+    rewrite Nat.add_0_r, firstn_oob with (l := c) by omega.
+    rewrite <- firstn_map_comm.
+    rewrite map_app, <- H.
+    rewrite firstn_app_le.
+    rewrite firstn_length_l by omega.
+    rewrite firstn_map_comm, <- H1, <- H0.
+    apply firstn_skipn.
+    rewrite firstn_length_l; omega.
+  Qed.
+
+  Theorem getallbn_ok : forall lxp bxp xp inum ms,
+    {< F Fm Fi m0 m ilist ino,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = (IBlocks ino) ]]
+    CRASH  LOG.intact lxp F m0
+    >} getallbn lxp xp inum ms.
+  Proof.
+    unfold getallbn, rep.
+    step.
+    sepauto.
+
+    (* from direct blocks only *)
+    step.
+    step.
+    extract; seprewrite.
+    apply getallbn_direct_ok; eauto.
+
+    (* from both direct and indirect blocks *)
+    prestep; norml.
+    extract indirect.
+    cancel.
+    step.
+    seprewrite; subst.
+    apply getallbn_indirect_ok; auto.
+    simplen_rewrite; apply not_le; auto.
+  Qed.
+
+  
 
 End INODE.
 
