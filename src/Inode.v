@@ -39,8 +39,6 @@ Module Type BlockPtrSig.
   Parameter IRBlocks : irec -> list waddr. (* get direct block numbers *)
   Parameter IRAttrs  : irec -> iattr.      (* get untouched attributes *)
 
-  Parameter dbnsz_ok : forall ir, length (IRBlocks ir) = NDirect.
-
   (* setters *)
   Parameter upd_len  : irec -> addr -> irec.
   Parameter upd_irec : forall (r : irec) (len : addr) (ibptr : addr) (dbns : list waddr), irec.
@@ -178,15 +176,18 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Definition rep bxp (ir : irec) (l : list waddr) :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks ]] *
+      [[ length (IRBlocks ir) = NDirect ]] *
       exists indlist, indrep bxp l (IRIndPtr ir) indlist *
       [[ l = firstn (length l) ((IRBlocks ir) ++ indlist) ]] )%pred.
 
   Definition rep_direct (ir : irec) (l : list waddr) : @pred _ addr_eq_dec valuset :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l <= NDirect ]] *
+      [[ length (IRBlocks ir) = NDirect ]] *
       [[ l = firstn (length l) (IRBlocks ir) ]] )%pred.
 
   Definition rep_indirect bxp (ir : irec) (l : list waddr) :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l > NDirect ]] *
+      [[ length (IRBlocks ir) = NDirect ]] *
       exists indlist, IndRec.rep (IRIndPtr ir) indlist *
       [[ length indlist = NIndirect /\ BALLOC.bn_valid bxp (IRIndPtr ir) ]] *
       [[ l = (IRBlocks ir) ++ firstn (length l - NDirect) indlist ]] )%pred.
@@ -207,11 +208,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Tactic Notation "substl" constr(term) "at" integer_list(pos) :=
     match goal with
     | [ H : term = _  |- _ ] => setoid_rewrite H at pos
+    | [ H : _ = term  |- _ ] => setoid_rewrite <- H at pos
     end.
 
   Tactic Notation "substl" constr(term) :=
     match goal with
     | [ H : term = _  |- _ ] => setoid_rewrite H
+    | [ H : _ = term  |- _ ] => setoid_rewrite <- H
     end.
 
 
@@ -219,7 +222,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     length l <= NDirect ->
     rep bxp ir l <=p=> rep_direct ir l.
   Proof.
-    intros; pose proof dbnsz_ok ir.
     unfold rep, indrep, rep_direct; intros; split; cancel; try omega.
     substl l at 1; rewrite firstn_app_l by omega; auto.
     rewrite app_nil_r; auto.
@@ -230,11 +232,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
     length l > NDirect ->
     rep bxp ir l <=p=> rep_indirect bxp ir l.
   Proof.
-    intros; pose proof dbnsz_ok ir as Heq.
     unfold rep, indrep, rep_indirect; intros; split; cancel; try omega.
-    rewrite <- firstn_app_r; setoid_rewrite Heq.
+    rewrite <- firstn_app_r; setoid_rewrite H3.
     replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
-    substl l at 1; rewrite <- firstn_app_r. setoid_rewrite Heq.
+    substl l at 1; rewrite <- firstn_app_r. setoid_rewrite H3.
     replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
     Unshelve. eauto.
   Qed.
@@ -247,7 +248,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     selN (IRBlocks ir) off $0 = selN l off $0.
   Proof.
     unfold rep, indrep; intros; destruct_lift H.
-    pose proof dbnsz_ok ir.
     substl.
     rewrite selN_firstn by auto.
     rewrite selN_app1 by omega; auto.
@@ -274,9 +274,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite rep_piff_indirect in H by omega.
     unfold rep_indirect in H; destruct_lift H; cancel; try omega.
     step; substl.
-    rewrite selN_app2, dbnsz_ok.
+    substl NDirect; rewrite selN_app2.
     rewrite selN_firstn by omega; auto.
-    rewrite dbnsz_ok; omega.
+    omega.
   Qed.
 
 
@@ -297,14 +297,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
     substl; substl (length l); auto.
     unfold rep in H; destruct_lift H; omega.
 
-    pose proof (dbnsz_ok ir).
     prestep; norml.
     rewrite rep_piff_indirect in Hx.
     unfold rep_indirect in Hx; destruct_lift Hx; cancel.
     step; substl.
     rewrite Nat.add_0_r, firstn_app_le by omega.
     setoid_rewrite firstn_oob at 2; try omega.
-    substl (length l); rewrite dbnsz_ok; auto.
+    substl (length l); substl NDirect; auto.
     unfold rep in Hx; destruct_lift Hx; omega.
   Qed.
 
@@ -349,7 +348,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     prestep; norml.
     assert (length l = (IRLen ir)); hypmatch rep as Hx.
     unfold rep in Hx; destruct_lift Hx; omega.
-    pose proof (dbnsz_ok ir); cancel.
 
     (* needs to free indirect block *)
     prestep; norml.
@@ -362,13 +360,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite rep_piff_direct by (rewrite cuttail_length; omega).
     unfold rep_direct; cancel; autorewrite with core; try omega.
 
-    substl l at 1; unfold cuttail; pose proof (dbnsz_ok ir).
+    substl l at 1; unfold cuttail.
     rewrite app_length, firstn_length_l by omega.
     rewrite firstn_app_l by omega.
     f_equal; omega.
 
     (* no free indirect block *)
-    step.
+    cancel.
 
     (* case 1: all in direct blocks *)
     repeat rewrite rep_piff_direct by (autorewrite with core; omega).
@@ -409,7 +407,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     prestep; norml.
     assert (length l = (IRLen ir)); hypmatch rep as Hx.
     unfold rep in Hx; destruct_lift Hx; omega.
-    pose proof (dbnsz_ok ir); cancel.
+    cancel.
 
     (* only update direct block *)
     prestep; norml.
@@ -555,11 +553,6 @@ Module INODE.
     Definition IRIndPtr (x : irec) := Eval compute_rec in # ( x :-> "indptr").
     Definition IRBlocks (x : irec) := Eval compute_rec in ( x :-> "blocks").
     Definition IRAttrs  (x : irec) := Eval compute_rec in ( x :-> "attrs").
-
-    Theorem dbnsz_ok : forall ir, length (IRBlocks ir) = NDirect.
-    Proof.
-      unfold IRBlocks; intros.
-    Admitted.
 
     Definition upd_len (x : irec) v  := Eval compute_rec in (x :=> "len" := $ v).
 
