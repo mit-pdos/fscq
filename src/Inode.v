@@ -28,6 +28,386 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
+Module Type BPtrSig.
+
+  Parameter irec     : Type.               (* inode record type *)
+  Parameter NDirect  : addr.               (* number of direct blocks *)
+
+  Parameter IRLen    : irec -> addr.       (* get length *)
+  Parameter IRIndPtr : irec -> addr.       (* get indirect block pointer *)
+  Parameter IRBlocks : irec -> list waddr. (* get direct block numbers *)
+
+  Parameter dbnsz_ok : forall ir, length (IRBlocks ir) = NDirect.
+
+  (* setters *)
+  Parameter upd_len  : irec -> addr -> irec.
+  Parameter upd_irec : forall (r : irec) (len : addr) (ibptr : addr) (dbns : list waddr), irec.
+
+  (* getter/setter lemmas *)
+  Parameter upd_len_get_len : forall ir n, IRLen (upd_len ir n) = n.
+  Parameter upd_len_get_ind : forall ir n, IRIndPtr (upd_len ir n) = IRIndPtr ir.
+  Parameter upd_len_get_blk : forall ir n, IRBlocks (upd_len ir n) = IRBlocks ir.
+
+
+End BPtrSig.
+
+
+
+(* block pointer abstraction for individule inode *)
+Module BlockPtr (BPtr : BPtrSig).
+
+  Import BPtr.
+
+
+  (* RecArray for indirect blocks *)
+
+  Definition indrectype := Rec.WordF addrlen.
+
+  Module IndSig <: RASig.
+
+    Definition xparams := addr.
+    Definition RAStart := fun (x : xparams) => x.
+    Definition RALen := fun (_ : xparams) => 1.
+
+    Definition itemtype := indrectype.
+    Definition items_per_val := valulen / (Rec.len itemtype).
+
+    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+    Proof.
+      unfold items_per_val.
+      rewrite valulen_is; compute; auto.
+    Qed.
+
+  End IndSig.
+
+  Module IndRec  := LogRecArray IndSig.
+  Hint Extern 0 (okToUnify (IndRec.rep _ _) (IndRec.rep _ _)) => constructor : okToUnify.
+
+  Notation "'NIndirect'" := IndSig.items_per_val.
+  Notation "'NBlocks'"   := (NDirect + NIndirect)%nat.
+
+
+
+
+  (************* program *)
+
+  Definition get T lxp (ir : irec) off ms rx : prog T :=
+    If (lt_dec off NDirect) {
+      rx ^(ms, selN (IRBlocks ir) off $0)
+    } else {
+      let^ (ms, v) <- IndRec.get lxp (IRIndPtr ir) (off - NDirect) ms;
+      rx ^(ms, v)
+    }.
+
+
+  Definition read T lxp (ir : irec) ms rx : prog T :=
+    If (le_dec (IRLen ir) NDirect) {
+      rx ^(ms, firstn (IRLen ir) (IRBlocks ir))
+    } else {
+      let^ (ms, indbns) <- IndRec.read lxp (IRIndPtr ir) 1 ms;
+      rx ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
+    }.
+
+
+  Definition free_ind_dec ol nl :
+    { ol > NDirect /\ nl <= NDirect } + { ol <= NDirect \/ nl > NDirect }.
+  Proof.
+    destruct (gt_dec ol NDirect).
+    destruct (le_dec nl NDirect).
+    left; split; assumption.
+    right; right; apply not_le; assumption.
+    right; left; apply not_gt; assumption.
+  Defined.
+
+
+  Definition shrink T lxp bxp (ir : irec) nr ms rx : prog T :=
+    let nl := ((IRLen ir) - nr) in
+    If (free_ind_dec (IRLen ir) nl) {
+      ms <- BALLOC.free lxp bxp (IRIndPtr ir) ms;
+      rx ^(ms, upd_len ir nl)
+    } else {
+      rx ^(ms, upd_len ir nl)
+    }.
+
+
+  Definition grow T lxp bxp (ir : irec) bn ms rx : prog T :=
+    let len := (IRLen ir) in
+    If (lt_dec len NDirect) {
+      (* change direct block address *)
+      rx ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
+    } else {
+      (* allocate indirect block if necessary *)
+      let^ (ms, ibn) <- IfRx irx (addr_eq_dec len NDirect) {
+        let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
+        match r with
+        | None => rx ^(ms, None)
+        | Some ibn =>
+            ms <- IndRec.write lxp ibn IndRec.Defs.block0 ms;
+            irx ^(ms, ibn)
+        end
+      } else {
+        irx ^(ms, (IRIndPtr ir))
+      };
+      (* write indirect block *)
+      ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
+      rx ^(ms, Some (upd_len ir (S len)))
+    }.
+
+
+  (************** rep invariant *)
+
+  Definition indrep bxp (l : list waddr) ibn indlist :=
+    ( [[ length l <= NDirect ]] \/
+      [[ length l > NDirect /\ length indlist = NIndirect /\ BALLOC.bn_valid bxp ibn ]] *
+      IndRec.rep ibn indlist )%pred.
+
+
+  Definition rep bxp (ir : irec) (l : list waddr) :=
+    ( [[ length l = (IRLen ir) /\ length l < NBlocks ]] *
+      exists indlist, indrep bxp l (IRIndPtr ir) indlist *
+      [[ l = firstn (length l) ((IRBlocks ir) ++ indlist) ]] )%pred.
+
+  Definition rep_direct (ir : irec) (l : list waddr) : @pred _ addr_eq_dec valuset :=
+    ( [[ length l = (IRLen ir) /\ length l < NBlocks /\ length l <= NDirect ]] *
+      [[ l = firstn (length l) (IRBlocks ir) ]] )%pred.
+
+  Definition rep_indirect bxp (ir : irec) (l : list waddr) :=
+    ( [[ length l = (IRLen ir) /\ length l < NBlocks /\ length l > NDirect ]] *
+      exists indlist, IndRec.rep (IRIndPtr ir) indlist *
+      [[ length indlist = NIndirect /\ BALLOC.bn_valid bxp (IRIndPtr ir) ]] *
+      [[ l = (IRBlocks ir) ++ firstn (length l - NDirect) indlist ]] )%pred.
+
+  (* Necessary to make subst work when there's a recursive term like:
+     l = firstn (length l) ... *)
+  Set Regular Subst Tactic.
+
+  Tactic Notation "substl" :=
+    subst; repeat match goal with
+    | [ H : ?l = ?r |- _ ] => is_var l;
+      match goal with
+       | [ |- context [ r ] ] => idtac
+       | _ => setoid_rewrite H
+      end
+    end.
+
+  Tactic Notation "substl" constr(term) "at" integer_list(pos) :=
+    match goal with
+    | [ H : term = _  |- _ ] => setoid_rewrite H at pos
+    end.
+
+  Tactic Notation "substl" constr(term) :=
+    match goal with
+    | [ H : term = _  |- _ ] => setoid_rewrite H
+    end.
+
+
+  Lemma rep_piff_direct : forall bxp ir l,
+    length l <= NDirect ->
+    rep bxp ir l <=p=> rep_direct ir l.
+  Proof.
+    intros; pose proof dbnsz_ok ir.
+    unfold rep, indrep, rep_direct; intros; split; cancel; try omega.
+    substl l at 1; rewrite firstn_app_l by omega; auto.
+    rewrite app_nil_r; auto.
+  Qed.
+
+
+  Lemma rep_piff_indirect : forall bxp ir l,
+    length l > NDirect ->
+    rep bxp ir l <=p=> rep_indirect bxp ir l.
+  Proof.
+    intros; pose proof dbnsz_ok ir as Heq.
+    unfold rep, indrep, rep_indirect; intros; split; cancel; try omega.
+    rewrite <- firstn_app_r; setoid_rewrite Heq.
+    replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
+    substl l at 1; rewrite <- firstn_app_r. setoid_rewrite Heq.
+    replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
+    Unshelve. eauto.
+  Qed.
+
+
+  Lemma rep_selN_direct_ok : forall F bxp ir l m off,
+    (F * rep bxp ir l)%pred m ->
+    off < NDirect ->
+    off < length l ->
+    selN (IRBlocks ir) off $0 = selN l off $0.
+  Proof.
+    unfold rep, indrep; intros; destruct_lift H.
+    pose proof dbnsz_ok ir.
+    substl.
+    rewrite selN_firstn by auto.
+    rewrite selN_app1 by omega; auto.
+  Qed.
+
+
+  Theorem get_ok : forall lxp bxp ir off ms,
+    {< F Fm m0 m l,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: Fm * rep bxp ir l ]]] *
+           [[ off < length l ]]
+    POST RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = selN l off $0 ]]
+    CRASH  LOG.intact lxp F m0
+    >} get lxp ir off ms.
+  Proof.
+    unfold get.
+    step.
+    step.
+    eapply rep_selN_direct_ok; eauto.
+
+    prestep; norml.
+    rewrite rep_piff_indirect in H by omega.
+    unfold rep_indirect in H; destruct_lift H; cancel; try omega.
+    step; substl.
+    rewrite selN_app2, dbnsz_ok.
+    rewrite selN_firstn by omega; auto.
+    rewrite dbnsz_ok; omega.
+  Qed.
+
+
+  Theorem read_ok : forall lxp bxp ir ms,
+    {< F Fm m0 m l,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: Fm * rep bxp ir l ]]]
+    POST RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = l ]]
+    CRASH  LOG.intact lxp F m0
+    >} read lxp ir ms.
+  Proof.
+    unfold read.
+    step; hypmatch rep as Hx.
+    step.
+    rewrite rep_piff_direct in Hx; unfold rep_direct in Hx; destruct_lift Hx.
+    substl; substl (length l); auto.
+    unfold rep in H; destruct_lift H; omega.
+
+    pose proof (dbnsz_ok ir).
+    prestep; norml.
+    rewrite rep_piff_indirect in Hx.
+    unfold rep_indirect in Hx; destruct_lift Hx; cancel.
+    step; substl.
+    rewrite Nat.add_0_r, firstn_app_le by omega.
+    setoid_rewrite firstn_oob at 2; try omega.
+    substl (length l); rewrite dbnsz_ok; auto.
+    unfold rep in Hx; destruct_lift Hx; omega.
+  Qed.
+
+
+
+  Lemma indrec_ptsto_pimpl : forall ibn indrec,
+    IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
+  Proof.
+    unfold IndRec.rep; cancel.
+    assert (length (synced_list vl) = 1).
+    unfold IndRec.items_valid in H2; intuition.
+    rewrite synced_list_length; subst.
+    rewrite IndRec.Defs.ipack_length.
+    setoid_rewrite H1.
+    rewrite Rounding.divup_mul; auto.
+    apply IndRec.Defs.items_per_val_not_0.
+
+    rewrite arrayN_isolate with (i := 0) by omega.
+    unfold IndSig.RAStart; rewrite Nat.add_0_r.
+    rewrite skipn_oob by omega; simpl.
+    instantiate (2 := ($0, nil)).
+    rewrite synced_list_selN; cancel.
+  Qed.
+
+
+  Definition cuttail A n (l : list A) := firstn (length l - n) l.
+
+  Lemma cuttail_length : forall A (l : list A) n,
+    length (cuttail n l) = length l - n.
+  Proof.
+    unfold cuttail; intros.
+    rewrite firstn_length.
+    rewrite Nat.min_l; omega.
+  Qed.
+
+  Hint Rewrite cuttail_length upd_len_get_len upd_len_get_ind upd_len_get_blk : core.
+
+  Theorem shrink_ok : forall lxp bxp ir nr ms,
+    {< F Fm m0 m l freelist,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
+    POST RET:^(ms, r)  exists m' freelist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp r (cuttail nr l) * BALLOC.rep bxp freelist') ]]] *
+           [[ r = upd_len ir (length l - nr) ]]
+    CRASH  LOG.intact lxp F m0
+    >} shrink lxp bxp ir nr ms.
+  Proof.
+    unfold shrink.
+    step; hypmatch rep as Hx.
+
+    (* needs to free indirect block *)
+    assert (length l = (IRLen ir)).
+    unfold rep in Hx; destruct_lift Hx; omega.
+    prestep; norml.
+    rewrite rep_piff_indirect in Hx by omega.
+    unfold rep_indirect in Hx; destruct_lift Hx.
+    hypmatch IndRec.rep as Hx; rewrite indrec_ptsto_pimpl in Hx.
+    destruct_lift Hx; cancel.
+
+    step.
+    rewrite rep_piff_direct by (rewrite cuttail_length; omega).
+    unfold rep_direct; cancel; autorewrite with core; try omega.
+
+    substl l at 1; unfold cuttail; pose proof (dbnsz_ok ir).
+    rewrite app_length, firstn_length_l by omega.
+    rewrite firstn_app_l by omega.
+    f_equal; omega.
+
+    (* no free indirect block *)
+    assert (length l = (IRLen ir)).
+    unfold rep in Hx; destruct_lift Hx; omega.
+    pose proof (dbnsz_ok ir).
+    step.
+
+    (* case 1: all in direct blocks *)
+    repeat rewrite rep_piff_direct by (autorewrite with core; omega).
+    unfold rep_direct; cancel; autorewrite with core; try omega.
+
+    substl l at 1; unfold cuttail.
+    rewrite firstn_length_l by omega.
+    rewrite firstn_firstn, Nat.min_l by omega; auto.
+
+    (* case 1: all in indirect blocks *)
+    repeat rewrite rep_piff_indirect by (autorewrite with core; omega).
+    unfold rep_indirect; cancel; autorewrite with core; eauto; try omega.
+
+    substl l at 1; unfold cuttail.
+    rewrite app_length, firstn_length_l by omega.
+    replace (length (IRBlocks ir) + (length l - NDirect) - nr) with
+            (length (IRBlocks ir) + (length l - nr - NDirect)) by omega.
+    rewrite firstn_app_r; f_equal.
+    rewrite firstn_firstn, Nat.min_l by omega; auto.
+  Qed.
+
+
+
+
+End BlockPtr.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Module INODE.
 
@@ -72,37 +452,13 @@ Module INODE.
 
   End IRecSig.
 
-
-  (* RecArray for indirect blocks *)
-
-  Definition indtype := Rec.WordF addrlen.
-
-  Module IndSig <: RASig.
-
-    Definition xparams := addr.
-    Definition RAStart := fun (x : xparams) => x.
-    Definition RALen := fun (_ : xparams) => 1.
-
-    Definition itemtype := indtype.
-    Definition items_per_val := valulen / (Rec.len itemtype).
-
-    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-    Proof.
-      unfold items_per_val.
-      rewrite valulen_is; compute; auto.
-    Qed.
-
-  End IndSig.
-
   Module IRec := LogRecArray IRecSig.
-  Module Ind  := LogRecArray IndSig.
-
   Hint Extern 0 (okToUnify (IRec.rep _ _) (IRec.rep _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (Ind.rep _ _) (Ind.rep _ _)) => constructor : okToUnify.
 
-  Notation "'NIndirect'" := IndSig.items_per_val.
-  Notation "'NBlocks'"   := (NDirect + NIndirect)%nat.
-  Opaque NDirect.
+
+
+
+
 
   (************* program *)
 
