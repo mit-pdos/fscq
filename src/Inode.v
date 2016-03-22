@@ -80,6 +80,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Definition xparams := addr.
     Definition RAStart := fun (x : xparams) => x.
     Definition RALen := fun (_ : xparams) => 1.
+    Definition xparams_ok (_ : xparams) := True.
 
     Definition itemtype := indrectype.
     Definition items_per_val := valulen / (Rec.len itemtype).
@@ -485,9 +486,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
     (* case 1 : need allocate indirect block *)
     step; try (eapply BALLOC.bn_valid_facts; eauto).
-    (* XXX: boaring xparams_ok *)
-    eapply BALLOC.bn_valid_goodSize ; eauto.
-    admit.
+    unfold IndSig.xparams_ok; auto.
     instantiate (vsl0 := [(v0_cur, v0_old)]); simpl; auto.
     simpl; unfold IndSig.RAStart; cancel.
 
@@ -527,20 +526,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
     substl (length indlist); omega.
 
     Unshelve. all:eauto.
-  Admitted.
+  Qed.
 
 
 End BlockPtr.
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -581,6 +570,7 @@ Module INODE.
     Definition xparams := inode_xparams.
     Definition RAStart := IXStart.
     Definition RALen := IXLen.
+    Definition xparams_ok (_ : xparams) := True.
 
     Definition itemtype := irectype.
     Definition items_per_val := valulen / (Rec.len itemtype).
@@ -675,6 +665,21 @@ Module INODE.
 
   (************* program *)
 
+
+  Definition getlen T lxp xp inum ms rx : prog T := Eval compute_rec in
+    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
+    rx ^(ms, # (ir :-> "len" )).
+
+  Definition getattrs T lxp xp inum ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
+    rx ^(ms, (i :-> "attrs")).
+
+  Definition setattrs T lxp xp inum attr ms rx : prog T := Eval compute_rec in
+    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
+    ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
+    rx ms.
+
+
   (* convenient way for setting attributes *)
 
   Inductive iattrupd_arg :=
@@ -689,20 +694,6 @@ Module INODE.
   | IAMTime v => (e :=> "mtime" := v)
   | IAType  v => (e :=> "itype" := v)
   end.
-
-
-  Definition getlen T lxp xp inum ms rx : prog T := Eval compute_rec in
-    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
-    rx ^(ms, # (ir :-> "len" )).
-
-  Definition getattrs T lxp xp inum ms rx : prog T := Eval compute_rec in
-    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    rx ^(ms, (i :-> "attrs")).
-
-  Definition setattrs T lxp xp inum attr ms rx : prog T := Eval compute_rec in
-    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
-    rx ms.
 
   Definition updattr T lxp xp inum a ms rx : prog T := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;

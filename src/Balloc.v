@@ -35,6 +35,7 @@ Module Type AllocSig.
   Parameter xparams : Type.
   Parameter BMPStart : xparams -> addr.
   Parameter BMPLen   : xparams -> addr.
+  Parameter xparams_ok : xparams -> Prop.
 
 End AllocSig.
 
@@ -48,6 +49,7 @@ Module BmapAlloc (Sig : AllocSig).
     Definition xparams := xparams.
     Definition RAStart := BMPStart.
     Definition RALen := BMPLen.
+    Definition xparams_ok := xparams_ok.
 
     Definition itemtype := Rec.WordF 1.
     Definition items_per_val := valulen.
@@ -258,6 +260,10 @@ Module BALLOC.
     Definition xparams := balloc_xparams.
     Definition BMPStart := BmapStart.
     Definition BMPLen := BmapNBlocks.
+
+    (* should return an address that fits in addrlen (goodSize addrlen _).
+       valulen * valulen supports about 2^48 bytes of disk space *)
+    Definition xparams_ok xp := (BmapNBlocks xp) <= valulen * valulen.
   End Sig.
 
   Module Alloc := BmapAlloc Sig.
@@ -321,12 +327,18 @@ Module BALLOC.
     a < (BmapNBlocks xp) * valulen ->
     goodSize addrlen a.
   Proof.
-    unfold rep, Alloc.rep, Alloc.Bmp.rep,
-        Alloc.Bmp.items_valid, Alloc.Bmp.Defs.xparams_ok; intros.
+    unfold rep, Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
+       Alloc.BmpSig.xparams_ok, Sig.xparams_ok; intros.
     destruct_lift H; intuition.
-    eapply goodSize_trans; [ | eauto ].
-    unfold Alloc.BmpSig.RALen, Sig.BMPLen, Alloc.BmpSig.items_per_val.
-    omega.
+    eapply goodSize_trans.
+    eapply Nat.lt_le_incl; eauto.
+    eapply goodSize_trans.
+    eapply mult_le_compat_r; eauto.
+    unfold goodSize.
+    replace addrlen with (16 + 16 + 16 + 16) by (compute; auto).
+    rewrite <- Nat.mul_1_r at 1.
+    repeat apply mult_pow2_bound; try apply valulen_bound.
+    apply one_lt_pow2.
   Qed.
 
   Lemma bn_valid_goodSize : forall F l m xp a,
@@ -336,6 +348,17 @@ Module BALLOC.
   Proof.
     unfold bn_valid; intros; intuition.
     eapply bn_valid_goodSize'; eauto.
+  Qed.
+
+  Lemma bn_valid_goodSize_pimpl : forall l xp,
+    rep xp l <=p=> [[ forall a, bn_valid xp a -> goodSize addrlen a ]] * rep xp l.
+  Proof.
+    intros; split.
+    unfold pimpl; intros.
+    pred_apply; cancel.
+    apply emp_star in H.
+    eapply bn_valid_goodSize; eauto.
+    cancel.
   Qed.
 
   Lemma bn_valid_facts : forall xp bn,

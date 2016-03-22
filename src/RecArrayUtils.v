@@ -9,6 +9,10 @@ Module Type RASig.
   Parameter RAStart : xparams -> addr.
   Parameter RALen   : xparams -> addr.
 
+  (** any restriction to xparams.
+      Usually be:  goodSize addrlen ((RAStart xp) + (RALen xp)) **)
+  Parameter xparams_ok : xparams -> Prop.
+
   Parameter itemtype : Rec.type.
   Parameter items_per_val : nat.
   Parameter blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
@@ -42,7 +46,7 @@ Module RADefs (RA : RASig).
   Definition val2block (v : valu) := Rec.of_word (val2word v).
   Definition block0 := val2block $0.
 
-  Definition xparams_ok xp := goodSize addrlen ((RALen xp) * items_per_val).
+
   Definition itemlist := list item.
 
   Definition nils n := @repeat (list valu) nil n.

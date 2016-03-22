@@ -33,6 +33,7 @@ Module PaddedLog.
     Definition xparams := log_xparams.
     Definition RAStart := LogDescriptor.
     Definition RALen := LogDescLen.
+    Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
 
     Definition itemtype := Rec.WordF addrlen.
     Definition items_per_val := valulen / addrlen.
@@ -52,6 +53,7 @@ Module PaddedLog.
     Definition xparams := log_xparams.
     Definition RAStart := LogData.
     Definition RALen := LogLen.
+    Definition xparams_ok (xp : xparams) := goodSize addrlen ((RAStart xp) + (RALen xp)).
 
     Definition itemtype := Rec.WordF valulen.
     Definition items_per_val := 1.
@@ -316,7 +318,7 @@ Module PaddedLog.
   end)%pred.
 
   Definition xparams_ok xp := 
-    DescDefs.xparams_ok xp /\ DataDefs.xparams_ok xp /\
+    DescSig.xparams_ok xp /\ DataSig.xparams_ok xp /\
     (LogLen xp) = DescSig.items_per_val * (LogDescLen xp).
 
   Definition rep xp st:=
@@ -794,7 +796,7 @@ Module PaddedLog.
   Qed.
 
   Lemma loglen_valid_desc_valid : forall xp old new,
-    DescDefs.xparams_ok xp ->
+    DescSig.xparams_ok xp ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     Desc.items_valid xp (ndesc_log old) (map ent_addr new).
   Proof.
@@ -809,7 +811,7 @@ Module PaddedLog.
 
 
   Lemma loglen_valid_data_valid : forall xp old new,
-    DataDefs.xparams_ok xp ->
+    DataSig.xparams_ok xp ->
     Forall entry_valid new ->
     loglen_valid xp (ndesc_log old + ndesc_log new) (ndata_log old + ndata_log new) ->
     Data.items_valid xp (ndata_log old) (map ent_valu new).
@@ -868,31 +870,28 @@ Module PaddedLog.
   Lemma mul_le_mono_helper : forall a b,
     b > 0 -> a <= a * b.
   Proof.
-    intros. nia.
+    intros; rewrite Nat.mul_comm.
+    destruct (mult_O_le a b); auto; omega.
   Qed.
 
   Lemma loglen_valid_goodSize_l : forall xp a b,
-    loglen_valid xp a b -> DescDefs.xparams_ok xp -> DataDefs.xparams_ok xp ->
+    loglen_valid xp a b -> DescSig.xparams_ok xp -> DataSig.xparams_ok xp ->
     goodSize addrlen a.
   Proof.
-    unfold loglen_valid, DescDefs.xparams_ok, DataDefs.xparams_ok; intuition.
-    eapply goodSize_trans; eauto.
+    unfold loglen_valid, DescSig.xparams_ok, DataSig.xparams_ok; intuition.
     eapply goodSize_trans.
-    apply mul_le_mono_helper.
-    apply DescDefs.items_per_val_gt_0.
-    auto.
+    eapply le_trans. eauto.
+    apply le_plus_r. eauto.
   Qed.
 
   Lemma loglen_valid_goodSize_r : forall xp a b,
-    loglen_valid xp a b -> DescDefs.xparams_ok xp -> DataDefs.xparams_ok xp ->
+    loglen_valid xp a b -> DescSig.xparams_ok xp -> DataSig.xparams_ok xp ->
     goodSize addrlen b.
   Proof.
-    unfold loglen_valid, DescDefs.xparams_ok, DataDefs.xparams_ok; intuition.
-    eapply goodSize_trans; eauto.
+    unfold loglen_valid, DescSig.xparams_ok, DataSig.xparams_ok; intuition.
     eapply goodSize_trans.
-    apply mul_le_mono_helper.
-    apply DataDefs.items_per_val_gt_0.
-    auto.
+    eapply le_trans. eauto.
+    apply le_plus_r. eauto.
   Qed.
 
   Lemma ent_valid_addr_valid : forall l,
