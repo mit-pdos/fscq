@@ -528,6 +528,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Unshelve. all:eauto.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _) _) => apply grow_ok : prog.
+
+  Hint Extern 0 (okToUnify (rep _ ?ir _) (rep _ ?ir _)) => constructor : okToUnify.
+
 
 End BlockPtr.
 
@@ -661,6 +668,7 @@ Module INODE.
 
   End BPtrSig.
 
+  Module Ind := BlockPtr BPtrSig.
 
 
   (************* program *)
@@ -679,8 +687,7 @@ Module INODE.
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
     rx ms.
 
-
-  (* convenient way for setting attributes *)
+  (* For updattr : a convenient way for setting individule attribute *)
 
   Inductive iattrupd_arg :=
   | IABytes (v : word 64)
@@ -700,76 +707,32 @@ Module INODE.
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) ms;
     rx ms.
 
-  Definition getbnum T lxp xp inum off ms rx : prog T := Eval compute_rec in
-    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    If (lt_dec off NDirect) {
-      rx ^(ms, # (selN (i :-> "blocks") off $0))
-    } else {
-      let^ (ms, v) <- Ind.get lxp # (i :-> "indptr") (off - NDirect) ms;
-      rx ^(ms, # v)
-    }.
 
-  Definition getallbn T lxp xp inum ms rx : prog T := Eval compute_rec in
-    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    let nr := # (i :-> "len") in
-    If (le_dec nr NDirect) {
-      rx ^(ms, map (@wordToNat addrlen) (firstn nr  (i :-> "blocks")))
-    } else {
-      let^ (ms, ind_bns) <- Ind.read lxp # (i :-> "indptr") 1 ms;
-      rx ^(ms, map (@wordToNat addrlen) (firstn nr ((i :-> "blocks") ++ ind_bns)))
-    }.
-
-  Definition free_ind_dec ol nl :
-    { ol > NDirect /\ nl <= NDirect } + { ol <= NDirect \/ nl > NDirect }.
-  Proof.
-    destruct (gt_dec ol NDirect).
-    destruct (le_dec nl NDirect).
-    left; split; assumption.
-    right; right; apply not_le; assumption.
-    right; left; apply not_gt; assumption.
-  Defined.
-
-  Definition shrink T lxp bxp xp inum nr ms rx : prog T := Eval compute_rec in
-    let^ (ms, (i0 : irec)) <- IRec.get_array lxp xp inum ms;
-    let olen := # (i0 :-> "len") in
-    let nlen := olen - nr in
-    let ir := i0 :=> "len" := $ nlen in
-    ms <- IfRx irx (free_ind_dec olen nlen ) {
-      ms <- BALLOC.free lxp bxp # (i0 :-> "indptr") ms;
-      irx ms
-    } else {
-      irx ms
-    };
-    ms <- IRec.put_array lxp xp inum ir ms;
+  Definition getbnum T lxp xp inum off ms rx : prog T :=
+    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
+    ms <- Ind.get lxp ir off ms;
     rx ms.
 
+  Definition getallbnum T lxp xp inum ms rx : prog T :=
+    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
+    ms <- Ind.read lxp ir ms;
+    rx ms.
 
-  Definition growone T lxp bxp xp inum bn ms rx : prog T := Eval compute_rec in
-    let^ (ms, (i0 : irec)) <- IRec.get_array lxp xp inum ms;
-    let len := # (i0 :-> "len") in
-    let^ (ms, ir) <- IfRx irx (lt_dec len NDirect) {
-      (* change direct block address *)
-      irx ^(ms, (i0 :=> "blocks" := (updN (i0 :-> "blocks") len bn)))
-    } else {
-      (* allocate indirect block if necessary *)
-      let^ (ms, ibn) <- IfRx irx (addr_eq_dec len NDirect) {
-        let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
-        match r with
-        | None => rx ^(ms, false)
-        | Some ibn =>
-            ms <- Ind.write lxp ibn Ind.Defs.block0 ms;
-            irx ^(ms, ibn)
-        end
-      } else {
-        irx ^(ms, # (i0 :-> "indptr"))
-      };
-      (* write indirect block *)
-      ms <- Ind.put lxp ibn (len - NDirect) bn ms;
-      irx ^(ms, i0 :=> "indptr" := $ ibn)
-    };
-    (* write inode record *)
-    ms <- IRec.put_array lxp xp inum ir ms;
-    rx ^(ms, true).
+  Definition shrink T lxp bxp xp inum nr ms rx : prog T :=
+    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
+    let^ (ms, ir') <- Ind.shrink lxp bxp ir nr ms;
+    ms <- IRec.put_array lxp xp inum ir' ms;
+    rx ms.
+
+  Definition grow T lxp bxp xp inum bn ms rx : prog T :=
+    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
+    let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
+    match r with
+    | None => rx ^(ms, false)
+    | Some ir' =>
+        ms <- IRec.put_array lxp xp inum ir' ms;
+        rx ^(ms, true)
+    end.
 
 
   (************** rep invariant *)
@@ -783,39 +746,14 @@ Module INODE.
   Definition inode0 := mk_inode nil iattr0.
   Definition irec0 := IRec.Defs.item0.
 
-  Definition indrep bxp ibn l indrec :=
-    ( [[ length l > NDirect /\ length indrec = NIndirect /\ BALLOC.bn_valid bxp ibn ]] *
-      [[ skipn NDirect l = map (@wordToNat _) (firstn (length l - NDirect) indrec) ]] *
-      Ind.rep ibn indrec)%pred.
 
-  Definition indirect_rep bxp ibn l indrec :=
-    ( [[ length l <= NDirect ]] \/ indrep bxp ibn l indrec)%pred.
-
-  Definition inode_match bxp ino (rec : irec) := Eval compute_rec in (
-    let nr := length (IBlocks ino) in
-    [[ nr = # (rec :-> "len") /\ nr <= NBlocks ]] *
-    [[ IAttr ino = (rec :-> "attrs") ]] *
-    [[ firstn NDirect (IBlocks ino) =
-       firstn (length (IBlocks ino)) (map (@wordToNat _) (rec :-> "blocks")) ]] *
-    exists indrec, indirect_rep bxp # (rec :-> "indptr") (IBlocks ino) indrec)%pred.
+  Definition inode_match bxp ino (ir : irec) := Eval compute_rec in
+    ( [[ IAttr ino = (ir :-> "attrs") ]] *
+      Ind.rep bxp ir (map (@natToWord _) (IBlocks ino)))%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
      exists reclist, IRec.rep xp reclist *
      listmatch (inode_match bxp) ilist reclist)%pred.
-
-  Lemma indirect_rep_valid : forall bxp l ibn indrec,
-    length l > NDirect ->
-    indirect_rep bxp ibn l indrec <=p=> indrep bxp ibn l indrec.
-  Proof.
-    unfold indirect_rep; intros; split; cancel; omega.
-  Qed.
-
-  Lemma indirect_rep_emp : forall bxp l ibn indrec,
-    length l <= NDirect ->
-    indirect_rep bxp ibn l indrec <=p=> emp.
-  Proof.
-    unfold indirect_rep, indrep; intros; split; cancel; omega.
-  Qed.
 
 
   (************** Basic lemmas *)
@@ -857,56 +795,6 @@ Module INODE.
     setoid_rewrite <- H0 in H.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.
-
-
-  Lemma NBlocks_roundtrip : # (natToWord addrlen NBlocks) = NBlocks.
-  Proof.
-    unfold IndSig.items_per_val.
-    erewrite wordToNat_natToWord_bound with (bound:=$ valulen).
-    reflexivity.
-    apply Nat.sub_0_le.
-    rewrite valulen_is.
-    compute; reflexivity.
-  Qed.
-
-  Lemma NDirect_roundtrip : # (natToWord addrlen NDirect) = NDirect.
-  Proof.
-    intros.
-    eapply wordToNat_natToWord_bound with (bound := natToWord addrlen NBlocks).
-    rewrite NBlocks_roundtrip; omega.
-  Qed.
-
-  Lemma NIndirect_roundtrip : # (natToWord addrlen NIndirect) = NIndirect.
-  Proof.
-    intros.
-    eapply wordToNat_natToWord_bound with (bound := natToWord addrlen NBlocks).
-    rewrite NBlocks_roundtrip; omega.
-  Qed.
-
-  Lemma le_ndirect_roundtrip : forall n,
-    n <= NDirect -> # (natToWord addrlen n) = n.
-  Proof.
-    intros.
-    apply wordToNat_natToWord_bound with (bound := natToWord addrlen NDirect).
-    rewrite NDirect_roundtrip; auto.
-  Qed.
-
-  Lemma le_nindirect_roundtrip : forall n,
-    n <= NIndirect -> # (natToWord addrlen n) = n.
-  Proof.
-    intros.
-    apply wordToNat_natToWord_bound with (bound := natToWord addrlen NIndirect).
-    rewrite NIndirect_roundtrip; auto.
-  Qed.
-
-  Lemma le_nblocks_roundtrip : forall n,
-    n <= NBlocks -> # (natToWord addrlen n) = n.
-  Proof.
-    intros.
-    apply wordToNat_natToWord_bound with (bound := natToWord addrlen NBlocks).
-    rewrite NBlocks_roundtrip; auto.
-  Qed.
-
 
 
   (**************  Automation *)
@@ -1226,13 +1114,6 @@ Module INODE.
     Unshelve. exact irec0.
   Qed.
 
-
-  Tactic Notation "extract" "indirect" :=
-    extract_listmatch;
-    match goal with
-    | [ H : context [ indirect_rep ] |- _ ] =>
-      rewrite indirect_rep_valid in H; unfold indrep in H; destruct_lift H
-    end.
 
   Lemma getbnum_direct_ok : forall off a b,
     firstn NDirect a = firstn (length a) (map (@wordToNat addrlen) b) ->
