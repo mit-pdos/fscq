@@ -34,6 +34,10 @@ Module Type BlockPtrSig.
   Parameter iattr    : Type.               (* part of irec that BlockPtr does not touch *)
   Parameter NDirect  : addr.               (* number of direct blocks *)
 
+  (* Number of direct blocks should be quite small to avoid word overflow 
+     Using addrlen as its bound is arbitrary *)
+  Parameter NDirect_bound : NDirect <= addrlen.
+
   Parameter IRLen    : irec -> addr.       (* get length *)
   Parameter IRIndPtr : irec -> addr.       (* get indirect block pointer *)
   Parameter IRBlocks : irec -> list waddr. (* get direct block numbers *)
@@ -44,19 +48,19 @@ Module Type BlockPtrSig.
   Parameter upd_irec : forall (r : irec) (len : addr) (ibptr : addr) (dbns : list waddr), irec.
 
   (* getter/setter lemmas *)
-  Parameter upd_len_get_len : forall ir n, IRLen (upd_len ir n) = n.
-  Parameter upd_len_get_ind : forall ir n, IRIndPtr (upd_len ir n) = IRIndPtr ir.
-  Parameter upd_len_get_blk : forall ir n, IRBlocks (upd_len ir n) = IRBlocks ir.
-  Parameter upd_len_get_iattr : forall ir n, IRAttrs (upd_len ir n) = IRAttrs ir.
-  Parameter upd_irec_get_len :
-      forall ir len ibptr dbns, IRLen (upd_irec ir len ibptr dbns) = len.
-  Parameter upd_irec_get_ind :
-      forall ir len ibptr dbns, IRIndPtr (upd_irec ir len ibptr dbns) = ibptr.
-  Parameter upd_irec_get_blk :
-      forall ir len ibptr dbns, IRBlocks (upd_irec ir len ibptr dbns) = dbns.
-  Parameter upd_irec_get_iattr :
-      forall ir len ibptr dbns, IRAttrs (upd_irec ir len ibptr dbns) = IRAttrs ir.
+  Parameter upd_len_get_len    : forall ir n, goodSize addrlen n -> IRLen (upd_len ir n) = n.
+  Parameter upd_len_get_ind    : forall ir n, IRIndPtr (upd_len ir n) = IRIndPtr ir.
+  Parameter upd_len_get_blk    : forall ir n, IRBlocks (upd_len ir n) = IRBlocks ir.
+  Parameter upd_len_get_iattr  : forall ir n, IRAttrs (upd_len ir n) = IRAttrs ir.
 
+  Parameter upd_irec_get_len   : forall ir len ibptr dbns,
+     goodSize addrlen len -> IRLen (upd_irec ir len ibptr dbns) = len.
+  Parameter upd_irec_get_ind   : forall ir len ibptr dbns,
+     goodSize addrlen ibptr -> IRIndPtr (upd_irec ir len ibptr dbns) = ibptr.
+  Parameter upd_irec_get_blk   : forall ir len ibptr dbns,
+     IRBlocks (upd_irec ir len ibptr dbns) = dbns.
+  Parameter upd_irec_get_iattr : forall ir len ibptr dbns,
+      IRAttrs (upd_irec ir len ibptr dbns) = IRAttrs ir.
 
 End BlockPtrSig.
 
@@ -94,11 +98,62 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Notation "'NIndirect'" := IndSig.items_per_val.
   Notation "'NBlocks'"   := (NDirect + NIndirect)%nat.
 
+  (* Various bounds *)
   Lemma NIndirect_is : NIndirect = 512.
   Proof.
     unfold IndSig.items_per_val.
     rewrite valulen_is; compute; auto.
   Qed.
+
+  Lemma NBlocks_roundtrip : # (natToWord addrlen NBlocks) = NBlocks.
+  Proof.
+    unfold IndSig.items_per_val.
+    erewrite wordToNat_natToWord_bound with (bound:=$ valulen).
+    reflexivity.
+    eapply le_trans.
+    eapply plus_le_compat_r.
+    apply NDirect_bound.
+    apply Nat.sub_0_le.
+    rewrite valulen_is.
+    compute; reflexivity.
+  Qed.
+
+  Lemma NDirect_roundtrip : # (natToWord addrlen NDirect) = NDirect.
+  Proof.
+    intros.
+    eapply wordToNat_natToWord_bound with (bound := natToWord addrlen NBlocks).
+    rewrite NBlocks_roundtrip; omega.
+  Qed.
+
+  Lemma NIndirect_roundtrip : # (natToWord addrlen NIndirect) = NIndirect.
+  Proof.
+    intros.
+    eapply wordToNat_natToWord_bound with (bound := natToWord addrlen NBlocks).
+    rewrite NBlocks_roundtrip; omega.
+  Qed.
+
+  Lemma le_ndirect_goodSize : forall n,
+    n <= NDirect -> goodSize addrlen n.
+  Proof.
+    intros; eapply goodSize_word_bound; eauto.
+    rewrite NDirect_roundtrip; auto.
+  Qed.
+
+  Lemma le_nindirect_goodSize : forall n,
+    n <= NIndirect -> goodSize addrlen n.
+  Proof.
+    intros; eapply goodSize_word_bound; eauto.
+    rewrite NIndirect_roundtrip; auto.
+  Qed.
+
+  Lemma le_nblocks_goodSize : forall n,
+    n <= NBlocks -> goodSize addrlen n.
+  Proof.
+    intros; eapply goodSize_word_bound; eauto.
+    rewrite NBlocks_roundtrip; auto.
+  Qed.
+
+  Local Hint Resolve le_ndirect_goodSize le_nindirect_goodSize le_nblocks_goodSize.
 
 
   (************* program *)
@@ -359,6 +414,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     step.
     rewrite rep_piff_direct by (rewrite cuttail_length; omega).
     unfold rep_direct; cancel; autorewrite with core; try omega.
+    apply le_ndirect_goodSize; omega.
 
     substl l at 1; unfold cuttail.
     rewrite app_length, firstn_length_l by omega.
@@ -371,6 +427,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     (* case 1: all in direct blocks *)
     repeat rewrite rep_piff_direct by (autorewrite with core; omega).
     unfold rep_direct; cancel; autorewrite with core; try omega.
+    apply le_ndirect_goodSize; omega.
 
     substl l at 1; unfold cuttail.
     rewrite firstn_length_l by omega.
@@ -379,6 +436,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     (* case 1: all in indirect blocks *)
     repeat rewrite rep_piff_indirect by (autorewrite with core; omega).
     unfold rep_indirect; cancel; autorewrite with core; eauto; try omega.
+    apply le_nblocks_goodSize; omega.
 
     substl l at 1; unfold cuttail.
     rewrite app_length, firstn_length_l by omega.
@@ -415,9 +473,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     unfold rep_direct in Hx; cancel.
     or_r; cancel.
     rewrite rep_piff_direct by (autorewrite with lists; simpl; omega).
-    unfold rep_direct; autorewrite with core lists; simpl; cancel; try omega.
+    unfold rep_direct; autorewrite with core lists; simpl.
+    cancel; try omega.
     substl l at 1; substl (length l).
     apply firstn_app_updN_eq; omega.
+    apply le_nblocks_goodSize; omega.
 
     (* update indirect blocks *)
     step.
@@ -439,6 +499,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite rep_piff_indirect by (rewrite app_length; simpl; omega).
     unfold rep_direct, rep_indirect; cancel;
       repeat (autorewrite with core lists; simpl; eauto; try omega).
+    eapply BALLOC.bn_valid_goodSize; eauto.
+    apply le_nblocks_goodSize; omega.
+    eapply BALLOC.bn_valid_goodSize; eauto.
+
     substl l at 1; substl (length l); substl (IRLen ir).
     rewrite firstn_oob, minus_plus, Nat.sub_diag by omega.
     erewrite firstn_S_selN, selN_updN_eq by (autorewrite with lists; omega).
@@ -453,6 +517,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite rep_piff_indirect by (rewrite app_length; simpl; omega).
     unfold rep_indirect; cancel;
       repeat (autorewrite with core lists; simpl; eauto; try omega).
+    eapply BALLOC.bn_valid_goodSize; eauto.
+    apply le_nblocks_goodSize; omega.
+    eapply BALLOC.bn_valid_goodSize; eauto.
     substl l at 1; substl (length l).
     replace (IRLen ir + 1 - NDirect) with (IRLen ir - NDirect + 1) by omega.
     rewrite <- app_assoc; f_equal.
@@ -549,6 +616,10 @@ Module INODE.
     Definition iattr    := iattr.
     Definition NDirect  := NDirect.
 
+    Fact NDirect_bound : NDirect <= addrlen.
+      compute; omega.
+    Qed.
+
     Definition IRLen    (x : irec) := Eval compute_rec in # ( x :-> "len").
     Definition IRIndPtr (x : irec) := Eval compute_rec in # ( x :-> "indptr").
     Definition IRBlocks (x : irec) := Eval compute_rec in ( x :-> "blocks").
@@ -560,9 +631,11 @@ Module INODE.
       (x :=> "len" := $ len :=> "indptr" := $ ibptr :=> "blocks" := dbns).
 
     (* getter/setter lemmas *)
-    Fact upd_len_get_len : forall ir n, IRLen (upd_len ir n) = n.
+    Fact upd_len_get_len : forall ir n,
+      goodSize addrlen n -> IRLen (upd_len ir n) = n.
     Proof.
       unfold IRLen, upd_len; intros; simpl.
+      rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
     Fact upd_len_get_ind : forall ir n, IRIndPtr (upd_len ir n) = IRIndPtr ir.
@@ -574,20 +647,26 @@ Module INODE.
     Fact upd_len_get_iattr : forall ir n, IRAttrs (upd_len ir n) = IRAttrs ir.
     Proof. intros; simpl; auto. Qed.
 
-    Fact upd_irec_get_len :
-        forall ir len ibptr dbns, IRLen (upd_irec ir len ibptr dbns) = len.
+    Fact upd_irec_get_len : forall ir len ibptr dbns,
+      goodSize addrlen len -> IRLen (upd_irec ir len ibptr dbns) = len.
+    Proof.
+      intros; cbn.
+      rewrite wordToNat_natToWord_idempotent'; auto.
+    Qed.
+
+    Fact upd_irec_get_ind : forall ir len ibptr dbns,
+      goodSize addrlen ibptr -> IRIndPtr (upd_irec ir len ibptr dbns) = ibptr.
+    Proof.
+      intros; cbn.
+      rewrite wordToNat_natToWord_idempotent'; auto.
+    Qed.
+
+    Fact upd_irec_get_blk : forall ir len ibptr dbns, 
+      IRBlocks (upd_irec ir len ibptr dbns) = dbns.
     Proof. intros; simpl; auto. Qed.
 
-    Fact upd_irec_get_ind :
-        forall ir len ibptr dbns, IRIndPtr (upd_irec ir len ibptr dbns) = ibptr.
-    Proof. intros; simpl; auto. Qed.
-
-    Fact upd_irec_get_blk :
-        forall ir len ibptr dbns, IRBlocks (upd_irec ir len ibptr dbns) = dbns.
-    Proof. intros; simpl; auto. Qed.
-
-    Fact upd_irec_get_iattr :
-        forall ir len ibptr dbns, IRAttrs (upd_irec ir len ibptr dbns) = IRAttrs ir.
+    Fact upd_irec_get_iattr : forall ir len ibptr dbns, 
+      IRAttrs (upd_irec ir len ibptr dbns) = IRAttrs ir.
     Proof. intros; simpl; auto. Qed.
 
   End BPtrSig.
