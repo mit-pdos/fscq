@@ -316,5 +316,33 @@ Module BALLOC.
   Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
+  Lemma bn_valid_goodSize' : forall F l m xp a,
+    (F * rep xp l)%pred m ->
+    a < (BmapNBlocks xp) * valulen ->
+    goodSize addrlen a.
+  Proof.
+    unfold rep, Alloc.rep, Alloc.Bmp.rep,
+        Alloc.Bmp.items_valid, Alloc.Bmp.Defs.xparams_ok; intros.
+    destruct_lift H; intuition.
+    eapply goodSize_trans; [ | eauto ].
+    unfold Alloc.BmpSig.RALen, Sig.BMPLen, Alloc.BmpSig.items_per_val.
+    omega.
+  Qed.
+
+  Lemma bn_valid_goodSize : forall F l m xp a,
+    (F * rep xp l)%pred m ->
+    bn_valid xp a ->
+    goodSize addrlen a.
+  Proof.
+    unfold bn_valid; intros; intuition.
+    eapply bn_valid_goodSize'; eauto.
+  Qed.
+
+  Lemma bn_valid_facts : forall xp bn,
+    bn_valid xp bn -> bn <> 0 /\ bn < (BmapNBlocks xp) * valulen.
+  Proof.
+    unfold bn_valid; auto.
+  Qed.
+
 End BALLOC.
 

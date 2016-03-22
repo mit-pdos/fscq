@@ -87,6 +87,13 @@ Proof.
   apply length_nil; auto.
 Qed.
 
+Lemma cons_app : forall A (a : A) l,
+  a :: l = [a] ++ l.
+Proof.
+  intros; auto.
+Qed.
+
+
 
 (** XXX use [nth] everywhere *)
 Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
@@ -767,7 +774,7 @@ Lemma firstn_app_updN_eq : forall A l n (x : A),
 Proof.
   intros.
   rewrite firstn_plusone_selN with (def := x).
-  rewrite selN_updN_eq by auto.
+  rewrite selN_updN_eq by omega.
   rewrite firstn_updN_oob; auto.
   rewrite length_updN; auto.
 Qed.
@@ -1725,4 +1732,14 @@ Proof.
   simpl. destruct (dec b a0).
   subst. intros. destruct H0; [subst; tauto | apply IHl; auto].
   simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
+Qed.
+
+Definition cuttail A n (l : list A) := firstn (length l - n) l.
+
+Lemma cuttail_length : forall A (l : list A) n,
+  length (cuttail n l) = length l - n.
+Proof.
+  unfold cuttail; intros.
+  rewrite firstn_length.
+  rewrite Nat.min_l; omega.
 Qed.

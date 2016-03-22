@@ -735,6 +735,29 @@ Module RADefs (RA : RASig).
     apply list_chunk_updN_divmod; auto.
   Qed.
 
+  Lemma block2val_repeat_item0 :
+    block2val (repeat item0 items_per_val) = $0.
+  Proof.
+    unfold block2val, item0.
+    rewrite <- Rec.of_word_zero_list.
+    rewrite Rec.to_of_id.
+    unfold word2val, eq_rec_r, eq_rect, eq_rec, eq_rect.
+    case_eq (eq_sym blocksz_ok); intros; auto.
+  Qed.
+
+  Lemma repeat_ipack_item0 : forall n,
+    repeat $0 n = ipack (repeat item0 (n * items_per_val)).
+  Proof.
+    induction n; simpl; intros.
+    rewrite ipack_nil; auto.
+    rewrite <- repeat_app.
+    erewrite ipack_app with (na := 1) by (rewrite repeat_length; omega).
+    rewrite cons_app, IHn; f_equal.
+    rewrite ipack_one by (rewrite repeat_length; auto); f_equal.
+    rewrite block2val_repeat_item0; auto.
+  Qed.
+
+
 End RADefs.
 
 

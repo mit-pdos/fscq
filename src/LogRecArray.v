@@ -39,9 +39,14 @@ Module LogRecArray (RA : RASig).
     let^ (ms, r) <- LOG.read_range lxp (RAStart xp) nblocks iunpack nil ms;
     rx ^(ms, r).
 
-  (** write full blocks starting from the beginning *)
+  (** write all items starting from the beginning *)
   Definition write T lxp xp items ms rx : prog T :=
     ms <- LOG.write_range lxp (RAStart xp) (ipack items) ms;
+    rx ms.
+
+  (** set all items to item0 *)
+  Definition init T lxp xp ms rx : prog T :=
+    ms <- LOG.write_range lxp (RAStart xp) (repeat $0 (RALen xp)) ms;
     rx ms.
 
   Fixpoint ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
@@ -324,6 +329,32 @@ Module LogRecArray (RA : RASig).
   Qed.
 
 
+  Theorem init_ok : forall lxp xp ms,
+    {< F Fm m0 m vsl,
+    PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+          [[ xparams_ok xp /\ RAStart xp <> 0 /\ length vsl = RALen xp ]] *
+          [[[ m ::: Fm * arrayN (RAStart xp) vsl ]]]
+    POST RET:ms' exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' *
+          [[[ m' ::: Fm * rep xp (repeat item0 ((RALen xp) * items_per_val) ) ]]]
+    CRASH LOG.intact lxp F m0
+    >} init lxp xp ms.
+  Proof.
+    unfold init, rep.
+    hoare.
+
+    rewrite repeat_length; omega.
+    rewrite vsupsyn_range_synced_list by (rewrite repeat_length; auto).
+    apply arrayN_unify; f_equal.
+    apply repeat_ipack_item0.
+
+    unfold items_valid; intuition.
+    rewrite repeat_length; auto.
+    apply Forall_repeat.
+    apply item0_wellformed.
+  Qed.
+
+
   Theorem ifind_ok : forall lxp xp cond ms,
     {< F Fm m0 m items,
     PRE   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
@@ -357,6 +388,8 @@ Module LogRecArray (RA : RASig).
   Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
   Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} progseq (ifind _ _ _ _) _) => apply ifind_ok : prog.
 
 

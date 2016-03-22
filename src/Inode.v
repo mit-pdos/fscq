@@ -28,14 +28,16 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
-Module Type BPtrSig.
+Module Type BlockPtrSig.
 
   Parameter irec     : Type.               (* inode record type *)
+  Parameter iattr    : Type.               (* part of irec that BlockPtr does not touch *)
   Parameter NDirect  : addr.               (* number of direct blocks *)
 
   Parameter IRLen    : irec -> addr.       (* get length *)
   Parameter IRIndPtr : irec -> addr.       (* get indirect block pointer *)
   Parameter IRBlocks : irec -> list waddr. (* get direct block numbers *)
+  Parameter IRAttrs  : irec -> iattr.      (* get untouched attributes *)
 
   Parameter dbnsz_ok : forall ir, length (IRBlocks ir) = NDirect.
 
@@ -47,14 +49,22 @@ Module Type BPtrSig.
   Parameter upd_len_get_len : forall ir n, IRLen (upd_len ir n) = n.
   Parameter upd_len_get_ind : forall ir n, IRIndPtr (upd_len ir n) = IRIndPtr ir.
   Parameter upd_len_get_blk : forall ir n, IRBlocks (upd_len ir n) = IRBlocks ir.
+  Parameter upd_len_get_iattr : forall ir n, IRAttrs (upd_len ir n) = IRAttrs ir.
+  Parameter upd_irec_get_len :
+      forall ir len ibptr dbns, IRLen (upd_irec ir len ibptr dbns) = len.
+  Parameter upd_irec_get_ind :
+      forall ir len ibptr dbns, IRIndPtr (upd_irec ir len ibptr dbns) = ibptr.
+  Parameter upd_irec_get_blk :
+      forall ir len ibptr dbns, IRBlocks (upd_irec ir len ibptr dbns) = dbns.
+  Parameter upd_irec_get_iattr :
+      forall ir len ibptr dbns, IRAttrs (upd_irec ir len ibptr dbns) = IRAttrs ir.
 
 
-End BPtrSig.
-
+End BlockPtrSig.
 
 
 (* block pointer abstraction for individule inode *)
-Module BlockPtr (BPtr : BPtrSig).
+Module BlockPtr (BPtr : BlockPtrSig).
 
   Import BPtr.
 
@@ -86,7 +96,11 @@ Module BlockPtr (BPtr : BPtrSig).
   Notation "'NIndirect'" := IndSig.items_per_val.
   Notation "'NBlocks'"   := (NDirect + NIndirect)%nat.
 
-
+  Lemma NIndirect_is : NIndirect = 512.
+  Proof.
+    unfold IndSig.items_per_val.
+    rewrite valulen_is; compute; auto.
+  Qed.
 
 
   (************* program *)
@@ -142,7 +156,7 @@ Module BlockPtr (BPtr : BPtrSig).
         match r with
         | None => rx ^(ms, None)
         | Some ibn =>
-            ms <- IndRec.write lxp ibn IndRec.Defs.block0 ms;
+            ms <- IndRec.init lxp ibn ms;
             irx ^(ms, ibn)
         end
       } else {
@@ -150,7 +164,7 @@ Module BlockPtr (BPtr : BPtrSig).
       };
       (* write indirect block *)
       ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
-      rx ^(ms, Some (upd_len ir (S len)))
+      rx ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
     }.
 
 
@@ -163,16 +177,16 @@ Module BlockPtr (BPtr : BPtrSig).
 
 
   Definition rep bxp (ir : irec) (l : list waddr) :=
-    ( [[ length l = (IRLen ir) /\ length l < NBlocks ]] *
+    ( [[ length l = (IRLen ir) /\ length l <= NBlocks ]] *
       exists indlist, indrep bxp l (IRIndPtr ir) indlist *
       [[ l = firstn (length l) ((IRBlocks ir) ++ indlist) ]] )%pred.
 
   Definition rep_direct (ir : irec) (l : list waddr) : @pred _ addr_eq_dec valuset :=
-    ( [[ length l = (IRLen ir) /\ length l < NBlocks /\ length l <= NDirect ]] *
+    ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l <= NDirect ]] *
       [[ l = firstn (length l) (IRBlocks ir) ]] )%pred.
 
   Definition rep_indirect bxp (ir : irec) (l : list waddr) :=
-    ( [[ length l = (IRLen ir) /\ length l < NBlocks /\ length l > NDirect ]] *
+    ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l > NDirect ]] *
       exists indlist, IndRec.rep (IRIndPtr ir) indlist *
       [[ length indlist = NIndirect /\ BALLOC.bn_valid bxp (IRIndPtr ir) ]] *
       [[ l = (IRBlocks ir) ++ firstn (length l - NDirect) indlist ]] )%pred.
@@ -315,18 +329,10 @@ Module BlockPtr (BPtr : BPtrSig).
     rewrite synced_list_selN; cancel.
   Qed.
 
-
-  Definition cuttail A n (l : list A) := firstn (length l - n) l.
-
-  Lemma cuttail_length : forall A (l : list A) n,
-    length (cuttail n l) = length l - n.
-  Proof.
-    unfold cuttail; intros.
-    rewrite firstn_length.
-    rewrite Nat.min_l; omega.
-  Qed.
-
-  Hint Rewrite cuttail_length upd_len_get_len upd_len_get_ind upd_len_get_blk : core.
+  Hint Rewrite cuttail_length : core.
+  Hint Rewrite upd_len_get_len upd_len_get_ind upd_len_get_blk upd_len_get_iattr : core.
+  Hint Rewrite upd_irec_get_len upd_irec_get_ind upd_irec_get_blk upd_irec_get_iattr : core.
+  Local Hint Resolve upd_len_get_iattr upd_irec_get_iattr.
 
   Theorem shrink_ok : forall lxp bxp ir nr ms,
     {< F Fm m0 m l freelist,
@@ -335,16 +341,17 @@ Module BlockPtr (BPtr : BPtrSig).
     POST RET:^(ms, r)  exists m' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
            [[[ m' ::: (Fm * rep bxp r (cuttail nr l) * BALLOC.rep bxp freelist') ]]] *
-           [[ r = upd_len ir (length l - nr) ]]
+           [[ IRAttrs r = IRAttrs ir ]]
     CRASH  LOG.intact lxp F m0
     >} shrink lxp bxp ir nr ms.
   Proof.
     unfold shrink.
-    step; hypmatch rep as Hx.
+    prestep; norml.
+    assert (length l = (IRLen ir)); hypmatch rep as Hx.
+    unfold rep in Hx; destruct_lift Hx; omega.
+    pose proof (dbnsz_ok ir); cancel.
 
     (* needs to free indirect block *)
-    assert (length l = (IRLen ir)).
-    unfold rep in Hx; destruct_lift Hx; omega.
     prestep; norml.
     rewrite rep_piff_indirect in Hx by omega.
     unfold rep_indirect in Hx; destruct_lift Hx.
@@ -361,9 +368,6 @@ Module BlockPtr (BPtr : BPtrSig).
     f_equal; omega.
 
     (* no free indirect block *)
-    assert (length l = (IRLen ir)).
-    unfold rep in Hx; destruct_lift Hx; omega.
-    pose proof (dbnsz_ok ir).
     step.
 
     (* case 1: all in direct blocks *)
@@ -387,6 +391,78 @@ Module BlockPtr (BPtr : BPtrSig).
   Qed.
 
 
+  Theorem grow_ok : forall lxp bxp ir bn ms,
+    {< F Fm m0 m l freelist,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ length l < NBlocks ]] *
+           [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
+    POST RET:^(ms, r)
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms \/
+           exists m' freelist' ir',
+           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
+           [[ IRAttrs ir' = IRAttrs ir ]]
+    CRASH  LOG.intact lxp F m0
+    >} grow lxp bxp ir bn ms.
+  Proof.
+    unfold grow.
+    prestep; norml.
+    assert (length l = (IRLen ir)); hypmatch rep as Hx.
+    unfold rep in Hx; destruct_lift Hx; omega.
+    pose proof (dbnsz_ok ir); cancel.
+
+    (* only update direct block *)
+    prestep; norml.
+    rewrite rep_piff_direct in Hx by omega.
+    unfold rep_direct in Hx; cancel.
+    or_r; cancel.
+    rewrite rep_piff_direct by (autorewrite with lists; simpl; omega).
+    unfold rep_direct; autorewrite with core lists; simpl; cancel; try omega.
+    substl l at 1; substl (length l).
+    apply firstn_app_updN_eq; omega.
+
+    (* update indirect blocks *)
+    step.
+    step.
+
+    (* case 1 : need allocate indirect block *)
+    step; try (eapply BALLOC.bn_valid_facts; eauto).
+    (* XXX: boaring xparams_ok *)
+    eapply BALLOC.bn_valid_goodSize ; eauto.
+    admit.
+    instantiate (vsl0 := [(v0_cur, v0_old)]); simpl; auto.
+    simpl; unfold IndSig.RAStart; cancel.
+
+    step.
+    rewrite repeat_length; omega.
+    step.
+    or_r; cancel.
+    rewrite rep_piff_direct by omega.
+    rewrite rep_piff_indirect by (rewrite app_length; simpl; omega).
+    unfold rep_direct, rep_indirect; cancel;
+      repeat (autorewrite with core lists; simpl; eauto; try omega).
+    substl l at 1; substl (length l); substl (IRLen ir).
+    rewrite firstn_oob, minus_plus, Nat.sub_diag by omega.
+    erewrite firstn_S_selN, selN_updN_eq by (autorewrite with lists; omega).
+    simpl; auto.
+
+    (* case 2 : just update the indirect block *)
+    prestep; norml.
+    rewrite rep_piff_indirect in Hx by omega.
+    unfold rep_indirect in Hx; destruct_lift Hx; cancel; try omega.
+    step.
+    or_r; cancel.
+    rewrite rep_piff_indirect by (rewrite app_length; simpl; omega).
+    unfold rep_indirect; cancel;
+      repeat (autorewrite with core lists; simpl; eauto; try omega).
+    substl l at 1; substl (length l).
+    replace (IRLen ir + 1 - NDirect) with (IRLen ir - NDirect + 1) by omega.
+    rewrite <- app_assoc; f_equal.
+    rewrite firstn_app_updN_eq; auto.
+    substl (length indlist); omega.
+
+    Unshelve. all:eauto.
+  Admitted.
 
 
 End BlockPtr.
@@ -456,15 +532,76 @@ Module INODE.
   Hint Extern 0 (okToUnify (IRec.rep _ _) (IRec.rep _ _)) => constructor : okToUnify.
 
 
+  Definition iattr := Rec.data iattrtype.
+  Definition irec := IRec.Defs.item.
+  Definition bnlist := list addr.
 
+  Lemma NDirect_roundtrip : # (natToWord addrlen NDirect) = NDirect.
+  Proof.
+    erewrite wordToNat_natToWord_bound with (bound:=$ valulen).
+    reflexivity.
+    apply Nat.sub_0_le.
+    rewrite valulen_is.
+    compute; reflexivity.
+  Qed.
+
+  Module BPtrSig <: BlockPtrSig.
+
+    Definition irec     := irec.
+    Definition iattr    := iattr.
+    Definition NDirect  := NDirect.
+
+    Definition IRLen    (x : irec) := Eval compute_rec in # ( x :-> "len").
+    Definition IRIndPtr (x : irec) := Eval compute_rec in # ( x :-> "indptr").
+    Definition IRBlocks (x : irec) := Eval compute_rec in ( x :-> "blocks").
+    Definition IRAttrs  (x : irec) := Eval compute_rec in ( x :-> "attrs").
+
+    Theorem dbnsz_ok : forall ir, length (IRBlocks ir) = NDirect.
+    Proof.
+      unfold IRBlocks; intros.
+    Admitted.
+
+    Definition upd_len (x : irec) v  := Eval compute_rec in (x :=> "len" := $ v).
+
+    Definition upd_irec (x : irec) len ibptr dbns := Eval compute_rec in
+      (x :=> "len" := $ len :=> "indptr" := $ ibptr :=> "blocks" := dbns).
+
+    (* getter/setter lemmas *)
+    Fact upd_len_get_len : forall ir n, IRLen (upd_len ir n) = n.
+    Proof.
+      unfold IRLen, upd_len; intros; simpl.
+    Qed.
+
+    Fact upd_len_get_ind : forall ir n, IRIndPtr (upd_len ir n) = IRIndPtr ir.
+    Proof. intros; simpl; auto. Qed.
+
+    Fact upd_len_get_blk : forall ir n, IRBlocks (upd_len ir n) = IRBlocks ir.
+    Proof. intros; simpl; auto. Qed.
+
+    Fact upd_len_get_iattr : forall ir n, IRAttrs (upd_len ir n) = IRAttrs ir.
+    Proof. intros; simpl; auto. Qed.
+
+    Fact upd_irec_get_len :
+        forall ir len ibptr dbns, IRLen (upd_irec ir len ibptr dbns) = len.
+    Proof. intros; simpl; auto. Qed.
+
+    Fact upd_irec_get_ind :
+        forall ir len ibptr dbns, IRIndPtr (upd_irec ir len ibptr dbns) = ibptr.
+    Proof. intros; simpl; auto. Qed.
+
+    Fact upd_irec_get_blk :
+        forall ir len ibptr dbns, IRBlocks (upd_irec ir len ibptr dbns) = dbns.
+    Proof. intros; simpl; auto. Qed.
+
+    Fact upd_irec_get_iattr :
+        forall ir len ibptr dbns, IRAttrs (upd_irec ir len ibptr dbns) = IRAttrs ir.
+    Proof. intros; simpl; auto. Qed.
+
+  End BPtrSig.
 
 
 
   (************* program *)
-
-  Definition iattr := Rec.data iattrtype.
-  Definition irec := IRec.Defs.item.
-  Definition bnlist := list addr.
 
   (* convenient way for setting attributes *)
 
