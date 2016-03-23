@@ -854,8 +854,30 @@ Ltac inv_option_eq' := repeat match goal with
 
 Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
 
-Tactic Notation "hypmatch" constr(pattern) "as" ident(n) :=
-  match goal with | [ H: context [ pattern ] |- _ ] => rename H into n end.
+Tactic Notation "denote" open_constr(pattern) "as" ident(n) :=
+  match goal with | [ H: context [ pattern ] |- _ ] => idtac pattern; rename H into n end.
+
+Tactic Notation "substl" :=
+  subst; repeat match goal with
+  | [ H : ?l = ?r |- _ ] => is_var l;
+    match goal with
+     | [ |- context [ r ] ] => idtac
+     | _ => setoid_rewrite H
+    end
+  end.
+
+Tactic Notation "substl" constr(term) "at" integer_list(pos) :=
+  match goal with
+  | [ H : term = _  |- _ ] => setoid_rewrite H at pos
+  | [ H : _ = term  |- _ ] => setoid_rewrite <- H at pos
+  end.
+
+Tactic Notation "substl" constr(term) :=
+  match goal with
+  | [ H : term = _  |- _ ] => setoid_rewrite H
+  | [ H : _ = term  |- _ ] => setoid_rewrite <- H
+  end.
+
 
 Ltac cancel_with t :=
   intros;

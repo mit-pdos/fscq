@@ -1323,7 +1323,7 @@ Module PaddedLog.
     unfold rep, rep_inner, rep_contents, xparams_ok.
     unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
-    hypmatch DescSig.items_per_val as Hx.
+    denote DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
     rewrite H5, Nat.mul_comm; auto.
   Qed.
@@ -1376,7 +1376,7 @@ Module PaddedLog.
     unfold rep, rep_inner, rep_contents, xparams_ok.
     unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
-    hypmatch DescSig.items_per_val as Hx.
+    denote DescSig.items_per_val as Hx.
     rewrite map_length, Nat.sub_0_r in Hx.
     unfold ndata_log, ndesc_log; split; auto; split.
 

@@ -580,7 +580,7 @@ Module LOG.
 
     subst; pred_apply; cancel.
     eapply lt_le_trans; eauto.
-    subst; hypmatch (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
+    subst; denote (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
     pred_apply; cancel.
 
     rewrite firstn_S_selN_expand with (def := $0).
@@ -731,7 +731,7 @@ Module LOG.
 
     subst; pred_apply; cancel.
     eapply lt_le_trans; eauto.
-    subst; hypmatch (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
+    subst; denote (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
     pred_apply; cancel.
     cancel.
     apply not_true_is_false; auto.
