@@ -396,14 +396,12 @@ Module BALLOC.
   Hint Extern 1 ({{_}} progseq (freevec _ _ _ _) _) => apply freevec_ok : prog.
 
 
-  Lemma bn_valid_goodSize' : forall F l m xp a,
-    (F * rep xp l)%pred m ->
+  Lemma xparams_ok_goodSize : forall xp a,
+    Sig.xparams_ok xp ->
     a < (BmapNBlocks xp) * valulen ->
     goodSize addrlen a.
   Proof.
-    unfold rep, Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
-       Alloc.BmpSig.xparams_ok, Sig.xparams_ok; intros.
-    destruct_lift H; intuition.
+    unfold Sig.xparams_ok; intuition.
     eapply goodSize_trans.
     eapply Nat.lt_le_incl; eauto.
     eapply goodSize_trans.
@@ -420,8 +418,11 @@ Module BALLOC.
     bn_valid xp a ->
     goodSize addrlen a.
   Proof.
-    unfold bn_valid; intros; intuition.
-    eapply bn_valid_goodSize'; eauto.
+    unfold rep, bn_valid.
+    unfold Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
+       Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    eapply xparams_ok_goodSize; eauto.
   Qed.
 
   Lemma bn_valid_goodSize_pimpl : forall l xp,
@@ -440,6 +441,31 @@ Module BALLOC.
   Proof.
     unfold bn_valid; auto.
   Qed.
+
+
+  Theorem bn_valid_roundtrip' : forall xp a,
+    Sig.xparams_ok xp ->
+    bn_valid xp a ->
+    bn_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold bn_valid; intuition.
+    rewrite wordToNat_natToWord_idempotent' in H0; auto.
+    eapply xparams_ok_goodSize; eauto.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    eapply xparams_ok_goodSize; eauto.
+  Qed.
+
+  Theorem bn_valid_roundtrip : forall xp a F l m,
+    (F * rep xp l)%pred m ->
+    bn_valid xp a ->
+    bn_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold rep, Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
+       Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    apply bn_valid_roundtrip'; auto.
+  Qed.
+
 
 End BALLOC.
 

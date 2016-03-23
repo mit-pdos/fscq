@@ -227,6 +227,7 @@ Module INODE.
 
   Definition inode_match bxp ino (ir : irec) := Eval compute_rec in
     ( [[ IAttr ino = (ir :-> "attrs") ]] *
+      [[ Forall (fun a => BALLOC.bn_valid bxp (# a) ) (IBlocks ino) ]] *
       Ind.rep bxp ir (IBlocks ino) )%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
@@ -533,6 +534,7 @@ Module INODE.
     {< F Fm Fi m0 m ilist ino freelist,
     PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ length (IBlocks ino) < NBlocks ]] *
+           [[ BALLOC.bn_valid bxp bn ]] *
            [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST RET:^(ms, r)
@@ -563,6 +565,9 @@ Module INODE.
     unfold inode_match, BPtrSig.IRAttrs in *; simpl.
     cancel.
     substl (IAttr (selN ilist inum inode0)); eauto.
+    apply Forall_app; auto.
+    eapply BALLOC.bn_valid_roundtrip; eauto.
+
     Unshelve. all: eauto; exact emp.
   Qed.
 

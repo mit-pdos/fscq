@@ -81,10 +81,10 @@ Module BFILE.
 
   Definition shrink T lxp bxp ixp inum nr ms rx : prog T :=
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
-    ms <- BALLOC.freevec lxp bxp (skipn ((length l) - nr) bns) ms;
+    let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in
+    ms <- BALLOC.freevec lxp bxp l ms;
     ms <- INODE.shrink lxp bxp ixp inum nr ms;
     rx ms.
-
 
 
 End BFILE.
