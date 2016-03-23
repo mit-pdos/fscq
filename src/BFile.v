@@ -8,16 +8,23 @@ Require Import BasicProg.
 Require Import Omega.
 Require Import Log.
 Require Import Array.
-Require Import List.
+Require Import List ListUtils.
 Require Import Bool.
 Require Import Eqdep_dec.
+Require Import Setoid.
 Require Import Rec.
-Require Import Inode.
-Require Import Balloc.
+Require Import FunctionalExtensionality.
+Require Import NArith.
 Require Import WordAuto.
-Require Import GenSep.
+Require Import RecArrayUtils LogRecArray.
 Require Import GenSepN.
+Require Import Balloc.
 Require Import ListPred.
+Require Import FSLayout.
+Require Import AsyncDisk.
+Require Import Inode.
+Require Import GenSepAuto.
+
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -26,6 +33,70 @@ Set Implicit Arguments.
 inode representation. The API provides reading/writing single blocks,
 changing the size of the file, and managing file attributes (which are
 the same as the inode attributes). *)
+
+Module BFILE.
+
+
+  (* interface implementation *)
+
+  Definition getlen T lxp ixp inum ms rx : prog T :=
+    let^ (ms, n) <- INODE.getlen lxp ixp inum ms;
+    rx ^(ms, n).
+
+  Definition getattrs T lxp ixp inum ms rx : prog T :=
+    let^ (ms, n) <- INODE.getattrs lxp ixp inum ms;
+    rx ^(ms, n).
+
+  Definition setattrs T lxp ixp inum a ms rx : prog T :=
+    ms <- INODE.setattrs lxp ixp inum a ms;
+    rx ms.
+
+  Definition updattr T lxp ixp inum kv ms rx : prog T :=
+    ms <- INODE.updattr lxp ixp inum kv ms;
+    rx ms.
+
+  Definition read T lxp ixp inum off ms rx : prog T :=
+    let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
+    let^ (ms, v) <- LOG.read lxp (# bn) ms;
+    rx ^(ms, v).
+
+  Definition write T lxp ixp inum off v ms rx : prog T :=
+    let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
+    ms <- LOG.write lxp (# bn) v ms;
+    rx ms.
+
+  Definition grow T lxp bxp ixp inum ms rx : prog T :=
+    let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
+    If (lt_dec len INODE.NBlocks) {
+      let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
+      match r with
+      | None => rx ^(ms, false)
+      | Some bn =>
+           let^ (ms, succ) <- INODE.grow lxp bxp ixp inum bn ms;
+           rx ^(ms, succ)
+      end
+    } else {
+      rx ^(ms, false)
+    }.
+
+
+  Definition bfshrink T lxp bxp ixp inum mscs rx : prog T :=
+    let^ (mscs, n) <- INODE.ilen lxp ixp inum mscs;
+    let^ (mscs, b) <- INODE.iget lxp ixp inum (n ^- $1) mscs;
+    mscs <- BALLOC.free lxp bxp b mscs;
+    mscs <- INODE.ishrink lxp bxp ixp inum mscs;
+    rx mscs.
+
+
+
+End BFILE.
+
+
+
+
+
+
+
 Module BFILE.
 
   (* interface implementation *)

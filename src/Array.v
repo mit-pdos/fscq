@@ -19,12 +19,6 @@ Fixpoint arrayN {V : Type} (a : addr) (vs : list V) : @pred _ addr_eq_dec _ :=
     | v :: vs' => a |-> v * arrayN (S a) vs'
   end%pred.
 
-Fixpoint arrays {V : Type} (a : addr) (vs_list : list (list V)) : @pred _ addr_eq_dec _ :=
-  match vs_list with
-  | nil => emp
-  | vs :: l' => arrayN (a + length vs) l'
-  end.
-
 Lemma arrayN_unify : forall A (a b : list A) s,
   a = b -> arrayN s a =p=> arrayN s b.
 Proof.
