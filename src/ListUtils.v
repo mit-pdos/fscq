@@ -1734,6 +1734,18 @@ Proof.
   simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
 Qed.
 
+Lemma selN_cons_fold : forall A (a : A) l i def,
+  match i with | O => a | S n' => selN l n' def end = selN (a :: l) i def.
+Proof.
+  intros; simpl; auto.
+Qed.
+
+Lemma removeN_0_skipn : forall A n (l : list A),
+  removeN (skipn n l) 0 = skipn (S n) l.
+Proof.
+  induction n; destruct l; simpl; eauto.
+Qed.
+
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 
 Lemma cuttail_length : forall A (l : list A) n,

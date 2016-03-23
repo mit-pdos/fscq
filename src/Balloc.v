@@ -318,9 +318,83 @@ Module BALLOC.
     hoare.
   Qed.
 
+
+
   Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
+
+
+  Lemma sep_star_reorder_helper : forall a b c d : (@pred _ addr_eq_dec valuset),
+    ((a * b) * (c * d)) =p=> d * (a * b * c).
+  Proof.
+    intros; cancel.
+  Qed.
+
+
+  Definition freevec T lxp xp l ms rx : prog T :=
+    let^ (ms) <- ForN i < length l
+    Ghost [ F Fm crash m0 freeblocks ]
+    Loopvar [ ms ]
+    Continuation lrx
+    Invariant
+      exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+      [[[ m' ::: (Fm * rep xp (rev (firstn i l) ++ freeblocks)) *
+                       listpred (fun a => a |->?) (skipn i l) ]]]
+    OnCrash crash
+    Begin
+      ms <- free lxp xp (selN l i 0) ms;
+      lrx ^(ms)
+    Rof ^(ms);
+    rx ms.
+
+
+  Theorem freevec_ok : forall lxp xp l ms,
+    {< F Fm m0 m freeblocks,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ Forall (bn_valid xp) l ]] *
+           [[[ m ::: (Fm * rep xp freeblocks * listpred (fun a => a |->?) l ) ]]]
+    POST RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks)) ]]]
+    CRASH  LOG.intact lxp F m0
+    >} freevec lxp xp l ms.
+  Proof.
+    unfold freevec.
+    step.
+
+    prestep; norml.
+    denote listpred as Hx.
+
+    destruct l.
+    denote (m1 < _) as Hy; simpl in Hy; inversion Hy.
+    rewrite listpred_isolate with (i := 0) in Hx by (rewrite skipn_length; omega).
+    rewrite skipn_selN, Nat.add_0_r in Hx.
+
+    (*** extract the exis from |->? *)
+    apply sep_star_reorder_helper in Hx.
+    apply pimpl_exists_r_star_r in Hx; destruct Hx as [ [? ?] ?].
+    cancel; eauto.
+    rewrite selN_cons_fold; apply Forall_selN; auto.
+
+    step.
+    rewrite removeN_0_skipn; cancel.
+    rewrite selN_cons_fold.
+    replace ([n]) with (rev [n]) by auto.
+    rewrite <- rev_app_distr.
+    rewrite app_comm_cons, <- rev_unit.
+    rewrite <- firstn_S_selN by auto.
+    cancel.
+
+    step.
+    rewrite firstn_oob by auto.
+    rewrite skipn_oob by auto.
+    cancel.
+    Unshelve. all: eauto; exact tt.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (freevec _ _ _ _) _) => apply freevec_ok : prog.
+
 
   Lemma bn_valid_goodSize' : forall F l m xp a,
     (F * rep xp l)%pred m ->

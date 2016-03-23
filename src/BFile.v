@@ -79,13 +79,11 @@ Module BFILE.
       rx ^(ms, false)
     }.
 
-
-  Definition bfshrink T lxp bxp ixp inum mscs rx : prog T :=
-    let^ (mscs, n) <- INODE.ilen lxp ixp inum mscs;
-    let^ (mscs, b) <- INODE.iget lxp ixp inum (n ^- $1) mscs;
-    mscs <- BALLOC.free lxp bxp b mscs;
-    mscs <- INODE.ishrink lxp bxp ixp inum mscs;
-    rx mscs.
+  Definition shrink T lxp bxp ixp inum nr ms rx : prog T :=
+    let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
+    ms <- BALLOC.freevec lxp bxp (skipn ((length l) - nr) bns) ms;
+    ms <- INODE.shrink lxp bxp ixp inum nr ms;
+    rx ms.
 
 
 
