@@ -132,6 +132,7 @@ Definition crep previous_length vl vl' hm :
   (exists header header',
     [[ log_rep_inner header' (length vl) vl' hm ]] *
     [[ log_rep_inner header previous_length vl hm ]] *
+    [[ list_prefix vl vl' ]] *
     Header |-> (header_to_valu header', header_to_valu header :: nil) *
     array DataStart (synced vl) $1)%pred.
 
@@ -142,11 +143,24 @@ Definition crep previous_length vl vl' hm :
     of vl' may not match
   TODO: generalize vl ++ [v] to any vl'
 **)
-Lemma crep_crash_xform : forall previous_length vl v hm,
-  crash_xform (crep previous_length vl (vl ++ [v]) hm
-    * (DataStart ^+ $(length vl)) |->?)
-    =p=> (exists v, log_rep previous_length vl hm * (DataStart ^+ $(length vl)) |-> (v, nil)) \/
-        (exists vl', log_rep_crash_xform previous_length vl vl' hm).
+Lemma crep_crash_xform : forall previous_length vl vl' hm F,
+  crash_xform (exists unsynced_data,
+    crep previous_length vl vl' hm
+    * [[ length vl + length unsynced_data = length vl' ]]
+    * array (DataStart ^+ $(length vl)) unsynced_data $1
+    * F)
+    =p=> exists unsynced_data,
+          log_rep previous_length vl hm
+          * [[ length vl + length unsynced_data = length vl' ]]
+          * array (DataStart ^+ $(length vl)) (synced unsynced_data) $1
+          * crash_xform F \/
+          log_rep_crash_xform (length vl) vl' unsynced_data hm
+          * [[ list_prefix vl vl' ]]
+          * crash_xform F.
+Proof.
+Admitted.
+
+Hint Rewrite crep_crash_xform : crash_xform.
 
 (** log_rep after a crash: Same as normal log_rep, except we don't
     know if the list that matches the hash we have matches the list
@@ -293,38 +307,69 @@ Ltac solve_bound :=
 Ltac solve_bound' H :=
   erewrite wordToNat_natToWord_bound with (bound:=maxlen) in H; try omega.
 
-Theorem recover_ok :  forall cs,
-  {< d F prev_len values dvalues,
+Lemma skipn_combine_comm' : forall A B n (a : list A) (b : list B),
+  skipn n (combine a b) = combine (skipn n a) (skipn n b).
+Proof.
+  induction n; auto.
+  intros.
+  apply skipn_combine_comm.
+Qed.
+
+Theorem recover_ok' :  forall cs,
+  {< F prev_len values values',
   PRE:hm
+    exists d,
     BUFCACHE.rep cs d
-    * [[ (log_rep_crash_xform prev_len values dvalues hm
-        * F)%pred d ]]
+    * [[ (exists unsynced_data,
+          log_rep prev_len values hm
+          * [[ length values + length unsynced_data = length values' ]]
+          * array (DataStart ^+ $(length values)) (synced unsynced_data) $1
+          * F \/
+          log_rep_crash_xform (length values) values' unsynced_data hm
+          * [[ list_prefix values values' ]]
+          * F)%pred d ]]
   POST:hm' RET:^(cs', ok)
     exists d',
       BUFCACHE.rep cs' d'
-      * [[ (exists n,
-          log_rep prev_len (firstn n values) hm'
-          * array (DataStart ^+ $ (n)) (skipn n (synced dvalues)) $1
+      * [[ (exists prev_len dvalues,
+          log_rep prev_len values hm'
+          * [[ length values + length dvalues = length values' ]]
+          * array (DataStart ^+ $ (length values)) (synced dvalues) $1
+          * F \/
+          exists prev_len,
+          log_rep prev_len values' hm'
           * F)%pred d' ]]
   CRASH:hm'
     exists cs' d',
       BUFCACHE.rep cs' d'
   >} recover cs.
 Proof.
-  unfold recover, log_rep_crash_xform, log_rep_inner.
-  step.
-  pred_apply; cancel.
-  step.
-  pred_apply. instantiate (2:=l0). cancel.
+  unfold recover, log_rep, log_rep_crash_xform, log_rep_inner.
+  intros.
+  eapply pimpl_ok2; eauto with prog.
+  intros. norm'l. unfold stars; cbn.
+  inversion H3 as [ H' | H' ];
+    destruct_lift H';
+    repeat deex.
+
+  cancel.
+  cancel_with eauto.
+  pred_apply; cancel_with eauto.
+  eapply pimpl_ok2; try eauto with prog.
+  cancel.
+  cancel_with eauto.
+  pred_apply.
+  match goal with
+  | [|- context[array DataStart (combine ?l _)] ] => instantiate (1:=l)
+  end.
+  cancel.
+  rewrite of_to_header; cbn.
   unhide_rec.
-  rewrite of_to_header.
-  cbn.
   solve_bound.
 
+  rewrite of_to_header; cbn.
   step.
   unhide_rec.
-  rewrite of_to_header.
-  cbn.
   rewrite firstn_length.
   rewrite min_l.
   eapply goodSize_bound.
@@ -332,56 +377,87 @@ Proof.
   solve_bound.
 
   step.
-  step.
-  unfold log_rep, log_rep_inner.
-  rewrite of_to_header in *.
-  unhide_rec. cbn in *.
-  instantiate (1:=length l).
+  step_idtac.
+  left.
+  pred_apply; cancel.
+  repeat eexists; eauto.
+  solve_hash_list_rep.
 
-  assert (l = l0).
+  (* log_rep, else *)
+  eapply pimpl_ok2; eauto with prog.
+  intros.
+  unfold pimpl; intros.
+  unhide_rec.
+  match goal with
+  | [ H: context[firstn # ($ _ )] |- _ ]
+    => solve_bound' H; rewrite firstn_oob in H; auto
+  end.
+  match goal with
+  | [ H: hash_list_rep _ _ _ |- _ ]
+    => eapply hash_list_injective2 in H; try solve_hash_list_rep; rewrite H in *
+  end.
+  match goal with
+  | [ H: context[_ -> False] |- _ ] => destruct_lift H; intuition
+  end.
+
+  (* log_rep crash *)
+  cancel.
+  cancel.
+
+  (* log_rep_crash_xform *)
+  cancel.
+  cancel_with eauto.
+  pred_apply; cancel_with eauto.
+
+  unfold log_rep_crash_xform, log_rep_inner in *.
+  eapply pimpl_ok2; try eauto with prog.
+  cancel.
+  cancel_with eauto.
+  pred_apply.
+  match goal with
+  | [|- context[array DataStart (combine ?l _)] ] => instantiate (1:=l)
+  end.
+  cancel.
+  rewrite of_to_header; cbn.
+  unhide_rec.
+  solve_bound.
+
+  rewrite of_to_header; cbn.
+  step.
+  unhide_rec.
+  rewrite firstn_length.
+  rewrite min_l.
+  eapply goodSize_bound.
+  repeat solve_bound; eauto.
+  solve_bound.
+
+  step.
+  step_idtac.
+  right.
+  pred_apply; cancel.
+
+  unhide_rec.
+  assert (Heq: l = l1).
     apply rev_injective.
     eapply hash_list_injective; solve_hash_list_rep.
-    solve_hash_list_rep.
     match goal with
     | [ H: context[firstn _ _] |- _ ]
         => try solve_bound' H; rewrite firstn_oob in H; try omega
     end.
     solve_hash_list_rep.
-
-  subst.
   cancel.
-  erewrite <- firstn_skipn with (l:=(combine l0 (repeat [] (length l0)))) at 1.
-  rewrite <- array_app.
-  unfold synced; rewrite firstn_combine_comm.
-  rewrite firstn_length, min_l; try omega.
-  rewrite firstn_repeat; auto.
-  cancel.
-  rewrite firstn_length, combine_length, min_l; try omega; auto.
-  rewrite repeat_length, min_l; try omega.
 
-  repeat eexists.
-  erewrite wordToNat_natToWord_bound with (bound:=maxlen) in H18; try omega.
+  repeat eexists; eauto.
   solve_hash_list_rep.
-  rewrite firstn_length, min_l; omega.
-  rewrite firstn_length, min_l; omega.
 
-  Transparent hide_rec.
-  unfold hide_rec.
-  rewrite firstn_length, min_l; try omega.
-  reflexivity.
-
-  Opaque hide_rec.
   step.
-  rewrite of_to_header.
   unhide_rec.
-  cbn in *.
   repeat rewrite firstn_length;
   repeat rewrite min_l; repeat solve_bound.
   eapply goodSize_bound.
   solve_bound; eauto.
 
-  rewrite of_to_header in *.
-  cbn in *.
+  unhide_rec.
   step_idtac.
   cancel_with eauto.
   pred_apply; cancel.
@@ -389,48 +465,133 @@ Proof.
   step_idtac.
   eauto.
   pred_apply; cancel.
-  step.
+  step_idtac.
+  left.
   unfold log_rep, log_rep_inner.
   unhide_rec. cbn in *.
-  instantiate (1:=n).
-  cancel.
-  match goal with
-  | [ H: firstn _ _ = firstn _ _ |- _ ] => rewrite <- H
-  end.
+  pred_apply; cancel.
 
-  erewrite <- firstn_skipn with (l:=(combine l0 (repeat [] (length l0)))) at 1.
+  erewrite <- firstn_skipn at 1.
   rewrite <- array_app.
-  unfold synced; rewrite firstn_combine_comm.
-  rewrite firstn_length, min_l; try omega.
-  instantiate (1:=n).
-  rewrite firstn_repeat; auto.
+  unfold synced; rewrite firstn_combine_comm, skipn_combine_comm'.
+  rewrite skipn_length, skipn_repeat; try omega.
+  rewrite firstn_repeat; try omega.
+  instantiate (2:=l).
+  instantiate (1:=length l0).
+  instantiate (1:=length l0).
+  instantiate (1:=DataStart ^+ $(length l0)).
   cancel.
+
+  replace (firstn (length l0) l) with l0;
+    try solve [ match goal with
+    | [ H: firstn _ _ = firstn _ _ |- _ ] => rewrite H
+    end;
+    match goal with
+    | [ H: list_prefix _ _ |- _ ] => unfold list_prefix in H; rewrite H
+    end;
+    auto ].
+  auto.
+
+  omega.
+  omega.
   omega.
   rewrite firstn_length, combine_length, min_l; try omega; auto.
   rewrite repeat_length, min_l; try omega.
 
+  replace l0 with (firstn (length l0) l);
+    try solve [ match goal with
+    | [ H: firstn _ _ = firstn _ _ |- _ ] => rewrite H
+    end;
+    match goal with
+    | [ H: list_prefix _ _ |- _ ] => unfold list_prefix in H; rewrite H
+    end;
+    auto ].
   repeat eexists.
-  Search hash_list_rep.
-  Search firstn.
-  rewrite firstn_firstn in H21.
-  Search (# ($ (_))).
-  repeat solve_bound' H21.
-  rewrite min_l in H21; try omega.
-  Search hash_list_rep.
   match goal with
-  | [ H: firstn _ _ = firstn _ _ |- _ ] => rewrite <- H
+  | [ H: context[firstn _ (firstn _ _)] |- _ ]
+    => rewrite firstn_firstn in H;
+        repeat solve_bound' H;
+        rewrite min_l in H; try omega
   end.
   solve_hash_list_rep.
   rewrite firstn_length, min_l; try omega.
-  rewrite firstn_length, min_l; try omega.
+  instantiate (1:=length l0). eauto.
 
   Transparent hide_rec.
   unfold hide_rec.
   rewrite firstn_length, min_l; try omega.
   reflexivity.
+  Opaque hide_rec.
 
-  all: cancel_with eauto.
+  rewrite skipn_length; try omega.
+
+  all: cancel.
+
+  Grab Existential Variables.
+  all: eauto.
 Qed.
+
+Theorem recover_ok :  forall cs,
+  {< F prev_len values values',
+  PRE:hm
+    exists d,
+    BUFCACHE.rep cs d
+    * [[ crash_xform (exists dvalues,
+          crep prev_len values values' hm
+          * [[ length values + length dvalues = length values' ]]
+          * array (DataStart ^+ $ (length values)) dvalues $1
+          * F)%pred d ]]
+  POST:hm' RET:^(cs', ok)
+    exists d',
+      BUFCACHE.rep cs' d'
+      * [[ (exists prev_len dvalues,
+          log_rep prev_len values hm'
+          * [[ length values + length dvalues = length values' ]]
+          * array (DataStart ^+ $ (length values)) (synced dvalues) $1
+          * crash_xform F \/
+          exists prev_len,
+          log_rep prev_len values' hm'
+          * crash_xform F)%pred d' ]]
+  CRASH:hm'
+    exists cs' d',
+      BUFCACHE.rep cs' d'
+      * [[ (exists unsynced_data,
+            log_rep prev_len values hm
+            * [[ length values + length unsynced_data = length values' ]]
+            * array (DataStart ^+ $(length values)) (synced unsynced_data) $1
+            * F \/
+            log_rep_crash_xform (length values) values' unsynced_data hm
+            * [[ list_prefix values values' ]]
+            * F \/
+            crep (length values) values values' hm'
+            * array (DataStart ^+ $ (length values)) (synced unsynced_data) $1
+            * F)%pred d' ]]
+  >} recover cs.
+Proof.
+  intros.
+  eapply pimpl_ok2; try apply recover_ok'.
+  intros. norm'l. unfold stars; cbn.
+
+  apply crep_crash_xform in H4.
+  cancel.
+  cancel_with eauto.
+  pred_apply.
+  cancel.
+  apply pimpl_or_r; left.
+  cancel_with eauto.
+  apply pimpl_or_r; right.
+  cancel_with eauto.
+
+  step_idtac.
+  apply pimpl_or_r; left.
+  cancel.
+  cancel_with eauto.
+  omega.
+
+  Grab Existential Variables.
+  all: eauto.
+Qed.
+
 
 Theorem append_ok : forall v cs,
   {< d previous_length vl F v_old,
