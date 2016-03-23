@@ -87,6 +87,329 @@ Module BFILE.
     rx ms.
 
 
+  (* rep invariants *)
+
+  Definition attr := INODE.iattr.
+  Definition attr0 := INODE.iattr0.
+
+  Definition datatype := valuset.
+
+  Record bfile := mk_bfile {
+    BFData : list datatype;
+    BFAttr : attr
+  }.
+
+  Definition bfile0 := mk_bfile nil attr0.
+
+  Definition file_match f i : @pred _ addr_eq_dec datatype :=
+    (listmatch (fun v a => a |-> v ) (BFData f) (map (@wordToNat _) (INODE.IBlocks i)) *
+     [[ BFAttr f = INODE.IAttr i ]])%pred.
+
+  Definition rep bxp ixp (flist : list bfile) :=
+    (exists freeblocks ilist,
+     BALLOC.rep bxp freeblocks * INODE.rep bxp ixp ilist *
+     listmatch file_match flist ilist
+    )%pred.
+
+
+  (**** automation **)
+
+  Fact resolve_selN_bfile0 : forall l i d,
+    d = bfile0 -> selN l i d = selN l i bfile0.
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Fact resolve_selN_vs0 : forall l i (d : valuset),
+    d = ($0, nil) -> selN l i d = selN l i ($0, nil).
+  Proof.
+    intros; subst; auto.
+  Qed.
+
+  Hint Rewrite resolve_selN_bfile0 using reflexivity : defaults.
+  Hint Rewrite resolve_selN_vs0 using reflexivity : defaults.
+
+  (*** specification *)
+
+  Theorem getlen_ok : forall lxp bxp ixp inum ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = length (BFData f) ]]
+    CRASH  LOG.intact lxp F m0
+    >} getlen lxp ixp inum ms.
+  Proof.
+    unfold getlen, rep.
+    hoare.
+
+    sepauto.
+    extract; seprewrite; subst.
+    setoid_rewrite listmatch_length_pimpl in H at 2.
+    destruct_lift H; eauto.
+  Qed.
+
+
+  Theorem getattrs_ok : forall lxp bxp ixp inum ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = BFAttr f ]]
+    CRASH  LOG.intact lxp F m0
+    >} getattrs lxp ixp inum ms.
+  Proof.
+    unfold getattrs, rep.
+    hoare.
+
+    sepauto.
+    extract; seprewrite.
+    subst; eauto.
+  Qed.
+
+
+  Theorem setattrs_ok : forall lxp bxp ixp inum a ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[ f' = mk_bfile (BFData f) a ]]
+    CRASH  LOG.intact lxp F m0
+    >} setattrs lxp ixp inum a ms.
+  Proof.
+    unfold setattrs, rep.
+    hoare.
+
+    sepauto.
+    repeat extract. seprewrite.
+    2: sepauto.
+    eapply listmatch_updN_selN; try omega.
+    unfold file_match; cancel.
+    Unshelve. exact INODE.inode0.
+  Qed.
+
+
+  Theorem updattr_ok : forall lxp bxp ixp inum kv ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[ f' = mk_bfile (BFData f) (INODE.iattr_upd (BFAttr f) kv) ]]
+    CRASH  LOG.intact lxp F m0
+    >} updattr lxp ixp inum kv ms.
+  Proof.
+    unfold updattr, rep.
+    hoare.
+
+    sepauto.
+    repeat extract. seprewrite.
+    2: sepauto.
+    eapply listmatch_updN_selN; try omega.
+    unfold file_match; cancel.
+    Unshelve. exact INODE.inode0.
+  Qed.
+
+
+  Theorem read_ok : forall lxp bxp ixp inum off ms,
+    {< F Fm Fi Fd m0 m flist f vs,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ off < length (BFData f) ]] *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
+    POST RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ r = fst vs ]]
+    CRASH  LOG.intact lxp F m0
+    >} read lxp ixp inum off ms.
+  Proof.
+    unfold read, rep.
+    prestep; norml.
+    extract; seprewrite; subst.
+    setoid_rewrite listmatch_length_pimpl in H at 2.
+    rewrite map_length in *.
+    destruct_lift H; cancel; eauto.
+
+    sepauto.
+    setoid_rewrite listmatch_extract with (i := off) in H at 2; try omega.
+    destruct_lift H; filldef.
+    step.
+    erewrite selN_map by omega; filldef.
+    setoid_rewrite surjective_pairing at 2; cancel.
+    step.
+    Unshelve. eauto.
+  Qed.
+
+
+  Theorem write_ok : forall lxp bxp ixp inum off v ms,
+    {< F Fm Fi Fd m0 m flist f vs0,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ off < length (BFData f) ]] *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: (Fd * off |-> vs0) ]]]
+    POST RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ (BFData f') ::: (Fd * off |-> (v, nil)) ]]] *
+           [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) ]]
+    CRASH  LOG.intact lxp F m0
+    >} write lxp ixp inum off v ms.
+  Proof.
+    unfold write, rep.
+    prestep; norml.
+    extract; seprewrite; subst.
+    setoid_rewrite listmatch_length_pimpl in H at 2.
+    rewrite map_length in *.
+    destruct_lift H; cancel; eauto.
+
+    sepauto.
+    setoid_rewrite listmatch_extract with (i := off) in H at 2; try omega.
+    destruct_lift H; filldef.
+    step.
+
+    setoid_rewrite INODE.inode_rep_bn_nonzero_pimpl in H.
+    destruct_lift H; denote (_ <> 0) as Hx; subst.
+    eapply Hx; eauto; omega.
+    erewrite selN_map by omega; filldef.
+    setoid_rewrite surjective_pairing at 2; cancel.
+
+    step; [ | sepauto .. ].
+    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
+    rewrite listmatch_updN_removeN by omega.
+    unfold file_match at 3; cancel; eauto.
+    setoid_rewrite <- updN_selN_eq with (ix := off) at 15.
+    rewrite listmatch_updN_removeN by omega.
+    erewrite selN_map by omega; filldef.
+    cancel.
+
+    Unshelve. all: eauto.
+    Grab Existential Variables. eauto.
+  Qed.
+
+
+  Theorem grow_ok : forall lxp bxp ixp inum ms,
+    {< F Fm Fi Fd m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: Fd ]]]
+    POST RET:^(ms, r) exists m',
+           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms  \/
+           [[ r = true  ]] * exists flist' f' vs,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> vs) ]]] *
+           [[ f' = mk_bfile ((BFData f) ++ [vs]) (BFAttr f) ]]
+    CRASH  LOG.intact lxp F m0
+    >} grow lxp bxp ixp inum ms.
+  Proof.
+    unfold grow, rep.
+    prestep; norml.
+    extract; seprewrite; subst.
+    denote removeN as Hx.
+    setoid_rewrite listmatch_length_pimpl in Hx at 2.
+    rewrite map_length in *.
+    destruct_lift Hx; cancel; eauto.
+
+    sepauto.
+    step.
+
+    (* file size ok, do allocation *)
+    step.
+    step.
+    sepauto.
+
+    step.
+    or_r; cancel.
+    instantiate (vs := (v0_cur, v0_old)); seprewrite.
+    2: sepauto.
+    rewrite listmatch_updN_removeN by simplen.
+    unfold file_match; cancel.
+    rewrite map_app; simpl.
+    rewrite <- listmatch_app_r.
+    cancel.
+    rewrite map_length; omega.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    eapply BALLOC.bn_valid_goodSize; eauto.
+    apply list2nmem_app; eauto.
+
+    step.
+    Unshelve. all: easy.
+  Qed.
+
+  Local Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
+
+  Theorem shrink_ok : forall lxp bxp ixp inum nr ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[ f' = mk_bfile (firstn ((length (BFData f)) - nr) (BFData f)) (BFAttr f) ]]
+    CRASH  LOG.intact lxp F m0
+    >} shrink lxp bxp ixp inum nr ms.
+  Proof.
+    unfold shrink, rep.
+    step.
+    sepauto.
+    extract; seprewrite; subst; denote removeN as Hx.
+    setoid_rewrite listmatch_length_pimpl in Hx at 2.
+    rewrite map_length in *.
+
+    step.
+    rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
+    denote Forall as Hv; specialize (Hv inum); subst.
+    apply Forall_map; apply forall_skipn; apply Hv; eauto.
+    erewrite <- listmatch_ptsto_listpred.
+    setoid_rewrite listmatch_split at 2.
+    rewrite skipn_map_comm; cancel.
+    destruct_lift Hx; denote (length (BFData _)) as Heq.
+
+    step.
+    sepauto.
+    setoid_rewrite listmatch_length_pimpl in H at 2.
+    prestep; norm; [ cancel | intuition ]; [ | sepauto ].
+    pred_apply; cancel.
+    seprewrite.
+    rewrite listmatch_updN_removeN by omega.
+    rewrite firstn_map_comm, Heq.
+    unfold file_match, cuttail; cancel; eauto.
+
+    Unshelve. easy. exact bfile0.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (getlen _ _ _ _) _) => apply getlen_ok : prog.
+  Hint Extern 1 ({{_}} progseq (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (updattr _ _ _ _ _) _) => apply updattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read _ _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _) _) => apply grow_ok : prog.
+  Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
+
+  Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
+
+
+
 End BFILE.
 
 

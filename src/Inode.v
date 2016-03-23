@@ -571,14 +571,43 @@ Module INODE.
     Unshelve. all: eauto; exact emp.
   Qed.
 
+
   Hint Extern 1 ({{_}} progseq (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_}} progseq (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
   Hint Extern 1 ({{_}} progseq (updattr _ _ _ _ _) _) => apply updattr_ok : prog.
+  Hint Extern 1 ({{_}} progseq (getbnum _ _ _ _ _) _) => apply getbnum_ok : prog.
+  Hint Extern 1 ({{_}} progseq (getallbnum _ _ _ _) _) => apply getallbnum_ok : prog.
   Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
+
+
+  Lemma inode_rep_bn_valid_piff : forall bxp xp l,
+    rep bxp xp l <=p=> rep bxp xp l *
+      [[ forall inum, inum < length l ->
+         Forall (fun a => BALLOC.bn_valid bxp (# a) ) (IBlocks (selN l inum inode0)) ]].
+  Proof.
+    intros; split;
+    unfold pimpl; intros; pred_apply;
+    unfold rep in H; destruct_lift H; cancel.
+    extract at inum; auto.
+  Qed.
+
+  Lemma inode_rep_bn_nonzero_pimpl : forall bxp xp l,
+    rep bxp xp l =p=> rep bxp xp l *
+      [[ forall inum off, inum < length l ->
+         off < length (IBlocks (selN l inum inode0)) ->
+         # (selN (IBlocks (selN l inum inode0)) off $0) <> 0 ]].
+  Proof.
+    intros.
+    setoid_rewrite inode_rep_bn_valid_piff at 1; cancel.
+    specialize (H1 _ H).
+    rewrite Forall_forall in H1.
+    eapply H1; eauto.
+    apply in_selN; eauto.
+  Qed.
 
 
 End INODE.

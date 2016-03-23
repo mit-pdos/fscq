@@ -127,6 +127,15 @@ Section LISTPRED.
     cancel.
   Qed.
 
+  Theorem listpred_split : forall l n,
+    listpred l <=p=> listpred (firstn n l) * listpred (skipn n l).
+  Proof.
+    intros.
+    setoid_rewrite <- firstn_skipn with (n := n) at 1.
+    rewrite listpred_app.
+    split; cancel.
+  Qed.
+
   Theorem listpred_isolate_fwd : forall l i def,
     i < length l ->
     listpred l =p=> listpred (removeN l i) * prd (selN l i def).
@@ -358,7 +367,7 @@ Section LISTMATCH.
   Qed.
 
 
-  Theorem listmatch_app_r: forall F a b av bv,
+  Theorem listmatch_app_tail: forall F a b av bv,
     length a = length b ->
     F =p=> prd av bv ->
     (listmatch a b) * F =p=> listmatch (a ++ av :: nil) (b ++ bv :: nil).
@@ -375,5 +384,44 @@ Section LISTMATCH.
     cancel; auto.
   Qed.
 
+  Theorem listmatch_app : forall a1 b1 a2 b2,
+    listmatch a1 b1 * listmatch a2 b2 =p=> listmatch (a1 ++ a2) (b1 ++ b2).
+  Proof.
+    unfold listmatch; intros; cancel.
+    repeat rewrite combine_app by auto.
+    rewrite listpred_app; cancel.
+    repeat rewrite app_length; omega.
+  Qed.
+
+  Theorem listmatch_split : forall a b n,
+    listmatch a b <=p=> listmatch (firstn n a) (firstn n b) * listmatch (skipn n a) (skipn n b).
+  Proof.
+    unfold listmatch; intros.
+    rewrite listpred_split with (n := n).
+    rewrite firstn_combine_comm.
+    split; cancel.
+    rewrite skipn_combine; eauto; cancel.
+    repeat rewrite firstn_length; auto.
+    repeat rewrite skipn_length; auto.
+    rewrite skipn_combine; auto.
+    eapply skipn_firstn_length_eq; eauto.
+    eapply skipn_firstn_length_eq; eauto.
+  Qed.
+
 End LISTMATCH.
+
+
+Lemma listmatch_ptsto_listpred : forall AT AEQ V (al : list AT) (vl : list V),
+  listmatch (fun v a => a |-> v) vl al =p=>
+  (@listpred _ _ AEQ _) (fun a => a |->?) al.
+Proof.
+  unfold listmatch; induction al; destruct vl.
+  cancel. cancel.
+  norml; inversion H0.
+  cancel; inversion H0.
+  unfold pimpl in *; intros.
+  eapply IHal; eauto.
+  pred_apply; cancel.
+Qed.
+
 

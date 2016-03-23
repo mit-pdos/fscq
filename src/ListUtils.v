@@ -1746,6 +1746,40 @@ Proof.
   induction n; destruct l; simpl; eauto.
 Qed.
 
+
+Lemma skipn_firstn_length_eq : forall A B (a : list A) (b : list B) n,
+  length (firstn n a) = length (firstn n b) ->
+  length (skipn n a) = length (skipn n b) ->
+  length a = length b.
+Proof.
+  intros.
+  repeat rewrite firstn_length in H.
+  repeat rewrite skipn_length in H0.
+  destruct (le_dec n (length a)); destruct (le_dec n (length b)).
+  omega.
+  rewrite Nat.min_l in H by auto.
+  rewrite Nat.min_r in H by omega; subst.
+  omega.
+  rewrite Nat.min_r in H by omega.
+  rewrite Nat.min_l in H by omega; subst.
+  omega.
+  rewrite Nat.min_r in H by omega.
+  rewrite Nat.min_r in H by omega; subst.
+  omega.
+Qed.
+
+
+Lemma Forall_map : forall A B (l : list A) P (f : A -> B),
+  Forall (fun x => P (f x)) l ->
+  Forall P (map f l).
+Proof.
+  induction l; simpl; intros.
+  rewrite Forall_forall in *; firstorder.
+  inversion H; subst.
+  apply Forall_cons; auto.
+Qed.
+
+
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 
 Lemma cuttail_length : forall A (l : list A) n,
