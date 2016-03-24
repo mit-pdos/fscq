@@ -88,16 +88,38 @@ Notation " [( x ; .. ; y )] " := (HCons x .. (HCons y HNil) ..) : hlist_scope.
 
 End HlistNotations.
 
+Local Ltac hlist_nth_member n :=
+  match n with
+  | O => uconstr:HFirst
+  | S ?n' =>
+    let rest := hlist_nth_member n' in
+    uconstr:(HNext rest)
+  end.
+
+(* hget n l converts n to the nth member of l by creating an untyped
+term and refining it in the context of l. The intended use case is as
+a term ltac:(hget 2 l), for example.
+
+The tactic will fail if n is
+too large; the error message will complain that the type of l is not
+hlist _ (a_1 :: ... :: a_k :: ... :: ?elm :: ?types), where a_1 ::
+... :: a_k are the actual indices of l; this is due to the refinement
+being unable to write the type indexing list as n elements. *)
+Tactic Notation "hget" constr(n) constr(l) :=
+  let m := hlist_nth_member n in
+  let v := uconstr:(get m l) in
+  refine v.
+
 Module Examples.
   Import HlistNotations.
 
   Local Example types := [nat; bool; nat].
   Local Example someValues : hlist (@id Set) types := [( 5; true; 3 )].
 
-  Example get_0 : get HFirst someValues = 5.
+  Example get_0 : ltac:(hget 0 someValues)  = 5.
   Proof. reflexivity. Qed.
 
-  Example get_1 : get (HNext HFirst) someValues = true.
+  Example get_1 : ltac:(hget 1 someValues) = true.
   Proof. reflexivity. Qed.
 
   Example get_2 : set (HNext HFirst) false someValues = [( 5; false; 3 )].
