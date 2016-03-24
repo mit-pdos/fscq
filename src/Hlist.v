@@ -110,20 +110,60 @@ Tactic Notation "hget" constr(n) constr(l) :=
   let v := uconstr:(get m l) in
   refine v.
 
+Section hget_nth.
+
+  Hint Constructors member.
+  Hint Resolve tt.
+
+  Definition hmember A :
+    forall n (types: list A),
+      match nth_error types n with
+      | Some a => member a types
+      | None => unit
+      end.
+  Proof.
+    induction n; intros;
+    destruct types; cbn in *; auto.
+    specialize (IHn types).
+    destruct (nth_error types n); auto.
+  Defined.
+
+  (** Gallina definition of hget n l tactic, returning a unit if the n
+  is out-of-bounds. *)
+  Definition hget_n A B (types: list A) (n:nat) (l: hlist B types) :
+    match nth_error types n with
+    | Some a => B a
+    | None => unit
+    end.
+  Proof.
+    case_eq (nth_error types n); intros; auto.
+    pose (hmember n types) as m.
+    rewrite H in m.
+    apply (get m l).
+  Defined.
+
+End hget_nth.
+
 Module Examples.
   Import HlistNotations.
 
   Local Example types := [nat; bool; nat].
   Local Example someValues : hlist (@id Set) types := [( 5; true; 3 )].
 
-  Example get_0 : ltac:(hget 0 someValues)  = 5.
-  Proof. reflexivity. Qed.
+  Example get_0 : ltac:(hget 0 someValues) = 5
+    := eq_refl.
 
-  Example get_1 : ltac:(hget 1 someValues) = true.
-  Proof. reflexivity. Qed.
+  Example get_0' : hget_n 0 someValues = 5
+    := eq_refl.
 
-  Example get_2 : set (HNext HFirst) false someValues = [( 5; false; 3 )].
-  Proof. reflexivity. Qed.
+  Example get_1 : ltac:(hget 1 someValues) = true
+    := eq_refl.
+
+  Example get_1' : hget_n 1 someValues = true
+    := eq_refl.
+
+  Example get_2 : set (HNext HFirst) false someValues = [( 5; false; 3 )]
+                                                          := eq_refl.
 
 End Examples.
 
