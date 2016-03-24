@@ -22,7 +22,7 @@ Import Locks.
 Module Type CacheVars (Sem:Semantics).
   Import Sem.
   Parameter memVars : variables Mcontents [BlockCache; Locks.M].
-  Parameter stateVars : variables Scontents [linearized DISK; DISK; BlockCache; Locks.S].
+  Parameter stateVars : variables Scontents [linearized DISK; DISK; linearized BlockFun; Locks.S].
 
   Axiom no_confusion_memVars : NoDup (hmap var_index memVars).
   Axiom no_confusion_stateVars : NoDup (hmap var_index stateVars).
@@ -49,13 +49,7 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
       let locks := get GLocks s in
       let locks' := get GLocks s' in
       same_domain vd vd' /\
-      (forall a, lock_transition tid (Locks.get locks a) (Locks.get locks' a) /\
-            lock_protects' tid (Locks.get locks a) (cache_get c a) (cache_get c' a)).
-
-  Definition reader_lock_inv (vd: DISK) (ls: Locks.S) : Prop :=
-    forall a tid vs,
-      vd a = Some (vs, Some tid) ->
-      Locks.get ls a = Owned tid.
+      (forall a, lock_transition tid (Locks.get locks a) (Locks.get locks' a)).
 
   Definition cacheI : Invariant Mcontents Scontents :=
     fun m s d =>
@@ -63,13 +57,13 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
       let locks := get GLocks s in
       let mc := get Cache m in
       let vc := get GCache s in
-      let lin_vd := get GDisk s in
-      let vd := get GDisk0 s in
-      mc = vc /\
+      let vd0 := get GDisk0 s in
+      let vd := get GDisk s in
+      cache_fun_rep mc (view NoOwner vc) /\
       (forall a, ghost_lock_invariant (Locks.mem mlocks a) (Locks.get locks a)) /\
-      linearized_consistent lin_vd (Locks.get locks) /\
-      cache_rep vc vd d /\
-      reader_lock_inv vd (get GLocks s).
+      linearized_consistent vd (Locks.get locks) /\
+      (forall o, cache_rep (view o vc) (view o vd) d) /\
+      vd0 = view NoOwner vd.
 
 End CacheTransitionSystem.
 

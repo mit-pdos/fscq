@@ -33,10 +33,17 @@ End Linearizability.
 
 Arguments linear_mem {A AEQ V}.
 
-Notation "'linearized' mt" := ltac:(match mt with
-                                    | @mem ?AT ?AEQ ?V =>
-                                      exact (@linear_mem AT AEQ V)
-                                    end) (at level 50, only parsing).
+  Notation "'linearized' mt" :=
+    ltac:(
+      match mt with
+      | @mem ?AT ?AEQ ?V =>
+        exact (@linear_mem AT AEQ V)
+      | _ => match eval unfold mt in mt with
+        | @mem ?AT ?AEQ ?V =>
+          exact (@linear_mem AT AEQ V)
+        end
+      | _ => idtac "linearized" mt "failed; not a mem"
+      end) (at level 50, only parsing).
 
 Definition linearized_consistent A AEQ V (m: @linear_mem A AEQ V) (locks: _ -> BusyFlagOwner) : Prop :=
   forall a, match locks a with
