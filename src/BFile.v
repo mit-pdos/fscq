@@ -65,6 +65,11 @@ Module BFILE.
     ms <- LOG.write lxp (# bn) v ms;
     rx ms.
 
+  Definition dwrite T lxp ixp inum off v ms rx : prog T :=
+    let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
+    ms <- LOG.dwrite lxp (# bn) v ms;
+    rx ms.
+
   Definition grow T lxp bxp ixp inum ms rx : prog T :=
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
@@ -395,6 +400,66 @@ Module BFILE.
 
     Unshelve. easy. exact bfile0.
   Qed.
+
+
+  Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
+    {< F   Fm  Fi  Fd  m  flist  f  vs
+       m0' Fm0 Fi0 Fd0 m0 flist0 f0 vs0,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[ off < length (BFData f) ]] *
+         (* COMMIT DISK *)
+           [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: (Fd * off |-> vs) ]]] *
+         (* ABORT DISK *)
+           [[[ m0 ::: (Fm0  * rep bxp ixp flist0) ]]] *
+           [[[ flist0 ::: (Fi0 * inum |-> f0) ]]] *
+           [[[ (BFData f0) ::: (Fd0 * off |-> vs0) ]]]
+    POST RET:ms  exists m' flist' f' flist0' f0',
+           LOG.rep lxp F (LOG.ActiveTxn m0' m') ms *
+         (* COMMIT DISK *)
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
+           [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) ]] *
+         (* ABORT DISK *)
+           [[[ m0' ::: (Fm0  * rep bxp ixp flist0') ]]] *
+           [[[ flist0' ::: (Fi0 * inum |-> f0') ]]] *
+           [[[ (BFData f0') ::: (Fd0 * off |-> (v, vsmerge vs)) ]]]
+    CRASH  LOG.intact lxp F m0 \/
+           LOG.intact lxp F m0'
+    >} dwrite lxp ixp inum off v ms.
+  Proof.
+    unfold dwrite, rep.
+    prestep.
+
+(* expansion of norm'l *)
+  eapply start_normalizing_left; [ flatten | ];
+               eapply pimpl_exists_l; intros;
+               apply sep_star_lift_l; let Hlift:=fresh in intro Hlift.
+
+  destruct_lift' H.
+
+(* expansion of destruct_product *)
+Ltac dp :=
+  match goal with
+  | [ v: valuset |- _ ] => idtac v "::: valuset";
+    let v0 := fresh v "_cur" in
+    let v1 := fresh v "_old" in
+    destruct v as [v0 v1]
+  | [ H: (VARNAME(vn) * ?b)%type |- _ ] => idtac H "::: var" vn; destruct H as [? ?vn]
+  | [ H: (?a * ?b)%type |- _ ] => idtac H ":::" a "*" b; destruct H
+  end.
+
+  repeat dp.
+  repeat destruct_type True.
+  repeat destruct_type unit.
+  simpl in *;
+  repeat clear_varname.
+
+
+  Qed.
+
 
 
   Hint Extern 1 ({{_}} progseq (getlen _ _ _ _) _) => apply getlen_ok : prog.
