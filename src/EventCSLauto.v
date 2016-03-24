@@ -1,6 +1,7 @@
 Require Import EventCSL.
+Require Export Locking.
+Require Export Automation.
 Require Import FunctionalExtensionality.
-Require Import Automation.
 Require Import Star.
 Import Bool.
 

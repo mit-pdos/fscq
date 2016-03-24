@@ -16,7 +16,7 @@ Definition valulen := 4096.
 Notation addr := (word addrlen).
 Notation valu := (word valulen).
 
-Set Implicit Arguments.
+Global Set Implicit Arguments.
 
 Definition pred_in AT AEQ V (F: @pred AT AEQ V) m := F m.
 

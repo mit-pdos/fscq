@@ -39,6 +39,15 @@ Definition lock_protects (lvar : S Scontents -> BusyFlagOwner)
     tid <> owner_tid ->
     v s' = v s.
 
+(** Alternate definition of lock_protects written directly in terms of
+v and v' *)
+Definition lock_protects' tid (l : BusyFlagOwner)
+           {tv} (v v' : tv) :=
+  forall owner_tid,
+    l = Owned owner_tid ->
+    tid <> owner_tid ->
+    v = v'.
+
 Inductive lock_protocol (lvar : S Scontents -> BusyFlagOwner) (tid : ID) :
   S Scontents -> S Scontents -> Prop :=
 | NoChange : forall s s', lvar s  = lvar s' ->
