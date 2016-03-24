@@ -59,15 +59,6 @@ Notation DISK := (@mem addr (@weq addrlen) (const wr_set)).
 (* a disk predicate *)
 Notation DISK_PRED := (@pred addr (@weq addrlen) (const wr_set)).
 
-Section Lock.
-  Inductive BusyFlag := Open | Locked.
-  Definition is_locked l :
-    {l = Locked} + {l = Open}.
-  Proof.
-    destruct l; intuition eauto.
-  Defined.
-End Lock.
-
 Section EventCSL.
   Set Default Proof Using "Type".
 

@@ -7,9 +7,28 @@ Section Locking.
 Variable Mcontents : list Type.
 Variable Scontents : list Type.
 
+Inductive BusyFlag := Open | Locked.
+
+Definition is_locked l :
+  {l = Locked} + {l = Open}.
+Proof.
+  destruct l; intuition eauto.
+Defined.
+
 Inductive BusyFlagOwner : Set :=
 | NoOwner
 | Owned (id:ID).
+
+Definition BusyFlag_dec : forall x y:BusyFlag, {x = y} + {x <> y}.
+Proof.
+  decide equality.
+Defined.
+
+Definition BusyFlagOwner_dec : forall x y:BusyFlagOwner, {x = y} + {x <> y}.
+Proof.
+  decide equality.
+  decide equality.
+Defined.
 
 (** given a lock variable and some other variable v, generate a
 relation for tid that makes the variable read-only for non-owners. *)
