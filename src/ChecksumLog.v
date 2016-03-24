@@ -850,9 +850,9 @@ Theorem append_ok : forall v cs,
       [[ (log_rep (length vl) (vl ++ v :: nil) hm' * F)%pred d' ]]
   CRASH:hm'
     exists cs' d', BUFCACHE.rep cs' d' *
-      [[ ((log_rep_crash_xform previous_length vl hm' * (DataStart ^+ $ (length vl)) |->?
-          \/ log_rep_crash_xform (length vl) (vl ++ v :: nil) hm'
-          \/ crep vl hm' * (DataStart ^+ $ (length vl)) |->?) * F)%pred d' ]]
+      [[ ((log_rep previous_length vl hm' * (DataStart ^+ $ (length vl)) |->?
+          \/ log_rep (length vl) (vl ++ v :: nil) hm'
+          \/ crep previous_length vl (vl ++ v :: nil) hm' * (DataStart ^+ $ (length vl)) |->?) * F)%pred d' ]]
   >} append v cs.
 Proof.
   unfold append, log_rep, log_rep_inner.
@@ -863,12 +863,13 @@ Proof.
   rewrite of_to_header.
   simpl.
   step.
-  Transparent hide_rec.
   unhide_rec.
   cancel.
 
   step.
   pred_apply; cancel.
+  unhide_rec.
+  cbn in *.
   step_idtac.
   eauto.
   pred_apply; cancel_with eauto.
@@ -911,12 +912,13 @@ Proof.
   intuition.
   contradict_hashmap_get_default H15 hm0.
   contradict_hashmap_get_default H15 hm0.
-  instantiate (Goal13:=hm0).
+  instantiate (1:=hm0).
   solve_hashmap_subset.
 
   omega.
   omega.
 
+  Transparent hide_rec.
   unfold hide_rec.
   unhide_rec.
   rewrite natToWord_plus.
@@ -925,16 +927,16 @@ Proof.
 
   cancel_with eauto.
   pred_apply; cancel.
-  apply pimpl_or_r. right.
-  apply pimpl_or_r. right.
-  unfold crep.
+  apply pimpl_or_r; right.
+  apply pimpl_or_r; right.
+  unfold crep, log_rep_inner.
   unhide_rec.
   cancel.
-  unfold log_rep_inner.
-  eexists.
-  exists (length l + 1).
-  intuition.
-  instantiate (a16:=l ++ [v]).
+  unfold synced; cancel.
+  apply pimpl_or_r; left.
+  cancel_with eauto.
+
+  repeat eexists.
   rewrite rev_unit.
   solve_hash_list_rep.
   solve_hash_list_rep.
@@ -948,57 +950,47 @@ Proof.
   intuition.
   contradict_hashmap_get_default H15 hm0.
   contradict_hashmap_get_default H15 hm0.
-  instantiate (Goal11:=hm0).
+  instantiate (1:=hm0).
   solve_hashmap_subset.
 
   rewrite app_length; simpl.
   omega.
   eauto.
+  rewrite app_length; simpl.
+  omega.
 
   unfold hide_rec.
-  unhide_rec.
-  unfold make_header.
-  cbn.
+  rewrite app_length; simpl.
   rewrite natToWord_plus.
-  unfold hash2.
   reflexivity.
 
-  unfold log_rep_inner.
-  eexists.
-  exists (length l).
-  intuition.
+  repeat eexists; try omega.
   solve_hash_list_rep.
 
-  unfold hide_rec.
-  unhide_rec.
-  cbn.
-  rewrite Nat.min_l.
-  eauto.
-  omega.
+  unfold list_prefix.
+  rewrite firstn_app; auto.
 
   cancel_with eauto.
   pred_apply; cancel.
   apply pimpl_or_r; right.
   apply pimpl_or_r; left.
-  unfold log_rep_crash_xform.
-  repeat (apply pimpl_exists_r; eexists).
-  instantiate (x1:=l ++ [v]).
-  rewrite array_isolate with (vs:=(combine (l ++ [v]) (repeat [] (length (l ++ [v]))))).
-  instantiate (w0:=$ (length l)).
+  unfold log_rep_crash_xform, log_rep_inner.
+  cancel.
+  rewrite array_isolate with (vs:=(combine (l ++ [v]) (repeat [] (length l + 1))))
+    (i:=$ (length l)).
   rewrite wmult_comm, wmult_unit.
   unfold sel.
-  rewrite wordToNat_natToWord_bound with (bound:=maxlen); try omega.
+  solve_bound.
   rewrite skipn_oob.
   rewrite firstn_combine_comm, firstn_app, firstn_repeat, selN_combine,
       selN_last, repeat_selN; try omega.
-  unhide_rec.
   cancel.
+  rewrite app_length, repeat_length; auto.
+  rewrite combine_length, repeat_length, app_length, min_l; simpl; try omega.
+  solve_bound.
+  rewrite combine_length, repeat_length, app_length, min_l; simpl; try omega.
 
-  unfold log_rep_inner.
-  eexists.
-  exists (length l + 1).
-  intuition.
-  instantiate (x2:=l ++ [v]).
+  repeat eexists; eauto.
   rewrite rev_unit.
   solve_hash_list_rep.
   solve_hash_list_rep.
@@ -1012,45 +1004,26 @@ Proof.
   intuition.
   contradict_hashmap_get_default H15 hm0.
   contradict_hashmap_get_default H15 hm0.
-  instantiate (Goal20:=hm0).
+  instantiate (1:=hm0).
   solve_hashmap_subset.
 
-  rewrite app_length; simpl.
+  omega.
   omega.
 
   unfold hide_rec.
-  unhide_rec.
-  cbn.
-  rewrite Nat.min_l; eauto.
   rewrite natToWord_plus.
-  unfold hash2.
   reflexivity.
-
-  rewrite app_length; simpl.
-  omega.
-  rewrite app_length, repeat_length; simpl.
-  omega.
-  rewrite app_length; simpl.
-  omega.
-  rewrite combine_length, repeat_length, app_length; simpl.
-  rewrite min_r; omega.
-
-
-  erewrite wordToNat_natToWord_bound with (bound:=maxlen);
-    try rewrite combine_length, repeat_length, app_length, min_r; simpl; omega.
 
   cancel_with eauto.
   pred_apply; cancel.
   apply pimpl_or_r; right.
   apply pimpl_or_r; right.
-  unfold crep.
-  unhide_rec.
+  unfold crep, log_rep_inner, synced.
   cancel.
-  unfold log_rep_inner.
-  eexists.
-  exists (length l + 1).
-  intuition.
-  instantiate (a12:=l ++ [v]).
+  apply pimpl_or_r; left.
+  cancel.
+
+  repeat eexists; eauto.
   rewrite rev_unit.
   solve_hash_list_rep.
   solve_hash_list_rep.
@@ -1064,37 +1037,130 @@ Proof.
   intuition.
   contradict_hashmap_get_default H13 hm0.
   contradict_hashmap_get_default H13 hm0.
-  instantiate (Goal10:=hm0).
+  instantiate (1:=hm0).
   solve_hashmap_subset.
 
-  rewrite app_length; simpl.
-  omega.
-  eauto.
+  rewrite app_length; simpl; omega.
+  rewrite app_length; simpl; omega.
 
   unfold hide_rec.
-  unhide_rec.
-  unfold make_header.
-  cbn.
+  rewrite app_length; simpl.
   rewrite natToWord_plus.
-  unfold hash2.
   reflexivity.
 
-  unfold log_rep_inner.
-  eexists.
-  exists (length l).
-  intuition.
+  repeat eexists; eauto.
   solve_hash_list_rep.
+  unfold list_prefix.
+  apply firstn_app; auto.
+
+  cancel.
+  pred_apply; cancel.
+  apply pimpl_or_r; right.
+  apply pimpl_or_r; right.
+  unfold crep, log_rep_inner, synced.
+  cancel.
+  apply pimpl_or_r; left.
+  cancel.
+
+  repeat eexists; eauto.
+  rewrite rev_unit.
+  solve_hash_list_rep.
+  solve_hash_list_rep.
+  eauto.
+
+  eapply hashmap_get_subset.
+  rewrite upd_hashmap'_eq. eauto.
+  intuition.
+  unfold hash2, hash_safe in *.
+  rewrite H12 in H17.
+  intuition.
+  contradict_hashmap_get_default H13 hm0.
+  contradict_hashmap_get_default H13 hm0.
+  instantiate (1:=hm0).
+  solve_hashmap_subset.
+
+  rewrite app_length; simpl; omega.
+  rewrite app_length; simpl; omega.
 
   unfold hide_rec.
-  unhide_rec.
-  cbn.
-  rewrite Nat.min_l.
-  eauto.
-  omega.
+  rewrite app_length; simpl.
+  rewrite natToWord_plus.
+  reflexivity.
 
-  all: cancel_with eauto.
+  repeat eexists; eauto.
+  solve_hash_list_rep.
+  unfold list_prefix.
+  apply firstn_app; auto.
+
+  apply pimpl_or_r; left.
+  unhide_rec.
+  cancel.
+  repeat eexists; eauto.
+  solve_hash_list_rep.
+
+  cancel.
+  apply pimpl_or_r; right.
+  apply pimpl_or_r; right.
+  unfold crep, log_rep_inner, synced.
+  unhide_rec.
+  cancel.
+  apply pimpl_or_r; left.
+  cancel.
+
+  repeat eexists; eauto.
+  rewrite rev_unit.
+  solve_hash_list_rep.
+  solve_hash_list_rep.
+  eauto.
+
+  eapply hashmap_get_subset.
+  rewrite upd_hashmap'_eq. eauto.
+  intuition.
+  unfold hash2, hash_safe in *.
+  rewrite H11 in H17.
+  intuition.
+  contradict_hashmap_get_default H12 hm0.
+  contradict_hashmap_get_default H12 hm0.
+  instantiate (1:=hm0).
+  solve_hashmap_subset.
+
+  rewrite app_length; simpl; omega.
+  rewrite app_length; simpl; omega.
+
+  unfold hide_rec.
+  rewrite app_length; simpl.
+  rewrite natToWord_plus.
+  reflexivity.
+
+  repeat eexists; eauto.
+  solve_hash_list_rep.
+  unfold list_prefix.
+  apply firstn_app; auto.
+
+  apply pimpl_or_r; left.
+  cancel.
+  repeat eexists; eauto.
+  solve_hash_list_rep.
+
+  cancel.
+  apply pimpl_or_r; left.
+  unhide_rec.
+  cancel.
+  repeat eexists; eauto.
+  solve_hash_list_rep.
+
+  apply pimpl_or_r; left.
+  cancel.
+  repeat eexists; eauto.
+  solve_hash_list_rep.
+
+  apply pimpl_or_r; left.
+  cancel.
+  repeat eexists; eauto.
+  solve_hash_list_rep.
+
   Grab Existential Variables.
-  auto.
+  all: auto.
 Qed.
 
 Theorem truncate_ok : forall cs,
