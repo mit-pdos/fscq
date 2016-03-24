@@ -1,4 +1,4 @@
-Require Export Mem.
+Require Export MemClass.
 Require Export Pred.
 Require Export Word.
 Require Export SepAuto.
@@ -390,7 +390,7 @@ Section EventCSL.
   conditions. *)
   Definition valid tid (pre: donecond ->
         (* state: d, m, s0, s *)
-        mem -> M -> S -> S -> Prop) p : Prop :=
+        DISK -> M -> S -> S -> Prop) p : Prop :=
     forall d m s0 s done out,
       pre done d m s0 s ->
       exec tid (d, m, s0, s) p out ->
