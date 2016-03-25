@@ -981,8 +981,8 @@ End Rec.
 Notation "r :-> n" := (Rec.recget' n r) (at level 20).
 Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
 
-Notation "r ⟦ n ⟧" := (Rec.recget' n r) (at level 8).
-Notation "r ⟦ n := v ⟧" := (Rec.recset' n r v) (at level 8).
+Notation "r [ n ]" := (Rec.recget' n r) (at level 8).
+Notation "r [ n := v ]" := (Rec.recset' n r v) (at level 8).
 
 
 (**

@@ -482,6 +482,175 @@ Module BFILE.
 
 
 
+  Definition read_array T lxp ixp inum a i ms rx : prog T :=
+    let^ (ms, r) <- read lxp ixp inum (a + i) ms;
+    rx ^(ms, r).
+
+  Definition write_array T lxp ixp inum a i v ms rx : prog T :=
+    ms <- write lxp ixp inum (a + i) v ms;
+    rx ms.
+
+  Theorem read_array_ok : forall lxp bxp ixp inum a i ms,
+    {< F Fm Fi Fd m0 m flist f vsl,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+           [[ i < length vsl]]
+    POST RET:^(ms', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+           [[ r = fst (selN vsl i ($0, nil)) ]]
+    CRASH  LOG.intact lxp F m0
+    >} read_array lxp ixp inum a i ms.
+  Proof.
+    unfold read_array.
+    hoare.
+
+    denote (arrayN a vsl) as Hx.
+    destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    cancel.
+  Qed.
+
+
+  Theorem write_array_ok : forall lxp bxp ixp inum a i v ms,
+    {< F Fm Fi Fd m0 m flist f vsl,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+           [[ i < length vsl]]
+    POST RET:ms' exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ (BFData f') ::: Fd * arrayN a (updN vsl i (v, nil)) ]]]
+    CRASH  LOG.intact lxp F m0
+    >} write_array lxp ixp inum a i v ms.
+  Proof.
+    unfold write_array.
+    hoare.
+
+    denote (arrayN a vsl) as Hx.
+    destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
+    rewrite isolateN_fwd with (i:=i) by auto; filldef; cancel.
+    rewrite <- isolateN_bwd_upd by auto; cancel.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _ _ _) _) => apply write_array_ok : prog.
+
+
+  Definition read_range T A lxp ixp inum a nr (vfold : A -> valu -> A) v0 ms rx : prog T :=
+    let^ (ms, r) <- ForN i < nr
+    Ghost [ bxp F Fm Fi Fd crash m0 m flist f vsl ]
+    Loopvar [ ms pf ]
+    Continuation lrx
+    Invariant
+      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+      [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+      [[[ flist ::: (Fi * inum |-> f) ]]] *
+      [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+      [[ pf = fold_left vfold (firstn i (map fst vsl)) v0 ]]
+    OnCrash  crash
+    Begin
+      let^ (ms, v) <- read_array lxp ixp inum a i ms;
+      lrx ^(ms, vfold pf v)
+    Rof ^(ms, v0);
+    rx ^(ms, r).
+
+
+  Theorem read_range_ok : forall A lxp bxp ixp inum a nr (vfold : A -> valu -> A) v0 ms,
+    {< F Fm Fi Fd m0 m flist f vsl,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+           [[ nr <= length vsl]]
+    POST RET:^(ms', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+           [[ r = fold_left vfold (firstn nr (map fst vsl)) v0 ]]
+    CRASH  LOG.intact lxp F m0
+    >} read_range lxp ixp inum a nr vfold v0 ms.
+  Proof.
+    unfold read_range.
+    hoare.
+
+    assert (m1 < length vsl).
+    denote (arrayN a vsl) as Hx.
+    destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
+
+    rewrite firstn_S_selN_expand with (def := $0) by (rewrite map_length; auto).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map; subst; auto.
+    Unshelve. exact tt.
+  Qed.
+
+
+  (* like read_range, but stops when cond is true *)
+  Definition read_cond T A lxp ixp inum (vfold : A -> valu -> A) 
+                       v0 (cond : A -> bool) ms rx : prog T :=
+    let^ (ms, nr) <- getlen lxp ixp inum ms;
+    let^ (ms, r) <- ForN i < nr
+    Ghost [ bxp F Fm Fi crash m0 m flist f ]
+    Loopvar [ ms pf ]
+    Continuation lrx
+    Invariant
+      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+      [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+      [[[ flist ::: (Fi * inum |-> f) ]]] *
+      [[ pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
+      [[ cond pf = false ]]
+    OnCrash  crash
+    Begin
+      let^ (ms, v) <- read lxp ixp inum i ms;
+      let pf' := vfold pf v in
+      If (bool_dec (cond pf') true) {
+        rx ^(ms, Some pf')
+      } else {
+        lrx ^(ms, pf')
+      }
+    Rof ^(ms, v0);
+    rx ^(ms, None).
+
+
+  Theorem read_cond_ok : forall A lxp bxp ixp inum (vfold : A -> valu -> A)
+                                v0 (cond : A -> bool) ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[ cond v0 = false ]]
+    POST RET:^(ms', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+           ( exists v, 
+             [[ r = Some v /\ cond v = true ]] \/
+             [[ r = None /\ cond (fold_left vfold (map fst (BFData f)) v0) = false ]])
+    CRASH  LOG.intact lxp F m0
+    >} read_cond lxp ixp inum vfold v0 cond ms.
+  Proof.
+    unfold read_cond.
+    hoare.
+
+    sepauto.
+    or_l; cancel; filldef; eauto.
+    rewrite firstn_S_selN_expand with (def := $0) by (rewrite map_length; auto).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map; subst; auto.
+    apply not_true_is_false; auto.
+
+    or_r; cancel.
+    denote cond as Hx; rewrite firstn_oob in Hx; auto.
+    rewrite map_length; auto.
+    Unshelve. all: easy.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
+
+
   Definition grown T lxp bxp ixp inum l ms rx : prog T :=
     let^ (ms) <- ForN i < length l
       Ghost [ F Fm Fi m0 f ]
@@ -592,6 +761,7 @@ Module BFILE.
     unfold synced_list.
     rewrite repeat_length, combine_repeat; auto.
   Qed.
+
 
   Theorem reset_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist f,
