@@ -70,7 +70,7 @@ Module BFILE.
     ms <- LOG.dwrite lxp (# bn) v ms;
     rx ms.
 
-  Definition grow T lxp bxp ixp inum ms rx : prog T :=
+  Definition grow T lxp bxp ixp inum v ms rx : prog T :=
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
       let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
@@ -78,7 +78,12 @@ Module BFILE.
       | None => rx ^(ms, false)
       | Some bn =>
            let^ (ms, succ) <- INODE.grow lxp bxp ixp inum bn ms;
-           rx ^(ms, succ)
+           If (bool_dec succ true) {
+              ms <- LOG.write lxp bn v ms;
+              rx ^(ms, true)
+           } else {
+             rx ^(ms, false)
+           }
       end
     } else {
       rx ^(ms, false)
@@ -306,7 +311,7 @@ Module BFILE.
   Qed.
 
 
-  Theorem grow_ok : forall lxp bxp ixp inum ms,
+  Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist f,
     PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
@@ -314,14 +319,14 @@ Module BFILE.
            [[[ (BFData f) ::: Fd ]]]
     POST RET:^(ms, r) exists m',
            [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms  \/
-           [[ r = true  ]] * exists flist' f' vs,
+           [[ r = true  ]] * exists flist' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> vs) ]]] *
-           [[ f' = mk_bfile ((BFData f) ++ [vs]) (BFAttr f) ]]
+           [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> (v, nil)) ]]] *
+           [[ f' = mk_bfile ((BFData f) ++ [(v, nil)]) (BFAttr f) ]]
     CRASH  LOG.intact lxp F m0
-    >} grow lxp bxp ixp inum ms.
+    >} grow lxp bxp ixp inum v ms.
   Proof.
     unfold grow, rep.
     prestep; norml.
@@ -339,10 +344,12 @@ Module BFILE.
     step.
     sepauto.
 
-    step.
+    hoare.
+    eapply BALLOC.bn_valid_facts; eauto.
+
     or_r; cancel.
-    instantiate (vs := (v0_cur, v0_old)); seprewrite.
     2: sepauto.
+    seprewrite.
     rewrite listmatch_updN_removeN by simplen.
     unfold file_match; cancel.
     rewrite map_app; simpl.
@@ -468,7 +475,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} progseq (read _ _ _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _ _) _) => apply dwrite_ok : prog.
-  Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _) _) => apply grow_ok : prog.
+  Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
