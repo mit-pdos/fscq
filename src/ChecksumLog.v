@@ -82,10 +82,10 @@ Opaque hide_rec.
     easier to prove that it's okay to roll back to the previous
     length. *)
 (* TODO: Remove previous_length from args *)
-Definition log_rep_inner header previous_length vl hm :=
+Definition log_rep_inner header prev_len vl hm :=
   (exists h current_length,
     let header' := make_header
-      :=> "previous_length" := ($ previous_length)
+      :=> "previous_length" := ($ prev_len)
       :=> "current_length"  := ($ current_length)
       :=> "checksum"        := h
     in
@@ -97,10 +97,10 @@ Definition log_rep_inner header previous_length vl hm :=
 (** There is a synced header on disk and an array of synced
   values that matches it.
 **)
-Definition log_rep previous_length vl hm :
+Definition log_rep vl hm :
   @pred addr (@weq addrlen) valuset :=
-  (exists header,
-    [[ log_rep_inner header previous_length vl hm ]]
+  (exists header prev_len,
+    [[ log_rep_inner header prev_len vl hm ]]
     * Header |-> (header_to_valu header, nil)
     * array DataStart (synced vl) $1)%pred.
 
@@ -119,11 +119,11 @@ Definition log_rep_crash_xform prev_vl vl vl_disk hm :
   at DataStart will remain synced (captured by the first
   log_rep_invariant).
 **)
-Definition crep previous_length vl vl' hm :
+Definition crep vl vl' hm :
   @pred addr (@weq addrlen) valuset :=
-  (exists header header',
+  (exists header header' prev_len,
     [[ log_rep_inner header' (length vl) vl' hm ]] *
-    [[ log_rep_inner header previous_length vl hm ]] *
+    [[ log_rep_inner header prev_len vl hm ]] *
     (Header |-> (header_to_valu header', header_to_valu header :: nil) \/
       Header |-> (header_to_valu header, header_to_valu header' :: nil))*
     array DataStart (synced vl) $1)%pred.
@@ -135,15 +135,15 @@ Definition crep previous_length vl vl' hm :
     of vl' may not match
   TODO: generalize vl ++ [v] to any vl'
 **)
-Lemma crep_crash_xform : forall previous_length vl vl' hm F,
+Lemma crep_crash_xform : forall vl vl' hm F,
   crash_xform (exists unsynced_data,
-    crep previous_length vl vl' hm
+    crep vl vl' hm
     * [[ list_prefix vl vl' ]]
     * [[ length vl + length unsynced_data = length vl' ]]
     * array (DataStart ^+ $(length vl)) unsynced_data $1
     * F)
     =p=> exists unsynced_data,
-          log_rep previous_length vl hm
+          log_rep vl hm
           * [[ length vl + length unsynced_data = length vl' ]]
           * array (DataStart ^+ $(length vl)) (synced unsynced_data) $1
           * crash_xform F \/
@@ -152,15 +152,15 @@ Lemma crep_crash_xform : forall previous_length vl vl' hm F,
 Proof.
 Admitted.
 
-Lemma crep_crash_xform_rollback : forall previous_length vl vl' hm F,
+Lemma crep_crash_xform_rollback : forall vl vl' hm F,
   crash_xform (
-    crep previous_length vl vl' hm
+    crep vl vl' hm
     * [[ list_prefix vl' vl ]]
     * F)
     =p=> exists unsynced_data,
-          log_rep previous_length vl hm
+          log_rep vl hm
           * crash_xform F \/
-          log_rep (length vl) vl' hm
+          log_rep vl' hm
           * [[ length vl' + length unsynced_data = length vl ]]
           * array (DataStart ^+ $ (length vl')) (synced unsynced_data) $1
           * crash_xform F.
@@ -346,22 +346,19 @@ Proof.
 Qed.
 
 Theorem recover_ok_log_rep : forall cs,
-  {< F prev_len values,
+  {< F values,
   PRE:hm
     exists d,
     BUFCACHE.rep cs d
-    * [[ (log_rep prev_len values hm
-          * F)%pred d ]]
+    * [[ (log_rep values hm * F)%pred d ]]
   POST:hm' RET:cs'
     exists d',
       BUFCACHE.rep cs' d'
-      * [[ (log_rep prev_len values hm'
-          * F)%pred d' ]]
+      * [[ (log_rep values hm' * F)%pred d' ]]
   CRASH:hm'
     exists cs' d',
       BUFCACHE.rep cs' d'
-      * [[ (log_rep prev_len values hm'
-            * F)%pred d' ]]
+      * [[ (log_rep values hm' * F)%pred d' ]]
   >} recover cs.
 Proof.
   unfold recover, log_rep, log_rep_inner.
@@ -433,25 +430,24 @@ Theorem recover_ok_log_rep_crash_xform : forall cs,
   POST:hm' RET:cs'
     exists d',
       BUFCACHE.rep cs' d'
-      * [[ (exists prev_len dvalues,
-          log_rep prev_len values hm'
+      * [[ (exists dvalues,
+          log_rep values hm'
           * [[ length values + length dvalues = length values' ]]
           * array (DataStart ^+ $ (length values)) (synced dvalues) $1
           * F \/
-          exists prev_len,
-          log_rep prev_len values' hm'
+          log_rep values' hm'
           * F)%pred d' ]]
   CRASH:hm'
     exists cs' d',
       BUFCACHE.rep cs' d'
-      * [[ (exists prev_len unsynced_data,
-            log_rep prev_len values hm'
+      * [[ (exists unsynced_data,
+            log_rep values hm'
             * [[ length values + length unsynced_data = length values' ]]
             * array (DataStart ^+ $(length values)) (synced unsynced_data) $1
             * F \/
             log_rep_crash_xform values values' unsynced_data hm'
             * F \/
-            crep (length values) values values' hm'
+            crep values values' hm'
             * array (DataStart ^+ $ (length values)) (synced unsynced_data) $1
             * F)%pred d' ]]
 >} recover cs.
@@ -794,12 +790,12 @@ Proof.
 Qed.
 
 Theorem recover_ok :  forall cs,
-  {< F prev_len values values',
+  {< F values values',
   PRE:hm
     exists d,
     BUFCACHE.rep cs d
     * [[ crash_xform (exists dvalues,
-          crep prev_len values values' hm
+          crep values values' hm
           * [[ list_prefix values values' ]]
           * [[ length values + length dvalues = length values' ]]
           * array (DataStart ^+ $ (length values)) dvalues $1
@@ -807,25 +803,24 @@ Theorem recover_ok :  forall cs,
   POST:hm' RET:cs'
     exists d',
       BUFCACHE.rep cs' d'
-      * [[ (exists prev_len dvalues,
-          log_rep prev_len values hm'
+      * [[ (exists dvalues,
+          log_rep values hm'
           * [[ length values + length dvalues = length values' ]]
           * array (DataStart ^+ $ (length values)) (synced dvalues) $1
           * crash_xform F \/
-          exists prev_len,
-          log_rep prev_len values' hm'
+          log_rep values' hm'
           * crash_xform F)%pred d' ]]
   CRASH:hm'
     exists cs' d',
       BUFCACHE.rep cs' d'
-      * [[ (exists prev_len unsynced_data,
-            log_rep prev_len values hm'
+      * [[ (exists unsynced_data,
+            log_rep values hm'
             * [[ length values + length unsynced_data = length values' ]]
             * array (DataStart ^+ $(length values)) (synced unsynced_data) $1
             * crash_xform F \/
             log_rep_crash_xform values values' unsynced_data hm'
             * crash_xform F \/
-            crep (length values) values values' hm'
+            crep values values' hm'
             * array (DataStart ^+ $ (length values)) (synced unsynced_data) $1
             * crash_xform F)%pred d' ]]
   >} recover cs.
@@ -842,20 +837,15 @@ Proof.
   cancel.
   eauto.
   match goal with
-  | [ H: context[log_rep ?n ?l hm0] |- _ ]
-    => instantiate (3:=n); instantiate (2:=l)
+  | [ H: context[log_rep ?l hm0] |- _ ]
+    => instantiate (2:=l)
   end.
   pred_apply; cancel.
   step_idtac.
-  eapply pimpl_or_r; left.
-  cancel_with eauto.
-  cancel_with eauto.
   cancel.
-  apply pimpl_or_r; left.
-  cancel_with eauto.
   cancel.
-  apply pimpl_or_r; left.
-  cancel_with eauto.
+  cancel.
+  cancel.
 
   cancel.
   eapply pimpl_ok2; try eapply recover_ok_log_rep_crash_xform.
@@ -863,37 +853,34 @@ Proof.
   eauto.
   eexists; eauto.
   cancel.
-
-  Grab Existential Variables.
-  eauto.
 Qed.
 
 Theorem recover_ok_rollback :  forall cs,
-  {< F prev_len values values',
+  {< F values values',
   PRE:hm
     exists d,
     BUFCACHE.rep cs d
     * [[ crash_xform (
-          crep prev_len values values' hm
+          crep values values' hm
           * [[ list_prefix values' values ]]
           * F)%pred d ]]
   POST:hm' RET:cs'
     exists d',
       BUFCACHE.rep cs' d'
-      * [[ (exists prev_len dvalues,
-          log_rep prev_len values hm'
+      * [[ (exists dvalues,
+          log_rep values hm'
           * crash_xform F \/
-          log_rep prev_len values' hm'
+          log_rep values' hm'
           * [[ length values' + length dvalues = length values ]]
           * array (DataStart ^+ $ (length values')) (synced dvalues) $1
           * crash_xform F)%pred d' ]]
   CRASH:hm'
     exists cs' d',
       BUFCACHE.rep cs' d'
-      * [[ (exists prev_len dvalues,
-          log_rep prev_len values hm'
+      * [[ (exists dvalues,
+          log_rep values hm'
           * crash_xform F \/
-          log_rep prev_len values' hm'
+          log_rep values' hm'
           * [[ length values' + length dvalues = length values ]]
           * array (DataStart ^+ $ (length values')) (synced dvalues) $1
           * crash_xform F)%pred d' ]]
@@ -917,18 +904,13 @@ Proof.
   eauto.
   pred_apply.
   match goal with
-  | [ H: context[log_rep ?n ?l hm0] |- _ ]
-    => instantiate (3:=n); instantiate (2:=l)
+  | [ H: context[log_rep ?l hm0] |- _ ]
+    => instantiate (2:=l)
   end.
   cancel.
   step_idtac.
-  apply pimpl_or_r; right.
-  cancel_with eauto.
-  cancel_with eauto.
+  all: cancel.
   cancel.
-  apply pimpl_or_r; right.
-  cancel_with eauto.
-  cancel_with eauto.
 
   Grab Existential Variables.
   all: eauto.
@@ -936,21 +918,21 @@ Qed.
 
 
 Theorem append_ok : forall v cs,
-  {< d previous_length vl F v_old,
+  {< d vl F v_old,
   PRE:hm
     [[ length vl < # (maxlen) ]] *
     BUFCACHE.rep cs d *
-    [[ (log_rep previous_length vl hm *
+    [[ (log_rep vl hm *
         (DataStart ^+ $ (length vl)) |-> (v_old, nil) * F)%pred d ]]
   POST:hm' RET:cs'
     exists d',
       BUFCACHE.rep cs' d' *
-      [[ (log_rep (length vl) (vl ++ v :: nil) hm' * F)%pred d' ]]
+      [[ (log_rep (vl ++ v :: nil) hm' * F)%pred d' ]]
   CRASH:hm'
     exists cs' d', BUFCACHE.rep cs' d' *
-      [[ ((log_rep previous_length vl hm' * (DataStart ^+ $ (length vl)) |->?
-          \/ log_rep (length vl) (vl ++ v :: nil) hm'
-          \/ crep previous_length vl (vl ++ v :: nil) hm' * (DataStart ^+ $ (length vl)) |->?) * F)%pred d' ]]
+      [[ ((log_rep vl hm' * (DataStart ^+ $ (length vl)) |->?
+          \/ log_rep (vl ++ v :: nil) hm'
+          \/ crep vl (vl ++ v :: nil) hm' * (DataStart ^+ $ (length vl)) |->?) * F)%pred d' ]]
   >} append v cs.
 Proof.
   unfold append, log_rep, log_rep_inner.
@@ -1022,7 +1004,7 @@ Proof.
     solve_hashmap_subset.
 
     omega.
-    rewrite natToWord_plus.
+    rewrite <- natToWord_plus.
     reflexivity.
   }
 
@@ -1114,7 +1096,7 @@ Proof.
     solve_hashmap_subset.
 
     omega.
-    rewrite natToWord_plus.
+    rewrite <- natToWord_plus.
     reflexivity.
   }
 
@@ -1273,30 +1255,25 @@ Proof.
 Qed.
 
 Theorem truncate_ok : forall cs,
-  {< d previous_length vl F,
+  {< d vl F,
   PRE:hm
     BUFCACHE.rep cs d *
-    [[ (log_rep previous_length vl hm * F)%pred d ]]
+    [[ (log_rep vl hm * F)%pred d ]]
   POST:hm' RET:cs'
     exists d',
     BUFCACHE.rep cs' d'
     * [[ (exists vl,
-        log_rep (length vl) nil hm'
-        * array DataStart (synced vl) $1
-        * F)%pred d' ]]
+        log_rep nil hm' * array DataStart (synced vl) $1 * F)%pred d' ]]
   CRASH:hm'
     exists cs' d', BUFCACHE.rep cs' d'
     * [[ (exists vl,
-        log_rep previous_length vl hm'
-        * F \/
-        log_rep (length vl) nil hm'
-        * array DataStart (synced vl) $1
-        * F \/
-        crep previous_length vl nil hm'
-        * F)%pred d' ]]
+        log_rep vl hm' * F \/
+        log_rep nil hm' * array DataStart (synced vl) $1 * F \/
+        crep vl nil hm' * F)%pred d' ]]
   >} truncate cs.
 Proof.
   unfold truncate, log_rep, log_rep_inner.
+  cbn.
   step_idtac.
   eauto.
   pred_apply; cancel.
@@ -1312,7 +1289,6 @@ Proof.
   step.
   repeat eexists; try omega.
   solve_hash_list_rep; eauto.
-  unfold hide_rec.
   unhide_rec.
   reflexivity.
   cancel_with eauto.
@@ -1330,7 +1306,7 @@ Proof.
   cancel.
   repeat eexists; try omega.
   solve_hash_list_rep; eauto.
-  unfold hide_rec.
+
   unhide_rec.
   reflexivity.
   repeat eexists; try omega.
