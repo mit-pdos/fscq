@@ -482,6 +482,138 @@ Module BFILE.
 
 
 
+  Definition grown T lxp bxp ixp inum l ms rx : prog T :=
+    let^ (ms) <- ForN i < length l
+      Ghost [ F Fm Fi m0 f ]
+      Loopvar [ ms ]
+      Continuation lrx
+      Invariant
+        exists m' flist' f',
+        LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+        [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+        [[[ flist' ::: (Fi * inum |-> f') ]]] *
+        [[ f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]]
+      OnCrash
+        LOG.intact lxp F m0
+      Begin
+        let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i $0) ms;
+        If (bool_dec ok true) {
+          lrx ^(ms)
+        } else {
+          rx ^(ms, false)
+        }
+      Rof ^(ms);
+    rx ^(ms, true).
+
+
+
+  Definition truncate T lxp bxp xp inum newsz ms rx : prog T :=
+    let^ (ms, sz) <- getlen lxp xp inum ms;
+    If (lt_dec newsz sz) {
+      ms <- shrink lxp bxp xp inum (sz - newsz) ms;
+      rx ^(ms, true)
+    } else {
+      let^ (ms, ok) <- grown lxp bxp xp inum (repeat $0 (newsz - sz))  ms;
+      rx ^(ms, ok)
+    }.
+
+
+  Definition reset T lxp bxp xp inum ms rx : prog T :=
+    let^ (ms, sz) <- getlen lxp xp inum ms;
+    ms <- shrink lxp bxp xp inum sz ms;
+    ms <- setattrs lxp xp inum attr0 ms;
+    rx ms.
+
+
+  Theorem grown_ok : forall lxp bxp ixp inum l ms,
+    {< F Fm Fi Fd m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFData f) ::: Fd ]]]
+    POST RET:^(ms, r) exists m',
+           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms  \/
+           [[ r = true  ]] * exists flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ (BFData f') ::: (Fd * arrayN (length (BFData f)) (synced_list l)) ]]] *
+           [[ f' = mk_bfile ((BFData f) ++ (synced_list l)) (BFAttr f) ]]
+    CRASH  LOG.intact lxp F m0
+    >} grown lxp bxp ixp inum l ms.
+  Proof.
+    unfold grown; intros.
+    step.
+
+    unfold synced_list; simpl; rewrite app_nil_r.
+    replace f with ({| BFData := BFData f; BFAttr := BFAttr f|}) at 1; try cancel.
+    destruct f; simpl; auto.
+
+    step.
+    subst; simpl; apply list2nmem_arrayN_app; eauto.
+    hoare.
+
+    erewrite firstn_S_selN_expand by omega.
+    rewrite synced_list_app, <- app_assoc.
+    unfold synced_list at 3; simpl; eauto.
+
+    step.
+    or_r; cancel.
+    rewrite firstn_oob; auto.
+    apply list2nmem_arrayN_app; auto.
+    Unshelve. all: easy.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (grown _ _ _ _ _ _) _) => apply grown_ok : prog.
+
+  Theorem truncate_ok : forall lxp bxp ixp inum sz ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:^(ms, r) exists m',
+           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms  \/
+           [[ r = true  ]] * exists flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[ f' = mk_bfile (setlen (BFData f) sz ($0, nil)) (BFAttr f) ]]
+    CRASH  LOG.intact lxp F m0
+    >} truncate lxp bxp ixp inum sz ms.
+  Proof.
+    unfold truncate; intros.
+    hoare.
+    or_r; cancel.
+    rewrite setlen_inbound, Rounding.sub_sub_assoc by omega; auto.
+    apply list2nmem_array.
+    or_r; cancel.
+    rewrite setlen_oob by omega.
+    unfold synced_list.
+    rewrite repeat_length, combine_repeat; auto.
+  Qed.
+
+  Theorem reset_ok : forall lxp bxp ixp inum ms,
+    {< F Fm Fi m0 m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:ms exists m' flist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> bfile0) ]]]
+    CRASH  LOG.intact lxp F m0
+    >} reset lxp bxp ixp inum ms.
+  Proof.
+    unfold reset; intros.
+    hoare.
+    rewrite Nat.sub_diag; simpl; auto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.
+  Hint Extern 1 ({{_}} progseq (reset _ _ _ _ _) _) => apply reset_ok : prog.
+
+
 End BFILE.
 
 

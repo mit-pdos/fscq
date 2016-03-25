@@ -351,14 +351,6 @@ Module RADefs (RA : RASig).
   Local Hint Resolve skipn_list_chunk_skipn_eq list_chunk_skipn_1 skipn_repeat_list_chunk.
   Hint Rewrite app_nil_l app_nil_r firstn_length Nat.sub_diag Nat.sub_0_r: core.
 
-  Lemma setlen_inbound : forall A n (l : list A) def,
-    n <= length l ->
-    setlen l n def = firstn n l.
-  Proof.
-    unfold setlen; intros.
-    replace (n - length l) with 0 by omega; t.
-  Qed.
-
   Lemma list_chunk'_firstn' : forall A i n l (e0 : A),
     length l >= i * n ->
     list_chunk' (firstn (i * n) l) n e0 i = list_chunk' l n e0 i.

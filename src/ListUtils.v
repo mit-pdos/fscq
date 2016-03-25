@@ -1683,6 +1683,32 @@ Proof.
   rewrite length_updN; auto.
 Qed.
 
+Lemma setlen_inbound : forall A n (l : list A) def,
+  n <= length l ->
+  setlen l n def = firstn n l.
+Proof.
+  unfold setlen; intros.
+  replace (n - length l) with 0 by omega.
+  simpl; rewrite app_nil_r; auto.
+Qed.
+
+Lemma setlen_oob : forall A n (l : list A) def,
+  n >= length l ->
+  setlen l n def = l ++ repeat def (n - length l).
+Proof.
+  unfold setlen; intros.
+  rewrite firstn_oob by omega; auto.
+Qed.
+
+
+Lemma combine_repeat : forall A B n (a : A) (b : B),
+  combine (repeat a n) (repeat b n) = repeat (a, b) n.
+Proof.
+  induction n; simpl; intros; auto.
+  f_equal; auto.
+Qed.
+
+
 Lemma Forall_selN : forall A (l : list A) P i def,
   Forall P l -> i < length l -> P (selN l i def).
 Proof.
