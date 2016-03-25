@@ -346,7 +346,7 @@ Module BFILE.
     rewrite listmatch_updN_removeN by simplen.
     unfold file_match; cancel.
     rewrite map_app; simpl.
-    rewrite <- listmatch_app_r.
+    rewrite <- listmatch_app_tail.
     cancel.
     rewrite map_length; omega.
     rewrite wordToNat_natToWord_idempotent'; auto.
@@ -403,63 +403,62 @@ Module BFILE.
 
 
   Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
-    {< F   Fm  Fi  Fd  m  flist  f  vs
-       m0' Fm0 Fi0 Fd0 m0 flist0 f0 vs0,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    {< F Fm Fi Fd m flist f vs,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m m) ms *
            [[ off < length (BFData f) ]] *
-         (* COMMIT DISK *)
            [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFData f) ::: (Fd * off |-> vs) ]]] *
-         (* ABORT DISK *)
-           [[[ m0 ::: (Fm0  * rep bxp ixp flist0) ]]] *
-           [[[ flist0 ::: (Fi0 * inum |-> f0) ]]] *
-           [[[ (BFData f0) ::: (Fd0 * off |-> vs0) ]]]
-    POST RET:ms  exists m' flist' f' flist0' f0',
-           LOG.rep lxp F (LOG.ActiveTxn m0' m') ms *
-         (* COMMIT DISK *)
+           [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
+    POST RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m' m') ms *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
-           [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) ]] *
-         (* ABORT DISK *)
-           [[[ m0' ::: (Fm0  * rep bxp ixp flist0') ]]] *
-           [[[ flist0' ::: (Fi0 * inum |-> f0') ]]] *
-           [[[ (BFData f0') ::: (Fd0 * off |-> (v, vsmerge vs)) ]]]
-    CRASH  LOG.intact lxp F m0 \/
-           LOG.intact lxp F m0'
+           [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
+    CRASH  LOG.intact lxp F m \/
+           exists m' flist' f', LOG.intact lxp F m' *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
+           [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
     >} dwrite lxp ixp inum off v ms.
   Proof.
     unfold dwrite, rep.
-    prestep.
+    prestep; norml.
+    extract; seprewrite; subst.
+    denote removeN as Hx.
+    setoid_rewrite listmatch_length_pimpl in Hx at 2.
+    rewrite map_length in *.
+    destruct_lift Hx; cancel; eauto.
 
-(* expansion of norm'l *)
-  eapply start_normalizing_left; [ flatten | ];
-               eapply pimpl_exists_l; intros;
-               apply sep_star_lift_l; let Hlift:=fresh in intro Hlift.
+    sepauto.
+    denote removeN as Hx.
+    setoid_rewrite listmatch_extract with (i := off) (bd := 0) in Hx; try omega.
+    destruct_lift Hx.
+    step.
+    erewrite selN_map by omega; filldef.
+    setoid_rewrite surjective_pairing at 2; cancel.
 
-  destruct_lift' H.
+    safestep; auto; sepauto.
+    cancel.
+    abstract (
+      setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4;
+      rewrite listmatch_updN_removeN by omega;
+      unfold file_match at 3; cancel; eauto;
+      setoid_rewrite <- updN_selN_eq with (l := INODE.IBlocks _) (ix := off) at 3;
+      erewrite map_updN by omega; filldef;
+      rewrite listmatch_updN_removeN by omega;
+      cancel
+    ) using dwrite_ok_helper.
 
-(* expansion of destruct_product *)
-Ltac dp :=
-  match goal with
-  | [ v: valuset |- _ ] => idtac v "::: valuset";
-    let v0 := fresh v "_cur" in
-    let v1 := fresh v "_old" in
-    destruct v as [v0 v1]
-  | [ H: (VARNAME(vn) * ?b)%type |- _ ] => idtac H "::: var" vn; destruct H as [? ?vn]
-  | [ H: (?a * ?b)%type |- _ ] => idtac H ":::" a "*" b; destruct H
-  end.
-
-  repeat dp.
-  repeat destruct_type True.
-  repeat destruct_type unit.
-  simpl in *;
-  repeat clear_varname.
-
-
+    or_l; cancel; eauto.
+    or_r; cancel; sepauto.
+    pred_apply; cancel.
+    eapply dwrite_ok_helper; eauto.
+    or_l; cancel; eauto.
+    cancel; or_l; eauto.
+    Unshelve. all: easy.
   Qed.
-
 
 
   Hint Extern 1 ({{_}} progseq (getlen _ _ _ _) _) => apply getlen_ok : prog.
@@ -468,6 +467,7 @@ Ltac dp :=
   Hint Extern 1 ({{_}} progseq (updattr _ _ _ _ _) _) => apply updattr_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _ _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
 

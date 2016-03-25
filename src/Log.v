@@ -283,7 +283,7 @@ Module LOG.
   Qed.
 
 
-  Theorem dwrite_ok : forall xp ms a v,
+  Theorem dwrite_ok_twomem : forall xp ms a v,
     {< F Fm1 Fm2 m1 m2 vs1 vs2,
     PRE
       rep xp F (ActiveTxn m1 m2) ms *
@@ -322,7 +322,7 @@ Module LOG.
   Qed.
 
 
-  Theorem dsync_ok : forall xp ms a,
+  Theorem dsync_ok_twomem : forall xp ms a,
     {< F Fm1 Fm2 m1 m2 vs1 vs2,
     PRE
       rep xp F (ActiveTxn m1 m2) ms *
@@ -353,6 +353,111 @@ Module LOG.
     instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
     or_r; cancel.
     apply MLog.map_valid_updN; auto.
+    Unshelve. eauto.
+  Qed.
+
+
+  Set Regular Subst Tactic.
+
+  Lemma updN_replay_disk_remove_eq : forall m d a v,
+    d = MLog.replay_disk (Map.elements m) d ->
+    updN d a v = MLog.replay_disk (Map.elements (Map.remove a m)) (updN d a v).
+  Proof.
+    intros.
+    eapply list_selN_ext with (default := ($0, nil)); intros.
+    repeat rewrite MLog.replay_disk_length; rewrite length_updN; auto.
+    rewrite MLog.replay_disk_updN_comm.
+    rewrite length_updN in H0.
+
+    destruct (Nat.eq_dec pos a); subst.
+    repeat rewrite selN_updN_eq; auto.
+    rewrite MLog.replay_disk_length in *; eauto.
+
+    repeat rewrite selN_updN_ne by auto.
+    rewrite H at 1.
+    case_eq (Map.find pos m); intros.
+    apply Map.find_2 in H1.
+    repeat erewrite MLog.replay_disk_selN_MapsTo; eauto.
+    apply Map.remove_2; eauto.
+
+    apply MapFacts.not_find_in_iff in H1.
+    setoid_rewrite MLog.replay_disk_selN_not_In; auto.
+    apply not_in_remove_not_in; auto.
+
+    rewrite In_map_fst_MapIn.
+    apply Map.remove_1; auto.
+  Qed.
+
+
+  Theorem dwrite_ok : forall xp ms a v,
+    {< F Fm m vs,
+    PRE
+      rep xp F (ActiveTxn m m) ms *
+      [[[ m ::: (Fm * a |-> vs) ]]]
+    POST RET:ms' exists m',
+      rep xp F (ActiveTxn m' m') ms' *
+      [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]]
+    CRASH
+      exists ms' m',
+      rep xp F (ActiveTxn m  m) ms' \/
+      rep xp F (ActiveTxn m' m') ms' *
+          [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]] \/
+      rep xp F (ApplyingTxn m) ms'
+    >} dwrite xp a v ms.
+  Proof.
+    unfold dwrite.
+    step.
+    step; subst.
+
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    apply updN_replay_disk_remove_eq; eauto.
+
+    (* crash conditions *)
+    instantiate (ms'0 := mk_memstate vmap0 ms').
+    or_r; or_r; cancel.
+
+    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    or_l; cancel.
+
+    instantiate (ms'2 := mk_memstate (Map.remove a (MSTxn ms)) ms').
+    or_r; or_l; cancel.
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    apply updN_replay_disk_remove_eq; eauto.
+
+    Unshelve. all: eauto.
+  Qed.
+
+
+  Theorem dsync_ok : forall xp ms a,
+    {< F Fm m vs,
+    PRE
+      rep xp F (ActiveTxn m m) ms *
+      [[[ m ::: (Fm * a |-> vs) ]]]
+    POST RET:ms' exists m',
+      rep xp F (ActiveTxn m' m') ms' *
+      [[[ m' ::: (Fm * a |-> (fst vs, nil)) ]]]
+    CRASH
+      exists m' ms',
+      rep xp F (ActiveTxn m m) ms' \/
+      rep xp F (ActiveTxn m' m') ms' *
+        [[[ m' ::: (Fm * a |-> (fst vs, nil)) ]]]
+    >} dsync xp a ms.
+  Proof.
+    unfold dsync.
+    step.
+    step; subst.
+    apply MLog.map_valid_updN; auto.
+    rewrite <- MLog.replay_disk_vssync_comm.
+    substl m at 1; auto.
+
+    (* crashes *)
+    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
+    or_l; cancel.
+    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    or_r; cancel.
+    apply MLog.map_valid_updN; auto.
+    rewrite <- MLog.replay_disk_vssync_comm.
+    substl m at 1; auto.
     Unshelve. eauto.
   Qed.
 
@@ -453,7 +558,13 @@ Module LOG.
     unfold intact; cancel.
   Qed.
 
-  Hint Resolve active_txn_intact.
+  Lemma applying_txn_intact : forall xp F m ms,
+    rep xp F (ApplyingTxn m) ms =p=> intact xp F m.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Hint Resolve active_txn_intact applying_txn_intact.
   Hint Extern 0 (okToUnify (intact _ _ _) (intact _ _ _)) => constructor : okToUnify.
 
 
