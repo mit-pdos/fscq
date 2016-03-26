@@ -80,8 +80,6 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cras
   * don't need to reason about the contents of the hashmap, including
   * programs that don't contain a Hash step
   * reason about the contents of the hashmap.
-  * TODO: How to reuse the above notation? I want to carry over
-  * the e1 .. e2 as the e1 .. e2 of {{< ... >}}, but not sure how.
   *)
 Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
@@ -151,7 +149,34 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 
-(* TODO: Like above notations, state that pre-hashmap is a subset of post-hashmap. *)
+Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_crash crash >>} p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   exists idemcrash,
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3
+   (fun hm done_ crashdone_ =>
+     exists F_,
+     F_ * pre *
+     [[ crash_xform F_ =p=> F_ ]] *
+     [[ forall r_,
+        {{ fun hm' done'_ crash'_ => post F_ r_ *
+                                 [[ exists l, hashmap_subset l hm hm' ]] *
+                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
+        }} rxOK r_ ]] *
+     [[ forall r_,
+        {{ fun hm_crash done'_ crash'_ => crash F_ r_ *
+                                 [[ exists l, hashmap_subset l hm hm_crash ]] *
+                                 [[ done'_ = crashdone_ ]] *
+                                 [[ crash'_ =p=> F_ * idemcrash ]]
+        }} rxREC r_ ]]
+   )%pred
+   (p1 rxOK)%pred
+   (p2 rxREC)%pred)) .. ))
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   hm at level 0, hm' at level 0, hm_crash at level 0,
+   post at level 1, crash at level 1).
+
+
 Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    exists idemcrash,
@@ -162,12 +187,15 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
      F_ * pre *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
-        {{ fun hm done'_ crash'_ => post F_ r_ *
+        {{ fun hm' done'_ crash'_ => post F_ r_ *
+                                 [[ exists l, hashmap_subset l hm hm' ]] *
                                  [[ done'_ = done_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ fun hm done'_ crash'_ => crash F_ r_ *
-                                 [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
+        {{ fun hm_crash done'_ crash'_ => crash F_ r_ *
+                                 [[ exists l, hashmap_subset l hm hm_crash ]] *
+                                 [[ done'_ = crashdone_ ]] *
+                                 [[ crash'_ * [[ exists l, hashmap_subset l hm hm_crash ]] =p=> F_ * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
    (p1 rxOK)%pred

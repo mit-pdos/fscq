@@ -469,10 +469,12 @@ Proof.
   cancel; eauto.
   step.
 
+  cancel_with eauto.
   autorewrite with crash_xform.
   rewrite H3.
   cancel.
   step.
+  cancel.
 Qed.
 
 Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
