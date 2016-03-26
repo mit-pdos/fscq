@@ -149,13 +149,8 @@ Proof.
   eauto.
 Qed.
 
-Module Type SEP_STAR.
-  Parameter sep_star : forall {AT:Type} {AEQ:DecEq AT} {V:AT -> Type}, @pred AT AEQ V -> @pred AT AEQ V -> @pred AT AEQ V.
-  Axiom sep_star_is : @sep_star = @sep_star_impl.
-End SEP_STAR.
-
-Module Sep_Star : SEP_STAR.
-  Definition sep_star := @sep_star_impl.
+Module Sep_Star.
+  Definition sep_star : forall {AT:Type} {AEQ:DecEq AT} {V:AT -> Type}, @pred AT AEQ V -> @pred AT AEQ V -> @pred AT AEQ V  := @sep_star_impl.
   Theorem sep_star_is : @sep_star = @sep_star_impl.
   Proof. auto. Qed.
 End Sep_Star.
@@ -2154,7 +2149,7 @@ Lemma same_domain_none : forall m m' a,
 Proof.
   unfold same_domain.
   intuition.
-  eauto using subset_inverse.
+  eapply subset_inverse; eassumption.
 Qed.
 
 Lemma same_domain_remove_upd : forall m m' a v v',

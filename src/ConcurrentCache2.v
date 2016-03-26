@@ -10,8 +10,10 @@ Require Import Linearizable.
 Import List.
 Import List.ListNotations.
 
-Module AddrM <: Word.WordSize.
-                 Definition sz := addrlen.
+Module AddrM
+<: Word.WordSize.
+    Unset Universe Polymorphism.
+    Definition sz := addrlen.
 End AddrM.
 
 Module Addr_as_OT := Word_as_OT AddrM.

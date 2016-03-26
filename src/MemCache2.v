@@ -7,7 +7,8 @@ Require Import FMapFacts.
 Import ListNotations.
 
 Module AddrM <: Word.WordSize.
-                 Definition sz := addrlen.
+  Unset Universe Polymorphism.
+  Definition sz := addrlen.
 End AddrM.
 
 Module Addr_as_OT := Word_as_OT AddrM.

@@ -181,20 +181,20 @@ Definition possible_crash {A : Type} {eq : DecEq A} (m m' : @mem A eq (const val
   (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (valuset_list vs)).
 
 Inductive exec_recover (TF TR: Type)
-  : mem -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
+  : @mem addr (@weq _) (const valuset) -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
 | XRFail : forall m p1 p2, exec m p1 (Failed TF)
   -> exec_recover m p1 p2 (RFailed TF TR)
 | XRFinished : forall m p1 p2 m' (v: TF), exec m p1 (Finished m' v)
   -> exec_recover m p1 p2 (RFinished TR m' v)
-| XRCrashedFailed : forall m p1 p2 m' m'r, exec m p1 (Crashed TF m')
+| XRCrashedFailed : forall m p1 p2 (m' m'r : @mem addr (@weq _) _), exec m p1 (Crashed TF m')
   -> possible_crash m' m'r
   -> @exec_recover TR TR m'r p2 p2 (RFailed TR TR)
   -> exec_recover m p1 p2 (RFailed TF TR)
-| XRCrashedFinished : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+| XRCrashedFinished : forall m p1 p2 (m' m'r: @mem addr (@weq _) _) m'' (v: TR), exec m p1 (Crashed TF m')
   -> possible_crash m' m'r
   -> @exec_recover TR TR m'r p2 p2 (RFinished TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v)
-| XRCrashedRecovered : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+| XRCrashedRecovered : forall m p1 p2 (m' m'r: @mem addr (@weq _) _) m'' (v: TR), exec m p1 (Crashed TF m')
   -> possible_crash m' m'r
   -> @exec_recover TR TR m'r p2 p2 (RRecovered TR m'' v)
   -> exec_recover m p1 p2 (RRecovered TF m'' v).
@@ -203,6 +203,7 @@ Hint Constructors exec_recover.
 
 
 Module Addr_as_OT <: UsualOrderedType.
+  Unset Universe Polymorphism.
   Definition t := addr.
   Definition eq := @eq t.
   Definition eq_refl := @eq_refl t.

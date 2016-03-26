@@ -179,7 +179,7 @@ Proof.
   repeat deex; destruct (H1 a).
   intuition; congruence.
   repeat deex; rewrite H in H3; inversion H3; subst.
-  repeat eexists.
+  eexists.
   apply lift_impl.
   intros; eauto.
   split; auto.

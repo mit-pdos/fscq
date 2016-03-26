@@ -455,7 +455,7 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
-Lemma crash_xform_okToUnify : forall V AEQ (P Q: @pred V AEQ _),
+Lemma crash_xform_okToUnify : forall AT AEQ (P Q: @pred AT AEQ _),
   okToUnify P Q -> okToUnify (crash_xform P) (crash_xform Q).
 Proof.
   intros. unfold okToUnify in *. congruence.
