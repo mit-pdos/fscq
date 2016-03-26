@@ -359,6 +359,7 @@ Proof.
 Qed.
 
 
+
 Lemma forall_app_r : forall A P (a b : list A),
   Forall P (a ++ b) -> Forall P a.
 Proof.
@@ -380,6 +381,16 @@ Proof.
   apply repeat_spec in H0.
   congruence.
 Qed.
+
+Lemma Forall_updN : forall A (l : list A) a i P,
+  Forall P l -> P a ->
+  Forall P (updN l i a).
+Proof.
+  induction l; intros; auto.
+  inversion H; subst; auto.
+  simpl; destruct i; apply Forall_cons; auto.
+Qed.
+
 
 Lemma Forall_cons2 : forall A (l : list A) a f,
   Forall f (a :: l) -> Forall f l.
@@ -975,7 +986,7 @@ Proof.
   rewrite IHm by omega; auto.
 Qed.
 
-Lemma skipn_repeat : forall A (v : A) m n,
+Lemma skipn_repeat' : forall A (v : A) m n,
   n <= m -> skipn n (repeat v m) = repeat v (m - n).
 Proof.
   induction m; simpl; intros.
@@ -983,6 +994,16 @@ Proof.
   destruct n; auto.
   rewrite <- IHm; auto.
   omega.
+Qed.
+
+Lemma skipn_repeat : forall A (v : A) m n,
+  skipn n (repeat v m) = repeat v (m - n).
+Proof.
+  intros; destruct (le_dec n m).
+  apply skipn_repeat'; auto.
+  rewrite skipn_oob.
+  replace (m - n) with 0 by omega; simpl; auto.
+  rewrite repeat_length; omega.
 Qed.
 
 Lemma app_repeat : forall T m n (v : T),
@@ -1698,6 +1719,16 @@ Lemma setlen_oob : forall A n (l : list A) def,
 Proof.
   unfold setlen; intros.
   rewrite firstn_oob by omega; auto.
+Qed.
+
+Lemma setlen_exact : forall A n (l : list A) def,
+  n = length l ->
+  setlen l n def = l.
+Proof.
+  unfold setlen; intros; subst.
+  rewrite firstn_oob by omega; auto.
+  rewrite Nat.sub_diag; simpl.
+  rewrite app_nil_r; auto.
 Qed.
 
 

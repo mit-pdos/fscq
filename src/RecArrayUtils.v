@@ -1,5 +1,5 @@
 Require Import Arith Rounding Psatz Omega Eqdep_dec List ListUtils Word Prog.
-Require Import AsyncDisk Rec.
+Require Import AsyncDisk Rec Array.
 Import ListNotations.
 
 
@@ -345,7 +345,6 @@ Module RADefs (RA : RASig).
     apply divup_le; nia.
     rewrite divup_sub by nia.
     rewrite skipn_repeat; auto.
-    apply divup_mul_ge; omega.
   Qed.
 
   Local Hint Resolve skipn_list_chunk_skipn_eq list_chunk_skipn_1 skipn_repeat_list_chunk.
@@ -546,7 +545,7 @@ Module RADefs (RA : RASig).
     rewrite skipn_app_r_ge by omega.
     setoid_rewrite skipn_oob at 2; try omega.
     destruct (le_gt_dec (k - length l) z).
-    rewrite skipn_repeat by auto.
+    rewrite skipn_repeat.
     setoid_rewrite <- app_nil_l at 2.
     apply IHn.
     rewrite skipn_oob by (rewrite repeat_length; omega); auto.
@@ -609,7 +608,7 @@ Module RADefs (RA : RASig).
   Lemma iunpack_ipack : forall nr items,
     Forall Rec.well_formed items ->
     length items = nr * items_per_val ->
-    fold_left iunpack (ipack items) [] = items.
+    fold_left iunpack (ipack items) nil = items.
   Proof.
     intros; eapply iunpack_ipack'; eauto.
   Qed.
@@ -751,6 +750,218 @@ Module RADefs (RA : RASig).
     rewrite cons_app, IHn; f_equal.
     rewrite ipack_one by (rewrite repeat_length; auto); f_equal.
     rewrite block2val_repeat_item0; auto.
+  Qed.
+
+  Lemma Forall_wellformed_updN : forall (items : list item) a v,
+    Forall Rec.well_formed items ->
+    Rec.well_formed v ->
+    Forall Rec.well_formed (updN items a v).
+  Proof.
+    intros.
+    rewrite Forall_forall in *; intuition.
+    apply in_updN in H1; destruct H1; subst; eauto.
+  Qed.
+
+
+  Lemma synced_list_ipack_length_ok : forall len i items,
+    i < len ->
+    length items = len * items_per_val ->
+    i < length (synced_list (ipack items)).
+  Proof.
+    intros.
+    rewrite synced_list_length, ipack_length.
+    setoid_rewrite H0.
+    rewrite divup_mul; auto.
+  Qed.
+
+  Lemma ipack_length_eq : forall len a b,
+    length a = len * items_per_val ->
+    length b = len * items_per_val ->
+    length (ipack a) = length (ipack b).
+  Proof.
+    intros.
+    repeat rewrite ipack_length.
+    setoid_rewrite H; setoid_rewrite H0; auto.
+  Qed.
+
+
+  (* finding an element inside a block *)
+  Fixpoint ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
+    match vs with
+    | nil => None
+    | x :: rest =>
+        if (cond x start) then Some (start, x)
+                          else ifind_block cond rest (S start)
+    end.
+
+
+  Lemma ifind_block_ok_mono : forall cond vs start r,
+    ifind_block cond vs start = Some r ->
+    fst r >= start.
+  Proof.
+    induction vs; simpl; intros; try congruence.
+    destruct (cond a) eqn: C.
+    inversion H; simpl; auto.
+    apply le_Sn_le.
+    apply IHvs; auto.
+  Qed.
+
+  Lemma ifind_block_ok_bound : forall cond vs start r,
+    ifind_block cond vs start = Some r ->
+    fst r < start + length vs.
+  Proof.
+    induction vs; simpl; intros; try congruence.
+    destruct (cond a) eqn: C.
+    inversion H; simpl; omega.
+    replace (start + S (length vs)) with (S start + length vs) by omega.
+    apply IHvs; auto.
+  Qed.
+
+  Lemma ifind_block_ok_cond : forall cond vs start r,
+    ifind_block cond vs start = Some r ->
+    cond (snd r) (fst r) = true.
+  Proof.
+    induction vs; simpl; intros; try congruence.
+    destruct (cond a) eqn: C.
+    inversion H; simpl; auto.
+    eapply IHvs; eauto.
+  Qed.
+
+  Lemma ifind_block_ok_item : forall cond vs start r,
+    ifind_block cond vs start = Some r ->
+    selN vs ((fst r) - start) item0 = (snd r).
+  Proof.
+    induction vs; intros.
+    simpl in *; try congruence.
+    simpl in H; destruct (cond a) eqn: C.
+    inversion H; simpl; auto.
+    rewrite Nat.sub_diag; simpl; auto.
+    replace (fst r - start) with ((fst r - S start) + 1).
+    rewrite selN_cons, Nat.add_sub by omega.
+    apply IHvs; auto.
+    apply ifind_block_ok_mono in H; omega.
+  Qed.
+
+
+  Lemma ifind_block_ok_facts : forall cond vs start r,
+    ifind_block cond vs start = Some r ->
+    (fst r) >= start /\
+    (fst r) < start + length vs /\
+    cond (snd r) (fst r) = true /\
+    selN vs ((fst r) - start) item0 = (snd r).
+  Proof.
+    intros; intuition.
+    eapply ifind_block_ok_mono; eauto.
+    eapply ifind_block_ok_bound; eauto.
+    eapply ifind_block_ok_cond; eauto.
+    eapply ifind_block_ok_item; eauto.
+  Qed.
+
+  Lemma ifind_result_inbound :  forall len bn items cond r,
+    Forall Rec.well_formed items ->
+    bn < len ->
+    ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
+      (bn * items_per_val) = Some r ->
+    length items = len * items_per_val ->
+    fst r < length items.
+  Proof.
+    intros.
+    apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
+    apply list_chunk_wellformed in H.
+    rewrite synced_list_selN in Hb; simpl in Hb.
+    unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
+    rewrite list_chunk_spec, setlen_length in *.
+
+    rewrite H2.
+    eapply lt_le_trans; eauto.
+    setoid_rewrite <- Nat.mul_1_l at 5.
+    rewrite <- Nat.mul_add_distr_r.
+    apply Nat.mul_le_mono_r; omega.
+  Qed.
+
+  Lemma ifind_result_item_ok : forall len bn items cond r,
+    Forall Rec.well_formed items ->
+    bn < len ->
+    ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
+      (bn * items_per_val) = Some r ->
+    length items = len * items_per_val ->
+    (snd r) = selN items (fst r) item0.
+  Proof.
+    intros.
+    apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
+    rewrite <- Hi.
+    rewrite synced_list_selN; simpl.
+    apply list_chunk_wellformed in H.
+    rewrite synced_list_selN in Hb; simpl in Hb.
+    unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
+    rewrite list_chunk_spec, setlen_length in *.
+    unfold setlen; rewrite selN_app1.
+    rewrite selN_firstn, skipn_selN, le_plus_minus_r by omega; auto.
+    rewrite firstn_length, skipn_length.
+    apply Nat.min_glb_lt; try omega.
+    setoid_rewrite H2.
+    apply lt_add_lt_sub in Hb; auto.
+    eapply lt_le_trans; eauto.
+    rewrite <- Nat.mul_sub_distr_r, <- Nat.mul_1_l at 1.
+    apply Nat.mul_le_mono_r; omega.
+  Qed.
+
+  Lemma ifind_block_none : forall cond l start,
+    ifind_block cond l start = None ->
+    forall ix, ix < length l ->
+    cond (selN l ix item0) (start + ix) = false.
+  Proof.
+    induction l; simpl; intros; try omega.
+    destruct ix.
+    rewrite Nat.add_0_r.
+    destruct (cond a); congruence.
+    replace (start + S ix) with (S start + ix) by omega.
+    apply IHl; try omega.
+    destruct (cond a); congruence.
+  Qed.
+
+  Lemma ifind_block_none_progress : forall i ix items v cond len,
+    (forall ix, ix < i * items_per_val ->
+         cond (selN items ix item0) ix = false) ->
+    ifind_block cond (val2block v) (i * items_per_val) = None ->
+    v = fst (selN (synced_list (ipack items)) i ($0, nil)) ->
+    ix < items_per_val + i * items_per_val ->
+    i < len ->
+    length items = len * items_per_val ->
+    Forall Rec.well_formed items ->
+    cond (selN items ix item0) ix = false.
+  Proof.
+    intros.
+    destruct (lt_dec ix (i * items_per_val)); [ eauto | subst ].
+
+    assert (ix < length items).
+    setoid_rewrite H4.
+    eapply lt_le_trans; eauto.
+    setoid_rewrite Nat.mul_comm.
+    rewrite Nat.add_comm, mult_n_Sm.
+    apply Nat.mul_le_mono_pos_l; auto.
+
+    rewrite <- ipack_selN_divmod; auto.
+    rewrite Nat.div_mod with (x := ix) (y := items_per_val) at 3 by auto.
+    apply ifind_block_none.
+    replace (ix / items_per_val) with i.
+    rewrite Nat.mul_comm.
+    rewrite synced_list_selN in H0; simpl in H0; auto.
+
+    destruct (lt_eq_lt_dec i (ix / items_per_val)).
+    destruct s; auto.
+    apply lt_div_mul_add_le in l; auto; omega.
+    contradict n.
+    apply div_lt_mul_lt; auto.
+
+    unfold ipack; erewrite selN_map.
+    rewrite val2block2val_id.
+    rewrite list_chunk_spec, setlen_length.
+    apply Nat.mod_upper_bound; auto.
+    apply Forall_selN.
+    apply list_chunk_wellformed; auto.
+    setoid_rewrite list_chunk_length; apply div_lt_divup; auto.
+    setoid_rewrite list_chunk_length; apply div_lt_divup; auto.
   Qed.
 
 

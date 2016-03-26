@@ -849,6 +849,29 @@ Proof.
 Qed.
 
 
+Lemma sep_star_reorder_helper1 : forall AT AEQ V (a b c d : @pred AT AEQ V),
+  (a * ((b * c) * d)) <=p=> (a * b * d) * c.
+Proof.
+  intros; split; cancel.
+Qed.
+
+Lemma list2nmem_arrayN_updN : forall V F a vl l i (v : V),
+  (F * arrayN a vl)%pred (list2nmem l) ->
+  i < length vl ->
+  (F * arrayN a (updN vl i v))%pred (list2nmem (updN l (a + i) v)).
+Proof.
+  intros.
+  rewrite arrayN_isolate with (i:=i) (default := v) by (rewrite length_updN; auto).
+  rewrite selN_updN_eq by auto.
+  rewrite firstn_updN_oob by auto.
+  rewrite skipN_updN' by auto.
+  apply sep_star_reorder_helper1.
+  eapply list2nmem_updN with (x := selN vl i v).
+  apply sep_star_reorder_helper1.
+  rewrite <- arrayN_isolate; auto.
+Qed.
+
+
 (* crashes *)
 
 Require Import PredCrash AsyncDisk.

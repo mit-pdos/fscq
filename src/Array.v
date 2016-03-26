@@ -254,6 +254,14 @@ Proof.
   eapply IHvs1; eauto.
 Qed.
 
+Lemma arrayN_ptsto_selN_0 : forall A l (def : A) a,
+  length l = 1 ->
+  arrayN a l <=p=> (a |-> selN l 0 def)%pred.
+Proof.
+  destruct l; simpl; intros; try congruence.
+  assert (length l = 0) by omega.
+  apply length_nil in H0; subst; simpl; split; cancel.
+Qed.
 
 Theorem arrayN_strictly_exact : forall A (vs : list A) base,
   strictly_exact (arrayN base vs).
@@ -592,6 +600,15 @@ Proof.
   unfold synced_list; intros.
   rewrite map_fst_combine; auto.
   rewrite repeat_length; auto.
+Qed.
+
+Lemma vsupsyn_range_synced_list : forall a b,
+  length a = length b ->
+  vsupsyn_range a b = synced_list b.
+Proof.
+  unfold vsupsyn_range, synced_list; intros.
+  rewrite skipn_oob by omega.
+  rewrite app_nil_r; auto.
 Qed.
 
 Lemma possible_crash_list_length : forall l l',

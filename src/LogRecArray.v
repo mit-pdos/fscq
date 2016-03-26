@@ -49,14 +49,6 @@ Module LogRecArray (RA : RASig).
     ms <- LOG.write_range lxp (RAStart xp) (repeat $0 (RALen xp)) ms;
     rx ms.
 
-  Fixpoint ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
-    match vs with
-    | nil => None
-    | x :: rest =>
-        if (cond x start) then Some (start, x)
-                          else ifind_block cond rest (S start)
-    end.
-
   (* find the first item that satisfies cond *)
   Definition ifind T lxp xp (cond : item -> addr -> bool) ms rx : prog T :=
     let^ (ms) <- ForN i < (RALen xp)
@@ -86,8 +78,7 @@ Module LogRecArray (RA : RASig).
   Proof.
     unfold items_valid; intuition.
     rewrite length_updN; auto.
-    rewrite Forall_forall in *; intuition.
-    apply in_updN in H3; destruct H3; subst; eauto.
+    apply Forall_wellformed_updN; auto.
   Qed.
 
   Lemma ifind_length_ok : forall xp i items,
@@ -96,122 +87,7 @@ Module LogRecArray (RA : RASig).
     i < length (synced_list (ipack items)).
   Proof.
     unfold items_valid; intuition.
-    rewrite synced_list_length, ipack_length.
-    setoid_rewrite H2.
-    rewrite divup_mul; auto.
-  Qed.
-
-  Lemma ifind_block_ok_mono : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    fst r >= start.
-  Proof.
-    induction vs; simpl; intros; try congruence.
-    destruct (cond a) eqn: C.
-    inversion H; simpl; auto.
-    apply le_Sn_le.
-    apply IHvs; auto.
-  Qed.
-
-  Lemma ifind_block_ok_bound : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    fst r < start + length vs.
-  Proof.
-    induction vs; simpl; intros; try congruence.
-    destruct (cond a) eqn: C.
-    inversion H; simpl; omega.
-    replace (start + S (length vs)) with (S start + length vs) by omega.
-    apply IHvs; auto.
-  Qed.
-
-  Lemma ifind_block_ok_cond : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    cond (snd r) (fst r) = true.
-  Proof.
-    induction vs; simpl; intros; try congruence.
-    destruct (cond a) eqn: C.
-    inversion H; simpl; auto.
-    eapply IHvs; eauto.
-  Qed.
-
-  Lemma ifind_block_ok_item : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    selN vs ((fst r) - start) item0 = (snd r).
-  Proof.
-    induction vs; intros.
-    simpl in *; try congruence.
-    simpl in H; destruct (cond a) eqn: C.
-    inversion H; simpl; auto.
-    rewrite Nat.sub_diag; simpl; auto.
-    replace (fst r - start) with ((fst r - S start) + 1).
-    rewrite selN_cons, Nat.add_sub by omega.
-    apply IHvs; auto.
-    apply ifind_block_ok_mono in H; omega.
-  Qed.
-
-
-  Lemma ifind_block_ok_facts : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    (fst r) >= start /\
-    (fst r) < start + length vs /\
-    cond (snd r) (fst r) = true /\
-    selN vs ((fst r) - start) item0 = (snd r).
-  Proof.
-    intros; intuition.
-    eapply ifind_block_ok_mono; eauto.
-    eapply ifind_block_ok_bound; eauto.
-    eapply ifind_block_ok_cond; eauto.
-    eapply ifind_block_ok_item; eauto.
-  Qed.
-
-
-  Lemma ifind_result_inbound :  forall xp bn items cond r,
-    items_valid xp items ->
-    bn < RALen xp ->
-    ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
-      (bn * items_per_val) = Some r ->
-    fst r < length items.
-  Proof.
-    intros.
-    apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
-    unfold items_valid in H; intuition.
-    apply list_chunk_wellformed in H4.
-    rewrite synced_list_selN in Hb; simpl in Hb.
-    unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
-    rewrite list_chunk_spec, setlen_length in *.
-
-    rewrite H2.
-    eapply lt_le_trans; eauto.
-    setoid_rewrite <- Nat.mul_1_l at 5.
-    rewrite <- Nat.mul_add_distr_r.
-    apply Nat.mul_le_mono_r; omega.
-  Qed.
-
-
-  Lemma ifind_result_item_ok : forall xp bn items cond r,
-    items_valid xp items ->
-    bn < RALen xp ->
-    ifind_block cond (val2block (fst (selN (synced_list (ipack items)) bn ($0, nil))))
-      (bn * items_per_val) = Some r ->
-    (snd r) = selN items (fst r) item0.
-  Proof.
-    intros.
-    apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
-    rewrite <- Hi.
-    rewrite synced_list_selN; simpl.
-    unfold items_valid in H; intuition.
-    apply list_chunk_wellformed in H4.
-    rewrite synced_list_selN in Hb; simpl in Hb.
-    unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
-    rewrite list_chunk_spec, setlen_length in *.
-    unfold setlen; rewrite selN_app1.
-    rewrite selN_firstn, skipn_selN, le_plus_minus_r by omega; auto.
-    rewrite firstn_length, skipn_length.
-    apply Nat.min_glb_lt; try omega.
-    setoid_rewrite H2.
-    apply lt_add_lt_sub in Hb; auto.
-    eapply lt_le_trans; eauto.
-    rewrite <- Nat.mul_sub_distr_r, <- Nat.mul_1_l at 1.
-    apply Nat.mul_le_mono_r; omega.
+    eapply synced_list_ipack_length_ok; eauto.
   Qed.
 
   Lemma items_valid_length_eq : forall xp a b,
@@ -220,20 +96,8 @@ Module LogRecArray (RA : RASig).
     length (ipack a) = length (ipack b).
   Proof.
     unfold items_valid; intuition.
-    repeat rewrite ipack_length.
-    setoid_rewrite H3; setoid_rewrite H4; auto.
+    eapply ipack_length_eq; eauto.
   Qed.
-
-
-  Lemma vsupsyn_range_synced_list : forall a b,
-    length a = length b ->
-    vsupsyn_range a b = synced_list b.
-  Proof.
-    unfold vsupsyn_range, synced_list; intros.
-    rewrite skipn_oob by omega.
-    rewrite app_nil_r; auto.
-  Qed.
-
 
   Theorem get_ok : forall lxp xp ix ms,
     {< F Fm m0 m items,
@@ -374,6 +238,7 @@ Module LogRecArray (RA : RASig).
     eapply ifind_length_ok; eauto.
 
     step.
+    unfold items_valid in *; intuition.
     or_r; cancel.
     replace i with (snd (n, i)) by auto.
     eapply ifind_block_ok_cond; eauto.
@@ -563,5 +428,4 @@ Module LogRecArray (RA : RASig).
   Qed.
 
 End LogRecArray.
-
 

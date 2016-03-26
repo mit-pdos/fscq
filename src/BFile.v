@@ -524,7 +524,8 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: Fd * arrayN a (updN vsl i (v, nil)) ]]]
+           [[[ (BFData f') ::: Fd * arrayN a (updN vsl i (v, nil)) ]]] *
+           [[ f' = mk_bfile (updN (BFData f) (a + i) (v, nil)) (BFAttr f) ]]
     CRASH  LOG.intact lxp F m0
     >} write_array lxp ixp inum a i v ms.
   Proof.
@@ -534,7 +535,7 @@ Module BFILE.
     denote (arrayN a vsl) as Hx.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
     rewrite isolateN_fwd with (i:=i) by auto; filldef; cancel.
-    rewrite <- isolateN_bwd_upd by auto; cancel.
+    apply list2nmem_arrayN_updN; auto.
   Qed.
 
 

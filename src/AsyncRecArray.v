@@ -506,7 +506,7 @@ Module AsyncRecArray (RA : RASig).
     length items = (length vsl) * items_per_val ->
     m <= (length vsl) ->
     arrayN (RAStart xp + start) (vssync_range (combine (ipack items) vsl) m) =p=>
-    arrayN (RAStart xp + start) (combine (ipack items) (repeat [] m ++ skipn m vsl)).
+    arrayN (RAStart xp + start) (combine (ipack items) (repeat nil m ++ skipn m vsl)).
   Proof.
       intros.
       unfold vssync_range, ipack.
