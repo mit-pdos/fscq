@@ -31,6 +31,14 @@ Section Linearizability.
 
 End Linearizability.
 
+Instance A'_dec : forall A `(DecEq A), DecEq (A' A).
+Proof.
+  unfold DecEq; intros.
+  decide equality.
+  decide equality.
+  decide equality.
+Defined.
+
 Arguments linear_mem {A AEQ V}.
 
   Notation "'linearized' mt" :=

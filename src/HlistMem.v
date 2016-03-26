@@ -1,4 +1,4 @@
-Require Import Mem.
+Require Import MemClass.
 Require Import Pred.
 Require Import Hlist.
 Require Import Automation.
@@ -31,11 +31,10 @@ Proof.
   subst; auto.
 Qed.
 
-Definition haddress_dec {types} : forall (a1 a2: haddress types),
-    {a1 = a2} + {a1 <> a2}.
+Instance haddress_dec {types} : DecEq (haddress types).
 Proof.
-  intros.
-  destruct a1, a2; auto;
+  unfold DecEq; intros.
+  destruct a, b; auto;
   try solve [ right; intro H; inversion H].
   destruct (member_index_dec m m0); [ left | right ]; intros.
   destruct (indices_eq _ _ e); subst.
@@ -98,7 +97,7 @@ Module Examples.
   Theorem number_is_3 : get number someValues = 3.
   Proof. reflexivity. Qed.
 
-  Definition someMem : @mem _ haddress_dec _ := hlistmem someValues.
+  Definition someMem := hlistmem someValues.
 
   (* TODO: replace with Coercion *)
   Definition num := haddr number.
