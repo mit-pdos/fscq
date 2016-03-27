@@ -112,8 +112,8 @@ Section MEMMATCH.
   Variable AT2 : Type.
   Variable atrans : AT1 -> AT2.
 
-  Variable AEQ1 : DecEq AT1.
-  Variable AEQ2 : DecEq AT2.
+  Variable AEQ1 : EqDec AT1.
+  Variable AEQ2 : EqDec AT2.
   Variable V : Type.
   Variable m1 : @mem AT1 AEQ1 V.
   Variable m2 : @mem AT2 AEQ2 V.

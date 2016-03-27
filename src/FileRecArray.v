@@ -2,7 +2,7 @@ Require Import Eqdep_dec Arith Omega List ListUtils MapUtils Rounding Psatz.
 Require Import Word WordAuto AsyncDisk Pred GenSepN Array SepAuto.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Require Import ProofIrrelevance.
-Require Import Inode BFile.
+Require Import Inode BFile MemMatch.
 Import ListNotations EqNotations.
 
 Set Implicit Arguments.
@@ -418,7 +418,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
-          [[[ items' ::: Fe * ix |-> e ]]]
+          [[[ items' ::: Fe * ix |-> e ]]] *
+          [[ items' = updN items ix e ]]
     CRASH LOG.intact lxp F m0
     >} put_array lxp ixp inum ix e ms.
   Proof.
@@ -444,7 +445,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * (length items) |-> e *
-                arrayN (length items + 1) (repeat item0 (items_per_val - 1)) ]]]
+                arrayN (length items + 1) (repeat item0 (items_per_val - 1)) ]]] *
+          [[ items' = items ++ (updN block0 0 e)  ]]
     CRASH LOG.intact lxp F m0
     >} extend_array lxp bxp ixp inum e ms.
   Proof.
@@ -533,6 +535,55 @@ Module FileRecArray (FRA : FileRASig).
   Proof.
     unfold rep, items_valid; cancel.
   Qed.
+
+
+  (* equality of items given the rep invariant *)
+
+  Definition unpack blocks := fold_left iunpack blocks nil.
+
+  Definition pack_unpack_cond (items : list item) :=
+    Forall Rec.well_formed items /\ exists nr, length items = nr * items_per_val.
+
+  Lemma pack_unpack_id : forall items,
+    pack_unpack_cond items ->
+    unpack (ipack items) = items.
+  Proof.
+    unfold pack_unpack_cond; intuition.
+    destruct H1.
+    eapply iunpack_ipack; eauto.
+  Qed.
+
+  Lemma ipack_injective :
+    cond_injective (ipack) (pack_unpack_cond).
+  Proof.
+    eapply cond_left_inv_inj with (f' := unpack) (PB := fun _ => True).
+    unfold cond_left_inverse; intuition.
+    apply pack_unpack_id; auto.
+  Qed.
+
+  Lemma synced_list_injective :
+    cond_injective (synced_list) (fun _ => True).
+  Proof.
+    eapply cond_left_inv_inj with (f' := map fst) (PB := fun _ => True).
+    unfold cond_left_inverse; intuition.
+    apply synced_list_map_fst; auto.
+  Qed.
+
+  Lemma rep_items_eq : forall m f vs1 vs2,
+    rep f vs1 m ->
+    rep f vs2 m ->
+    vs1 = vs2.
+  Proof.
+    unfold rep, items_valid; intros.
+    destruct_lift H; destruct_lift H0; subst.
+    apply ipack_injective; unfold pack_unpack_cond; eauto.
+    apply synced_list_injective; auto.
+    eapply arrayN_list_eq; eauto.
+  Qed.
+
+
+
+
 
 End FileRecArray.
 

@@ -12,311 +12,155 @@ Require Import Omega.
 Require Import Rec.
 Require Import Array.
 Require Import ListPred.
-Require Import GenSep.
 Require Import GenSepN.
 Require Import BFile.
-Require Import BFileRec.
+Require Import FileRecArray.
 Require Import Bool.
 Require Import SepAuto.
 Require Import Log.
 Require Import Cache.
-
+Require Import ListUtils.
+Require Import AsyncDisk.
 Import ListNotations.
 
 Set Implicit Arguments.
 
-Definition filename_len := (512 - addrlen - addrlen - addrlen).
-Definition filename := word filename_len.
+
 
 Module DIR.
-  Definition dent_type : Rec.type := Rec.RecF ([("name",  Rec.WordF filename_len);
-                                                ("inum",  Rec.WordF addrlen);
-                                                ("valid", Rec.WordF addrlen);
-                                                ("isdir", Rec.WordF addrlen)]).
-  Definition dent := Rec.data dent_type.
-  Definition dent0 := @Rec.of_word dent_type $0.
 
-  Definition itemsz := Rec.len dent_type.
-  Definition items_per_valu : addr := $ (valulen / itemsz).
-  Theorem itemsz_ok : valulen = wordToNat items_per_valu * itemsz.
-  Proof.
-    unfold items_per_valu; simpl.
-    rewrite valulen_is; auto.
-  Qed.
+  Definition filename_len := (512 - addrlen - addrlen).
+  Definition filename := word filename_len.
 
-  Definition derep f (delist : list dent) :=
-    BFileRec.array_item_file dent_type items_per_valu itemsz_ok f delist.
 
-  Definition derep_macro F1 F2 m bxp ixp (inum : addr) (delist : list dent) :=
-    exists flist f,
-    derep f delist /\
-    (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
-    (F2 * #inum |-> f)%pred (list2nmem flist).
+  Module DentSig <: FileRASig.
 
-  Definition delen T lxp ixp inum mscs rx : prog T :=
-    r <- BFileRec.bf_getlen items_per_valu lxp ixp inum mscs;
-    rx r.
+    Definition itemtype : Rec.type := Rec.RecF
+        ([("name",  Rec.WordF filename_len);
+          ("inum",  Rec.WordF addrlen);
+          ("valid", Rec.WordF 1);
+          ("isdir", Rec.WordF 1);
+          ("unused", Rec.WordF (addrlen - 2))
+         ]).
 
-  Definition deget T lxp ixp inum idx mscs rx : prog T :=
-    r <- BFileRec.bf_get dent_type items_per_valu itemsz_ok
-         lxp ixp inum idx mscs;
-    rx r.
+    Definition items_per_val := valulen / (Rec.len itemtype).
 
-  Definition deput T lxp ixp inum idx ent mscs rx : prog T :=
-    r <- BFileRec.bf_put dent_type items_per_valu itemsz_ok
-         lxp ixp inum idx ent mscs;
-    rx r.
+    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+    Proof.
+      unfold items_per_val; simpl.
+      rewrite valulen_is.
+      compute; auto.
+    Qed.
 
-  Definition deext T lxp bxp ixp inum ent mscs rx : prog T :=
-    r <- BFileRec.bf_extend dent_type items_per_valu itemsz_ok
-         lxp bxp ixp inum ent mscs;
-    rx r.
+  End DentSig.
 
-  Definition delist T lxp ixp inum mscs rx : prog T :=
-    r <- BFileRec.bf_get_all dent_type items_per_valu itemsz_ok
-         lxp ixp inum mscs;
-    rx r.
+  Module Dent := FileRecArray DentSig.
 
-  Fact resolve_sel_dent0 : forall l i (d : dent),
-    d = dent0 -> sel l i d = sel l i dent0.
-  Proof.
-    intros; subst; auto.
-  Qed.
 
-  Fact resolve_selN_dent0 : forall l i (d : dent),
+  (*************  dirent accessors  *)
+
+  Definition dent := Dent.Defs.item.
+  Definition dent0 := Dent.Defs.item0.
+
+  Fact resolve_selN_dent0 : forall l i d,
     d = dent0 -> selN l i d = selN l i dent0.
   Proof.
     intros; subst; auto.
   Qed.
 
-  Hint Rewrite resolve_sel_dent0  using reflexivity : defaults.
   Hint Rewrite resolve_selN_dent0 using reflexivity : defaults.
 
-  Theorem delen_ok : forall lxp bxp ixp inum mscs,
-    {< F F1 A mbase m delist,
-    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ derep_macro F1 A m bxp ixp inum delist ]]
-    POST RET:^(mscs,r)
-           LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ r = $ (length delist) ]]
-    CRASH  LOG.would_recover_old lxp F mbase
-    >} delen lxp ixp inum mscs.
-  Proof.
-    unfold delen, derep_macro, derep.
-    hoare.
-  Qed.
+
+  Definition bit2bool bit := if (bit_dec bit) then false else true.
+  Definition bool2bit bool : word 1 := if (bool_dec bool true) then $1 else $0.
+
+  Definition DEIsDir (de : dent) := Eval compute_rec in de :-> "isdir".
+  Definition DEValid (de : dent) := Eval compute_rec in de :-> "valid".
+  Definition DEName  (de : dent) := Eval compute_rec in de :-> "name".
+  Definition DEInum  (de : dent) := Eval compute_rec in # (de :-> "inum").
+  Definition mk_dent (name : filename) inum isdir : dent := Eval cbn in
+      dent0 :=> "valid" := $1 :=>
+                "name" := name :=>
+                "inum" := $ inum :=>
+                "isdir" := bool2bit isdir.
+
+  Definition isdir   (de : dent) := bit2bool (DEIsDir de).
+  Definition isvalid (de : dent) := bit2bool (DEValid de).
+  Definition nameis  (n : filename) (de : dent) :=
+      if (weq n (DEName de)) then true else false.
 
 
-  Theorem deget_ok : forall lxp bxp ixp inum idx mscs,
-    {< F F1 A B mbase m delist e,
-    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ derep_macro F1 A m bxp ixp inum delist ]] *
-           [[ (B * #idx |-> e)%pred (list2nmem delist) ]]
-    POST RET:^(mscs,r)
-           LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ r = e ]]
-    CRASH  LOG.would_recover_old lxp F mbase
-    >} deget lxp ixp inum idx mscs.
-  Proof.
-    unfold deget, derep_macro, derep.
-    hoare.
-  Qed.
-
-  Theorem deput_ok : forall lxp bxp ixp inum idx e mscs,
-    {< F F1 A B mbase m delist e0,
-    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ derep_macro F1 A m bxp ixp inum delist ]] *
-           [[ Rec.well_formed e ]] *
-           [[ (B * #idx |-> e0)%pred (list2nmem delist) ]]
-    POST RET:mscs
-           exists m' delist',
-           LOG.rep lxp F (ActiveTxn mbase m') mscs *
-           [[ derep_macro F1 A m' bxp ixp inum delist' ]] *
-           [[ (B * #idx |-> e)%pred (list2nmem delist') ]]
-    CRASH  LOG.would_recover_old lxp F mbase
-    >} deput lxp ixp inum idx e mscs.
-  Proof.
-    unfold deput, derep_macro, derep.
-    hoare.
-  Qed.
-
-  Theorem delist_ok : forall lxp bxp ixp inum mscs,
-    {< F F1 A mbase m delist,
-    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ derep_macro F1 A m bxp ixp inum delist ]]
-    POST RET:^(mscs,r)
-           LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ r = delist ]]
-    CRASH  LOG.would_recover_old lxp F mbase
-    >} delist lxp ixp inum mscs.
-  Proof.
-    unfold delist, derep_macro, derep.
-    hoare.
-  Qed.
-
-
-  Definition deext_tail len:=
-    (arrayN (len + 1) (repeat dent0 (# items_per_valu - 1)))%pred.
-
-
-  Lemma item0_list_dent0 :
-    item0_list dent_type items_per_valu itemsz_ok = repeat dent0 (# items_per_valu).
-  Proof.
-    unfold item0_list, valu_to_block, RecArray.valu_to_block.
-    unfold RecArray.valu_to_wreclen, RecArray.blocktype.
-    unfold eq_rec, eq_rect.
-    generalize itemsz_ok.
-    generalize valulen.
-    generalize (# items_per_valu).
-    intros.
-    rewrite e; clear e.
-    induction n.
-    reflexivity.
-    unfold repeat; fold repeat.
-    unfold Rec.of_word; fold (@Rec.of_word (Rec.ArrayF dent_type n)).
-    f_equal.
-    auto.
-  Qed.
-
-  Lemma list2nmem_arrayN_app : forall A l (l0 : list A)(F : pred),
-    F (list2nmem l0)
-    -> (F * arrayN (length l0) l)%pred (list2nmem (l0 ++ l)).
-  Proof.
-    induction l; simpl; intros.
-    rewrite app_nil_r.
-    pred_apply; cancel.
-    replace (S (length l0)) with (length (l0 ++ [a])).
-    replace (l0 ++ a :: l) with ((l0 ++ [a]) ++ l).
-    apply sep_star_assoc_1.
-    apply IHl.
-    apply list2nmem_app; auto.
-    rewrite <- app_assoc.
-    rewrite <- app_comm_cons.
-    simpl; auto.
-    rewrite app_length; simpl; omega.
-  Qed.
-
-  Lemma arrayN_updN_0 : forall A l s (v : A),
-    length l > 0
-    -> arrayN s (updN l 0 v) =p=> (s |-> v * (arrayN (s + 1) (skipn 1 l)))%pred.
-  Proof.
-    intros.
-    rewrite arrayN_isolate_upd by auto.
-    replace (s + 0) with s by omega.
-    cancel.
-  Qed.
-
-  Lemma helper_deext_ok' : forall (F : pred) l v,
-    F (list2nmem l)
-    -> (F * arrayN (length l) (updN (repeat dent0 (# items_per_valu)) 0 v))%pred
-        (list2nmem (l ++ updN (repeat dent0 (# items_per_valu)) 0 v)).
-  Proof.
-    intros.
-    apply list2nmem_arrayN_app; auto.
-  Qed.
-
-  Lemma helper_deext_ok : forall (F : pred) l v,
-    F (list2nmem l)
-    -> (F * length l |-> v * deext_tail (length l))%pred
-        (list2nmem (l ++ updN (repeat dent0 (# items_per_valu)) 0 v)).
-  Proof.
-    intros; unfold deext_tail.
-    pose proof (helper_deext_ok' F l v H).
-    pred_apply; cancel.
-    rewrite <- skipn_repeat.
-    rewrite <- arrayN_updN_0; auto.
-    rewrite repeat_length.
-    pose proof (items_per_valu_not_0' _ _ itemsz_ok); omega.
-    unfold items_per_valu.
-    rewrite valulen_is.
-    compute; omega.
-  Qed.
-
-
-  Theorem deext_ok : forall lxp bxp ixp inum e mscs,
-    {< F F1 A B mbase m delist,
-    PRE    LOG.rep lxp F (ActiveTxn mbase m) mscs *
-           [[ derep_macro F1 A m bxp ixp inum delist ]] *
-           [[ Rec.well_formed e ]] *
-           [[ B (list2nmem delist) ]]
-    POST RET:^(mscs, r)
-          exists m', LOG.rep lxp F (ActiveTxn mbase m') mscs *
-          ([[ r = false ]] \/
-           [[ r = true  ]] * exists delist',
-           [[ derep_macro F1 A m' bxp ixp inum delist' ]] *
-           [[ delist' = delist ++ (updN (repeat dent0 (# items_per_valu)) 0 e) ]] *
-           [[ (B * (length delist) |-> e
-                 * deext_tail (length delist))%pred (list2nmem delist') ]] )
-    CRASH  LOG.would_recover_old lxp F mbase
-    >} deext lxp bxp ixp inum e mscs.
-  Proof.
-    unfold deext, derep_macro, derep.
-    hoare.
-    apply pimpl_or_r; right; cancel.
-    exists flist'.
-    exists {| BFILE.BFData := fdata'; BFILE.BFAttr := BFILE.BFAttr f |}.
-    split; eauto.
-
-    (**
-     * The theorem [item0_list_dent0] talks about [@repeat (Rec.data dent_type)],
-     * but our subgoal has expanded out the value of [Rec.data dent_type].  To
-     * be able to use the theorem, we have to expand out [Rec.data dent_type] in
-     * its type..  Not doing this causes [rewrite] to fail, and [setoid_rewrite]
-     * to take a long time.
-     *)
-    pose proof item0_list_dent0 as item0_list_dent0'.
-    simpl in *.
-    rewrite <- item0_list_dent0'.
-
-    (**
-     * If we leave [items_per_valu] as-is, Coq will apparently try to expand
-     * it out at [Qed], which uses up a lot of memory and eventually crashes.
-     * Lose the information about the exact value of [items_per_valu] before
-     * finishing this subgoal.
-     *)
-    generalize dependent itemsz_ok. generalize dependent items_per_valu. intros.
-    abstract ( unfold upd in *; auto ).
-    apply helper_deext_ok; auto.
-  Qed.
-
-
-  Hint Extern 1 ({{_}} progseq (delen _ _ _ _) _) => apply delen_ok : prog.
-  Hint Extern 1 ({{_}} progseq (deget _ _ _ _ _) _) => apply deget_ok : prog.
-  Hint Extern 1 ({{_}} progseq (deput _ _ _ _ _ _) _) => apply deput_ok : prog.
-  Hint Extern 1 ({{_}} progseq (deext _ _ _ _ _ _) _) => apply deext_ok : prog.
-  Hint Extern 1 ({{_}} progseq (delist _ _ _ _) _) => apply delist_ok : prog.
-
-  Definition isdir2bool (isdir : addr) := if weq isdir $0 then false else true.
-  Definition bool2isdir (isdir : bool) : addr := if isdir then $1 else $0.
+  (*************  rep invariant  *)
 
   Definition dmatch (de: dent) : @pred filename (@weq filename_len) (addr * bool) :=
-    if weq (de :-> "valid") $0 then emp
-    else (de :-> "name") |-> (de :-> "inum", isdir2bool (de :-> "isdir")).
+    if bit_dec (DEValid de) then emp
+    else (DEName de) |-> (DEInum de, isdir de).
+
+  Definition rep f dmap :=
+    exists delist,
+    (Dent.rep f delist)%pred (list2nmem (BFILE.BFData f)) /\
+    listpred dmatch delist dmap.
+
+  Definition rep_macro Fm Fi m bxp ixp inum dmap : (@pred _ addr_eq_dec valuset) :=
+    (exists flist f,
+    [[[ m ::: Fm * BFILE.rep bxp ixp flist ]]] *
+    [[[ flist ::: Fi * inum |-> f ]]] *
+    [[ rep f dmap ]])%pred.
+
+
+
+  (*************  program  *)
+
+
+  Definition lookup_f name de (_ : addr) := (isvalid de) && (nameis name de).
+
+  Definition lookup T lxp ixp dnum name ms rx : prog T :=
+    let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
+    match r with
+    | None => rx ^(ms, None)
+    | Some (_, de) => rx ^(ms, Some (DEInum de, isdir de))
+    end.
+
+  Definition read T lxp ixp dnum ms rx : prog T :=
+    let^ (ms, dents) <- Dent.readall lxp ixp dnum ms;
+    let r := map (fun de => (DEName de, (DEInum, isdir de))) (filter isvalid dents) in
+    rx ^(ms, r).
+
+  Definition dunlink T lxp ixp dnum name ms rx : prog T :=
+    let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
+    match r with
+    | None => rx ^(ms, false)
+    | Some (ix, _) =>
+        ms <- Dent.put lxp ixp dnum ix dent0 ms;
+        rx ^(ms, true)
+    end.
+
+  Definition dlink T lxp bxp ixp dnum name inum isdir ms rx : prog T :=
+    let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
+    match r with
+    | Some _ => rx ^(ms, false)
+    | None =>
+        let de := mk_dent name inum isdir in
+        let^ (ms, r) <- Dent.ifind lxp ixp dnum (fun de _ => isvalid de) ms;
+        match r with
+        | Some (ix, _) =>
+            cs <- Dent.put lxp ixp dnum ix de ms;
+            rx ^(ms, true)
+        | None =>
+            let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
+            rx ^(ms, ok)
+        end
+    end.
+
+
+  (*************  basic lemmas  *)
 
   Theorem dmatch_complete : forall de m1 m2, dmatch de m1 -> dmatch de m2 -> m1 = m2.
   Proof.
-    unfold dmatch; intros.
-    destruct (weq (de :-> "valid") $0).
+    unfold dmatch, isdir; intros.
+    destruct (bit_dec (DEValid de)).
     apply emp_complete; eauto.
     eapply ptsto_complete; eauto.
-  Qed.
-
-  Hint Resolve dmatch_complete.
-
-  Definition rep f dmap :=
-    exists delist, derep f delist /\ listpred dmatch delist dmap.
-
-  Definition rep_macro F1 F2 m bxp ixp (inum : addr) (dmap : @mem filename (@weq filename_len) (addr * bool)) :=
-    exists flist f,
-    rep f dmap /\
-    (F1 * BFILE.rep bxp ixp flist)%pred (list2mem m) /\
-    (F2 * #inum |-> f)%pred (list2nmem flist).
-
-  Lemma derep_list_eq : forall f l l',
-    derep f l -> derep f l' -> l = l'.
-  Proof.
-    unfold derep; intros.
-    eapply array_item_file_eq; eauto.
   Qed.
 
   Lemma listpred_dmatch_eq : forall l m1 m2,
@@ -334,15 +178,18 @@ Module DIR.
   Qed.
 
   Lemma rep_mem_eq : forall f m1 m2,
-    rep f m1 -> rep f m2 -> m1 = m2.
+    rep f m1 ->
+    rep f m2 ->
+    m1 = m2.
   Proof.
     unfold rep; intros.
     repeat deex.
-    pose proof (derep_list_eq H1 H0); subst.
+    pose proof (Dent.rep_items_eq H0 H1); subst.
     eapply listpred_dmatch_eq; eauto.
   Qed.
 
-  Local Hint Unfold derep_macro derep rep_macro rep: hoare_unfold.
+
+
 
   Definition dfold T lxp bxp ixp dnum S (f : S -> dent -> S) (s0 : S) mscs rx : prog T :=
     let^ (mscs, l) <- delist lxp ixp dnum mscs;

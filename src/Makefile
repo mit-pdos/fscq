@@ -6,8 +6,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      Cache FSLayout AsyncRecArray DiskLog MemLog \
 		  ListPred GenSepN Log LogRecArray \
-		  Balloc BlockPtr GenSepAuto Inode BFile FileRecArray \
-		  Dir MemMatch DirName DirTree FastByteFile FS Testprog \
+		  Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
+		  Dir DirName DirTree FastByteFile FS Testprog \
 	      ExtrHaskellPrelude Extraction ExtractJSON
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
