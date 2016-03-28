@@ -23,7 +23,7 @@ Require Import SepAuto.
 Require Import GenSepN.
 Require Import MapUtils.
 Require Import FMapFacts.
-
+Require Import ListPred.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -1413,6 +1413,223 @@ Module MLog.
 
   End UnfoldProof4.
 
+
+  (********* dwrite/dsync for a list of address/value pairs *)
+
+  Fixpoint overlap V (l : list addr) (m : Map.t V) : Prop :=
+  match l with
+  | nil => False
+  | a :: rest => if (MapFacts.In_dec m a) then True else overlap rest m
+  end.
+
+  Definition overlap_dec : forall V l (m : Map.t V),
+    {overlap l m} + {~ overlap l m}.
+  Proof.
+    induction l; simpl; intros.
+    right; auto.
+    destruct (MapFacts.In_dec m a).
+    left; auto.
+    apply IHl.
+  Defined.
+
+
+  Definition dwrite_vecs T xp avl ms rx : prog T :=
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    ms' <- IfRx irx (overlap_dec (map fst avl) oms) {
+      ms <- apply xp ms;
+      irx ms
+    } else {
+      irx ms
+    };
+    cs' <- BUFCACHE.write_vecs (DataStart xp) avl (MSCache ms');
+    rx (mk_memstate (MSInLog ms') cs').
+
+
+  Definition dsync_vecs T xp al ms rx : prog T :=
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    cs' <- BUFCACHE.sync_vecs (DataStart xp) al cs;
+    rx (mk_memstate oms cs').
+
+
+  Lemma overlap_firstn_overlap : forall V n l (m : Map.t V),
+    overlap (firstn n l) m ->
+    overlap l m.
+  Proof.
+    induction n; destruct l; simpl; firstorder.
+    destruct (MapFacts.In_dec m n0); auto.
+  Qed.
+
+  Lemma map_valid_vsupd_vecs : forall l d m,
+    map_valid m d ->
+    map_valid m (vsupd_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    apply IHl.
+    apply map_valid_updN; auto.
+  Qed.
+
+  Lemma map_valid_vssync_vecs : forall l d m,
+    map_valid m d ->
+    map_valid m (vssync_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    apply IHl.
+    apply map_valid_updN; auto.
+  Qed.
+
+  Lemma replay_disk_empty : forall m d,
+    Map.Empty m ->
+    replay_disk (Map.elements m) d = d.
+  Proof.
+    intros.
+    apply MapProperties.elements_Empty in H.
+    rewrite H; simpl; auto.
+  Qed.
+
+  Lemma replay_disk_vsupd_vecs_nonoverlap : forall l m d,
+    ~ overlap (map fst l) m ->
+    vsupd_vecs (replay_disk (Map.elements m) d) l =
+    replay_disk (Map.elements m) (vsupd_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct (MapFacts.In_dec m (fst a)); simpl in *; try tauto.
+    rewrite <- IHl by auto.
+    unfold vsupd, vsmerge.
+    rewrite replay_disk_updN_comm.
+    erewrite replay_disk_selN_not_In; eauto.
+    contradict n.
+    apply In_map_fst_MapIn; eauto.
+  Qed.
+
+  Lemma replay_disk_vssync_vecs_comm : forall l m d,
+    vssync_vecs (replay_disk (Map.elements m) d) l =
+    replay_disk (Map.elements m) (vssync_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    rewrite <- IHl by auto.
+    rewrite replay_disk_vssync_comm; auto.
+  Qed.
+
+
+  Theorem dwrite_vecs_ok: forall xp avl ms,
+    {< F d na,
+    PRE
+      rep xp F na (Synced d) ms *
+      [[ Forall (fun e => fst e < length d) avl ]]
+    POST RET:ms' exists na',
+      rep xp F na' (Synced (vsupd_vecs d avl)) ms'
+    CRASH
+      exists ms' na',
+      rep xp F na' (Applying d) ms' \/
+      rep xp F na' (Synced d)   ms' \/
+      exists n,
+      rep xp F na' (Synced (vsupd_vecs d (firstn n avl)))  ms'
+    >} dwrite_vecs xp avl ms.
+  Proof.
+    unfold dwrite_vecs.
+    step.
+
+    (* case 1: apply happens *)
+    step.
+    prestep.
+    unfold rep at 1, rep_inner at 1.
+    unfold synced_rep, map_replay in *.
+    cancel; auto.
+    erewrite <- replay_disk_length.
+    denote replay_disk as Hx; rewrite <- Hx; auto.
+
+    step.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel.
+    rewrite vsupd_vecs_length; auto.
+    apply map_valid_vsupd_vecs; auto.
+    repeat rewrite replay_disk_empty; auto.
+
+    (* crashes for case 1 *)
+    cancel.
+    or_r; or_r.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    instantiate (ms' := mk_memstate  (MSInLog r_) cs'); cancel.
+    pred_apply; cancel.
+    rewrite vsupd_vecs_length; auto.
+    apply map_valid_vsupd_vecs; auto.
+    repeat rewrite replay_disk_empty; auto.
+
+    or_r; or_l; cancel.
+    or_r; or_l; cancel.
+    or_l; cancel.
+
+    (* case 2: no apply *)
+    prestep.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    erewrite <- replay_disk_length.
+    denote replay_disk as Hx; rewrite <- Hx; auto.
+
+    step.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel.
+    rewrite vsupd_vecs_length; auto.
+    apply map_valid_vsupd_vecs; auto.
+    apply replay_disk_vsupd_vecs_nonoverlap; auto.
+
+    (* crashes for case 2 *)
+    cancel.
+    or_r; or_r.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    instantiate (ms' := mk_memstate (MSInLog ms) cs'); cancel.
+    pred_apply; cancel.
+    rewrite vsupd_vecs_length; auto.
+    apply map_valid_vsupd_vecs; auto.
+    apply replay_disk_vsupd_vecs_nonoverlap.
+    rewrite <- firstn_map_comm.
+    denote overlap as Hx; contradict Hx.
+    eapply overlap_firstn_overlap; eauto.
+  Qed.
+
+
+  Section UnfoldProof5.
+  Local Hint Unfold rep map_replay rep_inner synced_rep: hoare_unfold.
+
+  Theorem dsync_vecs_ok: forall xp al ms,
+    {< F d na,
+    PRE
+      rep xp F na (Synced d) ms *
+      [[ Forall (fun e => e < length d) al ]]
+    POST RET:ms' exists na',
+      rep xp F na' (Synced (vssync_vecs d al)) ms'
+    CRASH
+      exists ms' na',
+      rep xp F na' (Synced d) ms' \/
+      exists n,
+      rep xp F na' (Synced (vssync_vecs d (firstn n al))) ms'
+    >} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs.
+    step.
+    subst; erewrite <- replay_disk_length; eauto.
+
+    step.
+    rewrite vssync_vecs_length; auto.
+    apply map_valid_vssync_vecs; auto.
+    apply replay_disk_vssync_vecs_comm.
+
+    (* crashes *)
+    instantiate (ms' := mk_memstate (MSInLog ms) cs').
+    or_r; cancel.
+    rewrite vssync_vecs_length; auto.
+    apply map_valid_vssync_vecs; auto.
+    apply replay_disk_vssync_vecs_comm.
+  Qed.
+
+  End UnfoldProof5.
+
+
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+
+
+
+
+
+  (****************** crash and recovery *)
 
 
   Hint Rewrite selN_combine repeat_selN' Nat.min_id synced_list_length : lists.
