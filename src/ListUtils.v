@@ -1739,7 +1739,6 @@ Proof.
   f_equal; auto.
 Qed.
 
-
 Lemma Forall_selN : forall A (l : list A) P i def,
   Forall P l -> i < length l -> P (selN l i def).
 Proof.
@@ -1747,6 +1746,17 @@ Proof.
   rewrite Forall_forall in H.
   apply H.
   apply in_selN; auto.
+Qed.
+
+Lemma selN_Forall : forall A (l : list A) (P : A -> Prop) def,
+  (forall i, i < length l -> P (selN l i def)) ->
+  Forall P l.
+Proof.
+  induction l; intros; eauto.
+  apply Forall_cons.
+  apply (H 0); simpl; omega.
+  eapply IHl; intros.
+  apply (H (S i)); simpl; omega.
 Qed.
 
 Theorem remove_not_In :

@@ -84,17 +84,17 @@ Module DIR.
                 "inum" := $ inum :=>
                 "isdir" := bool2bit isdir.
 
-  Definition isdir   (de : dent) := bit2bool (DEIsDir de).
-  Definition isvalid (de : dent) := bit2bool (DEValid de).
-  Definition nameis  (n : filename) (de : dent) :=
+  Definition is_dir   (de : dent) := bit2bool (DEIsDir de).
+  Definition is_valid (de : dent) := bit2bool (DEValid de).
+  Definition name_is  (n : filename) (de : dent) :=
       if (weq n (DEName de)) then true else false.
 
 
   (*************  rep invariant  *)
 
   Definition dmatch (de: dent) : @pred filename (@weq filename_len) (addr * bool) :=
-    if bit_dec (DEValid de) then emp
-    else (DEName de) |-> (DEInum de, isdir de).
+    if bool_dec (is_valid de) false then emp
+    else (DEName de) |-> (DEInum de, is_dir de).
 
   Definition rep f dmap :=
     exists delist,
@@ -112,21 +112,23 @@ Module DIR.
   (*************  program  *)
 
 
-  Definition lookup_f name de (_ : addr) := (isvalid de) && (nameis name de).
+  Definition lookup_f name de (_ : addr) := (is_valid de) && (name_is name de).
 
   Definition lookup T lxp ixp dnum name ms rx : prog T :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
     | None => rx ^(ms, None)
-    | Some (_, de) => rx ^(ms, Some (DEInum de, isdir de))
+    | Some (_, de) => rx ^(ms, Some (DEInum de, is_dir de))
     end.
 
-  Definition read T lxp ixp dnum ms rx : prog T :=
+  Definition readent := (filename * (addr * bool))%type.
+
+  Definition readdir T lxp ixp dnum ms rx : prog T :=
     let^ (ms, dents) <- Dent.readall lxp ixp dnum ms;
-    let r := map (fun de => (DEName de, (DEInum, isdir de))) (filter isvalid dents) in
+    let r := map (fun de => (DEName de, (DEInum de, is_dir de))) (filter is_valid dents) in
     rx ^(ms, r).
 
-  Definition dunlink T lxp ixp dnum name ms rx : prog T :=
+  Definition unlink T lxp ixp dnum name ms rx : prog T :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
     | None => rx ^(ms, false)
@@ -135,16 +137,16 @@ Module DIR.
         rx ^(ms, true)
     end.
 
-  Definition dlink T lxp bxp ixp dnum name inum isdir ms rx : prog T :=
+  Definition link T lxp bxp ixp dnum name inum isdir ms rx : prog T :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
     | Some _ => rx ^(ms, false)
     | None =>
         let de := mk_dent name inum isdir in
-        let^ (ms, r) <- Dent.ifind lxp ixp dnum (fun de _ => isvalid de) ms;
+        let^ (ms, r) <- Dent.ifind lxp ixp dnum (fun de _ => negb (is_valid de)) ms;
         match r with
         | Some (ix, _) =>
-            cs <- Dent.put lxp ixp dnum ix de ms;
+            ms <- Dent.put lxp ixp dnum ix de ms;
             rx ^(ms, true)
         | None =>
             let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
@@ -155,10 +157,384 @@ Module DIR.
 
   (*************  basic lemmas  *)
 
+
+  Fact bit2bool_0 : bit2bool $0 = false.
+  Proof.
+    unfold bit2bool; destruct (bit_dec $0); auto.
+    contradict e; apply natToWord_discriminate; auto.
+  Qed.
+
+  Fact bit2bool_1 : bit2bool $1 = true.
+  Proof.
+    unfold bit2bool; destruct (bit_dec $1); auto.
+    apply eq_sym in e; contradict e.
+    apply natToWord_discriminate; auto.
+  Qed.
+
+  Fact bit2bool_1_ne : bit2bool $1 <> false.
+  Proof. rewrite bit2bool_1; congruence. Qed.
+
+  Fact bit2bool_0_ne : bit2bool $0 <> true.
+  Proof. rewrite bit2bool_0; congruence. Qed.
+
+  Local Hint Resolve bit2bool_0 bit2bool_1 bit2bool_0_ne bit2bool_1_ne.
+
+  Lemma bit2bool2bit : forall b, bit2bool (bool2bit b) = b.
+  Proof.
+    destruct b; cbn; auto.
+  Qed.
+
+  Lemma bool2bit2bool : forall b,  bool2bit (bit2bool b) = b.
+  Proof.
+    unfold bit2bool; intros.
+    destruct (bit_dec b); subst; auto.
+  Qed.
+
+  Lemma lookup_f_ok: forall name de a,
+    lookup_f name de a = true ->
+    is_valid de = true /\ DEName de = name.
+  Proof.
+    unfold lookup_f, name_is; intuition.
+    apply andb_true_iff in H; tauto.
+    destruct (weq name (DEName de)); auto.
+    contradict H.
+    rewrite andb_true_iff; easy.
+  Qed.
+
+  Lemma lookup_f_nf: forall name de a,
+    lookup_f name de a = false ->
+    is_valid de = false \/ DEName de <> name.
+  Proof.
+    unfold lookup_f, name_is; intuition.
+    apply andb_false_iff in H; intuition.
+    destruct (weq name (DEName de)); intuition.
+  Qed.
+
+  Lemma lookup_notindomain': forall l ix name,
+    Forall (fun e => (lookup_f name e ix) = false) l
+    -> listpred dmatch l =p=> notindomain name.
+  Proof.
+    induction l; unfold pimpl; simpl; intros.
+    apply emp_notindomain; auto.
+    inversion H; subst.
+
+    destruct (Sumbool.sumbool_of_bool (is_valid a)).
+    destruct (lookup_f_nf name a ix); try congruence.
+    eapply notindomain_mem_except; eauto.
+    eapply ptsto_mem_except.
+    pred_apply; unfold dmatch at 1.
+    rewrite e, IHl by eauto; simpl; eauto.
+
+    pred_apply; rewrite IHl by eauto; cancel.
+    unfold dmatch; rewrite e; simpl; auto.
+  Qed.
+
+  Lemma lookup_notindomain: forall l name,
+    (forall i, i < length l -> lookup_f name (selN l i dent0) i = false) ->
+    listpred dmatch l =p=> notindomain name.
+  Proof.
+    intros.
+    eapply lookup_notindomain' with (ix := 0).
+    eapply selN_Forall; eauto.
+  Qed.
+
+
+
+  Definition dmatch_ex name (de: dent) : @pred filename (@weq filename_len) (addr * bool) :=
+    if (name_is name de) then emp
+    else dmatch de.
+
+  Definition dmatch_ex_same : forall de,
+    dmatch_ex (DEName de) de = emp.
+  Proof.
+    unfold dmatch_ex, name_is; intros.
+    destruct (weq (DEName de) (DEName de)); congruence.
+  Qed.
+
+  Definition dmatch_ex_diff : forall name de,
+    name <> (DEName de) ->
+    dmatch_ex name de = dmatch de.
+  Proof.
+    unfold dmatch_ex, name_is; intros.
+    destruct (weq name (DEName de)); congruence.
+  Qed.
+
+  Lemma dmatch_ex_ptsto : forall l name v,
+    (name |-> v * listpred dmatch l) 
+    =p=> (name |-> v * listpred (dmatch_ex name) l).
+  Proof.
+    induction l; simpl; intros; auto.
+    unfold dmatch_ex at 1, dmatch at 1, dmatch at 2, name_is.
+    destruct (bool_dec (is_valid a) false).
+    destruct (weq name (DEName a));
+    rewrite sep_star_comm, sep_star_assoc;
+    setoid_rewrite sep_star_comm at 2; rewrite IHl; cancel.
+
+    destruct (weq name (DEName a)); subst.
+    unfold pimpl; intros; exfalso.
+    eapply ptsto_conflict_F with (m := m) (a := DEName a).
+    pred_apply; cancel.
+    rewrite sep_star_comm, sep_star_assoc;
+    setoid_rewrite sep_star_comm at 2; rewrite IHl; cancel.
+  Qed.
+
+  Lemma lookup_ptsto: forall l name ix,
+    ix < length l ->
+    lookup_f name (selN l ix dent0) ix = true ->
+    listpred dmatch l =p=> listpred (dmatch_ex name) l *
+       (name |-> (DEInum (selN l ix dent0), is_dir (selN l ix dent0))).
+  Proof.
+    induction l; intros.
+    simpl; inversion H.
+    pose proof (lookup_f_ok _ _ _ H0) as [Hx Hy].
+    destruct ix; subst; simpl in *.
+    unfold dmatch at 1; rewrite Hx, dmatch_ex_same; simpl.
+    rewrite dmatch_ex_ptsto; cancel.
+
+    assert (ix < length l) by omega.
+    rewrite IHl; eauto; try solve [ cancel ].
+    unfold dmatch_ex at 2, dmatch, name_is.
+    destruct (bool_dec (is_valid _) false);
+    destruct (weq (DEName _) _); try solve [ cancel ].
+    rewrite e; repeat destruct_prod.
+    unfold pimpl; intros; exfalso.
+    eapply ptsto_conflict_F with (m := m) (a := DEName (w, (w0, (w1, (w2, (w3, u)))))).
+    pred_apply; cancel.
+  Qed.
+
+
+  Definition readmatch (de: readent) : @pred _ (@weq filename_len) _ :=
+    fst de |-> snd de.
+
+  Lemma readmatch_ok : forall l,
+    listpred dmatch l =p=> listpred readmatch
+      (map (fun de => (DEName de, (DEInum de, is_dir de))) (filter is_valid l)).
+  Proof.
+    induction l; simpl; auto.
+    unfold dmatch at 1; destruct (is_valid a); simpl.
+    rewrite IHl; cancel.
+    cancel.
+  Qed.
+
+
+  Lemma dmatch_dent0_emp :  dmatch dent0 = emp.
+  Proof.
+    unfold dmatch, dent0.
+    destruct (bool_dec (is_valid _) false); auto.
+    contradict n.
+    compute; auto.
+  Qed.
+
+  Lemma listpred_dmatch_dent0_emp : forall l i dmap,
+    listpred dmatch l dmap ->
+    is_valid (selN l i dent0) = true ->
+    i < length l ->
+    listpred dmatch (updN l i dent0) (mem_except dmap (DEName (selN l i dent0))).
+  Proof.
+    intros.
+    apply listpred_updN; auto.
+    rewrite dmatch_dent0_emp.
+    eapply ptsto_mem_except; pred_apply.
+    rewrite listpred_isolate by eauto.
+    unfold dmatch at 2; rewrite H0; simpl.
+    repeat cancel.
+  Qed.
+
+
+  Lemma dmatch_mk_dent : forall name inum isdir,
+    goodSize addrlen inum ->
+    dmatch (mk_dent name inum isdir) = (name |-> (inum, isdir))%pred.
+  Proof.
+    unfold dmatch, mk_dent, is_valid, is_dir; intros; cbn.
+    rewrite bit2bool_1, wordToNat_natToWord_idempotent', bit2bool2bit; auto.
+  Qed.
+
+  Lemma listpred_dmatch_mem_upd : forall l i dmap name inum isdir,
+    (forall i, i < length l -> lookup_f name (selN l i dent0) i = false) ->
+    negb (is_valid (selN l i dent0)) = true ->
+    listpred dmatch l dmap ->
+    i < length l ->
+    goodSize addrlen inum ->
+    listpred dmatch (updN l i (mk_dent name inum isdir)) (Mem.upd dmap name (inum, isdir)).
+  Proof.
+    intros.
+    apply listpred_updN; auto.
+    rewrite dmatch_mk_dent by auto.
+    apply ptsto_upd_disjoint.
+    apply negb_true_iff in H0.
+    pred_apply.
+    setoid_rewrite listpred_isolate with (def := dent0) at 1; eauto.
+    unfold dmatch at 2; rewrite H0; cancel.
+    eapply lookup_notindomain; eauto.
+  Qed.
+
+  Lemma listpred_dmatch_repeat_dent0 : forall n,
+    listpred dmatch (repeat dent0 n) <=p=> emp.
+  Proof.
+    induction n; intros; simpl; eauto.
+    split; rewrite dmatch_dent0_emp, IHn; cancel.
+  Qed.
+
+  Lemma listpred_dmatch_ext_mem_upd : forall l dmap name inum isdir,
+    (forall i, i < length l -> lookup_f name (selN l i dent0) i = false) ->
+    (forall i, i < length l -> negb (is_valid (selN l i dent0)) = false) ->
+    listpred dmatch l dmap ->
+    goodSize addrlen inum ->
+    listpred dmatch (l ++ updN (Dent.Defs.block0) 0 (mk_dent name inum isdir))
+                    (Mem.upd dmap name (inum, isdir)).
+  Proof.
+    intros.
+    pose proof (Dent.Defs.items_per_val_gt_0).
+    erewrite <- Nat.sub_diag, <- updN_app2, Dent.Defs.block0_repeat by auto.
+    apply listpred_updN; auto.
+    rewrite app_length, repeat_length; omega.
+
+    replace (length l) with (length l + 0) by omega.
+    rewrite removeN_app_r, removeN_repeat, listpred_app by auto.
+    rewrite listpred_dmatch_repeat_dent0.
+    rewrite dmatch_mk_dent by auto.
+    apply ptsto_upd_disjoint.
+    pred_apply; cancel.
+    eapply lookup_notindomain; eauto.
+  Qed.
+
+
+  (*************  correctness theorems  *)
+
+  Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
+    {< F Fm Fi m0 m dmap,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+           rep_macro Fm Fi m bxp ixp dnum dmap
+    POST RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+         ( [[ r = None /\ notindomain name dmap ]] \/
+           exists inum isdir Fd,
+           [[ r = Some (inum, isdir) /\
+                   (Fd * name |-> (inum, isdir))%pred dmap ]])
+    CRASH  LOG.intact lxp F m0
+    >} lookup lxp ixp dnum name ms.
+  Proof.
+    unfold lookup, rep_macro, rep.
+    step.
+    step.
+    or_r; cancel.
+    apply lookup_ptsto; auto.
+    or_l; cancel.
+    apply lookup_notindomain; auto.
+  Qed.
+
+
+  Theorem readdir_ok : forall lxp bxp ixp dnum ms,
+    {< F Fm Fi m0 m dmap,
+    PRE      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+             rep_macro Fm Fi m bxp ixp dnum dmap
+    POST RET:^(ms,r)
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+             [[ listpred readmatch r dmap ]]
+    CRASH    LOG.intact lxp F m0
+    >} readdir lxp ixp dnum ms.
+  Proof.
+    unfold readdir, rep_macro, rep.
+    hoare.
+    apply readmatch_ok.
+  Qed.
+
+  Local Hint Resolve mem_except_notindomain.
+
+  Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
+    {< F Fm Fi m0 m dmap,
+    PRE      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+             rep_macro Fm Fi m bxp ixp dnum dmap
+    POST RET:^(ms,r) exists m' dmap',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' *
+             [[ dmap' = mem_except dmap name ]] *
+             [[ notindomain name dmap' ]] *
+             [[ r = true -> indomain name dmap ]]
+    CRASH    LOG.intact lxp F m0
+    >} unlink lxp ixp dnum name ms.
+  Proof.
+    unfold unlink, rep_macro, rep.
+    step.
+    step.
+
+    apply Dent.Defs.item0_wellformed.
+    denote (lookup_f) as HH.
+    pose proof (lookup_f_ok _ _ _ HH) as [Hx Hy].
+    step.
+
+    eexists; split; eauto.
+    apply listpred_dmatch_dent0_emp; auto.
+
+    rewrite lookup_ptsto by eauto.
+    unfold pimpl; intros.
+    eapply sep_star_ptsto_indomain.
+    pred_apply; cancel.
+
+    eexists; split; eauto.
+    rewrite <- notindomain_mem_eq; auto.
+    eapply lookup_notindomain; eauto.
+  Qed.
+
+
+  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
+    {< F Fm Fi m0 m dmap,
+    PRE      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+             rep_macro Fm Fi m bxp ixp dnum dmap *
+             [[ goodSize addrlen inum ]]
+    POST RET:^(ms,r) exists m',
+            ([[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms)
+        \/  ([[ r = true ]] * exists dmap' Fd,
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' *
+             [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
+             [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
+             [[ (Fd dmap /\ notindomain name dmap) ]])
+    CRASH    LOG.intact lxp F m0
+    >} link lxp bxp ixp dnum name inum isdir ms.
+  Proof.
+    unfold link, rep_macro, rep.
+    step.
+    step.
+
+    denote lookup_f as Hx; apply lookup_notindomain in Hx as Hy.
+    step.
+
+    (* case 1: use avail entry *)
+    cbv; tauto.
+    step.
+    or_r; cancel; eauto.
+    eexists; split; eauto.
+    apply listpred_dmatch_mem_upd; auto.
+    eapply ptsto_upd_disjoint; eauto.
+    eapply lookup_notindomain; eauto.
+
+    (* case 2: extend new entry *)
+    cbv; tauto.
+    step.
+    or_r; cancel; eauto.
+    eexists; split; eauto.
+    eapply listpred_dmatch_ext_mem_upd; eauto.
+    eapply ptsto_upd_disjoint; eauto.
+    eapply lookup_notindomain; eauto.
+    Unshelve. eauto.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
+  Hint Extern 1 ({{_}} progseq (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
+  Hint Extern 1 ({{_}} progseq (readdir _ _ _ _) _) => apply readdir_ok : prog.
+
+  Hint Extern 0 (okToUnify (rep ?f _) (rep ?f _)) => constructor : okToUnify.
+
+
+  (*************  Lemma for callers *)
+
   Theorem dmatch_complete : forall de m1 m2, dmatch de m1 -> dmatch de m2 -> m1 = m2.
   Proof.
-    unfold dmatch, isdir; intros.
-    destruct (bit_dec (DEValid de)).
+    unfold dmatch, is_dir; intros.
+    destruct (bool_dec (is_valid de) false).
     apply emp_complete; eauto.
     eapply ptsto_complete; eauto.
   Qed.
@@ -187,6 +563,27 @@ Module DIR.
     pose proof (Dent.rep_items_eq H0 H1); subst.
     eapply listpred_dmatch_eq; eauto.
   Qed.
+
+  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Proof.
+    unfold rep, Dent.rep, Dent.items_valid.
+    exists nil; firstorder.
+    exists nil; simpl.
+    setoid_rewrite Dent.Defs.ipack_nil.
+    assert (emp (list2nmem (@nil valuset))) by firstorder.
+    pred_apply; cancel.
+    apply Forall_nil.
+  Qed.
+
+
+End DIR.
+
+
+
+
+
+
+
 
 
 
