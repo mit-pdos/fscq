@@ -334,6 +334,8 @@ Ltac solve_hashmap_subset_trans :=
 
 Ltac solve_hashmap_subset :=
   match goal with
+  | [ H: exists l, hashmap_subset l _ _ |- _ ]
+    => inversion H; clear H; solve_hashmap_subset
   | [ |- exists _, hashmap_subset _ _ _ ]
     => eexists; solve_hashmap_subset
   | [ |- hashmap_subset _ _ _ ]
