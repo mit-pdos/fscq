@@ -331,6 +331,23 @@ Proof.
 Qed.
 
 
+Lemma crash_xform_ptsto_or : forall (a : addr) (vs : valuset),
+  crash_xform (a |-> vs)%pred <=p=> crash_xform (a |-> vs \/ a |=> (fst vs)).
+Proof.
+  split.
+  rewrite crash_xform_or_dist.
+  apply pimpl_or_r; left; auto.
+  rewrite crash_xform_or_dist.
+  apply pimpl_or_l; auto.
+  rewrite crash_xform_ptsto.
+  apply pimpl_exists_l; intro.
+  rewrite sep_star_comm.
+  apply sep_star_lift_l; intro.
+  rewrite crash_xform_ptsto_r; eauto.
+  unfold vsmerge in *; simpl in *; intuition.
+Qed.
+
+
 Hint Rewrite crash_xform_sep_star_dist : crash_xform.
 Hint Rewrite crash_xform_or_dist : crash_xform.
 Hint Rewrite crash_xform_exists_comm : crash_xform.
