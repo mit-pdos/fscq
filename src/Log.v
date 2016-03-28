@@ -26,6 +26,7 @@ Require Import SepAuto.
 Require Import GenSepN.
 Require Import MemLog.
 Require Import MapUtils.
+Require Import ListPred.
 
 Import ListNotations.
 Set Implicit Arguments.
@@ -858,6 +859,98 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
   Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_range _ _ _ _) _) => apply write_range_ok : prog.
+
+
+  (******** batch direct write and sync *)
+
+  (* dwrite_vecs discard everything in active transaction *)
+  Definition dwrite_vecs T (xp : log_xparams) avl ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    mm' <- MLog.dwrite_vecs xp avl mm;
+    rx (mk_memstate vmap0 mm').
+
+  Definition dsync_vecs T xp al ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    mm' <- MLog.dsync_vecs xp al mm;
+    rx (mk_memstate cm mm').
+
+  Theorem dwrite_vecs_ok : forall xp ms avl,
+    {< F Fm m ovl,
+    PRE
+      rep xp F (ActiveTxn m m) ms *
+      [[[ m ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
+    POST RET:ms' exists m',
+      rep xp F (ActiveTxn m' m') ms' *
+      [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
+    CRASH
+      exists ms' m',
+      rep xp F (ActiveTxn m  m) ms' \/
+      rep xp F (ActiveTxn m' m') ms' *
+          [[ exists n, m' = vsupd_vecs m (firstn n avl) ]] \/
+      rep xp F (ApplyingTxn m) ms'
+    >} dwrite_vecs xp avl ms.
+  Proof.
+    unfold dwrite_vecs.
+    step.
+    admit.
+
+    step; subst.
+    apply MLog.map_valid_map0.
+    admit.
+
+    (* crash conditions *)
+    instantiate (ms'0 := mk_memstate vmap0 ms').
+    or_r; or_r; cancel.
+
+    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    or_l; cancel.
+
+    instantiate (ms'2 := mk_memstate vmap0 ms').
+    or_r; or_l; cancel.
+    apply MLog.map_valid_map0.
+    eauto.
+
+    Unshelve. all: eauto.
+  Admitted.
+
+
+  Theorem dsync_vecs_ok : forall xp ms al,
+    {< F Fm m vsl,
+    PRE
+      rep xp F (ActiveTxn m m) ms *
+      [[[ m ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
+    POST RET:ms' exists m',
+      rep xp F (ActiveTxn m' m') ms' *
+      [[[ m' ::: Fm * listmatch (fun vs a => a |-> (fst vs, nil)) vsl al ]]]
+    CRASH
+      exists m' ms',
+      rep xp F (ActiveTxn m m) ms' \/
+      rep xp F (ActiveTxn m' m') ms' *
+          [[ exists n, m' = vssync_vecs m (firstn n al) ]]
+    >} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs.
+    step.
+    admit.
+
+    step; subst.
+    apply MLog.map_valid_vssync_vecs; auto.
+    rewrite <- MLog.replay_disk_vssync_vecs_comm.
+    f_equal; auto.
+    admit.
+
+    (* crashes *)
+    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
+    or_l; cancel.
+    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    or_r; cancel.
+    apply MLog.map_valid_vssync_vecs; auto.
+    rewrite <- MLog.replay_disk_vssync_vecs_comm.
+    f_equal; auto.
+    eauto.
+    Unshelve. eauto.
+  Admitted.
+
 
 
 End LOG.
