@@ -4,7 +4,7 @@ Require Import Prog.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Word.
-Require Import BFile Bytes Rec Inode FastByteFile.
+Require Import BFile Bytes Rec Inode.
 Require Import String.
 Require Import FSLayout.
 Require Import Pred.
@@ -13,10 +13,10 @@ Require Import GenSepN.
 Require Import List.
 Require Import Hoare.
 Require Import Log.
-Require Import GenSep.
 Require Import SepAuto.
 Require Import Array.
 Require Import FunctionalExtensionality.
+Require Import AsyncDisk.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -95,10 +95,11 @@ Module DIRTREE.
     | (name, subtree) :: dirlist' => name |-> (dirtree_inum subtree, dirtree_isdir subtree) * tree_dir_names_pred' dirlist'
     end.
 
-  Definition tree_dir_names_pred ibxp (dir_inum : addr) (dirents : list (string * dirtree)) : @pred _ eq_nat_dec _ := (
+  Definition tree_dir_names_pred ibxp (dir_inum : addr) (dirents : list (string * dirtree)) 
+                                 : @pred _ eq_nat_dec _ := (
     exists f dsmap,
-    #dir_inum |-> f *
-    [[ BALLOC.valid_block ibxp dir_inum ]] *
+    dir_inum |-> f *
+    [[ BALLOC.bn_valid ibxp dir_inum ]] *
     [[ SDIR.rep f dsmap ]] *
     [[ tree_dir_names_pred' dirents dsmap ]])%pred.
 
@@ -124,7 +125,7 @@ Module DIRTREE.
 
   Fixpoint tree_pred ibxp e := (
     match e with
-    | TreeFile inum f => #inum |-> f * [[ BALLOC.valid_block ibxp inum ]]
+    | TreeFile inum f => inum |-> f * [[ BALLOC.bn_valid ibxp inum ]]
     | TreeDir inum s => tree_dir_names_pred ibxp inum s * dirlist_pred (tree_pred ibxp) s
     end)%pred.
 
@@ -133,7 +134,7 @@ Module DIRTREE.
     | nil => emp
     | fn :: suffix =>
       match e with
-      | TreeFile inum f => #inum |-> f * [[ BALLOC.valid_block ibxp inum ]]
+      | TreeFile inum f => inum |-> f * [[ BALLOC.bn_valid ibxp inum ]]
       | TreeDir inum s => tree_dir_names_pred ibxp inum s *
                           dirlist_pred_except (tree_pred ibxp) (tree_pred_except ibxp suffix) fn s
       end
