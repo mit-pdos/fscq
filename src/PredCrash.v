@@ -332,7 +332,7 @@ Qed.
 
 
 Lemma crash_xform_ptsto_or : forall (a : addr) (vs : valuset),
-  crash_xform (a |-> vs)%pred <=p=> crash_xform (a |-> vs \/ a |=> (fst vs)).
+  crash_xform (a |-> vs) <=p=> crash_xform (a |-> vs \/ a |=> (fst vs)).
 Proof.
   split.
   rewrite crash_xform_or_dist.

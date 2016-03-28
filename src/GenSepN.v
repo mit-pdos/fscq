@@ -872,6 +872,23 @@ Proof.
 Qed.
 
 
+Lemma listmatch_ptsto_list2nmem_inbound : forall VT al vl (F : @pred _ _ VT) m ,
+  (F * listmatch (fun a v => a |-> v) al vl)%pred (list2nmem m) ->
+  Forall (fun a => a < length m) al.
+Proof.
+  induction al; intros.
+  apply Forall_nil.
+  unfold listmatch in H; destruct vl; destruct_lift H.
+  inversion H1.
+  apply Forall_cons.
+  eapply list2nmem_ptsto_bound.
+  pred_apply; cancel.
+  eapply IHal with (vl := vl).
+  pred_apply.
+  unfold listmatch; cancel.
+Qed.
+
+
 (* crashes *)
 
 Require Import PredCrash AsyncDisk.

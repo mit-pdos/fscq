@@ -826,6 +826,9 @@ Module BUFCACHE.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
+
+    
+
 End BUFCACHE.
 
 Global Opaque BUFCACHE.init.

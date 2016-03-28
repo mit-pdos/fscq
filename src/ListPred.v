@@ -411,6 +411,55 @@ Section LISTMATCH.
 End LISTMATCH.
 
 
+
+Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
+  (@listmatch _ _ AT AEQ V) f al bl <=p=>
+  listmatch (fun b a => f a b) bl al.
+Proof.
+  unfold listmatch; intros.
+  split; cancel;
+  generalize dependent bl;
+  generalize dependent al;
+  induction al; destruct bl; cancel; auto.
+Qed.
+
+Lemma listmatch_map_l : forall AT AEQ V A B C al bl f (g : A -> C),
+  (@listmatch C B AT AEQ V) f (map g al) bl <=p=>
+  (@listmatch A B _ _ _) (fun a b => f (g a) b) al bl.
+Proof.
+  unfold listmatch; intros.
+  split; cancel; autorewrite with lists in *; auto;
+  generalize dependent bl;
+  generalize dependent al;
+  induction al; destruct bl; cancel; auto.
+Qed.
+
+Lemma listmatch_map_r : forall AT AEQ V A B C al bl f (g : B -> C),
+  (@listmatch A C AT AEQ V) f al (map g bl) <=p=>
+  (@listmatch A B _ _ _) (fun a b => f a (g b)) al bl.
+Proof.
+  intros.
+  rewrite listmatch_sym.
+  rewrite listmatch_map_l.
+  rewrite listmatch_sym; auto.
+Qed.
+
+Lemma listmatch_map : forall AT AEQ V A B A' B' al bl f (fa : A -> A') (fb : B -> B'),
+  (@listmatch A B AT AEQ V) (fun a b => f (fa a) (fb b)) al bl <=p=>
+  (@listmatch A' B' _ _ _) f (map fa al) (map fb bl).
+Proof.
+  intros; rewrite listmatch_map_l, listmatch_map_r; auto.
+Qed.
+
+Lemma listpred_map : forall AT AEQ V A B l f (g : A -> B),
+  @listpred B AT AEQ V f (map g l) <=p=>
+  @listpred A AT AEQ V (fun a => f (g a)) l.
+Proof.
+  induction l; simpl; intros; auto.
+  split; cancel; rewrite IHl; auto.
+Qed.
+
+
 Lemma listmatch_ptsto_listpred : forall AT AEQ V (al : list AT) (vl : list V),
   listmatch (fun v a => a |-> v) vl al =p=>
   (@listpred _ _ AEQ _) (fun a => a |->?) al.
@@ -423,5 +472,4 @@ Proof.
   eapply IHal; eauto.
   pred_apply; cancel.
 Qed.
-
 

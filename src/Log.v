@@ -874,10 +874,69 @@ Module LOG.
     mm' <- MLog.dsync_vecs xp al mm;
     rx (mk_memstate cm mm').
 
+
+  Lemma dwrite_ptsto_inbound : forall (F : @pred _ _ valuset) ovl avl m,
+    (F * listmatch (fun v e => fst e |-> v) ovl avl)%pred (list2nmem m) ->
+    Forall (fun e => (@fst _ valu) e < length m) avl.
+  Proof.
+    intros.
+    apply Forall_map_l.
+    eapply listmatch_ptsto_list2nmem_inbound.
+    pred_apply.
+    rewrite listmatch_map_l.
+    rewrite listmatch_sym. eauto.
+  Qed.
+
+  Lemma sep_star_reorder_helper2: forall AT AEQ V (a b c d : @pred AT AEQ V),
+    (a * (b * (c * d))) <=p=> (a * b * d) * c.
+  Proof.
+    split; cancel.
+  Qed.
+
+  Lemma sep_star_reorder_helper3: forall AT AEQ V (a b c d : @pred AT AEQ V),
+    ((a * b) * (c * d)) <=p=> ((a * c * d) * b).
+  Proof.
+    split; cancel.
+  Qed.
+
+  Lemma dwrite_vsupd_vecs_ok : forall avl ovl m F,
+    (F * listmatch (fun v e => fst e |-> v) ovl avl)%pred (list2nmem m) ->
+    NoDup (map fst avl) ->
+    (F * listmatch (fun v e => fst e |-> (snd e, vsmerge v)) ovl avl)%pred (list2nmem (vsupd_vecs m avl)).
+  Proof.
+    unfold listmatch; induction avl; destruct ovl;
+    simpl; intros; eauto; destruct_lift H; inversion H2.
+    inversion H0; subst.
+    rewrite vsupd_vecs_vsupd_notin by auto.
+    denote NoDup as Hx.
+    refine (_ (IHavl ovl m _ _ Hx)); [ intro | | pred_apply; cancel ].
+    erewrite (@list2nmem_sel _ _ m n (p_cur, _)) by (pred_apply; cancel).
+    erewrite <- MLog.vsupd_selN_not_in; eauto.
+    apply sep_star_reorder_helper2.
+    eapply list2nmem_updN.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma dsync_vssync_vecs_ok : forall al vsl m F,
+    (F * listmatch (fun vs a => a |-> vs) vsl al)%pred (list2nmem m) ->
+    (F * listmatch (fun vs a => a |-> (fst vs, nil)) vsl al)%pred (list2nmem (vssync_vecs m al)).
+  Proof.
+    unfold listmatch; induction al; destruct vsl;
+    simpl; intros; eauto; destruct_lift H; inversion H1.
+    refine (_ (IHal vsl (vssync m a) _ _)).
+    apply pimpl_apply; cancel.
+    unfold vssync.
+    erewrite <- (@list2nmem_sel _ _ m a) by (pred_apply; cancel).
+    apply sep_star_reorder_helper3.
+    eapply list2nmem_updN.
+    pred_apply; cancel.
+  Qed.
+
   Theorem dwrite_vecs_ok : forall xp ms avl,
     {< F Fm m ovl,
     PRE
       rep xp F (ActiveTxn m m) ms *
+      [[ NoDup (map fst avl) ]] *
       [[[ m ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
     POST RET:ms' exists m',
       rep xp F (ActiveTxn m' m') ms' *
@@ -892,11 +951,11 @@ Module LOG.
   Proof.
     unfold dwrite_vecs.
     step.
-    admit.
+    eapply dwrite_ptsto_inbound; eauto.
 
     step; subst.
     apply MLog.map_valid_map0.
-    admit.
+    apply dwrite_vsupd_vecs_ok; auto.
 
     (* crash conditions *)
     instantiate (ms'0 := mk_memstate vmap0 ms').
@@ -911,7 +970,7 @@ Module LOG.
     eauto.
 
     Unshelve. all: eauto.
-  Admitted.
+  Qed.
 
 
   Theorem dsync_vecs_ok : forall xp ms al,
@@ -931,13 +990,14 @@ Module LOG.
   Proof.
     unfold dsync_vecs.
     step.
-    admit.
+    eapply listmatch_ptsto_list2nmem_inbound.
+    pred_apply; rewrite listmatch_sym; eauto.
 
     step; subst.
     apply MLog.map_valid_vssync_vecs; auto.
     rewrite <- MLog.replay_disk_vssync_vecs_comm.
     f_equal; auto.
-    admit.
+    apply dsync_vssync_vecs_ok; auto.
 
     (* crashes *)
     instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
@@ -949,7 +1009,7 @@ Module LOG.
     f_equal; auto.
     eauto.
     Unshelve. eauto.
-  Admitted.
+  Qed.
 
 
 

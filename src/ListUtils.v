@@ -1835,15 +1835,35 @@ Proof.
   omega.
 Qed.
 
-
 Lemma Forall_map : forall A B (l : list A) P (f : A -> B),
-  Forall (fun x => P (f x)) l ->
+  Forall (fun x => P (f x)) l <->
   Forall P (map f l).
 Proof.
   induction l; simpl; intros.
   rewrite Forall_forall in *; firstorder.
-  inversion H; subst.
-  apply Forall_cons; auto.
+  split; intros;
+  inversion H; simpl; subst;
+  apply Forall_cons; firstorder.
+Qed.
+
+Lemma Forall_map_l : forall A B C P (l : list A) (b : B) (f : A -> C),
+  Forall (fun a => P (f a) b) l <->
+  Forall (fun a => P a b) (map f l).
+Proof.
+  induction l; simpl; split; intros;
+  try apply Forall_nil; inversion H;
+  subst; firstorder.
+  apply Forall_cons; firstorder.
+Qed.
+
+Lemma Forall_map_r : forall A B C P (l : list A) (b : B) (f : A -> C),
+  Forall (fun a => P b (f a)) l <->
+  Forall (fun a => P b a) (map f l).
+Proof.
+  induction l; simpl; split; intros;
+  try apply Forall_nil; inversion H;
+  subst; firstorder.
+  apply Forall_cons; firstorder.
 Qed.
 
 
