@@ -1003,6 +1003,7 @@ Module LOG.
   Qed.
 
 
+
   Theorem dsync_vecs_ok : forall xp ms al,
     {< F Fm m vsl,
     PRE
