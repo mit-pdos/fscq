@@ -7,7 +7,6 @@ Require Import Bool.
 Require Import Pred PredCrash.
 Require Import DirName.
 Require Import Hoare.
-Require Import GenSep.
 Require Import GenSepN.
 Require Import ListPred.
 Require Import SepAuto.
@@ -17,12 +16,13 @@ Require Import List.
 Require Import Balloc.
 Require Import Bytes.
 Require Import DirTree.
-Require Import Rec FastByteFile.
+Require Import Rec.
 Require Import Arith.
 Require Import Array.
 Require Import FSLayout.
 Require Import Cache.
 Require Import Errno.
+Require Import AsyncDisk.
 
 Set Implicit Arguments.
 Import ListNotations.

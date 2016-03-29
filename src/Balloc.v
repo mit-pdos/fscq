@@ -503,7 +503,7 @@ Module IAlloc.
 
   Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
-  Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
 End IAlloc.
 
