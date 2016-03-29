@@ -69,7 +69,8 @@ Proof.
   inv_exec.
   - inv_step.
     eapply H4; eauto.
-    eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
+    eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
+    eauto.
     apply sep_star_comm in H; apply ptsto_valid in H.
     rewrite H in H12; inversion H12; subst; unfold vsmerge; simpl.
     cancel.
@@ -98,7 +99,8 @@ Proof.
   inv_exec.
   - inv_step.
     eapply H4; eauto.
-    eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
+    eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
+    eauto.
     apply sep_star_comm in H; apply ptsto_valid in H.
     rewrite H in H11; inversion H11; subst.
     cancel.
@@ -128,7 +130,7 @@ Proof.
   - inv_step.
     eapply H4; eauto.
     eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
-    cancel.
+    eauto.
     cancel.
   - exfalso.
     apply H1. repeat eexists.
@@ -339,7 +341,7 @@ Theorem for_ok':
        }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
    * [[forall hm'',
-        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash ]]
+        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
   }} (For_ f i n nocrash crashed li rx).
 Proof.
   intro T.
@@ -461,7 +463,7 @@ Theorem for_ok:
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall hm'',
-        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash ]]
+        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
   }} For_ f $0 n nocrash crashed li rx.
 Proof.
   intros.
@@ -555,7 +557,7 @@ Theorem forN_ok':
        }} rx lfinal]]
    * [[forall hm'',
         F * crashed g hm'' *
-        [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash ]]
+        [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
   }} (ForN_ f i n nocrash crashed li rx).
 Proof.
   induction n; intros;
@@ -617,7 +619,7 @@ Theorem forN_ok:
        }} rx lfinal]]
    * [[forall hm'',
         F * crashed g hm'' *
-        [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash ]]
+        [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
   }} ForN_ f 0 n nocrash crashed li rx.
 Proof.
   intros.
@@ -692,7 +694,7 @@ Theorem foreach_ok:
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[forall hm'',
-        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash ]]
+        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
   }} ForEach_ f lst nocrash crashed li rx.
 Proof.
   intros T ITEM.

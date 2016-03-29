@@ -932,7 +932,7 @@ Theorem nop_ok :
     {{ fun hm' done' crash' => (fun r => F * [[ r = v ]]) r_ *
                            [[ hm = hm' ]] *
                            [[ done' = done_ ]] * [[ crash' = crash_ ]]}}
-     rx r_ ]] * [[ F =p=> crash_]] }} rx v.
+     rx r_ ]] * [[ F =p=> crash_ hm]] }} rx v.
 Proof.
   unfold corr2, pimpl.
   intros.

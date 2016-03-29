@@ -2,6 +2,7 @@ Require Import Hoare.
 Require Import Prog.
 Require Import Pred PredCrash.
 Require Import SepAuto.
+Require Import AsyncDisk.
 Require Import Hashmap.
 
 Lemma exec_crashed_hashmap_subset : forall T m m' hm hm' p out,
@@ -40,15 +41,15 @@ Ltac solve_hashmap_subset' :=
 
 Lemma corr3_from_corr2_failed:
   forall (TF TR: Type) m mr hmr (p: prog TF) (r: prog TR) out
-         (crash: pred) ppre rpre crashdone_p crashdone_r,
+         (crash: hashmap -> pred) ppre rpre crashdone_p crashdone_r,
   exec_recover mr hmr p r out
   -> TF = TR
   -> possible_crash m mr
-  -> crash m
-  -> (forall hm', crash_xform (crash
+  -> crash hmr m
+  -> (forall hm', crash_xform (crash hm'
       * [[ exists l, hashmap_subset l hmr hm' ]])
       =p=> ppre hm' crashdone_p crash)
-  -> (forall hm', crash_xform (crash
+  -> (forall hm', crash_xform (crash hm'
       * [[ exists l, hashmap_subset l hmr hm' ]])
       =p=> rpre hm' crashdone_r crash)
   -> {{ ppre }} p
@@ -82,21 +83,21 @@ Qed.
 
 Lemma corr3_from_corr2_finished:
   forall (TF TR: Type) m mr hmr (p: prog TF) (r: prog TR) out
-         (crash: pred) ppre rpre crashdone_p crashdone_r m' hm' v,
+         (crash: hashmap -> pred) ppre rpre crashdone_p crashdone_r m' hm' v,
   exec_recover mr hmr p r out
   -> TF = TR
   -> possible_crash m mr
-  -> crash m
-  -> (forall hm', crash_xform (crash
+  -> crash hmr m
+  -> (forall hm', crash_xform (crash hm'
       * [[ exists l, hashmap_subset l hmr hm' ]])
       =p=> ppre hm' crashdone_p crash)
-  -> (forall hm', (crash_xform crash
+  -> (forall hm', crash_xform (crash hm'
       * [[ exists l, hashmap_subset l hmr hm' ]])
       =p=> rpre hm' crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out = RFinished TR m' hm' v
-  -> crashdone_p v m'.
+  -> crashdone_p hm' v m'.
 Proof.
   intros.
   induction H; try congruence.
@@ -111,21 +112,21 @@ Qed.
 
 Lemma corr3_from_corr2_recovered:
   forall (TF TR: Type) m mr hmr (p: prog TF) (r: prog TR) out
-         (crash: pred) ppre rpre crashdone_p crashdone_r m' hm' v,
+         (crash: hashmap -> pred) ppre rpre crashdone_p crashdone_r m' hm' v,
   exec_recover mr hmr p r out
   -> TF = TR
   -> possible_crash m mr
-  -> crash m
-  -> (forall hm', crash_xform (crash
+  -> crash hmr m
+  -> (forall hm', crash_xform (crash hm'
       * [[ exists l, hashmap_subset l hmr hm' ]])
       =p=> ppre hm' crashdone_p crash)
-  -> (forall hm', crash_xform (crash
+  -> (forall hm', crash_xform (crash hm'
       * [[ exists l, hashmap_subset l hmr hm' ]])
       =p=> rpre hm' crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out = RRecovered TF m' hm' v
-  -> crashdone_r v m'.
+  -> crashdone_r hm' v m'.
 Proof.
   intros.
   generalize dependent m.
@@ -141,7 +142,7 @@ Proof.
       inversion H2. eauto.
     + solve_hashmap_subset'.
     + solve_hashmap_subset'.
-    + instantiate (1:=hm'). congruence.
+    + congruence.
   - eapply IHexec_recover; eauto; clear IHexec_recover H2.
     + solve_hashmap_subset'.
     + solve_hashmap_subset'.
@@ -158,8 +159,8 @@ Theorem corr3_from_corr2: forall TF TR (p: prog TF) (r: prog TR) ppre rpre, {{ p
   -> {{ fun hm done crashdone => exists crash,
         ppre hm done crash
         * [[ forall hm',
-          crash_xform crash
-          * [[ exists l, hashmap_subset l hm hm' ]]
+          crash_xform (crash hm'
+          * [[ exists l, hashmap_subset l hm hm' ]])
           =p=> rpre hm' crashdone crash ]] }} p >> r.
 Proof.
   unfold corr3; intros.
@@ -202,8 +203,8 @@ Theorem corr3_from_corr2_rx :
   -> {{ fun hm done crashdone => exists crash,
         ppre hm done crash
         * [[ forall hm',
-          crash_xform crash
-          * [[ exists l, hashmap_subset l hm hm' ]]
+          crash_xform (crash hm'
+          * [[ exists l, hashmap_subset l hm hm' ]])
           =p=> rpre hm' crashdone crash ]] }} p rxp >> r rxr.
 Proof.
   unfold progseq; intros.

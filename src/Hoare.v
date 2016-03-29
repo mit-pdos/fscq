@@ -12,13 +12,13 @@ Set Implicit Arguments.
 
 (** ** Hoare logic *)
 
-Definition donecond (T: Type) := T -> rawdisk -> Prop.
+Definition donecond (T: Type) := hashmap -> T -> rawdisk -> Prop.
 
-Definition corr2 (T: Type) (pre: hashmap -> donecond T -> rawpred -> rawpred) (p: prog T) :=
+Definition corr2 (T: Type) (pre: hashmap -> donecond T -> (hashmap -> rawpred) -> rawpred) (p: prog T) :=
   forall done crash m hm out, pre hm done crash m
   -> exec m hm p out
-  -> (exists m' hm' v, out = Finished m' hm' v /\ done v m') \/
-     (exists m' hm', out = Crashed T m' hm' /\ crash m').
+  -> (exists m' hm' v, out = Finished m' hm' v /\ done hm' v m') \/
+     (exists m' hm', out = Crashed T m' hm' /\ crash hm' m').
 
 Notation "{{ pre }} p" := (corr2 pre%pred p)
   (at level 0, p at level 60).
@@ -28,8 +28,8 @@ Definition corr3 (TF TR: Type) (pre: hashmap -> donecond TF -> donecond TR -> pr
                  (p1: prog TF) (p2: prog TR) :=
   forall done crashdone m hm out, pre hm done crashdone m
   -> exec_recover m hm p1 p2 out
-  -> (exists m' hm' v, out = RFinished TR m' hm' v /\ done v m') \/
-     (exists m' hm' v, out = RRecovered TF m' hm' v /\ crashdone v m').
+  -> (exists m' hm' v, out = RFinished TR m' hm' v /\ done hm' v m') \/
+     (exists m' hm' v, out = RRecovered TF m' hm' v /\ crashdone hm' v m').
 
 Notation "{{ pre }} p1 >> p2" := (corr3 pre%pred p1 p2)
   (at level 0, p1 at level 60, p2 at level 60).
@@ -65,7 +65,8 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cras
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
      [[ forall (hm_crash : hashmap),
-        (F_ * crash * [[ exists l, hashmap_subset l hm hm_crash ]])%pred =p=> crash_ ]]
+        (F_ * crash * [[ exists l, hashmap_subset l hm hm_crash ]])
+          =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -93,7 +94,8 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
      [[ forall (hm_crash : hashmap),
-        (F_ * crash * [[ exists l, hashmap_subset l hm hm_crash ]]) =p=> crash_ ]]
+        (F_ * crash * [[ exists l, hashmap_subset l hm hm_crash ]])
+          =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -116,7 +118,8 @@ Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
      [[ forall (hm_crash : hashmap),
-        crash * [[ exists l, hashmap_subset l hm hm_crash ]] =p=> crash_ ]]
+        crash * [[ exists l, hashmap_subset l hm hm_crash ]]
+          =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
@@ -149,7 +152,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
 Definition forall_helper T (p : T -> Prop) :=
   forall v, p v.
 
-Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_crash crash >>} p1 >> p2" :=
+Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
    exists idemcrash,
    forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
@@ -160,20 +163,27 @@ Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_crash crash
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
-                                 [[ exists l, hashmap_subset l hm hm' ]] *
-                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
+          [[ exists l, hashmap_subset l hm hm' ]] *
+          [[ done'_ = done_ ]] *
+          [[ forall hm_crash,
+            crash'_ hm_crash
+            * [[ exists l, hashmap_subset l hm hm_crash ]]
+            =p=> F_ * idemcrash hm_crash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ fun hm_crash done'_ crash'_ => crash F_ r_ *
-                                 [[ exists l, hashmap_subset l hm hm_crash ]] *
-                                 [[ done'_ = crashdone_ ]] *
-                                 [[ crash'_ =p=> F_ * idemcrash ]]
+        {{ fun hm_rec done'_ crash'_ => crash F_ r_ *
+          [[ exists l, hashmap_subset l hm hm_rec ]] *
+          [[ done'_ = crashdone_ ]] *
+          [[ forall hm_crash,
+            crash'_ hm_crash
+            * [[ exists l, hashmap_subset l hm hm_crash ]]
+            =p=> F_ * idemcrash hm_crash ]]
         }} rxREC r_ ]]
    )%pred
    (p1 rxOK)%pred
    (p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
-   hm at level 0, hm' at level 0, hm_crash at level 0,
+   hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
 
 
@@ -188,14 +198,21 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
-                                 [[ exists l, hashmap_subset l hm hm' ]] *
-                                 [[ done'_ = done_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
+          [[ exists l, hashmap_subset l hm hm' ]] *
+          [[ done'_ = done_ ]] *
+          [[ forall hm_crash,
+            crash'_ hm_crash
+            * [[ exists l, hashmap_subset l hm hm_crash ]]
+            =p=> F_ * idemcrash hm_crash ]]
         }} rxOK r_ ]] *
      [[ forall r_,
-        {{ fun hm_crash done'_ crash'_ => crash F_ r_ *
-                                 [[ exists l, hashmap_subset l hm hm_crash ]] *
-                                 [[ done'_ = crashdone_ ]] *
-                                 [[ crash'_ * [[ exists l, hashmap_subset l hm hm_crash ]] =p=> F_ * idemcrash ]]
+        {{ fun hm_rec done'_ crash'_ => crash F_ r_ *
+          [[ exists l, hashmap_subset l hm hm_rec ]] *
+          [[ done'_ = crashdone_ ]] *
+          [[ forall hm_crash,
+            crash'_ hm_crash
+            * [[ exists l, hashmap_subset l hm hm_crash ]]
+            =p=> F_ * idemcrash hm_crash ]]
         }} rxREC r_ ]]
    )%pred
    (p1 rxOK)%pred
@@ -367,7 +384,7 @@ Qed.
 
 Instance corr2_proper {T : Type} :
   Proper (pointwise_relation hashmap
-            (pointwise_relation (donecond T) (pointwise_relation pred piff))
+            (pointwise_relation (donecond T) (pointwise_relation (hashmap ->pred) piff))
           ==> eq ==> iff) (@corr2 T).
 Proof.
   intros a b Hab x y Hxy; subst.
