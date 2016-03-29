@@ -70,6 +70,11 @@ Module BFILE.
     ms <- LOG.dwrite lxp (# bn) v ms;
     rx ms.
 
+  Definition syncdata T lxp ixp inum ms rx : prog T :=
+    let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
+    ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
+    rx ms.
+
   Definition grow T lxp bxp ixp inum v ms rx : prog T :=
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
@@ -389,7 +394,8 @@ Module BFILE.
     step.
     rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
     denote Forall as Hv; specialize (Hv inum); subst.
-    apply Forall_map; apply forall_skipn; apply Hv; eauto.
+    rewrite <- Forall_map.
+    apply forall_skipn; apply Hv; eauto.
     erewrite <- listmatch_ptsto_listpred.
     setoid_rewrite listmatch_split at 2.
     rewrite skipn_map_comm; cancel.
@@ -467,6 +473,48 @@ Module BFILE.
     Unshelve. all: easy.
   Qed.
 
+  Lemma synced_list_map_fst_map : forall (vsl : list valuset),
+    synced_list (map fst vsl) = map (fun x => (fst x, nil)) vsl.
+  Proof.
+    unfold synced_list; induction vsl; simpl; auto.
+    f_equal; auto.
+  Qed.
+
+  Theorem syncdata_ok : forall lxp bxp ixp inum ms,
+    {< F Fm Fi m flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn m m) ms *
+           [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m' m') ms *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[ f' = mk_bfile (synced_list (map fst (BFData f))) (BFAttr f) ]]
+    CRASH  LOG.intact lxp F m \/
+           exists m' flist' f', LOG.intact lxp F m' *
+           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]]
+    >} syncdata lxp ixp inum ms.
+  Proof.
+    unfold syncdata, rep.
+    step.
+    sepauto.
+
+    extract.
+    step.
+    safestep; auto; seprewrite.
+    2: sepauto.
+    cancel.
+    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 3.
+    rewrite listmatch_updN_removeN by omega.
+    unfold file_match; cancel; eauto.
+    rewrite synced_list_map_fst_map.
+    rewrite listmatch_map_l; auto.
+
+    or_l; cancel; eauto.
+    or_r; admit.
+    or_l; cancel.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
@@ -477,6 +525,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_}} progseq (syncdata _ _ _ _) _) => apply syncdata_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 

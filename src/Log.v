@@ -1041,7 +1041,8 @@ Module LOG.
     Unshelve. eauto.
   Qed.
 
-
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 End LOG.
 
