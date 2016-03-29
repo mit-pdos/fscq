@@ -24,8 +24,9 @@ Require Import GenSepN.
 Require Import MapUtils.
 Require Import FMapFacts.
 
-
+Import AddrMap.
 Import ListNotations.
+
 Set Implicit Arguments.
 
 Definition valumap := Map.t valu.
@@ -168,6 +169,9 @@ Module MLog.
      destruct ms; inversion H; subst
   end; eauto.
 
+  Hint Resolve MapProperties.eqke_equiv.
+  Hint Resolve KNoDup_map_elements.
+
   Lemma replay_disk_length : forall l m,
     length (replay_disk l m) = length m.
   Proof.
@@ -232,7 +236,7 @@ Module MLog.
     intros.
     apply replay_disk_selN_In_KNoDup; auto.
     apply InA_eqke_In.
-    apply MapFacts.elements_mapsto_iff; auto.
+    apply MapFacts.elements_mapsto_iff; auto. 
   Qed.
 
   Lemma replay_disk_selN_not_In : forall a ms m def,

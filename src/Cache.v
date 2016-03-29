@@ -17,13 +17,17 @@ Require Import OrderedTypeEx.
 Require Import Arith.
 Require Import MapUtils.
 
+Import AddrMap.
 Import ListNotations.
+
 Set Implicit Arguments.
 
 Definition eviction_state : Type := unit.
 Definition eviction_init : eviction_state := tt.
 Definition eviction_update (s : eviction_state) (a : addr) := s.
 Definition eviction_choose (s : eviction_state) : (addr * eviction_state) := (0, s).
+
+
 
 Record cachestate := {
   CSMap : Map.t valu;

@@ -1,4 +1,4 @@
-Require Import Eqdep_dec Arith Omega List ListUtils MapUtils Rounding Psatz.
+Require Import Eqdep_dec Arith Omega List ListUtils Rounding Psatz.
 Require Import Word WordAuto AsyncDisk Pred GenSepN Array SepAuto.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Import ListNotations.

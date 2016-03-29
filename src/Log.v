@@ -28,7 +28,9 @@ Require Import MemLog.
 Require Import MapUtils.
 Require Import ListPred.
 
+Import AddrMap.
 Import ListNotations.
+
 Set Implicit Arguments.
 
 
@@ -134,6 +136,9 @@ Module LOG.
   | [ |- Map.Empty vmap0 ] => apply Map.empty_1
   | [ |- MLog.map_valid vmap0 _ ] => apply MLog.map_valid_map0
   end; eauto.
+
+  Hint Resolve KNoDup_map_elements.
+  Hint Resolve MapProperties.eqke_equiv.
 
   (* This is a agressive hint *)
   Theorem begin_ok: forall xp ms,
