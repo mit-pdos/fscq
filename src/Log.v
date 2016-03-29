@@ -932,6 +932,36 @@ Module LOG.
     pred_apply; cancel.
   Qed.
 
+  Lemma dsync_vssync_vecs_partial : forall al n vsl F m,
+    (F * listmatch (fun vs a => a |-> vs) vsl al)%pred (list2nmem m) ->
+    (F * listmatch (fun vs a => a |-> vs \/ a |=> fst vs) vsl al)%pred 
+        (list2nmem (vssync_vecs m (firstn n al))).
+  Proof.
+    unfold listmatch; induction al; destruct vsl;
+    simpl; intros; eauto; destruct_lift H; inversion H1.
+    rewrite firstn_nil; simpl; pred_apply; cancel.
+
+    destruct n; simpl.
+    apply sep_star_comm; apply sep_star_assoc; apply sep_star_comm.
+    apply sep_star_lift_apply'; auto.
+    refine (_ (IHal 0 vsl _ m _)); intros.
+    simpl in x; pred_apply; cancel.
+    pred_apply; repeat cancel.
+
+    apply sep_star_comm; apply sep_star_assoc; apply sep_star_comm.
+    apply sep_star_lift_apply'; auto.
+    refine (_ (IHal n vsl _ (vssync m a) _)); intros.
+    pred_apply; cancel.
+
+    unfold vssync.
+    erewrite <- (@list2nmem_sel _ _ m a) by (pred_apply; cancel); simpl.
+    apply sep_star_comm in H.
+    apply sep_star_assoc in H.
+    eapply list2nmem_updN with (y := (p_cur, nil)) in H.
+    pred_apply; repeat cancel.
+  Qed.
+
+
   Theorem dwrite_vecs_ok : forall xp ms avl,
     {< F Fm m ovl,
     PRE
@@ -980,12 +1010,12 @@ Module LOG.
       [[[ m ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
     POST RET:ms' exists m',
       rep xp F (ActiveTxn m' m') ms' *
-      [[[ m' ::: Fm * listmatch (fun vs a => a |-> (fst vs, nil)) vsl al ]]]
+      [[[ m' ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]]
     CRASH
       exists m' ms',
       rep xp F (ActiveTxn m m) ms' \/
       rep xp F (ActiveTxn m' m') ms' *
-          [[ exists n, m' = vssync_vecs m (firstn n al) ]]
+      [[[ m' ::: Fm * listmatch (fun vs a => a |-> vs \/ a |=> fst vs) vsl al ]]]
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs.
@@ -1007,7 +1037,7 @@ Module LOG.
     apply MLog.map_valid_vssync_vecs; auto.
     rewrite <- MLog.replay_disk_vssync_vecs_comm.
     f_equal; auto.
-    eauto.
+    apply dsync_vssync_vecs_partial; auto.
     Unshelve. eauto.
   Qed.
 
