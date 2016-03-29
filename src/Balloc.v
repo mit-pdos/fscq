@@ -469,3 +469,41 @@ Module BALLOC.
 
 End BALLOC.
 
+
+
+(* Specialize for inode allocation *)
+
+Module IAlloc.
+
+  Module Sig <: AllocSig.
+    Definition xparams     := fs_xparams.
+    Definition BMPStart xp := BmapStart (FSXPInodeAlloc xp).
+    Definition BMPLen   xp := BmapNBlocks (FSXPInodeAlloc xp).
+
+    (* should return an address that fits in addrlen (goodSize addrlen _).
+       valulen * valulen supports about 2^48 inodes *)
+    Definition xparams_ok xp := (BMPLen xp) <= valulen * valulen.
+  End Sig.
+
+  Module Alloc := BmapAlloc Sig.
+  Module Defs := Alloc.Defs.
+
+  Definition alloc := Alloc.alloc.
+
+  Definition free := Alloc.free.
+
+  Definition rep := Alloc.rep.
+
+  Definition ino_valid xp ino := ino < (Sig.BMPLen xp) * valulen.
+
+  Definition alloc_ok := Alloc.alloc_ok.
+
+  Definition free_ok := Alloc.free_ok.
+
+
+  Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
+
+End IAlloc.
+

@@ -21,6 +21,8 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
+
+
 Module DIRTREE.
 
   Inductive dirtree :=
@@ -139,6 +141,8 @@ Module DIRTREE.
                           dirlist_pred_except (tree_pred ibxp) (tree_pred_except ibxp suffix) fn s
       end
     end)%pred.
+
+
 
   (**
    * [F] represents the other parts of the file system above [tree],
