@@ -1,5 +1,4 @@
 Require Import List.
-Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Omega.
 Require Import ListUtils.
@@ -9,9 +8,9 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
-Module MapDefs (OT : UsualOrderedType).
+Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
 
-  Module Map := FMapAVL.Make(OT).
+  Module Map := M.
   Module MapFacts := WFacts_fun OT Map.
   Module MapProperties := WProperties_fun OT Map.
   Module MapOrdProperties := OrdProperties Map.
@@ -37,7 +36,7 @@ Module MapDefs (OT : UsualOrderedType).
   Proof.
     intros.
     apply Map.find_1 in H.
-    erewrite Map.find_1 in H by (apply Map.add_1; auto).
+    erewrite Map.find_1 in H by (apply Map.add_1; hnf; auto).
     congruence.
   Qed.
 
@@ -48,7 +47,7 @@ Module MapDefs (OT : UsualOrderedType).
     intros. destruct H as [v].
     erewrite MapProperties.cardinal_2 with (m:=Map.remove k m) (m':=m) (x:=k) (e:=v).
     omega.
-    apply Map.remove_1; auto.
+    apply Map.remove_1; hnf; auto.
     intro.
     destruct (OT.eq_dec k y); unfold OT.eq in *; subst.
     - rewrite MapFacts.add_eq_o; auto.
@@ -74,7 +73,7 @@ Module MapDefs (OT : UsualOrderedType).
     intros. destruct H.
     erewrite MapProperties.cardinal_2 with (m:=Map.remove k m).
     omega.
-    apply Map.remove_1; auto.
+    apply Map.remove_1; hnf; auto.
     intro.
     destruct (OT.eq_dec k y); unfold OT.eq in *; subst.
     - rewrite MapFacts.add_eq_o; auto.
@@ -112,7 +111,7 @@ Module MapDefs (OT : UsualOrderedType).
     eexists; apply Map.elements_2.
     rewrite H.
     apply InA_cons_hd.
-    constructor; eauto.
+    constructor; hnf; eauto.
   Qed.
 
   Lemma mapeq_elements : forall m1 m2,
@@ -160,7 +159,7 @@ Module MapDefs (OT : UsualOrderedType).
   Proof.
     induction l; intros; auto; inversion H; subst.
     inversion H1.
-    destruct a0; simpl in *; subst; auto.
+    destruct a0; simpl in *; hnf in *; subst; auto.
     simpl. right.
     apply IHl; auto.
   Qed.
@@ -221,7 +220,7 @@ Module MapDefs (OT : UsualOrderedType).
     apply InA_alt in H.
     destruct H; intuition.
     hnf in H0; simpl in *; intuition; subst.
-    destruct x0; simpl in *.
+    destruct x0; simpl in *; hnf in *; subst.
     generalize dependent (Map.elements m).
     induction l; intros; simpl; auto.
     inversion H1; intuition.
@@ -358,7 +357,7 @@ Module MapDefs (OT : UsualOrderedType).
   Proof.
     intros.
     apply not_In_not_InA.
-    apply Map.remove_1; auto.
+    apply Map.remove_1; hnf; auto.
   Qed.
 
   Lemma not_in_remove_not_in : forall x y (m : Map.t V),
@@ -366,8 +365,8 @@ Module MapDefs (OT : UsualOrderedType).
     ~ Map.In x (Map.remove y m).
   Proof.
     intros.
-    destruct (OT.eq_dec x y); subst.
-    apply Map.remove_1; auto.
+    destruct (OT.eq_dec x y); hnf in *; subst.
+    apply Map.remove_1; hnf; auto.
     destruct (MapFacts.In_dec (Map.remove y m) x).
     contradict H.
     eapply MapFacts.remove_neq_in_iff; eauto.
@@ -409,6 +408,10 @@ Module MapDefs (OT : UsualOrderedType).
 End MapDefs.
 
 
-Module AddrMap := MapDefs Nat_as_OT.
+
+Require Import FMapAVL.
+
+Module AddrMap_AVL := FMapAVL.Make(Nat_as_OT).
+Module AddrMap := MapDefs Nat_as_OT AddrMap_AVL.
 
 
