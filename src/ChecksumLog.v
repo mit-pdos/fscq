@@ -104,9 +104,9 @@ Definition log_rep vl hm :
     * Header |-> (header_to_valu header, nil)
     * array DataStart (synced vl) $1)%pred.
 
-Definition log_rep_crash_xform prev_vl vl vl_disk hm :
+Definition log_rep_unmatched prev_vl vl hm :
   @pred addr (@weq addrlen) valuset :=
-  (exists header,
+  (exists header vl_disk,
     [[ log_rep_inner header (length prev_vl) vl hm ]]
     * Header |-> (header_to_valu header, nil)
     * [[ list_prefix prev_vl vl ]]
@@ -142,12 +142,12 @@ Lemma crep_crash_xform : forall vl vl' hm F,
     * [[ length vl + length unsynced_data = length vl' ]]
     * array (DataStart ^+ $(length vl)) unsynced_data $1
     * F)
-    =p=> exists unsynced_data,
+    =p=> (exists unsynced_data,
           log_rep vl hm
           * [[ length vl + length unsynced_data = length vl' ]]
           * array (DataStart ^+ $(length vl)) (synced unsynced_data) $1
-          * crash_xform F \/
-          log_rep_crash_xform vl vl' unsynced_data hm
+          * crash_xform F) \/
+          log_rep_unmatched vl vl' hm
           * crash_xform F.
 Proof.
 Admitted.
@@ -167,33 +167,20 @@ Lemma crep_crash_xform_rollback : forall vl vl' hm F,
 Proof.
 Admitted.
 
+Lemma log_rep_crash_xform : forall vl hm hm',
+  crash_xform (log_rep vl hm) * [[ exists l, hashmap_subset l hm hm' ]]
+  =p=> log_rep vl hm'.
+Proof.
+Admitted.
+
+Lemma log_rep_unmatched_crash_xform : forall vl vl' hm hm',
+  crash_xform (log_rep_unmatched vl vl' hm)
+  * [[ exists l, hashmap_subset l hm hm' ]]
+  =p=> log_rep_unmatched vl vl' hm'.
+Proof.
+Admitted.
+
 Hint Rewrite crep_crash_xform : crash_xform.
-
-(** log_rep after a crash: Same as normal log_rep, except we don't
-    know if the list that matches the hash we have matches the list
-    that's on disk.
-Definition log_rep_crash_xform previous_length (vl : list valu) hm :
-  @pred addr (@weq addrlen) valuset :=
-  (exists header vl',
-    [[ log_rep_inner previous_length header vl hm ]] *
-    Header |-> (header_to_valu header, nil) *
-    [[ length vl <= length vl' ]] *
-    [[ length vl' <= # (maxlen) ]] *
-    array DataStart (combine vl' (repeat nil (length vl'))) $1)%pred.
-
-(** The one in-between case right before a crash:
-  - Two possible headers could be synced to disk
-  - The older one matches the list on disk,
-    the other matches a longer list. **)
-Definition crep previous_length (vl vl' : list valu) hm :
-  @pred addr (@weq addrlen) valuset :=
-  (exists header header' vl'',
-    [[ log_rep_inner (length vl) header' vl' hm ]] *
-    [[ log_rep_inner previous_length header vl hm ]] *
-    [[ length vl' <= length vl'' ]] *
-    [[ length vl'' <= # (maxlen) ]] *
-    Header |-> (header_to_valu header', header_to_valu header :: nil) *
-    array DataStart (combine vl'' (repeat nil (length vl''))) $1)%pred.*)
 
 
 Definition append T v cs rx : prog T :=
@@ -304,6 +291,11 @@ Definition recover T cs rx : prog T :=
     cs <- BUFCACHE.sync Header cs;
     rx cs
   }.
+
+Definition recover' {T} rx : prog T :=
+  cs <- BUFCACHE.init_recover 1;
+  cs <- recover cs;
+  rx cs.
 
 Lemma list_prefix_length : forall A (l1 l2 : list A),
   list_prefix l1 l2 -> length l1 <= length l2.
@@ -419,13 +411,12 @@ Proof.
     solve_hash_list_rep.
 Qed.
 
-Theorem recover_ok_log_rep_crash_xform : forall cs,
+Theorem recover_ok_log_rep_unmatched : forall cs,
   {< F values values',
   PRE:hm
     exists d,
     BUFCACHE.rep cs d
-    * [[ (exists unsynced_data,
-          log_rep_crash_xform values values' unsynced_data hm
+    * [[ (log_rep_unmatched values values' hm
           * F)%pred d ]]
   POST:hm' RET:cs'
     exists d',
@@ -445,14 +436,15 @@ Theorem recover_ok_log_rep_crash_xform : forall cs,
             * [[ length values + length unsynced_data = length values' ]]
             * array (DataStart ^+ $(length values)) (synced unsynced_data) $1
             * F \/
-            log_rep_crash_xform values values' unsynced_data hm'
+            log_rep_unmatched values values' hm'
             * F \/
             crep values values' hm'
+            * [[ list_prefix values values' ]]
             * array (DataStart ^+ $ (length values)) (synced unsynced_data) $1
             * F)%pred d' ]]
 >} recover cs.
 Proof.
-  unfold recover, log_rep_crash_xform, log_rep, log_rep_inner.
+  unfold recover, log_rep_unmatched, log_rep, log_rep_inner.
   step.
   pred_apply; cancel.
   step.
@@ -818,9 +810,11 @@ Theorem recover_ok :  forall cs,
             * [[ length values + length unsynced_data = length values' ]]
             * array (DataStart ^+ $(length values)) (synced unsynced_data) $1
             * crash_xform F \/
-            log_rep_crash_xform values values' unsynced_data hm'
+            log_rep_unmatched values values' hm'
             * crash_xform F \/
             crep values values' hm'
+            * [[ list_prefix values values' ]]
+            * [[ length values + length unsynced_data = length values' ]]
             * array (DataStart ^+ $ (length values)) (synced unsynced_data) $1
             * crash_xform F)%pred d' ]]
   >} recover cs.
@@ -830,8 +824,7 @@ Proof.
   intros. norm'l. unfold stars; cbn.
 
   eapply crep_crash_xform in H4.
-  deex.
-  inversion H as [ H' | H' ]; destruct_lift H'.
+  inversion H4 as [ H' | H' ]; destruct_lift H'.
   cancel.
   eapply pimpl_ok2; try eapply recover_ok_log_rep.
   cancel.
@@ -845,15 +838,15 @@ Proof.
   cancel.
   cancel.
   cancel.
-  cancel.
 
-  cancel.
-  eapply pimpl_ok2; try eapply recover_ok_log_rep_crash_xform.
+  eapply pimpl_ok2; try eapply recover_ok_log_rep_unmatched.
   cancel.
   eauto.
-  eexists; eauto.
+  eauto.
   cancel.
 Qed.
+
+Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
 Theorem recover_ok_rollback :  forall cs,
   {< F values values',
@@ -910,7 +903,6 @@ Proof.
   cancel.
   step_idtac.
   all: cancel.
-  cancel.
 
   Grab Existential Variables.
   all: eauto.
@@ -1058,7 +1050,7 @@ Proof.
     pred_apply; cancel.
     apply pimpl_or_r; right.
     apply pimpl_or_r; left.
-    unfold log_rep_crash_xform, log_rep_inner.
+    unfold log_rep_unmatched, log_rep_inner.
     cancel.
     rewrite array_isolate with (vs:=(combine (l ++ [v]) (repeat [] (length l + 1))))
       (i:=$ (length l)).
@@ -1253,6 +1245,8 @@ Proof.
   Grab Existential Variables.
   all: auto.
 Qed.
+
+Hint Extern 1 ({{_}} progseq (append _ _) _) => apply append_ok : prog.
 
 Theorem truncate_ok : forall cs,
   {< d vl F,
