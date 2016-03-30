@@ -197,6 +197,6 @@ Module String_as_OT <: UsualOrderedType.
           intros;
           exfalso_from_equalities
         ].
-  Qed.
+  Defined.
 
 End String_as_OT.
