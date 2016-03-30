@@ -2609,6 +2609,14 @@ Proof.
   ring_sz sz'.
 Qed.
 
+Lemma wlt_neq : forall sz (a b : word sz),
+  (a < b)%word -> a <> b.
+Proof.
+  intros; intro Heq; subst.
+  unfold wlt in H.
+  eapply N.lt_irrefl; eauto.
+Qed.
+
 (* Coq trunk seems to inherit open scopes across imports? *)
 Close Scope word_scope.
 
