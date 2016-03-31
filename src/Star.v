@@ -75,6 +75,14 @@ Section STAR.
     eauto.
   Qed.
 
+  Theorem star_two_step : forall s s' s'',
+      R s s' ->
+      R s' s'' ->
+      star s s''.
+  Proof.
+    eauto.
+  Qed.
+
   Theorem star_invariant : forall (P : A -> Prop) (Q : relation),
       (forall s s', P s -> s --> s' -> Q s s') ->
       (forall s, P s -> Q s s) ->

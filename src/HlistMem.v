@@ -82,6 +82,18 @@ Proof.
   unfold type_mem, mem; intros.
 Abort.
 
+Theorem hlistmem_ptsto_unique : forall types (h: hlist _ types)
+  a F F' v v',
+  (F * a |-> v)%pred (hlistmem h) ->
+  (F' * a |-> v')%pred (hlistmem h) ->
+  v = v'.
+Proof.
+  intros.
+  apply ptsto_valid' in H.
+  apply ptsto_valid' in H0.
+  congruence.
+Qed.
+
 Definition del AT AEQ V (m: @mem AT AEQ V) a : @mem _ AEQ V :=
   fun a' => if AEQ a' a then None else m a'.
 

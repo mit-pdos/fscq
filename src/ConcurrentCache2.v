@@ -108,7 +108,7 @@ Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
   Axiom cache_invariant_preserved : forall m s d m' s' d',
       Inv m s d ->
       cacheI m' s' d' ->
-      modified memVars m m' ->
+      modified [( Cache; MLocks )] m m' ->
       (* GDisk0 may not be modified, so the global invariant can state
     interactions between the linearized disk and the rest of the ghost
     state, which must be proven after unlocking. *)
@@ -327,6 +327,26 @@ Proof.
   (* should be done with setoid rewriting *)
 Admitted.
 
+Hint Resolve same_domain_refl.
+
+Section LinearizedPreservation.
+
+  Theorem preserves_view : forall A AEQ V S (f: S -> @linear_mem A AEQ V) R F F' o,
+    preserves (fun s => view o (f s)) R F F' ->
+    preserves f R (lin_pred F o) (lin_pred F' o).
+  Proof.
+    unfold preserves.
+    intuition.
+    assert (forall P, (F * P)%pred (view o (f s)) ->
+                 (F' * P)%pred (view o (f s'))) by eauto.
+    clear H.
+
+    unfold_sep_star in H0; repeat deex.
+    (* hopefully this theorem is true and provable? *)
+  Admitted.
+
+End LinearizedPreservation.
+
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ Fs Fs' F LF F' v vd,
@@ -342,7 +362,7 @@ Theorem locked_AsyncRead_ok : forall a,
        exists vd',
          hlistmem s' |= Fs' * haddr GDisk |-> vd' /\
          Inv m' s' d' /\
-         vd' |= lin_pred F' NoOwner * lin_pred (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
+         vd' |= lin_pred F' NoOwner * lin_pred (cache_locked tid s' (LF * a |-> (v, None))) (Owned tid) /\
          r = v /\
          R tid s0' s'
   }} locked_AsyncRead a.
@@ -386,13 +406,12 @@ Proof.
   unfold view in H17.
   simpl_match.
   apply R_trans.
-  eapply star_trans; apply star_one_step.
+  eapply star_two_step.
   eassumption.
   finish.
 
   assert (get GDisk s (a, Owned tid) = Some (v, None)) by admit.
-  unfold cacheR; intuition;
-  autorewrite with hlist; eauto using same_domain_refl.
+  unfold cacheR; descend; autorewrite with hlist; now eauto.
 
   step pre simplify with try solve [ finish ].
   (* FinishRead_upd precondition *)
@@ -422,7 +441,7 @@ Proof.
   unfold pred_in in H18.
   simplify.
   finish.
-  unfold cacheI; intuition; autorewrite with hlist; eauto.
+  unfold cacheI; repeat descend; autorewrite with hlist; eauto.
 
   admit. (* follows from linearized_consistent_upd and that a was locked *)
   admit. (* similar to above *)
@@ -430,8 +449,22 @@ Proof.
   assert (get GDisk s2 (a, Owned tid) = Some (v, Some tid)) by admit.
   rewrite H19.
 
+  unfold pred_in.
+
   (* XXX: can't do this, get Error: Universe inconsistency.  *)
   Fail rewrite lin_pred_cache_locked_star.
+
+  Lemma star_pimpl_r : forall AT AEQ V (F: @pred AT AEQ V) P P' m,
+      P =p=> P' ->
+              (F * P)%pred m ->
+              (F * P')%pred m.
+  Proof.
+    intros.
+    rewrite <- H; auto.
+  Qed.
+
+  eapply star_pimpl_r.
+  apply lin_pred_cache_locked_star.
 
   (* need to use preservation on view NoOwner GDisk to derive
 preservation of lin_pred on anything, and also handle a separately:
@@ -440,8 +473,7 @@ lin_pred (cache_locked ...) *)
   admit.
 
   finish.
-  unfold cacheR; intuition; autorewrite with hlist; eauto.
-  apply same_domain_refl.
+  unfold cacheR; repeat descend; autorewrite with hlist; eauto.
 Admitted.
 
 Definition read {T} a rx : prog Mcontents Scontents T :=
@@ -453,8 +485,76 @@ Definition read {T} a rx : prog Mcontents Scontents T :=
   | None => v <- locked_AsyncRead a;
       let c' := cache_add c a v in
       Assgn Cache c';;
+            GhostUpdate (fun s =>
+                           let c := get GCache s in
+                           let c' := upd c (a, Owned tid) (Clean v) in
+                           set GCache c' s);;
             rx v
   end.
 
+Hint Extern 1 {{locked_AsyncRead _; _}} => apply locked_AsyncRead_ok : prog.
+
+Theorem locked_read_ok : forall a,
+  stateS TID: tid |-
+  {{ Fs Fs' F LF F' v vd,
+   | PRE d m s0 s:
+       hlistmem s |= Fs * haddr GDisk |-> vd /\
+       Inv m s d /\
+       vd |= lin_pred F NoOwner * lin_pred (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
+       preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
+       preserves (fun s:S => view NoOwner (get GDisk s)) (star (othersR R tid)) F F' /\
+       R tid s0 s
+   | POST d' m' s0' s' r:
+       exists vd',
+         hlistmem s' |= Fs' * haddr GDisk |-> vd' /\
+         Inv m' s' d' /\
+         vd' |= lin_pred F' NoOwner * lin_pred (cache_locked tid s' (LF * a |-> (v, None))) (Owned tid) /\
+         r = v /\
+         R tid s0' s'
+  }} read a.
+Proof.
+  hoare pre simplify with try solve [ finish ].
+
+  all: eauto.
+  eapply H3; now eauto.
+
+  eapply preserves_view in H4.
+  rewrite <- (haddr_ptsto_get H) in *.
+  eapply H4; now eauto.
+
+  admit. (* clean cache val *)
+
+  eapply H3; now eauto.
+  rewrite <- (haddr_ptsto_get H) in *.
+  eapply preserves_view in H4.
+  eapply H4; now eauto.
+
+  admit. (* dirty cache val *)
+
+  (* trickier: why is Fs' applicable when cache has changed? ideally
+  caller is not talking about cache and so this is provable, using the
+  R separation axioms *)
+  instantiate (1 := get GDisk s2).
+  admit.
+
+  solve_global_transitions; eauto.
+
+  unfold cacheI; repeat descend; autorewrite with hlist; eauto.
+  admit. (* cache mem consistency after updating one value on both sides *)
+  admit. (* cache rep after updating one value on both sides *)
+
+  finish.
+  finish.
+
+  rewrite (haddr_ptsto_get H19) in *.
+  admit. (* almost same as H20, but cache has a new value: this does
+  not affect locks so cache_locked still holds *)
+
+  eapply R_trans.
+  eapply star_two_step.
+  eassumption.
+  finish.
+  unfold cacheR; repeat descend; autorewrite with hlist; eauto.
+Admitted.
 
 End Cache.

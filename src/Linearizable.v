@@ -1,6 +1,7 @@
 Require Import Mem.
 Require Import Pred.
 Require Import Locking.
+Require Import EventCSL.
 Require Import FunctionalExtensionality.
 
 Section Linearizability.
@@ -174,6 +175,15 @@ Proof.
     repeat upd_different;
     eauto.
 Qed.
+
+(* TODO: relation is really over locks and locks':
+need to allow changing NoOwner view iff you release the lock *)
+Definition linear_rel A AEQ V (locks: _ -> BusyFlagOwner)
+  tid (m m': @linear_mem A AEQ V) :=
+  forall a, locks a <> Owned tid -> m' a = m a.
+
+(* should prove that linear_rel preserves linearized_consistent, as long as the
+new locks follow the lock protocol *)
 
 Local Definition linearized_consistent' A AEQ V (m: @linear_mem A AEQ V) (locks: A -> BusyFlagOwner) : Prop :=
   forall a tid,
