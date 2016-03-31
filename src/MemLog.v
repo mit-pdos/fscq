@@ -23,6 +23,7 @@ Require Import SepAuto.
 Require Import GenSepN.
 Require Import MapUtils.
 Require Import FMapFacts.
+Require Import Lock.
 
 Import AddrMap.
 Import ListNotations.
@@ -1463,6 +1464,17 @@ Module MLog.
     destruct (MapFacts.In_dec m n0); auto.
   Qed.
 
+  Lemma In_MapIn_overlap : forall V l a (ms : Map.t V),
+    In a l ->
+    Map.In a ms ->
+    overlap l ms.
+  Proof.
+    induction l; intros; simpl.
+    inversion H.
+    destruct (MapFacts.In_dec ms a); auto.
+    inversion H; destruct (addr_eq_dec a a0); subst; firstorder.
+  Qed.
+
   Lemma map_valid_vsupd_vecs : forall l d m,
     map_valid m d ->
     map_valid m (vsupd_vecs d l).
@@ -1956,19 +1968,8 @@ Module MLog.
     eapply vssync_vecs_subsume; eauto; omega.
   Qed.
 
-  Lemma In_MapIn_overlap : forall V l a (ms : Map.t V),
-    In a l ->
-    Map.In a ms ->
-    overlap l ms.
-  Proof.
-    induction l; intros; simpl.
-    inversion H.
-    destruct (MapFacts.In_dec ms a); auto.
-    inversion H; destruct (addr_eq_dec a a0); subst; firstorder.
-  Qed.
-
-  Lemma replay_disk_disk_replace : forall l d d0 ms,
-    ~ overlap l ms ->
+  Lemma replay_disk_disk_replace : forall l d d0 ms m,
+    d = replay_disk (Map.elements ms) m ->
     vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
     d = replay_disk (Map.elements ms) (disk_replace d0 l ms d).
   Proof.
@@ -1988,9 +1989,8 @@ Module MLog.
     erewrite replay_disk_selN_MapsTo in H0; eauto.
     rewrite <- H0.
     destruct (In_dec addr_eq_dec pos l).
-    contradict H.
-    eapply In_MapIn_overlap; eauto.
-    eapply MapsTo_In; eauto.
+    subst; rewrite replay_disk_selN_MapsTo with (v := x); auto.
+    erewrite <- replay_disk_length; eauto.
     rewrite vssync_selN_not_in in *; auto.
 
     rewrite replay_disk_selN_not_In in * by auto.
@@ -2002,15 +2002,16 @@ Module MLog.
   Qed.
 
 
-  Lemma crash_xform_vssync_vecs : forall xp l F na d ms,
-    ~ overlap l (MSInLog ms) ->
+  Lemma crash_xform_vssync_vecs : forall xp l F na d ms m,
+    locked (d = replay_disk (Map.elements (MSInLog ms)) m) ->
     crash_xform (rep xp F na (Synced (vssync_vecs d l)) ms) =p=>
     exists ms', crash_xform (rep xp F na (Synced d) ms').
   Proof.
     unfold rep; intros.
     xform; cancel.
-    unfold rep_inner, synced_rep, map_replay in H1.
-    destruct_lift H1; subst.
+    denote rep_inner as Hx;
+    unfold rep_inner, synced_rep, map_replay in Hx.
+    destruct_lift Hx; subst.
     rewrite crash_xform_exists_comm; cancel.
 
     rewrite crash_xform_sep_star_dist, crash_xform_lift_empty; cancel.
