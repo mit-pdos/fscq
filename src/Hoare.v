@@ -128,25 +128,27 @@ Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
 
 (**
  * Experimental XCRASH: relax crash condtion using crash_xform
+ * TODO: Say something about hm', hm_crash
  *)
 Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun done_ crash_ =>
+   (fun hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
      [[ forall r_,
-        {{ fun done'_ crash'_ =>
+        {{ fun hm' done'_ crash'_ =>
            post F_ r_ *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
-     [[ forall realcrash,
+     [[ forall realcrash (hm_crash : hashmap),
       crash_xform realcrash =p=> crash_xform crash ->
-        ((F_ * realcrash)%pred =p=> crash_)%pred ]]
+        ((F_ * realcrash)%pred =p=> crash_ hm_crash)%pred ]]
      )) .. ))
    )%pred
    (p1 rx)%pred)
-  (at level 0, p1 at level 60, e1 binder, e2 binder).
+  (at level 0, p1 at level 60,
+    e1 closed binder, e2 closed binder).
 
 
 Definition forall_helper T (p : T -> Prop) :=
@@ -402,7 +404,8 @@ Qed.
 
 
 Theorem corr2_disk_exists : forall T pre (p : prog T),
-  ((exists done crash d, pre done crash d) -> corr2 pre p) -> corr2 pre p.
+  ((exists hm done crash d, pre hm done crash d) -> corr2 pre p) -> corr2 pre p.
 Proof.
   unfold corr2; intros; eauto.
+  eapply H; eauto.
 Qed.
