@@ -2028,8 +2028,9 @@ Module MLog.
     apply pimpl_exists_r_star.
     exists (disk_replace d0 l (MSInLog ms) d).
 
-    
-  Qed.
+    admit.
+
+  Admitted.
 
 
 
