@@ -204,10 +204,36 @@ Proof.
   auto.
 Qed.
 
+Definition FinishRead_upd {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
+  v <- FinishRead a;
+            rx v.
+
+Theorem FinishRead_upd_ok : forall Mcontents Scontents Inv R a,
+    (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+    {{ v,
+     | PRE d m s0 s: d a = Some (v, Some tid)
+     | POST d' m' s0' s' r: d' = upd d a (v, None) /\
+                            s0' = s0 /\
+                            s' = s /\
+                            m' = m /\
+                            r = v
+    }} FinishRead_upd a.
+Proof.
+  intros.
+  step.
+  exists (diskIs (mem_except d a)).
+  eexists; intuition eauto.
+
+  step.
+  eapply diskIs_combine_upd in H; unfold diskIs in H.
+  eauto.
+Qed.
+
 End ReadTheorems.
 
 Hint Extern 1 {{Read _; _}} => apply Read_ok : prog.
 Hint Extern 1 {{StartRead_upd _; _}} => apply StartRead_upd_ok : prog.
+Hint Extern 1 {{FinishRead_upd _; _}} => apply FinishRead_upd_ok : prog.
 
 Section WaitForCombinator.
 
