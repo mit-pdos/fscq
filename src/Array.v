@@ -829,6 +829,31 @@ Proof.
 Qed.
 
 
+Fixpoint listupd V (m : @mem nat eq_nat_dec V) base (vs : list V) : @mem nat eq_nat_dec V :=
+  match vs with
+  | nil => m
+  | v :: tl => listupd (upd m base v) (base+1) tl
+  end.
 
-
-
+Lemma arrayN_listupd:
+  forall V l (m : @mem _ _ V) l0 base F,
+  length l0 = length l ->
+  (arrayN base l0 * F)%pred m ->
+  (arrayN base l * F)%pred (listupd m base l).
+Proof.
+  induction l; intros; destruct l0; simpl in *; try omega.
+  eauto.
+  eapply pimpl_trans.
+  3: eapply IHl with (l0 := l0).
+  apply pimpl_refl.
+  replace (base + 1) with (S base) by omega.
+  cancel.
+  omega.
+  eapply pimpl_trans.
+  3: eapply ptsto_upd.
+  apply pimpl_refl.
+  cancel.
+  pred_apply.
+  replace (base + 1) with (S base) by omega.
+  cancel.
+Qed.
