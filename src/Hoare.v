@@ -312,3 +312,10 @@ Proof.
   intros a b Hab x y Hxy p q Hpq; subst.
   split; intros; eapply pimpl_ok3; try eassumption; apply Hab.
 Qed.
+
+
+Theorem corr2_disk_exists : forall T pre (p : prog T),
+  ((exists done crash d, pre done crash d) -> corr2 pre p) -> corr2 pre p.
+Proof.
+  unfold corr2; intros; eauto.
+Qed.
