@@ -273,6 +273,31 @@ Proof.
   eauto.
 Qed.
 
+Lemma arrayN_selN : forall V F a st l m (def : V),
+  (F * arrayN st l)%pred m ->
+  a >= st ->
+  a < st + length l ->
+  m a = Some (selN l (a - st) def).
+Proof.
+  intros.
+  eapply ptsto_valid; pred_apply.
+  rewrite arrayN_isolate with (i := a - st) by omega.
+  replace (st + (a - st)) with a by omega.
+  clear H; cancel.
+Qed.
+
+Lemma arrayN_selN_exis : forall V F a st (l : list V) m,
+  (F * arrayN st l)%pred m ->
+  a >= st ->
+  a < st + length l ->
+  exists v, m a = Some v.
+Proof.
+  intros; destruct l.
+  simpl in *; try omega.
+  eexists; eapply arrayN_selN with (def := v); eauto; try omega.
+Qed.
+
+
 Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
   updN vs i (v, vsmerge (selN vs i ($0, nil))).
 
@@ -516,6 +541,18 @@ Proof.
   omega.
 Qed.
 
+Lemma vssync_vecs_vssync_comm : forall l d a,
+  vssync_vecs (vssync d a) l = vssync (vssync_vecs d l) a.
+Proof.
+  induction l; intros; simpl; auto.
+  destruct (addr_eq_dec a a0); subst; auto.
+  repeat rewrite IHl.
+  unfold vssync.
+  repeat rewrite selN_updN_ne by auto.
+  rewrite updN_comm; auto.
+Qed.
+
+
 Lemma vssync_synced : forall l a,
   snd (selN l a ($0, nil)) = nil ->
   vssync l a = l.
@@ -572,6 +609,39 @@ Proof.
   rewrite selN_updN_ne; auto.
 Qed.
 
+
+Lemma vssync_selN_not_in : forall l i d,
+  ~ In i l ->
+  selN (vssync_vecs d l) i ($0, nil) = selN d i ($0, nil).
+Proof.
+  induction l; simpl; auto; intuition.
+  rewrite IHl; auto.
+  unfold vssync.
+  rewrite selN_updN_ne; simpl; auto.
+Qed.
+
+
+Lemma vssync_vecs_selN_In : forall l i d,
+  In i l ->
+  i < length d ->
+  selN (vssync_vecs d l) i ($0, nil) = (fst (selN d i ($0, nil)), nil).
+Proof.
+  induction l; intros; auto.
+  inversion H.
+  destruct (addr_eq_dec a i); subst; simpl.
+  destruct (in_dec addr_eq_dec i l).
+  rewrite IHl; unfold vssync; auto.
+  rewrite selN_updN_eq; simpl; auto.
+  rewrite length_updN; auto.
+
+  rewrite vssync_selN_not_in by auto.
+  unfold vssync; rewrite selN_updN_eq; simpl; auto.
+
+  inversion H; subst; try congruence.
+  rewrite IHl; unfold vssync; auto.
+  rewrite selN_updN_ne; auto.
+  rewrite length_updN; auto.
+Qed.
 
 
 

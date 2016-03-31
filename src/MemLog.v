@@ -303,7 +303,7 @@ Module MLog.
     destruct (addr_eq_dec a0 a); subst.
     eauto.
     eapply H.
-    eapply Map.add_3; eauto.
+    eapply Map.add_3; hnf; eauto.
   Qed.
 
   Lemma replay_disk_eq : forall a v v' ms d vs,
@@ -830,8 +830,8 @@ Module MLog.
     apply MapFacts.add_mapsto_iff in H1; intuition; subst; auto.
     apply MapFacts.add_mapsto_iff; left; intuition.
     eapply MapFacts.MapsTo_fun; eauto.
-    eapply Map.add_3; eauto.
-    eapply Map.add_2; eauto.
+    eapply Map.add_3; hnf; eauto.
+    eapply Map.add_2; hnf; eauto.
   Qed.
 
   Lemma apply_unsync_applying_ok' : forall l d n,
@@ -1777,6 +1777,260 @@ Module MLog.
       unfold map_valid; intros.
       destruct (H0 _ _ H3); simplen.
   Qed.
+
+
+
+  (* return a new mem such that it's almost identical to m, except for
+     addresses (a - off) which are in l, but not in ms.
+     In the later case we pick the value in d at [a - off].  *)
+
+  Fixpoint mem_replace (m : rawdisk) (l : list addr) (ms : Map.t valu) (d : list valuset) off :=
+    match l with
+    | nil => m
+    | a :: rest => if (MapFacts.In_dec ms a)
+                   then mem_replace m rest ms d off
+                   else if (ge_dec a (length d))
+                   then mem_replace m rest ms d off
+                   else mem_replace (Mem.upd m (off + a) (selN d a ($0, nil))) rest ms d off
+    end.
+
+  (* same as above, but run on a list *)
+  Fixpoint disk_replace (m : diskstate) (l : list addr) (ms : Map.t valu) (d : list valuset) :=
+    match l with
+    | nil => m
+    | a :: rest => if (MapFacts.In_dec ms a)
+                   then disk_replace m rest ms d
+                   else disk_replace (updN m a (selN d a ($0, nil))) rest ms d
+    end.
+
+  Lemma mem_replace_cases : forall ms d off l m a,
+    ( mem_replace m l ms d off a = m a ) \/
+    ( a >= off /\ a < off + (length d) /\ In (a - off) l /\ ~ Map.In (a - off) ms /\
+      mem_replace m l ms d off a = Some (selN d (a - off) ($0, nil))).
+  Proof.
+    induction l; auto; intros; simpl.
+    destruct (MapFacts.In_dec ms a).
+    specialize (IHl m a0); destruct IHl.
+    left; auto.
+    right; intuition.
+
+    destruct (ge_dec a (length d)).
+    specialize (IHl m a0); destruct IHl.
+    left; auto.
+    right; intuition.
+
+    specialize (IHl (Mem.upd m (off + a) (selN d a ($0, nil))) a0).
+    destruct (addr_eq_dec a0 (off + a));
+    destruct (ge_dec a0 off);
+    destruct (lt_dec a0 (off + (length d)));
+    destruct (in_dec addr_eq_dec (a0 - off) l);
+    destruct IHl; subst;
+    repeat rewrite Mem.upd_eq in * by auto;
+    repeat rewrite Mem.upd_ne in * by auto;
+    repeat replace (off + a - off) with a in * by omega;
+    intuition; try omega.
+  Qed.
+
+
+  Lemma disk_replace_length_eq : forall l m ms d,
+    length (disk_replace m l ms d) = length m.
+  Proof.
+    induction l; intros; simpl; auto.
+    destruct (MapFacts.In_dec ms a).
+    apply IHl.
+    rewrite IHl, length_updN; auto.
+  Qed.
+
+  Lemma disk_replace_map_valid : forall l m ms d,
+    map_valid ms m ->
+    map_valid ms (disk_replace m l ms d).
+  Proof.
+    unfold map_valid; intros.
+    rewrite disk_replace_length_eq.
+    firstorder.
+  Qed.
+
+
+  Lemma disk_replace_cases : forall ms d l m a,
+    length d = length m ->
+    ( (~ In a l \/ Map.In a ms) /\
+      selN (disk_replace m l ms d) a ($0, nil) = selN m a ($0, nil) ) \/
+    ( In a l /\ ~ Map.In a ms /\
+      selN (disk_replace m l ms d) a ($0, nil) = selN d a ($0, nil)).
+  Proof.
+    induction l; auto; intros; simpl.
+    destruct (MapFacts.In_dec ms a).
+    specialize (IHl m a0 H); destruct IHl.
+    left; intuition.
+    destruct (addr_eq_dec a a0); subst; intuition.
+    intuition.
+
+    specialize (IHl (updN m a (selN d a ($0, nil))) a0).
+    rewrite length_updN in IHl; specialize (IHl H).
+
+    destruct (in_dec addr_eq_dec a0 l).
+    destruct (addr_eq_dec a a0); subst.
+    right; intuition.
+    destruct (lt_dec a0 (length m)); intuition.
+    setoid_rewrite H2; rewrite selN_updN_ne; auto.
+    left; repeat rewrite selN_oob with (n := a0); auto; try omega.
+    rewrite disk_replace_length_eq, length_updN; omega.
+
+    intuition; rewrite H2.
+    destruct (addr_eq_dec a a0); subst.
+    destruct (lt_dec a0 (length m)).
+    right; rewrite selN_updN_eq; intuition.
+    repeat rewrite selN_oob with (n := a0); try omega; intuition.
+    rewrite length_updN; omega.
+
+    destruct (addr_eq_dec a a0); subst.
+    right; intuition.
+    destruct (lt_dec a0 (length m)).
+    rewrite selN_updN_ne; intuition.
+    repeat rewrite selN_oob with (n := a0); try omega; intuition.
+    rewrite length_updN; omega.
+
+    destruct (addr_eq_dec a a0); subst.
+    destruct (lt_dec a0 (length m)); intuition.
+    rewrite selN_updN_ne; intuition.
+  Qed.
+
+
+  Lemma mem_replace_none : forall m d d0 off l a ms F,
+    m a = None ->
+    (F * arrayN off d0)%pred m ->
+    length d = length d0 ->
+    mem_replace m l ms d off a = None.
+  Proof.
+    intros.
+    destruct (mem_replace_cases ms d off l m a).
+    rewrite <- H; auto.
+    eapply arrayN_selN_exis with (a := a) in H0; try omega.
+    destruct H0; congruence.
+  Qed.
+
+
+  Lemma vssync_vecs_subsume : forall l i ms d d0 v,
+    vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
+    length d = length d0 ->
+    In v (vsmerge (selN d0 i ($0, nil))) ->
+    i < length d ->
+    In i l ->
+    ~ Map.In i ms ->
+    In v (vsmerge (selN d i ($0, nil))).
+  Proof.
+    intros.
+    erewrite <- replay_disk_selN_other in H1.
+    rewrite <- H in H1.
+    rewrite vssync_vecs_selN_In in H1 by auto.
+    unfold vsmerge in *; simpl in *; intuition.
+    contradict H4; apply In_map_fst_MapIn; auto.
+    apply KNoDup_NoDup; auto.
+  Qed.
+
+
+  Lemma possible_crash_mem_replace : forall F l x d m' ms d0 off,
+    possible_crash x m' ->
+    (F * arrayN off d0)%pred x ->
+    vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
+    possible_crash (mem_replace x l ms d off) m'.
+  Proof.
+    unfold possible_crash; intuition.
+    assert (length d = length d0).
+    erewrite <- replay_disk_length with (m := d0).
+    erewrite <- vssync_vecs_length with (vs := d).
+    f_equal; eauto.
+
+    pose proof (H a) as Heq; intuition.
+    left; split; auto.
+    eapply mem_replace_none; eauto.
+
+    repeat deex; subst; right.
+    destruct (mem_replace_cases ms d off l x a); intros.
+    eexists; exists v'; repeat split; eauto.
+    denote mem_replace as Hx; rewrite Hx; auto.
+    eexists; exists v'; repeat split; auto; intuition; eauto.
+
+    apply arrayN_selN with (a := a) (def := ($0, nil)) in H0; try omega.
+    rewrite H0 in H4; inversion H4; subst.
+    eapply vssync_vecs_subsume; eauto; omega.
+  Qed.
+
+  Lemma In_MapIn_overlap : forall V l a (ms : Map.t V),
+    In a l ->
+    Map.In a ms ->
+    overlap l ms.
+  Proof.
+    induction l; intros; simpl.
+    inversion H.
+    destruct (MapFacts.In_dec ms a); auto.
+    inversion H; destruct (addr_eq_dec a a0); subst; firstorder.
+  Qed.
+
+  Lemma replay_disk_disk_replace : forall l d d0 ms,
+    ~ overlap l ms ->
+    vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
+    d = replay_disk (Map.elements ms) (disk_replace d0 l ms d).
+  Proof.
+    intros.
+    assert (length d = length d0).
+    erewrite <- replay_disk_length with (m := d0).
+    erewrite <- vssync_vecs_length with (vs := d).
+    f_equal; eauto.
+
+    eapply list_selN_ext; intros.
+    rewrite replay_disk_length, disk_replace_length_eq; auto.
+    eapply f_equal with (f := fun x => selN x pos ($0, nil)) in H0.
+    destruct (MapFacts.In_dec ms pos).
+    apply In_MapsTo in i; destruct i.
+    erewrite replay_disk_selN_MapsTo with (def := ($0, nil))
+       by (eauto; rewrite disk_replace_length_eq; omega).
+    erewrite replay_disk_selN_MapsTo in H0; eauto.
+    rewrite <- H0.
+    destruct (In_dec addr_eq_dec pos l).
+    contradict H.
+    eapply In_MapIn_overlap; eauto.
+    eapply MapsTo_In; eauto.
+    rewrite vssync_selN_not_in in *; auto.
+
+    rewrite replay_disk_selN_not_In in * by auto.
+    destruct (In_dec addr_eq_dec pos l).
+    destruct (disk_replace_cases ms d l d0 pos); intuition.
+    rewrite vssync_selN_not_in in H0; auto.
+    destruct (disk_replace_cases ms d l d0 pos); intuition.
+    rewrite H5; auto.
+  Qed.
+
+
+  Lemma crash_xform_vssync_vecs : forall xp l F na d ms,
+    ~ overlap l (MSInLog ms) ->
+    crash_xform (rep xp F na (Synced (vssync_vecs d l)) ms) =p=>
+    exists ms', crash_xform (rep xp F na (Synced d) ms').
+  Proof.
+    unfold rep; intros.
+    xform; cancel.
+    unfold rep_inner, synced_rep, map_replay in H1.
+    destruct_lift H1; subst.
+    rewrite crash_xform_exists_comm; cancel.
+
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty; cancel.
+    instantiate (ms' := mk_memstate (MSInLog ms) (BUFCACHE.cache0 (CSMaxCount cs'))).
+    all: simpl.
+    rewrite <- BUFCACHE.crash_xform_rep_r; [ eauto | ].
+    2: unfold rep_inner, synced_rep, map_replay; simpl.
+
+    instantiate (x0 := mem_replace x l (MSInLog ms) d (DataStart xp)).
+    eapply possible_crash_mem_replace; eauto.
+    pred_apply; cancel.
+
+    apply sep_star_comm.
+    apply pimpl_exists_r_star; exists log.
+    apply pimpl_exists_r_star.
+    exists (disk_replace d0 l (MSInLog ms) d).
+
+    
+  Qed.
+
 
 
   Definition recover_either_pred xp Fold Fnew :=

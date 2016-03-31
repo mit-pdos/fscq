@@ -100,8 +100,10 @@ Module BUFCACHE.
       rx cs
     end.
 
+  Definition cache0 sz := Build_cachestate (Map.empty valu) 0 sz eviction_init.
+
   Definition init T (cachesize : nat) (rx : cachestate -> prog T) : prog T :=
-    rx (Build_cachestate (Map.empty valu) 0 cachesize eviction_init).
+    rx (cache0 cachesize).
 
   Definition read_array T a i cs rx : prog T :=
     r <- read (a + i) cs;
@@ -826,12 +828,24 @@ Module BUFCACHE.
     inversion H.
   Qed.
 
+  Lemma crash_xform_rep_r: forall m m' cs',
+    possible_crash m m' ->
+    rep cs' m' =p=> crash_xform (rep (cache0 (CSMaxCount cs')) m).
+  Proof.
+    unfold rep; intros.
+    cancel.
+    repeat rewrite crash_xform_sep_star_dist.
+    repeat rewrite crash_xform_lift_empty.
+    cancel.
+    apply crash_xform_diskIs_r; auto.
+    exfalso.
+    eapply MapFacts.empty_mapsto_iff; eauto.
+  Qed.
+
   Hint Rewrite crash_xform_rep : crash_xform.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
 
-
-    
 
 End BUFCACHE.
 

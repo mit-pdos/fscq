@@ -303,6 +303,25 @@ Proof.
   unfold lift_empty; intuition.
 Qed.
 
+Lemma crash_xform_diskIs_r: forall m m',
+  possible_crash m m' ->
+  diskIs m' =p=> crash_xform (diskIs m).
+Proof.
+  unfold crash_xform, pimpl, diskIs.
+  intros; subst; firstorder.
+Qed.
+
+Lemma crash_xform_diskIs_piff: forall m,
+  crash_xform (diskIs m) <=p=> exists m', [[ possible_crash m m' ]] * diskIs m'.
+Proof.
+  split.
+  apply crash_xform_diskIs.
+  apply pimpl_exists_l; intro.
+  rewrite sep_star_comm.
+  apply sep_star_lift_l; intro.
+  apply crash_xform_diskIs_r; auto.
+Qed.
+
 Lemma possible_crash_mem_except : forall m1 m2 a,
   possible_crash m1 m2 ->
   possible_crash (mem_except m1 a) (mem_except m2 a).

@@ -1047,6 +1047,76 @@ Module LOG.
     Unshelve. eauto.
   Qed.
 
+Notation "{|< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >|} p1" :=
+  (forall T (rx: _ -> prog T), corr2
+   (fun done_ crash_ =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     exists F_,
+     F_ * pre *
+     [[ forall r_,
+        {{ fun done'_ crash'_ =>
+           post F_ r_ *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
+        }} rx r_ ]] *
+     [[ forall realcrash,
+      crash_xform realcrash =p=> crash_xform crash ->
+        ((F_ * realcrash)%pred =p=> crash_)%pred ]]
+     )) .. ))
+   )%pred
+   (p1 rx)%pred)
+  (at level 0, p1 at level 60, e1 binder, e2 binder).
+
+
+  Theorem dsync_vecs_ok' : forall xp ms al,
+    {|< F Fm m vsl,
+    PRE
+      rep xp F (ActiveTxn m m) ms *
+      [[[ m ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
+    POST RET:ms' exists m',
+      rep xp F (ActiveTxn m' m') ms' *
+      [[[ m' ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]]
+    CRASH exists ms',
+      rep xp F (ActiveTxn m m) ms'
+    >|} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs.
+    step.
+    eapply listmatch_ptsto_list2nmem_inbound.
+    pred_apply; rewrite listmatch_sym; eauto.
+
+    step; subst.
+    apply MLog.map_valid_vssync_vecs; auto.
+    rewrite <- MLog.replay_disk_vssync_vecs_comm.
+    f_equal; auto.
+    apply dsync_vssync_vecs_ok; auto.
+
+    eapply pimpl_trans.
+    2: eapply H1.
+    cancel.
+    do 3 (xform; cancel).
+    instantiate (x := mk_memstate (MSTxn ms) ms'); simpl; eauto.
+    eauto.
+    eauto.
+
+    eapply pimpl_trans.
+    2: eapply H1.
+    cancel.
+    do 3 (xform; cancel).
+    instantiate (x := mk_memstate (MSTxn ms) ms'); simpl.
+    all: auto.
+
+    instantiate (x0 := na').
+    unfold MLog.rep.
+    xform; cancel.
+    repeat rewrite crash_xform_sep_star_dist.
+    repeat rewrite crash_xform_lift_empty.
+    cancel.
+    
+    
+    Unshelve. eauto.
+  Qed.
+
+
   Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
