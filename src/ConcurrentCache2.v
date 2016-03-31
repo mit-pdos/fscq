@@ -9,6 +9,7 @@ Require Import Locks.
 Require Import Linearizable.
 Require Import RelationCombinators.
 Require Import Omega.
+Require Import FunctionalExtensionality.
 Import HlistNotations.
 
 Import List.
@@ -25,10 +26,21 @@ Module Addr_as_OT := Word_as_OT AddrM.
 Module Locks := Locks.Make(Addr_as_OT).
 Import Locks.
 
+Section HideReaders.
+
+  Definition Disk:Type := @mem addr (@weq addrlen) (const valu).
+  Definition hide_readers (d:DISK) : Disk :=
+    fun a => match d a with
+           | Some (v, _) => Some v
+           | None => None
+           end.
+
+End HideReaders.
+
 Module Type CacheVars (Sem:Semantics).
   Import Sem.
   Parameter memVars : variables Mcontents [BlockCache; Locks.M].
-  Parameter stateVars : variables Scontents [linearized DISK; DISK; linearized BlockFun; Locks.S].
+  Parameter stateVars : variables Scontents [linearized DISK; Disk; linearized BlockFun; Locks.S].
 
   Axiom no_confusion_memVars : NoDup (hmap var_index memVars).
   Axiom no_confusion_stateVars : NoDup (hmap var_index stateVars).
@@ -65,11 +77,12 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
       let vc := get GCache s in
       let vd0 := get GDisk0 s in
       let vd := get GDisk s in
-      cache_fun_rep mc (view NoOwner vc) /\
+      (forall a,
+        cache_get mc a = view (Locks.get locks a) vc a) /\
       (forall a, ghost_lock_invariant (Locks.mem mlocks a) (Locks.get locks a)) /\
       linearized_consistent vd (Locks.get locks) /\
       (forall o, cache_rep (view o vc) (view o vd) d) /\
-      vd0 = view NoOwner vd.
+      vd0 = hide_readers (view NoOwner vd).
 
 End CacheTransitionSystem.
 
@@ -185,6 +198,24 @@ be implemented by the linearized consistency invariant).
 
 *)
 
+Ltac invariant_unfold :=
+  match goal with
+  | [ H: Inv _ _ _ |- _ ] =>
+    learn that (cache_invariant_holds H)
+  end;
+  match goal with
+  | [ H: cacheI _ _ _ |- _ ] =>
+    unfold cacheI in H
+  end.
+
+Ltac specific_owner :=
+  match goal with
+  | [ H: forall (_:BusyFlagOwner), _ |- _ ] =>
+    learn that (H NoOwner)
+  | [ H: forall (_:BusyFlagOwner), _, tid: ID |- _ ] =>
+    learn that (H (Owned tid))
+  end.
+
 Ltac descend :=
   match goal with
   | [ |- forall _, _ ] => intros
@@ -205,6 +236,8 @@ Ltac simplify_reduce_step :=
           || destruct_cache_entry
           || descend
           || subst
+          || invariant_unfold
+          || specific_owner
           || unf.
 
 Ltac simplify_step :=
@@ -238,9 +271,9 @@ Ltac solve_modified :=
 Ltac finish :=
   try time "finisher" progress (
   try time "solve_global_transitions" solve_global_transitions;
-  try time "congruence" (unfold wr_set, const in *; congruence);
   try time "finish eauto" solve [ eauto ];
   try time "solve_modified" solve_modified;
+  try time "congruence" (unfold wr_set, const in *; congruence);
   try time "pred_solve" solve [ pred_apply; cancel ]).
 
 Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
@@ -253,10 +286,10 @@ Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
                             not exist *)
                             | None => vd
                             end in
-                 set GDisk vd' s);;
-              StartRead a;;
+                 (set GDisk vd' s));;
+              StartRead_upd a;;
               Yield a;;
-              v <- FinishRead a;
+              v <- FinishRead_upd a;
   GhostUpdate (fun s =>
                  let vd := get GDisk s in
                  let vd' := match vd (a, Owned tid) with
@@ -271,27 +304,145 @@ Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
 Definition cache_locked tid s (F: DISK_PRED) : DISK_PRED :=
   locks_held (fun (s:S) (a:addr) => Locks.get (get GLocks s) a = Owned tid) s F.
 
+Lemma haddr_ptsto_get : forall types (l: @hlist _ _ types) T var (v:T) F,
+    (hlistmem l |= F * haddr var |-> v)%judgement ->
+    get var l = v.
+Proof.
+  unfold hlistmem; intros.
+  apply ptsto_valid' in H.
+  congruence.
+Qed.
+
+Corollary cache_locked_star : forall tid s F F',
+    cache_locked tid s (F * F') <=p=> cache_locked tid s F * cache_locked tid s F'.
+Proof.
+  unfold cache_locked.
+  auto using locks_held_star.
+Qed.
+
+Theorem lin_pred_cache_locked_star : forall o tid s F F',
+    lin_pred (cache_locked tid s (F * F')) o <=p=>
+lin_pred (cache_locked tid s F) o * lin_pred (cache_locked tid s F') o.
+Proof.
+  (* should be done with setoid rewriting *)
+Admitted.
+
 Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ Fs Fs' F LF F' v vd,
    | PRE d m s0 s:
        hlistmem s |= Fs * haddr GDisk |-> vd /\
        Inv m s d /\
-       (* cache_get (get Cache m) a = None /\ *)
-       vd |= lin_pred F NoOwner * lin_pred
-                                    (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
+       cache_get (get Cache m) a = None /\
+       vd |= lin_pred F NoOwner * lin_pred (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
+       preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
+       preserves (fun s:S => view NoOwner (get GDisk s)) (star (othersR R tid)) F F' /\
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
          hlistmem s' |= Fs' * haddr GDisk |-> vd' /\
          Inv m' s' d' /\
-         vd' |= lin_pred F' NoOwner * lin_pred
-                                        (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
+         vd' |= lin_pred F' NoOwner * lin_pred (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
          r = v /\
          R tid s0' s'
   }} locked_AsyncRead a.
 Proof.
-Abort.
+  intros.
+  step pre simplify with try solve [ finish ].
+  step pre simplify with try solve [ finish ].
+  step pre simplify with try solve [ finish ].
+  all: assert (view (Owned tid) vd a = Some (v, None)) by admit.
+  all: assert (vd (a, Owned tid) = Some (v, None)) by assumption.
+  assert (Locks.get (get GLocks s) a = Owned tid) by admit.
+  let H := fresh in
+  pose proof (H7 a);
+    rewrite H2 in H.
+  match goal with
+  | [ H: Locks.get ?s ?a = _ |- _ ] => rewrite H in *
+  end.
+  pose proof (H15 a).
+  simpl_match.
+  apply haddr_ptsto_get in H.
+  rewrite H in *.
+  replace (d a).
+  eauto.
+
+  step pre simplify with try solve [ finish ].
+  (* Yield precondition *)
+  unfold pred_in.
+  finish.
+  assert (vd (a, Owned tid) = Some (v, None)) by admit.
+  apply haddr_ptsto_get in H.
+  rewrite H in *.
+  simpl_match.
+  unfold cacheI; autorewrite with hlist; intuition.
+  apply linearized_consistent_upd; eauto.
+  admit. (* lock is held (from cache_locked) *)
+  admit. (* cache_rep upd *)
+  rewrite H12.
+  admit. (* didn't change values *)
+
+  rewrite (haddr_ptsto_get H) in *. (* TODO: put this in simplify *)
+  unfold view in H17.
+  simpl_match.
+  apply R_trans.
+  eapply star_trans; apply star_one_step.
+  eassumption.
+  finish.
+
+  assert (get GDisk s (a, Owned tid) = Some (v, None)) by admit.
+  unfold cacheR; intuition;
+  autorewrite with hlist; eauto using same_domain_refl.
+
+  step pre simplify with try solve [ finish ].
+  (* FinishRead_upd precondition *)
+  (* need to show d a has not changed *)
+  assert (d0 a = Some (v, Some tid)) by admit.
+  eauto.
+
+  step pre simplify with try solve [ finish ].
+  step pre simplify with try solve [ finish ].
+  (* postcondition *)
+
+  (* slightly involved proof:
+
+    * ?vd' needs to be set to the new GDisk
+    * Need to use preserves Fs Fs' between the intermediate states
+      after StartRead and before FinishRead. This is fine because only GDisk is changing at each of these steps, and preserves separates (as in sep star) over GDisk
+   *)
+  unfold view in H17.
+  rewrite (haddr_ptsto_get H) in *; simpl_match.
+  unfold StateR' in *.
+  rewrite hlistupd_memupd.
+  eapply ptsto_upd'.
+  eapply H4; [ | eassumption ]. (* preservation *)
+  rewrite hlistupd_memupd.
+  eapply ptsto_upd'; eauto.
+
+  unfold pred_in in H18.
+  simplify.
+  finish.
+  unfold cacheI; intuition; autorewrite with hlist; eauto.
+
+  admit. (* follows from linearized_consistent_upd and that a was locked *)
+  admit. (* similar to above *)
+  admit. (* again, similar *)
+  assert (get GDisk s2 (a, Owned tid) = Some (v, Some tid)) by admit.
+  rewrite H19.
+
+  (* XXX: can't do this, get Error: Universe inconsistency.  *)
+  Fail rewrite lin_pred_cache_locked_star.
+
+  (* need to use preservation on view NoOwner GDisk to derive
+preservation of lin_pred on anything, and also handle a separately:
+ptsto_upd' should work for that part, but then a must be wrapped in
+lin_pred (cache_locked ...) *)
+  admit.
+
+  finish.
+  unfold cacheR; intuition; autorewrite with hlist; eauto.
+  apply same_domain_refl.
+Admitted.
 
 Definition read {T} a rx : prog Mcontents Scontents T :=
   tid <- GetTID;

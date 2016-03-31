@@ -2,6 +2,7 @@ Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import FunctionalExtensionality.
 Require Import Preservation.
+Require Import Linearizable.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Import ListNotations.
@@ -36,17 +37,6 @@ Definition cache_dirty (c: BlockCache) (a: addr) v :=
   Map.add a (Dirty v) c.
 
 End MemCache.
-
-Definition cache_fun_rep (c: BlockCache) (cf: BlockFun) : Prop :=
-  cf = cache_get c.
-
-Lemma cache_fun_rep_ext : forall c cf,
-    (forall a, cf a = cache_get c a) ->
-    cache_fun_rep c cf.
-Proof.
-  intros.
-  unfold cache_fun_rep; extensionality a; eauto.
-Qed.
 
 Definition cache_rep (c: BlockFun) (d: DISK) : DISK_PRED :=
   fun vd =>

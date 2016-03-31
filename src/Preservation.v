@@ -438,6 +438,13 @@ Proof.
   unfold mem_union; replace (m1 a); eauto.
 Qed.
 
+Theorem locks_held_star : forall s F F',
+  locks_held s (F * F') <=p=>
+  locks_held s F * locks_held s F'.
+Proof.
+  split; auto using locks_held_combine, locks_held_split.
+Qed.
+
 Lemma mem_union_first : forall m1 m2 a v,
   m1 a = Some v ->
   mem_union m1 m2 a = Some v.
