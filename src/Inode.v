@@ -347,7 +347,8 @@ Module INODE.
     POST RET:^(ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = length (IBlocks ino) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} getlen lxp xp inum ms.
   Proof.
     unfold getlen, rep; pose proof irec0.
@@ -368,7 +369,8 @@ Module INODE.
     POST RET:^(ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = IAttr ino ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} getattrs lxp xp inum ms.
   Proof.
     unfold getattrs, rep.
@@ -444,7 +446,8 @@ Module INODE.
     POST RET:^(ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = selN (IBlocks ino) off $0 ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} getbnum lxp xp inum off ms.
   Proof.
     unfold getbnum, rep.
@@ -465,7 +468,8 @@ Module INODE.
     POST RET:^(ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = (IBlocks ino) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} getallbnum lxp xp inum ms.
   Proof.
     unfold getallbnum, rep.
@@ -508,6 +512,7 @@ Module INODE.
     cancel.
     unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
     cancel.
+    apply forall_firstn; auto.
     Unshelve. eauto.
   Qed.
 

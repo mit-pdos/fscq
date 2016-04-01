@@ -70,7 +70,7 @@ Module BFILE.
     ms <- LOG.dwrite lxp (# bn) v ms;
     rx ms.
 
-  Definition syncdata T lxp ixp inum ms rx : prog T :=
+  Definition datasync T lxp ixp inum ms rx : prog T :=
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
     rx ms.
@@ -154,7 +154,8 @@ Module BFILE.
     POST RET:^(ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = length (BFData f) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} getlen lxp ixp inum ms.
   Proof.
     unfold getlen, rep.
@@ -164,6 +165,7 @@ Module BFILE.
     extract; seprewrite; subst.
     setoid_rewrite listmatch_length_pimpl in H at 2.
     destruct_lift H; eauto.
+    simplen.
   Qed.
 
 
@@ -175,7 +177,8 @@ Module BFILE.
     POST RET:^(ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = BFAttr f ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} getattrs lxp ixp inum ms.
   Proof.
     unfold getattrs, rep.
@@ -247,7 +250,8 @@ Module BFILE.
     POST RET:^(ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = fst vs ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} read lxp ixp inum off ms.
   Proof.
     unfold read, rep.
@@ -311,8 +315,8 @@ Module BFILE.
     erewrite selN_map by omega; filldef.
     cancel.
 
-    Unshelve. all: eauto.
-    Grab Existential Variables. eauto.
+    pimpl_crash; cancel; auto.
+    Grab Existential Variables. all: eauto.
   Qed.
 
 
@@ -366,6 +370,7 @@ Module BFILE.
     apply list2nmem_app; eauto.
 
     step.
+    pimpl_crash; cancel; eauto.
     Unshelve. all: easy.
   Qed.
 
@@ -480,7 +485,7 @@ Module BFILE.
     f_equal; auto.
   Qed.
 
-  Theorem syncdata_ok : forall lxp bxp ixp inum ms,
+  Theorem datasync_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m flist f,
     PRE    LOG.rep lxp F (LOG.ActiveTxn m m) ms *
            [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
@@ -490,13 +495,11 @@ Module BFILE.
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (synced_list (map fst (BFData f))) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m \/
-           exists m' flist' f', LOG.intact lxp F m' *
-           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]]
-    >} syncdata lxp ixp inum ms.
+    XCRASH exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m m) ms'
+    >} datasync lxp ixp inum ms.
   Proof.
-    unfold syncdata, rep.
+    unfold datasync, rep.
     step.
     sepauto.
 
@@ -511,10 +514,10 @@ Module BFILE.
     rewrite synced_list_map_fst_map.
     rewrite listmatch_map_l; auto.
 
-    or_l; cancel; eauto.
-    or_r; admit.
-    or_l; cancel.
-  Admitted.
+    (* crashes *)
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+  Qed.
+
 
   Hint Extern 1 ({{_}} progseq (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
@@ -525,7 +528,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (syncdata _ _ _ _) _) => apply syncdata_ok : prog.
+  Hint Extern 1 ({{_}} progseq (datasync _ _ _ _) _) => apply datasync_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
@@ -549,7 +552,8 @@ Module BFILE.
     POST RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
            [[ r = fst (selN vsl i ($0, nil)) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} read_array lxp ixp inum a i ms.
   Proof.
     unfold read_array.
@@ -621,7 +625,8 @@ Module BFILE.
     POST RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
            [[ r = fold_left vfold (firstn nr (map fst vsl)) v0 ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} read_range lxp ixp inum a nr vfold v0 ms.
   Proof.
     unfold read_range.
@@ -677,7 +682,8 @@ Module BFILE.
            ( exists v, 
              [[ r = Some v /\ cond v = true ]] \/
              [[ r = None /\ cond (fold_left vfold (map fst (BFData f)) v0) = false ]])
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} read_cond lxp ixp inum vfold v0 cond ms.
   Proof.
     unfold read_cond.

@@ -147,7 +147,8 @@ Module FileRecArray (FRA : FileRASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
           [[ r = selN items ix item0 ]]
-    CRASH LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} get lxp ixp inum ix ms.
   Proof.
     unfold get, rep.
@@ -275,7 +276,8 @@ Module FileRecArray (FRA : FileRASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
           [[ r = items ]]
-    CRASH LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} readall lxp ixp inum ms.
   Proof.
     unfold readall, rep.
@@ -329,7 +331,8 @@ Module FileRecArray (FRA : FileRASig).
           [[ r = Some st /\ cond (snd st) (fst st) = true
                          /\ (fst st) < length items
                          /\ snd st = selN items (fst st) item0 ]])
-    CRASH LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} ifind lxp ixp inum cond ms.
   Proof.
     unfold ifind, rep.
@@ -355,7 +358,7 @@ Module FileRecArray (FRA : FileRASig).
     or_l; cancel.
     unfold items_valid, RALen in *; intuition.
 
-    Unshelve. exact tt.
+    Unshelve.  exact tt. eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (get _ _ _ _ _) _) => apply get_ok : prog.
@@ -394,7 +397,8 @@ Module FileRecArray (FRA : FileRASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
           [[ r = e ]]
-    CRASH LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} get_array lxp ixp inum ix ms.
   Proof.
     unfold get_array.
@@ -480,7 +484,8 @@ Module FileRecArray (FRA : FileRASig).
           exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
           [[[ items ::: arrayN_ex items (fst st) * (fst st) |-> (snd st) ]]] )
-    CRASH LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} ifind_array lxp ixp inum cond ms.
   Proof.
     unfold ifind_array; intros.
@@ -580,9 +585,6 @@ Module FileRecArray (FRA : FileRASig).
     apply synced_list_injective; auto.
     eapply arrayN_list_eq; eauto.
   Qed.
-
-
-
 
 
 End FileRecArray.

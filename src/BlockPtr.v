@@ -296,7 +296,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     POST RET:^(ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = selN l off $0 ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} get lxp ir off ms.
   Proof.
     unfold get.
@@ -321,7 +322,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     POST RET:^(ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
            [[ r = l ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} read lxp ir ms.
   Proof.
     unfold read.

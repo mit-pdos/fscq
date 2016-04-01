@@ -572,7 +572,8 @@ Module SDIR.
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]])
-    CRASH  LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} lookup lxp ixp dnum name ms.
   Proof.
     unfold lookup.
@@ -632,7 +633,8 @@ Module SDIR.
     POST RET:^(ms,r)
              LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
              [[ listpred readmatch r dmap ]]
-    CRASH    LOG.intact lxp F m0
+    CRASH  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir.

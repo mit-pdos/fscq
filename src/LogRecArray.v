@@ -107,7 +107,8 @@ Module LogRecArray (RA : RASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
           [[ r = selN items ix item0 ]]
-    CRASH LOG.intact lxp F m0
+    CRASH exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} get lxp xp ix ms.
   Proof.
     unfold get, rep.
@@ -157,7 +158,8 @@ Module LogRecArray (RA : RASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
           [[ r = firstn (nblocks * items_per_val) items ]]
-    CRASH LOG.intact lxp F m0
+    CRASH exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} read lxp xp nblocks ms.
   Proof.
     unfold read, rep.
@@ -171,6 +173,7 @@ Module LogRecArray (RA : RASig).
     unfold items_valid in *; intuition.
     eapply iunpack_ipack_firstn; eauto.
   Qed.
+
 
   Theorem write_ok : forall lxp xp items ms,
     {< F Fm m0 m old,
@@ -229,7 +232,8 @@ Module LogRecArray (RA : RASig).
           [[ r = Some st /\ cond (snd st) (fst st) = true
                          /\ (fst st) < length items
                          /\ snd st = selN items (fst st) item0 ]])
-    CRASH LOG.intact lxp F m0
+    CRASH exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} ifind lxp xp cond ms.
   Proof.
     unfold ifind, rep.
@@ -283,7 +287,8 @@ Module LogRecArray (RA : RASig).
           [[[ items ::: Fi * (ix |-> e) ]]]
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' * [[ r = e ]]
-    CRASH LOG.intact lxp F m0
+    CRASH exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} get_array lxp xp ix ms.
   Proof.
     unfold get_array.
@@ -352,7 +357,8 @@ Module LogRecArray (RA : RASig).
     POST RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
           [[ r = l ]]
-    CRASH LOG.intact lxp F m0
+    CRASH exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} read_array lxp xp nblocks ms.
   Proof.
     unfold read_array.
@@ -360,6 +366,7 @@ Module LogRecArray (RA : RASig).
     eapply read_array_length_ok; eauto.
     subst; eapply read_array_list_ok; eauto.
   Qed.
+
 
   Theorem ifind_array_ok : forall lxp xp cond ms,
     {< F Fm m0 m items,
@@ -370,7 +377,8 @@ Module LogRecArray (RA : RASig).
         ( [[ r = None ]] \/ exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
           [[[ items ::: arrayN_ex items (fst st) * (fst st) |-> (snd st) ]]] )
-    CRASH LOG.intact lxp F m0
+    CRASH exists ms',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
     >} ifind_array lxp xp cond ms.
   Proof.
     unfold ifind_array; intros.

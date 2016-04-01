@@ -415,6 +415,16 @@ Proof.
   eapply Forall_cons2; eauto.
 Qed.
 
+
+Lemma forall_firstn: forall A n (l : list A) p,
+  Forall p l -> Forall p (firstn n l).
+Proof.
+  induction n; simpl; auto; intros.
+  destruct l; auto.
+  inversion H; subst.
+  apply Forall_cons; auto.
+Qed.
+
 Lemma updN_selN_eq : forall T (l : list T) ix default,
   updN l ix (selN l ix default) = l.
 Proof.
