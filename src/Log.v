@@ -1048,8 +1048,11 @@ Module LOG.
   Qed.
 
 
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
-  Theorem dsync_vecs_ok' : forall xp ms al,
+
+  Theorem dsync_vecs_ok_relaxed : forall xp ms al,
     {< F Fm m vsl,
     PRE
       rep xp F (ActiveTxn m m) ms *
@@ -1072,27 +1075,19 @@ Module LOG.
     f_equal; auto.
     apply dsync_vssync_vecs_ok; auto.
 
-    eapply pimpl_trans.
-    2: eapply H1.
-    cancel.
+    (* crashes *)
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
     do 3 (xform; cancel).
     instantiate (x := mk_memstate (MSTxn ms) ms'); simpl; eauto.
-    eauto.
-    eauto.
+    all: eauto.
 
-    eapply pimpl_trans.
-    2: eapply H1.
-    cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
     rewrite MLog.crash_xform_vssync_vecs.
     do 3 (xform; cancel).
-    instantiate (x0 := mk_memstate (MSTxn ms) x); simpl.
+    instantiate (x0 := mk_memstate (MSTxn ms) x); simpl; eauto.
     all: eauto.
-    admit.
-  Admitted.
-
-
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+    
+  Qed.
 
 End LOG.
 

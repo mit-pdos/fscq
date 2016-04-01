@@ -743,6 +743,65 @@ Proof.
 Qed.
 
 
+Fixpoint listupd V (m : @mem _ addr_eq_dec V) base (vs : list V) :=
+  match vs with
+  | nil => m
+  | v :: tl => listupd (upd m base v) (S base) tl
+  end.
+
+Lemma arrayN_listupd: forall V l (m : @mem _ _ V) l0 base F,
+  (F * arrayN base l0 )%pred m ->
+  length l0 = length l ->
+  (F * arrayN base l)%pred (listupd m base l).
+Proof.
+  induction l; intros; destruct l0; simpl in *; auto; try omega.
+  apply sep_star_assoc.
+  eapply IHl with (l0 := l0); eauto.
+  setoid_rewrite sep_star_comm at 1.
+  apply sep_star_assoc.
+  eapply ptsto_upd.
+  pred_apply; cancel.
+Qed.
+
+Lemma listupd_sel_oob : forall V (l : list V) a off m,
+  a < off \/ a >= off + (length l) ->
+  listupd m off l a = m a.
+Proof.
+  induction l; simpl; intros; auto.
+  rewrite IHl by (intuition omega).
+  destruct (addr_eq_dec off a0); subst.
+  exfalso; intuition.
+  rewrite Mem.upd_ne; auto.
+Qed.
+
+Lemma listupd_sel_inb : forall V (l : list V) a off m def,
+  a >= off ->
+  a < off + (length l) ->
+  listupd m off l a = Some (selN l (a - off) def).
+Proof.
+  induction l; simpl; intros; try omega.
+  case_eq (a0 - off); intros.
+  replace off with a0 in * by omega.
+  rewrite listupd_sel_oob; intuition.
+  apply Mem.upd_eq; auto.
+
+  erewrite IHl; try omega.
+  replace (a0 - S off) with n by omega; auto.
+Qed.
+
+Lemma listupd_sel_cases : forall V (l : list V) a off m def,
+  { (a < off \/ a >= off + (length l)) /\ listupd m off l a = m a } +
+  { a >= off /\ a < off + (length l) /\ listupd m off l a = Some (selN l (a - off) def) }.
+Proof.
+  intros.
+  destruct (lt_dec a off);
+  destruct (ge_dec a (off + (length l)));
+  try ( left; intuition; apply listupd_sel_oob; auto ).
+  right; intuition.
+  apply listupd_sel_inb; omega.
+Qed.
+
+
 Lemma possible_crash_list_updN : forall l l' a v vs,
   possible_crash_list l l' ->
   possible_crash_list (updN l a (v, vs)) (updN l' a v).
@@ -828,32 +887,3 @@ Proof.
   inversion H; subst; simpl; auto.
 Qed.
 
-
-Fixpoint listupd V (m : @mem nat eq_nat_dec V) base (vs : list V) : @mem nat eq_nat_dec V :=
-  match vs with
-  | nil => m
-  | v :: tl => listupd (upd m base v) (base+1) tl
-  end.
-
-Lemma arrayN_listupd:
-  forall V l (m : @mem _ _ V) l0 base F,
-  length l0 = length l ->
-  (arrayN base l0 * F)%pred m ->
-  (arrayN base l * F)%pred (listupd m base l).
-Proof.
-  induction l; intros; destruct l0; simpl in *; try omega.
-  eauto.
-  eapply pimpl_trans.
-  3: eapply IHl with (l0 := l0).
-  apply pimpl_refl.
-  replace (base + 1) with (S base) by omega.
-  cancel.
-  omega.
-  eapply pimpl_trans.
-  3: eapply ptsto_upd.
-  apply pimpl_refl.
-  cancel.
-  pred_apply.
-  replace (base + 1) with (S base) by omega.
-  cancel.
-Qed.

@@ -237,7 +237,7 @@ Module MLog.
     intros.
     apply replay_disk_selN_In_KNoDup; auto.
     apply InA_eqke_In.
-    apply MapFacts.elements_mapsto_iff; auto. 
+    apply MapFacts.elements_mapsto_iff; auto.
   Qed.
 
   Lemma replay_disk_selN_not_In : forall a ms m def,
@@ -1792,21 +1792,9 @@ Module MLog.
 
 
 
-  (* return a new mem such that it's almost identical to m, except for
-     addresses (a - off) which are in l, but not in ms.
-     In the later case we pick the value in d at [a - off].  *)
-
-  Fixpoint mem_replace (m : rawdisk) (l : list addr) (ms : Map.t valu) (d : list valuset) off :=
-    match l with
-    | nil => m
-    | a :: rest => if (MapFacts.In_dec ms a)
-                   then mem_replace m rest ms d off
-                   else if (ge_dec a (length d))
-                   then mem_replace m rest ms d off
-                   else mem_replace (Mem.upd m (off + a) (selN d a ($0, nil))) rest ms d off
-    end.
-
-  (* same as above, but run on a list *)
+  (* return a new list such that it's almost identical to m, except for
+     indexes i which are in l, but not in ms. In the later case we pick
+     the value in d [ i ].  *)
   Fixpoint disk_replace (m : diskstate) (l : list addr) (ms : Map.t valu) (d : list valuset) :=
     match l with
     | nil => m
@@ -1814,34 +1802,6 @@ Module MLog.
                    then disk_replace m rest ms d
                    else disk_replace (updN m a (selN d a ($0, nil))) rest ms d
     end.
-
-  Lemma mem_replace_cases : forall ms d off l m a,
-    ( mem_replace m l ms d off a = m a ) \/
-    ( a >= off /\ a < off + (length d) /\ In (a - off) l /\ ~ Map.In (a - off) ms /\
-      mem_replace m l ms d off a = Some (selN d (a - off) ($0, nil))).
-  Proof.
-    induction l; auto; intros; simpl.
-    destruct (MapFacts.In_dec ms a).
-    specialize (IHl m a0); destruct IHl.
-    left; auto.
-    right; intuition.
-
-    destruct (ge_dec a (length d)).
-    specialize (IHl m a0); destruct IHl.
-    left; auto.
-    right; intuition.
-
-    specialize (IHl (Mem.upd m (off + a) (selN d a ($0, nil))) a0).
-    destruct (addr_eq_dec a0 (off + a));
-    destruct (ge_dec a0 off);
-    destruct (lt_dec a0 (off + (length d)));
-    destruct (in_dec addr_eq_dec (a0 - off) l);
-    destruct IHl; subst;
-    repeat rewrite Mem.upd_eq in * by auto;
-    repeat rewrite Mem.upd_ne in * by auto;
-    repeat replace (off + a - off) with a in * by omega;
-    intuition; try omega.
-  Qed.
 
 
   Lemma disk_replace_length_eq : forall l m ms d,
@@ -1908,20 +1868,6 @@ Module MLog.
   Qed.
 
 
-  Lemma mem_replace_none : forall m d d0 off l a ms F,
-    m a = None ->
-    (F * arrayN off d0)%pred m ->
-    length d = length d0 ->
-    mem_replace m l ms d off a = None.
-  Proof.
-    intros.
-    destruct (mem_replace_cases ms d off l m a).
-    rewrite <- H; auto.
-    eapply arrayN_selN_exis with (a := a) in H0; try omega.
-    destruct H0; congruence.
-  Qed.
-
-
   Lemma vssync_vecs_subsume : forall l i ms d d0 v,
     vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
     length d = length d0 ->
@@ -1941,32 +1887,23 @@ Module MLog.
   Qed.
 
 
-  Lemma possible_crash_mem_replace : forall F l x d m' ms d0 off,
-    possible_crash x m' ->
-    (F * arrayN off d0)%pred x ->
-    vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
-    possible_crash (mem_replace x l ms d off) m'.
+  Lemma disk_replace_none : forall m d d0 off l a ms F,
+    m a = None ->
+    (F * arrayN off d0)%pred m ->
+    length d = length d0 ->
+    listupd m off (disk_replace d0 l ms d) a = None.
   Proof.
-    unfold possible_crash; intuition.
-    assert (length d = length d0).
-    erewrite <- replay_disk_length with (m := d0).
-    erewrite <- vssync_vecs_length with (vs := d).
-    f_equal; eauto.
-
-    pose proof (H a) as Heq; intuition.
-    left; split; auto.
-    eapply mem_replace_none; eauto.
-
-    repeat deex; subst; right.
-    destruct (mem_replace_cases ms d off l x a); intros.
-    eexists; exists v'; repeat split; eauto.
-    denote mem_replace as Hx; rewrite Hx; auto.
-    eexists; exists v'; repeat split; auto; intuition; eauto.
-
-    apply arrayN_selN with (a := a) (def := ($0, nil)) in H0; try omega.
-    rewrite H0 in H4; inversion H4; subst.
-    eapply vssync_vecs_subsume; eauto; omega.
+    intros.
+    rewrite <- H; auto.
+    destruct (lt_dec a off).
+    apply listupd_sel_oob; intuition.
+    destruct (ge_dec a (off + length d)).
+    apply listupd_sel_oob.
+    rewrite disk_replace_length_eq; intuition.
+    eapply arrayN_selN_exis with (a := a) in H0; try omega.
+    destruct H0; congruence.
   Qed.
+
 
   Lemma replay_disk_disk_replace : forall l d d0 ms m,
     d = replay_disk (Map.elements ms) m ->
@@ -2001,13 +1938,48 @@ Module MLog.
     rewrite H5; auto.
   Qed.
 
+  Lemma possible_crash_diskreplace : forall F l x d m' ms d0 off,
+    possible_crash x m' ->
+    (F * arrayN off d0)%pred x ->
+    vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
+    possible_crash (listupd x off (disk_replace d0 l ms d)) m'.
+  Proof.
+    unfold possible_crash; intuition.
+    assert (length d = length d0).
+    erewrite <- replay_disk_length with (m := d0).
+    erewrite <- vssync_vecs_length with (vs := d).
+    f_equal; eauto.
+
+    pose proof (H a) as Heq; intuition.
+    left; split; auto.
+    eapply disk_replace_none; eauto.
+
+    repeat deex; subst; right.
+    destruct (listupd_sel_cases (disk_replace d0 l ms d) a off x ($0, nil)).
+    destruct a0; denote listupd as Hx; rewrite Hx.
+    repeat eexists; eauto.
+
+    intuition; denote listupd as Hx; rewrite Hx; clear Hx.
+    rewrite disk_replace_length_eq in *.
+    assert (Some vs = Some (selN d0 (a - off) ($0, nil))) as Heq.
+    substl (Some vs); eapply arrayN_selN; eauto.
+
+    destruct (disk_replace_cases ms d l d0 (a - off)); intuition;
+    denote disk_replace as Hx; rewrite Hx;
+    do 2 eexists; eauto.
+    repeat split; eauto.
+    inversion Heq; subst.
+    eapply vssync_vecs_subsume; eauto; try omega.
+  Qed.
+
 
   Lemma crash_xform_vssync_vecs : forall xp l F na d ms m,
-    locked (d = replay_disk (Map.elements (MSInLog ms)) m) ->
+    d = replay_disk (Map.elements (MSInLog ms)) m ->
     crash_xform (rep xp F na (Synced (vssync_vecs d l)) ms) =p=>
     exists ms', crash_xform (rep xp F na (Synced d) ms').
   Proof.
     unfold rep; intros.
+    rewrite <- locked_eq with (x := d) in H.
     xform; cancel.
     denote rep_inner as Hx;
     unfold rep_inner, synced_rep, map_replay in Hx.
@@ -2016,23 +1988,24 @@ Module MLog.
 
     rewrite crash_xform_sep_star_dist, crash_xform_lift_empty; cancel.
     instantiate (ms' := mk_memstate (MSInLog ms) (BUFCACHE.cache0 (CSMaxCount cs'))).
-    all: simpl.
-    rewrite <- BUFCACHE.crash_xform_rep_r; [ eauto | ].
-    2: unfold rep_inner, synced_rep, map_replay; simpl.
+    simpl; rewrite <- BUFCACHE.crash_xform_rep_r; [ eauto | ].
 
-    instantiate (x0 := mem_replace x l (MSInLog ms) d (DataStart xp)).
-    eapply possible_crash_mem_replace; eauto.
+    eapply possible_crash_diskreplace with (off := (DataStart xp)); eauto.
     pred_apply; cancel.
 
-    apply sep_star_comm.
-    apply pimpl_exists_r_star; exists log.
-    apply pimpl_exists_r_star.
-    exists (disk_replace d0 l (MSInLog ms) d).
+    denote arrayN as Hx.
+    apply sep_star_comm in Hx; apply sep_star_assoc in Hx.
+    apply arrayN_listupd with (l := (disk_replace d0 l (MSInLog ms) d)) in Hx.
+    unfold rep_inner, synced_rep, map_replay.
+    pred_apply; cancel.
 
-    admit.
-
-  Admitted.
-
+    rewrite disk_replace_length_eq; auto.
+    apply disk_replace_map_valid; auto.
+    eapply replay_disk_disk_replace; eauto.
+    rewrite locked_eq in H; eauto.
+    rewrite disk_replace_length_eq; auto.
+    Unshelve. exact unit.
+  Qed.
 
 
   Definition recover_either_pred xp Fold Fnew :=
