@@ -1527,7 +1527,7 @@ Module MLog.
   Qed.
 
 
-  Theorem dwrite_vecs_ok: forall xp avl ms,
+  Theorem dwrite_vecs_ok : forall xp avl ms,
     {< F d na,
     PRE
       rep xp F na (Synced d) ms *
@@ -1601,10 +1601,7 @@ Module MLog.
   Qed.
 
 
-  Section UnfoldProof5.
-  Local Hint Unfold rep map_replay rep_inner synced_rep: hoare_unfold.
-
-  Theorem dsync_vecs_ok: forall xp al ms,
+  Theorem dsync_vecs_ok_strict: forall xp al ms,
     {< F d na,
     PRE
       rep xp F na (Synced d) ms *
@@ -1618,7 +1615,7 @@ Module MLog.
       rep xp F na' (Synced (vssync_vecs d (firstn n al))) ms'
     >} dsync_vecs xp al ms.
   Proof.
-    unfold dsync_vecs.
+    unfold dsync_vecs, rep, rep_inner, synced_rep, map_replay.
     step.
     subst; erewrite <- replay_disk_length; eauto.
 
@@ -1635,7 +1632,68 @@ Module MLog.
     apply replay_disk_vssync_vecs_comm.
   Qed.
 
-  End UnfoldProof5.
+
+
+  Lemma possible_crash_vssync_vecs_listupd : forall F st d l m x,
+    (F * arrayN st (vssync_vecs d l))%pred m ->
+    possible_crash m x ->
+    possible_crash (listupd m st d)  x.
+  Proof.
+    unfold possible_crash; intuition.
+    specialize (H0 a).
+    destruct (listupd_sel_cases d a st m ($0, nil)).
+    destruct a0; denote listupd as Hx; rewrite Hx; intuition.
+
+    intuition; denote listupd as Hx; rewrite Hx.
+    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; try congruence.
+    rewrite vssync_vecs_length; auto.
+    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; auto.
+    right; repeat deex; repeat eexists; eauto.
+    rewrite H in H2; inversion H2; clear H2; subst.
+    denote vsmerge as Hy.
+    destruct (In_dec addr_eq_dec (a - st) l).
+    rewrite vssync_vecs_selN_In in Hy; simpl in *; intuition.
+    rewrite vssync_selN_not_in in Hy; auto.
+    rewrite vssync_vecs_length; auto.
+  Qed.
+
+
+  Theorem dsync_vecs_ok: forall xp al ms,
+    {< F d na,
+    PRE
+      rep xp F na (Synced d) ms *
+      [[ Forall (fun e => e < length d) al ]]
+    POST RET:ms' exists na',
+      rep xp F na' (Synced (vssync_vecs d al)) ms'
+    XCRASH exists na' ms',
+      rep xp F na' (Synced d) ms'
+    >} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs, rep, rep_inner, synced_rep, map_replay.
+    step.
+    subst; erewrite <- replay_disk_length; eauto.
+
+    step.
+    rewrite vssync_vecs_length; auto.
+    apply map_valid_vssync_vecs; auto.
+    apply replay_disk_vssync_vecs_comm.
+
+    denote crash_xform as Hx.
+    eapply pimpl_trans; [ | eapply Hx ]; cancel.
+    xform; cancel.
+    repeat (rewrite crash_xform_exists_comm; cancel).
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty; cancel.
+    instantiate (x2 := mk_memstate (MSInLog ms) (BUFCACHE.cache0 (CSMaxCount x0))).
+    simpl; rewrite <- BUFCACHE.crash_xform_rep_r; [ eauto | ].
+
+    instantiate (x3 := listupd d' (DataStart xp) d0).
+    eapply possible_crash_vssync_vecs_listupd; eauto.
+    denote (sep_star _ _ d') as Hy.
+    eapply (arrayN_listupd d0) in Hy.
+    pred_apply; cancel.
+    rewrite vssync_vecs_length; auto.
+    Unshelve. all: eauto.
+  Qed.
 
 
   Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
@@ -1792,6 +1850,10 @@ Module MLog.
 
 
 
+
+
+(*
+
   (* return a new list such that it's almost identical to m, except for
      indexes i which are in l, but not in ms. In the later case we pick
      the value in d [ i ].  *)
@@ -1868,7 +1930,7 @@ Module MLog.
   Qed.
 
 
-  Lemma vssync_vecs_subsume : forall l i ms d d0 v,
+  Lemma vssync_vecs_subsume' : forall l i ms d d0 v,
     vssync_vecs d l = replay_disk (Map.elements ms) d0 ->
     length d = length d0 ->
     In v (vsmerge (selN d0 i ($0, nil))) ->
@@ -2006,6 +2068,9 @@ Module MLog.
     rewrite disk_replace_length_eq; auto.
     Unshelve. exact unit.
   Qed.
+
+*)
+
 
 
   Definition recover_either_pred xp Fold Fnew :=

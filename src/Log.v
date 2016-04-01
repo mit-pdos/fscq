@@ -515,7 +515,6 @@ Module LOG.
     (* case 1 : nothing to flush *)
     or_l; cancel.
     rewrite MLog.replay_disk_is_empty; auto; cancel.
-    apply MapFacts.is_empty_iff; auto.
 
     (* case 1 : did flush *)
     step.
@@ -1008,51 +1007,7 @@ Module LOG.
   Qed.
 
 
-
   Theorem dsync_vecs_ok : forall xp ms al,
-    {< F Fm m vsl,
-    PRE
-      rep xp F (ActiveTxn m m) ms *
-      [[[ m ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
-    POST RET:ms' exists m',
-      rep xp F (ActiveTxn m' m') ms' *
-      [[[ m' ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]]
-    CRASH
-      exists m' ms',
-      rep xp F (ActiveTxn m m) ms' \/
-      rep xp F (ActiveTxn m' m') ms' *
-      [[[ m' ::: Fm * listmatch (fun vs a => a |-> vs \/ a |=> fst vs) vsl al ]]]
-    >} dsync_vecs xp al ms.
-  Proof.
-    unfold dsync_vecs.
-    step.
-    eapply listmatch_ptsto_list2nmem_inbound.
-    pred_apply; rewrite listmatch_sym; eauto.
-
-    step; subst.
-    apply MLog.map_valid_vssync_vecs; auto.
-    rewrite <- MLog.replay_disk_vssync_vecs_comm.
-    f_equal; auto.
-    apply dsync_vssync_vecs_ok; auto.
-
-    (* crashes *)
-    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
-    or_l; cancel.
-    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
-    or_r; cancel.
-    apply MLog.map_valid_vssync_vecs; auto.
-    rewrite <- MLog.replay_disk_vssync_vecs_comm.
-    f_equal; auto.
-    apply dsync_vssync_vecs_partial; auto.
-    Unshelve. eauto.
-  Qed.
-
-
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
-
-
-  Theorem dsync_vecs_ok_relaxed : forall xp ms al,
     {< F Fm m vsl,
     PRE
       rep xp F (ActiveTxn m m) ms *
@@ -1077,17 +1032,16 @@ Module LOG.
 
     (* crashes *)
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0.
     do 3 (xform; cancel).
-    instantiate (x := mk_memstate (MSTxn ms) ms'); simpl; eauto.
+    instantiate (x1 := mk_memstate (MSTxn ms) x0); simpl; eauto.
     all: eauto.
-
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite MLog.crash_xform_vssync_vecs.
-    do 3 (xform; cancel).
-    instantiate (x0 := mk_memstate (MSTxn ms) x); simpl; eauto.
-    all: eauto.
-    
   Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+
 
 End LOG.
 
