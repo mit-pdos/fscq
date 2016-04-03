@@ -245,8 +245,8 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
   Qed.
 
 
-  Lemma map_add_repeat : forall a (v : V) m,
-    Map.Equal (Map.add a v (Map.add a v m)) (Map.add a v m).
+  Lemma map_add_repeat : forall a (v v' : V) m,
+    Map.Equal (Map.add a v (Map.add a v' m)) (Map.add a v m).
   Proof.
     intros; hnf; intros.
     destruct (OT.eq_dec y a); subst; try congruence.

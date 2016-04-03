@@ -51,6 +51,13 @@ Module GLog.
 
   Definition latest (ds : diskset) := hd (fst ds) (snd ds).
 
+  Definition latest_cons : forall d0 d ds, latest (d0, d :: ds) = d.
+  Proof.
+    firstorder.
+  Qed.
+
+  Notation " ds '!!'" := (latest ds) (at level 1).
+
   (* return the n-th disk in the diskset *)
   Definition nthd n (ds : diskset) := selN (snd ds) (length (snd ds) - n) (fst ds).
 
@@ -145,6 +152,30 @@ Module GLog.
     apply replay_seq_selN; auto; omega.
   Qed.
 
+  Lemma fold_right_replay_disk_length : forall l d,
+    length (fold_right MLog.replay_disk d l) = length d.
+  Proof.
+    induction l; simpl; auto; intros.
+    rewrite MLog.replay_disk_length; auto.
+  Qed.
+
+  Lemma replay_seq_latest_length : forall ds ts,
+    ReplaySeq ds ts ->
+    length (latest ds) = length (fst ds).
+  Proof.
+    intros.
+    erewrite repaly_seq_latest; eauto.
+    rewrite fold_right_replay_disk_length; auto.
+  Qed.
+
+  Lemma replay_seq_nthd_length : forall ds ts n,
+    ReplaySeq ds ts ->
+    length (nthd n ds) = length (fst ds).
+  Proof.
+    intros.
+    erewrite replay_seq_nthd; eauto.
+    rewrite fold_right_replay_disk_length; auto.
+  Qed.
 
   (************* state and rep invariant *)
 
@@ -269,8 +300,117 @@ Module GLog.
 
   (************* auxilary lemmas *)
 
+  Lemma diskset_ptsto_bound_latest : forall F a vs ds ts,
+    dset_match ds ts ->
+    (F * a |-> vs)%pred (list2nmem ds!!) ->
+    a < length (fst ds).
+  Proof.
+    intros.
+    apply list2nmem_ptsto_bound in H0.
+    erewrite <- replay_seq_latest_length; auto.
+    apply H.
+  Qed.
+
+  Lemma diskset_vmap_find_ptsto : forall vm ts ds a w v vs F,
+    vmap_match vm ts ->
+    dset_match ds ts ->
+    Map.find a vm = Some w ->
+    (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
+    w = v.
+  Proof.
+    intros.
+    eapply list2nmem_sel in H2.
+  Admitted.
+
+
+  Lemma diskset_vmap_find_none : forall ds ts vm a v vs F,
+    dset_match ds ts ->
+    vmap_match vm ts ->
+    Map.find a vm = None ->
+    (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
+    fst (selN (fst ds) a ($0, nil)) = v.
+  Proof.
+    unfold vmap_match, dset_match.
+    intros ds ts; destruct ds; revert l.
+    induction ts; intuition; simpl in *;
+      denote ReplaySeq as Hs;inversion Hs; subst; simpl.
+    denote ptsto as Hx; rewrite singular_latest in Hx by easy; simpl in Hx.
+    erewrite surjective_pairing at 1.
+    erewrite <- list2nmem_sel; eauto; simpl; auto.
+
+    eapply IHts.
+    split; eauto.
+    eapply Forall_cons2; eauto.
+    apply MapFacts.Equal_refl.
+    admit.
+    rewrite latest_cons in *.
+    eapply MLog.ptsto_replay_disk_not_in'; [ | | eauto].
+    rewrite H0 in H1.
+
+Lemma replay_mem_add_find_none : forall l a v m,
+  ~ Map.find a (MLog.replay_mem l (Map.add a v m)) = None.
+Proof.
+  induction l; simpl; intros.
+  rewrite MapFacts.add_eq_o; congruence.
+  destruct a; simpl.
+  destruct (addr_eq_dec n a0); subst.
+  rewrite MLog.replay_mem_equal.
+  Search Map.add.
+
+Lemma map_find_replay_mem_not_in : forall a l m,
+  Map.find a (MLog.replay_mem l m) = None ->
+  ~ In a (map fst l).
+Proof.
+  induction l; intuition; simpl in *.
+  eapply IHl; intuition eauto; subst.
+  destruct a0; simpl in *.
+  contradict H.
+  Search MLog.replay_mem Map.add.
+  Search  Map.add.
+
+    Search MLog.replay_mem In.
+    admit.
+    denote Forall as Hx; apply Forall_inv in Hx; apply Hx.
+  Qed.
+
+
 
   (************* correctness theorems *)
+
+  Theorem read_ok: forall xp ms a,
+    {< F ds vs,
+    PRE
+      rep xp F (Cached ds) ms *
+      [[[ ds!! ::: exists F', (F' * a |-> vs) ]]]
+    POST RET:^(ms', r)
+      rep xp F (Cached ds) ms' * [[ r = fst vs ]]
+    CRASH
+      exists ms', rep xp F (Cached ds) ms'
+    >} read xp a ms.
+  Proof.
+    unfold read, rep.
+    prestep.
+    cancel.
+
+    (* case 1 : return from vmap *)
+    step.
+    eapply diskset_vmap_find_ptsto; eauto.
+    pimpl_crash; cancel.
+
+    (* case 2: read from MLog *)
+    cancel.
+    eexists; apply list2nmem_ptsto_cancel_pair.
+    eapply diskset_ptsto_bound_latest; eauto.
+
+    step; subst.
+    eapply diskset_vmap_find_none; eauto.
+    pimpl_crash; norm.
+    instantiate (ms'0 := mk_memstate (MSVMap ms) (MSTxns ms) ms').
+    cancel.
+    intuition.
+  Qed.
+
+
 
 
 End GLog.
