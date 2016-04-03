@@ -71,6 +71,13 @@ Proof.
   apply IHi; auto; omega.
 Qed.
 
+Lemma selNopt_length : forall T i l (v : T),
+  selNopt l i = Some v -> i < length l.
+Proof.
+  induction i; destruct l; simpl; intros; inversion H; try omega.
+  specialize (IHi _ _ H); omega.
+Qed.
+
 Lemma repeat_app : forall T i j (x : T),
   repeat x i ++ repeat x j = repeat x (i + j).
 Proof.
