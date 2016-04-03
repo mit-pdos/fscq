@@ -500,6 +500,18 @@ Proof.
   omega.
 Qed.
 
+Lemma vsupd_selN_not_in : forall l a d,
+  NoDup (map fst l) ->
+  ~ In a (map fst l) ->
+  selN (vsupd_vecs d l) a ($0, nil) = selN d a ($0, nil).
+Proof.
+  induction l; intros; destruct a; simpl in *; auto; intuition.
+  inversion H; subst.
+  rewrite vsupd_vecs_vsupd_notin by auto.
+  unfold vsupd.
+  rewrite selN_updN_ne; eauto.
+Qed.
+
 
 (** sync vsl for all addresses in l. *)
 Definition vssync_vecs (vsl : list valuset) (l : list addr) : list valuset :=

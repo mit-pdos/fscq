@@ -28,8 +28,8 @@ Require Import MemLog.
 Require Import DiskLog.
 Require Import MapUtils.
 Require Import ListPred.
+Require Import LogReplay.
 
-Import AddrMap.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -37,6 +37,8 @@ Set Implicit Arguments.
 
 
 Module GLog.
+
+  Import AddrMap LogReplay.
 
 
   (**
@@ -103,7 +105,7 @@ Module GLog.
   Inductive ReplaySeq : diskset -> txnlist -> Prop :=
     | RSeqNil  : forall d0, ReplaySeq (d0, nil) nil
     | RSeqCons : forall d0 d t ds ts,
-          d = MLog.replay_disk t (hd d0 ds) ->
+          d = replay_disk t (hd d0 ds) ->
           ReplaySeq (d0, ds) ts -> 
           ReplaySeq (d0, (d :: ds)) (t :: ts).
 
@@ -115,7 +117,7 @@ Module GLog.
 
   Lemma repaly_seq_latest : forall ds ts,
     ReplaySeq ds ts ->
-    latest ds = fold_right MLog.replay_disk (fst ds) ts.
+    latest ds = fold_right replay_disk (fst ds) ts.
   Proof.
     induction 1; simpl in *; intros; firstorder.
     rewrite <- IHReplaySeq; firstorder.
@@ -124,7 +126,7 @@ Module GLog.
   Lemma replay_seq_selN : forall n ds ts,
     ReplaySeq ds ts ->
     n < length (snd ds) ->
-    selN (snd ds) n (fst ds) = fold_right MLog.replay_disk (fst ds) (skipn n ts).
+    selN (snd ds) n (fst ds) = fold_right replay_disk (fst ds) (skipn n ts).
   Proof.
     induction n; simpl; intros; auto.
     destruct ds.
@@ -138,7 +140,7 @@ Module GLog.
 
   Lemma replay_seq_nthd : forall n ds ts,
     ReplaySeq ds ts ->
-    nthd n ds = fold_right MLog.replay_disk (fst ds) (skipn (length ts - n) ts).
+    nthd n ds = fold_right replay_disk (fst ds) (skipn (length ts - n) ts).
   Proof.
     unfold nthd; intros.
     destruct n; simpl.
@@ -153,10 +155,10 @@ Module GLog.
   Qed.
 
   Lemma fold_right_replay_disk_length : forall l d,
-    length (fold_right MLog.replay_disk d l) = length d.
+    length (fold_right replay_disk d l) = length d.
   Proof.
     induction l; simpl; auto; intros.
-    rewrite MLog.replay_disk_length; auto.
+    rewrite replay_disk_length; auto.
   Qed.
 
   Lemma replay_seq_latest_length : forall ds ts,
@@ -198,10 +200,10 @@ Module GLog.
   .
 
   Definition vmap_match vm ts :=
-    Map.Equal vm (fold_right MLog.replay_mem vmap0 ts).
+    Map.Equal vm (fold_right replay_mem vmap0 ts).
 
   Definition ents_valid d ents :=
-    KNoDup ents /\ MLog.log_valid ents d.
+    KNoDup ents /\ log_valid ents d.
 
   Definition dset_match ds ts :=
     Forall (ents_valid (fst ds)) ts /\ ReplaySeq ds ts.
@@ -241,7 +243,7 @@ Module GLog.
   *)
   Definition submit T xp ents ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
-    let vm' := MLog.replay_mem ents vm in
+    let vm' := replay_mem ents vm in
     If (le_dec (length ents) (LogLen xp)) {
       rx ^(mk_memstate vm' (ents :: ts) mm, true)
     } else {
@@ -291,11 +293,8 @@ Module GLog.
   | [ H : @eq memstate ?ms (mk_memstate _ _ _) |- _ ] =>
      is_var ms; destruct ms; inversion H; subst; simpl
   | [ |- Map.Empty vmap0 ] => apply Map.empty_1
-  | [ |- MLog.map_valid vmap0 _ ] => apply MLog.map_valid_map0
+  | [ |- map_valid vmap0 _ ] => apply map_valid_map0
   end; eauto.
-
-  Hint Resolve KNoDup_map_elements.
-  Hint Resolve MapProperties.eqke_equiv.
 
 
   (************* auxilary lemmas *)
@@ -342,34 +341,13 @@ Module GLog.
     split; eauto.
     eapply Forall_cons2; eauto.
     apply MapFacts.Equal_refl.
-    admit.
-    rewrite latest_cons in *.
-    eapply MLog.ptsto_replay_disk_not_in'; [ | | eauto].
     rewrite H0 in H1.
+    eapply replay_mem_find_none_mono; eauto.
 
-Lemma replay_mem_add_find_none : forall l a v m,
-  ~ Map.find a (MLog.replay_mem l (Map.add a v m)) = None.
-Proof.
-  induction l; simpl; intros.
-  rewrite MapFacts.add_eq_o; congruence.
-  destruct a; simpl.
-  destruct (addr_eq_dec n a0); subst.
-  rewrite MLog.replay_mem_equal.
-  Search Map.add.
-
-Lemma map_find_replay_mem_not_in : forall a l m,
-  Map.find a (MLog.replay_mem l m) = None ->
-  ~ In a (map fst l).
-Proof.
-  induction l; intuition; simpl in *.
-  eapply IHl; intuition eauto; subst.
-  destruct a0; simpl in *.
-  contradict H.
-  Search MLog.replay_mem Map.add.
-  Search  Map.add.
-
-    Search MLog.replay_mem In.
-    admit.
+    rewrite latest_cons in *.
+    eapply ptsto_replay_disk_not_in'; [ | | eauto].
+    rewrite H0 in H1.
+    eapply map_find_replay_mem_not_in; eauto.
     denote Forall as Hx; apply Forall_inv in Hx; apply Hx.
   Qed.
 

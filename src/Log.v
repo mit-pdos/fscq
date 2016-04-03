@@ -27,14 +27,16 @@ Require Import GenSepN.
 Require Import MemLog.
 Require Import MapUtils.
 Require Import ListPred.
+Require Import LogReplay.
 
-Import AddrMap.
 Import ListNotations.
 
 Set Implicit Arguments.
 
 
 Module LOG.
+
+  Import AddrMap LogReplay.
 
   Record memstate := mk_memstate {
     MSTxn   : valumap;         (* memory state for active txns *)
@@ -67,14 +69,14 @@ Module LOG.
       [[ Map.Empty cm ]] *
       MLog.rep xp F nr (MLog.Synced cur) mm
     | ActiveTxn old cur =>
-      [[ MLog.map_valid cm old ]] *
-      [[ MLog.map_replay cm old cur ]] *
+      [[ map_valid cm old ]] *
+      [[ map_replay cm old cur ]] *
       MLog.rep xp F nr (MLog.Synced old) mm
     | ApplyingTxn old =>
       MLog.rep xp F nr (MLog.Applying old) mm
     | CommittingTxn old cur =>
-      [[ MLog.map_valid cm old ]] *
-      [[ MLog.map_replay cm old cur ]] *
+      [[ map_valid cm old ]] *
+      [[ map_replay cm old cur ]] *
       ( MLog.rep xp F nr (MLog.Applying old) mm \/
         MLog.rep xp F nr (MLog.Flushing old (Map.elements cm)) mm)
   end)%pred.
@@ -125,7 +127,7 @@ Module LOG.
     mm <- MLog.recover xp cs;
     rx (mk_memstate vmap0 mm).
 
-  Local Hint Unfold rep MLog.map_replay: hoare_unfold.
+  Local Hint Unfold rep map_replay: hoare_unfold.
   Arguments MLog.rep: simpl never.
   Hint Extern 0 (okToUnify (MLog.rep _ _ _ _ _) (MLog.rep _ _ _ _ _)) => constructor : okToUnify.
 
@@ -134,7 +136,7 @@ Module LOG.
   | [ H : @eq memstate ?ms (mk_memstate _ _) |- _ ] =>
      is_var ms; destruct ms; inversion H; subst; simpl
   | [ |- Map.Empty vmap0 ] => apply Map.empty_1
-  | [ |- MLog.map_valid vmap0 _ ] => apply MLog.map_valid_map0
+  | [ |- map_valid vmap0 _ ] => apply map_valid_map0
   end; eauto.
 
   Hint Resolve KNoDup_map_elements.
@@ -189,14 +191,14 @@ Module LOG.
     cancel.
     step.
 
-    eapply MLog.replay_disk_eq; eauto.
+    eapply replay_disk_eq; eauto.
     instantiate (d := m1); pred_apply; cancel.
     pimpl_crash; cancel.
 
     cancel.
     2: step.
     eexists; subst.
-    eapply MLog.ptsto_replay_disk_not_in; eauto.
+    eapply ptsto_replay_disk_not_in; eauto.
     apply MapFacts.not_find_in_iff; eauto.
 
     pimpl_crash; norm.
@@ -220,72 +222,12 @@ Module LOG.
     unfold write.
     hoare using dems.
 
-    apply MLog.map_valid_add; eauto.
-    erewrite <- MLog.replay_disk_length.
+    apply map_valid_add; eauto.
+    erewrite <- replay_disk_length.
     eapply list2nmem_ptsto_bound; eauto.
 
-    rewrite MLog.replay_disk_add.
+    rewrite replay_disk_add.
     eapply list2nmem_updN; eauto.
-  Qed.
-
-
-  Lemma map_valid_remove : forall a ms d1 d2,
-    MLog.map_valid ms d1 ->
-    length d1 = length d2 ->
-    MLog.map_valid (Map.remove a ms) d2.
-  Proof.
-    unfold MLog.map_valid; intros.
-    erewrite <- H0.
-    eapply H.
-    eapply Map.remove_3; eauto.
-  Qed.
-
-
-  Lemma replay_disk_remove_updN_eq : forall F m d a v,
-    (F * a |-> v)%pred (list2nmem (MLog.replay_disk (Map.elements m) d)) ->
-    MLog.replay_disk (Map.elements m) d =
-    MLog.replay_disk (Map.elements (Map.remove a m)) (updN d a v).
-  Proof.
-    intros.
-    eapply list_selN_ext with (default := ($0, nil)); intros.
-    repeat rewrite MLog.replay_disk_length; rewrite length_updN; auto.
-    rewrite MLog.replay_disk_updN_comm.
-
-    destruct (Nat.eq_dec pos a); subst.
-    rewrite selN_updN_eq; [ apply eq_sym | ].
-    eapply list2nmem_sel; eauto.
-    rewrite MLog.replay_disk_length in *; eauto.
-
-    rewrite selN_updN_ne by auto.
-    case_eq (Map.find pos m); intros.
-    apply Map.find_2 in H1.
-    rewrite MLog.replay_disk_length in *.
-    repeat erewrite MLog.replay_disk_selN_MapsTo; eauto.
-    apply Map.remove_2; eauto.
-
-    apply MapFacts.not_find_in_iff in H1.
-    setoid_rewrite MLog.replay_disk_selN_not_In; auto.
-    apply not_in_remove_not_in; auto.
-
-    rewrite In_map_fst_MapIn.
-    apply Map.remove_1; auto.
-  Qed.
-
-
-  Lemma list2nmem_replay_disk_remove_updN_ptsto : forall F a vs vs' d ms,
-    (F * a |-> vs)%pred (list2nmem (MLog.replay_disk (Map.elements ms) d)) ->
-    (F * a |-> vs')%pred
-      (list2nmem (MLog.replay_disk (Map.elements (Map.remove a ms)) (updN d a vs'))).
-  Proof.
-    intros.
-    rewrite MLog.replay_disk_updN_comm.
-    erewrite <- updN_twice.
-    eapply list2nmem_updN.
-    rewrite <- MLog.replay_disk_updN_comm.
-    erewrite <- replay_disk_remove_updN_eq; eauto.
-
-    rewrite In_map_fst_MapIn; apply Map.remove_1; auto.
-    rewrite In_map_fst_MapIn; apply Map.remove_1; auto.
   Qed.
 
 
@@ -348,8 +290,8 @@ Module LOG.
     unfold dsync.
     step.
     step; subst.
-    apply MLog.map_valid_updN; auto.
-    rewrite <- MLog.replay_disk_vssync_comm.
+    apply map_valid_updN; auto.
+    rewrite <- replay_disk_vssync_comm.
     unfold vssync; erewrite <- list2nmem_sel; eauto; simpl.
     eapply list2nmem_updN; eauto.
 
@@ -358,42 +300,12 @@ Module LOG.
     or_l; cancel.
     instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
     or_r; cancel.
-    apply MLog.map_valid_updN; auto.
+    apply map_valid_updN; auto.
     Unshelve. eauto.
   Qed.
 
 
   Set Regular Subst Tactic.
-
-  Lemma updN_replay_disk_remove_eq : forall m d a v,
-    d = MLog.replay_disk (Map.elements m) d ->
-    updN d a v = MLog.replay_disk (Map.elements (Map.remove a m)) (updN d a v).
-  Proof.
-    intros.
-    eapply list_selN_ext with (default := ($0, nil)); intros.
-    repeat rewrite MLog.replay_disk_length; rewrite length_updN; auto.
-    rewrite MLog.replay_disk_updN_comm.
-    rewrite length_updN in H0.
-
-    destruct (Nat.eq_dec pos a); subst.
-    repeat rewrite selN_updN_eq; auto.
-    rewrite MLog.replay_disk_length in *; eauto.
-
-    repeat rewrite selN_updN_ne by auto.
-    rewrite H at 1.
-    case_eq (Map.find pos m); intros.
-    apply Map.find_2 in H1.
-    repeat erewrite MLog.replay_disk_selN_MapsTo; eauto.
-    apply Map.remove_2; eauto.
-
-    apply MapFacts.not_find_in_iff in H1.
-    setoid_rewrite MLog.replay_disk_selN_not_In; auto.
-    apply not_in_remove_not_in; auto.
-
-    rewrite In_map_fst_MapIn.
-    apply Map.remove_1; auto.
-  Qed.
-
 
   Theorem dwrite_ok : forall xp ms a v,
     {< F Fm m vs,
@@ -452,8 +364,8 @@ Module LOG.
     unfold dsync.
     step.
     step; subst.
-    apply MLog.map_valid_updN; auto.
-    rewrite <- MLog.replay_disk_vssync_comm.
+    apply map_valid_updN; auto.
+    rewrite <- replay_disk_vssync_comm.
     substl m at 1; auto.
 
     (* crashes *)
@@ -461,35 +373,12 @@ Module LOG.
     or_l; cancel.
     instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
     or_r; cancel.
-    apply MLog.map_valid_updN; auto.
-    rewrite <- MLog.replay_disk_vssync_comm.
+    apply map_valid_updN; auto.
+    rewrite <- replay_disk_vssync_comm.
     substl m at 1; auto.
     Unshelve. eauto.
   Qed.
 
-
-  Lemma map_valid_log_valid : forall ms d,
-    MLog.map_valid ms d ->
-    MLog.log_valid (Map.elements ms) d.
-  Proof.
-    unfold MLog.map_valid, MLog.log_valid; intuition;
-    apply KIn_exists_elt_InA in H0;
-    destruct H0; simpl in H0;
-    eapply H; eauto;
-    apply Map.elements_2; eauto.
-  Qed.
-
-  Lemma length_elements_cardinal_gt : forall V (m : Map.t V) n,
-    length (Map.elements m) > n ->
-    Map.cardinal m > n.
-  Proof.
-    intros; rewrite Map.cardinal_1; auto.
-  Qed.
-
-  Lemma map_empty_vmap0 : Map.Empty vmap0.
-  Proof.
-    apply Map.empty_1.
-  Qed.
 
   Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
 
@@ -514,7 +403,7 @@ Module LOG.
 
     (* case 1 : nothing to flush *)
     or_l; cancel.
-    rewrite MLog.replay_disk_is_empty; auto; cancel.
+    rewrite replay_disk_is_empty; auto; cancel.
 
     (* case 1 : did flush *)
     step.
@@ -764,13 +653,13 @@ Module LOG.
 
   Lemma write_range_length_ok : forall F a i ms d vs,
     i < length vs ->
-    (F ✶ arrayN a vs)%pred (list2nmem (MLog.replay_disk (Map.elements ms) d)) ->
+    (F ✶ arrayN a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
     a + i < length d.
   Proof.
     intros.
     apply list2nmem_arrayN_bound in H0; destruct H0; subst; simpl in *.
     inversion H.
-    rewrite MLog.replay_disk_length in *.
+    rewrite replay_disk_length in *.
     omega.
   Qed.
 
@@ -792,10 +681,10 @@ Module LOG.
     subst; pred_apply; cancel.
 
     step.
-    apply MLog.map_valid_add; auto; try omega.
+    apply map_valid_add; auto; try omega.
     eapply write_range_length_ok; eauto; omega.
 
-    subst; rewrite MLog.replay_disk_add.
+    subst; rewrite replay_disk_add.
     apply vsupsyn_range_progress; auto.
 
     step.
@@ -988,7 +877,7 @@ Module LOG.
     eapply dwrite_ptsto_inbound; eauto.
 
     step; subst.
-    apply MLog.map_valid_map0.
+    apply map_valid_map0.
     apply dwrite_vsupd_vecs_ok; auto.
 
     (* crash conditions *)
@@ -1000,7 +889,7 @@ Module LOG.
 
     instantiate (ms'2 := mk_memstate vmap0 ms').
     or_r; or_l; cancel.
-    apply MLog.map_valid_map0.
+    apply map_valid_map0.
     eauto.
 
     Unshelve. all: eauto.
@@ -1025,8 +914,8 @@ Module LOG.
     pred_apply; rewrite listmatch_sym; eauto.
 
     step; subst.
-    apply MLog.map_valid_vssync_vecs; auto.
-    rewrite <- MLog.replay_disk_vssync_vecs_comm.
+    apply map_valid_vssync_vecs; auto.
+    rewrite <- replay_disk_vssync_vecs_comm.
     f_equal; auto.
     apply dsync_vssync_vecs_ok; auto.
 

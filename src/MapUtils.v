@@ -403,6 +403,15 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     apply In_InA; auto.
   Qed.
 
+
+  Lemma length_elements_cardinal_gt : forall V (m : Map.t V) n,
+    length (Map.elements m) > n ->
+    Map.cardinal m > n.
+  Proof.
+    intros; rewrite Map.cardinal_1; auto.
+  Qed.
+
+
   End MapUtilsFacts.
 
 End MapDefs.
