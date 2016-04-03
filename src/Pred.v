@@ -1138,6 +1138,19 @@ Proof.
   destruct (AEQ x a); auto.
 Qed.
 
+Theorem mem_except_eq : forall (m : @mem AT AEQ V) a,
+  mem_except m a a = None.
+Proof.
+  unfold mem_except; intros; destruct (AEQ a a); congruence.
+Qed.
+
+Theorem mem_except_ne : forall (m : @mem AT AEQ V) a a',
+  a <> a' ->
+  mem_except m a a' = m a'.
+Proof.
+  unfold mem_except; intros; destruct (AEQ a' a); congruence.
+Qed.
+
 Lemma mem_except_union_comm: forall (m1 : @mem AT AEQ V) m2 a1 a2 v1,
   a1 <> a2
   -> (a1 |-> v1)%pred m1
@@ -1831,6 +1844,16 @@ Proof.
     destruct (AEQ a0 a); discriminate.
   - destruct (AEQ a a); congruence.
   - destruct (AEQ a' a); subst; congruence.
+Qed.
+
+Theorem diskIs_extract' : forall AT AEQ V a v (m : @mem AT AEQ V),
+  m a = Some v
+  -> (diskIs m =p=> diskIs (mem_except m a) * a |-> v).
+Proof.
+  intros.
+  unfold pimpl, diskIs; intros; subst.
+  apply sep_star_comm.
+  apply mem_except_ptsto; eauto.
 Qed.
 
 Theorem diskIs_combine_upd : forall AT AEQ V a v (m : @mem AT AEQ V),
