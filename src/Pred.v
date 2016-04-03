@@ -1863,6 +1863,13 @@ Proof.
   rewrite H5; auto; discriminate.
 Qed.
 
+Theorem diskIs_pred : forall AT AEQ V (m : @mem AT AEQ V) (p : @pred AT AEQ V),
+  p m ->
+  diskIs m =p=> p.
+Proof.
+  unfold diskIs, pimpl; intros; subst; eauto.
+Qed.
+
 
 (* exclude an address from a predicate *)
 Definition pred_except AT AEQ V (F : @pred AT AEQ V) a v : @pred AT AEQ V :=
