@@ -14,6 +14,15 @@ Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
       end
   end.
 
+Fixpoint selNopt (V : Type) (vs : list V) (n : nat) : option V :=
+  match vs with
+    | nil => None
+    | v :: vs' =>
+      match n with
+        | O => Some v
+        | S n' => selNopt vs' n'
+      end
+  end.
 
 Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
   match vs with
@@ -47,6 +56,19 @@ Lemma repeat_selN' : forall T i n (v : T),
   selN (repeat v n) i v = v.
 Proof.
   induction i; destruct n; firstorder; inversion H.
+Qed.
+
+Lemma selNopt_selN : forall T i l (v def : T),
+  selNopt l i = Some v -> selN l i def = v.
+Proof.
+  induction i; destruct l; intros; inversion H; firstorder.
+Qed.
+
+Lemma selN_selNopt : forall T i l (v def : T),
+  i < length l -> selNopt l i = Some (selN l i def).
+Proof.
+  induction i; destruct l; simpl; intros; try omega; auto.
+  apply IHi; auto; omega.
 Qed.
 
 Lemma repeat_app : forall T i j (x : T),
