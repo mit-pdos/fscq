@@ -103,6 +103,24 @@ Section Modification.
   Hint Resolve -> hin_index_vars.
   Hint Resolve <- hin_index_vars.
 
+  Lemma one_more_modified_in : forall contents vartypes
+    (vars: variables contents vartypes)
+    (l l': hlist (fun T:Type => T) contents)
+    t a (v:t),
+    modified vars l l' ->
+    HIn a vars ->
+    modified vars l (set a v l').
+  Proof.
+    unfold modified; intros.
+    rewrite get_set_other; auto.
+    apply hin_iff_index_in in H0.
+    assert (~ In (member_index m)
+      (hmap (fun t (m: member t contents) => member_index m) vars)).
+    intro.
+    apply hin_iff_index_in in H2; exfalso; eauto.
+    distinguish_indices; eauto.
+  Qed.
+
   Lemma one_more_modified : forall contents vartypes
                               (vars: variables contents vartypes)
                               t v (val': t)
@@ -110,10 +128,7 @@ Section Modification.
       modified vars m m' ->
       modified vars m (set (get v vars) val' m').
   Proof.
-    unfold modified; intros.
-    rewrite hin_index_vars in H0.
-    rewrite get_set_other; eauto.
-    distinguish_indices; auto.
+    auto using one_more_modified_in.
   Qed.
 
   Lemma modified_single_var : forall contents vartypes

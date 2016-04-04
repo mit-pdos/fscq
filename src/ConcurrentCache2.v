@@ -262,7 +262,8 @@ Ltac solve_global_transitions :=
   end.
 
 Hint Unfold GCache GDisk GDisk0 Cache : modified.
-Hint Resolve modified_nothing one_more_modified modified_single_var : modified.
+Hint Resolve modified_nothing one_more_modified
+  one_more_modified_in modified_single_var : modified.
 Hint Constructors HIn : modified.
 
 Ltac solve_modified :=
@@ -326,8 +327,11 @@ Theorem lin_pred_cache_locked_star : forall o tid s F F',
     lin_pred o (cache_locked tid s (F * F')) <=p=>
 lin_pred o (cache_locked tid s F) * lin_pred o (cache_locked tid s F').
 Proof.
-  (* should be done with setoid rewriting *)
-Admitted.
+  intros.
+  rewrite cache_locked_star.
+  rewrite lin_pred_star.
+  auto.
+Qed.
 
 Hint Resolve same_domain_refl.
 
@@ -549,6 +553,23 @@ Definition read {T} a rx : prog Mcontents Scontents T :=
 
 Hint Extern 1 {{locked_AsyncRead _; _}} => apply locked_AsyncRead_ok : prog.
 
+Ltac no_pred_in thm :=
+  let H := fresh in
+  pose proof thm as H;
+  unfold pred_in in H;
+  let t := type of H in
+  exact (H:t).
+
+Hint Resolve cache_rep_refold.
+Hint Resolve ltac:(no_pred_in cache_rep_refold).
+
+Ltac cache_rep_unfold :=
+    idtac;
+    match goal with
+    | [ H: (hlistmem _ |= _ * rep _)%judgement |- _ ] =>
+      apply cache_rep_unfold in H; repeat deex
+    end.
+
 Theorem locked_read_ok : forall a,
   stateS TID: tid |-
   {{ Fs Fs' F LF F' v vd,
@@ -568,59 +589,30 @@ Theorem locked_read_ok : forall a,
          R tid s0' s'
   }} read a.
 Proof.
-  Ltac cache_rep_unfold :=
-    match goal with
-    | [ H: (hlistmem _ |= _ * rep _)%judgement |- _ ] =>
-      apply cache_rep_unfold in H; repeat deex
-    end.
-  intros.
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
+  hoare pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ];
+    try time "final eauto" solve [ eauto ].
 
-  all: eauto.
-
-  eapply H3.
-  eapply cache_rep_refold; eauto.
-  eauto.
+  eapply H3; eauto.
   rewrite <- (haddr_ptsto_get H) in *.
   eapply H4; eauto.
 
   admit. (* clean cache val *)
 
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-
-  eapply H3.
-  eapply cache_rep_refold; eauto.
-  eauto.
+  eapply H3; eauto.
   rewrite <- (haddr_ptsto_get H) in *.
   eapply H4; now eauto.
 
   admit. (* dirty cache val *)
-
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-  all: eauto.
-  eapply cache_rep_refold; eauto.
-
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
-  step pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ].
 
   instantiate (1 := get GDisk s2).
   eapply cache_rep_refold.
   rewrite hlistupd_memupd.
   admit.
 
-  solve_global_transitions; eauto.
-
+  finish.
   unfold cacheI; repeat descend; autorewrite with hlist; eauto.
   admit. (* cache mem consistency after updating one value on both sides *)
   admit. (* cache rep after updating one value on both sides *)
-
-  finish.
-  finish.
 
   rewrite (haddr_ptsto_get H19) in *.
   admit. (* almost same as H20, but cache has a new value: this does
@@ -682,16 +674,13 @@ Proof.
   admit. (* cache_rep: consistent update *)
   admit. (* GDisk0 hasn't changed, only view (Owned tid) *)
 
-  admit. (* TODO: debug modified lemmas to prove this *)
-  (* TODO: debug these setoid rewrites not working *)
-  (* rewrite cache_locked_star.
-  rewrite lin_pred_star. *)
+  (* TODO: debug universe inconsistency for rewriting *)
+  Fail rewrite cache_locked_star.
   admit. (* propagate upd into lin_pred and cache_locked *)
 
   eapply R_trans.
   eapply star_trans; apply star_one_step; eauto.
   finish.
-  admit. (* another solve_modified bug *)
 
   unfold cacheR; repeat descend; autorewrite with hlist; eauto.
 Admitted.

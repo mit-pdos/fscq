@@ -118,6 +118,13 @@ Proof.
   firstorder.
 Qed.
 
+(* specialize to DISK to help typeclass search *)
+Instance lin_pred_piff_disk_respectful : forall owner,
+  Proper (piff ==> piff) (@lin_pred addr (@weq addrlen) (const wr_set) owner).
+Proof.
+  firstorder.
+Qed.
+
 Instance A'_dec : forall A `(DecEq A), DecEq (A' A).
 Proof.
   unfold DecEq; intros.
