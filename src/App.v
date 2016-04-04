@@ -747,8 +747,8 @@ Proof.
   rewrite H1; auto.
   auto.
   eauto.
-  (* exact Rec.Rec.data BYTEFILE.byte_type. *)
-Admitted.
+  exact $0.
+Qed.
 
 
 (* copy an existing src into an existing, empty dst. *)
