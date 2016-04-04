@@ -89,6 +89,6 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
 clean:
-	rm -rf codegen coqbuild _build fstest hstest gotest disk.img
+	rm -rf codegen coqbuild _build fstest hstest gotest disk.img fuse mkfs
 
 .PRECIOUS: hscgen/%.hs
