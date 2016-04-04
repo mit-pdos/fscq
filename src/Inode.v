@@ -48,19 +48,21 @@ Module INODE.
     ISize : addr;
     IMTime : word 32;
     IType : word 32;
-    IDev : word 64
+    IDev : word 64;
+    IPad : word 64;
   }.
 
-  Definition iattr0 := Build_iattr $0 $0 $0 $0.
+  Definition iattr0 := Build_iattr $0 $0 $0 $0 $0.
 
   Definition pack_attr (ia : iattr) := Eval compute_rec in
     iarec0 :=> "size" := (ISize ia)
            :=> "mtime" := (IMTime ia)
            :=> "itype" := (IType ia)
-           :=> "dev" := (IDev ia).
+           :=> "dev" := (IDev ia)
+           :=> "pad" := (IPad ia).
 
   Definition unpack_attr (iar : iarec) := Eval compute_rec in
-    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype") (iar :-> "dev").
+    Build_iattr (iar :-> "size") (iar :-> "mtime") (iar :-> "itype") (iar :-> "dev") (iar :-> "pad").
 
   Theorem unpack_pack_attr : forall a, unpack_attr (pack_attr a) = a.
   Proof.
@@ -78,7 +80,8 @@ Module INODE.
     ISize ia = rec :-> "size" /\
     IMTime ia = rec :-> "mtime" /\
     IType ia = rec :-> "itype" /\
-    IDev ia = rec :-> "dev".
+    IDev ia = rec :-> "dev" /\
+    IPad ia = rec :-> "pad".
 
 
   Definition nr_direct := 10.
@@ -1099,7 +1102,7 @@ Module INODE.
     (* prove representation invariant *)
     repeat rewrite_list2nmem_pred; inode_bounds.
     unfold upd, sel; unfold sel in *.
-    assert (length blist = nr_indirect) by (eapply indirect_length; eauto).
+    assert (length dummy = nr_indirect) by (eapply indirect_length; eauto).
     assert (length blist' = nr_indirect) by (eapply indirect_length; eauto).
     assert (length ((selN reclist (wordToNat inum) irec0 : Rec.data inodetype) :-> "blocks") = nr_direct) as Hdeq.
     erewrite inode_blocks_length with (m := list2mem m); inode_bounds.
@@ -1176,7 +1179,7 @@ Module INODE.
     step.
 
     (* constructing new indirect list *)
-    instantiate (blist0 := indlist0).
+    instantiate (blist := indlist0).
     unfold indrep.
     rewrite ind_ptsto_zero.
     cancel. eauto.
@@ -1389,9 +1392,9 @@ Module INODE.
     (* extract facts about length *)
     rewrite indirect_valid_r in H.
     2: eapply helper_minus1_nr_direct_gt; eauto.
-    assert (length blist = nr_indirect) as Hieq.
+    assert (length dummy0 = nr_indirect) as Hieq.
     eapply indirect_length with (m := list2mem m); pred_apply; cancel.
-    assert (length ((selN reclist (wordToNat inum) irec0) :-> "blocks") = nr_direct) as Hdeq.
+    assert (length ((selN dummy (wordToNat inum) irec0) :-> "blocks") = nr_direct) as Hdeq.
     erewrite inode_blocks_length with (m := list2mem m'); inode_bounds.
     pred_apply; cancel.
     assert (length (IBlocks (selN ilist (wordToNat inum) inode0)) - 1 = nr_direct).

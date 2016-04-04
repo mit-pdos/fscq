@@ -414,7 +414,8 @@ Module BYTEFILE.
                                 (INODE.Build_iattr ($ newlen)
                                                    (INODE.IMTime oldattr)
                                                    (INODE.IType oldattr)
-                                                   (INODE.IDev oldattr)) mscs;
+                                                   (INODE.IDev oldattr)
+                                                   (INODE.IPad oldattr)) mscs;
         rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
@@ -443,7 +444,7 @@ Module BYTEFILE.
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ bytes' = (bytes ++ (repeat $0 (newlen -  (# (INODE.ISize (BFILE.BFAttr f)))))) ]] *
            [[ rep bytes' attr f' ]] *
-           [[ fattr' = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) ]] *
+           [[ fattr' = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) f.(BFILE.BFAttr).(INODE.IPad)]] *
            [[ f' = BFILE.Build_bfile fdata' fattr' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} grow_file fsxp inum newlen mscs.
@@ -625,7 +626,8 @@ Module BYTEFILE.
                               (INODE.Build_iattr ($ newlen)
                                                  (INODE.IMTime oldattr)
                                                  (INODE.IType oldattr)
-                                                 (INODE.IDev oldattr)) mscs;
+                                                 (INODE.IDev oldattr)
+                                                 (INODE.IPad oldattr)) mscs;
       rx ^(mscs, true)
     } else {
       rx ^(mscs, false)
@@ -647,7 +649,7 @@ Module BYTEFILE.
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ bytes' = firstn newlen bytes ]] *
            [[ rep bytes' attr f' ]] *
-           [[ fattr' = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) ]] *
+           [[ fattr' = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) f.(BFILE.BFAttr).(INODE.IPad)]] *
            [[ f' = BFILE.Build_bfile fdata' fattr' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} shrink_file fsxp inum newlen mscs.
@@ -748,7 +750,7 @@ Module BYTEFILE.
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ bytes' = firstn newlen bytes ++ (repeat $0 (newlen - length bytes)) ]] *
            [[ rep bytes' attr f' ]] *
-           [[ fattr' = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) ]] *
+           [[ fattr' = INODE.Build_iattr ($ newlen) f.(BFILE.BFAttr).(INODE.IMTime) f.(BFILE.BFAttr).(INODE.IType) f.(BFILE.BFAttr).(INODE.IDev) f.(BFILE.BFAttr).(INODE.IPad) ]] *
            [[ f' = BFILE.Build_bfile fdata' fattr' ]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} resize_file fsxp inum newlen mscs.
@@ -989,7 +991,7 @@ Module BYTEFILE.
     let^ (mscs, iattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
             (INODE.Build_iattr iattr.(INODE.ISize)
-                               newattr.(FMTime) newattr.(FType) newattr.(FDev))
+                               newattr.(FMTime) newattr.(FType) newattr.(FDev) (wzero 64))
             mscs;
     rx mscs.
 
