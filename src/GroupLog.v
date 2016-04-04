@@ -405,6 +405,18 @@ Module GLog.
   Qed.
 
 
+  Theorem submit_ok: forall xp ms a,
+    {< F ds vs,
+    PRE
+      rep xp F (Cached ds) ms *
+      [[[ ds!! ::: exists F', (F' * a |-> vs) ]]]
+    POST RET:^(ms', r)
+      rep xp F (Cached ds) ms' * [[ r = fst vs ]]
+    CRASH
+      exists ms', rep xp F (Cached ds) ms'
+    >} submit xp a ms.
+  Proof.
+  Qed.
 
 
 End GLog.
