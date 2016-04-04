@@ -76,12 +76,12 @@ Module GLog.
   Qed.
 
   (* append a new diskstate to a diskset *)
-  Definition pushd (d : diskstate) (ds : diskset) := (fst ds, d :: snd ds).
+  Definition pushd (d : diskstate) (ds : diskset) : diskset :=
+      (fst ds, d :: snd ds).
 
   (* pop out n oldest disks for a diskset *)
-  Definition popn (n : nat) (ds : diskset) := (nthd n ds, cuttail n (snd ds)).
-
-
+  Definition popn (n : nat) (ds : diskset) : diskset :=
+      (nthd n ds, cuttail n (snd ds)).
 
   (* does the diskset contains a single element? *)
   Definition Singular (ds : diskset) := snd ds = nil.
@@ -368,6 +368,19 @@ Module GLog.
     rewrite replay_seq_replay_mem; eauto.
   Qed.
 
+  Lemma dset_match_ext : forall ents ds ts,
+    dset_match ds ts ->
+    log_valid ents ds!! ->
+    dset_match (pushd (replay_disk ents ds!!) ds) (ents :: ts).
+  Proof.
+    unfold dset_match, pushd, ents_valid; intuition; simpl in *.
+    apply Forall_cons; auto.
+    eapply log_valid_length_eq; eauto.
+    erewrite replay_seq_latest_length; eauto.
+    constructor; auto.
+  Qed.
+
+
 
   (************* correctness theorems *)
 
@@ -405,18 +418,30 @@ Module GLog.
   Qed.
 
 
-  Theorem submit_ok: forall xp ms a,
-    {< F ds vs,
+  Theorem submit_ok: forall xp ents ms,
+    {< F ds,
     PRE
       rep xp F (Cached ds) ms *
-      [[[ ds!! ::: exists F', (F' * a |-> vs) ]]]
+      [[ log_valid ents ds!! ]]
     POST RET:^(ms', r)
-      rep xp F (Cached ds) ms' * [[ r = fst vs ]]
+      [[ r = false ]] * rep xp F (Cached ds) ms' \/
+      [[ r = true  ]] *
+        rep xp F (Cached (pushd (replay_disk ents (latest ds)) ds)) ms'
     CRASH
       exists ms', rep xp F (Cached ds) ms'
-    >} submit xp a ms.
+    >} submit xp ents ms.
   Proof.
+    unfold submit, rep.
+    step.
+    step.
+    or_r; cancel.
+
+    unfold vmap_match in *; simpl.
+    rewrite H; apply MapFacts.Equal_refl.
+    apply dset_match_ext; auto.
+    step.
   Qed.
+
 
 
 End GLog.
