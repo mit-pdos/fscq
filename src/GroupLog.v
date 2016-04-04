@@ -522,6 +522,7 @@ Module GLog.
     - step.
       eapply dset_match_log_valid_selN; eauto.
       + prestep; norm.
+        cancel.
         
     - prestep; norm.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
