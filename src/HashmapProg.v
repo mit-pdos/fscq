@@ -12,7 +12,6 @@ Require Import Mem.
 Require Import SepAuto.
 Require Import List.
 Require Import Array.
-Require Import EqdepFacts.
 Require Import Arith.
 Require Import ListUtils.
 
@@ -20,7 +19,7 @@ Set Implicit Arguments.
 
 
 Definition hash_list T values rx : prog T :=
-  hash <- Hash default_valu;
+  hash <- Hash (combine_entry default_entry);
   let^ (hash) <- For i < $ (length values)
   Hashmap hm'
   Ghost [ crash ]
@@ -30,7 +29,7 @@ Definition hash_list T values rx : prog T :=
     [[ hash_list_rep (rev (firstn #i values)) hash hm' ]]
   OnCrash crash
   Begin
-    hash <- Hash (Word.combine (sel values i default_valu) hash);
+    hash <- Hash (Word.combine (combine_entry (selN values #i default_entry)) hash);
     lrx ^(hash)
   Rof ^(hash);
   rx hash.
@@ -40,6 +39,7 @@ Theorem hash_list_ok : forall values,
   {< (_ : unit) ,
   PRE:hm
     emp * [[ goodSize addrlen (length values) ]]
+        * [[ Forall (fun e => goodSize addrlen (fst e)) values ]]
   POST:hm' RET:hash
     emp * [[ hash_list_rep (rev values) hash hm' ]]
   CRASH:hm'
@@ -77,18 +77,18 @@ Proof.
 
         rewrite <- removelast_firstn;
           try (apply lt_word_lt_nat; auto).
-        replace (rev l2) with (rev l2 ++ removelast (w :: nil)).
+        replace (rev l2) with (rev l2 ++ removelast (p :: nil)).
         rewrite <- removelast_app.
         rewrite Hrev_values.
         auto.
 
-        intuition. inversion H7.
+        intuition. inversion H8.
         simpl. rewrite app_nil_r. auto.
 
       rewrite <- rev_involutive in Hl.
       apply rev_injective in Hl.
       rewrite Hl. eauto.
-      assert (Hw: selN (firstn # (m ^+ $ (1)) values) (# m) default_valu = w).
+      assert (Hw: selN (firstn # (m ^+ $ (1)) values) (# m) default_entry = p).
         rewrite <- rev_involutive in Hrev_values.
         apply rev_injective in Hrev_values.
         rewrite Hrev_values.
@@ -101,13 +101,16 @@ Proof.
 
       econstructor.
       apply hash_list_rep_upd; eauto.
+      apply wlt_lt in H0.
+      rewrite wordToNat_natToWord_idempotent' in H0; auto.
+      eapply Forall_forall in H4; eauto.
+      apply in_selN; auto.
       auto.
-      unfold sel in *.
       apply upd_hashmap'_eq.
       intuition.
       unfold hash_safe in *.
-      rewrite H7 in H16.
-      inversion H16 as [ Hdef | Hdef ];
+      rewrite H8 in H17.
+      inversion H17 as [ Hdef | Hdef ];
       contradict_hashmap_get_default Hdef hm0.
 
   (* Loop invariant implies post-condition. *)
@@ -117,11 +120,11 @@ Proof.
       apply firstn_oob. auto.
     rewrite <- Hfirstn. auto.
 
-  - repeat eexists. instantiate (i:=0). econstructor. eauto.
-  - repeat eexists. instantiate (i:=0). econstructor. eauto.
+  - exists 0; eexists. econstructor. eauto.
+  - exists 0; eexists. econstructor. eauto.
 
   Grab Existential Variables.
-  all: eauto; unfold DecEq; apply weq.
+  all: econstructor.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (hash_list _) _) => apply hash_list_ok : prog.

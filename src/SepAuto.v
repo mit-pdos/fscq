@@ -10,7 +10,8 @@ Require Import Hashmap.
 
 Set Implicit Arguments.
 
-Ltac solve_hashmap := solve_hashmap_subset.
+
+Hint Extern 1 (exists _, hashmap_subset _ _ _) => try solve_hashmap_subset.
 
 (* Helpers for existential variables *)
 
@@ -656,7 +657,7 @@ Ltac destruct_lift H :=
   repeat destruct_prod;
   repeat destruct_type True;
   repeat destruct_type unit;
-  simpl in *;
+  cbn in *;
   repeat clear_varname.
 
 Ltac destruct_lifts := try progress match goal with 
@@ -822,7 +823,7 @@ Ltac norm'l := eapply start_normalizing_left; [ flatten | ];
 Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
                eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
-               simpl in *.
+               cbn in *.
 
 Create HintDb false_precondition_hint.
 
@@ -885,7 +886,7 @@ Tactic Notation "substl" constr(term) :=
 
 Ltac cancel_with' t intuition_t :=
   intros;
-  unfold stars; simpl; try subst;
+  unfold stars; cbn; try subst;
   pimpl_crash;
   norm;
   try match goal with
@@ -897,9 +898,8 @@ Ltac cancel_with' t intuition_t :=
   intuition intuition_t;
   try ( pred_apply; cancel_with' t intuition_t);
   try congruence;
-  try solve_hashmap;
   try t;
-  unfold stars; simpl; inv_option_eq;
+  unfold stars; cbn; inv_option_eq;
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
