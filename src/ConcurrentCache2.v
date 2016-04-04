@@ -321,8 +321,8 @@ Proof.
 Qed.
 
 Theorem lin_pred_cache_locked_star : forall o tid s F F',
-    lin_pred (cache_locked tid s (F * F')) o <=p=>
-lin_pred (cache_locked tid s F) o * lin_pred (cache_locked tid s F') o.
+    lin_pred o (cache_locked tid s (F * F')) <=p=>
+lin_pred o (cache_locked tid s F) * lin_pred o (cache_locked tid s F').
 Proof.
   (* should be done with setoid rewriting *)
 Admitted.
@@ -333,7 +333,7 @@ Section LinearizedPreservation.
 
   Theorem preserves_view : forall A AEQ V S (f: S -> @linear_mem A AEQ V) R F F' o,
     preserves (fun s => view o (f s)) R F F' ->
-    preserves f R (lin_pred F o) (lin_pred F' o).
+    preserves f R (lin_pred o F) (lin_pred o F').
   Proof.
     unfold preserves.
     intuition.
@@ -342,8 +342,12 @@ Section LinearizedPreservation.
     clear H.
 
     unfold_sep_star in H0; repeat deex.
+
     (* hopefully this theorem is true and provable? *)
-  Admitted.
+    (* actually, doesn't look like it - it's stronger to preserve
+    lin_preds due to the frame in preserves also getting preserved
+    exactly *)
+  Abort.
 
 End LinearizedPreservation.
 
@@ -354,15 +358,17 @@ Theorem locked_AsyncRead_ok : forall a,
        hlistmem s |= Fs * haddr GDisk |-> vd /\
        Inv m s d /\
        cache_get (get Cache m) a = None /\
-       vd |= lin_pred F NoOwner * lin_pred (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
+       vd |= F * lin_pred (Owned tid)
+        (cache_locked tid s (LF * a |-> (v, None))) /\
        preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
-       preserves (fun s:S => view NoOwner (get GDisk s)) (star (othersR R tid)) F F' /\
+       preserves (get GDisk) (star (othersR R tid)) F F' /\
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
          hlistmem s' |= Fs' * haddr GDisk |-> vd' /\
          Inv m' s' d' /\
-         vd' |= lin_pred F' NoOwner * lin_pred (cache_locked tid s' (LF * a |-> (v, None))) (Owned tid) /\
+         vd' |= F' * lin_pred (Owned tid)
+          (cache_locked tid s' (LF * a |-> (v, None))) /\
          r = v /\
          R tid s0' s'
   }} locked_AsyncRead a.
@@ -466,8 +472,8 @@ Proof.
   eapply star_pimpl_r.
   apply lin_pred_cache_locked_star.
 
-  (* need to use preservation on view NoOwner GDisk to derive
-preservation of lin_pred on anything, and also handle a separately:
+  (* need to use preservation on GDisk to derive
+preservation of F -> F', and also handle a separately:
 ptsto_upd' should work for that part, but then a must be wrapped in
 lin_pred (cache_locked ...) *)
   admit.
@@ -500,15 +506,15 @@ Theorem locked_read_ok : forall a,
    | PRE d m s0 s:
        hlistmem s |= Fs * haddr GDisk |-> vd /\
        Inv m s d /\
-       vd |= lin_pred F NoOwner * lin_pred (cache_locked tid s (LF * a |-> (v, None))) (Owned tid) /\
+       vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
        preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
-       preserves (fun s:S => view NoOwner (get GDisk s)) (star (othersR R tid)) F F' /\
+       preserves (get GDisk) (star (othersR R tid)) F F' /\
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
          hlistmem s' |= Fs' * haddr GDisk |-> vd' /\
          Inv m' s' d' /\
-         vd' |= lin_pred F' NoOwner * lin_pred (cache_locked tid s' (LF * a |-> (v, None))) (Owned tid) /\
+         vd' |= F' * lin_pred (Owned tid) (cache_locked tid s' (LF * a |-> (v, None))) /\
          r = v /\
          R tid s0' s'
   }} read a.
@@ -518,7 +524,6 @@ Proof.
   all: eauto.
   eapply H3; now eauto.
 
-  eapply preserves_view in H4.
   rewrite <- (haddr_ptsto_get H) in *.
   eapply H4; now eauto.
 
@@ -526,7 +531,6 @@ Proof.
 
   eapply H3; now eauto.
   rewrite <- (haddr_ptsto_get H) in *.
-  eapply preserves_view in H4.
   eapply H4; now eauto.
 
   admit. (* dirty cache val *)

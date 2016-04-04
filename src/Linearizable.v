@@ -3,6 +3,7 @@ Require Import Pred.
 Require Import Locking.
 Require Import EventCSL.
 Require Import FunctionalExtensionality.
+Import Morphisms.
 
 Section Linearizability.
 
@@ -27,11 +28,11 @@ Section Linearizability.
   Definition view owner (m: linear_mem) : @mem A AEQ V :=
     fun a => m (a, owner).
 
-  Definition lin_pred (F: @pred A AEQ V) owner : @pred A' AEQ' V' :=
+  Definition lin_pred owner (F: @pred A AEQ V) : @pred A' AEQ' V' :=
     fun m => F (view owner m).
 
   Theorem lin_pred_star : forall (F1 F2: @pred A AEQ V) owner,
-    lin_pred (F1 * F2) owner <=p=> lin_pred F1 owner * lin_pred F2 owner.
+    lin_pred owner (F1 * F2) <=p=> lin_pred owner F1 * lin_pred owner F2.
   Proof.
     unfold lin_pred.
     split; unfold pimpl; intros.
@@ -103,22 +104,19 @@ Section Linearizability.
       exists (a, owner), v1, v2; intuition.
   Qed.
 
-  (* TODO: make this a setoid instance *)
-  Theorem lin_pred_respects_pimpl : forall owner F F',
-    F =p=> F' ->
-    lin_pred F owner =p=> lin_pred F' owner.
-  Proof.
-    firstorder.
-  Qed.
-
-  Theorem lin_pred_respects_piff : forall owner F F',
-    F <=p=> F' ->
-    lin_pred F owner <=p=> lin_pred F' owner.
-  Proof.
-    firstorder.
-  Qed.
-
 End Linearizability.
+
+Instance lin_pred_pimpl : forall A AEQ V owner,
+  Proper (pimpl ==> pimpl) (@lin_pred A AEQ V owner).
+Proof.
+  firstorder.
+Qed.
+
+Instance lin_pred_piff : forall A AEQ V owner,
+  Proper (piff ==> piff) (@lin_pred A AEQ V owner).
+Proof.
+  firstorder.
+Qed.
 
 Instance A'_dec : forall A `(DecEq A), DecEq (A' A).
 Proof.

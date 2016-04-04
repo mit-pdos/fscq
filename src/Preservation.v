@@ -2,6 +2,7 @@ Require Import EventCSL.
 Require Import Pred.
 Require Import ForwardChaining.
 Require Import FunctionalExtensionality.
+Import Morphisms.
 Import List.
 Import List.ListNotations.
 
@@ -501,5 +502,17 @@ Proof.
 Qed.
 
 End State.
+
+Instance locks_held_respects_pimpl : forall S locks (s: S),
+  Proper (pimpl ==> pimpl) (locks_held locks s).
+Proof.
+  firstorder.
+Qed.
+
+Instance locks_held_respects_piff : forall S locks (s: S),
+  Proper (piff ==> piff) (locks_held locks s).
+Proof.
+  firstorder.
+Qed.
 
 End Preservation.
