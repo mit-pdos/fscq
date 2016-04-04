@@ -1965,16 +1965,16 @@ Hint Extern 1 ({{_}} progseq (atomic_cp_recover) _) => apply atomic_cp_recover_o
 
 
 Theorem atomic_cp_with_recover_ok : forall fsxp src_fn dst_fn mscs,
-  {<< m Fm Ftop tree dents,
+  {<< m Fm Ftop src_tree src_dents,
   PRE   LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-        [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-        [[ tree = DIRTREE.TreeDir the_dnum dents ]] *
-        [[ DIRTREE.find_name [temp_fn] tree = None ]] *
+        [[ (Fm * DIRTREE.rep fsxp Ftop src_tree)%pred (list2mem m) ]] *
+        [[ src_tree = DIRTREE.TreeDir the_dnum src_dents ]] *
+        [[ DIRTREE.find_name [temp_fn] src_tree = None ]] *
         [[ src_fn <> temp_fn ]] *
         [[ dst_fn <> temp_fn ]] *
         [[ src_fn <> dst_fn ]]
   POST RET:^(mscs, r)
-    atomic_cp_return_rep fsxp Fm Ftop tree dents src_fn dst_fn mscs r
+    atomic_cp_return_rep fsxp Fm Ftop src_tree src_dents src_fn dst_fn mscs r
   REC RET:^(mscs,fsxp)
     atomic_cp_recover_rep fsxp Fm Ftop src_tree src_dents src_fn dst_fn mscs
   >>} atomic_cp fsxp src_fn dst_fn mscs >> atomic_cp_recover.
@@ -1987,26 +1987,27 @@ Proof.
   eauto with prog.
   cancel.
   unfold rep_src_tree, rep_root; intuition.
-  admit.
+  instantiate (src_dents := v3); eauto.
   eapply pimpl_ok2.
   eapply H2.
   cancel.
-  admit.
   instantiate (crash :=(F_ *  crash_transitions v0 v1 fsxp v2 v3 src_fn dst_fn)%pred).
+  instantiate (idemcrash := crash_transitions v0 v1 fsxp (DIRTREE.TreeDir the_dnum v3) v3 src_fn dst_fn).
+  subst; cancel.
   subst; cancel.
   cancel.
   repeat (eapply pimpl_exists_r; eexists).
-  instantiate (x0 := v0).
-  instantiate (x1 := v1).
-  instantiate (x := fsxp).
-  instantiate (x3 := src_fn).
-  instantiate (x2 := dst_fn).
-  instantiate (x4 := F_).
+  instantiate (F_0 := F_).
+  instantiate (src_dents := v3).
+  instantiate (src_tree := (DIRTREE.TreeDir the_dnum v3) ).
+  instantiate (Fm := v0).
+  instantiate (Ftop := v1).
+  instantiate (fsxp0 := fsxp).
   cancel.
   autorewrite with crash_xform.
-  rewrite H3.
-  cancel.
+  rewrite H3; eauto.
   step.
+  eauto.
 Qed.
 
 
