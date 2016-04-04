@@ -83,6 +83,24 @@ Module GLog.
   Definition popn (n : nat) (ds : diskset) : diskset :=
       (nthd n ds, cuttail n (snd ds)).
 
+  Lemma popn_0 : forall ds,
+    popn 0 ds = ds.
+  Proof.
+    unfold popn; intros.
+    rewrite nthd_0, cuttail_0.
+    rewrite surjective_pairing; auto.
+  Qed.
+
+  Lemma popn_oob : forall ds n,
+    n >= length (snd ds) -> popn n ds = (ds!!, nil).
+  Proof.
+    unfold popn; intros.
+    rewrite nthd_oob by omega.
+    rewrite cuttail_oob by omega; auto.
+  Qed.
+
+
+
   (* does the diskset contains a single element? *)
   Definition Singular (ds : diskset) := snd ds = nil.
 
@@ -96,10 +114,21 @@ Module GLog.
     unfold latest; destruct ds, l; simpl; intuition; inversion H.
   Qed.
 
+  Lemma popn_oob_singular : forall ds n,
+    n >= length (snd ds) -> Singular (popn n ds) .
+  Proof.
+    unfold popn; intros.
+    rewrite cuttail_oob by omega; auto.
+    constructor.
+  Qed.
+
+
+
+
   (* list of transactions *)
   Definition txnlist  := list DLog.contents.
 
-  (** RelapySeq: any prefix of a diskset is the result of replaying 
+  (** ReplaySeq: any prefix of a diskset is the result of replaying 
    *  the corresponding prefix of transactions
    *)
   Inductive ReplaySeq : diskset -> txnlist -> Prop :=
@@ -180,6 +209,9 @@ Module GLog.
   Qed.
 
 
+
+
+
   (************* state and rep invariant *)
 
   Record memstate := mk_memstate {
@@ -203,11 +235,11 @@ Module GLog.
   Definition vmap_match vm ts :=
     Map.Equal vm (fold_right replay_mem vmap0 ts).
 
-  Definition ents_valid d ents :=
-    log_valid ents d.
+  Definition ents_valid xp d ents :=
+    log_valid ents d /\ length ents <= LogLen xp.
 
-  Definition dset_match ds ts :=
-    Forall (ents_valid (fst ds)) ts /\ ReplaySeq ds ts.
+  Definition dset_match xp ds ts :=
+    Forall (ents_valid xp (fst ds)) ts /\ ReplaySeq ds ts.
 
   Definition rep xp F st ms :=
   let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
@@ -215,11 +247,12 @@ Module GLog.
   match st with
     | Cached ds =>
       [[ vmap_match vm ts ]] *
-      [[ dset_match ds ts ]] *
+      [[ dset_match xp ds ts ]] *
       MLog.rep xp F nr (MLog.Synced (fst ds)) mm
     | Flushing ds =>
-      [[ dset_match ds ts ]] *
-      ( MLog.rep xp F nr (MLog.Applying (fst ds)) mm \/
+      [[ dset_match xp ds ts ]] *
+      ( MLog.rep xp F nr (MLog.Synced (fst ds)) mm \/
+        MLog.rep xp F nr (MLog.Applying (fst ds)) mm \/
         MLog.rep xp F nr (MLog.Flushing (fst ds) (last ts nil)) mm)
   end)%pred.
 
@@ -253,21 +286,21 @@ Module GLog.
 
   Definition flushall T xp ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
-    let^ (mm') <- ForN i < length ts
-    Ghost [ F crash ]
-    Loopvar [ tt ]
+    let^ (mm) <- ForN i < length ts
+    Ghost [ F ds crash ]
+    Loopvar [ mm ]
     Continuation lrx
-    Invariant F
+    Invariant
+        exists nr,
+        MLog.rep xp F nr (MLog.Synced (nthd i ds)) mm *
+        [[ dset_match xp (popn i ds) (cuttail i ts) ]]
     OnCrash crash
     Begin
+      (* r = false is impossible, flushall should always succeed *)
       let^ (mm, r) <- MLog.flush xp (selN ts (length ts - i - 1) nil) mm;
-      If (bool_dec r true) {
-        lrx ^(mm)
-      } else {
-        rx ms  (* impossible case, flushall should always succeed *)
-      }
+      lrx ^(mm)
     Rof ^(mm);
-    rx (mk_memstate vmap0 nil mm').
+    rx (mk_memstate vmap0 nil mm).
 
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
     ms <- flushall xp ms;
@@ -289,19 +322,11 @@ Module GLog.
   Hint Extern 0 (okToUnify (MLog.rep _ _ _ _ _) (MLog.rep _ _ _ _ _)) => constructor : okToUnify.
 
 
-  (* destruct memstate *)
-  Ltac dems := eauto; repeat match goal with
-  | [ H : @eq memstate ?ms (mk_memstate _ _ _) |- _ ] =>
-     is_var ms; destruct ms; inversion H; subst; simpl
-  | [ |- Map.Empty vmap0 ] => apply Map.empty_1
-  | [ |- map_valid vmap0 _ ] => apply map_valid_map0
-  end; eauto.
-
 
   (************* auxilary lemmas *)
 
-  Lemma diskset_ptsto_bound_latest : forall F a vs ds ts,
-    dset_match ds ts ->
+  Lemma diskset_ptsto_bound_latest : forall F xp a vs ds ts,
+    dset_match xp ds ts ->
     (F * a |-> vs)%pred (list2nmem ds!!) ->
     a < length (fst ds).
   Proof.
@@ -311,8 +336,8 @@ Module GLog.
     apply H.
   Qed.
 
-  Lemma diskset_vmap_find_none : forall ds ts vm a v vs F,
-    dset_match ds ts ->
+  Lemma diskset_vmap_find_none : forall ds ts vm a v vs xp F,
+    dset_match xp ds ts ->
     vmap_match vm ts ->
     Map.find a vm = None ->
     (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
@@ -340,9 +365,9 @@ Module GLog.
   Qed.
 
 
-  Lemma replay_seq_replay_mem : forall ds ts,
+  Lemma replay_seq_replay_mem : forall ds ts xp,
     ReplaySeq ds ts ->
-    Forall (ents_valid (fst ds)) ts ->
+    Forall (ents_valid xp (fst ds)) ts ->
     replay_disk (Map.elements (fold_right replay_mem vmap0 ts)) (fst ds) = latest ds.
   Proof.
     induction 1; simpl in *; intuition.
@@ -351,12 +376,13 @@ Module GLog.
     rewrite <- IHReplaySeq by (eapply Forall_cons2; eauto).
     rewrite replay_disk_replay_mem; auto.
     inversion H1; subst.
-    eapply log_valid_length_eq; eauto.
+    eapply log_valid_length_eq.
+    unfold ents_valid in *; intuition; eauto.
     rewrite replay_disk_length; auto.
   Qed.
 
-  Lemma diskset_vmap_find_ptsto : forall ds ts vm a w v vs F,
-    dset_match ds ts ->
+  Lemma diskset_vmap_find_ptsto : forall ds ts vm a w v vs F xp,
+    dset_match xp ds ts ->
     vmap_match vm ts ->
     Map.find a vm = Some w ->
     (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
@@ -365,21 +391,52 @@ Module GLog.
     unfold vmap_match, dset_match; intuition.
     eapply replay_disk_eq; eauto.
     eexists; rewrite H0.
-    rewrite replay_seq_replay_mem; eauto.
+    erewrite replay_seq_replay_mem; eauto.
   Qed.
 
-  Lemma dset_match_ext : forall ents ds ts,
-    dset_match ds ts ->
+  Lemma dset_match_ext : forall ents ds ts xp,
+    dset_match xp ds ts ->
     log_valid ents ds!! ->
-    dset_match (pushd (replay_disk ents ds!!) ds) (ents :: ts).
+    length ents <= LogLen xp ->
+    dset_match xp (pushd (replay_disk ents ds!!) ds) (ents :: ts).
   Proof.
     unfold dset_match, pushd, ents_valid; intuition; simpl in *.
-    apply Forall_cons; auto.
+    apply Forall_cons; auto; split; auto.
     eapply log_valid_length_eq; eauto.
     erewrite replay_seq_latest_length; eauto.
     constructor; auto.
   Qed.
 
+  Lemma vmap_match_nil : vmap_match vmap0 nil.
+  Proof.
+      unfold vmap_match; simpl; apply MapFacts.Equal_refl.
+  Qed.
+
+  Lemma dset_match_nil : forall d xp, dset_match xp (d, nil) nil.
+  Proof.
+      unfold dset_match; split; [ apply Forall_nil | constructor ].
+  Qed.
+
+  Lemma dset_match_length : forall ds ts xp,
+    dset_match xp ds ts -> length ts = length (snd ds).
+  Proof.
+    intros.
+    erewrite replay_seq_length; eauto.
+    apply H.
+  Qed.
+
+  Lemma dset_match_log_valid_selN : forall ds ts i n xp,
+    dset_match xp ds ts ->
+    log_valid (selN ts i nil) (nthd n ds).
+  Proof.
+    unfold dset_match, ents_valid; intuition; simpl in *.
+    destruct (lt_dec i (length ts)).
+    eapply Forall_selN with (i := i) in H0; intuition.
+    eapply log_valid_length_eq; eauto.
+    erewrite replay_seq_nthd_length; eauto.
+    rewrite selN_oob by omega.
+    unfold log_valid, KNoDup; intuition; inversion H.
+  Qed.
 
 
   (************* correctness theorems *)
@@ -418,6 +475,7 @@ Module GLog.
   Qed.
 
 
+
   Theorem submit_ok: forall xp ents ms,
     {< F ds,
     PRE
@@ -440,6 +498,36 @@ Module GLog.
     rewrite H; apply MapFacts.Equal_refl.
     apply dset_match_ext; auto.
     step.
+  Qed.
+
+
+  Local Hint Resolve vmap_match_nil dset_match_nil.
+
+  Theorem flushall_ok: forall xp ms,
+    {< F ds,
+    PRE
+      rep xp F (Cached ds) ms
+    POST RET:ms'
+      rep xp F (Cached (ds!!, nil)) ms'
+    CRASH exists ms' n,
+      rep xp F (Flushing (popn n ds)) ms'
+    >} flushall xp ms.
+  Proof.
+    unfold flushall, rep.
+    prestep.
+    cancel.
+    rewrite nthd_0; cancel.
+    rewrite popn_0, cuttail_0; auto.
+
+    - step.
+      eapply dset_match_log_valid_selN; eauto.
+      + prestep; norm.
+        
+    - prestep; norm.
+      rewrite nthd_oob by (erewrite dset_match_length; eauto).
+      cancel. intuition.
+    - pimpl_crash; cancel.
+      rewrite popn_0; eauto.
   Qed.
 
 

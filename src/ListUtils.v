@@ -1915,3 +1915,18 @@ Proof.
   rewrite firstn_length.
   rewrite Nat.min_l; omega.
 Qed.
+
+Lemma cuttail_0 : forall A (l : list A),
+  cuttail 0 l = l.
+Proof.
+  unfold cuttail; intros.
+  rewrite firstn_oob by omega; auto.
+Qed.
+
+Lemma cuttail_oob : forall A (l : list A) n,
+  n >= length l -> cuttail n l = nil.
+Proof.
+  unfold cuttail; intros.
+  replace (length l - n) with 0 by omega.
+  simpl; auto.
+Qed.
