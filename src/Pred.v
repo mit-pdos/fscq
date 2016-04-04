@@ -1151,6 +1151,15 @@ Proof.
   unfold mem_except; intros; destruct (AEQ a' a); congruence.
 Qed.
 
+Theorem upd_mem_except : forall (m : @mem AT AEQ V) a v,
+  upd (mem_except m a) a v = upd m a v.
+Proof.
+  intros; apply functional_extensionality; intros.
+  destruct (AEQ a x); subst.
+  repeat rewrite upd_eq by auto; auto.
+  repeat rewrite upd_ne by auto; rewrite mem_except_ne; auto.
+Qed.
+
 Lemma mem_except_union_comm: forall (m1 : @mem AT AEQ V) m2 a1 a2 v1,
   a1 <> a2
   -> (a1 |-> v1)%pred m1

@@ -44,6 +44,16 @@ Section GenMem.
     repeat rewrite upd_ne; auto.
   Qed.
 
+  Theorem upd_nop: forall m (a : A) (v : V),
+    m a = Some v ->
+    upd m a v = m.
+  Proof.
+    intros; apply functional_extensionality; intros.
+    case_eq (AEQ a x); intros; subst.
+    repeat rewrite upd_eq; auto.
+    repeat rewrite upd_ne; auto.
+  Qed.
+
   Theorem upd_comm: forall m (a0 : A) (v0 : V) a1 v1, a0 <> a1
     -> upd (upd m a0 v0) a1 v1 = upd (upd m a1 v1) a0 v0.
   Proof.
