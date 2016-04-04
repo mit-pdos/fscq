@@ -63,6 +63,7 @@ Definition haddr_val_type {types} (a: haddress types) : Type :=
   end.
 
 Definition type_mem types := @mem (haddress types) haddress_dec (haddr_val_type).
+Definition type_pred types := @pred (haddress types) haddress_dec (haddr_val_type).
 
 Definition hlistmem types (h: hlist (fun (T:Type) => T) types) :
   type_mem types :=

@@ -517,9 +517,24 @@ Proof.
   intuition eauto.
 Qed.
 
+Lemma exis_to_exists : forall A P m,
+    (exists x:A, (P x m)) -> (exists x:A, P x)%pred m.
+Proof.
+  firstorder.
+Qed.
+
 Lemma pimpl_exists_r_star:
   forall T (p:T -> pred) q,
   (exists x:T, p x * q) =p=> ((exists x:T, p x) * q).
+Proof.
+  unfold pimpl, exis; unfold_sep_star; intros.
+  repeat deex.
+  do 2 eexists.
+  intuition eauto.
+Qed.
+
+Lemma pimpl_exists_r_star' : forall T (p: T -> pred) q,
+    (exists x, p x) * q =p=> (exists x, p x * q).
 Proof.
   unfold pimpl, exis; unfold_sep_star; intros.
   repeat deex.
