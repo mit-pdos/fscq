@@ -75,11 +75,21 @@ Module PaddedLog.
 
   (************* Log header *)
   Module Hdr.
-    Definition header_type := Rec.RecF ([("ndesc", Rec.WordF addrlen);
-                                         ("ndata", Rec.WordF addrlen)]).
+    Definition header_type := Rec.RecF ([("previous_ndesc", Rec.WordF addrlen);
+                                         ("previous_ndata", Rec.WordF addrlen);
+                                         ("ndesc", Rec.WordF addrlen);
+                                         ("ndata", Rec.WordF addrlen);
+                                         ("checksum", Rec.WordF hashlen)]).
     Definition header := Rec.data header_type.
-    Definition hdr := (nat * nat)%type.
-    Definition mk_header (len : hdr) : header := ($ (fst len), ($ (snd len), tt)).
+    Definition hdr := ((nat * nat) * (nat * nat) * word hashlen)%type.
+    Definition previous_length (header : hdr) := fst (fst header).
+    Definition current_length (header : hdr) := snd (fst header).
+    Definition mk_header (len : hdr) : header :=
+      ($ (fst (previous_length len)),
+      ($ (snd (previous_length len)),
+      ($ (fst (current_length len)),
+      ($ (snd (current_length len)),
+      (snd len, tt))))).
 
     Theorem hdrsz_ok : Rec.len header_type <= valulen.
     Proof.
@@ -130,11 +140,16 @@ Module PaddedLog.
     | Unsync : hdr -> hdr -> state
     .
 
+    Definition hdr_goodSize header :=
+      goodSize addrlen (fst (previous_length header)) /\
+      goodSize addrlen (snd (previous_length header)) /\
+      goodSize addrlen (fst (current_length header)) /\
+      goodSize addrlen (snd (current_length header)).
+
     Definition state_goodSize st :=
       match st with
-      | Synced n => goodSize addrlen (fst n) /\ goodSize addrlen (snd n)
-      | Unsync n o => goodSize addrlen (fst n) /\ goodSize addrlen (snd n) /\
-                      goodSize addrlen (fst o) /\ goodSize addrlen (snd o)
+      | Synced n => hdr_goodSize n
+      | Unsync n o => hdr_goodSize n /\ hdr_goodSize o
       end.
 
     Definition rep xp state : @rawpred :=
@@ -143,7 +158,9 @@ Module PaddedLog.
       | Synced n =>
          (LAHdr xp) |-> (hdr2val (mk_header n), nil)
       | Unsync n o =>
-         (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list)
+         (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list) *
+          [[ previous_length n = current_length o \/
+              previous_length o = current_length n ]]
       end)%pred.
 
     Definition xform_rep_synced : forall xp n,
@@ -159,12 +176,17 @@ Module PaddedLog.
       unfold rep; intros; simpl.
       xform; cancel.
       or_l; cancel.
+      or_l; cancel.
+      or_r; cancel.
       or_r; cancel.
     Qed.
 
     Definition read T xp cs rx : prog T := Eval compute_rec in
       let^ (cs, v) <- BUFCACHE.read (LAHdr xp) cs;
-      rx ^(cs, (# ((val2hdr v) :-> "ndesc"), # ((val2hdr v) :-> "ndata"))).
+      let header := (val2hdr v) in
+      rx ^(cs, ((# (header :-> "previous_ndesc"), # (header :-> "previous_ndata")),
+                (# (header :-> "ndesc"), # (header :-> "ndata")),
+                header :-> "checksum")).
 
     Definition write T xp n cs rx : prog T :=
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
@@ -179,7 +201,9 @@ Module PaddedLog.
     Theorem write_ok : forall xp n cs,
     {< F d old,
     PRE            BUFCACHE.rep cs d *
-                   [[ goodSize addrlen (fst n) /\ goodSize addrlen (snd n) ]] *
+                   [[ hdr_goodSize n ]] *
+                   [[ previous_length n = current_length old \/
+                      previous_length old = current_length n ]] *
                    [[ (F * rep xp (Synced old))%pred d ]]
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
@@ -206,9 +230,10 @@ Module PaddedLog.
       unfold read.
       hoare.
       subst; rewrite val2hdr2val; simpl.
-      unfold mk_header, Rec.recget'; simpl.
+      unfold hdr_goodSize in *; intuition.
       repeat rewrite wordToNat_natToWord_idempotent'; auto.
       destruct n; auto.
+      destruct p as (p1 , p2); destruct p1, p2; auto.
     Qed.
 
     Theorem sync_ok : forall xp cs,
