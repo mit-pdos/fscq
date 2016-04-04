@@ -179,6 +179,7 @@ Module GLog.
     rewrite fold_right_replay_disk_length; auto.
   Qed.
 
+
   (************* state and rep invariant *)
 
   Record memstate := mk_memstate {
@@ -203,7 +204,7 @@ Module GLog.
     Map.Equal vm (fold_right replay_mem vmap0 ts).
 
   Definition ents_valid d ents :=
-    KNoDup ents /\ log_valid ents d.
+    log_valid ents d.
 
   Definition dset_match ds ts :=
     Forall (ents_valid (fst ds)) ts /\ ReplaySeq ds ts.
@@ -310,18 +311,6 @@ Module GLog.
     apply H.
   Qed.
 
-  Lemma diskset_vmap_find_ptsto : forall vm ts ds a w v vs F,
-    vmap_match vm ts ->
-    dset_match ds ts ->
-    Map.find a vm = Some w ->
-    (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
-    w = v.
-  Proof.
-    intros.
-    eapply list2nmem_sel in H2.
-  Admitted.
-
-
   Lemma diskset_vmap_find_none : forall ds ts vm a v vs F,
     dset_match ds ts ->
     vmap_match vm ts ->
@@ -337,20 +326,47 @@ Module GLog.
     erewrite surjective_pairing at 1.
     erewrite <- list2nmem_sel; eauto; simpl; auto.
 
+    rewrite H0 in H1.
     eapply IHts.
     split; eauto.
     eapply Forall_cons2; eauto.
     apply MapFacts.Equal_refl.
-    rewrite H0 in H1.
     eapply replay_mem_find_none_mono; eauto.
 
     rewrite latest_cons in *.
     eapply ptsto_replay_disk_not_in'; [ | | eauto].
-    rewrite H0 in H1.
     eapply map_find_replay_mem_not_in; eauto.
     denote Forall as Hx; apply Forall_inv in Hx; apply Hx.
   Qed.
 
+
+  Lemma replay_seq_replay_mem : forall ds ts,
+    ReplaySeq ds ts ->
+    Forall (ents_valid (fst ds)) ts ->
+    replay_disk (Map.elements (fold_right replay_mem vmap0 ts)) (fst ds) = latest ds.
+  Proof.
+    induction 1; simpl in *; intuition.
+    rewrite latest_cons; subst.
+    unfold latest in *; simpl in *.
+    rewrite <- IHReplaySeq by (eapply Forall_cons2; eauto).
+    rewrite replay_disk_replay_mem; auto.
+    inversion H1; subst.
+    eapply log_valid_length_eq; eauto.
+    rewrite replay_disk_length; auto.
+  Qed.
+
+  Lemma diskset_vmap_find_ptsto : forall ds ts vm a w v vs F,
+    dset_match ds ts ->
+    vmap_match vm ts ->
+    Map.find a vm = Some w ->
+    (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
+    w = v.
+  Proof.
+    unfold vmap_match, dset_match; intuition.
+    eapply replay_disk_eq; eauto.
+    eexists; rewrite H0.
+    rewrite replay_seq_replay_mem; eauto.
+  Qed.
 
 
   (************* correctness theorems *)

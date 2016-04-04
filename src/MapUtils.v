@@ -414,6 +414,17 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
 
   End MapUtilsFacts.
 
+
+
+  (* Coq bug : instance doesn't work well with section arguments *)
+  Instance map_elements_proper {V} :
+    Proper (Map.Equal ==> eq) (@Map.elements V).
+  Proof.
+    unfold Proper, respectful; intros; subst.
+    apply mapeq_elements; auto.
+  Qed.
+
+
 End MapDefs.
 
 

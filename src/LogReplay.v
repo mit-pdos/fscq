@@ -948,6 +948,17 @@ Module LogReplay.
     eapply H0; eauto.
   Qed.
 
+  Lemma log_valid_length_eq : forall ents d d',
+    log_valid ents d ->
+    length d = length d' ->
+    log_valid ents d'.
+  Proof.
+    unfold log_valid; intuition.
+    eapply H2; eauto.
+    substl (length d').
+    eapply H2; eauto.
+  Qed.
+
   Lemma replay_disk_replay_mem : forall l m d,
     log_valid l (replay_disk (Map.elements m) d) ->
     replay_disk l (replay_disk (Map.elements m) d) =
