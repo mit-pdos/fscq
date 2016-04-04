@@ -35,7 +35,7 @@ Module WBCACHE.
   Definition cachepred (cache : Map.t valu) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
     match Map.find a cache with
     | None => a |-> vs
-    | Some v => (exists vsdisk, a |-> vsdisk * [[ vs = (v, vsmerge vsdisk) ]])%pred
+    | Some v => (exists vsdisk old_cache_writes, a |-> vsdisk * [[ vs = (v, old_cache_writes ++ vsmerge vsdisk) ]])%pred
     end.
 
   Lemma cachepred_remove_invariant : forall a a' v cache,
@@ -127,7 +127,7 @@ Module WBCACHE.
     CRASH
       (* This would be a good place to use XCRASH.. *)
       hidden_pred (exists wcs' d', rep wcs' d' *
-      [[ (F * a |=> v)%pred d' \/ (F * a |-> (v, vold))%pred d' ]])%pred
+      [[ (F * a |=> v)%pred d' \/ exists n, (F * a |-> (v, skipn n vold))%pred d' ]])%pred
     >} sync a wcs.
   Proof.
     unfold sync, rep.
@@ -156,6 +156,7 @@ Module WBCACHE.
         rewrite MapFacts.remove_eq_o by reflexivity. pred_apply; cancel.
         rewrite mem_pred_pimpl_except; cancel. apply cachepred_remove_invariant; auto.
       right.
+      exists (length dummy). rewrite skipn_app.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
       unfold hidden_pred; norm; unfold stars; simpl.
@@ -177,6 +178,7 @@ Module WBCACHE.
       apply mem_pred_absorb. unfold cachepred at 2.
         rewrite H. pred_apply; cancel.
       right. subst.
+      exists (length dummy). rewrite skipn_app. instantiate (l := nil); simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
       instantiate (wcs'0 := Build_wbcachestate cs' (Map.remove a (WbBuf wcs))).
@@ -186,6 +188,7 @@ Module WBCACHE.
         rewrite MapFacts.remove_eq_o by reflexivity. pred_apply; cancel.
         rewrite mem_pred_pimpl_except; cancel. apply cachepred_remove_invariant; auto.
       right. subst.
+      exists (length dummy). rewrite skipn_app.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
     - prestep; norm'l.
       eapply mem_pred_extract in H6; [ | eapply ptsto_valid'; eauto ].
@@ -207,6 +210,7 @@ Module WBCACHE.
       apply mem_pred_absorb. unfold cachepred at 2.
         rewrite H. pred_apply; cancel.
       right. subst.
+      exists 0; simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
       instantiate (wcs'0 := Build_wbcachestate cs' (WbBuf wcs)).
@@ -215,6 +219,44 @@ Module WBCACHE.
       apply mem_pred_absorb. unfold cachepred at 2.
         rewrite H. pred_apply; cancel.
       left. subst.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+  Qed.
+
+  Theorem write_ok : forall wcs a v,
+    {< d (F : rawpred) v0,
+    PRE
+      rep wcs d * [[ (F * a |-> v0)%pred d ]]
+    POST RET:wcs
+      exists d', rep wcs d' * [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
+    CRASH
+      exists wcs' d', rep wcs' d' *
+      [[ (F * a |-> v0)%pred d' \/ (F * a |-> (v, vsmerge v0))%pred d' ]]
+    >} write a v wcs.
+  Proof.
+    unfold write, rep.
+    intros.
+    case_eq (Map.find a (WbBuf wcs)); intros.
+    - step.
+      eapply mem_pred_extract in H6; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in H6. rewrite H in H6. destruct_lift H6.
+      step.
+      pred_apply. rewrite <- mem_pred_absorb. subst; simpl.
+      unfold cachepred at 3. rewrite MapFacts.add_eq_o by reflexivity. cancel.
+      apply mem_pred_pimpl_except. intros; apply cachepred_add_invariant; auto.
+      instantiate (l := w :: dummy); unfold vsmerge; simpl.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+    - step.
+      eapply mem_pred_extract in H6; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in H6. rewrite H in H6.
+      step.
+      subst; simpl.
+      pred_apply.
+      rewrite <- mem_pred_absorb with (a:=a). unfold cachepred at 3.
+        rewrite MapFacts.add_eq_o by auto. cancel.
+      apply mem_pred_pimpl_except. intros; apply cachepred_add_invariant; auto.
+
+      instantiate (l := nil); simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
   Qed.
 
