@@ -29,9 +29,47 @@ HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 J ?= 4
 
+OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
+		   ocamlfuse/Unix_util.ml \
+		   ocamlfuse/Fuse_bindings.ml \
+		   ocamlfuse/Fuse_lib.ml \
+		   ocamlfuse/Fuse.ml
+OCAMLFUSE_MLI	:= ocamlfuse/Fuse.mli \
+		   ocamlfuse/Fuse_bindings.mli
+
+OCAMLFUSE_CMX	:= $(patsubst %.ml,%.cmx,$(OCAMLFUSE_ML))
+OCAMLFUSE_DEP	:= $(patsubst %.ml,%.d,$(OCAMLFUSE_ML)) \
+		   $(patsubst %.mli,%.di,$(OCAMLFUSE_MLI))
+
 .PHONY: coq proof clean
 
 all: fuse mkfs
+
+-include $(OCAMLFUSE_DEP)
+
+%.mli %.ml %_stubs.c: %.idl
+	camlidl -header $<
+
+%.d: %.ml
+	ocamldep $< > $@
+
+%.di: %.mli
+	ocamldep $< > $@
+
+ocamlfuse/%.o: ocamlfuse/%.c
+	ocamlc -c -ccopt '-fPIC -D_FILE_OFFSET_BITS=64 -I. -pthread -DPIC -DNATIVE_CODE -o $@' $<
+
+ocamlfuse/libFuse_stubs.a: ocamlfuse/Fuse_bindings_stubs.o ocamlfuse/Unix_util_stubs.o ocamlfuse/Fuse_util.o
+	ar rcs $@ $^
+
+%.cmx: %.ml
+	ocamlopt -I ocamlfuse -c -thread $<
+
+%.cmi: %.mli
+	ocamlopt -I ocamlfuse -c -thread $<
+
+ocamlfuse/Fuse.cmxa: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
+	ocamlopt -a -thread -linkall -cclib -lFuse_stubs -cclib -lfuse -cclib -lcamlidl -o $@ $(OCAMLFUSE_CMX)
 
 %: %.ml $(VS_ML)
 	rm -f $@
@@ -92,6 +130,11 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
 clean:
-	rm -rf codegen coqbuild _build fstest hstest gotest disk.img fuse mkfs *.o *.hi
+	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \
+	       fuse mkfs *.o *.hi ocamlfuse/*.d ocamlfuse/*.di \
+	       ocamlfuse/*.cmi ocamlfuse/*.cmx ocamlfuse/*.cmo \
+	       ocamlfuse/*.o ocamlfuse/Fuse_bindings_stubs.c \
+	       ocamlfuse/Fuse_bindings.h ocamlfuse/Fuse_bindings.ml \
+	       ocamlfuse/libFuse_stubs.a
 
-.PRECIOUS: hscgen/%.hs
+.PRECIOUS: hscgen/%.hs %_stubs.c

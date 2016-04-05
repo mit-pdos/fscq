@@ -21,3 +21,12 @@ Makefile.coqproof
 /top-specs.v
 /all-specs.v
 /hscgen
+/ocamlfuse/Fuse_bindings.h
+/ocamlfuse/Fuse_bindings.ml
+/ocamlfuse/Fuse_bindings_stubs.c
+/ocamlfuse/*.d
+/ocamlfuse/*.di
+/ocamlfuse/*.a
+*.cmi
+*.cmx
+*.cmxa
