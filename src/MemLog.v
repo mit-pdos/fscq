@@ -1168,22 +1168,23 @@ Module MLog.
 
   Definition recover_either_pred xp Fold Fnew :=
     (exists ms d ents,
-      ( exists na, rep_inner xp (Synced na d) ms *
-          [[[ d ::: Fold ]]]
-     \/ exists na, rep_inner xp (Synced na (replay_disk ents d)) ms *
-          [[[ replay_disk ents d ::: Fnew ]]]
+       ( exists na, rep_inner xp (Synced na d) ms *
+          [[[ d ::: Fold ]]] )
+     \/( exists na, rep_inner xp (Synced na (replay_disk ents d)) ms *
+          [[[ replay_disk ents d ::: Fnew ]]] )
      \/ rep_inner xp (Flushing d ents) ms *
           [[[ d ::: Fold ]]] *
           [[[ replay_disk ents d ::: Fnew ]]]
      \/ rep_inner xp (Applying d) ms *
           [[[ d ::: Fold ]]]
-      ))%pred.
+      )%pred.
 
   Definition after_crash_pred xp Fold Fnew:=
     (exists na ms d, 
       rep_inner xp (Synced na d) ms *
       ([[[ d ::: crash_xform Fold ]]] \/ [[[ d ::: crash_xform Fnew ]]])
     )%pred.
+
 
   Hint Rewrite crash_xform_arrayN
     DLog.xform_rep_synced  DLog.xform_rep_truncated

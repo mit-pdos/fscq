@@ -403,6 +403,28 @@ Module LOG.
   Qed.
 
 
+  Definition intact xp F old :=
+    (exists ms,
+      rep xp F (NoTxn old) ms \/
+      rep xp F (ApplyingTxn old) ms \/
+      exists new, rep xp F (ActiveTxn old new) ms)%pred.
+
+  Lemma active_txn_intact : forall xp F old new ms,
+    rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Lemma applying_txn_intact : forall xp F m ms,
+    rep xp F (ApplyingTxn m) ms =p=> intact xp F m.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Definition recover_either_pred xp F Fold Fnew :=
+    (exists cs raw, BUFCACHE.rep cs raw *
+     [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]])%pred.
+
   Theorem recover_ok: forall xp F cs,
     {< raw Fold Fnew,
     PRE
@@ -421,23 +443,6 @@ Module LOG.
   Qed.
 
 
-  Definition intact xp F old :=
-    (exists ms,
-      rep xp F (NoTxn old) ms \/
-      rep xp F (ApplyingTxn old) ms \/
-      exists new, rep xp F (ActiveTxn old new) ms)%pred.
-
-  Lemma active_txn_intact : forall xp F old new ms,
-    rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
-  Proof.
-    unfold intact; cancel.
-  Qed.
-
-  Lemma applying_txn_intact : forall xp F m ms,
-    rep xp F (ApplyingTxn m) ms =p=> intact xp F m.
-  Proof.
-    unfold intact; cancel.
-  Qed.
 
   Hint Resolve active_txn_intact applying_txn_intact.
   Hint Extern 0 (okToUnify (intact _ _ _) (intact _ _ _)) => constructor : okToUnify.

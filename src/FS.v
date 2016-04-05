@@ -29,6 +29,7 @@ Import ListNotations.
 
 Parameter cachesize : nat.
 
+(*
 Definition compute_xparams (data_bitmaps inode_bitmaps : addr) :=
   (* Block $0 stores the superblock (layout information).
    * The other block numbers, except for Log, are relative to
@@ -80,6 +81,7 @@ Definition mkfs T data_bitmaps inode_bitmaps rx : prog T :=
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     rx (OK ^(mscs, fsxp))
   end.
+*)
 
 Definition recover {T} rx : prog T :=
   cs <- BUFCACHE.init_recover (if eq_nat_dec cachesize 0 then 1 else cachesize);
@@ -89,20 +91,22 @@ Definition recover {T} rx : prog T :=
 
 Local Opaque BUFCACHE.rep.
 
+
 Theorem recover_ok :
-  {< fsxp old newpred,
+  {< fsxp Fold Fnew,
   PRE
-    crash_xform (LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred)
+    crash_xform (LOG.recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew)
   POST RET:^(mscs, fsxp')
     [[ fsxp' = fsxp ]] *
-    (LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction old) mscs \/
-     exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction new) mscs *
-     [[ newpred (list2mem new) ]])
+    (exists old, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn old) mscs *
+       [[[ old ::: crash_xform Fold ]]]  \/
+     exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn new) mscs *
+       [[[ new ::: crash_xform Fnew ]]])
   CRASH
-    LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) old newpred
+    LOG.recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew
   >} recover.
 Proof.
-  unfold recover, LOG.would_recover_either_pred; intros.
+  unfold recover, LOG.recover_either_pred; intros.
 
   eapply pimpl_ok2; eauto with prog.
   intros. norm'l. unfold stars; simpl.
@@ -110,36 +114,45 @@ Proof.
            setoid_rewrite crash_xform_sep_star_dist ||
            setoid_rewrite crash_xform_lift_empty ).
   cancel.
-
+  apply sep_star_comm.
+  eauto.
   destruct (eq_nat_dec cachesize 0); congruence.
 
   step.
   autorewrite with crash_xform. cancel.
 
   eapply pimpl_ok2; eauto with prog.
-  unfold LOG.would_recover_either_pred.
+  unfold LOG.recover_either_pred.
   cancel.
 
+  rewrite crash_xform_idem.
   set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
   set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
-  cancel; eauto.
+  eauto.
 
   step.
-  unfold LOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
-  unfold LOG.rep. setoid_rewrite crash_xform_sb_rep. cancel.
-  subst. pimpl_crash. cancel. autorewrite with crash_xform. cancel.
+  unfold LOG.rep, MemLog.MLog.rep; cancel.
+  or_l; cancel.
+  setoid_rewrite crash_xform_sb_rep; cancel. eauto.
 
+  unfold LOG.rep, MemLog.MLog.rep; cancel.
+  or_r; cancel.
+  setoid_rewrite crash_xform_sb_rep; cancel. eauto.
+
+  subst; pimpl_crash.
+  autorewrite with crash_xform; cancel.
+  rewrite crash_xform_idem; auto.
+  rewrite crash_xform_idem; auto.
+
+  pimpl_crash; norml; unfold stars; simpl.
   autorewrite with crash_xform.
-  rewrite LOG.after_crash_pred'_would_recover_either_pred'.
-  cancel.
-
-  pimpl_crash. norm'l; unfold stars; simpl. autorewrite with crash_xform.
-  norm. cancel. intuition.
+  norm; [ cancel | intuition ].
   eapply pred_apply_crash_xform_pimpl; eauto.
-  autorewrite with crash_xform.
-  rewrite LOG.after_crash_pred'_would_recover_either_pred'.
-  cancel.
+  rewrite crash_xform_idem; auto.
+
+  Unshelve. eauto.
 Qed.
+
 
 Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
 
@@ -154,7 +167,7 @@ Definition file_get_sz T fsxp inum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, INODE.ISize attr).
+  rx ^(mscs, attr :-> "bytes").
 
 Theorem file_getattr_ok : forall fsxp inum mscs,
   {< m pathname Fm Ftop tree f,
