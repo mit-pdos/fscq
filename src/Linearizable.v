@@ -104,6 +104,11 @@ Section Linearizability.
       exists (a, owner), v1, v2; intuition.
   Qed.
 
+  Definition lin_release (m: linear_mem) tid a : linear_mem :=
+    fun ao =>
+      if AEQ a (fst ao) then m (fst ao, Owned tid)
+      else m ao.
+
 End Linearizability.
 
 Instance lin_pred_pimpl : forall A AEQ V owner,
@@ -243,6 +248,18 @@ Proof.
     | [ H: (?a = ?a -> False) -> _ |- _ ] => clear H
     end.
     intuition congruence.
+Qed.
+
+Theorem linearized_consistent_release : forall A AEQ V (m: @linear_mem A AEQ V)
+  locks tid a,
+  linearized_consistent m locks ->
+  locks a = NoOwner ->
+  linearized_consistent (lin_release m tid a) locks.
+Proof.
+  unfold linearized_consistent, lin_release; intros.
+  specialize_t A.
+  destruct matches; cbn in *;
+    congruence.
 Qed.
 
 Local Definition linearized_consistent' A AEQ V (m: @linear_mem A AEQ V) (locks: A -> BusyFlagOwner) : Prop :=

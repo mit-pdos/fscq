@@ -91,6 +91,22 @@ Proof.
   autorewrite with map; auto.
 Qed.
 
+Theorem get_free_lock : forall s a a',
+  AOT.eq a a' ->
+  get (free_lock s a) a' = NoOwner.
+Proof.
+  repeat autounfold with locks; intros;
+  autorewrite with map; auto.
+Qed.
+
+Theorem get_free_lock_other : forall s a a',
+  ~AOT.eq a a' ->
+  get (free_lock s a) a' = get s a'.
+Proof.
+  repeat autounfold with locks; intros;
+  autorewrite with map; auto.
+Qed.
+
 End Updates.
 
 Definition is_open a m : {mem m a = Open} + {mem m a <> Open}.

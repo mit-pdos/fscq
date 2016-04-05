@@ -792,4 +792,90 @@ Proof.
   eauto.
 Admitted.
 
+Definition unlock {T} a rx : prog _ _ T :=
+  tid <- GetTID;
+  l <- Get MLocks;
+  let l' := set_open l a in
+  Assgn MLocks l';;
+  GhostUpdate (fun s =>
+    let l := get GLocks s in
+    let l' := free_lock l a in
+    let vd := get GDisk s in
+    let vd' := lin_release vd tid a in
+    let vd0 := get GDisk0 s in
+    let vd0' := match vd (a, Owned tid) with
+                | Some (v, _) => upd vd0 a v
+                | None => vd0
+                end in
+    set GDisk0 vd0'
+      (set GDisk vd'
+      (set GLocks l' s)));;
+  rx tt.
+
+Hint Rewrite get_free_lock using (solve [ auto ] ) : locks.
+Hint Rewrite get_free_lock_other using (solve [ auto ] ) : locks.
+
+Theorem linearized_consistent_free : forall V (m: @linear_mem addr _ V)
+  locks a tid,
+  linearized_consistent m (Locks.get locks) ->
+  linearized_consistent (lin_release m tid a) (Locks.get (free_lock locks a)).
+Proof.
+  unfold linearized_consistent, lin_release; intros.
+  specialize (H a0).
+  destruct (weq a a0); subst;
+    autorewrite with locks; intros; cbn;
+    destruct matches.
+Qed.
+
+Hint Resolve linearized_consistent_free.
+
+Theorem unlock_ok : forall a,
+    stateS TID: tid |-
+    {{ Fs F F0 LF vd0 vd v v0,
+     | PRE d m s0 s:
+         hlistmem s |= Fs * haddr GDisk0 |-> vd0 * rep vd /\
+         Inv m s d /\
+         vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
+         vd0 |= F0 * a |-> v0 /\
+         R tid s0 s
+     | POST d' m' s0' s' _:
+        exists vd0' vd',
+           hlistmem s' |= Fs * haddr GDisk0 |-> vd0' * rep vd' /\
+           Inv m' s' d' /\
+           vd' |= F * (a, NoOwner) |-> (v, None) *
+             lin_pred (Owned tid) (cache_locked tid s LF) /\
+           vd0' |= F0 * a |-> v /\
+           s0' = s0
+    }} unlock a.
+Proof.
+  hoare pre simplify with try solve [ finish ].
+  eapply cache_rep_refold; eauto.
+
+  unfold pred_in.
+  rewrite hlistupd_memupd.
+  rotate_left.
+  rotate_left.
+  eapply ptsto_upd'.
+  rewrite hlistupd_memupd.
+  rotate_right.
+  rotate_right.
+  eapply ptsto_upd'.
+  rewrite hlistupd_memupd.
+  rotate_right.
+  eapply ptsto_upd'.
+  rotate_left.
+  eauto.
+
+  finish.
+  unfold cacheI; repeat descend; autorewrite with hlist; eauto.
+  admit.
+  admit.
+
+  admit. (* cache_rep after lin_release *)
+  admit. (* important: GDisk0 has been updated at a *)
+
+  (* oops, can't promise Inv holds *)
+  give_up.
+Abort.
+
 End Cache.
