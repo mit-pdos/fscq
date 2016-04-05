@@ -136,6 +136,64 @@ Import Transitions.
 Definition M := EventCSL.M Mcontents.
 Definition S := EventCSL.S Scontents.
 
+Definition rep vd : type_pred Scontents :=
+  (exists c locks, haddr GCache |-> c *
+              haddr GLocks |-> locks *
+              haddr GDisk |-> vd)%pred.
+
+Lemma cache_rep_unfold : forall s Fs (vd: linearized DISK),
+    (s |= Fs * rep vd ->
+     exists (c: linearized BlockFun) (locks: Locks.S),
+       s |= Fs *
+       haddr GCache |-> c *
+       haddr GLocks |-> locks *
+       haddr GDisk |-> vd)%judgement.
+Proof.
+  unfold pred_in, rep; intros.
+  apply sep_star_comm in H.
+  apply pimpl_exists_r_star' in H.
+  apply exis_to_exists in H; deex.
+  apply pimpl_exists_r_star' in H.
+  apply exis_to_exists in H; deex.
+  exists x, x0.
+  pred_apply; cancel.
+Qed.
+
+Lemma cache_rep_refold : forall s Fs (vd: linearized DISK)
+                           (c: linearized BlockFun) (locks: Locks.S),
+    (s |= Fs *
+    haddr GCache |-> c *
+    haddr GLocks |-> locks
+    * haddr GDisk |-> vd ->
+     s |= Fs * rep vd)%judgement.
+Proof.
+  unfold pred_in, rep; intros.
+  apply sep_star_comm.
+  apply pimpl_exists_r_star.
+  exists c.
+  apply pimpl_exists_r_star.
+  exists locks.
+  apply sep_star_comm.
+  apply sep_star_assoc_1.
+  rewrite <- sep_star_assoc_1.
+  assumption.
+Qed.
+
+Ltac no_pred_in thm :=
+  let t := type of thm in
+  let t' := eval unfold pred_in in t in
+  exact (thm:t').
+
+Hint Resolve cache_rep_refold.
+Hint Resolve ltac:(no_pred_in cache_rep_refold).
+
+Ltac cache_rep_unfold :=
+    idtac;
+    match goal with
+    | [ H: (hlistmem _ |= _ * rep _)%judgement |- _ ] =>
+      apply cache_rep_unfold in H; repeat deex
+    end.
+
 Lemma others_cache_relation_holds : forall tid,
     rimpl (othersR R tid) (othersR cacheR tid).
 Proof.
@@ -238,6 +296,7 @@ Ltac simplify_reduce_step :=
           || subst
           || invariant_unfold
           || specific_owner
+          || cache_rep_unfold
           || unf.
 
 Ltac simplify_step :=
@@ -277,7 +336,6 @@ Ltac finish :=
   try time "congruence" (unfold wr_set, const in *; congruence)
   (* pred_solve has been removed since it took a long time and never succeeded *)
   ).
-
 
 Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
   tid <- GetTID;
@@ -357,48 +415,6 @@ Section LinearizedPreservation.
 
 End LinearizedPreservation.
 
-Definition rep vd : type_pred Scontents :=
-  (exists c locks, haddr GCache |-> c *
-              haddr GLocks |-> locks *
-              haddr GDisk |-> vd)%pred.
-
-Lemma cache_rep_unfold : forall s Fs (vd: linearized DISK),
-    (s |= Fs * rep vd ->
-     exists (c: linearized BlockFun) (locks: Locks.S),
-       s |= Fs *
-       haddr GCache |-> c *
-       haddr GLocks |-> locks *
-       haddr GDisk |-> vd)%judgement.
-Proof.
-  unfold pred_in, rep; intros.
-  apply sep_star_comm in H.
-  apply pimpl_exists_r_star' in H.
-  apply exis_to_exists in H; deex.
-  apply pimpl_exists_r_star' in H.
-  apply exis_to_exists in H; deex.
-  exists x, x0.
-  pred_apply; cancel.
-Qed.
-
-Lemma cache_rep_refold : forall s Fs (vd: linearized DISK)
-                           (c: linearized BlockFun) (locks: Locks.S),
-    (s |= Fs *
-    haddr GCache |-> c *
-    haddr GLocks |-> locks
-    * haddr GDisk |-> vd ->
-     s |= Fs * rep vd)%judgement.
-Proof.
-  unfold pred_in, rep; intros.
-  apply sep_star_comm.
-  apply pimpl_exists_r_star.
-  exists c.
-  apply pimpl_exists_r_star.
-  exists locks.
-  apply sep_star_comm.
-  apply sep_star_assoc_1.
-  rewrite <- sep_star_assoc_1.
-  assumption.
-Qed.
 
 Lemma star_pimpl_r : forall AT AEQ V (F: @pred AT AEQ V) P P' m,
     P =p=> P' ->
@@ -436,8 +452,6 @@ Proof.
   step pre simplify with try solve [ finish ].
   step pre simplify with try solve [ finish ].
 
-  apply cache_rep_unfold in H; repeat deex.
-
   all: assert (view (Owned tid) vd a = Some (v, None)) by admit.
   all: assert (vd (a, Owned tid) = Some (v, None)) by assumption.
   assert (Locks.get (get GLocks s) a = Owned tid) by admit.
@@ -459,7 +473,6 @@ Proof.
   unfold pred_in.
   finish.
   assert (vd (a, Owned tid) = Some (v, None)) by admit.
-  apply cache_rep_unfold in H; repeat deex.
   rewrite (haddr_ptsto_get H) in *.
   simpl_match.
   unfold cacheI; autorewrite with hlist; repeat descend; auto.
@@ -469,7 +482,6 @@ Proof.
   rewrite H12.
   admit. (* didn't change values *)
 
-  apply cache_rep_unfold in H; repeat deex.
   rewrite (haddr_ptsto_get H) in *. (* TODO: put this in simplify *)
   unfold view in H17.
   simpl_match.
@@ -499,7 +511,6 @@ Proof.
    *)
   unfold view in H17.
   eapply cache_rep_refold.
-  apply cache_rep_unfold in H; repeat deex.
   rewrite (haddr_ptsto_get H) in *; simpl_match.
   unfold StateR' in *.
   rewrite hlistupd_memupd.
@@ -553,20 +564,6 @@ Definition read {T} a rx : prog Mcontents Scontents T :=
 
 Hint Extern 1 {{locked_AsyncRead _; _}} => apply locked_AsyncRead_ok : prog.
 
-Ltac no_pred_in thm :=
-  let t := type of thm in
-  let t' := eval unfold pred_in in t in
-  exact (thm:t').
-
-Hint Resolve cache_rep_refold.
-Hint Resolve ltac:(no_pred_in cache_rep_refold).
-
-Ltac cache_rep_unfold :=
-    idtac;
-    match goal with
-    | [ H: (hlistmem _ |= _ * rep _)%judgement |- _ ] =>
-      apply cache_rep_unfold in H; repeat deex
-    end.
 
 Theorem locked_read_ok : forall a,
   stateS TID: tid |-
@@ -587,7 +584,7 @@ Theorem locked_read_ok : forall a,
          R tid s0' s'
   }} read a.
 Proof.
-  hoare pre (simplify' ltac:(simplify_step || cache_rep_unfold)) with try solve [ finish ];
+  hoare pre simplify with try solve [ finish ];
     try time "final eauto" solve [ eauto ].
 
   eapply H3; eauto.
@@ -655,8 +652,7 @@ Theorem locked_write_ok : forall a v,
     }} write a v.
 Proof.
   time "hoare"
-    hoare pre (time "simplify"
-      simplify' ltac:(simplify_step || cache_rep_unfold)) with try
+    hoare pre (time "simplify" simplify) with try
         time "finish" solve [ finish ].
 
   match goal with
@@ -681,6 +677,119 @@ Proof.
   finish.
 
   unfold cacheR; repeat descend; autorewrite with hlist; eauto.
+Admitted.
+
+Definition lock {T} (a:addr) rx : prog _ _ T :=
+  tid <- GetTID;
+  wait_for MLocks (Locks.is_open a) a;;
+  l <- Get MLocks;
+  let l' := Locks.set_locked l a in
+  Assgn MLocks l';;
+  GhostUpdate (fun s =>
+    let l := get GLocks s in
+    let l' := Locks.add_lock l a tid in
+    set GLocks l' s);;
+  rx tt.
+
+Theorem lock_ok : forall a,
+    stateS TID: tid |-
+    {{ Fs Fs' F LF F' vd,
+     | PRE d m s0 s:
+         hlistmem s |= Fs * rep vd /\
+         Inv m s d /\
+         vd |= F * (a, Owned tid) |->? * lin_pred (Owned tid) (cache_locked tid s LF) /\
+         preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
+         preserves (get GDisk) (star (othersR R tid)) (F * (a, Owned tid) |->?) F' /\
+         R tid s0 s
+     | POST d' m' s0' s' _:
+         exists vd' v,
+           hlistmem s' |= Fs' * rep vd' /\
+           Inv m' s' d' /\
+           vd' |= F' * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
+           R tid s0' s'
+    }} lock a.
+Proof.
+  hoare pre simplify with try solve [ finish ].
+  eapply pimpl_ok.
+  apply wait_for_ok.
+  intros; apply R_trans; auto.
+  simplify; try solve [ finish ]; eauto.
+
+  hoare pre simplify with try solve [ finish ].
+  eapply cache_rep_refold.
+  rewrite hlistupd_memupd.
+
+  unfold pred_in.
+
+  Ltac rotate_right :=
+    eapply pimpl_apply;
+    [ rewrite sep_star_comm;
+    repeat rewrite <- sep_star_assoc_1;
+    apply pimpl_refl | ].
+
+  Ltac rotate_left :=
+    eapply pimpl_apply;
+    [ repeat rewrite <- sep_star_assoc_2;
+      rewrite sep_star_comm;
+      repeat rewrite <- sep_star_assoc_1;
+      apply pimpl_refl | ].
+
+  rotate_right.
+  eapply ptsto_upd'.
+  rotate_left.
+  eapply pimpl_apply;
+    [ repeat rewrite <- sep_star_assoc_2;
+      apply pimpl_refl | ].
+  eapply H3.
+
+  eapply pimpl_apply;
+  [ repeat rewrite <- sep_star_assoc_1;
+    apply pimpl_refl | ].
+  eauto.
+  eauto.
+
+  finish.
+  unfold cacheI; repeat descend; autorewrite with hlist; eauto.
+  rewrite H17.
+  (* bizarrely, destruct weq triggers a Coq bug:
+  get "Anomaly: Universe Top.xxxx undefined. Please report." on calling Admitted *)
+  case_eq (weq a a0); intros; subst;
+    match goal with
+    | [ H: weq _ _ = _ |- _] => clear H
+    end.
+  rewrite Locks.get_add_lock by auto; auto.
+  assert (Locks.get (get GLocks s2) a0 = NoOwner) by admit. (* this is a,
+    which is unlocked after wait_for *)
+  rewrite H31.
+  admit. (* follows from linearized_consistent *)
+  rewrite Locks.get_add_lock_other by auto; auto.
+  apply Locks.rep_stable_add; eauto.
+
+  admit. (* linearized_consistent after adding a lock and doing nothing else *)
+
+  (* why is this postcondition goal about vd and s? *)
+    (* ah, preserves is the problem: it makes too strong a statement.
+    If preserves R F F' holds, then R must keep an arbitrary other frame P
+    true over R; in particular, this means if P fully specifies the memory, then
+    R better leave it unchanged. In this case we set P to rep; while rep vd
+    doesn't get preserved by R, exists vd, rep vd does. *)
+  admit.
+  eapply R_trans.
+  eapply star_two_step; eauto.
+  finish.
+  unfold cacheR; repeat descend; autorewrite with hlist; eauto.
+
+  case_eq (weq a a0); intros; subst;
+    match goal with
+    | [ H: weq _ _ = _ |- _] => clear H
+    end.
+  rewrite Locks.get_add_lock by auto.
+  assert (Locks.get (get GLocks s2) a0 = NoOwner) by admit.
+    (* again, unlocked after wait_for *)
+  rewrite H31.
+  eauto.
+  rewrite Locks.get_add_lock_other by auto.
+  eauto.
 Admitted.
 
 End Cache.

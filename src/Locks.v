@@ -75,6 +75,29 @@ Proof.
   destruct (AOT.eq_dec a a0); autorewrite with map in *; eauto.
 Qed.
 
+Theorem get_add_lock : forall s a a' tid,
+  a = a' ->
+  get (add_lock s a tid) a' = Owned tid.
+Proof.
+  repeat autounfold with locks; intros; subst;
+  autorewrite with map; auto.
+Qed.
+
+Theorem get_add_lock_other : forall s a a' tid,
+  ~AOT.eq a a' ->
+  get (add_lock s a tid) a' = get s a'.
+Proof.
+  repeat autounfold with locks; intros;
+  autorewrite with map; auto.
+Qed.
+
 End Updates.
+
+Definition is_open a m : {mem m a = Open} + {mem m a <> Open}.
+Proof.
+  destruct (mem m a);
+    left + right;
+    congruence.
+Defined.
 
 End Make.
