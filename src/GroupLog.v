@@ -581,7 +581,7 @@ Module GLog.
     rewrite nthd_oob by (apply le_refl).
     apply MLog.recover_before_either.
     rewrite popn_oob; auto.
-    instantiate (1 := mk_memstate vmap0 nil (MLog.mk_memstate vmap0 (BUFCACHE.cache0 0))); simpl.
+    eassign (mk_memstate vmap0 nil (MLog.mk_memstate vmap0 (BUFCACHE.cache0 0))); simpl.
     apply dset_match_nil.
   Qed.
 
@@ -617,7 +617,7 @@ Module GLog.
     step; subst.
     eapply diskset_vmap_find_none; eauto.
     pimpl_crash; norm.
-    instantiate (ms'0 := mk_memstate (MSVMap ms) (MSTxns ms) ms').
+    eassign (mk_memstate (MSVMap ms) (MSTxns ms) ms').
     cancel.
     intuition.
   Qed.
@@ -686,7 +686,7 @@ Module GLog.
 
       (* crashes *)
       subst; pimpl_crash. norm.
-      instantiate (1 := mk_memstate vmap0 (cuttail m (MSTxns ms)) a).
+      eassign (mk_memstate vmap0 (cuttail m (MSTxns ms)) a).
       simpl; rewrite last_cuttail_selN by auto; cancel.
       simpl; intuition; eauto.
 
@@ -734,7 +734,7 @@ Module GLog.
     or_l.
     apply recover_before_any.
     unfold rep; or_r; cancel.
-    instantiate (1 := mk_memstate vmap0 nil a0); simpl; cancel.
+    eassign (mk_memstate vmap0 nil a0); simpl; cancel.
     all: simpl; eauto.
     cancel; or_l; cancel.
   Qed.
@@ -769,7 +769,7 @@ Module GLog.
     rewrite <- recover_before_any.
     apply MLog.synced_recover_before.
     unfold rep; or_r; cancel.
-    instantiate (1 := mk_memstate vmap0 nil ms'); simpl; cancel.
+    eassign (mk_memstate vmap0 nil ms'); simpl; cancel.
     all: simpl; eauto.
     cancel; or_l; cancel.
   Qed.
@@ -796,7 +796,7 @@ Module GLog.
     subst; eapply pimpl_trans; [ | eapply H1 ]; cancel.
     rewrite H0; unfold rep.
     do 2 (xform; cancel).
-    instantiate (x1 := mk_memstate vmap0 nil x0); simpl; eauto.
+    eassign ( mk_memstate vmap0 nil x0); simpl; eauto.
     unfold rep; cancel.
     all: eauto.
   Admitted.

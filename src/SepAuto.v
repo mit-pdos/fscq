@@ -26,6 +26,17 @@ Ltac set_evars_in H :=
               | context[?e] => is_evar e; let E := fresh in set (E := e) in H
             end.
 
+Ltac equate x y :=
+  let dummy := constr:(eq_refl x : x = y) in idtac.
+
+Ltac eassign' t :=
+  match goal with
+  | [ |- context [?x] ] => is_evar x; equate x t
+  end.
+
+Tactic Notation "eassign" constr(t) := eassign' t.
+
+
 (** * Helpers for keeping track of variable names *)
 
 Definition varname_type (_ : unit) := unit.

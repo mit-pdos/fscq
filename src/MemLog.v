@@ -371,25 +371,25 @@ Module MLog.
     step.
     subst.
     eapply replay_disk_eq; eauto.
-    instantiate (d := d0); pred_apply; cancel.
+    eassign dummy1; pred_apply; cancel.
     pimpl_crash; cancel; auto. cancel.
 
     unfold synced_rep; cancel.
     subst; eapply synced_data_replay_inb; eauto.
-    instantiate (c1 := (Map.elements (MSInLog ms))); pred_apply; cancel.
+    eassign ((Map.elements (MSInLog ms))); pred_apply; cancel.
 
     prestep.
     cancel; subst; auto.
     unfold pred_apply in *.
-    assert (selN d0 a ($0, nil) = (vs_cur, vs_old)) as Hx.
+    assert (selN dummy1 a ($0, nil) = (vs_cur, vs_old)) as Hx.
     eapply replay_disk_none_selN; eauto.
     pred_apply; cancel.
-    destruct (selN d0 a ($0, nil)); inversion Hx; auto.
+    destruct (selN _ a _); inversion Hx; auto.
 
     pimpl_crash.
     norm.
     cancel.
-    instantiate ( 2 := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     cancel.
     intuition; subst; simpl; eauto.
     pred_apply; cancel.
@@ -435,26 +435,26 @@ Module MLog.
 
     (* crashes *)
     or_l; norm.
-    instantiate (ms' := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel.
 
     or_r; or_r.
     norm. cancel.
-    instantiate (ms'0 := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel; eauto.
     or_l; auto.
 
     or_r; or_r.
     norm. cancel.
-    instantiate (ms'1 := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     cancel. intuition; simpl; eauto.
     pred_apply; cancel; eauto.
     or_r; auto.
 
     or_r; or_l; norm.
-    instantiate (ms'2 := mk_memstate (replay_mem ents (MSInLog ms)) cs').
+    eassign (mk_memstate (replay_mem ents (MSInLog ms)) cs').
     cancel. simpl; intuition; eauto.
     pred_apply; cancel.
     rewrite replay_mem_app; eauto.
@@ -499,11 +499,11 @@ Module MLog.
 
     (* crash conditions *)
     or_r. norm.
-    instantiate (2 := mk_memstate (MSInLog ms) cs).
+    eassign (mk_memstate (MSInLog ms) cs).
     cancel.
     intuition; simpl; eauto.
     pred_apply; norm.
-    instantiate (d2 := replay_disk (Map.elements (MSInLog ms)) d0).
+    eassign (replay_disk (Map.elements (MSInLog ms)) dummy0).
     cancel.
 
     rewrite apply_synced_data_ok; cancel.
@@ -517,7 +517,7 @@ Module MLog.
 
     (* truncated *)
     or_l. norm.
-    instantiate (2 := mk_memstate (MSInLog ms) cs).
+    eassign (mk_memstate (MSInLog ms) cs).
     cancel.
     intuition; simpl; eauto.
     pred_apply; cancel; eauto.
@@ -526,11 +526,11 @@ Module MLog.
 
     (* synced nil *)
     or_r. norm.
-    instantiate (2 := mk_memstate vmap0 cs).
+    eassign (mk_memstate vmap0 cs).
     cancel. intuition.
     pred_apply; norm.
-    instantiate (log0 := nil).
-    instantiate (d2 := replay_disk (Map.elements (MSInLog ms)) d0).
+    instantiate (1 := nil).
+    eassign (replay_disk (Map.elements (MSInLog ms)) dummy0).
     cancel.
     rewrite apply_synced_data_ok; cancel.
     intuition.
@@ -540,7 +540,7 @@ Module MLog.
 
     (* unsync_syncing *)
     or_l. norm.
-    instantiate (2 := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     cancel.
     intuition; simpl; eauto.
     pred_apply; cancel; eauto.
@@ -549,7 +549,7 @@ Module MLog.
 
     (* unsync_applying *)
     or_l. norm.
-    instantiate (2 := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     cancel.
     intuition; simpl; eauto.
     pred_apply; cancel; eauto.
@@ -615,7 +615,7 @@ Module MLog.
     apply flushing_recover_after.
 
     pimpl_crash; unfold would_recover_either; cancel.
-    or_l; instantiate (ms' := mk_memstate (MSInLog ms) cs').
+    or_l; eassign (mk_memstate (MSInLog ms) cs').
     unfold rep, rep_inner; cancel; auto.
   Qed.
 
@@ -648,7 +648,7 @@ Module MLog.
     prestep.
     unfold rep at 1, rep_inner at 1; unfold synced_rep, map_replay in *.
     cancel; auto.
-    replace (length d0) with (length d).
+    replace (length _) with (length d).
     eapply list2nmem_inbound; eauto.
     subst; erewrite replay_disk_length; eauto.
 
@@ -663,12 +663,12 @@ Module MLog.
     cancel.
     or_l; cancel; or_r.
     unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
-    instantiate (2 := mk_memstate  (MSInLog r_) cs'); cancel.
+    eassign (mk_memstate  (MSInLog r_) cs'); cancel.
     pred_apply; cancel.
 
     or_r.
     unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
-    instantiate (2 := mk_memstate  (MSInLog r_) cs'); cancel.
+    eassign (mk_memstate  (MSInLog r_) cs'); cancel.
     pred_apply; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
@@ -680,7 +680,7 @@ Module MLog.
     (* case 2: no apply *)
     prestep.
     unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
-    replace (length d0) with (length d).
+    replace (length _) with (length d).
     eapply list2nmem_inbound; eauto.
     subst; erewrite replay_disk_length; eauto.
 
@@ -696,12 +696,12 @@ Module MLog.
     cancel.
     or_l; cancel; or_r.
     unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
-    instantiate (2 := mk_memstate (MSInLog ms) cs'); cancel.
+    eassign (mk_memstate (MSInLog ms) cs'); cancel.
     pred_apply; cancel.
 
     or_r.
     unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
-    instantiate (2 := mk_memstate  (MSInLog ms) cs'); cancel.
+    eassign (mk_memstate  (MSInLog ms) cs'); cancel.
     pred_apply; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
@@ -745,9 +745,9 @@ Module MLog.
     eapply list2nmem_updN; eauto.
 
     (* crashes *)
-    instantiate (ms' := mk_memstate (MSInLog ms) cs').
+    eassign ( mk_memstate (MSInLog ms) cs').
     or_l; cancel.
-    instantiate (ms'0 := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     or_r; cancel.
     unfold vssync; autorewrite with lists; auto.
     apply map_valid_updN; auto.
@@ -865,7 +865,7 @@ Module MLog.
     cancel.
     or_r.
     unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
-    instantiate (ms' := mk_memstate  (MSInLog r_) cs'); cancel.
+    eassign (mk_memstate  (MSInLog r_) cs'); cancel.
     pred_apply; cancel.
     rewrite vsupd_vecs_length; auto.
     apply map_valid_vsupd_vecs; auto.
@@ -890,7 +890,7 @@ Module MLog.
     cancel.
     or_r.
     unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
-    instantiate (ms' := mk_memstate (MSInLog ms) cs'); cancel.
+    eassign (mk_memstate (MSInLog ms) cs'); cancel.
     pred_apply; cancel.
     rewrite vsupd_vecs_length; auto.
     apply map_valid_vsupd_vecs; auto.
@@ -926,7 +926,7 @@ Module MLog.
     apply replay_disk_vssync_vecs_comm.
 
     (* crashes *)
-    instantiate (ms' := mk_memstate (MSInLog ms) cs').
+    eassign (mk_memstate (MSInLog ms) cs').
     or_r; cancel.
     rewrite vssync_vecs_length; auto.
     apply map_valid_vssync_vecs; auto.
@@ -984,13 +984,13 @@ Module MLog.
     xform; cancel.
     repeat (rewrite crash_xform_exists_comm; cancel).
     rewrite crash_xform_sep_star_dist, crash_xform_lift_empty; cancel.
-    instantiate (x2 := mk_memstate (MSInLog ms) (BUFCACHE.cache0 (CSMaxCount x0))).
+    eassign (mk_memstate (MSInLog ms) (BUFCACHE.cache0 (CSMaxCount x0))).
     simpl; rewrite <- BUFCACHE.crash_xform_rep_r; [ eauto | ].
 
-    instantiate (x3 := listupd d' (DataStart xp) d0).
+    eassign (listupd d' (DataStart xp) dummy0).
     eapply possible_crash_vssync_vecs_listupd; eauto.
     denote (sep_star _ _ d') as Hy.
-    eapply (arrayN_listupd d0) in Hy.
+    eapply (arrayN_listupd dummy0) in Hy.
     pred_apply; cancel.
     rewrite vssync_vecs_length; auto.
     Unshelve. all: eauto.

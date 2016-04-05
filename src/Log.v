@@ -190,7 +190,7 @@ Module LOG.
     step.
 
     eapply replay_disk_eq; eauto.
-    instantiate (d := m1); pred_apply; cancel.
+    eassign m1; pred_apply; cancel.
     pimpl_crash; cancel.
 
     cancel.
@@ -200,7 +200,7 @@ Module LOG.
     apply MapFacts.not_find_in_iff; eauto.
 
     pimpl_crash; norm.
-    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
+    eassign (mk_memstate (MSTxn ms) ms').
     cancel. intuition.
   Qed.
 
@@ -257,7 +257,7 @@ Module LOG.
     (* crash conditions *)
     or_r; or_r; cancel.
 
-    instantiate (ms'0 := mk_memstate (Map.remove a (MSTxn ms)) a0).
+    eassign (mk_memstate (Map.remove a (MSTxn ms)) a0).
     or_r; or_l; cancel.
     eapply map_valid_remove; autorewrite with lists; eauto.
     Unshelve. all: eauto.
@@ -290,9 +290,9 @@ Module LOG.
     eapply list2nmem_updN; eauto.
 
     (* crashes *)
-    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
+    eassign (mk_memstate (MSTxn ms) ms').
     or_l; cancel.
-    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    eassign (mk_memstate (MSTxn ms) ms').
     or_r; cancel.
     apply map_valid_updN; auto.
     Unshelve. eauto.
@@ -327,7 +327,7 @@ Module LOG.
     (* crash conditions *)
     or_r; or_r; cancel.
 
-    instantiate (ms'0 := mk_memstate (Map.remove a (MSTxn ms)) a0).
+    eassign (mk_memstate (Map.remove a (MSTxn ms)) a0).
     or_r; or_l; cancel.
     eapply map_valid_remove; autorewrite with lists; eauto.
     apply updN_replay_disk_remove_eq; eauto.
@@ -359,9 +359,9 @@ Module LOG.
     substl m at 1; auto.
 
     (* crashes *)
-    instantiate (ms'0 := mk_memstate (MSTxn ms) ms').
+    eassign (mk_memstate (MSTxn ms) ms').
     or_l; cancel.
-    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
+    eassign (mk_memstate (MSTxn ms) ms').
     or_r; cancel.
     apply map_valid_updN; auto.
     rewrite <- replay_disk_vssync_comm.
@@ -813,7 +813,7 @@ Module LOG.
     inversion H0; subst.
     rewrite vsupd_vecs_vsupd_notin by auto.
     denote NoDup as Hx.
-    refine (_ (IHavl ovl m _ _ Hx)); [ intro | | pred_apply; cancel ].
+    refine (_ (IHavl ovl m _ _ Hx)); [ intro | pred_apply; cancel ].
     erewrite (@list2nmem_sel _ _ m n (p_cur, _)) by (pred_apply; cancel).
     erewrite <- vsupd_selN_not_in; eauto.
     apply sep_star_reorder_helper2.
@@ -894,7 +894,7 @@ Module LOG.
     (* crash conditions *)
     or_r; or_r; cancel.
 
-    instantiate (ms'0 := mk_memstate vmap0 a).
+    eassign (mk_memstate vmap0 a).
     or_r; or_l; cancel.
     apply map_valid_map0.
     eauto.
@@ -930,7 +930,7 @@ Module LOG.
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     rewrite H0.
     do 2 (xform; cancel).
-    instantiate (x1 := mk_memstate (MSTxn ms) x0); simpl; eauto.
+    eassign (mk_memstate (MSTxn ms) x0); simpl; eauto.
     all: eauto.
   Qed.
 

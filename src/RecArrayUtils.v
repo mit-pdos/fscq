@@ -55,14 +55,14 @@ Module RADefs (RA : RASig).
 
   Theorem val2word2val_id : forall w, val2word (word2val w) = w.
   Proof.
-    unfold val2word, word2val, eq_rec_r; simpl; intros.
+    unfold val2word, word2val, eq_rec_r, eq_rec; simpl; intros.
     rewrite eq_rect_nat_double.
     erewrite eq_rect_eq_dec; auto.
   Qed.
 
   Theorem word2val2word_id : forall v, word2val (val2word v) = v.
   Proof.
-    unfold val2word, word2val, eq_rec_r; simpl; intros.
+    unfold val2word, word2val, eq_rec_r, eq_rec; simpl; intros.
     rewrite eq_rect_nat_double.
     erewrite eq_rect_eq_dec; auto.
   Qed.
@@ -133,6 +133,7 @@ Module RADefs (RA : RASig).
     unfold block0, item0, val2block, blocktype, val2word.
     generalize blocksz_ok.
     rewrite blocksz_ok; intros; simpl.
+    unfold eq_rec.
     rewrite <- (eq_rect_eq_dec eq_nat_dec).
     generalize dependent items_per_val.
     induction n; simpl; auto; intros.

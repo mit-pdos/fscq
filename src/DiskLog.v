@@ -1709,7 +1709,7 @@ Module DLog.
     step.
 
     or_l. norm; [ cancel | intuition; pred_apply; norm ].
-    instantiate (1 := (PaddedLog.padded_log padded ++ PaddedLog.padded_log new)).
+    eassign (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
     cancel; auto.
     intuition.
 
@@ -1717,7 +1717,7 @@ Module DLog.
     cancel.
     cancel.
     or_r; or_r; or_r; norm; [ cancel | intuition; pred_apply; norm ].
-    instantiate (1 := (PaddedLog.padded_log padded ++ PaddedLog.padded_log new)).
+    eassign (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
     cancel; auto.
     intuition.
   Qed.

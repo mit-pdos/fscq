@@ -468,7 +468,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     (* case 1 : need allocate indirect block *)
     step; try (eapply BALLOC.bn_valid_facts; eauto).
     unfold IndSig.xparams_ok; auto.
-    instantiate (vsl0 := [(v0_cur, v0_old)]); simpl; auto.
+    instantiate (1 := [(dummy_cur, dummy_old)]); simpl; auto.
     simpl; unfold IndSig.RAStart; cancel.
 
     step.
@@ -505,7 +505,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     replace (IRLen ir + 1 - NDirect) with (IRLen ir - NDirect + 1) by omega.
     rewrite <- app_assoc; f_equal.
     rewrite firstn_app_updN_eq; auto.
-    substl (length indlist); omega.
+    substl (length dummy); omega.
     autorewrite with core lists; auto.
 
     Unshelve. all:eauto.

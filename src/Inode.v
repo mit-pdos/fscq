@@ -442,7 +442,7 @@ Module INODE.
     filldef; abstract (destruct kv; simpl; subst; irec_wf).
     sepauto.
     eapply listmatch_updN_selN; simplen.
-    instantiate (1 := mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
+    eassign ( mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
     unfold inode_match; cancel; sepauto.
     sepauto.
     Unshelve. exact irec0.

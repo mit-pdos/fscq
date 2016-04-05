@@ -493,7 +493,7 @@ Proof.
       eapply pimpl_ok2.
       eapply IHn.
       cancel.
-      instantiate (g := a0).
+      eassign a0.
       cancel.
       eapply pimpl_ok2.
       apply H1. omega. omega.
@@ -621,8 +621,7 @@ Proof.
       eapply pimpl_ok2.
       apply IHlst.
       cancel.
-      instantiate (lst' := lst).
-      instantiate (g := a1).
+      eassign lst; eassign a1.
       cancel.
       eapply pimpl_ok2.
       apply H1.

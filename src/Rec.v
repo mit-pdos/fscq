@@ -330,7 +330,7 @@ Module Rec.
     simpl in *. destruct H. destruct v; try discriminate.
     rewrite split1_combine. rewrite split2_combine.
     inversion H0. subst. rewrite IHt by assumption. rewrite IHn by auto. trivial.
-    instantiate (Q := fun rt => forall v,
+    2: instantiate (1 := fun rt => forall v,
       (fix well_formed' {rt : rectype} : data (RecF rt) -> Prop :=
         match rt as rt return (data (RecF rt) -> Prop) with
         | [] => fun _ => True
@@ -512,7 +512,7 @@ Module Rec.
       generalize (word_selN_helper (len ft) l0).
       replace (S l * len ft - len ft - 0 * len ft) with (l * len ft) by lia.
       simpl; intros.
-      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      erewrite <- eq_rec_eq.
       reflexivity.
 
     - rewrite <- IHl by omega; clear IHl.
@@ -550,12 +550,12 @@ Module Rec.
       f_equal.
       generalize dependent e0'; clear e0.
       rewrite <- e; intros.
-      repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      repeat rewrite <- eq_rec_eq.
       reflexivity.
 
       destruct (Nat.add_assoc n n1 n2).
       destruct e0.
-      repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      repeat rewrite <- eq_rec_eq.
       reflexivity.
   Qed.
 

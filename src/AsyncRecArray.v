@@ -161,7 +161,7 @@ Module AsyncRecArray (RA : RASig).
     intros.
     unfold array_rep, synced_array, rep_common, eqlen; intros.
     norm.
-    instantiate (vl0 := @nil valu).
+    eassign (@nil valu).
     cancel.
     subst; repeat setoid_rewrite ipack_nil; simpl; auto;
     unfold items_valid in *; intuition.
@@ -284,8 +284,8 @@ Module AsyncRecArray (RA : RASig).
     avail_rep xp start nr =p=> avail_rep xp start n1 * avail_rep xp (start + n1) n2.
   Proof.
     unfold avail_rep; intros; norm.
-    instantiate (vsl0 := (firstn n1 vsl)).
-    instantiate (vsl1 := (skipn n1 vsl)).
+    instantiate (2 := (firstn n1 vsl)).
+    instantiate (1 := (skipn n1 vsl)).
     cancel.
     rewrite Nat.add_assoc.
     rewrite arrayN_split by auto.
@@ -302,7 +302,7 @@ Module AsyncRecArray (RA : RASig).
     avail_rep xp start n1 * avail_rep xp (start + n1) n2 =p=> avail_rep xp start nr.
   Proof.
     unfold avail_rep; intros; norm.
-    instantiate (vsl1 := vsl0 ++ vsl).
+    instantiate (1 := vsl0 ++ vsl).
     setoid_rewrite arrayN_app.
     rewrite Nat.add_assoc.
     cancel.
@@ -551,8 +551,8 @@ Module AsyncRecArray (RA : RASig).
     apply vssync_range_sync_array; eauto.
     cancel.
     apply vssync_range_pimpl; simplen.
-    replace (length vsl) with count by eauto; simplen.
-    simplen; replace (length vsl) with count by eauto; omega.
+    replace (length dummy0) with count by eauto; simplen.
+    simplen; replace (length dummy0) with count by eauto; omega.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.

@@ -970,7 +970,7 @@ Proof.
 
   (* Figure out [m' (length vl)] *)
   case_eq (m' (length vl)); [ intro p | ]; intro Hp.
-  specialize (IHvl (pred_ex F (length vl) p)).
+  specialize (IHvl (pred_except F (length vl) p)).
   rewrite listapp_memupd in H1.
 
   pose proof (possible_crash_upd_mem_except H1) as Hx.
@@ -980,13 +980,13 @@ Proof.
   intuition congruence.
   repeat deex.
 
-  eapply pred_ex_mem_except in H0 as Hy.
+  eapply pred_execpt_mem_except in H0 as Hy.
   destruct IHvl as [ ? Hz ].
   eexists; eauto.
   destruct Hz as [ Hz [ Heq HP ] ].
   rewrite map_length in Heq.
 
-  unfold pred_ex in Hz.
+  unfold pred_except in Hz.
   rewrite <- Heq in Hz.
   rewrite <- listapp_memupd in Hz.
   eexists; split; eauto.
@@ -1032,7 +1032,7 @@ Proof.
   exists (mem_except m' (length vl)).
   intuition.
 
-  apply pred_ex_mem_except; eauto.
+  apply pred_execpt_mem_except; eauto.
   replace (list2nmem vl) with (mem_except (list2nmem (vl ++ [(v', nil)])) (length vl)).
   apply possible_crash_mem_except; eauto.
   rewrite listapp_memupd.

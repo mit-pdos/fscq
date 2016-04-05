@@ -111,7 +111,7 @@ Module WBCACHE.
       unfold cachepred at 2; rewrite H.
       cancel.
       step.
-      instantiate (wcs' := Build_wbcachestate cs' (WbBuf wcs)).
+      eassign (Build_wbcachestate cs' (WbBuf wcs)).
       unfold rep; cancel.
   Qed.
 
@@ -149,7 +149,7 @@ Module WBCACHE.
 
       (* crash conditions *)
       unfold hidden_pred; norm; unfold stars; simpl.
-      instantiate (wcs' := Build_wbcachestate cs' (Map.remove a (WbBuf wcs))).
+      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))).
       cancel.
       simpl; intuition.
       apply mem_pred_absorb. unfold cachepred at 2.
@@ -160,7 +160,7 @@ Module WBCACHE.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
       unfold hidden_pred; norm; unfold stars; simpl.
-      instantiate (wcs' := Build_wbcachestate cs' (Map.remove a (WbBuf wcs))).
+      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))).
       cancel.
       simpl; intuition.
       apply mem_pred_absorb. unfold cachepred at 2.
@@ -172,16 +172,17 @@ Module WBCACHE.
       pimpl_crash.
       unfold hidden_pred; norm; unfold stars; simpl.
 
-      instantiate (wcs' := Build_wbcachestate cs' (WbBuf wcs)).
+      eassign (Build_wbcachestate cs' (WbBuf wcs)).
       cancel.
       simpl; intuition.
       apply mem_pred_absorb. unfold cachepred at 2.
         rewrite H. pred_apply; cancel.
       right. subst.
-      exists (length dummy). rewrite skipn_app. instantiate (l := nil); simpl.
+      exists (length dummy). rewrite skipn_app.
+      eassign (@nil valu); simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
-      instantiate (wcs'0 := Build_wbcachestate cs' (Map.remove a (WbBuf wcs))).
+      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))).
       cancel.
       simpl; intuition.
       apply mem_pred_absorb. unfold cachepred at 2.
@@ -204,7 +205,7 @@ Module WBCACHE.
       pimpl_crash.
       unfold hidden_pred; norm; unfold stars; simpl.
 
-      instantiate (wcs' := Build_wbcachestate cs' (WbBuf wcs)).
+      eassign (Build_wbcachestate cs' (WbBuf wcs)).
       cancel.
       simpl; intuition.
       apply mem_pred_absorb. unfold cachepred at 2.
@@ -213,7 +214,7 @@ Module WBCACHE.
       exists 0; simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
-      instantiate (wcs'0 := Build_wbcachestate cs' (WbBuf wcs)).
+      eassign (Build_wbcachestate cs' (WbBuf wcs)).
       cancel.
       simpl; intuition.
       apply mem_pred_absorb. unfold cachepred at 2.
@@ -243,7 +244,7 @@ Module WBCACHE.
       pred_apply. rewrite <- mem_pred_absorb. subst; simpl.
       unfold cachepred at 3. rewrite MapFacts.add_eq_o by reflexivity. cancel.
       apply mem_pred_pimpl_except. intros; apply cachepred_add_invariant; auto.
-      instantiate (l := w :: dummy); unfold vsmerge; simpl.
+      eassign (w :: dummy); unfold vsmerge; simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
     - step.
@@ -256,7 +257,7 @@ Module WBCACHE.
         rewrite MapFacts.add_eq_o by auto. cancel.
       apply mem_pred_pimpl_except. intros; apply cachepred_add_invariant; auto.
 
-      instantiate (l := nil); simpl.
+      eassign (@nil valu); simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
   Qed.
 

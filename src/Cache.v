@@ -226,7 +226,7 @@ Module BUFCACHE.
     eapply ptsto_upd; pred_apply; cancel.
 
     cancel.
-    instantiate (cs' := r_).
+    eassign r_.
     apply pimpl_or_r. left. cancel.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
     apply pimpl_or_r. left. cancel; eauto.
@@ -250,7 +250,7 @@ Module BUFCACHE.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
-    instantiate (d' := Mem.upd d a (v2_cur, [])); unfold stars; simpl.
+    eassign (@Mem.upd _ _ addr_eq_dec d a (v2_cur, [])); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     apply H5 in H; deex.
@@ -291,7 +291,7 @@ Module BUFCACHE.
     case_eq (Map.find a (CSMap cs)); intros.
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
-    instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    eassign (@Mem.upd _ _ addr_eq_dec d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
     rewrite map_remove_cardinal. eauto. eauto.
@@ -305,7 +305,7 @@ Module BUFCACHE.
 
     eapply pimpl_ok2; eauto with prog.
     intros; norm.
-    instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    eassign (@Mem.upd _ _ addr_eq_dec d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     intuition.
 
@@ -318,11 +318,11 @@ Module BUFCACHE.
     pred_apply; cancel.
 
     pimpl_crash. norm.
-    instantiate (d' := Mem.upd d a (v0_cur, v0_old)); unfold stars; simpl.
+    eassign (@Mem.upd _ _ addr_eq_dec d a (v0_cur, v0_old)); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
 
     intuition.
-    instantiate (cs' := Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) eviction_init).
+    eassign (Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) eviction_init).
     all: simpl in *; eauto; try omega.
     apply MapProperties.F.empty_mapsto_iff in H; exfalso; eauto.
 
@@ -617,11 +617,11 @@ Module BUFCACHE.
     unfold write_range; intros.
     step.
     cancel.
-    instantiate (2:=F); cancel.
+    eassign F; cancel.
 
     prestep; cancel.
     cancel.
-    instantiate (2:=F); cancel.
+    eassign F; cancel.
     rewrite vsupd_range_length; try omega.
     rewrite firstn_length_l; omega.
 
@@ -680,7 +680,7 @@ Module BUFCACHE.
 
     prestep; cancel.
     cancel.
-    instantiate (2:=F); cancel.
+    eassign F; cancel.
     rewrite vssync_range_length; try omega.
 
     step.
@@ -821,7 +821,7 @@ Module BUFCACHE.
     rewrite crash_xform_diskIs.
     repeat rewrite crash_xform_lift_empty.
     cancel.
-    instantiate (cs' := Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) (CSEvict cs)).
+    eassign (Build_cachestate (Map.empty valu) 0 (CSMaxCount cs) (CSEvict cs)).
     auto.
     simpl; omega.
     simpl in *; omega.

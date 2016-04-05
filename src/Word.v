@@ -763,10 +763,10 @@ Lemma whd_eq_rect : forall n w Heq,
   whd w.
 Proof.
   intros.
-  f_equal; try omega.
+  generalize Heq.
+  replace (n + 0) with n by omega.
   intros.
-  generalize_proof.
-  rewrite H; intros.
+  f_equal.
   eq_rect_simpl.
   reflexivity.
 Qed.
@@ -2189,7 +2189,7 @@ Proof.
   reflexivity.
   apply wlt_lt in H0.
   rewrite wordToNat_natToWord_idempotent' by auto.
-  instantiate (bound:=bound). omega.
+  instantiate (1:=bound). omega.
 Qed.
 
 Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat ->

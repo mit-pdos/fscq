@@ -500,6 +500,27 @@ Proof.
   omega.
 Qed.
 
+
+Lemma vsupd_comm : forall l a1 v1 a2 v2,
+  a1 <> a2 ->
+  vsupd (vsupd l a1 v1) a2 v2 = vsupd (vsupd l a2 v2) a1 v1.
+Proof.
+  unfold vsupd; intros.
+  rewrite updN_comm by auto.
+  repeat rewrite selN_updN_ne; auto.
+Qed.
+
+Lemma vsupd_vecs_vsupd_notin : forall av l a v,
+  ~ In a (map fst av) ->
+  vsupd_vecs (vsupd l a v) av = vsupd (vsupd_vecs l av) a v.
+Proof.
+  induction av; simpl; intros; auto.
+  destruct a; simpl in *; intuition.
+  rewrite <- IHav by auto.
+  rewrite vsupd_comm; auto.
+Qed.
+
+
 Lemma vsupd_selN_not_in : forall l a d,
   NoDup (map fst l) ->
   ~ In a (map fst l) ->
@@ -575,25 +596,6 @@ Proof.
   rewrite <- H; auto.
   f_equal.
   rewrite IHl; auto.
-Qed.
-
-Lemma vsupd_comm : forall l a1 v1 a2 v2,
-  a1 <> a2 ->
-  vsupd (vsupd l a1 v1) a2 v2 = vsupd (vsupd l a2 v2) a1 v1.
-Proof.
-  unfold vsupd; intros.
-  rewrite updN_comm by auto.
-  repeat rewrite selN_updN_ne; auto.
-Qed.
-
-Lemma vsupd_vecs_vsupd_notin : forall av l a v,
-  ~ In a (map fst av) ->
-  vsupd_vecs (vsupd l a v) av = vsupd (vsupd_vecs l av) a v.
-Proof.
-  induction av; simpl; intros; auto.
-  destruct a; simpl in *; intuition.
-  rewrite <- IHav by auto.
-  rewrite vsupd_comm; auto.
 Qed.
 
 Lemma vssync_vsupd_eq : forall l a v,
@@ -833,12 +835,12 @@ Proof.
   unfold possible_crash_list.
   induction l; simpl; intros.
   cancel.
-  instantiate (l' := nil).
+  instantiate (1 := nil).
   simpl; auto. auto.
 
   xform.
   rewrite IHl.
-  cancel; [ instantiate (l'0 := v' :: l') | .. ]; simpl; auto; try cancel;
+  cancel; [ instantiate (1 := v' :: l') | .. ]; simpl; auto; try cancel;
   destruct i; simpl; auto;
   destruct (H4 i); try omega; simpl; auto.
 Qed.

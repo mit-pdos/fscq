@@ -181,7 +181,7 @@ Section MemPred.
   Proof.
     unfold mem_pred; intros.
     cancel.
-    instantiate (hm_avs0 := (a, v) :: hm_avs).
+    eassign ((a, v) :: hm_avs).
     cancel.
     simpl; constructor; auto.
     apply avs2mem_none_notin. rewrite <- H3. apply mem_except_eq.
@@ -203,7 +203,7 @@ Section MemPred.
   Proof.
     unfold mem_pred; intros.
     cancel.
-    instantiate (hm_avs0 := (a, v) :: hm_avs).
+    eassign ( (a, v) :: hm_avs).
     cancel.
     simpl; constructor; auto.
     apply avs2mem_none_notin. rewrite <- H4. apply mem_except_eq.

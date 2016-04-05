@@ -298,7 +298,7 @@ Module BALLOC.
     unfold alloc, rep, bn_valid.
     hoare.
     match goal with
-    | [ H1 : (freepred =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
+    | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
     end.
     or_r; cancel.
   Qed.
