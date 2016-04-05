@@ -50,8 +50,11 @@ hscgen/%.hs: hslib/%.hsc
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -o $@
 
-$(VS_HS): $(VS_VIO) coqbuild/Extraction.v
-	( cd coqbuild && coqc -q -R . Fscq Extraction )
+$(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
+	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )
+
+$(VS_ML): $(VS_VIO) coqbuild/ExtractOcaml.v
+	( cd coqbuild && coqc -q -R . Fscq ExtractOcaml )
 
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
