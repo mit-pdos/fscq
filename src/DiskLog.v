@@ -772,14 +772,14 @@ Module PaddedLog.
   Definition loglen_invalid xp ndesc ndata :=
     ndesc > LogDescLen xp \/ ndata > LogLen xp.
 
-  Theorem loglen_valid_dec xp ndesc ndata :
+  Definition loglen_valid_dec xp ndesc ndata :
     {loglen_valid xp ndesc ndata} + {loglen_invalid xp ndesc ndata }.
   Proof.
     unfold loglen_valid, loglen_invalid.
     destruct (lt_dec (LogDescLen xp) ndesc);
     destruct (lt_dec (LogLen xp) ndata); simpl; auto.
     left; intuition.
-  Qed.
+  Defined.
 
   Remove Hints goodSize_0.
 
@@ -1304,17 +1304,6 @@ Module PaddedLog.
     rewrite log_nonzero_app, log_nonzero_padded_log.
     f_equal.
     rewrite entry_valid_vals_nonzero; auto.
-  Qed.
-
-  Theorem entry_valid_dec : forall ent,
-    {entry_valid ent} + {~ entry_valid ent}.
-  Proof.
-    unfold entry_valid, addr_valid, goodSize; intuition.
-    destruct (addr_eq_dec (fst ent) 0); destruct (lt_dec (fst ent) (pow2 addrlen)).
-    right; tauto.
-    right; tauto.
-    left; tauto.
-    right; tauto.
   Qed.
 
   Theorem rep_synced_length_ok : forall F xp l d,
