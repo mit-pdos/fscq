@@ -379,6 +379,18 @@ Module GLog.
     mm' <- MLog.dsync xp a mm;
     rx (mk_memstate vm ts mm').
 
+  Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
+    ms <- flushall xp ms;
+    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    mm' <- MLog.dwrite_vecs xp avs mm;
+    rx (mk_memstate vm ts mm').
+
+  Definition dsync_vecs T xp al ms rx : prog T :=
+    ms <- flushall xp ms;
+    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    mm' <- MLog.dsync_vecs xp al mm;
+    rx (mk_memstate vm ts mm').
+
   Definition recover T xp cs rx : prog T :=
     mm <- MLog.recover xp cs;
     rx (mk_memstate vmap0 nil mm).
@@ -761,6 +773,33 @@ Module GLog.
     all: simpl; eauto.
     cancel; or_l; cancel.
   Qed.
+
+
+  Theorem dsync_vecs_ok: forall xp al ms,
+    {< F ds,
+    PRE
+      rep xp F (Cached ds) ms *
+      [[ Forall (fun e => e < length ds!!) al ]]
+    POST RET:ms'
+      rep xp F (Cached (vssync_vecs ds!! al, nil)) ms'
+    XCRASH exists ms',
+      rep xp F (Cached ds) ms'
+    >} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs.
+    step.
+    prestep; unfold rep; cancel.
+    prestep; unfold rep; cancel.
+    subst; substl (MSTxns r_); eauto.
+
+    (* crashes *)
+    subst; eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0; unfold rep.
+    do 2 (xform; cancel).
+    instantiate (x1 := mk_memstate vmap0 nil x0); simpl; eauto.
+    unfold rep; cancel.
+    all: eauto.
+  Admitted.
 
 
   Theorem recover_ok: forall xp F cs,
