@@ -554,11 +554,9 @@ Definition read {T} a rx : prog Mcontents Scontents T :=
 Hint Extern 1 {{locked_AsyncRead _; _}} => apply locked_AsyncRead_ok : prog.
 
 Ltac no_pred_in thm :=
-  let H := fresh in
-  pose proof thm as H;
-  unfold pred_in in H;
-  let t := type of H in
-  exact (H:t).
+  let t := type of thm in
+  let t' := eval unfold pred_in in t in
+  exact (thm:t').
 
 Hint Resolve cache_rep_refold.
 Hint Resolve ltac:(no_pred_in cache_rep_refold).
