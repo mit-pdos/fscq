@@ -38,8 +38,7 @@ Definition hash_list T h values rx : prog T :=
 Theorem hash_list_ok : forall h values,
   {< l,
   PRE:hm
-    emp * [[ goodSize addrlen (length values) ]]
-        * [[ Forall (fun e => goodSize addrlen (fst e)) values ]]
+    emp * [[ Forall (fun e => goodSize addrlen (fst e)) values ]]
         * [[ hash_list_rep l h hm ]]
   POST:hm' RET:h'
     emp * [[ hash_list_rep (rev values ++ l) h' hm' ]]
@@ -81,13 +80,13 @@ Proof.
       apply upd_hashmap'_eq.
       intuition.
       unfold hash_safe in *.
-      rewrite H8 in H16.
-      inversion H16 as [ Hdef | Hdef ];
+      rewrite H7 in H15.
+      inversion H15 as [ Hdef | Hdef ];
       contradict_hashmap_get_default Hdef hm0.
 
   (* Loop invariant implies post-condition. *)
   - step.
-    rewrite firstn_oob in H9; try omega.
+    rewrite firstn_oob in H8; try omega.
     auto.
 
   - exists 0; eexists. simpl. solve_hash_list_rep.
@@ -96,4 +95,4 @@ Proof.
   all: econstructor.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (hash_list _) _) => apply hash_list_ok : prog.
+Hint Extern 1 ({{_}} progseq (hash_list _ _) _) => apply hash_list_ok : prog.
