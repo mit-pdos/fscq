@@ -7,6 +7,7 @@ Require Import BasicProg.
 Require Import Pred.
 Require Import FSLayout.
 Require Import Cache.
+Require Import AsyncDisk.
 
 Set Implicit Arguments.
 
@@ -21,10 +22,11 @@ Fixpoint copy_many T xp (count : nat) (src dst : addr) mscs rx : prog T :=
   | O =>
     rx mscs
   | S c =>
-    mscs <- copy_block xp (src ^+ $ c) (dst ^+ $ c) mscs;
+    mscs <- copy_block xp (src + c) (dst + c) mscs;
     copy_many T xp c src dst mscs rx
   end.
 
+(*
 Definition testcopy T xp rx : prog T :=
   cs <- BUFCACHE.init 1000 ;
   mscs <- LOG.init xp cs ;
@@ -47,24 +49,24 @@ Definition testalloc T lxp bxp rx : prog T :=
     let^ (mscs, ok) <- LOG.commit lxp mscs ;
     rx (Some bn)
   end.
+*)
 
 Definition test_bfile T fsxp v mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs ;
-  let^ (mscs, ok) <- BFILE.bfgrow (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) $3 mscs ;
+  let^ (mscs, ok) <- BFILE.grow (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) 3 $0 mscs ;
   match ok with
   | false =>
     mscs <- LOG.abort (FSXPLog fsxp) mscs ;
     rx ^(mscs, None)
   | true =>
-    mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) $3 $0 v mscs ;
+    mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) 3 0 v mscs ;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs ;
-
     match ok with
     | false => rx ^(mscs, None)
     | true =>
       mscs <- LOG.begin (FSXPLog fsxp) mscs ;
-      let^ (mscs, b) <- BFILE.bfread (FSXPLog fsxp) (FSXPInode fsxp) $3 $0 mscs ;
-      mscs <- BFILE.bfshrink (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) $3 mscs ;
+      let^ (mscs, b) <- BFILE.read (FSXPLog fsxp) (FSXPInode fsxp) 3 0 mscs ;
+      mscs <- BFILE.shrink (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) 3 1 mscs ;
       let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs ;
       match ok with
       | false => rx ^(mscs, None)
@@ -75,14 +77,14 @@ Definition test_bfile T fsxp v mscs rx : prog T :=
 
 Definition test_bfile_bulkwrite T fsxp v nblocks mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs) <- For block < nblocks
+  let^ (mscs) <- ForN block < nblocks
     Ghost [ (_:unit) ]
     Loopvar [ mscs ]
     Continuation lrx
     Invariant emp
     OnCrash emp
     Begin
-      mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) $3 block v mscs;
+      mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) 3 block v mscs;
       lrx ^(mscs)
   Rof ^(mscs);
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;

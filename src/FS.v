@@ -246,15 +246,11 @@ Admitted.
 
 Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-  mscs <- DIRTREE.setattr fsxp inum
-                          (INODE.Build_iattr sz
-                                             (INODE.IMTime attr)
-                                             (INODE.IType attr))
-                          mscs;
+  mscs <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
 
+(*
 Theorem file_set_sz_ok : forall fsxp inum sz mscs,
   {< m pathname Fm Ftop tree f,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
@@ -327,6 +323,8 @@ Theorem file_set_sz_recover_ok : forall fsxp inum sz mscs,
 Proof.
   recover_rw_ok.
 Qed.
+*)
+
 
 Definition read_block T fsxp inum off mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -334,6 +332,7 @@ Definition read_block T fsxp inum off mscs rx : prog T :=
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, b).
 
+(*
 Theorem read_block_ok : forall fsxp inum off mscs,
   {< m F Fm Ftop tree pathname f B v,
   PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
@@ -373,6 +372,9 @@ Proof.
   recover_ro_ok.
 Qed.
 
+*)
+
+(*
 
 Definition read_bytes T fsxp inum off len mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -505,14 +507,17 @@ Proof.
   step.
 Qed.
 
+*)
+
+
 Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, oldattr) <- BFILE.bfgetattr (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
-  let^ (mscs, curlen) <- BFILE.bflen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
-  mscs <- IfRx irx (wlt_dec off curlen) {
+  let^ (mscs, oldattr) <- BFILE.getattrs (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+  let^ (mscs, curlen) <- BFILE.getlen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+  mscs <- IfRx irx (lt_dec off curlen) {
     irx mscs
   } else {
-    let^ (mscs, ok) <- BFILE.bftrunc (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum (off ^+ $1) mscs;
+    let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum (off + 1) mscs;
     If (bool_dec ok true) {
       irx mscs
     } else {
@@ -520,13 +525,9 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
       rx ^(mscs, false)
     }
   };
-  mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
-  mscs <- IfRx irx (wlt_dec (INODE.ISize oldattr) newsz) {
-    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
-                            (INODE.Build_iattr newsz
-                                               (INODE.IMTime oldattr)
-                                               (INODE.IType oldattr))
-                            mscs;
+  mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  mscs <- IfRx irx (wlt_dec (INODE.ABytes oldattr) newsz) {
+    mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UBytes newsz) mscs;
     irx mscs
   } else {
     irx mscs
@@ -534,6 +535,8 @@ Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, ok).
 
+
+(*
 Definition update_bytes T fsxp inum off len (data:bytes len) mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs) <- DIRTREE.update_bytes fsxp inum off data mscs;
@@ -729,12 +732,15 @@ Proof.
   recover_rw_ok.
 Qed.
 
+*)
+
 Definition readdir T fsxp dnum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
-  let^ (mscs, files) <- SDIR.dslist (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) dnum mscs;
+  let^ (mscs, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, files).
 
+(*
 Theorem readdir_ok: forall fsxp dnum mscs,
   {< F1 A m dsmap,
   PRE      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
@@ -767,6 +773,7 @@ Theorem readdir_recover_ok: forall fsxp dnum mscs,
 Proof.
   recover_ro_ok.
 Qed.  
+*)
 
 Definition create T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -776,8 +783,6 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    mscs <- DIRTREE.setattr fsxp inum
-                            (INODE.Build_iattr $0 $0 $0) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
@@ -785,6 +790,7 @@ Definition create T fsxp dnum name mscs rx : prog T :=
     end
   end.
 
+(*
 Theorem create_ok : forall fsxp dnum name mscs,
   {< m pathname Fm Ftop tree tree_elem,
   PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -846,6 +852,7 @@ Theorem create_recover_ok : forall fsxp dnum name mscs,
 Proof.
   recover_rw_ok.
 Qed.
+*)
 
 Definition mksock T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -855,8 +862,8 @@ Definition mksock T fsxp dnum name mscs rx : prog T :=
     mscs <- LOG.abort (FSXPLog fsxp) mscs;
     rx ^(mscs, None)
   | Some inum =>
-    mscs <- BFILE.bfsetattr (FSXPLog fsxp) (FSXPInode fsxp) inum
-                            (INODE.Build_iattr $0 $0 $1) mscs;
+    mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum
+                            (INODE.UType $1) mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     match ok with
     | true => rx ^(mscs, Some inum)
@@ -879,6 +886,7 @@ Definition mkdir T fsxp dnum name mscs rx : prog T :=
     end
   end.
 
+(*
 Theorem mkdir_ok: forall fsxp dnum name mscs,
   {< m pathname Fm Ftop tree tree_elem,
   PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -934,6 +942,8 @@ Proof.
   recover_rw_ok.
 Qed.
 
+*)
+
 
 Definition delete T fsxp dnum name mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -946,6 +956,8 @@ Definition delete T fsxp dnum name mscs rx : prog T :=
     rx ^(mscs, false)
   }.
 
+
+(*
 
 Theorem delete_ok: forall fsxp dnum name mscs,
   {< m pathname Fm Ftop tree tree_elem,
@@ -1002,6 +1014,7 @@ Proof.
   recover_rw_ok.
 Qed.
 
+*)
 
 Definition lookup T fsxp dnum names mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -1009,6 +1022,7 @@ Definition lookup T fsxp dnum names mscs rx : prog T :=
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, r).
 
+(*
 Theorem lookup_ok: forall fsxp dnum fnlist mscs,
   {< m Fm Ftop tree,
   PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -1046,6 +1060,8 @@ Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,
 Proof.
   recover_ro_ok.
 Qed.
+*)
+
 
 Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -1058,6 +1074,7 @@ Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :
     rx ^(mscs, false)
   }.
 
+(*
 Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
   {< m Ftop tree cwd tree_elem,
   PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
@@ -1134,3 +1151,4 @@ Definition statfs T fsxp mscs rx : prog T :=
   let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
   rx ^(mscs, free_blocks, free_inodes).
+*)

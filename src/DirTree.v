@@ -1979,6 +1979,10 @@ Module DIRTREE.
     mscs <- BFILE.setattrs (FSXPLog fsxp) (FSXPInode fsxp) inum attr mscs;
     rx mscs.
 
+  Definition updattr T fsxp inum kv mscs rx : prog T :=
+    mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum kv mscs;
+    rx mscs.
+
   Lemma find_subtree_inum_valid : forall F F' xp m s tree inum f,
     find_subtree s tree = Some (TreeFile inum f)
     -> (F * tree_pred xp tree * F')%pred m
