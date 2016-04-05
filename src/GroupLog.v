@@ -762,9 +762,28 @@ Module GLog.
     cancel; or_l; cancel.
   Qed.
 
+
+  Theorem recover_ok: forall xp F cs,
+    {< raw Fold Fnew,
+    PRE
+      BUFCACHE.rep cs raw *
+      [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]]
+    POST RET:ms' exists d,
+      rep xp (crash_xform F) (Cached (d, nil)) ms' *
+      ([[[ d ::: crash_xform Fold ]]] \/
+       [[[ d ::: crash_xform Fnew ]]])
+    CRASH exists cs',
+      BUFCACHE.rep cs' raw
+    >} recover xp cs.
+  Proof.
+    unfold recover, rep.
+    hoare.
+  Qed.
+
+
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
-
+  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
 End GLog.
 
