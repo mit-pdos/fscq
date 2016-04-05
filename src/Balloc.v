@@ -466,6 +466,7 @@ Module BALLOC.
     apply bn_valid_roundtrip'; auto.
   Qed.
 
+  Definition items_per_val := Alloc.BmpSig.items_per_val.
 
 End BALLOC.
 
@@ -500,6 +501,7 @@ Module IAlloc.
 
   Definition free_ok := Alloc.free_ok.
 
+  Definition items_per_val := Alloc.BmpSig.items_per_val.
 
   Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.

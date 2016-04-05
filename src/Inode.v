@@ -148,6 +148,8 @@ Module INODE.
 
   Definition NBlocks := NDirect + Ind.IndSig.items_per_val.
 
+  Definition items_per_val := IRecSig.items_per_val.
+
 
   (************* program *)
 
