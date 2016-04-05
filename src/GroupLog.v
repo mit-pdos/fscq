@@ -318,6 +318,10 @@ Module GLog.
   end)%pred.
 
 
+  Definition would_recover_any xp F ds :=
+    (exists ms n, rep xp F (Flushing (popn n ds)) ms)%pred.
+
+
 
   (************* program *)
 
@@ -370,6 +374,7 @@ Module GLog.
     rx (mk_memstate vm ts mm').
 
   Definition dsync T xp a ms rx : prog T :=
+    ms <- flushall xp ms;
     let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
     mm' <- MLog.dsync xp a mm;
     rx (mk_memstate vm ts mm').
@@ -557,6 +562,19 @@ Module GLog.
   Qed.
 
 
+  Lemma recover_before_any : forall xp F ds,
+    MLog.would_recover_before xp F ds!! =p=> would_recover_any xp F ds.
+  Proof.
+    unfold would_recover_any, rep; cancel.
+    rewrite nthd_oob by (apply le_refl).
+    apply MLog.recover_before_either.
+    rewrite popn_oob; auto.
+    instantiate (1 := mk_memstate vmap0 nil (MLog.mk_memstate vmap0 (BUFCACHE.cache0 0))); simpl.
+    apply dset_match_nil.
+  Qed.
+
+
+
   (************* correctness theorems *)
 
   Theorem read_ok: forall xp ms a,
@@ -621,6 +639,7 @@ Module GLog.
   Qed.
 
 
+
   Local Hint Resolve vmap_match_nil dset_match_nil.
 
   Theorem flushall_ok: forall xp ms,
@@ -628,12 +647,13 @@ Module GLog.
     PRE
       rep xp F (Cached ds) ms
     POST RET:ms'
-      rep xp F (Cached (ds!!, nil)) ms'
-    CRASH exists ms' n,
-      rep xp F (Flushing (popn n ds)) ms'
+      rep xp F (Cached (ds!!, nil)) ms' *
+      [[ MSTxns ms' = nil /\ MSVMap ms' = vmap0 ]]
+    CRASH
+      would_recover_any xp F ds
     >} flushall xp ms.
   Proof.
-    unfold flushall, rep.
+    unfold flushall, would_recover_any, rep.
     prestep.
     cancel.
     rewrite nthd_0; cancel.
@@ -654,7 +674,7 @@ Module GLog.
 
       (* crashes *)
       subst; pimpl_crash. norm.
-      instantiate (ms' := mk_memstate vmap0 (cuttail m (MSTxns ms)) a).
+      instantiate (1 := mk_memstate vmap0 (cuttail m (MSTxns ms)) a).
       simpl; rewrite last_cuttail_selN by auto; cancel.
       simpl; intuition; eauto.
 
@@ -673,6 +693,77 @@ Module GLog.
   Hint Extern 1 ({{_}} progseq (submit _ _ _) _) => apply submit_ok : prog.
   Hint Extern 1 ({{_}} progseq (flushall _ _) _) => apply flushall_ok : prog.
 
+
+  Theorem dwrite_ok: forall xp a v ms,
+    {< F Fd ds vs,
+    PRE
+      rep xp F (Cached ds) ms *
+      [[[ ds!! ::: (Fd * a |-> vs) ]]]
+    POST RET:ms' exists d',
+      rep xp F (Cached (d', nil)) ms' *
+      [[  d' = updN ds!! a (v, vsmerge vs) ]] *
+      [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
+    CRASH
+      would_recover_any xp F ds \/
+      exists ms' d',
+      rep xp F (Cached (d', nil)) ms' *
+      [[  d' = updN ds!! a (v, vsmerge vs) ]] *
+      [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
+    >} dwrite xp a v ms.
+  Proof.
+    unfold dwrite.
+    step.
+    prestep; unfold rep; cancel.
+    prestep; unfold rep; cancel.
+    subst; substl (MSTxns r_); eauto.
+
+    (* crashes *)
+    cancel.
+    or_l.
+    apply recover_before_any.
+    unfold rep; or_r; cancel.
+    instantiate (1 := mk_memstate vmap0 nil a0); simpl; cancel.
+    all: simpl; eauto.
+    cancel; or_l; cancel.
+  Qed.
+
+
+  Theorem dsync_ok: forall xp a ms,
+    {< F Fd ds vs,
+    PRE
+      rep xp F (Cached ds) ms *
+      [[[ ds!! ::: (Fd * a |-> vs) ]]]
+    POST RET:ms' exists d',
+      rep xp F (Cached (d', nil)) ms' *
+      [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
+      [[  d' = vssync ds!! a ]]
+    CRASH
+      would_recover_any xp F ds \/
+      exists ms' d',
+      rep xp F (Cached (d', nil))  ms' *
+      [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
+      [[ d' = vssync ds!! a ]]
+    >} dsync xp a ms.
+  Proof.
+    unfold dsync.
+    step.
+    prestep; unfold rep; cancel.
+    prestep; unfold rep; cancel.
+    subst; substl (MSTxns r_); eauto.
+
+    (* crashes *)
+    cancel.
+    or_l.
+    rewrite <- recover_before_any.
+    apply MLog.synced_recover_before.
+    unfold rep; or_r; cancel.
+    instantiate (1 := mk_memstate vmap0 nil ms'); simpl; cancel.
+    all: simpl; eauto.
+    cancel; or_l; cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
 
 
 End GLog.
