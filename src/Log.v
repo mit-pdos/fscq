@@ -370,6 +370,51 @@ Module LOG.
   Qed.
 
 
+  Definition intact xp F old :=
+    (exists ms,
+      rep xp F (NoTxn old) ms \/
+      rep xp F (ApplyingTxn old) ms \/
+      exists new, rep xp F (ActiveTxn old new) ms)%pred.
+
+  Definition either xp F old new :=
+    (exists ms,
+      rep xp F (NoTxn old) ms \/
+      rep xp F (ApplyingTxn old) ms \/
+      (exists new, rep xp F (ActiveTxn old new) ms) \/
+      rep xp F (CommittingTxn old new) ms)%pred.
+
+
+  Lemma active_txn_intact : forall xp F old new ms,
+    rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Lemma applying_txn_intact : forall xp F m ms,
+    rep xp F (ApplyingTxn m) ms =p=> intact xp F m.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Lemma no_txn_intact : forall xp F old ms,
+    rep xp F (NoTxn old) ms =p=> intact xp F old.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Lemma intact_either : forall xp F old,
+    intact xp F old =p=> either xp F old old.
+  Proof.
+    unfold intact, either; cancel.
+  Qed.
+
+  Lemma committing_txn_either : forall xp F old new ms,
+    rep xp F (CommittingTxn old new) ms =p=> either xp F old new.
+  Proof.
+    unfold either; cancel.
+  Qed.
+
+
   Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
 
   Theorem commit_ok : forall xp ms,
@@ -381,13 +426,10 @@ Module LOG.
           ([[ r = false ]] *
             [[ Map.cardinal (MSTxn ms) > (LogLen xp) ]] *
             rep xp F (NoTxn m1) ms')
-     CRASH  exists ms',
-            rep xp F (NoTxn m1) ms' \/
-            rep xp F (NoTxn m2) ms' \/
-            rep xp F (CommittingTxn m1 m2) ms'
+     CRASH  either xp F m1 m2
     >} commit xp ms.
   Proof.
-    unfold commit.
+    unfold commit, either.
     step.
     step.
 
@@ -403,23 +445,6 @@ Module LOG.
   Qed.
 
 
-  Definition intact xp F old :=
-    (exists ms,
-      rep xp F (NoTxn old) ms \/
-      rep xp F (ApplyingTxn old) ms \/
-      exists new, rep xp F (ActiveTxn old new) ms)%pred.
-
-  Lemma active_txn_intact : forall xp F old new ms,
-    rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
-  Proof.
-    unfold intact; cancel.
-  Qed.
-
-  Lemma applying_txn_intact : forall xp F m ms,
-    rep xp F (ApplyingTxn m) ms =p=> intact xp F m.
-  Proof.
-    unfold intact; cancel.
-  Qed.
 
   Definition recover_either_pred xp F Fold Fnew :=
     (exists cs raw, BUFCACHE.rep cs raw *

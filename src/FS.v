@@ -167,28 +167,29 @@ Definition file_get_sz T fsxp inum mscs rx : prog T :=
   mscs <- LOG.begin (FSXPLog fsxp) mscs;
   let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
   let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-  rx ^(mscs, attr :-> "bytes").
+  rx ^(mscs, INODE.ABytes attr).
 
 Theorem file_getattr_ok : forall fsxp inum mscs,
   {< m pathname Fm Ftop tree f,
-  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
-         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs  *
+         [[[ m ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
   POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs *
          [[ r = BFILE.BFAttr f ]]
-  CRASH  LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m
+  CRASH  LOG.either (FSXPLog fsxp) (sb_rep fsxp) m m
   >} file_get_attr fsxp inum mscs.
 Proof.
   unfold file_get_attr.
   hoare.
-  apply LOG.would_recover_old_either.
-  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
-  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
+  apply LOG.intact_either.
+  rewrite LOG.no_txn_intact, LOG.intact_either; auto.
+  rewrite LOG.active_txn_intact, LOG.intact_either; auto.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
+(*
 Ltac recover_ro_ok := intros;
   repeat match goal with 
   | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
@@ -209,22 +210,38 @@ Ltac recover_ro_ok := intros;
   | [ |- pimpl (LOG.would_recover_either_pred _ _ _ _ ) _ ] => idtac "would_rec";
        rewrite LOG.would_recover_either_pred_diskIs_rev by auto; cancel
   end.
+*)
 
+Ltac recover_ro_ok := intros;
+  repeat match goal with 
+  | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
+  | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply corr3_from_corr2_rx; eauto with prog
+  | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3; intros
+  | [ |- corr2 _ _ ] => idtac "corr2"; step
+  | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; autorewrite with crash_xform
+  | [ H: pimpl (crash_xform _) _ |- _ ] => idtac "crash_xform2"; rewrite H; cancel
+  | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
+  end.
 
 Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   {<< m pathname Fm Ftop tree f,
-  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs  *
-         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
+  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs  *
+         [[[ m ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
   POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs *
          [[ r = BFILE.BFAttr f ]]
   REC RET:^(mscs, fsxp)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs 
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs 
   >>} file_get_attr fsxp inum mscs >> recover.
 Proof.
   recover_ro_ok.
-Qed.
+  cancel.
+  eauto.
+  recover_ro_ok.
+  cancel.
+  admit.
+Admitted.
 
 
 Definition file_set_sz T fsxp inum sz mscs rx : prog T :=

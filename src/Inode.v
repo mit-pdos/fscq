@@ -158,6 +158,14 @@ Module INODE.
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     rx ^(ms, # (ir :-> "len" )).
 
+  (* attribute getters *)
+
+  Definition ABytes  (a : iattr) := Eval cbn in ( a :-> "bytes" ).
+  Definition ABlocks (a : iattr) := Eval cbn in ( a :-> "blocks" ).
+  Definition AMTime  (a : iattr) := Eval cbn in ( a :-> "mtime" ).
+  Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
+  Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
+
   Definition getattrs T lxp xp inum ms rx : prog T := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     rx ^(ms, (i :-> "attrs")).
@@ -170,16 +178,18 @@ Module INODE.
   (* For updattr : a convenient way for setting individule attribute *)
 
   Inductive iattrupd_arg :=
-  | IABytes (v : word 64)
-  | IAMTime (v : word 32)
-  | IAType  (v : word  8)
+  | UBytes (v : word 64)
+  | UMTime (v : word 32)
+  | UType  (v : word  8)
+  | UDev   (v : word 64)
   .
 
   Definition iattr_upd (e : iattr) (a : iattrupd_arg) := Eval compute_rec in
   match a with
-  | IABytes v => (e :=> "bytes" := v)
-  | IAMTime v => (e :=> "mtime" := v)
-  | IAType  v => (e :=> "itype" := v)
+  | UBytes v => (e :=> "bytes" := v)
+  | UMTime v => (e :=> "mtime" := v)
+  | UType  v => (e :=> "itype" := v)
+  | UDev   v => (e :=> "dev"   := v)
   end.
 
   Definition updattr T lxp xp inum a ms rx : prog T := Eval compute_rec in
