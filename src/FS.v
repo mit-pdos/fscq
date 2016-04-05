@@ -246,8 +246,9 @@ Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   POST RET:^(mscs,r)
          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs *
          [[ r = BFILE.BFAttr f ]]
-  REC RET:^(mscs, fsxp)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs 
+  REC RET:^(mscs, fsxp) exists m',
+         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m') mscs *
+         [[[ m' ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]]
   >>} file_get_attr fsxp inum mscs >> recover.
 Proof.
   recover_ro_ok.
@@ -264,16 +265,16 @@ Proof.
   erewrite crash_xform_sep_star_dist.
   rewrite H3.
   cancel.
-  instantiate (x := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
-  instantiate (x0 := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
+  instantiate (1 := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
+  instantiate (1 := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
   eapply crash_xform_pimpl.
   eapply either_pimpl_pred; eauto.
   step.
-  (* are old and v the same? *)
-  admit.
-  admit.
+  subst; pred_apply. admit.
+  subst; pred_apply. admit.
   cancel.
   (* need either_pimpl_pred both ways? *)
+  admit.
 Admitted.
 
 
