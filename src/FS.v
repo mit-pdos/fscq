@@ -223,6 +223,21 @@ Ltac recover_ro_ok := intros;
   | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
   end.
 
+
+Require Import Log.
+
+
+Lemma either_pimpl_pred : forall xp F old (newpred: pred),
+  newpred (list2nmem old) ->
+  LOG.either xp F old old =p=> LOG.recover_either_pred xp F newpred newpred.
+Proof.
+  intros.
+  unfold LOG.either, LOG.recover_either_pred.
+  eexists.
+  (* maybe follows from H0? *)
+Admitted.
+
+
 Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   {<< m pathname Fm Ftop tree f,
   PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs  *
@@ -240,7 +255,25 @@ Proof.
   eauto.
   recover_ro_ok.
   cancel.
+  exists fsxp.
+  eexists.
+  eexists.
+  exists F_.
+  pred_apply.
+  cancel.
+  erewrite crash_xform_sep_star_dist.
+  rewrite H3.
+  cancel.
+  instantiate (x := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
+  instantiate (x0 := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
+  eapply crash_xform_pimpl.
+  eapply either_pimpl_pred; eauto.
+  step.
+  (* are old and v the same? *)
   admit.
+  admit.
+  cancel.
+  (* need either_pimpl_pred both ways? *)
 Admitted.
 
 
