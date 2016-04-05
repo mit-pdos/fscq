@@ -14,22 +14,23 @@ Require Import List.
 Require Import Array.
 Require Import Arith.
 Require Import ListUtils.
+Require Import Omega.
 
 Set Implicit Arguments.
 
 
 Definition hash_list T values rx : prog T :=
   hash <- Hash (combine_entry default_entry);
-  let^ (hash) <- For i < $ (length values)
+  let^ (hash) <- ForN i < length values
   Hashmap hm'
   Ghost [ crash ]
   Loopvar [ hash ]
   Continuation lrx
   Invariant
-    [[ hash_list_rep (rev (firstn #i values)) hash hm' ]]
+    [[ hash_list_rep (rev (firstn i values)) hash hm' ]]
   OnCrash crash
   Begin
-    hash <- Hash (Word.combine (combine_entry (selN values #i default_entry)) hash);
+    hash <- Hash (Word.combine (combine_entry (selN values i default_entry)) hash);
     lrx ^(hash)
   Rof ^(hash);
   rx hash.
@@ -50,59 +51,31 @@ Proof.
   step.
   step; try apply HL_nil; auto.
 
-  assert (Hlength: length (rev (firstn # (m ^+ $ (1)) values)) = S (# (m))).
+  assert (Hlength: length (rev (firstn (m + 1) values)) = S m).
     rewrite rev_length.
     rewrite firstn_length.
-    erewrite wordToNat_plusone; eauto.
-    destruct (le_dec (S (# m)) (length values)).
-      apply Min.min_l. auto.
-
-      apply not_lt in n.
-      apply wlt_lt in H0.
-      rewrite wordToNat_natToWord_idempotent' in H0; auto.
-      intuition.
+    rewrite min_l; omega.
 
   step.
   step.
 
   (* Loop invariant. *)
-  - destruct (rev (firstn # (m ^+ $ (1)) values)) eqn:Hrev_values.
+  - destruct (rev (firstn (m + 1) values)) eqn:Hrev_values.
     + simpl in Hlength. inversion Hlength.
-    + assert (Hl: rev l2 = (firstn # (m) values)).
-        replace l2 with (rev (rev l2)) in Hrev_values;
-          try apply rev_involutive.
-        rewrite <- rev_unit in Hrev_values.
-        erewrite wordToNat_plusone in Hrev_values; eauto.
-        apply rev_injective in Hrev_values.
+    + destruct values.
+      inversion H0.
 
-        rewrite <- removelast_firstn;
-          try (apply lt_word_lt_nat; auto).
-        replace (rev l2) with (rev l2 ++ removelast (p :: nil)).
-        rewrite <- removelast_app.
-        rewrite Hrev_values.
+      assert (Hvalues: rev (p0 :: firstn m values) = selN (p0 :: values) m default_entry :: rev (firstn m (p0 :: values))).
+        rewrite <- rev_unit.
+        rewrite <- firstn_plusone_selN; try omega.
+        destruct (m + 1) eqn:Hm; try omega.
+        simpl.
+        replace m with n; try omega.
         auto.
 
-        intuition. inversion H8.
-        simpl. rewrite app_nil_r. auto.
-
-      rewrite <- rev_involutive in Hl.
-      apply rev_injective in Hl.
-      rewrite Hl. eauto.
-      assert (Hw: selN (firstn # (m ^+ $ (1)) values) (# m) default_entry = p).
-        rewrite <- rev_involutive in Hrev_values.
-        apply rev_injective in Hrev_values.
-        rewrite Hrev_values.
-        simpl. apply selN_last. rewrite rev_length.
-        simpl in Hlength. apply eq_add_S in Hlength.
-        auto.
-      rewrite selN_firstn in Hw;
-        try (erewrite wordToNat_plusone; eauto).
-      subst.
-
-      econstructor.
-      apply hash_list_rep_upd; eauto.
-      apply wlt_lt in H0.
-      rewrite wordToNat_natToWord_idempotent' in H0; auto.
+      rewrite Hvalues.
+      solve_hash_list_rep.
+      solve_hash_list_rep.
       eapply Forall_forall in H4; eauto.
       apply in_selN; auto.
       auto.
@@ -115,10 +88,8 @@ Proof.
 
   (* Loop invariant implies post-condition. *)
   - step.
-    assert (Hfirstn: firstn # (natToWord addrlen (length values)) values = values).
-      rewrite wordToNat_natToWord_idempotent'; auto.
-      apply firstn_oob. auto.
-    rewrite <- Hfirstn. auto.
+    rewrite firstn_oob in H9; try omega.
+    auto.
 
   - exists 0; eexists. econstructor. eauto.
   - exists 0; eexists. econstructor. eauto.
