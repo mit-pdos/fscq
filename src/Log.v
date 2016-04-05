@@ -63,22 +63,20 @@ Module LOG.
 
   Definition rep xp F st ms :=
   let '(cm, mm) := (MSTxn ms, MSMem ms) in
-  (exists nr,
-  match st with
+  (match st with
     | NoTxn cur =>
-      [[ Map.Empty cm ]] *
-      MLog.rep xp F nr (MLog.Synced cur) mm
+      [[ Map.Empty cm ]] * exists nr,
+      MLog.rep xp F (MLog.Synced nr cur) mm
     | ActiveTxn old cur =>
       [[ map_valid cm old ]] *
-      [[ map_replay cm old cur ]] *
-      MLog.rep xp F nr (MLog.Synced old) mm
+      [[ map_replay cm old cur ]] * exists nr,
+      MLog.rep xp F (MLog.Synced nr old) mm
     | ApplyingTxn old =>
-      MLog.rep xp F nr (MLog.Applying old) mm
+      MLog.would_recover_before xp F old
     | CommittingTxn old cur =>
       [[ map_valid cm old ]] *
       [[ map_replay cm old cur ]] *
-      ( MLog.rep xp F nr (MLog.Applying old) mm \/
-        MLog.rep xp F nr (MLog.Flushing old (Map.elements cm)) mm)
+      MLog.would_recover_either xp F old (Map.elements cm)
   end)%pred.
 
 
@@ -257,13 +255,9 @@ Module LOG.
     eapply list2nmem_replay_disk_remove_updN_ptsto; eauto.
 
     (* crash conditions *)
-    instantiate (ms'0 := mk_memstate vmap0 ms').
     or_r; or_r; cancel.
 
-    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
-    or_l; cancel.
-
-    instantiate (ms'2 := mk_memstate (Map.remove a (MSTxn ms)) ms').
+    instantiate (ms'0 := mk_memstate (Map.remove a (MSTxn ms)) a0).
     or_r; or_l; cancel.
     eapply map_valid_remove; autorewrite with lists; eauto.
     Unshelve. all: eauto.
@@ -331,13 +325,9 @@ Module LOG.
     apply updN_replay_disk_remove_eq; eauto.
 
     (* crash conditions *)
-    instantiate (ms'0 := mk_memstate vmap0 ms').
     or_r; or_r; cancel.
 
-    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
-    or_l; cancel.
-
-    instantiate (ms'2 := mk_memstate (Map.remove a (MSTxn ms)) ms').
+    instantiate (ms'0 := mk_memstate (Map.remove a (MSTxn ms)) a0).
     or_r; or_l; cancel.
     eapply map_valid_remove; autorewrite with lists; eauto.
     apply updN_replay_disk_remove_eq; eauto.
@@ -409,15 +399,6 @@ Module LOG.
     step.
     step.
 
-    (* crashes *)
-    5: instantiate (1 := mk_memstate (MSTxn ms) ms').
-    6: instantiate (1 := mk_memstate (MSTxn ms) ms').
-    all: try instantiate (1 := mk_memstate vmap0 ms').
-    or_l; cancel.
-    or_l; cancel.
-    or_r; or_l; cancel.
-    or_r; or_l; cancel.
-    or_r; or_r; cancel.
     or_r; or_r; cancel.
   Qed.
 
@@ -804,7 +785,7 @@ Module LOG.
     denote NoDup as Hx.
     refine (_ (IHavl ovl m _ _ Hx)); [ intro | | pred_apply; cancel ].
     erewrite (@list2nmem_sel _ _ m n (p_cur, _)) by (pred_apply; cancel).
-    erewrite <- MLog.vsupd_selN_not_in; eauto.
+    erewrite <- vsupd_selN_not_in; eauto.
     apply sep_star_reorder_helper2.
     eapply list2nmem_updN.
     pred_apply; cancel.
@@ -881,13 +862,9 @@ Module LOG.
     apply dwrite_vsupd_vecs_ok; auto.
 
     (* crash conditions *)
-    instantiate (ms'0 := mk_memstate vmap0 ms').
     or_r; or_r; cancel.
 
-    instantiate (ms'1 := mk_memstate (MSTxn ms) ms').
-    or_l; cancel.
-
-    instantiate (ms'2 := mk_memstate vmap0 ms').
+    instantiate (ms'0 := mk_memstate vmap0 a).
     or_r; or_l; cancel.
     apply map_valid_map0.
     eauto.
@@ -922,7 +899,7 @@ Module LOG.
     (* crashes *)
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     rewrite H0.
-    do 3 (xform; cancel).
+    do 2 (xform; cancel).
     instantiate (x1 := mk_memstate (MSTxn ms) x0); simpl; eauto.
     all: eauto.
   Qed.
