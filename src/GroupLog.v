@@ -208,6 +208,70 @@ Module GLog.
     rewrite fold_right_replay_disk_length; auto.
   Qed.
 
+  Lemma popn_popn : forall ds m n,
+    popn m (popn n ds) = popn (n + m) ds.
+  Proof.
+    unfold popn; intros; simpl.
+    rewrite cuttail_cuttail; f_equal.
+    unfold nthd; simpl.
+    rewrite cuttail_length.
+    destruct (le_dec n (length (snd ds))).
+    replace (length (snd ds) - (n + m)) with (length (snd ds) - n - m) by omega.
+    unfold cuttail.
+    destruct (lt_dec (length (snd ds) - n - m) (length (snd ds) - n)).
+    rewrite selN_firstn at 1; auto.
+    apply selN_inb; omega.
+    rewrite selN_oob.
+    f_equal; omega.
+    rewrite firstn_length; apply Nat.min_case_strong; omega.
+    rewrite cuttail_oob by omega.
+    simpl; f_equal; omega.
+  Qed.
+
+  Lemma cuttail_tail : forall A (l : list A) a n,
+    cuttail (S n) (l ++ [a]) = cuttail n l.
+  Proof.
+    unfold cuttail; intros.
+    rewrite app_length; simpl.
+    replace (length l + 1 - S n) with (length l - n) by omega.
+    rewrite firstn_app_l; auto; omega.
+  Qed.
+
+  Lemma popn_tail : forall n d0 d ds,
+    popn (S n) (d0, ds ++ [d]) = popn n (d, ds).
+  Proof.
+    intros.
+    replace (S n) with (1 + n) by omega.
+    rewrite <- popn_popn.
+    unfold popn at 2; simpl.
+    rewrite cuttail_tail, cuttail_0.
+    unfold nthd; simpl.
+    rewrite app_length; simpl.
+    rewrite selN_app2 by omega.
+    replace (length ds + 1 - 1 - length ds) with 0 by omega; simpl; auto.
+  Qed.
+
+
+
+  Lemma replay_seq_popn_cuttail : forall ds ts n,
+    ReplaySeq ds ts ->
+    ReplaySeq (popn n ds) (cuttail n ts).
+  Proof.
+    intros ds ts; destruct ds; revert ts l d.
+    induction ts using rev_ind; induction l using rev_ind; simpl; intros.
+    rewrite popn_oob, cuttail_oob by (simpl; omega); auto.
+    inversion H; subst.
+    exfalso; eapply app_cons_not_nil; eauto.
+    inversion H; subst.
+    exfalso; eapply app_cons_not_nil; eauto.
+
+    destruct n.
+    rewrite popn_0, cuttail_0; auto.
+    rewrite cuttail_tail.
+    rewrite popn_tail.
+    apply IHts.
+
+  Admitted.
 
 
 
@@ -243,17 +307,14 @@ Module GLog.
 
   Definition rep xp F st ms :=
   let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
-  (exists nr,
-  match st with
+  (match st with
     | Cached ds =>
       [[ vmap_match vm ts ]] *
-      [[ dset_match xp ds ts ]] *
-      MLog.rep xp F nr (MLog.Synced (fst ds)) mm
+      [[ dset_match xp ds ts ]] * exists nr,
+      MLog.rep xp F (MLog.Synced nr (fst ds)) mm
     | Flushing ds =>
       [[ dset_match xp ds ts ]] *
-      ( MLog.rep xp F nr (MLog.Synced (fst ds)) mm \/
-        MLog.rep xp F nr (MLog.Applying (fst ds)) mm \/
-        MLog.rep xp F nr (MLog.Flushing (fst ds) (last ts nil)) mm)
+      MLog.would_recover_either xp F (fst ds) (last ts nil)
   end)%pred.
 
 
@@ -292,7 +353,7 @@ Module GLog.
     Continuation lrx
     Invariant
         exists nr,
-        MLog.rep xp F nr (MLog.Synced (nthd i ds)) mm *
+        MLog.rep xp F (MLog.Synced nr (nthd i ds)) mm *
         [[ dset_match xp (popn i ds) (cuttail i ts) ]]
     OnCrash crash
     Begin
@@ -438,6 +499,63 @@ Module GLog.
     unfold log_valid, KNoDup; intuition; inversion H.
   Qed.
 
+  Lemma dset_match_ent_length_exfalso : forall xp ds ts i,
+    length (selN ts i nil) > LogLen xp ->
+    dset_match xp ds ts ->
+    False.
+  Proof.
+    unfold dset_match, ents_valid; intuition.
+    destruct (lt_dec i (length ts)).
+    eapply Forall_selN with (i := i) (def := nil) in H1; intuition.
+    eapply le_not_gt; eauto.
+    rewrite selN_oob in H; simpl in H; omega.
+  Qed.
+
+
+  Lemma ents_valid_length_eq : forall xp d d' ts,
+    Forall (ents_valid xp d ) ts ->
+    length d = length d' ->
+    Forall (ents_valid xp d') ts.
+  Proof.
+    unfold ents_valid in *; intros.
+    rewrite Forall_forall in *; intuition.
+    eapply log_valid_length_eq; eauto.
+    apply H; auto.
+    apply H; auto.
+  Qed.
+
+
+  Lemma dset_match_popn_cuttail : forall xp n ds ts,
+    dset_match xp ds ts ->
+    dset_match xp (popn n ds) (cuttail n ts).
+  Proof.
+    unfold dset_match; intros; intuition.
+    apply forall_firstn.
+    eapply ents_valid_length_eq; eauto; simpl.
+    erewrite replay_seq_nthd_length; eauto.
+    apply replay_seq_popn_cuttail; auto.
+  Qed.
+
+  Lemma skipn_sub_S_selN_cons : forall A (l : list A) n def,
+    n < length l ->
+    skipn (length l - S n) l = selN l (length l - n - 1) def :: (skipn (length l - n) l).
+  Proof.
+    intros.
+    replace (length l - n) with (S (length l - n - 1)) at 2 by omega.
+    rewrite <- skipn_selN_skipn by omega.
+    f_equal; omega.
+  Qed.
+
+  Lemma dset_match_nthd_S : forall xp ds ts n,
+    dset_match xp ds ts ->
+    n < length ts ->
+    replay_disk (selN ts (length ts - n - 1) nil) (nthd n ds) = nthd (S n) ds.
+  Proof.
+    unfold dset_match; intuition.
+    repeat erewrite replay_seq_nthd; eauto.
+    erewrite skipn_sub_S_selN_cons; simpl; eauto.
+  Qed.
+
 
   (************* correctness theorems *)
 
@@ -482,7 +600,9 @@ Module GLog.
       rep xp F (Cached ds) ms *
       [[ log_valid ents ds!! ]]
     POST RET:^(ms', r)
-      [[ r = false ]] * rep xp F (Cached ds) ms' \/
+      [[ r = false ]] * 
+        rep xp F (Cached ds) ms' * [[ length ents > LogLen xp ]]
+      \/
       [[ r = true  ]] *
         rep xp F (Cached (pushd (replay_disk ents (latest ds)) ds)) ms'
     CRASH
@@ -519,17 +639,39 @@ Module GLog.
     rewrite nthd_0; cancel.
     rewrite popn_0, cuttail_0; auto.
 
-    - step.
+    - safestep.
       eapply dset_match_log_valid_selN; eauto.
-      + prestep; norm.
-        cancel.
-        
+      prestep; norm.
+
+      (* flush() returns true *)
+      erewrite dset_match_nthd_S by eauto; cancel.
+      intuition.
+      apply dset_match_popn_cuttail; eauto.
+
+      (* flush() returns false, this is impossible *)
+      exfalso; eapply dset_match_ent_length_exfalso; eauto.
+      exfalso; eapply dset_match_ent_length_exfalso; eauto.
+
+      (* crashes *)
+      subst; pimpl_crash. norm.
+      instantiate (ms' := mk_memstate vmap0 (cuttail m (MSTxns ms)) a).
+      simpl; rewrite last_cuttail_selN by auto; cancel.
+      simpl; intuition; eauto.
+
     - prestep; norm.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
       cancel. intuition.
     - pimpl_crash; cancel.
       rewrite popn_0; eauto.
+
+    Unshelve. all: easy.
   Qed.
+
+
+
+  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (submit _ _ _) _) => apply submit_ok : prog.
+  Hint Extern 1 ({{_}} progseq (flushall _ _) _) => apply flushall_ok : prog.
 
 
 

@@ -714,6 +714,12 @@ Proof.
   inversion H.
 Qed.
 
+Lemma selN_inb : forall A (l : list A) n d1 d2,
+  n < length l ->
+  selN l n d1 = selN l n d2.
+Proof.
+  induction l; destruct n; intros; simpl; firstorder; inversion H.
+Qed.
 
 Lemma selN_app: forall A n l l' (def : A),
   n < length l
@@ -1929,4 +1935,38 @@ Proof.
   unfold cuttail; intros.
   replace (length l - n) with 0 by omega.
   simpl; auto.
+Qed.
+
+Lemma last_selN : forall A (l : list A) def,
+  last l def = selN l (length l - 1) def.
+Proof.
+  induction l; intuition; simpl.
+  rewrite Nat.sub_0_r, IHl.
+  case_eq (length l); intros.
+  erewrite length_nil with (l := l); auto.
+  destruct l.
+  inversion H.
+  replace (S n - 1) with n by omega; auto.
+Qed.
+
+Lemma last_cuttail_selN : forall A n (l : list A) def,
+  n < length l ->
+  last (cuttail n l) def = selN l (length l - n - 1) def.
+Proof.
+  unfold cuttail; intros.
+  rewrite last_selN.
+  rewrite selN_firstn.
+  rewrite firstn_length_l by omega; auto.
+  rewrite firstn_length_l by omega; omega.
+Qed.
+
+Lemma cuttail_cuttail : forall A (l : list A) m n,
+  cuttail m (cuttail n l) = cuttail (n + m) l.
+Proof.
+  unfold cuttail; intros.
+  rewrite firstn_firstn, firstn_length.
+  f_equal.
+  apply Nat.min_case_strong; intros.
+  apply Nat.min_case_strong; intros; omega.
+  rewrite Nat.min_l in H; omega.
 Qed.
