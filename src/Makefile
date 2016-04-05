@@ -5,41 +5,60 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      Cache WritebackCache FSLayout AsyncRecArray DiskLog \
-		  LogReplay MemLog ListPred MemPred GenSepN Log LogRecArray \
+	      LogReplay MemLog ListPred MemPred GenSepN Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree FS Testprog \
-	      ExtrHaskellPrelude Extraction ExtractJSON
+	      ExtrHaskellPrelude
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
+VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
+VS_HS      := codegen/FS.hs
+VS_ML      := codegen/FS.ml
+VS_JSON    := codegen/FS.json
 GHC 	   := ghc
-ifeq (,$(shell $(GHC) --version | grep 'version 7.10' 2>/dev/null))
-	GHC := /opt/ghc/7.10.2/bin/ghc
+HSC2HS	   := hsc2hs
+ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
+	GHC := /opt/ghc/8.0.1/bin/ghc
+	HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
 endif
 
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
+HSLIB_FUSE := hscgen/Fuse.hs
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
 .PHONY: coq proof clean
 
-all: hstest fuse mkfs
+all: fuse mkfs
 
-%: %.ml coq
+%: %.ml $(VS_ML)
 	rm -f $@
 	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
-%: %.hs coq
+hscgen/%.hs: hslib/%.hsc
+	@mkdir -p $(@D)
+	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
+
+%: %.hs $(VS_HS) $(HSLIB_FUSE)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
+	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -o $@
 
-coq: coqbuild/Makefile.coq
+$(VS_HS): $(VS_VIO) coqbuild/Extraction.v
+	( cd coqbuild && coqc -q -R . Fscq Extraction )
+
+$(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
+	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
+
+$(VS_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq quick )
+	@touch coqbuild/*.vio
 
 checkproofs: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq checkproofs J=$(J) )
@@ -47,7 +66,7 @@ checkproofs: coqbuild/Makefile.coq
 proof: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq )
 
-parproof: coq
+parproof: $(VS_VIO)
 	( cd coqbuild && $(MAKE) -f Makefile.coq vio2vo J=$(J) )
 
 coqbuild/%.v: %.v
@@ -70,4 +89,6 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
 clean:
-	rm -rf codegen coqbuild _build fstest hstest gotest disk.img
+	rm -rf codegen coqbuild _build fstest hstest gotest disk.img fuse mkfs *.o *.hi
+
+.PRECIOUS: hscgen/%.hs

@@ -17,3 +17,7 @@ _build
 /#*#
 /.coq-native
 Makefile.coqproof
+/code.v
+/top-specs.v
+/all-specs.v
+/hscgen
