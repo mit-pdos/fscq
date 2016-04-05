@@ -763,26 +763,16 @@ Module MLog.
 
   (********* dwrite/dsync for a list of address/value pairs *)
 
-  Fixpoint overlap V (l : list addr) (m : Map.t V) : Prop :=
+  Fixpoint overlap V (l : list addr) (m : Map.t V) : bool :=
   match l with
-  | nil => False
-  | a :: rest => if (MapFacts.In_dec m a) then True else overlap rest m
+  | nil => false
+  | a :: rest => if (Map.mem a m) then true else overlap rest m
   end.
-
-  Definition overlap_dec : forall V l (m : Map.t V),
-    {overlap l m} + {~ overlap l m}.
-  Proof.
-    induction l; simpl; intros.
-    right; auto.
-    destruct (MapFacts.In_dec m a).
-    left; auto.
-    apply IHl.
-  Defined.
 
 
   Definition dwrite_vecs T xp avl ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
-    ms' <- IfRx irx (overlap_dec (map fst avl) oms) {
+    ms' <- IfRx irx (bool_dec (overlap (map fst avl) oms) true) {
       ms <- apply xp ms;
       irx ms
     } else {
@@ -800,31 +790,37 @@ Module MLog.
 
 
   Lemma overlap_firstn_overlap : forall V n l (m : Map.t V),
-    overlap (firstn n l) m ->
-    overlap l m.
+    overlap (firstn n l) m = true ->
+    overlap l m = true.
   Proof.
     induction n; destruct l; simpl; firstorder.
     destruct (MapFacts.In_dec m n0); auto.
+    rewrite Map.mem_1; auto.
+    apply MapFacts.not_mem_in_iff in n1; rewrite n1 in *; auto.
   Qed.
 
   Lemma In_MapIn_overlap : forall V l a (ms : Map.t V),
     In a l ->
     Map.In a ms ->
-    overlap l ms.
+    overlap l ms = true.
   Proof.
     induction l; intros; simpl.
     inversion H.
     destruct (MapFacts.In_dec ms a); auto.
+    rewrite Map.mem_1; auto.
+    apply MapFacts.not_mem_in_iff in n as Hx; rewrite Hx in *; auto.
     inversion H; destruct (addr_eq_dec a a0); subst; firstorder.
   Qed.
 
   Lemma replay_disk_vsupd_vecs_nonoverlap : forall l m d,
-    ~ overlap (map fst l) m ->
+    overlap (map fst l) m = false ->
     vsupd_vecs (replay_disk (Map.elements m) d) l =
     replay_disk (Map.elements m) (vsupd_vecs d l).
   Proof.
     induction l; simpl; intros; auto.
-    destruct (MapFacts.In_dec m (fst a)); simpl in *; try tauto.
+    destruct (MapFacts.In_dec m (fst a)); simpl in *.
+    rewrite Map.mem_1 in H; congruence.
+    apply MapFacts.not_mem_in_iff in n as Hx; rewrite Hx in *; auto.
     rewrite <- IHl by auto.
     unfold vsupd, vsmerge.
     rewrite replay_disk_updN_comm.
@@ -888,6 +884,7 @@ Module MLog.
     rewrite vsupd_vecs_length; auto.
     apply map_valid_vsupd_vecs; auto.
     apply replay_disk_vsupd_vecs_nonoverlap; auto.
+    apply not_true_is_false; auto.
 
     (* crashes for case 2 *)
     cancel.
@@ -899,6 +896,7 @@ Module MLog.
     apply map_valid_vsupd_vecs; auto.
     apply replay_disk_vsupd_vecs_nonoverlap.
     rewrite <- firstn_map_comm.
+    apply not_true_is_false; auto.
     denote overlap as Hx; contradict Hx.
     eapply overlap_firstn_overlap; eauto.
   Qed.
