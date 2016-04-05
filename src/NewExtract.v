@@ -11,7 +11,7 @@ Definition double (x : nat) := x * 2.
 Parameter go_type_is : forall (T : Type) (e : T) (gt : string), Prop.
 Axiom go_type_is_nat : go_type_is nat "int"%string.
   (* XXX should really be "big.Int" *)
-Hint Resolve go_type_is_nat : go_type.
+Hint Resolve go_type_is_nat : go.
 
 (*
 Fixpoint comma_join (args : list string) :=
@@ -45,29 +45,58 @@ Defined.
 (* go expressions *)
 Parameter go_expr_is : forall (T : Type) (e : T) (ge : string), Prop.
 Axiom go_expr_is_zero : go_expr_is 0 "0"%string.
-Hint Resolve go_expr_is_zero : go_expr.
+Hint Resolve go_expr_is_zero : go.
 Axiom go_expr_is_one : go_expr_is 1 "1"%string.
-Hint Resolve go_expr_is_one : go_expr.
+Hint Resolve go_expr_is_one : go.
 Axiom go_expr_is_two : go_expr_is 2 "2"%string.
-Hint Resolve go_expr_is_two : go_expr.
+Hint Resolve go_expr_is_two : go.
 
 Axiom go_expr_is_mul : forall a ag b bg,
   go_expr_is a ag ->
   go_expr_is b bg ->
   go_expr_is (a*b) (ag ++ "*" ++ bg).
-Hint Resolve go_expr_is_mul : go_expr.
+Hint Resolve go_expr_is_mul : go.
 
 Axiom go_expr_is_plus : forall a ag b bg,
   go_expr_is a ag ->
   go_expr_is b bg ->
   go_expr_is (a+b) (ag ++ "+" ++ bg).
-Hint Resolve go_expr_is_mul : go_expr.
+Hint Resolve go_expr_is_plus : go.
 
-Definition go_expr_test : exists goexpr, go_expr_is (1+2*2) goexpr.
-  eexists.
-  eapply go_expr_is_plus.
-  eapply go_expr_is_one.
-  eapply go_expr_is_mul.
-  eapply go_expr_is_two.
-  eapply go_expr_is_two.
-Qed.
+(*
+Axiom go_expr_is_fun1 : forall ArgType RetType (f : ArgType -> RetType) fg,
+                                 agt rgt,
+  go_type_is ArgType agt ->
+  go_type_is RetType rgt ->
+
+  f = .
+"func (arg0 " ++ agt ++ ") " ++ rgt ++ " { return " ++ fg ++ " } "
+
+Proof.
+*)
+
+Axiom go_expr_is_apply1 : forall ArgType RetType
+                                 (f : ArgType -> RetType) fg
+                                 (a : ArgType) ag,
+  go_expr_is f fg ->
+  go_expr_is a ag ->
+  go_expr_is (f a) (fg ++ ag).
+Hint Resolve go_expr_is_apply1 : go_expr.
+
+Definition go_expr_of (T : Type) (e : T) := { ge : string | go_expr_is e ge }.
+
+Definition go_expr_test : go_expr_of (1+2*2).
+Proof.
+  econstructor.
+  eauto with go.
+Defined.
+
+Print go_expr_test.
+Require Import ExtrOcamlString.
+Extraction go_expr_test.
+
+Definition go_expr_test2 : go_expr_of (double 2).
+Proof.
+  econstructor.
+  eapply go_expr_is_apply1.
+  eauto with go.
