@@ -1,0 +1,89 @@
+/*
+  This file is part of the "OCamlFuse" library.
+
+  OCamlFuse is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation (version 2 of the License).
+  
+  OCamlFuse is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+  
+  You should have received a copy of the GNU General Public License
+  along with OCamlFuse.  See the file LICENSE.  If you haven't received
+  a copy of the GNU General Public License, write to:
+  
+  Free Software Foundation, Inc.,
+  59 Temple Place, Suite 330, Boston, MA
+  02111-1307  USA
+
+  Vincenzo Ciancia
+
+  applejack@users.sf.net
+  vincenzo_ml@yahoo.it
+*/
+
+quote(h,"#include <fuse.h>") 
+
+typedef [abstract] void * fuse;
+quote(mlmli,"type fuse_operations")
+quote(mlmli,"type fuse_cmd")
+
+typedef [string] char * str;
+
+struct fuse_operation_names {
+  [string,unique] char * init;
+  [string,unique] char * getattr;
+  [string,unique] char * readlink;
+  [string,unique] char * readdir;
+  [string,unique] char * opendir;
+  [string,unique] char * releasedir;
+  [string,unique] char * fsyncdir;
+  [string,unique] char * mknod;
+  [string,unique] char * mkdir;
+  [string,unique] char * unlink;
+  [string,unique] char * rmdir;
+  [string,unique] char * symlink;
+  [string,unique] char * rename;
+  [string,unique] char * link;
+  [string,unique] char * chmod;
+  [string,unique] char * chown;
+  [string,unique] char * truncate;
+  [string,unique] char * utime;
+  [string,unique,mlname(fopen)] char * open;
+  [string,unique] char * read;
+  [string,unique] char * write;
+  [string,unique] char * statfs;
+  [string,unique] char * flush;
+  [string,unique] char * release;
+  [string,unique] char * fsync;
+  [string,unique] char * setxattr;
+  [string,unique] char * getxattr;
+  [string,unique] char * listxattr;
+  [string,unique] char * removexattr; 
+};
+
+struct __fuse_context { /* TODO: what's the meaning of the private_data field? */
+  [ptr] struct fuse *fuse;
+  unsigned int uid;
+  unsigned int gid; 
+  unsigned int pid;
+};
+
+quote(h,"#define __fuse_context fuse_context");
+quote(h,"#define __file_info file_info");
+
+[ref] struct __fuse_context * fuse_get_context();
+
+[ptr] struct fuse_operations * get_fuse_operations();
+void set_fuse_operations([ref] const struct fuse_operation_names * op);
+
+[blocking,ptr] struct fuse_cmd * __fuse_read_cmd([ptr,in] struct fuse *f);
+[blocking] void __fuse_process_cmd([ptr] struct fuse *f,[ptr,in] struct fuse_cmd *cmd);
+
+void ml_fuse_init();
+void ml_fuse_main(int argc,[size_is(argc)] str argv[],[ptr] const struct fuse_operations *op);
+
+[blocking] boolean __fuse_exited([ptr] struct fuse * f);
+
