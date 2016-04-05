@@ -181,14 +181,69 @@ Proof.
     eauto.
 Qed.
 
-(* TODO: relation is really over locks and locks':
-need to allow changing NoOwner view iff you release the lock *)
-Definition linear_rel A AEQ V (locks: _ -> BusyFlagOwner)
-  tid (m m': @linear_mem A AEQ V) :=
-  forall a, locks a <> Owned tid -> m' a = m a.
+Definition linear_rel A AEQ V tid (locks locks': A -> BusyFlagOwner)
+  (m m': @linear_mem A AEQ V) :=
+  forall a, (locks a <> Owned tid ->
+    forall o, m' (a, o) = m (a, o)) /\
+  (locks a = Owned tid ->
+  locks' a = Owned tid ->
+    m' (a, NoOwner) = m (a, NoOwner)) /\
+  (forall tid', tid <> tid' ->
+    (m' (a, Owned tid') = m (a, Owned tid'))) /\
+  (locks a = Owned tid ->
+    locks' a = NoOwner ->
+    forall o, m' (a, o) = m (a, NoOwner)).
 
-(* should prove that linear_rel preserves linearized_consistent, as long as the
-new locks follow the lock protocol *)
+Require Import Automation ForwardChaining.
+
+Ltac specialize_t t :=
+  repeat match goal with
+  | [ H: forall (_:t), _, x:t |- _ ] =>
+    specialize (H x)
+  end.
+
+Ltac learn_all_t t :=
+  repeat match goal with
+  | [ H: forall (_:t), _, x:t |- _ ] =>
+    learn that (H x)
+  end.
+
+Theorem linear_rel_preserves_consistency : forall A AEQ V tid
+  (locks locks': A -> BusyFlagOwner) (m m': @linear_mem A AEQ V),
+  linearized_consistent m locks ->
+  (forall a, lock_transition tid (locks a) (locks' a)) ->
+  linear_rel tid locks locks' m m' ->
+  linearized_consistent m' locks'.
+Proof.
+  unfold linearized_consistent, linear_rel; intros.
+  specialize_t A.
+  intuition.
+  inversion H0; subst; repeat simpl_match; intros.
+  - replace (locks a) in *.
+    let H := fresh in
+    destruct (locks' a) eqn:H; intros.
+    intuition (try congruence).
+    learn_all_t ID;
+    repeat match goal with
+    | [ H: (?a = ?a -> False) -> _ |- _ ] => clear H
+    end.
+    destruct (PeanoNat.Nat.eq_dec id tid);
+      subst; intuition congruence.
+  - replace (locks a) in *.
+    replace (locks' a) in *.
+    learn_all_t ID;
+    repeat match goal with
+    | [ H: (?a = ?a -> False) -> _ |- _ ] => clear H
+    end.
+    intuition congruence.
+  - replace (locks a) in *.
+    replace (locks' a) in *.
+    learn_all_t ID;
+    repeat match goal with
+    | [ H: (?a = ?a -> False) -> _ |- _ ] => clear H
+    end.
+    intuition congruence.
+Qed.
 
 Local Definition linearized_consistent' A AEQ V (m: @linear_mem A AEQ V) (locks: A -> BusyFlagOwner) : Prop :=
   forall a tid,
