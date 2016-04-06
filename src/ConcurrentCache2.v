@@ -881,4 +881,9 @@ Proof.
   admit.
 Abort.
 
+Hint Extern 1 {{ read _; _ }} => apply locked_read_ok : prog.
+Hint Extern 1 {{ write _ _; _ }} => apply locked_write_ok : prog.
+Hint Extern 1 {{ lock _; _ }} => apply lock_ok : prog.
+Hint Extern 1 {{ unlock _; _ }} => apply unlock_ok : prog.
+
 End Cache.
