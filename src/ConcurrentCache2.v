@@ -260,7 +260,7 @@ Ltac invariant_unfold :=
   match goal with
   | [ H: Inv _ _ _ |- _ ] =>
     learn that (cache_invariant_holds H)
-  end;
+  end ||
   match goal with
   | [ H: cacheI _ _ _ |- _ ] =>
     unfold cacheI in H
@@ -834,14 +834,14 @@ Theorem unlock_ok : forall a,
     {{ Fs F F0 LF vd0 vd v v0,
      | PRE d m s0 s:
          hlistmem s |= Fs * haddr GDisk0 |-> vd0 * rep vd /\
-         Inv m s d /\
+         cacheI m s d /\
          vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
          vd0 |= F0 * a |-> v0 /\
          R tid s0 s
      | POST d' m' s0' s' _:
         exists vd0' vd',
            hlistmem s' |= Fs * haddr GDisk0 |-> vd0' * rep vd' /\
-           Inv m' s' d' /\
+           cacheI m' s' d' /\
            vd' |= F * (a, NoOwner) |-> (v, None) *
              lin_pred (Owned tid) (cache_locked tid s LF) /\
            vd0' |= F0 * a |-> v /\
@@ -866,16 +866,20 @@ Proof.
   rotate_left.
   eauto.
 
-  finish.
   unfold cacheI; repeat descend; autorewrite with hlist; eauto.
   admit.
-  admit.
+  apply Locks.rep_stable_remove; eauto.
 
   admit. (* cache_rep after lin_release *)
   admit. (* important: GDisk0 has been updated at a *)
 
-  (* oops, can't promise Inv holds *)
+  (* not actually true, releasing could affect F since it is allowed to
+     assert facts about other thread's owned data even at a, which has
+     now been updated *)
   give_up.
+
+  (* this is true, since get GDisk s (a, Owned tid) is actually v *)
+  admit.
 Abort.
 
 End Cache.

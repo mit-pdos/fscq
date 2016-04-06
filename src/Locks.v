@@ -67,7 +67,7 @@ Hint Unfold set_open free_lock : locks.
 Hint Rewrite MapFacts.remove_eq_o using (solve [ auto ]) : map.
 Hint Rewrite MapFacts.remove_neq_o using (solve [ auto ] ) : map.
 
-Theorem lock_pred_stable_remove : forall m s a,
+Local Theorem rep_stable_remove : forall m s a,
   rep m s ->
   rep (set_open m a) (free_lock s a).
 Proof.
