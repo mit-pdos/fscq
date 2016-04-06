@@ -7,6 +7,9 @@ Require Import Testprog.
 
 Extraction Language Ocaml.
 
+(* Avoid conflicts with existing Ocaml module names. *)
+Extraction Blacklist String List Nat.
+
 (* Optimize away some noop-like wrappers. *)
 Extraction Inline Prog.progseq.
 Extraction Inline Prog.pair_args_helper.
