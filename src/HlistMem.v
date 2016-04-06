@@ -98,6 +98,69 @@ Qed.
 Definition del AT AEQ V (m: @mem AT AEQ V) a : @mem _ AEQ V :=
   fun a' => if AEQ a' a then None else m a'.
 
+Theorem haddr_member_eq:
+  forall (types : list Type) (t1 t2 : Type) (m1 : member t1 types) (m2 : member t2 types),
+   member_index m1 = member_index m2 -> haddr m1 = haddr m2.
+Proof.
+  intros.
+  apply indices_eq in H.
+  destruct H; subst.
+  cbn; auto.
+Qed.
+
+Lemma haddr_eq_index : forall types t t' (m: member t types) (m': member t' types),
+  haddr m = haddr m' ->
+  member_index m = member_index m'.
+Proof.
+  intros.
+  inversion H; subst; auto.
+Qed.
+
+Lemma haddr_eq : forall types t (m m': member t types),
+  haddr m = haddr m' ->
+  m = m'.
+Proof.
+  intros.
+  apply member_index_eq.
+  apply haddr_eq_index.
+  auto.
+Qed.
+
+Theorem hlistmem_ptsto_del : forall types (h: hlist _ types)
+  (F: pred) t (m: member t types),
+  F (del (hlistmem h) (haddr m)) ->
+  (F * haddr m |-> (get m h))%pred (hlistmem h).
+Proof.
+  intros.
+  unfold_sep_star.
+  exists (del (hlistmem h) (haddr m)).
+  match goal with
+  | [ |- exists (_:@mem ?AT ?AEQ ?V), _ ] =>
+    exists (upd (@empty_mem AT AEQ V) (haddr m) (get m h))
+  end.
+  intuition.
+  extensionality a'.
+  destruct a'.
+  unfold hlistmem, mem_union, del.
+  destruct (haddress_dec (haddr m0) (haddr m)); auto.
+  inversion e; subst.
+  apply haddr_eq in e; subst.
+  rewrite upd_eq; auto.
+
+  unfold mem_disjoint, upd, del, empty_mem; intro; repeat deex.
+  destruct a.
+  destruct (haddress_dec (haddr m0) (haddr m)).
+  inversion H1.
+  inversion H2.
+
+  unfold ptsto; intuition idtac.
+  rewrite upd_eq; auto.
+  unfold upd.
+  destruct (haddress_dec a' (haddr m)).
+  exfalso; eauto.
+  unfold empty_mem; auto.
+Qed.
+
 Module Examples.
   Import List.ListNotations.
   Import HlistNotations.
