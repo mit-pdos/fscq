@@ -891,8 +891,9 @@ Module Type SemanticsVars.
 End SemanticsVars.
 
 Module Type Semantics (SVars:SemanticsVars).
-  Parameter Inv : Invariant SVars.Mcontents SVars.Scontents.
-  Parameter R : ID -> Relation SVars.Scontents.
+  Export SVars.
+  Parameter Inv : Invariant Mcontents Scontents.
+  Parameter R : ID -> Relation Scontents.
 
   Axiom R_trans : forall tid s1 s2,
     star (R tid) s1 s2 -> R tid s1 s2.

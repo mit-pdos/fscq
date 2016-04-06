@@ -652,7 +652,7 @@ Theorem locked_write_ok : forall a v,
          exists vd',
            hlistmem s' |= Fs' * rep vd' /\
            Inv m' s' d' /\
-           vd' |= F' * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
+           vd' |= F' * lin_pred (Owned tid) (cache_locked tid s' (LF * a |-> (v, None))) /\
            R tid s0' s'
     }} write a v.
 Proof.
@@ -701,17 +701,18 @@ Theorem lock_ok : forall a,
      | PRE d m s0 s:
          hlistmem s |= Fs * rep vd /\
          Inv m s d /\
-         vd |= F * (a, Owned tid) |->? * lin_pred (Owned tid) (cache_locked tid s LF) /\
+         vd |= F * (a, NoOwner) |->? * lin_pred (Owned tid) (cache_locked tid s LF) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
-       (forall P, preserves' (get GDisk) (star (othersR R tid)) (F * (a, Owned tid) |->?) F'
+       (forall P, preserves' (get GDisk) (star (othersR R tid))
+        (F * (a, NoOwner) |->?) (F' * (a, NoOwner) |->?)
         (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
          R tid s0 s
      | POST d' m' s0' s' _:
          exists vd' v,
            hlistmem s' |= Fs' * rep vd' /\
            Inv m' s' d' /\
-           vd' |= F' * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
+           vd' |= F' * lin_pred (Owned tid) (cache_locked tid s' (LF * a |-> (v, None))) /\
            R tid s0' s'
     }} lock a.
 Proof.
@@ -842,7 +843,7 @@ Theorem unlock_ok : forall a,
            hlistmem s' |= Fs * haddr GDisk0 |-> vd0' * rep vd' /\
            cacheI m' s' d' /\
            vd' |= F * (a, NoOwner) |-> (v, None) *
-             lin_pred (Owned tid) (cache_locked tid s LF) /\
+             lin_pred (Owned tid) (cache_locked tid s' LF) /\
            vd0' |= F0 * a |-> v /\
            s0' = s0
     }} unlock a.
@@ -879,7 +880,7 @@ Proof.
 
   (* this is true, since get GDisk s (a, Owned tid) is actually v *)
   admit.
-Abort.
+Admitted.
 
 Hint Extern 1 {{ read _; _ }} => apply locked_read_ok : prog.
 Hint Extern 1 {{ write _ _; _ }} => apply locked_write_ok : prog.
