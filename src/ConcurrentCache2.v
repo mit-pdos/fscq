@@ -435,7 +435,7 @@ Theorem locked_AsyncRead_ok : forall a,
        vd |= F * lin_pred (Owned tid)
         (cache_locked tid s (LF * a |-> (v, None))) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
-        (fun _ => (exists vd, rep vd)%pred) /\
+        (fun s => rep (get GDisk s))%pred /\
        (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
         (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
        R tid s0 s
@@ -574,8 +574,10 @@ Theorem locked_read_ok : forall a,
        hlistmem s |= Fs * rep vd /\
        Inv m s d /\
        vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
-       preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
-       preserves (get GDisk) (star (othersR R tid)) F F' /\
+       preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
+        (fun s => rep (get GDisk s))%pred /\
+       (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
+        (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
@@ -589,13 +591,13 @@ Proof.
   hoare pre simplify with try solve [ finish ];
     try time "final eauto" solve [ eauto ].
 
-  eapply H3; eauto.
+  eapply H3; try rewrite (haddr_ptsto_get H); now eauto.
   rewrite <- (haddr_ptsto_get H) in *.
   eapply H4; eauto.
 
   admit. (* clean cache val *)
 
-  eapply H3; eauto.
+  eapply H3; try rewrite (haddr_ptsto_get H); now eauto.
   rewrite <- (haddr_ptsto_get H) in *.
   eapply H4; now eauto.
 
@@ -604,7 +606,7 @@ Proof.
   instantiate (1 := get GDisk s2).
   eapply cache_rep_refold.
   rewrite hlistupd_memupd.
-  admit.
+  admit. (* need to do some rotation and then apply preservation *)
 
   finish.
   unfold cacheI; repeat descend; autorewrite with hlist; eauto.
@@ -642,8 +644,10 @@ Theorem locked_write_ok : forall a v,
          hlistmem s |= Fs * rep vd /\
          Inv m s d /\
          vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v0, None))) /\
-         preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
-         preserves (get GDisk) (star (othersR R tid)) F F' /\
+       preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
+        (fun s => rep (get GDisk s))%pred /\
+       (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
+        (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
          R tid s0 s
      | POST d' m' s0' s' _:
          exists vd',
@@ -675,9 +679,8 @@ Proof.
   admit. (* propagate upd into lin_pred and cache_locked *)
 
   eapply R_trans.
-  eapply star_trans; apply star_one_step; eauto.
+  eapply star_two_step; eauto.
   finish.
-
   unfold cacheR; repeat descend; autorewrite with hlist; eauto.
 Admitted.
 
@@ -700,8 +703,10 @@ Theorem lock_ok : forall a,
          hlistmem s |= Fs * rep vd /\
          Inv m s d /\
          vd |= F * (a, Owned tid) |->? * lin_pred (Owned tid) (cache_locked tid s LF) /\
-         preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
-         preserves (get GDisk) (star (othersR R tid)) (F * (a, Owned tid) |->?) F' /\
+       preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
+        (fun s => rep (get GDisk s))%pred /\
+       (forall P, preserves' (get GDisk) (star (othersR R tid)) (F * (a, Owned tid) |->?) F'
+        (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
          R tid s0 s
      | POST d' m' s0' s' _:
          exists vd' v,
@@ -739,16 +744,9 @@ Proof.
   rotate_right.
   eapply ptsto_upd'.
   rotate_left.
-  eapply pimpl_apply;
-    [ repeat rewrite <- sep_star_assoc_2;
-      apply pimpl_refl | ].
-  eapply H3.
-
-  eapply pimpl_apply;
-  [ repeat rewrite <- sep_star_assoc_1;
-    apply pimpl_refl | ].
-  eauto.
-  eauto.
+  admit. (* applying preservation is trickier here:
+    need to fold rep back up, which will probably require instantiating the
+    cache and lock evars *)
 
   finish.
   unfold cacheI; repeat descend; autorewrite with hlist; eauto.
