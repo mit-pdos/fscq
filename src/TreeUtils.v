@@ -175,9 +175,10 @@ Definition st := (TDir 90 [
   ("y", (TFile 92 "yyy"))
 ]).
 
+(*
 Eval compute in (walk   ["foo"; "zoo"] rt).
 Eval compute in (update ["foo"; "emp"; "a"] st rt).
 Eval compute in (update ["b"] st rt).
 Eval compute in (delete ["foo"; "bar"] rt).
 Eval compute in (equal rt (delete ["foo"; "emp"] rt)).
-
+*)
