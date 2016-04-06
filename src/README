@@ -21,6 +21,11 @@ You also need to install headers for FUSE:
 
   apt-get install libfuse-dev
 
+To build the Ocaml extracted code, install the following Ocaml library
+for supporting fsync:
+
+  apt-get install libextunix-ocaml-dev
+
 To run the fuse fscq:
 
   mkdir /tmp/fscq
