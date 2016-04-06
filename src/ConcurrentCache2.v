@@ -434,8 +434,10 @@ Theorem locked_AsyncRead_ok : forall a,
        cache_get (get Cache m) a = None /\
        vd |= F * lin_pred (Owned tid)
         (cache_locked tid s (LF * a |-> (v, None))) /\
-       preserves (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs' /\
-       preserves (get GDisk) (star (othersR R tid)) F F' /\
+       preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
+        (fun _ => (exists vd, rep vd)%pred) /\
+       (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
+        (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
