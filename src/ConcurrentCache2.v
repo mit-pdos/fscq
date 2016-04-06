@@ -37,8 +37,8 @@ Section HideReaders.
 
 End HideReaders.
 
-Module Type CacheVars (Sem:Semantics).
-  Import Sem.
+Module Type CacheVars (SemVars:SemanticsVars).
+  Export SemVars.
   Parameter memVars : variables Mcontents [BlockCache; Locks.M].
   Parameter stateVars : variables Scontents [linearized DISK; Disk; linearized BlockFun; Locks.S].
 
@@ -46,8 +46,7 @@ Module Type CacheVars (Sem:Semantics).
   Axiom no_confusion_stateVars : NoDup (hmap var_index stateVars).
 End CacheVars.
 
-Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
-  Import Sem.
+Module CacheTransitionSystem (SemVars:SemanticsVars) (CVars : CacheVars SemVars).
   Import CVars.
 
   Definition Cache := ltac:(hget 0 memVars).
@@ -86,13 +85,12 @@ Module CacheTransitionSystem (Sem:Semantics) (CVars : CacheVars Sem).
 
 End CacheTransitionSystem.
 
-Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
+Module Type CacheSemantics (SemVars: SemanticsVars) (Sem:Semantics SemVars) (CVars:CacheVars SemVars).
 
-  Module Transitions := CacheTransitionSystem Sem CVars.
+  Module Transitions := CacheTransitionSystem SemVars CVars.
 
   Import Sem.
-  Import CVars.
-  Import Transitions.
+  Export Transitions.
 
   Axiom cache_invariant_holds : forall m s d,
     Inv m s d ->
@@ -124,9 +122,10 @@ Module Type CacheSemantics (Sem:Semantics) (CVars:CacheVars Sem).
 
 End CacheSemantics.
 
-Module Cache (Sem:Semantics)
-  (CVars:CacheVars Sem)
-  (CSem:CacheSemantics Sem CVars).
+Module Cache (SemVars:SemanticsVars)
+  (Sem:Semantics SemVars)
+  (CVars:CacheVars SemVars)
+  (CSem:CacheSemantics SemVars Sem CVars).
 
 Import CSem.
 Import Sem.

@@ -885,11 +885,14 @@ Hint Extern 1 {{ Wakeup _; _ }} => apply Wakeup_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 
 (* Wrap up the parameters that the semantics takes in a module. *)
-Module Type Semantics.
+Module Type SemanticsVars.
   Parameter Mcontents : list Type.
   Parameter Scontents : list Type.
-  Parameter Inv : Invariant Mcontents Scontents.
-  Parameter R : ID -> Relation Scontents.
+End SemanticsVars.
+
+Module Type Semantics (SVars:SemanticsVars).
+  Parameter Inv : Invariant SVars.Mcontents SVars.Scontents.
+  Parameter R : ID -> Relation SVars.Scontents.
 
   Axiom R_trans : forall tid s1 s2,
     star (R tid) s1 s2 -> R tid s1 s2.
