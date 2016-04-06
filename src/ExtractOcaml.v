@@ -1,4 +1,7 @@
 Require Import ExtrOcamlBasic.
+Require Import ExtrOcamlString.
+Require Import ExtrOcamlNatBigInt.
+Require Import ExtrOcamlZBigInt.
 Require Import FS.
 Require Import Testprog.
 
