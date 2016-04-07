@@ -2,14 +2,14 @@ OCAMLBUILD := ocamlbuild -lib str
 OCAMLINC   := -I codegen
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem AsyncDisk Pred Prog PredCrash Hoare \
+	      Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      Cache FSLayout AsyncRecArray DiskLog MemLog \
 		  ListPred GenSepN Log LogRecArray \
 		  Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 		  Dir DirName StringUtils TreeUtils DirTree FS Testprog \
-	      ExtrHaskellPrelude Extraction ExtractJSON \
-	      Compare Hashmap HashmapProg
+	      ExtrHaskellPrelude Extraction ExtractJSON
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 GHC 	   := ghc

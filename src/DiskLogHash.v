@@ -2,6 +2,8 @@ Require Import Arith.
 Require Import Bool.
 Require Import Eqdep_dec.
 Require Import Classes.SetoidTactics.
+Require Import Hashmap.
+Require Import HashmapProg.
 Require Import Pred PredCrash.
 Require Import Prog.
 Require Import Hoare.
@@ -270,8 +272,11 @@ Module PaddedLog.
   | Truncated (old: contents)
   (* The log is being extended; only the content has been updated (unsynced) *)
   | ExtendedUnsync (old: contents)
-  (* The log has been extended; the new contents are synced but the length is unsynced *)
-  | Extended (old: contents) (new: contents).
+  (* The log has been extended;
+      the new contents may or may not be synced and the length is unsynced *)
+  | Extended (old: contents) (new: contents)
+  (* The log may have been extended to the length that is synced. *)
+  | SyncedUnmatched (old: contents) (new: contents).
 
   Definition ent_addr (e : entry) := addr2w (fst e).
   Definition ent_valu (e : entry) := snd e.
@@ -321,44 +326,69 @@ Module PaddedLog.
   Definition padded_log (log : contents) :=
     setlen log (roundup (length log) DescSig.items_per_val) (0, $0).
 
-  Definition rep_inner xp (st : state) : rawpred :=
+  Definition rep_inner xp (st : state) hm : rawpred :=
   (match st with
   | Synced l =>
-       Hdr.rep xp (Hdr.Synced (ndesc_log l, ndata_log l)) *
-       rep_contents xp l
+      exists prev_len h,
+       Hdr.rep xp (Hdr.Synced (prev_len, (ndesc_log l, ndata_log l), h)) *
+       rep_contents xp l *
+       [[ hash_list_rep (rev (log_nonzero l)) h hm ]]
 
   | Truncated old =>
-       Hdr.rep xp (Hdr.Unsync (0, 0) (ndesc_log old, ndata_log old)) *
-       rep_contents xp old
+      exists prev_len h h',
+       Hdr.rep xp (Hdr.Unsync ((ndesc_log old, ndata_log old), (0, 0), h')
+                              (prev_len, (ndesc_log old, ndata_log old), h)) *
+       rep_contents xp old *
+       [[ hash_list_rep (rev (log_nonzero old)) h hm ]] *
+       [[ hash_list_rep (log_nonzero []) h' hm ]]
 
+  (* don't need this state *)
   | ExtendedUnsync old =>
-       Hdr.rep xp (Hdr.Synced (ndesc_log old, ndata_log old)) *
-       rep_contents xp old
+      exists prev_len h,
+       Hdr.rep xp (Hdr.Synced (prev_len, (ndesc_log old, ndata_log old), h)) *
+       rep_contents xp old *
+       [[ hash_list_rep (rev (log_nonzero old)) h hm ]]
 
   | Extended old new =>
-       Hdr.rep xp (Hdr.Unsync (ndesc_log old + ndesc_log new, ndata_log old + ndata_log new)
-                              (ndesc_log old, ndata_log old)) *
-       rep_contents xp ((padded_log old) ++ new) *
+      exists prev_len h h',
+       Hdr.rep xp (Hdr.Unsync ((ndesc_log old, ndata_log old),
+                               (ndesc_log old + ndesc_log new,
+                                ndata_log old + ndata_log new), h')
+                              (prev_len, (ndesc_log old, ndata_log old), h)) *
+       rep_contents xp old *
+       [[ hash_list_rep (rev (log_nonzero old)) h hm ]] *
+       [[ hash_list_rep (rev (log_nonzero (old ++ new))) h' hm ]] *
        [[ Forall entry_valid new ]]
+
+  | SyncedUnmatched old new =>
+      exists h,
+        Hdr.rep xp (Hdr.Synced ((ndesc_log old, ndata_log old),
+                                (ndesc_log old + ndesc_log new,
+                                 ndata_log old + ndata_log new),
+                                h)) *
+        rep_contents xp old *
+        [[ hash_list_rep (rev (log_nonzero (old ++ new))) h hm ]] *
+        [[ Forall entry_valid new ]]
+
   end)%pred.
 
   Definition xparams_ok xp := 
     DescSig.xparams_ok xp /\ DataSig.xparams_ok xp /\
     (LogLen xp) = DescSig.items_per_val * (LogDescLen xp).
 
-  Definition rep xp st:=
-    ([[ xparams_ok xp ]] * rep_inner xp st)%pred.
+  Definition rep xp st hm:=
+    ([[ xparams_ok xp ]] * rep_inner xp st hm)%pred.
 
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
   Definition avail T xp cs rx : prog T :=
     let^ (cs, nr) <- Hdr.read xp cs;
-    let '(ndesc, ndata) := nr in
+    let '(_, (ndesc, _), _) := nr in
     rx ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
 
   Definition read T xp cs rx : prog T :=
     let^ (cs, nr) <- Hdr.read xp cs;
-    let '(ndesc, ndata) := nr in
+    let '(_, (ndesc, ndata), _) := nr in
     let^ (cs, wal) <- Desc.read_all xp ndesc cs;
     let al := map (@wordToNat addrlen) wal in
     let^ (cs, vl) <- Data.read_all xp ndata cs;
@@ -646,37 +676,39 @@ Module PaddedLog.
 
   Definition avail_ok : forall xp cs,
     {< F l d,
-    PRE   BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l))%pred d ]]
-    POST RET: ^(cs, r)
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l) hm)%pred d ]]
+    POST:hm' RET: ^(cs, r)
           BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l))%pred d ]] *
+          [[ (F * rep xp (Synced l) hm')%pred d ]] *
           [[ r = (LogLen xp) - roundup (length l) DescSig.items_per_val ]]
-    CRASH exists cs',
+    CRASH:hm_crash exists cs',
           BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced l))%pred d ]]
+          [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
     >} avail xp cs.
   Proof.
     unfold avail.
     step.
     step.
+    solve_hash_list_rep.
+    solve_hash_list_rep.
   Qed.
 
   Definition read_ok : forall xp cs,
     {< F l d,
-    PRE   BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l))%pred d ]]
-    POST RET: ^(cs, r)
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l) hm)%pred d ]]
+    POST:hm' RET: ^(cs, r)
           BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l))%pred d ]] *
+          [[ (F * rep xp (Synced l) hm')%pred d ]] *
           [[ r = log_nonzero l ]]
-    CRASH exists cs',
+    CRASH:hm_crash exists cs',
           BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced l))%pred d ]]
+          [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.
-    step.
+    step using solve_hash_list_rep.
 
     safestep; subst.
     instantiate (1 := map ent_addr (padded_log l)).
@@ -685,11 +717,18 @@ Module PaddedLog.
     rewrite desc_padding_synced_piff; cancel.
 
     step.
+    replace (map ent_valu (log_nonzero l)) with (vals_nonzero l); auto.
     rewrite vals_nonzero_addrs; unfold ndata_log.
     replace DataSig.items_per_val with 1 by (cbv; auto); omega.
 
     all: hoare using (subst; eauto).
-    all: cancel; rewrite desc_padding_synced_piff; cancel.
+    all: try (cancel; rewrite desc_padding_synced_piff; cancel).
+
+    solve_hash_list_rep.
+    replace (map ent_valu (log_nonzero l)) with (vals_nonzero l); auto.
+    solve_hash_list_rep.
+    cancel.
+    solve_hash_list_rep.
   Qed.
 
   Lemma goodSize_0 : forall sz, goodSize sz 0.
@@ -713,7 +752,11 @@ Module PaddedLog.
 
 
   Definition trunc T xp cs rx : prog T :=
-    cs <- Hdr.write xp (0, 0) cs;
+    (* TODO: would be nice to get rid of this read. *)
+    let^ (cs, nr) <- Hdr.read xp cs;
+    let '(_, current_length, _) := nr in
+    h <- Hash (combine_entry default_entry);
+    cs <- Hdr.write xp (current_length, (0, 0), h) cs;
     cs <- Hdr.sync xp cs;
     rx cs.
 
@@ -731,14 +774,14 @@ Module PaddedLog.
     intros; omega.
   Qed.
 
-  Lemma helper_trunc_ok : forall xp l,
+  Lemma helper_trunc_ok : forall xp l prev_len h,
     Desc.array_rep xp 0 (Desc.Synced (map ent_addr l)) *
     Data.array_rep xp 0 (Data.Synced (vals_nonzero l)) *
     Desc.avail_rep xp (ndesc_log l) (LogDescLen xp - ndesc_log l) *
     Data.avail_rep xp (ndata_log l) (LogLen xp - ndata_log l) *
-    Hdr.rep xp (Hdr.Synced (0, 0))
+    Hdr.rep xp (Hdr.Synced (prev_len, (0, 0), h))
     =p=>
-    Hdr.rep xp (Hdr.Synced (ndesc_log [], ndata_log [])) *
+    Hdr.rep xp (Hdr.Synced (prev_len, (ndesc_log [], ndata_log []), h)) *
     Desc.array_rep xp 0 (Desc.Synced []) *
     Data.array_rep xp 0 (Data.Synced (vals_nonzero [])) *
     Desc.avail_rep xp (ndesc_log []) (LogDescLen xp - ndesc_log []) *
@@ -763,32 +806,56 @@ Module PaddedLog.
 
   Definition trunc_ok : forall xp cs,
     {< F l d,
-    PRE   BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l))%pred d ]]
-    POST RET: cs  exists d',
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l) hm)%pred d ]]
+    POST:hm' RET: cs  exists d',
           BUFCACHE.rep cs d' *
-          [[ (F * rep xp (Synced nil))%pred d' ]]
-    CRASH exists cs' d', 
+          [[ (F * rep xp (Synced nil) hm')%pred d' ]]
+    CRASH:hm_crash exists cs' d',
           BUFCACHE.rep cs' d' * (
-          [[ (F * (rep xp (Synced l)))%pred d' ]] \/
-          [[ (F * (rep xp (Truncated l)))%pred d' ]] \/
-          [[ (F * (rep xp (Synced nil)))%pred d' ]])
+          [[ (F * (rep xp (Synced l) hm_crash))%pred d' ]] \/
+          [[ (F * (rep xp (Truncated l) hm_crash))%pred d' ]] \/
+          [[ (F * (rep xp (Synced nil) hm_crash))%pred d' ]])
     >} trunc xp cs.
   Proof.
     unfold trunc.
     step.
     step.
     step.
+
+    unfold Hdr.rep in H0.
+    destruct_lift H0.
+    unfold Hdr.hdr_goodSize in *; intuition.
+
+    step.
+    step.
+
+    (* post condition *)
     cancel_by helper_trunc_ok.
+    solve_hash_list_rep.
+    auto.
 
     (* crash conditions *)
-    cancel.
-    or_r; cancel.
-    or_r; cancel.
-    cancel_by helper_trunc_ok.
+    or_r. or_l; cancel_with solve_hash_list_rep.
+    auto.
 
-    or_l; cancel.
-    or_r; cancel.
+    or_r. or_r; cancel_with solve_hash_list_rep.
+    instantiate (1:=hash_fwd (combine_entry default_entry)).
+    instantiate (1:=nonzero_addrs (map fst l)).
+    instantiate (1:=ndesc_log l).
+    cancel_by helper_trunc_ok.
+    auto.
+
+    or_l; cancel_with solve_hash_list_rep.
+
+    or_r. or_l; cancel_with solve_hash_list_rep.
+    auto.
+
+    or_l; cancel_with solve_hash_list_rep.
+    or_l; cancel_with solve_hash_list_rep.
+
+    Unshelve.
+    constructor.
   Qed.
 
   Definition loglen_valid xp ndesc ndata :=
@@ -1024,6 +1091,16 @@ Module PaddedLog.
     rewrite IHa; auto.
   Qed.
 
+  Lemma log_nonzero_rev_comm : forall l,
+    log_nonzero (rev l) = rev (log_nonzero l).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a, n; simpl; auto;
+    rewrite log_nonzero_app; simpl.
+    rewrite app_nil_r. congruence.
+    congruence.
+  Qed.
+
   Lemma vals_nonzero_padded_log : forall l,
     vals_nonzero (padded_log l) = vals_nonzero l.
   Proof.
@@ -1121,11 +1198,16 @@ Module PaddedLog.
     destruct a; omega.
   Qed.
 
-  Lemma extend_ok_synced_hdr_helper : forall xp old new,
-    Hdr.rep xp (Hdr.Synced (ndesc_log old + ndesc_log new, ndata_log old + ndata_log new))
+  Lemma extend_ok_synced_hdr_helper : forall xp prev_len old new h,
+    Hdr.rep xp (Hdr.Synced (prev_len,
+                            (ndesc_log old + ndesc_log new,
+                             ndata_log old + ndata_log new),
+                            h))
     =p=>
-    Hdr.rep xp (Hdr.Synced (ndesc_log (padded_log old ++ new),
-                            ndata_log (padded_log old ++ new))).
+    Hdr.rep xp (Hdr.Synced (prev_len,
+                            (ndesc_log (padded_log old ++ new),
+                             ndata_log (padded_log old ++ new)),
+                            h)).
   Proof.
     intros.
     rewrite ndesc_log_padded_app, ndata_log_padded_app; auto.
@@ -1176,134 +1258,6 @@ Module PaddedLog.
      | apply helper_loglen_data_valid_extend_entry_valid; auto
      | apply helper_loglen_desc_valid_extend; auto ].
 
-
-  Definition extend T xp log cs rx : prog T :=
-    let^ (cs, nr) <- Hdr.read xp cs;
-    let '(ndesc, ndata) := nr in
-    let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
-    If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
-        (* synced *)
-      cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
-       (* extended unsync *)
-      cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
-      cs <- Desc.sync_aligned xp ndesc nndesc cs;
-      cs <- Data.sync_aligned xp ndata nndata cs;
-      cs <- Hdr.write xp (ndesc + nndesc, ndata + nndata) cs;
-      cs <- Hdr.sync xp cs;
-       (* synced*)
-      rx ^(cs, true)
-    } else {
-      rx ^(cs, false)
-    }.
-
-
-  Definition extend_ok : forall xp new cs,
-    {< F old d,
-    PRE   BUFCACHE.rep cs d *
-          [[ Forall entry_valid new ]] *
-          [[ (F * rep xp (Synced old))%pred d ]]
-    POST RET: ^(cs, r) exists d', 
-          BUFCACHE.rep cs d' * (
-          [[ r = true /\
-             (F * rep xp (Synced ((padded_log old) ++ new)))%pred d' ]] \/
-          [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
-             (F * rep xp (Synced old))%pred d' ]])
-    CRASH exists cs' d',
-          BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (Synced old))%pred d' ]] \/
-          [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
-          [[ (F * rep xp (Extended old new))%pred d' ]] \/
-          [[ (F * rep xp (Synced ((padded_log old) ++ new)))%pred d' ]])
-    >} extend xp new cs.
-  Proof.
-    unfold extend.
-    step.
-    step.
-
-    (* true case *)
-    - (* write content *)
-      step.
-      rewrite Desc.avail_rep_split. cancel.
-      autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
-
-      step.
-      rewrite Data.avail_rep_split. cancel.
-      autorewrite with lists.
-      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
-      apply helper_loglen_data_valid_extend; auto.
-
-      (* sync content *)
-      safestep.
-      instantiate ( 1 := map ent_addr (padded_log new) ).
-      rewrite map_length, padded_log_length; auto.
-      apply padded_desc_valid.
-      apply loglen_valid_desc_valid; auto.
-      rewrite desc_padding_unsync_piff.
-      cancel.
-
-      step.
-      autorewrite with lists.
-      rewrite entry_valid_ndata, Nat.mul_1_r; auto.
-
-      (* write header *)
-      step.
-      eapply loglen_valid_goodSize_l; eauto.
-      eapply loglen_valid_goodSize_r; eauto.
-
-      (* sync header *)
-      step.
-
-      (* post condition *)
-      step.
-      or_l; cancel.
-      cancel_by extend_ok_helper; auto.
-
-      (* crash conditons *)
-      (* after header write : Extended *)
-      cancel. or_r; or_r; or_l.  cancel.
-      cancel_by extend_ok_helper; auto.
-
-      (* after header sync : Synced new *)
-      or_r; or_r; or_r.  cancel.
-      cancel_by extend_ok_helper; auto.
-
-      (* before header write : ExtendedUnsync *)
-      cancel. or_r; or_l. cancel. extend_crash.
-
-      (* after sync data : Extended *)
-      or_r; or_r; or_l.    cancel.
-      cancel_by extend_ok_helper; auto.
-
-      (* after sync desc : ExtendedUnsync *)
-      cancel. or_r; or_l.  cancel. extend_crash.
-
-      (* after write data : ExtendedUnsync *)
-      cancel. or_r; or_l.  cancel. extend_crash.
-
-      (* after write desc : ExtendedUnsync *)
-      cancel. or_r; or_l.  cancel. extend_crash.
-
-      (* before write desc : Synced old *)
-      cancel. or_l. cancel.
-      rewrite Desc.avail_rep_merge. cancel.
-      rewrite map_length.
-      apply helper_loglen_desc_valid_extend; auto.
-
-    (* false case *)
-    - step.
-      or_r; cancel.
-      apply loglen_invalid_overflow; auto.
-
-    (* crash for the false case *)
-    - cancel; hoare.
-  Qed.
-
-
-  Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
-
   Lemma log_nonzero_padded_log : forall l,
     log_nonzero (padded_log l) = log_nonzero l.
   Proof.
@@ -1333,6 +1287,199 @@ Module PaddedLog.
     f_equal.
     rewrite entry_valid_vals_nonzero; auto.
   Qed.
+
+  Definition extend T xp log cs rx : prog T :=
+    (* Synced *)
+    let^ (cs, nr) <- Hdr.read xp cs;
+    let '(_, (ndesc, ndata), h) := nr in
+    let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
+    If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
+      h <- hash_list h (log_nonzero log);
+      cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
+      cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
+      cs <- Hdr.write xp ((ndesc, ndata),
+                          (ndesc + nndesc, ndata + nndata),
+                          h) cs;
+      (* ExtendedUnsync *)
+      cs <- Desc.sync_aligned xp ndesc nndesc cs;
+      cs <- Data.sync_aligned xp ndata nndata cs;
+      cs <- Hdr.sync xp cs;
+      (* Synced *)
+      rx ^(cs, true)
+    } else {
+      rx ^(cs, false)
+    }.
+
+
+  Definition extend_ok : forall xp new cs,
+    {< F old d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ Forall entry_valid new ]] *
+          [[ (F * rep xp (Synced old) hm)%pred d ]]
+    POST:hm' RET: ^(cs, r) exists d',
+          BUFCACHE.rep cs d' * (
+          [[ r = true /\
+             (F * rep xp (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
+          [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
+             (F * rep xp (Synced old) hm')%pred d' ]])
+    CRASH:hm_crash exists cs' d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (Extended old new) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (Synced ((padded_log old) ++ new)) hm_crash)%pred d' ]])
+    >} extend xp new cs.
+  Proof.
+    unfold extend.
+    step.
+    step.
+
+    (* true case *)
+    - (* write content *)
+      step.
+      match goal with
+      | [ H: Forall entry_valid ?l |- Forall _ (log_nonzero ?l) ]
+        => let H' := fresh in apply entry_valid_vals_nonzero in H as H';
+           rewrite H';
+           let H'' := fresh in apply ent_valid_addr_valid in H as H'';
+           auto
+      end.
+      solve_hash_list_rep.
+
+      safestep.
+      eapply loglen_valid_desc_valid; eauto.
+      rewrite Desc.avail_rep_split. cancel.
+      autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
+
+      safestep.
+      eapply loglen_valid_data_valid; eauto.
+      rewrite Data.avail_rep_split. cancel.
+      autorewrite with lists.
+      rewrite divup_1; rewrite <- entry_valid_ndata by auto.
+      apply helper_loglen_data_valid_extend; auto.
+
+      (* write header *)
+      safestep.
+      unfold Hdr.rep in H20.
+      destruct_lift H20.
+      unfold Hdr.hdr_goodSize in *; intuition.
+      eapply loglen_valid_goodSize_l; eauto.
+      eapply loglen_valid_goodSize_r; eauto.
+      instantiate (1:=(n, n0, (ndesc_log old, nonzero_addrs (map fst old)), dummy0)).
+      intuition.
+      cancel.
+
+      (* sync content *)
+      safestep.
+      instantiate ( 1 := map ent_addr (padded_log new) ).
+      rewrite map_length, padded_log_length; auto.
+      apply padded_desc_valid.
+      apply loglen_valid_desc_valid; auto.
+      rewrite desc_padding_unsync_piff.
+      cancel.
+
+      safestep.
+      instantiate (1 := map ent_valu new).
+      autorewrite with lists.
+      rewrite entry_valid_ndata, Nat.mul_1_r; auto.
+      apply loglen_valid_data_valid; auto.
+      cancel.
+
+      (* sync header *)
+      safestep.
+      cancel.
+
+      (* post condition *)
+      safestep.
+      or_l; cancel.
+      cancel_by extend_ok_helper; auto.
+      rewrite ndesc_log_app, ndata_log_app.
+      rewrite ndesc_log_padded_log, ndata_log_padded_log.
+      eauto.
+      rewrite padded_log_length, roundup_roundup; auto.
+      rewrite log_nonzero_app, rev_app_distr.
+      rewrite log_nonzero_padded_log.
+      solve_hash_list_rep.
+      solve_hashmap_subset.
+      all: auto.
+
+      (* crash conditons *)
+      (* after sync data : ExtendedUnsync *)
+      cancel.
+      or_r; or_l. cancel.
+      extend_crash.
+      solve_hash_list_rep.
+      rewrite log_nonzero_app, rev_app_distr.
+      solve_hash_list_rep.
+
+      (* after header sync : Synced new *)
+      or_r; or_r. cancel.
+      cancel_by extend_ok_helper; auto.
+
+      rewrite log_nonzero_app, rev_app_distr, log_nonzero_padded_log.
+      solve_hash_list_rep.
+
+      (* before sync data, after sync desc : ExtendedUnsync *)
+      cancel.
+      or_r; or_l. cancel. extend_crash.
+      solve_hash_list_rep.
+      rewrite log_nonzero_app, rev_app_distr;
+      solve_hash_list_rep.
+
+      (* before sync desc : ExtendedUnsync *)
+      cancel.
+      or_r; or_l. cancel. extend_crash.
+      solve_hash_list_rep.
+      rewrite log_nonzero_app, rev_app_distr;
+      solve_hash_list_rep.
+
+      (* before header write : Synced old *)
+      cancel.
+      or_l. cancel.
+      extend_crash.
+      solve_hash_list_rep.
+
+      (* after header write : ExtendedUnsync *)
+      or_r; or_l. cancel. extend_crash.
+      solve_hash_list_rep.
+      rewrite log_nonzero_app, rev_app_distr;
+      solve_hash_list_rep.
+
+      (* after desc write : Synced old *)
+      cancel.
+      or_l. cancel.
+      extend_crash.
+      solve_hash_list_rep.
+
+      (* before desc write : Synced old *)
+      cancel.
+      or_l. cancel.
+      rewrite Desc.avail_rep_merge. cancel.
+      rewrite map_length.
+      apply helper_loglen_desc_valid_extend; auto.
+      solve_hash_list_rep.
+
+      (* after hash_list : Synced old *)
+      or_l. cancel.
+      solve_hash_list_rep.
+
+    (* false case *)
+    - step.
+      or_r; cancel.
+      apply loglen_invalid_overflow; auto.
+      solve_hash_list_rep.
+
+    (* crash for the false case *)
+    - cancel; hoare.
+      or_l.
+      cancel.
+      solve_hash_list_rep.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
+  Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
 
   Theorem entry_valid_dec : forall ent,
     {entry_valid ent} + {~ entry_valid ent}.
