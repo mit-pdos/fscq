@@ -267,12 +267,14 @@ Theorem member_index_dec A (types: list A) a1
   {member_index m1 = member_index m2} + {member_index m1 <> member_index m2}.
 Proof. decide equality. Defined.
 
-Ltac elim_rew :=
-  try lazymatch goal with
-    | [ |- exists (_: _ = _), _ ] => exists eq_refl
-    end;
-  repeat rewrite <- Eqdep.EqdepTheory.eq_rect_eq in *;
-  try congruence.
+Theorem member_index_0 : forall A (types: list A) t1 (m: member t1 (t1 :: types)),
+  member_index m = 0 ->
+  m = HFirst.
+Proof.
+  intros.
+  dependent induction m; auto.
+  inversion H.
+Qed.
 
 Theorem indices_eq : forall A (types: list A) t1 (m1: member t1 types) t2 (m2: member t2 types),
     member_index m1 = member_index m2 ->
@@ -285,12 +287,12 @@ Proof.
     dependent induction m2;
     cbn in *;
     try congruence.
-  elim_rew.
-  clear IHm1 IHm2.
+  exists eq_refl.
+  cbn; auto.
   inversion H.
   destruct (IHtypes _ _ _ _ H1).
-  subst.
-  elim_rew.
+  exists x.
+  subst; cbn; eauto.
 Qed.
 
 Theorem hin_iff_index_in : forall A (types: list A) t (m: member t types) mtypes
@@ -309,7 +311,7 @@ Proof.
     | [ H: member_index _ = member_index _ |- _ ] =>
       apply indices_eq in H; destruct H; subst
     end.
-    elim_rew.
+    cbn.
     constructor.
 Qed.
 
