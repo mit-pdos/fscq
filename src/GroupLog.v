@@ -611,7 +611,7 @@ Module GLog.
     POST RET:^(ms', r)
       rep xp F (Cached ds) ms' * [[ r = fst vs ]]
     CRASH
-      exists ms', rep xp F (Cached (fst ds, nil)) ms'
+      exists ms', rep xp F (Cached ds) ms'
     >} read xp a ms.
   Proof.
     unfold read, rep.
@@ -621,11 +621,7 @@ Module GLog.
     (* case 1 : return from vmap *)
     step.
     eapply diskset_vmap_find_ptsto; eauto.
-    pimpl_crash. norm.
-    eassign (mk_memstate vmap0 nil (MSMLog ms)).
-    cancel. simpl; intuition.
-    apply vmap_match_nil.
-    apply dset_match_nil.
+    pimpl_crash; cancel.
 
     (* case 2: read from MLog *)
     cancel.
@@ -635,11 +631,9 @@ Module GLog.
     step; subst.
     eapply diskset_vmap_find_none; eauto.
     pimpl_crash; norm.
-    eassign (mk_memstate vmap0 nil ms').
+    eassign (mk_memstate (MSVMap ms) (MSTxns ms) ms').
     cancel.
-    simpl; intuition.
-    apply vmap_match_nil.
-    apply dset_match_nil.
+    intuition.
   Qed.
 
 
@@ -656,7 +650,7 @@ Module GLog.
       [[ r = true  ]] *
         rep xp F (Cached (pushd (replay_disk ents (latest ds)) ds)) ms'
     CRASH
-      exists ms', rep xp F (Cached (fst ds, nil)) ms'
+      exists ms', rep xp F (Cached ds) ms'
     >} submit xp ents ms.
   Proof.
     unfold submit, rep.
@@ -669,6 +663,7 @@ Module GLog.
     apply dset_match_ext; auto.
     step.
   Qed.
+
 
 
   Local Hint Resolve vmap_match_nil dset_match_nil.
