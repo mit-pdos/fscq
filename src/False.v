@@ -36,6 +36,24 @@ Proof.
   hoare.
 Qed.
 
+Definition continue {T} rx : prog T :=
+  rx tt.
+
+Theorem continue_ok :
+  {< (_:unit),
+  PRE [[ True ]]
+  POST RET:r [[ r = tt ]]
+  CRASH [[ False ]]
+  >} continue.
+Proof.
+  unfold continue; intros.
+  unfold corr2 at 1; intros.
+  unfold exis in H; repeat deex.
+  repeat (apply sep_star_lift2and in H; destruct H).
+  unfold lift in *.
+  eapply H2; eauto.
+  pred_apply; cancel.
+Qed.
 
 Definition rec {T} rx : prog T :=
   rx true.
