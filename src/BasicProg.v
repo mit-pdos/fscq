@@ -136,6 +136,22 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Trim _) _) => apply trim_ok : prog.
 
+Theorem done_ok:
+  forall T (r : T),
+  {{ fun done crash => done r * [[ done r =p=> crash ]] }} Done r.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_step.
+  - exfalso.
+    apply H2. eauto.
+  - right. eexists; intuition eauto.
+  - left. eexists; eexists; eauto.
+Qed.
+
+Hint Extern 1 ({{_}} progseq (Done _) _) => apply done_ok : prog.
+
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
 
