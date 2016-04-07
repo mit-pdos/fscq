@@ -324,7 +324,22 @@ Module GLog.
   Definition would_recover_any xp F ds :=
     (exists ms n, rep xp F (Flushing (popn n ds)) ms)%pred.
 
+  Lemma cached_recover_any: forall xp F ds ms,
+    rep xp F (Cached ds) ms =p=> would_recover_any xp F ds.
+  Proof.
+    unfold would_recover_any, rep; cancel.
+    rewrite nthd_0.
+    apply MLog.synced_recover_either.
+    rewrite popn_0; eauto.
+  Qed.
 
+  Lemma flushing_recover_any: forall xp F ds ms,
+    rep xp F (Flushing ds) ms =p=> would_recover_any xp F ds.
+  Proof.
+    unfold would_recover_any, rep; intros; norm.
+    rewrite nthd_0; auto; cancel.
+    rewrite popn_0; intuition.
+  Qed.
 
   (************* program *)
 

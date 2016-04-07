@@ -28,6 +28,7 @@ Require Import MemLog.
 Require Import MapUtils.
 Require Import ListPred.
 Require Import LogReplay.
+Require Import GroupLog.
 
 Import ListNotations.
 
@@ -40,44 +41,73 @@ Module LOG.
 
   Record memstate := mk_memstate {
     MSTxn   : valumap;         (* memory state for active txns *)
-    MSMem   : MLog.memstate    (* lower-level state *)
+    MSMem   : GLog.memstate    (* lower-level state *)
   }.
 
   Inductive state :=
-  | NoTxn (cur : diskstate)
+  | NoTxn (cur : GLog.diskset)
   (* No active transaction, MemLog.Synced or MemLog.Applying *)
 
-  | ActiveTxn (old : diskstate) (cur : diskstate)
+  | ActiveTxn (old : GLog.diskset) (cur : diskstate)
   (* A transaction is in progress.
    * It started from the first memory and has evolved into the second.
-     MemLog.Synced
    *)
-  | ApplyingTxn (old : diskstate)
-  (* special state when crash inside dwrite *)
 
-  | CommittingTxn (old : diskstate) (cur : diskstate)
-  (* A commit is in progress
-     MemLog.Flushing or MemLog.Applying
+  | FlushingTxn (new : GLog.diskset)
+  (* A flushing is in progress
    *)
   .
 
   Definition rep xp F st ms :=
   let '(cm, mm) := (MSTxn ms, MSMem ms) in
   (match st with
-    | NoTxn cur =>
-      [[ Map.Empty cm ]] * exists nr,
-      MLog.rep xp F (MLog.Synced nr cur) mm
-    | ActiveTxn old cur =>
-      [[ map_valid cm old ]] *
-      [[ map_replay cm old cur ]] * exists nr,
-      MLog.rep xp F (MLog.Synced nr old) mm
-    | ApplyingTxn old =>
-      MLog.would_recover_before xp F old
-    | CommittingTxn old cur =>
-      [[ map_valid cm old ]] *
-      [[ map_replay cm old cur ]] *
-      MLog.would_recover_either xp F old (Map.elements cm)
+    | NoTxn ds =>
+      [[ Map.Empty cm ]] *
+      GLog.rep xp F (GLog.Cached ds) mm
+    | ActiveTxn ds cur =>
+      [[ map_valid cm ds!! ]] *
+      [[ map_replay cm ds!! cur ]] *
+      GLog.rep xp F (GLog.Cached ds) mm
+    | FlushingTxn ds =>
+      GLog.would_recover_any xp F ds
   end)%pred.
+
+
+  Definition intact xp F ds :=
+    (exists ms,
+      rep xp F (NoTxn ds) ms \/
+      exists new, rep xp F (ActiveTxn ds new) ms)%pred.
+
+  Definition recover_any xp F ds :=
+    (exists ms, rep xp F (FlushingTxn ds) ms)%pred.
+
+
+  Lemma active_intact : forall xp F old new ms,
+    rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Lemma notxn_intact : forall xp F old ms,
+    rep xp F (NoTxn old) ms =p=> intact xp F old.
+  Proof.
+    unfold intact; cancel.
+  Qed.
+
+  Lemma flushing_any : forall xp F ds ms,
+    rep xp F (FlushingTxn ds) ms =p=> recover_any xp F ds.
+  Proof.
+    unfold recover_any; cancel.
+  Qed.
+
+  Lemma intact_any : forall xp F ds,
+    intact xp F ds =p=> recover_any xp F ds.
+  Proof.
+    unfold intact, recover_any, rep; cancel.
+    apply GLog.cached_recover_any.
+    apply GLog.cached_recover_any.
+    Unshelve. all: eauto.
+  Qed.
 
 
   Definition begin T (xp : log_xparams) ms rx : prog T :=
@@ -97,37 +127,38 @@ Module LOG.
     match Map.find a cm with
     | Some v =>  rx ^(ms, v)
     | None =>
-        let^ (mm', v) <- MLog.read xp a mm;
+        let^ (mm', v) <- GLog.read xp a mm;
         rx ^(mk_memstate cm mm', v)
     end.
 
   Definition commit T xp ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
-    If (bool_dec (Map.is_empty cm) true) {
-      rx ^(ms, true)
-    } else {
-      let^ (mm', r) <- MLog.flush xp (Map.elements cm) mm;
-      rx ^(mk_memstate vmap0 mm', r)
-    }.
+    let^ (mm', r) <- GLog.submit xp (Map.elements cm) mm;
+    rx ^(mk_memstate vmap0 mm', r).
+
+  (* like abort, but use a better name for read-only transactions *)
+  Definition commit_ro T (xp : log_xparams) ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    rx (mk_memstate vmap0 mm).
 
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
     let cm' := Map.remove a cm in
-    mm' <- MLog.dwrite xp a v mm;
+    mm' <- GLog.dwrite xp a v mm;
     rx (mk_memstate cm' mm').
 
   Definition dsync T xp a ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
-    mm' <- MLog.dsync xp a mm;
+    mm' <- GLog.dsync xp a mm;
     rx (mk_memstate cm mm').
 
   Definition recover T xp cs rx : prog T :=
-    mm <- MLog.recover xp cs;
+    mm <- GLog.recover xp cs;
     rx (mk_memstate vmap0 mm).
 
   Local Hint Unfold rep map_replay: hoare_unfold.
-  Arguments MLog.rep: simpl never.
-  Hint Extern 0 (okToUnify (MLog.rep _ _ _ _ _) (MLog.rep _ _ _ _ _)) => constructor : okToUnify.
+  Arguments GLog.rep: simpl never.
+  Hint Extern 0 (okToUnify (GLog.rep _ _ _ _) (GLog.rep _ _ _ _)) => constructor : okToUnify.
 
   (* destruct memstate *)
   Ltac dems := eauto; repeat match goal with
@@ -140,16 +171,14 @@ Module LOG.
   Hint Resolve KNoDup_map_elements.
   Hint Resolve MapProperties.eqke_equiv.
 
-  (* This is a agressive hint *)
   Theorem begin_ok: forall xp ms,
-    {< F m,
+    {< F ds,
     PRE
-      rep xp F (NoTxn m) ms
+      rep xp F (NoTxn ds) ms
     POST RET:r
-      rep xp F (ActiveTxn m m) r
+      rep xp F (ActiveTxn ds ds!!) r
     CRASH
-      exists ms', rep xp F (NoTxn m) ms' 
-               \/ rep xp F (ActiveTxn m m) ms'
+      exists ms', rep xp F (NoTxn ds) ms'
     >} begin xp ms.
   Proof.
     unfold begin.
@@ -158,30 +187,34 @@ Module LOG.
 
 
   Theorem abort_ok : forall xp ms,
-    {< F m1 m2,
+    {< F ds m,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms
+      rep xp F (ActiveTxn ds m) ms
     POST RET:r
-      rep xp F (NoTxn m1) r
+      rep xp F (NoTxn ds) r
     CRASH
-      exists ms', rep xp F (ActiveTxn m1 m2) ms'
-               \/ rep xp F (NoTxn m1) ms'
+      exists ms', rep xp F (NoTxn ds) ms'
     >} abort xp ms.
   Proof.
     unfold abort.
-    hoare using dems.
+    safestep.
+    step; subst; simpl.
+    apply Map.empty_1.
+    pimpl_crash; norm.
+    eassign (mk_memstate vmap0 (MSMem ms)); cancel.
+    intuition.
   Qed.
 
 
   Theorem read_ok: forall xp ms a,
-    {< F Fm m1 m2 v,
+    {< F Fm ds m v,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m2 ::: Fm * a |-> v ]]]
+      rep xp F (ActiveTxn ds m) ms *
+      [[[ m ::: Fm * a |-> v ]]]
     POST RET:^(ms', r)
-      rep xp F (ActiveTxn m1 m2) ms' * [[ r = fst v ]]
+      rep xp F (ActiveTxn ds m) ms' * [[ r = fst v ]]
     CRASH
-      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+      exists ms', rep xp F (ActiveTxn ds m) ms'
     >} read xp a ms.
   Proof.
     unfold read.
@@ -190,7 +223,7 @@ Module LOG.
     step.
 
     eapply replay_disk_eq; eauto.
-    eassign m1; pred_apply; cancel.
+    eassign ds!!; pred_apply; cancel.
     pimpl_crash; cancel.
 
     cancel.
@@ -206,15 +239,15 @@ Module LOG.
 
 
   Theorem write_ok : forall xp ms a v,
-    {< F Fm m1 m2 vs,
+    {< F Fm ds m vs,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms * [[ a <> 0 ]] *
-      [[[ m2 ::: (Fm * a |-> vs) ]]]
+      rep xp F (ActiveTxn ds m) ms * [[ a <> 0 ]] *
+      [[[ m ::: (Fm * a |-> vs) ]]]
     POST RET:ms'
-      exists m', rep xp F (ActiveTxn m1 m') ms' *
+      exists m', rep xp F (ActiveTxn ds m') ms' *
       [[[ m' ::: (Fm * a |-> (v, nil)) ]]]
     CRASH
-      exists m' ms', rep xp F (ActiveTxn m1 m') ms'
+      exists m' ms', rep xp F (ActiveTxn ds m') ms'
     >} write xp a v ms.
   Proof.
     unfold write.
@@ -229,224 +262,128 @@ Module LOG.
   Qed.
 
 
-  Theorem dwrite_ok_twomem : forall xp ms a v,
-    {< F Fm1 Fm2 m1 m2 vs1 vs2,
-    PRE
-      rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m1 ::: (Fm1 * a |-> vs1) ]]] *
-      [[[ m2 ::: (Fm2 * a |-> vs2) ]]]
-    POST RET:ms' exists m1' m2',
-      rep xp F (ActiveTxn m1' m2') ms' *
-      [[[ m1' ::: (Fm1 * a |-> (v, vsmerge vs1)) ]]] *
-      [[[ m2' ::: (Fm2 * a |-> (v, vsmerge vs1)) ]]]
-    CRASH
-      exists m' m1' ms',
-      rep xp F (ActiveTxn m1  m') ms' \/
-      rep xp F (ActiveTxn m1' m') ms' *
-        [[[ m1' ::: (Fm1 * a |-> (v, vsmerge vs1)) ]]] \/
-      rep xp F (ApplyingTxn m1  ) ms'
-    >} dwrite xp a v ms.
-  Proof.
-    unfold dwrite.
-    step.
-    step; subst.
-
-    eapply map_valid_remove; autorewrite with lists; eauto.
-    eapply list2nmem_replay_disk_remove_updN_ptsto; eauto.
-
-    (* crash conditions *)
-    or_r; or_r; cancel.
-
-    eassign (mk_memstate (Map.remove a (MSTxn ms)) a0).
-    or_r; or_l; cancel.
-    eapply map_valid_remove; autorewrite with lists; eauto.
-    Unshelve. all: eauto.
-  Qed.
-
-
-  Theorem dsync_ok_twomem : forall xp ms a,
-    {< F Fm1 Fm2 m1 m2 vs1 vs2,
-    PRE
-      rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m1 ::: (Fm1 * a |-> vs1) ]]] *
-      [[[ m2 ::: (Fm2 * a |-> vs2) ]]]
-    POST RET:ms' exists m1' m2',
-      rep xp F (ActiveTxn m1' m2') ms' *
-      [[[ m1' ::: (Fm1 * a |-> (fst vs1, nil)) ]]] *
-      [[[ m2' ::: (Fm2 * a |-> (fst vs2, nil)) ]]]
-    CRASH
-      exists m' m1' ms',
-      rep xp F (ActiveTxn m1  m') ms' \/
-      rep xp F (ActiveTxn m1' m') ms' *
-        [[[ m1' ::: (Fm1 * a |-> (fst vs1, nil)) ]]]
-    >} dsync xp a ms.
-  Proof.
-    unfold dsync.
-    step.
-    step; subst.
-    apply map_valid_updN; auto.
-    rewrite <- replay_disk_vssync_comm.
-    unfold vssync; erewrite <- list2nmem_sel; eauto; simpl.
-    eapply list2nmem_updN; eauto.
-
-    (* crashes *)
-    eassign (mk_memstate (MSTxn ms) ms').
-    or_l; cancel.
-    eassign (mk_memstate (MSTxn ms) ms').
-    or_r; cancel.
-    apply map_valid_updN; auto.
-    Unshelve. eauto.
-  Qed.
-
-
   Set Regular Subst Tactic.
 
   Theorem dwrite_ok : forall xp ms a v,
-    {< F Fm m vs,
+    {< F Fm ds vs,
     PRE
-      rep xp F (ActiveTxn m m) ms *
-      [[[ m ::: (Fm * a |-> vs) ]]]
-    POST RET:ms' exists m',
-      rep xp F (ActiveTxn m' m') ms' *
-      [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]]
+      rep xp F (ActiveTxn ds ds!!) ms *
+      [[[ ds!! ::: (Fm * a |-> vs) ]]]
+    POST RET:ms' exists m,
+      rep xp F (ActiveTxn (m, nil) m) ms' *
+      [[[ m ::: (Fm * a |-> (v, vsmerge vs)) ]]]
     CRASH
+      recover_any xp F ds \/
       exists ms' m',
-      rep xp F (ActiveTxn m  m) ms' \/
-      rep xp F (ActiveTxn m' m') ms' *
-          [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]] \/
-      rep xp F (ApplyingTxn m) ms'
+      rep xp F (ActiveTxn (m', nil) m') ms' *
+          [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]]
     >} dwrite xp a v ms.
   Proof.
-    unfold dwrite.
+    unfold dwrite, recover_any.
     step.
     step; subst.
 
     eapply map_valid_remove; autorewrite with lists; eauto.
+    setoid_rewrite singular_latest at 2; simpl; auto.
+    rewrite length_updN; auto.
+
     apply updN_replay_disk_remove_eq; eauto.
 
     (* crash conditions *)
-    or_r; or_r; cancel.
+    or_l; cancel.
 
-    eassign (mk_memstate (Map.remove a (MSTxn ms)) a0).
-    or_r; or_l; cancel.
+    or_r; cancel.
+    eassign (mk_memstate (Map.remove a (MSTxn ms)) a0); eauto.
     eapply map_valid_remove; autorewrite with lists; eauto.
+    setoid_rewrite singular_latest at 2; simpl; auto.
+    rewrite length_updN; auto.
     apply updN_replay_disk_remove_eq; eauto.
-
-    Unshelve. all: eauto.
+    eauto.
+    Unshelve. eauto.
   Qed.
 
 
   Theorem dsync_ok : forall xp ms a,
-    {< F Fm m vs,
+    {< F Fm ds vs,
     PRE
-      rep xp F (ActiveTxn m m) ms *
-      [[[ m ::: (Fm * a |-> vs) ]]]
-    POST RET:ms' exists m',
-      rep xp F (ActiveTxn m' m') ms' *
-      [[[ m' ::: (Fm * a |-> (fst vs, nil)) ]]]
+      rep xp F (ActiveTxn ds ds!!) ms *
+      [[[ ds!! ::: (Fm * a |-> vs) ]]]
+    POST RET:ms' exists m,
+      rep xp F (ActiveTxn (m, nil) m) ms' *
+      [[[ m ::: (Fm * a |-> (fst vs, nil)) ]]]
     CRASH
+      recover_any xp F ds \/
       exists m' ms',
-      rep xp F (ActiveTxn m m) ms' \/
-      rep xp F (ActiveTxn m' m') ms' *
+      rep xp F (ActiveTxn (m', nil) m') ms' *
         [[[ m' ::: (Fm * a |-> (fst vs, nil)) ]]]
     >} dsync xp a ms.
   Proof.
-    unfold dsync.
+    unfold dsync, recover_any.
     step.
     step; subst.
     apply map_valid_updN; auto.
+    setoid_rewrite singular_latest at 2; simpl; auto.
     rewrite <- replay_disk_vssync_comm.
-    substl m at 1; auto.
+    substl ds!! at 1; auto.
 
     (* crashes *)
-    eassign (mk_memstate (MSTxn ms) ms').
     or_l; cancel.
-    eassign (mk_memstate (MSTxn ms) ms').
     or_r; cancel.
+    eassign (mk_memstate (MSTxn ms) a0); simpl; eauto.
     apply map_valid_updN; auto.
+    setoid_rewrite singular_latest at 2; simpl; auto.
     rewrite <- replay_disk_vssync_comm.
-    substl m at 1; auto.
+    substl ds!! at 1; auto.
+    eauto.
     Unshelve. eauto.
   Qed.
 
-
-  Definition intact xp F old :=
-    (exists ms,
-      rep xp F (NoTxn old) ms \/
-      rep xp F (ApplyingTxn old) ms \/
-      exists new, rep xp F (ActiveTxn old new) ms)%pred.
-
-  Definition either xp F old new :=
-    (exists ms,
-      rep xp F (NoTxn old) ms \/
-      rep xp F (ApplyingTxn old) ms \/
-      (exists new, rep xp F (ActiveTxn old new) ms) \/
-      rep xp F (CommittingTxn old new) ms)%pred.
-
-
-  Lemma active_txn_intact : forall xp F old new ms,
-    rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
-  Proof.
-    unfold intact; cancel.
-  Qed.
-
-  Lemma applying_txn_intact : forall xp F m ms,
-    rep xp F (ApplyingTxn m) ms =p=> intact xp F m.
-  Proof.
-    unfold intact; cancel.
-  Qed.
-
-  Lemma no_txn_intact : forall xp F old ms,
-    rep xp F (NoTxn old) ms =p=> intact xp F old.
-  Proof.
-    unfold intact; cancel.
-  Qed.
-
-  Lemma intact_either : forall xp F old,
-    intact xp F old =p=> either xp F old old.
-  Proof.
-    unfold intact, either; cancel.
-  Qed.
-
-  Lemma committing_txn_either : forall xp F old new ms,
-    rep xp F (CommittingTxn old new) ms =p=> either xp F old new.
-  Proof.
-    unfold either; cancel.
-  Qed.
 
 
   Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
 
   Theorem commit_ok : forall xp ms,
-    {< F m1 m2,
-     PRE  rep xp F (ActiveTxn m1 m2) ms
+    {< F ds m,
+     PRE  rep xp F (ActiveTxn ds m) ms
      POST RET:^(ms',r)
           ([[ r = true ]] *
-            rep xp F (NoTxn m2) ms') \/
+            rep xp F (NoTxn (pushd m ds)) ms') \/
           ([[ r = false ]] *
             [[ Map.cardinal (MSTxn ms) > (LogLen xp) ]] *
-            rep xp F (NoTxn m1) ms')
-     CRASH  either xp F m1 m2
+            rep xp F (NoTxn ds) ms')
+     CRASH exists ms', rep xp F (NoTxn ds) ms'
     >} commit xp ms.
   Proof.
-    unfold commit, either.
+    unfold commit.
     step.
     step.
 
-    (* case 1 : nothing to flush *)
-    or_l; cancel.
-    rewrite replay_disk_is_empty; auto; cancel.
-
-    (* case 1 : did flush *)
+    eassign (mk_memstate vmap0 ms').
     step.
-    step.
-
-    or_r; or_r; cancel.
+    auto.
   Qed.
 
 
+  (* a pseudo-commit for read-only transactions *)
+  Theorem commit_ro_ok : forall xp ms,
+    {< F ds,
+    PRE
+      rep xp F (ActiveTxn ds ds!!) ms
+    POST RET:r
+      rep xp F (NoTxn ds) r
+    CRASH
+      exists ms', rep xp F (NoTxn ds) ms'
+    >} commit_ro xp ms.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    apply abort_ok.
+    cancel.
+    apply sep_star_comm.
+  Qed.
 
-  Definition recover_either_pred xp F Fold Fnew :=
+
+  Definition recover_any_pred xp F Fold Fnew :=
     (exists cs raw, BUFCACHE.rep cs raw *
      [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]])%pred.
 
@@ -455,10 +392,10 @@ Module LOG.
     PRE
       BUFCACHE.rep cs raw *
       [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]]
-    POST RET:ms' exists d',
-      rep xp (crash_xform F) (NoTxn d') ms' *
-      ([[[ d' ::: crash_xform Fold ]]] \/
-       [[[ d' ::: crash_xform Fnew ]]])
+    POST RET:ms' exists d,
+      rep xp (crash_xform F) (NoTxn (d, nil)) ms' *
+      ([[[ d ::: crash_xform Fold ]]] \/
+       [[[ d ::: crash_xform Fnew ]]])
     CRASH exists cs',
       BUFCACHE.rep cs' raw
     >} recover xp cs.
@@ -469,7 +406,7 @@ Module LOG.
 
 
 
-  Hint Resolve active_txn_intact applying_txn_intact.
+  Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _) (intact _ _ _)) => constructor : okToUnify.
 
 
@@ -478,6 +415,7 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
+  Hint Extern 1 ({{_}} progseq (commit_ro _ _) _) => apply commit_ro_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
@@ -493,15 +431,15 @@ Module LOG.
 
 
   Theorem read_array_ok : forall xp ms a i,
-    {< F Fm m1 m2 vs,
-    PRE   rep xp F (ActiveTxn m1 m2) ms *
+    {< F Fm ds m vs,
+    PRE   rep xp F (ActiveTxn ds m) ms *
           [[ i < length vs]] *
-          [[[ m2 ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayN a vs ]]]
     POST RET:^(ms', r)
-          rep xp F (ActiveTxn m1 m2) ms' *
+          rep xp F (ActiveTxn ds m) ms' *
           [[ r = fst (selN vs i ($0, nil)) ]]
     CRASH exists ms',
-          rep xp F (ActiveTxn m1 m2) ms'
+          rep xp F (ActiveTxn ds m) ms'
     >} read_array xp a i ms.
   Proof.
     unfold read_array.
@@ -515,15 +453,15 @@ Module LOG.
 
 
   Theorem write_array_ok : forall xp a i v ms,
-    {< F Fm m1 m2 vs,
-    PRE   rep xp F (ActiveTxn m1 m2) ms *
+    {< F Fm ds m vs,
+    PRE   rep xp F (ActiveTxn ds m) ms *
           [[ i < length vs /\ a <> 0 ]] *
-          [[[ m2 ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayN a vs ]]]
     POST RET:ms' exists m',
-          rep xp F (ActiveTxn m1 m') ms' *
+          rep xp F (ActiveTxn ds m') ms' *
           [[[ m' ::: Fm * arrayN a (updN vs i (v, nil)) ]]]
     CRASH exists m' ms',
-          rep xp F (ActiveTxn m1 m') ms'
+          rep xp F (ActiveTxn ds m') ms'
     >} write_array xp a i v ms.
   Proof.
     unfold write_array.
@@ -547,12 +485,12 @@ Module LOG.
 
   Definition read_range T A xp a nr (vfold : A -> valu -> A) v0 ms rx : prog T :=
     let^ (ms, r) <- ForN i < nr
-    Ghost [ F Fm crash m1 m2 vs ]
+    Ghost [ F Fm crash ds m vs ]
     Loopvar [ ms pf ]
     Continuation lrx
     Invariant
-      rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m2 ::: (Fm * arrayN a vs) ]]] *
+      rep xp F (ActiveTxn ds m) ms *
+      [[[ m ::: (Fm * arrayN a vs) ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
@@ -564,12 +502,12 @@ Module LOG.
 
   Definition write_range T xp a l ms rx : prog T :=
     let^ (ms) <- ForN i < length l
-    Ghost [ F Fm crash m1 vs ]
+    Ghost [ F Fm crash ds vs ]
     Loopvar [ ms ]
     Continuation lrx
     Invariant
-      exists m2, rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m2 ::: (Fm * arrayN a (vsupsyn_range vs (firstn i l))) ]]]
+      exists m, rep xp F (ActiveTxn ds m) ms *
+      [[[ m ::: (Fm * arrayN a (vsupsyn_range vs (firstn i l))) ]]]
     OnCrash crash
     Begin
       ms <- write_array xp a i (selN l i $0) ms;
@@ -579,16 +517,16 @@ Module LOG.
 
 
   Theorem read_range_ok : forall A xp a nr vfold (v0 : A) ms,
-    {< F Fm m1 m2 vs,
+    {< F Fm ds m vs,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms *
+      rep xp F (ActiveTxn ds m) ms *
       [[ nr <= length vs ]] *
-      [[[ m2 ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayN a vs) ]]]
     POST RET:^(ms', r)
-      rep xp F (ActiveTxn m1 m2) ms' *
+      rep xp F (ActiveTxn ds m) ms' *
       [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
     CRASH
-      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+      exists ms', rep xp F (ActiveTxn ds m) ms'
     >} read_range xp a nr vfold v0 ms.
   Proof.
     unfold read_range; intros.
@@ -675,16 +613,16 @@ Module LOG.
   Qed.
 
   Theorem write_range_ok : forall xp a l ms,
-    {< F Fm m1 m2 vs,
+    {< F Fm ds m vs,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms *
+      rep xp F (ActiveTxn ds m) ms *
       [[ a <> 0 /\ length l <= length vs ]] *
-      [[[ m2 ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayN a vs) ]]]
     POST RET:ms'
-      exists m', rep xp F (ActiveTxn m1 m') ms' *
+      exists m', rep xp F (ActiveTxn ds m') ms' *
       [[[ m' ::: (Fm * arrayN a (vsupsyn_range vs l)) ]]]
     CRASH exists ms' m',
-      rep xp F (ActiveTxn m1 m') ms'
+      rep xp F (ActiveTxn ds m') ms'
     >} write_range xp a l ms.
   Proof.
     unfold write_range; intros.
@@ -708,12 +646,12 @@ Module LOG.
   (* like read_range, but stops when cond is true *)
   Definition read_cond T A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms rx : prog T :=
     let^ (ms, r) <- ForN i < nr
-    Ghost [ F Fm crash m1 m2 vs ]
+    Ghost [ F Fm crash ds m vs ]
     Loopvar [ ms pf ]
     Continuation lrx
     Invariant
-      rep xp F (ActiveTxn m1 m2) ms *
-      [[[ m2 ::: (Fm * arrayN a vs) ]]] * [[ cond pf = false ]] *
+      rep xp F (ActiveTxn ds m) ms *
+      [[[ m ::: (Fm * arrayN a vs) ]]] * [[ cond pf = false ]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
@@ -729,17 +667,17 @@ Module LOG.
 
 
   Theorem read_cond_ok : forall A xp a nr vfold (v0 : A) cond ms,
-    {< F Fm m1 m2 vs,
+    {< F Fm ds m vs,
     PRE
-      rep xp F (ActiveTxn m1 m2) ms *
+      rep xp F (ActiveTxn ds m) ms *
       [[ nr <= length vs /\ cond v0 = false ]] *
-      [[[ m2 ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayN a vs) ]]]
     POST RET:^(ms', r)
-      rep xp F (ActiveTxn m1 m2) ms' *
+      rep xp F (ActiveTxn ds m) ms' *
       ( exists v, [[ r = Some v /\ cond v = true ]] \/
       [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]])
     CRASH
-      exists ms', rep xp F (ActiveTxn m1 m2) ms'
+      exists ms', rep xp F (ActiveTxn ds m) ms'
     >} read_cond xp a nr vfold v0 cond ms.
   Proof.
     unfold read_cond; intros.
@@ -770,12 +708,12 @@ Module LOG.
   (* dwrite_vecs discard everything in active transaction *)
   Definition dwrite_vecs T (xp : log_xparams) avl ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
-    mm' <- MLog.dwrite_vecs xp avl mm;
+    mm' <- GLog.dwrite_vecs xp avl mm;
     rx (mk_memstate vmap0 mm').
 
   Definition dsync_vecs T xp al ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
-    mm' <- MLog.dsync_vecs xp al mm;
+    mm' <- GLog.dsync_vecs xp al mm;
     rx (mk_memstate cm mm').
 
 
@@ -866,6 +804,7 @@ Module LOG.
   Qed.
 
 
+(*
   Theorem dwrite_vecs_ok : forall xp ms avl,
     {< F Fm m ovl,
     PRE
@@ -901,27 +840,28 @@ Module LOG.
 
     Unshelve. all: eauto.
   Qed.
-
+*)
 
   Theorem dsync_vecs_ok : forall xp ms al,
-    {< F Fm m vsl,
+    {< F Fm ds vsl,
     PRE
-      rep xp F (ActiveTxn m m) ms *
-      [[[ m ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
+      rep xp F (ActiveTxn ds ds!!) ms *
+      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
     POST RET:ms' exists m',
-      rep xp F (ActiveTxn m' m') ms' *
+      rep xp F (ActiveTxn (m', nil) m') ms' *
       [[[ m' ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]]
-    XCRASH exists ms',
-      rep xp F (ActiveTxn m m) ms'
+    XCRASH
+      recover_any xp F ds
     >} dsync_vecs xp al ms.
   Proof.
-    unfold dsync_vecs.
+    unfold dsync_vecs, recover_any.
     step.
     eapply listmatch_ptsto_list2nmem_inbound.
     pred_apply; rewrite listmatch_sym; eauto.
 
     step; subst.
     apply map_valid_vssync_vecs; auto.
+    setoid_rewrite singular_latest at 2; simpl; auto.
     rewrite <- replay_disk_vssync_vecs_comm.
     f_equal; auto.
     apply dsync_vssync_vecs_ok; auto.
@@ -929,13 +869,11 @@ Module LOG.
     (* crashes *)
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     rewrite H0.
-    do 2 (xform; cancel).
-    eassign (mk_memstate (MSTxn ms) x0); simpl; eauto.
-    all: eauto.
+    xform_norm; eauto.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+(*  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog. *)
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
