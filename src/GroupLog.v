@@ -35,33 +35,23 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
+Section NonEmptyList.
 
-Module GLog.
+  Variable T : Type.
 
-  Import AddrMap LogReplay.
+  Definition nelist  := (T * list T)%type.
 
+  Definition singular x : nelist := (x, nil).
 
-  (**
-    diskset, like valuset, represents a non-empty sequence of disk states.
-    the fst part is the oldest disk, and the snd part is a list of subsequent disks.
-    Unlike valuset, the snd list should be ordered, and a new diskstate is always
-    prepended to the head of the list.
-      (disk_0, dist_n :: [... ; disk 1] )
-  *)
-
-  Definition diskset  := (diskstate * list diskstate)%type.
-
-  Definition latest (ds : diskset) := hd (fst ds) (snd ds).
+  Definition latest (ds : nelist) := hd (fst ds) (snd ds).
 
   Definition latest_cons : forall d0 d ds, latest (d0, d :: ds) = d.
   Proof.
     firstorder.
   Qed.
 
-  Notation " ds '!!'" := (latest ds) (at level 1).
-
   (* return the n-th disk in the diskset *)
-  Definition nthd n (ds : diskset) := selN (snd ds) (length (snd ds) - n) (fst ds).
+  Definition nthd n (ds : nelist) := selN (snd ds) (length (snd ds) - n) (fst ds).
 
   Lemma nthd_0 : forall ds, nthd 0 ds = fst ds.
   Proof.
@@ -76,11 +66,11 @@ Module GLog.
   Qed.
 
   (* append a new diskstate to a diskset *)
-  Definition pushd (d : diskstate) (ds : diskset) : diskset :=
+  Definition pushd (d : T) (ds : nelist) : nelist :=
       (fst ds, d :: snd ds).
 
   (* pop out n oldest disks for a diskset *)
-  Definition popn (n : nat) (ds : diskset) : diskset :=
+  Definition popn (n : nat) (ds : nelist) : nelist :=
       (nthd n ds, cuttail n (snd ds)).
 
   Lemma popn_0 : forall ds,
@@ -92,38 +82,95 @@ Module GLog.
   Qed.
 
   Lemma popn_oob : forall ds n,
-    n >= length (snd ds) -> popn n ds = (ds!!, nil).
+    n >= length (snd ds) -> popn n ds = (latest ds, nil).
   Proof.
     unfold popn; intros.
     rewrite nthd_oob by omega.
     rewrite cuttail_oob by omega; auto.
   Qed.
 
-
-
-  (* does the diskset contains a single element? *)
-  Definition Singular (ds : diskset) := snd ds = nil.
-
-  Lemma singular_latest : forall ds, Singular ds -> latest ds = fst ds.
+  Lemma singular_latest : forall ds, snd ds = nil -> latest ds = fst ds.
   Proof.
     unfold latest; destruct ds, l; simpl; intuition; inversion H.
   Qed.
 
-  Lemma singular_nthd : forall ds n, Singular ds -> nthd n ds = fst ds.
+  Lemma singular_nthd : forall ds n, snd ds = nil -> nthd n ds = fst ds.
   Proof.
     unfold latest; destruct ds, l; simpl; intuition; inversion H.
   Qed.
 
-  Lemma popn_oob_singular : forall ds n,
-    n >= length (snd ds) -> Singular (popn n ds) .
+  Lemma popn_oob_singular' : forall ds n,
+    n >= length (snd ds) -> snd (popn n ds) = nil.
   Proof.
     unfold popn; intros.
     rewrite cuttail_oob by omega; auto.
-    constructor.
+  Qed.
+
+  Lemma popn_oob_singular : forall ds n,
+    n >= length (snd ds) -> popn n ds = singular (latest ds).
+  Proof.
+    unfold popn, singular; intros.
+    rewrite cuttail_oob by omega.
+    rewrite nthd_oob; auto.
   Qed.
 
 
+  Lemma popn_popn : forall ds m n,
+    popn m (popn n ds) = popn (n + m) ds.
+  Proof.
+    unfold popn; intros; simpl.
+    rewrite cuttail_cuttail; f_equal.
+    unfold nthd; simpl.
+    rewrite cuttail_length.
+    destruct (le_dec n (length (snd ds))).
+    replace (length (snd ds) - (n + m)) with (length (snd ds) - n - m) by omega.
+    unfold cuttail.
+    destruct (lt_dec (length (snd ds) - n - m) (length (snd ds) - n)).
+    rewrite selN_firstn at 1; auto.
+    apply selN_inb; omega.
+    rewrite selN_oob.
+    f_equal; omega.
+    rewrite firstn_length; apply Nat.min_case_strong; omega.
+    rewrite cuttail_oob by omega.
+    simpl; f_equal; omega.
+  Qed.
 
+
+  Lemma popn_tail : forall n d0 d ds,
+    popn (S n) (d0, ds ++ [d]) = popn n (d, ds).
+  Proof.
+    intros.
+    replace (S n) with (1 + n) by omega.
+    rewrite <- popn_popn.
+    unfold popn at 2; simpl.
+    rewrite cuttail_tail, cuttail_0.
+    unfold nthd; simpl.
+    rewrite app_length; simpl.
+    rewrite selN_app2 by omega.
+    replace (length ds + 1 - 1 - length ds) with 0 by omega; simpl; auto.
+  Qed.
+
+End NonEmptyList.
+
+
+Notation " ds '!!'" := (latest ds) (at level 1).
+
+
+
+Module GLog.
+
+  Import AddrMap LogReplay.
+
+
+  (**
+    diskset, like valuset, represents a non-empty sequence of disk states.
+    the fst part is the oldest disk, and the snd part is a list of subsequent disks.
+    Unlike valuset, the snd list should be ordered, and a new diskstate is always
+    prepended to the head of the list.
+      (disk_0, dist_n :: [... ; disk 1] )
+  *)
+
+  Definition diskset  := nelist diskstate.
 
   (* list of transactions *)
   Definition txnlist  := list DLog.contents.
@@ -207,50 +254,6 @@ Module GLog.
     erewrite replay_seq_nthd; eauto.
     rewrite fold_right_replay_disk_length; auto.
   Qed.
-
-  Lemma popn_popn : forall ds m n,
-    popn m (popn n ds) = popn (n + m) ds.
-  Proof.
-    unfold popn; intros; simpl.
-    rewrite cuttail_cuttail; f_equal.
-    unfold nthd; simpl.
-    rewrite cuttail_length.
-    destruct (le_dec n (length (snd ds))).
-    replace (length (snd ds) - (n + m)) with (length (snd ds) - n - m) by omega.
-    unfold cuttail.
-    destruct (lt_dec (length (snd ds) - n - m) (length (snd ds) - n)).
-    rewrite selN_firstn at 1; auto.
-    apply selN_inb; omega.
-    rewrite selN_oob.
-    f_equal; omega.
-    rewrite firstn_length; apply Nat.min_case_strong; omega.
-    rewrite cuttail_oob by omega.
-    simpl; f_equal; omega.
-  Qed.
-
-  Lemma cuttail_tail : forall A (l : list A) a n,
-    cuttail (S n) (l ++ [a]) = cuttail n l.
-  Proof.
-    unfold cuttail; intros.
-    rewrite app_length; simpl.
-    replace (length l + 1 - S n) with (length l - n) by omega.
-    rewrite firstn_app_l; auto; omega.
-  Qed.
-
-  Lemma popn_tail : forall n d0 d ds,
-    popn (S n) (d0, ds ++ [d]) = popn n (d, ds).
-  Proof.
-    intros.
-    replace (S n) with (1 + n) by omega.
-    rewrite <- popn_popn.
-    unfold popn at 2; simpl.
-    rewrite cuttail_tail, cuttail_0.
-    unfold nthd; simpl.
-    rewrite app_length; simpl.
-    rewrite selN_app2 by omega.
-    replace (length ds + 1 - 1 - length ds) with 0 by omega; simpl; auto.
-  Qed.
-
 
 
   Lemma replay_seq_popn_cuttail : forall ds ts n,
@@ -586,6 +589,17 @@ Module GLog.
   Qed.
 
 
+  Lemma synced_recover_any : forall xp F ds nr ms,
+    MLog.rep xp F (MLog.Synced nr ds!!) ms =p=> would_recover_any xp F ds.
+  Proof.
+    unfold would_recover_any, rep; cancel.
+    rewrite nthd_oob; eauto.
+    apply MLog.synced_recover_either.
+    rewrite popn_oob; auto.
+    eassign (mk_memstate vmap0 nil ms).
+    apply dset_match_nil.
+  Qed.
+
 
   (************* correctness theorems *)
 
@@ -782,8 +796,8 @@ Module GLog.
       [[ Forall (fun e => e < length ds!!) al ]]
     POST RET:ms'
       rep xp F (Cached (vssync_vecs ds!! al, nil)) ms'
-    XCRASH exists ms',
-      rep xp F (Cached ds) ms'
+    XCRASH
+      would_recover_any xp F ds
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs.
@@ -792,14 +806,11 @@ Module GLog.
     prestep; unfold rep; cancel.
     subst; substl (MSTxns r_); eauto.
 
-    (* crashes *)
-    subst; eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite H0; unfold rep.
-    do 2 (xform; cancel).
-    eassign ( mk_memstate vmap0 nil x0); simpl; eauto.
-    unfold rep; cancel.
-    all: eauto.
-  Admitted.
+    subst; apply H1; rewrite H0.
+    xform_norm.
+    apply crash_xform_pimpl.
+    apply synced_recover_any.
+  Qed.
 
 
   Theorem recover_ok: forall xp F cs,
@@ -822,6 +833,7 @@ Module GLog.
 
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
 End GLog.

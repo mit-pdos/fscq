@@ -1970,3 +1970,12 @@ Proof.
   apply Nat.min_case_strong; intros; omega.
   rewrite Nat.min_l in H; omega.
 Qed.
+
+Lemma cuttail_tail : forall A (l : list A) a n,
+  cuttail (S n) (l ++ [a]) = cuttail n l.
+Proof.
+  unfold cuttail; intros.
+  rewrite app_length; simpl.
+  replace (length l + 1 - S n) with (length l - n) by omega.
+  rewrite firstn_app_l; auto; omega.
+Qed.
