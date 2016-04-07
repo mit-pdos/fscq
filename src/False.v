@@ -16,6 +16,15 @@ Definition noop {T} a rx : prog T :=
     rx false
   }.
 
+Theorem noop_rx : forall T a (rx: _ -> prog T),
+  noop a rx = rx true \/
+  noop a rx = rx false.
+Proof.
+  intros.
+  unfold noop, If_.
+  destruct (le_dec a 10); intuition.
+Qed.
+
 Theorem noop_ok: forall a,
   {< (_ : unit),
   PRE         [[ True ]]
