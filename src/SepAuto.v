@@ -1043,3 +1043,38 @@ Tactic Notation "hoare" "using" tactic(t) :=
 Ltac hoare := hoare using eauto.
 
 
+
+Ltac xform_deex_r :=
+    match goal with
+    | [ |- pimpl _ (crash_xform (exis _)) ] =>
+            rewrite crash_xform_exists_comm;
+            apply pimpl_exists_r; eexists
+    end.
+
+
+Ltac xform_deex_l :=
+    norml; unfold stars; simpl; clear_norm_goal;
+    try (rewrite sep_star_comm, star_emp_pimpl);
+    try match goal with
+    | [ |- pimpl (crash_xform (exis _)) _ ] =>
+             rewrite crash_xform_exists_comm;
+             apply pimpl_exists_l; intro
+    end.
+
+Ltac xform_dist :=
+  rewrite crash_xform_sep_star_dist ||
+  rewrite crash_xform_or_dist ||
+  rewrite crash_xform_lift_empty ||
+  rewrite crash_invariant_emp ||
+  rewrite <- crash_invariant_emp_r.
+
+Ltac xform_norml :=
+  repeat (xform_deex_l || xform_dist).
+
+Ltac xform_normr :=
+  repeat (xform_deex_r || xform_dist).
+
+Ltac xform_norm :=
+  xform_norml; xform_normr.
+
+

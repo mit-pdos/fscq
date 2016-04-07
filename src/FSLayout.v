@@ -253,6 +253,17 @@ Proof.
   cancel.
 Qed.
 
+Theorem crash_xform_sb_rep_r : forall fsxp,
+  sb_rep fsxp =p=> crash_xform (sb_rep fsxp).
+Proof.
+  unfold sb_rep; intros.
+  rewrite crash_xform_sep_star_dist.
+  rewrite crash_xform_lift_empty.
+  rewrite <- crash_xform_ptsto_r.
+  cancel.
+  unfold vsmerge; simpl; auto.
+Qed.
+
 Hint Rewrite crash_xform_sb_rep : crash_xform.
 
 Hint Extern 0 (okToUnify (sb_rep _) (sb_rep _)) => constructor : okToUnify.
