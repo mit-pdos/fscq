@@ -175,30 +175,33 @@ Module AFS.
     mscs <- GLog.flushall fsxp mscs;
     rx mscs.
 
+(*
   Definition statfs T fsxp mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
       let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
           rx ^(mscs, free_blocks, free_inodes).
+*)
+
 
   (* Helper theorems *)
 
   Theorem recover_ok :
     {< fsxp Fold Fnew,
      PRE
-       crash_xform (LOG.recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew)
+       crash_xform (LOG.recover_any_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew)
        POST RET:^(mscs, fsxp')
        [[ fsxp' = fsxp ]] *
-     (exists old, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn old) mscs *
+     (exists old, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn (old, nil)) mscs *
                   [[[ old ::: crash_xform Fold ]]]  \/
-                  exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn new) mscs *
+                  exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn (new, nil)) mscs *
                               [[[ new ::: crash_xform Fnew ]]])
        CRASH
-       LOG.recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew
+       LOG.recover_any_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew
      >} recover.
   Proof.
-    unfold recover, LOG.recover_either_pred; intros.
+    unfold recover, LOG.recover_any_pred; intros.
 
     eapply pimpl_ok2; eauto with prog.
     intros. norm'l. unfold stars; simpl.
@@ -214,7 +217,7 @@ Module AFS.
     autorewrite with crash_xform. cancel.
 
     eapply pimpl_ok2; eauto with prog.
-    unfold LOG.recover_either_pred.
+    unfold LOG.recover_any_pred.
     cancel.
 
     rewrite crash_xform_idem.
@@ -247,6 +250,8 @@ Module AFS.
 
   Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
 
+
+(*
   Ltac recover_ro_ok := intros;
     repeat match goal with 
       | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
@@ -330,6 +335,8 @@ Module AFS.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
+*)
+
 
   (*
 Theorem read_block_ok : forall fsxp inum off mscs,
