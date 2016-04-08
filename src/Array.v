@@ -520,18 +520,76 @@ Proof.
   rewrite vsupd_comm; auto.
 Qed.
 
-
-Lemma vsupd_selN_not_in : forall l a d,
-  NoDup (map fst l) ->
+Lemma vsupd_vecs_selN_not_in : forall l a d,
   ~ In a (map fst l) ->
   selN (vsupd_vecs d l) a ($0, nil) = selN d a ($0, nil).
 Proof.
   induction l; intros; destruct a; simpl in *; auto; intuition.
-  inversion H; subst.
-  rewrite vsupd_vecs_vsupd_notin by auto.
+  rewrite IHl by auto.
   unfold vsupd.
-  rewrite selN_updN_ne; eauto.
+  rewrite selN_updN_ne; auto.
 Qed.
+
+
+Lemma vsupd_vecs_app : forall d a b,
+  vsupd_vecs d (a ++ b) = vsupd_vecs (vsupd_vecs d a) b.
+Proof.
+  unfold vsupd_vecs; intros.
+  rewrite fold_left_app; auto.
+Qed.
+
+Lemma vsupd_vecs_cons : forall l a v avl,
+  vsupd_vecs l ((a, v) :: avl) = vsupd_vecs (vsupd l a v) avl.
+Proof.
+  auto.
+Qed.
+
+
+Lemma vsupd_vecs_selN_vsmerge_in' : forall a v avl l,
+  In v (vsmerge (selN l a ($0, nil))) ->
+  a < length l ->
+  In v (vsmerge (selN (vsupd_vecs l avl) a ($0, nil))).
+Proof.
+  intros.
+  destruct (In_dec addr_eq_dec a (map fst avl)).
+  - revert H H0 i; revert avl l a v.
+    induction avl; auto; intros; destruct a.
+    destruct i; simpl in H0; subst.
+
+    destruct (In_dec addr_eq_dec n (map fst avl)).
+    apply IHavl; auto.
+    right; unfold vsupd; simpl.
+    rewrite selN_updN_eq; auto.
+    unfold vsupd; rewrite length_updN; simpl in *; auto.
+
+    rewrite vsupd_vecs_cons, vsupd_vecs_vsupd_notin by auto.
+    unfold vsupd; rewrite selN_updN_eq.
+    rewrite vsupd_vecs_selN_not_in; auto.
+    right; auto.
+    rewrite vsupd_vecs_length; auto.
+
+    rewrite vsupd_vecs_cons.
+    apply IHavl; auto; unfold vsupd.
+    destruct (addr_eq_dec a0 n); subst.
+    rewrite selN_updN_eq; auto.
+    right; auto.
+    rewrite selN_updN_ne; auto.
+    rewrite length_updN; auto.
+  - rewrite vsupd_vecs_selN_not_in; auto.
+Qed.
+
+
+Lemma vsupd_vecs_selN_vsmerge_in : forall a v avl l,
+  In v (vsmerge (selN l a ($0, nil))) ->
+  In v (vsmerge (selN (vsupd_vecs l avl) a ($0, nil))).
+Proof.
+  intros.
+  destruct (lt_dec a (length l)).
+  apply vsupd_vecs_selN_vsmerge_in'; auto.
+  rewrite selN_oob in *; auto; try omega.
+  rewrite vsupd_vecs_length; omega.
+Qed.
+
 
 
 (** sync vsl for all addresses in l. *)

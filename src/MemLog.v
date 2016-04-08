@@ -256,7 +256,7 @@ Module MLog.
     rewrite vsupd_vecs_vsupd_notin by auto.
     unfold vsupd.
     rewrite selN_updN_ne by auto.
-    rewrite vsupd_selN_not_in; auto.
+    rewrite vsupd_vecs_selN_not_in; auto.
 
     unfold vssync.
     rewrite -> updN_vsupd_vecs_notin by auto.
@@ -812,6 +812,18 @@ Module MLog.
     inversion H; destruct (addr_eq_dec a a0); subst; firstorder.
   Qed.
 
+  Lemma overlap_empty : forall V al (m : Map.t V),
+    Map.Empty m ->
+    overlap al m = false.
+  Proof.
+    induction al; simpl; auto; intros.
+    replace (Map.mem a m) with false; eauto.
+    symmetry.
+    eapply MapFacts.not_mem_in_iff.
+    apply map_empty_not_In; auto.
+  Qed.
+
+
   Lemma replay_disk_vsupd_vecs_nonoverlap : forall l m d,
     overlap (map fst l) m = false ->
     vsupd_vecs (replay_disk (Map.elements m) d) l =
@@ -830,7 +842,7 @@ Module MLog.
   Qed.
 
 
-  Theorem dwrite_vecs_ok : forall xp avl ms,
+  Theorem dwrite_vecs_ok_strict : forall xp avl ms,
     {< F d na,
     PRE
       rep xp F (Synced na d) ms *
@@ -932,74 +944,6 @@ Module MLog.
     apply map_valid_vssync_vecs; auto.
     apply replay_disk_vssync_vecs_comm.
   Qed.
-
-
-
-  Lemma possible_crash_vssync_vecs_listupd : forall F st d l m x,
-    (F * arrayN st (vssync_vecs d l))%pred m ->
-    possible_crash m x ->
-    possible_crash (listupd m st d)  x.
-  Proof.
-    unfold possible_crash; intuition.
-    specialize (H0 a).
-    destruct (listupd_sel_cases d a st m ($0, nil)).
-    destruct a0; denote listupd as Hx; rewrite Hx; intuition.
-
-    intuition; denote listupd as Hx; rewrite Hx.
-    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; try congruence.
-    rewrite vssync_vecs_length; auto.
-    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; auto.
-    right; repeat deex; repeat eexists; eauto.
-    rewrite H in H2; inversion H2; clear H2; subst.
-    denote vsmerge as Hy.
-    destruct (In_dec addr_eq_dec (a - st) l).
-    rewrite vssync_vecs_selN_In in Hy; simpl in *; intuition.
-    rewrite vssync_selN_not_in in Hy; auto.
-    rewrite vssync_vecs_length; auto.
-  Qed.
-
-
-  Theorem dsync_vecs_ok: forall xp al ms,
-    {< F d na,
-    PRE
-      rep xp F (Synced na d) ms *
-      [[ Forall (fun e => e < length d) al ]]
-    POST RET:ms' exists na',
-      rep xp F (Synced na' (vssync_vecs d al)) ms'
-    XCRASH exists na' ms',
-      rep xp F (Synced na' d) ms'
-    >} dsync_vecs xp al ms.
-  Proof.
-    unfold dsync_vecs, rep, rep_inner, synced_rep, map_replay.
-    step.
-    subst; erewrite <- replay_disk_length; eauto.
-
-    step.
-    rewrite vssync_vecs_length; auto.
-    apply map_valid_vssync_vecs; auto.
-    apply replay_disk_vssync_vecs_comm.
-
-    denote crash_xform as Hx.
-    eapply pimpl_trans; [ | eapply Hx ]; cancel.
-    xform; cancel.
-    repeat (rewrite crash_xform_exists_comm; cancel).
-    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty; cancel.
-    eassign (mk_memstate (MSInLog ms) (BUFCACHE.cache0 (CSMaxCount x0))).
-    simpl; rewrite <- BUFCACHE.crash_xform_rep_r; [ eauto | ].
-
-    eassign (listupd d' (DataStart xp) dummy0).
-    eapply possible_crash_vssync_vecs_listupd; eauto.
-    denote (sep_star _ _ d') as Hy.
-    eapply (arrayN_listupd dummy0) in Hy.
-    pred_apply; cancel.
-    rewrite vssync_vecs_length; auto.
-    Unshelve. all: eauto.
-  Qed.
-
-
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
-
 
 
 
@@ -1163,6 +1107,275 @@ Module MLog.
       unfold map_valid; intros.
       destruct (H0 _ _ H3); simplen.
   Qed.
+
+
+  Lemma possible_crash_vssync_vecs_listupd : forall F st d l m x,
+    (F * arrayN st (vssync_vecs d l))%pred m ->
+    possible_crash m x ->
+    possible_crash (listupd m st d)  x.
+  Proof.
+    unfold possible_crash; intuition.
+    specialize (H0 a).
+    destruct (listupd_sel_cases d a st m ($0, nil)).
+    destruct a0; denote listupd as Hx; rewrite Hx; intuition.
+
+    intuition; denote listupd as Hx; rewrite Hx.
+    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; try congruence.
+    rewrite vssync_vecs_length; auto.
+    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; auto.
+    right; repeat deex; repeat eexists; eauto.
+    rewrite H in H2; inversion H2; clear H2; subst.
+    denote vsmerge as Hy.
+    destruct (In_dec addr_eq_dec (a - st) l).
+    rewrite vssync_vecs_selN_In in Hy; simpl in *; intuition.
+    rewrite vssync_selN_not_in in Hy; auto.
+    rewrite vssync_vecs_length; auto.
+  Qed.
+
+
+  Lemma possible_crash_vsupd_vecs_listupd : forall F m x st l avl,
+    (F * arrayN st l)%pred m ->
+    possible_crash m x ->
+    possible_crash (listupd m st (vsupd_vecs l avl)) x.
+  Proof.
+    unfold possible_crash; intuition.
+    specialize (H0 a).
+    destruct (listupd_sel_cases (vsupd_vecs l avl) a st m ($0, nil)).
+    destruct a0; denote listupd as Hx; rewrite Hx; intuition.
+
+    intuition; denote listupd as Hx; rewrite Hx.
+    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; try congruence.
+    erewrite <- vsupd_vecs_length; eauto.
+    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; auto.
+    right; repeat deex; repeat eexists; eauto.
+    rewrite H in H2; inversion H2; clear H2; subst.
+    apply vsupd_vecs_selN_vsmerge_in; auto.
+    erewrite <- vsupd_vecs_length; eauto.
+  Qed.
+
+
+  Lemma dwrite_vecs_xcrash_ok : forall cs d raw xp F avl m n n' log,
+    overlap (map fst avl) m <> true ->
+    map_valid m d ->
+    Map.Equal m (replay_mem log vmap0) ->
+    goodSize addrlen (length d) ->
+    ((DLog.rep xp (DLog.Synced n' log) * F) * 
+      arrayN (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
+    crash_xform (BUFCACHE.rep cs raw) =p=> crash_xform (exists ms na, rep xp F 
+        (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms).
+  Proof.
+    intros.
+    rewrite BUFCACHE.crash_xform_rep.
+    unfold rep, rep_inner, map_replay, synced_rep; xform_norm.
+    eassign (mk_memstate m (BUFCACHE.cache0 (CSMaxCount cs'))); simpl.
+    rewrite <- BUFCACHE.crash_xform_rep_r.
+    cancel.
+
+    eassign (listupd raw (DataStart xp) (vsupd_vecs d avl)).
+    denote arrayN as Ha; eapply arrayN_listupd with (l := (vsupd_vecs d avl)) in Ha.
+    pred_apply; cancel.
+    rewrite vsupd_vecs_length; auto.
+    apply map_valid_vsupd_vecs; auto.
+    rewrite replay_disk_vsupd_vecs_nonoverlap.
+    repeat rewrite vsupd_vecs_length; auto.
+    apply not_true_is_false; auto.
+    repeat rewrite vsupd_vecs_length; auto.
+    erewrite <- firstn_skipn with (l := avl) (n := n).
+    rewrite vsupd_vecs_app.
+    eapply possible_crash_vsupd_vecs_listupd; eauto.
+    Unshelve. exact unit.
+  Qed.
+
+
+  Lemma dwrite_vecs_xcrash_ok_empty : forall cs d raw xp F avl m n n' log,
+    Map.Empty m ->
+    Map.Equal m (replay_mem log vmap0) ->
+    goodSize addrlen (length d) ->
+    ((DLog.rep xp (DLog.Synced n' log) * F) * 
+      arrayN (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
+    crash_xform (BUFCACHE.rep cs raw) =p=> crash_xform (exists ms na, rep xp F 
+        (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms).
+  Proof.
+    intros.
+    eapply dwrite_vecs_xcrash_ok; eauto.
+    rewrite overlap_empty; auto.
+    apply map_valid_empty; auto.
+  Qed.
+
+
+  (* ugly lamma to unfold two cases inside rep *)
+  Lemma applying_cases : forall F xp d ms,
+    rep xp F (Applying d) ms <=p=>
+      (exists raw log d0 na,
+      BUFCACHE.rep (MSCache ms) raw *
+      [[ Map.Equal (MSInLog ms) (replay_mem log vmap0) ]] *
+      [[ goodSize addrlen (length d0) /\ map_valid (MSInLog ms) d0 ]] *
+      [[ map_replay (MSInLog ms) d0 d ]] *
+      [[ (F * (DLog.rep xp (DLog.Synced na log)) * 
+              (unsync_rep xp (MSInLog ms) d0))%pred raw ]])
+      \/
+      (exists raw log d0,
+      BUFCACHE.rep (MSCache ms) raw *
+      [[ Map.Equal (MSInLog ms) (replay_mem log vmap0) ]] *
+      [[ goodSize addrlen (length d0) /\ map_valid (MSInLog ms) d0 ]] *
+      [[ map_replay (MSInLog ms) d0 d ]] *
+      [[ (F * (DLog.rep xp (DLog.Truncated log)) *
+              (synced_rep xp d))%pred raw ]]).
+  Proof.
+    unfold rep, rep_inner; split.
+    cancel.
+    apply sep_star_or_distr in H; destruct H.
+    or_l; cancel; auto.
+    or_r; cancel; eauto.
+    cancel; eauto.
+    or_l; cancel.
+    or_r; cancel.
+    Unshelve. exact 0.
+  Qed.
+
+
+  Lemma crash_xform_applying_synced : forall F xp d ms,
+    crash_xform (rep xp F (Applying d) ms) =p=>
+    crash_xform (exists ms' na', rep xp F (Synced na' d) ms').
+  Proof.
+    intros; rewrite applying_cases; xform_norml;
+    unfold rep, rep_inner, map_replay, unsync_rep, synced_rep in *;
+    destruct_lifts; subst; denote arrayN as Ha.
+
+    - pose proof (equal_unless_in_length_eq H1).
+      xform_norm; cancel.
+      eapply length_eq_map_valid; eauto.
+      eapply equal_unless_in_replay_disk.
+      eapply equal_unless_in_sym; auto.
+
+    - xform_norm; cancel.
+
+      (* XXX:
+         This doesn't seem right, as DLog.Truncated's header has a
+         non-nil valuset, while in DLog.Synced, the header is synced.
+         We cannot conclude crash_xform from a larger valuset to a
+         smaller one.
+      *)
+
+      all: admit.
+  Admitted.
+
+
+  Lemma crash_xform_synced_applying : forall F xp d ms na,
+    crash_xform (rep xp F (Synced na d) ms) =p=>
+    crash_xform (exists ms', rep xp F (Applying d) ms').
+  Proof.
+    unfold rep, rep_inner, map_replay, unsync_rep, synced_rep in *.
+    intros; xform_norm.
+    cancel; eauto.
+    or_l; cancel.
+    unfold equal_unless_in; intuition.
+  Qed.
+
+
+  Theorem dwrite_vecs_ok : forall xp avl ms,
+    {< F d na,
+    PRE
+      rep xp F (Synced na d) ms *
+      [[ Forall (fun e => fst e < length d) avl ]]
+    POST RET:ms' exists na',
+      rep xp F (Synced na' (vsupd_vecs d avl)) ms'
+    XCRASH 
+      would_recover_before xp F d \/
+      exists ms' na', rep xp F (Synced na' (vsupd_vecs d avl)) ms'
+    >} dwrite_vecs xp avl ms.
+  Proof.
+    unfold dwrite_vecs, would_recover_before.
+    step.
+
+    (* case 1: apply happens *)
+    step.
+    prestep.
+    unfold rep at 1, rep_inner at 1.
+    unfold synced_rep, map_replay in *.
+    cancel; auto.
+    erewrite <- replay_disk_length.
+    denote replay_disk as Hx; rewrite <- Hx; auto.
+
+    step.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel.
+    rewrite vsupd_vecs_length; auto.
+    apply map_valid_vsupd_vecs; auto.
+    repeat rewrite replay_disk_empty; auto.
+
+    (* crashes for case 1 *)
+    cancel; denote crash_xform as Hx.
+    eapply pimpl_trans; [ | eapply Hx ]; cancel.
+    xform_dist; or_r.
+    eapply dwrite_vecs_xcrash_ok_empty; eauto.
+    denote crash_xform as Hx.
+    eapply pimpl_trans; [ | eapply Hx ]; cancel.
+    xform_dist; or_l; auto.
+
+    (* case 2: no apply *)
+    prestep.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel; eauto.
+    erewrite <- replay_disk_length.
+    denote replay_disk as Hx; rewrite <- Hx; auto.
+
+    step.
+    unfold rep, rep_inner, synced_rep, map_replay; cancel.
+    rewrite vsupd_vecs_length; auto.
+    apply map_valid_vsupd_vecs; auto.
+    apply replay_disk_vsupd_vecs_nonoverlap; auto.
+    apply not_true_is_false; auto.
+
+    (* crashes for case 2 *)
+    cancel.
+    denote crash_xform as Hx.
+    eapply pimpl_trans; [ | eapply Hx ]; cancel.
+    xform_dist; or_r.
+    eapply dwrite_vecs_xcrash_ok; eauto.
+  Qed.
+
+
+
+  Theorem dsync_vecs_ok: forall xp al ms,
+    {< F d na,
+    PRE
+      rep xp F (Synced na d) ms *
+      [[ Forall (fun e => e < length d) al ]]
+    POST RET:ms' exists na',
+      rep xp F (Synced na' (vssync_vecs d al)) ms'
+    XCRASH exists na' ms',
+      rep xp F (Synced na' d) ms'
+    >} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs, rep, rep_inner, synced_rep, map_replay.
+    step.
+    subst; erewrite <- replay_disk_length; eauto.
+
+    step.
+    rewrite vssync_vecs_length; auto.
+    apply map_valid_vssync_vecs; auto.
+    apply replay_disk_vssync_vecs_comm.
+
+    denote crash_xform as Hx.
+    eapply pimpl_trans; [ | eapply Hx ]; cancel.
+    xform; cancel.
+    repeat (rewrite crash_xform_exists_comm; cancel).
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty; cancel.
+    eassign (mk_memstate (MSInLog ms) (BUFCACHE.cache0 (CSMaxCount x0))).
+    simpl; rewrite <- BUFCACHE.crash_xform_rep_r; [ eauto | ].
+
+    eassign (listupd d' (DataStart xp) dummy0).
+    eapply possible_crash_vssync_vecs_listupd; eauto.
+    denote (sep_star _ _ d') as Hy.
+    eapply (arrayN_listupd dummy0) in Hy.
+    pred_apply; cancel.
+    rewrite vssync_vecs_length; auto.
+    Unshelve. all: eauto.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+
 
 
 

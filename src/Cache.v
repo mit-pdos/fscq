@@ -842,6 +842,27 @@ Module BUFCACHE.
     eapply MapFacts.empty_mapsto_iff; eauto.
   Qed.
 
+  Lemma crash_xform_rep_pred : forall cs m (F : pred),
+    F%pred m ->
+    crash_xform (rep cs m) =p=>
+    exists m' cs', rep cs' m' * [[ (crash_xform F)%pred m' ]].
+  Proof.
+    intros.
+    rewrite crash_xform_rep.
+    norm. cancel. split; auto.
+    exists m; eauto.
+  Qed.
+
+  Lemma crash_xform_rep_pred_r: forall m' cs' (F : pred),
+    (crash_xform F)%pred m' ->
+    rep cs' m' =p=> exists m, crash_xform (rep (cache0 (CSMaxCount cs')) m) * [[ F%pred m ]].
+  Proof.
+    intros.
+    unfold crash_xform in H; deex.
+    rewrite crash_xform_rep_r; eauto.
+    cancel.
+  Qed.
+
   Hint Rewrite crash_xform_rep : crash_xform.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
