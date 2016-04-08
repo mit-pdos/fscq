@@ -8,7 +8,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      LogReplay MemLog ListPred MemPred GenSepN \
 		  NEList GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
-	      Dir DirName StringUtils TreeUtils DirTree FS Testprog \
+	      Dir DirName StringUtils TreeUtils DirTree AsyncFS Testprog \
 	      ExtrHaskellPrelude
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

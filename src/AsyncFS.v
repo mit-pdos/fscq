@@ -23,6 +23,7 @@ Require Import FSLayout.
 Require Import Cache.
 Require Import Errno.
 Require Import AsyncDisk.
+Require Import GroupLog.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -75,14 +76,14 @@ Module AFS.
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
     rx ^(mscs, ok).
 
-  Definition truncate fsxp inum sz mscs rx : prog T :=
+  Definition truncate T fsxp inum sz mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum sz mscs;
     rx ^(mscs, ok).
 
   (* sync only data blocks of a file *)
   Definition file_sync T fsxp inum mscs rx : prog T :=
-    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs rx;
+    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     rx mscs.
 
   (* directory operations *)
@@ -168,9 +169,10 @@ Module AFS.
       rx ^(mscs, false)
     }.
 
+
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync T fsxp mscs rx : prog T :=
-    mscs <- DIRTREE.sync fsxp mscs;    (* or perhaps GLOG.flushall fsxp mscs rx?*)
+    mscs <- GLog.flushall fsxp mscs;
     rx mscs.
 
   Definition statfs T fsxp mscs rx : prog T :=
