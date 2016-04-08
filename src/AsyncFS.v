@@ -32,7 +32,7 @@ Module AFS.
 
   Parameter cachesize : nat.
 
- (* Programs *)
+  (* Programs *)
 
   Definition recover {T} rx : prog T :=
     cs <- BUFCACHE.init_recover (if eq_nat_dec cachesize 0 then 1 else cachesize);
@@ -41,6 +41,8 @@ Module AFS.
       rx ^(mscs, fsxp).
 
   Local Opaque BUFCACHE.rep.
+
+  (* File operations *)
 
   Definition file_get_attr T fsxp inum mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -66,38 +68,24 @@ Module AFS.
       let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         rx ^(mscs, b).
 
-(*
-  Definition write_block_inbounds T fsxp inum off v mscs rx : prog T :=
+  (* update an existing block directly *)
+  Definition dupdate_block T fsxp inum off v mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
-    mscs <- BFILE.bfwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+    mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-      rx ^(mscs, ok).
+    rx ^(mscs, ok).
 
-  Definition write_block T fsxp inum off v newsz mscs rx : prog T :=
+  Definition truncate fsxp inum sz mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
-    let^ (mscs, oldattr) <- BFILE.getattrs (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
-      let^ (mscs, curlen) <- BFILE.getlen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
-        mscs <- IfRx irx (lt_dec off curlen) {
-               irx mscs
-             } else {
-      let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum (off + 1) mscs;
-         If (bool_dec ok true) {
-              irx mscs
-            } else {
-          mscs <- LOG.abort (FSXPLog fsxp) mscs;
-          rx ^(mscs, false)
-        }
-    };
-    mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
-    mscs <- IfRx irx (wlt_dec (INODE.ABytes oldattr) newsz) {
-           mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UBytes newsz) mscs;
-           irx mscs
-         } else {
-      irx mscs
-    };
-    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-      rx ^(mscs, ok).
-*)
+    let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum sz mscs;
+    rx ^(mscs, ok).
+
+  (* sync only data blocks of a file *)
+  Definition file_sync T fsxp inum mscs rx : prog T :=
+    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs rx;
+    rx mscs.
+
+  (* directory operations *)
 
   Definition readdir T fsxp dnum mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -180,15 +168,10 @@ Module AFS.
       rx ^(mscs, false)
     }.
 
-  Definition file_sync T fsxp inum mscs rx : prog T :=
-    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs rx;
-    rx mscs.
-
+  (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync T fsxp mscs rx : prog T :=
     mscs <- DIRTREE.sync fsxp mscs;    (* or perhaps GLOG.flushall fsxp mscs rx?*)
     rx mscs.
-
-(*
 
   Definition statfs T fsxp mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -196,7 +179,6 @@ Module AFS.
       let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
           rx ^(mscs, free_blocks, free_inodes).
-*)
 
   (* Helper theorems *)
 
