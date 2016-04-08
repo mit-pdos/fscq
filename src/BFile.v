@@ -24,6 +24,8 @@ Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import Inode.
 Require Import GenSepAuto.
+Require Import NEList.
+
 
 Import ListNotations.
 
@@ -307,7 +309,8 @@ Module BFILE.
     setoid_rewrite surjective_pairing at 2; cancel.
 
     step; [ | sepauto .. ].
-    setoid_rewrite <- updN_selN_eq with (l := dummy0) (ix := inum) at 4.
+    rename dummy0 into ilist.
+    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
     rewrite listmatch_updN_removeN by omega.
     unfold file_match at 3; cancel; eauto.
     setoid_rewrite <- updN_selN_eq with (ix := off) at 15.
@@ -421,20 +424,20 @@ Module BFILE.
 
 
   Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
-    {< F Fm Fi Fd m flist f vs,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m m) ms *
+    {< F Fm Fi Fd ds flist f vs,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms *
            [[ off < length (BFData f) ]] *
-           [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
+           [[[ ds!! ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
     POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m' m') ms *
+           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m \/
-           exists m' flist' f', LOG.intact lxp F m' *
+    CRASH  LOG.recover_any lxp F ds \/
+           exists m' flist' f', LOG.intact lxp F (m', nil) *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
@@ -459,6 +462,7 @@ Module BFILE.
 
     safestep; auto; sepauto.
     cancel.
+    rename dummy0 into ilist.
     abstract (
       setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4;
       rewrite listmatch_updN_removeN by omega;
@@ -473,8 +477,8 @@ Module BFILE.
     or_r; cancel; sepauto.
     pred_apply; cancel.
     eapply dwrite_ok_helper; eauto.
-    or_l; cancel; eauto.
-    cancel; or_l; eauto.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    or_l; rewrite LOG.active_intact, LOG.intact_any; auto.
     Unshelve. all: easy.
   Qed.
 
@@ -486,17 +490,16 @@ Module BFILE.
   Qed.
 
   Theorem datasync_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m m) ms *
-           [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
+    {< F Fm Fi ds flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms *
+           [[[ ds!!  ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m' m') ms *
+           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (synced_list (map fst (BFData f))) (BFAttr f) ]]
-    XCRASH exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m m) ms'
+    XCRASH LOG.recover_any lxp F ds
     >} datasync lxp ixp inum ms.
   Proof.
     unfold datasync, rep.
@@ -508,6 +511,7 @@ Module BFILE.
     safestep; auto; seprewrite.
     2: sepauto.
     cancel.
+    rename dummy0 into ilist.
     setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 3.
     rewrite listmatch_updN_removeN by omega.
     unfold file_match; cancel; eauto.
@@ -516,6 +520,8 @@ Module BFILE.
 
     (* crashes *)
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite LOG.active_intact, LOG.intact_any; auto.
   Qed.
 
 

@@ -29,6 +29,7 @@ Require Import MapUtils.
 Require Import ListPred.
 Require Import LogReplay.
 Require Import GroupLog.
+Require Import NEList.
 
 Import ListNotations.
 
