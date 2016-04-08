@@ -73,6 +73,8 @@ ocamlfuse/Fuse.cmxa: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
 
 %: %.ml $(VS_ML)
 	rm -f $@
+	-mv codegen/Word.ml codegen/WordCoq.ml
+	-mv codegen/Word.mli codegen/WordCoq.mli
 	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
