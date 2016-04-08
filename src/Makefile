@@ -5,7 +5,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      Cache WritebackCache FSLayout AsyncRecArray DiskLog \
-	      LogReplay MemLog ListPred MemPred GenSepN GroupLog Log LogRecArray \
+	      LogReplay MemLog ListPred MemPred GenSepN \
+		  NEList GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree FS Testprog \
 	      ExtrHaskellPrelude
