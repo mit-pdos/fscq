@@ -6,6 +6,8 @@ Require Import FunctionalExtensionality.
 Require Import Automation.
 Import Morphisms.
 
+Set Universe Polymorphism.
+
 Section Linearizability.
 
   Variable A:Type.

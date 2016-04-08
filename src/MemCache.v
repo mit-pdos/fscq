@@ -9,7 +9,6 @@ Require Import Locking.
 Set Implicit Arguments.
 
 Module AddrM <: Word.WordSize.
-  Unset Universe Polymorphism.
   Definition sz := addrlen.
 End AddrM.
 

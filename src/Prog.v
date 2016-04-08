@@ -203,7 +203,6 @@ Hint Constructors exec_recover.
 
 
 Module Addr_as_OT <: UsualOrderedType.
-  Unset Universe Polymorphism.
   Definition t := addr.
   Definition eq := @eq t.
   Definition eq_refl := @eq_refl t.

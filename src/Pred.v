@@ -10,6 +10,8 @@ Require Import List.
 
 Set Implicit Arguments.
 
+Set Universe Polymorphism.
+
 
 (** ** Predicates *)
 

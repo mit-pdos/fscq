@@ -17,7 +17,6 @@ Import List.ListNotations.
 
 Module AddrM
 <: Word.WordSize.
-    Unset Universe Polymorphism.
     Definition sz := addrlen.
 End AddrM.
 

@@ -5,6 +5,8 @@ Require Import EventCSL.
 Require Import FunctionalExtensionality.
 Import Morphisms.
 
+Set Universe Polymorphism.
+
 Section Linearizability.
 
   Variable A:Type.

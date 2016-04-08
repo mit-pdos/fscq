@@ -264,8 +264,4 @@ Module MySemanticsVars <: SemanticsVars.
   Definition Mcontents : list Type := [BlockCache; ConcurrentCache2.Locks.M].
   Definition Scontents : list Type := [ID:Type; linearized DISK; Disk;
     linearized BlockFun; ConcurrentCache2.Locks.S].
-
-(** oops, universe polymorphism just doesn't work here:
-
-probably need to use it very carefully (or not at all) *)
 End MySemanticsVars.
