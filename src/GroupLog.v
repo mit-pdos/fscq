@@ -804,6 +804,38 @@ Module GLog.
   Qed.
 
 
+  Theorem dwrite_vecs_ok: forall xp avl ms,
+    {< F ds,
+    PRE
+      rep xp F (Cached ds) ms *
+      [[ Forall (fun e => fst e < length ds!!) avl ]]
+    POST RET:ms'
+      rep xp F (Cached (vsupd_vecs ds!! avl, nil)) ms'
+    XCRASH
+      would_recover_any xp F ds \/
+      exists ms', 
+      rep xp F (Cached (vsupd_vecs ds!! avl, nil)) ms'
+    >} dwrite_vecs xp avl ms.
+  Proof.
+    unfold dwrite_vecs.
+    step.
+    prestep; unfold rep; cancel.
+    prestep; unfold rep; cancel.
+    subst; substl (MSTxns r_); eauto.
+
+    subst; apply H1; rewrite H0.
+    xform_norm.
+    or_l; rewrite recover_before_any; auto.
+    or_r; unfold rep; xform_normr; cancel.
+    eassign (mk_memstate vmap0 nil x); simpl.
+    xform_normr; eauto.
+    all: simpl; auto.
+
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    apply crash_xform_pimpl; or_l; auto.
+  Qed.
+
+
   Theorem dsync_vecs_ok: forall xp al ms,
     {< F ds,
     PRE
@@ -847,9 +879,12 @@ Module GLog.
 
 
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
+
+  Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 
 End GLog.
 

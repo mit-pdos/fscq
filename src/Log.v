@@ -753,7 +753,7 @@ Module LOG.
     denote NoDup as Hx.
     refine (_ (IHavl ovl m _ _ Hx)); [ intro | pred_apply; cancel ].
     erewrite (@list2nmem_sel _ _ m n (p_cur, _)) by (pred_apply; cancel).
-    erewrite <- vsupd_selN_not_in; eauto.
+    erewrite <- vsupd_vecs_selN_not_in; eauto.
     apply sep_star_reorder_helper2.
     eapply list2nmem_updN.
     pred_apply; cancel.
@@ -804,22 +804,20 @@ Module LOG.
   Qed.
 
 
-(*
   Theorem dwrite_vecs_ok : forall xp ms avl,
-    {< F Fm m ovl,
+    {< F Fm ds ovl,
     PRE
-      rep xp F (ActiveTxn m m) ms *
+      rep xp F (ActiveTxn ds ds!!) ms *
       [[ NoDup (map fst avl) ]] *
-      [[[ m ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
+      [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
     POST RET:ms' exists m',
-      rep xp F (ActiveTxn m' m') ms' *
+      rep xp F (ActiveTxn (m', nil) m') ms' *
       [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
-    CRASH
+    XCRASH
+      recover_any xp F ds \/
       exists ms' m',
-      rep xp F (ActiveTxn m  m) ms' \/
-      rep xp F (ActiveTxn m' m') ms' *
-          [[ exists n, m' = vsupd_vecs m (firstn n avl) ]] \/
-      rep xp F (ApplyingTxn m) ms'
+      rep xp F (ActiveTxn (m', nil) m') ms' *
+      [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs.
@@ -831,16 +829,20 @@ Module LOG.
     apply dwrite_vsupd_vecs_ok; auto.
 
     (* crash conditions *)
-    or_r; or_r; cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0; xform_norm.
+    or_l; apply crash_xform_pimpl.
+    unfold recover_any, rep; cancel.
 
-    eassign (mk_memstate vmap0 a).
-    or_r; or_l; cancel.
-    apply map_valid_map0.
-    eauto.
+    or_r; xform_norm; cancel.
+    eassign (mk_memstate vmap0 x); simpl; eauto.
+    simpl; apply map_valid_map0.
+    setoid_rewrite singular_latest at 2; simpl; auto.
+    apply dwrite_vsupd_vecs_ok; eauto.
 
     Unshelve. all: eauto.
   Qed.
-*)
+
 
   Theorem dsync_vecs_ok : forall xp ms al,
     {< F Fm ds vsl,
@@ -873,7 +875,7 @@ Module LOG.
   Qed.
 
 
-(*  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog. *)
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 

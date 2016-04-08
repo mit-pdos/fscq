@@ -307,7 +307,7 @@ Module BFILE.
     setoid_rewrite surjective_pairing at 2; cancel.
 
     step; [ | sepauto .. ].
-    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
+    setoid_rewrite <- updN_selN_eq with (l := dummy0) (ix := inum) at 4.
     rewrite listmatch_updN_removeN by omega.
     unfold file_match at 3; cancel; eauto.
     setoid_rewrite <- updN_selN_eq with (ix := off) at 15.
