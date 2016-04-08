@@ -1414,7 +1414,7 @@ Module PaddedLog.
       (* after header sync : Synced new *)
       or_r; or_r. cancel.
       cancel_by extend_ok_helper; auto.
-
+      cancel_by extend_ok_synced_hdr_helper.
       rewrite log_nonzero_app, rev_app_distr, log_nonzero_padded_log.
       solve_hash_list_rep.
 
