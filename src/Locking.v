@@ -143,6 +143,18 @@ Proof.
     end; eauto.
 Qed.
 
+Theorem lock_transition_trans : forall tid o o' o'',
+  lock_transition tid o o' ->
+  lock_transition tid o' o'' ->
+  lock_transition tid o o''.
+Proof.
+  intros.
+  repeat match goal with
+  | [ H: lock_transition _ _ _ |- _ ] =>
+    inversion H; subst; clear H
+  end; eauto.
+Qed.
+
 Theorem lock_protocol_indifference : forall lvar tid s0 s1 s0' s1',
     lock_protocol lvar tid s0 s1 ->
     lvar s0 = lvar s0' ->

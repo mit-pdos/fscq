@@ -9,7 +9,7 @@ Import List.
 Import List.ListNotations.
 Require Import HlistMem.
 Require Import Preservation.
-Require Import Linearizable.
+Require Import Linearizable2.
 
 Definition block0 : addr := $0.
 Definition block1 : addr := $1.
@@ -20,7 +20,6 @@ Module Type TwoBlockVars (SemVars:SemanticsVars).
 End TwoBlockVars.
 
 Module TwoBlockTransitions (SemVars:SemanticsVars)
-  (Sem:Semantics SemVars)
   (CVars:CacheVars SemVars)
   (TBVars:TwoBlockVars SemVars).
 
@@ -29,7 +28,6 @@ Module TwoBlockTransitions (SemVars:SemanticsVars)
   Definition GDisk0 := CacheTransitions.GDisk0.
 
   Import SemVars.
-  Import Sem.
   Import TBVars.
 
   Definition BOwner := ltac:(hget 0 stateVars).
@@ -53,7 +51,7 @@ Module Type TwoBlockSemantics
   Import Sem.
   Import TBVars.
 
-  Module TBTrans := TwoBlockTransitions SemVars Sem CVars TBVars.
+  Module TBTrans := TwoBlockTransitions SemVars CVars TBVars.
   Import TBTrans.
 
   Axiom twoblock_relation_holds : forall tid,
@@ -138,19 +136,16 @@ Module TwoBlocks
   Lemma lin_pred_emp : forall AT AEQ V o,
     @lin_pred AT AEQ V o emp <=p=> emp.
   Proof.
-    unfold lin_pred, piff, pimpl, emp; split; intros.
-    unfold view in H.
-    destruct a; eauto.
-    admit. (* lin_pred doesn't enforce the appropriate domain restrictions *)
-    unfold view.
-    rewrite H; auto.
-  Admitted.
+    unfold lin_pred, view, piff, pimpl, emp; split; intros;
+      specialize_all AT;
+      destruct matches in *.
+  Qed.
 
   (* not sure how else to do this, but the work of proving that the locked
   portion doesn't change should be handled by the cache *)
   Theorem preserves'_any_locked : forall P F tid,
     preserves' (get GDisk) (star (othersR R tid)) F any
-      (fun s => lin_pred (Owned tid) (cache_locked tid s P)).
+      (fun s => lin_pred Latest (cache_locked tid s P)).
   Proof.
   Admitted.
 
@@ -159,8 +154,6 @@ Module TwoBlocks
       (fun s => CacheM.rep (get GDisk s)).
   Proof.
     unfold preserves', rep; intros.
-    Check exis_to_exists.
-    Search sep_star exis.
     apply sep_star_comm.
     apply pimpl_exists_r_star.
     apply exis_to_exists.
@@ -173,7 +166,7 @@ Module TwoBlocks
     the no_confusion_stateVars axiom *)
   Admitted.
 
-  Theorem update_block_ok : forall v',
+  Polymorphic Theorem update_block_ok : forall v',
     stateS TID: tid |-
     {{ Fs vd vd0 v,
      | PRE d m s0 s: hlistmem s |= Fs * haddr GDisk0 |-> vd0 * CacheM.rep vd /\
@@ -190,9 +183,7 @@ Module TwoBlocks
 Proof.
   time "hoare" hoare pre simplify with try solve [ finish ].
 
-  all: time "post-finish eauto" eauto.
-
-  instantiate (2 := (any * (block1, NoOwner) |->?)%pred).
+  instantiate (2 := (any * block1 |->?)%pred).
   instantiate (1 := emp).
   admit.
   eapply preserves'_any_cache_rep.
@@ -265,3 +256,190 @@ Module MySemanticsVars <: SemanticsVars.
   Definition Scontents : list Type := [ID:Type; linearized DISK; Disk;
     linearized BlockFun; ConcurrentCache2.Locks.S].
 End MySemanticsVars.
+
+Theorem NoDup_nat : forall (l: list nat),
+  l = nodup nat_dec l ->
+  NoDup l.
+Proof.
+  intros.
+  rewrite H.
+  apply NoDup_nodup.
+Qed.
+
+Module MyCacheVars <: CacheVars MySemanticsVars.
+  Import HlistNotations.
+  Import MySemanticsVars.
+
+  Definition memVars : variables Mcontents [BlockCache; ConcurrentCache2.Locks.M] :=
+    [( HFirst; HNext HFirst )].
+
+  Definition stateVars : variables Scontents [linearized DISK; Disk;
+    linearized BlockFun; ConcurrentCache2.Locks.S] :=
+    [( HNext HFirst; HNext (HNext HFirst);
+      HNext (HNext (HNext HFirst));
+      HNext (HNext (HNext (HNext HFirst))) )].
+
+  Theorem no_confusion_memVars : NoDup (hmap var_index memVars).
+  Proof.
+    apply NoDup_nat; auto.
+  Qed.
+
+  Theorem no_confusion_stateVars : NoDup (hmap var_index stateVars).
+  Proof.
+    apply NoDup_nat; auto.
+  Qed.
+End MyCacheVars.
+
+Module MyTBVars <: TwoBlockVars MySemanticsVars.
+  Import MySemanticsVars.
+  Import HlistNotations.
+  Definition stateVars : variables Scontents [ID:Type] :=
+    [( HFirst )].
+End MyTBVars.
+
+Module TBTransitions := TwoBlockTransitions MySemanticsVars MyCacheVars MyTBVars.
+Import TBTransitions.
+Import CacheTransitions.
+
+Module MySemantics <: Semantics MySemanticsVars.
+  Import MySemanticsVars.
+
+  Definition R tid s s' :=
+    cacheR tid s s' /\
+    twoblockR tid s s'.
+
+  Definition Inv m s d :=
+    cacheI m s d /\
+    twoblockI m s d.
+
+  Theorem R_trans : forall tid s s',
+    star (R tid) s s' ->
+    R tid s s'.
+  Proof.
+    intros.
+    eapply trans_closed_from_refl_trans; eauto.
+    unfold R; intuition.
+    apply cacheR_refl.
+    intros.
+    unfold R in *; intuition.
+    eapply cacheR_trans; eauto.
+  Qed.
+
+End MySemantics.
+
+Module MyCacheSemantics <: CacheSemantics MySemanticsVars MySemantics MyCacheVars.
+
+  Module Transitions := CacheTransitionSystem MySemanticsVars MyCacheVars.
+
+  Import MySemantics.
+  Export Transitions.
+  Import TBTransitions.
+
+  Import HlistNotations.
+
+  Theorem cache_invariant_holds : forall m s d,
+    Inv m s d ->
+    cacheI m s d.
+  Proof.
+    unfold Inv; intuition.
+  Qed.
+
+  Theorem cache_relation_holds : forall tid,
+      rimpl (R tid) (cacheR tid).
+  Proof.
+    unfold rimpl, R; intuition.
+  Qed.
+
+  Transparent get.
+
+  Theorem cache_invariant_preserved : forall m s d m' s' d',
+      Inv m s d ->
+      cacheI m' s' d' ->
+      modified [( Cache; MLocks )] m m' ->
+      modified [( GDisk; GCache; GLocks )] s s' ->
+      Inv m' s' d'.
+  Proof.
+    unfold Inv; intuition.
+    unfold twoblockI in *.
+    rewrite <- H2; auto; intros.
+    apply hin_iff_index_in in H; cbn in *.
+    intuition.
+  Qed.
+
+  Theorem cache_relation_preserved : forall tid s s',
+      (* can actually also assume anything about s that Inv m s d
+      implies (forall m and d) *)
+      modified [( GDisk; GCache; GLocks )] s s' ->
+      cacheR tid s s' ->
+      R tid s s'.
+  Proof.
+    unfold R; intuition.
+    unfold twoblockR; auto.
+  Qed.
+
+End MyCacheSemantics.
+
+Module MyTBSemantics <: TwoBlockSemantics MySemanticsVars MySemantics MyCacheVars MyTBVars.
+  Import MySemantics.
+  Import MyTBVars.
+
+  Module TBTrans := TwoBlockTransitions MySemanticsVars MyCacheVars MyTBVars.
+  Import TBTrans.
+
+  Theorem twoblock_relation_holds : forall tid,
+    rimpl (R tid) (twoblockR tid).
+  Proof.
+    unfold R, rimpl; intuition.
+  Qed.
+
+  Transparent get.
+
+  Theorem twoblock_relation_preserved : forall tid s s',
+    modified stateVars s s' ->
+    twoblockR tid s s' ->
+    R tid s s'.
+  Proof.
+    unfold R, stateVars; intuition.
+    unfold cacheR.
+    repeat rewrite H; auto; intros.
+    apply cacheR_refl.
+
+    apply hin_iff_index_in in H1; cbn in *; intuition.
+    apply hin_iff_index_in in H1; cbn in *; intuition.
+  Qed.
+
+  Theorem twoblock_invariant_holds : forall d m s,
+    Inv d m s ->
+    twoblockI d m s.
+  Proof.
+    unfold Inv; intuition.
+  Qed.
+
+  Theorem twoblock_invariant_preserved : forall d m s d' m' s',
+    Inv m s d ->
+    twoblockI m' s' d' ->
+    modified HNil m m' ->
+    modified stateVars s s' ->
+    Inv m' s' d'.
+  Proof.
+    unfold Inv; intuition.
+    unfold cacheI in *.
+    repeat rewrite <- H2; auto; intros;
+      try match goal with
+      | [ H: HIn _ _ |- _ ] =>
+        apply hin_iff_index_in in H; cbn in H; try solve [ intuition ]
+      end.
+    repeat rewrite <- H1; auto; intros;
+      try match goal with
+      | [ H: HIn _ _ |- _ ] =>
+        apply hin_iff_index_in in H; cbn in H; try solve [ intuition ]
+      end.
+    intuition.
+    admit. (* oops, cacheI maintained some fact about d that is now lost *)
+  Admitted.
+
+End MyTBSemantics.
+
+Module MyTBImplementation := TwoBlocks MySemanticsVars MySemantics
+  MyCacheVars MyCacheSemantics
+  MyTBVars MyTBSemantics.

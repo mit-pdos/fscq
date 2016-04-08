@@ -82,6 +82,23 @@ Module CacheTransitionSystem (SemVars:SemanticsVars) (CVars : CacheVars SemVars)
       (forall p, cache_rep (view p vc) (view p vd) d) /\
       vd0 = hide_readers (view LinPoint vd).
 
+  Theorem cacheR_refl : forall tid s,
+    cacheR tid s s.
+  Proof.
+    unfold cacheR; intuition.
+    apply same_domain_refl.
+  Qed.
+
+  Theorem cacheR_trans : forall tid s s' s'',
+    cacheR tid s s' ->
+    cacheR tid s' s'' ->
+    cacheR tid s s''.
+  Proof.
+    unfold cacheR; intuition.
+    eapply same_domain_trans; eauto.
+    eapply lock_transition_trans; eauto.
+  Qed.
+
 End CacheTransitionSystem.
 
 Module Type CacheSemantics (SemVars: SemanticsVars) (Sem:Semantics SemVars) (CVars:CacheVars SemVars).
@@ -340,7 +357,7 @@ Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
   GhostUpdate (fun s =>
                  let vd := get GDisk s in
                  let vd' := match vd a with
-                            | Some (v0, (v, _)) => upd vd a (v0, (v, Some tid))
+                            | Some (_, (v, _)) => linear_upd vd a (v, Some tid)
                             (* impossible, cannot read if sector does
                             not exist *)
                             | None => vd
@@ -352,7 +369,7 @@ Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
   GhostUpdate (fun s =>
                  let vd := get GDisk s in
                  let vd' := match vd a with
-                            | Some (v0, (v, _)) => upd vd a (v0, (v, None))
+                            | Some (_, (v, _)) => linear_upd vd a (v, None)
                             (* impossible, cannot read if sector does
                             not exist *)
                             | None => vd
@@ -423,7 +440,7 @@ Proof.
   rewrite <- H; auto.
 Qed.
 
-Theorem locked_AsyncRead_ok : forall a,
+Polymorphic Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ Fs Fs' F LF F' v vd,
    | PRE d m s0 s:
@@ -529,7 +546,7 @@ Proof.
   (* XXX: can't do this, get Error: Universe inconsistency.  *)
   Fail rewrite lin_pred_cache_locked_star.
 
-  eapply star_pimpl_r.
+  eapply star_pimpl_r with (AEQ := (@weq addrlen)).
   apply lin_pred_cache_locked_star.
 
   (* need to use preservation on GDisk to derive
@@ -539,7 +556,10 @@ lin_pred (cache_locked ...) *)
   admit.
 
   finish.
-  unfold cacheR; repeat descend; autorewrite with hlist; eauto.
+  unfold cacheR; repeat descend; autorewrite with hlist.
+  (* workaround for exception Univ.AlreadyDeclared resulting from auto/eauto *)
+  apply same_domain_refl.
+  eauto.
 Admitted.
 
 Definition read {T} a rx : prog Mcontents Scontents T :=
@@ -553,7 +573,7 @@ Definition read {T} a rx : prog Mcontents Scontents T :=
       Assgn Cache c';;
             GhostUpdate (fun s =>
                            let c := get GCache s in
-                           let c' := upd c (a, Owned tid) (Clean v) in
+                           let c' := linear_upd c a (Clean v) in
                            set GCache c' s);;
             rx v
   end.
@@ -561,23 +581,23 @@ Definition read {T} a rx : prog Mcontents Scontents T :=
 Hint Extern 1 {{locked_AsyncRead _; _}} => apply locked_AsyncRead_ok : prog.
 
 
-Theorem locked_read_ok : forall a,
+Polymorphic Theorem locked_read_ok : forall a,
   stateS TID: tid |-
   {{ Fs Fs' F LF F' v vd,
    | PRE d m s0 s:
        hlistmem s |= Fs * rep vd /\
        Inv m s d /\
-       vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
+       vd |= F * lin_pred Latest (cache_locked tid s (LF * a |-> (v, None))) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
        (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
-        (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
+        (fun s => lin_pred Latest (cache_locked tid s P))) /\
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
          hlistmem s' |= Fs' * rep vd' /\
          Inv m' s' d' /\
-         vd' |= F' * lin_pred (Owned tid) (cache_locked tid s' (LF * a |-> (v, None))) /\
+         vd' |= F' * lin_pred Latest (cache_locked tid s' (LF * a |-> (v, None))) /\
          r = v /\
          R tid s0' s'
   }} read a.
@@ -607,8 +627,8 @@ Proof.
   admit. (* cache mem consistency after updating one value on both sides *)
   admit. (* cache rep after updating one value on both sides *)
 
-  rewrite (haddr_ptsto_get H19) in *.
-  admit. (* almost same as H20, but cache has a new value: this does
+  rewrite (haddr_ptsto_get H15) in *.
+  admit. (* almost same as H16, but cache has a new value: this does
   not affect locks so cache_locked still holds *)
 
   eapply R_trans.
@@ -626,28 +646,28 @@ Definition write {T} a v rx : prog Mcontents Scontents T :=
         GhostUpdate (fun s =>
                        let c := get GCache s in
                        let vd := get GDisk s in
-                       let c' := upd c (a, Owned tid) (Dirty v) in
-                       let vd' := upd vd (a, Owned tid) (v, None) in
+                       let c' := linear_upd c a (Dirty v) in
+                       let vd' := linear_upd vd a (v, None) in
                        set GDisk vd' (set GCache c' s));;
         rx tt.
 
-Theorem locked_write_ok : forall a v,
+Polymorphic Theorem locked_write_ok : forall a v,
     stateS TID: tid |-
     {{ Fs Fs' F LF F' v0 vd,
      | PRE d m s0 s:
          hlistmem s |= Fs * rep vd /\
          Inv m s d /\
-         vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v0, None))) /\
+         vd |= F * lin_pred Latest (cache_locked tid s (LF * a |-> (v0, None))) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
        (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
-        (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
+        (fun s => lin_pred Latest (cache_locked tid s P))) /\
          R tid s0 s
      | POST d' m' s0' s' _:
          exists vd',
            hlistmem s' |= Fs' * rep vd' /\
            Inv m' s' d' /\
-           vd' |= F' * lin_pred (Owned tid) (cache_locked tid s' (LF * a |-> (v, None))) /\
+           vd' |= F' * lin_pred Latest (cache_locked tid s' (LF * a |-> (v, None))) /\
            R tid s0' s'
     }} write a v.
 Proof.
@@ -690,24 +710,24 @@ Definition lock {T} (a:addr) rx : prog _ _ T :=
     set GLocks l' s);;
   rx tt.
 
-Theorem lock_ok : forall a,
+Polymorphic Theorem lock_ok : forall a,
     stateS TID: tid |-
     {{ Fs Fs' F LF F' vd,
      | PRE d m s0 s:
          hlistmem s |= Fs * rep vd /\
          Inv m s d /\
-         vd |= F * (a, NoOwner) |->? * lin_pred (Owned tid) (cache_locked tid s LF) /\
+         vd |= F * a |->? * lin_pred Latest (cache_locked tid s LF) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
        (forall P, preserves' (get GDisk) (star (othersR R tid))
-        (F * (a, NoOwner) |->?) (F' * (a, NoOwner) |->?)
-        (fun s => lin_pred (Owned tid) (cache_locked tid s P))) /\
+        (F * a |->?) (F' * a |->?)
+        (fun s => lin_pred Latest (cache_locked tid s P))) /\
          R tid s0 s
      | POST d' m' s0' s' _:
          exists vd' v,
            hlistmem s' |= Fs' * rep vd' /\
            Inv m' s' d' /\
-           vd' |= F' * lin_pred (Owned tid) (cache_locked tid s' (LF * a |-> (v, None))) /\
+           vd' |= F' * lin_pred Latest (cache_locked tid s' (LF * a |-> (v, None))) /\
            R tid s0' s'
     }} lock a.
 Proof.
@@ -745,46 +765,18 @@ Proof.
 
   finish.
   unfold cacheI; repeat descend; autorewrite with hlist; eauto.
-  rewrite H17.
-  (* bizarrely, destruct weq triggers a Coq bug:
-  get "Anomaly: Universe Top.xxxx undefined. Please report." on calling Admitted *)
-  case_eq (weq a a0); intros; subst;
-    match goal with
-    | [ H: weq _ _ = _ |- _] => clear H
-    end.
-  rewrite Locks.get_add_lock by auto; auto.
-  assert (Locks.get (get GLocks s2) a0 = NoOwner) by admit. (* this is a,
-    which is unlocked after wait_for *)
-  rewrite H31.
-  admit. (* follows from linearized_consistent *)
-  rewrite Locks.get_add_lock_other by auto; auto.
-  apply Locks.rep_stable_add; eauto.
+  admit.
+  admit.
 
-  admit. (* linearized_consistent after adding a lock and doing nothing else *)
-
-  (* why is this postcondition goal about vd and s? *)
-    (* ah, preserves is the problem: it makes too strong a statement.
-    If preserves R F F' holds, then R must keep an arbitrary other frame P
-    true over R; in particular, this means if P fully specifies the memory, then
-    R better leave it unchanged. In this case we set P to rep; while rep vd
-    doesn't get preserved by R, exists vd, rep vd does. *)
   admit.
   eapply R_trans.
   eapply star_two_step; eauto.
   finish.
   unfold cacheR; repeat descend; autorewrite with hlist; eauto.
 
-  case_eq (weq a a0); intros; subst;
-    match goal with
-    | [ H: weq _ _ = _ |- _] => clear H
-    end.
-  rewrite Locks.get_add_lock by auto.
-  assert (Locks.get (get GLocks s2) a0 = NoOwner) by admit.
-    (* again, unlocked after wait_for *)
-  rewrite H31.
-  eauto.
-  rewrite Locks.get_add_lock_other by auto.
-  eauto.
+  destruct (weq a a0); subst.
+  admit. (* locking safe under lock_transition *)
+  admit. (* didn't change this address *)
 Admitted.
 
 Definition unlock {T} a rx : prog _ _ T :=
@@ -796,10 +788,10 @@ Definition unlock {T} a rx : prog _ _ T :=
     let l := get GLocks s in
     let l' := free_lock l a in
     let vd := get GDisk s in
-    let vd' := lin_release vd tid a in
+    let vd' := lin_release vd a in
     let vd0 := get GDisk0 s in
-    let vd0' := match vd (a, Owned tid) with
-                | Some (v, _) => upd vd0 a v
+    let vd0' := match vd a with
+                | Some ((v, _), _) => upd vd0 a v
                 | None => vd0
                 end in
     set GDisk0 vd0'
@@ -811,34 +803,36 @@ Hint Rewrite get_free_lock using (solve [ auto ] ) : locks.
 Hint Rewrite get_free_lock_other using (solve [ auto ] ) : locks.
 
 Theorem linearized_consistent_free : forall V (m: @linear_mem addr _ V)
-  locks a tid,
+  locks a,
   linearized_consistent m (Locks.get locks) ->
-  linearized_consistent (lin_release m tid a) (Locks.get (free_lock locks a)).
+  linearized_consistent (lin_release m a) (Locks.get (free_lock locks a)).
 Proof.
   unfold linearized_consistent, lin_release; intros.
   specialize (H a0).
   destruct (weq a a0); subst;
     autorewrite with locks; intros; cbn;
-    destruct matches.
+    destruct matches;
+    autorewrite with upd in *;
+    cleanup.
 Qed.
 
 Hint Resolve linearized_consistent_free.
 
-Theorem unlock_ok : forall a,
+Polymorphic Theorem unlock_ok : forall a,
     stateS TID: tid |-
     {{ Fs F F0 LF vd0 vd v v0,
      | PRE d m s0 s:
          hlistmem s |= Fs * haddr GDisk0 |-> vd0 * rep vd /\
          cacheI m s d /\
-         vd |= F * lin_pred (Owned tid) (cache_locked tid s (LF * a |-> (v, None))) /\
+         vd |= F * lin_pred Latest (cache_locked tid s (LF * a |-> (v, None))) /\
          vd0 |= F0 * a |-> v0 /\
          R tid s0 s
      | POST d' m' s0' s' _:
         exists vd0' vd',
            hlistmem s' |= Fs * haddr GDisk0 |-> vd0' * rep vd' /\
            cacheI m' s' d' /\
-           vd' |= F * (a, NoOwner) |-> (v, None) *
-             lin_pred (Owned tid) (cache_locked tid s' LF) /\
+           vd' |= F * a |-> ((v, None), (v, None)) *
+             lin_pred Latest (cache_locked tid s' LF) /\
            vd0' |= F0 * a |-> v /\
            s0' = s0
     }} unlock a.
@@ -862,16 +856,13 @@ Proof.
   eauto.
 
   unfold cacheI; repeat descend; autorewrite with hlist; eauto.
-  admit.
   apply Locks.rep_stable_remove; eauto.
+  admit.
 
   admit. (* cache_rep after lin_release *)
   admit. (* important: GDisk0 has been updated at a *)
 
-  (* not actually true, releasing could affect F since it is allowed to
-     assert facts about other thread's owned data even at a, which has
-     now been updated *)
-  give_up.
+  admit.
 
   (* this is true, since get GDisk s (a, Owned tid) is actually v *)
   admit.

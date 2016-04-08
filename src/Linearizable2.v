@@ -14,6 +14,7 @@ Section Linearizability.
   Variable AEQ:DecEq A.
   Variable V:A -> Type.
 
+
   Definition V' : A -> Type :=
     (fun a => V a * V a)%type.
 
@@ -240,18 +241,24 @@ Definition linear_rel A AEQ V tid (locks locks': A -> BusyFlagOwner)
   forall a, locks a <> Owned tid ->
   m' a = m a.
 
+Definition linear_upd A AEQ V (m: @linear_mem A AEQ V) a v :=
+  match m a with
+  | Some (v0, _) => upd m a (v0, v)
+  | None => m
+  end.
+
 Theorem linearized_consistent_upd : forall A AEQ V (m: @linear_mem A AEQ V)
-  locks a tid v0 v0' v',
+  locks a tid v,
   locks a = Owned tid ->
-  m a = Some (v0, v0') ->
   linearized_consistent m locks ->
-  linearized_consistent (upd m a (v0, v')) locks.
+  linearized_consistent (linear_upd m a v) locks.
 Proof.
-  unfold linearized_consistent; intros;
+  unfold linearized_consistent, linear_upd; intros;
     learn_all A.
+  destruct matches;
   destruct (AEQ a a0); subst;
-    autorewrite with upd;
-    cleanup; auto.
+    autorewrite with upd in *;
+    cleanup.
 Qed.
 
 Theorem linearized_consistent_release : forall A AEQ V (m: @linear_mem A AEQ V)
