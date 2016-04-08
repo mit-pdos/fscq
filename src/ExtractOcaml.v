@@ -14,11 +14,15 @@ Extraction Blacklist String List Nat.
 Extraction Inline Prog.progseq.
 Extraction Inline Prog.pair_args_helper.
 
+(* Work around bug in Coq's ExtrOcamlZBigInt *)
+Require Import ZArith.
+Extract Constant Pos.compare_cont => "fun c x y -> Big.compare_case c Lt Gt x y".
+
 (* Hook up our untrusted replacement policy. *)
 Extract Inlined Constant Cache.eviction_state  => "unit".
 Extract Inlined Constant Cache.eviction_init   => "()".
-Extract Inlined Constant Cache.eviction_update => "fun state addr -> state".
-Extract Inlined Constant Cache.eviction_choose => "fun state -> (0, state)".
+Extract Inlined Constant Cache.eviction_update => "(fun state addr -> state)".
+Extract Inlined Constant Cache.eviction_choose => "(fun state -> (Big.zero, state))".
 Extract Constant FS.cachesize => "10000".
 
 Cd "../codegen".

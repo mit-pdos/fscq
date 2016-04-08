@@ -1,5 +1,5 @@
-OCAMLBUILD := ocamlbuild -lib str
-OCAMLINC   := -I codegen
+OCAMLBUILD := ocamlbuild -lib str -lib nums
+OCAMLINC   := -I codegen -I mllib
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding String_as_OT \
 	      Mem Pred Prog PredCrash Hoare \
 	      SepAuto SepAuto2 Idempotent Errno \
