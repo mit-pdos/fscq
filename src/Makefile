@@ -11,7 +11,7 @@ MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
 		  EventCSL EventCSLauto \
 	      Locking Preservation Automation ForwardChaining \
 	      Bank MemCache ConcurrentCache ConcurrentInode TwoBlockExample \
-	      Linearizable Locks MemCache2 ConcurrentCache2 \
+	      Linearizable Linearizable2 Locks MemCache2 ConcurrentCache2 \
 	      ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

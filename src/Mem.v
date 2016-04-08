@@ -77,10 +77,21 @@ Qed.
 
 End GenMem.
 
+Require Import Basics.
+
+Corollary upd_eq_eqn : forall AT AEQ V
+  (m: @mem AT AEQ (const V)) a a' v,
+  a = a' ->
+  upd m a v a' = Some v.
+Proof.
+  intros; subst; apply upd_eq.
+Qed.
+
 (* existential variable hint *)
 Hint Immediate empty_mem.
 
-Hint Rewrite upd_eq using (solve [ auto ]) : upd.
+Hint Rewrite upd_eq : upd.
+Hint Rewrite upd_eq_eqn using (solve [ auto ] ) : upd.
 Hint Rewrite upd_ne using (solve [ auto ]) : upd.
 Hint Rewrite upd_repeat : upd.
 Hint Rewrite upd_same using (solve [ auto ]) : upd.

@@ -218,3 +218,15 @@ Ltac destruct_ands :=
          | [ H: _ /\ _ |- _ ] =>
            destruct H
          end.
+
+Ltac specialize_all t :=
+  repeat match goal with
+  | [ H: forall (_:t), _, x:t |- _ ] =>
+    specialize (H x)
+  end.
+
+Ltac learn_all t :=
+  repeat match goal with
+  | [ H: forall (_:t), _, x:t |- _ ] =>
+    learn that (H x)
+  end.
