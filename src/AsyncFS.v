@@ -180,6 +180,14 @@ Module AFS.
       rx ^(mscs, false)
     }.
 
+  Definition file_sync T fsxp inum mscs rx : prog T :=
+    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs rx;
+    rx mscs.
+
+  Definition tree_sync T fsxp mscs rx : prog T :=
+    mscs <- DIRTREE.sync fsxp mscs;    (* or perhaps GLOG.flushall fsxp mscs rx?*)
+    rx mscs.
+
 (*
 
   Definition statfs T fsxp mscs rx : prog T :=
