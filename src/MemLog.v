@@ -177,6 +177,33 @@ Module MLog.
 
   (****** auxiliary lemmas *)
 
+
+  Lemma synced_applying : forall xp F na d ms,
+    rep xp F (Synced na d) ms =p=>
+    exists ms', rep xp F (Applying d) ms'.
+  Proof.
+    unfold rep, rep_inner, map_replay, unsync_rep, synced_rep in *.
+    cancel; eauto.
+    or_l; cancel.
+    unfold equal_unless_in; intuition.
+  Qed.
+
+  Lemma synced_flushing : forall xp F na d ms,
+    rep xp F (Synced na d) ms =p=>
+    exists ms' ents, rep xp F (Flushing d ents) ms'.
+  Proof.
+    unfold rep, rep_inner, map_replay, unsync_rep, synced_rep in *.
+    cancel; eauto.
+    or_l.
+    apply DLog.synced_extend_unsynced.
+    instantiate (1 := nil).
+    unfold log_valid; intuition.
+    unfold KNoDup; auto.
+    inversion H0.
+    inversion H0.
+  Qed.
+
+
   Lemma equal_unless_in_length_eq : forall a b l,
     equal_unless_in l a b -> length b = length a.
   Proof.
@@ -1049,6 +1076,12 @@ Module MLog.
     unfold equal_unless_in; firstorder.
   Qed.
 
+  Lemma equal_unless_in_refl : forall l a,
+    equal_unless_in l a a.
+  Proof.
+    unfold equal_unless_in; firstorder.
+  Qed.
+
   Lemma equal_unless_in_replay_disk' : forall l a b,
     KNoDup l ->
     equal_unless_in (map fst l) a b ->
@@ -1203,73 +1236,196 @@ Module MLog.
   Qed.
 
 
-  (* ugly lamma to unfold two cases inside rep *)
-  Lemma applying_cases : forall F xp d ms,
-    rep xp F (Applying d) ms <=p=>
-      (exists raw log d0 na,
-      BUFCACHE.rep (MSCache ms) raw *
-      [[ Map.Equal (MSInLog ms) (replay_mem log vmap0) ]] *
-      [[ goodSize addrlen (length d0) /\ map_valid (MSInLog ms) d0 ]] *
-      [[ map_replay (MSInLog ms) d0 d ]] *
-      [[ (F * (DLog.rep xp (DLog.Synced na log)) * 
-              (unsync_rep xp (MSInLog ms) d0))%pred raw ]])
-      \/
-      (exists raw log d0,
-      BUFCACHE.rep (MSCache ms) raw *
-      [[ Map.Equal (MSInLog ms) (replay_mem log vmap0) ]] *
-      [[ goodSize addrlen (length d0) /\ map_valid (MSInLog ms) d0 ]] *
-      [[ map_replay (MSInLog ms) d0 d ]] *
-      [[ (F * (DLog.rep xp (DLog.Truncated log)) *
-              (synced_rep xp d))%pred raw ]]).
+
+  Lemma crash_xform_applying' : forall xp F (Fm : pred) d ms,
+    Fm (list2nmem d) ->
+    crash_xform (rep xp F (Applying d) ms) =p=>
+      exists cs raw, BUFCACHE.rep cs raw * 
+      [[ (exists d' na mm, crash_xform F * rep_inner xp (Synced na d') mm *
+          [[[ d' ::: crash_xform Fm ]]])%pred raw ]].
   Proof.
-    unfold rep, rep_inner; split.
-    cancel.
-    apply sep_star_or_distr in H; destruct H.
-    or_l; cancel; auto.
-    or_r; cancel; eauto.
-    cancel; eauto.
-    or_l; cancel.
-    or_r; cancel.
-    Unshelve. exact 0.
+    unfold rep, rep_inner, synced_rep, unsync_rep, map_replay; intros.
+    xform_norm.
+    apply sep_star_or_distr in H0; destruct H0; destruct_lifts.
+
+    (* during apply, log is intact *)
+    - rewrite BUFCACHE.crash_xform_rep_pred; eauto.
+      norm. cancel. intuition; auto.
+      pred_apply; xform_norm.
+      rewrite crash_xform_arrayN.
+      rewrite DLog.xform_rep_synced.
+      xform_norm.
+
+      assert (length (synced_list l') = length dummy0) as Hlen.
+      rewrite synced_list_length.
+      erewrite <- equal_unless_in_length_eq; eauto.
+      erewrite possible_crash_list_length; eauto.
+
+      cancel.
+      eauto.
+      eapply length_eq_map_valid; eauto.
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      erewrite equal_unless_in_replay_disk; eauto.
+
+   (* truncating the log *)
+   -  rewrite BUFCACHE.crash_xform_rep_pred; eauto.
+      norm. cancel. intuition; auto.
+      pred_apply; xform_norm.
+      rewrite crash_xform_arrayN.
+      rewrite DLog.xform_rep_truncated.
+      xform_norm.
+
+      (* revert to old log *)
+      + assert (length (synced_list l') = length dummy0) as Hlen.
+        rewrite synced_list_length.
+        erewrite <- replay_disk_length.
+        erewrite possible_crash_list_length; subst; eauto.
+
+        cancel.
+        eauto.
+        eapply length_eq_map_valid; eauto.
+        eapply list2nmem_replay_disk_crash_xform; eauto.
+        rewrite replay_disk_twice; auto.
+
+      (* revert to empty log *)
+      + cancel.
+        apply MapFacts.Equal_refl.
+
+        replace (length (synced_list l')) with (length dummy0); auto.
+        erewrite <- replay_disk_length.
+        erewrite possible_crash_list_length by eauto.
+        rewrite synced_list_length; auto.
+        apply map_valid_map0.
+        eapply list2nmem_replay_disk_crash_xform; eauto.
   Qed.
 
 
-  Lemma crash_xform_applying_synced : forall F xp d ms,
-    crash_xform (rep xp F (Applying d) ms) =p=>
-    crash_xform (exists ms' na', rep xp F (Synced na' d) ms').
+  Lemma crash_xform_applying : forall xp F (Fm : pred) d ms,
+    Fm (list2nmem d) ->
+    crash_xform (rep xp F (Applying d) ms) =p=> exists d' ms' na,
+      rep xp (crash_xform F) (Synced na d') ms' * [[[ d' ::: crash_xform Fm ]]].
   Proof.
-    intros; rewrite applying_cases; xform_norml;
-    unfold rep, rep_inner, map_replay, unsync_rep, synced_rep in *;
-    destruct_lifts; subst; denote arrayN as Ha.
-
-    - pose proof (equal_unless_in_length_eq H1).
-      xform_norm; cancel.
-      eapply length_eq_map_valid; eauto.
-      eapply equal_unless_in_replay_disk.
-      eapply equal_unless_in_sym; auto.
-
-    - xform_norm; cancel.
-
-      (* XXX:
-         This doesn't seem right, as DLog.Truncated's header has a
-         non-nil valuset, while in DLog.Synced, the header is synced.
-         We cannot conclude crash_xform from a larger valuset to a
-         smaller one.
-      *)
-
-      all: admit.
-  Admitted.
-
-
-  Lemma crash_xform_synced_applying : forall F xp d ms na,
-    crash_xform (rep xp F (Synced na d) ms) =p=>
-    crash_xform (exists ms', rep xp F (Applying d) ms').
-  Proof.
-    unfold rep, rep_inner, map_replay, unsync_rep, synced_rep in *.
-    intros; xform_norm.
+    intros.
+    rewrite crash_xform_applying' by eauto.
     cancel; eauto.
-    or_l; cancel.
-    unfold equal_unless_in; intuition.
+    unfold rep; cancel.
+    eassign (mk_memstate dummy1 cs).
+    all: simpl; eauto.
+  Qed.
+
+  Lemma crash_xform_synced : forall xp F (Fm : pred) nr d ms,
+    Fm (list2nmem d) ->
+    crash_xform (rep xp F (Synced nr d) ms) =p=> exists d' ms' nr',
+      rep xp (crash_xform F) (Synced nr' d') ms' * [[[ d' ::: crash_xform Fm ]]].
+  Proof.
+    intros.
+    rewrite synced_applying.
+    xform_norm.
+    rewrite crash_xform_applying; eauto.
+  Qed.
+
+
+  Lemma crash_xform_applying_applying : forall xp F (Fm : pred) d ms,
+    Fm (list2nmem d) ->
+    crash_xform (rep xp F (Applying d) ms) =p=> exists d' ms',
+      rep xp (crash_xform F) (Applying d') ms' * [[[ d' ::: crash_xform Fm ]]].
+  Proof.
+    intros.
+    rewrite crash_xform_applying; eauto.
+    norml; unfold stars; simpl.
+    rewrite synced_applying; cancel.
+  Qed.
+
+
+  Lemma crash_xform_flushing' : forall xp F (Fold Fnew : pred) d ents ms,
+    Fold (list2nmem d) ->
+    Fnew (list2nmem (replay_disk ents d)) ->
+    crash_xform (rep xp F (Flushing d ents) ms) =p=>
+      exists cs raw, BUFCACHE.rep cs raw *
+      [[ (exists d' na' mm, (crash_xform F) * rep_inner xp (Synced na' d') mm *
+         ([[[ d' ::: crash_xform Fold ]]] \/ [[[ d' ::: crash_xform Fnew ]]]))%pred raw ]].
+  Proof.
+    unfold rep, rep_inner, synced_rep, map_replay; intros.
+    xform_norm.
+    apply sep_star_or_distr in H1; destruct H1; destruct_lifts;
+      rewrite BUFCACHE.crash_xform_rep_pred; eauto;
+      norm; [ cancel | intuition; auto | cancel | intuition; auto ];
+      pred_apply; xform_norm;
+      rewrite crash_xform_arrayN;
+      try rewrite DLog.xform_rep_extended_unsync;
+      try rewrite DLog.xform_rep_extended;
+      xform_norm;
+      assert (length (synced_list l') = length dummy0) as Hlen by 
+        (erewrite synced_list_length, possible_crash_list_length; eauto).
+
+    - cancel. or_l; cancel.
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      auto.
+      eapply length_eq_map_valid; eauto.
+
+    - cancel. or_l; cancel.
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      auto.
+      eapply length_eq_map_valid; eauto.
+
+    - cancel. or_r; cancel.
+      2: apply  MapFacts.Equal_refl.
+      eapply list2nmem_replay_disk_crash_xform; eauto.
+      erewrite replay_mem_app; eauto.
+      rewrite <- replay_disk_replay_mem; auto.
+      eapply map_valid_replay_mem_app; eauto.
+  Qed.
+
+
+  Lemma crash_xform_flushing : forall xp F (Fold Fnew : pred) d ents ms,
+    Fold (list2nmem d) ->
+    Fnew (list2nmem (replay_disk ents d)) ->
+    crash_xform (rep xp F (Flushing d ents) ms) =p=> exists d' ms' na,
+      rep xp (crash_xform F) (Synced na d') ms' *
+      ([[[ d' ::: crash_xform Fold ]]] \/ [[[ d' ::: crash_xform Fnew ]]]).
+  Proof.
+    intros.
+    rewrite crash_xform_flushing' by eauto.
+    norml; unfold stars; simpl.
+
+    unfold rep; cancel.
+    eassign (mk_memstate dummy1 cs); simpl.
+    eassign raw; eassign dummy.
+    apply sep_star_or_distr in H1; destruct H1; destruct_lifts.
+    cancel; or_l; cancel.
+    cancel; or_r; cancel.
+    pred_apply; cancel.
+  Qed.
+
+
+  Lemma crash_xform_before : forall xp F (Fm : pred) d,
+    Fm (list2nmem d) ->
+    crash_xform (would_recover_before xp F d) =p=> exists d' ms' na,
+      rep xp (crash_xform F) (Synced na d') ms' * [[[ d' ::: crash_xform Fm ]]].
+  Proof.
+    unfold would_recover_before; intros.
+    xform_norm.
+    apply crash_xform_applying; auto.
+    apply crash_xform_synced; auto.
+  Qed.
+
+
+  Lemma crash_xform_either : forall xp F (Fold Fnew : pred) d ents,
+    Fold (list2nmem d) ->
+    Fnew (list2nmem (replay_disk ents d)) ->
+    crash_xform (would_recover_either xp F d ents) =p=> exists d' ms' na,
+      rep xp (crash_xform F) (Synced na d') ms' *
+      ([[[ d' ::: crash_xform Fold ]]] \/ [[[ d' ::: crash_xform Fnew ]]]).
+  Proof.
+    unfold would_recover_either; intros.
+    xform_norm.
+    rewrite crash_xform_synced by eauto.
+    cancel. or_l; cancel.
+    rewrite crash_xform_synced by eauto.
+    cancel. or_r; cancel.
+    apply crash_xform_flushing; auto.
+    rewrite crash_xform_applying by eauto.
+    cancel. or_l; cancel.
   Qed.
 
 

@@ -1727,6 +1727,21 @@ Module DLog.
   Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
 
+
+  (* ExtendedUnsync is actually a redundent state, it is equivalent to Synced *)
+  Lemma extend_unsynced_synced : forall xp l,
+    rep xp (ExtendedUnsync l) =p=> exists na, rep xp (Synced na l).
+  Proof.
+    unfold rep, rep_common; cancel.
+  Qed.
+
+  Lemma synced_extend_unsynced : forall xp l na,
+    rep xp (Synced na l) =p=> rep xp (ExtendedUnsync l).
+  Proof.
+    unfold rep, rep_common; cancel.
+  Qed.
+
+
   Lemma xform_rep_synced : forall xp na l,
     crash_xform (rep xp (Synced na l)) =p=> rep xp (Synced na l).
   Proof.
