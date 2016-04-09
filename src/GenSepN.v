@@ -1040,3 +1040,25 @@ Proof.
   rewrite mem_except_list2nmem_oob; auto.
 Qed.
 
+
+Lemma crash_xform_list2nmem_list_eq : forall F vsl vl,
+  crash_xform F (list2nmem vsl) ->
+  possible_crash_list vsl vl ->
+  vsl = synced_list vl.
+Proof.
+  intros.
+  destruct H0 as [Heq Hx].
+  apply crash_xform_list2nmem_synced in H.
+  apply list_selN_ext with (default := ($0, nil)); intros.
+  rewrite synced_list_length; auto.
+  rewrite synced_list_selN.
+  specialize (Hx _ H0); unfold vsmerge in Hx.
+  rewrite surjective_pairing at 1.
+  erewrite <- selN_map with (f := snd) in * by auto.
+  rewrite H in *.
+  rewrite repeat_selN in * by auto.
+  simpl in *; intuition.
+  rewrite <- H1; simpl; auto.
+  Unshelve. all: eauto.
+Qed.
+

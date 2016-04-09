@@ -109,6 +109,11 @@ Module MLog.
       rep xp F (Flushing d ents) ms' \/
       rep xp F (Applying d) ms')%pred.
 
+  Definition recover_either_pred xp cs F (Fold Fnew : pred) :=
+    (exists raw, BUFCACHE.rep cs raw *
+      [[ (exists na d mm,  (F * rep_inner xp (Synced na d) mm) *
+        ([[[ d ::: crash_xform Fold ]]] \/ [[[ d ::: crash_xform Fnew ]]]) )%pred raw ]])%pred.
+
 
   (******************  Program *)
 
@@ -175,6 +180,11 @@ Module MLog.
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     let^ (cs', r) <- BUFCACHE.read a cs;
     rx ^(mk_memstate oms cs', r).
+
+
+  Definition recover T xp cs rx : prog T :=
+    let^ (cs, log) <- DLog.read xp cs;
+    rx (mk_memstate (replay_mem log vmap0) cs).
 
 
   Arguments DLog.rep: simpl never.
@@ -1149,6 +1159,21 @@ Module MLog.
     apply possible_crash_list_updN; auto.
   Qed.
 
+
+  Lemma crash_xform_list2nmem_replay_disk : forall F ents vsl vl,
+    crash_xform F (list2nmem (replay_disk ents vsl)) ->
+    possible_crash_list vsl vl ->
+    crash_xform F (list2nmem (replay_disk ents (synced_list vl))).
+  Proof.
+    induction ents; simpl; intros.
+    erewrite <- crash_xform_list2nmem_list_eq; eauto.
+    destruct a; simpl in *.
+    rewrite synced_list_updN.
+    eapply IHents; eauto.
+    apply possible_crash_list_updN; auto.
+  Qed.
+
+
   Lemma map_valid_replay_mem_app : forall a ents l' x0 x1,
      Map.Equal x0 (replay_mem a vmap0) ->
      map_valid x0 x1 ->
@@ -1458,6 +1483,119 @@ Module MLog.
   Qed.
 
 
+  Lemma would_recover_before_either_pred : forall xp F d (Fold : pred),
+    (Fold (list2nmem d))%pred ->
+    crash_xform (would_recover_before xp F d) =p=> exists cs,
+      recover_either_pred xp cs (crash_xform F) Fold Fold.
+  Proof.
+    intros.
+    rewrite crash_xform_before by eauto.
+    unfold recover_either_pred, rep; cancel.
+    rewrite sep_star_or_distr; or_l; cancel.
+  Qed.
+
+
+  Lemma synced_either_pred : forall xp F na ms d (Fold : pred),
+    (Fold (list2nmem d))%pred ->
+    crash_xform (rep xp F (Synced na d) ms) =p=> exists cs,
+      recover_either_pred xp cs (crash_xform F) Fold Fold.
+  Proof.
+    intros.
+    rewrite synced_recover_before.
+    rewrite would_recover_before_either_pred; eauto.
+  Qed.
+
+
+  Lemma would_recover_either_either_pred : forall xp F d (Fold Fnew : pred) ents,
+    (Fold (list2nmem d))%pred ->
+    Fnew (list2nmem (replay_disk ents d)) ->
+    crash_xform (would_recover_either xp F d ents) =p=> exists cs,
+      recover_either_pred xp cs (crash_xform F) Fold Fnew.
+  Proof.
+    intros.
+    rewrite crash_xform_either by eauto.
+    unfold recover_either_pred, rep; cancel.
+    rewrite sep_star_or_distr; or_l; cancel.
+    rewrite sep_star_or_distr; or_r; cancel.
+  Qed.
+
+
+  Lemma recover_idem' : forall xp cs (F Fold Fnew : pred),
+    crash_xform (recover_either_pred xp cs F Fold Fnew) =p=>
+    (exists cs' raw, BUFCACHE.rep cs' raw *
+      [[ ((crash_xform F) * (exists na d mm, rep_inner xp (Synced na d) mm *
+        ([[[ d ::: crash_xform Fold ]]] \/ [[[ d ::: crash_xform Fnew ]]])))%pred raw ]]).
+  Proof.
+    unfold recover_either_pred; intros.
+    xform_norm.
+    rewrite BUFCACHE.crash_xform_rep_pred; eauto.
+    norm. cancel. intuition; auto; pred_apply.
+    unfold rep_inner, synced_rep, map_replay.
+    xform_norm; cancel_exact; xform_norm.
+
+    rewrite crash_xform_arrayN, DLog.xform_rep_synced; subst.
+    xform_norm.
+    assert (length (synced_list l') = length x1) as Heq by
+      (erewrite synced_list_length, <- possible_crash_list_length; eauto).
+    cancel; eauto. or_l; cancel.
+    eapply crash_xform_list2nmem_replay_disk; eauto.
+    eapply length_eq_map_valid; eauto.
+
+    rewrite crash_xform_arrayN, DLog.xform_rep_synced; subst.
+    xform_norm.
+    assert (length (synced_list l') = length x1) as Heq by
+      (erewrite synced_list_length, <- possible_crash_list_length; eauto).
+    cancel; eauto. or_r; cancel.
+    eapply crash_xform_list2nmem_replay_disk; eauto.
+    eapply length_eq_map_valid; eauto.
+  Qed.
+
+
+  Lemma recover_idem : forall xp cs (F Fold Fnew : pred),
+    crash_xform (recover_either_pred xp cs F Fold Fnew) =p=>
+      exists cs', recover_either_pred xp cs' (crash_xform F) Fold Fnew.
+  Proof.
+    intros.
+    rewrite recover_idem'.
+    unfold recover_either_pred; cancel.
+    rewrite sep_star_or_distr; or_l; cancel.
+    rewrite sep_star_or_distr; or_r; cancel.
+  Qed.
+
+
+
+  Theorem recover_ok: forall xp F cs,
+    {< Fold Fnew,
+    PRE
+      recover_either_pred xp cs F Fold Fnew
+    POST RET:ms' exists na d',
+      rep xp F (Synced na d') ms' *
+      ([[[ d' ::: crash_xform Fold ]]] \/ [[[ d' ::: crash_xform Fnew ]]])
+    CRASH exists cs',
+      recover_either_pred xp cs' F Fold Fnew
+    >} recover xp cs.
+  Proof.
+    unfold recover, recover_either_pred, rep_inner; intros.
+    step.
+    step.
+
+    unfold rep, rep_inner; denote crash_xform as Hx;
+    apply sep_star_or_distr in Hx; destruct Hx; destruct_lift H.
+
+    cancel.  or_l; cancel.
+    map_rewrites; auto.
+    eapply map_valid_equal; eauto.
+    cancel.  or_r; cancel.
+    map_rewrites; auto.
+    eapply map_valid_equal; eauto.
+
+    unfold rep, rep_inner; denote crash_xform as Hx;
+    apply sep_star_or_distr in Hx; destruct Hx; destruct_lift H.
+    cancel. cancel.
+  Qed.
+
+
+
   Theorem dwrite_vecs_ok : forall xp avl ms,
     {< F d na,
     PRE
@@ -1558,166 +1696,13 @@ Module MLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
-
-
-
-
-  Definition recover_either_pred xp Fold Fnew :=
-    (exists ms d ents,
-       ( exists na, rep_inner xp (Synced na d) ms *
-          [[[ d ::: Fold ]]] )
-     \/( exists na, rep_inner xp (Synced na (replay_disk ents d)) ms *
-          [[[ replay_disk ents d ::: Fnew ]]] )
-     \/ rep_inner xp (Flushing d ents) ms *
-          [[[ d ::: Fold ]]] *
-          [[[ replay_disk ents d ::: Fnew ]]]
-     \/ rep_inner xp (Applying d) ms *
-          [[[ d ::: Fold ]]]
-      )%pred.
-
-  Definition after_crash_pred xp Fold Fnew:=
-    (exists na ms d, 
-      rep_inner xp (Synced na d) ms *
-      ([[[ d ::: crash_xform Fold ]]] \/ [[[ d ::: crash_xform Fnew ]]])
-    )%pred.
-
-
-  Hint Rewrite crash_xform_arrayN
-    DLog.xform_rep_synced  DLog.xform_rep_truncated
-    DLog.xform_rep_extended DLog.xform_rep_extended_unsync: crash_xform.
-
-  Local Hint Resolve MapFacts.Equal_refl map_valid_replay_mem_synced_list.
-
-  Lemma recover_either_after_crash : forall xp Fold Fnew,
-    crash_xform (recover_either_pred xp Fold Fnew) =p=>
-    after_crash_pred xp Fold Fnew.
-  Proof.
-    unfold recover_either_pred, after_crash_pred, rep_inner,
-           map_replay, synced_rep, unsync_rep; intros.
-    repeat progress (xform; norml; unfold stars; simpl; clear_norm_goal);
-       cancel; t.
-
-    (* Synced d *)
-    or_l; cancel; t.
-    eapply list2nmem_replay_disk_crash_xform; eauto.
-
-    (* Synced (replay_disk ents d) *)
-    or_r; cancel; t.
-    eapply list2nmem_replay_disk_crash_xform; eauto.
-    rewrite <- H3; auto.
-
-    (* Flushing d ents :: ExtendedUnsync d *)
-    or_l; cancel.
-    eapply list2nmem_replay_disk_crash_xform; eauto.
-    (* Flushing d ents :: Extended d *)
-    or_l; cancel.
-    eapply list2nmem_replay_disk_crash_xform; eauto.
-    (* Flushing d ents :: Synced (replay_disk ents d) *)
-    or_r; cancel.
-    eapply list2nmem_replay_disk_crash_xform; eauto.
-    setoid_rewrite mapeq_elements.
-    2: apply replay_mem_app; eauto.
-    rewrite <- replay_disk_replay_mem; auto.
-    eapply map_valid_replay_mem_app; eauto.
-
-    (* Applying d :: unsync *)
-    or_l; cancel.
-    eapply list2nmem_replay_disk_crash_xform; eauto.
-    erewrite equal_unless_in_replay_disk; eauto.
-    eapply map_valid_equal; eauto.
-    eapply length_eq_map_valid; eauto; simplen.
-
-    (* Applying d :: synced *)
-    or_l; cancel.
-    eapply list2nmem_replay_disk_crash_xform; eauto.
-    rewrite replay_disk_twice; auto.
-    eapply map_valid_equal; eauto.
-    eapply length_eq_map_valid; eauto; simplen.
-
-    (* Applying d :: Truncated *)
-    or_l; cancel.
-    eapply list2nmem_crash_xform; eauto.
-    apply map_valid_map0.
-  Qed.
-
-  Remove Hints MapFacts.Equal_refl.
-
-  Lemma recover_either_after_crash_unfold : forall xp F Fold Fnew,
-    crash_xform (F * recover_either_pred xp Fold Fnew)
-      =p=>
-    crash_xform F * exists na ms log old new,
-       synced_rep xp old * DLog.rep xp (DLog.Synced na log) *
-       [[ new = replay_disk (Map.elements ms) old ]] *
-       [[ Map.Equal ms (replay_mem log vmap0) ]] *
-       [[ goodSize addrlen (length old) /\ map_valid ms old ]] *
-       ([[[ new ::: crash_xform Fold ]]] \/ [[[ new ::: crash_xform Fnew ]]]).
-  Proof.
-    intros; xform.
-    rewrite recover_either_after_crash.
-    unfold after_crash_pred, rep, rep_inner, map_replay.
-    cancel_with eauto.
-    or_l; cancel.
-    or_r; cancel.
-  Qed.
-
-
-  Definition recover T xp cs rx : prog T :=
-    let^ (cs, log) <- DLog.read xp cs;
-    rx (mk_memstate (replay_mem log vmap0) cs).
-
-  Theorem recover_ok: forall xp F cs,
-    {< raw Fold Fnew,
-    PRE
-      BUFCACHE.rep cs raw *
-      [[ crash_xform (F * recover_either_pred xp Fold Fnew)%pred raw ]]
-    POST RET:ms'
-      exists na d', rep xp (crash_xform F) (Synced na d') ms' *
-      ([[[ d' ::: crash_xform Fold ]]] \/ [[[ d' ::: crash_xform Fnew ]]])
-    CRASH exists cs',
-      BUFCACHE.rep cs' raw
-    >} recover xp cs.
-  Proof.
-    unfold recover; intros.
-    prestep; xform.
-    norml.
-
-    (* manually get two after-crash cases *)
-    apply recover_either_after_crash_unfold in H4.
-    destruct_lifts.
-    apply sep_star_or_distr in H0; apply pimpl_or_apply in H0.
-    destruct H0; destruct_lift H0.
-
-    (* case 1 : last transaction unapplied *)
-    - cancel.
-      step.
-      unfold rep; cancel.
-      or_l; cancel; eauto.
-
-      unfold rep_inner, map_replay.
-      cancel; try map_rewrites; auto.
-      eapply map_valid_equal; eauto.
-      pimpl_crash; cancel.
-
-    (* case 2 : last transaction applied *)
-    - cancel.
-      step.
-      unfold rep; cancel.
-      or_r; cancel; eauto.
-
-      unfold rep_inner, map_replay, synced_rep.
-      cancel; try map_rewrites; auto.
-      eapply map_valid_equal; eauto.
-      pimpl_crash; cancel.
-  Qed.
-
-
   Hint Extern 1 ({{_}} progseq (read_raw _ _) _) => apply read_raw_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
 
