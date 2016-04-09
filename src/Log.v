@@ -153,6 +153,11 @@ Module LOG.
     mm' <- GLog.dsync xp a mm;
     rx (mk_memstate cm mm').
 
+  Definition sync T xp ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    mm' <- GLog.flushall xp mm;
+    rx (mk_memstate cm mm').
+
   Definition recover T xp cs rx : prog T :=
     mm <- GLog.recover xp cs;
     rx (mk_memstate vmap0 mm).
@@ -340,6 +345,21 @@ Module LOG.
   Qed.
 
 
+  Theorem sync_ok : forall xp ms,
+    {< F ds,
+    PRE
+      rep xp F (NoTxn ds) ms
+    POST RET:ms'
+      rep xp F (NoTxn (ds!!, nil)) ms'
+    CRASH
+      recover_any xp F ds
+    >} sync xp ms.
+  Proof.
+    unfold sync, recover_any.
+    hoare.
+    Unshelve. eauto.
+  Qed.
+
 
   Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
 
@@ -419,6 +439,7 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (commit_ro _ _) _) => apply commit_ro_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
 
