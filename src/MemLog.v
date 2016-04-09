@@ -169,6 +169,14 @@ Module MLog.
     rx (mk_memstate oms cs').
 
 
+  (* bypassing the log and read the raw disk,
+     a cannot be an address managed by the log *)
+  Definition read_raw T a ms rx : prog T :=
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    let^ (cs', r) <- BUFCACHE.read a cs;
+    rx ^(mk_memstate oms cs', r).
+
+
   Arguments DLog.rep: simpl never.
   Hint Extern 0 (okToUnify (DLog.rep _ _) (DLog.rep _ _)) => constructor : okToUnify.
 
@@ -376,6 +384,27 @@ Module MLog.
   (** specs *)
 
   Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : okToUnify.
+
+
+  Theorem read_raw_ok: forall xp ms a,
+    {< F d na vs,
+    PRE
+      rep xp (F * a |-> vs) (Synced na d) ms
+    POST RET:^(ms', r)
+      rep xp (F * a |-> vs) (Synced na d) ms' * [[ r = fst vs ]]
+    CRASH
+      exists ms', rep xp (F * a |-> vs) (Synced na d) ms'
+    >} read_raw a ms.
+  Proof.
+    unfold read_raw, rep.
+    safestep.
+    cancel.
+    step.
+    pimpl_crash; cancel.
+    eassign (mk_memstate (MSInLog ms) cs'); simpl; eauto.
+    pred_apply; cancel.
+  Qed.
+
 
   Section UnfoldProof1.
   Local Hint Unfold rep map_replay rep_inner: hoare_unfold.
@@ -1684,6 +1713,7 @@ Module MLog.
   Qed.
 
 
+  Hint Extern 1 ({{_}} progseq (read_raw _ _) _) => apply read_raw_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
