@@ -14,7 +14,7 @@ Set Implicit Arguments.
 
 (** * The programming language *)
 
-Notation "'valubytes_real'" := 4096. (* 4KB *)
+Notation "'valubytes_real'" := (4 * 1024)%nat.  (* 4KB *)
 Notation "'valulen_real'" := (valubytes_real * 8)%nat.
 
 Module Type VALULEN.
