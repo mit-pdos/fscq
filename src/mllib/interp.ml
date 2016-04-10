@@ -1,26 +1,34 @@
-let disk_fn = "disk.img"
 let blocksize = Big.of_int 32768
+let disk_fd = ref Unix.stderr   (* just some Unix.file_descr object *)
+let disk_in = ref stdin
+let disk_out = ref stdout
+
+let init_disk fn =
+  let fd = Unix.openfile fn [ Unix.O_RDWR ; Unix.O_CREAT ] 0o666 in
+  disk_fd := fd;
+  disk_in := Unix.in_channel_of_descr fd;
+  disk_out := Unix.out_channel_of_descr fd
+
+let close_disk =
+  Unix.close !disk_fd
 
 let read_disk b =
-  let ic = open_in_gen [Open_rdonly;Open_creat] 0o666 disk_fn in
+  let ic = !disk_in in
   seek_in ic b;
   try
     let v = input_byte ic in
-    close_in ic;
-    (Word.natToWord blocksize (Big.of_int v))
+    Word.natToWord blocksize (Big.of_int v)
   with
-    End_of_file -> close_in ic; (Word.natToWord blocksize (Big.of_int 0))
+    End_of_file -> Word.natToWord blocksize (Big.of_int 0)
 
 let write_disk b v =
-  let oc = open_out_gen [Open_wronly;Open_creat] 0o666 disk_fn in
+  let oc = !disk_out in
   seek_out oc (Big.to_int b);
-  output_byte oc (Big.to_int (Word.wordToNat blocksize v));
-  close_out oc
+  output_byte oc (Big.to_int (Word.wordToNat blocksize v))
 
 let sync_disk b =
-  let oc = open_out_gen [Open_wronly;Open_creat] 0o666 disk_fn in
-  (* ExtUnix.All.fsync oc; *)
-  close_out oc
+  let fd = !disk_fd in
+  ExtUnix.All.fsync fd
 
 let rec run_dcode = function
   | Prog.Done t ->
