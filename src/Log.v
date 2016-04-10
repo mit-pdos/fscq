@@ -159,8 +159,8 @@ Module LOG.
     rx (mk_memstate cm mm').
 
   Definition recover T xp cs rx : prog T :=
-    mm <- GLog.recover xp cs;
-    rx (mk_memstate vmap0 mm).
+    mm <- MLog.recover xp cs;
+    rx (mk_memstate vmap0 (GLog.mk_memstate vmap0 nil mm)).
 
   Local Hint Unfold rep map_replay: hoare_unfold.
   Arguments GLog.rep: simpl never.
@@ -404,8 +404,9 @@ Module LOG.
   Qed.
 
 
-  Definition recover_any_pred xp F Fold Fnew :=
-    (exists cs raw, BUFCACHE.rep cs raw *
+  Definition recover_any_pred xp cs F Fold Fnew :=
+    
+    (exists raw, BUFCACHE.rep cs raw *
      [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]])%pred.
 
   Theorem recover_ok: forall xp F cs,

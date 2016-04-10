@@ -10,6 +10,33 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
+
+Section ListRevSel.
+
+  Variable T : Type.
+  Variable l : (list T).
+
+  Definition selR n def :=
+    if lt_dec n (length l) then selN l (length l - n - 1) def else def.
+
+  Lemma selR_oob : forall n def,
+    n >= length l -> selR n def = def.
+  Proof.
+    unfold selR; intros.
+    destruct (lt_dec n (length l)); try omega; auto.
+  Qed.
+
+  Lemma selR_inb : forall n def,
+    n < length l -> selR n def = selN l (length l - n - 1) def.
+  Proof.
+    unfold selR; intros.
+    destruct (lt_dec n (length l)); auto; congruence.
+  Qed.
+
+End ListRevSel.
+
+
+
 Section NonEmptyList.
 
   Variable T : Type.
