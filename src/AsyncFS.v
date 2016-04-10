@@ -24,6 +24,7 @@ Require Import Cache.
 Require Import Errno.
 Require Import AsyncDisk.
 Require Import GroupLog.
+Require Import SuperBlock.
 Require Import NEList.
 
 Set Implicit Arguments.
@@ -51,36 +52,54 @@ Theorem update_block_d_ok : forall lxp a v ms,
     LOG.rep lxp emp (LOG.NoTxn (m', nil)) ms *
     [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
   >} update_block_d lxp a v ms.
+Proof.
+
 Admitted.
 
 
-  Definition recover {T} rx : prog T :=
-    cs <- BUFCACHE.init_recover (if eq_nat_dec 5 0 then 1 else 5);
-    let^ (cs, fsxp) <- sb_load cs;
-    mscs <- LOG.recover (FSXPLog fsxp) cs;
-    rx ^(mscs, (FSXPLog fsxp)).
+Definition recover {T} rx : prog T :=
+  cs <- BUFCACHE.init_recover 10;
+  let^ (cs, fsxp) <- SB.load cs;
+  mscs <- LOG.recover (FSXPLog fsxp) cs;
+  rx ^(mscs, fsxp).
 
-(*
-  Lemma crash_xform_log : m p,
-    p m ->
-    crash_xform (LOG.rep m) =p=>
-      LOG.rep m' * [[ crash_xform m' ]].
-*)
 
-  Theorem recover_ok :
-    {< lxp mset,
-     PRE
-       crash_xform (LOG.recover_any lxp emp mset)
-     POST RET:^(ms, lxp')
-       [[ lxp' = lxp ]] *
-     (exists rec rec',
-      [[ possible_crash (list2nmem rec) (list2nmem rec') ]] *
-      LOG.rep lxp' emp (LOG.NoTxn (rec', nil)) ms *
-      ([[ rec = fst mset ]] \/ [[ In rec (snd mset) ]]))
-     CRASH
-       crash_xform (LOG.recover_any lxp emp mset)
-     >} recover.
-  Admitted.
+Theorem recover_ok : forall cs,
+  {< fsxp FD1 FD2,
+   PRE
+     LOG.recover_any_pred (FSXPLog fsxp) cs (SB.rep fsxp) FD1 FD2
+   POST RET:^(ms, fsxp')
+     [[ fsxp' = fsxp ]] * exists d,
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms *
+     ([[[ d ::: crash_xform FD1 ]]] \/ [[[ d ::: crash_xform FD2 ]]])
+   CRASH exists cs',
+     LOG.recover_any_pred (FSXPLog fsxp) cs' (SB.rep fsxp) FD1 FD2
+   >} recover.
+Proof.
+  unfold recover; intros.
+  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
+  step.
+  step.
+
+  prestep.
+  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
+  cancel.
+  rewrite sep_star_or_distr; or_l. cancel; eauto.
+  rewrite sep_star_or_distr; or_r. cancel; eauto.
+  do 2 eexists; eauto.
+
+  step.
+  subst; pimpl_crash; cancel.
+  rewrite sep_star_or_distr; or_l. cancel; eauto.
+  rewrite sep_star_or_distr; or_r. cancel; eauto.
+  do 2 eexists; eauto.
+
+  rewrite sep_star_or_distr; or_l. cancel; eauto.
+  rewrite sep_star_or_distr; or_r. cancel; eauto.
+  rewrite sep_star_or_distr; or_l. cancel; eauto.
+  rewrite sep_star_or_distr; or_r. cancel; eauto.
+Qed.
+
 
 Theorem update_block_d_recover_ok : forall lxp a v ms,
   {<< m F v0,

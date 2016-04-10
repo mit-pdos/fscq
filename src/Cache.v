@@ -389,7 +389,51 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (init_load _) _) => apply init_load_ok : prog.
 
+
   Theorem init_recover_ok : forall cachesize,
+    {< d F,
+    PRE
+      exists cs, rep cs d *
+      [[ F d ]] * [[ cachesize <> 0 ]]
+    POST RET:cs
+      exists d', rep cs d' * [[ F d' ]]
+    CRASH
+      exists cs, rep cs d
+    >} init_recover cachesize.
+  Proof.
+    unfold init_recover, init, rep.
+    step.
+
+    eapply pimpl_ok2; eauto.
+    simpl; intros.
+
+    (**
+     * Special-case for initialization, because we are moving a predicate [F]
+     * from the base memory to a virtual memory.
+     *)
+    match goal with
+    | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
+      remember (E)
+    end.
+    norm; cancel'; intuition.
+    unfold stars; subst; simpl; rewrite star_emp_pimpl.
+    unfold crash_xform. unfold pimpl; intros; repeat deex. exists m.
+    apply sep_star_lift_apply'; eauto.
+    apply sep_star_lift_apply'; eauto.
+    apply sep_star_lift_apply'; eauto.
+    apply sep_star_lift_apply'; eauto.
+    apply sep_star_lift_apply'; eauto.
+    congruence.
+    omega.
+    intros.
+    contradict H0; apply Map.empty_1.
+    unfold diskIs in *; subst; auto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
+
+
+  Theorem init_recover_xform_ok : forall cachesize,
     {< d F,
     PRE
       exists cs, crash_xform (rep cs d) *
@@ -432,7 +476,6 @@ Module BUFCACHE.
     intuition.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
 
   Theorem read_array_ok : forall a i cs,
     {< d F vs,
