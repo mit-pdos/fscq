@@ -4,6 +4,7 @@ let blockbits = Big.of_int (blockbytes*8)
 let disk_fd = ref Unix.stderr   (* just some Unix.file_descr object *)
 let disk_in = ref stdin
 let disk_out = ref stdout
+let debug = true
 
 let addr_to_int a = Big.to_int (Word.wordToNat addrlen a)
 
@@ -41,24 +42,22 @@ let sync_disk b =
 
 let rec run_dcode = function
   | Prog.Done t ->
-    Printf.printf "done()\n";
+    if debug then Printf.printf "done()\n";
     ()
   | Prog.Trim (a, rx) ->
-    Printf.printf "trim(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "trim(%d)\n" (addr_to_int a);
     run_dcode (rx ())
   | Prog.Sync (a, rx) ->
-    Printf.printf "sync(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "sync(%d)\n" (addr_to_int a);
     sync_disk (addr_to_int a);
-    Printf.printf "sync done\n";
     run_dcode (rx ())
   | Prog.Read (a, rx) ->
-    Printf.printf "read(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "read(%d)\n" (addr_to_int a);
     let v = read_disk (addr_to_int a) in
     run_dcode (rx v)
   | Prog.Write (a, v, rx) ->
-    Printf.printf "write(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "write(%d)\n" (addr_to_int a);
     write_disk (addr_to_int a) v;
-    Printf.printf "write done\n";
     run_dcode (rx ())
 
 let run_prog p =
