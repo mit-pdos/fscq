@@ -18,11 +18,8 @@ let close_disk =
 let read_disk b =
   let ic = !disk_in in
   seek_in ic b;
-  try
-    let v = input_byte ic in
-    Word.natToWord blocksize (Big.of_int v)
-  with
-    End_of_file -> Word.natToWord blocksize (Big.of_int 0)
+  let v = input_byte ic in
+  Word.natToWord blocksize (Big.of_int v)
 
 let write_disk b v =
   let oc = !disk_out in
@@ -35,6 +32,7 @@ let sync_disk b =
 
 let rec run_dcode = function
   | Prog.Done t ->
+    Printf.printf "done()\n";
     ()
   | Prog.Trim (a, rx) ->
     Printf.printf "trim(%d)\n" (addr_to_int a);
@@ -42,6 +40,7 @@ let rec run_dcode = function
   | Prog.Sync (a, rx) ->
     Printf.printf "sync(%d)\n" (addr_to_int a);
     sync_disk (addr_to_int a);
+    Printf.printf "sync done\n";
     run_dcode (rx ())
   | Prog.Read (a, rx) ->
     Printf.printf "read(%d)\n" (addr_to_int a);
@@ -50,4 +49,11 @@ let rec run_dcode = function
   | Prog.Write (a, v, rx) ->
     Printf.printf "write(%d)\n" (addr_to_int a);
     write_disk (addr_to_int a) v;
-    run_dcode (rx ());;
+    Printf.printf "write done\n";
+    run_dcode (rx ())
+
+let run_prog p =
+  try
+    run_dcode (p (fun x -> Prog.Done x))
+  with
+    e -> Printf.printf "Exception: %s\n" (Printexc.to_string e)

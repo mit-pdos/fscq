@@ -8,7 +8,7 @@ open Unix
 let do_mkfs fn =
   init_disk fn;
   Printf.printf "Initializing filesystem in %s\n" fn;
-  (* let res = run_dcode (FS.mkfs  ... *)
+  let res = run_prog (FS.mkfs (W (Big.of_int 1)) (W (Big.of_int 1))) in
   close_disk
 
 let _ =

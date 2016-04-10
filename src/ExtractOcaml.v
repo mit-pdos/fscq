@@ -23,7 +23,7 @@ Extract Inlined Constant Cache.eviction_state  => "unit".
 Extract Inlined Constant Cache.eviction_init   => "()".
 Extract Inlined Constant Cache.eviction_update => "(fun state addr -> state)".
 Extract Inlined Constant Cache.eviction_choose => "(fun state -> (Word.wzero Prog.addrlen, state))".
-Extract Constant FS.cachesize => "10000".
+Extract Constant FS.cachesize => "(Big.of_int 10000)".
 
 Cd "../codegen".
 Recursive Extraction Library FS.

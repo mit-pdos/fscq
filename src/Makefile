@@ -71,7 +71,7 @@ ocamlfuse/libFuse_stubs.a: ocamlfuse/Fuse_bindings_stubs.o ocamlfuse/Unix_util_s
 ocamlfuse/Fuse.cmxa: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
 	ocamlopt -a -thread -linkall -cclib -lFuse_stubs -cclib -lfuse -cclib -lcamlidl -o $@ $(OCAMLFUSE_CMX)
 
-%: %.ml $(VS_ML)
+%: %.ml $(VS_ML) $(wildcard */*.ml)
 	rm -f $@
 	-mv codegen/Word.ml codegen/WordCoq.ml
 	-mv codegen/Word.mli codegen/WordCoq.mli
