@@ -1562,6 +1562,19 @@ Proof.
   auto.
 Qed.
 
+Lemma goodSize_add_l : forall sz a b,
+  goodSize sz (a + b) -> goodSize sz a.
+Proof.
+  intros; eapply goodSize_trans with (n2 := a + b); auto; omega.
+Qed.
+
+Lemma goodSize_add_r : forall sz a b,
+  goodSize sz (a + b) -> goodSize sz b.
+Proof.
+  intros; eapply goodSize_trans with (n2 := a + b); auto; omega.
+Qed.
+
+
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
 Proof.
   induction sz; simpl; intuition.

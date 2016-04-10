@@ -73,6 +73,8 @@ Module LOG.
       GLog.would_recover_any xp F n ds
   end)%pred.
 
+  Definition memstate0 cs :=
+    mk_memstate vmap0 (GLog.mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs)).
 
   Definition intact xp F ds :=
     (exists ms,
@@ -164,8 +166,9 @@ Module LOG.
     rx (mk_memstate cm mm').
 
   Definition recover T xp cs rx : prog T :=
-    mm <- MLog.recover xp cs;
-    rx (mk_memstate vmap0 (GLog.mk_memstate vmap0 nil mm)).
+    mm <- GLog.recover xp cs;
+    rx (mk_memstate vmap0 mm).
+
 
   Local Hint Unfold rep map_replay: hoare_unfold.
   Arguments GLog.rep: simpl never.
@@ -181,6 +184,7 @@ Module LOG.
 
   Hint Resolve KNoDup_map_elements.
   Hint Resolve MapProperties.eqke_equiv.
+
 
   Theorem read_raw_ok: forall xp ms a,
     {< F d vs,
@@ -441,9 +445,8 @@ Module LOG.
       recover_any_pred xp cs' F FD1 FD2
     >} recover xp cs.
   Proof.
-    unfold recover, recover_any_pred, rep, GLog.recover_any_pred, GLog.rep.
+    unfold recover, recover_any_pred, rep.
     hoare.
-    all: try apply GLog.vmap_match_nil; try apply GLog.dset_match_nil.
   Qed.
 
   Theorem recover_idem : forall xp cs F Fold Fnew,
@@ -949,7 +952,6 @@ Module LOG.
 
   Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
-
 
 End LOG.
 
