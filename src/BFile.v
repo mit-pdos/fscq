@@ -436,7 +436,7 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
-    CRASH  LOG.recover_any lxp F ds \/
+    CRASH  (exists n, LOG.recover_any lxp F n ds) \/
            exists m' flist' f', LOG.intact lxp F (m', nil) *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -499,7 +499,7 @@ Module BFILE.
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (synced_list (map fst (BFData f))) (BFAttr f) ]]
-    XCRASH LOG.recover_any lxp F ds
+    XCRASH exists n, LOG.recover_any lxp F n ds
     >} datasync lxp ixp inum ms.
   Proof.
     unfold datasync, rep.

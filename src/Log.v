@@ -54,7 +54,7 @@ Module LOG.
    * It started from the first memory and has evolved into the second.
    *)
 
-  | FlushingTxn (new : GLog.diskset)
+  | FlushingTxn (new : GLog.diskset) (n : addr)
   (* A flushing is in progress
    *)
   .
@@ -69,8 +69,8 @@ Module LOG.
       [[ map_valid cm ds!! ]] *
       [[ map_replay cm ds!! cur ]] *
       GLog.rep xp F (GLog.Cached ds) mm
-    | FlushingTxn ds =>
-      GLog.would_recover_any xp F ds
+    | FlushingTxn ds n =>
+      GLog.would_recover_any xp F n ds
   end)%pred.
 
 
@@ -79,8 +79,8 @@ Module LOG.
       rep xp F (NoTxn ds) ms \/
       exists new, rep xp F (ActiveTxn ds new) ms)%pred.
 
-  Definition recover_any xp F ds :=
-    (exists ms, rep xp F (FlushingTxn ds) ms)%pred.
+  Definition recover_any xp F n ds :=
+    (exists ms, rep xp F (FlushingTxn ds n) ms)%pred.
 
 
   Lemma active_intact : forall xp F old new ms,
@@ -95,14 +95,14 @@ Module LOG.
     unfold intact; cancel.
   Qed.
 
-  Lemma flushing_any : forall xp F ds ms,
-    rep xp F (FlushingTxn ds) ms =p=> recover_any xp F ds.
+  Lemma flushing_any : forall xp F ds n ms,
+    rep xp F (FlushingTxn ds n) ms =p=> recover_any xp F n ds.
   Proof.
     unfold recover_any; cancel.
   Qed.
 
   Lemma intact_any : forall xp F ds,
-    intact xp F ds =p=> recover_any xp F ds.
+    intact xp F ds =p=> recover_any xp F 0 ds.
   Proof.
     unfold intact, recover_any, rep; cancel.
     apply GLog.cached_recover_any.
@@ -131,6 +131,11 @@ Module LOG.
         let^ (mm', v) <- GLog.read xp a mm;
         rx ^(mk_memstate cm mm', v)
     end.
+
+  Definition read_raw T a ms rx : prog T :=
+    let '(cm, mm) := (MSTxn ms, MSMem ms) in
+    let^ (mm', r) <- GLog.read_raw a mm;
+    rx ^(mk_memstate cm mm', r).
 
   Definition commit T xp ms rx : prog T :=
     let '(cm, mm) := (MSTxn ms, MSMem ms) in
@@ -176,6 +181,24 @@ Module LOG.
 
   Hint Resolve KNoDup_map_elements.
   Hint Resolve MapProperties.eqke_equiv.
+
+  Theorem read_raw_ok: forall xp ms a,
+    {< F d vs,
+    PRE
+      rep xp (F * a |-> vs) (NoTxn d) ms
+    POST RET:^(ms', r)
+      rep xp (F * a |-> vs) (NoTxn d) ms' * [[ r = fst vs ]]
+    CRASH
+      exists ms', rep xp (F * a |-> vs) (NoTxn d) ms'
+    >} read_raw a ms.
+  Proof.
+    unfold read_raw, rep.
+    safestep.
+    step.
+    pimpl_crash; cancel.
+    eassign (mk_memstate (MSTxn ms) ms'); simpl; eauto.
+    simpl; auto.
+  Qed.
 
   Theorem begin_ok: forall xp ms,
     {< F ds,
@@ -279,7 +302,7 @@ Module LOG.
       rep xp F (ActiveTxn (m, nil) m) ms' *
       [[[ m ::: (Fm * a |-> (v, vsmerge vs)) ]]]
     CRASH
-      recover_any xp F ds \/
+      (exists n, recover_any xp F n ds) \/
       exists ms' m',
       rep xp F (ActiveTxn (m', nil) m') ms' *
           [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]]
@@ -318,7 +341,7 @@ Module LOG.
       rep xp F (ActiveTxn (m, nil) m) ms' *
       [[[ m ::: (Fm * a |-> (fst vs, nil)) ]]]
     CRASH
-      recover_any xp F ds \/
+      (exists n, recover_any xp F n ds) \/
       exists m' ms',
       rep xp F (ActiveTxn (m', nil) m') ms' *
         [[[ m' ::: (Fm * a |-> (fst vs, nil)) ]]]
@@ -351,8 +374,8 @@ Module LOG.
       rep xp F (NoTxn ds) ms
     POST RET:ms'
       rep xp F (NoTxn (ds!!, nil)) ms'
-    CRASH
-      recover_any xp F ds
+    CRASH exists n,
+      recover_any xp F n ds
     >} sync xp ms.
   Proof.
     unfold sync, recover_any.
@@ -404,28 +427,53 @@ Module LOG.
   Qed.
 
 
-  Definition recover_any_pred xp cs F Fold Fnew :=
-    
-    (exists raw, BUFCACHE.rep cs raw *
-     [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]])%pred.
+  Definition recover_any_pred := GLog.recover_any_pred.
 
   Theorem recover_ok: forall xp F cs,
-    {< raw Fold Fnew,
+    {< FD1 FD2,
     PRE
-      BUFCACHE.rep cs raw *
-      [[ crash_xform (F * MLog.recover_either_pred xp Fold Fnew)%pred raw ]]
+      recover_any_pred xp cs F FD1 FD2
     POST RET:ms' exists d,
-      rep xp (crash_xform F) (NoTxn (d, nil)) ms' *
-      ([[[ d ::: crash_xform Fold ]]] \/
-       [[[ d ::: crash_xform Fnew ]]])
+      rep xp F (NoTxn (d, nil)) ms' *
+      ([[[ d ::: crash_xform FD1 ]]] \/
+       [[[ d ::: crash_xform FD2 ]]])
     CRASH exists cs',
-      BUFCACHE.rep cs' raw
+      recover_any_pred xp cs' F FD1 FD2
     >} recover xp cs.
   Proof.
-    unfold recover, rep.
+    unfold recover, recover_any_pred, rep, GLog.recover_any_pred, GLog.rep.
     hoare.
+    all: try apply GLog.vmap_match_nil; try apply GLog.dset_match_nil.
   Qed.
 
+  Theorem recover_idem : forall xp cs F Fold Fnew,
+    crash_xform (recover_any_pred xp cs F Fold Fnew) =p=>
+      exists cs', recover_any_pred xp cs' (crash_xform F) Fold Fnew.
+  Proof.
+    intros; apply GLog.recover_idem.
+  Qed.
+
+
+  Theorem intact_recover_any_pred : forall xp ds (F FD : pred),
+    FD (list2nmem (fst ds)) ->
+    crash_xform (intact xp F ds) =p=>
+    exists cs, recover_any_pred xp cs (crash_xform F) FD FD.
+  Proof.
+    unfold recover_any_pred, intact, rep; intros.
+    xform_norm; rewrite GLog.cached_recover_any_pred; eauto; cancel.
+  Qed.
+
+
+  Theorem recover_any_any_pred : forall xp ds n (F FD1 FD2 : pred),
+    FD1 (list2nmem (nthd n ds)) ->
+    FD2 (list2nmem (nthd (S n) ds)) ->
+    crash_xform (recover_any xp F n ds) =p=>
+    exists cs, recover_any_pred xp cs (crash_xform F) FD1 FD2.
+  Proof.
+    unfold recover_any_pred, recover_any, rep; intros.
+    xform_norm.
+    rewrite GLog.would_recover_any_any_pred; eauto.
+  Qed.
 
 
   Hint Resolve active_intact flushing_any.
@@ -435,6 +483,7 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
   Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_raw _ _) _) => apply read_raw_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
   Hint Extern 1 ({{_}} progseq (commit_ro _ _) _) => apply commit_ro_ok : prog.
@@ -837,7 +886,7 @@ Module LOG.
       rep xp F (ActiveTxn (m', nil) m') ms' *
       [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
     XCRASH
-      recover_any xp F ds \/
+      (exists n, recover_any xp F n ds) \/
       exists ms' m',
       rep xp F (ActiveTxn (m', nil) m') ms' *
       [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
@@ -875,8 +924,8 @@ Module LOG.
     POST RET:ms' exists m',
       rep xp F (ActiveTxn (m', nil) m') ms' *
       [[[ m' ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]]
-    XCRASH
-      recover_any xp F ds
+    XCRASH exists n,
+      recover_any xp F n ds
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs, recover_any.

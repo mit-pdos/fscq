@@ -253,6 +253,11 @@ Module GLog.
     mm' <- MLog.dsync xp a mm;
     rx (mk_memstate vm ts mm').
 
+  Definition read_raw T a ms rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    let^ (mm', r) <- MLog.read_raw a mm;
+    rx ^(mk_memstate vm ts mm', r).
+
   Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
     ms <- flushall xp ms;
     let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
@@ -508,6 +513,25 @@ Module GLog.
   Qed.
 
 
+  Theorem read_raw_ok: forall xp ms a,
+    {< F d vs,
+    PRE
+      rep xp (F * a |-> vs) (Cached d) ms
+    POST RET:^(ms', r)
+      rep xp (F * a |-> vs) (Cached d) ms' * [[ r = fst vs ]]
+    CRASH
+      exists ms', rep xp (F * a |-> vs) (Cached d) ms'
+    >} read_raw a ms.
+  Proof.
+    unfold read_raw, rep.
+    safestep.
+    step.
+    pimpl_crash; norml; cancel.
+    eassign (mk_memstate (MSVMap ms) (MSTxns ms) ms').
+    cancel.
+    all: eauto.
+  Qed.
+
 
   Theorem submit_ok: forall xp ents ms,
     {< F ds,
@@ -584,6 +608,7 @@ Module GLog.
 
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (read_raw _ _) _) => apply read_raw_ok : prog.
   Hint Extern 1 ({{_}} progseq (submit _ _ _) _) => apply submit_ok : prog.
   Hint Extern 1 ({{_}} progseq (flushall _ _) _) => apply flushall_ok : prog.
 
