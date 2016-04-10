@@ -8,7 +8,7 @@ Require Import Testprog.
 Extraction Language Ocaml.
 
 (* Avoid conflicts with existing Ocaml module names. *)
-Extraction Blacklist String List Nat.
+Extraction Blacklist String List Nat Array Bytes.
 
 (* Optimize away some noop-like wrappers. *)
 Extraction Inline Prog.progseq.
@@ -22,7 +22,7 @@ Extract Constant Pos.compare_cont => "fun c x y -> Big.compare_case c Lt Gt x y"
 Extract Inlined Constant Cache.eviction_state  => "unit".
 Extract Inlined Constant Cache.eviction_init   => "()".
 Extract Inlined Constant Cache.eviction_update => "(fun state addr -> state)".
-Extract Inlined Constant Cache.eviction_choose => "(fun state -> (Big.zero, state))".
+Extract Inlined Constant Cache.eviction_choose => "(fun state -> (Word.wzero Prog.addrlen, state))".
 Extract Constant FS.cachesize => "10000".
 
 Cd "../codegen".
