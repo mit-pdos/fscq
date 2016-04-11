@@ -181,6 +181,9 @@ Module GLog.
   Definition would_recover_any xp F n ds :=
     (exists ms, rep xp F (Flushing ds n) ms)%pred.
 
+  Definition recover_any_pred xp F n ds ms :=
+    crash_xform (rep xp F (Flushing ds n) ms).
+
   Lemma cached_recover_any: forall xp F ds ms,
     rep xp F (Cached ds) ms =p=> would_recover_any xp F 0 ds.
   Proof.
@@ -739,31 +742,32 @@ Module GLog.
   Qed.
 
 
-  Definition recover_any_pred xp cs F Fold Fnew :=
-    (MLog.recover_either_pred xp cs F Fold Fnew *
-    [[ exists ds n, n < length (snd ds) ->
-       Fold (list2nmem (nthd n ds)) /\
-       Fnew (list2nmem (nthd (S n) ds)) ]])%pred.
-
+(*
+  Definition recover_any_pred xp cs F ds :=
+    (exists n, [[ n < length (snd ds) ]] *
+    (MLog.recover_either_pred xp cs F
+      (diskIs (list2nmem (nthd n ds)))
+      (diskIs (list2nmem (nthd (S n) ds)))))%pred.
+*)
 
   Theorem recover_ok: forall xp cs F,
-    {< FD1 FD2,
+    {< ds n,
     PRE
-      recover_any_pred xp cs F FD1 FD2
-    POST RET:ms' exists d,
+      recover_any_pred xp F n ds (mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs))
+    POST RET:ms' exists d n, [[ n <= length (snd ds) ]] *
       rep xp F (Cached (d, nil)) ms' *
-      ([[[ d ::: crash_xform FD1 ]]] \/ [[[ d ::: crash_xform FD2 ]]])
-    CRASH exists cs',
-      recover_any_pred xp cs' F FD1 FD2
+      [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+    CRASH
+      recover_any_pred xp F n ds (mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs))
     >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
     step.
-    step.
-    cancel.
-  Qed.
+    prestep. norm. cancel.
+  Admitted.
 
 
+(*
   Theorem cached_recover_any_pred : forall xp ds ms (F FD : pred),
     FD (list2nmem (fst ds)) ->
     crash_xform (rep xp F (Cached ds) ms) =p=>
@@ -808,7 +812,7 @@ Module GLog.
     rewrite MLog.recover_idem; cancel.
     do 2 eexists; eauto.
   Qed.
-
+*)
 
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.

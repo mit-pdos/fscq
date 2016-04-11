@@ -78,42 +78,44 @@ Definition recover {T} rx : prog T :=
   mscs <- LOG.recover (FSXPLog fsxp) cs;
   rx ^(mscs, fsxp).
 
+Definition mkms cs := (GLog.mk_memstate LogReplay.vmap0 nil (MemLog.MLog.mk_memstate LogReplay.vmap0 cs)).
 
 Theorem recover_ok :
-  {< fsxp cs FD1 FD2,
+  {< fsxp cs ds n,
    PRE
-     LOG.recover_any_pred (FSXPLog fsxp) cs (SB.rep fsxp) FD1 FD2
+     LOG.recover_any_pred (FSXPLog fsxp) (SB.rep fsxp) n ds (mkms cs)
    POST RET:^(ms, fsxp')
-     [[ fsxp' = fsxp ]] * exists d,
+     [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms *
-     ([[[ d ::: crash_xform FD1 ]]] \/ [[[ d ::: crash_xform FD2 ]]])
-   CRASH exists cs',
-     LOG.recover_any_pred (FSXPLog fsxp) cs' (SB.rep fsxp) FD1 FD2
+     [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+   CRASH
+     LOG.recover_any_pred (FSXPLog fsxp) (SB.rep fsxp) n ds (mkms cs)
    >} recover.
 Proof.
   unfold recover; intros.
-  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
+  unfold LOG.recover_any_pred, GLog.recover_any_pred, GLog.rep, MemLog.MLog.would_recover_either.
   step.
+  unfold MemLog.MLog.rep, MemLog.MLog.rep_inner.
   step.
 
   prestep.
   unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
   cancel.
+  eauto.
+  rewrite sep_star_or_distr; or_l. cancel; eauto.
+  rewrite sep_star_or_distr; or_r. cancel; eauto.
+
+  prestep. norm. cancel. intuition idtac; eauto.
+  subst; pimpl_crash; eauto.
   rewrite sep_star_or_distr; or_l. cancel; eauto.
   rewrite sep_star_or_distr; or_r. cancel; eauto.
   do 2 eexists; eauto.
 
-  step.
-  subst; pimpl_crash; cancel.
-  rewrite sep_star_or_distr; or_l. cancel; eauto.
-  rewrite sep_star_or_distr; or_r. cancel; eauto.
-  do 2 eexists; eauto.
-
   rewrite sep_star_or_distr; or_l. cancel; eauto.
   rewrite sep_star_or_distr; or_r. cancel; eauto.
   rewrite sep_star_or_distr; or_l. cancel; eauto.
   rewrite sep_star_or_distr; or_r. cancel; eauto.
-Qed.
+Admitted.
 
 
 Ltac recover_ro_ok := intros;
@@ -130,6 +132,7 @@ Ltac recover_ro_ok := intros;
 
 Hint Extern 0 (okToUnify (LOG.recover_any_pred _ _ _ _ _)
                          (LOG.recover_any_pred _ _ _ _ _)) => constructor : okToUnify.
+
 
 Theorem update_block_d_recover_ok : forall fsxp a v ms,
   {<< m F v0,
@@ -155,12 +158,8 @@ Proof.
   eapply pimpl_ok2.
   eapply H2.
   cancel.
-
-  instantiate (idemcrash := ((exists n : addr, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n (v0, []))
-   ⋁ (exists (ms' : LOG.memstate) (m' : LogReplay.diskstate),
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', [])) ms'
-        ✶ 【 m' ‣‣ v1 ✶ a |-> (v, vsmerge (v2_cur, v2_old)) 】))%pred).
-
+  subst.
+  apply pimpl_refl.
   apply pimpl_refl.
   xform_norm.
 
@@ -177,6 +176,10 @@ Proof.
     rewrite crash_xform_ptsto; cancel.
 
     norml; unfold stars; simpl.
+    unfold LOG.recover_any_pred, GLog.recover_any_pred.
+    unfold MemLog.MLog.recover_either_pred.
+    unfold LOG.recover_any, LOG.rep, GLog.would_recover_any, GLog.rep, MemLog.MLog.would_recover_either.
+    unfold MemLog.MLog.rep.
     (* weird goal: CRASH of recover =p=> CRASH of update_block_d?  *)
     admit.
 
@@ -220,11 +223,9 @@ Theorem update_block_d2_ok : forall fsxp a v ms,
   \/  ([[ r = true  ]] * exists ds',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') ms *
         [[[ ds'!! ::: (F * a |-> (v, vsmerge v0)) ]]])
-  CRASH
-      (exists n, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n ds) \/
-      exists ms' ds',
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') ms' *
-      [[[ ds'!! ::: (F * a |-> (v, vsmerge v0)) ]]]
+  CRASH exists d',
+      (exists n, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n (pushd d' ds)) *
+      [[[ d' ::: (F * a |-> (v, vsmerge v0)) ]]]
   >} update_block_d2 (FSXPLog fsxp) a v ms.
 Proof.
   unfold update_block_d2; intros.
@@ -244,9 +245,9 @@ Proof.
   or_r; cancel.
   rewrite LOG.notxn_intact, LOG.intact_any.
   or_l; cancel.
-Qed.
+Admitted.
 
-
+ 
 Theorem update_block_d2_recover_ok : forall fsxp a v ms,
   {<< ds F v0,
   PRE
@@ -260,10 +261,48 @@ Theorem update_block_d2_recover_ok : forall fsxp a v ms,
         [[[ ds'!! ::: (F * a |-> (v, vsmerge v0)) ]]])
   REC RET:^(ms, fsxp) exists m',
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
+    ((exists n, [[ n <= length (snd ds) ]] *
+    [[[ m' ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
     [[[ m' ::: (exists v', crash_xform F * a |=> v' *
-                [[ In v' (v :: (vsmerge v0)) ]]) ]]]
+                [[ In v' (v :: (vsmerge v0)) ]]) ]]])
   >>} update_block_d2 (FSXPLog fsxp) a v ms >> recover.
 Proof.
+  unfold forall_helper.
+  intros; eexists; intros.
+  eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx.
+  eapply update_block_d2_ok.
+  eapply recover_ok.
+  cancel.
+  eapply pimpl_ok2.
+  eapply H2.
+  cancel.
+  subst.
+  or_l. cancel. subst.
+  apply pimpl_refl.
+  admit.
+  subst. apply pimpl_refl.
+  apply pimpl_refl.
+
+  xform_norm.
+  xform. norml; unfold stars; simpl.
+    unfold  LOG.recover_any_pred, GLog.recover_any_pred, LOG.recover_any.
+    unfold LOG.rep, GLog.would_recover_any.
+    xform. norml; unfold stars; simpl.
+    xform. norml; unfold stars; simpl.
+    xform. norml; unfold stars; simpl.
+
+    cancel.
+    recover_ro_ok.
+    admit.
+
+    step.
+    eassign F_. cancel.
+    admit.
+    unfold LOG.recover_any.
+    admit.
+    
+
 
 Admitted.
 

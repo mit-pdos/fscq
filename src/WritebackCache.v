@@ -261,4 +261,184 @@ Module WBCACHE.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
   Qed.
 
+
+  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
+
+
+  Definition read_array T a i cs rx : prog T :=
+    r <- read (a + i) cs;
+    rx r.
+
+  Definition write_array T a i v cs rx : prog T :=
+    cs <- write (a + i) v cs;
+    rx cs.
+
+  Definition sync_array T a i cs rx : prog T :=
+    cs <- sync (a + i) cs;
+    rx cs.
+
+  Theorem read_array_ok : forall a i cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
+    POST RET:^(cs, v)
+      rep cs d * [[ v = fst (selN vs i ($0, nil)) ]]
+    CRASH
+      exists cs', rep cs' d
+    >} read_array a i cs.
+  Proof.
+    unfold read_array.
+    hoare.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite <- surjective_pairing.
+    cancel.
+  Qed.
+
+
+  Theorem write_array_ok : forall a i v cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d \/
+      exists d', rep cs' d' * [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
+    >} write_array a i v cs.
+  Proof.
+    unfold write_array, vsupd.
+    hoare.
+
+    pred_apply.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite surjective_pairing with (p := selN vs i ($0, nil)).
+    cancel.
+
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+    cancel.
+    or_r; cancel.
+    rewrite <- isolateN_bwd_upd by auto. cancel.
+    apply pimpl_or_r; right; cancel; eauto.
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+  Qed.
+
+
+
+
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
+
+  Theorem sync_array_ok : forall a i cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync vs i))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d \/
+      exists d', rep cs' d' * [[ (F * arrayN a (vssync vs i))%pred d' ]]
+    >} sync_array a i cs.
+  Proof.
+    unfold sync_array, vssync.
+    hoare.
+
+    rewrite isolateN_fwd with (i:=i) by auto. cancel.
+    rewrite ptsto_tuple.
+    cancel.
+
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+    cancel.
+    apply pimpl_or_r; left; cancel; eauto.
+    apply pimpl_or_r; right; cancel; eauto.
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+  Qed.
+
+
+
+  Definition read_range T A a nr (vfold : A -> valu -> A) a0 cs rx : prog T :=
+    let^ (cs, r) <- ForN i < nr
+    Ghost [ F crash d vs ]
+    Loopvar [ cs pf ]
+    Continuation lrx
+    Invariant
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] *
+      [[ pf = fold_left vfold (firstn i (map fst vs)) a0 ]]
+    OnCrash  crash
+    Begin
+      let^ (cs, v) <- read_array a i cs;
+      lrx ^(cs, vfold pf v)
+    Rof ^(cs, a0);
+    rx ^(cs, r).
+
+
+  Definition write_range T a l cs rx : prog T :=
+    let^ (cs) <- ForN i < length l
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_range vs (firstn i l)))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- write_array a i (selN l i $0) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+  Definition sync_range T a nr cs rx : prog T :=
+    let^ (cs) <- ForN i < nr
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_range vs i))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- sync_array a i cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+
+  Definition write_vecs T a l cs rx : prog T :=
+    let^ (cs) <- ForN i < length l
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_vecs vs (firstn i l)))%pred d' ]]
+    OnCrash crash
+    Begin
+      let v := selN l i (0, $0) in
+      cs <- write_array a (fst v) (snd v) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+
+  Definition sync_vecs T a l cs rx : prog T :=
+    let^ (cs) <- ForN i < length l
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_vecs vs (firstn i l)))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- sync_array a (selN l i 0) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
 End WBCACHE.

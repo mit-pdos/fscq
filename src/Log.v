@@ -440,21 +440,20 @@ Module LOG.
   Definition recover_any_pred := GLog.recover_any_pred.
 
   Theorem recover_ok: forall xp F cs,
-    {< FD1 FD2,
+    {< ds n,
     PRE
-      recover_any_pred xp cs F FD1 FD2
-    POST RET:ms' exists d,
+      recover_any_pred xp F n ds (GLog.mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs))
+    POST RET:ms' exists d n, [[ n <= length (snd ds) ]] *
       rep xp F (NoTxn (d, nil)) ms' *
-      ([[[ d ::: crash_xform FD1 ]]] \/
-       [[[ d ::: crash_xform FD2 ]]])
-    CRASH exists cs',
-      recover_any_pred xp cs' F FD1 FD2
+      [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+    CRASH
+      recover_any_pred xp F n ds (GLog.mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs))
     >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
-    hoare.
-  Qed.
+  Admitted.
 
+(*
   Theorem recover_idem : forall xp cs F Fold Fnew,
     crash_xform (recover_any_pred xp cs F Fold Fnew) =p=>
       exists cs', recover_any_pred xp cs' (crash_xform F) Fold Fnew.
@@ -502,7 +501,7 @@ Module LOG.
     apply GLog.dset_match_nil.
     pred_apply; cancel.
   Qed.
-
+*)
 
   Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _) (intact _ _ _)) => constructor : okToUnify.
@@ -984,7 +983,7 @@ End LOG.
 
 
 (* rewrite rules for recover_either_pred *)
-
+(*
 Require Import RelationClasses.
 Require Import Morphisms.
 
@@ -1047,7 +1046,7 @@ Proof.
   exists ds; exists n; intuition.
 Qed.
 
-
+*)
 
 Global Opaque LOG.begin.
 Global Opaque LOG.abort.
