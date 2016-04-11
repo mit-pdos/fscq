@@ -31,6 +31,8 @@ Record cachestate := {
   CSEvict : eviction_state
 }.
 
+Definition cache_empty := Build_cachestate (Map.empty valu) 0 0 eviction_init.
+
 Module BUFCACHE.
 
   Definition rep (cs : cachestate) (m : @mem addr (@weq addrlen) valuset) :=
