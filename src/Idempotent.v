@@ -2,10 +2,13 @@ Require Import Hoare.
 Require Import Prog.
 Require Import Pred PredCrash.
 Require Import SepAuto.
+Require Import Word.
+
+Set Universe Polymorphism.
 
 Lemma corr3_from_corr2_failed:
   forall (TF TR: Type) m mr (p: prog TF) (r: prog TR) out
-         (crash: pred) ppre rpre crashdone_p crashdone_r,
+         (crash: @pred addr (@weq addrlen) _) ppre rpre crashdone_p crashdone_r,
   exec_recover mr p r out
   -> TF = TR
   -> possible_crash m mr
@@ -33,7 +36,7 @@ Qed.
 
 Lemma corr3_from_corr2_finished:
   forall (TF TR: Type) m mr (p: prog TF) (r: prog TR) out
-         (crash: pred) ppre rpre crashdone_p crashdone_r m' v,
+         (crash: @pred addr (@weq addrlen) _) ppre rpre crashdone_p crashdone_r m' v,
   exec_recover mr p r out
   -> TF = TR
   -> possible_crash m mr
@@ -56,7 +59,7 @@ Qed.
 
 Lemma corr3_from_corr2_recovered:
   forall (TF TR: Type) m mr (p: prog TF) (r: prog TR) out
-         (crash: pred) ppre rpre crashdone_p crashdone_r m' v,
+         (crash: @pred addr (@weq addrlen) _) ppre rpre crashdone_p crashdone_r m' v,
   exec_recover mr p r out
   -> TF = TR
   -> possible_crash m mr
@@ -85,10 +88,12 @@ Proof.
       * destruct H2. destruct H2. congruence.
 Qed.
 
-Theorem corr3_from_corr2: forall TF TR (p: prog TF) (r: prog TR) ppre rpre, {{ ppre }} p
+Theorem corr3_from_corr2: forall TF TR (p: prog TF) (r: prog TR)
+  (ppre: donecond TF -> @pred _ (@weq addrlen) _ -> @pred _ (@weq addrlen) _)
+  (rpre: donecond TR -> @pred _ (@weq addrlen) _ -> @pred _ (@weq addrlen) _), {{ ppre }} p
   -> {{ rpre }} r
-  -> {{ fun done crashdone => exists crash,
-        ppre done crash * [[ crash_xform crash =p=> rpre crashdone crash ]] }} p >> r.
+  -> {{ fun done crashdone => exists (crash: @pred _ (@weq addrlen) _),
+        ppre done crash * [[ @pimpl _ (@weq addrlen) _ (crash_xform crash) (rpre crashdone crash) ]] }} p >> r.
 Proof.
   unfold corr3; intros.
   destruct H1 as [crash H1].
@@ -122,8 +127,8 @@ Theorem corr3_from_corr2_rx :
          ppre rpre,
   {{ ppre }} progseq p rxp
   -> {{ rpre }} progseq r rxr
-  -> {{ fun done crashdone => exists crash,
-        ppre done crash * [[ crash_xform crash =p=> rpre crashdone crash ]] }} p rxp >> r rxr.
+  -> {{ fun done crashdone => exists (crash: @pred _ (@weq addrlen) _),
+        ppre done crash * [[ @pimpl _ (@weq _) _ (crash_xform crash) (rpre crashdone crash) ]] }} p rxp >> r rxr.
 Proof.
   unfold progseq; intros.
   apply corr3_from_corr2; eauto.

@@ -7,6 +7,7 @@ Require Import Hoare.
 Require Import Word.
 
 Set Implicit Arguments.
+Set Universe Polymorphism.
 
 (* Helpers for existential variables *)
 
@@ -373,7 +374,7 @@ Qed.
 Ltac pick := solve [ repeat ((apply PickFirst; solve [ trivial with okToUnify ])
                                || apply PickLater) ].
 
-Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,
+Theorem imply_one : forall AT AEQ V qs qs' (p q : @pred AT AEQ V) ps F,
   (pick q qs qs' /\ (p =p=> q))
   -> (stars ps * F =p=> stars qs')
   -> stars (p :: ps) * F =p=> stars qs.

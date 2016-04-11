@@ -230,3 +230,18 @@ Ltac learn_all t :=
   | [ H: forall (_:t), _, x:t |- _ ] =>
     learn that (H x)
   end.
+
+Ltac head_symbol e :=
+  lazymatch e with
+  | ?h _ _ _ _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ _ => h
+  | ?h _ _ _ _ _ => h
+  | ?h _ _ _ _ => h
+  | ?h _ _ _ => h
+  | ?h _ _ => h
+  | ?h _ => h
+  | ?h => h
+  end.

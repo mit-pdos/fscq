@@ -55,21 +55,6 @@ Ltac next_control_step :=
       eapply pimpl_ok; [ now (auto with prog) | set_prog p  ]
     end.
 
-Ltac head_symbol e :=
-  lazymatch e with
-  | ?h _ _ _ _ _ _ _ _ _ _ => h
-  | ?h _ _ _ _ _ _ _ _ _ => h
-  | ?h _ _ _ _ _ _ _ _ => h
-  | ?h _ _ _ _ _ _ _ => h
-  | ?h _ _ _ _ _ _ => h
-  | ?h _ _ _ _ _ => h
-  | ?h _ _ _ _ => h
-  | ?h _ _ _ => h
-  | ?h _ _ => h
-  | ?h _ => h
-  | ?h => h
-  end.
-
 Ltac unfold_prog :=
   lazymatch goal with
   | [ |- valid _ _ _ _ ?p ] =>

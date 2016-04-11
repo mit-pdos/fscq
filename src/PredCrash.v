@@ -7,6 +7,8 @@ Require Import Morphisms.
 
 Set Implicit Arguments.
 
+Set Universe Polymorphism.
+
 
 Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
 Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.

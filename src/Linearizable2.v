@@ -218,10 +218,11 @@ Arguments linear_mem {A AEQ V}.
       match mt with
       | @mem ?AT ?AEQ ?V =>
         exact (@linear_mem AT AEQ V)
-      | _ => match eval unfold mt in mt with
-        | @mem ?AT ?AEQ ?V =>
-          exact (@linear_mem AT AEQ V)
-        end
+      | _ => let h := head_symbol mt in
+             match eval unfold h in mt with
+             | @mem ?AT ?AEQ ?V =>
+               exact (@linear_mem AT AEQ V)
+             end
       | _ => idtac "linearized" mt "failed; not a mem"
       end) (at level 50, only parsing).
 
