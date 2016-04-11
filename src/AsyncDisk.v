@@ -73,10 +73,8 @@ Definition vsmerge (vs : valuset) : list valu := fst vs :: snd vs.
 (* Hashing *)
 Definition hashlen := 256.
 Parameter hash_fwd : forall sz, word sz -> word hashlen.
-Definition default_entry : (addr * valu) := (0, $0).
-Definition combine_entry (a : addr * valu) :=
-  Word.combine (natToWord addrlen (fst a)) (snd a).
-Definition default_hash := hash_fwd (combine_entry default_entry).
+Definition default_valu : valu := $0.
+Definition default_hash := hash_fwd default_valu.
 
 (* A hashmap holds all keys that Hash has been called on, maps hash values to keys. *)
 Inductive hashmap : Type :=
@@ -88,7 +86,7 @@ Definition upd_hashmap' hm h sz k : hashmap :=
 
 Fixpoint hashmap_get hm h : option {sz : nat & word sz} :=
   if (weq h default_hash)
-    then Some (existT _ _ (combine_entry default_entry)) else
+    then Some (existT _ _ default_valu) else
     (match hm with
     | empty_hashmap => None
     | upd_hashmap hm' h' k' =>  if (weq h' h)

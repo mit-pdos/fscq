@@ -9,7 +9,6 @@ Require Import List.
 Set Implicit Arguments.
 
 
-(* Ouch...this should be generalized to any word size eventually. *)
 Definition hash2 sz1 sz2 (a : word sz1) (b : word sz2) :=
   hash_fwd (Word.combine a b).
 
@@ -18,21 +17,30 @@ Definition hash2 sz1 sz2 (a : word sz1) (b : word sz2) :=
       h = hash( vl[n-1] || ... hash(vl[0] || default_hash))
     When the list of values is empty, h must be equal to the default hash
     value.
-  TODO: Better to eventually follow the more sane method of prepending each
-    value we want to hash with $1, rather than depending on word size to
-    prove injectivity.
 *)
-Inductive hash_list_rep : (list (addr * valu)) -> word hashlen -> hashmap -> Prop :=
+Inductive hash_list_rep : (list valu) -> word hashlen -> hashmap -> Prop :=
   | HL_nil : forall hl hm,
-      hl = default_hash ->
+      hl = hash_fwd default_valu ->
       hash_list_rep nil hl hm
   | HL_cons : forall l hl hl' x hm,
       hash_list_rep l hl hm ->
-      goodSize addrlen (fst x) ->
-      hl' = hash2 (combine_entry x) hl ->
-      hashmap_get hm hl' = Some (existT _ _ (Word.combine (combine_entry x) hl)) ->
+      hl' = hash2 x hl ->
+      hashmap_get hm hl' = Some (existT _ _ (Word.combine x hl)) ->
       hash_list_rep (x :: l) hl' hm.
 
+(** hash_list_prefixes takes in a list of values vl, a list of hashes hl,
+    and a hashmap hm. For each index i in hl, hl[i] must be equal to the
+    hash of the list vl[:i+1].
+    TODO: This could probably be merged into hash_list_rep, but not sure
+    how much more work that would be right now.
+*)
+Inductive hash_list_prefixes : list valu -> list (word hashlen) -> hashmap -> Prop :=
+  | HLP_default : forall hm,
+    hash_list_prefixes nil nil hm
+  | HLP_cons : forall v h vl hl hm,
+    hash_list_rep (v :: vl) h hm ->
+    hash_list_prefixes vl hl hm ->
+    hash_list_prefixes (v :: vl) (h :: hl) hm.
 
 (** hashmap_subset takes in a list hkl of (hash, key) pairs and two
     hashmaps hm and hm'. hm' is equal to hm updated with all of the
@@ -47,23 +55,13 @@ Inductive hashmap_subset : list (word hashlen * {sz : nat & word sz}) -> hashmap
       hashmap_subset ((h, (existT _ _ k)) :: l) hm (upd_hashmap' hm' h k).
 
 
-Ltac destruct_sigT Hx :=
-  try match goal with
-  | [ H: None = Some _ |- _ ] => inversion H
-  | [ H: Some _ = None |- _ ] => inversion H
-  | [ H: existT _ ?l1 _ = existT _ ?l2 _ |- _ ]
-    => assert (Hx: l1 = l2); try congruence; clear H
-  | [ H: Some ?e1 = Some ?e2 |- _ ]
-    => let H' := fresh in
-        assert (H': e1 = e2); try congruence; clear H
-  end.
-
 Ltac existT_wordsz_neq H :=
   let Hx := fresh in
-  repeat destruct_sigT Hx;
+  inversion H as [ Hx ];
   try (rewrite <- plus_0_r in Hx at 1;
-       inversion Hx as [ Hx' ]; clear Hx;
-       apply plus_reg_l in Hx'; inversion Hx');
+      apply plus_reg_l in Hx);
+  try (rewrite <- plus_0_r in Hx;
+      apply plus_reg_l in Hx);
   inversion Hx.
 
 Ltac existT_wordsz_eq H :=
@@ -75,8 +73,8 @@ Ltac existT_wordsz_eq H :=
 Ltac contradict_hashmap_get_default H hm :=
   let Hx := fresh in
   contradict H;
-  destruct hm; unfold hashmap_get;
-  destruct (weq default_hash default_hash);
+  destruct hm; unfold hashmap_get, default_hash;
+  destruct (weq (hash_fwd default_valu) (hash_fwd default_valu));
   intro Hx; try existT_wordsz_neq Hx;
   intuition.
 
@@ -94,7 +92,7 @@ Proof.
 Qed.
 
 Theorem hashmap_get_default : forall hm,
-  hashmap_get hm default_hash = Some (existT _ _ (combine_entry default_entry)).
+  hashmap_get hm default_hash = Some (existT _ _ default_valu).
 Proof.
   unfold hashmap_get.
   destruct hm; destruct (weq default_hash default_hash);
@@ -113,15 +111,15 @@ Proof.
 
   unfold upd_hashmap', hashmap_get.
   destruct (weq hl default_hash) eqn:Hhl.
-  - rewrite e in H8.
-    rewrite hashmap_get_default in H8.
+  - rewrite e in H7.
+    rewrite hashmap_get_default in H7.
     auto.
   - destruct (weq h hl) eqn:Hhl'; auto.
     subst.
     unfold hash_safe in H0.
     inversion H0 as [ Hget | Hget ];
-      rewrite Hget in H8; [ inversion H8 | ];
-      auto.
+      rewrite Hget in H7;
+      inversion H7; auto.
 Qed.
 
 Theorem hash_list_rep_subset : forall hkl l hl hm hm',
@@ -146,24 +144,16 @@ Proof.
     unfold hash2 in *; intuition;
     subst; auto.
 
+  contradict_hashmap_get_default H6 hm.
+
+  rewrite H8 in H7.
   contradict_hashmap_get_default H7 hm.
 
-  rewrite H9 in H8.
-  contradict_hashmap_get_default H8 hm.
-
-  rewrite H8 in H12.
-  destruct_sigT H.
-  existT_wordsz_eq H1.
+  rewrite H7 in H10.
+  inversion H10.
+  existT_wordsz_eq H2.
   intuition.
-  unfold combine_entry in *.
-  apply combine_inj in H5.
-  intuition.
-  apply natToWord_inj in H2; auto.
-  f_equal.
-  rewrite surjective_pairing;
-  rewrite surjective_pairing at 1;
-  congruence.
-  apply IHl1 in H9; congruence.
+  apply IHl1 in H8; congruence.
 Qed.
 
 Theorem hash_list_injective2 : forall l h1 h2 hm,
@@ -267,6 +257,60 @@ Proof.
   destruct (weq h default_hash); intuition.
   destruct (weq w h); intuition.
   eapply IHhm2; eauto.
+Qed.
+
+(*Lemma hash_list_prefixes_forall : forall i vl hl hm default defaultv,
+  hash_list_prefixes vl hl hm ->
+  i < length hl - 1 ->
+  selN hl i default = hash2 (selN vl i defaultv) (selN hl (i + 1) default).
+Proof.
+  induction i; intros.
+  destruct hl. inversion H0.
+  destruct vl. inversion H.
+
+  inversion H; subst.
+  simpl. inversion H7.
+  rewrite <- H2 in H0. inversion H0.
+  simpl.
+  inversion H6; subst.
+  eapply hash_list_injective2 in H1; eauto.
+  subst; auto.
+
+  destruct hl. inversion H0.
+  destruct vl. inversion H.
+
+  simpl.
+  eapply IHi.
+  inversion H; subst. eauto.
+  simpl in *. omega.
+Qed.*)
+
+
+Theorem hash_list_prefixes_upd : forall vl hl hm h sz (k : word sz),
+  hash_list_prefixes vl hl hm ->
+  hash_safe hm h k ->
+  hash_list_prefixes vl hl (upd_hashmap' hm h k).
+Proof.
+  induction vl; intros.
+  inversion H; subst. constructor.
+
+  inversion H; subst.
+  constructor.
+  apply hash_list_rep_upd; auto.
+  eapply IHvl; auto.
+Qed.
+
+Theorem hash_list_prefixes_subset : forall l hm1 hm2 vl hl,
+  hashmap_subset l hm1 hm2 ->
+  hash_list_prefixes vl hl hm1 ->
+  hash_list_prefixes vl hl hm2.
+Proof.
+  induction l; intros.
+  inversion H; subst; auto.
+
+  inversion H; subst.
+  apply hash_list_prefixes_upd.
+  eapply IHl; eauto. auto.
 Qed.
 
 Lemma upd_hashmap_neq : forall hm h k,

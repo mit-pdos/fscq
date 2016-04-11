@@ -12,6 +12,7 @@ Require Import Mem.
 Require Import SepAuto.
 Require Import List.
 Require Import Array.
+Require Import EqdepFacts.
 Require Import Arith.
 Require Import ListUtils.
 Require Import Omega.
@@ -29,7 +30,7 @@ Definition hash_list T h values rx : prog T :=
     [[ hash_list_rep (rev (firstn i values) ++ l) hash hm' ]]
   OnCrash crash
   Begin
-    hash <- Hash (Word.combine (combine_entry (selN values i default_entry)) hash);
+    hash <- Hash (Word.combine (selN values i default_valu) hash);
     lrx ^(hash)
   Rof ^(h);
   rx hash.
@@ -38,8 +39,7 @@ Definition hash_list T h values rx : prog T :=
 Theorem hash_list_ok : forall h values,
   {< l,
   PRE:hm
-    emp * [[ Forall (fun e => goodSize addrlen (fst e)) values ]]
-        * [[ hash_list_rep l h hm ]]
+    emp * [[ hash_list_rep l h hm ]]
   POST:hm' RET:h'
     emp * [[ hash_list_rep (rev values ++ l) h' hm' ]]
   CRASH:hm'
@@ -63,7 +63,7 @@ Proof.
     + destruct values.
       cbn in *. omega.
 
-      assert (Hvalues: rev (p0 :: firstn m values) = selN (p0 :: values) m default_entry :: rev (firstn m (p0 :: values))).
+      assert (Hvalues: rev (w0 :: firstn m values) = selN (w0 :: values) m default_valu :: rev (firstn m (w0 :: values))).
         rewrite <- rev_unit.
         rewrite <- firstn_plusone_selN; try omega.
         destruct (m + 1) eqn:Hm; try omega.
@@ -74,19 +74,17 @@ Proof.
       rewrite Hvalues.
       solve_hash_list_rep.
       solve_hash_list_rep.
-      eapply Forall_forall in H5; eauto.
-      apply in_selN; auto.
       auto.
       apply upd_hashmap'_eq.
       intuition.
       unfold hash_safe in *.
-      rewrite H7 in H15.
-      inversion H15 as [ Hdef | Hdef ];
+      rewrite H6 in H14.
+      inversion H14 as [ Hdef | Hdef ];
       contradict_hashmap_get_default Hdef hm0.
 
   (* Loop invariant implies post-condition. *)
   - step.
-    rewrite firstn_oob in H8; try omega.
+    rewrite firstn_oob in H7; try omega.
     auto.
 
   - exists 0; eexists. simpl. solve_hash_list_rep.
