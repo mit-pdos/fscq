@@ -394,6 +394,14 @@ Module MyTBSemantics <: TwoBlockSemantics MySemanticsVars MySemantics MyCacheVar
 
   Transparent get.
 
+  Ltac not_hin :=
+    lazymatch goal with
+    | [ |- HIn _ _ -> False ] =>
+      let H := fresh in
+      intro H; apply hin_iff_index_in in H;
+      cbn in H; solve [ intuition ]
+    end.
+
   Theorem twoblock_relation_preserved : forall tid s s',
     modified stateVars s s' ->
     twoblockR tid s s' ->
@@ -401,11 +409,8 @@ Module MyTBSemantics <: TwoBlockSemantics MySemanticsVars MySemantics MyCacheVar
   Proof.
     unfold R, stateVars; intuition.
     unfold cacheR.
-    repeat rewrite H; auto; intros.
+    repeat rewrite H; try not_hin.
     apply cacheR_refl.
-
-    apply hin_iff_index_in in H1; cbn in *; intuition.
-    apply hin_iff_index_in in H1; cbn in *; intuition.
   Qed.
 
   Theorem twoblock_invariant_holds : forall d m s,
@@ -424,16 +429,8 @@ Module MyTBSemantics <: TwoBlockSemantics MySemanticsVars MySemantics MyCacheVar
   Proof.
     unfold Inv; intuition.
     unfold cacheI in *.
-    repeat rewrite <- H2; auto; intros;
-      try match goal with
-      | [ H: HIn _ _ |- _ ] =>
-        apply hin_iff_index_in in H; cbn in H; try solve [ intuition ]
-      end.
-    repeat rewrite <- H1; auto; intros;
-      try match goal with
-      | [ H: HIn _ _ |- _ ] =>
-        apply hin_iff_index_in in H; cbn in H; try solve [ intuition ]
-      end.
+    repeat rewrite <- H2; try not_hin.
+    repeat rewrite <- H1; try not_hin.
     intuition.
     admit. (* oops, cacheI maintained some fact about d that is now lost *)
   Admitted.
