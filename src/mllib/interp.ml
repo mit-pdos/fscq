@@ -40,10 +40,14 @@ let sync_disk b =
   let fd = !disk_fd in
   ExtUnix.All.fsync fd
 
+let set_size_disk b =
+  let fd = !disk_fd in
+  Unix.ftruncate fd (b*blockbytes)
+
 let rec run_dcode = function
   | Prog.Done t ->
     if debug then Printf.printf "done()\n";
-    ()
+    t
   | Prog.Trim (a, rx) ->
     if debug then Printf.printf "trim(%d)\n" (addr_to_int a);
     run_dcode (rx ())
@@ -64,4 +68,4 @@ let run_prog p =
   try
     run_dcode (p (fun x -> Prog.Done x))
   with
-    e -> Printf.printf "Exception: %s\n" (Printexc.to_string e)
+    e -> Printf.printf "Exception: %s\n" (Printexc.to_string e); raise e
