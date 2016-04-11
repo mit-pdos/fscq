@@ -145,11 +145,18 @@ Theorem update_block_d_recover_ok : forall fsxp a v ms,
                 [[ In v' (v :: (vsmerge v0)) ]]) ]]]
   >>} update_block_d (FSXPLog fsxp) a v ms >> recover.
 Proof.
-  recover_ro_ok.
+  unfold forall_helper.
+  intros; eexists; intros.
+  eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx.
   eapply update_block_d_ok.
   eapply recover_ok.
   cancel.
   step.
+  instantiate (idemcrash := ((exists n : addr, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n (v0, []))
+   ⋁ (exists (ms' : LOG.memstate) (m' : LogReplay.diskstate),
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', [])) ms'
+        ✶ 【 m' ‣‣ v1 ✶ a |-> (v, vsmerge (v2_cur, v2_old)) 】))%pred).
 
   apply pimpl_refl.
   xform_norm.
