@@ -36,22 +36,22 @@ Definition update_block_d T lxp a v ms rx : prog T :=
   let^ (ms, ok) <- LOG.commit lxp ms;
   rx ^(ms, ok).
 
-Theorem update_block_d_ok : forall lxp a v ms,
+Theorem update_block_d_ok : forall fsxp a v ms,
   {< m F v0,
   PRE
-    LOG.rep lxp emp (LOG.NoTxn (m, nil)) ms *
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms *
     [[[ m ::: (F * a |-> v0) ]]] *
     [[ a <> 0 ]]
   POST RET:^(ms, r)
     exists m',
-    LOG.rep lxp emp (LOG.NoTxn (m', nil)) ms *
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
     [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
   CRASH
-    LOG.rep lxp emp (LOG.NoTxn (m, nil)) ms \/
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms \/
     exists m',
-    LOG.rep lxp emp (LOG.NoTxn (m', nil)) ms *
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
     [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-  >} update_block_d lxp a v ms.
+  >} update_block_d (FSXPLog fsxp) a v ms.
 Proof.
 
 Admitted.
@@ -64,8 +64,8 @@ Definition recover {T} rx : prog T :=
   rx ^(mscs, fsxp).
 
 
-Theorem recover_ok : forall cs,
-  {< fsxp FD1 FD2,
+Theorem recover_ok :
+  {< fsxp cs FD1 FD2,
    PRE
      LOG.recover_any_pred (FSXPLog fsxp) cs (SB.rep fsxp) FD1 FD2
    POST RET:^(ms, fsxp')
@@ -101,59 +101,76 @@ Proof.
 Qed.
 
 
-Theorem update_block_d_recover_ok : forall lxp a v ms,
+Ltac recover_ro_ok := intros;
+  repeat match goal with
+    | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
+    | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply corr3_from_corr2_rx; eauto with prog
+    | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3; intros
+    | [ |- corr2 _ _ ] => idtac "corr2"; step
+    | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; autorewrite with crash_xform
+    | [ H: pimpl (crash_xform _) _ |- _ ] => idtac "crash_xform2"; rewrite H; cancel
+    | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
+  end.
+
+Theorem update_block_d_recover_ok : forall fsxp a v ms,
   {<< m F v0,
   PRE
-    LOG.rep lxp emp (LOG.NoTxn (m, nil)) ms *
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms *
     [[[ m ::: (F * a |-> v0) ]]] *
     [[ a <> 0 ]]
   POST RET:^(ms, r)
     exists m',
-    LOG.rep lxp emp (LOG.NoTxn (m', nil)) ms *
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
     [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-  REC RET:^(ms, lxp)
+  REC RET:^(ms, fsxp)
     exists m',
-    LOG.rep lxp emp (LOG.NoTxn (m', nil)) ms *
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
     [[[ m' ::: crash_xform (F * a |-> (v, vsmerge v0)) ]]]
-  >>} update_block_d lxp a v ms >> recover.
+  >>} update_block_d (FSXPLog fsxp) a v ms >> recover.
 Proof.
-
-  Ltac recover_ro_ok := intros;
-    repeat match goal with
-      | [ |- forall_helper _ ] => idtac "forall"; unfold
-forall_helper; intros; eexists; intros
-      | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply
-corr3_from_corr2_rx; eauto with prog
-      | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3; intros
-      | [ |- corr2 _ _ ] => idtac "corr2"; step
-      | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform";
-autorewrite with crash_xform
-      | [ H: pimpl (crash_xform _) _ |- _ ] => idtac "crash_xform2";
-rewrite H; cancel
-      | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
-    end.
-
   recover_ro_ok.
   eapply update_block_d_ok.
   eapply recover_ok.
 
   cancel.
-
   step.
   apply pimpl_refl.
 
-  norml; unfold stars; simpl.
-  xform.
-  cancel.
+  xform_norm.
+  - rewrite LOG.notxn_intact.
+    rewrite LOG.intact_recover_any_pred by eauto.
+    cancel.
+    rewrite SB.crash_xform_rep; cancel.
 
-  admit.
-  admit.
-  admit.
+    step.
+    pred_apply; xform_norm.
+    rewrite crash_xform_ptsto_vsmerge; cancel.
+    xform_norm; or_l; auto.
+    pred_apply; xform_norm.
+    rewrite crash_xform_ptsto_vsmerge; cancel.
+    xform_norm; or_l; auto.
 
+    xform_norm.
+    recover_ro_ok.
+    rewrite LOG.recover_any_pred_rep.
+    admit. (* how to avoid introducing a new ms? *)
 
-  unfold LOG.recover_any.
-  instantiate (mset := (v0, [])).
-  admit.
+  - xform.
+    rewrite sep_star_comm.
+    apply pimpl_exists_l_star.
+    apply pimpl_exists_l; intros.
+    xform_norm.
+    rewrite LOG.notxn_intact.
+    rewrite LOG.intact_recover_any_pred by eauto.
+    apply pimpl_exists_l_star.
+    apply pimpl_exists_l; intros.
+    rewrite SB.crash_xform_rep; cancel.
+
+    step.
+    recover_ro_ok.
+    rewrite LOG.recover_any_pred_rep.
+    admit. (* how to avoid introducing a new ms? *)
+Admitted.
 
 
 

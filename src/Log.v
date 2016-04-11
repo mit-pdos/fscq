@@ -73,8 +73,8 @@ Module LOG.
       GLog.would_recover_any xp F n ds
   end)%pred.
 
-  Definition memstate0 cs :=
-    mk_memstate vmap0 (GLog.mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs)).
+  Definition memstate0 mm cs :=
+    mk_memstate vmap0 (GLog.mk_memstate vmap0 nil (MLog.mk_memstate mm cs)).
 
   Definition intact xp F ds :=
     (exists ms,
@@ -476,6 +476,25 @@ Module LOG.
     unfold recover_any_pred, recover_any, rep; intros.
     xform_norm.
     rewrite GLog.would_recover_any_any_pred; eauto.
+  Qed.
+
+  Theorem recover_any_pred_rep : forall xp cs (F FD1 FD2: pred),
+    recover_any_pred xp cs F FD1 FD2 =p=> exists d ms,
+    rep xp F (NoTxn (d, nil)) ms *
+    ( [[[ d ::: crash_xform FD1 ]]] \/ [[[ d ::: crash_xform FD2 ]]]).
+  Proof.
+    unfold recover_any_pred, GLog.recover_any_pred, MLog.recover_either_pred.
+    unfold rep, GLog.rep, MLog.rep; intros.
+    cancel.
+    eassign (memstate0 dummy1 cs); eassign raw; simpl; auto.
+
+    apply sep_star_or_distr in H0; destruct H0; destruct_lifts.
+    cancel; or_l. cancel. eauto.
+    cancel; or_r. cancel.
+    auto.
+    apply GLog.vmap_match_nil.
+    apply GLog.dset_match_nil.
+    pred_apply; cancel.
   Qed.
 
 
@@ -953,7 +972,75 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
+(*  Hint Extern 0 (okToUnify (recover_any_pred _ _ _ _ _) (recover_any_pred _ _ _ _ _)) => constructor : okToUnify. *)
+
 End LOG.
+
+
+(* rewrite rules for recover_either_pred *)
+
+Require Import RelationClasses.
+Require Import Morphisms.
+
+Instance recover_any_pred_proper_iff :
+  Proper (eq ==> eq ==> piff ==> piff ==> piff ==> pimpl) LOG.recover_any_pred.
+Proof.
+  unfold Proper, respectful; intros.
+  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
+  subst. cancel.
+  rewrite sep_star_or_distr; or_l.
+  cancel; eauto.
+  rewrite H1; eauto.
+  pred_apply; rewrite H2; eauto.
+
+  rewrite sep_star_or_distr; or_r.
+  cancel; eauto.
+  rewrite H1; eauto.
+  pred_apply; rewrite H3; eauto.
+
+  exists ds; exists n; intuition.
+  pred_apply; rewrite H2; auto.
+  pred_apply; rewrite H3; eauto.
+Qed.
+
+
+Instance recover_any_pred_proper_eq :
+  Proper (eq ==> eq ==> piff ==> eq ==> eq ==> pimpl) LOG.recover_any_pred.
+Proof.
+  unfold Proper, respectful; intros.
+  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
+  subst. cancel.
+  rewrite sep_star_or_distr; or_l.
+  cancel; eauto.
+  rewrite H1; eauto.
+
+  rewrite sep_star_or_distr; or_r.
+  cancel; eauto.
+  rewrite H1; eauto.
+
+  exists ds; exists n; intuition.
+Qed.
+
+
+Instance recover_any_pred_proper_pimpl :
+  Proper (eq ==> eq ==> piff ==> pimpl ==> pimpl ==> pimpl) LOG.recover_any_pred.
+Proof.
+  unfold Proper, respectful; intros.
+  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
+  subst. cancel.
+  rewrite sep_star_or_distr; or_l.
+  cancel; eauto.
+  rewrite H1; eauto.
+  pred_apply; rewrite H2; eauto.
+
+  rewrite sep_star_or_distr; or_r.
+  cancel; eauto.
+  rewrite H1; eauto.
+  pred_apply; rewrite H3; eauto.
+
+  exists ds; exists n; intuition.
+Qed.
+
 
 
 Global Opaque LOG.begin.
