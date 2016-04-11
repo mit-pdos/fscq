@@ -122,98 +122,72 @@ Ltac recover_ro_ok := intros;
     | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply corr3_from_corr2_rx; eauto with prog
     | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3; intros
     | [ |- corr2 _ _ ] => idtac "corr2"; step
-    | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; autorewrite with crash_xform
-    | [ H: pimpl (crash_xform _) _ |- _ ] => idtac "crash_xform2"; rewrite H; cancel
+    | [ H: crash_xform ?x =p=> ?x |- context [ crash_xform ?x ] ] => rewrite H
     | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
+    | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; progress autorewrite with crash_xform
   end.
+
+
+Hint Extern 0 (okToUnify (LOG.recover_any_pred _ _ _ _ _)
+                         (LOG.recover_any_pred _ _ _ _ _)) => constructor : okToUnify.
 
 Theorem update_block_d_recover_ok : forall fsxp a v ms,
   {<< m F v0,
   PRE
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms *
     [[[ m ::: (F * a |-> v0) ]]]
-  POST RET:^(ms, r)
-    exists m',
+  POST RET:ms  exists m',
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
     [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-  REC RET:^(ms, fsxp)
-    exists m',
+  REC RET:^(ms, fsxp) exists m',
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
-    [[[ m' ::: crash_xform (F * a |-> (v, vsmerge v0)) ]]]
+    [[[ m' ::: (exists v', crash_xform F * a |=> v' *
+                [[ In v' (v :: (vsmerge v0)) ]]) ]]]
   >>} update_block_d (FSXPLog fsxp) a v ms >> recover.
 Proof.
-  intros.
-  unfold forall_helper.
-  intros.
-  eexists.
-  intros.
-  eapply pimpl_ok3.
-  eapply corr3_from_corr2_rx.
+  recover_ro_ok.
   eapply update_block_d_ok.
   eapply recover_ok.
-  intros.
-  norm. cancel. intuition.
-  eauto.
+  cancel.
+  step.
 
-  eapply pimpl_ok2.
-  apply H2.
-  intros. cancel. subst.
-  2: apply pimpl_refl.
-  eapply pimpl_trans.
-  apply LOG.recover_idem.
-  
   apply pimpl_refl.
-  apply pimpl_refl.
-
-  xform_norm.
-  xform.
-  rewrite sep_star_comm.
-  apply pimpl_exists_l_star.
-  apply pimpl_exists_l; intros.
   xform_norm.
 
-  - rewrite LOG.notxn_intact.
-    rewrite LOG.intact_recover_any_pred by eauto.
-    apply pimpl_exists_l_star.
-    apply pimpl_exists_l; intros.
-    rewrite SB.crash_xform_rep; cancel.
-    eauto.
+  - xform; norml; unfold stars; simpl.
+    rewrite LOG.recover_any_any_pred; eauto.
+    norml; unfold stars; simpl.
+    rewrite SB.crash_xform_rep.
+    cancel.
 
     step.
-    pred_apply; xform_norm.
-    rewrite crash_xform_ptsto_vsmerge; cancel.
-    xform_norm; or_l; auto.
-    pred_apply; xform_norm.
-    rewrite crash_xform_ptsto_vsmerge; cancel.
-    xform_norm; or_l; auto.
+    pred_apply; xform_dist.
+    rewrite crash_xform_ptsto; cancel.
+    pred_apply; xform_dist.
+    rewrite crash_xform_ptsto; cancel.
 
-    xform_norm.
-    rewrite LOG.recover_any_pred_rep.
-    recover_ro_ok.
-    cancel.
+    norml; unfold stars; simpl.
+    (* weird goal: CRASH of recover =p=> CRASH of update_block_d?  *)
     admit.
-    admit. (* how to avoid introducing a new disk? *)
 
-  - xform.
-    apply pimpl_exists_l_star.
-    apply pimpl_exists_l; intros.
+  - repeat (rewrite crash_xform_exists_comm; norml; unfold stars; simpl).
     xform_norm.
     rewrite LOG.notxn_intact.
-    rewrite LOG.intact_recover_any_pred by eauto.
-    apply pimpl_exists_l_star.
-    apply pimpl_exists_l; intros.
-    rewrite SB.crash_xform_rep; cancel.
+    rewrite LOG.intact_recover_any_pred; eauto.
     recover_ro_ok.
-    eassign x1. eassign fsxp. eassign F_. cancel.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    cancel.
 
     step.
-    rewrite sep_star_comm.
-    apply pimpl_exists_l_star.
-    apply pimpl_exists_l; intros.
-    rewrite LOG.recover_any_pred_rep.
-    cancel.
+    pred_apply; xform_dist.
+    rewrite crash_xform_ptsto; cancel.
+    pred_apply; xform_dist.
+    rewrite crash_xform_ptsto; cancel.
+
+    norml; unfold stars; simpl.
+    (* weird goal: CRASH of recover =p=> CRASH of update_block_d?  *)
     admit.
-    admit. (* how to avoid introducing a new disk? *)
 Admitted.
 
 
