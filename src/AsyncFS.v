@@ -202,6 +202,77 @@ Admitted.
 
 
 
+Definition update_block_d2 T lxp a v ms rx : prog T :=
+  ms <- LOG.begin lxp ms;
+  ms <- LOG.dwrite lxp a v ms;
+  let^ (ms, r) <- LOG.commit lxp ms;
+  rx ^(ms, r).
+
+
+Theorem update_block_d2_ok : forall fsxp a v ms,
+  {< F ds v0,
+  PRE
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) ms *
+      [[[ ds!! ::: (F * a |-> v0) ]]]
+  POST RET:^(ms, r)
+      ([[ r = false ]] * exists m',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms)
+  \/  ([[ r = true  ]] * exists ds',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') ms *
+        [[[ ds'!! ::: (F * a |-> (v, vsmerge v0)) ]]])
+  CRASH
+      (exists n, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n ds) \/
+      exists ms' ds',
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') ms' *
+      [[[ ds'!! ::: (F * a |-> (v, vsmerge v0)) ]]]
+  >} update_block_d2 (FSXPLog fsxp) a v ms.
+Proof.
+  unfold update_block_d2; intros.
+  step.
+  step.
+
+  (* XXX: why eauto with prog pick the wrong spec? *)
+  eapply pimpl_ok2.
+  apply LOG.commit_ok.
+  cancel.
+  step.
+
+  subst; pimpl_crash; cancel.
+  or_r; cancel.
+  or_l; cancel.
+  rewrite LOG.active_notxn.
+  or_r; cancel.
+  rewrite LOG.notxn_intact, LOG.intact_any.
+  or_l; cancel.
+Qed.
+
+
+Theorem update_block_d2_recover_ok : forall fsxp a v ms,
+  {<< ds F v0,
+  PRE
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) ms *
+      [[[ ds!! ::: (F * a |-> v0) ]]]
+  POST RET:^(ms, r)
+      ([[ r = false ]] * exists m',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms)
+  \/  ([[ r = true  ]] * exists ds',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') ms *
+        [[[ ds'!! ::: (F * a |-> (v, vsmerge v0)) ]]])
+  REC RET:^(ms, fsxp) exists m',
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
+    [[[ m' ::: (exists v', crash_xform F * a |=> v' *
+                [[ In v' (v :: (vsmerge v0)) ]]) ]]]
+  >>} update_block_d2 (FSXPLog fsxp) a v ms >> recover.
+Proof.
+
+Admitted.
+
+
+
+
+
+
+
 Module AFS.
 
   Parameter cachesize : nat.
