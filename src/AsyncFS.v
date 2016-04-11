@@ -46,10 +46,10 @@ Theorem update_block_d_ok : forall fsxp a v ms,
     exists m',
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
     [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-  CRASH
-    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms \/
+  CRASH exists ms',
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms' \/
     exists m',
-    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms' *
     [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
   >} update_block_d (FSXPLog fsxp) a v ms.
 Proof.
@@ -137,10 +137,18 @@ Proof.
   apply pimpl_refl.
 
   xform_norm.
+  xform.
+  rewrite sep_star_comm.
+  apply pimpl_exists_l_star.
+  apply pimpl_exists_l; intros.
+  xform_norm.
+
   - rewrite LOG.notxn_intact.
     rewrite LOG.intact_recover_any_pred by eauto.
-    cancel.
+    apply pimpl_exists_l_star.
+    apply pimpl_exists_l; intros.
     rewrite SB.crash_xform_rep; cancel.
+    eauto.
 
     step.
     pred_apply; xform_norm.
@@ -151,12 +159,13 @@ Proof.
     xform_norm; or_l; auto.
 
     xform_norm.
-    recover_ro_ok.
     rewrite LOG.recover_any_pred_rep.
-    admit. (* how to avoid introducing a new ms? *)
+    recover_ro_ok.
+    cancel.
+    admit.
+    admit. (* how to avoid introducing a new disk? *)
 
   - xform.
-    rewrite sep_star_comm.
     apply pimpl_exists_l_star.
     apply pimpl_exists_l; intros.
     xform_norm.
@@ -165,11 +174,17 @@ Proof.
     apply pimpl_exists_l_star.
     apply pimpl_exists_l; intros.
     rewrite SB.crash_xform_rep; cancel.
+    recover_ro_ok.
+    eassign x1. eassign fsxp. eassign F_. cancel.
 
     step.
-    recover_ro_ok.
+    rewrite sep_star_comm.
+    apply pimpl_exists_l_star.
+    apply pimpl_exists_l; intros.
     rewrite LOG.recover_any_pred_rep.
-    admit. (* how to avoid introducing a new ms? *)
+    cancel.
+    admit.
+    admit. (* how to avoid introducing a new disk? *)
 Admitted.
 
 
