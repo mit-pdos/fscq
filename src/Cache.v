@@ -40,6 +40,8 @@ Record cachestate := mk_cs {
   CSEvict : eviction_state
 }.
 
+Definition cache_empty := Build_cachestate (Map.empty valu) 0 0 eviction_init.
+
 Module BUFCACHE.
 
   (* write-back if a block is dirty, but do not evict from cache *)
