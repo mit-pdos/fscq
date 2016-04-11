@@ -152,7 +152,10 @@ Proof.
   eapply update_block_d_ok.
   eapply recover_ok.
   cancel.
-  step.
+  eapply pimpl_ok2.
+  eapply H2.
+  cancel.
+
   instantiate (idemcrash := ((exists n : addr, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n (v0, []))
    ⋁ (exists (ms' : LOG.memstate) (m' : LogReplay.diskstate),
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', [])) ms'
