@@ -65,7 +65,8 @@ Module CacheTransitionSystem (SemVars:SemanticsVars) (CVars : CacheVars SemVars)
       let locks := get GLocks s in
       let locks' := get GLocks s' in
       same_domain vd vd' /\
-      (forall a, lock_transition tid (Locks.get locks a) (Locks.get locks' a)).
+      linear_rel tid (Locks.get locks) (Locks.get locks')
+        (get GDisk s) (get GDisk s').
 
   Definition cacheI : Invariant Mcontents Scontents :=
     fun m s d =>
@@ -87,6 +88,7 @@ Module CacheTransitionSystem (SemVars:SemanticsVars) (CVars : CacheVars SemVars)
   Proof.
     unfold cacheR; intuition.
     apply same_domain_refl.
+    apply linear_rel_refl.
   Qed.
 
   Theorem cacheR_trans : forall tid s s' s'',
@@ -96,7 +98,7 @@ Module CacheTransitionSystem (SemVars:SemanticsVars) (CVars : CacheVars SemVars)
   Proof.
     unfold cacheR; intuition.
     eapply same_domain_trans; eauto.
-    eapply lock_transition_trans; eauto.
+    eapply linear_rel_trans; eauto.
   Qed.
 
 End CacheTransitionSystem.
@@ -501,8 +503,9 @@ Proof.
   eassumption.
   finish.
 
-  (* TODO: eventually this will involve work due to linear_rel *)
-  unfold cacheR; descend; autorewrite with hlist; now eauto.
+  (* TODO: need to prove linear_rel *)
+  unfold cacheR; descend; autorewrite with hlist; eauto.
+  admit. (* linear_rel *)
 
   step pre simplify with try solve [ finish ].
   (* FinishRead_upd precondition *)
@@ -559,7 +562,7 @@ lin_pred (cache_locked ...) *)
   unfold cacheR; repeat descend; autorewrite with hlist.
   (* workaround for exception Univ.AlreadyDeclared resulting from auto/eauto *)
   apply same_domain_refl.
-  eauto.
+  admit. (* linear_rel with same locks *)
 Admitted.
 
 Definition read {T} a rx : prog Mcontents Scontents T :=
@@ -636,6 +639,7 @@ Proof.
   eassumption.
   finish.
   unfold cacheR; repeat descend; autorewrite with hlist; eauto.
+  apply linear_rel_refl.
 Admitted.
 
 Definition write {T} a v rx : prog Mcontents Scontents T :=
@@ -773,10 +777,7 @@ Proof.
   eapply star_two_step; eauto.
   finish.
   unfold cacheR; repeat descend; autorewrite with hlist; eauto.
-
-  destruct (weq a a0); subst.
-  admit. (* locking safe under lock_transition *)
-  admit. (* didn't change this address *)
+  admit. (* linear_rel, added lock *)
 Admitted.
 
 Definition unlock {T} a rx : prog _ _ T :=

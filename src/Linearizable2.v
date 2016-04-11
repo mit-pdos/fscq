@@ -237,9 +237,33 @@ forall a, match m a with
 
 Definition linear_rel A AEQ V tid (locks locks': A -> BusyFlagOwner)
   (m m': @linear_mem A AEQ V) :=
-  (* TODO *)
-  forall a, locks a <> Owned tid ->
-  m' a = m a.
+  (* lock protocol *)
+  (forall a, lock_transition tid (locks a) (locks' a)) /\
+  (* lock protection *)
+  (forall a tid', locks a = Owned tid' ->
+  tid <> tid' ->
+  m' a = m a).
+
+Theorem linear_rel_refl : forall A AEQ V tid locks (m: @linear_mem A AEQ V),
+  linear_rel tid locks locks m m.
+Proof.
+  unfold linear_rel; intuition.
+Qed.
+
+Theorem linear_rel_trans : forall A AEQ V tid locks locks' locks''
+  (m m' m'': @linear_mem A AEQ V),
+  linear_rel tid locks locks' m m' ->
+  linear_rel tid locks' locks'' m' m'' ->
+  linear_rel tid locks locks'' m m''.
+Proof.
+  unfold linear_rel; intros; intuition;
+    specialize_all A.
+  - eapply lock_transition_trans; eauto.
+
+  - eapply eq_trans with (y := m' a); eauto.
+    inversion H1; subst; try intuition congruence.
+    eapply (H3 tid'); (congruence || eauto).
+Qed.
 
 Definition linear_upd A AEQ V (m: @linear_mem A AEQ V) a v :=
   match m a with
