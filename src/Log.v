@@ -84,7 +84,6 @@ Module LOG.
   Definition recover_any xp F n ds :=
     (exists ms, rep xp F (FlushingTxn ds n) ms)%pred.
 
-
   Lemma active_intact : forall xp F old new ms,
     rep xp F (ActiveTxn old new) ms =p=> intact xp F old.
   Proof.
@@ -110,6 +109,13 @@ Module LOG.
     apply GLog.cached_recover_any.
     apply GLog.cached_recover_any.
     Unshelve. all: eauto.
+  Qed.
+
+  Lemma active_notxn : forall xp F old new ms,
+    rep xp F (ActiveTxn old new) ms =p=>
+    rep xp F (NoTxn old) (mk_memstate vmap0 (MSMem ms)).
+  Proof.
+    unfold rep; cancel.
   Qed.
 
 

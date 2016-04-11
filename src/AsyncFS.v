@@ -33,28 +33,43 @@ Import ListNotations.
 Definition update_block_d T lxp a v ms rx : prog T :=
   ms <- LOG.begin lxp ms;
   ms <- LOG.dwrite lxp a v ms;
-  let^ (ms, ok) <- LOG.commit lxp ms;
-  rx ^(ms, ok).
+  ms <- LOG.commit_ro lxp ms;
+  rx ms.
 
 Theorem update_block_d_ok : forall fsxp a v ms,
   {< m F v0,
   PRE
-    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms *
-    [[[ m ::: (F * a |-> v0) ]]] *
-    [[ a <> 0 ]]
-  POST RET:^(ms, r)
-    exists m',
-    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
-    [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-  CRASH exists ms',
-    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms' \/
-    exists m',
-    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms' *
-    [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms *
+      [[[ m ::: (F * a |-> v0) ]]]
+  POST RET:ms
+      exists m',
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
+      [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
+  CRASH
+      (exists n, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n (m, nil)) \/
+      exists ms' m',
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms' *
+      [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
   >} update_block_d (FSXPLog fsxp) a v ms.
 Proof.
+  unfold update_block_d; intros.
+  step.
+  step.
 
-Admitted.
+  (* XXX: why eauto with prog pick the wrong spec? *)
+  eapply pimpl_ok2.
+  apply LOG.commit_ro_ok.
+  cancel.
+  instantiate (1 := (m0, nil)); simpl.
+  rewrite singular_latest by auto; cancel.
+
+  step.
+  subst; pimpl_crash.
+  cancel. or_r; cancel.
+  or_l; cancel.
+  or_r. rewrite LOG.active_notxn; cancel.
+  or_l. rewrite LOG.notxn_intact, LOG.intact_any; cancel.
+Qed.
 
 
 Definition recover {T} rx : prog T :=
@@ -116,8 +131,7 @@ Theorem update_block_d_recover_ok : forall fsxp a v ms,
   {<< m F v0,
   PRE
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m, nil)) ms *
-    [[[ m ::: (F * a |-> v0) ]]] *
-    [[ a <> 0 ]]
+    [[[ m ::: (F * a |-> v0) ]]]
   POST RET:^(ms, r)
     exists m',
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
@@ -128,12 +142,27 @@ Theorem update_block_d_recover_ok : forall fsxp a v ms,
     [[[ m' ::: crash_xform (F * a |-> (v, vsmerge v0)) ]]]
   >>} update_block_d (FSXPLog fsxp) a v ms >> recover.
 Proof.
-  recover_ro_ok.
+  intros.
+  unfold forall_helper.
+  intros.
+  eexists.
+  intros.
+  eapply pimpl_ok3.
+  eapply corr3_from_corr2_rx.
   eapply update_block_d_ok.
   eapply recover_ok.
+  intros.
+  norm. cancel. intuition.
+  eauto.
 
-  cancel.
-  step.
+  eapply pimpl_ok2.
+  apply H2.
+  intros. cancel. subst.
+  2: apply pimpl_refl.
+  eapply pimpl_trans.
+  apply LOG.recover_idem.
+  
+  apply pimpl_refl.
   apply pimpl_refl.
 
   xform_norm.

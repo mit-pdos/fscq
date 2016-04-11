@@ -381,8 +381,6 @@ Module MLog.
     or_r; or_r; cancel.
   Qed.
 
-
-
   (* destruct memstate *)
   Ltac dems := eauto; try match goal with
   | [ H : @eq memstate ?ms (mk_memstate _ _ _) |- _ ] =>
