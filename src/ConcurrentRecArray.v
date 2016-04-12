@@ -65,7 +65,7 @@ Module RecArray (Params:RecArrayParams).
   Lemma valu_wreclen_id : forall w, valu_to_wreclen (wreclen_to_valu w) = w.
   Proof.
     unfold valu_to_wreclen, wreclen_to_valu; intros.
-    eq_rect_simpl; auto.
+    now eq_rect_simpl.
   Qed.
 
   Lemma rep_valu_id : forall b, Rec.well_formed b -> valu_to_block (rep_block b) = b.
@@ -81,7 +81,7 @@ Module RecArray (Params:RecArrayParams).
   Proof.
     unfold valu_to_wreclen, wreclen_to_valu.
     intros.
-    eq_rect_simpl; auto.
+    now eq_rect_simpl.
   Qed.
 
   Lemma valu_rep_id : forall v,
@@ -92,15 +92,14 @@ Module RecArray (Params:RecArrayParams).
     apply wreclen_valu_id.
   Qed.
 
-  Tactic Notation "assert done" :=
-    let n := numgoals in guard n = 0.
-
   (* array_item_pairs *)
-  Definition rep_blocks (vs : list block) : @pred addr _ (const valu) :=
+  Definition rep_blocks (vs : list block) : @pred addr _ (const wr_set) :=
     ([[ length vs = RALen ]] *
      [[ Forall Rec.well_formed vs ]] *
-     array ($ RAStart) (map rep_block vs) $1)%pred.
+     (* TODO: eventually cache should not expose readers anywhere *)
+     array ($ RAStart) (map (fun b => (rep_block b, None)) vs) $1)%pred.
 
+  (* array_item *)
   Definition rep_items (vs : list item) :=
     (exists vs_nested, rep_blocks vs_nested *
                   [[ vs = concat vs_nested ]])%pred.
@@ -138,7 +137,7 @@ Module RecArray (Params:RecArrayParams).
       fun m s d =>
         ghost_lock_invariant (get Lock m) (get GLock s) /\
         (get GLock s = NoOwner -> get Items0 s = get Items s) /\
-        exists F, (get GDisk0 s |= F * rep_items (get Items0 s))%judgement.
+        exists F, (get GDisk s |= F * lin_point_pred (rep_items (get Items0 s)))%judgement.
 
   End RecArrayTransitions.
 
@@ -192,7 +191,7 @@ Module RecArray (Params:RecArrayParams).
     Import RATransitions.
 
     Definition rep (vs: list item) : type_pred Scontents :=
-      (exists l vs0, haddr GLock |-> l * haddr Items0 |-> vs0 * haddr Items |-> vs)%pred.
+      (exists l, haddr GLock |-> l * haddr Items |-> vs)%pred.
 
     Ltac derive_local :=
       match goal with
@@ -241,22 +240,29 @@ Module RecArray (Params:RecArrayParams).
 
     Polymorphic Theorem get_item_ok : forall i,
         stateS TID: tid |-
-        {{ Fs Fs' vs vd,
+        {{ Fs Fs' F LF F' vs vd,
          | PRE d m s0 s:
              hlistmem s |= Fs * rep vs * CacheM.rep vd /\
              Inv m s d /\
              get GLock s = Owned tid /\
              preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
                         (fun s => rep (get Items s) * CacheM.rep (get GDisk s))%pred /\
+             (forall P, preserves' (get GDisk) (star (othersR R tid))
+                              F F'
+                              (fun s => lin_latest_pred (cache_locked tid s P))) /\
+             vd |= F * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
              R tid s0 s
          | POST d' m' s0' s' r:
-             exists vs' vd',
-               hlistmem s' |= Fs' * rep vs' * CacheM.rep vd' /\
+             exists vd',
+               hlistmem s' |= Fs' * rep vs * CacheM.rep vd' /\
                Inv m' s' d' /\
+               get GLock s' = Owned tid /\
+               vd' |= F' * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
                r = selN vs i item0 /\
                R tid s0' s'
         }} get_item i.
     Proof.
+      hoare pre simplify with try solve [ finish ].
     Abort.
 
 

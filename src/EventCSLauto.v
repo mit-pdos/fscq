@@ -49,6 +49,12 @@ Local Ltac set_prog p :=
   let H := fresh "PreOf" in
   pose proof (SomeProg p) as H.
 
+Tactic Notation "current" "prog" :=
+  idtac "precondition for";
+  match goal with
+  | [ H: CurrentProg ?p |- _ ] => idtac p
+  end.
+
 Ltac next_control_step :=
     match goal with
     | [ |- valid _ _ _ _ ?p ] =>
