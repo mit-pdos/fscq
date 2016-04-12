@@ -9,7 +9,6 @@ type disk_state = { disk_fd : Unix.file_descr ref }
 let addr_to_int a = Big.to_int (Word.wordToNat addrlen a)
 
 let word_to_block (Word.W w) =
-  Printf.printf "word_to_block %s\n" (Z.to_string w);
   let s = Z.to_bits w in
   let nbytes = String.length s in
   let res = String.concat "" [ s ; String.make (blockbytes-nbytes) (Char.chr 0) ] in
@@ -17,7 +16,6 @@ let word_to_block (Word.W w) =
 
 let block_to_word b =
   let z = Z.of_bits b in
-  Printf.printf "block_to_word %s\n" (Z.to_string z);
   Word.W z
 
 let init_disk fn =
@@ -31,12 +29,10 @@ let read_disk { disk_fd = fd } b =
   let s = String.create blockbytes in
   let cc = ExtUnix.All.pread !fd (b * blockbytes) s 0 blockbytes in
   if cc != blockbytes then raise (Failure "read_disk");
-  Printf.printf "read_disk: string of length %d\n" (String.length s);
   block_to_word s
 
 let write_disk { disk_fd = fd } b v =
   let s = word_to_block v in
-  Printf.printf "write_disk: string of length %d\n" (String.length s);
   let cc = ExtUnix.All.pwrite !fd (b * blockbytes) s 0 blockbytes in
   if cc != blockbytes then raise (Failure "write_disk")
 
