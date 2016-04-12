@@ -31,11 +31,37 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
+Module LogNotations.
+
+  Notation "'<<' F ',' func ':' a1 a2 ms '>>'" :=
+    (exists raw, BUFCACHE.rep (snd ms%pred) raw *
+     lift_empty ((F * (func a1 a2 (fst ms)))%pred raw))%pred
+    (at level 100, func, F, a1, a2, ms at level 0, only parsing) : pred_scope.
+
+  Notation "'<<' F ',' func ':' a1 a2 a3 ms '>>'" :=
+    (exists raw, BUFCACHE.rep (snd ms%pred) raw *
+     lift_empty ((F * (func a1 a2 a3 (fst ms)))%pred raw))%pred
+    (at level 100, func, F, a1, a2, a3, ms at level 0, only parsing) : pred_scope.
+
+  Notation "'<<' F ',' func ':' a1 a2 '--' '>>'" :=
+    (exists raw cs, BUFCACHE.rep cs raw *
+     lift_empty ((F * (func a1 a2))%pred raw))%pred
+    (at level 100, func, F, a1, a2 at level 0, only parsing) : pred_scope.
+
+  Notation "'<<' F ',' func ':' a1 a2 a3 '--' '>>'" :=
+    (exists raw cs, BUFCACHE.rep cs raw *
+     lift_empty ((F * (func a1 a2 a3))%pred raw))%pred
+    (at level 100, func, F, a1, a2, a3 at level 0, only parsing) : pred_scope.
+
+End LogNotations.
+
+
 Module MLog.
 
-  Import AddrMap LogReplay.
+  Import AddrMap LogReplay LogNotations.
 
-  Definition memstate := (valumap * cachestate)%type.
+  Definition mstate := valumap.
+  Definition memstate := (mstate * cachestate)%type.
   Definition mk_memstate ms cs : memstate := (ms, cs).
   Definition MSCache (ms : memstate) := snd ms.
   Definition MSInLog (ms : memstate) := fst ms.
@@ -175,7 +201,6 @@ Module MLog.
 
   Arguments DLog.rep: simpl never.
   Hint Extern 0 (okToUnify (DLog.rep _ _) (DLog.rep _ _)) => constructor : okToUnify.
-
 
 
 
@@ -370,16 +395,6 @@ Module MLog.
 
 
   (** specs *)
-
-  Notation "'<<' F ',' func ':' a1 a2 ms '>>'" :=
-    (exists raw, BUFCACHE.rep (MSCache ms%pred) raw *
-     lift_empty ((F * (func a1 a2 (MSInLog ms)))%pred raw))%pred
-    (at level 100, func, F, a1, a2, ms at level 0, only parsing) : pred_scope.
-
-  Notation "'<<' F ',' func ':' a1 a2 a3 ms '>>'" :=
-    (exists raw, BUFCACHE.rep (MSCache ms%pred) raw *
-     lift_empty ((F * (func a1 a2 a3 (MSInLog ms)))%pred raw))%pred
-    (at level 100, func, F, a1, a2, a3, ms at level 0, only parsing) : pred_scope.
 
 
   Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : okToUnify.
@@ -1215,6 +1230,7 @@ Module MLog.
   Qed.
 
 
+(*
   Lemma dwrite_vecs_xcrash_ok : forall cs d raw xp F avl m n n' log,
     overlap (map fst avl) m <> true ->
     map_valid m d ->
@@ -1669,15 +1685,17 @@ Module MLog.
     Unshelve. all: eauto.
   Qed.
 
+*)
 
-  Hint Extern 1 ({{_}} progseq (read_raw _ _) _) => apply read_raw_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
+
+(*
   Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
-
+*)
 
 End MLog.

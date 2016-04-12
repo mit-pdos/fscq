@@ -39,7 +39,7 @@ Set Implicit Arguments.
 
 Module GLog.
 
-  Import AddrMap LogReplay.
+  Import AddrMap LogReplay LogNotations.
 
 
   (**
@@ -139,7 +139,7 @@ Module GLog.
 
   (************* state and rep invariant *)
 
-  Record memstate := mk_memstate {
+  Record mstate := mk_mstate {
     MSVMap  : valumap;
     (* collapsed updates for all committed but unflushed txns,
         necessary for fast read() operation
@@ -148,9 +148,17 @@ Module GLog.
     (* list of all unflushed txns, the order should match the
        second part of diskset. (first element is the latest)
     *)
-    MSMLog  : MLog.memstate
-    (* lower-level state *)
+
+    MSMLog  : MLog.mstate;
+    (* lower-level states *)
   }.
+
+  Definition memstate := (mstate * cachestate)%type.
+  Definition mk_memstate vm ts ll : memstate := 
+    (mk_mstate vm ts (MLog.MSInLog ll), (MLog.MSCache ll)).
+
+  Definition MSCache (ms : memstate) := snd ms.
+  Definition MSLL (ms : memstate) := MLog.mk_memstate (MSMLog (fst ms)) (snd ms).
 
   Inductive state :=
   | Cached   (ds : diskset)
@@ -166,36 +174,33 @@ Module GLog.
   Definition dset_match xp ds ts :=
     Forall (ents_valid xp (fst ds)) ts /\ ReplaySeq ds ts.
 
-  Definition rep xp F st ms :=
+  Definition rep xp st ms :=
   let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
   (match st with
     | Cached ds =>
       [[ vmap_match vm ts ]] *
       [[ dset_match xp ds ts ]] * exists nr,
-      MLog.rep xp F (MLog.Synced nr (fst ds)) mm
+      MLog.rep xp (MLog.Synced nr (fst ds)) mm
     | Flushing ds n =>
       [[ dset_match xp ds ts /\ n <= length ts ]] *
-      MLog.would_recover_either xp F (nthd n ds) (selR ts n nil)
+      MLog.would_recover_either xp (nthd n ds) (selR ts n nil) mm
   end)%pred.
 
-  Definition would_recover_any xp F n ds :=
-    (exists ms, rep xp F (Flushing ds n) ms)%pred.
+  Definition would_recover_any xp ds :=
+    (exists ms n, rep xp (Flushing ds n) ms)%pred.
 
-  Definition recover_any_pred xp F n ds ms :=
-    crash_xform (rep xp F (Flushing ds n) ms).
-
-  Lemma cached_recover_any: forall xp F ds ms,
-    rep xp F (Cached ds) ms =p=> would_recover_any xp F 0 ds.
+  Lemma cached_recover_any: forall xp ds ms,
+    rep xp (Cached ds) ms =p=> would_recover_any xp ds.
   Proof.
     unfold would_recover_any, rep.
-    intros; cancel.
-    rewrite nthd_0.
+    intros. norm.
+    rewrite nthd_0; cancel.
     apply MLog.synced_recover_either.
-    eauto.
+    intuition.
   Qed.
 
-  Lemma flushing_recover_any: forall xp F n ds ms,
-    rep xp F (Flushing ds n) ms =p=> would_recover_any xp F n ds.
+  Lemma flushing_recover_any: forall xp n ds ms,
+    rep xp (Flushing ds n) ms =p=> would_recover_any xp ds.
   Proof.
     unfold would_recover_any, rep; intros; cancel.
   Qed.
@@ -203,8 +208,8 @@ Module GLog.
 
   (************* program *)
 
-  Definition read T xp a ms rx : prog T :=
-    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+  Definition read T xp a (ms : memstate) rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     match Map.find a vm with
     | Some v =>  rx ^(ms, v)
     | None =>
@@ -219,7 +224,7 @@ Module GLog.
      only commit() can fail, and the caller can choose to abort.
   *)
   Definition submit T xp ents ms rx : prog T :=
-    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     let vm' := replay_mem ents vm in
     If (le_dec (length ents) (LogLen xp)) {
       rx ^(mk_memstate vm' (ents :: ts) mm, true)
@@ -228,14 +233,14 @@ Module GLog.
     }.
 
   Definition flushall T xp ms rx : prog T :=
-    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     let^ (mm) <- ForN i < length ts
     Ghost [ F ds crash ]
     Loopvar [ mm ]
     Continuation lrx
     Invariant
         exists nr,
-        MLog.rep xp F (MLog.Synced nr (nthd i ds)) mm
+        << F, MLog.rep: xp (MLog.Synced nr (nthd i ds)) mm >>
     OnCrash crash
     Begin
       (* r = false is impossible, flushall should always succeed *)
@@ -246,25 +251,25 @@ Module GLog.
 
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
     ms <- flushall xp ms;
-    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;
     rx (mk_memstate vm ts mm').
 
   Definition dsync T xp a ms rx : prog T :=
     ms <- flushall xp ms;
-    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync xp a mm;
     rx (mk_memstate vm ts mm').
 
   Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
     ms <- flushall xp ms;
-    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite_vecs xp avs mm;
     rx (mk_memstate vm ts mm').
 
   Definition dsync_vecs T xp al ms rx : prog T :=
     ms <- flushall xp ms;
-    let '(vm, ts, mm) := (MSVMap ms, MSTxns ms, MSMLog ms) in
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync_vecs xp al mm;
     rx (mk_memstate vm ts mm').
 
@@ -274,7 +279,7 @@ Module GLog.
 
 
   Arguments MLog.rep: simpl never.
-  Hint Extern 0 (okToUnify (MLog.rep _ _ _ _ _) (MLog.rep _ _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (MLog.rep _ _ _) (MLog.rep _ _ _)) => constructor : okToUnify.
 
 
 
@@ -439,23 +444,24 @@ Module GLog.
     erewrite skipn_sub_S_selN_cons; simpl; eauto.
   Qed.
 
-  Lemma recover_before_any : forall xp F ds ts,
+  Lemma recover_before_any : forall xp ds ts ms,
     dset_match xp ds ts ->
-    MLog.would_recover_before xp F ds!! =p=>
-    would_recover_any xp F (length (snd ds)) ds.
+    MLog.would_recover_before xp ds!! ms =p=>
+    would_recover_any xp ds.
   Proof. 
-    unfold would_recover_any, rep; cancel.
-    rewrite nthd_oob by auto.
+    unfold would_recover_any, rep.
+    intros; norm. eassign (length l).
+    rewrite nthd_oob by auto; cancel.
+    eassign (mk_mstate vmap0 ts ms); simpl.
     apply MLog.recover_before_either.
-    eassign (mk_memstate vmap0 ts (MLog.mk_memstate vmap0 (BUFCACHE.cache0 0))); simpl.
     intuition.
     simpl; erewrite dset_match_length; eauto; simpl; auto.
   Qed.
 
-  Lemma synced_recover_any : forall xp F ds nr ms ts,
+  Lemma synced_recover_any : forall xp ds nr ms ts,
     dset_match xp ds ts ->
-    MLog.rep xp F (MLog.Synced nr ds!!) ms =p=>
-    would_recover_any xp F (length (snd ds)) ds.
+    MLog.rep xp (MLog.Synced nr ds!!) ms =p=>
+    would_recover_any xp ds.
   Proof.
     intros.
     rewrite MLog.synced_recover_before.
@@ -480,12 +486,12 @@ Module GLog.
   Theorem read_ok: forall xp ms a,
     {< F ds vs,
     PRE
-      rep xp F (Cached ds) ms *
+      << F, rep: xp (Cached ds) ms >> *
       [[[ ds!! ::: exists F', (F' * a |-> vs) ]]]
     POST RET:^(ms', r)
-      rep xp F (Cached ds) ms' * [[ r = fst vs ]]
+      << F, rep: xp (Cached ds) ms' >> * [[ r = fst vs ]]
     CRASH
-      exists ms', rep xp F (Cached ds) ms'
+      exists ms', << F, rep: xp (Cached ds) ms' >>
     >} read xp a ms.
   Proof.
     unfold read, rep.
@@ -504,26 +510,24 @@ Module GLog.
 
     step; subst.
     eapply diskset_vmap_find_none; eauto.
-    pimpl_crash; norm.
-    eassign (mk_memstate (MSVMap ms) (MSTxns ms) ms').
-    cancel.
-    intuition.
+    pimpl_crash; cancel.
+    eassign (mk_mstate (MSVMap m) (MSTxns m) t); cancel.
+    all: auto.
   Qed.
 
 
   Theorem submit_ok: forall xp ents ms,
     {< F ds,
     PRE
-      rep xp F (Cached ds) ms *
-      [[ log_valid ents ds!! ]]
+        << F, rep: xp (Cached ds) ms >> *
+        [[ log_valid ents ds!! ]]
     POST RET:^(ms', r)
-      [[ r = false ]] * 
-        rep xp F (Cached ds) ms' * [[ length ents > LogLen xp ]]
-      \/
-      [[ r = true  ]] *
-        rep xp F (Cached (pushd (replay_disk ents (latest ds)) ds)) ms'
+        ([[ r = false /\ length ents > LogLen xp ]] *
+          << F, rep: xp (Cached ds) ms' >>)
+     \/ ([[ r = true  ]] *
+          << F, rep: xp (Cached (pushd (replay_disk ents (latest ds)) ds)) ms' >>)
     CRASH
-      exists ms', rep xp F (Cached ds) ms'
+      exists ms', << F, rep: xp (Cached ds) ms' >>
     >} submit xp ents ms.
   Proof.
     unfold submit, rep.
@@ -532,9 +536,11 @@ Module GLog.
     or_r; cancel.
 
     unfold vmap_match in *; simpl.
-    rewrite H; apply MapFacts.Equal_refl.
+    denote Map.Equal as Heq.
+    rewrite Heq; apply MapFacts.Equal_refl.
     apply dset_match_ext; auto.
     step.
+    Unshelve. auto.
   Qed.
 
 
@@ -544,12 +550,12 @@ Module GLog.
   Theorem flushall_ok: forall xp ms,
     {< F ds,
     PRE
-      rep xp F (Cached ds) ms
+      << F, rep: xp (Cached ds) ms >>
     POST RET:ms'
-      rep xp F (Cached (ds!!, nil)) ms' *
-      [[ MSTxns ms' = nil /\ MSVMap ms' = vmap0 ]]
-    CRASH exists n,
-      would_recover_any xp F n ds
+      << F, rep: xp (Cached (ds!!, nil)) ms' >> *
+      [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
+    CRASH
+      << F, would_recover_any: xp ds -- >>
     >} flushall xp ms.
   Proof.
     unfold flushall, would_recover_any, rep.
@@ -557,28 +563,32 @@ Module GLog.
     cancel.
     rewrite nthd_0; cancel.
 
-    - safestep.
+    - safestep; eauto.
       eapply dset_match_log_valid_selN; eauto.
-      prestep; norm.
+      prestep; norm. cancel. intuition; pred_apply.
 
       (* flush() returns true *)
       erewrite dset_match_nthd_S by eauto; cancel.
-      intuition.
+      cancel.
 
       (* flush() returns false, this is impossible *)
       exfalso; eapply dset_match_ent_length_exfalso; eauto.
-      exfalso; eapply dset_match_ent_length_exfalso; eauto.
 
       (* crashes *)
-      subst; pimpl_crash. norm.
+      subst; pimpl_crash; norm. cancel.
+      intuition; pred_apply. norm.
+      eassign (mk_mstate vmap0 (MSTxns m) t); simpl.
       rewrite selR_inb by eauto; cancel.
       simpl; intuition; eauto.
 
-    - prestep; norm.
+    - prestep; norm. cancel. intuition; pred_apply.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
-      cancel. intuition.
-    - pimpl_crash. norm. cancel.
-      intuition; eauto.
+      cancel.
+    - pimpl_crash. cancel.
+      eassign raw; pred_apply.
+      rewrite MLog.synced_recover_either.
+      norm. rewrite nthd_0; cancel.
+      intuition eauto; omega.
 
     Unshelve. all: easy.
   Qed.
@@ -586,7 +596,6 @@ Module GLog.
 
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read_raw _ _) _) => apply read_raw_ok : prog.
   Hint Extern 1 ({{_}} progseq (submit _ _ _) _) => apply submit_ok : prog.
   Hint Extern 1 ({{_}} progseq (flushall _ _) _) => apply flushall_ok : prog.
 
@@ -594,16 +603,16 @@ Module GLog.
   Theorem dwrite_ok: forall xp a v ms,
     {< F Fd ds vs,
     PRE
-      rep xp F (Cached ds) ms *
+      << F, rep: xp (Cached ds) ms >> *
       [[[ ds!! ::: (Fd * a |-> vs) ]]]
     POST RET:ms' exists d',
-      rep xp F (Cached (d', nil)) ms' *
+      << F, rep: xp (Cached (d', nil)) ms' >> *
       [[  d' = updN ds!! a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
     CRASH
-      (exists n, would_recover_any xp F n ds)
+      << F, would_recover_any: xp ds -- >>
       \/ exists ms' d',
-      rep xp F (Cached (d', nil)) ms' *
+      << F, rep: xp (Cached (d', nil)) ms' >> *
       [[  d' = updN ds!! a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
     >} dwrite xp a v ms.
@@ -613,14 +622,14 @@ Module GLog.
     unfold rep; cancel.
     prestep; unfold rep; cancel.
     prestep; unfold rep; cancel.
-    subst; substl (MSTxns r_); eauto.
+    subst; substl (MSTxns a0); eauto.
 
     (* crashes *)
     cancel.
-    or_l.
+    or_l; cancel.
     rewrite recover_before_any by eauto; cancel.
     unfold rep; or_r; cancel.
-    eassign (mk_memstate vmap0 nil a0); simpl; cancel.
+    eassign (mk_mstate vmap0 nil t); simpl; cancel.
     all: simpl; eauto.
     cancel; or_l; cancel.
   Qed.
@@ -629,16 +638,16 @@ Module GLog.
   Theorem dsync_ok: forall xp a ms,
     {< F Fd ds vs,
     PRE
-      rep xp F (Cached ds) ms *
+      << F, rep: xp (Cached ds) ms >> *
       [[[ ds!! ::: (Fd * a |-> vs) ]]]
     POST RET:ms' exists d',
-      rep xp F (Cached (d', nil)) ms' *
+      << F, rep: xp (Cached (d', nil)) ms' >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync ds!! a ]]
     CRASH
-      (exists n, would_recover_any xp F n ds) \/
+      << F, would_recover_any: xp ds -- >> \/
       exists ms' d',
-      rep xp F (Cached (d', nil))  ms' *
+      << F, rep: xp (Cached (d', nil)) ms' >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[ d' = vssync ds!! a ]]
     >} dsync xp a ms.
@@ -647,14 +656,14 @@ Module GLog.
     prestep; unfold rep; cancel.
     prestep; unfold rep; cancel.
     prestep; unfold rep; cancel.
-    subst; substl (MSTxns r_); eauto.
+    subst; substl (MSTxns a0); eauto.
 
     (* crashes *)
     cancel.
-    or_l.
+    or_l; cancel.
     rewrite synced_recover_any by eauto; cancel.
     unfold rep; or_r; cancel.
-    eassign (mk_memstate vmap0 nil ms'); simpl; cancel.
+    eassign (mk_mstate vmap0 nil t); simpl; cancel.
     all: simpl; eauto.
     cancel; or_l; cancel.
   Qed.
@@ -663,14 +672,14 @@ Module GLog.
   Theorem dwrite_vecs_ok: forall xp avl ms,
     {< F ds,
     PRE
-      rep xp F (Cached ds) ms *
+      << F, rep: xp (Cached ds) ms >> *
       [[ Forall (fun e => fst e < length ds!!) avl ]]
     POST RET:ms'
-      rep xp F (Cached (vsupd_vecs ds!! avl, nil)) ms'
+      << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' >>
     XCRASH
-      (exists n, would_recover_any xp F n ds) \/
+      << F, would_recover_any: xp ds -- >> \/
       exists ms', 
-      rep xp F (Cached (vsupd_vecs ds!! avl, nil)) ms'
+      << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' >>
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs.
@@ -691,18 +700,18 @@ Module GLog.
 
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     or_l; cancel.
-  Qed.
+  Admitted.
 
 
   Theorem dsync_vecs_ok: forall xp al ms,
     {< F ds,
     PRE
-      rep xp F (Cached ds) ms *
+      << F, rep: xp (Cached ds) ms >> *
       [[ Forall (fun e => e < length ds!!) al ]]
     POST RET:ms'
-      rep xp F (Cached (vssync_vecs ds!! al, nil)) ms'
+      << F, rep: xp (Cached (vssync_vecs ds!! al, nil)) ms' >>
     XCRASH
-      exists n, would_recover_any xp F n ds
+      << F, would_recover_any: xp ds -- >>
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs.
@@ -714,33 +723,29 @@ Module GLog.
     subst; apply H1; rewrite H3.
     xform_norm.
     rewrite synced_recover_any by eauto; cancel.
-  Qed.
+  Admitted.
 
 
-(*
-  Definition recover_any_pred xp cs F ds :=
-    (exists n, [[ n < length (snd ds) ]] *
-    (MLog.recover_either_pred xp cs F
-      (diskIs (list2nmem (nthd n ds)))
-      (diskIs (list2nmem (nthd (S n) ds)))))%pred.
-*)
+  Definition recover_any_pred xp F cs ds :=
+    ( exists raw, BUFCACHE.rep cs raw *
+      [[ (F * would_recover_any xp ds)%pred raw ]])%pred.
 
-  Theorem recover_ok: forall xp cs F,
-    {< ds n,
+  Theorem recover_ok: forall xp cs,
+    {< F ds,
     PRE
-      recover_any_pred xp F n ds (mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs))
-    POST RET:ms' exists d n, [[ n <= length (snd ds) ]] *
-      rep xp F (Cached (d, nil)) ms' *
+      crash_xform (recover_any_pred xp F cs ds)
+    POST RET:ms'
+      exists d n, [[ n <= length (snd ds) ]] *
+      << F, rep: xp (Cached (d, nil)) ms' >> *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
     CRASH
-      recover_any_pred xp F n ds (mk_memstate vmap0 nil (MLog.mk_memstate vmap0 cs))
+      recover_any_pred xp F cs ds
     >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
-    step.
-    prestep. norm. cancel.
   Admitted.
 
+  Search diskIs.
 
 (*
   Theorem cached_recover_any_pred : forall xp ds ms (F FD : pred),
@@ -795,7 +800,7 @@ Module GLog.
   Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
 End GLog.
 
