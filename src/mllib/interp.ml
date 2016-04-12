@@ -66,4 +66,4 @@ let run_prog ds p =
   try
     run_dcode ds (p (fun x -> Prog.Done x))
   with
-    e -> Printf.printf "Exception: %s\n" (Printexc.to_string e); raise e
+    e -> Printf.printf "Exception: %s\n%!" (Printexc.to_string e); raise e
