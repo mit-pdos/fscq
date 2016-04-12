@@ -1,8 +1,7 @@
 let addrlen = Big.of_int 64
 let blockbytes = 4096
 let blockbits = Big.of_int (blockbytes*8)
-let disk_fd = ref Unix.stdout   (* just some Unix.file_descr object *)
-let debug = true
+let debug = false
 
 type disk_state = { disk_fd : Unix.file_descr ref }
 
@@ -44,21 +43,21 @@ let set_size_disk { disk_fd = fd } b =
 
 let rec run_dcode ds = function
   | Prog.Done t ->
-    if debug then Printf.printf "done()\n";
+    if debug then Printf.printf "done()\n%!";
     t
   | Prog.Trim (a, rx) ->
-    if debug then Printf.printf "trim(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "trim(%d)\n%!" (addr_to_int a);
     run_dcode ds (rx ())
   | Prog.Sync (a, rx) ->
-    if debug then Printf.printf "sync(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "sync(%d)\n%!" (addr_to_int a);
     sync_disk ds (addr_to_int a);
     run_dcode ds (rx ())
   | Prog.Read (a, rx) ->
-    if debug then Printf.printf "read(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "read(%d)\n%!" (addr_to_int a);
     let v = read_disk ds (addr_to_int a) in
     run_dcode ds (rx v)
   | Prog.Write (a, v, rx) ->
-    if debug then Printf.printf "write(%d)\n" (addr_to_int a);
+    if debug then Printf.printf "write(%d)\n%!" (addr_to_int a);
     write_disk ds (addr_to_int a) v;
     run_dcode ds (rx ())
 
