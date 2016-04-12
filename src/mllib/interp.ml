@@ -2,6 +2,7 @@ let addrlen = Big.of_int 64
 let blockbytes = 4096
 let blockbits = Big.of_int (blockbytes*8)
 let debug = false
+let really_sync = false
 
 type disk_state = { disk_fd : Unix.file_descr ref }
 
@@ -36,7 +37,7 @@ let write_disk { disk_fd = fd } b v =
   if cc != blockbytes then raise (Failure "write_disk")
 
 let sync_disk { disk_fd = fd } b =
-  ExtUnix.All.fsync !fd
+  if really_sync then ExtUnix.All.fsync !fd
 
 let set_size_disk { disk_fd = fd } b =
   Unix.ftruncate !fd (b*blockbytes)
