@@ -350,6 +350,39 @@ Proof.
 Qed.
 
 
+Lemma possible_crash_eq : forall a b c,
+  possible_crash a b ->
+  possible_crash b c ->
+  b = c.
+Proof.
+  unfold possible_crash; intuition.
+  apply functional_extensionality; intros.
+  specialize (H x); specialize (H0 x).
+  intuition; repeat deex; try congruence.
+
+  destruct vs, vs0; subst.
+  rewrite H1 in H0; inversion H0; subst.
+  unfold vsmerge in *; simpl in *.
+  intuition; subst; congruence.
+Qed.
+
+Lemma crash_xform_diskIs_trans : forall d x d',
+  crash_xform (diskIs d) x ->
+  crash_xform (diskIs x) d' ->
+  crash_xform (diskIs x) =p=> crash_xform (diskIs d).
+Proof.
+  intros.
+  apply crash_xform_diskIs in H.
+  apply crash_xform_diskIs in H0.
+  destruct_lift H; destruct_lift H0.
+  rewrite crash_xform_diskIs, <- crash_xform_diskIs_r by eauto.
+  unfold diskIs in *; subst; cancel.
+  unfold pimpl; intros; subst.
+  eapply possible_crash_eq; eauto.
+Qed.
+
+
+
 Lemma crash_xform_ptsto_or : forall (a : addr) (vs : valuset),
   crash_xform (a |-> vs) <=p=> crash_xform (a |-> vs \/ a |=> (fst vs)).
 Proof.
