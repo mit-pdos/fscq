@@ -70,11 +70,11 @@ let stat_file (W ino) (W len) { ByteFile.BYTEFILE.coq_FMTime = wmtime; coq_FType
     st_kind = attr_to_kind (Z.to_int ftype);
     st_perm = 0o755;
     st_size = Z.to_int64 len;
-    st_dev = Z.to_int fdev;
+    st_dev = 0;
     st_ino = Z.to_int ino;
     st_uid = 0;
     st_gid = 0;
-    st_rdev = 0;
+    st_rdev = Z.to_int fdev;
     st_atime = 0.0;
     st_mtime = Z.to_float fmtime;
     st_ctime = 0.0;
@@ -106,7 +106,7 @@ let fscq_fopen ds fsxp path flags =
   | Some (_, true) -> raise (Unix_error (EISDIR, "fopen", path))
   | Some (W ino, false) -> Some (Z.to_int ino)
 
-let fscq_mknod ds fsxp path mode =
+let fscq_mknod ds fsxp path kind perm rdev =
   let fn = Filename.basename path in
   let r = lookup ds fsxp (Filename.dirname path) in
   match r with
@@ -114,7 +114,17 @@ let fscq_mknod ds fsxp path mode =
   | Some (_, false) -> raise (Unix_error (ENOTDIR, "mknod", path))
   | Some (dnum, true) ->
     let fn_coq = string_explode fn in
-    Printf.printf "mknod %d\n%!" mode
+    let (r, ()) = ( match kind with
+                    | S_REG  -> run_fs ds (FS.create fsxp dnum fn_coq)
+                    | S_SOCK -> run_fs ds (FS.mkdev fsxp dnum fn_coq (W (Z.of_int 1)) (W (Z.of_int 0)))
+                    | S_FIFO -> run_fs ds (FS.mkdev fsxp dnum fn_coq (W (Z.of_int 2)) (W (Z.of_int 0)))
+                    | S_BLK  -> run_fs ds (FS.mkdev fsxp dnum fn_coq (W (Z.of_int 3)) (W (Z.of_int rdev)))
+                    | S_CHR  -> run_fs ds (FS.mkdev fsxp dnum fn_coq (W (Z.of_int 4)) (W (Z.of_int rdev)))
+                    | _ -> raise (Unix_error (EIO, "mknod", path))
+                  ) in
+    match r with
+    | None -> raise (Unix_error (EIO, "mknod", path))
+    | Some _ -> ()
 
 let fscq_mkdir ds fsxp path mode =
   let fn = Filename.basename path in
