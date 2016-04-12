@@ -484,8 +484,18 @@ Proof.
   auto.
 Qed.
 
-Hint Rewrite eq_rect_nat_double.
+Theorem eq_rect_double : forall A T (a b c : A) x ab bc,
+  eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
+Proof.
+  intros.
+  destruct ab, bc.
+  reflexivity.
+Qed.
+
+Hint Rewrite eq_rect_double.
 Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec).
+Hint Rewrite eq_rect_double : eq.
+Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec) : eq.
 
 Ltac generalize_proof :=
     match goal with
@@ -494,8 +504,7 @@ Ltac generalize_proof :=
 
 Ltac eq_rect_simpl :=
   unfold eq_rec_r, eq_rec;
-  repeat rewrite eq_rect_nat_double;
-  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  repeat autorewrite with eq.
 
 Lemma eq_rect_word_offset_helper : forall a b c,
   a = b -> c + a = c + b.
@@ -509,8 +518,7 @@ Theorem eq_rect_word_offset : forall n n' offset w Heq,
 Proof.
   intros.
   destruct Heq.
-  rewrite (UIP_dec eq_nat_dec (eq_rect_word_offset_helper offset eq_refl) eq_refl).
-  reflexivity.
+  now eq_rect_simpl.
 Qed.
 
 Lemma eq_rect_word_mult_helper : forall a b c,
@@ -525,8 +533,7 @@ Theorem eq_rect_word_mult : forall n n' scale w Heq,
 Proof.
   intros.
   destruct Heq.
-  rewrite (UIP_dec eq_nat_dec (eq_rect_word_mult_helper scale eq_refl) eq_refl).
-  reflexivity.
+  now eq_rect_simpl.
 Qed.
 
 Theorem eq_rect_word_match : forall n n' (w : word n) (H : n = n'),
@@ -534,9 +541,6 @@ Theorem eq_rect_word_match : forall n n' (w : word n) (H : n = n'),
   | eq_refl => w
   end = eq_rect n (fun n => word n) w n' H.
 Proof.
-  intros.
-  destruct H.
-  rewrite <- (eq_rect_eq_dec eq_nat_dec).
   reflexivity.
 Qed.
 
@@ -547,11 +551,8 @@ Theorem whd_match : forall n n' (w : word (S n)) (Heq : S n = S n'),
 Proof.
   intros.
   rewrite eq_rect_word_match.
-  generalize dependent w.
-  remember Heq as Heq'. clear HeqHeq'.
-  generalize dependent Heq'.
-  replace (n') with (n) by omega.
-  intros. rewrite <- (eq_rect_eq_dec eq_nat_dec). reflexivity.
+  inversion Heq; subst.
+  now eq_rect_simpl.
 Qed.
 
 Theorem wtl_match : forall n n' (w : word (S n)) (Heq : S n = S n') (Heq' : n = n'),
@@ -562,17 +563,8 @@ Theorem wtl_match : forall n n' (w : word (S n)) (Heq : S n = S n') (Heq' : n = 
                end).
 Proof.
   intros.
-  repeat match goal with
-           | [ |- context[match ?pf with refl_equal => _ end] ] => generalize pf
-         end.
-  generalize dependent w; clear.
-  intros.
-  generalize Heq Heq'.
-  subst.
-  intros.
-  rewrite (UIP_dec eq_nat_dec Heq' (refl_equal _)).
-  rewrite (UIP_dec eq_nat_dec Heq0 (refl_equal _)).
-  reflexivity.
+  repeat rewrite eq_rect_word_match.
+  subst; now eq_rect_simpl.
 Qed.
 
 (** * Combining and splitting *)
