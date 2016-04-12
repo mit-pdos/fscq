@@ -14,6 +14,9 @@ Extraction Blacklist String List Nat Array Bytes.
 Extraction Inline Prog.progseq.
 Extraction Inline Prog.pair_args_helper.
 
+(* Optimize away control flow constructs. *)
+Extraction Inline BasicProg.If_.
+
 (* Work around bug in Coq's ExtrOcamlZBigInt *)
 Require Import ZArith.
 Extract Constant Pos.compare_cont => "fun c x y -> Big.compare_case c Lt Gt x y".
