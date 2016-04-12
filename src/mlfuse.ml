@@ -33,7 +33,6 @@ let split_path_coq s = List.map string_explode (split_path s)
 
 let lookup ds fsxp path =
   let nameparts = split_path_coq path in
-  Printf.printf "namei %s\n" (String.concat "/" (List.map string_implode nameparts));
   let (r, ()) = run_fs ds (FS.lookup fsxp (FSLayout.coq_FSXPRootInum fsxp) nameparts) in
   r
 
@@ -110,27 +109,25 @@ let fscq_fopen ds fsxp path flags =
 let fscq_mknod ds fsxp path mode =
   let fn = Filename.basename path in
   let r = lookup ds fsxp (Filename.dirname path) in
-  Printf.printf "mknod %d\n%!" mode;
-  ()
+  match r with
+  | None -> raise (Unix_error (ENOENT, "mknod", path))
+  | Some (_, false) -> raise (Unix_error (ENOTDIR, "mknod", path))
+  | Some (dnum, true) ->
+    let fn_coq = string_explode fn in
+    Printf.printf "mknod %d\n%!" mode
 
 let fscq_mkdir ds fsxp path mode =
-  Printf.printf "fscq_mkdir %s\n%!" path;
   let fn = Filename.basename path in
-  Printf.printf "fscq_mkdir %s %s\n%!" path fn;
   let r = lookup ds fsxp (Filename.dirname path) in
-  Printf.printf "fscq_mkdir %s %s lookup done\n%!" path fn;
   match r with
   | None -> raise (Unix_error (ENOENT, "mkdir", path))
   | Some (_, false) -> raise (Unix_error (ENOTDIR, "mkdir", path))
   | Some (dnum, true) ->
-    Printf.printf "fscq_mkdir %s %s dir ok\n%!" path fn;
     let fn_coq = string_explode fn in
-    Printf.printf "fscq_mkdir %s %s explode done\n%!" path fn;
     let (r, ()) = run_fs ds (FS.mkdir fsxp dnum fn_coq) in
-    Printf.printf "fscq_mkdir %s %s mkdir done\n%!" path fn;
     match r with
     | None -> raise (Unix_error (EIO, "mkdir", path))
-    | Some _ -> Printf.printf "fscq_mkdir OK\n%!"; ()
+    | Some _ -> ()
 
 let _ =
   if (Array.length Sys.argv < 2) then Printf.printf "Usage: %s disk -f /mnt/fscq\n" Sys.argv.(0);
