@@ -743,9 +743,9 @@ Module GLog.
     >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
-  Admitted.
+    intros.
 
-  Search diskIs.
+  Admitted.
 
 (*
   Theorem cached_recover_any_pred : forall xp ds ms (F FD : pred),

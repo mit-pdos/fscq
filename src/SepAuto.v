@@ -1057,11 +1057,10 @@ Ltac xform_deex_r :=
 
 Ltac xform_deex_l :=
     norml; unfold stars; simpl; clear_norm_goal;
+    try rewrite -> crash_xform_exists_comm;
     try (rewrite sep_star_comm, star_emp_pimpl);
     try match goal with
-    | [ |- pimpl (crash_xform (exis _)) _ ] =>
-             rewrite crash_xform_exists_comm;
-             apply pimpl_exists_l; intro
+    | [ |- pimpl (exis _) _ ] => apply pimpl_exists_l; intro
     end.
 
 Ltac xform_dist :=
