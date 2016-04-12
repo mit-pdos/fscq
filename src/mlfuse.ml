@@ -207,6 +207,32 @@ let fscq_truncate ds fsxp path len =
     Mutex.unlock fuselock;
     if r then () else raise (Unix_error (EIO, "truncate", path))
 
+let fscq_chmod ds fsxp path mode =
+  ()
+
+let fscq_chown ds fsxp path uid gid =
+  ()
+
+let fscq_statfs ds fsxp path =
+  Mutex.lock fuselock;
+  let ((W freeblocks), ((W freeinodes), ())) = run_fs ds (FS.statfs fsxp) in
+  Mutex.unlock fuselock;
+  let (W block_bitmaps) = FSLayout.coq_BmapNBlocks (FSLayout.coq_FSXPBlockAlloc fsxp) in
+  let (W inode_bitmaps) = FSLayout.coq_BmapNBlocks (FSLayout.coq_FSXPInodeAlloc fsxp) in
+  {
+    Unix_util.f_bsize = Int64.of_int Interp.blockbytes;
+    f_frsize = Int64.of_int Interp.blockbytes;
+    f_blocks = Int64.of_int (8 * Interp.blockbytes * (Z.to_int block_bitmaps));
+    f_bfree = Z.to_int64 freeblocks;
+    f_bavail = Z.to_int64 freeblocks;
+    f_files = Int64.of_int (8 * Interp.blockbytes * (Z.to_int inode_bitmaps));
+    f_ffree = Z.to_int64 freeblocks;
+    f_favail = Z.to_int64 freeblocks;
+    f_fsid = Int64.of_int 0;
+    f_flag = Int64.of_int 0;
+    f_namemax = Z.to_int64 DirName.SDIR.namelen;
+  }
+
 let _ =
   if (Array.length Sys.argv < 2) then Printf.printf "Usage: %s disk -f /mnt/fscq\n" Sys.argv.(0);
   let diskfn = Sys.argv.(1) in
@@ -229,4 +255,7 @@ let _ =
         unlink = fscq_unlink ds fsxp;
         rmdir = fscq_unlink ds fsxp;
         truncate = fscq_truncate ds fsxp;
+        chmod = fscq_chmod ds fsxp;
+        chown = fscq_chown ds fsxp;
+        statfs = fscq_statfs ds fsxp;
     }
