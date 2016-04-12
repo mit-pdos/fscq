@@ -4,6 +4,7 @@ open Sys
 open Word
 open Interp
 open Unix
+open Bigarray
 
 let mem_state = ref (Log.ms_empty, (Cache.cache_empty, ()))
 
@@ -139,6 +140,29 @@ let fscq_mkdir ds fsxp path mode =
     | None -> raise (Unix_error (EIO, "mkdir", path))
     | Some _ -> ()
 
+let fscq_read ds fsxp path buf ofs ino =
+  let inum = W (Z.of_int ino) in
+  let zoff = Z.of_int64 ofs in
+  let zlen = Z.of_int (Array1.dim buf) in
+  let (res, ()) = run_fs ds (FS.read_bytes fsxp inum zoff zlen) in
+  match res with
+  | ByteFile.BYTEFILE.Coq_len_bytes (cc, (W bytes)) ->
+    let strbytes = Z.to_bits bytes in
+    String.iteri (fun i c -> Array1.set buf i c) strbytes;
+    Z.to_int cc
+
+let fscq_write ds fsxp path buf ofs ino =
+  let inum = W (Z.of_int ino) in
+  let zoff = Z.of_int64 ofs in
+  let len = Array1.dim buf in
+  let strbytes = String.create len in
+  for i = 0 to len-1 do
+    String.set strbytes i (Array1.get buf i)
+  done;
+  let zbytes = Z.of_bits strbytes in
+  let (res, ()) = run_fs ds (FS.append fsxp inum zoff (Z.of_int len) (W zbytes)) in
+  if res then len else raise (Unix_error (EIO, "write", path))
+
 let _ =
   if (Array.length Sys.argv < 2) then Printf.printf "Usage: %s disk -f /mnt/fscq\n" Sys.argv.(0);
   let diskfn = Sys.argv.(1) in
@@ -155,4 +179,6 @@ let _ =
         fopen = fscq_fopen ds fsxp;
         mknod = fscq_mknod ds fsxp;
         mkdir = fscq_mkdir ds fsxp;
+        read = fscq_read ds fsxp;
+        write = fscq_write ds fsxp;
     }
