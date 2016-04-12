@@ -7,6 +7,7 @@ open Unix
 open Bigarray
 
 let mem_state = ref (Log.ms_empty, (Cache.cache_empty, ()))
+let fuselock = Mutex.create ()
 
 let run_fs ds prog =
   try
@@ -60,7 +61,7 @@ let attr_to_kind ftype =
   | 2 -> S_FIFO
   | 3 -> S_BLK
   | 4 -> S_CHR
-  | _ -> raise (Failure "attr_to_kind")
+  | _ -> S_REG
 
 let stat_file (W ino) (W len) { ByteFile.BYTEFILE.coq_FMTime = wmtime; coq_FType = wtype; coq_FDev = wdev } =
   let (W fmtime) = wmtime in
@@ -82,37 +83,43 @@ let stat_file (W ino) (W len) { ByteFile.BYTEFILE.coq_FMTime = wmtime; coq_FType
   }
 
 let fscq_getattr ds fsxp path =
+  Mutex.lock fuselock;
   let r = lookup ds fsxp path in
   match r with
-  | None -> raise (Unix_error (ENOENT, "stat", path))
-  | Some (ino, true) -> stat_dir ino
+  | None -> Mutex.unlock fuselock; raise (Unix_error (ENOENT, "stat", path))
+  | Some (ino, true) -> Mutex.unlock fuselock; stat_dir ino
   | Some (ino, false) ->
     let (attr, ()) = run_fs ds (FS.file_get_attr fsxp ino) in
     let (len, ()) = run_fs ds (FS.file_get_sz fsxp ino) in
+    Mutex.unlock fuselock;
     stat_file ino len attr
 
 let fscq_readdir ds fsxp path _ =
+  Mutex.lock fuselock;
   let r = lookup ds fsxp path in
   match r with
-  | None -> raise (Unix_error (ENOENT, "readdir", path))
+  | None -> Mutex.unlock fuselock; raise (Unix_error (ENOENT, "readdir", path))
   | Some (ino, true) ->
     let (files, ()) = run_fs ds (FS.readdir fsxp ino) in
+    Mutex.unlock fuselock;
     List.append ["."; ".."] (List.map (fun (name, (ino, isdir)) -> string_implode name) files)
-  | Some (_, false) -> raise (Unix_error (ENOTDIR, "readdir", path))
+  | Some (_, false) -> Mutex.unlock fuselock; raise (Unix_error (ENOTDIR, "readdir", path))
 
 let fscq_fopen ds fsxp path flags =
+  Mutex.lock fuselock;
   let r = lookup ds fsxp path in
   match r with
-  | None -> raise (Unix_error (ENOENT, "fopen", path))
-  | Some (_, true) -> raise (Unix_error (EISDIR, "fopen", path))
-  | Some (W ino, false) -> Some (Z.to_int ino)
+  | None -> Mutex.unlock fuselock; raise (Unix_error (ENOENT, "fopen", path))
+  | Some (_, true) -> Mutex.unlock fuselock; raise (Unix_error (EISDIR, "fopen", path))
+  | Some (W ino, false) -> Mutex.unlock fuselock; Some (Z.to_int ino)
 
 let fscq_mknod ds fsxp path kind perm rdev =
+  Mutex.lock fuselock;
   let fn = string_explode (Filename.basename path) in
   let r = lookup ds fsxp (Filename.dirname path) in
   match r with
-  | None -> raise (Unix_error (ENOENT, "mknod", path))
-  | Some (_, false) -> raise (Unix_error (ENOTDIR, "mknod", path))
+  | None -> Mutex.unlock fuselock; raise (Unix_error (ENOENT, "mknod", path))
+  | Some (_, false) -> Mutex.unlock fuselock; raise (Unix_error (ENOTDIR, "mknod", path))
   | Some (dnum, true) ->
     let (r, ()) = ( match kind with
                     | S_REG  -> run_fs ds (FS.create fsxp dnum fn)
@@ -120,25 +127,27 @@ let fscq_mknod ds fsxp path kind perm rdev =
                     | S_FIFO -> run_fs ds (FS.mkdev fsxp dnum fn (W (Z.of_int 2)) (W (Z.of_int 0)))
                     | S_BLK  -> run_fs ds (FS.mkdev fsxp dnum fn (W (Z.of_int 3)) (W (Z.of_int rdev)))
                     | S_CHR  -> run_fs ds (FS.mkdev fsxp dnum fn (W (Z.of_int 4)) (W (Z.of_int rdev)))
-                    | _ -> raise (Unix_error (EIO, "mknod", path))
+                    | _ -> Mutex.unlock fuselock; raise (Unix_error (EIO, "mknod", path))
                   ) in
     match r with
-    | None -> raise (Unix_error (EIO, "mknod", path))
-    | Some _ -> ()
+    | None -> Mutex.unlock fuselock; raise (Unix_error (EIO, "mknod", path))
+    | Some _ -> Mutex.unlock fuselock; ()
 
 let fscq_mkdir ds fsxp path mode =
+  Mutex.lock fuselock;
   let fn = string_explode (Filename.basename path) in
   let r = lookup ds fsxp (Filename.dirname path) in
   match r with
-  | None -> raise (Unix_error (ENOENT, "mkdir", path))
-  | Some (_, false) -> raise (Unix_error (ENOTDIR, "mkdir", path))
+  | None -> Mutex.unlock fuselock; raise (Unix_error (ENOENT, "mkdir", path))
+  | Some (_, false) -> Mutex.unlock fuselock; raise (Unix_error (ENOTDIR, "mkdir", path))
   | Some (dnum, true) ->
     let (r, ()) = run_fs ds (FS.mkdir fsxp dnum fn) in
     match r with
-    | None -> raise (Unix_error (EIO, "mkdir", path))
-    | Some _ -> ()
+    | None -> Mutex.unlock fuselock; raise (Unix_error (EIO, "mkdir", path))
+    | Some _ -> Mutex.unlock fuselock; ()
 
 let fscq_read ds fsxp path buf ofs ino =
+  Mutex.lock fuselock;
   let inum = W (Z.of_int ino) in
   let zoff = Z.of_int64 ofs in
   let zlen = Z.of_int (Array1.dim buf) in
@@ -147,9 +156,11 @@ let fscq_read ds fsxp path buf ofs ino =
   | ByteFile.BYTEFILE.Coq_len_bytes (cc, (W bytes)) ->
     let strbytes = Z.to_bits bytes in
     String.iteri (fun i c -> Array1.set buf i c) strbytes;
+    Mutex.unlock fuselock;
     Z.to_int cc
 
 let fscq_write ds fsxp path buf ofs ino =
+  Mutex.lock fuselock;
   let inum = W (Z.of_int ino) in
   let zoff = Z.of_int64 ofs in
   let len = Array1.dim buf in
@@ -159,25 +170,30 @@ let fscq_write ds fsxp path buf ofs ino =
   done;
   let zbytes = Z.of_bits strbytes in
   let (res, ()) = run_fs ds (FS.append fsxp inum zoff (Z.of_int len) (W zbytes)) in
+  Mutex.unlock fuselock;
   if res then len else raise (Unix_error (EIO, "write", path))
 
 let fscq_rename ds fsxp src dst =
+  Mutex.lock fuselock;
   let src_fn = string_explode (Filename.basename src) in
   let src_dn = split_path_coq (Filename.dirname src) in
   let dst_fn = string_explode (Filename.basename dst) in
   let dst_dn = split_path_coq (Filename.dirname dst) in
   let (r, ()) = run_fs ds (FS.rename fsxp (FSLayout.coq_FSXPRootInum fsxp)
                            src_dn src_fn dst_dn dst_fn) in
+  Mutex.unlock fuselock;
   if r then () else raise (Unix_error (EIO, "rename", src))
 
 let fscq_unlink ds fsxp path =
+  Mutex.lock fuselock;
   let fn = string_explode (Filename.basename path) in
   let r = lookup ds fsxp (Filename.dirname path) in
   match r with
-  | None -> raise (Unix_error (ENOENT, "unlink", path))
-  | Some (_, false) -> raise (Unix_error (ENOTDIR, "unlink", path))
+  | None -> Mutex.unlock fuselock; raise (Unix_error (ENOENT, "unlink", path))
+  | Some (_, false) -> Mutex.unlock fuselock; raise (Unix_error (ENOTDIR, "unlink", path))
   | Some (dnum, true) ->
     let (r, ()) = run_fs ds (FS.delete fsxp dnum fn) in
+    Mutex.unlock fuselock;
     if r then () else raise (Unix_error (EIO, "unlink", path))
 
 let _ =
