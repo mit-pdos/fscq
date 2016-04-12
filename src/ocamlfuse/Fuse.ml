@@ -38,7 +38,7 @@ type xattr_flags = AUTO | CREATE | REPLACE
 type operations =
     { getattr : string -> Unix.LargeFile.stats;
       readlink : string -> string;
-      mknod : string -> int -> unit;
+      mknod : string -> Unix.file_kind -> Unix.file_perm -> int -> unit;
       mkdir : string -> int -> unit;
       unlink : string -> unit;
       rmdir : string -> unit;
@@ -75,7 +75,7 @@ let op_names_of_operations ops =
     Fuse_bindings.opendir = Fuse_lib.named_op_2 ops.opendir;
     Fuse_bindings.releasedir = Fuse_lib.named_op_3 ops.releasedir;
     Fuse_bindings.fsyncdir = Fuse_lib.named_op_3 ops.fsyncdir;
-    Fuse_bindings.mknod = Fuse_lib.named_op_2 ops.mknod;
+    Fuse_bindings.mknod = Fuse_lib.named_op_4 ops.mknod;
     Fuse_bindings.mkdir = Fuse_lib.named_op_2 ops.mkdir;
     Fuse_bindings.unlink = Fuse_lib.named_op ops.unlink;
     Fuse_bindings.rmdir = Fuse_lib.named_op ops.rmdir;
