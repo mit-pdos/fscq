@@ -196,6 +196,17 @@ let fscq_unlink ds fsxp path =
     Mutex.unlock fuselock;
     if r then () else raise (Unix_error (EIO, "unlink", path))
 
+let fscq_truncate ds fsxp path len =
+  Mutex.lock fuselock;
+  let r = lookup ds fsxp path in
+  match r with
+  | None -> Mutex.unlock fuselock; raise (Unix_error (ENOENT, "unlink", path))
+  | Some (_, true) -> Mutex.unlock fuselock; raise (Unix_error (EISDIR, "unlink", path))
+  | Some (inum, false) ->
+    let (r, ()) = run_fs ds (FS.file_resize fsxp inum (Z.of_int64 len)) in
+    Mutex.unlock fuselock;
+    if r then () else raise (Unix_error (EIO, "truncate", path))
+
 let _ =
   if (Array.length Sys.argv < 2) then Printf.printf "Usage: %s disk -f /mnt/fscq\n" Sys.argv.(0);
   let diskfn = Sys.argv.(1) in
@@ -217,4 +228,5 @@ let _ =
         rename = fscq_rename ds fsxp;
         unlink = fscq_unlink ds fsxp;
         rmdir = fscq_unlink ds fsxp;
+        truncate = fscq_truncate ds fsxp;
     }
