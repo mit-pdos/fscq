@@ -868,6 +868,9 @@ Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
 Tactic Notation "denote" open_constr(pattern) "as" ident(n) :=
   match goal with | [ H: context [ pattern ] |- _ ] => rename H into n end.
 
+Tactic Notation "denote!" open_constr(pattern) "as" ident(n) :=
+  match goal with | [ H: pattern |- _ ] => rename H into n end.
+
 Tactic Notation "substl" :=
   subst; repeat match goal with
   | [ H : ?l = ?r |- _ ] => is_var l;
