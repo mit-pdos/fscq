@@ -238,11 +238,37 @@ Module RecArray (Params:RecArrayParams).
                let b := valu_to_block v in
                rx (get_block_offset b off).
 
+    Theorem preserves'_star : forall AT AEQ V S
+                                 (f: S -> @mem AT AEQ V) R F Q F' P,
+        preserves' f R F F' (fun s => Q * P s)%pred ->
+        preserves' f R (fun s => F s * Q)%pred (fun s => F' s * Q)%pred P.
+    Proof.
+      unfold preserves'; intros.
+      eapply pimpl_apply;
+        [ | eapply H; eauto ].
+      cancel.
+      pred_apply; cancel.
+    Qed.
+
+    Theorem preserves'_star_general : forall AT AEQ V S
+                                 (f: S -> @mem AT AEQ V) R F Q F' P,
+        preserves' f R F F' (fun s => Q s * P s)%pred ->
+        preserves' f R (fun s => F s * Q s)%pred (fun s => F' s * Q s)%pred P.
+    Proof.
+      unfold preserves'; intros.
+      eapply pimpl_apply;
+        [ | eapply H; eauto ].
+      cancel.
+      pred_apply; cancel.
+    Qed.
+
+    Hint Extern 0 (okToUnify (CacheM.rep _) (CacheM.rep _)) => constructor : okToUnify.
+
     Polymorphic Theorem get_item_ok : forall i,
         stateS TID: tid |-
         {{ Fs Fs' F LF F' vs vd,
          | PRE d m s0 s:
-             hlistmem s |= Fs * rep vs * CacheM.rep vd /\
+             hlistmem s |= Fs s * rep vs * CacheM.rep vd /\
              Inv m s d /\
              get GLock s = Owned tid /\
              preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
@@ -250,19 +276,31 @@ Module RecArray (Params:RecArrayParams).
              (forall P, preserves' (get GDisk) (star (othersR R tid))
                               F F'
                               (fun s => lin_latest_pred (cache_locked tid s P))) /\
-             vd |= F * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
+             vd |= F s * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
              R tid s0 s
          | POST d' m' s0' s' r:
              exists vd',
-               hlistmem s' |= Fs' * rep vs * CacheM.rep vd' /\
+               hlistmem s' |= Fs' s' * rep vs * CacheM.rep vd' /\
                Inv m' s' d' /\
                get GLock s' = Owned tid /\
-               vd' |= F' * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
+               vd' |= F' s' * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
                r = selN vs i item0 /\
                R tid s0' s'
         }} get_item i.
     Proof.
-      hoare pre simplify with try solve [ finish ].
+      time "hoare"
+           hoare pre simplify with try solve [ finish ].
+
+      unfold pred_in in *; pred_apply; cancel.
+      assert (vs = get Items s) by admit.
+      rewrite H11.
+      instantiate (1 := fun s => (Fs s * rep (get Items s))%pred).
+      cancel.
+
+      admit. (* need to move one item out of rep_items, which pretty
+      much requires a new "punctured rep" predicate *)
+
+      apply preserves'_star_general; eassumption.
     Abort.
 
 

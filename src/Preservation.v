@@ -247,11 +247,11 @@ Definition preserves (R : S -> S -> Prop) F F' :=
     R s s' ->
     (F' * P)%pred (proj s').
 
-Definition preserves' (R : S -> S -> Prop) F F' (P: S -> pred) :=
+Definition preserves' (R : S -> S -> Prop) (F F' P: S -> pred) :=
   forall s s',
-    (F * P s)%pred (proj s) ->
+    (F s * P s)%pred (proj s) ->
     R s s' ->
-    (F' * P s')%pred (proj s').
+    (F' s' * P s')%pred (proj s').
 
 Definition locked_frame F (ls: list AT) : S -> Prop :=
   fun s =>

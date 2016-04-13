@@ -446,10 +446,10 @@ Polymorphic Theorem locked_AsyncRead_ok : forall a,
   stateS TID: tid |-
   {{ Fs Fs' F LF F' v vd,
    | PRE d m s0 s:
-       hlistmem s |= Fs * rep vd /\
+       hlistmem s |= Fs s * rep vd /\
        Inv m s d /\
        cache_get (get Cache m) a = None /\
-       vd |= F * lin_latest_pred
+       vd |= F s * lin_latest_pred
         (cache_locked tid s (LF * a |-> (v, None))) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
@@ -458,9 +458,9 @@ Polymorphic Theorem locked_AsyncRead_ok : forall a,
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
-         hlistmem s' |= Fs' * rep vd' /\
+         hlistmem s' |= Fs' s' * rep vd' /\
          Inv m' s' d' /\
-         vd' |= F' * lin_latest_pred
+         vd' |= F' s' * lin_latest_pred
           (cache_locked tid s' (LF * a |-> (v, None))) /\
          r = v /\
          R tid s0' s'
@@ -588,9 +588,9 @@ Polymorphic Theorem locked_read_ok : forall a,
   stateS TID: tid |-
   {{ Fs Fs' F LF F' v vd,
    | PRE d m s0 s:
-       hlistmem s |= Fs * rep vd /\
+       hlistmem s |= Fs s * rep vd /\
        Inv m s d /\
-       vd |= F * lin_latest_pred (cache_locked tid s (LF * a |-> (v, None))) /\
+       vd |= F s * lin_latest_pred (cache_locked tid s (LF * a |-> (v, None))) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
        (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
@@ -598,9 +598,9 @@ Polymorphic Theorem locked_read_ok : forall a,
        R tid s0 s
    | POST d' m' s0' s' r:
        exists vd',
-         hlistmem s' |= Fs' * rep vd' /\
+         hlistmem s' |= Fs' s' * rep vd' /\
          Inv m' s' d' /\
-         vd' |= F' * lin_latest_pred (cache_locked tid s' (LF * a |-> (v, None))) /\
+         vd' |= F' s' * lin_latest_pred (cache_locked tid s' (LF * a |-> (v, None))) /\
          r = v /\
          R tid s0' s'
   }} read a.
@@ -659,9 +659,9 @@ Polymorphic Theorem locked_write_ok : forall a v,
     stateS TID: tid |-
     {{ Fs Fs' F LF F' v0 vd,
      | PRE d m s0 s:
-         hlistmem s |= Fs * rep vd /\
+         hlistmem s |= Fs s * rep vd /\
          Inv m s d /\
-         vd |= F * lin_latest_pred (cache_locked tid s (LF * a |-> (v0, None))) /\
+         vd |= F s * lin_latest_pred (cache_locked tid s (LF * a |-> (v0, None))) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
        (forall P, preserves' (get GDisk) (star (othersR R tid)) F F'
@@ -669,9 +669,9 @@ Polymorphic Theorem locked_write_ok : forall a v,
          R tid s0 s
      | POST d' m' s0' s' _:
          exists vd',
-           hlistmem s' |= Fs' * rep vd' /\
+           hlistmem s' |= Fs' s' * rep vd' /\
            Inv m' s' d' /\
-           vd' |= F' * lin_latest_pred (cache_locked tid s' (LF * a |-> (v, None))) /\
+           vd' |= F' s' * lin_latest_pred (cache_locked tid s' (LF * a |-> (v, None))) /\
            R tid s0' s'
     }} write a v.
 Proof.
@@ -718,20 +718,20 @@ Polymorphic Theorem lock_ok : forall a,
     stateS TID: tid |-
     {{ Fs Fs' F LF F' vd,
      | PRE d m s0 s:
-         hlistmem s |= Fs * rep vd /\
+         hlistmem s |= Fs s * rep vd /\
          Inv m s d /\
-         vd |= F * a |->? * lin_latest_pred (cache_locked tid s LF) /\
+         vd |= F s * a |->? * lin_latest_pred (cache_locked tid s LF) /\
        preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
         (fun s => rep (get GDisk s))%pred /\
        (forall P, preserves' (get GDisk) (star (othersR R tid))
-        (F * a |->?) (F' * a |->?)
-        (fun s => lin_latest_pred (cache_locked tid s P))) /\
+        (fun s => F s * a |->?) (fun s => F' s * a |->?)
+        (fun s => lin_latest_pred (cache_locked tid s P)))%pred /\
          R tid s0 s
      | POST d' m' s0' s' _:
          exists vd' v,
-           hlistmem s' |= Fs' * rep vd' /\
+           hlistmem s' |= Fs' s' * rep vd' /\
            Inv m' s' d' /\
-           vd' |= F' * lin_latest_pred (cache_locked tid s' (LF * a |-> (v, None))) /\
+           vd' |= F' s' * lin_latest_pred (cache_locked tid s' (LF * a |-> (v, None))) /\
            R tid s0' s'
     }} lock a.
 Proof.
