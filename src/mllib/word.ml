@@ -2,7 +2,8 @@ type word =
   W of Big.big_int
 
 let wrap sz n =
-  Big.modulo n (Big_int_Z.power_int_positive_big_int 2 sz)
+  let isz = Z.to_int sz in
+  if isz == 0 then Z.zero else Z.extract n 0 isz
 
 let natToWord sz n = W (wrap sz n)
 let wordToNat sz (W n) = n
