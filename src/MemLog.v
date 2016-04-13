@@ -1364,6 +1364,13 @@ Module MLog.
     rewrite sep_star_or_distr; or_l; cancel.
   Qed.
 
+  Lemma either_pred_either : forall xp d ents,
+    recover_either_pred xp d ents =p=>
+    exists d', would_recover_either xp d' ents.
+  Proof.
+    unfold recover_either_pred, would_recover_either.
+    intros; xform_norm; cancel.
+  Qed.
 
   Lemma recover_idem : forall xp d ents,
     crash_xform (recover_either_pred xp d ents) =p=>
@@ -1389,14 +1396,33 @@ Module MLog.
       BUFCACHE.rep cs raw *
       [[ (F * recover_either_pred xp d ents)%pred raw ]]
     POST RET:ms'
-      BUFCACHE.rep (MSCache ms') raw
+      BUFCACHE.rep (MSCache ms') raw *
+      [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') *
+        ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
+         [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
+      ))%pred raw ]]
     CRASH
       exists cs', BUFCACHE.rep cs' raw
     >} recover xp cs.
   Proof.
     unfold recover, recover_either_pred, rep.
     step.
-    step.
+
+    prestep. norm. cancel.
+    intuition simpl; auto; pred_apply.
+    denote or as Hx; apply sep_star_or_distr in Hx.
+    denote (Map.Equal _ _) as Heq.
+    destruct Hx; destruct_lift H.
+
+    cancel. or_l; cancel.
+    rewrite <- Heq; auto.
+    rewrite <- Heq; auto.
+
+    cancel. or_r; cancel.
+    rewrite <- Heq; auto.
+    rewrite <- Heq; auto.
+
+    Unshelve. exact valu. all: eauto.
   Qed.
 
 

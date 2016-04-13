@@ -770,6 +770,16 @@ Module GLog.
   Qed.
 
 
+  Lemma any_pred_any : forall xp ds,
+    recover_any_pred xp ds =p=>
+    exists d, would_recover_any xp (d, nil).
+  Proof.
+    unfold recover_any_pred; intros.
+    xform_norm.
+    rewrite cached_recover_any; cancel.
+  Qed.
+
+
   Lemma recover_idem : forall xp ds,
     crash_xform (recover_any_pred xp ds) =p=>
                  recover_any_pred xp ds.
@@ -792,7 +802,11 @@ Module GLog.
       BUFCACHE.rep cs raw *
       [[ (F * recover_any_pred xp ds)%pred raw ]]
     POST RET:ms'
-      BUFCACHE.rep (MSCache ms') raw
+      BUFCACHE.rep (MSCache ms') raw *
+      [[ (exists d n, [[ n <= length (snd ds) ]] *
+          F * rep xp (Cached (d, nil)) (fst ms') *
+          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+      )%pred raw ]]
     CRASH
       exists cs', BUFCACHE.rep cs' raw
     >} recover xp cs.
@@ -801,8 +815,15 @@ Module GLog.
     step.
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
-    step.
-    Unshelve. exact nil.
+
+    prestep. norm. cancel.
+    intuition simpl; auto; pred_apply.
+    xform_norm.
+
+    norm. cancel. intuition simpl; eauto.
+    norm. cancel. intuition simpl; eauto.
+    pred_apply.
+    instantiate (1 := nil); cancel.
   Qed.
 
 
