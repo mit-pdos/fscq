@@ -21,6 +21,12 @@ Extraction Inline BasicProg.If_.
 Require Import ZArith.
 Extract Constant Pos.compare_cont => "fun c x y -> Big.compare_case c Lt Gt x y".
 
+(* Extract some things that ExtrOcamlNatBigInt missed *)
+Extract Constant Nat.add => "Big.add".
+Extract Constant Nat.mul => "Big.mult".
+Extract Constant Nat.pred => "fun n -> Big.max Big.zero (Big.pred n)".
+Extract Constant Nat.sub => "fun n m -> Big.max Big.zero (Big.sub n m)".
+
 (* Hook up our untrusted replacement policy. *)
 Extract Inlined Constant Cache.eviction_state  => "unit".
 Extract Inlined Constant Cache.eviction_init   => "()".
